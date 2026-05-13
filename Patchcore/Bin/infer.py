@@ -166,4 +166,4 @@ def infer(img_path):
 # ======================
 # 執行
 # ======================
-infer(r"C:\Users\grown\Desktop\Patchcore\dataset\test\defect\69.jpg")
+infer(r"D:\Working Space\Python\Patchcore\000.jpg")
