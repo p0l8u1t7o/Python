@@ -1,0 +1,41 @@
+我要建立一個高效能 Stereo Depth 系統，需求如下：
+
+🔧 系統架構：
+- 使用 LabVIEW 負責雙相機影像擷取
+- Python 負責 stereo disparity / depth 計算
+- LabVIEW 會透過 Python Node 傳入：
+  1. 左右影像（JPEG / bmp）
+  2. BBox（x, y, w, h）（來自物體偵測結果）
+
+🎯 核心需求：
+- 僅計算 BBox ROI 內的 stereo depth
+- 不做 full disparity map
+- 每個 BBox 回傳 depth 統計值（mean / median / min / max）
+- 支援多個 BBox（batch ROI stereo）
+
+⚡ 性能要求：
+- 目標即時（>30 FPS，最好 60 FPS）
+- 5MP 相機輸入
+- CPU only（OpenCV AVX2 / IPP optimized）
+- 不使用 CUDA
+
+📦 演算法限制：
+- 使用 OpenCV StereoBM（優先）或最輕量 SGBM
+- numDisparities 需可調（建議 32~96）
+- blockSize 需優化（3 or 5）
+- 必須使用 zero-copy numpy buffer（避免 memcpy）
+
+🚀 架構設計需求：
+- ROI stereo pipeline（不是 full image stereo）
+- 支援 multi-object BBox input
+- 支援 future extension（tiling / multi-scale stereo）
+- Python 端需提供 class-based API
+
+📤 輸出需求：
+- Python function（可直接給 LabVIEW Python Node 使用）
+- 輸入：
+  - left image pointer / numpy buffer
+  - right image pointer / numpy buffer
+  - bbox list
+- 輸出：
+  - 每個 bbox 的 depth statistics（dict / array）
