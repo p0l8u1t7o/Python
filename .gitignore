@@ -1,4 +1,5 @@
 dataset
 venv
+.venv
 *.pkl
 *.npy
