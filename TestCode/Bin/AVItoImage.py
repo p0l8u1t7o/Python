@@ -1,7 +1,7 @@
 import cv2
 import os
 
-def video_to_images(video_path, output_folder, img_format="jpg", step=1):
+def video_to_images(video_path, output_folder, filename="frame_",img_format="jpg", step=1):
     """
     video_path: AVI 檔案路徑
     output_folder: 輸出圖片資料夾
@@ -29,12 +29,12 @@ def video_to_images(video_path, output_folder, img_format="jpg", step=1):
 
         # 控制抽幀
         if frame_id % step == 0:
-            filename = os.path.join(
+            finalfilename = os.path.join(
                 output_folder,
-                f"frame_{saved_id:06d}.{img_format}"
+                f"{filename}{saved_id:06d}.{img_format}"
             )
 
-            cv2.imwrite(filename, frame)
+            cv2.imwrite(finalfilename, frame)
             saved_id += 1
 
         frame_id += 1
@@ -49,4 +49,4 @@ def video_to_images(video_path, output_folder, img_format="jpg", step=1):
 video_path = r"D:\CaptureImage\0\0.avi"
 output_folder = r"D:\CaptureImage\0\Image"
 
-video_to_images(video_path, output_folder, img_format="jpg", step=1)
+video_to_images(video_path, output_folder, filename="frame_", img_format="jpg", step=1)

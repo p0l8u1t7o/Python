@@ -92,7 +92,7 @@ def initialize(tag_name, num_elements):
         _g_device = "cuda:0" if torch.cuda.is_available() else "cpu"
         _g_half   = (_g_device != "cpu")
 
-        _g_model = YOLO(r"D:\Working Space\Python\VisionStereo\yolov8s.pt")
+        _g_model = YOLO(r"D:\Working Space\Python\VisionStereo\weights\yolov8s.pt")
         _g_model.to(_g_device)
         _g_names = _g_model.names
 
