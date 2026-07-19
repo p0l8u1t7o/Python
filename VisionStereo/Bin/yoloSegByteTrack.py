@@ -6,7 +6,6 @@ import json
 import yaml
 import os
 import torch
-from turbojpeg import TurboJPEG, TJPF_BGR
 
 # ==================================================
 # Global
@@ -19,7 +18,6 @@ _g_device  = None
 _g_half    = False
 _g_is_engine   = False
 _g_frame_count = 0
-_g_turbo = TurboJPEG()
 
 TRACKER_CFG = "bytetrack.yaml"
 
@@ -56,10 +54,7 @@ class MMapReader:
         )
 
     def read_frame(self):
-        #return cv.imdecode(self.view, cv.IMREAD_COLOR)
-
-        # ⚡ TurboJPEG decode，比 cv.imdecode 快 2~3x
-        return _g_turbo.decode(bytes(self.view), pixel_format=TJPF_BGR)
+        return cv.imdecode(self.view, cv.IMREAD_COLOR)
 
     def close(self):
         if hasattr(self, "view"):
