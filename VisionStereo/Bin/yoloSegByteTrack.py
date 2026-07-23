@@ -286,11 +286,11 @@ def execute():
     # Tensor → CPU numpy（一次傳輸）
     # --------------------------------------------------
 
-    xyxy  = r.boxes.xyxy.cpu().numpy().astype(np.int32)
-    confs = r.boxes.conf.cpu().numpy()
-    clss  = r.boxes.cls.cpu().numpy().astype(np.int32)
+    xyxy  = r.boxes.xyxy.cpu().numpy().astype(np.int32)  # type: ignore[reportAttributeAccessIssue]
+    confs = r.boxes.conf.cpu().numpy()  # type: ignore[reportAttributeAccessIssue]
+    clss  = r.boxes.cls.cpu().numpy().astype(np.int32)  # type: ignore[reportAttributeAccessIssue]
     ids   = (
-        r.boxes.id.cpu().numpy().astype(np.int32)
+        r.boxes.id.cpu().numpy().astype(np.int32)  # type: ignore[reportAttributeAccessIssue]
         if r.boxes.id is not None
         else np.full(len(xyxy), -1, dtype=np.int32)
     )
@@ -344,7 +344,7 @@ def execute():
     centroids = None
 
     if r.masks is not None:
-        masks_np  = r.masks.data.cpu().numpy()[valid]
+        masks_np  = r.masks.data.cpu().numpy()[valid]  # type: ignore[reportAttributeAccessIssue]
         polygons  = []
         centroids = []
 
