@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"d:/Working Space/Python/VisionStereo\" && cat \"../TestCode/requirements.txt\" 2>/dev/null; echo \"---diff---\"; git diff --stat -- \"../TestCode/requirements.txt\"; git diff -- \"../TestCode/requirements.txt\" | head -100)",
+      "Read(//d/Working Space/Python/TestCode/**)",
+      "Bash(iconv -f UTF-16 -t UTF-8)",
+      "Bash(where python *)",
+      "Bash(where python3 *)",
+      "Bash(py -0p)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")"
+    ]
+  }
+}

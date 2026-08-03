@@ -35,37 +35,87 @@ YAML_PATH  = r"D:\TrainingImage\CITD\dataset\data.yaml"
 # ==================================================
 # MMap Reader
 # ==================================================
+# fmt（IMAQ 影像型別代碼）-> (dtype, bytes_per_pixel, channels)
+# bytes_per_pixel 為單一像素「所有 channel 加總」的位元組數，
+# 用來換算每一列（row）在記憶體中的實際跨距（stride）。
+FORMATS = {
+    0: (np.uint8,   1, 1),   # Grayscale (U8)
+    1: (np.int16,   2, 1),   # Grayscale (I16)
+    2: (np.float32, 4, 1),   # Grayscale (SGL)
+    4: (np.uint8,   4, 4),   # RGB (U32)，記憶體順序 BGRA
+    5: (np.uint8,   4, 4),   # HSL (U32)
+    6: (np.uint16,  8, 4),   # RGB (U64)，每個 channel 16-bit
+    7: (np.uint16,  2, 1),   # Grayscale (U16)
+}
+
+
+
 
 class MMapReader:
+    """讀取 LabVIEW 寫入的共享記憶體。
 
-    def __init__(self, tag_name, num_elements):
+    line_width 為 IMAQ GetImageInfo 的 Line Width（單位像素，含 padding）。
+    size 為映射總長度，0 表示只有單張影像。
+    """
 
-        self.mm = mmap.mmap(
-            -1,
-            num_elements,
-            tagname=tag_name,
-            access=mmap.ACCESS_READ
-        )
+    def __init__(self, tag_name, width, height, line_width, fmt, size=0):
+        """開啟指定 tag 的具名共享記憶體並準備好讀取用的中介資訊。
 
-        self.view = np.frombuffer(
-            self.mm,
-            dtype=np.uint8,
-            count=num_elements
-        )
+        參數：
+            tag_name:   LabVIEW 端建立共享記憶體時使用的名稱。
+            width:      影像實際寬度（像素）。
+            height:     影像實際高度（像素）。
+            line_width: IMAQ GetImageInfo 回傳的 Line Width（像素，含 padding）；
+                        0 表示沒有 padding，等同 width。
+            fmt:        影像型別代碼，對應 FORMATS 字典的 key。
+            size:       整段共享記憶體的總長度（bytes）；0 表示只映射單張影像。
+        """
+        self.dtype, bpp, self.ch = FORMATS[fmt]
+        self.w, self.h = width, height
+        self.row = (line_width or width) * bpp   # 每一列在記憶體中的實際 byte 數（含 padding）
+        self.valid = width * bpp                  # 每一列中真正有效影像資料的 byte 數
+        self.frame_bytes = self.row * height       # 單張影像佔用的總 byte 數
 
-    def read_frame(self):
-        return cv.imdecode(self.view, cv.IMREAD_COLOR)
+        # 以唯讀模式開啟 LabVIEW 已建立好的具名記憶體對映；
+        # size 為 0 時代表只有單張影像，用 frame_bytes 當作映射長度。
+        self.mm = mmap.mmap(-1, size or self.frame_bytes,
+                            tagname=tag_name, access=mmap.ACCESS_READ)
+        self.buf = np.frombuffer(self.mm, dtype=np.uint8)
+        self.buf[::4096].sum()          # prefault，把 page fault 成本移到開場
+
+    def read_frame(self, offset=0, copy=False):
+        """從共享記憶體讀出一張影像，回傳 numpy array。
+
+        參數：
+            offset: 該影像在共享記憶體中的起始 byte 位移（多張影像串接時使用）。
+            copy:   True 時強制回傳獨立複製；False（預設）盡量回傳 zero-copy view，
+                    共享同一塊記憶體，效能較好但資料可能隨下次寫入而改變。
+        """
+        # 依 row（含 padding）切成 (h, row) 的 2D view，再裁掉 padding 只留有效資料
+        raw = self.buf[offset:offset + self.frame_bytes].reshape(self.h, self.row)
+        blk = raw[:, :self.valid]
+
+        # uint8 以外的型別若不是連續記憶體（因裁切 padding 而不連續），
+        # view() 轉型前必須先複製成連續記憶體，否則會出錯或結果不正確。
+        if copy or (self.dtype != np.uint8 and not blk.flags["C_CONTIGUOUS"]):
+            blk = np.ascontiguousarray(blk)
+
+        # uint8 直接使用（沒有型別轉換需求），其餘型別以 view 重新解讀底層 bytes
+        arr = blk if self.dtype == np.uint8 else blk.view(self.dtype)
+        return arr.reshape(self.h, self.w, self.ch) if self.ch > 1 \
+            else arr.reshape(self.h, self.w)
 
     def close(self):
-        if hasattr(self, "view"):
-            del self.view
+        """釋放 numpy view 與 mmap 物件。"""
+        self.buf = None
+        self.mm.close()
+        self.mm = None
 
-        import gc
-        gc.collect()
+    def __enter__(self):
+        return self
 
-        if self.mm:
-            self.mm.close()
-            self.mm = None
+    def __exit__(self, *exc):
+        self.close()
 
 
 # ==================================================
@@ -208,13 +258,13 @@ def mask_to_polygon_and_centroid(mask_data, img_h, img_w, max_points=12):
 # Initialize
 # ==================================================
 
-def initialize(tag_name, num_elements):
+def initialize(tag_name, width, height ,line_width ,fmt):
 
     global _g_reader, _g_model, _g_names, _g_device, _g_half
     global _ALLOWED_CLASSES_NP
 
     if _g_reader is None:
-        _g_reader = MMapReader(tag_name, num_elements)
+        _g_reader = MMapReader(tag_name, width, height, line_width, fmt)
 
     if _g_model is None:
 
