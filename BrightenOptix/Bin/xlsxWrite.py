@@ -4,6 +4,9 @@ from opencc import OpenCC
 from openpyxl import Workbook
 from typing import Tuple, List
 
+# 只建立一次 OpenCC 轉換器（載入辭典檔案有成本），避免每次呼叫都重新建立造成卡頓
+_cc = OpenCC('s2t')
+
 
 #============================================================================================================================================#
 # 讀取 TXT 檔案內容
@@ -52,14 +55,11 @@ def parse_soap_field_map(content: str) -> Tuple[List[str], List[str]]:
 # 將 Field 的 Tuple（key, value） 轉換為中文
 
 def translate_to_traditional_chinese_tuple(data: Tuple[List[str], List[str]]) -> Tuple[List[str], List[str]]:
-    # 建立 OpenCC 轉換器，指定轉換模式：s2t（簡體轉繁體）
-    cc = OpenCC('s2t')
-
     # 解構傳入的 tuple，分別取出 keys 和 values 兩個 list
     keys, values = data
 
     # 將 values 中的每個元素轉換成繁體中文（如果是字串的話）
-    converted_values = [cc.convert(v) if isinstance(v, str) else v for v in values]
+    converted_values = [_cc.convert(v) if isinstance(v, str) else v for v in values]
 
     # 回傳原本的 keys 和轉換後的 values 組成的 tuple
     return keys, converted_values
@@ -93,11 +93,8 @@ def tuple_to_excel(data: Tuple[List[str], List[str]], filename: str):
 # 使用 OpenCC 進行簡體中文到繁體中文
 
 def translate_to_traditional_chinese_string(simplified_text: str) -> str:
-
-    # 建立一個 OpenCC 轉換器，使用 s2t 模式（簡體轉繁體）
-    cc = OpenCC('s2t')
+    if not simplified_text:
+        return simplified_text
 
     # 轉換成繁體中文
-    traditional_text = cc.convert(simplified_text)
-
-    return traditional_text
+    return _cc.convert(simplified_text)
