@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="BIG5" standalone="yes"?>
+<NewDataSet>
+  <xs:schema id="NewDataSet" xmlns="" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata"> 
+    <xs:element name="NewDataSet" msdata:IsDataSet="true">
+      <xs:complexType>
+        <xs:choice maxOccurs="unbounded">
+          <xs:element name="axmr700">
+            <xs:complexType>
+              <xs:sequence>
+                  <xs:element name="oha01" type="xs:string" minOccurs="0" />
+                  <xs:element name="oaydesc" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha02" type="xs:dateTime" minOccurs="0" />
+                  <xs:element name="oha14" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha15" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha03" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha032" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha04" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha09" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha48" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb03" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb31" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb32" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb33" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb34" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb04" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb092" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb05" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb50" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb51" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb06" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb12" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb11" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb09" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb091" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb16" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="oha23" type="xs:string" minOccurs="0" />
+                  <xs:element name="oha24" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb910" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb912" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb913" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb915" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb916" type="xs:string" minOccurs="0" />
+                  <xs:element name="ohb917" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="oak02" type="xs:string" minOccurs="0" />
+                  <xs:element name="occ01" type="xs:string" minOccurs="0" />
+                  <xs:element name="occ02" type="xs:string" minOccurs="0" />
+                  <xs:element name="occ18_oha03" type="xs:string" minOccurs="0" />
+                  <xs:element name="occ18_oha04" type="xs:string" minOccurs="0" />
+                  <xs:element name="gen02" type="xs:string" minOccurs="0" />
+                  <xs:element name="oag02" type="xs:string" minOccurs="0" />
+                  <xs:element name="gem02" type="xs:string" minOccurs="0" />
+                  <xs:element name="unit_ep" type="xs:string" minOccurs="0" />
+                  <xs:element name="ima021" type="xs:string" minOccurs="0" />
+                  <xs:element name="flag" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb13" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb14" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="ohb14t" type="xs:decimal" minOccurs="0" />
+                  <xs:element name="azi04" type="xs:decimal" minOccurs="0" />
+              </xs:sequence>
+           </xs:complexType>
+         </xs:element>
+       </xs:choice>
+     </xs:complexType>
+   </xs:element>
+ </xs:schema>
+ <axmr700>
+   <oha01>AAA-000001</oha01>
+   <oha02>2007-03-28</oha02>
+  </axmr700>
+</NewDataSet>
