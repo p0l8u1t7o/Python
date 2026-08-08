@@ -17,12 +17,12 @@ from pathlib import Path
 # ╠══════════════════════════════════════════════════════════════╣
 
 # ── 資料集 ──────────────────────────────────────────────────────
-DATASET_DIR = r"D:\TrainingImage\CITD\dataset"           # 資料集根目錄（含 images/train, images/val）
-CLASS_NAMES = ["Plastic", "HDPE", "Other"]        # 類別名稱（依標籤 id 順序）
-DATA_YAML   = r"D:\TrainingImage\CITD\dataset\data.yaml"         # data.yaml 路徑（不存在時自動產生）
+DATASET_DIR = r"D:\TrainingImage\ATD\dataset"           # 資料集根目錄（含 images/train, images/val）
+CLASS_NAMES = ["CardboardBox","AluminumFoil","PlasticBottles","Other"]        # 類別名稱（依標籤 id 順序）
+DATA_YAML   = r"D:\TrainingImage\ATD\dataset\data.yaml"         # data.yaml 路徑（不存在時自動產生）
 
 # ── 訓練參數 ─────────────────────────────────────────────────────
-MODEL        = r"D:\Working Space\Python\VisionStereo\Bin\yolo11n-seg.pt"     # 預訓練權重（自動下載）
+MODEL        = r"D:\Working Space\Python\VisionStereo\weights\yolo26n-seg.pt"     # 預訓練權重（自動下載）
 # 可選：yolo11n/s/m/l/x-seg.pt  或  yolov8n/s/m/l/x-seg.pt
 EPOCHS       = 100
 IMGSZ        = 640
@@ -40,7 +40,7 @@ OVERLAP_MASK = True
 MASK_RATIO   = 4
 RETINA_MASKS = False
 PROJECT      = r"D:\Working Space\Python\VisionStereo\weights"       # 訓練輸出根目錄
-EXP_NAME     = "CITD"                # 實驗名稱
+EXP_NAME     = "ATD"                # 實驗名稱
 
 # ── 匯出設定 ─────────────────────────────────────────────────────
 # 支援格式：onnx | torchscript | tflite | coreml | engine(TensorRT)
@@ -53,7 +53,7 @@ EXPORT_DYNAMIC = False              # 動態 batch size（ONNX）
 #   best.pt          → 最佳 PyTorch 權重
 #   last.pt          → 最後一個 epoch 的權重
 #   best.<format>    → 匯出格式（如 best.onnx）
-OUTPUT_DIR       = r"D:\Working Space\Python\VisionStereo\weights"       # ← 修改為你想要的輸出資料夾
+OUTPUT_DIR       = r"D:\Working Space\Python\VisionStereo\weights\ATD"       # ← 修改為你想要的輸出資料夾
 COPY_BEST_PT     = True             # 複製 best.pt
 COPY_LAST_PT     = True             # 複製 last.pt
 COPY_EXPORT_FILE = True             # 複製匯出檔（如 .onnx）
