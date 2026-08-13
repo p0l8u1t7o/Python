@@ -28,7 +28,7 @@ MODEL_PATH = r"D:\Working Space\Python\VisionStereo\weights\best.pt"
 
 # 類別名稱來源。.pt 內嵌 names，可留空字串 ""；
 # .onnx / .engine 不帶 names，必須指定 yaml。
-YAML_PATH = r"D:\TrainingImage\ATD\dataset\data.yaml"
+YAML_PATH = r"D:\TrainingImage\ATD2\dataset\data.yaml"
 
 TRACKER_CFG = "bytetrack.yaml"
 
@@ -43,11 +43,12 @@ MAX_DET = 100
 RESIZE_ANTIALIAS = False
 
 # ── 過濾條件 ──────────────────────────────────────
-CONF_THRES = 0.7          # 需 ≥ bytetrack.yaml 的 new_track_thresh，否則低信心
+CONF_THRES = 0.5          # 需 ≥ bytetrack.yaml 的 new_track_thresh，否則低信心
                           # 偵測無法建立軌跡，track() 會回空
 MIN_AREA = 500            # 原始影像座標下的 bbox 面積下限（pixel）
 
-# bbox 任一邊距影像邊緣「小於等於」此值即排除。
+# bbox 上／下邊距影像邊緣「小於等於」此值即排除（只檢查 Y 方向，
+# 物件僅碰到左右邊界不排除）。
 #   640×480   → 10~20
 #   1920×1080 → 20~50
 # 除錯時先設 0，確認不是這條把結果濾光。
@@ -348,11 +349,12 @@ def _load_names_from_yaml(yaml_path):
 # 幾何工具
 # ==================================================
 
-def _border_hit_mask(polys, width, height, margin_x, margin_y):
-    """向量化判斷每個 polygon 的外接框是否碰到影像邊界。
+def _border_hit_mask(polys, height, margin_y):
+    """向量化判斷每個 polygon 的外接框是否碰到影像上下邊界。
 
-    polys 為 list[ndarray(N,2)]，座標系需與 width / height / margin 一致。
-    回傳 bool ndarray，True = 碰到邊界（應排除）。
+    只檢查 Y 方向：物件僅碰到左右（X）邊界時不排除。
+    polys 為 list[ndarray(N,2)]，座標系需與 height / margin_y 一致。
+    回傳 bool ndarray，True = 碰到上下邊界（應排除）。
     """
     n = len(polys)
     if n == 0:
@@ -372,14 +374,12 @@ def _border_hit_mask(polys, width, height, margin_x, margin_y):
     if idx.size > 1:
         np.cumsum(counts[idx][:-1], out=seg[1:])
 
-    min_xy = np.minimum.reduceat(all_pts, seg)
-    max_xy = np.maximum.reduceat(all_pts, seg)
+    min_y = np.minimum.reduceat(all_pts[:, 1], seg)
+    max_y = np.maximum.reduceat(all_pts[:, 1], seg)
 
     result[idx] = (
-        (min_xy[:, 0] < margin_x) |
-        (min_xy[:, 1] < margin_y) |
-        (max_xy[:, 0] > width - 1 - margin_x) |
-        (max_xy[:, 1] > height - 1 - margin_y)
+        (min_y < margin_y) |
+        (max_y > height - 1 - margin_y)
     )
     return result
 
@@ -725,7 +725,7 @@ def execute():
 
         # ── 過濾：全程在推論尺度進行，門檻換算成同一座標系 ──
         sx, sy = _g_prep.inv_scale_x, _g_prep.inv_scale_y
-        dst_w, dst_h = _g_prep.dst_w, _g_prep.dst_h
+        dst_h = _g_prep.dst_h
 
         # 面積門檻由原始尺度換算，避免對整批 box 做座標還原
         areas_small = (xyxy[:, 2] - xyxy[:, 0]) * (xyxy[:, 3] - xyxy[:, 1])
@@ -740,24 +740,21 @@ def execute():
             _prof_tick()
             return "[]"
 
-        # ── 邊界排除 ────────────────────────────────
+        # ── 邊界排除（只看 Y 方向；碰到左右邊界不排除）──
         t = time.perf_counter()
         # masks.xy 是 lazy property，第一次存取才抽取輪廓，之後有快取；
         # 這裡是唯一的觸發點。
         masks_xy = r.masks.xy if r.masks is not None else None
-        margin_x = EDGE_MARGIN * _g_prep.scale_x
         margin_y = EDGE_MARGIN * _g_prep.scale_y
 
         if masks_xy is not None:
             vi = np.flatnonzero(valid)
             hit = _border_hit_mask([masks_xy[i] for i in vi],
-                                   dst_w, dst_h, margin_x, margin_y)
+                                   dst_h, margin_y)
             valid[vi[hit]] = False
         else:
             valid &= ~(
-                (xyxy[:, 0] <= margin_x) |
                 (xyxy[:, 1] <= margin_y) |
-                (xyxy[:, 2] >= dst_w - 1 - margin_x) |
                 (xyxy[:, 3] >= dst_h - 1 - margin_y)
             )
         _prof("edge", time.perf_counter() - t)
