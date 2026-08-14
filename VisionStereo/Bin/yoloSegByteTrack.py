@@ -43,7 +43,7 @@ MAX_DET = 100
 RESIZE_ANTIALIAS = False
 
 # ── 過濾條件 ──────────────────────────────────────
-CONF_THRES = 0.5          # 需 ≥ bytetrack.yaml 的 new_track_thresh，否則低信心
+CONF_THRES = 0.4          # 需 ≥ bytetrack.yaml 的 new_track_thresh，否則低信心
                           # 偵測無法建立軌跡，track() 會回空
 MIN_AREA = 500            # 原始影像座標下的 bbox 面積下限（pixel）
 

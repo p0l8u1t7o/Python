@@ -17,12 +17,12 @@ from pathlib import Path
 # ╠══════════════════════════════════════════════════════════════╣
 
 # ── 資料集 ──────────────────────────────────────────────────────
-DATASET_DIR = r"D:\TrainingImage\ATD2\dataset"           # 資料集根目錄（含 images/train, images/val）
+DATASET_DIR = r"D:\TrainingImage\ATD3\dataset"           # 資料集根目錄（含 images/train, images/val）
 CLASS_NAMES = ["CardboardBox","AluminumFoil","PlasticBottles","Other"]        # 類別名稱（依標籤 id 順序）
-DATA_YAML   = r"D:\TrainingImage\ATD2\dataset\data.yaml"         # data.yaml 路徑（不存在時自動產生）
+DATA_YAML   = r"D:\TrainingImage\ATD3\dataset\data.yaml"         # data.yaml 路徑（不存在時自動產生）
 
 # ── 訓練參數 ─────────────────────────────────────────────────────
-MODEL        = r"D:\Working Space\Python\VisionStereo\weights\yolo26n-seg.pt"     # 預訓練權重（自動下載）
+MODEL        = r"D:\Working Space\Python\VisionStereo\weights\best.pt"     # 預訓練權重（自動下載）
 # 可選：yolo11n/s/m/l/x-seg.pt  或  yolov8n/s/m/l/x-seg.pt
 EPOCHS       = 100
 IMGSZ        = 640
@@ -40,7 +40,36 @@ OVERLAP_MASK = True
 MASK_RATIO   = 4
 RETINA_MASKS = False
 PROJECT      = r"D:\Working Space\Python\VisionStereo\weights"       # 訓練輸出根目錄
-EXP_NAME     = "ATD2"                # 實驗名稱
+EXP_NAME     = "ATD3"                # 實驗名稱
+
+# ── 資料增強設定（提升樣本多樣性 / 泛化能力）────────────────────────
+# 說明：所有機率類參數範圍 0.0 ~ 1.0，0 = 關閉。
+#       數值越大變化越劇烈，但過大會讓樣本偏離真實場景反而掉分。
+AUGMENT = {
+    # 色彩 —— 對付不同光源、曝光、白平衡
+    "hsv_h":       0.015,   # 色相偏移比例（±1.5%），色相敏感的類別勿調高
+    "hsv_s":       0.7,     # 飽和度變化（±70%），模擬不同相機/濾鏡
+    "hsv_v":       0.5,     # 明度變化（±50%），★ 亮度變化主力：模擬過曝/陰暗
+    "bgr":         0.0,     # 隨機 BGR/RGB 通道互換機率（僅在通道順序可能出錯時開）
+
+    # 幾何 —— 對付物件擺放角度、距離、位置
+    "degrees":     15.0,    # 隨機旋轉角度 ±15°
+    "translate":   0.15,    # 隨機平移比例 ±15%
+    "scale":       0.5,     # 隨機縮放比例 ±50%（模擬遠近）
+    "shear":       5.0,     # 隨機剪切 ±5°
+    "perspective": 0.0005,  # 透視變換強度（0 ~ 0.001，模擬斜角視角）
+
+    # 翻轉 —— ★ 翻轉主力
+    "flipud":      0.3,     # 上下翻轉機率 30%（俯視/無固定上下方向的場景才適用）
+    "fliplr":      0.5,     # 左右翻轉機率 50%（一般場景都適用）
+
+    # 合成 —— 增加背景與遮擋多樣性
+    "mosaic":      1.0,     # 四圖拼接機率（強力增強，建議保持 1.0）
+    "close_mosaic": 15,     # 最後 15 個 epoch 關閉 mosaic，讓模型收斂在真實分佈
+    "mixup":       0.1,     # 兩圖疊加混合機率（分割任務建議 0.0 ~ 0.15）
+    "copy_paste":  0.3,     # ★ 分割專用：把實例貼到其他圖上，增加物件密度與遮擋
+    "copy_paste_mode": "flip",   # "flip" 或 "mixup"
+}
 
 # ── 匯出設定 ─────────────────────────────────────────────────────
 # 支援格式：onnx | torchscript | tflite | coreml | engine(TensorRT)
@@ -53,7 +82,7 @@ EXPORT_DYNAMIC = False              # 動態 batch size（ONNX）
 #   best.pt          → 最佳 PyTorch 權重
 #   last.pt          → 最後一個 epoch 的權重
 #   best.<format>    → 匯出格式（如 best.onnx）
-OUTPUT_DIR       = r"D:\Working Space\Python\VisionStereo\weights\ATD2"       # ← 修改為你想要的輸出資料夾
+OUTPUT_DIR       = r"D:\Working Space\Python\VisionStereo\weights\ATD3"       # ← 修改為你想要的輸出資料夾
 COPY_BEST_PT     = True             # 複製 best.pt
 COPY_LAST_PT     = True             # 複製 last.pt
 COPY_EXPORT_FILE = True             # 複製匯出檔（如 .onnx）
@@ -101,6 +130,21 @@ def load_yolo(weights: str):
     return YOLO(weights)
 
 
+def filter_supported_args(kwargs: dict) -> dict:
+    """濾掉目前安裝的 ultralytics 版本不支援的參數，避免舊版本直接報錯。"""
+    try:
+        from ultralytics.cfg import DEFAULT_CFG_DICT
+    except ImportError:
+        return dict(kwargs)
+
+    supported = {k: v for k, v in kwargs.items() if k in DEFAULT_CFG_DICT}
+    dropped   = [k for k in kwargs if k not in DEFAULT_CFG_DICT]
+    if dropped:
+        print(f"[WARN] 目前 ultralytics 版本不支援下列參數，已略過：{', '.join(dropped)}")
+        print(f"       如需使用請升級：pip install -U ultralytics")
+    return supported
+
+
 def copy_file(src: Path, dst_dir: Path, label: str) -> None:
     """複製單一檔案到目標目錄，並印出結果。"""
     if not src.exists():
@@ -126,6 +170,11 @@ def main():
     print(f"  Epochs  : {EPOCHS}  |  imgsz : {IMGSZ}  |  batch : {BATCH}")
     print(f"  Device  : {DEVICE}  |  AMP   : {AMP}")
     print(f"  輸出    : {PROJECT}/{EXP_NAME}/")
+
+    aug = filter_supported_args(AUGMENT)
+    print(f"\n  資料增強：")
+    for k, v in aug.items():
+        print(f"    {k:<18}: {v}")
     print()
 
     yolo = load_yolo(MODEL)
@@ -148,6 +197,7 @@ def main():
         overlap_mask = OVERLAP_MASK,
         mask_ratio   = MASK_RATIO,
         retina_masks = RETINA_MASKS,
+        **aug,
     )
 
     save_dir   = Path(train_results.save_dir)
