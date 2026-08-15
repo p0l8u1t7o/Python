@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YOLO 分割標註工具</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══════════ Sidebar ══════════ -->
+<aside id="sidebar">
+  <div class="brand">
+    <span class="brand-mark">YS</span>
+    <span class="brand-text">YoloSeg <small>Studio</small></span>
+  </div>
+
+  <nav class="nav">
+    <div class="nav-label">工作區</div>
+    <button class="nav-item active" data-page="annotate">
+      <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      <span>標註編輯</span>
+    </button>
+    <button class="nav-item" data-page="grid">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>多圖瀏覽</span>
+    </button>
+
+    <div class="nav-label">資料集</div>
+    <button class="nav-item" data-page="video">
+      <svg viewBox="0 0 24 24"><path d="m23 7-7 5 7 5V7Z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+      <span>影片轉資料集</span>
+      <span id="navVideoDot" class="dot d-none"></span>
+    </button>
+    <button class="nav-item" data-page="train">
+      <svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/><circle cx="12" cy="12" r="3.5"/></svg>
+      <span>模型訓練</span>
+      <span id="navTrainDot" class="dot d-none"></span>
+    </button>
+    <button class="nav-item" data-page="dataset">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+      <span>資料集設定</span>
+    </button>
+    <button class="nav-item" data-page="stats">
+      <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 3-4 3 3 5-7"/></svg>
+      <span>統計</span>
+    </button>
+  </nav>
+
+  <div class="sidebar-foot">
+    <div class="mini-label">目前資料集</div>
+    <div id="sideDataset" class="mini-value">—</div>
+  </div>
+</aside>
+
+<!-- ══════════ Topbar ══════════ -->
+<header id="topbar">
+  <h1 id="pageTitle">標註編輯</h1>
+
+  <div class="topbar-tools">
+    <div class="field-group">
+      <span class="field-icon">
+        <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+      </span>
+      <input id="rootPath" type="text" spellcheck="false" placeholder="D:\TrainingImage\ATD3">
+      <button id="btnBrowse" class="btn btn-ghost btn-sm">瀏覽</button>
+      <button id="btnApplyRoot" class="btn btn-primary btn-sm">套用</button>
+    </div>
+
+    <div id="splitTabs" class="seg"></div>
+
+    <button id="btnSave" class="btn btn-primary">
+      <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+      儲存
+    </button>
+    <button id="btnHelp" class="btn btn-icon" title="操作說明">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="content">
+
+  <!-- ══════════ 標註編輯 ══════════ -->
+  <section class="page active" data-page="annotate">
+    <div class="annotate-grid">
+
+      <!-- 影像清單 -->
+      <div class="card col-files">
+        <div class="card-head">
+          <h2 id="listCount">影像</h2>
+        </div>
+        <div class="card-body tight">
+          <input id="search" type="search" class="input" placeholder="搜尋檔名…">
+          <div class="two mt">
+            <select id="filterState" class="input">
+              <option value="all">全部</option>
+              <option value="labeled">已標記</option>
+              <option value="empty">未標記</option>
+            </select>
+            <select id="filterClass" class="input"><option value="-1">所有類別</option></select>
+          </div>
+        </div>
+        <div id="fileList" class="file-list"></div>
+        <div class="card-foot pager">
+          <button id="pagePrev" class="btn btn-ghost btn-sm">◀</button>
+          <span id="pageInfo" class="muted">—</span>
+          <button id="pageNext" class="btn btn-ghost btn-sm">▶</button>
+          <select id="pageSize" class="input input-sm">
+            <option>30</option><option selected>60</option>
+            <option>120</option><option>240</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 畫布 -->
+      <div class="card col-canvas">
+        <div class="card-head toolbar">
+          <div class="seg">
+            <button id="toolSelect" class="seg-btn active" title="選取／編輯 (V)">選取</button>
+            <button id="toolDraw" class="seg-btn" title="新增多邊形 (N)">＋多邊形</button>
+          </div>
+          <button id="btnOptimize" class="btn btn-warn btn-sm" title="依影像邊緣自動貼合 (O) — 不會自動儲存">
+            <svg viewBox="0 0 24 24"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></svg>
+            自動優化
+          </button>
+          <select id="optStrength" class="input input-sm w-auto" title="優化強度">
+            <option value="4">弱</option>
+            <option value="7" selected>中</option>
+            <option value="12">強</option>
+          </select>
+          <span class="sep"></span>
+          <button id="btnFit" class="btn btn-ghost btn-sm" title="符合視窗 (F)">符合</button>
+          <button id="btn100" class="btn btn-ghost btn-sm" title="100% (G)">1:1</button>
+          <button id="btnUndo" class="btn btn-ghost btn-sm" title="復原 (Ctrl+Z)">復原</button>
+          <span class="sep"></span>
+          <label class="chk"><input id="showFill" type="checkbox" checked><span>填色</span></label>
+          <label class="chk"><input id="showIdx" type="checkbox"><span>頂點序號</span></label>
+        </div>
+        <div id="editorWrap">
+          <canvas id="canvas"></canvas>
+          <div id="canvasHint" class="hint">請由左側選擇影像</div>
+        </div>
+        <div id="statusbar">
+          <span id="stFile">—</span>
+          <span id="stSize"></span>
+          <span id="stZoom"></span>
+          <span id="stMode"></span>
+          <span id="stDirty"></span>
+        </div>
+      </div>
+
+      <!-- 物件面板 -->
+      <div class="col-side">
+        <div class="card">
+          <div class="card-head"><h2>物件清單</h2></div>
+          <div class="card-body">
+            <div id="shapeList" class="shape-list"></div>
+            <div class="two mt">
+              <button id="btnOptimizeSel" class="btn btn-warn btn-sm">優化選取</button>
+              <button id="btnOptimizeAll" class="btn btn-warn-soft btn-sm">優化全部</button>
+            </div>
+            <div class="two mt">
+              <button id="btnDelShape" class="btn btn-danger-soft btn-sm">刪除選取</button>
+              <button id="btnClearShapes" class="btn btn-danger-soft btn-sm">清空全部</button>
+            </div>
+            <p class="hint-text">自動優化只改記憶體中的標記，需按「儲存」才寫入 txt；<kbd>Ctrl+Z</kbd> 可還原。</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>快速分類</h2></div>
+          <div class="card-body">
+            <div id="quickClasses" class="chips"></div>
+            <p class="hint-text">點選 = 設定新多邊形的類別；選取物件後按 <kbd>0</kbd>–<kbd>9</kbd> 可直接改分類。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 多圖瀏覽 ══════════ -->
+  <section class="page" data-page="grid">
+    <div class="card">
+      <div class="card-head">
+        <h2 id="gridTitle">多圖瀏覽</h2>
+        <span class="muted">點一下縮圖即可開啟編輯</span>
+      </div>
+      <div id="gridWrap" class="grid-wall"></div>
+    </div>
+  </section>
+
+  <!-- ══════════ 影片轉資料集 ══════════ -->
+  <section class="page" data-page="video">
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-icon i-blue"><svg viewBox="0 0 24 24"><path d="m23 7-7 5 7 5V7Z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+        <div><div class="stat-label">影片數</div><div id="vsVideos" class="stat-value">0</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon i-violet"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
+        <div><div class="stat-label">已處理幀數</div><div id="vsFrames" class="stat-value">0</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon i-green"><svg viewBox="0 0 24 24"><path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14l4-4h12a2 2 0 0 0 2-2Z"/></svg></div>
+        <div><div class="stat-label">收錄影像</div><div id="vsCaptured" class="stat-value">0</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon i-amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <div><div class="stat-label">耗時</div><div id="vsElapsed" class="stat-value">0s</div></div>
+      </div>
+    </div>
+
+    <div class="video-grid">
+      <div class="card">
+        <div class="card-head"><h2>來源與輸出</h2></div>
+        <div class="card-body">
+          <label class="lbl">影片資料夾</label>
+          <div class="field-group plain">
+            <input id="vidDir" type="text" class="input" spellcheck="false" placeholder="D:\CaptureVideo">
+            <button id="btnScanVideos" class="btn btn-ghost btn-sm">掃描</button>
+          </div>
+
+          <label class="lbl mt">輸出資料夾（會建立 dataset/images|labels）</label>
+          <div class="field-group plain">
+            <input id="vidOut" type="text" class="input" spellcheck="false">
+            <button id="btnPickOut" class="btn btn-ghost btn-sm">瀏覽</button>
+          </div>
+
+          <label class="lbl mt">分割模型 (.pt)</label>
+          <input id="vidModel" type="text" class="input" spellcheck="false">
+
+          <div class="four mt">
+            <div><label class="lbl">conf</label><input id="vidConf" type="number" class="input" step="0.05" min="0" max="1"></div>
+            <div><label class="lbl">imgsz</label><input id="vidImgsz" type="number" class="input" step="32" min="128"></div>
+            <div><label class="lbl">最小面積</label><input id="vidMinArea" type="number" class="input" step="50" min="0"></div>
+            <div><label class="lbl">邊界排除</label><input id="vidEdge" type="number" class="input" step="5" min="0"></div>
+          </div>
+          <div class="four mt">
+            <div><label class="lbl">polygon 上限</label><input id="vidMaxPts" type="number" class="input" step="1" min="3"></div>
+            <div><label class="lbl">寫入 split</label>
+              <select id="vidSplit" class="input"><option value="train">train</option><option value="val">val</option></select>
+            </div>
+            <div><label class="lbl">連續幀門檻</label><input id="vidConsec" type="number" class="input" disabled></div>
+            <div><label class="lbl">&nbsp;</label>
+              <button id="btnOpenAsDataset" class="btn btn-ghost w-full" disabled>開啟為資料集</button>
+            </div>
+          </div>
+
+          <div class="row-end mt">
+            <button id="btnVideoStop" class="btn btn-danger-soft" disabled>中止</button>
+            <button id="btnVideoStart" class="btn btn-primary">開始轉換</button>
+          </div>
+          <p class="hint-text">畫面出現新的 Track ID 且連續 <b id="consecText">2</b> 幀都在時，會把整幀存成
+            jpg（依現有數字續編）並寫出該幀所有物件的 polygon 標記。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>即時預覽</h2>
+          <label class="chk" style="margin-left:auto"><input id="pvOn" type="checkbox" checked><span>顯示</span></label>
+          <select id="pvFps" class="input input-sm w-auto" title="更新頻率">
+            <option value="0.5">0.5 fps</option>
+            <option value="1">1 fps</option>
+            <option value="2" selected>2 fps</option>
+            <option value="4">4 fps</option>
+          </select>
+        </div>
+        <div class="preview-wrap">
+          <img id="vidPreview" alt="preview">
+          <div id="pvHint" class="preview-hint">尚未開始轉換</div>
+        </div>
+        <div class="card-foot preview-meta">
+          <span id="pvInfo" class="muted">關閉「顯示」可讓轉檔端完全不產生預覽</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>進度</h2>
+          <span id="vidPhase" class="badge">idle</span>
+        </div>
+        <div class="card-body">
+          <div class="progress"><div id="vidBar" class="progress-bar"></div></div>
+          <div class="progress-meta"><span id="vidCurrent">—</span><span id="vidPct">0%</span></div>
+          <div class="table-wrap mt">
+            <table class="table">
+              <thead><tr><th>影片</th><th>幀數</th><th>已處理</th><th>收錄</th></tr></thead>
+              <tbody id="vidTable"><tr><td colspan="4" class="muted center">尚未掃描</td></tr></tbody>
+            </table>
+          </div>
+          <label class="lbl mt">執行記錄</label>
+          <pre id="vidLog" class="console"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 模型訓練 ══════════ -->
+  <section class="page" data-page="train">
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-icon i-violet"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 3-4 3 3 5-7"/></svg></div>
+        <div><div class="stat-label">Epoch</div><div id="tsEpoch" class="stat-value">0 / 0</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon i-green"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></div>
+        <div><div class="stat-label">mAP50-95</div><div id="tsMap" class="stat-value">—</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon i-blue"><svg viewBox="0 0 24 24"><path d="m12 2 2.4 7.4H22l-6 4.5 2.3 7.4-6.3-4.6L5.7 21 8 13.9 2 9.4h7.6L12 2Z"/></svg></div>
+        <div><div class="stat-label">最佳 fitness</div><div id="tsBest" class="stat-value">—</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon i-amber"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <div><div class="stat-label">剩餘時間</div><div id="tsEta" class="stat-value">—</div></div>
+      </div>
+    </div>
+
+    <div class="video-grid">
+      <!-- 參數 -->
+      <div class="card">
+        <div class="card-head"><h2>訓練參數</h2><span class="muted">對應 yoloTrackTraining.py</span></div>
+        <div class="card-body">
+          <label class="lbl">data.yaml</label>
+          <input id="trData" type="text" class="input" spellcheck="false">
+          <label class="lbl mt">預訓練權重 (.pt)</label>
+          <input id="trModel" type="text" class="input" spellcheck="false">
+
+          <div class="four mt">
+            <div><label class="lbl">epochs</label><input id="trEpochs" type="number" class="input" min="1"></div>
+            <div><label class="lbl">imgsz</label><input id="trImgsz" type="number" class="input" step="32" min="128"></div>
+            <div><label class="lbl">batch</label><input id="trBatch" type="number" class="input" min="1"></div>
+            <div><label class="lbl">device</label><input id="trDevice" type="text" class="input"></div>
+          </div>
+          <div class="four mt">
+            <div><label class="lbl">workers</label><input id="trWorkers" type="number" class="input" min="0"></div>
+            <div><label class="lbl">patience</label><input id="trPatience" type="number" class="input" min="0"></div>
+            <div><label class="lbl">lr0</label><input id="trLr0" type="number" class="input" step="0.0001"></div>
+            <div><label class="lbl">lrf</label><input id="trLrf" type="number" class="input" step="0.001"></div>
+          </div>
+          <div class="four mt">
+            <div><label class="lbl">mask_ratio</label><input id="trMaskRatio" type="number" class="input" min="1"></div>
+            <div><label class="lbl">save_period</label><input id="trSavePeriod" type="number" class="input"></div>
+            <div><label class="lbl">project</label><input id="trProject" type="text" class="input" spellcheck="false"></div>
+            <div><label class="lbl">實驗名稱</label><input id="trName" type="text" class="input" spellcheck="false"></div>
+          </div>
+          <div class="chk-row mt">
+            <label class="chk"><input id="trAmp" type="checkbox"><span>amp</span></label>
+            <label class="chk"><input id="trCache" type="checkbox"><span>cache</span></label>
+            <label class="chk"><input id="trResume" type="checkbox"><span>resume</span></label>
+            <label class="chk"><input id="trOverlap" type="checkbox"><span>overlap_mask</span></label>
+            <label class="chk"><input id="trRetina" type="checkbox"><span>retina_masks</span></label>
+          </div>
+
+          <details class="fold mt">
+            <summary>資料增強</summary>
+            <div class="four mt">
+              <div><label class="lbl">hsv_h</label><input id="aug_hsv_h" type="number" class="input" step="0.005"></div>
+              <div><label class="lbl">hsv_s</label><input id="aug_hsv_s" type="number" class="input" step="0.05"></div>
+              <div><label class="lbl">hsv_v</label><input id="aug_hsv_v" type="number" class="input" step="0.05"></div>
+              <div><label class="lbl">bgr</label><input id="aug_bgr" type="number" class="input" step="0.1"></div>
+            </div>
+            <div class="four mt">
+              <div><label class="lbl">degrees</label><input id="aug_degrees" type="number" class="input" step="1"></div>
+              <div><label class="lbl">translate</label><input id="aug_translate" type="number" class="input" step="0.05"></div>
+              <div><label class="lbl">scale</label><input id="aug_scale" type="number" class="input" step="0.05"></div>
+              <div><label class="lbl">shear</label><input id="aug_shear" type="number" class="input" step="1"></div>
+            </div>
+            <div class="four mt">
+              <div><label class="lbl">perspective</label><input id="aug_perspective" type="number" class="input" step="0.0005"></div>
+              <div><label class="lbl">flipud</label><input id="aug_flipud" type="number" class="input" step="0.1"></div>
+              <div><label class="lbl">fliplr</label><input id="aug_fliplr" type="number" class="input" step="0.1"></div>
+              <div><label class="lbl">mosaic</label><input id="aug_mosaic" type="number" class="input" step="0.1"></div>
+            </div>
+            <div class="four mt">
+              <div><label class="lbl">close_mosaic</label><input id="aug_close_mosaic" type="number" class="input" step="1"></div>
+              <div><label class="lbl">mixup</label><input id="aug_mixup" type="number" class="input" step="0.05"></div>
+              <div><label class="lbl">copy_paste</label><input id="aug_copy_paste" type="number" class="input" step="0.05"></div>
+              <div><label class="lbl">copy_paste_mode</label>
+                <select id="aug_copy_paste_mode" class="input"><option value="flip">flip</option><option value="mixup">mixup</option></select>
+              </div>
+            </div>
+          </details>
+
+          <details class="fold mt">
+            <summary>匯出與輸出</summary>
+            <div class="chk-row mt">
+              <label class="chk"><input id="trDoExport" type="checkbox"><span>訓練後匯出</span></label>
+              <label class="chk"><input id="trExportHalf" type="checkbox"><span>half (FP16)</span></label>
+              <label class="chk"><input id="trExportDynamic" type="checkbox"><span>dynamic</span></label>
+            </div>
+            <div class="two mt">
+              <div><label class="lbl">匯出格式</label>
+                <select id="trExportFormat" class="input">
+                  <option>onnx</option><option>torchscript</option>
+                  <option>engine</option><option>tflite</option><option>coreml</option>
+                </select>
+              </div>
+              <div><label class="lbl">輸出資料夾</label><input id="trOutputDir" type="text" class="input" spellcheck="false"></div>
+            </div>
+            <div class="chk-row mt">
+              <label class="chk"><input id="trCopyBest" type="checkbox"><span>複製 best.pt</span></label>
+              <label class="chk"><input id="trCopyLast" type="checkbox"><span>複製 last.pt</span></label>
+              <label class="chk"><input id="trCopyExport" type="checkbox"><span>複製匯出檔</span></label>
+            </div>
+          </details>
+
+          <div class="row-end mt">
+            <button id="btnTrainReset" class="btn btn-ghost btn-sm">回復預設</button>
+            <button id="btnTrainStop" class="btn btn-danger-soft" disabled>中止</button>
+            <button id="btnTrainStart" class="btn btn-primary">開始訓練</button>
+          </div>
+          <p class="hint-text">中止會在目前 batch 立刻跳出，仍會完成驗證與存檔，
+            <code>last.pt</code> / <code>best.pt</code> 不會白費。</p>
+        </div>
+      </div>
+
+      <!-- 進度 -->
+      <div class="card">
+        <div class="card-head">
+          <h2>訓練進度</h2>
+          <span id="trPhase" class="badge">idle</span>
+        </div>
+        <div class="card-body">
+          <label class="lbl">Epoch 進度</label>
+          <div class="progress"><div id="trBarEpoch" class="progress-bar"></div></div>
+          <div class="progress-meta"><span id="trEpochText">—</span><span id="trEpochPct">0%</span></div>
+
+          <label class="lbl mt">目前 Epoch 的 batch</label>
+          <div class="progress"><div id="trBarBatch" class="progress-bar"></div></div>
+          <div class="progress-meta"><span id="trBatchText">—</span><span id="trBatchPct">0%</span></div>
+
+          <label class="lbl mt">指標曲線（mAP50-95 / fitness）</label>
+          <canvas id="trChart" class="chart"></canvas>
+
+          <div class="table-wrap mt">
+            <table class="table">
+              <thead><tr><th>epoch</th><th>mAP50</th><th>mAP50-95</th><th>fitness</th><th>loss</th></tr></thead>
+              <tbody id="trTable"><tr><td colspan="5" class="muted center">尚未開始</td></tr></tbody>
+            </table>
+          </div>
+
+          <label class="lbl mt">輸出</label>
+          <div id="trPaths" class="hint-text">—</div>
+
+          <label class="lbl mt">執行記錄</label>
+          <pre id="trLog" class="console"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 資料集設定 ══════════ -->
+  <section class="page" data-page="dataset">
+    <div class="two-col">
+      <div class="card">
+        <div class="card-head"><h2>類別（data.yaml）</h2></div>
+        <div class="card-body">
+          <div id="classList" class="class-list"></div>
+          <div class="row-end mt">
+            <button id="btnAddClass" class="btn btn-ghost btn-sm">＋新增類別</button>
+            <button id="btnSaveClasses" class="btn btn-primary btn-sm">寫入 data.yaml</button>
+          </div>
+          <p class="hint-text">移除類別只會改 data.yaml，既有標記檔內的 class id 不會跟著變動。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>訓練 / 驗證比例</h2></div>
+        <div class="card-body">
+          <div class="ratio-row">
+            <input id="ratio" type="range" min="0" max="100" step="1" value="80">
+            <span id="ratioLabel" class="ratio-label">train 80% / val 20%</span>
+          </div>
+          <div class="two mt">
+            <label class="chk"><input id="splitShuffle" type="checkbox" checked><span>隨機打散</span></label>
+            <div class="field-group plain">
+              <span class="prefix">種子</span>
+              <input id="splitSeed" type="number" class="input" value="0">
+            </div>
+          </div>
+          <label class="chk mt"><input id="splitTest" type="checkbox"><span>一併納入 test</span></label>
+          <div class="row-end mt">
+            <button id="btnPreviewSplit" class="btn btn-ghost btn-sm">預覽</button>
+            <button id="btnApplySplit" class="btn btn-danger btn-sm">套用到本地端</button>
+          </div>
+          <div id="splitResult" class="hint-text"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 統計 ══════════ -->
+  <section class="page" data-page="stats">
+    <div id="statTiles" class="stat-row"></div>
+    <div class="card">
+      <div class="card-head">
+        <h2>各 split 明細</h2>
+        <button id="btnStats" class="btn btn-ghost btn-sm">重新計算</button>
+      </div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>split</th><th>影像</th><th>已標記</th><th>物件</th><th>各類別</th></tr></thead>
+            <tbody id="statsTable"><tr><td colspan="5" class="muted center">計算中…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ══════════ 未儲存提醒 ══════════ -->
+<div id="dlgUnsaved" class="modal d-none">
+  <div class="modal-box sm">
+    <div class="modal-head">尚未儲存</div>
+    <div class="modal-body">「<code id="unsavedName"></code>」的標記已變更，要先儲存嗎？</div>
+    <div class="modal-foot">
+      <button id="unsavedCancel" class="btn btn-ghost">取消</button>
+      <button id="unsavedDiscard" class="btn btn-danger-soft">不儲存</button>
+      <button id="unsavedSave" class="btn btn-primary">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 目錄瀏覽 ══════════ -->
+<div id="browseDlg" class="modal d-none">
+  <div class="modal-box">
+    <div class="modal-head" id="browseTitle">選擇資料夾</div>
+    <div class="modal-body">
+      <div class="field-group plain">
+        <input id="browsePath" type="text" class="input" spellcheck="false">
+        <button id="browseGo" class="btn btn-ghost btn-sm">前往</button>
+      </div>
+      <div id="browseList" class="browse-list"></div>
+    </div>
+    <div class="modal-foot">
+      <span id="browseHint" class="hint-text grow">需含 <code>images/</code> 或 <code>dataset/images/</code></span>
+      <button id="browseCancel" class="btn btn-ghost">取消</button>
+      <button id="browsePick" class="btn btn-primary">使用此資料夾</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 操作說明 ══════════ -->
+<div id="helpDlg" class="modal d-none">
+  <div class="modal-box lg">
+    <div class="modal-head">操作說明</div>
+    <div class="modal-body">
+      <table class="table">
+        <tr><td><kbd>滾輪</kbd></td><td>以游標為中心縮放</td></tr>
+        <tr><td><kbd>中鍵拖曳</kbd> / <kbd>空白</kbd>+拖曳 / 空白處拖曳</td><td>平移畫面</td></tr>
+        <tr><td>拖曳頂點</td><td>調整 polygon ROI</td></tr>
+        <tr><td>拖曳多邊形內部</td><td>整體位移</td></tr>
+        <tr><td>雙擊邊線</td><td>在該處插入頂點</td></tr>
+        <tr><td><kbd>Alt</kbd>+點頂點 / 右鍵點頂點</td><td>刪除該頂點</td></tr>
+        <tr><td><kbd>O</kbd></td><td>自動優化 ROI（貼合影像邊緣＋平滑，<b>不會自動儲存</b>）</td></tr>
+        <tr><td><kbd>N</kbd> / <kbd>V</kbd></td><td>新增多邊形 / 回到選取模式</td></tr>
+        <tr><td><kbd>0</kbd>–<kbd>9</kbd></td><td>把選取物件改成該類別</td></tr>
+        <tr><td><kbd>Delete</kbd></td><td>刪除選取的多邊形</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd></td><td>上一張 / 下一張（有變更會先詢問是否儲存）</td></tr>
+        <tr><td><kbd>Ctrl+S</kbd> / <kbd>Ctrl+Z</kbd></td><td>儲存 / 復原</td></tr>
+        <tr><td><kbd>F</kbd> / <kbd>G</kbd></td><td>符合視窗 / 100%</td></tr>
+      </table>
+    </div>
+    <div class="modal-foot"><button id="helpClose" class="btn btn-primary">關閉</button></div>
+  </div>
+</div>
+
+<div id="toast" class="toast d-none"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
