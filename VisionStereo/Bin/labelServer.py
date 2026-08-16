@@ -30,6 +30,7 @@ import mimetypes
 import os
 import random
 import shutil
+import socket
 import string
 import sys
 import threading
@@ -55,7 +56,7 @@ except ImportError:
 # ╚══════════════════════════════════════════════════════════════╝
 
 DEFAULT_ROOT = r"D:\TrainingImage\ATD3"
-DEFAULT_HOST = "127.0.0.1"
+DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
@@ -439,6 +440,30 @@ def list_dirs(path):
     return {"path": str(p), "parent": parent, "dirs": dirs}
 
 
+def local_addresses():
+    """取得本機在區域網路上的 IPv4 位址（給手機連線用）。"""
+    ips = []
+    try:
+        # 連一個外部位址不會真的送封包，只是讓 OS 挑出對外網卡的來源 IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.2)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ips.append(s.getsockname()[0])
+        finally:
+            s.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in ips and not ip.startswith("127."):
+                ips.append(ip)
+    except OSError:
+        pass
+    return ips
+
+
 def _file_etag(path, extra=""):
     """以完整路徑 + mtime + size 當版本；換資料集或檔案被改就一定不同。"""
     st = path.stat()
@@ -680,6 +705,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/stats":
             return self._json(ds.stats())
+
+        if path == "/api/net":
+            host = self.server.server_address[0]
+            return self._json({
+                "port": self.server.server_address[1],
+                "host": host,
+                "lan": host not in ("127.0.0.1", "localhost"),
+                "addresses": local_addresses(),
+            })
 
         # ── 影片轉資料集 ───────────────────────────
         if path == "/api/video/list":
@@ -941,9 +975,14 @@ def main():
     ap.add_argument("--root", default=DEFAULT_ROOT, help="訓練資料夾根目錄")
     ap.add_argument("--host", default=DEFAULT_HOST)
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
+    ap.add_argument("--lan", action="store_true",
+                    help="監聽區域網路（等同 --host 0.0.0.0），讓手機／其他電腦連得進來")
     ap.add_argument("--no-browser", action="store_true", help="啟動後不自動開啟瀏覽器")
     ap.add_argument("--verbose", action="store_true", help="顯示 HTTP 請求記錄")
     args = ap.parse_args()
+
+    if args.lan:
+        args.host = "0.0.0.0"
 
     if not WEB_DIR.is_dir():
         sys.exit(f"[ERROR] 找不到前端目錄：{WEB_DIR}")
@@ -953,13 +992,20 @@ def main():
         print(f"[WARN] {warn}")
         print("[WARN] 先以空資料集啟動，請於網頁上方「變更資料夾」重新指定。")
 
-    url = f"http://{args.host}:{args.port}/"
+    local_host = "0.0.0.0" if args.host in ("0.0.0.0", "") else args.host
+    url = f"http://{local_host}:{args.port}/"
     srv = _create_server(args.host, args.port)
     print("=" * 60)
     print("  YOLO 分割標註網頁伺服器")
     print("=" * 60)
     print(f"  資料夾   : {Handler.dataset.ds}")
     print(f"  網址     : {url}")
+    if args.host == "0.0.0.0":
+        for ip in local_addresses():
+            print(f"  手機可連 : http://{ip}:{args.port}/")
+        print("             （手機需與本機在同一個區域網路 / Wi-Fi）")
+    else:
+        print("  只監聽本機；要讓手機連線請加 --lan")
     print(f"  PyYAML   : {'OK' if yaml else '未安裝（data.yaml 以簡易格式寫入）'}")
     print(f"  Pillow   : {'OK' if Image else '未安裝（縮圖改用原圖，較慢）'}")
     print("  Ctrl+C 結束")

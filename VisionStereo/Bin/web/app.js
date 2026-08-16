@@ -23,8 +23,44 @@ let openSeq = 0;             // openImage 的請求序號，用來丟棄過期�
 
 const PAGE_TITLE = {
   annotate: '標註編輯', grid: '多圖瀏覽', video: '影片轉資料集',
-  train: '模型訓練', dataset: '資料集設定', stats: '統計',
+  train: '模型訓練', dataset: '資料集設定', stats: '統計', guide: '使用流程',
 };
+
+/* ══════════ 主題（深色 / 淺色）══════════ */
+const cssVar = (name, fallback) => {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+};
+
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function applyThemeIcons() {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', currentTheme() === 'dark' ? '#1a1e27' : '#ffffff');
+}
+
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('ys-theme', t); } catch (e) { /* 私密模式 */ }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', t === 'dark' ? '#1a1e27' : '#ffffff');
+  // 畫布與圖表是自己畫的，換主題要重畫才會跟著變
+  draw();
+  if (S.page_ === 'grid') renderGrid();
+  if (S.page_ === 'train') drawTrainChart(LAST_HISTORY);
+}
+
+/* ══════════ 行動版選單 ══════════ */
+function setNav(open) {
+  document.body.classList.toggle('nav-open', open);
+  $('navScrim').classList.toggle('d-none', !open);
+}
+function setTopTools(open) {
+  $('topTools').classList.toggle('open', open);
+}
+const isMobile = () => window.matchMedia('(max-width:820px)').matches;
 
 const CANVAS = $('canvas');
 const CTX = CANVAS.getContext('2d');
@@ -73,11 +109,13 @@ function switchPage(p) {
   document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.page === p));
   document.querySelectorAll('.page').forEach((s) => s.classList.toggle('active', s.dataset.page === p));
   $('pageTitle').textContent = PAGE_TITLE[p] || p;
+  if (isMobile()) { setNav(false); setTopTools(false); }
   previewSync();                       // 離開影片頁就把串流斷掉
   if (p === 'annotate') resizeCanvas();
   if (p === 'grid') renderGrid();
   if (p === 'stats') loadStats();
   if (p === 'train') pollTrain(true);
+  if (p === 'guide') loadLanUrls();
 }
 
 /* ══════════ 設定 / 資料夾 ══════════ */
@@ -359,7 +397,7 @@ function draw() {
   const { w, h } = cssSize();
   CTX.setTransform(dpr, 0, 0, dpr, 0, 0);
   CTX.clearRect(0, 0, w, h);
-  CTX.fillStyle = '#eceff5';
+  CTX.fillStyle = cssVar('--canvas-bg', '#eceff5');
   CTX.fillRect(0, 0, w, h);
   if (!S.img) { updateStatus(); return; }
 
@@ -394,12 +432,16 @@ function draw() {
     CTX.fillText(txt, lx + 5, ly - 6);
 
     if (on) {
+      const dot = cssVar('--card', '#fff');
+      const idxCol = cssVar('--text', '#111');
+      const touch = HIT > 10;                    // 觸控時頂點畫大一點才好抓
       pts.forEach(([x, y], k) => {
-        const r = (S.drag && S.drag.type === 'vertex' && S.drag.pt === k) ? 6 : 4.5;
+        const base = touch ? 6.5 : 4.5;
+        const r = (S.drag && S.drag.type === 'vertex' && S.drag.pt === k) ? base + 1.5 : base;
         CTX.beginPath(); CTX.arc(x, y, r, 0, 7);
-        CTX.fillStyle = '#fff'; CTX.fill();
+        CTX.fillStyle = dot; CTX.fill();
         CTX.lineWidth = 2; CTX.strokeStyle = col; CTX.stroke();
-        if (showIdx) { CTX.fillStyle = '#111'; CTX.fillText(String(k), x + 7, y - 7); }
+        if (showIdx) { CTX.fillStyle = idxCol; CTX.fillText(String(k), x + 8, y - 8); }
       });
     }
   });
@@ -413,7 +455,7 @@ function draw() {
     CTX.setLineDash([5, 4]); CTX.lineWidth = 2; CTX.stroke(); CTX.setLineDash([]);
     pts.forEach(([x, y], k) => {
       CTX.beginPath(); CTX.arc(x, y, k === 0 ? 6 : 4, 0, 7);
-      CTX.fillStyle = k === 0 ? '#fff' : classColor(S.curClass);
+      CTX.fillStyle = k === 0 ? cssVar('--card', '#fff') : classColor(S.curClass);
       CTX.fill();
       CTX.lineWidth = 2; CTX.strokeStyle = classColor(S.curClass); CTX.stroke();
     });
@@ -433,7 +475,7 @@ function updateStatus() {
 }
 
 /* ══════════ 命中測試 ══════════ */
-const HIT = 8;
+let HIT = 8;                 // 觸控時會放大（見 onPointerDown）
 function hitVertex(px, py) {
   for (let i = S.shapes.length - 1; i >= 0; i--) {
     const sh = S.shapes[i];
@@ -476,12 +518,69 @@ function distToSeg(px, py, a, b) {
   return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
 }
 
-/* ══════════ 滑鼠 ══════════ */
+/* ══════════════════════════════════════════════════════════════
+   指標輸入（滑鼠 + 觸控共用 Pointer Events）
+   單指：拖曳頂點／移動多邊形／平移；雙指：縮放與平移
+   ══════════════════════════════════════════════════════════════ */
+const POINTERS = new Map();
+let PINCH = null;
+
 CANVAS.addEventListener('contextmenu', (e) => e.preventDefault());
 
-CANVAS.addEventListener('mousedown', (e) => {
+CANVAS.addEventListener('pointerdown', (e) => {
+  POINTERS.set(e.pointerId, evPos(e));
+  try { CANVAS.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+
+  if (POINTERS.size === 2) {            // 進入雙指手勢，取消單指的拖曳
+    const [a, b] = [...POINTERS.values()];
+    PINCH = {
+      dist: Math.hypot(a[0] - b[0], a[1] - b[1]),
+      mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
+      ox: S.ox, oy: S.oy, zoom: S.zoom,
+    };
+    S.drag = null;
+    S.userView = true;
+    return;
+  }
+  if (POINTERS.size > 2) return;
+  onPointerDown(e);
+});
+
+CANVAS.addEventListener('pointermove', (e) => {
+  if (POINTERS.has(e.pointerId)) POINTERS.set(e.pointerId, evPos(e));
+
+  if (PINCH && POINTERS.size >= 2) {
+    const [a, b] = [...POINTERS.values()];
+    const dist = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (PINCH.dist > 8) {
+      const k = dist / PINCH.dist;
+      const nz = Math.min(40, Math.max(0.02, PINCH.zoom * k));
+      // 以起始中點為錨縮放，再跟著中點位移平移
+      S.ox = PINCH.mid[0] - (PINCH.mid[0] - PINCH.ox) * (nz / PINCH.zoom) + (mid[0] - PINCH.mid[0]);
+      S.oy = PINCH.mid[1] - (PINCH.mid[1] - PINCH.oy) * (nz / PINCH.zoom) + (mid[1] - PINCH.mid[1]);
+      S.zoom = nz;
+      draw();
+    }
+    return;
+  }
+  onPointerMove(e);
+});
+
+function endPointer(e) {
+  POINTERS.delete(e.pointerId);
+  try { CANVAS.releasePointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+  if (POINTERS.size < 2) PINCH = null;
+  if (S.drag && S.drag.type !== 'pan') renderShapes();
+  S.drag = null;
+}
+CANVAS.addEventListener('pointerup', endPointer);
+CANVAS.addEventListener('pointercancel', endPointer);
+
+function onPointerDown(e) {
   if (!S.img) return;
   const [px, py] = evPos(e);
+  HIT = e.pointerType === 'touch' ? 16 : 8;    // 觸控的命中範圍要大一點
 
   if (e.button === 1 || S.space) {
     S.drag = { type: 'pan', x: px, y: py, ox: S.ox, oy: S.oy };
@@ -529,9 +628,9 @@ CANVAS.addEventListener('mousedown', (e) => {
   S.sel = -1;
   S.drag = { type: 'pan', x: px, y: py, ox: S.ox, oy: S.oy };
   renderShapes(); draw();
-});
+}
 
-window.addEventListener('mousemove', (e) => {
+function onPointerMove(e) {
   if (!S.img || S.page_ !== 'annotate') return;
   const [px, py] = evPos(e);
 
@@ -559,12 +658,7 @@ window.addEventListener('mousemove', (e) => {
     S.shapes[S.drag.shape].points = S.drag.orig.map((p) => [clamp01(p[0] + dx), clamp01(p[1] + dy)]);
     markDirty(); draw();
   }
-});
-
-window.addEventListener('mouseup', () => {
-  if (S.drag && S.drag.type !== 'pan') renderShapes();
-  S.drag = null;
-});
+}
 
 CANVAS.addEventListener('dblclick', (e) => {
   if (!S.img) return;
@@ -933,7 +1027,7 @@ function renderGrid() {
 
 async function drawCell(cv, it) {
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#eceff5';
+  ctx.fillStyle = cssVar('--canvas-bg', '#eceff5');
   ctx.fillRect(0, 0, cv.width, cv.height);
   try {
     const [im, lbl] = await Promise.all([
@@ -1320,7 +1414,9 @@ function renderTrainStatus(st) {
   if (typeof st.logNext === 'number') TRAIN_LOG_NEXT = st.logNext;
 }
 
+let LAST_HISTORY = [];
 function drawTrainChart(hist) {
+  LAST_HISTORY = hist || [];
   const cv = $('trChart');
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth || 400, h = cv.clientHeight || 150;
@@ -1341,17 +1437,17 @@ function drawTrainChart(hist) {
   });
   ymax = Math.ceil(ymax * 4) / 4;
 
-  c.strokeStyle = '#e8eaf0';
+  c.strokeStyle = cssVar('--line', '#e8eaf0');
   c.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const y = pad.t + ih * i / 4;
     c.beginPath(); c.moveTo(pad.l, y); c.lineTo(pad.l + iw, y); c.stroke();
-    c.fillStyle = '#8b93a7';
+    c.fillStyle = cssVar('--muted', '#8b93a7');
     c.font = '10px Inter,system-ui,sans-serif';
     c.fillText((ymax * (1 - i / 4)).toFixed(2), 4, y + 3);
   }
   if (!hist.length) {
-    c.fillStyle = '#8b93a7';
+    c.fillStyle = cssVar('--muted', '#8b93a7');
     c.font = '12px Inter,system-ui,sans-serif';
     c.fillText('等待第一個 epoch 的驗證結果…', pad.l + 10, pad.t + ih / 2);
     return;
@@ -1382,10 +1478,10 @@ function drawTrainChart(hist) {
       const x = pad.l + 6 + i * 74;
       c.fillStyle = col;
       c.fillRect(x, pad.t + 2, 10, 3);
-      c.fillStyle = '#4b5563';
+      c.fillStyle = cssVar('--text-2', '#4b5563');
       c.fillText(label, x + 14, pad.t + 6);
     });
-  c.fillStyle = '#8b93a7';
+  c.fillStyle = cssVar('--muted', '#8b93a7');
   c.fillText(`epoch ${hist[hist.length - 1].epoch}`, pad.l + iw - 56, h - 5);
 }
 
@@ -1464,6 +1560,25 @@ async function loadStats() {
     }).join('') || '<tr><td colspan="5" class="muted center">沒有資料</td></tr>';
   } catch (e) {
     $('statsTable').innerHTML = `<tr><td colspan="5" class="muted center">${e.message}</td></tr>`;
+  }
+}
+
+/* ══════════ 說明頁：可用的連線網址 ══════════ */
+async function loadLanUrls() {
+  const box = $('lanUrls');
+  if (!box || box.dataset.loaded) return;
+  try {
+    const d = await api('/api/net');
+    const port = d.port || location.port || 80;
+    const urls = (d.addresses || []).map((ip) => `http://${ip}:${port}/`);
+    box.innerHTML = urls.length
+      ? urls.map((u) => `<a href="${u}">${u}</a>`).join('<br>')
+        + (d.lan ? '' : '<br><span class="muted">（伺服器目前只監聽本機，'
+          + '手機要連請改用 <code>--lan</code> 啟動）</span>')
+      : '<span class="muted">找不到區域網路位址</span>';
+    box.dataset.loaded = '1';
+  } catch (e) {
+    box.textContent = '無法取得（' + e.message + '）';
   }
 }
 
@@ -1550,6 +1665,33 @@ async function step(dir) {
 function bind() {
   document.querySelectorAll('.nav-item').forEach((b) => {
     b.onclick = () => switchPage(b.dataset.page);
+  });
+
+  // 主題
+  $('btnTheme').onclick = () => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  // 使用者沒手動選過時，跟著系統設定走
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  const onScheme = (e) => {
+    let saved = null;
+    try { saved = localStorage.getItem('ys-theme'); } catch (err) { /* 忽略 */ }
+    if (saved !== 'light' && saved !== 'dark') {
+      document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      draw();
+    }
+  };
+  if (mq.addEventListener) mq.addEventListener('change', onScheme);
+
+  // 行動版選單
+  $('btnNav').onclick = () => setNav(!document.body.classList.contains('nav-open'));
+  $('btnCloseNav').onclick = () => setNav(false);
+  $('navScrim').onclick = () => setNav(false);
+  $('btnTopTools').onclick = () => setTopTools(!$('topTools').classList.contains('open'));
+
+  // 說明頁的流程圖與按鈕可直接跳頁
+  document.querySelectorAll('[data-goto]').forEach((el) => {
+    const target = el.dataset.goto;
+    if (!target) return;
+    el.addEventListener('click', () => switchPage(target));
   });
 
   $('btnApplyRoot').onclick = () => changeRoot($('rootPath').value.trim());
@@ -1650,6 +1792,7 @@ function bind() {
   bind();
   updateRatioLabel();
   setMode('select');
+  applyThemeIcons();
   switchPage(location.hash.slice(1) || 'annotate');
   window.addEventListener('hashchange', () => switchPage(location.hash.slice(1)));
   resizeCanvas();
