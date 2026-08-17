@@ -1,0 +1,3 @@
+cards.db
+uploads/*
+!uploads/.gitkeep

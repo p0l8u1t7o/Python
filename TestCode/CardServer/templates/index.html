@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f1c33">
+<title>名片管理系統</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand-mark">名片</div>
+    <div>
+      <h1>名片管理系統</h1>
+      <p class="tagline">Business Card Management</p>
+    </div>
+  </div>
+</header>
+
+<!-- 單頁下拉式版面：拍照上傳區塊在上，查詢/瀏覽區塊在下，僅需垂直捲動。 -->
+<main>
+  <!-- ============ 拍照上傳 ============ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>拍照建檔</h2>
+      <!-- 已儲存筆數：由 app.js 依 /api/cards 回傳的 total 更新 -->
+      <span id="total-badge" class="count-badge">
+        目前已儲存 <span class="num" id="total-count">—</span> 筆
+      </span>
+    </div>
+
+    <form id="upload-form">
+      <label class="photo-picker" for="photo-input">
+        <img id="photo-preview" class="hidden" alt="名片預覽">
+        <!-- 名片比例輔助框：拍攝前提示使用者名片該擺在畫面的哪個範圍 -->
+        <span class="guide-frame" id="picker-guide" aria-hidden="true"></span>
+        <span class="icon" id="photo-icon">&#128247;</span>
+        <span id="photo-placeholder">點一下拍攝名片</span>
+      </label>
+      <input id="photo-input" name="image" type="file" accept="image/*" capture="environment" required>
+
+      <!-- 內建相機（需要 HTTPS 或 localhost 才能取用鏡頭），可在畫面上疊輔助線 -->
+      <button type="button" id="open-camera-btn" class="secondary hidden">開啟相機（含對準輔助線）</button>
+      <p id="ocr-status" class="status"></p>
+
+      <div class="field-grid">
+        <label>姓名 <input name="name" type="text" placeholder="姓名"></label>
+        <label>公司 <input name="company" type="text" placeholder="公司"></label>
+        <label>職稱 <input name="title" type="text" placeholder="職稱"></label>
+        <label>電話 <input name="phone" type="tel" placeholder="電話"></label>
+        <label>Email <input name="email" type="email" placeholder="Email"></label>
+        <label class="span2">地址 <input name="address" type="text" placeholder="地址"></label>
+        <label class="span2">備註
+          <textarea name="note" rows="2" placeholder="名片相關備註"></textarea>
+        </label>
+        <label class="span2">客戶需求
+          <textarea name="requirement" rows="3" placeholder="這次接觸的需求內容（可留空，之後也能補記）"></textarea>
+        </label>
+      </div>
+
+      <button type="submit" id="upload-submit">儲存名片</button>
+      <p id="upload-status" class="status"></p>
+    </form>
+  </section>
+
+  <!-- ============ 瀏覽 / 查詢 ============ -->
+  <section class="card-section">
+    <div class="section-head">
+      <h2>瀏覽 / 查詢</h2>
+      <!-- 搜尋時顯示符合條件的筆數，未搜尋時隱藏 -->
+      <span id="matched-badge" class="count-badge filtered hidden">
+        符合條件 <span class="num" id="matched-count">0</span> 筆
+      </span>
+    </div>
+
+    <div class="search-bar">
+      <input id="search-input" type="search" placeholder="搜尋姓名 / 公司 / 電話 / 需求內容...">
+      <button id="search-btn">查詢</button>
+      <button id="export-btn" type="button" class="secondary">匯出 CSV</button>
+    </div>
+    <ul id="card-list" class="card-list"></ul>
+
+    <!-- 分頁：預設只載入最新幾筆，需要更多再往下取 -->
+    <div id="list-footer" class="list-footer hidden">
+      <span id="list-progress" class="list-progress"></span>
+      <button id="load-more-btn" type="button" class="secondary hidden">載入更多</button>
+    </div>
+  </section>
+</main>
+
+<footer class="app-footer">名片管理系統 · 區域網路內部使用</footer>
+
+<!-- ============ 名片詳情 / 編輯彈窗 ============ -->
+<div id="detail-overlay" class="overlay hidden">
+  <div class="detail-box">
+    <button id="detail-close" class="close-btn" aria-label="關閉">&times;</button>
+
+    <!-- 名片影像：可用按鈕或滑鼠滾輪/雙指縮放，放大後可拖曳平移 -->
+    <div id="image-viewport" class="image-viewport">
+      <img id="detail-image" alt="名片" draggable="false">
+      <div class="zoom-bar">
+        <button type="button" id="zoom-out" class="zoom-btn" aria-label="縮小">−</button>
+        <span id="zoom-level" class="zoom-level">100%</span>
+        <button type="button" id="zoom-in" class="zoom-btn" aria-label="放大">+</button>
+        <!-- 用 1:1 而不是弧形箭頭，才不會和旁邊的旋轉鈕（↺↻）看起來一樣 -->
+        <button type="button" id="zoom-reset" class="zoom-btn zoom-reset" aria-label="還原縮放">1:1</button>
+        <span class="zoom-sep"></span>
+        <!-- 旋轉會直接改存檔的照片方向，重新整理後仍然是轉正的 -->
+        <button type="button" id="rotate-ccw" class="zoom-btn" aria-label="向左旋轉 90 度">↺</button>
+        <button type="button" id="rotate-cw" class="zoom-btn" aria-label="向右旋轉 90 度">↻</button>
+      </div>
+    </div>
+    <p class="zoom-hint">滾輪或雙指可縮放，放大後可拖曳移動</p>
+
+    <p class="detail-created">建立時間：<strong id="detail-created">—</strong></p>
+
+    <div class="detail-actions">
+      <button type="button" id="reocr-btn" class="secondary">重新辨識</button>
+      <button type="button" id="delete-btn" class="danger">刪除名片</button>
+    </div>
+    <p id="detail-status" class="status"></p>
+
+    <form id="edit-form" class="field-grid">
+      <label>姓名 <input name="name" type="text"></label>
+      <label>公司 <input name="company" type="text"></label>
+      <label>職稱 <input name="title" type="text"></label>
+      <label>電話 <input name="phone" type="tel"></label>
+      <label>Email <input name="email" type="email"></label>
+      <label class="span2">地址 <input name="address" type="text"></label>
+      <label class="span2">備註 <textarea name="note" rows="2"></textarea></label>
+      <button type="submit" class="span2">儲存修改</button>
+      <p id="edit-status" class="status span2"></p>
+    </form>
+
+    <h3>需求歷程</h3>
+    <ul id="detail-requirements" class="req-list"></ul>
+    <form id="add-requirement-form">
+      <textarea name="content" rows="2" placeholder="新增一筆需求紀錄"></textarea>
+      <button type="submit">新增需求</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ 內建相機（含名片對準輔助線） ============ -->
+<div id="camera-overlay" class="overlay camera-overlay hidden">
+  <div class="camera-box">
+    <!-- 影像與輔助線放在同一層 stage，輔助線才會剛好蓋在畫面上而不是連按鈕區一起蓋住 -->
+    <div class="camera-stage">
+      <video id="camera-video" playsinline autoplay muted></video>
+
+      <!-- 輔助線：名片外框 + 中心十字線，協助使用者把名片擺正、填滿畫面 -->
+      <div class="camera-guide" aria-hidden="true">
+        <div class="guide-card">
+          <span class="corner tl"></span><span class="corner tr"></span>
+          <span class="corner bl"></span><span class="corner br"></span>
+          <span class="grid-v"></span><span class="grid-h"></span>
+        </div>
+      </div>
+      <p class="guide-tip">請將名片對齊框線，盡量填滿並保持水平</p>
+    </div>
+
+    <div class="camera-controls">
+      <button type="button" id="camera-cancel" class="secondary">取消</button>
+      <button type="button" id="camera-shoot" class="shoot-btn" aria-label="拍照"></button>
+      <button type="button" id="camera-switch" class="secondary">切換鏡頭</button>
+    </div>
+    <p id="camera-status" class="status"></p>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

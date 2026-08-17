@@ -1,0 +1,9 @@
+Flask>=3.0
+Pillow>=10.0
+pytesseract>=0.3.10
+# 名片自動裁切/透視校正/影像增強用（見 cardimage.py）。
+# 少了它仍可執行，但會直接把整張照片丟給 OCR，辨識率會大幅下降。
+# 伺服器不需要 GUI，故用 headless 版；若環境已裝過 opencv-python 則無需重複安裝
+# （兩者都提供 cv2，同時安裝反而可能衝突）。
+opencv-python-headless>=4.8
+numpy>=1.24
