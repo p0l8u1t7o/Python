@@ -1,0 +1,45 @@
+{
+  // One-click start for LAN testing: both servers bind 0.0.0.0 so a phone on
+  // the same Wi-Fi can reach them. Pick "ZQS: 全部啟動 (API + 前端)" in the
+  // Run and Debug panel and press the green play button once.
+  //
+  // The console is the only port a phone needs: Vite proxies /api to
+  // 127.0.0.1:8000 on this machine (see frontend/vite.config.ts).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ZQS: API (Django)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/manage.py",
+      "args": ["runserver", "0.0.0.0:8000"],
+      // The project virtualenv, not whatever interpreter VS Code has selected.
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "cwd": "${workspaceFolder}",
+      "django": true,
+      "justMyCode": true,
+      "console": "integratedTerminal",
+      "env": {
+        "DJANGO_SETTINGS_MODULE": "config.settings.dev",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    {
+      "name": "ZQS: 前端 (Vite)",
+      // node-terminal runs the command in an integrated terminal; no Python
+      // extension involved, so this half starts even if that one is missing.
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev -- --host 0.0.0.0",
+      "cwd": "${workspaceFolder}/frontend"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "ZQS: 全部啟動 (API + 前端)",
+      "configurations": ["ZQS: API (Django)", "ZQS: 前端 (Vite)"],
+      // Stopping one stops the other, so the pair never half-survives.
+      "stopAll": true
+    }
+  ]
+}

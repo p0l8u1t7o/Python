@@ -1,0 +1,302 @@
+from __future__ import annotations
+
+import datetime as dt
+import uuid
+from typing import Any
+
+from ninja import Field, FilterSchema, Schema
+
+from apps.devices.models import (
+    CommandStatus,
+    ConnectionStatus,
+    DeviceCategory,
+    EventLevel,
+)
+
+
+# --------------------------------------------------------------------------
+# Sites
+# --------------------------------------------------------------------------
+class SiteIn(Schema):
+    name: str = Field(max_length=200)
+    code: str = Field(max_length=64, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    description: str = ""
+    address: str = Field(default="", max_length=400)
+    city: str = Field(default="", max_length=120)
+    region: str = Field(default="", max_length=120)
+    country: str = Field(default="", max_length=2)
+    postal_code: str = Field(default="", max_length=32)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    timezone_name: str = "UTC"
+    contact_name: str = Field(default="", max_length=120)
+    contact_phone: str = Field(default="", max_length=40)
+    tags: list[str] = Field(default_factory=list)
+
+
+class SiteUpdateIn(Schema):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    address: str | None = Field(default=None, max_length=400)
+    city: str | None = Field(default=None, max_length=120)
+    region: str | None = Field(default=None, max_length=120)
+    country: str | None = Field(default=None, max_length=2)
+    postal_code: str | None = Field(default=None, max_length=32)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    timezone_name: str | None = Field(default=None, max_length=64)
+    contact_name: str | None = Field(default=None, max_length=120)
+    contact_phone: str | None = Field(default=None, max_length=40)
+    tags: list[str] | None = None
+    is_active: bool | None = None
+
+
+class SiteOut(Schema):
+    id: uuid.UUID
+    name: str
+    code: str
+    description: str
+    address: str
+    city: str
+    region: str
+    country: str
+    postal_code: str
+    latitude: float | None
+    longitude: float | None
+    timezone_name: str
+    contact_name: str
+    contact_phone: str
+    tags: list[str]
+    is_active: bool
+    created_at: dt.datetime
+
+
+class SiteSummaryOut(SiteOut):
+    device_count: int = 0
+    online_count: int = 0
+    open_alert_count: int = 0
+
+
+# --------------------------------------------------------------------------
+# Blueprints
+# --------------------------------------------------------------------------
+class DeviceTypeIn(Schema):
+    key: str = Field(max_length=80, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    name: str = Field(max_length=200)
+    category: DeviceCategory = DeviceCategory.OTHER
+    manufacturer: str = Field(default="", max_length=120)
+    model_name: str = Field(default="", max_length=120)
+    description: str = ""
+    icon: str = Field(default="", max_length=64)
+    command_definitions: list[dict[str, Any]] = Field(default_factory=list)
+    default_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DeviceTypeOut(Schema):
+    id: uuid.UUID
+    key: str
+    name: str
+    category: DeviceCategory
+    manufacturer: str
+    model_name: str
+    description: str
+    icon: str
+    command_definitions: list[dict[str, Any]]
+    #: Null for the built-in blueprints shared by every tenant.
+    organization_id: uuid.UUID | None = None
+    created_at: dt.datetime
+
+
+# --------------------------------------------------------------------------
+# Devices
+# --------------------------------------------------------------------------
+class DeviceIn(Schema):
+    device_id: str = Field(
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$",
+        description="Identifier used in the MQTT topic. Globally unique.",
+    )
+    name: str = Field(max_length=200)
+    site_id: uuid.UUID | None = None
+    device_type_id: uuid.UUID | None = None
+    recording_policy_id: uuid.UUID | None = None
+    serial_number: str = Field(default="", max_length=120)
+    description: str = ""
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    address: str = Field(default="", max_length=400)
+    tags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    is_enabled: bool = True
+
+
+class DeviceUpdateIn(Schema):
+    name: str | None = Field(default=None, max_length=200)
+    site_id: uuid.UUID | None = None
+    device_type_id: uuid.UUID | None = None
+    recording_policy_id: uuid.UUID | None = None
+    serial_number: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    address: str | None = Field(default=None, max_length=400)
+    tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+    is_enabled: bool | None = None
+
+
+class DeviceOut(Schema):
+    id: uuid.UUID
+    device_id: str
+    name: str
+    description: str
+    serial_number: str
+    status: ConnectionStatus
+    status_changed_at: dt.datetime | None
+    last_seen_at: dt.datetime | None
+    last_telemetry_at: dt.datetime | None
+    firmware_version: str
+    hardware_version: str
+    ip_address: str | None
+    rssi: int | None
+    latitude: float | None
+    longitude: float | None
+    address: str
+    location_source: str
+    tags: list[str]
+    metadata: dict[str, Any]
+    is_enabled: bool
+    created_at: dt.datetime
+
+    site_id: uuid.UUID | None = None
+    site_name: str | None = None
+    device_type_id: uuid.UUID | None = None
+    device_type_name: str | None = None
+    recording_policy_id: uuid.UUID | None = None
+
+    @staticmethod
+    def resolve_site_name(obj) -> str | None:
+        return obj.site.name if obj.site_id else None
+
+    @staticmethod
+    def resolve_device_type_name(obj) -> str | None:
+        return obj.device_type.name if obj.device_type_id else None
+
+
+class MetricValueOut(Schema):
+    metric_key: str
+    label: str = ""
+    unit: str = ""
+    value: float | None = None
+    value_text: str | None = None
+    ts: dt.datetime
+    quality: int = 0
+
+
+class DeviceDetailOut(DeviceOut):
+    latest: list[MetricValueOut] = Field(default_factory=list)
+    open_alert_count: int = 0
+    available_commands: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DeviceMapPointOut(Schema):
+    """Compact marker payload for the map view."""
+
+    id: uuid.UUID
+    device_id: str
+    name: str
+    status: ConnectionStatus
+    latitude: float
+    longitude: float
+    address: str = ""
+    #: "device" when the coordinates came from the hardware, "site" otherwise.
+    source: str = "device"
+    site_id: uuid.UUID | None = None
+    site_name: str | None = None
+    category: str = ""
+    open_alert_count: int = 0
+    highest_severity: str | None = None
+
+
+class DeviceFilters(FilterSchema):
+    q: str | None = Field(default=None, q=["name__icontains", "device_id__icontains"])
+    status: ConnectionStatus | None = None
+    site_id: uuid.UUID | None = None
+    device_type_id: uuid.UUID | None = None
+    is_enabled: bool | None = None
+
+
+class DeviceCredentialOut(Schema):
+    mqtt_username: str
+    #: Present only in the response that created or rotated the credential.
+    mqtt_password: str | None = None
+    allowed_client_id: str = ""
+    is_active: bool
+    rotated_at: dt.datetime | None = None
+    last_auth_at: dt.datetime | None = None
+
+
+class DeviceCreatedOut(Schema):
+    device: DeviceOut
+    credential: DeviceCredentialOut | None = None
+
+
+# --------------------------------------------------------------------------
+# Commands
+# --------------------------------------------------------------------------
+class CommandIn(Schema):
+    name: str = Field(max_length=80)
+    params: dict[str, Any] = Field(default_factory=dict)
+    timeout_seconds: int | None = Field(default=None, ge=1, le=3600)
+    #: Repeating a submission with the same key returns the original command.
+    idempotency_key: str = Field(default="", max_length=80)
+
+
+class CommandOut(Schema):
+    id: uuid.UUID
+    device_id: uuid.UUID
+    device_external_id: str = ""
+    name: str
+    params: dict[str, Any]
+    status: CommandStatus
+    issued_by_label: str
+    created_at: dt.datetime
+    sent_at: dt.datetime | None
+    acked_at: dt.datetime | None
+    completed_at: dt.datetime | None
+    expires_at: dt.datetime
+    response: dict[str, Any]
+    error: str
+
+    @staticmethod
+    def resolve_device_external_id(obj) -> str:
+        return obj.device.device_id if obj.device_id else ""
+
+
+# --------------------------------------------------------------------------
+# Device-reported logs
+# --------------------------------------------------------------------------
+class DeviceEventOut(Schema):
+    id: int
+    device_id: uuid.UUID
+    device_external_id: str = ""
+    ts: dt.datetime
+    level: EventLevel
+    code: str
+    message: str
+    payload: dict[str, Any]
+    received_at: dt.datetime
+
+    @staticmethod
+    def resolve_device_external_id(obj) -> str:
+        return obj.device.device_id
+
+
+class DeviceStatusEventOut(Schema):
+    id: int
+    device_id: uuid.UUID
+    status: ConnectionStatus
+    previous_status: str
+    reason: str
+    ts: dt.datetime
+    payload: dict[str, Any]

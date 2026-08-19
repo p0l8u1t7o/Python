@@ -1,0 +1,362 @@
+"""Create a working demo tenant: users, a site, devices, policy, rules, EMS.
+
+Intended for local development and for demonstrating the console before real
+hardware exists. Idempotent - re-running updates rather than duplicating.
+"""
+
+from __future__ import annotations
+
+from django.core.management.base import BaseCommand
+from django.db import transaction
+
+from apps.accounts.models import Membership, Organization, Role, User
+from apps.alerts.models import AlertRule, RuleScope, Severity
+from apps.devices.models import Device, DeviceCredential, DeviceType, Site
+from apps.ems.models import (
+    AssetRole,
+    DispatchStrategy,
+    EnergyAsset,
+    StoragePlan,
+    Tariff,
+)
+from apps.telemetry.models import RecordingPolicy, RecordingRule
+
+DEMO_PASSWORD = "ChangeMe-2026!"
+
+
+class Command(BaseCommand):
+    help = "Seed a demo organization with sites, devices, policies and rules."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--org-slug", default="demo")
+        parser.add_argument("--org-name", default="Demo Energy Co.")
+        parser.add_argument("--email", default="admin@example.com")
+        parser.add_argument("--password", default=DEMO_PASSWORD)
+
+    @transaction.atomic
+    def handle(self, *args, **options):
+        organization, _ = Organization.objects.update_or_create(
+            slug=options["org_slug"],
+            defaults={
+                "name": options["org_name"],
+                "default_timezone": "Asia/Taipei",
+                "is_active": True,
+            },
+        )
+
+        owner = self._user(options["email"], options["password"], "Demo Administrator")
+        Membership.objects.update_or_create(
+            organization=organization, user=owner, defaults={"role": Role.OWNER}
+        )
+        operator = self._user("operator@example.com", options["password"], "Demo Operator")
+        Membership.objects.update_or_create(
+            organization=organization, user=operator, defaults={"role": Role.OPERATOR}
+        )
+        viewer = self._user("viewer@example.com", options["password"], "Demo Viewer")
+        Membership.objects.update_or_create(
+            organization=organization, user=viewer, defaults={"role": Role.VIEWER}
+        )
+
+        site, _ = Site.objects.update_or_create(
+            organization=organization,
+            code="taipei-hq",
+            defaults={
+                "name": "Taipei Headquarters",
+                "address": "No. 7, Section 5, Xinyi Road, Xinyi District, Taipei",
+                "city": "Taipei",
+                "country": "TW",
+                "latitude": 25.0339,
+                "longitude": 121.5645,
+                "timezone_name": "Asia/Taipei",
+                "description": "1 MWh behind-the-meter storage with rooftop PV.",
+            },
+        )
+
+        policy = self._recording_policy(organization)
+        devices = self._devices(organization, site, policy)
+        self._energy(organization, site, devices)
+        self._alert_rules(organization, site)
+
+        self.stdout.write(self.style.SUCCESS("Demo tenant ready."))
+        self.stdout.write(f"  organization : {organization.name} ({organization.slug})")
+        self.stdout.write(f"  owner        : {owner.email} / {options['password']}")
+        self.stdout.write(f"  operator     : {operator.email} / {options['password']}")
+        self.stdout.write(f"  viewer       : {viewer.email} / {options['password']}")
+        self.stdout.write("  devices      : " + ", ".join(d.device_id for d in devices.values()))
+
+    # ---- helpers ---------------------------------------------------------
+    def _user(self, email: str, password: str, full_name: str) -> User:
+        user = User.objects.filter(email=email.lower()).first()
+        if user is None:
+            user = User.objects.create_user(
+                email=email,
+                password=password,
+                full_name=full_name,
+                language="zh-hant",
+                timezone_name="Asia/Taipei",
+            )
+        return user
+
+    def _recording_policy(self, organization: Organization) -> RecordingPolicy:
+        policy, _ = RecordingPolicy.objects.update_or_create(
+            organization=organization,
+            name="Default 15s / 1h heartbeat",
+            defaults={
+                "description": (
+                    "Keeps fast-moving power signals, thins out slow ones with a "
+                    "deadband, and forces a heartbeat sample every hour."
+                ),
+                "is_default": True,
+                "record_unlisted_metrics": True,
+                "default_retention_days": 365,
+                "default_min_interval_seconds": 0,
+                "default_max_interval_seconds": 3600,
+            },
+        )
+        policy.rules.all().delete()
+        RecordingRule.objects.bulk_create(
+            [
+                RecordingRule(
+                    policy=policy,
+                    metric_key="grid_power_w",
+                    min_interval_seconds=5,
+                    deadband_absolute=50,
+                    retention_days=730,
+                ),
+                RecordingRule(
+                    policy=policy,
+                    metric_key="pv_power_w",
+                    min_interval_seconds=15,
+                    deadband_absolute=50,
+                    retention_days=730,
+                ),
+                RecordingRule(
+                    policy=policy,
+                    metric_key="battery_power_w",
+                    min_interval_seconds=5,
+                    deadband_absolute=50,
+                    retention_days=730,
+                ),
+                RecordingRule(
+                    policy=policy,
+                    metric_key="battery_soc",
+                    min_interval_seconds=30,
+                    deadband_percent=0.5,
+                    retention_days=1825,
+                ),
+                RecordingRule(
+                    policy=policy,
+                    metric_key="battery_temperature_c",
+                    min_interval_seconds=60,
+                    deadband_absolute=0.5,
+                ),
+                # Diagnostics are noisy and rarely charted - keep them coarse.
+                RecordingRule(
+                    policy=policy,
+                    metric_key="signal_rssi_dbm",
+                    min_interval_seconds=300,
+                    retention_days=30,
+                ),
+            ]
+        )
+        return policy
+
+    def _devices(
+        self, organization: Organization, site: Site, policy: RecordingPolicy
+    ) -> dict[str, Device]:
+        blueprints = {
+            blueprint.key: blueprint
+            for blueprint in DeviceType.objects.filter(organization__isnull=True)
+        }
+        specification = [
+            ("ZQS-BESS-0001", "BESS #1 (500 kW / 1 MWh)", "bess-pcs"),
+            ("ZQS-METER-0001", "PCC grid meter", "smart-meter"),
+            ("ZQS-PV-0001", "Rooftop PV inverter", "pv-inverter"),
+            ("ZQS-EMS-0001", "Site EMS controller", "ems-controller"),
+        ]
+
+        devices: dict[str, Device] = {}
+        for device_id, name, blueprint_key in specification:
+            device, created = Device.objects.update_or_create(
+                device_id=device_id,
+                defaults={
+                    "organization": organization,
+                    "site": site,
+                    "device_type": blueprints.get(blueprint_key),
+                    "recording_policy": policy,
+                    "name": name,
+                    "serial_number": device_id,
+                    "is_enabled": True,
+                },
+            )
+            if created or not hasattr(device, "credential"):
+                DeviceCredential.issue(device)
+            devices[blueprint_key] = device
+        return devices
+
+    def _energy(
+        self, organization: Organization, site: Site, devices: dict[str, Device]
+    ) -> None:
+        tariff, _ = Tariff.objects.update_or_create(
+            organization=organization,
+            name="Taipower high-voltage TOU (illustrative)",
+            defaults={
+                "currency": "TWD",
+                "timezone_name": "Asia/Taipei",
+                "demand_charge_per_kw": 236.2,
+                "default_import_price": 2.11,
+                "default_export_price": 1.05,
+                "periods": [
+                    {
+                        "name": "summer_peak",
+                        "months": [6, 7, 8, 9],
+                        "weekdays": [0, 1, 2, 3, 4],
+                        "start": "16:00",
+                        "end": "22:00",
+                        "import_price": 8.36,
+                        "export_price": 1.05,
+                    },
+                    {
+                        "name": "summer_mid",
+                        "months": [6, 7, 8, 9],
+                        "weekdays": [0, 1, 2, 3, 4],
+                        "start": "09:00",
+                        "end": "16:00",
+                        "import_price": 5.02,
+                        "export_price": 1.05,
+                    },
+                    {
+                        "name": "off_peak",
+                        "start": "23:00",
+                        "end": "09:00",
+                        "import_price": 1.96,
+                        "export_price": 1.05,
+                    },
+                ],
+            },
+        )
+
+        StoragePlan.objects.update_or_create(
+            site=site,
+            defaults={
+                "organization": organization,
+                "strategy": DispatchStrategy.PEAK_SHAVING,
+                "is_enabled": True,
+                # Sized against the seeded load profile, which peaks near
+                # 480 kW: a target above that would never trigger a discharge.
+                "contract_capacity_kw": 450.0,
+                "peak_shaving_target_kw": 250.0,
+                "export_limit_kw": 0.0,
+                "usable_capacity_kwh": 1000.0,
+                "max_charge_kw": 500.0,
+                "max_discharge_kw": 500.0,
+                "min_soc_percent": 10.0,
+                "max_soc_percent": 95.0,
+                "backup_reserve_percent": 20.0,
+                "round_trip_efficiency": 0.88,
+                "tariff": tariff,
+            },
+        )
+
+        bindings = [
+            (
+                devices["smart-meter"],
+                AssetRole.GRID_METER,
+                {
+                    "power_metric": "grid_power_w",
+                    "energy_import_metric": "grid_import_energy_kwh",
+                    "energy_export_metric": "grid_export_energy_kwh",
+                },
+            ),
+            (
+                devices["pv-inverter"],
+                AssetRole.PV,
+                {"power_metric": "pv_power_w", "energy_import_metric": "pv_energy_kwh"},
+            ),
+            (
+                devices["bess-pcs"],
+                AssetRole.BATTERY,
+                {
+                    "power_metric": "battery_power_w",
+                    "soc_metric": "battery_soc",
+                    "soh_metric": "battery_soh",
+                    "energy_import_metric": "battery_charge_energy_kwh",
+                    "energy_export_metric": "battery_discharge_energy_kwh",
+                    "rated_power_kw": 500.0,
+                    "rated_energy_kwh": 1000.0,
+                },
+            ),
+        ]
+        for device, role, extra in bindings:
+            EnergyAsset.objects.update_or_create(
+                site=site,
+                device=device,
+                role=role,
+                defaults={
+                    "organization": organization,
+                    "name": device.name,
+                    # Devices report watts; the EMS module works in kW.
+                    "power_scale": 0.001,
+                    "is_active": True,
+                    **extra,
+                },
+            )
+
+    def _alert_rules(self, organization: Organization, site: Site) -> None:
+        rules = [
+            {
+                "name": "Battery SOC critically low",
+                "metric_key": "battery_soc",
+                "operator": "lt",
+                "threshold": 10.0,
+                "hysteresis": 3.0,
+                "severity": Severity.CRITICAL,
+                "for_duration_seconds": 120,
+                "message_template": "{device}: SOC dropped to {value}% (limit {threshold}%)",
+            },
+            {
+                "name": "Battery over-temperature",
+                "metric_key": "battery_temperature_c",
+                "operator": "gt",
+                "threshold": 45.0,
+                "hysteresis": 3.0,
+                "severity": Severity.MAJOR,
+                "for_duration_seconds": 60,
+                "message_template": "{device}: battery at {value} degC",
+            },
+            {
+                "name": "Grid voltage out of range",
+                "metric_key": "grid_voltage_v",
+                "operator": "outside",
+                "threshold": 198.0,
+                "threshold_upper": 242.0,
+                "hysteresis": 2.0,
+                "severity": Severity.WARNING,
+                "for_duration_seconds": 30,
+            },
+            {
+                "name": "Contract capacity exceeded",
+                "metric_key": "grid_power_w",
+                "operator": "gt",
+                # Must track contract_capacity_kw on the storage plan, or the
+                # rule silently never fires.
+                "threshold": 450_000.0,
+                "hysteresis": 10_000.0,
+                "severity": Severity.MAJOR,
+                "for_duration_seconds": 300,
+                "message_template": "{device}: importing {value} W above the contract",
+            },
+        ]
+        for rule in rules:
+            AlertRule.objects.update_or_create(
+                organization=organization,
+                name=rule.pop("name"),
+                defaults={
+                    "scope": RuleScope.SITE,
+                    "site": site,
+                    "is_enabled": True,
+                    "cooldown_seconds": 600,
+                    "auto_resolve": True,
+                    **rule,
+                },
+            )

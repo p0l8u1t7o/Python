@@ -1,0 +1,39 @@
+{
+  // Extension-free fallback for the same thing: Terminal -> Run Task ->
+  // "ZQS: 啟動 API + 前端". Useful if the Python extension is not installed,
+  // or when a debugger attached to the API is not wanted.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ZQS: API (0.0.0.0:8000)",
+      "type": "shell",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+        "args": ["manage.py", "runserver", "0.0.0.0:8000"]
+      },
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "args": ["manage.py", "runserver", "0.0.0.0:8000"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "group": "zqs", "panel": "dedicated", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ZQS: 前端 (Vite, LAN)",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev", "--", "--host", "0.0.0.0"],
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "presentation": { "group": "zqs", "panel": "dedicated", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ZQS: 啟動 API + 前端",
+      "dependsOn": ["ZQS: API (0.0.0.0:8000)", "ZQS: 前端 (Vite, LAN)"],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ]
+}

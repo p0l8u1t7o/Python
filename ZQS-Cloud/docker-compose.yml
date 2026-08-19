@@ -1,0 +1,125 @@
+# Full stack: broker, queue, API, ingestor, worker, scheduler.
+#
+#   docker compose up -d
+#   docker compose exec api python manage.py bootstrap
+#   docker compose exec api python manage.py seed_demo
+#
+# EMQX dashboard: http://localhost:18083 (admin / public - change it)
+# API:            http://localhost:8000/api/docs
+
+name: zqs-cloud
+
+x-app: &app
+  build: .
+  image: zqs-cloud:latest
+  env_file: .env
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+    DB_ENGINE: postgres
+    DB_HOST: postgres
+    REDIS_URL: redis://redis:6379/0
+    MQTT_HOST: emqx
+  volumes:
+    - app-data:/app/data
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    emqx: {condition: service_healthy}
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-zqs_cloud}
+      POSTGRES_USER: ${DB_USER:-zqs}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-zqs}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-zqs}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # AOF keeps the queue backlog across a restart.
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  emqx:
+    image: emqx/emqx:5.8
+    environment:
+      EMQX_NODE__NAME: emqx@emqx
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-public}
+    ports:
+      - "1883:1883"    # MQTT
+      - "8883:8883"    # MQTT over TLS
+      - "8083:8083"    # WebSocket
+      - "18083:18083"  # dashboard
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             python manage.py bootstrap &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4
+             --timeout 60 --access-logfile -"
+
+  ingestor:
+    <<: *app
+    # Scale freely: EMQX shared subscriptions split the topic load between
+    # replicas instead of delivering every message to each one.
+    command: python manage.py run_ingestor
+    depends_on:
+      api: {condition: service_started}
+      emqx: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  worker:
+    <<: *app
+    # Scale freely: each replica joins the same Redis consumer group.
+    command: python manage.py run_worker
+    depends_on:
+      api: {condition: service_started}
+      redis: {condition: service_healthy}
+
+  scheduler:
+    <<: *app
+    # A cron replacement small enough not to need one. Run exactly one replica.
+    command: >
+      sh -c "while true; do
+               python manage.py aggregate_energy --hours 2;
+               python manage.py build_rollups --interval 900 --hours 25;
+               sleep 300;
+             done"
+    depends_on:
+      api: {condition: service_started}
+
+volumes:
+  postgres-data:
+  redis-data:
+  emqx-data:
+  emqx-log:
+  app-data:

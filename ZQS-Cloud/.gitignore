@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Django
+/data/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+/staticfiles/
+/media/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Compiled translations - regenerate with `manage.py compilemessages`
+*.mo
+
+# Editors / OS
+# Keep the shared run configurations; ignore per-user VS Code state.
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Frontend
+node_modules/
+/frontend/dist/
+
+# Dev launcher bookkeeping
+.dev-pids.json
+
+# Service logs written by services/labview/labview_api.py
+/logs/

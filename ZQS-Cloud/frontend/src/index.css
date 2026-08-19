@@ -1,0 +1,197 @@
+@import 'tailwindcss';
+
+/* Theme is toggled by a class on <html>, set before first paint by a small
+   inline script in index.html so there is no flash of the wrong palette. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic tokens. Components use `bg-surface` / `text-muted` and never a raw
+   colour, so the whole console re-themes by editing this block alone. */
+:root {
+  --canvas: #f5f7fa;
+  --surface: #ffffff;
+  --surface-muted: #eef1f6;
+  --surface-raised: #ffffff;
+  --border: #dfe4ec;
+  --border-strong: #c6cedb;
+  --content: #0f172a;
+  --content-muted: #5b6779;
+  --content-subtle: #8b97a8;
+
+  --brand: #0f766e;
+  --brand-strong: #0b5d57;
+  --brand-soft: #d6f2ee;
+  --on-brand: #ffffff;
+
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --info: #1d4ed8;
+  --info-soft: #dbeafe;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
+  --major: #c2410c;
+  --major-soft: #ffedd5;
+  --critical: #b91c1c;
+  --critical-soft: #fee2e2;
+
+  /* Chart series, chosen to stay distinguishable in both themes and for the
+     most common colour-vision deficiencies. */
+  --series-1: #0f766e;
+  --series-2: #b45309;
+  --series-3: #1d4ed8;
+  --series-4: #9333ea;
+  --series-5: #be123c;
+  --series-6: #0891b2;
+  --grid-line: #e5e9f0;
+}
+
+.dark {
+  --canvas: #0a1120;
+  --surface: #121c2e;
+  --surface-muted: #1a2540;
+  --surface-raised: #16223a;
+  --border: #253350;
+  --border-strong: #33456a;
+  --content: #e8eefb;
+  --content-muted: #9dabc4;
+  --content-subtle: #6f7f9b;
+
+  --brand: #2dd4bf;
+  --brand-strong: #5eead4;
+  --brand-soft: #0f3b38;
+  --on-brand: #04211f;
+
+  --ok: #4ade80;
+  --ok-soft: #10331f;
+  --info: #60a5fa;
+  --info-soft: #14263f;
+  --warning: #fbbf24;
+  --warning-soft: #3a2c0c;
+  --major: #fb923c;
+  --major-soft: #3d2310;
+  --critical: #f87171;
+  --critical-soft: #401717;
+
+  --series-1: #2dd4bf;
+  --series-2: #fbbf24;
+  --series-3: #60a5fa;
+  --series-4: #c084fc;
+  --series-5: #fb7185;
+  --series-6: #22d3ee;
+  --grid-line: #22304c;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-content: var(--content);
+  --color-muted: var(--content-muted);
+  --color-subtle: var(--content-subtle);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-major: var(--major);
+  --color-major-soft: var(--major-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Noto Sans TC', 'Noto Sans SC', 'PingFang TC', 'PingFang SC',
+    'Microsoft JhengHei', 'Microsoft YaHei', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-canvas text-content font-sans antialiased;
+    margin: 0;
+  }
+  * {
+    border-color: var(--border);
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  /* Tabular figures keep metric columns from jittering as values update. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-line rounded-xl;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-content
+           placeholder:text-subtle disabled:opacity-60 disabled:cursor-not-allowed;
+  }
+  .label {
+    @apply block text-xs font-medium text-muted mb-1.5;
+  }
+  .hint {
+    @apply text-xs text-subtle mt-1.5 leading-relaxed;
+  }
+  .table-header {
+    @apply text-left text-xs font-semibold uppercase tracking-wide text-muted
+           px-4 py-2.5 whitespace-nowrap;
+  }
+  .table-cell {
+    @apply px-4 py-3 text-sm align-middle;
+  }
+}
+
+/* Scrollbars that do not fight the dark palette. */
+@supports (scrollbar-color: auto) {
+  * {
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+/* Leaflet renders its own panes; give the dark theme a matching backdrop and
+   restyle the popup so it does not appear as a white card on a dark map. */
+.leaflet-container {
+  background: var(--surface-muted);
+  font-family: var(--font-sans);
+}
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92);
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--content);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.leaflet-popup-content {
+  margin: 0.75rem 0.9rem;
+}
+.leaflet-bar a {
+  background: var(--surface);
+  color: var(--content);
+  border-color: var(--border);
+}
+.leaflet-bar a:hover {
+  background: var(--surface-muted);
+}
