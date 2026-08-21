@@ -140,6 +140,8 @@ class SiteOverviewOut(Schema):
 class EnergyTotalsOut(Schema):
     start: dt.datetime
     end: dt.datetime
+    #: How many sites went into these figures; 1 for a plain per-site query.
+    site_count: int = 1
     grid_import_kwh: float = 0.0
     grid_export_kwh: float = 0.0
     pv_kwh: float = 0.0
@@ -147,6 +149,12 @@ class EnergyTotalsOut(Schema):
     battery_charge_kwh: float = 0.0
     battery_discharge_kwh: float = 0.0
     peak_import_kw: float | None = None
+    peak_load_kw: float | None = None
+    #: ``measured`` for one site. ``coincident_estimate`` once several sites are
+    #: combined: the sites are summed per interval and the largest of those sums
+    #: is reported, which is an upper bound on the true simultaneous peak.
+    #: Never the sum of each site's own peak, which would overstate it.
+    peak_basis: str = "measured"
     energy_cost: float = 0.0
     export_revenue: float = 0.0
     estimated_savings: float = 0.0

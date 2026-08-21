@@ -1,25 +1,11 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, KeyRound, Monitor, Moon, Plus, Sun, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useTheme } from '@/providers/ThemeProvider'
 import { useToast } from '@/providers/ToastProvider'
-import {
-  useApiKeyMutations,
-  useApiKeys,
-  useCapabilities,
-  useChangePassword,
-  useHealth,
-  useMemberMutations,
-  useMembers,
-  useUpdateProfile,
-} from '@/lib/queries'
-import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES, applyLanguage, currentLanguage } from '@/i18n'
-import type { SupportedLanguage } from '@/i18n'
-import { errorMessage } from '@/lib/errors'
-import { formatRelative } from '@/lib/format'
-import type { ApiKeyCreated, Role, ThemePreference } from '@/lib/types'
 import {
   Badge,
   Button,
@@ -37,10 +23,26 @@ import {
   THead,
   Table,
   Td,
+  Term,
   TextInput,
   Th,
   Tr,
 } from '@/components/ui'
+import {
+  useApiKeyMutations,
+  useApiKeys,
+  useCapabilities,
+  useChangePassword,
+  useHealth,
+  useMemberMutations,
+  useMembers,
+  useUpdateProfile,
+} from '@/lib/queries'
+import { errorMessage } from '@/lib/errors'
+import { formatRelative } from '@/lib/format'
+import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES, applyLanguage, currentLanguage } from '@/i18n'
+import type { SupportedLanguage } from '@/i18n'
+import type { ApiKeyCreated, Role, ThemePreference } from '@/lib/types'
 
 const ROLES: Role[] = ['viewer', 'operator', 'admin', 'owner']
 
@@ -275,8 +277,12 @@ function PlatformCard() {
         <dl className="space-y-2 text-sm">
           {capabilities.data ? (
             <>
-              <Row label="MQTT topic root" value={capabilities.data.mqtt_topic_root} mono />
-              <Row label="Message bus" value={capabilities.data.bus_backend} />
+              <Row
+                label={<Term id="mqtt">MQTT topic root</Term>}
+                value={capabilities.data.mqtt_topic_root}
+                mono
+              />
+              <Row label={<Term id="ingestor">Message bus</Term>} value={capabilities.data.bus_backend} />
               <Row label="Database" value={capabilities.data.database_engine} />
               <Row
                 label="Offline grace"
@@ -291,7 +297,15 @@ function PlatformCard() {
   )
 }
 
-function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+function Row({
+  label,
+  value,
+  mono = false,
+}: {
+  label: ReactNode
+  value: string
+  mono?: boolean
+}) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className="text-xs text-muted">{label}</dt>

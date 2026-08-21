@@ -7,7 +7,7 @@ import uuid
 import zoneinfo
 
 from django.db import IntegrityError
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, Q
 from ninja import Query, Router
 
 from apps.accounts.models import Role
@@ -18,7 +18,8 @@ from apps.audit.services import record
 from apps.core.errors import Conflict, NotFound, ValidationError
 from apps.core.schemas import OkResponse, TimeRangeParams
 from apps.core.timeutils import now
-from apps.devices.models import ConnectionStatus, Device, Site
+from apps.devices.models import ConnectionStatus, Device, Site, descendant_site_ids
+from apps.ems import rollup
 from apps.ems import schemas as s
 from apps.ems.models import (
     AssetRole,
@@ -248,11 +249,27 @@ def site_intervals(
 
 
 @router.get("/sites/{site_id}/summary", response=s.EnergyTotalsOut)
-def site_summary(request, site_id: uuid.UUID, window: Query[TimeRangeParams]):
-    """Energy, cost and self-consumption totals over an arbitrary window."""
+def site_summary(
+    request,
+    site_id: uuid.UUID,
+    window: Query[TimeRangeParams],
+    include_descendants: bool = False,
+):
+    """Energy, cost and self-consumption totals over an arbitrary window.
+
+    With ``include_descendants`` the whole subtree is rolled up. Read
+    ``peak_basis`` before quoting the peak: across several sites it is a
+    coincident estimate, not a meter reading.
+    """
     ctx: AuthContext = request.auth
     site = _get_site(ctx, site_id)
     start, end = window.normalized(default_window_seconds=30 * 24 * 3600)
+
+    if include_descendants:
+        site_ids = descendant_site_ids([site.pk], organization=ctx.organization)
+        if len(site_ids) > 1:
+            return _totals_for_sites(site_ids, start, end)
+
     plan = StoragePlan.objects.filter(site=site).select_related("tariff").first()
     return _totals(site, start, end, plan)
 
@@ -400,54 +417,15 @@ def _current_flow(site: Site) -> dict:
 
 
 def _totals(site: Site, start: dt.datetime, end: dt.datetime, plan) -> dict:
-    aggregate = EnergyInterval.objects.filter(
-        site=site, interval_start__gte=start, interval_start__lt=end
-    ).aggregate(
-        grid_import=Sum("grid_import_kwh"),
-        grid_export=Sum("grid_export_kwh"),
-        pv=Sum("pv_kwh"),
-        load=Sum("load_kwh"),
-        charge=Sum("battery_charge_kwh"),
-        discharge=Sum("battery_discharge_kwh"),
-        peak=Max("peak_import_kw"),
-        cost=Sum("energy_cost"),
-        revenue=Sum("export_revenue"),
-        savings=Sum("estimated_savings"),
-    )
+    """Per-site totals. Thin wrapper over the shared multi-site roll-up."""
+    totals = rollup.energy_totals([site.pk], start, end)
+    if plan is not None and plan.tariff_id:
+        totals["currency"] = plan.tariff.currency
+    return totals
 
-    pv_kwh = aggregate["pv"] or 0.0
-    load_kwh = aggregate["load"] or 0.0
-    grid_import = aggregate["grid_import"] or 0.0
-    grid_export = aggregate["grid_export"] or 0.0
-    charge = aggregate["charge"] or 0.0
-    discharge = aggregate["discharge"] or 0.0
 
-    return {
-        "start": start,
-        "end": end,
-        "grid_import_kwh": round(grid_import, 3),
-        "grid_export_kwh": round(grid_export, 3),
-        "pv_kwh": round(pv_kwh, 3),
-        "load_kwh": round(load_kwh, 3),
-        "battery_charge_kwh": round(charge, 3),
-        "battery_discharge_kwh": round(discharge, 3),
-        "peak_import_kw": aggregate["peak"],
-        "energy_cost": round(aggregate["cost"] or 0.0, 2),
-        "export_revenue": round(aggregate["revenue"] or 0.0, 2),
-        "estimated_savings": round(aggregate["savings"] or 0.0, 2),
-        "self_consumption_ratio": (
-            round(max(0.0, min(1.0, (pv_kwh - grid_export) / pv_kwh)), 4)
-            if pv_kwh > 0
-            else None
-        ),
-        "self_sufficiency_ratio": (
-            round(max(0.0, min(1.0, (load_kwh - grid_import) / load_kwh)), 4)
-            if load_kwh > 0
-            else None
-        ),
-        "round_trip_efficiency": round(discharge / charge, 4) if charge > 0 else None,
-        "currency": plan.tariff.currency if plan and plan.tariff_id else "",
-    }
+def _totals_for_sites(site_ids, start: dt.datetime, end: dt.datetime) -> dict:
+    return rollup.energy_totals(site_ids, start, end)
 
 
 def _local_day_bounds(site: Site) -> tuple[dt.datetime, dt.datetime]:

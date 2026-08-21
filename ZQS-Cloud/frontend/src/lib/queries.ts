@@ -23,7 +23,10 @@ import type {
   Device,
   DeviceCreated,
   DeviceCredential,
+  DeviceDeclaration,
   DeviceDetail,
+  DeviceReplacement,
+  LifecycleState,
   DeviceEvent,
   DeviceMapPoint,
   DeviceStatusEvent,
@@ -42,6 +45,7 @@ import type {
   SeriesResponse,
   Site,
   SiteOverview,
+  SiteRollup,
   SiteSummary,
   StoragePlan,
   Tariff,
@@ -120,11 +124,41 @@ export function useFleetStats() {
 // ---------------------------------------------------------------------------
 // Sites
 // ---------------------------------------------------------------------------
-export function useSites(options?: Options<Page<SiteSummary>>) {
+/**
+ * The whole site tree in one request. `include_descendants` fills the
+ * `total_*` counts so a parent row can show both its own devices and its
+ * subtree's without a second call; the plain counts stay the site's own.
+ */
+export function useSites(
+  options?: Options<Page<SiteSummary>> & { includeDescendants?: boolean },
+) {
+  const { includeDescendants = false, ...queryOptions } = options ?? {}
   return useQuery({
-    queryKey: keys.sites,
-    queryFn: () => api.get<Page<SiteSummary>>('/sites', { limit: 200 }),
-    ...options,
+    queryKey: [...keys.sites, { includeDescendants }],
+    queryFn: () =>
+      api.get<Page<SiteSummary>>('/sites', {
+        limit: 200,
+        ...(includeDescendants ? { include_descendants: true } : {}),
+      }),
+    ...queryOptions,
+  })
+}
+
+/** Devices, alerts and energy for one node of the site tree. */
+export function useSiteRollup(
+  siteId: string | undefined,
+  params?: { includeDescendants?: boolean; start?: string; end?: string },
+) {
+  const query = {
+    ...(params?.includeDescendants === false ? { include_descendants: false } : {}),
+    ...(params?.start ? { start: params.start } : {}),
+    ...(params?.end ? { end: params.end } : {}),
+  }
+  return useQuery({
+    queryKey: [...keys.sites, 'rollup', siteId ?? '', query],
+    queryFn: () => api.get<SiteRollup>(`/sites/${siteId}/summary`, query),
+    enabled: Boolean(siteId),
+    refetchInterval: LIVE_REFETCH_MS,
   })
 }
 
@@ -156,6 +190,10 @@ export interface DeviceListParams {
   q?: string
   status?: string
   site_id?: string
+  /** Widen `site_id` to the whole subtree below that site. */
+  include_descendants?: boolean
+  /** Only devices with no site at all - the ones a tree cannot place. */
+  unassigned_only?: boolean
   device_type_id?: string
   limit?: number
   offset?: number
@@ -184,6 +222,64 @@ export function useDevice(id: string | undefined) {
     queryFn: () => api.get<DeviceDetail>(`/devices/${id}`),
     enabled: Boolean(id),
     refetchInterval: FAST_REFETCH_MS,
+  })
+}
+
+export function useDeviceDeclaration(deviceId: string | undefined) {
+  return useQuery({
+    queryKey: ['devices', 'detail', deviceId ?? '', 'declaration'],
+    queryFn: () => api.get<DeviceDeclaration>(`/devices/${deviceId}/declaration`),
+    enabled: Boolean(deviceId),
+    // 404 simply means the device has never declared anything.
+    retry: false,
+  })
+}
+
+export function useReviewDeclaration(deviceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { accept: boolean; note?: string }) =>
+      api.post<DeviceDeclaration>(`/devices/${deviceId}/declaration/review`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.device(deviceId) })
+      queryClient.invalidateQueries({ queryKey: keys.devices({}) })
+    },
+  })
+}
+
+/** Suspend, retire, reject or return a device to service. */
+export function useLifecycleMutation(deviceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { state: LifecycleState; reason?: string }) =>
+      api.post<Device>(`/devices/${deviceId}/lifecycle`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.device(deviceId) })
+      queryClient.invalidateQueries({ queryKey: ['devices'] })
+    },
+  })
+}
+
+/**
+ * Register a successor and hand everything over to it in one transaction.
+ *
+ * The new `device_id` must be new: it is the MQTT topic segment and is unique
+ * platform-wide, and a retired device keeps its own so its history stays
+ * attributable to it.
+ */
+export function useReplaceDevice(deviceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      device_id: string
+      name: string
+      serial_number?: string
+      reason?: string
+    }) => api.post<DeviceReplacement>(`/devices/${deviceId}/replace`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['devices'] })
+      queryClient.invalidateQueries({ queryKey: keys.sites })
+    },
   })
 }
 
@@ -326,6 +422,12 @@ export function usePolicyMutations() {
 
 export interface SeriesRequest {
   device_ids: string[]
+  /**
+   * Chart every device in these sites without listing them. The server
+   * expands them, so the console needs no extra round trip.
+   */
+  site_ids?: string[]
+  include_descendants?: boolean
   metrics: string[]
   start?: string
   end?: string
@@ -334,10 +436,11 @@ export interface SeriesRequest {
 }
 
 export function useSeries(body: SeriesRequest, enabled = true) {
+  const hasSelection = body.device_ids.length > 0 || (body.site_ids?.length ?? 0) > 0
   return useQuery({
     queryKey: keys.series(body),
     queryFn: () => api.post<SeriesResponse>('/telemetry/series', body),
-    enabled: enabled && body.device_ids.length > 0 && body.metrics.length > 0,
+    enabled: enabled && hasSelection && body.metrics.length > 0,
     // Charts should follow live data without hammering the aggregation query.
     refetchInterval: LIVE_REFETCH_MS,
   })

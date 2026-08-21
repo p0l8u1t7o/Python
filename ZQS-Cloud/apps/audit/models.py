@@ -38,6 +38,22 @@ class AuditAction(models.TextChoices):
     DEVICE_CREDENTIAL_ROTATED = "device.credential_rotated", _("Device credential rotated")
     DEVICE_COMMAND_SENT = "device.command_sent", _("Command sent to device")
     DEVICE_COMMAND_CANCELLED = "device.command_cancelled", _("Command cancelled")
+    # Receiving a declaration is the device's doing and is logged as a
+    # DeviceEvent; accepting or rejecting one is an operator's decision, which
+    # is what this trail is for.
+    DEVICE_DECLARATION_ACCEPTED = (
+        "device.declaration_accepted",
+        _("Device declaration accepted"),
+    )
+    DEVICE_DECLARATION_REJECTED = (
+        "device.declaration_rejected",
+        _("Device declaration rejected"),
+    )
+    DEVICE_SUSPENDED = "device.suspended", _("Device suspended")
+    DEVICE_RETIRED = "device.retired", _("Device retired")
+    DEVICE_RESTORED = "device.restored", _("Device returned to service")
+    DEVICE_REJECTED = "device.rejected", _("Device rejected")
+    DEVICE_REPLACED = "device.replaced", _("Device replaced")
 
     POLICY_UPDATED = "telemetry.policy_updated", _("Recording policy updated")
     METRIC_UPDATED = "telemetry.metric_updated", _("Metric definition updated")

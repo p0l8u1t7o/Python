@@ -199,6 +199,48 @@ LIMIT %s
 """
 
 
+#: Same aggregation, plus each bucket's first and last value.
+#:
+#: Kept apart from :data:`_AGGREGATE_SQL` on purpose. Counter metrics need the
+#: edges to compute a delta, but charts do not, and window functions are not
+#: free - the request path that runs on every chart redraw keeps the cheap
+#: query. Window functions are available on SQLite 3.25+ and PostgreSQL alike.
+_AGGREGATE_EDGES_SQL = """
+SELECT
+    device_id,
+    metric_key,
+    bucket_epoch,
+    COUNT(value)     AS sample_count,
+    AVG(value)       AS avg_value,
+    MIN(value)       AS min_value,
+    MAX(value)       AS max_value,
+    SUM(value)       AS sum_value,
+    MIN(edge_first)  AS first_value,
+    MIN(edge_last)   AS last_value
+FROM (
+    SELECT
+        device_id,
+        metric_key,
+        {bucket} AS bucket_epoch,
+        value,
+        FIRST_VALUE(value) OVER w AS edge_first,
+        LAST_VALUE(value) OVER w  AS edge_last
+    FROM telemetry_sample
+    WHERE device_id IN ({device_placeholders})
+      AND metric_key IN ({metric_placeholders})
+      AND ts >= %s AND ts < %s
+    WINDOW w AS (
+        PARTITION BY device_id, metric_key, {bucket}
+        ORDER BY ts
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    )
+) windowed
+GROUP BY device_id, metric_key, bucket_epoch
+ORDER BY device_id, metric_key, bucket_epoch
+LIMIT %s
+"""
+
+
 def _bucket_expression(interval_seconds: int) -> str:
     """Floor ``ts`` to an interval, as epoch seconds."""
     vendor = connection.vendor
@@ -220,12 +262,18 @@ def aggregate_series(
     end: dt.datetime,
     interval_seconds: int,
     limit: int = 50_000,
+    with_edges: bool = False,
 ) -> list[dict[str, Any]]:
-    """Downsample on read - used whenever a chart spans more than a few hours."""
+    """Downsample on read - used whenever a chart spans more than a few hours.
+
+    ``with_edges`` additionally reports each bucket's first and last value,
+    which is what a cumulative counter needs to yield a delta.
+    """
     if not device_ids or not metric_keys:
         return []
 
-    sql = _AGGREGATE_SQL.format(
+    template = _AGGREGATE_EDGES_SQL if with_edges else _AGGREGATE_SQL
+    sql = template.format(
         bucket=_bucket_expression(interval_seconds),
         device_placeholders=", ".join(["%s"] * len(device_ids)),
         metric_placeholders=", ".join(["%s"] * len(metric_keys)),
@@ -267,6 +315,7 @@ def build_rollups(
         end=end,
         interval_seconds=interval_seconds,
         limit=200_000,
+        with_edges=True,
     )
     if not aggregates:
         return 0
@@ -283,6 +332,10 @@ def build_rollups(
             min_value=row["min_value"],
             max_value=row["max_value"],
             sum_value=row["sum_value"],
+            # Present on the model since the beginning but never populated;
+            # counter deltas are unusable without them.
+            first_value=row.get("first_value"),
+            last_value=row.get("last_value"),
         )
         for row in aggregates
     ]
@@ -291,7 +344,15 @@ def build_rollups(
         batch_size=1000,
         update_conflicts=True,
         unique_fields=["device", "metric_key", "interval_seconds", "bucket_start"],
-        update_fields=["count", "avg_value", "min_value", "max_value", "sum_value"],
+        update_fields=[
+            "count",
+            "avg_value",
+            "min_value",
+            "max_value",
+            "sum_value",
+            "first_value",
+            "last_value",
+        ],
     )
     return len(objects)
 

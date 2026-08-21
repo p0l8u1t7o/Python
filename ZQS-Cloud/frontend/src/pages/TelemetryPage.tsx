@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download } from 'lucide-react'
 
-import { useAllDevices, useMetrics, useSeries } from '@/lib/queries'
+import { useAllDevices, useMetrics, useSeries, useSites } from '@/lib/queries'
+import { useToast } from '@/providers/ToastProvider'
 import { currentLanguage } from '@/i18n'
 import { formatDateTime, formatInterval } from '@/lib/format'
 import { RANGE_KEYS, useTimeRange, type RangeKey } from '@/lib/useTimeRange'
@@ -19,6 +20,8 @@ import {
   LoadingState,
   PageHeader,
   SegmentedControl,
+  Select,
+  Term,
   TextInput,
 } from '@/components/ui'
 
@@ -29,6 +32,8 @@ export function TelemetryPage() {
   const range = useTimeRange('6h')
   const devices = useAllDevices()
   const metrics = useMetrics()
+  const sites = useSites()
+  const toast = useToast()
 
   const [deviceIds, setDeviceIds] = useState<string[]>([])
   const [metricKeys, setMetricKeys] = useState<string[]>([])
@@ -73,12 +78,43 @@ export function TelemetryPage() {
     }
   }
 
+  /**
+   * Replace the selection with a site's devices, its descendants included.
+   *
+   * Resolved here rather than through the API's `site_ids`, because this page
+   * charts at most eight devices and the operator has to see - and be able to
+   * adjust - exactly which eight were chosen. `site_ids` is the right tool for
+   * a caller that wants the whole group without enumerating it.
+   */
+  function selectGroup(siteId: string) {
+    if (!siteId) return
+    const all = sites.data?.items ?? []
+    const wanted = new Set([siteId])
+    let grew = true
+    while (grew) {
+      grew = false
+      all.forEach((site) => {
+        if (site.parent_id && wanted.has(site.parent_id) && !wanted.has(site.id)) {
+          wanted.add(site.id)
+          grew = true
+        }
+      })
+    }
+    const picked = (devices.data?.items ?? [])
+      .filter((device) => device.site_id && wanted.has(device.site_id))
+      .slice(0, MAX_SELECTION)
+      .map((device) => device.id)
+
+    setDeviceIds(picked)
+    if (picked.length === 0) toast.error(t('telemetry.groupEmpty'))
+  }
+
   const ready = deviceIds.length > 0 && metricKeys.length > 0
 
   return (
     <>
       <PageHeader
-        title={t('telemetry.title')}
+        title={<Term id="telemetry">{t('telemetry.title')}</Term>}
         description={t('telemetry.subtitle')}
         actions={
           <>
@@ -106,6 +142,17 @@ export function TelemetryPage() {
             description={`${deviceIds.length}/${MAX_SELECTION}`}
           />
           <CardBody className="space-y-2">
+            <Select
+              label={t('telemetry.pickByGroup')}
+              value=""
+              placeholder={t('telemetry.pickByGroupPlaceholder')}
+              hint={t('telemetry.pickByGroupHint', { max: MAX_SELECTION })}
+              options={(sites.data?.items ?? []).map((site) => ({
+                value: site.id,
+                label: `${'  '.repeat(site.depth)}${site.name}`,
+              }))}
+              onChange={(event) => selectGroup(event.target.value)}
+            />
             <TextInput
               value={deviceFilter}
               onChange={(event) => setDeviceFilter(event.target.value)}
@@ -187,11 +234,18 @@ export function TelemetryPage() {
               series.data ? (
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge tone={series.data.downsampled ? 'info' : 'ok'}>
-                    {series.data.downsampled
-                      ? t('telemetry.downsampled', {
+                    {/* Whether a chart is drawn from raw samples or rollups
+                        changes how the numbers should be read, so the badge
+                        that states which one carries the explanation. */}
+                    {series.data.downsampled ? (
+                      <Term id="rollup">
+                        {t('telemetry.downsampled', {
                           interval: formatInterval(series.data.interval_seconds),
-                        })
-                      : t('telemetry.raw')}
+                        })}
+                      </Term>
+                    ) : (
+                      <Term id="telemetry">{t('telemetry.raw')}</Term>
+                    )}
                   </Badge>
                   <span className="text-xs text-subtle">
                     {formatDateTime(series.data.start)} → {formatDateTime(series.data.end)}

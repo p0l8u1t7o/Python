@@ -9,6 +9,19 @@ Devices are expected to speak the protocol in
 is the intended first client. LabVIEW can also start and stop the services
 themselves; see [docs/labview-integration.md](docs/labview-integration.md).
 
+Device-side developers can validate a client without a broker. One command,
+nothing to activate:
+
+```powershell
+.\scripts\test-device.ps1
+```
+
+It first proves the test tool itself is sound — a correct reference device must
+pass, several deliberately broken ones must each be caught — and then waits for
+your real device and prints an acceptance report. Every judgement comes from
+the platform's own auth, ACL, and payload code. See
+[docs/device-test-harness.md](docs/device-test-harness.md).
+
 ---
 
 ## Architecture
@@ -140,7 +153,9 @@ SELECT create_hypertable('telemetry_sample', 'ts', migrate_data => true);
 | Requirement | Where |
 | --- | --- |
 | Account and permission management | `apps/accounts` — users, organisations, 4 roles, API keys, JWT with refresh rotation |
+| Device capabilities and command safety | `apps/devices` — capability flags, command gating, device declarations ([docs/system-logic.md](docs/system-logic.md)) |
 | Multi-device status and registered names | `apps/devices` — registry, connection state, `GET /api/devices` |
+| Grouping devices by plant, workshop or line | `apps/devices` — nested sites, `GET /api/sites/{id}/summary` rolls a subtree up |
 | Device locations on a map | `GET /api/devices/map` — device-reported GPS, falling back to the site address |
 | Choosing which time series to record | `apps/telemetry` — recording policies with per-metric interval, deadband, heartbeat and retention |
 | Device alarms and operation records | `apps/devices` events, `apps/alerts` alerts, `apps/audit` operator trail |
@@ -178,8 +193,11 @@ message:
 | `POST` | `/auth/login`, `/auth/refresh`, `/auth/logout` | session lifecycle |
 | `GET` | `/auth/me` | profile, role, effective permissions |
 | `PATCH` | `/auth/me/preferences` | theme, language, timezone |
-| `GET/POST` | `/sites` | site registry |
+| `GET/POST` | `/sites` | site registry; `?include_descendants=1` adds subtree totals |
+| `GET` | `/sites/{id}/summary` | devices, alerts and energy for a site and its subtree |
 | `GET/POST` | `/devices` | device registry (creation returns MQTT credentials once) |
+| `POST` | `/devices/{id}/lifecycle` | suspend, retire, reject or return to service |
+| `POST` | `/devices/{id}/replace` | register a successor and hand everything over |
 | `GET` | `/devices/map` | map markers with alert severity |
 | `GET` | `/devices/{id}` | detail with latest values and available commands |
 | `POST` | `/devices/{id}/commands` | **downlink control** |
@@ -236,11 +254,14 @@ to log files. See [docs/labview-integration.md](docs/labview-integration.md).
 python manage.py test tests
 ```
 
-140 tests covering the ingest pipeline end to end (payload → bus → worker →
+294 tests covering the ingest pipeline end to end (payload → bus → worker →
 database), the alert engine's timing and hysteresis behaviour, recording
 policy resolution and the deadband gate, EMS energy integration and tariff
 resolution, the API's authentication, RBAC, tenant isolation and audit trail,
-and the LabVIEW supervisor's process state machine.
+the LabVIEW supervisor's process state machine, the site tree's cycle guards
+and roll-up arithmetic, device capability gating, the trust boundary that keeps a
+device's own claims out of every control decision, and the replacement rules
+that stop a stitched report counting two devices over the same minutes.
 
 ---
 
@@ -264,7 +285,7 @@ services/
 config/        settings, API assembly, URLs
 frontend/      React console (see frontend/README.md)
 scripts/       dev.ps1 / dev.sh launchers, stop.ps1
-docs/          device protocol, local development, LabVIEW integration
+docs/          device protocol, system logic, local development, LabVIEW integration
 deploy/        EMQX configuration notes
 tests/         test suite
 ```

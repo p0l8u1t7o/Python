@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Building2, Pencil, Plus, Trash2 } from 'lucide-react'
+import {
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  Cpu,
+  Factory,
+  Layers,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
-import { useSiteMutations, useSites } from '@/lib/queries'
+import { useDevices, useSiteMutations, useSites } from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
-import type { Site, SiteSummary } from '@/lib/types'
+import type { Site, SiteKind, SiteSummary } from '@/lib/types'
 import {
   Badge,
   Button,
@@ -18,6 +28,7 @@ import {
   IconButton,
   Modal,
   PageHeader,
+  Select,
   TBody,
   THead,
   Table,
@@ -28,16 +39,71 @@ import {
   Tr,
 } from '@/components/ui'
 
+const KIND_ICON: Record<SiteKind, typeof Building2> = {
+  site: Building2,
+  area: Factory,
+  line: Layers,
+  group: Layers,
+}
+
+interface TreeNode {
+  site: SiteSummary
+  children: TreeNode[]
+}
+
+/** Nest a flat site list, keeping anything whose parent is missing at the top. */
+function buildTree(sites: SiteSummary[]): TreeNode[] {
+  const nodes = new Map<string, TreeNode>()
+  sites.forEach((site) => nodes.set(site.id, { site, children: [] }))
+
+  const roots: TreeNode[] = []
+  nodes.forEach((node) => {
+    const parent = node.site.parent_id ? nodes.get(node.site.parent_id) : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  })
+  return roots
+}
+
+function flatten(nodes: TreeNode[], collapsed: Set<string>, level = 0) {
+  const rows: { node: TreeNode; level: number }[] = []
+  nodes.forEach((node) => {
+    rows.push({ node, level })
+    if (!collapsed.has(node.site.id)) {
+      rows.push(...flatten(node.children, collapsed, level + 1))
+    }
+  })
+  return rows
+}
+
 export function SitesPage() {
   const { t } = useTranslation()
   const { can } = useAuth()
   const toast = useToast()
-  const sites = useSites()
+  // include_descendants fills total_*, so a parent row can show its subtree.
+  const sites = useSites({ includeDescendants: true })
   const { remove } = useSiteMutations()
+  // Devices with no site at all have nowhere to sit in a tree; surface them
+  // rather than letting them quietly vanish from this page.
+  const unassigned = useDevices({ unassigned_only: true, limit: 1 })
 
   const [editing, setEditing] = useState<SiteSummary | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<SiteSummary | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const items = useMemo(() => sites.data?.items ?? [], [sites.data])
+  const rows = useMemo(() => flatten(buildTree(items), collapsed), [items, collapsed])
+  const unassignedCount = unassigned.data?.total ?? 0
+
+  function toggle(id: string) {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   return (
     <>
@@ -61,55 +127,88 @@ export function SitesPage() {
             <THead>
               <Th>{t('sites.site')}</Th>
               <Th>{t('sites.address')}</Th>
-              <Th>{t('sites.coordinates')}</Th>
-              <Th align="right">{t('sites.devices')}</Th>
+              <Th align="right">{t('sites.devicesHere')}</Th>
+              <Th align="right">{t('sites.devicesTotal')}</Th>
               <Th align="right">{t('dashboard.openAlerts')}</Th>
               <Th />
             </THead>
             <TBody>
               {sites.isPending ? (
                 <EmptyRow colSpan={6} message={`${t('common.loading')}…`} />
-              ) : sites.data && sites.data.items.length > 0 ? (
-                sites.data.items.map((site) => (
-                  <Tr key={site.id}>
-                    <Td>
-                      <Link to={`/storage?site=${site.id}`} className="font-medium hover:underline">
-                        {site.name}
-                      </Link>
-                      <span className="ml-1.5 font-mono text-xs text-subtle">{site.code}</span>
-                    </Td>
-                    <Td className="max-w-sm truncate text-muted">{site.address || '—'}</Td>
-                    <Td className="tnum text-muted">
-                      {site.latitude !== null && site.longitude !== null
-                        ? `${site.latitude.toFixed(4)}, ${site.longitude.toFixed(4)}`
-                        : '—'}
-                    </Td>
-                    <Td align="right" className="tnum">
-                      <Badge tone={site.online_count === site.device_count ? 'ok' : 'neutral'}>
-                        {site.online_count}/{site.device_count}
-                      </Badge>
-                    </Td>
-                    <Td align="right">
-                      {site.open_alert_count > 0 ? (
-                        <Badge tone="critical">{site.open_alert_count}</Badge>
-                      ) : (
-                        <span className="text-subtle">—</span>
-                      )}
-                    </Td>
-                    <Td align="right">
-                      {can('site:write') ? (
-                        <span className="flex justify-end gap-1">
-                          <IconButton label={t('common.edit')} onClick={() => setEditing(site)}>
-                            <Pencil className="size-3.5" />
-                          </IconButton>
-                          <IconButton label={t('common.delete')} onClick={() => setDeleting(site)}>
-                            <Trash2 className="size-3.5" />
-                          </IconButton>
+              ) : rows.length > 0 ? (
+                rows.map(({ node, level }) => {
+                  const site = node.site
+                  const Icon = KIND_ICON[site.kind] ?? Building2
+                  const hasChildren = node.children.length > 0
+                  const isCollapsed = collapsed.has(site.id)
+                  return (
+                    <Tr key={site.id}>
+                      <Td>
+                        <span
+                          className="flex items-center gap-1.5"
+                          style={{ paddingLeft: `${level * 1.25}rem` }}
+                        >
+                          {hasChildren ? (
+                            <button
+                              type="button"
+                              onClick={() => toggle(site.id)}
+                              aria-expanded={!isCollapsed}
+                              aria-label={isCollapsed ? t('common.expand') : t('common.collapse')}
+                              className="rounded p-0.5 text-subtle hover:text-default"
+                            >
+                              {isCollapsed ? (
+                                <ChevronRight className="size-3.5" />
+                              ) : (
+                                <ChevronDown className="size-3.5" />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="inline-block w-[1.125rem]" aria-hidden />
+                          )}
+                          <Icon className="size-3.5 shrink-0 text-subtle" aria-hidden />
+                          <Link to={`/storage?site=${site.id}`} className="font-medium hover:underline">
+                            {site.name}
+                          </Link>
+                          <span className="font-mono text-xs text-subtle">{site.code}</span>
                         </span>
-                      ) : null}
-                    </Td>
-                  </Tr>
-                ))
+                      </Td>
+                      <Td className="max-w-sm truncate text-muted">{site.address || '—'}</Td>
+                      <Td align="right" className="tnum">
+                        <Badge tone={site.online_count === site.device_count ? 'ok' : 'neutral'}>
+                          {site.online_count}/{site.device_count}
+                        </Badge>
+                      </Td>
+                      <Td align="right" className="tnum">
+                        {hasChildren ? (
+                          <span className="text-muted">
+                            {site.total_online_count}/{site.total_device_count}
+                          </span>
+                        ) : (
+                          <span className="text-subtle">—</span>
+                        )}
+                      </Td>
+                      <Td align="right">
+                        {site.total_open_alert_count > 0 ? (
+                          <Badge tone="critical">{site.total_open_alert_count}</Badge>
+                        ) : (
+                          <span className="text-subtle">—</span>
+                        )}
+                      </Td>
+                      <Td align="right">
+                        {can('site:write') ? (
+                          <span className="flex justify-end gap-1">
+                            <IconButton label={t('common.edit')} onClick={() => setEditing(site)}>
+                              <Pencil className="size-3.5" />
+                            </IconButton>
+                            <IconButton label={t('common.delete')} onClick={() => setDeleting(site)}>
+                              <Trash2 className="size-3.5" />
+                            </IconButton>
+                          </span>
+                        ) : null}
+                      </Td>
+                    </Tr>
+                  )
+                })
               ) : (
                 <EmptyRow
                   colSpan={6}
@@ -121,6 +220,31 @@ export function SitesPage() {
                   }
                 />
               )}
+
+              {unassignedCount > 0 ? (
+                <Tr key="__unassigned">
+                  <Td>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-[1.125rem]" aria-hidden />
+                      <Cpu className="size-3.5 shrink-0 text-subtle" aria-hidden />
+                      <Link to="/devices?unassigned=1" className="font-medium italic hover:underline">
+                        {t('sites.unassigned')}
+                      </Link>
+                    </span>
+                  </Td>
+                  <Td className="text-subtle">{t('sites.unassignedHint')}</Td>
+                  <Td align="right" className="tnum">
+                    <Badge tone="warning">{unassignedCount}</Badge>
+                  </Td>
+                  <Td align="right" className="text-subtle">
+                    —
+                  </Td>
+                  <Td align="right" className="text-subtle">
+                    —
+                  </Td>
+                  <Td />
+                </Tr>
+              ) : null}
             </TBody>
           </Table>
         )}
@@ -160,6 +284,8 @@ export function SitesPage() {
 const EMPTY = {
   name: '',
   code: '',
+  parent_id: '',
+  kind: 'site' as SiteKind,
   description: '',
   address: '',
   city: '',
@@ -183,8 +309,36 @@ function SiteModal({
   const { t } = useTranslation()
   const toast = useToast()
   const { create, update } = useSiteMutations()
+  const sites = useSites()
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // A site may not become its own descendant, so its own subtree cannot appear
+  // in the parent picker. The server rejects it too; filtering here just keeps
+  // the operator from picking an option that can only fail.
+  const parentOptions = useMemo(() => {
+    const all = sites.data?.items ?? []
+    const banned = new Set<string>()
+    if (site) {
+      banned.add(site.id)
+      let grew = true
+      while (grew) {
+        grew = false
+        all.forEach((candidate) => {
+          if (candidate.parent_id && banned.has(candidate.parent_id) && !banned.has(candidate.id)) {
+            banned.add(candidate.id)
+            grew = true
+          }
+        })
+      }
+    }
+    return all
+      .filter((candidate) => !banned.has(candidate.id))
+      .map((candidate) => ({
+        value: candidate.id,
+        label: `${'— '.repeat(candidate.depth)}${candidate.name}`,
+      }))
+  }, [sites.data, site])
 
   useEffect(() => {
     if (!open) return
@@ -194,6 +348,8 @@ function SiteModal({
         ? {
             name: site.name,
             code: site.code,
+            parent_id: site.parent_id ?? '',
+            kind: site.kind,
             description: site.description,
             address: site.address,
             city: site.city,
@@ -212,6 +368,9 @@ function SiteModal({
     setErrors({})
     const payload = {
       name: form.name.trim(),
+      // An empty select means "top level"; send null, not "".
+      parent_id: form.parent_id === '' ? null : form.parent_id,
+      kind: form.kind,
       description: form.description,
       address: form.address,
       city: form.city,
@@ -273,6 +432,24 @@ function SiteModal({
           placeholder="taipei-hq"
           hint={site ? undefined : 'lowercase-with-dashes'}
           className="font-mono"
+        />
+        <Select
+          label={t('sites.parent')}
+          value={form.parent_id}
+          error={errors.parent_id}
+          placeholder={t('sites.topLevel')}
+          hint={t('sites.parentHint')}
+          options={parentOptions}
+          onChange={(event) => setForm({ ...form, parent_id: event.target.value })}
+        />
+        <Select
+          label={t('sites.kind')}
+          value={form.kind}
+          options={(['site', 'area', 'line', 'group'] as SiteKind[]).map((kind) => ({
+            value: kind,
+            label: t(`sites.kinds.${kind}`),
+          }))}
+          onChange={(event) => setForm({ ...form, kind: event.target.value as SiteKind })}
         />
         <TextInput
           label={t('sites.address')}

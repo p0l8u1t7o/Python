@@ -15,7 +15,7 @@ from apps.audit.models import AuditAction
 from apps.audit.services import record
 from apps.core.errors import Conflict, NotFound, ValidationError
 from apps.core.schemas import OkResponse, TimeRangeParams
-from apps.devices.models import Device, DeviceType
+from apps.devices.models import Device, DeviceType, descendant_site_ids
 from apps.telemetry import repository, schemas as s
 from apps.telemetry.catalog import get_catalog
 from apps.telemetry.models import (
@@ -248,7 +248,10 @@ def query_series(request, payload: s.SeriesQuery):
     device/metric pairs, which does not fit comfortably in a query string.
     """
     ctx: AuthContext = request.auth
-    devices = _authorized_devices(ctx, payload.device_ids)
+    devices = _resolve_query_devices(ctx, payload)
+    stitch = _replacement_windows(ctx, devices) if payload.follow_replacements else {}
+    if stitch:
+        devices = {**devices, **{pk: label for pk, (_, label, _, _) in stitch.items()}}
     start, end = TimeRangeParams(start=payload.start, end=payload.end).normalized()
 
     interval = payload.interval_seconds or _auto_interval(start, end, payload.max_points)
@@ -268,7 +271,10 @@ def query_series(request, payload: s.SeriesQuery):
             interval_seconds=interval,
         )
         for row in rows:
-            grouped.setdefault((row["device_id"], row["metric_key"]), []).append(
+            key = _stitch_key(stitch, row["device_id"], row["bucket_start"])
+            if key is None:
+                continue
+            grouped.setdefault((key, row["metric_key"]), []).append(
                 {
                     "ts": row["bucket_start"],
                     "value": row["avg_value"],
@@ -286,7 +292,10 @@ def query_series(request, payload: s.SeriesQuery):
             limit=payload.max_points * len(payload.metrics) * len(device_ids),
         )
         for row in rows:
-            grouped.setdefault((row["device_id"], row["metric_key"]), []).append(
+            key = _stitch_key(stitch, row["device_id"], row["ts"])
+            if key is None:
+                continue
+            grouped.setdefault((key, row["metric_key"]), []).append(
                 {"ts": row["ts"], "value": row["value"]}
             )
 
@@ -297,6 +306,10 @@ def query_series(request, payload: s.SeriesQuery):
             {
                 "device_id": device_pk,
                 "device_external_id": devices.get(device_pk, ""),
+                "device_ids": [
+                    pk for pk, entry in stitch.items() if entry[0] == device_pk
+                ]
+                or [device_pk],
                 "metric_key": metric_key,
                 "label": definition.label(language) if definition else metric_key,
                 "unit": definition.unit if definition else "",
@@ -382,6 +395,95 @@ def _auto_interval(start: dt.datetime, end: dt.datetime, max_points: int) -> int
         if math.ceil(span / candidate) + 1 <= max_points:
             return candidate
     return _BUCKET_LADDER[-1]
+
+
+#: Ceiling on how many devices one series request may chart. Matches the
+#: max_length on ``device_ids``: expanding a site must not become a way to ask
+#: for the whole fleet at once.
+MAX_SERIES_DEVICES = 50
+
+
+def _replacement_windows(ctx: AuthContext, devices: dict) -> dict:
+    """Map every device in a replacement chain to its own slice of time.
+
+    Returns ``{device_pk: (head_pk, external_id, valid_from, valid_until)}``.
+
+    Hardware routinely keeps reporting after it has been retired - left powered
+    on a bench, or simply not yet unplugged - so a naive stitch would have two
+    devices covering the same minutes. Adding those overlaps inflates energy
+    and, worse, manufactures a peak that never occurred. Each device therefore
+    contributes only between its predecessor's retirement and its own.
+    """
+    from apps.devices.models import chain_segments
+
+    windows: dict = {}
+    roots = (
+        Device.objects.for_organization(ctx.organization)
+        .filter(pk__in=list(devices))
+        .select_related("replaced_by")
+    )
+    for device in roots:
+        head = device.pk
+        for node, valid_from, valid_until in chain_segments(device):
+            windows[node.pk] = (head, node.device_id, valid_from, valid_until)
+    return windows
+
+
+def _stitch_key(stitch: dict, device_pk, ts):
+    """Which logical series a row belongs to, or ``None`` if it is out of window."""
+    if not stitch:
+        return device_pk
+    entry = stitch.get(device_pk)
+    if entry is None:
+        return device_pk
+    head, _label, valid_from, valid_until = entry
+    if valid_from is not None and ts < valid_from:
+        return None
+    if valid_until is not None and ts >= valid_until:
+        return None
+    return head
+
+
+def _resolve_query_devices(ctx: AuthContext, payload: s.SeriesQuery) -> dict:
+    """Turn ``device_ids`` and/or ``site_ids`` into the devices to chart.
+
+    Expanding on the server saves the console a round trip - it can chart a
+    group without first fetching that group's device list - and keeps the
+    tenant check in one place, since the expansion only ever looks inside the
+    caller's own organisation.
+    """
+    devices = _authorized_devices(ctx, payload.device_ids) if payload.device_ids else {}
+
+    if payload.site_ids:
+        site_ids = list(payload.site_ids)
+        if payload.include_descendants:
+            site_ids = descendant_site_ids(site_ids, organization=ctx.organization)
+        rows = (
+            Device.objects.for_organization(ctx.organization)
+            .filter(site_id__in=site_ids)
+            .order_by("name")
+            .values_list("pk", "device_id")
+        )
+        for pk, external_id in rows:
+            devices.setdefault(pk, external_id)
+
+    if not devices:
+        raise ValidationError(
+            "Select at least one device, or a site that contains devices",
+            code="no_devices_selected",
+            details={
+                "device_ids": [str(pk) for pk in payload.device_ids],
+                "site_ids": [str(pk) for pk in payload.site_ids],
+            },
+        )
+    if len(devices) > MAX_SERIES_DEVICES:
+        raise ValidationError(
+            f"That selection covers {len(devices)} devices; the limit is "
+            f"{MAX_SERIES_DEVICES}. Narrow the site or pick devices explicitly.",
+            code="too_many_devices",
+            details={"device_count": len(devices), "limit": MAX_SERIES_DEVICES},
+        )
+    return devices
 
 
 def _authorized_devices(

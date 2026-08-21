@@ -7,6 +7,7 @@ import secrets
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models
 from django.utils import timezone
@@ -30,11 +31,90 @@ class DeviceCategory(models.TextChoices):
     PCS = "pcs", _("Power conversion system")
     PV_INVERTER = "pv_inverter", _("PV inverter")
     METER = "meter", _("Energy meter")
+    LOAD = "load", _("Electrical load")
+    GENERATOR = "generator", _("Backup generator")
     EV_CHARGER = "ev_charger", _("EV charger")
     CONTROLLER = "controller", _("EMS controller")
     SENSOR = "sensor", _("Sensor")
     GATEWAY = "gateway", _("Gateway")
     OTHER = "other", _("Other")
+
+
+#: Capability defaults per category, applied to built-in blueprints by
+#: ``manage.py bootstrap``. Order: can_charge, can_discharge, can_export,
+#: is_dispatchable.
+#:
+#: A load is *not* metering-only even though all four are false for a passive
+#: one: "can it be commanded" and "what is it" are different axes. Use
+#: :func:`is_metering_only` for the second question.
+CATEGORY_CAPABILITIES: dict[str, tuple[bool, bool, bool, bool]] = {
+    DeviceCategory.BATTERY: (True, True, True, True),
+    DeviceCategory.PCS: (True, True, True, True),
+    DeviceCategory.PV_INVERTER: (False, True, True, True),
+    DeviceCategory.GENERATOR: (False, True, False, True),
+    DeviceCategory.EV_CHARGER: (True, False, False, True),
+    DeviceCategory.METER: (False, False, False, False),
+    DeviceCategory.SENSOR: (False, False, False, False),
+    DeviceCategory.LOAD: (False, False, False, False),
+    DeviceCategory.CONTROLLER: (False, False, False, True),
+    DeviceCategory.GATEWAY: (False, False, False, True),
+    DeviceCategory.OTHER: (False, False, False, True),
+}
+
+#: The four capability flags, in the order used throughout.
+CAPABILITY_FIELDS = ("can_charge", "can_discharge", "can_export", "is_dispatchable")
+
+
+def is_metering_only(category: str) -> bool:
+    """Whether a category exists purely to report readings.
+
+    Decided by category, never by the capability flags. A passive light circuit
+    has all four flags false and is still a *load*, not a meter - the flags
+    answer "can it be commanded", not "what is it".
+    """
+    return category in {DeviceCategory.METER, DeviceCategory.SENSOR}
+
+
+class CapabilitySource(models.TextChoices):
+    """Where a device's effective capabilities came from.
+
+    Mirrors ``Device.location_source``: what the device claimed and what the
+    platform accepted are different things, and the difference is recorded.
+    """
+
+    BLUEPRINT = "blueprint", _("Inherited from the blueprint")
+    MANUAL = "manual", _("Set by an operator")
+    DEVICE = "device", _("Accepted from the device's declaration")
+
+
+class LifecycleState(models.TextChoices):
+    """Where a device is in its working life.
+
+    Operating policy: **a device's category never changes.** When the hardware
+    is genuinely replaced by something different, a *new* device is registered
+    and the old one is retired - the old row is never edited into the new
+    thing. That keeps every historical figure attributable to the equipment
+    that actually produced it.
+
+    ``is_enabled`` stays as the ingest switch it always was, but it is no
+    longer set by hand: :func:`apps.devices.services.set_lifecycle` keeps the
+    two in step so there is one decision, not two.
+    """
+
+    PENDING = "pending", _("Pending commissioning")
+    ACTIVE = "active", _("Active")
+    SUSPENDED = "suspended", _("Suspended")
+    RETIRED = "retired", _("Retired")
+    REJECTED = "rejected", _("Rejected")
+
+
+#: States in which the ingest pipeline still accepts the device's data.
+#: A pending device must keep reporting - an operator needs to see what it
+#: actually sends before deciding what it is.
+INGESTING_STATES = frozenset({LifecycleState.PENDING, LifecycleState.ACTIVE})
+
+#: States that accept dispatch commands.
+COMMANDABLE_STATES = frozenset({LifecycleState.ACTIVE})
 
 
 class ConnectionStatus(models.TextChoices):
@@ -43,11 +123,50 @@ class ConnectionStatus(models.TextChoices):
     UNKNOWN = "unknown", _("Unknown")
 
 
+class SiteKind(models.TextChoices):
+    """What a node in the site tree represents. Presentation only.
+
+    Nothing in the aggregation logic branches on this - a plant and a
+    production line roll up identically. It exists so the console can pick an
+    icon and so an operator can tell "Taoyuan plant" from "Line 3" at a glance.
+    """
+
+    SITE = "site", _("Site / plant")
+    AREA = "area", _("Area / workshop")
+    LINE = "line", _("Production line")
+    GROUP = "group", _("Logical group")
+
+
+#: How deep the tree may go, counting the root as depth 0. The limit is what
+#: lets descendant lookups run as a bounded number of plain queries instead of
+#: a recursive CTE, which SQLite and PostgreSQL spell differently.
+MAX_SITE_DEPTH = 5
+
+
 class Site(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
-    """A physical location grouping devices - the unit shown on the map."""
+    """A location grouping devices - the unit shown on the map.
+
+    Sites nest: ``Taoyuan plant -> Workshop 1 -> Line 3``. The tree is only a
+    grouping device; every energy object (assets, storage plan, intervals)
+    still hangs off one specific site, so a parent's figures are always the sum
+    of its subtree rather than a separate measurement.
+    """
 
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="sites"
+    )
+    #: PROTECT, not CASCADE: deleting a plant must never silently take its
+    #: workshops - and their devices' history - with it. The API refuses the
+    #: delete while children exist.
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    kind = models.CharField(
+        max_length=16, choices=SiteKind.choices, default=SiteKind.SITE
     )
     name = models.CharField(max_length=200)
     code = models.SlugField(max_length=64)
@@ -79,7 +198,10 @@ class Site(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
                 fields=["organization", "code"], name="uniq_site_org_code"
             )
         ]
-        indexes = [models.Index(fields=["organization", "is_active"])]
+        indexes = [
+            models.Index(fields=["organization", "is_active"]),
+            models.Index(fields=["organization", "parent"]),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -87,6 +209,122 @@ class Site(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
     @property
     def has_location(self) -> bool:
         return self.latitude is not None and self.longitude is not None
+
+    # ---- Tree ------------------------------------------------------------
+    def ancestors(self) -> list["Site"]:
+        """Root-first chain above this site.
+
+        Walks with a visited set rather than trusting the data: a cycle that
+        somehow reached the database - a restored dump, a manual UPDATE - must
+        not turn every page that renders a breadcrumb into an infinite loop.
+        """
+        chain: list[Site] = []
+        seen = {self.pk}
+        node = self.parent
+        while node is not None and node.pk not in seen:
+            chain.append(node)
+            seen.add(node.pk)
+            node = node.parent
+        chain.reverse()
+        return chain
+
+    @property
+    def depth(self) -> int:
+        """Levels above this site.
+
+        Computing it walks the parent chain one query at a time, which is fine
+        for a single site but not for a page of them - so a caller that has
+        already loaded the tree can fill ``_depth_cache`` and skip the walk.
+        """
+        cached = getattr(self, "_depth_cache", None)
+        return cached if cached is not None else len(self.ancestors())
+
+    def validate_parent(self, parent: "Site | None") -> None:
+        """Reject a parent that would create a cycle or exceed the depth cap.
+
+        Raises :class:`django.core.exceptions.ValidationError`; the API layer
+        turns that into its own error type.
+        """
+        if parent is None:
+            return
+        if self.pk is not None and parent.pk == self.pk:
+            raise DjangoValidationError(
+                "A site cannot be its own parent.", code="parent_self"
+            )
+        if parent.organization_id != self.organization_id:
+            raise DjangoValidationError(
+                "Parent site belongs to another organization.",
+                code="parent_foreign_org",
+            )
+        if parent.deleted_at is not None:
+            raise DjangoValidationError(
+                "Parent site has been deleted.", code="parent_deleted"
+            )
+
+        chain = [parent, *reversed(parent.ancestors())]
+        if self.pk is not None and any(node.pk == self.pk for node in chain):
+            raise DjangoValidationError(
+                "That would create a cycle in the site tree.",
+                code="parent_cycle",
+            )
+
+        # Depth of the parent, plus this node, plus whatever already hangs off
+        # it - moving a subtree must not push its leaves past the cap.
+        new_depth = len(parent.ancestors()) + 1
+        if new_depth + self._subtree_height() > MAX_SITE_DEPTH:
+            raise DjangoValidationError(
+                f"Site nesting is limited to {MAX_SITE_DEPTH + 1} levels.",
+                code="parent_too_deep",
+            )
+
+    def _subtree_height(self) -> int:
+        """0 for a leaf, 1 if it has children, and so on."""
+        if self.pk is None:
+            return 0
+        height = 0
+        frontier = [self.pk]
+        while frontier and height < MAX_SITE_DEPTH + 1:
+            frontier = list(
+                Site.objects.filter(
+                    parent_id__in=frontier, deleted_at__isnull=True
+                ).values_list("pk", flat=True)
+            )
+            if frontier:
+                height += 1
+        return height
+
+
+def descendant_site_ids(
+    site_ids, *, organization=None, include_self: bool = True
+) -> list:
+    """Expand site ids to include everything below them in the tree.
+
+    Breadth-first, one query per level, capped by :data:`MAX_SITE_DEPTH` - so
+    the worst case is a handful of small queries and a cycle in the data cannot
+    hang the request. Soft-deleted sites are excluded.
+    """
+    roots = [pk for pk in site_ids if pk is not None]
+    if not roots:
+        return []
+
+    collected: list = list(roots) if include_self else []
+    seen = set(roots)
+    frontier = roots
+
+    for _level in range(MAX_SITE_DEPTH + 1):
+        queryset = Site.objects.filter(
+            parent_id__in=frontier, deleted_at__isnull=True
+        )
+        if organization is not None:
+            queryset = queryset.filter(organization=organization)
+        children = [pk for pk in queryset.values_list("pk", flat=True) if pk not in seen]
+        if not children:
+            break
+        collected.extend(children)
+        seen.update(children)
+        frontier = children
+
+    return collected
 
 
 class DeviceType(UUIDPrimaryKeyModel, TimeStampedModel):
@@ -114,8 +352,25 @@ class DeviceType(UUIDPrimaryKeyModel, TimeStampedModel):
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=64, blank=True)
 
+    # ---- Capability defaults for this model ------------------------------
+    #: What the *model* can do. Individual units may differ - a PCS commissioned
+    #: without a charging contactor, a battery bank kept backup-only by
+    #: contract - so ``Device`` carries nullable overrides.
+    can_charge = models.BooleanField(default=False)
+    can_discharge = models.BooleanField(default=False)
+    can_export = models.BooleanField(
+        default=False, help_text="May push power back towards the grid."
+    )
+    is_dispatchable = models.BooleanField(
+        default=True, help_text="Accepts control commands at all. False for meters."
+    )
+
     #: [{"name": "set_power_limit", "label": {...}, "params": {json-schema},
-    #:   "min_role": "operator", "confirm": true}, ...]
+    #:   "min_role": "operator", "confirm": true, "kind": "dispatch"}, ...]
+    #:
+    #: ``kind`` marks energy-dispatch commands. ``is_dispatchable=False`` blocks
+    #: those but still allows housekeeping like ``set_report_interval``, which a
+    #: meter legitimately accepts.
     command_definitions = models.JSONField(default=list, blank=True)
     #: Free-form defaults applied to new devices of this type.
     default_metadata = models.JSONField(default=dict, blank=True)
@@ -225,6 +480,47 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
         related_name="devices",
     )
 
+    # ---- Capabilities ----------------------------------------------------
+    #: Null means "inherit the blueprint". Set only by an operator, or by an
+    #: operator *accepting* a device declaration - never by the device itself.
+    #: Everything that decides whether a command may run reads these, and only
+    #: these; see :func:`effective_capabilities`.
+    can_charge = models.BooleanField(null=True, blank=True)
+    can_discharge = models.BooleanField(null=True, blank=True)
+    can_export = models.BooleanField(null=True, blank=True)
+    is_dispatchable = models.BooleanField(null=True, blank=True)
+    capability_source = models.CharField(
+        max_length=16,
+        choices=CapabilitySource.choices,
+        default=CapabilitySource.BLUEPRINT,
+    )
+
+    #: Lifecycle state. Auto-provisioned devices land in ``pending``: telemetry
+    #: is accepted so an operator can see what the thing actually reports, but
+    #: dispatch commands are refused until someone confirms it. Deliberately
+    #: not ``is_enabled``, which would drop the telemetry and leave nothing to
+    #: judge by.
+    #:
+    #: Retirement never soft-deletes. A retired device stays visible in the API
+    #: and its history stays readable; it simply cannot connect or be commanded.
+    commissioning_state = models.CharField(
+        max_length=16,
+        choices=LifecycleState.choices,
+        default=LifecycleState.ACTIVE,
+        db_index=True,
+    )
+    retired_at = models.DateTimeField(null=True, blank=True)
+    #: The device that took over this one's job. Set when a replacement is
+    #: registered; SET_NULL so removing the successor never erases the
+    #: predecessor's history.
+    replaced_by = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="supersedes",
+    )
+
     tags = models.JSONField(default=list, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     is_enabled = models.BooleanField(
@@ -260,9 +556,200 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
         age = (timezone.now() - self.last_seen_at).total_seconds()
         return age > settings.DEVICE_OFFLINE_GRACE_SECONDS
 
+    # ---- Capabilities ----------------------------------------------------
+    def effective_capabilities(self) -> dict[str, bool]:
+        """The capabilities control decisions are allowed to consult.
+
+        Resolution order: the device's own override, else the blueprint, else
+        permissive. A device with no blueprint has nothing to check against, so
+        it stays permissive rather than silently becoming uncontrollable - but
+        the console shows "no blueprint, capabilities unchecked" so the gap is
+        visible instead of surprising.
+
+        This never reads :class:`DeviceDeclaration`. What a device claims about
+        itself is a hint for an operator, not an input to a safety check.
+        """
+        blueprint = self.device_type
+        resolved: dict[str, bool] = {}
+        for field in CAPABILITY_FIELDS:
+            own = getattr(self, field)
+            if own is not None:
+                resolved[field] = own
+            elif blueprint is not None:
+                resolved[field] = getattr(blueprint, field)
+            else:
+                resolved[field] = True
+        return resolved
+
+    @property
+    def is_metering_only(self) -> bool:
+        return bool(
+            self.device_type_id and is_metering_only(self.device_type.category)
+        )
+
+    # ---- Lifecycle -------------------------------------------------------
+    @property
+    def is_retired(self) -> bool:
+        return self.commissioning_state == LifecycleState.RETIRED
+
+    def replacement_chain(self) -> list["Device"]:
+        """This device and every one that succeeded it, oldest first.
+
+        Walks with a visited set: a cycle that reached the database must not
+        turn a report into an infinite loop.
+        """
+        chain: list[Device] = [self]
+        seen = {self.pk}
+        node = self.replaced_by
+        while node is not None and node.pk not in seen:
+            chain.append(node)
+            seen.add(node.pk)
+            node = node.replaced_by
+        return chain
+
+    def replacement_root(self) -> "Device":
+        """The oldest device in this replacement chain."""
+        node, seen = self, {self.pk}
+        while True:
+            predecessor = node.supersedes.first()
+            if predecessor is None or predecessor.pk in seen:
+                return node
+            seen.add(predecessor.pk)
+            node = predecessor
+
+
+def chain_segments(device: Device) -> list[tuple[Device, "dt.datetime | None", "dt.datetime | None"]]:
+    """Split a replacement chain into non-overlapping time windows.
+
+    Returns ``(device, valid_from, valid_until)`` oldest first, where
+    ``valid_until`` is the device's ``retired_at`` and ``valid_from`` is the
+    predecessor's. Both ends may be ``None``, meaning unbounded.
+
+    The windows exist to stop a stitched report double counting. Hardware often
+    keeps reporting after it is retired - left powered on the bench, or simply
+    slow to be unplugged - so the two devices' samples overlap in wall-clock
+    time even though only one was the site's equipment at any given moment.
+    Adding those overlaps would inflate energy and, worse, invent a peak that
+    never happened.
+    """
+    segments: list[tuple[Device, dt.datetime | None, dt.datetime | None]] = []
+    previous_end: dt.datetime | None = None
+    for node in device.replacement_chain():
+        segments.append((node, previous_end, node.retired_at))
+        previous_end = node.retired_at
+    return segments
+
     def topic(self, suffix: str) -> str:
         root = settings.MQTT["TOPIC_ROOT"].rstrip("/")
         return f"{root}/{self.device_id}/{suffix.lstrip('/')}"
+
+
+class DeclarationState(models.TextChoices):
+    """How a device's own account of itself compares with the register.
+
+    Under the "a device's category never changes" policy a declaration is no
+    longer a change proposal waiting to be approved - the answer to "this unit
+    says it is something else now" is to register a replacement, not to edit
+    the existing row. So the states describe agreement, not approval.
+    """
+
+    MATCHED = "matched", _("Matches the register")
+    MISMATCHED = "mismatched", _("Differs from the register")
+    ACKNOWLEDGED = "acknowledged", _("Difference acknowledged")
+
+
+#: Highest ``attributes.schema_version`` the server understands.
+DECLARATION_SCHEMA_VERSION = 1
+
+
+class DeviceDeclaration(TimeStampedModel):
+    """What a device says about itself. Untrusted, by construction.
+
+    Kept in its own table rather than as ``declared_*`` columns on
+    :class:`Device` for one reason above the others: it makes the trust
+    boundary impossible to cross by accident. Whatever decides whether a
+    command may run is handed a ``Device``, and a ``Device`` simply has no
+    field carrying a device's own claims. Parallel columns would differ by one
+    underscore, which is not a difference a code review reliably catches.
+
+    A device with valid credentials can therefore claim anything it likes. The
+    worst it achieves is a misleading hint next to a review button.
+    """
+
+    device = models.OneToOneField(
+        Device, on_delete=models.CASCADE, related_name="declaration"
+    )
+    #: The ``attributes`` object exactly as received.
+    payload = models.JSONField(default=dict, blank=True)
+    schema_version = models.PositiveSmallIntegerField(default=0)
+    received_at = models.DateTimeField()
+    state = models.CharField(
+        max_length=16,
+        choices=DeclarationState.choices,
+        default=DeclarationState.MATCHED,
+    )
+    #: {"can_charge": {"declared": true, "effective": false}, ...}
+    diff_summary = models.JSONField(default=dict, blank=True)
+    #: The declared category differs from the registered blueprint's. Treated
+    #: far more seriously than a capability difference: it means the equipment
+    #: on the wire is probably not the equipment on file, so dispatch commands
+    #: are frozen until a replacement is registered. Acknowledging the
+    #: difference silences the banner; it does **not** lift the freeze.
+    identity_mismatch = models.BooleanField(default=False)
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "devices_declaration"
+        ordering = ["-received_at"]
+        indexes = [models.Index(fields=["state", "-received_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.device_id} declaration [{self.state}]"
+
+    @property
+    def has_differences(self) -> bool:
+        return bool(self.diff_summary)
+
+    @property
+    def freezes_commands(self) -> bool:
+        return self.identity_mismatch
+
+
+#: Declared fields that map onto an effective capability, and the payload path
+#: they arrive under.
+DECLARED_CAPABILITY_PATH = "capabilities"
+DECLARED_RATING_PATH = "ratings"
+
+
+def declaration_diff(device: Device, attributes: dict) -> dict:
+    """Where a declaration disagrees with what the platform currently holds.
+
+    Only fields that influence a control or costing decision are compared.
+    Descriptive ones - firmware, IP, signal strength - are already updated
+    automatically and are not worth an operator's attention.
+    """
+    diff: dict[str, dict] = {}
+    effective = device.effective_capabilities()
+
+    declared_capabilities = attributes.get(DECLARED_CAPABILITY_PATH) or {}
+    for field in CAPABILITY_FIELDS:
+        if field not in declared_capabilities:
+            continue
+        claimed = bool(declared_capabilities[field])
+        if claimed != effective[field]:
+            diff[field] = {"declared": claimed, "effective": effective[field]}
+
+    category = attributes.get("category")
+    if category and device.device_type_id and category != device.device_type.category:
+        diff["category"] = {
+            "declared": category,
+            "effective": device.device_type.category,
+        }
+
+    return diff
 
 
 class DeviceCredential(TimeStampedModel):

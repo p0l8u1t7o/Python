@@ -96,7 +96,21 @@ class RecordingPolicyOut(Schema):
 # Series queries
 # --------------------------------------------------------------------------
 class SeriesQuery(Schema):
-    device_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    #: Explicit devices. May be empty when ``site_ids`` is given instead.
+    device_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+    #: Pick devices by site instead of listing them. The server expands these
+    #: to device ids, so the console does not have to fetch the device list
+    #: first just to chart a group. Merged with ``device_ids`` when both are
+    #: present, and still capped at 50 devices in total.
+    site_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+    #: Whether ``site_ids`` also pulls in devices of nested sites.
+    include_descendants: bool = True
+    #: Stitch each device together with the ones that replaced it, so a piece
+    #: of equipment reads as one series across a hardware swap. Off by default:
+    #: stitching is an interpretation (that the successor is equivalent), and
+    #: the raw answer is one series per registered device. Each device
+    #: contributes only its own window, so the two never overlap.
+    follow_replacements: bool = False
     metrics: list[str] = Field(min_length=1, max_length=50)
     start: dt.datetime | None = None
     end: dt.datetime | None = None
@@ -118,6 +132,9 @@ class SeriesPoint(Schema):
 class SeriesOut(Schema):
     device_id: uuid.UUID
     device_external_id: str = ""
+    #: Every device folded into this series, oldest first. One entry unless
+    #: ``follow_replacements`` stitched a replacement chain together.
+    device_ids: list[uuid.UUID] = Field(default_factory=list)
     metric_key: str
     label: str = ""
     unit: str = ""

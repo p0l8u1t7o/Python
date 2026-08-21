@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, KeyRound, Send, Trash2 } from 'lucide-react'
+import { ArrowLeft, KeyRound, Replace, Send, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 import {
   useCancelCommand,
   useDevice,
+  useDeviceDeclaration,
+  useLifecycleMutation,
+  useReplaceDevice,
+  useReviewDeclaration,
   useDeviceCommands,
   useDeviceEvents,
   useDeviceMetricKeys,
@@ -17,10 +21,17 @@ import {
   useSeries,
 } from '@/lib/queries'
 import { currentLanguage } from '@/i18n'
-import { errorMessage } from '@/lib/errors'
+import { errorMessage, fieldErrors } from '@/lib/errors'
 import { formatDateTime, formatMeasurement, formatRelative, secondsSince, formatDuration } from '@/lib/format'
 import { useTimeRange, RANGE_KEYS, type RangeKey } from '@/lib/useTimeRange'
-import type { CommandDefinition, CommandParamSpec, DeviceCredential } from '@/lib/types'
+import type { GlossaryId } from '@/lib/glossary'
+import type {
+  CommandDefinition,
+  CommandParamSpec,
+  Device,
+  DeviceCredential,
+  DeviceReplacement,
+} from '@/lib/types'
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart'
 import {
   Badge,
@@ -46,6 +57,7 @@ import {
   THead,
   Table,
   Td,
+  Term,
   TextInput,
   Th,
   Tr,
@@ -62,6 +74,7 @@ export function DeviceDetailPage() {
   const toast = useToast()
 
   const [tab, setTab] = useState<Tab>('overview')
+  const [replacing, setReplacing] = useState(false)
   const [showCommand, setShowCommand] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
   const [credential, setCredential] = useState<DeviceCredential | null>(null)
@@ -91,7 +104,14 @@ export function DeviceDetailPage() {
           <span className="flex flex-wrap items-center gap-2.5">
             {detail.name}
             <ConnectionBadge status={detail.status} />
-            {!detail.is_enabled ? <Badge tone="neutral">{t('common.disabled')}</Badge> : null}
+            {detail.commissioning_state !== 'active' ? (
+              <Badge tone={LIFECYCLE_TONE[detail.commissioning_state]}>
+                {t(`devices.lifecycleStates.${detail.commissioning_state}`)}
+              </Badge>
+            ) : null}
+            {detail.identity_mismatch ? (
+              <Badge tone="critical">{t('devices.identityMismatch')}</Badge>
+            ) : null}
             {detail.open_alert_count > 0 ? (
               <Badge tone="critical">
                 {t('devices.openAlerts', { count: detail.open_alert_count })}
@@ -113,6 +133,9 @@ export function DeviceDetailPage() {
               >
                 {t('devices.sendCommand')}
               </Button>
+            ) : null}
+            {can('device:write') ? (
+              <LifecycleActions device={detail} onReplace={() => setReplacing(true)} />
             ) : null}
             {can('device:write') ? (
               <>
@@ -197,7 +220,7 @@ export function DeviceDetailPage() {
                   {detail.device_id}
                 </DetailRow>
                 <DetailRow label={t('devices.site')}>{detail.site_name ?? '—'}</DetailRow>
-                <DetailRow label={t('devices.blueprint')}>
+                <DetailRow label={<Term id="blueprint">{t('devices.blueprint')}</Term>}>
                   {detail.device_type_name ?? '—'}
                 </DetailRow>
                 <DetailRow label={t('devices.serialNumber')}>
@@ -218,7 +241,7 @@ export function DeviceDetailPage() {
                 <DetailRow label={t('devices.lastSeen')}>
                   {detail.last_seen_at ? formatDateTime(detail.last_seen_at) : t('common.never')}
                 </DetailRow>
-                <DetailRow label={t('devices.lastTelemetry')}>
+                <DetailRow label={<Term id="telemetry">{t('devices.lastTelemetry')}</Term>}>
                   {detail.last_telemetry_at
                     ? formatDateTime(detail.last_telemetry_at)
                     : t('common.never')}
@@ -233,7 +256,38 @@ export function DeviceDetailPage() {
                     {detail.location_source}
                   </DetailRow>
                 ) : null}
+                <DetailRow label={<Term id="capabilities">{t('devices.capabilities')}</Term>}>
+                  <CapabilityBadges device={detail} />
+                </DetailRow>
+                <DetailRow label={t('devices.capabilitySource')}>
+                  {t(`devices.capabilitySources.${detail.capability_source}`)}
+                </DetailRow>
+                <DetailRow label={<Term id="lifecycle">{t('devices.lifecycle')}</Term>}>
+                  <Badge tone={LIFECYCLE_TONE[detail.commissioning_state]}>
+                    {/* The state itself is where "what does suspended mean?"
+                        actually gets asked, so the value carries the term. */}
+                    <Term id={LIFECYCLE_TERMS[detail.commissioning_state]}>
+                      {t(`devices.lifecycleStates.${detail.commissioning_state}`)}
+                    </Term>
+                  </Badge>
+                </DetailRow>
+                {detail.retired_at ? (
+                  <DetailRow label={t('devices.retiredAt')}>
+                    {formatDateTime(detail.retired_at)}
+                  </DetailRow>
+                ) : null}
               </dl>
+
+              {detail.commissioning_state === 'pending' ? (
+                <p className="mt-3 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+                  {t('devices.pendingCommissioning')}
+                </p>
+              ) : null}
+              {detail.capabilities_unchecked ? (
+                <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2 text-xs text-muted">
+                  {t('devices.noBlueprintWarning')}
+                </p>
+              ) : null}
 
               {staleSeconds !== null && staleSeconds > 300 ? (
                 <p className="mt-3 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
@@ -244,6 +298,30 @@ export function DeviceDetailPage() {
           </Card>
         </div>
       ) : null}
+
+      {detail.identity_mismatch ? (
+        <Card className="mt-5 border-critical">
+          <CardBody className="space-y-2">
+            <p className="text-sm font-medium text-critical">
+              {t('devices.identityMismatchTitle')}
+            </p>
+            <p className="text-sm text-muted">{t('devices.identityMismatchHint')}</p>
+            {can('device:write') ? (
+              <Button variant="primary" onClick={() => setReplacing(true)}>
+                {t('devices.replace')}
+              </Button>
+            ) : null}
+          </CardBody>
+        </Card>
+      ) : null}
+
+      {tab === 'overview' ? <DeclarationCard deviceId={detail.id} /> : null}
+
+      <ReplaceModal
+        open={replacing}
+        device={detail}
+        onClose={() => setReplacing(false)}
+      />
 
       {tab === 'history' ? <HistoryTab deviceId={detail.id} /> : null}
       {tab === 'commands' ? <CommandsTab deviceId={detail.id} /> : null}
@@ -261,7 +339,7 @@ export function DeviceDetailPage() {
       <Modal
         open={credential !== null}
         onClose={() => setCredential(null)}
-        title={t('devices.credentials')}
+        title={<Term id="mqtt">{t('devices.credentials')}</Term>}
         description={t('devices.rotateWarning')}
         footer={
           <Button variant="primary" onClick={() => setCredential(null)}>
@@ -479,7 +557,7 @@ function EventsTab({ deviceId }: { deviceId: string }) {
   return (
     <Card>
       <CardHeader
-        title={t('devices.events')}
+        title={<Term id="uplink">{t('devices.events')}</Term>}
         actions={
           <div className="flex items-center gap-2">
             <Select
@@ -553,7 +631,7 @@ function StatusTab({ deviceId }: { deviceId: string }) {
   return (
     <Card>
       <CardHeader
-        title={t('devices.statusHistory')}
+        title={<Term id="lwt">{t('devices.statusHistory')}</Term>}
         actions={
           <SegmentedControl<RangeKey>
             size="sm"
@@ -763,6 +841,301 @@ function SendCommandModal({
           </p>
         ) : null}
       </div>
+    </Modal>
+  )
+}
+
+
+/** Effective capabilities - what the platform accepted, not what was claimed. */
+function CapabilityBadges({ device }: { device: Device }) {
+  const { t } = useTranslation()
+  const entries: [keyof typeof device.capabilities, GlossaryId, string][] = [
+    ['can_charge', 'canCharge', t('devices.canCharge')],
+    ['can_discharge', 'canDischarge', t('devices.canDischarge')],
+    ['can_export', 'canExport', t('devices.canExport')],
+    ['is_dispatchable', 'isDispatchable', t('devices.isDispatchable')],
+  ]
+  return (
+    <span className="flex flex-wrap gap-1">
+      {entries.map(([key, term, label]) => (
+        <Badge key={key} tone={device.capabilities[key] ? 'ok' : 'neutral'}>
+          <Term id={term}>{label}</Term>
+        </Badge>
+      ))}
+    </span>
+  )
+}
+
+/**
+ * What the device says about itself, and the accept/reject decision.
+ *
+ * Deliberately presented as a claim awaiting review rather than as fact:
+ * accepting is the only path by which any of this reaches the fields that gate
+ * commands, and it takes an administrator.
+ */
+function DeclarationCard({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation()
+  const { can } = useAuth()
+  const toast = useToast()
+  const declaration = useDeviceDeclaration(deviceId)
+  const review = useReviewDeclaration(deviceId)
+
+  if (declaration.isPending || declaration.error || !declaration.data) return null
+  const record = declaration.data
+  const differences = Object.entries(record.diff_summary)
+
+  async function decide(accept: boolean) {
+    try {
+      await review.mutateAsync({ accept })
+      toast.success(t('common.saved'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  return (
+    <Card className="mt-5">
+      <CardHeader
+        title={<Term id="declaration">{t('devices.declaration')}</Term>}
+        description={t('devices.declarationHint')}
+        actions={<Badge tone={record.has_differences ? 'warning' : 'neutral'}>{
+          t(`devices.declarationStates.${record.state}`)
+        }</Badge>}
+      />
+      <CardBody className="space-y-3">
+        {differences.length > 0 ? (
+          <dl className="space-y-1 text-sm">
+            {differences.map(([field, values]) => (
+              <div key={field} className="flex items-baseline gap-2">
+                <dt className="w-40 shrink-0 text-muted">{field}</dt>
+                <dd className="flex gap-2">
+                  <span className="text-warning">
+                    {t('devices.declared')}: {String(values.declared)}
+                  </span>
+                  <span className="text-subtle">
+                    {t('devices.effective')}: {String(values.effective)}
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-sm text-muted">{t('devices.declarationMatches')}</p>
+        )}
+
+        <pre className="max-h-48 overflow-auto rounded-lg bg-surface-muted p-3 text-xs">
+          {JSON.stringify(record.payload, null, 2)}
+        </pre>
+
+        {can('device:write') && record.state === 'mismatched' ? (
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              loading={review.isPending}
+              onClick={() => void decide(true)}
+            >
+              {t('devices.acceptDeclaration')}
+            </Button>
+            <Button loading={review.isPending} onClick={() => void decide(false)}>
+              {t('devices.rejectDeclaration')}
+            </Button>
+          </div>
+        ) : null}
+      </CardBody>
+    </Card>
+  )
+}
+
+
+/** How each lifecycle state should read at a glance. */
+/** Each lifecycle state points at its own glossary entry. */
+const LIFECYCLE_TERMS: Record<Device['commissioning_state'], GlossaryId> = {
+  pending: 'lifecyclePending',
+  active: 'lifecycleActive',
+  suspended: 'lifecycleSuspended',
+  retired: 'lifecycleRetired',
+  rejected: 'lifecycleRejected',
+}
+
+const LIFECYCLE_TONE: Record<Device['commissioning_state'], 'ok' | 'warning' | 'critical' | 'neutral'> = {
+  pending: 'warning',
+  active: 'ok',
+  suspended: 'warning',
+  retired: 'neutral',
+  rejected: 'critical',
+}
+
+/**
+ * Suspend, retire, or bring a device back.
+ *
+ * Retiring never deletes: the row and its history stay, the device simply
+ * stops connecting. Bringing one back is allowed - hardware does return from
+ * repair - and the server refuses if whatever replaced it is still in service.
+ */
+function LifecycleActions({
+  device,
+  onReplace,
+}: {
+  device: Device
+  onReplace: () => void
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const lifecycle = useLifecycleMutation(device.id)
+
+  async function move(state: Device['commissioning_state']) {
+    try {
+      await lifecycle.mutateAsync({ state })
+      toast.success(t('common.saved'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  if (device.commissioning_state === 'retired') {
+    return (
+      <Button loading={lifecycle.isPending} onClick={() => void move('active')}>
+        {t('devices.returnToService')}
+      </Button>
+    )
+  }
+
+  return (
+    <>
+      {device.commissioning_state === 'suspended' ? (
+        <Button loading={lifecycle.isPending} onClick={() => void move('active')}>
+          {t('devices.resume')}
+        </Button>
+      ) : (
+        <Button loading={lifecycle.isPending} onClick={() => void move('suspended')}>
+          {t('devices.suspend')}
+        </Button>
+      )}
+      <Button icon={<Replace className="size-4" />} onClick={onReplace}>
+        {t('devices.replace')}
+      </Button>
+    </>
+  )
+}
+
+/**
+ * The replacement wizard.
+ *
+ * A replacement is several steps that are only correct together - the asset
+ * bindings especially, since one left on a silent device makes the site's
+ * energy balance quietly incomplete. The server does all of it in a single
+ * transaction; this form just collects the new identifier.
+ */
+function ReplaceModal({
+  open,
+  device,
+  onClose,
+}: {
+  open: boolean
+  device: Device
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const replace = useReplaceDevice(device.id)
+  const [form, setForm] = useState({ device_id: '', name: '', serial_number: '', reason: '' })
+  const [result, setResult] = useState<DeviceReplacement | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!open) return
+    setResult(null)
+    setErrors({})
+    setForm({
+      device_id: `${device.device_id}-R2`,
+      name: device.name,
+      serial_number: '',
+      reason: '',
+    })
+  }, [open, device])
+
+  async function submit() {
+    setErrors({})
+    try {
+      setResult(await replace.mutateAsync(form))
+      toast.success(t('common.saved'))
+    } catch (error) {
+      setErrors(fieldErrors(error))
+      toast.error(errorMessage(error))
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('devices.replaceTitle', { name: device.name })}
+      footer={
+        result ? (
+          <Button variant="primary" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onClose}>{t('common.cancel')}</Button>
+            <Button
+              variant="primary"
+              loading={replace.isPending}
+              disabled={!form.device_id || !form.name}
+              onClick={() => void submit()}
+            >
+              {t('devices.replaceConfirm')}
+            </Button>
+          </>
+        )
+      }
+    >
+      {result ? (
+        <div className="space-y-3 text-sm">
+          <p>
+            {t('devices.replaceDone', {
+              assets: result.moved_asset_count,
+              rules: result.moved_alert_rule_count,
+            })}
+          </p>
+          {result.credential ? (
+            <div className="rounded-lg bg-surface-muted p-3 font-mono text-xs">
+              <div>{result.credential.mqtt_username}</div>
+              <div>{result.credential.mqtt_password}</div>
+              <p className="mt-2 font-sans text-muted">{t('devices.credentialOnce')}</p>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">{t('devices.replaceHint')}</p>
+          <TextInput
+            label={t('devices.newDeviceId')}
+            required
+            className="font-mono"
+            value={form.device_id}
+            error={errors.device_id}
+            hint={t('devices.newDeviceIdHint')}
+            onChange={(event) => setForm({ ...form, device_id: event.target.value })}
+          />
+          <TextInput
+            label={t('common.name')}
+            required
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+          <TextInput
+            label={t('devices.serialNumber')}
+            value={form.serial_number}
+            onChange={(event) => setForm({ ...form, serial_number: event.target.value })}
+          />
+          <TextInput
+            label={t('devices.replaceReason')}
+            value={form.reason}
+            onChange={(event) => setForm({ ...form, reason: event.target.value })}
+          />
+        </div>
+      )}
     </Modal>
   )
 }

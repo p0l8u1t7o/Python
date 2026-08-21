@@ -2,8 +2,16 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { Activity, Bell, Building2, CheckCircle2, Cpu, WifiOff } from 'lucide-react'
 
-import { useAlerts, useAlertSummary, useFleetStats, useHealth, useSites } from '@/lib/queries'
+import {
+  useAlerts,
+  useAlertSummary,
+  useDevices,
+  useFleetStats,
+  useHealth,
+  useSites,
+} from '@/lib/queries'
 import { formatRelative } from '@/lib/format'
+import type { GlossaryId } from '@/lib/glossary'
 import {
   Badge,
   Card,
@@ -19,6 +27,7 @@ import {
   Table,
   TBody,
   Td,
+  Term,
   Th,
   THead,
   Tr,
@@ -30,9 +39,14 @@ export function DashboardPage() {
 
   const fleet = useFleetStats()
   const summary = useAlertSummary()
-  const sites = useSites()
+  // Subtree totals, so a plant's card counts its workshops' devices too.
+  const sites = useSites({ includeDescendants: true })
   const health = useHealth()
   const recentAlerts = useAlerts({ open_only: true, limit: 8 })
+  const unassigned = useDevices({ unassigned_only: true, limit: 1 })
+
+  const groups = (sites.data?.items ?? []).filter((site) => site.depth === 0)
+  const unassignedCount = unassigned.data?.total ?? 0
 
   return (
     <>
@@ -87,6 +101,64 @@ export function DashboardPage() {
           </div>
         )}
       </div>
+
+      {groups.length > 0 || unassignedCount > 0 ? (
+        <Card className="mb-5">
+          <CardHeader
+            title={t('dashboard.byGroup')}
+            actions={
+              <Link to="/sites" className="text-xs font-medium text-brand hover:underline">
+                {t('dashboard.viewAll')}
+              </Link>
+            }
+          />
+          <CardBody>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {groups.map((site) => (
+                <Link
+                  key={site.id}
+                  to={`/devices?site=${site.id}`}
+                  className="rounded-lg border border-line p-3 transition-colors hover:bg-surface-muted/60"
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{site.name}</span>
+                      <span className="block truncate text-xs text-subtle">
+                        {site.child_count > 0
+                          ? t('dashboard.groupChildren', { count: site.child_count })
+                          : site.address || site.code}
+                      </span>
+                    </span>
+                    {site.total_open_alert_count > 0 ? (
+                      <Badge tone="critical">{site.total_open_alert_count}</Badge>
+                    ) : null}
+                  </span>
+                  <span className="mt-2 flex items-baseline gap-1.5">
+                    <span className="tnum text-xl font-semibold">{site.total_online_count}</span>
+                    <span className="tnum text-sm text-subtle">/ {site.total_device_count}</span>
+                    <span className="ml-auto text-xs text-subtle">{t('dashboard.online')}</span>
+                  </span>
+                </Link>
+              ))}
+
+              {unassignedCount > 0 ? (
+                <Link
+                  to="/devices?unassigned=1"
+                  className="rounded-lg border border-dashed border-line p-3 transition-colors hover:bg-surface-muted/60"
+                >
+                  <span className="block truncate text-sm font-medium italic">
+                    {t('sites.unassigned')}
+                  </span>
+                  <span className="block truncate text-xs text-subtle">
+                    {t('sites.unassignedHint')}
+                  </span>
+                  <span className="mt-2 block tnum text-xl font-semibold">{unassignedCount}</span>
+                </Link>
+              ) : null}
+            </div>
+          </CardBody>
+        </Card>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-3">
         <Card className="xl:col-span-2">
@@ -143,9 +215,9 @@ export function DashboardPage() {
             <CardHeader title={t('dashboard.sitesOverview')} />
             {sites.isPending ? (
               <LoadingState />
-            ) : sites.data && sites.data.items.length > 0 ? (
+            ) : groups.length > 0 ? (
               <ul className="divide-y divide-line">
-                {sites.data.items.slice(0, 6).map((site) => (
+                {groups.slice(0, 6).map((site) => (
                   <li key={site.id}>
                     <Link
                       to={`/storage?site=${site.id}`}
@@ -158,11 +230,15 @@ export function DashboardPage() {
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
-                        {site.open_alert_count > 0 ? (
-                          <Badge tone="critical">{site.open_alert_count}</Badge>
+                        {site.total_open_alert_count > 0 ? (
+                          <Badge tone="critical">{site.total_open_alert_count}</Badge>
                         ) : null}
-                        <Badge tone={site.online_count === site.device_count ? 'ok' : 'neutral'}>
-                          {site.online_count}/{site.device_count}
+                        <Badge
+                          tone={
+                            site.total_online_count === site.total_device_count ? 'ok' : 'neutral'
+                          }
+                        >
+                          {site.total_online_count}/{site.total_device_count}
                         </Badge>
                       </span>
                     </Link>
@@ -194,7 +270,10 @@ export function DashboardPage() {
                     className="flex items-center justify-between gap-3 text-sm"
                   >
                     <span className="capitalize text-muted">
-                      {component.name.replace('_', ' ')}
+                      {/* A component name only helps if you know what the
+                          component is - which is exactly the question a red
+                          badge next to "message bus" provokes. */}
+                      <ComponentName name={component.name} />
                     </span>
                     <Badge tone={component.ok ? 'ok' : 'critical'}>
                       {component.ok ? 'OK' : component.detail || 'error'}
@@ -210,4 +289,21 @@ export function DashboardPage() {
       </div>
     </>
   )
+}
+
+/**
+ * A health component's name, with a glossary bubble where we have one.
+ *
+ * Names come from the API, so anything unrecognised falls through to plain
+ * text rather than crashing the card.
+ */
+const HEALTH_TERMS: Record<string, GlossaryId> = {
+  mqtt: 'mqtt',
+  message_bus: 'ingestor',
+}
+
+function ComponentName({ name }: { name: string }) {
+  const label = name.replace('_', ' ')
+  const term = HEALTH_TERMS[name]
+  return term ? <Term id={term}>{label}</Term> : <>{label}</>
 }

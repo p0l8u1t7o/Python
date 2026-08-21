@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.db.models import Count, Q
 from ninja import Query, Router
@@ -15,17 +16,25 @@ from apps.audit.models import AuditAction
 from apps.audit.services import record
 from apps.core.errors import Conflict, NotFound, ValidationError
 from apps.core.schemas import OkResponse, Page, PageParams, TimeRangeParams, paginate
+from apps.core.timeutils import now
 from apps.devices import schemas as s
 from apps.devices import services
 from apps.devices.models import (
+    CAPABILITY_FIELDS,
+    CapabilitySource,
     Command,
+    LifecycleState,
     ConnectionStatus,
+    DeclarationState,
     Device,
     DeviceCredential,
+    DeviceDeclaration,
     DeviceEvent,
     DeviceStatusEvent,
     DeviceType,
     Site,
+    declaration_diff,
+    descendant_site_ids,
 )
 from apps.devices.registry import get_registry
 from apps.telemetry.catalog import get_catalog
@@ -40,61 +49,162 @@ commands_router = Router(tags=["commands"])
 # Sites
 # --------------------------------------------------------------------------
 @sites_router.get("", response=Page[s.SiteSummaryOut])
-def list_sites(request, params: Query[PageParams], include_inactive: bool = False):
+def list_sites(
+    request,
+    params: Query[PageParams],
+    include_inactive: bool = False,
+    include_descendants: bool = False,
+    parent_id: uuid.UUID | None = None,
+    top_level_only: bool = False,
+):
+    """List sites with their own counts, and optionally their subtree totals.
+
+    ``include_descendants`` fills ``total_*``; the plain counts always stay the
+    site's own devices, so a parent row can show both "12 here" and "340 in
+    total" without a second request.
+    """
     ctx: AuthContext = request.auth
     queryset = Site.objects.filter(
         organization=ctx.organization, deleted_at__isnull=True
     )
     if not include_inactive:
         queryset = queryset.filter(is_active=True)
+    if top_level_only:
+        queryset = queryset.filter(parent__isnull=True)
+    elif parent_id is not None:
+        queryset = queryset.filter(parent_id=parent_id)
 
-    queryset = queryset.annotate(
-        device_count=Count("devices", filter=Q(devices__deleted_at__isnull=True), distinct=True),
-        online_count=Count(
-            "devices",
-            filter=Q(
-                devices__deleted_at__isnull=True,
-                devices__status=ConnectionStatus.ONLINE,
-            ),
-            distinct=True,
-        ),
-        open_alert_count=Count(
-            "devices__alerts",
-            filter=~Q(devices__alerts__status=AlertStatus.RESOLVED),
-            distinct=True,
-        ),
-    ).order_by("name")
-    return paginate(queryset, params)
+    queryset = _with_own_counts(queryset).order_by("name")
+    page = paginate(queryset, params)
+    _decorate_tree(ctx, page["items"], include_descendants=include_descendants)
+    return page
 
 
 @sites_router.post("", response={201: s.SiteOut}, auth=role_required(Role.ADMIN))
 def create_site(request, payload: s.SiteIn):
     ctx: AuthContext = request.auth
+    data = payload.dict(exclude={"parent_id"})
+    site = Site(organization=ctx.organization, **data)
+    _apply_parent(ctx, site, payload.parent_id)
     try:
-        site = Site.objects.create(organization=ctx.organization, **payload.dict())
+        site.save()
     except IntegrityError as exc:
         raise Conflict(
             f"A site with code '{payload.code}' already exists", code="code_taken"
         ) from exc
     record(AuditAction.SITE_CREATED, ctx=ctx, target=site)
+    _decorate_tree(ctx, [site])
     return 201, site
 
 
 @sites_router.get("/{site_id}", response=s.SiteOut)
 def get_site(request, site_id: uuid.UUID):
-    return _get_site(request.auth, site_id)
+    ctx: AuthContext = request.auth
+    site = _get_site(ctx, site_id)
+    _decorate_tree(ctx, [site])
+    return site
+
+
+@sites_router.get("/{site_id}/summary", response=s.SiteRollupOut)
+def site_rollup(
+    request,
+    site_id: uuid.UUID,
+    window: Query[TimeRangeParams],
+    include_descendants: bool = True,
+):
+    """Devices, alerts and energy for one site - and, by default, its subtree.
+
+    The energy block is produced by :mod:`apps.ems.rollup`, so its ``peak_*``
+    figures are coincident peaks rather than a sum of per-site peaks, and its
+    ratios are recomputed from summed totals rather than averaged.
+    """
+    from apps.ems import rollup as ems_rollup
+
+    ctx: AuthContext = request.auth
+    site = _get_site(ctx, site_id)
+    site_ids = (
+        descendant_site_ids([site.pk], organization=ctx.organization)
+        if include_descendants
+        else [site.pk]
+    )
+    start, end = window.normalized(default_window_seconds=24 * 3600)
+
+    devices = Device.objects.filter(
+        organization=ctx.organization, site_id__in=site_ids, deleted_at__isnull=True
+    )
+    device_counts = devices.aggregate(
+        total=Count("id"),
+        online=Count("id", filter=Q(status=ConnectionStatus.ONLINE)),
+        offline=Count("id", filter=Q(status=ConnectionStatus.OFFLINE)),
+        unknown=Count("id", filter=Q(status=ConnectionStatus.UNKNOWN)),
+        disabled=Count("id", filter=Q(is_enabled=False)),
+    )
+    alert_counts = Alert.objects.filter(
+        organization=ctx.organization, device__site_id__in=site_ids
+    ).aggregate(
+        open=Count("id", filter=~Q(status=AlertStatus.RESOLVED)),
+        critical=Count(
+            "id", filter=Q(severity="critical") & ~Q(status=AlertStatus.RESOLVED)
+        ),
+        major=Count("id", filter=Q(severity="major") & ~Q(status=AlertStatus.RESOLVED)),
+        acknowledged=Count("id", filter=Q(status=AlertStatus.ACKNOWLEDGED)),
+    )
+
+    energy = ems_rollup.energy_totals(site_ids, start, end)
+    # A subtree with no metered site at all should read as "nothing to show"
+    # rather than as a confident row of zeroes.
+    if not energy["site_count"] or _energy_is_empty(energy):
+        energy = None
+
+    return {
+        "site_id": site.id,
+        "site_name": site.name,
+        "kind": site.kind,
+        "depth": site.depth,
+        "include_descendants": include_descendants,
+        "site_ids": site_ids,
+        "site_count": len(site_ids),
+        "child_count": Site.objects.filter(
+            parent_id=site.pk, deleted_at__isnull=True
+        ).count(),
+        "devices": {
+            "total": device_counts["total"] or 0,
+            "online": device_counts["online"] or 0,
+            "offline": device_counts["offline"] or 0,
+            "unknown": device_counts["unknown"] or 0,
+            "disabled": device_counts["disabled"] or 0,
+            "stale": devices.filter(is_enabled=True).stale().count(),
+        },
+        "alerts": {key: value or 0 for key, value in alert_counts.items()},
+        "energy": energy,
+    }
 
 
 @sites_router.patch("/{site_id}", response=s.SiteOut, auth=role_required(Role.ADMIN))
 def update_site(request, site_id: uuid.UUID, payload: s.SiteUpdateIn):
     ctx: AuthContext = request.auth
     site = _get_site(ctx, site_id)
+
+    # parent_id is handled separately: exclude_none would swallow an explicit
+    # null, which is how a site gets detached and promoted to top level.
+    provided = payload.dict(exclude_unset=True)
+    reparented = "parent_id" in provided
     changes = payload.dict(exclude_unset=True, exclude_none=True)
+    changes.pop("parent_id", None)
+
     for field, value in changes.items():
         setattr(site, field, value)
+    if reparented:
+        _apply_parent(ctx, site, provided["parent_id"])
+        changes["parent_id"] = provided["parent_id"]
+
     if changes:
-        site.save(update_fields=[*changes, "updated_at"])
+        update_fields = [
+            "parent" if field == "parent_id" else field for field in changes
+        ]
+        site.save(update_fields=[*update_fields, "updated_at"])
         record(AuditAction.SITE_UPDATED, ctx=ctx, target=site, payload=changes)
+    _decorate_tree(ctx, [site])
     return site
 
 
@@ -103,6 +213,17 @@ def delete_site(request, site_id: uuid.UUID):
     """Soft delete - historical telemetry keeps referring to the site."""
     ctx: AuthContext = request.auth
     site = _get_site(ctx, site_id)
+
+    # Children first: the FK is PROTECT, so deleting a parent out from under a
+    # subtree would either fail at the database or orphan it. Say so plainly.
+    children = Site.objects.filter(parent_id=site.pk, deleted_at__isnull=True).count()
+    if children:
+        raise Conflict(
+            f"{children} child site(s) are still nested under this site",
+            code="site_has_children",
+            details={"child_count": children},
+        )
+
     attached = Device.objects.filter(site=site, deleted_at__isnull=True).count()
     if attached:
         raise Conflict(
@@ -190,16 +311,169 @@ def delete_blueprint(request, blueprint_id: uuid.UUID):
 # --------------------------------------------------------------------------
 @devices_router.get("", response=Page[s.DeviceOut])
 def list_devices(
-    request, filters: Query[s.DeviceFilters], params: Query[PageParams]
+    request,
+    filters: Query[s.DeviceFilters],
+    params: Query[PageParams],
+    include_descendants: bool = False,
+    unassigned_only: bool = False,
 ):
+    """List devices.
+
+    ``include_descendants`` widens ``site_id`` to the whole subtree, so
+    selecting a plant shows the devices of its workshops too.
+    ``unassigned_only`` returns the devices with no site at all - the ones a
+    tree view has nowhere to put.
+    """
     ctx: AuthContext = request.auth
     queryset = (
         Device.objects.for_organization(ctx.organization)
         .select_related("site", "device_type")
         .order_by("name")
     )
+
+    site_id = filters.site_id
+    if include_descendants and site_id is not None:
+        # Applied here rather than through FilterSchema, which maps one field
+        # to one lookup and cannot turn site_id into site_id__in.
+        filters = filters.model_copy(update={"site_id": None})
+        queryset = queryset.filter(
+            site_id__in=descendant_site_ids([site_id], organization=ctx.organization)
+        )
+
     queryset = filters.filter(queryset)
+    if unassigned_only:
+        queryset = queryset.filter(site__isnull=True)
     return paginate(queryset, params)
+
+
+@devices_router.get("/{device_pk}/declaration", response=s.DeviceDeclarationOut)
+def get_declaration(request, device_pk: uuid.UUID):
+    """What the device claims about itself, and where that differs from record."""
+    ctx: AuthContext = request.auth
+    device = _get_device(ctx, device_pk)
+    declaration = DeviceDeclaration.objects.filter(device=device).first()
+    if declaration is None:
+        raise NotFound("This device has not declared anything", code="no_declaration")
+    return _declaration_out(declaration)
+
+
+@devices_router.post(
+    "/{device_pk}/declaration/review",
+    response=s.DeviceDeclarationOut,
+    auth=role_required(Role.ADMIN),
+)
+def review_declaration(request, device_pk: uuid.UUID, payload: s.DeclarationReviewIn):
+    """Adopt a declaration during commissioning, or acknowledge a difference.
+
+    Adoption is available **once**, while the device is still ``pending``. It
+    is the only path by which a device's own claims reach the fields that gate
+    commands. After commissioning a device's category never changes, so a later
+    disagreement is not a change to approve - it is a sign the hardware was
+    swapped, and the answer is to register a replacement.
+    """
+    ctx: AuthContext = request.auth
+    device = _get_device(ctx, device_pk)
+    declaration = DeviceDeclaration.objects.filter(device=device).first()
+    if declaration is None:
+        raise NotFound("This device has not declared anything", code="no_declaration")
+
+    if payload.accept:
+        if device.commissioning_state != LifecycleState.PENDING:
+            raise Conflict(
+                "A declaration can only be adopted while the device is pending "
+                "commissioning. Register a replacement device instead.",
+                code="declaration_not_adoptable",
+                details={"commissioning_state": device.commissioning_state},
+            )
+
+        claimed = declaration.payload.get("capabilities") or {}
+        applied: dict[str, bool] = {}
+        for field in CAPABILITY_FIELDS:
+            if field in claimed:
+                value = bool(claimed[field])
+                setattr(device, field, value)
+                applied[field] = value
+        device.capability_source = CapabilitySource.DEVICE
+        device.save(update_fields=[*applied, "capability_source", "updated_at"])
+        services.set_lifecycle(
+            ctx, device, LifecycleState.ACTIVE, reason="declaration adopted"
+        )
+        action = AuditAction.DEVICE_DECLARATION_ACCEPTED
+        audit_payload = {"applied": applied, "note": payload.note}
+        declaration.identity_mismatch = False
+    else:
+        # Acknowledging silences the banner. It deliberately does not clear
+        # identity_mismatch: seeing a problem is not the same as fixing it, and
+        # the command freeze exists because we do not know what the hardware is.
+        action = AuditAction.DEVICE_DECLARATION_REJECTED
+        audit_payload = {"note": payload.note}
+
+    declaration.diff_summary = declaration_diff(device, declaration.payload)
+    declaration.state = (
+        DeclarationState.MATCHED
+        if not declaration.diff_summary
+        else DeclarationState.ACKNOWLEDGED
+    )
+    declaration.reviewed_by = ctx.user
+    declaration.reviewed_at = now()
+    declaration.save(
+        update_fields=[
+            "state",
+            "identity_mismatch",
+            "reviewed_by",
+            "reviewed_at",
+            "diff_summary",
+            "updated_at",
+        ]
+    )
+    record(action, ctx=ctx, target=device, payload=audit_payload)
+    return _declaration_out(declaration)
+
+
+@devices_router.post(
+    "/{device_pk}/lifecycle", response=s.DeviceOut, auth=role_required(Role.ADMIN)
+)
+def change_lifecycle(request, device_pk: uuid.UUID, payload: s.LifecycleIn):
+    """Suspend, retire, reject or return a device to service.
+
+    Retirement never soft-deletes: the device stays in the API and its history
+    stays readable, it simply cannot connect or be commanded. Returning a
+    retired device to service is allowed - hardware does come back - but only
+    once whatever replaced it has stepped aside.
+    """
+    ctx: AuthContext = request.auth
+    device = _get_device(ctx, device_pk)
+    services.set_lifecycle(ctx, device, payload.state, reason=payload.reason)
+    device.refresh_from_db()
+    return device
+
+
+@devices_router.post(
+    "/{device_pk}/replace",
+    response={201: s.DeviceReplacementOut},
+    auth=role_required(Role.ADMIN),
+)
+def replace_device(request, device_pk: uuid.UUID, payload: s.DeviceReplaceIn):
+    """Register a successor and hand everything over to it, atomically.
+
+    A replacement is several steps that are only correct together: without the
+    asset bindings moving, the site's energy balance silently loses whichever
+    flow the old device measured. Doing it in one transaction means there is no
+    window in which the site is half-migrated.
+    """
+    ctx: AuthContext = request.auth
+    old = _get_device(ctx, device_pk)
+    result = services.replace_device(
+        ctx,
+        old,
+        device_id=payload.device_id,
+        name=payload.name,
+        device_type_id=payload.device_type_id,
+        serial_number=payload.serial_number,
+        reason=payload.reason,
+        issue_credential=payload.issue_credential,
+    )
+    return 201, result
 
 
 @devices_router.get("/map", response=list[s.DeviceMapPointOut])
@@ -509,6 +783,142 @@ def _get_site(ctx: AuthContext, site_id: uuid.UUID) -> Site:
     if site is None:
         raise NotFound("Site not found")
     return site
+
+
+# --------------------------------------------------------------------------
+# Site tree helpers
+# --------------------------------------------------------------------------
+def _with_own_counts(queryset):
+    """Annotate each site with the counts for its own directly-assigned devices."""
+    return queryset.annotate(
+        device_count=Count(
+            "devices", filter=Q(devices__deleted_at__isnull=True), distinct=True
+        ),
+        online_count=Count(
+            "devices",
+            filter=Q(
+                devices__deleted_at__isnull=True,
+                devices__status=ConnectionStatus.ONLINE,
+            ),
+            distinct=True,
+        ),
+        open_alert_count=Count(
+            "devices__alerts",
+            filter=~Q(devices__alerts__status=AlertStatus.RESOLVED),
+            distinct=True,
+        ),
+    )
+
+
+def _apply_parent(ctx: AuthContext, site: Site, parent_id: uuid.UUID | None) -> None:
+    """Set ``site.parent``, refusing cycles and over-deep nesting.
+
+    The model raises Django's ValidationError; translate it into the API's so
+    the console gets the usual error envelope with a machine-readable code.
+    """
+    parent = _get_site(ctx, parent_id) if parent_id is not None else None
+    try:
+        site.validate_parent(parent)
+    except DjangoValidationError as exc:
+        raise ValidationError(
+            "; ".join(exc.messages),
+            code=getattr(exc, "code", None) or "invalid_parent",
+            details={"parent_id": str(parent_id) if parent_id else None},
+        ) from exc
+    site.parent = parent
+
+
+def _decorate_tree(ctx: AuthContext, sites, *, include_descendants: bool = False) -> None:
+    """Attach depth, child_count and optional subtree totals to site instances.
+
+    One pass over the organisation's site table rather than a query per row:
+    tenants have tens of sites, not thousands, and the tree has to be walked in
+    memory anyway to compute depth.
+    """
+    if not sites:
+        return
+
+    rows = list(
+        Site.objects.filter(
+            organization=ctx.organization, deleted_at__isnull=True
+        ).values_list("pk", "parent_id")
+    )
+    parent_of = {pk: parent for pk, parent in rows}
+    children_of: dict = {}
+    for pk, parent in rows:
+        children_of.setdefault(parent, []).append(pk)
+
+    def depth_of(pk) -> int:
+        depth, seen, node = 0, {pk}, parent_of.get(pk)
+        while node is not None and node not in seen and depth <= 32:
+            depth += 1
+            seen.add(node)
+            node = parent_of.get(node)
+        return depth
+
+    def subtree(pk) -> list:
+        collected, frontier = [pk], [pk]
+        while frontier:
+            nxt = [
+                child
+                for node in frontier
+                for child in children_of.get(node, [])
+                if child not in collected
+            ]
+            collected.extend(nxt)
+            frontier = nxt
+        return collected
+
+    totals: dict = {}
+    if include_descendants:
+        wanted = {pk for site in sites for pk in subtree(site.pk)}
+        for row in _with_own_counts(
+            Site.objects.filter(pk__in=wanted, deleted_at__isnull=True)
+        ).values("pk", "device_count", "online_count", "open_alert_count"):
+            totals[row["pk"]] = row
+
+    for site in sites:
+        site._depth_cache = depth_of(site.pk)
+        site.child_count = len(children_of.get(site.pk, []))
+        own_device = getattr(site, "device_count", 0) or 0
+        own_online = getattr(site, "online_count", 0) or 0
+        own_alerts = getattr(site, "open_alert_count", 0) or 0
+        if include_descendants:
+            members = [totals[pk] for pk in subtree(site.pk) if pk in totals]
+            site.total_device_count = sum(row["device_count"] for row in members)
+            site.total_online_count = sum(row["online_count"] for row in members)
+            site.total_open_alert_count = sum(row["open_alert_count"] for row in members)
+        else:
+            site.total_device_count = own_device
+            site.total_online_count = own_online
+            site.total_open_alert_count = own_alerts
+
+
+def _declaration_out(declaration: DeviceDeclaration) -> dict:
+    return {
+        "device_id": declaration.device_id,
+        "schema_version": declaration.schema_version,
+        "state": declaration.state,
+        "received_at": declaration.received_at,
+        "reviewed_at": declaration.reviewed_at,
+        "payload": declaration.payload,
+        "diff_summary": declaration.diff_summary,
+        "has_differences": declaration.has_differences,
+    }
+
+
+def _energy_is_empty(totals: dict) -> bool:
+    return not any(
+        totals.get(key)
+        for key in (
+            "grid_import_kwh",
+            "grid_export_kwh",
+            "pv_kwh",
+            "load_kwh",
+            "battery_charge_kwh",
+            "battery_discharge_kwh",
+        )
+    )
 
 
 def _get_device(ctx: AuthContext, device_pk: uuid.UUID) -> Device:

@@ -38,6 +38,7 @@ import {
   Select,
   StatTile,
   TBody,
+  Term,
   THead,
   Table,
   Td,
@@ -103,7 +104,7 @@ export function StoragePage() {
   return (
     <>
       <PageHeader
-        title={t('storage.title')}
+        title={<Term id="btm">{t('storage.title')}</Term>}
         description={t('storage.subtitle')}
         actions={
           <>
@@ -177,19 +178,19 @@ export function StoragePage() {
                 <DetailRow label={t('storage.gridExport')}>
                   {formatMeasurement(overview.data.today.grid_export_kwh, 'kWh', 1)}
                 </DetailRow>
-                <DetailRow label={t('storage.generation')}>
+                <DetailRow label={<Term id="pv">{t('storage.generation')}</Term>}>
                   {formatMeasurement(overview.data.today.pv_kwh, 'kWh', 1)}
                 </DetailRow>
                 <DetailRow label={t('storage.consumption')}>
                   {formatMeasurement(overview.data.today.load_kwh, 'kWh', 1)}
                 </DetailRow>
-                <DetailRow label={t('storage.batteryDischarge')}>
+                <DetailRow label={<Term id="dod">{t('storage.batteryDischarge')}</Term>}>
                   {formatMeasurement(overview.data.today.battery_discharge_kwh, 'kWh', 1)}
                 </DetailRow>
-                <DetailRow label={t('storage.peakDemand')}>
+                <DetailRow label={<Term id="peakDemand">{t('storage.peakDemand')}</Term>}>
                   {formatMeasurement(overview.data.today.peak_import_kw, 'kW', 1)}
                 </DetailRow>
-                <DetailRow label={t('storage.cost')}>
+                <DetailRow label={<Term id="tariff">{t('storage.cost')}</Term>}>
                   {formatCurrency(overview.data.today.energy_cost, overview.data.today.currency)}
                 </DetailRow>
                 <DetailRow label={t('storage.savings')}>
@@ -210,14 +211,14 @@ export function StoragePage() {
 
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
-          label={t('storage.selfConsumption')}
+          label={<Term id="selfConsumption">{t('storage.selfConsumption')}</Term>}
           value={formatPercent(summary.data?.self_consumption_ratio)}
           hint={t('storage.selfConsumptionHint')}
           accent="warning"
           icon={<Sun className="size-4" />}
         />
         <StatTile
-          label={t('storage.selfSufficiency')}
+          label={<Term id="selfSufficiency">{t('storage.selfSufficiency')}</Term>}
           value={formatPercent(summary.data?.self_sufficiency_ratio)}
           hint={t('storage.selfSufficiencyHint')}
           accent="brand"
@@ -240,7 +241,7 @@ export function StoragePage() {
 
       <Card className="mt-5">
         <CardHeader
-          title={t('storage.intervalChart')}
+          title={<Term id="kwVsKwh">{t('storage.intervalChart')}</Term>}
           description={
             summary.data
               ? `${formatMeasurement(summary.data.load_kwh, 'kWh', 1)} · ${t('storage.consumption')}`
@@ -285,7 +286,7 @@ export function StoragePage() {
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader title={t('storage.socChart')} />
+          <CardHeader title={<Term id="soc">{t('storage.socChart')}</Term>} />
           <CardBody>
             <SocChart
               intervals={intervals.data ?? []}
@@ -310,7 +311,7 @@ export function StoragePage() {
 
       <Card className="mt-5">
         <CardHeader
-          title={t('storage.assets')}
+          title={<Term id="bess">{t('storage.assets')}</Term>}
           description={
             plan.data
               ? `${t('storage.strategy')}: ${t(`storage.strategies.${plan.data.strategy}`)}`
@@ -322,7 +323,9 @@ export function StoragePage() {
             <Th>{t('storage.role')}</Th>
             <Th>{t('storage.boundDevice')}</Th>
             <Th>{t('storage.powerMetric')}</Th>
-            <Th>{t('storage.socMetric')}</Th>
+            <Th>
+              <Term id="soc">{t('storage.socMetric')}</Term>
+            </Th>
             <Th align="right">{t('storage.scale')}</Th>
           </THead>
           <TBody>
@@ -462,7 +465,7 @@ function PlanModal({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Select
-          label={t('storage.strategy')}
+          label={<Term id="ems">{t('storage.strategy')}</Term>}
           value={form.strategy}
           onChange={(event) =>
             setForm({ ...form, strategy: event.target.value as DispatchStrategy })
@@ -473,7 +476,7 @@ function PlanModal({
           }))}
         />
         <Select
-          label="Tariff"
+          label={<Term id="tariff" />}
           value={form.tariff_id}
           placeholder={t('common.none')}
           onChange={(event) => setForm({ ...form, tariff_id: event.target.value })}
@@ -483,28 +486,28 @@ function PlanModal({
           }))}
         />
         <TextInput
-          label={t('storage.contractCapacity')}
+          label={<Term id="contractCapacity">{t('storage.contractCapacity')}</Term>}
           type="number"
           suffix="kW"
           value={String(form.contract_capacity_kw)}
           onChange={(event) => setForm({ ...form, contract_capacity_kw: event.target.value })}
         />
         <TextInput
-          label={t('storage.peakDemand')}
+          label={<Term id="peakDemand">{t('storage.peakDemand')}</Term>}
           type="number"
           suffix="kW"
           value={String(form.peak_shaving_target_kw)}
           onChange={(event) => setForm({ ...form, peak_shaving_target_kw: event.target.value })}
         />
         <TextInput
-          label={t('storage.usableCapacity')}
+          label={<Term id="usableCapacity">{t('storage.usableCapacity')}</Term>}
           type="number"
           suffix="kWh"
           value={String(form.usable_capacity_kwh)}
           onChange={(event) => setForm({ ...form, usable_capacity_kwh: event.target.value })}
         />
         <TextInput
-          label={t('storage.roundTrip')}
+          label={<Term id="roundTrip">{t('storage.roundTrip')}</Term>}
           type="number"
           step="0.01"
           min={0.1}
@@ -513,7 +516,7 @@ function PlanModal({
           onChange={(event) => setForm({ ...form, round_trip_efficiency: Number(event.target.value) })}
         />
         <TextInput
-          label="Max charge"
+          label={<Term id="pcs">Max charge</Term>}
           type="number"
           suffix="kW"
           value={String(form.max_charge_kw)}
@@ -527,7 +530,7 @@ function PlanModal({
           onChange={(event) => setForm({ ...form, max_discharge_kw: event.target.value })}
         />
         <TextInput
-          label="Min SOC"
+          label={<Term id="soc">Min SOC</Term>}
           type="number"
           suffix="%"
           min={0}
@@ -536,7 +539,7 @@ function PlanModal({
           onChange={(event) => setForm({ ...form, min_soc_percent: Number(event.target.value) })}
         />
         <TextInput
-          label="Max SOC"
+          label={<Term id="soc">Max SOC</Term>}
           type="number"
           suffix="%"
           min={0}

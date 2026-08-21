@@ -3,7 +3,7 @@ import { BatteryCharging, Factory, Home, Sun } from 'lucide-react'
 
 import { formatMeasurement, formatPercent } from '@/lib/format'
 import type { PowerFlow } from '@/lib/types'
-import { MeterBar } from '@/components/ui'
+import { MeterBar, Term } from '@/components/ui'
 import { useChartColors } from './chartTheme'
 
 /**
@@ -186,7 +186,9 @@ export function PowerFlowDiagram({ flow }: { flow: PowerFlow }) {
         {flow.battery_soh_percent !== null ? (
           <div>
             <div className="mb-1.5 flex items-baseline justify-between gap-2">
-              <span className="text-xs font-medium text-muted">{t('storage.soh')}</span>
+              <span className="text-xs font-medium text-muted">
+                <Term id="soh">{t('storage.soh')}</Term>
+              </span>
               <span className="text-sm font-semibold text-content tnum">
                 {formatPercent(flow.battery_soh_percent, { alreadyPercent: true, decimals: 1 })}
               </span>

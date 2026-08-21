@@ -22,12 +22,13 @@ import {
   Modal,
   PageHeader,
   Select,
-  TBody,
-  THead,
   Table,
+  TBody,
   Td,
+  Term,
   TextInput,
   Th,
+  THead,
   Tr,
 } from '@/components/ui'
 
@@ -58,7 +59,7 @@ export function RecordingPage() {
 
       <p className="mb-4 flex items-start gap-2 rounded-lg bg-info-soft px-3 py-2 text-sm text-info">
         <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-        {t('policies.alertNote')}
+        <Term id="worker">{t('policies.alertNote')}</Term>
       </p>
 
       {policies.isPending ? (
@@ -130,7 +131,9 @@ export function RecordingPage() {
                     <Th>{t('policies.metric')}</Th>
                     <Th align="right">{t('policies.minInterval')}</Th>
                     <Th align="right">{t('policies.maxInterval')}</Th>
-                    <Th align="right">{t('policies.deadbandAbsolute')}</Th>
+                    <Th align="right">
+                      <Term id="deadband">{t('policies.deadbandAbsolute')}</Term>
+                    </Th>
                     <Th align="right">{t('policies.deadbandPercent')}</Th>
                     <Th align="right">{t('policies.retention')}</Th>
                   </THead>
@@ -449,7 +452,7 @@ function PolicyModal({
                   }
                 />
                 <TextInput
-                  label={t('policies.deadbandAbsolute')}
+                  label={<Term id="deadband">{t('policies.deadbandAbsolute')}</Term>}
                   type="number"
                   step="any"
                   min={0}

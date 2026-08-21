@@ -10,7 +10,12 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.devices.models import DeviceCategory, DeviceType
+from apps.devices.models import (
+    CAPABILITY_FIELDS,
+    CATEGORY_CAPABILITIES,
+    DeviceCategory,
+    DeviceType,
+)
 from apps.telemetry.models import Aggregation, Metric, MetricKind, ValueType
 
 # key, display, unit, value_type, kind, aggregation, min, max, category, zh-hant, zh-hans
@@ -57,13 +62,20 @@ BUILTIN_METRICS: list[tuple] = [
 ]
 
 
-def _command(name: str, label_en: str, label_tw: str, label_cn: str, params: dict, min_role="operator", confirm=False) -> dict:
+def _command(name: str, label_en: str, label_tw: str, label_cn: str, params: dict, min_role="operator", confirm=False, kind="dispatch") -> dict:
+    """One entry in a blueprint's command catalogue.
+
+    ``kind`` separates energy dispatch from housekeeping. ``is_dispatchable``
+    blocks the former, so a meter can still be told to change its reporting
+    interval while refusing anything that moves power.
+    """
     return {
         "name": name,
         "label": {"en": label_en, "zh-hant": label_tw, "zh-hans": label_cn},
         "params": params,
         "min_role": min_role,
         "confirm": confirm,
+        "kind": kind,
     }
 
 
@@ -172,6 +184,7 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
                     "properties": {"interval_s": _NUMBER(1, 3600, "s")},
                 },
                 min_role="admin",
+                kind="config",
             ),
         ],
     },
@@ -245,6 +258,7 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
                     "type": "object",
                     "properties": {"epoch_ms": {"type": "integer"}},
                 },
+                kind="config",
             ),
         ],
     },
@@ -333,6 +347,15 @@ class Command(BaseCommand):
         created_types = updated_types = 0
         for blueprint in BUILTIN_DEVICE_TYPES:
             key = blueprint.pop("key")
+            # Capabilities follow from the category, so a new built-in
+            # blueprint gets sensible defaults without anyone hand-filling four
+            # booleans. Re-running with --update-existing is how already
+            # installed deployments pick them up - no data migration needed.
+            defaults = CATEGORY_CAPABILITIES.get(
+                blueprint.get("category"), CATEGORY_CAPABILITIES[DeviceCategory.OTHER]
+            )
+            for field, value in zip(CAPABILITY_FIELDS, defaults):
+                blueprint.setdefault(field, value)
             if update:
                 _, created = DeviceType.objects.update_or_create(
                     organization=None, key=key, defaults=blueprint

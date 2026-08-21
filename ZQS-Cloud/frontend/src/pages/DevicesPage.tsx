@@ -13,6 +13,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   ConnectionBadge,
   EmptyRow,
   ErrorState,
@@ -20,16 +21,20 @@ import {
   PageHeader,
   Pagination,
   Select,
-  TBody,
-  THead,
   Table,
+  TBody,
   Td,
+  Term,
   TextInput,
   Th,
+  THead,
   Tr,
 } from '@/components/ui'
 
 const PAGE_SIZE = 25
+
+/** Sentinel for the site <select>: devices belonging to no site at all. */
+const UNASSIGNED = '__unassigned__'
 
 export function DevicesPage() {
   const { t } = useTranslation()
@@ -43,12 +48,17 @@ export function DevicesPage() {
 
   const status = searchParams.get('status') ?? ''
   const siteId = searchParams.get('site') ?? ''
+  // Default on: picking a plant almost always means "and everything under it".
+  const includeDescendants = searchParams.get('descendants') !== '0'
+  const unassignedOnly = searchParams.get('unassigned') === '1'
 
   const sites = useSites()
   const devices = useDevices({
     q: searchParams.get('q') ?? undefined,
     status: status || undefined,
-    site_id: siteId || undefined,
+    site_id: unassignedOnly ? undefined : siteId || undefined,
+    include_descendants: includeDescendants && Boolean(siteId) ? true : undefined,
+    unassigned_only: unassignedOnly ? true : undefined,
     limit: PAGE_SIZE,
     offset,
   })
@@ -108,15 +118,38 @@ export function DevicesPage() {
 
           <Select
             label={t('devices.site')}
-            value={siteId}
+            value={unassignedOnly ? UNASSIGNED : siteId}
             placeholder={t('common.all')}
-            onChange={(event) => setParam('site', event.target.value)}
-            options={(sites.data?.items ?? []).map((site) => ({
-              value: site.id,
-              label: site.name,
-            }))}
+            onChange={(event) => {
+              const value = event.target.value
+              const next = new URLSearchParams(searchParams)
+              next.delete('site')
+              next.delete('unassigned')
+              if (value === UNASSIGNED) next.set('unassigned', '1')
+              else if (value) next.set('site', value)
+              setSearchParams(next, { replace: true })
+              setOffset(0)
+            }}
+            options={[
+              ...(sites.data?.items ?? []).map((site) => ({
+                value: site.id,
+                // Indent so the tree shape survives a flat <select>.
+                label: `${'  '.repeat(site.depth)}${site.name}`,
+              })),
+              { value: UNASSIGNED, label: t('sites.unassigned') },
+            ]}
             className="w-44"
           />
+
+          {siteId && !unassignedOnly ? (
+            <div className="pb-1.5">
+              <Checkbox
+                label={t('devices.includeDescendants')}
+                checked={includeDescendants}
+                onChange={(value) => setParam('descendants', value ? '' : '0')}
+              />
+            </div>
+          ) : null}
         </div>
 
         {devices.error ? (
@@ -129,7 +162,9 @@ export function DevicesPage() {
                 <Th>{t('devices.registeredName')}</Th>
                 <Th>{t('devices.deviceId')}</Th>
                 <Th>{t('devices.site')}</Th>
-                <Th>{t('devices.blueprint')}</Th>
+                <Th>
+                  <Term id="blueprint">{t('devices.blueprint')}</Term>
+                </Th>
                 <Th align="right">{t('devices.lastSeen')}</Th>
               </THead>
               <TBody>
@@ -146,6 +181,23 @@ export function DevicesPage() {
                         {!device.is_enabled ? (
                           <Badge tone="neutral" className="ml-2">
                             {t('common.disabled')}
+                          </Badge>
+                        ) : null}
+                        {device.commissioning_state !== 'active' ? (
+                          <Badge
+                            tone={
+                              device.commissioning_state === 'retired'
+                                ? 'neutral'
+                                : 'warning'
+                            }
+                            className="ml-2"
+                          >
+                            {t(`devices.lifecycleStates.${device.commissioning_state}`)}
+                          </Badge>
+                        ) : null}
+                        {device.identity_mismatch ? (
+                          <Badge tone="critical" className="ml-2">
+                            {t('devices.identityMismatch')}
                           </Badge>
                         ) : null}
                       </Td>
@@ -309,10 +361,13 @@ function RegisterDeviceModal({ open, onClose }: { open: boolean; onClose: () => 
             value={form.site_id}
             placeholder={t('common.none')}
             onChange={(event) => setForm({ ...form, site_id: event.target.value })}
-            options={(sites.data?.items ?? []).map((site) => ({ value: site.id, label: site.name }))}
+            options={(sites.data?.items ?? []).map((site) => ({
+              value: site.id,
+              label: `${'  '.repeat(site.depth)}${site.name}`,
+            }))}
           />
           <Select
-            label={t('devices.blueprint')}
+            label={<Term id="blueprint">{t('devices.blueprint')}</Term>}
             value={form.device_type_id}
             placeholder={t('common.none')}
             onChange={(event) => setForm({ ...form, device_type_id: event.target.value })}

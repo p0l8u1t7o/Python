@@ -11,6 +11,7 @@ from apps.devices.models import (
     ConnectionStatus,
     DeviceCategory,
     EventLevel,
+    SiteKind,
 )
 
 
@@ -20,6 +21,9 @@ from apps.devices.models import (
 class SiteIn(Schema):
     name: str = Field(max_length=200)
     code: str = Field(max_length=64, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    #: Parent in the site tree; null makes this a top-level site.
+    parent_id: uuid.UUID | None = None
+    kind: SiteKind = SiteKind.SITE
     description: str = ""
     address: str = Field(default="", max_length=400)
     city: str = Field(default="", max_length=120)
@@ -36,6 +40,10 @@ class SiteIn(Schema):
 
 class SiteUpdateIn(Schema):
     name: str | None = Field(default=None, max_length=200)
+    #: Send ``null`` explicitly to detach a site and make it top-level; the
+    #: endpoint distinguishes "field omitted" from "field set to null".
+    parent_id: uuid.UUID | None = None
+    kind: SiteKind | None = None
     description: str | None = None
     address: str | None = Field(default=None, max_length=400)
     city: str | None = Field(default=None, max_length=120)
@@ -55,6 +63,11 @@ class SiteOut(Schema):
     id: uuid.UUID
     name: str
     code: str
+    parent_id: uuid.UUID | None = None
+    kind: SiteKind = SiteKind.SITE
+    #: 0 for a top-level site, 1 for its children, and so on.
+    depth: int = 0
+    child_count: int = 0
     description: str
     address: str
     city: str
@@ -72,9 +85,51 @@ class SiteOut(Schema):
 
 
 class SiteSummaryOut(SiteOut):
+    #: Devices assigned to this site itself.
     device_count: int = 0
     online_count: int = 0
     open_alert_count: int = 0
+    #: The same counts including every descendant site. Identical to the plain
+    #: counts unless the request asked for ``include_descendants``, so an older
+    #: client that ignores these fields keeps seeing what it always saw.
+    total_device_count: int = 0
+    total_online_count: int = 0
+    total_open_alert_count: int = 0
+
+
+class SiteDeviceRollupOut(Schema):
+    total: int = 0
+    online: int = 0
+    offline: int = 0
+    unknown: int = 0
+    disabled: int = 0
+    #: Enabled devices that have not reported inside the offline grace window.
+    stale: int = 0
+
+
+class SiteAlertRollupOut(Schema):
+    open: int = 0
+    critical: int = 0
+    major: int = 0
+    acknowledged: int = 0
+
+
+class SiteRollupOut(Schema):
+    """Everything one node of the site tree adds up to."""
+
+    site_id: uuid.UUID
+    site_name: str
+    kind: SiteKind = SiteKind.SITE
+    depth: int = 0
+    include_descendants: bool = False
+    #: Sites folded into these figures, this one first.
+    site_ids: list[uuid.UUID] = Field(default_factory=list)
+    site_count: int = 1
+    child_count: int = 0
+    devices: SiteDeviceRollupOut
+    alerts: SiteAlertRollupOut
+    #: Null when no site in the subtree has energy intervals in the window.
+    energy: dict[str, Any] | None = None
 
 
 # --------------------------------------------------------------------------
@@ -145,6 +200,19 @@ class DeviceUpdateIn(Schema):
     is_enabled: bool | None = None
 
 
+class DeviceCapabilitiesOut(Schema):
+    """Effective capabilities - blueprint defaults with device overrides.
+
+    These are what the command gate consults. A device's own declaration never
+    appears here; see ``GET /devices/{id}/declaration`` for that.
+    """
+
+    can_charge: bool = True
+    can_discharge: bool = True
+    can_export: bool = True
+    is_dispatchable: bool = True
+
+
 class DeviceOut(Schema):
     id: uuid.UUID
     device_id: str
@@ -172,7 +240,38 @@ class DeviceOut(Schema):
     site_name: str | None = None
     device_type_id: uuid.UUID | None = None
     device_type_name: str | None = None
+    device_category: str = ""
     recording_policy_id: uuid.UUID | None = None
+
+    #: What the platform accepted, not what the device claims.
+    capabilities: DeviceCapabilitiesOut = Field(default_factory=DeviceCapabilitiesOut)
+    capability_source: str = "blueprint"
+    #: pending | active | suspended | retired | rejected
+    commissioning_state: str = "active"
+    retired_at: dt.datetime | None = None
+    replaced_by_id: uuid.UUID | None = None
+    #: The device is declaring a different category than it is registered as,
+    #: so dispatch commands are frozen until a replacement is registered.
+    identity_mismatch: bool = False
+
+    @staticmethod
+    def resolve_identity_mismatch(obj) -> bool:
+        declaration = getattr(obj, "declaration", None)
+        return bool(declaration and declaration.identity_mismatch)
+    #: True when there is no blueprint, so no capability check is possible.
+    capabilities_unchecked: bool = False
+
+    @staticmethod
+    def resolve_capabilities(obj) -> dict:
+        return obj.effective_capabilities()
+
+    @staticmethod
+    def resolve_capabilities_unchecked(obj) -> bool:
+        return obj.device_type_id is None
+
+    @staticmethod
+    def resolve_device_category(obj) -> str:
+        return obj.device_type.category if obj.device_type_id else ""
 
     @staticmethod
     def resolve_site_name(obj) -> str | None:
@@ -224,6 +323,62 @@ class DeviceFilters(FilterSchema):
     site_id: uuid.UUID | None = None
     device_type_id: uuid.UUID | None = None
     is_enabled: bool | None = None
+
+
+class DeviceDeclarationOut(Schema):
+    """A device's own claims about itself. Informational only.
+
+    Nothing here is consulted when deciding whether a command may run; see
+    ``capability_source`` on the device for what was actually accepted.
+    """
+
+    device_id: uuid.UUID
+    schema_version: int
+    state: str
+    received_at: dt.datetime
+    reviewed_at: dt.datetime | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    diff_summary: dict[str, Any] = Field(default_factory=dict)
+    has_differences: bool = False
+
+
+class DeclarationReviewIn(Schema):
+    accept: bool
+    note: str = Field(default="", max_length=500)
+
+
+class LifecycleIn(Schema):
+    state: str = Field(
+        description="pending | active | suspended | retired | rejected"
+    )
+    reason: str = Field(default="", max_length=500)
+
+
+class DeviceReplaceIn(Schema):
+    """Register a successor for a device being taken out of service.
+
+    ``device_id`` must be new: it is the MQTT topic segment, it is unique
+    platform-wide, and a retired device keeps its own so its history stays
+    attributable to it.
+    """
+
+    device_id: str = Field(
+        max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$"
+    )
+    name: str = Field(default="", max_length=200)
+    device_type_id: uuid.UUID | None = None
+    serial_number: str = Field(default="", max_length=120)
+    reason: str = Field(default="", max_length=500)
+    issue_credential: bool = True
+
+
+class DeviceReplacementOut(Schema):
+    retired: DeviceOut
+    replacement: DeviceOut
+    moved_asset_count: int = 0
+    moved_alert_rule_count: int = 0
+    #: Present only when credentials were issued; the password is shown once.
+    credential: "DeviceCredentialOut | None" = None
 
 
 class DeviceCredentialOut(Schema):

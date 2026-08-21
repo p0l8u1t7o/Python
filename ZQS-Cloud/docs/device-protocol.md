@@ -1,87 +1,84 @@
-# ZQS Cloud device protocol (v1)
+# ZQS Cloud 裝置通訊協定 (v1)
 
-Everything a device implementation - LabVIEW or otherwise - needs in order to
-talk to the platform. The server validates every field described here and
-rejects anything that does not match, so treat this document as the contract.
+裝置端實作（LabVIEW 或其他）與平台通訊所需的一切。伺服器會驗證本文描述的
+每一個欄位，不符合的一律拒絕，因此請把本文件視為契約。
 
 ---
 
-## 1. Connection
+## 1. 連線
 
-| Item | Value |
+| 項目 | 值 |
 | --- | --- |
-| Protocol | MQTT 3.1.1 or 5.0 |
+| Protocol | MQTT 3.1.1 或 5.0 |
 | Broker | EMQX |
-| Port | `1883` plain, `8883` TLS (use TLS in production) |
-| Client ID | `zqs:<device_id>` — the ACL webhook can pin this |
-| Username | issued at registration, e.g. `dev-demo-ZQS-BESS-0001` |
-| Password | issued at registration, **shown once** |
-| Keepalive | 45 s recommended |
-| Clean session | `false`, so QoS 1 downlink survives a short outage |
-| QoS | 1 for telemetry, status, events, alarms and commands |
+| Port | `1883` 未加密，`8883` TLS（production 請使用 TLS） |
+| Client ID | `zqs:<device_id>` — ACL webhook 可以綁定此值 |
+| Username | 註冊時發放，例如 `dev-demo-ZQS-BESS-0001` |
+| Password | 註冊時發放，**只顯示一次** |
+| Keepalive | 建議 45 s |
+| Clean session | `false`，讓 QoS 1 的 downlink 能撐過短暫斷線 |
+| QoS | telemetry、status、event、alarm 與命令一律為 1 |
 
-`device_id` is **globally unique** across the platform, because the topic
-carries no tenant segment. Use the serial number or MAC address. Allowed
-characters: `A-Z a-z 0-9 . _ -`, 3–64 characters, no MQTT wildcards.
+`device_id` 在整個平台**全域唯一**，因為 topic 中不含租戶區段。請使用序號或
+MAC address。允許字元：`A-Z a-z 0-9 . _ -`，長度 3–64 字元，不可含 MQTT
+萬用字元。
 
-### Last will and testament (required)
+### Last will and testament（必要）
 
-Register the LWT **at connect time** so an abrupt power loss is visible:
+請在**連線時**就註冊 LWT，突然斷電才看得出來：
 
 - Topic: `energy/devices/{device_id}/status`
 - Retain: `true`
 - QoS: `1`
 - Payload: `{"status":"offline","reason":"lwt"}`
 
-Publish the matching `{"status":"online", ...}` immediately after connecting.
+連線成功後立即發布對應的 `{"status":"online", ...}`。
 
 ---
 
 ## 2. Topics
 
-Root is configurable (`MQTT_TOPIC_ROOT`) and defaults to `energy/devices`.
+Root 可透過 `MQTT_TOPIC_ROOT` 設定，預設為 `energy/devices`。
 
-| Direction | Topic | Purpose |
+| 方向 | Topic | 用途 |
 | --- | --- | --- |
-| uplink | `energy/devices/{device_id}/telemetry` | measurements |
-| uplink | `energy/devices/{device_id}/status` | online/offline, firmware, location |
-| uplink | `energy/devices/{device_id}/event` | operation log entries |
-| uplink | `energy/devices/{device_id}/alarm` | faults the device detected |
-| uplink | `energy/devices/{device_id}/control/ack` | command acknowledgement |
-| downlink | `energy/devices/{device_id}/control` | commands from the server |
+| uplink | `energy/devices/{device_id}/telemetry` | 量測值 |
+| uplink | `energy/devices/{device_id}/status` | 上線／離線、firmware、位置 |
+| uplink | `energy/devices/{device_id}/event` | 操作記錄項目 |
+| uplink | `energy/devices/{device_id}/alarm` | 裝置偵測到的故障 |
+| uplink | `energy/devices/{device_id}/control/ack` | 命令回覆 |
+| downlink | `energy/devices/{device_id}/control` | 伺服器下達的命令 |
 
-A device may only publish to its own subtree and subscribe to its own
-`control` topic; the broker enforces this through the ACL webhook.
+裝置只能發布到自己的 topic 子樹，也只能訂閱自己的 `control` topic；broker
+透過 ACL webhook 強制執行這項限制。
 
 ---
 
-## 3. Payloads
+## 3. Payload
 
-All payloads are UTF-8 JSON objects, at most 256 KB. Unknown extra fields are
-accepted and ignored, so adding fields later will not break an older server.
+所有 payload 都是 UTF-8 JSON 物件，最大 256 KB。未知的額外欄位會被接受並
+忽略，因此日後新增欄位不會讓舊版伺服器出錯。
 
-### 3.1 Timestamps
+### 3.1 時間戳記
 
-`ts` accepts any of:
+`ts` 接受下列任一形式：
 
-- epoch **seconds**, **milliseconds**, **microseconds** or **nanoseconds**
-  (the magnitude is used to tell them apart — milliseconds is recommended);
-- ISO-8601 text, e.g. `2026-06-01T09:15:00Z`; a string with no offset is read
-  as UTC.
+- epoch **秒**、**毫秒**、**微秒**或**奈秒**（以數值大小判斷是哪一種——建議
+  使用毫秒）；
+- ISO-8601 文字，例如 `2026-06-01T09:15:00Z`；未帶時區位移的字串視為 UTC。
 
-Guard rails: a timestamp more than **5 minutes in the future** or more than
-**7 days in the past** is rejected. Omitting `ts` is allowed on `status`,
-`event`, `alarm` and `control/ack` — the server then uses its receive time.
-`telemetry` **must** carry `ts`.
+防護界線：超過**未來 5 分鐘**或早於**過去 7 天**的時間戳記會被拒絕。
+`status`、`event`、`alarm` 與 `control/ack` 可以省略 `ts`，此時伺服器改用自己
+的接收時間。`telemetry` **必須**帶 `ts`。
 
-If the device has no reliable clock, use the `sync_time` command or omit `ts`
-on non-telemetry messages rather than sending a wrong one.
+若裝置沒有可靠的時鐘，請使用 `sync_time` 命令，或在非 telemetry 的訊息上省略
+`ts`，不要送出錯誤的值。
 
-### 3.2 Telemetry
+### 3.2 Telemetry（遙測）
 
-Two interchangeable shapes. Use whichever is easier to build in LabVIEW.
+兩種可互換的格式，選在 LabVIEW 裡比較好組出來的那一種。
 
-**Dictionary form** — one timestamp for all metrics:
+**Dictionary 形式** — 所有 metric 共用一個時間戳記：
 
 ```json
 {
@@ -96,8 +93,7 @@ Two interchangeable shapes. Use whichever is easier to build in LabVIEW.
 }
 ```
 
-**List form** — per-reading timestamps, useful for replaying a buffer after a
-network outage:
+**List 形式** — 每筆讀值各自帶時間戳記，適合在斷網後回補緩衝區的資料：
 
 ```json
 {
@@ -109,27 +105,27 @@ network outage:
 }
 ```
 
-| Field | Type | Required | Notes |
+| 欄位 | 型別 | 必要 | 說明 |
 | --- | --- | --- | --- |
-| `ts` | number/string | yes | see 3.1 |
-| `seq` | integer | no | monotonic counter; helps diagnose gaps |
-| `metrics` | object | one of | `{metric_key: value}` |
-| `readings` | array | one of | `[{metric, value, ts?, quality?}]` |
-| `meta` | object | no | free-form context |
+| `ts` | number/string | 是 | 見 3.1 |
+| `seq` | integer | 否 | 單調遞增計數器，有助於診斷資料缺口 |
+| `metrics` | object | 二擇一 | `{metric_key: value}` |
+| `readings` | array | 二擇一 | `[{metric, value, ts?, quality?}]` |
+| `meta` | object | 否 | 自由格式的附帶資訊 |
 
-Rules:
+規則：
 
-- metric keys are lowercase `snake_case`, ≤ 64 characters;
-- values may be number, boolean (stored as 1/0), string or `null`;
-- `NaN` and `Infinity` are rejected — send `null` for "no reading";
-- at most 512 readings per message;
-- re-sending an identical `(device, metric, ts)` is safe: the server keeps one
-  row, so retrying after an uncertain publish cannot double-count.
+- metric key 為小寫 `snake_case`，≤ 64 字元；
+- 值可以是數字、boolean（存成 1/0）、字串或 `null`；
+- `NaN` 與 `Infinity` 會被拒絕——「沒有讀值」請送 `null`；
+- 每則訊息最多 512 筆讀值；
+- 重送相同的 `(device, metric, ts)` 是安全的：伺服器只會保留一列，因此在不
+  確定是否送達時重試，不會重複計算。
 
-The metric catalogue (`GET /api/metrics`) lists the built-in keys — see
-§7 for the ones that matter for behind-the-meter storage.
+metric catalogue（`GET /api/metrics`）列出所有內建的 key——與表後儲能相關的
+部分見 §7。
 
-### 3.3 Status
+### 3.3 Status（狀態）
 
 ```json
 {
@@ -148,15 +144,14 @@ The metric catalogue (`GET /api/metrics`) lists the built-in keys — see
 }
 ```
 
-`status` is `online` or `offline` and is the only required field. When
-`location` is supplied it overrides the site's coordinates on the map, and the
-server records where the position came from.
+`status` 為 `online` 或 `offline`，也是唯一的必填欄位。提供 `location` 時會
+覆蓋地圖上場域本身的座標，伺服器並會記錄這個位置的來源。
 
-Publish `status` **retained** so a reconnecting console sees the current state.
-The server ignores a retained status message older than the last transition it
-already recorded, so a replayed LWT cannot knock a live device offline.
+發布 `status` 時請設為 **retained**，讓重新連線的 console 能看到當前狀態。
+伺服器會忽略比已記錄的最後一次狀態轉換更舊的 retained 訊息，因此被重播的
+LWT 不會把運作中的裝置誤判為離線。
 
-### 3.4 Event (operation log)
+### 3.4 Event（操作記錄）
 
 ```json
 {
@@ -168,9 +163,9 @@ already recorded, so a replayed LWT cannot knock a live device offline.
 }
 ```
 
-`level` ∈ `debug | info | notice | warning | error | critical` (default `info`).
+`level` ∈ `debug | info | notice | warning | error | critical`（預設 `info`）。
 
-### 3.5 Alarm
+### 3.5 Alarm（警報）
 
 ```json
 {
@@ -183,11 +178,11 @@ already recorded, so a replayed LWT cannot knock a live device offline.
 }
 ```
 
-`severity` ∈ `info | warning | major | critical`. Send the same `code` with
-`"active": false` to clear it — the server then resolves the open alert. While
-an alarm stays active, repeats only bump its occurrence counter.
+`severity` ∈ `info | warning | major | critical`。以相同的 `code` 搭配
+`"active": false` 送出即可解除——伺服器會把對應的未結案 alert 標記為已解決。
+警報持續有效期間，重複送出只會累加它的發生次數。
 
-### 3.6 Command acknowledgement
+### 3.6 命令回覆（acknowledgement）
 
 ```json
 {
@@ -199,16 +194,61 @@ an alarm stays active, repeats only bump its occurrence counter.
 }
 ```
 
-`status` ∈ `accepted | rejected | succeeded | failed`. Send `accepted` on
-receipt if execution takes a while, then `succeeded` or `failed` when done. A
-late `accepted` after a terminal status is ignored, so ordering glitches are
-harmless.
+`status` ∈ `accepted | rejected | succeeded | failed`。若執行需要一段時間，
+收到命令時先送 `accepted`，完成後再送 `succeeded` 或 `failed`。在終態之後才
+抵達的 `accepted` 會被忽略，因此順序錯亂不會造成問題。
+
+### 3.7 上線宣告（attributes，可選）
+
+在 birth message（`{"status":"online"}` 那一則）的 payload 裡可以額外帶一個
+`attributes` 物件，宣告這台設備是什麼、能做什麼。一般的狀態變更不必重複。
+
+```json
+{
+  "status": "online",
+  "ts": 1780000000000,
+  "firmware": "2.1.4",
+  "attributes": {
+    "schema_version": 1,
+    "category": "pcs",
+    "manufacturer": "Acme Power",
+    "model": "PCS-50K",
+    "serial_number": "SN-2026-000123",
+    "capabilities": {
+      "can_charge": true,
+      "can_discharge": true,
+      "can_export": true,
+      "is_dispatchable": true
+    },
+    "ratings": {
+      "rated_power_kw": 50.0,
+      "rated_energy_kwh": 100.0,
+      "min_soc_percent": 10.0,
+      "max_soc_percent": 90.0
+    }
+  }
+}
+```
+
+| 欄位 | 型別 | 必要 | 說明 |
+| --- | --- | --- | --- |
+| `schema_version` | integer | 是 | 目前為 `1`。不認得的版本會被記錄並忽略 |
+| `category` | string | 否 | `battery`、`pcs`、`pv_inverter`、`meter`、`load`、`generator`、`ev_charger`、`controller`、`sensor`、`gateway`、`other` |
+| `manufacturer` / `model` / `serial_number` | string | 否 | 供操作者比對機器銘牌 |
+| `capabilities.*` | boolean | 否 | 四個能力旗標；缺省代表「未宣告」，不是 `false` |
+| `ratings.*` | number | 否 | 銘牌與韌體自己的限值 |
+
+**這些值不會自動生效。** 伺服器把宣告原封不動存起來、與目前設定比對差異，
+然後等待管理者在 console 上接受或拒絕。在被接受之前，它完全不影響這台設備被
+允許執行哪些命令——一台被入侵的機器無法靠改口宣告替自己解鎖充電權限。
+
+宣告內容與上次完全相同時不會重複產生待審核項目，所以每次重連都發是安全的。
 
 ---
 
-## 4. Commands (downlink)
+## 4. 命令（downlink）
 
-The device subscribes to `energy/devices/{device_id}/control` and receives:
+裝置訂閱 `energy/devices/{device_id}/control`，會收到：
 
 ```json
 {
@@ -221,71 +261,64 @@ The device subscribes to `energy/devices/{device_id}/control` and receives:
 }
 ```
 
-Expected behaviour:
+預期行為：
 
-1. Ignore a command whose `expires_at` has already passed — the server has
-   marked it expired and no longer expects a reply.
-2. Validate `params` locally as well; the server checked them against the
-   blueprint, but the device is the last line of defence.
-3. Publish an acknowledgement to `reply_to`, echoing `command_id` verbatim.
-4. Treat a repeated `command_id` as a duplicate and re-send the previous
-   acknowledgement rather than executing twice.
+1. 忽略 `expires_at` 已經過期的命令——伺服器已將它標記為過期，不再等待回覆。
+2. 在本地也要驗證 `params`；伺服器雖然已依 blueprint 檢查過，裝置仍是最後
+   一道防線。
+3. 把回覆發布到 `reply_to`，並原樣回傳 `command_id`。
+4. 遇到重複的 `command_id` 視為重送，直接重發前一次的回覆，不要執行兩次。
 
-The available commands come from the device's blueprint; the defaults shipped
-by `manage.py bootstrap` are:
+可用的命令來自裝置的 blueprint；`manage.py bootstrap` 內建的預設值如下：
 
-| Blueprint | Command | Parameters |
+| Blueprint | 命令 | 參數 |
 | --- | --- | --- |
 | `bess-pcs` | `set_power_limit` | `limit_w` 0…5 000 000 |
-| | `set_power_setpoint` | `power_w` ±5 000 000, `ramp_s` 0…3600 |
+| | `set_power_setpoint` | `power_w` ±5 000 000、`ramp_s` 0…3600 |
 | | `set_mode` | `mode` ∈ idle/charge/discharge/auto/standby |
-| | `set_soc_limits` | `min_soc`, `max_soc` 0…100 |
+| | `set_soc_limits` | `min_soc`、`max_soc` 0…100 |
 | | `emergency_stop` | — |
 | | `reboot` | — |
 | `smart-meter` | `set_report_interval` | `interval_s` 1…3600 |
 | `pv-inverter` | `set_export_limit` | `limit_w` 0…5 000 000 |
 | | `set_output_enabled` | `enabled` boolean |
-| `ems-controller` | `set_strategy` | `strategy`, `target_kw` |
+| `ems-controller` | `set_strategy` | `strategy`、`target_kw` |
 | | `sync_time` | `epoch_ms` |
 | `ev-charger` | `set_current_limit` | `limit_a` 0…500 |
 | | `stop_session` | — |
 
 ---
 
-## 5. Recommended device behaviour
+## 5. 建議的裝置行為
 
-**Publish cadence.** 1–10 s for power signals, 30–60 s for SOC and
-temperature, on-change for state strings. Do not throttle on the device to
-save bandwidth: the server's recording policy already decides what to store,
-and it needs the full stream to evaluate alerts correctly.
+**發布頻率。** 功率類訊號 1–10 s，SOC 與溫度 30–60 s，狀態字串則在變動時
+發布。不要為了省頻寬而在裝置端節流：伺服器的 recording policy 已經決定哪些
+要存，而它需要完整的資料流才能正確評估 alert。
 
-**Buffering.** Keep at least an hour of samples in local storage. On
-reconnect, replay them with the list form and their original timestamps; the
-uniqueness rule makes replay idempotent, so overlap is safe.
+**緩衝。** 本地至少保留一小時的樣本。重新連線後，以 list 形式搭配原始時間
+戳記回補；唯一性規則讓回補具備 idempotent 特性，因此資料重疊也不會有問題。
 
-**Backoff.** Reconnect with exponential backoff between 1 s and 60 s plus
-jitter. Do not reconnect in a tight loop after an authentication failure —
-credentials do not fix themselves, and the broker will rate-limit you.
+**Backoff。** 以 1 s 到 60 s 之間的 exponential backoff 加上 jitter 重連。
+認證失敗後不要密集重連——憑證不會自己修好，broker 也會對你限流。
 
-**Clock.** Sync via NTP where possible. Timestamps outside the skew window are
-dropped, and the loss is silent from the device's point of view.
+**時鐘。** 盡可能透過 NTP 校時。超出容許誤差範圍的時間戳記會被丟棄，而且從
+裝置的角度看不到任何錯誤。
 
 ---
 
-## 6. LabVIEW implementation notes
+## 6. LabVIEW 實作要點
 
-- Any MQTT toolkit works. Publishing requires only: connect with LWT,
-  publish string payloads at QoS 1, subscribe to one topic.
-- Build JSON with the built-in **Flatten To JSON**, or by string concatenation
-  for the fixed telemetry shape — the payload is small and regular.
-- Keep one persistent connection for the lifetime of the application; do not
-  connect and disconnect per publish.
-- Use a producer/consumer queue: acquisition loop → queue → publish loop. If
-  the publish loop is disconnected, spill the queue to disk and replay later.
-- Handle the control topic in its own event loop so a long-running command
-  never blocks telemetry publishing.
+- 任何 MQTT toolkit 都可以。發布端只需要：帶 LWT 連線、以 QoS 1 發布字串
+  payload、訂閱一個 topic。
+- 用內建的 **Flatten To JSON** 組 JSON，或者針對固定的 telemetry 格式直接以
+  字串串接——payload 小而規律。
+- 在應用程式的生命週期內維持單一持續連線，不要每次發布都重新連線再斷線。
+- 採用 producer/consumer queue：擷取迴圈 → queue → 發布迴圈。發布迴圈斷線
+  時，把 queue 寫到磁碟，稍後再回補。
+- 在獨立的事件迴圈處理 control topic，長時間執行的命令才不會阻塞 telemetry
+  的發布。
 
-Minimal telemetry payload as a format string:
+最精簡的 telemetry payload，以格式字串表示：
 
 ```
 {"ts":%d,"metrics":{"battery_soc":%.2f,"battery_power_w":%.1f}}
@@ -293,44 +326,43 @@ Minimal telemetry payload as a format string:
 
 ---
 
-## 7. Built-in metric keys for behind-the-meter storage
+## 7. 表後（behind-the-meter）儲能的內建 metric key
 
-| Key | Unit | Meaning |
+| Key | 單位 | 意義 |
 | --- | --- | --- |
-| `grid_power_w` | W | at the point of common coupling; **+ import, − export** |
+| `grid_power_w` | W | 併接點量測；**+ 為輸入，− 為輸出** |
 | `grid_voltage_v` | V | |
 | `grid_current_a` | A | |
 | `grid_frequency_hz` | Hz | |
-| `grid_import_energy_kwh` | kWh | cumulative counter |
-| `grid_export_energy_kwh` | kWh | cumulative counter |
-| `load_power_w` | W | site load, always ≥ 0 |
-| `pv_power_w` | W | generation, always ≥ 0 |
-| `pv_energy_kwh` | kWh | cumulative counter |
-| `battery_power_w` | W | **+ discharging, − charging** |
+| `grid_import_energy_kwh` | kWh | 累計計數器 |
+| `grid_export_energy_kwh` | kWh | 累計計數器 |
+| `load_power_w` | W | 場域負載，恆 ≥ 0 |
+| `pv_power_w` | W | 發電功率，恆 ≥ 0 |
+| `pv_energy_kwh` | kWh | 累計計數器 |
+| `battery_power_w` | W | **+ 為放電，− 為充電** |
 | `battery_soc` | % | 0–100 |
 | `battery_soh` | % | 0–100 |
 | `battery_voltage_v` | V | |
 | `battery_current_a` | A | |
 | `battery_temperature_c` | °C | |
-| `battery_charge_energy_kwh` | kWh | cumulative counter |
-| `battery_discharge_energy_kwh` | kWh | cumulative counter |
-| `pcs_state` | — | string state, e.g. `idle`/`charge`/`discharge` |
-| `pcs_fault_code` | — | vendor code |
+| `battery_charge_energy_kwh` | kWh | 累計計數器 |
+| `battery_discharge_energy_kwh` | kWh | 累計計數器 |
+| `pcs_state` | — | 字串狀態，例如 `idle`/`charge`/`discharge` |
+| `pcs_fault_code` | — | 廠商自訂代碼 |
 
-Sign conventions matter: the energy aggregator splits import from export and
-charge from discharge by sign. If your hardware uses the opposite convention,
-set **Invert sign** on the energy asset instead of changing device firmware.
+正負號的約定很重要：energy aggregator 是依號誌來區分輸入與輸出、充電與放電。
+若硬體採用相反的約定，請在該能源資產上設定 **Invert sign**，不要去改裝置的
+firmware。
 
-Any other key is accepted too — define it under `POST /api/metrics` so the
-console knows its unit and label, or let it flow through unlabelled.
+其他 key 也一律接受——可透過 `POST /api/metrics` 定義，讓 console 知道它的
+單位與標籤，或就讓它以未標記的形式通過。
 
 ---
 
-## 8. Quick check without hardware
+## 8. 沒有硬體時的快速驗證
 
 ```bash
 python manage.py simulate_device --device ZQS-BESS-0001 --profile battery --interval 5
 ```
 
-This publishes exactly the payloads described above, so it doubles as a
-reference implementation of the wire format.
+這會發布與上述完全相同的 payload，因此也可以當作 wire format 的參考實作。

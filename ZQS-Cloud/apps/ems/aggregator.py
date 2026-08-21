@@ -21,6 +21,7 @@ from apps.core.logging import get_logger
 from apps.core.timeutils import floor_to_interval, now
 from apps.ems.models import AssetRole, EnergyAsset, EnergyInterval, StoragePlan
 from apps.ems.tariffs import resolve_price
+from apps.telemetry.energy import build_timeline
 from apps.telemetry.models import TelemetrySample
 
 logger = get_logger("ems.aggregator")
@@ -73,18 +74,9 @@ def integrate_power(
     if window_seconds <= 0:
         return result
 
-    timeline: list[tuple[dt.datetime, float]] = []
-    if seed is not None:
-        timeline.append((start, seed[1]))
-    for ts, value in points:
-        if ts < start:
-            # Later pre-window sample than the seed.
-            if timeline and timeline[0][0] == start:
-                timeline[0] = (start, value)
-            else:
-                timeline.insert(0, (start, value))
-        elif ts < end:
-            timeline.append((ts, value))
+    # Shared with per-device energy: deciding what the value was at ``start``
+    # is the subtle part, and it should have one implementation.
+    timeline = build_timeline(points, start, end, seed=seed)
 
     if not timeline:
         return result
@@ -190,6 +182,7 @@ class SiteAggregator:
         grid = Integral()
         pv = Integral()
         battery = Integral()
+        generator = Integral()
         load_metered = Integral()
         soc = Stats()
         coverage_samples: list[float] = []
@@ -197,6 +190,12 @@ class SiteAggregator:
         for asset in self.assets:
             points, seed = self._power_series(asset, start, end)
             integral = integrate_power(points, start, end, seed=seed)
+
+            # Sub-meters are measured, charted and counted per device, but they
+            # duplicate a flow that another asset already reports - folding them
+            # in would count the same electrons twice.
+            if not asset.include_in_balance:
+                continue
 
             if asset.role == AssetRole.GRID_METER:
                 grid = _merge(grid, integral)
@@ -207,6 +206,11 @@ class SiteAggregator:
                 soc_points, _ = self._series(asset, asset.soc_metric, start, end)
                 if soc_points:
                     soc = summarize(soc_points)
+            elif asset.role == AssetRole.GENERATOR:
+                # Kept out of battery_*: round-trip efficiency is
+                # discharge / charge, and a generator only ever discharges -
+                # folding it in would produce an efficiency above 1.
+                generator = _merge(generator, integral)
             elif asset.role in (AssetRole.LOAD_METER, AssetRole.EV_CHARGER):
                 load_metered = _merge(load_metered, integral)
             else:
@@ -224,6 +228,7 @@ class SiteAggregator:
         grid_export = grid.negative_kwh
         battery_discharge = battery.positive_kwh
         battery_charge = battery.negative_kwh
+        generator_kwh = generator.positive_kwh
 
         if load_metered.samples:
             load_kwh = load_metered.positive_kwh
@@ -231,10 +236,15 @@ class SiteAggregator:
             avg_load_kw = load_metered.average_kw
         else:
             # Derive load from the node balance when no load meter exists:
-            #   load = grid_import - grid_export + pv + discharge - charge
+            #   load = grid_import - grid_export + pv + discharge - charge + gen
             load_kwh = max(
                 0.0,
-                grid_import - grid_export + pv.positive_kwh + battery_discharge - battery_charge,
+                grid_import
+                - grid_export
+                + pv.positive_kwh
+                + battery_discharge
+                - battery_charge
+                + generator_kwh,
             )
             hours = self.interval_seconds / SECONDS_PER_HOUR
             avg_load_kw = load_kwh / hours if hours else None
@@ -263,6 +273,7 @@ class SiteAggregator:
             load_kwh=round(load_kwh, 6),
             battery_charge_kwh=round(battery_charge, 6),
             battery_discharge_kwh=round(battery_discharge, 6),
+            generator_kwh=round(generator_kwh, 6),
             peak_import_kw=grid.peak_positive_kw,
             peak_export_kw=grid.peak_negative_kw,
             avg_load_kw=avg_load_kw,

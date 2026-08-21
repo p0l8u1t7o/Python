@@ -21,7 +21,12 @@
       "console": "integratedTerminal",
       "env": {
         "DJANGO_SETTINGS_MODULE": "config.settings.dev",
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        // Same choice dev.ps1 makes for its default mode. Set here rather than
+        // in .env, which stays on redis so a deployment that forgets to
+        // configure the bus fails loudly instead of silently dropping
+        // messages. python-dotenv is loaded with override=False, so this wins.
+        "BUS_BACKEND": "memory"
       }
     },
     {

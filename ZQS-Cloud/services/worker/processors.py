@@ -22,13 +22,19 @@ from apps.alerts.engine import AlertEngine
 from apps.core.logging import get_logger
 from apps.core.timeutils import parse_timestamp
 from apps.devices.models import (
+    DECLARATION_SCHEMA_VERSION,
+    CapabilitySource,
     Command,
     CommandStatus,
+    LifecycleState,
     ConnectionStatus,
+    DeclarationState,
     Device,
+    DeviceDeclaration,
     DeviceEvent,
     DeviceStatusEvent,
     EventLevel,
+    declaration_diff,
 )
 from apps.devices.registry import DeviceRef, get_registry
 from apps.telemetry.catalog import get_catalog
@@ -74,6 +80,11 @@ class Shared:
             )
             return None
 
+        # Quarantined, not trusted: telemetry is accepted so an operator can
+        # see what the thing reports, but every capability is off and the
+        # device is marked pending, so dispatch commands are refused until
+        # someone confirms it. is_enabled stays True on purpose - disabling it
+        # would drop the very data needed to judge what it is.
         device, created = Device.objects.get_or_create(
             device_id=device_id,
             defaults={
@@ -81,6 +92,12 @@ class Shared:
                 "name": device_id,
                 "description": "Auto-provisioned on first uplink",
                 "status": ConnectionStatus.UNKNOWN,
+                "commissioning_state": LifecycleState.PENDING,
+                "can_charge": False,
+                "can_discharge": False,
+                "can_export": False,
+                "is_dispatchable": False,
+                "capability_source": CapabilitySource.MANUAL,
             },
         )
         if created:
@@ -317,6 +334,17 @@ class StatusProcessor:
 
             Device.objects.filter(pk=ref.pk).update(**updates)
 
+            attributes = data.get("attributes")
+            if isinstance(attributes, dict):
+                try:
+                    self._record_declaration(device, attributes, ts)
+                except Exception:  # noqa: BLE001 - a bad claim must not stop ingest
+                    logger.exception(
+                        "declaration handling failed",
+                        extra={"device_id": ref.device_id},
+                    )
+                    stats["declaration_failed"] += 1
+
             if previous != status:
                 DeviceStatusEvent.objects.create(
                     device_id=ref.pk,
@@ -343,6 +371,95 @@ class StatusProcessor:
 # --------------------------------------------------------------------------
 # Device operation log and device-raised alarms
 # --------------------------------------------------------------------------
+    # ---- device declarations --------------------------------------------
+    def _record_declaration(
+        self, device: Device, attributes: dict[str, Any], ts: dt.datetime
+    ) -> None:
+        """Store what the device claims. Never act on it.
+
+        Nothing here writes a capability, a rating or a cost model. The values
+        land in ``DeviceDeclaration`` and wait for an operator, because a unit
+        that has been tampered with would otherwise be able to grant itself the
+        very permission the capability check exists to withhold.
+        """
+        version = attributes.get("schema_version")
+        if version != DECLARATION_SCHEMA_VERSION:
+            DeviceEvent.objects.create(
+                organization_id=device.organization_id,
+                device=device,
+                ts=ts,
+                level=EventLevel.WARNING,
+                code="declaration.unsupported_version",
+                message=f"Unsupported declaration schema_version {version!r}",
+                payload={"schema_version": version},
+            )
+            return
+
+        existing = DeviceDeclaration.objects.filter(device=device).first()
+        # Devices republish their birth message on every reconnect. Re-raising
+        # an identical claim each time would bury the operator in noise and
+        # train them to ignore it.
+        if existing is not None and existing.payload == attributes:
+            DeviceDeclaration.objects.filter(pk=existing.pk).update(received_at=ts)
+            return
+
+        diff = declaration_diff(device, attributes)
+        identity_mismatch = "category" in diff
+        if existing is not None:
+            DeviceDeclaration.objects.filter(pk=existing.pk).delete()
+
+        DeviceDeclaration.objects.create(
+            device=device,
+            payload=attributes,
+            schema_version=version,
+            received_at=ts,
+            state=(
+                DeclarationState.MISMATCHED if diff else DeclarationState.MATCHED
+            ),
+            diff_summary=diff,
+            identity_mismatch=identity_mismatch,
+        )
+
+        if identity_mismatch:
+            # The equipment on the wire says it is a different kind of thing
+            # than the register says. Under the "category never changes" policy
+            # that means the hardware was probably swapped without registering
+            # a replacement - so the data keeps flowing, but commands stop.
+            DeviceEvent.objects.create(
+                organization_id=device.organization_id,
+                device=device,
+                ts=ts,
+                level=EventLevel.ERROR,
+                code="declaration.identity_mismatch",
+                message=(
+                    f"Device declares category "
+                    f"{diff['category']['declared']!r} but is registered as "
+                    f"{diff['category']['effective']!r}"
+                ),
+                payload={"diff": diff},
+            )
+        elif diff:
+            DeviceEvent.objects.create(
+                organization_id=device.organization_id,
+                device=device,
+                ts=ts,
+                level=EventLevel.WARNING,
+                code="declaration.changed",
+                message="Device declaration differs from the confirmed configuration",
+                payload={"diff": diff},
+            )
+        else:
+            DeviceEvent.objects.create(
+                organization_id=device.organization_id,
+                device=device,
+                ts=ts,
+                level=EventLevel.NOTICE,
+                code="declaration.changed",
+                message="Device declaration received",
+                payload={"diff": {}},
+            )
+
+
 class EventProcessor:
     """Handles both ``event`` (operation log) and ``alarm`` envelopes."""
 

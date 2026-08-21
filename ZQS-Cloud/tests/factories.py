@@ -70,6 +70,7 @@ def device(
     *,
     site_obj: Site | None = None,
     policy: RecordingPolicy | None = None,
+    device_type: DeviceType | None = None,
     **kwargs,
 ) -> Device:
     device_id = device_id or f"DEV-{next(_counter):05d}"
@@ -78,6 +79,7 @@ def device(
         device_id=device_id,
         name=kwargs.pop("name", device_id),
         site=site_obj,
+        device_type=device_type,
         recording_policy=policy,
         **kwargs,
     )

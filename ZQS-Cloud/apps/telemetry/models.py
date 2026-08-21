@@ -84,6 +84,11 @@ class Metric(UUIDPrimaryKeyModel, TimeStampedModel):
     max_value = models.FloatField(null=True, blank=True)
     #: Mapping for STATE metrics, e.g. {"0": "idle", "1": "charging"}.
     state_map = models.JSONField(default=dict, blank=True)
+    #: Value at which a COUNTER metric wraps back to zero, when it is known.
+    #: Without it a backwards step is ambiguous - swapped meter, firmware reset
+    #: or overflow all look the same - and the delta is reported as unknown
+    #: rather than guessed. See :mod:`apps.telemetry.energy`.
+    counter_max = models.FloatField(null=True, blank=True)
 
     category = models.CharField(max_length=40, blank=True, help_text="power, energy, ...")
     is_active = models.BooleanField(default=True)

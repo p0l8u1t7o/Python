@@ -13,7 +13,13 @@
       },
       "command": "${workspaceFolder}/.venv/bin/python",
       "args": ["manage.py", "runserver", "0.0.0.0:8000"],
-      "options": { "cwd": "${workspaceFolder}" },
+      // BUS_BACKEND matches launch.json and dev.ps1's default mode: the API
+      // never publishes to the bus, so the in-process one keeps the health
+      // endpoint green without a Redis running.
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "BUS_BACKEND": "memory" }
+      },
       "isBackground": true,
       "presentation": { "group": "zqs", "panel": "dedicated", "reveal": "always" },
       "problemMatcher": []

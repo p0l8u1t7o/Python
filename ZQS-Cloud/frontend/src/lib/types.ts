@@ -100,10 +100,18 @@ export interface ApiKeyCreated {
 // ---------------------------------------------------------------------------
 // Devices
 // ---------------------------------------------------------------------------
+export type SiteKind = 'site' | 'area' | 'line' | 'group'
+
 export interface Site {
   id: string
   name: string
   code: string
+  /** Null for a top-level site. */
+  parent_id: string | null
+  kind: SiteKind
+  /** 0 for a top-level site, 1 for its children, and so on. */
+  depth: number
+  child_count: number
   description: string
   address: string
   city: string
@@ -121,9 +129,71 @@ export interface Site {
 }
 
 export interface SiteSummary extends Site {
+  /** Devices assigned to this site itself. */
   device_count: number
   online_count: number
   open_alert_count: number
+  /**
+   * The same counts including every descendant site. Equal to the plain counts
+   * unless the request asked for `include_descendants`.
+   */
+  total_device_count: number
+  total_online_count: number
+  total_open_alert_count: number
+}
+
+/**
+ * `peak_basis` says how to read the peak figures. `measured` is one site's own
+ * meter; `coincident_estimate` means several sites were summed per interval and
+ * the largest of those sums taken - an upper bound, never the sum of each
+ * site's individual peak.
+ */
+export interface SiteEnergyRollup {
+  start: string
+  end: string
+  site_count: number
+  grid_import_kwh: number
+  grid_export_kwh: number
+  pv_kwh: number
+  load_kwh: number
+  battery_charge_kwh: number
+  battery_discharge_kwh: number
+  peak_import_kw: number | null
+  peak_load_kw: number | null
+  peak_basis: 'measured' | 'coincident_estimate'
+  energy_cost: number
+  export_revenue: number
+  estimated_savings: number
+  self_consumption_ratio: number | null
+  self_sufficiency_ratio: number | null
+  round_trip_efficiency: number | null
+  currency: string
+}
+
+export interface SiteRollup {
+  site_id: string
+  site_name: string
+  kind: SiteKind
+  depth: number
+  include_descendants: boolean
+  site_ids: string[]
+  site_count: number
+  child_count: number
+  devices: {
+    total: number
+    online: number
+    offline: number
+    unknown: number
+    disabled: number
+    stale: number
+  }
+  alerts: {
+    open: number
+    critical: number
+    major: number
+    acknowledged: number
+  }
+  energy: SiteEnergyRollup | null
 }
 
 export interface CommandDefinition {
@@ -160,6 +230,32 @@ export interface Blueprint {
   created_at: string
 }
 
+export interface DeviceCapabilities {
+  can_charge: boolean
+  can_discharge: boolean
+  can_export: boolean
+  is_dispatchable: boolean
+}
+
+/**
+ * A device's own claims about itself. Shown to an operator as a hint; never
+ * consulted when deciding whether a command may run. Accepting one is what
+ * moves values into `Device.capabilities`.
+ */
+export type LifecycleState = 'pending' | 'active' | 'suspended' | 'retired' | 'rejected'
+
+export interface DeviceDeclaration {
+  device_id: string
+  schema_version: number
+  /** Agreement, not approval: a category never changes after commissioning. */
+  state: 'matched' | 'mismatched' | 'acknowledged'
+  received_at: string
+  reviewed_at: string | null
+  payload: Record<string, unknown>
+  diff_summary: Record<string, { declared: unknown; effective: unknown }>
+  has_differences: boolean
+}
+
 export interface Device {
   id: string
   device_id: string
@@ -182,11 +278,32 @@ export interface Device {
   metadata: Record<string, unknown>
   is_enabled: boolean
   created_at: string
+  capabilities: DeviceCapabilities
+  capability_source: 'blueprint' | 'manual' | 'device'
+  commissioning_state: LifecycleState
+  retired_at: string | null
+  replaced_by_id: string | null
+  /**
+   * The device is declaring a different category than it is registered as, so
+   * dispatch commands are frozen until a replacement is registered.
+   */
+  identity_mismatch: boolean
+  /** No blueprint, so no capability check is possible. */
+  capabilities_unchecked: boolean
+  device_category: string
   site_id: string | null
   site_name: string | null
   device_type_id: string | null
   device_type_name: string | null
   recording_policy_id: string | null
+}
+
+export interface DeviceReplacement {
+  retired: Device
+  replacement: Device
+  moved_asset_count: number
+  moved_alert_rule_count: number
+  credential: DeviceCredential | null
 }
 
 export interface MetricValue {

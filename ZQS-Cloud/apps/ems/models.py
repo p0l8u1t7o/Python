@@ -63,6 +63,22 @@ class EnergyAsset(UUIDPrimaryKeyModel, TimeStampedModel):
     #: Flip when the device reports the opposite sign to the convention above.
     invert_sign = models.BooleanField(default=False)
 
+    #: Whether this measurement feeds the site's energy balance.
+    #:
+    #: Every flow must be measured exactly once. Several PV inverters or
+    #: battery racks are physically distinct and correctly summed, but a main
+    #: incomer plus a sub-meter measure the same electrons twice. Sub-metering
+    #: an individual machine is genuinely useful - it gets its own charts,
+    #: consumption figures and operating sessions - so the row stays, and this
+    #: flag keeps it out of ``load_kwh``.
+    include_in_balance = models.BooleanField(
+        default=True,
+        help_text=(
+            "Off for sub-meters: still charted and still counted per device, "
+            "but excluded from the site's energy balance."
+        ),
+    )
+
     # ---- Nameplate ------------------------------------------------------
     rated_power_kw = models.FloatField(null=True, blank=True)
     rated_energy_kwh = models.FloatField(
@@ -225,6 +241,10 @@ class EnergyInterval(models.Model):
     load_kwh = models.FloatField(default=0.0)
     battery_charge_kwh = models.FloatField(default=0.0)
     battery_discharge_kwh = models.FloatField(default=0.0)
+    #: Backup generation. Deliberately separate from ``battery_discharge_kwh``:
+    #: round-trip efficiency is discharge over charge, and a generator only ever
+    #: discharges, so mixing them would report an efficiency above 1.
+    generator_kwh = models.FloatField(default=0.0)
 
     # ---- Power (kW) ------------------------------------------------------
     peak_import_kw = models.FloatField(null=True, blank=True)
