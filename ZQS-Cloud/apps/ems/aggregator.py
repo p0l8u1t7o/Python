@@ -19,7 +19,13 @@ from django.db import transaction
 
 from apps.core.logging import get_logger
 from apps.core.timeutils import floor_to_interval, now
-from apps.ems.models import AssetRole, EnergyAsset, EnergyInterval, StoragePlan
+from apps.ems import costs
+from apps.ems.models import (
+    AssetRole,
+    EnergyAsset,
+    EnergyInterval,
+    EnergyIntervalCost,
+)
 from apps.ems.tariffs import resolve_price
 from apps.telemetry.energy import build_timeline
 from apps.telemetry.models import TelemetrySample
@@ -132,7 +138,9 @@ class SiteAggregator:
         self.assets = list(
             EnergyAsset.objects.filter(site=site, is_active=True).select_related("device")
         )
-        self.plan = StoragePlan.objects.filter(site=site).select_related("tariff").first()
+        from apps.ems.plans import effective_plan
+
+        self.plan = effective_plan(site)[0]
 
     # ---- sample loading --------------------------------------------------
     def _series(
@@ -250,19 +258,21 @@ class SiteAggregator:
             avg_load_kw = load_kwh / hours if hours else None
             peak_load_kw = None
 
-        price = resolve_price(self.plan.tariff if self.plan else None, start)
+        tariff = self.plan.tariff if self.plan else None
+        price = resolve_price(tariff, start)
         energy_cost = grid_import * price.import_price
         export_revenue = grid_export * price.export_price
 
-        # Counterfactual: the same load and PV with no battery installed.
-        baseline_net = load_kwh - pv.positive_kwh
-        baseline_cost = (
-            max(baseline_net, 0.0) * price.import_price
-            - max(-baseline_net, 0.0) * price.export_price
-        )
         actual_cost = energy_cost - export_revenue
+        savings = self._savings(
+            price=price,
+            load_kwh=load_kwh,
+            pv_kwh=pv.positive_kwh,
+            generator_kwh=generator_kwh,
+            actual_cost=actual_cost,
+        )
 
-        return EnergyInterval(
+        interval = EnergyInterval(
             organization_id=self.site.organization_id,
             site=self.site,
             interval_start=start,
@@ -287,12 +297,207 @@ class SiteAggregator:
             export_price=price.export_price,
             energy_cost=round(energy_cost, 6),
             export_revenue=round(export_revenue, 6),
-            estimated_savings=round(baseline_cost - actual_cost, 6),
+            estimated_savings=None if savings is None else round(savings, 6),
             coverage=round(
                 sum(coverage_samples) / len(coverage_samples) if coverage_samples else 0.0,
                 4,
             ),
         )
+        # Carried on the unsaved instance; ``run`` writes them once the row
+        # has a primary key. Kept off the model so nothing can mistake them
+        # for stored fields.
+        interval.pending_costs = self._breakdown(
+            start,
+            tariff,
+            grid_import=grid_import,
+            grid_export=grid_export,
+            battery_discharge=battery_discharge,
+            generator_kwh=generator_kwh,
+            battery_avg_kw=battery.average_kw,
+            generator_avg_kw=generator.average_kw,
+            soc_start=soc.first,
+            soc_end=soc.last,
+        )
+        return interval
+
+    # ---- Savings and cost breakdown --------------------------------------
+    def _savings(
+        self,
+        *,
+        price,
+        load_kwh: float,
+        pv_kwh: float,
+        generator_kwh: float,
+        actual_cost: float,
+    ) -> float | None:
+        """Cost difference against the plan's chosen baseline.
+
+        ``None`` when there is no meaningful baseline, which happens in two
+        cases and is an honest answer in both: the plan asks for no savings
+        figure at all, or the generator ran. While a generator is carrying the
+        site there is no "buy it from the utility instead" to compare against,
+        so any number here would be invented.
+
+        Using generator output as the stand-in for "outage" is an
+        approximation - a real outage signal would be better and does not
+        exist yet. Noted in device-classification.md §3.12.
+        """
+        baseline = getattr(self.plan, "savings_baseline", "no_storage") or "no_storage"
+        if baseline == "none" or generator_kwh > 0:
+            return None
+
+        if baseline == "grid_only":
+            # Nothing installed at all: the whole load bought from the utility.
+            baseline_net = load_kwh
+        else:
+            # Same PV, no battery.
+            baseline_net = load_kwh - pv_kwh
+
+        baseline_cost = (
+            max(baseline_net, 0.0) * price.import_price
+            - max(-baseline_net, 0.0) * price.export_price
+        )
+        return baseline_cost - actual_cost
+
+    def _breakdown(
+        self,
+        start: dt.datetime,
+        tariff,
+        *,
+        grid_import: float,
+        grid_export: float,
+        battery_discharge: float,
+        generator_kwh: float,
+        battery_avg_kw: float | None,
+        generator_avg_kw: float | None,
+        soc_start: float | None,
+        soc_end: float | None,
+    ) -> list[EnergyIntervalCost]:
+        """Price each source through its registered cost model.
+
+        The totals on :class:`EnergyInterval` keep their old meaning - grid
+        only - so every existing dashboard and roll-up is unaffected. This is
+        the detail layer underneath them, and the only place that knows a
+        generator burns fuel.
+
+        A source with no configured model is skipped rather than priced at
+        zero. A source naming a model that is not registered is a different
+        matter and raises: silently free energy is the error nobody notices.
+        """
+
+        def price_at(moment: dt.datetime):
+            return resolve_price(tariff, moment)
+
+        end = start + dt.timedelta(seconds=self.interval_seconds)
+        hours = self.interval_seconds / SECONDS_PER_HOUR
+        rows: list[EnergyIntervalCost] = []
+
+        sources = [
+            (
+                EnergyIntervalCost.Source.GRID,
+                AssetRole.GRID_METER,
+                grid_import,
+                None,
+                None,
+            ),
+            (
+                EnergyIntervalCost.Source.BATTERY,
+                AssetRole.BATTERY,
+                battery_discharge,
+                battery_avg_kw,
+                None,
+            ),
+            (
+                EnergyIntervalCost.Source.GENERATOR,
+                AssetRole.GENERATOR,
+                generator_kwh,
+                generator_avg_kw,
+                hours if generator_kwh > 0 else 0.0,
+            ),
+        ]
+
+        for source, role, energy_kwh, avg_kw, running_hours in sources:
+            if energy_kwh <= 0:
+                continue
+            asset = next((item for item in self.assets if item.role == role), None)
+            if asset is None:
+                continue
+            key = costs.model_for(asset, role)
+            if not key:
+                continue
+
+            result = costs.compute(
+                key,
+                costs.CostContext(
+                    start=start,
+                    end=end,
+                    interval_seconds=self.interval_seconds,
+                    energy_kwh=energy_kwh,
+                    price_at=price_at,
+                    asset=asset,
+                    plan=self.plan,
+                    avg_kw=avg_kw,
+                    soc_start=soc_start,
+                    soc_end=soc_end,
+                    running_hours=running_hours,
+                ),
+            )
+            rows.append(
+                EnergyIntervalCost(
+                    source=source,
+                    cost_model=result.cost_model,
+                    energy_kwh=round(energy_kwh, 6),
+                    amount=round(result.amount, 6),
+                    currency=result.currency,
+                    unit_cost=result.unit_cost_per_kwh,
+                    breakdown=result.breakdown,
+                    basis=result.basis,
+                )
+            )
+
+        if grid_export > 0:
+            asset = next(
+                (item for item in self.assets if item.role == AssetRole.GRID_METER),
+                None,
+            )
+            if asset is not None:
+                result = costs.compute(
+                    "grid_export",
+                    costs.CostContext(
+                        start=start,
+                        end=end,
+                        interval_seconds=self.interval_seconds,
+                        energy_kwh=grid_export,
+                        price_at=price_at,
+                        asset=asset,
+                        plan=self.plan,
+                    ),
+                )
+                # Folded into the grid row rather than added as a second one:
+                # the unique constraint is (interval, source), and two grid
+                # lines would also read as double counting.
+                existing = next(
+                    (row for row in rows if row.source == EnergyIntervalCost.Source.GRID),
+                    None,
+                )
+                if existing is None:
+                    rows.append(
+                        EnergyIntervalCost(
+                            source=EnergyIntervalCost.Source.GRID,
+                            cost_model=result.cost_model,
+                            energy_kwh=round(grid_export, 6),
+                            amount=round(result.amount, 6),
+                            currency=result.currency,
+                            unit_cost=result.unit_cost_per_kwh,
+                            breakdown=result.breakdown,
+                            basis=result.basis,
+                        )
+                    )
+                else:
+                    existing.amount = round(existing.amount + result.amount, 6)
+                    existing.breakdown = {**existing.breakdown, **result.breakdown}
+
+        return rows
 
     def run(self, start: dt.datetime, end: dt.datetime) -> int:
         """Compute and upsert every interval in ``[start, end)``."""
@@ -339,13 +544,50 @@ class SiteAggregator:
                     "export_revenue",
                     "estimated_savings",
                     "coverage",
+                    "generator_kwh",
                 ],
             )
+            self._write_costs(rows)
         logger.info(
             "energy intervals rebuilt",
             extra={"site": self.site.name, "count": len(rows)},
         )
         return len(rows)
+
+    def _write_costs(self, rows: list[EnergyInterval]) -> None:
+        """Replace the cost breakdown for the intervals just written.
+
+        Delete-then-insert rather than upsert: a source can *stop* applying
+        between two rebuilds - an asset unbound, a cost model cleared - and an
+        upsert would leave the stale row behind, still counted in every
+        "what did the generators cost" query.
+
+        ``bulk_create`` does not return primary keys on every backend, so the
+        rows are re-read by their natural key. That is one extra query per
+        rebuild, not per interval.
+        """
+        starts = [row.interval_start for row in rows]
+        stored = {
+            (interval.interval_start, interval.interval_seconds): interval.pk
+            for interval in EnergyInterval.objects.filter(
+                site=self.site,
+                interval_seconds=self.interval_seconds,
+                interval_start__in=starts,
+            ).only("pk", "interval_start", "interval_seconds")
+        }
+        EnergyIntervalCost.objects.filter(interval_id__in=stored.values()).delete()
+
+        pending: list[EnergyIntervalCost] = []
+        for row in rows:
+            interval_pk = stored.get((row.interval_start, row.interval_seconds))
+            if interval_pk is None:
+                continue
+            for cost in getattr(row, "pending_costs", None) or []:
+                cost.interval_id = interval_pk
+                pending.append(cost)
+
+        if pending:
+            EnergyIntervalCost.objects.bulk_create(pending, batch_size=500)
 
 
 def _merge(left: Integral, right: Integral) -> Integral:

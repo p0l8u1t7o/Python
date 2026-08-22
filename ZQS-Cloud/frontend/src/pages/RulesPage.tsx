@@ -10,11 +10,19 @@ import {
   useAllDevices,
   useBlueprints,
   useMetrics,
+  useNotificationChannelMutations,
+  useNotificationChannels,
   useSites,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
 import { formatNumber } from '@/lib/format'
-import type { AlertRule, Operator, RuleScope, Severity } from '@/lib/types'
+import type {
+  AlertRule,
+  NotificationChannel,
+  Operator,
+  RuleScope,
+  Severity,
+} from '@/lib/types'
 import {
   Badge,
   Button,
@@ -27,6 +35,7 @@ import {
   Modal,
   PageHeader,
   Select,
+  SiteTreeSelect,
   SeverityBadge,
   TBody,
   THead,
@@ -153,6 +162,8 @@ export function RulesPage() {
         )}
       </Card>
 
+      <ChannelsCard />
+
       <RuleModal
         open={creating || editing !== null}
         rule={editing}
@@ -199,6 +210,7 @@ function RuleModal({
   const sites = useSites()
   const blueprints = useBlueprints()
   const devices = useAllDevices()
+  const channels = useNotificationChannels()
   const { create, update } = useAlertRuleMutations()
 
   const [form, setForm] = useState({
@@ -219,6 +231,7 @@ function RuleModal({
     cooldown_seconds: 300,
     auto_resolve: true,
     message_template: '',
+    channel_ids: [] as string[],
   })
 
   useEffect(() => {
@@ -242,6 +255,7 @@ function RuleModal({
         cooldown_seconds: rule.cooldown_seconds,
         auto_resolve: rule.auto_resolve,
         message_template: rule.message_template,
+        channel_ids: rule.channel_ids ?? [],
       })
     } else {
       setForm({
@@ -262,9 +276,11 @@ function RuleModal({
         cooldown_seconds: 300,
         auto_resolve: true,
         message_template: '',
+        channel_ids: [],
       })
     }
-  }, [open, rule, metrics.data])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, rule?.id])
 
   const needsUpper = form.operator === 'outside' || form.operator === 'inside'
 
@@ -287,7 +303,7 @@ function RuleModal({
       cooldown_seconds: Number(form.cooldown_seconds),
       auto_resolve: form.auto_resolve,
       message_template: form.message_template,
-      channel_ids: [],
+      channel_ids: form.channel_ids,
     }
     try {
       if (rule) await update.mutateAsync({ id: rule.id, ...payload })
@@ -414,16 +430,13 @@ function RuleModal({
             options={SCOPES.map((value) => ({ value, label: t(`rules.scopes.${value}`) }))}
           />
           {form.scope === 'site' ? (
-            <Select
+            <SiteTreeSelect
               label={t('sites.site')}
               required
+              sites={sites.data?.items ?? []}
               value={form.site_id}
               placeholder={t('common.none')}
-              onChange={(event) => setForm({ ...form, site_id: event.target.value })}
-              options={(sites.data?.items ?? []).map((site) => ({
-                value: site.id,
-                label: site.name,
-              }))}
+              onChange={(value) => setForm({ ...form, site_id: value })}
             />
           ) : null}
           {form.scope === 'device_type' ? (
@@ -475,6 +488,31 @@ function RuleModal({
           onChange={(event) => setForm({ ...form, description: event.target.value })}
         />
 
+        {channels.data && channels.data.length > 0 ? (
+          <div>
+            <p className="mb-1 text-xs font-medium text-muted">
+              {t('channels.notifyVia')}
+            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              {channels.data.map((channel) => (
+                <Checkbox
+                  key={channel.id}
+                  label={`${channel.name} (${t(`channels.types.${channel.channel_type}`)})`}
+                  checked={form.channel_ids.includes(channel.id)}
+                  onChange={(checked) =>
+                    setForm({
+                      ...form,
+                      channel_ids: checked
+                        ? [...form.channel_ids, channel.id]
+                        : form.channel_ids.filter((id) => id !== channel.id),
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap gap-6">
           <Checkbox
             label={t('rules.autoResolve')}
@@ -487,6 +525,388 @@ function RuleModal({
             onChange={(value) => setForm({ ...form, is_enabled: value })}
           />
         </div>
+      </div>
+    </Modal>
+  )
+}
+
+
+const CHANNEL_TYPES: NotificationChannel['channel_type'][] = [
+  'email',
+  'line',
+  'webhook',
+  'mqtt',
+]
+const EVENT_LEVELS = ['info', 'notice', 'warning', 'error', 'critical']
+
+/**
+ * Where notifications go: email, a LINE bot, a webhook, MQTT.
+ *
+ * Lives on the rules page because a channel only matters through what is
+ * wired to it - alert rules pick channels in their own form, and the
+ * event subscription (device-reported events, by level) lives on the
+ * channel itself.
+ */
+function ChannelsCard() {
+  const { t } = useTranslation()
+  const { can } = useAuth()
+  const toast = useToast()
+  const channels = useNotificationChannels()
+  const { remove } = useNotificationChannelMutations()
+
+  const [editing, setEditing] = useState<NotificationChannel | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState<NotificationChannel | null>(null)
+
+  // The channels endpoint is admin-only; a 403 means this operator does not
+  // manage notification targets, so the section simply is not there.
+  if (channels.isError) return null
+
+  return (
+    <>
+      <Card className="mt-4">
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">{t('channels.title')}</p>
+            <p className="text-xs text-muted">{t('channels.subtitle')}</p>
+          </div>
+          {can('alert:rule:write') ? (
+            <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
+              {t('channels.create')}
+            </Button>
+          ) : null}
+        </div>
+        <Table>
+          <THead>
+            <Th>{t('common.name')}</Th>
+            <Th>{t('channels.type')}</Th>
+            <Th>{t('channels.alertsColumn')}</Th>
+            <Th>{t('channels.eventsColumn')}</Th>
+            <Th>{t('common.status')}</Th>
+            <Th />
+          </THead>
+          <TBody>
+            {(channels.data ?? []).length === 0 ? (
+              <EmptyRow colSpan={6} message={t('channels.empty')} />
+            ) : (
+              (channels.data ?? []).map((channel) => (
+                <Tr key={channel.id}>
+                  <Td className="font-medium">{channel.name}</Td>
+                  <Td className="text-muted">
+                    {t(`channels.types.${channel.channel_type}`)}
+                  </Td>
+                  <Td>
+                    {channel.notify_alerts ? (
+                      <SeverityBadge severity={channel.min_severity} />
+                    ) : (
+                      <span className="text-subtle">—</span>
+                    )}
+                  </Td>
+                  <Td>
+                    {channel.notify_events ? (
+                      <Badge tone="neutral">
+                        {t(`events.levels.${channel.min_event_level}`)}+
+                      </Badge>
+                    ) : (
+                      <span className="text-subtle">—</span>
+                    )}
+                  </Td>
+                  <Td>
+                    {channel.is_enabled ? (
+                      <Badge tone="ok">{t('common.enabled')}</Badge>
+                    ) : (
+                      <Badge tone="neutral">{t('common.disabled')}</Badge>
+                    )}
+                  </Td>
+                  <Td align="right">
+                    <span className="flex justify-end gap-1">
+                      <IconButton label={t('common.edit')} onClick={() => setEditing(channel)}>
+                        <Pencil className="size-3.5" />
+                      </IconButton>
+                      <IconButton label={t('common.delete')} onClick={() => setDeleting(channel)}>
+                        <Trash2 className="size-3.5" />
+                      </IconButton>
+                    </span>
+                  </Td>
+                </Tr>
+              ))
+            )}
+          </TBody>
+        </Table>
+      </Card>
+
+      <ChannelModal
+        open={creating || editing !== null}
+        channel={editing}
+        onClose={() => {
+          setCreating(false)
+          setEditing(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        danger
+        loading={remove.isPending}
+        title={t('common.delete')}
+        confirmLabel={t('common.delete')}
+        message={t('channels.deleteConfirm', { name: deleting?.name ?? '' })}
+        onConfirm={async () => {
+          if (!deleting) return
+          try {
+            await remove.mutateAsync(deleting.id)
+            setDeleting(null)
+          } catch (error) {
+            toast.error(errorMessage(error))
+          }
+        }}
+      />
+    </>
+  )
+}
+
+function ChannelModal({
+  open,
+  channel,
+  onClose,
+}: {
+  open: boolean
+  channel: NotificationChannel | null
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const { create, update } = useNotificationChannelMutations()
+
+  const [form, setForm] = useState({
+    name: '',
+    channel_type: 'email' as NotificationChannel['channel_type'],
+    is_enabled: true,
+    min_severity: 'warning' as Severity,
+    notify_alerts: true,
+    notify_events: false,
+    min_event_level: 'error',
+    url: '',
+    recipients: '',
+    line_token: '',
+    line_to: '',
+    topic: '',
+  })
+
+  useEffect(() => {
+    if (!open) return
+    if (channel) {
+      const config = channel.config ?? {}
+      setForm({
+        name: channel.name,
+        channel_type: channel.channel_type,
+        is_enabled: channel.is_enabled,
+        min_severity: channel.min_severity,
+        notify_alerts: channel.notify_alerts,
+        notify_events: channel.notify_events,
+        min_event_level: channel.min_event_level,
+        url: String(config.url ?? ''),
+        recipients: Array.isArray(config.recipients) ? config.recipients.join(', ') : '',
+        // Secrets come back redacted; an untouched field keeps the stored one.
+        line_token: '',
+        line_to: String(config.to ?? ''),
+        topic: String(config.topic ?? ''),
+      })
+    } else {
+      setForm({
+        name: '',
+        channel_type: 'email',
+        is_enabled: true,
+        min_severity: 'warning',
+        notify_alerts: true,
+        notify_events: false,
+        min_event_level: 'error',
+        url: '',
+        recipients: '',
+        line_token: '',
+        line_to: '',
+        topic: '',
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, channel?.id])
+
+  async function submit() {
+    const config: Record<string, unknown> = {}
+    if (form.channel_type === 'webhook') config.url = form.url.trim()
+    if (form.channel_type === 'email') {
+      config.recipients = form.recipients
+        .split(/[,;\s]+/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    }
+    if (form.channel_type === 'line') {
+      // Blank means "keep the stored token" on update; the server merges it.
+      config.channel_access_token = form.line_token.trim()
+      config.to = form.line_to.trim()
+    }
+    if (form.channel_type === 'mqtt') config.topic = form.topic.trim()
+
+    const payload = {
+      name: form.name.trim(),
+      channel_type: form.channel_type,
+      is_enabled: form.is_enabled,
+      min_severity: form.min_severity,
+      notify_alerts: form.notify_alerts,
+      notify_events: form.notify_events,
+      min_event_level: form.min_event_level,
+      config,
+    }
+    try {
+      if (channel) await update.mutateAsync({ id: channel.id, ...payload })
+      else await create.mutateAsync(payload)
+      toast.success(t('common.saved'))
+      onClose()
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={channel ? t('channels.edit') : t('channels.create')}
+      footer={
+        <>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button
+            variant="primary"
+            loading={create.isPending || update.isPending}
+            onClick={() => void submit()}
+          >
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <TextInput
+          label={t('common.name')}
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          required
+        />
+
+        <Select
+          label={t('channels.type')}
+          value={form.channel_type}
+          onChange={(event) =>
+            setForm({
+              ...form,
+              channel_type: event.target.value as NotificationChannel['channel_type'],
+            })
+          }
+          options={CHANNEL_TYPES.map((type) => ({
+            value: type,
+            label: t(`channels.types.${type}`),
+          }))}
+        />
+
+        {form.channel_type === 'webhook' ? (
+          <TextInput
+            label="URL"
+            value={form.url}
+            onChange={(event) => setForm({ ...form, url: event.target.value })}
+            placeholder="https://example.com/hook"
+            required
+          />
+        ) : null}
+
+        {form.channel_type === 'email' ? (
+          <TextArea
+            label={t('channels.recipients')}
+            value={form.recipients}
+            onChange={(event) => setForm({ ...form, recipients: event.target.value })}
+            hint={t('channels.recipientsHint')}
+            rows={2}
+            required
+          />
+        ) : null}
+
+        {form.channel_type === 'line' ? (
+          <>
+            <TextInput
+              label={t('channels.lineToken')}
+              type="password"
+              value={form.line_token}
+              onChange={(event) => setForm({ ...form, line_token: event.target.value })}
+              placeholder={channel ? t('channels.secretKept') : undefined}
+              hint={t('channels.lineTokenHint')}
+              required={!channel}
+            />
+            <TextInput
+              label={t('channels.lineTo')}
+              value={form.line_to}
+              onChange={(event) => setForm({ ...form, line_to: event.target.value })}
+              hint={t('channels.lineToHint')}
+              required
+            />
+          </>
+        ) : null}
+
+        {form.channel_type === 'mqtt' ? (
+          <TextInput
+            label="Topic"
+            value={form.topic}
+            onChange={(event) => setForm({ ...form, topic: event.target.value })}
+            required
+          />
+        ) : null}
+
+        <div className="space-y-3 border-t border-line pt-3">
+          <Checkbox
+            label={t('channels.notifyAlerts')}
+            hint={t('channels.notifyAlertsHint')}
+            checked={form.notify_alerts}
+            onChange={(notify_alerts) => setForm({ ...form, notify_alerts })}
+          />
+          {form.notify_alerts ? (
+            <Select
+              label={t('channels.minSeverity')}
+              value={form.min_severity}
+              onChange={(event) =>
+                setForm({ ...form, min_severity: event.target.value as Severity })
+              }
+              options={SEVERITIES.map((severity) => ({
+                value: severity,
+                label: t(`severity.${severity}`),
+              }))}
+            />
+          ) : null}
+
+          <Checkbox
+            label={t('channels.notifyEvents')}
+            hint={t('channels.notifyEventsHint')}
+            checked={form.notify_events}
+            onChange={(notify_events) => setForm({ ...form, notify_events })}
+          />
+          {form.notify_events ? (
+            <Select
+              label={t('channels.minEventLevel')}
+              value={form.min_event_level}
+              onChange={(event) =>
+                setForm({ ...form, min_event_level: event.target.value })
+              }
+              options={EVENT_LEVELS.map((level) => ({
+                value: level,
+                label: t(`events.levels.${level}`),
+              }))}
+            />
+          ) : null}
+        </div>
+
+        <Checkbox
+          label={t('common.enabled')}
+          checked={form.is_enabled}
+          onChange={(is_enabled) => setForm({ ...form, is_enabled })}
+        />
       </div>
     </Modal>
   )

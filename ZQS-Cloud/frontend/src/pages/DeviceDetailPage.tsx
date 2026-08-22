@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, KeyRound, Replace, Send, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  KeyRound,
+  Pencil,
+  Replace,
+  Send,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 import {
+  useBlueprints,
   useCancelCommand,
   useDevice,
   useDeviceDeclaration,
+  useDeviceEnergy,
   useLifecycleMutation,
   useReplaceDevice,
   useReviewDeclaration,
@@ -17,19 +27,31 @@ import {
   useDeviceMetricKeys,
   useDeviceMutations,
   useDeviceStatusHistory,
+  useOperatingSessions,
   useSendCommand,
   useSeries,
+  useSites,
+  useUiPreference,
 } from '@/lib/queries'
 import { currentLanguage } from '@/i18n'
 import { errorMessage, fieldErrors } from '@/lib/errors'
-import { formatDateTime, formatMeasurement, formatRelative, secondsSince, formatDuration } from '@/lib/format'
-import { useTimeRange, RANGE_KEYS, type RangeKey } from '@/lib/useTimeRange'
+import {
+  formatDateTime,
+  formatDuration,
+  formatCurrency,
+  formatMeasurement,
+  formatPercent,
+  formatRelative,
+  secondsSince,
+} from '@/lib/format'
+import { useTimeRange } from '@/lib/useTimeRange'
 import type { GlossaryId } from '@/lib/glossary'
 import type {
   CommandDefinition,
   CommandParamSpec,
   Device,
   DeviceCredential,
+  DeviceDetail,
   DeviceReplacement,
 } from '@/lib/types'
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart'
@@ -44,15 +66,19 @@ import {
   ConfirmDialog,
   ConnectionBadge,
   DetailRow,
+  DeviceIcon,
+  DeviceIconBadge,
   EmptyRow,
   ErrorState,
   EventLevelBadge,
   LoadingState,
+  MetricPicker,
   Modal,
   PageHeader,
   Pagination,
   SegmentedControl,
   Select,
+  SiteTreeSelect,
   TBody,
   THead,
   Table,
@@ -60,9 +86,10 @@ import {
   Term,
   TextInput,
   Th,
+  TimeRangePicker,
   Tr,
 } from '@/components/ui'
-import { CredentialPanel } from './DevicesPage'
+import { BlueprintPicker, CredentialPanel } from './DevicesPage'
 
 type Tab = 'overview' | 'history' | 'commands' | 'events' | 'status'
 
@@ -74,6 +101,7 @@ export function DeviceDetailPage() {
   const toast = useToast()
 
   const [tab, setTab] = useState<Tab>('overview')
+  const [editing, setEditing] = useState(false)
   const [replacing, setReplacing] = useState(false)
   const [showCommand, setShowCommand] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
@@ -102,6 +130,7 @@ export function DeviceDetailPage() {
       <PageHeader
         title={
           <span className="flex flex-wrap items-center gap-2.5">
+            <DeviceIconBadge category={detail.device_category} />
             {detail.name}
             <ConnectionBadge status={detail.status} />
             {detail.commissioning_state !== 'active' ? (
@@ -132,6 +161,14 @@ export function DeviceDetailPage() {
                 disabled={detail.available_commands.length === 0}
               >
                 {t('devices.sendCommand')}
+              </Button>
+            ) : null}
+            {can('device:write') ? (
+              <Button
+                icon={<Pencil className="size-4" />}
+                onClick={() => setEditing(true)}
+              >
+                {t('common.edit')}
               </Button>
             ) : null}
             {can('device:write') ? (
@@ -180,37 +217,7 @@ export function DeviceDetailPage() {
 
       {tab === 'overview' ? (
         <div className="grid gap-5 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader title={t('devices.latestValues')} />
-            {detail.latest.length === 0 ? (
-              <CardBody>
-                <p className="text-sm text-muted">{t('common.noData')}</p>
-              </CardBody>
-            ) : (
-              <div className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">
-                {detail.latest.map((metric) => (
-                  <div key={metric.metric_key} className="bg-surface p-3.5">
-                    <p className="truncate text-xs text-muted" title={metric.metric_key}>
-                      {metric.label}
-                    </p>
-                    <p className="mt-1 text-lg font-semibold tnum">
-                      {metric.value !== null
-                        ? formatMeasurement(metric.value, metric.unit)
-                        : (metric.value_text ?? '—')}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-subtle">
-                      {formatRelative(metric.ts)}
-                      {metric.quality !== 0 ? (
-                        <Badge tone="warning" className="ml-1.5">
-                          suspect
-                        </Badge>
-                      ) : null}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <LatestValuesCard device={detail} />
 
           <Card>
             <CardHeader title={t('devices.overview')} />
@@ -220,6 +227,32 @@ export function DeviceDetailPage() {
                   {detail.device_id}
                 </DetailRow>
                 <DetailRow label={t('devices.site')}>{detail.site_name ?? '—'}</DetailRow>
+                {/*
+                  The gateway is only shown when it is a real one. An implicit
+                  node exists purely so a directly-connected device has
+                  somewhere to hold its MQTT session, and surfacing it would
+                  just repeat the device's own name back at the operator.
+                */}
+                {!detail.edge_node_is_implicit && (
+                  <DetailRow label={t('devices.edgeNode')}>
+                    {detail.edge_node_name || '—'}
+                  </DetailRow>
+                )}
+                <DetailRow label={t('devices.sparkplugAddress')} mono>
+                  {detail.sparkplug_address || '—'}
+                </DetailRow>
+                <DetailRow label={t('devices.category')}>
+                  {detail.device_category ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <DeviceIcon category={detail.device_category} />
+                      {t(`devices.categories.${detail.device_category}`, {
+                        defaultValue: detail.device_category,
+                      })}
+                    </span>
+                  ) : (
+                    '—'
+                  )}
+                </DetailRow>
                 <DetailRow label={<Term id="blueprint">{t('devices.blueprint')}</Term>}>
                   {detail.device_type_name ?? '—'}
                 </DetailRow>
@@ -276,6 +309,16 @@ export function DeviceDetailPage() {
                     {formatDateTime(detail.retired_at)}
                   </DetailRow>
                 ) : null}
+                {detail.capital_cost !== null ? (
+                  <DetailRow label={t('devices.capitalCost')}>
+                    {formatCurrency(detail.capital_cost, detail.cost_currency || undefined)}
+                  </DetailRow>
+                ) : null}
+                {detail.annual_cost !== null ? (
+                  <DetailRow label={t('devices.annualCost')}>
+                    {formatCurrency(detail.annual_cost, detail.cost_currency || undefined)}
+                  </DetailRow>
+                ) : null}
               </dl>
 
               {detail.commissioning_state === 'pending' ? (
@@ -315,7 +358,20 @@ export function DeviceDetailPage() {
         </Card>
       ) : null}
 
+      {tab === 'overview' ? (
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <EnergyCard deviceId={detail.id} />
+          <SessionsCard deviceId={detail.id} />
+        </div>
+      ) : null}
+
       {tab === 'overview' ? <DeclarationCard deviceId={detail.id} /> : null}
+
+      <EditDeviceModal
+        open={editing}
+        device={detail}
+        onClose={() => setEditing(false)}
+      />
 
       <ReplaceModal
         open={replacing}
@@ -406,14 +462,7 @@ function HistoryTab({ deviceId }: { deviceId: string }) {
               : t('telemetry.raw')
             : undefined
         }
-        actions={
-          <SegmentedControl<RangeKey>
-            size="sm"
-            value={range.key}
-            onChange={range.setKey}
-            options={RANGE_KEYS.map((key) => ({ value: key, label: key }))}
-          />
-        }
+        actions={<TimeRangePicker range={range} />}
       />
       <CardBody>
         {metricKeys.data && metricKeys.data.length > 0 ? (
@@ -573,12 +622,7 @@ function EventsTab({ deviceId }: { deviceId: string }) {
               }))}
               className="w-32"
             />
-            <SegmentedControl<RangeKey>
-              size="sm"
-              value={range.key}
-              onChange={range.setKey}
-              options={RANGE_KEYS.map((key) => ({ value: key, label: key }))}
-            />
+            <TimeRangePicker range={range} />
           </div>
         }
       />
@@ -633,12 +677,7 @@ function StatusTab({ deviceId }: { deviceId: string }) {
       <CardHeader
         title={<Term id="lwt">{t('devices.statusHistory')}</Term>}
         actions={
-          <SegmentedControl<RangeKey>
-            size="sm"
-            value={range.key}
-            onChange={range.setKey}
-            options={RANGE_KEYS.map((key) => ({ value: key, label: key }))}
-          />
+          <TimeRangePicker range={range} />
         }
       />
       <Table>
@@ -1042,6 +1081,9 @@ function ReplaceModal({
   const [result, setResult] = useState<DeviceReplacement | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // Keyed on the id, not the object: a refetch returns a new object even when
+  // nothing changed, and re-seeding on that resets the fields while they are
+  // being typed into.
   useEffect(() => {
     if (!open) return
     setResult(null)
@@ -1052,7 +1094,7 @@ function ReplaceModal({
       serial_number: '',
       reason: '',
     })
-  }, [open, device])
+  }, [open, device.id])
 
   async function submit() {
     setErrors({})
@@ -1137,5 +1179,485 @@ function ReplaceModal({
         </div>
       )}
     </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Editing, energy and sessions
+// ---------------------------------------------------------------------------
+/**
+ * The device's current readings, in the order this person arranged them.
+ *
+ * A battery can publish forty values and nobody wants forty tiles. The
+ * selection is per user and per device, saved server-side so it follows them
+ * to another machine - a layout that lives in one browser's localStorage is a
+ * layout you rebuild on every laptop.
+ *
+ * With nothing saved, everything the device reports is shown in the order the
+ * API returns it. That is the honest default: the alternative - guessing a
+ * "useful" subset - hides readings somebody installed the equipment to see.
+ */
+function LatestValuesCard({ device }: { device: DeviceDetail }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const [picking, setPicking] = useState(false)
+
+  const layout = useUiPreference<{ keys: string[] }>(
+    `device-metrics:${device.id}`,
+    { keys: [] },
+  )
+  const chosen = layout.value.keys
+
+  const byKey = new Map(device.latest.map((metric) => [metric.metric_key, metric]))
+  const visible = chosen.length
+    ? // A metric the device has stopped sending drops out rather than
+      // rendering an empty tile; if it comes back, so does its position.
+      chosen.map((key) => byKey.get(key)).filter((metric) => metric !== undefined)
+    : device.latest
+
+  return (
+    <>
+      <Card className="lg:col-span-2">
+        <CardHeader
+          title={t('devices.latestValues')}
+          description={
+            chosen.length ? t('devices.customisedValues') : t('devices.allValuesShownHint')
+          }
+          actions={
+            <Button
+              size="sm"
+              icon={<SlidersHorizontal className="size-3.5" />}
+              disabled={device.latest.length === 0}
+              onClick={() => setPicking(true)}
+            >
+              {t('common.edit')}
+            </Button>
+          }
+        />
+        {visible.length === 0 ? (
+          <CardBody>
+            <p className="text-sm text-muted">
+              {device.latest.length === 0
+                ? t('common.noData')
+                : t('devices.noneSelectedHint')}
+            </p>
+          </CardBody>
+        ) : (
+          <div className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((metric) => (
+              <div key={metric.metric_key} className="bg-surface p-3.5">
+                <p className="truncate text-xs text-muted" title={metric.metric_key}>
+                  {metric.label}
+                </p>
+                <p className="mt-1 text-lg font-semibold tnum">
+                  {metric.value !== null
+                    ? formatMeasurement(metric.value, metric.unit)
+                    : (metric.value_text ?? '—')}
+                </p>
+                <p className="mt-0.5 text-[11px] text-subtle">
+                  {formatRelative(metric.ts)}
+                  {metric.quality !== 0 ? (
+                    <Badge tone="warning" className="ml-1.5">
+                      suspect
+                    </Badge>
+                  ) : null}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <MetricPicker
+        open={picking}
+        onClose={() => setPicking(false)}
+        available={device.latest}
+        selected={chosen.length ? chosen : device.latest.map((m) => m.metric_key)}
+        saving={layout.save.isPending}
+        onSave={async (keys) => {
+          try {
+            await layout.save.mutateAsync({ keys })
+            setPicking(false)
+            toast.success(t('common.saved'))
+          } catch (error) {
+            toast.error(errorMessage(error))
+          }
+        }}
+        onReset={async () => {
+          try {
+            await layout.reset.mutateAsync()
+            setPicking(false)
+          } catch (error) {
+            toast.error(errorMessage(error))
+          }
+        }}
+      />
+    </>
+  )
+}
+
+
+/**
+ * Edit the registered details a person chose: the name, the site, the
+ * blueprint.
+ *
+ * A device belongs to exactly one site, so this is a reassignment rather than
+ * an addition - the previous site simply stops holding it, and its history
+ * stays attached to the device either way.
+ *
+ * The device ID is deliberately absent. It is the MQTT topic segment and it is
+ * unique platform-wide; changing it would orphan every stored sample from the
+ * equipment that produced them. Replacement hardware gets a *new* device via
+ * "Replace", which is the flow that keeps the history attributable.
+ */
+function EditDeviceModal({
+  open,
+  device,
+  onClose,
+}: {
+  open: boolean
+  device: Device
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const sites = useSites()
+  const blueprints = useBlueprints()
+  const { update } = useDeviceMutations()
+
+  const shape = () => ({
+    name: device.name,
+    site_id: device.site_id ?? '',
+    device_type_id: device.device_type_id ?? '',
+    serial_number: device.serial_number,
+    description: device.description,
+    // Numbers are held as strings while being edited, so a half-typed
+    // "12000" does not become NaN and blank the field under the cursor.
+    capital_cost: device.capital_cost === null ? '' : String(device.capital_cost),
+    cost_currency: device.cost_currency,
+    commissioned_on: device.commissioned_on ?? '',
+    expected_life_years:
+      device.expected_life_years === null ? '' : String(device.expected_life_years),
+    annual_maintenance_cost:
+      device.annual_maintenance_cost === null
+        ? ''
+        : String(device.annual_maintenance_cost),
+  })
+
+  const [form, setForm] = useState(shape)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Reopening after a refetch should show what is stored, not what was
+  // captured when this component first mounted.
+  useEffect(() => {
+    if (open) {
+      setForm(shape())
+      setErrors({})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, device.id])
+
+  const siteChanged = (device.site_id ?? '') !== form.site_id
+
+  async function submit() {
+    setErrors({})
+    try {
+      const optional = (value: string) => (value === '' ? null : Number(value))
+      await update.mutateAsync({
+        id: device.id,
+        name: form.name.trim(),
+        site_id: form.site_id || null,
+        device_type_id: form.device_type_id || null,
+        serial_number: form.serial_number.trim(),
+        description: form.description,
+        capital_cost: optional(form.capital_cost),
+        cost_currency: form.cost_currency.trim().toUpperCase(),
+        commissioned_on: form.commissioned_on || null,
+        expected_life_years: optional(form.expected_life_years),
+        annual_maintenance_cost: optional(form.annual_maintenance_cost),
+      })
+      toast.success(t('common.saved'))
+      onClose()
+    } catch (error) {
+      setErrors(fieldErrors(error))
+      toast.error(errorMessage(error))
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('devices.edit')}
+      description={t('devices.editHint')}
+      footer={
+        <>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button
+            variant="primary"
+            loading={update.isPending}
+            disabled={!form.name.trim()}
+            onClick={() => void submit()}
+          >
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <TextInput
+          label={t('devices.registeredName')}
+          required
+          value={form.name}
+          error={errors.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+        />
+        <SiteTreeSelect
+          label={t('devices.site')}
+          sites={sites.data?.items ?? []}
+          value={form.site_id}
+          placeholder={t('common.none')}
+          allowClear
+          error={errors.site_id}
+          hint={siteChanged ? t('devices.siteChangeHint') : t('devices.siteHint')}
+          onChange={(value) => setForm({ ...form, site_id: value })}
+        />
+        <BlueprintPicker
+          label={<Term id="blueprint">{t('devices.blueprint')}</Term>}
+          blueprints={blueprints.data ?? []}
+          value={form.device_type_id}
+          error={errors.device_type_id}
+          onChange={(value) => setForm({ ...form, device_type_id: value })}
+        />
+        <TextInput
+          label={t('devices.serialNumber')}
+          value={form.serial_number}
+          error={errors.serial_number}
+          hint={t('devices.serialHint')}
+          onChange={(event) => setForm({ ...form, serial_number: event.target.value })}
+        />
+        <TextInput
+          label={t('common.description')}
+          value={form.description}
+          onChange={(event) => setForm({ ...form, description: event.target.value })}
+        />
+
+        <div className="border-t border-line pt-4">
+          <p className="label mb-0">{t('devices.costSection')}</p>
+          <p className="hint mb-3">{t('devices.costSectionHint')}</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label={t('devices.capitalCost')}
+              type="number"
+              min={0}
+              step="1000"
+              value={form.capital_cost}
+              error={errors.capital_cost}
+              onChange={(event) => setForm({ ...form, capital_cost: event.target.value })}
+            />
+            <TextInput
+              label={t('tariffs.currency')}
+              value={form.cost_currency}
+              className="uppercase"
+              onChange={(event) => setForm({ ...form, cost_currency: event.target.value })}
+            />
+            <TextInput
+              label={t('devices.commissionedOn')}
+              type="date"
+              value={form.commissioned_on}
+              hint={t('devices.commissionedOnHint')}
+              onChange={(event) =>
+                setForm({ ...form, commissioned_on: event.target.value })
+              }
+            />
+            <TextInput
+              label={t('devices.expectedLife')}
+              type="number"
+              min={0}
+              step="0.5"
+              suffix={t('devices.years')}
+              value={form.expected_life_years}
+              onChange={(event) =>
+                setForm({ ...form, expected_life_years: event.target.value })
+              }
+            />
+            <TextInput
+              label={t('devices.maintenanceCost')}
+              type="number"
+              min={0}
+              step="1000"
+              suffix={t('devices.perYear')}
+              value={form.annual_maintenance_cost}
+              onChange={(event) =>
+                setForm({ ...form, annual_maintenance_cost: event.target.value })
+              }
+            />
+            <div className="flex items-end">
+              <p className="text-xs text-muted">
+                {t('devices.annualCost')}:{' '}
+                <span className="font-medium text-content tnum">
+                  {formatCurrency(device.annual_cost, device.cost_currency || undefined)}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * How much energy this one device moved.
+ *
+ * Reads the basis out loud rather than showing a bare number: a differenced
+ * counter is exact, an integrated power gauge is an approximation whose error
+ * grows as the reporting interval does. Coverage below 80% is called
+ * incomplete instead of being quietly rounded into the total.
+ */
+function EnergyCard({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation()
+  const range = useTimeRange('24h')
+  const [metric, setMetric] = useState('')
+  const energy = useDeviceEnergy(deviceId, {
+    start: range.start,
+    end: range.end,
+    ...(metric ? { metric_key: metric } : {}),
+  })
+
+  const data = energy.data
+  const incomplete = data ? data.basis === 'integrated' && data.coverage < 0.8 : false
+
+  return (
+    <Card>
+      <CardHeader
+        title={t('devices.energy')}
+        description={t('devices.energyHint')}
+        actions={<TimeRangePicker range={range} />}
+      />
+      <CardBody className="space-y-3">
+        {energy.isPending ? (
+          <LoadingState />
+        ) : energy.error ? (
+          <ErrorState error={energy.error} onRetry={() => void energy.refetch()} />
+        ) : data ? (
+          <>
+            <div className="flex items-baseline gap-2">
+              <span className="tnum text-2xl font-semibold">
+                {data.kwh === null ? '—' : formatMeasurement(data.kwh, 'kWh', 1)}
+              </span>
+              <Badge tone={data.basis === 'counter' ? 'ok' : 'neutral'}>
+                {t(`devices.energyBasis.${data.basis}`)}
+              </Badge>
+            </div>
+
+            {data.kwh === null ? (
+              <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+                {data.counter_reset
+                  ? t('devices.counterReset')
+                  : t('devices.energyUnknown')}
+              </p>
+            ) : null}
+            {incomplete ? (
+              <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+                {t('devices.energyIncomplete', {
+                  percent: Math.round(data.coverage * 100),
+                })}
+              </p>
+            ) : null}
+
+            <dl className="divide-y divide-line">
+              <DetailRow label={t('devices.energyMetric')} mono>
+                {data.metric_key || '—'}
+              </DetailRow>
+              <DetailRow label={t('devices.energyCoverage')}>
+                {data.basis === 'counter' ? '100%' : formatPercent(data.coverage)}
+              </DetailRow>
+              <DetailRow label={t('devices.energyAverage')}>
+                {formatMeasurement(data.avg_kw, 'kW', 2)}
+              </DetailRow>
+              <DetailRow label={t('devices.energyPeak')}>
+                {formatMeasurement(data.peak_kw, 'kW', 2)}
+              </DetailRow>
+            </dl>
+
+            {data.available_metrics.length > 1 ? (
+              <Select
+                label={t('devices.energyMetric')}
+                value={metric}
+                placeholder={t('devices.energyAuto')}
+                onChange={(event) => setMetric(event.target.value)}
+                options={data.available_metrics.map((key) => ({ value: key, label: key }))}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * The last few times this device charged, discharged or ran.
+ *
+ * An open session is shown as open rather than filled in with "now": a machine
+ * that has been running for 37 days is a real and useful answer, not a missing
+ * end time.
+ */
+function SessionsCard({ deviceId }: { deviceId: string }) {
+  const { t } = useTranslation()
+  const sessions = useOperatingSessions({ device_pk: deviceId, limit: 8 })
+
+  return (
+    <Card>
+      <CardHeader title={t('devices.sessions')} description={t('devices.sessionsHint')} />
+      {sessions.isPending ? (
+        <LoadingState />
+      ) : sessions.error ? (
+        <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} />
+      ) : (
+        <Table>
+          <THead>
+            <Th>{t('devices.sessionKind')}</Th>
+            <Th>{t('devices.sessionStarted')}</Th>
+            <Th align="right">{t('devices.sessionDuration')}</Th>
+            <Th align="right">{t('devices.sessionEnergy')}</Th>
+          </THead>
+          <TBody>
+            {(sessions.data?.items ?? []).map((session) => (
+              <Tr key={session.id}>
+                <Td>
+                  <Badge
+                    tone={
+                      session.kind === 'discharge'
+                        ? 'brand'
+                        : session.kind === 'charge'
+                          ? 'info'
+                          : 'neutral'
+                    }
+                  >
+                    {t(`devices.sessionKinds.${session.kind}`)}
+                  </Badge>
+                </Td>
+                <Td className="text-muted">{formatDateTime(session.started_at)}</Td>
+                <Td align="right" className="tnum text-muted">
+                  {session.ended_at === null ? (
+                    <Badge tone="ok">{t('devices.sessionOpen')}</Badge>
+                  ) : (
+                    formatDuration(session.duration_s)
+                  )}
+                </Td>
+                <Td align="right" className="tnum">
+                  {formatMeasurement(session.energy_kwh, 'kWh', 2)}
+                </Td>
+              </Tr>
+            ))}
+            {(sessions.data?.items.length ?? 0) === 0 ? (
+              <EmptyRow colSpan={4} message={t('devices.noSessions')} />
+            ) : null}
+          </TBody>
+        </Table>
+      )}
+    </Card>
   )
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import ClassVar
 from typing import Any, Generic, TypeVar
 
 from ninja import Schema
@@ -56,12 +57,30 @@ class TimeRangeParams(Schema):
     start: dt.datetime | None = None
     end: dt.datetime | None = None
 
+    #: How far past "now" a defaulted window reaches. See :meth:`normalized`.
+    #: ClassVar, or pydantic would take it for a query parameter.
+    DEFAULT_END_GRACE: ClassVar[dt.timedelta] = dt.timedelta(seconds=1)
+
     def normalized(self, *, default_window_seconds: int = 3600) -> tuple[
         dt.datetime, dt.datetime
     ]:
+        """``(start, end)`` for a half-open ``[start, end)`` filter.
+
+        Half-open so consecutive explicit windows tile without counting a
+        sample twice.
+
+        A **defaulted** end reaches slightly past the present, which is not the
+        same fudge it looks like. With an exclusive bound of exactly ``now()``,
+        a row written in the same clock tick as the request is invisible - and
+        clock ticks are not small: Windows resolves to roughly 15 ms, so
+        "everything up to now" routinely dropped the newest row on the way in.
+        The half-open convention earns its keep when one window has a successor
+        to tile against; a "latest" window has none, so excluding the present
+        instant costs data and buys nothing.
+        """
         from apps.core.timeutils import now
 
-        end = self.end or now()
+        end = self.end or (now() + self.DEFAULT_END_GRACE)
         start = self.start or (end - dt.timedelta(seconds=default_window_seconds))
         if start >= end:
             from apps.core.errors import ValidationError

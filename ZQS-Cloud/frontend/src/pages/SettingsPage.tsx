@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, KeyRound, Monitor, Moon, Plus, Sun, Trash2 } from 'lucide-react'
+import { Building2, Copy, KeyRound, Monitor, Moon, Plus, Sun, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useTheme } from '@/providers/ThemeProvider'
@@ -19,6 +19,7 @@ import {
   PageHeader,
   SegmentedControl,
   Select,
+  SiteTreeSelect,
   TBody,
   THead,
   Table,
@@ -26,6 +27,7 @@ import {
   Term,
   TextInput,
   Th,
+  TimezoneSelect,
   Tr,
 } from '@/components/ui'
 import {
@@ -36,13 +38,14 @@ import {
   useHealth,
   useMemberMutations,
   useMembers,
+  useSites,
   useUpdateProfile,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
 import { formatRelative } from '@/lib/format'
 import { LANGUAGE_LABELS, SUPPORTED_LANGUAGES, applyLanguage, currentLanguage } from '@/i18n'
 import type { SupportedLanguage } from '@/i18n'
-import type { ApiKeyCreated, Role, ThemePreference } from '@/lib/types'
+import type { ApiKeyCreated, Member, Role, ThemePreference } from '@/lib/types'
 
 const ROLES: Role[] = ['viewer', 'operator', 'admin', 'owner']
 
@@ -157,11 +160,10 @@ function AppearanceCard() {
         </div>
 
         <div className="flex items-end gap-2">
-          <TextInput
+          <TimezoneSelect
             label={t('settings.timezone')}
             value={timezone}
-            onChange={(event) => setTimezone(event.target.value)}
-            placeholder="Asia/Taipei"
+            onChange={setTimezone}
             className="flex-1"
           />
           <Button onClick={() => void persist({ timezone_name: timezone })}>
@@ -278,8 +280,13 @@ function PlatformCard() {
           {capabilities.data ? (
             <>
               <Row
-                label={<Term id="mqtt">MQTT topic root</Term>}
-                value={capabilities.data.mqtt_topic_root}
+                label={<Term id="mqtt">Sparkplug namespace</Term>}
+                value={capabilities.data.sparkplug_namespace}
+                mono
+              />
+              <Row
+                label="Sparkplug host ID"
+                value={capabilities.data.sparkplug_host_id}
                 mono
               />
               <Row label={<Term id="ingestor">Message bus</Term>} value={capabilities.data.bus_backend} />
@@ -325,6 +332,7 @@ function MembersCard() {
   const [email, setEmail] = useState('')
   const [role, setNewRole] = useState<Role>('viewer')
   const [removing, setRemoving] = useState<{ id: string; email: string } | null>(null)
+  const [scoping, setScoping] = useState<Member | null>(null)
 
   return (
     <Card>
@@ -341,12 +349,13 @@ function MembersCard() {
           <Th>{t('auth.email')}</Th>
           <Th>{t('settings.fullName')}</Th>
           <Th>{t('settings.memberRole')}</Th>
+          <Th>{t('settings.siteScope')}</Th>
           <Th align="right">{t('settings.joined')}</Th>
           <Th />
         </THead>
         <TBody>
           {members.isPending ? (
-            <EmptyRow colSpan={5} message={`${t('common.loading')}…`} />
+            <EmptyRow colSpan={6} message={`${t('common.loading')}…`} />
           ) : (
             members.data?.items.map((member) => (
               <Tr key={member.user.id}>
@@ -371,6 +380,17 @@ function MembersCard() {
                     className="w-36"
                   />
                 </Td>
+                <Td>
+                  <Button
+                    size="sm"
+                    icon={<Building2 className="size-3.5" />}
+                    onClick={() => setScoping(member)}
+                  >
+                    {member.site_ids.length === 0
+                      ? t('settings.scopeAll')
+                      : t('settings.scopeCount', { count: member.site_ids.length })}
+                  </Button>
+                </Td>
                 <Td align="right" className="text-muted">
                   {formatRelative(member.created_at)}
                 </Td>
@@ -389,6 +409,8 @@ function MembersCard() {
           )}
         </TBody>
       </Table>
+
+      <SiteScopeModal member={scoping} onClose={() => setScoping(null)} />
 
       <Modal
         open={showAdd}
@@ -453,6 +475,123 @@ function MembersCard() {
         }}
       />
     </Card>
+  )
+}
+
+/**
+ * Restrict a member to part of the organisation.
+ *
+ * Two dimensions were never enough: a contractor commissioning one plant has
+ * no business reading another plant's telemetry, and until now the only way to
+ * arrange that was a separate tenant.
+ *
+ * Two rules are worth knowing and are stated on the dialog rather than left to
+ * be discovered: **an empty list means the whole organisation** - which is
+ * what every membership is by default - and **naming a site grants its whole
+ * subtree**, so a site added under it later is covered without anyone
+ * re-editing anything.
+ *
+ * Scope and role are independent. Narrowing someone to one plant does not
+ * change what they may do while they are there.
+ */
+function SiteScopeModal({
+  member,
+  onClose,
+}: {
+  member: Member | null
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const sites = useSites({ includeDescendants: true })
+  const { setRole } = useMemberMutations()
+  const [selected, setSelected] = useState<string[]>([])
+  const [pending, setPending] = useState('')
+
+  useEffect(() => {
+    setSelected(member?.site_ids ?? [])
+    setPending('')
+  }, [member])
+
+  const byId = new Map((sites.data?.items ?? []).map((site) => [site.id, site]))
+
+  function addSite(siteId: string) {
+    setPending('')
+    if (!siteId || selected.includes(siteId)) return
+    setSelected((current) => [...current, siteId])
+  }
+
+  async function save() {
+    if (!member) return
+    try {
+      await setRole.mutateAsync({
+        userId: member.user.id,
+        role: member.role,
+        site_ids: selected,
+      })
+      toast.success(t('common.saved'))
+      onClose()
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  return (
+    <Modal
+      open={member !== null}
+      onClose={onClose}
+      title={t('settings.siteScope')}
+      description={t('settings.siteScopeHint')}
+      footer={
+        <>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" loading={setRole.isPending} onClick={() => void save()}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted">{member?.user.email}</p>
+
+        <SiteTreeSelect
+          label={t('settings.grantSite')}
+          sites={sites.data?.items ?? []}
+          value={pending}
+          placeholder={t('settings.pickSite')}
+          onChange={addSite}
+          hint={t('settings.subtreeHint')}
+        />
+
+        {selected.length === 0 ? (
+          <p className="rounded-lg bg-surface-muted px-3 py-2 text-sm text-muted">
+            {t('settings.scopeAllHint')}
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {selected.map((siteId) => (
+              <li
+                key={siteId}
+                className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2"
+              >
+                <Building2 className="size-3.5 shrink-0 text-subtle" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {byId.get(siteId)?.name ?? siteId}
+                </span>
+                <IconButton
+                  label={t('common.remove')}
+                  onClick={() =>
+                    setSelected((current) => current.filter((id) => id !== siteId))
+                  }
+                >
+                  <Trash2 className="size-3.5" />
+                </IconButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
   )
 }
 

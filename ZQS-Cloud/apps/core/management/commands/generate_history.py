@@ -29,7 +29,7 @@ from apps.devices.registry import DeviceRef
 from apps.alerts.engine import AlertEngine, RuleCache
 from apps.alerts.models import Alert
 from apps.ems.aggregator import SiteAggregator
-from apps.ems.models import AssetRole, EnergyAsset, EnergyInterval, StoragePlan
+from apps.ems.models import AssetRole, EnergyAsset, EnergyInterval
 from apps.telemetry.models import LatestSample, TelemetrySample
 from apps.telemetry.repository import SampleRow, insert_samples, upsert_latest
 
@@ -195,7 +195,9 @@ class Command(BaseCommand):
         except Exception:  # noqa: BLE001 - a misconfigured site should still generate
             zone = dt.timezone.utc
 
-        plan = StoragePlan.objects.filter(site=site).first()
+        from apps.ems.plans import effective_plan
+
+        plan = effective_plan(site)[0]
         by_role = {asset.role: asset for asset in assets}
         battery = by_role.get(AssetRole.BATTERY)
         meter = by_role.get(AssetRole.GRID_METER)
@@ -397,6 +399,7 @@ class Command(BaseCommand):
             refs[device.id] = DeviceRef(
                 pk=device.id,
                 device_id=device.device_id,
+                edge_node_id=device.edge_node_id,
                 organization_id=device.organization_id,
                 site_id=device.site_id,
                 device_type_id=device.device_type_id,

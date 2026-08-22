@@ -17,6 +17,8 @@ from apps.audit.services import record
 from apps.core.errors import Conflict, NotFound, ValidationError
 from apps.core.schemas import OkResponse, Page, PageParams, TimeRangeParams, paginate
 from apps.core.timeutils import now
+from apps.devices import edge_nodes
+from apps.devices import geocoding
 from apps.devices import schemas as s
 from apps.devices import services
 from apps.devices.models import (
@@ -27,7 +29,8 @@ from apps.devices.models import (
     ConnectionStatus,
     DeclarationState,
     Device,
-    DeviceCredential,
+    EdgeNode,
+    EdgeNodeCredential,
     DeviceDeclaration,
     DeviceEvent,
     DeviceStatusEvent,
@@ -42,6 +45,8 @@ from apps.telemetry.catalog import get_catalog
 sites_router = Router(tags=["sites"])
 blueprints_router = Router(tags=["blueprints"])
 devices_router = Router(tags=["devices"])
+edge_nodes_router = Router(tags=["edge-nodes"])
+events_router = Router(tags=["events"])
 commands_router = Router(tags=["commands"])
 
 
@@ -64,8 +69,9 @@ def list_sites(
     total" without a second request.
     """
     ctx: AuthContext = request.auth
-    queryset = Site.objects.filter(
-        organization=ctx.organization, deleted_at__isnull=True
+    queryset = ctx.scope_queryset(
+        Site.objects.filter(organization=ctx.organization, deleted_at__isnull=True),
+        field="id",
     )
     if not include_inactive:
         queryset = queryset.filter(is_active=True)
@@ -83,6 +89,16 @@ def list_sites(
 @sites_router.post("", response={201: s.SiteOut}, auth=role_required(Role.ADMIN))
 def create_site(request, payload: s.SiteIn):
     ctx: AuthContext = request.auth
+    # A site-scoped admin may only add sites *inside* their scope. Without this
+    # they could create a top-level site and then watch it disappear from their
+    # own listing, which looks like the save silently failed.
+    if ctx.is_site_scoped and payload.parent_id is None:
+        raise ValidationError(
+            "Your access is limited to specific sites, so a new site needs a "
+            "parent inside that scope",
+            code="parent_required_in_scope",
+        )
+
     data = payload.dict(exclude={"parent_id"})
     site = Site(organization=ctx.organization, **data)
     _apply_parent(ctx, site, payload.parent_id)
@@ -95,6 +111,41 @@ def create_site(request, payload: s.SiteIn):
     record(AuditAction.SITE_CREATED, ctx=ctx, target=site)
     _decorate_tree(ctx, [site])
     return 201, site
+
+
+# --------------------------------------------------------------------------
+# Geocoding
+# --------------------------------------------------------------------------
+@sites_router.get("/geocode", response=s.GeocodeOut)
+def geocode_address(request, q: str, limit: int = 5):
+    """Turn an address into candidate coordinates.
+
+    Declared before ``/sites/{site_id}``: routes match in registration order,
+    so a literal path placed after a parameterised one is never reached - the
+    word "geocode" is simply parsed as a (failing) UUID.
+
+    Deliberately never fails. ``available`` says whether lookup is possible at
+    all in this deployment, and an empty ``results`` covers everything else -
+    no match, no internet, rate limited. The console's fallback is the same in
+    every one of those cases: let the operator type the numbers in.
+    """
+    ctx: AuthContext = request.auth
+    return {
+        "available": geocoding.is_enabled(),
+        "results": [
+            {
+                "latitude": place.latitude,
+                "longitude": place.longitude,
+                "display_name": place.display_name,
+                "city": place.city,
+                "country": place.country,
+                "timezone_name": place.timezone_name,
+            }
+            for place in geocoding.search(
+                q, limit=limit, language=getattr(ctx.user, "language", "") or ""
+            )
+        ],
+    }
 
 
 @sites_router.get("/{site_id}", response=s.SiteOut)
@@ -150,7 +201,9 @@ def site_rollup(
         acknowledged=Count("id", filter=Q(status=AlertStatus.ACKNOWLEDGED)),
     )
 
-    energy = ems_rollup.energy_totals(site_ids, start, end)
+    energy = ems_rollup.energy_totals(
+        site_ids, start, end, default_currency=ctx.organization.reporting_currency
+    )
     # A subtree with no metered site at all should read as "nothing to show"
     # rather than as a confident row of zeroes.
     if not energy["site_count"] or _energy_is_empty(energy):
@@ -241,13 +294,21 @@ def delete_site(request, site_id: uuid.UUID):
 # --------------------------------------------------------------------------
 @blueprints_router.get("", response=list[s.DeviceTypeOut])
 def list_blueprints(request):
-    """Built-in blueprints plus this tenant's own."""
+    """Built-in blueprints plus this tenant's own.
+
+    ``label`` and ``description_text`` come back in the caller's language.
+    The blueprint catalogue is where somebody registering their first device
+    finds out what a "PCS" is, so it should not be the one screen that stays
+    English.
+    """
     ctx: AuthContext = request.auth
-    return list(
-        DeviceType.objects.filter(
+    language = ctx.user.language if ctx.user else "en"
+    return [
+        _blueprint_out(blueprint, language)
+        for blueprint in DeviceType.objects.filter(
             Q(organization=ctx.organization) | Q(organization__isnull=True)
         ).order_by("name")
-    )
+    ]
 
 
 @blueprints_router.post("", response={201: s.DeviceTypeOut}, auth=role_required(Role.ADMIN))
@@ -262,7 +323,7 @@ def create_blueprint(request, payload: s.DeviceTypeIn):
         raise Conflict(
             f"A blueprint with key '{payload.key}' already exists", code="key_taken"
         ) from exc
-    return 201, blueprint
+    return 201, _blueprint_out(blueprint, ctx.user.language if ctx.user else "en")
 
 
 @blueprints_router.patch("/{blueprint_id}", response=s.DeviceTypeOut, auth=role_required(Role.ADMIN))
@@ -284,7 +345,7 @@ def update_blueprint(request, blueprint_id: uuid.UUID, payload: s.DeviceTypeIn):
     for field, value in payload.dict().items():
         setattr(blueprint, field, value)
     blueprint.save()
-    return blueprint
+    return _blueprint_out(blueprint, ctx.user.language if ctx.user else "en")
 
 
 @blueprints_router.delete("/{blueprint_id}", response=OkResponse, auth=role_required(Role.ADMIN))
@@ -325,7 +386,7 @@ def list_devices(
     tree view has nowhere to put.
     """
     ctx: AuthContext = request.auth
-    queryset = (
+    queryset = ctx.scope_queryset(
         Device.objects.for_organization(ctx.organization)
         .select_related("site", "device_type")
         .order_by("name")
@@ -484,9 +545,10 @@ def device_map(request, site_id: uuid.UUID | None = None):
     visible on day one and becomes more precise as hardware reports GPS.
     """
     ctx: AuthContext = request.auth
-    queryset = (
-        Device.objects.for_organization(ctx.organization)
-        .select_related("site", "device_type")
+    queryset = ctx.scope_queryset(
+        Device.objects.for_organization(ctx.organization).select_related(
+            "site", "device_type"
+        )
     )
     if site_id is not None:
         queryset = queryset.filter(site_id=site_id)
@@ -533,6 +595,36 @@ def device_map(request, site_id: uuid.UUID | None = None):
     return points
 
 
+def _credential_out(credential, password: str) -> dict:
+    return {
+        "mqtt_username": credential.mqtt_username,
+        "mqtt_password": password,
+        "allowed_client_id": credential.allowed_client_id,
+        "is_active": credential.is_active,
+        "rotated_at": credential.rotated_at,
+        "last_auth_at": credential.last_auth_at,
+    }
+
+
+def _resolve_edge_node(ctx, node_id, device_id: str, site):
+    """The node this device reports through.
+
+    Omitting ``edge_node_id`` means "this device speaks MQTT itself", and an
+    implicit node is created to hold its connection. Registering a device is
+    still one call, even though the model underneath now has two levels.
+    """
+    if node_id:
+        node = EdgeNode.objects.filter(
+            pk=node_id, organization=ctx.organization, deleted_at__isnull=True
+        ).first()
+        if node is None:
+            raise NotFound("Edge node not found")
+        return node
+    return edge_nodes.implicit_node_for(
+        organization=ctx.organization, node_id=device_id, site=site
+    )
+
+
 @devices_router.post("", response={201: s.DeviceCreatedOut}, auth=role_required(Role.ADMIN))
 def create_device(request, payload: s.DeviceIn, issue_credential: bool = True):
     """Register a device. MQTT credentials are returned once, if requested."""
@@ -541,35 +633,34 @@ def create_device(request, payload: s.DeviceIn, issue_credential: bool = True):
     site = _resolve_site(ctx, data.pop("site_id", None))
     device_type = _resolve_blueprint(ctx, data.pop("device_type_id", None))
     policy = _resolve_policy(ctx, data.pop("recording_policy_id", None))
+    node = _resolve_edge_node(ctx, data.pop("edge_node_id", None), payload.device_id, site)
 
     if data.get("latitude") is not None and data.get("longitude") is not None:
         data["location_source"] = "manual"
 
+    _assert_serial_free(ctx, data.get("serial_number", ""))
     try:
         device = Device.objects.create(
             organization=ctx.organization,
             site=site,
             device_type=device_type,
             recording_policy=policy,
+            edge_node=node,
             **data,
         )
     except IntegrityError as exc:
-        raise Conflict(
-            f"Device id '{payload.device_id}' is already registered",
-            code="device_id_taken",
-        ) from exc
+        # Two constraints can land here. Telling them apart matters: one means
+        # "pick another id", the other means "this hardware is already
+        # registered, go and find it".
+        raise _registration_conflict(ctx, payload.device_id, data.get("serial_number", "")) from exc
 
     credential_out = None
     if issue_credential:
-        credential, password = DeviceCredential.issue(device)
-        credential_out = {
-            "mqtt_username": credential.mqtt_username,
-            "mqtt_password": password,
-            "allowed_client_id": credential.allowed_client_id,
-            "is_active": credential.is_active,
-            "rotated_at": credential.rotated_at,
-            "last_auth_at": credential.last_auth_at,
-        }
+        # On a shared gateway the credential already exists and belongs to the
+        # other devices too, so issuing here would silently invalidate theirs.
+        if node.is_implicit or not hasattr(node, "credential"):
+            credential, password = edge_nodes.issue_credential(node)
+            credential_out = _credential_out(credential, password)
 
     get_registry().invalidate()
     record(AuditAction.DEVICE_CREATED, ctx=ctx, target=device)
@@ -600,40 +691,111 @@ def get_device(request, device_pk: uuid.UUID):
             }
         )
 
-    payload = s.DeviceDetailOut.from_orm(device).dict()
-    payload["latest"] = latest
-    payload["open_alert_count"] = (
+    # Attach the extras to the model instance rather than serialising to a
+    # dict and handing that back. Ninja validates the returned value against
+    # the response schema, and a dict re-entering the schema loses every
+    # resolver-backed field - site_name, device_type_name, device_category and
+    # capabilities all silently fall back to their defaults, because the
+    # resolvers reach for ``obj.site`` / ``obj.effective_capabilities()`` and a
+    # dict has neither.
+    device.latest = latest
+    device.open_alert_count = (
         Alert.objects.filter(device=device).exclude(status=AlertStatus.RESOLVED).count()
     )
-    payload["available_commands"] = (
+    device.available_commands = (
         device.device_type.command_definitions if device.device_type_id else []
     )
-    return payload
+    return device
 
 
 @devices_router.patch("/{device_pk}", response=s.DeviceOut, auth=role_required(Role.ADMIN))
 def update_device(request, device_pk: uuid.UUID, payload: s.DeviceUpdateIn):
+    """Edit a device's registered details, including which site it belongs to.
+
+    A device is registered to exactly one site - the FK enforces that - so
+    "moving" one is a reassignment, not an addition. The audit entry records
+    the site and blueprint by name on both sides: ``site_id`` alone tells a
+    later reader nothing about what actually changed, and a site can be
+    renamed or deleted between the change and the day someone reads the log.
+    """
     ctx: AuthContext = request.auth
     device = _get_device(ctx, device_pk)
     changes = payload.dict(exclude_unset=True)
+    audit: dict = {}
+    site_changed = False
+
+    if "serial_number" in changes and changes["serial_number"] is not None:
+        _assert_serial_free(ctx, changes["serial_number"], exclude_pk=device.pk)
 
     if "site_id" in changes:
+        previous = device.site
         device.site = _resolve_site(ctx, changes.pop("site_id"))
+        if (previous.pk if previous else None) != (
+            device.site.pk if device.site else None
+        ):
+            site_changed = True
+            audit["site"] = {
+                "from": previous.name if previous else None,
+                "to": device.site.name if device.site else None,
+                "to_id": str(device.site.pk) if device.site else None,
+            }
     if "device_type_id" in changes:
+        previous_type = device.device_type
         device.device_type = _resolve_blueprint(ctx, changes.pop("device_type_id"))
+        if (previous_type.pk if previous_type else None) != (
+            device.device_type.pk if device.device_type else None
+        ):
+            audit["device_type"] = {
+                "from": previous_type.name if previous_type else None,
+                "to": device.device_type.name if device.device_type else None,
+            }
     if "recording_policy_id" in changes:
         device.recording_policy = _resolve_policy(ctx, changes.pop("recording_policy_id"))
+        audit["recording_policy_id"] = (
+            str(device.recording_policy_id) if device.recording_policy_id else None
+        )
     if changes.get("latitude") is not None and changes.get("longitude") is not None:
         # An operator-set position outranks whatever the device last reported.
         device.location_source = "manual"
 
+    # Fields where an explicit null is a real instruction ("clear this"),
+    # rather than the caller simply not mentioning it. Everything else keeps
+    # its stored value when null arrives.
+    nullable = {
+        "description",
+        "address",
+        "serial_number",
+        "capital_cost",
+        "commissioned_on",
+        "expected_life_years",
+        "annual_maintenance_cost",
+    }
     for field, value in changes.items():
-        if value is not None or field in {"description", "address", "serial_number"}:
-            setattr(device, field, value)
+        if value is None and field not in nullable:
+            continue
+        if field == "name":
+            audit["name"] = {"from": device.name, "to": value}
+        setattr(device, field, value)
+        audit.setdefault(field, value)
 
-    device.save()
+    try:
+        device.save()
+    except IntegrityError as exc:
+        raise _registration_conflict(
+            ctx, device.device_id, device.serial_number
+        ) from exc
+
+    if site_changed:
+        # The energy asset bindings say "at site S, this device supplies flow
+        # R". Left behind, they make the old site's balance depend on
+        # equipment that is no longer there while the new site reads as
+        # unconfigured - two wrong numbers, no error anywhere.
+        moved = services.move_energy_bindings(device, device.site)
+        if moved:
+            audit["energy_bindings"] = moved
+
     get_registry().invalidate()
-    record(AuditAction.DEVICE_UPDATED, ctx=ctx, target=device, payload=changes)
+    record(AuditAction.DEVICE_UPDATED, ctx=ctx, target=device, payload=audit)
     return device
 
 
@@ -642,7 +804,9 @@ def delete_device(request, device_pk: uuid.UUID):
     ctx: AuthContext = request.auth
     device = _get_device(ctx, device_pk)
     device.soft_delete()
-    DeviceCredential.objects.filter(device=device).update(is_active=False)
+    EdgeNodeCredential.objects.filter(
+        edge_node_id=device.edge_node_id, edge_node__is_implicit=True
+    ).update(is_active=False)
     get_registry().invalidate()
     record(AuditAction.DEVICE_DELETED, ctx=ctx, target=device)
     return {"ok": True, "message": "device_deleted"}
@@ -650,17 +814,32 @@ def delete_device(request, device_pk: uuid.UUID):
 
 @devices_router.post("/{device_pk}/credential", response=s.DeviceCredentialOut, auth=role_required(Role.ADMIN))
 def rotate_device_credential(request, device_pk: uuid.UUID):
+    """Rotate the credential of the node this device reports through.
+
+    Refused on a shared gateway. The credential authenticates the connection,
+    not the device, so rotating it here would cut off every other device on the
+    same gateway - and the operator asking for one device would have no reason
+    to expect that.
+    """
     ctx: AuthContext = request.auth
     device = _get_device(ctx, device_pk)
-    credential, password = services.rotate_credential(ctx, device)
-    return {
-        "mqtt_username": credential.mqtt_username,
-        "mqtt_password": password,
-        "allowed_client_id": credential.allowed_client_id,
-        "is_active": credential.is_active,
-        "rotated_at": credential.rotated_at,
-        "last_auth_at": credential.last_auth_at,
-    }
+    node = device.edge_node
+    if not node.is_implicit:
+        siblings = (
+            Device.objects.filter(edge_node=node, deleted_at__isnull=True)
+            .exclude(pk=device.pk)
+            .count()
+        )
+        if siblings:
+            raise Conflict(
+                f"This device reports through edge node '{node.node_id}', which "
+                f"carries {siblings} other device(s). Rotate the node's "
+                f"credential instead.",
+                code="shared_edge_node",
+                details={"edge_node_id": str(node.pk), "sibling_count": siblings},
+            )
+    credential, password = edge_nodes.rotate_credential(ctx, node)
+    return _credential_out(credential, password)
 
 
 # ---- Commands -------------------------------------------------------------
@@ -717,6 +896,50 @@ def list_device_events(
     if code:
         queryset = queryset.filter(code=code)
     return paginate(queryset, params)
+
+
+@devices_router.get("/{device_pk}/energy", response=s.DeviceEnergyOut)
+def device_energy(
+    request,
+    device_pk: uuid.UUID,
+    window: Query[TimeRangeParams],
+    metric_key: str = "",
+):
+    """How much energy this one device consumed or produced in the window.
+
+    Distinct from the site figures under ``/ems``: those are the site's energy
+    *balance*, on a fixed 15-minute grid, and a single device is not a slice of
+    them. This reads the device's own series.
+
+    Method follows the metric, not the caller: a cumulative counter is
+    differenced (exact), a power gauge is integrated (approximate, and
+    ``coverage`` says how approximate). Leave ``metric_key`` empty to let the
+    device's energy asset bindings choose.
+    """
+    from apps.telemetry import device_energy as energy_service
+
+    ctx: AuthContext = request.auth
+    device = _get_device(ctx, device_pk)
+    start, end = window.normalized(default_window_seconds=24 * 3600)
+
+    result = energy_service.device_energy(
+        device, start=start, end=end, metric_key=metric_key
+    )
+    return {
+        "device_id": device.pk,
+        "metric_key": result.metric_key,
+        "basis": result.basis,
+        "kwh": result.kwh,
+        "unit": result.unit,
+        "coverage": result.coverage,
+        "samples": result.samples,
+        "counter_reset": result.counter_reset,
+        "avg_kw": result.avg_kw,
+        "peak_kw": result.peak_kw,
+        "start": start,
+        "end": end,
+        "available_metrics": energy_service.candidate_metrics(device),
+    }
 
 
 @devices_router.get("/{device_pk}/status-history", response=Page[s.DeviceStatusEventOut])
@@ -782,6 +1005,7 @@ def _get_site(ctx: AuthContext, site_id: uuid.UUID) -> Site:
     ).first()
     if site is None:
         raise NotFound("Site not found")
+    ctx.require_site(site.pk)
     return site
 
 
@@ -930,7 +1154,66 @@ def _get_device(ctx: AuthContext, device_pk: uuid.UUID) -> Device:
     )
     if device is None:
         raise NotFound("Device not found")
+    # 404 rather than 403 for an out-of-scope device: telling someone that a
+    # device exists but is not theirs is itself information they do not have.
+    if not ctx.allows_site(device.site_id):
+        raise NotFound("Device not found")
     return device
+
+
+def _assert_serial_free(
+    ctx: AuthContext, serial_number: str, *, exclude_pk: uuid.UUID | None = None
+) -> None:
+    """Refuse a serial number another live device in this tenant already holds.
+
+    Checked here as well as by the database constraint so the operator gets
+    the *name* of the device that already has it. "Which one?" is the only
+    question a duplicate-serial error provokes, and a bare 409 cannot answer
+    it.
+
+    Blank is never compared: serials are often unknown at commissioning, and
+    demanding a placeholder would defeat the check far more thoroughly than
+    allowing the blank does.
+    """
+    serial = (serial_number or "").strip()
+    if not serial:
+        return
+
+    queryset = Device.objects.for_organization(ctx.organization).filter(
+        serial_number=serial
+    )
+    if exclude_pk is not None:
+        queryset = queryset.exclude(pk=exclude_pk)
+    existing = queryset.only("id", "name", "device_id").first()
+    if existing is None:
+        return
+
+    raise Conflict(
+        f"Serial number '{serial}' is already registered to '{existing.name}'",
+        code="serial_number_taken",
+        details={
+            "serial_number": serial,
+            "device_id": str(existing.pk),
+            "device_external_id": existing.device_id,
+            "device_name": existing.name,
+        },
+    )
+
+
+def _registration_conflict(ctx: AuthContext, device_id: str, serial_number: str):
+    """Turn an IntegrityError on the device table into the right message.
+
+    Two unique constraints reach the same handler; which one fired changes
+    what the operator should do about it.
+    """
+    if serial_number:
+        try:
+            _assert_serial_free(ctx, serial_number)
+        except Conflict as conflict:
+            return conflict
+    return Conflict(
+        f"Device id '{device_id}' is already registered", code="device_id_taken"
+    )
 
 
 def _resolve_site(ctx: AuthContext, site_id: uuid.UUID | None) -> Site | None:
@@ -961,6 +1244,25 @@ def _resolve_policy(ctx: AuthContext, policy_id: uuid.UUID | None):
     return policy
 
 
+def _blueprint_out(blueprint: DeviceType, language: str) -> dict:
+    return {
+        "id": blueprint.id,
+        "key": blueprint.key,
+        "name": blueprint.name,
+        "label": blueprint.label(language),
+        "description_text": blueprint.describe(language),
+        "category": blueprint.category,
+        "manufacturer": blueprint.manufacturer,
+        "model_name": blueprint.model_name,
+        "description": blueprint.description,
+        "translations": blueprint.translations or {},
+        "icon": blueprint.icon,
+        "command_definitions": blueprint.command_definitions,
+        "organization_id": blueprint.organization_id,
+        "created_at": blueprint.created_at,
+    }
+
+
 def _validate_command_definitions(definitions: list[dict]) -> None:
     seen: set[str] = set()
     for index, spec in enumerate(definitions or []):
@@ -984,3 +1286,234 @@ def _validate_command_definitions(definitions: list[dict]) -> None:
                 f"command '{name}' has a non-object 'params' schema",
                 code="bad_command_spec",
             )
+
+
+# --------------------------------------------------------------------------
+# Edge nodes
+# --------------------------------------------------------------------------
+def _get_edge_node(ctx, node_pk: uuid.UUID) -> EdgeNode:
+    node = EdgeNode.objects.filter(
+        pk=node_pk, organization=ctx.organization, deleted_at__isnull=True
+    ).first()
+    if node is None:
+        raise NotFound("Edge node not found")
+    return node
+
+
+@edge_nodes_router.get("", response=Page[s.EdgeNodeOut])
+def list_edge_nodes(
+    request,
+    page: Query[PageParams],
+    include_implicit: bool = False,
+    site_id: uuid.UUID | None = None,
+):
+    """Gateways in this organisation.
+
+    Implicit nodes are hidden by default. They exist to give a
+    directly-connected device somewhere to hold its session, and listing them
+    beside real gateways would double every device in the operator's view.
+    """
+    ctx: AuthContext = request.auth
+    queryset = (
+        EdgeNode.objects.for_organization(ctx.organization)
+        .select_related("site")
+        .annotate(
+            device_count_annotated=Count(
+                "devices", filter=Q(devices__deleted_at__isnull=True)
+            )
+        )
+    )
+    if not include_implicit:
+        queryset = queryset.filter(is_implicit=False)
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
+    return paginate(queryset.order_by("name"), page)
+
+
+@edge_nodes_router.post(
+    "", response={201: s.EdgeNodeCreatedOut}, auth=role_required(Role.ADMIN)
+)
+def create_edge_node(request, payload: s.EdgeNodeIn, issue_credential: bool = True):
+    """Register a gateway. MQTT credentials are returned once, if requested."""
+    ctx: AuthContext = request.auth
+    site = _resolve_site(ctx, payload.site_id)
+    if EdgeNode.objects.filter(
+        group_id=ctx.organization.slug,
+        node_id=payload.node_id,
+        deleted_at__isnull=True,
+    ).exists():
+        raise Conflict(
+            f"Edge node '{payload.node_id}' already exists in this organization",
+            code="edge_node_exists",
+        )
+
+    node = EdgeNode.objects.create(
+        organization=ctx.organization,
+        site=site,
+        node_id=payload.node_id,
+        name=payload.name or payload.node_id,
+        description=payload.description,
+        is_enabled=payload.is_enabled,
+        is_implicit=False,
+    )
+
+    credential_out = None
+    if issue_credential:
+        credential, password = edge_nodes.issue_credential(node)
+        credential_out = _credential_out(credential, password)
+
+    get_registry().invalidate()
+    record(AuditAction.DEVICE_CREATED, ctx=ctx, target=node)
+    return 201, {"edge_node": node, "credential": credential_out}
+
+
+@edge_nodes_router.get("/{node_pk}", response=s.EdgeNodeOut)
+def get_edge_node(request, node_pk: uuid.UUID):
+    ctx: AuthContext = request.auth
+    return _get_edge_node(ctx, node_pk)
+
+
+@edge_nodes_router.patch(
+    "/{node_pk}", response=s.EdgeNodeOut, auth=role_required(Role.ADMIN)
+)
+def update_edge_node(request, node_pk: uuid.UUID, payload: s.EdgeNodeUpdateIn):
+    ctx: AuthContext = request.auth
+    node = _get_edge_node(ctx, node_pk)
+    data = payload.dict(exclude_unset=True)
+
+    if "site_id" in data:
+        node.site = _resolve_site(ctx, data.pop("site_id"))
+    for field, value in data.items():
+        setattr(node, field, value)
+    node.save()
+
+    if "is_enabled" in data:
+        EdgeNodeCredential.objects.filter(edge_node=node).update(
+            is_active=node.is_enabled
+        )
+    get_registry().invalidate()
+    record(AuditAction.DEVICE_UPDATED, ctx=ctx, target=node)
+    return node
+
+
+@edge_nodes_router.delete(
+    "/{node_pk}", response=OkResponse, auth=role_required(Role.ADMIN)
+)
+def delete_edge_node(request, node_pk: uuid.UUID):
+    """Remove a gateway. Refused while devices still report through it.
+
+    Deleting it anyway would cascade the devices away with it, taking their
+    history and any energy asset bound to them - which is not what "remove this
+    gateway" sounds like it does.
+    """
+    ctx: AuthContext = request.auth
+    node = _get_edge_node(ctx, node_pk)
+    attached = Device.objects.filter(edge_node=node, deleted_at__isnull=True).count()
+    if attached:
+        raise Conflict(
+            f"Edge node '{node.node_id}' still carries {attached} device(s)",
+            code="edge_node_in_use",
+            details={"device_count": attached},
+        )
+
+    node.deleted_at = now()
+    node.save(update_fields=["deleted_at", "updated_at"])
+    EdgeNodeCredential.objects.filter(edge_node=node).update(is_active=False)
+    get_registry().invalidate()
+    record(AuditAction.DEVICE_DELETED, ctx=ctx, target=node)
+    return {"ok": True, "message": "edge_node_deleted"}
+
+
+@edge_nodes_router.post(
+    "/{node_pk}/credential",
+    response=s.DeviceCredentialOut,
+    auth=role_required(Role.ADMIN),
+)
+def rotate_edge_node_credential(request, node_pk: uuid.UUID):
+    ctx: AuthContext = request.auth
+    node = _get_edge_node(ctx, node_pk)
+    credential, password = edge_nodes.rotate_credential(ctx, node)
+    return _credential_out(credential, password)
+
+
+@edge_nodes_router.post(
+    "/{node_pk}/rebirth", response=OkResponse, auth=role_required(Role.OPERATOR)
+)
+def request_edge_node_rebirth(request, node_pk: uuid.UUID):
+    """Ask a node to re-announce every metric it offers.
+
+    The operator-facing half of the recovery the worker performs automatically
+    on a sequence gap. Useful after editing a device by hand, when the console
+    and the node may disagree about what exists.
+    """
+    ctx: AuthContext = request.auth
+    node = _get_edge_node(ctx, node_pk)
+    sent = edge_nodes.request_rebirth(node, reason="operator")
+    return {
+        "ok": sent,
+        "message": "rebirth_requested" if sent else "rebirth_recently_requested",
+    }
+
+
+# --------------------------------------------------------------------------
+# Fleet-wide event log
+# --------------------------------------------------------------------------
+@events_router.get("", response=Page[s.DeviceEventOut])
+def list_events(
+    request,
+    filters: Query[s.EventFilters],
+    params: Query[PageParams],
+    window: Query[TimeRangeParams],
+    include_descendants: bool = False,
+):
+    """Every operation-log line the fleet reported, newest first.
+
+    The per-device tab answers "what happened to this unit". This answers the
+    question an operator actually starts with - "something odd happened around
+    four o'clock, where?" - which needs the whole fleet in one place.
+    """
+    ctx: AuthContext = request.auth
+    start, end = window.normalized(default_window_seconds=7 * 24 * 3600)
+
+    queryset = DeviceEvent.objects.filter(
+        organization=ctx.organization, ts__gte=start, ts__lt=end
+    ).select_related("device", "device__site")
+    # Site scope applies through the device, so a member restricted to one
+    # plant cannot read another plant's events.
+    queryset = queryset.filter(device__in=ctx.scope_queryset(
+        Device.objects.for_organization(ctx.organization)
+    ))
+
+    if include_descendants and filters.site_id is not None:
+        site_ids = descendant_site_ids([filters.site_id], organization=ctx.organization)
+        filters = filters.model_copy(update={"site_id": None})
+        queryset = queryset.filter(device__site_id__in=site_ids)
+
+    queryset = filters.filter(queryset)
+    return paginate(queryset.order_by("-ts", "-id"), params)
+
+
+@events_router.get("/codes", response=list[s.EventCodeOut])
+def list_event_codes(request, window: Query[TimeRangeParams]):
+    """Distinct codes seen in the window, most frequent first.
+
+    Populates the filter dropdown from what actually arrived rather than from a
+    fixed list: the codes are the device vendor's, not this platform's, so any
+    hard-coded list would be wrong for somebody.
+    """
+    ctx: AuthContext = request.auth
+    start, end = window.normalized(default_window_seconds=7 * 24 * 3600)
+
+    rows = (
+        DeviceEvent.objects.filter(
+            organization=ctx.organization, ts__gte=start, ts__lt=end
+        )
+        .filter(device__in=ctx.scope_queryset(
+            Device.objects.for_organization(ctx.organization)
+        ))
+        .exclude(code="")
+        .values("code")
+        .annotate(count=Count("id"))
+        .order_by("-count", "code")[:100]
+    )
+    return list(rows)

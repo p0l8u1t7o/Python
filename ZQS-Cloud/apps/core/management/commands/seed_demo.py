@@ -11,7 +11,10 @@ from django.db import transaction
 
 from apps.accounts.models import Membership, Organization, Role, User
 from apps.alerts.models import AlertRule, RuleScope, Severity
-from apps.devices.models import Device, DeviceCredential, DeviceType, Site
+from django.db.models import Count, Q
+from django.utils import timezone
+
+from apps.devices.models import Device, DeviceType, EdgeNode, EdgeNodeCredential, Site
 from apps.ems.models import (
     AssetRole,
     DispatchStrategy,
@@ -40,6 +43,7 @@ class Command(BaseCommand):
             defaults={
                 "name": options["org_name"],
                 "default_timezone": "Asia/Taipei",
+                "reporting_currency": "TWD",
                 "is_active": True,
             },
         )
@@ -175,12 +179,36 @@ class Command(BaseCommand):
             ("ZQS-EMS-0001", "Site EMS controller", "ems-controller"),
         ]
 
+        # One gateway carrying all four devices, which is the shape a real
+        # site takes: an EMS box on the LAN speaks MQTT, the equipment behind
+        # it speaks Modbus. Seeding four independent nodes instead would model
+        # the exception and hide the normal case.
+        node, _created = EdgeNode.objects.get_or_create(
+            group_id=organization.slug,
+            node_id="ZQS-GW-0001",
+            deleted_at__isnull=True,
+            defaults={
+                "organization": organization,
+                "site": site,
+                "name": "Taipei site gateway",
+                "description": "Sparkplug edge node fronting the demo equipment",
+                "is_implicit": False,
+            },
+        )
+        if not hasattr(node, "credential"):
+            EdgeNodeCredential.issue(node)
+
         devices: dict[str, Device] = {}
         for device_id, name, blueprint_key in specification:
-            device, created = Device.objects.update_or_create(
+            # Keyed on the organisation and the device id, not on the node.
+            # Seeding a database whose devices already exist on their own
+            # implicit nodes has to *move* them onto the gateway; keying on the
+            # node would create a second copy and collide on the serial number.
+            device, _created = Device.objects.update_or_create(
+                organization=organization,
                 device_id=device_id,
                 defaults={
-                    "organization": organization,
+                    "edge_node": node,
                     "site": site,
                     "device_type": blueprints.get(blueprint_key),
                     "recording_policy": policy,
@@ -189,9 +217,33 @@ class Command(BaseCommand):
                     "is_enabled": True,
                 },
             )
-            if created or not hasattr(device, "credential"):
-                DeviceCredential.issue(device)
             devices[blueprint_key] = device
+
+        # A device moved onto the gateway leaves its implicit node behind, and
+        # an implicit node with nothing on it is pure clutter: it exists only
+        # to hold one device's connection, so without that device it has no
+        # reason to be listed anywhere. Real gateways are never touched.
+        # Counted then updated by primary key: an UPDATE cannot carry the join
+        # the annotation needs, so doing it in one statement silently affects
+        # nothing.
+        orphan_ids = list(
+            EdgeNode.objects.filter(
+                organization=organization, is_implicit=True, deleted_at__isnull=True
+            )
+            .annotate(
+                attached=Count("devices", filter=Q(devices__deleted_at__isnull=True))
+            )
+            .filter(attached=0)
+            .values_list("pk", flat=True)
+        )
+        if orphan_ids:
+            EdgeNode.objects.filter(pk__in=orphan_ids).update(
+                deleted_at=timezone.now()
+            )
+            self.stdout.write(
+                f"  removed {len(orphan_ids)} empty implicit edge node(s)"
+            )
+
         return devices
 
     def _energy(
@@ -236,10 +288,10 @@ class Command(BaseCommand):
             },
         )
 
-        StoragePlan.objects.update_or_create(
-            site=site,
+        plan, _ = StoragePlan.objects.update_or_create(
+            organization=organization,
+            name="示範儲能方案",
             defaults={
-                "organization": organization,
                 "strategy": DispatchStrategy.PEAK_SHAVING,
                 "is_enabled": True,
                 # Sized against the seeded load profile, which peaks near
@@ -257,6 +309,9 @@ class Command(BaseCommand):
                 "tariff": tariff,
             },
         )
+        if site.storage_plan_id != plan.pk:
+            site.storage_plan = plan
+            site.save(update_fields=["storage_plan"])
 
         bindings = [
             (
@@ -284,9 +339,45 @@ class Command(BaseCommand):
                     "energy_export_metric": "battery_discharge_energy_kwh",
                     "rated_power_kw": 500.0,
                     "rated_energy_kwh": 1000.0,
+                    # A battery's charge and discharge sessions are the whole
+                    # point of session tracking, so the demo has them on.
+                    "session_tracking_enabled": True,
+                    "cost_model": "battery_cycle",
+                    # 12M TWD pack over roughly 6,600 full-equivalent cycles
+                    # of 1 MWh: about 1.8 TWD per kWh of throughput.
+                    "cost_parameters": {"cycle_cost_per_kwh": 1.8},
                 },
             ),
         ]
+        # Purchase costs, so the investment card has something real in it.
+        # Rough Taiwan list prices; the point is the shape of the answer, not
+        # the precision of these particular numbers.
+        costs = {
+            "bess-pcs": (12_000_000.0, 15.0, 180_000.0),
+            "pv-inverter": (2_400_000.0, 20.0, 40_000.0),
+            "smart-meter": (45_000.0, 10.0, 0.0),
+            "ems-controller": (180_000.0, 10.0, 12_000.0),
+        }
+        for key, (capital, life, upkeep) in costs.items():
+            device = devices.get(key)
+            if device is None:
+                continue
+            device.capital_cost = capital
+            device.cost_currency = "TWD"
+            device.expected_life_years = life
+            device.annual_maintenance_cost = upkeep
+            device.commissioned_on = device.created_at.date()
+            device.save(
+                update_fields=[
+                    "capital_cost",
+                    "cost_currency",
+                    "expected_life_years",
+                    "annual_maintenance_cost",
+                    "commissioned_on",
+                    "updated_at",
+                ]
+            )
+
         for device, role, extra in bindings:
             EnergyAsset.objects.update_or_create(
                 site=site,

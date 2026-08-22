@@ -118,11 +118,18 @@ class TrustBoundaryTests(TestCase):
 
 
 class DeclarationIngestTests(TestCase):
-    """What the worker does with an `attributes` block on a status message."""
+    """What the worker does with the identity metrics of a DBIRTH.
+
+    Under Sparkplug the birth *is* the declaration - there is no separate
+    ``attributes`` object, because a birth is already defined as the complete
+    set of metrics a device offers. That makes the trust boundary easier to
+    hold, not harder: the claim arrives as ordinary metrics and is stored as a
+    claim, exactly as before.
+    """
 
     def setUp(self) -> None:
         from apps.devices.registry import get_registry
-        from services.worker.processors import Shared, StatusProcessor
+        from services.worker.processors import Shared, SparkplugProcessor
 
         # The registry is a process-wide TTL cache; a device created after it
         # was last loaded is invisible until it is dropped.
@@ -135,13 +142,60 @@ class DeclarationIngestTests(TestCase):
             self.org, "DECL-1", device_type=self.blueprint
         )
         get_registry().invalidate()
-        self.processor = StatusProcessor(Shared())
+        self.processor = SparkplugProcessor(Shared())
 
-    def envelope(self, attributes=None, status="online") -> dict:
-        data = {"status": status, "ts": int(now().timestamp() * 1000)}
-        if attributes is not None:
-            data["attributes"] = attributes
-        return {"device_id": self.device.device_id, "data": data}
+    @staticmethod
+    def metrics_for(attributes: dict) -> list[dict]:
+        """Turn a declaration dict into the DBIRTH metrics carrying it."""
+        from services.sparkplug.datatypes import DataType
+
+        metrics: list[dict] = []
+
+        def add(name: str, value, datatype: DataType) -> None:
+            metrics.append(
+                {
+                    "name": name,
+                    "alias": None,
+                    "datatype": int(datatype),
+                    "value": value,
+                    "ts": now().isoformat(),
+                    "is_null": value is None,
+                    "is_transient": False,
+                    "is_historical": False,
+                    "properties": {},
+                }
+            )
+
+        for key, label, datatype in (
+            ("schema_version", "Properties/Schema Version", DataType.Int32),
+            ("category", "Properties/Category", DataType.String),
+            ("model", "Properties/Model", DataType.String),
+            ("manufacturer", "Properties/Manufacturer", DataType.String),
+            ("serial_number", "Properties/Serial Number", DataType.String),
+        ):
+            if key in attributes:
+                add(label, attributes[key], datatype)
+
+        for key, value in (attributes.get("capabilities") or {}).items():
+            add(f"Capabilities/{key}", value, DataType.Boolean)
+        for key, value in (attributes.get("ratings") or {}).items():
+            add(f"Ratings/{key}", value, DataType.Double)
+        return metrics
+
+    def envelope(self, attributes=None, kind: str = "DBIRTH") -> dict:
+        node = self.device.edge_node
+        return {
+            "v": 2,
+            "kind": kind,
+            "group_id": node.group_id,
+            "edge_node_id": node.node_id,
+            "device_id": self.device.device_id,
+            "data": {
+                "timestamp": now().isoformat(),
+                "seq": 1,
+                "metrics": self.metrics_for(attributes or {}),
+            },
+        }
 
     def process(self, attributes=None) -> None:
         self.processor.process([self.envelope(attributes)])
@@ -150,7 +204,8 @@ class DeclarationIngestTests(TestCase):
     def pcs_declaration(**capabilities) -> dict:
         return declaration(category=DeviceCategory.PCS, **capabilities)
 
-    def test_a_status_without_attributes_creates_nothing(self):
+    def test_a_birth_without_identity_metrics_creates_nothing(self):
+        """A device that only reports readings is not making a claim."""
         self.process()
         self.assertFalse(DeviceDeclaration.objects.exists())
 
@@ -168,8 +223,9 @@ class DeclarationIngestTests(TestCase):
         self.assertTrue(self.device.effective_capabilities()["can_charge"])
 
     def test_an_identical_redeclaration_does_not_queue_more_review(self):
-        # Devices republish their birth message on every reconnect; repeating
-        # the same claim must not bury the review queue.
+        # Devices republish their birth on every reconnect, and Sparkplug makes
+        # that more frequent, not less - so repeating the same claim must not
+        # bury the review queue.
         self.process(self.pcs_declaration())
         self.process(self.pcs_declaration())
         self.assertEqual(DeviceDeclaration.objects.count(), 1)
@@ -181,7 +237,9 @@ class DeclarationIngestTests(TestCase):
         self.process(self.pcs_declaration())
         self.process(self.pcs_declaration(can_export=True))
         self.assertEqual(DeviceDeclaration.objects.count(), 1)
-        self.assertTrue(DeviceDeclaration.objects.get().payload["capabilities"]["can_export"])
+        self.assertTrue(
+            DeviceDeclaration.objects.get().payload["capabilities"]["can_export"]
+        )
         self.assertEqual(
             DeviceEvent.objects.filter(code="declaration.changed").count(), 2
         )
@@ -195,8 +253,15 @@ class DeclarationIngestTests(TestCase):
     def test_a_malformed_declaration_does_not_break_ingest(self):
         self.processor.process([self.envelope({"schema_version": "nonsense"})])
         self.device.refresh_from_db()
-        # The status itself was still applied.
+        # The birth itself was still applied.
         self.assertIsNotNone(self.device.last_seen_at)
+
+    def test_a_version_omitted_entirely_is_accepted(self):
+        """The profile defines the metric names, so it also owns the version."""
+        payload = self.pcs_declaration()
+        payload.pop("schema_version")
+        self.process(payload)
+        self.assertTrue(DeviceDeclaration.objects.exists())
 
 
 class DeclarationReviewApiTests(ApiTestCase):

@@ -103,13 +103,13 @@ class Command(BaseCommand):
     def _banner(self, options) -> None:
         from django.conf import settings
 
-        from services.mqtt import topics
+        from services.sparkplug import topics
 
         self.console.rule()
         self.console.head("  ZQS 設備連線測試工具（MQTT 驗收 harness）")
         self.console.rule()
         self.console.line(f"  監聽             {options['host']}:{options['port']}")
-        self.console.line(f"  Topic root       {topics.root()}")
+        self.console.line(f"  Namespace        {topics.NAMESPACE}")
         self.console.line(
             f"  Client ID 前綴   {settings.MQTT['CLIENT_ID_PREFIX']}:<device_id>"
         )

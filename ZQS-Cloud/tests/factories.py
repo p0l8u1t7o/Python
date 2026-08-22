@@ -5,7 +5,7 @@ from __future__ import annotations
 import itertools
 
 from apps.accounts.models import Membership, Organization, Role, User
-from apps.devices.models import Device, DeviceType, Site
+from apps.devices.models import Device, DeviceType, EdgeNode, Site
 from apps.telemetry.models import RecordingPolicy
 
 _counter = itertools.count(1)
@@ -64,6 +64,19 @@ def blueprint(key: str = "test-bess", org: Organization | None = None, **kwargs)
     )
 
 
+def edge_node(
+    org: Organization, node_id: str = "", *, site: Site | None = None, **kwargs
+) -> EdgeNode:
+    node_id = node_id or f"NODE-{next(_counter):05d}"
+    return EdgeNode.objects.create(
+        organization=org,
+        node_id=node_id,
+        name=kwargs.pop("name", node_id),
+        site=site,
+        **kwargs,
+    )
+
+
 def device(
     org: Organization,
     device_id: str = "",
@@ -71,11 +84,28 @@ def device(
     site_obj: Site | None = None,
     policy: RecordingPolicy | None = None,
     device_type: DeviceType | None = None,
+    node: EdgeNode | None = None,
     **kwargs,
 ) -> Device:
+    """A device and, unless one is given, the edge node that carries it.
+
+    Every device needs a node now. Defaulting to an implicit one keeps the
+    hundreds of existing tests reading the way they did - they are about
+    devices, not about connections - while the tests that care about gateways
+    pass ``node`` explicitly.
+    """
     device_id = device_id or f"DEV-{next(_counter):05d}"
+    if node is None:
+        node = EdgeNode.objects.create(
+            organization=org,
+            node_id=device_id,
+            name=device_id,
+            site=site_obj,
+            is_implicit=True,
+        )
     return Device.objects.create(
         organization=org,
+        edge_node=node,
         device_id=device_id,
         name=kwargs.pop("name", device_id),
         site=site_obj,
@@ -83,3 +113,17 @@ def device(
         recording_policy=policy,
         **kwargs,
     )
+
+
+def storage_plan(org, site_obj, name: str = "", **kwargs):
+    """A named plan template bound to ``site_obj``."""
+    from apps.ems.models import StoragePlan
+
+    plan = StoragePlan.objects.create(
+        organization=org,
+        name=name or f"{site_obj.name} plan",
+        **kwargs,
+    )
+    site_obj.storage_plan = plan
+    site_obj.save(update_fields=["storage_plan"])
+    return plan

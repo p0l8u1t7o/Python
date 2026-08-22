@@ -39,7 +39,9 @@ channels_router = Router(tags=["notification-channels"])
 _rule_cache = RuleCache()
 
 #: Config keys never returned to the client once stored.
-_SECRET_CONFIG_KEYS = {"headers", "token", "password", "secret", "api_key"}
+_SECRET_CONFIG_KEYS = {
+    "headers", "token", "password", "secret", "api_key", "channel_access_token",
+}
 
 
 # --------------------------------------------------------------------------
@@ -179,8 +181,11 @@ def list_alerts(
     open_only: bool = False,
 ):
     ctx: AuthContext = request.auth
-    queryset = Alert.objects.filter(organization=ctx.organization).select_related(
-        "device", "device__site", "rule", "acknowledged_by"
+    queryset = ctx.scope_queryset(
+        Alert.objects.filter(organization=ctx.organization).select_related(
+            "device", "device__site", "rule", "acknowledged_by"
+        ),
+        field="device__site_id",
     )
 
     if open_only:
@@ -203,8 +208,11 @@ def list_alerts(
 @alerts_router.get("/summary", response=s.AlertSummaryOut)
 def alert_summary(request):
     ctx: AuthContext = request.auth
-    open_alerts = Alert.objects.filter(organization=ctx.organization).exclude(
-        status=AlertStatus.RESOLVED
+    open_alerts = ctx.scope_queryset(
+        Alert.objects.filter(organization=ctx.organization).exclude(
+            status=AlertStatus.RESOLVED
+        ),
+        field="device__site_id",
     )
     by_severity = {
         row["severity"]: row["count"]
@@ -226,9 +234,11 @@ def alert_summary(request):
 def get_alert(request, alert_id: uuid.UUID):
     ctx: AuthContext = request.auth
     alert = _get_alert(ctx, alert_id)
-    payload = s.AlertDetailOut.from_orm(alert).dict()
-    payload["events"] = list(alert.events.all()[:200])
-    return payload
+    # Set the extra field on the instance instead of returning a dict: Ninja
+    # re-validates whatever the view returns, and a dict cannot answer the
+    # resolvers for device_name / device_external_id / site_name, so those
+    # would come back empty. See the same note in apps/devices/api.py.
+    return alert
 
 
 @alerts_router.post("/{alert_id}/acknowledge", response=s.AlertOut, auth=role_required(Role.OPERATOR))
@@ -364,10 +374,22 @@ def update_channel(request, channel_id: uuid.UUID, payload: s.NotificationChanne
     if channel is None:
         raise NotFound("Notification channel not found")
 
-    _validate_channel_config(payload.channel_type, payload.config)
     changes = payload.dict()
-    # An empty config on update means "keep the stored secrets".
-    if not changes["config"]:
+    # Secrets come back to the client redacted, so a form that leaves them
+    # untouched sends "" or "***" - both mean "keep what is stored".
+    if changes["config"]:
+        stored = channel.config or {}
+        merged = dict(changes["config"])
+        for key, value in list(merged.items()):
+            if key.lower() in _SECRET_CONFIG_KEYS and value in ("", "***"):
+                if key in stored:
+                    merged[key] = stored[key]
+                else:
+                    merged.pop(key)
+        changes["config"] = merged
+        _validate_channel_config(payload.channel_type, merged)
+    else:
+        # An empty config on update means "keep the stored config".
         changes.pop("config")
     for field, value in changes.items():
         setattr(channel, field, value)
@@ -407,6 +429,10 @@ def _get_alert(ctx: AuthContext, alert_id: uuid.UUID) -> Alert:
         .first()
     )
     if alert is None:
+        raise NotFound("Alert not found")
+    # 404, not 403: confirming that an alert exists on equipment outside the
+    # caller's scope is itself information they were not given.
+    if alert.device_id and not ctx.allows_site(alert.device.site_id):
         raise NotFound("Alert not found")
     return alert
 
@@ -448,6 +474,9 @@ def _channel_out(channel: NotificationChannel) -> dict:
         "channel_type": channel.channel_type,
         "is_enabled": channel.is_enabled,
         "min_severity": channel.min_severity,
+        "notify_alerts": channel.notify_alerts,
+        "notify_events": channel.notify_events,
+        "min_event_level": channel.min_event_level,
         "config": config,
         "created_at": channel.created_at,
     }
@@ -539,4 +568,15 @@ def _validate_channel_config(channel_type: str, config: dict) -> None:
             raise ValidationError(
                 "Email channels require a non-empty 'recipients' list",
                 code="missing_recipients",
+            )
+    elif channel_type == ChannelType.LINE:
+        if not config.get("channel_access_token"):
+            raise ValidationError(
+                "LINE channels require a 'channel_access_token' (Messaging API)",
+                code="missing_token",
+            )
+        if not config.get("to"):
+            raise ValidationError(
+                "LINE channels require a 'to' (user, group or room ID)",
+                code="missing_recipient",
             )

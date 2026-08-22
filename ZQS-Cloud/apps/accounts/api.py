@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import re
 import uuid
 
 from django.contrib.auth import authenticate
@@ -14,7 +16,14 @@ from ninja import Query, Router
 
 from apps.accounts import schemas as s
 from apps.accounts import tokens
-from apps.accounts.models import ApiKey, Membership, Organization, Role, User
+from apps.accounts.models import (
+    ApiKey,
+    Membership,
+    Organization,
+    Role,
+    User,
+    UserPreference,
+)
 from apps.accounts.permissions import permissions_for
 from apps.accounts.security import AuthContext, role_required
 from apps.audit.models import AuditAction
@@ -110,6 +119,9 @@ def me(request):
         .filter(user=ctx.user)
         .order_by("organization__name")
     )
+    current = next(
+        (m for m in memberships if m.organization_id == ctx.organization.id), None
+    )
     return {
         "user": ctx.user,
         "organization": ctx.organization,
@@ -118,7 +130,110 @@ def me(request):
             {"organization": m.organization, "role": m.role} for m in memberships
         ],
         "permissions": permissions_for(ctx.role, is_superuser=ctx.user.is_superuser),
+        "site_scope": sorted(ctx.site_scope) if ctx.site_scope else [],
+        "scoped_site_ids": (
+            list(current.sites.values_list("pk", flat=True)) if current else []
+        ),
     }
+
+
+#: How many separate layouts one person may keep, and how big each may be.
+#:
+#: Without a cap this is an unbounded write-anything store attached to every
+#: session. The numbers are generous for the real use - a metric layout per
+#: device on a large site is a few hundred rows of a few hundred bytes.
+MAX_UI_PREFERENCES = 500
+MAX_UI_PREFERENCE_BYTES = 8 * 1024
+
+_UI_KEY = re.compile(UserPreference.KEY_PATTERN)
+
+
+@router.get("/auth/me/ui", response=list[s.UiPreferenceOut])
+def list_ui_preferences(request, prefix: str = ""):
+    """Console layout state this user has saved.
+
+    Separate from ``/auth/me/preferences``, which holds theme, language and
+    timezone - those the API itself reads and every client must honour. These
+    the server only stores, so that a layout somebody arranged follows them to
+    another machine instead of living in one browser's localStorage.
+    """
+    ctx: AuthContext = request.auth
+    if ctx.user is None:
+        raise PermissionDenied("API keys have no user profile", code="not_a_user")
+
+    queryset = UserPreference.objects.filter(user=ctx.user)
+    if prefix:
+        queryset = queryset.filter(key__startswith=prefix)
+    return [{"key": row.key, "value": row.value} for row in queryset]
+
+
+@router.get("/auth/me/ui/{key}", response=s.UiPreferenceOut)
+def get_ui_preference(request, key: str):
+    """An unset key returns an empty value rather than 404.
+
+    "This user has not customised it yet" is the normal case on first visit,
+    not an error, and making every page handle a 404 for it would put the same
+    try/catch on every caller.
+    """
+    ctx: AuthContext = request.auth
+    if ctx.user is None:
+        raise PermissionDenied("API keys have no user profile", code="not_a_user")
+    _validate_ui_key(key)
+
+    row = UserPreference.objects.filter(user=ctx.user, key=key).first()
+    return {"key": key, "value": row.value if row else {}}
+
+
+@router.put("/auth/me/ui/{key}", response=s.UiPreferenceOut)
+def set_ui_preference(request, key: str, payload: s.UiPreferenceIn):
+    ctx: AuthContext = request.auth
+    if ctx.user is None:
+        raise PermissionDenied("API keys have no user profile", code="not_a_user")
+    _validate_ui_key(key)
+
+    encoded = json.dumps(payload.value, separators=(",", ":"))
+    if len(encoded.encode("utf-8")) > MAX_UI_PREFERENCE_BYTES:
+        raise ValidationError(
+            f"A preference value may not exceed {MAX_UI_PREFERENCE_BYTES} bytes",
+            code="preference_too_large",
+        )
+
+    existing = UserPreference.objects.filter(user=ctx.user, key=key).first()
+    if existing is None:
+        count = UserPreference.objects.filter(user=ctx.user).count()
+        if count >= MAX_UI_PREFERENCES:
+            raise Conflict(
+                f"You already have {count} saved layouts, the maximum is "
+                f"{MAX_UI_PREFERENCES}. Reset one you no longer use.",
+                code="too_many_preferences",
+            )
+
+    row, _created = UserPreference.objects.update_or_create(
+        user=ctx.user, key=key, defaults={"value": payload.value}
+    )
+    return {"key": row.key, "value": row.value}
+
+
+@router.delete("/auth/me/ui/{key}", response=OkResponse)
+def clear_ui_preference(request, key: str):
+    """Forget a customisation, so the page falls back to its default."""
+    ctx: AuthContext = request.auth
+    if ctx.user is None:
+        raise PermissionDenied("API keys have no user profile", code="not_a_user")
+    _validate_ui_key(key)
+
+    UserPreference.objects.filter(user=ctx.user, key=key).delete()
+    return {"ok": True, "message": "preference_cleared"}
+
+
+def _validate_ui_key(key: str) -> None:
+    if not _UI_KEY.match(key):
+        raise ValidationError(
+            "Preference keys are lowercase words, optionally followed by "
+            "':' and an identifier",
+            code="invalid_preference_key",
+            details={"key": key[:100]},
+        )
 
 
 @router.patch("/auth/me/preferences", response=s.UserOut)
@@ -276,12 +391,19 @@ def list_members(request, params: Query[PageParams]):
     ctx: AuthContext = request.auth
     queryset = (
         Membership.objects.select_related("user")
+        .prefetch_related("sites")
         .filter(organization=ctx.organization)
         .order_by("user__email")
     )
     page = paginate(queryset, params)
     page["items"] = [
-        {"user": m.user, "role": m.role, "created_at": m.created_at} for m in page["items"]
+        {
+            "user": m.user,
+            "role": m.role,
+            "created_at": m.created_at,
+            "site_ids": [site.pk for site in m.sites.all()],
+        }
+        for m in page["items"]
     ]
     return page
 
@@ -313,7 +435,12 @@ def add_member(request, payload: s.MemberInviteIn):
         target_label=user.email,
         payload={"role": payload.role},
     )
-    return 201, {"user": user, "role": membership.role, "created_at": membership.created_at}
+    return 201, {
+        "user": user,
+        "role": membership.role,
+        "created_at": membership.created_at,
+        "site_ids": [],
+    }
 
 
 @member_router.post("/users", response={201: s.UserOut}, auth=role_required(Role.ADMIN))
@@ -348,6 +475,16 @@ def create_user(request, payload: s.UserCreateIn):
 
 @member_router.patch("/{user_id}", response=s.MemberOut, auth=role_required(Role.ADMIN))
 def update_member_role(request, user_id: uuid.UUID, payload: s.MemberRoleIn):
+    """Change a member's role and, optionally, which sites they may see.
+
+    Site scope and role are two independent dimensions: narrowing someone to
+    one plant does not change what they may do there. An owner is deliberately
+    *not* exempt - if an organisation wants a plant-level owner, that is a
+    coherent thing to want - but the usual owner guards still apply to the
+    role itself.
+    """
+    from apps.devices.models import Site
+
     ctx: AuthContext = request.auth
     membership = _get_membership(ctx, user_id)
 
@@ -359,18 +496,43 @@ def update_member_role(request, user_id: uuid.UUID, payload: s.MemberRoleIn):
 
     membership.role = payload.role
     membership.save(update_fields=["role", "updated_at"])
+
+    audit: dict = {"role": payload.role}
+    if payload.site_ids is not None:
+        sites = list(
+            Site.objects.filter(
+                organization=ctx.organization,
+                pk__in=payload.site_ids,
+                deleted_at__isnull=True,
+            )
+        )
+        unknown = set(payload.site_ids) - {site.pk for site in sites}
+        if unknown:
+            raise NotFound(
+                "Unknown site(s) in this organization",
+                code="site_not_found",
+                details={"site_ids": sorted(str(pk) for pk in unknown)},
+            )
+        # An admin cannot grant access they do not have themselves; otherwise
+        # scoping would be trivially self-defeating.
+        for site in sites:
+            ctx.require_site(site.pk)
+        membership.sites.set(sites)
+        audit["site_ids"] = [str(site.pk) for site in sites]
+
     record(
         AuditAction.MEMBER_ROLE_CHANGED,
         ctx=ctx,
         target=membership.user,
         target_type="user",
         target_label=membership.user.email,
-        payload={"role": payload.role},
+        payload=audit,
     )
     return {
         "user": membership.user,
         "role": membership.role,
         "created_at": membership.created_at,
+        "site_ids": list(membership.sites.values_list("pk", flat=True)),
     }
 
 

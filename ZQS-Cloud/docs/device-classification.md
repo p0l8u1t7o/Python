@@ -21,7 +21,7 @@
 
 | 欄位 | 位置 | 現況 |
 | --- | --- | --- |
-| `DeviceType.category` | blueprint | 有 9 種：`battery`、`pcs`、`pv_inverter`、`meter`、`ev_charger`、`controller`、`sensor`、`gateway`、`other` |
+| `DeviceType.category` | blueprint | 有 11 種：`battery`、`pcs`、`generation`、`meter`、`load`、`generator`、`ev_charger`、`controller`、`sensor`、`gateway`、`other` |
 | `DeviceType.command_definitions` | blueprint | JSON 陣列，每個命令帶 `params` 的 JSON-schema 與 `min_role` |
 | `Device` 上的能力欄位 | — | **完全沒有** |
 
@@ -734,6 +734,10 @@ EnergyIntervalCost
 
 #### 幣別與單位
 
+> **已實作。** `Organization.reporting_currency`（預設 `TWD`）、
+> `currency_mismatch` 的儲存時檢查、以及沒有電價方案的場域退回組織幣別，
+> 都已經在程式裡了。見 system-logic.md §6.5 與 `tests/test_reporting_currency.py`。
+
 原則：**一個場域只能有一種報表幣別，而且這件事要在設定時擋，不是在報表時
 發現。**
 
@@ -832,7 +836,7 @@ blueprint 預設值）。**它不得查詢 `DeviceDeclaration`。** 這條規則
 
 **建議：擴充現有的 `status`，不要新增 topic。**
 
-`energy/devices/{device_id}/status` 已經是 birth message：連線後立刻發布、
+`spBv1.0/{group}/DBIRTH/{node}/{device}` 就是 birth message：連線後立刻發布、
 retained、QoS 1，而且 LWT 就掛在同一個 topic 上。加一個可選的 `attributes`
 物件即可。
 
@@ -951,7 +955,7 @@ retained、QoS 1，而且 LWT 就掛在同一個 topic 上。加一個可選的 
 | category | can_charge | can_discharge | can_export | is_dispatchable |
 | --- | --- | --- | --- | --- |
 | `battery` / `pcs` | ✓ | ✓ | ✓ | ✓ |
-| `pv_inverter` | ✗ | ✓ | ✓ | ✓ |
+| `generation` | ✗ | ✓ | ✓ | ✓ |
 | `ev_charger` | ✓ | ✗ | ✗ | ✓ |
 | `meter` / `sensor` | ✗ | ✗ | ✗ | ✗ |
 | `controller` / `gateway` / `other` | ✗ | ✗ | ✗ | ✓ |

@@ -13,7 +13,6 @@ from apps.ems.models import (
     DispatchStrategy,
     EnergyAsset,
     EnergyInterval,
-    StoragePlan,
     Tariff,
 )
 from apps.ems.tariffs import resolve_price, validate_periods
@@ -93,9 +92,9 @@ class SiteAggregatorTestCase(TestCase):
             default_import_price=5.0,
             default_export_price=1.0,
         )
-        StoragePlan.objects.create(
-            organization=self.org,
-            site=self.site,
+        factories.storage_plan(
+            self.org,
+            self.site,
             strategy=DispatchStrategy.PEAK_SHAVING,
             tariff=self.tariff,
         )

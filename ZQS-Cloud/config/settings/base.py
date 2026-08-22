@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.alerts",
     "apps.audit",
     "apps.ems",
+    "apps.workflows",
 ]
 
 MIDDLEWARE = [
@@ -184,6 +185,15 @@ JWT_REFRESH_TTL_SECONDS = env.get_int("JWT_REFRESH_TTL_SECONDS", 14 * 24 * 3600)
 # MQTT (EMQX)
 # --------------------------------------------------------------------------
 MQTT = {
+    # Whether this deployment talks to a broker at all.
+    #
+    # The console's default dev mode runs the API without EMQX: every page
+    # works, only live ingest and downlink commands do not. Before this flag
+    # the health card reported "Cannot reach MQTT broker" in that mode, which
+    # is technically true and completely useless - it is not a fault, it is
+    # the mode working as intended. A deployment that genuinely needs the
+    # broker leaves this at 1 and still gets the alarm.
+    "ENABLED": env.get_bool("MQTT_ENABLED", True),
     "HOST": env.get("MQTT_HOST", "127.0.0.1"),
     "PORT": env.get_int("MQTT_PORT", 1883),
     "USERNAME": env.get("MQTT_USERNAME", ""),
@@ -193,20 +203,102 @@ MQTT = {
     "TLS_CERTFILE": env.get("MQTT_TLS_CERTFILE", ""),
     "TLS_KEYFILE": env.get("MQTT_TLS_KEYFILE", ""),
     "TLS_INSECURE": env.get_bool("MQTT_TLS_INSECURE", False),
+    # 5 or 311. MQTT 5 is what EMQX speaks and what the platform prefers -
+    # its reason codes say *why* a publish was refused, where 3.1.1 only says
+    # that it was. The knob exists because the bundled development broker
+    # implements 3.1.1 only, and a laptop with a working live path is worth
+    # more than a laptop with better error codes on a broker that is not there.
+    "PROTOCOL_VERSION": env.get_int("MQTT_PROTOCOL_VERSION", 5),
     "KEEPALIVE": env.get_int("MQTT_KEEPALIVE", 45),
     "CLIENT_ID_PREFIX": env.get("MQTT_CLIENT_ID_PREFIX", "zqs"),
-    "TOPIC_ROOT": env.get("MQTT_TOPIC_ROOT", "energy/devices"),
     # EMQX shared subscriptions let several ingestor replicas split the load.
     "SHARED_SUBSCRIPTION_GROUP": env.get("MQTT_SHARED_GROUP", "zqs-ingestor"),
     "USE_SHARED_SUBSCRIPTION": env.get_bool("MQTT_USE_SHARED_SUBSCRIPTION", True),
+    # Subscribe QoS only. What the platform *publishes* is fixed by the
+    # Sparkplug specification per message type and is not configurable - see
+    # services/sparkplug/topics.py.
     "QOS_UPLINK": env.get_int("MQTT_QOS_UPLINK", 1),
-    "QOS_DOWNLINK": env.get_int("MQTT_QOS_DOWNLINK", 1),
+    "QOS_DOWNLINK": env.get_int("MQTT_QOS_DOWNLINK", 0),
     "RECONNECT_MIN_DELAY": env.get_int("MQTT_RECONNECT_MIN_DELAY", 1),
     "RECONNECT_MAX_DELAY": env.get_int("MQTT_RECONNECT_MAX_DELAY", 60),
 }
 
 # Shared secret EMQX presents when calling the auth / ACL webhooks.
 EMQX_WEBHOOK_TOKEN = env.get("EMQX_WEBHOOK_TOKEN", "")
+
+# --------------------------------------------------------------------------
+# Workflows
+# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Email (alert / event notifications)
+#
+# Without EMAIL_HOST configured, mail goes to the console backend - visible in
+# the worker log, delivered nowhere. That keeps a dev stack honest: an email
+# channel "works" end to end without a mail server, and the switch to real
+# SMTP is configuration, not code.
+# ---------------------------------------------------------------------------
+EMAIL_HOST = env.get("EMAIL_HOST", "")
+EMAIL_PORT = env.get_int("EMAIL_PORT", 587)
+EMAIL_HOST_USER = env.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = env.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env.get_bool("EMAIL_USE_TLS", True)
+DEFAULT_FROM_EMAIL = env.get("DEFAULT_FROM_EMAIL", "zqs-cloud@localhost")
+EMAIL_BACKEND = (
+    "django.core.mail.backends.smtp.EmailBackend"
+    if EMAIL_HOST
+    else "django.core.mail.backends.console.EmailBackend"
+)
+
+WORKFLOWS = {
+    # How many runs one organisation may have going at once. A *server*
+    # setting, not a tenant one: an operator can add and remove flows freely up
+    # to it, but cannot raise it, because what it protects is the machine
+    # everyone shares.
+    "MAX_CONCURRENT_RUNS": env.get_int("WORKFLOW_MAX_CONCURRENT_RUNS", 5),
+    # Node transitions one run may take before it is failed. Counted in steps
+    # rather than seconds because a jump loop burns steps without burning
+    # wall clock, and a time limit would never catch it.
+    # 0 = unlimited. A holding loop is a legitimate control flow, so the
+    # per-run cap is opt-in; the per-call cap is what bounds work per tick.
+    "MAX_STEPS_PER_RUN": env.get_int("WORKFLOW_MAX_STEPS_PER_RUN", 0),
+    # Steps one run may take in a single engine pass, so a busy run cannot
+    # starve the others sharing the tick.
+    "MAX_STEPS_PER_CALL": env.get_int("WORKFLOW_MAX_STEPS_PER_CALL", 200),
+    # How old a reading may be before a condition refuses to judge on it. An
+    # interlock acting on a stale number is worse than one that stops.
+    "MAX_READING_AGE_SECONDS": env.get_int("WORKFLOW_MAX_READING_AGE_S", 300),
+    # Engine tick. This is the resolution of every timer in the system, so it
+    # is short - the work per tick is one indexed query when nothing is due.
+    "TICK_SECONDS": env.get_int("WORKFLOW_TICK_SECONDS", 2),
+}
+
+# --------------------------------------------------------------------------
+# Geocoding (address -> coordinates when registering a site)
+# --------------------------------------------------------------------------
+GEOCODING = {
+    # Off switch for deployments with no outbound internet. Manual entry always
+    # works, so this degrades the feature rather than breaking site creation.
+    "ENABLED": env.get_bool("GEOCODING_ENABLED", True),
+    # OpenStreetMap Nominatim: free, no key, and its usage policy asks for an
+    # identifying User-Agent and at most one request per second.
+    "ENDPOINT": env.get("GEOCODING_ENDPOINT", "https://nominatim.openstreetmap.org/search"),
+    "USER_AGENT": env.get("GEOCODING_USER_AGENT", "ZQS-Cloud/1.0 (energy platform)"),
+    "TIMEOUT_SECONDS": env.get_int("GEOCODING_TIMEOUT_S", 8),
+}
+
+# --------------------------------------------------------------------------
+# Sparkplug B
+# --------------------------------------------------------------------------
+SPARKPLUG = {
+    # This platform's Sparkplug Host Application ID. It appears on the retained
+    # topic spBv1.0/STATE/{HOST_ID}, which is how an edge node decides whether
+    # anyone is listening.
+    #
+    # Two deployments sharing one broker must not share this id: the second one
+    # to start would overwrite the first's retained STATE, and every node would
+    # then be told the host is online when its own host is not.
+    "HOST_ID": env.get("SPARKPLUG_HOST_ID", "zqs-cloud"),
+}
 
 # --------------------------------------------------------------------------
 # Internal message bus

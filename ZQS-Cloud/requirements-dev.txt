@@ -2,3 +2,12 @@
 pytest==8.3.4
 pytest-django==4.9.0
 ruff==0.9.6
+
+# Development MQTT broker (manage.py run_broker), so the live path works
+# without Docker. Never used in production - see deploy/emqx/README.md.
+amqtt==0.12.0
+
+# Regenerates services/sparkplug/sparkplug_b_pb2.py from the .proto. Only
+# needed when the schema changes; the generated file is committed so neither
+# runtime nor CI needs protoc installed.
+grpcio-tools==1.68.1

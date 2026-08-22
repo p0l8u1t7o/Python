@@ -27,7 +27,13 @@ interface Row {
   discharge: number
   load: number
   soc: number | null
-  savings: number
+  /**
+   * Null when the interval had no baseline to compare against - during an
+   * outage there is no "buy it from the grid instead" alternative. Recharts
+   * renders null as a gap, which is the honest picture: a zero would claim
+   * the dispatch broke even when in fact nobody knows.
+   */
+  savings: number | null
   cost: number
 }
 

@@ -13,7 +13,14 @@ import { AlertsPage } from '@/pages/AlertsPage'
 import { SitesPage } from '@/pages/SitesPage'
 import { RecordingPage } from '@/pages/RecordingPage'
 import { RulesPage } from '@/pages/RulesPage'
+import { TariffsPage } from '@/pages/TariffsPage'
+import { StoragePlansPage } from '@/pages/StoragePlansPage'
+import { HelpPage } from '@/pages/HelpPage'
 import { AuditPage } from '@/pages/AuditPage'
+import { EventsPage } from '@/pages/EventsPage'
+import { IntegrationPage } from '@/pages/IntegrationPage'
+import { WorkflowEditorPage } from '@/pages/WorkflowEditorPage'
+import { WorkflowsPage } from '@/pages/WorkflowsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
@@ -60,12 +67,19 @@ export function App() {
         <Route path="map" element={<MapPage />} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="storage" element={<StoragePage />} />
+        <Route path="storage-plans" element={<StoragePlansPage />} />
         <Route path="telemetry" element={<TelemetryPage />} />
         <Route path="sites" element={<SitesPage />} />
         <Route path="recording" element={<RecordingPage />} />
         <Route path="rules" element={<RulesPage />} />
+        <Route path="tariffs" element={<TariffsPage />} />
+        <Route path="workflows" element={<WorkflowsPage />} />
+        <Route path="workflows/:workflowId" element={<WorkflowEditorPage />} />
+        <Route path="events" element={<EventsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="integration" element={<IntegrationPage />} />
+        <Route path="help" element={<HelpPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

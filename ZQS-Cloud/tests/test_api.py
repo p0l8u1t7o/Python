@@ -247,7 +247,7 @@ class CommandApiTestCase(ApiTestCase):
         self.token = self.login("op@acme-demo.com")
 
     def test_command_is_persisted_and_published(self):
-        with mock.patch("apps.devices.services.publish_json") as publish:
+        with mock.patch("apps.devices.services.publish_bytes") as publish:
             response = self.post(
                 f"{API}/devices/{self.device.id}/commands",
                 self.token,
@@ -256,17 +256,29 @@ class CommandApiTestCase(ApiTestCase):
 
         self.assertEqual(response.status_code, 202, response.content)
         publish.assert_called_once()
-        topic, payload = publish.call_args[0]
-        self.assertEqual(topic, f"energy/devices/{self.device.device_id}/control")
-        self.assertEqual(payload["name"], "set_power_limit")
-        self.assertEqual(payload["params"], {"limit_w": 500})
+        topic, body = publish.call_args[0]
+
+        node = self.device.edge_node
+        self.assertEqual(
+            topic,
+            f"spBv1.0/{node.group_id}/DCMD/{node.node_id}/{self.device.device_id}",
+        )
+
+        # Decoded rather than compared as bytes: the point is that a device
+        # reading this with a stock Sparkplug library finds the command.
+        from services.sparkplug import payload as sp
+
+        metrics = {m.name: m.value for m in sp.decode(body).metrics}
+        self.assertEqual(metrics["Command/Name"], "set_power_limit")
+        self.assertEqual(metrics["Command/limit_w"], 500)
+        self.assertEqual(metrics["Command/ID"], str(Command.objects.get().id))
 
         command = Command.objects.get()
         self.assertEqual(command.status, CommandStatus.SENT)
         self.assertEqual(command.issued_by, self.operator)
 
     def test_unknown_command_is_rejected(self):
-        with mock.patch("apps.devices.services.publish_json") as publish:
+        with mock.patch("apps.devices.services.publish_bytes") as publish:
             response = self.post(
                 f"{API}/devices/{self.device.id}/commands",
                 self.token,
@@ -277,7 +289,7 @@ class CommandApiTestCase(ApiTestCase):
         publish.assert_not_called()
 
     def test_parameter_out_of_range_is_rejected(self):
-        with mock.patch("apps.devices.services.publish_json"):
+        with mock.patch("apps.devices.services.publish_bytes"):
             response = self.post(
                 f"{API}/devices/{self.device.id}/commands",
                 self.token,
@@ -288,7 +300,7 @@ class CommandApiTestCase(ApiTestCase):
         self.assertEqual(Command.objects.count(), 0)
 
     def test_missing_required_parameter_is_rejected(self):
-        with mock.patch("apps.devices.services.publish_json"):
+        with mock.patch("apps.devices.services.publish_bytes"):
             response = self.post(
                 f"{API}/devices/{self.device.id}/commands",
                 self.token,
@@ -303,7 +315,7 @@ class CommandApiTestCase(ApiTestCase):
             "params": {"limit_w": 100},
             "idempotency_key": "abc-123",
         }
-        with mock.patch("apps.devices.services.publish_json") as publish:
+        with mock.patch("apps.devices.services.publish_bytes") as publish:
             first = self.post(f"{API}/devices/{self.device.id}/commands", self.token, body)
             second = self.post(f"{API}/devices/{self.device.id}/commands", self.token, body)
 
@@ -315,7 +327,7 @@ class CommandApiTestCase(ApiTestCase):
         from services.mqtt.publisher import PublishError
 
         with mock.patch(
-            "apps.devices.services.publish_json", side_effect=PublishError("down")
+            "apps.devices.services.publish_bytes", side_effect=PublishError("down")
         ):
             response = self.post(
                 f"{API}/devices/{self.device.id}/commands",
@@ -459,7 +471,8 @@ class SystemApiTestCase(ApiTestCase):
         body = self.client.get(f"{API}/system/capabilities").json()
         codes = {row["code"] for row in body["languages"]}
         self.assertEqual(codes, {"en", "zh-hant", "zh-hans"})
-        self.assertEqual(body["mqtt_topic_root"], "energy/devices")
+        self.assertEqual(body["sparkplug_namespace"], "spBv1.0")
+        self.assertEqual(body["sparkplug_host_id"], "zqs-cloud")
 
     def test_fleet_counts(self):
         factories.device(self.org, "FLEET-1")

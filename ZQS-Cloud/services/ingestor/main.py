@@ -1,16 +1,21 @@
-"""MQTT ingestion service.
+"""MQTT ingestion service - the Sparkplug primary host application.
 
 Responsibilities, in order:
 
-1. subscribe to every uplink topic (optionally as an EMQX shared subscription
-   so replicas share the load);
-2. decode and schema-validate each payload, rejecting bad traffic at the edge;
-3. resolve the device against a cached registry so unknown hardware cannot
-   flood the pipeline;
-4. hand the normalised envelope to the message bus and return.
+1. announce itself on ``spBv1.0/STATE/{host_id}`` and register the matching
+   offline message as its will, so edge nodes can tell whether anyone is
+   listening;
+2. subscribe to every uplink message type (optionally as an EMQX shared
+   subscription so replicas share the load);
+3. decode each protobuf payload, rejecting bad traffic at the edge;
+4. resolve the Sparkplug address against a cached registry so unknown hardware
+   cannot flood the pipeline;
+5. hand the envelope to the message bus and return.
 
-Step 4 is the whole point: the ingestor never writes to the database, so a slow
-or locked database cannot stall MQTT consumption.
+Step 5 is the whole point: the ingestor never writes to the database, so a slow
+or locked database cannot stall MQTT consumption. That constraint is also why
+metric *classification* is not done here - an alias-only metric cannot be read
+without the birth table, and the birth table is in the database.
 """
 
 from __future__ import annotations
@@ -30,25 +35,43 @@ from apps.devices.registry import get_registry
 from services.bus import streams
 from services.bus.base import BusError, MessageBus
 from services.bus.factory import build_bus
+import orjson
+
 from services.ingestor import protocol
-from services.mqtt import topics
 from services.mqtt.client import MqttClient
+from services.sparkplug import topics
+from services.sparkplug.topics import MessageType
 
 logger = get_logger("ingestor")
 
-ENVELOPE_VERSION = 1
+ENVELOPE_VERSION = 2
 
 #: Bounded so a bus outage causes visible backpressure rather than an OOM kill.
 INBOUND_QUEUE_SIZE = 50_000
 
-#: MQTT kind -> bus stream.
-_STREAM_FOR_KIND = {
-    topics.TELEMETRY: streams.TELEMETRY,
-    topics.STATUS: streams.STATUS,
-    topics.EVENT: streams.EVENT,
-    topics.ALARM: streams.ALARM,
-    topics.CONTROL_ACK: streams.COMMAND_ACK,
-}
+#: Message types this host consumes. Everything goes to one stream so the
+#: ``seq`` counter still means something by the time the worker looks at it.
+_ACCEPTED_TYPES = frozenset(
+    {
+        MessageType.NBIRTH,
+        MessageType.NDEATH,
+        MessageType.DBIRTH,
+        MessageType.DDEATH,
+        MessageType.NDATA,
+        MessageType.DDATA,
+    }
+)
+
+
+def _state_payload(online: bool) -> bytes:
+    """The host STATE document.
+
+    The one place in the Sparkplug namespace that is JSON rather than protobuf,
+    which looks like an inconsistency and is not: STATE is meant to be readable
+    by anything watching the broker, including tools that have never heard of
+    the protobuf schema.
+    """
+    return orjson.dumps({"online": online, "timestamp": int(now().timestamp() * 1000)})
 
 
 class Stats:
@@ -87,45 +110,57 @@ class Ingestor:
     def on_message(self, topic: str, payload: bytes, qos: int, retain: bool) -> None:
         received_at = now()
         parsed = topics.parse(topic)
-        if parsed is None:
+        if parsed is None or parsed.message_type not in _ACCEPTED_TYPES:
             self.stats.incr("dropped.unknown_topic")
             return
 
-        self.stats.incr(f"received.{parsed.kind}")
+        self.stats.incr(f"received.{parsed.message_type}")
 
         try:
-            document = protocol.decode(payload)
-            validated = protocol.validate(parsed.kind, document)
-            data = self._normalize(parsed.kind, validated, received_at)
+            data = protocol.decode_uplink(parsed, payload, received_at)
         except protocol.ProtocolError as exc:
             self.stats.incr(f"rejected.{exc.reason}")
             logger.warning(
                 "rejected payload",
                 extra={
                     "topic": topic,
-                    "device_id": parsed.device_id,
+                    "edge_node_id": parsed.edge_node_id,
                     "reason": exc.reason,
                     "error": str(exc)[:300],
                 },
             )
             return
 
-        ref = self.registry.get(parsed.device_id)
-        if ref is None and not settings.INGEST["AUTO_PROVISION"]:
-            self.stats.incr("dropped.unknown_device")
-            self._log_unknown_device(parsed.device_id)
+        node = self.registry.get_node(parsed.group_id, parsed.edge_node_id)
+        if node is None:
+            # Auto-provisioning needs a database write, so it is the worker's
+            # job. The envelope goes through carrying only the address, and the
+            # worker either creates the rows or drops it.
+            if not settings.INGEST["AUTO_PROVISION"]:
+                self.stats.incr("dropped.unknown_node")
+                self._log_unknown_device(f"{parsed.group_id}/{parsed.edge_node_id}")
+                return
+        elif not node.is_enabled:
+            self.stats.incr("dropped.node_disabled")
             return
-        if ref is not None and not ref.is_enabled:
-            self.stats.incr("dropped.device_disabled")
-            return
+
+        ref = None
+        if parsed.device_id and node is not None:
+            ref = self.registry.get_device(node.pk, parsed.device_id)
+            if ref is not None and not ref.is_enabled:
+                self.stats.incr("dropped.device_disabled")
+                return
 
         envelope = {
             "v": ENVELOPE_VERSION,
-            "kind": parsed.kind,
+            "kind": str(parsed.message_type),
             "topic": topic,
+            "group_id": parsed.group_id,
+            "edge_node_id": parsed.edge_node_id,
             "device_id": parsed.device_id,
+            "edge_node_pk": str(node.pk) if node else None,
             "device_pk": str(ref.pk) if ref else None,
-            "organization_id": str(ref.organization_id) if ref else None,
+            "organization_id": str(node.organization_id) if node else None,
             "recording_policy_id": (
                 str(ref.recording_policy_id)
                 if ref and ref.recording_policy_id
@@ -137,30 +172,24 @@ class Ingestor:
             "data": data,
         }
 
-        stream = streams.qualified(_STREAM_FOR_KIND[parsed.kind])
+        stream = streams.qualified(streams.INGEST)
         try:
             self.inbound.put_nowait((stream, envelope))
         except queue.Full:
-            # Telemetry is the only lossy-tolerable kind; everything else is
-            # rare enough that blocking briefly is preferable to losing it.
             self.stats.incr("dropped.queue_full")
             self._log_backpressure()
 
-    def _normalize(self, kind: str, validated, received_at) -> dict[str, Any]:
-        if kind == topics.TELEMETRY:
-            return {
-                "seq": validated.seq,
-                "meta": validated.meta,
-                "readings": protocol.normalize_readings(
-                    validated, received_at=received_at
-                ),
-            }
-
-        document = validated.model_dump(mode="json")
-        document["ts"] = protocol.resolve_timestamp(
-            getattr(validated, "ts", None), received_at=received_at
-        ).isoformat()
-        return document
+    # ---- host state ------------------------------------------------------
+    def announce_online(self) -> None:
+        """Publish the host birth. Runs on every CONNACK, reconnects included."""
+        if self._mqtt is None:
+            return
+        qos, retain = topics.publish_options(MessageType.STATE)
+        topic = topics.state_topic()
+        if self._mqtt.publish(topic, _state_payload(True), qos=qos, retain=retain):
+            logger.info("host state announced", extra={"topic": topic})
+        else:
+            logger.error("host state could not be published", extra={"topic": topic})
 
     # ---- forwarder threads ----------------------------------------------
     def _forward_loop(self) -> None:
@@ -223,13 +252,16 @@ class Ingestor:
                     },
                 )
 
-    def _log_unknown_device(self, device_id: str) -> None:
+    def _log_unknown_device(self, address: str) -> None:
         elapsed = time.monotonic() - self._last_drop_log
         if elapsed > 30:
             self._last_drop_log = time.monotonic()
             logger.warning(
-                "message from unregistered device dropped",
-                extra={"device_id": device_id, "hint": "register it or set INGEST_AUTO_PROVISION=1"},
+                "message from unregistered edge node dropped",
+                extra={
+                    "address": address,
+                    "hint": "register it or set INGEST_AUTO_PROVISION=1",
+                },
             )
 
     def _log_backpressure(self) -> None:
@@ -262,16 +294,29 @@ class Ingestor:
             client_suffix="ingestor",
             subscriptions=subscriptions,
             on_message_callback=self.on_message,
+            on_connect_callback=self.announce_online,
             # Shared subscriptions are load-balanced by the broker, so a
             # persistent per-client session would only duplicate state.
             clean_session=settings.MQTT["USE_SHARED_SUBSCRIPTION"],
+        )
+        # Registered before connecting, because a will set afterwards is a will
+        # the broker never received - and then a host that dies stays "online"
+        # on a retained topic forever.
+        state_qos, state_retain = topics.publish_options(MessageType.STATE)
+        self._mqtt.set_last_will(
+            topics.state_topic(),
+            _state_payload(False),
+            qos=state_qos,
+            retain=state_retain,
         )
         logger.info(
             "ingestor starting",
             extra={
                 "broker": f"{settings.MQTT['HOST']}:{settings.MQTT['PORT']}",
+                "host_id": topics.host_id(),
                 "subscriptions": [f for f, _ in subscriptions],
                 "bus": settings.BUS_BACKEND,
+                "nodes_known": self.registry.node_count,
                 "devices_known": self.registry.size,
             },
         )
@@ -283,6 +328,16 @@ class Ingestor:
         logger.info("ingestor shutting down")
         self._stopping.set()
         if self._mqtt is not None:
+            # A clean DISCONNECT makes the broker discard the will, so the
+            # offline STATE has to be published here or nothing ever retracts
+            # the online one.
+            qos, retain = topics.publish_options(MessageType.STATE)
+            try:
+                self._mqtt.publish(
+                    topics.state_topic(), _state_payload(False), qos=qos, retain=retain
+                )
+            except Exception:  # noqa: BLE001 - shutdown must not raise
+                logger.warning("could not publish offline host state")
             self._mqtt.disconnect()
 
         # Give forwarders a moment to drain what is already queued.

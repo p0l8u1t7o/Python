@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.accounts.models import ROLE_RANK
 from apps.audit.models import AuditAction
 from apps.audit.services import record
-from apps.core.errors import Conflict, NotFound, PermissionDenied, ServiceUnavailable
+from apps.core.errors import Conflict, NotFound, ServiceUnavailable
 from apps.core.errors import ValidationError
 from apps.core.logging import get_logger
 from apps.devices.models import (
@@ -22,14 +22,17 @@ from apps.devices.models import (
     Command,
     CommandStatus,
     Device,
-    DeviceCredential,
+    EdgeNodeCredential,
     DeviceDeclaration,
     DeviceType,
     LifecycleState,
 )
 from apps.devices.registry import get_registry
-from services.mqtt import topics
-from services.mqtt.publisher import PublishError, publish_json
+from services.mqtt.publisher import PublishError, publish_bytes
+from services.sparkplug import payload as sp
+from services.sparkplug.datatypes import DataType
+from services.sparkplug import profile
+from services.sparkplug import topics
 
 logger = get_logger("devices.services")
 
@@ -77,6 +80,56 @@ def assert_free_of_energy_bindings(device: Device) -> None:
                 ]
             },
         )
+
+
+def move_energy_bindings(device: Device, site) -> list[str]:
+    """Move the device's energy asset bindings to the site it now sits at.
+
+    An :class:`~apps.ems.models.EnergyAsset` says "at site S, device D
+    supplies flow R". Once D is registered somewhere else, leaving the binding
+    on S is not a stale detail - it makes S's energy balance depend on
+    equipment that is not there, while the new site reads as having nothing
+    bound at all. Both figures are wrong and neither raises anything.
+
+    Returns a description of what moved, for the audit entry. A binding that
+    would collide with one the destination already holds is left where it is
+    and reported: two rows claiming the same (site, device, role) is exactly
+    what the unique constraint exists to stop, and silently deleting one of
+    them would be a worse answer than saying so.
+    """
+    from django.db import IntegrityError, transaction
+
+    from apps.ems.models import EnergyAsset
+
+    moved: list[str] = []
+    conflicts: list[str] = []
+    target_id = site.pk if site is not None else None
+
+    for asset in EnergyAsset.objects.filter(device=device).exclude(site_id=target_id):
+        if target_id is None:
+            # The device has been detached from every site, so the binding has
+            # nowhere to follow it to. Deactivating is the honest move: it
+            # stops feeding a balance it is no longer part of, and it stays
+            # visible so somebody can see what happened.
+            EnergyAsset.objects.filter(pk=asset.pk).update(is_active=False)
+            moved.append(f"{asset.role}: deactivated (device has no site)")
+            continue
+        try:
+            with transaction.atomic():
+                EnergyAsset.objects.filter(pk=asset.pk).update(site_id=target_id)
+        except IntegrityError:
+            conflicts.append(asset.role)
+        else:
+            moved.append(f"{asset.role}: -> {site.name}")
+
+    if conflicts:
+        raise Conflict(
+            "The destination site already binds this device in "
+            f"{', '.join(sorted(conflicts))}; remove the duplicate binding first",
+            code="asset_binding_conflict",
+            details={"roles": sorted(conflicts)},
+        )
+    return moved
 
 
 def set_lifecycle(
@@ -127,9 +180,12 @@ def set_lifecycle(
         updates += ["retired_at", "replaced_by"]
 
     device.save(update_fields=updates)
-    DeviceCredential.objects.filter(device=device).update(
-        is_active=state in INGESTING_STATES
-    )
+    # Only for a node that exists solely to carry this device. On a gateway
+    # fronting other equipment the credential is shared, and cutting it would
+    # take the neighbours off the air too.
+    EdgeNodeCredential.objects.filter(
+        edge_node_id=device.edge_node_id, edge_node__is_implicit=True
+    ).update(is_active=state in INGESTING_STATES)
     get_registry().invalidate()
 
     record(
@@ -196,9 +252,14 @@ def replace_device(
     from apps.alerts.models import AlertRule
     from apps.ems.models import EnergyAsset
 
-    if Device.objects.filter(device_id=device_id).exists():
+    # Scoped to the edge node, because that is where the id has to be unique:
+    # the Sparkplug address is (group_id, edge_node_id, device_id), and a
+    # global check here would refuse a name another tenant happens to use.
+    if Device.objects.filter(
+        edge_node_id=old.edge_node_id, device_id=device_id, deleted_at__isnull=True
+    ).exists():
         raise Conflict(
-            f"Device id '{device_id}' is already in use",
+            f"Device id '{device_id}' is already in use on this edge node",
             code="device_id_taken",
             details={"device_id": device_id},
         )
@@ -216,8 +277,23 @@ def replace_device(
         if blueprint is None:
             raise NotFound("Blueprint not found")
 
+    # Replacing the equipment does not replace the connection. On a gateway
+    # the new unit reports through the same node; a device that spoke MQTT
+    # itself gets its own node, named after its new id.
+    from apps.devices.edge_nodes import implicit_node_for
+
+    node = old.edge_node
+    if node.is_implicit:
+        node = implicit_node_for(
+            organization=old.organization,
+            node_id=device_id,
+            site=old.site,
+            name=name or old.name,
+        )
+
     new = Device.objects.create(
         organization=old.organization,
+        edge_node=node,
         site=old.site,
         device_type=blueprint,
         recording_policy=old.recording_policy,
@@ -259,7 +335,7 @@ def replace_device(
 
     credential = password = None
     if issue_credential:
-        credential, password = DeviceCredential.issue(new)
+        credential, password = EdgeNodeCredential.issue(new.edge_node)
 
     get_registry().invalidate()
     record(
@@ -519,6 +595,33 @@ def _validate_value(name: str, value: Any, spec: dict[str, Any]) -> Any:
 # --------------------------------------------------------------------------
 # Command dispatch
 # --------------------------------------------------------------------------
+def _encode_command(command, name: str, params: dict, expires_at) -> bytes:
+    """Build the DCMD payload.
+
+    Sparkplug models a command as a write to metrics the device announced in its
+    DBIRTH, and defines no acknowledgement message at all - the confirmation is
+    the device reporting the metric back.
+
+    That is fine for a setpoint and useless for an audit trail, so this profile
+    also writes ``Command/ID``. It costs one string and buys the thing the bare
+    specification cannot express: which write a later report refers to, and
+    therefore which commands were never answered. See
+    ``docs/device-protocol.md`` section 4.
+    """
+    message = sp.new_payload(timestamp=command.created_at)
+    sp.add_metric(message, profile.COMMAND_ID, str(command.id))
+    sp.add_metric(message, profile.COMMAND_NAME, name)
+    sp.add_metric(
+        message,
+        profile.COMMAND_EXPIRES,
+        sp.datetime_to_epoch_ms(expires_at),
+        datatype=DataType.DateTime,
+    )
+    for key, value in (params or {}).items():
+        sp.add_metric(message, f"{profile.COMMAND_PREFIX}{key}", value)
+    return sp.encode(message)
+
+
 def dispatch_command(
     ctx,
     device: Device,
@@ -564,6 +667,15 @@ def dispatch_command(
     # After the schema, so the capability check reads validated values.
     check_capabilities(device, name, params)
 
+    # And after the capability check, so "this device cannot charge at all"
+    # is reported ahead of "it may charge, but not that hard".
+    #
+    # Imported here rather than at module scope: apps.ems imports this module
+    # for dispatch_command, so a top-level import would be a cycle.
+    from apps.ems.dispatch import assert_within_plan
+
+    assert_within_plan(device, name, params)
+
     if idempotency_key:
         existing = Command.objects.filter(
             organization=ctx.organization, idempotency_key=idempotency_key
@@ -596,17 +708,13 @@ def dispatch_command(
             return existing
         raise
 
-    payload = {
-        "command_id": str(command.id),
-        "name": name,
-        "params": params,
-        "issued_at": int(command.created_at.timestamp() * 1000),
-        "expires_at": int(expires_at.timestamp() * 1000),
-        "reply_to": topics.device_topic(device.device_id, topics.CONTROL_ACK),
-    }
+    body = _encode_command(command, name, params, expires_at)
+    node = device.edge_node
+    topic = topics.device_command(node.group_id, node.node_id, device.device_id)
+    qos, retain = topics.publish_options(topics.MessageType.DCMD)
 
     try:
-        publish_json(topics.control_topic(device.device_id), payload)
+        publish_bytes(topic, body, qos=qos, retain=retain)
     except PublishError as exc:
         command.status = CommandStatus.FAILED
         command.error = f"MQTT publish failed: {exc}"[:500]
@@ -668,32 +776,13 @@ def cancel_command(ctx, command_id: uuid.UUID) -> Command:
 # --------------------------------------------------------------------------
 # Credentials
 # --------------------------------------------------------------------------
-def rotate_credential(ctx, device: Device) -> tuple[DeviceCredential, str]:
-    """Issue new MQTT credentials. The password is returned only once."""
-    ctx.require("admin")
-    credential, password = DeviceCredential.issue(device)
-    record(AuditAction.DEVICE_CREDENTIAL_ROTATED, ctx=ctx, target=device)
-    logger.info("device credential rotated", extra={"device_id": device.device_id})
-    return credential, password
+def rotate_credential(ctx, device: Device) -> tuple[EdgeNodeCredential, str]:
+    """Issue new MQTT credentials for the node this device reports through.
 
+    Kept as a device-level entry point because that is how an operator thinks
+    about it - but on a shared gateway it rotates the whole node, which is why
+    the API refuses it there and points at the edge node instead.
+    """
+    from apps.devices.edge_nodes import rotate_credential as rotate_node
 
-def authenticate_device(username: str, password: str, client_id: str = "") -> Device | None:
-    """Backing check for the EMQX authentication webhook."""
-    credential = (
-        DeviceCredential.objects.select_related("device")
-        .filter(mqtt_username=username, is_active=True)
-        .first()
-    )
-    if credential is None or not credential.verify(password):
-        return None
-    if credential.allowed_client_id and client_id != credential.allowed_client_id:
-        raise PermissionDenied("Client id does not match the pinned value")
-
-    device = credential.device
-    if not device.is_enabled or device.deleted_at is not None:
-        return None
-
-    now = timezone.now()
-    if credential.last_auth_at is None or (now - credential.last_auth_at).total_seconds() > 60:
-        DeviceCredential.objects.filter(pk=credential.pk).update(last_auth_at=now)
-    return device
+    return rotate_node(ctx, device.edge_node)

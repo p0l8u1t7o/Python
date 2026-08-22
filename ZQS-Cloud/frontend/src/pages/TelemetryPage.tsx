@@ -6,7 +6,7 @@ import { useAllDevices, useMetrics, useSeries, useSites } from '@/lib/queries'
 import { useToast } from '@/providers/ToastProvider'
 import { currentLanguage } from '@/i18n'
 import { formatDateTime, formatInterval } from '@/lib/format'
-import { RANGE_KEYS, useTimeRange, type RangeKey } from '@/lib/useTimeRange'
+import { useTimeRange } from '@/lib/useTimeRange'
 import type { SeriesResponse } from '@/lib/types'
 import { TimeSeriesChart, seriesKey } from '@/components/charts/TimeSeriesChart'
 import {
@@ -19,8 +19,8 @@ import {
   ErrorState,
   LoadingState,
   PageHeader,
-  SegmentedControl,
-  Select,
+  TimeRangePicker,
+  SiteTreeSelect,
   Term,
   TextInput,
 } from '@/components/ui'
@@ -118,12 +118,7 @@ export function TelemetryPage() {
         description={t('telemetry.subtitle')}
         actions={
           <>
-            <SegmentedControl<RangeKey>
-              size="sm"
-              value={range.key}
-              onChange={range.setKey}
-              options={RANGE_KEYS.map((key) => ({ value: key, label: t(`range.${key}`) }))}
-            />
+            <TimeRangePicker range={range} />
             <Button
               icon={<Download className="size-4" />}
               disabled={!series.data || series.data.series.length === 0}
@@ -142,16 +137,13 @@ export function TelemetryPage() {
             description={`${deviceIds.length}/${MAX_SELECTION}`}
           />
           <CardBody className="space-y-2">
-            <Select
+            <SiteTreeSelect
               label={t('telemetry.pickByGroup')}
+              sites={sites.data?.items ?? []}
               value=""
               placeholder={t('telemetry.pickByGroupPlaceholder')}
               hint={t('telemetry.pickByGroupHint', { max: MAX_SELECTION })}
-              options={(sites.data?.items ?? []).map((site) => ({
-                value: site.id,
-                label: `${'  '.repeat(site.depth)}${site.name}`,
-              }))}
-              onChange={(event) => selectGroup(event.target.value)}
+              onChange={(value) => selectGroup(value)}
             />
             <TextInput
               value={deviceFilter}

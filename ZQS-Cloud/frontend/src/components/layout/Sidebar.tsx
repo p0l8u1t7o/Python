@@ -4,13 +4,18 @@ import {
   Activity,
   BatteryCharging,
   Bell,
+  Building2,
+  CircleHelp,
   ClipboardList,
   Cpu,
   LayoutDashboard,
   Map as MapIcon,
-  Building2,
+  Plug,
+  Receipt,
+  ScrollText,
   Settings,
   SlidersHorizontal,
+  Workflow,
   X,
 } from 'lucide-react'
 
@@ -38,6 +43,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         { to: '/alerts', labelKey: 'nav.alerts', icon: Bell, badge: summary?.total_open },
         { to: '/storage', labelKey: 'nav.storage', icon: BatteryCharging },
         { to: '/telemetry', labelKey: 'nav.telemetry', icon: Activity },
+        { to: '/events', labelKey: 'nav.events', icon: ScrollText },
       ],
     },
     {
@@ -46,6 +52,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         { to: '/sites', labelKey: 'nav.sites', icon: Building2 },
         { to: '/recording', labelKey: 'nav.policies', icon: SlidersHorizontal },
         { to: '/rules', labelKey: 'nav.rules', icon: Bell },
+        { to: '/storage-plans', labelKey: 'nav.storagePlans', icon: BatteryCharging },
+        { to: '/tariffs', labelKey: 'nav.tariffs', icon: Receipt },
+        { to: '/workflows', labelKey: 'nav.workflows', icon: Workflow },
       ],
     },
     {
@@ -53,6 +62,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       items: [
         { to: '/audit', labelKey: 'nav.audit', icon: ClipboardList },
         { to: '/settings', labelKey: 'nav.settings', icon: Settings },
+        { to: '/integration', labelKey: 'nav.integration', icon: Plug },
+        { to: '/help', labelKey: 'nav.help', icon: CircleHelp },
       ],
     },
   ]

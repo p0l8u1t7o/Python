@@ -142,6 +142,8 @@ class DeviceTypeIn(Schema):
     manufacturer: str = Field(default="", max_length=120)
     model_name: str = Field(default="", max_length=120)
     description: str = ""
+    #: {"zh-hant": {"name": "...", "description": "..."}}
+    translations: dict[str, Any] = Field(default_factory=dict)
     icon: str = Field(default="", max_length=64)
     command_definitions: list[dict[str, Any]] = Field(default_factory=list)
     default_metadata: dict[str, Any] = Field(default_factory=dict)
@@ -151,10 +153,15 @@ class DeviceTypeOut(Schema):
     id: uuid.UUID
     key: str
     name: str
+    #: ``name`` and ``description`` in the caller's language, falling back to
+    #: the stored English. The raw fields stay, so an editor round-trips.
+    label: str = ""
+    description_text: str = ""
     category: DeviceCategory
     manufacturer: str
     model_name: str
     description: str
+    translations: dict[str, Any] = Field(default_factory=dict)
     icon: str
     command_definitions: list[dict[str, Any]]
     #: Null for the built-in blueprints shared by every tenant.
@@ -165,16 +172,42 @@ class DeviceTypeOut(Schema):
 # --------------------------------------------------------------------------
 # Devices
 # --------------------------------------------------------------------------
-class DeviceIn(Schema):
+class DeviceCostIn(Schema):
+    """What this unit cost to buy and to keep. All optional.
+
+    On the device rather than the blueprint because it is a commercial fact
+    about *this purchase* - the same model bought under two contracts cost
+    different amounts.
+    """
+
+    capital_cost: float | None = Field(default=None, ge=0)
+    #: Empty, not null: the column is a blank-able CharField, and a null would
+    #: fail at the database rather than at validation.
+    cost_currency: str = Field(default="", max_length=8)
+    commissioned_on: dt.date | None = None
+    expected_life_years: float | None = Field(default=None, gt=0, le=100)
+    annual_maintenance_cost: float | None = Field(default=None, ge=0)
+
+
+class DeviceIn(DeviceCostIn):
     device_id: str = Field(
         max_length=64,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$",
-        description="Identifier used in the MQTT topic. Globally unique.",
+        description=(
+            "Sparkplug device_id - the fifth topic level. Unique within its "
+            "edge node, not globally."
+        ),
     )
     name: str = Field(max_length=200)
+    #: The gateway this device reports through. Omit when the device speaks
+    #: MQTT itself, and an edge node carrying just this device is created for
+    #: it - registering stays one call either way.
+    edge_node_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
     device_type_id: uuid.UUID | None = None
     recording_policy_id: uuid.UUID | None = None
+    #: Unique within the organisation when given; blank is allowed and is not
+    #: compared, because a serial is often unknown at commissioning.
     serial_number: str = Field(default="", max_length=120)
     description: str = ""
     latitude: float | None = Field(default=None, ge=-90, le=90)
@@ -185,7 +218,7 @@ class DeviceIn(Schema):
     is_enabled: bool = True
 
 
-class DeviceUpdateIn(Schema):
+class DeviceUpdateIn(DeviceCostIn):
     name: str | None = Field(default=None, max_length=200)
     site_id: uuid.UUID | None = None
     device_type_id: uuid.UUID | None = None
@@ -243,6 +276,37 @@ class DeviceOut(Schema):
     device_category: str = ""
     recording_policy_id: uuid.UUID | None = None
 
+    # ---- Sparkplug address ----------------------------------------------
+    edge_node_id: uuid.UUID | None = None
+    edge_node_name: str = ""
+    #: True when the node exists only to carry this device, which is what the
+    #: console uses to decide whether the gateway is worth showing at all.
+    edge_node_is_implicit: bool = True
+    #: ``group_id/edge_node_id/device_id`` - the address on the broker.
+    sparkplug_address: str = ""
+
+    @staticmethod
+    def resolve_edge_node_name(obj) -> str:
+        return obj.edge_node.name if obj.edge_node_id else ""
+
+    @staticmethod
+    def resolve_edge_node_is_implicit(obj) -> bool:
+        return bool(obj.edge_node.is_implicit) if obj.edge_node_id else True
+
+    @staticmethod
+    def resolve_sparkplug_address(obj) -> str:
+        return obj.sparkplug_address if obj.edge_node_id else ""
+
+    # ---- Investment ------------------------------------------------------
+    capital_cost: float | None = None
+    cost_currency: str = ""
+    commissioned_on: dt.date | None = None
+    expected_life_years: float | None = None
+    annual_maintenance_cost: float | None = None
+    #: Capital amortised straight-line plus yearly upkeep. Null when nothing
+    #: was recorded - deliberately not zero, which would read as "free".
+    annual_cost: float | None = None
+
     #: What the platform accepted, not what the device claims.
     capabilities: DeviceCapabilitiesOut = Field(default_factory=DeviceCapabilitiesOut)
     capability_source: str = "blueprint"
@@ -296,6 +360,36 @@ class DeviceDetailOut(DeviceOut):
     latest: list[MetricValueOut] = Field(default_factory=list)
     open_alert_count: int = 0
     available_commands: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DeviceEnergyOut(Schema):
+    """Energy moved by one device over a window, and how it was arrived at.
+
+    ``kwh`` is ``null`` when the figure cannot be determined - a counter that
+    went backwards with no declared wrap point, or a metric with no samples.
+    That is deliberately not zero: a monthly report that quietly loses a
+    segment is worse than one that says it does not know.
+    """
+
+    device_id: uuid.UUID
+    metric_key: str = ""
+    #: ``counter`` (differenced, exact) | ``integrated`` (approximate) |
+    #: ``unknown``.
+    basis: str = "unknown"
+    kwh: float | None = None
+    unit: str = "kWh"
+    #: Fraction of the window covered by samples (0..1). Always 1 for a
+    #: counter. Below ~0.8 an integrated figure should be shown as incomplete.
+    coverage: float = 0.0
+    samples: int = 0
+    #: The counter stepped backwards inside this window.
+    counter_reset: bool = False
+    avg_kw: float | None = None
+    peak_kw: float | None = None
+    start: dt.datetime
+    end: dt.datetime
+    #: Other metric keys that could have answered, best first.
+    available_metrics: list[str] = Field(default_factory=list)
 
 
 class DeviceMapPointOut(Schema):
@@ -397,6 +491,71 @@ class DeviceCreatedOut(Schema):
 
 
 # --------------------------------------------------------------------------
+# Edge nodes
+# --------------------------------------------------------------------------
+class EdgeNodeIn(Schema):
+    node_id: str = Field(
+        max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$",
+        description="Sparkplug edge_node_id - the fourth topic level.",
+    )
+    name: str = Field(default="", max_length=200)
+    description: str = ""
+    site_id: uuid.UUID | None = None
+    is_enabled: bool = True
+
+
+class EdgeNodeUpdateIn(Schema):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    site_id: uuid.UUID | None = None
+    is_enabled: bool | None = None
+
+
+class EdgeNodeOut(Schema):
+    id: uuid.UUID
+    node_id: str
+    group_id: str
+    name: str
+    description: str
+    is_implicit: bool
+    is_enabled: bool
+    status: ConnectionStatus
+    status_changed_at: dt.datetime | None = None
+    last_seen_at: dt.datetime | None = None
+    birth_at: dt.datetime | None = None
+    #: Birth/death sequence of the session currently believed to be live.
+    bd_seq: int | None = None
+    #: Last accepted payload sequence number, 0-255.
+    last_seq: int | None = None
+    rebirth_requested_at: dt.datetime | None = None
+    firmware_version: str = ""
+    hardware_version: str = ""
+    ip_address: str | None = None
+    rssi: int | None = None
+    site_id: uuid.UUID | None = None
+    site_name: str | None = None
+    device_count: int = 0
+    created_at: dt.datetime
+
+    @staticmethod
+    def resolve_site_name(obj) -> str | None:
+        return obj.site.name if obj.site_id else None
+
+    @staticmethod
+    def resolve_device_count(obj) -> int:
+        cached = getattr(obj, "device_count_annotated", None)
+        if cached is not None:
+            return cached
+        return obj.devices.filter(deleted_at__isnull=True).count()
+
+
+class EdgeNodeCreatedOut(Schema):
+    edge_node: EdgeNodeOut
+    credential: DeviceCredentialOut | None = None
+
+
+# --------------------------------------------------------------------------
 # Commands
 # --------------------------------------------------------------------------
 class CommandIn(Schema):
@@ -435,6 +594,9 @@ class DeviceEventOut(Schema):
     id: int
     device_id: uuid.UUID
     device_external_id: str = ""
+    device_name: str = ""
+    site_id: uuid.UUID | None = None
+    site_name: str | None = None
     ts: dt.datetime
     level: EventLevel
     code: str
@@ -446,6 +608,39 @@ class DeviceEventOut(Schema):
     def resolve_device_external_id(obj) -> str:
         return obj.device.device_id
 
+    @staticmethod
+    def resolve_device_name(obj) -> str:
+        return obj.device.name
+
+    @staticmethod
+    def resolve_site_id(obj):
+        return obj.device.site_id
+
+    @staticmethod
+    def resolve_site_name(obj) -> str | None:
+        return obj.device.site.name if obj.device.site_id else None
+
+
+class EventFilters(FilterSchema):
+    """Filters for the fleet-wide event log."""
+
+    device_id: uuid.UUID | None = Field(default=None, q="device_id")
+    site_id: uuid.UUID | None = Field(default=None, q="device__site_id")
+    level: EventLevel | None = Field(default=None, q="level")
+    code: str | None = Field(default=None, q="code__iexact")
+    #: Free text over the message and the code, which is how an operator
+    #: actually searches: they remember a phrase, not an enum.
+    search: str | None = Field(
+        default=None, q=["message__icontains", "code__icontains"]
+    )
+
+
+class EventCodeOut(Schema):
+    """One distinct code, for the filter dropdown."""
+
+    code: str
+    count: int
+
 
 class DeviceStatusEventOut(Schema):
     id: int
@@ -455,3 +650,22 @@ class DeviceStatusEventOut(Schema):
     reason: str
     ts: dt.datetime
     payload: dict[str, Any]
+
+
+class GeocodeResultOut(Schema):
+    latitude: float
+    longitude: float
+    display_name: str
+    city: str = ""
+    country: str = ""
+    #: Blank when the coordinates fall outside any land timezone, which the
+    #: console reads as "leave the current selection alone".
+    timezone_name: str = ""
+
+
+class GeocodeOut(Schema):
+    #: False when the deployment has geocoding switched off, so the console can
+    #: say "type the coordinates in" instead of showing an empty result list
+    #: that looks like a failed search.
+    available: bool = True
+    results: list[GeocodeResultOut] = Field(default_factory=list)

@@ -23,6 +23,7 @@ import {
   Pagination,
   SegmentedControl,
   Select,
+  SiteTreeSelect,
   SeverityBadge,
   StatTile,
   TBody,
@@ -121,18 +122,16 @@ export function AlertsPage() {
               options={SEVERITIES.map((level) => ({ value: level, label: t(`severity.${level}`) }))}
               className="w-36"
             />
-            <Select
+            <SiteTreeSelect
+              sites={sites.data?.items ?? []}
               value={siteId}
               placeholder={t('common.all')}
-              onChange={(event) => {
-                setSiteId(event.target.value)
+              allowClear
+              onChange={(value) => {
+                setSiteId(value)
                 setOffset(0)
               }}
-              options={(sites.data?.items ?? []).map((site) => ({
-                value: site.id,
-                label: site.name,
-              }))}
-              className="w-44"
+              className="w-52"
             />
           </div>
 

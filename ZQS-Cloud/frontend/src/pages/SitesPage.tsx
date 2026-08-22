@@ -15,9 +15,9 @@ import {
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
-import { useDevices, useSiteMutations, useSites } from '@/lib/queries'
+import { useDevices, useGeocode, useSiteMutations, useSites } from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
-import type { Site, SiteKind, SiteSummary } from '@/lib/types'
+import type { GeocodeResult, Site, SiteKind, SiteSummary } from '@/lib/types'
 import {
   Badge,
   Button,
@@ -29,6 +29,7 @@ import {
   Modal,
   PageHeader,
   Select,
+  SiteTreeSelect,
   TBody,
   THead,
   Table,
@@ -36,6 +37,7 @@ import {
   TextArea,
   TextInput,
   Th,
+  TimezoneSelect,
   Tr,
 } from '@/components/ui'
 
@@ -313,6 +315,32 @@ function SiteModal({
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  // Geocoding is a convenience, never a requirement: every failure path here
+  // ends with the operator typing the numbers in, which is why nothing below
+  // surfaces an error state.
+  const geocode = useGeocode()
+  const [matches, setMatches] = useState<GeocodeResult[]>([])
+  const [geocodeNote, setGeocodeNote] = useState('')
+
+  async function lookup() {
+    setGeocodeNote('')
+    setMatches([])
+    try {
+      const response = await geocode.mutateAsync(form.address.trim())
+      if (!response.available) {
+        setGeocodeNote(t('sites.geocodeUnavailable'))
+        return
+      }
+      if (response.results.length === 0) {
+        setGeocodeNote(t('sites.geocodeNoMatch'))
+        return
+      }
+      setMatches(response.results)
+    } catch {
+      setGeocodeNote(t('sites.geocodeFailed'))
+    }
+  }
+
   // A site may not become its own descendant, so its own subtree cannot appear
   // in the parent picker. The server rejects it too; filtering here just keeps
   // the operator from picking an option that can only fail.
@@ -332,12 +360,7 @@ function SiteModal({
         })
       }
     }
-    return all
-      .filter((candidate) => !banned.has(candidate.id))
-      .map((candidate) => ({
-        value: candidate.id,
-        label: `${'— '.repeat(candidate.depth)}${candidate.name}`,
-      }))
+    return all.filter((candidate) => !banned.has(candidate.id))
   }, [sites.data, site])
 
   useEffect(() => {
@@ -362,7 +385,7 @@ function SiteModal({
           }
         : EMPTY,
     )
-  }, [open, site])
+  }, [open, site?.id])
 
   async function submit() {
     setErrors({})
@@ -433,14 +456,15 @@ function SiteModal({
           hint={site ? undefined : 'lowercase-with-dashes'}
           className="font-mono"
         />
-        <Select
+        <SiteTreeSelect
           label={t('sites.parent')}
+          sites={parentOptions}
           value={form.parent_id}
           error={errors.parent_id}
           placeholder={t('sites.topLevel')}
+          allowClear
           hint={t('sites.parentHint')}
-          options={parentOptions}
-          onChange={(event) => setForm({ ...form, parent_id: event.target.value })}
+          onChange={(value) => setForm({ ...form, parent_id: value })}
         />
         <Select
           label={t('sites.kind')}
@@ -451,12 +475,56 @@ function SiteModal({
           }))}
           onChange={(event) => setForm({ ...form, kind: event.target.value as SiteKind })}
         />
-        <TextInput
-          label={t('sites.address')}
-          className="sm:col-span-2"
-          value={form.address}
-          onChange={(event) => setForm({ ...form, address: event.target.value })}
-        />
+        <div className="sm:col-span-2 space-y-2">
+          <div className="flex items-end gap-2">
+            <TextInput
+              label={t('sites.address')}
+              className="flex-1"
+              value={form.address}
+              onChange={(event) => setForm({ ...form, address: event.target.value })}
+            />
+            <Button
+              onClick={() => void lookup()}
+              loading={geocode.isPending}
+              disabled={form.address.trim().length < 3}
+            >
+              {t('sites.findCoordinates')}
+            </Button>
+          </div>
+          {geocodeNote ? <p className="text-xs text-muted">{geocodeNote}</p> : null}
+          {matches.length > 0 ? (
+            <ul className="divide-y divide-line rounded border border-line">
+              {matches.map((match) => (
+                <li key={`${match.latitude},${match.longitude}`}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-xs hover:bg-subtle"
+                    onClick={() => {
+                      setForm((current) => ({
+                        ...current,
+                        latitude: String(match.latitude),
+                        longitude: String(match.longitude),
+                        // Only overwrite what the lookup actually resolved.
+                        // A blank city from the geocoder must not wipe one the
+                        // operator already typed.
+                        city: match.city || current.city,
+                        country: match.country || current.country,
+                        timezone_name: match.timezone_name || current.timezone_name,
+                      }))
+                      setMatches([])
+                      setGeocodeNote(t('sites.coordinatesFilled'))
+                    }}
+                  >
+                    <span className="block">{match.display_name}</span>
+                    <span className="block font-mono text-muted">
+                      {match.latitude.toFixed(5)}, {match.longitude.toFixed(5)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
         <TextInput
           label={t('sites.city')}
           value={form.city}
@@ -490,12 +558,11 @@ function SiteModal({
           error={errors.longitude}
           onChange={(event) => setForm({ ...form, longitude: event.target.value })}
         />
-        <TextInput
+        <TimezoneSelect
           label={t('sites.timezone')}
           value={form.timezone_name}
           error={errors.timezone_name}
-          onChange={(event) => setForm({ ...form, timezone_name: event.target.value })}
-          placeholder="Asia/Taipei"
+          onChange={(zone) => setForm({ ...form, timezone_name: zone })}
         />
         <TextInput
           label={t('sites.contact')}

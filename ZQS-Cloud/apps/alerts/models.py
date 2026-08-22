@@ -9,7 +9,7 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.accounts.models import Organization, User
 from apps.core.models import TimeStampedModel, UUIDPrimaryKeyModel
-from apps.devices.models import Device, DeviceType, Site
+from apps.devices.models import Device, DeviceEvent, DeviceType, EventLevel, Site
 
 
 class Severity(models.TextChoices):
@@ -275,6 +275,9 @@ class AlertEvent(models.Model):
 class ChannelType(models.TextChoices):
     WEBHOOK = "webhook", _("HTTP webhook")
     EMAIL = "email", _("Email")
+    #: LINE Messaging API push (a LINE bot). LINE Notify was retired in 2025,
+    #: so the bot API is the way a message reaches a LINE chat now.
+    LINE = "line", _("LINE bot")
     MQTT = "mqtt", _("MQTT publish")
 
 
@@ -290,6 +293,17 @@ class NotificationChannel(UUIDPrimaryKeyModel, TimeStampedModel):
     #: Only notify at or above this severity.
     min_severity = models.CharField(
         max_length=12, choices=Severity.choices, default=Severity.WARNING
+    )
+
+    #: What this channel subscribes to. Alerts are what the rule engine
+    #: concluded; device events are what the equipment itself reported. They
+    #: are separate switches because the audiences differ - a LINE group that
+    #: wants "battery overheated" rarely wants every vendor E-code as well.
+    notify_alerts = models.BooleanField(default=True)
+    notify_events = models.BooleanField(default=False)
+    #: Only device events at or above this level are sent.
+    min_event_level = models.CharField(
+        max_length=16, choices=EventLevel.choices, default=EventLevel.ERROR
     )
 
     class Meta:
@@ -313,7 +327,16 @@ class DeliveryStatus(models.TextChoices):
 
 
 class NotificationDelivery(TimeStampedModel):
-    alert = models.ForeignKey(Alert, on_delete=models.CASCADE, related_name="deliveries")
+    """One queued message. Exactly one of ``alert`` / ``event`` is set."""
+
+    alert = models.ForeignKey(
+        Alert, on_delete=models.CASCADE, related_name="deliveries",
+        null=True, blank=True,
+    )
+    event = models.ForeignKey(
+        DeviceEvent, on_delete=models.CASCADE, related_name="deliveries",
+        null=True, blank=True,
+    )
     channel = models.ForeignKey(
         NotificationChannel, on_delete=models.CASCADE, related_name="deliveries"
     )
@@ -327,7 +350,19 @@ class NotificationDelivery(TimeStampedModel):
     class Meta:
         db_table = "alerts_notification_delivery"
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["alert", "channel"])]
+        indexes = [
+            models.Index(fields=["alert", "channel"]),
+            models.Index(fields=["event", "channel"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(alert__isnull=False, event__isnull=True)
+                    | models.Q(alert__isnull=True, event__isnull=False)
+                ),
+                name="delivery_alert_xor_event",
+            )
+        ]
 
     def __str__(self) -> str:
         return f"{self.channel_id} -> {self.status}"

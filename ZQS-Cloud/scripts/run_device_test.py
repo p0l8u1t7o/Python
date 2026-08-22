@@ -309,13 +309,13 @@ def _print_port_advice(console: Console, args) -> None:
 def _print_device_banner(console: Console, args) -> None:
     from django.conf import settings
 
-    from services.mqtt import topics
+    from services.sparkplug import topics
 
     console.rule()
     console.head("  ZQS 設備連線測試工具")
     console.rule()
     console.line(f"  監聽             {args.host}:{args.port}")
-    console.line(f"  Topic root       {topics.root()}")
+    console.line(f"  Namespace        {topics.NAMESPACE}")
     console.line(f"  Client ID        {settings.MQTT['CLIENT_ID_PREFIX']}:<device_id>")
     if args.device:
         console.line(f"  等待設備         {args.device}")

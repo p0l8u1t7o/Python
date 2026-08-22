@@ -1,4 +1,4 @@
-"""Sites, device blueprints, devices, credentials, events and commands."""
+"""Sites, blueprints, edge nodes, devices, credentials, events and commands."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ from django.utils.translation import gettext_lazy as _
 from apps.accounts.models import Organization, User
 from apps.core.models import SoftDeleteModel, TimeStampedModel, UUIDPrimaryKeyModel
 
-#: ``device_id`` becomes an MQTT topic segment, so keep it wildcard-free.
+#: Ids that become Sparkplug topic segments. The specification reserves ``+``,
+#: ``#`` and ``/``; this is stricter than that on purpose, because an id that
+#: needs percent-encoding to appear in a topic is an id nobody can grep for.
 DEVICE_ID_VALIDATOR = RegexValidator(
     regex=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$",
     message=_(
@@ -25,11 +27,29 @@ DEVICE_ID_VALIDATOR = RegexValidator(
     ),
 )
 
+NODE_ID_VALIDATOR = RegexValidator(
+    regex=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$",
+    message=_(
+        "Edge node ID must be 3-64 characters of letters, digits, '.', '_' "
+        "or '-' and must not contain MQTT wildcards."
+    ),
+)
+
 
 class DeviceCategory(models.TextChoices):
     BATTERY = "battery", _("Battery / BESS")
     PCS = "pcs", _("Power conversion system")
-    PV_INVERTER = "pv_inverter", _("PV inverter")
+    #: Anything that produces energy for the site: PV, fuel cell, wind, CHP.
+    #:
+    #: Named for what it does rather than for how it does it. A category
+    #: called "PV inverter" forces every later technology to be filed under a
+    #: name that does not describe it, and by the time that becomes obvious
+    #: there is history attached to the wrong label.
+    #:
+    #: :attr:`GENERATOR` stays separate: it burns fuel, so it has a running
+    #: cost per kWh and a different cost model, which is a real behavioural
+    #: difference rather than a naming one.
+    GENERATION = "generation", _("Generation unit")
     METER = "meter", _("Energy meter")
     LOAD = "load", _("Electrical load")
     GENERATOR = "generator", _("Backup generator")
@@ -50,7 +70,7 @@ class DeviceCategory(models.TextChoices):
 CATEGORY_CAPABILITIES: dict[str, tuple[bool, bool, bool, bool]] = {
     DeviceCategory.BATTERY: (True, True, True, True),
     DeviceCategory.PCS: (True, True, True, True),
-    DeviceCategory.PV_INVERTER: (False, True, True, True),
+    DeviceCategory.GENERATION: (False, True, True, True),
     DeviceCategory.GENERATOR: (False, True, False, True),
     DeviceCategory.EV_CHARGER: (True, False, False, True),
     DeviceCategory.METER: (False, False, False, False),
@@ -185,6 +205,17 @@ class Site(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
     )
 
     timezone_name = models.CharField(max_length=64, default="UTC")
+
+    #: Which storage strategy profile drives this site's battery. String
+    #: reference because ems already imports devices; SET_NULL because
+    #: deleting a plan should unbind its sites, not delete them.
+    storage_plan = models.ForeignKey(
+        "ems.StoragePlan",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sites",
+    )
     contact_name = models.CharField(max_length=120, blank=True)
     contact_phone = models.CharField(max_length=40, blank=True)
     tags = models.JSONField(default=list, blank=True)
@@ -350,6 +381,13 @@ class DeviceType(UUIDPrimaryKeyModel, TimeStampedModel):
     manufacturer = models.CharField(max_length=120, blank=True)
     model_name = models.CharField(max_length=120, blank=True)
     description = models.TextField(blank=True)
+    #: {"zh-hant": {"name": "...", "description": "..."}, ...}
+    #:
+    #: Mirrors ``Metric.translations``: the blueprint catalogue is the other
+    #: place an operator reads domain vocabulary, and it should not be the one
+    #: place that stays English. ``name`` is optional per language - a model
+    #: number usually should not be translated at all.
+    translations = models.JSONField(default=dict, blank=True)
     icon = models.CharField(max_length=64, blank=True)
 
     # ---- Capability defaults for this model ------------------------------
@@ -393,6 +431,18 @@ class DeviceType(UUIDPrimaryKeyModel, TimeStampedModel):
     def __str__(self) -> str:
         return self.name
 
+    def label(self, language: str = "en") -> str:
+        return (self.translations or {}).get(language, {}).get("name") or self.name
+
+    def describe(self, language: str = "en") -> str:
+        """What this blueprint is, in the reader's language.
+
+        Falls back to the stored English rather than to empty: a partially
+        translated catalogue should read as mixed, not as missing.
+        """
+        translated = (self.translations or {}).get(language, {}).get("description")
+        return translated or self.description
+
     def command_spec(self, name: str) -> dict | None:
         for spec in self.command_definitions or []:
             if isinstance(spec, dict) and spec.get("name") == name:
@@ -416,9 +466,126 @@ class DeviceQuerySet(models.QuerySet):
         )
 
 
+class EdgeNodeQuerySet(models.QuerySet):
+    def for_organization(self, organization) -> "EdgeNodeQuerySet":
+        return self.filter(organization=organization, deleted_at__isnull=True)
+
+    def stale(self, grace_seconds: int | None = None) -> "EdgeNodeQuerySet":
+        grace = grace_seconds or settings.DEVICE_OFFLINE_GRACE_SECONDS
+        cutoff = timezone.now() - dt.timedelta(seconds=grace)
+        return self.filter(status=ConnectionStatus.ONLINE).filter(
+            models.Q(last_seen_at__lt=cutoff) | models.Q(last_seen_at__isnull=True)
+        )
+
+
+class EdgeNode(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
+    """One MQTT connection, in Sparkplug terms an Edge of Network node.
+
+    This is the unit the broker actually knows about: one TCP session, one set
+    of credentials, one NBIRTH/NDEATH pair, one ``seq`` counter. Devices hang
+    off it and are announced with DBIRTH.
+
+    Most sites run a gateway that fronts several pieces of equipment, which is
+    the case Sparkplug was designed for. A device that speaks MQTT itself is
+    still modelled as a node - one carrying exactly one device - because the
+    alternative is two parallel code paths for birth, death and sequencing, and
+    the second one always rots. Those nodes are marked :attr:`is_implicit` so
+    the console can hide plumbing the operator never asked for.
+    """
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="edge_nodes"
+    )
+    site = models.ForeignKey(
+        Site,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="edge_nodes",
+    )
+
+    #: Sparkplug ``edge_node_id`` - the fourth topic level.
+    node_id = models.CharField(
+        max_length=64, db_index=True, validators=[NODE_ID_VALIDATOR]
+    )
+    #: Sparkplug ``group_id`` - the second topic level. Denormalised from
+    #: ``organization.slug`` so the ingest path can resolve a topic with one
+    #: indexed lookup instead of a join on every message. Kept in sync by
+    #: :meth:`save`; changing an organisation slug moves every topic anyway, so
+    #: it is a re-commissioning event, not a rename.
+    group_id = models.CharField(max_length=80, db_index=True)
+
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    #: Auto-created to carry a single directly-connected device.
+    is_implicit = models.BooleanField(default=False)
+    is_enabled = models.BooleanField(default=True)
+
+    status = models.CharField(
+        max_length=16,
+        choices=ConnectionStatus.choices,
+        default=ConnectionStatus.UNKNOWN,
+    )
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    #: When the current NBIRTH arrived. Anything older than this is a replay.
+    birth_at = models.DateTimeField(null=True, blank=True)
+
+    #: ``bdSeq`` from the current NBIRTH. An NDEATH carrying a different value
+    #: belongs to a session that has already been replaced, so acting on it
+    #: would knock a freshly reconnected node offline.
+    bd_seq = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Last accepted payload ``seq`` (0-255). A gap means messages were lost and
+    #: the alias table may be stale, which is what triggers a rebirth request.
+    last_seq = models.PositiveSmallIntegerField(null=True, blank=True)
+    #: Set while a rebirth has been asked for but not yet answered, so a burst
+    #: of out-of-order messages produces one request rather than hundreds.
+    rebirth_requested_at = models.DateTimeField(null=True, blank=True)
+
+    firmware_version = models.CharField(max_length=64, blank=True)
+    hardware_version = models.CharField(max_length=64, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    rssi = models.IntegerField(null=True, blank=True)
+
+    objects = EdgeNodeQuerySet.as_manager()
+
+    class Meta:
+        db_table = "devices_edge_node"
+        ordering = ("name",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group_id", "node_id"],
+                condition=models.Q(deleted_at__isnull=True),
+                name="uniq_edge_node_per_group",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.group_id}/{self.node_id}"
+
+    def save(self, *args, **kwargs):
+        if not self.group_id and self.organization_id:
+            self.group_id = self.organization.slug
+        if not self.name:
+            self.name = self.node_id
+        return super().save(*args, **kwargs)
+
+    @property
+    def is_stale(self) -> bool:
+        if self.last_seen_at is None:
+            return True
+        age = (timezone.now() - self.last_seen_at).total_seconds()
+        return age > settings.DEVICE_OFFLINE_GRACE_SECONDS
+
+
 class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="devices"
+    )
+    #: The connection this device reports through. For equipment that speaks
+    #: MQTT itself this points at its own implicit node.
+    edge_node = models.ForeignKey(
+        EdgeNode, on_delete=models.CASCADE, related_name="devices"
     )
     site = models.ForeignKey(
         Site, on_delete=models.SET_NULL, null=True, blank=True, related_name="devices"
@@ -431,11 +598,14 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
         related_name="devices",
     )
 
-    #: Identifier the device uses on MQTT. Globally unique, not per-tenant: the
-    #: topic ``energy/devices/{device_id}/...`` carries no organisation segment,
-    #: so the id alone has to resolve the owner. Use a serial number or MAC.
+    #: Sparkplug ``device_id`` - the fifth topic level.
+    #:
+    #: Unique within its edge node, not globally. The Sparkplug topic carries
+    #: ``group_id`` and ``edge_node_id`` ahead of it, so those three together
+    #: already identify the equipment; forcing global uniqueness on top of that
+    #: would mean two customers could not both call a meter ``METER-01``.
     device_id = models.CharField(
-        max_length=64, unique=True, db_index=True, validators=[DEVICE_ID_VALIDATOR]
+        max_length=64, db_index=True, validators=[DEVICE_ID_VALIDATOR]
     )
     #: Human-friendly registered name shown in the console.
     name = models.CharField(max_length=200)
@@ -444,6 +614,31 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
 
     firmware_version = models.CharField(max_length=64, blank=True)
     hardware_version = models.CharField(max_length=64, blank=True)
+
+    # ---- What it cost to put here ---------------------------------------
+    #: Purchase price of this unit, in :attr:`cost_currency`.
+    #:
+    #: On the device rather than the blueprint because it is a *commercial*
+    #: fact about this purchase, not a property of the model - the same PCS
+    #: bought two years apart, or under two contracts, cost different amounts.
+    #: The blueprint carries what the equipment *is*; this carries what this
+    #: one cost.
+    capital_cost = models.FloatField(null=True, blank=True)
+    #: ISO 4217. Blank inherits the site's tariff currency at display time;
+    #: it is not defaulted here, because a wrong currency silently attached to
+    #: a real number is worse than an empty one.
+    cost_currency = models.CharField(max_length=8, blank=True)
+    #: When it entered service. Amortisation counts from here, not from the
+    #: row's creation date - equipment is often registered long after or
+    #: before it is actually commissioned.
+    commissioned_on = models.DateField(null=True, blank=True)
+    #: Depreciation period in years. Null means "do not amortise", which is
+    #: different from zero.
+    expected_life_years = models.FloatField(
+        null=True, blank=True, validators=[MinValueValidator(0.0)]
+    )
+    #: Recurring upkeep, per year, in the same currency.
+    annual_maintenance_cost = models.FloatField(null=True, blank=True)
 
     status = models.CharField(
         max_length=16, choices=ConnectionStatus.choices, default=ConnectionStatus.UNKNOWN
@@ -521,6 +716,21 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
         related_name="supersedes",
     )
 
+    # ---- Operating-session cache ----------------------------------------
+    #: When this device last started charging / discharging / running.
+    #:
+    #: Redundant with :class:`~apps.ems.models.DeviceOperatingSession`, and
+    #: deliberately so: these three are indexable, which is what makes
+    #: "batteries that have not discharged in 30 days" a single WHERE clause
+    #: rather than a scan of the session table. Durations and energies are
+    #: *not* cached here - those are details a list page does not need, and
+    #: every cached value is another thing that can drift out of step.
+    #:
+    #: Maintained by ``manage.py rebuild_sessions``; never written by ingest.
+    last_charge_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_discharge_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_running_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
     tags = models.JSONField(default=list, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     is_enabled = models.BooleanField(
@@ -532,9 +742,36 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
     class Meta:
         db_table = "devices_device"
         ordering = ["name"]
+        constraints = [
+            # A serial number identifies one physical unit, so two rows sharing
+            # one means somebody registered the same hardware twice - and then
+            # its energy is counted twice and neither row is trustworthy.
+            #
+            # Scoped to the organisation, not the platform: two tenants buying
+            # from the same vendor will legitimately hold the same serial.
+            #
+            # Blank is exempt. Serial numbers are often unknown at
+            # commissioning, and forcing a placeholder in would defeat the
+            # constraint far more thoroughly than allowing the blank does.
+            models.UniqueConstraint(
+                fields=["organization", "serial_number"],
+                condition=~models.Q(serial_number="")
+                & models.Q(deleted_at__isnull=True),
+                name="uniq_device_org_serial",
+            ),
+            # The Sparkplug address is (group_id, edge_node_id, device_id), and
+            # the first two live on the node, so this is what makes the full
+            # address unique.
+            models.UniqueConstraint(
+                fields=["edge_node", "device_id"],
+                condition=models.Q(deleted_at__isnull=True),
+                name="uniq_device_per_edge_node",
+            ),
+        ]
         indexes = [
             models.Index(fields=["organization", "status"]),
             models.Index(fields=["organization", "site"]),
+            models.Index(fields=["edge_node", "device_id"]),
         ]
 
     def __str__(self) -> str:
@@ -548,6 +785,26 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
         if self.site and self.site.has_location:
             return self.site.latitude, self.site.longitude, self.site.address
         return None
+
+    @property
+    def annual_cost(self) -> float | None:
+        """Capital amortised over its life, plus yearly upkeep.
+
+        ``None`` when there is nothing to go on. Deliberately not ``0.0``: a
+        site whose equipment has no recorded cost should read as "not known",
+        not as "free" - the second one quietly makes a payback calculation
+        look wonderful.
+
+        Straight-line, with no salvage value and no discounting. Both would be
+        defensible refinements and neither is guessed at here: an assumed
+        discount rate is somebody's finance policy, not a platform default.
+        """
+        parts: list[float] = []
+        if self.capital_cost is not None and self.expected_life_years:
+            parts.append(self.capital_cost / self.expected_life_years)
+        if self.annual_maintenance_cost is not None:
+            parts.append(self.annual_maintenance_cost)
+        return sum(parts) if parts else None
 
     @property
     def is_stale(self) -> bool:
@@ -585,6 +842,24 @@ class Device(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
     def is_metering_only(self) -> bool:
         return bool(
             self.device_type_id and is_metering_only(self.device_type.category)
+        )
+
+    @property
+    def sparkplug_address(self) -> str:
+        """``group_id/edge_node_id/device_id`` - how the broker sees this unit."""
+        node = self.edge_node
+        return f"{node.group_id}/{node.node_id}/{self.device_id}"
+
+    def topic(self, message_type: str) -> str:
+        """This device's Sparkplug topic for ``message_type``, e.g. ``DDATA``."""
+        from services.sparkplug import topics
+
+        node = self.edge_node
+        return topics.build(
+            node.group_id,
+            topics.MessageType(message_type),
+            node.node_id,
+            self.device_id,
         )
 
     # ---- Lifecycle -------------------------------------------------------
@@ -638,10 +913,6 @@ def chain_segments(device: Device) -> list[tuple[Device, "dt.datetime | None", "
         segments.append((node, previous_end, node.retired_at))
         previous_end = node.retired_at
     return segments
-
-    def topic(self, suffix: str) -> str:
-        root = settings.MQTT["TOPIC_ROOT"].rstrip("/")
-        return f"{root}/{self.device_id}/{suffix.lstrip('/')}"
 
 
 class DeclarationState(models.TextChoices):
@@ -752,11 +1023,17 @@ def declaration_diff(device: Device, attributes: dict) -> dict:
     return diff
 
 
-class DeviceCredential(TimeStampedModel):
-    """MQTT credentials served to EMQX through the auth webhook."""
+class EdgeNodeCredential(TimeStampedModel):
+    """MQTT credentials served to EMQX through the auth webhook.
 
-    device = models.OneToOneField(
-        Device, on_delete=models.CASCADE, related_name="credential"
+    Attached to the edge node rather than to each device, because a credential
+    authenticates a *connection* and under Sparkplug one connection carries a
+    whole node. A gateway fronting twelve meters logs in once; issuing twelve
+    passwords for one TCP session would be theatre.
+    """
+
+    edge_node = models.OneToOneField(
+        EdgeNode, on_delete=models.CASCADE, related_name="credential"
     )
     mqtt_username = models.CharField(max_length=128, unique=True, db_index=True)
     hashed_password = models.CharField(max_length=256)
@@ -767,19 +1044,19 @@ class DeviceCredential(TimeStampedModel):
     last_auth_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        db_table = "devices_credential"
+        db_table = "devices_edge_node_credential"
 
     def __str__(self) -> str:
         return self.mqtt_username
 
     @classmethod
-    def issue(cls, device: Device) -> tuple["DeviceCredential", str]:
+    def issue(cls, node: EdgeNode) -> tuple["EdgeNodeCredential", str]:
         """Create or rotate the credential, returning the plaintext password."""
         password = secrets.token_urlsafe(24)
         credential, _created = cls.objects.update_or_create(
-            device=device,
+            edge_node=node,
             defaults={
-                "mqtt_username": f"dev-{device.organization.slug}-{device.device_id}"[:128],
+                "mqtt_username": f"node-{node.group_id}-{node.node_id}"[:128],
                 "hashed_password": make_password(password),
                 "is_active": True,
                 "rotated_at": timezone.now(),
@@ -789,6 +1066,57 @@ class DeviceCredential(TimeStampedModel):
 
     def verify(self, password: str) -> bool:
         return self.is_active and check_password(password, self.hashed_password)
+
+
+class MetricAlias(models.Model):
+    """The name-to-alias table a BIRTH establishes.
+
+    Sparkplug lets a DATA message carry ``alias=7`` with no name at all, which
+    is most of why it is compact on the wire. The cost is that the alias table
+    is connection state: lose it and every subsequent reading is unreadable.
+
+    Storing it means a worker restart, or a second worker replica, can still
+    decode a stream that began before it started. Without this the only
+    recovery would be to ask every node on the broker for a rebirth whenever a
+    process cycles.
+    """
+
+    edge_node = models.ForeignKey(
+        EdgeNode, on_delete=models.CASCADE, related_name="metric_aliases"
+    )
+    #: Null for a node-level metric published on NDATA.
+    device = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="metric_aliases",
+    )
+    alias = models.PositiveBigIntegerField()
+    name = models.CharField(max_length=200)
+    datatype = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "devices_metric_alias"
+        constraints = [
+            # Two constraints rather than one unique_together, because SQL
+            # treats NULLs as distinct: a single constraint over a nullable
+            # device column would let every node-level alias be duplicated.
+            models.UniqueConstraint(
+                fields=["edge_node", "device", "alias"],
+                condition=models.Q(device__isnull=False),
+                name="uniq_alias_per_device",
+            ),
+            models.UniqueConstraint(
+                fields=["edge_node", "alias"],
+                condition=models.Q(device__isnull=True),
+                name="uniq_alias_per_node",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.alias}={self.name}"
 
 
 class DeviceStatusEvent(models.Model):

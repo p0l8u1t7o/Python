@@ -489,11 +489,18 @@ def _resolve_query_devices(ctx: AuthContext, payload: s.SeriesQuery) -> dict:
 def _authorized_devices(
     ctx: AuthContext, device_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, str]:
-    """Map pk -> external device_id, rejecting anything outside the tenant."""
+    """Map pk -> external device_id, rejecting anything the caller cannot see.
+
+    Site scope is applied here, not only on the device list, because a series
+    query names device ids directly: without this a scoped user could read the
+    telemetry of any device in the tenant simply by knowing its id.
+    """
     rows = dict(
-        Device.objects.for_organization(ctx.organization)
-        .filter(pk__in=device_ids)
-        .values_list("pk", "device_id")
+        ctx.scope_queryset(
+            Device.objects.for_organization(ctx.organization).filter(
+                pk__in=device_ids
+            )
+        ).values_list("pk", "device_id")
     )
     missing = [str(pk) for pk in device_ids if pk not in rows]
     if missing:
@@ -507,7 +514,9 @@ def _authorized_devices(
 
 def _all_devices(ctx: AuthContext) -> dict[uuid.UUID, str]:
     return dict(
-        Device.objects.for_organization(ctx.organization).values_list("pk", "device_id")
+        ctx.scope_queryset(
+            Device.objects.for_organization(ctx.organization)
+        ).values_list("pk", "device_id")
     )
 
 

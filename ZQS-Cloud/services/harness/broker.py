@@ -32,16 +32,19 @@ import sys
 import threading
 import uuid
 from dataclasses import dataclass, field
+import datetime as dt
 from typing import Callable
 
-import orjson
 from django.db import connections
 
 from apps.core.logging import get_logger
 from apps.core.timeutils import now
 from services.harness import checks as conformance
 from services.harness import packets
-from services.mqtt import topics
+from services.sparkplug import payload as sp
+from services.sparkplug.datatypes import DataType
+from services.sparkplug import profile as sp_profile
+from services.sparkplug import topics
 
 logger = get_logger("harness.broker")
 
@@ -52,16 +55,22 @@ SOCKET_TIMEOUT_SECONDS = 1.0
 
 @dataclass
 class Session:
-    """One connected device, and everything observed about it."""
+    """One connected edge node, and everything observed about it."""
 
     device_id: str
     connect: packets.ConnectPacket
     checks: dict[str, conformance.Check]
     address: str
+    #: Sparkplug group_id for this connection - the second topic level.
+    group_id: str = ""
     connected_at: object = field(default_factory=now)
     subscriptions: set[str] = field(default_factory=set)
     messages: list[conformance.MessageRecord] = field(default_factory=list)
     seen_kinds: set[str] = field(default_factory=set)
+    #: Follows the node's seq counter for the life of the connection.
+    tracker: conformance.SequenceTracker = field(
+        default_factory=conformance.SequenceTracker
+    )
     #: Set once the peer sends DISCONNECT, so an abrupt drop can be told apart
     #: from a polite goodbye - which is exactly the difference the will exists
     #: to signal.
@@ -199,39 +208,50 @@ class DeviceHandler(socketserver.StreamRequestHandler):
 
         connect = packets.decode_connect(packet.body)
 
-        # The device id is taken from the *username*, which is the field the
+        # The address is taken from the *username*, which is the field the
         # platform actually issued. Deriving it from the client id would make
         # the client-id check circular - it could never fail.
-        device_id = _device_id_from_username(connect.username or "")
-        if not device_id:
+        group_id, node_id = _address_from_username(connect.username or "")
+        if not node_id:
             self.send(packets.encode_connack(packets.CONNACK_BAD_CREDENTIALS))
             self.state.emit(
                 "error",
                 {
                     "peer": peer,
                     "message": (
-                        f"無法從 username {connect.username!r} 判斷設備。"
-                        "username 應為 dev-<組織代碼>-<device_id>，"
-                        "是註冊設備時系統發給你的。"
+                        f"無法從 username {connect.username!r} 判斷 edge node。"
+                        "username 應為 node-<group_id>-<edge_node_id>，"
+                        "是註冊時系統發給你的。"
                     ),
                 },
             )
             return False
 
-        checks = conformance.build_checklist(device_id)
-        conformance.check_connect(checks, connect, device_id)
+        checks = conformance.build_checklist(group_id, node_id)
+        conformance.check_connect(checks, connect, group_id, node_id)
         accepted, reason = conformance.check_credentials(checks, connect)
 
         session = Session(
-            device_id=device_id, connect=connect, checks=checks, address=peer
+            device_id=node_id,
+            connect=connect,
+            checks=checks,
+            address=peer,
+            group_id=group_id,
         )
+        # The will's bdSeq is what the NBIRTH will be compared against, so it
+        # has to be read before any birth arrives.
+        if connect.will_flag and connect.will_payload:
+            try:
+                session.tracker.bd_seq = sp.bd_seq_of(sp.decode(connect.will_payload))
+            except sp.PayloadError:
+                session.tracker.bd_seq = None
         self.session = session
         self.state.register(session, self)
         self.state.emit(
             "connect",
             {
                 "peer": peer,
-                "device_id": device_id,
+                "device_id": node_id,
                 "client_id": connect.client_id,
                 "accepted": accepted,
                 "checks": checks,
@@ -295,7 +315,12 @@ class DeviceHandler(socketserver.StreamRequestHandler):
         publish = packets.decode_publish(packet.flags, packet.body)
 
         record = conformance.check_publish(
-            session.checks, publish, session.device_id, seen_kinds=session.seen_kinds
+            session.checks,
+            publish,
+            session.group_id,
+            session.device_id,
+            seen_kinds=session.seen_kinds,
+            tracker=session.tracker,
         )
         session.messages.append(record)
         self.state.history.append(record)
@@ -322,7 +347,7 @@ class DeviceHandler(socketserver.StreamRequestHandler):
 
         subscribe = packets.decode_subscribe(packet.body)
         granted = conformance.check_subscribe(
-            session.checks, subscribe.filters, session.device_id
+            session.checks, subscribe.filters, session.group_id, session.device_id
         )
         for (topic, _qos), result in zip(subscribe.filters, granted):
             if result != 0x80:
@@ -348,9 +373,17 @@ class DeviceHandler(socketserver.StreamRequestHandler):
 
     # ---- downlink --------------------------------------------------------
     def publish_to_device(self, topic: str, payload: bytes, *, qos: int = 1) -> bool:
-        """Send a command down to this device. Returns whether it was subscribed."""
+        """Send a command down to this device. Returns whether it was subscribed.
+
+        Matched as MQTT filters, not as strings. A gateway subscribes to
+        ``.../DCMD/GW-01/+`` for all of its devices, and comparing that to a
+        concrete topic by equality would report every conforming gateway as
+        unsubscribed.
+        """
         session = self.session
-        subscribed = session is not None and topic in session.subscriptions
+        subscribed = session is not None and any(
+            _filter_matches(f, topic) for f in session.subscriptions
+        )
         frame = packets.encode_publish(
             topic,
             payload,
@@ -429,30 +462,40 @@ def send_command(
     name: str,
     params: dict | None = None,
     *,
+    target_device: str = "",
     timeout_seconds: int = 60,
 ) -> tuple[bool, str, str]:
-    """Publish a downlink command in exactly the platform's envelope.
+    """Publish a DCMD in exactly the platform's envelope.
 
     Returns ``(delivered, command_id, note)``. ``delivered`` only means the
-    bytes went out on a socket the device had subscribed on - whether it acts
-    on them is what ``control/ack`` tells you.
+    bytes went out on a socket the node had subscribed on - whether it acts on
+    them is what the acknowledging DDATA tells you.
     """
     handler = state.handler_for(device_id)
-    if handler is None:
-        return False, "", f"設備 {device_id!r} 目前沒有連線。"
+    session = state.session_for(device_id)
+    if handler is None or session is None:
+        return False, "", f"Edge node {device_id!r} 目前沒有連線。"
 
     command_id = str(uuid.uuid4())
     issued_at = now()
-    payload = {
-        "command_id": command_id,
-        "name": name,
-        "params": params or {},
-        "issued_at": int(issued_at.timestamp() * 1000),
-        "expires_at": int(issued_at.timestamp() * 1000) + timeout_seconds * 1000,
-        "reply_to": topics.device_topic(device_id, topics.CONTROL_ACK),
-    }
-    topic = topics.control_topic(device_id)
-    subscribed = handler.publish_to_device(topic, orjson.dumps(payload))
+    expires_at = issued_at + dt.timedelta(seconds=timeout_seconds)
+
+    message = sp.new_payload(timestamp=issued_at)
+    sp.add_metric(message, sp_profile.COMMAND_ID, command_id)
+    sp.add_metric(message, sp_profile.COMMAND_NAME, name)
+    sp.add_metric(
+        message,
+        sp_profile.COMMAND_EXPIRES,
+        sp.datetime_to_epoch_ms(expires_at),
+        datatype=DataType.DateTime,
+    )
+    for key, value in (params or {}).items():
+        sp.add_metric(message, f"{sp_profile.COMMAND_PREFIX}{key}", value)
+
+    topic = topics.device_command(
+        session.group_id, device_id, target_device or device_id
+    )
+    subscribed = handler.publish_to_device(topic, sp.encode(message))
 
     note = (
         ""
@@ -462,27 +505,57 @@ def send_command(
     return True, command_id, note
 
 
-def _device_id_from_username(username: str) -> str:
-    """``dev-<org slug>-<device id>`` → device id.
+def request_rebirth(state: HarnessState, device_id: str) -> tuple[bool, str]:
+    """Write ``Node Control/Rebirth`` - the specification's recovery path."""
+    handler = state.handler_for(device_id)
+    session = state.session_for(device_id)
+    if handler is None or session is None:
+        return False, f"Edge node {device_id!r} 目前沒有連線。"
 
-    The slug may itself contain dashes, so the split is anchored on the known
-    ``dev-`` prefix and then matched against the registry rather than guessed
-    positionally.
+    message = sp.new_payload(timestamp=now())
+    sp.add_metric(message, sp.NODE_REBIRTH_METRIC, True, datatype=DataType.Boolean)
+    topic = topics.node_command(session.group_id, device_id)
+    subscribed = handler.publish_to_device(topic, sp.encode(message))
+    return True, "" if subscribed else f"注意：設備尚未訂閱 {topic}。"
+
+
+def _filter_matches(filter_: str, topic: str) -> bool:
+    """MQTT topic-filter matching: ``+`` is one level, ``#`` is the rest."""
+    filter_parts = filter_.split("/")
+    topic_parts = topic.split("/")
+
+    for index, part in enumerate(filter_parts):
+        if part == "#":
+            return True
+        if index >= len(topic_parts):
+            return False
+        if part != "+" and part != topic_parts[index]:
+            return False
+    return len(filter_parts) == len(topic_parts)
+
+
+def _address_from_username(username: str) -> tuple[str, str]:
+    """``node-<group_id>-<edge_node_id>`` -> ``(group_id, edge_node_id)``.
+
+    Both halves may contain dashes, so the split is resolved against the
+    registry rather than guessed positionally. The fallback exists so that an
+    unknown credential still produces a checklist naming the node the client
+    *claimed* to be - a report saying "unknown device" would help nobody
+    debug their username.
     """
-    if not username.startswith("dev-"):
-        return ""
-    remainder = username[len("dev-") :]
+    if not username.startswith("node-"):
+        return "", ""
+    remainder = username[len("node-") :]
 
-    from apps.devices.models import DeviceCredential
+    from apps.devices.models import EdgeNodeCredential
 
-    device_id = (
-        DeviceCredential.objects.filter(mqtt_username=username)
-        .values_list("device__device_id", flat=True)
+    row = (
+        EdgeNodeCredential.objects.filter(mqtt_username=username)
+        .values_list("edge_node__group_id", "edge_node__node_id")
         .first()
     )
-    if device_id:
-        return device_id
+    if row:
+        return row[0], row[1]
 
-    # Unknown credential: fall back to the text after the first dash so the
-    # checklist can still report *which* device the client claimed to be.
-    return remainder.split("-", 1)[1] if "-" in remainder else remainder
+    group_id, _, node_id = remainder.partition("-")
+    return group_id, node_id or remainder

@@ -20,7 +20,11 @@ import type {
   Blueprint,
   Capabilities,
   Command,
+  CostBreakdown,
+  CostModel,
+  CostOverview,
   Device,
+  DeviceEnergy,
   DeviceCreated,
   DeviceCredential,
   DeviceDeclaration,
@@ -33,23 +37,41 @@ import type {
   EnergyAsset,
   EnergyInterval,
   EnergyTotals,
+  FleetLive,
   FleetStats,
   Health,
   LatestValue,
   Member,
   Metric,
+  DispatchDecision,
+  DemandResponseEvent,
   NotificationChannel,
+  TariffPreset,
+  OperatingSession,
   Organization,
   Page,
   RecordingPolicy,
   SeriesResponse,
+  SessionSummary,
   Site,
+  SiteInvestment,
   SiteOverview,
   SiteRollup,
   SiteSummary,
   StoragePlan,
   Tariff,
+  UiPreference,
+  EdgeNode,
+  EventCode,
+  GeocodeResponse,
 } from './types'
+import type {
+  NodeTypeDef,
+  Workflow,
+  WorkflowCapacity,
+  WorkflowRun,
+  WorkflowRunLog,
+} from './workflowTypes'
 
 /** Values that change on their own; everything else refetches on demand. */
 export const LIVE_REFETCH_MS = 15_000
@@ -57,6 +79,18 @@ export const FAST_REFETCH_MS = 5_000
 
 export const keys = {
   capabilities: ['capabilities'] as const,
+  timezones: ['system', 'timezones'] as const,
+  events: (params: unknown) => ['events', params] as const,
+  eventCodes: (params: unknown) => ['events', 'codes', params] as const,
+  edgeNodes: (params: unknown) => ['edge-nodes', params] as const,
+  nodeTypes: ['workflows', 'node-types'] as const,
+  workflowCapacity: ['workflows', 'capacity'] as const,
+  workflows: ['workflows', 'list'] as const,
+  workflow: (id: string) => ['workflows', 'detail', id] as const,
+  workflowRuns: (params: unknown) => ['workflow-runs', params] as const,
+  workflowRun: (id: string) => ['workflow-runs', 'detail', id] as const,
+  workflowRunLogs: (id: string, params: unknown) =>
+    ['workflow-runs', 'logs', id, params] as const,
   health: ['health'] as const,
   fleet: ['fleet'] as const,
   sites: ['sites'] as const,
@@ -90,6 +124,18 @@ export const keys = {
   emsOverview: (siteId: string) => ['ems', 'overview', siteId] as const,
   emsIntervals: (siteId: string, params: unknown) => ['ems', 'intervals', siteId, params] as const,
   emsSummary: (siteId: string, params: unknown) => ['ems', 'summary', siteId, params] as const,
+  emsCostOverview: (params: unknown) => ['ems', 'cost-overview', params] as const,
+  emsCostBreakdown: (siteId: string, params: unknown) =>
+    ['ems', 'cost-breakdown', siteId, params] as const,
+  emsCostModels: ['ems', 'cost-models'] as const,
+  emsSessions: (params: unknown) => ['ems', 'sessions', params] as const,
+  emsSessionSummary: (params: unknown) => ['ems', 'sessions', 'summary', params] as const,
+  emsDispatchPreview: ['ems', 'dispatch', 'preview'] as const,
+  deviceEnergy: (id: string, params: unknown) => ['devices', id, 'energy', params] as const,
+  emsLive: ['ems', 'live'] as const,
+  emsInvestment: (siteId: string, params: unknown) =>
+    ['ems', 'investment', siteId, params] as const,
+  uiPreference: (key: string) => ['ui-preference', key] as const,
 }
 
 type Options<T> = Omit<UseQueryOptions<T, Error, T>, 'queryKey' | 'queryFn'>
@@ -102,6 +148,69 @@ export function useCapabilities() {
     queryKey: keys.capabilities,
     queryFn: () => api.get<Capabilities>('/system/capabilities'),
     staleTime: 60 * 60 * 1000,
+  })
+}
+
+/**
+ * IANA zone names the *server* accepts.
+ *
+ * Fetched rather than bundled: the value has to survive server-side
+ * validation, so the only list worth offering is the one the server has.
+ * Cached hard - tzdata changes a few times a year, not a few times an hour.
+ */
+export function useTimezones() {
+  return useQuery({
+    queryKey: keys.timezones,
+    queryFn: () => api.get<string[]>('/system/timezones'),
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  })
+}
+
+/**
+ * Look up coordinates for an address.
+ *
+ * A mutation rather than a query on purpose: it runs when somebody presses a
+ * button, not when a field changes. The upstream service allows one request
+ * per second, and a query keyed on the address text would fire one per
+ * keystroke and get the whole deployment rate-limited.
+ */
+export function useGeocode() {
+  return useMutation({
+    mutationFn: (address: string) =>
+      api.get<GeocodeResponse>('/sites/geocode', { q: address }),
+  })
+}
+
+/**
+ * The fleet-wide operation log.
+ *
+ * Separate from `useDeviceEvents`, which is scoped to one device: the two
+ * answer different questions and are filtered differently, so sharing a hook
+ * would mean a params object where half the fields are always unused.
+ */
+export function useEvents(params: Record<string, unknown>) {
+  return useQuery({
+    queryKey: keys.events(params),
+    queryFn: () => api.get<Page<DeviceEvent>>('/events', params),
+    refetchInterval: LIVE_REFETCH_MS,
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useEventCodes(params: Record<string, unknown>) {
+  return useQuery({
+    queryKey: keys.eventCodes(params),
+    queryFn: () => api.get<EventCode[]>('/events/codes', params),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useEdgeNodes(params: Record<string, unknown> = {}) {
+  return useQuery({
+    queryKey: keys.edgeNodes(params),
+    queryFn: () => api.get<Page<EdgeNode>>('/edge-nodes', params),
+    refetchInterval: LIVE_REFETCH_MS,
   })
 }
 
@@ -119,6 +228,55 @@ export function useFleetStats() {
     queryFn: () => api.get<FleetStats>('/system/fleet'),
     refetchInterval: LIVE_REFETCH_MS,
   })
+}
+
+// ---------------------------------------------------------------------------
+// Per-user console layout
+// ---------------------------------------------------------------------------
+/**
+ * A layout choice that follows the person rather than the browser.
+ *
+ * Distinct from theme/language/timezone on the user record, which the API
+ * itself reads. Nothing on the server reads these; they exist so that a
+ * customised page is still customised on another machine.
+ *
+ * `fallback` is returned while the request is in flight and when nothing has
+ * been saved, so callers never have to render a half-configured page - an
+ * unset key is the normal first-visit case, not an error.
+ */
+export function useUiPreference<T extends Record<string, unknown>>(
+  key: string,
+  fallback: T,
+) {
+  const queryClient = useQueryClient()
+
+  const query = useQuery({
+    queryKey: keys.uiPreference(key),
+    queryFn: () => api.get<UiPreference>(`/auth/me/ui/${key}`),
+    // Layouts change only when this user changes them, and they have just
+    // been told the answer by their own mutation.
+    staleTime: 10 * 60 * 1000,
+  })
+
+  const save = useMutation({
+    mutationFn: (value: T) =>
+      api.put<UiPreference>(`/auth/me/ui/${key}`, { value }),
+    // Written straight into the cache rather than invalidated: the control
+    // that triggered this is looking at the value, and a refetch round trip
+    // would make it visibly lag the click.
+    onSuccess: (result) => queryClient.setQueryData(keys.uiPreference(key), result),
+  })
+
+  const reset = useMutation({
+    mutationFn: () => api.delete(`/auth/me/ui/${key}`),
+    onSuccess: () =>
+      queryClient.setQueryData(keys.uiPreference(key), { key, value: {} }),
+  })
+
+  const stored = query.data?.value as T | undefined
+  const value = stored && Object.keys(stored).length > 0 ? { ...fallback, ...stored } : fallback
+
+  return { value, isLoaded: !query.isPending, save, reset }
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +438,25 @@ export function useReplaceDevice(deviceId: string) {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
       queryClient.invalidateQueries({ queryKey: keys.sites })
     },
+  })
+}
+
+/**
+ * How much energy one device moved over a window.
+ *
+ * Distinct from the site figures under `/ems`: those are a site's balance on a
+ * fixed 15-minute grid, and a single device is not a slice of them. Read
+ * `basis` before quoting the number - `integrated` is an approximation and
+ * `coverage` says how good an approximation.
+ */
+export function useDeviceEnergy(
+  deviceId: string | undefined,
+  params: { start?: string; end?: string; metric_key?: string } = {},
+) {
+  return useQuery({
+    queryKey: keys.deviceEnergy(deviceId ?? '', params),
+    queryFn: () => api.get<DeviceEnergy>(`/devices/${deviceId}/energy`, params),
+    enabled: Boolean(deviceId),
   })
 }
 
@@ -567,6 +744,30 @@ export function useNotificationChannels(enabled = true) {
   })
 }
 
+export function useNotificationChannelMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: keys.channels })
+  }
+
+  return {
+    create: useMutation({
+      mutationFn: (body: Record<string, unknown>) =>
+        api.post<NotificationChannel>('/notification-channels', body),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+        api.put<NotificationChannel>(`/notification-channels/${id}`, body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/notification-channels/${id}`),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
@@ -610,8 +811,10 @@ export function useMemberMutations() {
       onSuccess: invalidate,
     }),
     setRole: useMutation({
-      mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-        api.patch<Member>(`/members/${userId}`, { role }),
+      // site_ids is omitted unless the caller passes it: sending it on every
+      // role change would silently wipe a member's site scope.
+      mutationFn: ({ userId, ...body }: { userId: string; role: string; site_ids?: string[] }) =>
+        api.patch<Member>(`/members/${userId}`, body),
       onSuccess: invalidate,
     }),
     remove: useMutation({
@@ -688,10 +891,83 @@ export function useStoragePlan(siteId: string | undefined) {
   })
 }
 
+export function useStoragePlans() {
+  return useQuery({
+    queryKey: ['ems', 'plans'],
+    queryFn: () => api.get<StoragePlan[]>('/ems/plans'),
+  })
+}
+
+export function useStoragePlanMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['ems'] })
+  }
+
+  return {
+    create: useMutation({
+      mutationFn: (body: Record<string, unknown>) =>
+        api.post<StoragePlan>('/ems/plans', body),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+        api.put<StoragePlan>(`/ems/plans/${id}`, body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/ems/plans/${id}`),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+export function useDemandResponse(siteId: string | undefined) {
+  return useQuery({
+    queryKey: ['ems', 'demand-response', siteId ?? ''],
+    queryFn: () =>
+      api.get<DemandResponseEvent[]>(`/ems/sites/${siteId}/demand-response`),
+    enabled: Boolean(siteId),
+    refetchInterval: FAST_REFETCH_MS,
+  })
+}
+
+export function useDemandResponseMutations(siteId: string | undefined) {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['ems', 'demand-response'] })
+  }
+
+  return {
+    trigger: useMutation({
+      mutationFn: (body: {
+        target_power_kw: number
+        duration_minutes: number
+        note?: string
+      }) => api.post<DemandResponseEvent>(`/ems/sites/${siteId}/demand-response`, body),
+      onSuccess: invalidate,
+    }),
+    cancel: useMutation({
+      mutationFn: (eventId: string) =>
+        api.post<DemandResponseEvent>(`/ems/demand-response/${eventId}/cancel`, {}),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 export function useTariffs() {
   return useQuery({
     queryKey: keys.emsTariffs,
     queryFn: () => api.get<Tariff[]>('/ems/tariffs'),
+  })
+}
+
+export function useTariffPresets() {
+  return useQuery({
+    queryKey: ['ems', 'tariff-presets'],
+    queryFn: () => api.get<TariffPreset[]>('/ems/tariffs/presets'),
+    // Bundled tables only change with a deploy.
+    staleTime: 60 * 60 * 1000,
   })
 }
 
@@ -728,14 +1004,142 @@ export function useEnergySummary(
   })
 }
 
+/**
+ * Cost and savings for every site in one request.
+ *
+ * One call rather than one per site: the dashboard renders every site the user
+ * can see, and asking individually is a round trip each.
+ */
+export function useCostOverview(params: { start?: string; end?: string } = {}) {
+  return useQuery({
+    queryKey: keys.emsCostOverview(params),
+    queryFn: () => api.get<CostOverview>('/ems/cost-overview', params),
+    refetchInterval: 60_000,
+  })
+}
+
+/** Where one site's money went, by source. */
+export function useCostBreakdown(
+  siteId: string | undefined,
+  params: { start?: string; end?: string } = {},
+) {
+  return useQuery({
+    queryKey: keys.emsCostBreakdown(siteId ?? '', params),
+    queryFn: () =>
+      api.get<CostBreakdown>(`/ems/sites/${siteId}/cost-breakdown`, params),
+    enabled: Boolean(siteId),
+  })
+}
+
+/** The registered cost models, so the console never hard-codes the list. */
+export function useCostModels() {
+  return useQuery({
+    queryKey: keys.emsCostModels,
+    queryFn: () => api.get<CostModel[]>('/ems/cost-models'),
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+export interface SessionListParams {
+  site_id?: string
+  device_pk?: string
+  kind?: string
+  /** Ignores the window: "what is running right now", not "started today". */
+  open_only?: boolean
+  start?: string
+  end?: string
+  limit?: number
+  offset?: number
+}
+
+export function useOperatingSessions(params: SessionListParams) {
+  return useQuery({
+    queryKey: keys.emsSessions(params),
+    queryFn: () =>
+      api.get<Page<OperatingSession>>('/ems/sessions', { limit: 25, ...params }),
+  })
+}
+
+export function useSessionSummary(
+  params: { site_id?: string; device_pk?: string; start?: string; end?: string } = {},
+) {
+  return useQuery({
+    queryKey: keys.emsSessionSummary(params),
+    queryFn: () => api.get<SessionSummary[]>('/ems/sessions/summary', params),
+  })
+}
+
+/** What the dispatch engine would send right now, without sending it. */
+export function useDispatchPreview(options?: Options<DispatchDecision[]>) {
+  return useQuery({
+    queryKey: keys.emsDispatchPreview,
+    queryFn: () => api.get<DispatchDecision[]>('/ems/dispatch-windows/preview'),
+    refetchInterval: LIVE_REFETCH_MS,
+    ...options,
+  })
+}
+
+/**
+ * Current power at every site, plus today's totals, in one request.
+ *
+ * The overview needs a headline figure *and* a row per site; asking the
+ * per-site endpoint once per site would be a round trip each.
+ */
+export function useFleetLive(options?: Options<FleetLive>) {
+  return useQuery({
+    queryKey: keys.emsLive,
+    queryFn: () => api.get<FleetLive>('/ems/live'),
+    refetchInterval: FAST_REFETCH_MS,
+    ...options,
+  })
+}
+
+/** What the equipment at a site cost, and its share of the window. */
+export function useSiteInvestment(
+  siteId: string | undefined,
+  params: { start?: string; end?: string } = {},
+) {
+  return useQuery({
+    queryKey: keys.emsInvestment(siteId ?? '', params),
+    queryFn: () => api.get<SiteInvestment>(`/ems/sites/${siteId}/investment`, params),
+    enabled: Boolean(siteId),
+  })
+}
+
+export function useTariffMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: keys.emsTariffs })
+    // A price change moves every cost figure, so the plans that reference it
+    // and anything derived from them have to be considered stale too.
+    void queryClient.invalidateQueries({ queryKey: ['ems'] })
+  }
+
+  return {
+    create: useMutation({
+      mutationFn: (body: Record<string, unknown>) => api.post<Tariff>('/ems/tariffs', body),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: ({ id, ...body }: Record<string, unknown> & { id: string }) =>
+        api.put<Tariff>(`/ems/tariffs/${id}`, body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/ems/tariffs/${id}`),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
 export function useEmsMutations() {
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['ems'] })
 
   return {
-    savePlan: useMutation({
-      mutationFn: ({ siteId, ...body }: Record<string, unknown> & { siteId: string }) =>
-        api.put<StoragePlan>(`/ems/sites/${siteId}/plan`, body),
+    bindPlan: useMutation({
+      mutationFn: ({ siteId, planId }: { siteId: string; planId: string | null }) =>
+        api.put(`/ems/sites/${siteId}/plan`, { plan_id: planId }),
       onSuccess: invalidate,
     }),
     createAsset: useMutation({
@@ -754,6 +1158,199 @@ export function useEmsMutations() {
     rebuildIntervals: useMutation({
       mutationFn: ({ siteId, start, end }: { siteId: string; start: string; end: string }) =>
         api.post(`/ems/sites/${siteId}/rebuild-intervals`, {}, { start, end }),
+      onSuccess: invalidate,
+    }),
+    rebuildSessions: useMutation({
+      mutationFn: (params: { start: string; end: string; device_pk?: string }) =>
+        api.post('/ems/sessions/rebuild', {}, params),
+      onSuccess: invalidate,
+    }),
+    /**
+     * Run the dispatch engine now rather than waiting for the cycle.
+     *
+     * Idempotent in the way that matters: the engine only issues a command
+     * when the target has moved, so pressing this twice sends one setpoint.
+     */
+    runDispatch: useMutation({
+      mutationFn: (params: { dry_run?: boolean } = {}) =>
+        api.post<DispatchDecision[]>('/ems/dispatch-windows/run', {}, params),
+      onSuccess: () => {
+        invalidate()
+        void queryClient.invalidateQueries({ queryKey: ['commands'] })
+      },
+    }),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workflows
+// ---------------------------------------------------------------------------
+/**
+ * The node palette and every node type's parameter form.
+ *
+ * Cached hard: the catalogue only changes when the server is redeployed, and
+ * the editor asks for it on every mount.
+ */
+export function useNodeTypes() {
+  return useQuery({
+    queryKey: keys.nodeTypes,
+    queryFn: () => api.get<NodeTypeDef[]>('/workflows/node-types'),
+    staleTime: 60 * 60 * 1000,
+  })
+}
+
+export function useWorkflowCapacity() {
+  return useQuery({
+    queryKey: keys.workflowCapacity,
+    queryFn: () => api.get<WorkflowCapacity>('/workflows/capacity'),
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+export function useWorkflowList(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: keys.workflows,
+    queryFn: () => api.get<Page<Workflow>>('/workflows', { limit: 100 }),
+    refetchInterval: LIVE_REFETCH_MS,
+    ...options,
+  })
+}
+
+export function useWorkflow(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.workflow(id ?? ''),
+    queryFn: () => api.get<Workflow>(`/workflows/${id}`),
+    enabled: Boolean(id),
+  })
+}
+
+export function useWorkflowMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['workflows'] })
+  }
+
+  return {
+    create: useMutation({
+      mutationFn: (body: Record<string, unknown>) =>
+        api.post<Workflow>('/workflows', body),
+      onSuccess: invalidate,
+    }),
+    save: useMutation({
+      mutationFn: ({ id, ...body }: { id: string } & Record<string, unknown>) =>
+        api.patch<Workflow>(`/workflows/${id}`, body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/workflows/${id}`),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+export function useWorkflowRuns(params: Record<string, unknown>) {
+  return useQuery({
+    queryKey: keys.workflowRuns(params),
+    queryFn: () => api.get<Page<WorkflowRun>>('/workflow-runs', params),
+    refetchInterval: FAST_REFETCH_MS,
+  })
+}
+
+/**
+ * One run, polled quickly.
+ *
+ * Fast because this is what drives the canvas highlight while a graph is
+ * executing, and a token can move through several nodes in a second.
+ */
+/** Poll fast enough to watch a run walk the canvas while it is moving. */
+const RUN_LIVE_REFETCH_MS = 1000
+
+export function useWorkflowRun(id: string | undefined, options?: { streaming?: boolean }) {
+  const streaming = options?.streaming ?? false
+  return useQuery({
+    queryKey: keys.workflowRun(id ?? ''),
+    queryFn: () => api.get<WorkflowRun>(`/workflow-runs/${id}`),
+    enabled: Boolean(id),
+    // With SSE connected the cache is fed by the stream and polling would be
+    // duplicate traffic. Without it, an alive run still has to track nodes
+    // that take only a couple of seconds each - a 5s poll shows the token
+    // teleporting.
+    refetchInterval: (query) => {
+      if (streaming) return false
+      const status = query.state.data?.status
+      return status && ['pending', 'running', 'waiting', 'paused'].includes(status)
+        ? RUN_LIVE_REFETCH_MS
+        : FAST_REFETCH_MS
+    },
+  })
+}
+
+export function useRunLogs(
+  id: string | undefined,
+  params: Record<string, unknown>,
+  options?: { live?: boolean; streaming?: boolean },
+) {
+  return useQuery({
+    queryKey: keys.workflowRunLogs(id ?? '', params),
+    queryFn: () => api.get<Page<WorkflowRunLog>>(`/workflow-runs/${id}/logs`, params),
+    enabled: Boolean(id),
+    refetchInterval: options?.streaming
+      ? false
+      : options?.live
+        ? RUN_LIVE_REFETCH_MS
+        : FAST_REFETCH_MS,
+  })
+}
+
+export function useWorkflowRunMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['workflow-runs'] })
+    void queryClient.invalidateQueries({ queryKey: ['workflows'] })
+  }
+
+  return {
+    start: useMutation({
+      mutationFn: ({
+        workflowId,
+        ...body
+      }: {
+        workflowId: string
+        dry_run: boolean
+        step_delay_seconds?: number
+        start_paused?: boolean
+      }) => api.post<WorkflowRun>(`/workflows/${workflowId}/runs`, body),
+      onSuccess: invalidate,
+    }),
+    runNode: useMutation({
+      mutationFn: ({
+        workflowId,
+        ...body
+      }: {
+        workflowId: string
+        node_id: string
+        dry_run?: boolean
+      }) => api.post<WorkflowRun>(`/workflows/${workflowId}/run-node`, body),
+      onSuccess: invalidate,
+    }),
+    stop: useMutation({
+      mutationFn: (runId: string) =>
+        api.post<WorkflowRun>(`/workflow-runs/${runId}/stop`, {}),
+      onSuccess: invalidate,
+    }),
+    pause: useMutation({
+      mutationFn: (runId: string) =>
+        api.post<WorkflowRun>(`/workflow-runs/${runId}/pause`, {}),
+      onSuccess: invalidate,
+    }),
+    resume: useMutation({
+      mutationFn: (runId: string) =>
+        api.post<WorkflowRun>(`/workflow-runs/${runId}/resume`, {}),
+      onSuccess: invalidate,
+    }),
+    step: useMutation({
+      mutationFn: (runId: string) =>
+        api.post<WorkflowRun>(`/workflow-runs/${runId}/step`, {}),
       onSuccess: invalidate,
     }),
   }

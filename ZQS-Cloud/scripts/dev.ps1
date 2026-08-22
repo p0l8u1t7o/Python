@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Starts the ZQS Cloud development stack.
 
@@ -45,6 +45,7 @@ param(
     [switch]$Setup,
     [switch]$Full,
     [switch]$Simulate,
+    [switch]$NoBroker,
     [double]$HistoryDays = 3,
     [switch]$NoBrowser
 )
@@ -133,20 +134,6 @@ function Invoke-Native {
     }
 }
 
-function Wait-ForHttp {
-    param([string]$Url, [int]$TimeoutSeconds = 45)
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
-        try {
-            Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3 | Out-Null
-            return $true
-        } catch {
-            Start-Sleep -Milliseconds 600
-        }
-    }
-    return $false
-}
-
 # --------------------------------------------------------------------------
 # Setup
 # --------------------------------------------------------------------------
@@ -168,6 +155,11 @@ try {
         }
         Invoke-Native -FilePath $python -Arguments @(
             '-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', 'requirements.txt'
+        )
+        # The development broker, ruff and pytest live here. Installing them is
+        # what makes the live path work out of the box without Docker.
+        Invoke-Native -FilePath $python -Arguments @(
+            '-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', 'requirements-dev.txt'
         )
         Write-Ok 'python dependencies installed'
 
@@ -218,7 +210,31 @@ try {
         }
     }
 
+    # Default: the bundled development broker plus a combined
+    # ingestor+worker process. That gives the whole live path - publish,
+    # ingest, store, command - with nothing to install and nothing to run in
+    # Docker. -Full swaps in real EMQX and Redis; -NoBroker drops the live
+    # path entirely for anyone who only wants the console and the API.
     $busBackend = 'memory'
+    $mqttEnabled = '1'
+    $mqttProtocol = '311'   # the bundled broker speaks 3.1.1 only
+    $mqttShared = '0'       # ...and has no shared subscriptions
+    $useBundledBroker = -not $Full -and -not $NoBroker
+
+    if ($NoBroker) {
+        $mqttEnabled = '0'
+        Write-Warn 'running without a broker (-NoBroker): live ingest and commands are off'
+    }
+
+    if ($useBundledBroker -and (Test-Port -Port 1883)) {
+        # Something is already on 1883 - very likely a real EMQX the developer
+        # started on purpose. Use it rather than failing to bind on top of it.
+        $useBundledBroker = $false
+        $mqttProtocol = '5'
+        $mqttShared = '1'
+        Write-Ok 'a broker is already listening on 1883 - using it'
+    }
+
     if ($Full) {
         $redisUp = Test-Port -Port 6379
         $mqttUp = Test-Port -Port 1883
@@ -232,6 +248,9 @@ try {
         # Ingestor and worker are separate processes, so the queue has to be
         # a real broker; the in-memory bus is per-process only.
         $busBackend = 'redis'
+        $mqttEnabled = '1'
+        $mqttProtocol = '5'
+        $mqttShared = '1'
         Write-Ok 'Redis and EMQX reachable'
     }
 
@@ -240,46 +259,75 @@ try {
     # ----------------------------------------------------------------------
     Write-Step 'Starting services'
     $env:BUS_BACKEND = $busBackend
+    $env:MQTT_ENABLED = $mqttEnabled
+    $env:MQTT_PROTOCOL_VERSION = $mqttProtocol
+    $env:MQTT_USE_SHARED_SUBSCRIPTION = $mqttShared
+    $childEnv = "`$env:BUS_BACKEND='$busBackend'; `$env:MQTT_ENABLED='$mqttEnabled'; " +
+        "`$env:MQTT_PROTOCOL_VERSION='$mqttProtocol'; `$env:MQTT_USE_SHARED_SUBSCRIPTION='$mqttShared';"
+
+    if ($useBundledBroker) {
+        Start-DevService -Title 'zqs-broker' -Command `
+            "$childEnv & '$python' manage.py run_broker"
+        # No bind wait: the pipeline retries its broker connection, so the
+        # only cost of racing it is one retry line in the log.
+    }
 
     Start-DevService -Title 'zqs-api' -Command `
-        "`$env:BUS_BACKEND='$busBackend'; & '$python' manage.py runserver 127.0.0.1:8000"
+        "$childEnv & '$python' manage.py runserver 127.0.0.1:8000"
 
     if ($Full) {
         Start-DevService -Title 'zqs-ingestor' -Command `
-            "`$env:BUS_BACKEND='$busBackend'; & '$python' manage.py run_ingestor"
+            "$childEnv & '$python' manage.py run_ingestor"
         Start-DevService -Title 'zqs-worker' -Command `
-            "`$env:BUS_BACKEND='$busBackend'; & '$python' manage.py run_worker"
+            "$childEnv & '$python' manage.py run_worker"
     }
+    elseif (-not $NoBroker) {
+        # One process, because the in-memory bus cannot cross a process
+        # boundary - see run_pipeline's docstring.
+        Start-DevService -Title 'zqs-pipeline' -Command `
+            "$childEnv & '$python' manage.py run_pipeline"
+    }
+
+    # Its own process, with its own tick. The scheduler's jobs are minutes
+    # apart; a drawn control flow needs seconds of resolution, and one loop
+    # cannot serve both.
+    Start-DevService -Title 'zqs-workflows' -Command `
+        "$childEnv & '$python' manage.py run_workflows"
 
     Start-DevService -Title 'zqs-frontend' -Command 'npm run dev' `
         -WorkingDirectory (Join-Path $root 'frontend')
 
-    if ($Simulate) {
-        $profiles = @(
-            @{ device = 'ZQS-BESS-0001'; profile = 'battery'; interval = 5 },
-            @{ device = 'ZQS-METER-0001'; profile = 'meter'; interval = 5 },
-            @{ device = 'ZQS-PV-0001'; profile = 'pv'; interval = 10 }
-        )
-        foreach ($item in $profiles) {
-            Start-DevService -Title "zqs-sim-$($item.profile)" -Command `
-                "& '$python' manage.py simulate_device --device $($item.device) --profile $($item.profile) --interval $($item.interval)"
-        }
+    if ($Simulate -or $useBundledBroker) {
+        # One process for the whole gateway, not one per device. Under
+        # Sparkplug a connection *is* an edge node: it owns one seq counter and
+        # one birth/death pair. Three processes claiming the same node id would
+        # take turns knocking each other off the broker, and the host would see
+        # a permanent sequence gap.
+        Start-DevService -Title 'zqs-sim-gateway' -Command `
+            ("$childEnv & '$python' manage.py simulate_device " +
+             '--device ZQS-BESS-0001=battery ' +
+             '--device ZQS-METER-0001=meter ' +
+             '--device ZQS-PV-0001=pv ' +
+             '--device ZQS-FC-0001=fuelcell --interval 5')
     }
 
     $script:started | ConvertTo-Json | Set-Content -Path $pidFile -Encoding utf8
 
     # ----------------------------------------------------------------------
-    # Report
+    # Report - both services polled in one loop, so the total wait is the
+    # slower of the two, not their sum.
     # ----------------------------------------------------------------------
-    Write-Step 'Waiting for the API'
-    if (Wait-ForHttp -Url 'http://127.0.0.1:8000/healthz') {
-        Write-Ok 'API is up'
-    } else {
-        Write-Warn 'API did not answer in time; check the zqs-api window.'
+    Write-Step 'Waiting for the API and the console'
+    $apiUp = $false
+    $consoleUp = $false
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline -and -not ($apiUp -and $consoleUp)) {
+        if (-not $apiUp) { $apiUp = Test-Port -Port 8000 -TimeoutMs 250 }
+        if (-not $consoleUp) { $consoleUp = Test-Port -Port 5173 -TimeoutMs 250 }
+        if (-not ($apiUp -and $consoleUp)) { Start-Sleep -Milliseconds 200 }
     }
-
-    Write-Step 'Waiting for the console'
-    if (Wait-ForHttp -Url 'http://127.0.0.1:5173/' -TimeoutSeconds 60) {
+    if ($apiUp) { Write-Ok 'API is up' } else { Write-Warn 'API did not answer in time; check the zqs-api window.' }
+    if ($consoleUp) {
         Write-Ok 'console is up'
         if (-not $NoBrowser) { Start-Process 'http://127.0.0.1:5173' }
     } else {
@@ -296,10 +344,15 @@ try {
     Write-Host '             operator@example.com, viewer@example.com (same password)'
     Write-Host ''
     Write-Host '  stop with  .\scripts\stop.ps1'
-    if (-not $Full) {
+    if ($useBundledBroker) {
+        Write-Ok 'development broker on mqtt://127.0.0.1:1883 - anonymous, no ACL, dev only'
+        Write-Ok 'Live telemetry is flowing. Use -Full for real EMQX + Redis.'
+    }
+    if ($NoBroker) {
         Write-Host ''
-        Write-Warn 'Live MQTT ingest is not running. Use -Full or -Simulate for that.'
+        Write-Warn 'Live MQTT ingest is not running (-NoBroker). The health card shows MQTT as disabled, not failed.'
     }
 } finally {
     Pop-Location
 }
+

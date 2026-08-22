@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useAuditActions, useAuditLogs } from '@/lib/queries'
 import { formatDateTime } from '@/lib/format'
-import { RANGE_KEYS, useTimeRange, type RangeKey } from '@/lib/useTimeRange'
+import { useTimeRange } from '@/lib/useTimeRange'
 import type { AuditLog } from '@/lib/types'
 import {
   Badge,
@@ -13,7 +13,7 @@ import {
   Modal,
   PageHeader,
   Pagination,
-  SegmentedControl,
+  TimeRangePicker,
   Select,
   TBody,
   THead,
@@ -61,12 +61,7 @@ export function AuditPage() {
               }))}
               className="w-56"
             />
-            <SegmentedControl<RangeKey>
-              size="sm"
-              value={range.key}
-              onChange={range.setKey}
-              options={RANGE_KEYS.map((key) => ({ value: key, label: t(`range.${key}`) }))}
-            />
+            <TimeRangePicker range={range} />
           </>
         }
       />

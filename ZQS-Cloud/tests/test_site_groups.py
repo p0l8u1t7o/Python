@@ -21,7 +21,7 @@ from apps.devices.models import (
     descendant_site_ids,
 )
 from apps.ems import rollup
-from apps.ems.models import EnergyInterval, StoragePlan, Tariff
+from apps.ems.models import EnergyInterval, Tariff
 from tests import factories
 from tests.test_api import API, ApiTestCase
 
@@ -253,8 +253,8 @@ class RollupArithmeticTests(TestCase):
     def test_currency_is_dropped_when_sites_disagree(self):
         twd = Tariff.objects.create(organization=self.org, name="TWD plan", currency="TWD")
         usd = Tariff.objects.create(organization=self.org, name="USD plan", currency="USD")
-        StoragePlan.objects.create(organization=self.org, site=self.north, tariff=twd)
-        StoragePlan.objects.create(organization=self.org, site=self.south, tariff=usd)
+        factories.storage_plan(self.org, self.north, tariff=twd)
+        factories.storage_plan(self.org, self.south, tariff=usd)
 
         self.assertEqual(rollup.currency_for([self.north.pk]), "TWD")
         # Adding TWD to USD would be nonsense; the totals stay, the label goes.

@@ -20,11 +20,13 @@ from services.harness.simulator import ReferenceDevice
 FAULTS = {
     "": "正常行為（預設）",
     "bad_client_id": "用 LabVIEW_1 當 client id → 應觸發 client_id_format 失敗",
-    "no_lwt": "不宣告遺言 → 應觸發 lwt_declared 失敗",
-    "clean_session": "clean_session=true → 應觸發 clean_session 失敗",
-    "bad_payload": "telemetry 缺少 ts → 應觸發 payload_schema 失敗",
-    "bad_qos": "telemetry 用 QoS 0 → 應觸發 publish_qos 失敗",
+    "no_lwt": "不宣告 NDEATH 遺言 → 應觸發 lwt_declared 失敗",
+    "clean_session": "clean_session=false → 應觸發 clean_session 失敗",
+    "retained_will": "遺言設 retain → 應觸發 lwt_retain 失敗",
+    "bad_payload": "DDATA 不是 protobuf → 應觸發 payload_schema 失敗",
+    "bad_qos": "DDATA 用 QoS 1 → 應觸發 publish_qos 警告",
     "no_ack": "收到命令不回覆 → command_ack 保持未測",
+    "ignore_rebirth": "忽略 Rebirth 要求 → rebirth_honoured 保持未測",
 }
 
 
@@ -63,14 +65,30 @@ class Command(BaseCommand):
             choices=sorted(FAULTS),
             help="Break one rule on purpose, to verify the harness catches it.",
         )
+        parser.add_argument(
+            "--group", default="", help="Sparkplug group_id. Defaults to the device's."
+        )
+        parser.add_argument(
+            "--node", default="", help="Sparkplug edge_node_id. Defaults to the device's."
+        )
 
     def handle(self, *args, **options):
-        username = options["username"] or self._lookup_username(options["device"])
+        username, group_id, node_id = self._lookup(options["device"])
+        username = options["username"] or username
+        group_id = options["group"] or group_id
+        node_id = options["node"] or node_id
+        if not group_id or not node_id:
+            raise CommandError(
+                "無法判斷 Sparkplug 位址。請先註冊設備，或用 --group 與 --node "
+                "明確指定。"
+            )
 
         device = ReferenceDevice(
             device_id=options["device"],
             username=username,
             password=options["password"],
+            group_id=group_id,
+            node_id=node_id,
             host=options["host"],
             port=options["port"],
             interval=options["interval"],
@@ -79,7 +97,7 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS("參考設備模擬器"))
-        self.stdout.write(f"  device_id  {options['device']}")
+        self.stdout.write(f"  位址       {group_id}/{node_id}/{options['device']}")
         self.stdout.write(f"  username   {username}")
         self.stdout.write(f"  連線至     {options['host']}:{options['port']}")
         self.stdout.write(f"  行為       {FAULTS[options['misbehave']]}")
@@ -100,17 +118,19 @@ class Command(BaseCommand):
                 "測試工具啟動了嗎？ python manage.py run_test_broker"
             ) from exc
 
-    def _lookup_username(self, device_id: str) -> str:
-        from apps.devices.models import DeviceCredential
+    def _lookup(self, device_id: str) -> tuple[str, str, str]:
+        """``(username, group_id, node_id)`` for a registered device."""
+        from apps.devices.models import Device
 
-        username = (
-            DeviceCredential.objects.filter(device__device_id=device_id)
-            .values_list("mqtt_username", flat=True)
+        row = (
+            Device.objects.filter(device_id=device_id, deleted_at__isnull=True)
+            .values_list(
+                "edge_node__credential__mqtt_username",
+                "edge_node__group_id",
+                "edge_node__node_id",
+            )
             .first()
         )
-        if not username:
-            raise CommandError(
-                f"找不到 {device_id!r} 的 MQTT 憑證。請先在 console 註冊設備，"
-                "或用 --username 明確指定。"
-            )
-        return username
+        if row is None:
+            return "", "", ""
+        return row[0] or "", row[1] or "", row[2] or ""

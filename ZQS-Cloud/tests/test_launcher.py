@@ -21,7 +21,7 @@ from types import SimpleNamespace
 from django.test import TransactionTestCase
 
 from apps.accounts.models import Organization
-from apps.devices.models import Device, DeviceCredential
+from apps.devices.models import Device, EdgeNode, EdgeNodeCredential
 from services.harness import checks as conformance
 from services.harness import report as reporting
 from services.harness import runner
@@ -34,7 +34,7 @@ def _session(checks, message_count: int = 3):
 
 
 def _all_passing(device_id: str = "SCORE-1"):
-    checks = conformance.build_checklist(device_id)
+    checks = conformance.build_checklist("demo", device_id)
     for check in checks.values():
         check.succeed("ok")
     return checks
@@ -61,7 +61,7 @@ class ScenarioScoringTests(TransactionTestCase):
             any("沒有抓到" in problem for problem in result.problems),
             result.problems,
         )
-        self.assertIn("LWT 已宣告", " ".join(result.problems))
+        self.assertIn("NDEATH 已宣告為遺言", " ".join(result.problems))
 
     def test_a_harness_that_invents_a_fault_is_also_reported(self):
         # Over-reporting sends a device author hunting for a bug that is not
@@ -142,9 +142,13 @@ class SelfTestRunTests(TransactionTestCase):
     def setUp(self) -> None:
         org = factories.organization("demo")
         device = factories.device(org, "LAUNCH-1")
-        credential, password = DeviceCredential.issue(device)
+        credential, password = EdgeNodeCredential.issue(device.edge_node)
         self.credentials = runner.Credentials(
-            device.device_id, credential.mqtt_username, password
+            device.device_id,
+            credential.mqtt_username,
+            password,
+            group_id=device.edge_node.group_id,
+            node_id=device.edge_node.node_id,
         )
 
     def test_the_reference_device_satisfies_the_normal_scenario(self):
@@ -186,12 +190,12 @@ class ProvisioningTests(TransactionTestCase):
         factories.organization("demo")
 
     def test_credentials_authenticate_against_production_code(self):
-        from apps.devices.services import authenticate_device
+        from apps.devices.edge_nodes import authenticate_edge_node
 
         with runner.provision_selftest_device() as credentials:
-            device = authenticate_device(credentials.username, credentials.password)
-            self.assertIsNotNone(device)
-            self.assertEqual(device.device_id, credentials.device_id)
+            node = authenticate_edge_node(credentials.username, credentials.password)
+            self.assertIsNotNone(node)
+            self.assertEqual(node.node_id, credentials.node_id)
 
     def test_the_device_is_removed_afterwards(self):
         with runner.provision_selftest_device() as credentials:
@@ -218,8 +222,14 @@ class ProvisioningTests(TransactionTestCase):
 
     def test_leftovers_from_a_crashed_run_are_swept_up(self):
         org = Organization.objects.first()
+        node = EdgeNode.objects.create(
+            organization=org,
+            node_id=f"{runner.SELFTEST_PREFIX}STALE001",
+            name="stale",
+        )
         Device.objects.create(
             organization=org,
+            edge_node=node,
             device_id=f"{runner.SELFTEST_PREFIX}STALE001",
             name="stale",
         )
@@ -229,6 +239,9 @@ class ProvisioningTests(TransactionTestCase):
 
         self.assertFalse(
             Device.objects.filter(device_id__startswith=runner.SELFTEST_PREFIX).exists()
+        )
+        self.assertFalse(
+            EdgeNode.objects.filter(node_id__startswith=runner.SELFTEST_PREFIX).exists()
         )
 
 
@@ -350,7 +363,7 @@ class ConsoleTests(TransactionTestCase):
         printer("connect", {"device_id": "PRINT-1", "accepted": True, "checks": checks})
         output = buffer.getvalue()
 
-        self.assertIn("LWT 已宣告", output)
+        self.assertIn("NDEATH 已宣告為遺言", output)
         self.assertIn("CONNECT 沒有設 will flag。", output)
         # A wall of green would bury the one line that matters.
         self.assertNotIn("MQTT 協定版本", output)
@@ -413,9 +426,13 @@ class ThreadHygieneTests(TransactionTestCase):
     def test_no_harness_threads_survive_a_scenario(self):
         org = factories.organization("demo")
         device = factories.device(org, "THREAD-1")
-        credential, password = DeviceCredential.issue(device)
+        credential, password = EdgeNodeCredential.issue(device.edge_node)
         credentials = runner.Credentials(
-            device.device_id, credential.mqtt_username, password
+            device.device_id,
+            credential.mqtt_username,
+            password,
+            group_id=device.edge_node.group_id,
+            node_id=device.edge_node.node_id,
         )
 
         before = threading.active_count()

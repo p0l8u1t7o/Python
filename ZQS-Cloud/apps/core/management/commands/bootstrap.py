@@ -91,7 +91,13 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
         "key": "bess-pcs",
         "name": "Battery energy storage system (PCS)",
         "category": DeviceCategory.BATTERY,
-        "description": "Behind-the-meter battery with an integrated power conversion system.",
+        "description": (
+            "Behind-the-meter battery with an integrated power conversion system. Charges from the grid or from surplus solar and discharges to shave peak demand or to arbitrage a time-of-use tariff. Pick this for the cabinet as a whole when the battery and its inverter are one unit."
+        ),
+        "translations": {
+            "zh-hant": {"description": "表後儲能系統，電池與功率轉換系統整合成一台。可從市電或多餘的太陽能充電，放電用來削減尖峰需量或做時間電價套利。電池與變流器是同一台機櫃時選這個。"},
+            "zh-hans": {"description": "表后储能系统，电池与功率转换系统整合成一台。可从市电或多余的太阳能充电，放电用来削减尖峰需量或做分时电价套利。电池与变流器是同一台机柜时选这个。"},
+        },
         "command_definitions": [
             _command(
                 "set_power_limit",
@@ -171,7 +177,13 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
         "key": "smart-meter",
         "name": "Smart energy meter",
         "category": DeviceCategory.METER,
-        "description": "Revenue-grade or sub-meter reporting power and cumulative energy.",
+        "description": (
+            "Revenue-grade or sub-meter reporting power and cumulative energy. Measures only - it is never dispatched. Bind the one at the point of common coupling as the site's grid meter; bind any others as sub-meters with 'include in balance' off, or their energy is counted twice."
+        ),
+        "translations": {
+            "zh-hant": {"description": "電錶，回報功率與累計電量，可以是計費用主錶或分錶。它只量測，永遠不會被下命令。接在總進線（PCC）的那一顆綁成場域的市電錶；其餘的綁成分錶並關掉「納入能源平衡」，否則同一度電會被算兩次。"},
+            "zh-hans": {"description": "电表，回报功率与累计电量，可以是计费用主表或分表。它只量测，永远不会被下命令。接在总进线（PCC）的那一颗绑成场域的市电表；其余的绑成分表并关掉“纳入能源平衡”，否则同一度电会被算两次。"},
+        },
         "command_definitions": [
             _command(
                 "set_report_interval",
@@ -189,10 +201,16 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
         ],
     },
     {
-        "key": "pv-inverter",
-        "name": "PV inverter",
-        "category": DeviceCategory.PV_INVERTER,
-        "description": "Grid-tied solar inverter.",
+        "key": "power-generation-unit",
+        "name": "Power generation unit",
+        "category": DeviceCategory.GENERATION,
+        "description": (
+            "Anything that produces power for the site: solar, fuel cell, wind, CHP. One blueprint rather than one per technology, because the platform treats them identically - they generate, they can export, they never charge. What differs between them is fuel cost, and that belongs on the cost model, not on the blueprint."
+        ),
+        "translations": {
+            "zh-hant": {"description": "為場域產生電力的設備：太陽能、燃料電池、風力、汽電共生。一個藍圖而不是每種技術各一個，因為平台對它們的處理完全相同——都是發電、可逆送、不充電。它們之間真正的差別是燃料成本，而那屬於成本模型，不屬於藍圖。"},
+            "zh-hans": {"description": "为场域产生电力的设备：太阳能、燃料电池、风力、汽电共生。一个蓝图而不是每种技术各一个，因为平台对它们的处理完全相同——都是发电、可逆送、不充电。它们之间真正的差别是燃料成本，而那属于成本模型，不属于蓝图。"},
+        },
         "command_definitions": [
             _command(
                 "set_export_limit",
@@ -220,10 +238,29 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
         ],
     },
     {
+        "key": "load-monitor",
+        "name": "Monitored load",
+        "category": DeviceCategory.LOAD,
+        "description": (
+            "A piece of equipment registered purely so its consumption is visible: a chiller, a compressor, a production line. It reports and is never commanded, which is why it carries no commands at all. Registering one does not change the site energy balance - see the note on double counting in docs/system-logic.md."
+        ),
+        "translations": {
+            "zh-hant": {"description": "純粹為了看見耗電量而登記的設備：冰水主機、空壓機、產線。它只回報、不接受命令，所以沒有任何可用命令。登記它不會改變場域的能量平衡——重複計算的說明見 docs/system-logic.md。"},
+            "zh-hans": {"description": "纯粹为了看见耗电量而登记的设备：冰水主机、空压机、产线。它只回报、不接受命令，所以没有任何可用命令。登记它不会改变场域的能量平衡——重复计算的说明见 docs/system-logic.md。"},
+        },
+        "command_definitions": [],
+    },
+    {
         "key": "ems-controller",
         "name": "EMS site controller",
         "category": DeviceCategory.CONTROLLER,
-        "description": "Site-level controller coordinating local assets.",
+        "description": (
+            "Site-level controller coordinating local assets. Carries no energy itself, so it takes no part in the energy balance; register it when the hardware that runs local control also reports its own status."
+        ),
+        "translations": {
+            "zh-hant": {"description": "場域層級的控制器，協調現場各項資產。它本身不承載能量，因此不參與能源平衡；當負責現場控制的硬體也會回報自己的狀態時，才需要登記它。"},
+            "zh-hans": {"description": "场域层级的控制器，协调现场各项资产。它本身不承载能量，因此不参与能源平衡；当负责现场控制的硬件也会回报自己的状态时，才需要登记它。"},
+        },
         "command_definitions": [
             _command(
                 "set_strategy",
@@ -266,7 +303,13 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
         "key": "ev-charger",
         "name": "EV charger",
         "category": DeviceCategory.EV_CHARGER,
-        "description": "AC or DC electric vehicle supply equipment.",
+        "description": (
+            "AC or DC electric vehicle supply equipment. Draws power and never returns it, so it charges but does not discharge. Its consumption is already inside the site's load; bind it as a separate role only when you want its sessions and energy reported on their own."
+        ),
+        "translations": {
+            "zh-hant": {"description": "交流或直流的電動車充電設備。只取電、不回送，因此只會充電不會放電。它的用電本來就已經包含在場域負載裡；只有在你想單獨看它的充電次數與用電量時，才另外綁成一個角色。"},
+            "zh-hans": {"description": "交流或直流的电动车充电设备。只取电、不回送，因此只会充电不会放电。它的用电本来就已经包含在场域负载里；只有在你想单独看它的充电次数与用电量时，才另外绑成一个角色。"},
+        },
         "command_definitions": [
             _command(
                 "set_current_limit",

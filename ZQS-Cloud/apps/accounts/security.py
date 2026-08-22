@@ -38,14 +38,65 @@ API_KEY_HEADER = "HTTP_X_API_KEY"
 
 @dataclass(slots=True)
 class AuthContext:
+    """One authenticated principal, pinned to one organisation.
+
+    Access has three dimensions, not two: which tenant, which role, and -
+    since site scoping - which part of the tenant. :attr:`site_scope` is the
+    third. ``None`` means unrestricted, which is what every membership is
+    unless somebody narrows it, so the addition changed nobody's access.
+    """
+
     organization: Organization
     role: str
     user: User | None = None
     api_key: ApiKey | None = None
+    #: Site primary keys this principal may see, already expanded to include
+    #: descendants. ``None`` means "the whole organisation" - deliberately not
+    #: an empty set, which would read as "nothing" and is a mistake that would
+    #: lock everyone out on the day someone forgets the difference.
+    site_scope: frozenset | None = None
 
     @property
     def is_service(self) -> bool:
         return self.api_key is not None
+
+    # ---- Site scope ------------------------------------------------------
+    @property
+    def is_site_scoped(self) -> bool:
+        return self.site_scope is not None
+
+    def allows_site(self, site_id) -> bool:
+        """Whether this principal may see ``site_id``.
+
+        A device with no site at all is visible only to an unscoped
+        principal. Somebody restricted to one plant has no business seeing
+        equipment that has not been placed anywhere yet - that is exactly the
+        pool a new device lands in before an admin assigns it.
+        """
+        if self.site_scope is None:
+            return True
+        if site_id is None:
+            return False
+        return site_id in self.site_scope
+
+    def require_site(self, site_id) -> None:
+        if not self.allows_site(site_id):
+            raise PermissionDenied(
+                "Your access does not include this site",
+                code="site_out_of_scope",
+                details={"site_id": str(site_id) if site_id else None},
+            )
+
+    def scope_queryset(self, queryset, field: str = "site_id"):
+        """Narrow ``queryset`` to the sites this principal may see.
+
+        ``field`` is the lookup path to the site, so the same call works for
+        ``Site`` (``id``), ``Device`` (``site_id``) and anything reached
+        through a relation (``device__site_id``).
+        """
+        if self.site_scope is None:
+            return queryset
+        return queryset.filter(**{f"{field}__in": list(self.site_scope)})
 
     @property
     def principal_id(self) -> str:
@@ -72,7 +123,30 @@ class AuthContext:
             )
 
 
-def _resolve_organization(request, user: User) -> tuple[Organization, str]:
+def resolve_site_scope(membership: Membership | None) -> frozenset | None:
+    """Expand a membership's site list to the subtrees it covers.
+
+    ``None`` for an unrestricted membership. Naming a parent grants its
+    children: someone responsible for a plant is responsible for the workshops
+    inside it, and forcing an admin to list every line would make the feature
+    unusable and, worse, silently wrong the day a line is added.
+    """
+    if membership is None:
+        return None
+
+    roots = list(membership.sites.values_list("pk", flat=True))
+    if not roots:
+        return None
+
+    # Imported here, not at module scope: apps.devices imports apps.accounts.
+    from apps.devices.models import descendant_site_ids
+
+    return frozenset(
+        descendant_site_ids(roots, organization=membership.organization)
+    )
+
+
+def _resolve_organization(request, user: User) -> tuple[Organization, str, Membership | None]:
     """Pick the organisation this request operates on and the user's role in it."""
     org_id = request.META.get(ORG_ID_HEADER, "").strip()
     org_slug = request.META.get(ORG_SLUG_HEADER, "").strip()
@@ -90,7 +164,7 @@ def _resolve_organization(request, user: User) -> tuple[Organization, str]:
                 raise AuthenticationError(
                     "Organization is disabled", code="organization_disabled"
                 )
-            return membership.organization, membership.role
+            return membership.organization, membership.role, membership
 
         if user.is_superuser:
             qs = Organization.objects.filter(
@@ -98,7 +172,9 @@ def _resolve_organization(request, user: User) -> tuple[Organization, str]:
             )
             organization = qs.first()
             if organization is not None:
-                return organization, Role.OWNER
+                # A superuser acting outside their own memberships has no
+                # membership row to scope by, and is unrestricted.
+                return organization, Role.OWNER, None
 
         raise PermissionDenied(
             "You are not a member of the requested organization",
@@ -114,7 +190,7 @@ def _resolve_organization(request, user: User) -> tuple[Organization, str]:
         raise AuthenticationError(
             "Organization is disabled", code="organization_disabled"
         )
-    return membership.organization, membership.role
+    return membership.organization, membership.role, membership
 
 
 def _authenticate_api_key(request, raw: str) -> AuthContext:
@@ -172,9 +248,15 @@ class ApiAuth(HttpBearer):
 
     def authenticate(self, request, token: str) -> AuthContext:
         user = user_from_access_token(token)
-        organization, role = _resolve_organization(request, user)
+        organization, role, membership = _resolve_organization(request, user)
         user.last_login_ip = client_ip(request) or user.last_login_ip
-        return AuthContext(organization=organization, role=role, user=user)
+        # A superuser sees the whole tenant regardless of how their membership
+        # is scoped: the escape hatch has to stay usable when the thing being
+        # debugged is the scoping itself.
+        scope = None if user.is_superuser else resolve_site_scope(membership)
+        return AuthContext(
+            organization=organization, role=role, user=user, site_scope=scope
+        )
 
 
 api_auth = ApiAuth()

@@ -86,6 +86,61 @@ class EnergyAsset(UUIDPrimaryKeyModel, TimeStampedModel):
     )
     is_active = models.BooleanField(default=True)
 
+    # ---- Operating-session detection -------------------------------------
+    #: The parameters live here rather than on the device because they are
+    #: read in the *normalised* frame: ``power_scale`` and ``invert_sign``
+    #: already say how this device's power reading is to be interpreted, and
+    #: "is it charging" is a question about that same normalised value.
+    #:
+    #: ``enter`` above ``exit`` gives hysteresis. A single threshold applied to
+    #: a load that idles near it produces thousands of one-sample sessions;
+    #: two thresholds do not.
+    session_tracking_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Detect charge / discharge / running sessions for this asset. "
+            "Off by default for loads: a circuit that always draws power has "
+            "one session that never ends, which carries no information."
+        ),
+    )
+    session_enter_kw = models.FloatField(
+        null=True, blank=True, help_text="Above this, a session starts. Null = 2% of rating."
+    )
+    session_exit_kw = models.FloatField(
+        null=True, blank=True, help_text="Below this, it ends. Null = half of enter."
+    )
+    session_min_duration_s = models.PositiveIntegerField(
+        default=60,
+        help_text="Shorter sessions are discarded - a motor's inrush is not a discharge.",
+    )
+    session_gap_s = models.PositiveIntegerField(
+        default=300,
+        help_text="No samples for this long closes the session at the last sample.",
+    )
+
+    # ---- Cost model ------------------------------------------------------
+    #: Which :mod:`apps.ems.costs` model prices this asset's output.
+    #:
+    #: Deliberately per-asset rather than per-category: two generators at one
+    #: site may be priced differently - one from a measured fuel curve, one
+    #: from a flat litres-per-kWh figure - and that is a commercial decision,
+    #: not a property of the model of engine. Null falls back to the default
+    #: for the asset's role.
+    cost_model = models.CharField(
+        max_length=40,
+        blank=True,
+        help_text="Registered cost model key; blank uses the role default.",
+    )
+    #: Model parameters, e.g. {"fuel_price_per_litre": 32.0,
+    #: "litres_per_kwh": 0.28, "maintenance_per_hour": 40.0,
+    #: "cycle_cost_per_kwh": 1.8}. Read by the cost model, never by ingest.
+    #:
+    #: Known limitation: a single current value, so rebuilding an old interval
+    #: prices it with today's fuel price. A dated CostParameterSet is the
+    #: correct fix and is deliberately deferred - see device-classification.md
+    #: §3.12.
+    cost_parameters = models.JSONField(default=dict, blank=True)
+
     class Meta:
         db_table = "ems_energy_asset"
         ordering = ["site", "role"]
@@ -106,23 +161,53 @@ class EnergyAsset(UUIDPrimaryKeyModel, TimeStampedModel):
         return -value if self.invert_sign else value
 
 
+class SavingsBaseline(models.TextChoices):
+    """What "savings" is measured against.
+
+    The number is a comparison, so it is meaningless without saying to what.
+    ``grid_only`` credits the whole installation; ``no_storage`` isolates what
+    the battery earned, which is what a payback calculation needs.
+
+    ``none`` exists because sometimes no baseline is honest: during an outage
+    there is no counterfactual price at all, and inventing one would put a
+    fabricated saving in a report.
+    """
+
+    GRID_ONLY = "grid_only", _("Everything bought from the grid")
+    NO_STORAGE = "no_storage", _("Same generation, no battery")
+    NONE = "none", _("Do not compute savings")
+
+
 class DispatchStrategy(models.TextChoices):
     MANUAL = "manual", _("Manual / external control")
     SELF_CONSUMPTION = "self_consumption", _("Maximise self-consumption")
     PEAK_SHAVING = "peak_shaving", _("Peak shaving")
+    #: Keep the 15-minute demand under the contracted capacity. In Taiwan this
+    #: is usually the strategy that pays for the battery: the surcharge for
+    #: exceeding contract capacity dwarfs the energy price.
+    DEMAND_CAP = "demand_cap", _("Contract capacity management")
     TOU_ARBITRAGE = "tou_arbitrage", _("Time-of-use arbitrage")
     BACKUP_ONLY = "backup_only", _("Backup reserve only")
+    #: Hand control to a drawn workflow. The built-in strategies each encode
+    #: one policy; this is the escape hatch for a site whose rules are its own.
+    WORKFLOW = "workflow", _("Run a workflow")
 
 
 class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
-    """Per-site BTM storage configuration and operating strategy."""
+    """A named storage strategy profile that sites bind to.
+
+    A *template*, not a per-site record: one plan can drive a whole fleet of
+    similar sites, and a site switches behaviour by switching plans - the
+    same shape as tariffs. The binding lives on
+    :attr:`apps.devices.models.Site.storage_plan`. Site-specific numbers
+    (contract capacity, battery size) therefore describe the *class* of site
+    the plan is written for; a site that differs enough gets its own plan.
+    """
 
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="storage_plans"
     )
-    site = models.OneToOneField(
-        Site, on_delete=models.CASCADE, related_name="storage_plan"
-    )
+    name = models.CharField(max_length=120)
     strategy = models.CharField(
         max_length=20, choices=DispatchStrategy.choices, default=DispatchStrategy.MANUAL
     )
@@ -147,12 +232,63 @@ class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
     backup_reserve_percent = models.FloatField(default=20.0)
     round_trip_efficiency = models.FloatField(default=0.90)
 
+    # ---- Strategy parameters --------------------------------------------
+    #: Demand ceiling for the demand-cap strategy. Blank falls back to 95% of
+    #: ``contract_capacity_kw`` - a margin, because the engine samples on the
+    #: scheduler cadence and a target equal to the contract leaves no room for
+    #: the load to move between samples.
+    demand_cap_target_kw = models.FloatField(null=True, blank=True)
+    #: Whether demand-cap recharges during the tariff's cheapest period.
+    offpeak_recharge = models.BooleanField(default=True)
+    #: Arbitrage acts only when today's peak-vs-trough import price spread is
+    #: at least this much (per kWh). Below it the round trip loses money.
+    min_price_spread = models.FloatField(default=1.0)
+
+    # ---- Battery health constraints (all strategies) ---------------------
+    #: Full-cycle-equivalents per day; today's discharged energy divided by
+    #: usable capacity. Blank disables the cap.
+    max_cycles_per_day = models.FloatField(null=True, blank=True)
+    #: Above this cell/pack temperature the engine stops driving the battery.
+    temperature_max_c = models.FloatField(null=True, blank=True)
+    #: Metric key on the battery device carrying that temperature.
+    temperature_metric = models.CharField(max_length=64, blank=True)
+
     tariff = models.ForeignKey(
         "ems.Tariff",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="plans",
+    )
+    #: What "savings" is measured against. See :class:`SavingsBaseline`.
+    savings_baseline = models.CharField(
+        max_length=16,
+        choices=SavingsBaseline.choices,
+        default=SavingsBaseline.NO_STORAGE,
+    )
+    #: Turn plan limits into a hard gate on dispatch commands, not just a
+    #: number on a settings page. Off leaves the previous behaviour, where the
+    #: envelope was documentation.
+    enforce_limits = models.BooleanField(
+        default=True,
+        help_text=(
+            "Refuse dispatch commands that would exceed this plan's power, "
+            "SOC or export limits."
+        ),
+    )
+    #: The workflow driving this site, when :attr:`strategy` is ``workflow``.
+    #:
+    #: SET_NULL rather than PROTECT: deleting a workflow already stops its runs
+    #: and is an explicit act, so blocking it because a plan points at it would
+    #: force the operator to hunt down the reference first. The plan is left
+    #: naming a strategy with nothing to run, which the engine reports rather
+    #: than silently falling back to another policy.
+    workflow = models.ForeignKey(
+        "workflows.Workflow",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="storage_plans",
     )
     notes = models.TextField(blank=True)
     updated_by = models.ForeignKey(
@@ -161,9 +297,15 @@ class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
 
     class Meta:
         db_table = "ems_storage_plan"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "name"], name="uniq_plan_org_name"
+            )
+        ]
 
     def __str__(self) -> str:
-        return f"{self.site_id} [{self.strategy}]"
+        return f"{self.name} [{self.strategy}]"
 
     @property
     def dispatchable_capacity_kwh(self) -> float | None:
@@ -172,6 +314,46 @@ class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
             return None
         span = max(self.max_soc_percent - self.backup_reserve_percent, 0.0)
         return self.usable_capacity_kwh * span / 100.0
+
+
+class DemandResponseEvent(UUIDPrimaryKeyModel, TimeStampedModel):
+    """One committed demand-response dispatch: discharge this much, now.
+
+    Not a strategy but an *override*: while an event is live it outranks the
+    site's strategy and its scheduled windows, because DR participation is a
+    commitment made to the grid operator - the one thing the battery must not
+    do during the event is follow its everyday policy instead.
+    """
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="dr_events"
+    )
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="dr_events")
+    starts_at = models.DateTimeField(db_index=True)
+    ends_at = models.DateTimeField()
+    #: Discharge power the site committed to, kW. Clamped by the plan envelope
+    #: like everything else - a commitment beyond the hardware is still a lie.
+    target_power_kw = models.FloatField()
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    note = models.CharField(max_length=300, blank=True)
+    #: "manual" from the console, "api" from an external dispatch signal.
+    source = models.CharField(max_length=12, default="manual")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "ems_dr_event"
+        ordering = ["-starts_at"]
+        indexes = [models.Index(fields=["site", "starts_at"])]
+
+    def is_live(self, moment) -> bool:
+        return (
+            self.cancelled_at is None and self.starts_at <= moment < self.ends_at
+        )
+
+    def __str__(self) -> str:
+        return f"DR {self.site_id} {self.target_power_kw}kW"
 
 
 class TariffKind(models.TextChoices):
@@ -264,8 +446,18 @@ class EnergyInterval(models.Model):
     export_price = models.FloatField(null=True, blank=True)
     energy_cost = models.FloatField(default=0.0)
     export_revenue = models.FloatField(default=0.0)
-    #: Modelled cost of the same load with no battery, minus the actual cost.
-    estimated_savings = models.FloatField(default=0.0)
+    #: Baseline cost minus actual cost, where the baseline is chosen by
+    #: :attr:`StoragePlan.savings_baseline`.
+    #:
+    #: Two things this is deliberately not. It is **not clamped at zero**: a
+    #: negative value means the dispatch cost more than doing nothing would
+    #: have, and hiding that would let the report vouch for a bad decision.
+    #: And it is **null, not zero, when there is no baseline** - during an
+    #: outage there is no "buy it from the grid instead" alternative to
+    #: compare against, so any number here would be fiction. Same principle as
+    #: a counter reset in :mod:`apps.telemetry.energy`: unknown is recorded as
+    #: unknown.
+    estimated_savings = models.FloatField(null=True, blank=True, default=0.0)
 
     #: Fraction of the sample window that actually had data (0..1).
     coverage = models.FloatField(default=1.0)
@@ -301,6 +493,145 @@ class EnergyInterval(models.Model):
         if self.load_kwh <= 0:
             return None
         return max(0.0, min(1.0, (self.load_kwh - self.grid_import_kwh) / self.load_kwh))
+
+
+class EnergyIntervalCost(models.Model):
+    """One source's contribution to an interval's cost.
+
+    Why a table rather than columns on :class:`EnergyInterval`: adding a
+    ``diesel_cost`` column for every new kind of equipment is exactly the
+    coupling the cost-model registry exists to remove. Why a table rather than
+    a JSON field: "what did the generators cost this month" has to be a
+    GROUP BY, not a full scan followed by summing in Python.
+
+    :attr:`EnergyInterval.energy_cost` and friends stay as the totals, with
+    their existing meaning, so every dashboard and roll-up keeps working. This
+    is the detail underneath them, not a replacement.
+    """
+
+    class Source(models.TextChoices):
+        GRID = "grid", _("Utility grid")
+        BATTERY = "battery", _("Battery storage")
+        GENERATOR = "generator", _("Backup generator")
+        EV = "ev", _("EV charging")
+        OTHER = "other", _("Other")
+
+    class Basis(models.TextChoices):
+        MEASURED = "measured", _("From measured values")
+        ESTIMATED = "estimated", _("Modelled estimate")
+        UNKNOWN = "unknown", _("Not determinable")
+
+    interval = models.ForeignKey(
+        EnergyInterval, on_delete=models.CASCADE, related_name="costs"
+    )
+    source = models.CharField(max_length=12, choices=Source.choices)
+    #: The registered key actually applied, kept so a surprising number can be
+    #: traced back to the model that produced it.
+    cost_model = models.CharField(max_length=40, blank=True)
+    energy_kwh = models.FloatField(default=0.0)
+    #: Positive is a cost, negative is a revenue. Never clamped.
+    amount = models.FloatField(default=0.0)
+    currency = models.CharField(max_length=8, default="TWD")
+    unit_cost = models.FloatField(null=True, blank=True)
+    #: {"fuel": 1200.0, "maintenance": 150.0}
+    breakdown = models.JSONField(default=dict, blank=True)
+    basis = models.CharField(
+        max_length=12, choices=Basis.choices, default=Basis.ESTIMATED
+    )
+
+    class Meta:
+        db_table = "ems_energy_interval_cost"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["interval", "source"], name="uniq_interval_cost_source"
+            )
+        ]
+        indexes = [models.Index(fields=["source", "cost_model"])]
+
+    def __str__(self) -> str:
+        return f"{self.interval_id} {self.source} {self.amount}"
+
+
+class SessionKind(models.TextChoices):
+    CHARGE = "charge", _("Charging")
+    DISCHARGE = "discharge", _("Discharging")
+    RUNNING = "running", _("Running")
+
+
+class SessionEndReason(models.TextChoices):
+    THRESHOLD = "threshold", _("Power fell below the exit threshold")
+    OFFLINE = "offline", _("Data stopped arriving")
+    RECOMPUTED = "recomputed", _("Still open at the end of the rebuild window")
+
+
+class DeviceOperatingSession(models.Model):
+    """One continuous stretch of a device charging, discharging or running.
+
+    Lives here rather than in ``apps.devices`` because everything needed to
+    decide where a session starts and stops - the power metric, its scale, the
+    sign convention, the thresholds - is on :class:`EnergyAsset`.
+
+    Not derivable from :class:`EnergyInterval`, and not the other way round.
+    An interval is site-wide and sits on a fixed 15-minute grid; a session is
+    one device's and its edges are wherever the equipment actually moved. The
+    same hour appears in both, answering different questions.
+
+    Rebuilt from data on a schedule rather than tracked live: out-of-order and
+    late messages would corrupt a running state machine, and a restart would
+    lose it. Recomputing is idempotent, so neither matters.
+    """
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="+", db_index=False
+    )
+    device = models.ForeignKey(
+        Device, on_delete=models.CASCADE, related_name="operating_sessions"
+    )
+    asset = models.ForeignKey(
+        EnergyAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="operating_sessions",
+    )
+    kind = models.CharField(max_length=12, choices=SessionKind.choices)
+
+    started_at = models.DateTimeField(db_index=True)
+    #: Null means still in progress. For a machine that never stops this is
+    #: correct and useful ("running for 37 days"), not a bug to be closed.
+    ended_at = models.DateTimeField(null=True, blank=True)
+    #: Redundant with the two timestamps, and filled on close so that "average
+    #: session length" is one aggregate rather than a Python loop.
+    duration_s = models.PositiveIntegerField(null=True, blank=True)
+
+    energy_kwh = models.FloatField(default=0.0)
+    peak_kw = models.FloatField(null=True, blank=True)
+    avg_kw = models.FloatField(null=True, blank=True)
+    start_soc_percent = models.FloatField(null=True, blank=True)
+    end_soc_percent = models.FloatField(null=True, blank=True)
+    end_reason = models.CharField(
+        max_length=12, choices=SessionEndReason.choices, blank=True
+    )
+
+    class Meta:
+        db_table = "ems_device_session"
+        ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["device", "kind", "started_at"], name="uniq_session_device_start"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["device", "kind", "-started_at"]),
+            models.Index(fields=["organization", "-started_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.device_id} {self.kind} @ {self.started_at:%Y-%m-%d %H:%M}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.ended_at is None
 
 
 class DispatchMode(models.TextChoices):

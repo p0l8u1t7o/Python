@@ -24,9 +24,15 @@ from typing import Callable, Iterator
 
 from services.harness import checks as conformance
 from services.harness import report as reporting
-from services.harness.broker import HarnessServer, HarnessState, send_command
+from services.harness.broker import (
+    HarnessServer,
+    HarnessState,
+    request_rebirth,
+    send_command,
+)
 from services.harness.simulator import ReferenceDevice
-from services.mqtt import topics
+from services.sparkplug import topics
+from services.sparkplug.topics import MessageType
 
 # ---------------------------------------------------------------------------
 # Exit codes. Stable, because batch files and CI will branch on them.
@@ -99,25 +105,27 @@ class Credentials:
     device_id: str
     username: str
     password: str
+    group_id: str = ""
+    node_id: str = ""
 
 
 @contextmanager
 def provision_selftest_device() -> Iterator[Credentials]:
-    """Create a temporary device, yield its credentials, then remove it.
+    """Create a temporary edge node and device, then remove both.
 
     The self-test needs credentials that really authenticate, because it runs
-    them through the production :func:`authenticate_device`. Reusing a real
-    device would mean rotating its password - silently breaking whatever is
+    them through the production :func:`authenticate_edge_node`. Reusing a real
+    node would mean rotating its password - silently breaking whatever is
     already using it - so a throwaway is created instead and hard-deleted
     afterwards, including if the run is interrupted.
     """
     import secrets
 
     from apps.accounts.models import Organization
-    from apps.devices.models import Device, DeviceCredential
+    from apps.devices.models import Device, EdgeNode, EdgeNodeCredential
 
-    # Sweep anything an earlier crash left behind, so ids never collide:
-    # device_id is unique across the whole table, soft-deleted rows included.
+    # Sweep anything an earlier crash left behind, so ids never collide.
+    EdgeNode.objects.filter(node_id__startswith=SELFTEST_PREFIX).delete()
     Device.objects.filter(device_id__startswith=SELFTEST_PREFIX).delete()
 
     organization = Organization.objects.order_by("created_at").first()
@@ -128,18 +136,33 @@ def provision_selftest_device() -> Iterator[Credentials]:
         )
         temporary_org = organization
 
-    device = Device.objects.create(
+    suffix = secrets.token_hex(4).upper()
+    node = EdgeNode.objects.create(
         organization=organization,
-        device_id=f"{SELFTEST_PREFIX}{secrets.token_hex(4).upper()}",
+        node_id=f"{SELFTEST_PREFIX}{suffix}",
         name="測試工具自我驗證用（自動建立、自動刪除）",
         is_enabled=True,
     )
-    credential, password = DeviceCredential.issue(device)
+    device = Device.objects.create(
+        organization=organization,
+        edge_node=node,
+        device_id=f"{SELFTEST_PREFIX}DEV-{suffix}",
+        name="測試工具自我驗證用設備",
+        is_enabled=True,
+    )
+    credential, password = EdgeNodeCredential.issue(node)
 
     try:
-        yield Credentials(device.device_id, credential.mqtt_username, password)
+        yield Credentials(
+            device.device_id,
+            credential.mqtt_username,
+            password,
+            group_id=node.group_id,
+            node_id=node.node_id,
+        )
     finally:
         Device.objects.filter(pk=device.pk).delete()
+        EdgeNode.objects.filter(pk=node.pk).delete()
         if temporary_org is not None:
             Organization.objects.filter(pk=temporary_org.pk).delete()
 
@@ -173,8 +196,19 @@ SELF_TEST_SCENARIOS: tuple[Scenario, ...] = (
         title="正常設備（應該全部通過）",
         misbehave="",
         expect_failures=frozenset(),
-        # The two that only a live exchange can prove.
-        expect_pass=frozenset({"command_ack", "lwt_delivered", "telemetry_seen"}),
+        # The ones only a live exchange can prove.
+        expect_pass=frozenset(
+            {
+                "command_ack",
+                "lwt_delivered",
+                "ddata_seen",
+                "nbirth_seen",
+                "dbirth_seen",
+                "nbirth_seq",
+                "nbirth_bdseq",
+                "seq_monotonic",
+            }
+        ),
         expect_verdict=reporting.VERDICT_READY,
         send_command=True,
         duration=2.0,
@@ -199,25 +233,37 @@ SELF_TEST_SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         key="clean_session",
-        title="clean_session = true",
+        title="clean_session = false（Sparkplug 不允許保留 session）",
         misbehave="clean_session",
         expect_failures=frozenset({"clean_session"}),
     ),
     Scenario(
-        key="bad_payload",
-        title="telemetry 少了 ts 欄位",
-        misbehave="bad_payload",
-        expect_failures=frozenset({"payload_schema"}),
-        # Rejected payloads must not be counted as telemetry received.
-        expect_pending=frozenset({"telemetry_seen"}),
+        key="retained_will",
+        title="遺言設了 retain",
+        misbehave="retained_will",
+        expect_failures=frozenset({"lwt_retain"}),
+        # The will is otherwise perfectly formed, so nothing else may spill.
+        expect_pass=frozenset({"lwt_topic", "lwt_qos", "lwt_payload"}),
     ),
     Scenario(
-        key="bad_qos",
-        title="telemetry 用 QoS 0 發布",
-        misbehave="bad_qos",
-        expect_failures=frozenset({"publish_qos"}),
-        # The payload is still valid, so this must not spill into other checks.
-        expect_pass=frozenset({"payload_schema", "telemetry_seen"}),
+        key="bad_payload",
+        title="DDATA 不是合法的 protobuf",
+        misbehave="bad_payload",
+        expect_failures=frozenset({"payload_schema"}),
+        # Rejected payloads must not be counted as data received.
+        expect_pending=frozenset({"ddata_seen"}),
+    ),
+    Scenario(
+        key="ignore_rebirth",
+        title="收到 Rebirth 要求但不重新宣告",
+        misbehave="ignore_rebirth",
+        expect_failures=frozenset(),
+        # Optional check, so the verdict stays clean - but it must not be
+        # reported as passing when the node never re-announced.
+        expect_pending=frozenset({"rebirth_honoured"}),
+        expect_verdict=reporting.VERDICT_READY,
+        send_command=True,
+        duration=2.0,
     ),
     Scenario(
         key="no_ack",
@@ -261,6 +307,8 @@ def run_scenario(scenario: Scenario, credentials: Credentials) -> ScenarioResult
         device_id=credentials.device_id,
         username=credentials.username,
         password=credentials.password,
+        group_id=credentials.group_id,
+        node_id=credentials.node_id,
         host="127.0.0.1",
         port=port,
         interval=0.3,
@@ -277,14 +325,14 @@ def run_scenario(scenario: Scenario, credentials: Credentials) -> ScenarioResult
         runner.start()
 
         if scenario.send_command:
-            _send_when_subscribed(state, credentials.device_id, problems)
+            _send_when_subscribed(state, credentials, problems)
 
         runner.join(timeout=scenario.duration + 15)
         if runner.is_alive():
             problems.append("參考設備沒有在時限內結束，可能卡住了。")
             device.stop()
 
-        _wait_for_session_end(state, credentials.device_id)
+        _wait_for_session_end(state, credentials.node_id)
         session = state.only_session()
     finally:
         server.shutdown_harness()
@@ -304,29 +352,59 @@ def _run_device_quietly(device: ReferenceDevice, scenario: Scenario, problems: l
 
 
 def _send_when_subscribed(
-    state: HarnessState, device_id: str, problems: list[str], *, timeout: float = 6.0
+    state: HarnessState, credentials, problems: list[str], *, timeout: float = 6.0
 ) -> None:
-    """Wait for the SUBSCRIBE, then send a command.
+    """Wait for the SUBSCRIBE, then send a command and a rebirth request.
 
-    Sending before the device has subscribed would test nothing: the bytes go
+    Sending before the node has subscribed would test nothing: the bytes go
     out, nobody is listening, and the missing ack would look like a device bug.
     """
-    control = topics.control_topic(device_id)
+    dcmd_prefix = topics.build(
+        credentials.group_id, MessageType.DCMD, credentials.node_id
+    )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        session = state.session_for(device_id)
-        if session is not None and control in session.subscriptions:
+        session = state.session_for(credentials.node_id)
+        if session is not None and any(
+            f.startswith(dcmd_prefix) for f in session.subscriptions
+        ):
             break
         time.sleep(0.05)
     else:
-        problems.append(f"設備在 {timeout} 秒內沒有訂閱 {control}，命令無法測試。")
+        problems.append(
+            f"設備在 {timeout} 秒內沒有訂閱 {dcmd_prefix}/+，命令無法測試。"
+        )
         return
 
     sent, _command_id, note = send_command(
-        state, device_id, "set_power_limit", {"limit_w": 400_000}
+        state,
+        credentials.node_id,
+        "set_power_limit",
+        {"limit_w": 400_000},
+        target_device=credentials.device_id,
     )
     if not sent:
         problems.append(f"命令下發失敗：{note}")
+
+    # Rebirth is the specification's only recovery path, so a device that
+    # ignores it is broken in a way nothing else in the run would reveal.
+    before = _nbirth_count(state, credentials.node_id)
+    request_rebirth(state, credentials.node_id)
+    rebirth_deadline = time.monotonic() + 3.0
+    while time.monotonic() < rebirth_deadline:
+        if _nbirth_count(state, credentials.node_id) > before:
+            session = state.session_for(credentials.node_id)
+            if session is not None:
+                session.checks["rebirth_honoured"].succeed("重新發布了 NBIRTH")
+            return
+        time.sleep(0.05)
+
+
+def _nbirth_count(state: HarnessState, node_id: str) -> int:
+    session = state.session_for(node_id)
+    if session is None:
+        return 0
+    return sum(1 for record in session.messages if record.kind == MessageType.NBIRTH)
 
 
 def _wait_for_session_end(state: HarnessState, device_id: str, *, timeout: float = 8.0) -> None:

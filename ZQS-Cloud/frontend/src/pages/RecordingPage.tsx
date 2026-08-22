@@ -277,7 +277,7 @@ function PolicyModal({
       })
       setRules([])
     }
-  }, [open, policy])
+  }, [open, policy?.id])
 
   function patchRule(index: number, patch: Partial<RecordingRule>) {
     setRules((current) =>

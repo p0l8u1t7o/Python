@@ -38,9 +38,9 @@ from ninja import Router, Schema
 
 from apps.core.errors import AuthenticationError
 from apps.core.logging import get_logger
-from apps.devices.models import Device
-from apps.devices.services import authenticate_device
-from services.mqtt import topics
+from apps.devices.edge_nodes import authenticate_edge_node
+from apps.devices.models import EdgeNode
+from services.sparkplug import topics
 
 logger = get_logger("devices.emqx")
 
@@ -49,11 +49,20 @@ router = Router(tags=["emqx"])
 ALLOW = {"result": "allow", "is_superuser": False}
 DENY = {"result": "deny"}
 
-#: Topic suffixes a device may publish to.
-_PUBLISHABLE = {topics.TELEMETRY, topics.STATUS, topics.EVENT, topics.ALARM, topics.CONTROL_ACK}
-#: Topic suffixes a device may subscribe to.
-_SUBSCRIBABLE = {topics.CONTROL}
-
+#: What an edge node may publish, and what it may subscribe to. Sparkplug is
+#: strict about the direction of each message type, and so is this: a node that
+#: could publish NCMD could command its neighbours.
+_PUBLISHABLE = frozenset(
+    {
+        topics.MessageType.NBIRTH,
+        topics.MessageType.NDEATH,
+        topics.MessageType.NDATA,
+        topics.MessageType.DBIRTH,
+        topics.MessageType.DDEATH,
+        topics.MessageType.DDATA,
+    }
+)
+_SUBSCRIBABLE = frozenset({topics.MessageType.NCMD, topics.MessageType.DCMD})
 
 class AuthIn(Schema):
     username: str = ""
@@ -95,16 +104,18 @@ def emqx_auth(request, payload: AuthIn):
         return DENY
 
     try:
-        device = authenticate_device(
+        node = authenticate_edge_node(
             payload.username, payload.password, client_id=payload.clientid
         )
     except Exception:  # noqa: BLE001 - never leak internals to the broker
-        logger.exception("device authentication error", extra={"username": payload.username})
+        logger.exception(
+            "edge node authentication error", extra={"username": payload.username}
+        )
         return DENY
 
-    if device is None:
+    if node is None:
         logger.info(
-            "device authentication denied",
+            "edge node authentication denied",
             extra={"username": payload.username, "peerhost": payload.peerhost},
         )
         return DENY
@@ -113,57 +124,57 @@ def emqx_auth(request, payload: AuthIn):
 
 @router.post("/acl", response=WebhookOut, auth=None)
 def emqx_acl(request, payload: AclIn):
-    """Confine each device to its own topic subtree."""
+    """Confine each edge node to its own Sparkplug address.
+
+    Three things have to line up before a publish is allowed: the topic is
+    inside the Sparkplug namespace, the ``(group_id, edge_node_id)`` in it
+    belongs to the credential that authenticated, and the message type travels
+    in the direction the specification says it does.
+
+    The second check is the one that matters. Without it any valid credential
+    could publish an NDEATH for a neighbouring node and take it off the air.
+    """
     _check_token(request)
 
-    parsed_device_id = _device_id_from_topic(payload.topic)
-    if parsed_device_id is None:
+    action = payload.action.lower()
+    parsed = (
+        topics.parse_subscription(payload.topic)
+        if action == "subscribe"
+        else topics.parse(payload.topic)
+    )
+    if parsed is None:
+        # STATE is the host's topic, not a node's, and nothing else in the
+        # namespace is addressable by an edge node.
         return DENY
 
     owner = (
-        Device.objects.filter(
-            device_id=parsed_device_id, deleted_at__isnull=True, is_enabled=True
+        EdgeNode.objects.filter(
+            group_id=parsed.group_id,
+            node_id=parsed.edge_node_id,
+            deleted_at__isnull=True,
+            is_enabled=True,
         )
         .values_list("credential__mqtt_username", flat=True)
         .first()
     )
-    # The topic's device must be the one whose credential authenticated.
     if not owner or owner != payload.username:
         logger.info(
-            "acl denied: topic does not belong to the caller",
+            "acl denied: address does not belong to the caller",
             extra={"username": payload.username, "topic": payload.topic},
         )
         return DENY
 
-    suffix = _suffix_from_topic(payload.topic)
-    action = payload.action.lower()
-    if action == "publish" and suffix in _PUBLISHABLE:
+    if action == "publish" and parsed.message_type in _PUBLISHABLE:
         return ALLOW
-    if action == "subscribe" and suffix in _SUBSCRIBABLE:
+    if action == "subscribe" and parsed.message_type in _SUBSCRIBABLE:
         return ALLOW
 
     logger.info(
-        "acl denied: action not permitted on topic",
-        extra={"username": payload.username, "topic": payload.topic, "action": action},
+        "acl denied: message type not permitted in this direction",
+        extra={
+            "username": payload.username,
+            "topic": payload.topic,
+            "action": action,
+        },
     )
     return DENY
-
-
-def _split_topic(topic: str) -> tuple[str, str] | None:
-    root = topics.root()
-    if not topic.startswith(root + "/"):
-        return None
-    parts = topic[len(root) + 1 :].split("/")
-    if len(parts) < 2 or not parts[0]:
-        return None
-    return parts[0], "/".join(parts[1:])
-
-
-def _device_id_from_topic(topic: str) -> str | None:
-    split = _split_topic(topic)
-    return split[0] if split else None
-
-
-def _suffix_from_topic(topic: str) -> str:
-    split = _split_topic(topic)
-    return split[1] if split else ""

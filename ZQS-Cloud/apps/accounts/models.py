@@ -110,6 +110,21 @@ class Organization(UUIDPrimaryKeyModel, TimeStampedModel):
     slug = models.SlugField(max_length=80, unique=True)
     is_active = models.BooleanField(default=True)
     default_timezone = models.CharField(max_length=64, default="UTC")
+    #: The currency every money figure in this tenant is reported in.
+    #:
+    #: One per organisation, not one per tariff. Currency scattered across
+    #: tariffs means a site with no tariff yet has no currency at all, and its
+    #: costs render as bare numbers next to properly labelled ones - which is
+    #: how the same column ends up showing "0" and "$0" in adjacent rows.
+    #:
+    #: Deliberately not a conversion mechanism. Exchange rates have a time
+    #: dimension, a buy/sell spread and an accounting policy behind them; that
+    #: is another system's job. This says what the numbers already are.
+    reporting_currency = models.CharField(
+        max_length=8,
+        default="TWD",
+        help_text="ISO 4217. Every tariff in this organization must match it.",
+    )
     # Free-form tenant settings (branding, notification defaults, ...).
     settings = models.JSONField(default=dict, blank=True)
 
@@ -131,11 +146,35 @@ class Organization(UUIDPrimaryKeyModel, TimeStampedModel):
 
 
 class Membership(TimeStampedModel):
+    """A user's role in one organisation, and optionally in only part of it.
+
+    Access used to have two dimensions - which tenant, which role - and that
+    is enough right up until a contractor needs to see the Taoyuan plant and
+    nothing else. :attr:`sites` is the third dimension.
+    """
+
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="memberships"
     )
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.VIEWER)
+    #: Sites this membership may see. **Empty means the whole organisation** -
+    #: which is what every existing membership is, so adding this field
+    #: changed nobody's access.
+    #:
+    #: Naming a site grants its whole subtree: someone given "Taoyuan plant"
+    #: gets its workshops and lines too, because a person responsible for a
+    #: plant is responsible for what is inside it. The expansion happens once
+    #: per request in :class:`~apps.accounts.security.AuthContext`.
+    #:
+    #: Scoping never *raises* privilege. It intersects with the role, so a
+    #: viewer restricted to one site is still a viewer there.
+    sites = models.ManyToManyField(
+        "devices.Site",
+        blank=True,
+        related_name="scoped_memberships",
+        help_text="Empty means every site in the organization.",
+    )
     invited_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
@@ -155,6 +194,49 @@ class Membership(TimeStampedModel):
     @property
     def rank(self) -> int:
         return ROLE_RANK.get(self.role, 0)
+
+
+class UserPreference(TimeStampedModel):
+    """A scrap of console state that belongs to one person.
+
+    Distinct from the columns on :class:`User` - ``theme``, ``language``,
+    ``timezone_name`` - which the API itself reads and which every client has
+    to honour. Nothing on the server reads *these*; they exist so a layout
+    someone arranged follows them to another machine instead of living in one
+    browser's localStorage.
+
+    Free-form keys rather than a column per feature. The alternative is a
+    migration every time a page grows a toggle, and none of those columns
+    would mean anything to the backend either.
+
+    Two limits are enforced in the API rather than here, because a database
+    constraint cannot express them usefully: a cap on rows per user and on the
+    size of one value. Without them this is an unbounded write-anything store
+    attached to every session.
+    """
+
+    #: Keys are namespaced by the feature that owns them, e.g.
+    #: ``device-metrics:<device uuid>`` or ``dashboard-view``.
+    KEY_PATTERN = r"^[a-z][a-z0-9-]{0,31}(:[A-Za-z0-9_.-]{1,64})?$"
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="ui_preferences"
+    )
+    key = models.CharField(max_length=100)
+    value = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "accounts_user_preference"
+        ordering = ["key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "key"], name="uniq_user_preference_key"
+            )
+        ]
+        indexes = [models.Index(fields=["user", "key"])]
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.key}"
 
 
 class ApiKeyQuerySet(models.QuerySet):

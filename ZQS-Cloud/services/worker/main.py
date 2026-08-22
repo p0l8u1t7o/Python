@@ -28,13 +28,7 @@ from services.bus.base import BusError, BusMessage, MessageBus
 from services.bus.factory import build_bus
 from services.worker.maintenance import run_maintenance_cycle
 from services.worker.notifications import dispatch_pending
-from services.worker.processors import (
-    CommandAckProcessor,
-    EventProcessor,
-    Shared,
-    StatusProcessor,
-    TelemetryProcessor,
-)
+from services.worker.processors import Shared, SparkplugProcessor
 
 logger = get_logger("worker")
 
@@ -49,13 +43,7 @@ class Worker:
         self.max_retries = settings.WORKER["MAX_RETRIES"]
 
         self.shared = Shared()
-        self.processors = {
-            streams.TELEMETRY: TelemetryProcessor(self.shared),
-            streams.STATUS: StatusProcessor(self.shared),
-            streams.EVENT: EventProcessor(self.shared),
-            streams.ALARM: EventProcessor(self.shared),
-            streams.COMMAND_ACK: CommandAckProcessor(self.shared),
-        }
+        self.processors = {streams.INGEST: SparkplugProcessor(self.shared)}
 
         self._stopping = threading.Event()
         self._threads: list[threading.Thread] = []
@@ -212,7 +200,10 @@ class Worker:
         logger.info(
             "worker starting",
             extra={
-                "name": self.name,
+                # Not 'name': logging reserves it on LogRecord, and passing it
+                # through extra raises - which killed the worker on every
+                # start, before it consumed a single message.
+                "worker": self.name,
                 "bus": settings.BUS_BACKEND,
                 "group": self.group,
                 "batch_size": self.batch_size,

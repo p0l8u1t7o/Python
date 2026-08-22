@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from typing import Any
 
 from ninja import Schema
 from pydantic import EmailStr, Field
@@ -70,6 +71,24 @@ class MeOut(Schema):
     role: Role
     organizations: list["OrganizationMembershipOut"]
     permissions: list[str]
+    #: Sites this session may see, already expanded to include descendants.
+    #: Empty means the whole organisation - the console uses it to explain why
+    #: a page looks smaller than someone expects, not to enforce anything.
+    site_scope: list[uuid.UUID] = Field(default_factory=list)
+    #: The sites actually granted, before subtree expansion. What an admin
+    #: picked, so an editor can show it back unchanged.
+    scoped_site_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class UiPreferenceIn(Schema):
+    """A blob of console state. The server stores it and never reads it."""
+
+    value: dict[str, Any] = Field(default_factory=dict)
+
+
+class UiPreferenceOut(Schema):
+    key: str
+    value: dict[str, Any] = Field(default_factory=dict)
 
 
 class UserCreateIn(Schema):
@@ -89,6 +108,9 @@ class OrganizationOut(Schema):
     slug: str
     is_active: bool
     default_timezone: str
+    #: ISO 4217. Every money figure in this tenant is already in this currency;
+    #: nothing here converts between currencies.
+    reporting_currency: str = ""
     created_at: dt.datetime
 
 
@@ -113,6 +135,8 @@ class MemberOut(Schema):
     user: UserOut
     role: Role
     created_at: dt.datetime
+    #: Sites this member is restricted to. Empty means the whole organisation.
+    site_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class MemberInviteIn(Schema):
@@ -122,6 +146,11 @@ class MemberInviteIn(Schema):
 
 class MemberRoleIn(Schema):
     role: Role
+    #: Restrict this member to these sites and their subtrees. ``null`` leaves
+    #: the current scope alone; ``[]`` clears it back to the whole
+    #: organisation. The distinction matters - a client that always sent the
+    #: field would otherwise wipe a scope every time it changed a role.
+    site_ids: list[uuid.UUID] | None = None
 
 
 # --------------------------------------------------------------------------

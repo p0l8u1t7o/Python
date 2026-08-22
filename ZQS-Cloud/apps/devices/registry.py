@@ -1,10 +1,15 @@
-"""Cached device lookup by MQTT ``device_id``.
+"""Cached lookup from a Sparkplug address to the rows the ingest path needs.
 
-Both the ingestor and the worker resolve every inbound message to a device.
-Hitting the database per message would cap throughput at database round-trip
-speed, so the mapping is cached in-process with a short TTL - stale by at most
-``WORKER["REGISTRY_CACHE_TTL_S"]`` seconds, which is acceptable for a registry
-that changes only when an operator adds hardware.
+Both the ingestor and the worker resolve every inbound message to an edge node
+and, for device-level messages, to a device. Hitting the database per message
+would cap throughput at database round-trip speed, so the mapping is cached
+in-process with a short TTL - stale by at most ``WORKER["REGISTRY_CACHE_TTL_S"]``
+seconds, which is acceptable for a registry that changes only when an operator
+adds hardware.
+
+The keys mirror the topic exactly: ``(group_id, edge_node_id)`` for a node and
+``(node_pk, device_id)`` for a device. Resolving by anything else would mean the
+lookup and the ACL could disagree about which row a topic refers to.
 """
 
 from __future__ import annotations
@@ -22,11 +27,22 @@ logger = get_logger("devices.registry")
 
 
 @dataclass(frozen=True, slots=True)
+class EdgeNodeRef:
+    pk: uuid.UUID
+    node_id: str
+    group_id: str
+    organization_id: uuid.UUID
+    site_id: uuid.UUID | None
+    is_enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceRef:
     """Everything the ingest path needs, without loading the full model."""
 
     pk: uuid.UUID
     device_id: str
+    edge_node_id: uuid.UUID
     organization_id: uuid.UUID
     site_id: uuid.UUID | None
     device_type_id: uuid.UUID | None
@@ -35,14 +51,15 @@ class DeviceRef:
 
 
 class DeviceRegistry:
-    """Thread-safe TTL cache over the device table."""
+    """Thread-safe TTL cache over the edge node and device tables."""
 
     def __init__(self, ttl_seconds: int | None = None) -> None:
         self.ttl = ttl_seconds or settings.WORKER["REGISTRY_CACHE_TTL_S"]
-        self._by_device_id: dict[str, DeviceRef] = {}
+        self._nodes: dict[tuple[str, str], EdgeNodeRef] = {}
+        self._devices: dict[tuple[uuid.UUID, str], DeviceRef] = {}
         self._loaded_at = 0.0
         self._lock = threading.RLock()
-        #: device_ids seen on the wire with no registry entry, for reporting.
+        #: Addresses seen on the wire with no registry entry, for reporting.
         self._unknown: dict[str, int] = {}
 
     # ---- loading ---------------------------------------------------------
@@ -53,51 +70,86 @@ class DeviceRegistry:
             self._load()
 
     def _load(self) -> None:
-        from apps.devices.models import Device
+        from apps.devices.models import Device, EdgeNode
 
-        rows = Device.objects.filter(deleted_at__isnull=True).values_list(
-            "id",
-            "device_id",
-            "organization_id",
-            "site_id",
-            "device_type_id",
-            "recording_policy_id",
-            "is_enabled",
-        )
-        self._by_device_id = {
-            row[1]: DeviceRef(
+        self._nodes = {
+            (row[2], row[1]): EdgeNodeRef(
+                pk=row[0],
+                node_id=row[1],
+                group_id=row[2],
+                organization_id=row[3],
+                site_id=row[4],
+                is_enabled=row[5],
+            )
+            for row in EdgeNode.objects.filter(deleted_at__isnull=True).values_list(
+                "id", "node_id", "group_id", "organization_id", "site_id", "is_enabled"
+            )
+        }
+        self._devices = {
+            (row[2], row[1]): DeviceRef(
                 pk=row[0],
                 device_id=row[1],
-                organization_id=row[2],
-                site_id=row[3],
-                device_type_id=row[4],
-                recording_policy_id=row[5],
-                is_enabled=row[6],
+                edge_node_id=row[2],
+                organization_id=row[3],
+                site_id=row[4],
+                device_type_id=row[5],
+                recording_policy_id=row[6],
+                is_enabled=row[7],
             )
-            for row in rows
+            for row in Device.objects.filter(deleted_at__isnull=True).values_list(
+                "id",
+                "device_id",
+                "edge_node_id",
+                "organization_id",
+                "site_id",
+                "device_type_id",
+                "recording_policy_id",
+                "is_enabled",
+            )
         }
         self._loaded_at = time.monotonic()
-        logger.debug("device registry loaded", extra={"count": len(self._by_device_id)})
+        logger.debug(
+            "device registry loaded",
+            extra={"nodes": len(self._nodes), "devices": len(self._devices)},
+        )
 
     # ---- lookup ----------------------------------------------------------
-    def get(self, device_id: str) -> DeviceRef | None:
+    def get_node(self, group_id: str, node_id: str) -> EdgeNodeRef | None:
+        key = (group_id, node_id)
         self.refresh()
         with self._lock:
-            ref = self._by_device_id.get(device_id)
+            ref = self._nodes.get(key)
         if ref is None:
-            # A device registered seconds ago would otherwise be rejected until
+            # A node registered seconds ago would otherwise be rejected until
             # the TTL elapses, so force one reload before giving up.
             self.refresh(force=True)
             with self._lock:
-                ref = self._by_device_id.get(device_id)
+                ref = self._nodes.get(key)
+                if ref is None:
+                    address = f"{group_id}/{node_id}"
+                    self._unknown[address] = self._unknown.get(address, 0) + 1
+        return ref
+
+    def get_device(self, edge_node_pk: uuid.UUID, device_id: str) -> DeviceRef | None:
+        key = (edge_node_pk, device_id)
+        self.refresh()
+        with self._lock:
+            ref = self._devices.get(key)
+        if ref is None:
+            self.refresh(force=True)
+            with self._lock:
+                ref = self._devices.get(key)
                 if ref is None:
                     self._unknown[device_id] = self._unknown.get(device_id, 0) + 1
         return ref
 
-    def contains(self, device_id: str) -> bool:
+    def devices_of(self, edge_node_pk: uuid.UUID) -> list[DeviceRef]:
+        """Every device on one node - what an NDEATH has to take offline."""
         self.refresh()
         with self._lock:
-            return device_id in self._by_device_id
+            return [
+                ref for ref in self._devices.values() if ref.edge_node_id == edge_node_pk
+            ]
 
     def invalidate(self) -> None:
         with self._lock:
@@ -106,7 +158,12 @@ class DeviceRegistry:
     @property
     def size(self) -> int:
         with self._lock:
-            return len(self._by_device_id)
+            return len(self._devices)
+
+    @property
+    def node_count(self) -> int:
+        with self._lock:
+            return len(self._nodes)
 
     def unknown_devices(self) -> dict[str, int]:
         with self._lock:

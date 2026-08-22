@@ -79,13 +79,14 @@ python scripts/run_device_test.py device --device ZQS-BESS-0001
 自我驗證會跑七個情境：
 
 ```
-正常的參考設備          → 必須「全部通過」
-故意用錯 client id      → 必須「剛好」抓到 Client ID 那一項
-故意不宣告遺言          → 必須「剛好」抓到 LWT 那幾項
-故意 clean_session=true → 必須「剛好」抓到 Clean session
-故意 telemetry 少 ts    → 必須「剛好」抓到 Payload schema
-故意用 QoS 0            → 必須「剛好」抓到 上行 QoS
-故意收到命令不回 ack    → 命令回覆必須維持「未測」，不能謊稱通過
+正常的參考設備            → 必須「全部通過」
+故意用錯 client id        → 必須「剛好」抓到 Client ID 那一項
+故意不宣告遺言            → 必須「剛好」抓到遺言那幾項
+故意 clean_session=false  → 必須「剛好」抓到 Clean session
+故意把遺言設成 retained   → 必須「剛好」抓到 遺言 retained
+故意送不是 protobuf 的東西 → 必須「剛好」抓到 Payload 解碼
+故意忽略 Rebirth 要求     → 回應 Rebirth 必須維持「未測」
+故意收到命令不回覆        → 命令回覆必須維持「未測」，不能謊稱通過
 ```
 
 注意「剛好」兩個字。工具**漏報**會讓壞掉的設備矇混過關；工具**多報**會讓你去
@@ -203,21 +204,27 @@ python scripts/run_device_test.py device --device ZQS-BESS-0001
 
 ```
 ·· TCP 連線建立 192.168.1.44:53214
->> CONNECT ZQS-BESS-0001 → 接受
->> SUBSCRIBE energy/devices/ZQS-BESS-0001/control  QoS 1
-<< 14:22:07  energy/devices/ZQS-BESS-0001/status  [QoS 1  retained]
-       {"status":"online","ts":1755678127000,"reason":"boot",...}
-<< 14:22:08  energy/devices/ZQS-BESS-0001/telemetry  [QoS 1]
-       {"ts":1755678128000,"metrics":{"battery_soc":62.0,...}}
+>> CONNECT ZQS-GW-0001 → 接受
+>> SUBSCRIBE spBv1.0/demo/NCMD/ZQS-GW-0001  QoS 0
+>> SUBSCRIBE spBv1.0/demo/DCMD/ZQS-GW-0001/+  QoS 0
+<< 14:22:07  spBv1.0/demo/NBIRTH/ZQS-GW-0001  [QoS 0]
+       seq=0  bdSeq=3  Node Control/Rebirth
+<< 14:22:07  spBv1.0/demo/DBIRTH/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       seq=1  12 個 metric，全部帶 alias
+<< 14:22:08  spBv1.0/demo/DDATA/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       seq=2  alias=1 → 62.0 …
 ```
 
 被拒絕的訊息會即時說明原因，不必等到最後：
 
 ```
-<< 14:22:09  energy/devices/ZQS-BESS-0001/telemetry  [QoS 0]
-       {"metrics":{"battery_soc":62.0}}
-       拒絕：[schema_invalid] telemetry 缺少必要欄位 ts
+<< 14:22:09  spBv1.0/demo/DDATA/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       14 bytes: 7b6e6f742070726f746f627566…
+       拒絕：[invalid_protobuf] payload is not a valid Sparkplug B protobuf
 ```
+
+payload 以十六進位顯示而不是嘗試解碼：出問題的往往就是那份無法解碼的位元組，在
+預覽欄裡印出一段 traceback 對誰都沒有幫助。
 
 ### 3.3 什麼時候會結束
 
@@ -248,16 +255,19 @@ python scripts/run_device_test.py device --device ZQS-BESS-0001
     -Command set_power_limit -Params '{"limit_w": 400000}'
 ```
 
-工具會在設備訂閱之後（預設等 8 秒，可用 `--command-delay` 調整）下發一則命令，
-然後檢查 `control/ack`：
+工具會在設備訂閱之後（預設等 8 秒，可用 `--command-delay` 調整）下發一則 DCMD，
+然後在後續的 DDATA 裡找回覆：
 
 ```
->> 下發命令 set_power_limit  command_id=bd167ce4-8230-40e8-8f85-358ef681a262
-<< 14:22:15  energy/devices/ZQS-BESS-0001/control/ack  [QoS 1]
-       {"command_id":"bd167ce4-...","status":"succeeded","ts":...}
+>> 下發命令 set_power_limit  Command/ID=bd167ce4-8230-40e8-8f85-358ef681a262
+<< 14:22:15  spBv1.0/demo/DDATA/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       Command/ID=bd167ce4-…  Command/Status=succeeded
 ```
 
-設備必須把 `command_id` **原樣**帶回。平台靠它把回覆對回請求；改動或省略的話，
+Sparkplug 沒有定義回覆訊息——確認就是設備把 metric 回報回來。所以回覆走的是一般
+的 DDATA，不是別的型別。
+
+設備必須把 `Command/ID` **原樣**帶回。平台靠它把回覆對回請求；改動或省略的話，
 命令在平台側會一直停在「等待中」直到逾時。
 
 PowerShell 的單引號字串會原樣傳遞，所以 `-Params '{"limit_w": 400000}'` 可以
@@ -338,11 +348,13 @@ broker 真的送出遺言（LWT）的方式——正常斷線依 MQTT 規範會�
 | `--misbehave` | 模擬器做了什麼 | 報告應該失敗的項目 |
 | --- | --- | --- |
 | `bad_client_id` | 用 `LabVIEW_1` 當 client id | Client ID 格式 |
-| `no_lwt` | 不宣告遺言 | LWT 已宣告（連帶 topic/QoS/retain/payload） |
-| `clean_session` | `clean_session=true` | Clean session |
-| `bad_payload` | telemetry 少了 `ts` | Payload 通過正式 schema |
-| `bad_qos` | telemetry 用 QoS 0 | 上行 QoS |
+| `no_lwt` | 不宣告 NDEATH 遺言 | 遺言已宣告（連帶 topic/QoS/retain/payload） |
+| `clean_session` | `clean_session=false` | Clean session |
+| `retained_will` | 遺言設 `retain=true` | 遺言 retained |
+| `bad_payload` | DDATA 送不是 protobuf 的位元組 | Payload 通過正式解碼器 |
+| `bad_qos` | DDATA 用 QoS 1 | 上行 QoS（警告，非失敗） |
 | `no_ack` | 收到命令不回覆 | 命令回覆（維持「未測」） |
+| `ignore_rebirth` | 收到 Rebirth 要求不理會 | 回應 Rebirth（維持「未測」） |
 
 `self-test` 模式就是把這張表自動跑一遍並比對結果，所以平常不需要手動操作。
 
@@ -366,63 +378,95 @@ broker 真的送出遺言（LWT）的方式——正常斷線依 MQTT 規範會�
 
 ## 8. 完整驗收清單
 
-工具檢查 22 項，順序照設備實際執行的流程。「必要」項全部通過才會判定可以上線。
+工具檢查 26 項，順序照設備實際執行的流程。「必要」項全部通過才會判定可以上線。
+
+> **三項容易照 MQTT 直覺寫錯**（clean session、遺言 retain、上行 QoS）。表格裡
+> 的值不是筆誤，理由見 device-protocol.md §2.1 與 §2.2。
 
 ### 8.1 CONNECT 階段
 
 | # | 項目 | 要求 | 必要 |
 | --- | --- | --- | --- |
 | 1 | MQTT 協定版本 | 3.1.1（level 4）或 5.0（level 5） | ✔ |
-| 2 | Client ID 格式 | `zqs:<device_id>` | ✔ |
-| 3 | Username 格式 | `dev-<組織代碼>-<device_id>` | ✔ |
-| 4 | 帳號密碼驗證 | 通過 `authenticate_device()` | ✔ |
+| 2 | Client ID 格式 | `zqs:<edge_node_id>` | ✔ |
+| 3 | Username 格式 | `node-<group_id>-<edge_node_id>` | ✔ |
+| 4 | 帳號密碼驗證 | 通過 `authenticate_edge_node()` | ✔ |
 | 5 | Keepalive | 1–120 秒，建議 45 | — |
-| 6 | Clean session | `false` | ✔ |
-| 7 | LWT 已宣告 | CONNECT 帶 will flag | ✔ |
-| 8 | LWT topic | `energy/devices/<device_id>/status` | ✔ |
-| 9 | LWT QoS | `1` | ✔ |
-| 10 | LWT retained | `true` | ✔ |
-| 11 | LWT payload | JSON 物件，`status="offline"` | ✔ |
+| 6 | **Clean session** | **`true`**（規範要求） | ✔ |
+| 7 | NDEATH 已宣告為遺言 | CONNECT 帶 will flag | ✔ |
+| 8 | 遺言 topic | `spBv1.0/<group>/NDEATH/<node>` | ✔ |
+| 9 | 遺言 QoS | `1`（命名空間裡唯一不是 0 的上行） | ✔ |
+| 10 | **遺言 retained** | **`false`**（規範要求） | ✔ |
+| 11 | 遺言 payload | Sparkplug protobuf，含 `bdSeq` metric | ✔ |
 
-**遺言必須在 CONNECT 封包裡宣告**，連上之後再設是沒有用的——broker 只在
-CONNECT 那一刻知道你的遺言是什麼。
+**遺言必須在 CONNECT 封包裡宣告**，連上之後再設是沒有用的——broker 只在 CONNECT
+那一刻知道你的遺言是什麼。
+
+retained 的遺言為什麼不行：它會活得比它描述的那次連線更久，之後任何訂閱者一連
+上來就會被告知這個節點死了，即使它早就回來並重新宣告過。
 
 ### 8.2 SUBSCRIBE 階段
 
 | # | 項目 | 要求 | 必要 |
 | --- | --- | --- | --- |
-| 12 | 訂閱 control topic | `energy/devices/<device_id>/control` | ✔ |
-| 13 | 訂閱權限（ACL） | 只能訂閱自己的 `control` | ✔ |
-| 14 | 訂閱 QoS | `1` | — |
+| 12 | 訂閱 NCMD | `spBv1.0/<group>/NCMD/<node>` | ✔ |
+| 13 | 訂閱 DCMD | `spBv1.0/<group>/DCMD/<node>/+` | — |
+| 14 | 訂閱權限（ACL） | 只訂閱自己的命令 topic | ✔ |
 
-**先訂閱再發上線訊息**。反過來的話，平台看到設備上線就下發命令，而設備還沒
-訂閱好，那則命令就掉了。
+**先訂閱再發 BIRTH**。反過來的話，平台看到節點上線就下發命令，而設備還沒訂閱好，
+那則命令就掉了。
 
-### 8.3 PUBLISH 階段
+萬用字元只能用在 device 這一層。`spBv1.0/<group>/DCMD/+/#` 會被拒絕——那等於訂閱
+全broker 每一個節點的命令。
 
-| # | 項目 | 要求 | 必要 |
-| --- | --- | --- | --- |
-| 15 | 上線後發布 status | 連線後立即發一則 `status="online"` | ✔ |
-| 16 | status 設為 retained | `retain=true` | ✔ |
-| 17 | 發布權限（ACL） | 只發布到自己的 topic 子樹 | ✔ |
-| 18 | 上行 QoS | `1` | ✔ |
-| 19 | Payload 通過正式 schema | 與 ingestor 相同的 `decode()` + `validate()` | ✔ |
-| 20 | 收到 telemetry | 至少一則 | ✔ |
-
-可發布的 topic 後綴：`telemetry`、`status`、`event`、`alarm`、`control/ack`。
-可訂閱的只有 `control`。
-
-發布到自己的 `control`（而不是 `control/ack`）會被拒絕——那是平台下行用的。
-
-### 8.4 互動
+### 8.3 BIRTH 階段
 
 | # | 項目 | 要求 | 必要 |
 | --- | --- | --- | --- |
-| 21 | 命令回覆（control/ack） | 收到命令後回 ack，`command_id` 原樣帶回 | — |
-| 22 | LWT 實測 | 強制斷線後 broker 確實送出遺言 | — |
+| 15 | 發布 NBIRTH | 連線後**第一則** | ✔ |
+| 16 | NBIRTH 的 seq | `0`（規範要求） | ✔ |
+| 17 | NBIRTH 的 bdSeq | 存在，且與遺言中的 `bdSeq` 相同 | ✔ |
+| 18 | 宣告 `Node Control/Rebirth` | NBIRTH 要帶這個可寫 metric | ✔ |
+| 19 | 發布 DBIRTH | 每台設備各一則 | ✔ |
+| 20 | BIRTH 指派 alias | 每個量測 metric 都帶 alias | — |
 
-這兩項是選用的，因為要觀察到它們必須主動觸發（下發命令／強制斷線）。**但正式
-環境會依賴它們**，所以強烈建議測。
+第 17 項是整套生死判定的關鍵：`bdSeq` 對不上，平台就無法分辨一則遲到的遺言屬於
+哪一次連線，剛重連的節點會被自己上一次的遺言打死。
+
+第 18 項雖然只是一個 metric，卻是**唯一的復原路徑**。少了它，一旦掉訊息，主機
+沒有任何辦法要求重新宣告，兩邊會永遠對不齊。
+
+### 8.4 DATA 階段
+
+| # | 項目 | 要求 | 必要 |
+| --- | --- | --- | --- |
+| 21 | 發布權限（ACL） | 只發布到自己的位址 | ✔ |
+| 22 | **上行 QoS** | **`0`**（規範要求） | — |
+| 23 | 上行 retain | `false` | ✔ |
+| 24 | Payload 通過正式解碼器 | 與 ingestor 相同的 `sparkplug decode()` | ✔ |
+| 25 | 收到 DDATA | 至少一則 | ✔ |
+| 26 | seq 連續遞增 | 每則 +1，到 255 後回到 0；NBIRTH 重新歸零 | ✔ |
+
+可發布的訊息型別：`NBIRTH`、`NDEATH`、`NDATA`、`DBIRTH`、`DDEATH`、`DDATA`。
+可訂閱的只有 `NCMD`、`DCMD`。
+
+發布 `NCMD` 或 `DCMD` 會被拒絕——那是平台下行用的。這一條不是形式：能發 NCMD 的
+節點也能對鄰居發 NDEATH，把對方打下線。
+
+第 22 項只是警告而不是失敗：平台照收 QoS 1，但那樣的設備跟其他 Sparkplug 主機
+互通會有問題。
+
+### 8.5 互動
+
+| # | 項目 | 要求 | 必要 |
+| --- | --- | --- | --- |
+| — | 命令回覆 | 收到 DCMD 後以 DDATA 回報 `Command/ID` 與 `Command/Status` | — |
+| — | 回應 Rebirth 要求 | 收到 `Node Control/Rebirth=true` 後重新發布 NBIRTH | — |
+| — | 遺言實測 | 強制斷線後 broker 確實送出 NDEATH | — |
+
+這三項是選用的，因為要觀察到它們必須主動觸發（下發命令／要求重生／強制斷線）。
+**但正式環境會依賴它們**，所以強烈建議測——尤其是重生，那是掉訊息之後唯一的
+復原機制。
 
 ---
 
@@ -529,7 +573,7 @@ Public，連線會被擋；請到「設定 → 網路和網際網路」把該網
 | 無法驗證 | 為什麼 | 風險 |
 | --- | --- | --- |
 | **retained 訊息重播** | 工具記錄 retain flag，但不會在後續訂閱時重播 | 設備的 retained status 在真實 broker 上會不會正確重播、會不會被舊值覆蓋 |
-| **session 跨重連保存** | `clean_session=false` 的 session 狀態不會保留 | 斷線期間累積的 QoS 1 命令能否在重連後補送 |
+| **broker 端的 shared subscription** | 工具只處理單一連線 | 多個 ingestor 副本分流是否正確 |
 | **TLS** | 工具只講明文 TCP | 正式環境用 8883 + TLS，憑證驗證、SNI、握手都可能出問題 |
 
 另外工具只處理**單一設備連線**（`only_session()`），不驗證 shared subscription
@@ -557,13 +601,21 @@ Public，連線會被擋；請到「設定 → 網路和網際網路」把該網
 | 報告顯示 | 實際原因 |
 | --- | --- |
 | 帳號密碼驗證失敗 | 密碼打錯、設備已停用或退役、或憑證被輪替過 |
-| Client ID 格式失敗 | LabVIEW 預設用自己的 client id，要手動改成 `zqs:<device_id>` |
-| LWT 已宣告失敗 | 連線後才設遺言。必須在 CONNECT 之前設定 |
-| Payload 通過正式 schema 失敗 | 通常是缺 `ts`，或 `ts` 用了秒而不是毫秒 |
-| 上行 QoS 失敗 | LabVIEW toolkit 的 publish 預設常是 QoS 0 |
-| 發布權限失敗 | 發到別台設備的 topic，或發到自己的 `control` 而非 `control/ack` |
-| 命令回覆維持「未測」 | 沒下發命令（加 `--command`），或設備沒回 ack |
-| LWT 實測維持「注意」 | 用了正常斷線。這是 MQTT 規範行為——要實測請直接拔網路線或關電源 |
+| Client ID 格式失敗 | LabVIEW 預設用自己的 client id，要手動改成 `zqs:<edge_node_id>` |
+| Username 格式失敗 | 憑證屬於節點而不是設備，格式是 `node-<group>-<node>` |
+| 遺言已宣告失敗 | 連線後才設遺言。必須在 CONNECT 之前設定 |
+| 遺言 payload 失敗 | 少了 `bdSeq` metric，或送的還是 JSON |
+| Clean session 失敗 | 設成了 `false`。Sparkplug 要求 `true` |
+| 遺言 retained 失敗 | 設成了 `true`。Sparkplug 要求 `false` |
+| Payload 解碼失敗 | 送的不是 protobuf，或欄位編號／wire type 寫錯（見 protocol §9） |
+| NBIRTH 的 seq 不是 0 | 在 birth 出去之前就發了別的訊息——通常是 run loop 沒等連線回呼 |
+| bdSeq 對不上 | 遺言與 NBIRTH 用了不同的值，或忘了每次連線遞增 |
+| 未宣告 Node Control/Rebirth | 少了它就沒有復原路徑，掉一次訊息就永遠對不齊 |
+| seq 連續遞增失敗 | 多執行緒發布時序號的配置與送出沒有在同一個鎖裡（見 protocol §3.3） |
+| 發布權限失敗 | 發到別的節點的位址，或發了 `NCMD`/`DCMD`——那是平台下行用的 |
+| 命令回覆維持「未測」 | 沒下發命令（加 `--command`），或設備沒回 |
+| 回應 Rebirth 維持「未測」 | 設備收到 `Node Control/Rebirth=true` 卻沒有重新宣告 |
+| 遺言實測維持「注意」 | 用了正常斷線。這是 MQTT 規範行為——要實測請直接拔網路線或關電源 |
 | 結束碼 2、沒有任何輸出 | 埠被占用，或找不到 `.venv`。訊息會直接說明處理方式 |
 
 ---

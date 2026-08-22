@@ -23,6 +23,7 @@ class PolicyResolutionTestCase(TestCase):
         defaults = dict(
             pk=None,
             device_id="D1",
+            edge_node_id=None,
             organization_id=self.org.id,
             site_id=None,
             device_type_id=None,

@@ -24,6 +24,7 @@ def _ref(device) -> DeviceRef:
     return DeviceRef(
         pk=device.id,
         device_id=device.device_id,
+        edge_node_id=device.edge_node_id,
         organization_id=device.organization_id,
         site_id=device.site_id,
         device_type_id=device.device_type_id,

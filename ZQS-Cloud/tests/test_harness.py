@@ -17,13 +17,16 @@ import time
 import orjson
 from django.test import TransactionTestCase
 
-from apps.devices.models import DeviceCredential
+from apps.devices.models import EdgeNodeCredential
 from services.harness import checks as conformance
 from services.harness import packets
 from services.harness import report as reporting
 from services.harness.broker import HarnessServer, HarnessState, send_command
 from services.harness.simulator import ReferenceDevice
-from services.mqtt import topics
+from services.sparkplug import payload as sp
+from services.sparkplug import topics
+from services.sparkplug.datatypes import DataType
+from services.sparkplug.topics import MessageType
 from tests import factories
 
 
@@ -53,8 +56,8 @@ class PacketCodecTests(TransactionTestCase):
             username="dev-demo-DEV-1",
             password="secret",
             will_flag=True,
-            will_topic="energy/devices/DEV-1/status",
-            will_payload=b'{"status":"offline"}',
+            will_topic="spBv1.0/demo/NDEATH/DEV-1",
+            will_payload=b"\x08\x01",
             will_qos=1,
             will_retain=True,
         )
@@ -133,31 +136,46 @@ class _ByteStream:
 # ---------------------------------------------------------------------------
 # Checks - the rules, without a socket
 # ---------------------------------------------------------------------------
+def _will_payload(bd_seq: int = 1) -> bytes:
+    """A minimal, valid NDEATH: a bdSeq metric and nothing else."""
+    message = sp.new_payload()
+    sp.add_metric(message, sp.BDSEQ_METRIC, bd_seq, datatype=DataType.Int64)
+    return sp.encode(message)
+
+
 class ConnectCheckTests(TransactionTestCase):
     def setUp(self) -> None:
+        self.group_id = "demo"
         self.device_id = "CHK-1"
-        self.checks = conformance.build_checklist(self.device_id)
+        self.checks = conformance.build_checklist(self.group_id, self.device_id)
 
     def connect(self, **overrides) -> packets.ConnectPacket:
         defaults = dict(
             protocol_name="MQTT",
             protocol_level=4,
             client_id=f"zqs:{self.device_id}",
-            clean_session=False,
+            # Sparkplug requires a clean session, the opposite of the old
+            # JSON protocol - see services/harness/checks.py.
+            clean_session=True,
             keepalive=45,
-            username=f"dev-demo-{self.device_id}",
+            username=f"node-{self.group_id}-{self.device_id}",
             password="pw",
             will_flag=True,
-            will_topic=f"{topics.root()}/{self.device_id}/status",
-            will_payload=orjson.dumps({"status": "offline", "reason": "lwt"}),
+            will_topic=topics.build(
+                self.group_id, MessageType.NDEATH, self.device_id
+            ),
+            will_payload=_will_payload(),
             will_qos=1,
-            will_retain=True,
+            # A retained will would outlive the session it describes.
+            will_retain=False,
         )
         defaults.update(overrides)
         return packets.ConnectPacket(**defaults)
 
     def run_checks(self, **overrides):
-        conformance.check_connect(self.checks, self.connect(**overrides), self.device_id)
+        conformance.check_connect(
+            self.checks, self.connect(**overrides), self.group_id, self.device_id
+        )
         return self.checks
 
     def test_a_correct_connect_passes_all_connect_checks(self):
@@ -184,10 +202,10 @@ class ConnectCheckTests(TransactionTestCase):
         # The message names both values, not just "connection refused".
         self.assertIn("LabVIEW_1", check.detail)
 
-    def test_clean_session_true_fails_with_the_reason(self):
-        check = self.run_checks(clean_session=True)["clean_session"]
+    def test_a_persistent_session_fails_with_the_reason(self):
+        check = self.run_checks(clean_session=False)["clean_session"]
         self.assertEqual(check.status, conformance.FAIL)
-        self.assertIn("下行命令", check.detail)
+        self.assertIn("clean session", check.detail)
 
     def test_a_missing_will_fails_every_will_check(self):
         checks = self.run_checks(will_flag=False)
@@ -195,24 +213,26 @@ class ConnectCheckTests(TransactionTestCase):
             self.assertEqual(checks[key].status, conformance.FAIL, key)
 
     def test_a_will_on_the_wrong_topic_is_caught(self):
-        check = self.run_checks(will_topic="energy/devices/OTHER/status")["lwt_topic"]
+        check = self.run_checks(will_topic="spBv1.0/demo/NDEATH/OTHER")["lwt_topic"]
         self.assertEqual(check.status, conformance.FAIL)
         self.assertIn("OTHER", check.actual)
 
     def test_a_will_at_qos_zero_is_caught(self):
         self.assertEqual(self.run_checks(will_qos=0)["lwt_qos"].status, conformance.FAIL)
 
-    def test_an_unretained_will_is_caught(self):
-        self.assertEqual(
-            self.run_checks(will_retain=False)["lwt_retain"].status, conformance.FAIL
-        )
-
-    def test_a_will_that_does_not_say_offline_is_caught(self):
-        check = self.run_checks(will_payload=orjson.dumps({"status": "online"}))["lwt_payload"]
+    def test_a_retained_will_is_caught(self):
+        """It would outlive the session it describes."""
+        check = self.run_checks(will_retain=True)["lwt_retain"]
         self.assertEqual(check.status, conformance.FAIL)
-        self.assertIn("offline", check.detail)
+        self.assertIn("retained", check.detail)
 
-    def test_a_non_json_will_is_caught(self):
+    def test_a_will_without_bdseq_is_caught(self):
+        """Without it, a late death cannot be told from a current one."""
+        check = self.run_checks(will_payload=sp.encode(sp.new_payload()))["lwt_payload"]
+        self.assertEqual(check.status, conformance.FAIL)
+        self.assertIn("bdSeq", check.detail)
+
+    def test_a_will_that_is_not_protobuf_is_caught(self):
         check = self.run_checks(will_payload=b"offline")["lwt_payload"]
         self.assertEqual(check.status, conformance.FAIL)
 
@@ -233,47 +253,89 @@ class ConnectCheckTests(TransactionTestCase):
 class AclCheckTests(TransactionTestCase):
     """The ACL predicate must agree with the production webhook."""
 
-    def test_a_device_may_publish_its_own_topics(self):
-        for suffix in ("telemetry", "status", "event", "alarm", "control/ack"):
-            allowed, _ = conformance.topic_allowed(
-                f"{topics.root()}/DEV-1/{suffix}", "publish", "DEV-1"
-            )
-            self.assertTrue(allowed, suffix)
+    GROUP = "demo"
+    NODE = "DEV-1"
 
-    def test_a_device_may_not_publish_to_its_control_topic(self):
-        allowed, reason = conformance.topic_allowed(
-            f"{topics.root()}/DEV-1/control", "publish", "DEV-1"
+    def allowed(self, topic: str, action: str = "publish"):
+        return conformance.topic_allowed(topic, action, self.GROUP, self.NODE)
+
+    def test_a_node_may_publish_its_own_message_types(self):
+        for message_type in (
+            MessageType.NBIRTH,
+            MessageType.NDEATH,
+            MessageType.NDATA,
+        ):
+            allowed, _ = self.allowed(
+                topics.build(self.GROUP, message_type, self.NODE)
+            )
+            self.assertTrue(allowed, message_type)
+
+        for message_type in (
+            MessageType.DBIRTH,
+            MessageType.DDEATH,
+            MessageType.DDATA,
+        ):
+            allowed, _ = self.allowed(
+                topics.build(self.GROUP, message_type, self.NODE, "METER-1")
+            )
+            self.assertTrue(allowed, message_type)
+
+    def test_a_node_may_not_publish_commands(self):
+        """A node that could publish NCMD could command its neighbours."""
+        allowed, reason = self.allowed(
+            topics.build(self.GROUP, MessageType.NCMD, self.NODE)
         )
         self.assertFalse(allowed)
-        self.assertIn("control", reason)
+        self.assertIn("NCMD", reason)
 
-    def test_a_device_may_subscribe_only_to_control(self):
-        allowed, _ = conformance.topic_allowed(
-            f"{topics.root()}/DEV-1/control", "subscribe", "DEV-1"
+    def test_a_node_may_subscribe_only_to_its_commands(self):
+        allowed, _ = self.allowed(
+            topics.build(self.GROUP, MessageType.NCMD, self.NODE), "subscribe"
         )
         self.assertTrue(allowed)
-        denied, reason = conformance.topic_allowed(
-            f"{topics.root()}/DEV-1/telemetry", "subscribe", "DEV-1"
+
+        # The wildcard form a real gateway uses for its devices.
+        allowed, _ = self.allowed(
+            f"{topics.build(self.GROUP, MessageType.DCMD, self.NODE)}/+", "subscribe"
+        )
+        self.assertTrue(allowed)
+
+        denied, reason = self.allowed(
+            topics.build(self.GROUP, MessageType.NDATA, self.NODE), "subscribe"
         )
         self.assertFalse(denied)
-        self.assertIn("telemetry", reason)
+        self.assertIn("NDATA", reason)
 
-    def test_a_device_may_not_touch_another_devices_subtree(self):
-        allowed, reason = conformance.topic_allowed(
-            f"{topics.root()}/OTHER/telemetry", "publish", "DEV-1"
+    def test_a_node_may_not_touch_another_nodes_subtree(self):
+        allowed, reason = self.allowed(
+            topics.build(self.GROUP, MessageType.NDATA, "OTHER")
         )
         self.assertFalse(allowed)
         self.assertIn("OTHER", reason)
 
-    def test_a_topic_outside_the_root_is_refused(self):
-        allowed, reason = conformance.topic_allowed("random/topic", "publish", "DEV-1")
+    def test_a_node_may_not_reach_into_another_group(self):
+        allowed, reason = self.allowed(
+            topics.build("other-tenant", MessageType.NDATA, self.NODE)
+        )
         self.assertFalse(allowed)
-        self.assertIn(topics.root(), reason)
+        self.assertIn("other-tenant", reason)
+
+    def test_a_wildcard_above_the_device_level_is_refused(self):
+        """Otherwise one node subscribes to every command on the broker."""
+        allowed, _ = self.allowed(
+            f"spBv1.0/{self.GROUP}/DCMD/+/#", "subscribe"
+        )
+        self.assertFalse(allowed)
+
+    def test_a_topic_outside_the_namespace_is_refused(self):
+        allowed, reason = self.allowed("random/topic")
+        self.assertFalse(allowed)
+        self.assertIn(topics.NAMESPACE, reason)
 
 
 class ReportTests(TransactionTestCase):
     def setUp(self) -> None:
-        self.checks = conformance.build_checklist("REP-1")
+        self.checks = conformance.build_checklist("demo", "REP-1")
 
     def pass_all_required(self) -> None:
         for check in self.checks.values():
@@ -289,7 +351,7 @@ class ReportTests(TransactionTestCase):
 
     def test_one_failure_blocks_the_verdict(self):
         self.pass_all_required()
-        self.checks["publish_qos"].fail("0")
+        self.checks["publish_retain"].fail("true")
         self.assertEqual(reporting.verdict(self.checks), reporting.VERDICT_NOT_READY)
 
     def test_an_optional_check_left_pending_does_not_block(self):
@@ -301,7 +363,7 @@ class ReportTests(TransactionTestCase):
         self.checks["lwt_declared"].fail("未宣告", "沒有設 will flag")
         text = reporting.render(self.checks, device_id="REP-1")
         self.assertIn("還不能接正式環境", text)
-        self.assertIn("LWT 已宣告", text)
+        self.assertIn("NDEATH 已宣告為遺言", text)
 
     def test_the_ready_report_still_warns_about_real_emqx(self):
         self.pass_all_required()
@@ -321,7 +383,8 @@ class HarnessEndToEndTests(TransactionTestCase):
     def setUp(self) -> None:
         self.org = factories.organization("demo")
         self.device = factories.device(self.org, "HARNESS-1")
-        self.credential, self.password = DeviceCredential.issue(self.device)
+        self.node = self.device.edge_node
+        self.credential, self.password = EdgeNodeCredential.issue(self.node)
 
         self.state = HarnessState()
         self.server = HarnessServer(("127.0.0.1", 0), self.state)
@@ -337,6 +400,8 @@ class HarnessEndToEndTests(TransactionTestCase):
             device_id=self.device.device_id,
             username=self.credential.mqtt_username,
             password=self.password,
+            group_id=self.node.group_id,
+            node_id=self.node.node_id,
             host="127.0.0.1",
             port=self.port,
             interval=0.2,
@@ -346,7 +411,7 @@ class HarnessEndToEndTests(TransactionTestCase):
         # Let the handler thread finish scoring the disconnect.
         for _ in range(50):
             session = self.state.only_session()
-            if session is not None and self.state.handler_for(self.device.device_id) is None:
+            if session is not None and self.state.handler_for(self.node.node_id) is None:
                 return
             time.sleep(0.05)
 
@@ -378,35 +443,54 @@ class HarnessEndToEndTests(TransactionTestCase):
         self.run_device(misbehave="no_lwt")
         self.assertEqual(self.session().checks["lwt_declared"].status, conformance.FAIL)
 
-    def test_a_device_using_clean_session_is_caught(self):
+    def test_a_device_keeping_its_session_is_caught(self):
         self.run_device(misbehave="clean_session")
         self.assertEqual(self.session().checks["clean_session"].status, conformance.FAIL)
 
-    def test_a_malformed_telemetry_payload_is_caught(self):
+    def test_a_malformed_payload_is_caught(self):
         self.run_device(misbehave="bad_payload")
         check = self.session().checks["payload_schema"]
         self.assertEqual(check.status, conformance.FAIL)
-        # The reason has to name the field, not just say "invalid".
-        self.assertIn("ts", check.detail)
+        # The reason has to say what was wrong, not just "invalid".
+        self.assertIn("protobuf", check.detail.lower())
 
-    def test_telemetry_at_qos_zero_is_caught(self):
+    def test_a_retained_will_is_caught(self):
+        self.run_device(misbehave="retained_will")
+        self.assertEqual(self.session().checks["lwt_retain"].status, conformance.FAIL)
+
+    def test_data_at_the_wrong_qos_is_warned_about(self):
+        """The platform accepts it; other Sparkplug hosts may not."""
         self.run_device(misbehave="bad_qos")
-        self.assertEqual(self.session().checks["publish_qos"].status, conformance.FAIL)
+        self.assertEqual(self.session().checks["publish_qos"].status, conformance.WARN)
 
     # ---- observed traffic ------------------------------------------------
-    def test_the_birth_message_is_recorded_as_retained(self):
+    def test_the_births_are_recorded(self):
         self.run_device()
         checks = self.session().checks
-        self.assertEqual(checks["birth_status"].status, conformance.PASS)
-        self.assertEqual(checks["birth_retained"].status, conformance.PASS)
+        self.assertEqual(checks["nbirth_seen"].status, conformance.PASS)
+        self.assertEqual(checks["dbirth_seen"].status, conformance.PASS)
+        self.assertEqual(checks["nbirth_seq"].status, conformance.PASS)
+        self.assertEqual(checks["nbirth_bdseq"].status, conformance.PASS)
 
-    def test_telemetry_and_subscription_are_observed(self):
+    def test_data_and_subscription_are_observed(self):
         self.run_device()
         session = self.session()
-        self.assertEqual(session.checks["telemetry_seen"].status, conformance.PASS)
-        self.assertEqual(session.checks["subscribe_control"].status, conformance.PASS)
+        self.assertEqual(session.checks["ddata_seen"].status, conformance.PASS)
+        self.assertEqual(session.checks["subscribe_ncmd"].status, conformance.PASS)
         self.assertIn(
-            topics.control_topic(self.device.device_id), session.subscriptions
+            topics.node_command(self.node.group_id, self.node.node_id),
+            session.subscriptions,
+        )
+
+    def test_the_birth_assigns_aliases(self):
+        """Without them every later message repeats the full metric names."""
+        self.run_device()
+        self.assertEqual(self.session().checks["birth_aliases"].status, conformance.PASS)
+
+    def test_the_sequence_is_continuous(self):
+        self.run_device()
+        self.assertEqual(
+            self.session().checks["seq_monotonic"].status, conformance.PASS
         )
 
     def test_every_message_is_logged_with_its_flags(self):
@@ -414,7 +498,7 @@ class HarnessEndToEndTests(TransactionTestCase):
         session = self.session()
         self.assertTrue(session.messages)
         record = session.messages[0]
-        self.assertTrue(record.topic.startswith(topics.root()))
+        self.assertTrue(record.topic.startswith(topics.NAMESPACE))
         self.assertIn(record.qos, (0, 1))
         self.assertTrue(record.payload_text)
 
@@ -439,6 +523,8 @@ class HarnessEndToEndTests(TransactionTestCase):
             device_id=self.device.device_id,
             username=self.credential.mqtt_username,
             password=self.password,
+            group_id=self.node.group_id,
+            node_id=self.node.node_id,
             host="127.0.0.1",
             port=self.port,
             interval=0.2,
@@ -448,14 +534,23 @@ class HarnessEndToEndTests(TransactionTestCase):
         )
         thread.start()
 
+        dcmd_prefix = topics.build(
+            self.node.group_id, MessageType.DCMD, self.node.node_id
+        )
         for _ in range(60):
             session = self.state.only_session()
-            if session and topics.control_topic(self.device.device_id) in session.subscriptions:
+            if session and any(
+                f.startswith(dcmd_prefix) for f in session.subscriptions
+            ):
                 break
             time.sleep(0.05)
 
         sent, command_id, note = send_command(
-            self.state, self.device.device_id, "set_power_limit", {"limit_w": 400_000}
+            self.state,
+            self.node.node_id,
+            "set_power_limit",
+            {"limit_w": 400_000},
+            target_device=self.device.device_id,
         )
         self.assertTrue(sent, note)
         self.assertEqual(note, "", "設備應該已經訂閱 control topic")
@@ -477,7 +572,7 @@ class CredentialRejectionTests(TransactionTestCase):
     def setUp(self) -> None:
         self.org = factories.organization("demo")
         self.device = factories.device(self.org, "HARNESS-2")
-        self.credential, _password = DeviceCredential.issue(self.device)
+        self.credential, _password = EdgeNodeCredential.issue(self.device.edge_node)
 
         self.state = HarnessState()
         self.server = HarnessServer(("127.0.0.1", 0), self.state)
@@ -492,12 +587,16 @@ class CredentialRejectionTests(TransactionTestCase):
             protocol_name="MQTT",
             protocol_level=4,
             client_id=f"zqs:{self.device.device_id}",
-            clean_session=False,
+            clean_session=True,
             keepalive=45,
             username=self.credential.mqtt_username,
             password="definitely-not-the-password",
             will_flag=True,
-            will_topic=f"{topics.root()}/{self.device.device_id}/status",
+            will_topic=topics.build(
+                self.device.edge_node.group_id,
+                MessageType.NDEATH,
+                self.device.device_id,
+            ),
             will_payload=orjson.dumps({"status": "offline"}),
             will_qos=1,
             will_retain=True,

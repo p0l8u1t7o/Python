@@ -3,3 +3,6 @@ dist/
 .env
 .env.local
 *.tsbuildinfo
+e2e/.auth/
+e2e-results/
+e2e-report/

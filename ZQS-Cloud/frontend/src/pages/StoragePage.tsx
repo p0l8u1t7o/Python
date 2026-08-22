@@ -1,25 +1,51 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
-import { BatteryCharging, Coins, PiggyBank, RefreshCw, Sun, Zap } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  BatteryCharging,
+  Coins,
+  History,
+  Landmark,
+  PiggyBank,
+  PlayCircle,
+  Radio,
+  RefreshCw,
+  Sun,
+  Zap,
+} from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 import {
+  useCostBreakdown,
+  useDemandResponse,
+  useDemandResponseMutations,
+  useDispatchPreview,
   useEmsMutations,
   useEnergyAssets,
   useEnergyIntervals,
   useEnergySummary,
+  useOperatingSessions,
+  useSessionSummary,
+  useSiteInvestment,
   useSiteOverview,
   useSites,
   useStoragePlan,
-  useTariffs,
+  useStoragePlans,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
-import { formatCurrency, formatMeasurement, formatNumber, formatPercent, formatTime } from '@/lib/format'
-import { RANGE_KEYS, useTimeRange, type RangeKey } from '@/lib/useTimeRange'
-import type { DispatchStrategy } from '@/lib/types'
+import {
+  formatCurrency,
+  formatDateTime,
+  formatDuration,
+  formatMeasurement,
+  formatNumber,
+  formatPercent,
+  formatTime,
+} from '@/lib/format'
+import { useTimeRange } from '@/lib/useTimeRange'
 import { CostChart, EnergyBalanceChart, SocChart } from '@/components/charts/EnergyCharts'
+import { CostSourceChart } from '@/components/charts/CostCharts'
 import { PowerFlowDiagram } from '@/components/charts/PowerFlowDiagram'
 import {
   Badge,
@@ -27,34 +53,32 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Checkbox,
   DetailRow,
+  DeviceIcon,
   EmptyState,
   ErrorState,
   LoadingState,
   Modal,
   PageHeader,
-  SegmentedControl,
   Select,
+  SiteTreeSelect,
   StatTile,
   TBody,
-  Term,
   THead,
   Table,
   Td,
+  Term,
   TextInput,
   Th,
+  TimeRangePicker,
   Tr,
 } from '@/components/ui'
 
-const STRATEGIES: DispatchStrategy[] = [
-  'manual',
-  'self_consumption',
-  'peak_shaving',
-  'tou_arbitrage',
-  'backup_only',
-]
-
+/**
+ * One icon per strategy. Chosen so the shapes differ at a glance rather than
+ * being literal: a flat-topped curve for peak shaving and a two-way arrow for
+ * arbitrage are told apart instantly, where two battery variants would not be.
+ */
 export function StoragePage() {
   const { t } = useTranslation()
   const { can } = useAuth()
@@ -63,7 +87,6 @@ export function StoragePage() {
 
   const sites = useSites()
   const siteId = searchParams.get('site') ?? sites.data?.items[0]?.id ?? ''
-  const [showPlan, setShowPlan] = useState(false)
 
   // Pin the first site into the URL so a reload and a shared link agree.
   useEffect(() => {
@@ -108,25 +131,19 @@ export function StoragePage() {
         description={t('storage.subtitle')}
         actions={
           <>
-            <Select
+            <SiteTreeSelect
+              sites={sites.data.items}
               value={siteId}
-              onChange={(event) => {
+              onChange={(value) => {
+                if (!value) return
                 const next = new URLSearchParams(searchParams)
-                next.set('site', event.target.value)
+                next.set('site', value)
                 setSearchParams(next, { replace: true })
               }}
-              options={sites.data.items.map((site) => ({ value: site.id, label: site.name }))}
-              className="w-52"
+              className="w-56"
             />
-            <SegmentedControl<RangeKey>
-              size="sm"
-              value={range.key}
-              onChange={range.setKey}
-              options={RANGE_KEYS.map((key) => ({ value: key, label: t(`range.${key}`) }))}
-            />
-            {can('ems:write') ? (
-              <Button onClick={() => setShowPlan(true)}>{t('storage.plan')}</Button>
-            ) : null}
+            <TimeRangePicker range={range} />
+            {can('ems:write') ? <PlanBindPicker siteId={siteId} /> : null}
           </>
         }
       />
@@ -309,13 +326,32 @@ export function StoragePage() {
         </Card>
       </div>
 
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <CostBreakdownCard
+          siteId={siteId}
+          start={range.start}
+          end={range.end}
+          fallbackCurrency={currency}
+        />
+        <SessionsCard siteId={siteId} start={range.start} end={range.end} />
+      </div>
+
+      <InvestmentCard siteId={siteId} start={range.start} end={range.end} />
+
+      <DispatchCard siteId={siteId} />
+
+      <DemandResponseCard siteId={siteId} />
+
       <Card className="mt-5">
         <CardHeader
           title={<Term id="bess">{t('storage.assets')}</Term>}
           description={
             plan.data
-              ? `${t('storage.strategy')}: ${t(`storage.strategies.${plan.data.strategy}`)}`
-              : undefined
+              ? `${plan.data.name} — ${t(`storage.strategies.${plan.data.strategy}`)}` +
+                (plan.data.inherited_from
+                  ? `（${t('plans.inheritedBadge', { site: plan.data.inherited_from })}）`
+                  : '')
+              : t('plans.noneBound')
           }
         />
         <Table>
@@ -359,215 +395,612 @@ export function StoragePage() {
         </Table>
       </Card>
 
-      <PlanModal
-        open={showPlan}
-        onClose={() => setShowPlan(false)}
-        siteId={siteId}
-        existing={plan.data ?? null}
-      />
     </>
   )
 }
 
-function PlanModal({
-  open,
-  onClose,
-  siteId,
-  existing,
-}: {
-  open: boolean
-  onClose: () => void
-  siteId: string
-  existing: ReturnType<typeof useStoragePlan>['data'] | null
-}) {
+/**
+ * Demand response: commit the battery to a discharge, now.
+ *
+ * Deliberately not a strategy tab. A DR event is an *override* - while it is
+ * live it outranks the strategy, the scheduled windows and even a workflow
+ * takeover, because it is a commitment made to the grid operator. The plan
+ * envelope and the health constraints still clamp it.
+ */
+function DemandResponseCard({ siteId }: { siteId: string }) {
   const { t } = useTranslation()
+  const { can } = useAuth()
   const toast = useToast()
-  const tariffs = useTariffs()
-  const { savePlan } = useEmsMutations()
+  const events = useDemandResponse(siteId)
+  const { trigger, cancel } = useDemandResponseMutations(siteId)
 
-  const [form, setForm] = useState(() => ({
-    strategy: existing?.strategy ?? ('manual' as DispatchStrategy),
-    is_enabled: existing?.is_enabled ?? true,
-    contract_capacity_kw: existing?.contract_capacity_kw ?? '',
-    peak_shaving_target_kw: existing?.peak_shaving_target_kw ?? '',
-    usable_capacity_kwh: existing?.usable_capacity_kwh ?? '',
-    max_charge_kw: existing?.max_charge_kw ?? '',
-    max_discharge_kw: existing?.max_discharge_kw ?? '',
-    min_soc_percent: existing?.min_soc_percent ?? 10,
-    max_soc_percent: existing?.max_soc_percent ?? 95,
-    backup_reserve_percent: existing?.backup_reserve_percent ?? 20,
-    round_trip_efficiency: existing?.round_trip_efficiency ?? 0.9,
-    tariff_id: existing?.tariff_id ?? '',
-  }))
+  const [showTrigger, setShowTrigger] = useState(false)
+  const [form, setForm] = useState({ target_power_kw: '', duration_minutes: 60, note: '' })
 
-  // Reopening after the plan loaded should show the stored values, not the
-  // defaults captured when this component first mounted.
-  useEffect(() => {
-    if (open && existing) {
-      setForm({
-        strategy: existing.strategy,
-        is_enabled: existing.is_enabled,
-        contract_capacity_kw: existing.contract_capacity_kw ?? '',
-        peak_shaving_target_kw: existing.peak_shaving_target_kw ?? '',
-        usable_capacity_kwh: existing.usable_capacity_kwh ?? '',
-        max_charge_kw: existing.max_charge_kw ?? '',
-        max_discharge_kw: existing.max_discharge_kw ?? '',
-        min_soc_percent: existing.min_soc_percent,
-        max_soc_percent: existing.max_soc_percent,
-        backup_reserve_percent: existing.backup_reserve_percent,
-        round_trip_efficiency: existing.round_trip_efficiency,
-        tariff_id: existing.tariff_id ?? '',
-      })
-    }
-  }, [open, existing])
-
-  const number = (value: string | number) =>
-    value === '' || value === null ? null : Number(value)
+  const active = (events.data ?? []).find((event) => event.is_active)
+  const recent = (events.data ?? []).slice(0, 5)
 
   async function submit() {
     try {
-      await savePlan.mutateAsync({
-        siteId,
-        strategy: form.strategy,
-        is_enabled: form.is_enabled,
-        contract_capacity_kw: number(form.contract_capacity_kw),
-        peak_shaving_target_kw: number(form.peak_shaving_target_kw),
-        usable_capacity_kwh: number(form.usable_capacity_kwh),
-        max_charge_kw: number(form.max_charge_kw),
-        max_discharge_kw: number(form.max_discharge_kw),
-        min_soc_percent: Number(form.min_soc_percent),
-        max_soc_percent: Number(form.max_soc_percent),
-        backup_reserve_percent: Number(form.backup_reserve_percent),
-        round_trip_efficiency: Number(form.round_trip_efficiency),
-        tariff_id: form.tariff_id || null,
+      await trigger.mutateAsync({
+        target_power_kw: Number(form.target_power_kw),
+        duration_minutes: Number(form.duration_minutes),
+        note: form.note,
       })
-      toast.success(t('common.saved'))
-      onClose()
+      toast.success(t('storage.drStarted'))
+      setShowTrigger(false)
+      setForm({ target_power_kw: '', duration_minutes: 60, note: '' })
     } catch (error) {
       toast.error(errorMessage(error))
     }
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={t('storage.plan')}
-      size="lg"
-      footer={
-        <>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="primary" loading={savePlan.isPending} onClick={() => void submit()}>
-            {t('common.save')}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Select
-          label={<Term id="ems">{t('storage.strategy')}</Term>}
-          value={form.strategy}
-          onChange={(event) =>
-            setForm({ ...form, strategy: event.target.value as DispatchStrategy })
-          }
-          options={STRATEGIES.map((value) => ({
-            value,
-            label: t(`storage.strategies.${value}`),
-          }))}
-        />
-        <Select
-          label={<Term id="tariff" />}
-          value={form.tariff_id}
-          placeholder={t('common.none')}
-          onChange={(event) => setForm({ ...form, tariff_id: event.target.value })}
-          options={(tariffs.data ?? []).map((tariff) => ({
-            value: tariff.id,
-            label: tariff.name,
-          }))}
-        />
-        <TextInput
-          label={<Term id="contractCapacity">{t('storage.contractCapacity')}</Term>}
-          type="number"
-          suffix="kW"
-          value={String(form.contract_capacity_kw)}
-          onChange={(event) => setForm({ ...form, contract_capacity_kw: event.target.value })}
-        />
-        <TextInput
-          label={<Term id="peakDemand">{t('storage.peakDemand')}</Term>}
-          type="number"
-          suffix="kW"
-          value={String(form.peak_shaving_target_kw)}
-          onChange={(event) => setForm({ ...form, peak_shaving_target_kw: event.target.value })}
-        />
-        <TextInput
-          label={<Term id="usableCapacity">{t('storage.usableCapacity')}</Term>}
-          type="number"
-          suffix="kWh"
-          value={String(form.usable_capacity_kwh)}
-          onChange={(event) => setForm({ ...form, usable_capacity_kwh: event.target.value })}
-        />
-        <TextInput
-          label={<Term id="roundTrip">{t('storage.roundTrip')}</Term>}
-          type="number"
-          step="0.01"
-          min={0.1}
-          max={1}
-          value={String(form.round_trip_efficiency)}
-          onChange={(event) => setForm({ ...form, round_trip_efficiency: Number(event.target.value) })}
-        />
-        <TextInput
-          label={<Term id="pcs">Max charge</Term>}
-          type="number"
-          suffix="kW"
-          value={String(form.max_charge_kw)}
-          onChange={(event) => setForm({ ...form, max_charge_kw: event.target.value })}
-        />
-        <TextInput
-          label="Max discharge"
-          type="number"
-          suffix="kW"
-          value={String(form.max_discharge_kw)}
-          onChange={(event) => setForm({ ...form, max_discharge_kw: event.target.value })}
-        />
-        <TextInput
-          label={<Term id="soc">Min SOC</Term>}
-          type="number"
-          suffix="%"
-          min={0}
-          max={100}
-          value={String(form.min_soc_percent)}
-          onChange={(event) => setForm({ ...form, min_soc_percent: Number(event.target.value) })}
-        />
-        <TextInput
-          label={<Term id="soc">Max SOC</Term>}
-          type="number"
-          suffix="%"
-          min={0}
-          max={100}
-          value={String(form.max_soc_percent)}
-          onChange={(event) => setForm({ ...form, max_soc_percent: Number(event.target.value) })}
-        />
-        <TextInput
-          label="Backup reserve"
-          type="number"
-          suffix="%"
-          min={0}
-          max={100}
-          value={String(form.backup_reserve_percent)}
-          onChange={(event) =>
-            setForm({ ...form, backup_reserve_percent: Number(event.target.value) })
-          }
-          hint="Never discharged for arbitrage."
-        />
-        <div className="flex items-end">
-          <Checkbox
-            label={t('common.enabled')}
-            checked={form.is_enabled}
-            onChange={(value) => setForm({ ...form, is_enabled: value })}
+    <Card className="mt-5">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Radio className="size-4 text-brand" aria-hidden />
+            {t('storage.drTitle')}
+          </span>
+        }
+        description={t('storage.drHint')}
+        actions={
+          can('ems:write') ? (
+            <Button
+              variant={active ? undefined : 'primary'}
+              disabled={Boolean(active)}
+              onClick={() => setShowTrigger(true)}
+            >
+              {t('storage.drTrigger')}
+            </Button>
+          ) : null
+        }
+      />
+      <CardBody>
+        {active ? (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning-soft p-3">
+            <Badge tone="warning">{t('storage.drActive')}</Badge>
+            <span className="text-sm font-medium tnum">
+              {formatNumber(active.target_power_kw)} kW
+            </span>
+            <span className="text-xs text-muted">
+              {t('storage.drUntil', { time: formatTime(active.ends_at) })}
+            </span>
+            {active.note ? <span className="text-xs text-muted">{active.note}</span> : null}
+            {can('ems:write') ? (
+              <Button
+                className="ml-auto"
+                loading={cancel.isPending}
+                onClick={() => {
+                  void cancel
+                    .mutateAsync(active.id)
+                    .then(() => toast.success(t('storage.drCancelled')))
+                    .catch((error) => toast.error(errorMessage(error)))
+                }}
+              >
+                {t('common.cancel')}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {recent.length === 0 ? (
+          <p className="text-xs text-muted">{t('storage.drEmpty')}</p>
+        ) : (
+          <dl className="divide-y divide-line">
+            {recent.map((event) => (
+              <DetailRow
+                key={event.id}
+                label={`${formatDateTime(event.starts_at)} → ${formatTime(event.ends_at)}`}
+              >
+                <span className="tnum">{formatNumber(event.target_power_kw)} kW</span>
+                {event.cancelled_at ? (
+                  <Badge tone="neutral" className="ml-2">
+                    {t('storage.drCancelledBadge')}
+                  </Badge>
+                ) : event.is_active ? (
+                  <Badge tone="warning" className="ml-2">
+                    {t('storage.drActive')}
+                  </Badge>
+                ) : null}
+              </DetailRow>
+            ))}
+          </dl>
+        )}
+      </CardBody>
+
+      <Modal
+        open={showTrigger}
+        onClose={() => setShowTrigger(false)}
+        title={t('storage.drTrigger')}
+        description={t('storage.drTriggerHint')}
+        footer={
+          <>
+            <Button onClick={() => setShowTrigger(false)}>{t('common.cancel')}</Button>
+            <Button
+              variant="primary"
+              loading={trigger.isPending}
+              disabled={!form.target_power_kw || Number(form.target_power_kw) <= 0}
+              onClick={() => void submit()}
+            >
+              {t('storage.drStart')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <TextInput
+            label={t('storage.drPower')}
+            type="number"
+            suffix="kW"
+            min={1}
+            required
+            value={form.target_power_kw}
+            onChange={(event) => setForm({ ...form, target_power_kw: event.target.value })}
+            hint={t('storage.drPowerHint')}
+          />
+          <Select
+            label={t('storage.drDuration')}
+            value={String(form.duration_minutes)}
+            onChange={(event) =>
+              setForm({ ...form, duration_minutes: Number(event.target.value) })
+            }
+            options={[15, 30, 60, 120, 240].map((minutes) => ({
+              value: String(minutes),
+              label: t('storage.drMinutes', { count: minutes }),
+            }))}
+          />
+          <TextInput
+            label={t('storage.drNote')}
+            value={form.note}
+            onChange={(event) => setForm({ ...form, note: event.target.value })}
+            placeholder={t('storage.drNotePlaceholder')}
           />
         </div>
-      </div>
-    </Modal>
+      </Modal>
+    </Card>
+  )
+}
+
+/**
+ * Bind this site to a plan profile. The profiles themselves are edited on
+ * the plans page - a site only *chooses* one here.
+ */
+function PlanBindPicker({ siteId }: { siteId: string }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const navigate = useNavigate()
+  const plans = useStoragePlans()
+  const plan = useStoragePlan(siteId || undefined)
+  const { bindPlan } = useEmsMutations()
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <Select
+        value={plan.data && !plan.data.inherited_from ? plan.data.id : ''}
+        placeholder={
+          plan.data?.inherited_from
+            ? t('plans.inheritedFrom', {
+                plan: plan.data.name,
+                site: plan.data.inherited_from,
+              })
+            : t('plans.noneBound')
+        }
+        onChange={(event) => {
+          void bindPlan
+            .mutateAsync({ siteId, planId: event.target.value || null })
+            .then(() => toast.success(t('common.saved')))
+            .catch((error) => toast.error(errorMessage(error)))
+        }}
+        options={(plans.data ?? []).map((entry) => ({
+          value: entry.id,
+          label: entry.name,
+        }))}
+        className="w-44"
+      />
+      <Button onClick={() => void navigate('/storage-plans')}>
+        {t('plans.title')}
+      </Button>
+    </span>
+  )
+}
+
+/**
+ * Where this site's money actually went, by source.
+ *
+ * The headline cost figure has always meant *grid* cost, and still does - so a
+ * generator running all afternoon leaves it unchanged while the site burns
+ * diesel. This card is the layer that knows about the rest of the equipment.
+ *
+ * A modelled figure is labelled as one. A fuel cost built on an assumed
+ * consumption curve is not the same kind of number as a metered import, and
+ * conflating them is how a report acquires more authority than it earns.
+ */
+function CostBreakdownCard({
+  siteId,
+  start,
+  end,
+  fallbackCurrency,
+}: {
+  siteId: string
+  start: string
+  end: string
+  fallbackCurrency?: string
+}) {
+  const { t } = useTranslation()
+  const breakdown = useCostBreakdown(siteId || undefined, { start, end })
+  const data = breakdown.data
+  const currency = data?.currency || fallbackCurrency
+
+  return (
+    <Card>
+      <CardHeader
+        title={t('storage.costBreakdown')}
+        description={t('storage.costBreakdownHint')}
+      />
+      <CardBody className="space-y-3">
+        {breakdown.isPending ? (
+          <LoadingState />
+        ) : breakdown.error ? (
+          <ErrorState error={breakdown.error} onRetry={() => void breakdown.refetch()} />
+        ) : (data?.rows.length ?? 0) === 0 ? (
+          <EmptyState title={t('storage.noCostData')} />
+        ) : (
+          <>
+            <CostSourceChart rows={data?.rows ?? []} currency={currency} />
+            <dl className="divide-y divide-line">
+              {(data?.rows ?? []).map((row) => (
+                <DetailRow
+                  key={`${row.source}:${row.cost_model}`}
+                  label={
+                    <span className="flex items-center gap-1.5">
+                      {t(`ems.costSources.${row.source}`, { defaultValue: row.source })}
+                      {row.basis !== 'measured' ? (
+                        <Badge tone="neutral">{t(`ems.costBasis.${row.basis}`)}</Badge>
+                      ) : null}
+                    </span>
+                  }
+                >
+                  {formatCurrency(row.amount, currency)}
+                  <span className="ml-1.5 text-xs text-subtle">
+                    {formatMeasurement(row.energy_kwh, 'kWh', 0)}
+                  </span>
+                </DetailRow>
+              ))}
+              <DetailRow label={t('storage.totalCost')}>
+                <span className="font-semibold">
+                  {formatCurrency(data?.total_amount, currency)}
+                </span>
+              </DetailRow>
+            </dl>
+            {(data?.unknown_savings_intervals ?? 0) > 0 ? (
+              <p className="rounded-lg bg-surface-muted px-3 py-2 text-xs text-muted">
+                {t('storage.savingsUnknown', {
+                  count: data?.unknown_savings_intervals ?? 0,
+                })}
+              </p>
+            ) : null}
+          </>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * How often the equipment here charged, discharged or ran.
+ *
+ * A session's edges come from what the equipment did, not from the settlement
+ * grid, so this answers a question the interval chart cannot: how many times,
+ * for how long, and how much each time.
+ */
+function SessionsCard({
+  siteId,
+  start,
+  end,
+}: {
+  siteId: string
+  start: string
+  end: string
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const { can } = useAuth()
+  const summary = useSessionSummary({ site_id: siteId || undefined, start, end })
+  const sessions = useOperatingSessions({ site_id: siteId || undefined, limit: 6 })
+  const { rebuildSessions } = useEmsMutations()
+
+  const rows = (summary.data ?? []).filter((row) => row.count > 0)
+
+  return (
+    <Card>
+      <CardHeader
+        title={t('storage.sessions')}
+        description={t('storage.sessionsHint')}
+        actions={
+          can('ems:write') ? (
+            <Button
+              size="sm"
+              icon={<History className="size-3.5" />}
+              loading={rebuildSessions.isPending}
+              onClick={async () => {
+                try {
+                  await rebuildSessions.mutateAsync({ start, end })
+                  toast.success(t('storage.sessionsRebuilt'))
+                } catch (error) {
+                  toast.error(errorMessage(error))
+                }
+              }}
+            >
+              {t('storage.rebuild')}
+            </Button>
+          ) : null
+        }
+      />
+      <CardBody className="space-y-3">
+        {summary.isPending ? (
+          <LoadingState />
+        ) : rows.length === 0 ? (
+          <EmptyState title={t('storage.noSessions')} />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {rows.map((row) => (
+              <div key={row.kind} className="rounded-lg border border-line p-3">
+                <p className="text-xs text-muted">
+                  {t(`devices.sessionKinds.${row.kind}`)}
+                </p>
+                <p className="mt-1 tnum text-xl font-semibold">{row.count}</p>
+                <p className="mt-0.5 text-[11px] text-subtle">
+                  {formatMeasurement(row.total_energy_kwh, 'kWh', 0)}
+                  {row.avg_duration_s
+                    ? ` · ${t('storage.avgDuration', {
+                        duration: formatDuration(row.avg_duration_s),
+                      })}`
+                    : ''}
+                </p>
+                {row.open_count > 0 ? (
+                  <Badge tone="ok" className="mt-1.5">
+                    {t('storage.openSessions', { count: row.open_count })}
+                  </Badge>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardBody>
+
+      {(sessions.data?.items.length ?? 0) > 0 ? (
+        <Table>
+          <THead>
+            <Th>{t('devices.device')}</Th>
+            <Th>{t('devices.sessionKind')}</Th>
+            <Th>{t('devices.sessionStarted')}</Th>
+            <Th align="right">{t('devices.sessionEnergy')}</Th>
+          </THead>
+          <TBody>
+            {(sessions.data?.items ?? []).map((session) => (
+              <Tr key={session.id}>
+                <Td className="max-w-40 truncate">{session.device_name}</Td>
+                <Td>
+                  <Badge
+                    tone={
+                      session.kind === 'discharge'
+                        ? 'brand'
+                        : session.kind === 'charge'
+                          ? 'info'
+                          : 'neutral'
+                    }
+                  >
+                    {t(`devices.sessionKinds.${session.kind}`)}
+                  </Badge>
+                </Td>
+                <Td className="text-muted">{formatDateTime(session.started_at)}</Td>
+                <Td align="right" className="tnum">
+                  {formatMeasurement(session.energy_kwh, 'kWh', 1)}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      ) : null}
+    </Card>
+  )
+}
+
+/**
+ * What the automatic dispatch engine is about to do, and why.
+ *
+ * Shown before it happens rather than reconstructed afterwards from the
+ * command log: "why is the battery idle" has an answer - no window, plan
+ * disabled, clamped by the backup reserve - and that answer is worth far more
+ * than the absence of a command.
+ */
+function DispatchCard({ siteId }: { siteId: string }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const { can } = useAuth()
+  const preview = useDispatchPreview()
+  const { runDispatch } = useEmsMutations()
+
+  const decisions = (preview.data ?? []).filter(
+    (decision) => !siteId || decision.site_id === siteId,
+  )
+  if (preview.isPending || decisions.length === 0) return null
+
+  return (
+    <Card className="mt-5">
+      <CardHeader
+        title={t('storage.dispatch')}
+        description={t('storage.dispatchHint')}
+        actions={
+          can('ems:dispatch') ? (
+            <Button
+              size="sm"
+              icon={<PlayCircle className="size-3.5" />}
+              loading={runDispatch.isPending}
+              onClick={async () => {
+                try {
+                  const result = await runDispatch.mutateAsync({})
+                  const sent = result.filter(
+                    (decision) => decision.power_w !== null && !decision.skipped,
+                  ).length
+                  toast.success(t('storage.dispatchRan', { count: sent }))
+                } catch (error) {
+                  toast.error(errorMessage(error))
+                }
+              }}
+            >
+              {t('storage.runDispatch')}
+            </Button>
+          ) : null
+        }
+      />
+      <Table>
+        <THead>
+          <Th>{t('storage.selectSite')}</Th>
+          <Th align="right">{t('storage.dispatchTarget')}</Th>
+          <Th>{t('storage.dispatchReason')}</Th>
+        </THead>
+        <TBody>
+          {decisions.map((decision) => (
+            <Tr key={decision.site_id}>
+              <Td className="font-medium">{decision.site_name}</Td>
+              <Td align="right" className="tnum">
+                {decision.power_w === null ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <span
+                    className={
+                      decision.power_w < 0
+                        ? 'text-info'
+                        : decision.power_w > 0
+                          ? 'text-brand'
+                          : 'text-muted'
+                    }
+                  >
+                    {formatMeasurement(decision.power_w, 'W', 1)}
+                  </span>
+                )}
+                {decision.clamped_from_w !== null ? (
+                  <Badge tone="warning" className="ml-2">
+                    {t('storage.clamped')}
+                  </Badge>
+                ) : null}
+              </Td>
+              <Td className="text-muted">
+                {decision.skipped
+                  ? t(`storage.dispatchSkipped.${decision.skipped}`, {
+                      defaultValue: decision.reason,
+                    })
+                  : decision.reason}
+              </Td>
+            </Tr>
+          ))}
+        </TBody>
+      </Table>
+    </Card>
+  )
+}
+
+/**
+ * What the equipment here cost, and what that works out to per year.
+ *
+ * Kept next to the energy cost rather than inside it. Capital is not a cost of
+ * *moving energy*: folding an amortised purchase price into the interval costs
+ * would make "what did this interval cost" mean two things at once, and it
+ * would double count against the battery cycle charge, which already is the
+ * purchase price expressed per kWh of throughput.
+ *
+ * Equipment with no recorded cost is counted and shown, not quietly treated as
+ * free - a zero there flatters every payback figure on the page.
+ */
+function InvestmentCard({
+  siteId,
+  start,
+  end,
+}: {
+  siteId: string
+  start: string
+  end: string
+}) {
+  const { t } = useTranslation()
+  const investment = useSiteInvestment(siteId || undefined, { start, end })
+  const data = investment.data
+
+  if (investment.isPending) return null
+  if (!data || (data.devices.length === 0 && data.devices_without_cost === 0)) return null
+
+  const currency = data.currency || undefined
+
+  return (
+    <Card className="mt-5">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Landmark className="size-4 text-brand" aria-hidden />
+            {t('storage.investment')}
+          </span>
+        }
+        description={t('storage.investmentHint')}
+      />
+      <CardBody className="space-y-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <StatTile
+            label={t('storage.capitalTotal')}
+            value={formatCurrency(data.total_capital_cost, currency)}
+          />
+          <StatTile
+            label={t('storage.annualTotal')}
+            value={formatCurrency(data.total_annual_cost, currency)}
+            hint={t('storage.annualTotalHint')}
+          />
+          <StatTile
+            label={t('storage.windowShare')}
+            value={formatCurrency(data.window_amortised_cost, currency)}
+            hint={t('storage.windowShareHint')}
+          />
+        </div>
+
+        {data.devices_without_cost > 0 ? (
+          <p className="rounded-lg bg-surface-muted px-3 py-2 text-xs text-muted">
+            {t('storage.missingCost', { count: data.devices_without_cost })}
+          </p>
+        ) : null}
+      </CardBody>
+
+      {data.devices.length > 0 ? (
+        <Table>
+          <THead>
+            <Th>{t('devices.device')}</Th>
+            <Th align="right">{t('devices.capitalCost')}</Th>
+            <Th align="right">{t('devices.annualCost')}</Th>
+            <Th align="right">{t('devices.commissionedOn')}</Th>
+          </THead>
+          <TBody>
+            {data.devices.map((device) => (
+              <Tr key={device.device_id}>
+                <Td>
+                  <span className="flex items-center gap-2">
+                    <DeviceIcon category={device.category} />
+                    <span className="font-medium">{device.device_name}</span>
+                  </span>
+                </Td>
+                <Td align="right" className="tnum">
+                  {formatCurrency(device.capital_cost, currency)}
+                </Td>
+                <Td align="right" className="tnum text-muted">
+                  {formatCurrency(device.annual_cost, currency)}
+                </Td>
+                <Td align="right" className="text-muted">
+                  {device.commissioned_on ?? '—'}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
+      ) : null}
+    </Card>
   )
 }
 

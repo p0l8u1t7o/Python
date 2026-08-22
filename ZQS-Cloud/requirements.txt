@@ -10,6 +10,15 @@ argon2-cffi==23.1.0
 # ---- Messaging ----
 paho-mqtt==2.1.0
 redis==5.2.1
+# Sparkplug B payloads. The generated binding is committed, so protoc is only
+# needed to regenerate it - see requirements-dev.txt.
+protobuf==5.29.3
+
+# ---- Geocoding ----
+# Timezone from coordinates, offline. Chosen over timezonefinder because it
+# carries no numpy dependency, and over a second web service because geocoding
+# already depends on one upstream being reachable.
+tzfpy==1.3.3
 
 # ---- Serialization / config ----
 orjson==3.10.15

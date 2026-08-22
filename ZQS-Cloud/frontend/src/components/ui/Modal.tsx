@@ -25,21 +25,36 @@ export function Modal({
   const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement>(null)
 
+  // Read through a ref so the effect below does not depend on `onClose`.
+  //
+  // Every caller writes `onClose={() => setOpen(false)}` - a new function on
+  // every render - and this page re-renders every few seconds with the polls.
+  // With `onClose` in the dependency list the effect re-ran on each poll, and
+  // its `panelRef.current?.focus()` yanked focus out of whatever field the
+  // operator was typing in. The symptom was maddening: text scrambled or
+  // keystrokes vanishing mid-word, every five seconds, in every form.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
     // Stop the page behind the dialog from scrolling with it.
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    panelRef.current?.focus()
+    // Focus the panel only when the dialog *opens*, and only if nothing
+    // inside it holds focus already - stealing focus is only ever right once.
+    if (!panelRef.current?.contains(document.activeElement)) {
+      panelRef.current?.focus()
+    }
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

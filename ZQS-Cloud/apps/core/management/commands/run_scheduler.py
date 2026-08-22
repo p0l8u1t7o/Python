@@ -57,6 +57,23 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--session-hours",
+            type=float,
+            default=2.0,
+            help=(
+                "Operating-session rebuild lookback, in hours (default 2). "
+                "Overlapping on purpose, like the energy aggregation."
+            ),
+        )
+        parser.add_argument(
+            "--no-dispatch",
+            action="store_true",
+            help=(
+                "Do not execute dispatch windows. The engine sends real "
+                "commands to real hardware, so there is an off switch."
+            ),
+        )
+        parser.add_argument(
             "--once",
             action="store_true",
             help="Run a single cycle and exit. Useful from Task Scheduler or cron.",
@@ -96,6 +113,15 @@ class Command(BaseCommand):
                 interval=options["rollup_interval"],
                 hours=options["rollup_hours"],
             )
+            # After the rollups: sessions read the same samples, and running
+            # them in this order means a freshly closed session is visible in
+            # the same cycle the energy behind it was aggregated.
+            self._run_job("rebuild_sessions", hours=options["session_hours"])
+            if not options["no_dispatch"]:
+                # Last, and deliberately so: the dispatch engine reads the
+                # live SOC to decide whether the plan permits a discharge, and
+                # everything above has just refreshed what it reads.
+                self._run_job("run_dispatch")
             if prune_every and cycle % prune_every == 0:
                 self._run_job("prune_telemetry")
 

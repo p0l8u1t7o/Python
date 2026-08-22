@@ -16,9 +16,9 @@
 | [running-locally.md](running-locally.md) | 怎麼在本機跑起來、三種模式、疑難排解 | 要開始動手時 |
 | **codebase-guide.md**（本文） | 資料夾結構、架構、該去哪裡改 | 要維護程式時 |
 | [system-logic.md](system-logic.md) | 系統**行為規則**：分類怎麼判定、命令什麼時候被擋、哪些情況記 null | 要理解「為什麼是這樣」時 |
-| [device-protocol.md](device-protocol.md) | MQTT 通訊契約：topic、payload schema | 要寫設備端韌體時 |
+| [device-protocol.md](device-protocol.md) | **Sparkplug B** 通訊契約：三層位址、protobuf payload、生死流程、離線判定、憑證與 ACL。**這份是給設備開發商的** | 要寫設備端韌體時 |
 | [device-test-harness.md](device-test-harness.md) | 設備連線測試工具：`scripts\test-device.ps1` 一鍵自我驗證＋設備驗收 | 要測設備端連線時 |
-| [device-classification.md](device-classification.md) | 設備分類與成本模型的**設計提案**（部分尚未實作） | 要做 session／成本模型時 |
+| [device-classification.md](device-classification.md) | 設備分類、session 與成本模型的**設計論述**（現已實作，此文說明為什麼這樣設計） | 要動 session／成本模型時 |
 | [labview-integration.md](labview-integration.md) | LabVIEW 透過 Python Node 啟停服務 | 要從 LabVIEW 控制服務時 |
 
 **建議順序**：README → running-locally → 本文 → system-logic。
@@ -39,6 +39,10 @@ Django 5.1 + django-ninja 後端、React 19 + Vite 前端，資料從 MQTT 進�
 | **worker** | `manage.py run_worker` | 從 queue 取出、批次寫 DB、跑告警規則、發通知 | 可（同一 consumer group） |
 | **scheduler** | `manage.py run_scheduler` | 週期性彙總：能源區間、rollup、資料清理 | **只能一個** |
 
+開發時另有兩個行程，只為了讓上面這四個不必先裝 Docker 就能跑通：
+`run_broker`（內建 MQTT broker）與 `run_pipeline`（ingestor + worker 同行程）。
+兩者都不可用於正式環境，見 §8.11D。
+
 ### 1.2 為什麼要分開
 
 **ingestor 完全不碰資料庫。** 這是整個架構最重要的一條線。資料庫變慢或被鎖住
@@ -54,14 +58,16 @@ ingestor 只做「解析 topic、驗證 payload、丟進 queue」，worker 才�
 
 ```mermaid
 flowchart TD
-    D[設備 / LabVIEW] -->|MQTT publish<br/>energy/devices/ID/telemetry| E[EMQX broker]
+    D[邊緣節點 / 網關] -->|Sparkplug B<br/>spBv1.0/group/DDATA/node/device| E[EMQX broker]
     E -->|auth / ACL webhook| API1[api: /api/emqx/auth]
     E -->|subscribe| I[ingestor]
-    I -->|1. topics.parse 解析 topic| I
-    I -->|2. protocol.py 驗證 payload| I
-    I -->|3. registry 查設備是否註冊且啟用| I
+    I -->|1. sparkplug/topics.py 解析位址| I
+    I -->|2. sparkplug/payload.py 解 protobuf| I
+    I -->|3. registry 查節點與設備是否註冊且啟用| I
     I -->|publish envelope| B[(bus<br/>Redis Streams)]
     B -->|consume| W[worker]
+    W -->|MetricAlias 解析別名| W
+    W -->|profile.py 分流：量測 / 警報 / 事件 / 命令回覆| W
     W -->|SampleGate 依 recording policy 過濾| W
     W -->|bulk insert| DB[(SQLite / PostgreSQL)]
     W -->|AlertEngine 評估規則| DB
@@ -78,19 +84,35 @@ flowchart TD
 
 | 步驟 | 檔案 | 做什麼 |
 | --- | --- | --- |
-| 1 | `services/mqtt/topics.py` | `parse()` 把 topic 拆成 `(device_id, kind)` |
-| 2 | `services/ingestor/protocol.py` | 驗證 payload：時間戳、metric key、數值範圍、大小上限 |
-| 3 | `apps/devices/registry.py` | TTL 快取查 `device_id` → `DeviceRef`；未註冊或 `is_enabled=False` 就丟棄 |
-| 4 | `services/ingestor/main.py` | 組成 envelope，`bus.publish()` |
-| 5 | `services/bus/redis_streams.py` | 寫進 Redis Stream |
-| 6 | `services/worker/main.py` | `_consume_loop` 取批次，依 kind 分派 |
-| 7 | `services/worker/processors.py` | 四個類別：`TelemetryProcessor` / `StatusProcessor` / `EventProcessor` / `CommandAckProcessor`。**`alarm` 與 `event` 兩個 stream 共用 `EventProcessor`**（`worker/main.py` 的 `self.processors` 對照表） |
-| 8 | `apps/telemetry/policy.py` | `SampleGate` 依 recording policy 決定這筆要不要存（間隔、死區、心跳） |
-| 9 | `apps/telemetry/repository.py` | `insert_samples()` / `upsert_latest()` 批次寫入 |
-| 10 | `apps/alerts/engine.py` | `AlertEngine.evaluate()` 判斷是否觸發告警 |
-| 11 | `apps/ems/aggregator.py` | （scheduler）`SiteAggregator` 積分成 `EnergyInterval` |
-| 12 | `apps/*/api.py` | REST 端點查詢 |
-| 13 | `frontend/src/lib/queries.ts` | TanStack Query 取資料 |
+| 1 | `services/sparkplug/topics.py` | `parse()` 把 topic 拆成 `(group_id, 型別, edge_node_id, device_id)` |
+| 2 | `services/sparkplug/payload.py` | 解 protobuf，攤平成 Python 值 |
+| 3 | `services/ingestor/protocol.py` | 時鐘偏移檢查、大小與 metric 數量上限 |
+| 4 | `apps/devices/registry.py` | TTL 快取查 `(group_id, node_id)` → `EdgeNodeRef`、`(node_pk, device_id)` → `DeviceRef`；未註冊或停用就丟棄 |
+| 5 | `services/ingestor/main.py` | 組成 envelope，`bus.publish()` |
+| 6 | `services/bus/redis_streams.py` | 寫進 Redis Stream（**單一 stream**，見 §2.2） |
+| 7 | `services/worker/main.py` | `_consume_loop` 取批次 |
+| 8 | `services/worker/processors.py` | `SparkplugProcessor`：檢查 `seq`、處理生死、用 `MetricAlias` 解析別名、再依 `profile.py` 的前綴分流成量測／警報／事件／命令回覆 |
+| 9 | `apps/telemetry/policy.py` | `SampleGate` 依 recording policy 決定這筆要不要存（間隔、死區、心跳） |
+| 10 | `apps/telemetry/repository.py` | `insert_samples()` / `upsert_latest()` 批次寫入 |
+| 11 | `apps/alerts/engine.py` | `AlertEngine.evaluate()` 判斷是否觸發告警 |
+| 12 | `apps/ems/aggregator.py` | （scheduler）`SiteAggregator` 積分成 `EnergyInterval` |
+| 13 | `apps/*/api.py` | REST 端點查詢 |
+| 14 | `frontend/src/lib/queries.ts` | TanStack Query 取資料 |
+
+### 2.2 為什麼只有一條 stream
+
+把上行拆成好幾條 stream（telemetry / status / event / alarm 各一條）看起來合理，
+在 Sparkplug 下卻行不通：
+
+- **一則訊息不再只是一種東西。** 單一 DDATA 可以同時帶讀值、警報與命令回覆，而且
+  裡面的 metric 可能只有別名、沒有名稱——在查過出生表之前根本讀不出來。ingestor
+  沒有資料庫連線，所以它分不了。
+- **順序是有意義的。** `seq` 是主機發現訊息遺失的唯一依據，而且出生必須排在依賴
+  那批別名的資料之前。兩條獨立消費的 stream 兩個保證都給不了；把 state 排在 data
+  前面反而會主動製造亂序。
+
+代價是一陣 telemetry 洪水現在會擋在狀態變更前面。這個取捨是對的：狀態晚一點顯示
+只是畫面延遲，讀值記到錯誤的 metric 上則是歷史資料損毀。
 
 ### 2.2 下行（命令）
 
@@ -100,8 +122,9 @@ flowchart TD
 **不經過 bus。** 所以 `dispatch_command()` 是唯一的關卡——所有安全檢查都在那裡
 （見 [system-logic.md](system-logic.md) §3）。
 
-> **注意**：`DispatchWindow` model 存在，但**沒有任何程式碼消費它**。自動調度
-> 引擎尚未實作。
+自動調度走的是**同一條路**：`apps/ems/dispatch.py` 把生效中的 `DispatchWindow`
+算成設定值，然後呼叫同一個 `dispatch_command()`。它沒有任何特權旁路——能力檢查、
+生命週期閘門、稽核紀錄，跟人操作時完全一樣。
 
 ---
 
@@ -138,7 +161,9 @@ ZQS-Cloud/
 │   │   ├── timeutils.py          now() / UTC / floor_to_interval / parse_timestamp
 │   │   ├── system_api.py         /system/health、/system/capabilities、/system/fleet
 │   │   └── management/commands/  bootstrap、seed_demo、generate_history、
-│   │                             simulate_device、run_ingestor、run_worker、run_scheduler
+│   │                             simulate_device、run_ingestor、run_worker、run_scheduler、
+│   │                             run_broker（開發用 MQTT broker）、
+│   │                             run_pipeline（ingestor + worker 同行程）
 │   │
 │   ├── accounts/                 租戶、使用者、角色、API key、JWT
 │   │   ├── models.py             User / Organization / Membership / ApiKey / RefreshToken
@@ -163,16 +188,22 @@ ZQS-Cloud/
 │   │   ├── repository.py (370行) 所有非 ORM 的 SQL（分桶、upsert、rollup）
 │   │   ├── policy.py             PolicyResolver / SampleGate（決定哪筆樣本要存）
 │   │   ├── catalog.py            metric 定義的 TTL 快取
-│   │   ├── energy.py             GAUGE 積分 / COUNTER 差值 / counter reset 處理
+│   │   ├── energy.py             GAUGE 積分 / COUNTER 差值 / counter reset（純函式）
+│   │   ├── device_energy.py      單機耗能：挑序列、讀資料、呼叫 energy.py
 │   │   └── api.py                metrics / recording-policies / telemetry 三個 router
 │   │
 │   ├── ems/                      表後儲能（BTM）
-│   │   ├── models.py             EnergyAsset / StoragePlan / Tariff /
-│   │   │                         EnergyInterval / DispatchWindow
-│   │   ├── aggregator.py         SiteAggregator：功率積分 → EnergyInterval
-│   │   ├── rollup.py             跨場域彙總（同時尖峰、加權比率）
+│   │   ├── models.py             EnergyAsset / StoragePlan / Tariff / EnergyInterval /
+│   │   │                         EnergyIntervalCost / DeviceOperatingSession /
+│   │   │                         DispatchWindow
+│   │   ├── aggregator.py         SiteAggregator：功率積分 → EnergyInterval + 成本分項
+│   │   ├── rollup.py             跨場域彙總（同時尖峰、加權比率、各場域成本）
 │   │   ├── tariffs.py            時段電價解析
-│   │   └── api.py                資產、儲能策略、電價、概覽、區間、重算
+│   │   ├── sessions.py           運轉 session 判定與回算（遲滯、最短時長、中斷）
+│   │   ├── dispatch.py           調度引擎 + StoragePlan 運轉限制的執行期強制
+│   │   ├── costs/                可註冊的成本模型（市電、電池循環、柴發油耗）
+│   │   └── api.py                資產、儲能策略、電價、概覽、區間、成本分項、
+│   │                             session、調度、重算
 │   │
 │   ├── alerts/                   告警規則引擎
 │   │   ├── models.py             AlertRule / Alert / AlertEvent / NotificationChannel
@@ -192,22 +223,29 @@ ZQS-Cloud/
 │   │   ├── redis_streams.py      預設後端（consumer group、claim、dead letter）
 │   │   ├── rabbitmq.py           替代後端
 │   │   └── memory.py             行程內佇列（開發用，跨行程無效）
-│   ├── mqtt/
+│   ├── sparkplug/                Sparkplug B 協定層
+│   │   ├── sparkplug_b.proto     規範的 payload schema（逐字取自 Eclipse Tahu）
+│   │   ├── sparkplug_b_pb2.py    產生檔，已進版控（執行期不需要 protoc）
 │   │   ├── topics.py             topic 文法——訂閱、發布、ACL 都以此為準
+│   │   ├── datatypes.py          DataType 列舉與二補數的值轉換
+│   │   ├── payload.py            protobuf 編解碼；上面全部是 Python 值
+│   │   ├── profile.py            metric 命名約定：什麼是量測、什麼是警報
+│   │   └── node.py               節點端用戶端（模擬器與參考設備共用）
+│   ├── mqtt/
 │   │   ├── client.py             會重連的 paho-mqtt 包裝
-│   │   └── publisher.py          下行命令發布（行程層級單例）
+│   │   └── publisher.py          下行發布（行程層級單例）
 │   ├── ingestor/
-│   │   ├── main.py               訂閱、分派、統計
-│   │   └── protocol.py           payload 驗證（時間戳、metric、範圍、大小）
+│   │   ├── main.py               訂閱、分派、統計、主機 STATE
+│   │   └── protocol.py           時鐘偏移與大小上限
 │   ├── worker/
 │   │   ├── main.py               消費迴圈、批次分派、reclaim、維護與通知迴圈
-│   │   ├── processors.py (627行) 五種訊息各自的處理器
+│   │   ├── processors.py         SparkplugProcessor：序號、生死、別名、分流
 │   │   ├── maintenance.py        離線判定、命令逾時
 │   │   └── notifications.py      email / webhook 送出
 │   └── labview/
 │       └── labview_api.py        給 LabVIEW Python Node 的非阻塞行程控制
 │
-├── tests/                        全部測試（294 個）
+├── tests/                        後端測試（611 個）
 │   ├── factories.py              organization / user / site / blueprint / device
 │   ├── test_api.py               ApiTestCase 基底（登入、JSON 請求輔助）
 │   └── test_*.py                 各主題
@@ -237,15 +275,17 @@ frontend/
     │   ├── types.ts     (770行)  對應後端 Schema 的 TypeScript 型別
     │   ├── errors.ts             errorMessage() / fieldErrors()
     │   ├── format.ts             日期、數值、單位格式化
-    │   └── useTimeRange.ts       時間範圍選擇器的共用 hook
+    │   └── useTimeRange.ts       時間視窗：滾動預設值 + 使用者自訂的固定區間
     ├── providers/
     │   ├── AuthProvider.tsx      me、can(permission)、登入登出
     │   ├── ThemeProvider.tsx     淺色／深色
     │   └── ToastProvider.tsx     全域提示
     ├── components/
-    │   ├── ui/                   Button / Card / Field / Modal / Table / Badge…
+    │   ├── ui/                   Button / Card / Field / Modal / Table / Badge /
+    │   │                         SiteTreeSelect / DeviceIcon / TimeRangePicker…
     │   ├── layout/               AppShell / Sidebar / TopBar
-    │   └── charts/               TimeSeriesChart / EnergyCharts / PowerFlowDiagram
+    │   └── charts/               TimeSeriesChart / EnergyCharts / CostCharts /
+    │                             PowerFlowDiagram
     ├── pages/                    每個路由一個檔案
     └── i18n/
         ├── index.ts              i18next 設定、語言代碼正規化
@@ -300,12 +340,35 @@ load_dotenv(BASE_DIR / ".env", override=False)
 | --- | --- |
 | `User` | 自訂 user model（`AUTH_USER_MODEL`），以 email 登入 |
 | `Organization` | 租戶邊界。**每個 device / site / alert 都屬於恰好一個** |
-| `Membership` | user × organization × role |
+| `Membership` | user × organization × role × **場域範圍**（`sites` M2M） |
+| `UserPreference` | 純介面版面設定，`(user, key)` 唯一。後端只存不讀 |
 | `ApiKey` | 機器帳號，前綴 + 雜湊 |
 | `RefreshToken` | 支援 rotation 與重用偵測 |
 
 `Role`：`owner`(40) > `admin`(30) > `operator`(20) > `viewer`(10)。
 `permissions.py` 把 role 展開成 permission 清單，前端據以隱藏按鈕。
+
+存取控制有**三個維度**，不是兩個：哪個租戶、什麼角色、以及組織的哪一部分。第三個
+是 `Membership.sites`：
+
+- **空清單代表整個組織**——這是每個既有 membership 的狀態，所以加上這個欄位沒有
+  改變任何人的存取權。刻意不是空集合，因為空集合讀起來是「什麼都看不到」，那是
+  某天有人搞混這兩者時會把所有人鎖在門外的差別。
+- **指定一個場域等於連同它的整棵子樹**。負責一個廠的人就是負責廠裡的東西；要求
+  管理員把每條產線列出來會讓這個功能無法使用，更糟的是——新增一條產線的那天它會
+  安靜地出錯。
+- **範圍不會提升權限**，只跟角色取交集。被限制在單一廠區的 viewer，在那裡仍然是
+  viewer。
+
+請求進來時在 `AuthContext.site_scope` 展開一次（`None` = 不受限），之後每個
+queryset 用 `ctx.scope_queryset(...)` 收窄，單筆用 `ctx.allows_site(...)` /
+`ctx.require_site(...)`。
+
+**沒有場域的設備只有不受限的人看得到。** 被限制在某廠的人沒有理由看到還沒被放到
+任何地方的設備——那正好是新設備在管理員指派之前所在的池子。
+
+範圍外的**設備與告警回 404 而不是 403**：「它存在但不是你的」本身就是一則他們沒有
+得到的資訊。場域本身回 403，因為請求者是拿著 id 直接問的。
 
 #### `apps/devices` —— 核心
 
@@ -347,11 +410,21 @@ SQLite 與 PostgreSQL 的差異（時間分桶、upsert）。
 
 | Model | 說明 |
 | --- | --- |
-| `EnergyAsset` | **量測綁定**：哪台設備的哪個 metric 供應哪條能量流 |
-| `StoragePlan` | 每個場域一份（`OneToOne`）：策略、契約容量、SOC 界線 |
+| `EnergyAsset` | **量測綁定**：哪台設備的哪個 metric 供應哪條能量流；另帶 session 門檻與成本模型參數 |
+| `StoragePlan` | 每個場域一份（`OneToOne`）：策略、契約容量、SOC 界線、節費基準線、`enforce_limits` |
 | `Tariff` | 時段電價 |
-| `EnergyInterval` | 15 分鐘結算區間，**per Site** |
-| `DispatchWindow` | 排程指令（**目前無人消費**） |
+| `EnergyInterval` | 15 分鐘結算區間，**per Site**。`estimated_savings` 可為 null（沒有基準線時） |
+| `EnergyIntervalCost` | 區間成本**分項**：market/battery/generator 各一列，可用 SQL 聚合 |
+| `DeviceOperatingSession` | 一段連續的充電／放電／運轉，**per Device**，由排程回算 |
+| `DispatchWindow` | 排程指令，由 `apps/ems/dispatch.py` 消費 |
+
+`apps/ems` 底下另有幾個非 model 的模組值得知道（`taipower.py`：內建台電時間電價方案，`GET /ems/tariffs/presets`；`strategy.py`：儲能策略的實際計算——契約容量管理、TOU 套利、自發自用、備援保留——加上需量反應事件查詢與電池健康約束，由 `dispatch.py::decide()` 依「DR 事件 > 排程窗 > 策略 > 包絡+健康」的順序整合）：
+
+| 模組 | 職責 |
+| --- | --- |
+| `costs/` | 可註冊的成本模型（`grid_tariff`、`battery_cycle`、`diesel_fuel`、`grid_export`） |
+| `sessions.py` | 從功率樣本判定運轉 session：遲滯、最短時長、資料中斷 |
+| `dispatch.py` | 把生效中的 `DispatchWindow` 變成命令，並強制執行 `StoragePlan` 的運轉限制 |
 
 #### `apps/alerts`
 
@@ -362,11 +435,37 @@ SQLite 與 PostgreSQL 的差異（時間分桶、upsert）。
 `engine.py` 處理的細節：遲滯（`hysteresis`）、持續時間（`for_duration_seconds`）、
 冷卻（`cooldown_seconds`）、自動解除、fingerprint 去重。
 
+通知：`NotificationChannel`（webhook / email / **line** / mqtt）＋兩個訂閱開關
+（`notify_alerts` 依 severity、`notify_events` 依設備事件層級）。送信在
+`services/worker/notifications.py`（`queue_event_notifications` 由 ingest 在寫入
+DeviceEvent 後呼叫；`dispatch_pending` 批次送＋重試）。SMTP 用 `EMAIL_*` 環境
+變數，未設定時 email 走 console backend。LINE 用 Messaging API push。
+
 #### `apps/audit`
 
 `AuditLog` 記錄**操作者做了什麼**（不是設備做了什麼——那是 `DeviceEvent`）。
 唯一寫入入口是 `apps/audit/services.py::record()`。
 `AuditAction` 的註解寫得很明白：**action key 是穩定的，永遠不要就地改字**。
+
+#### `apps/workflows`
+
+畫布式控制流程（React Flow）。行為規則見 system-logic §1.11，這裡只講「改東西
+去哪裡」：
+
+| 檔案 | 內容 |
+| --- | --- |
+| `models.py` | `Workflow`（graph JSON + version）、`WorkflowRun`（status／wake_at／step_delay_seconds）、`WorkflowToken`（每條並行分支一顆，state 是它的暫存）、`WorkflowLog`；`RUNNABLE_STATUSES` vs `ACTIVE_STATUSES`（paused 占名額但引擎不推） |
+| `engine.py` | `advance()` stepper、**抵達合流**(`_occupied`/`_move`:同節點僅容一個分支,防 Jump 迴圈指數分裂)：每輪輪替、步數預算、停止點（執行**前**暫停，`_bp` 標記讓 Resume 不重複觸發）、慢動作延遲（`_slowmo` 標記讓單步能無視它） |
+| `runner.py` | `start_run`（併發上限在這裡、拒絕不排隊）、`stop_run`／`pause_run`／`resume_run`／`step_run`、`run_single_node`（單 Node 執行:只跑指名節點、忽略停用與停止點旗標、跑完就收）、`tick()`、`sweep_orphans()` |
+| `nodes/base.py` | `Param`／`Handle`／`Result` 與 registry；**加節點型別只要在 `nodes/builtin.py` 註冊**，前端調色盤與表單從 `/workflows/node-types` 渲染 |
+| `graph.py` | 存檔時驗證（jump 目標、note 不可連線、要有起點） |
+| `management/commands/run_workflows.py` | 引擎行程，tick 預設 2 秒 |
+| `stream.py` | 執行監看的 SSE 端點（`/api/workflow-runs/{id}/stream`，掛在 `config/urls.py`，token 走 query param 因為 EventSource 不能帶 header）|
+
+前端：`pages/WorkflowEditorPage.tsx`（畫布＋控制列＋自動排列＋離開未存提醒）、
+`components/workflow/`（節點卡片、Note、檢視面板、記錄面板）、
+`lib/workflowValidation.ts`（參數防呆）。節點名稱／說明的翻譯在各語言檔的
+`workflows.nodeTypes.*`，缺 key 時退回伺服器英文。
 
 ### 4.3 Model 關聯圖
 
@@ -477,8 +576,17 @@ get_bus()     # 行程層級單例；memory 後端**必須**靠這個才能收�
 
 要加新後端：實作介面 → 在 `factory.py` 加分支。
 
-**`services/mqtt/topics.py`** 是 topic 的唯一真相來源。ingestor 的訂閱、API 的
-發布、EMQX 的 ACL 都由它導出，所以三者不可能不一致。
+**`services/sparkplug/`** —— 協定層，分四層而不是一團：
+
+| 檔案 | 邊界 |
+| --- | --- |
+| `topics.py` | topic 的唯一真相來源。ingestor 的訂閱、API 的發布、EMQX 的 ACL 都由它導出，所以三者不可能不一致 |
+| `payload.py` | protobuf 的唯一出入口。這一層以上完全是 Python 值，換掉產生的 binding 只會動到這一個檔案 |
+| `datatypes.py` | `datatype` 與 `oneof` 欄位的對應，含有號整數的二補數 |
+| `profile.py` | metric 名稱的意義。Sparkplug 刻意不規定 metric 叫什麼，這個檔案就是那個決定寫下來的地方 |
+
+`node.py` 是**節點端**（而非主機端）的用戶端，模擬器、測試工具的參考設備都用它。
+放在這裡是刻意的：序號與別名的邏輯只該有一份實作，第二份一定會跟第一份漂移。
 
 **`services/labview/labview_api.py`** 與其他不同：它是給 LabVIEW Python Node
 呼叫的**行程管理器**，只用標準函式庫、不 import Django。詳見
@@ -516,6 +624,8 @@ Recharts 很重）。
 | `/sites` | SitesPage |
 | `/recording` | RecordingPage |
 | `/rules` | RulesPage |
+| `/tariffs` | TariffsPage |
+| `/help` | HelpPage |
 | `/audit` | AuditPage |
 | `/settings` | SettingsPage |
 
@@ -557,7 +667,16 @@ typecheck 失敗。這是刻意的，避免漏翻譯。
 `ConnectionBadge` / `SeverityBadge` / `Field` / `TextInput` / `TextArea` /
 `Select` / `Checkbox` / `SegmentedControl` / `Table` 系列 / `Modal` /
 `ConfirmDialog` / `EmptyState` / `ErrorState` / `LoadingState` / `Skeleton` /
-`StatTile` / `MeterBar` / `Pagination`。
+`StatTile` / `MeterBar` / `Pagination` / `SiteTreeSelect` / `DeviceIcon` /
+`DeviceIconBadge` / `TimeRangePicker` / `MetricPicker`。
+
+後面三個是後來加的，各自有一個「為什麼不用更簡單的作法」：
+
+| 元件 | 取代了什麼 | 為什麼 |
+| --- | --- | --- |
+| `SiteTreeSelect` | 用兩個空白縮排的扁平 `<select>` | 清單一長到要捲動，樹的形狀就消失了——而那正是它最需要存在的時候。搜尋時會保留命中節點的**上層**，否則「產線 3」會被畫在最上層，那是對它位置的謊言 |
+| `DeviceIcon` | 純文字的類型欄 | 依 **category** 而非藍圖：category 是平台真正拿來推理的東西，而且一台設備的 category 終生不變，所以圖示也不會在某次編輯後悄悄換掉 |
+| `TimeRangePicker` | 只有捲動預設值的 `SegmentedControl` | 預設值回答「現在發生什麼事」；固定區間回答「上週二 03:40 發生了什麼」——後者用捲動視窗做不到，它會在你閱讀的時候從腳下移開 |
 
 ---
 
@@ -635,20 +754,66 @@ typecheck 失敗。這是刻意的，避免漏翻譯。
 5. `frontend/src/pages/RulesPage.tsx` — 編輯器的選項
 6. i18n 三語的運算子名稱
 
-### 6.7 新增一個成本模型（尚未實作，設計已定）
+### 6.7 新增一個成本模型
 
-設計見 [device-classification.md](device-classification.md) §3.12。預定結構：
+設計背景見 [device-classification.md](device-classification.md) §3.12。註冊表已
+經在了，所以新增一種成本只是加一個檔案，**不必動結算核心**：
 
-1. 建立 `apps/ems/costs/` 套件：`base.py`（`CostModel` 介面、`CostContext`、
-   `CostResult`、registry）
-2. `apps/ems/costs/<name>.py` — 用 `@register("key")` 註冊
-3. `apps/ems/costs/__init__.py` — import 該模組以觸發註冊
-4. `EnergyAsset.cost_model` 欄位 + migration
-5. `apps/ems/aggregator.py::compute_interval()` — 改為查註冊表
-6. `EnergyIntervalCost` 新 model（分項成本）
+1. 新增 `apps/ems/costs/<name>.py`，寫一個吃 `CostContext`、回 `CostResult` 的
+   函式，用 `@register("key")` 掛上去
+2. 在 `apps/ems/costs/__init__.py` 的 import 清單加上該模組（觸發註冊）
+3. 需要新的預設對應時，改 `base.py` 的 `ROLE_DEFAULTS`
+4. 參數放 `EnergyAsset.cost_parameters`（JSON），由 `context.parameter()` 取用
 
-> **注意**：這一節描述的是**尚未實作**的計畫。目前 `compute_interval()` 只認得
-> 市電電價一種成本。
+單位在 `CostModel` 的 docstring 裡寫死，不要讓呼叫端猜：能量一律 kWh、功率 kW、
+油耗 L/kWh、油價 元/L。
+
+三條規則不要破壞：
+
+- **未知的 key 要 raise**（`UnknownCostModel`），不要靜默回 0。成本靜默歸零是最
+  難發現的錯誤之一，而且會讓柴發看起來比市電便宜。
+- **只讀 `EnergyAsset` 上的欄位，絕不讀 `DeviceDeclaration`。** 成本模型直接決定
+  帳單數字，一台被入侵的設備若能自己宣告油耗，報表就會替錯誤的調度決策背書。
+  `tests/test_cost_models.py` 有一個測試釘住這件事。
+- **`EnergyInterval` 的總計欄位語意不變**（只算市電）。分項是新增的細節層，既有
+  的儀表板與跨站 roll-up 完全不受影響。
+
+### 6.7A 新增一種設備類型的 ICON
+
+`frontend/src/components/ui/DeviceIcon.tsx`：
+
+1. `CATEGORY_ICON` 加一筆 `category -> lucide 元件`
+2. `CATEGORY_TONE` 加一個色調（可省略，會退回 `text-subtle`）
+3. 地圖 marker 另外用一組**極簡的 SVG 路徑**（`MapPage.tsx::categoryPath()`），
+   因為 lucide 的細節圖形縮到 13px 會糊成一團
+4. `i18n` 三個語系檔的 `devices.categories.<key>`
+
+依 **category** 而不是藍圖，理由是 category 是平台真正拿來推理的東西，而且一台設備
+的 category 終生不變——所以圖示不會在某次編輯之後悄悄換掉。
+
+### 6.7B 為一種資產開啟運轉 session
+
+不需要改程式，改資料就好：
+
+1. `EnergyAsset.session_tracking_enabled = True`
+2. 需要時覆寫 `session_enter_kw` / `session_exit_kw` / `session_min_duration_s` /
+   `session_gap_s`；留 `null` 會依 `rated_power_kw` 推算
+3. 回算歷史：`manage.py rebuild_sessions --hours 720`
+
+load 預設是關的：一條一直在耗電的迴路會產生一個永遠不結束的 session，沒有資訊量。
+間歇運轉的設備（冰水機、空壓機）才值得開。
+
+### 6.7C 加一個「跟著使用者走」的介面設定
+
+不要在 `User` 上加欄位——那是後端自己會讀的偏好（主題、語言、時區），介面版面不是。
+
+1. 前端用 `useUiPreference<T>(key, fallback)`，key 依功能命名空間，例如
+   `device-metrics:<uuid>`、`dashboard-view`
+2. 後端不需要任何改動：`/auth/me/ui/{key}` 是通用的鍵值儲存
+3. 沒存過的 key 回空值而不是 404——第一次造訪是正常情況，不是錯誤
+
+兩個上限在 API 層（`MAX_UI_PREFERENCES`、`MAX_UI_PREFERENCE_BYTES`），因為資料庫
+約束表達不了它們。少了上限，這就是一個掛在每個 session 上、可以無限寫入的儲存。
 
 ### 6.8 加一個翻譯字串
 
@@ -748,12 +913,35 @@ VS Code 一鍵啟動：`.vscode/launch.json` 的 compound
 ### 7.2 測試、lint、typecheck
 
 ```bash
-python manage.py test tests           # 294 個測試，約 30 秒
+python manage.py test tests           # 611 個測試，約 75 秒
 python -m ruff check apps/ services/ tests/
 cd frontend && npm run typecheck
+cd frontend && npm run e2e            # 36 個瀏覽器測試，約 4 分鐘
 ```
 
-三個都要綠。CI 沒有設定，所以這是提交前的自檢清單。
+四個都要綠。CI 沒有設定，所以這是提交前的自檢清單。
+
+E2E 需要**後端先跑著**（`.\scripts\dev.ps1`）；Vite 由 Playwright 自己啟動。它用
+系統已安裝的 Chrome，不下載自己的瀏覽器。
+
+### 7.2A E2E 抓的是哪一層
+
+`tsc` 證明型別對得上，`vite build` 證明 import 解析得了。兩者都不會執行任何一行
+render。條件式呼叫的 hook、render 時讀到 undefined、Leaflet 在容器還沒量到尺寸就
+初始化——這些全部編譯得過，然後在畫面上變成一片空白加一則 console 錯誤。
+
+所以每個測試都攔截 console 並斷言它是空的。這條斷言比任何一個個別檢查都有價值：
+它不需要預先知道會壞在哪裡。
+
+三個實務細節：
+
+| 細節 | 為什麼 |
+| --- | --- |
+| 只登入一次（`auth.setup.ts` + `storageState`） | 登入限流是 10 次／5 分鐘。每個測試各登入一次，第 11 個開始會全部變成噪音——而那些失敗跟被測的程式無關 |
+| 不斷言任何**即時數值** | 預設模式有模擬器每幾秒發布一次，釘住數字的測試從寫下去就是 flaky |
+| 預期中的 404 要列白名單 | 瀏覽器不管應用程式預不預期都會把 4xx 記進 console。`/devices/{id}/declaration` 在設備從未宣告時回 404 是**設計如此**，不列出來就跟真的錯誤分不開 |
+
+截圖存在 `frontend/e2e-results/`，失敗時另有 trace（`npx playwright show-trace`）。
 
 測試用 `unittest.TestCase` 風格（Django test runner），不是 pytest fixture
 風格——雖然 `requirements-dev.txt` 裝了 pytest，實際跑的是
@@ -824,7 +1012,8 @@ key（model 的註解也這麼寫）。
 ### 8.1 `device_id` 全平台唯一且不可重用
 
 `Device.device_id` 是 `unique=True`，而且**不是 per-tenant**——因為 topic
-`energy/devices/{device_id}/...` 不含租戶區段，光靠 id 就必須解析出擁有者。
+Sparkplug topic 的第二層就是 `group_id`（組織代碼），所以租戶是從位址讀出來的，
+不必再靠 id 反查。
 
 這個唯一性是資料庫層級約束，**不看 `deleted_at` 也不看退役狀態**。所以退役的
 設備永遠占著自己的識別碼，接替設備必須換新的。
@@ -884,11 +1073,212 @@ Python 物件（靠 `get_bus()` 的單例）。`run_ingestor` 和 `run_worker` �
 `integrate_power()` 假設每個樣本的值保持到下一個樣本。對突變負載有系統性偏差。
 `coverage` 欄位是品質指標，低於 0.8 的區間不該被當成確定的數字。
 
-### 8.11 `DispatchWindow` 沒有人消費
+### 8.11 調度引擎只在目標值改變時送命令
 
-model 的 docstring 說「scheduler turns these into device commands」，但**那段
-程式碼不存在**。`StoragePlan` 的 `max_charge_kw`、`backup_reserve_percent`
-等也只有 API 層的一致性驗證，執行期沒有任何地方強制。
+`apps/ems/dispatch.py` 會算出每個場域此刻**應該**是什麼設定值，跟它上次送出的比
+較，一樣就不送。這不是最佳化，是必要的：排程每 5 分鐘跑一次，每次重送同一個設定值
+等於每 5 分鐘對實體硬體發一次 MQTT，命令紀錄也會被灌爆。
+
+它靠 `idempotency_key` 的 `dispatch:` 前綴認出「上次是自己送的」，所以中間有人手動
+下過命令時，下一輪會重新宣告排程——這是刻意的。
+
+`StoragePlan` 的運轉限制現在是真的閘門，但**兩條路徑的行為不同**，而且必須不同：
+
+| 路徑 | 行為 | 理由 |
+| --- | --- | --- |
+| 排程（`clamp_to_plan`） | **夾住** | 方案說 200 kW、時段說 500 kW，不是矛盾，是「跑 200」 |
+| 手動（`assert_within_plan`） | **拒絕** | 人打了一個數字，安靜地執行另一個數字更糟 |
+
+SOC 限制只在**讀得到即時 SOC** 時才套用。猜一個未知的 SOC 要嘛擋掉合法調度、要嘛
+放行深度放電，兩個都不能接受，所以就不猜。
+
+### 8.11A 能源資產綁定必須跟著設備走
+
+`EnergyAsset` 同時有 `site` 與 `device` 兩個 FK，兩者**必須一致**。設備換了場域而
+綁定留在原地時，不會有任何錯誤——原場域的能源平衡繼續依賴一台已經不在那裡的設備，
+新場域則顯示「尚未綁定任何資產」。兩個數字都錯，而且都不會叫。
+
+`update_device` 偵測到場域改變時會呼叫 `services.move_energy_bindings()`。設備被移出
+所有場域時，綁定改為**停用**而不是刪除：它必須停止餵養一個它已經不屬於的平衡，同時
+留下痕跡讓人看得出發生過什麼。
+
+### 8.11B 「用不到的相依元件」不是故障
+
+健康檢查的 `ok` 回答的是「這是不是問題」，不是「有沒有連上」。`MQTT_ENABLED=0` 會讓
+MQTT 顯示 `state: "disabled"`、`required: false`，不計入整體判定。
+
+這不是美化。把一個刻意不啟用的元件標成紅色，會訓練使用者忽略這張健康卡——而真正的
+斷線正是會出現在同一張卡上。
+
+啟用了卻連不上仍然是 `state: "error"`，照常拉低整體狀態。
+
+**但這個三態不是「MQTT 連不上」的答案，只是把它說清楚的方式。** 預設模式現在會自己
+起一個 broker（§8.11D），所以 `disabled` 只出現在使用者明確要求的時候——
+`-NoBroker`，或部署本來就不接 broker。
+
+### 8.11D 開發模式自己帶一個 broker
+
+`manage.py run_broker` 用 [amqtt](https://github.com/Yakifo/amqtt) 起一個 MQTT
+broker，`manage.py run_pipeline` 把 ingestor 與 worker 放進同一個行程。啟動腳本
+預設會帶起這兩個，所以完整的即時路徑不需要 Docker、Redis 或 EMQX。
+
+**它不是 broker 的替代品，是「沒有 broker」的替代品。** 它匿名、沒有 ACL、不呼叫
+auth/ACL webhook——`deploy/emqx/README.md` 的設備身分模型它一項都沒執行；沒有
+shared subscription、沒有持久化。這些都寫在指令的 docstring 裡。
+
+三個牽連在一起的設定，改一個就要改另外兩個：
+
+| 設定 | 內建 broker | EMQX |
+| --- | --- | --- |
+| `MQTT_PROTOCOL_VERSION` | `311`（它只講 3.1.1） | `5` |
+| `MQTT_USE_SHARED_SUBSCRIPTION` | `0`（它沒有 `$share/`） | `1` |
+| `BUS_BACKEND` | `memory`（配 `run_pipeline`） | `redis` |
+
+平台預設 MQTT 5 是有理由的：它的 reason code 會說 publish 為什麼被拒絕，3.1.1 只會
+說被拒絕了。降到 3.1.1 是為了讓筆電上有一條會動的路，值得。
+
+`run_pipeline` 必須**注入同一個 bus**。`Ingestor` 與 `Worker` 各自 `build_bus()`，
+這在分行程配 Redis 時是對的，在同行程配記憶體匯流排時是安靜的錯：兩個
+`InMemoryBus` 就是兩條互不相通的佇列，ingestor 灌滿一條、worker 抽乾另一條，資料庫
+一筆都不會進，而且沒有任何錯誤。
+
+### 8.11C 序號空白不參與唯一性
+
+`uniq_device_org_serial` 的條件是 `~Q(serial_number="") & Q(deleted_at__isnull=True)`。
+兩個理由：驗收時序號經常還不知道，強迫填一個佔位字串會比允許空白更徹底地破壞這個
+約束；而軟刪除的設備不該擋住重新登記。
+
+API 層另外做一次檢查（`_assert_serial_free`），目的是把**already 在用的那一台設備的
+名字**放進錯誤裡——「是哪一台？」是重複序號唯一會引發的問題，光一個 409 答不出來。
+
+### 8.11F Sparkplug：三個會咬人的地方
+
+實作這一層時踩到的坑，每一個都在測試裡釘住了。
+
+**1. 序號的配置與送出必須在同一個鎖裡。**
+
+只鎖住計數器不夠。兩個執行緒可以拿到 7 和 8，卻以 8、7 的順序抵達 socket，而主機
+分不出這跟遺失訊息有什麼差別。任何「採集迴圈發 telemetry、網路執行緒回命令」的
+設計都會立刻撞到——`EdgeNodeClient` 的每一個發布方法整段都在鎖裡，不是只有
+`_next_seq`。
+
+**2. 出生必須先於資料，而出生跑在另一個執行緒上。**
+
+多數 MQTT 函式庫的「已連線」回呼在網路執行緒上執行。如果 run loop 一啟動就開始發
+telemetry，第一則 DDATA 會跟 NBIRTH 搶跑，序號變成 0、0、1。參考設備用一個
+`Event` 擋住 run loop 直到出生送出為止。
+
+**3. 重生要求是唯一的復原路徑，所以它必須真的送出去。**
+
+第一版的 worker 有計數 `unresolved_aliases`，註解也寫著「要求重生是唯一的辦法」
+——但程式碼從來沒送出那個要求。症狀是：worker 比設備晚啟動時，別名永遠解不開，
+每一則讀值被靜靜丟掉，而且**永遠不會自己好**，因為沒有東西會促使設備重新宣告。
+`tests/test_ingest_pipeline.py::test_an_unresolved_alias_asks_for_a_rebirth` 釘住
+這條路徑。
+
+另外兩個容易照 MQTT 直覺寫錯的地方：**clean session 必須是 true**，
+**遺言不可 retained**。理由見 device-protocol.md §2。
+
+### 8.11E 幣別屬於組織，不屬於電價方案
+
+`Organization.reporting_currency` 是整個租戶唯一的報表幣別。
+
+原本幣別散在每個 `Tariff` 上，於是**還沒設定電價的場域根本沒有幣別**——它的成本
+是 `0`，隔壁有電價的場域是 `$0`，同一欄兩種格式，看起來像壞掉。
+
+三條規則：
+
+- **沒有電價的場域退回組織幣別**，所以每一列都標得出來。
+- **場域之間真的不一致時仍然回空字串。** 這不是可以粉飾的顯示缺口——把兩種幣別
+  相加出來的數字沒有意義，空字串正是阻止前端把它格式化成金額的東西。
+- **儲存電價時就擋下不一致**（`currency_mismatch`，422），不是等到出報表才發現。
+  否則 `reporting_currency` 只是第三個會跟另外兩個矛盾的事實來源。
+
+組織幣別留空代表「還沒決定」，此時不擋任何電價——設定過程不該被自己卡住。
+
+**匯率換算明確不在範圍內。** 匯率有時間性、有買賣價差、有會計政策，那是另一個系統
+的職責。這個欄位說的是「這些數字本來就是什麼幣別」。
+
+### 8.11F2 預設的時間區間必須包含「現在」
+
+`TimeRangeParams.normalized()` 回傳的是半開區間 `[start, end)`——這樣連續查詢才能
+一格接一格而不會把同一筆算兩次。
+
+但**沒有指定 end 的時候**，end 會稍微超過現在一點點。這看起來像在唬弄，其實不是：
+如果排除性的上界剛好等於 `now()`，那麼與請求落在同一個時鐘刻度裡寫入的資料就看不
+見了——而時鐘刻度並不小，Windows 大約 15 毫秒。症狀是「最近 24 小時」永遠少掉剛
+進來的那一筆，而且完全不會報錯。
+
+半開區間的好處來自「這一格後面還有下一格」；「最新」這一格沒有下一格，所以排除
+當下這一瞬間只會掉資料，換不到任何東西。
+
+事件紀錄與稽核紀錄都踩過這個坑，`tests/test_event_log.py::WindowBoundaryTests`
+兩個方向都釘住了：預設區間看得到當下寫入的事件，明確指定的區間仍然維持半開。
+
+### 8.11G 自動註冊 metric 的兩條界線
+
+`apps/telemetry/autoregister.py` 讓一台沒設定過的設備從 DBIRTH 把自己的 metric
+建進目錄。這是便利功能，而便利功能最容易變成漏洞，所以兩條界線寫在程式碼裡：
+
+**永遠不覆蓋既有定義。** 一次韌體更新不該能悄悄改掉一堆告警規則依賴的 metric 的
+單位或範圍。
+
+**不建立會遮蔽內建 metric 的租戶複本。** `battery_soc` 有兩份定義，等於一個全平台
+共用的 metric 從此分裂成兩個。
+
+還有一條不在程式碼裡、但同樣要記住的：**註冊 metric 不授予任何權限**。它產生的是
+座標軸上的標籤，不是能力旗標。能力仍然走 `DeviceDeclaration`。
+
+單位到 `kind` 的推論（`kWh` → counter）看起來像猜測，但那是出生宣告裡唯一的線索，
+而猜錯的代價是能量數字整個錯掉——設備可以用 `kind` property 明確推翻它。
+
+### 8.11H 工作流程引擎踩過的三個坑
+
+實測抓出來的，都有測試釘住：
+
+**1. 迴圈變成 busy-wait。** 第一版的 Jump 立刻繼續執行，實測 12 秒燒掉 1,200 步
+——步數上限約 100 秒就會到，記錄也被灌爆。改成讓出當前 tick（見 system-logic
+§1.11），語意反而更對。
+
+**2. 一條忙碌的分支餓死其他分支。** 引擎原本每次都取「最舊的」ready token，於是
+迴圈分支重複被選中直到單次呼叫預算用完，另一條分支完全不動。改成每輪每個 token
+一步。注意限制的粒度是**輪**不是**呼叫**——後者公平但慢到直線五節點要五個 tick。
+
+**3. 計時節點睡過整段等待。** 第一版停在「條件成立」後直接睡到 hold 時間結束再看
+一次，分不出「一直成立」和「中間掉過又回來」。
+`test_a_condition_that_comes_back_does_not_count_as_having_held` 釘住這條。
+
+**4. 單步被慢動作卡死。** 節點間延遲把 token 的 wake_at 排到未來,單步（按一次
+走一步）醒不了它——按第二下毫無反應。修法:慢動作設定的 wake 在 token state 標
+`_slowmo`,`step_run` 先清掉這種 wake 再推進;Wait 節點自己的計時**不受影響**,
+單步永遠不能縮短真正的等待。
+`test_single_step_sees_through_the_delay_but_not_a_wait` 釘住。
+
+另外一條寫給之後加節點型別的人：`Result.level = "debug"` 的記錄**只在 dry run
+保留**。每 tick 都會執行的節點（Jump、Waypoint）要用 debug，否則正式執行的迴圈
+一秒寫三列記錄，寫到沒有人讀得動。
+
+### 8.11I Modal 的焦點竊取：表單打字被打斷的真正元兇
+
+症狀:在任何編輯視窗打字,每隔幾秒游標就跳掉、文字順序被打亂。先前把表單的
+`useEffect` 依賴從整個查詢物件改成 `id` 修掉了「state 被重設」那一類,但問題
+仍在——因為真正的元兇在 `Modal.tsx`:
+
+```js
+useEffect(() => { ...; panelRef.current?.focus() }, [open, onClose])
+```
+
+每個呼叫端都寫 `onClose={() => setOpen(false)}`——每次渲染都是新函式——而頁面
+每 5 秒隨輪詢重渲染一次,於是這個 effect 每 5 秒重跑一次,`focus()` 把焦點從
+正在打字的欄位搶到對話框上。
+
+修法:`onClose` 走 ref 讀取(effect 只依賴 `open`),而且只在對話框**內部沒有
+任何元素持有焦點時**才 focus——搶焦點這件事只有在剛開啟那一刻是對的。
+
+抓法值得記下來:先用 Playwright 以**鍵盤層級**慢速打字跨過輪詢邊界重現(用
+locator 打字會每鍵重新聚焦,正好把要抓的問題藏掉),再在瀏覽器裡標記 DOM 節點
+確認是「節點還在但焦點跑到 DIV」,直接指向焦點管理而不是重繪。回歸測試:
+`interactions.spec.ts` 的「typing in an edit dialog survives the polling cycle」。
 
 ### 8.12 前端 `en.ts` 是型別來源
 
@@ -908,10 +1298,31 @@ model 的 docstring 說「scheduler turns these into device commands」，但**�
 
 | 東西 | 狀態 |
 | --- | --- |
-| 自動調度引擎（`DispatchWindow` → 命令） | **未實作** |
-| `StoragePlan` 的運轉限制執行期強制 | **未實作**（只有 API 層驗證） |
-| 運轉 session（最後一次充放電） | **僅設計**，見 device-classification.md §3.11 |
-| 多來源成本模型（電池循環、柴發油耗） | **僅設計**，見 §3.12 |
-| 個別設備耗能的 API 端點 | 計算函式已就緒（`apps/telemetry/energy.py`），端點未做 |
-| 權限綁場域（某人只能看某廠） | **未實作**，權限只有 org × role 兩維 |
-| CI | 沒有設定，靠人工跑 §7.2 那三個指令 |
+| CI | 沒有設定，靠人工跑 §7.2 那四個指令 |
+| `Tariff.demand_charge_per_kw` 的實際計費 | 欄位在、UI 在，但**月尖峰需量費沒有進入任何結算**——`EnergyInterval` 是 15 分鐘粒度，需量費是月粒度，兩者需要一張月結算表 |
+| 油價的時間性 | `EnergyAsset.cost_parameters.fuel_price_per_litre` 是**單一當前值**，所以重算三個月前的區間會套用今天的油價。正確作法是帶生效期間的 `CostParameterSet`，見 device-classification.md §3.12 |
+| 停電偵測 | 「這個區間沒有基準線」目前用**「有發電機輸出」當近似**。真正的停電訊號會更準，但還不存在 |
+| 多電池場域的調度 | `dispatch.py` 一個場域只驅動**一台**電池。多顆電池需要一台把它們呈現為單一設備的控制器——在平台這一層拆分設定值沒有通用解 |
+| `Metric.counter_max` 的來源 | 設備宣告可以帶，但**不會自動採用**（刻意的）。目前只能由 ADMIN 手動填 |
+| 設備成本的時間性 | `Device.capital_cost` 是單一值，沒有處分、重估或殘值。折舊是直線法、不折現——折現率是財務政策，不是平台預設值 |
+| `UserPreference` 的清理 | 設備被刪除時，指向它的 `device-metrics:<id>` 不會一併刪除。無害（讀不到就用預設），但會慢慢累積 |
+| 內建 broker 不執行設備身分模型 | 匿名、無 ACL、不呼叫 webhook。刻意的——重寫一份安全模型只會多一份可能和 EMQX 不一致的實作。要驗證身分模型請用 `-Full` 或 `test-device.ps1` |
+| 內建 broker 沒有 shared subscription | 所以本機只能跑一個 ingestor。要驗證多副本分流必須用真 EMQX |
+
+### 9.1 已經補上的（之前列在這裡）
+
+| 東西 | 現在在哪 |
+| --- | --- |
+| 自動調度引擎 | `apps/ems/dispatch.py` + `manage.py run_dispatch`，排程每輪執行 |
+| `StoragePlan` 運轉限制的執行期強制 | `dispatch.assert_within_plan()`，掛在 `dispatch_command()` 的能力檢查之後 |
+| 運轉 session | `apps/ems/sessions.py` + `DeviceOperatingSession` + `manage.py rebuild_sessions` |
+| 多來源成本模型 | `apps/ems/costs/` 註冊表 + `EnergyIntervalCost` 分項表 |
+| 個別設備耗能的 API 端點 | `GET /api/devices/{id}/energy`（`apps/telemetry/device_energy.py`） |
+| 權限綁場域 | `Membership.sites` + `AuthContext.site_scope`，見 §4.2 `apps/accounts` |
+| MQTT 缺席被誤報成故障 | `MQTT_ENABLED` + 健康檢查的三態，見 §8.11B |
+| 預設模式根本沒有 broker | `run_broker` + `run_pipeline`，啟動腳本預設帶起，見 §8.11D |
+| `run_worker` 一啟動就當掉 | `extra={"name": ...}` 覆寫 LogRecord 保留欄位；worker 在消費第一筆訊息前就死了 |
+| 設備換場域後能源資產留在原地 | `services.move_energy_bindings()`，見 §8.11A |
+| 設備序號重複 | 組織內的部分唯一索引 + API 層的具名衝突，見 §8.11C |
+| 幣別散落在各 Tariff 上 | `Organization.reporting_currency`，見 §8.11E |
+| 前端沒有任何執行期測試 | Playwright E2E，見 §7.2A |

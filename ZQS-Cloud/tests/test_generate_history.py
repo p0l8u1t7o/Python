@@ -11,7 +11,7 @@ from django.test import TestCase
 from apps.alerts.models import Alert, AlertRule, Operator, RuleScope, Severity
 from apps.core.timeutils import now
 from apps.devices.models import ConnectionStatus, DeviceEvent
-from apps.ems.models import AssetRole, DispatchStrategy, EnergyAsset, EnergyInterval, StoragePlan
+from apps.ems.models import AssetRole, DispatchStrategy, EnergyAsset, EnergyInterval
 from apps.telemetry.models import LatestSample, TelemetrySample
 from tests import factories
 
@@ -47,9 +47,9 @@ class GenerateHistoryTestCase(TestCase):
                 **extra,
             )
 
-        StoragePlan.objects.create(
-            organization=self.org,
-            site=self.site,
+        factories.storage_plan(
+            self.org,
+            self.site,
             strategy=DispatchStrategy.PEAK_SHAVING,
             contract_capacity_kw=450.0,
             peak_shaving_target_kw=250.0,
@@ -243,7 +243,7 @@ class HistorySpanTestCase(TestCase):
         """A site with a plan but no assets must not break a multi-site run."""
         org = factories.organization()
         empty = factories.site(org, code="empty")
-        StoragePlan.objects.create(organization=org, site=empty)
+        factories.storage_plan(org, empty)
 
         active = factories.site(org, code="active")
         device = factories.device(org, "ACT-1", site_obj=active)

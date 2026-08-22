@@ -42,6 +42,7 @@ class MqttClient:
         client_suffix: str,
         subscriptions: Sequence[tuple[str, int]] = (),
         on_message_callback: MessageHandler | None = None,
+        on_connect_callback: Callable[[], None] | None = None,
         clean_session: bool = True,
         client_id: str | None = None,
     ) -> None:
@@ -49,15 +50,24 @@ class MqttClient:
         self.config = config
         self.subscriptions = list(subscriptions)
         self.on_message_callback = on_message_callback
+        #: Run after every successful CONNACK, including reconnects. Sparkplug
+        #: needs this: the host's STATE birth has to be republished each time,
+        #: or a broker restart leaves every edge node believing the primary
+        #: application is still offline.
+        self.on_connect_callback = on_connect_callback
         self.client_id = client_id or (
             f"{config['CLIENT_ID_PREFIX']}-{client_suffix}-{uuid.uuid4().hex[:8]}"
         )
 
+        # MQTT 5 unless told otherwise. Under 3.1.1 the two differ in one way
+        # that matters here: `clean_session` is a real flag again, where MQTT 5
+        # replaced it with session expiry and paho rejects the argument.
+        self._v5 = int(config.get("PROTOCOL_VERSION", 5)) != 311
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=self.client_id,
-            protocol=mqtt.MQTTv5,
-            clean_session=None,  # MQTT 5 uses session expiry instead
+            protocol=mqtt.MQTTv5 if self._v5 else mqtt.MQTTv311,
+            clean_session=None if self._v5 else clean_session,
         )
         self._connected = threading.Event()
         self._stopping = threading.Event()
@@ -109,6 +119,11 @@ class MqttClient:
         # when the client believes the session persisted.
         if self.subscriptions:
             client.subscribe(self.subscriptions)
+        if self.on_connect_callback is not None:
+            try:
+                self.on_connect_callback()
+            except Exception:  # noqa: BLE001 - never break the network thread
+                logger.exception("on_connect callback failed")
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties=None):
         self._connected.clear()
@@ -142,21 +157,26 @@ class MqttClient:
 
     def connect(self, *, timeout: float = 10.0) -> None:
         config = self.config
-        properties = None
-        if not self._clean_session:
-            from paho.mqtt.properties import Properties
-            from paho.mqtt.packettypes import PacketTypes
+        # clean_start and CONNECT properties are MQTT 5 only; paho refuses
+        # both under 3.1.1, where the equivalent was already set as
+        # clean_session at construction.
+        extra: dict = {}
+        if self._v5:
+            properties = None
+            if not self._clean_session:
+                from paho.mqtt.properties import Properties
+                from paho.mqtt.packettypes import PacketTypes
 
-            properties = Properties(PacketTypes.CONNECT)
-            properties.SessionExpiryInterval = 86400  # keep queued QoS1 for a day
+                properties = Properties(PacketTypes.CONNECT)
+                properties.SessionExpiryInterval = 86400  # keep queued QoS1 a day
+            extra = {"clean_start": self._clean_session, "properties": properties}
 
         try:
             self._client.connect(
                 config["HOST"],
                 config["PORT"],
                 keepalive=config["KEEPALIVE"],
-                clean_start=self._clean_session,
-                properties=properties,
+                **extra,
             )
         except (socket.error, OSError) as exc:
             raise ConnectionError(

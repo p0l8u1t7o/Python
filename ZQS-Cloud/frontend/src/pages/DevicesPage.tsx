@@ -1,26 +1,35 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Copy, Cpu, Plus, Search } from 'lucide-react'
+import { Copy, Cpu, LayoutGrid, List, Plus, Search } from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
-import { useBlueprints, useDeviceMutations, useDevices, useSites } from '@/lib/queries'
+import {
+  useBlueprints,
+  useDeviceMutations,
+  useDevices,
+  useSites,
+  useUiPreference,
+} from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
-import { formatRelative } from '@/lib/format'
-import type { DeviceCredential } from '@/lib/types'
+import { formatRelative, truncate } from '@/lib/format'
+import type { Blueprint, Device, DeviceCredential } from '@/lib/types'
 import {
   Badge,
   Button,
   Card,
   Checkbox,
   ConnectionBadge,
+  DeviceIcon,
   EmptyRow,
   ErrorState,
   Modal,
   PageHeader,
   Pagination,
+  SegmentedControl,
   Select,
+  SiteTreeSelect,
   Table,
   TBody,
   Td,
@@ -29,12 +38,12 @@ import {
   Th,
   THead,
   Tr,
+  UNASSIGNED,
 } from '@/components/ui'
 
 const PAGE_SIZE = 25
 
-/** Sentinel for the site <select>: devices belonging to no site at all. */
-const UNASSIGNED = '__unassigned__'
+type LayoutMode = 'list' | 'cards'
 
 export function DevicesPage() {
   const { t } = useTranslation()
@@ -51,6 +60,13 @@ export function DevicesPage() {
   // Default on: picking a plant almost always means "and everything under it".
   const includeDescendants = searchParams.get('descendants') !== '0'
   const unassignedOnly = searchParams.get('unassigned') === '1'
+
+  // The layout follows the person, not the browser: someone who prefers
+  // cards on a wall display should get cards on their laptop too.
+  const layout = useUiPreference<{ mode: LayoutMode }>('device-layout', {
+    mode: 'list',
+  })
+  const mode = layout.value.mode
 
   const sites = useSites()
   const devices = useDevices({
@@ -82,11 +98,34 @@ export function DevicesPage() {
         title={t('devices.title')}
         description={t('devices.subtitle')}
         actions={
-          can('device:write') ? (
-            <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setShowCreate(true)}>
-              {t('devices.register')}
-            </Button>
-          ) : null
+          <>
+            <SegmentedControl<LayoutMode>
+              size="sm"
+              value={mode}
+              onChange={(next) => layout.save.mutate({ mode: next })}
+              options={[
+                {
+                  value: 'list',
+                  label: <List className="size-3.5" />,
+                  title: t('devices.layoutList'),
+                },
+                {
+                  value: 'cards',
+                  label: <LayoutGrid className="size-3.5" />,
+                  title: t('devices.layoutCards'),
+                },
+              ]}
+            />
+            {can('device:write') ? (
+              <Button
+                variant="primary"
+                icon={<Plus className="size-4" />}
+                onClick={() => setShowCreate(true)}
+              >
+                {t('devices.register')}
+              </Button>
+            ) : null}
+          </>
         }
       />
 
@@ -116,12 +155,14 @@ export function DevicesPage() {
             className="w-36"
           />
 
-          <Select
+          <SiteTreeSelect
             label={t('devices.site')}
+            sites={sites.data?.items ?? []}
             value={unassignedOnly ? UNASSIGNED : siteId}
             placeholder={t('common.all')}
-            onChange={(event) => {
-              const value = event.target.value
+            allowClear
+            allowUnassigned
+            onChange={(value) => {
               const next = new URLSearchParams(searchParams)
               next.delete('site')
               next.delete('unassigned')
@@ -130,15 +171,7 @@ export function DevicesPage() {
               setSearchParams(next, { replace: true })
               setOffset(0)
             }}
-            options={[
-              ...(sites.data?.items ?? []).map((site) => ({
-                value: site.id,
-                // Indent so the tree shape survives a flat <select>.
-                label: `${'  '.repeat(site.depth)}${site.name}`,
-              })),
-              { value: UNASSIGNED, label: t('sites.unassigned') },
-            ]}
-            className="w-44"
+            className="w-52"
           />
 
           {siteId && !unassignedOnly ? (
@@ -154,6 +187,34 @@ export function DevicesPage() {
 
         {devices.error ? (
           <ErrorState error={devices.error} onRetry={() => void devices.refetch()} />
+        ) : mode === 'cards' ? (
+          <>
+            {devices.isPending ? (
+              <div className="p-4 text-sm text-muted">{t('common.loading')}…</div>
+            ) : (devices.data?.items.length ?? 0) === 0 ? (
+              <div className="p-8 text-center text-sm text-muted">
+                {searchParams.toString() ? t('common.noResults') : t('devices.noDevices')}
+              </div>
+            ) : (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                {(devices.data?.items ?? []).map((device) => (
+                  <DeviceCard
+                    key={device.id}
+                    device={device}
+                    onOpen={() => navigate(`/devices/${device.id}`)}
+                  />
+                ))}
+              </div>
+            )}
+            {devices.data ? (
+              <Pagination
+                total={devices.data.total}
+                limit={PAGE_SIZE}
+                offset={offset}
+                onChange={setOffset}
+              />
+            ) : null}
+          </>
         ) : (
           <>
             <Table>
@@ -165,11 +226,12 @@ export function DevicesPage() {
                 <Th>
                   <Term id="blueprint">{t('devices.blueprint')}</Term>
                 </Th>
+                <Th>{t('common.description')}</Th>
                 <Th align="right">{t('devices.lastSeen')}</Th>
               </THead>
               <TBody>
                 {devices.isPending ? (
-                  <EmptyRow colSpan={6} message={`${t('common.loading')}…`} />
+                  <EmptyRow colSpan={7} message={`${t('common.loading')}…`} />
                 ) : devices.data && devices.data.items.length > 0 ? (
                   devices.data.items.map((device) => (
                     <Tr key={device.id} onClick={() => navigate(`/devices/${device.id}`)}>
@@ -177,7 +239,13 @@ export function DevicesPage() {
                         <ConnectionBadge status={device.status} />
                       </Td>
                       <Td>
-                        <span className="font-medium">{device.name}</span>
+                        {/* The icon leads the name so the category reads at a
+                            glance while scanning the column - which is the
+                            whole point of having one. */}
+                        <span className="inline-flex items-center gap-2 align-middle">
+                          <DeviceIcon category={device.device_category} />
+                          <span className="font-medium">{device.name}</span>
+                        </span>
                         {!device.is_enabled ? (
                           <Badge tone="neutral" className="ml-2">
                             {t('common.disabled')}
@@ -203,7 +271,25 @@ export function DevicesPage() {
                       </Td>
                       <Td className="font-mono text-xs text-muted">{device.device_id}</Td>
                       <Td className="text-muted">{device.site_name ?? '—'}</Td>
-                      <Td className="text-muted">{device.device_type_name ?? '—'}</Td>
+                      <Td className="text-muted">
+                        {device.device_type_name ?? '—'}
+                        {device.device_category ? (
+                          <span className="ml-1.5 text-xs text-subtle">
+                            {t(`devices.categories.${device.device_category}`, {
+                              defaultValue: device.device_category,
+                            })}
+                          </span>
+                        ) : null}
+                      </Td>
+                      <Td className="max-w-56 text-muted">
+                        {device.description ? (
+                          <span className="block truncate" title={device.description}>
+                            {device.description}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </Td>
                       <Td align="right" className="whitespace-nowrap text-muted">
                         {device.last_seen_at ? formatRelative(device.last_seen_at) : t('common.never')}
                       </Td>
@@ -356,34 +442,174 @@ function RegisterDeviceModal({ open, onClose }: { open: boolean; onClose: () => 
           placeholder="BESS #1"
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Select
+          <SiteTreeSelect
             label={t('devices.site')}
+            sites={sites.data?.items ?? []}
             value={form.site_id}
             placeholder={t('common.none')}
-            onChange={(event) => setForm({ ...form, site_id: event.target.value })}
-            options={(sites.data?.items ?? []).map((site) => ({
-              value: site.id,
-              label: `${'  '.repeat(site.depth)}${site.name}`,
-            }))}
+            allowClear
+            hint={t('devices.siteHint')}
+            onChange={(value) => setForm({ ...form, site_id: value })}
           />
-          <Select
+          <BlueprintPicker
             label={<Term id="blueprint">{t('devices.blueprint')}</Term>}
+            blueprints={blueprints.data ?? []}
             value={form.device_type_id}
-            placeholder={t('common.none')}
-            onChange={(event) => setForm({ ...form, device_type_id: event.target.value })}
-            options={(blueprints.data ?? []).map((blueprint) => ({
-              value: blueprint.id,
-              label: blueprint.name,
-            }))}
+            error={errors.device_type_id}
+            onChange={(value) => setForm({ ...form, device_type_id: value })}
           />
         </div>
         <TextInput
           label={t('devices.serialNumber')}
           value={form.serial_number}
+          error={errors.serial_number}
+          hint={t('devices.serialHint')}
           onChange={(event) => setForm({ ...form, serial_number: event.target.value })}
         />
       </form>
     </Modal>
+  )
+}
+
+/**
+ * One device as a card.
+ *
+ * The same facts as the table row, laid out for scanning a wall rather than
+ * reading a column: status and category first, then the identifiers, then
+ * whatever the operator wrote in the description - which is usually where
+ * "the one behind the compressor" lives.
+ */
+function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) {
+  const { t } = useTranslation()
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="card w-full p-4 text-left transition-colors hover:border-line-strong hover:bg-surface-muted/50"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <DeviceIcon category={device.device_category} className="size-5" />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">{device.name}</span>
+            <span className="block truncate font-mono text-[11px] text-subtle">
+              {device.device_id}
+            </span>
+          </span>
+        </span>
+        <ConnectionBadge status={device.status} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {device.device_category ? (
+          <Badge tone="neutral">
+            {t(`devices.categories.${device.device_category}`, {
+              defaultValue: device.device_category,
+            })}
+          </Badge>
+        ) : null}
+        {!device.is_enabled ? (
+          <Badge tone="neutral">{t('common.disabled')}</Badge>
+        ) : null}
+        {device.commissioning_state !== 'active' ? (
+          <Badge tone={device.commissioning_state === 'retired' ? 'neutral' : 'warning'}>
+            {t(`devices.lifecycleStates.${device.commissioning_state}`)}
+          </Badge>
+        ) : null}
+        {device.identity_mismatch ? (
+          <Badge tone="critical">{t('devices.identityMismatch')}</Badge>
+        ) : null}
+      </div>
+
+      {device.description ? (
+        <p className="mt-2 line-clamp-2 text-xs text-muted">
+          {truncate(device.description, 120)}
+        </p>
+      ) : null}
+
+      <dl className="mt-3 space-y-1 border-t border-line pt-2 text-xs">
+        <div className="flex justify-between gap-2">
+          <dt className="text-subtle">{t('devices.site')}</dt>
+          <dd className="min-w-0 truncate text-muted">{device.site_name ?? '—'}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-subtle">{t('devices.blueprint')}</dt>
+          <dd className="min-w-0 truncate text-muted">{device.device_type_name ?? '—'}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-subtle">{t('devices.lastSeen')}</dt>
+          <dd className="text-muted">
+            {device.last_seen_at ? formatRelative(device.last_seen_at) : t('common.never')}
+          </dd>
+        </div>
+      </dl>
+    </button>
+  )
+}
+
+/**
+ * Blueprint picker that explains what it is offering.
+ *
+ * A blueprint decides the device's category, and **a category never changes
+ * after commissioning** - getting it wrong means registering a replacement,
+ * not editing a field. That makes this the one dropdown on the page where a
+ * sentence of explanation earns its space.
+ */
+export function BlueprintPicker({
+  blueprints,
+  value,
+  onChange,
+  label,
+  error,
+}: {
+  blueprints: Blueprint[]
+  value: string
+  onChange: (value: string) => void
+  label?: ReactNode
+  error?: string
+}) {
+  const { t } = useTranslation()
+  const selected = blueprints.find((blueprint) => blueprint.id === value)
+  const categoryHelp = selected?.category
+    ? t(`devices.categoryHelp.${selected.category}`, { defaultValue: '' })
+    : ''
+
+  return (
+    <div>
+      <Select
+        label={label}
+        value={value}
+        placeholder={t('common.none')}
+        error={error}
+        onChange={(event) => onChange(event.target.value)}
+        options={blueprints.map((blueprint) => ({
+          value: blueprint.id,
+          label: blueprint.label || blueprint.name,
+        }))}
+      />
+      {selected ? (
+        <div className="mt-2 rounded-lg bg-surface-muted p-2.5">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-content">
+            <DeviceIcon category={selected.category} className="size-3.5" />
+            {t(`devices.categories.${selected.category}`, {
+              defaultValue: selected.category,
+            })}
+          </p>
+          {selected.description_text ? (
+            <p className="mt-1 text-xs text-muted">{selected.description_text}</p>
+          ) : null}
+          {categoryHelp ? (
+            <p className="mt-1 text-xs text-subtle">{categoryHelp}</p>
+          ) : null}
+          <p className="mt-1.5 text-[11px] text-subtle">
+            {t('devices.categoryImmutable')}
+          </p>
+        </div>
+      ) : (
+        <p className="hint">{t('devices.blueprintPickHint')}</p>
+      )}
+    </div>
   )
 }
 

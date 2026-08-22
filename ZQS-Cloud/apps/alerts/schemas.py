@@ -133,6 +133,12 @@ class AlertEventOut(Schema):
 class AlertDetailOut(AlertOut):
     events: list[AlertEventOut] = Field(default_factory=list)
 
+    @staticmethod
+    def resolve_events(obj) -> list:
+        """Cap the timeline. Without a resolver the related manager would be
+        expanded whole, and a long-running alert can hold thousands of rows."""
+        return list(obj.events.all()[:200])
+
 
 class AcknowledgeIn(Schema):
     note: str = Field(default="", max_length=500)
@@ -165,6 +171,10 @@ class NotificationChannelIn(Schema):
     channel_type: ChannelType
     is_enabled: bool = True
     min_severity: Severity = Severity.WARNING
+    #: Subscriptions: rule-engine alerts, device-reported events, or both.
+    notify_alerts: bool = True
+    notify_events: bool = False
+    min_event_level: str = "error"
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -174,6 +184,9 @@ class NotificationChannelOut(Schema):
     channel_type: ChannelType
     is_enabled: bool
     min_severity: Severity
+    notify_alerts: bool
+    notify_events: bool
+    min_event_level: str
     #: Secrets (auth headers, tokens) are redacted before serialisation.
     config: dict[str, Any]
     created_at: dt.datetime

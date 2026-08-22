@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { RouterProvider, createBrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import './index.css'
@@ -30,16 +30,26 @@ const queryClient = new QueryClient({
 const container = document.getElementById('root')
 if (!container) throw new Error('Root element #root is missing from index.html')
 
+// A data router rather than <BrowserRouter>: `useBlocker` - which is what
+// lets the workflow editor say "you have unsaved changes" before navigating
+// away - only exists on data routers. `<App>` keeps its own <Routes> tree.
+const router = createBrowserRouter([
+  {
+    path: '*',
+    element: (
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    ),
+  },
+])
+
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <ToastProvider>
-          <BrowserRouter>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
-          </BrowserRouter>
+          <RouterProvider router={router} />
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -27,9 +27,12 @@ from apps.devices.api import (
     blueprints_router,
     commands_router,
     devices_router,
+    edge_nodes_router,
+    events_router,
     sites_router,
 )
 from apps.devices.emqx import router as emqx_router
+from apps.workflows.api import router as workflows_router, runs_router as workflow_runs_router
 from apps.ems.api import router as ems_router
 from apps.telemetry.api import metrics_router, policies_router, series_router
 
@@ -70,6 +73,10 @@ api.add_router("/api-keys", apikey_router)
 api.add_router("/sites", sites_router)
 api.add_router("/blueprints", blueprints_router)
 api.add_router("/devices", devices_router)
+api.add_router("/edge-nodes", edge_nodes_router)
+api.add_router("/events", events_router)
+api.add_router("/workflows", workflows_router)
+api.add_router("/workflow-runs", workflow_runs_router)
 api.add_router("/commands", commands_router)
 
 api.add_router("/metrics", metrics_router)

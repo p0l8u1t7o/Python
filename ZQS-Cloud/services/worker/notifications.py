@@ -30,10 +30,82 @@ BATCH_SIZE = 50
 REQUEST_TIMEOUT = 10.0
 
 
+#: Device-event levels, ordered. Kept here beside the queueing logic that
+#: compares them; the model stores the labels.
+EVENT_LEVEL_RANK = {
+    "debug": 0, "info": 1, "notice": 2, "warning": 3, "error": 4, "critical": 5,
+}
+
+
+def queue_event_notifications(events) -> int:
+    """Queue deliveries for device events on channels subscribed to them.
+
+    Called right after the ingest pipeline persists a batch of events. Same
+    persist-first contract as alerts: the intent is written before any network
+    is touched, so a crash between "event stored" and "operator notified" is
+    recoverable.
+    """
+    from apps.alerts.models import NotificationChannel
+
+    events = [e for e in events if e.pk is not None]
+    if not events:
+        return 0
+
+    org_ids = {event.organization_id for event in events}
+    channels = list(
+        NotificationChannel.objects.filter(
+            organization_id__in=org_ids, is_enabled=True, notify_events=True
+        )
+    )
+    if not channels:
+        return 0
+
+    deliveries = []
+    for event in events:
+        rank = EVENT_LEVEL_RANK.get(event.level, 0)
+        for channel in channels:
+            if channel.organization_id != event.organization_id:
+                continue
+            if rank < EVENT_LEVEL_RANK.get(channel.min_event_level, 4):
+                continue
+            deliveries.append(
+                NotificationDelivery(event=event, channel=channel,
+                                     status=DeliveryStatus.PENDING)
+            )
+    if deliveries:
+        NotificationDelivery.objects.bulk_create(deliveries, ignore_conflicts=True)
+    return len(deliveries)
+
+
+def _event_payload(delivery: NotificationDelivery) -> dict[str, Any]:
+    event = delivery.event
+    device = event.device
+    return {
+        "kind": "event",
+        "event_id": event.pk,
+        "organization_id": str(event.organization_id),
+        "severity": event.level,
+        "title": f"[{device.name or device.device_id}] {event.code or event.level}",
+        "message": event.message,
+        "code": event.code,
+        "ts": event.ts.isoformat(),
+        "payload": event.payload,
+        "device": {
+            "id": str(device.id),
+            "device_id": device.device_id,
+            "name": device.name,
+            "site": device.site.name if device.site_id else None,
+        },
+    }
+
+
 def build_payload(delivery: NotificationDelivery) -> dict[str, Any]:
+    if delivery.event_id is not None:
+        return _event_payload(delivery)
     alert = delivery.alert
     device = alert.device
     return {
+        "kind": "alert",
         "alert_id": str(alert.id),
         "organization_id": str(alert.organization_id),
         "severity": alert.severity,
@@ -86,6 +158,23 @@ def _send_mqtt(config: dict[str, Any], payload: dict[str, Any]) -> None:
     publish_json(topic, payload, qos=config.get("qos", 1), retain=bool(config.get("retain")))
 
 
+def _notification_text(payload: dict[str, Any]) -> str:
+    """One short human message, shared by email and LINE."""
+    device = payload.get("device") or {}
+    lines = [f"[{str(payload.get('severity', '')).upper()}] {payload.get('title', '')}"]
+    if payload.get("message") and payload["message"] != payload.get("title"):
+        lines.append(str(payload["message"]))
+    place = " / ".join(
+        str(part) for part in (device.get("site"), device.get("name")) if part
+    )
+    if place:
+        lines.append(place)
+    when = payload.get("started_at") or payload.get("ts")
+    if when:
+        lines.append(str(when))
+    return "\n".join(lines)
+
+
 def _send_email(config: dict[str, Any], payload: dict[str, Any]) -> None:
     from django.core.mail import send_mail
 
@@ -93,14 +182,43 @@ def _send_email(config: dict[str, Any], payload: dict[str, Any]) -> None:
     if not recipients:
         raise ValueError("email channel has no recipients configured")
     subject = f"[{payload['severity'].upper()}] {payload['title']}"
-    body = payload["message"] or payload["title"]
-    send_mail(subject, body, config.get("from_email") or None, list(recipients))
+    send_mail(
+        subject, _notification_text(payload),
+        config.get("from_email") or None, list(recipients),
+    )
+
+
+def _send_line(config: dict[str, Any], payload: dict[str, Any]) -> None:
+    """Push to a LINE chat through the Messaging API (a LINE bot).
+
+    LINE Notify was retired in 2025; a bot with a channel access token pushing
+    to a user/group ID is the supported way in.
+    """
+    token = config.get("channel_access_token")
+    to = config.get("to")
+    if not token or not to:
+        raise ValueError("line channel needs 'channel_access_token' and 'to'")
+
+    body = orjson.dumps(
+        {"to": to, "messages": [{"type": "text",
+                                 "text": _notification_text(payload)[:4900]}]}
+    )
+    request = urllib.request.Request(
+        "https://api.line.me/v2/bot/message/push", data=body, method="POST"
+    )
+    request.add_header("Content-Type", "application/json")
+    request.add_header("Authorization", f"Bearer {token}")
+
+    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+        if response.status >= 300:
+            raise ValueError(f"LINE API returned HTTP {response.status}")
 
 
 _SENDERS = {
     ChannelType.WEBHOOK: _send_webhook,
     ChannelType.MQTT: _send_mqtt,
     ChannelType.EMAIL: _send_email,
+    ChannelType.LINE: _send_line,
 }
 
 
@@ -108,7 +226,10 @@ def dispatch_pending(limit: int = BATCH_SIZE) -> tuple[int, int]:
     """Send queued notifications. Returns ``(sent, failed)``."""
     pending = (
         NotificationDelivery.objects.filter(status=DeliveryStatus.PENDING)
-        .select_related("alert", "alert__device", "alert__device__site", "channel")
+        .select_related(
+            "alert", "alert__device", "alert__device__site",
+            "event", "event__device", "event__device__site", "channel",
+        )
         .order_by("created_at")[:limit]
     )
 
@@ -160,11 +281,14 @@ def dispatch_pending(limit: int = BATCH_SIZE) -> tuple[int, int]:
         delivery.save(
             update_fields=["status", "attempts", "delivered_at", "last_error", "updated_at"]
         )
-        AlertEvent.objects.create(
-            alert=delivery.alert,
-            event_type=AlertEventType.NOTIFIED,
-            actor_label=f"channel:{channel.name}",
-            message=f"Notified via {channel.channel_type}",
-        )
+        # The audit line on the alert only exists for alert deliveries; a
+        # device event has no alert to attach it to.
+        if delivery.alert_id is not None:
+            AlertEvent.objects.create(
+                alert=delivery.alert,
+                event_type=AlertEventType.NOTIFIED,
+                actor_label=f"channel:{channel.name}",
+                message=f"Notified via {channel.channel_type}",
+            )
 
     return sent, failed

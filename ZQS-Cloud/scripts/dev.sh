@@ -17,6 +17,7 @@ cd "$ROOT"
 
 SETUP=0
 FULL=0
+NO_BROKER=0
 SIMULATE=0
 HISTORY_DAYS=3
 
@@ -25,6 +26,7 @@ while [[ $# -gt 0 ]]; do
     --setup) SETUP=1 ;;
     --full) FULL=1 ;;
     --simulate) SIMULATE=1; FULL=1 ;;
+    --no-broker) NO_BROKER=1 ;;
     --history-days) HISTORY_DAYS="$2"; shift ;;
     -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -123,6 +125,9 @@ if [[ $SETUP -eq 1 ]]; then
     ok 'created .venv'
   fi
   "$PYTHON" -m pip install --disable-pip-version-check -q -r requirements.txt
+  # The development broker, ruff and pytest. Installing these is what makes the
+  # live path work out of the box without Docker.
+  "$PYTHON" -m pip install --disable-pip-version-check -q -r requirements-dev.txt
   ok 'python dependencies installed'
 
   [[ -f .env ]] || { cp .env.example .env; ok 'created .env from .env.example'; }
@@ -159,7 +164,32 @@ for port in 8000 5173; do
   fi
 done
 
+# Default: the bundled development broker plus a combined ingestor+worker
+# process, so the whole live path works with nothing to install and nothing to
+# run in Docker. --full swaps in real EMQX and Redis; --no-broker drops the
+# live path for anyone who only wants the console and the API.
 BUS_BACKEND=memory
+MQTT_ENABLED=1
+MQTT_PROTOCOL_VERSION=311   # the bundled broker speaks 3.1.1 only
+MQTT_USE_SHARED_SUBSCRIPTION=0
+USE_BUNDLED_BROKER=1
+
+if [[ $FULL -eq 1 || $NO_BROKER -eq 1 ]]; then
+  USE_BUNDLED_BROKER=0
+fi
+if [[ $NO_BROKER -eq 1 ]]; then
+  MQTT_ENABLED=0
+  warn 'running without a broker (--no-broker): live ingest and commands are off'
+fi
+if [[ $USE_BUNDLED_BROKER -eq 1 ]] && port_open 1883; then
+  # Something is already on 1883 - very likely a real broker started on
+  # purpose. Use it rather than failing to bind on top of it.
+  USE_BUNDLED_BROKER=0
+  MQTT_PROTOCOL_VERSION=5
+  MQTT_USE_SHARED_SUBSCRIPTION=1
+  ok 'a broker is already listening on 1883 - using it'
+fi
+
 if [[ $FULL -eq 1 ]]; then
   missing=0
   port_open 6379 || { warn 'Redis is not running:  docker run -d --name redis -p 6379:6379 redis:7-alpine'; missing=1; }
@@ -171,28 +201,51 @@ if [[ $FULL -eq 1 ]]; then
   # The ingestor and worker are separate processes, so they need a real broker;
   # the in-memory bus is per-process only.
   BUS_BACKEND=redis
+  MQTT_ENABLED=1
+  MQTT_PROTOCOL_VERSION=5
+  MQTT_USE_SHARED_SUBSCRIPTION=1
   ok 'Redis and EMQX reachable'
 fi
 
-export BUS_BACKEND
+export BUS_BACKEND MQTT_ENABLED MQTT_PROTOCOL_VERSION MQTT_USE_SHARED_SUBSCRIPTION
 
 # --------------------------------------------------------------------------
 # Launch
 # --------------------------------------------------------------------------
 step 'Starting services'
+
+if [[ $USE_BUNDLED_BROKER -eq 1 ]]; then
+  start_service broker "$PYTHON" manage.py run_broker
+  # Let it bind before the ingestor tries to connect. It would retry anyway;
+  # this only keeps the first log lines clean.
+  sleep 1
+fi
+
 start_service api "$PYTHON" manage.py runserver 127.0.0.1:8000
 
 if [[ $FULL -eq 1 ]]; then
   start_service ingestor "$PYTHON" manage.py run_ingestor
   start_service worker "$PYTHON" manage.py run_worker
+elif [[ $NO_BROKER -eq 0 ]]; then
+  # One process, because the in-memory bus cannot cross a process boundary -
+  # see run_pipeline's docstring.
+  start_service pipeline "$PYTHON" manage.py run_pipeline
 fi
 
+start_service workflows "$PYTHON" manage.py run_workflows
 start_service web npm --prefix frontend run dev
 
-if [[ $SIMULATE -eq 1 ]]; then
-  start_service sim-bess "$PYTHON" manage.py simulate_device --device ZQS-BESS-0001 --profile battery --interval 5
-  start_service sim-meter "$PYTHON" manage.py simulate_device --device ZQS-METER-0001 --profile meter --interval 5
-  start_service sim-pv "$PYTHON" manage.py simulate_device --device ZQS-PV-0001 --profile pv --interval 10
+if [[ $SIMULATE -eq 1 || $USE_BUNDLED_BROKER -eq 1 ]]; then
+  # One process for the whole gateway, not one per device. Under Sparkplug a
+  # connection *is* an edge node: it owns one seq counter and one birth/death
+  # pair, so three processes claiming the same node id would take turns
+  # knocking each other off the broker.
+  start_service sim-gateway "$PYTHON" manage.py simulate_device \
+    --device ZQS-BESS-0001=battery \
+    --device ZQS-METER-0001=meter \
+    --device ZQS-PV-0001=pv \
+    --device ZQS-FC-0001=fuelcell \
+    --interval 5
 fi
 
 # --------------------------------------------------------------------------
@@ -217,6 +270,10 @@ $([[ $FULL -eq 1 ]] && echo '  EMQX       http://127.0.0.1:18083  (admin / publi
   Ctrl-C to stop everything.
 EOF
 
-[[ $FULL -eq 1 ]] || warn 'Live MQTT ingest is not running. Use --full or --simulate for that.'
+if [[ $USE_BUNDLED_BROKER -eq 1 ]]; then
+  ok 'development broker on mqtt://127.0.0.1:1883 - anonymous, no ACL, dev only'
+  echo '  Live telemetry is flowing. Use --full for real EMQX + Redis.'
+fi
+[[ $NO_BROKER -eq 0 ]] || warn 'Live MQTT ingest is not running (--no-broker). MQTT shows as disabled, not failed.'
 
 wait
