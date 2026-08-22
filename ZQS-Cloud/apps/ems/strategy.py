@@ -60,6 +60,22 @@ def _flow(site) -> dict:
     return _current_flow(site)
 
 
+def _native_demand_kw(flow: dict) -> float | None:
+    """Grid demand as it would be with the battery idle.
+
+    The meter reading already contains whatever the battery is doing, so
+    deciding from it directly chases the battery's own tail: a 120 kW charge
+    lifts the meter 120 kW, the next cycle sees an excursion and orders a
+    discharge, the cycle after sees headroom and orders the charge back.
+    Subtracting the battery's flow (positive = discharge, which *lowers* the
+    meter) gives the figure the decision actually has to manage.
+    """
+    grid_kw = flow.get("grid_kw")
+    if grid_kw is None:
+        return None
+    return grid_kw + (flow.get("battery_kw") or 0.0)
+
+
 # --------------------------------------------------------------------------
 # Tariff helpers
 # --------------------------------------------------------------------------
@@ -112,7 +128,7 @@ def demand_cap(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision
         return StrategyDecision(None, "no demand ceiling configured")
 
     flow = _flow(site)
-    demand_kw = flow.get("grid_kw")
+    demand_kw = _native_demand_kw(flow)
     if demand_kw is None or flow.get("is_stale"):
         return StrategyDecision(None, "no fresh grid reading")
 
@@ -172,11 +188,14 @@ def tou_arbitrage(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecis
 
     if current <= cheapest + 1e-9:
         charge_kw = plan.max_charge_kw or 0.0
-        # Never buy cheap energy at the cost of a demand-charge excursion.
+        # Never buy cheap energy at the cost of a demand-charge excursion -
+        # and keep a margin under the contract, because a night-time charge
+        # that lands exactly on the contract becomes the month's billed peak.
         if plan.contract_capacity_kw:
-            demand_kw = flow.get("grid_kw")
+            demand_kw = _native_demand_kw(flow)
             if demand_kw is not None and not flow.get("is_stale"):
-                charge_kw = min(charge_kw, max(plan.contract_capacity_kw - demand_kw, 0.0))
+                ceiling_kw = plan.contract_capacity_kw * DEFAULT_DEMAND_MARGIN
+                charge_kw = min(charge_kw, max(ceiling_kw - demand_kw, 0.0))
         if charge_kw <= DEADBAND_KW:
             return StrategyDecision(0.0, "trough price but no charging headroom")
         return StrategyDecision(-charge_kw * 1000.0, f"trough price {current:.2f}")

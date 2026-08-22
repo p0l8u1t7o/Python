@@ -20,6 +20,7 @@
 | [device-test-harness.md](device-test-harness.md) | 設備連線測試工具：`scripts\test-device.ps1` 一鍵自我驗證＋設備驗收 | 要測設備端連線時 |
 | [device-classification.md](device-classification.md) | 設備分類、session 與成本模型的**設計論述**（現已實作，此文說明為什麼這樣設計） | 要動 session／成本模型時 |
 | [labview-integration.md](labview-integration.md) | LabVIEW 透過 Python Node 啟停服務 | 要從 LabVIEW 控制服務時 |
+| [release-notes.md](release-notes.md) | 各版本驗證範圍、修正項目、已知限制 | 要交付或升級版本時 |
 
 **建議順序**：README → running-locally → 本文 → system-logic。
 
@@ -160,8 +161,8 @@ ZQS-Cloud/
 │   │   ├── throttle.py           以 Django cache 為底的固定視窗限流
 │   │   ├── timeutils.py          now() / UTC / floor_to_interval / parse_timestamp
 │   │   ├── system_api.py         /system/health、/system/capabilities、/system/fleet
-│   │   └── management/commands/  bootstrap、seed_demo、generate_history、
-│   │                             simulate_device、run_ingestor、run_worker、run_scheduler、
+│   │   └── management/commands/  bootstrap、seed_demo、seed_showcase、generate_history、
+│   │                             run_ingestor、run_worker、run_scheduler、
 │   │                             run_broker（開發用 MQTT broker）、
 │   │                             run_pipeline（ingestor + worker 同行程）
 │   │
@@ -252,7 +253,8 @@ ZQS-Cloud/
 │
 ├── scripts/                      dev.ps1 / dev.sh / stop.ps1
 ├── deploy/emqx/                  EMQX webhook 設定說明
-├── docs/                         本文與其他文件
+├── simulator/                    獨立設備模擬器（fleet.json + MQTT，不碰資料庫）
+├── docs/                         本文與其他文件（workflow-design.md：工作流程引擎設計手冊）
 ├── locale/                       Django 翻譯（.po）
 ├── data/                         SQLite 檔（不進版控）
 └── frontend/                     React console
@@ -460,6 +462,7 @@ DeviceEvent 後呼叫；`dispatch_pending` 批次送＋重試）。SMTP 用 `EMA
 | `nodes/base.py` | `Param`／`Handle`／`Result` 與 registry；**加節點型別只要在 `nodes/builtin.py` 註冊**，前端調色盤與表單從 `/workflows/node-types` 渲染 |
 | `graph.py` | 存檔時驗證（jump 目標、note 不可連線、要有起點） |
 | `management/commands/run_workflows.py` | 引擎行程，tick 預設 2 秒 |
+| (核心) `apps/core/live.py` | 全 console 的 live feed SSE(`/api/live/stream`),前端 `lib/liveStream.ts` 對應失效查詢 |
 | `stream.py` | 執行監看的 SSE 端點（`/api/workflow-runs/{id}/stream`，掛在 `config/urls.py`，token 走 query param 因為 EventSource 不能帶 header）|
 
 前端：`pages/WorkflowEditorPage.tsx`（畫布＋控制列＋自動排列＋離開未存提醒）、
@@ -1257,6 +1260,20 @@ telemetry，第一則 DDATA 會跟 NBIRTH 搶跑，序號變成 0、0、1。參�
 另外一條寫給之後加節點型別的人：`Result.level = "debug"` 的記錄**只在 dry run
 保留**。每 tick 都會執行的節點（Jump、Waypoint）要用 debug，否則正式執行的迴圈
 一秒寫三列記錄，寫到沒有人讀得動。
+
+### 8.11J 穩定讀值被判為過期：死區不可以決定「有沒有回報」
+
+症狀:SOC 在 55% 不動一小時,控制流程判斷時回 `stale_reading`。根因:`_handle_metrics`
+把「死區內未變化」的讀值整筆 `continue` 掉,`upsert_latest` 只收到通過死區的列,
+最新值表的 `ts` 因此凍結。修法:先建 `SampleRow`,**無條件**放進 `latest_rows`,
+死區只決定要不要進 `rows`(歷史)。`LatestValueFreshnessTests` 釘住。
+
+### 8.11K Vite dev server 隨機停止：SSE 經 proxy 的 ECONNRESET
+
+工作流程編輯器的 SSE 走 Vite 的 `/api` proxy;分頁關閉時 proxied socket 的
+`error` 事件沒人接,http-proxy 直接讓 node 程序崩潰——表現為「e2e 跑到一半前端
+連線被拒」。`vite.config.ts` 的 `configure(proxy)` 接住 error 回 502 即可;正式環境
+的 nginx 無此問題。
 
 ### 8.11I Modal 的焦點竊取：表單打字被打斷的真正元兇
 

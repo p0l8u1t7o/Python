@@ -18,6 +18,7 @@ import { useToast } from '@/providers/ToastProvider'
 import { useDevices, useGeocode, useSiteMutations, useSites } from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
 import type { GeocodeResult, Site, SiteKind, SiteSummary } from '@/lib/types'
+import { useFormDirty } from '@/lib/useFormDirty'
 import {
   Badge,
   Button,
@@ -314,6 +315,7 @@ function SiteModal({
   const sites = useSites()
   const [form, setForm] = useState(EMPTY)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const dirty = useFormDirty(open, form)
 
   // Geocoding is a convenience, never a requirement: every failure path here
   // ends with the operator typing the numbers in, which is why nothing below
@@ -422,6 +424,7 @@ function SiteModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       title={site ? t('sites.edit') : t('sites.create')}
       footer={
         <>

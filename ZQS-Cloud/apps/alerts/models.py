@@ -326,8 +326,25 @@ class DeliveryStatus(models.TextChoices):
     SKIPPED = "skipped", _("Skipped")
 
 
+class DeliveryPhase(models.TextChoices):
+    """Which moment of an alert's life this message announces.
+
+    Recorded on the delivery rather than read from the alert at send time: a
+    "raised" message that the worker only gets to after the alert has
+    already cleared must still say "raised", or the recipient sees two
+    messages that both say "resolved" and never learns it fired.
+    """
+
+    RAISED = "raised", _("Raised")
+    RESOLVED = "resolved", _("Resolved")
+
+
 class NotificationDelivery(TimeStampedModel):
     """One queued message. Exactly one of ``alert`` / ``event`` is set."""
+
+    phase = models.CharField(
+        max_length=10, choices=DeliveryPhase.choices, default=DeliveryPhase.RAISED
+    )
 
     alert = models.ForeignKey(
         Alert, on_delete=models.CASCADE, related_name="deliveries",

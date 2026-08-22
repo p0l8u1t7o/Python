@@ -19,9 +19,6 @@
 .PARAMETER Full
     Also start the ingestor and worker. Requires Redis (6379) and EMQX (1883).
 
-.PARAMETER Simulate
-    Also start device simulators publishing live telemetry. Implies -Full.
-
 .PARAMETER HistoryDays
     Days of backfilled telemetry to generate during -Setup.
 
@@ -37,14 +34,14 @@
     Day-to-day: just start the API and the console.
 
 .EXAMPLE
-    .\scripts\dev.ps1 -Simulate
-    Full pipeline with fake hardware publishing over MQTT.
+    .\scripts\sim-console.ps1
+    Bring the registered devices online as simulated MQTT clients (separate
+    window; the stack itself never starts a simulator).
 #>
 [CmdletBinding()]
 param(
     [switch]$Setup,
     [switch]$Full,
-    [switch]$Simulate,
     [switch]$NoBroker,
     [double]$HistoryDays = 3,
     [switch]$NoBrowser
@@ -54,7 +51,6 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $pidFile = Join-Path $root '.dev-pids.json'
 
-if ($Simulate) { $Full = $true }
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -294,22 +290,18 @@ try {
     Start-DevService -Title 'zqs-workflows' -Command `
         "$childEnv & '$python' manage.py run_workflows"
 
+    # Energy intervals, rollups, sessions and the dispatch engine. A 60 s
+    # cycle rather than the production 300 s, so a strategy decision shows
+    # up on the battery within a minute of the readings that triggered it.
+    Start-DevService -Title 'zqs-scheduler' -Command `
+        "$childEnv & '$python' manage.py run_scheduler --interval 60"
+
     Start-DevService -Title 'zqs-frontend' -Command 'npm run dev' `
         -WorkingDirectory (Join-Path $root 'frontend')
 
-    if ($Simulate -or $useBundledBroker) {
-        # One process for the whole gateway, not one per device. Under
-        # Sparkplug a connection *is* an edge node: it owns one seq counter and
-        # one birth/death pair. Three processes claiming the same node id would
-        # take turns knocking each other off the broker, and the host would see
-        # a permanent sequence gap.
-        Start-DevService -Title 'zqs-sim-gateway' -Command `
-            ("$childEnv & '$python' manage.py simulate_device " +
-             '--device ZQS-BESS-0001=battery ' +
-             '--device ZQS-METER-0001=meter ' +
-             '--device ZQS-PV-0001=pv ' +
-             '--device ZQS-FC-0001=fuelcell --interval 5')
-    }
+    # No simulator is started here on purpose: every registered device comes
+    # up offline, and the desktop console (scripts\sim-console.ps1) is the one
+    # place that brings them online as MQTT clients.
 
     $script:started | ConvertTo-Json | Set-Content -Path $pidFile -Encoding utf8
 
@@ -346,7 +338,7 @@ try {
     Write-Host '  stop with  .\scripts\stop.ps1'
     if ($useBundledBroker) {
         Write-Ok 'development broker on mqtt://127.0.0.1:1883 - anonymous, no ACL, dev only'
-        Write-Ok 'Live telemetry is flowing. Use -Full for real EMQX + Redis.'
+        Write-Ok 'Devices are offline until you bring them online in .\scripts\sim-console.ps1'
     }
     if ($NoBroker) {
         Write-Host ''

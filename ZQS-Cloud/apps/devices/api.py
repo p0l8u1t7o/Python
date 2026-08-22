@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.conf import settings
 from django.db import IntegrityError
 from django.db.models import Count, Q
 from ninja import Query, Router
@@ -89,6 +90,8 @@ def list_sites(
 @sites_router.post("", response={201: s.SiteOut}, auth=role_required(Role.ADMIN))
 def create_site(request, payload: s.SiteIn):
     ctx: AuthContext = request.auth
+    if not payload.timezone_name:
+        payload.timezone_name = settings.SITE_DEFAULT_TIMEZONE
     # A site-scoped admin may only add sites *inside* their scope. Without this
     # they could create a top-level site and then watch it disappear from their
     # own listing, which looks like the save silently failed.

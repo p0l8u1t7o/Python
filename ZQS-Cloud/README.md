@@ -99,9 +99,8 @@
 | --- | --- |
 | `zqs-broker` | 內建的開發用 MQTT broker（[amqtt](https://github.com/Yakifo/amqtt)） |
 | `zqs-pipeline` | ingestor + worker 在同一個行程，共用記憶體匯流排 |
-| `zqs-sim-*` | 三台模擬設備，持續發布 telemetry |
 
-所以打開 console 就會看到數值在跳、設備是上線的、系統健康裡的 MQTT 是綠的。
+啟動後所有登記的設備都是**離線**的；開 `.\scripts\sim-console.ps1`、按「全部上線」，登記的閘道器與設備就以真實 MQTT 客戶端上線並持續發布 telemetry。
 
 > **內建 broker 只能用在開發。** 它是匿名的、沒有 ACL、不呼叫平台的 auth/ACL
 > webhook——換句話說 `deploy/emqx/README.md` 描述的設備身分模型它**一項都沒有
@@ -126,7 +125,7 @@ docker run -d --name emqx -p 1883:1883 -p 18083:18083 emqx/emqx:5.8
 若 1883 已經有東西在聽（例如你自己起的 EMQX），啟動腳本會直接用它，不會硬搶連接埠。
 
 完整細節、逐一下指令的作法與疑難排解在
-**[docs/running-locally.md](docs/running-locally.md)**。
+**[docs/running-locally.md](docs/running-locally.md)**。版本驗證範圍與已知限制見 **[docs/release-notes.md](docs/release-notes.md)**。畫布式控制流程的架構、所有物件類別、踩過的坑與移植步驟見 **[docs/workflow-design.md](docs/workflow-design.md)**；客戶展示流程見 **[docs/demo-guide.md](docs/demo-guide.md)**。
 
 ## 快速開始（Docker）
 
@@ -165,8 +164,7 @@ engine-specific 的操作（時間分桶與 latest-value upsert）上依 `connec
 分岔。
 
 要換到 PostgreSQL：設定 `DB_ENGINE=postgres` 與連線憑證、安裝
-`requirements-optional.txt`、跑 `migrate`。要用 TimescaleDB 再加上
-`TIMESCALE_ENABLED=1`，並把 sample 表轉成 hypertable：
+`requirements-optional.txt`、跑 `migrate`。要用 TimescaleDB 不需要額外旗標（依連線自動偵測），只要把 sample 表轉成 hypertable：
 
 ```sql
 SELECT create_hypertable('telemetry_sample', 'ts', migrate_data => true);
@@ -372,8 +370,8 @@ services/
   labview/     給 LabVIEW Python Node 用的非阻塞行程控制
 config/        設定、API 組裝、URL
 frontend/      React console（見 frontend/README.md）
-scripts/       dev.ps1 / dev.sh 啟動器、stop.ps1、test-device.ps1
-docs/          設備協定、系統邏輯、本機開發、LabVIEW 整合、程式碼導覽
+scripts/       dev.ps1 / dev.sh 啟動器、stop.ps1、reset-demo.ps1（展示租戶）、sim-console.ps1、test-device.ps1
+docs/          設備協定、系統邏輯、本機開發、LabVIEW 整合、程式碼導覽、工作流程引擎設計手冊、客戶展示指南
 deploy/        EMQX 設定說明
 tests/         測試套件
 ```

@@ -525,7 +525,7 @@ def run_organization(
     """
     from apps.devices.models import Site
 
-    ctx = AuthContext(organization=organization, role=Role.ADMIN)
+    ctx = AuthContext(organization=organization, role=Role.ADMIN, service_label="dispatch-engine")
     moment = moment or now()
 
     from apps.ems.plans import effective_plan_map

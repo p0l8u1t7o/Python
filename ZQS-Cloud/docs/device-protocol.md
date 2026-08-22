@@ -92,7 +92,7 @@ spBv1.0/demo/NDEATH/ZQS-BESS-0001                  ← 遺言
 想省事的話，**§14 的模擬器就是照這個模式跑的**，可以直接拿來對照：
 
 ```bash
-python manage.py simulate_device --device ZQS-BESS-0001 --profile battery
+.\scripts\sim-console.ps1    # 桌面主控台：登記的設備以 MQTT 客戶端上線
 ```
 
 ### 1.2 允許的字元
@@ -609,7 +609,7 @@ Payload.seq       (欄位3, varint)   → 0x18, varint(seq)
 要產生一段標準 payload 來對拍：
 
 ```bash
-python manage.py simulate_device --device ZQS-BESS-0001 --profile battery
+.\scripts\sim-console.ps1    # 桌面主控台：登記的設備以 MQTT 客戶端上線
 ```
 
 ### 9.2 其他實作要點
@@ -797,16 +797,9 @@ seq 是否連續、命令有沒有回覆、以及重生要求有沒有被理會�
 ## 14. 沒有硬體時的快速驗證
 
 ```bash
-python manage.py simulate_device --device ZQS-BESS-0001 --profile battery --interval 5
+.\scripts\sim-console.ps1    # 桌面主控台：登記的設備以 MQTT 客戶端上線
 ```
 
-一個行程服務整個網關（這才是 Sparkplug 的正常用法）：
-
-```bash
-python manage.py simulate_device \
-    --device ZQS-BESS-0001=battery \
-    --device ZQS-METER-0001=meter \
-    --device ZQS-PV-0001=pv --interval 5
-```
+主控台對每台登記的閘道器各開一條連線、底下掛該閘道器的所有設備——這才是 Sparkplug 的正常用法。
 
 這會發布與上述完全相同的訊息，因此也可以當作 wire format 的參考實作。

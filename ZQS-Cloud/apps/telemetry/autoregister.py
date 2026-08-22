@@ -106,7 +106,12 @@ def describe(name: str, datatype: DataType, properties: dict[str, Any]) -> dict:
         try:
             fields["counter_max"] = float(counter_max)
         except (TypeError, ValueError):
-            pass
+            # Not fatal - the metric still registers - but counter wrap will
+            # never be handled for it, which is worth one line in the log.
+            logger.warning(
+                "ignoring malformed counter_max in birth certificate",
+                extra={"metric": str(properties.get("name") or ""), "value": str(counter_max)[:40]},
+            )
     return fields
 
 

@@ -76,6 +76,61 @@ const BASELINE_ICON: Record<StoragePlan['savings_baseline'], LucideIcon> = {
   none: MinusCircle,
 }
 
+type PlanForm = typeof EMPTY_FORM
+
+/**
+ * Field-level sanity checks, run while the operator is still looking at the
+ * form. The server validates again; these exist so a plan that can never
+ * act (a demand cap with no ceiling, a time-of-use plan with no tariff, a
+ * SOC floor above its ceiling) is pointed out before Save rather than after.
+ */
+function planProblems(form: PlanForm, t: (key: string, options?: Record<string, unknown>) => string) {
+  const problems: Partial<Record<keyof PlanForm, string>> = {}
+  const num = (value: string | number) => (value === '' || value === null ? null : Number(value))
+  const positive = (key: keyof PlanForm) => {
+    const value = num(form[key] as string | number)
+    if (value !== null && (!Number.isFinite(value) || value <= 0)) problems[key] = t('plans.problems.positive')
+  }
+  for (const key of ['contract_capacity_kw', 'peak_shaving_target_kw', 'usable_capacity_kwh',
+    'max_charge_kw', 'max_discharge_kw', 'demand_cap_target_kw', 'max_cycles_per_day'] as const) {
+    positive(key)
+  }
+  const minSoc = Number(form.min_soc_percent)
+  const maxSoc = Number(form.max_soc_percent)
+  const reserve = Number(form.backup_reserve_percent)
+  if (!(minSoc >= 0 && minSoc <= 100)) problems.min_soc_percent = t('plans.problems.percent')
+  if (!(maxSoc >= 0 && maxSoc <= 100)) problems.max_soc_percent = t('plans.problems.percent')
+  if (!problems.min_soc_percent && !problems.max_soc_percent && minSoc >= maxSoc) {
+    problems.min_soc_percent = t('plans.problems.socOrder')
+  }
+  if (!(reserve >= 0 && reserve <= 100)) problems.backup_reserve_percent = t('plans.problems.percent')
+  else if (!problems.max_soc_percent && reserve > maxSoc) {
+    problems.backup_reserve_percent = t('plans.problems.reserveAboveMax')
+  }
+  const rte = Number(form.round_trip_efficiency)
+  if (!(rte > 0 && rte <= 1)) problems.round_trip_efficiency = t('plans.problems.efficiency')
+  const spread = Number(form.min_price_spread)
+  if (!(spread >= 0)) problems.min_price_spread = t('plans.problems.nonNegative')
+  const tempMax = num(form.temperature_max_c)
+  if (tempMax !== null && !Number.isFinite(tempMax)) problems.temperature_max_c = t('plans.problems.number')
+  if (tempMax !== null && !form.temperature_metric) problems.temperature_metric = t('plans.problems.tempMetric')
+
+  const contract = num(form.contract_capacity_kw)
+  const target = num(form.demand_cap_target_kw)
+  if (form.strategy === 'demand_cap') {
+    if (contract === null && target === null) problems.contract_capacity_kw = t('plans.problems.demandCeiling')
+    if (contract !== null && target !== null && target > contract) {
+      problems.demand_cap_target_kw = t('plans.problems.targetAboveContract')
+    }
+  }
+  if (form.strategy === 'peak_shaving' && num(form.peak_shaving_target_kw) === null) {
+    problems.peak_shaving_target_kw = t('plans.problems.required')
+  }
+  if (form.strategy === 'tou_arbitrage' && !form.tariff_id) problems.tariff_id = t('plans.problems.tariff')
+  if (form.strategy === 'workflow' && !form.workflow_id) problems.workflow_id = t('plans.problems.workflow')
+  return problems
+}
+
 const EMPTY_FORM = {
   name: '',
   strategy: 'manual' as DispatchStrategy,
@@ -306,6 +361,8 @@ function PlanEditor({
 
   const number = (value: string | number) =>
     value === '' || value === null ? null : Number(value)
+  const problems = useMemo(() => planProblems(form, t), [form, t])
+  const problemCount = Object.keys(problems).length
 
   async function submit() {
     const body = {
@@ -372,7 +429,8 @@ function PlanEditor({
             <Button
               variant="primary"
               loading={create.isPending || update.isPending}
-              disabled={!form.name.trim()}
+              disabled={!form.name.trim() || problemCount > 0}
+              title={problemCount > 0 ? t('plans.problems.summary', { count: problemCount }) : undefined}
               onClick={() => void submit()}
             >
               {t('common.save')}
@@ -427,6 +485,7 @@ function PlanEditor({
                     type="number"
                     suffix="kW"
                     value={String(form.contract_capacity_kw)}
+                    error={problems.contract_capacity_kw}
                     onChange={(event) =>
                       setForm({ ...form, contract_capacity_kw: event.target.value })
                     }
@@ -445,6 +504,11 @@ function PlanEditor({
                         ? form.demand_cap_target_kw
                         : form.peak_shaving_target_kw,
                     )}
+                    error={
+                      form.strategy === 'demand_cap'
+                        ? problems.demand_cap_target_kw
+                        : problems.peak_shaving_target_kw
+                    }
                     onChange={(event) =>
                       setForm(
                         form.strategy === 'demand_cap'
@@ -466,6 +530,7 @@ function PlanEditor({
                   <Select
                     label={<Term id="tariff" />}
                     value={form.tariff_id}
+                    error={problems.tariff_id}
                     placeholder={t('common.none')}
                     onChange={(event) => setForm({ ...form, tariff_id: event.target.value })}
                     options={(tariffs.data ?? []).map((tariff) => ({
@@ -488,6 +553,7 @@ function PlanEditor({
                   <Select
                     label={<Term id="tariff" />}
                     value={form.tariff_id}
+                    error={problems.tariff_id}
                     placeholder={t('common.none')}
                     onChange={(event) => setForm({ ...form, tariff_id: event.target.value })}
                     options={(tariffs.data ?? []).map((tariff) => ({
@@ -502,6 +568,7 @@ function PlanEditor({
                     step="0.1"
                     min={0}
                     value={String(form.min_price_spread)}
+                    error={problems.min_price_spread}
                     onChange={(event) =>
                       setForm({ ...form, min_price_spread: Number(event.target.value) })
                     }
@@ -514,6 +581,7 @@ function PlanEditor({
                 <Select
                   label={t('storage.workflowPick')}
                   value={form.workflow_id}
+                  error={problems.workflow_id}
                   placeholder={t('common.none')}
                   onChange={(event) => setForm({ ...form, workflow_id: event.target.value })}
                   options={(workflows.data?.items ?? []).map((workflow) => ({
@@ -533,6 +601,7 @@ function PlanEditor({
                   min={0}
                   max={100}
                   value={String(form.backup_reserve_percent)}
+                  error={problems.backup_reserve_percent}
                   onChange={(event) =>
                     setForm({ ...form, backup_reserve_percent: Number(event.target.value) })
                   }
@@ -558,6 +627,7 @@ function PlanEditor({
               type="number"
               suffix="kWh"
               value={String(form.usable_capacity_kwh)}
+              error={problems.usable_capacity_kwh}
               onChange={(event) =>
                 setForm({ ...form, usable_capacity_kwh: event.target.value })
               }
@@ -569,6 +639,7 @@ function PlanEditor({
               min={0.1}
               max={1}
               value={String(form.round_trip_efficiency)}
+              error={problems.round_trip_efficiency}
               onChange={(event) =>
                 setForm({ ...form, round_trip_efficiency: Number(event.target.value) })
               }
@@ -578,6 +649,7 @@ function PlanEditor({
               type="number"
               suffix="kW"
               value={String(form.max_charge_kw)}
+              error={problems.max_charge_kw}
               onChange={(event) => setForm({ ...form, max_charge_kw: event.target.value })}
             />
             <TextInput
@@ -585,6 +657,7 @@ function PlanEditor({
               type="number"
               suffix="kW"
               value={String(form.max_discharge_kw)}
+              error={problems.max_discharge_kw}
               onChange={(event) =>
                 setForm({ ...form, max_discharge_kw: event.target.value })
               }
@@ -596,6 +669,7 @@ function PlanEditor({
               min={0}
               max={100}
               value={String(form.min_soc_percent)}
+              error={problems.min_soc_percent}
               onChange={(event) =>
                 setForm({ ...form, min_soc_percent: Number(event.target.value) })
               }
@@ -607,6 +681,7 @@ function PlanEditor({
               min={0}
               max={100}
               value={String(form.max_soc_percent)}
+              error={problems.max_soc_percent}
               onChange={(event) =>
                 setForm({ ...form, max_soc_percent: Number(event.target.value) })
               }
@@ -619,6 +694,7 @@ function PlanEditor({
                 min={0}
                 max={100}
                 value={String(form.backup_reserve_percent)}
+                error={problems.backup_reserve_percent}
                 onChange={(event) =>
                   setForm({ ...form, backup_reserve_percent: Number(event.target.value) })
                 }
@@ -638,6 +714,7 @@ function PlanEditor({
               step="0.1"
               min={0}
               value={String(form.max_cycles_per_day)}
+              error={problems.max_cycles_per_day}
               onChange={(event) =>
                 setForm({ ...form, max_cycles_per_day: event.target.value })
               }
@@ -648,6 +725,7 @@ function PlanEditor({
               type="number"
               suffix="°C"
               value={String(form.temperature_max_c)}
+              error={problems.temperature_max_c}
               onChange={(event) =>
                 setForm({ ...form, temperature_max_c: event.target.value })
               }
@@ -656,6 +734,7 @@ function PlanEditor({
             <Select
               label={t('storage.tempMetric')}
               value={form.temperature_metric}
+              error={problems.temperature_metric}
               placeholder={t('common.none')}
               onChange={(event) =>
                 setForm({ ...form, temperature_metric: event.target.value })

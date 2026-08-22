@@ -38,6 +38,7 @@ import { useTimeRange } from '@/lib/useTimeRange'
 import type { FleetLive, PowerFlow, SiteLive } from '@/lib/types'
 import type { GlossaryId } from '@/lib/glossary'
 import { SiteCostChart } from '@/components/charts/CostCharts'
+import { DemandBenefitTable } from '@/components/charts/DemandBenefitTable'
 import { SocGauge } from '@/components/charts/PowerGauge'
 import {
   Badge,
@@ -230,10 +231,16 @@ function EnergyView() {
           ) : costs.error ? (
             <ErrorState error={costs.error} onRetry={() => void costs.refetch()} />
           ) : (
-            <SiteCostChart
-              sites={costs.data?.sites ?? []}
-              currency={costs.data?.mixed_currency ? undefined : costs.data?.currency}
-            />
+            <>
+              <SiteCostChart
+                sites={costs.data?.sites ?? []}
+                currency={costs.data?.mixed_currency ? undefined : costs.data?.currency}
+              />
+              <DemandBenefitTable
+                sites={costs.data?.sites ?? []}
+                currency={costs.data?.mixed_currency ? undefined : costs.data?.currency}
+              />
+            </>
           )}
         </CardBody>
       </Card>
@@ -419,7 +426,7 @@ function SiteLiveRow({ site, onOpen }: { site: SiteLive; onOpen: () => void }) {
         >
           <Building2 className="size-3.5 shrink-0 text-subtle" aria-hidden />
           <span className="font-medium">{site.site_name}</span>
-          {site.is_stale ? (
+          {site.is_stale && site.device_count > 0 ? (
             <Badge tone="neutral">{t('storage.stale')}</Badge>
           ) : null}
         </span>

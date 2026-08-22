@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 
 import {
   useSites,
@@ -12,11 +12,15 @@ import {
 import { errorMessage, fieldErrors } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { useToast } from '@/providers/ToastProvider'
+import { useAuth } from '@/providers/AuthProvider'
+import type { Workflow } from '@/lib/workflowTypes'
 import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyRow,
+  IconButton,
   ErrorState,
   Modal,
   PageHeader,
@@ -46,9 +50,11 @@ export function WorkflowsPage() {
   const workflows = useWorkflowList()
   const capacity = useWorkflowCapacity()
   const sites = useSites()
-  const { create } = useWorkflowMutations()
+  const { create, remove } = useWorkflowMutations()
+  const { can } = useAuth()
 
   const [open, setOpen] = useState(false)
+  const [deleting, setDeleting] = useState<Workflow | null>(null)
   const [form, setForm] = useState({ name: '', description: '', site_id: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -122,10 +128,11 @@ export function WorkflowsPage() {
               <Th align="right">{t('workflows.activeRuns')}</Th>
               <Th>{t('common.status')}</Th>
               <Th align="right">{t('common.updated')}</Th>
+              <Th />
             </THead>
             <TBody>
               {workflows.isPending ? (
-                <EmptyRow colSpan={6} message={`${t('common.loading')}…`} />
+                <EmptyRow colSpan={7} message={`${t('common.loading')}…`} />
               ) : (workflows.data?.items ?? []).length > 0 ? (
                 (workflows.data?.items ?? []).map((workflow) => (
                   <Tr key={workflow.id}>
@@ -154,15 +161,44 @@ export function WorkflowsPage() {
                     <Td align="right" className="whitespace-nowrap text-muted">
                       {formatDateTime(workflow.updated_at)}
                     </Td>
+                    <Td align="right">
+                      {can('ems:write') ? (
+                        <IconButton
+                          label={t('common.delete')}
+                          onClick={() => setDeleting(workflow)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </IconButton>
+                      ) : null}
+                    </Td>
                   </Tr>
                 ))
               ) : (
-                <EmptyRow colSpan={6} message={t('workflows.empty')} />
+                <EmptyRow colSpan={7} message={t('workflows.empty')} />
               )}
             </TBody>
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        danger
+        loading={remove.isPending}
+        title={t('common.delete')}
+        confirmLabel={t('common.delete')}
+        message={t('workflows.deleteConfirm', { name: deleting?.name ?? '' })}
+        onConfirm={async () => {
+          if (!deleting) return
+          try {
+            await remove.mutateAsync(deleting.id)
+            setDeleting(null)
+          } catch (error) {
+            toast.error(errorMessage(error))
+          }
+        }}
+      />
 
       <Modal
         open={open}

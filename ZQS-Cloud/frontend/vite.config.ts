@@ -24,7 +24,31 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:8000',
         changeOrigin: true,
+        configure(proxy) {
+          // The workflow run stream is a long-lived SSE response through this
+          // proxy. A browser tab closing mid-stream surfaces as ECONNRESET on
+          // the proxied socket, and an unhandled 'error' there takes the whole
+          // dev server down - which looked like Vite randomly dying during
+          // e2e runs. Answer cleanly and carry on.
+          proxy.on('error', (_error, _request, response) => {
+            const res = response as { headersSent?: boolean; writeHead?: (code: number) => void; end?: () => void }
+            try {
+              if (res && !res.headersSent && typeof res.writeHead === 'function') {
+                res.writeHead(502)
+                res.end?.()
+              }
+            } catch {
+              // The socket is already gone; nothing to answer.
+            }
+          })
+        },
       },
+    },
+    watch: {
+      // Test artefacts (screenshots, traces) are written under the project
+      // root during e2e runs; watching them is churn the dev server does not
+      // need.
+      ignored: ['**/e2e-results/**', '**/test-results/**', '**/dist/**'],
     },
   },
   build: {

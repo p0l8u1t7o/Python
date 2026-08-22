@@ -18,6 +18,8 @@ export type NodeParamKind =
   | 'command'
   | 'workflow'
   | 'duration'
+  /** Another node in the same graph (jump targets). */
+  | 'node'
 
 export interface NodeParam {
   key: string

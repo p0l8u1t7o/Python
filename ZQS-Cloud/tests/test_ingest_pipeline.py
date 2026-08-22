@@ -285,6 +285,43 @@ class PipelineTestCase(TestCase):
         self.node.refresh_from_db()
         self.assertEqual(self.node.status, ConnectionStatus.OFFLINE)
 
+    def test_data_and_death_in_one_batch_leave_the_device_offline(self):
+        """The worker handles messages in batches. A DDATA followed by a
+        DDEATH in the same batch used to end with the device *online*: the
+        end-of-batch "anything that sent data is online" step ran after the
+        death had been applied. The later message has to win."""
+        self.birth()
+        self.publish(MessageType.DDATA, [("grid_power_w", 120.0, DataType.Double)])
+        self.publish(MessageType.DDEATH)
+        self.drain()
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.status, ConnectionStatus.OFFLINE)
+
+    def test_data_and_node_death_in_one_batch_leave_everything_offline(self):
+        second = factories.device(self.org, "ZQS-TEST-0002", node=self.node)
+        get_registry().invalidate()
+        self.birth()
+        self.publish(MessageType.DDATA, [("grid_power_w", 120.0, DataType.Double)])
+        self.publish(MessageType.DDATA, [("grid_power_w", 5.0, DataType.Double)],
+                     device_id=second.device_id)
+        self.publish(MessageType.DDEATH)
+        self.publish(MessageType.NDEATH, [("bdSeq", 1, DataType.Int64)])
+        self.drain()
+        for device in (self.device, second):
+            device.refresh_from_db()
+            self.assertEqual(device.status, ConnectionStatus.OFFLINE, device.device_id)
+        self.node.refresh_from_db()
+        self.assertEqual(self.node.status, ConnectionStatus.OFFLINE)
+
+    def test_data_after_a_death_in_the_same_batch_puts_the_device_back(self):
+        """Order matters both ways: data *after* the death is a new session."""
+        self.birth()
+        self.publish(MessageType.DDEATH)
+        self.publish(MessageType.DDATA, [("grid_power_w", 120.0, DataType.Double)])
+        self.drain()
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.status, ConnectionStatus.ONLINE)
+
     def test_a_stale_death_does_not_knock_a_reconnected_node_offline(self):
         """bdSeq is what makes a death safe to act on."""
         self.birth()
@@ -477,3 +514,62 @@ class PipelineTestCase(TestCase):
         )
         metrics = {m.name: m.value for m in sp.decode(body).metrics}
         self.assertIs(metrics[sp.NODE_REBIRTH_METRIC], True)
+
+
+class LatestValueFreshnessTests(PipelineTestCase):
+    def test_a_deadband_filtered_reading_still_refreshes_the_latest_timestamp(self):
+        """A steady value must not read as stale.
+
+        The deadband decides how densely *history* is stored. It used to drop
+        the reading entirely, so a SOC that sat at 55% for an hour stopped
+        refreshing its latest-value timestamp, the control engine judged the
+        reading stale and refused to act on it.
+        """
+        self.birth()
+        base = now().replace(microsecond=0)
+
+        # First reading: stored.
+        self.publish(MessageType.DDATA, [("battery_soc", 55.0, DataType.Double)],
+                     timestamp=base + dt.timedelta(seconds=1))
+        self.drain()
+        # Same value again, well inside any deadband: history may skip it...
+        later = base + dt.timedelta(seconds=2)
+        self.publish(MessageType.DDATA, [("battery_soc", 55.0, DataType.Double)],
+                     timestamp=later)
+        stats = self.drain()
+
+        latest = LatestSample.objects.get(metric_key="battery_soc")
+        # ...but the latest-value table says the device reported just now.
+        self.assertEqual(latest.ts, later)
+        self.assertAlmostEqual(latest.value, 55.0)
+        self.assertGreaterEqual(stats.get("filtered_by_deadband", 0) + stats.get("inserted", 0), 1)
+
+
+class NodeTimeoutSweepTests(TestCase):
+    """A node whose death never arrived is still taken offline eventually."""
+
+    def test_a_silent_online_node_is_marked_offline_after_the_grace(self):
+        import datetime as dt
+
+        from django.utils import timezone
+
+        from services.worker.maintenance import mark_stale_nodes_offline
+
+        org = factories.organization()
+        node = factories.edge_node(org, "SILENT-GW") if hasattr(factories, "edge_node") else None
+        if node is None:
+            from apps.devices.models import EdgeNode
+
+            node = EdgeNode.objects.create(organization=org, group_id=org.slug, node_id="SILENT-GW", name="gw")
+        node.status = ConnectionStatus.ONLINE
+        node.last_seen_at = timezone.now() - dt.timedelta(seconds=600)
+        node.save(update_fields=["status", "last_seen_at"])
+
+        self.assertEqual(mark_stale_nodes_offline(grace_seconds=180), 1)
+        node.refresh_from_db()
+        self.assertEqual(node.status, ConnectionStatus.OFFLINE)
+        # A node heard from recently is left alone.
+        node.status = ConnectionStatus.ONLINE
+        node.last_seen_at = timezone.now()
+        node.save(update_fields=["status", "last_seen_at"])
+        self.assertEqual(mark_stale_nodes_offline(grace_seconds=180), 0)

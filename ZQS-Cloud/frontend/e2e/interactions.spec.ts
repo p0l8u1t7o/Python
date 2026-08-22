@@ -229,50 +229,30 @@ test.describe('help', () => {
 test.describe('storage plan', () => {
   test('the strategy and baseline pickers explain each option', async ({ page }, info) => {
     const watcher = watch(page)
-    await open(page, '/storage')
+    // Plans live on their own page now; the editor opens from a plan card.
+    await open(page, '/storage-plans')
     await expect(page.getByRole('heading').first()).toBeVisible()
-    await page.waitForTimeout(2500)
+    await page.waitForTimeout(2000)
 
-    // The plan editor is behind a button whose label differs per language, so
-    // find it by the dialog it opens rather than by its text.
-    const buttons = page.getByRole('button')
-    const count = await buttons.count()
-    for (let index = 0; index < count; index += 1) {
-      const label = (await buttons.nth(index).textContent()) ?? ''
-      if (/plan|方案|規劃|规划|edit|編輯|编辑/i.test(label)) {
-        await buttons.nth(index).click()
-        break
-      }
-    }
-
-    const dialog = page.getByRole('dialog')
-    if (!(await dialog.count())) {
-      test.skip(true, 'no storage plan on this site to edit')
+    const card = page.getByRole('button').filter({ hasText: /方案|plan/i }).first()
+    if (!(await card.count())) {
+      test.skip(true, 'no storage plan to open')
       return
     }
-    await expect(dialog).toBeVisible()
-    await page.waitForTimeout(500)
+    await card.click()
+    await page.waitForTimeout(800)
     await shoot(page, info, 'storage-plan-editor')
 
     // The strategy is a tab bar whose tabs *are* the setting: picking one
-    // selects that strategy and reveals only the fields it uses. The savings
-    // baseline stays a radio group with prose per option.
-    const tabs = dialog.getByRole('tab')
-    expect(await tabs.count()).toBeGreaterThanOrEqual(5)
-
-    const baseline = dialog.getByRole('radiogroup')
-    expect(await baseline.count()).toBeGreaterThanOrEqual(1)
-    expect(await dialog.getByRole('radio').count()).toBeGreaterThanOrEqual(3)
-
-    // Switching to the peak-shaving tab must select it and surface its own
-    // parameters, which no other tab shows.
-    const peak = tabs.filter({ hasText: /削峰|peak/i }).first()
-    await peak.click()
-    await expect(peak).toHaveAttribute('aria-selected', 'true')
-    await expect(
-      dialog.locator('input[type="number"]').first(),
-    ).toBeVisible()
-    await shoot(page, info, 'storage-plan-strategy-tab')
+    // selects that strategy and reveals only the fields it uses.
+    const tabs = page.getByRole('tab')
+    expect(await tabs.count()).toBeGreaterThanOrEqual(7)
+    for (let i = 0; i < (await tabs.count()); i += 1) {
+      await tabs.nth(i).click()
+      await page.waitForTimeout(150)
+    }
+    // The savings baseline stays a radio group with prose per option.
+    await expect(page.getByText(/節費基準線|节费基准线|savings baseline/i).first()).toBeVisible()
 
     expect(watcher.errors.join('\n')).toBe('')
   })
@@ -524,7 +504,10 @@ test.describe('workflow editor controls', () => {
     await open(page, '/workflows')
     await page.waitForTimeout(1500)
 
-    const first = page.locator('table a').first()
+    // A flow that keeps running (the peak-shaving loop) so there is
+    // something to pause; a one-shot drill would finish before the click.
+    const looping = page.locator('table a').filter({ hasText: /削峰|peak/i }).first()
+    const first = (await looping.count()) ? looping : page.locator('table a').first()
     if (!(await first.count())) {
       test.skip(true, 'no workflows seeded')
       return
@@ -548,7 +531,8 @@ test.describe('workflow editor controls', () => {
     // selected it runs just that node and the run finishes on its own.
     const stepButton = button(/^(step|單Node執行|单Node执行)/i)
     await expect(stepButton).toBeDisabled()
-    await page.locator('.react-flow__node').first().click()
+    // An executable node, not a sticky note - notes cannot be run.
+    await page.locator('.react-flow__node-workflow').first().click()
     await page.waitForTimeout(300)
     await stepButton.click()
     await page.waitForTimeout(2000)

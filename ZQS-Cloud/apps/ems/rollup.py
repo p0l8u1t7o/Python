@@ -27,7 +27,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any, Sequence
 
-from django.db.models import Max, Sum
+from django.db.models import ExpressionWrapper, F, FloatField, Max, Sum
 
 from apps.ems.models import EnergyInterval
 
@@ -227,4 +227,41 @@ def _effective_currencies(site_ids) -> dict:
             else None
         )
         for site_id in ids
+    }
+
+
+def demand_by_site(
+    site_ids: Sequence[Any], start: dt.datetime, end: dt.datetime
+) -> dict[Any, dict]:
+    """Highest interval demand per site, as metered and as it would have been
+    with the battery idle (``load - pv``), over ``[start, end)``.
+
+    Interval averages are the right unit: the utility bills the highest
+    15-minute *average*, not the highest instantaneous reading, and the
+    intervals here are that average.
+    """
+    ids = [pk for pk in site_ids if pk is not None]
+    if not ids:
+        return {}
+    per_hour = 3600.0
+    actual = ExpressionWrapper(
+        F("grid_import_kwh") * per_hour / F("interval_seconds"), output_field=FloatField()
+    )
+    baseline = ExpressionWrapper(
+        (F("load_kwh") - F("pv_kwh")) * per_hour / F("interval_seconds"),
+        output_field=FloatField(),
+    )
+    rows = (
+        EnergyInterval.objects.filter(
+            site_id__in=ids, interval_start__gte=start, interval_start__lt=end
+        )
+        .values("site_id")
+        .annotate(peak=Max(actual), baseline_peak=Max(baseline))
+    )
+    return {
+        row["site_id"]: {
+            "peak_demand_kw": row["peak"],
+            "baseline_peak_kw": row["baseline_peak"],
+        }
+        for row in rows
     }

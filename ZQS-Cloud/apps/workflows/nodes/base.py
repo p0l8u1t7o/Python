@@ -50,7 +50,8 @@ class Param:
 
     key: str
     label: str
-    #: text | number | boolean | select | device | metric | command | workflow | duration
+    #: text | number | boolean | select | device | metric | command | workflow | duration | node
+    #: ``node`` is a pick-list of the other nodes in the same graph (jump targets).
     kind: str = "text"
     required: bool = False
     default: Any = None

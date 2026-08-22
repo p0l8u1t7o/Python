@@ -178,6 +178,20 @@ class NotificationChannelIn(Schema):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+class ChannelTestIn(Schema):
+    """The channel form as it stands; ``id`` lets redacted secrets be filled in."""
+
+    id: uuid.UUID | None = None
+    name: str = ""
+    channel_type: ChannelType
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChannelTestOut(Schema):
+    ok: bool
+    message: str = ""
+
+
 class NotificationChannelOut(Schema):
     id: uuid.UUID
     name: str
@@ -190,3 +204,8 @@ class NotificationChannelOut(Schema):
     #: Secrets (auth headers, tokens) are redacted before serialisation.
     config: dict[str, Any]
     created_at: dt.datetime
+    #: The most recent delivery attempt, so the list answers "is this channel
+    #: actually working" without opening the worker log.
+    last_delivery_status: str = ""
+    last_delivery_error: str = ""
+    last_delivery_at: dt.datetime | None = None

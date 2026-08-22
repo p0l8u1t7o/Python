@@ -80,8 +80,28 @@ def mark_stale_devices_offline(grace_seconds: int | None = None) -> int:
     return len(device_pks)
 
 
+def mark_stale_nodes_offline(grace_seconds: int | None = None) -> int:
+    """Flip edge nodes to offline when nothing arrived on them in the grace
+    window. An NDEATH can be lost (the will is discarded on a clean
+    DISCONNECT, and a broker may drop a PUBLISH that a DISCONNECT follows
+    too closely); without this sweep such a node reads "online" forever."""
+    from apps.devices.models import EdgeNode
+
+    grace = grace_seconds or settings.DEVICE_OFFLINE_GRACE_SECONDS
+    now = timezone.now()
+    cutoff = now - dt.timedelta(seconds=grace)
+    stale = EdgeNode.objects.filter(
+        status=ConnectionStatus.ONLINE, deleted_at__isnull=True, last_seen_at__lt=cutoff
+    )
+    count = stale.update(status=ConnectionStatus.OFFLINE, status_changed_at=now, last_seq=None)
+    if count:
+        logger.warning("edge nodes marked offline by timeout", extra={"count": count})
+    return count
+
+
 def run_maintenance_cycle() -> dict[str, int]:
     return {
         "commands_expired": expire_commands(),
         "devices_offline": mark_stale_devices_offline(),
+        "nodes_offline": mark_stale_nodes_offline(),
     }

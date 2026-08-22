@@ -56,6 +56,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   ErrorState,
   LoadingState,
   PageHeader,
@@ -66,6 +67,8 @@ import {
 const NODE_TYPES = { workflow: WorkflowNode, note: NoteNode, arrow: ArrowNode }
 const EDGE_TYPES = { flow: AnimatedFlowEdge }
 const DECORATION_TYPES = new Set(['note', 'arrow'])
+/** Node types whose execution reaches a device. */
+const ACTION_TYPES = new Set(['send_action', 'set_data'])
 const DRAG_MIME = 'application/x-zqs-node-type'
 const HISTORY_LIMIT = 50
 
@@ -739,6 +742,52 @@ function EditorInner({ workflowId }: { workflowId: string }) {
     }
   }
 
+  /** Nodes that will actually reach a device on a real run. */
+  const actionCount = useMemo(
+    () =>
+      nodes.filter((node) => {
+        const payload = payloads.current.get(node.id)
+        return payload && payload.enabled !== false && ACTION_TYPES.has(payload.type)
+      }).length,
+    [nodes],
+  )
+  const [confirmRun, setConfirmRun] = useState(false)
+  const inspectorGraph = useMemo(() => currentGraph(), [nodes, edges]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * A real run is the one button on the page that reaches hardware, so it
+   * gets a second step: how many nodes will send commands, and whether the
+   * drawing on screen is what will run (unsaved changes are saved first -
+   * running the stored version while looking at a different one is how an
+   * operator ends up debugging a flow that is not the one executing).
+   */
+  function requestRun() {
+    if (problemMap.size > 0) {
+      toast.error(t('workflows.validationWarning', { count: problemMap.size }))
+      return
+    }
+    setConfirmRun(true)
+  }
+
+  async function confirmAndRun() {
+    setConfirmRun(false)
+    if (dirty) {
+      try {
+        await save.mutateAsync({
+          id: workflowId,
+          name: meta.name.trim(),
+          description: meta.description,
+          graph: currentGraph(),
+        })
+        setDirty(false)
+      } catch (error) {
+        toast.error(errorMessage(error))
+        return
+      }
+    }
+    await launch(false)
+  }
+
   async function launch(dryRun: boolean) {
     if (problemMap.size > 0) {
       toast.error(t('workflows.validationWarning', { count: problemMap.size }))
@@ -895,12 +944,31 @@ function EditorInner({ workflowId }: { workflowId: string }) {
             </Button>
             <Button
               variant="primary"
-              onClick={() => void launch(false)}
+              onClick={requestRun}
               loading={start.isPending}
             >
               <icons.Play className="size-3.5" aria-hidden />
               {t('workflows.run')}
             </Button>
+            <ConfirmDialog
+              open={confirmRun}
+              onClose={() => setConfirmRun(false)}
+              onConfirm={() => void confirmAndRun()}
+              title={t('workflows.confirmRunTitle')}
+              confirmLabel={t('workflows.run')}
+              danger={actionCount > 0}
+              message={
+                <div className="space-y-2 text-sm">
+                  <p>
+                    {actionCount > 0
+                      ? t('workflows.confirmRunActions', { count: actionCount })
+                      : t('workflows.confirmRunNoActions')}
+                  </p>
+                  {dirty ? <p className="text-warning">{t('workflows.confirmRunDirty')}</p> : null}
+                  <p className="text-xs text-muted">{t('workflows.confirmRunHint')}</p>
+                </div>
+              }
+            />
 
             <span className="mx-1 h-5 w-px bg-line" aria-hidden />
 
@@ -1017,6 +1085,7 @@ function EditorInner({ workflowId }: { workflowId: string }) {
               <NodeInspector
                 node={selected}
                 definition={definitions.get(selected.type)}
+                graph={inspectorGraph}
                 onChange={(patch) => patchNode(selected.id, patch)}
                 onDelete={() => deleteNodes([selected.id])}
               />

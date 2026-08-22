@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
 
 import { useAllDevices, useDevice, useMetrics, useWorkflowList } from '@/lib/queries'
-import type { GraphNode, NodeParam, NodeTypeDef } from '@/lib/workflowTypes'
-import { nodeProblems } from '@/lib/workflowValidation'
+import type { GraphEdge, GraphNode, NodeParam, NodeTypeDef } from '@/lib/workflowTypes'
+import { nodeProblems, unconnectedHandles } from '@/lib/workflowValidation'
 import { Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 
 /** A small palette that reads in both themes; free choice via the picker. */
@@ -71,12 +71,15 @@ function ParamField({
   value,
   onChange,
   deviceId,
+  graphNodes = [],
 }: {
   param: NodeParam
   value: unknown
   onChange: (value: unknown) => void
   /** The node's own device, for narrowing metric and command pickers. */
   deviceId?: string
+  /** The other executable nodes of the graph, for node pickers. */
+  graphNodes?: { id: string; label: string }[]
 }) {
   const { t } = useTranslation()
   const devices = useAllDevices({ enabled: param.kind === 'device' })
@@ -88,13 +91,22 @@ function ParamField({
   const device = useDevice(param.kind === 'command' ? deviceId || undefined : undefined)
 
   const text = value === null || value === undefined ? '' : String(value)
+  // Localised with the server's English as the fallback, same as node types.
+  const label = t(`workflows.params.${param.key}`, { defaultValue: param.label })
+  const help = param.help_text
+    ? t(`workflows.paramHints.${param.key}`, { defaultValue: param.help_text })
+    : param.help_text
+  const options = param.options.map((option) => ({
+    value: option.value,
+    label: t(`workflows.paramOptions.${param.key}.${option.value}`, { defaultValue: option.label }),
+  }))
 
   switch (param.kind) {
     case 'boolean':
       return (
         <Checkbox
-          label={param.label}
-          hint={param.help_text}
+          label={label}
+          hint={help}
           checked={Boolean(value)}
           onChange={onChange}
         />
@@ -104,13 +116,13 @@ function ParamField({
     case 'duration':
       return (
         <TextInput
-          label={param.label}
+          label={label}
           type="number"
           required={param.required}
           suffix={param.unit || undefined}
           min={param.minimum ?? undefined}
           max={param.maximum ?? undefined}
-          hint={param.help_text}
+          hint={help}
           value={text}
           onChange={(event) =>
             onChange(event.target.value === '' ? null : Number(event.target.value))
@@ -118,25 +130,41 @@ function ParamField({
         />
       )
 
+    case 'node':
+      return (
+        <Select
+          label={label}
+          required={param.required}
+          hint={help}
+          value={text}
+          placeholder={t('workflows.pickNode')}
+          onChange={(event) => onChange(event.target.value)}
+          options={graphNodes.map((other) => ({
+            value: other.id,
+            label: other.label ? `${other.label}  (${other.id})` : other.id,
+          }))}
+        />
+      )
+
     case 'select':
       return (
         <Select
-          label={param.label}
+          label={label}
           required={param.required}
-          hint={param.help_text}
+          hint={help}
           value={text}
           placeholder={param.required ? undefined : t('common.none')}
           onChange={(event) => onChange(event.target.value)}
-          options={param.options}
+          options={options}
         />
       )
 
     case 'device':
       return (
         <Select
-          label={param.label}
+          label={label}
           required={param.required}
-          hint={param.help_text}
+          hint={help}
           value={text}
           placeholder={t('common.none')}
           onChange={(event) => onChange(event.target.value)}
@@ -150,9 +178,9 @@ function ParamField({
     case 'metric':
       return (
         <Select
-          label={param.label}
+          label={label}
           required={param.required}
-          hint={param.help_text}
+          hint={help}
           value={text}
           placeholder={t('common.none')}
           onChange={(event) => onChange(event.target.value)}
@@ -170,7 +198,7 @@ function ParamField({
       if (available.length === 0) {
         return (
           <TextInput
-            label={param.label}
+            label={label}
             required={param.required}
             hint={t('workflows.commandFreeTextHint')}
             value={text}
@@ -180,9 +208,9 @@ function ParamField({
       }
       return (
         <Select
-          label={param.label}
+          label={label}
           required={param.required}
-          hint={param.help_text}
+          hint={help}
           value={text}
           placeholder={t('common.none')}
           onChange={(event) => onChange(event.target.value)}
@@ -201,9 +229,9 @@ function ParamField({
     case 'workflow':
       return (
         <Select
-          label={param.label}
+          label={label}
           required={param.required}
-          hint={param.help_text}
+          hint={help}
           value={text}
           placeholder={t('common.none')}
           onChange={(event) => onChange(event.target.value)}
@@ -217,9 +245,9 @@ function ParamField({
     default:
       return (
         <TextInput
-          label={param.label}
+          label={label}
           required={param.required}
-          hint={param.help_text}
+          hint={help}
           value={text}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -239,18 +267,26 @@ export function NodeInspector({
   definition,
   onChange,
   onDelete,
+  graph,
 }: {
   node: GraphNode
   definition: NodeTypeDef | undefined
   onChange: (patch: Partial<GraphNode>) => void
   onDelete: () => void
+  /** The whole drawing, for node pickers and the unconnected-output hint. */
+  graph?: { nodes: GraphNode[]; edges: GraphEdge[] }
 }) {
   const { t } = useTranslation()
   const params = node.params ?? {}
   const isNote = node.type === 'note'
   const isArrow = node.type === 'arrow'
-  const problems = isNote || isArrow ? [] : nodeProblems(node, definition)
+  const allNodes = graph?.nodes ?? []
+  const problems = isNote || isArrow ? [] : nodeProblems(node, definition, allNodes)
   const problemByParam = new Map(problems.map((problem) => [problem.paramKey, problem]))
+  const pickable = allNodes
+    .filter((other) => other.id !== node.id && other.type !== 'note' && other.type !== 'arrow')
+    .map((other) => ({ id: other.id, label: other.label ?? '' }))
+  const dangling = node.enabled === false ? [] : unconnectedHandles(node, definition, graph?.edges ?? [])
 
   const typeLabel = definition
     ? t(`workflows.nodeTypes.${definition.key}.label`, { defaultValue: definition.label })
@@ -326,6 +362,7 @@ export function NodeInspector({
                       param={param}
                       value={params[param.key] ?? param.default}
                       deviceId={String(params.device_id ?? '')}
+                      graphNodes={pickable}
                       onChange={(value) =>
                         onChange({ params: { ...params, [param.key]: value } })
                       }
@@ -340,6 +377,16 @@ export function NodeInspector({
               })
             )}
           </div>
+
+          {dangling.length > 0 ? (
+            <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">
+              {t('workflows.unconnectedOutputs', {
+                handles: dangling
+                  .map((key) => definition?.handles.find((h) => h.key === key)?.label ?? key)
+                  .join('、'),
+              })}
+            </p>
+          ) : null}
         </>
       )}
 

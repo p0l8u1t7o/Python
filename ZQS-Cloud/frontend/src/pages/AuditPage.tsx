@@ -90,7 +90,7 @@ export function AuditPage() {
                           {t(`audit.${entry.status}`)}
                         </Badge>
                       </Td>
-                      <Td className="font-medium">{entry.action_label || entry.action}</Td>
+                      <Td className="font-medium">{t(`audit.actions.${entry.action}`, { defaultValue: entry.action_label || entry.action })}</Td>
                       <Td className="text-muted">{entry.actor_label || '—'}</Td>
                       <Td className="max-w-xs truncate text-muted">
                         {entry.target_label || entry.target_type || '—'}
@@ -121,7 +121,7 @@ export function AuditPage() {
       <Modal
         open={selected !== null}
         onClose={() => setSelected(null)}
-        title={selected?.action_label ?? t('audit.title')}
+        title={selected ? t(`audit.actions.${selected.action}`, { defaultValue: selected.action_label || selected.action }) : t('audit.title')}
         description={selected ? formatDateTime(selected.created_at) : undefined}
       >
         {selected ? (

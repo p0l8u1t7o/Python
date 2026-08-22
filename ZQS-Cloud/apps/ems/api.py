@@ -20,6 +20,8 @@ from apps.core.schemas import OkResponse, Page, PageParams, TimeRangeParams, pag
 from apps.core.timeutils import now
 from apps.devices.models import ConnectionStatus, Device, Site, descendant_site_ids
 from apps.ems import rollup
+from apps.ems.demand import demand_benefit
+from apps.ems.plans import effective_plan_map
 from apps.ems import schemas as s
 from apps.ems.models import (
     AssetRole,
@@ -537,6 +539,9 @@ def fleet_live(request, include_inactive: bool = False):
     contributions = dict.fromkeys(totals, 0)
     newest = None
     reporting = 0
+    # Sites that could report at all. A parent that only groups its children
+    # has nothing to be stale about and must not drag the count down.
+    equipped = 0
     soc_weighted = soc_weight = 0.0
     day_cost = day_savings = day_load = day_pv = 0.0
 
@@ -549,6 +554,8 @@ def fleet_live(request, include_inactive: bool = False):
 
         devices = device_rows.get(site.pk, {})
         stale = bool(flow.get("is_stale", True))
+        if (devices.get("total", 0) or 0) > 0:
+            equipped += 1
         if not stale:
             reporting += 1
             for key in totals:
@@ -609,7 +616,7 @@ def fleet_live(request, include_inactive: bool = False):
         "battery_soc_percent": (
             round(soc_weighted / soc_weight, 1) if soc_weight else None
         ),
-        "site_count": len(sites),
+        "site_count": equipped,
         "reporting_site_count": reporting,
         "currency": distinct.pop() if len(distinct) == 1 else "",
         "mixed_currency": len(distinct) > 1,
@@ -725,6 +732,8 @@ def cost_overview(request, window: Query[TimeRangeParams], include_inactive: boo
 
     site_ids = [site.pk for site in sites]
     costs = rollup.cost_by_site(site_ids, start, end)
+    demand = rollup.demand_by_site(site_ids, start, end)
+    plans = effective_plan_map(ctx.organization)
     currencies = rollup.currency_by_site(
         site_ids, default=ctx.organization.reporting_currency
     )
@@ -741,8 +750,18 @@ def cost_overview(request, window: Query[TimeRangeParams], include_inactive: boo
     rows = []
     for site in sites:
         figures = costs.get(site.pk, {})
+        plan = (plans.get(site.pk) or (None, None))[0]
+        benefit = demand_benefit(
+            peak_demand_kw=demand.get(site.pk, {}).get("peak_demand_kw"),
+            baseline_peak_kw=demand.get(site.pk, {}).get("baseline_peak_kw"),
+            contract_capacity_kw=plan.contract_capacity_kw if plan else None,
+            demand_charge_per_kw=(
+                plan.tariff.demand_charge_per_kw if plan and plan.tariff else None
+            ),
+        )
         rows.append(
             {
+                **benefit.as_dict(),
                 "site_id": site.pk,
                 "site_name": site.name,
                 "parent_id": site.parent_id,
@@ -768,6 +787,7 @@ def cost_overview(request, window: Query[TimeRangeParams], include_inactive: boo
         "total_estimated_savings": round(
             sum(row["estimated_savings"] for row in rows), 2
         ),
+        "total_demand_savings": round(sum(row["demand_savings"] for row in rows), 2),
         "sites": rows,
     }
 
@@ -1418,6 +1438,22 @@ def _validate_asset_metrics(payload: s.EnergyAssetIn) -> None:
         )
     if payload.power_scale == 0:
         raise ValidationError("power_scale must not be zero", code="invalid_scale")
+    if payload.cost_model:
+        from apps.ems import costs
+
+        if payload.cost_model not in costs.available():
+            raise ValidationError(
+                f"Unknown cost model '{payload.cost_model}'", code="unknown_cost_model",
+                details={"available": costs.available()},
+            )
+    if (
+        payload.session_enter_kw is not None
+        and payload.session_exit_kw is not None
+        and payload.session_exit_kw > payload.session_enter_kw
+    ):
+        raise ValidationError(
+            "session_exit_kw must not exceed session_enter_kw", code="invalid_session_band"
+        )
 
 
 def _validate_plan(payload: s.StoragePlanIn) -> None:

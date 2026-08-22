@@ -48,7 +48,6 @@ ingestor + worker、console，以及三台模擬設備。
 | --- | --- |
 | `-Setup` / `--setup` | 安裝、遷移、建立種子資料、回補歷史。可重複執行 |
 | `-Full` / `--full` | 改用真正的 EMQX 與 Redis，ingestor 與 worker 分開跑（需要 Docker） |
-| `-Simulate` / `--simulate` | 同 `-Full`，再加上模擬裝置 |
 | `-NoBroker` / `--no-broker` | 完全不要即時路徑，只跑 console 與 API |
 | `-HistoryDays` / `--history-days` | setup 時回補的天數（預設 3） |
 | `-NoBrowser` | 不要開啟瀏覽器 |
@@ -121,7 +120,7 @@ python manage.py generate_history --days 3 --interval 120 --clear --with-faults
 ```
 
 直接把過去 N 天的 telemetry 寫進資料庫——不經過 broker——再彙總成能源區間。
-沒有這一步，儲能頁面與所有圖表一開始都是空的，因為 `simulate_device` 只會
+沒有這一步，儲能頁面與所有圖表一開始都是空的，因為模擬主控台只會
 產生*往後*的資料。
 
 產生的場域依循種子資料中的儲能策略：辦公室負載尖峰接近 480 kW、400 kW 屋頂
@@ -144,26 +143,28 @@ alert，而不是只有已解決的歷史。
 回補同時會做兩件平常由 worker 負責的事：把裝置標記為曾經回報過（否則整個
 機隊都顯示離線），並在產生的讀值上重播 alert 規則。
 
-### 即時模擬
+### 即時模擬：獨立的設備模擬器
 
-demo 資料裡的四台設備都掛在同一個網關（`ZQS-GW-0001`）底下，所以**一個行程**服務
-整個節點：
+堆疊啟動時**不會啟動任何模擬器**：所有登記的設備都是離線的。模擬器（`simulator/`）是一支**與平台解耦的 MQTT 客戶端**：不讀資料庫、不載入平台程式，只靠一份 `simulator/fleet.json` 知道要連哪個 broker、自己是哪些閘道器與設備，之後一切都只走 MQTT（Sparkplug B）——和真實廠商設備完全相同的路徑。
 
-```bash
-python manage.py simulate_device     --device ZQS-BESS-0001=battery     --device ZQS-METER-0001=meter     --device ZQS-PV-0001=pv \
-    --device ZQS-FC-0001=fuelcell --interval 5
+```powershell
+.\scripts\sim-console.ps1            # 沒有 fleet.json 時先從平台匯出一份，再開主控台
+.\scripts\sim-console.ps1 -Export    # 平台登記有變動時重新匯出
+.venv\Scripts\python.exe manage.py export_fleet_config --out C:\site\fleet.json --site taichung
 ```
 
-`dev.ps1` / `dev.sh` 起的就是這一個行程（`zqs-sim-gateway`）。
+`fleet.json` 內容：broker（IP／Port／帳密）、group id、每台閘道器（node_id、場域、負載形狀、額定功率／容量、MQTT 帳號）與其設備（device_id、角色、功率指標）。可以手寫，也可以拿給廠商當「這個場域要做成什麼樣」的規格。
 
-> **不要為了每台設備各開一個行程。** Sparkplug 下一條連線就是一個 edge node，它
-> 擁有一個 `seq` 計數器與一組生死序號。三個行程都自稱 `ZQS-GW-0001` 的話，序號會
-> 各自遞增卻共用一個編號空間，而且 MQTT 會讓後連上的把先連上的踢掉——症狀是無限
-> 互踢加上永遠對不上的序號。要多個行程，就多開幾個 edge node。
+主控台：
+* **Broker IP / Port / 帳密 / Group ID** 可直接修改並儲存回設定檔，連到任何 broker（內建、EMQX、客戶現場）。
+* 閘道器清單：**全部上線 / 全部離線 / 選取上線 / 選取離線**；每台閘道器一條連線、NBIRTH/DBIRTH、定期 DDATA、接收命令並回覆、DDEATH/NDEATH。
+* **設備即時量測值**：選一台設備，右側表格每 0.5 秒更新目前送出的每一個量測項與單位——看得到平台收到的就是這些數字。
+* 手動測試：送事件、觸發／解除警報、取消「自動回覆」改手動按「接受／成功／失敗」。
+* 選項：上傳間隔、自動注入事件／警報、電池自主削峰。
 
-模擬器發布的是與 [device-protocol.md](device-protocol.md) 完全相同的 Sparkplug
-訊息——包含 NDEATH 遺言、NBIRTH、帶別名的 DBIRTH、回應命令與重生要求——因此可以
-直接當作設備端實作的參考。需要 broker；資料要進到資料庫還需要 ingestor 與 worker。
+模擬器發布的是與 [device-protocol.md](device-protocol.md) 完全相同的 Sparkplug 訊息，可直接當作設備端實作的參考。
+
+> **一台閘道器一條連線。** Sparkplug 下一條連線就是一個 edge node，擁有自己的 `seq` 計數器與生死序號；兩個行程自稱同一個 node id 會互踢。模擬器已按此設計。
 
 ---
 
@@ -178,6 +179,7 @@ copy .env.example .env
 python manage.py migrate
 python manage.py bootstrap                 # built-in metrics + blueprints
 python manage.py seed_demo                 # tenant, site, devices, rules, tariff
+python manage.py seed_showcase             # or: the multi-site customer showcase
 python manage.py generate_history --days 3 --with-faults
 
 python manage.py runserver                 # terminal 1

@@ -7,12 +7,19 @@
  * so the message follows the console language.
  */
 
-import type { GraphNode, NodeParam, NodeTypeDef } from '@/lib/workflowTypes'
+import type { GraphEdge, GraphNode, NodeParam, NodeTypeDef } from '@/lib/workflowTypes'
 
 export interface ParamProblem {
   paramKey: string
   /** i18n key under `workflows.validation.` */
-  code: 'required' | 'notANumber' | 'belowMinimum' | 'aboveMaximum' | 'badTime'
+  code:
+    | 'required'
+    | 'notANumber'
+    | 'belowMinimum'
+    | 'aboveMaximum'
+    | 'badTime'
+    | 'danglingTarget'
+    | 'selfTarget'
   values: Record<string, unknown>
 }
 
@@ -51,17 +58,64 @@ function checkParam(param: NodeParam, value: unknown, nodeType: string): ParamPr
   return null
 }
 
-/** Every problem with one node's parameters. Empty means fit to run. */
-export function nodeProblems(node: GraphNode, definition: NodeTypeDef | undefined): ParamProblem[] {
+/**
+ * Every problem with one node's parameters. Empty means fit to run.
+ *
+ * `nodes` lets a node-picker parameter (a jump target) be checked against the
+ * graph it lives in: a target that was deleted, or that is decoration, would
+ * otherwise only surface as "jump target does not exist" at run time.
+ */
+export function nodeProblems(
+  node: GraphNode,
+  definition: NodeTypeDef | undefined,
+  nodes: GraphNode[] = [],
+): ParamProblem[] {
   if (!definition) return []
   const params = node.params ?? {}
   const problems: ParamProblem[] = []
   for (const param of definition.params) {
     const value = params[param.key] ?? param.default
     const problem = checkParam(param, value, definition.key)
-    if (problem) problems.push(problem)
+    if (problem) {
+      problems.push(problem)
+      continue
+    }
+    if (param.kind === 'node' && !isBlank(value)) {
+      const values = { label: param.label, target: String(value) }
+      if (String(value) === node.id) {
+        problems.push({ paramKey: param.key, code: 'selfTarget', values })
+      } else if (
+        nodes.length > 0 &&
+        !nodes.some((other) => other.id === String(value) && !DECORATION.has(other.type))
+      ) {
+        problems.push({ paramKey: param.key, code: 'danglingTarget', values })
+      }
+    }
   }
   return problems
+}
+
+const DECORATION = new Set(['note', 'arrow'])
+
+/**
+ * Output handles nothing is connected to. Not an error - a branch that ends at
+ * "failed" is a legitimate drawing - but worth saying out loud in the
+ * inspector, because an unconnected `true` on a condition is the single most
+ * common way a flow silently does nothing.
+ */
+export function unconnectedHandles(
+  node: GraphNode,
+  definition: NodeTypeDef | undefined,
+  edges: GraphEdge[],
+): string[] {
+  if (!definition || DECORATION.has(node.type)) return []
+  const used = new Set(
+    edges.filter((edge) => edge.source === node.id).map((edge) => edge.source_handle || ''),
+  )
+  // A blank source_handle on an edge matches any handle (single-output nodes
+  // write none), so one blank edge counts as connecting everything.
+  if (used.has('')) return []
+  return definition.handles.filter((handle) => !used.has(handle.key)).map((handle) => handle.key)
 }
 
 /** node id -> problems, for marking the canvas. */
@@ -72,7 +126,7 @@ export function graphProblems(
   const result = new Map<string, ParamProblem[]>()
   for (const node of nodes) {
     if (node.enabled === false) continue // a disabled node never executes
-    const problems = nodeProblems(node, definitions.get(node.type))
+    const problems = nodeProblems(node, definitions.get(node.type), nodes)
     if (problems.length > 0) result.set(node.id, problems)
   }
   return result

@@ -128,6 +128,8 @@ class OrganizationIn(Schema):
 class OrganizationUpdateIn(Schema):
     name: str | None = Field(default=None, max_length=200)
     default_timezone: str | None = Field(default=None, max_length=64)
+    #: ISO 4217. Changing it relabels every money figure; nothing converts.
+    reporting_currency: str | None = Field(default=None, min_length=3, max_length=8)
     is_active: bool | None = None
 
 

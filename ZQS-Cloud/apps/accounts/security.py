@@ -55,6 +55,10 @@ class AuthContext:
     #: an empty set, which would read as "nothing" and is a mistake that would
     #: lock everyone out on the day someone forgets the difference.
     site_scope: frozenset | None = None
+    #: Who this is when there is no user and no key: an internal actor such
+    #: as the dispatch engine. Shown as the issuer on the commands it sends,
+    #: so an operator reading the log can tell the engine from a person.
+    service_label: str = ""
 
     @property
     def is_service(self) -> bool:
@@ -108,7 +112,9 @@ class AuthContext:
     def principal_label(self) -> str:
         if self.user is not None:
             return self.user.email
-        return f"api-key:{self.api_key.name}" if self.api_key else "anonymous"
+        if self.api_key:
+            return f"api-key:{self.api_key.name}"
+        return self.service_label or "anonymous"
 
     def has_role(self, minimum: str) -> bool:
         if self.user is not None and self.user.is_superuser:

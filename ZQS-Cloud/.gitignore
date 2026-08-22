@@ -43,3 +43,4 @@ node_modules/
 
 # Service logs written by services/labview/labview_api.py
 /logs/
+simulator/fleet.json

@@ -7,6 +7,7 @@ import { useToast } from '@/providers/ToastProvider'
 import { useBlueprints, useMetrics, usePolicies, usePolicyMutations } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
 import type { RecordingPolicy, RecordingRule } from '@/lib/types'
+import { useFormDirty } from '@/lib/useFormDirty'
 import {
   Badge,
   Button,
@@ -248,6 +249,7 @@ function PolicyModal({
     default_min_interval_seconds: 0,
     default_max_interval_seconds: 3600,
   })
+  const dirty = useFormDirty(open, form)
   const [rules, setRules] = useState<RecordingRule[]>([])
 
   useEffect(() => {
@@ -312,6 +314,7 @@ function PolicyModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       size="lg"
       title={policy ? t('policies.edit') : t('policies.create')}
       footer={

@@ -7,6 +7,7 @@ import { formatDateTime } from '@/lib/format'
 import { useTimeRange } from '@/lib/useTimeRange'
 import type { DeviceEvent } from '@/lib/types'
 import {
+  Badge,
   Card,
   EmptyRow,
   ErrorState,
@@ -145,7 +146,14 @@ export function EventsPage() {
                       className="cursor-pointer"
                     >
                       <Td>
-                        <EventLevelBadge level={event.level} />
+                        <span className="flex items-center gap-1">
+                          <EventLevelBadge level={event.level} />
+                          {event.payload?.alarm_state === 'active' ? (
+                            <Badge tone="critical">{t('events.alarmRaised')}</Badge>
+                          ) : event.payload?.alarm_state === 'cleared' ? (
+                            <Badge tone="ok">{t('events.alarmCleared')}</Badge>
+                          ) : null}
+                        </span>
                       </Td>
                       <Td>
                         <Link

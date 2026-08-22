@@ -120,7 +120,7 @@ class ChannelApiTests(ApiTestCase):
                 "channel_type": "line",
                 "notify_events": True,
                 "min_event_level": "warning",
-                "config": {"channel_access_token": "tok-secret", "to": "U1234"},
+                "config": {"channel_access_token": "tok-secret", "to": "U0123456789abcdef0123456789abcdef"},
             },
         )
         self.assertEqual(response.status_code, 201, response.content)
@@ -129,12 +129,80 @@ class ChannelApiTests(ApiTestCase):
         self.assertEqual(body["config"]["channel_access_token"], "***")
         self.assertTrue(body["notify_events"])
 
+    def test_a_line_recipient_must_be_a_messaging_api_id(self) -> None:
+        """A numeric basic ID or a display name can never receive a push; the
+        form refuses it up front instead of letting the worker 400 forever."""
+        response, _ = self._create(
+            {
+                "name": "line-alerts",
+                "channel_type": "line",
+                "config": {"channel_access_token": "tok", "to": "2008190840"},
+            }
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"]["code"], "invalid_recipient")
+
+    def test_email_without_any_smtp_is_refused_not_silently_sent(self) -> None:
+        """The console backend 'sends' to a log. A channel must not count that
+        as delivered."""
+        from django.test import override_settings
+
+        from services.worker.notifications import _send_email
+
+        with override_settings(EMAIL_HOST=""):
+            with self.assertRaises(ValueError) as caught:
+                _send_email({"recipients": ["a@example.com"]}, {"severity": "info", "title": "t"})
+        self.assertIn("SMTP", str(caught.exception))
+
+    def test_the_test_endpoint_reports_a_failure_instead_of_raising(self) -> None:
+        token = self.login("admin@acme-demo.com")
+        response = self.post(
+            "/api/notification-channels/test",
+            token,
+            {"name": "probe", "channel_type": "email", "config": {"recipients": ["a@example.com"]}},
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertFalse(body["ok"])
+        self.assertIn("SMTP", body["message"])
+
+    def test_the_test_endpoint_fills_redacted_secrets_from_the_stored_channel(self) -> None:
+        from unittest import mock
+
+        response, token = self._create(
+            {
+                "name": "line-alerts",
+                "channel_type": "line",
+                "config": {"channel_access_token": "tok-secret", "to": "U0123456789abcdef0123456789abcdef"},
+            }
+        )
+        created = response.json()
+        seen = {}
+
+        def fake_send(channel_type, config, payload):
+            seen.update(config)
+
+        with mock.patch("services.worker.notifications.send_test", side_effect=fake_send):
+            response = self.post(
+                "/api/notification-channels/test",
+                token,
+                {
+                    "id": created["id"],
+                    "name": "line-alerts",
+                    "channel_type": "line",
+                    "config": {"channel_access_token": "***", "to": "U0123456789abcdef0123456789abcdef"},
+                },
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["ok"])
+        self.assertEqual(seen["channel_access_token"], "tok-secret")
+
     def test_updating_without_retyping_the_secret_keeps_it(self) -> None:
         response, token = self._create(
             {
                 "name": "line-alerts",
                 "channel_type": "line",
-                "config": {"channel_access_token": "tok-secret", "to": "U1234"},
+                "config": {"channel_access_token": "tok-secret", "to": "U0123456789abcdef0123456789abcdef"},
             }
         )
         created = response.json()
@@ -147,13 +215,13 @@ class ChannelApiTests(ApiTestCase):
             {
                 "name": "line-alerts",
                 "channel_type": "line",
-                "config": {"channel_access_token": "***", "to": "U5678"},
+                "config": {"channel_access_token": "***", "to": "Ufedcba9876543210fedcba9876543210"},
             },
         )
         self.assertEqual(response.status_code, 200, response.content)
         channel = NotificationChannel.objects.get(pk=created["id"])
         self.assertEqual(channel.config["channel_access_token"], "tok-secret")
-        self.assertEqual(channel.config["to"], "U5678")
+        self.assertEqual(channel.config["to"], "Ufedcba9876543210fedcba9876543210")
 
 
 class TaipowerPresetTests(TestCase):
@@ -255,3 +323,51 @@ class RunStreamTests(ApiTestCase):
         token = self.login("op@acme-demo.com")
         response = self.client.get(f"/api/workflow-runs/{run.id}/stream?token={token}")
         self.assertEqual(response.status_code, 404)
+
+
+class LiveStreamTests(ApiTestCase):
+    """The console's change feed: auth, and that a change shows up."""
+
+    def test_requires_a_token(self) -> None:
+        response = self.client.get("/api/live/stream?token=bogus")
+        self.assertEqual(response.status_code, 401)
+
+    def test_a_fresh_reading_is_announced(self) -> None:
+        from unittest import mock
+
+        from django.utils import timezone
+
+        from apps.core import live
+        from apps.telemetry.models import LatestSample
+
+        site = factories.site(self.org, "plant")
+        device = factories.device(self.org, "LIVE-1", site_obj=site)
+        token = self.login("op@acme-demo.com")
+
+        # Let the generator run two polls without sleeping for real, and
+        # write a reading between them.
+        polls = {"n": 0}
+
+        def fake_sleep(_seconds):
+            polls["n"] += 1
+            if polls["n"] == 1:
+                LatestSample.objects.update_or_create(
+                    organization=self.org, device=device, metric_key="grid_power_w",
+                    defaults={"value": 1.0, "ts": timezone.now(), "quality": 0},
+                )
+            if polls["n"] >= 3:
+                raise StopIteration
+
+        with mock.patch.object(live.time, "sleep", side_effect=fake_sleep), \
+             mock.patch.object(live, "MAX_STREAM_SECONDS", 5):
+            response = self.client.get(f"/api/live/stream?token={token}")
+            self.assertEqual(response.status_code, 200)
+            chunks = []
+            try:
+                for chunk in response.streaming_content:
+                    chunks.append(chunk)
+            except (StopIteration, RuntimeError):
+                pass
+        body = b"".join(chunks).decode()
+        self.assertIn("event: telemetry", body)
+        self.assertIn(str(device.id), body)

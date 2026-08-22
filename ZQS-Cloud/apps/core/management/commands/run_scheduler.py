@@ -18,6 +18,10 @@ import time
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
+from apps.core.logging import get_logger
+
+logger = get_logger("scheduler")
+
 
 class Command(BaseCommand):
     help = "Periodically aggregate energy intervals, build rollups and prune samples."
@@ -147,3 +151,4 @@ class Command(BaseCommand):
             call_command(name, **kwargs)
         except Exception as exc:  # noqa: BLE001 - deliberately broad
             self.stderr.write(f"{name} failed: {exc!r}")
+            logger.exception("scheduler job failed", extra={"job": name})

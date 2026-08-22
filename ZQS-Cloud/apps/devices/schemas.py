@@ -32,7 +32,8 @@ class SiteIn(Schema):
     postal_code: str = Field(default="", max_length=32)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
-    timezone_name: str = "UTC"
+    #: Blank takes ``SITE_DEFAULT_TIMEZONE`` (see ``create_site``).
+    timezone_name: str = ""
     contact_name: str = Field(default="", max_length=120)
     contact_phone: str = Field(default="", max_length=40)
     tags: list[str] = Field(default_factory=list)

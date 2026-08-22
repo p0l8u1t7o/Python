@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bell, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Bell, Pencil, Plus, Send, Trash2 } from 'lucide-react'
 
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -15,7 +15,8 @@ import {
   useSites,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
-import { formatNumber } from '@/lib/format'
+import { formatNumber, formatRelative } from '@/lib/format'
+import { useFormDirty } from '@/lib/useFormDirty'
 import type {
   AlertRule,
   NotificationChannel,
@@ -210,7 +211,8 @@ function RuleModal({
   const sites = useSites()
   const blueprints = useBlueprints()
   const devices = useAllDevices()
-  const channels = useNotificationChannels()
+  const { can } = useAuth()
+  const channels = useNotificationChannels(can('alert:rule:write'))
   const { create, update } = useAlertRuleMutations()
 
   const [form, setForm] = useState({
@@ -283,6 +285,31 @@ function RuleModal({
   }, [open, rule?.id])
 
   const needsUpper = form.operator === 'outside' || form.operator === 'inside'
+  const dirty = useFormDirty(open, form)
+
+  /**
+   * Checks that run while the form is open. A band whose upper bound sits
+   * below its lower one, or a negative hysteresis, would be refused by the
+   * server - but only after the click, and without pointing at the field.
+   */
+  const problems = useMemo(() => {
+    const out: Partial<Record<'threshold' | 'threshold_upper' | 'hysteresis' | 'for_duration_seconds' | 'cooldown_seconds', string>> = {}
+    const lower = Number(form.threshold)
+    const upper = Number(form.threshold_upper)
+    if (form.threshold !== '' && !Number.isFinite(lower)) out.threshold = t('rules.problems.number')
+    if (needsUpper) {
+      if (form.threshold_upper === '' || !Number.isFinite(upper)) out.threshold_upper = t('rules.problems.number')
+      else if (Number.isFinite(lower) && upper <= lower) out.threshold_upper = t('rules.problems.bandOrder')
+    }
+    if (!(Number(form.hysteresis) >= 0)) out.hysteresis = t('rules.problems.nonNegative')
+    else if (needsUpper && Number.isFinite(lower) && Number.isFinite(upper) && Number(form.hysteresis) * 2 >= upper - lower) {
+      out.hysteresis = t('rules.problems.hysteresisTooWide')
+    }
+    if (!(Number(form.for_duration_seconds) >= 0)) out.for_duration_seconds = t('rules.problems.nonNegative')
+    if (!(Number(form.cooldown_seconds) >= 0)) out.cooldown_seconds = t('rules.problems.nonNegative')
+    return out
+  }, [form, needsUpper, t])
+  const problemCount = Object.keys(problems).length
 
   async function submit() {
     const payload = {
@@ -319,6 +346,7 @@ function RuleModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       size="lg"
       title={rule ? t('rules.edit') : t('rules.create')}
       footer={
@@ -327,7 +355,7 @@ function RuleModal({
           <Button
             variant="primary"
             loading={create.isPending || update.isPending}
-            disabled={!form.name || !form.metric_key}
+            disabled={!form.name || !form.metric_key || form.threshold === '' || problemCount > 0}
             onClick={() => void submit()}
           >
             {t('common.save')}
@@ -377,6 +405,7 @@ function RuleModal({
             step="any"
             required
             value={form.threshold}
+            error={problems.threshold}
             onChange={(event) => setForm({ ...form, threshold: event.target.value })}
           />
           {needsUpper ? (
@@ -386,6 +415,7 @@ function RuleModal({
               step="any"
               required
               value={form.threshold_upper}
+              error={problems.threshold_upper}
               onChange={(event) => setForm({ ...form, threshold_upper: event.target.value })}
             />
           ) : null}
@@ -395,6 +425,7 @@ function RuleModal({
             step="any"
             min={0}
             value={String(form.hysteresis)}
+            error={problems.hysteresis}
             onChange={(event) => setForm({ ...form, hysteresis: Number(event.target.value) })}
             hint={t('rules.hysteresisHint')}
           />
@@ -407,6 +438,7 @@ function RuleModal({
             min={0}
             suffix="s"
             value={String(form.for_duration_seconds)}
+            error={problems.for_duration_seconds}
             onChange={(event) =>
               setForm({ ...form, for_duration_seconds: Number(event.target.value) })
             }
@@ -418,6 +450,7 @@ function RuleModal({
             min={0}
             suffix="s"
             value={String(form.cooldown_seconds)}
+            error={problems.cooldown_seconds}
             onChange={(event) => setForm({ ...form, cooldown_seconds: Number(event.target.value) })}
           />
         </div>
@@ -551,16 +584,35 @@ function ChannelsCard() {
   const { t } = useTranslation()
   const { can } = useAuth()
   const toast = useToast()
-  const channels = useNotificationChannels()
+  const channels = useNotificationChannels(can('alert:rule:write'))
   const { remove } = useNotificationChannelMutations()
 
   const [editing, setEditing] = useState<NotificationChannel | null>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<NotificationChannel | null>(null)
+  const [testing, setTesting] = useState<string | null>(null)
+  const { test } = useNotificationChannelMutations()
+  async function testStored(channel: NotificationChannel) {
+    setTesting(channel.id)
+    try {
+      const result = await test.mutateAsync({
+        id: channel.id,
+        name: channel.name,
+        channel_type: channel.channel_type,
+        config: channel.config ?? {},
+      })
+      if (result.ok) toast.success(t('channels.testOk', { detail: result.message }))
+      else toast.error(t('channels.testFailed', { detail: result.message }))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setTesting(null)
+    }
+  }
 
-  // The channels endpoint is admin-only; a 403 means this operator does not
-  // manage notification targets, so the section simply is not there.
-  if (channels.isError) return null
+  // Channels are admin-only; for anyone else the section simply is not
+  // there - and the query above is never fired, so no 403 reaches the console.
+  if (!can('alert:rule:write') || channels.isError) return null
 
   return (
     <>
@@ -612,14 +664,39 @@ function ChannelsCard() {
                     )}
                   </Td>
                   <Td>
-                    {channel.is_enabled ? (
-                      <Badge tone="ok">{t('common.enabled')}</Badge>
-                    ) : (
-                      <Badge tone="neutral">{t('common.disabled')}</Badge>
-                    )}
+                    <span className="flex flex-col gap-1">
+                      {channel.is_enabled ? (
+                        <Badge tone="ok">{t('common.enabled')}</Badge>
+                      ) : (
+                        <Badge tone="neutral">{t('common.disabled')}</Badge>
+                      )}
+                      {channel.last_delivery_status === 'failed' ? (
+                        <span
+                          className="text-xs text-critical"
+                          title={channel.last_delivery_error}
+                        >
+                          {t('channels.lastFailed', {
+                            when: channel.last_delivery_at ? formatRelative(channel.last_delivery_at) : '',
+                          })}
+                        </span>
+                      ) : channel.last_delivery_status === 'sent' ? (
+                        <span className="text-xs text-muted">
+                          {t('channels.lastSent', {
+                            when: channel.last_delivery_at ? formatRelative(channel.last_delivery_at) : '',
+                          })}
+                        </span>
+                      ) : null}
+                    </span>
                   </Td>
                   <Td align="right">
                     <span className="flex justify-end gap-1">
+                      <IconButton
+                        label={t('channels.test')}
+                        onClick={() => void testStored(channel)}
+                        disabled={testing === channel.id}
+                      >
+                        <Send className="size-3.5" />
+                      </IconButton>
                       <IconButton label={t('common.edit')} onClick={() => setEditing(channel)}>
                         <Pencil className="size-3.5" />
                       </IconButton>
@@ -677,7 +754,7 @@ function ChannelModal({
 }) {
   const { t } = useTranslation()
   const toast = useToast()
-  const { create, update } = useNotificationChannelMutations()
+  const { create, update, test } = useNotificationChannelMutations()
 
   const [form, setForm] = useState({
     name: '',
@@ -692,7 +769,19 @@ function ChannelModal({
     line_token: '',
     line_to: '',
     topic: '',
+    smtp_host: '',
+    smtp_port: '',
+    smtp_username: '',
+    smtp_password: '',
+    smtp_use_tls: true,
+    smtp_use_ssl: false,
+    from_email: '',
   })
+  const channelDirty = useFormDirty(open, form)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  useEffect(() => {
+    setTestResult(null)
+  }, [open, form.channel_type])
 
   useEffect(() => {
     if (!open) return
@@ -712,6 +801,13 @@ function ChannelModal({
         line_token: '',
         line_to: String(config.to ?? ''),
         topic: String(config.topic ?? ''),
+        smtp_host: String(config.smtp_host ?? ''),
+        smtp_port: config.smtp_port ? String(config.smtp_port) : '',
+        smtp_username: String(config.smtp_username ?? ''),
+        smtp_password: '',
+        smtp_use_tls: config.smtp_use_tls !== false,
+        smtp_use_ssl: Boolean(config.smtp_use_ssl),
+        from_email: String(config.from_email ?? ''),
       })
     } else {
       setForm({
@@ -727,12 +823,20 @@ function ChannelModal({
         line_token: '',
         line_to: '',
         topic: '',
+        smtp_host: '',
+        smtp_port: '',
+        smtp_username: '',
+        smtp_password: '',
+        smtp_use_tls: true,
+        smtp_use_ssl: false,
+        from_email: '',
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, channel?.id])
 
-  async function submit() {
+  /** The config the form describes. Blank secrets mean "keep the stored one". */
+  function buildConfig(): Record<string, unknown> {
     const config: Record<string, unknown> = {}
     if (form.channel_type === 'webhook') config.url = form.url.trim()
     if (form.channel_type === 'email') {
@@ -740,6 +844,15 @@ function ChannelModal({
         .split(/[,;\s]+/)
         .map((entry) => entry.trim())
         .filter(Boolean)
+      if (form.smtp_host.trim()) {
+        config.smtp_host = form.smtp_host.trim()
+        config.smtp_port = form.smtp_port.trim() ? Number(form.smtp_port) : 587
+        config.smtp_username = form.smtp_username.trim()
+        config.smtp_password = form.smtp_password
+        config.smtp_use_tls = form.smtp_use_tls
+        config.smtp_use_ssl = form.smtp_use_ssl
+      }
+      if (form.from_email.trim()) config.from_email = form.from_email.trim()
     }
     if (form.channel_type === 'line') {
       // Blank means "keep the stored token" on update; the server merges it.
@@ -747,6 +860,37 @@ function ChannelModal({
       config.to = form.line_to.trim()
     }
     if (form.channel_type === 'mqtt') config.topic = form.topic.trim()
+    return config
+  }
+
+  /** The LINE recipient shape the Messaging API accepts; anything else can never be pushed to. */
+  const lineToProblem =
+    form.channel_type === 'line' && form.line_to.trim() && !/^[UCR][0-9a-f]{32}$/.test(form.line_to.trim())
+      ? t('channels.lineToInvalid')
+      : undefined
+  const smtpPortProblem =
+    form.channel_type === 'email' && form.smtp_port.trim() && !/^\d{1,5}$/.test(form.smtp_port.trim())
+      ? t('channels.smtpPortInvalid')
+      : undefined
+  const formProblem = Boolean(lineToProblem || smtpPortProblem)
+
+  async function runTest() {
+    setTestResult(null)
+    try {
+      const result = await test.mutateAsync({
+        id: channel?.id,
+        name: form.name.trim() || t('channels.test'),
+        channel_type: form.channel_type,
+        config: buildConfig(),
+      })
+      setTestResult(result)
+    } catch (error) {
+      setTestResult({ ok: false, message: errorMessage(error) })
+    }
+  }
+
+  async function submit() {
+    const config = buildConfig()
 
     const payload = {
       name: form.name.trim(),
@@ -772,13 +916,25 @@ function ChannelModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={channelDirty}
       title={channel ? t('channels.edit') : t('channels.create')}
       footer={
         <>
+          <Button
+            icon={<Send className="size-3.5" />}
+            loading={test.isPending}
+            disabled={formProblem}
+            onClick={() => void runTest()}
+            title={t('channels.testHint')}
+          >
+            {t('channels.test')}
+          </Button>
+          <span className="flex-1" />
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button
             variant="primary"
             loading={create.isPending || update.isPending}
+            disabled={formProblem}
             onClick={() => void submit()}
           >
             {t('common.save')}
@@ -787,6 +943,16 @@ function ChannelModal({
       }
     >
       <div className="space-y-4">
+        {testResult ? (
+          <p
+            className={`rounded-lg px-3 py-2 text-sm ${
+              testResult.ok ? 'bg-ok-soft text-ok' : 'bg-critical-soft text-critical'
+            }`}
+            role="status"
+          >
+            {testResult.ok ? t('channels.testOk', { detail: testResult.message }) : t('channels.testFailed', { detail: testResult.message })}
+          </p>
+        ) : null}
         <TextInput
           label={t('common.name')}
           value={form.name}
@@ -820,14 +986,74 @@ function ChannelModal({
         ) : null}
 
         {form.channel_type === 'email' ? (
-          <TextArea
-            label={t('channels.recipients')}
-            value={form.recipients}
-            onChange={(event) => setForm({ ...form, recipients: event.target.value })}
-            hint={t('channels.recipientsHint')}
-            rows={2}
-            required
-          />
+          <>
+            <TextArea
+              label={t('channels.recipients')}
+              value={form.recipients}
+              onChange={(event) => setForm({ ...form, recipients: event.target.value })}
+              hint={t('channels.recipientsHint')}
+              rows={2}
+              required
+            />
+            <div className="space-y-3 rounded-lg border border-line p-3">
+              <p className="text-xs font-medium">{t('channels.smtpTitle')}</p>
+              <p className="text-xs text-muted">{t('channels.smtpHint')}</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <TextInput
+                  label={t('channels.smtpHost')}
+                  value={form.smtp_host}
+                  placeholder="smtp.gmail.com"
+                  onChange={(event) => setForm({ ...form, smtp_host: event.target.value })}
+                />
+                <TextInput
+                  label={t('channels.smtpPort')}
+                  value={form.smtp_port}
+                  placeholder="587"
+                  error={smtpPortProblem}
+                  onChange={(event) => setForm({ ...form, smtp_port: event.target.value })}
+                />
+                <TextInput
+                  label={t('channels.fromEmail')}
+                  value={form.from_email}
+                  placeholder="alerts@example.com"
+                  onChange={(event) => setForm({ ...form, from_email: event.target.value })}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextInput
+                  label={t('channels.smtpUsername')}
+                  value={form.smtp_username}
+                  autoComplete="off"
+                  onChange={(event) => setForm({ ...form, smtp_username: event.target.value })}
+                />
+                <TextInput
+                  label={t('channels.smtpPassword')}
+                  type="password"
+                  value={form.smtp_password}
+                  autoComplete="new-password"
+                  placeholder={channel?.config?.smtp_password ? t('channels.secretKept') : undefined}
+                  hint={t('channels.smtpPasswordHint')}
+                  onChange={(event) => setForm({ ...form, smtp_password: event.target.value })}
+                />
+              </div>
+              <div className="flex flex-wrap gap-4">
+                <Checkbox
+                  label="STARTTLS (587)"
+                  checked={form.smtp_use_tls && !form.smtp_use_ssl}
+                  onChange={(smtp_use_tls) =>
+                    setForm({ ...form, smtp_use_tls, smtp_use_ssl: smtp_use_tls ? false : form.smtp_use_ssl })
+                  }
+                />
+                <Checkbox
+                  label="SSL (465)"
+                  checked={form.smtp_use_ssl}
+                  onChange={(smtp_use_ssl) =>
+                    setForm({ ...form, smtp_use_ssl, smtp_use_tls: smtp_use_ssl ? false : form.smtp_use_tls })
+                  }
+                />
+              </div>
+            </div>
+          </>
         ) : null}
 
         {form.channel_type === 'line' ? (
@@ -846,6 +1072,8 @@ function ChannelModal({
               value={form.line_to}
               onChange={(event) => setForm({ ...form, line_to: event.target.value })}
               hint={t('channels.lineToHint')}
+              error={lineToProblem}
+              placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
               required
             />
           </>

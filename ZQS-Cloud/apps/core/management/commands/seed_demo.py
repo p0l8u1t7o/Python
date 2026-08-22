@@ -80,6 +80,7 @@ class Command(BaseCommand):
         devices = self._devices(organization, site, policy)
         self._energy(organization, site, devices)
         self._alert_rules(organization, site)
+        self._workflow(organization, site, devices)
 
         self.stdout.write(self.style.SUCCESS("Demo tenant ready."))
         self.stdout.write(f"  organization : {organization.name} ({organization.slug})")
@@ -451,3 +452,34 @@ class Command(BaseCommand):
                     **rule,
                 },
             )
+
+
+    def _workflow(self, organization: Organization, site: Site, devices: dict) -> None:
+        """One drawn control flow, so the editor opens on a real example.
+
+        Two parallel branches: discharge while demand stays over the contract,
+        and stop discharging when the battery runs low. The graph ships as a
+        fixture with ``{DEVICE-ID}`` placeholders, resolved against the seeded
+        devices here so the node parameters point at real rows.
+        """
+        import json
+        from pathlib import Path
+
+        from apps.workflows.models import Workflow
+
+        fixture = Path(__file__).resolve().parents[2] / "fixtures" / "demo_workflow.json"
+        graph_text = fixture.read_text(encoding="utf-8")
+        for key, device in devices.items():
+            graph_text = graph_text.replace("{" + device.device_id + "}", str(device.id))
+        graph = json.loads(graph_text)
+
+        Workflow.objects.update_or_create(
+            organization=organization,
+            name="削峰與低電量保護",
+            defaults={
+                "site": site,
+                "description": "兩條並行分支：需量持續偏高就放電削峰；電量偏低就停止放電。",
+                "graph": graph,
+                "is_enabled": True,
+            },
+        )

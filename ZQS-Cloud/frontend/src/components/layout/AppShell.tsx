@@ -2,10 +2,13 @@ import { Suspense, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 
 import { LoadingState } from '@/components/ui'
+import { useLiveStream } from '@/lib/liveStream'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 
 export function AppShell() {
+  // One live feed for the whole signed-in session; pages just read the cache.
+  useLiveStream(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (

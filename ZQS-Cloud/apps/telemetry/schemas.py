@@ -13,6 +13,8 @@ from apps.telemetry.models import Aggregation, MetricKind, ValueType
 # Metric catalogue
 # --------------------------------------------------------------------------
 class MetricOut(Schema):
+    #: Counter wrap point (e.g. 2**32) for cumulative meters; null = never wraps.
+    counter_max: float | None = None
     id: uuid.UUID | None = None
     key: str
     display_name: str
@@ -32,6 +34,7 @@ class MetricOut(Schema):
 
 
 class MetricIn(Schema):
+    counter_max: float | None = Field(default=None, gt=0)
     key: str = Field(max_length=64, pattern=r"^[a-z][a-z0-9_]{0,63}$")
     display_name: str = Field(max_length=120)
     translations: dict[str, str] = Field(default_factory=dict)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
@@ -13,6 +13,7 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  dirty = false,
 }: {
   open: boolean
   onClose: () => void
@@ -21,9 +22,22 @@ export function Modal({
   children: ReactNode
   footer?: ReactNode
   size?: 'sm' | 'md' | 'lg'
+  /**
+   * The form inside has unsaved edits. Escape, the backdrop and the X then
+   * ask before discarding - those are the accidental ways out. A Cancel
+   * button in the footer is a deliberate one and closes directly.
+   */
+  dirty?: boolean
 }) {
   const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement>(null)
+  const [askDiscard, setAskDiscard] = useState(false)
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+
+  useEffect(() => {
+    if (!open) setAskDiscard(false)
+  }, [open])
 
   // Read through a ref so the effect below does not depend on `onClose`.
   //
@@ -35,11 +49,17 @@ export function Modal({
   // keystrokes vanishing mid-word, every five seconds, in every form.
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const guardedClose = () => {
+    if (dirtyRef.current) setAskDiscard(true)
+    else onCloseRef.current()
+  }
+  const guardedCloseRef = useRef(guardedClose)
+  guardedCloseRef.current = guardedClose
 
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseRef.current()
+      if (event.key === 'Escape') guardedCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
     // Stop the page behind the dialog from scrolling with it.
@@ -64,7 +84,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
       <div
         className="fixed inset-0 bg-black/45 backdrop-blur-[1px]"
-        onClick={onClose}
+        onClick={guardedClose}
         aria-hidden
       />
       <div
@@ -81,10 +101,31 @@ export function Modal({
               <p className="mt-1 text-sm text-muted leading-relaxed">{description}</p>
             ) : null}
           </div>
-          <IconButton label={t('common.close')} onClick={onClose}>
+          <IconButton label={t('common.close')} onClick={guardedClose}>
             <X className="size-4" />
           </IconButton>
         </header>
+
+        {askDiscard ? (
+          <div className="border-b border-line bg-warning-soft px-5 py-3 text-sm" role="alertdialog">
+            <p className="text-warning">{t('common.discardChanges')}</p>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button size="sm" onClick={() => setAskDiscard(false)}>
+                {t('common.keepEditing')}
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  setAskDiscard(false)
+                  onCloseRef.current()
+                }}
+              >
+                {t('common.discard')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="px-5 py-4">{children}</div>
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 /** The rolling presets, shortest first. `custom` is not one of them. */
 export const RANGE_KEYS = ['1h', '6h', '24h', '7d', '30d'] as const
@@ -6,6 +6,9 @@ export type PresetKey = (typeof RANGE_KEYS)[number]
 
 /** A preset, or an explicit start/end the user typed in. */
 export type RangeKey = PresetKey | 'custom'
+
+/** Dispatched by the live feed when something time-stamped arrived. */
+export const LIVE_REANCHOR_EVENT = 'zqs:live-reanchor'
 
 const SECONDS: Record<PresetKey, number> = {
   '1h': 3600,
@@ -56,6 +59,23 @@ export function useTimeRange(initial: PresetKey = '24h'): TimeRange {
   const [custom, setCustomRange] = useState<{ start: string; end: string } | null>(null)
 
   const refresh = useCallback(() => setAnchor(Date.now()), [])
+
+  // A rolling window has to roll. Without this, `end` stayed at the moment
+  // the page opened: after an hour on the events page nothing from the last
+  // hour was visible, and a reading that arrived after the page load was
+  // outside every query's window no matter how often it refetched. Two
+  // triggers: the live feed announcing an event / alert / status change, and
+  // a slow timer for the quiet stretches. Custom windows never move.
+  useEffect(() => {
+    if (custom) return
+    const onLive = () => setAnchor(Date.now())
+    window.addEventListener(LIVE_REANCHOR_EVENT, onLive)
+    const timer = window.setInterval(onLive, 60_000)
+    return () => {
+      window.removeEventListener(LIVE_REANCHOR_EVENT, onLive)
+      window.clearInterval(timer)
+    }
+  }, [custom])
 
   const changeKey = useCallback((next: PresetKey) => {
     setKey(next)
@@ -116,10 +136,6 @@ export function useTimeRange(initial: PresetKey = '24h'): TimeRange {
       refresh,
     }
   }, [key, preset, anchor, custom, changeKey, applyCustom, clearCustom, refresh])
-}
-
-export function rangeSeconds(key: PresetKey): number {
-  return SECONDS[key]
 }
 
 /**

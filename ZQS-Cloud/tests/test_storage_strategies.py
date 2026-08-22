@@ -89,6 +89,16 @@ class DemandCapTests(StrategyTestCase):
         decision = strategy_power_w(plan, self.site.pk, timezone.now())
         self.assertAlmostEqual(decision.power_w, 60_000.0, delta=1.0)
 
+    def test_a_charging_battery_does_not_look_like_an_excursion(self) -> None:
+        """Meter 120 kW over a 100 kW ceiling *because* the battery is taking
+        40 kW: the site itself draws 80, so the right answer is to stop the
+        charge, not to order a 20 kW discharge and start oscillating."""
+        plan = self.plan(DispatchStrategy.DEMAND_CAP, demand_cap_target_kw=100.0)
+        self.reading(self.meter, "grid_power_kw", 120.0)
+        self.reading(self.battery, "battery_power_kw", -40.0)
+        decision = strategy_power_w(plan, self.site.pk, timezone.now())
+        self.assertAlmostEqual(decision.power_w, 0.0, delta=1.0)
+
     def test_under_the_ceiling_idles_without_a_tariff(self) -> None:
         plan = self.plan(DispatchStrategy.DEMAND_CAP, demand_cap_target_kw=500.0)
         self.reading(self.meter, "grid_power_kw", 300.0)
@@ -165,8 +175,25 @@ class TouArbitrageTests(StrategyTestCase):
                          contract_capacity_kw=150.0, max_charge_kw=999.0)
         self.reading(self.meter, "grid_power_kw", 100.0)
         trough = dt.datetime(2026, 7, 15, 3, 0, tzinfo=TPE)
+        # Headroom is measured to 95% of the contract, not the contract
+        # itself: a charge that lands exactly on the contract would become
+        # the month's billed peak. 150 x 0.95 - 100 = 42.5 kW.
         self.assertAlmostEqual(
-            strategy_power_w(plan, self.site.pk, trough).power_w, -50_000.0, delta=1.0
+            strategy_power_w(plan, self.site.pk, trough).power_w, -42_500.0, delta=1.0
+        )
+
+    def test_trough_charging_ignores_its_own_charge(self) -> None:
+        """The meter already carries the battery's flow; the headroom must be
+        measured against the site's own demand, or the charge shrinks itself
+        cycle by cycle."""
+        plan = self.plan(DispatchStrategy.TOU_ARBITRAGE, tariff=self.tou_tariff(),
+                         contract_capacity_kw=150.0, max_charge_kw=999.0)
+        # Meter 130 kW while charging 30 kW: the site itself draws 100.
+        self.reading(self.meter, "grid_power_kw", 130.0)
+        self.reading(self.battery, "battery_power_kw", -30.0)
+        trough = dt.datetime(2026, 7, 15, 3, 0, tzinfo=TPE)
+        self.assertAlmostEqual(
+            strategy_power_w(plan, self.site.pk, trough).power_w, -42_500.0, delta=1.0
         )
 
 

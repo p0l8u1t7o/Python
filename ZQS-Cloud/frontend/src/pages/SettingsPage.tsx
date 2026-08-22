@@ -39,6 +39,8 @@ import {
   useMemberMutations,
   useMembers,
   useSites,
+  useCurrentOrganization,
+  useUpdateOrganization,
   useUpdateProfile,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
@@ -62,6 +64,7 @@ export function SettingsPage() {
         <ProfileCard />
         <PasswordCard />
         <PlatformCard />
+        {me?.role === 'owner' ? <OrganizationCard /> : null}
         {can('member:manage') ? (
           <div className="lg:col-span-2">
             <MembersCard />
@@ -170,6 +173,77 @@ function AppearanceCard() {
             {t('common.save')}
           </Button>
         </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+function OrganizationCard() {
+  const { t } = useTranslation()
+  const { reload } = useAuth()
+  const toast = useToast()
+  const org = useCurrentOrganization()
+  const update = useUpdateOrganization()
+  const [form, setForm] = useState({ name: '', default_timezone: '', reporting_currency: '' })
+
+  useEffect(() => {
+    if (org.data) {
+      setForm({
+        name: org.data.name,
+        default_timezone: org.data.default_timezone,
+        reporting_currency: org.data.reporting_currency ?? '',
+      })
+    }
+  }, [org.data])
+
+  const currencyProblem =
+    form.reporting_currency && !/^[A-Za-z]{3}$/.test(form.reporting_currency.trim())
+      ? t('settings.currencyInvalid')
+      : undefined
+
+  return (
+    <Card>
+      <CardHeader title={t('settings.organization')} description={t('settings.organizationHint')} />
+      <CardBody className="space-y-4">
+        <TextInput
+          label={t('common.name')}
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+        />
+        <TimezoneSelect
+          label={t('settings.orgTimezone')}
+          value={form.default_timezone}
+          hint={t('settings.orgTimezoneHint')}
+          onChange={(default_timezone) => setForm({ ...form, default_timezone })}
+        />
+        <TextInput
+          label={t('settings.currency')}
+          value={form.reporting_currency}
+          placeholder="TWD"
+          error={currencyProblem}
+          hint={t('settings.currencyHint')}
+          onChange={(event) => setForm({ ...form, reporting_currency: event.target.value.toUpperCase() })}
+        />
+        <Button
+          variant="primary"
+          loading={update.isPending}
+          disabled={!form.name.trim() || Boolean(currencyProblem)}
+          onClick={async () => {
+            try {
+              await update.mutateAsync({
+                name: form.name.trim(),
+                default_timezone: form.default_timezone,
+                reporting_currency: form.reporting_currency.trim() || undefined,
+              })
+              await reload()
+              toast.success(t('common.saved'))
+            } catch (error) {
+              toast.error(errorMessage(error))
+            }
+          }}
+        >
+          {t('common.save')}
+        </Button>
       </CardBody>
     </Card>
   )

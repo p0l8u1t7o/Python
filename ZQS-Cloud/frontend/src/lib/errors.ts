@@ -50,10 +50,3 @@ export function fieldErrors(error: unknown): Record<string, string> {
   return result
 }
 
-export function isPermissionError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 403
-}
-
-export function isNotFound(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404
-}

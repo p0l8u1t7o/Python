@@ -106,11 +106,9 @@ else:
         }
     }
 
-# Marks whether the active backend supports TimescaleDB style helpers. The
-# telemetry repository degrades gracefully when False.
-TIMESCALE_ENABLED = env.get_bool(
-    "TIMESCALE_ENABLED", DB_ENGINE in {"timescale", "timescaledb"}
-)
+# TimescaleDB needs no flag: the telemetry repository looks at the connection
+# vendor and uses the time-bucket helpers when they exist. Turning a table
+# into a hypertable is a one-off SQL step, documented in the README.
 
 # --------------------------------------------------------------------------
 # Password hashing / validation
@@ -148,7 +146,8 @@ LANGUAGES = [
 ]
 LOCALE_PATHS = [BASE_DIR / "locale"]
 
-# Timezone used when rendering energy interval / billing boundaries.
+# Timezone a new site gets when the form does not say otherwise. Sites carry
+# their own zone; this only fills the blank on creation.
 SITE_DEFAULT_TIMEZONE = env.get("SITE_DEFAULT_TIMEZONE", "Asia/Taipei")
 
 # --------------------------------------------------------------------------
@@ -324,8 +323,10 @@ INGEST = {
     "MAX_PAYLOAD_BYTES": env.get_int("INGEST_MAX_PAYLOAD_BYTES", 256 * 1024),
     "MAX_METRICS_PER_MESSAGE": env.get_int("INGEST_MAX_METRICS_PER_MESSAGE", 512),
     # Auto-register devices seen on the wire but absent from the registry.
+    # The organisation is always the Sparkplug group_id - there is no
+    # fallback tenant, because a device landing in the wrong tenant is worse
+    # than one that is dropped and logged.
     "AUTO_PROVISION": env.get_bool("INGEST_AUTO_PROVISION", False),
-    "AUTO_PROVISION_ORG_SLUG": env.get("INGEST_AUTO_PROVISION_ORG", "default"),
 }
 
 WORKER = {

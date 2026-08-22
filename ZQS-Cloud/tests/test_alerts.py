@@ -198,3 +198,92 @@ class ComparatorTestCase(TestCase):
         self.assertFalse(clears(rule, 9.0))
         self.assertTrue(clears(rule, 7.0))
         self.assertTrue(clears(rule, 23.0))
+
+
+class NotificationPhaseTestCase(AlertEngineTestCase):
+    """Raise and clear must produce two messages a person can tell apart."""
+
+    def _channel(self):
+        from apps.alerts.models import ChannelType, NotificationChannel
+
+        channel = NotificationChannel.objects.create(
+            organization=self.org, name="oncall", channel_type=ChannelType.WEBHOOK,
+            config={"url": "https://example.com/hook"}, notify_alerts=True,
+            min_severity=Severity.WARNING, notify_events=True, min_event_level="error",
+        )
+        self.rule.channels.add(channel)
+        return channel
+
+    def test_rule_alert_queues_a_raised_and_then_a_resolved_delivery(self):
+        from apps.alerts.models import NotificationDelivery
+        from services.worker.notifications import _notification_text, build_payload
+
+        self._channel()
+        self.evaluate(15.0, 0)
+        self.evaluate(13.0, 61)
+        self.evaluate(30.0, 120)
+        phases = list(
+            NotificationDelivery.objects.order_by("created_at").values_list("phase", flat=True)
+        )
+        self.assertEqual(phases, ["raised", "resolved"])
+
+        raised, resolved = NotificationDelivery.objects.order_by("created_at")
+        raised_text = _notification_text(build_payload(raised))
+        resolved_text = _notification_text(build_payload(resolved))
+        self.assertTrue(raised_text.startswith("🔴 發生"), raised_text)
+        self.assertTrue(resolved_text.startswith("🟢 解除"), resolved_text)
+        self.assertIn("持續", resolved_text)
+        self.assertNotEqual(raised_text, resolved_text)
+
+    def test_a_raised_delivery_sent_late_still_says_raised(self):
+        """The alert may have cleared by the time the worker sends."""
+        from apps.alerts.models import NotificationDelivery
+        from services.worker.notifications import _notification_text, build_payload
+
+        self._channel()
+        self.evaluate(15.0, 0)
+        self.evaluate(13.0, 61)
+        self.evaluate(30.0, 120)
+        raised = NotificationDelivery.objects.filter(phase="raised").get()
+        self.assertEqual(raised.alert.status, AlertStatus.RESOLVED)
+        self.assertTrue(_notification_text(build_payload(raised)).startswith("🔴 發生"))
+
+    def test_device_alarm_clear_event_reaches_the_same_channel(self):
+        """The clear is logged at info, below the channel's 'error' gate, but
+        it carries the raise level and is queued as a resolved message."""
+        from apps.alerts.models import NotificationDelivery
+        from apps.devices.models import DeviceEvent, EventLevel
+        from services.worker.notifications import (
+            _notification_text,
+            build_payload,
+            queue_event_notifications,
+        )
+
+        self._channel()
+        raised = DeviceEvent.objects.create(
+            organization=self.org, device=self.device, ts=self.base, level=EventLevel.ERROR,
+            code="A0007", message="PCS over-temperature",
+            payload={"alarm_state": "active", "alarm_level": "error"},
+        )
+        cleared = DeviceEvent.objects.create(
+            organization=self.org, device=self.device, ts=self.base, level=EventLevel.INFO,
+            code="A0007", message="PCS over-temperature",
+            payload={"alarm_state": "cleared", "alarm_level": "error"},
+        )
+        self.assertEqual(queue_event_notifications([raised, cleared]), 2)
+        phases = {d.event_id: d.phase for d in NotificationDelivery.objects.all()}
+        self.assertEqual(phases[raised.pk], "raised")
+        self.assertEqual(phases[cleared.pk], "resolved")
+        text = _notification_text(build_payload(NotificationDelivery.objects.get(event=cleared)))
+        self.assertTrue(text.startswith("🟢 解除"), text)
+
+    def test_a_plain_info_event_still_respects_the_gate(self):
+        from apps.devices.models import DeviceEvent, EventLevel
+        from services.worker.notifications import queue_event_notifications
+
+        self._channel()
+        info = DeviceEvent.objects.create(
+            organization=self.org, device=self.device, ts=self.base, level=EventLevel.INFO,
+            code="I0001", message="Firmware updated",
+        )
+        self.assertEqual(queue_event_notifications([info]), 0)

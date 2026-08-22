@@ -21,8 +21,15 @@ def _run_stream(request, run_id):
     return run_stream(request, run_id)
 
 
+def _live_stream(request):
+    from apps.core.live import live_stream
+
+    return live_stream(request)
+
+
 urlpatterns = [
     path("healthz", healthz, name="healthz"),
+    path("api/live/stream", _live_stream, name="live-stream"),
     # Registered before the ninja router: a streaming response cannot go
     # through the schema layer, and EventSource cannot set auth headers, so
     # this one route handles both itself.

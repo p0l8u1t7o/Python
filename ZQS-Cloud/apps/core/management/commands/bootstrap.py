@@ -388,7 +388,11 @@ class Command(BaseCommand):
                 created_metrics += int(created)
 
         created_types = updated_types = 0
-        for blueprint in BUILTIN_DEVICE_TYPES:
+        for builtin in BUILTIN_DEVICE_TYPES:
+            # A copy: the table is module state, and popping the key out of
+            # it made a second call in the same process (tests, a seed that
+            # bootstraps first) fail with KeyError.
+            blueprint = dict(builtin)
             key = blueprint.pop("key")
             # Capabilities follow from the category, so a new built-in
             # blueprint gets sensible defaults without anyone hand-filling four

@@ -213,9 +213,9 @@ class JumpNode:
         Param(
             "target",
             "Jump to",
-            kind="text",
+            kind="node",
             required=True,
-            help_text="The id of the node to continue at.",
+            help_text="The node to continue at.",
         )
     ]
     handles: list[Handle] = []

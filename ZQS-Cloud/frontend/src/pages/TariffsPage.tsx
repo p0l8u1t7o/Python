@@ -14,6 +14,7 @@ import {
 import { errorMessage, fieldErrors } from '@/lib/errors'
 import { formatNumber } from '@/lib/format'
 import type { Tariff, TariffPreset } from '@/lib/types'
+import { useFormDirty } from '@/lib/useFormDirty'
 import {
   Badge,
   Button,
@@ -366,6 +367,28 @@ function TariffModal({
   const [form, setForm] = useState(EMPTY_FORM)
   const [periods, setPeriods] = useState<PeriodForm[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const dirty = useFormDirty(open, { form, periods })
+
+  /**
+   * Per-period checks. The server validates the period list too, but it
+   * reports "periods invalid" for the whole list; this names the row.
+   */
+  const periodProblems = useMemo(() => {
+    const out = new Map<number, { start?: string; end?: string; import_price?: string; export_price?: string }>()
+    if (form.kind === 'flat') return out
+    periods.forEach((period, index) => {
+      const row: { start?: string; end?: string; import_price?: string; export_price?: string } = {}
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(period.start)) row.start = t('tariffs.problems.time')
+      if (!/^(([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(period.end)) row.end = t('tariffs.problems.time')
+      if (!row.start && !row.end && period.start === period.end) row.end = t('tariffs.problems.empty')
+      if (period.import_price !== '' && !(Number(period.import_price) >= 0)) row.import_price = t('tariffs.problems.price')
+      if (period.export_price !== '' && !(Number(period.export_price) >= 0)) row.export_price = t('tariffs.problems.price')
+      if (period.months.length === 0) row.start = row.start ?? t('tariffs.problems.noMonths')
+      if (Object.keys(row).length) out.set(index, row)
+    })
+    return out
+  }, [form.kind, periods, t])
+  const periodProblemCount = periodProblems.size
 
   /** Fill the form from a bundled Taipower table; everything stays editable. */
   function applyPreset(preset: TariffPreset) {
@@ -475,6 +498,7 @@ function TariffModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       size="lg"
       title={isUpdate ? t('tariffs.edit') : t('tariffs.create')}
       description={t('tariffs.hint')}
@@ -484,7 +508,7 @@ function TariffModal({
           <Button
             variant="primary"
             loading={create.isPending || update.isPending}
-            disabled={!form.name.trim()}
+            disabled={!form.name.trim() || periodProblemCount > 0 || (form.kind !== 'flat' && periods.length === 0)}
             onClick={() => void submit()}
           >
             {t('common.save')}
@@ -660,6 +684,7 @@ function TariffModal({
                         label={t('range.from')}
                         type="time"
                         value={period.start}
+                        error={periodProblems.get(index)?.start}
                         onChange={(event) =>
                           setPeriod(index, { start: event.target.value })
                         }
@@ -669,6 +694,7 @@ function TariffModal({
                         type="time"
                         value={period.end === '24:00' ? '' : period.end}
                         placeholder="24:00"
+                        error={periodProblems.get(index)?.end}
                         onChange={(event) =>
                           setPeriod(index, { end: event.target.value || '24:00' })
                         }
@@ -680,6 +706,7 @@ function TariffModal({
                         step="0.0001"
                         min={0}
                         value={period.import_price}
+                        error={periodProblems.get(index)?.import_price}
                         placeholder={form.default_import_price}
                         onChange={(event) =>
                           setPeriod(index, { import_price: event.target.value })
@@ -691,6 +718,7 @@ function TariffModal({
                         step="0.0001"
                         min={0}
                         value={period.export_price}
+                        error={periodProblems.get(index)?.export_price}
                         placeholder={form.default_export_price}
                         onChange={(event) =>
                           setPeriod(index, { export_price: event.target.value })

@@ -26,6 +26,7 @@ import {
   useDeviceEvents,
   useDeviceMetricKeys,
   useDeviceMutations,
+  usePolicies,
   useDeviceStatusHistory,
   useOperatingSessions,
   useSendCommand,
@@ -46,6 +47,7 @@ import {
 } from '@/lib/format'
 import { useTimeRange } from '@/lib/useTimeRange'
 import type { GlossaryId } from '@/lib/glossary'
+import { useFormDirty } from '@/lib/useFormDirty'
 import type {
   CommandDefinition,
   CommandParamSpec,
@@ -307,6 +309,13 @@ export function DeviceDetailPage() {
                 {detail.retired_at ? (
                   <DetailRow label={t('devices.retiredAt')}>
                     {formatDateTime(detail.retired_at)}
+                  </DetailRow>
+                ) : null}
+                {detail.replaced_by_id ? (
+                  <DetailRow label={t('devices.replacedBy')}>
+                    <Link to={`/devices/${detail.replaced_by_id}`} className="text-brand hover:underline">
+                      {t('devices.replacedByLink')}
+                    </Link>
                   </DetailRow>
                 ) : null}
                 {detail.capital_cost !== null ? (
@@ -767,6 +776,42 @@ function SendCommandModal({
     (key) => values[key] === undefined || values[key] === null || values[key] === '',
   )
 
+  /**
+   * Client-side range check. The browser's `min`/`max` only steer the
+   * spinner; a typed value outside the range would otherwise travel to the
+   * server and come back as a validation error after the click.
+   */
+  function rangeProblem(key: string, spec: CommandParamSpec): string | undefined {
+    const raw = values[key]
+    if (raw === undefined || raw === null || raw === '') return undefined
+    if (spec.type !== 'number' && spec.type !== 'integer') return undefined
+    const numeric = Number(raw)
+    if (!Number.isFinite(numeric)) return t('commands.paramNotANumber')
+    if (spec.type === 'integer' && !Number.isInteger(numeric)) return t('commands.paramNotInteger')
+    if (spec.minimum !== undefined && numeric < spec.minimum) {
+      return t('commands.paramBelowMinimum', { min: spec.minimum, unit: spec.unit ?? '' })
+    }
+    if (spec.maximum !== undefined && numeric > spec.maximum) {
+      return t('commands.paramAboveMaximum', { max: spec.maximum, unit: spec.unit ?? '' })
+    }
+    return undefined
+  }
+  const invalid = Object.entries(properties).some(([key, spec]) => rangeProblem(key, spec))
+
+  /** A readable label for a parameter key, with the sign convention where it matters. */
+  function paramLabel(key: string): string {
+    return t(`commands.params.${key}`, { defaultValue: key })
+  }
+  function paramHint(key: string, spec: CommandParamSpec): string | undefined {
+    const parts: string[] = []
+    const help = t(`commands.paramHints.${key}`, { defaultValue: '' })
+    if (help) parts.push(help)
+    if (spec.minimum !== undefined || spec.maximum !== undefined) {
+      parts.push(`${spec.minimum ?? '−∞'} … ${spec.maximum ?? '∞'}${spec.unit ? ` ${spec.unit}` : ''}`)
+    }
+    return parts.length ? parts.join('　') : undefined
+  }
+
   async function submit() {
     const params: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(values)) {
@@ -802,7 +847,7 @@ function SendCommandModal({
           <Button
             variant={definition?.confirm ? 'danger' : 'primary'}
             loading={send.isPending}
-            disabled={missing.length > 0}
+            disabled={missing.length > 0 || invalid}
             icon={<Send className="size-4" />}
             onClick={() => void submit()}
           >
@@ -831,7 +876,8 @@ function SendCommandModal({
             return (
               <Checkbox
                 key={key}
-                label={key}
+                label={paramLabel(key)}
+                hint={paramHint(key, spec)}
                 checked={Boolean(values[key])}
                 onChange={(checked) => updateValue(key, spec, checked)}
               />
@@ -841,7 +887,8 @@ function SendCommandModal({
             return (
               <Select
                 key={key}
-                label={key}
+                label={paramLabel(key)}
+                hint={paramHint(key, spec)}
                 required={isRequired}
                 value={String(values[key] ?? '')}
                 placeholder={isRequired ? undefined : t('common.none')}
@@ -853,7 +900,7 @@ function SendCommandModal({
           return (
             <TextInput
               key={key}
-              label={key}
+              label={paramLabel(key)}
               required={isRequired}
               type={spec.type === 'number' || spec.type === 'integer' ? 'number' : 'text'}
               step={spec.type === 'integer' ? 1 : 'any'}
@@ -862,11 +909,8 @@ function SendCommandModal({
               suffix={spec.unit}
               value={String(values[key] ?? '')}
               onChange={(event) => updateValue(key, spec, event.target.value)}
-              hint={
-                spec.minimum !== undefined || spec.maximum !== undefined
-                  ? `${spec.minimum ?? '−∞'} … ${spec.maximum ?? '∞'}`
-                  : undefined
-              }
+              hint={paramHint(key, spec)}
+              error={rangeProblem(key, spec)}
             />
           )
         })}
@@ -1078,6 +1122,7 @@ function ReplaceModal({
   const toast = useToast()
   const replace = useReplaceDevice(device.id)
   const [form, setForm] = useState({ device_id: '', name: '', serial_number: '', reason: '' })
+  const replaceDirty = useFormDirty(open, form)
   const [result, setResult] = useState<DeviceReplacement | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -1111,6 +1156,7 @@ function ReplaceModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={replaceDirty}
       title={t('devices.replaceTitle', { name: device.name })}
       footer={
         result ? (
@@ -1323,6 +1369,7 @@ function EditDeviceModal({
   const toast = useToast()
   const sites = useSites()
   const blueprints = useBlueprints()
+  const policies = usePolicies()
   const { update } = useDeviceMutations()
 
   const shape = () => ({
@@ -1342,10 +1389,12 @@ function EditDeviceModal({
       device.annual_maintenance_cost === null
         ? ''
         : String(device.annual_maintenance_cost),
+    recording_policy_id: device.recording_policy_id ?? '',
   })
 
   const [form, setForm] = useState(shape)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const dirty = useFormDirty(open, form)
 
   // Reopening after a refetch should show what is stored, not what was
   // captured when this component first mounted.
@@ -1375,6 +1424,7 @@ function EditDeviceModal({
         commissioned_on: form.commissioned_on || null,
         expected_life_years: optional(form.expected_life_years),
         annual_maintenance_cost: optional(form.annual_maintenance_cost),
+        recording_policy_id: form.recording_policy_id || null,
       })
       toast.success(t('common.saved'))
       onClose()
@@ -1388,6 +1438,7 @@ function EditDeviceModal({
     <Modal
       open={open}
       onClose={onClose}
+      dirty={dirty}
       title={t('devices.edit')}
       description={t('devices.editHint')}
       footer={
@@ -1502,6 +1553,15 @@ function EditDeviceModal({
             </div>
           </div>
         </div>
+
+        <Select
+          label={t('devices.recordingPolicy')}
+          value={form.recording_policy_id}
+          placeholder={t('devices.recordingPolicyInherit')}
+          hint={t('devices.recordingPolicyHint')}
+          options={(policies.data ?? []).map((policy) => ({ value: policy.id, label: policy.name }))}
+          onChange={(event) => setForm({ ...form, recording_policy_id: event.target.value })}
+        />
       </div>
     </Modal>
   )

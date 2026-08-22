@@ -272,6 +272,7 @@ class SparkplugProcessor:
         stats: dict[str, int] = defaultdict(int)
 
         rows: list[SampleRow] = []
+        latest_rows: list[SampleRow] = []
         alert_inputs: list[tuple[DeviceRef, str, float | None, dt.datetime]] = []
         events: list[DeviceEvent] = []
         last_seen: dict[uuid.UUID, dt.datetime] = {}
@@ -294,6 +295,11 @@ class SparkplugProcessor:
 
             if kind is MessageType.NDEATH:
                 self._handle_node_death(node, data, received_at, stats)
+                # Data from this node earlier in the same batch must not put
+                # its devices back online at the end of the batch: the death
+                # came later and wins. Data *after* the death re-adds them.
+                for ref in self.shared.registry.devices_of(node.pk):
+                    last_seen.pop(ref.pk, None)
                 continue
 
             gap = self._check_sequence(node, kind, data, stats)
@@ -316,6 +322,7 @@ class SparkplugProcessor:
             if kind is MessageType.DDEATH:
                 if device is not None:
                     self._handle_device_death(device, data, received_at, stats)
+                    last_seen.pop(device.pk, None)
                 continue
 
             if kind is MessageType.DBIRTH:
@@ -347,6 +354,7 @@ class SparkplugProcessor:
                 data=data,
                 received_at=received_at,
                 rows=rows,
+                latest_rows=latest_rows,
                 alert_inputs=alert_inputs,
                 events=events,
                 last_seen=last_seen,
@@ -354,10 +362,12 @@ class SparkplugProcessor:
                 stats=stats,
             )
 
-        if rows:
+        if rows or latest_rows:
             with transaction.atomic():
-                stats["inserted"] = insert_samples(rows)
-                upsert_latest(rows, updated_at=received_at)
+                if rows:
+                    stats["inserted"] = insert_samples(rows)
+                if latest_rows:
+                    upsert_latest(latest_rows, updated_at=received_at)
         if events:
             DeviceEvent.objects.bulk_create(events, batch_size=500)
             # Channels can subscribe to device events directly (not only to
@@ -655,6 +665,7 @@ class SparkplugProcessor:
         data: dict[str, Any],
         received_at: dt.datetime,
         rows: list[SampleRow],
+        latest_rows: list[SampleRow],
         alert_inputs: list,
         events: list[DeviceEvent],
         last_seen: dict[uuid.UUID, dt.datetime],
@@ -751,11 +762,6 @@ class SparkplugProcessor:
             if rule is None:
                 stats["filtered_by_policy"] += 1
                 continue
-            if not self.shared.gate.should_store(
-                device.pk, metric_key, ts, value, text, rule
-            ):
-                stats["filtered_by_deadband"] += 1
-                continue
 
             definition = self.shared.catalog.get(device.organization_id, metric_key)
             quality = (
@@ -766,17 +772,30 @@ class SparkplugProcessor:
             if quality == Quality.SUSPECT:
                 stats["suspect"] += 1
 
-            rows.append(
-                SampleRow(
-                    organization_id=device.organization_id,
-                    device_id=device.pk,
-                    metric_key=metric_key,
-                    ts=ts,
-                    value=value,
-                    value_text=text,
-                    quality=int(quality),
-                )
+            row = SampleRow(
+                organization_id=device.organization_id,
+                device_id=device.pk,
+                metric_key=metric_key,
+                ts=ts,
+                value=value,
+                value_text=text,
+                quality=int(quality),
             )
+
+            # The latest-value table tracks *every* reading. The deadband
+            # below decides how densely history is stored; it must not decide
+            # whether the device "reported" - a steady SOC that never crosses
+            # the deadband used to stop refreshing its timestamp and then read
+            # as stale, and the control engine refused to act on it.
+            latest_rows.append(row)
+
+            if not self.shared.gate.should_store(
+                device.pk, metric_key, ts, value, text, rule
+            ):
+                stats["filtered_by_deadband"] += 1
+                continue
+
+            rows.append(row)
             self.shared.gate.mark_stored(device.pk, metric_key, ts, value, text)
 
     # ---- alarms and acknowledgements -------------------------------------
@@ -788,17 +807,23 @@ class SparkplugProcessor:
         events: list[DeviceEvent],
         stats: dict,
     ) -> None:
+        # Set and clear are both logged, but they must not read the same: a
+        # clear is an "info" line that says so, and carries the level it was
+        # raised at so the notification gate still lets it through.
+        raised_level = self._SEVERITY_TO_LEVEL.get(alarm["severity"], EventLevel.WARNING)
         events.append(
             DeviceEvent(
                 organization_id=device.organization_id,
                 device_id=device.pk,
                 ts=ts,
-                level=self._SEVERITY_TO_LEVEL.get(
-                    alarm["severity"], EventLevel.WARNING
-                ),
+                level=raised_level if alarm["active"] else EventLevel.INFO,
                 code=alarm["code"],
                 message=alarm["message"],
-                payload=alarm["details"],
+                payload={
+                    **(alarm["details"] or {}),
+                    "alarm_state": "active" if alarm["active"] else "cleared",
+                    "alarm_level": raised_level,
+                },
             )
         )
         try:

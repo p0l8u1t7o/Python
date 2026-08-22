@@ -40,10 +40,10 @@ import type {
   FleetLive,
   FleetStats,
   Health,
-  LatestValue,
   Member,
   Metric,
   DispatchDecision,
+  DispatchWindow,
   DemandResponseEvent,
   NotificationChannel,
   TariffPreset,
@@ -56,7 +56,6 @@ import type {
   Site,
   SiteInvestment,
   SiteOverview,
-  SiteRollup,
   SiteSummary,
   StoragePlan,
   Tariff,
@@ -131,6 +130,7 @@ export const keys = {
   emsSessions: (params: unknown) => ['ems', 'sessions', params] as const,
   emsSessionSummary: (params: unknown) => ['ems', 'sessions', 'summary', params] as const,
   emsDispatchPreview: ['ems', 'dispatch', 'preview'] as const,
+  emsDispatchWindows: (siteId: string | undefined) => ['ems', 'dispatch', 'windows', siteId] as const,
   deviceEnergy: (id: string, params: unknown) => ['devices', id, 'energy', params] as const,
   emsLive: ['ems', 'live'] as const,
   emsInvestment: (siteId: string, params: unknown) =>
@@ -204,6 +204,33 @@ export function useEventCodes(params: Record<string, unknown>) {
     queryFn: () => api.get<EventCode[]>('/events/codes', params),
     staleTime: 5 * 60 * 1000,
   })
+}
+
+export function useEdgeNodeMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['edge-nodes'] })
+    void queryClient.invalidateQueries({ queryKey: ['devices'] })
+  }
+  return {
+    create: useMutation({
+      mutationFn: (body: Record<string, unknown>) =>
+        api.post<{ edge_node: EdgeNode; credential: DeviceCredential | null }>('/edge-nodes', body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/edge-nodes/${id}`),
+      onSuccess: invalidate,
+    }),
+    rotate: useMutation({
+      mutationFn: (id: string) => api.post<DeviceCredential>(`/edge-nodes/${id}/credential`),
+    }),
+    /** Ask the gateway to re-announce itself and everything behind it. */
+    rebirth: useMutation({
+      mutationFn: (id: string) => api.post(`/edge-nodes/${id}/rebirth`),
+      onSuccess: invalidate,
+    }),
+  }
 }
 
 export function useEdgeNodes(params: Record<string, unknown> = {}) {
@@ -299,24 +326,6 @@ export function useSites(
         ...(includeDescendants ? { include_descendants: true } : {}),
       }),
     ...queryOptions,
-  })
-}
-
-/** Devices, alerts and energy for one node of the site tree. */
-export function useSiteRollup(
-  siteId: string | undefined,
-  params?: { includeDescendants?: boolean; start?: string; end?: string },
-) {
-  const query = {
-    ...(params?.includeDescendants === false ? { include_descendants: false } : {}),
-    ...(params?.start ? { start: params.start } : {}),
-    ...(params?.end ? { end: params.end } : {}),
-  }
-  return useQuery({
-    queryKey: [...keys.sites, 'rollup', siteId ?? '', query],
-    queryFn: () => api.get<SiteRollup>(`/sites/${siteId}/summary`, query),
-    enabled: Boolean(siteId),
-    refetchInterval: LIVE_REFETCH_MS,
   })
 }
 
@@ -623,16 +632,6 @@ export function useSeries(body: SeriesRequest, enabled = true) {
   })
 }
 
-export function useLatestValues(deviceIds: string[], enabled = true) {
-  return useQuery({
-    queryKey: keys.latest(deviceIds),
-    queryFn: () =>
-      api.get<LatestValue[]>('/telemetry/latest', deviceIds.length ? { device_ids: deviceIds } : {}),
-    enabled,
-    refetchInterval: FAST_REFETCH_MS,
-  })
-}
-
 export function useDeviceMetricKeys(deviceId: string | undefined) {
   return useQuery({
     queryKey: keys.deviceMetrics(deviceId ?? ''),
@@ -765,6 +764,15 @@ export function useNotificationChannelMutations() {
       mutationFn: (id: string) => api.delete(`/notification-channels/${id}`),
       onSuccess: invalidate,
     }),
+    /** Send one test message through a configuration, saved or not. */
+    test: useMutation({
+      mutationFn: (body: {
+        id?: string
+        name: string
+        channel_type: string
+        config: Record<string, unknown>
+      }) => api.post<{ ok: boolean; message: string }>('/notification-channels/test', body),
+    }),
   }
 }
 
@@ -850,10 +858,21 @@ export function useApiKeyMutations() {
   }
 }
 
-export function useOrganizations() {
+export function useCurrentOrganization() {
   return useQuery({
     queryKey: keys.organizations,
-    queryFn: () => api.get<{ organization: Organization; role: string }[]>('/organizations'),
+    queryFn: () => api.get<Organization>('/organizations/current'),
+  })
+}
+
+export function useUpdateOrganization() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name?: string; default_timezone?: string; reporting_currency?: string }) =>
+      api.patch<Organization>('/organizations/current', body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.organizations })
+    },
   })
 }
 
@@ -1127,6 +1146,29 @@ export function useTariffMutations() {
     }),
     remove: useMutation({
       mutationFn: (id: string) => api.delete(`/ems/tariffs/${id}`),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+export function useDispatchWindows(siteId: string | undefined) {
+  return useQuery({
+    queryKey: keys.emsDispatchWindows(siteId),
+    queryFn: () => api.get<DispatchWindow[]>('/ems/dispatch-windows', siteId ? { site_id: siteId } : {}),
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+export function useDispatchWindowMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['ems', 'dispatch'] })
+  return {
+    create: useMutation({
+      mutationFn: (body: Record<string, unknown>) => api.post<DispatchWindow>('/ems/dispatch-windows', body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/ems/dispatch-windows/${id}`),
       onSuccess: invalidate,
     }),
   }

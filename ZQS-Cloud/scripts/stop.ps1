@@ -40,7 +40,8 @@ $patterns = @(
     '*manage.py run_pipeline*',
     '*manage.py run_broker*',
     '*manage.py run_workflows*',
-    '*manage.py simulate_device*',
+    '*manage.py run_scheduler*',
+    '*simulator.console*',
     '*vite*'
 )
 

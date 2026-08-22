@@ -371,6 +371,12 @@ def update_current_organization(request, payload: s.OrganizationUpdateIn):
         _validate_timezone(payload.default_timezone)
         organization.default_timezone = payload.default_timezone
         fields.append("default_timezone")
+    if payload.reporting_currency is not None:
+        code = payload.reporting_currency.strip().upper()
+        if not code.isalpha():
+            raise ValidationError("reporting_currency must be an ISO 4217 code", code="invalid_currency")
+        organization.reporting_currency = code
+        fields.append("reporting_currency")
     if payload.is_active is not None:
         organization.is_active = payload.is_active
         fields.append("is_active")

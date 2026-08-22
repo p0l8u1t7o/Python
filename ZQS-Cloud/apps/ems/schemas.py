@@ -32,9 +32,21 @@ class EnergyAssetIn(Schema):
     power_scale: float = 0.001
     energy_scale: float = 1.0
     invert_sign: bool = False
+    #: False keeps the asset out of the site's energy balance (a sub-meter
+    #: whose load is already inside the grid meter, for instance).
+    include_in_balance: bool = True
     rated_power_kw: float | None = None
     rated_energy_kwh: float | None = None
     is_active: bool = True
+    #: Operating-session detection (charge / discharge / running sessions).
+    session_tracking_enabled: bool = False
+    session_enter_kw: float | None = None
+    session_exit_kw: float | None = None
+    session_min_duration_s: int = Field(default=60, ge=0)
+    session_gap_s: int = Field(default=300, ge=0)
+    #: Registered cost model key; blank means the role's default.
+    cost_model: str = Field(default="", max_length=40)
+    cost_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class EnergyAssetOut(Schema):
@@ -53,9 +65,17 @@ class EnergyAssetOut(Schema):
     power_scale: float
     energy_scale: float
     invert_sign: bool
+    include_in_balance: bool = True
     rated_power_kw: float | None
     rated_energy_kwh: float | None
     is_active: bool
+    session_tracking_enabled: bool = False
+    session_enter_kw: float | None = None
+    session_exit_kw: float | None = None
+    session_min_duration_s: int = 60
+    session_gap_s: int = 300
+    cost_model: str = ""
+    cost_parameters: dict[str, Any] = Field(default_factory=dict)
 
     @staticmethod
     def resolve_device_external_id(obj) -> str:
@@ -254,6 +274,16 @@ class SiteCostOut(Schema):
     load_kwh: float = 0.0
     device_count: int = 0
     currency: str = ""
+    #: Capacity side of the bill. Highest interval demand in the window, as
+    #: metered and as it would have been with the battery idle, and the
+    #: demand charge (plus excess penalty) the difference is worth at the
+    #: plan tariff's monthly rate.
+    peak_demand_kw: float | None = None
+    baseline_peak_kw: float | None = None
+    contract_capacity_kw: float | None = None
+    demand_charge_per_kw: float = 0.0
+    demand_savings: float = 0.0
+    penalty_avoided: float = 0.0
 
 
 class CostOverviewOut(Schema):
@@ -270,6 +300,7 @@ class CostOverviewOut(Schema):
     total_energy_cost: float = 0.0
     total_export_revenue: float = 0.0
     total_estimated_savings: float = 0.0
+    total_demand_savings: float = 0.0
     #: True when the sites do not share one currency, so totals are unlabelled.
     mixed_currency: bool = False
     sites: list[SiteCostOut] = Field(default_factory=list)

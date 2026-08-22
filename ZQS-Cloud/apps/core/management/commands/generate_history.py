@@ -1,6 +1,6 @@
 """Backfill realistic historical telemetry, then aggregate it.
 
-``simulate_device`` publishes live data going forward, which leaves every chart
+The simulation console publishes live data going forward, which leaves every chart
 empty until it has been running for hours. This writes straight to the database
 instead, so a fresh install has something to look at immediately - and it needs
 no MQTT broker or queue.
@@ -202,6 +202,20 @@ class Command(BaseCommand):
         battery = by_role.get(AssetRole.BATTERY)
         meter = by_role.get(AssetRole.GRID_METER)
         pv = by_role.get(AssetRole.PV)
+        load_meter = by_role.get(AssetRole.LOAD_METER)
+
+        # The site's own shape when it has one (the fleet simulator uses the
+        # same table, so history and live readings tell one story), else the
+        # generic office profile.
+        site_kind = next(
+            (tag.split(":", 1)[1] for tag in (site.tags or []) if tag.startswith("sim:")),
+            None,
+        )
+        site_peak_kw = (load_meter.rated_power_kw if load_meter else None) or (
+            meter.rated_power_kw if meter else None
+        )
+        strategy = plan.strategy if plan else ""
+        tariff = plan.tariff if plan else None
 
         capacity_kwh = (battery.rated_energy_kwh if battery else None) or (
             plan.usable_capacity_kwh if plan else None
@@ -212,6 +226,10 @@ class Command(BaseCommand):
         shave_target_kw = (
             plan.peak_shaving_target_kw if plan and plan.peak_shaving_target_kw else 250.0
         )
+        if plan and plan.demand_cap_target_kw:
+            shave_target_kw = plan.demand_cap_target_kw
+        elif plan and plan.contract_capacity_kw and strategy == "demand_cap":
+            shave_target_kw = plan.contract_capacity_kw * 0.95
         contract_kw = (plan.contract_capacity_kw if plan else None) or shave_target_kw * 1.8
         max_charge_kw = (plan.max_charge_kw if plan else None) or max_power_kw
         min_soc = plan.min_soc_percent if plan else 10.0
@@ -227,6 +245,7 @@ class Command(BaseCommand):
             "pv": 0.0,
             "charge": 0.0,
             "discharge": 0.0,
+            "load": 0.0,
         }
         hours = interval / 3600.0
 
@@ -240,24 +259,19 @@ class Command(BaseCommand):
             local = cursor.astimezone(zone)
 
             pv_kw = _solar_kw(local, pv_peak_kw)
-            load_kw = _load_kw(local)
+            load_kw = (
+                _shaped_load_kw(local, site_kind, site_peak_kw)
+                if site_kind and site_peak_kw
+                else _load_kw(local)
+            )
             net_kw = load_kw - pv_kw
 
-            # Peak shaving, PV-surplus charging, and an off-peak top-up.
-            # Without the last one the battery would drain to its floor on day
-            # one and sit there, which is neither realistic nor interesting.
-            off_peak = local.hour >= 23 or local.hour < 7
-            if net_kw > shave_target_kw and soc > min_soc:
-                battery_kw = min(net_kw - shave_target_kw, max_power_kw)
-            elif net_kw < 0 and soc < max_soc:
-                battery_kw = max(net_kw, -max_power_kw)
-            elif off_peak and soc < max_soc:
-                # Charge into the headroom the contract leaves, keeping a 5%
-                # margin so the top-up does not itself set a new demand peak.
-                headroom = max(0.0, contract_kw * 0.95 - net_kw)
-                battery_kw = -min(max_charge_kw, headroom)
-            else:
-                battery_kw = 0.0
+            battery_kw = _dispatch_kw(
+                strategy, tariff, cursor, local, net_kw, soc,
+                shave_target_kw=shave_target_kw, contract_kw=contract_kw,
+                max_power_kw=max_power_kw, max_charge_kw=max_charge_kw,
+                min_soc=min_soc, max_soc=max_soc,
+            )
 
             # SOC integrates the actual energy moved, then clamps the power if
             # the limit was hit mid-step - so the series stays self-consistent.
@@ -274,6 +288,7 @@ class Command(BaseCommand):
             grid_kw = load_kw - pv_kw - battery_kw
 
             cumulative["pv"] += pv_kw * hours
+            cumulative["load"] += load_kw * hours
             if grid_kw >= 0:
                 cumulative["grid_import"] += grid_kw * hours
             else:
@@ -312,6 +327,9 @@ class Command(BaseCommand):
                 _add(
                     rows, meter, "grid_export_energy_kwh", cursor, cumulative["grid_export"]
                 )
+            if load_meter:
+                _add(rows, load_meter, "load_power_w", cursor, load_kw * 1000)
+                _add(rows, load_meter, "load_energy_kwh", cursor, cumulative["load"])
             if pv:
                 _add(rows, pv, "pv_power_w", cursor, pv_kw * 1000)
                 _add(rows, pv, "pv_energy_kwh", cursor, cumulative["pv"])
@@ -490,6 +508,84 @@ def _solar_kw(local: dt.datetime, peak_kw: float) -> float:
     # Deterministic per-day cloudiness so a day looks coherent, not noisy.
     weather = 0.55 + 0.45 * abs(math.sin(local.toordinal() * 1.7))
     return max(0.0, peak_kw * shape * weather * random.uniform(0.96, 1.0))
+
+
+def _shaped_load_kw(local: dt.datetime, kind: str, peak_kw: float) -> float:
+    """The fleet simulator's hourly shape for this kind of site, scaled to its
+    peak, with a weekend dip and a little noise."""
+    from services.harness.fleet import LOAD_SHAPES
+
+    shape = LOAD_SHAPES.get(kind) or LOAD_SHAPES["factory"]
+    hour = local.hour + local.minute / 60.0
+    index = int(hour) % 24
+    frac = hour - int(hour)
+    base = shape[index] * (1 - frac) + shape[(index + 1) % 24] * frac
+    if local.weekday() >= 5:
+        base *= 0.55 if kind == "office" else 0.75
+    return peak_kw * base * random.uniform(0.96, 1.04)
+
+
+def _dispatch_kw(
+    strategy: str,
+    tariff,
+    moment: dt.datetime,
+    local: dt.datetime,
+    net_kw: float,
+    soc: float,
+    *,
+    shave_target_kw: float,
+    contract_kw: float,
+    max_power_kw: float,
+    max_charge_kw: float,
+    min_soc: float,
+    max_soc: float,
+) -> float:
+    """What the battery does this step under the site's strategy.
+
+    A compressed version of the live engine's rules, run against the
+    synthetic load, so the week of history a demo opens on shows the same
+    behaviour the live dispatch will continue. Positive discharges.
+    """
+    from apps.ems.tariffs import resolve_price
+    from apps.ems.strategy import todays_price_range
+
+    cheapest = dearest = current = None
+    if tariff is not None:
+        cheapest, dearest = todays_price_range(tariff, moment)
+        current = resolve_price(tariff, moment).import_price
+    at_trough = current is not None and current <= cheapest + 1e-9
+    at_peak = current is not None and current >= dearest - 1e-9 and dearest - cheapest > 0.5
+
+    if strategy == "tou_arbitrage" and tariff is not None:
+        if dearest - cheapest < 0.5:
+            return 0.0  # flat day (weekend): nothing to arbitrage
+        if at_peak and soc > min_soc:
+            return min(max_power_kw, max(net_kw, 0.0))
+        if at_trough and soc < max_soc:
+            # Refill under the contract with a margin, so the night-time
+            # charge never becomes the month's billed peak.
+            return -min(max_charge_kw, max(contract_kw * 0.95 - net_kw, 0.0))
+        return 0.0
+
+    if strategy == "self_consumption":
+        if net_kw < 0 and soc < max_soc:
+            return max(net_kw, -max_charge_kw)
+        if net_kw > 0 and soc > min_soc:
+            return min(net_kw, max_power_kw)
+        return 0.0
+
+    # demand_cap, peak_shaving and the generic fallback: shave the excursion,
+    # soak up PV surplus, refill in the cheapest period within the headroom
+    # the ceiling leaves (a top-up that sets a new peak defeats the purpose).
+    off_peak = at_trough if tariff is not None else (local.hour >= 23 or local.hour < 7)
+    if net_kw > shave_target_kw and soc > min_soc:
+        return min(net_kw - shave_target_kw, max_power_kw)
+    if net_kw < 0 and soc < max_soc:
+        return max(net_kw, -max_power_kw)
+    if off_peak and soc < max_soc:
+        headroom = max(0.0, shave_target_kw - net_kw)
+        return -min(max_charge_kw, headroom)
+    return 0.0
 
 
 def _load_kw(local: dt.datetime) -> float:

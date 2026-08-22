@@ -738,9 +738,6 @@ export const GLOSSARY = {
 
 export type GlossaryId = keyof typeof GLOSSARY
 
-/** Every id, for the maintenance check in the docs and for tests. */
-export const GLOSSARY_IDS = Object.keys(GLOSSARY) as GlossaryId[]
-
 export interface ResolvedTerm {
   id: GlossaryId
   /** Display name in the active language. */

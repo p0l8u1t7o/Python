@@ -648,6 +648,10 @@ export interface NotificationChannel {
   min_event_level: string
   config: Record<string, unknown>
   created_at: string
+  /** Outcome of the most recent delivery attempt; blank when none yet. */
+  last_delivery_status: '' | 'pending' | 'sent' | 'failed' | 'skipped'
+  last_delivery_error: string
+  last_delivery_at: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +710,8 @@ export interface EnergyAsset {
   power_scale: number
   energy_scale: number
   invert_sign: boolean
+  /** False keeps this asset out of the site's energy balance. */
+  include_in_balance: boolean
   rated_power_kw: number | null
   rated_energy_kwh: number | null
   is_active: boolean
@@ -810,6 +816,15 @@ export interface SiteCost {
   load_kwh: number
   device_count: number
   currency: string
+  /** Highest interval demand in the window, as metered (kW). */
+  peak_demand_kw: number | null
+  /** The same peak with the battery idle: load minus PV (kW). */
+  baseline_peak_kw: number | null
+  contract_capacity_kw: number | null
+  demand_charge_per_kw: number
+  /** Demand charge and excess penalty avoided by the lower peak. */
+  demand_savings: number
+  penalty_avoided: number
 }
 
 export interface CostOverview {
@@ -819,9 +834,28 @@ export interface CostOverview {
   total_energy_cost: number
   total_export_revenue: number
   total_estimated_savings: number
+  total_demand_savings: number
   /** Sites disagree on currency, so the totals must not be shown as money. */
   mixed_currency: boolean
   sites: SiteCost[]
+}
+
+export type DispatchMode = 'idle' | 'charge' | 'discharge' | 'auto'
+
+/** A scheduled battery instruction; outranks the strategy while in force. */
+export interface DispatchWindow {
+  id: string
+  site_id: string
+  mode: DispatchMode
+  target_power_kw: number | null
+  target_soc_percent: number | null
+  starts_at: string
+  ends_at: string
+  recurrence: string
+  is_enabled: boolean
+  priority: number
+  notes: string
+  created_at: string
 }
 
 export interface DispatchDecision {

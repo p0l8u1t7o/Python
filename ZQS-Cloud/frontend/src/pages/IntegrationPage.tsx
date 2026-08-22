@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Check, Copy } from 'lucide-react'
 
 import { useCapabilities, useEdgeNodes } from '@/lib/queries'
+import { GatewayManager } from '@/components/devices/GatewayManager'
 import { useAuth } from '@/providers/AuthProvider'
 import {
   Badge,
@@ -134,6 +135,10 @@ export function IntegrationPage() {
         title={t('integration.title')}
         description={t('integration.subtitle')}
       />
+
+      <div className="mb-5">
+        <GatewayManager />
+      </div>
 
       <div className="space-y-4">
         <Card>

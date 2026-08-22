@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+import time
+
 import uuid
 
 from django.db import IntegrityError, transaction
@@ -14,6 +17,7 @@ from apps.accounts.security import AuthContext, role_required
 from apps.alerts import schemas as s
 from apps.alerts.engine import RuleCache
 from apps.alerts.models import (
+    NotificationDelivery,
     VALUE_OPERATORS,
     Alert,
     AlertEvent,
@@ -41,7 +45,20 @@ _rule_cache = RuleCache()
 #: Config keys never returned to the client once stored.
 _SECRET_CONFIG_KEYS = {
     "headers", "token", "password", "secret", "api_key", "channel_access_token",
+    "smtp_password",
 }
+
+
+def _merge_secrets(channel_type: str, config: dict, stored: dict) -> dict:
+    """Fill redacted secrets (``""``/``***``) from what is stored."""
+    merged = dict(config or {})
+    for key, value in list(merged.items()):
+        if key.lower() in _SECRET_CONFIG_KEYS and value in ("", "***"):
+            if key in stored:
+                merged[key] = stored[key]
+            else:
+                merged.pop(key)
+    return merged
 
 
 # --------------------------------------------------------------------------
@@ -288,6 +305,12 @@ def resolve_alert(request, alert_id: uuid.UUID, payload: s.ResolveIn):
     alert.save(
         update_fields=["status", "resolved_at", "resolved_by", "resolve_note", "updated_at"]
     )
+    if alert.rule_id:
+        from services.worker.notifications import queue_alert_notifications
+
+        queue_alert_notifications(
+            alert, list(alert.rule.channels.values_list("id", flat=True)), phase="resolved"
+        )
     AlertEvent.objects.create(
         alert=alert,
         event_type=AlertEventType.RESOLVED,
@@ -365,6 +388,43 @@ def create_channel(request, payload: s.NotificationChannelIn):
     return 201, _channel_out(channel)
 
 
+@channels_router.post("/test", response=s.ChannelTestOut, auth=role_required(Role.ADMIN))
+def test_channel(request, payload: s.ChannelTestIn):
+    """Send one test message through a channel configuration, right now.
+
+    Takes the form as it stands - saved or not - so an operator can check a
+    token before committing it. Redacted secrets are filled from the stored
+    channel when ``id`` is given. The result is returned, not raised: a
+    failed test is the expected outcome of a typo, not a server error.
+    """
+    from services.worker.notifications import send_test, test_payload
+
+    ctx: AuthContext = request.auth
+    config = dict(payload.config or {})
+    if payload.id is not None:
+        stored = NotificationChannel.objects.filter(
+            organization=ctx.organization, pk=payload.id
+        ).first()
+        if stored is None:
+            raise NotFound("Notification channel not found")
+        config = _merge_secrets(payload.channel_type, config, stored.config or {})
+    try:
+        _validate_channel_config(payload.channel_type, config)
+    except ValidationError as exc:
+        return {"ok": False, "message": str(exc)}
+
+    started = time.perf_counter()
+    try:
+        send_test(
+            payload.channel_type, config,
+            test_payload(ctx.organization.name, payload.name or "test"),
+        )
+    except ValueError as exc:
+        return {"ok": False, "message": str(exc)[:500]}
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    return {"ok": True, "message": f"delivered in {elapsed_ms} ms"}
+
+
 @channels_router.put("/{channel_id}", response=s.NotificationChannelOut, auth=role_required(Role.ADMIN))
 def update_channel(request, channel_id: uuid.UUID, payload: s.NotificationChannelIn):
     ctx: AuthContext = request.auth
@@ -378,14 +438,7 @@ def update_channel(request, channel_id: uuid.UUID, payload: s.NotificationChanne
     # Secrets come back to the client redacted, so a form that leaves them
     # untouched sends "" or "***" - both mean "keep what is stored".
     if changes["config"]:
-        stored = channel.config or {}
-        merged = dict(changes["config"])
-        for key, value in list(merged.items()):
-            if key.lower() in _SECRET_CONFIG_KEYS and value in ("", "***"):
-                if key in stored:
-                    merged[key] = stored[key]
-                else:
-                    merged.pop(key)
+        merged = _merge_secrets(payload.channel_type, changes["config"], channel.config or {})
         changes["config"] = merged
         _validate_channel_config(payload.channel_type, merged)
     else:
@@ -468,7 +521,16 @@ def _channel_out(channel: NotificationChannel) -> dict:
     for key in list(config):
         if key.lower() in _SECRET_CONFIG_KEYS:
             config[key] = "***"
+    last = (
+        NotificationDelivery.objects.filter(channel=channel)
+        .order_by("-updated_at")
+        .values("status", "last_error", "delivered_at", "updated_at")
+        .first()
+    )
     return {
+        "last_delivery_status": last["status"] if last else "",
+        "last_delivery_error": last["last_error"] if last else "",
+        "last_delivery_at": (last["delivered_at"] or last["updated_at"]) if last else None,
         "id": channel.id,
         "name": channel.name,
         "channel_type": channel.channel_type,
@@ -569,14 +631,30 @@ def _validate_channel_config(channel_type: str, config: dict) -> None:
                 "Email channels require a non-empty 'recipients' list",
                 code="missing_recipients",
             )
+        for address in recipients:
+            if "@" not in str(address) or " " in str(address):
+                raise ValidationError(
+                    f"'{address}' is not an email address", code="invalid_recipient"
+                )
+        port = config.get("smtp_port")
+        if port not in (None, "") and not (str(port).isdigit() and 0 < int(port) < 65536):
+            raise ValidationError("SMTP port must be 1-65535", code="invalid_smtp_port")
     elif channel_type == ChannelType.LINE:
         if not config.get("channel_access_token"):
             raise ValidationError(
                 "LINE channels require a 'channel_access_token' (Messaging API)",
                 code="missing_token",
             )
-        if not config.get("to"):
+        to = str(config.get("to") or "")
+        if not to:
             raise ValidationError(
                 "LINE channels require a 'to' (user, group or room ID)",
                 code="missing_recipient",
+            )
+        if not re.fullmatch(r"[UCR][0-9a-f]{32}", to):
+            raise ValidationError(
+                "LINE 'to' must be a Messaging API user ID (U + 32 hex), group ID "
+                "(C...) or room ID (R...) - the numeric basic ID or a display name "
+                "cannot receive pushes",
+                code="invalid_recipient",
             )

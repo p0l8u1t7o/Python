@@ -8,7 +8,7 @@
 #   ./scripts/dev.sh --setup       first run: install, migrate, seed, backfill
 #   ./scripts/dev.sh               API + console only, no broker needed
 #   ./scripts/dev.sh --full        also ingestor + worker (needs Redis + EMQX)
-#   ./scripts/dev.sh --simulate    also fake hardware publishing over MQTT
+#   ./scripts/sim-console.ps1      (Windows) bring registered devices online as MQTT clients
 #
 set -euo pipefail
 
@@ -18,14 +18,12 @@ cd "$ROOT"
 SETUP=0
 FULL=0
 NO_BROKER=0
-SIMULATE=0
 HISTORY_DAYS=3
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --setup) SETUP=1 ;;
     --full) FULL=1 ;;
-    --simulate) SIMULATE=1; FULL=1 ;;
     --no-broker) NO_BROKER=1 ;;
     --history-days) HISTORY_DAYS="$2"; shift ;;
     -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -88,7 +86,7 @@ cleanup() {
   # port 5173. Sweep for anything we launched that outlived its parent.
   if command -v pkill >/dev/null 2>&1; then
     pkill -f "$ROOT/frontend.*vite" 2>/dev/null || true
-    pkill -f 'manage.py (runserver|run_ingestor|run_worker|simulate_device)' 2>/dev/null || true
+    pkill -f 'manage.py (runserver|run_ingestor|run_worker|run_pipeline|run_scheduler|run_workflows)' 2>/dev/null || true
   fi
   wait 2>/dev/null || true
   exit 0
@@ -233,20 +231,13 @@ elif [[ $NO_BROKER -eq 0 ]]; then
 fi
 
 start_service workflows "$PYTHON" manage.py run_workflows
+# Energy intervals, rollups, sessions and the dispatch engine. 60 s rather
+# than the production 300 s so a strategy decision lands within a minute.
+start_service scheduler "$PYTHON" manage.py run_scheduler --interval 60
 start_service web npm --prefix frontend run dev
 
-if [[ $SIMULATE -eq 1 || $USE_BUNDLED_BROKER -eq 1 ]]; then
-  # One process for the whole gateway, not one per device. Under Sparkplug a
-  # connection *is* an edge node: it owns one seq counter and one birth/death
-  # pair, so three processes claiming the same node id would take turns
-  # knocking each other off the broker.
-  start_service sim-gateway "$PYTHON" manage.py simulate_device \
-    --device ZQS-BESS-0001=battery \
-    --device ZQS-METER-0001=meter \
-    --device ZQS-PV-0001=pv \
-    --device ZQS-FC-0001=fuelcell \
-    --interval 5
-fi
+# No simulator is started here: registered devices stay offline until the
+# desktop console (scripts/sim_console.py) brings them online.
 
 # --------------------------------------------------------------------------
 # Report

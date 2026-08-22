@@ -130,5 +130,5 @@ mosquitto_pub -h localhost -p 1883 -u '<mqtt_username>' -P '<mqtt_password>' \
 要送一段真的 payload，用平台自己的模擬器：
 
 ```bash
-python manage.py simulate_device --device ZQS-BESS-0001 --profile battery
+.\scripts\sim-console.ps1    # 桌面主控台：登記的設備以 MQTT 客戶端上線
 ```

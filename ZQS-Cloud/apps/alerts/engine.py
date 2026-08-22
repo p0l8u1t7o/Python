@@ -32,11 +32,8 @@ from apps.alerts.models import (
     AlertRule,
     AlertSource,
     AlertStatus,
-    DeliveryStatus,
-    NotificationDelivery,
     Operator,
     RuleScope,
-    SEVERITY_RANK,
 )
 from apps.core.logging import get_logger
 
@@ -366,30 +363,20 @@ class AlertEngine:
             message=f"{metric_key} returned to {value}",
             value=value,
         )
+        # Whoever was told it fired is told it cleared.
+        self._queue_notifications(alert, rule, phase="resolved")
         logger.info(
             "alert auto-resolved",
             extra={"rule": rule.name, "device_id": ref.device_id, "metric": metric_key},
         )
 
-    def _queue_notifications(self, alert: Alert, rule: CompiledRule) -> None:
+    def _queue_notifications(
+        self, alert: Alert, rule: CompiledRule, *, phase: str = "raised"
+    ) -> None:
         """Create pending deliveries; the dispatcher thread sends them."""
-        if not rule.channel_ids:
-            return
-        from apps.alerts.models import NotificationChannel
+        from services.worker.notifications import queue_alert_notifications
 
-        channels = NotificationChannel.objects.filter(
-            id__in=rule.channel_ids, is_enabled=True
-        )
-        deliveries = [
-            NotificationDelivery(
-                alert=alert, channel=channel, status=DeliveryStatus.PENDING
-            )
-            for channel in channels
-            if SEVERITY_RANK.get(alert.severity, 0)
-            >= SEVERITY_RANK.get(channel.min_severity, 0)
-        ]
-        if deliveries:
-            NotificationDelivery.objects.bulk_create(deliveries, ignore_conflicts=True)
+        queue_alert_notifications(alert, rule.channel_ids, phase=phase)
 
     # ---- device-reported alarms -----------------------------------------
     def raise_device_alarm(

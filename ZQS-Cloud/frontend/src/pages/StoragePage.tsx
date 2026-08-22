@@ -4,6 +4,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   BatteryCharging,
   Coins,
+  Pencil,
+  Plus,
+  Trash2,
   History,
   Landmark,
   PiggyBank,
@@ -34,6 +37,7 @@ import {
   useStoragePlans,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
+import type { EnergyAsset } from '@/lib/types'
 import {
   formatCurrency,
   formatDateTime,
@@ -47,16 +51,20 @@ import { useTimeRange } from '@/lib/useTimeRange'
 import { CostChart, EnergyBalanceChart, SocChart } from '@/components/charts/EnergyCharts'
 import { CostSourceChart } from '@/components/charts/CostCharts'
 import { PowerFlowDiagram } from '@/components/charts/PowerFlowDiagram'
+import { AssetEditor } from '@/components/ems/AssetEditor'
+import { DispatchWindowsCard } from '@/components/ems/DispatchWindowsCard'
 import {
   Badge,
   Button,
   Card,
   CardBody,
   CardHeader,
+  ConfirmDialog,
   DetailRow,
   DeviceIcon,
   EmptyState,
   ErrorState,
+  IconButton,
   LoadingState,
   Modal,
   PageHeader,
@@ -99,6 +107,9 @@ export function StoragePage() {
 
   const overview = useSiteOverview(siteId || undefined)
   const assets = useEnergyAssets(siteId || undefined)
+  const [assetEditor, setAssetEditor] = useState<{ open: boolean; asset: EnergyAsset | null }>({ open: false, asset: null })
+  const [assetDeleting, setAssetDeleting] = useState<EnergyAsset | null>(null)
+  const { removeAsset } = useEmsMutations()
   const plan = useStoragePlan(siteId || undefined)
   const intervals = useEnergyIntervals(siteId || undefined, {
     start: range.start,
@@ -340,6 +351,8 @@ export function StoragePage() {
 
       <DispatchCard siteId={siteId} />
 
+      <DispatchWindowsCard siteId={siteId} />
+
       <DemandResponseCard siteId={siteId} />
 
       <Card className="mt-5">
@@ -353,6 +366,16 @@ export function StoragePage() {
                   : '')
               : t('plans.noneBound')
           }
+          actions={
+            can('ems:write') ? (
+              <Button
+                icon={<Plus className="size-4" />}
+                onClick={() => setAssetEditor({ open: true, asset: null })}
+              >
+                {t('assets.create')}
+              </Button>
+            ) : null
+          }
         />
         <Table>
           <THead>
@@ -363,12 +386,20 @@ export function StoragePage() {
               <Term id="soc">{t('storage.socMetric')}</Term>
             </Th>
             <Th align="right">{t('storage.scale')}</Th>
+            <Th align="right">{t('assets.rating')}</Th>
+            {can('ems:write') ? <Th /> : null}
           </THead>
           <TBody>
             {(assets.data ?? []).map((asset) => (
               <Tr key={asset.id}>
                 <Td>
                   <Badge tone="brand">{t(`storage.roles.${asset.role}`)}</Badge>
+                  {!asset.is_active ? <Badge tone="neutral" className="ml-1">{t('common.disabled')}</Badge> : null}
+                  {asset.include_in_balance === false ? (
+                    <span title={t('assets.includeInBalanceHint')}>
+                      <Badge tone="neutral" className="ml-1">{t('assets.excluded')}</Badge>
+                    </span>
+                  ) : null}
                 </Td>
                 <Td>
                   <span className="font-medium">{asset.device_name}</span>
@@ -382,18 +413,61 @@ export function StoragePage() {
                   ×{formatNumber(asset.power_scale, { maximumFractionDigits: 4 })}
                   {asset.invert_sign ? <Badge tone="warning" className="ml-2">±</Badge> : null}
                 </Td>
+                <Td align="right" className="tnum text-muted">
+                  {asset.rated_power_kw ? `${formatNumber(asset.rated_power_kw)} kW` : '—'}
+                  {asset.rated_energy_kwh ? ` / ${formatNumber(asset.rated_energy_kwh)} kWh` : ''}
+                </Td>
+                {can('ems:write') ? (
+                  <Td align="right">
+                    <span className="flex justify-end gap-1">
+                      <IconButton label={t('common.edit')} onClick={() => setAssetEditor({ open: true, asset })}>
+                        <Pencil className="size-3.5" />
+                      </IconButton>
+                      <IconButton label={t('common.delete')} onClick={() => setAssetDeleting(asset)}>
+                        <Trash2 className="size-3.5" />
+                      </IconButton>
+                    </span>
+                  </Td>
+                ) : null}
               </Tr>
             ))}
             {(assets.data?.length ?? 0) === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted">
                   {t('storage.notConfigured')}
+                  {can('ems:write') ? ` ${t('assets.notConfiguredHint')}` : ''}
                 </td>
               </tr>
             ) : null}
           </TBody>
         </Table>
       </Card>
+
+      <AssetEditor
+        open={assetEditor.open}
+        siteId={siteId}
+        asset={assetEditor.asset}
+        onClose={() => setAssetEditor({ open: false, asset: null })}
+      />
+      <ConfirmDialog
+        open={assetDeleting !== null}
+        onClose={() => setAssetDeleting(null)}
+        title={t('common.delete')}
+        danger
+        loading={removeAsset.isPending}
+        message={t('assets.deleteConfirm', { name: assetDeleting?.device_name ?? '' })}
+        onConfirm={async () => {
+          if (!assetDeleting) return
+          try {
+            await removeAsset.mutateAsync(assetDeleting.id)
+            toast.success(t('common.saved'))
+          } catch (error) {
+            toast.error(errorMessage(error))
+          } finally {
+            setAssetDeleting(null)
+          }
+        }}
+      />
 
     </>
   )
