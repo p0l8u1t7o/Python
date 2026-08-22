@@ -79,7 +79,7 @@ function Step({
  * strings; this page just shows them, filled into the topics they belong in.
  *
  * It is a starting point, not the contract. Every section points at
- * docs/device-protocol.md for the parts that must not be paraphrased.
+ * docs/device-protocol.html for the parts that must not be paraphrased.
  */
 export function IntegrationPage() {
   const { t } = useTranslation()
@@ -304,11 +304,11 @@ ${t('integration.reply')}  DDATA
             <p>{t('integration.specBody')}</p>
             <ul className="list-inside list-disc space-y-1">
               <li>
-                <code className="font-mono text-xs">docs/device-protocol.md</code> —{' '}
+                <code className="font-mono text-xs">docs/device-protocol.html</code> —{' '}
                 {t('integration.specProtocol')}
               </li>
               <li>
-                <code className="font-mono text-xs">docs/device-test-harness.md</code> —{' '}
+                <code className="font-mono text-xs">docs/device-test-harness.html</code> —{' '}
                 {t('integration.specHarness')}
               </li>
               <li>

@@ -11,7 +11,7 @@ picks the virtualenv, self-tests the harness first, writes the report to a
 file, and returns a meaningful exit code. This command is the plumbing
 underneath, kept because it is occasionally useful on its own.
 
-See ``docs/device-test-harness.md``.
+See ``docs/device-test-harness.html``.
 """
 
 from __future__ import annotations

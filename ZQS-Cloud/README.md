@@ -5,9 +5,9 @@
 
 通訊採用 **Eclipse Sparkplug B**（MQTT namespace `spBv1.0`，protobuf payload），
 所以照規範實作的設備也能接上其他 Sparkplug 主機，不會被綁在這個平台上。完整契約見
-[docs/device-protocol.md](docs/device-protocol.md)——第一個預期的客戶端是 LabVIEW
+[docs/device-protocol.html](docs/device-protocol.html)——第一個預期的客戶端是 LabVIEW
 實作，該文件第 9 節有 protobuf 在 LabVIEW 端的三條可行路線。LabVIEW 也可以直接啟動
-與停止這些服務，見 [docs/labview-integration.md](docs/labview-integration.md)。
+與停止這些服務，見 [docs/labview-integration.html](docs/labview-integration.html)。
 
 設備端開發者不需要架 broker 就能驗證自己的客戶端。一行指令，不必先啟用任何東西：
 
@@ -18,7 +18,7 @@
 它會先證明測試工具本身是可信的——一台正確的參考設備必須通過，數台刻意做錯的設備
 必須各自被抓出來——然後等待你的實體設備連上並印出驗收報告。每一項判定都來自平台
 自己的認證、ACL 與 payload 程式碼。詳見
-[docs/device-test-harness.md](docs/device-test-harness.md)。
+[docs/device-test-harness.html](docs/device-test-harness.html)。
 
 ---
 
@@ -125,7 +125,7 @@ docker run -d --name emqx -p 1883:1883 -p 18083:18083 emqx/emqx:5.8
 若 1883 已經有東西在聽（例如你自己起的 EMQX），啟動腳本會直接用它，不會硬搶連接埠。
 
 完整細節、逐一下指令的作法與疑難排解在
-**[docs/running-locally.md](docs/running-locally.md)**。版本驗證範圍與已知限制見 **[docs/release-notes.md](docs/release-notes.md)**。畫布式控制流程的架構、所有物件類別、踩過的坑與移植步驟見 **[docs/workflow-design.md](docs/workflow-design.md)**；客戶展示流程見 **[docs/demo-guide.md](docs/demo-guide.md)**。
+**[docs/running-locally.html](docs/running-locally.html)**。版本驗證範圍與已知限制見 **[docs/release-notes.html](docs/release-notes.html)**。文件入口：`docs/index.html`（含專有名詞解釋與技術原理）。畫布式控制流程的架構、所有物件類別、踩過的坑與移植步驟見 **[docs/workflow-design.html](docs/workflow-design.html)**；客戶展示流程見 **[docs/demo-guide.html](docs/demo-guide.html)**。
 
 ## 快速開始（Docker）
 
@@ -178,9 +178,9 @@ SELECT create_hypertable('telemetry_sample', 'ts', migrate_data => true);
 | --- | --- |
 | 帳號與權限管理 | `apps/accounts` —— 使用者、組織、4 種角色、API key、帶 refresh rotation 的 JWT |
 | 權限綁場域（只能看某廠） | `Membership.sites` —— 空清單代表整個組織；指定一個場域等於連同其子樹 |
-| 通訊協定 | **Eclipse Sparkplug B**（`spBv1.0`，protobuf）——三層位址、生死流程、序號與別名、重生復原。見 [docs/device-protocol.md](docs/device-protocol.md) |
+| 通訊協定 | **Eclipse Sparkplug B**（`spBv1.0`，protobuf）——三層位址、生死流程、序號與別名、重生復原。見 [docs/device-protocol.html](docs/device-protocol.html) |
 | 網關（一條連線帶多台設備） | `EdgeNode` —— MQTT 憑證掛在節點上；設備自己直連時會自動取得一個隱含節點 |
-| 設備能力與命令安全 | `apps/devices` —— 能力旗標、命令閘門、設備宣告（[docs/system-logic.md](docs/system-logic.md)） |
+| 設備能力與命令安全 | `apps/devices` —— 能力旗標、命令閘門、設備宣告（[docs/system-logic.html](docs/system-logic.html)） |
 | 多設備狀態與登記名稱 | `apps/devices` —— 註冊表、連線狀態、`GET /api/devices` |
 | 變更設備的登記場域 | `PATCH /api/devices/{id}` —— 一台設備只能登記一個場域；場域下還有設備時不允許刪除。能源資產綁定會跟著設備一起搬 |
 | 設備序號不可重複 | 組織內唯一（空白除外），衝突時回 409 並指出是哪一台設備已經在用 |
@@ -308,7 +308,7 @@ cron 也沒有 shell 的主機用。
 
 `services/labview/labview_api.py` 讓 LabVIEW 的 Python Node 監管這四個服務：
 非阻塞的啟動與停止、可輪詢的整數狀態碼、輸出導到 log 檔。見
-[docs/labview-integration.md](docs/labview-integration.md)。
+[docs/labview-integration.html](docs/labview-integration.html)。
 
 ### 健康檢查
 
@@ -371,7 +371,7 @@ services/
 config/        設定、API 組裝、URL
 frontend/      React console（見 frontend/README.md）
 scripts/       dev.ps1 / dev.sh 啟動器、stop.ps1、reset-demo.ps1（展示租戶）、sim-console.ps1、test-device.ps1
-docs/          設備協定、系統邏輯、本機開發、LabVIEW 整合、程式碼導覽、工作流程引擎設計手冊、客戶展示指南
+docs/          HTML 文件：index.html 為入口（設備協定、系統邏輯、本機開發、LabVIEW 整合、程式碼導覽、工作流程引擎設計手冊、客戶展示指南、專有名詞解釋、技術原理、發行說明）
 deploy/        EMQX 設定說明
 tests/         測試套件
 ```

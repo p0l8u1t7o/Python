@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>專有名詞解釋 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="active">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#1-設備與通訊">1. 設備與通訊</a></li>
+<li><a href="#2-能源與計費">2. 能源與計費</a></li>
+<li><a href="#3-平台與操作">3. 平台與操作</a></li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="專有名詞解釋">專有名詞解釋<a class="headerlink" href="#專有名詞解釋" title="Permanent link">¶</a></h1>
+<p>依主題分組。每個詞先給一句話定義，再說明它在 ZQS Cloud 裡<strong>實際對應到什麼</strong>（哪個畫面、哪個欄位、哪段程式）。想知道背後的原理請看 <a href="technical-principles.html">技術原理</a>。</p>
+<hr>
+<h2 id="1-設備與通訊">1. 設備與通訊<a class="headerlink" href="#1-設備與通訊" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>名詞</th>
+<th>定義</th>
+<th>在本系統中</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MQTT</strong></td>
+<td>一種輕量的發布／訂閱訊息協定。客戶端連到一台 <strong>broker</strong>，對「主題」（topic）發布或訂閱訊息，彼此不直接連線。</td>
+<td>設備與平台之間唯一的資料路徑。開發環境用內建 broker（<code>zqs-broker</code>，port 1883），正式環境用 EMQX。</td>
+</tr>
+<tr>
+<td><strong>Broker</strong></td>
+<td>MQTT 的訊息中樞，負責收下發布的訊息並轉給訂閱者。</td>
+<td><code>MQTT_HOST</code> / <code>MQTT_PORT</code>；模擬器主控台上可直接改 IP／Port 連任何 broker。</td>
+</tr>
+<tr>
+<td><strong>QoS（Quality of Service）</strong></td>
+<td>MQTT 的送達保證等級：0 最多一次、1 至少一次、2 恰好一次。</td>
+<td>遙測用 QoS 0（掉一筆無妨）、NDEATH 與主機狀態用 QoS 1（不能掉）。見 <code>services/sparkplug/topics.py</code>。</td>
+</tr>
+<tr>
+<td><strong>Retain（保留訊息）</strong></td>
+<td>broker 記住某主題最後一筆訊息，新訂閱者一連上就收到。</td>
+<td>只有主機 STATE 訊息保留；遙測不保留，否則新連線會讀到舊值。</td>
+</tr>
+<tr>
+<td><strong>Last Will（遺囑訊息）</strong></td>
+<td>客戶端連線時預先交給 broker 的一則訊息；連線<strong>異常</strong>中斷時由 broker 代為發布。</td>
+<td>每台閘道器的遺囑就是它的 NDEATH。注意：<strong>正常</strong> DISCONNECT 會讓 broker 丟棄遺囑，所以乾淨關機必須自己發 NDEATH。</td>
+</tr>
+<tr>
+<td><strong>Sparkplug B</strong></td>
+<td>Eclipse 制定的 MQTT 應用層規範：規定主題結構、protobuf 格式的 payload、上線／離線流程、序號與別名。讓不同廠商的設備能被同一個主機理解。</td>
+<td>本平台的唯一設備協定，namespace <code>spBv1.0</code>。完整說明見 <a href="device-protocol.html">裝置通訊協定（Sparkplug B）</a>。</td>
+</tr>
+<tr>
+<td><strong>Group ID</strong></td>
+<td>Sparkplug 主題的第二層，一群邊緣節點的邏輯分組。</td>
+<td>= 組織的 slug（例如 <code>zqs-demo</code>）。租戶隔離的第一道。</td>
+</tr>
+<tr>
+<td><strong>邊緣節點（Edge Node / EoN）</strong></td>
+<td>Sparkplug 裡「一條 MQTT 連線」的身分：擁有自己的序號計數器與生死訊息。通常是現場的閘道器。</td>
+<td>「閘道器」頁面的每一列；模型 <code>EdgeNode</code>。<strong>一台閘道器一條連線</strong>，兩個程式自稱同一個 node id 會互踢。</td>
+</tr>
+<tr>
+<td><strong>閘道器（Gateway）</strong></td>
+<td>現場把 Modbus／RS-485 等本地協定轉成 MQTT 上雲的那台設備。</td>
+<td>本系統把「閘道器」與「邊緣節點」當同一件事；整合說明頁可登錄、發憑證、要求重生。</td>
+</tr>
+<tr>
+<td><strong>設備（Device）</strong></td>
+<td>掛在邊緣節點底下、被它代為上傳的一台實體裝置（PCS、電表、逆變器…）。</td>
+<td>模型 <code>Device</code>；Sparkplug 主題第五層 <code>device_id</code>。</td>
+</tr>
+<tr>
+<td><strong>NBIRTH / DBIRTH</strong></td>
+<td>節點／設備的「出生證明」：連線後先發，宣告所有指標的名稱、型別、別名與目前值。</td>
+<td>平台靠 DBIRTH 自動登錄指標（即插即用）；設備也在這裡宣告自己是什麼（<code>DeviceDeclaration</code>）。</td>
+</tr>
+<tr>
+<td><strong>NDATA / DDATA</strong></td>
+<td>節點／設備的遙測資料，之後每次只送變化的指標。</td>
+<td>擷取管線 → worker → <code>TelemetrySample</code>（歷史）與 <code>LatestSample</code>（最新值）。</td>
+</tr>
+<tr>
+<td><strong>NDEATH / DDEATH</strong></td>
+<td>節點／設備的「死亡」訊息，代表離線。</td>
+<td>收到後設備狀態變 <code>offline</code>；NDEATH 會連帶把該節點底下所有設備標離線。</td>
+</tr>
+<tr>
+<td><strong>NCMD / DCMD</strong></td>
+<td>主機送給節點／設備的命令。</td>
+<td>平台的「控制指令」走 DCMD；回覆（ack）則是設備用 DDATA 帶回 <code>Command/ID</code>、<code>Command/Status</code>。</td>
+</tr>
+<tr>
+<td><strong>bdSeq（Birth/Death Sequence）</strong></td>
+<td>每次<strong>連線</strong>遞增一次的序號，同時出現在 NBIRTH 與 NDEATH，用來判斷一則死亡訊息屬於哪一次連線。</td>
+<td>舊連線遲到的 NDEATH 不會把剛重連的節點打離線（「superseded session」）。</td>
+</tr>
+<tr>
+<td><strong>seq（Sequence Number）</strong></td>
+<td>每則訊息遞增（0–255 循環）的序號，用來偵測漏訊。</td>
+<td>漏號 → 平台要求重生（rebirth）而不是猜。</td>
+</tr>
+<tr>
+<td><strong>別名（Alias）</strong></td>
+<td>DBIRTH 裡替每個指標配一個整數，之後 DDATA 只送整數不送名稱，省頻寬。</td>
+<td>別名表存在資料庫（<code>MetricAlias</code>），行程重啟不會失憶。</td>
+</tr>
+<tr>
+<td><strong>重生（Rebirth）</strong></td>
+<td>主機要求節點重新發 NBIRTH/DBIRTH。</td>
+<td>漏號、別名對不上、或操作者在整合頁按「要求重生」時送 <code>Node Control/Rebirth</code>。Sparkplug 唯一合法的復原手段。</td>
+</tr>
+<tr>
+<td><strong>即插即用（Plug-and-play）</strong></td>
+<td>設備第一次出現時，平台從 DBIRTH 自動建立指標定義。</td>
+<td><code>INGEST_AUTO_PROVISION</code> 控制是否連設備也自動登錄；預設只登錄指標，設備要先登記。</td>
+</tr>
+<tr>
+<td><strong>設備宣告（Declaration）</strong></td>
+<td>設備在 DBIRTH 裡自稱的類別、能力與身分。</td>
+<td>只能「說」，不能自動生效：平台顯示但不採信，需人工驗收（§4 of <a href="system-logic.html">系統邏輯總覽</a>）。</td>
+</tr>
+<tr>
+<td><strong>憑證（Credential）</strong></td>
+<td>閘道器連 broker 用的 MQTT 帳號密碼。</td>
+<td>登錄閘道器時產生，密碼只顯示一次；可輪換。正式環境由 EMQX 以 webhook 向平台驗證。</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="2-能源與計費">2. 能源與計費<a class="headerlink" href="#2-能源與計費" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>名詞</th>
+<th>定義</th>
+<th>在本系統中</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>表後儲能（Behind-the-meter, BTM）</strong></td>
+<td>裝在用戶電表「後面」（用戶側）的電池，對台電來說只看得到電表的淨值。</td>
+<td>整個系統的主題：電池充放電改變的是關口電表讀數，因此改變電費。</td>
+</tr>
+<tr>
+<td><strong>關口電表（PCC meter）</strong></td>
+<td>用戶與電網交界處（Point of Common Coupling）的電表，台電計費依據。</td>
+<td>能源資產角色 <code>grid_meter</code>；正值 = 購電、負值 = 躉售。</td>
+</tr>
+<tr>
+<td><strong>能源資產（Energy Asset）</strong></td>
+<td>把一台設備綁到一個能源角色（市電電表／負載電表／光電／電池／充電樁／發電機），並指定它的功率與電量指標。</td>
+<td>儲能頁「綁定資產」。沒有綁定，該場域的能源平衡、成本、節費全部是空的。</td>
+</tr>
+<tr>
+<td><strong>能源平衡</strong></td>
+<td>負載 = 市電 + 光電 + 電池放電 − 電池充電 + 發電機。</td>
+<td><code>apps/ems/aggregator.py</code>；沒有負載電表時由其他項推導。</td>
+</tr>
+<tr>
+<td><strong>結算區間（Energy Interval）</strong></td>
+<td>把連續的功率讀值積分成一段固定時間（預設 15 分鐘）的 kWh 與費用。</td>
+<td><code>EnergyInterval</code>；所有圖表、報表、節費的基礎單位。</td>
+</tr>
+<tr>
+<td><strong>15 分鐘需量（Demand）</strong></td>
+<td>台電計費用的「15 分鐘平均功率」（kW）；整月最高的那一段就是<strong>最高需量</strong>。</td>
+<td><code>peak_import_kw</code>、總覽頁需量費表的「實際最高需量」。</td>
+</tr>
+<tr>
+<td><strong>契約容量（Contract capacity）</strong></td>
+<td>用戶向台電申請的用電上限（kW），決定基本電費。</td>
+<td>儲能方案欄位 <code>contract_capacity_kw</code>；超過就是「超約」。</td>
+</tr>
+<tr>
+<td><strong>超約（Over-contract）</strong></td>
+<td>最高需量超過契約容量。台電對超過部分加倍計費：10% 以內 2 倍、超過 3 倍。</td>
+<td><code>apps/ems/demand.py</code> 的 <code>excess_charge()</code>；總覽頁「含避免超約」金額。</td>
+</tr>
+<tr>
+<td><strong>基本電費（Demand charge）</strong></td>
+<td>依契約容量或最高需量、以每 kW 每月費率計的固定費用。</td>
+<td>電價方案欄位 <code>demand_charge_per_kw</code>；為 0 時需量費表顯示「電價未設基本電費」。</td>
+</tr>
+<tr>
+<td><strong>流動電費（Energy charge）</strong></td>
+<td>依用電度數（kWh）× 單價計的費用。</td>
+<td>區間的 <code>energy_cost</code> = 購電 kWh × 該時段單價。</td>
+</tr>
+<tr>
+<td><strong>時間電價（TOU, Time-of-Use）</strong></td>
+<td>依尖峰／離峰時段給不同單價的電價方案。</td>
+<td>電價方案頁；內建台電 114 年表燈二段式、三段式、低壓電力二段式。</td>
+</tr>
+<tr>
+<td><strong>尖峰／離峰</strong></td>
+<td>TOU 裡單價高／低的時段；台電另分夏月（6–9 月）與非夏月。</td>
+<td>方案的 <code>periods</code>；策略以「今天最貴／最便宜的時段」判斷。</td>
+</tr>
+<tr>
+<td><strong>契約容量管理（Demand cap）</strong></td>
+<td>策略：需量快超過上限時放電壓低，離峰再充回。</td>
+<td><code>DispatchStrategy.DEMAND_CAP</code>；對台灣用戶通常是最值錢的策略。</td>
+</tr>
+<tr>
+<td><strong>時間電價套利（TOU arbitrage）</strong></td>
+<td>策略：離峰便宜時充電、尖峰貴時放電，賺價差。</td>
+<td><code>DispatchStrategy.TOU_ARBITRAGE</code>；價差低於門檻不動作。</td>
+</tr>
+<tr>
+<td><strong>光儲自發自用（Self-consumption）</strong></td>
+<td>策略：光電餘電先充進電池、傍晚放給自己用，少躉售。</td>
+<td><code>DispatchStrategy.SELF_CONSUMPTION</code>。</td>
+</tr>
+<tr>
+<td><strong>需量反應（Demand response, DR）</strong></td>
+<td>電力公司臨時要求用戶減少用電的事件，配合可獲補償。</td>
+<td>儲能頁「需量反應」卡片可觸發事件，優先於方案策略。</td>
+</tr>
+<tr>
+<td><strong>SOC（State of Charge）</strong></td>
+<td>電池目前電量百分比。</td>
+<td>指標 <code>battery_soc</code>；方案的 SOC 上下限是策略的硬邊界。</td>
+</tr>
+<tr>
+<td><strong>SOH（State of Health）</strong></td>
+<td>電池健康度百分比（剩餘容量相對出廠）。</td>
+<td>指標 <code>battery_soh</code>。</td>
+</tr>
+<tr>
+<td><strong>PCS（Power Conversion System）</strong></td>
+<td>電池與電網之間的雙向變流器，平台下的設定點就是下給它。</td>
+<td>設備類型 <code>bess-pcs</code>；命令 <code>set_power_setpoint</code>（W，正放電負充電）。</td>
+</tr>
+<tr>
+<td><strong>設定點（Setpoint）</strong></td>
+<td>平台要求 PCS 維持的功率值。</td>
+<td>調度引擎每 60 秒算一次，只在目標變動時重送。</td>
+</tr>
+<tr>
+<td><strong>往返效率（Round-trip efficiency）</strong></td>
+<td>充進去 1 kWh 能放出多少（約 0.85–0.92）。</td>
+<td>方案欄位；節費計算時扣除損耗。</td>
+</tr>
+<tr>
+<td><strong>自發自用率 / 自給率</strong></td>
+<td>光電發出的電有多少自己用掉 ／ 自己的用電有多少不靠市電。</td>
+<td>儲能頁兩個百分比卡片；公式見 <a href="technical-principles.html">技術原理</a>。</td>
+</tr>
+<tr>
+<td><strong>節費基準線（Savings baseline）</strong></td>
+<td>「如果沒有電池會花多少」的假想情境，節費 = 基準線 − 實際。</td>
+<td>方案欄位 <code>savings_baseline</code>：<code>no_storage</code>（同光電無電池）或 <code>grid_only</code>（什麼都沒裝）。負值不隱藏。</td>
+</tr>
+<tr>
+<td><strong>運轉區段（Operating session）</strong></td>
+<td>一段連續的充電／放電／運轉期間，由門檻與遲滯判定。</td>
+<td>儲能頁「運轉紀錄」；資產上的 session 參數。</td>
+</tr>
+<tr>
+<td><strong>成本模型（Cost model）</strong></td>
+<td>把某來源的能量換算成金額的規則。</td>
+<td><code>battery_cycle</code>（循環成本）、<code>diesel_fuel</code>、<code>grid_tariff</code>、<code>grid_export</code>；資產上可選。</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="3-平台與操作">3. 平台與操作<a class="headerlink" href="#3-平台與操作" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>名詞</th>
+<th>定義</th>
+<th>在本系統中</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>組織（Organization）</strong></td>
+<td>一個租戶。所有資料以組織隔離。</td>
+<td>= Sparkplug group id；設定頁可改名稱、時區、幣別。</td>
+</tr>
+<tr>
+<td><strong>場域（Site）</strong></td>
+<td>一個用電地點；可有父子關係（園區 → 廠房）。</td>
+<td>場域頁；方案與電價沿場域樹<strong>繼承</strong>，子場域可覆寫。</td>
+</tr>
+<tr>
+<td><strong>儲能方案（Storage plan）</strong></td>
+<td>一組具名的策略與限制（契約、SOC 範圍、功率上限、電價），綁到一或多個場域。</td>
+<td>儲能規劃頁；是模板，不是場域的附屬品。</td>
+</tr>
+<tr>
+<td><strong>調度引擎（Dispatch engine）</strong></td>
+<td>每個週期依方案策略算出每個場域電池的設定點並送命令的程式。</td>
+<td><code>manage.py run_dispatch</code>，由 <code>run_scheduler</code> 每 60 秒呼叫。</td>
+</tr>
+<tr>
+<td><strong>排程調度時段（Dispatch window）</strong></td>
+<td>人工指定「幾點到幾點強制充／放／待命」，生效時優先於策略。</td>
+<td>儲能頁「排程調度」。</td>
+</tr>
+<tr>
+<td><strong>警報規則（Alert rule）</strong></td>
+<td>指標超過門檻持續一段時間就產生警報的規則，含遲滯與冷卻。</td>
+<td>警報規則頁；警報解除時也會通知。</td>
+</tr>
+<tr>
+<td><strong>遲滯（Hysteresis）</strong></td>
+<td>解除門檻與觸發門檻之間的差距，避免在臨界值附近反覆觸發。</td>
+<td>規則欄位；遲滯太寬（≥ 帶寬一半）會讓警報永不解除，表單會擋。</td>
+</tr>
+<tr>
+<td><strong>通知管道（Notification channel）</strong></td>
+<td>警報／事件的送達方式：Email、LINE 機器人、Webhook、MQTT。</td>
+<td>規則頁下方；每個管道有「測試發送」。</td>
+</tr>
+<tr>
+<td><strong>設備事件（Device event）</strong></td>
+<td>設備自己回報的事件或警報（<code>Event/&lt;code&gt;</code>、<code>Alarm/&lt;code&gt;</code> 指標）。</td>
+<td>事件紀錄頁；警報型事件標「發生／解除」。</td>
+</tr>
+<tr>
+<td><strong>記錄策略（Recording policy）</strong></td>
+<td>決定哪些指標要存歷史、存多密（死區、最小／最大間隔）、存多久。</td>
+<td>記錄策略頁；可綁設備類型或單台覆寫。</td>
+</tr>
+<tr>
+<td><strong>死區（Deadband）</strong></td>
+<td>變化量小於此值的讀值不存歷史（但最新值永遠更新）。</td>
+<td>記錄策略規則。</td>
+</tr>
+<tr>
+<td><strong>工作流程（Workflow）</strong></td>
+<td>在畫布上畫的控制邏輯：條件判斷、計時、命令、跳轉、子流程。</td>
+<td>工作流程頁；引擎設計見 <a href="workflow-design.html">工作流程引擎設計手冊</a>。</td>
+</tr>
+<tr>
+<td><strong>乾跑（Dry run）</strong></td>
+<td>完整評估流程但不送任何命令。</td>
+<td>編輯器「測試」按鍵。</td>
+</tr>
+<tr>
+<td><strong>分支（Token）</strong></td>
+<td>工作流程裡一個同時執行中的路徑；多個起點或一個輸出多條線就是多個分支。</td>
+<td>並行上限以分支計（<code>WORKFLOW_MAX_CONCURRENT_RUNS</code>）。</td>
+</tr>
+<tr>
+<td><strong>稽核紀錄（Audit log）</strong></td>
+<td>誰在什麼時候做了什麼（登入、改設定、下命令…）。</td>
+<td>稽核紀錄頁。</td>
+</tr>
+<tr>
+<td><strong>API 金鑰</strong></td>
+<td>給外部系統呼叫 API 用的長效憑證。</td>
+<td>設定頁；權限與角色相同。</td>
+</tr>
+<tr>
+<td><strong>角色（Role）</strong></td>
+<td>owner / admin / operator / viewer 四級權限。</td>
+<td>operator 可下命令不能登錄設備；viewer 只能看。</td>
+</tr>
+<tr>
+<td><strong>SSE（Server-Sent Events）</strong></td>
+<td>伺服器主動推送的單向 HTTP 串流。</td>
+<td>整個 console 的即時更新（<code>/api/live/stream</code>）與工作流程執行監看。</td>
+</tr>
+<tr>
+<td><strong>Rollup</strong></td>
+<td>把結算區間再彙總成日／月／場域樹的統計。</td>
+<td><code>build_rollups</code>；報表與父場域加總。</td>
+</tr>
+<tr>
+<td><strong>模擬器（Simulator）</strong></td>
+<td>獨立的 MQTT 客戶端程式，照 <code>fleet.json</code> 扮演閘道器與設備。</td>
+<td><code>scripts\sim-console.ps1</code>；與平台只共用線上格式。</td>
+</tr>
+</tbody>
+</table></div></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

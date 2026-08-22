@@ -242,11 +242,11 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
         "name": "Monitored load",
         "category": DeviceCategory.LOAD,
         "description": (
-            "A piece of equipment registered purely so its consumption is visible: a chiller, a compressor, a production line. It reports and is never commanded, which is why it carries no commands at all. Registering one does not change the site energy balance - see the note on double counting in docs/system-logic.md."
+            "A piece of equipment registered purely so its consumption is visible: a chiller, a compressor, a production line. It reports and is never commanded, which is why it carries no commands at all. Registering one does not change the site energy balance - see the note on double counting in docs/system-logic.html."
         ),
         "translations": {
-            "zh-hant": {"description": "純粹為了看見耗電量而登記的設備：冰水主機、空壓機、產線。它只回報、不接受命令，所以沒有任何可用命令。登記它不會改變場域的能量平衡——重複計算的說明見 docs/system-logic.md。"},
-            "zh-hans": {"description": "纯粹为了看见耗电量而登记的设备：冰水主机、空压机、产线。它只回报、不接受命令，所以没有任何可用命令。登记它不会改变场域的能量平衡——重复计算的说明见 docs/system-logic.md。"},
+            "zh-hant": {"description": "純粹為了看見耗電量而登記的設備：冰水主機、空壓機、產線。它只回報、不接受命令，所以沒有任何可用命令。登記它不會改變場域的能量平衡——重複計算的說明見 docs/system-logic.html。"},
+            "zh-hans": {"description": "纯粹为了看见耗电量而登记的设备：冰水主机、空压机、产线。它只回报、不接受命令，所以没有任何可用命令。登记它不会改变场域的能量平衡——重复计算的说明见 docs/system-logic.html。"},
         },
         "command_definitions": [],
     },

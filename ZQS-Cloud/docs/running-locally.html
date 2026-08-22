@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本機執行 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="active">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#1-一行指令">1. 一行指令</a><ul>
+<li><a href="#windows-powershell">Windows (PowerShell)</a></li>
+<li><a href="#linux-macos-wsl-git-bash">Linux, macOS, WSL, Git Bash</a></li>
+<li><a href="#旗標">旗標</a></li>
+<li><a href="#啟動後有什麼">啟動後有什麼</a></li>
+</ul>
+</li>
+<li><a href="#2-三種模式-以及為什麼是三種">2. 三種模式，以及為什麼是三種</a></li>
+<li><a href="#3-示範資料">3. 示範資料</a><ul>
+<li><a href="#回補的歷史資料">回補的歷史資料</a></li>
+<li><a href="#即時模擬-獨立的設備模擬器">即時模擬：獨立的設備模擬器</a></li>
+</ul>
+</li>
+<li><a href="#4-手動逐步執行">4. 手動逐步執行</a><ul>
+<li><a href="#週期性工作">週期性工作</a></li>
+</ul>
+</li>
+<li><a href="#5-疑難排解">5. 疑難排解</a></li>
+<li><a href="#桌面模擬器主控台">桌面模擬器主控台</a></li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="在本機執行-zqs-cloud">在本機執行 ZQS Cloud<a class="headerlink" href="#在本機執行-zqs-cloud" title="Permanent link">¶</a></h1>
+<p>兩種啟動方式：一支包辦所有事情的啟動腳本，或者想看清每個環節時，逐一下指令。</p>
+<hr>
+<h2 id="1-一行指令">1. 一行指令<a class="headerlink" href="#1-一行指令" title="Permanent link">¶</a></h2>
+<h3 id="windows-powershell">Windows (PowerShell)<a class="headerlink" href="#windows-powershell" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><span class="nb">cd </span><span class="s2">"D:\Working Space\Python\ZQS-Cloud"</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">dev</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Setup</span>
+</code></pre></div>
+<p>這會安裝 Python 與 Node 相依套件、遷移資料庫、建立示範租戶、回補三天的
+telemetry，然後啟動<strong>完整的即時路徑</strong>並開啟瀏覽器：內建 MQTT broker、API、
+ingestor + worker、console，以及三台模擬設備。</p>
+<p>不需要 Docker、不需要 Redis、不需要 EMQX。</p>
+<p>之後的日常使用：</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">dev</span><span class="p">.</span><span class="n">ps1</span>          <span class="c"># start</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">stop</span><span class="p">.</span><span class="n">ps1</span>         <span class="c"># stop</span>
+</code></pre></div>
+<p>每個服務各自跑在一個有標題的 PowerShell 視窗（<code>zqs-api</code>、<code>zqs-frontend</code>…），
+方便閱讀各自的 log。<code>stop.ps1</code> 依啟動時寫下的 PID 檔關閉它們，並清掉任何殘留
+的行程。</p>
+<blockquote>
+<p>若 PowerShell 拒絕執行這支腳本，為目前使用者放行一次本機腳本：
+<code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code>。</p>
+</blockquote>
+<h3 id="linux-macos-wsl-git-bash">Linux, macOS, WSL, Git Bash<a class="headerlink" href="#linux-macos-wsl-git-bash" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>./scripts/dev.sh<span class="w"> </span>--setup<span class="w">   </span><span class="c1"># first run</span>
+./scripts/dev.sh<span class="w">           </span><span class="c1"># afterwards</span>
+</code></pre></div>
+<p>全部在同一個終端機執行，輸出會加上前綴；Ctrl-C 停掉整組服務。</p>
+<h3 id="旗標">旗標<a class="headerlink" href="#旗標" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>旗標</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-Setup</code> / <code>--setup</code></td>
+<td>安裝、遷移、建立種子資料、回補歷史。可重複執行</td>
+</tr>
+<tr>
+<td><code>-Full</code> / <code>--full</code></td>
+<td>改用真正的 EMQX 與 Redis，ingestor 與 worker 分開跑（需要 Docker）</td>
+</tr>
+<tr>
+<td><code>-NoBroker</code> / <code>--no-broker</code></td>
+<td>完全不要即時路徑，只跑 console 與 API</td>
+</tr>
+<tr>
+<td><code>-HistoryDays</code> / <code>--history-days</code></td>
+<td>setup 時回補的天數（預設 3）</td>
+</tr>
+<tr>
+<td><code>-NoBrowser</code></td>
+<td>不要開啟瀏覽器</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="啟動後有什麼">啟動後有什麼<a class="headerlink" href="#啟動後有什麼" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Console</td>
+<td><a href="http://127.0.0.1:5173">http://127.0.0.1:5173</a></td>
+</tr>
+<tr>
+<td>API docs</td>
+<td><a href="http://127.0.0.1:8000/api/docs">http://127.0.0.1:8000/api/docs</a></td>
+</tr>
+<tr>
+<td>MQTT</td>
+<td><code>mqtt://127.0.0.1:1883</code> — 內建開發用 broker</td>
+</tr>
+<tr>
+<td>EMQX dashboard（<code>-Full</code>）</td>
+<td><a href="http://127.0.0.1:18083">http://127.0.0.1:18083</a> — admin / public</td>
+</tr>
+</tbody>
+</table></div>
+<p>以 <code>admin@example.com</code> / <code>ChangeMe-2026!</code> 登入。<code>operator@example.com</code> 與
+<code>viewer@example.com</code> 使用相同密碼，適合用來看 UI 如何隨角色改變：operator 可以
+下命令但不能註冊裝置；viewer 兩者都不行。</p>
+<hr>
+<h2 id="2-三種模式-以及為什麼是三種">2. 三種模式，以及為什麼是三種<a class="headerlink" href="#2-三種模式-以及為什麼是三種" title="Permanent link">¶</a></h2>
+<p><strong>預設 —— 完整的即時路徑，零外部相依。</strong> 啟動腳本會帶起內建的開發用 MQTT
+broker、API、ingestor + worker（同一個行程）、console，以及三台模擬設備。資料
+真的會走完 MQTT → ingestor → queue → worker → 資料庫，所以畫面上的數值會跳、
+設備是上線的、系統健康裡的 MQTT 是綠的。</p>
+<p>兩個行程是專門為了這個模式存在的：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>行程</th>
+<th>為什麼要有它</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>manage.py run_broker</code></td>
+<td>沒有它，唯一的選項是「裝 Docker 再拉 EMQX」。對只是想看看這套軟體的人來說太重了</td>
+</tr>
+<tr>
+<td><code>manage.py run_pipeline</code></td>
+<td><code>BUS_BACKEND=memory</code> 是<strong>行程內</strong>的 queue，兩個行程看不到彼此的訊息。把 ingestor 與 worker 放進同一個行程，就不必為了看資料而先裝 Redis</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>這個 broker 只能用在開發。</strong> 匿名、沒有 ACL、不呼叫平台的 auth/ACL
+webhook——<code>deploy/emqx/README.md</code> 描述的設備身分模型它<strong>一項都沒有執行</strong>。
+也沒有 shared subscription、沒有持久化、沒有 metrics。每一項都是正式環境要用
+EMQX 的理由。</p>
+</blockquote>
+<p>它只講 <strong>MQTT 3.1.1</strong>，所以啟動腳本在這個模式下會設 <code>MQTT_PROTOCOL_VERSION=311</code>
+與 <code>MQTT_USE_SHARED_SUBSCRIPTION=0</code>。平台預設是 MQTT 5——它的 reason code 會說明
+publish 為什麼被拒絕，3.1.1 只會說「被拒絕了」。</p>
+<p><strong><code>-Full</code> —— 換成正式環境的形狀。</strong> 真正的 EMQX 與 Redis，ingestor 與 worker 分
+開跑。需要 Docker：</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>redis<span class="w"> </span>-p<span class="w"> </span><span class="m">6379</span>:6379<span class="w"> </span>redis:7-alpine
+docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>emqx<span class="w"> </span>-p<span class="w"> </span><span class="m">1883</span>:1883<span class="w"> </span>-p<span class="w"> </span><span class="m">18083</span>:18083<span class="w"> </span>emqx/emqx:5.8
+</code></pre></div>
+<p>這裡的 Redis 不是選配，理由同上。啟動腳本在此模式下會切換成
+<code>BUS_BACKEND=redis</code>、<code>MQTT_PROTOCOL_VERSION=5</code>，且只要缺少其中一項服務就拒絕啟動。</p>
+<p>若你已經自己在 1883 起了 EMQX，預設模式會<strong>直接用它</strong>而不是硬搶連接埠。</p>
+<p><strong><code>-NoBroker</code> —— 只要 console 與 API。</strong> 沒有 broker、沒有 queue。每一頁都能用：
+裝置註冊表、歷史圖表、儲能儀表板、alert、設定；<em>沒有</em>在跑的是即時擷取。系統健康
+會把 MQTT 標成「未使用」而不是故障——它不是壞掉，是你叫它不要跑。</p>
+<p>開發純前端版面時用這個最輕。</p>
+<hr>
+<h2 id="3-示範資料">3. 示範資料<a class="headerlink" href="#3-示範資料" title="Permanent link">¶</a></h2>
+<h3 id="回補的歷史資料">回補的歷史資料<a class="headerlink" href="#回補的歷史資料" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>generate_history<span class="w"> </span>--days<span class="w"> </span><span class="m">3</span><span class="w"> </span>--interval<span class="w"> </span><span class="m">120</span><span class="w"> </span>--clear<span class="w"> </span>--with-faults
+</code></pre></div>
+<p>直接把過去 N 天的 telemetry 寫進資料庫——不經過 broker——再彙總成能源區間。
+沒有這一步，儲能頁面與所有圖表一開始都是空的，因為模擬主控台只會
+產生<em>往後</em>的資料。</p>
+<p>產生的場域依循種子資料中的儲能策略：辦公室負載尖峰接近 480 kW、400 kW 屋頂
+PV，以及一組 500 kW / 1 MWh 電池，把需量削到 250 kW 的目標並在離峰時段補電。
+因此儀表板上的數字，是由面對真實硬體時同一套 aggregator 算出來的，不是寫死的
+數值。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>旗標</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--days N</code></td>
+<td>往前產生多少天（預設 3）</td>
+</tr>
+<tr>
+<td><code>--interval N</code></td>
+<td>取樣間隔秒數（預設 60）</td>
+</tr>
+<tr>
+<td><code>--clear</code></td>
+<td>先刪除該區間內的樣本、能源區間、event 與 alert</td>
+</tr>
+<tr>
+<td><code>--with-faults</code></td>
+<td>注入異常，讓 alert 規則觸發、裝置記錄有內容</td>
+</tr>
+<tr>
+<td><code>--no-alerts</code></td>
+<td>跳過重播規則引擎</td>
+</tr>
+<tr>
+<td><code>--site CODE</code></td>
+<td>只限一個場域</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>--with-faults</code> 還會留一段異常持續到「現在」，讓 alert 頁面有一筆未結案的
+alert，而不是只有已解決的歷史。</p>
+<p>回補同時會做兩件平常由 worker 負責的事：把裝置標記為曾經回報過（否則整個
+機隊都顯示離線），並在產生的讀值上重播 alert 規則。</p>
+<h3 id="即時模擬-獨立的設備模擬器">即時模擬：獨立的設備模擬器<a class="headerlink" href="#即時模擬-獨立的設備模擬器" title="Permanent link">¶</a></h3>
+<p>堆疊啟動時<strong>不會啟動任何模擬器</strong>：所有登記的設備都是離線的。模擬器（<code>simulator/</code>）是一支<strong>與平台解耦的 MQTT 客戶端</strong>：不讀資料庫、不載入平台程式，只靠一份 <code>simulator/fleet.json</code> 知道要連哪個 broker、自己是哪些閘道器與設備，之後一切都只走 MQTT（Sparkplug B）——和真實廠商設備完全相同的路徑。</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">sim-console</span><span class="p">.</span><span class="n">ps1</span>            <span class="c"># 沒有 fleet.json 時先從平台匯出一份，再開主控台</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">sim-console</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Export</span>    <span class="c"># 平台登記有變動時重新匯出</span>
+<span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">manage</span><span class="p">.</span><span class="n">py</span> <span class="n">export_fleet_config</span> <span class="p">-</span><span class="n">-out</span> <span class="n">C</span><span class="p">:\</span><span class="n">site</span><span class="p">\</span><span class="n">fleet</span><span class="p">.</span><span class="n">json</span> <span class="p">-</span><span class="n">-site</span> <span class="n">taichung</span>
+</code></pre></div>
+<p><code>fleet.json</code> 內容：broker（IP／Port／帳密）、group id、每台閘道器（node_id、場域、負載形狀、額定功率／容量、MQTT 帳號）與其設備（device_id、角色、功率指標）。可以手寫，也可以拿給廠商當「這個場域要做成什麼樣」的規格。</p>
+<p>主控台：
+* <strong>Broker IP / Port / 帳密 / Group ID</strong> 可直接修改並儲存回設定檔，連到任何 broker（內建、EMQX、客戶現場）。
+* 閘道器清單：<strong>全部上線 / 全部離線 / 選取上線 / 選取離線</strong>；每台閘道器一條連線、NBIRTH/DBIRTH、定期 DDATA、接收命令並回覆、DDEATH/NDEATH。
+* <strong>設備即時量測值</strong>：選一台設備，右側表格每 0.5 秒更新目前送出的每一個量測項與單位——看得到平台收到的就是這些數字。
+* 手動測試：送事件、觸發／解除警報、取消「自動回覆」改手動按「接受／成功／失敗」。
+* 選項：上傳間隔、自動注入事件／警報、電池自主削峰。</p>
+<p>模擬器發布的是與 <a href="device-protocol.html">裝置通訊協定（Sparkplug B）</a> 完全相同的 Sparkplug 訊息，可直接當作設備端實作的參考。</p>
+<blockquote>
+<p><strong>一台閘道器一條連線。</strong> Sparkplug 下一條連線就是一個 edge node，擁有自己的 <code>seq</code> 計數器與生死序號；兩個行程自稱同一個 node id 會互踢。模擬器已按此設計。</p>
+</blockquote>
+<hr>
+<h2 id="4-手動逐步執行">4. 手動逐步執行<a class="headerlink" href="#4-手動逐步執行" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+.venv<span class="se">\S</span>cripts<span class="se">\a</span>ctivate<span class="w">                     </span><span class="c1"># PowerShell</span>
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+copy<span class="w"> </span>.env.example<span class="w"> </span>.env
+
+python<span class="w"> </span>manage.py<span class="w"> </span>migrate
+python<span class="w"> </span>manage.py<span class="w"> </span>bootstrap<span class="w">                 </span><span class="c1"># built-in metrics + blueprints</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>seed_demo<span class="w">                 </span><span class="c1"># tenant, site, devices, rules, tariff</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>seed_showcase<span class="w">             </span><span class="c1"># or: the multi-site customer showcase</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>generate_history<span class="w"> </span>--days<span class="w"> </span><span class="m">3</span><span class="w"> </span>--with-faults
+
+python<span class="w"> </span>manage.py<span class="w"> </span>runserver<span class="w">                 </span><span class="c1"># terminal 1</span>
+<span class="nb">cd</span><span class="w"> </span>frontend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>dev<span class="w">  </span><span class="c1"># terminal 2</span>
+</code></pre></div>
+<p>需要即時資料路徑時再加上：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>run_broker<span class="w">                </span><span class="c1"># terminal 3，內建開發用 broker</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>run_pipeline<span class="w">              </span><span class="c1"># terminal 4，ingestor + worker</span>
+</code></pre></div>
+<p>要跑正式環境的形狀（真 EMQX + Redis）就換成兩個獨立行程：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>run_ingestor<span class="w">              </span><span class="c1"># terminal 3</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>run_worker<span class="w">                </span><span class="c1"># terminal 4</span>
+</code></pre></div>
+<p>手動跑時記得環境變數要對上：內建 broker 需要
+<code>MQTT_PROTOCOL_VERSION=311</code>、<code>MQTT_USE_SHARED_SUBSCRIPTION=0</code>、
+<code>BUS_BACKEND=memory</code>。啟動腳本會幫你設好，手動跑不會。</p>
+<h3 id="週期性工作">週期性工作<a class="headerlink" href="#週期性工作" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>run_scheduler<span class="w">             </span><span class="c1"># terminal 5，一個行程包辦全部</span>
+</code></pre></div>
+<p>它每 5 分鐘依序做四件事：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>工作</th>
+<th>做什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aggregate_energy</code></td>
+<td>功率樣本 → 15 分鐘能源區間 + 成本分項</td>
+</tr>
+<tr>
+<td><code>build_rollups</code></td>
+<td>圖表用的聚合桶</td>
+</tr>
+<tr>
+<td><code>rebuild_sessions</code></td>
+<td>充電／放電／運轉 session 的回算</td>
+</tr>
+<tr>
+<td><code>run_dispatch</code></td>
+<td>把生效中的調度時段變成實際命令</td>
+</tr>
+</tbody>
+</table></div>
+<p>順序是刻意的：調度引擎會讀即時 SOC 決定方案允不允許放電，而前面三步剛好把它要讀的
+東西刷新了。</p>
+<blockquote>
+<p><strong><code>run_dispatch</code> 會對實體硬體送出真正的命令。</strong> 本機只想要聚合與 session 回算
+時，用 <code>python manage.py run_scheduler --no-dispatch</code> 把它關掉。</p>
+<p>想先看它「會下什麼」而不真的下，用
+<code>python manage.py run_dispatch --dry-run</code>，或在 console 的儲能頁看調度預覽。</p>
+</blockquote>
+<p>各項也可以單獨跑一次：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>aggregate_energy<span class="w"> </span>--hours<span class="w"> </span><span class="m">2</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>rebuild_sessions<span class="w"> </span>--hours<span class="w"> </span><span class="m">2</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>run_dispatch<span class="w"> </span>--dry-run
+</code></pre></div>
+<hr>
+<h2 id="5-疑難排解">5. 疑難排解<a class="headerlink" href="#5-疑難排解" title="Permanent link">¶</a></h2>
+<p><strong>8000 或 5173 連接埠已被占用。</strong> 前一組服務還在跑。執行
+<code>.\scripts\stop.ps1</code>，或在 <code>dev.sh</code> 的終端機按 Ctrl-C。</p>
+<p><strong>剛裝完 Node 卻找不到 <code>npm</code>。</strong> PATH 只有新開的 shell 才會讀到。開一個新的
+終端機；啟動腳本本身也會去 <code>C:\Program Files\nodejs</code> 找。</p>
+<p><strong>Console 載入了但每個請求都失敗。</strong> API 沒在跑，或是換到別的連接埠。檢查
+<a href="http://127.0.0.1:8000/healthz">http://127.0.0.1:8000/healthz</a>；若你改過位置，也檢查 <code>VITE_PROXY_TARGET</code>。</p>
+<p><strong>系統健康裡的 MQTT 顯示「未使用」。</strong> 你是用 <code>-NoBroker</code> 啟動的，或是 <code>.env</code> 裡設了
+<code>MQTT_ENABLED=0</code>。這不是故障，所以它不計入整體判定。拿掉那個旗標重新啟動即可。</p>
+<p><strong>MQTT 顯示紅色的連線錯誤。</strong> 這代表 <code>MQTT_ENABLED=1</code> 但真的連不上。通常是自己手動
+跑 <code>manage.py runserver</code> 而沒有經過啟動腳本——那樣就沒有人幫你起 broker。另外開一個
+終端機跑 <code>python manage.py run_broker</code>，或直接用啟動腳本。</p>
+<p><strong>儲能頁面顯示資料已過期。</strong> 即時電力流在五分鐘沒有樣本後就會被標記為過期。
+只有回補資料時本來就會這樣——跑模擬器，或者就看圖表，反正圖表本來就是歷史
+資料。</p>
+<p><strong>過一陣子全部顯示離線。</strong> 裝置靜默超過 <code>DEVICE_OFFLINE_GRACE_SECONDS</code>
+（180 s）後，worker 就會把它標記為離線。預設模式有模擬器在跑，所以那三台會維持
+上線；沒有模擬器對應的設備仍然會離線，這是正確的：回補的是歷史，不是即時連線。</p>
+<p><strong>裝置離線且沒有資料進來。</strong> 看 <code>zqs-pipeline</code>（或 <code>-Full</code> 時的 <code>zqs-ingestor</code>）
+視窗。未註冊的 device id 依設計會被丟棄——先註冊裝置，或在 <code>.env</code> 設定
+<code>INGEST_AUTO_PROVISION=1</code>。</p>
+<p>若 <code>zqs-pipeline</code> 視窗顯示 <code>MQTT connect refused</code>，八成是協定版本對不上：內建
+broker 只講 3.1.1，而 <code>.env</code> 裡的 <code>MQTT_PROTOCOL_VERSION</code> 被改成了 5。</p>
+<p><strong>Alert 頁面是空的。</strong> 產生的資料很乾淨時，不會有任何規則被違反，這是誠實的
+結果。用 <code>--with-faults</code> 注入異常。</p>
+<p><strong>運轉紀錄是空的。</strong> session 判定預設是關的。到儲能頁的資產設定把該資產的
+<code>session_tracking_enabled</code> 打開，再跑
+<code>python manage.py rebuild_sessions --hours 720</code> 回算歷史。</p>
+<p><strong>成本分項只有市電那一列。</strong> 電池與發電機要在 <code>EnergyAsset</code> 上填 <code>cost_model</code> 與
+<code>cost_parameters</code> 才會計價，然後重算區間
+（<code>POST /api/ems/sites/{id}/rebuild-intervals</code>）。示範資料只有電池填了循環成本。</p>
+<p><strong>調度預覽每個場域都寫「沒有生效的調度時段」。</strong> 種子資料沒有建立
+<code>DispatchWindow</code>。先建一個涵蓋現在的時段，引擎才有事可做。</p>
+<p><strong>設備換了場域，儲能頁卻說新場域「尚未綁定能源資產」。</strong> 這在 2026-08 之前確實會
+發生；現在能源資產綁定會跟著設備一起搬。若是舊資料留下的狀態，到儲能頁把該資產重新
+綁一次即可。</p>
+<p><strong>設備清單、總覽檢視、即時數值的版面跟預期不同。</strong> 這三個都是<strong>每位使用者</strong>的設定，
+存在帳號上。換一個帳號登入會看到那個帳號自己的版面；即時數值的挑選對話框裡有「恢復
+預設」。</p>
+<p><strong>重來一次。</strong> 刪掉 <code>data/zqs_cloud.sqlite3</code> 再跑一次 setup。本機沒有其他地方
+留著狀態。</p>
+<h2 id="桌面模擬器主控台">桌面模擬器主控台<a class="headerlink" href="#桌面模擬器主控台" title="Permanent link">¶</a></h2>
+<p><code>scripts\sim-console.ps1</code> 開啟圖形化的 Sparkplug 模擬器:一支程式就是一個完整
+邊緣節點(gateway)加上其下所有模擬設備。可執行上線/離線、單發或自動遙測、
+事件與告警注入,以及命令的按鍵測試——關閉自動回覆後,收到的 DCMD 會列在表格
+中,由測試者手動按「接受/成功/失敗」觀察平台端的命令生命週期。</p></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

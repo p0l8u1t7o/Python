@@ -1,0 +1,1951 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>程式碼導覽 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="active">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#0-文件地圖-先看哪一份">0. 文件地圖：先看哪一份</a></li>
+<li><a href="#1-專案概觀">1. 專案概觀</a><ul>
+<li><a href="#1-1-四個行程">1.1 四個行程</a></li>
+<li><a href="#1-2-為什麼要分開">1.2 為什麼要分開</a></li>
+</ul>
+</li>
+<li><a href="#2-資料從設備到畫面">2. 資料從設備到畫面</a><ul>
+<li><a href="#2-1-上行-設備-畫面-逐步">2.1 上行（設備 → 畫面）逐步</a></li>
+<li><a href="#2-2-為什麼只有一條-stream">2.2 為什麼只有一條 stream</a></li>
+<li><a href="#2-2-下行-命令">2.2 下行（命令）</a></li>
+</ul>
+</li>
+<li><a href="#3-資料夾結構">3. 資料夾結構</a><ul>
+<li><a href="#3-1-前端">3.1 前端</a></li>
+</ul>
+</li>
+<li><a href="#4-後端逐層">4. 後端逐層</a><ul>
+<li><a href="#4-1-config-設定與環境變數">4.1 config/ —— 設定與環境變數</a></li>
+<li><a href="#4-2-各-app-的職責與主要-model">4.2 各 app 的職責與主要 model</a></li>
+<li><a href="#4-3-model-關聯圖">4.3 Model 關聯圖</a></li>
+<li><a href="#4-4-api-怎麼組裝">4.4 API 怎麼組裝</a></li>
+<li><a href="#4-5-services-非-django-程式碼">4.5 services/ —— 非 Django 程式碼</a></li>
+</ul>
+</li>
+<li><a href="#5-前端">5. 前端</a><ul>
+<li><a href="#5-1-資料流">5.1 資料流</a></li>
+<li><a href="#5-2-路由">5.2 路由</a></li>
+<li><a href="#5-3-tanstack-query-慣例">5.3 TanStack Query 慣例</a></li>
+<li><a href="#5-4-i18n">5.4 i18n</a></li>
+<li><a href="#5-5-共用元件">5.5 共用元件</a></li>
+</ul>
+</li>
+<li><a href="#6-常見維護任務-該去哪裡改">6. 常見維護任務：該去哪裡改</a><ul>
+<li><a href="#6-1-新增一個-api-endpoint">6.1 新增一個 API endpoint</a></li>
+<li><a href="#6-2-新增一個-model-欄位">6.2 新增一個 model 欄位</a></li>
+<li><a href="#6-3-新增一種設備類別">6.3 新增一種設備類別</a></li>
+<li><a href="#6-4-新增一個-metric">6.4 新增一個 metric</a></li>
+<li><a href="#6-5-新增一個前端頁面">6.5 新增一個前端頁面</a></li>
+<li><a href="#6-6-新增一種告警規則條件">6.6 新增一種告警規則條件</a></li>
+<li><a href="#6-7-新增一個成本模型">6.7 新增一個成本模型</a></li>
+<li><a href="#6-7a-新增一種設備類型的-icon">6.7A 新增一種設備類型的 ICON</a></li>
+<li><a href="#6-7b-為一種資產開啟運轉-session">6.7B 為一種資產開啟運轉 session</a></li>
+<li><a href="#6-7c-加一個-跟著使用者走-的介面設定">6.7C 加一個「跟著使用者走」的介面設定</a></li>
+<li><a href="#6-8-加一個翻譯字串">6.8 加一個翻譯字串</a></li>
+<li><a href="#6-9-新增一個-ui-術語提示">6.9 新增一個 UI 術語提示</a></li>
+</ul>
+</li>
+<li><a href="#7-開發流程與慣例">7. 開發流程與慣例</a><ul>
+<li><a href="#7-1-跑起來">7.1 跑起來</a></li>
+<li><a href="#7-2-測試-lint-typecheck">7.2 測試、lint、typecheck</a></li>
+<li><a href="#7-2a-e2e-抓的是哪一層">7.2A E2E 抓的是哪一層</a></li>
+<li><a href="#7-3-命名慣例">7.3 命名慣例</a></li>
+<li><a href="#7-4-錯誤碼慣例">7.4 錯誤碼慣例</a></li>
+<li><a href="#7-5-什麼時候要寫-audit-log">7.5 什麼時候要寫 audit log</a></li>
+<li><a href="#7-6-migration-注意事項">7.6 Migration 注意事項</a></li>
+</ul>
+</li>
+<li><a href="#8-容易踩的坑">8. 容易踩的坑</a><ul>
+<li><a href="#8-1-device_id-全平台唯一且不可重用">8.1 device_id 全平台唯一且不可重用</a></li>
+<li><a href="#8-2-is_enabled-不要手動設">8.2 is_enabled 不要手動設</a></li>
+<li><a href="#8-3-設備宣告不可信-不得進入控制判斷">8.3 設備宣告不可信，不得進入控制判斷</a></li>
+<li><a href="#8-4-include_in_balance-與重複計算">8.4 include_in_balance 與重複計算</a></li>
+<li><a href="#8-5-跨場域尖峰不可相加">8.5 跨場域尖峰不可相加</a></li>
+<li><a href="#8-6-counter-倒退記-null-不記-0">8.6 counter 倒退記 null 不記 0</a></li>
+<li><a href="#8-7-memory-bus-跨行程無效">8.7 memory bus 跨行程無效</a></li>
+<li><a href="#8-8-env-與環境變數優先順序">8.8 .env 與環境變數優先順序</a></li>
+<li><a href="#8-9-registry-是-ttl-快取">8.9 registry 是 TTL 快取</a></li>
+<li><a href="#8-10-積分是前值保持不是梯形法">8.10 積分是前值保持不是梯形法</a></li>
+<li><a href="#8-11-調度引擎只在目標值改變時送命令">8.11 調度引擎只在目標值改變時送命令</a></li>
+<li><a href="#8-11a-能源資產綁定必須跟著設備走">8.11A 能源資產綁定必須跟著設備走</a></li>
+<li><a href="#8-11b-用不到的相依元件-不是故障">8.11B 「用不到的相依元件」不是故障</a></li>
+<li><a href="#8-11d-開發模式自己帶一個-broker">8.11D 開發模式自己帶一個 broker</a></li>
+<li><a href="#8-11c-序號空白不參與唯一性">8.11C 序號空白不參與唯一性</a></li>
+<li><a href="#8-11f-sparkplug-三個會咬人的地方">8.11F Sparkplug：三個會咬人的地方</a></li>
+<li><a href="#8-11e-幣別屬於組織-不屬於電價方案">8.11E 幣別屬於組織，不屬於電價方案</a></li>
+<li><a href="#8-11f2-預設的時間區間必須包含-現在">8.11F2 預設的時間區間必須包含「現在」</a></li>
+<li><a href="#8-11g-自動註冊-metric-的兩條界線">8.11G 自動註冊 metric 的兩條界線</a></li>
+<li><a href="#8-11h-工作流程引擎踩過的三個坑">8.11H 工作流程引擎踩過的三個坑</a></li>
+<li><a href="#8-11j-穩定讀值被判為過期-死區不可以決定-有沒有回報">8.11J 穩定讀值被判為過期：死區不可以決定「有沒有回報」</a></li>
+<li><a href="#8-11k-vite-dev-server-隨機停止-sse-經-proxy-的-econnreset">8.11K Vite dev server 隨機停止：SSE 經 proxy 的 ECONNRESET</a></li>
+<li><a href="#8-11i-modal-的焦點竊取-表單打字被打斷的真正元兇">8.11I Modal 的焦點竊取：表單打字被打斷的真正元兇</a></li>
+<li><a href="#8-12-前端-en-ts-是型別來源">8.12 前端 en.ts 是型別來源</a></li>
+<li><a href="#8-13-示範帳號的密碼寫在版控裡">8.13 示範帳號的密碼寫在版控裡</a></li>
+</ul>
+</li>
+<li><a href="#9-目前的已知缺口">9. 目前的已知缺口</a><ul>
+<li><a href="#9-1-已經補上的-之前列在這裡">9.1 已經補上的（之前列在這裡）</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="程式碼導覽">程式碼導覽<a class="headerlink" href="#程式碼導覽" title="Permanent link">¶</a></h1>
+<p>給要接手維護這個專案的人。目標是讓你<strong>不必逐檔案讀原始碼</strong>，就能知道「要改某
+個東西該去哪裡改」。</p>
+<p>內容反映的是<strong>現在的程式碼</strong>，不是理想狀態；還沒實作的東西會明講。行號會隨改
+動漂移，所以優先用函式／類別名稱定位，行號只當粗略指引。</p>
+<hr>
+<h2 id="0-文件地圖-先看哪一份">0. 文件地圖：先看哪一份<a class="headerlink" href="#0-文件地圖-先看哪一份" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>文件</th>
+<th>用途</th>
+<th>什麼時候看</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../README.md">README.md</a></td>
+<td>專案是什麼、快速啟動、API 端點總表</td>
+<td>第一次接觸</td>
+</tr>
+<tr>
+<td><a href="running-locally.html">本機執行</a></td>
+<td>怎麼在本機跑起來、三種模式、疑難排解</td>
+<td>要開始動手時</td>
+</tr>
+<tr>
+<td><strong>codebase-guide.md</strong>（本文）</td>
+<td>資料夾結構、架構、該去哪裡改</td>
+<td>要維護程式時</td>
+</tr>
+<tr>
+<td><a href="system-logic.html">系統邏輯總覽</a></td>
+<td>系統<strong>行為規則</strong>：分類怎麼判定、命令什麼時候被擋、哪些情況記 null</td>
+<td>要理解「為什麼是這樣」時</td>
+</tr>
+<tr>
+<td><a href="device-protocol.html">裝置通訊協定（Sparkplug B）</a></td>
+<td><strong>Sparkplug B</strong> 通訊契約：三層位址、protobuf payload、生死流程、離線判定、憑證與 ACL。<strong>這份是給設備開發商的</strong></td>
+<td>要寫設備端韌體時</td>
+</tr>
+<tr>
+<td><a href="device-test-harness.html">設備測試工具</a></td>
+<td>設備連線測試工具：<code>scripts\test-device.ps1</code> 一鍵自我驗證＋設備驗收</td>
+<td>要測設備端連線時</td>
+</tr>
+<tr>
+<td><a href="device-classification.html">設備分類設計</a></td>
+<td>設備分類、session 與成本模型的<strong>設計論述</strong>（現已實作，此文說明為什麼這樣設計）</td>
+<td>要動 session／成本模型時</td>
+</tr>
+<tr>
+<td><a href="labview-integration.html">LabVIEW 整合</a></td>
+<td>LabVIEW 透過 Python Node 啟停服務</td>
+<td>要從 LabVIEW 控制服務時</td>
+</tr>
+<tr>
+<td><a href="release-notes.html">發行說明</a></td>
+<td>各版本驗證範圍、修正項目、已知限制</td>
+<td>要交付或升級版本時</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>建議順序</strong>：README → running-locally → 本文 → system-logic。</p>
+<hr>
+<h2 id="1-專案概觀">1. 專案概觀<a class="headerlink" href="#1-專案概觀" title="Permanent link">¶</a></h2>
+<p>Django 5.1 + django-ninja 後端、React 19 + Vite 前端，資料從 MQTT 進來、存成
+時序資料、彙總成能源報表、由 React console 呈現。</p>
+<h3 id="1-1-四個行程">1.1 四個行程<a class="headerlink" href="#1-1-四個行程" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>行程</th>
+<th>進入點</th>
+<th>職責</th>
+<th>可否多副本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>api</strong></td>
+<td><code>manage.py runserver</code> / <code>gunicorn config.wsgi</code></td>
+<td>REST API、下行命令、EMQX webhook</td>
+<td>可（無狀態）</td>
+</tr>
+<tr>
+<td><strong>ingestor</strong></td>
+<td><code>manage.py run_ingestor</code></td>
+<td>訂閱 MQTT、驗證 payload、丟進 queue</td>
+<td>可（EMQX shared subscription）</td>
+</tr>
+<tr>
+<td><strong>worker</strong></td>
+<td><code>manage.py run_worker</code></td>
+<td>從 queue 取出、批次寫 DB、跑告警規則、發通知</td>
+<td>可（同一 consumer group）</td>
+</tr>
+<tr>
+<td><strong>scheduler</strong></td>
+<td><code>manage.py run_scheduler</code></td>
+<td>週期性彙總：能源區間、rollup、資料清理</td>
+<td><strong>只能一個</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>開發時另有兩個行程，只為了讓上面這四個不必先裝 Docker 就能跑通：
+<code>run_broker</code>（內建 MQTT broker）與 <code>run_pipeline</code>（ingestor + worker 同行程）。
+兩者都不可用於正式環境，見 §8.11D。</p>
+<h3 id="1-2-為什麼要分開">1.2 為什麼要分開<a class="headerlink" href="#1-2-為什麼要分開" title="Permanent link">¶</a></h3>
+<p><strong>ingestor 完全不碰資料庫。</strong> 這是整個架構最重要的一條線。資料庫變慢或被鎖住
+時，MQTT 消費不會停下來，queue 會吸收突發流量——否則訊息會在 broker 端被丟棄。</p>
+<p>ingestor 只做「解析 topic、驗證 payload、丟進 queue」，worker 才做「寫入、算
+規則、發通知」。兩者是不同的行程，所以中間<strong>必須</strong>有真的 broker：
+<code>BUS_BACKEND=memory</code> 是行程內的 queue，兩個行程看不到彼此的訊息。</p>
+<hr>
+<h2 id="2-資料從設備到畫面">2. 資料從設備到畫面<a class="headerlink" href="#2-資料從設備到畫面" title="Permanent link">¶</a></h2>
+<pre class="mermaid">flowchart TD
+    D[邊緣節點 / 網關] --&gt;|Sparkplug B&lt;br/&gt;spBv1.0/group/DDATA/node/device| E[EMQX broker]
+    E --&gt;|auth / ACL webhook| API1[api: /api/emqx/auth]
+    E --&gt;|subscribe| I[ingestor]
+    I --&gt;|1. sparkplug/topics.py 解析位址| I
+    I --&gt;|2. sparkplug/payload.py 解 protobuf| I
+    I --&gt;|3. registry 查節點與設備是否註冊且啟用| I
+    I --&gt;|publish envelope| B[(bus&lt;br/&gt;Redis Streams)]
+    B --&gt;|consume| W[worker]
+    W --&gt;|MetricAlias 解析別名| W
+    W --&gt;|profile.py 分流：量測 / 警報 / 事件 / 命令回覆| W
+    W --&gt;|SampleGate 依 recording policy 過濾| W
+    W --&gt;|bulk insert| DB[(SQLite / PostgreSQL)]
+    W --&gt;|AlertEngine 評估規則| DB
+    W --&gt;|通知| N[Email / Webhook]
+    SCH[scheduler] --&gt;|aggregate_energy| DB
+    SCH --&gt;|build_rollups| DB
+    SCH --&gt;|prune_telemetry| DB
+    DB --&gt; API2[api: django-ninja]
+    API2 --&gt;|JSON| FE[React console]
+    API2 --&gt;|MQTT publish&lt;br/&gt;.../control| E
+</pre>
+
+<h3 id="2-1-上行-設備-畫面-逐步">2.1 上行（設備 → 畫面）逐步<a class="headerlink" href="#2-1-上行-設備-畫面-逐步" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>步驟</th>
+<th>檔案</th>
+<th>做什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>services/sparkplug/topics.py</code></td>
+<td><code>parse()</code> 把 topic 拆成 <code>(group_id, 型別, edge_node_id, device_id)</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>services/sparkplug/payload.py</code></td>
+<td>解 protobuf，攤平成 Python 值</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>services/ingestor/protocol.py</code></td>
+<td>時鐘偏移檢查、大小與 metric 數量上限</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>apps/devices/registry.py</code></td>
+<td>TTL 快取查 <code>(group_id, node_id)</code> → <code>EdgeNodeRef</code>、<code>(node_pk, device_id)</code> → <code>DeviceRef</code>；未註冊或停用就丟棄</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>services/ingestor/main.py</code></td>
+<td>組成 envelope，<code>bus.publish()</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>services/bus/redis_streams.py</code></td>
+<td>寫進 Redis Stream（<strong>單一 stream</strong>，見 §2.2）</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>services/worker/main.py</code></td>
+<td><code>_consume_loop</code> 取批次</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>services/worker/processors.py</code></td>
+<td><code>SparkplugProcessor</code>：檢查 <code>seq</code>、處理生死、用 <code>MetricAlias</code> 解析別名、再依 <code>profile.py</code> 的前綴分流成量測／警報／事件／命令回覆</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>apps/telemetry/policy.py</code></td>
+<td><code>SampleGate</code> 依 recording policy 決定這筆要不要存（間隔、死區、心跳）</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>apps/telemetry/repository.py</code></td>
+<td><code>insert_samples()</code> / <code>upsert_latest()</code> 批次寫入</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>apps/alerts/engine.py</code></td>
+<td><code>AlertEngine.evaluate()</code> 判斷是否觸發告警</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>apps/ems/aggregator.py</code></td>
+<td>（scheduler）<code>SiteAggregator</code> 積分成 <code>EnergyInterval</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>apps/*/api.py</code></td>
+<td>REST 端點查詢</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>frontend/src/lib/queries.ts</code></td>
+<td>TanStack Query 取資料</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="2-2-為什麼只有一條-stream">2.2 為什麼只有一條 stream<a class="headerlink" href="#2-2-為什麼只有一條-stream" title="Permanent link">¶</a></h3>
+<p>把上行拆成好幾條 stream（telemetry / status / event / alarm 各一條）看起來合理，
+在 Sparkplug 下卻行不通：</p>
+<ul>
+<li><strong>一則訊息不再只是一種東西。</strong> 單一 DDATA 可以同時帶讀值、警報與命令回覆，而且
+  裡面的 metric 可能只有別名、沒有名稱——在查過出生表之前根本讀不出來。ingestor
+  沒有資料庫連線，所以它分不了。</li>
+<li><strong>順序是有意義的。</strong> <code>seq</code> 是主機發現訊息遺失的唯一依據，而且出生必須排在依賴
+  那批別名的資料之前。兩條獨立消費的 stream 兩個保證都給不了；把 state 排在 data
+  前面反而會主動製造亂序。</li>
+</ul>
+<p>代價是一陣 telemetry 洪水現在會擋在狀態變更前面。這個取捨是對的：狀態晚一點顯示
+只是畫面延遲，讀值記到錯誤的 metric 上則是歷史資料損毀。</p>
+<h3 id="2-2-下行-命令">2.2 下行（命令）<a class="headerlink" href="#2-2-下行-命令" title="Permanent link">¶</a></h3>
+<p><strong>只有一條路</strong>：<code>POST /api/devices/{id}/commands</code> →
+<code>apps/devices/services.py::dispatch_command()</code> → 直接 <code>publish_json()</code> 到 MQTT。</p>
+<p><strong>不經過 bus。</strong> 所以 <code>dispatch_command()</code> 是唯一的關卡——所有安全檢查都在那裡
+（見 <a href="system-logic.html">系統邏輯總覽</a> §3）。</p>
+<p>自動調度走的是<strong>同一條路</strong>：<code>apps/ems/dispatch.py</code> 把生效中的 <code>DispatchWindow</code>
+算成設定值，然後呼叫同一個 <code>dispatch_command()</code>。它沒有任何特權旁路——能力檢查、
+生命週期閘門、稽核紀錄，跟人操作時完全一樣。</p>
+<hr>
+<h2 id="3-資料夾結構">3. 資料夾結構<a class="headerlink" href="#3-資料夾結構" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code>ZQS-Cloud/
+├── manage.py                     Django 進入點
+├── requirements.txt              執行相依（Django、ninja、paho-mqtt、redis…）
+├── requirements-dev.txt          + pytest、ruff
+├── requirements-optional.txt     RabbitMQ (pika)、PostgreSQL (psycopg)
+├── docker-compose.yml            postgres / redis / emqx / api / ingestor / worker / scheduler
+├── Dockerfile
+├── .env / .env.example           環境設定（.env 不進版控）
+│
+├── config/                       Django 專案設定與 API 組裝
+│   ├── env.py                    輕量環境變數讀取器，import 時載入 .env
+│   ├── settings/
+│   │   ├── base.py               所有共用設定（DB、bus、MQTT、cache、logging）
+│   │   ├── dev.py                DEBUG、ALLOWED_HOSTS=*、CORS 全開
+│   │   └── prod.py               HSTS、SSL redirect、cookie secure
+│   ├── api.py                    NinjaAPI 實例、所有 router 註冊、錯誤處理
+│   ├── urls.py                   /healthz 與 /api/
+│   ├── wsgi.py / asgi.py
+│
+├── apps/                         Django app（有 model 的都在這）
+│   ├── core/                     跨 app 的基礎建設
+│   │   ├── models.py             TimeStampedModel / UUIDPrimaryKeyModel / SoftDeleteModel
+│   │   ├── errors.py             APIError 階層（狀態碼與 code）
+│   │   ├── schemas.py            Page / PageParams / paginate / TimeRangeParams
+│   │   ├── middleware.py         RequestContextMiddleware（request id、使用者）
+│   │   ├── logging.py            結構化 logger
+│   │   ├── throttle.py           以 Django cache 為底的固定視窗限流
+│   │   ├── timeutils.py          now() / UTC / floor_to_interval / parse_timestamp
+│   │   ├── system_api.py         /system/health、/system/capabilities、/system/fleet
+│   │   └── management/commands/  bootstrap、seed_demo、seed_showcase、generate_history、
+│   │                             run_ingestor、run_worker、run_scheduler、
+│   │                             run_broker（開發用 MQTT broker）、
+│   │                             run_pipeline（ingestor + worker 同行程）
+│   │
+│   ├── accounts/                 租戶、使用者、角色、API key、JWT
+│   │   ├── models.py             User / Organization / Membership / ApiKey / RefreshToken
+│   │   ├── security.py           AuthContext、ApiAuth、role_required
+│   │   ├── tokens.py             JWT 簽發與 refresh rotation
+│   │   ├── permissions.py        role → permission 清單（前端用來隱藏按鈕）
+│   │   └── api.py                登入、refresh、me、成員、API key
+│   │
+│   ├── devices/                  設備註冊表——整個系統的核心 app
+│   │   ├── models.py    (935行)  Site / DeviceType / Device / DeviceCredential /
+│   │   │                         DeviceDeclaration / DeviceStatusEvent / DeviceEvent / Command
+│   │   ├── services.py  (699行)  dispatch_command、check_capabilities、set_lifecycle、
+│   │   │                         replace_device、憑證發放
+│   │   ├── api.py       (986行)  sites / blueprints / devices / commands 四個 router
+│   │   ├── schemas.py            所有 ninja Schema
+│   │   ├── registry.py           device_id → DeviceRef 的 TTL 快取（ingest 熱路徑）
+│   │   └── emqx.py               EMQX auth / ACL webhook
+│   │
+│   ├── telemetry/                metric 目錄、記錄政策、時序資料
+│   │   ├── models.py             Metric / RecordingPolicy / RecordingRule /
+│   │   │                         TelemetrySample / LatestSample / Rollup
+│   │   ├── repository.py (370行) 所有非 ORM 的 SQL（分桶、upsert、rollup）
+│   │   ├── policy.py             PolicyResolver / SampleGate（決定哪筆樣本要存）
+│   │   ├── catalog.py            metric 定義的 TTL 快取
+│   │   ├── energy.py             GAUGE 積分 / COUNTER 差值 / counter reset（純函式）
+│   │   ├── device_energy.py      單機耗能：挑序列、讀資料、呼叫 energy.py
+│   │   └── api.py                metrics / recording-policies / telemetry 三個 router
+│   │
+│   ├── ems/                      表後儲能（BTM）
+│   │   ├── models.py             EnergyAsset / StoragePlan / Tariff / EnergyInterval /
+│   │   │                         EnergyIntervalCost / DeviceOperatingSession /
+│   │   │                         DispatchWindow
+│   │   ├── aggregator.py         SiteAggregator：功率積分 → EnergyInterval + 成本分項
+│   │   ├── rollup.py             跨場域彙總（同時尖峰、加權比率、各場域成本）
+│   │   ├── tariffs.py            時段電價解析
+│   │   ├── sessions.py           運轉 session 判定與回算（遲滯、最短時長、中斷）
+│   │   ├── dispatch.py           調度引擎 + StoragePlan 運轉限制的執行期強制
+│   │   ├── costs/                可註冊的成本模型（市電、電池循環、柴發油耗）
+│   │   └── api.py                資產、儲能策略、電價、概覽、區間、成本分項、
+│   │                             session、調度、重算
+│   │
+│   ├── alerts/                   告警規則引擎
+│   │   ├── models.py             AlertRule / Alert / AlertEvent / NotificationChannel
+│   │   ├── engine.py     (491行) RuleCache、遲滯、持續時間、冷卻、自動解除
+│   │   └── api.py                規則、告警生命週期、通知管道
+│   │
+│   └── audit/                    操作者稽核軌跡
+│       ├── models.py             AuditLog / AuditAction（穩定的 action key）
+│       ├── services.py           record() —— 唯一的寫入入口
+│       └── api.py                查詢與可用 action 清單
+│
+├── services/                     非 Django 程式碼（常駐服務與抽象層）
+│   ├── bus/                      訊息匯流排抽象
+│   │   ├── base.py               MessageBus 介面、BusMessage、BusError
+│   │   ├── factory.py            build_bus() 依 BUS_BACKEND 選後端、get_bus() 單例
+│   │   ├── streams.py            stream 名稱與前綴
+│   │   ├── redis_streams.py      預設後端（consumer group、claim、dead letter）
+│   │   ├── rabbitmq.py           替代後端
+│   │   └── memory.py             行程內佇列（開發用，跨行程無效）
+│   ├── sparkplug/                Sparkplug B 協定層
+│   │   ├── sparkplug_b.proto     規範的 payload schema（逐字取自 Eclipse Tahu）
+│   │   ├── sparkplug_b_pb2.py    產生檔，已進版控（執行期不需要 protoc）
+│   │   ├── topics.py             topic 文法——訂閱、發布、ACL 都以此為準
+│   │   ├── datatypes.py          DataType 列舉與二補數的值轉換
+│   │   ├── payload.py            protobuf 編解碼；上面全部是 Python 值
+│   │   ├── profile.py            metric 命名約定：什麼是量測、什麼是警報
+│   │   └── node.py               節點端用戶端（模擬器與參考設備共用）
+│   ├── mqtt/
+│   │   ├── client.py             會重連的 paho-mqtt 包裝
+│   │   └── publisher.py          下行發布（行程層級單例）
+│   ├── ingestor/
+│   │   ├── main.py               訂閱、分派、統計、主機 STATE
+│   │   └── protocol.py           時鐘偏移與大小上限
+│   ├── worker/
+│   │   ├── main.py               消費迴圈、批次分派、reclaim、維護與通知迴圈
+│   │   ├── processors.py         SparkplugProcessor：序號、生死、別名、分流
+│   │   ├── maintenance.py        離線判定、命令逾時
+│   │   └── notifications.py      email / webhook 送出
+│   └── labview/
+│       └── labview_api.py        給 LabVIEW Python Node 的非阻塞行程控制
+│
+├── tests/                        後端測試（611 個）
+│   ├── factories.py              organization / user / site / blueprint / device
+│   ├── test_api.py               ApiTestCase 基底（登入、JSON 請求輔助）
+│   └── test_*.py                 各主題
+│
+├── scripts/                      dev.ps1 / dev.sh / stop.ps1
+├── deploy/emqx/                  EMQX webhook 設定說明
+├── simulator/                    獨立設備模擬器（fleet.json + MQTT，不碰資料庫）
+├── docs/                         本文與其他文件（workflow-design.md：工作流程引擎設計手冊）
+├── locale/                       Django 翻譯（.po）
+├── data/                         SQLite 檔（不進版控）
+└── frontend/                     React console
+</code></pre></div>
+<h3 id="3-1-前端">3.1 前端<a class="headerlink" href="#3-1-前端" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>frontend/
+├── package.json                  React 19 / Vite 6 / Tailwind 4 / TanStack Query
+├── vite.config.ts                dev server host、/api proxy、build 分塊
+├── tsconfig*.json                strict TypeScript，@/ 別名指向 src/
+└── src/
+    ├── main.tsx                  掛載、QueryClient、各 Provider
+    ├── App.tsx                   所有路由定義（見 §5.2）
+    ├── index.css                 Tailwind 與 CSS 變數（主題色）
+    ├── lib/
+    │   ├── api.ts       (229行)  fetch 包裝、token 存放、single-flight refresh
+    │   ├── queries.ts   (760行)  所有 useQuery / useMutation
+    │   ├── types.ts     (770行)  對應後端 Schema 的 TypeScript 型別
+    │   ├── errors.ts             errorMessage() / fieldErrors()
+    │   ├── format.ts             日期、數值、單位格式化
+    │   └── useTimeRange.ts       時間視窗：滾動預設值 + 使用者自訂的固定區間
+    ├── providers/
+    │   ├── AuthProvider.tsx      me、can(permission)、登入登出
+    │   ├── ThemeProvider.tsx     淺色／深色
+    │   └── ToastProvider.tsx     全域提示
+    ├── components/
+    │   ├── ui/                   Button / Card / Field / Modal / Table / Badge /
+    │   │                         SiteTreeSelect / DeviceIcon / TimeRangePicker…
+    │   ├── layout/               AppShell / Sidebar / TopBar
+    │   └── charts/               TimeSeriesChart / EnergyCharts / CostCharts /
+    │                             PowerFlowDiagram
+    ├── pages/                    每個路由一個檔案
+    └── i18n/
+        ├── index.ts              i18next 設定、語言代碼正規化
+        └── locales/              en.ts / zh-Hant.ts / zh-Hans.ts（各約 610 行）
+</code></pre></div>
+<hr>
+<h2 id="4-後端逐層">4. 後端逐層<a class="headerlink" href="#4-後端逐層" title="Permanent link">¶</a></h2>
+<h3 id="4-1-config-設定與環境變數">4.1 <code>config/</code> —— 設定與環境變數<a class="headerlink" href="#4-1-config-設定與環境變數" title="Permanent link">¶</a></h3>
+<p><strong>分層</strong>：<code>base.py</code>（共用）← <code>dev.py</code> 或 <code>prod.py</code>（覆寫）。
+由 <code>DJANGO_SETTINGS_MODULE</code> 決定，<code>manage.py</code> 預設 <code>config.settings.dev</code>。</p>
+<p><strong>環境變數載入順序（重要）</strong>：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># config/env.py</span>
+<span class="n">load_dotenv</span><span class="p">(</span><span class="n">BASE_DIR</span> <span class="o">/</span> <span class="s2">".env"</span><span class="p">,</span> <span class="n">override</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<p><code>override=False</code> 代表<strong>已存在於 <code>os.environ</code> 的值優先</strong>，<code>.env</code> 只補沒設的。
+實務影響：</p>
+<ul>
+<li><code>scripts/dev.ps1</code> 設 <code>$env:BUS_BACKEND='memory'</code> → 蓋過 <code>.env</code> 的 <code>redis</code></li>
+<li><code>.vscode/launch.json</code> 的 <code>env</code> 區塊同理（在 Python 啟動前就寫進行程環境）</li>
+<li><code>dev.py</code> 裡「環境變數沒設就降成 memory」那段<strong>不會生效</strong>，因為 <code>.env</code> 明確
+  寫了 <code>BUS_BACKEND=redis</code></li>
+</ul>
+<p><code>dev.py</code> 另外做兩件事：<code>ALLOWED_HOSTS = ["*"]</code>、把本機所有 IPv4 加進
+<code>CSRF_TRUSTED_ORIGINS</code>（讓手機用區網 IP 連進來時 admin 也能用）。</p>
+<h3 id="4-2-各-app-的職責與主要-model">4.2 各 app 的職責與主要 model<a class="headerlink" href="#4-2-各-app-的職責與主要-model" title="Permanent link">¶</a></h3>
+<h4 id="apps-core"><code>apps/core</code><a class="headerlink" href="#apps-core" title="Permanent link">¶</a></h4>
+<p>沒有自己的 model 表，提供基底類別與跨 app 工具：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>東西</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TimeStampedModel</code></td>
+<td><code>created_at</code> / <code>updated_at</code></td>
+</tr>
+<tr>
+<td><code>UUIDPrimaryKeyModel</code></td>
+<td>UUID 主鍵</td>
+</tr>
+<tr>
+<td><code>SoftDeleteModel</code></td>
+<td><code>deleted_at</code> + <code>soft_delete()</code> / <code>restore()</code></td>
+</tr>
+<tr>
+<td><code>errors.py</code></td>
+<td><code>APIError</code> 子類，每個帶固定 <code>status_code</code> 與 <code>code</code></td>
+</tr>
+<tr>
+<td><code>schemas.py</code></td>
+<td><code>Page[T]</code> / <code>PageParams</code> / <code>paginate()</code> / <code>TimeRangeParams</code></td>
+</tr>
+<tr>
+<td><code>timeutils.py</code></td>
+<td><code>now()</code>、<code>UTC</code>、<code>floor_to_interval()</code>、<code>parse_timestamp()</code></td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="apps-accounts"><code>apps/accounts</code><a class="headerlink" href="#apps-accounts" title="Permanent link">¶</a></h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Model</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>User</code></td>
+<td>自訂 user model（<code>AUTH_USER_MODEL</code>），以 email 登入</td>
+</tr>
+<tr>
+<td><code>Organization</code></td>
+<td>租戶邊界。<strong>每個 device / site / alert 都屬於恰好一個</strong></td>
+</tr>
+<tr>
+<td><code>Membership</code></td>
+<td>user × organization × role × <strong>場域範圍</strong>（<code>sites</code> M2M）</td>
+</tr>
+<tr>
+<td><code>UserPreference</code></td>
+<td>純介面版面設定，<code>(user, key)</code> 唯一。後端只存不讀</td>
+</tr>
+<tr>
+<td><code>ApiKey</code></td>
+<td>機器帳號，前綴 + 雜湊</td>
+</tr>
+<tr>
+<td><code>RefreshToken</code></td>
+<td>支援 rotation 與重用偵測</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>Role</code>：<code>owner</code>(40) &gt; <code>admin</code>(30) &gt; <code>operator</code>(20) &gt; <code>viewer</code>(10)。
+<code>permissions.py</code> 把 role 展開成 permission 清單，前端據以隱藏按鈕。</p>
+<p>存取控制有<strong>三個維度</strong>，不是兩個：哪個租戶、什麼角色、以及組織的哪一部分。第三個
+是 <code>Membership.sites</code>：</p>
+<ul>
+<li><strong>空清單代表整個組織</strong>——這是每個既有 membership 的狀態，所以加上這個欄位沒有
+  改變任何人的存取權。刻意不是空集合，因為空集合讀起來是「什麼都看不到」，那是
+  某天有人搞混這兩者時會把所有人鎖在門外的差別。</li>
+<li><strong>指定一個場域等於連同它的整棵子樹</strong>。負責一個廠的人就是負責廠裡的東西；要求
+  管理員把每條產線列出來會讓這個功能無法使用，更糟的是——新增一條產線的那天它會
+  安靜地出錯。</li>
+<li><strong>範圍不會提升權限</strong>，只跟角色取交集。被限制在單一廠區的 viewer，在那裡仍然是
+  viewer。</li>
+</ul>
+<p>請求進來時在 <code>AuthContext.site_scope</code> 展開一次（<code>None</code> = 不受限），之後每個
+queryset 用 <code>ctx.scope_queryset(...)</code> 收窄，單筆用 <code>ctx.allows_site(...)</code> /
+<code>ctx.require_site(...)</code>。</p>
+<p><strong>沒有場域的設備只有不受限的人看得到。</strong> 被限制在某廠的人沒有理由看到還沒被放到
+任何地方的設備——那正好是新設備在管理員指派之前所在的池子。</p>
+<p>範圍外的<strong>設備與告警回 404 而不是 403</strong>：「它存在但不是你的」本身就是一則他們沒有
+得到的資訊。場域本身回 403，因為請求者是拿著 id 直接問的。</p>
+<h4 id="apps-devices-核心"><code>apps/devices</code> —— 核心<a class="headerlink" href="#apps-devices-核心" title="Permanent link">¶</a></h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Model</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Site</code></td>
+<td>場域，<strong>自我參照樹</strong>（<code>parent</code>，最深 6 層）</td>
+</tr>
+<tr>
+<td><code>DeviceType</code></td>
+<td>blueprint：型號、category、命令目錄、能力預設值</td>
+</tr>
+<tr>
+<td><code>Device</code></td>
+<td>設備本體。<code>device_id</code> <strong>全平台唯一</strong>（MQTT topic 區段）</td>
+</tr>
+<tr>
+<td><code>DeviceCredential</code></td>
+<td>MQTT 帳密（<code>OneToOne</code>），密碼只顯示一次</td>
+</tr>
+<tr>
+<td><code>DeviceDeclaration</code></td>
+<td>設備自報的屬性（<code>OneToOne</code>）。<strong>不可信，不進控制判斷</strong></td>
+</tr>
+<tr>
+<td><code>DeviceStatusEvent</code></td>
+<td>連線狀態轉換歷史</td>
+</tr>
+<tr>
+<td><code>DeviceEvent</code></td>
+<td>設備自報的操作／診斷記錄</td>
+</tr>
+<tr>
+<td><code>Command</code></td>
+<td>下行命令與其生命週期</td>
+</tr>
+</tbody>
+</table></div>
+<p>關鍵函式都在 <code>services.py</code>：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>函式</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dispatch_command()</code></td>
+<td><strong>唯一</strong>的命令出口，所有安全檢查在此</td>
+</tr>
+<tr>
+<td><code>check_capabilities()</code></td>
+<td>依「命令名稱 + 參數值」判斷需要哪些能力</td>
+</tr>
+<tr>
+<td><code>set_lifecycle()</code></td>
+<td>切換生命週期，<strong>同步 <code>is_enabled</code></strong></td>
+</tr>
+<tr>
+<td><code>replace_device()</code></td>
+<td>單一交易內完成設備替換</td>
+</tr>
+<tr>
+<td><code>assert_free_of_energy_bindings()</code></td>
+<td>退役／暫停前檢查能源綁定</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="apps-telemetry"><code>apps/telemetry</code><a class="headerlink" href="#apps-telemetry" title="Permanent link">¶</a></h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Model</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Metric</code></td>
+<td>metric 定義：單位、<code>kind</code>(gauge/counter/state)、<code>aggregation</code></td>
+</tr>
+<tr>
+<td><code>RecordingPolicy</code> / <code>RecordingRule</code></td>
+<td>哪些 metric 要存、多久存一次、死區、保留期</td>
+</tr>
+<tr>
+<td><code>TelemetrySample</code></td>
+<td>長表：一列一個 device×metric×ts</td>
+</tr>
+<tr>
+<td><code>LatestSample</code></td>
+<td>每個 device×metric 的當前值（儀表板熱路徑）</td>
+</tr>
+<tr>
+<td><code>Rollup</code></td>
+<td>預聚合桶（device×metric×interval×bucket_start）</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>repository.py</code> 是<strong>唯一有手寫 SQL 的地方</strong>，依 <code>connection.vendor</code> 分支處理
+SQLite 與 PostgreSQL 的差異（時間分桶、upsert）。</p>
+<h4 id="apps-ems"><code>apps/ems</code><a class="headerlink" href="#apps-ems" title="Permanent link">¶</a></h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Model</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>EnergyAsset</code></td>
+<td><strong>量測綁定</strong>：哪台設備的哪個 metric 供應哪條能量流；另帶 session 門檻與成本模型參數</td>
+</tr>
+<tr>
+<td><code>StoragePlan</code></td>
+<td>每個場域一份（<code>OneToOne</code>）：策略、契約容量、SOC 界線、節費基準線、<code>enforce_limits</code></td>
+</tr>
+<tr>
+<td><code>Tariff</code></td>
+<td>時段電價</td>
+</tr>
+<tr>
+<td><code>EnergyInterval</code></td>
+<td>15 分鐘結算區間，<strong>per Site</strong>。<code>estimated_savings</code> 可為 null（沒有基準線時）</td>
+</tr>
+<tr>
+<td><code>EnergyIntervalCost</code></td>
+<td>區間成本<strong>分項</strong>：market/battery/generator 各一列，可用 SQL 聚合</td>
+</tr>
+<tr>
+<td><code>DeviceOperatingSession</code></td>
+<td>一段連續的充電／放電／運轉，<strong>per Device</strong>，由排程回算</td>
+</tr>
+<tr>
+<td><code>DispatchWindow</code></td>
+<td>排程指令，由 <code>apps/ems/dispatch.py</code> 消費</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>apps/ems</code> 底下另有幾個非 model 的模組值得知道（<code>taipower.py</code>：內建台電時間電價方案，<code>GET /ems/tariffs/presets</code>；<code>strategy.py</code>：儲能策略的實際計算——契約容量管理、TOU 套利、自發自用、備援保留——加上需量反應事件查詢與電池健康約束，由 <code>dispatch.py::decide()</code> 依「DR 事件 &gt; 排程窗 &gt; 策略 &gt; 包絡+健康」的順序整合）：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>模組</th>
+<th>職責</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>costs/</code></td>
+<td>可註冊的成本模型（<code>grid_tariff</code>、<code>battery_cycle</code>、<code>diesel_fuel</code>、<code>grid_export</code>）</td>
+</tr>
+<tr>
+<td><code>sessions.py</code></td>
+<td>從功率樣本判定運轉 session：遲滯、最短時長、資料中斷</td>
+</tr>
+<tr>
+<td><code>dispatch.py</code></td>
+<td>把生效中的 <code>DispatchWindow</code> 變成命令，並強制執行 <code>StoragePlan</code> 的運轉限制</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="apps-alerts"><code>apps/alerts</code><a class="headerlink" href="#apps-alerts" title="Permanent link">¶</a></h4>
+<p><code>AlertRule</code>（scope: organization / site / device_type / device）→ <code>AlertEngine</code>
+在 worker 裡逐筆評估 → <code>Alert</code> 生命週期（firing / acknowledged / resolved）→
+<code>NotificationChannel</code> 送出。</p>
+<p><code>engine.py</code> 處理的細節：遲滯（<code>hysteresis</code>）、持續時間（<code>for_duration_seconds</code>）、
+冷卻（<code>cooldown_seconds</code>）、自動解除、fingerprint 去重。</p>
+<p>通知：<code>NotificationChannel</code>（webhook / email / <strong>line</strong> / mqtt）＋兩個訂閱開關
+（<code>notify_alerts</code> 依 severity、<code>notify_events</code> 依設備事件層級）。送信在
+<code>services/worker/notifications.py</code>（<code>queue_event_notifications</code> 由 ingest 在寫入
+DeviceEvent 後呼叫；<code>dispatch_pending</code> 批次送＋重試）。SMTP 用 <code>EMAIL_*</code> 環境
+變數，未設定時 email 走 console backend。LINE 用 Messaging API push。</p>
+<h4 id="apps-audit"><code>apps/audit</code><a class="headerlink" href="#apps-audit" title="Permanent link">¶</a></h4>
+<p><code>AuditLog</code> 記錄<strong>操作者做了什麼</strong>（不是設備做了什麼——那是 <code>DeviceEvent</code>）。
+唯一寫入入口是 <code>apps/audit/services.py::record()</code>。
+<code>AuditAction</code> 的註解寫得很明白：<strong>action key 是穩定的，永遠不要就地改字</strong>。</p>
+<h4 id="apps-workflows"><code>apps/workflows</code><a class="headerlink" href="#apps-workflows" title="Permanent link">¶</a></h4>
+<p>畫布式控制流程（React Flow）。行為規則見 system-logic §1.11，這裡只講「改東西
+去哪裡」：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>models.py</code></td>
+<td><code>Workflow</code>（graph JSON + version）、<code>WorkflowRun</code>（status／wake_at／step_delay_seconds）、<code>WorkflowToken</code>（每條並行分支一顆，state 是它的暫存）、<code>WorkflowLog</code>；<code>RUNNABLE_STATUSES</code> vs <code>ACTIVE_STATUSES</code>（paused 占名額但引擎不推）</td>
+</tr>
+<tr>
+<td><code>engine.py</code></td>
+<td><code>advance()</code> stepper、<strong>抵達合流</strong>(<code>_occupied</code>/<code>_move</code>:同節點僅容一個分支,防 Jump 迴圈指數分裂)：每輪輪替、步數預算、停止點（執行<strong>前</strong>暫停，<code>_bp</code> 標記讓 Resume 不重複觸發）、慢動作延遲（<code>_slowmo</code> 標記讓單步能無視它）</td>
+</tr>
+<tr>
+<td><code>runner.py</code></td>
+<td><code>start_run</code>（併發上限在這裡、拒絕不排隊）、<code>stop_run</code>／<code>pause_run</code>／<code>resume_run</code>／<code>step_run</code>、<code>run_single_node</code>（單 Node 執行:只跑指名節點、忽略停用與停止點旗標、跑完就收）、<code>tick()</code>、<code>sweep_orphans()</code></td>
+</tr>
+<tr>
+<td><code>nodes/base.py</code></td>
+<td><code>Param</code>／<code>Handle</code>／<code>Result</code> 與 registry；<strong>加節點型別只要在 <code>nodes/builtin.py</code> 註冊</strong>，前端調色盤與表單從 <code>/workflows/node-types</code> 渲染</td>
+</tr>
+<tr>
+<td><code>graph.py</code></td>
+<td>存檔時驗證（jump 目標、note 不可連線、要有起點）</td>
+</tr>
+<tr>
+<td><code>management/commands/run_workflows.py</code></td>
+<td>引擎行程，tick 預設 2 秒</td>
+</tr>
+<tr>
+<td>(核心) <code>apps/core/live.py</code></td>
+<td>全 console 的 live feed SSE(<code>/api/live/stream</code>),前端 <code>lib/liveStream.ts</code> 對應失效查詢</td>
+</tr>
+<tr>
+<td><code>stream.py</code></td>
+<td>執行監看的 SSE 端點（<code>/api/workflow-runs/{id}/stream</code>，掛在 <code>config/urls.py</code>，token 走 query param 因為 EventSource 不能帶 header）</td>
+</tr>
+</tbody>
+</table></div>
+<p>前端：<code>pages/WorkflowEditorPage.tsx</code>（畫布＋控制列＋自動排列＋離開未存提醒）、
+<code>components/workflow/</code>（節點卡片、Note、檢視面板、記錄面板）、
+<code>lib/workflowValidation.ts</code>（參數防呆）。節點名稱／說明的翻譯在各語言檔的
+<code>workflows.nodeTypes.*</code>，缺 key 時退回伺服器英文。</p>
+<h3 id="4-3-model-關聯圖">4.3 Model 關聯圖<a class="headerlink" href="#4-3-model-關聯圖" title="Permanent link">¶</a></h3>
+<pre class="mermaid">erDiagram
+    Organization ||--o{ Membership : &quot;&quot;
+    Organization ||--o{ Site : &quot;&quot;
+    Organization ||--o{ Device : &quot;&quot;
+    User ||--o{ Membership : &quot;&quot;
+
+    Site ||--o{ Site : &quot;parent（樹）&quot;
+    Site ||--o{ Device : &quot;SET_NULL 可為空&quot;
+    Site ||--o{ EnergyAsset : &quot;&quot;
+    Site ||--|| StoragePlan : &quot;OneToOne&quot;
+    Site ||--o{ EnergyInterval : &quot;&quot;
+
+    DeviceType ||--o{ Device : &quot;PROTECT 可為空&quot;
+    Device ||--o| DeviceCredential : &quot;OneToOne&quot;
+    Device ||--o| DeviceDeclaration : &quot;OneToOne&quot;
+    Device ||--o{ Device : &quot;replaced_by SET_NULL&quot;
+    Device ||--o{ EnergyAsset : &quot;&quot;
+    Device ||--o{ TelemetrySample : &quot;&quot;
+    Device ||--o{ LatestSample : &quot;&quot;
+    Device ||--o{ Rollup : &quot;&quot;
+    Device ||--o{ Command : &quot;&quot;
+    Device ||--o{ DeviceEvent : &quot;&quot;
+    Device ||--o{ Alert : &quot;&quot;
+
+    RecordingPolicy ||--o{ RecordingRule : &quot;&quot;
+    RecordingPolicy ||--o{ Device : &quot;SET_NULL&quot;
+
+    Tariff ||--o{ StoragePlan : &quot;SET_NULL&quot;
+    AlertRule }o--o{ Device : &quot;M2M（device scope）&quot;
+</pre>
+
+<p><strong>幾個容易搞錯的關聯</strong>：</p>
+<ul>
+<li><code>Device.site</code> 是 <strong>nullable</strong>（<code>SET_NULL</code>）→ 一定會有「未分組」設備</li>
+<li><code>Device.device_type</code> 是 <strong>nullable</strong> → 可能沒有 blueprint、沒有命令目錄、
+  沒有能力檢查</li>
+<li><code>EnergyAsset</code> 同時指向 <code>Site</code> 與 <code>Device</code>，是三方綁定</li>
+<li><code>Metric</code> 沒有 FK 指向 <code>TelemetrySample</code>——樣本只存 <code>metric_key</code> 字串，
+  metric 定義是查表用的，刪掉定義不會影響已存的資料</li>
+</ul>
+<h3 id="4-4-api-怎麼組裝">4.4 API 怎麼組裝<a class="headerlink" href="#4-4-api-怎麼組裝" title="Permanent link">¶</a></h3>
+<p><strong>單一 <code>NinjaAPI</code> 實例</strong>在 <code>config/api.py</code>，所有 router 在那裡註冊：</p>
+<div class="highlight"><pre><span></span><code><span class="n">api</span> <span class="o">=</span> <span class="n">NinjaAPI</span><span class="p">(</span><span class="n">auth</span><span class="o">=</span><span class="n">api_auth</span><span class="p">,</span> <span class="n">renderer</span><span class="o">=</span><span class="n">ORJSONRenderer</span><span class="p">(),</span> <span class="n">csrf</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">api</span><span class="o">.</span><span class="n">add_router</span><span class="p">(</span><span class="s2">"/sites"</span><span class="p">,</span> <span class="n">sites_router</span><span class="p">)</span>
+<span class="n">api</span><span class="o">.</span><span class="n">add_router</span><span class="p">(</span><span class="s2">"/devices"</span><span class="p">,</span> <span class="n">devices_router</span><span class="p">)</span>
+<span class="o">...</span>
+</code></pre></div>
+<p>Router 定義在各 app 的 <code>api.py</code>（<code>apps/core/system_api.py</code> 與
+<code>apps/devices/emqx.py</code> 是例外，各自有 router）：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Router 變數</th>
+<th>掛載路徑</th>
+<th>檔案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>router</code>(auth) / <code>org_router</code> / <code>member_router</code> / <code>apikey_router</code></td>
+<td><code>/</code>、<code>/organizations</code>、<code>/members</code>、<code>/api-keys</code></td>
+<td><code>apps/accounts/api.py</code></td>
+</tr>
+<tr>
+<td><code>sites_router</code> / <code>blueprints_router</code> / <code>devices_router</code> / <code>commands_router</code></td>
+<td><code>/sites</code>、<code>/blueprints</code>、<code>/devices</code>、<code>/commands</code></td>
+<td><code>apps/devices/api.py</code></td>
+</tr>
+<tr>
+<td><code>metrics_router</code> / <code>policies_router</code> / <code>series_router</code></td>
+<td><code>/metrics</code>、<code>/recording-policies</code>、<code>/telemetry</code></td>
+<td><code>apps/telemetry/api.py</code></td>
+</tr>
+<tr>
+<td><code>rules_router</code> / <code>alerts_router</code> / <code>channels_router</code></td>
+<td><code>/alert-rules</code>、<code>/alerts</code>、<code>/notification-channels</code></td>
+<td><code>apps/alerts/api.py</code></td>
+</tr>
+<tr>
+<td><code>router</code>(audit)</td>
+<td><code>/audit</code></td>
+<td><code>apps/audit/api.py</code></td>
+</tr>
+<tr>
+<td><code>router</code>(ems)</td>
+<td><code>/ems</code></td>
+<td><code>apps/ems/api.py</code></td>
+</tr>
+<tr>
+<td><code>router</code>(system)</td>
+<td><code>/system</code></td>
+<td><code>apps/core/system_api.py</code></td>
+</tr>
+<tr>
+<td><code>router</code>(emqx)</td>
+<td><code>/emqx</code></td>
+<td><code>apps/devices/emqx.py</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>認證</strong>：<code>NinjaAPI(auth=api_auth)</code> 是全域預設，<code>api_auth</code> 是
+<code>apps/accounts/security.py::ApiAuth</code>（Bearer JWT 或 <code>ApiKey</code> 前綴）。
+成功後 <code>request.auth</code> 是 <code>AuthContext</code>（帶 <code>organization</code>、<code>user</code>、<code>role</code>）。</p>
+<p><strong>權限</strong>：端點層級用 <code>auth=role_required(Role.ADMIN)</code> 覆寫。
+函式內臨時檢查用 <code>ctx.require(Role.OPERATOR)</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@devices_router</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="n">response</span><span class="o">=</span><span class="p">{</span><span class="mi">201</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">DeviceCreatedOut</span><span class="p">},</span> <span class="n">auth</span><span class="o">=</span><span class="n">role_required</span><span class="p">(</span><span class="n">Role</span><span class="o">.</span><span class="n">ADMIN</span><span class="p">))</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_device</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="n">s</span><span class="o">.</span><span class="n">DeviceIn</span><span class="p">,</span> <span class="n">issue_credential</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
+    <span class="n">ctx</span><span class="p">:</span> <span class="n">AuthContext</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">auth</span>
+</code></pre></div>
+<p><strong>錯誤契約</strong>：所有錯誤都經過 <code>config/api.py</code> 的 exception handler，輸出</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"site_in_use"</span><span class="p">,</span><span class="w"> </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"..."</span><span class="p">,</span><span class="w"> </span><span class="nt">"details"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">...</span><span class="p">}}}</span>
+</code></pre></div>
+<p>拋 <code>apps/core/errors.py</code> 的子類即可，狀態碼由類別決定。</p>
+<p><strong>認證豁免</strong>：<code>auth=None</code>（例如 <code>/system/health</code>、EMQX webhook）。</p>
+<h3 id="4-5-services-非-django-程式碼">4.5 <code>services/</code> —— 非 Django 程式碼<a class="headerlink" href="#4-5-services-非-django-程式碼" title="Permanent link">¶</a></h3>
+<p>放在 <code>apps/</code> 之外的理由：這些是<strong>常駐行程與外部協定的抽象</strong>，不是資料模型。
+它們可以 import Django（都在 Django 環境下跑），但反向依賴應該避免。</p>
+<p><strong><code>services/bus/</code></strong> —— 訊息匯流排</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># services/bus/factory.py</span>
+<span class="n">build_bus</span><span class="p">()</span>   <span class="c1"># 依 settings.BUS_BACKEND 建立新實例（redis / rabbitmq / memory）</span>
+<span class="n">get_bus</span><span class="p">()</span>     <span class="c1"># 行程層級單例；memory 後端**必須**靠這個才能收發</span>
+</code></pre></div>
+<p><code>MessageBus</code> 介面（<code>base.py</code>）：<code>connect</code> / <code>publish</code> / <code>ensure_group</code> /
+<code>consume</code> / <code>ack</code> / <code>nack</code> / <code>dead_letter</code> / <code>depth</code> / <code>health</code>。</p>
+<p>要加新後端：實作介面 → 在 <code>factory.py</code> 加分支。</p>
+<p><strong><code>services/sparkplug/</code></strong> —— 協定層，分四層而不是一團：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>邊界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>topics.py</code></td>
+<td>topic 的唯一真相來源。ingestor 的訂閱、API 的發布、EMQX 的 ACL 都由它導出，所以三者不可能不一致</td>
+</tr>
+<tr>
+<td><code>payload.py</code></td>
+<td>protobuf 的唯一出入口。這一層以上完全是 Python 值，換掉產生的 binding 只會動到這一個檔案</td>
+</tr>
+<tr>
+<td><code>datatypes.py</code></td>
+<td><code>datatype</code> 與 <code>oneof</code> 欄位的對應，含有號整數的二補數</td>
+</tr>
+<tr>
+<td><code>profile.py</code></td>
+<td>metric 名稱的意義。Sparkplug 刻意不規定 metric 叫什麼，這個檔案就是那個決定寫下來的地方</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>node.py</code> 是<strong>節點端</strong>（而非主機端）的用戶端，模擬器、測試工具的參考設備都用它。
+放在這裡是刻意的：序號與別名的邏輯只該有一份實作，第二份一定會跟第一份漂移。</p>
+<p><strong><code>services/labview/labview_api.py</code></strong> 與其他不同：它是給 LabVIEW Python Node
+呼叫的<strong>行程管理器</strong>，只用標準函式庫、不 import Django。詳見
+<a href="labview-integration.html">LabVIEW 整合</a>。</p>
+<hr>
+<h2 id="5-前端">5. 前端<a class="headerlink" href="#5-前端" title="Permanent link">¶</a></h2>
+<h3 id="5-1-資料流">5.1 資料流<a class="headerlink" href="#5-1-資料流" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>元件 → useXxx()（queries.ts）→ api.get/post（api.ts）→ /api/... → 後端
+</code></pre></div>
+<p><code>api.ts</code> 負責：token 存 localStorage、每次請求帶
+<code>Authorization</code> 與 <code>X-Organization</code>、401 時<strong>single-flight refresh</strong>（多個並行
+請求只會觸發一次 refresh，否則會燒掉多個 refresh token 觸發重用偵測）。</p>
+<h3 id="5-2-路由">5.2 路由<a class="headerlink" href="#5-2-路由" title="Permanent link">¶</a></h3>
+<p>全部定義在 <code>frontend/src/App.tsx</code>。<code>RequireAuth</code> 包住所有需要登入的路由。
+<code>MapPage</code> / <code>StoragePage</code> / <code>TelemetryPage</code> 用 <code>lazy()</code> 載入（Leaflet 與
+Recharts 很重）。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>路徑</th>
+<th>頁面</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/login</code></td>
+<td>LoginPage</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td>DashboardPage</td>
+</tr>
+<tr>
+<td><code>/devices</code>、<code>/devices/:deviceId</code></td>
+<td>DevicesPage、DeviceDetailPage</td>
+</tr>
+<tr>
+<td><code>/map</code></td>
+<td>MapPage（lazy）</td>
+</tr>
+<tr>
+<td><code>/alerts</code></td>
+<td>AlertsPage</td>
+</tr>
+<tr>
+<td><code>/storage</code></td>
+<td>StoragePage（lazy）</td>
+</tr>
+<tr>
+<td><code>/telemetry</code></td>
+<td>TelemetryPage（lazy）</td>
+</tr>
+<tr>
+<td><code>/sites</code></td>
+<td>SitesPage</td>
+</tr>
+<tr>
+<td><code>/recording</code></td>
+<td>RecordingPage</td>
+</tr>
+<tr>
+<td><code>/rules</code></td>
+<td>RulesPage</td>
+</tr>
+<tr>
+<td><code>/tariffs</code></td>
+<td>TariffsPage</td>
+</tr>
+<tr>
+<td><code>/help</code></td>
+<td>HelpPage</td>
+</tr>
+<tr>
+<td><code>/audit</code></td>
+<td>AuditPage</td>
+</tr>
+<tr>
+<td><code>/settings</code></td>
+<td>SettingsPage</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="5-3-tanstack-query-慣例">5.3 TanStack Query 慣例<a class="headerlink" href="#5-3-tanstack-query-慣例" title="Permanent link">¶</a></h3>
+<p><code>queries.ts</code> 開頭有 <code>keys</code> 物件集中管理所有 query key，讓 mutation 能精準
+invalidate：</p>
+<div class="highlight"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">keys</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">devices</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">params</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">[</span><span class="s1">'devices'</span><span class="p">,</span><span class="w"> </span><span class="nx">params</span><span class="p">]</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">device</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">[</span><span class="s1">'devices'</span><span class="p">,</span><span class="w"> </span><span class="s1">'detail'</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">]</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">,</span>
+<span class="w">  </span><span class="p">...</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Refetch 間隔依資料變動速度分兩級：</p>
+<div class="highlight"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">LIVE_REFETCH_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">15</span><span class="nx">_000</span><span class="w">   </span><span class="c1">// 列表、統計</span>
+<span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">FAST_REFETCH_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">5</span><span class="nx">_000</span><span class="w">    </span><span class="c1">// 單一設備的即時值</span>
+</code></pre></div>
+<p>註冊表類資料（sites、blueprints、metrics）不自動 refetch，只在 mutation 後
+invalidate。</p>
+<h3 id="5-4-i18n">5.4 i18n<a class="headerlink" href="#5-4-i18n" title="Permanent link">¶</a></h3>
+<p>三個語言檔結構完全相同，<strong><code>en.ts</code> 是型別來源</strong>——另外兩個少一個 key 就會
+typecheck 失敗。這是刻意的，避免漏翻譯。</p>
+<p>中文沒有複數形，但因為型別對齊，<code>_other</code> 這種 key 在中文檔也要有（值可以
+一樣）。</p>
+<h3 id="5-5-共用元件">5.5 共用元件<a class="headerlink" href="#5-5-共用元件" title="Permanent link">¶</a></h3>
+<p><code>frontend/src/components/ui/index.ts</code> 匯出全部：<code>Button</code> / <code>IconButton</code> / <code>Card</code> /
+<code>CardHeader</code> / <code>CardBody</code> / <code>DetailRow</code> / <code>PageHeader</code> / <code>Badge</code> /
+<code>ConnectionBadge</code> / <code>SeverityBadge</code> / <code>Field</code> / <code>TextInput</code> / <code>TextArea</code> /
+<code>Select</code> / <code>Checkbox</code> / <code>SegmentedControl</code> / <code>Table</code> 系列 / <code>Modal</code> /
+<code>ConfirmDialog</code> / <code>EmptyState</code> / <code>ErrorState</code> / <code>LoadingState</code> / <code>Skeleton</code> /
+<code>StatTile</code> / <code>MeterBar</code> / <code>Pagination</code> / <code>SiteTreeSelect</code> / <code>DeviceIcon</code> /
+<code>DeviceIconBadge</code> / <code>TimeRangePicker</code> / <code>MetricPicker</code>。</p>
+<p>後面三個是後來加的，各自有一個「為什麼不用更簡單的作法」：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>元件</th>
+<th>取代了什麼</th>
+<th>為什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SiteTreeSelect</code></td>
+<td>用兩個空白縮排的扁平 <code>&lt;select&gt;</code></td>
+<td>清單一長到要捲動，樹的形狀就消失了——而那正是它最需要存在的時候。搜尋時會保留命中節點的<strong>上層</strong>，否則「產線 3」會被畫在最上層，那是對它位置的謊言</td>
+</tr>
+<tr>
+<td><code>DeviceIcon</code></td>
+<td>純文字的類型欄</td>
+<td>依 <strong>category</strong> 而非藍圖：category 是平台真正拿來推理的東西，而且一台設備的 category 終生不變，所以圖示也不會在某次編輯後悄悄換掉</td>
+</tr>
+<tr>
+<td><code>TimeRangePicker</code></td>
+<td>只有捲動預設值的 <code>SegmentedControl</code></td>
+<td>預設值回答「現在發生什麼事」；固定區間回答「上週二 03:40 發生了什麼」——後者用捲動視窗做不到，它會在你閱讀的時候從腳下移開</td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2 id="6-常見維護任務-該去哪裡改">6. 常見維護任務：該去哪裡改<a class="headerlink" href="#6-常見維護任務-該去哪裡改" title="Permanent link">¶</a></h2>
+<h3 id="6-1-新增一個-api-endpoint">6.1 新增一個 API endpoint<a class="headerlink" href="#6-1-新增一個-api-endpoint" title="Permanent link">¶</a></h3>
+<ol>
+<li><code>apps/&lt;app&gt;/schemas.py</code> — 定義 <code>XxxIn</code> / <code>XxxOut</code></li>
+<li><code>apps/&lt;app&gt;/api.py</code> — 在既有 router 上加函式，需要權限就加
+   <code>auth=role_required(Role.ADMIN)</code></li>
+<li>若是全新的 router：在 <code>config/api.py</code> 加 <code>api.add_router(...)</code></li>
+<li><code>tests/test_*.py</code> — 加測試（用 <code>tests/test_api.py::ApiTestCase</code> 當基底）</li>
+<li><code>frontend/src/lib/types.ts</code> — 加對應型別</li>
+<li><code>frontend/src/lib/queries.ts</code> — 加 hook</li>
+<li><code>README.md</code> 的端點總表（重要端點才需要）</li>
+</ol>
+<h3 id="6-2-新增一個-model-欄位">6.2 新增一個 model 欄位<a class="headerlink" href="#6-2-新增一個-model-欄位" title="Permanent link">¶</a></h3>
+<ol>
+<li><code>apps/&lt;app&gt;/models.py</code> — 加欄位，<strong>盡量 nullable 或有 default</strong></li>
+<li><code>python manage.py makemigrations &lt;app&gt;</code></li>
+<li><strong>把產生的檔名改成有意義的名字</strong>（例如
+   <code>0007_device_warranty.py</code>），既有的 migration 都是這樣命名的</li>
+<li>若既有資料需要轉換，在 migration 裡加 <code>migrations.RunPython</code>，
+   並<strong>同時寫 backwards 函式</strong>（參考
+   <code>apps/devices/migrations/0006_device_lifecycle.py</code>）</li>
+<li><code>apps/&lt;app&gt;/schemas.py</code> — 若要對外露出</li>
+<li><code>frontend/src/lib/types.ts</code> — 同步型別</li>
+<li><code>python manage.py makemigrations --check --dry-run</code> 確認沒有漏</li>
+</ol>
+<h3 id="6-3-新增一種設備類別">6.3 新增一種設備類別<a class="headerlink" href="#6-3-新增一種設備類別" title="Permanent link">¶</a></h3>
+<ol>
+<li><code>apps/devices/models.py::DeviceCategory</code> — 加 choices 值</li>
+<li><strong>同一檔案的 <code>CATEGORY_CAPABILITIES</code></strong> — 加四個能力旗標的預設值
+   （漏了會 fallback 到 <code>OTHER</code>）</li>
+<li>若它是純量測用途，<code>is_metering_only()</code> 的集合也要加</li>
+<li><code>apps/core/management/commands/bootstrap.py</code> — 若要提供內建 blueprint，
+   加進 <code>BUILTIN_DEVICE_TYPES</code></li>
+<li><code>makemigrations</code>（choices 改變會產生 <code>AlterField</code>，不需要 data migration）</li>
+<li><code>frontend/src/lib/types.ts</code> 若有列舉型別</li>
+<li>i18n 三個語言檔的類別名稱</li>
+<li><code>docs/device-protocol.md</code> §3.7 的 <code>category</code> 清單</li>
+<li><code>docs/system-logic.md</code> §1.1 的類別清單與 §1.2 的能力預設表</li>
+</ol>
+<h3 id="6-4-新增一個-metric">6.4 新增一個 metric<a class="headerlink" href="#6-4-新增一個-metric" title="Permanent link">¶</a></h3>
+<p><strong>內建 metric</strong>（所有租戶共用）：</p>
+<ol>
+<li><code>apps/core/management/commands/bootstrap.py::BUILTIN_METRICS</code> — 加一列
+   tuple（key、顯示名、單位、value_type、kind、aggregation、min、max、
+   category、繁中、簡中）</li>
+<li><code>python manage.py bootstrap --update-existing</code></li>
+<li>若是累計計數器且知道溢位上限，順便設 <code>Metric.counter_max</code></li>
+<li><code>docs/device-protocol.md</code> §7 的內建 metric 表</li>
+</ol>
+<p><strong>租戶自訂 metric</strong>：不用改程式，走 <code>POST /api/metrics</code>。</p>
+<h3 id="6-5-新增一個前端頁面">6.5 新增一個前端頁面<a class="headerlink" href="#6-5-新增一個前端頁面" title="Permanent link">¶</a></h3>
+<ol>
+<li><code>frontend/src/pages/XxxPage.tsx</code> — 新檔案</li>
+<li><code>frontend/src/App.tsx</code> — 加 <code>&lt;Route path="xxx" element={&lt;XxxPage /&gt;} /&gt;</code>
+   （若相依很重就用 <code>lazy()</code>）</li>
+<li><code>frontend/src/components/layout/Sidebar.tsx</code> — 加導覽項目與圖示</li>
+<li>i18n 三語加 <code>xxx.title</code> / <code>xxx.subtitle</code> 等</li>
+<li>需要新資料就先做 §6.1</li>
+</ol>
+<h3 id="6-6-新增一種告警規則條件">6.6 新增一種告警規則條件<a class="headerlink" href="#6-6-新增一種告警規則條件" title="Permanent link">¶</a></h3>
+<ol>
+<li><code>apps/alerts/models.py::Operator</code> — 加運算子 choices
+   （現有：<code>gt</code> / <code>gte</code> / <code>lt</code> / <code>lte</code> / <code>eq</code> / <code>neq</code> / <code>outside</code> / <code>inside</code> /
+   <code>no_data</code> / <code>offline</code>）</li>
+<li><code>apps/alerts/engine.py::breaches()</code> 與 <code>clears()</code> — 加判斷分支
+   （<strong>兩個都要</strong>，否則告警觸發後解不掉）</li>
+<li><code>apps/alerts/schemas.py</code> — 若參數形狀不同</li>
+<li><code>tests/test_alerts.py</code> — 加測試，含觸發與解除兩個方向</li>
+<li><code>frontend/src/pages/RulesPage.tsx</code> — 編輯器的選項</li>
+<li>i18n 三語的運算子名稱</li>
+</ol>
+<h3 id="6-7-新增一個成本模型">6.7 新增一個成本模型<a class="headerlink" href="#6-7-新增一個成本模型" title="Permanent link">¶</a></h3>
+<p>設計背景見 <a href="device-classification.html">設備分類設計</a> §3.12。註冊表已
+經在了，所以新增一種成本只是加一個檔案，<strong>不必動結算核心</strong>：</p>
+<ol>
+<li>新增 <code>apps/ems/costs/&lt;name&gt;.py</code>，寫一個吃 <code>CostContext</code>、回 <code>CostResult</code> 的
+   函式，用 <code>@register("key")</code> 掛上去</li>
+<li>在 <code>apps/ems/costs/__init__.py</code> 的 import 清單加上該模組（觸發註冊）</li>
+<li>需要新的預設對應時，改 <code>base.py</code> 的 <code>ROLE_DEFAULTS</code></li>
+<li>參數放 <code>EnergyAsset.cost_parameters</code>（JSON），由 <code>context.parameter()</code> 取用</li>
+</ol>
+<p>單位在 <code>CostModel</code> 的 docstring 裡寫死，不要讓呼叫端猜：能量一律 kWh、功率 kW、
+油耗 L/kWh、油價 元/L。</p>
+<p>三條規則不要破壞：</p>
+<ul>
+<li><strong>未知的 key 要 raise</strong>（<code>UnknownCostModel</code>），不要靜默回 0。成本靜默歸零是最
+  難發現的錯誤之一，而且會讓柴發看起來比市電便宜。</li>
+<li><strong>只讀 <code>EnergyAsset</code> 上的欄位，絕不讀 <code>DeviceDeclaration</code>。</strong> 成本模型直接決定
+  帳單數字，一台被入侵的設備若能自己宣告油耗，報表就會替錯誤的調度決策背書。
+  <code>tests/test_cost_models.py</code> 有一個測試釘住這件事。</li>
+<li><strong><code>EnergyInterval</code> 的總計欄位語意不變</strong>（只算市電）。分項是新增的細節層，既有
+  的儀表板與跨站 roll-up 完全不受影響。</li>
+</ul>
+<h3 id="6-7a-新增一種設備類型的-icon">6.7A 新增一種設備類型的 ICON<a class="headerlink" href="#6-7a-新增一種設備類型的-icon" title="Permanent link">¶</a></h3>
+<p><code>frontend/src/components/ui/DeviceIcon.tsx</code>：</p>
+<ol>
+<li><code>CATEGORY_ICON</code> 加一筆 <code>category -&gt; lucide 元件</code></li>
+<li><code>CATEGORY_TONE</code> 加一個色調（可省略，會退回 <code>text-subtle</code>）</li>
+<li>地圖 marker 另外用一組<strong>極簡的 SVG 路徑</strong>（<code>MapPage.tsx::categoryPath()</code>），
+   因為 lucide 的細節圖形縮到 13px 會糊成一團</li>
+<li><code>i18n</code> 三個語系檔的 <code>devices.categories.&lt;key&gt;</code></li>
+</ol>
+<p>依 <strong>category</strong> 而不是藍圖，理由是 category 是平台真正拿來推理的東西，而且一台設備
+的 category 終生不變——所以圖示不會在某次編輯之後悄悄換掉。</p>
+<h3 id="6-7b-為一種資產開啟運轉-session">6.7B 為一種資產開啟運轉 session<a class="headerlink" href="#6-7b-為一種資產開啟運轉-session" title="Permanent link">¶</a></h3>
+<p>不需要改程式，改資料就好：</p>
+<ol>
+<li><code>EnergyAsset.session_tracking_enabled = True</code></li>
+<li>需要時覆寫 <code>session_enter_kw</code> / <code>session_exit_kw</code> / <code>session_min_duration_s</code> /
+   <code>session_gap_s</code>；留 <code>null</code> 會依 <code>rated_power_kw</code> 推算</li>
+<li>回算歷史：<code>manage.py rebuild_sessions --hours 720</code></li>
+</ol>
+<p>load 預設是關的：一條一直在耗電的迴路會產生一個永遠不結束的 session，沒有資訊量。
+間歇運轉的設備（冰水機、空壓機）才值得開。</p>
+<h3 id="6-7c-加一個-跟著使用者走-的介面設定">6.7C 加一個「跟著使用者走」的介面設定<a class="headerlink" href="#6-7c-加一個-跟著使用者走-的介面設定" title="Permanent link">¶</a></h3>
+<p>不要在 <code>User</code> 上加欄位——那是後端自己會讀的偏好（主題、語言、時區），介面版面不是。</p>
+<ol>
+<li>前端用 <code>useUiPreference&lt;T&gt;(key, fallback)</code>，key 依功能命名空間，例如
+   <code>device-metrics:&lt;uuid&gt;</code>、<code>dashboard-view</code></li>
+<li>後端不需要任何改動：<code>/auth/me/ui/{key}</code> 是通用的鍵值儲存</li>
+<li>沒存過的 key 回空值而不是 404——第一次造訪是正常情況，不是錯誤</li>
+</ol>
+<p>兩個上限在 API 層（<code>MAX_UI_PREFERENCES</code>、<code>MAX_UI_PREFERENCE_BYTES</code>），因為資料庫
+約束表達不了它們。少了上限，這就是一個掛在每個 session 上、可以無限寫入的儲存。</p>
+<h3 id="6-8-加一個翻譯字串">6.8 加一個翻譯字串<a class="headerlink" href="#6-8-加一個翻譯字串" title="Permanent link">¶</a></h3>
+<ol>
+<li><code>frontend/src/i18n/locales/en.ts</code> — 加 key（<strong>先加這個</strong>，它是型別來源）</li>
+<li><code>zh-Hant.ts</code> 與 <code>zh-Hans.ts</code> — 加同一個 key</li>
+<li><code>npm run typecheck</code> 會抓出漏掉的語言</li>
+</ol>
+<p>後端訊息（Django <code>gettext</code>）走 <code>locale/*.po</code>，改完要
+<code>manage.py compilemessages</code>。但<strong>大部分使用者可見的字串都在前端</strong>，後端只回
+穩定的錯誤 <code>code</code>，由前端翻譯。</p>
+<h3 id="6-9-新增一個-ui-術語提示">6.9 新增一個 UI 術語提示<a class="headerlink" href="#6-9-新增一個-ui-術語提示" title="Permanent link">¶</a></h3>
+<p>介面上的專有名詞（SOC、契約容量、LWT…）滑鼠移上去或點一下會跳出說明氣泡。
+全部詞條集中在<strong>一個檔案</strong>：</p>
+<p><strong><code>frontend/src/lib/glossary.ts</code></strong></p>
+<h4 id="加一個詞條">加一個詞條<a class="headerlink" href="#加一個詞條" title="Permanent link">¶</a></h4>
+<p>在 <code>GLOSSARY</code> 裡加一筆：</p>
+<div class="highlight"><pre><span></span><code><span class="w">  </span><span class="nx">myTerm</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">abbr</span><span class="o">:</span><span class="w"> </span><span class="s1">'DoD'</span><span class="p">,</span><span class="w">                    </span><span class="c1">// 可省略，只有縮寫才填</span>
+<span class="w">    </span><span class="nx">expansion</span><span class="o">:</span><span class="w"> </span><span class="s1">'Depth of Discharge'</span><span class="p">,</span><span class="w"> </span><span class="c1">// 英文全名，永遠不翻譯</span>
+<span class="w">    </span><span class="nx">unit</span><span class="o">:</span><span class="w"> </span><span class="s1">'%'</span><span class="p">,</span><span class="w">                      </span><span class="c1">// 可省略</span>
+<span class="w">    </span><span class="nx">label</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">en</span><span class="o">:</span><span class="w"> </span><span class="s1">'Depth of discharge'</span><span class="p">,</span>
+<span class="w">      </span><span class="s1">'zh-Hant'</span><span class="o">:</span><span class="w"> </span><span class="s1">'放電深度'</span><span class="p">,</span>
+<span class="w">      </span><span class="s1">'zh-Hans'</span><span class="o">:</span><span class="w"> </span><span class="s1">'放电深度'</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nx">definition</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">en</span><span class="o">:</span><span class="w"> </span><span class="s1">'…'</span><span class="p">,</span>
+<span class="w">      </span><span class="s1">'zh-Hant'</span><span class="o">:</span><span class="w"> </span><span class="s1">'…'</span><span class="p">,</span>
+<span class="w">      </span><span class="s1">'zh-Hans'</span><span class="o">:</span><span class="w"> </span><span class="s1">'…'</span><span class="p">,</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">  </span><span class="p">},</span>
+</code></pre></div>
+<p>然後在<strong>該名詞第一次出現的標籤</strong>上包起來：</p>
+<div class="highlight"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Term</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">'@/components/ui'</span>
+
+<span class="p">&lt;</span><span class="nt">DetailRow</span><span class="w"> </span><span class="na">label</span><span class="o">=</span><span class="p">{&lt;</span><span class="nt">Term</span><span class="w"> </span><span class="na">id</span><span class="o">=</span><span class="s">"myTerm"</span><span class="p">&gt;{</span><span class="nx">t</span><span class="p">(</span><span class="s1">'storage.dod'</span><span class="p">)}&lt;/</span><span class="nt">Term</span><span class="p">&gt;}&gt;</span>
+<span class="p">&lt;</span><span class="nt">Th</span><span class="p">&gt;&lt;</span><span class="nt">Term</span><span class="w"> </span><span class="na">id</span><span class="o">=</span><span class="s">"myTerm"</span><span class="p">&gt;{</span><span class="nx">t</span><span class="p">(</span><span class="s1">'storage.dod'</span><span class="p">)}&lt;/</span><span class="nt">Term</span><span class="p">&gt;&lt;/</span><span class="nt">Th</span><span class="p">&gt;</span>
+<span class="p">&lt;</span><span class="nt">Term</span><span class="w"> </span><span class="na">id</span><span class="o">=</span><span class="s">"myTerm"</span><span class="w"> </span><span class="p">/&gt;</span><span class="w">   </span><span class="p">{</span><span class="cm">/* 沒有 children 時直接顯示詞條名稱 */</span><span class="p">}</span>
+</code></pre></div>
+<h4 id="為什麼術語不放在-i18n-locales">為什麼術語不放在 <code>i18n/locales/</code><a class="headerlink" href="#為什麼術語不放在-i18n-locales" title="Permanent link">¶</a></h4>
+<p>其他字串都在 i18n 檔案裡，術語表刻意是例外。一個詞條不是三個獨立字串，是
+<strong>同一段解釋的三個語言版本</strong>——放在一起才看得出來簡體版是不是把繁體版逐字轉
+過去的（<code>光伏</code> 不是 <code>太陽光電</code>、<code>固件</code> 不是 <code>韌體</code>、<code>分时电价</code> 不是
+<code>時間電價</code>）。拆成三個檔案，這種錯誤根本看不見。</p>
+<h4 id="標註密度規則">標註密度規則<a class="headerlink" href="#標註密度規則" title="Permanent link">¶</a></h4>
+<p><strong>只標在「標籤」上，不標在「數值」上。</strong></p>
+<ul>
+<li>✅ 表格欄位標題、<code>StatTile</code> 的 label、<code>Field</code> 的 label、卡片標題</li>
+<li>✅ 分類型的狀態徽章（生命週期、能力旗標）——「suspended 是什麼意思」正是
+  在那裡被問的</li>
+<li>❌ 每一列的數值、內文敘述、同一頁重複出現的第二次以後</li>
+</ul>
+<p>理由：使用者問的是「這個欄位是什麼」，不是「這個數字是什麼」。如果每一列都
+加虛線底線，一個 50 列的表格就會有 50 條底線，提示就變成雜訊，真正需要看的
+那一個反而被淹沒。</p>
+<h4 id="有哪些檢查會擋下錯誤">有哪些檢查會擋下錯誤<a class="headerlink" href="#有哪些檢查會擋下錯誤" title="Permanent link">¶</a></h4>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>檢查</th>
+<th>誰做的</th>
+<th>抓什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>三種語言都要有</td>
+<td>TypeScript</td>
+<td>少填一個語言就編譯不過</td>
+</tr>
+<tr>
+<td><code>&lt;Term id="…"&gt;</code> 的 id 存在</td>
+<td>TypeScript</td>
+<td>打錯字編譯不過</td>
+</tr>
+<tr>
+<td>簡體版不是繁體版的複製</td>
+<td><code>tests/test_glossary.py</code></td>
+<td>兩邊定義字串完全相同</td>
+</tr>
+<tr>
+<td>簡體版沒有台灣用語</td>
+<td><code>tests/test_glossary.py</code></td>
+<td>韌體／軟體／程式／資料…</td>
+</tr>
+<tr>
+<td>定義不是半成品</td>
+<td><code>tests/test_glossary.py</code></td>
+<td>太短的定義</td>
+</tr>
+<tr>
+<td>沒有孤兒詞條</td>
+<td><code>tests/test_glossary.py</code></td>
+<td>加了詞條但沒有任何頁面用到</td>
+</tr>
+</tbody>
+</table></div>
+<p>最後一項如果詞條<strong>刻意</strong>不出現在 UI（例如 <code>qos</code>、<code>retained</code> 只出現在設備
+協定文件裡），把 id 加進 <code>tests/test_glossary.py</code> 的 <code>REFERENCE_ONLY</code>，並在
+那裡說明原因。</p>
+<hr>
+<h2 id="7-開發流程與慣例">7. 開發流程與慣例<a class="headerlink" href="#7-開發流程與慣例" title="Permanent link">¶</a></h2>
+<h3 id="7-1-跑起來">7.1 跑起來<a class="headerlink" href="#7-1-跑起來" title="Permanent link">¶</a></h3>
+<p>見 <a href="running-locally.html">本機執行</a>。這裡不重複。</p>
+<p>VS Code 一鍵啟動：<code>.vscode/launch.json</code> 的 compound
+「ZQS: 全部啟動 (API + 前端)」。</p>
+<h3 id="7-2-測試-lint-typecheck">7.2 測試、lint、typecheck<a class="headerlink" href="#7-2-測試-lint-typecheck" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span><span class="nb">test</span><span class="w"> </span>tests<span class="w">           </span><span class="c1"># 611 個測試，約 75 秒</span>
+python<span class="w"> </span>-m<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>apps/<span class="w"> </span>services/<span class="w"> </span>tests/
+<span class="nb">cd</span><span class="w"> </span>frontend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>typecheck
+<span class="nb">cd</span><span class="w"> </span>frontend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>e2e<span class="w">            </span><span class="c1"># 36 個瀏覽器測試，約 4 分鐘</span>
+</code></pre></div>
+<p>四個都要綠。CI 沒有設定，所以這是提交前的自檢清單。</p>
+<p>E2E 需要<strong>後端先跑著</strong>（<code>.\scripts\dev.ps1</code>）；Vite 由 Playwright 自己啟動。它用
+系統已安裝的 Chrome，不下載自己的瀏覽器。</p>
+<h3 id="7-2a-e2e-抓的是哪一層">7.2A E2E 抓的是哪一層<a class="headerlink" href="#7-2a-e2e-抓的是哪一層" title="Permanent link">¶</a></h3>
+<p><code>tsc</code> 證明型別對得上，<code>vite build</code> 證明 import 解析得了。兩者都不會執行任何一行
+render。條件式呼叫的 hook、render 時讀到 undefined、Leaflet 在容器還沒量到尺寸就
+初始化——這些全部編譯得過，然後在畫面上變成一片空白加一則 console 錯誤。</p>
+<p>所以每個測試都攔截 console 並斷言它是空的。這條斷言比任何一個個別檢查都有價值：
+它不需要預先知道會壞在哪裡。</p>
+<p>三個實務細節：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>細節</th>
+<th>為什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>只登入一次（<code>auth.setup.ts</code> + <code>storageState</code>）</td>
+<td>登入限流是 10 次／5 分鐘。每個測試各登入一次，第 11 個開始會全部變成噪音——而那些失敗跟被測的程式無關</td>
+</tr>
+<tr>
+<td>不斷言任何<strong>即時數值</strong></td>
+<td>預設模式有模擬器每幾秒發布一次，釘住數字的測試從寫下去就是 flaky</td>
+</tr>
+<tr>
+<td>預期中的 404 要列白名單</td>
+<td>瀏覽器不管應用程式預不預期都會把 4xx 記進 console。<code>/devices/{id}/declaration</code> 在設備從未宣告時回 404 是<strong>設計如此</strong>，不列出來就跟真的錯誤分不開</td>
+</tr>
+</tbody>
+</table></div>
+<p>截圖存在 <code>frontend/e2e-results/</code>，失敗時另有 trace（<code>npx playwright show-trace</code>）。</p>
+<p>測試用 <code>unittest.TestCase</code> 風格（Django test runner），不是 pytest fixture
+風格——雖然 <code>requirements-dev.txt</code> 裝了 pytest，實際跑的是
+<code>manage.py test</code>。共用建構器在 <code>tests/factories.py</code>。</p>
+<h3 id="7-3-命名慣例">7.3 命名慣例<a class="headerlink" href="#7-3-命名慣例" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>對象</th>
+<th>慣例</th>
+<th>例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>單數名詞</td>
+<td><code>Device</code>、<code>EnergyInterval</code></td>
+</tr>
+<tr>
+<td><code>db_table</code></td>
+<td><code>&lt;app&gt;_&lt;model_snake&gt;</code></td>
+<td><code>devices_site</code>、<code>ems_energy_asset</code></td>
+</tr>
+<tr>
+<td>Metric key</td>
+<td>小寫 snake_case，帶單位後綴</td>
+<td><code>battery_power_w</code>、<code>pv_energy_kwh</code></td>
+</tr>
+<tr>
+<td>Schema</td>
+<td><code>XxxIn</code>（輸入）/ <code>XxxOut</code>（輸出）</td>
+<td><code>SiteIn</code> / <code>SiteSummaryOut</code></td>
+</tr>
+<tr>
+<td>Router 變數</td>
+<td><code>&lt;資源&gt;_router</code></td>
+<td><code>devices_router</code></td>
+</tr>
+<tr>
+<td>Service 函式</td>
+<td>動詞開頭</td>
+<td><code>dispatch_command</code>、<code>set_lifecycle</code></td>
+</tr>
+<tr>
+<td>Migration 檔名</td>
+<td><code>NNNN_有意義的名字</code></td>
+<td><code>0006_device_lifecycle</code></td>
+</tr>
+<tr>
+<td>測試方法</td>
+<td><code>test_&lt;敘述句&gt;</code></td>
+<td><code>test_a_retired_device_refuses_dispatch</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="7-4-錯誤碼慣例">7.4 錯誤碼慣例<a class="headerlink" href="#7-4-錯誤碼慣例" title="Permanent link">¶</a></h3>
+<p>格式是 <strong><code>&lt;名詞&gt;_&lt;狀態&gt;</code></strong> 的 snake_case，穩定不改字（前端據以翻譯）：</p>
+<div class="highlight"><pre><span></span><code>site_in_use            場域仍有設備
+site_has_children      場域仍有子場域
+device_in_energy_model 設備仍被能源模型綁著
+device_retired         設備已退役
+capability_not_supported 設備沒有該能力
+counter_reset          計數器倒退
+</code></pre></div>
+<p><code>details</code> 放結構化資訊給前端用（例如是哪幾筆綁定），不要塞給人看的句子。</p>
+<h3 id="7-5-什麼時候要寫-audit-log">7.5 什麼時候要寫 audit log<a class="headerlink" href="#7-5-什麼時候要寫-audit-log" title="Permanent link">¶</a></h3>
+<p>寫入 <code>AuditLog</code> 的判準：<strong>這是不是一個「人」做的、會改變狀態的決定。</strong></p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>要寫</th>
+<th>不要寫</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>建立／修改／刪除設備、場域、規則</td>
+<td>查詢類操作</td>
+</tr>
+<tr>
+<td>下發命令、取消命令</td>
+<td>設備自己回報的事件（→ <code>DeviceEvent</code>）</td>
+</tr>
+<tr>
+<td>生命週期變更、接受宣告</td>
+<td>排程器的例行彙總</td>
+</tr>
+<tr>
+<td>成員與 API key 管理</td>
+<td>告警觸發（→ <code>Alert</code> 自己有歷史）</td>
+</tr>
+</tbody>
+</table></div>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">apps.audit.services</span><span class="w"> </span><span class="kn">import</span> <span class="n">record</span>
+<span class="n">record</span><span class="p">(</span><span class="n">AuditAction</span><span class="o">.</span><span class="n">DEVICE_RETIRED</span><span class="p">,</span> <span class="n">ctx</span><span class="o">=</span><span class="n">ctx</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">payload</span><span class="o">=</span><span class="p">{</span><span class="o">...</span><span class="p">})</span>
+</code></pre></div>
+<p>新增 action 就在 <code>AuditAction</code> 加值——<strong>永遠不要改既有的字串值</strong>，那是穩定
+key（model 的註解也這麼寫）。</p>
+<h3 id="7-6-migration-注意事項">7.6 Migration 注意事項<a class="headerlink" href="#7-6-migration-注意事項" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>新欄位盡量 nullable 或有 default</strong>，這樣就不需要 data migration</li>
+<li>需要轉換既有資料時用 <code>RunPython</code>，<strong>一定要寫 backwards</strong></li>
+<li>改 choices 只會產生 <code>AlterField</code>，不影響資料</li>
+<li>產生後<strong>改檔名</strong>成有意義的名字</li>
+<li>套用前先在資料庫副本上試跑一次</li>
+<li>提交前跑 <code>makemigrations --check --dry-run</code> 確認 model 與 migration 同步</li>
+</ul>
+<hr>
+<h2 id="8-容易踩的坑">8. 容易踩的坑<a class="headerlink" href="#8-容易踩的坑" title="Permanent link">¶</a></h2>
+<p>這一節是踩過的坑，每一條都有實際的錯誤後果。</p>
+<h3 id="8-1-device_id-全平台唯一且不可重用">8.1 <code>device_id</code> 全平台唯一且不可重用<a class="headerlink" href="#8-1-device_id-全平台唯一且不可重用" title="Permanent link">¶</a></h3>
+<p><code>Device.device_id</code> 是 <code>unique=True</code>，而且<strong>不是 per-tenant</strong>——因為 topic
+Sparkplug topic 的第二層就是 <code>group_id</code>（組織代碼），所以租戶是從位址讀出來的，
+不必再靠 id 反查。</p>
+<p>這個唯一性是資料庫層級約束，<strong>不看 <code>deleted_at</code> 也不看退役狀態</strong>。所以退役的
+設備永遠占著自己的識別碼，接替設備必須換新的。</p>
+<h3 id="8-2-is_enabled-不要手動設">8.2 <code>is_enabled</code> 不要手動設<a class="headerlink" href="#8-2-is_enabled-不要手動設" title="Permanent link">¶</a></h3>
+<p>它是 ingest 路徑（ingestor、worker、EMQX auth webhook）唯一讀的欄位。現在由
+<code>apps/devices/services.py::set_lifecycle()</code> 依生命週期同步。手動改會讓
+「已退役」和「可以連線」互相矛盾。</p>
+<h3 id="8-3-設備宣告不可信-不得進入控制判斷">8.3 設備宣告不可信，不得進入控制判斷<a class="headerlink" href="#8-3-設備宣告不可信-不得進入控制判斷" title="Permanent link">¶</a></h3>
+<p><code>DeviceDeclaration</code> 是設備自報的。<code>check_capabilities()</code> <strong>只讀 <code>Device</code> 上的
+能力欄位</strong>，絕不查宣告。<code>tests/test_device_declarations.py::TrustBoundaryTests</code>
+就是釘住這件事的——有人把宣告值接進判斷式時它會失敗。</p>
+<h3 id="8-4-include_in_balance-與重複計算">8.4 <code>include_in_balance</code> 與重複計算<a class="headerlink" href="#8-4-include_in_balance-與重複計算" title="Permanent link">¶</a></h3>
+<p>一個 <code>EnergyAsset</code> 只有 <code>include_in_balance=True</code> 才進場域能量平衡。總表加分表
+都設 <code>True</code> 會讓數字翻倍，而且<strong>不會有任何錯誤訊息</strong>。判準見
+<a href="system-logic.html">系統邏輯總覽</a> §2.2。</p>
+<h3 id="8-5-跨場域尖峰不可相加">8.5 跨場域尖峰不可相加<a class="headerlink" href="#8-5-跨場域尖峰不可相加" title="Permanent link">¶</a></h3>
+<p>兩個場域各自尖峰 300 kW，不代表合起來 600 kW——除非它們同時尖峰。正確做法是
+先在同一時間區間內相加，再取最大值。<code>apps/ems/rollup.py::coincident_peaks()</code>
+就是做這件事，回應的 <code>peak_basis</code> 會標示。</p>
+<p>比率（自用率、自給率、往返效率）同理：<strong>分子分母各自加總後再除，不是平均</strong>。</p>
+<h3 id="8-6-counter-倒退記-null-不記-0">8.6 counter 倒退記 <code>null</code> 不記 0<a class="headerlink" href="#8-6-counter-倒退記-null-不記-0" title="Permanent link">¶</a></h3>
+<p>累計計數器倒退可能是換表、韌體重置或溢位，三者無法從數字分辨。除非
+<code>Metric.counter_max</code> 有值，否則 <code>apps/telemetry/energy.py::counter_delta()</code>
+回 <code>None</code>。<strong>把未知填成 0 會讓月報悄悄短少一段。</strong></p>
+<h3 id="8-7-memory-bus-跨行程無效">8.7 memory bus 跨行程無效<a class="headerlink" href="#8-7-memory-bus-跨行程無效" title="Permanent link">¶</a></h3>
+<p><code>BUS_BACKEND=memory</code> 是行程內的 <code>deque</code>，producer 和 consumer 必須是同一個
+Python 物件（靠 <code>get_bus()</code> 的單例）。<code>run_ingestor</code> 和 <code>run_worker</code> 是兩個
+行程，用 memory 等於沒有 queue。<code>dev.ps1 -Full</code> 會強制切成 redis。</p>
+<h3 id="8-8-env-與環境變數優先順序">8.8 <code>.env</code> 與環境變數優先順序<a class="headerlink" href="#8-8-env-與環境變數優先順序" title="Permanent link">¶</a></h3>
+<p><code>load_dotenv(override=False)</code>：<strong>已設的環境變數優先</strong>。所以
+<code>$env:BUS_BACKEND='memory'</code> 或 launch.json 的 <code>env</code> 會蓋過 <code>.env</code>。</p>
+<h3 id="8-9-registry-是-ttl-快取">8.9 registry 是 TTL 快取<a class="headerlink" href="#8-9-registry-是-ttl-快取" title="Permanent link">¶</a></h3>
+<p><code>apps/devices/registry.py</code> 快取 <code>device_id → DeviceRef</code>，TTL 是
+<code>WORKER["REGISTRY_CACHE_TTL_S"]</code>（預設 30 秒）。<strong>新建的設備在快取過期前是
+看不見的</strong>——所以建立、刪除、生命週期變更之後都要
+<code>get_registry().invalidate()</code>。測試裡也要記得叫它。</p>
+<h3 id="8-10-積分是前值保持不是梯形法">8.10 積分是前值保持不是梯形法<a class="headerlink" href="#8-10-積分是前值保持不是梯形法" title="Permanent link">¶</a></h3>
+<p><code>integrate_power()</code> 假設每個樣本的值保持到下一個樣本。對突變負載有系統性偏差。
+<code>coverage</code> 欄位是品質指標，低於 0.8 的區間不該被當成確定的數字。</p>
+<h3 id="8-11-調度引擎只在目標值改變時送命令">8.11 調度引擎只在目標值改變時送命令<a class="headerlink" href="#8-11-調度引擎只在目標值改變時送命令" title="Permanent link">¶</a></h3>
+<p><code>apps/ems/dispatch.py</code> 會算出每個場域此刻<strong>應該</strong>是什麼設定值，跟它上次送出的比
+較，一樣就不送。這不是最佳化，是必要的：排程每 5 分鐘跑一次，每次重送同一個設定值
+等於每 5 分鐘對實體硬體發一次 MQTT，命令紀錄也會被灌爆。</p>
+<p>它靠 <code>idempotency_key</code> 的 <code>dispatch:</code> 前綴認出「上次是自己送的」，所以中間有人手動
+下過命令時，下一輪會重新宣告排程——這是刻意的。</p>
+<p><code>StoragePlan</code> 的運轉限制現在是真的閘門，但<strong>兩條路徑的行為不同</strong>，而且必須不同：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>路徑</th>
+<th>行為</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>排程（<code>clamp_to_plan</code>）</td>
+<td><strong>夾住</strong></td>
+<td>方案說 200 kW、時段說 500 kW，不是矛盾，是「跑 200」</td>
+</tr>
+<tr>
+<td>手動（<code>assert_within_plan</code>）</td>
+<td><strong>拒絕</strong></td>
+<td>人打了一個數字，安靜地執行另一個數字更糟</td>
+</tr>
+</tbody>
+</table></div>
+<p>SOC 限制只在<strong>讀得到即時 SOC</strong> 時才套用。猜一個未知的 SOC 要嘛擋掉合法調度、要嘛
+放行深度放電，兩個都不能接受，所以就不猜。</p>
+<h3 id="8-11a-能源資產綁定必須跟著設備走">8.11A 能源資產綁定必須跟著設備走<a class="headerlink" href="#8-11a-能源資產綁定必須跟著設備走" title="Permanent link">¶</a></h3>
+<p><code>EnergyAsset</code> 同時有 <code>site</code> 與 <code>device</code> 兩個 FK，兩者<strong>必須一致</strong>。設備換了場域而
+綁定留在原地時，不會有任何錯誤——原場域的能源平衡繼續依賴一台已經不在那裡的設備，
+新場域則顯示「尚未綁定任何資產」。兩個數字都錯，而且都不會叫。</p>
+<p><code>update_device</code> 偵測到場域改變時會呼叫 <code>services.move_energy_bindings()</code>。設備被移出
+所有場域時，綁定改為<strong>停用</strong>而不是刪除：它必須停止餵養一個它已經不屬於的平衡，同時
+留下痕跡讓人看得出發生過什麼。</p>
+<h3 id="8-11b-用不到的相依元件-不是故障">8.11B 「用不到的相依元件」不是故障<a class="headerlink" href="#8-11b-用不到的相依元件-不是故障" title="Permanent link">¶</a></h3>
+<p>健康檢查的 <code>ok</code> 回答的是「這是不是問題」，不是「有沒有連上」。<code>MQTT_ENABLED=0</code> 會讓
+MQTT 顯示 <code>state: "disabled"</code>、<code>required: false</code>，不計入整體判定。</p>
+<p>這不是美化。把一個刻意不啟用的元件標成紅色，會訓練使用者忽略這張健康卡——而真正的
+斷線正是會出現在同一張卡上。</p>
+<p>啟用了卻連不上仍然是 <code>state: "error"</code>，照常拉低整體狀態。</p>
+<p><strong>但這個三態不是「MQTT 連不上」的答案，只是把它說清楚的方式。</strong> 預設模式現在會自己
+起一個 broker（§8.11D），所以 <code>disabled</code> 只出現在使用者明確要求的時候——
+<code>-NoBroker</code>，或部署本來就不接 broker。</p>
+<h3 id="8-11d-開發模式自己帶一個-broker">8.11D 開發模式自己帶一個 broker<a class="headerlink" href="#8-11d-開發模式自己帶一個-broker" title="Permanent link">¶</a></h3>
+<p><code>manage.py run_broker</code> 用 <a href="https://github.com/Yakifo/amqtt">amqtt</a> 起一個 MQTT
+broker，<code>manage.py run_pipeline</code> 把 ingestor 與 worker 放進同一個行程。啟動腳本
+預設會帶起這兩個，所以完整的即時路徑不需要 Docker、Redis 或 EMQX。</p>
+<p><strong>它不是 broker 的替代品，是「沒有 broker」的替代品。</strong> 它匿名、沒有 ACL、不呼叫
+auth/ACL webhook——<code>deploy/emqx/README.md</code> 的設備身分模型它一項都沒執行；沒有
+shared subscription、沒有持久化。這些都寫在指令的 docstring 裡。</p>
+<p>三個牽連在一起的設定，改一個就要改另外兩個：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>設定</th>
+<th>內建 broker</th>
+<th>EMQX</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MQTT_PROTOCOL_VERSION</code></td>
+<td><code>311</code>（它只講 3.1.1）</td>
+<td><code>5</code></td>
+</tr>
+<tr>
+<td><code>MQTT_USE_SHARED_SUBSCRIPTION</code></td>
+<td><code>0</code>（它沒有 <code>$share/</code>）</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>BUS_BACKEND</code></td>
+<td><code>memory</code>（配 <code>run_pipeline</code>）</td>
+<td><code>redis</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>平台預設 MQTT 5 是有理由的：它的 reason code 會說 publish 為什麼被拒絕，3.1.1 只會
+說被拒絕了。降到 3.1.1 是為了讓筆電上有一條會動的路，值得。</p>
+<p><code>run_pipeline</code> 必須<strong>注入同一個 bus</strong>。<code>Ingestor</code> 與 <code>Worker</code> 各自 <code>build_bus()</code>，
+這在分行程配 Redis 時是對的，在同行程配記憶體匯流排時是安靜的錯：兩個
+<code>InMemoryBus</code> 就是兩條互不相通的佇列，ingestor 灌滿一條、worker 抽乾另一條，資料庫
+一筆都不會進，而且沒有任何錯誤。</p>
+<h3 id="8-11c-序號空白不參與唯一性">8.11C 序號空白不參與唯一性<a class="headerlink" href="#8-11c-序號空白不參與唯一性" title="Permanent link">¶</a></h3>
+<p><code>uniq_device_org_serial</code> 的條件是 <code>~Q(serial_number="") &amp; Q(deleted_at__isnull=True)</code>。
+兩個理由：驗收時序號經常還不知道，強迫填一個佔位字串會比允許空白更徹底地破壞這個
+約束；而軟刪除的設備不該擋住重新登記。</p>
+<p>API 層另外做一次檢查（<code>_assert_serial_free</code>），目的是把<strong>already 在用的那一台設備的
+名字</strong>放進錯誤裡——「是哪一台？」是重複序號唯一會引發的問題，光一個 409 答不出來。</p>
+<h3 id="8-11f-sparkplug-三個會咬人的地方">8.11F Sparkplug：三個會咬人的地方<a class="headerlink" href="#8-11f-sparkplug-三個會咬人的地方" title="Permanent link">¶</a></h3>
+<p>實作這一層時踩到的坑，每一個都在測試裡釘住了。</p>
+<p><strong>1. 序號的配置與送出必須在同一個鎖裡。</strong></p>
+<p>只鎖住計數器不夠。兩個執行緒可以拿到 7 和 8，卻以 8、7 的順序抵達 socket，而主機
+分不出這跟遺失訊息有什麼差別。任何「採集迴圈發 telemetry、網路執行緒回命令」的
+設計都會立刻撞到——<code>EdgeNodeClient</code> 的每一個發布方法整段都在鎖裡，不是只有
+<code>_next_seq</code>。</p>
+<p><strong>2. 出生必須先於資料，而出生跑在另一個執行緒上。</strong></p>
+<p>多數 MQTT 函式庫的「已連線」回呼在網路執行緒上執行。如果 run loop 一啟動就開始發
+telemetry，第一則 DDATA 會跟 NBIRTH 搶跑，序號變成 0、0、1。參考設備用一個
+<code>Event</code> 擋住 run loop 直到出生送出為止。</p>
+<p><strong>3. 重生要求是唯一的復原路徑，所以它必須真的送出去。</strong></p>
+<p>第一版的 worker 有計數 <code>unresolved_aliases</code>，註解也寫著「要求重生是唯一的辦法」
+——但程式碼從來沒送出那個要求。症狀是：worker 比設備晚啟動時，別名永遠解不開，
+每一則讀值被靜靜丟掉，而且<strong>永遠不會自己好</strong>，因為沒有東西會促使設備重新宣告。
+<code>tests/test_ingest_pipeline.py::test_an_unresolved_alias_asks_for_a_rebirth</code> 釘住
+這條路徑。</p>
+<p>另外兩個容易照 MQTT 直覺寫錯的地方：<strong>clean session 必須是 true</strong>，
+<strong>遺言不可 retained</strong>。理由見 device-protocol.md §2。</p>
+<h3 id="8-11e-幣別屬於組織-不屬於電價方案">8.11E 幣別屬於組織，不屬於電價方案<a class="headerlink" href="#8-11e-幣別屬於組織-不屬於電價方案" title="Permanent link">¶</a></h3>
+<p><code>Organization.reporting_currency</code> 是整個租戶唯一的報表幣別。</p>
+<p>原本幣別散在每個 <code>Tariff</code> 上，於是<strong>還沒設定電價的場域根本沒有幣別</strong>——它的成本
+是 <code>0</code>，隔壁有電價的場域是 <code>$0</code>，同一欄兩種格式，看起來像壞掉。</p>
+<p>三條規則：</p>
+<ul>
+<li><strong>沒有電價的場域退回組織幣別</strong>，所以每一列都標得出來。</li>
+<li><strong>場域之間真的不一致時仍然回空字串。</strong> 這不是可以粉飾的顯示缺口——把兩種幣別
+  相加出來的數字沒有意義，空字串正是阻止前端把它格式化成金額的東西。</li>
+<li><strong>儲存電價時就擋下不一致</strong>（<code>currency_mismatch</code>，422），不是等到出報表才發現。
+  否則 <code>reporting_currency</code> 只是第三個會跟另外兩個矛盾的事實來源。</li>
+</ul>
+<p>組織幣別留空代表「還沒決定」，此時不擋任何電價——設定過程不該被自己卡住。</p>
+<p><strong>匯率換算明確不在範圍內。</strong> 匯率有時間性、有買賣價差、有會計政策，那是另一個系統
+的職責。這個欄位說的是「這些數字本來就是什麼幣別」。</p>
+<h3 id="8-11f2-預設的時間區間必須包含-現在">8.11F2 預設的時間區間必須包含「現在」<a class="headerlink" href="#8-11f2-預設的時間區間必須包含-現在" title="Permanent link">¶</a></h3>
+<p><code>TimeRangeParams.normalized()</code> 回傳的是半開區間 <code>[start, end)</code>——這樣連續查詢才能
+一格接一格而不會把同一筆算兩次。</p>
+<p>但<strong>沒有指定 end 的時候</strong>，end 會稍微超過現在一點點。這看起來像在唬弄，其實不是：
+如果排除性的上界剛好等於 <code>now()</code>，那麼與請求落在同一個時鐘刻度裡寫入的資料就看不
+見了——而時鐘刻度並不小，Windows 大約 15 毫秒。症狀是「最近 24 小時」永遠少掉剛
+進來的那一筆，而且完全不會報錯。</p>
+<p>半開區間的好處來自「這一格後面還有下一格」；「最新」這一格沒有下一格，所以排除
+當下這一瞬間只會掉資料，換不到任何東西。</p>
+<p>事件紀錄與稽核紀錄都踩過這個坑，<code>tests/test_event_log.py::WindowBoundaryTests</code>
+兩個方向都釘住了：預設區間看得到當下寫入的事件，明確指定的區間仍然維持半開。</p>
+<h3 id="8-11g-自動註冊-metric-的兩條界線">8.11G 自動註冊 metric 的兩條界線<a class="headerlink" href="#8-11g-自動註冊-metric-的兩條界線" title="Permanent link">¶</a></h3>
+<p><code>apps/telemetry/autoregister.py</code> 讓一台沒設定過的設備從 DBIRTH 把自己的 metric
+建進目錄。這是便利功能，而便利功能最容易變成漏洞，所以兩條界線寫在程式碼裡：</p>
+<p><strong>永遠不覆蓋既有定義。</strong> 一次韌體更新不該能悄悄改掉一堆告警規則依賴的 metric 的
+單位或範圍。</p>
+<p><strong>不建立會遮蔽內建 metric 的租戶複本。</strong> <code>battery_soc</code> 有兩份定義，等於一個全平台
+共用的 metric 從此分裂成兩個。</p>
+<p>還有一條不在程式碼裡、但同樣要記住的：<strong>註冊 metric 不授予任何權限</strong>。它產生的是
+座標軸上的標籤，不是能力旗標。能力仍然走 <code>DeviceDeclaration</code>。</p>
+<p>單位到 <code>kind</code> 的推論（<code>kWh</code> → counter）看起來像猜測，但那是出生宣告裡唯一的線索，
+而猜錯的代價是能量數字整個錯掉——設備可以用 <code>kind</code> property 明確推翻它。</p>
+<h3 id="8-11h-工作流程引擎踩過的三個坑">8.11H 工作流程引擎踩過的三個坑<a class="headerlink" href="#8-11h-工作流程引擎踩過的三個坑" title="Permanent link">¶</a></h3>
+<p>實測抓出來的，都有測試釘住：</p>
+<p><strong>1. 迴圈變成 busy-wait。</strong> 第一版的 Jump 立刻繼續執行，實測 12 秒燒掉 1,200 步
+——步數上限約 100 秒就會到，記錄也被灌爆。改成讓出當前 tick（見 system-logic
+§1.11），語意反而更對。</p>
+<p><strong>2. 一條忙碌的分支餓死其他分支。</strong> 引擎原本每次都取「最舊的」ready token，於是
+迴圈分支重複被選中直到單次呼叫預算用完，另一條分支完全不動。改成每輪每個 token
+一步。注意限制的粒度是<strong>輪</strong>不是<strong>呼叫</strong>——後者公平但慢到直線五節點要五個 tick。</p>
+<p><strong>3. 計時節點睡過整段等待。</strong> 第一版停在「條件成立」後直接睡到 hold 時間結束再看
+一次，分不出「一直成立」和「中間掉過又回來」。
+<code>test_a_condition_that_comes_back_does_not_count_as_having_held</code> 釘住這條。</p>
+<p><strong>4. 單步被慢動作卡死。</strong> 節點間延遲把 token 的 wake_at 排到未來,單步（按一次
+走一步）醒不了它——按第二下毫無反應。修法:慢動作設定的 wake 在 token state 標
+<code>_slowmo</code>,<code>step_run</code> 先清掉這種 wake 再推進;Wait 節點自己的計時<strong>不受影響</strong>,
+單步永遠不能縮短真正的等待。
+<code>test_single_step_sees_through_the_delay_but_not_a_wait</code> 釘住。</p>
+<p>另外一條寫給之後加節點型別的人：<code>Result.level = "debug"</code> 的記錄<strong>只在 dry run
+保留</strong>。每 tick 都會執行的節點（Jump、Waypoint）要用 debug，否則正式執行的迴圈
+一秒寫三列記錄，寫到沒有人讀得動。</p>
+<h3 id="8-11j-穩定讀值被判為過期-死區不可以決定-有沒有回報">8.11J 穩定讀值被判為過期：死區不可以決定「有沒有回報」<a class="headerlink" href="#8-11j-穩定讀值被判為過期-死區不可以決定-有沒有回報" title="Permanent link">¶</a></h3>
+<p>症狀:SOC 在 55% 不動一小時,控制流程判斷時回 <code>stale_reading</code>。根因:<code>_handle_metrics</code>
+把「死區內未變化」的讀值整筆 <code>continue</code> 掉,<code>upsert_latest</code> 只收到通過死區的列,
+最新值表的 <code>ts</code> 因此凍結。修法:先建 <code>SampleRow</code>,<strong>無條件</strong>放進 <code>latest_rows</code>,
+死區只決定要不要進 <code>rows</code>(歷史)。<code>LatestValueFreshnessTests</code> 釘住。</p>
+<h3 id="8-11k-vite-dev-server-隨機停止-sse-經-proxy-的-econnreset">8.11K Vite dev server 隨機停止：SSE 經 proxy 的 ECONNRESET<a class="headerlink" href="#8-11k-vite-dev-server-隨機停止-sse-經-proxy-的-econnreset" title="Permanent link">¶</a></h3>
+<p>工作流程編輯器的 SSE 走 Vite 的 <code>/api</code> proxy;分頁關閉時 proxied socket 的
+<code>error</code> 事件沒人接,http-proxy 直接讓 node 程序崩潰——表現為「e2e 跑到一半前端
+連線被拒」。<code>vite.config.ts</code> 的 <code>configure(proxy)</code> 接住 error 回 502 即可;正式環境
+的 nginx 無此問題。</p>
+<h3 id="8-11i-modal-的焦點竊取-表單打字被打斷的真正元兇">8.11I Modal 的焦點竊取：表單打字被打斷的真正元兇<a class="headerlink" href="#8-11i-modal-的焦點竊取-表單打字被打斷的真正元兇" title="Permanent link">¶</a></h3>
+<p>症狀:在任何編輯視窗打字,每隔幾秒游標就跳掉、文字順序被打亂。先前把表單的
+<code>useEffect</code> 依賴從整個查詢物件改成 <code>id</code> 修掉了「state 被重設」那一類,但問題
+仍在——因為真正的元兇在 <code>Modal.tsx</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nx">useEffect</span><span class="p">(()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...;</span><span class="w"> </span><span class="nx">panelRef</span><span class="p">.</span><span class="nx">current</span><span class="o">?</span><span class="p">.</span><span class="nx">focus</span><span class="p">()</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="p">[</span><span class="nx">open</span><span class="p">,</span><span class="w"> </span><span class="nx">onClose</span><span class="p">])</span>
+</code></pre></div>
+<p>每個呼叫端都寫 <code>onClose={() =&gt; setOpen(false)}</code>——每次渲染都是新函式——而頁面
+每 5 秒隨輪詢重渲染一次,於是這個 effect 每 5 秒重跑一次,<code>focus()</code> 把焦點從
+正在打字的欄位搶到對話框上。</p>
+<p>修法:<code>onClose</code> 走 ref 讀取(effect 只依賴 <code>open</code>),而且只在對話框<strong>內部沒有
+任何元素持有焦點時</strong>才 focus——搶焦點這件事只有在剛開啟那一刻是對的。</p>
+<p>抓法值得記下來:先用 Playwright 以<strong>鍵盤層級</strong>慢速打字跨過輪詢邊界重現(用
+locator 打字會每鍵重新聚焦,正好把要抓的問題藏掉),再在瀏覽器裡標記 DOM 節點
+確認是「節點還在但焦點跑到 DIV」,直接指向焦點管理而不是重繪。回歸測試:
+<code>interactions.spec.ts</code> 的「typing in an edit dialog survives the polling cycle」。</p>
+<h3 id="8-12-前端-en-ts-是型別來源">8.12 前端 <code>en.ts</code> 是型別來源<a class="headerlink" href="#8-12-前端-en-ts-是型別來源" title="Permanent link">¶</a></h3>
+<p>三個語言檔的結構必須完全相同。少一個 key 就 typecheck 失敗——這是刻意的。</p>
+<h3 id="8-13-示範帳號的密碼寫在版控裡">8.13 示範帳號的密碼寫在版控裡<a class="headerlink" href="#8-13-示範帳號的密碼寫在版控裡" title="Permanent link">¶</a></h3>
+<p><code>admin@example.com</code> / <code>ChangeMe-2026!</code> 出現在 <code>seed_demo.py</code>、<code>README.md</code>、
+<code>docs/running-locally.md</code>、<code>scripts/dev.ps1</code>、<code>scripts/dev.sh</code>。本機開發沒問題，
+但如果這台機器對外開放，那就是一個公開已知帳密的 owner 帳號。</p>
+<hr>
+<h2 id="9-目前的已知缺口">9. 目前的已知缺口<a class="headerlink" href="#9-目前的已知缺口" title="Permanent link">¶</a></h2>
+<p>誠實列出，免得你以為某個東西已經能用：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>東西</th>
+<th>狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CI</td>
+<td>沒有設定，靠人工跑 §7.2 那四個指令</td>
+</tr>
+<tr>
+<td><code>Tariff.demand_charge_per_kw</code> 的實際計費</td>
+<td>欄位在、UI 在，但<strong>月尖峰需量費沒有進入任何結算</strong>——<code>EnergyInterval</code> 是 15 分鐘粒度，需量費是月粒度，兩者需要一張月結算表</td>
+</tr>
+<tr>
+<td>油價的時間性</td>
+<td><code>EnergyAsset.cost_parameters.fuel_price_per_litre</code> 是<strong>單一當前值</strong>，所以重算三個月前的區間會套用今天的油價。正確作法是帶生效期間的 <code>CostParameterSet</code>，見 device-classification.md §3.12</td>
+</tr>
+<tr>
+<td>停電偵測</td>
+<td>「這個區間沒有基準線」目前用<strong>「有發電機輸出」當近似</strong>。真正的停電訊號會更準，但還不存在</td>
+</tr>
+<tr>
+<td>多電池場域的調度</td>
+<td><code>dispatch.py</code> 一個場域只驅動<strong>一台</strong>電池。多顆電池需要一台把它們呈現為單一設備的控制器——在平台這一層拆分設定值沒有通用解</td>
+</tr>
+<tr>
+<td><code>Metric.counter_max</code> 的來源</td>
+<td>設備宣告可以帶，但<strong>不會自動採用</strong>（刻意的）。目前只能由 ADMIN 手動填</td>
+</tr>
+<tr>
+<td>設備成本的時間性</td>
+<td><code>Device.capital_cost</code> 是單一值，沒有處分、重估或殘值。折舊是直線法、不折現——折現率是財務政策，不是平台預設值</td>
+</tr>
+<tr>
+<td><code>UserPreference</code> 的清理</td>
+<td>設備被刪除時，指向它的 <code>device-metrics:&lt;id&gt;</code> 不會一併刪除。無害（讀不到就用預設），但會慢慢累積</td>
+</tr>
+<tr>
+<td>內建 broker 不執行設備身分模型</td>
+<td>匿名、無 ACL、不呼叫 webhook。刻意的——重寫一份安全模型只會多一份可能和 EMQX 不一致的實作。要驗證身分模型請用 <code>-Full</code> 或 <code>test-device.ps1</code></td>
+</tr>
+<tr>
+<td>內建 broker 沒有 shared subscription</td>
+<td>所以本機只能跑一個 ingestor。要驗證多副本分流必須用真 EMQX</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="9-1-已經補上的-之前列在這裡">9.1 已經補上的（之前列在這裡）<a class="headerlink" href="#9-1-已經補上的-之前列在這裡" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>東西</th>
+<th>現在在哪</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自動調度引擎</td>
+<td><code>apps/ems/dispatch.py</code> + <code>manage.py run_dispatch</code>，排程每輪執行</td>
+</tr>
+<tr>
+<td><code>StoragePlan</code> 運轉限制的執行期強制</td>
+<td><code>dispatch.assert_within_plan()</code>，掛在 <code>dispatch_command()</code> 的能力檢查之後</td>
+</tr>
+<tr>
+<td>運轉 session</td>
+<td><code>apps/ems/sessions.py</code> + <code>DeviceOperatingSession</code> + <code>manage.py rebuild_sessions</code></td>
+</tr>
+<tr>
+<td>多來源成本模型</td>
+<td><code>apps/ems/costs/</code> 註冊表 + <code>EnergyIntervalCost</code> 分項表</td>
+</tr>
+<tr>
+<td>個別設備耗能的 API 端點</td>
+<td><code>GET /api/devices/{id}/energy</code>（<code>apps/telemetry/device_energy.py</code>）</td>
+</tr>
+<tr>
+<td>權限綁場域</td>
+<td><code>Membership.sites</code> + <code>AuthContext.site_scope</code>，見 §4.2 <code>apps/accounts</code></td>
+</tr>
+<tr>
+<td>MQTT 缺席被誤報成故障</td>
+<td><code>MQTT_ENABLED</code> + 健康檢查的三態，見 §8.11B</td>
+</tr>
+<tr>
+<td>預設模式根本沒有 broker</td>
+<td><code>run_broker</code> + <code>run_pipeline</code>，啟動腳本預設帶起，見 §8.11D</td>
+</tr>
+<tr>
+<td><code>run_worker</code> 一啟動就當掉</td>
+<td><code>extra={"name": ...}</code> 覆寫 LogRecord 保留欄位；worker 在消費第一筆訊息前就死了</td>
+</tr>
+<tr>
+<td>設備換場域後能源資產留在原地</td>
+<td><code>services.move_energy_bindings()</code>，見 §8.11A</td>
+</tr>
+<tr>
+<td>設備序號重複</td>
+<td>組織內的部分唯一索引 + API 層的具名衝突，見 §8.11C</td>
+</tr>
+<tr>
+<td>幣別散落在各 Tariff 上</td>
+<td><code>Organization.reporting_currency</code>，見 §8.11E</td>
+</tr>
+<tr>
+<td>前端沒有任何執行期測試</td>
+<td>Playwright E2E，見 §7.2A</td>
+</tr>
+</tbody>
+</table></div></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

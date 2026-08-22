@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LabVIEW 整合 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="active">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#第一次呼叫之前">第一次呼叫之前</a></li>
+<li><a href="#labview-設定">LabVIEW 設定</a></li>
+<li><a href="#函式">函式</a><ul>
+<li><a href="#服務">服務</a></li>
+</ul>
+</li>
+<li><a href="#狀態碼-get_status">狀態碼 — get_status</a></li>
+<li><a href="#回傳碼-start_server-stop_server">回傳碼 — start_server、stop_server</a></li>
+<li><a href="#輪詢模式">輪詢模式</a><ul>
+<li><a href="#啟動">啟動</a></li>
+<li><a href="#停止">停止</a></li>
+<li><a href="#重新啟動">重新啟動</a></li>
+<li><a href="#若-vi-中止">若 VI 中止</a></li>
+</ul>
+</li>
+<li><a href="#log">Log</a></li>
+<li><a href="#環境變數覆寫">環境變數覆寫</a></li>
+<li><a href="#windows-的行為-以及一個必須誠實說明的限制">Windows 的行為，以及一個必須誠實說明的限制</a></li>
+<li><a href="#測試">測試</a></li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="從-labview-控制服務">從 LabVIEW 控制服務<a class="headerlink" href="#從-labview-控制服務" title="Permanent link">¶</a></h1>
+<p><a href="../services/labview/labview_api.py"><code>services/labview/labview_api.py</code></a> 讓
+LabVIEW VI 透過 Python Node 啟動與停止 ZQS Cloud 的各項服務。</p>
+<p>Python Node 是同步呼叫：block diagram 會等函式回傳，而且無法中斷它。因此這裡
+的每個函式都在毫秒內回傳，並透過可輪詢的狀態回報進度，絕不阻塞。</p>
+<hr>
+<h2 id="第一次呼叫之前">第一次呼叫之前<a class="headerlink" href="#第一次呼叫之前" title="Permanent link">¶</a></h2>
+<p>這個模組只負責監管行程，本身不執行 Django。請先把專案設定好，才有東西可以
+啟動：</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">dev</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Setup</span> <span class="n">-NoBrowser</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">stop</span><span class="p">.</span><span class="n">ps1</span>
+</code></pre></div>
+<p>這會建立 <code>.venv</code>、安裝相依套件、遷移資料庫並寫入種子資料。之後
+<code>labview_api</code> 會用 <code>.venv\Scripts\python.exe</code> 啟動服務——與 <code>dev.ps1</code> 使用的
+是同一個直譯器。</p>
+<hr>
+<h2 id="labview-設定">LabVIEW 設定<a class="headerlink" href="#labview-設定" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Python Node 上的欄位</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python Version</td>
+<td>你的 LabVIEW 版本所支援的版本</td>
+</tr>
+<tr>
+<td>Module Path</td>
+<td><code>D:\Working Space\Python\ZQS-Cloud\services\labview\labview_api.py</code></td>
+</tr>
+<tr>
+<td>Function Name</td>
+<td>下列函式名稱之一</td>
+</tr>
+</tbody>
+</table></div>
+<p>兩邊的直譯器不必相同。<code>labview_api</code> 只 import 標準函式庫——不需要 Django，也
+不需要 <code>requirements.txt</code>——所以 LabVIEW 可以用它支援的 Python 載入這個模組，
+底下的服務則跑在專案的 3.12 virtualenv 上。</p>
+<p>請把 <em>session</em> 接線貫穿整個 VI。LabVIEW 會在多次呼叫之間保持該 Python session
+存活，這正是模組能記住自己啟動的行程 handle 的原因。</p>
+<hr>
+<h2 id="函式">函式<a class="headerlink" href="#函式" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>函式</th>
+<th>參數</th>
+<th>回傳</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>start_server</code></td>
+<td><code>services</code>（str）</td>
+<td>int 回傳碼</td>
+<td>啟動後立即回傳，不等待服務就緒</td>
+</tr>
+<tr>
+<td><code>stop_server</code></td>
+<td><code>services</code>（str）、<code>grace_seconds</code>（float）</td>
+<td>int 回傳碼</td>
+<td>送出訊號後立即回傳，寬限期在背景進行</td>
+</tr>
+<tr>
+<td><code>get_status</code></td>
+<td><code>service</code>（str）</td>
+<td>int 狀態碼</td>
+<td>要輪詢的就是這個</td>
+</tr>
+<tr>
+<td><code>get_status_json</code></td>
+<td>—</td>
+<td>str (JSON)</td>
+<td>每個服務的 pid、exit code、運行時間、log 路徑</td>
+</tr>
+<tr>
+<td><code>get_last_error</code></td>
+<td>—</td>
+<td>str</td>
+<td>正常時為 <code>""</code>；回傳負數碼後讀這個</td>
+</tr>
+<tr>
+<td><code>clear_last_error</code></td>
+<td>—</td>
+<td>int（恆為 0）</td>
+<td></td>
+</tr>
+<tr>
+<td><code>list_services</code></td>
+<td>—</td>
+<td>str 陣列</td>
+<td><code>api</code>、<code>ingestor</code>、<code>worker</code>、<code>scheduler</code></td>
+</tr>
+<tr>
+<td><code>get_pid</code></td>
+<td><code>service</code>（str）</td>
+<td>int</td>
+<td>沒在跑時為 0</td>
+</tr>
+<tr>
+<td><code>get_log_path</code></td>
+<td><code>service</code>（str）</td>
+<td>str</td>
+<td>絕對路徑，名稱錯誤時為 <code>""</code></td>
+</tr>
+<tr>
+<td><code>get_root</code></td>
+<td>—</td>
+<td>str</td>
+<td>專案根目錄，用來確認接對了</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>services</code> 用 <code>""</code> 或 <code>"all"</code> 代表全部，也可以是逗號分隔的清單，例如
+<code>"api,worker"</code>（用空白分隔也可以，大小寫不拘）。LabVIEW 的一維字串陣列同樣
+接受。<code>grace_seconds</code> 會被夾在 0.5–120 s 之間，預設為 5。</p>
+<p>型別僅限 Python Node 能表示的範圍：<code>int</code>、<code>float</code>、<code>str</code> 以及這些型別的陣列。
+沒有任何函式會回傳 <code>None</code>、boolean、dictionary 或物件，也沒有任何函式會拋出
+例外——失敗一律以負數回傳碼表示，訊息放在 <code>get_last_error</code>。</p>
+<h3 id="服務">服務<a class="headerlink" href="#服務" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>名稱</th>
+<th>命令</th>
+<th>需要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>api</code></td>
+<td><code>manage.py runserver --noreload 127.0.0.1:8000</code></td>
+<td>無</td>
+</tr>
+<tr>
+<td><code>ingestor</code></td>
+<td><code>manage.py run_ingestor</code></td>
+<td>EMQX 1883、Redis 6379</td>
+</tr>
+<tr>
+<td><code>worker</code></td>
+<td><code>manage.py run_worker</code></td>
+<td>Redis 6379</td>
+</tr>
+<tr>
+<td><code>scheduler</code></td>
+<td><code>manage.py run_scheduler</code></td>
+<td>無</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>--noreload</code> 是刻意的：Django 的 autoreloader 會 fork 出第二個行程，對父行程
+送訊號會留下子行程繼續占著 8000 埠。</p>
+<p>啟動 <code>ingestor</code> 或 <code>worker</code> 時，若環境變數尚未指定 backend，會為子行程設定
+<code>BUS_BACKEND=redis</code>——與 <code>dev.ps1</code> 同一套規則，因為不同行程無法共用
+in-memory bus。</p>
+<hr>
+<h2 id="狀態碼-get_status">狀態碼 — <code>get_status</code><a class="headerlink" href="#狀態碼-get_status" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>代碼</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>STOPPED — 沒在跑：從未啟動，或已正常停止</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>RUNNING — 行程存活中</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>STOPPING — 已送出訊號；處於寬限期內或正在被強制結束</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>EXITED — 自行以非零代碼結束；請看 log</td>
+</tr>
+<tr>
+<td><code>-1</code></td>
+<td>UNKNOWN — 未知的服務名稱</td>
+</tr>
+</tbody>
+</table></div>
+<p>傳 <code>""</code> 時，答案涵蓋全部四個服務，依優先序判定：只要有任何一個在停止中就回
+2，其次只要有任何一個非預期結束就回 3，再其次只要有任何一個在跑就回 1，否則
+回 0。需要知道是<em>哪一個</em>時，用 <code>get_status_json</code>。</p>
+<p><code>1</code> 只代表行程存活，不代表 API 已經在回應。要判斷就緒，請在狀態變成 1 之後，
+用 LabVIEW 的 HTTP client 輪詢 <code>http://127.0.0.1:8000/healthz</code>。</p>
+<h2 id="回傳碼-start_server-stop_server">回傳碼 — <code>start_server</code>、<code>stop_server</code><a class="headerlink" href="#回傳碼-start_server-stop_server" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>代碼</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>OK — 請求已受理</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>ALREADY RUNNING — 要求的服務全都已在執行，沒有重啟任何一個</td>
+</tr>
+<tr>
+<td><code>-1</code></td>
+<td>內部錯誤</td>
+</tr>
+<tr>
+<td><code>-2</code></td>
+<td>未知的服務名稱</td>
+</tr>
+<tr>
+<td><code>-3</code></td>
+<td>找不到 Python 直譯器——執行 <code>dev.ps1 -Setup</code>，或設定 <code>ZQS_PYTHON</code></td>
+</tr>
+<tr>
+<td><code>-4</code></td>
+<td>產生行程失敗——路徑錯誤、權限不足，或無法寫入 log 檔</td>
+</tr>
+<tr>
+<td><code>-5</code></td>
+<td>正在停止中——等狀態變成 0 再重試</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>0</code> 與 <code>1</code> 都算成功。任何負數都視為失敗，並讀取 <code>get_last_error</code>。</p>
+<hr>
+<h2 id="輪詢模式">輪詢模式<a class="headerlink" href="#輪詢模式" title="Permanent link">¶</a></h2>
+<h3 id="啟動">啟動<a class="headerlink" href="#啟動" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>start_server("")            →  code
+  code &lt; 0                  →  get_last_error, show it, stop
+  code = 0 or 1             →  continue
+loop, every 250-500 ms:
+    get_status("")          →  1  ready to work
+                            →  3  a service died   → get_status_json, log it
+                            →  0  still nothing up → give up after ~30 s
+</code></pre></div>
+<p>延遲才「失敗」的啟動——設定錯誤、連接埠被占用、Redis 沒開——會表現為狀態 3，
+並在 <code>get_status_json</code> 中帶有非零的 <code>exit_code</code>，通常一兩秒內就會出現。不要把
+第一次讀到的 0 當成失敗，給它一段逾時時間。</p>
+<h3 id="停止">停止<a class="headerlink" href="#停止" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>stop_server("", 5.0)        →  0
+loop, every 250-500 ms:
+    get_status("")          →  2  still shutting down, keep polling
+                            →  0  done
+</code></pre></div>
+<p>這個迴圈保證會結束：寬限期一到，背景執行緒就會強制結束殘存的行程，因此不需要
+LabVIEW 再做任何呼叫，狀態就會走到 0。判定為異常之前，請至少等
+<code>grace_seconds + 5 s</code>。</p>
+<h3 id="重新啟動">重新啟動<a class="headerlink" href="#重新啟動" title="Permanent link">¶</a></h3>
+<p>沒有 <code>restart_server</code>。請呼叫 <code>stop_server</code>，輪詢到 0，再呼叫 <code>start_server</code>。
+在關閉過程中啟動會回傳 <code>-5</code>，而不是與它競爭。</p>
+<h3 id="若-vi-中止">若 VI 中止<a class="headerlink" href="#若-vi-中止" title="Permanent link">¶</a></h3>
+<p>這些服務是獨立行程，會比 VI 活得久，而模組的狀態存在 LabVIEW 的 Python
+session 裡。重新開啟 session 之後，你會拿到一個沒有任何 handle 的監管者：舊
+行程還在跑，<code>get_status</code> 卻回報 0，接著 <code>start_server</code> 就會因為連接埠被占用而
+失敗。用 <code>scripts\stop.ps1</code> 收拾，它是靠命令列比對找出這些行程的。</p>
+<hr>
+<h2 id="log">Log<a class="headerlink" href="#log" title="Permanent link">¶</a></h2>
+<p>每個服務都以附加方式寫入 <code>logs\labview\&lt;service&gt;.log</code>，超過 5 MB 會輪替為
+<code>.log.1</code>。<code>get_log_path</code> 會回傳路徑，讓 VI 可以顯示。</p>
+<p>輸出導向檔案而不是 pipe 是刻意的：沒有人讀取的 OS pipe 大約 64 KB 就會塞滿，
+子行程下一次寫入時便永遠卡住。這個模組不會去讀子行程的輸出，所以用 pipe 最終
+會讓整組服務停擺。這一點有對應的回歸測試。</p>
+<hr>
+<h2 id="環境變數覆寫">環境變數覆寫<a class="headerlink" href="#環境變數覆寫" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>變數</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ZQS_PYTHON</code></td>
+<td>用來啟動服務的直譯器，取代 <code>.venv</code></td>
+</tr>
+<tr>
+<td><code>ZQS_API_BIND</code></td>
+<td>API 綁定位址，預設 <code>127.0.0.1:8000</code></td>
+</tr>
+<tr>
+<td><code>ZQS_LABVIEW_CONSOLE</code></td>
+<td>設為 <code>1</code> 會讓每個服務有自己的可見 console 視窗</td>
+</tr>
+<tr>
+<td><code>BUS_BACKEND</code></td>
+<td>明確指定即可覆寫自動選用的 <code>redis</code></td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2 id="windows-的行為-以及一個必須誠實說明的限制">Windows 的行為，以及一個必須誠實說明的限制<a class="headerlink" href="#windows-的行為-以及一個必須誠實說明的限制" title="Permanent link">¶</a></h2>
+<p>子行程以 <code>CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW</code> 建立，同時關閉 <code>stdin</code>
+並把輸出導向 log 檔。新的 process group 代表某人在自己的 console 按下 Ctrl-C
+不會波及 LabVIEW 所管理的服務，也讓 <code>CTRL_BREAK_EVENT</code> 能只送達單一服務。</p>
+<p>限制在於：<code>CREATE_NO_WINDOW</code> 會讓子行程沒有 console，而沒有 console 的行程
+無法<em>接收</em> console control event。因此 <code>stop_server</code> 送出的、比較禮貌的
+<code>CTRL_BREAK_EVENT</code> 只是盡力而為——在預設旗標下它通常不會有任何作用，關閉是在
+寬限期屆滿、行程被終止時才完成的。這種方式很粗暴：沒有 Django 的關閉掛鉤，
+也沒有最後的 flush。</p>
+<p>若優雅關閉比畫面整潔重要，請設定 <code>ZQS_LABVIEW_CONSOLE=1</code>。屆時每個服務會有
+自己的 console 視窗，<code>CTRL_BREAK_EVENT</code> 送得到，<code>run_ingestor</code>、<code>run_worker</code>
+與 <code>run_scheduler</code> 也會據此乾淨地結束——<code>run_scheduler</code> 就是為此明確處理了
+<code>SIGBREAK</code>。強制結束仍保留為最後的保險。</p>
+<p>在 Linux 與 macOS 上走的是對應的路徑：建立新的 session、對 process group 送
+<code>SIGTERM</code>、寬限期過後送 <code>SIGKILL</code>。這條路徑有測試涵蓋；Windows 的旗標無法在
+非 Windows 環境實測，因此 <code>tests/test_labview_api.py</code> 只斷言旗標是如何選出來
+的，實際效果留待在 Windows 機器上確認。</p>
+<hr>
+<h2 id="測試">測試<a class="headerlink" href="#測試" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span><span class="nb">test</span><span class="w"> </span>tests.test_labview_api
+</code></pre></div>
+<p>38 個測試，不需要資料庫，約一秒跑完。涵蓋狀態機、重複啟動、不阻塞的保證（對
+一個跑 60 秒的子行程呼叫 stop，一秒內回傳）、子行程忽略 <code>SIGTERM</code> 時的寬限期
+強制結束、當機與正常結束的區分回報、800 KB 輸出下的 log 導向，以及任何參數
+——包括垃圾型別——都無法讓函式拋出例外。</p></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

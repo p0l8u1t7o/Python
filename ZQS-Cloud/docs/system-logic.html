@@ -1,0 +1,1579 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系統邏輯總覽 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="active">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#1-設備分類怎麼判定">1. 設備分類怎麼判定</a><ul>
+<li><a href="#1-1-這是什麼-category">1.1 「這是什麼」 → category</a></li>
+<li><a href="#1-2-能做什麼-四個能力旗標">1.2 「能做什麼」 → 四個能力旗標</a></li>
+<li><a href="#1-3-在這個場域扮演什麼-energyasset-role">1.3 「在這個場域扮演什麼」 → EnergyAsset.role</a></li>
+<li><a href="#1-4-它自稱是什麼-devicedeclaration-不可信">1.4 「它自稱是什麼」 → DeviceDeclaration（不可信）</a></li>
+<li><a href="#1-5-設備身分與-類別不可變更-政策">1.5 設備身分與「類別不可變更」政策</a></li>
+<li><a href="#1-6-邊緣節點-一條連線-不是一台設備">1.6 邊緣節點：一條連線，不是一台設備</a></li>
+<li><a href="#1-7-別名表-連線狀態-但存在資料庫裡">1.7 別名表：連線狀態，但存在資料庫裡</a></li>
+<li><a href="#1-8-重生-rebirth-唯一的復原路徑">1.8 重生（Rebirth）：唯一的復原路徑</a></li>
+<li><a href="#1-9-設備類別-照-做什麼-命名">1.9 設備類別：照「做什麼」命名</a></li>
+<li><a href="#1-9a-節費基準線與運轉限制是可以設定的">1.9A 節費基準線與運轉限制是可以設定的</a></li>
+<li><a href="#1-10-即插即用-目錄從出生宣告長出來">1.10 即插即用：目錄從出生宣告長出來</a></li>
+<li><a href="#1-11-工作流程-畫出來的控制邏輯">1.11 工作流程：畫出來的控制邏輯</a></li>
+<li><a href="#1-11a-編輯器的操作習慣">1.11A 編輯器的操作習慣</a></li>
+<li><a href="#1-12-儲能規劃的-執行工作流程-策略">1.12 儲能規劃的「執行工作流程」策略</a></li>
+<li><a href="#1-12c-規劃與電價沿場域樹繼承">1.12C 規劃與電價沿場域樹繼承</a></li>
+<li><a href="#1-12b-儲能規劃是具名模板-場域綁定它">1.12B 儲能規劃是具名模板，場域綁定它</a></li>
+<li><a href="#1-12a-儲能策略-從標籤變成算術">1.12A 儲能策略：從標籤變成算術</a></li>
+<li><a href="#1-13-電價-台電內建方案">1.13 電價：台電內建方案</a></li>
+<li><a href="#1-14-通知-email-line-與事件訂閱">1.14 通知：Email、LINE 與事件訂閱</a></li>
+</ul>
+</li>
+<li><a href="#2-能量平衡-誰算-誰不算">2. 能量平衡：誰算、誰不算</a><ul>
+<li><a href="#2-1-基本規則">2.1 基本規則</a></li>
+<li><a href="#2-2-什麼時候該設-false">2.2 什麼時候該設 False</a></li>
+<li><a href="#2-3-各角色進入哪一條流">2.3 各角色進入哪一條流</a></li>
+<li><a href="#2-4-沒有負載表時的推導">2.4 沒有負載表時的推導</a></li>
+<li><a href="#2-5-積分方法">2.5 積分方法</a></li>
+<li><a href="#2-6-跨場域彙總">2.6 跨場域彙總</a></li>
+</ul>
+</li>
+<li><a href="#3-命令什麼情況會被擋">3. 命令什麼情況會被擋</a><ul>
+<li><a href="#3-1-命令需要什麼能力-由-名稱加上參數值-決定">3.1 命令需要什麼能力，由「名稱加上參數值」決定</a></li>
+<li><a href="#3-2-調度類-vs-設定類命令">3.2 調度類 vs 設定類命令</a></li>
+<li><a href="#3-3-生命週期狀態">3.3 生命週期狀態</a></li>
+</ul>
+</li>
+<li><a href="#4-設備宣告-可以說-不能做">4. 設備宣告：可以說，不能做</a><ul>
+<li><a href="#4-1-絕對規則">4.1 絕對規則</a></li>
+<li><a href="#4-2-收到宣告時會發生什麼">4.2 收到宣告時會發生什麼</a></li>
+<li><a href="#4-3-有人偽造宣告會怎樣">4.3 有人偽造宣告會怎樣</a></li>
+<li><a href="#4-4-採用宣告-只在驗收階段-只有一次">4.4 採用宣告：只在驗收階段，只有一次</a></li>
+<li><a href="#4-5-宣告狀態">4.5 宣告狀態</a></li>
+<li><a href="#4-6-身分不符-資料照收-命令凍結">4.6 身分不符：資料照收，命令凍結</a></li>
+<li><a href="#4-5-哪些欄位維持自動更新">4.5 哪些欄位維持自動更新</a></li>
+</ul>
+</li>
+<li><a href="#5-哪些情況記-null">5. 哪些情況記 null</a></li>
+<li><a href="#6-成本與節費">6. 成本與節費</a><ul>
+<li><a href="#6-1-總計欄位-意義沒有變">6.1 總計欄位：意義沒有變</a></li>
+<li><a href="#6-2-分項成本-新的細節層">6.2 分項成本：新的細節層</a></li>
+<li><a href="#6-3-節費基準線-可設定-且允許沒有答案">6.3 節費基準線：可設定，且允許沒有答案</a></li>
+<li><a href="#6-5-幣別-一個組織一種">6.5 幣別：一個組織一種</a></li>
+</ul>
+</li>
+<li><a href="#7-運轉-session">7. 運轉 session</a><ul>
+<li><a href="#7-1-判定-門檻-遲滯-最短時長">7.1 判定：門檻 + 遲滯 + 最短時長</a></li>
+<li><a href="#7-2-誰來算-排程回算-不是即時狀態機">7.2 誰來算：排程回算，不是即時狀態機</a></li>
+</ul>
+</li>
+<li><a href="#7a-自動調度">7A. 自動調度</a></li>
+<li><a href="#8-已實作-vs-僅完成設計">8. 已實作 vs 僅完成設計</a></li>
+<li><a href="#9-升級既有安裝要跑什麼">9. 升級既有安裝要跑什麼</a><ul>
+<li><a href="#9-1-加入-session-成本模型與場域權限之後">9.1 加入 session、成本模型與場域權限之後</a></li>
+<li><a href="#9-2-加入序號唯一性-設備成本與介面偏好之後">9.2 加入序號唯一性、設備成本與介面偏好之後</a></li>
+</ul>
+</li>
+<li><a href="#10-設備替換">10. 設備替換</a><ul>
+<li><a href="#10-1-什麼時候要替換">10.1 什麼時候要替換</a></li>
+<li><a href="#10-2-一次呼叫-一個交易">10.2 一次呼叫，一個交易</a></li>
+<li><a href="#10-3-為什麼要一次做完">10.3 為什麼要一次做完</a></li>
+<li><a href="#10-4-退役-暫停時的保護">10.4 退役／暫停時的保護</a></li>
+<li><a href="#10-5-報表串接">10.5 報表串接</a></li>
+</ul>
+</li>
+<li><a href="#11-生命週期狀態">11. 生命週期狀態</a><ul>
+<li><a href="#11-1-五個狀態">11.1 五個狀態</a></li>
+<li><a href="#11-2-三個旗標的分工">11.2 三個旗標的分工</a></li>
+<li><a href="#11-3-退役可逆">11.3 退役可逆</a></li>
+</ul>
+</li>
+<li><a href="#11a-設備登記的約束">11A. 設備登記的約束</a><ul>
+<li><a href="#11a-1-序號在組織內唯一">11A.1 序號在組織內唯一</a></li>
+<li><a href="#11a-2-能源資產綁定跟著設備走">11A.2 能源資產綁定跟著設備走</a></li>
+<li><a href="#11a-3-設備成本">11A.3 設備成本</a></li>
+</ul>
+</li>
+<li><a href="#12-場域權限">12. 場域權限</a><ul>
+<li><a href="#12-1-幾個刻意的選擇">12.1 幾個刻意的選擇</a></li>
+<li><a href="#12-2-實作位置">12.2 實作位置</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="系統邏輯總覽">系統邏輯總覽<a class="headerlink" href="#系統邏輯總覽" title="Permanent link">¶</a></h1>
+<p>這份文件描述系統<strong>目前實際的行為規則</strong>，不看程式碼也能理解。</p>
+<p>設計提案在 <a href="device-classification.html">設備分類設計</a>；那份寫的是
+「應該長什麼樣」，這份寫的是「現在是什麼樣」。文件末尾列出兩者的差距。</p>
+<hr>
+<h2 id="1-設備分類怎麼判定">1. 設備分類怎麼判定<a class="headerlink" href="#1-設備分類怎麼判定" title="Permanent link">¶</a></h2>
+<p>分類分成三個各自獨立的問題，<strong>不要用其中一個推導另一個</strong>。</p>
+<h3 id="1-1-這是什麼-category">1.1 「這是什麼」 → <code>category</code><a class="headerlink" href="#1-1-這是什麼-category" title="Permanent link">¶</a></h3>
+<p>在 blueprint（<code>DeviceType</code>）上，11 種：</p>
+<p><code>battery</code>、<code>pcs</code>、<code>generation</code>、<code>meter</code>、<code>load</code>、<code>generator</code>、<code>ev_charger</code>、
+<code>controller</code>、<code>sensor</code>、<code>gateway</code>、<code>other</code></p>
+<p><strong>「純量測設備」由 category 判定</strong>，不是由能力旗標推導：只有 <code>meter</code> 與
+<code>sensor</code> 算是量測設備。一盞不可控的照明四個能力旗標全是 <code>False</code>，但它是
+<strong>負載</strong>，不是電錶。</p>
+<h3 id="1-2-能做什麼-四個能力旗標">1.2 「能做什麼」 → 四個能力旗標<a class="headerlink" href="#1-2-能做什麼-四個能力旗標" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>旗標</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>can_charge</code></td>
+<td>能在命令下吸收電能</td>
+</tr>
+<tr>
+<td><code>can_discharge</code></td>
+<td>能在命令下輸出電能</td>
+</tr>
+<tr>
+<td><code>can_export</code></td>
+<td>允許把電送回市電側</td>
+</tr>
+<tr>
+<td><code>is_dispatchable</code></td>
+<td>接受任何「調度類」命令</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>生效值的解析順序</strong>：</p>
+<ol>
+<li><code>Device</code> 上的覆寫（<code>null</code> 代表未覆寫）</li>
+<li>blueprint 的預設值</li>
+<li>沒有 blueprint → <strong>全部視為 <code>True</code></strong>（寬鬆），但 API 回傳
+   <code>capabilities_unchecked: true</code>，console 會顯示「未指定型號，未做能力檢查」</li>
+</ol>
+<p>第 3 點是刻意的：讓沒有 blueprint 的既有設備繼續運作，但把這個缺口顯示出來，
+而不是變成一個令人意外的失效。</p>
+<p><strong>blueprint 的預設值依 category 決定</strong>（由 <code>manage.py bootstrap</code> 寫入）：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>category</th>
+<th>充</th>
+<th>放</th>
+<th>逆送</th>
+<th>可調度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>battery</code> / <code>pcs</code></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>generation</code></td>
+<td>✗</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>generator</code></td>
+<td>✗</td>
+<td>✓</td>
+<td>✗</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>ev_charger</code></td>
+<td>✓</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>meter</code> / <code>sensor</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td><strong>✗</strong></td>
+</tr>
+<tr>
+<td><code>load</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+</tr>
+<tr>
+<td><code>controller</code> / <code>gateway</code> / <code>other</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>可控負載</strong>（例如可遠端關閉的冰水機）不需要新旗標：<code>category=load</code> 加上
+<code>is_dispatchable=True</code> 就是它，與純被動負載的差別只在那一個旗標。</p>
+<h3 id="1-3-在這個場域扮演什麼-energyasset-role">1.3 「在這個場域扮演什麼」 → <code>EnergyAsset.role</code><a class="headerlink" href="#1-3-在這個場域扮演什麼-energyasset-role" title="Permanent link">¶</a></h3>
+<p>六種：<code>grid_meter</code>、<code>load_meter</code>、<code>pv</code>、<code>battery</code>、<code>ev_charger</code>、<code>generator</code>。</p>
+<p>這回答的是「這台設備的哪個 metric 供應能量平衡中的哪一條流」，<strong>不是設備
+類型</strong>。同一台雙向 PCS 在不同場域可以扮演不同角色。</p>
+<h3 id="1-4-它自稱是什麼-devicedeclaration-不可信">1.4 「它自稱是什麼」 → <code>DeviceDeclaration</code>（不可信）<a class="headerlink" href="#1-4-它自稱是什麼-devicedeclaration-不可信" title="Permanent link">¶</a></h3>
+<p>見第 4 節。</p>
+<h3 id="1-5-設備身分與-類別不可變更-政策">1.5 設備身分與「類別不可變更」政策<a class="headerlink" href="#1-5-設備身分與-類別不可變更-政策" title="Permanent link">¶</a></h3>
+<p><strong>營運政策：設備的類別永遠不會被修改。</strong> 硬體真的換成不同的東西時，做法是
+<strong>建立一台新設備</strong>、把舊的退役——不是把舊那筆資料編輯成新的東西。這樣每一個
+歷史數字都還歸屬於實際產生它的那台設備。</p>
+<p><strong>識別碼是完整的 Sparkplug 位址</strong>：<code>(group_id, edge_node_id, device_id)</code>。</p>
+<ul>
+<li><code>group_id</code> 是組織代碼，<code>edge_node_id</code> 是一條 MQTT 連線，<code>device_id</code> 是掛在
+  那條連線下的設備</li>
+<li><code>device_id</code> 只在<strong>同一個 edge node 內</strong>唯一，不是全平台唯一。前兩層已經把
+  設備定位了，再要求全域唯一等於不准兩個客戶都把電錶叫 <code>METER-01</code></li>
+<li>MQTT 帳號 <code>node-{group_id}-{edge_node_id}</code> 全平台唯一——因為它認證的是連線</li>
+<li>這些唯一性都是<strong>資料庫層級約束，不看退役狀態也不看 soft delete</strong></li>
+</ul>
+<p>所以<strong>接替設備必須在同一個節點下換新的識別碼</strong>。現場作業要多一步：把新的
+<code>device_id</code> 寫進替換硬體的設定。建議命名慣例例如 <code>ZQS-BESS-0001</code> →
+<code>ZQS-BESS-0001-R2</code>（替換精靈預設就這樣填）。</p>
+<p>替換時連線本身怎麼處理，取決於舊設備掛在哪裡：掛在網關上的，新設備沿用同一個
+節點（換的是設備，不是連線）；自己直連的，會拿到一個以新 id 命名的新節點與新
+帳密。</p>
+<p><strong><code>serial_number</code> 沒有唯一性約束</strong>，目前只是自由文字，不能拿來當識別碼。</p>
+<hr>
+<h3 id="1-6-邊緣節點-一條連線-不是一台設備">1.6 邊緣節點：一條連線，不是一台設備<a class="headerlink" href="#1-6-邊緣節點-一條連線-不是一台設備" title="Permanent link">¶</a></h3>
+<p>平台遵循 Sparkplug B，位址因此有三層而不是兩層。<code>EdgeNode</code> 就是中間那層，代表
+<strong>一條 MQTT 連線</strong>。</p>
+<p>它為什麼必須是獨立的一層，而不是設備上的一個欄位：Sparkplug 把序號（<code>seq</code>）、
+生死序號（<code>bdSeq</code>）、metric 別名表全部綁在連線上。這些狀態沒有一個屬於單一設備
+——一台網關前置十二顆電錶時，十二台設備共用一個 <code>seq</code>。放在設備上就得複製十二
+份並保持同步，那是不可能維持正確的。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>情況</th>
+<th>模型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>網關前置多台設備（常見）</td>
+<td>一個 <code>EdgeNode</code>，底下多個 <code>Device</code></td>
+</tr>
+<tr>
+<td>設備自己講 MQTT</td>
+<td>一個 <code>is_implicit=True</code> 的 <code>EdgeNode</code>，底下一個 <code>Device</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>直連設備也走同一條路徑，不另開一套。理由很實際：另一套等於 birth、death、
+sequencing 各有兩份實作，而第二份永遠會腐爛。隱含節點在 console 上預設隱藏，
+操作者看不到自己沒要求過的東西。</p>
+<p><strong>MQTT 憑證掛在節點上</strong>，因為憑證認證的是連線。停用一台掛在網關上的設備不會動
+到憑證（會把鄰居一起弄下線）；停用一台直連設備則會停用它自己那個隱含節點的憑證。</p>
+<h3 id="1-7-別名表-連線狀態-但存在資料庫裡">1.7 別名表：連線狀態，但存在資料庫裡<a class="headerlink" href="#1-7-別名表-連線狀態-但存在資料庫裡" title="Permanent link">¶</a></h3>
+<p>Sparkplug 允許 DATA 訊息只帶 <code>alias=7</code> 而完全不帶名稱，這是它省頻寬的主要來源。
+代價是別名表變成連線狀態：弄丟它，之後每一則讀值都無法解讀。</p>
+<p><code>MetricAlias</code> 把它存進資料庫，所以 worker 重啟、或第二個 worker 副本，仍然可以
+解讀一段在它啟動之前就開始的資料流。</p>
+<p>BIRTH 進來時是<strong>整表覆寫</strong>，不是逐筆更新。出生宣告的定義是「完整清單」，沒被列到
+的別名就是退役了；留著它會讓舊的對應去解讀新的訊息，把讀值記到錯誤的 metric 上。</p>
+<p>遇到查不到的別名時，平台會發出重生要求（見 §1.8），不會猜。猜錯的代價是把一筆
+真實讀值寫進錯誤的序列，那比丟掉它更糟。</p>
+<h3 id="1-8-重生-rebirth-唯一的復原路徑">1.8 重生（Rebirth）：唯一的復原路徑<a class="headerlink" href="#1-8-重生-rebirth-唯一的復原路徑" title="Permanent link">¶</a></h3>
+<p><code>seq</code> 出現缺號，代表有訊息遺失；別名表可能已經不再對應發布端以為的東西。規範
+給的唯一補救就是要求節點重新宣告一次。</p>
+<p>平台在三種情況要求重生：序號缺號、收到查不到的別名、操作者手動按下。同一個節點
+有 <strong>30 秒冷卻</strong>，所以一連串亂序訊息只會換來一次要求而不是風暴。</p>
+<p>重生要求是廉價的——節點只是重發一次 BIRTH——所以平台偏向多問。跑多個 worker 副本
+時，同一個節點的訊息確實可能被亂序檢視，這時多問一次仍然是對的處理。</p>
+<hr>
+<h3 id="1-9-設備類別-照-做什麼-命名">1.9 設備類別：照「做什麼」命名<a class="headerlink" href="#1-9-設備類別-照-做什麼-命名" title="Permanent link">¶</a></h3>
+<p>類別描述的是這台設備<strong>做什麼</strong>，不是它<strong>怎麼做到的</strong>。</p>
+<p><code>generation</code>（產電單元）涵蓋太陽能、燃料電池、風力、汽電共生——任何為場域產生
+電力的東西。取名叫「PV 變流器」的話，之後每一種新技術都得被歸進一個描述不了它的
+名字底下；等到這件事變得明顯時，錯的標籤上已經掛著歷史資料了。</p>
+<p><code>generator</code>（備援發電機）刻意分開：它燒燃料，所以每一度電都有運轉成本、有自己的
+成本模型。那是<strong>行為上的差異</strong>，不是命名上的差異。</p>
+<p><code>load</code>（用電設備）是為了看見耗電量而登記的設備：冰水主機、空壓機、產線。它只回報、
+不接受命令，所以沒有任何可用命令——這是誠實的答案，不是漏掉了。</p>
+<blockquote>
+<p>登記一台用電設備<strong>不會</strong>改變場域的能量平衡。它是被觀察的對象，不是被計入的
+流量；重複計算的規則見 §2。</p>
+</blockquote>
+<h3 id="1-9a-節費基準線與運轉限制是可以設定的">1.9A 節費基準線與運轉限制是可以設定的<a class="headerlink" href="#1-9a-節費基準線與運轉限制是可以設定的" title="Permanent link">¶</a></h3>
+<p><code>savings_baseline</code> 與 <code>enforce_limits</code> 兩個欄位在 model 上、在表單上，但<strong>曾經
+不在 API schema 裡</strong>——所以 console 上的控制項看起來會動，實際上值送不進伺服器、
+也讀不回來。一個會默默忽略你的設定，比一個根本不提供的設定更糟。</p>
+<p>現在兩者都在 <code>StoragePlanIn</code>／<code>StoragePlanOut</code> 裡，
+<code>tests/test_storage_plan.py</code> 釘住了雙向往返。</p>
+<p><code>SavingsBaseline</code> 也從三個散落的字串變成一個列舉——它的欄位註解本來就寫著
+「見 :class:<code>SavingsBaseline</code>」，那個類別只是一直沒被寫出來。</p>
+<h3 id="1-10-即插即用-目錄從出生宣告長出來">1.10 即插即用：目錄從出生宣告長出來<a class="headerlink" href="#1-10-即插即用-目錄從出生宣告長出來" title="Permanent link">¶</a></h3>
+<p>DBIRTH 已經列出這台設備提供的每一個 metric、每一個的資料型別，而本平台的 profile
+還讓它帶上單位。那就是 metric 目錄需要的全部資訊，所以一台從來沒有人設定過的設備
+可以<strong>把自己描述進系統</strong>：圖表有了座標軸標籤，合理性檢查有了型別，console 不再顯示
+生硬的 key。</p>
+<p>推論規則與 property 清單見 device-protocol.md §5.1.1。這裡只講兩條界線，因為它們
+是這個便利功能不會變成漏洞的原因：</p>
+<ul>
+<li><strong>永遠不覆蓋。</strong> 操作者已經定義過的 key 保留原定義，一律如此。否則一次韌體更新
+  就能悄悄改掉一堆告警規則所依賴的 metric。</li>
+<li><strong>只建立組織層級的定義。</strong> 內建 metric 由所有租戶共用，不會被碰到；租戶自己的
+  複本會讓一個共用 metric 的定義分裂成兩份。</li>
+</ul>
+<p><strong>註冊一個 metric 是註冊一個標籤，不是授予一項能力。</strong> 能力、額定值與分類仍然走
+<code>DeviceDeclaration</code>，等人在 console 上接受。信任邊界沒有改變。</p>
+<hr>
+<h3 id="1-11-工作流程-畫出來的控制邏輯">1.11 工作流程：畫出來的控制邏輯<a class="headerlink" href="#1-11-工作流程-畫出來的控制邏輯" title="Permanent link">¶</a></h3>
+<blockquote>
+<p>完整的架構、物件類別、引擎演算法、前端做法、踩過的坑與移植到其他專案的步驟，見 <a href="workflow-design.html">工作流程引擎設計手冊</a>。本節只講設計決定。</p>
+</blockquote>
+<p><code>apps/workflows</code> 讓操作者在畫布上畫控制流程：條件判斷、下命令、計時、跳轉。
+流程是<strong>被觸發</strong>的——編輯器的按鈕、另一個流程、儲能規劃、或外部 API——不是排程
+輪詢，所以一次執行是有位置、有狀態的長生命物件。</p>
+<p>幾個設計決定，每一個都有具體理由：</p>
+<p><strong>並行是「畫」出來的，不是設定出來的。</strong> 一張圖可以有多個起點，一個輸出可以拉出
+多條線；每一條就是一個並行分支。引擎用 token 建模——一次執行持有多個 token，各自
+停在某個節點上——而不是用執行緒，這是流程能在行程重啟後繼續的原因：位置在資料庫
+裡，不在某個 Python 呼叫堆疊上。</p>
+<p><strong>並行上限是伺服器設定（<code>WORKFLOW_MAX_CONCURRENT_RUNS</code>，預設 5），不是租戶設定。</strong>
+操作者在上限內自由增減流程，但不能調高上限，因為它保護的是大家共用的那台機器。
+超過就<strong>拒絕</strong>而不是排隊：排隊會累積一份看不見的待執行命令清單，直到執行那一刻
+才爆出來。<strong>計數單位是執行緒（並行分支／token），不是 run</strong>：兩個起點的圖占兩
+個名額，啟動時以「現有分支數＋這張圖的起點數」檢查。容量端點會列出<strong>是誰在占
+用</strong>（工作流程名、狀態、分支數），因為「我都停了為什麼還是 1/5」必須答得出來
+——通常是一筆停在計時節點上的舊執行。</p>
+<p><strong>讀值不可信就不判斷。</strong> IF 節點遇到沒有讀值、或讀值太舊（預設 180 秒）的情況，
+走「No reading」分支而不是猜。把「沒讀到」當成 0 會讓 <code>power &lt; 100</code> 對一台停止
+回報的設備成立——這與安全聯鎖想要的正好相反。</p>
+<p><strong>IF-End Timer 是重複取樣的，不是睡過去的。</strong> 條件要<strong>連續</strong>成立 N 秒才走成立
+分支，中途掉下來就重新計時。睡到時間到才看一眼分不出「一直成立」和「中間掉過又
+回來」，那正是這個節點存在要濾掉的東西——跟 PLC 的 on-delay timer 同一個道理。</p>
+<p><strong>Jump 讓出當前 tick。</strong> 往回跳就是迴圈，全速執行的迴圈是 busy-wait：幾秒內燒光
+步數預算、灌爆記錄、重複讀一個幾秒才變一次的值。改成每 tick 走一輪，語意也正好
+是操作者畫的「持續檢查」。防護仍在：每次執行有步數上限（預設 10,000），用步數
+而不是時間計，因為緊迴圈燒的是步數不是牆鐘。</p>
+<p><strong>抵達即合流。</strong> 分支移動到「同一次執行已有分支停駐」的節點時,併入既有分支
+而不重複。沒有這條規則,Jump 跳回一個會分岔的節點就會每圈重新分岔——分支數
+2、4、8 翻倍成長,直到步數上限把執行殺掉(實測 12 圈爆到 472 個 token)。一個
+節點同時只有一個分支,是這張圖的 PLC 讀法;分岔後再匯聚的圖,共用尾段也因此
+只執行一次。有測試釘住。</p>
+<p><strong>每執行步數上限預設為無上限(0)。</strong> 「守住設定值直到條件解除」本來就是永不
+終止的合法控制迴圈,固定步數上限殺掉的恰恰是引擎存在要服務的流程。每次呼叫
+的步數上限(per-call)仍然生效,綁住的是每個 tick 的工作量;要限制總步數可自
+行設定 <code>WORKFLOW_MAX_STEPS_PER_RUN</code>。</p>
+<p><strong>分支之間輪流推進。</strong> 每個 token 每一「輪」走一步，一輪走完才開下一輪——限制在
+「輪」而不是「每次呼叫」是刻意的：後者公平但慢到直線五個節點要五個 tick。</p>
+<p><strong>測試執行（dry run）是執行的欄位，不是參數。</strong> 它會完整評估每個條件、寫完整
+逐步記錄，但不送任何命令；<code>dry_run</code> 記在執行本身上，一個月後讀記錄仍然知道
+當時有沒有碰到硬體。dry run 的檢查在引擎層，不在各節點——忘記檢查的節點型別
+不該有辦法從測試送出真命令。</p>
+<p><strong>節點可以個別停用。</strong> 引擎跳過它但路徑仍通，等於把一步註解掉而不用重拉線。</p>
+<p><strong>動作走同一道門。</strong> Send Action / Set Data 全部經過 <code>dispatch_command()</code>，能力
+檢查、方案包絡、稽核軌跡與人工操作完全相同；綁定場域的流程不能命令其他場域的
+設備。工作流程不是特權路徑。</p>
+<p><strong>Wait 是停車，不是輪詢。</strong> 等待節點把 token 停到期望時刻才醒，途中被提早叫醒
+（單步、慢動作）也不會重算時鐘。Condition Wait 等讀值達到條件才往下走，逾時走
+逾時分支——沒有讀值視為「還沒達成」而不是達成，逾時就是接住永遠不回來的設備的
+出口。IF-End Time 是每日時間區間（可選星期、可跨午夜），用<strong>場域的時區</strong>判讀
+（場域→組織→UTC），因為 09:00–18:00 用 UTC 判讀，一年會有兩次變成夜班。</p>
+<p><strong>暫停、單 Node 執行與停止點是操作者的除錯器。</strong> 暫停凍結一次執行（token、計時、
+context 全保留，Resume 從原地繼續）；暫停中的執行仍占用並行名額，否則暫停會變成
+無限堆疊執行的後門。<strong>單 Node 執行</strong>只跑目前選取的那一個節點：執行一次、記錄結果、
+不沿連線繼續就結束；節點上的停用與停止點旗標會被忽略——操作者指名要跑它（API:
+<code>POST /workflows/{id}/run-node</code>）。節點可以設<strong>停止點</strong>：引擎在執行該節點<strong>之前</strong>
+暫停，讓操作者檢查它即將依據的狀態；Resume 後執行一次、不重複觸發。節點間延遲
+（0–30 秒，執行層級）是觀賞用的慢動作；另有 API 層級的 <code>/step</code> 端點做逐步除錯,
+它會無視慢動作延遲、但絕不縮短 Wait 節點自己的計時。</p>
+<p><strong>執行錯誤會停下整個流程</strong>，失敗的節點記在記錄裡，編輯器把它標成紅色。</p>
+<p><strong>箭頭圖塊也是裝飾。</strong> <code>arrow</code> 節點是一個可縮放、可轉八個方向、可上色的指示
+箭頭——註解「指向某處」的需求由它承擔（比在便利貼上拖自由箭頭更直觀）。它沒有
+任何把手，完全不能連線。</p>
+<p><strong>Note 是裝飾，不是流程。</strong> 畫布上的便利貼可以調整大小，指示方式有兩種：
+連向節點的虛線箭頭，以及<strong>自由箭頭</strong>——像對話框的尾巴，尖端拖到哪就指到哪、
+不必接任何東西（存在 note 的 <code>arrow</code> 欄位）。連線箭頭只能從 Note 出去；任何
+連進 Note 的邊在存檔時被拒絕，因為那在圖上看起來像流程而引擎當作死路。Note
+的箭頭也不影響起點判定。Note 永遠不會被當成起點、永遠不執行。</p>
+<p><strong>整個 console 的即時性由一條 live feed 供應。</strong> 登入後前端對 <code>/api/live/stream</code>
+維持一條 SSE 連線;伺服器每 0.5 秒查「自上次以來誰變了」——最新值、設備狀態、
+警報、設備事件、命令——推送受影響的 id,前端只使相關查詢失效並立即重抓。實測
+MQTT 發布到畫面更新:遙測約 0.5 秒、警報事件約 0.6 秒、離線約 0.9 秒(pipeline
+本身只占 6–30 ms;其餘是 0.5 秒的檢查間隔與一次重抓)。兩個配套規則:滾動時間
+窗在收到事件/警報/狀態變化時重新錨定到「現在」(否則新資料落在 end 之後,抓了
+也看不到);圖表類重查詢節流到 15 秒一次。輪詢仍在底層當 fallback。查詢用 <code>&gt;=</code>
+而不是 <code>&gt;</code>:Windows 時鐘 15 ms 一跳,同一跳內寫入的列用 <code>&gt;</code> 會永遠漏掉。</p>
+<p><strong>觀看執行走 SSE，不是輪詢。</strong> 編輯器對進行中的執行開一條 server-sent events
+串流（<code>/api/workflow-runs/{id}/stream</code>），run 狀態與新記錄以增量推送，輪詢自動
+停用；串流斷了（token 過期、網路問題）輪詢自動接手,這是唯一的 fallback 路徑。
+誠實地說：因為引擎在另一個行程、SQLite 沒有跨行程通知,伺服器端仍以短間隔查
+資料庫——省的是 HTTP 層（一條連線、只送變化），不是查詢本身。要做到真推播需要
+Redis pub/sub + ASGI，那是文件化的正式環境升級路徑，不是開發預設。</p>
+<p><strong>節點可以上色。</strong> 顏色存在圖裡，文字自動換成對比色（YIQ 亮度判定），所以
+操作者選不出讀不了的組合。</p>
+<p>新的節點型別註冊進 <code>apps/workflows/nodes/</code> 的 registry 即可——參數表單和調色盤
+都是前端從 <code>/workflows/node-types</code> 讀出來渲染的，加節點型別不用改前端。節點的
+顯示名稱與說明依 console 語系顯示（<code>workflows.nodeTypes.*</code>），沒有翻譯時退回
+伺服器的英文原文。</p>
+<h3 id="1-11a-編輯器的操作習慣">1.11A 編輯器的操作習慣<a class="headerlink" href="#1-11a-編輯器的操作習慣" title="Permanent link">¶</a></h3>
+<p>畫布支援手已經熟悉的動作:從調色盤<strong>拖曳</strong>節點到畫布(點一下也可以)、Delete
+刪除選取、Ctrl+C / Ctrl+V 複製貼上、Ctrl+Z 復原(最多 50 步)。</p>
+<p>幾條規則:</p>
+<ul>
+<li><strong>任何欄位有焦點時快捷鍵一律不動作</strong>——名稱欄裡的 Delete 是刪字,不是刪節點。</li>
+<li>複製只帶<strong>選取範圍內部</strong>的連線;貼上的 Jump 若指向複製範圍內的節點,跟著改指
+  到它的複本,指向範圍外的保持原目標——「複製這個片段」的語意。</li>
+<li>刪除由編輯器自己處理(React Flow 的 <code>deleteKeyCode</code> 關閉),因為 payload 表與
+  復原歷史必須同步更新;讓 React Flow 也刪一次會留下復原後重新出現的幽靈節點。</li>
+</ul>
+<p>執行控制列放在畫布正上方:執行/測試、暫停/繼續、停止、單 Node 執行、節點間
+延遲、一鍵自動排列。自動排列按「距離起點的最長路徑」分層、按父節點的重心排序
+每一層,Note 不動——整理流程不該打亂別人放好的註解。參數有基本防呆(必填、
+數值範圍、HH:MM 格式),錯誤即時顯示在檢視面板並標在節點上;離開頁面時若有
+未儲存的變更會先確認。</p>
+<h3 id="1-12-儲能規劃的-執行工作流程-策略">1.12 儲能規劃的「執行工作流程」策略<a class="headerlink" href="#1-12-儲能規劃的-執行工作流程-策略" title="Permanent link">¶</a></h3>
+<p><code>DispatchStrategy.WORKFLOW</code> 把一個場域的控制權交給指定的流程。調度引擎每個週期
+確認該流程有在跑（沒跑就啟動、跑著就不動），<strong>不再</strong>替這個場域計算功率設定值——
+否則就有兩個東西在指揮同一顆電池。流程被刪掉時，規劃會回報 <code>no_workflow</code> 而不是
+悄悄退回別的策略：一個默默不動作的規劃跟一個正常的規劃在設定頁上長得一模一樣。</p>
+<hr>
+<h3 id="1-12c-規劃與電價沿場域樹繼承">1.12C 規劃與電價沿場域樹繼承<a class="headerlink" href="#1-12c-規劃與電價沿場域樹繼承" title="Permanent link">¶</a></h3>
+<p>場域的<strong>有效規劃</strong> = 自己的綁定,否則採最近祖先的綁定——綁在父場域的方案自動
+涵蓋子場域,子場域自行綁定即覆蓋。電價方案掛在規劃上,因此電價繼承是同一條
+規則的計費面。調度引擎、成本彙總、console 顯示走同一個解析
+(<code>apps/ems/plans.py</code>);per-site 端點以 <code>inherited_from</code> 標明來源祖先。</p>
+<p><strong>能源資產不繼承、即時計算不彙總子樹。</strong> 電表綁在哪個場域,量的就是那個場域;
+父場域的即時功率流與能源區間只計自己直接綁定的資產。跨子樹的彙總屬於報表層
+(<code>GET /sites/{id}/summary</code> 與群組 rollup),在那裡父場域才涵蓋整棵子樹。</p>
+<h3 id="1-12b-儲能規劃是具名模板-場域綁定它">1.12B 儲能規劃是具名模板，場域綁定它<a class="headerlink" href="#1-12b-儲能規劃是具名模板-場域綁定它" title="Permanent link">¶</a></h3>
+<p>規劃不再是每個場域一列的隱形設定，而是<strong>具名的策略設定檔</strong>（與電價方案同一個
+形狀）：在「儲能規劃」頁建立、命名、編輯，場域只是<strong>綁定</strong>其中一個——同一份設
+定檔可以驅動整批相似的場域，換策略就是換綁定。刪除設定檔會解綁其場域（場域不
+會被刪，只是停止調度並明白顯示「未綁定方案」）。API：<code>/ems/plans</code> CRUD 加上
+<code>PUT /ems/sites/{id}/plan</code>（綁定，<code>plan_id: null</code> 解綁）。</p>
+<h3 id="1-12a-儲能策略-從標籤變成算術">1.12A 儲能策略：從標籤變成算術<a class="headerlink" href="#1-12a-儲能策略-從標籤變成算術" title="Permanent link">¶</a></h3>
+<p>在此之前,規劃上的「策略」多半是描述;現在每個策略都是 <code>apps/ems/strategy.py</code>
+裡的實際計算,由調度引擎每個週期評估。共同原則:<strong>讀值不新鮮就不動作</strong>——
+從停止更新的讀值做出的控制決策,是讓電池跟昨天的負載曲線打架的方法。</p>
+<p><strong>權威順序</strong>(<code>decide()</code>):
+1. <strong>進行中的需量反應事件</strong>——對電網的承諾,壓過一切(包含工作流程接管);
+2. <strong>指定功率的排程窗</strong>——操作者的明確覆蓋;
+3. <strong>策略</strong>;
+4. 運轉包絡 + <strong>健康約束</strong>,對以上任何來源的輸出一視同仁地夾限。</p>
+<p><strong>契約容量管理(demand_cap)</strong>:需量超過上限就放電壓回去;上限留空時採契約容量
+的 95%(餘裕是取樣間隔的工作空間)。回充只在電價最低時段、且<strong>永遠不超過需量
+餘裕</strong>——為了防超約而回充結果把需量充爆,是這個策略最經典的自打臉,有測試釘住。</p>
+<p><strong>時間電價套利(tou_arbitrage)</strong>:對電價方案每日取樣 96 點找出最高/最低價時段,
+最低價充、最高價放;當日價差低於 <code>min_price_spread</code> 就完全不動——平價差裡來回
+搬電,90% 的來回效率只是在付錢磨電池。禁止逆送時放電上限=場域自身負載;充電
+永遠不超過契約容量餘裕。</p>
+<p><strong>光儲自發自用(self_consumption)</strong>:PV 盈餘充電、負載缺口放電,死區 0.2 kW
+以下不追——追噪聲磨的也是電池。</p>
+<p><strong>備援保留(backup_only)</strong>:SOC 低於保留目標就補charge,其餘完全不動。</p>
+<p><strong>需量反應(不是策略,是事件)</strong>:<code>POST /ems/sites/{id}/demand-response</code> 觸發
+(console 按鈕或外部 API 調度信號),指定放電 kW 與時長;重疊事件被拒絕;可
+取消。進行中事件壓過所有策略——但仍受包絡與健康約束夾限,超出硬體的承諾仍然
+是謊言。</p>
+<p><strong>電池健康約束(所有來源共用)</strong>:溫度超過上限(讀電池設備上指定的 metric)
+雙向停機;當日等效循環數(當日放電 kWh ÷ 可用容量,從能源區間讀,重啟不歸零)
+用完後禁止再放電、<strong>但不禁止充電</strong>——充電不消耗放電預算。</p>
+<p>節奏誠實:策略跑在排程器週期(分鐘級),對 15 分鐘需量與電價段落足夠;它不是
+毫秒級的 PCS 迴路,也不假裝是。</p>
+<h3 id="1-13-電價-台電內建方案">1.13 電價：台電內建方案<a class="headerlink" href="#1-13-電價-台電內建方案" title="Permanent link">¶</a></h3>
+<p>台電<strong>沒有公開的即時電價 API</strong>——電價是牌價，由電價費率審議會約每半年檢討一次。
+所以正確的架構是「內建費率表」而不是「串接」：console 內建三個台電時間電價方案
+（表燈簡易二段式、三段式、低壓電力二段式，<code>apps/ems/taipower.py</code>），一鍵套進
+電價表單後全部欄位仍可編輯。每個方案標注<strong>費率年度</strong>，讓過期的表看得見而不是
+默默算錯；累進加價、基本費（每戶）與功率因數調整不在 kWh 模型範圍內，套用時
+的提示會講明「計費前請對照台電最新公告校對」。尖峰/離峰的解析走既有的
+<code>resolve_price()</code>（場域時區、first-match-wins），成本與節費報表因此直接受惠。</p>
+<h3 id="1-14-通知-email-line-與事件訂閱">1.14 通知：Email、LINE 與事件訂閱<a class="headerlink" href="#1-14-通知-email-line-與事件訂閱" title="Permanent link">¶</a></h3>
+<p>通知管道（<code>NotificationChannel</code>）有四種：webhook、<strong>email</strong>（SMTP 由環境變數
+設定，未設定時走 console backend——開發環境信件印在 worker log 裡，端到端可測
+而不會寄丟）、<strong>LINE 機器人</strong>（Messaging API push；LINE Notify 已於 2025 年
+停止服務，config 需要 channel access token 與接收對象 ID，token 存後不再回讀）
+與 MQTT。</p>
+<p><strong>警報與事件是兩個獨立的訂閱開關。</strong> 警報是規則引擎的結論，由警報規則勾選
+管道、依 <code>min_severity</code> 過濾；設備事件是設備自己回報的東西（vendor E-code、
+斷線……），管道直接訂閱、依 <code>min_event_level</code> 過濾，不需要規則。分開是因為
+受眾不同——想收「電池過熱」的 LINE 群未必想收每一條廠商事件碼。</p>
+<p>送達沿用同一條先寫後送的路：<code>NotificationDelivery</code> 先落庫（alert 與 event
+擇一,XOR constraint），worker 批次送、有上限的重試、錯誤可見。</p>
+<h2 id="2-能量平衡-誰算-誰不算">2. 能量平衡：誰算、誰不算<a class="headerlink" href="#2-能量平衡-誰算-誰不算" title="Permanent link">¶</a></h2>
+<h3 id="2-1-基本規則">2.1 基本規則<a class="headerlink" href="#2-1-基本規則" title="Permanent link">¶</a></h3>
+<p><strong>每一條能量流，恰好要有一條量測路徑。</strong></p>
+<p>一個 <code>EnergyAsset</code> 只有在 <code>include_in_balance = True</code>（預設）時才會進入場域的
+能量平衡。設為 <code>False</code> 的資產仍然：</p>
+<ul>
+<li>有自己的圖表與歷史</li>
+<li>出現在設備列表與地圖</li>
+<li>未來會有自己的耗能統計</li>
+</ul>
+<p>但<strong>不會</strong>被加進 <code>load_kwh</code>、<code>grid_import_kwh</code> 等場域層級的數字。</p>
+<h3 id="2-2-什麼時候該設-false">2.2 什麼時候該設 <code>False</code><a class="headerlink" href="#2-2-什麼時候該設-false" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>情境</th>
+<th>設定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>總負載表 + 個別機器的分表</td>
+<td>總表 <code>True</code>，個別機器 <code>False</code></td>
+</tr>
+<tr>
+<td>沒有總表、逐饋線量測</td>
+<td>所有饋線表 <code>True</code>（相加剛好涵蓋全部）</td>
+</tr>
+<tr>
+<td>市電總表以外的第二顆電錶</td>
+<td><code>False</code></td>
+</tr>
+<tr>
+<td>兩台 PV 逆變器</td>
+<td><strong>都 <code>True</code></strong>（實體上是兩個來源，相加正確）</td>
+</tr>
+<tr>
+<td>兩組電池</td>
+<td><strong>都 <code>True</code></strong>（同上）</td>
+</tr>
+<tr>
+<td>總表已含 EV 充電樁，又單獨量測充電樁</td>
+<td>充電樁 <code>False</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>判準：<strong>這個量測涵蓋的電流，是否已經被另一個 <code>True</code> 的量測涵蓋過。</strong></p>
+<h3 id="2-3-各角色進入哪一條流">2.3 各角色進入哪一條流<a class="headerlink" href="#2-3-各角色進入哪一條流" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>grid_meter                → grid_import_kwh / grid_export_kwh / peak_import_kw
+pv                        → pv_kwh
+battery                   → battery_charge_kwh / battery_discharge_kwh + SOC
+generator                 → generator_kwh          ← 獨立欄位
+load_meter, ev_charger    → load_kwh
+</code></pre></div>
+<p><strong><code>generator</code> 為什麼獨立於 <code>battery_*</code></strong>：往返效率的定義是
+<code>discharge / charge</code>。柴發只放不充，把它的輸出併進 <code>battery_discharge_kwh</code>
+會算出大於 1 的往返效率。</p>
+<h3 id="2-4-沒有負載表時的推導">2.4 沒有負載表時的推導<a class="headerlink" href="#2-4-沒有負載表時的推導" title="Permanent link">¶</a></h3>
+<p>若場域沒有任何 <code>include_in_balance=True</code> 的 load 角色資產，負載由節點平衡
+反推：</p>
+<div class="highlight"><pre><span></span><code>load = grid_import − grid_export + pv + battery_discharge − battery_charge + generator
+</code></pre></div>
+<p>結果會被 clamp 到 ≥ 0。</p>
+<h3 id="2-5-積分方法">2.5 積分方法<a class="headerlink" href="#2-5-積分方法" title="Permanent link">¶</a></h3>
+<p>功率轉能量用<strong>前值保持（zero-order hold）</strong>：每個樣本的值假設保持到下一個
+樣本為止。<strong>不是梯形法。</strong></p>
+<ul>
+<li>對回報頻率遠高於變化尺度的訊號，誤差可忽略</li>
+<li>對馬達啟停這種突變負載有系統性偏差，方向取決於變化是上升或下降</li>
+<li><code>coverage</code>（0..1）記錄該區間實際被樣本涵蓋的比例——這是品質指標，低於 0.8
+  的區間不該被當成確定的數字</li>
+<li>recording policy 的 <code>max_interval_seconds</code>（心跳）決定誤差上界。要做精確
+  耗能統計的設備，建議把心跳調到 300 秒以內</li>
+</ul>
+<p><strong>若設備同時回報累計電能（counter），一律優先用 counter 差值</strong>——那是設備
+自己累計的，沒有取樣誤差。</p>
+<h3 id="2-6-跨場域彙總">2.6 跨場域彙總<a class="headerlink" href="#2-6-跨場域彙總" title="Permanent link">¶</a></h3>
+<p>彙總多個場域時（例如整個廠區）：</p>
+<ul>
+<li><strong>能量與金額</strong>：直接相加</li>
+<li><strong>尖峰</strong>：先把同一時間區間內各場域相加，再取這些總和的最大值。<strong>絕不是各
+  場域尖峰相加</strong>（那會高估）。回應中的 <code>peak_basis</code> 標示：單一場域是
+  <code>measured</code>，多場域是 <code>coincident_estimate</code></li>
+<li><strong>比率</strong>（自用率、自給率、往返效率）：分子分母各自加總後再除，<strong>不是平均</strong></li>
+<li><strong>幣別</strong>：組織有唯一的 <code>reporting_currency</code>，沒有電價方案的場域退回它，所以
+  每一列都標得出來。各場域<strong>真的</strong>不一致時數字照給但 <code>currency</code> 回空字串——那不
+  是可以粉飾的顯示缺口，把兩種幣別相加出來的數字沒有意義。詳見 §6.5</li>
+</ul>
+<hr>
+<h2 id="3-命令什麼情況會被擋">3. 命令什麼情況會被擋<a class="headerlink" href="#3-命令什麼情況會被擋" title="Permanent link">¶</a></h2>
+<p>所有下行命令都經過同一個關卡（<code>dispatch_command()</code>），依序檢查：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>順序</th>
+<th>檢查</th>
+<th>錯誤碼</th>
+<th>HTTP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>設備已停用</td>
+<td><code>device_disabled</code></td>
+<td>409</td>
+</tr>
+<tr>
+<td>2</td>
+<td>命令不在 blueprint 的目錄裡</td>
+<td><code>unknown_command</code></td>
+<td>422</td>
+</tr>
+<tr>
+<td>3</td>
+<td>角色權限不足</td>
+<td>—</td>
+<td>403</td>
+</tr>
+<tr>
+<td>4</td>
+<td>參數不符 JSON-schema</td>
+<td><code>parameter_out_of_range</code> 等</td>
+<td>422</td>
+</tr>
+<tr>
+<td>5</td>
+<td>設備尚未驗收（<code>pending</code>），且這是調度類命令</td>
+<td><code>device_unconfirmed</code></td>
+<td>409</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>is_dispatchable=False</code>，且這是調度類命令</td>
+<td><code>asset_not_dispatchable</code></td>
+<td>422</td>
+</tr>
+<tr>
+<td>7</td>
+<td>缺少該命令需要的能力</td>
+<td><code>capability_not_supported</code></td>
+<td>422</td>
+</tr>
+<tr>
+<td>8</td>
+<td>該設定會造成逆送，但不允許</td>
+<td><code>export_not_permitted</code></td>
+<td>422</td>
+</tr>
+</tbody>
+</table></div>
+<p>生命週期與身分相關的攔截（都只作用於調度類命令）：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>情況</th>
+<th>錯誤碼</th>
+<th>HTTP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>尚未驗收</td>
+<td><code>device_unconfirmed</code></td>
+<td>409</td>
+</tr>
+<tr>
+<td>已退役</td>
+<td><code>device_retired</code></td>
+<td>409</td>
+</tr>
+<tr>
+<td>暫停中</td>
+<td><code>device_suspended</code></td>
+<td>409</td>
+</tr>
+<tr>
+<td>驗收時被拒絕</td>
+<td><code>device_rejected</code></td>
+<td>409</td>
+</tr>
+<tr>
+<td>宣告類別與註冊不符</td>
+<td><code>device_identity_mismatch</code></td>
+<td>409</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="3-1-命令需要什麼能力-由-名稱加上參數值-決定">3.1 命令需要什麼能力，由「名稱<strong>加上</strong>參數值」決定<a class="headerlink" href="#3-1-命令需要什麼能力-由-名稱加上參數值-決定" title="Permanent link">¶</a></h3>
+<p>只看命令名稱是不夠的：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>命令與參數</th>
+<th>需要的能力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set_power_setpoint</code>，<code>power_w &lt; 0</code></td>
+<td><code>can_charge</code>（負值就是充電）</td>
+</tr>
+<tr>
+<td><code>set_power_setpoint</code>，<code>power_w &gt; 0</code></td>
+<td><code>can_discharge</code></td>
+</tr>
+<tr>
+<td><code>set_power_setpoint</code>，<code>power_w = 0</code></td>
+<td>不需要任何能力</td>
+</tr>
+<tr>
+<td><code>set_mode</code>，<code>mode = charge</code></td>
+<td><code>can_charge</code></td>
+</tr>
+<tr>
+<td><code>set_mode</code>，<code>mode = discharge</code></td>
+<td><code>can_discharge</code></td>
+</tr>
+<tr>
+<td><code>set_mode</code>，<code>mode = auto</code></td>
+<td><strong>兩者都要</strong>（auto 可能往任一方向）</td>
+</tr>
+<tr>
+<td><code>set_mode</code>，<code>mode = idle</code> / <code>standby</code></td>
+<td>不需要</td>
+</tr>
+<tr>
+<td><code>set_export_limit</code>，<code>limit_w &gt; 0</code></td>
+<td><code>can_export</code></td>
+</tr>
+<tr>
+<td><code>set_export_limit</code>，<code>limit_w = 0</code></td>
+<td>不需要（設 0 是<strong>禁止</strong>逆送，擋它反而顛倒）</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="3-2-調度類-vs-設定類命令">3.2 調度類 vs 設定類命令<a class="headerlink" href="#3-2-調度類-vs-設定類命令" title="Permanent link">¶</a></h3>
+<p>blueprint 的命令定義可以標 <code>"kind": "config"</code>。設定類命令<strong>不受
+<code>is_dispatchable</code> 與 <code>commissioning_state</code> 限制</strong>。</p>
+<p>目前標為 <code>config</code> 的：<code>set_report_interval</code>、<code>sync_time</code>。</p>
+<p>所以一顆電錶（<code>is_dispatchable=False</code>）仍然可以被要求改變回報頻率——那不會
+移動任何電力。</p>
+<h3 id="3-3-生命週期狀態">3.3 生命週期狀態<a class="headerlink" href="#3-3-生命週期狀態" title="Permanent link">¶</a></h3>
+<p>見 §11。</p>
+<hr>
+<h2 id="4-設備宣告-可以說-不能做">4. 設備宣告：可以說，不能做<a class="headerlink" href="#4-設備宣告-可以說-不能做" title="Permanent link">¶</a></h2>
+<p>設備可以在 <code>status</code> 的 birth message 裡帶一個 <code>attributes</code> 物件，宣告自己的
+類別、能力與額定值（格式見 <a href="device-protocol.html">裝置通訊協定（Sparkplug B）</a> §3.7）。</p>
+<h3 id="4-1-絕對規則">4.1 絕對規則<a class="headerlink" href="#4-1-絕對規則" title="Permanent link">¶</a></h3>
+<p><strong>控制與安全檢查只讀已確認的欄位，永遠不讀設備宣告。</strong></p>
+<p>宣告存在獨立的 <code>DeviceDeclaration</code> 表，而不是 <code>Device</code> 上的
+<code>declared_*</code> 欄位。這不只是整潔問題：<code>dispatch_command()</code> 拿到的是 <code>Device</code>，
+而 <code>Device</code> 上根本沒有承載宣告的欄位，因此想誤用也無從誤用。</p>
+<h3 id="4-2-收到宣告時會發生什麼">4.2 收到宣告時會發生什麼<a class="headerlink" href="#4-2-收到宣告時會發生什麼" title="Permanent link">¶</a></h3>
+<ol>
+<li>沒有 <code>attributes</code> → 什麼都不做</li>
+<li><code>schema_version</code> 不認得 → 記一筆 <code>DeviceEvent</code>（<code>declaration.unsupported_version</code>），忽略內容</li>
+<li>與上一次宣告<strong>完全相同</strong> → 只更新接收時間，<strong>不產生待審核</strong>
+   （設備每次重連都會發 birth message，否則審核佇列會被洗版）</li>
+<li>有變動 → 覆寫宣告記錄、算出 diff、狀態設為 <code>mismatched</code>、發一筆
+   <code>DeviceEvent</code>（<code>declaration.changed</code>，或類別不同時的
+   <code>declaration.identity_mismatch</code>）</li>
+<li><strong>任何情況下都不改動 <code>Device</code> 的能力欄位</strong></li>
+</ol>
+<h3 id="4-3-有人偽造宣告會怎樣">4.3 有人偽造宣告會怎樣<a class="headerlink" href="#4-3-有人偽造宣告會怎樣" title="Permanent link">¶</a></h3>
+<ol>
+<li>攻擊者必須先持有該設備的 MQTT 憑證（EMQX auth webhook 是 fail closed 的）</li>
+<li>他讓設備宣告 <code>can_charge: true</code></li>
+<li>宣告存起來，狀態 <code>mismatched</code></li>
+<li><code>Device.can_charge</code> <strong>不變</strong>，充電命令仍被 <code>capability_not_supported</code> 擋下</li>
+<li>操作者在設備頁看到「宣告與生效值不符」的 diff</li>
+</ol>
+<p><strong>最壞情況是一個誤導操作者的提示，不是一個可執行的能力。</strong></p>
+<h3 id="4-4-採用宣告-只在驗收階段-只有一次">4.4 採用宣告：只在驗收階段，只有一次<a class="headerlink" href="#4-4-採用宣告-只在驗收階段-只有一次" title="Permanent link">¶</a></h3>
+<p><code>POST /devices/{id}/declaration/review</code> <code>{"accept": true}</code>，需要 <strong>ADMIN</strong>，
+而且<strong>只在設備仍是 <code>pending</code> 時可用</strong>。之後回 409 <code>declaration_not_adoptable</code>。</p>
+<p>理由就是 §1.5 的政策：類別不會改變，所以驗收之後的分歧不是一個待批准的變更，
+而是「硬體大概被換掉了」的訊號，正確的處置是建立接替設備。</p>
+<p>採用後：能力欄位被寫入、<code>capability_source</code> 標為 <code>device</code>、生命週期轉為
+<code>active</code>，並在 audit 留下 <code>device.declaration_accepted</code>。</p>
+<p><code>{"accept": false}</code> 是<strong>知悉</strong>（acknowledge）：宣告狀態改為 <code>acknowledged</code>，
+設備完全不動。<strong>知悉不會解除身分不符造成的命令凍結</strong>——看到問題不等於解決
+問題。</p>
+<h3 id="4-5-宣告狀態">4.5 宣告狀態<a class="headerlink" href="#4-5-宣告狀態" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>狀態</th>
+<th>意義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>matched</code></td>
+<td>與註冊資料一致</td>
+</tr>
+<tr>
+<td><code>mismatched</code></td>
+<td>有差異，尚未處理</td>
+</tr>
+<tr>
+<td><code>acknowledged</code></td>
+<td>差異已知悉，不再提示</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="4-6-身分不符-資料照收-命令凍結">4.6 身分不符：資料照收，命令凍結<a class="headerlink" href="#4-6-身分不符-資料照收-命令凍結" title="Permanent link">¶</a></h3>
+<p>當宣告的 <code>category</code> 與註冊的 blueprint 類別不同時：</p>
+<ol>
+<li><strong>telemetry 照常接收</strong>——資料不能丟</li>
+<li>記一筆 <code>DeviceEvent</code>（level <code>error</code>、code <code>declaration.identity_mismatch</code>）</li>
+<li>宣告標記 <code>identity_mismatch = true</code></li>
+<li><strong>所有調度類命令被拒絕</strong>，回 <code>device_identity_mismatch</code>（409）</li>
+<li>console 顯眼提示，並提供「替換設備」入口</li>
+</ol>
+<p>第 4 點是重點：<strong>身分不確定時，控制要收緊而不是照常放行。</strong> 如果不確定這台
+是什麼，就不該對它下能量指令。</p>
+<p>只有<strong>類別</strong>不同會凍結命令；單純的能力差異只會標記為 <code>mismatched</code>。</p>
+<h3 id="4-5-哪些欄位維持自動更新">4.5 哪些欄位維持自動更新<a class="headerlink" href="#4-5-哪些欄位維持自動更新" title="Permanent link">¶</a></h3>
+<p><code>firmware</code>、<code>hardware</code>、<code>ip</code>、<code>rssi</code>、<code>location</code> 仍然直接寫進 <code>Device</code>——
+它們是純敘述性的，不影響任何控制決策。</p>
+<p>界線很清楚：<strong>這個值會不會被 <code>dispatch_command()</code> 讀到。</strong></p>
+<hr>
+<h2 id="5-哪些情況記-null">5. 哪些情況記 <code>null</code><a class="headerlink" href="#5-哪些情況記-null" title="Permanent link">¶</a></h2>
+<p>系統的原則是：<strong>不知道就記成不知道。</strong> 把未知填成 0 會讓錯誤變成看起來合理的
+數字，那比明顯的空白更難發現。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>情況</th>
+<th>記法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>累計計數器倒退（換表／韌體重置／未知的溢位）</td>
+<td>該區間的 delta 記 <code>null</code>，<strong>不是 0 也不是負數</strong>，並發 <code>DeviceEvent</code>（<code>counter.reset</code>）</td>
+</tr>
+<tr>
+<td>計數器倒退但 <code>Metric.counter_max</code> 有值</td>
+<td>做 wrap 修正 <code>(counter_max − first) + last</code>，並標記 <code>counter_reset</code></td>
+</tr>
+<tr>
+<td>計數器倒退幅度小於容差（浮點雜訊）</td>
+<td>記 0</td>
+</tr>
+<tr>
+<td>該區間完全沒有樣本</td>
+<td>能量記 <code>null</code>，<code>basis = "unknown"</code></td>
+</tr>
+<tr>
+<td>子樹裡沒有任何場域有能源資料</td>
+<td><code>/sites/{id}/summary</code> 的 <code>energy</code> 回 <code>null</code></td>
+</tr>
+<tr>
+<td>場域沒有電價方案</td>
+<td>退回組織的 <code>reporting_currency</code>，成本記 0 但仍標得出幣別</td>
+</tr>
+<tr>
+<td>跨場域幣別真的不一致</td>
+<td>數字照給，<code>currency</code> 回空字串</td>
+</tr>
+<tr>
+<td>電價方案的幣別與組織不符</td>
+<td><strong>儲存時</strong>就擋（<code>currency_mismatch</code>，422），不等到出報表</td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2 id="6-成本與節費">6. 成本與節費<a class="headerlink" href="#6-成本與節費" title="Permanent link">¶</a></h2>
+<h3 id="6-1-總計欄位-意義沒有變">6.1 總計欄位：意義沒有變<a class="headerlink" href="#6-1-總計欄位-意義沒有變" title="Permanent link">¶</a></h3>
+<p><code>EnergyInterval</code> 上的三個總計欄位語意<strong>維持不變</strong>，只算市電：</p>
+<div class="highlight"><pre><span></span><code>energy_cost     = grid_import_kwh × 該時段電價
+export_revenue  = grid_export_kwh × 該時段躉售價
+estimated_savings = baseline_cost − actual_cost
+</code></pre></div>
+<p>電價由 <code>Tariff</code> 的時段定義解析（支援跨午夜的時段）。既有的儀表板、<code>_totals()</code>、
+跨場域 roll-up 全都讀這三個欄位，所以它們不能改。</p>
+<h3 id="6-2-分項成本-新的細節層">6.2 分項成本：新的細節層<a class="headerlink" href="#6-2-分項成本-新的細節層" title="Permanent link">¶</a></h3>
+<p>每個來源實際花了多少，記在 <code>EnergyIntervalCost</code>（<code>interval</code> × <code>source</code> 唯一）。
+用哪個模型由 <code>EnergyAsset.cost_model</code> 決定，空白時退回角色預設：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>角色</th>
+<th>預設模型</th>
+<th>算什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>grid_meter</code></td>
+<td><code>grid_tariff</code></td>
+<td>購電量 × 時段電價（躉售併入同一列，金額為負）</td>
+</tr>
+<tr>
+<td><code>battery</code></td>
+<td><code>battery_cycle</code></td>
+<td>循環衰退（元/kWh 吞吐）+ 充電時買進那些電的成本 ÷ 往返效率</td>
+</tr>
+<tr>
+<td><code>generator</code></td>
+<td><code>diesel_fuel</code></td>
+<td>油耗（L/kWh，可用負載率曲線）× 油價 + 元/運轉小時的維護</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>未知的 key 會 raise，不會靜默回 0。</strong> 成本靜默歸零是最難發現的錯誤之一。</p>
+<p><code>basis</code> 誠實標示可信度：<code>measured</code>（參數齊全）、<code>estimated</code>（用了預設值或推估的
+充電價）、<code>unknown</code>。跨區間彙總時取<strong>最差</strong>的那一個——一個推估的區間就讓整個總計
+是推估。</p>
+<h3 id="6-3-節費基準線-可設定-且允許沒有答案">6.3 節費基準線：可設定，且允許沒有答案<a class="headerlink" href="#6-3-節費基準線-可設定-且允許沒有答案" title="Permanent link">¶</a></h3>
+<p><code>StoragePlan.savings_baseline</code> 三選一：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>值</th>
+<th>基準線</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>grid_only</code></td>
+<td>什麼都沒裝，全部向台電買</td>
+</tr>
+<tr>
+<td><code>no_storage</code></td>
+<td>同樣的產電量，但沒有電池（預設）</td>
+</tr>
+<tr>
+<td><code>none</code></td>
+<td>不算節費</td>
+</tr>
+</tbody>
+</table></div>
+<p>兩件事刻意不做：</p>
+<ul>
+<li><strong>不把負值夾到 0。</strong> 負的節費代表這次調度比什麼都不做還貴。那是真實的結果，
+  藏起來等於讓報表替一個錯誤的決策背書。</li>
+<li><strong>停電期間記 <code>null</code>，不記數字。</strong> 市電斷了的時候，柴發與電池的輸出沒有「改買
+  市電」這個替代方案，拿市電價當基準是在比較一件不存在的事。目前用「該區間有
+  發電機輸出」當作停電的近似——這是近似，不是偵測。</li>
+</ul>
+<h3 id="6-5-幣別-一個組織一種">6.5 幣別：一個組織一種<a class="headerlink" href="#6-5-幣別-一個組織一種" title="Permanent link">¶</a></h3>
+<p><code>Organization.reporting_currency</code>（ISO 4217，預設 <code>TWD</code>）是整個租戶所有金額的
+幣別。</p>
+<p>放在組織而不是散在每個 <code>Tariff</code> 上，原因是<strong>還沒設定電價的場域根本沒有幣別</strong>。
+它的成本是 0，但沒有幣別可標，於是前端把它印成 <code>0</code>，隔壁有電價的場域印成 <code>$0</code>，
+同一欄兩種格式，看起來像壞掉。</p>
+<p>三條規則：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>情況</th>
+<th>行為</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>場域沒有電價方案</td>
+<td>用組織幣別</td>
+</tr>
+<tr>
+<td>場域有電價方案</td>
+<td>用方案的幣別（正常情況下兩者相同）</td>
+</tr>
+<tr>
+<td>多場域彙總且幣別真的不一致</td>
+<td><code>currency</code> 回空字串，數字照給</td>
+</tr>
+</tbody>
+</table></div>
+<p>不一致在<strong>儲存電價方案時</strong>就擋下來（<code>currency_mismatch</code>，HTTP 422），不是等到
+出報表才發現。否則 <code>reporting_currency</code> 只會變成第三個會跟另外兩個矛盾的事實
+來源。組織幣別留空代表「還沒決定」，此時不擋任何電價——設定過程不該卡住自己。</p>
+<p><strong>匯率換算明確不在範圍內。</strong> 匯率有時間性、有買賣價差、有會計政策，那是另一個
+系統的職責。這個欄位說的是「這些數字本來就是什麼幣別」。</p>
+<p>設計背景見 <a href="device-classification.html">設備分類設計</a> §3.12「幣別與
+單位」。</p>
+<hr>
+<h2 id="7-運轉-session">7. 運轉 session<a class="headerlink" href="#7-運轉-session" title="Permanent link">¶</a></h2>
+<p><code>DeviceOperatingSession</code> 記錄一段連續的充電／放電／運轉。<strong>per Device</strong>，事件驅動
+的邊界，和 15 分鐘固定網格的 <code>EnergyInterval</code> 是兩種粒度，不該互相推導。</p>
+<p><code>Device</code> 上另外快取三個 datetime：<code>last_charge_at</code> / <code>last_discharge_at</code> /
+<code>last_running_at</code>。只快取這三個，因為它們可以索引——「找出 30 天沒放電的電池」是
+一個 <code>WHERE</code>。時長與電量去 session 表撈就好。</p>
+<h3 id="7-1-判定-門檻-遲滯-最短時長">7.1 判定：門檻 + 遲滯 + 最短時長<a class="headerlink" href="#7-1-判定-門檻-遲滯-最短時長" title="Permanent link">¶</a></h3>
+<p>參數在 <code>EnergyAsset</code> 上（符號約定本來就在那裡）：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>參數</th>
+<th>預設</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>session_enter_kw</code></td>
+<td>額定 × 2%（load 用 5%），下限 0.5 kW</td>
+<td>超過才算開始</td>
+</tr>
+<tr>
+<td><code>session_exit_kw</code></td>
+<td>enter × 0.5</td>
+<td>低於才算結束</td>
+</tr>
+<tr>
+<td><code>session_min_duration_s</code></td>
+<td>60</td>
+<td>更短的直接丟棄</td>
+</tr>
+<tr>
+<td><code>session_gap_s</code></td>
+<td>300</td>
+<td>這麼久沒資料就收尾</td>
+</tr>
+<tr>
+<td><code>session_tracking_enabled</code></td>
+<td><code>False</code></td>
+<td>整個關掉；battery 才建議開</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>遲滯</strong>（enter &gt; exit）是避免假 session 的主要機制：單一門檻遇到在門檻附近震盪的
+負載會產生成千上萬筆。程式碼強制 <code>exit ≤ enter × 0.5</code>，設反了也不會抖。</p>
+<p><strong>資料中斷</strong>用<strong>最後一個樣本的時間</strong>收尾，<code>end_reason = "offline"</code>，能量只計到那裡
+為止——中斷期間發生什麼事我們不知道，不往外推。</p>
+<p><strong>還在跑的 session <code>ended_at</code> 留 <code>null</code>。</strong> 對 24 小時不停的設備這是正確且有用的
+答案（「已連續運轉 37 天」），不是缺漏值。</p>
+<h3 id="7-2-誰來算-排程回算-不是即時狀態機">7.2 誰來算：排程回算，不是即時狀態機<a class="headerlink" href="#7-2-誰來算-排程回算-不是即時狀態機" title="Permanent link">¶</a></h3>
+<p><code>manage.py rebuild_sessions --hours 2</code>，由 <code>run_scheduler</code> 每輪呼叫。和
+<code>aggregate_energy</code> 對稱，理由也一樣：亂序、遲到、重啟這三個問題，回算一次全部消失。
+代價是「最後一次充電」最多延遲一個排程週期，而那個數字不需要秒級即時。</p>
+<p>回算的左邊界會<strong>往前延伸到跨越邊界的那個 session 的起點</strong>，否則一段長放電會被切成
+兩半。</p>
+<hr>
+<h2 id="7a-自動調度">7A. 自動調度<a class="headerlink" href="#7a-自動調度" title="Permanent link">¶</a></h2>
+<p><code>apps/ems/dispatch.py</code> 把生效中的 <code>DispatchWindow</code> 變成真正的命令。</p>
+<p><strong>時段選擇</strong>：<code>priority</code> 高的贏；同 priority 由<strong>較晚開始</strong>的贏——所以今天臨時加的
+一次性覆寫會蓋過它重疊到的每日排程，不必有人去調數字。</p>
+<p><strong>只在目標值改變時送。</strong> 排程每 5 分鐘跑一次；每次重送同一個設定值等於每 5 分鐘對
+硬體發一次 MQTT。引擎用 <code>idempotency_key</code> 的 <code>dispatch:</code> 前綴認出自己上次送的值。</p>
+<p><strong>運轉限制是真的閘門</strong>，但兩條路徑刻意不同：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>路徑</th>
+<th>行為</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>排程</td>
+<td><strong>夾住</strong>到 <code>max_charge_kw</code> / <code>max_discharge_kw</code> / SOC 界線</td>
+<td>方案說 200、時段說 500，不是矛盾，是「跑 200」</td>
+</tr>
+<tr>
+<td>手動 API</td>
+<td><strong>拒絕</strong>（<code>storage_plan_limit</code>，422）</td>
+<td>人打了一個數字，安靜地執行另一個更糟</td>
+</tr>
+</tbody>
+</table></div>
+<p>SOC 限制<strong>只在讀得到即時 SOC 時</strong>套用。猜一個未知的 SOC 要嘛擋掉合法調度、要嘛放行
+深度放電，兩個都不能接受。</p>
+<p>引擎走的是同一個 <code>dispatch_command()</code>，所以 §3 的每一道關卡對它一樣有效。</p>
+<hr>
+<h2 id="8-已實作-vs-僅完成設計">8. 已實作 vs 僅完成設計<a class="headerlink" href="#8-已實作-vs-僅完成設計" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>項目</th>
+<th>狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>設備能力（4 旗標、三層解析、category 預設）</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>命令能力檢查（含依參數值判定意圖）</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>驗收狀態與自動建檔隔離</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>include_in_balance</code> 與重複計算修正</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>generator</code> 角色與 <code>generator_kwh</code></td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>Rollup.first_value</code> / <code>last_value</code></td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>累計計數器差值與 reset 記 <code>null</code></td>
+<td><strong>已實作</strong>（<code>apps/telemetry/energy.py</code>）</td>
+</tr>
+<tr>
+<td>設備宣告、diff、審核、audit</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>生命週期五狀態與 <code>is_enabled</code> 同步</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>退役不 soft delete、退役可逆</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>replaced_by</code> 與替換 API</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>身分不符偵測與命令凍結</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>報表串接 <code>follow_replacements</code>（切點不相加）</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>Metric.counter_max</code></td>
+<td><strong>已實作</strong>（欄位與指標目錄 API 就緒，可由出生宣告 <code>counter_max</code> 屬性或 API 設定；內建目錄尚未填值）</td>
+</tr>
+<tr>
+<td>個別設備耗能的 API 端點</td>
+<td><strong>已實作</strong>（<code>GET /api/devices/{id}/energy</code>）</td>
+</tr>
+<tr>
+<td>運轉 session（<code>DeviceOperatingSession</code>）</td>
+<td><strong>已實作</strong>（<code>apps/ems/sessions.py</code>）</td>
+</tr>
+<tr>
+<td>多來源成本模型（<code>apps/ems/costs/</code>）</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>EnergyIntervalCost</code> 分項成本</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>節費基準線可設定、負節費、停電記 <code>null</code></td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td><code>EnergyAsset</code> 的 session 參數與成本參數</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>調度引擎（讓 <code>DispatchWindow</code> 產生命令）</td>
+<td><strong>已實作</strong>（<code>apps/ems/dispatch.py</code>）</td>
+</tr>
+<tr>
+<td>權限綁場域（<code>Membership.sites</code>）</td>
+<td><strong>已實作</strong></td>
+</tr>
+<tr>
+<td>油價／成本參數的時間性（<code>CostParameterSet</code>）</td>
+<td>僅設計——目前是單一當前值</td>
+</tr>
+<tr>
+<td>停電偵測（不用「有柴發輸出」當近似）</td>
+<td>尚未實作</td>
+</tr>
+<tr>
+<td>能源資產綁定／session 參數／成本參數</td>
+<td><strong>已實作</strong>，含 API（<code>EnergyAssetIn</code>）與儲能頁「綁定資產」表單</td>
+</tr>
+<tr>
+<td>排程調度時段（<code>DispatchWindow</code>）</td>
+<td>一次性時段<strong>已實作</strong>（API + 儲能頁）；<code>recurrence</code> 欄位存在但引擎不展開重複規則</td>
+</tr>
+<tr>
+<td>月尖峰需量費</td>
+<td>受益面<strong>已實作</strong>（總覽頁「需量費受益」，<code>apps/ems/demand.py</code>）；進入月結算、計入 <code>total_energy_cost</code> 尚未實作——需要一張月結算表</td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2 id="9-升級既有安裝要跑什麼">9. 升級既有安裝要跑什麼<a class="headerlink" href="#9-升級既有安裝要跑什麼" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>migrate
+python<span class="w"> </span>manage.py<span class="w"> </span>bootstrap<span class="w"> </span>--update-existing
+</code></pre></div>
+<p>第二行是關鍵：它依 category 把能力預設值寫進內建 blueprint。沒有它，所有
+blueprint 的四個旗標都會是欄位預設值（<code>can_charge=False</code>、
+<code>is_dispatchable=True</code>），電池會無法充電。</p>
+<p><strong>既有資料的歸屬</strong>：</p>
+<ul>
+<li>所有既有設備 → <code>commissioning_state = confirmed</code>，四個能力欄位為 <code>null</code>
+  （繼承 blueprint）</li>
+<li>所有既有場域資產 → <code>include_in_balance = True</code>（行為不變）</li>
+<li>所有既有能源區間 → <code>generator_kwh = 0.0</code></li>
+</ul>
+<p>既有設備的生命週期歸類（由 migration <code>0006_device_lifecycle</code> 的 data
+migration 處理）：</p>
+<ul>
+<li>原本的 <code>confirmed</code> → <code>active</code></li>
+<li>原本手動設了 <code>is_enabled=False</code> 的 → <code>suspended</code>（保留原意圖，但改用
+  生命週期表達，兩個欄位從此不會矛盾）</li>
+<li>既有宣告：有 diff 的 → <code>mismatched</code>，沒有的 → <code>matched</code>；<code>category</code> 有差異
+  的另外標記 <code>identity_mismatch</code></li>
+</ul>
+<p><strong>若現場已經把個別用電設備建成 <code>load_meter</code></strong>，那些場域的 <code>load_kwh</code> 在此之前
+就是錯的（重複計算）。把個別設備改成 <code>include_in_balance=False</code> 之後，需要
+重算：</p>
+<div class="highlight"><pre><span></span><code>POST /api/ems/sites/{site_id}/rebuild-intervals?start=...&amp;end=...
+</code></pre></div>
+<p>單次重算上限 90 天。</p>
+<h3 id="9-1-加入-session-成本模型與場域權限之後">9.1 加入 session、成本模型與場域權限之後<a class="headerlink" href="#9-1-加入-session-成本模型與場域權限之後" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>migrate
+</code></pre></div>
+<p>三件事需要知道：</p>
+<ul>
+<li><strong>既有 membership 的場域清單是空的</strong>，代表整個組織，所以<strong>沒有人的存取權改變</strong>。</li>
+<li><strong>session 判定預設關閉</strong>（<code>EnergyAsset.session_tracking_enabled = False</code>）。要用
+  就逐一開啟——通常只有電池值得開。開完回算歷史：</li>
+</ul>
+<div class="highlight"><pre><span></span><code>python manage.py rebuild_sessions --hours 720
+</code></pre></div>
+<ul>
+<li><strong>成本分項要重算才會出現</strong>。<code>EnergyIntervalCost</code> 是新表，既有區間裡沒有資料。
+  先在需要計價的資產上填 <code>cost_model</code> 與 <code>cost_parameters</code>，再重算區間。
+  <code>EnergyInterval</code> 的三個總計欄位語意不變，所以不重算也不會壞掉，只是沒有分項。</li>
+</ul>
+<blockquote>
+<p><code>estimated_savings</code> 現在可以是 <code>null</code>（停電期間沒有基準線）。任何直接讀這個欄位
+的下游查詢要處理 <code>null</code>——<code>Sum()</code> 會忽略它，但 Python 端的加法不會。</p>
+</blockquote>
+<h3 id="9-2-加入序號唯一性-設備成本與介面偏好之後">9.2 加入序號唯一性、設備成本與介面偏好之後<a class="headerlink" href="#9-2-加入序號唯一性-設備成本與介面偏好之後" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>migrate
+python<span class="w"> </span>manage.py<span class="w"> </span>bootstrap<span class="w"> </span>--update-existing<span class="w">   </span><span class="c1"># 藍圖的多語系說明</span>
+</code></pre></div>
+<p><code>uniq_device_org_serial</code> 是<strong>部分</strong>唯一索引（空白與軟刪除除外）。既有資料若已經有
+重複的非空序號，migration 會失敗——這是刻意的，因為那代表同一台硬體被登記了兩次，
+需要有人決定留哪一列：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">django.db.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Count</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">apps.devices.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Device</span>
+<span class="p">(</span><span class="n">Device</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">exclude</span><span class="p">(</span><span class="n">serial_number</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">deleted_at__isnull</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">values</span><span class="p">(</span><span class="s2">"organization_id"</span><span class="p">,</span> <span class="s2">"serial_number"</span><span class="p">)</span>
+    <span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">Count</span><span class="p">(</span><span class="s2">"id"</span><span class="p">))</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">n__gt</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</code></pre></div>
+<p>其餘都是新增的可空欄位與一張新表，既有行為不變。<code>MQTT_ENABLED</code> 預設 <code>1</code>，所以現有
+部署的健康檢查行為也不變。</p>
+<hr>
+<h2 id="10-設備替換">10. 設備替換<a class="headerlink" href="#10-設備替換" title="Permanent link">¶</a></h2>
+<h3 id="10-1-什麼時候要替換">10.1 什麼時候要替換<a class="headerlink" href="#10-1-什麼時候要替換" title="Permanent link">¶</a></h3>
+<p>硬體換成<strong>不同類型或不同能力</strong>的東西時。同型號的維修、更換零件、重新校正
+都不算——那還是同一台設備。</p>
+<h3 id="10-2-一次呼叫-一個交易">10.2 一次呼叫，一個交易<a class="headerlink" href="#10-2-一次呼叫-一個交易" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>POST /api/devices/{old_id}/replace
+{"device_id": "ZQS-BESS-0001-R2", "name": "…", "serial_number": "…", "reason": "…"}
+</code></pre></div>
+<p>需要 <strong>ADMIN</strong>。單一交易內完成：</p>
+<ol>
+<li>以新 <code>device_id</code> 建立接替設備，繼承場域、blueprint、recording policy、座標</li>
+<li><strong>搬移所有 <code>EnergyAsset</code> 綁定</strong></li>
+<li>搬移 device 層級的 alert 規則（加新的、移除舊的）</li>
+<li>舊設備設 <code>replaced_by</code> 指向新設備，並轉為 <code>retired</code></li>
+<li>發放新的 MQTT 憑證（密碼只回傳一次）</li>
+<li>記一筆 audit（<code>device.replaced</code>）</li>
+</ol>
+<p>回應會回報搬了幾筆資產綁定與幾條規則。</p>
+<h3 id="10-3-為什麼要一次做完">10.3 為什麼要一次做完<a class="headerlink" href="#10-3-為什麼要一次做完" title="Permanent link">¶</a></h3>
+<p>第 2 步是不能漏的那一步。綁定留在一台不再回報的設備上<strong>不會產生任何錯誤</strong>
+——積分回空，場域數字就靜靜地少一塊。如果那是市電總表，整個場域會顯示成
+沒有用電。分成多步操作就會出現「舊的停了、新的還沒綁」的空窗。</p>
+<h3 id="10-4-退役-暫停時的保護">10.4 退役／暫停時的保護<a class="headerlink" href="#10-4-退役-暫停時的保護" title="Permanent link">¶</a></h3>
+<p>直接把設備退役或暫停時，若仍有 <code>is_active=True</code> 的 <code>EnergyAsset</code> 綁在上面，
+會被擋下：</p>
+<div class="highlight"><pre><span></span><code>409 device_in_energy_model
+details.assets = [{asset_id, role, site}, …]
+</code></pre></div>
+<p>替換流程不受此限——它在同一個交易裡已經先把綁定搬走了。</p>
+<h3 id="10-5-報表串接">10.5 報表串接<a class="headerlink" href="#10-5-報表串接" title="Permanent link">¶</a></h3>
+<p><code>POST /api/telemetry/series</code> 加 <code>"follow_replacements": true</code>，<strong>預設關閉</strong>。</p>
+<p>關閉時：一台設備一條序列，就是資料原本的樣子。
+開啟時：整條替換鏈合併成一條邏輯序列，回應的 <code>device_ids</code> 列出串了哪幾台。</p>
+<p><strong>串接時同一時刻只取一台，以退役時間為切點。</strong> 每台設備只貢獻
+<code>[前一台的退役時間, 自己的退役時間)</code> 這個窗口內的資料。</p>
+<p>這條規則不是形式主義：退役的硬體常常還在送資料——留在工作台上通電、或只是
+還沒拔線——所以兩台在牆上時間會重疊。把重疊相加會<strong>灌水能量、並製造出一個
+從未發生過的尖峰</strong>，而且兩者在圖表上都看起來很合理。</p>
+<p>預設關閉的理由：串接是一種<strong>解讀</strong>（假設接替設備與前一台等價），不是資料本身。</p>
+<hr>
+<h2 id="11-生命週期狀態">11. 生命週期狀態<a class="headerlink" href="#11-生命週期狀態" title="Permanent link">¶</a></h2>
+<h3 id="11-1-五個狀態">11.1 五個狀態<a class="headerlink" href="#11-1-五個狀態" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>狀態</th>
+<th>收 telemetry</th>
+<th>可連線</th>
+<th>可下調度命令</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pending</code></td>
+<td>✓</td>
+<td>✓</td>
+<td>✗</td>
+<td>自動建檔而來，等待驗收</td>
+</tr>
+<tr>
+<td><code>active</code></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>正常運轉</td>
+</tr>
+<tr>
+<td><code>suspended</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>暫時停用（維修中）</td>
+</tr>
+<tr>
+<td><code>retired</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>已退役，被接替或不再使用</td>
+</tr>
+<tr>
+<td><code>rejected</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>驗收時判定不該存在</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>pending</code> 照常收資料是刻意的：操作者需要看到它實際送什麼，才能判斷這是什麼
+東西。</p>
+<h3 id="11-2-三個旗標的分工">11.2 三個旗標的分工<a class="headerlink" href="#11-2-三個旗標的分工" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>回答什麼</th>
+<th>誰設定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commissioning_state</code></td>
+<td>這台處於什麼階段</td>
+<td>操作者，透過 API</td>
+</tr>
+<tr>
+<td><code>is_enabled</code></td>
+<td>要不要收它的資料</td>
+<td><strong>不再手動設定</strong>——由 service 依生命週期同步</td>
+</tr>
+<tr>
+<td><code>deleted_at</code>（soft delete）</td>
+<td>這筆紀錄該不該存在</td>
+<td>只用於「建錯了，當作沒發生過」</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>is_enabled</code> 仍然是 ingest 路徑（ingestor、worker、EMQX auth webhook）唯一
+讀的欄位，那條熱路徑沒有改變。改變的是沒有人再單獨設定它，所以「已退役」和
+「可以連線」不可能互相矛盾。</p>
+<p><strong>退役絕不使用 soft delete。</strong> 軟刪除會讓設備從 API 消失，歷史就沒有入口了。
+退役的設備照常查得到、歷史照常可讀，只是不能連線也不能被指揮。</p>
+<h3 id="11-3-退役可逆">11.3 退役可逆<a class="headerlink" href="#11-3-退役可逆" title="Permanent link">¶</a></h3>
+<p>ADMIN 可以把 <code>retired</code> 改回 <code>active</code>（硬體確實會從維修廠回來），並留下
+<code>device.restored</code> 的 audit 記錄。</p>
+<p>兩個要處理的情境：</p>
+<ul>
+<li><strong>接替設備還在服役</strong> → 回 409 <code>successor_still_active</code>，要求先把接替設備
+  退役或暫停。否則兩台會同時宣稱自己是同一件設備，串接報表就會有歧義。</li>
+<li><strong>識別碼衝突</strong> → <strong>不會發生</strong>。<code>device_id</code> 全平台唯一，而退役的設備從來
+  沒有交還自己的識別碼，所以復役永遠不會撞號。</li>
+</ul>
+<p>復役時 <code>retired_at</code> 與 <code>replaced_by</code> 一併清空——它又是現役設備了，留著退役
+時間會讓串接報表把它裁掉。</p>
+<div class="highlight"><pre><span></span><code>POST /api/devices/{id}/lifecycle  {"state": "active", "reason": "…"}
+</code></pre></div>
+<hr>
+<h2 id="11a-設備登記的約束">11A. 設備登記的約束<a class="headerlink" href="#11a-設備登記的約束" title="Permanent link">¶</a></h2>
+<h3 id="11a-1-序號在組織內唯一">11A.1 序號在組織內唯一<a class="headerlink" href="#11a-1-序號在組織內唯一" title="Permanent link">¶</a></h3>
+<p>序號識別一台實體設備，所以兩列共用一個序號代表<strong>同一台硬體被登記了兩次</strong>——接著它的
+能量會被算兩次，而且兩列都不可信。</p>
+<p>三個界定：</p>
+<ul>
+<li><strong>範圍是組織，不是平台。</strong> 兩個租戶跟同一家廠商買，本來就會拿到相同的序號。</li>
+<li><strong>空白不比對。</strong> 驗收時序號經常還不知道；強迫填一個佔位字串會比允許空白更徹底地
+  破壞這個約束。</li>
+<li><strong>軟刪除的設備不擋。</strong> 已經除役移除的東西不該阻止重新登記。</li>
+</ul>
+<p>資料庫的部分唯一索引是最後防線，API 層另外檢查一次——目的是把<strong>已經在用那個序號的
+設備名稱</strong>放進錯誤裡。「是哪一台？」是重複序號唯一會引發的問題。</p>
+<h3 id="11a-2-能源資產綁定跟著設備走">11A.2 能源資產綁定跟著設備走<a class="headerlink" href="#11a-2-能源資產綁定跟著設備走" title="Permanent link">¶</a></h3>
+<p><code>EnergyAsset</code> 說的是「在場域 S，設備 D 供應能量流 R」。D 被登記到別的場域之後，把
+綁定留在 S 不是一個過時的細節——它讓 S 的能源平衡繼續依賴一台不在那裡的設備，同時新
+場域顯示成完全沒有綁定。<strong>兩個數字都錯，而且都不會叫。</strong></p>
+<p>所以 <code>PATCH /api/devices/{id}</code> 改變場域時，綁定一併搬移，並記進稽核 payload。</p>
+<p>設備被移出所有場域時，綁定改為<strong>停用</strong>而不是刪除：它沒有地方可以跟過去，必須停止餵養
+一個它已經不屬於的平衡，但仍然留著讓人看得出發生過什麼。</p>
+<p>目的地已經有同一個 <code>(device, role)</code> 綁定時會回 409 而不是靜默刪掉其中一個——那正是
+唯一約束存在的理由。</p>
+<h3 id="11a-3-設備成本">11A.3 設備成本<a class="headerlink" href="#11a-3-設備成本" title="Permanent link">¶</a></h3>
+<p><code>Device</code> 上有 <code>capital_cost</code> / <code>cost_currency</code> / <code>commissioned_on</code> /
+<code>expected_life_years</code> / <code>annual_maintenance_cost</code>。</p>
+<p>放在設備上而不是藍圖上：這是<strong>這一次採購</strong>的商業事實。同一型號隔兩年買、或走不同
+合約買，價格不一樣。藍圖記的是「這是什麼」，這裡記的是「這一台花了多少」。</p>
+<p><code>annual_cost</code> = 直線折舊 + 年度維護。<strong>沒有資料時回 <code>null</code> 而不是 <code>0.0</code></strong>——零會讓
+每一個回收年限看起來都很漂亮。</p>
+<p>沒有殘值、沒有折現。兩者都是合理的精算，而且都不該由平台預設：折現率是某個人的財務
+政策。</p>
+<p><strong>資本支出不進 <code>EnergyIntervalCost</code>。</strong> 它不是「搬運電能」的成本；併進去會讓「這個
+區間花了多少」同時代表兩件事，而且會和電池的循環成本重複計算——循環成本本來就已經是
+採購價換算成每 kWh 的數字。所以它有自己的端點：
+<code>GET /api/ems/sites/{id}/investment</code>。</p>
+<p>反過來，兩者有一個<strong>正確</strong>的連接：電池資產填了 <code>warranted_throughput_kwh</code> 時，
+<code>battery_cycle</code> 會用 <code>capital_cost ÷ 保證吞吐量</code> 算出循環成本，不必有人自己去除。</p>
+<hr>
+<h2 id="12-場域權限">12. 場域權限<a class="headerlink" href="#12-場域權限" title="Permanent link">¶</a></h2>
+<p>存取控制有<strong>三個維度</strong>：哪個租戶（<code>Organization</code>）、什麼角色（<code>Role</code>）、組織的哪
+一部分（<code>Membership.sites</code>）。</p>
+<p>兩條規則決定它怎麼讀：</p>
+<ul>
+<li><strong>空清單代表整個組織。</strong> 每個既有 membership 都是這個狀態，所以加上這個維度沒有
+  改變任何人的存取權。刻意不是空集合——空集合讀起來是「什麼都看不到」，而那正是
+  某天有人搞混這兩者時會把所有人鎖在門外的差別。</li>
+<li><strong>指定一個場域等於連同它的整棵子樹。</strong> 負責一個廠的人就是負責廠裡的東西；要求
+  管理員把每條產線列出來會讓這個功能無法使用，更糟的是——新增一條產線的那天它會
+  安靜地出錯。</li>
+</ul>
+<p>範圍<strong>不會提升權限</strong>，只跟角色取交集。被限制在單一廠區的 viewer，在那裡仍然是
+viewer。</p>
+<h3 id="12-1-幾個刻意的選擇">12.1 幾個刻意的選擇<a class="headerlink" href="#12-1-幾個刻意的選擇" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>情況</th>
+<th>行為</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>範圍外的<strong>設備／告警</strong></td>
+<td>404</td>
+<td>「它存在但不是你的」本身就是一則沒有給出的資訊</td>
+</tr>
+<tr>
+<td>範圍外的<strong>場域</strong></td>
+<td>403 <code>site_out_of_scope</code></td>
+<td>請求者是拿著 id 直接問的，已經知道它存在</td>
+</tr>
+<tr>
+<td><strong>沒有場域的設備</strong></td>
+<td>受限的人看不到</td>
+<td>那是新設備在管理員指派之前所在的池子</td>
+</tr>
+<tr>
+<td>受限的 admin 建立場域</td>
+<td>必須指定範圍內的 parent</td>
+<td>否則新場域會從他自己的清單消失，看起來像存檔失敗了</td>
+</tr>
+<tr>
+<td>受限的 admin 授權他人</td>
+<td>只能授出自己有的場域</td>
+<td>否則範圍就自我瓦解了</td>
+</tr>
+<tr>
+<td>superuser</td>
+<td>不受限</td>
+<td>要除錯的東西正是這套範圍時，逃生口必須還能用</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="12-2-實作位置">12.2 實作位置<a class="headerlink" href="#12-2-實作位置" title="Permanent link">¶</a></h3>
+<p>請求進來時在 <code>AuthContext.site_scope</code> 展開一次（<code>None</code> = 不受限），之後：</p>
+<div class="highlight"><pre><span></span><code><span class="n">ctx</span><span class="o">.</span><span class="n">scope_queryset</span><span class="p">(</span><span class="n">queryset</span><span class="p">,</span> <span class="n">field</span><span class="o">=</span><span class="s2">"site_id"</span><span class="p">)</span>   <span class="c1"># 收窄清單</span>
+<span class="n">ctx</span><span class="o">.</span><span class="n">allows_site</span><span class="p">(</span><span class="n">site_id</span><span class="p">)</span>                        <span class="c1"># 單筆判斷</span>
+<span class="n">ctx</span><span class="o">.</span><span class="n">require_site</span><span class="p">(</span><span class="n">site_id</span><span class="p">)</span>                       <span class="c1"># 單筆判斷，不通過就 403</span>
+</code></pre></div>
+<p><code>field</code> 是通往場域的 lookup 路徑，所以同一個呼叫適用於 <code>Site</code>（<code>id</code>）、
+<code>Device</code>（<code>site_id</code>）與經由關聯抵達的（<code>device__site_id</code>）。</p>
+<p><strong>時序查詢也要擋。</strong> <code>POST /api/series</code> 直接吃 device id，少了這道防線，受限的
+使用者只要知道 id 就能讀到整個租戶的資料。</p></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

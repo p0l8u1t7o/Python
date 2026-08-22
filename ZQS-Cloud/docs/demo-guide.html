@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>客戶展示指南 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="active">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#一-準備-展示前-2-分鐘">一、準備（展示前 2 分鐘）</a></li>
+<li><a href="#二-展示租戶長什麼樣">二、展示租戶長什麼樣</a></li>
+<li><a href="#三-建議的展示流程-約-15-分鐘">三、建議的展示流程（約 15 分鐘）</a><ul>
+<li><a href="#1-設備真的在上傳-地圖-設備頁-2-分鐘">1. 設備真的在上傳（地圖 / 設備頁，2 分鐘）</a></li>
+<li><a href="#2-設備接受指令-設備頁-指令-3-分鐘">2. 設備接受指令（設備頁 → 指令，3 分鐘）</a></li>
+<li><a href="#3-策略自動調度-儲能規劃頁-3-分鐘">3. 策略自動調度（儲能規劃頁，3 分鐘）</a></li>
+<li><a href="#3b-工作流程範例-工作流程頁-3-分鐘">3b. 工作流程範例（工作流程頁，3 分鐘）</a></li>
+<li><a href="#4-後續計算與受益-總覽頁-5-分鐘">4. 後續計算與受益（總覽頁，5 分鐘）</a></li>
+<li><a href="#5-事件與告警-告警頁-2-分鐘">5. 事件與告警（告警頁，2 分鐘）</a></li>
+</ul>
+</li>
+<li><a href="#四-常用指令">四、常用指令</a></li>
+<li><a href="#五-展示前的自我檢查">五、展示前的自我檢查</a></li>
+<li><a href="#六-受益數字怎麼算">六、受益數字怎麼算</a></li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="客戶展示指南">客戶展示指南<a class="headerlink" href="#客戶展示指南" title="Permanent link">¶</a></h1>
+<p>一條指令把資料庫重建成「多場域、多設備、策略各異」的展示租戶，設備透過 MQTT（Sparkplug B）真實上傳、真實接受指令，儲能的受益數字由平台從實際調度結果算出來，不是寫死的。</p>
+<h2 id="一-準備-展示前-2-分鐘">一、準備（展示前 2 分鐘）<a class="headerlink" href="#一-準備-展示前-2-分鐘" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="nb">reset-demo</span><span class="p">.</span><span class="n">ps1</span>            <span class="c"># 清空資料庫 → 重建 → 7 天歷史 → 啟動整個堆疊</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="nb">reset-demo</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-HistoryDays</span> <span class="n">30</span> <span class="n">-NoStart</span>   <span class="c"># 只重建，歷史 30 天</span>
+</code></pre></div>
+<p>完成後開 <a href="http://127.0.0.1:5173">http://127.0.0.1:5173</a>，帳號：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>角色</th>
+<th>帳號</th>
+<th>密碼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>管理員</td>
+<td><code>admin@example.com</code></td>
+<td><code>ChangeMe-2026!</code></td>
+</tr>
+<tr>
+<td>值班工程師（operator）</td>
+<td><code>operator@example.com</code></td>
+<td>同上</td>
+</tr>
+<tr>
+<td>管理階層（viewer）</td>
+<td><code>viewer@example.com</code></td>
+<td>同上</td>
+</tr>
+</tbody>
+</table></div>
+<p>堆疊包含：內建 MQTT broker、API、擷取管線、工作流程引擎、排程器（能源彙總 + 調度引擎，每 60 秒）、前端。<strong>啟動後所有設備都是離線的</strong>——展示開始前開 <code>.\scripts\sim-console.ps1</code> 按「全部上線」，20 台設備就以 MQTT 客戶端連上來；按「全部離線」可以當場示範離線偵測。</p>
+<h2 id="二-展示租戶長什麼樣">二、展示租戶長什麼樣<a class="headerlink" href="#二-展示租戶長什麼樣" title="Permanent link">¶</a></h2>
+<p>組織：<strong>ZQS 示範能源股份有限公司</strong>（<code>zqs-demo</code>）</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>場域</th>
+<th>類型</th>
+<th>負載尖峰</th>
+<th>光電</th>
+<th>儲能</th>
+<th>契約容量</th>
+<th>方案（策略）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>新竹科學園區</td>
+<td>園區（父場域）</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>680 kW</td>
+<td><strong>園區契約容量管理</strong>（契約容量管理）</td>
+</tr>
+<tr>
+<td>├ A棟 生產廠房</td>
+<td>廠房</td>
+<td>900 kW</td>
+<td>400 kWp</td>
+<td>500 kW / 1 MWh</td>
+<td>680 kW</td>
+<td><em>繼承園區方案</em></td>
+</tr>
+<tr>
+<td>└ B棟 研發大樓</td>
+<td>辦公</td>
+<td>320 kW</td>
+<td>400 kWp</td>
+<td>250 kW / 500 kWh</td>
+<td>—</td>
+<td><strong>研發大樓光儲自發自用</strong>（覆寫園區方案）</td>
+</tr>
+<tr>
+<td>台中工業區廠房</td>
+<td>廠房</td>
+<td>1200 kW</td>
+<td>300 kWp</td>
+<td>1 MW / 2 MWh</td>
+<td>1100 kW</td>
+<td><strong>工業區時間電價套利</strong></td>
+</tr>
+<tr>
+<td>台北總部大樓</td>
+<td>辦公</td>
+<td>300 kW</td>
+<td>80 kWp</td>
+<td>200 kW / 500 kWh</td>
+<td>210 kW</td>
+<td><strong>總部契約容量管理</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>每個場域一台閘道器 <code>GW-&lt;場域&gt;</code>，下面五台設備：儲能 PCS、市電關口電表、光電、負載監測、EMS 控制器（共 20 台）。電價採台電 114 年牌價（低壓電力二段式 / 表燈三段式）。</p>
+<p>契約容量刻意訂在各場域自然尖峰之下：A 棟自然尖峰約 760 kW、契約 680 kW，沒有儲能就會超約，所以契約容量管理的效益一目了然。</p>
+<h2 id="三-建議的展示流程-約-15-分鐘">三、建議的展示流程（約 15 分鐘）<a class="headerlink" href="#三-建議的展示流程-約-15-分鐘" title="Permanent link">¶</a></h2>
+<h3 id="1-設備真的在上傳-地圖-設備頁-2-分鐘">1. 設備真的在上傳（地圖 / 設備頁，2 分鐘）<a class="headerlink" href="#1-設備真的在上傳-地圖-設備頁-2-分鐘" title="Permanent link">¶</a></h3>
+<ul>
+<li>地圖頁：四個場域、20 台設備全部在線。</li>
+<li>任選一台儲能 PCS 進設備頁：每 5 秒更新一次，SOC、功率、溫度、PCS 狀態都在動；資料走的是 Sparkplug B DDATA，不是平台模擬。</li>
+<li>打開閘道器頁面可看到 NBIRTH / DBIRTH 的指標宣告。</li>
+</ul>
+<h3 id="2-設備接受指令-設備頁-指令-3-分鐘">2. 設備接受指令（設備頁 → 指令，3 分鐘）<a class="headerlink" href="#2-設備接受指令-設備頁-指令-3-分鐘" title="Permanent link">¶</a></h3>
+<ul>
+<li>在任一 PCS 的設備頁下達 <code>set_power_setpoint</code>，例如 <code>power_w = -200000</code>（充電 200 kW）。</li>
+<li>指令狀態在一秒內變成 <code>succeeded</code>（設備 ack），電池功率隨即變成 −200 kW，SOC 開始上升，<strong>同一場域的市電電表取用量同步上升 200 kW</strong>——這就是「表後」：電表看到的是負載 − 光電 − 電池。</li>
+<li><code>emergency_stop</code> 會讓電池立刻歸零並覆寫任何設定點。</li>
+</ul>
+<h3 id="3-策略自動調度-儲能規劃頁-3-分鐘">3. 策略自動調度（儲能規劃頁，3 分鐘）<a class="headerlink" href="#3-策略自動調度-儲能規劃頁-3-分鐘" title="Permanent link">¶</a></h3>
+<ul>
+<li>儲能規劃頁：四個方案、各自綁定的場域。點開「園區契約容量管理」，看得到 A 棟是<strong>繼承</strong>、B 棟是<strong>覆寫</strong>。</li>
+<li>調度引擎每 60 秒評估一次。展示時可手動跑一次乾跑看決策與理由：
+  <div class="highlight"><pre><span></span><code><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">manage</span><span class="p">.</span><span class="n">py</span> <span class="n">run_dispatch</span> <span class="p">-</span><span class="n">-dry-run</span>
+</code></pre></div>
+  輸出類似 <code>HSINCHUA-BESS-01: 95000 W  demand 745.0 kW over ceiling 650.0 kW</code>。</li>
+<li>引擎真的下指令後，設備頁的指令列表會出現發出者 <code>dispatch-engine</code>，電池功率跟著變。</li>
+</ul>
+<blockquote>
+<p>週末電價全日離峰，時間電價套利策略在週末「不動作」是正確行為（價差為 0）；若展示日是週末，台中廠房當天不會套利，但歷史資料裡的工作日都有。</p>
+</blockquote>
+<h3 id="3b-工作流程範例-工作流程頁-3-分鐘">3b. 工作流程範例（工作流程頁，3 分鐘）<a class="headerlink" href="#3b-工作流程範例-工作流程頁-3-分鐘" title="Permanent link">¶</a></h3>
+<p>六個可直接執行、畫布上附註解的範例（<code>apps/core/showcase_workflows.py</code>）：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>名稱</th>
+<th>場域</th>
+<th>示範的節點與模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>削峰與低電量保護</td>
+<td>A 棟</td>
+<td>兩條並行分支、條件計時（連續 30 秒）、設定點歸零、每 30 秒迴圈</td>
+</tr>
+<tr>
+<td>離峰充電排程</td>
+<td>A 棟</td>
+<td>跨午夜時間窗（22:30–06:30）、電量判斷、等待節點</td>
+</tr>
+<tr>
+<td>光電餘電優先充電</td>
+<td>B 棟</td>
+<td>單一條件迴圈、「無讀值」分支的保守處理</td>
+</tr>
+<tr>
+<td>電池溫度連鎖</td>
+<td>台中</td>
+<td>緊急停止 → 條件等待（降溫、10 分鐘逾時）→ 恢復；逾時分支結束交人員處理</td>
+</tr>
+<tr>
+<td>需量反應演練</td>
+<td>台中</td>
+<td><strong>一次性流程</strong>：放電 300 kW 維持 120 秒後恢復——現場按「執行」最適合</td>
+</tr>
+<tr>
+<td>主控排程</td>
+<td>台中</td>
+<td>「執行工作流程」節點呼叫子流程，搭配工作日時間窗</td>
+</tr>
+</tbody>
+</table></div>
+<p>建議現場示範「需量反應演練」：執行 → 看節點依序亮起（動畫連線）→ 指令列表出現 ack → 台中電表取用下降 300 kW → 120 秒後恢復。迴圈型流程會一直跑到手動停止；它們和調度引擎都會對同一台電池下設定點，展示時二擇一（停用該場域方案，或只看流程的動作），避免兩個控制者互相覆寫。</p>
+<h3 id="4-後續計算與受益-總覽頁-5-分鐘">4. 後續計算與受益（總覽頁，5 分鐘）<a class="headerlink" href="#4-後續計算與受益-總覽頁-5-分鐘" title="Permanent link">¶</a></h3>
+<ul>
+<li>總覽頁「各場域電費與節費」：時間範圍切到 <strong>7 天</strong>。</li>
+<li>長條圖：電費 vs. 節費（能源面：與「同樣光電、沒有電池」的基準線比較，可能為負，不隱藏）。</li>
+<li>下方表格 <strong>需量費受益</strong>：每個場域的契約容量、未調度最高需量、實際最高需量、降低需量、需量費受益（含避免超約罰款）。A 棟約 760 kW → 650 kW，一週估算受益數萬元；台北總部同理。</li>
+<li>儲能頁（各場域）：能源區間、充放電 kWh、SOC 曲線、成本來源分解。</li>
+<li>報表頁：rollup 後的日/月彙總，父場域「新竹科學園區」會把 A、B 棟加總。</li>
+</ul>
+<h3 id="5-事件與告警-告警頁-2-分鐘">5. 事件與告警（告警頁，2 分鐘）<a class="headerlink" href="#5-事件與告警-告警頁-2-分鐘" title="Permanent link">¶</a></h3>
+<ul>
+<li>模擬器帶 <code>--faults</code>：每隔一段時間隨機一台設備送出事件（Event/Alarm）。</li>
+<li>告警規則：SOC 過低、電池／PCS 溫度過高、市電電壓異常、各場域超過契約容量。</li>
+<li>通知管道範例（Webhook，預設停用）示範通知佇列。</li>
+</ul>
+<h2 id="四-常用指令">四、常用指令<a class="headerlink" href="#四-常用指令" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c"># 獨立設備模擬器（堆疊啟動後所有設備都是離線的；在這裡按「全部上線」）</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">sim-console</span><span class="p">.</span><span class="n">ps1</span>            <span class="c"># 首次會先從平台匯出 simulator\fleet.json</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">sim-console</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Export</span>    <span class="c"># 平台登記變動後重新匯出</span>
+
+<span class="c"># 調度引擎</span>
+<span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">manage</span><span class="p">.</span><span class="n">py</span> <span class="n">run_dispatch</span> <span class="p">-</span><span class="n">-dry-run</span>
+
+<span class="c"># 重新產生歷史（不清設備）</span>
+<span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">manage</span><span class="p">.</span><span class="n">py</span> <span class="n">generate_history</span> <span class="p">-</span><span class="n">-days</span> <span class="n">7</span> <span class="p">-</span><span class="n">-interval</span> <span class="n">300</span> <span class="p">-</span><span class="n">-clear</span> <span class="p">-</span><span class="n">-with-faults</span>
+</code></pre></div>
+<p>模擬器與平台完全解耦：只靠 <code>simulator/fleet.json</code> 與 MQTT，主控台上可改 broker IP／Port，並能看每台設備當下送出的量測值。物理模型：每個場域一組負載曲線（廠房兩班制、辦公上班時段）、太陽曲線、電池 SOC 積分與上下限；電網功率 = 負載 − 光電 − 電池，因此任何指令都會立刻反映在電表上。「電池自主削峰」選項讓電池在平台尚未下設定點時自己削峰；預設是<strong>完全聽平台的</strong>，以突顯調度引擎的作用。</p>
+<h2 id="五-展示前的自我檢查">五、展示前的自我檢查<a class="headerlink" href="#五-展示前的自我檢查" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">python</span><span class="p">.</span><span class="n">exe</span> <span class="n">scripts</span><span class="n">erify_calculations</span><span class="p">.</span><span class="n">py</span>     <span class="c"># 3,300+ 項數字交叉比對（API 彼此一致）</span>
+<span class="nb">cd </span><span class="n">frontend</span><span class="p">;</span> <span class="n">npx</span> <span class="n">playwright</span> <span class="n">test</span>                             <span class="c"># 70+ 項 e2e：每頁、每個按鍵、畫面數字 = API 數字、三語、角色</span>
+</code></pre></div>
+<p><code>verify_calculations.py</code> 檢查：總覽總計 = 各場域加總、需量費受益可由尖峰／契約／費率重算、場域摘要 = 區間加總、每個區間的電費／節費可由 kWh 與單價重算、即時功率流平衡（市電 = 負載 − 光電 − 電池）、今日數字 = 各場域加總、父場域 = 子樹加總、自發自用率／自給率、投資攤提。e2e 的 <code>numbers.spec.ts</code> 再確認總覽與儲能頁顯示的數字與 API 相同；<code>buttons.spec.ts</code> 逐頁按下每一個非破壞性按鍵並要求無錯誤、無 5xx。</p>
+<blockquote>
+<p>e2e 會在 A 棟留下一台延遲探針設備（<code>LAT-PROBE-0001</code>）與少量測試資料。展示前請再跑一次 <code>.\scripts
+eset-demo.ps1</code> 還原乾淨資料。</p>
+</blockquote>
+<h2 id="六-受益數字怎麼算">六、受益數字怎麼算<a class="headerlink" href="#六-受益數字怎麼算" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>能源面節費</strong>（<code>estimated_savings</code>）：每個結算區間，「同樣負載、同樣光電、沒有電池」的電費 − 實際電費。充電時為負、放電時為正，整週加總為淨效益。</li>
+<li><strong>需量費受益</strong>（<code>demand_savings</code>）：區間平均需量取窗口內最高值；(未調度最高需量 − 實際最高需量) × 方案電價的每月基本電費費率，加上避免的超約罰款（台電規定：超約 10% 以內 2 倍、超過 3 倍）。窗口為整月時即為帳單數字，其他窗口為估算。</li>
+</ul></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

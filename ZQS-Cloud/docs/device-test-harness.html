@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>設備測試工具 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="active">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#0-為什麼需要這個東西">0. 為什麼需要這個東西</a><ul>
+<li><a href="#0-1-第一原則-測試環境只能更嚴-不能更鬆">0.1 第一原則：測試環境只能更嚴，不能更鬆</a></li>
+</ul>
+</li>
+<li><a href="#1-最短的用法">1. 最短的用法</a></li>
+<li><a href="#2-為什麼一定要先自我驗證">2. 為什麼一定要先自我驗證</a><ul>
+<li><a href="#2-1-自我驗證要準備什麼">2.1 自我驗證要準備什麼？</a></li>
+<li><a href="#2-2-輸出長這樣">2.2 輸出長這樣</a></li>
+</ul>
+</li>
+<li><a href="#3-測試真實設備-labview">3. 測試真實設備（LabVIEW）</a><ul>
+<li><a href="#3-1-先註冊設備並拿到憑證">3.1 先註冊設備並拿到憑證</a></li>
+<li><a href="#3-2-啟動">3.2 啟動</a></li>
+<li><a href="#3-3-什麼時候會結束">3.3 什麼時候會結束</a></li>
+</ul>
+</li>
+<li><a href="#4-下發命令">4. 下發命令</a><ul>
+<li><a href="#4-1-自動下發一次">4.1 自動下發一次</a></li>
+<li><a href="#4-2-互動下發">4.2 互動下發</a></li>
+</ul>
+</li>
+<li><a href="#5-結束碼">5. 結束碼</a></li>
+<li><a href="#6-手動模式-進階">6. 手動模式（進階）</a></li>
+<li><a href="#7-比正式環境更嚴格的四項">7. 比正式環境更嚴格的四項</a></li>
+<li><a href="#8-完整驗收清單">8. 完整驗收清單</a><ul>
+<li><a href="#8-1-connect-階段">8.1 CONNECT 階段</a></li>
+<li><a href="#8-2-subscribe-階段">8.2 SUBSCRIBE 階段</a></li>
+<li><a href="#8-3-birth-階段">8.3 BIRTH 階段</a></li>
+<li><a href="#8-4-data-階段">8.4 DATA 階段</a></li>
+<li><a href="#8-5-互動">8.5 互動</a></li>
+</ul>
+</li>
+<li><a href="#9-全部參數">9. 全部參數</a><ul>
+<li><a href="#scripts-test-device-ps1-powershell-包裝">scripts\test-device.ps1（PowerShell 包裝）</a></li>
+<li><a href="#scripts-run_device_test-py-self-test">scripts\run_device_test.py self-test</a></li>
+<li><a href="#scripts-run_device_test-py-device">scripts\run_device_test.py device</a></li>
+<li><a href="#run_test_broker-底層-management-command">run_test_broker（底層 management command）</a></li>
+<li><a href="#run_reference_device">run_reference_device</a></li>
+</ul>
+</li>
+<li><a href="#10-從別台機器連進來-labview-在另一台電腦">10. 從別台機器連進來（LabVIEW 在另一台電腦）</a></li>
+<li><a href="#11-這個工具證明不了什麼">11. 這個工具證明不了什麼</a><ul>
+<li><a href="#11-1-為什麼不直接跑一個真的-broker">11.1 為什麼不直接跑一個真的 broker</a></li>
+</ul>
+</li>
+<li><a href="#12-常見失敗與原因">12. 常見失敗與原因</a></li>
+<li><a href="#13-相關文件">13. 相關文件</a></li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="設備連線測試工具-mqtt-驗收-harness">設備連線測試工具（MQTT 驗收 harness）<a class="headerlink" href="#設備連線測試工具-mqtt-驗收-harness" title="Permanent link">¶</a></h1>
+<p>給要寫<strong>設備端</strong>（LabVIEW、韌體、任何 MQTT client）的人。</p>
+<p>這份文件說明怎麼在<strong>還沒有正式 broker</strong>的情況下，確認你的設備真的能接上平台。</p>
+<p><strong>趕時間的話只要記這一行：</strong></p>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="nb">test-device</span><span class="p">.</span><span class="n">ps1</span>
+</code></pre></div>
+<hr>
+<h2 id="0-為什麼需要這個東西">0. 為什麼需要這個東西<a class="headerlink" href="#0-為什麼需要這個東西" title="Permanent link">¶</a></h2>
+<p>設備端開發最痛的地方是回饋迴圈太長：接上 EMQX，連線被拒，日誌只寫
+<code>bad_username_or_password</code>——但真正的原因可能是憑證錯、client id 被釘選、
+topic 沒權限、或 payload 少一個欄位。你只能猜。</p>
+<p>這個工具把猜測換成一份清單。它會：</p>
+<ol>
+<li>接受設備的 MQTT 連線，</li>
+<li>用<strong>與正式環境完全相同的程式</strong>檢查每一項，</li>
+<li>每收到一則訊息就即時印出通過／拒絕與原因，</li>
+<li>結束時印出一份驗收報告，明確回答一句話：<strong>「這台設備可以接正式環境了嗎？」</strong></li>
+</ol>
+<h3 id="0-1-第一原則-測試環境只能更嚴-不能更鬆">0.1 第一原則：測試環境只能更嚴，不能更鬆<a class="headerlink" href="#0-1-第一原則-測試環境只能更嚴-不能更鬆" title="Permanent link">¶</a></h3>
+<p>這個工具的所有判斷都不是重寫的，是<strong>呼叫正式環境的函式</strong>：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>檢查項目</th>
+<th>呼叫的正式程式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>帳號密碼</td>
+<td><code>apps.devices.services.authenticate_device()</code></td>
+</tr>
+<tr>
+<td>Topic 權限</td>
+<td><code>apps.devices.emqx</code> 的 <code>_PUBLISHABLE</code> / <code>_SUBSCRIBABLE</code> / <code>_split_topic()</code></td>
+</tr>
+<tr>
+<td>Payload 格式</td>
+<td><code>services.ingestor.protocol.decode()</code> + <code>validate()</code></td>
+</tr>
+<tr>
+<td>Topic 結構</td>
+<td><code>services.mqtt.topics</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>為什麼要這樣做：如果測試工具自己抄一份「合法 payload 長什麼樣」，任何一邊改了
+之後兩份就會分岔，那時候「測試通過」等於沒有意義——你會拿著一張通過的報告，
+接上正式環境然後失敗。</p>
+<p><strong>有四項本工具比正式環境更嚴格</strong>，這是刻意的，見 <a href="#7-比正式環境更嚴格的四項">§7</a>。</p>
+<hr>
+<h2 id="1-最短的用法">1. 最短的用法<a class="headerlink" href="#1-最短的用法" title="Permanent link">¶</a></h2>
+<p>一行指令，什麼都不用先開：</p>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="nb">test-device</span><span class="p">.</span><span class="n">ps1</span>
+</code></pre></div>
+<p>它會依序做兩件事：</p>
+<ol>
+<li><strong>自我驗證</strong>——確認這個測試工具本身是對的</li>
+<li><strong>等你的設備連進來</strong>——顯示流量，結束時給一份驗收報告</li>
+</ol>
+<p>不需要先 <code>activate</code> 虛擬環境，不需要開兩個終端機，不需要記參數。啟動器會自己
+用專案的 <code>.venv</code>。</p>
+<p>跨平台或不想用 PowerShell 的話，直接跑 Python 也一樣：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>self-test
+python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>device<span class="w"> </span>--device<span class="w"> </span>ZQS-BESS-0001
+</code></pre></div>
+<hr>
+<h2 id="2-為什麼一定要先自我驗證">2. 為什麼一定要先自我驗證<a class="headerlink" href="#2-為什麼一定要先自我驗證" title="Permanent link">¶</a></h2>
+<p>⚠️ <strong>不要跳過自我驗證直接測 LabVIEW。</strong></p>
+<p>當 LabVIEW 沒通過某一項時，有兩個可能：設備錯了，或工具錯了。沒有對照組你分
+不出來。</p>
+<p>自我驗證會跑七個情境：</p>
+<div class="highlight"><pre><span></span><code>正常的參考設備            → 必須「全部通過」
+故意用錯 client id        → 必須「剛好」抓到 Client ID 那一項
+故意不宣告遺言            → 必須「剛好」抓到遺言那幾項
+故意 clean_session=false  → 必須「剛好」抓到 Clean session
+故意把遺言設成 retained   → 必須「剛好」抓到 遺言 retained
+故意送不是 protobuf 的東西 → 必須「剛好」抓到 Payload 解碼
+故意忽略 Rebirth 要求     → 回應 Rebirth 必須維持「未測」
+故意收到命令不回覆        → 命令回覆必須維持「未測」，不能謊稱通過
+</code></pre></div>
+<p>注意「剛好」兩個字。工具<strong>漏報</strong>會讓壞掉的設備矇混過關；工具<strong>多報</strong>會讓你去
+追不存在的問題。兩種都算自我驗證失敗。</p>
+<p>一個永遠只說「通過」的測試工具，比沒有測試工具還糟糕——它把「不知道」變成了
+「假的安心」。</p>
+<h3 id="2-1-自我驗證要準備什麼">2.1 自我驗證要準備什麼？<a class="headerlink" href="#2-1-自我驗證要準備什麼" title="Permanent link">¶</a></h3>
+<p><strong>什麼都不用。</strong> 它會自動建立一台名為 <code>ZQS-SELFTEST-xxxxxxxx</code> 的暫時設備、發
+一組憑證、跑完之後把它刪掉（中途 Ctrl+C 也會刪）。你不必先註冊設備，也不必知
+道任何密碼。</p>
+<p>想改用既有設備的憑證測也可以：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>self-test<span class="w"> </span>--device<span class="w"> </span>ZQS-BESS-0001
+</code></pre></div>
+<p>只跑其中一個情境（debug 用）：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>self-test<span class="w"> </span>--only<span class="w"> </span>no_lwt
+</code></pre></div>
+<h3 id="2-2-輸出長這樣">2.2 輸出長這樣<a class="headerlink" href="#2-2-輸出長這樣" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code>==========================================================================
+  測試工具自我驗證
+==========================================================================
+
+先確認這個工具本身是對的，再拿它去測 LabVIEW。
+每個情境都會跑一次參考設備：正常的那次必須全過，故意壞掉的
+那幾次必須「剛好」被抓到對應的那一項——不多報，也不漏報。
+
+  已建立暫時性測試設備 ZQS-SELFTEST-3AAD24A6（結束時自動刪除）
+
+→ 正常設備（應該全部通過） …
+   ✓ 全部通過（收到 10 則訊息）
+
+→ Client ID 用 LabVIEW_1 …
+   ✓ 如預期抓到 1 項（收到 6 則訊息）
+
+→ 不宣告遺言（LWT） …
+   ✓ 如預期抓到 5 項（收到 6 則訊息）
+
+  … 略 …
+
+--------------------------------------------------------------------------
+7 / 7 個情境符合預期
+
+結論：測試工具運作正常。
+</code></pre></div>
+<p>如果有情境不符預期，會直接標出是漏報還是多報：</p>
+<div class="highlight"><pre><span></span><code>[異常] 不宣告遺言（LWT）
+        預期失敗項：lwt_declared、lwt_payload、lwt_qos、lwt_retain、lwt_topic
+        實際失敗項：（無）
+        → 工具沒有抓到應該失敗的項目：LWT 已宣告、…。
+          這代表測試工具會放行有問題的設備。
+</code></pre></div>
+<p>這種情況下<strong>不要</strong>用它的報告判斷設備。</p>
+<hr>
+<h2 id="3-測試真實設備-labview">3. 測試真實設備（LabVIEW）<a class="headerlink" href="#3-測試真實設備-labview" title="Permanent link">¶</a></h2>
+<h3 id="3-1-先註冊設備並拿到憑證">3.1 先註冊設備並拿到憑證<a class="headerlink" href="#3-1-先註冊設備並拿到憑證" title="Permanent link">¶</a></h3>
+<p>工具驗的是<strong>真的憑證</strong>，所以設備必須先存在於資料庫裡。到 console 新增設備，或
+用 shell：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>manage.py<span class="w"> </span>shell
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">apps.devices.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">Device</span><span class="p">,</span> <span class="n">DeviceCredential</span>
+
+<span class="n">device</span> <span class="o">=</span> <span class="n">Device</span><span class="o">.</span><span class="n">objects</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">device_id</span><span class="o">=</span><span class="s2">"ZQS-BESS-0001"</span><span class="p">)</span>
+<span class="n">credential</span><span class="p">,</span> <span class="n">password</span> <span class="o">=</span> <span class="n">DeviceCredential</span><span class="o">.</span><span class="n">issue</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">credential</span><span class="o">.</span><span class="n">mqtt_username</span><span class="p">)</span>  <span class="c1"># dev-&lt;組織代碼&gt;-ZQS-BESS-0001</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">password</span><span class="p">)</span>                  <span class="c1"># 只會顯示這一次，請記下來</span>
+</code></pre></div>
+<p>密碼是雜湊儲存的，<strong>只在產生當下顯示一次</strong>。弄丟了就重新 <code>issue()</code> 一次（舊
+密碼會失效）。</p>
+<p>設備的 <code>commissioning_state</code> 必須允許連線，且 <code>is_enabled</code> 為真，否則
+<code>authenticate_device()</code> 會拒絕——這與正式環境行為一致，不是工具的限制。</p>
+<blockquote>
+<p>啟動器<strong>不會</strong>把密碼寫進任何檔案。device 模式根本不需要密碼（是設備自己
+帶上來的）；只有在你用 <code>self-test --device</code> 指定既有設備時才需要，這時可以
+用 <code>--password</code>、環境變數 <code>ZQS_DEVICE_PASSWORD</code>，或什麼都不給讓它跳出不回
+顯的輸入提示。</p>
+</blockquote>
+<h3 id="3-2-啟動">3.2 啟動<a class="headerlink" href="#3-2-啟動" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="nb">test-device</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Device</span> <span class="n">-DeviceId</span> <span class="n">ZQS-BESS</span><span class="p">-</span><span class="n">0001</span>
+</code></pre></div>
+<p>或：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>device<span class="w"> </span>--device<span class="w"> </span>ZQS-BESS-0001
+</code></pre></div>
+<p>然後啟動 LabVIEW，連到這台電腦的 <code>1883</code> 埠。畫面會即時顯示：</p>
+<div class="highlight"><pre><span></span><code>·· TCP 連線建立 192.168.1.44:53214
+&gt;&gt; CONNECT ZQS-GW-0001 → 接受
+&gt;&gt; SUBSCRIBE spBv1.0/demo/NCMD/ZQS-GW-0001  QoS 0
+&gt;&gt; SUBSCRIBE spBv1.0/demo/DCMD/ZQS-GW-0001/+  QoS 0
+&lt;&lt; 14:22:07  spBv1.0/demo/NBIRTH/ZQS-GW-0001  [QoS 0]
+       seq=0  bdSeq=3  Node Control/Rebirth
+&lt;&lt; 14:22:07  spBv1.0/demo/DBIRTH/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       seq=1  12 個 metric，全部帶 alias
+&lt;&lt; 14:22:08  spBv1.0/demo/DDATA/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       seq=2  alias=1 → 62.0 …
+</code></pre></div>
+<p>被拒絕的訊息會即時說明原因，不必等到最後：</p>
+<div class="highlight"><pre><span></span><code>&lt;&lt; 14:22:09  spBv1.0/demo/DDATA/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       14 bytes: 7b6e6f742070726f746f627566…
+       拒絕：[invalid_protobuf] payload is not a valid Sparkplug B protobuf
+</code></pre></div>
+<p>payload 以十六進位顯示而不是嘗試解碼：出問題的往往就是那份無法解碼的位元組，在
+預覽欄裡印出一段 traceback 對誰都沒有幫助。</p>
+<h3 id="3-3-什麼時候會結束">3.3 什麼時候會結束<a class="headerlink" href="#3-3-什麼時候會結束" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>條件</th>
+<th>怎麼設定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>你按 Ctrl+C</td>
+<td>隨時</td>
+</tr>
+<tr>
+<td>等不到設備連進來</td>
+<td><code>--timeout</code>（預設 300 秒）</td>
+</tr>
+<tr>
+<td>設備連上後測夠久了</td>
+<td><code>--duration 60</code></td>
+</tr>
+<tr>
+<td>收到足夠的訊息</td>
+<td><code>--max-messages 50</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>結束時印出完整驗收報告，並自動寫一份到 <code>logs/</code>：</p>
+<div class="highlight"><pre><span></span><code>報告已寫入 D:\Working Space\Python\ZQS-Cloud\logs\device-test-device-ZQS-BESS-0001-20260820-142207.txt
+</code></pre></div>
+<p>檔名含時間戳，不會互相覆蓋。報告是 UTF-8（含 BOM），用記事本或 Excel 打開都
+不會變亂碼，可以直接貼進工單。不想留檔就加 <code>--no-report</code>。</p>
+<hr>
+<h2 id="4-下發命令">4. 下發命令<a class="headerlink" href="#4-下發命令" title="Permanent link">¶</a></h2>
+<h3 id="4-1-自動下發一次">4.1 自動下發一次<a class="headerlink" href="#4-1-自動下發一次" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="nb">test-device</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Device</span> <span class="n">-DeviceId</span> <span class="n">ZQS-BESS</span><span class="p">-</span><span class="n">0001</span> <span class="p">`</span>
+    <span class="n">-Command</span> <span class="n">set_power_limit</span> <span class="n">-Params</span> <span class="s1">'{"limit_w": 400000}'</span>
+</code></pre></div>
+<p>工具會在設備訂閱之後（預設等 8 秒，可用 <code>--command-delay</code> 調整）下發一則 DCMD，
+然後在後續的 DDATA 裡找回覆：</p>
+<div class="highlight"><pre><span></span><code>&gt;&gt; 下發命令 set_power_limit  Command/ID=bd167ce4-8230-40e8-8f85-358ef681a262
+&lt;&lt; 14:22:15  spBv1.0/demo/DDATA/ZQS-GW-0001/ZQS-BESS-0001  [QoS 0]
+       Command/ID=bd167ce4-…  Command/Status=succeeded
+</code></pre></div>
+<p>Sparkplug 沒有定義回覆訊息——確認就是設備把 metric 回報回來。所以回覆走的是一般
+的 DDATA，不是別的型別。</p>
+<p>設備必須把 <code>Command/ID</code> <strong>原樣</strong>帶回。平台靠它把回覆對回請求；改動或省略的話，
+命令在平台側會一直停在「等待中」直到逾時。</p>
+<p>PowerShell 的單引號字串會原樣傳遞，所以 <code>-Params '{"limit_w": 400000}'</code> 可以
+直接用。cmd.exe 需要跳脫：<code>--params "{\"limit_w\": 400000}"</code>。</p>
+<h3 id="4-2-互動下發">4.2 互動下發<a class="headerlink" href="#4-2-互動下發" title="Permanent link">¶</a></h3>
+<p>想一邊看反應一邊試不同命令：</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>device<span class="w"> </span>--device<span class="w"> </span>ZQS-BESS-0001<span class="w"> </span>--interactive
+</code></pre></div>
+<p>然後直接打字：</p>
+<div class="highlight"><pre><span></span><code>set_power_limit {"limit_w": 400000}
+reboot
+q
+</code></pre></div>
+<p>格式是 <code>命令名稱 &lt;JSON 參數&gt;</code>，參數可省略。輸入 <code>q</code> 結束並印出報告。</p>
+<hr>
+<h2 id="5-結束碼">5. 結束碼<a class="headerlink" href="#5-結束碼" title="Permanent link">¶</a></h2>
+<p>啟動器會回傳有意義的結束碼，方便串批次檔或 CI：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>碼</th>
+<th>意思</th>
+<th>典型情況</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>通過</td>
+<td>設備全部必要項通過；或自我驗證七個情境都符合預期</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td><strong>驗收失敗</strong></td>
+<td>設備有必要項不合格；或自我驗證發現工具漏報／多報</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td><strong>無法執行</strong></td>
+<td>埠被占用、參數錯誤、找不到憑證、沒有 <code>.venv</code></td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td><strong>測試未完成</strong></td>
+<td>逾時都沒有設備連進來，或必要行為從未發生</td>
+</tr>
+<tr>
+<td><code>130</code></td>
+<td>使用者中斷</td>
+<td>自我驗證途中按了 Ctrl+C</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>1</code> 和 <code>2</code>、<code>3</code> 是刻意分開的：CI 需要區分「設備壞了」與「測試根本沒跑起來」，
+把兩者混成同一個非零碼會讓自動化把環境問題誤判成品質問題。</p>
+<p>批次檔範例：</p>
+<div class="highlight"><pre><span></span><code>python scripts\run_device_test.py self-test --no-report
+<span class="k">if</span> <span class="k">errorlevel</span> <span class="mi">2</span> <span class="p">(</span>
+    <span class="k">echo</span> 測試環境有問題，不是設備的錯
+    <span class="k">exit</span> /b 2
+<span class="p">)</span>
+<span class="k">if</span> <span class="k">errorlevel</span> <span class="mi">1</span> <span class="p">(</span>
+    <span class="k">echo</span> 測試工具自我驗證失敗
+    <span class="k">exit</span> /b 1
+<span class="p">)</span>
+<span class="k">echo</span> 工具正常
+</code></pre></div>
+<hr>
+<h2 id="6-手動模式-進階">6. 手動模式（進階）<a class="headerlink" href="#6-手動模式-進階" title="Permanent link">¶</a></h2>
+<p>啟動器底下是兩個 management command，需要細部控制時可以直接用。這是<strong>兩個終端
+機</strong>的舊流程：</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 終端機 A</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>run_test_broker<span class="w"> </span>--port<span class="w"> </span><span class="m">1883</span>
+
+<span class="c1"># 終端機 B</span>
+python<span class="w"> </span>manage.py<span class="w"> </span>run_reference_device<span class="w"> </span>--device<span class="w"> </span>ZQS-BESS-0001<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--password<span class="w"> </span>&lt;密碼&gt;<span class="w"> </span>--duration<span class="w"> </span><span class="m">30</span><span class="w"> </span>--abrupt-exit
+</code></pre></div>
+<p><code>--abrupt-exit</code> 會在結束時<strong>不送 DISCONNECT 直接斷開 socket</strong>，這是唯一能讓
+broker 真的送出遺言（LWT）的方式——正常斷線依 MQTT 規範會丟棄遺言，這是協定
+行為，不是工具的怪癖。</p>
+<p><code>--misbehave</code> 讓模擬器故意違反一條規則：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th><code>--misbehave</code></th>
+<th>模擬器做了什麼</th>
+<th>報告應該失敗的項目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bad_client_id</code></td>
+<td>用 <code>LabVIEW_1</code> 當 client id</td>
+<td>Client ID 格式</td>
+</tr>
+<tr>
+<td><code>no_lwt</code></td>
+<td>不宣告 NDEATH 遺言</td>
+<td>遺言已宣告（連帶 topic/QoS/retain/payload）</td>
+</tr>
+<tr>
+<td><code>clean_session</code></td>
+<td><code>clean_session=false</code></td>
+<td>Clean session</td>
+</tr>
+<tr>
+<td><code>retained_will</code></td>
+<td>遺言設 <code>retain=true</code></td>
+<td>遺言 retained</td>
+</tr>
+<tr>
+<td><code>bad_payload</code></td>
+<td>DDATA 送不是 protobuf 的位元組</td>
+<td>Payload 通過正式解碼器</td>
+</tr>
+<tr>
+<td><code>bad_qos</code></td>
+<td>DDATA 用 QoS 1</td>
+<td>上行 QoS（警告，非失敗）</td>
+</tr>
+<tr>
+<td><code>no_ack</code></td>
+<td>收到命令不回覆</td>
+<td>命令回覆（維持「未測」）</td>
+</tr>
+<tr>
+<td><code>ignore_rebirth</code></td>
+<td>收到 Rebirth 要求不理會</td>
+<td>回應 Rebirth（維持「未測」）</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>self-test</code> 模式就是把這張表自動跑一遍並比對結果，所以平常不需要手動操作。</p>
+<hr>
+<h2 id="7-比正式環境更嚴格的四項">7. 比正式環境更嚴格的四項<a class="headerlink" href="#7-比正式環境更嚴格的四項" title="Permanent link">¶</a></h2>
+<p>刻意的。更嚴格是安全的；更寬鬆會變成謊言。這四項在報告裡都會標注
+「（本工具在這一項比正式環境嚴格，見文件說明）」。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>項目</th>
+<th>正式環境</th>
+<th>本工具</th>
+<th>為什麼</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Client ID 格式</strong></td>
+<td>只有在 <code>DeviceCredential.allowed_client_id</code> 有設值時才釘選，而它<strong>預設是空的</strong></td>
+<td>一律要求 <code>zqs:&lt;device_id&gt;</code></td>
+<td>營運人員哪天打開釘選，格式不對的設備會立刻全部斷線。現在改比那時候改便宜。</td>
+</tr>
+<tr>
+<td><strong>Clean session</strong></td>
+<td>broker 照收 <code>true</code></td>
+<td>要求 <code>false</code></td>
+<td><code>true</code> 會讓 broker 在斷線時丟掉未送達的 QoS 1 下行命令，設備重連後收不到。這種錯不會有錯誤訊息，只會「命令偶爾沒生效」。</td>
+</tr>
+<tr>
+<td><strong>status 設 retained</strong></td>
+<td>broker 不在乎</td>
+<td>要求 <code>retain=true</code></td>
+<td>沒有 retained，後連上的 console 看不到設備目前狀態，畫面會空白。</td>
+</tr>
+<tr>
+<td><strong>Keepalive 範圍</strong></td>
+<td>任何值都合法</td>
+<td>建議 45 秒，超出 1–120 只給「注意」</td>
+<td>太大會讓離線判定拖到數分鐘。這一項只警告，不擋。</td>
+</tr>
+</tbody>
+</table></div>
+<p>其中 client id 那一項最值得注意：<strong>正式環境現在會放行、以後可能不放行</strong>。</p>
+<hr>
+<h2 id="8-完整驗收清單">8. 完整驗收清單<a class="headerlink" href="#8-完整驗收清單" title="Permanent link">¶</a></h2>
+<p>工具檢查 26 項，順序照設備實際執行的流程。「必要」項全部通過才會判定可以上線。</p>
+<blockquote>
+<p><strong>三項容易照 MQTT 直覺寫錯</strong>（clean session、遺言 retain、上行 QoS）。表格裡
+的值不是筆誤，理由見 device-protocol.md §2.1 與 §2.2。</p>
+</blockquote>
+<h3 id="8-1-connect-階段">8.1 CONNECT 階段<a class="headerlink" href="#8-1-connect-階段" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>要求</th>
+<th>必要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>MQTT 協定版本</td>
+<td>3.1.1（level 4）或 5.0（level 5）</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Client ID 格式</td>
+<td><code>zqs:&lt;edge_node_id&gt;</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Username 格式</td>
+<td><code>node-&lt;group_id&gt;-&lt;edge_node_id&gt;</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>4</td>
+<td>帳號密碼驗證</td>
+<td>通過 <code>authenticate_edge_node()</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Keepalive</td>
+<td>1–120 秒，建議 45</td>
+<td>—</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Clean session</strong></td>
+<td><strong><code>true</code></strong>（規範要求）</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>7</td>
+<td>NDEATH 已宣告為遺言</td>
+<td>CONNECT 帶 will flag</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>8</td>
+<td>遺言 topic</td>
+<td><code>spBv1.0/&lt;group&gt;/NDEATH/&lt;node&gt;</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>9</td>
+<td>遺言 QoS</td>
+<td><code>1</code>（命名空間裡唯一不是 0 的上行）</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>遺言 retained</strong></td>
+<td><strong><code>false</code></strong>（規範要求）</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>11</td>
+<td>遺言 payload</td>
+<td>Sparkplug protobuf，含 <code>bdSeq</code> metric</td>
+<td>✔</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>遺言必須在 CONNECT 封包裡宣告</strong>，連上之後再設是沒有用的——broker 只在 CONNECT
+那一刻知道你的遺言是什麼。</p>
+<p>retained 的遺言為什麼不行：它會活得比它描述的那次連線更久，之後任何訂閱者一連
+上來就會被告知這個節點死了，即使它早就回來並重新宣告過。</p>
+<h3 id="8-2-subscribe-階段">8.2 SUBSCRIBE 階段<a class="headerlink" href="#8-2-subscribe-階段" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>要求</th>
+<th>必要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>12</td>
+<td>訂閱 NCMD</td>
+<td><code>spBv1.0/&lt;group&gt;/NCMD/&lt;node&gt;</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>13</td>
+<td>訂閱 DCMD</td>
+<td><code>spBv1.0/&lt;group&gt;/DCMD/&lt;node&gt;/+</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>14</td>
+<td>訂閱權限（ACL）</td>
+<td>只訂閱自己的命令 topic</td>
+<td>✔</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>先訂閱再發 BIRTH</strong>。反過來的話，平台看到節點上線就下發命令，而設備還沒訂閱好，
+那則命令就掉了。</p>
+<p>萬用字元只能用在 device 這一層。<code>spBv1.0/&lt;group&gt;/DCMD/+/#</code> 會被拒絕——那等於訂閱
+全broker 每一個節點的命令。</p>
+<h3 id="8-3-birth-階段">8.3 BIRTH 階段<a class="headerlink" href="#8-3-birth-階段" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>要求</th>
+<th>必要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>15</td>
+<td>發布 NBIRTH</td>
+<td>連線後<strong>第一則</strong></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>16</td>
+<td>NBIRTH 的 seq</td>
+<td><code>0</code>（規範要求）</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>17</td>
+<td>NBIRTH 的 bdSeq</td>
+<td>存在，且與遺言中的 <code>bdSeq</code> 相同</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>18</td>
+<td>宣告 <code>Node Control/Rebirth</code></td>
+<td>NBIRTH 要帶這個可寫 metric</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>19</td>
+<td>發布 DBIRTH</td>
+<td>每台設備各一則</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>20</td>
+<td>BIRTH 指派 alias</td>
+<td>每個量測 metric 都帶 alias</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+<p>第 17 項是整套生死判定的關鍵：<code>bdSeq</code> 對不上，平台就無法分辨一則遲到的遺言屬於
+哪一次連線，剛重連的節點會被自己上一次的遺言打死。</p>
+<p>第 18 項雖然只是一個 metric，卻是<strong>唯一的復原路徑</strong>。少了它，一旦掉訊息，主機
+沒有任何辦法要求重新宣告，兩邊會永遠對不齊。</p>
+<h3 id="8-4-data-階段">8.4 DATA 階段<a class="headerlink" href="#8-4-data-階段" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>要求</th>
+<th>必要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>21</td>
+<td>發布權限（ACL）</td>
+<td>只發布到自己的位址</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>22</td>
+<td><strong>上行 QoS</strong></td>
+<td><strong><code>0</code></strong>（規範要求）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>23</td>
+<td>上行 retain</td>
+<td><code>false</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>24</td>
+<td>Payload 通過正式解碼器</td>
+<td>與 ingestor 相同的 <code>sparkplug decode()</code></td>
+<td>✔</td>
+</tr>
+<tr>
+<td>25</td>
+<td>收到 DDATA</td>
+<td>至少一則</td>
+<td>✔</td>
+</tr>
+<tr>
+<td>26</td>
+<td>seq 連續遞增</td>
+<td>每則 +1，到 255 後回到 0；NBIRTH 重新歸零</td>
+<td>✔</td>
+</tr>
+</tbody>
+</table></div>
+<p>可發布的訊息型別：<code>NBIRTH</code>、<code>NDEATH</code>、<code>NDATA</code>、<code>DBIRTH</code>、<code>DDEATH</code>、<code>DDATA</code>。
+可訂閱的只有 <code>NCMD</code>、<code>DCMD</code>。</p>
+<p>發布 <code>NCMD</code> 或 <code>DCMD</code> 會被拒絕——那是平台下行用的。這一條不是形式：能發 NCMD 的
+節點也能對鄰居發 NDEATH，把對方打下線。</p>
+<p>第 22 項只是警告而不是失敗：平台照收 QoS 1，但那樣的設備跟其他 Sparkplug 主機
+互通會有問題。</p>
+<h3 id="8-5-互動">8.5 互動<a class="headerlink" href="#8-5-互動" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>要求</th>
+<th>必要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>—</td>
+<td>命令回覆</td>
+<td>收到 DCMD 後以 DDATA 回報 <code>Command/ID</code> 與 <code>Command/Status</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>—</td>
+<td>回應 Rebirth 要求</td>
+<td>收到 <code>Node Control/Rebirth=true</code> 後重新發布 NBIRTH</td>
+<td>—</td>
+</tr>
+<tr>
+<td>—</td>
+<td>遺言實測</td>
+<td>強制斷線後 broker 確實送出 NDEATH</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+<p>這三項是選用的，因為要觀察到它們必須主動觸發（下發命令／要求重生／強制斷線）。
+<strong>但正式環境會依賴它們</strong>，所以強烈建議測——尤其是重生，那是掉訊息之後唯一的
+復原機制。</p>
+<hr>
+<h2 id="9-全部參數">9. 全部參數<a class="headerlink" href="#9-全部參數" title="Permanent link">¶</a></h2>
+<h3 id="scripts-test-device-ps1-powershell-包裝"><code>scripts\test-device.ps1</code>（PowerShell 包裝）<a class="headerlink" href="#scripts-test-device-ps1-powershell-包裝" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>參數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>（無）</td>
+<td>自我驗證 → 再等設備。預設流程</td>
+</tr>
+<tr>
+<td><code>-SelfTest</code></td>
+<td>只做自我驗證</td>
+</tr>
+<tr>
+<td><code>-Device</code></td>
+<td>只測設備，跳過自我驗證</td>
+</tr>
+<tr>
+<td><code>-DeviceId &lt;id&gt;</code></td>
+<td>預期連進來的 <code>device_id</code>（下發命令時需要）</td>
+</tr>
+<tr>
+<td><code>-Port &lt;n&gt;</code></td>
+<td>監聽埠，預設 1883</td>
+</tr>
+<tr>
+<td><code>-Timeout &lt;秒&gt;</code></td>
+<td>等待設備連線的秒數，預設 300</td>
+</tr>
+<tr>
+<td><code>-Duration &lt;秒&gt;</code></td>
+<td>設備連上後再測幾秒。0 表示等 Ctrl+C</td>
+</tr>
+<tr>
+<td><code>-Command &lt;名稱&gt;</code></td>
+<td>設備訂閱後自動下發的命令</td>
+</tr>
+<tr>
+<td><code>-Params '&lt;JSON&gt;'</code></td>
+<td>命令參數</td>
+</tr>
+<tr>
+<td><code>-Interactive</code></td>
+<td>從鍵盤逐一下發命令</td>
+</tr>
+<tr>
+<td><code>-NoReport</code></td>
+<td>不寫報告檔</td>
+</tr>
+</tbody>
+</table></div>
+<p>自我驗證沒過時，包裝腳本<strong>不會</strong>繼續往下測設備——這時候的報告不能當依據。</p>
+<h3 id="scripts-run_device_test-py-self-test"><code>scripts\run_device_test.py self-test</code><a class="headerlink" href="#scripts-run_device_test-py-self-test" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>參數</th>
+<th>預設</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--only &lt;情境&gt;</code></td>
+<td>—</td>
+<td>只跑一個情境，例如 <code>--only no_lwt</code></td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td>—</td>
+<td>用既有設備憑證。省略則自動建立暫時設備並刪除</td>
+</tr>
+<tr>
+<td><code>--username</code> / <code>--password</code></td>
+<td>—</td>
+<td>搭配 <code>--device</code></td>
+</tr>
+<tr>
+<td><code>--no-report</code></td>
+<td>關</td>
+<td>不寫報告檔</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="scripts-run_device_test-py-device"><code>scripts\run_device_test.py device</code><a class="headerlink" href="#scripts-run_device_test-py-device" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>參數</th>
+<th>預設</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--host</code></td>
+<td><code>0.0.0.0</code></td>
+<td>綁定位址。要讓別台機器連進來就維持 <code>0.0.0.0</code></td>
+</tr>
+<tr>
+<td><code>--port</code></td>
+<td><code>1883</code></td>
+<td>監聽埠</td>
+</tr>
+<tr>
+<td><code>--device</code></td>
+<td>—</td>
+<td>預期的 <code>device_id</code></td>
+</tr>
+<tr>
+<td><code>--timeout</code></td>
+<td><code>300</code></td>
+<td>等待設備連線的秒數</td>
+</tr>
+<tr>
+<td><code>--duration</code></td>
+<td><code>0</code></td>
+<td>設備連上後再測幾秒。<code>0</code> 表示等 Ctrl+C</td>
+</tr>
+<tr>
+<td><code>--max-messages</code></td>
+<td><code>0</code></td>
+<td>收到幾則訊息就結束。<code>0</code> 表示不限</td>
+</tr>
+<tr>
+<td><code>--command</code> / <code>--params</code></td>
+<td>—</td>
+<td>自動下發的命令與參數</td>
+</tr>
+<tr>
+<td><code>--command-delay</code></td>
+<td><code>8.0</code></td>
+<td>幾秒後下發命令</td>
+</tr>
+<tr>
+<td><code>--interactive</code></td>
+<td>關</td>
+<td>從鍵盤逐一下發命令</td>
+</tr>
+<tr>
+<td><code>--no-color</code></td>
+<td>關</td>
+<td>關閉彩色輸出</td>
+</tr>
+<tr>
+<td><code>--no-report</code></td>
+<td>關</td>
+<td>不寫報告檔</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="run_test_broker-底層-management-command"><code>run_test_broker</code>（底層 management command）<a class="headerlink" href="#run_test_broker-底層-management-command" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>參數</th>
+<th>預設</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--host</code></td>
+<td><code>0.0.0.0</code></td>
+<td>綁定位址。要讓別台機器連進來就維持 <code>0.0.0.0</code></td>
+</tr>
+<tr>
+<td><code>--port</code></td>
+<td><code>1883</code></td>
+<td>監聽埠</td>
+</tr>
+<tr>
+<td><code>--command</code></td>
+<td>—</td>
+<td>設備訂閱後下發這個命令</td>
+</tr>
+<tr>
+<td><code>--params</code></td>
+<td><code>{}</code></td>
+<td>命令參數（JSON）</td>
+</tr>
+<tr>
+<td><code>--command-delay</code></td>
+<td><code>8.0</code></td>
+<td>幾秒後下發命令</td>
+</tr>
+<tr>
+<td><code>--duration</code></td>
+<td><code>0</code></td>
+<td>幾秒後自動停止。<code>0</code> 表示跑到 Ctrl-C</td>
+</tr>
+<tr>
+<td><code>--report-file</code></td>
+<td>—</td>
+<td>同時把報告寫到檔案（可貼進工單）</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="run_reference_device"><code>run_reference_device</code><a class="headerlink" href="#run_reference_device" title="Permanent link">¶</a></h3>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>參數</th>
+<th>預設</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--device</code></td>
+<td>必填</td>
+<td><code>device_id</code></td>
+</tr>
+<tr>
+<td><code>--username</code></td>
+<td>自動查</td>
+<td>MQTT username</td>
+</tr>
+<tr>
+<td><code>--password</code></td>
+<td>必填</td>
+<td>MQTT 密碼</td>
+</tr>
+<tr>
+<td><code>--host</code> / <code>--port</code></td>
+<td><code>127.0.0.1</code> / <code>1883</code></td>
+<td>測試工具的位址</td>
+</tr>
+<tr>
+<td><code>--interval</code></td>
+<td><code>5.0</code></td>
+<td>telemetry 間隔（秒）</td>
+</tr>
+<tr>
+<td><code>--keepalive</code></td>
+<td><code>45</code></td>
+<td>keepalive</td>
+</tr>
+<tr>
+<td><code>--duration</code></td>
+<td><code>0</code></td>
+<td>幾秒後停止</td>
+</tr>
+<tr>
+<td><code>--abrupt-exit</code></td>
+<td>關</td>
+<td>不送 DISCONNECT 直接斷線，用來觸發遺言</td>
+</tr>
+<tr>
+<td><code>--misbehave</code></td>
+<td>—</td>
+<td>故意違反一條規則，見 <a href="#6-手動模式進階">§6</a></td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2 id="10-從別台機器連進來-labview-在另一台電腦">10. 從別台機器連進來（LabVIEW 在另一台電腦）<a class="headerlink" href="#10-從別台機器連進來-labview-在另一台電腦" title="Permanent link">¶</a></h2>
+<ol>
+<li>查本機 IP：<code>ipconfig</code>（找 IPv4 位址，例如 <code>192.168.1.23</code>）</li>
+<li>工具用 <code>--host 0.0.0.0</code> 啟動（預設就是）</li>
+<li>Windows 防火牆放行該埠：</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c"># 需要系統管理員權限</span>
+<span class="nb">New-NetFirewallRule</span> <span class="n">-DisplayName</span> <span class="s2">"ZQS test broker"</span> <span class="n">-Direction</span> <span class="n">Inbound</span> <span class="p">`</span>
+    <span class="n">-Protocol</span> <span class="n">TCP</span> <span class="n">-LocalPort</span> <span class="n">1883</span> <span class="n">-Action</span> <span class="n">Allow</span> <span class="n">-Profile</span> <span class="n">Private</span>
+</code></pre></div>
+<ol start="4">
+<li>LabVIEW 連 <code>192.168.1.23:1883</code></li>
+</ol>
+<p>⚠️ 這條規則只在 <strong>Private</strong> 網路設定檔生效。如果 Wi-Fi 被 Windows 歸類成
+Public，連線會被擋；請到「設定 → 網路和網際網路」把該網路改成私人網路。</p>
+<p>⚠️ <strong>這個工具沒有 TLS，密碼是明文傳輸的。</strong> 只在開發用的區域網路裡跑，不要
+放到公開網路上。</p>
+<hr>
+<h2 id="11-這個工具證明不了什麼">11. 這個工具<strong>證明不了</strong>什麼<a class="headerlink" href="#11-這個工具證明不了什麼" title="Permanent link">¶</a></h2>
+<p>誠實比方便重要。以下三項本工具無法驗證，通過報告之後<strong>仍然建議對真正的 EMQX
+做一次煙霧測試</strong>：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>無法驗證</th>
+<th>為什麼</th>
+<th>風險</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>retained 訊息重播</strong></td>
+<td>工具記錄 retain flag，但不會在後續訂閱時重播</td>
+<td>設備的 retained status 在真實 broker 上會不會正確重播、會不會被舊值覆蓋</td>
+</tr>
+<tr>
+<td><strong>broker 端的 shared subscription</strong></td>
+<td>工具只處理單一連線</td>
+<td>多個 ingestor 副本分流是否正確</td>
+</tr>
+<tr>
+<td><strong>TLS</strong></td>
+<td>工具只講明文 TCP</td>
+<td>正式環境用 8883 + TLS，憑證驗證、SNI、握手都可能出問題</td>
+</tr>
+</tbody>
+</table></div>
+<p>另外工具只處理<strong>單一設備連線</strong>（<code>only_session()</code>），不驗證 shared subscription
+或多設備併發。</p>
+<h3 id="11-1-為什麼不直接跑一個真的-broker">11.1 為什麼不直接跑一個真的 broker<a class="headerlink" href="#11-1-為什麼不直接跑一個真的-broker" title="Permanent link">¶</a></h3>
+<p>考慮過三條路：</p>
+<ol>
+<li><strong>自己寫一個完整 broker</strong> — 會在 retained 重播、session 保存、shared
+   subscription 上與 EMQX 分岔，產生<strong>假的通過</strong>。假的通過比沒有測試更危險。</li>
+<li><strong>用 amqtt 之類的 Python broker</strong> — 能跑 MQTT，但它不知道平台的規則，還是
+   要另外寫一層檢查，而且失敗訊息會是 broker 的措辭而不是給設備開發者看的。</li>
+<li><strong>本工具的做法</strong> — 只講「足以觀察一切」的 MQTT，所有判斷都呼叫正式環境的
+   程式，並且<strong>明確列出自己證明不了的東西</strong>。</li>
+</ol>
+<p>選 3。它不假裝是 broker，它是一份會自己執行的驗收清單。</p>
+<p>真正的 EMQX 需要 Docker 或 WSL2；等環境備好之後，用它做最後一關的煙霧測試。</p>
+<hr>
+<h2 id="12-常見失敗與原因">12. 常見失敗與原因<a class="headerlink" href="#12-常見失敗與原因" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>報告顯示</th>
+<th>實際原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>帳號密碼驗證失敗</td>
+<td>密碼打錯、設備已停用或退役、或憑證被輪替過</td>
+</tr>
+<tr>
+<td>Client ID 格式失敗</td>
+<td>LabVIEW 預設用自己的 client id，要手動改成 <code>zqs:&lt;edge_node_id&gt;</code></td>
+</tr>
+<tr>
+<td>Username 格式失敗</td>
+<td>憑證屬於節點而不是設備，格式是 <code>node-&lt;group&gt;-&lt;node&gt;</code></td>
+</tr>
+<tr>
+<td>遺言已宣告失敗</td>
+<td>連線後才設遺言。必須在 CONNECT 之前設定</td>
+</tr>
+<tr>
+<td>遺言 payload 失敗</td>
+<td>少了 <code>bdSeq</code> metric，或送的還是 JSON</td>
+</tr>
+<tr>
+<td>Clean session 失敗</td>
+<td>設成了 <code>false</code>。Sparkplug 要求 <code>true</code></td>
+</tr>
+<tr>
+<td>遺言 retained 失敗</td>
+<td>設成了 <code>true</code>。Sparkplug 要求 <code>false</code></td>
+</tr>
+<tr>
+<td>Payload 解碼失敗</td>
+<td>送的不是 protobuf，或欄位編號／wire type 寫錯（見 protocol §9）</td>
+</tr>
+<tr>
+<td>NBIRTH 的 seq 不是 0</td>
+<td>在 birth 出去之前就發了別的訊息——通常是 run loop 沒等連線回呼</td>
+</tr>
+<tr>
+<td>bdSeq 對不上</td>
+<td>遺言與 NBIRTH 用了不同的值，或忘了每次連線遞增</td>
+</tr>
+<tr>
+<td>未宣告 Node Control/Rebirth</td>
+<td>少了它就沒有復原路徑，掉一次訊息就永遠對不齊</td>
+</tr>
+<tr>
+<td>seq 連續遞增失敗</td>
+<td>多執行緒發布時序號的配置與送出沒有在同一個鎖裡（見 protocol §3.3）</td>
+</tr>
+<tr>
+<td>發布權限失敗</td>
+<td>發到別的節點的位址，或發了 <code>NCMD</code>/<code>DCMD</code>——那是平台下行用的</td>
+</tr>
+<tr>
+<td>命令回覆維持「未測」</td>
+<td>沒下發命令（加 <code>--command</code>），或設備沒回</td>
+</tr>
+<tr>
+<td>回應 Rebirth 維持「未測」</td>
+<td>設備收到 <code>Node Control/Rebirth=true</code> 卻沒有重新宣告</td>
+</tr>
+<tr>
+<td>遺言實測維持「注意」</td>
+<td>用了正常斷線。這是 MQTT 規範行為——要實測請直接拔網路線或關電源</td>
+</tr>
+<tr>
+<td>結束碼 2、沒有任何輸出</td>
+<td>埠被占用，或找不到 <code>.venv</code>。訊息會直接說明處理方式</td>
+</tr>
+</tbody>
+</table></div>
+<hr>
+<h2 id="13-相關文件">13. 相關文件<a class="headerlink" href="#13-相關文件" title="Permanent link">¶</a></h2>
+<ul>
+<li><a href="device-protocol.html">裝置通訊協定（Sparkplug B）</a> — 完整的 topic 與 payload schema 契約</li>
+<li><a href="system-logic.html">系統邏輯總覽</a> — 平台的行為規則：命令什麼時候被擋、哪些情況記 null</li>
+<li><a href="codebase-guide.html">程式碼導覽</a> — 程式碼結構</li>
+<li><a href="labview-integration.html">LabVIEW 整合</a> — LabVIEW 透過 Python Node 啟停服務</li>
+</ul></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

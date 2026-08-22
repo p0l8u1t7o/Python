@@ -9,7 +9,7 @@ gets a type, and the console stops showing raw keys.
 **What this does not do is grant anything.** A registered metric is a label on
 an axis; it is not a capability, a rating or a permission. Those still go
 through :class:`~apps.devices.models.DeviceDeclaration` and wait for a human.
-The trust boundary is unchanged - see docs/system-logic.md.
+The trust boundary is unchanged - see docs/system-logic.html.
 
 Two rules keep an untrusted device from making a mess of a tenant's catalogue:
 

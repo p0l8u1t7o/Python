@@ -18,7 +18,7 @@ message as it arrives, and prints an acceptance report when you stop it.
 Run it with any Python. It re-executes itself with the project virtualenv, so
 there is nothing to activate first.
 
-See ``docs/device-test-harness.md``.
+See ``docs/device-test-harness.html``.
 """
 
 from __future__ import annotations

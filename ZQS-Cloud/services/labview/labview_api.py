@@ -22,7 +22,7 @@ Design rules this module follows, all of them forced by the Python Node:
   across calls, so the handles survive between them. Calling
   :func:`start_server` twice does not start a second copy.
 
-Quick reference, full version in ``docs/labview-integration.md``::
+Quick reference, full version in ``docs/labview-integration.html``::
 
     start_server("")                -> int   0 started, 1 already running, <0 error
     stop_server("", 5.0)            -> int   0 accepted; poll get_status

@@ -6,7 +6,7 @@ trip. What is *not* done here is anything needing the database: alias
 resolution, metric classification and device state all belong to the worker,
 because the ingestor deliberately holds no connection.
 
-See ``docs/device-protocol.md`` for the human-readable specification.
+See ``docs/device-protocol.html`` for the human-readable specification.
 """
 
 from __future__ import annotations

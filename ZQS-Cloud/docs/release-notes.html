@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>發行說明 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="active">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#v0-2-客戶展示版-2026-08-22">v0.2 — 客戶展示版（2026-08-22）</a><ul>
+<li><a href="#機隊模擬器與展示租戶">機隊模擬器與展示租戶</a></li>
+<li><a href="#文件-html-版-專有名詞解釋-技術原理">文件：HTML 版、專有名詞解釋、技術原理</a></li>
+<li><a href="#設備模擬器獨立化-真正的外部-mqtt-客戶端">設備模擬器獨立化：真正的外部 MQTT 客戶端</a></li>
+<li><a href="#修正-全部離線-後仍有設備顯示上線">修正：「全部離線」後仍有設備顯示上線</a></li>
+<li><a href="#設備模擬-只剩桌面主控台-啟動時一切離線">設備模擬：只剩桌面主控台，啟動時一切離線</a></li>
+<li><a href="#通知訊息-發生與解除分得清楚">通知訊息：發生與解除分得清楚</a></li>
+<li><a href="#全系統盤點-補齊只做一半的功能">全系統盤點：補齊只做一半的功能</a></li>
+<li><a href="#通知管道-email-與-line-修正-測試按鍵">通知管道：Email 與 LINE 修正、測試按鍵</a></li>
+<li><a href="#使用者體驗與防呆">使用者體驗與防呆</a></li>
+<li><a href="#工作流程範例與驗證工具">工作流程範例與驗證工具</a></li>
+<li><a href="#受益數字-需量費">受益數字：需量費</a></li>
+<li><a href="#修正">修正</a></li>
+</ul>
+</li>
+<li><a href="#v0-1-首個可交付版本-2026-08-22">v0.1 — 首個可交付版本（2026-08-22）</a><ul>
+<li><a href="#驗證範圍">驗證範圍</a></li>
+<li><a href="#本輪測試抓到並修正的問題">本輪測試抓到並修正的問題</a></li>
+<li><a href="#即時性-本輪新增">即時性（本輪新增）</a></li>
+<li><a href="#已知限制-刻意的設計邊界">已知限制（刻意的設計邊界）</a></li>
+<li><a href="#啟動">啟動</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
+<h2 id="v0-2-客戶展示版-2026-08-22">v0.2 — 客戶展示版（2026-08-22）<a class="headerlink" href="#v0-2-客戶展示版-2026-08-22" title="Permanent link">¶</a></h2>
+<h3 id="機隊模擬器與展示租戶">機隊模擬器與展示租戶<a class="headerlink" href="#機隊模擬器與展示租戶" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong><code>manage.py simulate_fleet</code></strong>：一支程式跑整個機隊。每個已登錄的閘道器一條 MQTT 連線（Sparkplug B NBIRTH/DBIRTH/DDATA/NDEATH），每個場域一組物理模型：負載曲線（廠房／辦公／園區）、太陽曲線、電池 SOC 積分與上下限，<strong>電網 = 負載 − 光電 − 電池</strong>。設備接受 <code>set_power_setpoint</code> 與 <code>emergency_stop</code>，回 ack 並即刻回報新讀值，因此平台下的任何指令都會在電表上看到。<code>--faults</code> 注入事件與警報，<code>--autonomous</code> 讓電池在尚未收到設定點時自行削峰。</li>
+<li><strong><code>manage.py seed_showcase</code></strong>：四個有設備的場域（新竹園區 A 棟廠房／B 棟研發大樓、台中工業區廠房、台北總部）＋一個父場域，20 台設備、4 台閘道器、台電牌價、四個策略各異的儲能方案（含父場域繼承與子場域覆寫）、告警規則、通知管道範例、示範工作流程。</li>
+<li><strong><code>scripts/reset-demo.ps1</code></strong>：清空資料庫 → migrate → bootstrap → seed_showcase → 7 天歷史 → 啟動整個堆疊。展示流程見 <code>docs/demo-guide.md</code>。</li>
+<li><code>dev.ps1</code> 現在同時啟動 <strong>排程器</strong>（能源彙總＋調度引擎，60 秒一輪）——之前開發堆疊沒有跑它，策略從不會真的下指令。</li>
+<li>歷史產生器改為依場域的負載形狀與有效方案的策略（契約容量管理／時間電價套利／自發自用）模擬電池，和即時模擬器講同一個故事。</li>
+</ul>
+<h3 id="文件-html-版-專有名詞解釋-技術原理">文件：HTML 版、專有名詞解釋、技術原理<a class="headerlink" href="#文件-html-版-專有名詞解釋-技術原理" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <a href="glossary.html">專有名詞解釋</a>（設備與通訊／能源與計費／平台與操作三組專有名詞，每個詞附本系統對應）與 <a href="technical-principles.html">技術原理</a>（資料流、Sparkplug 生死流程、能源平衡與積分、電費與受益來源、策略為何看場域需量、警報四要素、token 引擎、即時性取捨、模擬器物理模型、多租戶邊界）。</li>
+<li>文件以共用版型渲染為 HTML（<code>docs/*.html</code>，入口 <code>docs/index.html</code>）：共用版型、側欄文件清單、每頁目錄、Mermaid 圖、深色模式、列印樣式；<code>.md</code> 連結自動改為 <code>.html</code>。文件自此以 HTML 維護（<code>docs/*.html</code>），Markdown 原始檔已移除。</li>
+</ul>
+<h3 id="設備模擬器獨立化-真正的外部-mqtt-客戶端">設備模擬器獨立化：真正的外部 MQTT 客戶端<a class="headerlink" href="#設備模擬器獨立化-真正的外部-mqtt-客戶端" title="Permanent link">¶</a></h3>
+<ul>
+<li>模擬器搬到 <code>simulator/</code>（physics / config / gateway / console），<strong>不讀資料庫、不載入平台程式</strong>，只靠 <code>simulator/fleet.json</code> 與 MQTT；<code>manage.py export_fleet_config</code> 從平台登記匯出這份設定（也可手寫或交給廠商）。實測在沒有 <code>DJANGO_SETTINGS_MODULE</code>、零個 <code>apps.*</code> 模組載入的情況下完成整個上線／命令／離線週期。</li>
+<li>主控台新增 <strong>Broker IP / Port / 帳密 / Group ID</strong> 欄位（可儲存回設定檔）、<strong>設備即時量測值</strong>面板（每 0.5 秒更新每個量測項與單位）、設定檔開啟／重新載入、連線失敗狀態顯示。</li>
+<li>Sparkplug 編解碼仍與平台共用同一套 <code>services/sparkplug</code>，線上格式不會漂移；<code>services/harness/fleet.py</code> 縮減為「登記 → fleet.json」的匯出器與測試用轉接。</li>
+<li>延遲探針（<code>scripts/latency_probe.py</code>）改為自含，舊的 <code>scripts/sim_console.py</code> 移除。</li>
+</ul>
+<h3 id="修正-全部離線-後仍有設備顯示上線">修正：「全部離線」後仍有設備顯示上線<a class="headerlink" href="#修正-全部離線-後仍有設備顯示上線" title="Permanent link">¶</a></h3>
+<p>三個獨立原因疊在一起，各自修掉：</p>
+<ul>
+<li><strong>平台（worker）批次順序</strong>：同一批訊息裡先 DDATA 後 DDEATH，批次結尾「有送資料者即上線」的步驟跑在死亡之後，把設備又標回上線。現在死亡會把該設備從本批的「活躍」名單移除；死亡之後的資料才算新會話（加 3 項回歸測試）。</li>
+<li><strong>模擬器競態</strong>：平台命令在 DDEATH/NDEATH 送出後才被回覆（paho 執行緒），或重生要求在離線途中被回應而重新宣告。所有發布改在同一把鎖下，停止訊號後不再回覆命令、不再重生。</li>
+<li><strong>內建 broker 會丟掉緊跟著 DISCONNECT 的 PUBLISH</strong>：NDEATH 以 QoS 1 送出後立刻 DISCONNECT，約三成機率 NDEATH 沒到 broker，節點永遠「上線」。模擬器在 NDEATH 後等 0.5 秒再斷線；平台另外新增<strong>邊緣節點逾時掃描</strong>（<code>DEVICE_OFFLINE_GRACE_SECONDS</code>，預設 180 秒沒收到任何訊息就標離線），所以即使真實設備的 NDEATH 遺失也不會永遠顯示上線。</li>
+</ul>
+<h3 id="設備模擬-只剩桌面主控台-啟動時一切離線">設備模擬：只剩桌面主控台，啟動時一切離線<a class="headerlink" href="#設備模擬-只剩桌面主控台-啟動時一切離線" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>dev.ps1</code> / <code>dev.sh</code> / <code>reset-demo.ps1</code> <strong>不再啟動任何模擬器</strong>；堆疊起來後所有登記的設備都是離線的。</li>
+<li><code>scripts\sim-console.ps1</code> 是唯一的模擬入口：列出平台登記的每台閘道器與設備，「全部上線」讓它們各自以真實 MQTT（Sparkplug B）客戶端連線並持續上傳（含場域物理模型、命令執行與回覆），「全部離線」發 DDEATH/NDEATH 中斷；可只選部分閘道器。沒有能源資產的閘道器也會以控制器身分上線。</li>
+<li>手動測試區：事件注入、警報觸發／解除、手動逐步回覆命令。</li>
+<li>移除 <code>simulate_device</code>、<code>simulate_fleet</code> 兩個管理命令與 <code>-Simulate</code> 旗標；機隊物理模型留在 <code>services/harness/fleet.py</code> 供主控台使用。</li>
+</ul>
+<h3 id="通知訊息-發生與解除分得清楚">通知訊息：發生與解除分得清楚<a class="headerlink" href="#通知訊息-發生與解除分得清楚" title="Permanent link">¶</a></h3>
+<ul>
+<li>每則 LINE／Email 的第一行標明 <strong>🔴 發生 RAISED</strong> 或 <strong>🟢 解除 RESOLVED</strong>（測試訊息為 🔔 測試），Email 主旨加 <code>[發生]</code>／<code>[解除]</code>。解除訊息附解除時間與持續時長；時間一律以組織時區顯示。</li>
+<li>規則警報現在<strong>解除時也會通知</strong>（自動解除與人工解除皆是），送給當初收到發生通知的同一批管道；之前只有設備自報警報的解除會透過事件通知送出。</li>
+<li>送達階段記在 <code>NotificationDelivery.phase</code>，不再於送出當下讀警報狀態——否則 worker 較晚送出的「發生」訊息會因警報已解除而印成「解除」。</li>
+<li>設備警報解除的事件改記為 <code>info</code> 層級並帶 <code>alarm_state / alarm_level</code>，事件紀錄頁顯示「發生／解除」標籤；通知門檻以發生時的層級判斷，解除訊息不會因為層級較低而被漏掉。</li>
+</ul>
+<h3 id="全系統盤點-補齊只做一半的功能">全系統盤點：補齊只做一半的功能<a class="headerlink" href="#全系統盤點-補齊只做一半的功能" title="Permanent link">¶</a></h3>
+<p>盤點方式：搜尋未接線的 API 端點、沒有 UI 的模型欄位、沒人讀的設定、靜默吞掉的錯誤，以及 <code>system-logic.md</code> §8 宣稱已實作但實際不通的項目。補齊：</p>
+<ul>
+<li><strong>能源資產綁定 UI</strong>（儲能頁「綁定資產」）：之前後端有 API、前端只有唯讀表，<strong>全新安裝沒有任何方法把設備綁到角色</strong>，儲能／成本／節費永遠是空的。現在可新增／編輯／解除綁定；指標從設備實際回報過的鍵選，角色預填常用鍵；含倍率、反號、<strong>納入能源平衡</strong>、額定值、<strong>運轉區段參數</strong>、<strong>成本模型與參數</strong>——後三組欄位之前連 API 都沒有暴露。</li>
+<li><strong>閘道器管理</strong>（整合說明頁）：登錄閘道器並一次性顯示 MQTT 憑證、輪換憑證、<strong>要求重生</strong>（§1.8 所說的唯一復原路徑，之前只有 worker 會自動觸發）、移除。</li>
+<li><strong>排程調度時段</strong>（儲能頁）：<code>DispatchWindow</code> 的 CRUD 之前無任何入口；現在可建立一次性充／放／待命／依策略時段並看到生效狀態。重複規則（<code>recurrence</code>）引擎未實作，表單不提供。</li>
+<li><strong>組織設定</strong>（設定頁，擁有者）：名稱、預設時區、報表幣別。</li>
+<li><strong>設備</strong>：記錄策略可逐台覆寫；被替換的設備顯示接替設備連結。</li>
+<li><strong>稽核紀錄</strong>動作名稱本地化（之前三語都顯示英文）。</li>
+<li><strong>總覽需量費表</strong>：電價沒有基本電費費率時顯示「電價未設基本電費」而不是 $0。</li>
+<li><strong><code>scripts/dev.sh</code></strong>（POSIX）之前沒有啟動排程器，能源彙總與調度在 macOS／Linux 開發機上從不執行；並改用機隊模擬器。</li>
+<li>指標目錄 API 暴露 <code>counter_max</code>（計數器回繞點）；出生宣告帶錯誤 <code>counter_max</code> 時記錄警告而非靜默忽略；排程器工作失敗進結構化日誌。</li>
+<li>移除無人讀取的設定 <code>TIMESCALE_ENABLED</code>、<code>INGEST_AUTO_PROVISION_ORG</code>（README 同步）；<code>SITE_DEFAULT_TIMEZONE</code> 改為真的被用於新場域預設；移除前端 7 個未使用的匯出與 hook。</li>
+<li><code>system-logic.md</code> §8 更正：需量費受益面已實作；資產 session／成本參數現在 API 與 UI 都可設定。</li>
+</ul>
+<h3 id="通知管道-email-與-line-修正-測試按鍵">通知管道：Email 與 LINE 修正、測試按鍵<a class="headerlink" href="#通知管道-email-與-line-修正-測試按鍵" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Email 其實從未寄出</strong>：伺服器沒設 <code>EMAIL_HOST</code> 時 Django 走 console backend，把信印在 worker 視窗卻回報「已發送」。現在：(1) 管道可直接在畫面上填 SMTP（主機、連接埠、帳號、密碼、STARTTLS/SSL、寄件人），優先於環境變數；(2) 兩者都沒有時<strong>拒絕</strong>並回報「No SMTP server configured」，不再假裝成功。</li>
+<li><strong>LINE 401</strong>：使用者填的是數字型 Basic ID／顯示名稱，LINE Messaging API 只接受 <code>U/C/R + 32 位十六進位</code> 的 ID；表單與 API 都擋下格式錯誤並說明去哪裡找 User ID。LINE 回傳的錯誤現在帶上官方訊息與對應提示（401 token 無效、400 收件者格式、403 未加好友、429 限流）。</li>
+<li><strong>測試發送按鍵</strong>（<code>POST /api/notification-channels/test</code>）：用表單當下的設定立即送一則測試訊息，<strong>不必先儲存</strong>；結果就地顯示（成功含耗時、失敗含原因）。管道列表每列也有測試鍵，並顯示最近一次實際發送的成功／失敗與時間。</li>
+<li>SMTP 錯誤會標明主機與連接埠；<code>smtp_password</code> 與 token 一樣儲存後不回傳、留空表示保留。</li>
+</ul>
+<h3 id="使用者體驗與防呆">使用者體驗與防呆<a class="headerlink" href="#使用者體驗與防呆" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>對話框誤關保護</strong>：編輯中的表單（規則、通知管道、電價、場域、記錄策略、設備編輯／替換）按 Esc、點背景或 X 時，若有未儲存變更會先詢問「放棄變更？」；「取消」按鈕仍是直接關閉（<code>Modal.dirty</code> + <code>useFormDirty</code>）。</li>
+<li><strong>表單即時驗證，錯誤就地顯示、儲存鍵停用</strong>：儲能方案（SOC 上下限順序、備援保留、往返效率、需量上限 ≤ 契約、策略必填項如套利需電價、工作流程策略需指定流程）、警報規則（上下界順序、遲滯不可寬到永不解除、時長／冷卻非負）、電價時段（HH:MM、零長度時段、負價格、未選月份、時間電價至少一個時段）。</li>
+<li><strong>設備指令對話框</strong>：參數改為中文標籤與說明（<code>power_w</code> 註明「正值放電、負值充電，單位瓦特」），超出範圍即時標紅並停用送出。</li>
+<li><strong>工作流程編輯器</strong>：「跳至」目標改為節點下拉（不再手打 id），指向不存在／註解／自己的目標會被驗證擋下；檢視面板提示未連線的輸出把手（最常見的「流程默默不動」原因）；按「執行」先彈確認，列出會實際送命令的節點數、未儲存變更會先儲存；節點參數名稱、說明與選項本地化。</li>
+</ul>
+<h3 id="工作流程範例與驗證工具">工作流程範例與驗證工具<a class="headerlink" href="#工作流程範例與驗證工具" title="Permanent link">¶</a></h3>
+<ul>
+<li>六個可執行、畫布上附註解的工作流程範例（削峰與低電量保護、離峰充電排程、光電餘電優先充電、電池溫度連鎖、需量反應演練、主控排程），涵蓋並行分支、條件計時、跨午夜時間窗、條件等待與逾時、等待、一次性流程、子流程呼叫。全部在真實堆疊上實際執行驗證。</li>
+<li><code>scripts/verify_calculations.py</code>：3,300+ 項數字交叉比對。<code>frontend/e2e/buttons.spec.ts</code>：逐頁按下每一個非破壞性按鍵。<code>frontend/e2e/numbers.spec.ts</code>：畫面數字 = API 數字。</li>
+<li>工作流程同時執行的分支上限預設 5 → 12（<code>WORKFLOW_MAX_CONCURRENT_RUNS</code>），六個範例可同時跑。</li>
+</ul>
+<h3 id="受益數字-需量費">受益數字：需量費<a class="headerlink" href="#受益數字-需量費" title="Permanent link">¶</a></h3>
+<ul>
+<li>總覽頁新增 <strong>需量費受益</strong> 表：各場域契約容量、未調度最高需量、實際最高需量、降低需量、需量費受益（含避免的超約罰款，依台電 2 倍／3 倍規則）。能源面節費只算 kWh 價差，對表後儲能而言基本電費才是大頭；這一版把兩個都算出來。</li>
+<li>API：<code>/api/ems/cost-overview</code> 每個場域多了 <code>peak_demand_kw</code>、<code>baseline_peak_kw</code>、<code>contract_capacity_kw</code>、<code>demand_savings</code>、<code>penalty_avoided</code>，總計 <code>total_demand_savings</code>。</li>
+</ul>
+<h3 id="修正">修正<a class="headerlink" href="#修正" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>策略追自己的尾巴</strong>：契約容量管理與時間電價套利從電表讀值決定，但電表已含電池自己的功率——充電 120 kW 把電表推高 120 kW，下一輪判定超約改放電，再下一輪又看到空間改充電。現在以「電表 + 電池」還原場域本身的需量再決策。</li>
+<li><strong>夜間充電變成當月最高需量</strong>：離峰回充的上限改為契約容量的 95%，不再剛好貼著契約充。</li>
+<li>模擬器負載／日照曲線原本用 UTC 小時，台灣中午光電為 0；改用場域時區。</li>
+<li>沒有設備的父場域不再被標成「資料已過期」，也不計入「回報中場域」分母。</li>
+<li><code>bootstrap</code> 重複執行（同一行程內）會 KeyError——內建藍圖表被 pop 掉 key；改為複本。</li>
+<li>延遲量測 e2e 在全新資料庫上找不到探針設備（探針要先發布一次才會登錄）；改為先暖身發布。</li>
+</ul>
+<h2 id="v0-1-首個可交付版本-2026-08-22">v0.1 — 首個可交付版本（2026-08-22）<a class="headerlink" href="#v0-1-首個可交付版本-2026-08-22" title="Permanent link">¶</a></h2>
+<h3 id="驗證範圍">驗證範圍<a class="headerlink" href="#驗證範圍" title="Permanent link">¶</a></h3>
+<p>這一版通過了以下閘門，全部自動化、可重跑：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>層級</th>
+<th>內容</th>
+<th>結果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全新安裝</td>
+<td>空資料庫 <code>migrate</code> → <code>bootstrap</code> → <code>seed_demo</code> → <code>generate_history</code>，含示範工作流程</td>
+<td>通過</td>
+</tr>
+<tr>
+<td>後端</td>
+<td>Django 測試套件 700+ 項、<code>ruff</code>、<code>makemigrations --check</code></td>
+<td>全綠</td>
+</tr>
+<tr>
+<td>API</td>
+<td>OpenAPI 內 67 個 GET 端點（含帶路徑參數者）以 admin 掃描無 5xx</td>
+<td>通過</td>
+</tr>
+<tr>
+<td>前端</td>
+<td><code>tsc</code> 嚴格模式、Vite build、三語翻譯完整性</td>
+<td>通過</td>
+</tr>
+<tr>
+<td>e2e</td>
+<td>51 項 Playwright：每頁面三語 smoke、互動深掃（建立/編輯/刪除流程）、viewer/operator 角色巡檢</td>
+<td>全過</td>
+</tr>
+<tr>
+<td>業務流程</td>
+<td>工作流程真實執行→命令→模擬器 ack、SSE 即時串流、調度引擎 dry-run、需量反應、通知佇列</td>
+<td>實機驗證</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="本輪測試抓到並修正的問題">本輪測試抓到並修正的問題<a class="headerlink" href="#本輪測試抓到並修正的問題" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>穩定不變的讀值被判為「過期」</strong>：記錄策略的死區過濾把值未變的讀值整筆丟掉，連最新值表的時間戳都不更新，SOC 停在 55% 一小時後被控制引擎視為 stale 而拒絕判斷。改為最新值表永遠反映設備最後回報，死區只決定歷史儲存密度。</li>
+<li><strong>開發伺服器隨機停止</strong>：SSE 長連線經 Vite proxy，瀏覽器分頁關閉時的 ECONNRESET 未被處理而拖垮整個 dev server。已加錯誤處理並排除測試輸出目錄的檔案監看。</li>
+<li><strong>工作流程列表沒有刪除操作</strong>：補上（admin 權限）。</li>
+<li><strong>全新安裝沒有示範工作流程</strong>：「削峰與低電量保護」改為 seed 資料（設備 ID 以佔位符解析）。</li>
+<li><strong>規則頁對非 admin 發出讀不了的請求</strong>：通知管道查詢改為依角色閘門，不再產生 403。</li>
+</ul>
+<h3 id="即時性-本輪新增">即時性（本輪新增）<a class="headerlink" href="#即時性-本輪新增" title="Permanent link">¶</a></h3>
+<ul>
+<li>全 console 改由單一 SSE live feed 驅動更新;MQTT 發布→畫面:遙測 ~0.5 s、警報事件 ~0.6 s、設備離線 ~0.9 s(由 <code>frontend/e2e/latency.spec.ts</code> 對真實堆疊量測)。</li>
+<li>修正:滾動時間窗的結束時間曾固定在頁面載入瞬間,停留越久新資料越看不到;現在隨事件與每分鐘前移。</li>
+<li>修正:桌面模擬器與探針未指定 MQTT 3.1.1 時以 MQTT 5 連內建 broker 會靜默失敗;模擬器一律使用 3.1.1。</li>
+</ul>
+<h3 id="已知限制-刻意的設計邊界">已知限制（刻意的設計邊界）<a class="headerlink" href="#已知限制-刻意的設計邊界" title="Permanent link">¶</a></h3>
+<ul>
+<li>工作流程的即時監看為 SSE；伺服器端仍以 1 秒間隔查資料庫（引擎在獨立行程、SQLite 無跨行程通知）。正式環境要真推播需 Redis pub/sub + ASGI。</li>
+<li>台電電價為內建牌價表（114 年度），非即時 API；計費前請對照台電最新公告。</li>
+<li>儲能策略跑在排程器週期（分鐘級），適用 15 分鐘需量與電價段落，不是毫秒級 PCS 迴路。</li>
+<li>子場域的即時功率流與能源區間各自計算；跨子樹彙總在場域摘要與報表 rollup。</li>
+<li>示範帳號密碼寫在版控中（<code>ChangeMe-2026!</code>），對外開放前務必更換。</li>
+</ul>
+<h3 id="啟動">啟動<a class="headerlink" href="#啟動" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><span></span><code><span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">dev</span><span class="p">.</span><span class="n">ps1</span> <span class="n">-Setup</span>      <span class="c"># 第一次：建環境、遷移、種子、歷史資料</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">dev</span><span class="p">.</span><span class="n">ps1</span>             <span class="c"># 日常：約 5 秒啟動整個堆疊</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">stop</span><span class="p">.</span><span class="n">ps1</span>            <span class="c"># 約 1 秒停止</span>
+<span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">sim-console</span><span class="p">.</span><span class="n">ps1</span>     <span class="c"># 桌面模擬器主控台（閘道器 + 設備 + 按鍵測試）</span>
+<span class="p">.\</span><span class="n">scripts</span>
+<span class="n">eset-demo</span><span class="p">.</span><span class="n">ps1</span>      <span class="c"># 清庫重建客戶展示租戶（多場域 + 機隊模擬器）</span>
+</code></pre></div></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

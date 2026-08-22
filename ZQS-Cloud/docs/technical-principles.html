@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>技術原理 · ZQS Cloud 文件</title>
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --line: #e3e6eb; --text: #1f2937; --muted: #6b7280;
+  --brand: #0f766e; --brand-soft: #e6f4f1; --code: #f1f3f6; --warn: #fff7e6; --warn-line: #f0c36d;
+  --sidebar-w: 280px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1419; --surface: #161b22; --line: #2a313b; --text: #e6e8eb; --muted: #9aa3ad;
+          --brand: #3dd6c0; --brand-soft: #10302b; --code: #1e242c; --warn: #2f2711; --warn-line: #8a6a1d; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+       background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15.5px; }
+a { color: var(--brand); text-decoration: none; } a:hover { text-decoration: underline; }
+.layout { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+nav.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px;
+              background: var(--surface); border-right: 1px solid var(--line); }
+nav.sidebar .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.sidebar .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--text); font-size: 14px; }
+nav.sidebar li a:hover { background: var(--code); text-decoration: none; }
+nav.sidebar li a.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+nav.sidebar .toc { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+nav.sidebar .toc .label { font-size: 11px; letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 0 10px 6px; }
+nav.sidebar .toc a { font-size: 13px; color: var(--muted); padding: 4px 10px; }
+nav.sidebar .toc ul ul a { padding-left: 22px; font-size: 12.5px; }
+main { padding: 36px 48px 80px; max-width: 1040px; min-width: 0; }
+article h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.01em; }
+article h2 { font-size: 22px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+article h3 { font-size: 17.5px; margin: 28px 0 8px; }
+article h4 { font-size: 15.5px; margin: 20px 0 6px; }
+article p { margin: 10px 0; }
+article ul, article ol { padding-left: 1.4em; }
+article li { margin: 3px 0; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article blockquote { margin: 14px 0; padding: 10px 16px; background: var(--warn); border-left: 4px solid var(--warn-line); border-radius: 0 8px 8px 0; }
+article blockquote p { margin: 4px 0; }
+article code { font-family: Consolas, "Cascadia Mono", Menlo, monospace; font-size: .9em; background: var(--code);
+               padding: 1px 5px; border-radius: 4px; }
+article pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.55; }
+article pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+article table { border-collapse: collapse; width: 100%; font-size: 14px; }
+article th, article td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+article th { background: var(--code); font-weight: 600; white-space: nowrap; }
+article tr:last-child td { border-bottom: 0; }
+article td:first-child { white-space: nowrap; font-weight: 500; }
+article td:first-child:has(strong) strong { color: var(--brand); }
+article img { max-width: 100%; }
+pre.mermaid { background: var(--surface); text-align: center; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+.headerlink { opacity: 0; margin-left: 6px; font-size: .8em; color: var(--muted); }
+h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+.index-grid a.card { display: block; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: var(--text); }
+.index-grid a.card:hover { border-color: var(--brand); text-decoration: none; }
+.index-grid .card .t { font-weight: 600; margin-bottom: 4px; }
+.index-grid .card .d { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  main { padding: 24px 18px 60px; }
+}
+@media print { nav.sidebar { display: none; } .layout { display: block; } main { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="active">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
+<ul>
+<li><a href="#1-資料怎麼從設備到畫面">1. 資料怎麼從設備到畫面</a></li>
+<li><a href="#2-sparkplug-b-為什麼比-自訂-json-好">2. Sparkplug B 為什麼比「自訂 JSON」好</a></li>
+<li><a href="#3-能源平衡與積分">3. 能源平衡與積分</a></li>
+<li><a href="#4-電費與儲能的受益從哪裡來">4. 電費與儲能的受益從哪裡來</a></li>
+<li><a href="#5-策略為什麼要看-場域自己的需量">5. 策略為什麼要看「場域自己的需量」</a></li>
+<li><a href="#6-警報-門檻-持續-遲滯-冷卻">6. 警報：門檻、持續、遲滯、冷卻</a></li>
+<li><a href="#7-工作流程引擎-為什麼是-token-不是執行緒">7. 工作流程引擎：為什麼是 token 不是執行緒</a></li>
+<li><a href="#8-即時性-sse-與輪詢的取捨">8. 即時性：SSE 與輪詢的取捨</a></li>
+<li><a href="#9-模擬器的物理模型">9. 模擬器的物理模型</a></li>
+<li><a href="#10-多租戶與安全邊界">10. 多租戶與安全邊界</a></li>
+</ul>
+</div>
+</div></nav>
+<main><article><h1 id="技術原理">技術原理<a class="headerlink" href="#技術原理" title="Permanent link">¶</a></h1>
+<p>這份文件解釋<strong>為什麼系統這樣運作</strong>——每個機制背後的電力、通訊與軟體原理，以及它在本系統中的落點。名詞定義在 <a href="glossary.html">專有名詞解釋</a>，實際行為規則在 <a href="system-logic.html">系統邏輯總覽</a>。</p>
+<hr>
+<h2 id="1-資料怎麼從設備到畫面">1. 資料怎麼從設備到畫面<a class="headerlink" href="#1-資料怎麼從設備到畫面" title="Permanent link">¶</a></h2>
+<pre class="mermaid">flowchart LR
+  D[設備 / 閘道器] --&gt;|Sparkplug B over MQTT| B[(Broker)]
+  B --&gt;|訂閱 spBv1.0/#| I[Ingestor]
+  I --&gt;|記憶體／Redis 匯流排| W[Worker]
+  W --&gt; T[(TelemetrySample 歷史)]
+  W --&gt; L[(LatestSample 最新值)]
+  W --&gt; A[警報引擎]
+  L --&gt;|0.5 s 掃描| S[SSE live feed]
+  S --&gt; C[Console]
+</pre>
+
+<ol>
+<li><strong>設備只跟 broker 說話。</strong> 它不知道平台在哪裡、有幾台；它只發布到約定的主題。這就是為什麼模擬器可以完全獨立、為什麼換 broker 只要改一個 IP。</li>
+<li><strong>Ingestor 只做「收與驗」。</strong> 解 protobuf、檢查租戶（group id 必須是已存在的組織）、大小上限，然後放進匯流排。它不碰資料庫，所以再大的流量也不會卡在 DB 上。</li>
+<li><strong>Worker 做所有有狀態的事。</strong> 序號檢查、別名解析、指標自動登錄、寫歷史與最新值、死區、事件、警報評估、命令回覆比對。一批一批處理（批次 = 一次從匯流排取出的訊息），所以<strong>同一批內的順序很重要</strong>——死亡訊息必須贏過同批較早的資料（這是實際踩過的坑）。</li>
+<li><strong>畫面不輪詢。</strong> Console 開一條 SSE 連線，伺服器每 0.5 秒問資料庫「自上次以來誰變了」，只推送變動的 id，前端只重抓那幾個查詢。量到 MQTT 發布到畫面更新約 0.3–0.6 秒。</li>
+</ol>
+<h2 id="2-sparkplug-b-為什麼比-自訂-json-好">2. Sparkplug B 為什麼比「自訂 JSON」好<a class="headerlink" href="#2-sparkplug-b-為什麼比-自訂-json-好" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>問題</th>
+<th>自訂 JSON 的下場</th>
+<th>Sparkplug B 的解法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>設備離線怎麼知道？</td>
+<td>靠逾時猜，要等幾分鐘</td>
+<td><strong>NDEATH 遺囑</strong>：broker 在連線斷掉的瞬間代發；加上 <strong>bdSeq</strong> 分辨是哪一次連線的死亡</td>
+</tr>
+<tr>
+<td>訊息有沒有漏？</td>
+<td>不知道</td>
+<td><strong>seq</strong> 0–255 循環；漏號就要求 <strong>rebirth</strong> 重新宣告，不猜</td>
+</tr>
+<tr>
+<td>每筆都帶欄位名稱很肥</td>
+<td>是</td>
+<td><strong>別名</strong>：DBIRTH 宣告一次名稱↔整數，之後只送整數</td>
+</tr>
+<tr>
+<td>新設備要改平台程式</td>
+<td>是</td>
+<td><strong>DBIRTH 宣告指標</strong>（名稱、型別、單位），平台自動登錄</td>
+</tr>
+<tr>
+<td>不同廠商格式不同</td>
+<td>每家寫轉換器</td>
+<td>規範固定主題與 protobuf schema，任何 Sparkplug 主機都讀得懂</td>
+</tr>
+<tr>
+<td>命令怎麼確認執行了</td>
+<td>自己發明</td>
+<td>規範沒定 ack，本平台以 DDATA 帶 <code>Command/ID</code> + <code>Command/Status</code> 回覆（見 <a href="device-protocol.html">裝置通訊協定（Sparkplug B）</a> §5）</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>生死流程</strong>（每一條連線）：</p>
+<div class="highlight"><pre><span></span><code>CONNECT（帶遺囑 = NDEATH, bdSeq=n）
+→ NBIRTH(bdSeq=n, seq=0) → DBIRTH… (seq=1,2…)
+→ DDATA… (seq 遞增)
+→ 正常關機：DDEATH… → NDEATH(bdSeq=n) → 等 0.5 s → DISCONNECT
+   異常斷線：broker 代發 NDEATH(bdSeq=n)
+</code></pre></div>
+<p>兩個細節是實際踩出來的：<strong>正常 DISCONNECT 會讓 broker 丟棄遺囑</strong>，所以乾淨關機一定要自己發 NDEATH；而某些 broker 會把<strong>緊跟著 DISCONNECT 的 PUBLISH 丟掉</strong>，所以發完 NDEATH 要等一下再斷線。平台另有 180 秒的逾時掃描當保險。</p>
+<h2 id="3-能源平衡與積分">3. 能源平衡與積分<a class="headerlink" href="#3-能源平衡與積分" title="Permanent link">¶</a></h2>
+<p>每個場域的瞬時功率滿足：</p>
+<div class="highlight"><pre><span></span><code>負載 = 市電 + 光電 + 電池放電 − 電池充電 + 發電機
+</code></pre></div>
+<p>平台的正負號約定：<strong>市電正值 = 購電</strong>，<strong>電池正值 = 放電</strong>（對外供電）。設備若相反，在資產綁定勾「反轉正負」。</p>
+<p>功率（kW）變成電量（kWh）靠<strong>梯形積分</strong>：相鄰兩筆讀值的平均功率 × 間隔時間。累積電量指標（<code>*_energy_kwh</code>）若存在，優先用計數器差值，因為它是電表自己的積分、不受取樣間隔影響；計數器回繞（例如 32 位元溢位）用 <code>Metric.counter_max</code> 修正。</p>
+<p>為什麼是 <strong>15 分鐘區間</strong>：台電以 15 分鐘平均功率計需量，用同樣的粒度結算，區間的 <code>peak_import_kw</code> 才能直接對應帳單上的數字。</p>
+<h2 id="4-電費與儲能的受益從哪裡來">4. 電費與儲能的受益從哪裡來<a class="headerlink" href="#4-電費與儲能的受益從哪裡來" title="Permanent link">¶</a></h2>
+<p>台灣工業電費 = <strong>基本電費</strong>（依契約容量／最高需量，每 kW 每月）+ <strong>流動電費</strong>（kWh × 時段單價）+ 超約罰款 + 功率因數調整。表後儲能能動的是前三項：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>受益來源</th>
+<th>原理</th>
+<th>系統怎麼算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>削減最高需量</strong></td>
+<td>尖峰時放電，關口電表的 15 分鐘平均下降 → 月最高需量下降 → 基本電費下降</td>
+<td><code>demand_savings = (未調度最高需量 − 實際最高需量) × 每 kW 費率</code>；未調度需量 = 負載 − 光電（同一區間）</td>
+</tr>
+<tr>
+<td><strong>避免超約</strong></td>
+<td>超過契約的部分 10% 內 2 倍、超過 3 倍計費；壓在契約下就沒有罰款</td>
+<td><code>excess_charge()</code>：分段計算基準線與實際的罰款差</td>
+</tr>
+<tr>
+<td><strong>時間電價套利</strong></td>
+<td>離峰 2.4 元充、尖峰 5.9 元放，扣掉往返損耗仍有價差</td>
+<td>每個區間 <code>estimated_savings = 基準線電費 − 實際電費</code>，整段期間加總</td>
+</tr>
+<tr>
+<td><strong>光電自用</strong></td>
+<td>餘電躉售價低於購電價；存起來晚上自己用，省的是購電價</td>
+<td>自發自用策略；節費同樣由基準線比較算出</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>節費為什麼可能是負的</strong>：充電的區間實際電費比基準線高（多買了電），放電的區間才賺回來。單看一天（尤其週末電價全日離峰）會是負的，整週才是淨效益。系統<strong>不把負值藏起來</strong>，因為藏起來的報表會替壞決策背書。</p>
+<p><strong>需量費的窗口問題</strong>：費率是「每月」的，但畫面可以選任意窗口。系統把窗口內最高需量用月費率計價——窗口正好是整月時就是帳單數字，其他時候是估算，頁面上有註明。</p>
+<h2 id="5-策略為什麼要看-場域自己的需量">5. 策略為什麼要看「場域自己的需量」<a class="headerlink" href="#5-策略為什麼要看-場域自己的需量" title="Permanent link">¶</a></h2>
+<p>契約容量管理的判斷式是「需量 &gt; 上限就放電」。但電表讀值已經<strong>包含電池自己的功率</strong>：電池充電 120 kW 會把電表推高 120 kW，下一輪引擎看到超約就改放電，再下一輪又看到空間改充電——追自己的尾巴。</p>
+<p>所以策略先還原場域本身的需量：<code>native = grid + battery</code>（放電為正，放電會壓低電表），再拿 native 跟上限比。離峰回充的上限也只到契約的 95%，免得夜間充電本身變成當月最高需量。這兩條都是實機觀察到震盪後才加的。</p>
+<p>策略每 60 秒評估一次（正式環境 300 秒），用的是 15 分鐘需量與電價段落的時間尺度，<strong>不是</strong>毫秒級的 PCS 控制迴路——那是 PCS 自己的事。</p>
+<h2 id="6-警報-門檻-持續-遲滯-冷卻">6. 警報：門檻、持續、遲滯、冷卻<a class="headerlink" href="#6-警報-門檻-持續-遲滯-冷卻" title="Permanent link">¶</a></h2>
+<p>一條規則要同時回答四個問題，少一個就會誤報或漏報：</p>
+<ul>
+<li><strong>門檻</strong>（threshold）：超過多少算異常。</li>
+<li><strong>持續</strong>（for_duration）：要連續超過多久才算——過濾瞬間尖峰。實作是「從第一次超過起算，中途回落就重計」，跟 PLC 的 on-delay timer 相同。</li>
+<li><strong>遲滯</strong>（hysteresis）：回到門檻以下多少才算解除——避免在門檻附近反覆觸發／解除。</li>
+<li><strong>冷卻</strong>（cooldown）：解除後多久內不再重新觸發。</li>
+</ul>
+<p>「沒有讀值」永遠<strong>不等於</strong> 0：一台斷線的設備功率不是 0，是未知；拿 0 去比 <code>power &lt; 100</code> 會讓安全聯鎖在設備斷線時反而觸發。條件判斷在沒讀值或讀值過舊時走「無讀值」分支，工作流程與警報引擎都一樣。</p>
+<h2 id="7-工作流程引擎-為什麼是-token-不是執行緒">7. 工作流程引擎：為什麼是 token 不是執行緒<a class="headerlink" href="#7-工作流程引擎-為什麼是-token-不是執行緒" title="Permanent link">¶</a></h2>
+<p>畫布上的流程可能要跑幾天（「守住設定點直到條件解除」）。用執行緒實作，行程重啟就全部消失。本引擎把<strong>每一個分支的位置存在資料庫</strong>（<code>WorkflowToken</code>），引擎每 2 秒被叫醒一次、把能動的 token 各推一步、寫回、返回——沒有任何東西停在 Python 堆疊上。重啟後從資料庫的位置繼續。</p>
+<p>由此衍生的規則：Jump 讓出一個週期（否則迴圈是 busy-wait）、分支抵達已有分支的節點就合流（否則跳回分岔點會指數成長）、等待是「停車到某時刻」不是 sleep、條件計時每個週期重取樣。完整設計與踩過的坑見 <a href="workflow-design.html">工作流程引擎設計手冊</a>。</p>
+<h2 id="8-即時性-sse-與輪詢的取捨">8. 即時性：SSE 與輪詢的取捨<a class="headerlink" href="#8-即時性-sse-與輪詢的取捨" title="Permanent link">¶</a></h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>方式</th>
+<th>延遲</th>
+<th>成本</th>
+<th>本系統</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>前端每 5 秒輪詢</td>
+<td>最差 5 秒</td>
+<td>N 個查詢 × 5 秒 × N 個分頁</td>
+<td>只剩 fallback</td>
+</tr>
+<tr>
+<td>SSE（一條連線，伺服器每 0.5 秒查變化）</td>
+<td>~0.5 秒</td>
+<td>一條連線；伺服器每 0.5 秒一次索引查詢</td>
+<td><strong>目前作法</strong></td>
+</tr>
+<tr>
+<td>WebSocket + Redis pub/sub</td>
+<td>~10 ms</td>
+<td>需要 ASGI 與 Redis</td>
+<td>正式環境升級路徑</td>
+</tr>
+</tbody>
+</table></div>
+<p>誠實的說法：伺服器端仍然在「查」資料庫（worker 在另一個行程、SQLite 沒有跨行程通知），省下的是 HTTP 往返與無謂的重抓，不是查詢本身。Windows 時鐘 15 ms 一跳，比較時間用 <code>&gt;=</code> 而不是 <code>&gt;</code>，否則同一跳內寫入的列會漏掉。</p>
+<h2 id="9-模擬器的物理模型">9. 模擬器的物理模型<a class="headerlink" href="#9-模擬器的物理模型" title="Permanent link">¶</a></h2>
+<p>模擬器不是在「回放數字」，而是在跑一個最小的電廠模型，所以平台下的每一道命令都會產生後果：</p>
+<ul>
+<li><strong>負載</strong>：依場域類型（廠房兩班制／辦公上班時段／園區）的 24 小時形狀 × 尖峰 kW，週末打折，±2% 雜訊。</li>
+<li><strong>光電</strong>：06:00–18:00 的正弦曲線 × 裝置容量（× 天氣因子，歷史產生器才有）。</li>
+<li><strong>電池</strong>：依平台最後一次設定點出力，受額定功率與 SOC 上下限限制；SOC 以實際搬動的能量積分。</li>
+<li><strong>電表</strong>：<code>grid = load − pv − battery</code>。</li>
+</ul>
+<p>因此「引擎下放電 300 kW」→「電池功率 +300 kW、SOC 下降」→「電表購電少 300 kW」→「下個結算區間的需量與電費變低」→「總覽頁受益增加」是一條真實的因果鏈，不是四個各自編的數字。</p>
+<h2 id="10-多租戶與安全邊界">10. 多租戶與安全邊界<a class="headerlink" href="#10-多租戶與安全邊界" title="Permanent link">¶</a></h2>
+<ul>
+<li><strong>租戶</strong> = 組織 = Sparkplug group id。訊息的 group id 不是已存在的組織就丟棄並記錄——不會有「預設租戶」接住錯投的資料。</li>
+<li><strong>場域範圍</strong>：成員可被限制只看到某幾個場域（含子場域）；API 查詢一律經 <code>scope_queryset</code>。</li>
+<li><strong>命令閘門</strong>：每個命令依名稱<strong>與參數值</strong>決定需要哪種能力（可充電／可放電／可輸出／可調度）；工作流程與調度引擎送命令走的是和人手相同的 <code>dispatch_command()</code>，不是特權路徑。</li>
+<li><strong>憑證</strong>：每台閘道器一組 MQTT 帳密，EMQX 以 webhook 向平台驗證並套 ACL，設備只能發布自己的主題。</li>
+</ul></article></main>
+</div>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral", securityLevel: "loose" });
+</script>
+</body>
+</html>

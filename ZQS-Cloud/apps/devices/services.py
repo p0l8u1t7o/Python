@@ -606,7 +606,7 @@ def _encode_command(command, name: str, params: dict, expires_at) -> bytes:
     also writes ``Command/ID``. It costs one string and buys the thing the bare
     specification cannot express: which write a later report refers to, and
     therefore which commands were never answered. See
-    ``docs/device-protocol.md`` section 4.
+    ``docs/device-protocol.html`` section 4.
     """
     message = sp.new_payload(timestamp=command.created_at)
     sp.add_metric(message, profile.COMMAND_ID, str(command.id))
