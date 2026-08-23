@@ -494,6 +494,39 @@ def site_overview(request, site_id: uuid.UUID):
     }
 
 
+def _demand_status(flow: dict, plan, stale: bool) -> dict:
+    """地圖與總覽用的需量狀態：一眼看出哪個場域超約、哪個平衡得好。
+
+    上限沿用引擎的退路鏈（明確目標 → 舊削峰目標 → 契約 95%）。分級：
+    ``over`` 購電超過契約容量（會被罰款）、``high`` 超過上限但還在契約內、
+    ``watch`` 在上限 90% 以上、``exporting`` 逆送中、``balanced`` 其餘，
+    ``unknown`` 沒有方案、沒有讀值或讀值過期——不知道就說不知道，不猜。
+    """
+    from apps.ems.strategy import demand_ceiling_kw
+
+    ceiling = demand_ceiling_kw(plan) if plan is not None else None
+    contract = plan.contract_capacity_kw if plan is not None else None
+    grid = flow.get("grid_kw")
+    out = {"demand_ceiling_kw": ceiling, "contract_capacity_kw": contract, "demand_status": "unknown"}
+    if grid is None or stale:
+        return out
+    if grid < -0.05:
+        out["demand_status"] = "exporting"
+        return out
+    if ceiling is None:
+        out["demand_status"] = "balanced"
+        return out
+    if contract and grid > contract:
+        out["demand_status"] = "over"
+    elif grid > ceiling:
+        out["demand_status"] = "high"
+    elif grid > 0.9 * ceiling:
+        out["demand_status"] = "watch"
+    else:
+        out["demand_status"] = "balanced"
+    return out
+
+
 @router.get("/live", response=s.FleetLiveOut)
 def fleet_live(request, include_inactive: bool = False):
     """Current power at every site the caller can see, plus today's totals.
@@ -553,6 +586,7 @@ def fleet_live(request, include_inactive: bool = False):
     contributions = dict.fromkeys(totals, 0)
     newest = None
     reporting = 0
+    plans = effective_plan_map(ctx.organization)
     # Sites that could report at all. A parent that only groups its children
     # has nothing to be stale about and must not drag the count down.
     equipped = 0
@@ -610,6 +644,7 @@ def fleet_live(request, include_inactive: bool = False):
                 "today_estimated_savings": savings,
                 "currency": currencies.get(site.pk, ""),
                 "is_stale": stale,
+                **_demand_status(flow, (plans.get(site.pk) or (None, None))[0], stale),
             }
         )
 

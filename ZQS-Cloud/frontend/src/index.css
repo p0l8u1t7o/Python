@@ -188,6 +188,11 @@
     }
   }
   @keyframes hud-blink { 50% { opacity: 0.25; } }
+  /* A site importing above its contract pulses on the map. */
+  @media (prefers-reduced-motion: no-preference) {
+    .zqs-bubble-over { animation: bubble-over 1.4s ease-in-out infinite; }
+  }
+  @keyframes bubble-over { 50% { fill-opacity: 0.25; stroke-opacity: 0.5; } }
   .card {
     @apply bg-surface border border-line rounded-xl;
   }

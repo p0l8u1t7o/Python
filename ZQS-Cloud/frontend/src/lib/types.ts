@@ -1002,7 +1002,19 @@ export interface SiteLive {
   today_estimated_savings: number | null
   currency: string
   is_stale: boolean
+  /** Demand standing against the effective plan; drives the map colouring. */
+  demand_status: DemandStatus
+  demand_ceiling_kw: number | null
+  contract_capacity_kw: number | null
 }
+
+/**
+ * over = import above the contract (penalty territory); high = above the
+ * demand ceiling but inside the contract; watch = within 10% of the ceiling;
+ * exporting = net export; balanced = comfortably under; unknown = no plan,
+ * no reading, or a stale one.
+ */
+export type DemandStatus = 'over' | 'high' | 'watch' | 'balanced' | 'exporting' | 'unknown'
 
 /**
  * Live energy across every visible site.

@@ -337,6 +337,10 @@ class SiteLiveOut(Schema):
     today_energy_cost: float = 0.0
     today_estimated_savings: float | None = None
     currency: str = ""
+    #: 需量狀態（地圖著色）：over / high / watch / balanced / exporting / unknown。
+    demand_status: str = "unknown"
+    demand_ceiling_kw: float | None = None
+    contract_capacity_kw: float | None = None
     #: True when no asset at this site has reported recently. The row still
     #: appears - a site that has gone quiet is exactly what an overview should
     #: show, rather than dropping it.
