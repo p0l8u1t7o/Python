@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件總覽 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>ExpAnalysis 說明文件</h1>
+<p class="lede">高純銦金屬偏析純化製程的離線分析與參數建議工具。<br>
+以物理模型為骨架、AI 分層疊加，每一層都可獨立關閉並退回物理基準。</p>
+
+<div class="box key">
+  <b>一句話說明這個專案的技術取向</b>
+  <p>這不是機器學習專案，是<strong>物理模型 + 小資料擬合</strong>專案。區域熔煉有很強的解析解，
+  而客戶的批次數只有幾十批——純機器學習在這個樣本數下必定過擬合，而且做不出可靠的參數建議，
+  因為外插不可信。正確做法是先用物理方程把每一條雜質分布曲線壓縮成 <strong>1 個可解釋的參數</strong>，
+  再對這少數參數做回歸。資料量瞬間夠用，結果也可以外插。</p>
+</div>
+
+<h2>這套工具回答什麼問題</h2>
+
+<table>
+<thead><tr><th>客戶提出的需求</th><th>系統實際在做的事</th><th>對應畫面</th></tr></thead>
+<tbody>
+<tr>
+  <td>建立製程參數與純化結果的關聯模型，找出影響雜質去除效率與 6N 得料率的關鍵參數</td>
+  <td>對每個元素反解有效分配係數 k_eff，再做 <code>ln(1/k_eff − 1)</code> 對速率的回歸。
+      斜率大 = 速率是關鍵參數</td>
+  <td>總覽、參數映射</td>
+</tr>
+<tr>
+  <td>預測不同製程條件下雜質的分布趨勢，判斷高純區與雜質濃縮區位置</td>
+  <td>用 k_eff(T, v) 跑正向模擬得到整條曲線，找出穿過 6N 門檻的位置</td>
+  <td>模擬與預測</td>
+</tr>
+<tr>
+  <td>提供溫度、速率、純化次數的最佳化建議，提升純化效率、批次穩定性與得料率</td>
+  <td>在參數網格上跑模擬、算每組的得料率，挑最好的並附上不確定範圍</td>
+  <td>最佳化建議</td>
+</tr>
+<tr>
+  <td><em>（額外交付）</em></td>
+  <td>哪些元素 k≈1、用偏析法根本除不掉，該由前段製程處理；
+      pass 做到第幾次之後就完全白做</td>
+  <td>總覽、最佳化建議</td>
+</tr>
+</tbody>
+</table>
+
+<h2>該從哪一篇開始讀</h2>
+
+<div class="grid2">
+  <div class="box">
+    <b>我是製程工程師 / 專案經理</b>
+    <p>先看 <a href="01-overview.html">01 · 系統架構與設計理念</a> 理解整體取向，
+    再看 <a href="05-user-guide.html">05 · 使用者操作手冊</a> 學怎麼操作。
+    要跟客戶談技術細節時，<a href="02-physics.html">02 · 物理模型詳解</a> 從零開始講，
+    不預設冶金背景。</p>
+  </div>
+  <div class="box">
+    <b>我是軟體工程師，要接手維護</b>
+    <p>先看 <a href="07-dev-guide.html">07 · 開發者指南</a> 了解模組切分與關鍵設計決策，
+    再看 <a href="04-methods.html">04 · 擬合、AI 與最佳化方法</a> 理解數學部分（同樣不預設統計背景）。
+    API 細節在 <a href="06-api.html">06 · REST API 參考</a>。</p>
+  </div>
+  <div class="box">
+    <b>我要跟客戶談驗收條件</b>
+    <p>直接看 <a href="08-validation.html">08 · 驗證、驗收與風險控管</a>。
+    那一篇把「不要影響準確性」翻譯成四條可量化、可驗收的合約條款，
+    並說明留一批交叉驗證怎麼當作驗收文件。</p>
+  </div>
+  <div class="box">
+    <b>我要準備匯入客戶的歷史資料</b>
+    <p>看 <a href="03-data-spec.html">03 · 資料規格書</a>。
+    特別注意最後一節「開案前一定要跟客戶問清楚的資料問題」——
+    那些問題直接決定這個案子可不可行。</p>
+  </div>
+</div>
+
+<h2>系統分層一覽</h2>
+
+<svg class="fig" viewBox="0 0 760 330" role="img"
+     aria-label="系統分層架構圖：由下而上為 L0 物理模型、L1 殘差學習、L2 高斯過程、L3 異常偵測、L4 貝氏最佳化、L5 LLM 對話層">
+  <style>
+    .lyr { fill: var(--bg3); stroke: var(--line); }
+    .lbl { fill: var(--fg); font-size: 13px; font-weight: 600; }
+    .dsc { fill: var(--fg2); font-size: 11.5px; }
+    .tagx { fill: var(--muted); font-size: 11px; }
+  </style>
+  <rect class="lyr" x="30" y="18"  width="700" height="42" rx="7"/>
+  <rect class="lyr" x="30" y="66"  width="700" height="42" rx="7"/>
+  <rect class="lyr" x="30" y="114" width="700" height="42" rx="7"/>
+  <rect class="lyr" x="30" y="162" width="700" height="42" rx="7"/>
+  <rect class="lyr" x="30" y="210" width="700" height="42" rx="7"/>
+  <rect x="30" y="258" width="700" height="52" rx="7"
+        fill="color-mix(in srgb, var(--accent) 16%, transparent)" stroke="var(--accent)"/>
+
+  <text class="lbl" x="48" y="38">L5</text><text class="lbl" x="86" y="38">LLM 對話層</text>
+  <text class="dsc" x="200" y="38">自然語言查詢、報告生成　—　不做任何計算</text>
+  <text class="tagx" x="600" y="38">客戶眼中的 AI</text>
+
+  <text class="lbl" x="48" y="86">L4</text><text class="lbl" x="86" y="86">貝氏最佳化</text>
+  <text class="dsc" x="200" y="86">建議下一批該跑什麼參數　—　只影響實驗設計</text>
+  <text class="tagx" x="600" y="86">最有價值的 AI</text>
+
+  <text class="lbl" x="48" y="134">L3</text><text class="lbl" x="86" y="134">異常偵測</text>
+  <text class="dsc" x="200" y="134">哪批資料不對勁　—　不參與預測，只保護準確度</text>
+  <text class="tagx" x="600" y="134">零風險</text>
+
+  <text class="lbl" x="48" y="182">L2</text><text class="lbl" x="86" y="182">高斯過程</text>
+  <text class="dsc" x="200" y="182">k_eff = f(T, v) 映射，附不確定區間</text>
+  <text class="tagx" x="600" y="182">純升級、無代價</text>
+
+  <text class="lbl" x="48" y="230">L1</text><text class="lbl" x="86" y="230">殘差學習</text>
+  <text class="dsc" x="200" y="230">物理沒解釋到的部分　—　選配、預設關閉</text>
+  <text class="tagx" x="600" y="230">需嚴格護欄</text>
+
+  <text class="lbl" x="48" y="280">L0</text><text class="lbl" x="86" y="280">物理模型</text>
+  <text class="dsc" x="200" y="280">Pfann 偏析方程 + BPS 有效分配係數</text>
+  <text class="tagx" x="600" y="280">永遠是骨架</text>
+  <text class="dsc" x="200" y="298">所有數字最終都能追溯回這一層</text>
+</svg>
+<figcaption>由下往上，每一層都可以獨立關閉並退回下一層；關閉後系統仍然完整可用。
+L1 是唯一真的可能影響準確度的一層，所以預設關閉，且必須通過留一批交叉驗證才允許啟用。</figcaption>
+
+<h2>技術棧</h2>
+<table>
+<thead><tr><th>層</th><th>用了什麼</th><th>為什麼是這個</th></tr></thead>
+<tbody>
+<tr><td>數值核心</td><td>NumPy、SciPy</td><td>沒有一行深度學習。核心邏輯不到 1000 行</td></tr>
+<tr><td>機器學習</td><td>scikit-learn（GaussianProcessRegressor、Ridge、IsolationForest）</td>
+    <td>都是教科書等級的方法，寫進技術報告站得住腳</td></tr>
+<tr><td>儲存</td><td>SQLite（WAL 模式）</td>
+    <td>單機離線分析工具，零維運。日後要集中時 DuckDB 可直接查同一個檔</td></tr>
+<tr><td>後端</td><td>FastAPI + uvicorn</td><td>自帶 OpenAPI 文件與參數驗證</td></tr>
+<tr><td>前端</td><td>原生 ES module，無框架、無建置流程</td>
+    <td>九個畫面、離線部署，引入 bundler 只會增加交付成本</td></tr>
+<tr><td>圖表</td><td>自寫的 SVG 模組，約 550 行</td>
+    <td>CDN 拉不到、也不見得允許裝一堆套件；SVG 可右鍵存成向量圖貼進報告</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+  <b>責任邊界</b>
+  <p>本系統是<strong>離線決策輔助工具</strong>。它不控制設備、不做閉迴路、不參與任何即時製程決策。
+  所有輸出都是給工程師看的建議與不確定區間，最終判斷與操作仍由人執行。</p>
+</div>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>

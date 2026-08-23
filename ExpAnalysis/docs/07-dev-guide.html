@@ -1,0 +1,1096 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>開發者指南 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>07 · 開發者指南</h1>
+<p class="lede">
+接手這個專案要知道的一切：模組怎麼切、為什麼這樣切、哪裡不能亂動、
+以及每一個看起來奇怪的設計背後「不這樣做會怎樣」。
+這份文件假設你會寫 Python 與 JavaScript，<b>但不預設你懂冶金或統計</b>——
+所有領域概念第一次出現時都會用工程師的語言解釋。
+</p>
+
+<div class="box key">
+<b>先記住這一條，其他都是細節</b>
+<p>
+<b>物理模型是骨架，AI 分層疊在外面，每一層都可以獨立關閉並退回物理基準。</b><br>
+任何一個上層模組（GP 映射、殘差修正、貝氏最佳化、LLM）被砍掉之後，
+系統都必須<b>仍然完整可用</b>。如果你寫的程式碼破壞了這個性質，那就是寫錯了。
+</p>
+</div>
+
+<h2>1. 開始之前</h2>
+
+<h3>1.1 環境</h3>
+<pre><code># Python 3.10+（開發環境使用 3.12）
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate       # macOS / Linux
+
+pip install -r requirements.txt
+pip install -e ".[dev]"         # 需要 pytest 時
+
+python run.py --reload          # 開發模式：改檔自動重載</code></pre>
+
+<p>沒有任何前端建置流程。<code>web/</code> 底下是可以直接被瀏覽器載入的原生 ES module，
+沒有 <code>node_modules</code>、沒有 bundler、沒有 transpile 步驟。理由見第 5.8 節。</p>
+
+<h3>1.2 十分鐘搞懂整個專案</h3>
+<p>按這個順序讀，會比從 <code>app.py</code> 開始讀快得多：</p>
+<ol>
+<li><code>src/expanalysis/physics/multipass.py</code> 的模組 docstring —— 這是整個系統的核心計算。</li>
+<li><code>src/expanalysis/physics/bps.py</code> 的模組 docstring —— 這解釋了「為什麼小資料也能做事」。</li>
+<li><code>src/expanalysis/fitting/__init__.py</code> —— 三行講完全專案的降維策略。</li>
+<li><code>src/expanalysis/service.py</code> 的 <code>_recompute()</code> —— 一次完整分析的全流程。</li>
+<li><code>web/js/app.js</code> —— 前端的全部路由。</li>
+</ol>
+
+<p>
+專案裡每個模組的 docstring 都寫了「為什麼這樣做」而不只是「做什麼」。
+<b>那些 docstring 是一級文件，不是註解。</b>改程式之前先讀它們。
+</p>
+
+<h2>2. 目錄結構與模組職責</h2>
+
+<pre><code>ExpAnalysis/
+├── run.py                       一鍵啟動：解析參數、設定日誌、起 uvicorn、開瀏覽器
+├── pyproject.toml               套件中繼資料與 pytest 設定
+├── requirements.txt             執行期相依（不含 dev）
+├── .env.example                 環境變數範本（複製為 .env 後修改）
+│
+├── data/expanalysis.db          SQLite 資料庫（含 -wal / -shm，已 gitignore）
+├── logs/expanalysis.log         輪替日誌（5 MB × 5 份）
+│
+├── src/expanalysis/
+│   ├── config.py                全域設定；環境變數覆寫；PyInstaller 路徑解析
+│   ├── logging_setup.py         日誌設定；stderr + 輪替檔案；壓制 uvicorn 重複輸出
+│   ├── service.py               ★ 服務層：把各層串起來，並以資料版本為鍵快取分析結果
+│   │
+│   ├── physics/                 L0 物理層 —— 不可被取代的骨架，不依賴任何上層
+│   │   ├── pfann.py             Pfann 單次 pass 解析解 + 正常凝固（Scheil）解
+│   │   ├── multipass.py         ★ 多次 pass 離散模擬（本專案唯一的「真計算」）
+│   │   ├── bps.py               BPS 有效分配係數模型 + 線性化 + 線性擬合
+│   │   ├── profile_grid.py      ★ (k, x) 濃度查表快取；擬合與掃描的效能命脈
+│   │   └── yield_calc.py        6N 純度視窗、得料率、雜質濃縮區
+│   │
+│   ├── fitting/                 擬合層 —— 把一條曲線壓成一個 k_eff
+│   │   ├── censored.py          左設限資料的 Tobit likelihood 與標準化殘差
+│   │   ├── fit_keff.py          ★ 反解 k_eff（粗掃 + Nelder-Mead 精修）
+│   │   └── bootstrap.py         ★ 全向量化的 bootstrap 不確定度估計
+│   │
+│   ├── ml/                      L1~L4 AI 層 —— 每一層都可獨立關閉
+│   │   ├── gp_map.py            L2 高斯過程：(v, T) → k_eff，以 BPS 直線當均值函數
+│   │   ├── residual.py          L1 殘差學習（選配、預設關閉、四道護欄）
+│   │   ├── anomaly.py           L3 異常偵測（規則式 + Isolation Forest，不參與預測）
+│   │   ├── bayesopt.py          L4 貝氏最佳化序列實驗設計 + DOE 對比模擬
+│   │   └── validation.py        留一批交叉驗證（LOBO）+ 設限處理對照實驗
+│   │
+│   ├── optimize/
+│   │   └── grid_search.py       正向模擬與 (T, v, n) 網格掃描，產出三種建議
+│   │
+│   ├── data/                    資料層
+│   │   ├── models.py            純 dataclass（Batch / Measurement / ElementSpec / BatchDetail）
+│   │   ├── db.py                SQLite 包裝；執行緒區域連線；版本化 migration
+│   │   ├── repository.py        所有 SQL 集中於此，上層只看得到 dataclass
+│   │   ├── importer.py          ★ CSV / Excel 匯入與資料稽核（寬鬆輸入、嚴格檢核）
+│   │   └── synthetic.py         合成資料產生器（方法驗證 + demo）
+│   │
+│   ├── assistant/               L5 LLM 層 —— 不做任何計算
+│   │   ├── provider.py          供應商抽象（anthropic / openai / template）+ 重試退避
+│   │   ├── tools.py             給 LLM 呼叫的工具集（服務層的薄包裝）
+│   │   ├── agent.py             工具呼叫迴圈 + 系統提示詞
+│   │   └── templates.py         本地模板模式的中文回覆組裝
+│   │
+│   └── api/
+│       ├── app.py               FastAPI 組裝：例外處理、NaN 消毒、靜態檔掛載
+│       ├── schemas.py           Pydantic 請求模型（唯一的輸入驗證邊界）
+│       └── routers/
+│           ├── batches.py       批次 CRUD、匯入、合成資料
+│           ├── analysis.py      總覽、k_eff 表、映射、異常、驗證
+│           ├── optimize.py      模擬、網格掃描、實驗建議、DOE 對比
+│           └── assistant.py     AI 助理狀態與對話
+│
+├── web/                         前端（無建置流程）
+│   ├── index.html               外殼
+│   ├── css/app.css              全部樣式（CSS 變數承載主題）
+│   └── js/
+│       ├── app.js               路由、佈景、全域狀態
+│       ├── api.js               API 客戶端（統一錯誤型別）
+│       ├── ui.js                DOM 建構、格式化、卡片／表格／通知
+│       ├── charts.js            ★ 手寫 SVG 圖表庫（6 種圖，無外部相依）
+│       └── views/*.js           九個畫面，各自匯出一個 async 函式
+│
+├── docs/                        本說明文件（由 API 以靜態檔提供）
+└── tests/                       方法驗證測試（見第 11 節）</code></pre>
+
+<h2>3. 分層相依規則</h2>
+
+<p><b>上層可以依賴下層，反之絕對不可。</b>這條規則沒有例外。</p>
+
+<pre><code>  L5  assistant/     ← 只呼叫 service，不碰任何計算模組
+       │
+  L4   ml.bayesopt   ← 呼叫 optimize / physics
+  L3   ml.anomaly    ← 讀 fitting 的結果，不寫回去
+  L2   ml.gp_map     ← 呼叫 physics.bps
+  L1   ml.residual   ← 只知道「物理預測值」與「觀測值」，不知道物理怎麼算的
+       │
+       optimize/     ← 呼叫 physics
+       │
+       fitting/      ← 呼叫 physics
+       │
+  L0   physics/      ← 不依賴任何上層。只依賴 numpy / scipy
+       │
+       data/         ← 只依賴 logging_setup（physics 與 data 互不相依）
+       config.py, logging_setup.py</code></pre>
+
+<h3>3.1 為什麼這條規則不能破</h3>
+
+<div class="box">
+<b>因為「可以關掉 AI」這個承諾是靠它撐住的。</b>
+<p>
+如果 <code>physics/</code> 裡有一行 <code>from ..ml.gp_map import ...</code>，
+那客戶要求「先只交付物理模型」時，你就必須動手術而不是刪一行設定。
+更糟的是驗收：第 11 節的留一批交叉驗證要能<b>公平地比較「純物理」與「物理 + AI」</b>，
+前提就是純物理那條路徑真的不含任何 ML。有一處循環相依，這個保證就破了。
+</p>
+</div>
+
+<h3>3.2 實務上的三條檢查</h3>
+<ul>
+<li><code>physics/</code> 的 import 區塊只能有 <code>numpy</code>、<code>scipy</code>、
+以及 <code>physics/</code> 內部的相對匯入。<b>唯一的例外</b>是
+<code>multipass.find_ultimate_pass()</code> 在<b>函式內部</b>延遲匯入
+<code>.yield_calc</code>——那是為了避開模組層級的循環匯入，屬同層。</li>
+<li><code>service.py</code> 是唯一允許 import 所有層的地方。它就是為了這件事而存在。</li>
+<li><code>assistant/tools.py</code> <b>不准有任何計算邏輯</b>。它只能呼叫 <code>service</code> 的方法，
+確保 LLM 路徑與 UI 路徑看到的是同一份數字。有人在那裡寫了個
+<code>np.mean(...)</code>，就是這條規則被破的開始。</li>
+</ul>
+
+<h2>4. 資料流</h2>
+
+<pre><code>  客戶的 CSV / Excel
+        │
+        ▼
+  ┌────────────────────────────────────────────────────────────┐
+  │ data/importer.py                                           │
+  │   欄名模糊比對（中英文別名）→ 寬鬆                          │
+  │   單位與物理一致性檢查        → 嚴格；有錯誤就整份不寫入     │
+  │   LOD 三種寫法統一成 censored=True + lod_ppm                │
+  └────────────────────────────────────────────────────────────┘
+        │  ImportReport(ok / errors / warnings)
+        ▼
+  ┌────────────────────────────────────────────────────────────┐
+  │ data/repository.py → SQLite                                │
+  │   batch / measurement / element_spec / keff_cache          │
+  │   任何寫入都會 invalidate_keff()                            │
+  └────────────────────────────────────────────────────────────┘
+        │  list[BatchDetail]
+        ▼
+  ┌────────────────────────────────────────────────────────────┐
+  │ fitting/fit_keff.py    每批每元素反解 1 個 k_eff            │
+  │   ← physics/profile_grid.py 提供 (k, x) 查表                │
+  │   ← fitting/censored.py 提供 Tobit likelihood               │
+  │ fitting/bootstrap.py   給每個 k_eff 一組 95% 區間           │
+  └────────────────────────────────────────────────────────────┘
+        │  {batch_id: {element: KeffFit}}      ← 降維完成：640 個測點 → 80 個數字
+        ▼
+  ┌────────────────────────────────────────────────────────────┐
+  │ ml/gp_map.py           (v, T) → k_eff 映射                  │
+  │   均值函數 = BPS 線性擬合；GP 只學殘差                       │
+  │ ml/anomaly.py          偵測異常 → service 排除高嚴重度後重擬 │
+  │ ml/residual.py         L1 修正器（trained 但 enabled=False） │
+  └────────────────────────────────────────────────────────────┘
+        │  AnalysisBundle（以資料版本為鍵快取在記憶體）
+        ▼
+  ┌────────────────────────────────────────────────────────────┐
+  │ optimize/grid_search.py                                    │
+  │   forward_predict()    一組條件 → 全錠分布 + 得料率          │
+  │   scan_parameter_grid() (T,v,n) 網格 → 熱圖 + 三種建議       │
+  │ ml/bayesopt.py         下一批該跑什麼 + DOE 對比             │
+  │ ml/validation.py       LOBO 驗收                            │
+  └────────────────────────────────────────────────────────────┘
+        │
+        ▼
+  api/routers/* → SafeJSONResponse（NaN → null）→ fetch → views/*.js → SVG</code></pre>
+
+<div class="box key">
+<b>整條鏈上最重要的一步是「降維」。</b>
+<p>
+一批實驗是 8 個測點 × 4 個元素 = 32 個數字。擬合之後變成 <b>4 個 k_eff</b>。
+40 批就變成「每個元素 40 個 k_eff」，一個 40 筆資料、2 個自變數的小問題——
+高斯過程或線性回歸都綽綽有餘。
+</p>
+<p>
+對照組：直接把 32 個原始數字餵給 XGBoost，有效參數數以百計，在 40 批的資料量下
+必然是背答案；而且學到的東西<b>無法外插</b>——問它沒跑過的速率，它只會回傳最接近的訓練值。
+1 個有物理意義的參數則綽綽有餘，且外插有依據。
+</p>
+</div>
+
+<h2>5. 關鍵設計決策</h2>
+
+<p>每一項都附「不這樣做會怎樣」。這些不是風格偏好，是踩過的坑。</p>
+
+<h3>5.1 為什麼要有 <code>ProfileGrid</code> 查表快取</h3>
+
+<p><b>關鍵觀察：整個區域熔煉的離散模擬對濃度是線性的。</b></p>
+<div class="eq">
+profile(c0, k, …) = c0 × profile(1.0, k, …)
+<span class="note">凝固帶走 k·C_L、熔化帶入 C_in，全部是線性運算。
+所以只要以 c0 = 1 對一組 k 值先算好曲線，之後任何 c0、任何 k（在對數空間線性內插）都能立刻取得。</span>
+</div>
+
+<p>快取的鍵是 <code>(zone_len_frac, n_passes, n_cells, k網格規格)</code>，
+行程層級、有鎖保護、上限 128 筆（滿了就整個清空——重建只要十幾毫秒，
+寫 LRU 反而是過度工程）。</p>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+每次 likelihood 評估都要重跑一次多次 pass 模擬：8 passes × 240 cells ≈ 1900 次迴圈。
+擬合一個 k 要評估上百次，bootstrap 300 次重抽再乘上去——<b>單一批次單一元素就要 0.5 秒以上，
+80 個組合就是 40 秒</b>。UI 完全不能互動，「拉滑桿即時看結果」這個功能直接不存在。
+</p>
+<p>有了查表，實測數字是：建表一次 <b>15.6 ms</b>，之後每次取一條完整曲線 <b>20 µs</b>。</p>
+</div>
+
+<p>
+再往上還有一層 <code>PositionSlice</code>：擬合迴圈會對<b>同一組取樣位置</b>評估數萬次不同的 k，
+而位置內插只跟 x 有關、與 k 無關。先把查表在取樣位置上切好，
+單次評估從約 260 µs 降到 <b>24 µs</b>。
+</p>
+
+<h3>5.2 為什麼單格更新用解析積分，不用前向 Euler</h3>
+
+<p>連續形式的質量守恆是一條 ODE：</p>
+<div class="eq">
+l · dC_L/dx = C_in(x + l) − k · C_L(x)
+</div>
+<p>在單一 cell 內把熔入濃度 <code>C_in</code> 視為常數，這條 ODE 有<b>解析解</b>：</p>
+<div class="eq">
+C_L(h) = C_in/k + (C_L(0) − C_in/k) · exp(−k·h/l)
+<span class="note">該格凝固出的溶質量 = C_in·h − l·(C_L(h) − C_L(0))，除以 h 得到該格的<b>平均濃度</b>——
+這正好對應實際取樣時切一片下來測到的值，而不是某一點的瞬時值。</span>
+</div>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+前向 Euler（<code>C_liq += (C_in − k·C_liq)/m</code>）在 <code>k·h/l</code> 不夠小時會有
+<b>系統性偏移</b>，而且偏移量隨格數 N 改變。後果是：你把 <code>n_cells</code> 從 240 調到 300，
+擬出來的 k_eff 就變了。這對一個要交付給客戶的分析工具是災難——<b>同一份資料、
+不同的內部參數，給出不同的答案</b>，而且沒有人說得清楚哪個才對。
+</p>
+<p>
+解析積分的版本在均勻輸入時與 Pfann 解析解<b>逐點吻合</b>（誤差只來自 cell 平均 vs 點值），
+所以 <code>n_cells</code> 只影響解析度，不影響答案。
+</p>
+</div>
+
+<h3>5.3 為什麼終端凝固要用 Scheil 的格內積分平均</h3>
+
+<p>
+主掃描掃到尾端後，剩下一個熔區長度沒有新固體可熔，改為正常凝固（Scheil）。
+這裡不能沿用主掃描的更新式，也不能直接對 Scheil 方程取點值，而要用<b>格內積分平均</b>：
+</p>
+<div class="eq">
+C_j = m · C_L0 · [ (1 − j/m)^k − (1 − (j+1)/m)^k ]
+<span class="note">對 j 從 0 到 m−1 求和，恰好等於 m · C_L0。</span>
+</div>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+<b>質量不守恆。</b>沿用主掃描的更新式，最後一格會殘留 (1−k)·S 的溶質憑空消失；
+直接取 Scheil 的點值則因為 <code>(1−g)^(k−1)</code> 在 g → 1 時發散，最後一格會噴出離譜的數值。
+</p>
+<p>
+質量守恆不是潔癖，它是這個模型唯一的<b>免費驗證條件</b>。
+<code>simulate_passes()</code> 每次都會算 <code>mass_error</code>，正常應該在 1e-12 量級。
+這個數字一旦跑掉，就代表模擬邏輯被改壞了——它是最靈敏的迴歸偵測器。
+</p>
+</div>
+
+<h3>5.4 為什麼 GP 的目標變數是 <code>z = ln(1/k − 1)</code> 而不是 k</h3>
+
+<p>三個理由，缺一不可：</p>
+<ol>
+<li><b>值域無限制</b>，適合高斯過程與線性模型；k 本身被關在 (0,1) 裡，
+GP 的常態假設在邊界附近完全不成立。</li>
+<li><b>反變換天然保證合法</b>：<code>k = 1/(1+exp(z))</code> 恆在 (0,1)，
+<b>模型不可能吐出不合物理的值</b>——不需要事後夾住，也就不會出現「夾住之後不確定區間變形」的問題。</li>
+<li><b>對速率 v 是線性的</b>，符合 BPS 理論。所以 GP 只需要學「偏離直線的部分」，
+而不是從零學一條曲線。</li>
+</ol>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+直接對 k 建模，GP 會在 k 接近 0 的地方（易去除的元素，正是我們最在乎的）預測出負值。
+你被迫在輸出端 clip 到 0，於是不確定區間變成 <code>[0, 0.08]</code> 這種畸形的東西，
+而且 clip 掉的機率質量無處可去，區間的覆蓋率也就不再是 95%。
+更根本的是：對 k 建模時 GP 要學一條指數衰減曲線，需要的資料量比學一條直線多得多——
+<b>在 20 批的資料量下，這個差別就是「能用」與「不能用」。</b>
+</p>
+</div>
+
+<h3>5.5 為什麼 GP 以 BPS 直線當均值函數</h3>
+
+<p>
+sklearn 的 <code>GaussianProcessRegressor</code> 假設先驗均值為 <b>0</b>
+（或 <code>normalize_y=True</code> 時為訓練資料的平均值）。
+本專案的做法是：先用 <code>fit_bps_linear()</code> 擬出物理直線，
+<b>GP 只建模 <code>z − z_BPS</code> 這個殘差</b>。
+</p>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+離資料遠的地方，GP 會平滑地回歸到先驗均值——也就是 <b>0</b>，
+換算回 k 空間就是 <code>k = 0.5</code>。這是一個<b>沒有任何物理意義的常數</b>。
+於是模型會告訴你「速率放到 0.1 mm/hr 時，Cu 的 k_eff 大約是 0.5」，
+而物理上它應該趨近 k₀ ≈ 0.045。這種預測拿去給製程工程師看，這個工具的信譽就沒了。
+</p>
+<p>
+用 BPS 直線當均值函數之後，外插時 GP 自然回歸到<b>物理直線</b>，
+既有物理依據又保留了不確定度會擴大的正確行為。
+這就是 physics-informed（灰箱）做法的具體樣貌，不是一個口號。
+</p>
+</div>
+
+<p>
+配套細節：每點的量測不確定度來自 bootstrap 的 SE，經一階近似
+（<code>dz/dk = −1/(k(1−k))</code>）轉到 z 空間後餵給 GP 的 <code>alpha</code>。
+擬得準的批次權重高，擬得糊的權重低——這是線性回歸做不到的。
+<b>SE 有 0.08 的下限</b>：bootstrap 只涵蓋量測雜訊，涵蓋不到批間的未建模變異
+（氧化程度、舟的狀態、進料微量差異）。pass 次數多的批次 SE 可以低到 1e-4，
+直接採用會讓 GP 把每一點都當成鐵律去內插，等於過擬合。這個下限是保守的工程判斷，
+寫在程式註解裡也寫在這裡。
+</p>
+
+<h3>5.6 為什麼 bootstrap 預設是參數式而不是 case</h3>
+
+<table>
+<thead><tr><th>方式</th><th>做法</th><th>涵蓋哪些不確定性</th></tr></thead>
+<tbody>
+<tr><td><b>parametric</b>（預設）</td>
+    <td>從擬合好的模型重新<b>生成</b>資料：<code>y* = C_pred · exp(σ·ε)</code>，
+        依各點的 LOD <b>重新判定設限</b>，再重擬合</td>
+    <td>量測雜訊 ✅　設限造成的資訊損失 ✅</td></tr>
+<tr><td><b>case</b></td>
+    <td>直接重抽既有的觀測點（可重複）</td>
+    <td>量測雜訊 ❌（只是在同一組點裡換權重）　設限損失 ❌</td></tr>
+</tbody>
+</table>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+本專案的取樣點常常只有 8 個、其中一半以上低於檢測極限。實測下來，case bootstrap 在這種
+情況下會給出 <b>SE ≈ 2e-5</b> 的信賴區間——但同一批的 k_eff 對真值其實偏了 <b>40%</b>。
+也就是說它會告訴客戶「這個數字準到小數第五位」，而它根本是錯的。
+<b>一個過度自信的信賴區間比沒有信賴區間更危險</b>，因為它會被拿去做決策。
+</p>
+</div>
+
+<p>
+case 模式仍然保留：當你懷疑<b>模型設定本身</b>有誤（例如取樣位置可疑）時，
+case bootstrap 對模型誤設較不敏感，可以拿來交叉檢查。兩者差很多就代表模型設定有問題。
+</p>
+
+<h4>順帶一提：bootstrap 是全向量化的，不是迴圈</h4>
+<p>
+天真寫法是「for 每次重抽 → 呼叫最佳化器」。這裡改成：把所有重抽的所有 k 網格點
+一次算完（<code>(K, D, n)</code> 三維陣列），在 k 軸取最小值，再用<b>三點拋物線內插</b>
+取得次網格精度。同樣的工作量從 0.5 秒降到 <b>38 ms</b>，
+而且結果與逐次最佳化在 1e-4 以內一致。有 <code>max_cells</code> 參數做記憶體保護，
+超過就自動分塊。
+</p>
+
+<h3>5.7 為什麼服務層要有以資料版本為鍵的快取</h3>
+
+<p>
+<code>AnalysisService</code> 持有一個 <code>_version</code> 整數與一個
+<code>AnalysisBundle</code>。任何寫入操作都呼叫 <code>invalidate()</code>，
+版本 +1、bundle 清空、LOBO 快取清空。
+</p>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+一次完整分析要 <b>5.2 秒</b>（擬合 2.4 s + bootstrap 2.0 s + GP 0.6 s + 異常偵測）。
+如果每個 HTTP 請求都重算：切一次頁 5 秒、拉一次滑桿 5 秒——UI 直接報廢。
+</p>
+<p>
+更隱蔽也更嚴重的問題是<b>數字不一致</b>：總覽頁說 Cu 的 k_eff 是 0.0787，
+切到批次頁重算了一次卻顯示 0.0791（Nelder-Mead 的收斂路徑受浮點順序影響）。
+客戶看到兩個不同的數字，這個工具就完了。<b>共用同一份 bundle 是「數字一致」的唯一保證。</b>
+</p>
+</div>
+
+<p>
+執行緒安全：FastAPI 的同步端點跑在 threadpool，所以所有重算都在 <code>RLock</code> 內進行，
+避免兩個請求同時觸發同一份昂貴計算。SQLite 連線是 <code>threading.local()</code> 的
+（sqlite3 的連線物件不可跨執行緒共用）。
+</p>
+
+<h3>5.8 為什麼前端不用任何框架</h3>
+
+<ul>
+<li><b>只有九個畫面</b>，每個畫面就是一個 <code>async function(host)</code> 回傳一個 DOM 節點。
+React 的元件模型在這個規模下沒有任何收益。</li>
+<li><b>部署環境離線</b>。引入 bundler 就等於引入 <code>node_modules</code>、
+lock 檔、建置步驟、以及「為什麼在客戶那台機器上 build 不起來」的一整類問題。</li>
+<li><b>交付物必須是「複製資料夾就能跑」</b>。原生 ES module 讓 <code>web/</code>
+可以直接被 <code>StaticFiles</code> 掛載，也可以直接被 PyInstaller 打包成資源。</li>
+<li>圖表也是自己寫的 SVG（<code>charts.js</code>，六種圖，532 行）。
+引入 Chart.js 或 D3 會多出幾百 KB 的資產、CDN 相依、以及主題切換時的顏色同步問題——
+自己寫反而直接讀 CSS 變數，明暗主題自動跟著走。</li>
+</ul>
+
+<div class="box bad">
+<b>不這樣做會怎樣</b>
+<p>
+最實際的後果：交接。這個專案的後續維護者可能是客戶端的工程師。
+「打開資料夾、看 <code>views/dashboard.js</code>、120 行、看完就懂」
+跟「先 <code>npm install</code>、然後理解 build 設定、然後找出這個元件在哪裡被 render」
+是兩種完全不同的維護成本。
+</p>
+<p>
+反過來說，<b>如果畫面數成長到二十個以上、或出現複雜的跨畫面共享狀態，這個決定就該重新評估</b>。
+現在的 <code>state</code> 只有四個欄位（config / overview / elements / theme），還撐得住。
+</p>
+</div>
+
+<h2>6. 效能特性</h2>
+
+<p>以下是在預設合成資料集（20 批 × 4 元素 × 8 測點 = 640 個測點）上的實測值，
+一般開發筆電，Python 3.12：</p>
+
+<table>
+<thead><tr><th>運算</th><th>耗時</th><th>瓶頸在哪</th><th>是否快取</th></tr></thead>
+<tbody>
+<tr><td><code>get_profile_grid()</code> 建表<br>（240 cells、8 pass、127 個 k）</td>
+    <td><b>15.6 ms</b></td>
+    <td><code>_simulate_one_pass_array()</code> 的 Python 迴圈（每 pass 掃 N−m 格）</td>
+    <td>✅ 行程層級，上限 128 筆</td></tr>
+<tr><td><code>profile_at_k()</code> 取一條完整曲線</td>
+    <td><b>20 µs</b></td>
+    <td>兩列 log 濃度的加權混合</td>
+    <td>— 已是查表</td></tr>
+<tr><td><code>PositionSlice.predict_log()</code> 單次評估</td>
+    <td><b>24 µs</b></td>
+    <td>每個取樣位置一次 <code>np.interp</code></td>
+    <td>— 位置切片已預先算好</td></tr>
+<tr><td><code>fit_all()</code>：80 個 k_eff</td>
+    <td><b>2.44 s</b></td>
+    <td>每個組合先做 127 點粗掃、再跑 Nelder-Mead</td>
+    <td>✅ 隨 bundle</td></tr>
+<tr><td><code>bootstrap_keff()</code>：300 次重抽（單一批次-元素）</td>
+    <td><b>38 ms</b></td>
+    <td>全向量化的 <code>(K, D, n)</code> NLL 計算</td>
+    <td>✅ 隨 bundle</td></tr>
+<tr><td><code>fit_keff_mapping()</code>：4 個元素的 GP</td>
+    <td><b>0.62 s</b></td>
+    <td>sklearn 超參數最佳化（<code>n_restarts_optimizer=4</code>）</td>
+    <td>✅ 隨 bundle</td></tr>
+<tr><td><b>完整 <code>bundle()</code></b>（擬合 + bootstrap + GP + 異常）</td>
+    <td><b>5.24 s</b></td>
+    <td>擬合與 bootstrap 各佔一半</td>
+    <td>✅ 以資料版本為鍵</td></tr>
+<tr><td><code>overview()</code> / <code>mapping_payload()</code></td>
+    <td><b>&lt; 30 ms</b></td>
+    <td>純組裝，bundle 已在記憶體</td>
+    <td>—</td></tr>
+<tr><td><code>simulate()</code> 單組條件正向模擬</td>
+    <td><b>&lt; 5 ms</b></td>
+    <td>三次 <code>_yield_for_ks</code>（名目／樂觀／悲觀）</td>
+    <td>— 已足夠快，滑桿有 160 ms 防抖動</td></tr>
+<tr><td><code>optimize()</code> 網格掃描（1920 組）</td>
+    <td><b>0.51 s</b></td>
+    <td>Python 三層迴圈裡的 <code>compute_purity_window</code></td>
+    <td>— 每次請求重算（參數會變）</td></tr>
+<tr><td><code>lobo()</code> 留一批交叉驗證（20 折）</td>
+    <td><b>6.7 s</b></td>
+    <td>每一折重擬 GP 映射（0.6 s）+ 重訓 Ridge</td>
+    <td>✅ 以資料版本為鍵獨立快取</td></tr>
+<tr><td><code>suggest_next_batches()</code>（3 個建議）</td>
+    <td><b>6.3 s</b></td>
+    <td>kriging believer 每加一個建議就重擬一次 GP</td>
+    <td>— 每次請求重算</td></tr>
+<tr><td><code>doe_comparison()</code></td>
+    <td><b>4.6 s</b></td>
+    <td>模擬 12 批序列最佳化，每批呼叫一次 <code>suggest_next_batches</code></td>
+    <td>— 每次請求重算</td></tr>
+</tbody>
+</table>
+
+<h3>6.1 三層快取，各自的失效條件</h3>
+
+<table>
+<thead><tr><th>快取</th><th>位置</th><th>鍵</th><th>何時失效</th></tr></thead>
+<tbody>
+<tr><td><code>ProfileGrid</code></td><td>行程層級記憶體</td>
+    <td>(l/L, n_passes, n_cells, k網格)</td>
+    <td>永不自動失效（純函數的結果）；滿 128 筆時整個清空</td></tr>
+<tr><td><code>AnalysisBundle</code></td><td><code>AnalysisService</code> 記憶體</td>
+    <td><code>_version</code></td>
+    <td>任何寫入（匯入 / 刪除 / 產生合成資料）呼叫 <code>invalidate()</code></td></tr>
+<tr><td><code>keff_cache</code> 表</td><td>SQLite</td>
+    <td>(batch_id, element)</td>
+    <td><code>repository</code> 的任何寫入方法主動 <code>invalidate_keff()</code></td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<b>加新的寫入路徑時，記得同時做兩件事</b>
+<p>
+1. 在 <code>repository</code> 的寫入方法裡呼叫 <code>invalidate_keff(batch_id)</code>；<br>
+2. 在 API router 裡呼叫 <code>svc.invalidate()</code>。<br>
+漏掉第 2 點的症狀特別難查：<b>資料明明改了，但畫面上的數字一直是舊的，
+而且重新整理也沒用</b>（因為快取在伺服器端記憶體裡）。
+</p>
+</div>
+
+<h3>6.2 如果要再快</h3>
+<p>依投報率排序，目前還沒做的優化：</p>
+<ol>
+<li><code>fit_all()</code> 用 <code>concurrent.futures.ThreadPoolExecutor</code> 平行化。
+每個 (batch, element) 完全獨立，而且熱點在 numpy 裡（會釋放 GIL）。預期 3~4 倍。</li>
+<li><code>_simulate_one_pass_array()</code> 的主掃描迴圈改用 <code>numba.njit</code>。
+這是唯一一段真正的 Python 熱迴圈，但會多一個相依，對離線部署是負擔。</li>
+<li><code>scan_parameter_grid()</code> 的 <code>compute_purity_window</code> 向量化。
+目前是 1920 次 Python 呼叫，改成一次 <code>(n_v·n_t, N)</code> 的批次運算可以省掉大半。</li>
+<li><code>suggest_next_batches()</code> 降低 <code>n_restarts_optimizer</code>，
+或在 kriging believer 迴圈裡沿用上一輪的超參數而不完全重擬。</li>
+</ol>
+<p><b>不要先做第 2 項。</b>它最有技術含量，但收益最小——建表只佔完整分析的 0.3%。</p>
+
+<h2>7. 前端架構</h2>
+
+<h3>7.1 一個畫面的契約</h3>
+<pre><code>// web/js/views/xxx.js
+export default async function xxx(host) {
+  // host 是容器節點（大多數畫面用不到，直接回傳新節點即可）
+  // 拋出的例外會被 app.js 的 route() 接住，顯示成統一的錯誤卡片
+  const data = await api.something();
+  const root = h('div');
+  root.append(card('標題', '副標', ...內容));
+  return root;   // 回傳 null 表示自己已經把東西塞進 host
+}</code></pre>
+
+<h3>7.2 <code>ui.js</code> 的元件</h3>
+<table>
+<thead><tr><th>函式</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>h(tag, attrs, ...children)</code></td><td>DOM 建構。<code>on*</code> 屬性自動綁事件，
+    <code>html</code> 屬性設 innerHTML，<code>null</code>/<code>false</code> 子節點自動略過。</td></tr>
+<tr><td><code>card(title, subtitle, ...body)</code></td><td>標準卡片</td></tr>
+<tr><td><code>stat(label, value, hint, tone)</code></td><td>統計磚，<code>tone</code> 決定顏色</td></tr>
+<tr><td><code>table(headers, rows, opts)</code></td><td>表格。<code>rows</code> 的每一項是
+    <code>{cells: [...], __class, __click}</code>，cell 可以是字串或 <code>{text|node, align, title}</code></td></tr>
+<tr><td><code>notice(kind, title, ...body)</code></td><td>通知框，<code>kind</code> ∈ good/warn/error</td></tr>
+<tr><td><code>chartBox(title, note)</code></td><td>圖表容器，回傳的節點上有 <code>.host</code> 供繪圖函式使用</td></tr>
+<tr><td><code>num</code> / <code>pct</code> / <code>money</code></td>
+    <td>格式化。<b><code>null</code> / <code>NaN</code> 一律顯示 <code>—</code></b>，
+    這是全站對「算不出來」的統一表示</td></tr>
+<tr><td><code>toneForK(k)</code></td><td>k_eff → good/ok/warn/bad，門檻 0.15 / 0.4 / 0.75。
+    <b>判定門檻只寫在這裡一份</b>（後端另有 <code>service._removability()</code>，改了要兩邊同步）</td></tr>
+</tbody>
+</table>
+
+<h3>7.3 <code>charts.js</code> 的六種圖</h3>
+<ul>
+<li><code>profileChart</code> —— 濃度分布疊圖。對數縱軸、6N 綠區／濃縮紅區、門檻虛線、
+設限點畫成向下三角形。</li>
+<li><code>bandChart</code> —— GP 灰帶圖。外插區用 <code>&lt;pattern&gt;</code> 斜線底紋標示。</li>
+<li><code>residualChart</code> —— 殘差圖。±1σ 綠帶、±2σ 黃帶，設限點畫成菱形。</li>
+<li><code>heatmap</code> —— 得料率地圖。viridis 色階，外插格子降低不透明度。</li>
+<li><code>lineChart</code> / <code>barChart</code> —— 通用折線與長條。</li>
+</ul>
+<p>
+所有顏色都透過 <code>cssVar()</code> 讀 CSS 變數，所以主題切換時只要重繪就會跟著變
+（<code>app.js</code> 的主題切換鈕會呼叫 <code>route()</code> 重繪整頁，就是為了這件事）。
+</p>
+
+<h2>8. 如何新增一個雜質元素</h2>
+
+<p>好消息：<b>正常情況下什麼都不用改。</b>元素是資料驅動的，不是寫死的。</p>
+
+<ol>
+<li>在 CSV 的 <code>element</code> 欄填新元素名（例如 <code>Pb</code>），
+連同 <code>c0_ppm</code>、<code>lod_ppm</code> 一起匯入。</li>
+<li>匯入後 <code>repository.elements()</code> 會自動包含它，
+<code>fit_batch()</code> 會自動對它擬合，映射、掃描、圖表都會自動多一個系列。</li>
+</ol>
+
+<p>只有這些情況需要改程式：</p>
+
+<table>
+<thead><tr><th>需求</th><th>改哪裡</th></tr></thead>
+<tbody>
+<tr><td>改預設追蹤的元素清單（只影響 AI 助理的關鍵字比對與 <code>/api/config</code>）</td>
+    <td><code>config.py</code> 的 <code>Settings.elements</code>，或環境變數</td></tr>
+<tr><td>合成資料要包含新元素</td>
+    <td><code>data/synthetic.py</code> 的 <code>DEFAULT_TRUTH</code>：加一筆
+    <code>{k0, delta_over_d, c0, lod}</code>。<b>k0 由小到大排序有意義</b>——
+    它代表「好除到難除」，會直接影響 demo 給人的印象</td></tr>
+<tr><td>個別元素要有自己的規格上限（而不只看總雜質）</td>
+    <td>匯入時填 <code>spec_ppm</code>，並在呼叫 <code>compute_purity_window()</code> 時
+    傳 <code>per_element_ppm</code>。<b>目前服務層還沒把這個參數接上去</b>，
+    見第 14 節已知限制</td></tr>
+<tr><td>元素超過 8 個，圖表顏色不夠</td>
+    <td><code>charts.js</code> 的 <code>PALETTE()</code> 與 <code>app.css</code> 的
+    <code>--c1</code> ~ <code>--c8</code></td></tr>
+</tbody>
+</table>
+
+<h2>9. 如何新增一個 API 端點</h2>
+
+<p>以「新增一個回傳每批次質量守恆誤差的端點」為例：</p>
+
+<h3>① 在服務層加方法（計算邏輯只能寫在這裡）</h3>
+<pre><code># src/expanalysis/service.py
+def mass_balance_report(self) -&gt; list[dict]:
+    """每批次的質量守恆檢查。"""
+    b = self.bundle()
+    out = []
+    for d in self.repo.all_details():
+        res = simulate_passes(...)      # 呼叫 physics
+        out.append({"batch_id": d.batch.batch_id,
+                    "mass_error": res.mass_error})
+    return out</code></pre>
+
+<h3>② 需要輸入參數的話，在 <code>schemas.py</code> 定義</h3>
+<pre><code># src/expanalysis/api/schemas.py
+class MassBalanceRequest(BaseModel):
+    n_cells: int = Field(240, ge=60, le=1200)</code></pre>
+<p>
+<b>所有輸入驗證都在這一層。</b>router 與服務層不該再寫
+<code>if n_cells &lt; 60: raise ...</code>——Pydantic 的錯誤會被
+<code>validation_exc</code> 轉成統一格式，訊息還會指出是哪個欄位錯。
+</p>
+
+<h3>③ 在 router 加端點（薄薄一層）</h3>
+<pre><code># src/expanalysis/api/routers/analysis.py
+@router.get("/mass-balance")
+def mass_balance():
+    svc = get_service()
+    if not svc.repo.count():
+        raise HTTPException(status_code=400, detail="資料庫沒有批次資料")
+    return svc.mass_balance_report()</code></pre>
+
+<div class="box warn">
+<b>router 只做三件事：取服務、檢查前置條件、回傳。</b>
+<p>
+把計算寫在 router 裡的代價是：AI 助理的工具（<code>assistant/tools.py</code>）
+呼叫不到它，於是 LLM 路徑與 UI 路徑會看到不同的數字。第 3.2 節那條規則就是為了這個。
+</p>
+</div>
+
+<h3>④ 在前端 <code>api.js</code> 加一行</h3>
+<pre><code>massBalance: () =&gt; request('/api/analysis/mass-balance'),</code></pre>
+
+<h3>⑤ 錯誤處理是自動的</h3>
+<ul>
+<li><code>HTTPException</code> → <code>{ok:false, error:{code, message, detail}}</code></li>
+<li>Pydantic 驗證失敗 → 422 + 指出欄位</li>
+<li>任何未預期的例外 → 500，<b>完整 traceback 寫進日誌</b>，
+回給前端的訊息不含堆疊細節</li>
+<li><code>NaN</code> / <code>±Inf</code> → <code>null</code>（由 <code>SafeJSONResponse</code> 消毒）</li>
+</ul>
+
+<div class="box key">
+<b>為什麼要有 NaN 消毒</b>
+<p>
+<code>NaN</code> 在數值計算裡是合法的「無法計算」訊號（批次數不足時的 R²、
+bootstrap 失敗時的信賴區間），但<b>不是合法的 JSON</b>。不處理的話序列化會直接丟
+<code>ValueError</code> 變成 500——使用者只會看到「伺服器錯誤」，
+完全不知道真正的意思是「這個數字算不出來」。轉成 <code>null</code> 之後，
+前端的 <code>num()</code> 顯示 <code>—</code>，語意正確。
+</p>
+</div>
+
+<h2>10. 如何新增一個前端畫面</h2>
+
+<h3>① 建立 <code>web/js/views/yourview.js</code></h3>
+<pre><code>import { api } from '../api.js';
+import { h, card, table, notice, chartBox } from '../ui.js';
+import { lineChart } from '../charts.js';
+
+export default async function yourview() {
+  const data = await api.massBalance();
+  const root = h('div');
+  if (!data.length) {
+    return h('div', {}, notice('warn', '沒有資料', '請先匯入或產生批次資料。'));
+  }
+  root.append(card('質量守恆檢查',
+    '模擬的相對質量誤差應該在 1e-12 量級。跑掉代表模擬邏輯有問題。',
+    table(['批次', { label: '相對誤差', align: 'right' }],
+      data.map((r) =&gt; ({ cells: [r.batch_id,
+        { text: r.mass_error.toExponential(2), align: 'right' }] })))));
+  return root;
+}</code></pre>
+
+<h3>② 在 <code>app.js</code> 註冊</h3>
+<pre><code>import yourview from './views/yourview.js';
+
+const ROUTES = [
+  // ...
+  { group: '品質保證' },
+  { id: 'massbalance', title: '質量守恆', icon: '⚖', view: yourview },
+];</code></pre>
+<p>路由是 hash-based（<code>#/massbalance</code>），選單、標題、高亮都自動處理。</p>
+
+<h3>③ 三條慣例</h3>
+<ul>
+<li><b>沒有資料時要回傳 <code>notice</code>，不要讓畫面空白或拋例外。</b>
+每個既有畫面都這樣做，照抄即可。</li>
+<li><b>慢的區塊要獨立載入。</b>參考 <code>optimize.js</code>：
+主體先渲染，貝氏最佳化與 DOE 各自 <code>await</code>、各自顯示 spinner，
+不要把它們串在同一個 <code>await</code> 鏈上——否則 5 秒內整頁都是空的。</li>
+<li><b>圖表的顏色一律用 CSS 變數或 <code>PALETTE()</code>。</b>
+寫死色碼的話主題切換就壞了。</li>
+</ul>
+
+<h2>11. 測試策略</h2>
+
+<div class="box warn">
+<b>現況</b>
+<p>
+<code>tests/</code> 目錄已建立但<b>目前是空的</b>。程式碼中有數處 docstring 提到
+<code>tests/test_physics.py</code> 的驗證結果（質量守恆到 1e-12、與 Pfann 解析解逐點吻合），
+那些性質是實際成立的，但<b>對應的測試檔尚未提交</b>。
+接手的第一件事應該是把它們補上——下面列的就是該寫的內容。
+</p>
+</div>
+
+<h3>11.1 核心方法：用合成資料做閉環驗證</h3>
+
+<p>
+這是整個測試策略的骨幹，也是唯一能真正檢驗「方法對不對」的做法：
+</p>
+
+<div class="eq">
+已知的真實 k₀、δ/D　→　生成資料　→　整套流程反解　→　檢查能不能還原
+<span class="note">還原不了就代表方法有問題。這比在真實資料上「看起來合理」可靠得多——
+真實資料沒有標準答案，你永遠不知道模型是對的還是剛好。</span>
+</div>
+
+<pre><code>from expanalysis.data.synthetic import SyntheticConfig, generate_dataset, true_keff
+from expanalysis.fitting.fit_keff import fit_batch
+
+def test_keff_recovery():
+    """反解出的 k_eff 應該接近生成時用的真值。"""
+    cfg = SyntheticConfig(n_batches=12, rel_noise=0.05, inject_anomalies=False)
+    details, truth = generate_dataset(cfg)
+
+    for d, row in zip(details, truth["batches"]):
+        fits = fit_batch(d)
+        for el, f in fits.items():
+            k_true = row["true_keff"][el]
+            # 設限點多的元素容差要放寬，這是資訊損失，不是 bug
+            tol = 0.35 if f.n_censored &gt; f.n_points * 0.5 else 0.15
+            assert abs(f.k_eff - k_true) / k_true &lt; tol, \
+                f"{d.batch.batch_id}/{el}: 擬合 {f.k_eff:.4f} vs 真值 {k_true:.4f}"</code></pre>
+
+<h3>11.2 該寫的測試清單</h3>
+
+<table>
+<thead><tr><th>檔案</th><th>測什麼</th><th>為什麼重要</th></tr></thead>
+<tbody>
+<tr><td><code>test_physics.py</code></td>
+    <td>① 單次 pass 對均勻輸入時與 <code>pfann_profile()</code> 逐點吻合<br>
+        ② <code>simulate_passes().mass_error</code> &lt; 1e-10<br>
+        ③ 終端凝固段對 j 求和 = m·C_L0<br>
+        ④ 改 <code>n_cells</code>（120 / 240 / 480）不改變 k_eff 超過 2%</td>
+    <td>這四條是模擬正確性的全部保證。<b>④ 特別重要</b>——
+        它會抓到任何退回前向 Euler 式的修改（見 5.2 節）</td></tr>
+<tr><td><code>test_bps.py</code></td>
+    <td>已知 (k0, δ/D) 生成 k_eff，<code>fit_bps_linear()</code> 應該還原到 1e-6；
+        線性化與反線性化互為反函數</td>
+    <td>BPS 是 GP 的均值函數，它錯了上面全錯</td></tr>
+<tr><td><code>test_censored.py</code></td>
+    <td>用 <code>censoring_comparison()</code> 驗證：
+        「當成 0」低估 k、「當成 LOD」高估 k、Tobit 接近無偏</td>
+    <td>這同時是<b>測試</b>與<b>給客戶看的證據</b>，一石二鳥</td></tr>
+<tr><td><code>test_fitting.py</code></td>
+    <td>11.1 的 k_eff 還原測試；bootstrap 區間應涵蓋真值約 95%（跑多個 seed 統計）</td>
+    <td>驗證信賴區間的<b>覆蓋率</b>，不只是「有沒有輸出」</td></tr>
+<tr><td><code>test_importer.py</code></td>
+    <td>每一條錯誤規則都要有一個對應的壞資料案例；
+        三種 LOD 寫法都要能被正確辨識；<code>repo=None</code> 時確實不寫入</td>
+    <td>匯入層是唯一的資料入口，它漏掉的問題會一路傳到最佳化建議</td></tr>
+<tr><td><code>test_anomaly.py</code></td>
+    <td>合成資料植入的兩個異常（<code>IN-25004</code> 熱電偶飄移、
+        <code>IN-25008</code> 位置顛倒）必須被抓到，且嚴重度符合預期</td>
+    <td>這是 L3 唯一的客觀驗證方式</td></tr>
+<tr><td><code>test_api.py</code></td>
+    <td>用 <code>fastapi.testclient.TestClient</code> 打每個端點：
+        200 的形狀、400/422 的錯誤格式、NaN 確實被轉成 null</td>
+    <td>前端的所有假設都建立在回應格式上</td></tr>
+</tbody>
+</table>
+
+<h3>11.3 執行</h3>
+<pre><code>pytest                        # pyproject 已設好 testpaths 與 pythonpath
+pytest -q tests/test_physics.py
+pytest -k recovery -v
+pytest --cov=expanalysis --cov-report=html</code></pre>
+
+<h3>11.4 兩個容易踩的坑</h3>
+<ul>
+<li><b>測試不能共用行程層級的單例。</b><code>get_db()</code> 與 <code>get_service()</code>
+都是全域單例。fixture 裡要用 <code>reset_db_singleton()</code> 與 <code>reset_service()</code>，
+並把 <code>EXPA_DB_PATH</code> 指到 <code>tmp_path</code>，否則測試會污染開發用的資料庫。</li>
+<li><b>不要對浮點做精確比較。</b>Nelder-Mead 的收斂路徑受平台浮點行為影響，
+k_eff 在不同機器上可能差在小數第五位。用相對容差，並在容差裡寫清楚它代表什麼
+（例如「15% 是量測雜訊下可接受的還原誤差」，而不是一個憑感覺挑的數字）。</li>
+</ul>
+
+<h2>12. 日誌與例外處理約定</h2>
+
+<h3>12.1 日誌分級</h3>
+
+<table>
+<thead><tr><th>級別</th><th>用途</th><th>例子</th></tr></thead>
+<tbody>
+<tr><td><code>DEBUG</code></td><td>單點擬合細節。<b>預設關閉</b>，
+    呼叫端要用 <code>if log.isEnabledFor(logging.DEBUG)</code> 保護
+    （避免無謂的字串格式化成本）</td><td>每次 likelihood 評估的 k 與 NLL</td></tr>
+<tr><td><code>INFO</code></td><td><b>狀態轉換</b>，不是進度</td>
+    <td>服務啟動、批次匯入完成、schema migration、分析完成與耗時</td></tr>
+<tr><td><code>WARNING</code></td><td><b>可恢復的異常</b>——系統已經降級處理了，
+    但你該知道</td><td>LLM 退回模板模式、單批擬合不收斂、GP 擬合失敗退回線性、
+    bootstrap 無有效重抽</td></tr>
+<tr><td><code>ERROR</code></td><td><b>需要人介入</b></td>
+    <td>資料庫寫入失敗、schema 版本高於本程式支援、未處理的例外</td></tr>
+</tbody>
+</table>
+
+<p>
+輸出同時到 stderr 與輪替檔案（<code>logs/expanalysis.log</code>，5 MB × 5 份），
+避免長時間執行把磁碟塞爆。uvicorn 自帶的 handler 會被清掉並改為 propagate，
+否則每一行都會印兩次。
+</p>
+
+<h3>12.2 例外處理原則</h3>
+
+<div class="box key">
+<b>只捕捉你知道怎麼處理的例外類型。</b>
+<p>
+全專案的 <code>except</code> 都指名具體型別：
+<code>except (ValueError, np.linalg.LinAlgError)</code>、
+<code>except (TypeError, ValueError)</code>、<code>except httpx.HTTPError</code>。
+</p>
+<p>
+<b><code>except Exception</code> 只允許出現在最外層的守護迴圈，而且必須記錄完整 traceback。</b>
+全專案只有一處：<code>api/app.py</code> 的 <code>unhandled_exc</code>。
+</p>
+</div>
+
+<pre><code># api/app.py —— 唯一允許的 except Exception
+@app.exception_handler(Exception)
+async def unhandled_exc(request: Request, exc: Exception):
+    log.error("未處理的例外 %s %s\n%s", request.method, request.url.path,
+              traceback.format_exc())
+    return _error(500, "INTERNAL_ERROR",
+                  "伺服器內部錯誤，詳細內容已寫入日誌。",
+                  f"{type(exc).__name__}: {exc}")</code></pre>
+
+<p>另外兩處 bare <code>except</code> 是刻意的，且都有註解說明：</p>
+<ul>
+<li><code>run.py</code> 開瀏覽器失敗 —— 開不了瀏覽器不該擋住服務啟動。</li>
+<li>前端讀 <code>localStorage</code> —— 私密瀏覽模式下存取本身就會丟例外。</li>
+</ul>
+
+<h3>12.3 降級路徑的三條規則</h3>
+<ol>
+<li><b>降級要有聲音。</b>每一次退回（LLM → 模板、GP → 線性、AI → 純物理）
+都要 <code>log.warning</code>，而且要在 API 回應的 <code>warnings</code> 或
+<code>note</code> 欄位裡告訴使用者。<b>安靜地降級比失敗更危險</b>——
+使用者會以為他看到的是完整功能的結果。</li>
+<li><b>降級不能丟資訊。</b>退回純物理時，數字仍然是對的，只是少了修正。
+不能因為 AI 掛了就整個端點回 500。</li>
+<li><b>單一批次失敗不能讓整批失敗。</b><code>fit_batch()</code> 對個別元素的擬合失敗
+只記警告並略過；<code>bundle()</code> 的 bootstrap 失敗只是讓那個 k_eff 沒有信賴區間
+（前端顯示 <code>—</code>），不影響其他批次。</li>
+</ol>
+
+<h2>13. 打包與離線部署</h2>
+
+<h3>13.1 最簡單的做法：複製資料夾</h3>
+<p>
+如果客戶端可以裝 Python，最省事的交付方式就是把整個資料夾（含 <code>.venv</code>）複製過去。
+沒有原生擴充需要重編，<code>numpy</code> / <code>scipy</code> / <code>scikit-learn</code>
+的 wheel 在同架構同 Python 版本下可以直接搬。
+</p>
+
+<h3>13.2 PyInstaller 打包</h3>
+
+<pre><code>pyinstaller --onedir --name ExpAnalysis run.py \
+  --add-data "web;web" \
+  --add-data "docs;docs" \
+  --hidden-import uvicorn.logging \
+  --hidden-import uvicorn.loops.auto \
+  --hidden-import uvicorn.protocols.http.auto \
+  --hidden-import uvicorn.lifespan.on \
+  --collect-all sklearn \
+  --collect-all scipy</code></pre>
+
+<p>（Windows 用 <code>;</code> 分隔 <code>--add-data</code>，macOS / Linux 用 <code>:</code>。）</p>
+
+<h3>13.3 路徑：唯一真正的陷阱</h3>
+
+<div class="box bad">
+<b>唯讀資源與可寫入資料<b>必須</b>走不同的路徑解析。</b>
+<p>
+PyInstaller 打包後，<code>sys._MEIPASS</code> 指向一個<b>解壓縮出來的臨時目錄</b>。
+資源檔（<code>web/</code>、<code>docs/</code>）在那裡，但<b>程式結束時整個目錄會被清掉</b>。
+把資料庫寫進去的結果是：使用者匯入了資料、關掉程式、下次打開什麼都沒了，
+而且完全找不到原因。
+</p>
+</div>
+
+<p><code>config.py</code> 已經處理好這件事，改動時務必保持：</p>
+
+<pre><code>def _project_root() -&gt; Path:
+    """可寫入資料的基準：exe 旁邊（絕不是 _MEIPASS）。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+def resource_path(rel: str) -&gt; Path:
+    """唯讀資源的基準：打包時是 _MEIPASS，開發時是專案根目錄。"""
+    base = Path(getattr(sys, "_MEIPASS", _project_root()))
+    return base / rel</code></pre>
+
+<table>
+<thead><tr><th>用途</th><th>用哪個</th><th>打包後實際位置</th></tr></thead>
+<tbody>
+<tr><td><code>web/</code>、<code>docs/</code>（唯讀）</td><td><code>resource_path()</code></td>
+    <td><code>_MEIPASS/web</code>（臨時，會被清掉——沒關係，是唯讀的）</td></tr>
+<tr><td><code>data/expanalysis.db</code>（可寫）</td><td><code>SETTINGS.db_path</code></td>
+    <td><code>ExpAnalysis.exe</code> 旁邊的 <code>data/</code></td></tr>
+<tr><td><code>logs/</code>（可寫）</td><td><code>SETTINGS.log_dir</code></td>
+    <td>exe 旁邊的 <code>logs/</code></td></tr>
+<tr><td><code>.env</code>（讀取）</td><td><code>_project_root() / ".env"</code></td>
+    <td>exe 旁邊</td></tr>
+</tbody>
+</table>
+
+<h3>13.4 其他離線注意事項</h3>
+<ul>
+<li><b>不要引入任何 CDN 資源。</b>前端目前完全沒有外部請求——沒有字型、沒有圖示庫、
+沒有分析腳本。這個性質要守住，客戶端的網路很可能是完全封閉的。</li>
+<li><b>檢查 <code>--collect-all sklearn</code>。</b>sklearn 有大量動態匯入，
+少了它打包後會在第一次擬合 GP 時炸掉，而且錯誤訊息很難懂。</li>
+<li><b>首次啟動會慢。</b><code>--onedir</code> 比 <code>--onefile</code> 快很多
+（後者每次啟動都要解壓縮上百 MB）。除非客戶堅持要單一檔案，否則用 <code>--onedir</code>。</li>
+<li><b>防毒軟體。</b>PyInstaller 產物常被誤判。交付前先在客戶端環境測一次，
+必要時提供程式碼簽章或請客戶加白名單。</li>
+<li><b>連接埠衝突。</b>打包版建議在 <code>run.py</code> 加上「8848 被佔用時自動往上找」的邏輯，
+一般使用者不會加 <code>--port</code>。</li>
+</ul>
+
+<h2>14. 已知限制與後續可做的事</h2>
+
+<h3>14.1 已知限制</h3>
+
+<table>
+<thead><tr><th>限制</th><th>影響</th><th>目前的處置</th></tr></thead>
+<tbody>
+<tr><td><b>熔區長度 l 靠溫度代理</b></td>
+    <td>溫度只是 l 的間接指標。溫度→l 的關係隨爐體、裝料量、氣氛而變，
+        跨爐體時模型不可轉移</td>
+    <td>異常偵測會在批次層級同向偏移時主動建議客戶實測 l。
+        <b>這是整個專案投報率最高的補量測項目</b></td></tr>
+<tr><td><b>各元素獨立處理</b></td>
+    <td>假設元素之間沒有交互作用。高濃度下這不成立
+        （共晶、金屬間化合物形成）</td>
+    <td>在 ppm 級是合理近似。若客戶進料是 3N 級（千 ppm），這個假設要重新檢視</td></tr>
+<tr><td><b><code>per_element_ppm</code> 未接到服務層</b></td>
+    <td><code>compute_purity_window()</code> 支援個別元素規格上限，
+        但 <code>service.simulate()</code> / <code>optimize()</code> 沒有把它傳下去，
+        目前一律只看總雜質</td>
+    <td>資料層的 <code>ElementSpec.spec_ppm</code> 已經存了，接起來只是幾行</td></tr>
+<tr><td><b>L1 殘差修正要先跑過驗證才會啟用</b></td>
+    <td><code>corrector.enabled</code> 只在 <code>service.lobo()</code> 裡被設定。
+        使用者若沒開過「模型驗證」頁就勾雙軌，會看到「未套用」</td>
+    <td>已在使用者手冊第 8.2 節說明。
+        更好的做法是在 <code>_recompute()</code> 結尾非同步觸發一次 LOBO</td></tr>
+<tr><td><b>6N 門檻在前端硬寫成 1.0</b></td>
+    <td><code>batches.js</code> / <code>simulate.js</code> 傳給
+        <code>profileChart</code> 的 <code>threshold</code> 是常數 1.0，
+        沒有讀 <code>/api/config</code> 的 <code>purity_threshold_ppm</code>。
+        客戶若改門檻，<b>綠區（後端算的）會對，但虛線標籤（前端畫的）會錯</b></td>
+    <td>應改為讀 <code>state.config.purity_threshold_ppm</code></td></tr>
+<tr><td><b><code>best_robust</code> / <code>best_throughput</code> 的樂觀值不是真的樂觀值</b></td>
+    <td><code>grid_search.py</code> 裡這兩個建議的
+        <code>yield_optimistic</code>（與 <code>best_throughput</code> 的
+        <code>yield_pessimistic</code>）被直接填成名目值，沒有用 k_lo / k_hi 重算</td>
+    <td>UI 上「悲觀 xx%」對 <code>best_throughput</code> 會誤導，應補算</td></tr>
+<tr><td><b>沒有身分驗證</b></td>
+    <td>綁 <code>127.0.0.1</code> 時沒問題，但用 <code>--host 0.0.0.0</code>
+        就是全網段可存取，且可以刪資料</td>
+    <td>定位是單機離線工具。要多人共用必須先補認證</td></tr>
+<tr><td><b>合成資料無法附加</b></td>
+    <td><code>seed_database()</code> 預設 <code>clear=True</code>，
+        會清空既有資料</td>
+    <td>API 有 <code>clear_existing</code> 參數，但前端固定傳 <code>true</code></td></tr>
+<tr><td><b>說明文件尚未寫齊</b></td>
+    <td><code>docs/assets/docs.js</code> 的 <code>PAGES</code> 列了 8 篇，
+        指向尚未撰寫的檔案時側欄連結會 404。<b>更嚴重的是缺 <code>docs/index.html</code></b>：
+        <code>run.py</code> 啟動時印出的「說明文件 → .../docs/」與前端側欄的「說明文件」按鈕
+        都指向 <code>/docs/</code>，而 <code>StaticFiles(html=True)</code> 找不到 index
+        會拋出未被攔截的 404，最後變成 <b>500</b></td>
+    <td>補上 <code>docs/index.html</code>（總覽頁）即可同時解決兩件事；
+        其餘篇章待補</td></tr>
+</tbody>
+</table>
+
+<h3>14.2 後續可做的事（依投報率排序）</h3>
+
+<ol>
+<li><b>把測試補齊。</b>第 11.2 節的清單。這是接手後的第一優先——
+沒有測試，上面任何一項改動都是在賭。</li>
+<li><b>接上熔區長度 l 作為直接輸入。</b>資料模型已經有
+<code>zone_len_mm</code>，只要客戶開始實測，把它從「設定值」換成「實測值」
+就能立刻提升模型可轉移性。這是<b>不用寫多少程式碼、但效果最大</b>的一項。</li>
+<li><b>個別元素規格上限接到服務層。</b>幾行的事，但對有特殊規格要求的客戶價值很高。</li>
+<li><b>修掉 14.1 的三個小 bug</b>（前端門檻硬寫、樂觀／悲觀值、AI 啟用時機）。</li>
+<li><b><code>fit_all()</code> 平行化。</b>完整分析從 5.2 秒降到約 2 秒，
+第一次載入的體感差很多。</li>
+<li><b>批次比較檢視。</b>目前只能一次看一批。並排看兩批的疊圖與殘差，
+是工程師實際查問題時最常做的動作。</li>
+<li><b>報告匯出（PDF / Word）。</b>客戶會需要把結論放進正式文件。
+目前只能截圖。</li>
+<li><b>多次 pass 的中途取樣支援。</b><code>Measurement.pass_index</code>
+欄位已經存在但沒有被使用。如果客戶在第 4 次與第 8 次 pass 後都取樣，
+這些資料可以大幅提升擬合的可辨識性。</li>
+<li><b>元素間交互作用建模。</b>只有在客戶進料濃度升到千 ppm 級時才需要。
+現在做是過度工程。</li>
+</ol>
+
+<div class="box key">
+<b>改任何東西之前，先問這三個問題</b>
+<ol>
+<li>這個改動會不會讓 <code>physics/</code> 依賴到上層？（會的話，重新設計）</li>
+<li>關掉所有 AI 層之後，系統還完整可用嗎？（不是的話，重新設計）</li>
+<li>這個數字在 UI 路徑與 LLM 路徑上會不會不一樣？（會的話，計算邏輯放錯層了）</li>
+</ol>
+</div>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>

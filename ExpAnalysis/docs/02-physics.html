@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>物理模型詳解 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>02 · 物理模型詳解</h1>
+<p class="lede">從零開始講偏析純化在物理上到底發生什麼事、為什麼那些公式長那樣，
+以及本專案怎麼把它變成程式碼。<strong>不預設冶金或統計背景。</strong></p>
+
+<h2>1. 名詞對照表</h2>
+
+<table>
+<thead><tr><th>名詞</th><th>白話</th></tr></thead>
+<tbody>
+<tr><td>錠（ingot）</td><td>一長條金屬棒，比如 50 cm 長的銦棒</td></tr>
+<tr><td>舟（boat）</td><td>裝這條金屬的長槽，像個細長的烤盤</td></tr>
+<tr><td>熔區（molten zone）</td><td>只有一小段被加熱融化的區域，比如 3 cm 寬</td></tr>
+<tr><td>偏析（segregation）</td><td>金屬結冰時，雜質不肯跟著一起結冰的現象</td></tr>
+<tr><td>pass / 純化次數</td><td>加熱器從頭掃到尾一趟 = 1 次</td></tr>
+<tr><td>6N</td><td>純度 99.9999%，即雜質總量 &lt; 1 ppm</td></tr>
+<tr><td>ppm</td><td>百萬分之一。1 ppm = 一百萬顆原子裡有 1 顆雜質</td></tr>
+<tr><td>得料率</td><td>整根錠裡，達到 6N 的那一段佔多少百分比</td></tr>
+<tr><td>LOD</td><td>檢測極限。儀器測不出比這更低的濃度</td></tr>
+<tr><td>GDMS / ICP-MS</td><td>兩種測雜質濃度的儀器</td></tr>
+</tbody>
+</table>
+
+<h2>2. 這個製程實際在做什麼</h2>
+
+<h3>2.1 用軟體的比喻：滑動視窗</h3>
+
+<p>想像一個陣列，代表整根金屬棒。有一個 3 cm 寬的視窗，從左邊 index 0 開始，
+以每小時 2 mm 的速度往右滑到底。視窗內的金屬是液態，視窗外是固態。</p>
+
+<p>視窗往右移一格會發生兩件事：</p>
+<ul>
+  <li><strong>右邊緣</strong>：一格新的固體被融化，進入液池</li>
+  <li><strong>左邊緣</strong>：一格液體重新結冰，離開液池</li>
+</ul>
+
+<p>關鍵就在左邊緣。</p>
+
+<h3>2.2 為什麼會純化：結冰會「挑食」</h3>
+
+<p>金屬結冰的時候，晶體排列很挑剔，不喜歡讓外來原子（Cu、Fe、Ni、Sn）擠進晶格。
+所以左邊緣結冰時，大部分雜質被「推」回液池裡，不跟著結冰。</p>
+
+<p>結果就是：剛結冰的那一格<strong>比原本乾淨</strong>；液池<strong>越來越髒</strong>；
+而液池會往右移動，等於把雜質一路掃到最右端。</p>
+
+<p>掃完一趟，整根棒子變成：左邊（頭）乾淨、右邊（尾）很髒，中間有個過渡帶。</p>
+
+<div class="box key">
+  <b>偏析純化的本質</b>
+  <p>它<strong>不是把雜質消滅</strong>，是把雜質掃到同一個地方，然後把那一段切掉丟掉。
+  所以「總雜質量」在整根錠裡是守恆的——這也是本專案物理模擬的一條硬性檢查：
+  質量誤差必須小於 1e-12（見 <code>tests/test_physics.py::test_mass_is_conserved</code>）。</p>
+</div>
+
+<h3>2.3 k：這個製程唯一重要的數字</h3>
+
+<p>「結冰有多挑食」需要一個數字量化，這就是分配係數 k：</p>
+
+<div class="eq">
+k &nbsp;=&nbsp; 剛結冰的固體裡的雜質濃度 &nbsp;/&nbsp; 旁邊液體裡的雜質濃度
+<span class="note">程式中一律稱為 k_eff（有效分配係數）。「有效」的意思見第 5 節。</span>
+</div>
+
+<table>
+<thead><tr><th>k 值</th><th>意思</th><th>判定</th></tr></thead>
+<tbody>
+<tr><td>0.1</td><td>結冰時只帶走 10% 的雜質，90% 被推回液池</td><td class="tag good">純化效果很好</td></tr>
+<tr><td>0.9</td><td>結冰時帶走 90%</td><td class="tag warn">幾乎沒純化到</td></tr>
+<tr><td>1.0</td><td>完全不挑食</td><td class="tag bad">這個雜質用偏析法根本除不掉</td></tr>
+<tr><td>&gt; 1</td><td>反過來，這個雜質喜歡固體</td><td>它會往<strong>頭端</strong>跑，而不是尾端</td></tr>
+</tbody>
+</table>
+
+<p>每個元素有自己的 k。Cu 可能 0.05、Fe 可能 0.3、Sn 可能 0.6。這也是為什麼要分別測
+Cu / Fe / Ni / Sn——它們行為完全不同。</p>
+
+<div class="box key">
+  <b>這個 k 是整個專案的核心</b>
+  <p>如果這套系統只做一件事，那就是把 k 從實測資料裡挖出來。
+  所有的映射、預測、參數建議，都是建立在「每一批、每一個元素有一個 k_eff」之上。</p>
+</div>
+
+<h2>3. Pfann 方程：單次 pass 的分布</h2>
+
+<div class="eq">
+C(x) &nbsp;=&nbsp; C₀ · [ 1 − (1 − k) · exp( −k·x / l ) ]
+<span class="note">
+C(x)：距離頭端 x 處的雜質濃度　·　C₀：原料的初始雜質濃度（假設均勻）<br>
+<strong>l：熔區長度</strong>（不是錠長！）　·　x/l：已經掃過幾個熔區長度了
+</span>
+</div>
+
+<div class="box warn">
+  <b>最常見的符號錯誤</b>
+  <p>指數裡的分母是<strong>熔區長度 l</strong>（幾公分），不是整根錠的長度 L（幾十公分）。
+  兩者差一個數量級，寫錯會讓擬合出來的 k 完全不對。本專案的程式碼一律要求呼叫端
+  明確傳入 <code>zone_len</code> 或無因次的 <code>zone_len_frac = l / L</code>，
+  不允許用預設值蒙混。</p>
+</div>
+
+<h3>3.1 曲線長什麼樣</h3>
+
+<svg class="fig" viewBox="0 0 700 320" role="img"
+     aria-label="Pfann 方程的濃度分布示意圖：頭端最乾淨、中段緩慢爬回 C0、尾端暴衝">
+  <style>
+    .ax { stroke: var(--fg2); stroke-width: 1.5; fill: none; }
+    .gd { stroke: var(--line); stroke-width: 1; }
+    .cv { stroke: var(--accent); stroke-width: 2.6; fill: none; }
+    .dl { stroke: var(--fg2); stroke-width: 1.2; stroke-dasharray: 5 4; fill: none; }
+    .tx { fill: var(--fg2); font-size: 12px; }
+    .tx2 { fill: var(--muted); font-size: 11px; }
+    .zg { fill: var(--good); opacity: .12; }
+    .zb { fill: var(--bad); opacity: .12; }
+  </style>
+  <rect class="zg" x="70" y="30" width="180" height="220"/>
+  <rect class="zb" x="560" y="30" width="70" height="220"/>
+  <line class="ax" x1="70" y1="250" x2="660" y2="250"/>
+  <line class="ax" x1="70" y1="250" x2="70" y2="25"/>
+  <line class="dl" x1="70" y1="120" x2="660" y2="120"/>
+  <text class="tx" x="672" y="124" text-anchor="end" style="fill:var(--fg2)">C₀</text>
+  <path class="cv" d="M70,210 C110,196 160,172 220,152 C300,128 400,120 500,119
+                      C540,119 556,118 562,117 L575,100 L590,72 L605,44 L618,30"/>
+  <text class="tx" x="80" y="222">k·C₀</text>
+  <text class="tx" x="120" y="46" style="font-weight:600">高純區</text>
+  <text class="tx2" x="120" y="62">頭端最乾淨</text>
+  <text class="tx" x="330" y="146">中段緩慢爬回 C₀</text>
+  <text class="tx" x="556" y="46" style="font-weight:600;text-anchor:end">雜質濃縮區</text>
+  <text class="tx2" x="556" y="62" style="text-anchor:end">最後一個熔區長度</text>
+  <text class="tx" x="70" y="274">頭</text>
+  <text class="tx" x="655" y="274" text-anchor="end">尾</text>
+  <text class="tx" x="360" y="296" text-anchor="middle">距頭端距離 x（或歸一化位置 x/L）</text>
+  <text class="tx" x="16" y="140" transform="rotate(-90 16 140)" text-anchor="middle">雜質濃度</text>
+</svg>
+<figcaption>k 越小，頭端起點 k·C₀ 越低（越乾淨），中段爬回 C₀ 的速度也越慢。
+客戶需求二說的「判斷高純區與雜質濃縮區位置」，就是問這條曲線在哪裡穿過 6N 門檻。</figcaption>
+
+<p>三個區段：</p>
+<ol>
+  <li><strong>頭端</strong>：濃度從 k·C₀ 開始。k 越小，起點越低 = 越乾淨。</li>
+  <li><strong>中段</strong>：緩慢爬回 C₀。</li>
+  <li><strong>尾端最後一個熔區長度</strong>：雜質全部塞在這裡，濃度暴衝。
+      Pfann 方程<strong>不涵蓋這一段</strong>，要另外處理（見 3.2）。</li>
+</ol>
+
+<h3>3.2 終端凝固：為什麼要另外算</h3>
+
+<p>掃到尾端後，右邊已經沒有固體可以熔化了。剩下的液池只能自己慢慢結冰，
+這叫<strong>正常凝固（normal freezing）</strong>，行為完全不同：</p>
+
+<div class="eq">
+C<sub>s</sub>(g) &nbsp;=&nbsp; k · C<sub>L0</sub> · (1 − g)<sup>k − 1</sup>
+<span class="note">g：該終端熔區已凝固的分率（0 ~ 1）　·　C<sub>L0</sub>：終端凝固開始時的液池濃度。
+k &lt; 1 時指數是負的，所以 g → 1（最後一點液體）時濃度會發散——這就是尾端暴衝的來源。</span>
+</div>
+
+<h2>4. 多次 pass：沒有公式，要用迭代</h2>
+
+<p>第 2 次 pass 的輸入不再是均勻的 C₀，而是第 1 次的輸出曲線。所以沒有封閉解，
+只能一步步算。對軟體工程師來說，這只是個 for 迴圈：</p>
+
+<pre><code>C = np.full(N, C0)              # 初始均勻
+for p in range(n_passes):
+    C = simulate_one_pass(C, k, zone_cells)</code></pre>
+
+<h3>4.1 本專案的離散化做法</h3>
+
+<p>把錠切成 N 個等寬單元（cell），寬度 h = L / N；熔區佔 m = round(l/h) 個單元。
+掃描時每前進一格：右緣熔化一格固體進入液池、左緣凝固一格離開液池。</p>
+
+<p>連續形式的質量守恆是：</p>
+
+<div class="eq">
+l · dC<sub>L</sub>/dx &nbsp;=&nbsp; C<sub>in</sub>(x + l) &nbsp;−&nbsp; k · C<sub>L</sub>(x)
+<span class="note">左邊是液池溶質量的變化率，右邊是「熔進來的」減掉「凝固帶走的」。</span>
+</div>
+
+<div class="box key">
+  <b>設計決策：單格更新用解析積分，不用前向 Euler</b>
+  <p>天真的做法是「先凝固、再熔化」的一階差分（前向 Euler），誤差是 O(h)，
+  會隨格數變少而系統性偏移。本專案改成：在單一 cell 內把熔入濃度 C<sub>in</sub> 視為常數，
+  這條 ODE 有解析解</p>
+  <div class="eq" style="margin:10px 0">
+  C<sub>L</sub>(h) = C<sub>in</sub>/k + (C<sub>L</sub>(0) − C<sub>in</sub>/k) · exp(−k·h/l)
+  </div>
+  <p>該格凝固出的溶質量 = C<sub>in</sub>·h − l·(C<sub>L</sub>(h) − C<sub>L</sub>(0))，
+  除以 h 得到<strong>該格的平均濃度</strong>——這正好對應實際取樣時切一片下來測到的值。</p>
+  <p>好處：對均勻輸入時與 Pfann 解析解逐點吻合，不會因為格數而漂移。
+  <code>tests/test_physics.py::test_single_pass_matches_pfann_analytic</code>
+  對 k = 0.02 ~ 0.85 五個值驗證相對誤差 &lt; 1%。</p>
+</div>
+
+<div class="box key">
+  <b>設計決策：終端凝固用 Scheil 的格內積分平均</b>
+  <p>如果終端段沿用主掃描的更新式，最後一格會殘留 (1−k)·S 的溶質，質量不守恆。
+  本專案改用 Scheil 方程在每一格上的積分平均：</p>
+  <div class="eq" style="margin:10px 0">
+  C<sub>j</sub> = m · C<sub>L0</sub> · [ (1 − j/m)<sup>k</sup> − (1 − (j+1)/m)<sup>k</sup> ]
+  </div>
+  <p>對 j 求和恰好等於 m · C<sub>L0</sub>，質量嚴格守恆（實測誤差 &lt; 1e-15）。</p>
+</div>
+
+<h3>4.2 極限分布：一個能馬上省錢的結論</h3>
+
+<p>一直 pass 下去，曲線會收斂到一個固定形狀（<strong>ultimate distribution</strong>），
+之後再 pass 完全沒有改善——因為「往尾端掃出去的雜質」和「熔區從右邊吃回來的雜質」
+達成了平衡。</p>
+
+<p>系統會回報三個數字，意義不同：</p>
+
+<table>
+<thead><tr><th>指標</th><th>定義</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>recommended_passes</code></td>
+    <td>達到<strong>可達最大得料率的 95%</strong> 所需的最少次數</td>
+    <td>報告裡該寫的數字，也是給產線的建議</td></tr>
+<tr><td><code>saturation_pass</code></td>
+    <td>最後一次仍能讓得料率增加 0.5 個百分點的 pass</td>
+    <td>在這之後每一趟都幾乎白跑</td></tr>
+<tr><td><code>ultimate_pass</code></td>
+    <td>相鄰兩次分布的相對變化小於門檻（數學上的極限分布）</td>
+    <td>理論參考，通常比前兩者晚</td></tr>
+</tbody>
+</table>
+
+<div class="box good">
+  <b>為什麼判準用「達到上限的 95%」而不是「單次增量」</b>
+  <p>因為前幾次 pass 的得料率常常都還是 0（頭端尚未降到門檻以下）。
+  用「單次增量小於門檻就停」會在第 1 次就誤判收斂——這是實作時真的踩到的坑。
+  改成相對於可達上限的百分比，對「前段平坦、中段陡升、後段飽和」的典型曲線才穩健。</p>
+  <p>實務價值：客戶若現在跑 15 次，模型可以直接指出「第 8 次之後純度不再有意義的進步，
+  砍掉 7 趟」——這是 P1 階段就能交出去的立即價值。</p>
+</div>
+
+<h2>5. 速率和溫度怎麼進來的：BPS 方程</h2>
+
+<p>前面的 k 是<strong>理想值</strong>（稱為 k₀，平衡分配係數）。實際跑起來會偏掉，原因是：</p>
+
+<blockquote>結冰時被推回去的雜質，來不及擴散走。</blockquote>
+
+<p>左邊緣結冰，把雜質吐回液體。這些雜質要靠擴散散進整個液池，但擴散很慢。
+如果結冰速度很快，雜質還沒散開，就在介面前面堆成一坨——這坨叫<strong>邊界層</strong>。
+介面旁邊的液體變得特別髒，結冰時挑食再挑，帶走的絕對量也變多。等於 k 變大了、純化變差。</p>
+
+<p>這個「實際感受到的 k」叫 k_eff：</p>
+
+<div class="eq">
+k<sub>eff</sub> &nbsp;=&nbsp; k₀ / [ k₀ + (1 − k₀) · exp( −v·δ/D ) ]
+<span class="note">
+v：熔區移動速率 [mm/hr]　·　δ：邊界層厚度（攪拌越強越薄）　·　D：雜質在液態銦裡的擴散係數<br>
+δ 與 D 無法分開量測，只有比值可辨識，所以程式中一律以單一參數
+<code>delta_over_d</code>（單位 hr/mm）表示。
+</span>
+</div>
+
+<table>
+<thead><tr><th>條件</th><th>k_eff 的行為</th><th>意義</th></tr></thead>
+<tbody>
+<tr><td>v → 0（超慢）</td><td>k_eff → k₀</td><td>純化效果達到理論最好</td></tr>
+<tr><td>v 變大</td><td>k_eff → 1</td><td>純化效果趨近於零</td></tr>
+</tbody>
+</table>
+
+<div class="box key">
+  <b>這是這個製程唯一的核心取捨：慢 = 純，快 = 產能。</b>
+  <p>客戶需求三要的「最佳速率建議」，本質就是在這條曲線上找甜蜜點。
+  系統的「最佳化建議」頁還額外提供一個「產能導向建議」：
+  在得料率不低於最佳值 95% 的所有組合中，等效產能（速率 / 次數）最高的那一組。</p>
+</div>
+
+<h3>5.1 對數線性化：把曲線變直線</h3>
+
+<p>BPS 方程長得很醜，但兩邊取對數整理一下：</p>
+
+<div class="eq">
+ln( 1/k<sub>eff</sub> − 1 ) &nbsp;=&nbsp; ln( 1/k₀ − 1 ) &nbsp;−&nbsp; (δ/D) · v<br>
+<span style="font-size:11.5px;color:var(--muted)">
+　　　　　　　　　　　　　└─ 截距 ─┘　　└─ 斜率 ─┘</span>
+<span class="note">左邊是你從資料算出來的，右邊對 v 是一次式。</span>
+</div>
+
+<p>意思是：把 <code>ln(1/k_eff − 1)</code> 對 v 畫散點圖，<strong>應該是一條直線</strong>。
+用眼睛就能看出來對不對，用最簡單的線性回歸就能求斜率和截距。
+5~6 個不同速率的批次就夠畫出這條線。</p>
+
+<div class="box good">
+  <b>這也是一個誠實度檢查</b>
+  <p>如果點根本不成直線，代表有 BPS 以外的機制在作怪（氧化夾帶、對流不穩、
+  取樣位置不一致、或量測不確定度大於製程效應）。<strong>這個發現本身就值錢</strong>——
+  它告訴客戶該補什麼量測，而不是硬套一個不成立的模型。</p>
+  <p>系統的「參數映射」頁有一個「BPS 線性化檢查」分頁，就是專門讓工程師看這件事。
+  R² 低於 0.5 時，模型會主動印出警語，而不是安靜地給一組沒意義的參數。</p>
+</div>
+
+<h3>5.2 溫度為什麼只是代理變數</h3>
+
+<p>溫度不是獨立的物理變數。它透過兩條路徑影響結果：</p>
+
+<ol>
+  <li>溫度高 → <strong>熔區變長 l</strong> → 容納雜質的能力變大，曲線形狀改變</li>
+  <li>溫度高 → 液池<strong>對流變強</strong> → 邊界層 δ 變薄 → k_eff 變好</li>
+</ol>
+
+<div class="box warn">
+  <b>投報率最高的補量測項目</b>
+  <p>真正的物理變數是<strong>熔區長度 l</strong>，溫度只是它的代理指標。
+  如果客戶目前只記錄加熱器設定溫度、沒有實測熔區長度，那麼「加裝量測 l 的方法」
+  會比「多跑十批實驗」更有價值——因為量到 l 之後，模型就不需要靠溫度去推。</p>
+  <p>系統的異常偵測有一條批次層級規則：如果某一批<strong>所有元素</strong>的 k_eff 都
+  往同一個方向偏離映射預測，那不是量測雜訊，是這一批的製程條件記錄與實際不符。
+  熱電偶飄移、實際熔區長度與設定值不同、氣氛洩漏，都會產生這個特徵。
+  逐元素的門檻永遠抓不到它，必須跨元素看。</p>
+</div>
+
+<h2>6. 從模型到「得料率」</h2>
+
+<p>有了各元素的分布曲線，得料率的定義是：</p>
+
+<blockquote>從頭端算起、<strong>連續</strong>滿足門檻的最長區間，佔全錠長度的比例。</blockquote>
+
+<p>強調「連續」是因為切割是連續的——「全錠中所有合格點的比例」在物理上沒有意義。
+計算時還會扣掉頭端固定切除量（實務上頭端會有接觸污染、氧化皮，客戶通常會固定切掉一小段）。</p>
+
+<p>門檻支援兩種寫法，可以同時用：</p>
+<ul>
+  <li><strong>總雜質上限</strong>（預設 1.0 ppm，即 6N）</li>
+  <li><strong>個別元素上限</strong>：任一元素超標即不合格</li>
+</ul>
+
+<p>系統同時回報「限制元素」——也就是在切點處離自己上限最近的那個元素。
+這個資訊很有用：如果限制元素永遠是 Sn，而 Sn 的 k_eff 又接近 1，
+那結論就是「Sn 用偏析法除不掉，得料率被它綁死，要往前段製程想辦法」。</p>
+
+<h2>7. 各元素 k 值的實務判讀</h2>
+
+<table>
+<thead><tr><th>k_eff 範圍</th><th>判定</th><th>該做什麼</th></tr></thead>
+<tbody>
+<tr><td>&lt; 0.15</td><td class="tag good">易去除</td>
+    <td>偏析純化對這個元素很有效，不是瓶頸</td></tr>
+<tr><td>0.15 ~ 0.40</td><td class="tag ok">中等</td>
+    <td>需要較多 pass 次數或較慢速率；是參數最佳化的主要著力點</td></tr>
+<tr><td>0.40 ~ 0.75</td><td class="tag warn">困難</td>
+    <td>得料率很可能被這個元素綁住；評估是否值得為它犧牲產能</td></tr>
+<tr><td>&gt; 0.75</td><td class="tag bad">偏析法無效</td>
+    <td><strong>不要再調參數了。</strong>這個元素必須由前段製程（電解精煉、化學除雜、
+        更純的進料）處理</td></tr>
+</tbody>
+</table>
+
+<div class="box">
+  <b>這張表本身就是可交付的成果</b>
+  <p>「告訴客戶 Fe 用偏析法無效、要前段處理」是一個有明確行動的結論，
+  而且不需要等到整套模型完成。P1 階段擬完 k_eff 就能交。</p>
+</div>
+
+<h2>8. 程式對照</h2>
+
+<table>
+<thead><tr><th>檔案</th><th>對應本文哪一節</th></tr></thead>
+<tbody>
+<tr><td><code>physics/pfann.py</code></td><td>§3　Pfann 解析解、Scheil 正常凝固</td></tr>
+<tr><td><code>physics/multipass.py</code></td><td>§4　離散模擬、極限分布偵測</td></tr>
+<tr><td><code>physics/bps.py</code></td><td>§5　k_eff(v, T)、對數線性化、線性回歸擬合</td></tr>
+<tr><td><code>physics/yield_calc.py</code></td><td>§6　純度視窗與得料率</td></tr>
+<tr><td><code>physics/profile_grid.py</code></td>
+    <td>§4 的效能最佳化：模擬對濃度是線性的，所以 c0=1 算一次就能重複用</td></tr>
+<tr><td><code>tests/test_physics.py</code></td><td>上述全部的正確性驗證（28 條）</td></tr>
+</tbody>
+</table>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系統架構與設計理念 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>01 · 系統架構與設計理念</h1>
+<p class="lede">為什麼這個案子的正確解法是「物理模型 + 小資料擬合」，
+AI 該放在哪裡才不會傷準確度，以及每一個架構決策背後的理由。</p>
+
+<h2>1. 先講最重要的一件事</h2>
+
+<p>客戶的需求聽起來是「導入 AI 做製程最佳化」。如果照字面做——把歷史批次丟給
+XGBoost 或神經網路去學「製程參數 → 雜質含量」——這個案子會失敗。原因不是技術不夠好，
+而是<strong>資料量與方法不匹配</strong>。</p>
+
+<p>客戶的批次數大概是幾十批，每批幾個取樣點。機器學習有個粗略規則：
+資料點數要遠多於有效參數量，否則就是背答案而不是學規律。</p>
+
+<table>
+<thead><tr><th>方法</th><th>有效參數量</th><th>40 批資料夠嗎</th><th>能外插嗎</th></tr></thead>
+<tbody>
+<tr><td>XGBoost / 隨機森林</td><td>數百～數千</td><td class="tag bad">❌ 背答案</td>
+    <td>不能。問它沒跑過的速率，只會回傳最接近的訓練值</td></tr>
+<tr><td>小型神經網路</td><td>數千</td><td class="tag bad">❌ 背答案</td><td>不能，而且完全黑盒</td></tr>
+<tr><td>Pfann 方程擬合 k_eff</td><td><strong>1</strong></td><td class="tag good">✅ 綽綽有餘</td>
+    <td>可以。曲線形狀由物理決定，不是由資料決定</td></tr>
+</tbody>
+</table>
+
+<div class="box key">
+  <b>核心洞察：先降維，再回歸</b>
+  <p>區域熔煉（zone refining）有很強的解析解。與其讓模型從零開始學曲線長什麼樣，
+  不如用物理方程把<strong>每一條 8 點的實測曲線壓縮成 1 個數字</strong> k_eff（有效分配係數），
+  再對這少數參數做回歸。</p>
+  <p>原本一批實驗是 8 個測點 × 4 個元素 = 32 個雜亂數字；擬合之後變成 4 個 k_eff。
+  40 批就變成「每個元素 40 個 k_eff」——這是一個 40 筆資料、2 個自變數的小問題，
+  用高斯過程或線性回歸都綽綽有餘。</p>
+</div>
+
+<h2>2. 這不代表不能用 AI</h2>
+
+<p>「導入 AI」和「不影響準確性」看起來衝突，其實不衝突。衝突的只有
+<strong>「用 AI 取代物理模型」</strong>這一種做法。</p>
+
+<p>只要 AI 放在正確的位置，它不但不傷準確度，還會提高準確度。而且下面每一項在學術上
+和業界都名正言順叫 AI／機器學習，不需要編故事。原則很簡單：</p>
+
+<blockquote>物理模型負責「算數字」，AI 負責「補物理沒說到的、選下一步、跟人溝通」。</blockquote>
+
+<h3>2.1 六層架構</h3>
+
+<table>
+<thead><tr><th>層</th><th>做什麼</th><th>技術</th><th>風險</th><th>預設狀態</th></tr></thead>
+<tbody>
+<tr><td><strong>L5</strong> 對話層</td><td>自然語言查詢、報告生成</td>
+    <td>LLM（Anthropic / OpenAI / 本地模板）</td>
+    <td class="tag good">零 — 不碰計算</td><td>啟用</td></tr>
+<tr><td><strong>L4</strong> 序列實驗設計</td><td>建議下一批該跑什麼參數</td>
+    <td>貝氏最佳化（GP + Expected Improvement）</td>
+    <td class="tag good">零 — 只建議做什麼實驗</td><td>啟用</td></tr>
+<tr><td><strong>L3</strong> 異常偵測</td><td>哪批資料不對勁</td>
+    <td>物理殘差規則 + Isolation Forest</td>
+    <td class="tag good">零 — 只保護準確度</td><td>啟用</td></tr>
+<tr><td><strong>L2</strong> 參數映射</td><td>k_eff = f(T, v) 與不確定區間</td>
+    <td>高斯過程回歸（以 BPS 直線為均值函數）</td>
+    <td class="tag ok">低 — 純升級</td><td>啟用</td></tr>
+<tr><td><strong>L1</strong> 殘差學習</td><td>物理沒解釋到的系統性偏差</td>
+    <td>Ridge 回歸 + 四道護欄</td>
+    <td class="tag warn">有 — 唯一可能傷準確度的一層</td>
+    <td><strong>關閉</strong>，須通過交叉驗證</td></tr>
+<tr><td><strong>L0</strong> 物理模型</td><td>Pfann 偏析方程、BPS 有效分配係數</td>
+    <td>NumPy / SciPy</td><td>—</td><td>不可停用</td></tr>
+</tbody>
+</table>
+
+<h3>2.2 L2 高斯過程：為什麼這是純升級</h3>
+
+<p>最直觀的做法是把 <code>ln(1/k_eff − 1)</code> 對速率做線性回歸（BPS 方程告訴我們這應該是直線）。
+改成高斯過程就是機器學習了，而且客觀上更好：</p>
+
+<ul>
+  <li><strong>線性回歸</strong>是「我先假設它是直線，然後找最好的那條直線」。</li>
+  <li><strong>高斯過程</strong>是「我不假設形狀，只假設相近的速率應該有相近的 k_eff，
+      然後讓資料自己決定曲線長什麼樣」。</li>
+</ul>
+
+<p>它額外送你一個線性回歸給不了的東西：<strong>每一點的不確定範圍</strong>。
+問一個沒跑過的速率，它會回「k_eff 大概 0.30，但可能在 0.10 ~ 0.60 之間」——
+這正是外插時需要的護欄。</p>
+
+<div class="box good">
+  <b>為什麼不會比線性回歸差</b>
+  <p>資料真的呈直線時，GP 會自己收斂成直線；有彎曲時 GP 抓得到、線性回歸抓不到；
+  而且它會誠實承認自己不知道。樣本數 10~50 正好是 GP 的甜蜜點——它本來就是為小資料設計的。
+  在本專案的實作裡，GP 還以 BPS 擬合出的直線當均值函數，只學「偏離直線的部分」，
+  所以外插時會自然回歸到有物理意義的直線，而不是回歸到一個沒意義的常數。</p>
+</div>
+
+<h3>2.3 L4 貝氏最佳化：真正值錢的那一層</h3>
+
+<p>客戶現在的痛點其實不是「沒有模型」，而是<strong>每跑一批實驗都很貴、很慢</strong>。
+銦是貴金屬，一批可能好幾天、好幾十萬。所以真正該回答的問題是：</p>
+
+<blockquote>下一批，我該設定什麼參數，才能學到最多東西？</blockquote>
+
+<p>貝氏最佳化的運作方式：GP 看目前所有批次，畫出「參數 → 得料率」的地圖含不確定範圍；
+找出「有希望的地方」（預測得料率高）與「不確定的地方」（灰帶很寬，沒人去過）；
+在兩者之間權衡，指定下一組參數；跑完回填、更新地圖，再問下一批。</p>
+
+<table>
+<thead><tr><th>策略</th><th>批次數</th><th>成本（每批 10 萬計）</th></tr></thead>
+<tbody>
+<tr><td>傳統全因子 DOE（3 溫度 × 4 速率 × 3 次數）</td><td>36 批</td><td>360 萬</td></tr>
+<tr><td>貝氏最佳化（起始篩選 5 批 + 序列建議）</td><td>通常 10~15 批</td><td>100~150 萬</td></tr>
+</tbody>
+</table>
+
+<p>系統的「最佳化建議」頁會用既有資料擬合出的模型當虛擬產線，把這個對比<strong>實際跑出來</strong>
+畫成兩條曲線，而不是只講概念。</p>
+
+<div class="box good">
+  <b>為什麼零風險</b>
+  <p>它只是<strong>建議做什麼實驗</strong>，最終的準確度來自真實實驗資料，不是模型猜的。
+  就算建議得不好，最壞情況也只是多跑幾批——不會產生錯誤的結論。
+  順帶一提，貝氏最佳化正是 AI 界拿來調神經網路超參數的標準工具。</p>
+</div>
+
+<h3>2.4 L1 殘差學習：唯一需要嚴格護欄的一層</h3>
+
+<div class="eq">
+最終預測 = 物理模型預測 &nbsp;+&nbsp; ML 學到的修正<br>
+<span style="font-size:12px;color:var(--muted)">（主體）　　　　　　　　（小修）</span>
+<span class="note">物理模型有它照顧不到的東西：氧化皮夾帶、對流不穩、舟的材質污染、環境濕度。
+這些會系統性地讓實測偏離理論，ML 去學這個偏差。</span>
+</div>
+
+<p>四道護欄，缺一不可：</p>
+
+<table>
+<thead><tr><th>#</th><th>護欄</th><th>做法</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>限幅</td><td>修正量硬性限制在物理預測的 ±20% 內，超過就截斷。
+    <strong>ML 永遠不能推翻物理，只能微調</strong></td></tr>
+<tr><td>2</td><td>禁止外插</td><td>查詢點落在訓練資料範圍外時，直接關閉 ML 修正，退回純物理</td></tr>
+<tr><td>3</td><td>必須證明有用</td><td>留一批交叉驗證下沒有明顯贏過純物理（門檻 3%），就不上線</td></tr>
+<tr><td>4</td><td>雙軌顯示</td><td>介面永遠同時顯示「純物理」與「物理 + AI」兩個數字</td></tr>
+</tbody>
+</table>
+
+<p>第 4 條特別重要：工程師隨時看得到 AI 動了多少手腳，差太多就會警覺。
+這件事本身就是信任的基礎。詳見
+<a href="08-validation.html">08 · 驗證、驗收與風險控管</a>。</p>
+
+<h2>3. 明確不做的事</h2>
+
+<p>跟客戶開會時主動說「我們不建議」這幾件事，會顯得專業，也讓「我們選的 AI」
+聽起來是深思熟慮的結果，而不是能力不足的藉口。</p>
+
+<table>
+<thead><tr><th>不做</th><th>原因</th></tr></thead>
+<tbody>
+<tr><td>XGBoost / 隨機森林直接吃原始資料</td>
+    <td>幾十批資料、數百個有效參數，就是背答案。而且無法外插——
+        問它沒跑過的速率，只會回最接近的訓練值</td></tr>
+<tr><td>神經網路預測濃度曲線</td><td>同上，而且完全黑盒，工程師不會信</td></tr>
+<tr><td>用 AI 取代物理模型</td><td>丟掉了唯一能可靠外插的東西</td></tr>
+<tr><td>深度學習做代理模型（surrogate）</td>
+    <td>多次 pass 模擬跑一次不到 1 秒，沒有加速需求，純粹增加風險</td></tr>
+<tr><td>AI 自動調整設備</td><td>客戶自己也說不要。守住這條線，責任歸屬才清楚</td></tr>
+</tbody>
+</table>
+
+<h2>4. 系統的資料流</h2>
+
+<pre><code>CSV / Excel
+    │  importer.py：欄位別名比對 → 單位與物理一致性嚴格檢查
+    ▼
+SQLite（batch / measurement / element_spec）
+    │  fitting/：Tobit 設限擬合，每條曲線 → 1 個 k_eff
+    │            參數式 bootstrap → 信賴區間
+    ▼
+k_eff 表（批次 × 元素）
+    │  ml/anomaly.py：偵測異常 → 高嚴重度批次從訓練集排除
+    │  ml/gp_map.py：(v, T) → k_eff 映射（BPS 直線 + GP 殘差）
+    ▼
+參數映射模型
+    │  physics/：正向模擬 → 全錠雜質分布
+    │  yield_calc.py：6N 純度視窗與得料率
+    ▼
+    ├─ optimize/grid_search.py → 三種參數建議
+    ├─ ml/bayesopt.py          → 下一批實驗建議、DOE 省批次試算
+    ├─ ml/validation.py        → 留一批交叉驗證（驗收文件）
+    └─ assistant/              → LLM 把上面的數字組織成人話
+    ▼
+FastAPI  →  單頁前端（九個畫面）</code></pre>
+
+<div class="box">
+  <b>兩階段映射：讓 L3 保護 L2</b>
+  <p>異常偵測不只是給人看的。系統會先用全部資料擬一個映射、跑一次異常偵測，
+  把「高嚴重度且建議排除」的批次拿掉之後<strong>重新擬合映射</strong>，再重新偵測一次。</p>
+  <p>這一步不是可有可無的。實測顯示：只要有一批取樣位置頭尾顛倒的資料混進去
+  （它的 k_eff 會被推到上限 0.999），整條 BPS 回歸線就會被拉歪，某些元素的
+  δ/D 甚至變成負的——意思是「速率越快純化越好」，與物理相反。
+  測試 <code>test_one_corrupted_batch_can_flip_the_slope</code> 把這個風險釘住。</p>
+  <p>原始資料完整保留在資料庫中，排除理由會顯示在「資料稽核」頁。</p>
+</div>
+
+<h2>5. 分期建議（也是報價的切法）</h2>
+
+<table>
+<thead><tr><th>階段</th><th>物理層</th><th>AI 層</th><th>交付</th><th>期程</th></tr></thead>
+<tbody>
+<tr><td><strong>P1</strong></td><td>Pfann / BPS 擬合、k_eff 反解</td><td>L3 異常偵測</td>
+    <td>資料規格書、各元素 k_eff 擬合報告、可行性判定</td><td>4–6 週</td></tr>
+<tr><td><strong>P2</strong></td><td>正向模擬、得料率計算</td>
+    <td>L2 高斯過程 + L4 貝氏最佳化</td>
+    <td>參數映射模型、下一輪 DOE 建議清單</td><td>6–8 週</td></tr>
+<tr><td><strong>P3</strong></td><td>網格掃描最佳化</td><td>L5 LLM 介面</td>
+    <td>桌面工具、對話式查詢、自動報告、教育訓練</td><td>6–8 週</td></tr>
+<tr><td><strong>P4</strong><br><span class="tag">選配</span></td><td>—</td><td>L1 殘差學習</td>
+    <td>需先通過交叉驗證才交付</td><td>視資料累積</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+  <b>P1 結束設一個 go / no-go 檢核點</b>
+  <p>如果資料品質不足以擬合出穩定的 k_eff，就轉為「量測系統改善 + 實驗設計」，不硬做模型。
+  這個誠實的分期反而好賣，也保護自己。</p>
+  <p>L1 放最後並標為選配，因為它是唯一有風險的一層，而且需要累積足夠批次才有意義。
+  前三期已經有四種 AI 可以寫進技術報告。</p>
+</div>
+
+<h2>6. 跟客戶溝通時的重點</h2>
+
+<ul>
+  <li><strong>不要承諾「AI 預測準確率 XX%」。</strong>
+      承諾的是：可解釋的製程模型 + 不確定性區間 + 下一步該做哪幾組實驗。</li>
+  <li><strong>強調 P2 的 DOE 價值。</strong> 小資料下，「告訴你接下來三個月該跑哪 8 批」
+      比「給你一個模型」更值錢，而且 ROI 可以直接量化。</li>
+  <li><strong>明確劃線。</strong> 本案不含設備控制、不含閉迴路，是離線決策輔助工具。</li>
+  <li><strong>把「不影響準確性」寫成可驗收的條款</strong>，而不是口頭承諾。四條建議條款
+      見 <a href="08-validation.html">08 · 驗證、驗收與風險控管</a>。</li>
+</ul>
+
+<h2>7. 提案裡可以怎麼寫</h2>
+
+<p>避免「AI 預測」這種空話，用具體的技術名詞。下面每一條都是真的，都經得起技術審查：</p>
+
+<div class="box">
+<b>AI 技術應用</b>
+<ul>
+  <li>高斯過程回歸（Gaussian Process Regression）建立製程參數與純化效率之映射關係，
+      並提供預測不確定性量化</li>
+  <li>貝氏最佳化（Bayesian Optimization）驅動之序列實驗設計，
+      相較傳統全因子 DOE 可顯著減少實驗批次</li>
+  <li>基於物理殘差之異常偵測，自動識別量測異常與製程偏移批次</li>
+  <li>大型語言模型（LLM）驅動之自然語言查詢與批次報告自動生成</li>
+  <li>物理資訊機器學習（Physics-Informed ML）混合架構，確保外插可靠性</li>
+</ul>
+<b>準確性保證機制</b>
+<ul>
+  <li>雙軌預測顯示：AI 修正值與物理基準值並列</li>
+  <li>留一批交叉驗證：AI 模組需優於物理基準始得上線</li>
+  <li>訓練範圍外自動退回物理模式</li>
+</ul>
+</div>
+
+<p>「物理資訊機器學習」是目前很熱門的正經研究領域（PINN、grey-box modeling），
+不是自創名詞。</p>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>

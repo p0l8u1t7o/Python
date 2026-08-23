@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ExpAnalysis — 高純銦偏析純化製程分析平台</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-title">ExpAnalysis</div>
+        <div class="brand-sub">高純銦偏析純化製程分析平台</div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot">
+        <div class="row" style="gap:8px">
+          <button class="ghost small" id="theme-toggle" title="切換明暗主題">◐ 主題</button>
+          <a class="btn ghost small" href="/docs/" target="_blank" rel="noopener"
+             style="text-decoration:none">說明文件</a>
+        </div>
+        <div id="health-line">連線中…</div>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1 id="page-title">總覽</h1>
+        <span class="grow"></span>
+        <span id="data-badge"></span>
+      </header>
+      <div class="content" id="view"></div>
+    </div>
+  </div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

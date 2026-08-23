@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>擬合、AI 與最佳化方法 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>04 · 擬合、AI 與最佳化方法</h1>
+<p class="lede">這一篇講「統計」的部分。<strong>不預設統計學背景</strong>——
+你會發現絕大多數所謂的統計，其實只是曲線擬合，而你已經會了。</p>
+
+<h2>1. 什麼叫「擬合 k」</h2>
+
+<p>你有一批實測資料：</p>
+
+<pre><code>x/L:      0.10   0.30   0.50   0.70   0.90
+Cu ppm:   0.80   1.60   2.90   5.10  14.20</code></pre>
+
+<p>你有一個公式 <code>C(x) = C₀·[1 − (1−k)·exp(−k·x/l)]</code>，裡面只有 k 一個未知數。</p>
+
+<p><strong>「擬合」就是：試不同的 k，看哪個 k 讓公式算出來的曲線最貼近這 5 個點。</strong></p>
+
+<pre><code>from scipy.optimize import curve_fit
+
+def pfann(x_over_l, k):
+    return C0 * (1 - (1 - k) * np.exp(-k * x_over_l))
+
+k_fit, cov = curve_fit(pfann, x_data, C_data)</code></pre>
+
+<p>就這樣。它內部在做的事跟訓練模型一樣（最小化平方誤差），
+只是參數從幾百萬個變成 <strong>1 個</strong>。</p>
+
+<div class="box key">
+  <b>「降維」那句話的意思</b>
+  <p>原本一批實驗 = 8 個測點 × 4 個元素 = 32 個雜亂數字。<br>
+  擬合之後，一批實驗 = 4 個 k_eff 值（Cu 的、Fe 的、Ni 的、Sn 的）。<br>
+  40 批 → 每個元素 40 個 k_eff。然後你只要研究「k_eff 怎麼隨 T 和 v 變化」，
+  這是個 40 筆資料、2 個自變數的小問題，很好處理。</p>
+</div>
+
+<h2>2. 設限資料：本專案最容易做錯的一件事</h2>
+
+<h3>2.1 問題</h3>
+
+<p>6N 純度下，很多測值會是 <code>&lt; 0.05 ppm</code>——儀器測不到。
+<strong>這不是一個數字，是一個不等式。</strong></p>
+
+<p>用軟體的比喻：log 裡寫 <code>response_time: TIMEOUT (&gt;30s)</code>。
+你如果統計時把它當 30s，平均值就被低估了；當成 0 更荒謬。你只知道「至少 30s」。</p>
+
+<table>
+<thead><tr><th>做法</th><th>後果</th></tr></thead>
+<tbody>
+<tr><td>當成 0</td><td class="tag bad">頭端看起來完美，k 被低估</td></tr>
+<tr><td>當成 LOD 值</td><td class="tag bad">頭端看起來偏髒，k 被高估</td></tr>
+<tr><td><strong>正確做法</strong></td>
+    <td class="tag good">告訴擬合程式「這點的真值在 [0, LOD] 之間」</td></tr>
+</tbody>
+</table>
+
+<h3>2.2 Tobit likelihood：不到 40 行就寫完</h3>
+
+<p>先決定殘差定義在哪個空間。ppm 級的分析誤差，<strong>相對誤差才是穩定的</strong>
+（GDMS 標稱「±20%」而不是「±0.1 ppm」），而且濃度必為正。所以殘差定義在 ln 空間：</p>
+
+<div class="eq">
+ln C<sub>obs</sub> = ln C<sub>pred</sub> + ε,&nbsp;&nbsp; ε ~ N(0, σ²)
+</div>
+
+<p>然後每個測點對 likelihood 的貢獻分兩種：</p>
+
+<table>
+<thead><tr><th>測點類型</th><th>貢獻</th><th>直覺</th></tr></thead>
+<tbody>
+<tr><td>未設限</td><td>常態密度 <code>N(ln y_obs; ln y_pred, σ)</code></td>
+    <td>一般的最小平方，只是在對數空間</td></tr>
+<tr><td>設限（&lt; LOD）</td><td>累積機率 <code>Φ((ln LOD − ln y_pred)/σ)</code></td>
+    <td>「真值低於 LOD 的機率」有多大</td></tr>
+</tbody>
+</table>
+
+<p>兩者相加就是完整的 likelihood，然後最小化它的負值。實作上用
+<code>scipy.stats.norm.logcdf</code> 可避免小機率時的數值下溢。</p>
+
+<div class="box good">
+  <b>這件事有測試守著</b>
+  <p><code>tests/test_fitting.py::test_censored_handling_beats_naive_substitution</code>
+  用 12 組隨機種子生成含設限的資料，分別以三種方式擬合，斷言 Tobit 的中位偏差
+  同時小於「當成 0」與「當成 LOD」。介面的「資料稽核」頁也提供這個對照實驗，
+  可以當場跑給客戶看。</p>
+</div>
+
+<h3>2.3 設限點的殘差怎麼畫</h3>
+
+<p>設限點沒有真值，畫不出一般意義的殘差。慣例做法是用 <strong>Tobit 的期望殘差</strong>：</p>
+
+<div class="eq">
+E[ ε | ε &lt; z ] &nbsp;=&nbsp; − φ(z) / Φ(z)
+<span class="note">
+預測遠低於 LOD 時 → 趨近 0（模型與觀測不矛盾）<br>
+預測遠高於 LOD 時 → 大的負值（模型說應該測得到，實際卻測不到 → 模型有問題）
+</span>
+</div>
+
+<p>介面上設限點的殘差用<strong>菱形</strong>標記，與一般測點的圓點區分。</p>
+
+<h2>3. 信賴區間：Bootstrap，不需要統計理論</h2>
+
+<p>擬合出 k = 0.12，客戶一定會問「有多準？」。傳統做法要推導 Fisher 資訊矩陣，
+在有設限資料 + 非線性模型的情況下很麻煩且假設多。</p>
+
+<p><strong>Bootstrap 是純程式操作</strong>：</p>
+
+<pre><code>ks = []
+for _ in range(300):
+    # 從擬合好的模型重新「生成」一組資料
+    y_star = C_pred * np.exp(sigma * rng.normal(size=n))
+    censored = y_star &lt; lod              # 依 LOD 重新判定設限
+    k, _ = refit(x, y_star, lod, censored)
+    ks.append(k)
+
+print(np.percentile(ks, [2.5, 97.5]))    # 95% 區間</code></pre>
+
+<p>意思是：重複幾百次「生成資料 → 重新擬合」，看 k 飄動的範圍。
+<strong>飄得少 → 這個 k 可信；飄得很兇 → 資料撐不住這個結論，該說出來。</strong></p>
+
+<h3>3.1 為什麼預設是參數式而不是重抽觀測點</h3>
+
+<table>
+<thead><tr><th>方式</th><th>做法</th><th>本專案的選擇</th></tr></thead>
+<tbody>
+<tr><td>case bootstrap</td><td>直接重抽既有的 8 個觀測點</td>
+    <td>保留為選項，用於交叉檢查</td></tr>
+<tr><td><strong>parametric bootstrap</strong></td>
+    <td>從擬合好的模型重新生成資料，再依 LOD 重新判定設限</td>
+    <td class="tag good">預設</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+  <b>實作時踩到的坑</b>
+  <p>本專案的取樣點常常只有 8 個、其中一半以上低於檢測極限。在這種情況下
+  case bootstrap 會<strong>嚴重低估</strong>不確定度——實測到 SE ≈ 2×10⁻⁵，
+  但同一批的 k_eff 對真值其實偏了 40%。</p>
+  <p>原因是 case bootstrap 只是在同一組資料點裡換權重，沒有把「量測雜訊本身」
+  與「設限造成的資訊損失」帶進來。參數式重抽兩者都涵蓋，給出的區間才誠實。</p>
+  <p>另一條測試 <code>test_bootstrap_interval_widens_with_noise</code> 斷言
+  雜訊從 5% 加到 30% 時區間至少變寬 1.5 倍——不然這個區間就只是裝飾品。</p>
+</div>
+
+<h3>3.2 效能：向量化而不是迴圈</h3>
+
+<p>天真寫法是「for 每次重抽 → 呼叫最佳化器」，一批一元素要 0.5 秒，
+80 個批次-元素組合就是 40 秒，UI 完全不能用。</p>
+
+<p>本專案改成：把所有重抽的所有 k 網格點<strong>一次算完</strong>（一個 (K, D, n) 的三維陣列），
+在 k 軸上取最小值，再用三點拋物線內插取得次網格精度。
+同樣的工作量從 0.5 秒降到約 20 毫秒，結果與逐次最佳化在 1e-4 以內一致。</p>
+
+<h2>4. 從 k_eff 到製程參數：L2 高斯過程</h2>
+
+<h3>4.1 三個關鍵設計</h3>
+
+<div class="box key">
+  <b>(1) 目標變數用 z = ln(1/k_eff − 1)，不是 k_eff 本身</b>
+  <p>三個好處：<br>
+  ① 值域無限制，適合高斯過程與線性模型<br>
+  ② 反變換 <code>k = 1/(1+exp(z))</code> 天然保證 k ∈ (0,1)，
+     模型不可能吐出不合物理的值<br>
+  ③ 依 BPS，z 對速率是線性的，所以 GP 只需要學「偏離直線的部分」</p>
+</div>
+
+<div class="box key">
+  <b>(2) 以 BPS 線性擬合當 GP 的均值函數</b>
+  <p>scikit-learn 的 GP 假設均值為 0，離資料遠的地方會回歸到 0——那沒有物理意義。
+  本專案先用 BPS 擬出直線，GP 只建模殘差；外插時自然回歸到 BPS 直線。
+  這就是 physics-informed（灰箱）做法。</p>
+</div>
+
+<div class="box key">
+  <b>(3) 每點的量測不確定度來自 bootstrap</b>
+  <p>k_eff 的 SE 由 bootstrap 給出，轉成 z 空間後餵給 GP 的 <code>alpha</code> 參數。
+  擬得準的批次權重高、擬得糊的批次權重低——這是線性回歸做不到的。</p>
+  <p>但 SE 有一個<strong>下限 0.08</strong>：bootstrap 只涵蓋「量測雜訊」，
+  涵蓋不到批間的未建模變異（氧化程度、舟的狀態、進料微量差異）。
+  在 pass 次數多的批次，k_eff 的量測不確定度可以低到 1e-4；若直接採用，
+  GP 會把每一點都當成鐵律去內插，等於過擬合。0.08 是保守的工程下限，在此揭露。</p>
+</div>
+
+<h3>4.2 灰帶圖怎麼讀</h3>
+
+<pre><code>k_eff
+ │        ░░░░░░░░░░░░  ← 沒資料的區域，灰帶超寬
+ │   ●░░░░╱‾‾‾‾
+ │  ░░●░╱          ● = 實際跑過的批次
+ │ ░●╱░            ░ = 95% 不確定範圍
+ │╱░
+ └──────────────────── v
+   ↑ 資料密集，灰帶很窄</code></pre>
+
+<p>灰帶在有資料的地方收窄、在沒資料的地方張開——這正是
+<strong>「模型知道自己哪裡不知道」</strong>。介面上超出歷史批次涵蓋範圍的區域
+還會加上斜線底紋，讓「這裡是外插」一眼看得出來。</p>
+
+<h2>5. L3 異常偵測</h2>
+
+<p>兩種判準並用：</p>
+
+<h3>5.1 規則式（可解釋）</h3>
+
+<table>
+<thead><tr><th>指標</th><th>門檻</th><th>抓得到什麼</th></tr></thead>
+<tbody>
+<tr><td>單點標準化殘差</td><td>&gt; 3.0</td><td>分析室送錯樣品、該點取樣位置記錄錯誤</td></tr>
+<tr><td>曲線殘差 RMSE</td><td>&gt; 1.8</td><td>模型與資料整體對不上</td></tr>
+<tr><td>對數殘差標準差 σ</td><td>&gt; 0.45（±57% 相對誤差）</td><td>量測品質異常</td></tr>
+<tr><td>殘差正負結構性</td><td>&gt; 0.85</td>
+    <td>取樣位置頭尾顛倒、熔區長度或 pass 次數記錄錯誤</td></tr>
+<tr><td>k_eff 偏離映射預測</td><td>&gt; 2.5 σ</td><td>該批有製程偏移</td></tr>
+<tr><td><strong>批次內所有元素同方向偏移</strong></td><td>&gt; 1.2 σ 且方向一致</td>
+    <td class="tag warn">熱電偶飄移、實際熔區長度與設定不同、氣氛洩漏</td></tr>
+</tbody>
+</table>
+
+<div class="box good">
+  <b>最後那條規則為什麼重要</b>
+  <p>單看一個元素，偏離 1.5 個標準差不算什麼；但如果同一批的<strong>所有元素</strong>
+  都往同一個方向偏 1.5 個標準差，那就不是量測雜訊，是這一批的製程條件記錄與實際不符。
+  逐元素的門檻永遠抓不到它，<strong>必須跨元素看</strong>。</p>
+  <p>本專案的合成資料會刻意注入一批「熱電偶飄移 25 °C」的批次來驗證這條規則有效
+  （<code>tests/test_pipeline.py::test_detects_injected_anomalies</code>）。</p>
+</div>
+
+<h3>5.2 Isolation Forest（補漏）</h3>
+
+<p>對批次層級特徵向量做無監督偵測，抓規則沒想到的組合型異常。
+它只提供補充分數、標為低嚴重度，<strong>不單獨判定</strong>——
+因為 anomaly score 沒有可解釋的理由，工程師不會採信。</p>
+
+<h3>5.3 這一層為什麼零風險</h3>
+
+<p>它不參與任何預測計算，只是把可疑批次挑出來給人看。
+它只會<strong>保護</strong>準確度（把爛資料擋在模型外），不可能傷害準確度。</p>
+
+<h2>6. L4 貝氏最佳化</h2>
+
+<h3>6.1 Expected Improvement</h3>
+
+<p>GP 對每個候選參數組合給出「預測得料率 μ」與「不確定度 σ」。
+Expected Improvement 把兩者合成一個分數：</p>
+
+<div class="eq">
+EI &nbsp;=&nbsp; (μ − best − ξ) · Φ(z) &nbsp;+&nbsp; σ · φ(z),&nbsp;&nbsp;
+z = (μ − best − ξ) / σ
+<span class="note">
+第一項獎勵「預測得料率高」（開發 exploitation），
+第二項獎勵「不確定度大」（探索 exploration）。<br>
+ξ 控制探索傾向，預設 0.01；在「只有十幾批預算」的情境下略偏開發是合理的。
+</span>
+</div>
+
+<h3>6.2 一次建議多批：kriging believer</h3>
+
+<p>如果直接取 EI 前三名，三個建議會擠在同一個位置（因為它們的 EI 都高）。
+正確做法是：算出第一個建議後，把該點的 GP <strong>預測值當成假觀測</strong>餵回去、
+重新擬合，再算第二個。這樣後續建議會自動跑去別的地方。</p>
+
+<p>另外還會排除「與既有批次幾乎相同」的候選（標準化距離 &lt; 0.25），
+避免建議一組客戶已經跑過的條件。</p>
+
+<h3>6.3 DOE 省批次試算怎麼算的</h3>
+
+<p>「最佳化建議」頁的對比圖，是在<strong>虛擬產線</strong>上實際跑出來的：</p>
+
+<ol>
+  <li>以既有資料擬合出的映射 + 物理模擬當 oracle：給 (v, T, n) 回傳得料率</li>
+  <li><strong>策略 A</strong>：全因子（例如 4 速率 × 3 溫度 × 3 次數 = 36 批），
+      順序<strong>隨機打散</strong>——不打散的話會因為剛好先跑到最佳點而高估其效率</li>
+  <li><strong>策略 B</strong>：5 批分層抽樣的起始實驗 + 7 批貝氏最佳化建議</li>
+  <li>畫出兩條「跑到第 n 批時的最佳得料率」曲線，找出 B 在第幾批追平 A 的最終結果</li>
+</ol>
+
+<div class="box warn">
+  <b>怎麼跟客戶講這張圖</b>
+  <p>要說清楚：這是<strong>兩種實驗策略的效率比較</strong>，在同一個模型上進行，
+  <strong>不是對真實產線的績效承諾</strong>。系統的輸出也會把這句話印在圖下面。
+  誠實地講清楚假設，反而更容易被採用。</p>
+</div>
+
+<h2>7. L1 殘差學習的模型選擇</h2>
+
+<p>用 <strong>Ridge 回歸</strong>而非梯度提升樹。原因：</p>
+
+<ul>
+  <li>修正量本來就該是<strong>平滑的小量</strong>，樹模型會產生階梯狀跳動</li>
+  <li>20~40 批的資料量下，樹模型極易過擬合</li>
+  <li>特徵刻意保持極少（速率、溫度、pass、位置、位置²），有效參數個位數</li>
+</ul>
+
+<p>訓練樣本只用<strong>未設限點</strong>——設限點沒有真值可以學。</p>
+
+<h2>8. 最佳化：三種建議，用途不同</h2>
+
+<table>
+<thead><tr><th>建議</th><th>怎麼挑的</th><th>該怎麼用</th></tr></thead>
+<tbody>
+<tr><td><strong>可直接執行（穩健）</strong></td>
+    <td>只在歷史資料涵蓋範圍內挑選，且以<strong>悲觀情境</strong>（k 取信賴區間上界）排序</td>
+    <td class="tag good">這是可以直接下給產線的一組</td></tr>
+<tr><td><strong>理論最高得料率</strong></td>
+    <td>整個掃描範圍內名目得料率最高，可能落在外插區</td>
+    <td class="tag warn">當成「值得安排一批實驗去驗證」的方向</td></tr>
+<tr><td><strong>產能導向</strong></td>
+    <td>在得料率不低於最佳值 95% 的所有組合中，等效產能（速率/次數）最高者</td>
+    <td>真正省錢的那一組，適合跟生管與採購談</td></tr>
+</tbody>
+</table>
+
+<div class="box good">
+  <b>為什麼三種都要給</b>
+  <p>只給一個「最佳解」會有兩個問題：它可能落在外插區（不可執行），
+  而且沒有說明「為了這 3% 的得料率，產能要犧牲多少」。
+  把三組一起交給客戶，比只給一個數字誠實得多，也更容易被採用。</p>
+</div>
+
+<h3>8.1 不確定性怎麼帶進來</h3>
+
+<p>每一組參數都同時計算三條路徑：</p>
+
+<table>
+<thead><tr><th>情境</th><th>k_eff 取值</th><th>意義</th></tr></thead>
+<tbody>
+<tr><td>樂觀</td><td>信賴區間下界 k_lo</td><td>每個元素都在最順利的情況</td></tr>
+<tr><td>名目</td><td>中位數估計</td><td>最可能的結果</td></tr>
+<tr><td>悲觀</td><td>信賴區間上界 k_hi</td><td>最不順利的情況</td></tr>
+</tbody>
+</table>
+
+<p><strong>只給一個數字的最佳化建議是不負責任的</strong>——尤其是在外插區，
+悲觀與名目的差距會自己把「這裡不可信」講出來。</p>
+
+<h2>9. 效能：為什麼這些都能即時互動</h2>
+
+<p>擬合與 bootstrap 會對同一組取樣位置評估數萬次不同的 k。
+天真的做法是每次都跑一遍多次 pass 模擬（8 passes × 300 cells ≈ 2400 次迴圈）。</p>
+
+<div class="box key">
+  <b>關鍵觀察：模擬對濃度是線性的</b>
+  <p>凝固帶走 k·C<sub>L</sub>、熔化帶入 C<sub>in</sub>，全部是線性運算，所以</p>
+  <div class="eq" style="margin:10px 0">profile(c₀, k, …) = c₀ · profile(1, k, …)</div>
+  <p>因此只要以 c₀ = 1 對一組 k 值先算好曲線，之後任何 c₀、任何 k（線性內插）
+  都能立刻取得預測值。</p>
+</div>
+
+<table>
+<thead><tr><th>操作</th><th>耗時量級</th></tr></thead>
+<tbody>
+<tr><td>建一張 (k, x) 查表（126 個 k × 240 格）</td><td>約 15 ms（同條件只建一次）</td></tr>
+<tr><td>從查表取一條完整曲線</td><td>約 20 µs</td></tr>
+<tr><td>單一批次-元素的 k_eff 擬合</td><td>約 30 ms</td></tr>
+<tr><td>300 次參數式 bootstrap</td><td>約 20~160 ms</td></tr>
+<tr><td>20 批 × 4 元素的完整分析（含 bootstrap、GP、異常偵測）</td><td>約 5 秒（之後走快取）</td></tr>
+<tr><td>1920 組參數的網格掃描</td><td>約 0.5 秒</td></tr>
+<tr><td>留一批交叉驗證（20 折）</td><td>約 7 秒</td></tr>
+</tbody>
+</table>
+
+<h2>10. 方法驗證：怎麼知道這一切是對的</h2>
+
+<p>核心方式是<strong>已知答案的反解</strong>：用已知的真實 k₀ 與 δ/D 生成帶雜訊與設限的資料，
+再讓整套流程反解，檢查能不能還原。還原不了就代表方法有問題——
+這比在真實資料上「看起來合理」可靠得多。</p>
+
+<table>
+<thead><tr><th>驗證項目</th><th>實測結果</th></tr></thead>
+<tbody>
+<tr><td>離散模擬 vs Pfann 解析解（k = 0.02 ~ 0.85）</td><td>相對誤差 &lt; 1%</td></tr>
+<tr><td>多次 pass 的質量守恆</td><td>誤差 &lt; 1e-15</td></tr>
+<tr><td>無雜訊資料的 k 還原</td><td>相對誤差 &lt; 3%</td></tr>
+<tr><td>12% 乘法性雜訊 + 40% 設限點下的 k 還原</td><td>中位相對誤差 &lt; 5%</td></tr>
+<tr><td>映射在資料範圍內的 k_eff 預測</td><td>中位誤差 &lt; 5%</td></tr>
+<tr><td>注入的兩種異常（熱電偶飄移、位置顛倒）</td><td>皆被偵測到</td></tr>
+</tbody>
+</table>
+
+<p>完整測試共 87 條，執行 <code>pytest</code> 即可重跑。</p>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>

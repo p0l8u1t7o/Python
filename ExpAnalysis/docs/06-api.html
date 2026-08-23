@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REST API 參考 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>06 · REST API 參考</h1>
+<p class="lede">
+ExpAnalysis 的所有功能都經由這組 REST API 提供；內建的網頁介面只是它的第一個客戶端。
+這份文件逐一說明每個端點的參數、回應與實際呼叫範例，並解釋哪些端點會觸發重運算、
+快取怎麼運作、以及錯誤該怎麼讀。
+</p>
+
+<h2>1. 基本資訊</h2>
+
+<table>
+<thead><tr><th>項目</th><th>值</th></tr></thead>
+<tbody>
+<tr><td>預設位址</td><td><code>http://127.0.0.1:8848</code>（可用 <code>EXPA_HOST</code> / <code>EXPA_PORT</code> 覆寫）</td></tr>
+<tr><td>API 前綴</td><td><code>/api</code></td></tr>
+<tr><td>互動式文件</td><td><code>/api/docs</code>（FastAPI 自動產生的 Swagger UI）</td></tr>
+<tr><td>OpenAPI schema</td><td><code>/api/openapi.json</code></td></tr>
+<tr><td>編碼</td><td>一律 UTF-8，回應不做 ASCII 轉義（中文直接輸出）</td></tr>
+<tr><td>認證</td><td><b>無</b>。這是綁在 <code>127.0.0.1</code> 的單機離線工具。</td></tr>
+</tbody>
+</table>
+
+<div class="box key">
+<b><code>/api/docs</code> 是最快的探索方式</b>
+FastAPI 依據 Pydantic 模型自動產生完整的互動式介面，可以直接在瀏覽器裡填參數送出請求、
+看到真實回應。這份文件補的是自動文件給不了的東西：<b>為什麼</b>這樣設計、
+哪些端點很慢、以及回應中的關鍵欄位怎麼判讀。兩份搭配著看。
+</div>
+
+<div class="box warn">
+<b>沒有認證，所以不要對外開放</b>
+預設監聽 <code>127.0.0.1</code>，只有本機能連。如果為了讓同事存取而改成 <code>0.0.0.0</code>，
+等於把「清空資料庫」這個端點公開給整個網段。要多人使用，請在前面架一層反向代理
+並自行加上認證。
+</div>
+
+<h2>2. 回應約定</h2>
+
+<h3>2.1 成功：直接回傳資料</h3>
+
+<p>
+2xx 的回應<b>直接就是資料本身</b>，沒有 <code>{"data": ...}</code> 外層包裝。
+列表端點回傳陣列，單一物件端點回傳物件。
+</p>
+
+<pre><code>GET /api/analysis/keff?element=Cu
+→ 200
+[
+  {"batch_id": "IN-2501", "element": "Cu", "k_eff": 0.083, ...},
+  {"batch_id": "IN-2502", "element": "Cu", "k_eff": 0.112, ...}
+]</code></pre>
+
+<h3>2.2 失敗：統一的錯誤外層</h3>
+
+<p>
+所有 4xx / 5xx——包含未預期的例外——都會被例外處理器轉成同一個形狀。
+<b>不會有裸的 traceback 流到前端。</b>
+</p>
+
+<pre><code>→ 404
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "HTTP_404",
+    "message": "找不到批次 IN-9999",
+    "detail": ""
+  }
+}</code></pre>
+
+<p>
+所以客戶端的判斷邏輯只有一條：<b>HTTP 狀態碼 &gt;= 400 就讀 <code>error</code>，
+否則直接用 body</b>。不需要每次都檢查 <code>ok</code> 欄位。
+</p>
+
+<h3>2.3 NaN / ±Inf 會被轉成 <code>null</code></h3>
+
+<p>
+所有回應都經過一層清理，把 <code>NaN</code>、<code>+Inf</code>、<code>-Inf</code> 換成
+JSON 的 <code>null</code>，遞迴處理巢狀的 dict 與 list。
+</p>
+
+<div class="box key">
+<b>為什麼需要這一層</b>
+<code>NaN</code> 在數值計算中是<b>合法的「算不出來」訊號</b>——批次數不足時的 R²、
+bootstrap 失敗時的信賴區間、只有一個樣本時的標準差，都會是 <code>NaN</code>。
+但 <code>NaN</code> 不是合法的 JSON。若不處理，序列化會直接丟 <code>ValueError</code> 變成
+500，使用者只會看到「伺服器錯誤」，完全不知道真正的意思是<b>「這個數字算不出來」</b>。
+轉成 <code>null</code> 之後，前端顯示為「—」，語意正確。
+</div>
+
+<p>
+兩個推論，客戶端要記得：
+</p>
+
+<ul>
+  <li>數值欄位<b>隨時可能是 <code>null</code></b>，不要假設它一定是數字。
+      典型例子：<code>k_lo</code> / <code>k_hi</code>（bootstrap 失敗）、
+      <code>yield_stats.std</code>（只有一批）、<code>model_r2</code>（GP 擬合失敗）。</li>
+  <li><code>null</code> 的語意是<b>「這個值無法計算」</b>，不是「值為零」。
+      在 UI 上請顯示為「—」或「不適用」，不要顯示 0。</li>
+</ul>
+
+<h3>2.4 回應標頭</h3>
+
+<p>
+所有 <code>/api/</code> 回應都帶 <code>X-Response-Time-Ms</code>，記錄伺服器端處理耗時。
+超過 3000 ms 的請求會另外寫進日誌（<code>慢請求 ...</code>），方便事後追查效能問題。
+</p>
+
+<h2>3. 錯誤碼表</h2>
+
+<table>
+<thead><tr><th>HTTP</th><th><code>error.code</code></th><th>意義</th><th>典型觸發情境</th></tr></thead>
+<tbody>
+<tr><td>400</td><td><code>HTTP_400</code></td><td>請求語意錯誤</td>
+    <td>資料庫沒有批次資料就呼叫 <code>/optimize/suggest</code>；
+        <code>speed_min ≥ speed_max</code>；尚未建立參數映射就呼叫 <code>/simulate</code>；
+        上傳的檔案無法解析成表格</td></tr>
+<tr><td>404</td><td><code>HTTP_404</code></td><td>找不到資源</td>
+    <td>查詢或刪除不存在的 <code>batch_id</code></td></tr>
+<tr><td>413</td><td><code>HTTP_413</code></td><td>上傳檔案過大</td>
+    <td>匯入的檔案超過 20 MB</td></tr>
+<tr><td>422</td><td><code>VALIDATION_ERROR</code></td><td>參數驗證失敗</td>
+    <td>Pydantic 的型別或範圍檢查沒過，例如 <code>n_passes = 0</code>（下限為 1）、
+        <code>speed_mm_hr = -1</code>（必須 &gt; 0）</td></tr>
+<tr><td>500</td><td><code>INTERNAL_ERROR</code></td><td>未預期的例外</td>
+    <td>完整 traceback 寫進日誌，回應的 <code>detail</code> 只有例外類型與訊息，不含堆疊</td></tr>
+</tbody>
+</table>
+
+<p>422 的 <code>message</code> 會標出出錯的參數路徑，方便直接定位：</p>
+
+<pre><code>{
+  "ok": false, "data": null,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "參數驗證失敗：body → n_passes Input should be greater than or equal to 1",
+    "detail": "[{'type': 'greater_than_equal', 'loc': ('body', 'n_passes'), ...}]"
+  }
+}</code></pre>
+
+<h2>4. 批次資料端點</h2>
+
+<p>前綴 <code>/api/batches</code>。這組端點是唯一會<b>寫入</b>的一組，因此也是唯一會讓分析快取失效的一組。</p>
+
+<h3>4.1 <span class="tag ok">GET</span> <code>/api/batches</code></h3>
+
+<p>列出所有批次，附帶依模型算出的 6N 得料率。</p>
+
+<p><b>參數</b>：無。</p>
+
+<p><b>回應</b>：批次物件的陣列，依 <code>run_date</code> 再依 <code>batch_id</code> 排序。
+每個物件是批次的全部欄位，外加兩個衍生欄位：</p>
+
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>zone_len_frac</code></td><td>float</td><td><code>zone_len_mm / ingot_len_mm</code>，物理模型真正使用的無因次量</td></tr>
+<tr><td><code>yield_frac</code></td><td>float | null</td><td>該批的 6N 得料率（0~1）。該批沒有可用擬合結果時為 <code>null</code></td></tr>
+</tbody>
+</table>
+
+<pre><code>curl http://127.0.0.1:8848/api/batches</code></pre>
+<pre><code>[
+  {
+    "batch_id": "IN-2501", "run_date": "2025-01-14",
+    "ingot_len_mm": 500.0, "zone_len_mm": 50.0, "zone_len_frac": 0.1,
+    "speed_mm_hr": 2.0, "temp_c": 175.0, "n_passes": 8,
+    "atmosphere": "Ar", "head_crop_frac": 0.03,
+    "analysis_method": "GDMS", "operator": "", "notes": "",
+    "feed_purity_note": "",
+    "yield_frac": 0.612
+  }
+]</code></pre>
+
+<div class="box warn">
+<b>效能注意</b>
+<code>yield_frac</code> 是每批各自算的：先取該批完整資料、再依擬合的 <code>k_eff</code>
+重建濃度分布、再算純度視窗。批次數多時這是一個 N+1 的查詢模式。
+而且第一次呼叫會觸發完整分析（見第 8 節）。50 批以內感覺不出來，
+數百批時這個端點會變成整個 UI 最慢的地方。
+</div>
+
+<h3>4.2 <span class="tag ok">GET</span> <code>/api/batches/template.csv</code></h3>
+
+<p>
+下載匯入用的 CSV 範本，含兩列示範資料。回應是
+<code>text/csv; charset=utf-8</code>，並帶 <code>Content-Disposition: attachment</code>。
+內容開頭加了 BOM，讓 Excel 直接雙擊開啟時不會把中文變成亂碼。
+</p>
+
+<pre><code>curl -O -J http://127.0.0.1:8848/api/batches/template.csv</code></pre>
+
+<h3>4.3 <span class="tag ok">GET</span> <code>/api/batches/{batch_id}</code></h3>
+
+<p>單一批次的完整分析資料包——這是「批次詳情」畫面的唯一資料來源。</p>
+
+<p><b>路徑參數</b>：<code>batch_id</code>（字串）。找不到回 404。</p>
+
+<p><b>回應重點欄位</b>：</p>
+
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>batch</code></td><td>object</td><td>批次條件（含 <code>zone_len_frac</code>）</td></tr>
+<tr><td><code>element_specs</code></td><td>array</td><td>各元素的 <code>c0_ppm</code>、<code>spec_ppm</code>、
+    <code>c0_measured</code>。<b><code>c0_measured = false</code> 代表 C0 是推估值</b>，UI 必須標示</td></tr>
+<tr><td><code>elements</code></td><td>array</td><td>該批有量測資料的元素</td></tr>
+<tr><td><code>x_norm</code></td><td>array[240]</td><td>模型曲線的 x/L 格點，所有元素共用</td></tr>
+<tr><td><code>curves.{元素}</code></td><td>object</td><td>疊圖所需的全部資料，見下表</td></tr>
+<tr><td><code>total_ppm</code></td><td>array[240]</td><td>各元素模型曲線的逐點總和</td></tr>
+<tr><td><code>window</code></td><td>object</td><td>純度視窗計算結果，見下表</td></tr>
+<tr><td><code>anomalies</code></td><td>array</td><td>該批的異常偵測結果</td></tr>
+</tbody>
+</table>
+
+<h4><code>curves.{元素}</code> 的內容</h4>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>x_model</code> / <code>y_model</code></td><td>模型預測曲線（240 點）</td></tr>
+<tr><td><code>x_obs</code> / <code>y_obs</code></td><td>實測點</td></tr>
+<tr><td><code>y_pred_at_obs</code></td><td>模型在實測點位置的預測值，畫殘差線用</td></tr>
+<tr><td><code>censored</code></td><td>布林陣列，標記哪些實測點是設限值——<b>畫圖時要用向下箭頭而不是圓點</b>，
+    因為那些點的真值在標記位置<b>以下</b></td></tr>
+<tr><td><code>residuals</code></td><td>標準化的對數殘差</td></tr>
+<tr><td><code>fit</code></td><td>完整的 <code>KeffFit</code>：<code>k_eff</code>、<code>k_lo</code>／<code>k_hi</code>（bootstrap 95% 區間）、
+    <code>k_se</code>、<code>c0_ppm</code>、<code>c0_fitted</code>、<code>sigma_log</code>、<code>rmse_log</code>、
+    <code>n_points</code>、<code>n_censored</code>、<code>converged</code>、<code>interpretation</code>（白話判讀）、<code>note</code></td></tr>
+</tbody>
+</table>
+
+<h4><code>window</code> 的內容</h4>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>yield_frac</code></td><td>得料率：從頭端切除點算起連續合格的長度佔全錠比例</td></tr>
+<tr><td><code>head_cut_frac</code> / <code>tail_cut_frac</code></td><td>合格區的起點與終點（x/L）</td></tr>
+<tr><td><code>threshold_ppm</code></td><td>本次判定使用的總雜質門檻</td></tr>
+<tr><td><code>max_total_in_window_ppm</code></td><td>合格區內的最高總雜質——用來看<b>餘裕有多少</b>。
+    若非常接近門檻，代表這個得料率很脆弱，量測誤差就足以讓它掉下來</td></tr>
+<tr><td><code>limiting_element</code></td><td>決定切點的元素（誰先超標）。<b>製程改善應該針對這個元素</b></td></tr>
+<tr><td><code>concentrate_start_frac</code></td><td>雜質濃縮區起點（總雜質 &gt; 5 倍門檻處）</td></tr>
+<tr><td><code>per_element_at_cut</code></td><td>切點處各元素的濃度</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl http://127.0.0.1:8848/api/batches/IN-2501</code></pre>
+<pre><code>{
+  "batch": {"batch_id": "IN-2501", "zone_len_frac": 0.1, "n_passes": 8, ...},
+  "element_specs": [
+    {"element": "Cu", "c0_ppm": 8.5, "spec_ppm": null, "c0_measured": true},
+    {"element": "Fe", "c0_ppm": 4.16, "spec_ppm": null, "c0_measured": false}
+  ],
+  "elements": ["Cu", "Fe"],
+  "x_norm": [0.0, 0.00418, ...],
+  "curves": {
+    "Cu": {
+      "x_obs": [0.05, 0.2, 0.4, 0.6, 0.84],
+      "y_obs": [0.05, 0.05, 0.31, 1.44, 12.6],
+      "censored": [true, true, false, false, false],
+      "fit": {"k_eff": 0.083, "k_lo": 0.061, "k_hi": 0.114,
+              "c0_ppm": 8.5, "c0_fitted": false,
+              "sigma_log": 0.14, "n_points": 5, "n_censored": 2,
+              "interpretation": "偏析效果好，此元素容易以區域熔煉去除"}
+    }
+  },
+  "window": {"yield_frac": 0.612, "limiting_element": "Fe",
+             "tail_cut_frac": 0.642, "max_total_in_window_ppm": 0.98}
+}</code></pre>
+
+<h3>4.4 <span class="tag bad">DELETE</span> <code>/api/batches/{batch_id}</code></h3>
+
+<p>
+刪除單一批次。外鍵的 <code>ON DELETE CASCADE</code> 會連同該批的量測值與元素規格一起刪掉。
+找不到回 404。成功後分析快取失效。
+</p>
+
+<pre><code>curl -X DELETE http://127.0.0.1:8848/api/batches/IN-2501
+→ {"deleted": "IN-2501"}</code></pre>
+
+<h3>4.5 <span class="tag good">POST</span> <code>/api/batches/import</code></h3>
+
+<p>匯入 CSV 或 Excel。這是把資料送進系統的主要入口。</p>
+
+<table>
+<thead><tr><th>參數</th><th>位置</th><th>型別</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>file</code></td><td>multipart form</td><td>檔案</td><td>—</td>
+    <td>必填。副檔名 <code>.xlsx</code> / <code>.xls</code> 走 Excel 讀取器，其餘當 CSV
+        （先試 UTF-8，失敗自動退回 Big5）。上限 20 MB</td></tr>
+<tr><td><code>dry_run</code></td><td>query</td><td>bool</td><td><code>false</code></td>
+    <td><code>true</code> 時做完整稽核但<b>不寫入資料庫</b>，也不讓快取失效</td></tr>
+</tbody>
+</table>
+
+<p><b>回應</b>（<code>ImportReport</code>）：</p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>ok</code></td><td><code>false</code> 代表有 error，<b>整份檔案都沒有寫入</b>（全有全無）</td></tr>
+<tr><td><code>batches</code> / <code>measurements</code> / <code>censored</code></td><td>解析出的批次數、量測點數、設限點數</td></tr>
+<tr><td><code>elements</code> / <code>batch_ids</code></td><td>解析出的元素與批號清單</td></tr>
+<tr><td><code>errors</code></td><td>會擋下匯入的問題，每則都帶試算表列號</td></tr>
+<tr><td><code>warnings</code></td><td>不擋匯入但需要注意的問題</td></tr>
+</tbody>
+</table>
+
+<pre><code># 先稽核（強烈建議每次拿到新檔案都先跑這個）
+curl -F "file=@客戶資料.csv" \
+     "http://127.0.0.1:8848/api/batches/import?dry_run=true"</code></pre>
+<pre><code>{
+  "ok": false,
+  "batches": 3, "measurements": 96, "censored": 14,
+  "elements": ["Cu", "Fe", "Ni", "Sn"],
+  "batch_ids": ["IN-2501", "IN-2502", "IN-2503"],
+  "errors": [
+    "第 47 列：歸一化位置 2.0000 超出 [0,1]。常見原因是 x_mm 與錠長單位不一致。"
+  ],
+  "warnings": [
+    "批次 IN-2503 的 Sn 只有 2 個取樣點，擬合 k_eff 至少需要 3 點、建議 6 點以上。"
+  ]
+}</code></pre>
+
+<p>完整的欄位定義與驗證規則見 <a href="03-data-spec.html">03 · 資料規格書</a>。</p>
+
+<div class="box warn">
+<b>大小限制是在讀完檔案之後才檢查的</b>
+目前的實作先把整個上傳讀進記憶體，再比對 20 MB 上限。所以送一個超大檔案仍然會
+消耗等量的記憶體才被拒絕。本機單人使用沒有問題，但如果哪天要對外開放，
+這裡需要改成串流式檢查。
+</div>
+
+<h3>4.6 <span class="tag good">POST</span> <code>/api/batches/seed-demo</code></h3>
+
+<p>
+產生合成資料集，供展示與方法驗證使用。合成資料有已知真值，所以可以用來回答
+「模型到底準不準」這種在真實資料上無法直接驗證的問題。
+</p>
+
+<table>
+<thead><tr><th>參數（body）</th><th>型別</th><th>範圍</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>n_batches</code></td><td>int</td><td>4 ~ 200</td><td>20</td><td>要產生幾批</td></tr>
+<tr><td><code>seed</code></td><td>int</td><td>—</td><td>20250114</td><td>亂數種子，固定值可重現同一份資料</td></tr>
+<tr><td><code>rel_noise</code></td><td>float</td><td>0 ~ 1</td><td>0.12</td><td>乘法性量測誤差的對數標準差
+    （0.12 約等於 ±12% 的相對誤差，接近 GDMS 的實際水準）</td></tr>
+<tr><td><code>n_sample_points</code></td><td>int</td><td>3 ~ 40</td><td>8</td><td>每支錠的取樣點數</td></tr>
+<tr><td><code>inject_anomalies</code></td><td>bool</td><td>—</td><td>true</td><td>是否植入已知的異常批次，
+    用來測試異常偵測層抓不抓得到</td></tr>
+<tr><td><code>clear_existing</code></td><td>bool</td><td>—</td><td>true</td>
+    <td><b>預設會清空現有資料庫</b>。對著客戶的真實資料誤按這個會很尷尬</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl -X POST http://127.0.0.1:8848/api/batches/seed-demo \
+     -H "Content-Type: application/json" \
+     -d '{"n_batches": 24, "inject_anomalies": true}'</code></pre>
+<pre><code>{
+  "n_batches": 24,
+  "injected_anomalies": [
+    {"batch_id": "SYN-07", "kind": "reversed_positions", "element": "Cu"}
+  ],
+  "element_truth": {"Cu": {"k0": 0.06, "beta_v": 0.21, ...}},
+  "disclaimer": "本資料集為合成資料，用於方法驗證與 demo，非實際製程量測結果。"
+}</code></pre>
+
+<div class="box good">
+<b><code>disclaimer</code> 必須顯示出來</b>
+所有畫面在使用合成資料時都要標示。給客戶看 demo 時，把合成資料誤認成他自己的資料
+是最容易造成誤解、也最傷信任的事。
+</div>
+
+<h3>4.7 <span class="tag bad">DELETE</span> <code>/api/batches</code></h3>
+
+<p>
+清空整個資料庫（四張表全清）。沒有二次確認、沒有軟刪除。
+UI 上這個動作應該要有明確的確認對話框。
+</p>
+
+<pre><code>curl -X DELETE http://127.0.0.1:8848/api/batches
+→ {"cleared": true}</code></pre>
+
+<h2>5. 分析端點</h2>
+
+<p>
+前綴 <code>/api/analysis</code>。全部是唯讀的 <code>GET</code>，但<b>會觸發重運算</b>——
+真正的成本在這一組。
+</p>
+
+<h3>5.1 <span class="tag ok">GET</span> <code>/api/analysis/overview</code></h3>
+
+<p>儀表板首頁的資料來源，一次給出整個資料集的全貌。</p>
+
+<p><b>參數</b>：無。</p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>empty</code></td><td><code>true</code> 代表資料庫是空的，其餘欄位不存在。<b>客戶端要先檢查這個旗標</b></td></tr>
+<tr><td><code>n_batches</code> / <code>n_measurements</code> / <code>n_censored</code></td><td>資料量統計</td></tr>
+<tr><td><code>elements</code></td><td>所有有擬合結果的元素</td></tr>
+<tr><td><code>keff_summary.{元素}</code></td><td><code>median</code> / <code>min</code> / <code>max</code> / <code>n</code>；
+    <code>bps</code>（BPS 線性化模型的係數）；<code>gp_used</code>（該元素是否成功用了高斯過程，
+    <code>false</code> 代表退回線性模型）；<code>removable</code>（白話分級：
+    易去除 / 中等 / 困難 / 偏析法無效）</td></tr>
+<tr><td><code>yield_stats</code></td><td>得料率的 <code>mean</code> / <code>median</code> / <code>min</code> /
+    <code>max</code> / <code>std</code>。<b>只有一批時 <code>std</code> 為 <code>null</code></b></td></tr>
+<tr><td><code>anomaly_counts</code></td><td><code>{high, medium, low}</code> 三級的異常計數</td></tr>
+<tr><td><code>speed_range</code> / <code>temp_range</code> / <code>pass_range</code></td>
+    <td><code>[min, max]</code>。這定義了模型的<b>可信賴區間</b>；超出這個範圍的模擬是外插</td></tr>
+<tr><td><code>threshold_ppm</code></td><td>目前使用的 6N 判定門檻</td></tr>
+<tr><td><code>warnings</code></td><td>分析過程的警告，例如「已排除 N 組高嚴重度異常後重新擬合映射」</td></tr>
+<tr><td><code>analysis_duration_s</code></td><td>本次完整分析耗時（秒）——可以拿來判斷快取有沒有生效</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl http://127.0.0.1:8848/api/analysis/overview</code></pre>
+<pre><code>{
+  "empty": false, "n_batches": 24, "n_measurements": 768, "n_censored": 121,
+  "elements": ["Cu", "Fe", "Ni", "Sn"],
+  "keff_summary": {
+    "Cu": {"median": 0.091, "min": 0.052, "max": 0.183, "n": 24,
+           "gp_used": true, "removable": "易去除"}
+  },
+  "yield_stats": {"mean": 0.583, "median": 0.601, "std": 0.087},
+  "anomaly_counts": {"high": 1, "medium": 3, "low": 5},
+  "speed_range": [1.02, 5.94], "temp_range": [165.3, 204.1],
+  "threshold_ppm": 1.0,
+  "warnings": ["參數映射已排除 1 組高嚴重度異常資料後重新擬合（SYN-07/Cu）。..."],
+  "analysis_duration_s": 3.412
+}</code></pre>
+
+<div class="box warn">
+<b>第一次呼叫需要數秒</b>
+這個端點會觸發完整分析：擬合所有 (批次 × 元素) 的 <code>k_eff</code>、每組跑 300 次
+bootstrap、擬合 GP 參數映射、跑異常偵測、（若偵測到高嚴重度異常）排除後再擬一次映射、
+訓練殘差修正器。24 批 4 元素大約 3~5 秒。之後只要沒有寫入，都是快取命中（毫秒級）。
+</div>
+
+<h3>5.2 <span class="tag ok">GET</span> <code>/api/analysis/keff</code></h3>
+
+<p>所有 (批次 × 元素) 的 <code>k_eff</code> 擬合結果表——這是整個系統的核心產物。</p>
+
+<table>
+<thead><tr><th>參數</th><th>位置</th><th>型別</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>element</code></td><td>query</td><td>string</td><td>無</td><td>只回傳該元素的列。大小寫敏感</td></tr>
+</tbody>
+</table>
+
+<p><b>回應</b>：陣列，依 <code>(element, speed_mm_hr)</code> 排序。每列的關鍵欄位：</p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>k_eff</code></td><td>有效分配係數。<b>越低代表偏析純化效果越好</b></td></tr>
+<tr><td><code>k_lo</code> / <code>k_hi</code> / <code>k_se</code></td><td>bootstrap 95% 信賴區間與標準誤。
+    bootstrap 失敗時為 <code>null</code>。<b>區間寬度是判斷這個數字能不能信的主要依據</b></td></tr>
+<tr><td><code>speed_mm_hr</code> / <code>temp_c</code> / <code>n_passes</code></td><td>該批的製程條件</td></tr>
+<tr><td><code>c0_ppm</code></td><td>擬合使用的進料濃度</td></tr>
+<tr><td><code>sigma_log</code></td><td>對數殘差標準差。可以直接跟實驗室的複驗差異比對：
+    遠大於分析誤差代表模型缺了東西，遠小於則可能過擬合</td></tr>
+<tr><td><code>rmse_log</code></td><td>對數空間的均方根誤差</td></tr>
+<tr><td><code>n_points</code> / <code>n_censored</code></td><td>該擬合用了幾點、其中幾點是設限值</td></tr>
+<tr><td><code>interpretation</code></td><td>白話判讀，例如「偏析效果好，此元素容易以區域熔煉去除」</td></tr>
+<tr><td><code>note</code></td><td>擬合過程的備註（收斂問題、C0 被一併擬合等）</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl "http://127.0.0.1:8848/api/analysis/keff?element=Cu"</code></pre>
+
+<h3>5.3 <span class="tag ok">GET</span> <code>/api/analysis/mapping</code></h3>
+
+<p>
+(v, T) → <code>k_eff</code> 參數映射的視圖資料：實測散點加上 GP 預測曲線與信賴帶。
+這是回答「速率對純化效率的影響有多大」的那張圖。
+</p>
+
+<p><b>參數</b>：無。</p>
+
+<p><b>回應</b>：<code>{elements, models, warnings}</code>。每個 <code>models.{元素}</code> 包含：</p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>v_curve</code></td><td>速率格點（60 點，比觀測範圍向兩側外推一些）</td></tr>
+<tr><td><code>temp_used</code></td><td>畫這條曲線時固定使用的溫度（所有批次溫度的中位數）</td></tr>
+<tr><td><code>k_curve</code> / <code>k_lo</code> / <code>k_hi</code></td><td>預測的 <code>k_eff</code> 與信賴帶</td></tr>
+<tr><td><code>z_curve</code> / <code>z_std</code></td><td>BPS 線性化空間的預測與標準差。
+    在這個空間裡關係是直線，比較容易看出資料到底支不支持模型</td></tr>
+<tr><td><code>bps</code></td><td>BPS 模型的係數與線性度註記</td></tr>
+<tr><td><code>gp_used</code></td><td><code>false</code> 代表 GP 擬合失敗、已退回 BPS 線性模型</td></tr>
+<tr><td><code>kernel</code></td><td>GP 核函數的字串表示（除錯用）</td></tr>
+<tr><td><code>points</code></td><td>各批次的實測散點，含 <code>z</code>（線性化後的值）與信賴區間</td></tr>
+<tr><td><code>v_range_observed</code></td><td><code>[min, max]</code> 實際觀測到的速率範圍。
+    <b>畫圖時應把這個範圍以外的曲線畫成虛線</b>，明確區分內插與外插</td></tr>
+</tbody>
+</table>
+
+<h3>5.4 <span class="tag ok">GET</span> <code>/api/analysis/anomalies</code></h3>
+
+<p>資料稽核結果：哪些 (批次 × 元素) 看起來有問題。</p>
+
+<table>
+<thead><tr><th>參數</th><th>位置</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>severity</code></td><td>query</td><td><code>high</code> | <code>medium</code> | <code>low</code></td>
+    <td>只回傳該嚴重度。其他值會被 422 擋下（有正規表示式驗證）</td></tr>
+</tbody>
+</table>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>batch_id</code> / <code>element</code></td><td>出問題的組合</td></tr>
+<tr><td><code>severity</code></td><td>嚴重度三級</td></tr>
+<tr><td><code>reasons</code></td><td>人看得懂的理由清單，例如「殘差呈結構性形狀（前半全正、後半全負）」</td></tr>
+<tr><td><code>metrics</code></td><td>支持這個判斷的數值指標</td></tr>
+<tr><td><code>suggested_action</code></td><td>建議的處理方式</td></tr>
+<tr><td><code>exclude_recommended</code></td><td><code>true</code> 且 <code>severity = high</code> 時，
+    這組資料會被<b>自動排除在參數映射之外</b>（但仍保留在資料庫中）</td></tr>
+</tbody>
+</table>
+
+<div class="box key">
+<b>異常偵測不參與預測，只保護準確度</b>
+系統的做法是兩階段：先用全部資料擬一個映射，此時異常批次會把回歸線整條拉歪；
+接著把「高嚴重度且建議排除」的資料拿掉後重擬，再重新偵測一次。
+如果排除後某個元素剩不到 4 筆，就寧可留著髒資料並在 <code>warnings</code> 標示——
+資料太少比資料有點髒更危險。原始資料永遠不會被刪除。
+</div>
+
+<pre><code>curl "http://127.0.0.1:8848/api/analysis/anomalies?severity=high"</code></pre>
+
+<h3>5.5 <span class="tag ok">GET</span> <code>/api/analysis/validation</code></h3>
+
+<p>
+留一批交叉驗證（Leave-One-Batch-Out, LOBO）：<b>每次拿掉一整批，用剩下的批次重建
+整條分析管線，再去預測被拿掉的那批</b>。這是回答「模型到底多準」與
+「AI 有沒有真的幫上忙」的端點。
+</p>
+
+<table>
+<thead><tr><th>參數</th><th>位置</th><th>型別</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>use_ai</code></td><td>query</td><td>bool</td><td><code>true</code></td>
+    <td>是否同時評估「物理 + L1 殘差修正」這條路徑</td></tr>
+</tbody>
+</table>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>n_batches</code> / <code>n_points</code></td><td>參與驗證的批次數與預測點數</td></tr>
+<tr><td><code>physics_mae_ppm</code> / <code>physics_max_ppm</code> / <code>physics_mae_log</code></td>
+    <td>純物理模型的誤差</td></tr>
+<tr><td><code>ai_mae_ppm</code> / <code>ai_max_ppm</code> / <code>ai_mae_log</code></td>
+    <td>物理 + AI 的誤差。批次數不足時為 <code>null</code>（原始值是 <code>NaN</code>）</td></tr>
+<tr><td><code>ai_better</code> / <code>improvement_pct</code></td><td>AI 有沒有比較好、好多少</td></tr>
+<tr><td><code>gate_passed</code></td><td><b>關鍵欄位</b>：L1 殘差修正是否通過護欄。
+    只有通過才會在模擬中被啟用；沒通過就永遠只用純物理</td></tr>
+<tr><td><code>per_batch</code> / <code>per_element</code></td><td>逐批、逐元素的誤差明細</td></tr>
+<tr><td><code>verdict</code> / <code>notes</code></td><td>白話結論與附註</td></tr>
+</tbody>
+</table>
+
+<div class="box bad">
+<b>這是最慢的端點</b>
+它要跑 N 次完整的「重建映射 + 重訓修正器 + 預測」循環。24 批大約十幾秒，
+批次數再多會更久。結果<b>有獨立快取</b>（同樣以資料版本為鍵），所以第二次呼叫是即時的。
+在 UI 上呼叫這個端點時務必顯示進度指示，不要讓使用者以為當掉了。
+</div>
+
+<h3>5.6 <span class="tag ok">GET</span> <code>/api/analysis/censoring-study</code></h3>
+
+<p>
+設限處理方式的對照實驗：<b>同一份資料、同一個模型，只改變 LOD 的處理方式</b>，
+看 <code>k_eff</code> 會偏移多少。三種方式是 Tobit（正確做法）、當成 0、當成 LOD。
+</p>
+
+<p><b>參數</b>：無。資料庫為空時回 400。</p>
+
+<p>
+<b>回應</b>：三種方法各自的 <code>k_eff</code> 統計。用合成資料跑時還能算出對真值的相對偏差。
+</p>
+
+<div class="box good">
+<b>這是說服客戶最有力的一張圖</b>
+「我們用了 Tobit likelihood 處理左設限資料」對客戶是空話；
+「同一批資料，把測不到當成 0 會讓 k_eff 低估 30%，當成 LOD 會高估 25%，
+換算成得料率的差異是 8 個百分點」——這才是他聽得懂而且在意的。
+</div>
+
+<h3>5.7 <span class="tag ok">GET</span> <code>/api/analysis/pass-advice</code></h3>
+
+<p>
+純化次數的飽和分析：<b>做到第幾次之後就白做了</b>。這是 P1 階段就能交出去、
+能立刻省錢的結論——如果客戶現在跑 15 次而模型指出第 9 次之後純度不再進步，
+那就是直接砍掉 6 趟的設備時間。
+</p>
+
+<table>
+<thead><tr><th>參數</th><th>位置</th><th>型別</th><th>範圍</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>n_passes_max</code></td><td>query</td><td>int</td><td>5 ~ 60</td><td>25</td>
+    <td>最多模擬到第幾次</td></tr>
+</tbody>
+</table>
+
+<p>模擬條件取自現有批次的中位數（速率、溫度、熔區長度比），沒有擬合結果時回 400。</p>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>recommended_passes</code></td><td><b>報告裡該寫的那個數字</b>：達到可達最大得料率
+    95% 所需的最少次數</td></tr>
+<tr><td><code>saturation_pass</code></td><td>最後一次仍能讓得料率增加 0.5 個百分點的 pass。
+    這之後每一趟都幾乎白跑</td></tr>
+<tr><td><code>ultimate_pass</code></td><td>分布形狀數學上收斂到極限分布的次數。通常比前兩者晚</td></tr>
+<tr><td><code>yield_by_pass</code></td><td>每一次 pass 後的得料率，畫飽和曲線用</td></tr>
+<tr><td><code>marginal_gain_by_pass</code></td><td>每次的增量</td></tr>
+<tr><td><code>head_total_by_pass</code></td><td>每次 pass 後頭端的總雜質</td></tr>
+<tr><td><code>passes_saved_vs_max</code></td><td>相對於模擬上限可以省下的趟數</td></tr>
+<tr><td><code>conditions</code></td><td>本次模擬使用的條件與各元素 <code>k_eff</code>，讓結論可追溯</td></tr>
+<tr><td><code>note</code></td><td>一句話總結，可直接貼進報告</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl "http://127.0.0.1:8848/api/analysis/pass-advice?n_passes_max=20"</code></pre>
+<pre><code>{
+  "recommended_passes": 9,
+  "saturation_pass": 12,
+  "ultimate_pass": 16,
+  "best_yield": 0.671,
+  "yield_at_recommended": 0.641,
+  "passes_saved_vs_max": 8,
+  "conditions": {"speed_mm_hr": 2.4, "temp_c": 182.0, "zone_len_frac": 0.1,
+                 "k_eff": {"Cu": 0.091, "Fe": 0.147}},
+  "note": "跑到第 9 次即可達到可達最大得料率（67.1%）的 95%；第 12 次之後每多跑一趟，得料率增加不到 0.5 個百分點；分布形狀約在第 16 次收斂到極限分布。"
+}</code></pre>
+
+<div class="box warn">
+<b>已知落差</b>
+這個端點的頭端切除比例是<b>寫死的 0.03</b>，沒有沿用資料中各批的實際
+<code>head_crop_frac</code>。如果客戶的實際切除量與 3% 差很多，
+<code>recommended_passes</code> 會有偏差。
+</div>
+
+<h2>6. 模擬與最佳化端點</h2>
+
+<p>前綴 <code>/api</code>。這組全部是 <code>POST</code>，參數走 JSON body。</p>
+
+<h3>6.1 <span class="tag good">POST</span> <code>/api/simulate</code></h3>
+
+<p>正向模擬：給一組製程條件，預測濃度分布與得料率。</p>
+
+<table>
+<thead><tr><th>參數</th><th>型別</th><th>範圍</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>speed_mm_hr</code></td><td>float</td><td>&gt; 0, ≤ 200</td><td>—</td><td><b>必填</b>。熔區移動速率</td></tr>
+<tr><td><code>temp_c</code></td><td>float</td><td>0 ~ 1000</td><td>—</td><td><b>必填</b>。熔區溫度。
+    注意下限是 0，所以物理上不可能的低溫不會被擋下</td></tr>
+<tr><td><code>n_passes</code></td><td>int</td><td>1 ~ 60</td><td>—</td><td><b>必填</b>。純化次數</td></tr>
+<tr><td><code>zone_len_frac</code></td><td>float | null</td><td>0 &lt; x &lt; 1</td><td>各批中位數</td>
+    <td>熔區長度比 l/L</td></tr>
+<tr><td><code>head_crop_frac</code></td><td>float</td><td>0 ≤ x &lt; 0.5</td><td>0.03</td><td>頭端固定切除比例</td></tr>
+<tr><td><code>threshold_ppm</code></td><td>float | null</td><td>&gt; 0</td><td>系統設定值（1.0）</td>
+    <td>6N 判定門檻（總雜質）</td></tr>
+<tr><td><code>c0_ppm</code></td><td>object | null</td><td>—</td><td>各元素中位數</td>
+    <td><code>{"Cu": 8.5, "Fe": 4.2}</code>。用來試算「如果進料更乾淨會怎樣」</td></tr>
+<tr><td><code>use_ai</code></td><td>bool</td><td>—</td><td>false</td><td>是否套用 L1 殘差修正</td></tr>
+</tbody>
+</table>
+
+<p><b>回應</b>：<code>{physics, ai, dual_track}</code>。</p>
+
+<div class="box key">
+<b>永遠雙軌顯示</b>
+<code>physics</code> 是純物理模型的結果，<b>永遠存在</b>。<code>ai</code> 只在
+<code>use_ai = true</code> 且修正器可用時才有值。這個設計是刻意的：使用者必須隨時能看到
+「不用 AI 的答案是什麼」，才有辦法判斷 AI 到底調整了什麼、調整得合不合理。
+<code>dual_track</code> 則直接給出兩者的比較與是否採納的建議。
+</div>
+
+<p><code>physics</code> 與 <code>ai</code> 的結構相同：</p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>x_norm</code> / <code>profiles.{元素}</code> / <code>total_ppm</code></td><td>預測的濃度分布</td></tr>
+<tr><td><code>k_eff</code> / <code>k_ci</code></td><td>該條件下各元素的預測 <code>k_eff</code> 與信賴區間</td></tr>
+<tr><td><code>yield_nominal</code></td><td>得料率的中央估計</td></tr>
+<tr><td><code>yield_optimistic</code> / <code>yield_pessimistic</code></td>
+    <td>用 <code>k_eff</code> 信賴區間兩端算出的得料率。<b>報告請寫這個區間，不要只寫單一數字</b></td></tr>
+<tr><td><code>window</code></td><td>純度視窗細節（同 4.3 節）</td></tr>
+<tr><td><code>in_training_range</code></td><td><b>關鍵旗標</b>：條件是否落在歷史批次涵蓋範圍內</td></tr>
+<tr><td><code>warnings</code></td><td>外插警告等</td></tr>
+</tbody>
+</table>
+
+<div class="box bad">
+<b>外插時 AI 會被自動停用</b>
+當 <code>in_training_range = false</code>，殘差修正器不會被套用，且會加上警告：
+「查詢條件落在歷史批次涵蓋範圍之外。此處為外插，模型不確定度大幅上升；
+已自動停用 AI 修正、僅顯示物理模型結果。建議先安排一批實驗驗證。」
+理由很簡單：物理模型外插有依據（方程還是那個方程），殘差修正器外插沒有依據
+（它學的是訓練範圍內的偏差模式）。
+</div>
+
+<pre><code>curl -X POST http://127.0.0.1:8848/api/simulate \
+     -H "Content-Type: application/json" \
+     -d '{"speed_mm_hr": 1.5, "temp_c": 185, "n_passes": 10, "use_ai": true}'</code></pre>
+<pre><code>{
+  "physics": {
+    "speed_mm_hr": 1.5, "temp_c": 185.0, "n_passes": 10, "zone_len_frac": 0.1,
+    "k_eff": {"Cu": 0.074, "Fe": 0.129},
+    "k_ci": {"Cu": [0.058, 0.095], "Fe": [0.101, 0.164]},
+    "yield_nominal": 0.664,
+    "yield_pessimistic": 0.601, "yield_optimistic": 0.712,
+    "in_training_range": true, "warnings": []
+  },
+  "ai": {"yield_nominal": 0.658, ...},
+  "dual_track": {...}
+}</code></pre>
+
+<h3>6.2 <span class="tag good">POST</span> <code>/api/optimize/grid</code></h3>
+
+<p>
+在參數空間上做網格掃描，找出得料率最高的條件。輸出可以直接畫成熱圖。
+</p>
+
+<table>
+<thead><tr><th>參數</th><th>型別</th><th>範圍</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>speed_min</code> / <code>speed_max</code></td><td>float | null</td><td>&gt; 0</td>
+    <td>觀測範圍外推 25%</td>
+    <td><b>兩個都要給才生效</b>；只給一個會被忽略。<code>min ≥ max</code> 回 400</td></tr>
+<tr><td><code>temp_min</code> / <code>temp_max</code></td><td>float | null</td><td>—</td>
+    <td>觀測範圍外推 15%</td><td>同上</td></tr>
+<tr><td><code>pass_choices</code></td><td>array[int] | null</td><td>—</td>
+    <td>資料中出現過的前 6 種</td><td>要掃描的純化次數清單</td></tr>
+<tr><td><code>throughput_weight</code></td><td>float</td><td>0 ~ 1</td><td>0.0</td>
+    <td>產能權重。<code>0</code> = 純粹追求得料率；越大越偏好「快、少 pass」的條件</td></tr>
+<tr><td><code>zone_len_frac</code></td><td>float | null</td><td>0 &lt; x &lt; 1</td><td>各批中位數</td><td>熔區長度比</td></tr>
+</tbody>
+</table>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>speeds</code> / <code>temps</code> / <code>passes</code></td><td>三個軸的格點</td></tr>
+<tr><td><code>yield_grid</code></td><td>三維陣列，<code>yield_grid[p][t][v]</code> = 得料率。前端畫熱圖用</td></tr>
+<tr><td><code>in_range_grid</code></td><td>同形狀的布林陣列，標記哪些格點是外插。
+    <b>熱圖上應該把外插區畫成半透明或加斜線</b></td></tr>
+<tr><td><code>best</code></td><td>得料率最高的條件</td></tr>
+<tr><td><code>best_robust</code></td><td><b>通常這才是該採用的建議</b>：以悲觀估計最高者為準，
+    也就是「就算模型偏差到信賴區間的壞的那一端，表現仍然最好」的條件</td></tr>
+<tr><td><code>best_throughput</code></td><td>把產能一起考慮後的最佳解</td></tr>
+<tr><td><code>pass_advice</code></td><td>在最佳條件下的 pass 飽和分析</td></tr>
+<tr><td><code>n_evaluated</code> / <code>notes</code></td><td>評估過幾個格點、以及附註</td></tr>
+</tbody>
+</table>
+
+<p>每個建議（<code>best</code> 等）的結構：</p>
+
+<pre><code>{
+  "speed_mm_hr": 1.2, "temp_c": 192.0, "n_passes": 10,
+  "yield_nominal": 0.694, "yield_pessimistic": 0.628, "yield_optimistic": 0.741,
+  "in_training_range": true,
+  "throughput_mm_hr": 0.12,
+  "limiting_element": "Fe",
+  "rationale": "..."
+}</code></pre>
+
+<pre><code>curl -X POST http://127.0.0.1:8848/api/optimize/grid \
+     -H "Content-Type: application/json" \
+     -d '{"speed_min": 0.8, "speed_max": 6.0, "throughput_weight": 0.3}'</code></pre>
+
+<h3>6.3 <span class="tag good">POST</span> <code>/api/optimize/suggest</code></h3>
+
+<p>
+貝氏最佳化：<b>建議接下來該跑哪幾批實驗</b>。這與 6.2 節的網格掃描不同——
+網格掃描是「在目前模型下最好的條件」，這裡是「跑哪一批最能改善模型或找到更好的點」。
+</p>
+
+<table>
+<thead><tr><th>參數</th><th>型別</th><th>範圍</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>n_suggest</code></td><td>int</td><td>1 ~ 10</td><td>3</td><td>要建議幾批</td></tr>
+<tr><td><code>speed_min</code> / <code>speed_max</code></td><td>float | null</td><td>&gt; 0</td>
+    <td>觀測最小值 × 0.6（至少 0.3）／最大值 × 1.3</td><td>搜尋範圍</td></tr>
+<tr><td><code>temp_min</code> / <code>temp_max</code></td><td>float | null</td><td>—</td>
+    <td>觀測範圍 ± 5 °C</td><td>搜尋範圍</td></tr>
+<tr><td><code>pass_choices</code></td><td>array[int] | null</td><td>—</td>
+    <td>資料中出現過的值</td><td>可選的純化次數</td></tr>
+</tbody>
+</table>
+
+<p>資料庫沒有批次資料時回 400。</p>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>suggestions</code></td><td>每筆含 <code>rank</code>、<code>speed_mm_hr</code>、<code>temp_c</code>、
+    <code>n_passes</code>、<code>predicted_yield</code>、<code>predicted_std</code>、
+    <code>expected_improvement</code>、<code>rationale</code></td></tr>
+<tr><td><code>n_observations</code></td><td>用了幾筆有效觀測</td></tr>
+<tr><td><code>best_observed_yield</code></td><td>目前歷史最佳得料率</td></tr>
+<tr><td><code>model_r2</code></td><td>GP 對真實觀測的擬合度。失敗時為 <code>null</code></td></tr>
+<tr><td><code>notes</code></td><td>附註</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<b>少於 4 批就不給建議</b>
+回應會是空的 <code>suggestions</code> 加一則說明：「目前只有 N 批可用資料，
+少於 4 批時貝氏最佳化沒有意義。建議先用涵蓋速率範圍的篩選性實驗（screening DOE）
+跑 5~6 批，再切換到序列最佳化。」<b>這是刻意的拒絕，不是錯誤</b>——
+在 3 個點上做貝氏最佳化只是在放大雜訊。
+</div>
+
+<p>
+每筆建議的 <code>rationale</code> 會明說這一批的價值在哪：不確定度高於中位數的點
+「主要價值在縮小模型的未知區，即使結果不如預期也很有資訊量」；
+不確定度低的點則「主要價值在確認最佳點」。多筆建議之間用 kriging believer
+策略避免三個建議擠在同一個位置。
+</p>
+
+<pre><code>curl -X POST http://127.0.0.1:8848/api/optimize/suggest \
+     -H "Content-Type: application/json" -d '{"n_suggest": 3}'</code></pre>
+<pre><code>{
+  "suggestions": [
+    {"rank": 1, "speed_mm_hr": 0.94, "temp_c": 196.5, "n_passes": 12,
+     "predicted_yield": 0.702, "predicted_std": 0.061,
+     "expected_improvement": 0.0284,
+     "rationale": "模型預測得料率 70.2% ± 6.1%。此處不確定度高於中位數，這批的主要價值在**縮小模型的未知區**，即使結果不如預期也很有資訊量。"}
+  ],
+  "n_observations": 24, "best_observed_yield": 0.671, "model_r2": 0.83,
+  "notes": ["這些建議只影響「下一批做什麼實驗」，不影響任何已完成批次的分析結果。最終準確度來自真實實驗，不是模型猜的。"]
+}</code></pre>
+
+<h3>6.4 <span class="tag good">POST</span> <code>/api/optimize/doe-comparison</code></h3>
+
+<p>
+在「虛擬產線」上實際跑一遍全因子 DOE 與貝氏最佳化，比較兩者各需要幾批才能找到
+同樣好的條件——把「省多少批」實際算出來，而不是嘴上說。
+</p>
+
+<table>
+<thead><tr><th>參數</th><th>型別</th><th>範圍</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>factorial_speeds</code></td><td>int</td><td>2 ~ 8</td><td>4</td><td>全因子設計的速率水準數</td></tr>
+<tr><td><code>factorial_temps</code></td><td>int</td><td>2 ~ 8</td><td>3</td><td>溫度水準數</td></tr>
+<tr><td><code>pass_choices</code></td><td>array[int] | null</td><td>—</td><td>資料中的前 3 種</td><td>pass 水準</td></tr>
+<tr><td><code>bo_budget</code></td><td>int</td><td>4 ~ 60</td><td>12</td><td>貝氏最佳化的批次預算</td></tr>
+<tr><td><code>seed_n</code></td><td>int</td><td>2 ~ 20</td><td>5</td><td>貝氏最佳化的起始隨機批次數</td></tr>
+<tr><td><code>cost_per_batch</code></td><td>float</td><td>≥ 0</td><td>100000</td><td>單批成本，用來換算省下的金額</td></tr>
+</tbody>
+</table>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>factorial_n</code> / <code>factorial_best</code> / <code>factorial_trace</code></td>
+    <td>全因子跑了幾批、最佳結果、逐批的最佳值軌跡</td></tr>
+<tr><td><code>bo_n</code> / <code>bo_best</code> / <code>bo_trace</code></td><td>貝氏最佳化的同上三項</td></tr>
+<tr><td><code>bo_batches_to_match</code></td><td>貝氏最佳化跑到第幾批就追平全因子的最佳結果</td></tr>
+<tr><td><code>batches_saved</code> / <code>cost_saved</code></td><td>省下的批次數與金額</td></tr>
+<tr><td><code>notes</code></td><td>附註與前提說明</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<b>這是模擬，不是實測</b>
+「虛擬產線」是用目前的模型當成真值來回答查詢。所以這個對比展示的是
+<b>在模型描述的世界裡</b>貝氏最佳化能省多少批。它是一個有說服力的示意，
+但不能當成對真實產線的保證。跟客戶說明時要講清楚這個前提。
+內部錯誤會被包成 500 <code>HTTP_500</code>（訊息為「DOE 對比失敗」）。
+</div>
+
+<h2>7. AI 助理端點</h2>
+
+<p>前綴 <code>/api/assistant</code>。</p>
+
+<div class="box key">
+<b>LLM 不參與任何計算</b>
+這是整個架構最重要的一條界線。助理層（L5）能做的只有：呼叫既有的分析工具、
+拿到工具算出來的數字、把它組織成人話。它不會自己算 <code>k_eff</code>、
+不會自己估得料率、不會發明任何數字。所以「換一個模型」不會改變任何分析結論。
+</div>
+
+<h3>7.1 <span class="tag ok">GET</span> <code>/api/assistant/status</code></h3>
+
+<p>回報目前實際使用的 provider。<b>金鑰不會外洩，只回報有沒有設定。</b></p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>configured_provider</code></td><td>設定檔指定的 provider</td></tr>
+<tr><td><code>active_provider</code></td><td><b>實際生效</b>的：<code>anthropic</code> / <code>openai</code> / <code>template</code></td></tr>
+<tr><td><code>anthropic_key_present</code> / <code>openai_key_present</code></td><td>金鑰有沒有設定（布林，不回傳金鑰本身）</td></tr>
+<tr><td><code>model</code></td><td>使用的模型名稱；模板模式時為 <code>null</code></td></tr>
+<tr><td><code>degraded</code></td><td><code>true</code> 代表正在用本地模板模式</td></tr>
+<tr><td><code>note</code></td><td>白話說明目前狀態與如何切換</td></tr>
+</tbody>
+</table>
+
+<div class="box good">
+<b>沒有金鑰也能完整運作</b>
+未設定 API 金鑰時自動退回本地模板模式：介面照常運作、<b>數字完全正確</b>，
+只是措辭比較制式。這代表可以在完全離線、無外網的客戶端上部署整套系統。
+在 <code>.env</code> 填入 <code>EXPA_ANTHROPIC_API_KEY</code> 或
+<code>EXPA_OPENAI_API_KEY</code> 即可切換。
+</div>
+
+<h3>7.2 <span class="tag good">POST</span> <code>/api/assistant/chat</code></h3>
+
+<table>
+<thead><tr><th>參數</th><th>型別</th><th>限制</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>question</code></td><td>string</td><td>1 ~ 4000 字元</td><td><b>必填</b></td></tr>
+<tr><td><code>history</code></td><td>array</td><td>—</td><td><code>{role, content}</code> 的清單。
+    <b>只取最後 8 則</b>，且只接受 <code>role</code> 為 <code>user</code> / <code>assistant</code>
+    且 <code>content</code> 為字串的訊息，其餘靜默略過</td></tr>
+<tr><td><code>provider</code></td><td>string | null</td><td>—</td>
+    <td>單次覆寫 provider：<code>anthropic</code> / <code>openai</code> / <code>template</code>。
+        用來現場示範「換模型也不會改變數字」</td></tr>
+</tbody>
+</table>
+
+<table>
+<thead><tr><th>回應欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>answer</code></td><td>回答文字（繁體中文）</td></tr>
+<tr><td><code>provider</code></td><td>這次實際使用的 provider</td></tr>
+<tr><td><code>tools_used</code></td><td><b>呼叫了哪些分析工具</b>——這是可稽核性的關鍵，UI 應該顯示出來</td></tr>
+<tr><td><code>tool_results</code></td><td>各工具的原始回傳值，可以逐一核對答案裡的數字</td></tr>
+<tr><td><code>cited_batches</code></td><td>回答中引用到的批號</td></tr>
+<tr><td><code>turns</code></td><td>用了幾輪工具呼叫（上限 6 輪）</td></tr>
+<tr><td><code>degraded</code></td><td>是否為模板模式</td></tr>
+<tr><td><code>error</code></td><td>非空字串代表過程中出過問題但仍有降級輸出</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl -X POST http://127.0.0.1:8848/api/assistant/chat \
+     -H "Content-Type: application/json" \
+     -d '{"question": "純化次數做到第幾次之後就沒有意義了？"}'</code></pre>
+<pre><code>{
+  "answer": "結論：第 9 次之後效益已經很小...",
+  "provider": "anthropic",
+  "tools_used": ["get_overview", "get_pass_advice"],
+  "tool_results": [{"tool": "get_pass_advice", "result": {"recommended_passes": 9, ...}}],
+  "cited_batches": [], "turns": 2, "degraded": false, "error": ""
+}</code></pre>
+
+<div class="box warn">
+<b>回應時間取決於外部 API</b>
+呼叫外部 LLM 時，一次對話可能經過多輪工具呼叫，每輪都是一次網路往返。
+逾時預設 60 秒（<code>EXPA_LLM_TIMEOUT_S</code>）。這個端點<b>不適合設短逾時</b>。
+模板模式則是即時回應。
+</div>
+
+<h3>7.3 <span class="tag ok">GET</span> <code>/api/assistant/suggested-questions</code></h3>
+
+<p>
+給前端顯示的起手式問題清單。會依目前資料<b>動態帶入實際批次編號</b>——
+例如當資料庫裡有兩批以上時，會插入一題「{第二批} 的 Cu 為什麼比 {第一批} 差？」。
+</p>
+
+<pre><code>curl http://127.0.0.1:8848/api/assistant/suggested-questions
+→ {"questions": ["整體資料狀況如何？各元素的偏析可去除性排序是什麼？", ...]}</code></pre>
+
+<h2>8. 系統端點</h2>
+
+<h3>8.1 <span class="tag ok">GET</span> <code>/api/health</code></h3>
+
+<p>
+健康檢查。<b>會實際檢查依賴是否可用，不是只回 200。</b>
+</p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>ok</code></td><td>整體狀態。<b>資料庫或物理層任一失敗即為 <code>false</code></b>；
+    助理層失敗<b>不</b>影響（因為模板模式是可接受的降級）</td></tr>
+<tr><td><code>version</code></td><td>程式版本</td></tr>
+<tr><td><code>uptime_ms</code></td><td>啟動至今的毫秒數</td></tr>
+<tr><td><code>checks.database</code></td><td><code>{ok, n_batches, path}</code> — 實際查詢批次數，
+    順便回報資料庫檔案位置</td></tr>
+<tr><td><code>checks.physics</code></td><td><code>{ok}</code> — 實際建一個小的 profile grid，
+    確認數值層真的算得動</td></tr>
+<tr><td><code>checks.assistant</code></td><td><code>{ok, provider}</code> — 目前生效的 provider</td></tr>
+</tbody>
+</table>
+
+<pre><code>curl http://127.0.0.1:8848/api/health</code></pre>
+<pre><code>{
+  "ok": true, "version": "0.1.0", "uptime_ms": 84213,
+  "checks": {
+    "database": {"ok": true, "n_batches": 24, "path": "/opt/expa/data/expanalysis.db"},
+    "physics": {"ok": true},
+    "assistant": {"ok": true, "provider": "template"}
+  }
+}</code></pre>
+
+<h3>8.2 <span class="tag ok">GET</span> <code>/api/config</code></h3>
+
+<p>前端啟動時取得的執行期設定。<b>不含任何金鑰。</b></p>
+
+<table>
+<thead><tr><th>欄位</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><code>version</code></td><td>程式版本</td></tr>
+<tr><td><code>purity_threshold_ppm</code></td><td>6N 判定門檻（預設 1.0）</td></tr>
+<tr><td><code>default_elements</code></td><td>預設追蹤的元素清單（預設 Cu / Fe / Ni / Sn）</td></tr>
+<tr><td><code>residual_clip_frac</code></td><td>L1 殘差修正的幅度上限（預設 0.20，
+    即修正量不得超過物理預測的 ±20%）</td></tr>
+</tbody>
+</table>
+
+<h3>8.3 靜態資源</h3>
+
+<table>
+<thead><tr><th>路徑</th><th>內容</th></tr></thead>
+<tbody>
+<tr><td><code>/</code></td><td>網頁介面首頁</td></tr>
+<tr><td><code>/css/*</code>、<code>/js/*</code></td><td>前端資源</td></tr>
+<tr><td><code>/docs/</code></td><td>這份說明文件</td></tr>
+<tr><td><code>/api/docs</code></td><td>Swagger UI</td></tr>
+</tbody>
+</table>
+
+<p>
+靜態檔由同一個服務提供——離線單機部署不需要另外架 nginx，複製一個資料夾就能跑。
+非 <code>/api/</code> 路徑的 404 會走 Starlette 的預設處理（HTML 頁面），
+不會被包成 JSON 錯誤格式。
+</p>
+
+<h2>9. 效能與快取</h2>
+
+<h3>9.1 為什麼需要服務層快取</h3>
+
+<p>
+一次完整分析的組成成本大致是：擬合 80 組 <code>k_eff</code> 約 2~3 秒（含每組 300 次
+bootstrap）、GP 參數映射約 1 秒、LOBO 交叉驗證十幾秒。
+如果每個 HTTP 請求都重算，UI 會卡到不能用。
+</p>
+
+<h3>9.2 快取怎麼運作</h3>
+
+<div class="box key">
+<b>以「資料版本」為鍵</b>
+服務層維護一個內部版本號。<b>任何寫入操作都會讓版本前進，所有快取立刻失效。</b>
+所以不會出現「改了資料但畫面還是舊數字」這種問題，也不需要手動清快取。
+</div>
+
+<p>會讓快取失效的操作：</p>
+
+<ul>
+  <li><code>POST /api/batches/import</code>（<code>dry_run=false</code> 且匯入成功時）</li>
+  <li><code>POST /api/batches/seed-demo</code></li>
+  <li><code>DELETE /api/batches/{batch_id}</code></li>
+  <li><code>DELETE /api/batches</code></li>
+</ul>
+
+<p>
+快取分兩層：主分析結果（<code>k_eff</code> 擬合、映射、異常、殘差修正器）一份，
+LOBO 驗證結果另一份。兩者都以同一個版本號為鍵。
+重算在鎖內進行，所以兩個並行請求不會同時觸發同一份昂貴計算——
+第二個會等第一個算完直接拿結果。
+</p>
+
+<div class="box good">
+<b>一致性保證</b>
+所有端點共用同一份分析結果。這代表<b>使用者在不同頁面之間切換，不會看到兩組不同的數字</b>——
+儀表板上的 <code>k_eff</code> 中位數與 <code>k_eff</code> 表格裡算出來的一定一致。
+這聽起來理所當然，但如果每個端點各自重算，浮點運算與隨機種子的差異會讓數字對不起來，
+而客戶一定會發現。
+</div>
+
+<h3>9.3 各端點的成本</h3>
+
+<table>
+<thead><tr><th>端點</th><th>首次呼叫</th><th>快取命中</th><th>備註</th></tr></thead>
+<tbody>
+<tr><td><code>/api/health</code>、<code>/api/config</code></td><td>&lt; 10 ms</td><td>—</td><td>不觸發分析</td></tr>
+<tr><td><code>/api/batches/template.csv</code></td><td>&lt; 10 ms</td><td>—</td><td>純字串產生</td></tr>
+<tr><td><code>/api/analysis/overview</code></td><td><b>數秒</b></td><td>&lt; 50 ms</td><td>觸發完整分析</td></tr>
+<tr><td><code>/api/batches</code>、<code>/api/batches/{id}</code></td><td>數秒</td><td>10~100 ms</td>
+    <td>需要分析結果才能算得料率</td></tr>
+<tr><td><code>/api/analysis/keff</code>、<code>/mapping</code>、<code>/anomalies</code></td><td>數秒</td><td>&lt; 50 ms</td>
+    <td>同上</td></tr>
+<tr><td><code>/api/analysis/validation</code></td><td><b>十幾秒以上</b></td><td>&lt; 10 ms</td>
+    <td>最慢的端點，有獨立快取</td></tr>
+<tr><td><code>/api/analysis/censoring-study</code></td><td><b>數秒至數十秒</b></td><td>—</td>
+    <td><b>沒有快取</b>，每次都重跑三種擬合</td></tr>
+<tr><td><code>/api/simulate</code></td><td>數秒</td><td>&lt; 100 ms</td><td>模擬本身很快，成本在前置分析</td></tr>
+<tr><td><code>/api/optimize/grid</code></td><td>數秒 + 掃描</td><td>掃描時間</td>
+    <td><b>結果不快取</b>，格點數越多越慢</td></tr>
+<tr><td><code>/api/optimize/doe-comparison</code></td><td><b>可能很久</b></td><td>—</td>
+    <td>要跑完整的 DOE 與 BO 兩條模擬路徑</td></tr>
+<tr><td><code>/api/assistant/chat</code></td><td>數秒至數十秒</td><td>—</td><td>取決於外部 LLM API</td></tr>
+</tbody>
+</table>
+
+<h3>9.4 前端的建議做法</h3>
+
+<ol>
+  <li><b>啟動時先打 <code>/api/config</code> 與 <code>/api/health</code></b>。兩者都很快，
+      可以立刻決定要不要顯示「資料庫是空的」引導畫面。</li>
+  <li><b>把第一次的重運算擺在一個明確的位置</b>。例如進入儀表板時就呼叫
+      <code>/api/analysis/overview</code> 並顯示載入狀態，之後所有頁面都是快取命中。
+      不要讓使用者在一個看起來很輕的操作上等 5 秒。</li>
+  <li><b>寫入之後主動重取</b>。匯入成功後快取已經失效，下一次查詢會重算——
+      請顯示載入狀態，不要讓畫面靜止不動。</li>
+  <li><b><code>/api/analysis/validation</code> 與 <code>/doe-comparison</code> 一定要有進度指示</b>，
+      而且不要在頁面載入時自動觸發，改成使用者主動點擊。</li>
+  <li><b>看 <code>X-Response-Time-Ms</code></b>。開發時把它印在 console，很容易發現
+      哪個操作意外觸發了重運算。</li>
+</ol>
+
+<h2>10. 已知限制與注意事項</h2>
+
+<table>
+<thead><tr><th>項目</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td>無認證</td><td>設計前提是單機 <code>127.0.0.1</code>。改綁 <code>0.0.0.0</code> 等於公開所有寫入端點</td></tr>
+<tr><td>無速率限制</td><td>連續呼叫重運算端點會把 CPU 吃滿</td></tr>
+<tr><td>上傳先讀後檢</td><td>20 MB 上限是在整個檔案讀進記憶體之後才檢查的</td></tr>
+<tr><td><code>temp_c</code> 下限為 0</td><td><code>/api/simulate</code> 接受 0 °C，但銦熔點是 156.6 °C。
+    參數合法不代表結果有物理意義</td></tr>
+<tr><td><code>pass-advice</code> 的頭端切除寫死 0.03</td><td>沒有沿用各批的實際 <code>head_crop_frac</code></td></tr>
+<tr><td><code>keff_cache</code> 資料表未被使用</td><td>資料庫有這張表、資料存取層也有讀寫方法，
+    但服務層走的是記憶體快取。<b>重啟服務後第一次分析必然要重算</b></td></tr>
+<tr><td>序列化的兜底</td><td>JSON 序列化時遇到未知型別會直接轉成字串（<code>default=str</code>），
+    不會報錯。所以如果看到某個欄位莫名其妙變成字串，是這裡吃掉的</td></tr>
+<tr><td>健康檢查的例外捕捉不完整</td><td>資料庫檢查只捕捉 <code>RuntimeError</code> 與
+    <code>OSError</code>，但 <code>sqlite3</code> 的例外兩者皆非。資料庫檔案損毀時，
+    <code>/api/health</code> 會回 500 而不是預期的「<code>ok: false</code> 加上錯誤說明」</td></tr>
+</tbody>
+</table>
+
+<blockquote>
+本系統為離線決策輔助工具，所有端點都只讀寫本機資料與計算模型，
+<b>不參與任何設備控制</b>。任何參數建議都必須經過製程工程師確認後才進產線。
+</blockquote>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>

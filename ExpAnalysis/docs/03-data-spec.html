@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>資料規格書 — ExpAnalysis 說明文件</title>
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<main>
+<div class="toolbar"><span class="sp"></span></div>
+
+<h1>03 · 資料規格書</h1>
+<p class="lede">
+這份文件定義 ExpAnalysis 吃什麼資料、怎麼檢查、存在哪裡，以及——最重要的——
+<b>開案前一定要跟客戶問清楚哪些事</b>。本專案的成敗有八成落在這份規格上，
+不在模型上。請把這頁當成與客戶開第一次資料會議時的檢查清單。
+</p>
+
+<h2>1. 為什麼資料規格比模型重要</h2>
+
+<p>
+在偏析純化這種「物理有解析解、批次數只有幾十批」的題目上，模型其實不是瓶頸。
+區域熔煉（zone refining）的濃度分布有 Pfann 方程可算，整條曲線只用一個參數
+<code>k_eff</code> 就能描述。把 <code>k_eff</code> 擬出來是毫秒級的事，程式碼不到兩百行。
+</p>
+
+<p>
+真正會讓專案翻車的是資料本身。P1 階段最常見的失敗模式不是「模型不準」，而是
+<b>「資料根本對不齊」</b>：
+</p>
+
+<ul>
+  <li>取樣位置用 mm 記錄，但每批錠長不一樣，於是「距頭端 50 mm」在不同批次代表完全不同的物理位置。</li>
+  <li>頭尾切除量沒記錄，客戶送驗的「頭端第一點」其實已經是切掉 30 mm 之後的位置。</li>
+  <li>進料濃度 <code>C0</code> 沒量，於是曲線沒有基準線，<code>k_eff</code> 與 <code>C0</code> 一起浮動、彼此補償。</li>
+  <li>低於檢測極限的測值被人工填成 <code>0</code> 或空白，頭端看起來完美無瑕。</li>
+</ul>
+
+<div class="box bad">
+<b>這些錯誤最可怕的地方是「不會報錯」</b>
+資料照樣能算，圖照樣能畫，<code>k_eff</code> 照樣會出現一個好看的數字。錯誤會一路無聲地
+傳到最佳化建議，最後變成一句「建議把速率降到 1.2 mm/hr」交給產線——而那個建議是錯的。
+所以匯入層必須<b>寧可擋下來，也不要猜</b>。
+</div>
+
+<p>
+本系統的匯入策略是 <b>「寬鬆輸入、嚴格檢核」</b>：欄位名稱可以是中文、英文、大小寫混雜、
+帶底線或空格，系統會盡量認出來；但單位與物理一致性一律嚴格檢查，不合格就明確擋下，
+並告訴你<b>哪一列、為什麼</b>。
+</p>
+
+<h2>2. 資料的形狀：長格式表格</h2>
+
+<p>
+系統接受 <b>長格式（long format）</b> 表格，一列代表<b>一個取樣點的一個元素</b>。
+如果一支錠上取 8 個位置、每個位置驗 4 種元素，那就是 32 列。
+</p>
+
+<div class="box key">
+<b>為什麼不用寬格式？</b>
+實驗室報告常見的寬格式是「一列一個取樣點，Cu / Fe / Ni / Sn 各佔一欄」。這種格式
+在元素數量改變時整張表的結構就得跟著改，而且沒有地方擺「這個元素的 LOD 是多少」。
+長格式讓每一筆量測都自帶完整脈絡（哪批、哪個元素、什麼位置、LOD 多少），程式與人
+都好處理。從寬格式轉長格式在 Excel 是一次樞紐分析的事，值得做。
+</div>
+
+<p>
+一列中同時包含兩種層級的資訊：
+</p>
+
+<ul>
+  <li><b>批次層級</b>（<code>ingot_len_mm</code>、<code>zone_len_mm</code>、<code>speed_mm_hr</code>、<code>temp_c</code>、
+      <code>n_passes</code>、<code>atmosphere</code>、<code>head_crop_frac</code>…）：同一個 <code>batch_id</code>
+      的每一列都必須填一樣的值。系統會檢查，不一致就擋下。</li>
+  <li><b>取樣層級</b>（<code>x_norm</code> 或 <code>x_mm</code>、<code>element</code>、<code>value_ppm</code>、
+      <code>lod_ppm</code>、<code>censored</code>、<code>c0_ppm</code>）：每列各自不同。</li>
+</ul>
+
+<p>
+批次層級欄位重複填寫看起來很冗贅，但這是刻意的：它讓一個 CSV 檔就是一份自足的資料集，
+不需要另外維護一張「批次條件表」再靠 join 對起來——而 join 對不起來正是資料出錯的
+主要來源之一。
+</p>
+
+<h2>3. 完整欄位表</h2>
+
+<h3>3.1 批次層級欄位</h3>
+
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>單位</th><th>必填</th><th>預設</th><th>說明與常見錯誤</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>batch_id</code></td><td>字串</td><td>—</td><td><span class="tag bad">必填</span></td><td>—</td>
+  <td>批次唯一識別碼，例如 <code>IN-2501</code>。<b>常見錯誤</b>：同一批在不同檔案寫成
+      <code>IN-2501</code> 與 <code>IN2501</code>，系統會當成兩批。匯入前請統一格式。</td>
+</tr>
+<tr>
+  <td><code>run_date</code></td><td>字串</td><td>ISO 8601</td><td>選填</td><td><code>""</code></td>
+  <td>實驗日期，只取前 10 個字元（<code>YYYY-MM-DD</code>）。用於排序與趨勢檢視，不參與計算。
+      <b>常見錯誤</b>：Excel 把日期存成序號 <code>45678</code>；匯出 CSV 前請先設成文字格式。</td>
+</tr>
+<tr>
+  <td><code>ingot_len_mm</code></td><td>浮點</td><td>mm</td><td>選填<sup>*</sup></td><td><code>500.0</code></td>
+  <td>錠長 <i>L</i>。若用 <code>x_mm</code> 記錄取樣位置則<b>此欄變成必填</b>，因為要靠它換算 x/L。
+      <b>常見錯誤</b>：填成 cm（<code>50</code>）或 m（<code>0.5</code>），會讓 x/L 超出 [0,1] 而被擋下——
+      這個檢查就是為了抓這類單位錯誤。</td>
+</tr>
+<tr>
+  <td><code>zone_len_mm</code></td><td>浮點</td><td>mm</td><td>選填</td><td><code>50.0</code></td>
+  <td>熔區長度 <i>l</i>。物理模型真正需要的是無因次的 <code>l/L</code>，系統會自動換算。
+      必須滿足 <code>0 &lt; l &lt; L</code>。<b>這是本專案最重要、卻最常沒被量的變數</b>，見第 12 節。</td>
+</tr>
+<tr>
+  <td><code>speed_mm_hr</code></td><td>浮點</td><td>mm/hr</td><td><span class="tag bad">必填</span></td><td>—</td>
+  <td>熔區移動速率 <i>v</i>，必須為正。<b>常見錯誤</b>：填 mm/min 或 mm/s。差 60 倍或 3600 倍
+      不會被自動抓出來（數值仍然是正的），只會讓 (v, T) → k_eff 的映射整個偏掉。
+      <b>請在匯入前確認單位。</b></td>
+</tr>
+<tr>
+  <td><code>temp_c</code></td><td>浮點</td><td>°C</td><td>選填</td><td><code>0.0</code></td>
+  <td>熔區溫度 <i>T</i>。注意：<b>系統對此欄不做範圍檢查</b>，沒填就是 0 °C，而 0 °C 會被
+      當成一個合法的實驗條件送進參數映射。銦熔點 156.6 °C，任何低於它的值都不合物理，
+      請務必填寫。另見第 12 節關於「量的是加熱器設定值還是熔體溫度」的討論。</td>
+</tr>
+<tr>
+  <td><code>n_passes</code></td><td>整數</td><td>次</td><td>選填</td><td><code>1</code></td>
+  <td>熔區通過次數（pass）。必須 ≥ 1。<b>常見錯誤</b>：把「跑了 3 天」記成 3；
+      pass 次數是熔區從頭掃到尾的完整趟數。</td>
+</tr>
+<tr>
+  <td><code>atmosphere</code></td><td>字串</td><td>—</td><td>選填</td><td><code>Ar</code></td>
+  <td>氣氛：<code>Ar</code> / <code>Vacuum</code> / <code>N2</code> / <code>Air</code>。目前不參與計算，
+      但會保留下來供異常分析時對照——氧化皮夾帶雜質是 In 純化的已知風險，見第 12 節。</td>
+</tr>
+<tr>
+  <td><code>head_crop_frac</code></td><td>浮點</td><td>比例</td><td>選填</td><td><code>0.0</code></td>
+  <td>頭端固定切除比例，範圍 <code>[0, 0.5)</code>。例如 500 mm 錠固定切掉頭端 15 mm 就填
+      <code>0.03</code>。<b>直接影響得料率計算</b>：得料率是「從頭端切除點算起連續合格的長度
+      佔全錠比例」，沒記錄這個數字，得料率就會系統性高估。</td>
+</tr>
+<tr>
+  <td><code>analysis_method</code></td><td>字串</td><td>—</td><td>選填</td><td><code>GDMS</code></td>
+  <td>分析方法：<code>GDMS</code> / <code>ICP-MS</code>。不同方法的 LOD 差一個數量級以上，
+      混用而不標註會讓設限點的處理失去意義。</td>
+</tr>
+<tr>
+  <td><code>feed_purity_note</code><br><code>operator</code><br><code>notes</code></td>
+  <td>字串</td><td>—</td><td>選填</td><td><code>""</code></td>
+  <td>自由備註欄位。資料庫有欄位、API 會回傳，但目前的 CSV 匯入器不解析這三欄
+      （只能透過程式或 SQL 寫入）。適合記錄「這批進料是 A 廠回收料」這類脈絡。</td>
+</tr>
+</tbody>
+</table>
+
+<p><sup>*</sup> 「選填」指的是 CSV 可以不放這一欄；但如同說明所述，某些欄位不填會讓結果失去意義。</p>
+
+<h3>3.2 取樣層級欄位</h3>
+
+<table>
+<thead><tr><th>欄位</th><th>型別</th><th>單位</th><th>必填</th><th>說明與常見錯誤</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>x_norm</code></td><td>浮點</td><td>無因次</td>
+  <td><span class="tag warn">擇一</span></td>
+  <td>歸一化取樣位置 x/L，<code>0</code> = 頭端（先凝固、最乾淨），
+      <code>1</code> = 尾端（雜質濃縮區）。必須落在 <code>[0, 1]</code>。
+      <code>x_norm</code> 與 <code>x_mm</code> <b>至少要有一個</b>；兩欄都有時
+      <b>以 <code>x_norm</code> 為準</b>，<code>x_mm</code> 只在 <code>x_norm</code> 空白時才用。</td>
+</tr>
+<tr>
+  <td><code>x_mm</code></td><td>浮點</td><td>mm</td><td><span class="tag warn">擇一</span></td>
+  <td>距頭端的實際距離。系統換算 <code>x_norm = x_mm / ingot_len_mm</code>。
+      <b>常見錯誤</b>：<code>x_mm</code> 是從尾端量的、或是從「切除頭端之後」量的。
+      這兩種都會讓整條曲線左右顛倒或平移，異常偵測層通常抓得到（殘差會呈現
+      前半全正、後半全負的結構性形狀），但最好在來源就講清楚。</td>
+</tr>
+<tr>
+  <td><code>element</code></td><td>字串</td><td>—</td><td><span class="tag bad">必填</span></td>
+  <td>元素符號，例如 <code>Cu</code>、<code>Fe</code>、<code>Ni</code>、<code>Sn</code>。
+      <b>大小寫敏感</b>：<code>CU</code> 與 <code>Cu</code> 會被當成兩個不同元素。
+      系統不限制元素種類，預設追蹤名單只影響前端顯示順序。</td>
+</tr>
+<tr>
+  <td><code>value_ppm</code></td><td>浮點或字串</td><td>ppm（質量比）</td><td><span class="tag bad">必填</span></td>
+  <td>該點該元素的濃度。不可為負。支援 <code>&lt;0.05</code> 這種帶小於號的字串寫法，見第 6 節。
+      <b>常見錯誤</b>：混用 ppm 與 ppb（差 1000 倍）、或用 wt% 表示。</td>
+</tr>
+<tr>
+  <td><code>lod_ppm</code></td><td>浮點</td><td>ppm</td><td>選填</td>
+  <td>該次分析對該元素的檢測極限。<b>強烈建議每一列都填</b>，即使該點沒有設限——
+      有 LOD 才知道「這個 0.42 ppm 到底離測不到有多遠」。無法解析時視為 0 並發出警告。</td>
+</tr>
+<tr>
+  <td><code>censored</code></td><td>布林</td><td>—</td><td>選填</td>
+  <td>是否為低於檢測極限的測值。接受 <code>1 / true / yes / y / t / 是</code>（不分大小寫），
+      其餘一律視為 <code>false</code>。</td>
+</tr>
+<tr>
+  <td><code>c0_ppm</code></td><td>浮點</td><td>ppm</td><td>選填</td>
+  <td>該批該元素的<b>進料</b>濃度。同一批同一元素只要填一次（填在每一列也可以，
+      系統取最後一個有效值）。必須 &gt; 0 才會被採用。沒填的後果見第 7 節。</td>
+</tr>
+<tr>
+  <td><code>pass_index</code><br><code>sample_id</code></td><td>整數 / 字串</td><td>—</td><td>選填</td>
+  <td>資料模型與資料庫有這兩欄（前者用於「同一批在不同 pass 之後都有取樣」的情境，
+      後者記錄樣品編號），但目前 CSV 匯入器不解析它們。</td>
+</tr>
+</tbody>
+</table>
+
+<h2>4. 欄位別名對照表</h2>
+
+<p>
+客戶不會照我們的欄位名稱給資料。匯入器在比對前會先做正規化：
+<b>移除空白、底線、連字號、括號、斜線，再轉小寫</b>。所以
+<code>Speed (mm/hr)</code>、<code>speed_mm_hr</code>、<code>SPEEDMMHR</code> 都會被認成同一個欄位。
+在此基礎上，還接受以下別名：
+</p>
+
+<table>
+<thead><tr><th>正規欄名</th><th>可接受的別名</th></tr></thead>
+<tbody>
+<tr><td><code>batch_id</code></td><td><code>batchid</code>、<code>batch</code>、<code>lot</code>、<code>lotid</code>、批次、批號、批次編號</td></tr>
+<tr><td><code>run_date</code></td><td><code>date</code>、<code>rundate</code>、日期、實驗日期</td></tr>
+<tr><td><code>ingot_len_mm</code></td><td><code>ingotlength</code>、<code>ingotlen</code>、<code>llength</code>、錠長、錠長mm、<code>l</code></td></tr>
+<tr><td><code>zone_len_mm</code></td><td><code>zonelength</code>、<code>zonelen</code>、熔區長度、熔區長</td></tr>
+<tr><td><code>speed_mm_hr</code></td><td><code>speed</code>、<code>v</code>、<code>zonespeed</code>、<code>rate</code>、移動速率、速率、熔區移動速率</td></tr>
+<tr><td><code>temp_c</code></td><td><code>temp</code>、<code>temperature</code>、<code>t</code>、溫度、熔區溫度</td></tr>
+<tr><td><code>n_passes</code></td><td><code>passes</code>、<code>npass</code>、<code>pass</code>、純化次數、次數</td></tr>
+<tr><td><code>atmosphere</code></td><td><code>atm</code>、<code>gas</code>、氣氛</td></tr>
+<tr><td><code>head_crop_frac</code></td><td><code>headcrop</code>、頭端切除、頭端切除比例</td></tr>
+<tr><td><code>analysis_method</code></td><td><code>method</code>、分析方法</td></tr>
+<tr><td><code>x_mm</code></td><td><code>position</code>、<code>positionmm</code>、<code>x</code>、距頭端、取樣位置mm</td></tr>
+<tr><td><code>x_norm</code></td><td><code>xnorm</code>、<code>xoverl</code>、<code>positionfrac</code>、歸一化位置、位置分率</td></tr>
+<tr><td><code>element</code></td><td><code>el</code>、<code>impurity</code>、元素、雜質元素</td></tr>
+<tr><td><code>value_ppm</code></td><td><code>value</code>、<code>ppm</code>、<code>conc</code>、<code>concentration</code>、濃度、含量</td></tr>
+<tr><td><code>lod_ppm</code></td><td><code>lod</code>、<code>dl</code>、<code>detectionlimit</code>、檢測極限</td></tr>
+<tr><td><code>censored</code></td><td><code>iscensored</code>、<code>belowlod</code>、低於檢測極限</td></tr>
+<tr><td><code>c0_ppm</code></td><td><code>c0</code>、<code>feedppm</code>、<code>initialppm</code>、進料濃度、初始濃度</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<b>單字母別名要小心</b>
+<code>l</code>、<code>v</code>、<code>t</code>、<code>x</code> 都是有效別名。如果客戶的表裡剛好有一欄叫
+<code>T</code> 但代表的是「時間」，它會被誤認成溫度；一欄叫 <code>V</code> 但代表「體積」，
+會被誤認成速率。<b>匯入後請務必先看一眼批次列表的參數是否合理</b>，或先用
+<code>dry_run</code> 模式試跑（見第 11 節）。別名比對是為了方便，不是為了取代人眼確認。
+</div>
+
+<h2>5. 取樣位置一律正規化成 x/L</h2>
+
+<p>
+系統內部只認 <code>x_norm</code>（x/L），<code>x_mm</code> 進來就立刻換算掉。理由有三個：
+</p>
+
+<h3>5.1 物理方程本身就是無因次的</h3>
+
+<p>
+Pfann 的區域熔煉解描述的是「凝固分率」與濃度的關係。方程裡出現的是 <code>x/L</code> 和
+<code>l/L</code>，不是 mm。用 mm 表達等於在方程外面掛一個隨批次變動的換算因子，只會製造錯誤。
+</p>
+
+<div class="eq">
+C(x)/C₀ = 1 − (1 − k) · exp( −k · x / l )
+<span class="note">
+單趟熔煉的 Pfann 解（x 為距頭端距離、l 為熔區長度）。整條曲線只由一個參數 k 決定；
+把 x 與 l 都除以 L 之後，方程完全無因次化。這正是「一條曲線壓成一個可解釋參數」
+之所以可行的原因。
+</span>
+</div>
+
+<h3>5.2 批次之間才可比較</h3>
+
+<p>
+試量產階段錠長常常會變（500 mm 試片、800 mm 正式錠）。用 mm 記錄的話，
+「距頭端 100 mm」在 500 mm 錠是 x/L = 0.2、在 800 mm 錠是 0.125，物理意義完全不同。
+歸一化之後，所有批次的曲線可以疊在同一張圖上直接比較。
+</p>
+
+<h3>5.3 單位錯誤會自己現形</h3>
+
+<p>
+匯入器檢查 <code>0 ≤ x/L ≤ 1</code>。如果客戶把錠長填成 cm 而取樣位置填成 mm，
+算出來的 x/L 會是 10 之類的值，當場被擋下並提示「常見原因是 x_mm 與錠長單位不一致」。
+這個檢查抓到的錯誤比它擋掉的合法資料多得多。
+</p>
+
+<div class="box key">
+<b>頭端的定義</b>
+<code>x/L = 0</code> 是<b>先凝固的那一端</b>，也就是最乾淨的那一端；<code>x/L = 1</code> 是
+最後凝固的尾端，雜質濃縮在這裡。如果客戶的取樣編號是從尾端開始編的，請在匯入前轉換，
+不要靠模型「自己看出來」——雖然異常偵測層確實抓得到（殘差會出現前半全正、後半全負
+的結構性形狀），但那是最後一道防線，不是第一道。
+</div>
+
+<h2>6. 左設限資料（LOD）的三種寫法</h2>
+
+<p>
+在 6N 純度（總雜質 &lt; 1 ppm）的世界裡，很多測值會是「<code>&lt; 0.05 ppm</code>」——
+儀器測不到。<b>這不是一個數字，是一個不等式。</b>統計上稱為<b>左設限（left-censored）資料</b>：
+真值落在 <code>[0, LOD]</code> 區間內，你只知道它比 LOD 小，不知道小多少。
+</p>
+
+<div class="box key">
+<b>給軟體工程師的類比</b>
+就像 log 裡寫 <code>response_time: TIMEOUT (&gt;30s)</code>。統計平均值時把它當成 30 秒會低估，
+當成 0 更荒謬——你只知道「至少 30 秒」。設限資料是同一回事，方向相反。
+</div>
+
+<p>三種常見的處理方式，只有一種是對的：</p>
+
+<table>
+<thead><tr><th>處理方式</th><th>後果</th><th>評價</th></tr></thead>
+<tbody>
+<tr><td>當成 <code>0</code></td><td>頭端看起來完美無瑕，擬合出來的 <code>k_eff</code> 被<b>低估</b>（純化效果看起來比實際好）</td><td><span class="tag bad">錯</span></td></tr>
+<tr><td>當成 <code>LOD</code></td><td>頭端看起來偏髒，<code>k_eff</code> 被<b>高估</b>（純化效果看起來比實際差）</td><td><span class="tag bad">錯</span></td></tr>
+<tr><td>Tobit likelihood</td><td>告訴擬合程式「這點的真值落在 <code>[0, LOD]</code> 之間」，讓它自己算機率</td><td><span class="tag good">正確</span></td></tr>
+</tbody>
+</table>
+
+<p>
+系統一律採用第三種。<code>/api/analysis/censoring-study</code> 端點會用同一份資料把三種
+做法各跑一次，把偏移量實際算給你看——這是說服客戶（以及說服工程師自己）
+最有力的證據之一。
+</p>
+
+<h3>6.1 三種輸入寫法</h3>
+
+<p>三種寫法在系統內完全等價，會被標記成同一件事（<code>censored = true</code> 並保留 <code>lod_ppm</code>）：</p>
+
+<h4>寫法 A：字串帶小於號（最推薦）</h4>
+<pre><code>batch_id,x_mm,element,value_ppm,lod_ppm
+IN-2501,25,Cu,&lt;0.05,0.05</code></pre>
+<p>
+最貼近實驗室報告原貌，也最不容易在傳遞過程中失真。允許小於號後面有空白
+（<code>&lt; 0.05</code> 也可以）。</p>
+
+<h4>寫法 B：數值 + censored 旗標</h4>
+<pre><code>batch_id,x_mm,element,value_ppm,lod_ppm,censored
+IN-2501,25,Cu,0.05,0.05,1</code></pre>
+<p>
+適合從 LIMS 系統匯出、旗標本來就是獨立欄位的情況。
+<code>censored</code> 欄接受 <code>1 / true / yes / y / t / 是</code>。</p>
+
+<h4>寫法 C：數值 ≤ LOD（自動判定）</h4>
+<pre><code>batch_id,x_mm,element,value_ppm,lod_ppm
+IN-2501,25,Cu,0.03,0.05</code></pre>
+<p>
+只要有填 <code>lod_ppm</code> 且 <code>lod_ppm &gt; 0</code>，系統就會檢查
+<code>value_ppm ≤ lod_ppm</code>，成立就自動標記為設限。</p>
+
+<div class="box warn">
+<b>寫法 C 的邊界行為</b>
+判定條件是 <code>≤</code> 而不是 <code>&lt;</code>，所以一個「剛好等於 LOD」的<b>真實測值</b>
+也會被判成設限。實務上這個差別可以忽略（測值恰好等於 LOD 本來就代表在偵測邊緣），
+但如果你的資料裡這種情況很多，請改用寫法 A 或 B 明確標註。
+</div>
+
+<h3>6.2 沒填 LOD 會怎樣</h3>
+
+<p>
+如果某列被標記為設限（不論用哪種寫法）但 <code>lod_ppm</code> 是空的或 0，系統會：
+</p>
+
+<ol>
+  <li>拿該列的 <code>value_ppm</code> 當作 LOD；若連 <code>value_ppm</code> 也是 0，退而使用 <code>0.001 ppm</code>。</li>
+  <li>發出警告：<code>第 N 列：標記為低於檢測極限但未提供 lod_ppm，以測值 X ppm 作為 LOD。建議補上實際 LOD。</code></li>
+</ol>
+
+<p>
+這是<b>降級行為，不是正確答案</b>。LOD 決定了設限點在 likelihood 中的權重，猜錯會直接
+影響 <code>k_eff</code>。請跟實驗室要每個元素、每種分析方法的實際 LOD，這通常是一張現成的表。
+</p>
+
+<h2>7. C0（進料濃度）：推估方式與它的偏差</h2>
+
+<p>
+<code>C0</code> 是純化前的進料濃度，是整條曲線的基準線。物理模型算的是
+<code>C(x)/C0</code> 這個比值，沒有 <code>C0</code> 就沒有比值。
+</p>
+
+<h3>7.1 沒提供時怎麼辦</h3>
+
+<p>
+匯入時若某批某元素沒有 <code>c0_ppm</code>，系統會用一個物理論證來推估：
+<b>偏析純化不會消滅雜質，只是把它重新分布</b>——熔區掃過去，雜質被推向尾端，
+但總量守恆。所以<b>全錠平均濃度 ≈ C0</b>。
+</p>
+
+<div class="eq">
+Ĉ₀ = [ ∫ C(x) dx ] / (x<sub>max</sub> − x<sub>min</sub>)
+<span class="note">
+實作為取樣點之間的梯形積分，再除以取樣點涵蓋的長度。注意分母不是全錠長度 1，
+而是實際取樣涵蓋的區間——這正是偏差的來源。
+</span>
+</div>
+
+<p>推估出來的 <code>C0</code> 會被標記 <code>c0_measured = false</code>，UI 上會明確顯示為推估值。</p>
+
+<h3>7.2 為什麼這個推估一定會低估</h3>
+
+<p>兩個原因疊在一起，方向相同：</p>
+
+<ul>
+  <li><b>取樣點不涵蓋尾端尖峰。</b>尾端是雜質濃縮區，濃度可能比頭端高兩三個數量級。
+      而尾端通常已經切掉不送驗（合成資料的預設是最後 8% 不取樣），所以積分漏掉了
+      貢獻最大的那一段。</li>
+  <li><b>取樣點通常偏向頭端。</b>工程師關心的是「合格區有多長」，自然在頭端多取幾點。
+      加權平均因此偏向低濃度區。</li>
+</ul>
+
+<p>
+低估 <code>C0</code> 的後果是：模型會認為「進料本來就沒那麼髒」，於是把觀測到的純化效果
+歸因於較差的偏析能力，<code>k_eff</code> 被<b>高估</b>。更麻煩的是，在擬合時 <code>C0</code> 與
+<code>k</code> 有部分共線性（兩者都能讓曲線上下平移），擬合器雖然允許 <code>C0</code> 在
+<code>[1/3, 3]</code> 倍的範圍內浮動來補償，但這只是把不確定度攤開，不會憑空生出資訊。
+</p>
+
+<div class="box bad">
+<b>C0 必須量，這件事沒有替代方案</b>
+一批進料取一個代表性樣品送驗，成本相對於一次純化實驗微不足道，但它決定了整批資料
+能不能用。請在開案時就把「每批進料留樣送驗」寫進 SOP。如果客戶說「進料都是同一批
+回收料，應該一樣」——請他至少量三次確認批間變異，實務上回收料的變異通常不小
+（合成資料模型假設的批間變異係數是 10%）。
+</div>
+
+<h2>8. 完整的驗證規則清單</h2>
+
+<p>
+匯入器把問題分成兩級。這個分級的原則是：<b>會讓結論錯掉的是 error，
+會讓結論變弱的是 warning。</b>
+</p>
+
+<h3>8.1 Error — 擋下整份匯入</h3>
+
+<div class="box bad">
+<b>只要有任何一個 error，整份檔案都不會寫入資料庫。</b>
+這是刻意的「全有全無」語意：部分匯入會留下一個半殘的資料集，比完全沒匯入更難除錯。
+報告會列出所有 error（不是只有第一個），方便一次修完。
+</div>
+
+<table>
+<thead><tr><th>#</th><th>檢查</th><th>訊息與理由</th></tr></thead>
+<tbody>
+<tr><td>E1</td><td>缺少必要欄位</td>
+    <td><code>batch_id</code>、<code>element</code>、<code>value_ppm</code> 三者缺一即中止，連逐列檢查都不做。</td></tr>
+<tr><td>E2</td><td>沒有取樣位置</td>
+    <td><code>x_norm</code> 與 <code>x_mm</code> 都沒有 → 中止。沒有位置的濃度值無法擬合曲線。</td></tr>
+<tr><td>E3</td><td><code>batch_id</code> 為空</td><td>空字串或 <code>nan</code> 都不接受。</td></tr>
+<tr><td>E4</td><td>製程參數無法解析</td><td>任一數值欄位不是數字（例如填了「約 2」）。</td></tr>
+<tr><td>E5</td><td>錠長 ≤ 0</td><td>錠長必須為正數。</td></tr>
+<tr><td>E6</td><td>熔區長度不在 (0, 錠長) 之間</td>
+    <td>熔區比錠還長在物理上不成立，通常是單位錯誤或把兩欄填反了。</td></tr>
+<tr><td>E7</td><td>速率 ≤ 0</td><td>速率必須為正數。速率是 (v, T) 映射的主軸，不能缺。</td></tr>
+<tr><td>E8</td><td>pass 次數 &lt; 1</td><td>至少要跑過一趟才有資料。</td></tr>
+<tr><td>E9</td><td>頭端切除比例不在 [0, 0.5)</td>
+    <td>切掉一半以上的錠不合理，通常是把百分比填成 <code>30</code> 而不是 <code>0.3</code>。</td></tr>
+<tr><td>E10</td><td><code>x_norm</code> / <code>x_mm</code> 無法解析</td><td>非數值。</td></tr>
+<tr><td>E11</td><td>x/L 超出 [0, 1]</td>
+    <td>訊息會提示「常見原因是 x_mm 與錠長單位不一致」。這是最有價值的一條檢查。</td></tr>
+<tr><td>E12</td><td><code>element</code> 為空</td><td>不接受空白元素名。</td></tr>
+<tr><td>E13</td><td>重複的取樣點</td>
+    <td>同一個 <code>(batch_id, element, x_norm)</code> 出現兩次。通常是複驗值沒有合併，
+        或是複製貼上的意外。請自行決定要取平均還是保留其中一筆，系統不替你決定。</td></tr>
+<tr><td>E14</td><td>濃度無法解析</td><td>空值、文字（例如 <code>ND</code>、<code>N.D.</code>、<code>—</code>）都會被擋下。
+        「測不到」請用第 6 節的三種寫法之一表達，不要用文字。</td></tr>
+<tr><td>E15</td><td>濃度為負</td><td>濃度不可為負。</td></tr>
+<tr><td>E16</td><td>同批次參數不一致</td>
+    <td>同一個 <code>batch_id</code> 的 <code>L / l / v / T / pass / 頭端切除</code> 在不同列不同值。
+        這通常代表兩批資料的 <code>batch_id</code> 打錯了，或是有人在中途改了條件卻沒開新批號。</td></tr>
+<tr><td>E17</td><td>沒有任何可用批次</td><td>全部列都被前面的規則濾掉了。</td></tr>
+</tbody>
+</table>
+
+<h3>8.2 Warning — 照樣匯入，但你應該處理</h3>
+
+<table>
+<thead><tr><th>#</th><th>檢查</th><th>訊息與理由</th></tr></thead>
+<tbody>
+<tr><td>W1</td><td><code>lod_ppm</code> 無法解析</td><td>視為 0，繼續匯入。</td></tr>
+<tr><td>W2</td><td>設限但無 LOD</td><td>以測值當 LOD，見 6.2 節。</td></tr>
+<tr><td>W3</td><td><code>c0_ppm</code> 無法解析</td><td>忽略該值，改用推估（見第 7 節）。</td></tr>
+<tr><td>W4</td><td>取樣點少於 3 個</td>
+    <td>訊息：「擬合 k_eff 至少需要 3 點、建議 6 點以上」。3 點勉強能擬一個參數，
+        但沒有餘裕估計殘差標準差，信賴區間會非常寬。</td></tr>
+<tr><td>W5</td><td>未提供 C0</td><td>會以質量守恆推估並標示為推估值。</td></tr>
+<tr><td>W6</td><td>最靠頭端的取樣點在 x/L &gt; 0.25</td>
+    <td>訊息：「缺少頭端資料會讓 k_eff 的不確定度顯著變大」。原因是 Pfann 曲線在頭端
+        最陡、對 k 最敏感；只有中後段資料等於在曲線最平坦的地方擬參數。</td></tr>
+</tbody>
+</table>
+
+<h3>8.3 匯入報告的結構</h3>
+
+<pre><code>{
+  "ok": true,
+  "batches": 12,
+  "measurements": 384,
+  "censored": 57,
+  "elements": ["Cu", "Fe", "Ni", "Sn"],
+  "batch_ids": ["IN-2501", "IN-2502", "..."],
+  "errors": [],
+  "warnings": [
+    "批次 IN-2503 的 Sn 未提供進料濃度 C0，擬合時將以曲線質量守恆推估（會標示為推估值）。"
+  ]
+}</code></pre>
+
+<p>
+所有訊息都帶<b>試算表列號</b>（含標題列，也就是你在 Excel 裡看到的那個列號），
+可以直接跳過去改。
+</p>
+
+<h2>9. 完整 CSV 範例</h2>
+
+<p>
+以下是一個可以直接匯入的最小完整範例：一個批次、兩個元素、四個取樣位置，
+包含三種設限寫法。也可以直接呼叫
+<code>GET /api/batches/template.csv</code> 下載空白範本（含 BOM，Excel 開啟不會亂碼）。
+</p>
+
+<pre><code>batch_id,run_date,ingot_len_mm,zone_len_mm,speed_mm_hr,temp_c,n_passes,atmosphere,head_crop_frac,analysis_method,x_mm,element,value_ppm,lod_ppm,censored,c0_ppm
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,25,Cu,&lt;0.05,0.05,,8.5
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,100,Cu,0.05,0.05,1,8.5
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,200,Cu,0.31,0.05,,8.5
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,300,Cu,1.44,0.05,,8.5
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,420,Cu,12.60,0.05,,8.5
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,25,Fe,0.02,0.03,,4.2
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,100,Fe,0.09,0.03,,4.2
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,200,Fe,0.44,0.03,,4.2
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,300,Fe,1.95,0.03,,4.2
+IN-2501,2025-01-14,500,50,2.0,175,8,Ar,0.03,GDMS,420,Fe,9.80,0.03,,4.2</code></pre>
+
+<p>逐點說明這個範例的關鍵細節：</p>
+
+<table>
+<thead><tr><th>列</th><th>示範的重點</th></tr></thead>
+<tbody>
+<tr><td>Cu @ 25 mm</td><td><b>寫法 A</b>：<code>&lt;0.05</code> 字串。x/L = 25/500 = 0.05，很靠頭端，符合 W6 的期待。</td></tr>
+<tr><td>Cu @ 100 mm</td><td><b>寫法 B</b>：數值 <code>0.05</code> 搭配 <code>censored = 1</code>。</td></tr>
+<tr><td>Fe @ 25 mm</td><td><b>寫法 C</b>：<code>0.02 ≤ lod 0.03</code>，系統自動判定為設限，<code>censored</code> 欄留白即可。</td></tr>
+<tr><td>420 mm 那兩列</td><td>x/L = 0.84，已進入尾端上升段。<b>一定要有尾端資料</b>，否則曲線的
+    右半邊完全靠外插，k_eff 的不確定度會大幅上升。</td></tr>
+<tr><td>批次欄位</td><td>每一列都重複填一樣的值。任何一列填錯都會觸發 E16。</td></tr>
+<tr><td><code>c0_ppm</code></td><td>Cu 8.5 ppm、Fe 4.2 ppm，每列重複。有量測值就不會走推估路徑。</td></tr>
+</tbody>
+</table>
+
+<div class="box warn">
+<b>這個範例只有 5 個取樣點，實務上偏少</b>
+5 點能擬合，但頭端到尾端只有 5 個支撐點，且 2 個是設限值——實際上只有 3 個
+數值點在決定曲線形狀。<b>建議每支錠至少取 8 點</b>，其中至少 2 點在 x/L &lt; 0.15、
+至少 2 點在 x/L &gt; 0.7。取樣位置的分布比取樣點的數量更重要。
+</div>
+
+<h2>10. SQLite 資料庫 schema</h2>
+
+<h3>10.1 為什麼是 SQLite</h3>
+
+<p>
+這是單機離線分析工具，批次數以百計、量測點以萬計。SQLite 綽綽有餘，而且零維運——
+沒有服務要啟動、沒有帳號密碼要管、整個資料庫就是一個檔案，客戶要備份就複製一份。
+</p>
+
+<div class="box">
+<b>不要為了「未來可能需要」就在單機情境直接上 PostgreSQL</b>
+那會替客戶引入一個他不會維護的元件。而且退路是通的：SQLite 檔案可以被 DuckDB
+直接查詢，未來若真要跨機集中，遷移成本很低。
+</div>
+
+<h3>10.2 連線設定</h3>
+
+<table>
+<thead><tr><th>PRAGMA</th><th>值</th><th>理由</th></tr></thead>
+<tbody>
+<tr><td><code>journal_mode</code></td><td><code>WAL</code></td>
+    <td>Write-Ahead Logging：讀與寫不互相阻塞。本系統的典型情境是「使用者在 UI 上瀏覽
+        分析結果（一直在讀）的同時，背景正在匯入新批次（在寫）」。用預設的 rollback
+        journal，寫入會鎖住整個資料庫，UI 會卡住。WAL 直接消除這個問題。</td></tr>
+<tr><td><code>synchronous</code></td><td><code>NORMAL</code></td>
+    <td>比 <code>FULL</code> 少一次 fsync，寫入明顯變快。代價是作業系統當機時可能損失
+        最後幾筆交易——在有 UPS 的辦公環境是合理取捨，何況原始 CSV 都還在。</td></tr>
+<tr><td><code>foreign_keys</code></td><td><code>ON</code></td>
+    <td>SQLite <b>預設是關閉的</b>，而且必須<b>每個連線</b>都開。沒開的話
+        <code>ON DELETE CASCADE</code> 不會生效，刪批次會留下孤兒量測值。</td></tr>
+</tbody>
+</table>
+
+<p>
+連線是<b>執行緒區域（thread-local）</b>的：FastAPI 的同步端點跑在 threadpool，
+而 <code>sqlite3</code> 的連線物件不可跨執行緒共用，所以每條執行緒各自持有一條連線。
+</p>
+
+<h3>10.3 四張表</h3>
+
+<pre><code>batch                          -- 批次製程條件，PK = batch_id
+  batch_id         TEXT PRIMARY KEY
+  run_date         TEXT
+  ingot_len_mm     REAL       -- L
+  zone_len_mm      REAL       -- l
+  speed_mm_hr      REAL       -- v
+  temp_c           REAL       -- T
+  n_passes         INTEGER
+  atmosphere       TEXT
+  head_crop_frac   REAL
+  feed_purity_note TEXT
+  analysis_method  TEXT
+  operator         TEXT
+  notes            TEXT
+  created_ms       INTEGER    -- 寫入時間戳
+
+measurement                    -- 量測點，一列一個 (批次, 元素, 位置)
+  id          INTEGER PRIMARY KEY AUTOINCREMENT
+  batch_id    TEXT REFERENCES batch(batch_id) ON DELETE CASCADE
+  element     TEXT
+  x_norm      REAL            -- 只存歸一化位置，不存 mm
+  value_ppm   REAL            -- censored 時此欄存 LOD 供顯示
+  lod_ppm     REAL
+  censored    INTEGER         -- 0/1
+  pass_index  INTEGER         -- 可為 NULL
+  sample_id   TEXT
+
+element_spec                   -- 每批每元素的 C0 與規格，PK = (batch_id, element)
+  batch_id    TEXT REFERENCES batch(batch_id) ON DELETE CASCADE
+  element     TEXT
+  c0_ppm      REAL
+  spec_ppm    REAL            -- 個別元素規格上限，可為 NULL
+  c0_measured INTEGER         -- 0 = 推估值，UI 會標警示
+
+keff_cache                     -- k_eff 擬合結果的持久化快取
+  batch_id, element  (PK)
+  k_eff, k_lo, k_hi, sigma_log, rmse_log
+  n_points, n_censored, c0_ppm, converged, fitted_ms</code></pre>
+
+<h3>10.4 索引</h3>
+
+<table>
+<thead><tr><th>索引</th><th>用途</th></tr></thead>
+<tbody>
+<tr><td><code>ix_meas_batch (batch_id)</code></td><td>取單一批次的全部量測值——最高頻的查詢。</td></tr>
+<tr><td><code>ix_meas_be (batch_id, element)</code></td><td>擬合單一元素曲線時取該元素的點。</td></tr>
+<tr><td><code>ix_batch_date (run_date)</code></td><td>批次列表依日期排序。</td></tr>
+<tr><td><code>ix_batch_speed (speed_mm_hr)</code></td><td>依速率篩選批次（參數映射視圖常用）。</td></tr>
+</tbody>
+</table>
+
+<h3>10.5 schema 版本管理</h3>
+
+<p>
+schema 變更一律走版本化的 migration 腳本，用 SQLite 內建的 <code>PRAGMA user_version</code>
+記錄目前版本（現為 <code>1</code>）。啟動時自動套用缺少的 migration。
+如果開啟的資料庫版本<b>高於</b>程式支援的版本，會直接拒絕啟動並要求更新程式——
+用舊版程式寫新版資料庫是資料損毀的經典路徑。
+</p>
+
+<div class="box warn">
+<b>已知落差：<code>keff_cache</code> 目前是空的</b>
+資料存取層有完整的 <code>get_keff_cache</code> / <code>put_keff_cache</code> 方法，資料表也建好了，
+但目前的服務層走的是<b>記憶體快取</b>（以資料版本為鍵），從來沒有寫入這張表。
+實務影響是：重啟服務後第一次分析必須重算（數秒），不會從資料庫回填。
+這張表目前只有「被清空」的行為（任何寫入都會清掉它）。
+</div>
+
+<h2>11. 匯入流程與 dry-run</h2>
+
+<p>匯入有兩條路徑，行為完全一致：</p>
+
+<ul>
+  <li><b>UI</b>：在「資料」頁拖曳 CSV / Excel 檔。</li>
+  <li><b>API</b>：<code>POST /api/batches/import</code>（<code>multipart/form-data</code>），
+      詳見 <a href="06-api.html">06 · REST API 參考</a>。</li>
+</ul>
+
+<pre><code># 只稽核不寫入 —— 拿到新客戶資料時的第一件事
+curl -F "file=@客戶資料.csv" "http://127.0.0.1:8848/api/batches/import?dry_run=true"
+
+# 確認沒問題之後才真的寫入
+curl -F "file=@客戶資料.csv" "http://127.0.0.1:8848/api/batches/import"</code></pre>
+
+<div class="box good">
+<b>養成先跑 dry-run 的習慣</b>
+<code>dry_run=true</code> 會做完全部檢查、回傳完整報告，但一個 byte 都不寫入資料庫。
+拿到客戶的新檔案時，先 dry-run，把 error 和 warning 整理成一封信寄回去問清楚，
+比自己猜著修資料快得多，也專業得多。
+</div>
+
+<p>其他行為細節：</p>
+
+<ul>
+  <li><b>檔案格式</b>：副檔名 <code>.xlsx</code> / <code>.xls</code> 走 Excel 讀取器，其餘當 CSV。
+      CSV 先試 UTF-8，失敗自動退回 Big5（台灣客戶的 Excel 匯出很常是 Big5）。</li>
+  <li><b>上傳上限</b>：20 MB。以長格式來說這是幾十萬列，遠超實務需求。</li>
+  <li><b>重複匯入同一批次</b>：語意是<b>整批取代</b>。同一個 <code>batch_id</code> 再次匯入時，
+      該批的舊量測值會先全部刪掉再寫新的，不會殘留舊點。這讓「修正資料後重新匯入」
+      成為安全操作。</li>
+  <li><b>快取失效</b>：成功寫入後，服務層的分析快取立刻失效，下一次查詢會重算。</li>
+</ul>
+
+<h2>12. 開案前一定要跟客戶問清楚的資料問題</h2>
+
+<p>
+這一節是本文件最重要的部分。以下每一題都直接決定「這個專案能不能做、要怎麼做」。
+建議印出來，在第一次資料會議上逐題問完再報價。
+</p>
+
+<h3>Q1. 歷史批次總共有幾批？每批有幾個取樣點？</h3>
+
+<div class="box bad">
+<b>少於 15 批，就不要接「分析既有資料」的案子</b>
+改成「設計實驗」的案子。理由很直接：<code>k_eff</code> 是每批擬出一個，再用這些
+<code>k_eff</code> 對 (v, T) 做回歸。10 批就是 10 個回歸樣本點，而且這 10 批的
+速率很可能全擠在 2~3 mm/hr 這個窄帶裡（因為那是產線現在的做法）——
+回歸線的斜率會由雜訊決定，外插到 1 mm/hr 的預測毫無意義。
+</div>
+
+<p>建議的判斷標準：</p>
+
+<table>
+<thead><tr><th>批次數</th><th>該做什麼</th></tr></thead>
+<tbody>
+<tr><td>&lt; 8 批</td><td>只能做單批診斷（每批的 k_eff 與得料率），不做參數映射，不給最佳化建議。
+    直接進入 DOE 設計。</td></tr>
+<tr><td>8 ~ 15 批</td><td>可以建映射，但要明確標示外插區。同時規劃 5~6 批篩選性實驗補齊速率範圍。</td></tr>
+<tr><td>&gt; 15 批，且速率範圍涵蓋 3 倍以上</td><td>可以做完整的分析 + 最佳化 + 貝氏建議。</td></tr>
+</tbody>
+</table>
+
+<p>
+另外要問<b>速率的分布</b>而不只是批數：20 批全部跑 2.0 mm/hr，在回歸上等同於 1 個點。
+</p>
+
+<h3>Q2. 溫度量的是加熱器設定值，還是實際熔體溫度？</h3>
+
+<p>
+這題幾乎每次都會問出問題。加熱器設定 180 °C 不代表熔體是 180 °C——中間隔著
+石英管、氬氣層、以及熱電偶的位置。更根本的是：
+</p>
+
+<div class="box key">
+<b>溫度只是代理變數，真正的物理變數是熔區長度 l</b>
+在 Pfann 方程裡，溫度根本不出現。溫度之所以「有效」，是因為它透過熱場決定了
+<b>熔區有多長</b>，而 <code>l/L</code> 是方程的參數。溫度還會透過對流強度影響
+邊界層厚度（BPS 模型裡的 δ），但那是二階效應。
+</div>
+
+<p>所以這題要問三層：</p>
+
+<ol>
+  <li>記錄的是設定值還是量測值？如果是量測值，熱電偶裝在哪裡？</li>
+  <li>有沒有量過<b>熔區長度 l</b>？怎麼量的？</li>
+  <li>不同批次之間 l 有沒有變？（如果溫度有變，l 幾乎一定跟著變）</li>
+</ol>
+
+<div class="box good">
+<b>如果客戶沒量 l，這是整個專案投報率最高的補量測項目</b>
+量 l 的方法可以很土：熔區移動時用相機側拍、或在錠上預先做位置標記後觀察熔融區
+兩端的界面。做一次就能建立「加熱器設定 → l」的對照表，之後所有歷史批次都能回填。
+成本是幾小時的工，換來的是把一個代理變數換成真正的物理變數。
+如果只能爭取到一項額外量測，選這個。
+</div>
+
+<h3>Q3. 分析方法是 GDMS 還是 ICP-MS？各元素的 LOD 是多少？</h3>
+
+<ul>
+  <li><b>方法要標註在每一批</b>。GDMS 與 ICP-MS 的 LOD 常常差一個數量級以上，
+      混用而不標註，設限點的處理就失去意義。</li>
+  <li><b>要一張「元素 × 方法 → LOD」對照表</b>。這在實驗室是現成的文件，開口就有。
+      有了它，所有 <code>lod_ppm</code> 欄都能填滿，不必走 6.2 節的降級路徑。</li>
+  <li><b>要問前處理</b>。ICP-MS 需要溶解樣品，酸的純度會引入背景；GDMS 是固體直接
+      分析但對表面狀態敏感（見 Q7）。這會影響你對離群點的解釋。</li>
+  <li><b>要問複驗政策</b>。同一個樣品驗兩次的差異有多大？這個數字可以直接拿來檢查
+      擬合出來的 <code>sigma_log</code>（對數殘差標準差）合不合理——如果模型算出來的
+      殘差遠大於分析誤差，代表模型缺了東西；遠小於則代表過擬合。</li>
+</ul>
+
+<h3>Q4. 各批的取樣位置一致嗎？</h3>
+
+<p>問法要具體：</p>
+
+<ul>
+  <li>取樣位置是<b>固定的 mm</b>（每批都取 25/100/200/300/420 mm）還是<b>固定的比例</b>
+      （每批都取 5%/20%/40%/60%/84%）？如果錠長會變，這兩者完全不同。</li>
+  <li>位置是<b>從哪一端量的</b>？是從原始錠的頭端，還是從切除頭端之後的新端面？
+      這個差別會讓整條曲線平移，是 <code>head_crop_frac</code> 存在的理由。</li>
+  <li>有沒有<b>尾端資料</b>？很多產線把尾端當廢料直接回爐，根本不送驗。但尾端是
+      雜質濃縮區，缺了它，C0 的質量守恆推估會嚴重低估（見第 7 節），
+      曲線右半段也只能靠外插。<b>至少爭取每隔幾批就完整取樣一次</b>。</li>
+</ul>
+
+<h3>Q5. 頭尾切除量有沒有記錄？</h3>
+
+<p>
+得料率的定義是「從頭端切除點算起，連續合格的長度佔全錠比例」。沒有切除量的記錄，
+這個數字就沒有基準。而且切除量常常是<b>操作員憑經驗決定的</b>（「看起來髒就多切一點」），
+不是固定值——那就更要每批記錄。
+</p>
+
+<p>
+這題還有一個延伸：<b>切下來的頭料和尾料去哪了？</b>如果尾料回爐當下一批的進料，
+那批次之間就不是獨立的，C0 會有序列相關性。這件事會影響你怎麼看批間變異。
+</p>
+
+<h3>Q6. 每批的 C0 有沒有測？</h3>
+
+<p>
+見第 7 節。這題的標準回答是「進料都是同一批回收料，沒有每批測」。
+請爭取：<b>至少留樣，至少測三批確認變異</b>。如果連留樣都沒有，那就要在報告裡
+把「C0 為推估值」這件事寫成明確的限制條款，並說明它會讓 <code>k_eff</code> 系統性高估。
+</p>
+
+<h3>Q7. 6N 得料率的判定規則是什麼？</h3>
+
+<p>這題經常是「大家以為有共識、其實沒有」的地雷。要釐清：</p>
+
+<ul>
+  <li><b>是總雜質 &lt; 1 ppm，還是個別元素都要達標？</b>系統預設用總雜質門檻
+      （可透過設定調整），但也支援個別元素規格上限。兩種判定會給出不同的切點。</li>
+  <li><b>總雜質怎麼加總？</b>只加追蹤的那 4 個元素？還是實驗室報告上的全部元素總和？
+      如果有元素沒在追蹤名單裡但含量不低（例如 Pb、Tl、Cd），得料率會被高估。</li>
+  <li><b>設限值怎麼算進總和？</b>「&lt; 0.05」在計算總雜質時要算 0 還是 0.05？
+      業界常見做法是算 LOD/2，但這只是慣例不是真理。<b>務必先講定，並寫進報告</b>——
+      這個選擇會直接改變得料率的數字。</li>
+  <li><b>合格區必須連續嗎？</b>系統的定義是「從頭端算起<b>連續</b>合格」，
+      因為實務上你要切一段出來賣，不能東切一塊西切一塊。確認客戶的認知一致。</li>
+</ul>
+
+<h3>Q8. 氣氛與氧化皮怎麼處理？</h3>
+
+<div class="box warn">
+<b>銦很容易氧化，而氧化膜會夾帶雜質</b>
+這是本製程一個容易被忽略、但可能主導結果的因素。表面氧化膜會在物理上把雜質
+「黏」在原位，讓它無法隨熔區被推向尾端——結果就是曲線比純物理預測「髒」，
+擬合出來的 <code>k_eff</code> 偏高，而且這個偏差不是隨機的、是系統性的。
+</div>
+
+<p>要問的具體問題：</p>
+
+<ul>
+  <li>氣氛是什麼？Ar / N₂ / 真空 / 大氣？氧含量與露點有沒有監測記錄？</li>
+  <li>每批的氣氛條件一樣嗎？如果有幾批是在氣氛系統故障期間跑的，那幾批要標記出來。</li>
+  <li>船皿（boat）材質是什麼？石英、石墨、還是塗層？有沒有與熔體反應的疑慮？</li>
+  <li><b>取樣時有沒有把表面氧化皮刮掉？</b>如果沒有，GDMS 的表面敏感性會讓測值偏高。
+      這個問題在頭端最嚴重（因為頭端本體最乾淨，氧化膜的相對貢獻最大）——
+      而頭端正是決定 <code>k_eff</code> 的關鍵區域。</li>
+  <li>錠的表面有沒有目視紀錄？「這批表面特別霧」這種定性觀察，在解釋離群批次時極有價值。</li>
+</ul>
+
+<h3>Q9. 檢查清單彙總</h3>
+
+<table>
+<thead><tr><th>項目</th><th>沒有的話會怎樣</th><th>優先度</th></tr></thead>
+<tbody>
+<tr><td>批次數 ≥ 15 且速率有變化</td><td>無法建立參數映射，只能做單批診斷</td><td><span class="tag bad">阻斷</span></td></tr>
+<tr><td>每批 C0 實測</td><td>k_eff 系統性高估，不確定度大幅上升</td><td><span class="tag bad">阻斷</span></td></tr>
+<tr><td>取樣位置定義明確</td><td>曲線平移或顛倒，結論可能整個相反</td><td><span class="tag bad">阻斷</span></td></tr>
+<tr><td>各元素 LOD 表</td><td>設限點權重靠猜，Tobit 的優勢打折</td><td><span class="tag warn">高</span></td></tr>
+<tr><td>熔區長度 l 實測</td><td>只能用溫度當代理變數，外插能力受限</td><td><span class="tag warn">高</span></td></tr>
+<tr><td>頭尾切除量記錄</td><td>得料率沒有基準，數字不可比</td><td><span class="tag warn">高</span></td></tr>
+<tr><td>得料率判定規則講定</td><td>交付的數字與客戶的認知不同，驗收會吵架</td><td><span class="tag warn">高</span></td></tr>
+<tr><td>尾端取樣</td><td>C0 推估嚴重低估，曲線右半靠外插</td><td><span class="tag ok">中</span></td></tr>
+<tr><td>氣氛與氧化紀錄</td><td>離群批次無法解釋，只能歸因於「雜訊」</td><td><span class="tag ok">中</span></td></tr>
+<tr><td>複驗差異數據</td><td>無法驗證擬合殘差是否合理</td><td><span class="tag ok">中</span></td></tr>
+</tbody>
+</table>
+
+<h2>13. 常見錯誤速查</h2>
+
+<table>
+<thead><tr><th>症狀</th><th>可能原因</th><th>怎麼查</th></tr></thead>
+<tbody>
+<tr><td>匯入時大量「歸一化位置超出 [0,1]」</td>
+    <td>錠長與取樣位置單位不一致（cm vs mm），或錠長欄根本沒填而走了 500 mm 的預設值</td>
+    <td>看一列的 <code>x_mm</code> 與 <code>ingot_len_mm</code> 相除是否合理</td></tr>
+<tr><td>「批次參數在不同列不一致」</td>
+    <td>同一批的某幾列被人改過條件；或兩批的 batch_id 打成一樣</td>
+    <td>對該 batch_id 的所有列做 <code>SELECT DISTINCT</code> 比對六個參數欄</td></tr>
+<tr><td>k_eff 全部接近 1</td>
+    <td>取樣位置頭尾顛倒（曲線變成單調遞減，模型只能用 k≈1 去湊）</td>
+    <td>看單批曲線圖：實測點如果在頭端最高、尾端最低，就是顛倒了</td></tr>
+<tr><td>k_eff 比預期低很多、曲線頭端完美貼地</td>
+    <td>設限值被填成 0 而不是用 <code>&lt;LOD</code> 寫法</td>
+    <td>查匯入報告的 <code>censored</code> 計數；如果是 0 但你知道有測不到的點，就是這個問題</td></tr>
+<tr><td>某批被標記為高嚴重度異常</td>
+    <td>殘差呈結構性形狀（前半全正、後半全負）——典型成因是取樣位置錯誤、
+        熔區長度記錄錯誤、或 pass 次數對不上</td>
+    <td>到「資料稽核」頁看該批的排除理由與殘差圖</td></tr>
+<tr><td>Excel 開啟匯出的 CSV 中文變亂碼</td>
+    <td>Excel 預設用系統編碼解讀無 BOM 的 UTF-8</td>
+    <td>用 <code>/api/batches/template.csv</code>（已加 BOM）當基底編輯</td></tr>
+<tr><td>溫度欄顯示 0 °C</td>
+    <td>溫度欄名沒被別名比對認出來，或該欄是空的——系統對溫度<b>不做</b>範圍檢查</td>
+    <td>匯入後立刻檢查批次列表的溫度欄；0 °C 在物理上不可能（銦熔點 156.6 °C）</td></tr>
+</tbody>
+</table>
+
+<blockquote>
+資料規格的價值在於它讓錯誤「早」發生。一個在匯入時被擋下的單位錯誤，成本是五分鐘；
+同一個錯誤如果一路傳到給產線的參數建議，成本是一整批試量產。
+</blockquote>
+
+</main>
+<script src="assets/docs.js"></script>
+</body>
+</html>
