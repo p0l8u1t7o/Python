@@ -121,6 +121,10 @@ BUILTIN_DEVICE_TYPES: list[dict] = [
                     "properties": {
                         "power_w": _NUMBER(-5_000_000, 5_000_000, "W"),
                         "ramp_s": _NUMBER(0, 3600, "s"),
+                        # W6：有效期。邊緣在 valid_until 之後依 on_expiry 自行降級，
+                        # 斷網時電池不會停在最後一個設定點。
+                        "valid_until": {"type": "string", "description": "ISO 8601 UTC; setpoint expires after this"},
+                        "on_expiry": {"type": "string", "enum": ["idle", "hold", "reserve"]},
                     },
                 },
             ),

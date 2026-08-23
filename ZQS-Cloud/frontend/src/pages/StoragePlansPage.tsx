@@ -30,7 +30,7 @@ import {
   useWorkflowList,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
-import type { DispatchStrategy, StoragePlan } from '@/lib/types'
+import type { DispatchStrategy, ExpiryPolicy, StoragePlan } from '@/lib/types'
 import {
   Badge,
   Button,
@@ -132,6 +132,8 @@ function planProblems(form: PlanForm, t: (key: string, options?: Record<string, 
 }
 
 /** Strategies that compute a setpoint and can be stacked under a primary (W5). */
+const EXPIRY_POLICIES: ExpiryPolicy[] = ['idle', 'hold', 'reserve']
+
 const STACKABLE: DispatchStrategy[] = ['demand_cap', 'tou_arbitrage', 'self_consumption', 'backup_only']
 
 const EMPTY_FORM = {
@@ -158,6 +160,13 @@ const EMPTY_FORM = {
   max_cycles_per_day: '' as string | number,
   temperature_max_c: '' as string | number,
   temperature_metric: '',
+  setpoint_ttl_seconds: 300,
+  on_expiry: 'idle' as ExpiryPolicy,
+  heartbeat_interval_seconds: 60,
+  heartbeat_miss_limit: 3,
+  offline_policy: 'reserve' as ExpiryPolicy,
+  outage_voltage_min_v: '' as string | number,
+  outage_for_seconds: 5,
 }
 
 /**
@@ -357,6 +366,13 @@ function PlanEditor({
         max_cycles_per_day: plan.max_cycles_per_day ?? '',
         temperature_max_c: plan.temperature_max_c ?? '',
         temperature_metric: plan.temperature_metric ?? '',
+        setpoint_ttl_seconds: plan.setpoint_ttl_seconds ?? 300,
+        on_expiry: plan.on_expiry ?? 'idle',
+        heartbeat_interval_seconds: plan.heartbeat_interval_seconds ?? 60,
+        heartbeat_miss_limit: plan.heartbeat_miss_limit ?? 3,
+        offline_policy: plan.offline_policy ?? 'reserve',
+        outage_voltage_min_v: plan.outage_voltage_min_v ?? '',
+        outage_for_seconds: plan.outage_for_seconds ?? 5,
       })
     } else {
       setForm(EMPTY_FORM)
@@ -401,6 +417,13 @@ function PlanEditor({
       max_cycles_per_day: number(form.max_cycles_per_day),
       temperature_max_c: number(form.temperature_max_c),
       temperature_metric: form.temperature_metric,
+      setpoint_ttl_seconds: Number(form.setpoint_ttl_seconds),
+      on_expiry: form.on_expiry,
+      heartbeat_interval_seconds: Number(form.heartbeat_interval_seconds),
+      heartbeat_miss_limit: Number(form.heartbeat_miss_limit),
+      offline_policy: form.offline_policy,
+      outage_voltage_min_v: number(form.outage_voltage_min_v),
+      outage_for_seconds: Number(form.outage_for_seconds),
     }
     try {
       if (plan) {
@@ -799,6 +822,57 @@ function PlanEditor({
               icon: BASELINE_ICON[value],
             }))}
           />
+        </section>
+
+        <section className="space-y-3 rounded-lg border border-line p-3" data-testid="plan-failsafe">
+          <h3 className="text-sm font-medium">{t('storage.failsafe')}</h3>
+          <p className="text-xs text-muted">{t('storage.failsafeHint')}</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <TextInput
+              label={t('storage.setpointTtl')}
+              type="number"
+              min={0}
+              value={form.setpoint_ttl_seconds}
+              onChange={(event) => setForm({ ...form, setpoint_ttl_seconds: Number(event.target.value) })}
+              hint={t('storage.setpointTtlHint')}
+            />
+            <Select
+              label={t('storage.onExpiry')}
+              value={form.on_expiry}
+              onChange={(event) => setForm({ ...form, on_expiry: event.target.value as ExpiryPolicy })}
+              options={EXPIRY_POLICIES.map((value) => ({ value, label: t(`storage.expiryPolicies.${value}`) }))}
+            />
+            <Select
+              label={t('storage.offlinePolicy')}
+              value={form.offline_policy}
+              onChange={(event) => setForm({ ...form, offline_policy: event.target.value as ExpiryPolicy })}
+              options={EXPIRY_POLICIES.map((value) => ({ value, label: t(`storage.expiryPolicies.${value}`) }))}
+              hint={t('storage.offlinePolicyHint')}
+            />
+            <TextInput
+              label={t('storage.heartbeatInterval')}
+              type="number"
+              min={10}
+              value={form.heartbeat_interval_seconds}
+              onChange={(event) => setForm({ ...form, heartbeat_interval_seconds: Number(event.target.value) })}
+            />
+            <TextInput
+              label={t('storage.heartbeatMissLimit')}
+              type="number"
+              min={1}
+              value={form.heartbeat_miss_limit}
+              onChange={(event) => setForm({ ...form, heartbeat_miss_limit: Number(event.target.value) })}
+            />
+            <TextInput
+              label={t('storage.outageVoltage')}
+              type="number"
+              min={0}
+              value={form.outage_voltage_min_v}
+              placeholder={t('storage.outageVoltageOff')}
+              onChange={(event) => setForm({ ...form, outage_voltage_min_v: event.target.value })}
+              hint={t('storage.outageVoltageHint', { seconds: form.outage_for_seconds })}
+            />
+          </div>
         </section>
 
         {plan ? (

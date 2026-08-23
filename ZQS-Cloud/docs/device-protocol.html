@@ -795,7 +795,8 @@ Command/Result/&lt;key&gt; …                       ← 選填
 <tr>
 <td></td>
 <td><code>set_power_setpoint</code></td>
-<td><code>power_w</code> ±5 000 000、<code>ramp_s</code> 0…3600</td>
+<td><code>power_w</code> ±5 000 000、<code>ramp_s</code> 0…3600、<code>valid_until</code>（ISO 8601 UTC，選填）、
+<code>on_expiry</code>（<code>idle</code> | <code>hold</code> | <code>reserve</code>，選填）</td>
 </tr>
 <tr>
 <td></td>
@@ -853,7 +854,22 @@ Command/Result/&lt;key&gt; …                       ← 選填
 <td>—</td>
 </tr>
 </tbody>
-</table></div>
+</table>
+<h3 id="setpoint-valid-until">設定點有效期（<code>valid_until</code> / <code>on_expiry</code>）<a class="headerlink" href="#setpoint-valid-until" title="Permanent link">¶</a></h3>
+<p>雲端每次下 <code>set_power_setpoint</code> 都可附 <code>valid_until</code>。設備（或邊緣閘道器）在該時刻之後<strong>不等雲端</strong>自行降級：</p>
+<ul>
+<li><code>idle</code>：功率歸零。</li>
+<li><code>hold</code>：維持最後一個設定點（給確定安全的場合，例如小功率充電）。</li>
+<li><code>reserve</code>：充到備援水位（SOC 門檻由方案的備援保留決定，隨 fleet 設定下發）後停止。</li>
+</ul>
+<p>沒有 <code>valid_until</code> 的命令永不過期——與舊版行為相同。雲端會在到期前重送同一個設定點（新的
+<code>valid_until</code>），那就是心跳；設備連續 N 個心跳週期沒收到任何設定點、或 MQTT 連線中斷超過同樣時間，
+就執行離線政策（同三種，預設 <code>reserve</code>）。這些都沿用既有的 DCMD／ACK 機制，沒有新的通道。</p>
+<p>市電停電時設備應把關口電壓 metric（預設 <code>grid_voltage_v</code>）如實回報為 0；平台以「電壓低於門檻且持續 N 秒」判定停電。
+孤島供電由設備自己完成——平台在停電期間不下設定點。</p>
+<pre><code>{"name": "set_power_setpoint",
+ "params": {"power_w": -200000, "valid_until": "2026-08-23T10:15:00Z", "on_expiry": "reserve"}}</code></pre>
+</div>
 <hr>
 <h2 id="7-重生-rebirth-唯一的復原路徑">7. 重生（Rebirth）：唯一的復原路徑<a class="headerlink" href="#7-重生-rebirth-唯一的復原路徑" title="Permanent link">¶</a></h2>
 <p><strong>這一節不是選配。</strong> 沒有實作它的設備，在第一次掉訊息之後就再也對不齊了。</p>

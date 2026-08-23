@@ -340,6 +340,22 @@ def decide(site_id, moment: dt.datetime | None = None) -> Decision:
     requested: float | None = None
     source = ""
 
+    # W6：停電中沒有市電可調度——雲端這邊只維持備援（不主動放電到電網、
+    # SOC 低於水位也充不了），真正的孤島供電由邊緣自己完成。DR 事件在停電
+    # 時同樣沒有意義。
+    from apps.ems.outage import active_outage
+
+    outage = active_outage(site_id, moment)
+    if outage is not None:
+        return Decision(
+            site_id=site_id,
+            device=device,
+            power_w=None,
+            window=window,
+            reason=f"grid outage since {outage.started_at:%H:%M:%S}: backup mode, edge in control",
+            skipped="grid_outage",
+        )
+
     event = live_dr_event(site_id, moment)
     if event is not None:
         requested = abs(event.target_power_kw) * 1000.0
@@ -388,7 +404,46 @@ def decide(site_id, moment: dt.datetime | None = None) -> Decision:
     )
 
 
-def last_engine_setpoint(device: Device, moment: dt.datetime) -> float | None:
+@dataclass(slots=True)
+class LastSetpoint:
+    power_w: float
+    created_at: dt.datetime
+
+
+def supports_expiry(device: Device) -> bool:
+    """這台設備的藍圖有沒有宣告 ``valid_until``。
+
+    沒宣告的舊藍圖照舊只收 power_w——與其讓整個場域的調度因為多一個參數
+    被 422 擋下，不如明確降級並在決策理由裡說出來。
+    """
+    blueprint = getattr(device, "device_type", None)
+    for item in (getattr(blueprint, "command_definitions", None) or []):
+        if item.get("name") == SETPOINT_COMMAND:
+            properties = (item.get("params") or {}).get("properties") or {}
+            return "valid_until" in properties
+    return False
+
+
+def setpoint_params(
+    plan: StoragePlan | None, power_w: float, moment: dt.datetime, *, device: Device | None = None
+) -> dict:
+    """``set_power_setpoint`` 的參數，含 W6 的有效期。
+
+    沒有方案（手動路徑）就只有 power_w——那是操作者的命令，不替他加期限。
+    藍圖沒宣告 valid_until 的設備也只收 power_w（見 :func:`supports_expiry`）。
+    """
+    params: dict = {"power_w": power_w}
+    if plan is None or not plan.setpoint_ttl_seconds:
+        return params
+    if device is not None and not supports_expiry(device):
+        return params
+    valid_until = moment + dt.timedelta(seconds=plan.setpoint_ttl_seconds)
+    params["valid_until"] = valid_until.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    params["on_expiry"] = plan.on_expiry
+    return params
+
+
+def last_engine_setpoint(device: Device, moment: dt.datetime) -> LastSetpoint | None:
     """The setpoint this engine last sent to ``device``, if it was recent.
 
     Recognised by the idempotency key prefix, so a manual command an operator
@@ -409,7 +464,9 @@ def last_engine_setpoint(device: Device, moment: dt.datetime) -> float | None:
     if command is None:
         return None
     value = command.params.get("power_w")
-    return float(value) if isinstance(value, (int, float)) else None
+    if not isinstance(value, (int, float)):
+        return None
+    return LastSetpoint(float(value), command.created_at)
 
 
 def ensure_workflow_running(plan, *, dry_run: bool = False) -> str:
@@ -483,9 +540,14 @@ def run_site(ctx: AuthContext, site_id, *, moment=None, dry_run: bool = False) -
         return decision
 
     previous = last_engine_setpoint(decision.device, moment)
-    if previous is not None and abs(previous - decision.power_w) < SETPOINT_DEADBAND_W:
-        decision.skipped = "unchanged"
-        return decision
+    if previous is not None and abs(previous.power_w - decision.power_w) < SETPOINT_DEADBAND_W:
+        # W6：設定點有有效期，沒變也要在到期前刷新——刷新就是心跳。
+        # 每 heartbeat_interval 刷一次；沒有方案時沿用舊行為（不刷新）。
+        refresh_after = dt.timedelta(seconds=plan.heartbeat_interval_seconds) if plan else None
+        if refresh_after is None or moment - previous.created_at < refresh_after:
+            decision.skipped = "unchanged"
+            return decision
+        decision.reason += " (refresh)"
 
     if dry_run:
         decision.skipped = "dry_run"
@@ -494,13 +556,16 @@ def run_site(ctx: AuthContext, site_id, *, moment=None, dry_run: bool = False) -
     # The key makes a retried cycle - a crash between publish and commit, a
     # second scheduler started by mistake - collapse onto one command rather
     # than two setpoints racing to the same hardware.
-    key = f"dispatch:{site_id}:{int(decision.power_w)}:{moment:%Y%m%d%H%M}"
+    key = f"dispatch:{site_id}:{int(decision.power_w)}:{moment:%Y%m%d%H%M%S}"
+    params = setpoint_params(plan, decision.power_w, moment, device=decision.device)
+    if plan is not None and plan.setpoint_ttl_seconds and "valid_until" not in params:
+        decision.reason += " [no valid_until: blueprint lacks it, edge fail-safe unavailable]"
     try:
         dispatch_command(
             ctx,
             decision.device,
             name=SETPOINT_COMMAND,
-            params={"power_w": decision.power_w},
+            params=params,
             idempotency_key=key[:80],
         )
     except APIError as exc:

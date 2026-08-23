@@ -40,6 +40,8 @@ from simulator.physics import METRIC_UNITS  # noqa: E402
 import tkinter as tk  # noqa: E402
 from tkinter import filedialog, messagebox, ttk  # noqa: E402
 
+#: 電池目前的運作模式（physics.mode）。
+MODE_LABELS = {"normal": "正常", "expired": "設定點過期", "watchdog": "斷線降級", "island": "孤島供電"}
 EVENT_LEVELS = ("info", "notice", "warning", "error", "critical")
 ALARM_SEVERITIES = ("info", "warning", "major", "critical")
 
@@ -134,10 +136,12 @@ class App:
         self.all_off.pack(side="left", padx=(0, 18))
         ttk.Button(bar, text="選取上線", command=self.connect_selected).pack(side="left", padx=(0, 6))
         ttk.Button(bar, text="選取離線", command=self.disconnect_selected).pack(side="left")
+        # W6：停電模擬——關口電壓歸零，邊緣自己轉孤島；平台端應偵測到停電。
+        ttk.Button(bar, text="選取停電/復電", command=self.toggle_outage_selected).pack(side="left", padx=(18, 0))
 
-        self.fleet_view = ttk.Treeview(mid, columns=("node", "site", "devices", "status", "published"), show="headings", height=6)
-        for key, label, width in (("node", "閘道器 (node_id)", 170), ("site", "場域", 160), ("devices", "設備", 520),
-                                  ("status", "狀態", 90), ("published", "已發布", 70)):
+        self.fleet_view = ttk.Treeview(mid, columns=("node", "site", "devices", "status", "mode", "published"), show="headings", height=6)
+        for key, label, width in (("node", "閘道器 (node_id)", 170), ("site", "場域", 160), ("devices", "設備", 440),
+                                  ("status", "狀態", 90), ("mode", "電池模式", 110), ("published", "已發布", 70)):
             self.fleet_view.heading(key, text=label)
             self.fleet_view.column(key, width=width, anchor="w")
         self.fleet_view.pack(fill="x", padx=4, pady=4)
@@ -287,6 +291,15 @@ class App:
         for runner in list(self.runners):
             self._start(runner)
 
+    def toggle_outage_selected(self) -> None:
+        for node_id in self.fleet_view.selection():
+            runner = self._runner(node_id)
+            if runner is None:
+                continue
+            runner.physics.grid_outage = not runner.physics.grid_outage
+            state = "停電" if runner.physics.grid_outage else "復電"
+            self._log_bg(f"[{node_id}] {state}：關口電壓 {'0 V，電池轉孤島供電' if runner.physics.grid_outage else '恢復'}")
+
     def disconnect_all(self) -> None:
         for runner in self.runners:
             runner.stop_event.set()
@@ -318,6 +331,7 @@ class App:
             if self.fleet_view.exists(runner.node_id):
                 status = "上線" if online else ("連線失敗" if runner.last_error and not runner.is_alive() else "離線")
                 self.fleet_view.set(runner.node_id, "status", status)
+                self.fleet_view.set(runner.node_id, "mode", MODE_LABELS.get(runner.physics.mode, runner.physics.mode))
                 self.fleet_view.set(runner.node_id, "published", runner.published)
         self.all_off.configure(state="normal" if any_online else "disabled")
 

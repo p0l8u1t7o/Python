@@ -650,6 +650,31 @@ PV 盈餘的夜間只磨循環成本,−1.2k。</p>
 <p><strong>已知限制</strong>:仲裁看的是「此刻」。再疊一個 PV 自用會在白天把電池放空、尖峰前沒電,30 天反而
 多花 6 萬——那是<strong>能量保留</strong>問題(為預測的尖峰留 SOC),不是優先序能解的;等回測證明剩餘價值可觀,
 再談帶預測的最佳化。一個場域兩組電池(一組套利、一組備援)仍分不開,包絡下放到 <code>EnergyAsset</code> 留待後續。</p>
+<h3 id="1-12i-邊緣-fail-safe-與停電偵測-w6">1.12I 邊緣 fail-safe 與停電偵測(W6)<a class="headerlink" href="#1-12i-邊緣-fail-safe-與停電偵測-w6" title="Permanent link">¶</a></h3>
+<p>控制鏈是雲端 → MQTT → 設備,原本沒有邊緣自治:斷網時電池停在最後一個設定點,「放電 500 kW」加上兩小時斷線就是
+放乾的 SOC。三個機制,都沿用既有的命令通道,都不碰 <code>dispatch_command()</code> 的閘門:</p>
+<p><strong>(a) 設定點有效期。</strong><code>set_power_setpoint</code> 多了 <code>valid_until</code> 與 <code>on_expiry</code>
+(<code>idle</code> 歸零 / <code>hold</code> 維持 / <code>reserve</code> 充到備援水位)。引擎每次下設定點都附
+<code>now + StoragePlan.setpoint_ttl_seconds</code>(預設 300 s);設定點沒變時也在 <code>heartbeat_interval_seconds</code>
+(預設 60 s)後重送——<strong>刷新就是心跳</strong>,不另外發心跳命令。藍圖沒宣告 <code>valid_until</code> 的舊設備只收
+<code>power_w</code>,決策理由寫明「edge fail-safe unavailable」,而不是讓整個場域的調度被 422 擋下。</p>
+<p><strong>(b) 停電偵測。</strong>關口電表綁 <code>voltage_metric</code>(預設 <code>grid_voltage_v</code>),方案設
+<code>outage_voltage_min_v</code>(示範 180 V)與 <code>outage_for_seconds</code>(5 s)。worker 在每筆電壓樣本上跑
+<code>apps/ems/outage.py</code> 的狀態機:第一次低於門檻的時間記下、持續超過 N 秒才成立、中途回到門檻之上就重新計時
+(與告警引擎 <code>for_duration</code> 同義)。成立時開一列 <code>SiteOutage</code>、在電表上發 <code>grid_outage</code>
+critical 事件與設備告警;復電時關閉、清告警、發 info 事件。下游:彙總器把與停電重疊的區間節省記 <strong>null</strong>
+(既有規則,柴發近似保留為後備);<code>decide()</code> 在停電期間回 <code>skipped=grid_outage</code>,不下設定點——
+孤島供電由邊緣自己完成。</p>
+<p><strong>(c) Watchdog。</strong>邊緣在 <code>heartbeat_interval × heartbeat_miss_limit</code>(預設 180 s)內沒收到任何設定點、
+或 MQTT 連線中斷超過同樣時間,就執行 <code>StoragePlan.offline_policy</code>(預設 <code>reserve</code>)。政策寫在方案上,
+經 <code>export_fleet_config</code> 下到 <code>fleet.json</code>,模擬器照做——不是寫死。</p>
+<p><strong>模擬器</strong>(<code>simulator/physics.py</code>)實作了全部三者:<code>mode</code> 欄位顯示
+正常 / 設定點過期 / 斷線降級 / 孤島供電;主控台「選取停電/復電」讓關口電壓歸零、電表功率歸零、電池轉孤島供電。</p>
+<p><strong>驗收</strong>(<code>tests/test_edge_failsafe.py</code>,13 項):60 秒有效期的放電設定點在第 61 秒歸零;
+斷網 30 分鐘後 SOC 停在備援水位而不是少 25%;電壓掉 3 秒不算、掉 6 秒成立 → 事件 + 告警 + 區間節省 null + 調度備援;
+復電後告警自動解除;舊藍圖仍收得到設定點。</p>
+<p><strong>明確的降級行為</strong>:沒有 <code>valid_until</code> 的命令永不過期(舊行為);方案沒設電壓門檻就不偵測;
+規則快取 30 秒,改方案後最多 30 秒生效;停電偵測失敗只記 log,不擋遙測入庫。</p>
 <h3 id="1-13-電價-台電內建方案">1.13 電價：台電內建方案<a class="headerlink" href="#1-13-電價-台電內建方案" title="Permanent link">¶</a></h3>
 <p>台電<strong>沒有公開的即時電價 API</strong>——電價是牌價，由電價費率審議會約每半年檢討一次。
 所以正確的架構是「內建費率表」而不是「串接」：console 內建三個台電時間電價方案
@@ -1342,7 +1367,7 @@ estimated_savings = baseline_cost − actual_cost
 </tr>
 <tr>
 <td>停電偵測（不用「有柴發輸出」當近似）</td>
-<td>尚未實作</td>
+<td><strong>已實作</strong>（W6，§1.12I）：關口電壓低於門檻且持續 N 秒 → <code>SiteOutage</code>、事件、告警、節省記 null、調度走備援模式；柴發近似保留為後備</td>
 </tr>
 <tr>
 <td>能源資產綁定／session 參數／成本參數</td>

@@ -81,6 +81,7 @@ PLANS = [
     ("園區契約容量管理", DispatchStrategy.DEMAND_CAP, ["hsinchu"], "taipower-lv-power-2tier",
      {"contract_capacity_kw": 680.0, "demand_cap_target_kw": 650.0,
       "usable_capacity_kwh": 1000.0, "max_charge_kw": 500.0, "max_discharge_kw": 500.0,
+      "outage_voltage_min_v": 180.0,
       "notes": "園區統一方案：15 分鐘需量壓在契約容量以下，離峰回充。A 棟直接繼承。"}),
     ("研發大樓光儲自發自用", DispatchStrategy.SELF_CONSUMPTION, ["hsinchu-b"], "taipower-residential-3tier",
      {"usable_capacity_kwh": 500.0, "max_charge_kw": 250.0, "max_discharge_kw": 250.0,
@@ -89,10 +90,12 @@ PLANS = [
     ("工業區時間電價套利", DispatchStrategy.TOU_ARBITRAGE, ["taichung"], "taipower-lv-power-2tier",
      {"contract_capacity_kw": 1100.0, "usable_capacity_kwh": 2000.0,
       "max_charge_kw": 1000.0, "max_discharge_kw": 1000.0, "min_price_spread": 1.5,
+      "outage_voltage_min_v": 180.0,
       "notes": "離峰 2.36 元充電、尖峰 5.85 元放電；價差低於門檻時不動作。"}),
     ("總部契約容量管理", DispatchStrategy.DEMAND_CAP, ["taipei-hq"], "taipower-lv-power-2tier",
      {"contract_capacity_kw": 210.0, "demand_cap_target_kw": 200.0,
       "usable_capacity_kwh": 500.0, "max_charge_kw": 200.0, "max_discharge_kw": 200.0,
+      "outage_voltage_min_v": 180.0,
       "notes": "總部以小型儲能削減午後需量尖峰。"}),
 ]
 
@@ -253,6 +256,7 @@ class Command(BaseCommand):
         bindings = [
             (devices["smart-meter"], AssetRole.GRID_METER, {
                 "power_metric": "grid_power_w",
+                "voltage_metric": "grid_voltage_v",
                 "energy_import_metric": "grid_import_energy_kwh",
                 "energy_export_metric": "grid_export_energy_kwh",
                 "rated_power_kw": peak,

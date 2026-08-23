@@ -104,6 +104,14 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
 <h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="w6-邊緣-fail-safe-與停電偵測">W6 邊緣 fail-safe 與停電偵測<a class="headerlink" href="#w6-邊緣-fail-safe-與停電偵測" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>set_power_setpoint</code> 新增 <code>valid_until</code>／<code>on_expiry</code>（idle／hold／reserve）；引擎每次附 <code>setpoint_ttl_seconds</code> 的期限，設定點沒變也在 <code>heartbeat_interval_seconds</code> 後重送（刷新即心跳）。舊藍圖自動降級為只送 <code>power_w</code>。</li>
+<li>停電偵測：<code>EnergyAsset.voltage_metric</code> + <code>StoragePlan.outage_voltage_min_v</code>／<code>outage_for_seconds</code>；worker 內的 <code>apps/ems/outage.py</code> 狀態機 → <code>SiteOutage</code>、<code>grid_outage</code> 事件與告警、區間節省記 null、<code>decide()</code> 走備援模式。</li>
+<li>Watchdog：<code>heartbeat_miss_limit</code>／<code>offline_policy</code> 寫在方案上，經 <code>export_fleet_config</code> 下到模擬器。模擬器實作過期、watchdog、孤島；主控台新增「選取停電/復電」與「電池模式」欄。</li>
+<li>方案頁新增「邊緣 fail-safe」區段；資產編輯器的市電錶多了電壓指標；示範資料預設門檻 180 V。migration <code>ems/0012</code>。</li>
+<li>測試 <code>tests/test_edge_failsafe.py</code> 13 項；<code>docs/device-protocol.html</code> 補設定點有效期一節。</li>
+</ul>
 <h3 id="w5-策略疊加仲裁">W5 策略疊加仲裁<a class="headerlink" href="#w5-策略疊加仲裁" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>StoragePlan.strategies</code>（migration <code>ems/0011</code>，既有資料遷成 <code>[strategy]</code>）；方案頁新增「疊加策略」核取方塊；API 只允許疊加會算設定點的策略（422 <code>strategy_not_stackable</code>）。</li>

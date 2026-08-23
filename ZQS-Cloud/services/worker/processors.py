@@ -24,6 +24,7 @@ from django.utils import timezone
 from apps.alerts.engine import AlertEngine
 from apps.core.logging import get_logger
 from apps.core.timeutils import parse_timestamp
+from apps.ems.outage import OUTAGE_CODE, OutageDetector
 from apps.devices.models import (
     CapabilitySource,
     Command,
@@ -139,6 +140,7 @@ class Shared:
         self.gate = SampleGate()
         self.alerts = AlertEngine()
         self.aliases = AliasTable()
+        self.outages = OutageDetector()
         self._device_names: dict[uuid.UUID, str] = {}
 
     # ---- resolution ------------------------------------------------------
@@ -237,6 +239,7 @@ class Shared:
         return name
 
     def invalidate(self) -> None:
+        self.outages.invalidate()
         self.registry.invalidate()
         self.policies.invalidate()
         self.catalog.invalidate()
@@ -746,6 +749,7 @@ class SparkplugProcessor:
             # Alerts see every reading. A deadband is a storage decision;
             # letting it hide a threshold breach would be a safety bug.
             alert_inputs.append((device, metric_key, value, ts))
+            self._observe_outage(device, metric_key, value, ts, events, stats)
 
             current = last_seen.get(device.pk)
             if current is None or ts > current:
@@ -797,6 +801,44 @@ class SparkplugProcessor:
 
             rows.append(row)
             self.shared.gate.mark_stored(device.pk, metric_key, ts, value, text)
+
+    # ---- grid outage (W6) ------------------------------------------------
+    def _observe_outage(
+        self, device: DeviceRef, metric_key: str, value: float | None, ts: dt.datetime,
+        events: list[DeviceEvent], stats: dict,
+    ) -> None:
+        """關口電壓餵給停電偵測；狀態改變時發事件與告警。"""
+        try:
+            transition = self.shared.outages.observe(device.pk, metric_key, value, ts)
+        except Exception:  # noqa: BLE001 - 偵測失敗不能擋住遙測入庫
+            logger.exception("outage detection failed", extra={"device_id": device.device_id})
+            return
+        if not (transition.started or transition.ended):
+            return
+        outage = transition.outage
+        if transition.started:
+            message = f"Grid outage: voltage {outage.voltage_v:g} V below {outage.threshold_v:g} V"
+            events.append(DeviceEvent(
+                organization_id=device.organization_id, device_id=device.pk, ts=ts,
+                level=EventLevel.CRITICAL, code=OUTAGE_CODE, message=message,
+                payload={"alarm_state": "active", "alarm_level": EventLevel.CRITICAL,
+                         "site_id": str(outage.site_id), "started_at": outage.started_at.isoformat()},
+            ))
+            self.shared.alerts.raise_device_alarm(
+                device, code=OUTAGE_CODE, severity="critical", message=message, ts=ts,
+                details={"site_id": str(outage.site_id), "voltage_v": outage.voltage_v},
+                device_name=self.shared.device_name(device),
+            )
+            stats["outages_started"] += 1
+        else:
+            events.append(DeviceEvent(
+                organization_id=device.organization_id, device_id=device.pk, ts=ts,
+                level=EventLevel.INFO, code=OUTAGE_CODE, message="Grid restored",
+                payload={"alarm_state": "cleared", "alarm_level": EventLevel.CRITICAL,
+                         "site_id": str(outage.site_id), "ended_at": ts.isoformat()},
+            ))
+            self.shared.alerts.clear_device_alarm(device, code=OUTAGE_CODE, ts=ts)
+            stats["outages_ended"] += 1
 
     # ---- alarms and acknowledgements -------------------------------------
     def _apply_alarm(

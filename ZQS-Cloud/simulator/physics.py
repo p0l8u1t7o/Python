@@ -42,6 +42,21 @@ METRIC_UNITS = {
 }
 
 
+def _valid_until_monotonic(value) -> float | None:
+    """ISO 8601 UTC → monotonic 秒。解析不了就當沒有期限，並不因此拒絕命令。"""
+    if not value:
+        return None
+    try:
+        text = str(value).replace("Z", "+00:00")
+        when = dt.datetime.fromisoformat(text)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=dt.timezone.utc)
+        remaining = (when - dt.datetime.now(dt.timezone.utc)).total_seconds()
+        return time.monotonic() + remaining
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class SitePhysics:
     """One site's energy balance, stepped in wall-clock time."""
@@ -61,6 +76,24 @@ class SitePhysics:
     emergency_stop: bool = False
     #: Optional fallback policy when no setpoint has been received yet.
     autonomous: bool = False
+
+    # ---- edge fail-safe (W6) ---------------------------------------------
+    #: 設定點有效期（monotonic 秒）與到期後的行為：idle 歸零、hold 維持、
+    #: reserve 充到備援水位。None = 沒有期限（舊版平台的命令）。
+    setpoint_valid_until: float | None = None
+    on_expiry: str = "idle"
+    #: 備援水位（%）；reserve 政策充到這裡就停。
+    reserve_soc: float = 20.0
+    #: 雲端心跳 watchdog：最近一次收到設定點的時間、允許的靜默秒數、斷線時的政策。
+    #: 靜默超過 watchdog_seconds（或 MQTT 連線斷掉超過這個秒數）就進 offline_policy。
+    last_setpoint_at: float | None = None
+    watchdog_seconds: float = 180.0
+    offline_policy: str = "reserve"
+    link_down_since: float | None = None
+    #: 市電停電：關口電壓 0、電表功率 0，電池自己轉成孤島供電（最多額定功率）。
+    grid_outage: bool = False
+    #: 最近一次 step 套用的模式，給主控台顯示：normal / expired / watchdog / island。
+    mode: str = "normal"
 
     # running totals (kWh) - what the energy meters report
     import_kwh: float = 0.0
@@ -93,7 +126,14 @@ class SitePhysics:
                 self.setpoint_w = float(value)
                 self._seen_setpoint = True
                 self.emergency_stop = False
-                return f"setpoint {self.setpoint_w / 1000:.1f} kW"
+                self.last_setpoint_at = time.monotonic()
+                self.setpoint_valid_until = _valid_until_monotonic(params.get("valid_until"))
+                policy = str(params.get("on_expiry") or "idle").lower()
+                self.on_expiry = policy if policy in ("idle", "hold", "reserve") else "idle"
+                note = ""
+                if self.setpoint_valid_until is not None:
+                    note = f", valid {self.setpoint_valid_until - time.monotonic():.0f}s then {self.on_expiry}"
+                return f"setpoint {self.setpoint_w / 1000:.1f} kW{note}"
             if name == "emergency_stop":
                 self.setpoint_w = 0.0
                 self.emergency_stop = True
@@ -101,6 +141,25 @@ class SitePhysics:
             if name in ("reboot", "reset", "clear_alarms"):
                 return "ok"
             return "accepted"
+
+    def _policy_kw(self, policy: str) -> float:
+        """過期／斷線政策換算成功率（kW）。"""
+        if policy == "hold":
+            return self.setpoint_w / 1000.0
+        if policy == "reserve":
+            if self.soc < self.reserve_soc:
+                return -min(self.battery_kw_rated, self.battery_kw_rated * 0.5)
+            return 0.0
+        return 0.0
+
+    def _watchdog_tripped(self, now_mono: float) -> bool:
+        if self.watchdog_seconds <= 0:
+            return False
+        if self.link_down_since is not None and now_mono - self.link_down_since > self.watchdog_seconds:
+            return True
+        if self.last_setpoint_at is not None and now_mono - self.last_setpoint_at > self.watchdog_seconds:
+            return True
+        return False
 
     def step(self) -> None:
         now_local = dt.datetime.now(ZoneInfo(self.timezone_name or "Asia/Taipei"))
@@ -118,8 +177,20 @@ class SitePhysics:
         pv_kw = self.pv_peak_kw * solar * random.uniform(0.92, 1.0)
 
         with self._lock:
+            now_mono = time.monotonic()
+            self.mode = "normal"
             if self.emergency_stop:
                 wanted_kw = 0.0
+            elif self.grid_outage:
+                # 孤島：沒有市電，電池獨力供應負載（PV 先抵）；這個切換不需要雲端。
+                self.mode = "island"
+                wanted_kw = load_kw - pv_kw
+            elif self._watchdog_tripped(now_mono):
+                self.mode = "watchdog"
+                wanted_kw = self._policy_kw(self.offline_policy)
+            elif self.setpoint_valid_until is not None and now_mono > self.setpoint_valid_until:
+                self.mode = "expired"
+                wanted_kw = self._policy_kw(self.on_expiry)
             elif self._seen_setpoint or not self.autonomous:
                 wanted_kw = self.setpoint_w / 1000.0
             else:
@@ -146,6 +217,9 @@ class SitePhysics:
                 self.soc = max(self.min_soc, min(self.max_soc, self.soc + delta))
 
             grid_kw = load_kw - pv_kw - battery_kw
+            if self.grid_outage:
+                # 孤島時電表看不到功率；電池供不上的部分就是甩掉的負載。
+                grid_kw = 0.0
 
             self.load_kw, self.pv_kw, self.battery_kw, self.grid_kw = (
                 load_kw, pv_kw, battery_kw, grid_kw,
@@ -183,11 +257,12 @@ class SitePhysics:
                 "pcs_temperature_c": round(random.uniform(35, 48), 1),
             }
         if role == "grid_meter":
+            outage = self.grid_outage
             return {
                 power_metric or "grid_power_w": round(self.grid_kw * 1000, 1),
-                "grid_voltage_v": round(random.uniform(215, 228), 1),
+                "grid_voltage_v": 0.0 if outage else round(random.uniform(215, 228), 1),
                 "grid_current_a": round(abs(self.grid_kw) * 1000 / 380, 1),
-                "grid_frequency_hz": round(random.uniform(59.95, 60.05), 3),
+                "grid_frequency_hz": 0.0 if outage else round(random.uniform(59.95, 60.05), 3),
                 "grid_power_factor": round(random.uniform(0.93, 0.99), 3),
                 "grid_import_energy_kwh": round(self.import_kwh, 4),
                 "grid_export_energy_kwh": round(self.export_kwh, 4),

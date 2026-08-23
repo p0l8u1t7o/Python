@@ -122,6 +122,9 @@ class GatewayRunner(threading.Thread):
             peak_load_kw=spec.peak_load_kw, pv_peak_kw=spec.pv_peak_kw,
             battery_kw_rated=spec.battery_kw, battery_kwh=spec.battery_kwh,
             autonomous=autonomous,
+            watchdog_seconds=float(getattr(spec, "watchdog_seconds", 180.0) or 0.0),
+            offline_policy=str(getattr(spec, "offline_policy", "reserve") or "reserve"),
+            reserve_soc=float(getattr(spec, "reserve_soc", 20.0) or 20.0),
         )
         self.devices = [SimDevice(d.device_id, d.role or "controller", d.power_metric) for d in spec.devices]
         self.stop_event = threading.Event()
@@ -281,6 +284,11 @@ class GatewayRunner(threading.Thread):
                 with self._publish_lock:
                     if self.stop_event.is_set():
                         break
+                    # 連線狀態餵給 watchdog：broker 斷掉就是「雲端不見了」。
+                    if link.connected:
+                        self.physics.link_down_since = None
+                    elif self.physics.link_down_since is None:
+                        self.physics.link_down_since = time.monotonic()
                     self.physics.step()
                     self._publish_all(node)
                     if self.faults and time.monotonic() >= self._fault_due:

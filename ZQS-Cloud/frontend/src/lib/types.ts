@@ -685,6 +685,9 @@ export type AssetRole =
   | 'ev_charger'
   | 'generator'
 
+/** What the edge does when a setpoint expires or the cloud goes quiet. */
+export type ExpiryPolicy = 'idle' | 'hold' | 'reserve'
+
 export type DispatchStrategy =
   | 'manual'
   | 'self_consumption'
@@ -707,6 +710,8 @@ export interface EnergyAsset {
   energy_export_metric: string
   soc_metric: string
   soh_metric: string
+  /** Grid-meter voltage metric; the outage detector reads it (W6). */
+  voltage_metric: string
   power_scale: number
   energy_scale: number
   invert_sign: boolean
@@ -902,6 +907,15 @@ export interface StoragePlan {
   savings_baseline: 'grid_only' | 'no_storage' | 'none'
   /** Turn the plan's limits into a hard gate on dispatch commands. */
   enforce_limits: boolean
+  /** W6 edge fail-safe: setpoints carry valid_until = now + ttl; 0 disables. */
+  setpoint_ttl_seconds: number
+  on_expiry: ExpiryPolicy
+  heartbeat_interval_seconds: number
+  heartbeat_miss_limit: number
+  offline_policy: ExpiryPolicy
+  /** Grid voltage below this for outage_for_seconds = outage; null disables. */
+  outage_voltage_min_v: number | null
+  outage_for_seconds: number
   /** Demand ceiling for the demand-cap strategy; null = 95% of contract. */
   demand_cap_target_kw: number | null
   /** Whether demand-cap recharges during the tariff's cheapest period. */

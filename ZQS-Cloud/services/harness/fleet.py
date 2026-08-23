@@ -39,6 +39,7 @@ def export_fleet_config(organization, *, only_sites: set[str] | None = None,
     """
     from apps.devices.models import Device, EdgeNode
     from apps.ems.models import AssetRole, EnergyAsset
+    from apps.ems.plans import effective_plan
 
     mqtt = settings.MQTT
     broker = broker or BrokerConfig(
@@ -72,6 +73,12 @@ def export_fleet_config(organization, *, only_sites: set[str] | None = None,
         if asset.role == AssetRole.BATTERY:
             spec.battery_kw = asset.rated_power_kw or spec.battery_kw
             spec.battery_kwh = asset.rated_energy_kwh or spec.battery_kwh
+            # W6：邊緣 fail-safe 參數抄自方案，模擬器與平台講同一套。
+            plan, _source = effective_plan(site)
+            if plan is not None:
+                spec.watchdog_seconds = float(plan.heartbeat_interval_seconds * plan.heartbeat_miss_limit)
+                spec.offline_policy = plan.offline_policy
+                spec.reserve_soc = float(max(plan.backup_reserve_percent, plan.min_soc_percent))
         elif asset.role == AssetRole.PV:
             spec.pv_peak_kw = asset.rated_power_kw or spec.pv_peak_kw
         elif asset.role == AssetRole.LOAD_METER:

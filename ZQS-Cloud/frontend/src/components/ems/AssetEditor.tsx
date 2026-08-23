@@ -11,8 +11,8 @@ import { Button, Checkbox, Modal, Select, TextInput } from '@/components/ui'
 const ROLES: AssetRole[] = ['grid_meter', 'load_meter', 'pv', 'battery', 'ev_charger', 'generator']
 
 /** Which metric bindings each role uses; the rest are hidden rather than ignored. */
-const BINDINGS: Record<AssetRole, ('power' | 'import' | 'export' | 'soc' | 'soh')[]> = {
-  grid_meter: ['power', 'import', 'export'],
+const BINDINGS: Record<AssetRole, ('power' | 'import' | 'export' | 'soc' | 'soh' | 'voltage')[]> = {
+  grid_meter: ['power', 'import', 'export', 'voltage'],
   load_meter: ['power', 'import'],
   pv: ['power', 'import'],
   battery: ['power', 'import', 'export', 'soc', 'soh'],
@@ -21,8 +21,8 @@ const BINDINGS: Record<AssetRole, ('power' | 'import' | 'export' | 'soc' | 'soh'
 }
 
 /** Sensible defaults by role: what a device of that kind usually reports. */
-const DEFAULT_METRICS: Record<AssetRole, Partial<Record<'power' | 'import' | 'export' | 'soc' | 'soh', string>>> = {
-  grid_meter: { power: 'grid_power_w', import: 'grid_import_energy_kwh', export: 'grid_export_energy_kwh' },
+const DEFAULT_METRICS: Record<AssetRole, Partial<Record<'power' | 'import' | 'export' | 'soc' | 'soh' | 'voltage', string>>> = {
+  grid_meter: { power: 'grid_power_w', import: 'grid_import_energy_kwh', export: 'grid_export_energy_kwh', voltage: 'grid_voltage_v' },
   load_meter: { power: 'load_power_w', import: 'load_energy_kwh' },
   pv: { power: 'pv_power_w', import: 'pv_energy_kwh' },
   battery: {
@@ -42,6 +42,7 @@ const EMPTY = {
   energy_export_metric: '',
   soc_metric: '',
   soh_metric: '',
+  voltage_metric: '',
   power_scale: '0.001',
   energy_scale: '1',
   invert_sign: false,
@@ -103,6 +104,7 @@ export function AssetEditor({
         energy_export_metric: asset.energy_export_metric,
         soc_metric: asset.soc_metric,
         soh_metric: asset.soh_metric,
+        voltage_metric: asset.voltage_metric ?? '',
         power_scale: String(asset.power_scale),
         energy_scale: String(asset.energy_scale),
         invert_sign: asset.invert_sign,
@@ -161,6 +163,7 @@ export function AssetEditor({
       energy_export_metric: f.energy_export_metric || defaults.export || '',
       soc_metric: f.soc_metric || defaults.soc || '',
       soh_metric: f.soh_metric || defaults.soh || '',
+      voltage_metric: f.voltage_metric || defaults.voltage || '',
     }))
   }
 
@@ -197,6 +200,7 @@ export function AssetEditor({
       energy_export_metric: bindings.includes('export') ? form.energy_export_metric : '',
       soc_metric: bindings.includes('soc') ? form.soc_metric : '',
       soh_metric: bindings.includes('soh') ? form.soh_metric : '',
+      voltage_metric: bindings.includes('voltage') ? form.voltage_metric : '',
       power_scale: Number(form.power_scale),
       energy_scale: Number(form.energy_scale || 1),
       invert_sign: form.invert_sign,
@@ -223,7 +227,7 @@ export function AssetEditor({
   }
 
   const metricField = (
-    key: 'power_metric' | 'energy_import_metric' | 'energy_export_metric' | 'soc_metric' | 'soh_metric',
+    key: 'power_metric' | 'energy_import_metric' | 'energy_export_metric' | 'soc_metric' | 'soh_metric' | 'voltage_metric',
     label: string,
     required: boolean,
   ) => (
@@ -294,6 +298,7 @@ export function AssetEditor({
             {bindings.includes('power') ? metricField('power_metric', t('storage.powerMetric'), form.role !== 'load_meter') : null}
             {bindings.includes('soc') ? metricField('soc_metric', t('storage.socMetric'), true) : null}
             {bindings.includes('soh') ? metricField('soh_metric', t('assets.sohMetric'), false) : null}
+            {bindings.includes('voltage') ? metricField('voltage_metric', t('assets.voltageMetric'), false) : null}
             {bindings.includes('import') ? metricField('energy_import_metric', t('assets.importMetric'), false) : null}
             {bindings.includes('export') ? metricField('energy_export_metric', t('assets.exportMetric'), false) : null}
           </div>

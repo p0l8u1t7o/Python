@@ -7,6 +7,7 @@ from typing import Any
 from ninja import Field, Schema
 
 from apps.ems.models import (
+    ExpiryPolicy,
     AssetRole,
     DispatchMode,
     DispatchStrategy,
@@ -28,6 +29,8 @@ class EnergyAssetIn(Schema):
     energy_export_metric: str = Field(default="", max_length=64)
     soc_metric: str = Field(default="", max_length=64)
     soh_metric: str = Field(default="", max_length=64)
+    #: W6：關口電表的電壓 metric，停電偵測讀它。
+    voltage_metric: str = Field(default="", max_length=64)
     #: 0.001 converts a device reporting W into the kW this module works in.
     power_scale: float = 0.001
     energy_scale: float = 1.0
@@ -122,6 +125,14 @@ class StoragePlanIn(Schema):
     #: Whether the operating envelope is a hard gate on dispatch or just a
     #: number on a settings page.
     enforce_limits: bool = True
+    # ---- Edge fail-safe (W6) ------------------------------------------------
+    setpoint_ttl_seconds: int = Field(default=300, ge=0, le=86400)
+    on_expiry: ExpiryPolicy = ExpiryPolicy.IDLE
+    heartbeat_interval_seconds: int = Field(default=60, ge=10, le=3600)
+    heartbeat_miss_limit: int = Field(default=3, ge=1, le=20)
+    offline_policy: ExpiryPolicy = ExpiryPolicy.RESERVE
+    outage_voltage_min_v: float | None = Field(default=None, ge=0)
+    outage_for_seconds: int = Field(default=5, ge=0, le=3600)
     notes: str = ""
 
 

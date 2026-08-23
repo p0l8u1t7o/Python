@@ -26,6 +26,7 @@ from apps.ems.models import (
     EnergyInterval,
     EnergyIntervalCost,
 )
+from apps.ems.outage import overlaps_outage
 from apps.ems.tariffs import resolve_price
 from apps.telemetry.energy import build_timeline
 from apps.telemetry.models import TelemetrySample
@@ -271,6 +272,10 @@ class SiteAggregator:
             generator_kwh=generator_kwh,
             actual_cost=actual_cost,
         )
+        # W6：真正的停電訊號。停電期間沒有「改跟台電買」的對照，節省記 null
+        # （既有規則），柴發近似保留為後備。
+        if savings is not None and overlaps_outage(self.site.pk, start, end):
+            savings = None
 
         interval = EnergyInterval(
             organization_id=self.site.organization_id,
@@ -339,8 +344,8 @@ class SiteAggregator:
         so any number here would be invented.
 
         Using generator output as the stand-in for "outage" is an
-        approximation - a real outage signal would be better and does not
-        exist yet. Noted in device-classification.md §3.12.
+        approximation kept as a fallback; the real signal is the grid-meter
+        voltage rule (W6, :mod:`apps.ems.outage`), applied by the caller.
         """
         baseline = getattr(self.plan, "savings_baseline", "no_storage") or "no_storage"
         if baseline == "none" or generator_kwh > 0:

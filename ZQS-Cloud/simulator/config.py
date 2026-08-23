@@ -67,6 +67,12 @@ class GatewayConfig:
     #: Per-node MQTT credential, when the broker enforces one (EMQX).
     username: str = ""
     password: str = ""
+    #: 邊緣 fail-safe（W6）：雲端靜默／斷線超過 watchdog_seconds 就執行
+    #: offline_policy（idle / hold / reserve）；reserve 充到 reserve_soc。
+    #: 由 export_fleet_config 從儲能方案抄來，與平台端的設定一致。
+    watchdog_seconds: float = 180.0
+    offline_policy: str = "reserve"
+    reserve_soc: float = 20.0
     devices: list[DeviceConfig] = field(default_factory=list)
 
 

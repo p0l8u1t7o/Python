@@ -56,6 +56,9 @@ class EnergyAsset(UUIDPrimaryKeyModel, TimeStampedModel):
     )
     soc_metric = models.CharField(max_length=64, blank=True, help_text="Battery SOC, %.")
     soh_metric = models.CharField(max_length=64, blank=True, help_text="Battery SOH, %.")
+    #: W6：關口電表的電壓 metric。停電判準讀它（低於門檻且持續 N 秒），
+    #: 不用「柴發有輸出」當近似。空白 = 這個場域不做停電偵測。
+    voltage_metric = models.CharField(max_length=64, blank=True, help_text="Grid voltage, V (grid meter only).")
 
     #: Multiplier applied to raw samples, e.g. 0.001 to turn W into kW.
     power_scale = models.FloatField(default=1.0)
@@ -178,6 +181,14 @@ class SavingsBaseline(models.TextChoices):
     NONE = "none", _("Do not compute savings")
 
 
+class ExpiryPolicy(models.TextChoices):
+    """設定點過期／斷網時邊緣自己該做什麼（W6）。"""
+
+    IDLE = "idle", _("Idle (zero power)")
+    HOLD = "hold", _("Hold last setpoint")
+    RESERVE = "reserve", _("Charge to backup reserve")
+
+
 class DispatchStrategy(models.TextChoices):
     MANUAL = "manual", _("Manual / external control")
     SELF_CONSUMPTION = "self_consumption", _("Maximise self-consumption")
@@ -271,6 +282,20 @@ class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
         choices=SavingsBaseline.choices,
         default=SavingsBaseline.NO_STORAGE,
     )
+    # ---- Edge fail-safe (W6) ----------------------------------------------
+    #: 設定點有效期：引擎每次下設定點都附 valid_until = now + ttl；邊緣過期後
+    #: 依 on_expiry 自行降級。斷網兩小時不會把電池放乾，靠的是這個而不是雲端。
+    setpoint_ttl_seconds = models.PositiveIntegerField(default=300)
+    #: 過期後邊緣怎麼做：idle 歸零、hold 維持、reserve 充到備援水位。
+    on_expiry = models.CharField(max_length=10, choices=ExpiryPolicy.choices, default=ExpiryPolicy.IDLE)
+    #: 雲端心跳（= 設定點刷新）週期；邊緣連續 miss_limit 次沒收到就進 offline_policy。
+    heartbeat_interval_seconds = models.PositiveIntegerField(default=60)
+    heartbeat_miss_limit = models.PositiveSmallIntegerField(default=3)
+    offline_policy = models.CharField(max_length=10, choices=ExpiryPolicy.choices, default=ExpiryPolicy.RESERVE)
+    #: 停電判準：關口電壓低於此（V）且持續 outage_for_seconds。null = 不偵測。
+    outage_voltage_min_v = models.FloatField(null=True, blank=True)
+    outage_for_seconds = models.PositiveIntegerField(default=5)
+
     #: Turn plan limits into a hard gate on dispatch commands, not just a
     #: number on a settings page. Off leaves the previous behaviour, where the
     #: envelope was documentation.
@@ -806,3 +831,32 @@ class MonthlySettlement(UUIDPrimaryKeyModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.site_id} {self.billing_month:%Y-%m} total={self.total:.0f}"
+
+
+class SiteOutage(UUIDPrimaryKeyModel):
+    """一次市電停電（W6）：關口電壓低於門檻且持續 N 秒起，到電壓恢復為止。
+
+    存成一列而不是只發事件，是因為下游要用它：彙總器在停電期間把節省記
+    ``null``（沒有「改跟台電買」的對照），調度引擎在停電期間走備援模式。
+    ``ended_at`` 為 null = 進行中。
+    """
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="outages")
+    #: 判定成立的電表。
+    device = models.ForeignKey(Device, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    started_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    #: 觸發時的電壓與門檻，留給事後對帳。
+    voltage_v = models.FloatField(null=True, blank=True)
+    threshold_v = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "ems_site_outage"
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["site", "started_at", "ended_at"])]
+
+    @property
+    def is_active(self) -> bool:
+        return self.ended_at is None
