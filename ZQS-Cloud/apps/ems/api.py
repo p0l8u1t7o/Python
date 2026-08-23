@@ -1440,6 +1440,15 @@ def _plan_out(plan: StoragePlan) -> dict:
         "workflow_id": plan.workflow_id,
         "savings_baseline": plan.savings_baseline,
         "enforce_limits": plan.enforce_limits,
+        # Strategy parameters. Missing from here, the console could edit these
+        # on the plans page but never read them back per site (the 3D demand
+        # ceiling fell back to 95% of contract while the plan said 650).
+        "demand_cap_target_kw": plan.demand_cap_target_kw,
+        "offpeak_recharge": plan.offpeak_recharge,
+        "min_price_spread": plan.min_price_spread,
+        "max_cycles_per_day": plan.max_cycles_per_day,
+        "temperature_max_c": plan.temperature_max_c,
+        "temperature_metric": plan.temperature_metric,
         "setpoint_ttl_seconds": plan.setpoint_ttl_seconds,
         "on_expiry": plan.on_expiry,
         "heartbeat_interval_seconds": plan.heartbeat_interval_seconds,

@@ -535,7 +535,6 @@ const zhHant: Translation = {
     showAllTerms: '顯示全部 {{count}} 個名詞',
     troubleshooting: '常見問題',
     problems: {
-      live: '即時',
     stale: { title: '即時數值顯示「已過期」', body: '系統已逾五分鐘未收到任何回報。請先確認下方環境資訊：若即時擷取為停用狀態，請以不含 -NoBroker 的方式重新啟動；否則代表設備已停止發送，或 broker 服務異常。' },
       offline: { title: '全部設備都變成離線', body: '設備靜默逾寬限時間即標記為離線。回補的歷史資料屬於歷史紀錄而非即時連線，因此新建立的示範環境於片刻後全數顯示離線屬正常現象。' },
       noAssets: { title: '儲能頁說沒有綁定任何資產', body: '此場域尚未綁定任何能源資產。請將設備及其量測項目綁定至對應角色。若設備已移轉場域，綁定會隨設備移動，請至原場域確認。' },
@@ -637,6 +636,10 @@ const zhHant: Translation = {
     problems: { power: '充電／放電需要大於 0 的功率。', time: '請填時間。', order: '結束必須晚於開始。' },
   },
   storage: {
+    live: '即時',
+    clickToFocus: '點擊節點聚焦',
+    focusHint: '再點一次返回',
+    lastSetpoint: '最近設定點',
     investment: '設備投入成本',
     investmentHint: '放在電費旁邊而不是併進去：資本支出不是「搬運電能」的成本，而電池的循環成本本身就已經是採購價換算成每 kWh 的數字。',
     capitalTotal: '採購成本',

@@ -533,7 +533,6 @@ const en = {
     showAllTerms: 'Show all {{count}} terms',
     troubleshooting: 'Common questions',
     problems: {
-      live: 'Live',
     stale: { title: 'The live figures say "stale"', body: 'Nothing has reported for five minutes. Check the environment panel below: if live ingest is off, restart without --no-broker. Otherwise the device has stopped publishing, or the broker is down.' },
       offline: { title: 'Everything went offline', body: 'A device is marked offline once it has been silent longer than the grace window. Backfilled history is history, not a live connection, so a seeded install goes offline shortly after setup and that is correct.' },
       noAssets: { title: 'The storage page says nothing is bound', body: 'The site has no energy asset bindings. Bind a device and its metric keys to a role. If you have just moved a device between sites, its bindings moved with it - check the site it came from.' },
@@ -635,6 +634,10 @@ const en = {
     problems: { power: 'Charge / discharge needs a power above 0.', time: 'Enter a time.', order: 'End must be after start.' },
   },
   storage: {
+    live: 'Live',
+    clickToFocus: 'Click a node to focus',
+    focusHint: 'click again to return',
+    lastSetpoint: 'Last setpoint',
     investment: 'Equipment investment',
     investmentHint: 'Shown next to the energy cost, not inside it: capital is not a cost of moving energy, and the battery cycle charge is already that purchase price per kWh.',
     capitalTotal: 'Purchase cost',

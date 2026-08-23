@@ -108,7 +108,9 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <ul>
 <li>新增 <code>EnergyScene3D</code>（three.js，lazy-load 僅此頁載入）：PV 陣列、電網塔、電池（SOC 發光液面）、廠房四個節點，粒子沿弧線依實際功率方向與大小流動；中樞脈動、慢速環繞鏡頭、霓虹網格地面。</li>
 <li>HUD 浮層顯示四路功率、充放電狀態與 SOC；深淺主題各一組配色；尊重 <code>prefers-reduced-motion</code>；WebGL 不可用時自動隱藏、沿用原 2D 功率流圖。</li>
-<li>e2e <code>e2e/storage3d.spec.ts</code> 兩主題截圖驗證、無 console 錯誤。</li>
+<li><strong>互動</strong>：點擊任一節點鏡頭滑入聚焦（再點返回，HUD 顯示聚焦對象）；市電節點上方浮著<strong>需量上限天花板</strong>（方案目標 → 舊削峰目標 → 契約 95%），底下的光柱是即時購電，超過 90% 轉橘、超約轉紅並閃爍，標籤「281 / 650 kW」；電池收到新設定點時中樞閃一個脈衝並沿弧線衝向電池，HUD 顯示最近設定點。</li>
+<li>修正 <code>GET /ems/sites/{id}/plan</code> 漏掉 <code>demand_cap_target_kw</code>、<code>offpeak_recharge</code>、<code>min_price_spread</code>、<code>max_cycles_per_day</code>、溫度約束欄位。</li>
+<li>e2e <code>e2e/storage3d.spec.ts</code> 兩主題截圖＋點擊聚焦驗證、無 console 錯誤。</li>
 </ul>
 <h3 id="模擬器-手動覆寫上傳值">模擬器：手動覆寫上傳值<a class="headerlink" href="#模擬器-手動覆寫上傳值" title="Permanent link">¶</a></h3>
 <ul>

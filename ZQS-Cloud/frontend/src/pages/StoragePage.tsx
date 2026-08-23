@@ -34,10 +34,11 @@ import {
   useSiteOverview,
   useSites,
   useStoragePlan,
+  useDeviceCommands,
   useStoragePlans,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
-import type { EnergyAsset, PowerFlow } from '@/lib/types'
+import type { EnergyAsset, PowerFlow, StoragePlan } from '@/lib/types'
 import {
   formatCurrency,
   formatDateTime,
@@ -173,7 +174,13 @@ export function StoragePage() {
       ) : null}
 
       {overview.data && hasAssets ? (
-        <EnergyHero flow={overview.data.flow} siteName={overview.data.site_name} stale={overview.data.flow.is_stale} />
+        <EnergyHero
+          flow={overview.data.flow}
+          siteName={overview.data.site_name}
+          stale={overview.data.flow.is_stale}
+          ceilingKw={demandCeilingKw(plan.data)}
+          batteryDeviceId={assets.data?.find((asset) => asset.role === 'battery')?.device_id}
+        />
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-3">
@@ -1093,9 +1100,26 @@ export default StoragePage
  * of the four powers and the SOC. Falls back to the plain diagram when WebGL
  * is unavailable (old VMs, headless browsers), so the numbers never vanish.
  */
-function EnergyHero({ flow, siteName, stale }: { flow: PowerFlow; siteName: string; stale: boolean }) {
+/** Same fallback chain as the engine: explicit target, legacy peak target, 95% of contract. */
+function demandCeilingKw(plan: StoragePlan | null | undefined): number | null {
+  if (!plan) return null
+  if (plan.demand_cap_target_kw) return plan.demand_cap_target_kw
+  if (plan.peak_shaving_target_kw) return plan.peak_shaving_target_kw
+  if (plan.contract_capacity_kw) return plan.contract_capacity_kw * 0.95
+  return null
+}
+
+function EnergyHero({
+  flow, siteName, stale, ceilingKw, batteryDeviceId,
+}: { flow: PowerFlow; siteName: string; stale: boolean; ceilingKw: number | null; batteryDeviceId?: string }) {
   const { t } = useTranslation()
   const [supported, setSupported] = useState(true)
+  const [focus, setFocus] = useState<'pv' | 'grid' | 'battery' | 'load' | null>(null)
+  // The newest setpoint command on the battery drives the dispatch pulse; the
+  // list already polls at the fast cadence for the command panel.
+  const commands = useDeviceCommands(batteryDeviceId, { limit: 1, offset: 0 })
+  const latest = commands.data?.items[0]
+  const pulseKey = latest && latest.name === 'set_power_setpoint' ? latest.id : null
   const gridKw = flow.grid_kw ?? 0
   const batteryKw = flow.battery_kw ?? 0
   const tiles: { key: string; label: string; value: number | null; unit: string; tone: string; caption?: string }[] = [
@@ -1116,7 +1140,14 @@ function EnergyHero({ flow, siteName, stale }: { flow: PowerFlow; siteName: stri
     <Card className="tech-frame mb-5 overflow-hidden">
       <div className="relative" data-testid="energy-hero">
         <Suspense fallback={<div className="h-[380px]" />}>
-          <EnergyScene3D flow={flow} height={380} onUnsupported={() => setSupported(false)} />
+          <EnergyScene3D
+            flow={flow}
+            height={380}
+            ceilingKw={ceilingKw}
+            pulseKey={pulseKey}
+            onFocus={setFocus}
+            onUnsupported={() => setSupported(false)}
+          />
         </Suspense>
         <div className="scanline" aria-hidden />
         <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 text-xs">
@@ -1124,6 +1155,16 @@ function EnergyHero({ flow, siteName, stale }: { flow: PowerFlow; siteName: stri
             {stale ? t('storage.stale') : t('storage.live', { defaultValue: 'LIVE' })}
           </span>
           <span className="hud-tile text-content">{siteName}</span>
+          {focus ? (
+            <span className="hud-tile text-brand">{t(`storage.${focus}`)} · {t('storage.focusHint')}</span>
+          ) : (
+            <span className="hud-tile text-muted">{t('storage.clickToFocus')}</span>
+          )}
+          {latest && latest.name === 'set_power_setpoint' ? (
+            <span className="hud-tile text-muted">
+              {t('storage.lastSetpoint')} {(Number(latest.params.power_w) / 1000).toFixed(0)} kW · {formatTime(latest.created_at)}
+            </span>
+          ) : null}
         </div>
         <div className="pointer-events-none absolute bottom-4 left-4 right-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
           {tiles.map((tile) => (

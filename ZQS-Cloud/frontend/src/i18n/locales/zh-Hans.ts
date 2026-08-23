@@ -536,7 +536,6 @@ const zhHans: Translation = {
     showAllTerms: '显示全部 {{count}} 个名词',
     troubleshooting: '常见问题',
     problems: {
-      live: '即时',
     stale: { title: '实时数值显示“已过期”', body: '系统已逾五分钟未收到任何回报。请先确认下方环境信息：若实时采集为停用状态，请以不含 -NoBroker 的方式重新启动；否则代表设备已停止发送，或 broker 服务异常。' },
       offline: { title: '全部设备都变成离线', body: '设备静默逾宽限时间即标记为离线。回补的历史数据属于历史记录而非实时连接，因此新建立的演示环境于片刻后全数显示离线属正常现象。' },
       noAssets: { title: '储能页说没有绑定任何资产', body: '此场域尚未绑定任何能源资产。请将设备及其量测项目绑定至对应角色。若设备已移转场域，绑定会随设备移动，请至原场域确认。' },
@@ -638,6 +637,10 @@ const zhHans: Translation = {
     problems: { power: '充电／放电需要大于 0 的功率。', time: '请填时间。', order: '结束必须晚于开始。' },
   },
   storage: {
+    live: '即时',
+    clickToFocus: '点击节点聚焦',
+    focusHint: '再点一次返回',
+    lastSetpoint: '最近设定点',
     investment: '设备投入成本',
     investmentHint: '放在电费旁边而不是并进去：资本支出不是“搬运电能”的成本，而电池的循环成本本身就已经是采购价换算成每 kWh 的数字。',
     capitalTotal: '采购成本',
