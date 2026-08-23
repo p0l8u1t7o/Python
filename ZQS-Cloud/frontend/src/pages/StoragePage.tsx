@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -37,7 +37,7 @@ import {
   useStoragePlans,
 } from '@/lib/queries'
 import { errorMessage } from '@/lib/errors'
-import type { EnergyAsset } from '@/lib/types'
+import type { EnergyAsset, PowerFlow } from '@/lib/types'
 import {
   formatCurrency,
   formatDateTime,
@@ -51,6 +51,9 @@ import { useTimeRange } from '@/lib/useTimeRange'
 import { CostChart, EnergyBalanceChart, SocChart } from '@/components/charts/EnergyCharts'
 import { CostSourceChart } from '@/components/charts/CostCharts'
 import { PowerFlowDiagram } from '@/components/charts/PowerFlowDiagram'
+
+// three.js is ~600 KB; only this page pays for it, and only once it renders.
+const EnergyScene3D = lazy(() => import('@/components/charts/EnergyScene3D'))
 import { AssetEditor } from '@/components/ems/AssetEditor'
 import { DispatchWindowsCard } from '@/components/ems/DispatchWindowsCard'
 import {
@@ -167,6 +170,10 @@ export function StoragePage() {
             description={t('storage.notConfiguredHint')}
           />
         </Card>
+      ) : null}
+
+      {overview.data && hasAssets ? (
+        <EnergyHero flow={overview.data.flow} siteName={overview.data.site_name} stale={overview.data.flow.is_stale} />
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-3">
@@ -1079,3 +1086,71 @@ function InvestmentCard({
 }
 
 export default StoragePage
+
+
+/**
+ * The "command centre" strip: a live 3D energy scene with a holographic HUD
+ * of the four powers and the SOC. Falls back to the plain diagram when WebGL
+ * is unavailable (old VMs, headless browsers), so the numbers never vanish.
+ */
+function EnergyHero({ flow, siteName, stale }: { flow: PowerFlow; siteName: string; stale: boolean }) {
+  const { t } = useTranslation()
+  const [supported, setSupported] = useState(true)
+  const gridKw = flow.grid_kw ?? 0
+  const batteryKw = flow.battery_kw ?? 0
+  const tiles: { key: string; label: string; value: number | null; unit: string; tone: string; caption?: string }[] = [
+    { key: 'pv', label: t('storage.pv'), value: flow.pv_kw, unit: 'kW', tone: 'text-warning' },
+    {
+      key: 'grid', label: t('storage.grid'), value: flow.grid_kw, unit: 'kW',
+      tone: gridKw < -0.05 ? 'text-ok' : 'text-info',
+      caption: gridKw > 0.05 ? t('storage.importing') : gridKw < -0.05 ? t('storage.exporting') : t('storage.idle'),
+    },
+    {
+      key: 'battery', label: t('storage.battery'), value: flow.battery_kw, unit: 'kW', tone: 'text-brand',
+      caption: batteryKw > 0.05 ? t('storage.discharging') : batteryKw < -0.05 ? t('storage.charging') : t('storage.idle'),
+    },
+    { key: 'load', label: t('storage.load'), value: flow.load_kw, unit: 'kW', tone: 'text-content' },
+  ]
+  if (!supported) return null
+  return (
+    <Card className="tech-frame mb-5 overflow-hidden">
+      <div className="relative" data-testid="energy-hero">
+        <Suspense fallback={<div className="h-[380px]" />}>
+          <EnergyScene3D flow={flow} height={380} onUnsupported={() => setSupported(false)} />
+        </Suspense>
+        <div className="scanline" aria-hidden />
+        <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 text-xs">
+          <span className={`hud-tile ${stale ? '' : 'hud-live'} font-medium uppercase tracking-widest text-muted`}>
+            {stale ? t('storage.stale') : t('storage.live', { defaultValue: 'LIVE' })}
+          </span>
+          <span className="hud-tile text-content">{siteName}</span>
+        </div>
+        <div className="pointer-events-none absolute bottom-4 left-4 right-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {tiles.map((tile) => (
+            <div key={tile.key} className="hud-tile">
+              <p className="text-[10px] uppercase tracking-widest text-muted">{tile.label}</p>
+              <p className={`hud-value ${tile.tone}`}>
+                {tile.value === null ? '—' : tile.value.toFixed(1)}
+                <span className="ml-1 text-xs font-normal text-muted">{tile.unit}</span>
+              </p>
+              {tile.caption ? <p className="text-[10px] text-muted">{tile.caption}</p> : null}
+            </div>
+          ))}
+          <div className="hud-tile">
+            <p className="text-[10px] uppercase tracking-widest text-muted">SOC</p>
+            <p className="hud-value text-brand">
+              {flow.battery_soc_percent === null ? '—' : flow.battery_soc_percent.toFixed(0)}
+              <span className="ml-1 text-xs font-normal text-muted">%</span>
+            </p>
+            <div className="mt-1 h-1 w-full overflow-hidden rounded bg-line">
+              <div
+                className="h-full rounded bg-brand transition-[width] duration-700"
+                style={{ width: `${Math.max(0, Math.min(100, flow.battery_soc_percent ?? 0))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}

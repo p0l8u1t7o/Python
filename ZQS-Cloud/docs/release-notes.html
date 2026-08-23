@@ -104,6 +104,12 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
 <h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="儲能頁-3d-即時能量場景">儲能頁：3D 即時能量場景<a class="headerlink" href="#儲能頁-3d-即時能量場景" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>EnergyScene3D</code>（three.js，lazy-load 僅此頁載入）：PV 陣列、電網塔、電池（SOC 發光液面）、廠房四個節點，粒子沿弧線依實際功率方向與大小流動；中樞脈動、慢速環繞鏡頭、霓虹網格地面。</li>
+<li>HUD 浮層顯示四路功率、充放電狀態與 SOC；深淺主題各一組配色；尊重 <code>prefers-reduced-motion</code>；WebGL 不可用時自動隱藏、沿用原 2D 功率流圖。</li>
+<li>e2e <code>e2e/storage3d.spec.ts</code> 兩主題截圖驗證、無 console 錯誤。</li>
+</ul>
 <h3 id="模擬器-手動覆寫上傳值">模擬器：手動覆寫上傳值<a class="headerlink" href="#模擬器-手動覆寫上傳值" title="Permanent link">¶</a></h3>
 <ul>
 <li>主控台新增「場域物理量鎖定」：負載／PV／電池 kW／SOC 固定值＋關閉隨機抖動（<code>SitePhysics.force()</code>、<code>deterministic</code>），電網 = 負載 − PV − 電池，雲端 kWh／電費可手算對帳。</li>

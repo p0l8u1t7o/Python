@@ -533,7 +533,8 @@ const en = {
     showAllTerms: 'Show all {{count}} terms',
     troubleshooting: 'Common questions',
     problems: {
-      stale: { title: 'The live figures say "stale"', body: 'Nothing has reported for five minutes. Check the environment panel below: if live ingest is off, restart without --no-broker. Otherwise the device has stopped publishing, or the broker is down.' },
+      live: 'Live',
+    stale: { title: 'The live figures say "stale"', body: 'Nothing has reported for five minutes. Check the environment panel below: if live ingest is off, restart without --no-broker. Otherwise the device has stopped publishing, or the broker is down.' },
       offline: { title: 'Everything went offline', body: 'A device is marked offline once it has been silent longer than the grace window. Backfilled history is history, not a live connection, so a seeded install goes offline shortly after setup and that is correct.' },
       noAssets: { title: 'The storage page says nothing is bound', body: 'The site has no energy asset bindings. Bind a device and its metric keys to a role. If you have just moved a device between sites, its bindings moved with it - check the site it came from.' },
       noAlerts: { title: 'No alerts at all', body: 'Clean data breaks no rules, which is an honest result. Seed some faults with generate_history --with-faults, or lower a threshold to see the engine work.' },
