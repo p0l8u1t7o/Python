@@ -13,7 +13,7 @@ import {
 } from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
 import { formatNumber } from '@/lib/format'
-import type { Tariff, TariffPreset } from '@/lib/types'
+import type { SiteSummary, StoragePlan, Tariff, TariffPreset } from '@/lib/types'
 import { useFormDirty } from '@/lib/useFormDirty'
 import {
   Badge,
@@ -228,77 +228,159 @@ export function TariffsPage() {
 }
 
 /**
- * Which sites use which tariff.
+ * Which sites use which tariff - and *why*.
  *
- * Shown because a tariff is not a standalone object: editing one moves every
- * cost and savings figure for every site whose storage plan points at it, and
- * that consequence should be visible from the page where the edit happens.
+ * A tariff reaches a site through its storage plan, and the plan may be bound
+ * to an ancestor rather than the site itself. Showing only "site → tariff"
+ * hid that chain, so an operator could not tell whether changing a child's
+ * plan would change its tariff. The tree shows the site hierarchy with the
+ * plan each site actually runs (own or inherited from whom) and the tariff
+ * that plan carries, coloured per tariff so the coverage reads at a glance.
  */
+const TARIFF_TONES = ['brand', 'info', 'warning', 'major', 'ok', 'critical'] as const
+
+interface UsageRow {
+  site: SiteSummary
+  plan: StoragePlan | null
+  /** Name of the ancestor the plan is bound to; null when bound directly. */
+  inheritedFrom: string | null
+  tariff: Tariff | null
+}
+
 function TariffUsage() {
   const { t } = useTranslation()
   const sites = useSites()
   const tariffs = useTariffs()
   const plans = useStoragePlans()
 
-  const tariffNames = useMemo(
-    () => new Map((tariffs.data ?? []).map((tariff) => [tariff.id, tariff.name])),
-    [tariffs.data],
-  )
-  // site id -> tariff name, resolved through the *effective* plan: the
-  // site's own binding, else the nearest bound ancestor - same rule the
-  // dispatch engine applies.
-  const bySite = useMemo(() => {
-    const direct = new Map<string, string>()
-    for (const plan of plans.data ?? []) {
-      const name = plan.tariff_id ? tariffNames.get(plan.tariff_id) : undefined
-      if (!name) continue
-      for (const site of plan.sites) direct.set(site.id, name)
+  const rows = useMemo<UsageRow[]>(() => {
+    // Depth-first tree order: a parent row above its children, siblings by
+    // name. The list endpoint sorts by name alone, which put "A棟" above the
+    // park it belongs to.
+    const all = sites.data?.items ?? []
+    const byParent = new Map<string | null, SiteSummary[]>()
+    for (const site of all) {
+      const key = site.parent_id && all.some((s) => s.id === site.parent_id) ? site.parent_id : null
+      byParent.set(key, [...(byParent.get(key) ?? []), site])
     }
-    const parentOf = new Map(
-      (sites.data?.items ?? []).map((site) => [site.id, site.parent_id]),
-    )
-    const map = new Map<string, string>()
-    for (const site of sites.data?.items ?? []) {
-      let current: string | null | undefined = site.id
-      for (let hop = 0; hop < 20 && current; hop += 1) {
-        const found = direct.get(current)
-        if (found) {
-          map.set(site.id, current === site.id ? found : `${found}`)
-          break
-        }
-        current = parentOf.get(current)
+    const items: SiteSummary[] = []
+    const walk = (parent: string | null) => {
+      for (const site of (byParent.get(parent) ?? []).sort((a, b) => a.name.localeCompare(b.name))) {
+        items.push(site)
+        walk(site.id)
       }
     }
-    return map
-  }, [plans.data, tariffNames, sites.data])
+    walk(null)
+    const tariffById = new Map((tariffs.data ?? []).map((tariff) => [tariff.id, tariff]))
+    const planBySite = new Map<string, StoragePlan>()
+    for (const plan of plans.data ?? []) for (const site of plan.sites) planBySite.set(site.id, plan)
+    const byId = new Map(items.map((site) => [site.id, site]))
+    return items.map((site) => {
+      let current: SiteSummary | undefined = site
+      let plan: StoragePlan | null = null
+      let inheritedFrom: string | null = null
+      for (let hop = 0; hop < 20 && current; hop += 1) {
+        const found = planBySite.get(current.id)
+        if (found) {
+          plan = found
+          inheritedFrom = current.id === site.id ? null : current.name
+          break
+        }
+        current = current.parent_id ? byId.get(current.parent_id) : undefined
+      }
+      const tariff = plan?.tariff_id ? tariffById.get(plan.tariff_id) ?? null : null
+      return { site, plan, inheritedFrom, tariff }
+    })
+  }, [plans.data, tariffs.data, sites.data])
 
-  // Every site, children included and indented - a tariff bound to a child
-  // site is exactly as real as one bound to a root.
-  const rows = sites.data?.items ?? []
+  const toneOf = useMemo(() => {
+    const map = new Map<string, (typeof TARIFF_TONES)[number]>()
+    ;(tariffs.data ?? []).forEach((tariff, index) => map.set(tariff.id, TARIFF_TONES[index % TARIFF_TONES.length]))
+    return map
+  }, [tariffs.data])
+
+  const coverage = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of rows) if (row.tariff) counts.set(row.tariff.id, (counts.get(row.tariff.id) ?? 0) + 1)
+    return counts
+  }, [rows])
+
   if (rows.length === 0) return null
+  const unassigned = rows.filter((row) => !row.tariff).length
 
   return (
     <Card className="mt-5">
       <CardHeader title={t('tariffs.usage')} description={t('tariffs.usageHint')} />
-      <div className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map((site) => (
-          <div key={site.id} className="bg-surface p-3.5">
-            <p
-              className="truncate text-sm font-medium"
-              style={{ paddingLeft: site.depth * 12 }}
-            >
-              {site.depth > 0 ? '└ ' : ''}
-              {site.name}
-            </p>
-            <p
-              className="mt-0.5 truncate text-xs text-muted"
-              style={{ paddingLeft: site.depth * 12 }}
-            >
-              {bySite.get(site.id) ?? t('tariffs.noneAssigned')}
-            </p>
-          </div>
-        ))}
-      </div>
+      <CardBody className="space-y-4">
+       <div data-testid="tariff-usage" className="space-y-4">
+        <div className="flex flex-wrap gap-2" data-testid="tariff-coverage">
+          {(tariffs.data ?? []).map((tariff) => (
+            <Badge key={tariff.id} tone={toneOf.get(tariff.id)}>
+              {tariff.name} · {t('tariffs.siteCount', { count: coverage.get(tariff.id) ?? 0 })}
+            </Badge>
+          ))}
+          {unassigned > 0 ? <Badge tone="neutral">{t('tariffs.noneAssigned')} · {t('tariffs.siteCount', { count: unassigned })}</Badge> : null}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted">
+              <tr>
+                <th className="py-1.5 pr-3 font-medium">{t('sites.site')}</th>
+                <th className="py-1.5 pr-3 font-medium">{t('tariffs.planColumn')}</th>
+                <th className="py-1.5 pr-3 font-medium">{t('tariffs.tariffColumn')}</th>
+                <th className="py-1.5 pr-3 text-right font-medium">{t('tariffs.demandChargeColumn')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map((row) => {
+                const depth = row.site.depth
+                return (
+                  <tr key={row.site.id} data-testid={`tariff-usage-${row.site.code}`}>
+                    <td className="py-2 pr-3">
+                      <span className="flex items-center" style={{ paddingLeft: depth * 18 }}>
+                        {depth > 0 ? (
+                          <span className="mr-1.5 inline-block h-4 w-3 shrink-0 border-b border-l border-line" aria-hidden />
+                        ) : null}
+                        <span className="font-medium">{row.site.name}</span>
+                        <span className="ml-2 font-mono text-xs text-subtle">{row.site.code}</span>
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3">
+                      {row.plan ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span>{row.plan.name}</span>
+                          {row.inheritedFrom ? (
+                            <Badge tone="neutral">{t('tariffs.inheritedFrom', { site: row.inheritedFrom })}</Badge>
+                          ) : (
+                            <Badge tone="brand">{t('tariffs.boundHere')}</Badge>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted">{t('tariffs.noPlan')}</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {row.tariff ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <Badge tone={toneOf.get(row.tariff.id)}>{row.tariff.name}</Badge>
+                          <span className="text-xs text-muted">{t(`tariffs.kinds.${row.tariff.kind}`, { defaultValue: row.tariff.kind })}</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted">{t('tariffs.noneAssigned')}</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono text-xs">
+                      {row.tariff ? `${formatNumber(row.tariff.demand_charge_per_kw)} ${row.tariff.currency}/kW` : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+       </div>
+      </CardBody>
     </Card>
   )
 }

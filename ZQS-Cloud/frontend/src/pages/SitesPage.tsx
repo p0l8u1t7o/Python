@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Building2,
   ChevronDown,
@@ -17,7 +17,10 @@ import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 import { useDevices, useGeocode, useSiteMutations, useSites } from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
-import type { GeocodeResult, Site, SiteKind, SiteSummary } from '@/lib/types'
+import type { Device, GeocodeResult, Site, SiteKind, SiteSummary } from '@/lib/types'
+
+// three.js stays out of the main bundle; only this card loads it.
+const SiteScene3D = lazy(() => import('@/components/charts/SiteScene3D'))
 import { useFormDirty } from '@/lib/useFormDirty'
 import {
   Badge,
@@ -94,8 +97,11 @@ export function SitesPage() {
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<SiteSummary | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const items = useMemo(() => sites.data?.items ?? [], [sites.data])
+  // Default to the first root so the scene is never empty on arrival.
+  const selected = items.find((site) => site.id === selectedId) ?? items.find((site) => !site.parent_id) ?? items[0] ?? null
   const rows = useMemo(() => flatten(buildTree(items), collapsed), [items, collapsed])
   const unassignedCount = unassigned.data?.total ?? 0
 
@@ -122,6 +128,14 @@ export function SitesPage() {
         }
       />
 
+      {selected ? (
+        <SiteConstellation
+          site={selected}
+          childSites={items.filter((site) => site.parent_id === selected.id)}
+          onPickSite={(site) => setSelectedId(site.id)}
+        />
+      ) : null}
+
       <Card>
         {sites.error ? (
           <ErrorState error={sites.error} onRetry={() => void sites.refetch()} />
@@ -145,7 +159,11 @@ export function SitesPage() {
                   const hasChildren = node.children.length > 0
                   const isCollapsed = collapsed.has(site.id)
                   return (
-                    <Tr key={site.id}>
+                    <Tr
+                      key={site.id}
+                      className={`cursor-pointer ${selected?.id === site.id ? 'bg-brand-soft/40' : ''}`}
+                      onClick={() => setSelectedId(site.id)}
+                    >
                       <Td>
                         <span
                           className="flex items-center gap-1.5"
@@ -580,5 +598,71 @@ function SiteModal({
         />
       </div>
     </Modal>
+  )
+}
+
+
+/**
+ * The selected site and everything that reports to it, in 3D. Without WebGL
+ * the card degrades to a flat chip list of the same devices - the content is
+ * the devices, the scene is just the nicer way to look at them.
+ */
+function SiteConstellation({
+  site, childSites, onPickSite,
+}: { site: SiteSummary; childSites: SiteSummary[]; onPickSite: (site: SiteSummary) => void }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const [supported, setSupported] = useState(true)
+  const devices = useDevices({ site_id: site.id, limit: 200 })
+  const list = devices.data?.items ?? []
+  const online = list.filter((device) => device.status === 'online').length
+
+  return (
+    <Card className={`mb-5 overflow-hidden ${supported ? 'tech-frame' : ''}`}>
+      <div className="relative" data-testid="site-constellation">
+        {supported ? (
+          <Suspense fallback={<div className="h-[340px]" />}>
+            <SiteScene3D
+              site={site}
+              devices={list}
+              children={childSites}
+              height={340}
+              onUnsupported={() => setSupported(false)}
+              onPickDevice={(device: Device) => navigate(`/devices/${device.id}`)}
+              onPickSite={onPickSite}
+            />
+          </Suspense>
+        ) : (
+          <div className="flex flex-wrap gap-2 p-4">
+            {list.map((device) => (
+              <Link key={device.id} to={`/devices/${device.id}`} className="hud-tile text-xs hover:border-brand">
+                <span className={`mr-1.5 inline-block size-2 rounded-full ${device.status === 'online' ? 'bg-ok' : 'bg-subtle'}`} />
+                {device.name || device.device_id}
+              </Link>
+            ))}
+            {list.length === 0 ? <p className="text-sm text-muted">{t('sites.noDevicesHere')}</p> : null}
+          </div>
+        )}
+        {supported ? <div className="scanline" aria-hidden /> : null}
+        <div className="pointer-events-none absolute left-4 top-4 flex flex-wrap items-center gap-2 text-xs">
+          <span className="hud-tile font-medium text-content">{site.name}</span>
+          <span className="hud-tile text-muted">
+            {t('sites.devicesHere')} <span className="hud-value text-sm text-content">{list.length}</span>
+            <span className="mx-1">·</span>
+            {t('status.online')} <span className="hud-value text-sm text-ok">{online}</span>
+            {site.total_open_alert_count > 0 ? (
+              <>
+                <span className="mx-1">·</span>
+                {t('dashboard.openAlerts')} <span className="hud-value text-sm text-critical">{site.total_open_alert_count}</span>
+              </>
+            ) : null}
+          </span>
+          {childSites.length > 0 ? (
+            <span className="hud-tile text-muted">{t('sites.childSites', { count: childSites.length })}</span>
+          ) : null}
+          {supported ? <span className="hud-tile text-muted">{t('sites.sceneHint')}</span> : null}
+        </div>
+      </div>
+    </Card>
   )
 }

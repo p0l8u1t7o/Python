@@ -104,6 +104,12 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
 <h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="場域頁-3d-場域星系-電價頁-從屬關係">場域頁 3D「場域星系」、電價頁從屬關係<a class="headerlink" href="#場域頁-3d-場域星系-電價頁-從屬關係" title="Permanent link">¶</a></h3>
+<ul>
+<li>場域頁新增 <code>SiteScene3D</code>：選取的場域是中央發光平台，所屬設備依類別（電池、PV、電表、負載、充電樁、發電機、閘道器／控制器）造型環繞，線上者脈動光環、離線者灰暗；子場域是外圈的小平台以光束連回母場域。點設備開詳情、點子場域切換；表格列點擊即選取。WebGL 不可用時改為設備晶片清單。</li>
+<li>電價方案頁「使用中的場域」改為場域樹：每列顯示儲能方案（直接綁定／繼承自哪個上層）、該方案的電價與類型、需量費率；上方依電價著色的覆蓋摘要（各用於幾個場域、未指定幾個）。列依樹狀深度優先排序。</li>
+<li>e2e <code>e2e/scenes3d.spec.ts</code>。</li>
+</ul>
 <h3 id="儲能頁-3d-即時能量場景">儲能頁：3D 即時能量場景<a class="headerlink" href="#儲能頁-3d-即時能量場景" title="Permanent link">¶</a></h3>
 <ul>
 <li>新增 <code>EnergyScene3D</code>（three.js，lazy-load 僅此頁載入）：PV 陣列、電網塔、電池（SOC 發光液面）、廠房四個節點，粒子沿弧線依實際功率方向與大小流動；中樞脈動、慢速環繞鏡頭、霓虹網格地面。</li>

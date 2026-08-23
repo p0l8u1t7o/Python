@@ -497,6 +497,13 @@ const zhHans: Translation = {
     midnightHint: '留空代表到午夜。',
     usage: '使用中的场域',
     usageHint: '修改电价会连带改变这些场域的所有电费与节费数字。',
+    siteCount: '{{count}} 个场域',
+    planColumn: '储能方案',
+    tariffColumn: '电价方案',
+    demandChargeColumn: '需量费率',
+    inheritedFrom: '继承自 {{site}}',
+    boundHere: '直接绑定',
+    noPlan: '没有储能方案',
     noneAssigned: '尚未指定电价',
   },
   help: {
@@ -871,6 +878,9 @@ const zhHans: Translation = {
     aggregation: '聚合方式',
   },
   sites: {
+    noDevicesHere: '此场域尚未指派任何设备。',
+    childSites: '{{count}} 个子场域',
+    sceneHint: '点击设备开启详情 · 点击子场域切换',
     searchPlaceholder: '筛选场域…',
     parent: '上级站点',
     parentHint: '留空即为最上层',
