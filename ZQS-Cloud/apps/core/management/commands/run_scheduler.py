@@ -121,6 +121,8 @@ class Command(BaseCommand):
             # them in this order means a freshly closed session is visible in
             # the same cycle the energy behind it was aggregated.
             self._run_job("rebuild_sessions", hours=options["session_hours"])
+            # 預測在調度之前：需量窗口控制要拿最新的預測與誤差餘裕。
+            self._run_job("record_forecasts")
             if not options["no_dispatch"]:
                 # Last, and deliberately so: the dispatch engine reads the
                 # live SOC to decide whether the plan permits a discharge, and

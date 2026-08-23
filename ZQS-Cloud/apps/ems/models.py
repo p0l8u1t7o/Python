@@ -679,3 +679,49 @@ class DispatchWindow(UUIDPrimaryKeyModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.site_id} {self.mode} {self.starts_at:%Y-%m-%d %H:%M}"
+
+
+class ForecastConfidence(models.TextChoices):
+    """Same vocabulary as ``EnergyIntervalCost.basis``: a reader who has seen
+    one knows the other."""
+
+    MEASURED = "measured", _("Measured")
+    ESTIMATED = "estimated", _("Estimated")
+    UNKNOWN = "unknown", _("Unknown")
+
+
+class LoadForecast(models.Model):
+    """One forecast point: what we expected a 15-minute interval to look like,
+    *as of* ``made_at``.
+
+    ``made_at`` is the whole reason this is a table and not a cache. Judging a
+    forecast by "the best estimate we have now" would grade every prediction
+    against hindsight; keeping the issue time lets the error statistics use
+    only what was known at the time, which is what the demand-window margin
+    is built on. All times UTC.
+    """
+
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="load_forecasts")
+    starts_at = models.DateTimeField(db_index=True)
+    made_at = models.DateTimeField(db_index=True)
+    horizon_minutes = models.PositiveIntegerField(default=0)
+    load_kw = models.FloatField(null=True, blank=True)
+    pv_kw = models.FloatField(null=True, blank=True)
+    confidence = models.CharField(
+        max_length=10, choices=ForecastConfidence.choices, default=ForecastConfidence.UNKNOWN
+    )
+    #: How many historical weeks the median came from; 0 for unknown.
+    samples = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "ems_load_forecast"
+        ordering = ["starts_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["site", "starts_at", "made_at"], name="uniq_forecast_site_start_made"
+            )
+        ]
+        indexes = [models.Index(fields=["site", "starts_at", "made_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.site_id} @ {self.starts_at:%Y-%m-%d %H:%M} (made {self.made_at:%m-%d %H:%M})"
