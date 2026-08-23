@@ -135,6 +135,9 @@ class GatewayRunner(threading.Thread):
         #: The newest reading set per device - what the console shows.
         self.latest: dict[str, dict] = {}
         self.latest_at: dict[str, float] = {}
+        #: 單一量測值覆寫 {device_id: {metric: value}}：不管物理模型算出什麼，
+        #: 上傳就是這個數——驗證雲端閾值、計數器、單位換算時用。
+        self.overrides: dict[str, dict[str, float | str]] = {}
         self.last_error = ""
         self._node: EdgeNodeClient | None = None
         self._publish_lock = threading.Lock()
@@ -157,6 +160,9 @@ class GatewayRunner(threading.Thread):
 
     def _sample(self, device: SimDevice) -> dict:
         values = self.physics.sample(device.role, device.power_metric)
+        forced = self.overrides.get(device.device_id)
+        if forced:
+            values.update(forced)
         self.latest[device.device_id] = values
         self.latest_at[device.device_id] = time.time()
         return values
@@ -167,6 +173,26 @@ class GatewayRunner(threading.Thread):
             self.published += 1
 
     # ---- manual injection (console test panel) ---------------------------
+    def set_override(self, device_id: str, metric: str, value: float | str | None) -> None:
+        """覆寫（或 value=None 解除）某設備某 metric 的上傳值。"""
+        bucket = self.overrides.setdefault(device_id, {})
+        if value is None:
+            bucket.pop(metric, None)
+            if not bucket:
+                self.overrides.pop(device_id, None)
+        else:
+            bucket[metric] = value
+
+    def publish_now(self) -> bool:
+        """立刻發布一輪（不等週期），給主控台「套用並上傳」用。"""
+        node = self._node
+        if node is None or not self.online.is_set() or self.stop_event.is_set():
+            return False
+        with self._publish_lock:
+            self.physics.step()
+            self._publish_all(node)
+        return True
+
     def publish_event(self, device_id: str, code: str, level: str, message: str) -> None:
         node = self._node
         if node is None or not self.online.is_set() or self.stop_event.is_set():

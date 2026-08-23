@@ -95,6 +95,13 @@ class SitePhysics:
     #: 最近一次 step 套用的模式，給主控台顯示：normal / expired / watchdog / island。
     mode: str = "normal"
 
+    # ---- 手動鎖定（驗證雲端計算用） ------------------------------------------
+    #: 鎖定的物理量（kW / %）：load_kw、pv_kw、battery_kw、soc。有值就取代
+    #: 負載曲線、太陽曲線、設定點與 SOC 積分——讓上傳的數字可以手算。
+    forced: dict = field(default_factory=dict)
+    #: True = 關掉所有隨機抖動（電壓、頻率、溫度也固定），數字逐位可驗。
+    deterministic: bool = False
+
     # running totals (kWh) - what the energy meters report
     import_kwh: float = 0.0
     export_kwh: float = 0.0
@@ -142,6 +149,27 @@ class SitePhysics:
                 return "ok"
             return "accepted"
 
+    def _jitter(self, low: float, high: float) -> float:
+        """隨機係數；deterministic 時回中點，數字才可重現。"""
+        if self.deterministic:
+            return (low + high) / 2.0
+        return random.uniform(low, high)
+
+    def _noise(self, low: float, high: float, digits: int = 1) -> float:
+        """量測雜訊（電壓、溫度…）；deterministic 時固定在中點。"""
+        return round(self._jitter(low, high), digits)
+
+    def force(self, **values: float | None) -> None:
+        """鎖定或解除物理量：``force(load_kw=400)``、``force(load_kw=None)``。"""
+        with self._lock:
+            for key, value in values.items():
+                if key not in ("load_kw", "pv_kw", "battery_kw", "soc"):
+                    raise KeyError(key)
+                if value is None:
+                    self.forced.pop(key, None)
+                else:
+                    self.forced[key] = float(value)
+
     def _policy_kw(self, policy: str) -> float:
         """過期／斷線政策換算成功率（kW）。"""
         if policy == "hold":
@@ -171,10 +199,15 @@ class SitePhysics:
         index = int(hour) % 24
         frac = hour - int(hour)
         base = shape[index] * (1 - frac) + shape[(index + 1) % 24] * frac
-        load_kw = self.peak_load_kw * base * random.uniform(0.98, 1.02)
+        load_kw = self.peak_load_kw * base * self._jitter(0.98, 1.02)
 
         solar = 0.0 if hour < 6 or hour > 18 else max(0.0, math.sin(math.pi * (hour - 6) / 12))
-        pv_kw = self.pv_peak_kw * solar * random.uniform(0.92, 1.0)
+        pv_kw = self.pv_peak_kw * solar * self._jitter(0.92, 1.0)
+        # 鎖定值蓋過曲線：驗證雲端時要的是「我說 400 就是 400」。
+        if "load_kw" in self.forced:
+            load_kw = float(self.forced["load_kw"])
+        if "pv_kw" in self.forced:
+            pv_kw = float(self.forced["pv_kw"])
 
         with self._lock:
             now_mono = time.monotonic()
@@ -204,6 +237,9 @@ class SitePhysics:
                 else:
                     wanted_kw = 0.0
 
+            if "battery_kw" in self.forced:
+                wanted_kw = float(self.forced["battery_kw"])
+                self.mode = "forced"
             battery_kw = max(-self.battery_kw_rated, min(self.battery_kw_rated, wanted_kw))
             # SOC limits: a battery at its floor cannot discharge, at its
             # ceiling cannot charge - the PCS would refuse, so the simulator
@@ -212,7 +248,9 @@ class SitePhysics:
                 battery_kw = 0.0
             if battery_kw < 0 and self.soc >= self.max_soc:
                 battery_kw = 0.0
-            if self.battery_kwh > 0:
+            if "soc" in self.forced:
+                self.soc = float(self.forced["soc"])
+            elif self.battery_kwh > 0:
                 delta = -(battery_kw * elapsed_h) / self.battery_kwh * 100.0
                 self.soc = max(self.min_soc, min(self.max_soc, self.soc + delta))
 
@@ -245,25 +283,25 @@ class SitePhysics:
                 power_metric or "battery_power_w": round(self.battery_kw * 1000, 1),
                 "battery_soc": round(self.soc, 2),
                 "battery_soh": 98.4,
-                "battery_voltage_v": round(random.uniform(780, 820), 1),
+                "battery_voltage_v": self._noise(780, 820, 1),
                 "battery_current_a": round(self.battery_kw * 1000 / 800, 1),
                 # Warms with throughput: idle ~28 C, full power ~36 C.
                 "battery_temperature_c": round(
-                    28 + 8 * abs(self.battery_kw) / max(self.battery_kw_rating(), 1) + random.uniform(-0.5, 0.5), 1
+                    28 + 8 * abs(self.battery_kw) / max(self.battery_kw_rating(), 1) + self._jitter(-0.5, 0.5), 1
                 ),
                 "battery_charge_energy_kwh": round(self.charge_kwh, 4),
                 "battery_discharge_energy_kwh": round(self.discharge_kwh, 4),
                 "pcs_state": state,
-                "pcs_temperature_c": round(random.uniform(35, 48), 1),
+                "pcs_temperature_c": self._noise(35, 48, 1),
             }
         if role == "grid_meter":
             outage = self.grid_outage
             return {
                 power_metric or "grid_power_w": round(self.grid_kw * 1000, 1),
-                "grid_voltage_v": 0.0 if outage else round(random.uniform(215, 228), 1),
+                "grid_voltage_v": 0.0 if outage else self._noise(215, 228, 1),
                 "grid_current_a": round(abs(self.grid_kw) * 1000 / 380, 1),
-                "grid_frequency_hz": 0.0 if outage else round(random.uniform(59.95, 60.05), 3),
-                "grid_power_factor": round(random.uniform(0.93, 0.99), 3),
+                "grid_frequency_hz": 0.0 if outage else self._noise(59.95, 60.05, 3),
+                "grid_power_factor": self._noise(0.93, 0.99, 3),
                 "grid_import_energy_kwh": round(self.import_kwh, 4),
                 "grid_export_energy_kwh": round(self.export_kwh, 4),
             }
@@ -272,7 +310,7 @@ class SitePhysics:
                 power_metric or "pv_power_w": round(self.pv_kw * 1000, 1),
                 "pv_energy_kwh": round(self.pv_kwh, 4),
                 "pv_irradiance_wm2": round(1000 * (self.pv_kw / self.pv_peak_kw if self.pv_peak_kw else 0), 1),
-                "ambient_temperature_c": round(random.uniform(24, 36), 1),
+                "ambient_temperature_c": self._noise(24, 36, 1),
             }
         if role == "load_meter":
             return {
@@ -281,9 +319,9 @@ class SitePhysics:
             }
         return {
             "uptime_s": int(time.monotonic()),
-            "signal_rssi_dbm": random.randint(-85, -55),
-            "ambient_temperature_c": round(random.uniform(22, 30), 1),
-            "humidity_percent": round(random.uniform(45, 70), 1),
+            "signal_rssi_dbm": -70 if self.deterministic else random.randint(-85, -55),
+            "ambient_temperature_c": self._noise(22, 30, 1),
+            "humidity_percent": self._noise(45, 70, 1),
         }
 
 

@@ -295,6 +295,30 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <p>e2e 會在 A 棟留下一台延遲探針設備（<code>LAT-PROBE-0001</code>）與少量測試資料。展示前請再跑一次 <code>.\scripts
 eset-demo.ps1</code> 還原乾淨資料。</p>
 </blockquote>
+<h2 id="六a-用模擬器驗證雲端算得對不對">六A、用模擬器驗證雲端算得對不對<a class="headerlink" href="#六a-用模擬器驗證雲端算得對不對" title="Permanent link">¶</a></h2>
+<p>模擬器主控台（<code>scripts\sim-console.ps1</code>）可以<strong>強行改變上傳的資料</strong>，讓雲端的每個數字都能用手算對帳。兩層工具：</p>
+<ol>
+<li><strong>場域物理量鎖定</strong>（「設備即時量測值」下方）：填負載 kW、PV kW、電池 kW（正 = 放電）、SOC %，勾「固定值（關閉隨機抖動）」，
+按「套用並立即上傳」。鎖定後負載曲線、太陽曲線、平台設定點、SOC 積分全部被取代；電網 = 負載 − PV − 電池。
+空白欄位不鎖定；「全部解除」回到模擬曲線。</li>
+<li><strong>單一量測值覆寫</strong>：在量測值清單雙擊任一列（或選取後按「覆寫選取值」），輸入數字就強制上傳該值；留空解除。
+被覆寫的列標 ★ 橘色。用來測閾值告警（例：把 <code>battery_temperature_c</code> 設 70）、單位換算、計數器回捲（把
+<code>grid_import_energy_kwh</code> 改小，雲端該記 null 而不是負值）、停電（<code>grid_voltage_v</code> = 0 持續 5 秒以上）。</li>
+</ol>
+<p><strong>對帳範例</strong>（選 A 棟閘道器，鎖定 負載 400、PV 100、電池 50、SOC 60，固定值）：</p>
+<table>
+<thead><tr><th>雲端畫面 / API</th><th>應該看到</th><th>怎麼算</th></tr></thead>
+<tbody>
+<tr><td>場域即時功率</td><td>電網 250 kW、負載 400、PV 100、電池 +50、SOC 60%</td><td>250 = 400 − 100 − 50</td></tr>
+<tr><td>下一個完整 15 分鐘區間（<code>/ems/sites/{id}/intervals</code>）</td><td>grid_import 62.5 kWh、load 100、pv 25、battery_discharge 12.5、coverage 1.0</td><td>kW × 0.25 h</td></tr>
+<tr><td>該區間 energy_cost</td><td>62.5 × 當時段電價</td><td>例：離峰 2.36 → 147.5</td></tr>
+<tr><td>estimated_savings（no_storage 基準）</td><td>12.5 × 電價</td><td>沒電池時會多買 50 kW × 0.25 h</td></tr>
+<tr><td>需量（總覽頁 peak_demand_kw）</td><td>250（native 300）</td><td>區間平均購電；基準 = 負載 − PV</td></tr>
+<tr><td>需量窗口控制（方案上限 650）</td><td>不放電；把負載改 900 → 窗口內開始要求放電，reason 含 <code>window projection</code></td><td>§1.12E</td></tr>
+</tbody>
+</table>
+<p>小提醒：鎖定是<strong>每個閘道器</strong>各自的；快速週期（預設 5 秒）會持續上傳鎖定值，雲端的 15 分鐘區間要等下一個邊界過後才完整。
+離線時設的覆寫會記住，上線後生效。</p>
 <h2 id="六-受益數字怎麼算">六、受益數字怎麼算<a class="headerlink" href="#六-受益數字怎麼算" title="Permanent link">¶</a></h2>
 <ul>
 <li><strong>能源面節費</strong>（<code>estimated_savings</code>）：每個結算區間，「同樣負載、同樣光電、沒有電池」的電費 − 實際電費。充電時為負、放電時為正，整週加總為淨效益。</li>

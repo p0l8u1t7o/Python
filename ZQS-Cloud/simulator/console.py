@@ -38,7 +38,7 @@ from simulator.gateway import GatewayRunner  # noqa: E402
 from simulator.physics import METRIC_UNITS  # noqa: E402
 
 import tkinter as tk  # noqa: E402
-from tkinter import filedialog, messagebox, ttk  # noqa: E402
+from tkinter import filedialog, messagebox, simpledialog, ttk  # noqa: E402
 
 #: 電池目前的運作模式（physics.mode）。
 MODE_LABELS = {"normal": "正常", "expired": "設定點過期", "watchdog": "斷線降級", "island": "孤島供電"}
@@ -160,11 +160,36 @@ class App:
         self.target_pick.pack(side="left", padx=(4, 0))
         self.values_at = ttk.Label(row, text="")
         self.values_at.pack(side="left", padx=10)
-        self.values_view = ttk.Treeview(values, columns=("metric", "value", "unit"), show="headings", height=14)
-        for key, label, width in (("metric", "量測項", 220), ("value", "數值", 140), ("unit", "單位", 60)):
+        self.values_view = ttk.Treeview(values, columns=("metric", "value", "unit"), show="headings", height=10)
+        for key, label, width in (("metric", "量測項", 220), ("value", "數值（雙擊覆寫）", 150), ("unit", "單位", 60)):
             self.values_view.heading(key, text=label)
             self.values_view.column(key, width=width, anchor="w")
         self.values_view.pack(fill="both", expand=True, padx=4, pady=4)
+        self.values_view.tag_configure("override", foreground="#b45309")
+        self.values_view.bind("<Double-1>", self._override_selected)
+        ov = ttk.Frame(values)
+        ov.pack(fill="x", **pad)
+        ttk.Button(ov, text="覆寫選取值", command=self._override_selected).pack(side="left")
+        ttk.Button(ov, text="解除選取覆寫", command=self._clear_selected_override).pack(side="left", padx=4)
+        ttk.Button(ov, text="解除此設備全部覆寫", command=self._clear_device_overrides).pack(side="left", padx=4)
+        ttk.Label(ov, text="★ = 強制上傳值", foreground="#b45309").pack(side="right")
+
+        # 場域物理量鎖定：把負載 / PV / 電池 / SOC 釘成固定數，關掉雜訊，
+        # 讓雲端算出來的 kWh、電費、需量可以用手算對帳。
+        lock = ttk.LabelFrame(values, text="場域物理量鎖定（驗證雲端計算）")
+        lock.pack(fill="x", padx=4, pady=(2, 4))
+        self.lock_vars = {key: tk.StringVar() for key in ("load_kw", "pv_kw", "battery_kw", "soc")}
+        for col, (key, label) in enumerate((("load_kw", "負載 kW"), ("pv_kw", "PV kW"),
+                                            ("battery_kw", "電池 kW(+放電)"), ("soc", "SOC %"))):
+            ttk.Label(lock, text=label).grid(row=0, column=col * 2, sticky="w", padx=(6, 2), pady=2)
+            ttk.Entry(lock, textvariable=self.lock_vars[key], width=9).grid(row=0, column=col * 2 + 1, padx=(0, 6))
+        self.deterministic_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(lock, text="固定值(關閉隨機抖動)", variable=self.deterministic_var,
+                        command=self._apply_deterministic).grid(row=1, column=0, columnspan=4, sticky="w", padx=6)
+        ttk.Button(lock, text="套用並立即上傳", command=self._apply_lock).grid(row=1, column=4, columnspan=2, sticky="e", padx=4)
+        ttk.Button(lock, text="全部解除", command=self._clear_lock).grid(row=1, column=6, columnspan=2, sticky="w", padx=4)
+        ttk.Label(lock, text="空白 = 不鎖定；電網 = 負載 − PV − 電池，雲端 kWh = kW × 時數",
+                  foreground="#6b7280").grid(row=2, column=0, columnspan=8, sticky="w", padx=6, pady=(0, 4))
 
         # Tests + commands + log
         right = ttk.Frame(lower)
@@ -351,6 +376,11 @@ class App:
 
     def _refresh_values(self) -> None:
         target = self._target()
+        if target is not None and getattr(self, "_lock_shown_for", None) is not target[0].node_id:
+            self._lock_shown_for = target[0].node_id
+            for key, var in self.lock_vars.items():
+                value = target[0].physics.forced.get(key)
+                var.set("" if value is None else f"{value:g}")
         self.values_view.delete(*self.values_view.get_children())
         if target is None:
             self.values_at.configure(text="")
@@ -361,10 +391,101 @@ class App:
             self.values_at.configure(text="（尚未上線）" if not runner.online.is_set() else "")
             return
         self.values_at.configure(text=time.strftime("更新 %H:%M:%S", time.localtime(runner.latest_at.get(device_id, 0))))
+        forced = runner.overrides.get(device_id, {})
         for key in sorted(values):
             value = values[key]
             shown = f"{value:,.3f}".rstrip("0").rstrip(".") if isinstance(value, float) else str(value)
-            self.values_view.insert("", "end", values=(key, shown, METRIC_UNITS.get(key, "")))
+            if key in forced:
+                shown = f"★ {shown}"
+            self.values_view.insert("", "end", iid=key, values=(key, shown, METRIC_UNITS.get(key, "")),
+                                    tags=("override",) if key in forced else ())
+
+    # ---- overrides (驗證雲端計算) ---------------------------------------------
+    def _override_selected(self, _event=None) -> None:
+        target = self._target()
+        selected = self.values_view.selection()
+        if target is None or not selected:
+            return
+        runner, device_id = target
+        metric = str(selected[0])
+        current = runner.latest.get(device_id, {}).get(metric)
+        raw = simpledialog.askstring("覆寫上傳值", f"{device_id} / {metric}\n輸入要強制上傳的數值（留空解除）：",
+                                     initialvalue="" if current is None else str(current), parent=self.root)
+        if raw is None:
+            return
+        raw = raw.strip()
+        if raw == "":
+            runner.set_override(device_id, metric, None)
+            self._log_bg(f"[{runner.node_id}] 解除覆寫 {device_id}.{metric}")
+        else:
+            try:
+                value: float | str = float(raw)
+            except ValueError:
+                value = raw
+            runner.set_override(device_id, metric, value)
+            self._log_bg(f"[{runner.node_id}] 覆寫 {device_id}.{metric} = {value}")
+        self._push(runner)
+
+    def _clear_selected_override(self) -> None:
+        target = self._target()
+        selected = self.values_view.selection()
+        if target is None or not selected:
+            return
+        runner, device_id = target
+        runner.set_override(device_id, str(selected[0]), None)
+        self._push(runner)
+
+    def _clear_device_overrides(self) -> None:
+        target = self._target()
+        if target is None:
+            return
+        runner, device_id = target
+        runner.overrides.pop(device_id, None)
+        self._log_bg(f"[{runner.node_id}] 解除 {device_id} 全部覆寫")
+        self._push(runner)
+
+    def _apply_deterministic(self) -> None:
+        for runner in self.runners:
+            runner.physics.deterministic = self.deterministic_var.get()
+
+    def _apply_lock(self) -> None:
+        target = self._target()
+        if target is None:
+            return
+        runner, _device_id = target
+        values: dict[str, float | None] = {}
+        for key, var in self.lock_vars.items():
+            raw = var.get().strip()
+            if raw == "":
+                values[key] = None
+                continue
+            try:
+                values[key] = float(raw)
+            except ValueError:
+                messagebox.showerror("格式錯誤", f"{key} 不是數字：{raw!r}")
+                return
+        runner.physics.force(**values)
+        locked = ", ".join(f"{k}={v:g}" for k, v in values.items() if v is not None) or "（無）"
+        self._log_bg(f"[{runner.node_id}] 鎖定物理量：{locked}")
+        self._push(runner)
+
+    def _clear_lock(self) -> None:
+        target = self._target()
+        if target is None:
+            return
+        runner, _device_id = target
+        runner.physics.force(load_kw=None, pv_kw=None, battery_kw=None, soc=None)
+        for var in self.lock_vars.values():
+            var.set("")
+        self._log_bg(f"[{runner.node_id}] 解除物理量鎖定")
+        self._push(runner)
+
+    def _push(self, runner: GatewayRunner) -> None:
+        if runner.publish_now():
+            self._log_bg(f"[{runner.node_id}] 已立即上傳一輪")
+        else:
+            self._log_bg(f"[{runner.node_id}] 離線：覆寫已記住，上線後生效")
+        self._refresh_values()
 
     # ---- manual tests ----------------------------------------------------------
     def send_event(self) -> None:
