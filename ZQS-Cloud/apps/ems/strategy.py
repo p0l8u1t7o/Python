@@ -26,18 +26,22 @@ loop and does not pretend to be.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import zoneinfo
 from dataclasses import dataclass
 
 from apps.core.logging import get_logger
 from apps.ems.forecast import HOURS_PER_INTERVAL
 from apps.ems.models import DemandResponseEvent, DispatchStrategy, StoragePlan
+from apps.ems.replay import REPLAY
 from apps.ems.tariffs import resolve_price
 
 logger = get_logger("ems.strategy")
 
 #: Ignore imbalances smaller than this; chasing noise wears the battery.
 DEADBAND_KW = 0.2
+
+_PRICE_RANGE_CACHE: dict = {}
 
 #: Fraction of contract capacity used as the demand ceiling when the plan
 #: does not name one. The gap is working room: the engine samples on the
@@ -54,6 +58,9 @@ class StrategyDecision:
 
 
 def _flow(site) -> dict:
+    replay = REPLAY.get()
+    if replay is not None:
+        return replay.flow()
     # Local import: api.py imports the dispatch engine, which imports this
     # module - a top-level import here would close the circle.
     from apps.ems.api import _current_flow
@@ -98,11 +105,22 @@ def todays_price_range(tariff, moment: dt.datetime) -> tuple[float, float]:
     zone = _tariff_zone(tariff)
     local = moment.astimezone(zone)
     start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    # 每天 96 次 resolve_price 在回測裡會被呼叫上萬次；以 (方案, 日, 價格表) 為
+    # 鍵快取。價格表本身進鍵，編輯方案後舊快取自然失效。
+    key = (tariff.pk, start.date(), json.dumps(tariff.periods, sort_keys=True, default=str),
+           tariff.default_import_price)
+    cached = _PRICE_RANGE_CACHE.get(key)
+    if cached is not None:
+        return cached
     prices = [
         resolve_price(tariff, start + dt.timedelta(minutes=15 * step)).import_price
         for step in range(96)
     ]
-    return min(prices), max(prices)
+    result = (min(prices), max(prices))
+    if len(_PRICE_RANGE_CACHE) > 4096:
+        _PRICE_RANGE_CACHE.clear()
+    _PRICE_RANGE_CACHE[key] = result
+    return result
 
 
 
@@ -118,29 +136,46 @@ def _window_decision(
     from apps.ems import demand_window, forecast
 
     site_id = getattr(site, "id", site)  # 呼叫端可能傳 Site 也可能傳 UUID
-    state = demand_window.window_state(site_id, moment)
-    previous_kw, same_window = demand_window.previous_for(site_id, state.window_start)
+    replay = REPLAY.get()
+    if replay is not None:
+        if replay.window_state is None:
+            return None, "replay without window state"
+        state = replay.window_state(moment)
+        if state is None:
+            return None, "replay without window state"
+        memory = replay.memory
+    else:
+        state = demand_window.window_state(site_id, moment)
+        memory = demand_window._last_decision
+    previous_kw, same_window = demand_window.previous_for(site_id, state.window_start, memory=memory)
     if not state.is_trustworthy or state.elapsed_h <= 0:
         if state.elapsed_h <= 0 or state.reason == "no telemetry in window":
             # 窗口剛開：沿用上一個窗口的設定點，避免邊界瞬間歸零再重建。
             if previous_kw is not None and previous_kw > DEADBAND_KW:
-                demand_window.remember(site_id, state.window_start, previous_kw)
+                demand_window.remember(site_id, state.window_start, previous_kw, memory=memory)
                 return StrategyDecision(previous_kw * 1000.0, f"window boundary: holding {previous_kw:.1f} kW"), ""
             return None, "window just opened, nothing to integrate"
         logger.info("demand_cap window fallback site=%s reason=%s", site_id, state.reason)
         return None, state.reason
 
-    margin_kw, margin_reason = demand_window.safety_margin_kw(site_id)
+    if replay is not None:
+        margin_kw, margin_reason = (replay.margin_kw or 0.0), "replay"
+    else:
+        margin_kw, margin_reason = demand_window.safety_margin_kw(site_id)
     target_kw = ceiling_kw - margin_kw
 
-    # 剩餘時間的功率：W1 預測 > 窗口內最後一筆 > 目前瞬時值。
+    # 剩餘時間的功率：W1 已記錄的預測 > 目前瞬時值。讀 LoadForecast 表而不是
+    # 現算——現算要掃 4 週區間，每 20 秒一次會把資料庫拖垮。
     predicted_kw = demand_kw
-    try:
-        points = forecast.forecast_site(site_id, state.window_start, horizon_hours=1, record=False)
-        if points and points[0].load_kw is not None:
-            predicted_kw = points[0].load_kw - (points[0].pv_kw or 0.0)
-    except Exception:  # noqa: BLE001 - 預測掛掉不該讓需量控制停擺
-        pass
+    if replay is not None:
+        if replay.forecast_kw is not None:
+            predicted = replay.forecast_kw(moment)
+            if predicted is not None:
+                predicted_kw = predicted
+    else:
+        recorded = forecast.recorded_native_kw(site_id, state.window_start)
+        if recorded is not None:
+            predicted_kw = recorded
     predicted_kw = max(predicted_kw, demand_kw)  # 實際已高於預測就信實際
 
     need_kw = demand_window.required_discharge_kw(
@@ -150,13 +185,14 @@ def _window_decision(
         # 剩餘不足 60 秒且本窗口沒有前值：不重算，維持靜止。
         return StrategyDecision(0.0, "window tail: holding"), ""
     if need_kw > DEADBAND_KW:
-        demand_window.remember(site_id, state.window_start, need_kw)
+        demand_window.remember(site_id, state.window_start, need_kw, memory=memory)
+        projected_kw = (state.accumulated_kwh + state.remaining_h * max(predicted_kw, 0.0)) / HOURS_PER_INTERVAL
         return StrategyDecision(
             need_kw * 1000.0,
-            f"window projection {state.accumulated_kwh / HOURS_PER_INTERVAL + need_kw * state.remaining_h / HOURS_PER_INTERVAL:.1f}"
-            f" kW over target {target_kw:.1f} kW (margin {margin_reason}); discharge {need_kw:.1f} kW",
+            f"window projection {projected_kw:.1f} kW over target {target_kw:.1f} kW"
+            f" (margin {margin_reason}); discharge {need_kw:.1f} kW",
         ), ""
-    demand_window.remember(site_id, state.window_start, 0.0)
+    demand_window.remember(site_id, state.window_start, 0.0, memory=memory)
     return None, ""
 
 # --------------------------------------------------------------------------

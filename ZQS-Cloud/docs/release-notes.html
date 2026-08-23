@@ -104,6 +104,14 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
 <h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="w3-離線回測">W3 離線回測<a class="headerlink" href="#w3-離線回測" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>apps/ems/backtest.py</code> 與 <code>manage.py backtest --site --plan --days --strategy --compare [--json]</code>：用歷史 native 負載／PV 重播同一份策略程式碼，輸出 <code>BacktestResult</code>（energy_cost、demand_charge、penalty、cycle_cost、stored_energy_adjustment、total、peak_demand_kw、equivalent_cycles、intervals、baseline_total、savings）。不寫資料庫、沒有 UI。</li>
+<li>新增 <code>apps/ems/replay.py</code>：策略讀資料的三個入口（瞬時平衡、SOC、窗口狀態）改經 <code>ContextVar</code> 注入；正式路徑零行為差異。</li>
+<li>回測抓到並修正 W2 的錯：窗口累積量改為<strong>電表</strong> kWh（剩餘預測仍用 native）。原本用 native 累積會要求已在放電的電池「追趕」，直到放空。</li>
+<li>效能：<code>todays_price_range</code> 依（方案、日）快取；需量控制改讀已記錄的 <code>LoadForecast</code> 而非現算、誤差餘裕每小時一次——7 天 × 5 策略的回測 1 秒完成。</li>
+<li>測試 <code>tests/test_backtest.py</code>（5 項）。</li>
+</ul>
 <h3 id="w2-需量窗口積分控制">W2 需量窗口積分控制<a class="headerlink" href="#w2-需量窗口積分控制" title="Permanent link">¶</a></h3>
 <ul>
 <li>新增 <code>apps/ems/demand_window.py</code>：<code>WindowState</code>／<code>window_state()</code>／<code>required_discharge_kw()</code>。<code>demand_cap</code> 改為依「本 15 分鐘窗口預期平均」決定放電功率，而不是瞬時值超過上限才動作。</li>

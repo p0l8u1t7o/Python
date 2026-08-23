@@ -566,8 +566,12 @@ Redis pub/sub + ASGI，那是文件化的正式環境升級路徑，不是開發
 預期平均 &gt; (上限 − 餘裕) → 放電 (超出 kWh) ÷ 剩餘小時</code></pre>
 <ul>
 <li><strong>累積量</strong>從遙測樣本積分(前值保持,與 EnergyInterval 同一套 <code>integrate_kwh</code>),
-用的是 <strong>native 需量 = 電表 + 電池</strong>——電表已含電池動作,不還原就會追自己的尾巴。</li>
-<li><strong>剩餘時間的功率</strong>:W1 預測 → 窗口內最後一筆 → 目前瞬時值,取其中與實際較高者。</li>
+用的是<strong>電表</strong>讀值(含電池動作)——台電收的就是電表平均。</li>
+<li><strong>剩餘時間的功率</strong>用 <strong>native</strong>(電表 + 電池,即沒有電池時的需量):已記錄的 W1 預測
+(<code>LoadForecast</code>,一筆索引查詢,不現算)→ 目前瞬時值,取較高者。</li>
+<li>兩者不能混:累積量若誤用 native,已在放電的電池會被要求「補回」它其實已經削掉的能量,設定點
+愈追愈高直到放空——這是回測(W3)第一次跑就抓到的錯,有測試釘住
+(<code>test_shaving_battery_is_not_asked_to_catch_up</code>)。</li>
 <li><strong>餘裕</strong>:預測誤差 P90(≥48 筆樣本才採用);沒有統計時不再另外扣——「契約 95%」
 已經在上限退路鏈裡,再扣一次是打兩次折;使用者自填的目標也不打折。</li>
 <li><strong>窗口尾端</strong>:剩餘 &lt; 60 秒不重算(除以趨近零的剩餘時間會把取樣雜訊放大成幾百 kW),
@@ -583,6 +587,23 @@ Redis pub/sub + ASGI，那是文件化的正式環境升級路徑，不是開發
 數學形狀)。</p>
 <p><strong>暫時做法</strong>:<code>run_scheduler --demand-interval 20</code> 在主週期空檔裡只評估 demand_cap 場域;
 正式版應把調度引擎搬到獨立 worker。</p>
+<h3 id="1-12f-離線回測-w3">1.12F 離線回測(W3)<a class="headerlink" href="#1-12f-離線回測-w3" title="Permanent link">¶</a></h3>
+<p>「換成時間電價套利會省多少?」<code>manage.py backtest --site &lt;名稱或 UUID&gt; --days 30 [--plan] [--strategy] [--compare]</code>
+用 EnergyInterval 的 native 負載與 PV 重播場域,讓<strong>同一份策略程式碼</strong>逐分鐘決策(經
+<code>apps/ems/replay.py</code> 的 <code>ContextVar</code> 注入瞬時平衡、SOC、窗口狀態,不是 mock、不是另寫一份簡化版),
+簡化電池模型積分 SOC,再用與報表相同的函式計價:能源費 <code>resolve_price</code>、需量費與罰款
+<code>demand.excess_charge</code>(每個計費月取峰值)、循環成本讀電池資產的 <code>cycle_cost_per_kwh</code>。</p>
+<ul>
+<li><strong>不寫資料庫</strong>,測試用 <code>CaptureQueriesContext</code> 釘住零筆 INSERT/UPDATE/DELETE。</li>
+<li><strong>節省可以是負的</strong>:<code>savings = baseline_total − total</code>,對照組是「沒有電池」同一段歷史。</li>
+<li><strong>初始電量不是免費的</strong>:起訖 SOC 差額以期間平均購電價計入 <code>stored_energy_adjustment</code>;
+少了這項,「把電池放光」看起來像省錢。</li>
+<li>涵蓋率 &lt; 0.5 的區間<strong>跳過</strong>,不以 0 重播——斷線不能變成「省了一筆」。</li>
+<li>回測內的預測是完美的(區間內負載為常數),結果偏樂觀;輸出附 notes 說明。<code>--compare</code>
+同一段歷史跑四個策略,依總成本排序,共用一個對照組。</li>
+</ul>
+<p>示範資料 7 天:契約容量管理把峰值壓在 650 kW、罰款歸零、省 ≈ 59k;套利省 4.6k;自發自用在沒有
+PV 盈餘的夜間只磨循環成本,−1.2k。</p>
 <h3 id="1-13-電價-台電內建方案">1.13 電價：台電內建方案<a class="headerlink" href="#1-13-電價-台電內建方案" title="Permanent link">¶</a></h3>
 <p>台電<strong>沒有公開的即時電價 API</strong>——電價是牌價，由電價費率審議會約每半年檢討一次。
 所以正確的架構是「內建費率表」而不是「串接」：console 內建三個台電時間電價方案

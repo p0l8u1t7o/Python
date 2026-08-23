@@ -42,6 +42,7 @@ from apps.ems.models import (
     EnergyAsset,
     StoragePlan,
 )
+from apps.ems.replay import REPLAY
 from apps.telemetry.models import LatestSample
 
 logger = get_logger("ems.dispatch")
@@ -172,6 +173,9 @@ def assert_within_plan(device: Device, name: str, params: dict) -> None:
 
 def _battery_soc(site_id) -> float | None:
     """Mean SOC across the site's battery assets, or ``None`` if unknown."""
+    replay = REPLAY.get()
+    if replay is not None:
+        return replay.soc()
     assets = list(
         EnergyAsset.objects.filter(
             site_id=site_id, role=AssetRole.BATTERY, is_active=True

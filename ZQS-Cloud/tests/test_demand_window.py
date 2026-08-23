@@ -132,15 +132,24 @@ class WindowStrategyTests(TestCase):
             defaults={"value": battery_kw, "ts": timezone.now(), "quality": 0},
         )
 
-    def test_window_state_integrates_native_demand_with_battery_restored(self) -> None:
+    def test_window_state_accumulates_meter_and_remembers_native(self) -> None:
         start = dt.datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
         for minute in range(0, 10, 1):
-            # 電表 300 kW、電池放電 100 kW → native 400 kW
+            # 電表 300 kW、電池放電 100 kW → 台電看到 300，native 400
             self.sample(start + dt.timedelta(minutes=minute), 300.0, 100.0)
         state = window_state(self.site, start + dt.timedelta(minutes=10))
         self.assertTrue(state.is_trustworthy)
-        self.assertAlmostEqual(state.accumulated_kwh, 400 * 10 / 60, delta=0.01)
+        self.assertAlmostEqual(state.accumulated_kwh, 300 * 10 / 60, delta=0.01)
         self.assertAlmostEqual(state.last_native_kw, 400.0)
+
+    def test_shaving_battery_is_not_asked_to_catch_up(self) -> None:
+        """穩態 900 kW、上限 650、電池已放 250：窗口中段的要求仍是 250，不是更高。
+        累積量若誤用 native，這裡會算出 250 × (0.25 / 剩餘) 的追趕值。"""
+        start = dt.datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+        for minute in range(0, 8):
+            self.sample(start + dt.timedelta(minutes=minute), 650.0, 250.0)
+        decision = strategy_power_w(self.plan, self.site.pk, start + dt.timedelta(minutes=8))
+        self.assertAlmostEqual(decision.power_w, 250_000.0, delta=1_000.0)
 
     def test_step_load_discharges_from_minute_six(self) -> None:
         start = dt.datetime(2026, 7, 15, 10, 0, tzinfo=UTC)

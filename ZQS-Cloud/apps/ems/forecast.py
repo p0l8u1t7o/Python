@@ -280,3 +280,23 @@ def backtest(site_id, start: dt.datetime, end: dt.datetime) -> ErrorStats:
         p90_abs_kw=round(absolute[min(len(absolute) - 1, int(len(absolute) * 0.9))], 3),
         bias_kw=round(float(statistics.mean(errors)), 3),
     )
+
+
+def recorded_native_kw(site_id, starts_at: dt.datetime) -> float | None:
+    """最近一次 record_forecasts 對這個時槽的 native 需量估計（load − pv），kW。
+
+    給需量窗口控制用：一筆索引查詢，而不是重算整個預測。沒有紀錄、或
+    信心為 unknown 時回 ``None``，呼叫端自己退回瞬時值。
+    """
+    from apps.ems.models import ForecastConfidence, LoadForecast
+
+    row = (
+        LoadForecast.objects.filter(site_id=site_id, starts_at=align_to_interval(starts_at))
+        .exclude(confidence=ForecastConfidence.UNKNOWN)
+        .order_by("-made_at")
+        .values_list("load_kw", "pv_kw")
+        .first()
+    )
+    if row is None or row[0] is None:
+        return None
+    return float(row[0]) - float(row[1] or 0.0)

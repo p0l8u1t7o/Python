@@ -4,8 +4,13 @@
 前 9 分鐘已經累積的用電救不回來；真實廠房的負載是階躍的（一台冰水主機
 啟動就是 200 kW），瞬時比較會在上線後第一個被客戶抓到。這個模組回答的是：
 
-    已累積 kWh + 剩餘時間 × 預測功率 ＝ 窗口預期平均
+    已累積 kWh(電表) + 剩餘時間 × 預測 native 功率 ＝ 窗口預期平均
     預期平均 > 上限 → 現在起放電 (預期平均 − 上限) × 0.25 / 剩餘小時
+
+「已累積」用的是**電表**讀值（含電池動作），因為台電收的就是電表的平均；
+「剩餘」用 native（不含電池）預測，因為那是沒有電池時會發生的事、也就是
+電池接下來要對付的量。兩者混用會出事：累積量若用 native，已經在放電的
+電池會被要求「補回」它其實已經削掉的能量，設定點愈追愈高直到放空。
 
 四個邊界是真的會出事的地方，各自有處理：
 
@@ -42,6 +47,7 @@ MIN_STATS_SAMPLES = 48
 @dataclass(slots=True)
 class WindowState:
     window_start: dt.datetime
+    #: 窗口起點到 moment 的電表累積 kWh（含電池動作，即台電會計的量）。
     accumulated_kwh: float
     #: 0–1，窗口起點到 moment 之間被遙測涵蓋的比例。
     coverage: float
@@ -61,21 +67,23 @@ def window_bounds(moment: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
     return start, start + INTERVAL
 
 
-def native_series(site, start: dt.datetime, end: dt.datetime) -> tuple[list[tuple[dt.datetime, float]], tuple[dt.datetime, float] | None]:
-    """場域自身需量（kW）的時間序列：``grid + battery``（放電為正）。
+def native_series(
+    site, start: dt.datetime, end: dt.datetime, *, include_battery: bool = True
+) -> tuple[list[tuple[dt.datetime, float]], tuple[dt.datetime, float] | None]:
+    """功率（kW）時間序列。``include_battery=True`` 為 native（電表 + 電池放電），
+    ``False`` 為電表本身。
 
-    分別讀電表與電池的功率樣本，對齊成一條 native 序列。電表讀值已含電池
-    動作；不還原的話，積分控制會跟瞬時版本一樣追自己的尾巴。回傳
-    ``(points, seed)``，``seed`` 是窗口前最後一筆，讓前值保持能從窗口起點
-    就算起。
+    分別讀電表與電池的功率樣本，對齊成一條序列。回傳 ``(points, seed)``，
+    ``seed`` 是窗口前最後一筆，讓前值保持能從窗口起點就算起。
     """
     from apps.ems.models import AssetRole, EnergyAsset
     from apps.telemetry.models import TelemetrySample
 
+    roles = [AssetRole.GRID_METER, AssetRole.BATTERY] if include_battery else [AssetRole.GRID_METER]
     assets = list(
         EnergyAsset.objects.filter(site_id=getattr(site, "id", site), is_active=True, include_in_balance=True)
         .exclude(power_metric="")
-        .filter(role__in=[AssetRole.GRID_METER, AssetRole.BATTERY])
+        .filter(role__in=roles)
     )
     if not any(a.role == AssetRole.GRID_METER for a in assets):
         return [], None
@@ -123,13 +131,14 @@ def window_state(site, moment: dt.datetime) -> WindowState:
     if elapsed_h <= 0:
         return WindowState(start, 0.0, 1.0, True, 0.0, None, "window just opened")
 
-    points, seed = native_series(site, start, moment)
+    points, seed = native_series(site, start, moment, include_battery=False)
     if not points and seed is None:
         return WindowState(start, 0.0, 0.0, False, elapsed_h, None, "no telemetry in window")
     result = integrate_kwh(points, start, moment, seed=seed)
     kwh = result.kwh or 0.0
     coverage = result.coverage or 0.0
-    last = points[-1][1] if points else (seed[1] if seed else None)
+    native_points, native_seed = native_series(site, start, moment, include_battery=True)
+    last = native_points[-1][1] if native_points else (native_seed[1] if native_seed else None)
     trustworthy = coverage >= MIN_COVERAGE
     reason = "" if trustworthy else f"coverage {coverage:.2f} below {MIN_COVERAGE}"
     return WindowState(start, kwh, coverage, trustworthy, elapsed_h, last, reason)
@@ -143,7 +152,9 @@ def required_discharge_kw(
     *,
     previous_kw: float | None = None,
 ) -> float | None:
-    """為了讓本窗口平均 ≤ ceiling，現在必須放多少 kW。負值代表有充電餘裕。
+    """為了讓本窗口電表平均 ≤ ceiling，現在必須放多少 kW。負值代表有充電餘裕。
+
+    ``predicted_kw`` 是剩餘時間的 **native** 功率（沒有電池時的需量）。
 
     ``None`` 表示「維持上一輪」：剩餘時間已短於 ``MIN_REMAINING_H``，
     重算只會把雜訊放大成設定點跳動。呼叫端拿到 ``None`` 就沿用
@@ -164,20 +175,27 @@ def required_discharge_kw(
 _last_decision: dict = {}
 
 
-def remember(site_id, window_start: dt.datetime, kw: float) -> None:
-    _last_decision[site_id] = (window_start, kw)
+def remember(site_id, window_start: dt.datetime, kw: float, *, memory: dict | None = None) -> None:
+    (_last_decision if memory is None else memory)[site_id] = (window_start, kw)
 
 
-def previous_for(site_id, window_start: dt.datetime) -> tuple[float | None, bool]:
+def previous_for(
+    site_id, window_start: dt.datetime, *, memory: dict | None = None
+) -> tuple[float | None, bool]:
     """上一輪的放電 kW，以及它是否屬於同一個窗口。
 
     跨窗口時仍回傳上一個值：新窗口的第一次評估沿用它，避免邊界瞬間
     歸零再重建的功率突跳；``same_window=False`` 讓呼叫端知道狀態已歸零。
     """
-    entry = _last_decision.get(site_id)
+    entry = (_last_decision if memory is None else memory).get(site_id)
     if entry is None:
         return None, False
     return entry[1], entry[0] == window_start
+
+
+#: 誤差統計每小時重算一次就夠（它回看 14 天）；每 20 秒掃一次是自找麻煩。
+_MARGIN_CACHE: dict = {}
+MARGIN_TTL = dt.timedelta(hours=1)
 
 
 def safety_margin_kw(site_id, *, stats=None) -> tuple[float, str]:
@@ -188,12 +206,20 @@ def safety_margin_kw(site_id, *, stats=None) -> tuple[float, str]:
     使用者自己填的目標也不再打折——那是客戶的數字，不是引擎的。
     """
     if stats is None:
+        from django.utils.timezone import now
+
         from apps.ems.forecast import forecast_error_stats
 
+        cached = _MARGIN_CACHE.get(site_id)
+        if cached is not None and now() - cached[0] < MARGIN_TTL:
+            return cached[1]
         try:
             stats = forecast_error_stats(site_id, days=14)
         except Exception:  # noqa: BLE001 - 統計失敗不能讓調度掛掉
             stats = None
+        result = safety_margin_kw(site_id, stats=stats) if stats is not None else (0.0, "no forecast error stats")
+        _MARGIN_CACHE[site_id] = (now(), result)
+        return result
     if stats is not None and stats.samples >= MIN_STATS_SAMPLES and stats.p90_abs_kw is not None:
         return float(stats.p90_abs_kw), f"forecast P90 error {stats.p90_abs_kw:.1f} kW ({stats.samples} samples)"
     return 0.0, "no forecast error stats; ceiling chain already holds the 95% contract margin"
