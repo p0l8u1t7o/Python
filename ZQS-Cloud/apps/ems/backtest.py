@@ -179,18 +179,26 @@ def run_backtest(
     start: dt.datetime,
     end: dt.datetime,
     *,
-    strategy: str | None = None,
+    strategy: str | list[str] | None = None,
     initial_soc_percent: float = 50.0,
     with_battery: bool = True,
     keep_intervals: bool = True,
 ) -> BacktestResult:
     """重播 ``[start, end)``。``with_battery=False`` 產生對照組。"""
     site_id = getattr(site, "id", site)
-    strategy = strategy or plan.strategy
-    if strategy != plan.strategy:
+    # ``strategy`` 可以是單一鍵或疊加清單（W5）；清單第一個是主策略。
+    if strategy is None:
+        strategies = plan.active_strategies
+    elif isinstance(strategy, str):
+        strategies = [strategy]
+    else:
+        strategies = list(strategy)
+    if strategies != plan.active_strategies:
         # 不動原方案：複製一份記憶體內的 plan 來改策略，資料庫不被碰。
         plan = StoragePlan(**{f.name: getattr(plan, f.name) for f in StoragePlan._meta.concrete_fields})
-        plan.strategy = strategy
+        plan.strategy = strategies[0]
+        plan.strategies = strategies
+    strategy = "+".join(strategies)
     tariff = plan.tariff
     zone = zoneinfo.ZoneInfo(tariff.timezone_name) if tariff else dt.timezone.utc
     notes: list[str] = []
@@ -233,12 +241,13 @@ def run_backtest(
         # 回測用完美預測：區間內負載就是常數。這讓回測比實際樂觀，有註記。
         forecast_kw=lambda moment: state["load"] - state["pv"],
         margin_kw=0.0,
+        cycle_cost_per_kwh=cycle_cost_rate,
     )
     notes.append("forecast inside replay is perfect (interval load is constant): results are optimistic")
 
     # 只有需量窗口控制在 15 分鐘內會改變決策；其他策略的輸入在區間內是常數，
     # 每區間評估一次就夠，少跑 15 倍。
-    windowed = strategy in (DispatchStrategy.DEMAND_CAP, DispatchStrategy.PEAK_SHAVING)
+    windowed = bool({DispatchStrategy.DEMAND_CAP, DispatchStrategy.PEAK_SHAVING} & set(strategies))
     step = STEP if windowed else INTERVAL
     step_h = step.total_seconds() / 3600.0
 
@@ -330,12 +339,14 @@ def backtest_with_baseline(site, plan: StoragePlan, start: dt.datetime, end: dt.
 
 
 def compare_strategies(
-    site, plan: StoragePlan, start: dt.datetime, end: dt.datetime, strategies: list[str] | None = None
+    site, plan: StoragePlan, start: dt.datetime, end: dt.datetime, strategies: list | None = None
 ) -> list[BacktestResult]:
-    """同一段歷史跑多個策略，回傳依 total 由低到高排序。"""
+    """同一段歷史跑多個策略（含 W5 疊加組合），回傳依 total 由低到高排序。"""
     strategies = strategies or [
         DispatchStrategy.DEMAND_CAP, DispatchStrategy.TOU_ARBITRAGE,
         DispatchStrategy.SELF_CONSUMPTION, DispatchStrategy.BACKUP_ONLY,
+        [DispatchStrategy.DEMAND_CAP, DispatchStrategy.TOU_ARBITRAGE],
+        [DispatchStrategy.DEMAND_CAP, DispatchStrategy.TOU_ARBITRAGE, DispatchStrategy.SELF_CONSUMPTION],
     ]
     baseline = run_backtest(site, plan, start, end, with_battery=False, keep_intervals=False)
     results = []

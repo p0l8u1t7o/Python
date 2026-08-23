@@ -30,6 +30,8 @@ class ReplayContext:
     forecast_kw: Callable[[dt.datetime], float | None] | None = None
     #: 需量餘裕（kW）；None = 不另外留。
     margin_kw: float | None = None
+    #: 循環成本（每 kWh）；None = 照正式路徑讀資產。
+    cycle_cost_per_kwh: float | None = None
     #: 回放期間 demand_window 的「上一輪設定點」記憶，與正式路徑隔離。
     memory: dict = field(default_factory=dict)
 

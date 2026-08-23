@@ -131,9 +131,13 @@ function planProblems(form: PlanForm, t: (key: string, options?: Record<string, 
   return problems
 }
 
+/** Strategies that compute a setpoint and can be stacked under a primary (W5). */
+const STACKABLE: DispatchStrategy[] = ['demand_cap', 'tou_arbitrage', 'self_consumption', 'backup_only']
+
 const EMPTY_FORM = {
   name: '',
   strategy: 'manual' as DispatchStrategy,
+  strategies: [] as DispatchStrategy[],
   is_enabled: true,
   contract_capacity_kw: '' as string | number,
   peak_shaving_target_kw: '' as string | number,
@@ -245,6 +249,11 @@ export function StoragePlansPage() {
                     <p className="truncate text-sm font-medium">{plan.name}</p>
                     <p className="truncate text-xs text-muted">
                       {t(`storage.strategies.${plan.strategy}`)}
+                      {(plan.strategies ?? []).filter((key) => key !== plan.strategy).map((key) => (
+                        <span key={key} className="ml-1 rounded bg-brand-soft px-1 text-[10px] text-brand">
+                          + {t(`storage.strategies.${key}`)}
+                        </span>
+                      ))}
                     </p>
                   </div>
                   {!plan.is_enabled ? (
@@ -327,6 +336,7 @@ function PlanEditor({
       setForm({
         name: plan.name,
         strategy: plan.strategy,
+        strategies: (plan.strategies ?? []).filter((key) => key !== plan.strategy),
         is_enabled: plan.is_enabled,
         contract_capacity_kw: plan.contract_capacity_kw ?? '',
         peak_shaving_target_kw: plan.peak_shaving_target_kw ?? '',
@@ -368,6 +378,9 @@ function PlanEditor({
     const body = {
       name: form.name.trim(),
       strategy: form.strategy,
+      strategies: STACKABLE.includes(form.strategy)
+        ? [form.strategy, ...form.strategies.filter((key) => key !== form.strategy)]
+        : [form.strategy],
       is_enabled: form.is_enabled,
       contract_capacity_kw: number(form.contract_capacity_kw),
       peak_shaving_target_kw: number(form.peak_shaving_target_kw),
@@ -617,6 +630,31 @@ function PlanEditor({
             </div>
           </Tabs>
         </div>
+
+        {STACKABLE.includes(form.strategy) ? (
+          <section className="space-y-2 rounded-lg border border-line p-3" data-testid="plan-stacking">
+            <h3 className="text-sm font-medium">{t('storage.stacking')}</h3>
+            <p className="text-xs text-muted">{t('storage.stackingHint')}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {STACKABLE.filter((key) => key !== form.strategy).map((key) => (
+                <Checkbox
+                  key={key}
+                  label={t(`storage.strategies.${key}`)}
+                  hint={t(`storage.strategyDetails.${key}`)}
+                  checked={form.strategies.includes(key)}
+                  onChange={(checked) =>
+                    setForm({
+                      ...form,
+                      strategies: checked
+                        ? [...form.strategies, key]
+                        : form.strategies.filter((item) => item !== key),
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="space-y-3 rounded-lg border border-line p-3">
           <h3 className="text-sm font-medium">{t('storage.envelope')}</h3>

@@ -654,6 +654,8 @@ const zhHant: Translation = {
     envelopeHint: '不論選哪一種策略都會強制執行，手動下的命令也一樣受限。',
     reporting: '成本報表',
     noExtraParameters: '這個策略沒有自己的參數。下方的運轉限制仍然有效。',
+    stacking: '疊加策略',
+    stackingHint: '與主策略同時執行。硬約束（需量上限、備援保留）永遠優先；套利與 PV 自用在剩餘空間內依價值排序。',
     contractCapacityHint: '電池要把需量壓在這個值以下。',
     peakDemandHint: '留空就用契約容量。',
     tariffHint: '這個電價方案的時段決定什麼時候充電、什麼時候放電。',

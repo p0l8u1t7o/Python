@@ -880,6 +880,8 @@ export interface StoragePlan {
   /** On the per-site endpoint: the ancestor the plan is inherited from. */
   inherited_from?: string | null
   strategy: DispatchStrategy
+  /** W5: stacked strategies; the primary is always first. Single element = plain single strategy. */
+  strategies: DispatchStrategy[]
   is_enabled: boolean
   contract_capacity_kw: number | null
   peak_shaving_target_kw: number | null

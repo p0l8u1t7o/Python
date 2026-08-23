@@ -211,6 +211,11 @@ class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
     strategy = models.CharField(
         max_length=20, choices=DispatchStrategy.choices, default=DispatchStrategy.MANUAL
     )
+    #: W5：可疊加的策略清單。``strategy`` 仍是主策略（相容路徑、UI 徽章、
+    #: 回測預設）；清單為空或只有一個元素時，行為與單選完全相同。
+    #: 多個策略時由 apps/ems/arbitration.py 仲裁：硬約束（需量上限、備援保留）
+    #: 定出功率上下界，軟目標（套利、PV 自用）依貨幣化價值排序後夾進界內。
+    strategies = models.JSONField(default=list, blank=True)
     is_enabled = models.BooleanField(default=True)
 
     # ---- Grid constraints ------------------------------------------------
@@ -306,6 +311,15 @@ class StoragePlan(UUIDPrimaryKeyModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.name} [{self.strategy}]"
+
+    @property
+    def active_strategies(self) -> list[str]:
+        """要評估的策略：``strategies`` 去重後、主策略排第一；空清單退回單選。"""
+        ordered: list[str] = [self.strategy] if self.strategy else []
+        for key in self.strategies or []:
+            if key and key not in ordered:
+                ordered.append(key)
+        return ordered
 
     @property
     def dispatchable_capacity_kwh(self) -> float | None:

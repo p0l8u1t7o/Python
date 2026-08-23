@@ -195,6 +195,42 @@ def _window_decision(
     demand_window.remember(site_id, state.window_start, 0.0, memory=memory)
     return None, ""
 
+def demand_ceiling_kw(plan: StoragePlan) -> float | None:
+    """Ceiling fallback chain: the explicit demand target, the older
+    peak-shaving target (same idea, earlier name), then a margin under the
+    contract capacity. ``None`` when the plan names nothing."""
+    ceiling_kw = plan.demand_cap_target_kw
+    if ceiling_kw is None:
+        ceiling_kw = plan.peak_shaving_target_kw
+    if ceiling_kw is None and plan.contract_capacity_kw:
+        ceiling_kw = plan.contract_capacity_kw * DEFAULT_DEMAND_MARGIN
+    return ceiling_kw or None
+
+
+def battery_cycle_cost_per_kwh(site) -> float:
+    """每 kWh 放電的循環成本：電池資產的 ``cycle_cost_per_kwh``，否則
+    購置成本 ÷ 保固總吞吐量，都沒有就是 0（與 costs/battery.py 同一套規則）。"""
+    from apps.ems.models import AssetRole, EnergyAsset
+
+    replay = REPLAY.get()
+    if replay is not None and replay.cycle_cost_per_kwh is not None:
+        return replay.cycle_cost_per_kwh
+    asset = (
+        EnergyAsset.objects.filter(site_id=getattr(site, "id", site), role=AssetRole.BATTERY, is_active=True)
+        .select_related("device").first()
+    )
+    if asset is None:
+        return 0.0
+    params = asset.cost_parameters or {}
+    if params.get("cycle_cost_per_kwh") is not None:
+        return float(params["cycle_cost_per_kwh"])
+    throughput = params.get("warranted_throughput_kwh")
+    capital = getattr(asset.device, "capital_cost", None)
+    if throughput and capital:
+        return float(capital) / float(throughput)
+    return 0.0
+
+
 # --------------------------------------------------------------------------
 # The policies
 # --------------------------------------------------------------------------
@@ -207,14 +243,7 @@ def demand_cap(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision
     would be a bad joke - and, when the plan says so, only during the tariff's
     cheapest period of the day.
     """
-    # Ceiling fallback chain: the explicit demand target, the older
-    # peak-shaving target (same idea, earlier name), then a margin under the
-    # contract capacity.
-    ceiling_kw = plan.demand_cap_target_kw
-    if ceiling_kw is None:
-        ceiling_kw = plan.peak_shaving_target_kw
-    if ceiling_kw is None and plan.contract_capacity_kw:
-        ceiling_kw = plan.contract_capacity_kw * DEFAULT_DEMAND_MARGIN
+    ceiling_kw = demand_ceiling_kw(plan)
     if not ceiling_kw:
         return StrategyDecision(None, "no demand ceiling configured")
 
@@ -356,12 +385,26 @@ _POLICIES = {
 }
 
 
-def strategy_power_w(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision:
-    """The plan's strategy, evaluated now. Manual and workflow have no opinion."""
-    policy = _POLICIES.get(plan.strategy)
+def single_strategy_power_w(plan: StoragePlan, site, moment: dt.datetime, strategy: str) -> StrategyDecision:
+    """One named strategy, evaluated now. Manual and workflow have no opinion."""
+    policy = _POLICIES.get(strategy)
     if policy is None:
-        return StrategyDecision(None, f"strategy {plan.strategy} computes no setpoint")
+        return StrategyDecision(None, f"strategy {strategy} computes no setpoint")
     return policy(plan, site, moment)
+
+
+def strategy_power_w(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision:
+    """The plan's strategy (or stacked strategies, W5), evaluated now.
+
+    單一策略走原本的路徑，一個位元都不變——相容性測試釘住。兩個以上才交給
+    仲裁器。
+    """
+    active = plan.active_strategies
+    if len(active) <= 1:
+        return single_strategy_power_w(plan, site, moment, plan.strategy)
+    from apps.ems.arbitration import arbitrate, propose
+
+    return arbitrate(propose(plan, site, moment), plan)
 
 
 # --------------------------------------------------------------------------

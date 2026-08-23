@@ -623,6 +623,33 @@ PV 盈餘的夜間只磨循環成本,−1.2k。</p>
 之後改電價影響不到它;要重算得明確 <code>--force</code>。未封存的月份每次重算都用現行設定——進行中的月份就該如此。</li>
 <li><strong>basis</strong> 取月內最差:任一區間涵蓋率 &lt; 0.8 或整月有缺 → <code>estimated</code>;整月涵蓋 &lt; 0.5 → <code>unknown</code>。</li>
 </ul>
+<h3 id="1-12h-策略疊加仲裁-w5">1.12H 策略疊加仲裁(W5)<a class="headerlink" href="#1-12h-策略疊加仲裁-w5" title="Permanent link">¶</a></h3>
+<p>台中廠的電池離峰充飽、尖峰放電,本來就同時在削需量;<code>demand_cap</code> 的離峰回充挑最便宜時段,
+已經是半個套利——單選策略把這些價值丟掉了。<code>StoragePlan.strategies</code>(JSON 清單,migration
+<code>ems/0011</code> 把既有資料遷成 <code>[strategy]</code>)讓方案疊加;<strong>清單只有一個元素時走原本的單策略路徑,
+一個位元都不變</strong>(相容性測試逐一比對五個策略)。</p>
+<p><code>apps/ems/arbitration.py</code> 不是求解器,是優先序仲裁:</p>
+<pre><code>硬約束(定出功率上下界)          軟目標(在界內依每小時貨幣價值排序)
+  1. 需量上限:放電需求 = 下界        5. 套利:|kW| × (價差 − 循環成本),充電扣效率
+     餘裕(上限 − native)= 充電上限   6. PV 自用:|kW| × (購電價 − 躉售價)
+  2. 備援保留:SOC 低於水位 → 充電下限
+  (3. 健康、4. 包絡:decide() 的 clamp_to_plan / apply_health_constraints 統一夾限,不重做)</code></pre>
+<ul>
+<li>每個啟用策略各提一個 <code>StrategyProposal</code>(策略函式本身不改,只是替它標價);
+<code>arbitrate()</code> 取價值最高且 &gt; 0 的軟提案,夾進硬約束的界;沒有值得做的軟目標就執行硬約束自己的值
+(需量放電、離峰回充、備援充電)。</li>
+<li>兩個硬約束衝突(需量要放電、備援要充電)→ 需量贏:罰款比少一點備援更貴,而且 SOC 下限在 <code>clamp_to_plan</code> 還有一道。</li>
+<li><code>decide()</code> 的權威順序(DR &gt; 排程窗 &gt; 策略 &gt; 包絡+健康)沒有動;仲裁只發生在「策略」這一格裡。</li>
+<li>只有會算出設定點的策略能疊加(<code>manual</code>/<code>workflow</code> 不行,API 422 <code>strategy_not_stackable</code>);
+方案頁在主策略下方多一組「疊加策略」核取方塊。<code>run_dispatch --strategy demand_cap</code> 的快節奏通道看的是整份清單。</li>
+</ul>
+<p><strong>回測證明</strong>(示範資料台中廠 30 天,<code>backtest --compare</code> 現在含疊加組合):需量+套利 2,498,641 &lt;
+套利 2,501,729 &lt; 需量 2,520,438;差額可逐項解釋——疊加的需量費與罰款和單做需量相近(硬約束守住),能源費與單做套利相近
+(套利賺到)。測試 <code>test_backtest_stacking_beats_each_strategy_alone</code> 用合成資料釘住同一件事,
+並斷言「套利收益很高但會超約」時引擎不套利。</p>
+<p><strong>已知限制</strong>:仲裁看的是「此刻」。再疊一個 PV 自用會在白天把電池放空、尖峰前沒電,30 天反而
+多花 6 萬——那是<strong>能量保留</strong>問題(為預測的尖峰留 SOC),不是優先序能解的;等回測證明剩餘價值可觀,
+再談帶預測的最佳化。一個場域兩組電池(一組套利、一組備援)仍分不開,包絡下放到 <code>EnergyAsset</code> 留待後續。</p>
 <h3 id="1-13-電價-台電內建方案">1.13 電價：台電內建方案<a class="headerlink" href="#1-13-電價-台電內建方案" title="Permanent link">¶</a></h3>
 <p>台電<strong>沒有公開的即時電價 API</strong>——電價是牌價，由電價費率審議會約每半年檢討一次。
 所以正確的架構是「內建費率表」而不是「串接」：console 內建三個台電時間電價方案

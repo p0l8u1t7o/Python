@@ -652,6 +652,8 @@ const en = {
     envelopeHint: 'Enforced whatever the strategy is, so they apply to manual commands too.',
     reporting: 'Cost reporting',
     noExtraParameters: 'This strategy has no parameters of its own. The operating limits below still apply.',
+    stacking: 'Stacked strategies',
+    stackingHint: 'Run these alongside the primary strategy. Hard constraints (demand ceiling, backup reserve) always win; arbitrage and PV self-use fill whatever room is left, ranked by value.',
     contractCapacityHint: 'The demand the battery discharges to stay under.',
     peakDemandHint: 'Leave blank to use the contract capacity.',
     tariffHint: 'The periods in this tariff decide when to charge and when to discharge.',

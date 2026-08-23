@@ -26,7 +26,10 @@ class Command(BaseCommand):
         parser.add_argument("--site", required=True, help="Site name or UUID.")
         parser.add_argument("--plan", default="", help="Plan name or UUID; blank = the site's effective plan.")
         parser.add_argument("--days", type=int, default=30, help="Lookback in days (default 30).")
-        parser.add_argument("--strategy", default="", help="Override the plan's strategy for this run.")
+        parser.add_argument(
+            "--strategy", default="",
+            help="Override the plan's strategy; comma-separated keys stack them (W5), e.g. demand_cap,tou_arbitrage.",
+        )
         parser.add_argument("--compare", action="store_true", help="Run every strategy and rank by total cost.")
         parser.add_argument("--soc", type=float, default=50.0, help="Initial SOC percent (default 50).")
         parser.add_argument("--json", action="store_true", help="Emit JSON instead of a table.")
@@ -45,13 +48,13 @@ class Command(BaseCommand):
                 return
             self.stdout.write(f"site={site.name} plan={plan.name} range={start:%Y-%m-%d}..{end:%Y-%m-%d}")
             self.stdout.write(
-                f"{'strategy':18} {'energy':>12} {'demand':>10} {'penalty':>10} {'cycle':>10} {'total':>12} "
+                f"{'strategy':36} {'energy':>12} {'demand':>10} {'penalty':>10} {'cycle':>10} {'total':>12} "
                 f"{'savings':>12} {'peak kW':>9} {'cycles':>7}"
             )
             for r in results:
                 s = r.summary()
                 self.stdout.write(
-                    f"{s['strategy']:18} {s['energy_cost']:>12,.0f} {s['demand_charge']:>10,.0f} "
+                    f"{s['strategy']:36} {s['energy_cost']:>12,.0f} {s['demand_charge']:>10,.0f} "
                     f"{s['penalty']:>10,.0f} {s['cycle_cost']:>10,.0f} {s['total']:>12,.0f} "
                     f"{(s['savings'] or 0):>12,.0f} {(s['peak_demand_kw'] or 0):>9,.1f} {s['equivalent_cycles']:>7.1f}"
                 )
@@ -60,9 +63,10 @@ class Command(BaseCommand):
                 self.stdout.write(f"  note: {note}")
             return
 
-        strategy = options["strategy"] or None
-        if strategy and strategy not in DispatchStrategy.values:
-            raise CommandError(f"unknown strategy {strategy!r}; choose from {', '.join(DispatchStrategy.values)}")
+        strategy = [k.strip() for k in options["strategy"].split(",") if k.strip()] or None
+        for key in strategy or []:
+            if key not in DispatchStrategy.values:
+                raise CommandError(f"unknown strategy {key!r}; choose from {', '.join(DispatchStrategy.values)}")
         result = backtest_with_baseline(
             site, plan, start, end, strategy=strategy, initial_soc_percent=options["soc"], keep_intervals=False
         )

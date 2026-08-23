@@ -274,6 +274,20 @@ def _resolve_plan_relations(ctx: AuthContext, payload: s.StoragePlanIn):
             "Select a workflow, or choose a different strategy",
             code="workflow_required",
         )
+    # W5：只有會算出設定點的策略能疊加；manual / workflow 沒有「值」可仲裁。
+    from apps.ems.arbitration import STACKABLE
+
+    extras = [key for key in payload.strategies if key != payload.strategy]
+    bad = [key for key in extras if key not in STACKABLE]
+    if bad:
+        raise ValidationError(
+            f"Strategies cannot be stacked: {', '.join(bad)}", code="strategy_not_stackable"
+        )
+    if extras and payload.strategy not in STACKABLE:
+        raise ValidationError(
+            "The primary strategy must be stackable when additional strategies are set",
+            code="strategy_not_stackable",
+        )
     return tariff, workflow
 
 
@@ -1410,6 +1424,7 @@ def _plan_out(plan: StoragePlan) -> dict:
             for site in plan.sites.filter(deleted_at__isnull=True).order_by("name")
         ],
         "strategy": plan.strategy,
+        "strategies": plan.active_strategies,
         "is_enabled": plan.is_enabled,
         "contract_capacity_kw": plan.contract_capacity_kw,
         "peak_shaving_target_kw": plan.peak_shaving_target_kw,

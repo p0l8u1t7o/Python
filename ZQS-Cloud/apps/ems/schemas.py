@@ -92,6 +92,9 @@ class EnergyAssetOut(Schema):
 class StoragePlanIn(Schema):
     name: str = Field(max_length=120)
     strategy: DispatchStrategy = DispatchStrategy.MANUAL
+    #: 疊加的策略（W5）。主策略 ``strategy`` 自動包含；只能疊加
+    #: demand_cap / tou_arbitrage / self_consumption / backup_only。
+    strategies: list[DispatchStrategy] = Field(default_factory=list)
     is_enabled: bool = True
     contract_capacity_kw: float | None = Field(default=None, ge=0)
     peak_shaving_target_kw: float | None = Field(default=None, ge=0)

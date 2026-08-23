@@ -104,6 +104,13 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
 <h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="w5-策略疊加仲裁">W5 策略疊加仲裁<a class="headerlink" href="#w5-策略疊加仲裁" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>StoragePlan.strategies</code>（migration <code>ems/0011</code>，既有資料遷成 <code>[strategy]</code>）；方案頁新增「疊加策略」核取方塊；API 只允許疊加會算設定點的策略（422 <code>strategy_not_stackable</code>）。</li>
+<li>新增 <code>apps/ems/arbitration.py</code>：<code>StrategyProposal</code>／<code>propose()</code>／<code>arbitrate()</code>。硬約束（需量上限、備援保留）定界，軟目標（套利、PV 自用）依貨幣化價值排序後夾進界內；<code>decide()</code> 權威順序不變、沒有求解器。</li>
+<li>單策略方案走原路徑、行為不變（相容性測試）；<code>backtest --strategy a,b</code> 與 <code>--compare</code> 支援疊加組合。示範資料台中廠 30 天：需量+套利優於單獨任一策略。</li>
+<li>測試 <code>tests/test_arbitration.py</code> 10 項（含「套利收益高但會超約 → 不套利」）。</li>
+</ul>
 <h3 id="w4-月結算表">W4 月結算表<a class="headerlink" href="#w4-月結算表" title="Permanent link">¶</a></h3>
 <ul>
 <li>新增 <code>MonthlySettlement</code>（migration <code>ems/0010</code>）、<code>apps/ems/settlement.py</code>、<code>manage.py settle_month</code>（排程器每天跑當月與上個月，次月 5 號自動封存）、<code>GET /ems/sites/{id}/settlements</code>。</li>

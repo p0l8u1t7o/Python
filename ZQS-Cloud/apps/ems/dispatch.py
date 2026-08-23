@@ -547,7 +547,7 @@ def run_organization(
         site_id
         for site_id, (plan, _source) in effective.items()
         if site_id in active_ids and plan.is_enabled
-        and (strategy is None or plan.strategy == strategy)
+        and (strategy is None or strategy in plan.active_strategies)
     ]
 
     return [
