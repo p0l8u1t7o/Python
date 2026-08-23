@@ -103,13 +103,15 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div>
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
-<h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h2 id="v0-3-營收最佳化與邊緣自治-2026-08-23">v0.3 — 營收最佳化與邊緣自治（2026-08-23）<a class="headerlink" href="#v0-3-營收最佳化與邊緣自治-2026-08-23" title="Permanent link">¶</a></h2>
+<p><strong>一句話</strong>：策略從「瞬時比較的單選標籤」變成「有預測、有窗口積分、可疊加、可回測、可結算、斷網也安全」的調度系統；前端加上 3D 能量場景、場域星系與需量著色地圖；模擬器可以強行改變上傳值讓每個數字都能手算對帳。</p>
+<p><strong>驗證</strong>：後端 813 項測試、ruff、前端 typecheck/build、Playwright e2e（含 3D 場景兩主題截圖、地圖階層）、<code>scripts/verify_calculations.py</code> 3,356 項交叉比對，全數通過。詳細設計見 <a href="system-logic.html">system-logic.html</a> §1.12D–1.12I。</p>
 <h3 id="地圖-場域從屬關係與需量狀態">地圖：場域從屬關係與需量狀態<a class="headerlink" href="#地圖-場域從屬關係與需量狀態" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>GET /ems/live</code> 每個場域新增 <code>demand_status</code>（over 超過契約／high 超過上限／watch 上限 90% 以上／balanced／exporting／unknown）、<code>demand_ceiling_kw</code>、<code>contract_capacity_kw</code>；上限沿用引擎退路鏈，讀值過期或沒有方案就是 unknown。</li>
 <li>地圖氣泡依需量狀態著色（超過契約者閃爍），告警改以紅色外環表示；含子場域的場域畫虛線外環；母場域→子場域以虛線連線並可懸停顯示；彈窗顯示隸屬、購電 / 上限 / 契約、電池功率與狀態徽章。純分組場域取子場域中最差狀態。</li>
 <li>側欄改為可收合的場域樹（縮排＋連接符號），每列顯示需量色點與「市電 kW / 上限」；搜尋時扁平顯示並標註隸屬。統計列新增 用電超額／接近上限／良好平衡／無即時數據 四格；圖例改為需量狀態。</li>
-<li>e2e <code>e2e/map.spec.ts</code>。</li>
+<li>修正地圖圖例在場域／機隊視圖切換時的 hook 順序錯誤（按鍵掃描 e2e 抓到）；e2e <code>e2e/map.spec.ts</code>。</li>
 </ul>
 <h3 id="場域頁-3d-場域星系-電價頁-從屬關係">場域頁 3D「場域星系」、電價頁從屬關係<a class="headerlink" href="#場域頁-3d-場域星系-電價頁-從屬關係" title="Permanent link">¶</a></h3>
 <ul>

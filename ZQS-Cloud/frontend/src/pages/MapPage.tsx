@@ -827,6 +827,17 @@ function MapLegend({
   fleetView: boolean
 }) {
   const { t } = useTranslation()
+  // Only the categories actually on the map: a legend listing eleven kinds of
+  // equipment when three are present is noise, not help.
+  const present = useMemo(() => {
+    const seen = new Set<string>()
+    categories.forEach((point) => {
+      if (point.category && point.category in CATEGORY_ICON) seen.add(point.category)
+    })
+    return [...seen].sort()
+  }, [categories])
+  // Hooks above this line: the fleet legend returns early, and hooks after
+  // a conditional return are exactly the "rendered more hooks" crash.
   if (fleetView) {
     const statuses: DemandStatus[] = ['over', 'high', 'watch', 'balanced', 'exporting', 'unknown']
     return (
@@ -854,15 +865,6 @@ function MapLegend({
     )
   }
 
-  // Only the categories actually on the map: a legend listing eleven kinds of
-  // equipment when three are present is noise, not help.
-  const present = useMemo(() => {
-    const seen = new Set<string>()
-    categories.forEach((point) => {
-      if (point.category && point.category in CATEGORY_ICON) seen.add(point.category)
-    })
-    return [...seen].sort()
-  }, [categories])
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">

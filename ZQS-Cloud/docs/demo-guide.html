@@ -204,6 +204,13 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <li>指令狀態在一秒內變成 <code>succeeded</code>（設備 ack），電池功率隨即變成 −200 kW，SOC 開始上升，<strong>同一場域的市電電表取用量同步上升 200 kW</strong>——這就是「表後」：電表看到的是負載 − 光電 − 電池。</li>
 <li><code>emergency_stop</code> 會讓電池立刻歸零並覆寫任何設定點。</li>
 </ul>
+<h3 id="2b-3d-場景-儲能頁-場域頁-地圖-2-分鐘">2b. 3D 場景（儲能頁 / 場域頁 / 地圖，2 分鐘）<a class="headerlink" href="#2b-3d-場景-儲能頁-場域頁-地圖-2-分鐘" title="Permanent link">¶</a></h3>
+<ol>
+<li><strong>儲能頁</strong>最上方是即時 3D 能量場景：粒子沿弧線流動的方向與密度就是此刻的功率；點電池鏡頭滑入、再點返回。市電節點上方的半透明平面是<strong>需量上限</strong>，底下的光柱是即時購電——在模擬器把負載鎖到超過上限，光柱會穿過天花板變紅閃爍。調度引擎下設定點時，中樞會閃一個脈衝衝向電池。</li>
+<li><strong>場域頁</strong>上方的「場域星系」：點表格任一列，所屬設備依類別環繞中央平台，線上者有脈動光環；子場域是外圈平台以光束連回。點設備開詳情。</li>
+<li><strong>地圖</strong>：氣泡顏色 = 需量狀態（超過契約紅色閃爍、超過上限橘、接近上限黃、平衡綠、逆送藍）；母場域→子場域有虛線連線；側欄是可收合的場域樹。純分組場域取子場域中最差的狀態。</li>
+</ol>
+<p>三者在 WebGL 不可用的機器上自動退回原本的 2D 畫面，數字不會消失。</p>
 <h3 id="3-策略自動調度-儲能規劃頁-3-分鐘">3. 策略自動調度（儲能規劃頁，3 分鐘）<a class="headerlink" href="#3-策略自動調度-儲能規劃頁-3-分鐘" title="Permanent link">¶</a></h3>
 <ul>
 <li>儲能規劃頁：四個方案、各自綁定的場域。點開「園區契約容量管理」，看得到 A 棟是<strong>繼承</strong>、B 棟是<strong>覆寫</strong>。</li>
@@ -274,6 +281,11 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <li>告警規則：SOC 過低、電池／PCS 溫度過高、市電電壓異常、各場域超過契約容量。</li>
 <li>通知管道範例（Webhook，預設停用）示範通知佇列。</li>
 </ul>
+<h3 id="6-營收最佳化的證據-終端機-3-分鐘">6. 營收最佳化的證據（終端機，3 分鐘）<a class="headerlink" href="#6-營收最佳化的證據-終端機-3-分鐘" title="Permanent link">¶</a></h3>
+<pre><code>manage.py backtest --site &lt;台中廠 UUID&gt; --days 30 --compare   # 需量+套利疊加 &lt; 單做任一策略
+manage.py settle_month                                          # 月結算：需量費、罰款、節省，封存後不變
+manage.py record_forecasts                                      # 預測；誤差 P90 就是需量控制的餘裕</code></pre>
+<p>回測用的是<strong>同一份策略程式碼</strong>重播歷史，所以數字和線上引擎的行為一致；輸出附 notes 說明哪些地方偏樂觀。</p>
 <h2 id="四-常用指令">四、常用指令<a class="headerlink" href="#四-常用指令" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code><span class="c"># 獨立設備模擬器（堆疊啟動後所有設備都是離線的；在這裡按「全部上線」）</span>
 <span class="p">.\</span><span class="n">scripts</span><span class="p">\</span><span class="n">sim-console</span><span class="p">.</span><span class="n">ps1</span>            <span class="c"># 首次會先從平台匯出 simulator\fleet.json</span>

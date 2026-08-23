@@ -476,12 +476,22 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 │   ├── ems/                      表後儲能（BTM）
 │   │   ├── models.py             EnergyAsset / StoragePlan / Tariff / EnergyInterval /
 │   │   │                         EnergyIntervalCost / DeviceOperatingSession /
-│   │   │                         DispatchWindow
+│   │   │                         DispatchWindow / LoadForecast / MonthlySettlement /
+│   │   │                         SiteOutage
 │   │   ├── aggregator.py         SiteAggregator：功率積分 → EnergyInterval + 成本分項
 │   │   ├── rollup.py             跨場域彙總（同時尖峰、加權比率、各場域成本）
 │   │   ├── tariffs.py            時段電價解析
 │   │   ├── sessions.py           運轉 session 判定與回算（遲滯、最短時長、中斷）
-│   │   ├── dispatch.py           調度引擎 + StoragePlan 運轉限制的執行期強制
+│   │   ├── dispatch.py           調度引擎 + StoragePlan 運轉限制的執行期強制 +
+│   │   │                         設定點有效期（W6）
+│   │   ├── strategy.py           各策略的實際算術（需量、套利、自發自用、備援）
+│   │   ├── arbitration.py        W5 策略疊加仲裁：硬約束定界、軟目標依價值排序
+│   │   ├── demand_window.py      W2 需量窗口積分控制（15 分鐘預期平均）
+│   │   ├── forecast.py           W1 負載/PV 預測、誤差統計、回測
+│   │   ├── backtest.py           W3 離線回測（同一份策略碼重播歷史）
+│   │   ├── replay.py             回測用的 ContextVar 注入點（瞬時平衡/SOC/窗口）
+│   │   ├── settlement.py         W4 月結算：需量費、罰款、快照、封存
+│   │   ├── outage.py             W6 停電偵測狀態機（電壓低於門檻且持續 N 秒）
 │   │   ├── costs/                可註冊的成本模型（市電、電池循環、柴發油耗）
 │   │   └── api.py                資產、儲能策略、電價、概覽、區間、成本分項、
 │   │                             session、調度、重算
@@ -564,7 +574,9 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
     │   │                         SiteTreeSelect / DeviceIcon / TimeRangePicker…
     │   ├── layout/               AppShell / Sidebar / TopBar
     │   └── charts/               TimeSeriesChart / EnergyCharts / CostCharts /
-    │                             PowerFlowDiagram
+    │                             PowerFlowDiagram / EnergyScene3D / SiteScene3D
+    │                             （後兩者是 three.js，React.lazy 載入，WebGL 不可用時
+    │                             由呼叫端退回 2D）
     ├── pages/                    每個路由一個檔案
     └── i18n/
         ├── index.ts              i18next 設定、語言代碼正規化
@@ -1842,7 +1854,7 @@ locator 打字會每鍵重新聚焦,正好把要抓的問題藏掉),再在瀏覽
 </tr>
 <tr>
 <td><code>Tariff.demand_charge_per_kw</code> 的實際計費</td>
-<td>欄位在、UI 在，但<strong>月尖峰需量費沒有進入任何結算</strong>——<code>EnergyInterval</code> 是 15 分鐘粒度，需量費是月粒度，兩者需要一張月結算表</td>
+<td><strong>已實作</strong>（W4）：<code>MonthlySettlement</code> + <code>manage.py settle_month</code>，以場域當地月份的最高 15 分鐘需量計費、封存後凍結。儀表板窗口內的需量費仍是估算，兩者刻意分開</td>
 </tr>
 <tr>
 <td>油價的時間性</td>
@@ -1850,7 +1862,15 @@ locator 打字會每鍵重新聚焦,正好把要抓的問題藏掉),再在瀏覽
 </tr>
 <tr>
 <td>停電偵測</td>
-<td>「這個區間沒有基準線」目前用<strong>「有發電機輸出」當近似</strong>。真正的停電訊號會更準，但還不存在</td>
+<td><strong>已實作</strong>（W6）：關口電表電壓低於方案門檻且持續 N 秒 → <code>SiteOutage</code>、事件、告警、節省記 null、調度備援。「有發電機輸出」的近似保留為後備</td>
+</tr>
+<tr>
+<td>策略疊加的能量保留</td>
+<td>W5 仲裁只看「此刻」：再疊 PV 自用會在尖峰前把電池放空。為預測尖峰保留 SOC 需要帶預測的最佳化，等回測證明剩餘價值可觀再做</td>
+</tr>
+<tr>
+<td>需量控制的快節奏通道</td>
+<td><code>run_scheduler --demand-interval</code> 在主週期空檔跑 demand_cap，是暫時做法；正式版應把調度引擎搬到獨立 worker</td>
 </tr>
 <tr>
 <td>多電池場域的調度</td>
@@ -1889,7 +1909,23 @@ locator 打字會每鍵重新聚焦,正好把要抓的問題藏掉),再在瀏覽
 <tbody>
 <tr>
 <td>自動調度引擎</td>
-<td><code>apps/ems/dispatch.py</code> + <code>manage.py run_dispatch</code>，排程每輪執行</td>
+<td><code>apps/ems/dispatch.py</code> + <code>manage.py run_dispatch [--strategy]</code>，排程每輪執行；需量場域另有 20 秒快節奏通道</td>
+</tr>
+<tr>
+<td>負載/PV 預測</td>
+<td><code>apps/ems/forecast.py</code> + <code>LoadForecast</code> + <code>manage.py record_forecasts</code>（排程每小時）</td>
+</tr>
+<tr>
+<td>離線回測</td>
+<td><code>apps/ems/backtest.py</code> + <code>manage.py backtest --site --days [--strategy a,b] [--compare]</code>，不寫 DB</td>
+</tr>
+<tr>
+<td>月結算</td>
+<td><code>apps/ems/settlement.py</code> + <code>MonthlySettlement</code> + <code>manage.py settle_month</code>（排程每天，次月 5 號封存）+ <code>GET /ems/sites/{id}/settlements</code></td>
+</tr>
+<tr>
+<td>停電偵測</td>
+<td><code>apps/ems/outage.py</code>，worker 在每筆關口電壓樣本上評估；<code>SiteOutage</code></td>
 </tr>
 <tr>
 <td><code>StoragePlan</code> 運轉限制的執行期強制</td>

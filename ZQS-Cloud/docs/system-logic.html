@@ -1363,7 +1363,7 @@ estimated_savings = baseline_cost − actual_cost
 </tr>
 <tr>
 <td>油價／成本參數的時間性（<code>CostParameterSet</code>）</td>
-<td>僅設計——目前是單一當前值</td>
+<td>仍是單一當前值；但 W4 月結算在結算當下把各資產的 <code>cost_parameters</code> 抄進 <code>cost_parameters_snapshot</code>，已封存的月份不會被今天的油價改掉。完整的時間性（<code>CostParameterSet</code>）仍待做</td>
 </tr>
 <tr>
 <td>停電偵測（不用「有柴發輸出」當近似）</td>
