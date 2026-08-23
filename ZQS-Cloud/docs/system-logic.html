@@ -604,6 +604,25 @@ Redis pub/sub + ASGI，那是文件化的正式環境升級路徑，不是開發
 </ul>
 <p>示範資料 7 天:契約容量管理把峰值壓在 650 kW、罰款歸零、省 ≈ 59k;套利省 4.6k;自發自用在沒有
 PV 盈餘的夜間只磨循環成本,−1.2k。</p>
+<h3 id="1-12g-月結算表-w4">1.12G 月結算表(W4)<a class="headerlink" href="#1-12g-月結算表-w4" title="Permanent link">¶</a></h3>
+<p>儀表板的需量費一直是「任意窗口最高需量 × 月費率」的估算;客戶拿真帳單來比時要有一張
+以<strong>場域當地月份</strong>為單位的表。<code>MonthlySettlement</code>(<code>site × billing_month</code> 唯一)由
+<code>manage.py settle_month [--month YYYY-MM] [--site] [--force]</code> 產生,排程器每天跑一次當月與上個月;
+<code>GET /ems/sites/{id}/settlements</code> 唯讀。</p>
+<ul>
+<li><strong>能源費、逆送收入、能源面節省直接加總 EnergyInterval</strong>,不另算一套——整月窗口的
+<code>/ems/cost-overview</code> 與結算表必須相等(驗收條件,<code>verify_calculations.py</code> 每月每場域 8 項交叉比對)。</li>
+<li><strong>需量費</strong> = 月內最高 15 分鐘購電平均 × 方案電價的 <code>demand_charge_per_kw</code>;
+<strong>超約罰款</strong>沿用 <code>excess_charge()</code>(10% 內 2 倍、以上 3 倍)。<code>peak_occurred_at</code> 記下那一個區間。</li>
+<li><strong>基準線</strong>依 <code>StoragePlan.savings_baseline</code>:<code>no_storage</code> 的基準峰值是 負載 − PV,
+<code>grid_only</code> 是負載本身;<code>baseline_total</code> = 基準能源費 + 基準需量費 + 基準罰款 − 逆送;
+<code>savings = baseline_total − total</code>,<strong>可為負</strong>;月內任一區間沒有基準線(停電)→ 整月 null。</li>
+<li><strong>快照</strong>:<code>tariff_snapshot</code>(電價與方案參數)與 <code>cost_parameters_snapshot</code>(各資產當時的
+成本參數,至少把當時的油價抄下來;<code>CostParameterSet</code> 的完整時間性仍是設計項)。</li>
+<li><strong>封存</strong>:上個月在次月 5 號(場域當地日期)自動 <code>finalized_at</code>;封存後 <code>settle()</code> 原樣回傳,
+之後改電價影響不到它;要重算得明確 <code>--force</code>。未封存的月份每次重算都用現行設定——進行中的月份就該如此。</li>
+<li><strong>basis</strong> 取月內最差:任一區間涵蓋率 &lt; 0.8 或整月有缺 → <code>estimated</code>;整月涵蓋 &lt; 0.5 → <code>unknown</code>。</li>
+</ul>
 <h3 id="1-13-電價-台電內建方案">1.13 電價：台電內建方案<a class="headerlink" href="#1-13-電價-台電內建方案" title="Permanent link">¶</a></h3>
 <p>台電<strong>沒有公開的即時電價 API</strong>——電價是牌價，由電價費率審議會約每半年檢討一次。
 所以正確的架構是「內建費率表」而不是「串接」：console 內建三個台電時間電價方案
@@ -1308,7 +1327,7 @@ estimated_savings = baseline_cost − actual_cost
 </tr>
 <tr>
 <td>月尖峰需量費</td>
-<td>受益面<strong>已實作</strong>（總覽頁「需量費受益」，<code>apps/ems/demand.py</code>）；進入月結算、計入 <code>total_energy_cost</code> 尚未實作——需要一張月結算表</td>
+<td>受益面<strong>已實作</strong>（總覽頁「需量費受益」，<code>apps/ems/demand.py</code>）；<strong>月結算已實作</strong>（W4，<code>MonthlySettlement</code>，§1.12G）：需量費與超約罰款以當地月份的峰值進帳，封存後凍結。儀表板上的窗口估算保持原樣，<code>EnergyInterval</code> 三個總計欄位語意不變</td>
 </tr>
 </tbody>
 </table></div>

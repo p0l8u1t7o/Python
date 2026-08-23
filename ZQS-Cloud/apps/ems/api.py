@@ -792,6 +792,16 @@ def cost_overview(request, window: Query[TimeRangeParams], include_inactive: boo
     }
 
 
+@router.get("/sites/{site_id}/settlements", response=list[s.MonthlySettlementOut])
+def site_settlements(request, site_id: uuid.UUID, months: int = 12):
+    """月結算表，最近 ``months`` 個月。唯讀：結算由 ``settle_month`` 產生。"""
+    ctx: AuthContext = request.auth
+    site = _get_site(ctx, site_id)
+    from apps.ems.models import MonthlySettlement
+
+    return list(MonthlySettlement.objects.filter(site=site).order_by("-billing_month")[: min(months, 60)])
+
+
 @router.get("/sites/{site_id}/intervals", response=list[s.EnergyIntervalOut])
 def site_intervals(
     request, site_id: uuid.UUID, window: Query[TimeRangeParams], limit: int = 5000

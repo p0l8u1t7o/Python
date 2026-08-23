@@ -186,6 +186,40 @@ def main() -> int:
                 total_cost += own.get("energy_cost") or 0
             close(f"{site['name']} subtree energy_cost", whole.get("energy_cost"), total_cost)
 
+    # ---- monthly settlements (W4) ------------------------------------------
+    # The settlement must equal the cost-overview over the same local-month
+    # window: same interval rows, same demand-charge arithmetic. A finalized
+    # month is frozen, so only open months are compared against live figures.
+    for site in sites.values():
+        try:
+            settlements = call("GET", f"/api/ems/sites/{site['id']}/settlements?months=3", token)
+        except urllib.error.HTTPError:
+            continue
+        for row in settlements:
+            if row["finalized_at"] or row["interval_count"] == 0:
+                continue
+            label = f"{site['name']} {row['billing_month'][:7]}"
+            mwin = f"start={row['period_start'].replace('+00:00', 'Z')}&end={row['period_end'].replace('+00:00', 'Z')}"
+            month_overview = call("GET", f"/api/ems/cost-overview?{mwin}&include_inactive=true", token)
+            match = next((r for r in month_overview["sites"] if r["site_id"] == site["id"]), None)
+            if match is None:
+                continue
+            close(f"{label} settlement.energy_charge", row["energy_charge"], match["energy_cost"])
+            close(f"{label} settlement.export_revenue", row["export_revenue"], match["export_revenue"])
+            if match["peak_demand_kw"] is not None:
+                close(f"{label} settlement.peak_demand_kw", row["peak_demand_kw"], max(match["peak_demand_kw"], 0.0), tol=0.001)
+            rate = row["tariff_snapshot"].get("tariff", {}).get("demand_charge_per_kw") or 0.0
+            peak = row["peak_demand_kw"] or 0.0
+            contract = row["contract_capacity_kw"] or 0.0
+            close(f"{label} settlement.demand_charge", row["demand_charge"], peak * rate)
+            close(f"{label} settlement.excess_penalty", row["excess_penalty"], excess(peak, contract, rate) if contract else 0.0)
+            close(
+                f"{label} settlement.total", row["total"],
+                row["energy_charge"] + row["demand_charge"] + row["excess_penalty"] - row["export_revenue"],
+            )
+            if row["savings"] is not None:
+                close(f"{label} settlement.savings", row["savings"], row["baseline_total"] - row["total"])
+
     print(f"{checks} checks, {len(failures)} failure(s)")
     for line in failures[:40]:
         print("  FAIL", line)

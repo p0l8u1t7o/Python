@@ -725,3 +725,70 @@ class LoadForecast(models.Model):
 
     def __str__(self) -> str:
         return f"{self.site_id} @ {self.starts_at:%Y-%m-%d %H:%M} (made {self.made_at:%m-%d %H:%M})"
+
+
+class SettlementBasis(models.TextChoices):
+    MEASURED = "measured", _("Measured")
+    ESTIMATED = "estimated", _("Estimated")
+    UNKNOWN = "unknown", _("Unknown")
+
+
+class MonthlySettlement(UUIDPrimaryKeyModel, TimeStampedModel):
+    """一個場域一個計費月的帳：對得上台電帳單的那一張（W4）。
+
+    需量費在儀表板上一直是「任意窗口最高需量 × 月費率」的估算；客戶會拿
+    真帳單來比，所以要有一張以**當地月份**為單位、封存後不再變動的結算表。
+
+    ``tariff_snapshot`` 是重點：電價表單上就寫著「修改電價會連帶改變這些
+    場域的所有電費」。已結算的月份不能被回頭改掉，所以結算當下把電價、
+    方案參數與成本參數整份抄進來；之後重算（未封存的月份）也從這份快照
+    以外的現行設定重新抄一次，封存後就凍結。
+
+    ``finalized_at`` 為 null 表示進行中、可重算；有值表示已封存，
+    ``settle_month`` 會跳過它，除非操作者明確 ``--force``。
+    """
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="settlements")
+    #: 當地月份的第一天（date）。
+    billing_month = models.DateField()
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+    currency = models.CharField(max_length=8, default="TWD")
+
+    tariff_snapshot = models.JSONField(default=dict, blank=True)
+    #: 結算當下各資產的 cost_parameters——至少把當時的油價抄下來。
+    cost_parameters_snapshot = models.JSONField(default=dict, blank=True)
+
+    peak_demand_kw = models.FloatField(null=True, blank=True)
+    peak_occurred_at = models.DateTimeField(null=True, blank=True)
+    baseline_peak_kw = models.FloatField(null=True, blank=True)
+    contract_capacity_kw = models.FloatField(null=True, blank=True)
+
+    energy_charge = models.FloatField(default=0.0)
+    demand_charge = models.FloatField(default=0.0)
+    excess_penalty = models.FloatField(default=0.0)
+    export_revenue = models.FloatField(default=0.0)
+    total = models.FloatField(default=0.0)
+    #: 同一個月的基準線（依 StoragePlan.savings_baseline）；沒有基準線時為 null。
+    baseline_total = models.FloatField(null=True, blank=True)
+    #: ``baseline_total − total``；正值是省到、負值是調度反而花更多。null = 無基準線。
+    savings = models.FloatField(null=True, blank=True)
+
+    basis = models.CharField(max_length=10, choices=SettlementBasis.choices, default=SettlementBasis.UNKNOWN)
+    interval_count = models.PositiveIntegerField(default=0)
+    #: 月內有資料的區間比例（0–1），低於 1 表示帳是不完整的。
+    coverage = models.FloatField(default=0.0)
+
+    finalized_at = models.DateTimeField(null=True, blank=True)
+    computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "ems_monthly_settlement"
+        ordering = ["-billing_month"]
+        constraints = [
+            models.UniqueConstraint(fields=["site", "billing_month"], name="uniq_settlement_site_month"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.site_id} {self.billing_month:%Y-%m} total={self.total:.0f}"

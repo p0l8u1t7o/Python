@@ -546,3 +546,31 @@ class DispatchDecisionOut(Schema):
 
 
 SiteOverviewOut.model_rebuild()
+
+
+class MonthlySettlementOut(Schema):
+    """一個場域一個計費月的結算（W4）。``savings`` 可為負、無基準線時為 null。"""
+
+    id: uuid.UUID
+    site_id: uuid.UUID
+    billing_month: dt.date
+    period_start: dt.datetime
+    period_end: dt.datetime
+    currency: str
+    peak_demand_kw: float | None
+    peak_occurred_at: dt.datetime | None
+    baseline_peak_kw: float | None
+    contract_capacity_kw: float | None
+    energy_charge: float
+    demand_charge: float
+    excess_penalty: float
+    export_revenue: float
+    total: float
+    baseline_total: float | None
+    savings: float | None
+    basis: str
+    interval_count: int
+    coverage: float
+    finalized_at: dt.datetime | None
+    computed_at: dt.datetime
+    tariff_snapshot: dict[str, Any]

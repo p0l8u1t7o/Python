@@ -11,6 +11,7 @@ Run exactly one instance.
 
 from __future__ import annotations
 
+import datetime as dt
 import signal
 import threading
 import time
@@ -119,6 +120,9 @@ class Command(BaseCommand):
             demand_interval = 0.0
         prune_every = max(int(options["prune_every"]), 0)
         cycle = 0
+        # W4：月結算每天一次（當月＋上個月）。以 UTC 日期判斷「今天跑過沒」；
+        # 第一個週期一定跑，重啟後不會漏掉當天。
+        last_settled_on = None
 
         while True:
             cycle += 1
@@ -146,6 +150,10 @@ class Command(BaseCommand):
                 self._run_job("run_dispatch")
             if prune_every and cycle % prune_every == 0:
                 self._run_job("prune_telemetry")
+            today = dt.date.today()
+            if last_settled_on != today:
+                self._run_job("settle_month")
+                last_settled_on = today
 
             if options["once"] or stopping.is_set():
                 break

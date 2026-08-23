@@ -104,6 +104,12 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
 <h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="w4-月結算表">W4 月結算表<a class="headerlink" href="#w4-月結算表" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>MonthlySettlement</code>（migration <code>ems/0010</code>）、<code>apps/ems/settlement.py</code>、<code>manage.py settle_month</code>（排程器每天跑當月與上個月，次月 5 號自動封存）、<code>GET /ems/sites/{id}/settlements</code>。</li>
+<li>需量費與超約罰款以當地月份峰值進帳；能源費／逆送／節省直接加總 EnergyInterval（與 cost-overview 相等）；<code>tariff_snapshot</code> 與 <code>cost_parameters_snapshot</code> 讓封存月份不受之後改電價影響。</li>
+<li><code>scripts/verify_calculations.py</code> 加入結算交叉比對（3,356 項，0 失敗）；<code>tests/test_settlement.py</code> 10 項。</li>
+</ul>
 <h3 id="w3-離線回測">W3 離線回測<a class="headerlink" href="#w3-離線回測" title="Permanent link">¶</a></h3>
 <ul>
 <li>新增 <code>apps/ems/backtest.py</code> 與 <code>manage.py backtest --site --plan --days --strategy --compare [--json]</code>：用歷史 native 負載／PV 重播同一份策略程式碼，輸出 <code>BacktestResult</code>（energy_cost、demand_charge、penalty、cycle_cost、stored_energy_adjustment、total、peak_demand_kw、equivalent_cycles、intervals、baseline_total、savings）。不寫資料庫、沒有 UI。</li>
