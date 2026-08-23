@@ -160,3 +160,26 @@ export const ACTIVE_RUN_STATUSES: RunStatus[] = ['pending', 'running', 'waiting'
 export function isRunActive(status: RunStatus): boolean {
   return ACTIVE_RUN_STATUSES.includes(status)
 }
+
+/** A reusable flow; built-ins come from code, custom ones from this tenant. */
+export interface WorkflowTemplate {
+  /** `builtin:<n>` or a UUID. */
+  id: string
+  name: string
+  description: string
+  source: 'builtin' | 'custom'
+  category: string
+  node_count: number
+  /** Role placeholders the backend resolves against a site when loading. */
+  placeholders: string[]
+  placeholder_labels: Record<string, string>
+  graph: WorkflowGraph
+  created_at: string | null
+}
+
+export interface TemplateInstantiation {
+  graph: WorkflowGraph
+  /** Placeholders no device on the site could fill - left in the graph as-is. */
+  missing: string[]
+  missing_labels: Record<string, string>
+}

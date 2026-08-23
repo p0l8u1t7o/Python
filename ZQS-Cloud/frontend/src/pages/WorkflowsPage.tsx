@@ -1,19 +1,21 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Trash2 } from 'lucide-react'
+import { BookTemplate, Plus, Trash2 } from 'lucide-react'
 
 import {
   useSites,
   useWorkflowCapacity,
   useWorkflowList,
   useWorkflowMutations,
+  useWorkflowTemplateMutations,
 } from '@/lib/queries'
 import { errorMessage, fieldErrors } from '@/lib/errors'
 import { formatDateTime } from '@/lib/format'
 import { useToast } from '@/providers/ToastProvider'
 import { useAuth } from '@/providers/AuthProvider'
-import type { Workflow } from '@/lib/workflowTypes'
+import type { Workflow, WorkflowTemplate } from '@/lib/workflowTypes'
+import { TemplateGallery } from '@/components/workflows/TemplateGallery'
 import {
   Badge,
   Button,
@@ -54,6 +56,8 @@ export function WorkflowsPage() {
   const { can } = useAuth()
 
   const [open, setOpen] = useState(false)
+  const [gallery, setGallery] = useState(false)
+  const { instantiate } = useWorkflowTemplateMutations()
   const [deleting, setDeleting] = useState<Workflow | null>(null)
   const [form, setForm] = useState({ name: '', description: '', site_id: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -90,6 +94,32 @@ export function WorkflowsPage() {
     }
   }
 
+  async function createFromTemplate(template: WorkflowTemplate, name: string, siteId: string) {
+    try {
+      const resolved = await instantiate.mutateAsync({ id: template.id, site_id: siteId || null })
+      const created = await create.mutateAsync({
+        name,
+        description: template.description,
+        site_id: siteId || null,
+        graph: resolved.graph,
+      })
+      setGallery(false)
+      if (resolved.missing.length > 0) {
+        toast.push(
+          t('workflows.templates.missing', {
+            items: resolved.missing.map((key) => resolved.missing_labels[key] ?? key).join('、'),
+          }),
+          'warning',
+        )
+      } else {
+        toast.success(t('workflows.templates.created', { name }))
+      }
+      navigate(`/workflows/${created.id}`)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -105,6 +135,10 @@ export function WorkflowsPage() {
                 })}
               </span>
             ) : null}
+            <Button onClick={() => setGallery(true)} data-testid="open-template-gallery">
+              <BookTemplate className="size-4" aria-hidden />
+              {t('workflows.templates.createFrom')}
+            </Button>
             <Button variant="primary" onClick={() => setOpen(true)}>
               <Plus className="size-4" aria-hidden />
               {t('workflows.create')}
@@ -198,6 +232,14 @@ export function WorkflowsPage() {
             toast.error(errorMessage(error))
           }
         }}
+      />
+
+      <TemplateGallery
+        open={gallery}
+        onClose={() => setGallery(false)}
+        mode="create"
+        busy={instantiate.isPending || create.isPending}
+        onCreate={createFromTemplate}
       />
 
       <Modal

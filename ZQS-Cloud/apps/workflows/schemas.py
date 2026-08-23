@@ -184,3 +184,42 @@ class WorkflowCapacityOut(Schema):
     limit: int
     active: int
     runs: list[CapacityHolderOut] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------
+# Templates
+# --------------------------------------------------------------------------
+class WorkflowTemplateOut(Schema):
+    """一個範本。``id`` 內建為 ``builtin:<n>``、自訂為 UUID 字串。"""
+
+    id: str
+    name: str
+    description: str = ""
+    source: str  # builtin | custom
+    category: str = ""
+    node_count: int = 0
+    #: 載入時需要解回的佔位符（BESS / METER / PV / LOAD / EMS / WORKFLOW:名稱）。
+    placeholders: list[str] = Field(default_factory=list)
+    placeholder_labels: dict[str, str] = Field(default_factory=dict)
+    graph: dict[str, Any] = Field(default_factory=dict)
+    created_at: dt.datetime | None = None
+
+
+class WorkflowTemplateIn(Schema):
+    name: str = Field(max_length=200)
+    description: str = ""
+    graph: dict[str, Any] = Field(default_factory=dict)
+
+
+class TemplateInstantiateIn(Schema):
+    #: 依這個場域解回佔位符；留空只換 run_workflow 目標。
+    site_id: uuid.UUID | None = None
+    #: 節點 id 重新產生，給「載進已有內容的畫布」用。
+    fresh_ids: bool = False
+
+
+class TemplateInstantiateOut(Schema):
+    graph: dict[str, Any]
+    #: 解不回來的佔位符；使用者要在畫布上自己挑設備。
+    missing: list[str] = Field(default_factory=list)
+    missing_labels: dict[str, str] = Field(default_factory=dict)

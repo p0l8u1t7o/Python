@@ -312,6 +312,17 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </code></pre></div>
 <p><code>source_handle</code> 空白代表「單一輸出」，引擎把空白視為任意把手相符，所以三個節點的草圖不用填任何東西就能跑。</p>
 <hr>
+<h3 id="1-6-workflowtemplate-可重複載入的範本">1.6 <code>WorkflowTemplate</code> — 可重複載入的範本<a class="headerlink" href="#1-6-workflowtemplate-可重複載入的範本" title="Permanent link">¶</a></h3>
+<p>「點一下範本就載進畫布直接用」要成立，範本裡不能寫死設備 id——示範場域的電池 id 在客戶的場域不存在。
+所以範本存的是<strong>角色佔位符</strong>：<code>{BESS}</code>、<code>{METER}</code>、<code>{PV}</code>、<code>{LOAD}</code>、<code>{EMS}</code>，
+<code>run_workflow</code> 的目標則存成 <code>{WORKFLOW:名稱}</code>。邏輯集中在 <code>apps/workflows/templates.py</code>：</p>
+<ul>
+<li><strong>內建範本</strong>直接沿用 <code>apps/core/showcase_workflows.py</code> 的六個建構器——那些流程本來就是用佔位符寫的，示範租戶與範本目錄讀同一份，不會各自漂移。id 為 <code>builtin:&lt;n&gt;</code>，不能刪。</li>
+<li><strong>存成範本</strong>（<code>POST /workflows/templates</code>，OPERATOR）：<code>templatize()</code> 把圖裡等於該租戶某個能源資產的設備 id 換成其角色佔位符（EMS 控制器依類別），子流程 id 換成名稱；佔位符清單存在列上供列表顯示。</li>
+<li><strong>載入</strong>（<code>POST /workflows/templates/{id}/instantiate</code>，不寫 DB）：<code>instantiate()</code> 依目標場域的資產解回 id；<strong>解不回來的原樣留在圖裡並回報 <code>missing</code></strong>——讓使用者在畫布上自己挑，不是默默塞一個錯的設備。<code>fresh_ids</code> 會給節點新的 id，載進已有內容的畫布時不撞名。</li>
+<li>前端 <code>TemplateGallery</code> 同一個元件兩種模式：清單頁「從範本建立」（填名稱＋場域 → 建立流程 → 進編輯器），編輯器「載入範本」（以範本取代畫布，畫布有未存變更先確認）與「存為範本」。</li>
+</ul>
+<p>踩過的坑：範本卡片裡放「刪除」圖示時，外層不能是 <code>&lt;button&gt;</code>——按鈕巢套是 HTML 不允許的，React 會報 hydration 警告；改用 <code>role="button"</code> 的 <code>div</code> 並處理 Enter／Space。</p>
 <h2 id="2-節點框架-nodes-base-py">2. 節點框架（<code>nodes/base.py</code>）<a class="headerlink" href="#2-節點框架-nodes-base-py" title="Permanent link">¶</a></h2>
 <h3 id="2-1-物件一覽">2.1 物件一覽<a class="headerlink" href="#2-1-物件一覽" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><span></span><code><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">class</span><span class="w"> </span><span class="nc">Param</span><span class="p">:</span>    <span class="c1"># 參數表單的一個欄位</span>

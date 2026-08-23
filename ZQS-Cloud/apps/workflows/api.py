@@ -24,12 +24,14 @@ from apps.devices.models import Site
 from apps.workflows import nodes
 from apps.workflows import schemas as s
 from apps.workflows.graph import validate_graph
+from apps.workflows import templates as tpl
 from apps.workflows.models import (
     ACTIVE_STATUSES,
     TriggerSource,
     Workflow,
     WorkflowLog,
     WorkflowRun,
+    WorkflowTemplate,
 )
 from apps.workflows.runner import (
     max_concurrent_runs,
@@ -122,6 +124,105 @@ def capacity(request):
 # --------------------------------------------------------------------------
 # Workflows
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Templates（路由要排在 /{workflow_id} 之前，否則 "templates" 會被當成 id）
+# --------------------------------------------------------------------------
+def _template_out(template: tpl.Template, created_at=None) -> dict:
+    return {
+        "id": template.id, "name": template.name, "description": template.description,
+        "source": template.source, "category": template.category, "node_count": template.node_count,
+        "placeholders": template.placeholders,
+        "placeholder_labels": {k: tpl.PLACEHOLDER_LABELS.get(k, k) for k in template.placeholders},
+        "graph": template.graph, "created_at": created_at,
+    }
+
+
+def _custom_template(ctx: AuthContext, template_id: str) -> WorkflowTemplate:
+    try:
+        pk = uuid.UUID(template_id)
+    except ValueError as exc:
+        raise NotFound("Template not found") from exc
+    row = WorkflowTemplate.objects.filter(organization=ctx.organization, pk=pk).first()
+    if row is None:
+        raise NotFound("Template not found")
+    return row
+
+
+def _load_template(ctx: AuthContext, template_id: str) -> tpl.Template:
+    if template_id.startswith("builtin:"):
+        found = tpl.builtin_by_id(template_id)
+        if found is None:
+            raise NotFound("Template not found")
+        return found
+    row = _custom_template(ctx, template_id)
+    return tpl.Template(
+        id=str(row.id), name=row.name, description=row.description, source="custom",
+        graph=row.graph, placeholders=list(row.placeholders or []),
+    )
+
+
+@router.get("/templates", response=list[s.WorkflowTemplateOut])
+def list_templates(request):
+    """內建範本（程式碼）＋這個租戶自存的範本。"""
+    ctx: AuthContext = request.auth
+    out = [_template_out(t) for t in tpl.builtin_templates()]
+    for row in WorkflowTemplate.objects.filter(organization=ctx.organization):
+        out.append(_template_out(
+            tpl.Template(id=str(row.id), name=row.name, description=row.description, source="custom",
+                         graph=row.graph, placeholders=list(row.placeholders or [])),
+            created_at=row.created_at,
+        ))
+    return out
+
+
+@router.post("/templates", response={201: s.WorkflowTemplateOut}, auth=role_required(Role.OPERATOR))
+def create_template(request, payload: s.WorkflowTemplateIn):
+    """把目前畫布存成範本：設備 id 換成角色佔位符，才能載到別的場域。"""
+    ctx: AuthContext = request.auth
+    graph = validate_graph(payload.graph or {"nodes": [], "edges": []})
+    templatized, placeholders = tpl.templatize(graph, ctx.organization)
+    if WorkflowTemplate.objects.filter(organization=ctx.organization, name=payload.name).exists():
+        raise Conflict(f"A template called '{payload.name}' already exists", code="template_name_taken")
+    row = WorkflowTemplate.objects.create(
+        organization=ctx.organization, name=payload.name, description=payload.description,
+        graph=templatized, placeholders=placeholders, created_by=ctx.user,
+    )
+    record(AuditAction.EMS_PLAN_UPDATED, ctx=ctx, target=row,
+           payload={"template": row.name, "action": "template_created"})
+    return 201, _template_out(
+        tpl.Template(id=str(row.id), name=row.name, description=row.description, source="custom",
+                     graph=row.graph, placeholders=placeholders),
+        created_at=row.created_at,
+    )
+
+
+@router.delete("/templates/{template_id}", response=OkResponse, auth=role_required(Role.ADMIN))
+def delete_template(request, template_id: str):
+    ctx: AuthContext = request.auth
+    if template_id.startswith("builtin:"):
+        raise Conflict("Built-in templates cannot be deleted", code="template_builtin")
+    row = _custom_template(ctx, template_id)
+    record(AuditAction.EMS_PLAN_UPDATED, ctx=ctx, target=row,
+           payload={"template": row.name, "action": "template_deleted"})
+    row.delete()
+    return {"ok": True, "message": "template_deleted"}
+
+
+@router.post("/templates/{template_id}/instantiate", response=s.TemplateInstantiateOut)
+def instantiate_template(request, template_id: str, payload: s.TemplateInstantiateIn):
+    """依場域把範本解成可載入畫布的圖。不寫資料庫——要不要變成流程由前端決定。"""
+    ctx: AuthContext = request.auth
+    template = _load_template(ctx, template_id)
+    site = _resolve_site(ctx, payload.site_id)
+    graph, missing = tpl.instantiate(template.graph, site, ctx.organization)
+    if payload.fresh_ids:
+        graph = tpl.with_fresh_ids(graph)
+    return {
+        "graph": graph, "missing": missing,
+        "missing_labels": {k: tpl.PLACEHOLDER_LABELS.get(k, k) for k in missing},
+    }
+
+
 @router.get("", response=Page[s.WorkflowOut])
 def list_workflows(request, params: Query[PageParams], site_id: uuid.UUID | None = None):
     ctx: AuthContext = request.auth

@@ -37,6 +37,7 @@ import {
   useWorkflow,
   useWorkflowCapacity,
   useWorkflowMutations,
+  useWorkflowTemplateMutations,
   useWorkflowRun,
   useWorkflowRunMutations,
   useWorkflowRuns,
@@ -50,6 +51,8 @@ import type {
   WorkflowGraph,
 } from '@/lib/workflowTypes'
 import { isRunActive } from '@/lib/workflowTypes'
+import type { WorkflowTemplate } from '@/lib/workflowTypes'
+import { TemplateGallery } from '@/components/workflows/TemplateGallery'
 import { useRunStream } from '@/lib/runStream'
 import { graphProblems } from '@/lib/workflowValidation'
 import {
@@ -61,6 +64,8 @@ import {
   LoadingState,
   PageHeader,
   Select,
+  Modal,
+  TextArea,
   TextInput,
 } from '@/components/ui'
 
@@ -229,6 +234,10 @@ function EditorInner({ workflowId }: { workflowId: string }) {
   const workflow = useWorkflow(workflowId)
   const capacity = useWorkflowCapacity()
   const { save } = useWorkflowMutations()
+  const templateMutations = useWorkflowTemplateMutations()
+  const [gallery, setGallery] = useState(false)
+  const [saveTemplate, setSaveTemplate] = useState(false)
+  const [templateForm, setTemplateForm] = useState({ name: '', description: '' })
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -343,6 +352,46 @@ function EditorInner({ workflowId }: { workflowId: string }) {
     setEdges(toFlowEdges(graph))
     setSelectedId(null)
     setDirty(true)
+  }
+
+  /** Replace the canvas with a template resolved against this workflow's site. */
+  async function loadTemplate(template: WorkflowTemplate) {
+    if (dirty && !window.confirm(t('workflows.templates.replaceConfirm'))) return
+    try {
+      const resolved = await templateMutations.instantiate.mutateAsync({
+        id: template.id,
+        site_id: workflow.data?.site_id ?? null,
+      })
+      pushHistory()
+      restoreGraph(resolved.graph)
+      setGallery(false)
+      if (resolved.missing.length > 0) {
+        toast.push(
+          t('workflows.templates.missing', {
+            items: resolved.missing.map((key) => resolved.missing_labels[key] ?? key).join('、'),
+          }),
+          'warning',
+        )
+      } else {
+        toast.success(t('workflows.templates.loaded', { name: template.name }))
+      }
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  async function saveAsTemplate() {
+    try {
+      await templateMutations.save.mutateAsync({
+        name: templateForm.name.trim(),
+        description: templateForm.description,
+        graph: currentGraph(),
+      })
+      setSaveTemplate(false)
+      toast.success(t('workflows.templates.saved', { name: templateForm.name.trim() }))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
   }
 
   const pushHistory = useCallback(() => {
@@ -887,6 +936,49 @@ function EditorInner({ workflowId }: { workflowId: string }) {
         }
       />
 
+      <TemplateGallery
+        open={gallery}
+        onClose={() => setGallery(false)}
+        mode="load"
+        siteId={workflow.data?.site_id ?? null}
+        busy={templateMutations.instantiate.isPending}
+        onLoad={loadTemplate}
+      />
+      <Modal
+        open={saveTemplate}
+        onClose={() => setSaveTemplate(false)}
+        title={t('workflows.templates.save')}
+        footer={
+          <>
+            <Button onClick={() => setSaveTemplate(false)}>{t('common.cancel')}</Button>
+            <Button
+              variant="primary"
+              disabled={!templateForm.name.trim()}
+              loading={templateMutations.save.isPending}
+              onClick={() => void saveAsTemplate()}
+            >
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted">{t('workflows.templates.saveExplain')}</p>
+          <TextInput
+            label={t('common.name')}
+            required
+            value={templateForm.name}
+            onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })}
+          />
+          <TextArea
+            label={t('common.description')}
+            rows={2}
+            value={templateForm.description}
+            onChange={(event) => setTemplateForm({ ...templateForm, description: event.target.value })}
+          />
+        </div>
+      </Modal>
+
       <div className="grid gap-4 lg:grid-cols-[200px_1fr_290px]">
         {/* Palette. Built from the server's catalogue, so a node type
             registered on the backend appears here with no frontend change.
@@ -1038,6 +1130,21 @@ function EditorInner({ workflowId }: { workflowId: string }) {
               <Button onClick={autoLayout} title={t('workflows.autoLayoutHint')}>
                 <icons.Network className="size-3.5" aria-hidden />
                 {t('workflows.autoLayout')}
+              </Button>
+              <Button onClick={() => setGallery(true)} title={t('workflows.templates.loadHint')} data-testid="load-template">
+                <icons.BookTemplate className="size-3.5" aria-hidden />
+                {t('workflows.templates.load')}
+              </Button>
+              <Button
+                onClick={() => {
+                  setTemplateForm({ name: meta.name, description: meta.description })
+                  setSaveTemplate(true)
+                }}
+                title={t('workflows.templates.saveHint')}
+                data-testid="save-template"
+              >
+                <icons.BookmarkPlus className="size-3.5" aria-hidden />
+                {t('workflows.templates.save')}
               </Button>
             </span>
           </Card>

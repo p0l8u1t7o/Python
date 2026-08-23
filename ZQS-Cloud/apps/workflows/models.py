@@ -278,3 +278,31 @@ class WorkflowLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.node_id}: {self.message[:60]}"
+
+
+class WorkflowTemplate(UUIDPrimaryKeyModel, TimeStampedModel):
+    """可重複載入的流程範本（使用者自存的那一種；內建範本在程式碼裡）。
+
+    圖裡的設備引用在存檔時被換成 ``{BESS}``／``{METER}``／``{PV}``／``{LOAD}``／
+    ``{EMS}`` 佔位符，``run_workflow`` 的目標換成 ``{WORKFLOW:名稱}``，所以
+    同一份範本可以載到另一個場域——載入時再依該場域的資產解回真正的 id。
+    解不回來的佔位符原樣留著並回報，不猜。
+    """
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="workflow_templates")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    graph = models.JSONField(default=dict, blank=True)
+    #: 範本用到的佔位符，存檔時算好，列表不必再掃圖。
+    placeholders = models.JSONField(default=list, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        db_table = "workflow_template"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["organization", "name"], name="uniq_workflow_template_name"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name

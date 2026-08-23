@@ -106,6 +106,13 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <h2 id="v0-3-營收最佳化與邊緣自治-2026-08-23">v0.3 — 營收最佳化與邊緣自治（2026-08-23）<a class="headerlink" href="#v0-3-營收最佳化與邊緣自治-2026-08-23" title="Permanent link">¶</a></h2>
 <p><strong>一句話</strong>：策略從「瞬時比較的單選標籤」變成「有預測、有窗口積分、可疊加、可回測、可結算、斷網也安全」的調度系統；前端加上 3D 能量場景、場域星系與需量著色地圖；模擬器可以強行改變上傳值讓每個數字都能手算對帳。</p>
 <p><strong>驗證</strong>：後端 813 項測試、ruff、前端 typecheck/build、Playwright e2e（含 3D 場景兩主題截圖、地圖階層）、<code>scripts/verify_calculations.py</code> 3,356 項交叉比對，全數通過。詳細設計見 <a href="system-logic.html">system-logic.html</a> §1.12D–1.12I。</p>
+<h3 id="工作流程範本">工作流程範本<a class="headerlink" href="#工作流程範本" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>WorkflowTemplate</code>（migration <code>workflows/0003</code>）與 <code>apps/workflows/templates.py</code>：六個內建範本沿用示範流程建構器；自訂範本在存檔時把設備 id 換成角色佔位符（電池／關口電表／光電／負載／EMS 控制器），子流程換成名稱，因此可載到任何場域；載入時解不回的佔位符原樣保留並提示。</li>
+<li>API：<code>GET/POST /workflows/templates</code>、<code>DELETE /workflows/templates/{id}</code>（ADMIN，內建不可刪）、<code>POST /workflows/templates/{id}/instantiate</code>。</li>
+<li>前端：工作流程清單「從範本建立」範本庫（搜尋、內建／我的、節點數、所需角色）；編輯器「載入範本」（取代畫布，未存變更先確認）與「存為範本」。</li>
+<li>測試 <code>tests/test_workflow_templates.py</code> 12 項、e2e <code>e2e/templates.spec.ts</code>；設計說明見 <code>docs/workflow-design.html</code> §1.6。</li>
+</ul>
 <h3 id="地圖-場域從屬關係與需量狀態">地圖：場域從屬關係與需量狀態<a class="headerlink" href="#地圖-場域從屬關係與需量狀態" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>GET /ems/live</code> 每個場域新增 <code>demand_status</code>（over 超過契約／high 超過上限／watch 上限 90% 以上／balanced／exporting／unknown）、<code>demand_ceiling_kw</code>、<code>contract_capacity_kw</code>；上限沿用引擎退路鏈，讀值過期或沒有方案就是 unknown。</li>

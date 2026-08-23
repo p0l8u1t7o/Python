@@ -66,10 +66,13 @@ import type {
 } from './types'
 import type {
   NodeTypeDef,
+  TemplateInstantiation,
   Workflow,
   WorkflowCapacity,
+  WorkflowGraph,
   WorkflowRun,
   WorkflowRunLog,
+  WorkflowTemplate,
 } from './workflowTypes'
 
 /** Values that change on their own; everything else refetches on demand. */
@@ -1286,6 +1289,36 @@ export function useWorkflowMutations() {
     remove: useMutation({
       mutationFn: (id: string) => api.delete(`/workflows/${id}`),
       onSuccess: invalidate,
+    }),
+  }
+}
+
+export function useWorkflowTemplates(enabled = true) {
+  return useQuery({
+    queryKey: ['workflows', 'templates'] as const,
+    queryFn: () => api.get<WorkflowTemplate[]>('/workflows/templates'),
+    enabled,
+  })
+}
+
+export function useWorkflowTemplateMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['workflows', 'templates'] })
+  }
+  return {
+    save: useMutation({
+      mutationFn: (body: { name: string; description: string; graph: WorkflowGraph }) =>
+        api.post<WorkflowTemplate>('/workflows/templates', body),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.delete(`/workflows/templates/${id}`),
+      onSuccess: invalidate,
+    }),
+    instantiate: useMutation({
+      mutationFn: ({ id, ...body }: { id: string; site_id: string | null; fresh_ids?: boolean }) =>
+        api.post<TemplateInstantiation>(`/workflows/templates/${id}/instantiate`, body),
     }),
   }
 }
