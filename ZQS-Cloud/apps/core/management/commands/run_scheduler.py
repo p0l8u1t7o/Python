@@ -34,6 +34,16 @@ class Command(BaseCommand):
             help="Seconds between cycles (default 300).",
         )
         parser.add_argument(
+            "--demand-interval",
+            type=float,
+            default=20.0,
+            help=(
+                "Seconds between demand_cap-only dispatch passes run between full "
+                "cycles (default 20; 0 disables). Temporary until dispatch moves to "
+                "its own worker - see docs/system-logic.html (W2)."
+            ),
+        )
+        parser.add_argument(
             "--hours",
             type=float,
             default=2.0,
@@ -101,6 +111,12 @@ class Command(BaseCommand):
                     pass  # not the main thread, or unsupported on this platform
 
         interval = max(float(options["interval"]), 1.0)
+        # W2：需量窗口只有 15 分鐘，5 分鐘一輪的主週期看不到階躍負載。
+        # 暫時把 demand_cap 的評估塞在主週期的空檔裡快跑；正式做法是獨立
+        # 的 dispatch worker（PR 註記）。
+        demand_interval = max(float(options["demand_interval"]), 0.0)
+        if demand_interval and demand_interval >= interval:
+            demand_interval = 0.0
         prune_every = max(int(options["prune_every"]), 0)
         cycle = 0
 
@@ -139,9 +155,18 @@ class Command(BaseCommand):
             # sits on a lock is not handled until that wait returns, which
             # would delay shutdown by up to a full interval.
             remaining = interval - (time.monotonic() - started)
+            next_demand = time.monotonic() + demand_interval if demand_interval else None
             while remaining > 0 and not stopping.is_set():
                 stopping.wait(min(1.0, remaining))
                 remaining -= 1.0
+                if (
+                    next_demand is not None
+                    and not options["no_dispatch"]
+                    and time.monotonic() >= next_demand
+                    and remaining > 1.0
+                ):
+                    self._run_job("run_dispatch", strategy="demand_cap")
+                    next_demand = time.monotonic() + demand_interval
             if stopping.is_set():
                 break
 

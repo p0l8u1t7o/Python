@@ -22,6 +22,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--organization", default="", help="Slug; blank means all.")
         parser.add_argument(
+            "--strategy", default="",
+            help="Only evaluate sites whose effective plan uses this strategy (e.g. demand_cap).",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Print the decisions without sending anything.",
@@ -34,7 +38,9 @@ class Command(BaseCommand):
 
         issued = 0
         for organization in organizations:
-            decisions = run_organization(organization, dry_run=options["dry_run"])
+            decisions = run_organization(
+                organization, dry_run=options["dry_run"], strategy=options["strategy"] or None
+            )
             for decision in decisions:
                 label = (
                     decision.device.device_id if decision.device else str(decision.site_id)

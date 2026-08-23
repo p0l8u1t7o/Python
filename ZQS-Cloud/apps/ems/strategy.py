@@ -30,6 +30,7 @@ import zoneinfo
 from dataclasses import dataclass
 
 from apps.core.logging import get_logger
+from apps.ems.forecast import HOURS_PER_INTERVAL
 from apps.ems.models import DemandResponseEvent, DispatchStrategy, StoragePlan
 from apps.ems.tariffs import resolve_price
 
@@ -104,6 +105,60 @@ def todays_price_range(tariff, moment: dt.datetime) -> tuple[float, float]:
     return min(prices), max(prices)
 
 
+
+def _window_decision(
+    plan: StoragePlan, site, moment: dt.datetime, ceiling_kw: float, demand_kw: float
+) -> tuple[StrategyDecision | None, str]:
+    """需量窗口積分決策；``(None, note)`` 表示這一輪改走瞬時邏輯，note 說明原因。
+
+    退回瞬時邏輯的情況只有兩種，且都寫進 reason 讓稽核看得到：窗口遙測
+    涵蓋 < 0.8、或上一輪沒有可沿用的設定點而窗口剛開（沒東西可積分）。
+    放電以外的情形（有餘裕）也交回原本的回充邏輯，那段沒有改。
+    """
+    from apps.ems import demand_window, forecast
+
+    site_id = getattr(site, "id", site)  # 呼叫端可能傳 Site 也可能傳 UUID
+    state = demand_window.window_state(site_id, moment)
+    previous_kw, same_window = demand_window.previous_for(site_id, state.window_start)
+    if not state.is_trustworthy or state.elapsed_h <= 0:
+        if state.elapsed_h <= 0 or state.reason == "no telemetry in window":
+            # 窗口剛開：沿用上一個窗口的設定點，避免邊界瞬間歸零再重建。
+            if previous_kw is not None and previous_kw > DEADBAND_KW:
+                demand_window.remember(site_id, state.window_start, previous_kw)
+                return StrategyDecision(previous_kw * 1000.0, f"window boundary: holding {previous_kw:.1f} kW"), ""
+            return None, "window just opened, nothing to integrate"
+        logger.info("demand_cap window fallback site=%s reason=%s", site_id, state.reason)
+        return None, state.reason
+
+    margin_kw, margin_reason = demand_window.safety_margin_kw(site_id)
+    target_kw = ceiling_kw - margin_kw
+
+    # 剩餘時間的功率：W1 預測 > 窗口內最後一筆 > 目前瞬時值。
+    predicted_kw = demand_kw
+    try:
+        points = forecast.forecast_site(site_id, state.window_start, horizon_hours=1, record=False)
+        if points and points[0].load_kw is not None:
+            predicted_kw = points[0].load_kw - (points[0].pv_kw or 0.0)
+    except Exception:  # noqa: BLE001 - 預測掛掉不該讓需量控制停擺
+        pass
+    predicted_kw = max(predicted_kw, demand_kw)  # 實際已高於預測就信實際
+
+    need_kw = demand_window.required_discharge_kw(
+        state, target_kw, predicted_kw, moment, previous_kw=previous_kw if same_window else None
+    )
+    if need_kw is None:
+        # 剩餘不足 60 秒且本窗口沒有前值：不重算，維持靜止。
+        return StrategyDecision(0.0, "window tail: holding"), ""
+    if need_kw > DEADBAND_KW:
+        demand_window.remember(site_id, state.window_start, need_kw)
+        return StrategyDecision(
+            need_kw * 1000.0,
+            f"window projection {state.accumulated_kwh / HOURS_PER_INTERVAL + need_kw * state.remaining_h / HOURS_PER_INTERVAL:.1f}"
+            f" kW over target {target_kw:.1f} kW (margin {margin_reason}); discharge {need_kw:.1f} kW",
+        ), ""
+    demand_window.remember(site_id, state.window_start, 0.0)
+    return None, ""
+
 # --------------------------------------------------------------------------
 # The policies
 # --------------------------------------------------------------------------
@@ -132,9 +187,19 @@ def demand_cap(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision
     if demand_kw is None or flow.get("is_stale"):
         return StrategyDecision(None, "no fresh grid reading")
 
+    # W2：先用窗口積分判斷，遙測涵蓋不足才退回瞬時比較。理由見
+    # demand_window 模組開頭——台電算的是 15 分鐘平均，不是瞬時值。
+    window, fallback_note = _window_decision(plan, site, moment, ceiling_kw, demand_kw)
+    if window is not None:
+        return window
+    # 退回瞬時邏輯的原因要留在 reason 裡，稽核時才看得出那一輪為什麼沒積分。
+    suffix = f" [window fallback: {fallback_note}]" if fallback_note else ""
+
     over_kw = demand_kw - ceiling_kw
     if over_kw > DEADBAND_KW:
-        return StrategyDecision(over_kw * 1000.0, f"demand {demand_kw:.1f} kW over ceiling {ceiling_kw:.1f} kW")
+        return StrategyDecision(
+            over_kw * 1000.0, f"demand {demand_kw:.1f} kW over ceiling {ceiling_kw:.1f} kW{suffix}"
+        )
 
     headroom_kw = ceiling_kw - demand_kw
     if plan.offpeak_recharge and headroom_kw > DEADBAND_KW:
@@ -151,7 +216,7 @@ def demand_cap(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision
                     f"off-peak recharge within {headroom_kw:.1f} kW headroom",
                 )
 
-    return StrategyDecision(0.0, f"demand {demand_kw:.1f} kW under ceiling")
+    return StrategyDecision(0.0, f"demand {demand_kw:.1f} kW under ceiling{suffix}")
 
 
 def tou_arbitrage(plan: StoragePlan, site, moment: dt.datetime) -> StrategyDecision:

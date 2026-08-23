@@ -515,9 +515,12 @@ def run_site(ctx: AuthContext, site_id, *, moment=None, dry_run: bool = False) -
 
 
 def run_organization(
-    organization, *, moment=None, dry_run: bool = False
+    organization, *, moment=None, dry_run: bool = False, strategy: str | None = None
 ) -> list[Decision]:
     """Evaluate every site of a tenant that has a storage plan.
+
+    ``strategy`` 只評估該策略的場域：W2 需量窗口控制需要比 5 分鐘快得多的
+    節奏（窗口只有 15 分鐘），排程器用它在完整週期之間多跑幾次 demand_cap。
 
     The engine acts as the organisation itself rather than as a person, at
     admin rank - it must be able to command, and every command it sends is
@@ -540,6 +543,7 @@ def run_organization(
         site_id
         for site_id, (plan, _source) in effective.items()
         if site_id in active_ids and plan.is_enabled
+        and (strategy is None or plan.strategy == strategy)
     ]
 
     return [

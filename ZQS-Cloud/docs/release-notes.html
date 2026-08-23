@@ -103,6 +103,19 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </div>
 </div></nav>
 <main><article><h1 id="發行說明">發行說明<a class="headerlink" href="#發行說明" title="Permanent link">¶</a></h1>
+<h2 id="v0-3-進行中-2026-08-23">v0.3 — 進行中（2026-08-23 起）<a class="headerlink" href="#v0-3-進行中-2026-08-23" title="Permanent link">¶</a></h2>
+<h3 id="w2-需量窗口積分控制">W2 需量窗口積分控制<a class="headerlink" href="#w2-需量窗口積分控制" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>apps/ems/demand_window.py</code>：<code>WindowState</code>／<code>window_state()</code>／<code>required_discharge_kw()</code>。<code>demand_cap</code> 改為依「本 15 分鐘窗口預期平均」決定放電功率，而不是瞬時值超過上限才動作。</li>
+<li>邊界處理：剩餘 &lt; 60 秒維持上一輪設定點；窗口切換不歸零；保險餘裕採預測誤差 P90；遙測涵蓋率 &lt; 0.8 退回瞬時邏輯並把原因寫進 reason。</li>
+<li><code>run_dispatch --strategy demand_cap</code> 與 <code>run_scheduler --demand-interval</code>（預設 20 秒）：主週期之間只評估需量場域的快節奏通道——暫時做法，正式版應獨立 dispatch worker。</li>
+<li>測試 <code>tests/test_demand_window.py</code>（10 項：階躍負載第 6 分鐘放電、尾端保持、邊界連續、涵蓋率退路、P90 餘裕）；既有 <code>DemandCapTests</code> 全數通過。</li>
+</ul>
+<h3 id="w1-負載與-pv-預測">W1 負載與 PV 預測<a class="headerlink" href="#w1-負載與-pv-預測" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>apps/ems/forecast.py</code>、<code>LoadForecast</code> 模型、<code>manage.py record_forecasts</code>（排程器每小時）。同星期幾同時槽 4 週中位數 × 3 天漂移；歷史不足 2 週回 <code>unknown</code>。</li>
+<li><code>forecast_error_stats()</code>／<code>backtest()</code>：示範資料回測 MAPE ≈ 1.2%，P90 4–21 kW。</li>
+</ul>
 <h2 id="v0-2-客戶展示版-2026-08-22">v0.2 — 客戶展示版（2026-08-22）<a class="headerlink" href="#v0-2-客戶展示版-2026-08-22" title="Permanent link">¶</a></h2>
 <h3 id="機隊模擬器與展示租戶">機隊模擬器與展示租戶<a class="headerlink" href="#機隊模擬器與展示租戶" title="Permanent link">¶</a></h3>
 <ul>

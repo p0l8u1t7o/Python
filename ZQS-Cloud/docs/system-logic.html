@@ -549,8 +549,40 @@ Redis pub/sub + ASGI，那是文件化的正式環境升級路徑，不是開發
 <p><strong>電池健康約束(所有來源共用)</strong>:溫度超過上限(讀電池設備上指定的 metric)
 雙向停機;當日等效循環數(當日放電 kWh ÷ 可用容量,從能源區間讀,重啟不歸零)
 用完後禁止再放電、<strong>但不禁止充電</strong>——充電不消耗放電預算。</p>
-<p>節奏誠實:策略跑在排程器週期(分鐘級),對 15 分鐘需量與電價段落足夠;它不是
-毫秒級的 PCS 迴路,也不假裝是。</p>
+<p>節奏誠實:策略跑在排程器週期(分鐘級),對電價段落足夠;它不是毫秒級的 PCS
+迴路,也不假裝是。唯一的例外是需量窗口控制(下一節),排程器在主週期之間每
+20 秒多跑一次 <code>run_dispatch --strategy demand_cap</code>。</p>
+<h3 id="1-12d-負載-pv-預測-w1">1.12D 負載與 PV 預測(W1)<a class="headerlink" href="#1-12d-負載-pv-預測-w1" title="Permanent link">¶</a></h3>
+<p><code>apps/ems/forecast.py</code>。每個 15 分鐘槽的估計值 = 過去 4 週<strong>同星期幾、同時槽</strong>的中位數
+× 漂移係數;漂移 = 最近 3 天「實際 ÷ 估計」的中位數,夾在 0.5–1.5。歷史少於 2 週
+→ <code>confidence=unknown</code>,<strong>不硬給一個數字</strong>;區間涵蓋率 &lt; 0.5 的樣本不進中位數。
+<code>record_forecasts</code> 每小時把未來 24 小時寫進 <code>LoadForecast</code>(以 <code>made_at</code> 區分版本),
+<code>forecast_error_stats()</code> 回看 14 天算 MAPE / P50 / P90 / 偏差——P90 就是需量控制的保險餘裕。</p>
+<h3 id="1-12e-需量窗口積分控制-w2">1.12E 需量窗口積分控制(W2)<a class="headerlink" href="#1-12e-需量窗口積分控制-w2" title="Permanent link">¶</a></h3>
+<p>台電計的是 15 分鐘<strong>平均</strong>。「現在超過上限才放電」在窗口第 10 分鐘才動手,前 9 分鐘
+累積的用電救不回來;廠房負載是階躍的(一台冰水主機就是 200 kW),這會是上線後第一個
+被客戶抓到的問題。<code>apps/ems/demand_window.py</code> 改成:</p>
+<pre><code>已累積 kWh + 剩餘時間 × 預測功率 = 窗口預期平均
+預期平均 &gt; (上限 − 餘裕) → 放電 (超出 kWh) ÷ 剩餘小時</code></pre>
+<ul>
+<li><strong>累積量</strong>從遙測樣本積分(前值保持,與 EnergyInterval 同一套 <code>integrate_kwh</code>),
+用的是 <strong>native 需量 = 電表 + 電池</strong>——電表已含電池動作,不還原就會追自己的尾巴。</li>
+<li><strong>剩餘時間的功率</strong>:W1 預測 → 窗口內最後一筆 → 目前瞬時值,取其中與實際較高者。</li>
+<li><strong>餘裕</strong>:預測誤差 P90(≥48 筆樣本才採用);沒有統計時不再另外扣——「契約 95%」
+已經在上限退路鏈裡,再扣一次是打兩次折;使用者自填的目標也不打折。</li>
+<li><strong>窗口尾端</strong>:剩餘 &lt; 60 秒不重算(除以趨近零的剩餘時間會把取樣雜訊放大成幾百 kW),
+維持上一輪設定點。</li>
+<li><strong>窗口切換</strong>:狀態歸零,但前值保持讓新窗口第一秒就有積分基礎;連 seed 都沒有時沿用
+上一個窗口記住的設定點,<strong>不會</strong>在邊界瞬間歸零再重建。</li>
+<li><strong>涵蓋率 &lt; 0.8</strong>:積分不可信,退回原本的瞬時邏輯,原因附在決策 reason 尾端
+(<code>[window fallback: coverage 0.17 below 0.8]</code>)。回充邏輯維持不變。</li>
+</ul>
+<p>驗收情境(<code>tests/test_demand_window.py</code>):400 kW 跑 5 分鐘跳到 900 kW、上限 650——第 6
+分鐘就要求 138.9 kW 放電,照做到窗口結束平均正好 650。對照:瞬時邏輯在同一時刻只放 250 kW
+的差值,越晚動手需要的功率越大(第 13 分鐘要 1,875 kW,已超過電池上限,那是「救不回來」的
+數學形狀)。</p>
+<p><strong>暫時做法</strong>:<code>run_scheduler --demand-interval 20</code> 在主週期空檔裡只評估 demand_cap 場域;
+正式版應把調度引擎搬到獨立 worker。</p>
 <h3 id="1-13-電價-台電內建方案">1.13 電價：台電內建方案<a class="headerlink" href="#1-13-電價-台電內建方案" title="Permanent link">¶</a></h3>
 <p>台電<strong>沒有公開的即時電價 API</strong>——電價是牌價，由電價費率審議會約每半年檢討一次。
 所以正確的架構是「內建費率表」而不是「串接」：console 內建三個台電時間電價方案
