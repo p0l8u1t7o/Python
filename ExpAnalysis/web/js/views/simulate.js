@@ -5,7 +5,8 @@ import { h, card, stat, badge, pct, num, notice, chartBox, spinner, table } from
 import { profileChart, PALETTE } from '../charts.js';
 import { ensureOverview, thresholdPpm } from '../app.js';
 
-const params = { speed: null, temp: null, passes: null, useAi: false, headCrop: 0.03 };
+const params = { speed: null, temp: null, passes: null, useAi: false, headCrop: 0.03,
+                 zoneFrac: null, c0: null };
 let debounce = null;
 
 export default async function simulate() {
@@ -17,6 +18,13 @@ export default async function simulate() {
     params.speed = round2((ov.speed_range[0] + ov.speed_range[1]) / 2);
     params.temp = Math.round((ov.temp_range[0] + ov.temp_range[1]) / 2);
     params.passes = Math.round((ov.pass_range[0] + ov.pass_range[1]) / 2);
+  }
+  if (params.zoneFrac === null) {
+    params.zoneFrac = Math.round((ov.zone_len_frac_median || 0.1) * 1000) / 1000;
+  }
+  if (params.c0 === null) {
+    params.c0 = {};
+    for (const el of ov.elements || []) params.c0[el] = ov.c0_median?.[el] ?? 1.0;
   }
 
   const root = h('div');
@@ -32,17 +40,38 @@ export default async function simulate() {
     params.passes, (v) => { params.passes = v; run(out); });
   const sCrop = slider('頭端切除比例', '', 0, 0.2, 0.005,
     params.headCrop, (v) => { params.headCrop = v; run(out); });
+  // 指南第 04 節：真正的物理變數是熔區長度 l，溫度只是它的代理指標，
+  // 故 l/L 必須可獨立於溫度調整。預設為歷史批次中位數。
+  const sZone = slider('熔區長度比 l/L', '', 0.02, 0.3, 0.005,
+    params.zoneFrac, (v) => { params.zoneFrac = v; run(out); });
 
   const aiToggle = h('label', { class: 'switch' },
     h('input', { type: 'checkbox', onchange: (e) => { params.useAi = e.target.checked; run(out); } }),
     '同時顯示「物理 + AI 修正」（雙軌）');
 
-  root.append(card('製程條件', '拉動滑桿即時看到雜質分布與 6N 得料率的變化。',
-    sSpeed, sTemp, sPass, sCrop,
+  root.append(card('製程條件', '調整滑桿即可即時檢視雜質分布與 6N 得料率的變化。',
+    sSpeed, sTemp, sPass, sZone, sCrop,
     h('div', { class: 'row', style: 'margin-top:6px' }, aiToggle,
       h('span', { class: 'muted' },
         `歷史涵蓋範圍：速率 ${num(ov.speed_range[0], 2)}~${num(ov.speed_range[1], 2)} mm/hr、`
-        + `溫度 ${num(ov.temp_range[0], 0)}~${num(ov.temp_range[1], 0)} °C`))));
+        + `溫度 ${num(ov.temp_range[0], 0)}~${num(ov.temp_range[1], 0)} °C、`
+        + `l/L 中位數 ${num(ov.zone_len_frac_median, 3)}`)),
+    h('details', { style: 'margin-top:10px' },
+      h('summary', { class: 'muted', style: 'cursor:pointer' },
+        '進階設定：各元素進料濃度 C₀（預設為歷史批次中位數）'),
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        ...Object.keys(params.c0).map((el) =>
+          h('label', { class: 'field' }, `${el} C₀ (ppm)`,
+            h('input', {
+              type: 'number', min: 0.001, step: 0.1, value: params.c0[el],
+              onchange: (e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v) && v > 0) { params.c0[el] = v; run(out); }
+              },
+            })))),
+      h('p', { class: 'muted', style: 'margin-top:6px' },
+        'C₀ 為進料的初始雜質濃度，是所有預測曲線的比較基準。'
+        + '調整此值可評估更換進料純度等級的影響。'))));
   root.append(out);
   run(out);
   return root;
@@ -75,6 +104,7 @@ async function doRun(host) {
     res = await api.simulate({
       speed_mm_hr: params.speed, temp_c: params.temp, n_passes: params.passes,
       head_crop_frac: params.headCrop, use_ai: params.useAi,
+      zone_len_frac: params.zoneFrac, c0_ppm: params.c0,
     });
   } catch (e) {
     host.innerHTML = '';
@@ -101,9 +131,9 @@ async function doRun(host) {
   for (const w of p.warnings || []) host.append(notice('warn', '外插警示', w));
 
   if (dt) {
-    host.append(card('雙軌顯示 — AI 到底動了多少手腳',
-      '介面永遠同時顯示「純物理」與「物理 + AI」兩個數字。工程師隨時看得到修正量，'
-      + '差太多就會警覺——這件事本身就是信任的基礎。',
+    host.append(card('雙軌顯示 — AI 修正量透明呈現',
+      '介面同時顯示「純物理」與「物理 + AI」兩組數值，修正量隨時可見；'
+      + '若兩者差異過大，即代表 AI 修正需要進一步檢視。',
       h('div', { class: 'dual-track' },
         h('div', { class: 'track' },
           h('div', { class: 'stat-label' }, '純物理模型'),
@@ -143,8 +173,8 @@ async function doRun(host) {
   });
 
   host.append(card('各元素的預測 k_eff',
-    '區間來自高斯過程的不確定度。區間很寬代表此條件下模型沒把握，'
-    + '不該直接拿去下製程參數。',
+    '區間來自高斯過程的不確定度。區間過寬代表模型於此條件下的不確定度較高，'
+    + '不建議直接作為製程參數設定之依據。',
     table(['元素', { label: 'k_eff', align: 'right' },
            { label: '95% 區間', align: 'right' },
            { label: '切點濃度 (ppm)', align: 'right' }],

@@ -7,10 +7,15 @@ import { ensureOverview } from '../app.js';
 
 let passIndex = 0;
 let throughputWeight = 0;
+let zoneFrac = null;
 
 export default async function optimize() {
   const ov = await ensureOverview();
   if (ov.empty) return h('div', {}, notice('warn', '沒有資料', '請先匯入或產生批次資料。'));
+
+  if (zoneFrac === null) {
+    zoneFrac = Math.round((ov.zone_len_frac_median || 0.1) * 1000) / 1000;
+  }
 
   const root = h('div');
   const gridHost = h('div');
@@ -27,9 +32,18 @@ export default async function optimize() {
             h('option', { value: '0' }, '0 — 只看得料率'),
             h('option', { value: '0.02' }, '0.02 — 略微考慮時間成本'),
             h('option', { value: '0.05' }, '0.05 — 明顯偏向產能'))),
+        h('label', { class: 'field' }, '熔區長度比 l/L',
+          h('input', {
+            type: 'number', min: 0.02, max: 0.5, step: 0.005, value: zoneFrac,
+            onchange: (e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v > 0 && v < 1) { zoneFrac = v; renderGrid(gridHost); }
+            },
+          })),
         h('p', { class: 'muted', style: 'max-width:520px' },
           '產能權重把「跑得慢、跑很多次」的時間成本納入目標函數：'
-          + '目標 = 得料率 − w × (次數 / 速率)。w = 0 時是純追求純度。'))),
+          + '目標 = 得料率 − w × (次數 / 速率)。w = 0 時是純追求純度。'
+          + '熔區長度比 l/L 預設為歷史批次中位數，如有實測值請以實測為準。'))),
     gridHost, boHost, doeHost);
 
   await renderGrid(gridHost);
@@ -43,7 +57,8 @@ async function renderGrid(host) {
   host.append(spinner('掃描參數網格…'));
   let res;
   try {
-    res = await api.optimizeGrid({ throughput_weight: throughputWeight });
+    res = await api.optimizeGrid({ throughput_weight: throughputWeight,
+                                   zone_len_frac: zoneFrac });
   } catch (e) {
     host.innerHTML = '';
     host.append(notice('error', '掃描失敗', e.message));
@@ -53,14 +68,14 @@ async function renderGrid(host) {
 
   for (const n of res.notes || []) host.append(notice('warn', '掃描提示', n));
 
-  host.append(card('三種建議 — 用途不同，都要看',
-    '把三組一起交給客戶，比只給一個「最佳解」誠實得多，也更容易被採用。',
+  host.append(card('三種建議 — 用途各異，建議一併參考',
+    '同時提供三組建議而非單一「最佳解」，可完整呈現取捨關係，便於依實際需求選用。',
     h('div', { class: 'grid cols-3' },
       suggestionCard('可直接執行（穩健）', res.best_robust, 'good',
-        '只在歷史資料涵蓋範圍內挑選，且以悲觀情境排序。這是可以直接下給產線的一組。'),
+        '只在歷史資料涵蓋範圍內挑選，且以悲觀情境排序。此組合可直接應用於產線。'),
       suggestionCard('理論最高得料率', res.best, 'ok',
         res.best && !res.best.in_training_range
-          ? '⚠ 落在外插區。把它當成「值得安排一批實驗去驗證」的方向，不要直接下給產線。'
+          ? '⚠ 位於外插區。建議視為值得安排實驗驗證的方向，不宜直接套用於產線。'
           : '在掃描範圍內得料率最高的組合。'),
       suggestionCard('產能導向', res.best_throughput, 'warn',
         res.best_throughput?.rationale || ''))));
@@ -83,7 +98,7 @@ async function renderGrid(host) {
   const box = chartBox('6N 得料率地圖',
     '橫軸為熔區移動速率、縱軸為熔區溫度，顏色為預測得料率。'
     + '半透明區域代表超出歷史批次涵蓋範圍（外插），白圈是穩健建議點。'
-    + '滑鼠移到格子上可看確切數值。');
+    + '將滑鼠移至格點上可檢視確切數值。');
   host.append(card('參數空間掃描',
     `共評估 ${res.n_evaluated} 組參數組合。`, chips, box));
 
@@ -106,10 +121,10 @@ async function renderGrid(host) {
   const pa = res.pass_advice || {};
   if (pa.yield_by_pass) {
     const pbox = chartBox('純化次數的邊際效益（在穩健建議條件下）', pa.note);
-    host.append(card('該做幾次 pass', null, pbox,
+    host.append(card('純化次數建議', null, pbox,
       h('div', { class: 'row', style: 'margin-top:10px' },
         badge(`建議 ${pa.recommended_passes} 次`, 'good'),
-        badge(`第 ${pa.saturation_pass} 次後幾乎白跑`, 'warn'),
+        badge(`第 ${pa.saturation_pass} 次後邊際增益趨近於零`, 'warn'),
         badge(`可省下 ${pa.passes_saved_vs_max} 趟`, 'neutral'))));
     lineChart(pbox.host, {
       height: 250, percentY: true,
@@ -148,15 +163,15 @@ async function renderBO(host) {
   host.innerHTML = '';
 
   if (!res.suggestions?.length) {
-    host.append(card('下一批該跑什麼', null,
+    host.append(card('下一批實驗參數建議', null,
       ...(res.notes || []).map((n) => notice('warn', '目前無法建議', n))));
     return;
   }
 
-  host.append(card('下一批該跑什麼 — 貝氏最佳化序列實驗設計',
-    '客戶真正的痛點不是「沒有模型」，而是每跑一批實驗都很貴、很慢。'
-    + '這一層回答的是：下一批該設定什麼參數，才能學到最多東西。'
-    + '它只建議做什麼實驗，最終準確度仍來自真實實驗資料，不是模型猜的。',
+  host.append(card('下一批實驗參數建議 — 貝氏最佳化序列實驗設計',
+    '實驗批次的成本與時程往往是最主要的限制。'
+    + '本功能回答的問題是：下一批應設定何種參數，才能取得最多的資訊。'
+    + '系統僅提供實驗建議，最終準確度仍來自真實實驗資料。',
     table(['順序', { label: '速率 mm/hr', align: 'right' },
            { label: '溫度 °C', align: 'right' }, { label: '次數', align: 'right' },
            { label: '預測得料率', align: 'right' }, '這一批的目的'],
@@ -191,8 +206,8 @@ async function renderDOE(host, ov) {
     '兩條線都在同一個「虛擬產線」上跑（以既有資料擬合出的模型），比較的是實驗策略的效率，'
     + '不是對真實產線的績效承諾。全因子的順序已隨機打散，避免因為剛好先跑到最佳點而高估其效率。');
 
-  host.append(card('這一層能省多少錢',
-    '這是最好賣、也最容易量化的一項。',
+  host.append(card('實驗成本節省評估',
+    '比較兩種實驗策略在相同目標下所需的批次數，並換算為成本差異。',
     h('div', { class: 'grid cols-4', style: 'margin-bottom:14px' },
       stat('全因子需要', `${res.factorial_n} 批`,
         `最終最佳得料率 ${pct(res.factorial_best)}`),

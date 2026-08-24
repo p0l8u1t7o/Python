@@ -29,8 +29,8 @@ export default async function assistant() {
     h('div', { class: 'chat-input' }, input, sendBtn));
 
   root.append(card('對話式查詢',
-    'LLM 不做任何計算。它的工作是解讀你的問題 → 呼叫對應的分析工具 → '
-    + '把工具算出來的數字組織成人話。每則回覆都會列出實際呼叫了哪些工具。'
+    'LLM 不做任何計算。系統會解讀您的問題 → 呼叫對應的分析工具 → '
+    + '將工具計算所得的數字整理為清楚的說明。每則回覆均會列出實際呼叫的工具。'
     + '（Ctrl/⌘ + Enter 送出）',
     chat));
 
@@ -48,7 +48,7 @@ export default async function assistant() {
     log.append(h('div', { class: 'msg bot' },
       h('div', { class: 'who' }, '✦'),
       h('div', { class: 'bubble' },
-        h('p', {}, '你可以直接問我製程資料的問題。我會先呼叫分析工具取得數字，再解釋給你聽。'),
+        h('p', {}, '您可直接詢問製程資料相關問題。系統會先呼叫分析工具取得數字，再加以說明。'),
         h('p', { class: 'muted' }, '所有數字都來自 Pfann/BPS 物理模型與高斯過程映射，'
           + '不是語言模型自己算的。'))));
   } else {
@@ -98,7 +98,7 @@ export default async function assistant() {
 function renderMsg(m) {
   if (m.role === 'user') {
     return h('div', { class: 'msg user' },
-      h('div', { class: 'who' }, '你'),
+      h('div', { class: 'who' }, '您'),
       h('div', { class: 'bubble' }, m.content));
   }
   const meta = m.meta || {};

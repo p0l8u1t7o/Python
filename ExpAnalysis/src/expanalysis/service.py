@@ -241,6 +241,9 @@ class AnalysisService:
             "pass_range": [min(d.batch.n_passes for d in details),
                            max(d.batch.n_passes for d in details)],
             "threshold_ppm": SETTINGS.purity_threshold_ppm,
+            # 前端「模擬與預測」「最佳化建議」的 l/L 與 C0 輸入以此為預設值
+            "zone_len_frac_median": round(b.zone_len_frac_median, 4),
+            "c0_median": {el: round(float(v), 4) for el, v in b.c0_median.items()},
             "warnings": b.warnings,
             "analysis_duration_s": round(b.duration_s, 3),
         }

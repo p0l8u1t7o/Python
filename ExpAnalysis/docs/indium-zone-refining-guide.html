@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>高純銦金屬偏析純化 — 製程原理與資料分析方法</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E4E9EC;
+  --panel:#F3F6F7;
+  --panel-2:#DDE4E8;
+  --ink:#141D25;
+  --ink-2:#54666F;
+  --ink-3:#8697A0;
+  --rule:#C0CBD1;
+  --rule-soft:#D3DBDF;
+  --molten:#D24A12;
+  --molten-2:#EE9A34;
+  --pure:#12667F;
+  --slab:#111A21;
+  --slab-2:#1B262E;
+
+  --f-disp:"Bricolage Grotesque","Noto Serif TC",serif;
+  --f-body:"Noto Serif TC",Georgia,serif;
+  --f-ui:"Noto Sans TC","Helvetica Neue",sans-serif;
+  --f-mono:"IBM Plex Mono","Noto Sans TC",monospace;
+
+  --maxw:1180px;
+  --colw:720px;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--f-body);
+  font-size:17px;
+  line-height:1.85;
+  letter-spacing:.01em;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- 版面骨架 ---------- */
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+.col{max-width:var(--colw)}
+p{margin:0 0 1.15em}
+a{color:var(--pure)}
+
+/* ---------- HERO：唯一的黑色/熱源時刻 ---------- */
+.hero{
+  background:var(--slab);
+  color:#DCE5EA;
+  padding:54px 0 0;
+  position:relative;
+  overflow:hidden;
+}
+.hero::after{
+  content:"";position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--molten),transparent);
+  opacity:.55;
+}
+.eyebrow{
+  font-family:var(--f-mono);
+  font-size:11.5px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--molten-2);margin:0 0 26px;
+}
+.hero h1{
+  font-family:var(--f-disp);
+  font-weight:800;
+  font-size:clamp(40px,7.4vw,80px);
+  line-height:.98;
+  letter-spacing:-.025em;
+  margin:0 0 22px;
+  max-width:14ch;
+  color:#F1F5F7;
+}
+.hero h1 em{font-style:normal;color:var(--molten-2)}
+.deck{
+  font-size:17.5px;line-height:1.8;color:#9EAFB9;max-width:56ch;margin:0 0 40px;
+}
+.deck strong{color:#D8E2E8;font-weight:400;border-bottom:1px solid rgba(238,154,52,.45);padding-bottom:1px}
+
+.stage{margin:0 -28px;padding:0 28px 30px}
+#heroCanvas{display:block;width:100%;height:300px}
+.stage-legend{
+  display:flex;flex-wrap:wrap;gap:22px;
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;
+  color:#6E828E;padding:10px 0 0;border-top:1px solid #26333C;
+}
+.stage-legend span{display:flex;align-items:center;gap:7px}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+/* ---------- 章節 ---------- */
+.section{padding:78px 0;border-top:1px solid var(--rule)}
+.section:first-of-type{border-top:none}
+.sec-head{display:flex;gap:24px;align-items:baseline;margin:0 0 34px}
+.sec-num{
+  font-family:var(--f-mono);font-size:12px;font-weight:600;
+  letter-spacing:.16em;color:var(--molten);
+  flex:0 0 auto;padding-top:10px;
+}
+.sec-head h2{
+  font-family:var(--f-disp);font-weight:600;
+  font-size:clamp(27px,3.6vw,38px);line-height:1.16;letter-spacing:-.015em;
+  margin:0;
+}
+.sec-head .sub{
+  font-family:var(--f-ui);font-size:13.5px;color:var(--ink-2);
+  margin:9px 0 0;line-height:1.6;font-weight:400;
+}
+h3{
+  font-family:var(--f-disp);font-weight:600;font-size:21px;
+  letter-spacing:-.01em;margin:42px 0 14px;line-height:1.35;
+}
+h4{font-family:var(--f-ui);font-weight:700;font-size:15.5px;margin:28px 0 10px;letter-spacing:.01em}
+
+/* ---------- 元件 ---------- */
+.lede{font-size:19px;line-height:1.8;color:var(--ink);border-left:3px solid var(--molten);padding-left:20px;margin:0 0 34px}
+
+.note{
+  background:var(--panel);border:1px solid var(--rule-soft);
+  border-left:3px solid var(--pure);
+  padding:18px 22px;margin:26px 0;font-size:15.5px;line-height:1.75;
+}
+.note.warn{border-left-color:var(--molten)}
+.note .tag{
+  display:block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:7px;
+}
+.note p:last-child{margin-bottom:0}
+
+.eq{
+  font-family:var(--f-mono);font-size:16px;line-height:1.9;
+  background:var(--slab);color:#CBD8DF;
+  padding:20px 24px;margin:22px 0;overflow-x:auto;white-space:pre;
+  letter-spacing:.01em;
+}
+.eq .hi{color:var(--molten-2)}
+.eq .cool{color:#63B6D2}
+.eq-cap{font-family:var(--f-ui);font-size:12.5px;color:var(--ink-2);margin:-14px 0 24px;line-height:1.6}
+
+code{font-family:var(--f-mono);font-size:.88em;background:var(--panel-2);padding:1px 5px;border-radius:2px}
+pre{
+  font-family:var(--f-mono);font-size:13px;line-height:1.7;
+  background:var(--slab);color:#C6D3DA;padding:20px 22px;margin:22px 0;
+  overflow-x:auto;
+}
+pre .c{color:#6E828E}
+pre .k{color:#EE9A34}
+pre .s{color:#7FC2A8}
+
+table{border-collapse:collapse;width:100%;margin:24px 0;font-family:var(--f-ui);font-size:14.5px;line-height:1.65}
+th{
+  text-align:left;font-weight:700;font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-2);padding:0 14px 9px 0;border-bottom:1.5px solid var(--ink);
+}
+td{padding:12px 14px 12px 0;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.mono,th.mono{font-family:var(--f-mono)}
+.yes{color:var(--pure);font-weight:700}
+.no{color:var(--molten);font-weight:700}
+
+ul,ol{margin:0 0 1.15em;padding-left:1.35em}
+li{margin-bottom:.5em}
+ul.tight li,ol.tight li{margin-bottom:.25em}
+
+/* 名詞卡 */
+.glossary{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:1px;background:var(--rule-soft);border:1px solid var(--rule-soft);margin:8px 0 0}
+.gl{background:var(--panel);padding:16px 18px}
+.gl dt{font-family:var(--f-ui);font-weight:700;font-size:14.5px;margin:0 0 5px}
+.gl dt span{font-family:var(--f-mono);font-weight:500;font-size:11.5px;color:var(--ink-3);margin-left:7px;letter-spacing:.04em}
+.gl dd{margin:0;font-size:14.5px;line-height:1.65;color:var(--ink-2);font-family:var(--f-ui)}
+
+/* ---------- 互動盤 ---------- */
+.lab{
+  background:var(--panel);border:1px solid var(--rule);
+  margin:34px 0;
+}
+.lab-head{
+  display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;
+  padding:15px 22px;border-bottom:1px solid var(--rule);background:var(--panel-2);
+}
+.lab-head h4{margin:0;font-size:14px;letter-spacing:.02em}
+.lab-head .hint{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);letter-spacing:.08em}
+.lab-body{padding:20px 22px 24px}
+.lab canvas{display:block;width:100%;height:260px}
+
+.ctrls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:18px 26px;margin-top:20px}
+.ctrl label{
+  display:flex;justify-content:space-between;align-items:baseline;
+  font-family:var(--f-mono);font-size:11.5px;letter-spacing:.09em;
+  color:var(--ink-2);text-transform:uppercase;margin-bottom:7px;
+}
+.ctrl label b{font-size:14px;color:var(--molten);font-weight:600;letter-spacing:0}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:2px;
+  background:var(--rule);outline:none;margin:0;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--molten);cursor:pointer;border:3px solid var(--panel);
+  box-shadow:0 0 0 1px var(--molten);
+}
+input[type=range]::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;background:var(--molten);
+  cursor:pointer;border:3px solid var(--panel);box-shadow:0 0 0 1px var(--molten);
+}
+input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(18,102,127,.35)}
+
+.readout{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  gap:1px;background:var(--rule);border:1px solid var(--rule);margin-top:22px;
+}
+.ro{background:var(--panel);padding:13px 16px}
+.ro .k{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:4px}
+.ro .v{font-family:var(--f-disp);font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.ro .v small{font-size:13px;font-weight:400;color:var(--ink-2);margin-left:3px;font-family:var(--f-ui)}
+.ro.hot .v{color:var(--molten)}
+.ro.cool .v{color:var(--pure)}
+
+/* ---------- 分層堆疊 ---------- */
+.stack{border:1px solid var(--rule);margin:30px 0;background:var(--panel)}
+.layer{display:grid;grid-template-columns:64px 1fr;border-bottom:1px solid var(--rule-soft)}
+.layer:last-child{border-bottom:none}
+.layer .lid{
+  font-family:var(--f-mono);font-size:12px;font-weight:600;letter-spacing:.06em;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel-2);color:var(--ink-2);border-right:1px solid var(--rule-soft);
+}
+.layer .lbody{padding:15px 20px}
+.layer .lbody b{font-family:var(--f-ui);font-size:15px;display:block;margin-bottom:4px}
+.layer .lbody p{margin:0;font-family:var(--f-ui);font-size:14px;line-height:1.65;color:var(--ink-2)}
+.layer .risk{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  padding:2px 8px;border:1px solid currentColor;margin-left:9px;vertical-align:2px;
+  display:inline-block;line-height:1.6;font-weight:500;
+}
+.risk.zero{color:var(--pure)}
+.risk.low{color:var(--ink-3)}
+.risk.guard{color:var(--molten)}
+.layer.base{background:var(--slab);border-bottom:none}
+.layer.base .lid{background:var(--slab-2);color:var(--molten-2);border-right-color:#2A363E}
+.layer.base .lid{border-right:1px solid #2A363E}
+.layer.base .lbody b{color:#EDF2F5}
+.layer.base .lbody p{color:#8DA0AB}
+
+/* ---------- 檢查清單 ---------- */
+.checks{counter-reset:q;list-style:none;padding:0;margin:24px 0}
+.checks li{
+  counter-increment:q;position:relative;padding:14px 0 14px 46px;
+  border-bottom:1px solid var(--rule-soft);font-family:var(--f-ui);font-size:15px;line-height:1.7;
+}
+.checks li::before{
+  content:counter(q,decimal-leading-zero);position:absolute;left:0;top:15px;
+  font-family:var(--f-mono);font-size:11px;color:var(--molten);letter-spacing:.08em;
+}
+.checks li b{display:block;font-weight:700;margin-bottom:2px}
+.checks li span{color:var(--ink-2);font-size:14px}
+
+/* ---------- 頁尾 ---------- */
+footer{background:var(--slab);color:#7A8D99;padding:44px 0;font-family:var(--f-ui);font-size:13.5px;line-height:1.8}
+footer .wrap{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
+footer b{color:#C7D4DB;font-weight:500;display:block;margin-bottom:5px;font-size:14px}
+footer .mono{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;color:#556873}
+
+@media (max-width:720px){
+  body{font-size:16px}
+  .wrap{padding:0 20px}
+  .stage{margin:0 -20px;padding:0 20px 24px}
+  .sec-head{display:block}
+  .sec-num{padding:0 0 8px}
+  #heroCanvas{height:230px}
+  .lab canvas{height:210px}
+  .layer{grid-template-columns:50px 1fr}
+  .section{padding:56px 0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">高純銦金屬偏析純化製程 · 技術文件</p>
+    <h1>把雜質<em>掃到</em>同一端</h1>
+    <p class="deck">
+      區域熔煉不消滅雜質。它只是讓一條熔融帶從頭掃到尾，
+      <strong>一路把雜質推到錠子的尾巴</strong>，然後把尾巴切掉。
+      理解這一句，就理解了整個製程——以及為什麼這個專案的資料分析
+      應該從物理方程開始，而不是從機器學習開始。
+    </p>
+  </div>
+  <div class="stage wrap">
+    <canvas id="heroCanvas"></canvas>
+    <div class="stage-legend">
+      <span><i class="dot" style="background:#8FB4C6"></i>已凝固：純化區</span>
+      <span><i class="dot" style="background:#EE9A34"></i>熔融區（移動中）</span>
+      <span><i class="dot" style="background:#8A4A2E"></i>已凝固：雜質濃縮區</span>
+      <span><i class="dot" style="background:#63B6D2"></i>雜質濃度 C(x)/C₀</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ 01 名詞 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">01</div>
+    <div>
+      <h2>名詞對照</h2>
+      <p class="sub">先把冶金術語換成白話。後面所有內容都建立在這張表上。</p>
+    </div>
+  </div>
+  <dl class="glossary">
+    <div class="gl"><dt>錠 <span>ingot</span></dt><dd>一長條金屬棒。例如 50 cm 長的銦棒。</dd></div>
+    <div class="gl"><dt>舟 <span>boat</span></dt><dd>裝這條金屬的細長槽，像個窄長烤盤。</dd></div>
+    <div class="gl"><dt>熔區 <span>molten zone</span></dt><dd>只有一小段被加熱融化的區域，例如 3 cm 寬。這段是液體，其餘是固體。</dd></div>
+    <div class="gl"><dt>熔區長度 <span>l</span></dt><dd>熔融帶的寬度。<b>真正的物理變數</b>，溫度只是它的代理指標。</dd></div>
+    <div class="gl"><dt>偏析 <span>segregation</span></dt><dd>金屬結冰時，雜質不肯跟著一起結冰的現象。整個製程的動力來源。</dd></div>
+    <div class="gl"><dt>純化次數 <span>pass</span></dt><dd>加熱器從頭掃到尾一趟 = 1 次。</dd></div>
+    <div class="gl"><dt>移動速率 <span>v</span></dt><dd>熔區前進的速度，例如 2 mm/hr。慢＝純，快＝產能。</dd></div>
+    <div class="gl"><dt>分配係數 <span>k</span></dt><dd>結冰有多「挑食」。每個雜質元素有自己的 k。整份文件的核心數字。</dd></div>
+    <div class="gl"><dt>6N</dt><dd>純度 99.9999%，即雜質總量低於 1 ppm。</dd></div>
+    <div class="gl"><dt>ppm</dt><dd>百萬分之一。1 ppm ≈ 一百萬顆原子裡有 1 顆雜質。</dd></div>
+    <div class="gl"><dt>得料率 <span>yield</span></dt><dd>整根錠裡，達到 6N 的那一段佔多少百分比。</dd></div>
+    <div class="gl"><dt>LOD</dt><dd>檢測極限。儀器測不出比這更低的濃度，只會回報「&lt; 某值」。</dd></div>
+    <div class="gl"><dt>GDMS / ICP-MS</dt><dd>兩種測微量雜質的分析儀器。GDMS 適合固體高純金屬。</dd></div>
+    <div class="gl"><dt>C₀</dt><dd>原料的初始雜質濃度，假設均勻分布。所有曲線的比較基準。</dd></div>
+  </dl>
+</section>
+
+<!-- ============ 02 原理 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">02</div>
+    <div>
+      <h2>製程實際在做什麼</h2>
+      <p class="sub">用一個滑動視窗的比喻，把物理講完。</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="lede">想像一個 array 代表整根金屬棒。有一個 3 cm 寬的視窗，從 index 0 開始，以每小時 2 mm 的速度往右滑到底。視窗<b>內</b>是液態，視窗<b>外</b>是固態。</p>
+
+    <p>視窗每往右移一格，發生兩件事：</p>
+    <ul>
+      <li><b>右邊緣</b>：一格新的固體被融化，進入液池</li>
+      <li><b>左邊緣</b>：一格液體重新結冰，離開液池</li>
+    </ul>
+    <p>關鍵全在左邊緣。</p>
+
+    <h3>為什麼會純化：結冰會挑食</h3>
+    <p>金屬結冰時晶體排列很挑剔，<b>不喜歡讓外來原子（Cu、Fe、Ni、Sn）擠進晶格</b>。所以左邊緣結冰的瞬間，大部分雜質被「推」回液池裡，不跟著結冰。</p>
+    <p>結果是：剛結冰的那一格比原本乾淨，液池則越來越髒。而液池會持續往右移動——<b>等於把雜質一路掃到最右端</b>。掃完一趟，整根棒子變成頭端乾淨、尾端很髒，中間有個過渡帶。</p>
+
+    <div class="note">
+      <span class="tag">核心觀念</span>
+      <p>偏析純化不是把雜質消滅，是把雜質<b>集中到同一個地方</b>，然後把那一段切掉。所以「得料率」和「純度」天生互相拉扯：切得越多越純，但賣得越少。</p>
+    </div>
+
+    <h3>k：整個製程唯一重要的數字</h3>
+    <p>「結冰有多挑食」需要一個數字量化，這就是分配係數 k：</p>
+  </div>
+
+  <div class="col">
+    <div class="eq"><span class="cool">k</span>  =   剛結冰的固體裡的雜質濃度
+          ────────────────────────
+             旁邊液體裡的雜質濃度</div>
+  </div>
+
+  <table class="col">
+    <tr><th class="mono" style="width:110px">k 值</th><th>物理意義</th></tr>
+    <tr><td class="mono">k = 0.05</td><td>結冰只帶走 5% 的雜質，95% 被推回液池 → <span class="yes">純化效果極好</span></td></tr>
+    <tr><td class="mono">k = 0.3</td><td>中等，需要多跑幾次 pass 才有效果</td></tr>
+    <tr><td class="mono">k = 0.9</td><td>幾乎不挑食 → 純化效果很差</td></tr>
+    <tr><td class="mono">k = 1</td><td><span class="no">這個雜質用偏析法根本除不掉</span>。要回頭改前段製程</td></tr>
+    <tr><td class="mono">k &gt; 1</td><td>反過來偏好固體 → 這個元素會往<b>頭端</b>跑，而不是尾端</td></tr>
+  </table>
+
+  <div class="col">
+    <div class="note warn">
+      <span class="tag">對專案的意涵</span>
+      <p><b>每個元素有自己的 k。</b>Cu 可能 0.05、Fe 可能 0.3、Sn 可能 0.6——這正是客戶要分別測 Cu / Fe / Ni / Sn 的原因，它們的行為完全不同。你的模型如果只做一件事，就是<b>把每個元素的 k 從資料裡挖出來</b>。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 Pfann ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">03</div>
+    <div>
+      <h2>Pfann 方程：單次 pass 的分布</h2>
+      <p class="sub">一條曲線，一個未知數。</p>
+    </div>
+  </div>
+  <div class="col">
+    <div class="eq">C(x) = C₀ · [ 1 − (1 − <span class="cool">k</span>) · exp( −<span class="cool">k</span>·x / <span class="hi">l</span> ) ]</div>
+    <p class="eq-cap">
+      C(x)：距頭端 x 處的雜質濃度　·　C₀：原料初始濃度　·　<b>l：熔區長度（不是錠長）</b>　·　x/l：已經掃過幾個熔區長度
+    </p>
+
+    <p>曲線分三段：</p>
+    <ul>
+      <li><b>頭端</b>：濃度從 <code>k·C₀</code> 起跳。k 越小，起點越低、越乾淨</li>
+      <li><b>中段</b>：緩慢爬回 C₀</li>
+      <li><b>尾端最後一個熔區長度</b>：雜質全部塞在這裡，濃度暴衝。這段不適用上面的公式，要用正常凝固（Scheil）方程另外處理</li>
+    </ul>
+
+    <div class="note">
+      <span class="tag">對應客戶需求 2</span>
+      <p>客戶說的「判斷高純區與雜質濃縮區位置」，就是問這條曲線<b>在哪裡穿過 6N 門檻</b>。高純區＝左邊那段，雜質濃縮區＝右邊那段。</p>
+    </div>
+
+    <h3>多次 pass：沒有公式，用迭代</h3>
+    <p>第 2 次 pass 的輸入不再是均勻的 C₀，而是第 1 次的輸出曲線。所以沒有封閉解，只能一步步算。對軟體工程師來說，這只是個 for 迴圈。</p>
+  </div>
+
+  <div class="col">
+<pre><span class="c"># 離散模擬：質量守恆。cell 體積視為 1</span>
+<span class="k">def</span> one_pass(C, k, m):          <span class="c"># m = 熔區佔幾個 cell</span>
+    N = len(C); out = np.empty(N)
+    S = C[:m].sum()               <span class="c"># 熔區內的溶質總量</span>
+    <span class="k">for</span> i <span class="k">in</span> range(N - m):
+        CL     = S / m            <span class="c"># 液池濃度</span>
+        Cs     = k * CL           <span class="c"># 左邊緣結冰，只帶走 k 倍</span>
+        out[i] = Cs
+        S     -= Cs               <span class="c"># 固體帶走的</span>
+        S     += C[i + m]         <span class="c"># 右邊緣新融化進來的</span>
+    <span class="k">for</span> j <span class="k">in</span> range(m):           <span class="c"># 尾端：正常凝固，液池不再補料</span>
+        V = m - j
+        Cs = k * S / V
+        out[N - m + j] = Cs
+        S -= Cs
+    <span class="k">return</span> out
+
+C = np.full(N, C0)
+<span class="k">for</span> p <span class="k">in</span> range(n_passes):
+    C = one_pass(C, k_eff, m)</pre>
+  </div>
+
+  <!-- 互動盤 1 -->
+  <div class="lab">
+    <div class="lab-head">
+      <h4>互動模擬：分配係數、熔區長度、純化次數</h4>
+      <span class="hint">拖動滑桿</span>
+    </div>
+    <div class="lab-body">
+      <canvas id="simCanvas"></canvas>
+      <div class="ctrls">
+        <div class="ctrl">
+          <label>分配係數 k<b id="vk">0.15</b></label>
+          <input type="range" id="sk" min="0.02" max="0.95" step="0.01" value="0.15">
+        </div>
+        <div class="ctrl">
+          <label>熔區長度 l / L<b id="vm">6%</b></label>
+          <input type="range" id="sm" min="2" max="20" step="1" value="6">
+        </div>
+        <div class="ctrl">
+          <label>純化次數 n<b id="vp">1</b></label>
+          <input type="range" id="sp" min="1" max="20" step="1" value="1">
+        </div>
+      </div>
+      <div class="readout">
+        <div class="ro cool"><span class="k">頭端濃度</span><span class="v" id="rHead">—<small>ppm</small></span></div>
+        <div class="ro hot"><span class="k">尾端濃度</span><span class="v" id="rTail">—<small>ppm</small></span></div>
+        <div class="ro cool"><span class="k">6N 得料率</span><span class="v" id="rYield">—<small>%</small></span></div>
+        <div class="ro"><span class="k">6N 邊界</span><span class="v" id="rEdge">—<small>x/L</small></span></div>
+      </div>
+      <p class="eq-cap" style="margin:16px 0 0">
+        假設進料 C₀ = 10 ppm（約 4N5），6N 門檻取 1 ppm。虛線為門檻，藍色區段為達標區。
+      </p>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="note">
+      <span class="tag">馬上能省錢的結論</span>
+      <p>把純化次數推到 12 以上，你會發現曲線<b>不再變化</b>。這叫<b>極限分布（ultimate distribution）</b>——雜質「往尾端被掃」和「從右邊被熔區吃回來」達成平衡，再 pass 也沒有增益。</p>
+      <p>實務上大約 8～12 次到頂。如果客戶現在跑 15 次，模型可以直接告訴他「第 10 次以後純度不動了，砍掉 5 次」。這是 P1 階段就能交出去的立即價值。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 BPS ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">04</div>
+    <div>
+      <h2>速率與溫度從哪裡進來</h2>
+      <p class="sub">BPS 方程，以及這個製程唯一的核心 trade-off。</p>
+    </div>
+  </div>
+  <div class="col">
+    <p>上面用的 k 是理想值，記作 <code>k₀</code>。實際跑起來會偏掉，原因只有一個：<b>被推回去的雜質來不及擴散走。</b></p>
+    <p>左邊緣結冰把雜質吐回液體，這些雜質要靠擴散散進整個液池，但擴散很慢。如果結冰速度太快，雜質還沒散開就在介面前面堆成一坨——這坨叫<b>邊界層</b>。介面旁邊的液體變得特別髒，結冰時就算挑食，帶走的絕對量也變多。</p>
+    <p>等於 <b>k 變大了、純化變差了</b>。這個「實際感受到的 k」叫 <code>k_eff</code>：</p>
+
+    <div class="eq">k_eff = k₀ / [ k₀ + (1 − k₀)·exp( −<span class="hi">v</span>·δ / D ) ]</div>
+    <p class="eq-cap">v：熔區移動速率（客戶的參數 2）　·　δ：邊界層厚度，攪拌越強越薄　·　D：雜質在液態銦中的擴散係數</p>
+
+    <table>
+      <tr><th style="width:150px">條件</th><th>結果</th></tr>
+      <tr><td class="mono">v → 0（超慢）</td><td>k_eff → k₀，純化效果達到理論最佳</td></tr>
+      <tr><td class="mono">v 變大</td><td>k_eff → 1，純化效果趨近於零</td></tr>
+    </table>
+
+    <div class="note warn">
+      <span class="tag">整個專案的中心問題</span>
+      <p><b>慢＝純，快＝產能。</b>客戶需求 3 要的「最佳速率建議」，本質就是在這條曲線上找甜蜜點。</p>
+    </div>
+  </div>
+
+  <!-- 互動盤 2 -->
+  <div class="lab">
+    <div class="lab-head">
+      <h4>互動模擬：移動速率如何吃掉純化效果</h4>
+      <span class="hint">上圖 k_eff(v)　下圖 對數線性化後的直線</span>
+    </div>
+    <div class="lab-body">
+      <canvas id="bpsCanvas" style="height:300px"></canvas>
+      <div class="ctrls">
+        <div class="ctrl">
+          <label>理想 k₀<b id="vk0">0.10</b></label>
+          <input type="range" id="sk0" min="0.02" max="0.6" step="0.01" value="0.10">
+        </div>
+        <div class="ctrl">
+          <label>δ / D<b id="vd">0.45</b></label>
+          <input type="range" id="sd" min="0.05" max="1.5" step="0.05" value="0.45">
+        </div>
+        <div class="ctrl">
+          <label>目前速率 v<b id="vv">2.0</b></label>
+          <input type="range" id="sv" min="0.2" max="8" step="0.1" value="2.0">
+        </div>
+      </div>
+      <div class="readout">
+        <div class="ro hot"><span class="k">此速率下 k_eff</span><span class="v" id="rKeff">—</span></div>
+        <div class="ro cool"><span class="k">理論下限 k₀</span><span class="v" id="rK0">—</span></div>
+        <div class="ro"><span class="k">損失的純化力</span><span class="v" id="rLoss">—<small>%</small></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h3>對數線性化：把曲線變成直線</h3>
+    <p>BPS 方程長得很醜，但兩邊取對數整理一下：</p>
+    <div class="eq">ln( 1/k_eff − 1 )  =  ln( 1/k₀ − 1 )  −  (δ/D) · <span class="hi">v</span>
+                       └─── 截距 ───┘   └─ 斜率 ─┘</div>
+    <p>左邊是你從資料算得出來的，右邊對 v 是<b>一次式</b>。意思是：把 <code>ln(1/k_eff − 1)</code> 對 v 畫散點圖，<b>應該是一條直線</b>。用眼睛就能看出來對不對，用最簡單的線性回歸就能求斜率和截距。5～6 個不同速率的批次就夠了。</p>
+    <div class="note">
+      <span class="tag">誠實度檢查</span>
+      <p>如果那些點根本不成直線，代表有別的機制在作怪——氧化、對流不穩、量測系統不準。<b>這個發現本身就值錢</b>，而且是 ML 給不了的診斷資訊。</p>
+    </div>
+
+    <h3>溫度的角色</h3>
+    <p>溫度主要透過兩條路徑影響結果：</p>
+    <ol>
+      <li>溫度高 → <b>熔區變長（l 增加）</b> → 容納雜質的能力變大，曲線形狀改變</li>
+      <li>溫度高 → 液池對流變強 → δ 變薄 → k_eff 變好</li>
+    </ol>
+    <p>所以<b>真正的物理變數是熔區長度 l，溫度只是它的代理指標</b>。如果客戶目前沒有量 l，這是整個專案投報率最高的補量測項目——只要一支紅外線相機或簡單的熱電偶陣列。</p>
+  </div>
+</section>
+
+<!-- ============ 05 資料分析 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">05</div>
+    <div>
+      <h2>從曲線到數字：擬合的實作</h2>
+      <p class="sub">「統計」的部分其實只是曲線擬合。零統計背景也能做完。</p>
+    </div>
+  </div>
+  <div class="col">
+    <h3>什麼叫擬合 k</h3>
+    <p>你有一批實測資料：</p>
+  </div>
+  <div class="col">
+<pre>x/l  :   0.5    1.5    2.5    3.5    4.5
+Cu ppm:  0.8    1.6    2.9    5.1   14.2</pre>
+    <p>你有一個公式，裡面只有 k 一個未知數。「擬合」就是：<b>試不同的 k，看哪個 k 讓公式算出來的曲線最貼近這 5 個點。</b></p>
+<pre><span class="k">from</span> scipy.optimize <span class="k">import</span> curve_fit
+
+<span class="k">def</span> pfann(x_over_l, k):
+    <span class="k">return</span> C0 * (1 - (1-k)*np.exp(-k*x_over_l))
+
+k_fit, cov = curve_fit(pfann, x_data, C_data, p0=[<span class="s">0.2</span>])</pre>
+    <p>就這樣。它內部做的事跟訓練模型一樣（最小化平方誤差），只是參數從幾百萬個變成 1 個。</p>
+  </div>
+
+  <div class="col">
+    <h3>為什麼「1 個參數」這麼關鍵</h3>
+    <p>機器學習有個粗略規則：<b>資料點數要遠多於參數數量</b>，否則就是背答案而不是學規律。</p>
+  </div>
+
+  <table class="col">
+    <tr><th>方法</th><th class="mono" style="width:130px">有效參數量</th><th style="width:150px">40 批資料夠嗎</th></tr>
+    <tr><td>XGBoost / 隨機森林</td><td class="mono">數百～數千</td><td><span class="no">✗ 背答案</span></td></tr>
+    <tr><td>小型神經網路</td><td class="mono">數千</td><td><span class="no">✗ 背答案</span></td></tr>
+    <tr><td><b>Pfann 擬合 k</b></td><td class="mono">1</td><td><span class="yes">✓ 綽綽有餘</span></td></tr>
+  </table>
+
+  <div class="col">
+    <p>而且樹模型學到的東西<b>無法外插</b>。你問它「速率降到 1 mm/hr 會怎樣」，如果訓練資料裡沒有這麼慢的批次，它只會回傳最接近的訓練值，講不出所以然。物理模型可以，因為那條曲線的形狀是<b>物理決定的，不是資料決定的</b>。</p>
+
+    <h3>降維：一批實驗 → 4 個數字</h3>
+    <p>原本一批實驗＝8 個測點 × 4 個元素＝32 個數字，亂七八糟。擬合之後，一批實驗＝<b>4 個 k_eff 值</b>（Cu、Fe、Ni、Sn 各一個）。</p>
+    <p>40 批 → 每個元素 40 個 k_eff。接下來只要研究「k_eff 怎麼隨 T 和 v 變化」，這是個 40 筆資料、2 個自變數的小問題，非常好處理。</p>
+  </div>
+
+  <div class="col">
+    <h3>設限資料：6N 專案一定會遇到的坑</h3>
+    <p>6N 純度下，很多測值會是 <code>&lt; 0.05 ppm</code>——儀器測不到。這<b>不是一個數字，是一個不等式</b>。</p>
+  </div>
+
+  <table class="col">
+    <tr><th style="width:180px">做法</th><th>後果</th></tr>
+    <tr><td>當成 0</td><td><span class="no">頭端看起來完美，k 被系統性低估</span></td></tr>
+    <tr><td>當成 LOD 值 0.05</td><td><span class="no">頭端看起來偏髒，k 被系統性高估</span></td></tr>
+    <tr><td><b>正確做法</b></td><td><span class="yes">告訴擬合程式：這點的真值落在 [0, 0.05] 區間內</span></td></tr>
+  </table>
+
+  <div class="col">
+    <div class="note">
+      <span class="tag">用工程師的語言</span>
+      <p>就像 log 裡寫 <code>response_time: TIMEOUT (&gt;30s)</code>。統計時把它當 30s，平均值就被低估；當成 0 更荒謬。你只知道「至少 30s」。</p>
+      <p>實作不難：<code>scipy</code> 沒有現成的，自己寫 likelihood 約 30 行，或直接用 <code>lifelines</code>（生存分析套件，數學完全一樣）。</p>
+    </div>
+
+    <h3>信賴區間：Bootstrap，不需要統計理論</h3>
+    <p>擬合出 k = 0.12，客戶一定會問「有多準？」最簡單的答法叫 bootstrap，純程式操作：</p>
+  </div>
+
+  <div class="col">
+<pre>ks = []
+<span class="k">for</span> _ <span class="k">in</span> range(<span class="s">1000</span>):
+    idx = np.random.choice(len(x), len(x), replace=<span class="k">True</span>)  <span class="c"># 隨機重抽</span>
+    k, _ = curve_fit(pfann, x[idx], C[idx], p0=[<span class="s">0.2</span>])
+    ks.append(k[<span class="s">0</span>])
+
+lo, hi = np.percentile(ks, [<span class="s">2.5</span>, <span class="s">97.5</span>])   <span class="c"># 95% 區間</span></pre>
+    <p>意思是：把你的 8 個點隨機重抽 1000 次、各擬合一次，看 k 飄動的範圍。飄得少代表這個 k 可信；飄得很兇代表資料撐不住這個結論——<b>而你要把這件事說出來</b>。</p>
+  </div>
+</section>
+
+<!-- ============ 06 AI 架構 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">06</div>
+    <div>
+      <h2>AI 放在哪裡才不傷準確度</h2>
+      <p class="sub">物理模型負責算數字，AI 負責補物理沒說到的、選下一步、跟人溝通。</p>
+    </div>
+  </div>
+  <div class="col">
+    <p class="lede">「導入 AI」和「不影響準確性」看起來衝突，其實不衝突——衝突的只有「<b>用 AI 取代物理模型</b>」這一種做法。</p>
+  </div>
+
+  <div class="stack">
+    <div class="layer">
+      <div class="lid">L5</div>
+      <div class="lbody">
+        <b>LLM 對話層<span class="risk zero">風險 0</span></b>
+        <p>自然語言查詢、批次報告自動生成。關鍵設計：<b>LLM 不做任何計算</b>，只把 L0–L2 算出的數字組織成人話，並附上引用的批次 ID。這是客戶眼中最「看得見」的 AI，demo 效果最好、成本最低。</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="lid">L4</div>
+      <div class="lbody">
+        <b>貝氏最佳化：建議下一批跑什麼參數<span class="risk zero">風險 0</span></b>
+        <p>回答「下一批該設什麼參數，才能學到最多」。在「模型看好的地方」與「模型沒去過的地方」之間權衡。全因子 DOE 要 36 批，貝氏最佳化通常 10～15 批找到相近最佳點。<b>最終準確度來自真實實驗，不是模型猜的</b>——最壞情況只是多跑幾批。</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="lid">L3</div>
+      <div class="lbody">
+        <b>異常偵測：哪批資料不對勁<span class="risk zero">風險 0</span></b>
+        <p>比對物理預期曲線與實測，殘差過大就標紅。抓熱電偶飄移、取樣位置記錄錯誤、送錯樣品、表面氧化夾帶。它不參與任何預測，只會<b>保護</b>準確度（把爛資料擋在模型外）。</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="lid">L2</div>
+      <div class="lbody">
+        <b>高斯過程：k_eff = f(T, v) 的映射<span class="risk low">純升級</span></b>
+        <p>線性回歸是「先假設是直線，再找最好的直線」；高斯過程是「不假設形狀，只假設相近的 v 有相近的 k_eff，讓資料自己決定」。額外送你<b>每一點的不確定範圍</b>——沒資料的區域灰帶會變寬，模型會誠實承認自己不知道。樣本數 10～50 正是它的甜蜜點。</p>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="lid">L1</div>
+      <div class="lbody">
+        <b>殘差學習：物理沒解釋到的部分<span class="risk guard">需嚴格護欄</span></b>
+        <p><code>最終預測 = 物理預測（主體） + ML 修正（小修）</code>。學氧化皮、對流不穩、舟材污染這些物理照顧不到的系統性偏差。唯一真的可能傷準確度的一層，建議排在最後、標選配。</p>
+      </div>
+    </div>
+    <div class="layer base">
+      <div class="lid">L0</div>
+      <div class="lbody">
+        <b>物理模型（Pfann + BPS）</b>
+        <p>永遠是骨架，不可被取代。這是整套系統裡唯一能可靠外插的東西。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <h3>L1 的四道護欄，缺一不可</h3>
+  </div>
+  <table class="col">
+    <tr><th style="width:150px">護欄</th><th>做法</th></tr>
+    <tr><td><b>限幅</b></td><td>修正量硬性限制在物理預測的 ±20% 內，超過就截斷。<b>ML 永遠不能推翻物理</b></td></tr>
+    <tr><td><b>禁止外插</b></td><td>查詢點若落在訓練資料範圍外，自動關閉 ML 修正，退回純物理並標示警告</td></tr>
+    <tr><td><b>必須證明有用</b></td><td>用留一批交叉驗證，ML 版沒有明顯贏過純物理版，<b>就不上線</b></td></tr>
+    <tr><td><b>雙軌顯示</b></td><td>介面永遠同時顯示「純物理」與「物理+AI」兩個數字</td></tr>
+  </table>
+</section>
+
+<!-- ============ 07 準確性保證 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">07</div>
+    <div>
+      <h2>把「不影響準確性」變成可驗收的條款</h2>
+      <p class="sub">客戶的顧慮要翻譯成能量化、能驗收的文字。</p>
+    </div>
+  </div>
+  <div class="col">
+    <h3>雙軌顯示</h3>
+    <p>介面上每個預測都出兩個數字，讓工程師隨時看得到 AI 動了多少手腳：</p>
+  </div>
+  <div class="col">
+<pre>預測 6N 得料率
+  純物理模型  : 62.3 %
+  物理 + AI   : 64.1 %   (Δ +1.8)
+
+  <span class="k">⚠</span> 兩者差異 &lt; 3 %，AI 修正在正常範圍</pre>
+  </div>
+
+  <div class="col">
+    <h3>留一批交叉驗證（Leave-One-Batch-Out）</h3>
+    <p>白話：假裝沒看過第 7 批，用其他所有批訓練，然後預測第 7 批、比對真值。每一批都輪一次。跑兩套，純物理 vs 物理+AI：</p>
+  </div>
+  <table class="col">
+    <tr><th>指標</th><th class="mono">純物理</th><th class="mono">物理 + AI</th><th style="width:80px"></th></tr>
+    <tr><td>平均絕對誤差</td><td class="mono">0.42 ppm</td><td class="mono">0.31 ppm</td><td><span class="yes">✓ 有幫助</span></td></tr>
+    <tr><td>最大誤差</td><td class="mono">1.8 ppm</td><td class="mono">1.5 ppm</td><td><span class="yes">✓</span></td></tr>
+    <tr><td>外插情境誤差</td><td class="mono">0.55 ppm</td><td class="mono">0.53 ppm</td><td>～ 護欄生效</td></tr>
+  </table>
+  <div class="col">
+    <p><b>這張表就是驗收文件。</b>如果 AI 那一欄沒有比較好，就誠實地只交付純物理版——這反而會建立客戶對你的信任。</p>
+
+    <h3>建議寫進合約的四條</h3>
+    <ol>
+      <li>AI 模組之預測誤差不得高於純物理模型基準（以留一批交叉驗證衡量）</li>
+      <li>所有預測同時提供物理基準值與不確定區間</li>
+      <li>超出訓練資料範圍之查詢，系統自動退回純物理模式並標示警告</li>
+      <li>AI 不參與任何設備控制決策</li>
+    </ol>
+    <div class="note">
+      <span class="tag">第 1 條的效果</span>
+      <p>這條把「AI 可能變差」的風險完全消滅——因為 AI 只有在被證明更好時才上線。這是你能給客戶最強的保證，而且你做得到。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 08 不建議 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">08</div>
+    <div>
+      <h2>明確不建議做的事</h2>
+      <p class="sub">主動排除這些，會讓「我們選的 AI」聽起來是深思熟慮的結果，而不是能力不足的藉口。</p>
+    </div>
+  </div>
+  <table class="col">
+    <tr><th style="width:250px">別做</th><th>原因</th></tr>
+    <tr><td><b>XGBoost / 隨機森林直接吃原始資料</b></td><td>幾十批資料配上幾百個有效參數，就是背答案。而且無法外插——問它沒跑過的速率，只會回最接近的訓練值</td></tr>
+    <tr><td><b>神經網路預測濃度曲線</b></td><td>同上，而且完全黑盒。工程師不會信，不會信就不會用</td></tr>
+    <tr><td><b>用 AI 取代物理模型</b></td><td>丟掉了整套系統裡唯一能可靠外插的東西</td></tr>
+    <tr><td><b>深度學習做代理模型</b></td><td>多次 pass 模擬跑一次不到 1 秒，沒有加速需求。純粹增加風險</td></tr>
+    <tr><td><b>AI 自動調整設備</b></td><td>客戶自己也說不要。守住這條線，責任歸屬才清楚</td></tr>
+  </table>
+</section>
+
+<!-- ============ 09 分期與架構 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">09</div>
+    <div>
+      <h2>分期與程式架構</h2>
+      <p class="sub">分期同時也是報價的切法。</p>
+    </div>
+  </div>
+  <table>
+    <tr><th style="width:70px">階段</th><th style="width:210px">物理層</th><th style="width:210px">AI 層</th><th>交付</th></tr>
+    <tr>
+      <td class="mono"><b>P1</b></td>
+      <td>Pfann / BPS 擬合、k_eff 反解</td>
+      <td>L3 異常偵測</td>
+      <td>資料稽核報告、各元素 k_eff、<b>可行性 go/no-go 判定</b></td>
+    </tr>
+    <tr>
+      <td class="mono"><b>P2</b></td>
+      <td>正向模擬、得料率計算</td>
+      <td>L2 高斯過程 + L4 貝氏最佳化</td>
+      <td>參數映射模型、<b>下一輪 DOE 建議清單</b></td>
+    </tr>
+    <tr>
+      <td class="mono"><b>P3</b></td>
+      <td>網格掃描最佳化</td>
+      <td>L5 LLM 介面</td>
+      <td>桌面工具、對話式查詢、自動報告</td>
+    </tr>
+    <tr>
+      <td class="mono"><b>P4</b><br><span style="font-size:12px;color:var(--ink-3)">選配</span></td>
+      <td>—</td>
+      <td>L1 殘差學習</td>
+      <td>需先通過交叉驗證始得交付</td>
+    </tr>
+  </table>
+
+  <div class="col">
+    <div class="note warn">
+      <span class="tag">P1 結束設檢核點</span>
+      <p>如果資料品質不足以擬合出穩定的 k_eff，就轉為「量測系統改善 + 實驗設計」，不硬做模型。這個誠實的分期反而好賣，也保護你自己。</p>
+    </div>
+  </div>
+
+  <div class="col">
+<pre>src/
+├─ db.py                 <span class="c"># SQLite schema：批次、參數、量測值、LOD flag</span>
+├─ physics/
+│   ├─ pfann.py          <span class="c"># 單次 pass 解析解</span>
+│   ├─ multipass.py      <span class="c"># 迭代模擬（for 迴圈）</span>
+│   └─ bps.py            <span class="c"># k_eff(v, T)</span>
+├─ fitting/
+│   ├─ fit_keff.py       <span class="c"># curve_fit + 設限資料處理</span>
+│   ├─ bootstrap.py      <span class="c"># 不確定性量化</span>
+│   └─ gp_map.py         <span class="c"># 高斯過程 (T,v) → k_eff</span>
+├─ optimize/
+│   ├─ grid_search.py    <span class="c"># (T,v,n) 掃描 → 得料率</span>
+│   └─ bayes_doe.py      <span class="c"># 貝氏最佳化：下一批建議</span>
+├─ qa/
+│   ├─ anomaly.py        <span class="c"># 殘差異常偵測</span>
+│   └─ lobo_cv.py        <span class="c"># 留一批交叉驗證</span>
+└─ ui/
+    ├─ app.py            <span class="c"># Streamlit：曲線疊圖、殘差、敏感度</span>
+    └─ chat.py           <span class="c"># LLM 查詢層（只翻譯，不計算）</span></pre>
+    <p>沒有一行是深度學習。全部是 <code>numpy</code> + <code>scipy</code> + <code>sklearn</code> + <code>pandas</code>。核心邏輯約 500 行以內。</p>
+    <div class="note">
+      <span class="tag">對你的意涵</span>
+      <p>這個案子的難度不在演算法，在<b>資料規範化、量測不確定性處理、以及把結果做成工程師願意用的介面</b>——這些正好是軟體工程的活。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 必問清單 ============ -->
+<section class="section">
+  <div class="sec-head">
+    <div class="sec-num">10</div>
+    <div>
+      <h2>開案前一定要問清楚</h2>
+      <p class="sub">這幾題直接決定可行性與報價。建議印出來帶去開會。</p>
+    </div>
+  </div>
+  <ol class="checks col">
+    <li><b>歷史批次有幾批？</b><span>少於 15 批的話，P1 要改成「設計實驗」而不是「分析既有資料」。</span></li>
+    <li><b>溫度量的是加熱器設定值還是實際熔體溫度？</b><span>真正的物理變數是熔區長度 l。如果沒量 l，這是投報率最高的補量測項目。</span></li>
+    <li><b>分析方法是 GDMS 還是 ICP-MS？各元素 LOD 多少？</b><span>6N 下量測雜訊可能大於製程效應。要先做量測系統分析（MSA）。</span></li>
+    <li><b>取樣位置各批一致嗎？頭尾切除量有記錄嗎？</b><span>不一致的話 x/L 正規化會出錯，所有曲線無法對齊。</span></li>
+    <li><b>每批的進料初始純度 C₀ 有測嗎？</b><span>沒有的話所有曲線失去比較基準，k 擬不出來。</span></li>
+    <li><b>6N 得料率的判定規則是什麼？</b><span>總雜質 &lt; 1 ppm，還是單一元素門檻？切點目前怎麼決定的？</span></li>
+    <li><b>氣氛條件：真空還是 Ar？表面氧化情況？</b><span>In 容易氧化，氧化膜會夾帶雜質，這是模型外的干擾變數。</span></li>
+    <li><b>熔區有攪拌嗎（電磁 / 機械）？</b><span>攪拌直接決定 δ，會顯著改變 k_eff 對速率的敏感度。</span></li>
+  </ol>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <b>高純銦金屬偏析純化 — 製程原理與資料分析方法</b>
+      本文件之互動模擬使用離散質量守恆數值解，可即時調整參數觀察行為。
+    </div>
+    <div class="mono">
+      PFANN 1952 · BURTON–PRIM–SLICHTER 1953<br>
+      PHYSICS-INFORMED · GP · BAYESIAN DOE
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+"use strict";
+
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- 共用：多次 pass 離散模擬 ---------- */
+function onePass(C, k, m){
+  const N = C.length, out = new Float64Array(N);
+  let S = 0;
+  for(let i=0;i<m;i++) S += C[i];
+  for(let i=0;i<N-m;i++){
+    const CL = S/m, Cs = k*CL;
+    out[i] = Cs;
+    S -= Cs;
+    S += C[i+m];
+  }
+  for(let j=0;j<m;j++){
+    const V = m-j, Cs = k*S/V;
+    out[N-m+j] = Cs;
+    S -= Cs;
+  }
+  return out;
+}
+function simulate(k, m, passes, N, C0){
+  let C = new Float64Array(N).fill(C0);
+  for(let p=0;p<passes;p++) C = onePass(C, k, m);
+  return C;
+}
+
+/* ---------- 共用：canvas HiDPI ---------- */
+function fit(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width = Math.max(1, Math.round(r.width*dpr));
+  cv.height = Math.max(1, Math.round(r.height*dpr));
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w:r.width, h:r.height};
+}
+
+/* ---------- 濃度 → 顏色 ---------- */
+function conc2color(r){
+  // r = C/C0 。 冷藍灰(純) → 中灰 → 暖褐(髒)
+  const t = Math.max(0, Math.min(1, Math.log(Math.max(r,0.02)/0.05)/Math.log(60/0.05)));
+  const stops = [
+    [0.00, [163,197,214]],
+    [0.35, [143,164,178]],
+    [0.55, [150,140,132]],
+    [0.75, [166,110,68]],
+    [1.00, [122,58,32]]
+  ];
+  let a=stops[0], b=stops[stops.length-1];
+  for(let i=0;i<stops.length-1;i++){
+    if(t>=stops[i][0] && t<=stops[i+1][0]){ a=stops[i]; b=stops[i+1]; break; }
+  }
+  const f = (t-a[0])/Math.max(1e-6,(b[0]-a[0]));
+  const c = [0,1,2].map(i=>Math.round(a[1][i]+(b[1][i]-a[1][i])*f));
+  return 'rgb('+c[0]+','+c[1]+','+c[2]+')';
+}
+
+/* =========================================================
+   HERO：移動中的熔區 + 即時繪出的濃度曲線
+   ========================================================= */
+(function hero(){
+  const cv = document.getElementById('heroCanvas');
+  if(!cv) return;
+  const N = 240, m = 16, k = 0.13, C0 = 1;
+  const target = simulate(k, m, 1, N, C0);
+  let pos = 0, raf = null, last = 0;
+
+  function draw(){
+    const {ctx,w,h} = fit(cv);
+    ctx.clearRect(0,0,w,h);
+
+    const padL = 0, barY = 24, barH = Math.min(66, h*0.24);
+    const cw = w/N;
+    const curveTop = barY + barH + 34;
+    const curveH = h - curveTop - 16;
+
+    // --- 錠身 ---
+    for(let i=0;i<N;i++){
+      const inZone = (i>=pos && i<pos+m);
+      if(i < pos){
+        ctx.fillStyle = conc2color(target[i]);
+      }else if(inZone){
+        continue;
+      }else{
+        ctx.fillStyle = conc2color(1);
+      }
+      ctx.fillRect(padL+i*cw, barY, cw+0.6, barH);
+    }
+    // 熔區（發光）
+    if(pos < N-m+1){
+      const zx = padL+pos*cw, zw = m*cw;
+      const g = ctx.createLinearGradient(zx,0,zx+zw,0);
+      g.addColorStop(0,'#F6C15E'); g.addColorStop(.5,'#EE9A34'); g.addColorStop(1,'#D2610F');
+      ctx.save();
+      ctx.shadowColor = 'rgba(238,154,52,.75)'; ctx.shadowBlur = 26;
+      ctx.fillStyle = g;
+      ctx.fillRect(zx, barY-3, zw, barH+6);
+      ctx.restore();
+    }
+    // 錠身外框
+    ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+    ctx.strokeRect(padL+.5, barY+.5, w-1, barH-1);
+
+    // 頭 / 尾 標示
+    ctx.font = '500 10px "IBM Plex Mono",monospace';
+    ctx.fillStyle = '#61747F'; ctx.letterSpacing = '2px';
+    ctx.textAlign='left';  ctx.fillText('HEAD  x/L = 0', padL, barY-9);
+    ctx.textAlign='right'; ctx.fillText('x/L = 1  TAIL', w, barY-9);
+    ctx.textAlign='left';
+
+    // --- 濃度曲線 ---
+    const maxR = 6;
+    const yOf = r => curveTop + curveH - Math.min(r,maxR)/maxR*curveH;
+
+    // C0 基準線
+    ctx.strokeStyle = 'rgba(255,255,255,.13)';
+    ctx.setLineDash([3,4]); ctx.beginPath();
+    ctx.moveTo(0,yOf(1)); ctx.lineTo(w,yOf(1)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#61747F'; ctx.font='500 9.5px "IBM Plex Mono",monospace';
+    ctx.fillText('C₀', 4, yOf(1)-6);
+
+    // 已凝固部分的曲線
+    ctx.beginPath();
+    let started=false;
+    for(let i=0;i<Math.min(pos,N);i++){
+      const x = padL+i*cw+cw/2, y = yOf(target[i]);
+      if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle='#63B6D2'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+
+    // 填色
+    if(started){
+      ctx.lineTo(padL+Math.min(pos,N)*cw, curveTop+curveH);
+      ctx.lineTo(padL, curveTop+curveH); ctx.closePath();
+      const fg = ctx.createLinearGradient(0,curveTop,0,curveTop+curveH);
+      fg.addColorStop(0,'rgba(99,182,210,.20)'); fg.addColorStop(1,'rgba(99,182,210,0)');
+      ctx.fillStyle=fg; ctx.fill();
+    }
+
+    // 熔區指示線
+    if(pos<N){
+      const zx = padL+pos*cw;
+      ctx.strokeStyle='rgba(238,154,52,.35)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(zx,barY+barH); ctx.lineTo(zx,curveTop+curveH); ctx.stroke();
+    }
+  }
+
+  function loop(ts){
+    if(!last) last = ts;
+    const dt = ts-last; last = ts;
+    pos += dt*0.055;
+    if(pos > N + 45) { pos = -10; }
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function start(){
+    if(reduce){ pos = N; draw(); return; }
+    if(!raf) raf = requestAnimationFrame(loop);
+  }
+  function stop(){ if(raf){cancelAnimationFrame(raf); raf=null; last=0;} }
+
+  new ResizeObserver(draw).observe(cv);
+  document.addEventListener('visibilitychange', ()=> document.hidden ? stop() : (last=0, start()));
+  const io = new IntersectionObserver(es=>{ es[0].isIntersecting ? (last=0,start()) : stop(); },{threshold:.05});
+  io.observe(cv);
+  draw();
+})();
+
+/* =========================================================
+   互動盤 1：Pfann 多次 pass
+   ========================================================= */
+(function sim(){
+  const cv = document.getElementById('simCanvas');
+  if(!cv) return;
+  const N = 400, C0 = 10, THR = 1.0;
+  const sk=document.getElementById('sk'), sm=document.getElementById('sm'), sp=document.getElementById('sp');
+
+  function render(){
+    const k = +sk.value;
+    const mPct = +sm.value;
+    const passes = +sp.value;
+    const m = Math.max(2, Math.round(N*mPct/100));
+
+    document.getElementById('vk').textContent = k.toFixed(2);
+    document.getElementById('vm').textContent = mPct+'%';
+    document.getElementById('vp').textContent = passes;
+
+    const C = simulate(k, m, passes, N, C0);
+
+    // 讀數
+    let below = 0, edge = -1;
+    for(let i=0;i<N;i++){ if(C[i] < THR){ below++; } }
+    for(let i=0;i<N;i++){ if(C[i] >= THR){ edge = i/N; break; } }
+    if(edge < 0) edge = 1;
+
+    const fmt = v => v < 0.01 ? v.toExponential(1) : v.toFixed(v<1?3:(v<10?2:1));
+    document.getElementById('rHead').innerHTML = fmt(C[0])+'<small>ppm</small>';
+    document.getElementById('rTail').innerHTML = fmt(C[N-1])+'<small>ppm</small>';
+    document.getElementById('rYield').innerHTML = (below/N*100).toFixed(1)+'<small>%</small>';
+    document.getElementById('rEdge').innerHTML = edge.toFixed(3)+'<small>x/L</small>';
+
+    // 繪圖
+    const {ctx,w,h} = fit(cv);
+    ctx.clearRect(0,0,w,h);
+    const padL=52, padR=12, padT=16, padB=30;
+    const pw=w-padL-padR, ph=h-padT-padB;
+
+    const loD=0.001, hiD=200;
+    const yOf = v => padT + ph - (Math.log10(Math.max(v,loD))-Math.log10(loD))/(Math.log10(hiD)-Math.log10(loD))*ph;
+    const xOf = f => padL + f*pw;
+
+    // 格線
+    ctx.font='500 9.5px "IBM Plex Mono",monospace'; ctx.textBaseline='middle';
+    [0.001,0.01,0.1,1,10,100].forEach(v=>{
+      const y=yOf(v);
+      ctx.strokeStyle='#D3DBDF'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+      ctx.fillStyle='#8697A0'; ctx.textAlign='right';
+      ctx.fillText(v>=1?String(v):String(v), padL-8, y);
+    });
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    [0,0.25,0.5,0.75,1].forEach(f=>{
+      ctx.fillStyle='#8697A0';
+      ctx.fillText(f.toFixed(2), xOf(f), h-padB+8);
+    });
+    ctx.save();
+    ctx.translate(13, padT+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle='#54666F';
+    ctx.fillText('雜質濃度 ppm（對數）',0,0);
+    ctx.restore();
+
+    // 6N 門檻
+    const yT = yOf(THR);
+    ctx.strokeStyle='#12667F'; ctx.setLineDash([5,4]); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(padL,yT); ctx.lineTo(w-padR,yT); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#12667F'; ctx.textAlign='left'; ctx.textBaseline='bottom';
+    ctx.fillText('6N 門檻 1 ppm', padL+6, yT-5);
+
+    // 達標區塊
+    if(edge>0){
+      ctx.fillStyle='rgba(18,102,127,.10)';
+      ctx.fillRect(padL, padT, edge*pw, ph);
+    }
+
+    // C0 線
+    const y0=yOf(C0);
+    ctx.strokeStyle='#B3BFC6'; ctx.setLineDash([2,4]);
+    ctx.beginPath(); ctx.moveTo(padL,y0); ctx.lineTo(w-padR,y0); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 曲線
+    ctx.beginPath();
+    for(let i=0;i<N;i++){
+      const x=xOf(i/(N-1)), y=yOf(C[i]);
+      i? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    }
+    ctx.strokeStyle='#D24A12'; ctx.lineWidth=2.2; ctx.lineJoin='round'; ctx.stroke();
+
+    // 錠身色帶
+    const bh=9;
+    for(let i=0;i<N;i++){
+      ctx.fillStyle=conc2color(C[i]/C0);
+      ctx.fillRect(xOf(i/(N-1)), padT+ph+6, pw/N+0.8, bh);
+    }
+  }
+
+  [sk,sm,sp].forEach(s=>s.addEventListener('input',render));
+  new ResizeObserver(render).observe(cv);
+  render();
+})();
+
+/* =========================================================
+   互動盤 2：BPS k_eff(v) + 對數線性化
+   ========================================================= */
+(function bps(){
+  const cv = document.getElementById('bpsCanvas');
+  if(!cv) return;
+  const sk0=document.getElementById('sk0'), sd=document.getElementById('sd'), sv=document.getElementById('sv');
+  const VMAX = 8;
+  const keff = (k0,dd,v) => k0/(k0+(1-k0)*Math.exp(-dd*v));
+
+  function render(){
+    const k0=+sk0.value, dd=+sd.value, v=+sv.value;
+    document.getElementById('vk0').textContent=k0.toFixed(2);
+    document.getElementById('vd').textContent=dd.toFixed(2);
+    document.getElementById('vv').textContent=v.toFixed(1);
+
+    const ke = keff(k0,dd,v);
+    document.getElementById('rKeff').textContent = ke.toFixed(3);
+    document.getElementById('rK0').textContent = k0.toFixed(3);
+    const loss = (ke-k0)/(1-k0)*100;
+    document.getElementById('rLoss').innerHTML = loss.toFixed(0)+'<small>%</small>';
+
+    const {ctx,w,h} = fit(cv);
+    ctx.clearRect(0,0,w,h);
+    const padL=54, padR=14, gap=34;
+    const topH=(h-gap-52)*0.58, botH=(h-gap-52)*0.42;
+    const pw=w-padL-padR;
+    const t0=14, b0=t0+topH, t1=b0+gap, b1=t1+botH;
+
+    ctx.font='500 9.5px "IBM Plex Mono",monospace';
+
+    /* ---- 上：k_eff vs v ---- */
+    const xOf = vv => padL + vv/VMAX*pw;
+    const yOfK = kk => b0 - kk*topH;
+
+    ctx.strokeStyle='#D3DBDF'; ctx.lineWidth=1;
+    [0,0.25,0.5,0.75,1].forEach(kk=>{
+      const y=yOfK(kk);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+      ctx.fillStyle='#8697A0'; ctx.textAlign='right'; ctx.textBaseline='middle';
+      ctx.fillText(kk.toFixed(2), padL-8, y);
+    });
+
+    // k0 下限
+    ctx.strokeStyle='#12667F'; ctx.setLineDash([5,4]); ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(padL,yOfK(k0)); ctx.lineTo(w-padR,yOfK(k0)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#12667F'; ctx.textAlign='left'; ctx.textBaseline='bottom';
+    ctx.fillText('理論下限 k₀', padL+6, yOfK(k0)-5);
+
+    // 曲線
+    ctx.beginPath();
+    for(let i=0;i<=200;i++){
+      const vv=i/200*VMAX, x=xOf(vv), y=yOfK(keff(k0,dd,vv));
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.strokeStyle='#D24A12'; ctx.lineWidth=2.2; ctx.stroke();
+
+    // 目前工作點
+    ctx.beginPath(); ctx.arc(xOf(v), yOfK(ke), 5.5, 0, Math.PI*2);
+    ctx.fillStyle='#D24A12'; ctx.fill();
+    ctx.strokeStyle='#F3F6F7'; ctx.lineWidth=2; ctx.stroke();
+
+    ctx.fillStyle='#54666F'; ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText('k_eff', padL+2, t0);
+
+    /* ---- 下：ln(1/k_eff − 1) vs v，應為直線 ---- */
+    const L = vv => Math.log(1/keff(k0,dd,vv) - 1);
+    const lMax = L(0.0001), lMin = L(VMAX);
+    const yOfL = val => b1 - (val-lMin)/Math.max(1e-6,(lMax-lMin))*botH;
+
+    ctx.strokeStyle='#D3DBDF'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,b1); ctx.lineTo(w-padR,b1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(padL,t1); ctx.lineTo(w-padR,t1); ctx.stroke();
+
+    // 直線
+    ctx.beginPath();
+    for(let i=0;i<=100;i++){
+      const vv=i/100*VMAX, x=xOf(vv), y=yOfL(L(vv));
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.strokeStyle='#12667F'; ctx.lineWidth=2; ctx.stroke();
+
+    // 模擬「實驗批次」散點
+    ctx.fillStyle='#12667F';
+    [0.6,1.6,2.6,3.9,5.2,6.8].forEach((vv,i)=>{
+      const jit = ((i*37%11)/11 - 0.5)*0.16;
+      const x=xOf(vv), y=yOfL(L(vv))+jit*botH*0.35;
+      ctx.beginPath(); ctx.arc(x,y,3.4,0,Math.PI*2); ctx.fill();
+    });
+
+    ctx.beginPath(); ctx.arc(xOf(v), yOfL(L(v)), 5, 0, Math.PI*2);
+    ctx.fillStyle='#D24A12'; ctx.fill();
+    ctx.strokeStyle='#F3F6F7'; ctx.lineWidth=2; ctx.stroke();
+
+    ctx.fillStyle='#54666F'; ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText('ln(1/k_eff − 1)   ← 對 v 應為直線，斜率 = −δ/D', padL+2, t1+3);
+
+    // x 軸
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    [0,2,4,6,8].forEach(vv=>{
+      ctx.fillStyle='#8697A0';
+      ctx.fillText(String(vv), xOf(vv), b1+9);
+    });
+    ctx.fillStyle='#54666F';
+    ctx.fillText('熔區移動速率 v  (mm/hr)', padL+pw/2, b1+25);
+  }
+
+  [sk0,sd,sv].forEach(s=>s.addEventListener('input',render));
+  new ResizeObserver(render).observe(cv);
+  render();
+})();
+
+})();
+</script>
+</body>
+</html>

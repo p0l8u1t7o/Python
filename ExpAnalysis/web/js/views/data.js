@@ -16,9 +16,9 @@ export default async function dataview() {
     onchange: (e) => { picked = e.target.files[0] || null; reportHost.innerHTML = ''; },
   });
 
-  root.append(card('匯入客戶批次資料',
+  root.append(card('匯入批次資料',
     '長格式表格：一列 = 一個取樣點的一個元素。欄名支援中英文與常見別名，'
-    + '但單位與物理一致性一律嚴格檢查——不合格會擋下並說清楚哪一列、為什麼。',
+    + '單位與物理一致性均會嚴格檢核；未通過者將停止匯入，並明確指出問題所在列與原因。',
     h('div', { class: 'row' },
       fileInput,
       h('button', { class: 'ghost', onclick: () => doImport(true) }, '只稽核（不寫入）'),
@@ -58,10 +58,10 @@ export default async function dataview() {
   const ptsInput = h('input', { type: 'number', value: 8, min: 3, max: 40 });
   const anomInput = h('input', { type: 'checkbox', checked: true });
 
-  root.append(card('產生合成資料（demo 與方法驗證用）',
-    '兩個用途：一是在拿到客戶歷史資料之前先把整套工具跑起來、會議上能實際操作；'
+  root.append(card('產生合成資料（展示與方法驗證用）',
+    '兩項用途：一是於取得實際歷史資料之前，先以合成資料操作並檢視完整分析流程；'
     + '二是以已知的真實 k₀ 與 δ/D 生成資料，讓整套流程反解、檢查能不能還原——'
-    + '還原不了就代表方法有問題，這比在真實資料上「看起來合理」可靠得多。',
+    + '若無法還原即代表方法有誤，此驗證方式較「於真實資料上看似合理」更為可靠。',
     h('div', { class: 'row' },
       h('label', { class: 'field' }, '批次數', nInput),
       h('label', { class: 'field' }, '量測相對誤差（對數 σ）', noiseInput),

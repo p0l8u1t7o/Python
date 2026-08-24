@@ -11,7 +11,7 @@ export default async function dashboard() {
 
   if (ov.empty) {
     root.append(notice('warn', '資料庫目前沒有任何批次',
-      '請到「資料管理」匯入客戶的歷史批次 CSV，或先產生一組合成資料把整套流程跑起來。',
+      '請至「資料管理」匯入歷史批次 CSV，或先產生一組合成資料以檢視完整分析流程。',
       h('p', {}, h('a', { href: '#/data' }, '前往資料管理 →'))));
     return root;
   }
@@ -80,9 +80,9 @@ export default async function dashboard() {
 
   // ── 純化次數飽和 ─────────────────────────────────────────
   const passBox = chartBox('純化次數的邊際效益',
-    '一直 pass 下去，分布會收斂到「極限分布」——往尾端掃出去的雜質與熔區從右邊吃回來的達成平衡，之後再做完全沒有增益。這條曲線直接告訴你該停在第幾次。');
-  const passCard = card('做幾次就夠了？',
-    '這是本階段就能交付、能立刻省成本的結論。', passBox);
+    '持續增加純化次數後，分布會收斂至「極限分布」——向尾端推送的雜質與熔區自尾端重新熔回的雜質達成平衡，其後再增加次數已無增益。此曲線可用於判定最適的停止次數。');
+  const passCard = card('純化次數建議',
+    '此分析可直接應用於現行製程，減少不必要的純化趟數。', passBox);
   root.append(passCard);
 
   try {

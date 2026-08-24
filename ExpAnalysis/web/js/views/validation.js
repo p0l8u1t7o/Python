@@ -8,9 +8,9 @@ export default async function validation() {
   const root = h('div');
   const res = await api.validation();
 
-  root.append(notice('good', '把「不影響準確性」變成可驗收的條款',
-    '客戶說「不要影響準確性」，正確的做法是把這句話翻譯成可以量化、可以驗收的條件，'
-    + '而不是口頭承諾。下面這張表就是驗收文件。'));
+  root.append(notice('good', '將「不影響準確性」化為可驗收的條件',
+    '「不影響準確性」的要求應轉化為可量化、可驗收的條件，'
+    + '而非口頭承諾。下表即為驗收依據。'));
 
   if (!res.n_points) {
     root.append(card('留一批交叉驗證', null,
@@ -36,8 +36,8 @@ export default async function validation() {
   root.append(card('驗收判定', null,
     h('p', {}, res.verdict),
     h('p', { class: 'muted' },
-      'AI 模組只有在被證明比純物理更好時才上線。這條規則把「AI 可能變差」的風險'
-      + '完全消滅了——也是能給客戶最強、而且做得到的保證。')));
+      'AI 模組僅在經驗證優於純物理模型時才會啟用。此規則從根本上排除「AI 使結果變差」的風險，'
+      + '是本系統對準確性最明確的保證。')));
 
   root.append(card('誤差比較',
     'MAE = 平均絕對誤差（ppm，越小越好）。同一份資料、同一組折，只差在有沒有套 AI 修正。',
