@@ -44,3 +44,6 @@ node_modules/
 # Service logs written by services/labview/labview_api.py
 /logs/
 simulator/fleet.json
+
+# 頁面截圖（frontend/e2e/screenshots.script.ts 產出，體積大不進版控）
+Image/
