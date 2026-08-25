@@ -116,6 +116,23 @@ message NodeBirth {
   map<string, string> properties = 3;      // → Properties/<Name>：閘道器韌體、型號等
 }
 
+// NDEATH：閘道器的遺言。→ 只有一個 metric：bdSeq（Int64），**沒有 seq**（規範排除：
+// 遺言由 broker 在節點無法預知的序號位置代發）。必須在 CONNECT 之前組好、放進
+// CONNECT 封包的 will（topic spBv1.0/{group}/NDEATH/{node}，QoS 1，retain false）。
+// 正常 DISCONNECT 時 broker 會丟棄 will，主動關機前要自己再發一則內容相同的 NDEATH。
+// 線上位元組（bdSeq=5、timestamp=0）：08 00 12 0b 0a 05 62 64 53 65 71 20 04 58 05
+message NodeDeath {
+  int64 bd_seq = 1;        // → bdSeq：與這次連線的 NBIRTH 相同；每次重連 +1（0–255）並重組遺言
+  int64 timestamp_ms = 2;  // → Payload.timestamp：組 payload 當下的時間（連線前），不是死亡時間
+}
+
+// DDEATH：某台設備離線但節點還在，由節點自己發（設備層級沒有遺言）。
+// → Payload{timestamp, seq}，**不帶任何 metric**；seq 照常 +1。
+message DeviceDeath {
+  int64 timestamp_ms = 1;
+  uint32 seq = 2;
+}
+
 // ---------------------------------------------------------------------------
 // 告警與事件（DDATA）
 // ---------------------------------------------------------------------------

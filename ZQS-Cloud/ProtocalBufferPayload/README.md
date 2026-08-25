@@ -16,10 +16,10 @@ broker 上的其他 Sparkplug 實作看不懂。
 
 ```
 spBv1.0/{group_id}/NBIRTH/{edge_node_id}               閘道器出生（bdSeq、Node Control/Rebirth）
-spBv1.0/{group_id}/NDEATH/{edge_node_id}               閘道器遺囑（同一個 bdSeq；MQTT will）
+spBv1.0/{group_id}/NDEATH/{edge_node_id}               閘道器遺囑（同一個 bdSeq；MQTT will） → NodeDeath
 spBv1.0/{group_id}/DBIRTH/{edge_node_id}/{device_id}   設備宣告 + 全部 metric 目前值   → DeviceBirth
 spBv1.0/{group_id}/DDATA/{edge_node_id}/{device_id}    週期回報 / 告警 / 事件 / 命令回覆 → DeviceData
-spBv1.0/{group_id}/DDEATH/{edge_node_id}/{device_id}   設備離線
+spBv1.0/{group_id}/DDEATH/{edge_node_id}/{device_id}   設備離線（不帶 metric）            → DeviceDeath
 spBv1.0/{group_id}/DCMD/{edge_node_id}/{device_id}     平台 → 設備 命令                    → Command
 spBv1.0/{group_id}/NCMD/{edge_node_id}                 平台 → 閘道器（Node Control/Rebirth）
 ```
