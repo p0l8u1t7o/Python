@@ -86,6 +86,7 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </ul>
 </li>
 <li><a href="#2-步驟-2-建立-mqtt-連線">2. 步驟 2：建立 MQTT 連線</a><ul>
+<li><a href="#2-1-遺言-ndeath-的-payload">2.1 遺言（NDEATH）的 payload</a></li>
 </ul>
 </li>
 <li><a href="#3-步驟-3-會組-payload">3. 步驟 3：會組 Payload</a><ul>
@@ -184,7 +185,7 @@ sequenceDiagram
 <thead><tr><th>步驟</th><th>做什麼</th><th>送出／收到的訊息</th><th>驗收</th></tr></thead>
 <tbody>
 <tr><td><a href="#1-步驟-1-拿到位址與憑證">1</a></td><td>拿到 group / node / device id 與帳密</td><td>—</td><td>能拼出 topic</td></tr>
-<tr><td><a href="#2-步驟-2-建立-mqtt-連線">2</a></td><td>連上 broker，遺言在 CONNECT 裡</td><td>CONNECT + will NDEATH</td><td>拔線 ≤ 83 s 顯示離線</td></tr>
+<tr><td><a href="#2-步驟-2-建立-mqtt-連線">2</a></td><td>連上 broker，遺言在 CONNECT 裡</td><td>CONNECT + will NDEATH（2.1）</td><td>拔線 ≤ 83 s 顯示離線</td></tr>
 <tr><td><a href="#3-步驟-3-會組-payload">3</a></td><td>會組 protobuf Payload / Metric</td><td>—</td><td>與參考實作對拍位元組</td></tr>
 <tr><td><a href="#4-步驟-4-nbirth">4</a></td><td>宣告節點</td><td>NBIRTH</td><td>console 閘道器上線</td></tr>
 <tr><td><a href="#5-步驟-5-dbirth">5</a></td><td>宣告每台設備與全部 metric</td><td>DBIRTH</td><td>設備上線、宣告待審核</td></tr>
@@ -253,7 +254,7 @@ sequenceDiagram
 <tr><td>Username / Password</td><td>步驟 1 拿到的那組，屬於節點不屬於設備</td></tr>
 <tr><td>Keepalive</td><td>建議 <strong>45 s</strong>；直接決定斷線多久被發現（附錄 C）</td></tr>
 <tr><td><strong>Clean session</strong></td><td><strong><code>true</code>（規範要求）</strong>。MQTT 5：Clean Start=true 且 Session Expiry Interval=0</td></tr>
-<tr><td><strong>Will（遺言）</strong></td><td>topic <code>spBv1.0/{group}/NDEATH/{node}</code>、payload = 步驟 3.5 的 NDEATH、<strong>QoS 1、retain false</strong>，<strong>在 CONNECT 封包裡</strong>設定</td></tr>
+<tr><td><strong>Will（遺言）</strong></td><td>topic <code>spBv1.0/{group}/NDEATH/{node}</code>、payload 見 <a href="#2-1-遺言-ndeath-的-payload">2.1</a>、<strong>QoS 1、retain false</strong>，<strong>在 CONNECT 封包裡</strong>設定</td></tr>
 </tbody></table></div>
 <p><strong>為什麼 clean session 必須 true</strong>：持久 session 會讓 broker 在重連後補送斷線前排隊的命令，而那時節點已經發過新的 NBIRTH、重新宣告過狀態，那道命令會套在已作廢的狀態上。</p>
 <p><strong>QoS 與 retain 是規定死的</strong>：</p>
@@ -266,6 +267,27 @@ sequenceDiagram
 <tr><td>STATE（主機發）</td><td>1</td><td>true</td></tr>
 </tbody></table></div>
 <p>全是 QoS 0 是因為順序保證來自 payload 的 <code>seq</code>，遺失靠「要求重生」補救；QoS 1 買到的是重複訊息，不是安全。遺言不能 retained，否則它會活得比那次連線更久，節點回來後任何新訂閱者仍會被告知它死了。</p>
+<h3 id="2-1-遺言-ndeath-的-payload">2.1 遺言（NDEATH）的 payload<a class="headerlink" href="#2-1-遺言-ndeath-的-payload" title="Permanent link">¶</a></h3>
+<p>NDEATH 的內容<strong>只有一個 metric</strong>，而且<strong>沒有 <code>seq</code></strong>（規範排除：遺言是 broker 在節點無法預知的序號位置代發的）。它必須在 CONNECT 之前就組好，因為遺言要放進 CONNECT 封包；連上之後才設的遺言 broker 從來沒收到過。</p>
+<div class="highlight"><pre><code>Topic     spBv1.0/{group}/NDEATH/{node}      QoS 1，retain false
+Payload.timestamp = now_ms                    ← 組 payload 當下的時間（連線前），不是死亡時間
+Payload.seq       = （不帶）
+metrics:
+  bdSeq   Int64   5                           ← 必填，唯一的 metric；與這次連線的 NBIRTH 相同
+</code></pre></div>
+<p>逐位元組（供手寫編碼器對拍；<code>bdSeq=5</code>、timestamp 省略成 0 便於閱讀）：</p>
+<div class="highlight"><pre><code>08 00                      Payload.timestamp = 0（實際請填 epoch ms）
+12 0d                      Payload.metrics，長度 13
+   0a 05 62 64 53 65 71    Metric.name = "bdSeq"
+   20 04                   Metric.datatype = 4（Int64）
+   58 05                   Metric.long_value = 5
+</code></pre></div>
+<p>三件事要記住：</p>
+<ul>
+<li><strong>每次連線 <code>bdSeq</code> +1</strong>（0–255 循環），NBIRTH 與遺言用同一個值；重連時要重新組一份新的遺言再 CONNECT。平台用它辨認「這則死亡屬於哪一次 session」，過時的遺言會被忽略，節點不會被自己上一次的遺言打死。</li>
+<li>正常關機 broker 會丟棄遺言，所以主動斷線前要<strong>自己發一則內容相同的 NDEATH</strong>（步驟 10）。</li>
+<li>設備層級沒有遺言：DDEATH 由節點自己發（步驟 10），內容只有 <code>timestamp</code> 與 <code>seq</code>，不帶任何 metric。</li>
+</ul>
 <p><strong>連線後立刻做的事（順序固定）</strong>：</p>
 <ol>
 <li>訂閱 <code>spBv1.0/{group}/NCMD/{node}</code> 與 <code>spBv1.0/{group}/DCMD/{node}/+</code>——<strong>先訂閱再宣告</strong>，否則空檔進來的命令會漏。</li>
@@ -548,8 +570,10 @@ metrics:
 
 <h2 id="10-步驟-10-離線與關機">10. 步驟 10：離線與關機<a class="headerlink" href="#10-步驟-10-離線與關機" title="Permanent link">¶</a></h2>
 <p><strong>正常關機時遺言不會發。</strong> MQTT 規格明訂：送出 <code>DISCONNECT</code> 正常關閉時 broker 會<strong>丟棄</strong> will。所以計畫性關機、韌體更新重開、維護斷線都不會觸發遺言——請在主動斷線前<strong>自己發</strong>：</p>
-<div class="highlight"><pre><code>1. 每台設備  DDEATH  spBv1.0/{group}/DDEATH/{node}/{device}   payload: timestamp + seq（無 metric）
-2. 節點      NDEATH  spBv1.0/{group}/NDEATH/{node}            payload: metrics=[ bdSeq Int64 5 ]（無 seq）
+<div class="highlight"><pre><code>1. 每台設備  DDEATH  spBv1.0/{group}/DDEATH/{node}/{device}   QoS 0
+              Payload.timestamp = now_ms, Payload.seq = 下一個序號, metrics = []（不帶任何 metric）
+2. 節點      NDEATH  spBv1.0/{group}/NDEATH/{node}            QoS 1
+              Payload.timestamp = now_ms, 不帶 seq, metrics = [ bdSeq Int64 5 ]（與遺言、NBIRTH 相同，見 2.1）
 3. 等 0.5 s 讓 broker 收下（有些 broker 會丟棄緊接 DISCONNECT 的 PUBLISH）
 4. DISCONNECT
 </code></pre></div>
