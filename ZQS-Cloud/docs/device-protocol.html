@@ -277,7 +277,7 @@ metrics:
 </code></pre></div>
 <p>逐位元組（供手寫編碼器對拍；<code>bdSeq=5</code>、timestamp 省略成 0 便於閱讀）：</p>
 <div class="highlight"><pre><code>08 00                      Payload.timestamp = 0（實際請填 epoch ms）
-12 0d                      Payload.metrics，長度 13
+12 0b                      Payload.metrics，長度 11
    0a 05 62 64 53 65 71    Metric.name = "bdSeq"
    20 04                   Metric.datatype = 4（Int64）
    58 05                   Metric.long_value = 5
