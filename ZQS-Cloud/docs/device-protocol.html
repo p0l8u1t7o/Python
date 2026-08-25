@@ -158,6 +158,9 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </ul>
 <p>伺服器會驗證本文描述的每一個欄位，不符合的一律拒絕，因此請把本文件視為契約。</p>
 <hr>
+<div class="admonition note"><p class="admonition-title">給設備端的 .proto</p>
+<p>設備／閘道器需要的 payload 定義集中在 <code>ProtocalBufferPayload/</code>：<code>sparkplug_b.proto</code>（線上位元組格式，Eclipse Tahu 原版）與
+<code>zqs_profile.proto</code>（本文所有 metric 名稱、型別、命令與回覆的可機讀對照，含 W6 設定點有效期）。該資料夾的 README 有各語言的 protoc 指令與最小握手步驟。</p></div>
 <h2 id="1-三層位址">1. 三層位址<a class="headerlink" href="#1-三層位址" title="Permanent link">¶</a></h2>
 <p>Sparkplug 的位址有三層：</p>
 <div class="highlight"><pre><span></span><code>spBv1.0/{group_id}/{訊息型別}/{edge_node_id}/{device_id}
