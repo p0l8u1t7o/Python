@@ -414,9 +414,8 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <h2 id="3-資料夾結構">3. 資料夾結構<a class="headerlink" href="#3-資料夾結構" title="Permanent link">¶</a></h2>
 <div class="highlight"><pre><span></span><code>ZQS-Cloud/
 ├── manage.py                     Django 進入點
-├── requirements.txt              執行相依（Django、ninja、paho-mqtt、redis…）
-├── requirements-dev.txt          + pytest、ruff
-├── requirements-optional.txt     RabbitMQ (pika)、PostgreSQL (psycopg)
+├── requirements.txt              唯一的相依清單：執行、開發用 broker、ruff、可選後端
+│                                 （pika / psycopg）都在這一份，分區並附理由
 ├── docker-compose.yml            postgres / redis / emqx / api / ingestor / worker / scheduler
 ├── Dockerfile
 ├── .env / .env.example           環境設定（.env 不進版控）
@@ -1487,9 +1486,8 @@ render。條件式呼叫的 hook、render 時讀到 undefined、Leaflet 在容�
 </tbody>
 </table></div>
 <p>截圖存在 <code>frontend/e2e-results/</code>，失敗時另有 trace（<code>npx playwright show-trace</code>）。</p>
-<p>測試用 <code>unittest.TestCase</code> 風格（Django test runner），不是 pytest fixture
-風格——雖然 <code>requirements-dev.txt</code> 裝了 pytest，實際跑的是
-<code>manage.py test</code>。共用建構器在 <code>tests/factories.py</code>。</p>
+<p>測試用 <code>unittest.TestCase</code> 風格（Django test runner），不是 pytest——
+跑的是 <code>manage.py test</code>，<code>requirements.txt</code> 也不裝 pytest。共用建構器在 <code>tests/factories.py</code>。</p>
 <h3 id="7-3-命名慣例">7.3 命名慣例<a class="headerlink" href="#7-3-命名慣例" title="Permanent link">¶</a></h3>
 <div class="table-wrap"><table>
 <thead>

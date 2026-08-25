@@ -1,5 +1,0 @@
-# Alternative message bus backend (BUS_BACKEND=rabbitmq)
-pika==1.3.2
-
-# PostgreSQL / TimescaleDB backend (DB_ENGINE=postgres)
-psycopg[binary]==3.2.4

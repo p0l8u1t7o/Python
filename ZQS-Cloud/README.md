@@ -148,7 +148,7 @@ docker compose exec api python manage.py seed_demo
 | 變數 | 選項 | 說明 |
 | --- | --- | --- |
 | `DB_ENGINE` | `sqlite`, `postgres`, `timescale` | 預設 SQLite，足以跑完整套系統；要撐規模再換 |
-| `BUS_BACKEND` | `redis`, `rabbitmq`, `memory` | 預設 Redis Streams；`rabbitmq` 需要 `requirements-optional.txt` |
+| `BUS_BACKEND` | `redis`, `rabbitmq`, `memory` | 預設 Redis Streams；`rabbitmq` 用 pika（已含在 `requirements.txt`） |
 | `CACHE_BACKEND` | `locmem`, `redis` | API 一旦跑超過一個副本就要換成 `redis`，速率限制才會共用 |
 | `MQTT_ENABLED` | `1`, `0` | `0` 代表這個部署刻意不接 broker。即時擷取與下行命令不可用，健康檢查顯示「未使用」而不是報連線失敗 |
 | `MQTT_PROTOCOL_VERSION` | `5`, `311` | EMQX 兩種都支援。內建的開發用 broker 只講 3.1.1，啟動腳本會自動設成 `311` |
@@ -163,8 +163,7 @@ docker compose exec api python manage.py seed_demo
 engine-specific 的操作（時間分桶與 latest-value upsert）上依 `connection.vendor`
 分岔。
 
-要換到 PostgreSQL：設定 `DB_ENGINE=postgres` 與連線憑證、安裝
-`requirements-optional.txt`、跑 `migrate`。要用 TimescaleDB 不需要額外旗標（依連線自動偵測），只要把 sample 表轉成 hypertable：
+要換到 PostgreSQL：設定 `DB_ENGINE=postgres` 與連線憑證（psycopg 已含在 `requirements.txt`）、跑 `migrate`。要用 TimescaleDB 不需要額外旗標（依連線自動偵測），只要把 sample 表轉成 hypertable：
 
 ```sql
 SELECT create_hypertable('telemetry_sample', 'ts', migrate_data => true);

@@ -122,10 +122,8 @@ if [[ $SETUP -eq 1 ]]; then
     PYTHON=$([[ -x .venv/Scripts/python.exe ]] && echo ".venv/Scripts/python.exe" || echo ".venv/bin/python")
     ok 'created .venv'
   fi
+  # One file: runtime, the development broker, ruff, and the optional backends.
   "$PYTHON" -m pip install --disable-pip-version-check -q -r requirements.txt
-  # The development broker, ruff and pytest. Installing these is what makes the
-  # live path work out of the box without Docker.
-  "$PYTHON" -m pip install --disable-pip-version-check -q -r requirements-dev.txt
   ok 'python dependencies installed'
 
   [[ -f .env ]] || { cp .env.example .env; ok 'created .env from .env.example'; }

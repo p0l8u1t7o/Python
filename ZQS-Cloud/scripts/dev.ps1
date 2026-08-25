@@ -149,13 +149,9 @@ try {
             $python = Join-Path $root '.venv\Scripts\python.exe'
             Write-Ok 'created .venv'
         }
+        # One file: runtime, the development broker, ruff, and the optional backends.
         Invoke-Native -FilePath $python -Arguments @(
             '-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', 'requirements.txt'
-        )
-        # The development broker, ruff and pytest live here. Installing them is
-        # what makes the live path work out of the box without Docker.
-        Invoke-Native -FilePath $python -Arguments @(
-            '-m', 'pip', 'install', '--disable-pip-version-check', '-q', '-r', 'requirements-dev.txt'
         )
         Write-Ok 'python dependencies installed'
 

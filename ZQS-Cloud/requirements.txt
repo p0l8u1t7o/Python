@@ -1,32 +1,43 @@
-# ---- Core framework ----
+# ZQS Cloud — 唯一的 Python 相依清單（執行、開發、可選後端都在這一份）。
+#
+# 版本固定到 patch，讓 `pip install -r requirements.txt` 在任何機器裝出同一組套件。
+# 升級時整段一起升、跑完 `manage.py test` 再改這裡。
+#
+# 每一行都寫「為什麼在這裡」；沒有理由的相依會慢慢變成沒人敢刪的相依。
+
+# ---- 核心框架 ---------------------------------------------------------------
 Django==5.1.6
-django-ninja==1.3.0
-django-cors-headers==4.6.0
+django-ninja==1.3.0            # API 層（型別化 schema、OpenAPI）
+django-cors-headers==4.6.0     # 前端 dev server 跨來源
+pydantic==2.10.6               # ninja schema 的基礎；也直接用於設定驗證
+email-validator==2.2.0         # ninja/pydantic 的 EmailStr
 
-# ---- Auth / security ----
-PyJWT==2.10.1
-argon2-cffi==23.1.0
+# ---- 驗證 / 安全 ------------------------------------------------------------
+PyJWT==2.10.1                  # 存取／更新權杖
+argon2-cffi==23.1.0            # 密碼雜湊（settings 指定 Argon2PasswordHasher）
 
-# ---- Messaging ----
-paho-mqtt==2.1.0
-redis==5.2.1
-# Sparkplug B payloads. The generated binding is committed, so protoc is only
-# needed to regenerate it - see requirements-dev.txt.
-protobuf==5.29.3
+# ---- 訊息與遙測 -------------------------------------------------------------
+paho-mqtt==2.1.0               # ingestor 與模擬器的 MQTT 客戶端
+redis==5.2.1                   # 預設訊息匯流排（Redis Streams）與快取
+protobuf==5.29.3               # Sparkplug B payload；services/sparkplug/sparkplug_b_pb2.py 已提交
+amqtt==0.12.0                  # 內建開發用 MQTT broker（manage.py run_broker），正式環境用 EMQX
 
-# ---- Geocoding ----
-# Timezone from coordinates, offline. Chosen over timezonefinder because it
-# carries no numpy dependency, and over a second web service because geocoding
-# already depends on one upstream being reachable.
-tzfpy==1.3.3
+# ---- 地理 -------------------------------------------------------------------
+tzfpy==1.3.3                   # 座標 → 時區，離線；不帶 numpy，這是選它而非 timezonefinder 的原因
 
-# ---- Serialization / config ----
-orjson==3.10.15
-python-dotenv==1.0.1
-pydantic==2.10.6
+# ---- 序列化 / 設定 ----------------------------------------------------------
+orjson==3.10.15                # API 與匯流排的 JSON
+python-dotenv==1.0.1           # .env
 
-# ---- Runtime ----
-uvicorn[standard]==0.34.0
-gunicorn==23.0.0 ; sys_platform != "win32"
-whitenoise==6.8.2
-email-validator==2.2.0
+# ---- 執行環境 ---------------------------------------------------------------
+uvicorn[standard]==0.34.0      # ASGI（SSE 即時串流）
+gunicorn==23.0.0 ; sys_platform != "win32"   # Linux 正式環境的行程管理
+whitenoise==6.8.2              # 靜態檔（前端 build 產物）
+
+# ---- 可選後端（設定切換才會用到；預先裝好免得換環境時才缺）------------------
+psycopg[binary]==3.2.4         # DB_ENGINE=postgres（含 TimescaleDB）
+pika==1.3.2                    # BUS_BACKEND=rabbitmq
+
+# ---- 開發工具 ---------------------------------------------------------------
+ruff==0.9.6                    # lint；CI 與 pre-commit 都用它
+grpcio-tools==1.68.1           # 只在改 .proto 時重生 sparkplug_b_pb2.py；執行期不需要

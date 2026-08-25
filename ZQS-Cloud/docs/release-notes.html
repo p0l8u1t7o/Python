@@ -106,6 +106,12 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <h2 id="v0-3-營收最佳化與邊緣自治-2026-08-23">v0.3 — 營收最佳化與邊緣自治（2026-08-23）<a class="headerlink" href="#v0-3-營收最佳化與邊緣自治-2026-08-23" title="Permanent link">¶</a></h2>
 <p><strong>一句話</strong>：策略從「瞬時比較的單選標籤」變成「有預測、有窗口積分、可疊加、可回測、可結算、斷網也安全」的調度系統；前端加上 3D 能量場景、場域星系與需量著色地圖；模擬器可以強行改變上傳值讓每個數字都能手算對帳。</p>
 <p><strong>驗證</strong>：後端 813 項測試、ruff、前端 typecheck/build、Playwright e2e（含 3D 場景兩主題截圖、地圖階層）、<code>scripts/verify_calculations.py</code> 3,356 項交叉比對，全數通過。詳細設計見 <a href="system-logic.html">system-logic.html</a> §1.12D–1.12I。</p>
+<h3 id="相依清單整合為一份-requirements-txt">相依清單整合為一份 requirements.txt<a class="headerlink" href="#相依清單整合為一份-requirements-txt" title="Permanent link">¶</a></h3>
+<ul>
+<li><code>requirements-dev.txt</code> 與 <code>requirements-optional.txt</code> 併入 <code>requirements.txt</code>，分區（核心／驗證／訊息／地理／序列化／執行環境／可選後端／開發工具）並逐行註明理由；版本固定到 patch。</li>
+<li>移除沒用到的 <code>pytest</code>／<code>pytest-django</code>（測試一律 <code>manage.py test</code>）；pika 與 psycopg 改為預裝，換 RabbitMQ／PostgreSQL 時不必再裝。</li>
+<li><code>scripts/dev.sh</code>、<code>dev.ps1</code>、<code>Dockerfile</code>、README、codebase-guide 同步只裝一份。</li>
+</ul>
 <h3 id="工作流程範本">工作流程範本<a class="headerlink" href="#工作流程範本" title="Permanent link">¶</a></h3>
 <ul>
 <li>新增 <code>WorkflowTemplate</code>（migration <code>workflows/0003</code>）與 <code>apps/workflows/templates.py</code>：六個內建範本沿用示範流程建構器；自訂範本在存檔時把設備 id 換成角色佔位符（電池／關口電表／光電／負載／EMS 控制器），子流程換成名稱，因此可載到任何場域；載入時解不回的佔位符原樣保留並提示。</li>

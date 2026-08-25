@@ -13,9 +13,8 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential curl \
  && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-optional.txt ./
+COPY requirements.txt ./
 RUN pip install -r requirements.txt \
- && pip install -r requirements-optional.txt \
  && apt-get purge -y build-essential \
  && apt-get autoremove -y
 
