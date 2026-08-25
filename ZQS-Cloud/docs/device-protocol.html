@@ -153,6 +153,19 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <li><a href="#附錄-g-沒有硬體時的快速驗證">附錄 G：沒有硬體時的快速驗證</a><ul>
 </ul>
 </li>
+<li><a href="#附錄-h-每一種-payload-的逐位元組">附錄 H：每一種 payload 的逐位元組（供手寫編碼器對拍）</a><ul>
+<li><a href="#h-1-ndeath">H.1 NDEATH（遺言，也是主動關機時自己發的那一則）</a></li>
+<li><a href="#h-2-nbirth">H.2 NBIRTH</a></li>
+<li><a href="#h-3-dbirth">H.3 DBIRTH（精簡版：一個宣告 metric 各一、一個帶單位的量測值）</a></li>
+<li><a href="#h-4-ddata">H.4 DDATA（只帶 alias；其中一筆 is_null）</a></li>
+<li><a href="#h-5-alarm">H.5 DDATA：告警發生（Alarm/）</a></li>
+<li><a href="#h-6-event">H.6 DDATA：事件（Event/）</a></li>
+<li><a href="#h-7-dcmd">H.7 DCMD（平台下發，設備端要會解碼）</a></li>
+<li><a href="#h-8-ack">H.8 DDATA：命令回覆</a></li>
+<li><a href="#h-9-ncmd">H.9 NCMD：重生要求（平台下發）</a></li>
+<li><a href="#h-10-ddeath">H.10 DDEATH</a></li>
+</ul>
+</li>
 </ul>
 </div></div></nav>
 <main><article><h1 id="zqs-cloud-裝置通訊協定-sparkplug-b">ZQS Cloud 裝置通訊協定：Sparkplug B（逐步開發指南）<a class="headerlink" href="#zqs-cloud-裝置通訊協定-sparkplug-b" title="Permanent link">¶</a></h1>
@@ -196,7 +209,7 @@ sequenceDiagram
 <tr><td><a href="#10-步驟-10-離線與關機">10</a></td><td>主動關機前送死亡訊息</td><td>DDEATH、NDEATH</td><td>≤ 15 s 顯示離線</td></tr>
 <tr><td><a href="#11-步驟-11-驗收">11</a></td><td>跑一致性測試</td><td>—</td><td><code>run_device_test.py</code> 全綠</td></tr>
 </tbody></table></div>
-<p>附錄：<a href="#附錄-a-內建-metric-key">A. 內建 metric key</a>、<a href="#附錄-b-可用的命令">B. 可用的命令</a>、<a href="#附錄-c-離線判定的實際數字">C. 離線判定的實際數字</a>、<a href="#附錄-d-帳密與-acl">D. 帳密與 ACL</a>、<a href="#附錄-e-主機狀態-state">E. 主機狀態 STATE</a>、<a href="#附錄-f-labview-與手寫編碼器">F. LabVIEW 與手寫編碼器</a>、<a href="#附錄-g-沒有硬體時的快速驗證">G. 沒有硬體時的快速驗證</a>。</p>
+<p>附錄：<a href="#附錄-a-內建-metric-key">A. 內建 metric key</a>、<a href="#附錄-b-可用的命令">B. 可用的命令</a>、<a href="#附錄-c-離線判定的實際數字">C. 離線判定的實際數字</a>、<a href="#附錄-d-帳密與-acl">D. 帳密與 ACL</a>、<a href="#附錄-e-主機狀態-state">E. 主機狀態 STATE</a>、<a href="#附錄-f-labview-與手寫編碼器">F. LabVIEW 與手寫編碼器</a>、<a href="#附錄-g-沒有硬體時的快速驗證">G. 沒有硬體時的快速驗證</a>、<a href="#附錄-h-每一種-payload-的逐位元組">H. 每一種 payload 的逐位元組</a>。</p>
 <hr>
 
 <h2 id="1-步驟-1-拿到位址與憑證">1. 步驟 1：拿到位址與憑證<a class="headerlink" href="#1-步驟-1-拿到位址與憑證" title="Permanent link">¶</a></h2>
@@ -390,6 +403,7 @@ metrics:
   Properties/IP          String   "10.20.30.40"
   Properties/RSSI        Int32    -63
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-2-nbirth">附錄 NBIRTH</a></p>
 <h3 id="4-1-bdseq-讓死亡對得上出生">4.1 bdSeq：讓死亡對得上出生<a class="headerlink" href="#4-1-bdseq-讓死亡對得上出生" title="Permanent link">¶</a></h3>
 <p><code>bdSeq</code> 同時出現在 NBIRTH 和 NDEATH（遺言）裡，值必須相同。它解決的是：一則姍姍來遲的遺言可能在節點已重連後才被處理；平台比對 <code>bdSeq</code>，發現這則死亡屬於已被取代的 session 就忽略——否則剛回來的節點會被自己上一次的遺言打死。</p>
 <div class="highlight"><pre><code>NBIRTH  bdSeq=5   ← 這次連線
@@ -443,6 +457,7 @@ metrics:
   Alarm/A0007            Boolean  true    properties={severity:"major", message:"PCS over temperature"}
 </code></pre></div>
 <p><code>Properties/Category</code> 的值：<code>battery</code>、<code>pcs</code>、<code>generation</code>、<code>meter</code>、<code>load</code>、<code>generator</code>、<code>ev_charger</code>、<code>controller</code>、<code>sensor</code>、<code>gateway</code>。</p>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-3-dbirth">附錄 DBIRTH</a></p>
 <h3 id="5-2-宣告-可以說-不能做">5.2 宣告「可以說，不能做」<a class="headerlink" href="#5-2-宣告-可以說-不能做" title="Permanent link">¶</a></h3>
 <p><strong>宣告的值不會自動生效。</strong> 伺服器把宣告原封不動存起來、與目前設定比對差異，等管理者在 console 上接受或拒絕。在被接受之前，它完全不影響這台設備被允許執行哪些命令——一台被入侵的機器無法靠改口宣告替自己解鎖充電權限。內容與上次相同不會重複產生待審核項目，所以每次重連都發是安全的（而重連會很頻繁地重發 BIRTH）。</p>
 <p><code>Properties/Schema Version</code> 是 profile 的版本（metric 的名字就是 schema）；填了平台不認得的版本，宣告會被記錄然後忽略。</p>
@@ -475,6 +490,7 @@ metrics:
   alias=6   Double  28.7            ← battery_temperature_c
   alias=4   is_null=true            ← 這一筆沒讀到：送 null，不送 0
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-4-ddata">附錄 DDATA</a></p>
 <p><strong>規則</strong>：</p>
 <ul>
 <li><strong>至少每 60 s 送一則 DDATA 當心跳</strong>，即使數值沒變。任何上行都會重置「資料已過期」計時器（180 s）；只在變化時才發布的設備在穩態下會被標成資料已過期。伺服器端的 recording policy 決定哪些讀值真的入庫，高頻發布不會塞爆資料庫——不要為了省空間在設備端節流。</li>
@@ -497,6 +513,7 @@ properties = { severity: "major",              ← info | warning | major | crit
                resistance_kohm: 41 }           ← 其餘 property 原樣存進告警 details
 </code></pre></div>
 <p>以相同 <code>code</code> 送 <code>false</code> 即解除；平台會分別通知「🔴 發生」與「🟢 解除」。告警持續期間重複送 <code>true</code> 只累加發生次數。DBIRTH 裡請帶上目前仍作用中的告警，重生後狀態才一致。</p>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-5-alarm">附錄 告警</a></p>
 <h3 id="7-2-事件-event-code">7.2 事件 <code>Event/&lt;code&gt;</code><a class="headerlink" href="#7-2-事件-event-code" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><code>name       = "Event/E0231"
 datatype   = String
@@ -504,6 +521,7 @@ value      = "Cooling fan speed below threshold"   ← 訊息本文
 properties = { level: "warning",                   ← debug | info | notice | warning | error | critical（預設 info）
                fan_rpm: 820 }
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-6-event">附錄 事件</a></p>
 <p>事件無狀態，不會「解除」。<code>code</code> 只能含字母數字與 <code>-_</code>。</p>
 <p><strong>驗收</strong>：告警頁出現該告警、送 false 後自動解除；事件頁有一筆紀錄；若設了 LINE／Email 通知，會收到發生與解除各一則。</p>
 <hr>
@@ -521,6 +539,7 @@ metrics:
   Command/valid_until String    "2026-08-23T10:15:00Z"                  ← 選填，見 8.4
   Command/on_expiry   String    "reserve"                               ← 選填
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-7-dcmd">附錄 DCMD</a></p>
 <h3 id="8-2-回覆-ddata">8.2 回覆（DDATA）<a class="headerlink" href="#8-2-回覆-ddata" title="Permanent link">¶</a></h3>
 <p>發一則 <strong>DDATA</strong>（不是別的型別），建議同一則一併帶上受影響的量測值：</p>
 <div class="highlight"><pre><code>Payload.seq = 8
@@ -531,6 +550,7 @@ metrics:
   Command/Result/&lt;key&gt; …                       ← 選填
   alias=1             Double  -200000.0        ← 新的 battery_power_w
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-8-ack">附錄 命令回覆</a></p>
 <p>執行需要時間的命令先回 <code>accepted</code>，完成後再回 <code>succeeded</code>／<code>failed</code>；終態之後才到的 <code>accepted</code> 會被忽略，順序錯亂不會出事。</p>
 <h3 id="8-3-設備端必須做的事">8.3 設備端必須做的事<a class="headerlink" href="#8-3-設備端必須做的事" title="Permanent link">¶</a></h3>
 <ol>
@@ -564,6 +584,7 @@ metrics:
 <div class="highlight"><pre><code>metrics:
   Node Control/Rebirth   Boolean  true
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-9-ncmd">附錄 NCMD</a></p>
 <p><strong>要做的事：重新發一次完整的 NBIRTH（<code>seq</code> 歸零、<code>bdSeq</code> 不變）與所有 DBIRTH。</strong> 平台對同一節點的重生要求有 30 秒冷卻，不會變成風暴。設備層級的 <code>Device Control/Rebirth</code> 同理，走 DCMD。</p>
 <p><strong>驗收</strong>：驗收工具「重生要求有沒有被理會」通過；或在 console 設備頁按「要求重生」，觀察 NBIRTH/DBIRTH 重送。</p>
 <hr>
@@ -577,6 +598,7 @@ metrics:
 3. 等 0.5 s 讓 broker 收下（有些 broker 會丟棄緊接 DISCONNECT 的 PUBLISH）
 4. DISCONNECT
 </code></pre></div>
+<p class="admonition-title" style="font-size:.85em">逐位元組對拍：<a href="#h-10-ddeath">附錄 DDEATH／NDEATH</a></p>
 <p>否則這個節點在 console 上會維持「線上」直到逾時掃描（180–225 s）把它撿走。離線判定的三條路徑與實際數字見附錄 C。</p>
 <p><strong>驗收</strong>：主動關機 ≤ 15 s 顯示離線；拔線 ≤ 83 s。</p>
 <hr>
@@ -707,6 +729,172 @@ Payload.seq       (欄位3, varint)   → 0x18, varint(seq)
 <div class="highlight"><pre><code>.\scripts\sim-console.ps1    # 桌面主控台：登記的設備以 MQTT 客戶端上線
 </code></pre></div>
 <p>主控台對每台登記的閘道器各開一條連線、底下掛該閘道器的所有設備——這才是 Sparkplug 的正常用法。它發布與本文完全相同的訊息，可當 wire format 的參考實作；主控台還能鎖定物理量或覆寫單一量測值、模擬停電，用來驗證雲端的計算與 fail-safe（見 <a href="demo-guide.html">客戶展示指南</a> §六A）。</p>
+<hr>
+<h2 id="附錄-h-每一種-payload-的逐位元組">附錄 H：每一種 payload 的逐位元組（供手寫編碼器對拍）<a class="headerlink" href="#附錄-h-每一種-payload-的逐位元組" title="Permanent link">¶</a></h2>
+<p>以下全部用本專案的 protobuf 綁定（<code>services/sparkplug/sparkplug_b_pb2.py</code>）實際序列化產生，不是手算；時間戳固定為 <code>1780000000000</code>（2026-05-28T02:26:40Z）讓範例可重現。每行左邊是位元組（key、長度／值），右邊是欄位。讀法：每個欄位前的 key = <code>(欄位編號 &lt;&lt; 3) | wire_type</code>；wire_type 0 = varint、1 = 64-bit little-endian、2 = 長度限定（string／巢狀 message）。負數整數與 <code>timestamp</code> 一律 varint，double 一律 8 bytes little-endian。你的編碼器對同樣輸入應產生<strong>完全相同</strong>的位元組。</p>
+<h3 id="h-1-ndeath">H.1 NDEATH（遺言，也是主動關機時自己發的那一則）<a class="headerlink" href="#h-1-ndeath" title="Permanent link">¶</a></h3>
+<p>只有 <code>bdSeq</code>，沒有 <code>seq</code>。 共 20 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 0b 0a 05 62 64 53 65 71 20 04 58 05</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 0b                     Payload.metrics[]，長度 11
+   0a 05 62 64 53 65 71    Metric.name = "bdSeq"
+   20 04                     Metric.datatype = 4（Int64）
+   58 05                     Metric.long_value = 5</code></pre></div>
+<h3 id="h-2-nbirth">H.2 NBIRTH<a class="headerlink" href="#h-2-nbirth" title="Permanent link">¶</a></h3>
+<p><code>seq = 0</code>、<code>bdSeq</code> 與 H.1 相同、<code>Node Control/Rebirth = false</code>，外加一個節點 Property。 共 82 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 0b 0a 05 62 64 53 65 71 20 04 58 05 12 1a 0a 14 4e 6f 64 65 20 43 6f 6e 74 72 6f 6c 2f 52 65 62 69 72 74 68 20 0b 70 00 12 1e 0a 13 50 72 6f 70 65 72 74 69 65 73 2f 46 69 72 6d 77 61 72 65 20 0c 7a 05 32 2e 31 2e 34 18 00</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 0b                     Payload.metrics[]，長度 11
+   0a 05 62 64 53 65 71    Metric.name = "bdSeq"
+   20 04                     Metric.datatype = 4（Int64）
+   58 05                     Metric.long_value = 5
+12 1a                     Payload.metrics[]，長度 26
+   0a 14 4e 6f 64 65 20 43 6f 6e 74 72 6f 6c 2f 52 65 62 69 72 74 68 Metric.name = "Node Control/Rebirth"
+   20 0b                     Metric.datatype = 11（Boolean）
+   70 00                     Metric.boolean_value = 0
+12 1e                     Payload.metrics[]，長度 30
+   0a 13 50 72 6f 70 65 72 74 69 65 73 2f 46 69 72 6d 77 61 72 65 Metric.name = "Properties/Firmware"
+   20 0c                     Metric.datatype = 12（String）
+   7a 05 32 2e 31 2e 34    Metric.string_value = "2.1.4"
+18 00                     Payload.seq = 0</code></pre></div>
+<h3 id="h-3-dbirth">H.3 DBIRTH（精簡版：一個宣告 metric 各一、一個帶單位的量測值）<a class="headerlink" href="#h-3-dbirth" title="Permanent link">¶</a></h3>
+<p>真實的 DBIRTH 會有步驟 5.1 的全部 metric；結構完全一樣，只是 <code>metrics</code> 重複更多次。注意 <code>properties</code> 是 keys 與 values 兩個平行陣列。 共 157 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 20 0a 13 50 72 6f 70 65 72 74 69 65 73 2f 43 61 74 65 67 6f 72 79 20 0c 7a 07 62 61 74 74 65 72 79 12 20 0a 1a 43 61 70 61 62 69 6c 69 74 69 65 73 2f 43 61 6e 20 44 69 73 63 68 61 72 67 65 20 0b 70 01 12 23 0a 16 52 61 74 69 6e 67 73 2f 52 61 74 65 64 20 50 6f 77 65 72 20 6b 57 20 0a 69 00 00 00 00 00 00 49 40 12 29 0a 0b 62 61 74 74 65 72 79 5f 73 6f 63 10 02 20 0a 4a 0d 0a 04 75 6e 69 74 12 05 08 0c 42 01 25 69 00 00 00 00 00 00 4f 40 18 01</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 20                     Payload.metrics[]，長度 32
+   0a 13 50 72 6f 70 65 72 74 69 65 73 2f 43 61 74 65 67 6f 72 79 Metric.name = "Properties/Category"
+   20 0c                     Metric.datatype = 12（String）
+   7a 07 62 61 74 74 65 72 79 Metric.string_value = "battery"
+12 20                     Payload.metrics[]，長度 32
+   0a 1a 43 61 70 61 62 69 6c 69 74 69 65 73 2f 43 61 6e 20 44 69 73 63 68 61 72 67 65 Metric.name = "Capabilities/Can Discharge"
+   20 0b                     Metric.datatype = 11（Boolean）
+   70 01                     Metric.boolean_value = 1
+12 23                     Payload.metrics[]，長度 35
+   0a 16 52 61 74 69 6e 67 73 2f 52 61 74 65 64 20 50 6f 77 65 72 20 6b 57 Metric.name = "Ratings/Rated Power kW"
+   20 0a                     Metric.datatype = 10（Double）
+   69 00 00 00 00 00 00 49 40 Metric.double_value = 50.0（little-endian double）
+12 29                     Payload.metrics[]，長度 41
+   0a 0b 62 61 74 74 65 72 79 5f 73 6f 63 Metric.name = "battery_soc"
+   10 02                     Metric.alias = 2
+   20 0a                     Metric.datatype = 10（Double）
+   4a 0d                     Metric.properties，長度 13
+      0a 04 75 6e 69 74       PropertySet.keys[] = "unit"
+      12 05                     PropertySet.values[]，長度 5
+         08 0c                     PropertyValue.type = 12（String）
+         42 01 25                PropertyValue.string_value = "%"
+   69 00 00 00 00 00 00 4f 40 Metric.double_value = 62.0（little-endian double）
+18 01                     Payload.seq = 1</code></pre></div>
+<h3 id="h-4-ddata">H.4 DDATA（只帶 alias；其中一筆 is_null）<a class="headerlink" href="#h-4-ddata" title="Permanent link">¶</a></h3>
+<p>步驟 6 的週期回報：沒有 <code>name</code>，靠 alias；沒讀值的那筆只有 <code>is_null = true</code>，不帶 value。 共 47 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 0d 10 02 20 0a 69 00 00 00 00 00 a0 53 40 12 0d 10 01 20 0a 69 00 00 00 00 00 70 c7 c0 12 06 10 04 20 0a 38 01 18 07</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 0d                     Payload.metrics[]，長度 13
+   10 02                     Metric.alias = 2
+   20 0a                     Metric.datatype = 10（Double）
+   69 00 00 00 00 00 a0 53 40 Metric.double_value = 78.5（little-endian double）
+12 0d                     Payload.metrics[]，長度 13
+   10 01                     Metric.alias = 1
+   20 0a                     Metric.datatype = 10（Double）
+   69 00 00 00 00 00 70 c7 c0 Metric.double_value = -12000.0（little-endian double）
+12 06                     Payload.metrics[]，長度 6
+   10 04                     Metric.alias = 4
+   20 0a                     Metric.datatype = 10（Double）
+   38 01                     Metric.is_null = 1
+18 07                     Payload.seq = 7</code></pre></div>
+<h3 id="h-5-alarm">H.5 DDATA：告警發生（Alarm/）<a class="headerlink" href="#h-5-alarm" title="Permanent link">¶</a></h3>
+<p>Boolean metric 加 <code>severity</code>、<code>message</code> 兩個 String property。解除時只差 <code>boolean_value</code> 為 false（該欄位省略不編碼）。 共 80 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 45 0a 0b 41 6c 61 72 6d 2f 45 30 35 30 30 20 0b 4a 32 0a 08 73 65 76 65 72 69 74 79 0a 07 6d 65 73 73 61 67 65 12 09 08 0c 42 05 6d 61 6a 6f 72 12 12 08 0c 42 0e 49 6e 73 75 6c 61 74 69 6f 6e 20 6c 6f 77 70 01 18 08</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 45                     Payload.metrics[]，長度 69
+   0a 0b 41 6c 61 72 6d 2f 45 30 35 30 30 Metric.name = "Alarm/E0500"
+   20 0b                     Metric.datatype = 11（Boolean）
+   4a 32                     Metric.properties，長度 50
+      0a 08 73 65 76 65 72 69 74 79 PropertySet.keys[] = "severity"
+      0a 07 6d 65 73 73 61 67 65 PropertySet.keys[] = "message"
+      12 09                     PropertySet.values[]，長度 9
+         08 0c                     PropertyValue.type = 12（String）
+         42 05 6d 61 6a 6f 72    PropertyValue.string_value = "major"
+      12 12                     PropertySet.values[]，長度 18
+         08 0c                     PropertyValue.type = 12（String）
+         42 0e 49 6e 73 75 6c 61 74 69 6f 6e 20 6c 6f 77 PropertyValue.string_value = "Insulation low"
+   70 01                     Metric.boolean_value = 1
+18 08                     Payload.seq = 8</code></pre></div>
+<h3 id="h-6-event">H.6 DDATA：事件（Event/）<a class="headerlink" href="#h-6-event" title="Permanent link">¶</a></h3>
+<p>String metric；property 裡的整數會以 Int64（type 4，long_value）編碼。 共 74 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 3f 0a 0b 45 76 65 6e 74 2f 45 30 32 33 31 20 0c 4a 24 0a 05 6c 65 76 65 6c 0a 07 66 61 6e 5f 72 70 6d 12 0b 08 0c 42 07 77 61 72 6e 69 6e 67 12 05 08 04 20 b4 06 7a 08 46 61 6e 20 73 6c 6f 77 18 09</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 3f                     Payload.metrics[]，長度 63
+   0a 0b 45 76 65 6e 74 2f 45 30 32 33 31 Metric.name = "Event/E0231"
+   20 0c                     Metric.datatype = 12（String）
+   4a 24                     Metric.properties，長度 36
+      0a 05 6c 65 76 65 6c    PropertySet.keys[] = "level"
+      0a 07 66 61 6e 5f 72 70 6d PropertySet.keys[] = "fan_rpm"
+      12 0b                     PropertySet.values[]，長度 11
+         08 0c                     PropertyValue.type = 12（String）
+         42 07 77 61 72 6e 69 6e 67 PropertyValue.string_value = "warning"
+      12 05                     PropertySet.values[]，長度 5
+         08 04                     PropertyValue.type = 4（Int64）
+         20 b4 06                  PropertyValue.long_value = 820
+   7a 08 46 61 6e 20 73 6c 6f 77 Metric.string_value = "Fan slow"
+18 09                     Payload.seq = 9</code></pre></div>
+<h3 id="h-7-dcmd">H.7 DCMD（平台下發，設備端要會解碼）<a class="headerlink" href="#h-7-dcmd" title="Permanent link">¶</a></h3>
+<p>沒有 <code>seq</code>（主機發的訊息不在節點的序號空間裡）。<code>Command/Expires</code> 是 DateTime = long_value epoch ms。 共 236 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 34 0a 0a 43 6f 6d 6d 61 6e 64 2f 49 44 20 0c 7a 24 30 66 39 64 37 61 31 63 2d 34 63 31 61 2d 34 65 30 65 2d 39 61 37 64 2d 38 66 32 62 31 63 33 64 34 65 35 66 12 24 0a 0c 43 6f 6d 6d 61 6e 64 2f 4e 61 6d 65 20 0c 7a 12 73 65 74 5f 70 6f 77 65 72 5f 73 65 74 70 6f 69 6e 74 12 1a 0a 0f 43 6f 6d 6d 61 6e 64 2f 45 78 70 69 72 65 73 20 0d 58 e0 e4 95 82 e7 33 12 1c 0a 0f 43 6f 6d 6d 61 6e 64 2f 70 6f 77 65 72 5f 77 20 0a 69 00 00 00 00 00 6a 08 c1 12 2d 0a 13 43 6f 6d 6d 61 6e 64 2f 76 61 6c 69 64 5f 75 6e 74 69 6c 20 0c 7a 14 32 30 32 36 2d 30 35 2d 32 38 54 30 32 3a 33 31 3a 34 30 5a 12 1e 0a 11 43 6f 6d 6d 61 6e 64 2f 6f 6e 5f 65 78 70 69 72 79 20 0c 7a 07 72 65 73 65 72 76 65</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 34                     Payload.metrics[]，長度 52
+   0a 0a 43 6f 6d 6d 61 6e 64 2f 49 44 Metric.name = "Command/ID"
+   20 0c                     Metric.datatype = 12（String）
+   7a 24 30 66 39 64 37 61 31 63 2d 34 63 31 61 2d 34 65 30 65 2d 39 61 37 64 2d 38 66 32 62 31 63 33 64 34 65 35 66 Metric.string_value = "0f9d7a1c-4c1a-4e0e-9a7d-8f2b1c3d4e5f"
+12 24                     Payload.metrics[]，長度 36
+   0a 0c 43 6f 6d 6d 61 6e 64 2f 4e 61 6d 65 Metric.name = "Command/Name"
+   20 0c                     Metric.datatype = 12（String）
+   7a 12 73 65 74 5f 70 6f 77 65 72 5f 73 65 74 70 6f 69 6e 74 Metric.string_value = "set_power_setpoint"
+12 1a                     Payload.metrics[]，長度 26
+   0a 0f 43 6f 6d 6d 61 6e 64 2f 45 78 70 69 72 65 73 Metric.name = "Command/Expires"
+   20 0d                     Metric.datatype = 13（DateTime）
+   58 e0 e4 95 82 e7 33      Metric.long_value = 1780000060000
+12 1c                     Payload.metrics[]，長度 28
+   0a 0f 43 6f 6d 6d 61 6e 64 2f 70 6f 77 65 72 5f 77 Metric.name = "Command/power_w"
+   20 0a                     Metric.datatype = 10（Double）
+   69 00 00 00 00 00 6a 08 c1 Metric.double_value = -200000.0（little-endian double）
+12 2d                     Payload.metrics[]，長度 45
+   0a 13 43 6f 6d 6d 61 6e 64 2f 76 61 6c 69 64 5f 75 6e 74 69 6c Metric.name = "Command/valid_until"
+   20 0c                     Metric.datatype = 12（String）
+   7a 14 32 30 32 36 2d 30 35 2d 32 38 54 30 32 3a 33 31 3a 34 30 5a Metric.string_value = "2026-05-28T02:31:40Z"
+12 1e                     Payload.metrics[]，長度 30
+   0a 11 43 6f 6d 6d 61 6e 64 2f 6f 6e 5f 65 78 70 69 72 79 Metric.name = "Command/on_expiry"
+   20 0c                     Metric.datatype = 12（String）
+   7a 07 72 65 73 65 72 76 65 Metric.string_value = "reserve"</code></pre></div>
+<h3 id="h-8-ack">H.8 DDATA：命令回覆<a class="headerlink" href="#h-8-ack" title="Permanent link">¶</a></h3>
+<p>回 <code>Command/ID</code> 與 <code>Command/Status</code>，同一則順便帶新的 <code>battery_power_w</code>（alias 1）。 共 109 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 34 0a 0a 43 6f 6d 6d 61 6e 64 2f 49 44 20 0c 7a 24 30 66 39 64 37 61 31 63 2d 34 63 31 61 2d 34 65 30 65 2d 39 61 37 64 2d 38 66 32 62 31 63 33 64 34 65 35 66 12 1d 0a 0e 43 6f 6d 6d 61 6e 64 2f 53 74 61 74 75 73 20 0c 7a 09 73 75 63 63 65 65 64 65 64 12 0d 10 01 20 0a 69 00 00 00 00 00 6a 08 c1 18 0a</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 34                     Payload.metrics[]，長度 52
+   0a 0a 43 6f 6d 6d 61 6e 64 2f 49 44 Metric.name = "Command/ID"
+   20 0c                     Metric.datatype = 12（String）
+   7a 24 30 66 39 64 37 61 31 63 2d 34 63 31 61 2d 34 65 30 65 2d 39 61 37 64 2d 38 66 32 62 31 63 33 64 34 65 35 66 Metric.string_value = "0f9d7a1c-4c1a-4e0e-9a7d-8f2b1c3d4e5f"
+12 1d                     Payload.metrics[]，長度 29
+   0a 0e 43 6f 6d 6d 61 6e 64 2f 53 74 61 74 75 73 Metric.name = "Command/Status"
+   20 0c                     Metric.datatype = 12（String）
+   7a 09 73 75 63 63 65 65 64 65 64 Metric.string_value = "succeeded"
+12 0d                     Payload.metrics[]，長度 13
+   10 01                     Metric.alias = 1
+   20 0a                     Metric.datatype = 10（Double）
+   69 00 00 00 00 00 6a 08 c1 Metric.double_value = -200000.0（little-endian double）
+18 0a                     Payload.seq = 10</code></pre></div>
+<h3 id="h-9-ncmd">H.9 NCMD：重生要求（平台下發）<a class="headerlink" href="#h-9-ncmd" title="Permanent link">¶</a></h3>
+<p>收到後重送 NBIRTH（seq 歸零）與所有 DBIRTH。 共 35 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 12 1a 0a 14 4e 6f 64 65 20 43 6f 6e 74 72 6f 6c 2f 52 65 62 69 72 74 68 20 0b 70 01</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+12 1a                     Payload.metrics[]，長度 26
+   0a 14 4e 6f 64 65 20 43 6f 6e 74 72 6f 6c 2f 52 65 62 69 72 74 68 Metric.name = "Node Control/Rebirth"
+   20 0b                     Metric.datatype = 11（Boolean）
+   70 01                     Metric.boolean_value = 1</code></pre></div>
+<h3 id="h-10-ddeath">H.10 DDEATH<a class="headerlink" href="#h-10-ddeath" title="Permanent link">¶</a></h3>
+<p>只有 <code>timestamp</code> 與 <code>seq</code>，沒有任何 metric。 共 9 bytes：</p>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33 18 0b</code></pre></div>
+<div class="highlight"><pre><code>08 80 90 92 82 e7 33      Payload.timestamp = 1780000000000（epoch ms）
+18 0b                     Payload.seq = 11</code></pre></div>
 </article></main>
 </div>
 <script type="module">
