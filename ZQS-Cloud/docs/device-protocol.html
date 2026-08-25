@@ -76,861 +76,599 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <div class="layout">
 <nav class="sidebar"><div class="brand">ZQS Cloud 文件</div><div class="sub">表後儲能能源管理平台</div><ul><li><a href="index.html" class="">總覽</a></li><li><a href="running-locally.html" class="">本機執行</a></li><li><a href="demo-guide.html" class="">客戶展示指南</a></li><li><a href="glossary.html" class="">專有名詞解釋</a></li><li><a href="technical-principles.html" class="">技術原理</a></li><li><a href="system-logic.html" class="">系統邏輯總覽</a></li><li><a href="device-protocol.html" class="active">裝置通訊協定（Sparkplug B）</a></li><li><a href="device-classification.html" class="">設備分類設計</a></li><li><a href="device-test-harness.html" class="">設備測試工具</a></li><li><a href="labview-integration.html" class="">LabVIEW 整合</a></li><li><a href="workflow-design.html" class="">工作流程引擎設計手冊</a></li><li><a href="codebase-guide.html" class="">程式碼導覽</a></li><li><a href="release-notes.html" class="">發行說明</a></li></ul><div class="toc"><div class="label">本頁目錄</div><div class="toc">
 <ul>
-<li><a href="#1-三層位址">1. 三層位址</a><ul>
-<li><a href="#1-1-沒有網關的設備怎麼做">1.1 沒有網關的設備怎麼做</a></li>
-<li><a href="#1-2-允許的字元">1.2 允許的字元</a></li>
+<li><a href="#0-開發總覽">0. 開發總覽</a><ul>
 </ul>
 </li>
-<li><a href="#2-連線">2. 連線</a><ul>
-<li><a href="#2-1-clean-session-必須是-true">2.1 Clean session 必須是 true</a></li>
-<li><a href="#2-2-qos-與-retain-是規定死的">2.2 QoS 與 retain 是規定死的</a></li>
+<li><a href="#1-步驟-1-拿到位址與憑證">1. 步驟 1：拿到位址與憑證</a><ul>
+<li><a href="#1-1-三層位址">1.1 三層位址</a></li>
+<li><a href="#1-2-沒有閘道器的設備-自己就是-edge-node">1.2 沒有閘道器的設備：自己就是 edge node</a></li>
+<li><a href="#1-3-允許的字元">1.3 允許的字元</a></li>
 </ul>
 </li>
-<li><a href="#3-payload-protocol-buffers">3. Payload：Protocol Buffers</a><ul>
-<li><a href="#3-1-payload-結構">3.1 Payload 結構</a></li>
+<li><a href="#2-步驟-2-建立-mqtt-連線">2. 步驟 2：建立 MQTT 連線</a><ul>
+</ul>
+</li>
+<li><a href="#3-步驟-3-會組-payload">3. 步驟 3：會組 Payload</a><ul>
+<li><a href="#3-1-payload-與-metric-結構">3.1 Payload 與 Metric 結構</a></li>
 <li><a href="#3-2-資料型別">3.2 資料型別</a></li>
-<li><a href="#3-3-seq-每一則訊息-1">3.3 seq：每一則訊息 +1</a></li>
-<li><a href="#3-4-alias-省頻寬的關鍵">3.4 alias：省頻寬的關鍵</a></li>
+<li><a href="#3-3-seq-每一則-1">3.3 seq：每一則 +1</a></li>
+<li><a href="#3-4-alias-省頻寬">3.4 alias：省頻寬</a></li>
+<li><a href="#3-5-metric-命名空間-zqs-profile">3.5 Metric 命名空間（ZQS profile）</a></li>
 </ul>
 </li>
-<li><a href="#4-訊息型別">4. 訊息型別</a><ul>
-<li><a href="#4-1-連線順序-順序不能換">4.1 連線順序（順序不能換）</a></li>
-<li><a href="#4-2-bdseq-讓死亡對得上出生">4.2 bdSeq：讓死亡對得上出生</a></li>
-<li><a href="#4-3-birth-要帶什麼">4.3 BIRTH 要帶什麼</a></li>
-<li><a href="#4-4-ndata">4.4 NDATA</a></li>
+<li><a href="#4-步驟-4-nbirth">4. 步驟 4：NBIRTH（閘道器出生）</a><ul>
+<li><a href="#4-1-bdseq-讓死亡對得上出生">4.1 bdSeq：讓死亡對得上出生</a></li>
+<li><a href="#4-2-ndata-平台不儲存">4.2 NDATA：平台不儲存</a></li>
 </ul>
 </li>
-<li><a href="#5-metric-命名規則-zqs-profile">5. Metric 命名規則（ZQS profile）</a><ul>
-<li><a href="#5-1-量測值的命名">5.1 量測值的命名</a></li>
-<li><a href="#5-1-1-帶上單位-就會即插即用">5.1.1 帶上單位，就會即插即用</a></li>
-<li><a href="#5-2-上線宣告就是-dbirth">5.2 上線宣告就是 DBIRTH</a></li>
-<li><a href="#5-3-節點層級的-properties">5.3 節點層級的 Properties</a></li>
-<li><a href="#5-4-警報">5.4 警報</a></li>
-<li><a href="#5-5-事件-操作記錄">5.5 事件（操作記錄）</a></li>
-<li><a href="#5-6-只想顯示-不想留存的值">5.6 只想顯示、不想留存的值</a></li>
+<li><a href="#5-步驟-5-dbirth">5. 步驟 5：DBIRTH（設備宣告）</a><ul>
+<li><a href="#5-1-完整-payload-範例-電池">5.1 完整 payload 範例（電池）</a></li>
+<li><a href="#5-2-宣告-可以說-不能做">5.2 宣告「可以說，不能做」</a></li>
+<li><a href="#5-3-帶上單位-就會即插即用">5.3 帶上單位，就會即插即用</a></li>
 </ul>
 </li>
-<li><a href="#6-命令-downlink">6. 命令（downlink）</a><ul>
-<li><a href="#6-1-收到的-dcmd">6.1 收到的 DCMD</a></li>
-<li><a href="#6-2-回覆">6.2 回覆</a></li>
-<li><a href="#6-3-預期行為">6.3 預期行為</a></li>
-<li><a href="#6-4-可用的命令">6.4 可用的命令</a></li>
+<li><a href="#6-步驟-6-ddata-週期回報">6. 步驟 6：DDATA 週期回報</a><ul>
 </ul>
 </li>
-<li><a href="#7-重生-rebirth-唯一的復原路徑">7. 重生（Rebirth）：唯一的復原路徑</a></li>
-<li><a href="#8-主機狀態-state">8. 主機狀態（STATE）</a></li>
-<li><a href="#9-labview-實作要點">9. LabVIEW 實作要點</a><ul>
-<li><a href="#路線-a-現成的-protobuf-toolkit-建議">路線 A：現成的 protobuf toolkit（建議）</a></li>
-<li><a href="#路線-b-手寫編碼器">路線 B：手寫編碼器</a></li>
-<li><a href="#路線-c-先跑通流程再換編碼">路線 C：先跑通流程再換編碼</a></li>
-<li><a href="#9-1-對拍用的參考實作">9.1 對拍用的參考實作</a></li>
-<li><a href="#9-2-其他實作要點">9.2 其他實作要點</a></li>
+<li><a href="#7-步驟-7-告警與事件">7. 步驟 7：告警與事件</a><ul>
+<li><a href="#7-1-告警-alarm-code">7.1 告警 Alarm/&lt;code&gt;</a></li>
+<li><a href="#7-2-事件-event-code">7.2 事件 Event/&lt;code&gt;</a></li>
 </ul>
 </li>
-<li><a href="#10-離線判定-斷線後多久-console-會顯示離線">10. 離線判定：斷線後多久 console 會顯示離線</a><ul>
-<li><a href="#10-1-三條路徑">10.1 三條路徑</a></li>
-<li><a href="#10-2-實際數字">10.2 實際數字</a></li>
-<li><a href="#10-3-離線-與-資料已過期-是兩件事">10.3 「離線」與「資料已過期」是兩件事</a></li>
+<li><a href="#8-步驟-8-接收命令並回覆">8. 步驟 8：接收命令並回覆</a><ul>
+<li><a href="#8-1-收到的-dcmd">8.1 收到的 DCMD</a></li>
+<li><a href="#8-2-回覆-ddata">8.2 回覆（DDATA）</a></li>
+<li><a href="#8-3-設備端必須做的事">8.3 設備端必須做的事</a></li>
+<li><a href="#8-4-設定點有效期與-watchdog-fail-safe">8.4 設定點有效期與 watchdog（fail-safe）</a></li>
 </ul>
 </li>
-<li><a href="#11-username-與-password-是做什麼的">11. Username 與 Password 是做什麼的</a><ul>
-<li><a href="#11-1-用途只有一個">11.1 用途只有一個</a></li>
-<li><a href="#11-2-怎麼發放">11.2 怎麼發放</a></li>
-<li><a href="#11-3-broker-怎麼驗證">11.3 broker 怎麼驗證</a></li>
-<li><a href="#11-4-client-id-pinning-選用">11.4 Client ID pinning（選用）</a></li>
-<li><a href="#11-5-認證失敗時">11.5 認證失敗時</a></li>
-<li><a href="#11-6-與-上線宣告-的關係">11.6 與「上線宣告」的關係</a></li>
+<li><a href="#9-步驟-9-重生">9. 步驟 9：重生（Rebirth）——唯一的復原路徑</a><ul>
 </ul>
 </li>
-<li><a href="#12-表後-behind-the-meter-儲能的內建-metric-key">12. 表後（behind-the-meter）儲能的內建 metric key</a></li>
-<li><a href="#13-驗收工具">13. 驗收工具</a></li>
-<li><a href="#14-沒有硬體時的快速驗證">14. 沒有硬體時的快速驗證</a></li>
+<li><a href="#10-步驟-10-離線與關機">10. 步驟 10：離線與關機</a><ul>
 </ul>
-</div>
-</div></nav>
-<main><article><h1 id="zqs-cloud-裝置通訊協定-sparkplug-b">ZQS Cloud 裝置通訊協定：Sparkplug B<a class="headerlink" href="#zqs-cloud-裝置通訊協定-sparkplug-b" title="Permanent link">¶</a></h1>
-<p>裝置端實作與平台通訊所需的一切。</p>
-<p>本平台遵循 <strong>Eclipse Sparkplug B 規範</strong>（namespace <code>spBv1.0</code>）。這代表兩件事：</p>
-<ul>
-<li>標示「<strong>規範要求</strong>」的部分不是 ZQS 的偏好，是 Sparkplug 規範本身的規定，改不了；</li>
-<li>照著做的設備可以直接接上任何 Sparkplug 主機（Ignition、HiveMQ、Cirrus Link
-  等），不只是這個平台。</li>
+</li>
+<li><a href="#11-步驟-11-驗收">11. 步驟 11：驗收</a><ul>
 </ul>
-<p>伺服器會驗證本文描述的每一個欄位，不符合的一律拒絕，因此請把本文件視為契約。</p>
+</li>
+<li><a href="#附錄-a-內建-metric-key">附錄 A：內建 metric key（表後儲能）</a><ul>
+</ul>
+</li>
+<li><a href="#附錄-b-可用的命令">附錄 B：可用的命令</a><ul>
+</ul>
+</li>
+<li><a href="#附錄-c-離線判定的實際數字">附錄 C：離線判定的實際數字</a><ul>
+</ul>
+</li>
+<li><a href="#附錄-d-帳密與-acl">附錄 D：帳密與 ACL</a><ul>
+</ul>
+</li>
+<li><a href="#附錄-e-主機狀態-state">附錄 E：主機狀態（STATE）</a><ul>
+</ul>
+</li>
+<li><a href="#附錄-f-labview-與手寫編碼器">附錄 F：LabVIEW 與手寫編碼器</a><ul>
+</ul>
+</li>
+<li><a href="#附錄-g-沒有硬體時的快速驗證">附錄 G：沒有硬體時的快速驗證</a><ul>
+</ul>
+</li>
+</ul>
+</div></div></nav>
+<main><article><h1 id="zqs-cloud-裝置通訊協定-sparkplug-b">ZQS Cloud 裝置通訊協定：Sparkplug B（逐步開發指南）<a class="headerlink" href="#zqs-cloud-裝置通訊協定-sparkplug-b" title="Permanent link">¶</a></h1>
+<p>設備／閘道器端從零開始接上平台的完整步驟。<strong>照順序做，每一步都有「要送什麼 payload」與「怎麼驗收」。</strong></p>
+<p>本平台遵循 <strong>Eclipse Sparkplug B 規範</strong>（namespace <code>spBv1.0</code>）：標示「規範要求」的不是 ZQS 的偏好，是規範本身的規定，改不了；照著做的設備可以直接接上任何 Sparkplug 主機（Ignition、HiveMQ、Cirrus Link…）。伺服器會驗證本文的每一個欄位，不符合的一律拒絕，請把本文視為契約。</p>
+<div class="admonition note"><p class="admonition-title">機讀版契約</p>
+<p><code>ProtocalBufferPayload/sparkplug_b.proto</code>（線上位元組格式，Eclipse Tahu 原版）與 <code>ProtocalBufferPayload/zqs_profile.proto</code>（本文所有 metric 名稱、型別、命令與回覆的可機讀對照）。用 protoc 產生你的語言的型別，再對照本文組 payload。該資料夾的 README 有各語言指令。</p></div>
 <hr>
-<div class="admonition note"><p class="admonition-title">給設備端的 .proto</p>
-<p>設備／閘道器需要的 payload 定義集中在 <code>ProtocalBufferPayload/</code>：<code>sparkplug_b.proto</code>（線上位元組格式，Eclipse Tahu 原版）與
-<code>zqs_profile.proto</code>（本文所有 metric 名稱、型別、命令與回覆的可機讀對照，含 W6 設定點有效期）。該資料夾的 README 有各語言的 protoc 指令與最小握手步驟。</p></div>
-<h2 id="1-三層位址">1. 三層位址<a class="headerlink" href="#1-三層位址" title="Permanent link">¶</a></h2>
-<p>Sparkplug 的位址有三層：</p>
-<div class="highlight"><pre><span></span><code>spBv1.0/{group_id}/{訊息型別}/{edge_node_id}/{device_id}
+<h2 id="0-開發總覽">0. 開發總覽<a class="headerlink" href="#0-開發總覽" title="Permanent link">¶</a></h2>
+<p>一台設備從開機到被平台調度，訊息順序如下（順序不能換）：</p>
+<pre class="mermaid">
+sequenceDiagram
+    participant D as 設備 / 閘道器
+    participant B as MQTT broker
+    participant P as ZQS Cloud
+    D->>B: CONNECT（clean session, will = NDEATH{bdSeq}）
+    D->>B: SUBSCRIBE NCMD/{node}, DCMD/{node}/+
+    D->>P: NBIRTH（seq=0, bdSeq, Node Control/Rebirth, Properties/…）
+    D->>P: DBIRTH ×每台設備（宣告 + 全部 metric 目前值）
+    loop 週期（≤ 60 s）
+        D->>P: DDATA（量測值 / 告警 / 事件）
+    end
+    P->>D: DCMD（Command/ID, Name, Expires, 參數）
+    D->>P: DDATA（Command/ID, Command/Status）
+    P->>D: NCMD Node Control/Rebirth=true（序號斷了）
+    D->>P: NBIRTH + 所有 DBIRTH（seq 歸零、bdSeq 不變）
+    D->>P: DDEATH / NDEATH（主動關機才要自己送）
+</pre>
+<div class="table-wrap"><table>
+<thead><tr><th>步驟</th><th>做什麼</th><th>送出／收到的訊息</th><th>驗收</th></tr></thead>
+<tbody>
+<tr><td><a href="#1-步驟-1-拿到位址與憑證">1</a></td><td>拿到 group / node / device id 與帳密</td><td>—</td><td>能拼出 topic</td></tr>
+<tr><td><a href="#2-步驟-2-建立-mqtt-連線">2</a></td><td>連上 broker，遺言在 CONNECT 裡</td><td>CONNECT + will NDEATH</td><td>拔線 ≤ 83 s 顯示離線</td></tr>
+<tr><td><a href="#3-步驟-3-會組-payload">3</a></td><td>會組 protobuf Payload / Metric</td><td>—</td><td>與參考實作對拍位元組</td></tr>
+<tr><td><a href="#4-步驟-4-nbirth">4</a></td><td>宣告節點</td><td>NBIRTH</td><td>console 閘道器上線</td></tr>
+<tr><td><a href="#5-步驟-5-dbirth">5</a></td><td>宣告每台設備與全部 metric</td><td>DBIRTH</td><td>設備上線、宣告待審核</td></tr>
+<tr><td><a href="#6-步驟-6-ddata-週期回報">6</a></td><td>週期回報量測值</td><td>DDATA</td><td>圖表有值、不顯示「資料已過期」</td></tr>
+<tr><td><a href="#7-步驟-7-告警與事件">7</a></td><td>回報故障與操作記錄</td><td>DDATA（Alarm/、Event/）</td><td>告警頁出現／解除、事件頁有紀錄</td></tr>
+<tr><td><a href="#8-步驟-8-接收命令並回覆">8</a></td><td>收命令、執行、回覆；設定點有效期</td><td>DCMD → DDATA（Command/）</td><td>命令頁狀態 succeeded</td></tr>
+<tr><td><a href="#9-步驟-9-重生">9</a></td><td>回應重生要求</td><td>NCMD → NBIRTH + DBIRTH</td><td>驗收工具 rebirth 項通過</td></tr>
+<tr><td><a href="#10-步驟-10-離線與關機">10</a></td><td>主動關機前送死亡訊息</td><td>DDEATH、NDEATH</td><td>≤ 15 s 顯示離線</td></tr>
+<tr><td><a href="#11-步驟-11-驗收">11</a></td><td>跑一致性測試</td><td>—</td><td><code>run_device_test.py</code> 全綠</td></tr>
+</tbody></table></div>
+<p>附錄：<a href="#附錄-a-內建-metric-key">A. 內建 metric key</a>、<a href="#附錄-b-可用的命令">B. 可用的命令</a>、<a href="#附錄-c-離線判定的實際數字">C. 離線判定的實際數字</a>、<a href="#附錄-d-帳密與-acl">D. 帳密與 ACL</a>、<a href="#附錄-e-主機狀態-state">E. 主機狀態 STATE</a>、<a href="#附錄-f-labview-與手寫編碼器">F. LabVIEW 與手寫編碼器</a>、<a href="#附錄-g-沒有硬體時的快速驗證">G. 沒有硬體時的快速驗證</a>。</p>
+<hr>
+
+<h2 id="1-步驟-1-拿到位址與憑證">1. 步驟 1：拿到位址與憑證<a class="headerlink" href="#1-步驟-1-拿到位址與憑證" title="Permanent link">¶</a></h2>
+<h3 id="1-1-三層位址">1.1 三層位址<a class="headerlink" href="#1-1-三層位址" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><code>spBv1.0/{group_id}/{訊息型別}/{edge_node_id}/{device_id}
         └group     └型別      └邊緣節點       └設備
 </code></pre></div>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>層級</th>
-<th>是什麼</th>
-<th>誰決定</th>
-</tr>
-</thead>
+<thead><tr><th>層級</th><th>是什麼</th><th>誰決定</th></tr></thead>
 <tbody>
-<tr>
-<td><code>group_id</code></td>
-<td>你的組織代碼</td>
-<td>平台發放，例如 <code>demo</code></td>
-</tr>
-<tr>
-<td><code>edge_node_id</code></td>
-<td><strong>一條 MQTT 連線</strong></td>
-<td>平台發放</td>
-</tr>
-<tr>
-<td><code>device_id</code></td>
-<td>掛在該連線下的一台設備</td>
-<td>平台發放</td>
-</tr>
-</tbody>
-</table></div>
-<p><strong>最重要的一句話：一條 MQTT 連線 = 一個 edge node。</strong> 不是一台設備一條連線。</p>
-<p>現場典型的樣子是一台 EMS 網關對外講 MQTT、對內講 Modbus，底下掛著電池、電錶、
-變流器。那台網關就是 edge node，底下每一台設備各是一個 <code>device_id</code>：</p>
-<div class="highlight"><pre><span></span><code>EdgeNode  ZQS-GW-0001          ← 一組帳密、一條連線、一個 seq 計數器
+<tr><td><code>group_id</code></td><td>你的組織代碼</td><td>平台發放，例如 <code>demo</code></td></tr>
+<tr><td><code>edge_node_id</code></td><td><strong>一條 MQTT 連線</strong></td><td>平台發放</td></tr>
+<tr><td><code>device_id</code></td><td>掛在該連線下的一台設備</td><td>平台發放</td></tr>
+</tbody></table></div>
+<p><strong>最重要的一句話：一條 MQTT 連線 = 一個 edge node。</strong> 不是一台設備一條連線。現場典型的樣子是一台 EMS 閘道器對外講 MQTT、對內講 Modbus，底下掛著電池、電錶、變流器：</p>
+<div class="highlight"><pre><code>EdgeNode  ZQS-GW-0001          ← 一組帳密、一條連線、一個 seq 計數器
   ├ Device ZQS-BESS-0001
   ├ Device ZQS-METER-0001
   └ Device ZQS-PV-0001
 </code></pre></div>
-<p>設備自己會講 MQTT、直接連上來也可以，作法見 §1.2。</p>
-<blockquote>
-<p><strong>絕對不要讓兩個行程用同一個 <code>edge_node_id</code> 連線。</strong> 它們會共用一個 seq 計數器
-卻各自遞增，主機看到的是永遠對不上的序號；而且 MQTT 會讓後連上的把先連上的
-踢掉，兩邊無限互踢。要跑多個行程，就申請多個 edge node。</p>
-</blockquote>
-<h3 id="1-1-沒有網關的設備怎麼做">1.1 沒有網關的設備怎麼做<a class="headerlink" href="#1-1-沒有網關的設備怎麼做" title="Permanent link">¶</a></h3>
-<p>一台自己會講 MQTT 的設備——例如韌體裡就有 MQTT client 的 PCS、或一台獨立的電錶
-——不需要任何網關。<strong>它自己就是 edge node，同時也是掛在自己底下的那台設備。</strong></p>
-<p>平台在註冊時就會自動建立承載那條連線的節點，所以操作者那邊只是「新增一台設備」，
-不必先建立什麼。你會拿到：</p>
+<blockquote><p><strong>絕對不要讓兩個行程用同一個 <code>edge_node_id</code> 連線。</strong> 它們會共用一個 seq 計數器卻各自遞增，主機看到的是永遠對不上的序號；而且 MQTT 會讓後連上的把先連上的踢掉，兩邊無限互踢。要跑多個行程，就申請多個 edge node。</p></blockquote>
+<h3 id="1-2-沒有閘道器的設備-自己就是-edge-node">1.2 沒有閘道器的設備：自己就是 edge node<a class="headerlink" href="#1-2-沒有閘道器的設備-自己就是-edge-node" title="Permanent link">¶</a></h3>
+<p>一台自己會講 MQTT 的設備（韌體裡就有 MQTT client 的 PCS、獨立電錶）不需要閘道器。<strong>它自己就是 edge node，同時也是掛在自己底下的那台設備。</strong> 平台在 <code>POST /api/devices</code> 註冊時會自動建立承載連線的節點，你會拿到：</p>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>你拿到的東西</th>
-<th>值</th>
-</tr>
-</thead>
+<thead><tr><th>你拿到的東西</th><th>值</th></tr></thead>
 <tbody>
-<tr>
-<td><code>group_id</code></td>
-<td>組織代碼，例如 <code>demo</code></td>
-</tr>
-<tr>
-<td><code>edge_node_id</code></td>
-<td>通常與設備 id 相同</td>
-</tr>
-<tr>
-<td><code>device_id</code></td>
-<td>你的設備 id</td>
-</tr>
-<tr>
-<td>Username</td>
-<td><code>node-&lt;group_id&gt;-&lt;edge_node_id&gt;</code></td>
-</tr>
-<tr>
-<td>Password</td>
-<td>只顯示一次</td>
-</tr>
-</tbody>
-</table></div>
-<p>以 <code>ZQS-BESS-0001</code> 為例，位址是 <code>demo/ZQS-BESS-0001/ZQS-BESS-0001</code>，topic 長這樣：</p>
-<div class="highlight"><pre><span></span><code>spBv1.0/demo/NBIRTH/ZQS-BESS-0001                  ← 節點宣告
-spBv1.0/demo/DBIRTH/ZQS-BESS-0001/ZQS-BESS-0001    ← 設備宣告
-spBv1.0/demo/DDATA/ZQS-BESS-0001/ZQS-BESS-0001     ← 讀值
-spBv1.0/demo/NDEATH/ZQS-BESS-0001                  ← 遺言
-訂閱 spBv1.0/demo/NCMD/ZQS-BESS-0001
-訂閱 spBv1.0/demo/DCMD/ZQS-BESS-0001/+
+<tr><td><code>group_id</code></td><td>組織代碼，例如 <code>demo</code></td></tr>
+<tr><td><code>edge_node_id</code></td><td>通常與設備 id 相同</td></tr>
+<tr><td><code>device_id</code></td><td>你的設備 id</td></tr>
+<tr><td>Username</td><td><code>node-&lt;group_id&gt;-&lt;edge_node_id&gt;</code></td></tr>
+<tr><td>Password</td><td>只顯示一次（用途見附錄 D）</td></tr>
+</tbody></table></div>
+<p>以 <code>ZQS-BESS-0001</code> 為例：</p>
+<div class="highlight"><pre><code>發布  spBv1.0/demo/NBIRTH/ZQS-BESS-0001                  ← 節點宣告
+發布  spBv1.0/demo/DBIRTH/ZQS-BESS-0001/ZQS-BESS-0001    ← 設備宣告
+發布  spBv1.0/demo/DDATA/ZQS-BESS-0001/ZQS-BESS-0001     ← 讀值
+遺言  spBv1.0/demo/NDEATH/ZQS-BESS-0001
+訂閱  spBv1.0/demo/NCMD/ZQS-BESS-0001
+訂閱  spBv1.0/demo/DCMD/ZQS-BESS-0001/+
 </code></pre></div>
-<p><strong>你要做的事跟網關完全一樣，一個步驟都不能省</strong>，只是每一種訊息各只有一則：</p>
-<ol>
-<li>註冊 NDEATH 遺言（帶 <code>bdSeq</code>）</li>
-<li>連線、訂閱 NCMD 與 DCMD</li>
-<li>發 NBIRTH（<code>seq = 0</code>）</li>
-<li>發<strong>一則</strong> DBIRTH</li>
-<li>之後發 DDATA</li>
-</ol>
-<blockquote>
-<p><strong>兩個常見的誤解。</strong></p>
-<p><strong>「我只有一台設備，可以只發 NBIRTH，跳過 DBIRTH 嗎?」</strong> 不行。節點層級的
-讀值（NDATA）平台不儲存——這個系統的資料模型裡沒有「屬於一條連線而不屬於設備」
-的量測。你的讀值必須掛在 device 層，所以必須先有 DBIRTH。</p>
-<p><strong>「兩層 id 一樣，是不是很多餘?」</strong> 在單機的情況下看起來是。但它讓同一份韌體
-在之後被裝到網關後面時完全不用改：位址多了一層，訊息流程一模一樣。</p>
-</blockquote>
-<p>想省事的話，<strong>§14 的模擬器就是照這個模式跑的</strong>，可以直接拿來對照：</p>
-<div class="highlight"><pre><span></span><code>.<span class="se">\s</span>cripts<span class="se">\s</span>im-console.ps1<span class="w">    </span><span class="c1"># 桌面主控台：登記的設備以 MQTT 客戶端上線</span>
-</code></pre></div>
-<h3 id="1-2-允許的字元">1.2 允許的字元<a class="headerlink" href="#1-2-允許的字元" title="Permanent link">¶</a></h3>
-<p>規範保留 <code>+</code>、<code>#</code>、<code>/</code> 給 topic 結構使用。平台再嚴格一點：<code>A-Z a-z 0-9 . _ -</code>，
-長度 3–64 字元。需要百分比編碼才能放進 topic 的 id，是沒有人 grep 得到的 id。</p>
+<p><strong>你要做的事跟閘道器完全一樣，一個步驟都不能省</strong>，只是每種訊息各一則。兩個常見誤解：「只有一台設備能不能只發 NBIRTH？」不行——節點層級的讀值（NDATA）平台不儲存，量測必須掛在 device 層，所以必須有 DBIRTH。「兩層 id 一樣很多餘？」它讓同一份韌體之後裝到閘道器後面時完全不用改。</p>
+<h3 id="1-3-允許的字元">1.3 允許的字元<a class="headerlink" href="#1-3-允許的字元" title="Permanent link">¶</a></h3>
+<p>規範保留 <code>+</code>、<code>#</code>、<code>/</code> 給 topic 結構。平台再嚴一點：<code>A-Z a-z 0-9 . _ -</code>，長度 3–64 字元。</p>
+<p><strong>驗收</strong>：拿到三個 id 與帳密後，先用任何 MQTT 客戶端（例如 mosquitto_sub）以該帳密連上 broker 並訂閱 <code>spBv1.0/{group}/DCMD/{node}/+</code>；被拒就回附錄 D。</p>
 <hr>
-<h2 id="2-連線">2. 連線<a class="headerlink" href="#2-連線" title="Permanent link">¶</a></h2>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>項目</th>
-<th>值</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Protocol</td>
-<td>MQTT 3.1.1 或 5.0</td>
-</tr>
-<tr>
-<td>Broker</td>
-<td>EMQX</td>
-</tr>
-<tr>
-<td>Port</td>
-<td><code>1883</code> 未加密，<code>8883</code> TLS（production 請使用 TLS）</td>
-</tr>
-<tr>
-<td>Client ID</td>
-<td><code>zqs:&lt;edge_node_id&gt;</code> — ACL webhook 可以綁定此值</td>
-</tr>
-<tr>
-<td>Username</td>
-<td>註冊時發放，格式 <code>node-&lt;group_id&gt;-&lt;edge_node_id&gt;</code>，例如 <code>node-demo-ZQS-GW-0001</code></td>
-</tr>
-<tr>
-<td>Password</td>
-<td>註冊時發放，<strong>只顯示一次</strong>。用途見 §11</td>
-</tr>
-<tr>
-<td>Keepalive</td>
-<td>建議 45 s。這個值直接決定斷線多久才被發現，見 §10</td>
-</tr>
-<tr>
-<td><strong>Clean session</strong></td>
-<td><strong><code>true</code>（規範要求）</strong></td>
-</tr>
-<tr>
-<td>QoS</td>
-<td>見 §2.2</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="2-1-clean-session-必須是-true">2.1 Clean session 必須是 true<a class="headerlink" href="#2-1-clean-session-必須是-true" title="Permanent link">¶</a></h3>
-<p>規範禁止保留 session，這一項不是可選的。理由很具體：持久 session 會讓 broker 把
-斷線前排隊的命令在重連後補送，而那時節點已經發過新的 NBIRTH、重新宣告過自己的
-狀態了。那道命令會被套用在一份已經作廢的狀態上。</p>
-<ul>
-<li>MQTT 3.1.1：<code>Clean Session = true</code></li>
-<li>MQTT 5：<code>Clean Start = true</code> 且 <code>Session Expiry Interval = 0</code></li>
-</ul>
-<h3 id="2-2-qos-與-retain-是規定死的">2.2 QoS 與 retain 是規定死的<a class="headerlink" href="#2-2-qos-與-retain-是規定死的" title="Permanent link">¶</a></h3>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>訊息</th>
-<th>QoS</th>
-<th>Retain</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>NBIRTH / DBIRTH</td>
-<td>0</td>
-<td>false</td>
-</tr>
-<tr>
-<td>NDATA / DDATA</td>
-<td>0</td>
-<td>false</td>
-</tr>
-<tr>
-<td>DDEATH</td>
-<td>0</td>
-<td>false</td>
-</tr>
-<tr>
-<td><strong>NDEATH（遺言）</strong></td>
-<td><strong>1</strong></td>
-<td><strong>false</strong></td>
-</tr>
-<tr>
-<td>NCMD / DCMD（主機發）</td>
-<td>0</td>
-<td>false</td>
-</tr>
-<tr>
-<td>STATE（主機發）</td>
-<td>1</td>
-<td><strong>true</strong></td>
-</tr>
-</tbody>
-</table></div>
-<p>兩個看起來奇怪但不是的地方：</p>
-<p><strong>為什麼全是 QoS 0?</strong> Sparkplug 的順序保證來自 payload 裡的 <code>seq</code> 計數器，訊息
-遺失是靠「要求重生」補救，不是靠 broker 重送。QoS 1 買到的是重複訊息，不是安全。</p>
-<p><strong>為什麼遺言不能 retained?</strong> retained 的 NDEATH 會活得比它描述的那次連線更久。
-之後任何訂閱者一連上來就會被告知這個節點死了——即使它早就回來並重新宣告過。</p>
-<hr>
-<h2 id="3-payload-protocol-buffers">3. Payload：Protocol Buffers<a class="headerlink" href="#3-payload-protocol-buffers" title="Permanent link">¶</a></h2>
-<p><strong>Sparkplug B 的 payload 是 Google Protocol Buffers 編碼的，不是 JSON。</strong> 這是
-規範強制的，也是能跟其他 Sparkplug 系統互通的原因。</p>
-<p>schema 檔在 <code>services/sparkplug/sparkplug_b.proto</code>（逐字取自 Eclipse Tahu 專案，
-是規範的一部分）。LabVIEW 端怎麼做見 §9。</p>
-<h3 id="3-1-payload-結構">3.1 Payload 結構<a class="headerlink" href="#3-1-payload-結構" title="Permanent link">¶</a></h3>
-<div class="highlight"><pre><span></span><code><span class="kd">message</span><span class="w"> </span><span class="nc">Payload</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">uint64</span><span class="w"> </span><span class="na">timestamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">   </span><span class="c1">// epoch 毫秒</span>
-<span class="w">  </span><span class="k">repeated</span><span class="w"> </span><span class="n">Metric</span><span class="w"> </span><span class="na">metrics</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">uint64</span><span class="w"> </span><span class="na">seq</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span><span class="w">    </span><span class="c1">// 0–255</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="na">uuid</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">bytes</span><span class="w">  </span><span class="na">body</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span>
-<span class="p">}</span>
 
-<span class="kd">message</span><span class="w"> </span><span class="nc">Metric</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="na">name</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">uint64</span><span class="w"> </span><span class="na">alias</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">uint64</span><span class="w"> </span><span class="na">timestamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">uint32</span><span class="w"> </span><span class="na">datatype</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
-<span class="w">  </span><span class="k">optional</span><span class="w"> </span><span class="kt">bool</span><span class="w">   </span><span class="na">is_null</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="p">;</span>
-<span class="w">  </span><span class="k">oneof</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="kt">uint32</span><span class="w"> </span><span class="na">int_value</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">;</span>
-<span class="w">    </span><span class="kt">uint64</span><span class="w"> </span><span class="na">long_value</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="mi">11</span><span class="p">;</span>
-<span class="w">    </span><span class="kt">float</span><span class="w">  </span><span class="na">float_value</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">12</span><span class="p">;</span>
-<span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="na">double_value</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">13</span><span class="p">;</span>
-<span class="w">    </span><span class="kt">bool</span><span class="w">   </span><span class="na">boolean_value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">14</span><span class="p">;</span>
-<span class="w">    </span><span class="kt">string</span><span class="w"> </span><span class="na">string_value</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span><span class="p">;</span>
-<span class="w">    </span><span class="c1">// ...</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
-<p><code>timestamp</code> 一律是 <strong>epoch 毫秒</strong>。規範只認這一種，不接受秒、微秒或 ISO 字串。</p>
-<p>防護界線：超過<strong>未來 5 分鐘</strong>或早於<strong>過去 7 天</strong>的時間戳記會被拒絕。payload 層的
-時間戳記不合理會整則退回；單一 metric 的時間戳記不合理則只丟掉那一個 metric。</p>
-<h3 id="3-2-資料型別">3.2 資料型別<a class="headerlink" href="#3-2-資料型別" title="Permanent link">¶</a></h3>
-<p><code>datatype</code> 是決定怎麼讀回 <code>oneof</code> 那幾個欄位的唯一依據。填錯的話 −5 °C 會變成
-4294967291。</p>
+<h2 id="2-步驟-2-建立-mqtt-連線">2. 步驟 2：建立 MQTT 連線<a class="headerlink" href="#2-步驟-2-建立-mqtt-連線" title="Permanent link">¶</a></h2>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>值</th>
-<th>型別</th>
-<th>放在哪個欄位</th>
-</tr>
-</thead>
+<thead><tr><th>項目</th><th>值</th></tr></thead>
 <tbody>
-<tr>
-<td>1/2/3</td>
-<td>Int8 / Int16 / Int32</td>
-<td><code>int_value</code>（二補數）</td>
-</tr>
-<tr>
-<td>4</td>
-<td>Int64</td>
-<td><code>long_value</code>（二補數）</td>
-</tr>
-<tr>
-<td>5/6/7</td>
-<td>UInt8 / UInt16 / UInt32</td>
-<td><code>int_value</code></td>
-</tr>
-<tr>
-<td>8</td>
-<td>UInt64</td>
-<td><code>long_value</code></td>
-</tr>
-<tr>
-<td>9</td>
-<td>Float</td>
-<td><code>float_value</code></td>
-</tr>
-<tr>
-<td>10</td>
-<td>Double</td>
-<td><code>double_value</code></td>
-</tr>
-<tr>
-<td>11</td>
-<td>Boolean</td>
-<td><code>boolean_value</code></td>
-</tr>
-<tr>
-<td>12</td>
-<td>String</td>
-<td><code>string_value</code></td>
-</tr>
-<tr>
-<td>13</td>
-<td>DateTime</td>
-<td><code>long_value</code>（epoch 毫秒）</td>
-</tr>
-</tbody>
-</table></div>
-<p><strong>沒有讀值時請設 <code>is_null = true</code></strong>，不要送 0。「感測器沒讀到」和「感測器讀到 0」
-是兩件事，整個能量積分都靠這個區別。</p>
-<h3 id="3-3-seq-每一則訊息-1">3.3 seq：每一則訊息 +1<a class="headerlink" href="#3-3-seq-每一則訊息-1" title="Permanent link">¶</a></h3>
-<p>除了 NDEATH 以外，<strong>每一則</strong>訊息都要帶 <code>seq</code>，從 NBIRTH 的 0 開始，每則加一，到
-255 之後回到 0。</p>
-<p>主機就是靠這個發現訊息遺失的。發現缺號時它會要求重生（§7），不會猜。</p>
-<p>NDEATH 沒有 <code>seq</code>，因為它是 broker 在一個節點無法預知的時間點代發的。</p>
-<blockquote>
-<p><strong>多執行緒的陷阱。</strong> 如果採集迴圈和命令回覆迴圈都會發布，序號的<strong>配置與送出必須
-在同一個鎖裡</strong>。只鎖住計數器是不夠的：兩個執行緒可以拿到 7 和 8，卻以 8、7 的
-順序到達 socket，主機分不出這跟遺失訊息有什麼差別。這是實作 Sparkplug 最常踩的
-坑之一，本專案的參考實作也踩過。</p>
-</blockquote>
-<h3 id="3-4-alias-省頻寬的關鍵">3.4 alias：省頻寬的關鍵<a class="headerlink" href="#3-4-alias-省頻寬的關鍵" title="Permanent link">¶</a></h3>
-<p>BIRTH 時為每個 metric 指派一個數字 <code>alias</code>，之後的 DATA 就<strong>只帶 alias、不帶
-名稱</strong>：</p>
-<div class="highlight"><pre><span></span><code>DBIRTH:  name="battery_soc"  alias=1  datatype=10  double_value=62.0
+<tr><td>Protocol</td><td>MQTT 3.1.1 或 5.0（內建開發 broker 只支援 3.1.1）</td></tr>
+<tr><td>Broker</td><td>EMQX（正式）／<code>manage.py run_broker</code>（開發）</td></tr>
+<tr><td>Port</td><td><code>1883</code> 未加密、<code>8883</code> TLS（正式環境請用 TLS）</td></tr>
+<tr><td>Client ID</td><td><code>zqs:&lt;edge_node_id&gt;</code>（ACL 可綁定此值）</td></tr>
+<tr><td>Username / Password</td><td>步驟 1 拿到的那組，屬於節點不屬於設備</td></tr>
+<tr><td>Keepalive</td><td>建議 <strong>45 s</strong>；直接決定斷線多久被發現（附錄 C）</td></tr>
+<tr><td><strong>Clean session</strong></td><td><strong><code>true</code>（規範要求）</strong>。MQTT 5：Clean Start=true 且 Session Expiry Interval=0</td></tr>
+<tr><td><strong>Will（遺言）</strong></td><td>topic <code>spBv1.0/{group}/NDEATH/{node}</code>、payload = 步驟 3.5 的 NDEATH、<strong>QoS 1、retain false</strong>，<strong>在 CONNECT 封包裡</strong>設定</td></tr>
+</tbody></table></div>
+<p><strong>為什麼 clean session 必須 true</strong>：持久 session 會讓 broker 在重連後補送斷線前排隊的命令，而那時節點已經發過新的 NBIRTH、重新宣告過狀態，那道命令會套在已作廢的狀態上。</p>
+<p><strong>QoS 與 retain 是規定死的</strong>：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>訊息</th><th>QoS</th><th>Retain</th></tr></thead>
+<tbody>
+<tr><td>NBIRTH / DBIRTH / NDATA / DDATA / DDEATH</td><td>0</td><td>false</td></tr>
+<tr><td><strong>NDEATH（遺言）</strong></td><td><strong>1</strong></td><td><strong>false</strong></td></tr>
+<tr><td>NCMD / DCMD（主機發）</td><td>0</td><td>false</td></tr>
+<tr><td>STATE（主機發）</td><td>1</td><td>true</td></tr>
+</tbody></table></div>
+<p>全是 QoS 0 是因為順序保證來自 payload 的 <code>seq</code>，遺失靠「要求重生」補救；QoS 1 買到的是重複訊息，不是安全。遺言不能 retained，否則它會活得比那次連線更久，節點回來後任何新訂閱者仍會被告知它死了。</p>
+<p><strong>連線後立刻做的事（順序固定）</strong>：</p>
+<ol>
+<li>訂閱 <code>spBv1.0/{group}/NCMD/{node}</code> 與 <code>spBv1.0/{group}/DCMD/{node}/+</code>——<strong>先訂閱再宣告</strong>，否則空檔進來的命令會漏。</li>
+<li>發 NBIRTH（步驟 4），<code>seq=0</code>。</li>
+<li>每台設備發 DBIRTH（步驟 5）。</li>
+<li>之後才允許 DDATA。</li>
+</ol>
+<blockquote><p><strong>在 NBIRTH 出去之前不可以發布任何東西。</strong> 實務上第一則 DDATA 很容易跟 birth 搶跑，因為多數 MQTT 函式庫的「已連線」回呼跑在另一個執行緒；結果是 seq 變成 0、0、1，主機一連上就判定序號有問題。</p></blockquote>
+<p><strong>重連</strong>：認證失敗不要密集重連（密碼不會自己修好，broker 會限流），用 1–60 s exponential backoff 加 jitter；每次重連 <code>bdSeq</code> +1、重新走步驟 2→5。</p>
+<p><strong>驗收</strong>：連上後直接拔網路線，console 應在 ≤ 83 s 內把閘道器標成離線（遺言生效）。若要 180 s 以上才離線，代表遺言沒有在 CONNECT 裡設定。</p>
+<hr>
+
+<h2 id="3-步驟-3-會組-payload">3. 步驟 3：會組 Payload<a class="headerlink" href="#3-步驟-3-會組-payload" title="Permanent link">¶</a></h2>
+<p><strong>Sparkplug B 的 payload 是 Protocol Buffers，不是 JSON</strong>（規範強制，也是能與其他 Sparkplug 系統互通的原因）。schema 在 <code>ProtocalBufferPayload/sparkplug_b.proto</code>。</p>
+<h3 id="3-1-payload-與-metric-結構">3.1 Payload 與 Metric 結構<a class="headerlink" href="#3-1-payload-與-metric-結構" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><code>message Payload {
+  optional uint64 timestamp = 1;   // epoch 毫秒（UTC）
+  repeated Metric metrics  = 2;
+  optional uint64 seq      = 3;    // 0–255，每則 +1
+  optional string uuid     = 4;
+  optional bytes  body     = 5;
+}
+
+message Metric {
+  optional string name      = 1;   // BIRTH 必填；DATA 可只帶 alias
+  optional uint64 alias     = 2;
+  optional uint64 timestamp = 3;   // 取樣時間，省略則沿用 payload.timestamp
+  optional uint32 datatype  = 4;   // 見 3.2
+  optional bool   is_historical = 5;
+  optional bool   is_transient  = 6;   // 顯示、評估告警，但不入庫
+  optional bool   is_null       = 7;   // 沒有讀值時設 true，不要送 0
+  optional MetaData    metadata   = 8;
+  optional PropertySet properties = 9; // unit、severity、message、level…（見 5.3、7）
+  oneof value {
+    uint32 int_value     = 10;
+    uint64 long_value    = 11;
+    float  float_value   = 12;
+    double double_value  = 13;
+    bool   boolean_value = 14;
+    string string_value  = 15;
+    bytes  bytes_value   = 16;
+    // DataSet / Template / extension 本平台不使用
+  }
+}
+</code></pre></div>
+<p><code>timestamp</code> 一律 <strong>epoch 毫秒</strong>；超過未來 5 分鐘或早於過去 7 天會被拒絕——payload 層不合理整則退回，單一 metric 不合理只丟那一個。</p>
+<h3 id="3-2-資料型別">3.2 資料型別<a class="headerlink" href="#3-2-資料型別" title="Permanent link">¶</a></h3>
+<p><code>datatype</code> 是決定怎麼讀 <code>oneof</code> 的唯一依據，填錯 −5 °C 會變 4294967291。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>值</th><th>型別</th><th>放在哪個欄位</th></tr></thead>
+<tbody>
+<tr><td>1/2/3</td><td>Int8 / Int16 / Int32</td><td><code>int_value</code>（二補數）</td></tr>
+<tr><td>4</td><td>Int64</td><td><code>long_value</code>（二補數）</td></tr>
+<tr><td>5/6/7</td><td>UInt8 / UInt16 / UInt32</td><td><code>int_value</code></td></tr>
+<tr><td>8</td><td>UInt64</td><td><code>long_value</code></td></tr>
+<tr><td>9</td><td>Float</td><td><code>float_value</code></td></tr>
+<tr><td>10</td><td>Double</td><td><code>double_value</code></td></tr>
+<tr><td>11</td><td>Boolean</td><td><code>boolean_value</code></td></tr>
+<tr><td>12</td><td>String</td><td><code>string_value</code></td></tr>
+<tr><td>13</td><td>DateTime</td><td><code>long_value</code>（epoch 毫秒）</td></tr>
+</tbody></table></div>
+<p><strong>沒有讀值時設 <code>is_null = true</code>，不要送 0。</strong>「沒讀到」和「讀到 0」是兩件事，整個能量積分都靠這個區別。</p>
+<h3 id="3-3-seq-每一則-1">3.3 seq：每一則 +1<a class="headerlink" href="#3-3-seq-每一則-1" title="Permanent link">¶</a></h3>
+<p>除了 NDEATH，<strong>每一則</strong>訊息都帶 <code>seq</code>：NBIRTH 為 0，之後每則 +1，255 後回 0。主機靠它發現遺失，發現缺號就要求重生（步驟 9），不會猜。</p>
+<blockquote><p><strong>多執行緒的陷阱。</strong> 採集迴圈與命令回覆迴圈都會發布時，<strong>序號的配置與送出必須在同一個鎖裡</strong>。只鎖計數器不夠：兩個執行緒拿到 7 和 8，卻以 8、7 的順序到達 socket，主機分不出這和遺失有什麼差別。本專案的參考實作也踩過。</p></blockquote>
+<h3 id="3-4-alias-省頻寬">3.4 alias：省頻寬<a class="headerlink" href="#3-4-alias-省頻寬" title="Permanent link">¶</a></h3>
+<p>BIRTH 時為每個 metric 指派數字 <code>alias</code>，之後 DATA <strong>只帶 alias 不帶名稱</strong>：</p>
+<div class="highlight"><pre><code>DBIRTH:  name="battery_soc"  alias=1  datatype=10  double_value=62.0
 DDATA:                       alias=1              double_value=78.5
 </code></pre></div>
-<p>alias 在節點內（node metric）或設備內（device metric）唯一。</p>
-<p>沒指派 alias 也能運作，平台照收，只是每則訊息都要重複完整名稱——Sparkplug 省
-頻寬的效果就沒了。</p>
-<hr>
-<h2 id="4-訊息型別">4. 訊息型別<a class="headerlink" href="#4-訊息型別" title="Permanent link">¶</a></h2>
+<p>alias 在節點內（node metric）或設備內（device metric）唯一。沒指派也能運作，只是每則都要重複完整名稱。</p>
+<h3 id="3-5-metric-命名空間-zqs-profile">3.5 Metric 命名空間（ZQS profile）<a class="headerlink" href="#3-5-metric-命名空間-zqs-profile" title="Permanent link">¶</a></h3>
+<p>Sparkplug 規定 topic、編碼與狀態機，<strong>刻意不規定 metric 叫什麼</strong>。以下是本平台的約定，之後每個步驟都會用到：</p>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>型別</th>
-<th>方向</th>
-<th>什麼時候</th>
-</tr>
-</thead>
+<thead><tr><th>前綴</th><th>意義</th><th>出現在</th></tr></thead>
 <tbody>
-<tr>
-<td><code>NBIRTH</code></td>
-<td>上行</td>
-<td>連線後<strong>第一則</strong>。宣告節點，<code>seq</code> 歸零</td>
-</tr>
-<tr>
-<td><code>NDEATH</code></td>
-<td>上行</td>
-<td>註冊為遺言。節點失聯時由 broker 代發</td>
-</tr>
-<tr>
-<td><code>NDATA</code></td>
-<td>上行</td>
-<td>節點層級的數值（本平台不儲存，見 §4.4）</td>
-</tr>
-<tr>
-<td><code>DBIRTH</code></td>
-<td>上行</td>
-<td>每台設備一則，宣告它提供的所有 metric</td>
-</tr>
-<tr>
-<td><code>DDEATH</code></td>
-<td>上行</td>
-<td>某台設備失聯，但節點還在</td>
-</tr>
-<tr>
-<td><code>DDATA</code></td>
-<td>上行</td>
-<td>設備的量測值、警報、事件、命令回覆</td>
-</tr>
-<tr>
-<td><code>NCMD</code></td>
-<td>下行</td>
-<td>主機寫入節點層級的可寫 metric</td>
-</tr>
-<tr>
-<td><code>DCMD</code></td>
-<td>下行</td>
-<td>主機寫入設備層級的可寫 metric</td>
-</tr>
-<tr>
-<td><code>STATE</code></td>
-<td>主機發</td>
-<td>主機自己的死活，見 §8</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="4-1-連線順序-順序不能換">4.1 連線順序（順序不能換）<a class="headerlink" href="#4-1-連線順序-順序不能換" title="Permanent link">¶</a></h3>
-<ol>
-<li>準備 NDEATH payload（帶 <code>bdSeq</code>），在 <strong>CONNECT 封包裡</strong>註冊為遺言。連上之後
-   才設的遺言，broker 從來沒收到過。</li>
-<li>連線。</li>
-<li><strong>訂閱</strong> <code>spBv1.0/{group}/NCMD/{node}</code> 與 <code>spBv1.0/{group}/DCMD/{node}/+</code>。
-   先訂閱再宣告，否則中間空檔進來的命令會漏掉。</li>
-<li>發布 <strong>NBIRTH</strong>（<code>seq = 0</code>，帶 <code>bdSeq</code>，帶 <code>Node Control/Rebirth</code>）。</li>
-<li>每台設備各發一則 <strong>DBIRTH</strong>。</li>
-<li>之後才開始發 DDATA。</li>
-</ol>
-<blockquote>
-<p><strong>在 NBIRTH 出去之前不可以發布任何東西。</strong> 這不只是規範問題：實務上第一則 DDATA
-很容易跟 birth 搶跑，因為多數 MQTT 函式庫的「已連線」回呼跑在另一個執行緒上。
-結果是 seq 變成 0、0、1，主機一連上就判定序號有問題。</p>
-</blockquote>
-<h3 id="4-2-bdseq-讓死亡對得上出生">4.2 bdSeq：讓死亡對得上出生<a class="headerlink" href="#4-2-bdseq-讓死亡對得上出生" title="Permanent link">¶</a></h3>
-<p><code>bdSeq</code> 是一個 metric，<strong>每次連線加一</strong>（0–255 循環），同時出現在 NBIRTH 和 NDEATH
-裡，而且兩者的值必須相同。</p>
-<p>它解決的問題是：一則姍姍來遲的遺言，可能在節點已經重連之後才被處理。平台比對
-<code>bdSeq</code>，發現這則死亡屬於一個已經被取代的 session，就會忽略它——否則剛回來的節點
-會被自己上一次的遺言打死。</p>
-<div class="highlight"><pre><span></span><code>NBIRTH  bdSeq=5   ← 這次連線
+<tr><td><code>Properties/…</code></td><td>身分與中繼資料（韌體、型號、座標）</td><td>NBIRTH、DBIRTH</td></tr>
+<tr><td><code>Capabilities/…</code></td><td>設備宣稱能做什麼</td><td>DBIRTH</td></tr>
+<tr><td><code>Ratings/…</code></td><td>銘牌額定值</td><td>DBIRTH</td></tr>
+<tr><td><code>Alarm/&lt;code&gt;</code></td><td>故障，Boolean：true 發生、false 解除</td><td>DDATA（DBIRTH 帶作用中的）</td></tr>
+<tr><td><code>Event/&lt;code&gt;</code></td><td>操作記錄，String</td><td>DDATA</td></tr>
+<tr><td><code>Command/…</code></td><td>命令關聯</td><td>DCMD 下行、DDATA 回覆</td></tr>
+<tr><td><code>Node Control/…</code></td><td>規範定義的節點可寫控制（Rebirth）</td><td>NBIRTH、NCMD</td></tr>
+<tr><td><code>Device Control/…</code></td><td>設備可寫控制</td><td>DBIRTH、DCMD</td></tr>
+<tr><td>其他</td><td><strong>量測值</strong>，進時序資料庫</td><td>DBIRTH、DDATA</td></tr>
+</tbody></table></div>
+<p>量測值名稱用小寫 <code>snake_case</code>（<code>battery_soc</code>、<code>grid_power_w</code>）。<code>Battery/SOC</code>、<code>Battery SOC</code> 都會正規化成同一個 key，但同一台設備請固定一種。內建 key 見附錄 A。</p>
+<p><strong>驗收</strong>：用你的編碼器組一則「單一 double metric 的 DDATA」，與參考實作（<code>services/sparkplug/payload.py</code>，或附錄 F 的逐位元組範例）比對位元組完全一致。</p>
+<hr>
+
+<h2 id="4-步驟-4-nbirth">4. 步驟 4：NBIRTH（閘道器出生）<a class="headerlink" href="#4-步驟-4-nbirth" title="Permanent link">¶</a></h2>
+<p>Topic <code>spBv1.0/{group}/NBIRTH/{node}</code>，連線後<strong>第一則</strong>訊息，<code>seq = 0</code>。完整 payload：</p>
+<div class="highlight"><pre><code>Payload.timestamp = now_ms
+Payload.seq       = 0
+metrics:
+  bdSeq                  Int64    5          ← 必填（規範）。每次連線 +1（0–255 循環），與遺言相同
+  Node Control/Rebirth   Boolean  false      ← 必填（規範）。宣告可接受重生要求
+  Properties/Firmware    String   "2.1.4"    ← 以下選填
+  Properties/Hardware    String   "GW-500 rev C"
+  Properties/IP          String   "10.20.30.40"
+  Properties/RSSI        Int32    -63
+</code></pre></div>
+<h3 id="4-1-bdseq-讓死亡對得上出生">4.1 bdSeq：讓死亡對得上出生<a class="headerlink" href="#4-1-bdseq-讓死亡對得上出生" title="Permanent link">¶</a></h3>
+<p><code>bdSeq</code> 同時出現在 NBIRTH 和 NDEATH（遺言）裡，值必須相同。它解決的是：一則姍姍來遲的遺言可能在節點已重連後才被處理；平台比對 <code>bdSeq</code>，發現這則死亡屬於已被取代的 session 就忽略——否則剛回來的節點會被自己上一次的遺言打死。</p>
+<div class="highlight"><pre><code>NBIRTH  bdSeq=5   ← 這次連線
 NDEATH  bdSeq=5   ← 遺言，對應同一次
 </code></pre></div>
-<h3 id="4-3-birth-要帶什麼">4.3 BIRTH 要帶什麼<a class="headerlink" href="#4-3-birth-要帶什麼" title="Permanent link">¶</a></h3>
-<p>DBIRTH 的定義是「這台設備提供的<strong>全部</strong> metric」，不是抽樣。而且要帶<strong>當下的
-數值</strong>，不只是型別——主機剛連上就有東西可以顯示。</p>
-<p>BIRTH 沒列出的 alias 會被平台刪除。這是刻意的：出生宣告是完整清單，沒被列到的就是
-已經退役了，留著它會讓舊的對應表去解讀新的訊息。</p>
-<h3 id="4-4-ndata">4.4 NDATA<a class="headerlink" href="#4-4-ndata" title="Permanent link">¶</a></h3>
-<p>平台接受但不儲存節點層級的量測值。這個系統的資料模型裡沒有「屬於一條連線而不屬於
-設備」的量測。節點的韌體版本、IP 這類資訊請放在 NBIRTH 的 <code>Properties/</code> metric 裡
-（§5.3）。</p>
+<h3 id="4-2-ndata-平台不儲存">4.2 NDATA：平台不儲存<a class="headerlink" href="#4-2-ndata-平台不儲存" title="Permanent link">¶</a></h3>
+<p>節點層級的量測值平台接受但不儲存——資料模型裡沒有「屬於一條連線而不屬於設備」的量測。節點的韌體、IP 放在 NBIRTH 的 <code>Properties/</code>。</p>
+<p><strong>驗收</strong>：console「設備」頁的閘道器變成上線；驗收工具檢查「NBIRTH seq 是否為 0、bdSeq 是否與遺言一致、是否宣告 Node Control/Rebirth」。</p>
 <hr>
-<h2 id="5-metric-命名規則-zqs-profile">5. Metric 命名規則（ZQS profile）<a class="headerlink" href="#5-metric-命名規則-zqs-profile" title="Permanent link">¶</a></h2>
-<p>Sparkplug 規定 topic、編碼與狀態機，但<strong>刻意不規定 metric 叫什麼</strong>。以下是本平台的
-約定。</p>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>前綴</th>
-<th>意義</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Properties/…</code></td>
-<td>身分與中繼資料（韌體、型號、座標）</td>
-</tr>
-<tr>
-<td><code>Capabilities/…</code></td>
-<td>設備宣稱自己能做什麼</td>
-</tr>
-<tr>
-<td><code>Ratings/…</code></td>
-<td>銘牌額定值</td>
-</tr>
-<tr>
-<td><code>Alarm/&lt;code&gt;</code></td>
-<td>故障，boolean：true 觸發、false 解除</td>
-</tr>
-<tr>
-<td><code>Event/&lt;code&gt;</code></td>
-<td>操作記錄，string</td>
-</tr>
-<tr>
-<td><code>Command/…</code></td>
-<td>命令關聯，見 §6</td>
-</tr>
-<tr>
-<td><code>Node Control/…</code></td>
-<td>規範定義的節點可寫控制</td>
-</tr>
-<tr>
-<td><code>Device Control/…</code></td>
-<td>設備可寫控制</td>
-</tr>
-<tr>
-<td>其他</td>
-<td><strong>量測值</strong>，進時序資料庫</td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="5-1-量測值的命名">5.1 量測值的命名<a class="headerlink" href="#5-1-量測值的命名" title="Permanent link">¶</a></h3>
-<p>平台的 metric 目錄用小寫 <code>snake_case</code>（<code>battery_soc</code>、<code>grid_power_w</code>）。
-<code>Battery/SOC</code>、<code>battery_soc</code>、<code>Battery SOC</code> 都會正規化成同一個 key，所以兩種寫法
-都行——但同一台設備請固定用一種。</p>
-<p>內建的 metric key 清單見 §12。</p>
-<h3 id="5-1-1-帶上單位-就會即插即用">5.1.1 帶上單位，就會即插即用<a class="headerlink" href="#5-1-1-帶上單位-就會即插即用" title="Permanent link">¶</a></h3>
-<p>在 DBIRTH 的每個量測 metric 上加一個 <code>unit</code> property：</p>
-<div class="highlight"><pre><span></span><code>name       = "stack_voltage_v"
-alias      = 7
-datatype   = Double
-properties = { unit: "V" }
+
+<h2 id="5-步驟-5-dbirth">5. 步驟 5：DBIRTH（設備宣告）<a class="headerlink" href="#5-步驟-5-dbirth" title="Permanent link">¶</a></h2>
+<p>Topic <code>spBv1.0/{group}/DBIRTH/{node}/{device}</code>，每台設備一則。DBIRTH 的定義是「這台設備提供的<strong>全部</strong> metric」，不是抽樣，而且每個都要帶<strong>當下的數值</strong>——主機剛連上就有東西可顯示。BIRTH 沒列出的 alias 會被平台刪除（出生宣告是完整清單，沒列到的就是退役了）。</p>
+<h3 id="5-1-完整-payload-範例-電池">5.1 完整 payload 範例（電池）<a class="headerlink" href="#5-1-完整-payload-範例-電池" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><code>Payload.timestamp = now_ms
+Payload.seq       = 1                               ← 接在 NBIRTH 之後
+metrics:
+  # ---- 宣告：身分（Properties/）--------------------------------------------
+  Properties/Schema Version    Int32    1            ← 選填；省略 = 目前版本
+  Properties/Category          String   "battery"    ← 必填；驗收後不可變更
+  Properties/Manufacturer      String   "Acme Power"
+  Properties/Model             String   "PCS-50K"
+  Properties/Serial Number     String   "SN-2026-000123"
+  Properties/Firmware          String   "1.8.2"
+  Properties/Latitude          Double   25.0339      ← 選填；提供會覆蓋場域座標
+  Properties/Longitude         Double   121.5645
+  Properties/Address           String   "台北市信義路五段 7 號"
+  # ---- 宣告：能力（Capabilities/）-------------------------------------------
+  Capabilities/Can Charge      Boolean  true
+  Capabilities/Can Discharge   Boolean  true
+  Capabilities/Can Export      Boolean  true
+  Capabilities/Is Dispatchable Boolean  true
+  # ---- 宣告：額定（Ratings/）-----------------------------------------------
+  Ratings/Rated Power kW       Double   50.0
+  Ratings/Rated Energy kWh     Double   100.0
+  Ratings/Min SOC Percent      Double   10.0
+  Ratings/Max SOC Percent      Double   90.0
+  # ---- 可寫控制 ---------------------------------------------------------
+  Device Control/Rebirth       Boolean  false
+  # ---- 量測值：全部，帶 alias、單位與目前值 --------------------------------
+  battery_power_w        alias=1  Double   -12000.0   properties={unit:"W"}
+  battery_soc            alias=2  Double   62.0       properties={unit:"%"}
+  battery_soh            alias=3  Double   98.4       properties={unit:"%"}
+  battery_voltage_v      alias=4  Double   801.2      properties={unit:"V"}
+  battery_current_a      alias=5  Double   -15.0      properties={unit:"A"}
+  battery_temperature_c  alias=6  Double   28.5       properties={unit:"degC"}
+  battery_charge_energy_kwh     alias=7  Double 1234.5  properties={unit:"kWh"}   ← 累計 → 自動視為 counter
+  battery_discharge_energy_kwh  alias=8  Double 1100.2  properties={unit:"kWh"}
+  pcs_state              alias=9  String   "charge"   properties={kind:"state"}
+  pcs_temperature_c      alias=10 Double   41.0       properties={unit:"degC"}
+  # ---- 目前作用中的告警（讓平台重生後狀態一致）------------------------------
+  Alarm/A0007            Boolean  true    properties={severity:"major", message:"PCS over temperature"}
 </code></pre></div>
-<p>平台看到一個目錄裡沒有的 key 時，<strong>會直接用出生宣告把它建起來</strong>：單位、資料型別、
-彙總方式全部從宣告推出來。結果是一台從來沒有人設定過的設備，一連上來圖表就有座標
-軸標籤，不需要任何前置作業。</p>
-<p>可用的 property：</p>
+<p><code>Properties/Category</code> 的值：<code>battery</code>、<code>pcs</code>、<code>generation</code>、<code>meter</code>、<code>load</code>、<code>generator</code>、<code>ev_charger</code>、<code>controller</code>、<code>sensor</code>、<code>gateway</code>。</p>
+<h3 id="5-2-宣告-可以說-不能做">5.2 宣告「可以說，不能做」<a class="headerlink" href="#5-2-宣告-可以說-不能做" title="Permanent link">¶</a></h3>
+<p><strong>宣告的值不會自動生效。</strong> 伺服器把宣告原封不動存起來、與目前設定比對差異，等管理者在 console 上接受或拒絕。在被接受之前，它完全不影響這台設備被允許執行哪些命令——一台被入侵的機器無法靠改口宣告替自己解鎖充電權限。內容與上次相同不會重複產生待審核項目，所以每次重連都發是安全的（而重連會很頻繁地重發 BIRTH）。</p>
+<p><code>Properties/Schema Version</code> 是 profile 的版本（metric 的名字就是 schema）；填了平台不認得的版本，宣告會被記錄然後忽略。</p>
+<h3 id="5-3-帶上單位-就會即插即用">5.3 帶上單位，就會即插即用<a class="headerlink" href="#5-3-帶上單位-就會即插即用" title="Permanent link">¶</a></h3>
+<p>在每個量測 metric 的 <code>properties</code> 帶 <code>unit</code>，平台看到目錄裡沒有的 key 時會直接用出生宣告把它建起來：單位、資料型別、彙總方式全部推出來，一台從沒設定過的設備連上來圖表就有座標軸。可用的 property：</p>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>property</th>
-<th>作用</th>
-</tr>
-</thead>
+<thead><tr><th>property</th><th>作用</th></tr></thead>
 <tbody>
-<tr>
-<td><code>unit</code></td>
-<td>單位字串，例如 <code>W</code>、<code>kWh</code>、<code>degC</code>、<code>%</code></td>
-</tr>
-<tr>
-<td><code>kind</code></td>
-<td><code>gauge</code>（預設）、<code>counter</code>、<code>state</code></td>
-</tr>
-<tr>
-<td><code>description</code></td>
-<td>說明文字</td>
-</tr>
-<tr>
-<td><code>display_name</code></td>
-<td>顯示名稱，省略時用 metric 名稱</td>
-</tr>
-<tr>
-<td><code>counter_max</code></td>
-<td>累計值溢位翻轉的上限，知道的話請填</td>
-</tr>
-</tbody>
-</table></div>
-<p>兩個推論規則值得知道：</p>
+<tr><td><code>unit</code></td><td>單位字串：<code>W</code>、<code>kWh</code>、<code>degC</code>、<code>%</code>…</td></tr>
+<tr><td><code>kind</code></td><td><code>gauge</code>（預設）、<code>counter</code>、<code>state</code></td></tr>
+<tr><td><code>description</code></td><td>說明文字</td></tr>
+<tr><td><code>display_name</code></td><td>顯示名稱</td></tr>
+<tr><td><code>counter_max</code></td><td>累計值溢位翻轉的上限，知道就填（回捲時平台記 null 而不是負值）</td></tr>
+</tbody></table></div>
 <ul>
-<li>單位是 <code>kWh</code>、<code>Wh</code>、<code>m3</code> 這類累計單位時，<strong>自動視為 counter</strong>（取差值而不是積
-  分）。搞錯這個會讓能量數字整個錯掉，而單位是出生宣告裡唯一的線索。想推翻就明確
-  填 <code>kind</code>。</li>
-<li>單位是 <code>%</code> 或 <code>degC</code> 時會套用一個寬鬆的合理範圍，超出的讀值照存但標記為可疑。</li>
+<li>單位是 <code>kWh</code>、<code>Wh</code>、<code>m3</code> 這類累計單位時<strong>自動視為 counter</strong>（取差值不積分）；要推翻就明填 <code>kind</code>。</li>
+<li>單位是 <code>%</code> 或 <code>degC</code> 會套用寬鬆的合理範圍，超出的照存但標記可疑。</li>
+<li><strong>這只建立標籤，不授予權限</strong>；已存在的 metric 定義永遠不會被覆蓋。</li>
 </ul>
-<p><strong>這只會建立標籤，不會授予任何權限。</strong> 已經存在的 metric 定義<strong>永遠不會被覆蓋</strong>
-——否則一次韌體更新就能悄悄改掉一堆告警規則所依賴的 metric。能力與額定值仍然走
-§5.2 的宣告流程，要人在 console 上接受。</p>
-<h3 id="5-2-上線宣告就是-dbirth">5.2 上線宣告就是 DBIRTH<a class="headerlink" href="#5-2-上線宣告就是-dbirth" title="Permanent link">¶</a></h3>
-<p>設備的自我宣告不需要額外的欄位或訊息：BIRTH 本來就定義為「這台設備提供的全部
-東西」，宣告直接就是其中幾個 metric。</p>
-<div class="highlight"><pre><span></span><code>Properties/Schema Version    Int32    1          （選填，見下）
-Properties/Category          String   "battery"
-Properties/Manufacturer      String   "Acme Power"
-Properties/Model             String   "PCS-50K"
-Properties/Serial Number     String   "SN-2026-000123"
-Capabilities/Can Charge      Boolean  true
-Capabilities/Can Discharge   Boolean  true
-Capabilities/Can Export      Boolean  true
-Capabilities/Is Dispatchable Boolean  true
-Ratings/Rated Power kW       Double   50.0
-Ratings/Rated Energy kWh     Double   100.0
-Ratings/Min SOC Percent      Double   10.0
-Ratings/Max SOC Percent      Double   90.0
+<p><strong>驗收</strong>：console 設備頁顯示上線且量測值有數字；「設備宣告」出現待審核項目；管理者接受後能力旗標生效。驗收工具檢查「BIRTH 有沒有指派 alias」。</p>
+<hr>
+
+<h2 id="6-步驟-6-ddata-週期回報">6. 步驟 6：DDATA 週期回報<a class="headerlink" href="#6-步驟-6-ddata-週期回報" title="Permanent link">¶</a></h2>
+<p>Topic <code>spBv1.0/{group}/DDATA/{node}/{device}</code>。只送有變化或到時間的 metric，可只帶 alias：</p>
+<div class="highlight"><pre><code>Payload.timestamp = now_ms
+Payload.seq       = 7
+metrics:
+  alias=1   Double  -11800.0        ← battery_power_w
+  alias=2   Double  62.3            ← battery_soc
+  alias=6   Double  28.7            ← battery_temperature_c
+  alias=4   is_null=true            ← 這一筆沒讀到：送 null，不送 0
 </code></pre></div>
-<p><code>Properties/Schema Version</code> 是選填的。metric 的<strong>名字</strong>就是 schema，而名字是這份
-profile 定義的，所以版本屬於 profile 而不是設備。省略代表「用目前這一版」；填了一個
-平台不認得的版本，宣告會被記錄下來然後忽略——因為那代表同樣的名字在對方那裡可能是
-別的意思。</p>
-<p><strong>這些值不會自動生效。</strong> 伺服器把宣告原封不動存起來、與目前設定比對差異，然後等待
-管理者在 console 上接受或拒絕。在被接受之前，它完全不影響這台設備被允許執行哪些
-命令——一台被入侵的機器無法靠改口宣告替自己解鎖充電權限。</p>
-<p>宣告內容與上次完全相同時不會重複產生待審核項目，所以每次重連都發是安全的——而
-重連會相當頻繁地重發 BIRTH，這一點很重要。</p>
-<h3 id="5-3-節點層級的-properties">5.3 節點層級的 Properties<a class="headerlink" href="#5-3-節點層級的-properties" title="Permanent link">¶</a></h3>
-<p>放在 NBIRTH 裡：</p>
-<div class="highlight"><pre><span></span><code>Properties/Firmware  String  "2.1.4"
-Properties/Hardware  String  "GW-500 rev C"
-Properties/IP        String  "10.20.30.40"
-Properties/RSSI      Int32   -63
-</code></pre></div>
-<p>設備層級的位置資訊放在 DBIRTH 裡：</p>
-<div class="highlight"><pre><span></span><code>Properties/Latitude   Double  25.0339
-Properties/Longitude  Double  121.5645
-Properties/Address    String  "台北市信義路五段 7 號"
-</code></pre></div>
-<p>提供 <code>Latitude</code>/<code>Longitude</code> 會覆蓋地圖上場域本身的座標。</p>
-<h3 id="5-4-警報">5.4 警報<a class="headerlink" href="#5-4-警報" title="Permanent link">¶</a></h3>
-<p><code>Alarm/&lt;code&gt;</code>，Boolean。true 觸發，false 解除。嚴重度與訊息放在 metric 的
-<code>properties</code> 裡：</p>
-<div class="highlight"><pre><span></span><code>name       = "Alarm/E0500"
+<p><strong>規則</strong>：</p>
+<ul>
+<li><strong>至少每 60 s 送一則 DDATA 當心跳</strong>，即使數值沒變。任何上行都會重置「資料已過期」計時器（180 s）；只在變化時才發布的設備在穩態下會被標成資料已過期。伺服器端的 recording policy 決定哪些讀值真的入庫，高頻發布不會塞爆資料庫——不要為了省空間在設備端節流。</li>
+<li>累計計數器（kWh）送<strong>絕對累計值</strong>，不要送差值；回捲由平台依 <code>counter_max</code> 處理。</li>
+<li>只想顯示、不想留存的瞬間值設 <code>is_transient = true</code>。</li>
+<li>正負號約定（附錄 A）：<code>grid_power_w</code> + 購電 − 逆送；<code>battery_power_w</code> + 放電 − 充電。硬體相反請在平台的能源資產上設「Invert sign」，不要改韌體。</li>
+<li><strong>關口電表停電時</strong>把 <code>grid_voltage_v</code>、<code>grid_frequency_hz</code> 如實回報為 0，不要用最後有效值填補；平台以「電壓低於方案門檻且持續 N 秒」判定停電，停電期間不下設定點，孤島供電由設備自己完成。</li>
+</ul>
+<p><strong>驗收</strong>：時序資料頁看得到曲線；儲能頁不顯示「資料已過期」；驗收工具「seq 是否連續」通過。</p>
+<hr>
+
+<h2 id="7-步驟-7-告警與事件">7. 步驟 7：告警與事件<a class="headerlink" href="#7-步驟-7-告警與事件" title="Permanent link">¶</a></h2>
+<p>兩者都放在 DDATA 裡，可以和量測值同一則。</p>
+<h3 id="7-1-告警-alarm-code">7.1 告警 <code>Alarm/&lt;code&gt;</code><a class="headerlink" href="#7-1-告警-alarm-code" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><code>name       = "Alarm/E0500"
 datatype   = Boolean
-value      = true
-properties = { severity: "major", message: "Insulation resistance low",
-               resistance_kohm: 41 }
+value      = true                              ← true 發生、false 解除
+properties = { severity: "major",              ← info | warning | major | critical
+               message:  "Insulation resistance low",
+               resistance_kohm: 41 }           ← 其餘 property 原樣存進告警 details
 </code></pre></div>
-<p><code>severity</code> ∈ <code>info | warning | major | critical</code>。以相同的 <code>code</code> 送 <code>value = false</code>
-即可解除；警報持續有效期間重複送出只會累加發生次數。</p>
-<h3 id="5-5-事件-操作記錄">5.5 事件（操作記錄）<a class="headerlink" href="#5-5-事件-操作記錄" title="Permanent link">¶</a></h3>
-<p><code>Event/&lt;code&gt;</code>，String，值就是訊息本文：</p>
-<div class="highlight"><pre><span></span><code>name       = "Event/E0231"
+<p>以相同 <code>code</code> 送 <code>false</code> 即解除；平台會分別通知「🔴 發生」與「🟢 解除」。告警持續期間重複送 <code>true</code> 只累加發生次數。DBIRTH 裡請帶上目前仍作用中的告警，重生後狀態才一致。</p>
+<h3 id="7-2-事件-event-code">7.2 事件 <code>Event/&lt;code&gt;</code><a class="headerlink" href="#7-2-事件-event-code" title="Permanent link">¶</a></h3>
+<div class="highlight"><pre><code>name       = "Event/E0231"
 datatype   = String
-value      = "Cooling fan speed below threshold"
-properties = { level: "warning", fan_rpm: 820 }
+value      = "Cooling fan speed below threshold"   ← 訊息本文
+properties = { level: "warning",                   ← debug | info | notice | warning | error | critical（預設 info）
+               fan_rpm: 820 }
 </code></pre></div>
-<p><code>level</code> ∈ <code>debug | info | notice | warning | error | critical</code>（預設 <code>info</code>）。</p>
-<h3 id="5-6-只想顯示-不想留存的值">5.6 只想顯示、不想留存的值<a class="headerlink" href="#5-6-只想顯示-不想留存的值" title="Permanent link">¶</a></h3>
-<p>在 metric 上設 <code>is_transient = true</code>。平台會顯示它、拿它評估警報，但不寫進時序
-資料庫。適合瞬間狀態這種存了也沒有意義的東西。</p>
+<p>事件無狀態，不會「解除」。<code>code</code> 只能含字母數字與 <code>-_</code>。</p>
+<p><strong>驗收</strong>：告警頁出現該告警、送 false 後自動解除；事件頁有一筆紀錄；若設了 LINE／Email 通知，會收到發生與解除各一則。</p>
 <hr>
-<h2 id="6-命令-downlink">6. 命令（downlink）<a class="headerlink" href="#6-命令-downlink" title="Permanent link">¶</a></h2>
-<p>Sparkplug 把命令模型化為「寫入 metric」，而且<strong>沒有定義回覆訊息</strong>——確認就是設備把
-那個 metric 回報回來。</p>
-<p>這對設定值夠用，但對稽核軌跡不夠：無法回答「哪一道命令沒有被回應」。所以本 profile
-在標準之上多帶一個關聯 metric。這仍然完全合規——Sparkplug 不規定 metric 叫什麼。</p>
-<h3 id="6-1-收到的-dcmd">6.1 收到的 DCMD<a class="headerlink" href="#6-1-收到的-dcmd" title="Permanent link">¶</a></h3>
-<p>Topic：<code>spBv1.0/{group}/DCMD/{node}/{device}</code></p>
-<div class="highlight"><pre><span></span><code>Command/ID        String    "0f9d7a1c-4c1a-4e0e-9a7d-8f2b1c3d4e5f"
-Command/Name      String    "set_power_limit"
-Command/Expires   DateTime  1780000060000
-Command/limit_w   Int64     400000
+
+<h2 id="8-步驟-8-接收命令並回覆">8. 步驟 8：接收命令並回覆<a class="headerlink" href="#8-步驟-8-接收命令並回覆" title="Permanent link">¶</a></h2>
+<p>Sparkplug 把命令模型化為「寫入 metric」且<strong>沒有定義回覆訊息</strong>。這對設定值夠用，對稽核不夠（無法回答「哪一道命令沒被回應」），所以本 profile 多帶一個關聯 metric <code>Command/ID</code>——仍完全合規。</p>
+<h3 id="8-1-收到的-dcmd">8.1 收到的 DCMD<a class="headerlink" href="#8-1-收到的-dcmd" title="Permanent link">¶</a></h3>
+<p>Topic <code>spBv1.0/{group}/DCMD/{node}/{device}</code>：</p>
+<div class="highlight"><pre><code>Payload.timestamp = 1780000000000
+metrics:
+  Command/ID          String    "0f9d7a1c-4c1a-4e0e-9a7d-8f2b1c3d4e5f"   ← 回覆時原樣帶回
+  Command/Name        String    "set_power_setpoint"
+  Command/Expires     DateTime  1780000060000                           ← 過期不要執行，回 expired
+  Command/power_w     Double    -200000                                 ← 參數：Command/&lt;參數名&gt;
+  Command/valid_until String    "2026-08-23T10:15:00Z"                  ← 選填，見 8.4
+  Command/on_expiry   String    "reserve"                               ← 選填
 </code></pre></div>
-<p>參數以 <code>Command/&lt;參數名&gt;</code> 攜帶。</p>
-<h3 id="6-2-回覆">6.2 回覆<a class="headerlink" href="#6-2-回覆" title="Permanent link">¶</a></h3>
-<p>發一則 <strong>DDATA</strong>（不是別的型別），帶：</p>
-<div class="highlight"><pre><span></span><code>Command/ID           String  "0f9d7a1c-…"    ← 原樣帶回
-Command/Status       String  "succeeded"
-Command/Message      String  ""              ← 選填
-Command/Result/&lt;key&gt; …                       ← 選填
+<h3 id="8-2-回覆-ddata">8.2 回覆（DDATA）<a class="headerlink" href="#8-2-回覆-ddata" title="Permanent link">¶</a></h3>
+<p>發一則 <strong>DDATA</strong>（不是別的型別），建議同一則一併帶上受影響的量測值：</p>
+<div class="highlight"><pre><code>Payload.seq = 8
+metrics:
+  Command/ID          String  "0f9d7a1c-…"     ← 原樣帶回
+  Command/Status      String  "succeeded"      ← accepted | succeeded | rejected | failed | expired
+  Command/Message     String  ""               ← 選填：拒絕或失敗的原因
+  Command/Result/&lt;key&gt; …                       ← 選填
+  alias=1             Double  -200000.0        ← 新的 battery_power_w
 </code></pre></div>
-<p><code>Command/Status</code> ∈ <code>accepted | rejected | succeeded | failed</code>。</p>
-<p>執行需要一段時間的話，收到命令時先回 <code>accepted</code>，完成後再回 <code>succeeded</code> 或
-<code>failed</code>。終態之後才抵達的 <code>accepted</code> 會被忽略，所以順序錯亂不會造成問題。</p>
-<h3 id="6-3-預期行為">6.3 預期行為<a class="headerlink" href="#6-3-預期行為" title="Permanent link">¶</a></h3>
+<p>執行需要時間的命令先回 <code>accepted</code>，完成後再回 <code>succeeded</code>／<code>failed</code>；終態之後才到的 <code>accepted</code> 會被忽略，順序錯亂不會出事。</p>
+<h3 id="8-3-設備端必須做的事">8.3 設備端必須做的事<a class="headerlink" href="#8-3-設備端必須做的事" title="Permanent link">¶</a></h3>
 <ol>
-<li>忽略 <code>Command/Expires</code> 已經過期的命令——伺服器已將它標記為過期，不再等待回覆。</li>
-<li>在本地也要驗證參數；伺服器雖然已依 blueprint 檢查過，裝置仍是最後一道防線。</li>
-<li>遇到重複的 <code>Command/ID</code> 視為重送，直接重發前一次的回覆，不要執行兩次。</li>
+<li>忽略 <code>Command/Expires</code> 已過的命令（回 <code>expired</code> 或不回；伺服器已標記過期）。</li>
+<li>在本地也驗證參數與能力；伺服器雖已依藍圖檢查，設備仍是最後一道防線（負功率需要 can_charge、正功率需要 can_discharge）。</li>
+<li>重複的 <code>Command/ID</code> 視為重送，直接重發前一次的回覆，不要執行兩次。</li>
+<li>命令處理放在獨立事件迴圈，長時間執行的命令才不會阻塞回報——但發布本身要序列化（3.3）。</li>
 </ol>
-<h3 id="6-4-可用的命令">6.4 可用的命令<a class="headerlink" href="#6-4-可用的命令" title="Permanent link">¶</a></h3>
-<p>來自裝置的 blueprint；<code>manage.py bootstrap</code> 內建的預設值如下：</p>
+<h3 id="8-4-設定點有效期與-watchdog-fail-safe">8.4 設定點有效期與 watchdog（fail-safe）<a class="headerlink" href="#8-4-設定點有效期與-watchdog-fail-safe" title="Permanent link">¶</a></h3>
+<p>雲端每次下 <code>set_power_setpoint</code> 都可附 <code>valid_until</code>（ISO 8601 UTC）與 <code>on_expiry</code>。設備在該時刻之後<strong>不等雲端</strong>自行降級：</p>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>Blueprint</th>
-<th>命令</th>
-<th>參數</th>
-</tr>
-</thead>
+<thead><tr><th><code>on_expiry</code></th><th>行為</th></tr></thead>
 <tbody>
-<tr>
-<td><code>bess-pcs</code></td>
-<td><code>set_power_limit</code></td>
-<td><code>limit_w</code> 0…5 000 000</td>
-</tr>
-<tr>
-<td></td>
-<td><code>set_power_setpoint</code></td>
-<td><code>power_w</code> ±5 000 000、<code>ramp_s</code> 0…3600、<code>valid_until</code>（ISO 8601 UTC，選填）、
-<code>on_expiry</code>（<code>idle</code> | <code>hold</code> | <code>reserve</code>，選填）</td>
-</tr>
-<tr>
-<td></td>
-<td><code>set_mode</code></td>
-<td><code>mode</code> ∈ idle/charge/discharge/auto/standby</td>
-</tr>
-<tr>
-<td></td>
-<td><code>set_soc_limits</code></td>
-<td><code>min_soc</code>、<code>max_soc</code> 0…100</td>
-</tr>
-<tr>
-<td></td>
-<td><code>emergency_stop</code></td>
-<td>—</td>
-</tr>
-<tr>
-<td></td>
-<td><code>reboot</code></td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>smart-meter</code></td>
-<td><code>set_report_interval</code></td>
-<td><code>interval_s</code> 1…3600</td>
-</tr>
-<tr>
-<td><code>pv-inverter</code></td>
-<td><code>set_export_limit</code></td>
-<td><code>limit_w</code> 0…5 000 000</td>
-</tr>
-<tr>
-<td></td>
-<td><code>set_output_enabled</code></td>
-<td><code>enabled</code> boolean</td>
-</tr>
-<tr>
-<td><code>ems-controller</code></td>
-<td><code>set_strategy</code></td>
-<td><code>strategy</code>、<code>target_kw</code></td>
-</tr>
-<tr>
-<td></td>
-<td><code>sync_time</code></td>
-<td><code>epoch_ms</code></td>
-</tr>
-<tr>
-<td><code>ev-charger</code></td>
-<td><code>set_current_limit</code></td>
-<td><code>limit_a</code> 0…500</td>
-</tr>
-<tr>
-<td></td>
-<td><code>stop_session</code></td>
-<td>—</td>
-</tr>
-</tbody>
-</table>
-<h3 id="setpoint-valid-until">設定點有效期（<code>valid_until</code> / <code>on_expiry</code>）<a class="headerlink" href="#setpoint-valid-until" title="Permanent link">¶</a></h3>
-<p>雲端每次下 <code>set_power_setpoint</code> 都可附 <code>valid_until</code>。設備（或邊緣閘道器）在該時刻之後<strong>不等雲端</strong>自行降級：</p>
+<tr><td><code>idle</code></td><td>功率歸零</td></tr>
+<tr><td><code>hold</code></td><td>維持最後設定點（只給確定安全的場合，例如小功率充電）</td></tr>
+<tr><td><code>reserve</code></td><td>充到備援水位後停止（SOC 門檻隨方案設定下發）</td></tr>
+</tbody></table></div>
+<p>沒有 <code>valid_until</code> 的命令永不過期（舊行為）。雲端會在到期前重送同一個設定點（新的 <code>valid_until</code>）——<strong>刷新就是心跳</strong>。設備連續 N 個心跳週期（預設 60 s × 3）沒收到任何設定點、或 MQTT 連線中斷超過同樣時間，就執行離線政策（同三種，預設 <code>reserve</code>）。斷網兩小時不會把電池放乾，靠的是這個而不是雲端。</p>
+<p>可用的命令與參數範圍見附錄 B。</p>
+<p><strong>驗收</strong>：在 console 設備頁下一道 <code>set_power_setpoint</code>，命令頁狀態變 succeeded 且新的功率讀值在下一則 DDATA 出現；下一道 60 s 有效期的設定點後拔掉雲端，61 s 後電池應依 <code>on_expiry</code> 歸零／保持／回充。驗收工具檢查「命令有沒有回覆」。</p>
+<hr>
+
+<h2 id="9-步驟-9-重生">9. 步驟 9：重生（Rebirth）——唯一的復原路徑<a class="headerlink" href="#9-步驟-9-重生" title="Permanent link">¶</a></h2>
+<p><strong>不是選配。</strong> 沒有實作它的設備在第一次掉訊息之後就再也對不齊了。NBIRTH 必須宣告 <code>Node Control/Rebirth = false</code>（步驟 4）。主機在下列情況會寫入 <code>true</code>：</p>
 <ul>
-<li><code>idle</code>：功率歸零。</li>
-<li><code>hold</code>：維持最後一個設定點（給確定安全的場合，例如小功率充電）。</li>
-<li><code>reserve</code>：充到備援水位（SOC 門檻由方案的備援保留決定，隨 fleet 設定下發）後停止。</li>
+<li><code>seq</code> 出現缺號（有訊息遺失，對應表可能已不準）；</li>
+<li>收到對應表裡沒有的 alias（主機沒看到那次 BIRTH，例如主機比設備晚啟動）；</li>
+<li>操作者在 console 手動要求。</li>
 </ul>
-<p>沒有 <code>valid_until</code> 的命令永不過期——與舊版行為相同。雲端會在到期前重送同一個設定點（新的
-<code>valid_until</code>），那就是心跳；設備連續 N 個心跳週期沒收到任何設定點、或 MQTT 連線中斷超過同樣時間，
-就執行離線政策（同三種，預設 <code>reserve</code>）。這些都沿用既有的 DCMD／ACK 機制，沒有新的通道。</p>
-<p>市電停電時設備應把關口電壓 metric（預設 <code>grid_voltage_v</code>）如實回報為 0；平台以「電壓低於門檻且持續 N 秒」判定停電。
-孤島供電由設備自己完成——平台在停電期間不下設定點。</p>
-<pre><code>{"name": "set_power_setpoint",
- "params": {"power_w": -200000, "valid_until": "2026-08-23T10:15:00Z", "on_expiry": "reserve"}}</code></pre>
-</div>
-<hr>
-<h2 id="7-重生-rebirth-唯一的復原路徑">7. 重生（Rebirth）：唯一的復原路徑<a class="headerlink" href="#7-重生-rebirth-唯一的復原路徑" title="Permanent link">¶</a></h2>
-<p><strong>這一節不是選配。</strong> 沒有實作它的設備，在第一次掉訊息之後就再也對不齊了。</p>
-<p>NBIRTH <strong>必須</strong>宣告一個可寫的 boolean metric：</p>
-<div class="highlight"><pre><span></span><code>Node Control/Rebirth   Boolean   false
+<p>收到的 NCMD（topic <code>spBv1.0/{group}/NCMD/{node}</code>）：</p>
+<div class="highlight"><pre><code>metrics:
+  Node Control/Rebirth   Boolean  true
 </code></pre></div>
-<p>主機在下列情況會寫入 <code>true</code>：</p>
+<p><strong>要做的事：重新發一次完整的 NBIRTH（<code>seq</code> 歸零、<code>bdSeq</code> 不變）與所有 DBIRTH。</strong> 平台對同一節點的重生要求有 30 秒冷卻，不會變成風暴。設備層級的 <code>Device Control/Rebirth</code> 同理，走 DCMD。</p>
+<p><strong>驗收</strong>：驗收工具「重生要求有沒有被理會」通過；或在 console 設備頁按「要求重生」，觀察 NBIRTH/DBIRTH 重送。</p>
+<hr>
+
+<h2 id="10-步驟-10-離線與關機">10. 步驟 10：離線與關機<a class="headerlink" href="#10-步驟-10-離線與關機" title="Permanent link">¶</a></h2>
+<p><strong>正常關機時遺言不會發。</strong> MQTT 規格明訂：送出 <code>DISCONNECT</code> 正常關閉時 broker 會<strong>丟棄</strong> will。所以計畫性關機、韌體更新重開、維護斷線都不會觸發遺言——請在主動斷線前<strong>自己發</strong>：</p>
+<div class="highlight"><pre><code>1. 每台設備  DDEATH  spBv1.0/{group}/DDEATH/{node}/{device}   payload: timestamp + seq（無 metric）
+2. 節點      NDEATH  spBv1.0/{group}/NDEATH/{node}            payload: metrics=[ bdSeq Int64 5 ]（無 seq）
+3. 等 0.5 s 讓 broker 收下（有些 broker 會丟棄緊接 DISCONNECT 的 PUBLISH）
+4. DISCONNECT
+</code></pre></div>
+<p>否則這個節點在 console 上會維持「線上」直到逾時掃描（180–225 s）把它撿走。離線判定的三條路徑與實際數字見附錄 C。</p>
+<p><strong>驗收</strong>：主動關機 ≤ 15 s 顯示離線；拔線 ≤ 83 s。</p>
+<hr>
+
+<h2 id="11-步驟-11-驗收">11. 步驟 11：驗收<a class="headerlink" href="#11-步驟-11-驗收" title="Permanent link">¶</a></h2>
+<p>出貨前跑一次一致性測試。它用真的 MQTT 封包解析你的連線，逐項檢查本文每一條規則，用中文說明哪裡不對、怎麼改：</p>
+<div class="highlight"><pre><code># 先確認工具本身是對的
+python scripts/run_device_test.py self-test
+
+# 再測你的設備（PowerShell 包裝：scripts\test-device.ps1）
+python scripts/run_device_test.py device --device ZQS-BESS-0001
+</code></pre></div>
+<p>檢查項目：clean session、遺言的 topic/QoS/retain/bdSeq、NBIRTH 的 seq 是否為 0、bdSeq 與遺言是否一致、是否宣告 <code>Node Control/Rebirth</code>、BIRTH 有沒有指派 alias、seq 是否連續、命令有沒有回覆、重生要求有沒有被理會。細節見 <a href="device-test-harness.html">設備測試工具</a>。</p>
+<p><strong>開發完成檢查表</strong>：</p>
 <ul>
-<li><code>seq</code> 出現缺號（代表有訊息遺失，對應表可能已經不準）；</li>
-<li>收到一個對應表裡沒有的 alias（代表主機沒看到那次 BIRTH——例如主機比設備晚啟動）；</li>
-<li>操作者在 console 上手動要求。</li>
+<li>☐ 遺言在 CONNECT 裡、QoS 1、retain false、bdSeq 與 NBIRTH 相同</li>
+<li>☐ 先訂閱 NCMD/DCMD 再發 NBIRTH；NBIRTH seq=0 且是第一則</li>
+<li>☐ DBIRTH 帶 Properties/Category、全部 metric、alias、unit、目前值</li>
+<li>☐ DDATA ≤ 60 s 一則；沒讀值送 is_null；計數器送絕對值</li>
+<li>☐ seq 配置與送出在同一把鎖裡</li>
+<li>☐ Alarm/Event 的 properties 帶 severity/message、level</li>
+<li>☐ DCMD 回 Command/ID + Command/Status；重複 ID 不重複執行；過期不執行</li>
+<li>☐ valid_until 到期／斷線 watchdog 自行降級</li>
+<li>☐ 收到 Rebirth=true 重送 NBIRTH + 所有 DBIRTH</li>
+<li>☐ 主動關機前送 DDEATH + NDEATH</li>
 </ul>
-<p><strong>收到之後要做的事：重新發一次完整的 NBIRTH（<code>seq</code> 歸零）與所有 DBIRTH。</strong></p>
-<p>平台對同一個節點的重生要求有 30 秒冷卻，所以一連串亂序訊息只會換來一次要求，不會
-變成風暴。</p>
-<p>設備層級的 <code>Device Control/Rebirth</code> 同理，走 DCMD。</p>
 <hr>
-<h2 id="8-主機狀態-state">8. 主機狀態（STATE）<a class="headerlink" href="#8-主機狀態-state" title="Permanent link">¶</a></h2>
-<p>平台會在 <code>spBv1.0/STATE/{host_id}</code> 發布自己的死活，<strong>retained、QoS 1</strong>，內容是
-UTF-8 JSON（這是命名空間裡唯一不是 protobuf 的東西，為的是讓任何工具都讀得懂）：</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"online"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">"timestamp"</span><span class="p">:</span><span class="w"> </span><span class="mi">1780000000000</span><span class="p">}</span>
-</code></pre></div>
-<p>預設 <code>host_id</code> 是 <code>zqs-cloud</code>，可用 <code>SPARKPLUG_HOST_ID</code> 設定。</p>
-<p>設備可以訂閱它，用來判斷「現在發出去有沒有人在聽」。不訂閱也可以，這不是必要的。</p>
-<hr>
-<h2 id="9-labview-實作要點">9. LabVIEW 實作要點<a class="headerlink" href="#9-labview-實作要點" title="Permanent link">¶</a></h2>
-<p>protobuf 沒辦法像 JSON 那樣用字串串接組出來，這是設備端最大的一項工作。有三條路：</p>
-<h3 id="路線-a-現成的-protobuf-toolkit-建議">路線 A：現成的 protobuf toolkit（建議）<a class="headerlink" href="#路線-a-現成的-protobuf-toolkit-建議" title="Permanent link">¶</a></h3>
-<p>LabVIEW 有幾套第三方 protobuf 實作（VIPM 上搜尋 protobuf）。把
-<code>services/sparkplug/sparkplug_b.proto</code> 丟進去產生型別即可。長期最省事，尤其是之後
-要用到 DataSet、Template 這些進階型別時。</p>
-<h3 id="路線-b-手寫編碼器">路線 B：手寫編碼器<a class="headerlink" href="#路線-b-手寫編碼器" title="Permanent link">¶</a></h3>
-<p>Sparkplug 實際用到的 protobuf wire format 只有三種：</p>
+
+<h2 id="附錄-a-內建-metric-key">附錄 A：內建 metric key（表後儲能）<a class="headerlink" href="#附錄-a-內建-metric-key" title="Permanent link">¶</a></h2>
 <div class="table-wrap"><table>
-<thead>
-<tr>
-<th>Wire type</th>
-<th>用在</th>
-</tr>
-</thead>
+<thead><tr><th>Key</th><th>單位</th><th>意義</th></tr></thead>
 <tbody>
-<tr>
-<td><code>0</code> varint</td>
-<td>int / uint / bool / enum</td>
-</tr>
-<tr>
-<td><code>2</code> length-delimited</td>
-<td>string / bytes / 巢狀 message</td>
-</tr>
-<tr>
-<td><code>1</code> 64-bit、<code>5</code> 32-bit</td>
-<td>double / float</td>
-</tr>
-</tbody>
-</table></div>
-<p>每個欄位前面是一個 varint 的 key：<code>(欄位編號 &lt;&lt; 3) | wire_type</code>。</p>
-<p>以「一則帶單一 double metric 的 DDATA」為例：</p>
-<div class="highlight"><pre><span></span><code>Payload.timestamp (欄位1, varint)   → 0x08, varint(epoch_ms)
+<tr><td><code>grid_power_w</code></td><td>W</td><td>併接點量測；<strong>+ 購電，− 逆送</strong></td></tr>
+<tr><td><code>grid_voltage_v</code></td><td>V</td><td>停電判準讀它；停電回報 0</td></tr>
+<tr><td><code>grid_current_a</code></td><td>A</td><td></td></tr>
+<tr><td><code>grid_frequency_hz</code></td><td>Hz</td><td></td></tr>
+<tr><td><code>grid_import_energy_kwh</code></td><td>kWh</td><td>累計計數器</td></tr>
+<tr><td><code>grid_export_energy_kwh</code></td><td>kWh</td><td>累計計數器</td></tr>
+<tr><td><code>load_power_w</code></td><td>W</td><td>場域負載，恆 ≥ 0</td></tr>
+<tr><td><code>pv_power_w</code></td><td>W</td><td>發電功率，恆 ≥ 0</td></tr>
+<tr><td><code>pv_energy_kwh</code></td><td>kWh</td><td>累計計數器</td></tr>
+<tr><td><code>battery_power_w</code></td><td>W</td><td><strong>+ 放電，− 充電</strong></td></tr>
+<tr><td><code>battery_soc</code></td><td>%</td><td>0–100</td></tr>
+<tr><td><code>battery_soh</code></td><td>%</td><td>0–100</td></tr>
+<tr><td><code>battery_voltage_v</code></td><td>V</td><td></td></tr>
+<tr><td><code>battery_current_a</code></td><td>A</td><td></td></tr>
+<tr><td><code>battery_temperature_c</code></td><td>°C</td><td>方案的溫度上限約束讀它</td></tr>
+<tr><td><code>battery_charge_energy_kwh</code></td><td>kWh</td><td>累計計數器</td></tr>
+<tr><td><code>battery_discharge_energy_kwh</code></td><td>kWh</td><td>累計計數器</td></tr>
+<tr><td><code>pcs_state</code></td><td>—</td><td><code>idle</code>/<code>charge</code>/<code>discharge</code>/<code>fault</code></td></tr>
+<tr><td><code>pcs_fault_code</code></td><td>—</td><td>廠商自訂代碼</td></tr>
+</tbody></table></div>
+<p>其他 key 也一律接受——帶 <code>unit</code> 就會自動建立，或透過 <code>POST /api/metrics</code> 定義。</p>
+<hr>
+
+<h2 id="附錄-b-可用的命令">附錄 B：可用的命令<a class="headerlink" href="#附錄-b-可用的命令" title="Permanent link">¶</a></h2>
+<p>來自設備藍圖；<code>manage.py bootstrap</code> 內建的預設值：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Blueprint</th><th>命令</th><th>參數（Command/&lt;參數名&gt;）</th></tr></thead>
+<tbody>
+<tr><td><code>bess-pcs</code></td><td><code>set_power_limit</code></td><td><code>limit_w</code> 0…5 000 000</td></tr>
+<tr><td></td><td><code>set_power_setpoint</code></td><td><code>power_w</code> ±5 000 000、<code>ramp_s</code> 0…3600、<code>valid_until</code>（ISO 8601 UTC，選填）、<code>on_expiry</code>（<code>idle</code>|<code>hold</code>|<code>reserve</code>，選填）</td></tr>
+<tr><td></td><td><code>set_mode</code></td><td><code>mode</code> ∈ idle/charge/discharge/auto/standby</td></tr>
+<tr><td></td><td><code>set_soc_limits</code></td><td><code>min_soc</code>、<code>max_soc</code> 0…100</td></tr>
+<tr><td></td><td><code>emergency_stop</code></td><td>—</td></tr>
+<tr><td></td><td><code>reboot</code></td><td>—</td></tr>
+<tr><td><code>smart-meter</code></td><td><code>set_report_interval</code></td><td><code>interval_s</code> 1…3600</td></tr>
+<tr><td><code>pv-inverter</code></td><td><code>set_export_limit</code></td><td><code>limit_w</code> 0…5 000 000</td></tr>
+<tr><td></td><td><code>set_output_enabled</code></td><td><code>enabled</code> boolean</td></tr>
+<tr><td><code>ems-controller</code></td><td><code>set_strategy</code></td><td><code>strategy</code>、<code>target_kw</code></td></tr>
+<tr><td></td><td><code>sync_time</code></td><td><code>epoch_ms</code></td></tr>
+<tr><td><code>ev-charger</code></td><td><code>set_current_limit</code></td><td><code>limit_a</code> 0…500</td></tr>
+<tr><td></td><td><code>stop_session</code></td><td>—</td></tr>
+</tbody></table></div>
+<p>平台以「命令名稱＋參數值」決定需要的能力：<code>set_power_setpoint</code> 負值需要 <code>can_charge</code>、正值需要 <code>can_discharge</code>；<code>set_export_limit</code> &gt; 0 需要 <code>can_export</code>。</p>
+<hr>
+
+<h2 id="附錄-c-離線判定的實際數字">附錄 C：離線判定的實際數字<a class="headerlink" href="#附錄-c-離線判定的實際數字" title="Permanent link">¶</a></h2>
+<p>三條獨立路徑會把設備標成離線，走哪一條由設備端的實作決定：<strong>A</strong> 設備自己送 NDEATH/DDEATH；<strong>B</strong> broker 發遺言（keepalive 的 1.5 倍後，45 s → 最遲 67.5 s）；<strong>C</strong> 伺服器每 30 s 巡檢，最後上行超過 <code>DEVICE_OFFLINE_GRACE_SECONDS</code>（預設 180 s）就翻成離線。console 清單每 15 s 重拉、單一設備頁每 5 s：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>情況</th><th>路徑</th><th>console 顯示離線</th></tr></thead>
+<tbody>
+<tr><td>節點主動送 NDEATH</td><td>A</td><td><strong>≤ 15 s</strong>（設備頁 ≤ 5 s）</td></tr>
+<tr><td>斷電、拔線——且有註冊遺言</td><td>B</td><td><strong>≤ 約 83 s</strong>（67.5 + 15）</td></tr>
+<tr><td>正常 DISCONNECT 但沒先送 NDEATH</td><td>C</td><td><strong>180–225 s</strong></td></tr>
+<tr><td>沒有註冊遺言</td><td>C</td><td><strong>180–225 s</strong></td></tr>
+<tr><td>broker 自己掛了</td><td>C</td><td><strong>180–225 s</strong>（所有設備一起）</td></tr>
+</tbody></table></div>
+<p>「離線」（<code>status</code>）與「資料已過期」（<code>last_seen_at</code> 超過 180 s）是兩件事：連線活著不等於資料是新的，一台 PINGREQ 照送但採集迴圈卡死的設備在 broker 眼中完全健康。任何上行都重置這個計時器——所以步驟 6 要求 ≤ 60 s 一則心跳。</p>
+<hr>
+
+<h2 id="附錄-d-帳密與-acl">附錄 D：帳密與 ACL<a class="headerlink" href="#附錄-d-帳密與-acl" title="Permanent link">¶</a></h2>
+<p>這組帳密<strong>只用來連上 MQTT broker</strong>，不是 API 帳號、不能登入 console、不帶組織權限；它回答「這條連線是不是那個 edge node」。帳密屬於節點不屬於設備——一台閘道器前置十二顆電錶只登入一次。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>時機</th><th>動作</th></tr></thead>
+<tbody>
+<tr><td>註冊閘道器</td><td><code>POST /api/edge-nodes</code></td></tr>
+<tr><td>註冊直連設備</td><td><code>POST /api/devices</code>（自動建立隱含節點並發憑證）</td></tr>
+<tr><td>事後輪替</td><td><code>POST /api/edge-nodes/{id}/credential</code></td></tr>
+</tbody></table></div>
+<p>Password 是 24 bytes 隨機字串，平台<strong>只存雜湊</strong>；API 回應裡出現的那一次是唯一一次，遺失只能輪替，輪替讓舊密碼<strong>立即失效</strong>。EMQX 每次 CONNECT 都用 webhook 問平台（<code>POST /api/emqx/auth</code>）——在 console 停用一個節點，下一次連線就被拒；每次 publish/subscribe 也問（<code>POST /api/emqx/acl</code>），強制：topic 在 Sparkplug 命名空間、<code>(group_id, edge_node_id)</code> 屬於這組憑證、方向正確（節點只能發 NBIRTH/NDEATH/NDATA/DBIRTH/DDEATH/DDATA、只能訂閱 NCMD/DCMD）。少了第二項，任何有效憑證都能替鄰居發 NDEATH。</p>
+<p>選用的 Client ID pinning：設了 <code>allowed_client_id</code> 後，帳密正確但 client id 不符也拒絕，用來擋「同一組帳密被複製到第二台機器」互踢。認證失敗的原因：密碼錯或已輪替 → 請管理者輪替；節點被停用 → 重新啟用；client id 與 pinning 不符 → 檢查是否為 <code>zqs:&lt;edge_node_id&gt;</code>。</p>
+<p>宣告（步驟 5）是「我說我是什麼」，帳密是「我是誰」，兩者刻意分開；宣告不會提升權限。</p>
+<hr>
+
+<h2 id="附錄-e-主機狀態-state">附錄 E：主機狀態（STATE）<a class="headerlink" href="#附錄-e-主機狀態-state" title="Permanent link">¶</a></h2>
+<p>平台在 <code>spBv1.0/STATE/{host_id}</code>（預設 <code>zqs-cloud</code>，<code>SPARKPLUG_HOST_ID</code> 可改）發布自己的死活，<strong>retained、QoS 1</strong>，內容是 UTF-8 JSON（命名空間裡唯一不是 protobuf 的東西）：</p>
+<div class="highlight"><pre><code>{"online": true, "timestamp": 1780000000000}
+</code></pre></div>
+<p>設備可以訂閱它判斷「現在發出去有沒有人在聽」，不訂閱也可以。</p>
+<hr>
+
+<h2 id="附錄-f-labview-與手寫編碼器">附錄 F：LabVIEW 與手寫編碼器<a class="headerlink" href="#附錄-f-labview-與手寫編碼器" title="Permanent link">¶</a></h2>
+<p>protobuf 沒辦法像 JSON 用字串串接組出來，這是設備端最大的一項工作。三條路：<strong>A</strong> 現成 protobuf toolkit（VIPM 搜尋 protobuf），把 <code>sparkplug_b.proto</code> 丟進去產生型別，長期最省事；<strong>B</strong> 手寫編碼器；<strong>C</strong> 先用參考實作（Python）當橋接把整條鏈路跑通、確認位址帳密都對，再回頭換編碼層——把「協定理解錯」和「編碼寫錯」分開處理。</p>
+<p>手寫時 Sparkplug 只用到三種 wire type：<code>0</code> varint（int/uint/bool/enum）、<code>2</code> length-delimited（string/bytes/巢狀 message）、<code>1</code> 64-bit／<code>5</code> 32-bit（double/float）。每個欄位前是 varint 的 key：<code>(欄位編號 &lt;&lt; 3) | wire_type</code>。「一則帶單一 double metric 的 DDATA」：</p>
+<div class="highlight"><pre><code>Payload.timestamp (欄位1, varint)   → 0x08, varint(epoch_ms)
 Payload.metrics   (欄位2, 長度限定) → 0x12, len, &lt;Metric 的位元組&gt;
   Metric.alias        (欄位2, varint) → 0x10, varint(alias)
   Metric.timestamp    (欄位3, varint) → 0x18, varint(epoch_ms)
@@ -938,344 +676,14 @@ Payload.metrics   (欄位2, 長度限定) → 0x12, len, &lt;Metric 的位元組
   Metric.double_value (欄位13, 64bit) → 0x69, &lt;8 bytes little-endian&gt;
 Payload.seq       (欄位3, varint)   → 0x18, varint(seq)
 </code></pre></div>
-<p>固定格式的 telemetry 只需要 varint 編碼與 8-byte double 兩個子 VI。實作完之後，
-<strong>一定要拿 §9.1 的參考實作對拍</strong>。</p>
-<h3 id="路線-c-先跑通流程再換編碼">路線 C：先跑通流程再換編碼<a class="headerlink" href="#路線-c-先跑通流程再換編碼" title="Permanent link">¶</a></h3>
-<p>先用參考實作（Python）當作橋接，把整條鏈路跑通、確認位址與帳密都對，再回頭換掉編碼
-層。這樣可以把「協定理解錯」和「編碼寫錯」兩類問題分開處理。</p>
-<h3 id="9-1-對拍用的參考實作">9.1 對拍用的參考實作<a class="headerlink" href="#9-1-對拍用的參考實作" title="Permanent link">¶</a></h3>
-<p>以下都是可以直接讀的完整實作：</p>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>檔案</th>
-<th>是什麼</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>services/sparkplug/node.py</code></td>
-<td>節點端的序號、alias、生死流程</td>
-</tr>
-<tr>
-<td><code>services/harness/simulator.py</code></td>
-<td>最精簡的正確設備</td>
-</tr>
-<tr>
-<td><code>services/sparkplug/payload.py</code></td>
-<td>編解碼</td>
-</tr>
-</tbody>
-</table></div>
-<p>要產生一段標準 payload 來對拍：</p>
-<div class="highlight"><pre><span></span><code>.<span class="se">\s</span>cripts<span class="se">\s</span>im-console.ps1<span class="w">    </span><span class="c1"># 桌面主控台：登記的設備以 MQTT 客戶端上線</span>
-</code></pre></div>
-<h3 id="9-2-其他實作要點">9.2 其他實作要點<a class="headerlink" href="#9-2-其他實作要點" title="Permanent link">¶</a></h3>
-<ul>
-<li>在應用程式的生命週期內維持<strong>單一持續連線</strong>，不要每次發布都重連。</li>
-<li>採用 producer/consumer queue：擷取迴圈 → queue → 發布迴圈。發布迴圈斷線時，把
-  queue 寫到磁碟，稍後再回補。</li>
-<li>在獨立的事件迴圈處理命令 topic，長時間執行的命令才不會阻塞 telemetry。</li>
-<li><strong>但發布本身要序列化</strong>，理由見 §3.3。</li>
-</ul>
+<p>固定格式的 telemetry 只需要 varint 編碼與 8-byte double 兩個子 VI；實作完<strong>一定要對拍</strong>。參考實作：<code>services/sparkplug/node.py</code>（序號、alias、生死流程）、<code>services/sparkplug/payload.py</code>（編解碼）、<code>simulator/gateway.py</code>（最精簡的正確閘道器）。其他要點：維持單一持續連線、producer/consumer queue（擷取 → queue → 發布，斷線時 queue 落地稍後回補）、命令在獨立事件迴圈處理、但發布本身序列化。</p>
 <hr>
-<h2 id="10-離線判定-斷線後多久-console-會顯示離線">10. 離線判定：斷線後多久 console 會顯示離線<a class="headerlink" href="#10-離線判定-斷線後多久-console-會顯示離線" title="Permanent link">¶</a></h2>
-<p>平台有<strong>三條</strong>獨立的路徑會把設備標成離線，走哪一條<strong>由裝置端的實作決定</strong>。</p>
-<h3 id="10-1-三條路徑">10.1 三條路徑<a class="headerlink" href="#10-1-三條路徑" title="Permanent link">¶</a></h3>
-<p><strong>路徑 A — 設備自己說。</strong> 收到 NDEATH 或 DDEATH 就立刻寫入。</p>
-<p><strong>路徑 B — broker 發遺言。</strong> 節點沒有在 keepalive 期限內送出任何封包時，broker
-判定連線已死並代為發布 NDEATH。MQTT 規格給 broker 的寬限是 <strong>1.5 × keepalive</strong>：
-keepalive 45 s 就是最遲 <strong>67.5 s</strong>。</p>
-<p><strong>路徑 C — 伺服器端的逾時掃描。</strong> worker 內有一個每 <strong>30 s</strong> 跑一次的巡檢，把
-「狀態仍是 online，但最後一次上行超過 <code>DEVICE_OFFLINE_GRACE_SECONDS</code>
-（預設 <strong>180 s</strong>）」的設備翻成離線。這是 broker 也失聯時的最後防線。</p>
-<h3 id="10-2-實際數字">10.2 實際數字<a class="headerlink" href="#10-2-實際數字" title="Permanent link">¶</a></h3>
-<p>console 的設備清單每 <strong>15 s</strong> 重新拉一次，單一設備頁每 <strong>5 s</strong>。以下是加上輪詢後的
-<strong>最壞情況</strong>：</p>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>情況</th>
-<th>路徑</th>
-<th>console 顯示離線</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>節點主動送 NDEATH</td>
-<td>A</td>
-<td><strong>≤ 15 s</strong>（設備頁 ≤ 5 s）</td>
-</tr>
-<tr>
-<td>斷電、拔網路線——<strong>且有註冊遺言</strong></td>
-<td>B</td>
-<td><strong>≤ 約 83 s</strong>（67.5 + 15）</td>
-</tr>
-<tr>
-<td>正常送 <code>DISCONNECT</code> 關閉，但沒先送 NDEATH</td>
-<td>C</td>
-<td><strong>180–225 s</strong></td>
-</tr>
-<tr>
-<td>沒有註冊遺言</td>
-<td>C</td>
-<td><strong>180–225 s</strong></td>
-</tr>
-<tr>
-<td>broker 自己掛了</td>
-<td>C</td>
-<td><strong>180–225 s</strong>（所有設備一起）</td>
-</tr>
-</tbody>
-</table></div>
-<blockquote>
-<p><strong>正常關機時遺言不會發。</strong> MQTT 規格明訂：送出 <code>DISCONNECT</code> 封包正常關閉連線時，
-broker 會<strong>丟棄</strong> will message。所以計畫性關機、韌體更新重開、維護斷線，全都不會
-觸發遺言。</p>
-<p>因此在主動斷線之前，請<strong>自己發一則 NDEATH</strong>（以及每台設備的 DDEATH），再送
-<code>DISCONNECT</code>。否則這個節點在 console 上會維持「線上」直到逾時掃描把它撿走。</p>
-</blockquote>
-<h3 id="10-3-離線-與-資料已過期-是兩件事">10.3 「離線」與「資料已過期」是兩件事<a class="headerlink" href="#10-3-離線-與-資料已過期-是兩件事" title="Permanent link">¶</a></h3>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>標示</th>
-<th>依據</th>
-<th>意思</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>離線</strong></td>
-<td><code>status</code></td>
-<td>收到過死亡訊息，或被逾時掃描翻掉</td>
-</tr>
-<tr>
-<td><strong>資料已過期</strong></td>
-<td><code>last_seen_at</code> 超過 180 s</td>
-<td>狀態還是「線上」，但已經很久沒講話</td>
-</tr>
-</tbody>
-</table></div>
-<p>後者存在的理由是：連線活著不等於資料是新的。一台 MQTT 連線正常、PINGREQ 照送、但
-採集迴圈卡死的設備，在 broker 眼中完全健康。</p>
-<p><strong>任何一則上行都會重置這個計時器。</strong> 所以：</p>
-<blockquote>
-<p>即使數值完全沒有變化，也請<strong>至少每 60 s</strong> 送出一則 DDATA 當作心跳。只在數值變化
-時才發布的設備，在穩態下會被標成資料已過期。</p>
-</blockquote>
-<p>伺服器端的 recording policy 會決定哪些讀值要真的存進資料庫，所以高頻發布不會把資料
-庫塞爆——不要為了省空間在裝置端節流。</p>
-<hr>
-<h2 id="11-username-與-password-是做什麼的">11. Username 與 Password 是做什麼的<a class="headerlink" href="#11-username-與-password-是做什麼的" title="Permanent link">¶</a></h2>
-<h3 id="11-1-用途只有一個">11.1 用途只有一個<a class="headerlink" href="#11-1-用途只有一個" title="Permanent link">¶</a></h3>
-<p>這組帳密<strong>只用來連上 MQTT broker</strong>。它不是 API 帳號：不能呼叫 REST API、不能登入
-console、不帶任何組織層級的權限。它回答的是「這條 MQTT 連線是不是那個 edge node」，
-僅此而已。</p>
-<p><strong>帳密屬於節點，不屬於設備。</strong> 一台網關前置十二顆電錶，只登入一次；為了一條 TCP
-連線發十二組密碼是做戲。</p>
-<h3 id="11-2-怎麼發放">11.2 怎麼發放<a class="headerlink" href="#11-2-怎麼發放" title="Permanent link">¶</a></h3>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>時機</th>
-<th>動作</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>註冊網關時</td>
-<td><code>POST /api/edge-nodes</code></td>
-</tr>
-<tr>
-<td>註冊直連設備時</td>
-<td><code>POST /api/devices</code>（自動建立隱含節點並發憑證）</td>
-</tr>
-<tr>
-<td>事後輪替</td>
-<td><code>POST /api/edge-nodes/{id}/credential</code></td>
-</tr>
-</tbody>
-</table></div>
-<p>Password 是 24 bytes 的隨機字串，平台<strong>只存雜湊值</strong>。它在 API 回應裡出現的那一次是
-唯一一次，之後沒有任何方式可以取回——包含平台管理者自己。遺失只能輪替。</p>
-<p>輪替會讓舊密碼<strong>立即失效</strong>。請先確定手上有辦法把新密碼寫進設備，再按輪替。</p>
-<h3 id="11-3-broker-怎麼驗證">11.3 broker 怎麼驗證<a class="headerlink" href="#11-3-broker-怎麼驗證" title="Permanent link">¶</a></h3>
-<p>EMQX 不自己保存帳號。每一次 CONNECT，它都用 HTTP webhook 回頭問平台
-（<code>POST /api/emqx/auth</code>）。直接後果是：<strong>在 console 上停用一個節點，它下一次連線就
-會被拒</strong>，不需要改 broker 設定或重啟任何東西。</p>
-<p>每一次 publish 與 subscribe 也同樣會問（<code>POST /api/emqx/acl</code>），強制執行三件事：</p>
-<ul>
-<li>topic 在 Sparkplug 命名空間裡；</li>
-<li>其中的 <code>(group_id, edge_node_id)</code> 屬於這組憑證；</li>
-<li>訊息型別的方向正確——節點可以發 NBIRTH/NDEATH/NDATA/DBIRTH/DDEATH/DDATA，只能
-  訂閱 NCMD/DCMD。</li>
-</ul>
-<p>第二項最重要：少了它，任何一組有效憑證都可以替鄰居發一則 NDEATH，把對方打下線。</p>
-<h3 id="11-4-client-id-pinning-選用">11.4 Client ID pinning（選用）<a class="headerlink" href="#11-4-client-id-pinning-選用" title="Permanent link">¶</a></h3>
-<p>設定 <code>allowed_client_id</code> 之後，即使帳密正確、client id 不符也會被拒絕。這是為了擋
-「同一組帳密被複製到第二台機器」——兩台同時連線時 MQTT 會互踢，症狀是不斷重連，很
-難查。沒設定就不檢查。</p>
-<h3 id="11-5-認證失敗時">11.5 認證失敗時<a class="headerlink" href="#11-5-認證失敗時" title="Permanent link">¶</a></h3>
-<p><strong>不要密集重連。</strong> 密碼不會自己修好，而 broker 會對你限流。請用 1 s 到 60 s 的
-exponential backoff 加 jitter。</p>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>原因</th>
-<th>怎麼確認</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>密碼打錯或已被輪替</td>
-<td>請管理者重新輪替一組</td>
-</tr>
-<tr>
-<td>節點在 console 上被停用</td>
-<td>請管理者重新啟用</td>
-</tr>
-<tr>
-<td>client id 與 pinning 不符</td>
-<td>檢查是否為 <code>zqs:&lt;edge_node_id&gt;</code></td>
-</tr>
-</tbody>
-</table></div>
-<h3 id="11-6-與-上線宣告-的關係">11.6 與「上線宣告」的關係<a class="headerlink" href="#11-6-與-上線宣告-的關係" title="Permanent link">¶</a></h3>
-<p>§5.2 的 <code>Properties/…</code> 是<strong>宣告</strong>，這組帳密是<strong>身分</strong>。兩者刻意分開：帳密證明「你是
-這個已註冊的節點」，宣告只是「我說我是什麼、我能做什麼」。宣告不會提升權限。</p>
-<hr>
-<h2 id="12-表後-behind-the-meter-儲能的內建-metric-key">12. 表後（behind-the-meter）儲能的內建 metric key<a class="headerlink" href="#12-表後-behind-the-meter-儲能的內建-metric-key" title="Permanent link">¶</a></h2>
-<div class="table-wrap"><table>
-<thead>
-<tr>
-<th>Key</th>
-<th>單位</th>
-<th>意義</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>grid_power_w</code></td>
-<td>W</td>
-<td>併接點量測；<strong>+ 為輸入，− 為輸出</strong></td>
-</tr>
-<tr>
-<td><code>grid_voltage_v</code></td>
-<td>V</td>
-<td></td>
-</tr>
-<tr>
-<td><code>grid_current_a</code></td>
-<td>A</td>
-<td></td>
-</tr>
-<tr>
-<td><code>grid_frequency_hz</code></td>
-<td>Hz</td>
-<td></td>
-</tr>
-<tr>
-<td><code>grid_import_energy_kwh</code></td>
-<td>kWh</td>
-<td>累計計數器</td>
-</tr>
-<tr>
-<td><code>grid_export_energy_kwh</code></td>
-<td>kWh</td>
-<td>累計計數器</td>
-</tr>
-<tr>
-<td><code>load_power_w</code></td>
-<td>W</td>
-<td>場域負載，恆 ≥ 0</td>
-</tr>
-<tr>
-<td><code>pv_power_w</code></td>
-<td>W</td>
-<td>發電功率，恆 ≥ 0</td>
-</tr>
-<tr>
-<td><code>pv_energy_kwh</code></td>
-<td>kWh</td>
-<td>累計計數器</td>
-</tr>
-<tr>
-<td><code>battery_power_w</code></td>
-<td>W</td>
-<td><strong>+ 為放電，− 為充電</strong></td>
-</tr>
-<tr>
-<td><code>battery_soc</code></td>
-<td>%</td>
-<td>0–100</td>
-</tr>
-<tr>
-<td><code>battery_soh</code></td>
-<td>%</td>
-<td>0–100</td>
-</tr>
-<tr>
-<td><code>battery_voltage_v</code></td>
-<td>V</td>
-<td></td>
-</tr>
-<tr>
-<td><code>battery_current_a</code></td>
-<td>A</td>
-<td></td>
-</tr>
-<tr>
-<td><code>battery_temperature_c</code></td>
-<td>°C</td>
-<td></td>
-</tr>
-<tr>
-<td><code>battery_charge_energy_kwh</code></td>
-<td>kWh</td>
-<td>累計計數器</td>
-</tr>
-<tr>
-<td><code>battery_discharge_energy_kwh</code></td>
-<td>kWh</td>
-<td>累計計數器</td>
-</tr>
-<tr>
-<td><code>pcs_state</code></td>
-<td>—</td>
-<td>字串狀態，例如 <code>idle</code>/<code>charge</code>/<code>discharge</code></td>
-</tr>
-<tr>
-<td><code>pcs_fault_code</code></td>
-<td>—</td>
-<td>廠商自訂代碼</td>
-</tr>
-</tbody>
-</table></div>
-<p>正負號的約定很重要：energy aggregator 是依號誌來區分輸入與輸出、充電與放電。若硬體
-採用相反的約定，請在該能源資產上設定 <strong>Invert sign</strong>，不要去改韌體。</p>
-<p>其他 key 也一律接受——可透過 <code>POST /api/metrics</code> 定義，讓 console 知道它的單位與
-標籤，或就讓它以未標記的形式通過。</p>
-<hr>
-<h2 id="13-驗收工具">13. 驗收工具<a class="headerlink" href="#13-驗收工具" title="Permanent link">¶</a></h2>
-<p>出貨前請跑一次一致性測試工具。它會用真的 MQTT 封包解析你的連線，逐項檢查本文提到的
-每一條規則，並且用中文說明哪裡不對、怎麼改：</p>
-<div class="highlight"><pre><span></span><code><span class="c1"># 先確認工具本身是對的</span>
-python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>self-test
 
-<span class="c1"># 再測你的設備</span>
-python<span class="w"> </span>scripts/run_device_test.py<span class="w"> </span>device<span class="w"> </span>--device<span class="w"> </span>ZQS-BESS-0001
+<h2 id="附錄-g-沒有硬體時的快速驗證">附錄 G：沒有硬體時的快速驗證<a class="headerlink" href="#附錄-g-沒有硬體時的快速驗證" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><code>.\scripts\sim-console.ps1    # 桌面主控台：登記的設備以 MQTT 客戶端上線
 </code></pre></div>
-<p>檢查的項目包含 clean session、遺言的 topic/QoS/retain/bdSeq、NBIRTH 的 seq 是否為
-0、bdSeq 是否與遺言一致、是否宣告 <code>Node Control/Rebirth</code>、BIRTH 有沒有指派 alias、
-seq 是否連續、命令有沒有回覆、以及重生要求有沒有被理會。</p>
-<p>細節見 <a href="device-test-harness.html">設備測試工具</a>。</p>
-<hr>
-<h2 id="14-沒有硬體時的快速驗證">14. 沒有硬體時的快速驗證<a class="headerlink" href="#14-沒有硬體時的快速驗證" title="Permanent link">¶</a></h2>
-<div class="highlight"><pre><span></span><code>.<span class="se">\s</span>cripts<span class="se">\s</span>im-console.ps1<span class="w">    </span><span class="c1"># 桌面主控台：登記的設備以 MQTT 客戶端上線</span>
-</code></pre></div>
-<p>主控台對每台登記的閘道器各開一條連線、底下掛該閘道器的所有設備——這才是 Sparkplug 的正常用法。</p>
-<p>這會發布與上述完全相同的訊息，因此也可以當作 wire format 的參考實作。</p></article></main>
+<p>主控台對每台登記的閘道器各開一條連線、底下掛該閘道器的所有設備——這才是 Sparkplug 的正常用法。它發布與本文完全相同的訊息，可當 wire format 的參考實作；主控台還能鎖定物理量或覆寫單一量測值、模擬停電，用來驗證雲端的計算與 fail-safe（見 <a href="demo-guide.html">客戶展示指南</a> §六A）。</p>
+</article></main>
 </div>
 <script type="module">
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
