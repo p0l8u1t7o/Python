@@ -509,3 +509,31 @@ class SeriesSiteExpansionTests(ApiTestCase):
         response = self.query({"site_ids": [str(big.id)], "metrics": ["battery_soc"]})
         self.assertEqual(response.status_code, 422, response.content)
         self.assertEqual(response.json()["error"]["code"], "too_many_devices")
+
+
+class SiteCategoryCountTests(ApiTestCase):
+    """The overview says what a site is made of, own and with descendants."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.token = self.login("admin@acme-demo.com")
+        self.plant = factories.site(self.org, code="taoyuan")
+        self.workshop = factories.site(self.org, code="ws1", parent=self.plant)
+        battery = factories.blueprint("cat-bess", category="battery")
+        meter = factories.blueprint("cat-meter", category="meter")
+        factories.device(self.org, "PLANT-BESS", site_obj=self.plant, device_type=battery)
+        factories.device(self.org, "WS-METER-1", site_obj=self.workshop, device_type=meter)
+        factories.device(self.org, "WS-METER-2", site_obj=self.workshop, device_type=meter)
+
+    def test_own_and_subtree_category_counts(self):
+        rows = {
+            row["code"]: row
+            for row in self.get(f"{API}/sites?include_descendants=true", self.token).json()["items"]
+        }
+        self.assertEqual(rows["taoyuan"]["category_counts"], {"battery": 1})
+        self.assertEqual(rows["taoyuan"]["total_category_counts"], {"meter": 2, "battery": 1})
+        self.assertEqual(rows["ws1"]["total_category_counts"], {"meter": 2})
+
+    def test_without_descendants_totals_equal_own(self):
+        rows = {row["code"]: row for row in self.get(f"{API}/sites", self.token).json()["items"]}
+        self.assertEqual(rows["taoyuan"]["total_category_counts"], {"battery": 1})

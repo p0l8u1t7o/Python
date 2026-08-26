@@ -158,6 +158,9 @@ export interface SiteSummary extends Site {
   total_device_count: number
   total_online_count: number
   total_open_alert_count: number
+  /** Devices by blueprint category; `total_` includes descendants when asked for. */
+  category_counts: Record<string, number>
+  total_category_counts: Record<string, number>
 }
 
 /**

@@ -1,3 +1,4 @@
+import { Suspense, lazy, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -6,7 +7,10 @@ import {
   Bell,
   Building2,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Coins,
+  CornerDownRight,
   Cpu,
   PiggyBank,
   Plug,
@@ -35,11 +39,25 @@ import {
   formatTime,
 } from '@/lib/format'
 import { useTimeRange } from '@/lib/useTimeRange'
-import type { FleetLive, PowerFlow, SiteLive } from '@/lib/types'
+import type { DemandStatus, FleetLive, PowerFlow, SiteLive, SiteSummary } from '@/lib/types'
 import type { GlossaryId } from '@/lib/glossary'
 import { SiteCostChart } from '@/components/charts/CostCharts'
 import { DemandBenefitTable } from '@/components/charts/DemandBenefitTable'
 import { SocGauge } from '@/components/charts/PowerGauge'
+
+// three.js is heavy and only the overview's hero needs it; without WebGL the
+// card simply is not there - the table below carries the same facts.
+const FleetScene3D = lazy(() => import('@/components/charts/FleetScene3D'))
+
+const DEMAND_ORDER: DemandStatus[] = ['over', 'high', 'watch', 'balanced', 'exporting', 'unknown']
+const DEMAND_DOT: Record<DemandStatus, string> = {
+  over: 'bg-critical',
+  high: 'bg-major',
+  watch: 'bg-warning',
+  balanced: 'bg-brand',
+  exporting: 'bg-ok',
+  unknown: 'bg-subtle',
+}
 import {
   Badge,
   Card,
@@ -135,6 +153,8 @@ function EnergyView() {
   return (
     <>
       <PowerRow live={data} loading={live.isPending} />
+
+      <FleetHero live={data} />
 
       <div className="mt-5 grid gap-5 xl:grid-cols-3">
         <Card>
@@ -362,9 +382,97 @@ function MqttNotice() {
   return <Badge tone="neutral">{t('dashboard.mqttDisabled')}</Badge>
 }
 
+/**
+ * All sites as a 3D energy map: the grid in the middle, plants on a ring,
+ * their workshops tethered further out, pillars for load and colour for
+ * demand standing. Hidden entirely without WebGL - the table has the facts.
+ */
+function FleetHero({ live }: { live?: FleetLive }) {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const [supported, setSupported] = useState(true)
+  const sites = live?.sites ?? []
+  if (!supported || sites.length === 0) return null
+
+  return (
+    <Card className="tech-frame mt-5 overflow-hidden">
+      <div className="relative" data-testid="fleet-hero">
+        <Suspense fallback={<div className="h-[360px]" />}>
+          <FleetScene3D
+            sites={sites}
+            height={360}
+            onUnsupported={() => setSupported(false)}
+            onPickSite={(site) => navigate(`/storage?site=${site.site_id}`)}
+          />
+        </Suspense>
+        <div className="pointer-events-none absolute left-3 top-3 max-w-[60%]">
+          <p className="text-sm font-semibold">{t('dashboard.fleetScene')}</p>
+          <p className="text-xs text-muted">{t('dashboard.fleetSceneHint')}</p>
+        </div>
+        <ul className="pointer-events-none absolute bottom-3 left-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+          {DEMAND_ORDER.map((status) => (
+            <li key={status} className="flex items-center gap-1">
+              <span className={`inline-block size-2 rounded-full ${DEMAND_DOT[status]}`} />
+              {t(`map.demandStatus.${status}`)}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
+  )
+}
+
+interface SiteTreeRow {
+  site: SiteLive
+  parent: SiteLive | null
+  hasChildren: boolean
+  /** True for the last sibling, which changes the connector glyph. */
+  last: boolean
+  /** Rows hidden when this one is collapsed. */
+  descendants: number
+}
+
+/** Depth-first order with parent links, so the table can draw a real tree. */
+function siteTree(sites: SiteLive[]): SiteTreeRow[] {
+  const byId = new Map(sites.map((site) => [site.site_id, site]))
+  const childrenOf = new Map<string | null, SiteLive[]>()
+  for (const site of sites) {
+    const key = site.parent_id && byId.has(site.parent_id) ? site.parent_id : null
+    childrenOf.set(key, [...(childrenOf.get(key) ?? []), site])
+  }
+  const out: SiteTreeRow[] = []
+  const walk = (parent: SiteLive | null) => {
+    const kids = childrenOf.get(parent?.site_id ?? null) ?? []
+    kids.forEach((site, index) => {
+      const row: SiteTreeRow = { site, parent, hasChildren: (childrenOf.get(site.site_id) ?? []).length > 0, last: index === kids.length - 1, descendants: 0 }
+      out.push(row)
+      const before = out.length
+      walk(site)
+      row.descendants = out.length - before
+    })
+  }
+  walk(null)
+  return out
+}
+
 function SiteLiveTable({ live, loading }: { live?: FleetLive; loading: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const rows = useMemo(() => siteTree(live?.sites ?? []), [live?.sites])
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const hidden = useMemo(() => {
+    // A collapsed site hides its whole subtree, however deep.
+    const out = new Set<string>()
+    const byId = new Map(rows.map((row) => [row.site.site_id, row]))
+    for (const row of rows) {
+      let cursor = row.parent
+      while (cursor) {
+        if (collapsed.has(cursor.site_id)) { out.add(row.site.site_id); break }
+        cursor = byId.get(cursor.site_id)?.parent ?? null
+      }
+    }
+    return out
+  }, [rows, collapsed])
 
   return (
     <Card className="mt-5">
@@ -398,13 +506,24 @@ function SiteLiveTable({ live, loading }: { live?: FleetLive; loading: boolean }
               </td>
             </tr>
           ) : (
-            live?.sites.map((site) => (
-              <SiteLiveRow
-                key={site.site_id}
-                site={site}
-                onOpen={() => navigate(`/storage?site=${site.site_id}`)}
-              />
-            ))
+            rows
+              .filter((row) => !hidden.has(row.site.site_id))
+              .map((row) => (
+                <SiteLiveRow
+                  key={row.site.site_id}
+                  row={row}
+                  collapsed={collapsed.has(row.site.site_id)}
+                  onToggle={() =>
+                    setCollapsed((current) => {
+                      const next = new Set(current)
+                      if (next.has(row.site.site_id)) next.delete(row.site.site_id)
+                      else next.add(row.site.site_id)
+                      return next
+                    })
+                  }
+                  onOpen={() => navigate(`/storage?site=${row.site.site_id}`)}
+                />
+              ))
           )}
         </TBody>
       </Table>
@@ -412,20 +531,61 @@ function SiteLiveTable({ live, loading }: { live?: FleetLive; loading: boolean }
   )
 }
 
-function SiteLiveRow({ site, onOpen }: { site: SiteLive; onOpen: () => void }) {
+function SiteLiveRow({
+  row,
+  collapsed,
+  onToggle,
+  onOpen,
+}: {
+  row: SiteTreeRow
+  collapsed: boolean
+  onToggle: () => void
+  onOpen: () => void
+}) {
   const { t } = useTranslation()
+  const { site, parent, hasChildren } = row
   const power = (value: number | null) =>
     value === null ? '—' : formatMeasurement(Math.abs(value), 'kW', 1)
+  const depth = site.depth
 
   return (
-    <Tr onClick={onOpen}>
+    <Tr onClick={onOpen} className={depth > 0 ? 'bg-surface-muted/30' : ''}>
       <Td>
-        <span
-          className="flex items-center gap-1.5"
-          style={{ paddingLeft: `${site.depth * 12}px` }}
-        >
-          <Building2 className="size-3.5 shrink-0 text-subtle" aria-hidden />
-          <span className="font-medium">{site.site_name}</span>
+        <span className="flex items-center gap-1" style={{ paddingLeft: `${depth * 18}px` }}>
+          {depth > 0 ? (
+            <CornerDownRight className="size-3.5 shrink-0 text-subtle" aria-hidden />
+          ) : null}
+          {hasChildren ? (
+            <button
+              type="button"
+              aria-label={collapsed ? t('dashboard.expand') : t('dashboard.collapse')}
+              aria-expanded={!collapsed}
+              className="grid size-5 shrink-0 place-items-center rounded hover:bg-surface-muted"
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggle()
+              }}
+            >
+              {collapsed ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+            </button>
+          ) : (
+            <Building2 className="size-3.5 shrink-0 text-subtle" aria-hidden />
+          )}
+          <span className="min-w-0">
+            <span className={`block truncate ${depth === 0 ? 'font-semibold' : 'font-medium'}`}>
+              {site.site_name}
+              {hasChildren && collapsed ? (
+                <span className="ml-1 text-xs text-subtle">
+                  {t('dashboard.hiddenChildren', { count: row.descendants })}
+                </span>
+              ) : null}
+            </span>
+            {parent ? (
+              <span className="block truncate text-[11px] text-subtle">
+                {t('dashboard.childOf', { parent: parent.site_name })}
+              </span>
+            ) : null}
+          </span>
           {site.is_stale && site.device_count > 0 ? (
             <Badge tone="neutral">{t('storage.stale')}</Badge>
           ) : null}
@@ -544,6 +704,7 @@ function FleetView() {
         <Card className="mb-5">
           <CardHeader
             title={t('dashboard.byGroup')}
+            description={t('dashboard.byGroupHint')}
             actions={
               <Link to="/sites" className="text-xs font-medium text-brand hover:underline">
                 {t('dashboard.viewAll')}
@@ -571,11 +732,7 @@ function FleetView() {
                       <Badge tone="critical">{site.total_open_alert_count}</Badge>
                     ) : null}
                   </span>
-                  <span className="mt-2 flex items-baseline gap-1.5">
-                    <span className="tnum text-xl font-semibold">{site.total_online_count}</span>
-                    <span className="tnum text-sm text-subtle">/ {site.total_device_count}</span>
-                    <span className="ml-auto text-xs text-subtle">{t('dashboard.online')}</span>
-                  </span>
+                  <CategoryChips counts={site.total_category_counts} total={site.total_device_count} online={site.total_online_count} />
                 </Link>
               ))}
 
@@ -655,16 +812,27 @@ function FleetView() {
               <LoadingState />
             ) : groups.length > 0 ? (
               <ul className="divide-y divide-line">
-                {groups.slice(0, 6).map((site) => (
-                  <li key={site.id}>
+                {summaryTree(sites.data?.items ?? []).map(({ site, parent, last }) => (
+                  <li key={site.id} className={site.depth > 0 ? 'bg-surface-muted/30' : ''}>
                     <Link
                       to={`/storage?site=${site.id}`}
-                      className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-muted/60"
+                      className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-muted/60"
+                      style={{ paddingLeft: `${16 + site.depth * 16}px` }}
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">{site.name}</span>
-                        <span className="block truncate text-xs text-subtle">
-                          {site.address || site.code}
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {site.depth > 0 ? (
+                          <CornerDownRight className="size-3.5 shrink-0 text-subtle" aria-hidden />
+                        ) : (
+                          <Building2 className="size-3.5 shrink-0 text-subtle" aria-hidden />
+                        )}
+                        <span className="min-w-0">
+                          <span className={`block truncate text-sm ${site.depth === 0 ? 'font-semibold' : 'font-medium'}`}>
+                            {site.name}
+                          </span>
+                          <span className="block truncate text-xs text-subtle">
+                            {parent ? t('dashboard.childOf', { parent: parent.name }) : site.address || site.code}
+                            {last ? '' : ''}
+                          </span>
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
@@ -743,6 +911,70 @@ function FleetView() {
         </div>
       </div>
     </>
+  )
+}
+
+interface SummaryTreeRow {
+  site: SiteSummary
+  parent: SiteSummary | null
+  last: boolean
+}
+
+/** Depth-first order of the site summaries, parents before children. */
+function summaryTree(sites: SiteSummary[]): SummaryTreeRow[] {
+  const byId = new Map(sites.map((site) => [site.id, site]))
+  const childrenOf = new Map<string | null, SiteSummary[]>()
+  for (const site of sites) {
+    const key = site.parent_id && byId.has(site.parent_id) ? site.parent_id : null
+    childrenOf.set(key, [...(childrenOf.get(key) ?? []), site])
+  }
+  const out: SummaryTreeRow[] = []
+  const walk = (parent: SiteSummary | null) => {
+    const kids = childrenOf.get(parent?.id ?? null) ?? []
+    kids.forEach((site, index) => {
+      out.push({ site, parent, last: index === kids.length - 1 })
+      walk(site)
+    })
+  }
+  walk(null)
+  return out
+}
+
+/**
+ * What a site is made of: one chip per blueprint category, biggest first.
+ * The online/total pair stays as a small trailer so the health question the
+ * card used to answer is still answered.
+ */
+function CategoryChips({
+  counts,
+  total,
+  online,
+}: {
+  counts: Record<string, number>
+  total: number
+  online: number
+}) {
+  const { t } = useTranslation()
+  const entries = Object.entries(counts ?? {}).sort((a, b) => b[1] - a[1])
+  return (
+    <span className="mt-2 flex flex-wrap items-center gap-1.5">
+      {entries.length === 0 ? (
+        <span className="text-xs text-subtle">{t('dashboard.noDevicesYet')}</span>
+      ) : (
+        entries.map(([category, count]) => (
+          <span
+            key={category}
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-surface-muted/60 px-1.5 py-0.5 text-xs"
+          >
+            <span className="text-muted">{t(`devices.categories.${category}`, { defaultValue: category })}</span>
+            <span className="tnum font-semibold">{count}</span>
+          </span>
+        ))
+      )}
+      <span className="ml-auto text-xs text-subtle tnum">
+        {online}/{total} {t('dashboard.online')}
+      </span>
+    </span>
   )
 }
 

@@ -1097,14 +1097,33 @@ def _decorate_tree(ctx: AuthContext, sites, *, include_descendants: bool = False
         return collected
 
     totals: dict = {}
+    wanted = {pk for site in sites for pk in subtree(site.pk)} if include_descendants else {site.pk for site in sites}
     if include_descendants:
-        wanted = {pk for site in sites for pk in subtree(site.pk)}
         for row in _with_own_counts(
             Site.objects.filter(pk__in=wanted, deleted_at__isnull=True)
         ).values("pk", "device_count", "online_count", "open_alert_count"):
             totals[row["pk"]] = row
 
+    # Category make-up per site: one grouped query for every site in play.
+    by_category: dict = {}
+    for row in (
+        Device.objects.filter(site_id__in=wanted, deleted_at__isnull=True)
+        .values("site_id", "device_type__category")
+        .annotate(n=Count("pk"))
+    ):
+        category = row["device_type__category"] or "other"
+        by_category.setdefault(row["site_id"], {})[category] = row["n"]
+
+    def merged(pks) -> dict:
+        out: dict = {}
+        for pk in pks:
+            for category, n in by_category.get(pk, {}).items():
+                out[category] = out.get(category, 0) + n
+        return dict(sorted(out.items(), key=lambda item: -item[1]))
+
     for site in sites:
+        site.category_counts = merged([site.pk])
+        site.total_category_counts = merged(subtree(site.pk)) if include_descendants else site.category_counts
         site._depth_cache = depth_of(site.pk)
         site.child_count = len(children_of.get(site.pk, []))
         own_device = getattr(site, "device_count", 0) or 0

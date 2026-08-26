@@ -106,6 +106,13 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <h2 id="v0-3-營收最佳化與邊緣自治-2026-08-23">v0.3 — 營收最佳化與邊緣自治（2026-08-23）<a class="headerlink" href="#v0-3-營收最佳化與邊緣自治-2026-08-23" title="Permanent link">¶</a></h2>
 <p><strong>一句話</strong>：策略從「瞬時比較的單選標籤」變成「有預測、有窗口積分、可疊加、可回測、可結算、斷網也安全」的調度系統；前端加上 3D 能量場景、場域星系與需量著色地圖；模擬器可以強行改變上傳值讓每個數字都能手算對帳。</p>
 <p><strong>驗證</strong>：後端 813 項測試、ruff、前端 typecheck/build、Playwright e2e（含 3D 場景兩主題截圖、地圖階層）、<code>scripts/verify_calculations.py</code> 3,356 項交叉比對，全數通過。詳細設計見 <a href="system-logic.html">system-logic.html</a> §1.12D–1.12I。</p>
+<h3 id="總覽頁-3d-能量圖-場域樹-設備類型組成">總覽頁：3D 能量圖、場域樹、設備類型組成<a class="headerlink" href="#總覽頁-3d-能量圖-場域樹-設備類型組成" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>全場域能量圖</strong>（能源檢視）：three.js 場景，市電是中央的光核，母場域在內圈、子場域在外圈並以線連到母場域；柱高＝負載、顏色＝需量狀態（超過契約／超過上限／接近上限／平衡良好／逆送中／未知，與地圖同一套色）、光點沿線流動的方向＝購電或售電、有未結案警報的場域加紅色光環。點場域進儲能頁。WebGL 不可用時整張卡片不顯示，下方表格仍有同樣的事實。</li>
+<li><strong>各場域狀態</strong>改為真正的樹：母場域可收合／展開子場域，子場域列縮排並標示「隸屬 ○○」，收合時提示藏了幾個子場域。機隊檢視右側的「場域」清單同樣以樹呈現。</li>
+<li><strong>機隊 → 依群組</strong>：每個群組卡片改顯示<strong>設備類型數量</strong>（電池／儲能、EMS 控制器、產電單元、電錶…各幾台，含子場域），線上／總數退為小字。後端 <code>SiteSummaryOut.category_counts</code>／<code>total_category_counts</code>（<code>GET /sites?include_descendants=true</code> 一次分組查詢）。</li>
+<li>測試 <code>tests/test_site_groups.py::SiteCategoryCountTests</code>；e2e 總覽相關規格全數通過。</li>
+</ul>
 <h3 id="閘道器管理頁">閘道器管理頁<a class="headerlink" href="#閘道器管理頁" title="Permanent link">¶</a></h3>
 <ul>
 <li>新增 <code>/gateways</code>：閘道器總覽（線上／離線／管理的設備數）、閘道器列表（登錄、輪換憑證、要求重生、移除），點選一列展開詳情——連線狀態（最後上線、狀態變更、目前 NBIRTH、bdSeq、最後 seq、IP、RSSI）、<strong>閘道器宣告的資訊</strong>（韌體／硬體與 NBIRTH 裡的每一個 metric：名稱、alias、型別、值、properties）、<strong>管理的設備</strong>（可點入設備頁）、<strong>連線相關參數</strong>（命名空間、group、host id、即時擷取，以及該閘道器的 client id、帳號與六個 topic）。</li>

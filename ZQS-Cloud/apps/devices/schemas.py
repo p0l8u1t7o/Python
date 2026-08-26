@@ -96,6 +96,11 @@ class SiteSummaryOut(SiteOut):
     total_device_count: int = 0
     total_online_count: int = 0
     total_open_alert_count: int = 0
+    #: Devices by blueprint category (``battery``, ``generation``, ``meter``,
+    #: ...), own and including descendants. Lets the overview say what a site
+    #: *is made of* rather than only how many boxes it has.
+    category_counts: dict[str, int] = {}
+    total_category_counts: dict[str, int] = {}
 
 
 class SiteDeviceRollupOut(Schema):
