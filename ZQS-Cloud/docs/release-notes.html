@@ -106,6 +106,13 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <h2 id="v0-3-營收最佳化與邊緣自治-2026-08-23">v0.3 — 營收最佳化與邊緣自治（2026-08-23）<a class="headerlink" href="#v0-3-營收最佳化與邊緣自治-2026-08-23" title="Permanent link">¶</a></h2>
 <p><strong>一句話</strong>：策略從「瞬時比較的單選標籤」變成「有預測、有窗口積分、可疊加、可回測、可結算、斷網也安全」的調度系統；前端加上 3D 能量場景、場域星系與需量著色地圖；模擬器可以強行改變上傳值讓每個數字都能手算對帳。</p>
 <p><strong>驗證</strong>：後端 813 項測試、ruff、前端 typecheck/build、Playwright e2e（含 3D 場景兩主題截圖、地圖階層）、<code>scripts/verify_calculations.py</code> 3,356 項交叉比對，全數通過。詳細設計見 <a href="system-logic.html">system-logic.html</a> §1.12D–1.12I。</p>
+<h3 id="能源管理報表">能源管理報表<a class="headerlink" href="#能源管理報表" title="Permanent link">¶</a></h3>
+<ul>
+<li>新頁面 <code>/reports</code>（側欄「報表」）：選範圍（全部場域或某場域，可含子場域）與期間（今日／本週／本月／上月／最近 7 天／最近 30 天／自訂起迄日），即時顯示：8 個 KPI（用電、自發電、購電、最高負載、電費、節省、自給率、警報）、<strong>分析結論</strong>（規則產生，每條對應一個數字：自給率、自發自用率、調度節省正負、超約場域、負載尖峰時段、電池效率、警報數量／集中時段／重複警報／結案時間）、每日能源與一日負載曲線圖、各場域表（含超約標記）、<strong>警報統計</strong>（總數、嚴重度、未結案、結案中位時間、平均確認時間、各小時與星期分佈、各場域、最常見警報）。</li>
+<li>匯出 <strong>PDF</strong>（reportlab，向量圖表、中文字型自動尋找微軟正黑體／Noto，可用 <code>REPORT_FONT_PATH</code> 指定）或 <strong>Word</strong>（python-docx，圖表以 PNG 嵌入），專業簡約風格、章節順序與畫面一致。</li>
+<li>API：<code>GET /ems/reports/energy</code>、<code>GET /ems/reports/energy/export?format=pdf|docx</code>（區間上限 400 天；檢視者可讀）。後端 <code>apps/ems/reports.py</code>（計算與結論）、<code>apps/ems/report_export.py</code>（兩種格式）；測試 <code>tests/test_energy_report.py</code>；e2e <code>reports.spec.ts</code> 含實際下載驗證。</li>
+<li>相依：<code>reportlab</code>、<code>python-docx</code>（已加入 requirements.txt）。</li>
+</ul>
 <h3 id="總覽頁-3d-能量圖-場域樹-設備類型組成">總覽頁：3D 能量圖、場域樹、設備類型組成<a class="headerlink" href="#總覽頁-3d-能量圖-場域樹-設備類型組成" title="Permanent link">¶</a></h3>
 <ul>
 <li><strong>全場域能量圖</strong>（能源檢視）：three.js 場景，市電是中央的光核，母場域在內圈、子場域在外圈並以線連到母場域；柱高＝負載、顏色＝需量狀態（超過契約／超過上限／接近上限／平衡良好／逆送中／未知，與地圖同一套色）、光點沿線流動的方向＝購電或售電、有未結案警報的場域加紅色光環。點場域進儲能頁。WebGL 不可用時整張卡片不顯示，下方表格仍有同樣的事實。</li>

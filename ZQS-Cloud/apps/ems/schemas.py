@@ -592,3 +592,30 @@ class MonthlySettlementOut(Schema):
     finalized_at: dt.datetime | None
     computed_at: dt.datetime
     tariff_snapshot: dict[str, Any]
+
+
+class ReportInsightOut(Schema):
+    level: str
+    text: str
+
+
+class EnergyReportOut(Schema):
+    """能源管理報表。巢狀內容以 dict 交付：前端與匯出器共用同一份結構，
+    欄位定義見 :mod:`apps.ems.reports`。"""
+
+    generated_at: dt.datetime
+    organization_name: str
+    scope_name: str = ""
+    start: dt.datetime
+    end: dt.datetime
+    timezone_name: str
+    currency: str = ""
+    mixed_currency: bool = False
+    site_count: int = 0
+    device_count: int = 0
+    totals: dict
+    sites: list[dict]
+    daily: list[dict]
+    hourly_load: list[dict]
+    alerts: dict
+    insights: list[ReportInsightOut]

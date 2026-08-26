@@ -200,6 +200,7 @@ SELECT create_hypertable('telemetry_sample', 'ts', migrate_data => true);
 | 即插即用 | DBIRTH 帶著單位與資料型別，沒設定過的 metric 會自動建進目錄，圖表一上來就有標籤（`apps/telemetry/autoregister.py`）|
 | 設備事件查詢 | `GET /api/events` —— 全機隊的事件紀錄，可依場域、等級、代碼與全文搜尋，console 的 `/events` 頁 |
 | 總覽頁 | 能源檢視：即時功率、**全場域 3D 能量圖**（市電居中、母子場域成環、柱高＝負載、顏色＝需量狀態、光點方向＝購／售電）、可收合的場域樹、各場域電費與節費；機隊檢視：設備健康、各群組的**設備類型組成**、場域樹、最新警報、系統健康度 |
+| 能源管理報表 | console 的 `/reports` 頁 —— 自訂或快選期間（今日／本週／本月／上月／7 天／30 天），場域的用電、電費、需量、自給率與**警報統計／發生時段分析**，附規則產生的分析結論；一鍵匯出 **PDF 或 Word**（`GET /ems/reports/energy/export`） |
 | 閘道器管理 | console 的 `/gateways` 頁 —— 每台閘道器的連線狀態、NBIRTH 宣告的 metric、管理的設備、連線相關參數（group、host id、client id、topic）與連線偵錯；協定細節只在 `docs/device-protocol.html` 維護 |
 | 地址轉座標 | 新增場域時可用地址查詢座標（OpenStreetMap Nominatim，免費免金鑰）；查不到就手動輸入 |
 | 自動調度 | `apps/ems/dispatch.py` —— 把 `DispatchWindow` 變成實際命令，並強制執行運轉限制 |

@@ -39,6 +39,7 @@ const ROUTES: string[] = [
   '/audit',
   '/settings',
   '/gateways',
+  '/reports',
   '/help',
 ]
 

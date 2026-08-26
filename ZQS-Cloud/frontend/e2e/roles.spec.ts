@@ -13,7 +13,7 @@ import { untranslatedKeys, watch } from './helpers'
 
 const ROUTES = [
   '/', '/devices', '/map', '/alerts', '/storage', '/storage-plans', '/telemetry',
-  '/events', '/tariffs', '/workflows', '/sites', '/recording', '/rules', '/audit',
+  '/events', '/reports', '/tariffs', '/workflows', '/sites', '/recording', '/rules', '/audit',
   '/settings', '/gateways', '/help',
 ]
 

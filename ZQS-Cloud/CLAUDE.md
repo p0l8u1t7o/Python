@@ -12,7 +12,7 @@
 
 - 後端 Django 5.1 + django-ninja（`apps/`、`services/`、`config/`），前端 React 19 / Vite / TypeScript / Tailwind v4（`frontend/`），設備協定 Sparkplug B over MQTT（`services/sparkplug/`），內建開發用 amqtt broker（`manage.py run_broker`，只支援 MQTT 3.1.1）。
 - 設定全部走 `.env`（範本 `.env.example` 每個參數都有註解）；`config/settings/dev.py` 在 `BUS_BACKEND` 留空時用 memory bus。
-- `ProtocalBufferPayload/` 已於 2026-08-26 刪除、不再維護；設備端 proto 只指向 `services/sparkplug/sparkplug_b.proto`，勿重建。
+- 設備端 proto 只指向 `services/sparkplug/sparkplug_b.proto`，勿重建。
 
 ## Git
 
@@ -67,6 +67,13 @@
 - Windows PowerShell 5.1：沒有 `&&`／`||`、沒有三元運算子；`Stop-Process` 迴圈常以 exit 255 結束但其實已生效，之後再查一次行程確認。
 - `.ps1` 檔要保留 UTF-8 BOM（用 `utf-8-sig` 讀寫），否則中文與符號會壞。
 - 從 Bash 跑 `taskkill //F //PID <pid>`（雙斜線）。
+
+## 報表（apps/ems/reports.py、report_export.py）
+
+- 畫面、PDF、Word 都吃 `build_report()` 同一個 dict；新增欄位時三處一起改，結論（insights）一定要能對到某個數字。
+- PDF 用 reportlab platypus；中文字型靠 `_register_fonts()` 找系統字型（Windows msjh.ttc），Linux 要裝 Noto CJK 或設 `REPORT_FONT_PATH`。表格欄位不要放太長的文字（會換行撐高列），幣別放表頭。
+- 測試裡帶 ISO 時間到 query string 要 `urllib.parse.quote`（`+00:00` 的 `+` 會變空格 → 422）；本專案的 ValidationError 回 422 不是 400。
+- 看 PDF 用 `pypdfium2` 轉 PNG 再 Read（環境沒有 pdftoppm）。
 
 ## 改完要更新的文件
 

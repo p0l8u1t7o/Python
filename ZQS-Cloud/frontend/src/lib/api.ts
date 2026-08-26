@@ -212,6 +212,26 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (text ? JSON.parse(text) : undefined) as T
 }
 
+/** A file download with the same auth/refresh handling as `request`. */
+export async function requestBlob(
+  path: string,
+  query?: Record<string, unknown>,
+): Promise<{ body: Blob; filename: string | null }> {
+  let response = await performRequest(path, { query }, session.access)
+  if (response.status === 401) {
+    const renewed = await refreshAccessToken()
+    if (!renewed) {
+      announceSessionExpired()
+      throw await toApiError(response)
+    }
+    response = await performRequest(path, { query }, renewed)
+  }
+  if (!response.ok) throw await toApiError(response)
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+  return { body: await response.blob(), filename: match ? decodeURIComponent(match[1]) : null }
+}
+
 export const api = {
   get: <T>(path: string, query?: Record<string, unknown>, signal?: AbortSignal) =>
     request<T>(path, { query, signal }),

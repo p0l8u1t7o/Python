@@ -27,6 +27,7 @@ const ROUTES = [
   { path: '/audit', name: 'audit' },
   { path: '/settings', name: 'settings' },
   { path: '/gateways', name: 'gateways' },
+  { path: '/reports', name: 'reports' },
   { path: '/help', name: 'help' },
 ]
 

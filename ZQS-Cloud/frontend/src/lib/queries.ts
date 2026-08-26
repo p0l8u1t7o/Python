@@ -8,7 +8,8 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from '@tanstack/react-query'
 
-import { api } from './api'
+import { api, requestBlob } from './api'
+import type { EnergyReport, ReportParams } from '@/components/reports/reportTypes'
 import type {
   Alert,
   AlertDetail,
@@ -1482,5 +1483,35 @@ export function useIngressDebugMutations() {
       mutationFn: () => api.delete('/integration/debug/traces'),
       onSuccess: invalidate,
     }),
+  }
+}
+
+// ---- energy management report ---------------------------------------------
+export function useEnergyReport(params: ReportParams | null) {
+  return useQuery({
+    queryKey: ['ems', 'report', params] as const,
+    queryFn: () => api.get<EnergyReport>('/ems/reports/energy', { ...(params ?? {}) }),
+    enabled: params !== null,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * Download the same report as a file. Goes through `fetch` directly because
+ * the JSON client parses bodies; this one has to stay a blob. The anchor
+ * trick is what every browser accepts for a "save as" without a popup.
+ */
+export async function downloadEnergyReport(params: ReportParams, format: 'pdf' | 'docx'): Promise<void> {
+  const blob = await requestBlob('/ems/reports/energy/export', { ...params, format })
+  const url = URL.createObjectURL(blob.body)
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = blob.filename ?? `energy-report.${format}`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 }

@@ -73,6 +73,7 @@ const SHOTS: Shot[] = [
   { name: '17-稽核紀錄', path: '/audit', wait: 1500, fullPage: true },
   { name: '18-設定', path: '/settings', wait: 1500, fullPage: true },
   { name: '19-閘道器', path: '/gateways', wait: 1500, fullPage: true },
+  { name: '21-能源管理報表', path: '/reports', wait: 4000, fullPage: true },
   { name: '20-說明', path: '/help', wait: 1500, fullPage: true },
 ]
 

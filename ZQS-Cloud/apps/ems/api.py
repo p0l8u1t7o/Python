@@ -1576,3 +1576,60 @@ def _validate_tariff(payload: s.TariffIn, organization=None) -> None:
         raise ValidationError(
             "Tariff periods are invalid", code="invalid_periods", details=problems
         )
+
+
+# --------------------------------------------------------------------------
+# 能源管理報表
+# --------------------------------------------------------------------------
+@router.get("/reports/energy", response=s.EnergyReportOut)
+def energy_report(
+    request,
+    window: Query[TimeRangeParams],
+    site_id: uuid.UUID | None = None,
+    include_descendants: bool = True,
+):
+    """一段期間的能源管理報表：能源、電費、需量、警報統計與規則產生的結論。
+
+    與 ``/reports/energy/export`` 用同一份資料，螢幕上看到什麼、匯出就是什麼。
+    """
+    from apps.ems.reports import build_report
+
+    ctx: AuthContext = request.auth
+    start, end = window.normalized(default_window_seconds=30 * 24 * 3600)
+    if (end - start).total_seconds() > 400 * 24 * 3600:
+        raise ValidationError("Report window is limited to 400 days", code="window_too_large")
+    return build_report(ctx, start=start, end=end, site_id=site_id, include_descendants=include_descendants)
+
+
+@router.get("/reports/energy/export")
+def energy_report_export(
+    request,
+    window: Query[TimeRangeParams],
+    format: str = "pdf",
+    site_id: uuid.UUID | None = None,
+    include_descendants: bool = True,
+):
+    """同一份報表，匯出成 PDF 或 Word（``format=pdf|docx``）。"""
+    from django.http import HttpResponse
+
+    from apps.ems import report_export
+    from apps.ems.reports import build_report
+
+    ctx: AuthContext = request.auth
+    start, end = window.normalized(default_window_seconds=30 * 24 * 3600)
+    if (end - start).total_seconds() > 400 * 24 * 3600:
+        raise ValidationError("Report window is limited to 400 days", code="window_too_large")
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "docx"):
+        raise ValidationError("format must be pdf or docx", code="bad_format")
+    report = build_report(ctx, start=start, end=end, site_id=site_id, include_descendants=include_descendants)
+    if fmt == "pdf":
+        payload, mime = report_export.render_pdf(report), "application/pdf"
+    else:
+        payload, mime = (
+            report_export.render_docx(report),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+    response = HttpResponse(payload, content_type=mime)
+    response["Content-Disposition"] = f'attachment; filename="{report_export.filename(report, fmt)}"'
+    return response

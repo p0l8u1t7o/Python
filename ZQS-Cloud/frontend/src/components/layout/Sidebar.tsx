@@ -5,6 +5,7 @@ import {
   BatteryCharging,
   Bell,
   Building2,
+  FileBarChart2,
   CircleHelp,
   ClipboardList,
   Cpu,
@@ -45,6 +46,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         { to: '/storage', labelKey: 'nav.storage', icon: BatteryCharging },
         { to: '/telemetry', labelKey: 'nav.telemetry', icon: Activity },
         { to: '/events', labelKey: 'nav.events', icon: ScrollText },
+        { to: '/reports', labelKey: 'nav.reports', icon: FileBarChart2 },
       ],
     },
     {

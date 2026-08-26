@@ -19,6 +19,7 @@ import { HelpPage } from '@/pages/HelpPage'
 import { AuditPage } from '@/pages/AuditPage'
 import { EventsPage } from '@/pages/EventsPage'
 import { GatewaysPage } from '@/pages/GatewaysPage'
+import { ReportsPage } from '@/pages/ReportsPage'
 import { WorkflowEditorPage } from '@/pages/WorkflowEditorPage'
 import { WorkflowsPage } from '@/pages/WorkflowsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -77,6 +78,7 @@ export function App() {
         <Route path="workflows" element={<WorkflowsPage />} />
         <Route path="workflows/:workflowId" element={<WorkflowEditorPage />} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="help" element={<HelpPage />} />
