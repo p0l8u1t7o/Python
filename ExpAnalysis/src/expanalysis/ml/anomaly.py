@@ -202,7 +202,7 @@ def detect_anomalies(
                 findings.append(AnomalyFinding(
                     batch_id=bid, element="(全部元素)", severity="medium",
                     reasons=[
-                        f"本批 {len(arr)} 個元素的 k_eff **全部同方向**偏離映射預測"
+                        f"本批 {len(arr)} 個元素的 k_eff「全部同方向」偏離映射預測"
                         f"（平均 {np.mean(arr):+.1f} 個標準差，實際{worse}預期）。"
                         "單一元素偏這麼多可以是雜訊，但所有元素一致同向就不是——"
                         "這是批次層級的系統性偏移。",
