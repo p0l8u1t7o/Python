@@ -1261,3 +1261,49 @@ class Command(UUIDPrimaryKeyModel, TimeStampedModel):
     @property
     def is_expired(self) -> bool:
         return not self.is_terminal and self.expires_at <= timezone.now()
+
+
+class IngressDebug(TimeStampedModel):
+    """每個租戶一列的「連線偵錯」開關（帶到期時間，忘了關也會自己停）。"""
+
+    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="ingress_debug")
+    enabled_until = models.DateTimeField(null=True, blank=True)
+    #: 只記這個 node id；空白 = 全部。
+    node_filter = models.CharField(max_length=80, blank=True)
+    #: 是否把 payload 前 96 bytes 的十六進位一起存（給手寫編碼器對拍）。
+    capture_payload = models.BooleanField(default=True)
+    enabled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+
+    class Meta:
+        db_table = "ingress_debug"
+
+    @property
+    def is_active(self) -> bool:
+        return bool(self.enabled_until and self.enabled_until > timezone.now())
+
+
+class IngressTrace(models.Model):
+    """一個封包（或一次連線事件）在平台某一段的判斷。只在偵錯開啟時寫。
+
+    ``organization`` 可為 null：未註冊節點的封包、以及內建 broker 的連線事件
+    在寫入當下不知道屬於誰——那正是設備商最需要看到的東西。
+    """
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    ts = models.DateTimeField(db_index=True)
+    stage = models.CharField(max_length=12)
+    outcome = models.CharField(max_length=12)
+    group_id = models.CharField(max_length=80, blank=True)
+    edge_node_id = models.CharField(max_length=80, blank=True, db_index=True)
+    device_id = models.CharField(max_length=80, blank=True)
+    topic = models.CharField(max_length=255, blank=True)
+    kind = models.CharField(max_length=16, blank=True)
+    reason = models.CharField(max_length=64, blank=True)
+    message = models.CharField(max_length=500, blank=True)
+    detail = models.JSONField(default=dict, blank=True)
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "ingress_trace"
+        ordering = ["-id"]
+        indexes = [models.Index(fields=["organization", "ts"])]

@@ -74,6 +74,11 @@ class Command(BaseCommand):
             for name in _NOISY_LOGGERS:
                 logging.getLogger(name).setLevel(logging.WARNING)
 
+        # 連線偵錯：被 amqtt 在 CONNECT 就拒絕的連線只留 WARNING，接成 trace。
+        from services.harness.amqtt_trace import install_log_bridge
+
+        install_log_bridge()
+
         config = BrokerConfig(
             listeners={
                 "default": ListenerConfig(
@@ -92,6 +97,8 @@ class Command(BaseCommand):
                 "amqtt.plugins.authentication.AnonymousAuthPlugin": {
                     "allow_anonymous": True
                 },
+                # 連線偵錯：只在整合頁開啟偵錯時寫 IngressTrace，平常零成本。
+                "services.harness.amqtt_trace.TracePlugin": {},
             },
         )
 

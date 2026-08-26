@@ -40,6 +40,7 @@ from apps.core.errors import AuthenticationError
 from apps.core.logging import get_logger
 from apps.devices.edge_nodes import authenticate_edge_node
 from apps.devices.models import EdgeNode
+from services import diagnostics as diag
 from services.sparkplug import topics
 
 logger = get_logger("devices.emqx")
@@ -96,11 +97,23 @@ def _check_token(request) -> None:
 
 
 @router.post("/auth", response=WebhookOut, auth=None)
+def _node_of(client_id: str, username: str) -> str:
+    """從 client id（zqs:<node>）或 username（node-<group>-<node>）推回 node id，給偵錯時間線用。"""
+    if client_id.startswith("zqs:"):
+        return client_id[4:]
+    if username.startswith("node-"):
+        return username.split("-", 2)[-1] if username.count("-") >= 2 else ""
+    return ""
+
+
 def emqx_auth(request, payload: AuthIn):
     """Password check for a connecting device."""
     _check_token(request)
 
     if not payload.username or not payload.password:
+        diag.trace(diag.STAGE_BROKER, diag.OUTCOME_REJECTED, edge_node_id=_node_of(payload.clientid, payload.username),
+                   kind="CONNECT", reason="auth_deny", message="EMQX 認證拒絕：沒有帶 username／password",
+                   detail={"client_id": payload.clientid, "peer": payload.peerhost, "broker": "emqx"})
         return DENY
 
     try:
@@ -118,7 +131,14 @@ def emqx_auth(request, payload: AuthIn):
             "edge node authentication denied",
             extra={"username": payload.username, "peerhost": payload.peerhost},
         )
+        diag.trace(diag.STAGE_BROKER, diag.OUTCOME_REJECTED, edge_node_id=_node_of(payload.clientid, payload.username),
+                   kind="CONNECT", reason="auth_deny",
+                   message=f"EMQX 認證拒絕 username={payload.username}：密碼錯或已輪替、節點被停用、或 client id 與 pinning 不符（應為 zqs:<node id>）",
+                   detail={"client_id": payload.clientid, "username": payload.username, "peer": payload.peerhost, "broker": "emqx"})
         return DENY
+    diag.trace(diag.STAGE_BROKER, diag.OUTCOME_OK, organization_id=node.organization_id, edge_node_id=node.node_id,
+               kind="CONNECT", reason="auth_allow", message=f"EMQX 認證通過（{payload.peerhost}）",
+               detail={"client_id": payload.clientid, "username": payload.username, "broker": "emqx"})
     return ALLOW
 
 
@@ -145,6 +165,10 @@ def emqx_acl(request, payload: AclIn):
     if parsed is None:
         # STATE is the host's topic, not a node's, and nothing else in the
         # namespace is addressable by an edge node.
+        diag.trace(diag.STAGE_BROKER, diag.OUTCOME_REJECTED, edge_node_id=_node_of(payload.clientid, payload.username),
+                   topic=payload.topic, reason="acl_deny",
+                   message=f"EMQX ACL 拒絕 {action} {payload.topic}：不在 Sparkplug 命名空間",
+                   detail={"client_id": payload.clientid, "username": payload.username, "action": action, "broker": "emqx"})
         return DENY
 
     owner = (

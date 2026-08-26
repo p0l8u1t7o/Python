@@ -47,6 +47,7 @@ from apps.telemetry.catalog import get_catalog
 from apps.telemetry.models import Quality
 from apps.telemetry.policy import PolicyResolver, SampleGate
 from apps.telemetry.repository import SampleRow, insert_samples, upsert_latest
+from services import diagnostics as diag
 from services.sparkplug import profile
 from services.sparkplug.payload import SEQ_MODULUS, next_seq
 from services.sparkplug.topics import MessageType
@@ -286,6 +287,11 @@ class SparkplugProcessor:
             node = self.shared.resolve_node(envelope)
             if node is None:
                 stats["skipped_unknown_node"] += 1
+                diag.trace(
+                    diag.STAGE_WORKER, diag.OUTCOME_DROPPED, group_id=envelope.get("group_id", ""),
+                    edge_node_id=envelope.get("edge_node_id", ""), kind=str(envelope.get("kind", "")),
+                    reason="unknown_node", message="worker 找不到這個閘道器（未註冊且未開自動佈建）",
+                )
                 continue
 
             try:
@@ -331,6 +337,12 @@ class SparkplugProcessor:
             if kind is MessageType.DBIRTH:
                 if device is None:
                     stats["skipped_unknown_device"] += 1
+                    diag.trace(
+                        diag.STAGE_WORKER, diag.OUTCOME_DROPPED, organization_id=node.organization_id,
+                        edge_node_id=node.node_id, device_id=envelope.get("device_id", ""), kind="DBIRTH",
+                        reason="unknown_device",
+                        message="DBIRTH 的 device_id 沒有在這個閘道器底下註冊；先在整合頁新增設備，id 要完全一致",
+                    )
                     continue
                 self._handle_device_birth(node, device, data, received_at, stats)
                 # A birth also reports values, so fall through to the metric
@@ -346,9 +358,19 @@ class SparkplugProcessor:
 
             if device is None:
                 stats["skipped_unknown_device"] += 1
+                diag.trace(
+                    diag.STAGE_WORKER, diag.OUTCOME_DROPPED, organization_id=node.organization_id,
+                    edge_node_id=node.node_id, device_id=envelope.get("device_id", ""), kind=str(kind),
+                    reason="unknown_device", message="這個 device_id 沒有註冊在此閘道器底下",
+                )
                 continue
             if not device.is_enabled:
                 stats["skipped_disabled"] += 1
+                diag.trace(
+                    diag.STAGE_WORKER, diag.OUTCOME_DROPPED, organization_id=node.organization_id,
+                    edge_node_id=node.node_id, device_id=device.device_id, kind=str(kind),
+                    reason="device_disabled", message="設備在平台上被停用",
+                )
                 continue
 
             self._handle_metrics(
@@ -404,6 +426,11 @@ class SparkplugProcessor:
         seq = data.get("seq")
         if seq is None:
             stats["seq_missing"] += 1
+            diag.trace(
+                diag.STAGE_WORKER, diag.OUTCOME_WARNING, organization_id=node.organization_id,
+                edge_node_id=node.node_id, kind=str(kind), reason="seq_missing",
+                message="payload 沒有 seq：除了 NDEATH 之外每一則都要帶，從 NBIRTH 的 0 起算",
+            )
             return ""
 
         if kind is MessageType.NBIRTH:
@@ -411,6 +438,11 @@ class SparkplugProcessor:
             # publisher's own counter is broken.
             if seq != 0:
                 stats["seq_birth_not_zero"] += 1
+                diag.trace(
+                    diag.STAGE_WORKER, diag.OUTCOME_WARNING, organization_id=node.organization_id,
+                    edge_node_id=node.node_id, kind="NBIRTH", reason="seq_birth_not_zero",
+                    message=f"NBIRTH 的 seq 是 {seq}，規範要求 0；平台會要求重生",
+                )
                 return "nbirth_seq_not_zero"
             return ""
 
@@ -423,6 +455,12 @@ class SparkplugProcessor:
             logger.warning(
                 "sparkplug sequence gap",
                 extra={"node_id": node.node_id, "expected": expected, "got": seq},
+            )
+            diag.trace(
+                diag.STAGE_WORKER, diag.OUTCOME_WARNING, organization_id=node.organization_id,
+                edge_node_id=node.node_id, kind=str(kind), reason="seq_gap",
+                message=f"序號跳號：預期 {expected}，收到 {seq}；有訊息遺失或兩個行程共用同一個 node id，平台會要求重生",
+                detail={"expected": expected, "got": seq},
             )
             return f"seq_gap:{expected}!={seq}"
         return ""
@@ -444,6 +482,11 @@ class SparkplugProcessor:
             try:
                 if request_rebirth(node, reason=reason):
                     stats["rebirth_requested"] += 1
+                    diag.trace(
+                        diag.STAGE_HOST, diag.OUTCOME_INFO, organization_id=node.organization_id,
+                        edge_node_id=node.node_id, kind="NCMD", reason="rebirth_requested",
+                        message=f"平台已發 NCMD Node Control/Rebirth=true（原因：{reason}）；設備應重送 NBIRTH（seq=0）與所有 DBIRTH",
+                    )
             except Exception:  # noqa: BLE001 - never stop ingest for this
                 logger.exception("rebirth request failed", extra={"node": node.node_id})
 
@@ -484,6 +527,11 @@ class SparkplugProcessor:
         EdgeNode.objects.filter(pk=node.pk).update(**updates)
         self.shared.aliases.replace(node.pk, None, metrics)
         stats["node_births"] += 1
+        diag.trace(
+            diag.STAGE_WORKER, diag.OUTCOME_OK, organization_id=node.organization_id,
+            edge_node_id=node.node_id, kind="NBIRTH", reason="node_online",
+            message="NBIRTH 已處理：閘道器上線",
+        )
         logger.info("edge node birth", extra={"node_id": node.node_id})
 
     def _handle_node_death(
@@ -510,6 +558,11 @@ class SparkplugProcessor:
         # obeying it would knock a node that has just reconnected offline.
         if declared is not None and current is not None and declared != current:
             stats["ndeath_stale"] += 1
+            diag.trace(
+                diag.STAGE_WORKER, diag.OUTCOME_INFO, organization_id=node.organization_id,
+                edge_node_id=node.node_id, kind="NDEATH", reason="ndeath_stale",
+                message="這則 NDEATH 的 bdSeq 屬於較早的連線，已忽略（節點已重連）",
+            )
             logger.info(
                 "ignoring NDEATH from a superseded session",
                 extra={"node_id": node.node_id, "declared": declared, "current": current},
@@ -632,6 +685,11 @@ class SparkplugProcessor:
                 stats["declaration_failed"] += 1
 
         stats["device_births"] += 1
+        diag.trace(
+            diag.STAGE_WORKER, diag.OUTCOME_OK, organization_id=node.organization_id,
+            edge_node_id=node.node_id, device_id=device.device_id, kind="DBIRTH", reason="device_online",
+            message="DBIRTH 已處理：設備上線、別名表已更新",
+        )
 
     def _handle_device_death(
         self,
@@ -694,6 +752,11 @@ class SparkplugProcessor:
 
         if unresolved:
             stats["unresolved_aliases"] += unresolved
+            diag.trace(
+                diag.STAGE_WORKER, diag.OUTCOME_WARNING, organization_id=node.organization_id,
+                edge_node_id=node.node_id, device_id=device.device_id, kind="DDATA", reason="unresolved_alias",
+                message=f"{unresolved} 個 metric 只帶 alias 但別名表裡沒有：DBIRTH 沒被平台看到；平台會要求重生",
+            )
             # An alias with no entry means this host never saw the birth that
             # defined it - a worker started after the device, or an alias table
             # lost with the database. Asking for a rebirth is the only way to

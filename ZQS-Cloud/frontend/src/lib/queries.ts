@@ -63,6 +63,9 @@ import type {
   EdgeNode,
   EventCode,
   GeocodeResponse,
+  IngressDebugStatus,
+  IngressDiagnosis,
+  IngressTrace,
 } from './types'
 import type {
   NodeTypeDef,
@@ -1426,6 +1429,55 @@ export function useWorkflowRunMutations() {
     step: useMutation({
       mutationFn: (runId: string) =>
         api.post<WorkflowRun>(`/workflow-runs/${runId}/step`, {}),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+// ---- connection debugger (integration page) --------------------------------
+export function useIngressDebugStatus() {
+  return useQuery({
+    queryKey: ['integration', 'debug', 'status'] as const,
+    queryFn: () => api.get<IngressDebugStatus>('/integration/debug'),
+    refetchInterval: 5000,
+  })
+}
+
+export function useIngressTraces({ node, enabled }: { node: string; enabled: boolean }) {
+  return useQuery({
+    queryKey: ['integration', 'debug', 'traces', node] as const,
+    queryFn: () => api.get<IngressTrace[]>('/integration/debug/traces', { node: node || undefined, limit: 300 }),
+    // Two seconds while capturing: a vendor is watching a device connect.
+    refetchInterval: enabled ? 2000 : false,
+  })
+}
+
+export function useIngressDiagnosis(node: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['integration', 'debug', 'diagnose', node] as const,
+    queryFn: () => api.get<IngressDiagnosis>(`/integration/debug/diagnose/${encodeURIComponent(node)}`),
+    enabled: Boolean(node) && enabled,
+    refetchInterval: enabled ? 4000 : false,
+  })
+}
+
+export function useIngressDebugMutations() {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['integration', 'debug'] })
+  }
+  return {
+    enable: useMutation({
+      mutationFn: (body: { minutes: number; node_filter: string; capture_payload: boolean }) =>
+        api.put<IngressDebugStatus>('/integration/debug', body),
+      onSuccess: invalidate,
+    }),
+    disable: useMutation({
+      mutationFn: () => api.delete('/integration/debug'),
+      onSuccess: invalidate,
+    }),
+    clear: useMutation({
+      mutationFn: () => api.delete('/integration/debug/traces'),
       onSuccess: invalidate,
     }),
   }

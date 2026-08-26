@@ -39,6 +39,7 @@ import orjson
 
 from services.ingestor import protocol
 from services.mqtt.client import MqttClient
+from services import diagnostics as diag
 from services.sparkplug import topics
 from services.sparkplug.topics import MessageType
 
@@ -92,6 +93,26 @@ class Stats:
         return snapshot
 
 
+#: 拒收原因 → 設備商該看哪裡。
+_REJECT_HINTS = {
+    "bad_timestamp": "Payload.timestamp 要是 UTC epoch 毫秒，且在過去 7 天～未來 5 分鐘內；檢查設備時鐘與單位（秒 vs 毫秒）",
+    "decode_error": "不是合法的 Sparkplug B protobuf：確認用 sparkplug_b.proto 編碼、不是 JSON；對照文件附錄 H 的位元組",
+    "invalid_payload": "protobuf 解得開但內容不合規範：檢查 datatype 與 value 欄位是否對應",
+}
+
+
+def _describe(data: dict) -> str:
+    metrics = data.get("metrics") or []
+    names = [m.get("name") or f"alias {m.get('alias')}" for m in metrics[:6]]
+    more = f" …共 {len(metrics)} 個" if len(metrics) > 6 else ""
+    parts = [f"seq={data.get('seq')}" if data.get("seq") is not None else "無 seq"]
+    if data.get("bd_seq") is not None:
+        parts.append(f"bdSeq={data.get('bd_seq')}")
+    if names:
+        parts.append("metrics: " + ", ".join(str(n) for n in names) + more)
+    return "；".join(parts)
+
+
 class Ingestor:
     def __init__(self, bus: MessageBus | None = None, *, forwarders: int = 2) -> None:
         self.bus = bus or build_bus()
@@ -112,6 +133,11 @@ class Ingestor:
         parsed = topics.parse(topic)
         if parsed is None or parsed.message_type not in _ACCEPTED_TYPES:
             self.stats.incr("dropped.unknown_topic")
+            diag.trace(
+                diag.STAGE_INGEST, diag.OUTCOME_DROPPED, topic=topic, reason="unknown_topic",
+                message="topic 不在 spBv1.0/{group}/{NBIRTH|NDEATH|DBIRTH|DDEATH|DDATA|NDATA}/{node}[/{device}] 的形狀，或訊息型別不是上行",
+                raw=payload, size=len(payload),
+            )
             return
 
         self.stats.incr(f"received.{parsed.message_type}")
@@ -129,6 +155,12 @@ class Ingestor:
                     "error": str(exc)[:300],
                 },
             )
+            diag.trace(
+                diag.STAGE_INGEST, diag.OUTCOME_REJECTED, group_id=parsed.group_id,
+                edge_node_id=parsed.edge_node_id, device_id=parsed.device_id or "", topic=topic,
+                kind=str(parsed.message_type), reason=exc.reason, message=str(exc)[:300],
+                detail={"hint": _REJECT_HINTS.get(exc.reason, "")}, raw=payload, size=len(payload),
+            )
             return
 
         node = self.registry.get_node(parsed.group_id, parsed.edge_node_id)
@@ -139,9 +171,23 @@ class Ingestor:
             if not settings.INGEST["AUTO_PROVISION"]:
                 self.stats.incr("dropped.unknown_node")
                 self._log_unknown_device(f"{parsed.group_id}/{parsed.edge_node_id}")
+                diag.trace(
+                    diag.STAGE_INGEST, diag.OUTCOME_DROPPED, group_id=parsed.group_id,
+                    edge_node_id=parsed.edge_node_id, device_id=parsed.device_id or "", topic=topic,
+                    kind=str(parsed.message_type), reason="unknown_node",
+                    message=f"平台沒有 group_id={parsed.group_id}、node_id={parsed.edge_node_id} 的閘道器；"
+                            "請確認 topic 的 group 是租戶代碼、node id 與整合頁登記的一致（大小寫也要相同）",
+                    raw=payload, size=len(payload),
+                )
                 return
         elif not node.is_enabled:
             self.stats.incr("dropped.node_disabled")
+            diag.trace(
+                diag.STAGE_INGEST, diag.OUTCOME_DROPPED, organization_id=node.organization_id,
+                group_id=parsed.group_id, edge_node_id=parsed.edge_node_id, topic=topic,
+                kind=str(parsed.message_type), reason="node_disabled", message="這個閘道器在平台上被停用",
+                size=len(payload),
+            )
             return
 
         ref = None
@@ -171,6 +217,16 @@ class Ingestor:
             "qos": qos,
             "data": data,
         }
+
+        diag.trace(
+            diag.STAGE_INGEST, diag.OUTCOME_OK, organization_id=node.organization_id if node else None,
+            group_id=parsed.group_id, edge_node_id=parsed.edge_node_id, device_id=parsed.device_id or "",
+            topic=topic, kind=str(parsed.message_type), reason="accepted",
+            message=_describe(data),
+            detail={"seq": data.get("seq"), "metrics": len(data.get("metrics") or []),
+                    "dropped_metrics": data.get("dropped_metrics", 0), "qos": qos, "retain": retain},
+            raw=payload, size=len(payload),
+        )
 
         stream = streams.qualified(streams.INGEST)
         try:

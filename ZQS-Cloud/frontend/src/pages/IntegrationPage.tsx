@@ -4,6 +4,7 @@ import { Check, Copy } from 'lucide-react'
 
 import { useCapabilities, useEdgeNodes } from '@/lib/queries'
 import { GatewayManager } from '@/components/devices/GatewayManager'
+import { ConnectionDebugger } from '@/components/devices/ConnectionDebugger'
 import { useAuth } from '@/providers/AuthProvider'
 import {
   Badge,
@@ -138,6 +139,10 @@ export function IntegrationPage() {
 
       <div className="mb-5">
         <GatewayManager />
+      </div>
+
+      <div className="mb-5">
+        <ConnectionDebugger nodes={nodeOptions} initialNode={node?.node_id} />
       </div>
 
       <div className="space-y-4">

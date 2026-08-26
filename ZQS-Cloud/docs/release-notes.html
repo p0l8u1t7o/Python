@@ -106,6 +106,14 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <h2 id="v0-3-營收最佳化與邊緣自治-2026-08-23">v0.3 — 營收最佳化與邊緣自治（2026-08-23）<a class="headerlink" href="#v0-3-營收最佳化與邊緣自治-2026-08-23" title="Permanent link">¶</a></h2>
 <p><strong>一句話</strong>：策略從「瞬時比較的單選標籤」變成「有預測、有窗口積分、可疊加、可回測、可結算、斷網也安全」的調度系統；前端加上 3D 能量場景、場域星系與需量著色地圖；模擬器可以強行改變上傳值讓每個數字都能手算對帳。</p>
 <p><strong>驗證</strong>：後端 813 項測試、ruff、前端 typecheck/build、Playwright e2e（含 3D 場景兩主題截圖、地圖階層）、<code>scripts/verify_calculations.py</code> 3,356 項交叉比對，全數通過。詳細設計見 <a href="system-logic.html">system-logic.html</a> §1.12D–1.12I。</p>
+<h3 id="整合頁-連線偵錯">整合頁：連線偵錯<a class="headerlink" href="#整合頁-連線偵錯" title="Permanent link">¶</a></h3>
+<ul>
+<li>新增 <code>IngressDebug</code>（每租戶一個帶到期的開關）與 <code>IngressTrace</code>（migration <code>devices/0013</code>）；<code>services/diagnostics.py</code> 提供 <code>trace()</code>，開關關閉時零成本、寫入永遠 best-effort。</li>
+<li>掛勾點：內建 broker 的 amqtt 外掛（CONNECT 的遺言／clean session／協定版本檢查、SUBSCRIBE、PUBLISH 是否在命名空間、DISCONNECT）、EMQX 認證與 ACL webhook（允許／拒絕與原因）、ingestor（topic 不合法、payload 拒收＋提示、節點未註冊或停用、接受時的 seq／metric 摘要）、worker（未知設備、序號缺失／NBIRTH 非 0／跳號、出生處理、過期 NDEATH、別名解不開）、平台發出的重生要求。</li>
+<li>API：<code>GET/PUT/DELETE /integration/debug</code>、<code>GET/DELETE /integration/debug/traces</code>、<code>GET /integration/debug/diagnose/{node}</code>——診斷照協定步驟找出「卡在哪一步」並附文件連結。</li>
+<li>整合頁新增「連線偵錯」卡片：閘道器／分鐘／保留位元組、開始／停止、診斷結論與發現、每 2 秒更新的時間線（可展開看 topic、原因、十六進位）。</li>
+<li>測試 <code>tests/test_ingress_debug.py</code>；文件 device-protocol §11.1。</li>
+</ul>
 <h3 id="device-protocol-改為逐步開發指南">device-protocol 改為逐步開發指南<a class="headerlink" href="#device-protocol-改為逐步開發指南" title="Permanent link">¶</a></h3>
 <ul>
 <li><code>docs/device-protocol.html</code> 重排成 11 個開發步驟（拿位址與憑證 → 連線 → 組 payload → NBIRTH → DBIRTH → DDATA → 告警／事件 → 命令與回覆／設定點有效期 → 重生 → 離線與關機 → 驗收），每步附<strong>完整 payload 內容</strong>、必填／選填與驗收方法；開頭有時序圖與步驟總表，結尾有開發完成檢查表。</li>

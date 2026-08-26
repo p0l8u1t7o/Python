@@ -1197,3 +1197,45 @@ export interface EventCode {
   code: string
   count: number
 }
+
+/** One decision the platform made about a packet, recorded while connection debugging is on. */
+export interface IngressTrace {
+  id: number
+  ts: string
+  stage: 'broker' | 'ingest' | 'worker' | 'host' | string
+  outcome: 'ok' | 'rejected' | 'dropped' | 'warning' | 'info' | string
+  group_id: string
+  edge_node_id: string
+  device_id: string
+  topic: string
+  kind: string
+  reason: string
+  message: string
+  detail: Record<string, unknown> & { hex?: string }
+  size: number
+}
+
+export interface IngressDebugStatus {
+  enabled: boolean
+  enabled_until: string | null
+  node_filter: string
+  capture_payload: boolean
+  trace_count: number
+}
+
+export interface IngressDiagnosis {
+  node_id: string
+  registered: boolean
+  node_enabled: boolean
+  group_id_expected: string
+  status: string
+  last_seen_at: string | null
+  rebirth_requested_at: string | null
+  credential_active: boolean
+  last_auth_at: string | null
+  counts: Record<string, number>
+  last_by_kind: Record<string, string>
+  findings: { level: 'error' | 'warning' | 'info' | string; text: string; ref: string }[]
+  verdict: string
+  verdict_level: 'ok' | 'warning' | 'error' | 'info' | string
+}
