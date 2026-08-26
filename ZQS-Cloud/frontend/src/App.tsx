@@ -18,7 +18,7 @@ import { StoragePlansPage } from '@/pages/StoragePlansPage'
 import { HelpPage } from '@/pages/HelpPage'
 import { AuditPage } from '@/pages/AuditPage'
 import { EventsPage } from '@/pages/EventsPage'
-import { IntegrationPage } from '@/pages/IntegrationPage'
+import { GatewaysPage } from '@/pages/GatewaysPage'
 import { WorkflowEditorPage } from '@/pages/WorkflowEditorPage'
 import { WorkflowsPage } from '@/pages/WorkflowsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -64,6 +64,7 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="devices/:deviceId" element={<DeviceDetailPage />} />
+        <Route path="gateways" element={<GatewaysPage />} />
         <Route path="map" element={<MapPage />} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="storage" element={<StoragePage />} />
@@ -78,7 +79,6 @@ export function App() {
         <Route path="events" element={<EventsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="integration" element={<IntegrationPage />} />
         <Route path="help" element={<HelpPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

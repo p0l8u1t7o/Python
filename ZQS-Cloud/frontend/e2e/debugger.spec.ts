@@ -5,7 +5,7 @@ import { open, watch } from './helpers'
 /** Integration page: the connection debugger switches on, shows a diagnosis, and switches off. */
 test('connection debugger toggles and diagnoses a gateway', async ({ page }, testInfo) => {
   const watcher = watch(page)
-  await open(page, '/integration')
+  await open(page, '/gateways')
   const card = page.getByTestId('connection-debugger')
   await expect(card).toBeVisible({ timeout: 20_000 })
 

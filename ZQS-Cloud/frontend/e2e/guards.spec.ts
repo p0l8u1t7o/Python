@@ -193,7 +193,7 @@ test.describe('energy asset editor', () => {
 
 test.describe('gateway management', () => {
   test('registers a gateway, shows its credential once, requests rebirth, removes it', async ({ page }) => {
-    await open(page, '/integration')
+    await open(page, '/gateways')
     await page.waitForTimeout(1500)
     await page.getByRole('button', { name: /登錄閘道器|登记网关|register gateway/i }).click()
     await expect(dialog(page)).toBeVisible()

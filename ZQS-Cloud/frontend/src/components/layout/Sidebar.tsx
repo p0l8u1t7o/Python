@@ -39,6 +39,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       items: [
         { to: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard },
         { to: '/devices', labelKey: 'nav.devices', icon: Cpu },
+        { to: '/gateways', labelKey: 'nav.gateways', icon: Plug },
         { to: '/map', labelKey: 'nav.map', icon: MapIcon },
         { to: '/alerts', labelKey: 'nav.alerts', icon: Bell, badge: summary?.total_open },
         { to: '/storage', labelKey: 'nav.storage', icon: BatteryCharging },
@@ -62,7 +63,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       items: [
         { to: '/audit', labelKey: 'nav.audit', icon: ClipboardList },
         { to: '/settings', labelKey: 'nav.settings', icon: Settings },
-        { to: '/integration', labelKey: 'nav.integration', icon: Plug },
         { to: '/help', labelKey: 'nav.help', icon: CircleHelp },
       ],
     },

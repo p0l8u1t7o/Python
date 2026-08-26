@@ -14,7 +14,7 @@ import { untranslatedKeys, watch } from './helpers'
 const ROUTES = [
   '/', '/devices', '/map', '/alerts', '/storage', '/storage-plans', '/telemetry',
   '/events', '/tariffs', '/workflows', '/sites', '/recording', '/rules', '/audit',
-  '/settings', '/integration', '/help',
+  '/settings', '/gateways', '/help',
 ]
 
 for (const account of ['viewer', 'operator'] as const) {

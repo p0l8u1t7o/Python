@@ -546,6 +546,11 @@ class EdgeNode(UUIDPrimaryKeyModel, TimeStampedModel, SoftDeleteModel):
     hardware_version = models.CharField(max_length=64, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     rssi = models.IntegerField(null=True, blank=True)
+    #: Every metric the current NBIRTH declared, as the gateway sent it:
+    #: ``[{"name", "alias", "datatype", "value", "properties"}, ...]``. Kept
+    #: verbatim so an operator can see what the gateway *claims* without
+    #: reading a broker dump; the platform acts on the columns above, not this.
+    birth_metrics = models.JSONField(default=list, blank=True)
 
     objects = EdgeNodeQuerySet.as_manager()
 

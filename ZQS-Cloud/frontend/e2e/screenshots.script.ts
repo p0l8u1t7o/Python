@@ -72,7 +72,7 @@ const SHOTS: Shot[] = [
   { name: '16-事件紀錄', path: '/events', wait: 1500, fullPage: true },
   { name: '17-稽核紀錄', path: '/audit', wait: 1500, fullPage: true },
   { name: '18-設定', path: '/settings', wait: 1500, fullPage: true },
-  { name: '19-外部整合', path: '/integration', wait: 1500, fullPage: true },
+  { name: '19-閘道器', path: '/gateways', wait: 1500, fullPage: true },
   { name: '20-說明', path: '/help', wait: 1500, fullPage: true },
 ]
 

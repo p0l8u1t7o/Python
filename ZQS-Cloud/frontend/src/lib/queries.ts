@@ -368,6 +368,8 @@ export interface DeviceListParams {
   /** Only devices with no site at all - the ones a tree cannot place. */
   unassigned_only?: boolean
   device_type_id?: string
+  /** Only devices reporting through this gateway (edge node pk). */
+  edge_node_id?: string
   limit?: number
   offset?: number
 }

@@ -130,7 +130,7 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 </ul>
 </li>
 <li><a href="#11-步驟-11-驗收">11. 步驟 11：驗收</a><ul>
-<li><a href="#11-1-連不上時-整合頁的連線偵錯">11.1 連不上時：整合頁的「連線偵錯」</a></li>
+<li><a href="#11-1-連不上時-閘道器頁的連線偵錯">11.1 連不上時：閘道器頁的「連線偵錯」</a></li>
 </ul>
 </li>
 <li><a href="#附錄-a-內建-metric-key">附錄 A：內建 metric key（表後儲能）</a><ul>
@@ -613,12 +613,13 @@ python scripts/run_device_test.py self-test
 python scripts/run_device_test.py device --device ZQS-BESS-0001
 </code></pre></div>
 <p>檢查項目：clean session、遺言的 topic/QoS/retain/bdSeq、NBIRTH 的 seq 是否為 0、bdSeq 與遺言是否一致、是否宣告 <code>Node Control/Rebirth</code>、BIRTH 有沒有指派 alias、seq 是否連續、命令有沒有回覆、重生要求有沒有被理會。細節見 <a href="device-test-harness.html">設備測試工具</a>。</p>
-<h3 id="11-1-連不上時-整合頁的連線偵錯">11.1 連不上時：整合頁的「連線偵錯」<a class="headerlink" href="#11-1-連不上時-整合頁的連線偵錯" title="Permanent link">¶</a></h3>
-<p>閘道器一直顯示「離線／等待重生」時，到 console 的<strong>整合說明</strong>頁開啟「連線偵錯」：選閘道器、按開始，再讓設備連線。平台每一段會把它對每個封包的判斷記成一列（broker 的 CONNECT／遺言檢查、ingest 的 topic 與 payload 解碼結果、worker 的序號與出生處理、平台發出的重生要求），上方的診斷會照本文的步驟順序說出設備<strong>卡在哪一步</strong>並附文件連結：</p>
+<h3 id="11-1-連不上時-閘道器頁的連線偵錯">11.1 連不上時：閘道器頁的「連線偵錯」<a class="headerlink" href="#11-1-連不上時-閘道器頁的連線偵錯" title="Permanent link">¶</a></h3>
+<p>console 的<strong>閘道器</strong>頁（<code>/gateways</code>）是設備端連線時唯一要看的頁面：上方「連線相關參數」把本環境的命名空間、group id、host id 與所選閘道器的 client id／帳號／topic 填好；點選一台閘道器可看它的連線狀態（bdSeq、最後 seq、目前 NBIRTH 時間）、它在 NBIRTH 裡<strong>宣告的每一個 metric</strong>（照原樣列出，方便對照自己送了什麼）、以及它管理的設備。協定本身只維護在本文，頁面不再重複。</p>
+<p>閘道器一直顯示「離線／等待重生」時，在同一頁下方開啟「連線偵錯」：選閘道器、按開始，再讓設備連線。平台每一段會把它對每個封包的判斷記成一列（broker 的 CONNECT／遺言檢查、ingest 的 topic 與 payload 解碼結果、worker 的序號與出生處理、平台發出的重生要求），上方的診斷會照本文的步驟順序說出設備<strong>卡在哪一步</strong>並附文件連結：</p>
 <div class="table-wrap"><table>
 <thead><tr><th>診斷結論</th><th>代表</th><th>去看</th></tr></thead>
 <tbody>
-<tr><td>節點未註冊</td><td>整合頁沒有這個 node id（或被刪除）</td><td>步驟 1</td></tr>
+<tr><td>節點未註冊</td><td>閘道器頁沒有這個 node id（或被刪除）</td><td>步驟 1</td></tr>
 <tr><td>沒有收到任何封包：卡在連線層</td><td>設備沒連上 broker，或連上了但 client id／遺言 topic 都對不到這個 node id</td><td>步驟 2、附錄 D</td></tr>
 <tr><td>連上 broker 了，但沒有發 NBIRTH</td><td>CONNECT 成功、之後沒有 PUBLISH 到 spBv1.0/{group}/NBIRTH/{node}</td><td>步驟 4</td></tr>
 <tr><td>封包有進來但被拒收</td><td>topic 形狀錯、group_id 不是租戶代碼、payload 不是 Sparkplug protobuf、時間戳超出範圍</td><td>步驟 3、附錄 H</td></tr>

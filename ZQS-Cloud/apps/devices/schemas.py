@@ -417,6 +417,7 @@ class DeviceFilters(FilterSchema):
     status: ConnectionStatus | None = None
     site_id: uuid.UUID | None = None
     device_type_id: uuid.UUID | None = None
+    edge_node_id: uuid.UUID | None = None
     is_enabled: bool | None = None
 
 
@@ -534,6 +535,8 @@ class EdgeNodeOut(Schema):
     hardware_version: str = ""
     ip_address: str | None = None
     rssi: int | None = None
+    #: What the current NBIRTH declared, metric by metric. Informational.
+    birth_metrics: list[dict] = []
     site_id: uuid.UUID | None = None
     site_name: str | None = None
     device_count: int = 0

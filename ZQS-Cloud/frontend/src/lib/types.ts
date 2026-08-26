@@ -288,6 +288,14 @@ export interface DeviceCost {
   annual_cost: number | null
 }
 
+export interface BirthMetric {
+  name: string
+  alias: number | null
+  datatype: string
+  value: unknown
+  properties: Record<string, unknown>
+}
+
 export interface EdgeNode {
   id: string
   node_id: string
@@ -309,6 +317,8 @@ export interface EdgeNode {
   hardware_version: string
   ip_address: string | null
   rssi: number | null
+  /** What the current NBIRTH declared, metric by metric. Informational. */
+  birth_metrics: BirthMetric[]
   site_id: string | null
   site_name: string | null
   device_count: number

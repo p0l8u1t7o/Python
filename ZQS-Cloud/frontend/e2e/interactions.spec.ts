@@ -281,13 +281,13 @@ test.describe('event log', () => {
   })
 })
 
-test.describe('integration guide', () => {
-  test('shows this deployment topics filled in', async ({ page }, info) => {
+test.describe('gateway page', () => {
+  test('shows the connection parameters filled in for the selected gateway', async ({ page }, info) => {
     const watcher = watch(page)
-    await open(page, '/integration')
+    await open(page, '/gateways')
     await expect(page.getByRole('heading').first()).toBeVisible()
     await page.waitForTimeout(1500)
-    await shoot(page, info, 'integration')
+    await shoot(page, info, 'gateways')
 
     // The point of the page is that the vendor does not have to ask anyone for
     // these, so the real namespace and group have to be on screen.

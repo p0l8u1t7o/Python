@@ -199,7 +199,7 @@ SELECT create_hypertable('telemetry_sample', 'ts', migrate_data => true);
 | 報表幣別 | `Organization.reporting_currency` —— 一個組織一種；沒有電價方案的場域退回它，幣別不符的方案在儲存時就擋（`currency_mismatch`）|
 | 即插即用 | DBIRTH 帶著單位與資料型別，沒設定過的 metric 會自動建進目錄，圖表一上來就有標籤（`apps/telemetry/autoregister.py`）|
 | 設備事件查詢 | `GET /api/events` —— 全機隊的事件紀錄，可依場域、等級、代碼與全文搜尋，console 的 `/events` 頁 |
-| 設備商整合說明 | console 的 `/integration` 頁 —— 把這個環境的 group、host id 與 topic 直接填好給設備開發人員 |
+| 閘道器管理 | console 的 `/gateways` 頁 —— 每台閘道器的連線狀態、NBIRTH 宣告的 metric、管理的設備、連線相關參數（group、host id、client id、topic）與連線偵錯；協定細節只在 `docs/device-protocol.html` 維護 |
 | 地址轉座標 | 新增場域時可用地址查詢座標（OpenStreetMap Nominatim，免費免金鑰）；查不到就手動輸入 |
 | 自動調度 | `apps/ems/dispatch.py` —— 把 `DispatchWindow` 變成實際命令，並強制執行運轉限制 |
 | 工作流程 | `apps/workflows` —— React Flow 畫布畫控制邏輯：IF、計時、時間區間、等待、條件等待、命令、跳轉、並行分支、Note 註解；拖曳加入、Delete／Ctrl+C／Ctrl+V／Ctrl+Z；執行控制列（暫停／繼續／停止／單步／停止點／節點間延遲）、參數防呆、自動排列、離開未存提醒；每租戶並行上限由伺服器鎖定（預設 5）；儲能規劃可指定流程接管調度 |

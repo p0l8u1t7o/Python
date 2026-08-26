@@ -38,7 +38,14 @@ import { CredentialPanel } from '@/pages/DevicesPage'
  * the platform and the gateway disagree about what is attached, and remove
  * it. The API has had all four for a while; the console only listed them.
  */
-export function GatewayManager() {
+export function GatewayManager({
+  selectedId = null,
+  onSelect,
+}: {
+  /** Highlighted row; the page shows this gateway's detail below. */
+  selectedId?: string | null
+  onSelect?: (id: string) => void
+} = {}) {
   const { t } = useTranslation()
   const { can } = useAuth()
   const toast = useToast()
@@ -93,7 +100,7 @@ export function GatewayManager() {
     <Card>
       <CardHeader
         title={t('gateways.title')}
-        description={t('gateways.hint')}
+        description={onSelect ? `${t('gateways.hint')} ${t('gateways.selectHint')}` : t('gateways.hint')}
         actions={
           writable ? (
             <Button icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>
@@ -116,7 +123,11 @@ export function GatewayManager() {
             <EmptyRow colSpan={6} message={t('gateways.empty')} />
           ) : (
             items.map((node) => (
-              <Tr key={node.id}>
+              <Tr
+                key={node.id}
+                onClick={onSelect ? () => onSelect(node.id) : undefined}
+                className={node.id === selectedId ? 'bg-brand-soft/40' : ''}
+              >
                 <Td className="font-mono text-xs">{node.node_id}</Td>
                 <Td>
                   <span className="font-medium">{node.name}</span>
@@ -132,7 +143,7 @@ export function GatewayManager() {
                 <Td align="right" className="tnum">{node.device_count}</Td>
                 {writable ? (
                   <Td align="right">
-                    <span className="flex justify-end gap-1">
+                    <span className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
                       <IconButton
                         label={t('gateways.rebirth')}
                         onClick={() => void requestRebirth(node)}

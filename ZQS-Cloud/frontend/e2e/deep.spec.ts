@@ -204,7 +204,7 @@ test.describe('deep sweep', () => {
   test('settings, integration, help, audit, recording, events, telemetry', async ({ page }) => {
     test.setTimeout(120000)
     const watcher = watch(page)
-    for (const path of ['/settings', '/integration', '/help', '/audit', '/recording', '/events', '/telemetry']) {
+    for (const path of ['/settings', '/gateways', '/help', '/audit', '/recording', '/events', '/telemetry']) {
       await open(page, path)
       await page.waitForTimeout(1500)
       // Click through any tabs the page offers.

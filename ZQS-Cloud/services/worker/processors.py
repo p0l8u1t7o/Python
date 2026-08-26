@@ -523,6 +523,7 @@ class SparkplugProcessor:
             updates["ip_address"] = status_fields["ip"]
         if status_fields.get("rssi") is not None:
             updates["rssi"] = int(status_fields["rssi"])
+        updates["birth_metrics"] = _declaration_of(metrics)
 
         EdgeNode.objects.filter(pk=node.pk).update(**updates)
         self.shared.aliases.replace(node.pk, None, metrics)
@@ -1180,6 +1181,36 @@ def _clamp_bd_seq(value: Any) -> int | None:
         return int(value) % SEQ_MODULUS
     except (TypeError, ValueError):
         return None
+
+
+def _declaration_of(metrics: list[dict[str, Any]], limit: int = 200) -> list[dict[str, Any]]:
+    """The NBIRTH metric list as a JSON-safe record for the console.
+
+    Values are kept as the envelope carried them (already JSON), but bytes and
+    datasets are summarised - the point is to show what was declared, not to
+    archive it. Capped so a runaway declaration cannot bloat one row.
+    """
+    from services.sparkplug.datatypes import DataType
+
+    out: list[dict[str, Any]] = []
+    for metric in metrics[:limit]:
+        value = metric.get("value")
+        if isinstance(value, (bytes, bytearray)):
+            value = f"<{len(value)} bytes>"
+        elif isinstance(value, (dict, list)):
+            value = f"<{type(value).__name__}>"
+        try:
+            datatype = DataType(int(metric.get("datatype") or 0)).name
+        except ValueError:
+            datatype = str(metric.get("datatype"))
+        out.append({
+            "name": metric.get("name") or "",
+            "alias": metric.get("alias"),
+            "datatype": datatype,
+            "value": None if metric.get("is_null") else value,
+            "properties": metric.get("properties") or {},
+        })
+    return out
 
 
 def _as_metric_view(metric: dict[str, Any], name: str = ""):

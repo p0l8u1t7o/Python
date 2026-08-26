@@ -26,7 +26,7 @@ const ROUTES = [
   { path: '/rules', name: 'rules' },
   { path: '/audit', name: 'audit' },
   { path: '/settings', name: 'settings' },
-  { path: '/integration', name: 'integration' },
+  { path: '/gateways', name: 'gateways' },
   { path: '/help', name: 'help' },
 ]
 
@@ -76,7 +76,7 @@ test.describe('translations', () => {
         '/storage',
         '/tariffs',
         '/events',
-        '/integration',
+        '/gateways',
         '/help',
         '/settings',
       ]) {
