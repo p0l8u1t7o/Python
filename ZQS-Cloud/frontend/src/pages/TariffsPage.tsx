@@ -581,7 +581,7 @@ function TariffModal({
       open={open}
       onClose={onClose}
       dirty={dirty}
-      size="lg"
+      size="xl"
       title={isUpdate ? t('tariffs.edit') : t('tariffs.create')}
       description={t('tariffs.hint')}
       footer={
@@ -598,7 +598,8 @@ function TariffModal({
         </>
       }
     >
-      <div className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
+       <div className="space-y-4">
         {(presets.data ?? []).length > 0 ? (
           <div className="rounded-lg border border-line bg-surface-muted p-3">
             <p className="mb-1 text-xs font-medium">{t('tariffs.presetTitle')}</p>
@@ -613,7 +614,7 @@ function TariffModal({
           </div>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           <TextInput
             label={t('common.name')}
             required
@@ -694,7 +695,9 @@ function TariffModal({
             />
           </div>
         </div>
+       </div>
 
+       <div>
         {form.kind === 'tou' ? (
           <div>
             <div className="mb-2 flex items-center justify-between">
@@ -737,7 +740,7 @@ function TariffModal({
                     key={index}
                     className="rounded-lg border border-line p-3"
                   >
-                    <div className="mb-3 flex items-center gap-2">
+                    <div className="mb-2 flex items-center gap-2">
                       <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface-muted text-xs font-semibold tnum">
                         {index + 1}
                       </span>
@@ -761,7 +764,7 @@ function TariffModal({
                       </IconButton>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-4">
+                    <div className="grid gap-2 sm:grid-cols-4">
                       <TextInput
                         label={t('range.from')}
                         type="time"
@@ -780,7 +783,6 @@ function TariffModal({
                         onChange={(event) =>
                           setPeriod(index, { end: event.target.value || '24:00' })
                         }
-                        hint={t('tariffs.midnightHint')}
                       />
                       <TextInput
                         label={t('tariffs.importPrice')}
@@ -808,7 +810,7 @@ function TariffModal({
                       />
                     </div>
 
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
                       <div>
                         <span className="label">{t('tariffs.weekdays')}</span>
                         <div className="flex flex-wrap gap-1">
@@ -839,14 +841,17 @@ function TariffModal({
                           )}
                         </div>
                       </div>
-                      <p className="hint">{t('tariffs.emptyMeansAll')}</p>
                     </div>
                   </div>
                 ))}
+                <p className="hint">{t('tariffs.emptyMeansAll')} {t('tariffs.midnightHint')}</p>
               </div>
             )}
           </div>
-        ) : null}
+        ) : (
+          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">{t('tariffs.kindHint')}</p>
+        )}
+       </div>
       </div>
     </Modal>
   )

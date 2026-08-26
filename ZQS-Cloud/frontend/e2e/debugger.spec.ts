@@ -6,6 +6,9 @@ import { open, watch } from './helpers'
 test('connection debugger toggles and diagnoses a gateway', async ({ page }, testInfo) => {
   const watcher = watch(page)
   await open(page, '/gateways')
+  // The debugger lives in the selected gateway's last tab.
+  await expect(page.getByTestId('gateway-detail')).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('tab', { name: /連線偵錯|连接调试|Connection debugger/ }).click()
   const card = page.getByTestId('connection-debugger')
   await expect(card).toBeVisible({ timeout: 20_000 })
 

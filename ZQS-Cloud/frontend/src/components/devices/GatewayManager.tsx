@@ -41,10 +41,13 @@ import { CredentialPanel } from '@/pages/DevicesPage'
 export function GatewayManager({
   selectedId = null,
   onSelect,
+  compact = false,
 }: {
   /** Highlighted row; the page shows this gateway's detail below. */
   selectedId?: string | null
   onSelect?: (id: string) => void
+  /** Half-width layout: fewer columns, name under the id. */
+  compact?: boolean
 } = {}) {
   const { t } = useTranslation()
   const { can } = useAuth()
@@ -112,9 +115,9 @@ export function GatewayManager({
       <Table>
         <THead>
           <Th>{t('gateways.nodeId')}</Th>
-          <Th>{t('common.name')}</Th>
+          {compact ? null : <Th>{t('common.name')}</Th>}
           <Th>{t('common.status')}</Th>
-          <Th>{t('gateways.lastSeen')}</Th>
+          {compact ? null : <Th>{t('gateways.lastSeen')}</Th>}
           <Th align="right">{t('gateways.devices')}</Th>
           {writable ? <Th /> : null}
         </THead>
@@ -128,18 +131,28 @@ export function GatewayManager({
                 onClick={onSelect ? () => onSelect(node.id) : undefined}
                 className={node.id === selectedId ? 'bg-brand-soft/40' : ''}
               >
-                <Td className="font-mono text-xs">{node.node_id}</Td>
-                <Td>
-                  <span className="font-medium">{node.name}</span>
-                  {!node.is_enabled ? <Badge tone="neutral" className="ml-1">{t('common.disabled')}</Badge> : null}
+                <Td className="font-mono text-xs">
+                  {node.node_id}
+                  {compact ? <div className="font-sans text-xs text-muted">{node.name}</div> : null}
                 </Td>
+                {compact ? null : (
+                  <Td>
+                    <span className="font-medium">{node.name}</span>
+                    {!node.is_enabled ? <Badge tone="neutral" className="ml-1">{t('common.disabled')}</Badge> : null}
+                  </Td>
+                )}
                 <Td>
                   <ConnectionBadge status={node.status} />
                   {node.rebirth_requested_at ? (
                     <span className="ml-1 text-xs text-muted">{t('gateways.rebirthPending')}</span>
                   ) : null}
+                  {compact && node.last_seen_at ? (
+                    <div className="text-xs text-muted">{formatRelative(node.last_seen_at)}</div>
+                  ) : null}
                 </Td>
-                <Td className="text-muted">{node.last_seen_at ? formatRelative(node.last_seen_at) : '—'}</Td>
+                {compact ? null : (
+                  <Td className="text-muted">{node.last_seen_at ? formatRelative(node.last_seen_at) : '—'}</Td>
+                )}
                 <Td align="right" className="tnum">{node.device_count}</Td>
                 {writable ? (
                   <Td align="right">

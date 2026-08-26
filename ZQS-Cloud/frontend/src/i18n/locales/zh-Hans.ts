@@ -187,6 +187,7 @@ const zhHans: Translation = {
     viewAll: '查看全部',
   },
   devices: {
+    gatewayFilter: '网关',
     recordingPolicy: '记录策略（覆盖）',
     recordingPolicyInherit: '按设备类型设置',
     recordingPolicyHint: '只有这一台需要不同的保存密度时才设置；留空沿用类型的策略。',
@@ -1226,6 +1227,10 @@ const zhHans: Translation = {
     credentialHint: '密码只显示这一次。',
     deleteConfirm: '确定移除网关 {{node}}？挂在它下面的设备必须先重新指派。',
     deleted: '网关已移除',
+    tabStatus: '状态与声明',
+    tabDevices: '管理的设备',
+    tabParams: '连接相关参数',
+    tabDebug: '连接调试',
     pageTitle: '网关管理',
     pageHint: '每台网关的连接状态、它在 NBIRTH 里声明的内容、它管理的设备，以及设备端连接要用的参数。',
     statTotal: '网关',

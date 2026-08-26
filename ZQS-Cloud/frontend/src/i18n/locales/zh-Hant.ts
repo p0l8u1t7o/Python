@@ -185,6 +185,7 @@ const zhHant: Translation = {
     viewAll: '查看全部',
   },
   devices: {
+    gatewayFilter: '閘道器',
     recordingPolicy: '記錄策略（覆寫）',
     recordingPolicyInherit: '依設備類型設定',
     recordingPolicyHint: '只有這一台需要不同的保存密度時才設定；留空沿用類型的策略。',
@@ -1226,6 +1227,10 @@ const zhHant: Translation = {
     credentialHint: '密碼只顯示這一次。',
     deleteConfirm: '確定移除閘道器 {{node}}？掛在它底下的設備必須先重新指派。',
     deleted: '閘道器已移除',
+    tabStatus: '狀態與宣告',
+    tabDevices: '管理的設備',
+    tabParams: '連線相關參數',
+    tabDebug: '連線偵錯',
     pageTitle: '閘道器管理',
     pageHint: '每台閘道器的連線狀態、它在 NBIRTH 裡宣告的內容、它管理的設備，以及設備端連線要用的參數。',
     statTotal: '閘道器',

@@ -32,7 +32,16 @@ const OUTCOME_TONE: Record<string, 'ok' | 'critical' | 'warning' | 'neutral' | '
   info: 'info',
 }
 
-export function ConnectionDebugger({ nodes, initialNode }: { nodes: EdgeNode[]; initialNode?: string }) {
+export function ConnectionDebugger({
+  nodes,
+  initialNode,
+  embedded = false,
+}: {
+  nodes: EdgeNode[]
+  initialNode?: string
+  /** Rendered inside another card: no header of its own, status badge inline. */
+  embedded?: boolean
+}) {
   const { t } = useTranslation()
   const { can } = useAuth()
   const toast = useToast()
@@ -55,9 +64,15 @@ export function ConnectionDebugger({ nodes, initialNode }: { nodes: EdgeNode[]; 
     const list = traces.data ?? []
     return onlyProblems ? list.filter((r) => r.outcome !== 'ok' && r.outcome !== 'info') : list
   }, [traces.data, onlyProblems])
+  // Follow the tail only while rows are being appended. Scrolling on mount
+  // would yank the whole page down to this card the moment it opens.
   const bottom = useRef<HTMLDivElement>(null)
+  const previousCount = useRef(0)
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'nearest' })
+    if (rows.length > previousCount.current && previousCount.current > 0) {
+      bottom.current?.scrollIntoView({ block: 'nearest' })
+    }
+    previousCount.current = rows.length
   }, [rows.length])
 
   async function toggle() {
@@ -69,29 +84,23 @@ export function ConnectionDebugger({ nodes, initialNode }: { nodes: EdgeNode[]; 
     }
   }
 
-  return (
-    <Card data-testid="connection-debugger-card">
-      <CardHeader
-        title={
-          <span className="flex items-center gap-2">
-            <Bug className="size-4 text-brand" aria-hidden />
-            {t('gateways.debug.title')}
-          </span>
-        }
-        description={t('gateways.debug.subtitle')}
-        actions={
-          enabled ? (
-            <Badge tone="ok">
-              <span className="hud-live" />
-              {t('gateways.debug.on', { until: status.data?.enabled_until ? formatTime(status.data.enabled_until) : '' })}
-            </Badge>
-          ) : (
-            <Badge tone="neutral">{t('gateways.debug.off')}</Badge>
-          )
-        }
-      />
-      <CardBody className="space-y-4">
+  const stateBadge = enabled ? (
+    <Badge tone="ok">
+      <span className="hud-live" />
+      {t('gateways.debug.on', { until: status.data?.enabled_until ? formatTime(status.data.enabled_until) : '' })}
+    </Badge>
+  ) : (
+    <Badge tone="neutral">{t('gateways.debug.off')}</Badge>
+  )
+
+  const body = (
        <div data-testid="connection-debugger" className="space-y-4">
+        {embedded ? (
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs text-muted">{t('gateways.debug.subtitle')}</p>
+            {stateBadge}
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
           <Select
             label={t('gateways.debug.node')}
@@ -207,7 +216,22 @@ export function ConnectionDebugger({ nodes, initialNode }: { nodes: EdgeNode[]; 
           <div ref={bottom} />
         </div>
        </div>
-      </CardBody>
+  )
+
+  if (embedded) return body
+  return (
+    <Card data-testid="connection-debugger-card">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Bug className="size-4 text-brand" aria-hidden />
+            {t('gateways.debug.title')}
+          </span>
+        }
+        description={t('gateways.debug.subtitle')}
+        actions={stateBadge}
+      />
+      <CardBody className="space-y-4">{body}</CardBody>
     </Card>
   )
 }

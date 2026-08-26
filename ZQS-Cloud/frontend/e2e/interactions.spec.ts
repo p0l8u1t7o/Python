@@ -289,9 +289,11 @@ test.describe('gateway page', () => {
     await page.waitForTimeout(1500)
     await shoot(page, info, 'gateways')
 
-    // The point of the page is that the vendor does not have to ask anyone for
+    // The point of the tab is that the vendor does not have to ask anyone for
     // these, so the real namespace and group have to be on screen.
+    await page.getByRole('tab', { name: /連線相關參數|连接相关参数|Connection parameters/ }).click()
     await expect(page.getByText('spBv1.0').first()).toBeVisible()
+    await shoot(page, info, 'gateways-params')
     await expect(page.getByText(/spBv1\.0\/[a-z0-9-]+\/NBIRTH\//).first()).toBeVisible()
 
     expect(watcher.errors.join('\n')).toBe('')

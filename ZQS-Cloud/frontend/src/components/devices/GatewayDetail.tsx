@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Check, Copy } from 'lucide-react'
+import { Activity, Bug, Check, Copy, Cpu, KeyRound } from 'lucide-react'
 
 import { useCapabilities, useDevices } from '@/lib/queries'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { useAuth } from '@/providers/AuthProvider'
 import type { BirthMetric, EdgeNode } from '@/lib/types'
+import { ConnectionDebugger } from '@/components/devices/ConnectionDebugger'
 import {
   Badge,
   Button,
@@ -14,9 +15,9 @@ import {
   CardBody,
   CardHeader,
   ConnectionBadge,
-  DetailRow,
   EmptyRow,
   Table,
+  Tabs,
   TBody,
   Td,
   Th,
@@ -24,13 +25,14 @@ import {
   Tr,
 } from '@/components/ui'
 
+type DetailTab = 'status' | 'devices' | 'params' | 'debug'
+
 /** Copy-to-clipboard that says whether it worked. */
-function CodeBlock({ code, label }: { code: string; label?: string }) {
+function CodeBlock({ code }: { code: string }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   return (
     <div className="relative">
-      {label ? <p className="mb-1 text-xs text-muted">{label}</p> : null}
       <pre className="overflow-x-auto rounded-md border border-line bg-[#0b1220] p-3 pr-12 text-xs leading-relaxed text-[#7dd3fc] selection:bg-[#1e3a5f]">
         {code}
       </pre>
@@ -55,6 +57,16 @@ function CodeBlock({ code, label }: { code: string; label?: string }) {
   )
 }
 
+/** Compact label/value cell for the dense state grid. */
+function Fact({ label, children, mono = false }: { label: string; children: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] text-muted">{label}</dt>
+      <dd className={`truncate text-sm ${mono ? 'font-mono text-xs' : ''}`}>{children}</dd>
+    </div>
+  )
+}
+
 function metricValue(metric: BirthMetric): string {
   if (metric.value === null || metric.value === undefined) return '—'
   if (typeof metric.value === 'object') return JSON.stringify(metric.value)
@@ -62,22 +74,23 @@ function metricValue(metric: BirthMetric): string {
 }
 
 function propertiesSummary(properties: Record<string, unknown>): string {
-  const entries = Object.entries(properties ?? {})
-  if (entries.length === 0) return ''
-  return entries.map(([key, value]) => `${key}=${String(value)}`).join('  ')
+  return Object.entries(properties ?? {})
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join('  ')
 }
 
 /**
- * Everything the platform knows about one gateway, in three layers: the
- * connection state it acts on, what the gateway itself declared in its
- * NBIRTH (shown verbatim, never interpreted), and the devices reporting
- * through it. The connection parameters live here too, because they are
- * only meaningful once filled in for a concrete gateway.
+ * Everything the platform knows about one gateway, in tabs so the page
+ * stays one screen tall: the connection state it acts on together with
+ * what the gateway itself declared in its NBIRTH (verbatim, never
+ * interpreted), the devices reporting through it, the strings a device
+ * needs to connect, and the debugger for when it will not.
  */
-export function GatewayDetail({ node }: { node: EdgeNode }) {
+export function GatewayDetail({ node, nodes }: { node: EdgeNode; nodes: EdgeNode[] }) {
   const { t } = useTranslation()
   const { me } = useAuth()
   const capabilities = useCapabilities()
+  const [tab, setTab] = useState<DetailTab>('status')
   const devices = useDevices({ edge_node_id: node.id, limit: 200 })
 
   const groupId = node.group_id || me?.organization.slug || 'your-group'
@@ -91,12 +104,18 @@ export function GatewayDetail({ node }: { node: EdgeNode }) {
     ['NCMD', `${namespace}/${groupId}/NCMD/${node.node_id}`],
     ['DCMD', `${namespace}/${groupId}/DCMD/${node.node_id}/+`],
   ] as const
-
   const items = devices.data?.items ?? []
 
+  const tabs = [
+    { value: 'status' as const, label: t('gateways.tabStatus'), icon: Activity },
+    { value: 'devices' as const, label: `${t('gateways.tabDevices')} · ${node.device_count}`, icon: Cpu },
+    { value: 'params' as const, label: t('gateways.tabParams'), icon: KeyRound },
+    { value: 'debug' as const, label: t('gateways.tabDebug'), icon: Bug },
+  ]
+
   return (
-    <div className="space-y-4" data-testid="gateway-detail">
-      <Card>
+    <Card>
+      <div data-testid="gateway-detail">
         <CardHeader
           title={
             <span className="flex flex-wrap items-center gap-2">
@@ -107,155 +126,140 @@ export function GatewayDetail({ node }: { node: EdgeNode }) {
               {node.rebirth_requested_at ? <Badge tone="warning">{t('gateways.rebirthPending')}</Badge> : null}
             </span>
           }
-          description={node.description || node.site_name || undefined}
+          description={[node.site_name, node.description].filter(Boolean).join(' · ') || undefined}
         />
-        <CardBody>
-          <h3 className="mb-2 text-sm font-medium">{t('gateways.connState')}</h3>
-          <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
-            <DetailRow label={t('gateways.lastSeen')}>
-              {node.last_seen_at ? `${formatRelative(node.last_seen_at)} · ${formatDateTime(node.last_seen_at)}` : '—'}
-            </DetailRow>
-            <DetailRow label={t('gateways.statusChanged')}>
-              {node.status_changed_at ? formatDateTime(node.status_changed_at) : '—'}
-            </DetailRow>
-            <DetailRow label={t('gateways.birthAt')}>
-              {node.birth_at ? formatDateTime(node.birth_at) : '—'}
-            </DetailRow>
-            <DetailRow label={t('gateways.site')}>{node.site_name ?? '—'}</DetailRow>
-            <DetailRow label={t('gateways.bdSeq')}>
-              <span className="font-mono">{node.bd_seq ?? '—'}</span>
-            </DetailRow>
-            <DetailRow label={t('gateways.lastSeq')}>
-              <span className="font-mono">{node.last_seq ?? '—'}</span>
-            </DetailRow>
-            <DetailRow label={t('gateways.ip')}>
-              <span className="font-mono">{node.ip_address ?? '—'}</span>
-            </DetailRow>
-            <DetailRow label={t('gateways.rssi')}>
-              <span className="font-mono">{node.rssi !== null ? `${node.rssi} dBm` : '—'}</span>
-            </DetailRow>
-          </dl>
-        </CardBody>
-      </Card>
+        <Tabs tabs={tabs} value={tab} onChange={setTab} className="px-4" />
 
-      <Card>
-        <CardHeader title={t('gateways.declared')} description={t('gateways.declaredHint')} />
-        <CardBody className="space-y-3">
-          <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
-            <DetailRow label={t('gateways.firmware')}>{node.firmware_version || '—'}</DetailRow>
-            <DetailRow label={t('gateways.hardware')}>{node.hardware_version || '—'}</DetailRow>
-            <DetailRow label={t('gateways.bdSeq')}>
-              <span className="font-mono">{node.bd_seq ?? '—'}</span>
-            </DetailRow>
-            <DetailRow label={t('gateways.birthAt')}>
-              {node.birth_at ? formatDateTime(node.birth_at) : '—'}
-            </DetailRow>
-          </dl>
-          {node.birth_metrics.length === 0 ? (
-            <p className="text-sm text-muted">{t('gateways.noBirth')}</p>
-          ) : (
+        {tab === 'status' ? (
+          <CardBody className="space-y-4">
+            <section>
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">{t('gateways.connState')}</h3>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                <Fact label={t('gateways.lastSeen')}>
+                  {node.last_seen_at ? formatRelative(node.last_seen_at) : '—'}
+                </Fact>
+                <Fact label={t('gateways.statusChanged')}>
+                  {node.status_changed_at ? formatDateTime(node.status_changed_at) : '—'}
+                </Fact>
+                <Fact label={t('gateways.birthAt')}>{node.birth_at ? formatDateTime(node.birth_at) : '—'}</Fact>
+                <Fact label={t('gateways.site')}>{node.site_name ?? '—'}</Fact>
+                <Fact label={t('gateways.bdSeq')} mono>{node.bd_seq ?? '—'}</Fact>
+                <Fact label={t('gateways.lastSeq')} mono>{node.last_seq ?? '—'}</Fact>
+                <Fact label={t('gateways.ip')} mono>{node.ip_address ?? '—'}</Fact>
+                <Fact label={t('gateways.rssi')} mono>{node.rssi !== null ? `${node.rssi} dBm` : '—'}</Fact>
+              </dl>
+            </section>
+
+            <section>
+              <h3 className="mb-0.5 text-xs font-medium uppercase tracking-wide text-muted">{t('gateways.declared')}</h3>
+              <p className="mb-2 text-xs text-muted">{t('gateways.declaredHint')}</p>
+              <dl className="mb-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                <Fact label={t('gateways.firmware')}>{node.firmware_version || '—'}</Fact>
+                <Fact label={t('gateways.hardware')}>{node.hardware_version || '—'}</Fact>
+                <Fact label={t('gateways.metric')} mono>{node.birth_metrics.length}</Fact>
+              </dl>
+              {node.birth_metrics.length === 0 ? (
+                <p className="text-sm text-muted">{t('gateways.noBirth')}</p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto rounded-md border border-line">
+                  <Table>
+                    <THead>
+                      <Th>{t('gateways.metric')}</Th>
+                      <Th align="right">{t('gateways.alias')}</Th>
+                      <Th>{t('gateways.datatype')}</Th>
+                      <Th>{t('gateways.value')}</Th>
+                      <Th>{t('gateways.properties')}</Th>
+                    </THead>
+                    <TBody>
+                      {node.birth_metrics.map((metric, index) => (
+                        <Tr key={`${metric.name}-${index}`}>
+                          <Td className="font-mono text-xs">{metric.name || '—'}</Td>
+                          <Td align="right" className="font-mono text-xs tnum">{metric.alias ?? '—'}</Td>
+                          <Td className="text-xs">{metric.datatype}</Td>
+                          <Td className="font-mono text-xs">{metricValue(metric)}</Td>
+                          <Td className="font-mono text-xs text-muted">{propertiesSummary(metric.properties)}</Td>
+                        </Tr>
+                      ))}
+                    </TBody>
+                  </Table>
+                </div>
+              )}
+            </section>
+          </CardBody>
+        ) : null}
+
+        {tab === 'devices' ? (
+          <div>
+            <p className="px-4 pt-3 text-xs text-muted">{t('gateways.managedHint')}</p>
             <Table>
               <THead>
-                <Th>{t('gateways.metric')}</Th>
-                <Th align="right">{t('gateways.alias')}</Th>
-                <Th>{t('gateways.datatype')}</Th>
-                <Th>{t('gateways.value')}</Th>
-                <Th>{t('gateways.properties')}</Th>
+                <Th>{t('gateways.deviceId')}</Th>
+                <Th>{t('common.name')}</Th>
+                <Th>{t('gateways.category')}</Th>
+                <Th>{t('common.status')}</Th>
+                <Th>{t('gateways.lastSeen')}</Th>
               </THead>
               <TBody>
-                {node.birth_metrics.map((metric, index) => (
-                  <Tr key={`${metric.name}-${index}`}>
-                    <Td className="font-mono text-xs">{metric.name || '—'}</Td>
-                    <Td align="right" className="font-mono text-xs tnum">{metric.alias ?? '—'}</Td>
-                    <Td className="text-xs">{metric.datatype}</Td>
-                    <Td className="font-mono text-xs">{metricValue(metric)}</Td>
-                    <Td className="font-mono text-xs text-muted">{propertiesSummary(metric.properties)}</Td>
-                  </Tr>
-                ))}
+                {items.length === 0 ? (
+                  <EmptyRow colSpan={5} message={t('gateways.noDevices')} />
+                ) : (
+                  items.map((device) => (
+                    <Tr key={device.id}>
+                      <Td className="font-mono text-xs">
+                        <Link to={`/devices/${device.id}`} className="text-brand hover:underline">
+                          {device.device_id}
+                        </Link>
+                      </Td>
+                      <Td className="font-medium">{device.name}</Td>
+                      <Td className="text-muted">{device.device_category || '—'}</Td>
+                      <Td><ConnectionBadge status={device.status} /></Td>
+                      <Td className="text-muted">{device.last_seen_at ? formatRelative(device.last_seen_at) : '—'}</Td>
+                    </Tr>
+                  ))
+                )}
               </TBody>
             </Table>
-          )}
-        </CardBody>
-      </Card>
+          </div>
+        ) : null}
 
-      <Card>
-        <CardHeader
-          title={`${t('gateways.managedDevices')} · ${items.length}`}
-          description={t('gateways.managedHint')}
-        />
-        <Table>
-          <THead>
-            <Th>{t('gateways.deviceId')}</Th>
-            <Th>{t('common.name')}</Th>
-            <Th>{t('gateways.category')}</Th>
-            <Th>{t('common.status')}</Th>
-            <Th>{t('gateways.lastSeen')}</Th>
-          </THead>
-          <TBody>
-            {items.length === 0 ? (
-              <EmptyRow colSpan={5} message={t('gateways.noDevices')} />
-            ) : (
-              items.map((device) => (
-                <Tr key={device.id}>
-                  <Td className="font-mono text-xs">
-                    <Link to={`/devices/${device.id}`} className="text-brand hover:underline">
-                      {device.device_id}
-                    </Link>
-                  </Td>
-                  <Td className="font-medium">{device.name}</Td>
-                  <Td className="text-muted">{device.device_category || '—'}</Td>
-                  <Td><ConnectionBadge status={device.status} /></Td>
-                  <Td className="text-muted">{device.last_seen_at ? formatRelative(device.last_seen_at) : '—'}</Td>
-                </Tr>
-              ))
-            )}
-          </TBody>
-        </Table>
-      </Card>
-
-      <Card>
-        <CardHeader title={t('gateways.params')} description={t('gateways.paramsHint')} />
-        <CardBody className="space-y-4">
-          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt className="text-xs text-muted">{t('gateways.namespace')}</dt>
-              <dd className="font-mono text-sm">{namespace}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">{t('gateways.groupId')}</dt>
-              <dd className="font-mono text-sm">{groupId}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">{t('gateways.hostId')}</dt>
-              <dd className="font-mono text-sm">{hostId}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">{t('gateways.liveIngest')}</dt>
-              <dd className="text-sm">
+        {tab === 'params' ? (
+          <CardBody className="space-y-3">
+            <p className="text-xs text-muted">{t('gateways.paramsHint')}</p>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+              <Fact label={t('gateways.namespace')} mono>{namespace}</Fact>
+              <Fact label={t('gateways.groupId')} mono>{groupId}</Fact>
+              <Fact label={t('gateways.hostId')} mono>{hostId}</Fact>
+              <Fact label={t('gateways.liveIngest')}>
                 <Badge tone={capabilities.data?.mqtt_enabled ? 'ok' : 'neutral'}>
                   {capabilities.data?.mqtt_enabled ? t('common.enabled') : t('common.disabled')}
                 </Badge>
-              </dd>
-            </div>
-          </dl>
-          <CodeBlock
-            code={`${t('gateways.clientId')}   zqs:${node.node_id}
+              </Fact>
+            </dl>
+            <CodeBlock
+              code={`${t('gateways.clientId')}   zqs:${node.node_id}
 ${t('gateways.username')}  node-${groupId}-${node.node_id}
 Password    ${t('gateways.passwordOnce')}
 Clean session true    MQTT 3.1.1    Keepalive 45`}
-          />
-          <div className="space-y-1.5">
-            <p className="text-xs text-muted">{t('gateways.topics')}</p>
-            {topics.map(([kind, topic]) => (
-              <div key={kind} className="flex items-baseline gap-2">
-                <Badge>{kind}</Badge>
-                <code className="min-w-0 flex-1 break-all font-mono text-xs">{topic}</code>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-muted">{t('gateways.docsHint')}</p>
-        </CardBody>
-      </Card>
-    </div>
+            />
+            <div className="space-y-1">
+              <p className="text-[11px] text-muted">{t('gateways.topics')}</p>
+              {topics.map(([kind, topic]) => (
+                <div key={kind} className="flex items-baseline gap-2">
+                  <Badge>{kind}</Badge>
+                  <code className="min-w-0 flex-1 break-all font-mono text-xs">{topic}</code>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted">{t('gateways.docsHint')}</p>
+          </CardBody>
+        ) : null}
+
+        {tab === 'debug' ? (
+          <CardBody>
+            <ConnectionDebugger nodes={nodes} initialNode={node.node_id} embedded />
+          </CardBody>
+        ) : null}
+      </div>
+    </Card>
   )
 }

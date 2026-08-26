@@ -8,7 +8,7 @@ import { useToast } from '@/providers/ToastProvider'
 import {
   useBlueprints,
   useDeviceMutations,
-  useDevices,
+  useDevices, useEdgeNodes,
   useSites,
   useUiPreference,
 } from '@/lib/queries'
@@ -57,6 +57,7 @@ export function DevicesPage() {
 
   const status = searchParams.get('status') ?? ''
   const siteId = searchParams.get('site') ?? ''
+  const gatewayId = searchParams.get('gateway') ?? ''
   // Default on: picking a plant almost always means "and everything under it".
   const includeDescendants = searchParams.get('descendants') !== '0'
   const unassignedOnly = searchParams.get('unassigned') === '1'
@@ -69,7 +70,9 @@ export function DevicesPage() {
   const mode = layout.value.mode
 
   const sites = useSites()
+  const gateways = useEdgeNodes({ include_implicit: false })
   const devices = useDevices({
+    edge_node_id: gatewayId || undefined,
     q: searchParams.get('q') ?? undefined,
     status: status || undefined,
     site_id: unassignedOnly ? undefined : siteId || undefined,
@@ -153,6 +156,18 @@ export function DevicesPage() {
               { value: 'unknown', label: t('status.unknown') },
             ]}
             className="w-36"
+          />
+
+          <Select
+            label={t('devices.gatewayFilter')}
+            value={gatewayId}
+            placeholder={t('common.all')}
+            onChange={(event) => setParam('gateway', event.target.value)}
+            options={(gateways.data?.items ?? []).map((node) => ({
+              value: node.id,
+              label: node.name && node.name !== node.node_id ? `${node.node_id} · ${node.name}` : node.node_id,
+            }))}
+            className="w-52"
           />
 
           <SiteTreeSelect

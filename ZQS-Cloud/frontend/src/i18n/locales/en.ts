@@ -184,6 +184,7 @@ const en = {
     viewAll: 'View all',
   },
   devices: {
+    gatewayFilter: 'Gateway',
     recordingPolicy: 'Recording policy (override)',
     recordingPolicyInherit: 'As set on the device type',
     recordingPolicyHint: 'Set only when this one device needs a different retention; blank follows the type.',
@@ -1222,6 +1223,10 @@ const en = {
     credentialHint: 'The password is shown only this once.',
     deleteConfirm: 'Remove gateway {{node}}? Devices behind it must be reassigned first.',
     deleted: 'Gateway removed',
+    tabStatus: 'State & declaration',
+    tabDevices: 'Managed devices',
+    tabParams: 'Connection parameters',
+    tabDebug: 'Connection debugger',
     pageTitle: 'Gateways',
     pageHint: 'Each gateway\'s connection state, what it declared in its NBIRTH, the devices it manages, and the strings a device needs to connect.',
     statTotal: 'Gateways',

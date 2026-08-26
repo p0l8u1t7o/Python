@@ -21,7 +21,7 @@ export function Modal({
   description?: ReactNode
   children: ReactNode
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   /**
    * The form inside has unsaved edits. Escape, the backdrop and the X then
    * ask before discarding - those are the accidental ways out. A Cancel
@@ -78,7 +78,7 @@ export function Modal({
 
   if (!open) return null
 
-  const width = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl' }[size]
+  const width = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-6xl' }[size]
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
