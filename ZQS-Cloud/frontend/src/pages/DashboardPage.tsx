@@ -39,6 +39,7 @@ import {
   formatTime,
 } from '@/lib/format'
 import { useTimeRange } from '@/lib/useTimeRange'
+import { hiddenByCollapse, treeRows } from '@/lib/siteTree'
 import type { DemandStatus, FleetLive, PowerFlow, SiteLive, SiteSummary } from '@/lib/types'
 import type { GlossaryId } from '@/lib/glossary'
 import { SiteCostChart } from '@/components/charts/CostCharts'
@@ -434,25 +435,13 @@ interface SiteTreeRow {
 
 /** Depth-first order with parent links, so the table can draw a real tree. */
 function siteTree(sites: SiteLive[]): SiteTreeRow[] {
-  const byId = new Map(sites.map((site) => [site.site_id, site]))
-  const childrenOf = new Map<string | null, SiteLive[]>()
-  for (const site of sites) {
-    const key = site.parent_id && byId.has(site.parent_id) ? site.parent_id : null
-    childrenOf.set(key, [...(childrenOf.get(key) ?? []), site])
-  }
-  const out: SiteTreeRow[] = []
-  const walk = (parent: SiteLive | null) => {
-    const kids = childrenOf.get(parent?.site_id ?? null) ?? []
-    kids.forEach((site, index) => {
-      const row: SiteTreeRow = { site, parent, hasChildren: (childrenOf.get(site.site_id) ?? []).length > 0, last: index === kids.length - 1, descendants: 0 }
-      out.push(row)
-      const before = out.length
-      walk(site)
-      row.descendants = out.length - before
-    })
-  }
-  walk(null)
-  return out
+  return treeRows(sites, (site) => site.site_id, (site) => site.parent_id).map((row) => ({
+    site: row.item,
+    parent: row.parent,
+    hasChildren: row.hasChildren,
+    last: row.last,
+    descendants: row.descendants,
+  }))
 }
 
 function SiteLiveTable({ live, loading }: { live?: FleetLive; loading: boolean }) {
@@ -460,19 +449,15 @@ function SiteLiveTable({ live, loading }: { live?: FleetLive; loading: boolean }
   const navigate = useNavigate()
   const rows = useMemo(() => siteTree(live?.sites ?? []), [live?.sites])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const hidden = useMemo(() => {
-    // A collapsed site hides its whole subtree, however deep.
-    const out = new Set<string>()
-    const byId = new Map(rows.map((row) => [row.site.site_id, row]))
-    for (const row of rows) {
-      let cursor = row.parent
-      while (cursor) {
-        if (collapsed.has(cursor.site_id)) { out.add(row.site.site_id); break }
-        cursor = byId.get(cursor.site_id)?.parent ?? null
-      }
-    }
-    return out
-  }, [rows, collapsed])
+  const hidden = useMemo(
+    () =>
+      hiddenByCollapse(
+        treeRows(live?.sites ?? [], (site) => site.site_id, (site) => site.parent_id),
+        (site) => site.site_id,
+        collapsed,
+      ),
+    [live?.sites, collapsed],
+  )
 
   return (
     <Card className="mt-5">
@@ -922,22 +907,11 @@ interface SummaryTreeRow {
 
 /** Depth-first order of the site summaries, parents before children. */
 function summaryTree(sites: SiteSummary[]): SummaryTreeRow[] {
-  const byId = new Map(sites.map((site) => [site.id, site]))
-  const childrenOf = new Map<string | null, SiteSummary[]>()
-  for (const site of sites) {
-    const key = site.parent_id && byId.has(site.parent_id) ? site.parent_id : null
-    childrenOf.set(key, [...(childrenOf.get(key) ?? []), site])
-  }
-  const out: SummaryTreeRow[] = []
-  const walk = (parent: SiteSummary | null) => {
-    const kids = childrenOf.get(parent?.id ?? null) ?? []
-    kids.forEach((site, index) => {
-      out.push({ site, parent, last: index === kids.length - 1 })
-      walk(site)
-    })
-  }
-  walk(null)
-  return out
+  return treeRows(sites, (site) => site.id, (site) => site.parent_id).map((row) => ({
+    site: row.item,
+    parent: row.parent,
+    last: row.last,
+  }))
 }
 
 /**

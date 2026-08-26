@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Bell, CheckCircle2, Clock, Coins, Download, FileText, Info, PiggyBank, Plug, Sun, Zap } from 'lucide-react'
+import { AlertTriangle, Bell, CheckCircle2, Clock, Coins, CornerDownRight, Download, FileText, Info, PiggyBank, Plug, Sun, Zap } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -17,6 +17,7 @@ import { formatCurrency, formatDateTime, formatNumber } from '@/lib/format'
 import { errorMessage } from '@/lib/errors'
 import { useToast } from '@/providers/ToastProvider'
 import { useChartColors } from '@/components/charts/chartTheme'
+import { treeRows } from '@/lib/siteTree'
 import type { EnergyReport, ReportInsight, ReportParams } from '@/components/reports/reportTypes'
 import {
   Badge,
@@ -233,6 +234,20 @@ export function ReportsPage() {
   )
 }
 
+/** A site name in a tree table: indented, with the connector and its parent named. */
+function SiteCell({ name, parent, depth }: { name: string; parent?: string; depth: number }) {
+  const { t } = useTranslation()
+  return (
+    <span className="flex items-center gap-1" style={{ paddingLeft: `${depth * 18}px` }}>
+      {depth > 0 ? <CornerDownRight className="size-3.5 shrink-0 text-subtle" aria-hidden /> : null}
+      <span className="min-w-0">
+        <span className={`block truncate ${depth === 0 ? 'font-semibold' : 'font-medium'}`}>{name}</span>
+        {parent ? <span className="block truncate text-[11px] text-subtle">{t('dashboard.childOf', { parent })}</span> : null}
+      </span>
+    </span>
+  )
+}
+
 function ReportBody({ report }: { report: EnergyReport }) {
   const { t } = useTranslation()
   const colors = useChartColors()
@@ -254,6 +269,9 @@ function ReportBody({ report }: { report: EnergyReport }) {
   const daily = report.daily.map((d) => ({ ...d, label: d.day.slice(5) }))
   const hourly = report.hourly_load.map((h) => ({ ...h, label: `${String(h.hour).padStart(2, '0')}` }))
   const alertHours = alerts.by_hour.map((count, hour) => ({ label: String(hour).padStart(2, '0'), count }))
+  // Sites are always shown as a tree: a workshop under its plant, never a flat list.
+  const siteRows = treeRows(report.sites, (row) => row.site_id, (row) => row.parent_id)
+  const alertSiteRows = treeRows(alerts.by_site, (row) => row.site_id, (row) => row.parent_id ?? null)
   const alertWeekdays = alerts.by_weekday.map((count, i) => ({ label: t(`reports.weekdays.${i}`), count }))
 
   return (
@@ -359,9 +377,11 @@ function ReportBody({ report }: { report: EnergyReport }) {
             <Th align="right">{t('reports.cols.savings')}</Th>
           </THead>
           <TBody>
-            {report.sites.map((row) => (
-              <Tr key={row.site_id}>
-                <Td className="font-medium">{row.site_name}</Td>
+            {siteRows.map(({ item: row, parent, depth }) => (
+              <Tr key={row.site_id} className={depth > 0 ? 'bg-surface-muted/30' : ''}>
+                <Td>
+                  <SiteCell name={row.site_name} parent={parent?.site_name} depth={depth} />
+                </Td>
                 <Td align="right" className="tnum">{formatNumber(row.load_kwh, { maximumFractionDigits: 0 })}</Td>
                 <Td align="right" className="tnum text-muted">{formatNumber(row.pv_kwh, { maximumFractionDigits: 0 })}</Td>
                 <Td align="right" className="tnum text-muted">{formatNumber(row.grid_import_kwh, { maximumFractionDigits: 0 })}</Td>
@@ -443,9 +463,11 @@ function ReportBody({ report }: { report: EnergyReport }) {
                       <Th align="right">{t('reports.alerts.open')}</Th>
                     </THead>
                     <TBody>
-                      {alerts.by_site.map((row) => (
-                        <Tr key={row.site_id}>
-                          <Td className="font-medium">{row.site_name}</Td>
+                      {alertSiteRows.map(({ item: row, parent, depth }) => (
+                        <Tr key={row.site_id} className={depth > 0 ? 'bg-surface-muted/30' : ''}>
+                          <Td>
+                            <SiteCell name={row.site_name} parent={parent?.site_name} depth={depth} />
+                          </Td>
                           <Td align="right" className="tnum">{row.total}</Td>
                           <Td align="right" className="tnum">{row.critical}</Td>
                           <Td align="right" className="tnum">{row.major}</Td>

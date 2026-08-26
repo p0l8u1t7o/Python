@@ -41,6 +41,30 @@ def _pct(value: float | None) -> float | None:
     return None if value is None else round(value * 100, 1)
 
 
+def tree_order(rows: list[dict], *, id_key: str = "site_id", parent_key: str = "parent_id") -> list[dict]:
+    """Parents first, each followed by its subtree; adds ``depth`` to every row.
+
+    Every per-site listing in the platform is drawn as a tree (console tables,
+    PDF, Word), so the ordering lives in one place. Rows whose parent is not in
+    the list are roots: a scoped report still shows what it has.
+    """
+    known = {row[id_key] for row in rows}
+    children: dict = {}
+    for row in rows:
+        parent = row.get(parent_key)
+        children.setdefault(parent if parent in known else None, []).append(row)
+    out: list[dict] = []
+
+    def walk(parent, depth: int) -> None:
+        for row in children.get(parent, []):
+            row["depth"] = depth
+            out.append(row)
+            walk(row[id_key], depth + 1)
+
+    walk(None, 0)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 能源
 # ---------------------------------------------------------------------------
@@ -122,7 +146,7 @@ def _site_rows(organization, sites: list[Site], start, end) -> list[dict]:
                 ),
             }
         )
-    return rows
+    return tree_order(rows)
 
 
 def _daily_series(site_ids, start, end, zone: dt.tzinfo) -> list[dict]:
@@ -189,7 +213,7 @@ def _hourly_load_profile(site_ids, start, end, zone: dt.tzinfo) -> list[dict]:
 # ---------------------------------------------------------------------------
 # 警報
 # ---------------------------------------------------------------------------
-def _alert_stats(organization, site_ids, start, end, zone: dt.tzinfo) -> dict:
+def _alert_stats(organization, site_ids, start, end, zone: dt.tzinfo, parent_of: dict | None = None) -> dict:
     """區間內「開始」的警報：數量、嚴重度、狀態、時段分佈、處理時間、常客。"""
     alerts = list(
         Alert.objects.filter(
@@ -224,7 +248,8 @@ def _alert_stats(organization, site_ids, start, end, zone: dt.tzinfo) -> dict:
             ack_minutes.append((a["acknowledged_at"] - a["started_at"]).total_seconds() / 60)
         site_entry = by_site.setdefault(
             a["device__site_id"],
-            {"site_id": a["device__site_id"], "site_name": a["device__site__name"] or "", "total": 0,
+            {"site_id": a["device__site_id"], "site_name": a["device__site__name"] or "",
+             "parent_id": (parent_of or {}).get(a["device__site_id"]), "total": 0,
              "critical": 0, "major": 0, "warning": 0, "info": 0, "open": 0},
         )
         site_entry["total"] += 1
@@ -266,7 +291,7 @@ def _alert_stats(organization, site_ids, start, end, zone: dt.tzinfo) -> dict:
         "mean_minutes_to_resolve": round(sum(resolve_minutes) / len(resolve_minutes), 1) if resolve_minutes else None,
         "median_minutes_to_resolve": _median(resolve_minutes),
         "mean_minutes_to_acknowledge": round(sum(ack_minutes) / len(ack_minutes), 1) if ack_minutes else None,
-        "by_site": sorted(by_site.values(), key=lambda row: -row["total"]),
+        "by_site": tree_order(sorted(by_site.values(), key=lambda row: -row["total"])),
         "top_titles": sorted(by_title.values(), key=lambda row: -row["count"])[:8],
         "top_devices": sorted(by_device.values(), key=lambda row: -row["count"])[:8],
     }
@@ -397,7 +422,7 @@ def build_report(ctx, *, start: dt.datetime, end: dt.datetime, site_id=None, inc
     currency = currencies.pop() if len(currencies) == 1 else ""
     daily = _daily_series(site_ids, start, end, zone) if site_ids else []
     hourly = _hourly_load_profile(site_ids, start, end, zone) if site_ids else []
-    alerts = _alert_stats(organization, site_ids, start, end, zone)
+    alerts = _alert_stats(organization, site_ids, start, end, zone, parent_of={s.pk: s.parent_id for s in sites})
 
     return {
         "generated_at": dt.datetime.now(dt.timezone.utc),

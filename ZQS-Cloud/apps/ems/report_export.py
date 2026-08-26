@@ -78,6 +78,11 @@ def _minutes(value) -> str:
     return f"{value / 60:.1f} 小時" if value >= 120 else f"{value:.0f} 分鐘"
 
 
+def _tree_name(name: str, depth: int) -> str:
+    """場域樹在表格裡的樣子：子場域縮排並加 └ 連接符，和 console 一致。"""
+    return name if depth <= 0 else "　" * (depth - 1) + "└ " + name
+
+
 def _title(report: dict) -> str:
     scope = report["scope_name"] or "全部場域"
     return f"能源管理報表 — {scope}"
@@ -110,14 +115,14 @@ def _summary_rows(report: dict) -> list[tuple[str, str]]:
 
 def _site_table(report: dict) -> tuple[list[str], list[list[str]]]:
     c = report["currency"]
-    unit = f"（{c}）" if c else ""
+    unit = f" {c}" if c else ""
     head = ["場域", "用電 kWh", "自發電 kWh", "購電 kWh", "自給率", "最高需量 kW", "契約 kW", f"電費{unit}", f"節省{unit}"]
     body = []
     for row in report["sites"]:
         # 幣別與總表不同的場域才在數字後標幣別，其餘放表頭，避免欄位換行。
         own = row["currency"] if row["currency"] and row["currency"] != c else ""
         body.append([
-            row["site_name"],
+            _tree_name(row["site_name"], row.get("depth", 0)),
             _num(row["load_kwh"]),
             _num(row["pv_kwh"]),
             _num(row["grid_import_kwh"]),
@@ -133,7 +138,7 @@ def _site_table(report: dict) -> tuple[list[str], list[list[str]]]:
 def _alert_site_table(report: dict) -> tuple[list[str], list[list[str]]]:
     head = ["場域", "總數", "嚴重", "重大", "警告", "資訊", "未結案"]
     body = [
-        [r["site_name"], str(r["total"]), str(r["critical"]), str(r["major"]), str(r["warning"]), str(r["info"]), str(r["open"])]
+        [_tree_name(r["site_name"], r.get("depth", 0)), str(r["total"]), str(r["critical"]), str(r["major"]), str(r["warning"]), str(r["info"]), str(r["open"])]
         for r in report["alerts"]["by_site"]
     ]
     return head, body

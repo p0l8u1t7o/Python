@@ -94,3 +94,14 @@ class EnergyReportTests(ApiTestCase):
         far = quote((self.end - dt.timedelta(days=500)).isoformat())
         response = self.get(f"{API}/ems/reports/energy?start={far}&end={quote(self.end.isoformat())}", viewer)
         self.assertEqual(response.status_code, 422)
+
+    def test_sites_are_listed_as_a_tree(self) -> None:
+        body = self.query()
+        names = [row["site_name"] for row in body["sites"]]
+        self.assertLess(names.index(self.plant.name), names.index(self.workshop.name), "parent before child")
+        depths = {row["site_name"]: row["depth"] for row in body["sites"]}
+        self.assertEqual(depths[self.plant.name], 0)
+        self.assertEqual(depths[self.workshop.name], 1)
+        by_site = body["alerts"]["by_site"]
+        self.assertEqual(by_site[0]["site_name"], self.workshop.name)
+        self.assertEqual(by_site[0]["parent_id"], str(self.plant.id))

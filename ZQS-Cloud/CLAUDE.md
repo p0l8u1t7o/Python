@@ -49,7 +49,7 @@
 - 會在掛載時 `scrollIntoView` 的元件會把整頁拉到它那裡（連線偵錯時間線踩過）：只在「有新列且不是第一次 render」時跟隨捲動。
 - 頁面太長的處理方式：左右分欄 + `Tabs`（閘道器頁）、Modal 加 `size="xl"` 改雙欄（電價方案編輯）。
 - 列表篩選用 URL search params（`?site=`、`?gateway=`），換篩選要把 offset 歸零。
-- `Site` / `SiteLive` 都有 `parent_id`／`depth`：樹狀顯示自己用 `parent_id` 建樹，不要只靠 `depth` 縮排。
+- **所有「依場域」的列表一律畫成樹**（母場域在前、子場域縮排在其下並標示「隸屬 ○○」）：總覽、報表、機隊卡片、匯出的 PDF／Word 表格都要。前端用 `lib/siteTree.ts` 的 `treeRows()`／`hiddenByCollapse()`（不要自己再寫一份），後端每場域列表用 `apps/ems/reports.tree_order()` 排序並附 `depth`，匯出表格用 `_tree_name()` 縮排。`Site` / `SiteLive` 都有 `parent_id`：建樹用 `parent_id`，不要只靠 `depth` 縮排。
 
 ## 後端慣例與踩過的坑
 

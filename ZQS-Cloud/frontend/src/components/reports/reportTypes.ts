@@ -26,6 +26,7 @@ export interface ReportSiteRow {
   site_id: string
   site_name: string
   parent_id: string | null
+  depth: number
   timezone_name: string
   device_count: number
   interval_count: number
@@ -81,7 +82,7 @@ export interface ReportAlerts {
   mean_minutes_to_resolve: number | null
   median_minutes_to_resolve: number | null
   mean_minutes_to_acknowledge: number | null
-  by_site: { site_id: string; site_name: string; total: number; critical: number; major: number; warning: number; info: number; open: number }[]
+  by_site: { site_id: string; site_name: string; parent_id: string | null; depth: number; total: number; critical: number; major: number; warning: number; info: number; open: number }[]
   top_titles: { code: string; title: string; count: number; occurrences: number; severity: string }[]
   top_devices: { device_id: string; device_name: string; site_name: string; count: number }[]
 }
