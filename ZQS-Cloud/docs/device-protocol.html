@@ -173,7 +173,7 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <p>設備／閘道器端從零開始接上平台的完整步驟。<strong>照順序做，每一步都有「要送什麼 payload」與「怎麼驗收」。</strong></p>
 <p>本平台遵循 <strong>Eclipse Sparkplug B 規範</strong>（namespace <code>spBv1.0</code>）：標示「規範要求」的不是 ZQS 的偏好，是規範本身的規定，改不了；照著做的設備可以直接接上任何 Sparkplug 主機（Ignition、HiveMQ、Cirrus Link…）。伺服器會驗證本文的每一個欄位，不符合的一律拒絕，請把本文視為契約。</p>
 <div class="admonition note"><p class="admonition-title">機讀版契約</p>
-<p><code>ProtocalBufferPayload/sparkplug_b.proto</code>（線上位元組格式，Eclipse Tahu 原版）與 <code>ProtocalBufferPayload/zqs_profile.proto</code>（本文所有 metric 名稱、型別、命令與回覆的可機讀對照）。用 protoc 產生你的語言的型別，再對照本文組 payload。該資料夾的 README 有各語言指令。</p></div>
+<p><code>services/sparkplug/sparkplug_b.proto</code>（線上位元組格式，Eclipse Tahu 原版）。用 protoc 產生你的語言的型別，再對照本文的 metric 名稱、型別、命令與回覆組 payload；附錄 H 有每一種 payload 的逐位元組範例可對拍。</p></div>
 <hr>
 <h2 id="0-開發總覽">0. 開發總覽<a class="headerlink" href="#0-開發總覽" title="Permanent link">¶</a></h2>
 <p>一台設備從開機到被平台調度，訊息順序如下（順序不能換）：</p>
@@ -315,7 +315,7 @@ metrics:
 <hr>
 
 <h2 id="3-步驟-3-會組-payload">3. 步驟 3：會組 Payload<a class="headerlink" href="#3-步驟-3-會組-payload" title="Permanent link">¶</a></h2>
-<p><strong>Sparkplug B 的 payload 是 Protocol Buffers，不是 JSON</strong>（規範強制，也是能與其他 Sparkplug 系統互通的原因）。schema 在 <code>ProtocalBufferPayload/sparkplug_b.proto</code>。</p>
+<p><strong>Sparkplug B 的 payload 是 Protocol Buffers，不是 JSON</strong>（規範強制，也是能與其他 Sparkplug 系統互通的原因）。schema 在 <code>services/sparkplug/sparkplug_b.proto</code>。</p>
 <h3 id="3-1-payload-與-metric-結構">3.1 Payload 與 Metric 結構<a class="headerlink" href="#3-1-payload-與-metric-結構" title="Permanent link">¶</a></h3>
 <div class="highlight"><pre><code>message Payload {
   optional uint64 timestamp = 1;   // epoch 毫秒（UTC）

@@ -133,7 +133,8 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <li><code>docs/device-protocol.html</code> 重排成 11 個開發步驟（拿位址與憑證 → 連線 → 組 payload → NBIRTH → DBIRTH → DDATA → 告警／事件 → 命令與回覆／設定點有效期 → 重生 → 離線與關機 → 驗收），每步附<strong>完整 payload 內容</strong>、必填／選填與驗收方法；開頭有時序圖與步驟總表，結尾有開發完成檢查表。</li>
 <li>原本散在各節的位址、帳密／ACL、離線判定數字、內建 metric key、命令表、主機 STATE、LabVIEW 編碼要點整理成附錄 A–G；內容與程式碼一致（含 W6 的 valid_until／watchdog 與停電回報）。</li>
 </ul>
-<h3 id="protocalbufferpayload-設備端-proto">ProtocalBufferPayload：設備端 .proto<a class="headerlink" href="#protocalbufferpayload-設備端-proto" title="Permanent link">¶</a></h3>
+<h3 id="protocalbufferpayload-設備端-proto">ProtocalBufferPayload：設備端 .proto（已於 2026-08-26 移除）<a class="headerlink" href="#protocalbufferpayload-設備端-proto" title="Permanent link">¶</a></h3>
+<p><em>此資料夾已刪除、不再維護：設備端請直接用 <code>services/sparkplug/sparkplug_b.proto</code>，metric 對照以 device-protocol 文件與附錄 H 為準。</em></p>
 <ul>
 <li>新資料夾 <code>ProtocalBufferPayload/</code>：<code>sparkplug_b.proto</code>（與 services/sparkplug 同一份、未改）與 <code>zqs_profile.proto</code>（proto3；Identity／DeviceStatus／Capabilities／Ratings／DeviceBirth／NodeBirth／NodeDeath／DeviceDeath／Alarm／Event／Command／SetPowerSetpoint／CommandAck／DeviceData，每個欄位註明對應的 Sparkplug metric 名稱與型別）。</li>
 <li>README 說明 topic、序號規則、各語言 protoc 指令與設備端最小握手；兩份 proto 已用 grpc_tools 編譯並往返驗證。</li>
