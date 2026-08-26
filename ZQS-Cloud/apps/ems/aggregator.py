@@ -33,6 +33,11 @@ from apps.telemetry.models import TelemetrySample
 
 logger = get_logger("ems.aggregator")
 
+#: A reading above this many times the asset's rated power is treated as bad
+#: data rather than a record. Generous on purpose: short overloads are real,
+#: an order of magnitude is not.
+PLAUSIBILITY_FACTOR = 5.0
+
 DEFAULT_INTERVAL_SECONDS = 900  # 15 minutes, the common settlement period
 SECONDS_PER_HOUR = 3600.0
 
@@ -182,7 +187,33 @@ class SiteAggregator:
         rows, seed = self._series(asset, asset.power_metric, start, end)
         scaled = [(ts, asset.normalize_power(value)) for ts, value in rows]
         scaled_seed = (seed[0], asset.normalize_power(seed[1])) if seed else None
+
+        # Physically impossible readings are dropped before they reach the
+        # balance. A load meter rated 1,200 kW reporting 45 MW is a scaling
+        # error, a test override or a wiring fault - not a peak, and letting
+        # it in made the demand "baseline" (and so the demand benefit) absurd.
+        limit = self._plausible_kw(asset)
+        if limit is not None:
+            kept = [(ts, kw) for ts, kw in scaled if kw is None or abs(kw) <= limit]
+            dropped = len(scaled) - len(kept)
+            if dropped:
+                logger.warning(
+                    "implausible power readings ignored",
+                    extra={"device_id": str(asset.device_id), "metric": asset.power_metric,
+                           "dropped": dropped, "limit_kw": limit},
+                )
+                scaled = kept
+            if scaled_seed and scaled_seed[1] is not None and abs(scaled_seed[1]) > limit:
+                scaled_seed = None
         return scaled, scaled_seed
+
+    @staticmethod
+    def _plausible_kw(asset: EnergyAsset) -> float | None:
+        """Largest |kW| this asset can plausibly report, or None when unrated."""
+        rated = asset.rated_power_kw
+        if not rated or rated <= 0:
+            return None
+        return float(rated) * PLAUSIBILITY_FACTOR
 
     # ---- interval computation -------------------------------------------
     def compute_interval(self, start: dt.datetime) -> EnergyInterval | None:

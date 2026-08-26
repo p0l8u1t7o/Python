@@ -59,6 +59,7 @@
 - Sparkplug 規則（回答設備商問題時常用）：NBIRTH `seq=0` 且是連線後第一則；`bdSeq` 每次 CONNECT +1（重開機才歸零，TCP 重連歸零會讓晚到的舊遺言把節點打成離線）；NDEATH 只有 `bdSeq`、放在 CONNECT 的遺言；group_id = 租戶 slug；client id 慣例 `zqs:<node id>`；未登記的設備預設丟棄（`INGEST_AUTO_PROVISION=1` 才自動建檔並進待驗收）。
 - `EdgeNode.birth_metrics` 在 NBIRTH 時照原樣保存宣告，只供閘道器頁顯示，平台行為看欄位（`bd_seq`、`firmware_version`…）。
 - 場域樹的彙總（`_decorate_tree`）用一次分組查詢算全部場域，不要每列一查。
+- 結算區間會丟掉超過資產額定功率 5 倍的讀值（`PLAUSIBILITY_FACTOR`）；模擬器「覆寫上傳值」測試完記得解除，不然會留下離譜的歷史資料。示範資料出現天文數字時先查 `TelemetrySample` 有沒有離群值，再懷疑公式。
 - 新增 migration 後跑 `manage.py makemigrations --check --dry-run` 確認沒漏。
 
 ## 環境／工具的坑
