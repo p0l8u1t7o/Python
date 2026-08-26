@@ -93,6 +93,7 @@ h2:hover .headerlink, h3:hover .headerlink, h4:hover .headerlink { opacity: 1; }
 <li><a href="#週期性工作">週期性工作</a></li>
 </ul>
 </li>
+<li><a href="#4-1-讓區網內的手機-平板-真實閘道器連進來">4.1 讓區網內的手機／平板／真實閘道器連進來</a></li>
 <li><a href="#5-疑難排解">5. 疑難排解</a></li>
 <li><a href="#桌面模擬器主控台">桌面模擬器主控台</a></li>
 </ul>
@@ -371,6 +372,19 @@ python<span class="w"> </span>manage.py<span class="w"> </span>rebuild_sessions<
 python<span class="w"> </span>manage.py<span class="w"> </span>run_dispatch<span class="w"> </span>--dry-run
 </code></pre></div>
 <hr>
+<h2 id="4-1-讓區網內的手機-平板-真實閘道器連進來">4.1 讓區網內的手機／平板／真實閘道器連進來<a class="headerlink" href="#4-1-讓區網內的手機-平板-真實閘道器連進來" title="Permanent link">¶</a></h2>
+<p>預設所有服務只綁 <code>127.0.0.1</code>，同一台電腦以外的裝置都連不到。要讓同一個 Wi-Fi／區網的裝置連進來，加 <code>-Lan</code> 啟動：</p>
+<div class="codehilite"><pre><code class="language-powershell">.\scripts\dev.ps1 -Lan
+</code></pre></div>
+<p>它會把 console（5173）、API（8000）與內建 MQTT broker（1883）都綁到 <code>0.0.0.0</code>，並在最後印出這台電腦的區網位址，例如 <code>http://192.168.1.23:5173</code>——手機瀏覽器直接開這個網址即可；真實閘道器則連 <code>mqtt://192.168.1.23:1883</code>（MQTT 3.1.1）。</p>
+<p>連不到時依序檢查：</p>
+<ol>
+<li><strong>Windows 防火牆</strong>：新的 port 預設擋掉。腳本會嘗試加一條 <code>ZQS Cloud dev (5173,8000,1883)</code> 的入站規則；沒有系統管理員權限時它會印出要在「系統管理員 PowerShell」貼的那行 <code>New-NetFirewallRule …</code>。</li>
+<li><strong>網路設定檔要是「私人」</strong>：Wi-Fi 被 Windows 當成「公用」時所有入站連線都被擋（連本機用區網 IP 連自己都會逾時），腳本會偵測並提示。改法：設定 → 網路和網際網路 → 該 Wi-Fi → 網路設定檔類型 → 私人；或在系統管理員 PowerShell 執行 <code>Set-NetConnectionProfile -Name '&lt;Wi-Fi 名稱&gt;' -NetworkCategory Private</code>。</li>
+<li><strong>同一個網段</strong>：手機和電腦要在同一個 Wi-Fi；訪客網路／AP 隔離會擋住裝置之間的連線。</li>
+<li><strong>位址要用 IP，不要用 localhost</strong>：手機上的 localhost 是手機自己。</li>
+</ol>
+<p>不用腳本、手動啟動時對應的設定是：Vite 設 <code>VITE_DEV_HOST=0.0.0.0</code>（或 <code>npm run dev -- --host</code>）、<code>manage.py runserver 0.0.0.0:8000</code>、<code>manage.py run_broker --host 0.0.0.0</code>。開發設定（<code>config/settings/dev.py</code>）已接受任何 Host 並信任本機所有區網位址的 CSRF 來源，不必再改。</p>
 <h2 id="5-疑難排解">5. 疑難排解<a class="headerlink" href="#5-疑難排解" title="Permanent link">¶</a></h2>
 <p><strong>8000 或 5173 連接埠已被占用。</strong> 前一組服務還在跑。執行
 <code>.\scripts\stop.ps1</code>，或在 <code>dev.sh</code> 的終端機按 Ctrl-C。</p>

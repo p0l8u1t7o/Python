@@ -25,6 +25,13 @@
 .PARAMETER NoBrowser
     Do not open the console in a browser.
 
+.PARAMETER Lan
+    Listen on every network interface instead of 127.0.0.1 only, so a phone,
+    a tablet or a real gateway on the same Wi-Fi / LAN can reach the console
+    (5173), the API (8000) and the bundled MQTT broker (1883). Prints the
+    LAN address to use. Windows Firewall may still have to be told to allow
+    the ports; the script prints the exact command when it cannot open them.
+
 .EXAMPLE
     .\scripts\dev.ps1 -Setup
     First run: installs everything, seeds demo data, then starts the stack.
@@ -44,7 +51,8 @@ param(
     [switch]$Full,
     [switch]$NoBroker,
     [double]$HistoryDays = 3,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    [switch]$Lan
 )
 
 $ErrorActionPreference = 'Stop'
@@ -257,15 +265,23 @@ try {
     $childEnv = "`$env:BUS_BACKEND='$busBackend'; `$env:MQTT_ENABLED='$mqttEnabled'; " +
         "`$env:MQTT_PROTOCOL_VERSION='$mqttProtocol'; `$env:MQTT_USE_SHARED_SUBSCRIPTION='$mqttShared';"
 
+    # -Lan binds every listener to 0.0.0.0. Vite proxies /api to 127.0.0.1
+    # itself, so the console alone would do for a phone; the API and broker
+    # are opened too so a real gateway on the LAN can connect and so the API
+    # docs work from another machine.
+    $bindHost = if ($Lan) { '0.0.0.0' } else { '127.0.0.1' }
+    $brokerArgs = if ($Lan) { " --host $bindHost" } else { '' }
+    $frontendCommand = if ($Lan) { "`$env:VITE_DEV_HOST='0.0.0.0'; npm run dev" } else { 'npm run dev' }
+
     if ($useBundledBroker) {
         Start-DevService -Title 'zqs-broker' -Command `
-            "$childEnv & '$python' manage.py run_broker"
+            "$childEnv & '$python' manage.py run_broker$brokerArgs"
         # No bind wait: the pipeline retries its broker connection, so the
         # only cost of racing it is one retry line in the log.
     }
 
     Start-DevService -Title 'zqs-api' -Command `
-        "$childEnv & '$python' manage.py runserver 127.0.0.1:8000"
+        "$childEnv & '$python' manage.py runserver ${bindHost}:8000"
 
     if ($Full) {
         Start-DevService -Title 'zqs-ingestor' -Command `
@@ -292,7 +308,7 @@ try {
     Start-DevService -Title 'zqs-scheduler' -Command `
         "$childEnv & '$python' manage.py run_scheduler --interval 60"
 
-    Start-DevService -Title 'zqs-frontend' -Command 'npm run dev' `
+    Start-DevService -Title 'zqs-frontend' -Command $frontendCommand `
         -WorkingDirectory (Join-Path $root 'frontend')
 
     # No simulator is started here on purpose: every registered device comes
@@ -333,8 +349,55 @@ try {
     Write-Host ''
     Write-Host '  stop with  .\scripts\stop.ps1'
     if ($useBundledBroker) {
-        Write-Ok 'development broker on mqtt://127.0.0.1:1883 - anonymous, no ACL, dev only'
+        Write-Ok "development broker on mqtt://${bindHost}:1883 - anonymous, no ACL, dev only"
         Write-Ok 'Devices are offline until you bring them online in .\scripts\sim-console.ps1'
+    }
+    if ($Lan) {
+        Write-Host ''
+        Write-Step 'LAN access (-Lan)'
+        $lanAddresses = @(
+            Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown' } |
+                Sort-Object InterfaceMetric, IPAddress |
+                Select-Object -ExpandProperty IPAddress
+        )
+        if ($lanAddresses.Count -eq 0) {
+            Write-Warn 'No LAN IPv4 address found; the listeners are bound to 0.0.0.0 anyway.'
+        } else {
+            foreach ($address in $lanAddresses) {
+                Write-Host "  console    http://${address}:5173"
+                Write-Host "  API        http://${address}:8000/api/docs"
+                if ($useBundledBroker) { Write-Host "  MQTT       mqtt://${address}:1883   (gateway: Client ID zqs:<node id>)" }
+                Write-Host ''
+            }
+        }
+        # A Wi-Fi Windows classifies as "Public" gets the strictest firewall
+        # profile: inbound is refused even with the rule below, which only
+        # covers Private/Domain on purpose. Say so, with the fix, before
+        # anyone starts debugging the phone.
+        $publicNets = @(Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' })
+        foreach ($net in $publicNets) {
+            Write-Warn "network '$($net.Name)' is classified as Public - Windows blocks incoming connections on it."
+            Write-Host "    Switch it to Private once (administrator PowerShell), or via Settings > Network > $($net.Name) > Network profile type:"
+            Write-Host "    Set-NetConnectionProfile -Name '$($net.Name)' -NetworkCategory Private"
+        }
+        # Windows Firewall blocks inbound on a fresh port until a rule exists.
+        # Adding one needs elevation, so only try when this shell has it and
+        # otherwise print the command to paste into an admin prompt.
+        $rules = @(Get-NetFirewallRule -DisplayName 'ZQS Cloud dev (5173,8000,1883)' -ErrorAction SilentlyContinue)
+        if ($rules.Count -eq 0) {
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+            if ($isAdmin) {
+                New-NetFirewallRule -DisplayName 'ZQS Cloud dev (5173,8000,1883)' -Direction Inbound -Protocol TCP -LocalPort 5173,8000,1883 -Action Allow -Profile Private,Domain | Out-Null
+                Write-Ok 'firewall rule added for TCP 5173, 8000, 1883 (Private/Domain profiles)'
+            } else {
+                Write-Warn 'If the phone still cannot connect, allow the ports once from an *administrator* PowerShell:'
+                Write-Host "    New-NetFirewallRule -DisplayName 'ZQS Cloud dev (5173,8000,1883)' -Direction Inbound -Protocol TCP -LocalPort 5173,8000,1883 -Action Allow -Profile Private,Domain"
+                Write-Host '    (also make sure the Wi-Fi network is set to "Private", not "Public")'
+            }
+        } else {
+            Write-Ok 'firewall rule for TCP 5173, 8000, 1883 already exists'
+        }
     }
     if ($NoBroker) {
         Write-Host ''
