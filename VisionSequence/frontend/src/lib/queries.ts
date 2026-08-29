@@ -1,0 +1,701 @@
+/**
+ * TanStack Query hooks。query key 集中在 `keys`，SSE（flowStream.ts）直接寫同一組 key 的快取。
+ */
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { ApiError, api, request } from './api'
+import type {
+  Asset,
+  AuthUser,
+  Capacity,
+  Connection,
+  ConnectionKind,
+  ConnectionOpResult,
+  EngineLock,
+  BatchResult,
+  ExpectStatus,
+  Flow,
+  FlowGraph,
+  FlowRecipe,
+  FlowStatsDb,
+  FlowTemplate,
+  GoldenBaseline,
+  GoldenCase,
+  GoldenList,
+  ImageSource,
+  IntegrationInfo,
+  Page,
+  PreviewReport,
+  RecipeCheckResult,
+  RecipeImportCheck,
+  RecipeImportResult,
+  RegressResult,
+  RunReport,
+  ScratchImage,
+  SourceKind,
+  TcpResult,
+  TemplateInstance,
+  ToolCatalogue,
+} from './types'
+
+export const keys = {
+  toolTypes: ['tool-types'] as const,
+  capacity: ['capacity'] as const,
+  flows: ['flows'] as const,
+  flow: (id: number) => ['flow', id] as const,
+  recent: (id: number) => ['recent', id] as const,
+  history: (id: number, params: Record<string, unknown>) => ['history', id, params] as const,
+  stats: (id: number, hours: number) => ['flow-stats', id, hours] as const,
+  sources: ['sources'] as const,
+  sourceKinds: ['source-kinds'] as const,
+  assets: (kind: string) => ['assets', kind] as const,
+  lock: ['engine-lock'] as const,
+  users: ['users'] as const,
+  templates: ['templates'] as const,
+  integration: ['integration-info'] as const,
+  run: (id: string) => ['run', id] as const,
+  recipes: (flowId: number) => ['recipes', flowId] as const,
+  golden: (flowId: number) => ['golden', flowId] as const,
+  goldenBaseline: (flowId: number) => ['golden-baseline', flowId] as const,
+  connections: ['connections'] as const,
+  connectionKinds: ['connection-kinds'] as const,
+}
+
+export interface RecentRuns {
+  items: RunReport[]
+  stats: Flow['stats']
+  continuous: boolean
+}
+
+// ---- 工具目錄 / 容量 ----
+export function useToolTypes() {
+  return useQuery({
+    queryKey: keys.toolTypes,
+    queryFn: () => api.get<ToolCatalogue>('/vision/tool-types'),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useCapacity(intervalMs = 5000) {
+  return useQuery({
+    queryKey: keys.capacity,
+    queryFn: () => api.get<Capacity>('/vision/capacity'),
+    refetchInterval: intervalMs,
+  })
+}
+
+// ---- 流程 ----
+export function useFlows(q = '', mine = false) {
+  return useQuery({
+    queryKey: [...keys.flows, q, mine],
+    queryFn: () => api.get<Page<Flow>>('/vision/flows', { q, limit: 200, mine: mine ? 'true' : '' }),
+  })
+}
+
+export function useFlow(id: number | null) {
+  return useQuery({
+    queryKey: keys.flow(id ?? 0),
+    queryFn: () => api.get<Flow>(`/vision/flows/${id}`),
+    enabled: id !== null,
+  })
+}
+
+export interface FlowPatch {
+  name?: string
+  description?: string
+  graph?: FlowGraph
+  is_enabled?: boolean
+  continuous_interval_ms?: number
+  /** 參數卡頁「標記為已教導」 */
+  commissioned?: boolean
+}
+
+export function useFlowMutations() {
+  const client = useQueryClient()
+  const invalidate = () => {
+    void client.invalidateQueries({ queryKey: keys.flows })
+    void client.invalidateQueries({ queryKey: keys.capacity })
+  }
+  const create = useMutation({
+    mutationFn: (body: { name: string; description?: string; graph?: FlowGraph }) =>
+      api.post<Flow>('/vision/flows', body),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: FlowPatch & { id: number }) =>
+      api.patch<Flow>(`/vision/flows/${id}`, body),
+    onSuccess: (flow) => {
+      client.setQueryData(keys.flow(flow.id), flow)
+      invalidate()
+    },
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/flows/${id}`),
+    onSuccess: invalidate,
+  })
+  const duplicate = useMutation({
+    mutationFn: (id: number) => api.post<Flow>(`/vision/flows/${id}/duplicate`),
+    onSuccess: invalidate,
+  })
+  return { create, patch, remove, duplicate }
+}
+
+export function useRecentRuns(flowId: number | null, limit = 8) {
+  return useQuery({
+    queryKey: keys.recent(flowId ?? 0),
+    queryFn: () => api.get<RecentRuns>(`/vision/flows/${flowId}/recent`, { limit }),
+    enabled: flowId !== null,
+    // SSE 會即時更新；這裡只是初始載入與斷線保險。
+    staleTime: 30_000,
+  })
+}
+
+export function useRunHistory(flowId: number | null, params: { status?: string; limit?: number; offset?: number } = {}) {
+  return useQuery({
+    queryKey: keys.history(flowId ?? 0, params),
+    queryFn: () => api.get<Page<RunReport>>(`/vision/flows/${flowId}/runs`, params),
+    enabled: flowId !== null,
+  })
+}
+
+export function useFlowStats(flowId: number | null, hours = 24) {
+  return useQuery({
+    queryKey: keys.stats(flowId ?? 0, hours),
+    queryFn: () => api.get<FlowStatsDb>(`/vision/flows/${flowId}/stats`, { hours }),
+    enabled: flowId !== null,
+  })
+}
+
+// ---- 執行 ----
+export interface RunFlowArgs {
+  flowId: number
+  /** 附影像檔 → multipart；沒有 → JSON */
+  file?: File | null
+  context?: Record<string, unknown>
+  wait?: boolean
+  /** 配方名稱或 id；空 = 預設配方 */
+  recipe?: string | null
+}
+
+export function useRunFlow() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ flowId, file, context, wait = true, recipe }: RunFlowArgs) => {
+      const query = { wait: wait ? 1 : 0, include_images: 1, trigger: 'ui' }
+      if (file) {
+        const form = new FormData()
+        form.append('image', file)
+        if (context) form.append('context', JSON.stringify(context))
+        if (recipe) form.append('recipe', recipe)
+        return api.postForm<RunReport>(`/vision/flows/${flowId}/run`, form, query)
+      }
+      return api.post<RunReport>(`/vision/flows/${flowId}/run`, { context: context ?? null, wait, ...(recipe ? { recipe } : {}) }, query)
+    },
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.capacity }),
+  })
+}
+
+export interface PreviewArgs {
+  flowId: number
+  graph: FlowGraph
+  context?: Record<string, unknown>
+  reuse_image_ref?: string | null
+  /** 只跑到該步驟與其祖先（工具頁） */
+  until_node?: string | null
+  /** 回傳直方圖／統計（工具頁） */
+  analysis?: boolean
+  /** 配方名稱或 id（伺服器端疊覆寫） */
+  recipe?: string | null
+  signal?: AbortSignal
+}
+
+export async function previewFlow({ flowId, graph, context, reuse_image_ref, until_node, analysis, recipe, signal }: PreviewArgs): Promise<PreviewReport> {
+  const send = (ref: string | null) =>
+    request<PreviewReport>(`/vision/flows/${flowId}/preview`, {
+      method: 'POST',
+      body: {
+        graph,
+        context: context ?? null,
+        reuse_image_ref: ref,
+        ...(until_node ? { until_node } : {}),
+        ...(analysis ? { analysis: true } : {}),
+        ...(recipe ? { recipe } : {}),
+      },
+      signal,
+    })
+  try {
+    return await send(reuse_image_ref ?? null)
+  } catch (error) {
+    // 「用上次影像重跑」的影像已被快取淘汰（404 image_gone）：改用來源重新取像，不要卡在錯誤上
+    if (reuse_image_ref && error instanceof ApiError && error.code === 'image_gone') return send(null)
+    throw error
+  }
+}
+
+export function usePreviewFlow() {
+  return useMutation({ mutationFn: previewFlow })
+}
+
+/** 暫存影像：只進快取不進影像來源庫；之後試跑帶 reuse_image_ref。 */
+export function useScratchImage() {
+  return useMutation({
+    mutationFn: ({ flowId, file }: { flowId: number; file: File }) => {
+      const form = new FormData()
+      form.append('image', file)
+      return api.postForm<ScratchImage>(`/vision/flows/${flowId}/scratch-image`, form)
+    },
+  })
+}
+
+/** 重置：清除記憶體內的執行紀錄與統計（SSE 會再收到 cleared）。 */
+export function useClearRecent() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (flowId: number) => api.delete(`/vision/flows/${flowId}/recent`),
+    onSuccess: (_data, flowId) => {
+      client.setQueryData<RecentRuns>(keys.recent(flowId), (old) => ({ items: [], stats: emptyStats(), continuous: old?.continuous ?? false }))
+      client.setQueryData<Flow>(keys.flow(flowId), (old) => (old ? { ...old, stats: emptyStats() } : old))
+    },
+  })
+}
+
+export function emptyStats(): Flow['stats'] {
+  return { runs: 0, ok: 0, ng: 0, failed: 0, avg_ms: 0, max_ms: 0, last_ms: 0, last_status: '', last_run_id: '', last_finished_at: 0 }
+}
+
+export function useContinuous() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ flowId, running }: { flowId: number; running: boolean }) =>
+      api.post<{ running: boolean }>(`/vision/flows/${flowId}/continuous`, { running }),
+    onSuccess: (_data, { flowId }) => {
+      void client.invalidateQueries({ queryKey: keys.flow(flowId) })
+      void client.invalidateQueries({ queryKey: keys.flows })
+      void client.invalidateQueries({ queryKey: keys.capacity })
+    },
+  })
+}
+
+// ---- 影像來源 ----
+export function useSources() {
+  return useQuery({
+    queryKey: keys.sources,
+    queryFn: () => api.get<{ items: ImageSource[] }>('/vision/sources'),
+  })
+}
+
+export function useSourceKinds() {
+  return useQuery({
+    queryKey: keys.sourceKinds,
+    queryFn: () => api.get<{ items: SourceKind[] } | SourceKind[]>('/vision/sources/kinds'),
+    select: (data) => (Array.isArray(data) ? data : data.items),
+    staleTime: Infinity,
+  })
+}
+
+export interface SourceBody {
+  name: string
+  kind: string
+  config: Record<string, unknown>
+  is_enabled: boolean
+}
+
+export function useSourceMutations() {
+  const client = useQueryClient()
+  const invalidate = () => void client.invalidateQueries({ queryKey: keys.sources })
+  const create = useMutation({
+    mutationFn: (body: SourceBody) => api.post<ImageSource>('/vision/sources', body),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: Partial<SourceBody> & { id: number }) =>
+      api.patch<ImageSource>(`/vision/sources/${id}`, body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/sources/${id}`),
+    onSuccess: invalidate,
+  })
+  const push = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => {
+      const form = new FormData()
+      form.append('image', file)
+      return api.postForm<{ ok: boolean }>(`/vision/sources/${id}/push`, form)
+    },
+  })
+  return { create, patch, remove, push }
+}
+
+// ---- 資產 ----
+export function useAssets(kind = '') {
+  return useQuery({
+    queryKey: keys.assets(kind),
+    queryFn: () => api.get<{ items: Asset[] }>('/vision/assets', { kind }),
+  })
+}
+
+export function useAssetMutations() {
+  const client = useQueryClient()
+  const invalidate = () => void client.invalidateQueries({ queryKey: ['assets'] })
+  const uploadFile = useMutation({
+    mutationFn: ({ file, kind, name }: { file: File; kind: Asset['kind']; name?: string }) => {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('kind', kind)
+      form.append('name', name || file.name)
+      return api.postForm<Asset>('/vision/assets', form)
+    },
+    onSuccess: invalidate,
+  })
+  const fromImage = useMutation({
+    mutationFn: (body: { ref: string; region?: unknown; name?: string }) =>
+      api.post<Asset>('/vision/assets/from-image', body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/vision/assets/${id}`),
+    onSuccess: invalidate,
+  })
+  return { uploadFile, fromImage, remove }
+}
+
+// ---- 引擎鎖定 ----
+/** 鎖定狀態：AuthProvider 以 me.lock 預填、SSE lock 事件直接寫快取，這裡每 30 秒輪詢保險。 */
+export function useEngineLock(enabled = true) {
+  return useQuery({
+    queryKey: keys.lock,
+    queryFn: () => api.get<EngineLock>('/vision/lock'),
+    refetchInterval: 30_000,
+    enabled,
+  })
+}
+
+export function useLockMutations() {
+  const client = useQueryClient()
+  const apply = (lock: EngineLock) => client.setQueryData(keys.lock, lock)
+  const acquire = useMutation({
+    mutationFn: (body: { reason?: string; ttl_s?: number | null }) => api.post<EngineLock>('/vision/lock', body),
+    onSuccess: apply,
+  })
+  const release = useMutation({
+    mutationFn: () => api.delete<EngineLock>('/vision/lock'),
+    onSuccess: apply,
+  })
+  return { acquire, release }
+}
+
+// ---- 使用者（管理員） ----
+export function useUsers(enabled = true) {
+  return useQuery({
+    queryKey: keys.users,
+    queryFn: () => api.get<{ items: AuthUser[] }>('/users'),
+    enabled,
+  })
+}
+
+export interface UserPatch {
+  password?: string
+  is_staff?: boolean
+  is_active?: boolean
+  display_name?: string
+}
+
+export function useUserMutations() {
+  const client = useQueryClient()
+  const invalidate = () => void client.invalidateQueries({ queryKey: keys.users })
+  const create = useMutation({
+    mutationFn: (body: { username: string; password: string; is_staff: boolean; display_name: string }) => api.post<AuthUser>('/users', body),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: UserPatch & { id: number }) => api.patch<AuthUser>(`/users/${id}`, body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/users/${id}`),
+    onSuccess: invalidate,
+  })
+  return { create, patch, remove }
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { old_password: string; new_password: string }) => api.post<{ ok: boolean }>('/auth/password', body),
+  })
+}
+
+// ---- 範本庫 ----
+export function useTemplates(enabled = true) {
+  return useQuery({
+    queryKey: keys.templates,
+    queryFn: () => api.get<{ items: FlowTemplate[]; can_manage: boolean }>('/vision/templates'),
+    enabled,
+  })
+}
+
+export function useTemplateMutations() {
+  const client = useQueryClient()
+  const invalidate = () => void client.invalidateQueries({ queryKey: keys.templates })
+  const create = useMutation({
+    mutationFn: (body: { name: string; description: string; category: string; graph: FlowGraph }) => api.post<FlowTemplate>('/vision/templates', body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/vision/templates/${encodeURIComponent(id)}`),
+    onSuccess: invalidate,
+  })
+  const instantiate = useMutation({
+    mutationFn: ({ id, source_id, prefix }: { id: string; source_id?: number | null; prefix?: string }) =>
+      api.post<TemplateInstance>(`/vision/templates/${encodeURIComponent(id)}/instantiate`, { source_id: source_id ?? null, prefix: prefix ?? '' }),
+  })
+  return { create, remove, instantiate }
+}
+
+// ---- 批次測試 ----
+export function useBatchTest() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ flowId, files, graph, signal }: { flowId: number; files: File[]; graph?: FlowGraph | null; signal?: AbortSignal }) => {
+      const form = new FormData()
+      for (const file of files) form.append('images', file)
+      if (graph) form.append('graph', JSON.stringify(graph))
+      return request<BatchResult>(`/vision/flows/${flowId}/batch`, { method: 'POST', form, signal })
+    },
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.capacity }),
+  })
+}
+
+export function useBatchFromSource() {
+  return useMutation({
+    mutationFn: ({ flowId, source_id, count, graph }: { flowId: number; source_id: number; count: number; graph?: FlowGraph | null }) =>
+      api.post<BatchResult>(`/vision/flows/${flowId}/batch-source`, { source_id, count, graph: graph ?? null }),
+  })
+}
+
+/** 單一 run（記憶體 recent 內或資料庫）；不在了會 404 run_not_found。 */
+export function fetchRun(runId: string): Promise<RunReport> {
+  return api.get<RunReport>(`/vision/runs/${encodeURIComponent(runId)}`)
+}
+
+// ---- 整合頁 ----
+export function useIntegrationInfo() {
+  return useQuery({
+    queryKey: keys.integration,
+    queryFn: () => api.get<IntegrationInfo>('/vision/integration/info'),
+    refetchInterval: 15_000,
+  })
+}
+
+export function useTcpCommand() {
+  return useMutation({
+    mutationFn: ({ command, timeout_s }: { command: string; timeout_s?: number }) => api.post<TcpResult>('/vision/integration/tcp', { command, timeout_s: timeout_s ?? 10 }),
+  })
+}
+
+// ---- 配方（FlowRecipe） ----
+export function useRecipes(flowId: number | null) {
+  return useQuery({
+    queryKey: keys.recipes(flowId ?? 0),
+    queryFn: () => api.get<{ items: FlowRecipe[] }>(`/vision/flows/${flowId}/recipes`),
+    enabled: flowId !== null,
+  })
+}
+
+export interface RecipeBody {
+  name: string
+  description?: string
+  param_overrides?: Record<string, Record<string, unknown>>
+  is_default?: boolean
+}
+
+export function useRecipeMutations(flowId: number) {
+  const client = useQueryClient()
+  const invalidate = () => {
+    void client.invalidateQueries({ queryKey: keys.recipes(flowId) })
+    void client.invalidateQueries({ queryKey: keys.flows })
+    void client.invalidateQueries({ queryKey: keys.flow(flowId) })
+  }
+  const create = useMutation({
+    mutationFn: (body: RecipeBody) => api.post<FlowRecipe>(`/vision/flows/${flowId}/recipes`, body),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: Partial<RecipeBody> & { id: number }) => api.patch<FlowRecipe>(`/vision/flows/${flowId}/recipes/${id}`, body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/flows/${flowId}/recipes/${id}`),
+    onSuccess: invalidate,
+  })
+  return { create, patch, remove }
+}
+
+/** 儲存範圍 Check List：存檔前逐項檢查覆寫（不寫入）。include_all=true 時流程所有宣告參數也列出（覆寫沒提到的以圖值列為 unchanged，帶 teach／kind）。 */
+export function checkRecipe(flowId: number, param_overrides: Record<string, Record<string, unknown>>, options: { include_all?: boolean; signal?: AbortSignal } = {}): Promise<RecipeCheckResult> {
+  return request<RecipeCheckResult>(`/vision/flows/${flowId}/recipes/check`, { method: 'POST', body: { param_overrides, include_all: options.include_all ?? false }, signal: options.signal })
+}
+
+/** 匯入合理化檢查（multipart file）與匯入（只寫入 accept 的項目）。 */
+export function useRecipeImport(flowId: number) {
+  const client = useQueryClient()
+  const check = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.postForm<RecipeImportCheck>(`/vision/flows/${flowId}/recipes/import/check`, form)
+    },
+  })
+  const run = useMutation({
+    mutationFn: (body: { doc: Record<string, unknown>; accept: string[]; name?: string; is_default?: boolean }) => api.post<RecipeImportResult>(`/vision/flows/${flowId}/recipes/import`, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.recipes(flowId) })
+      void client.invalidateQueries({ queryKey: keys.flows })
+      void client.invalidateQueries({ queryKey: keys.flow(flowId) })
+    },
+  })
+  return { check, run }
+}
+
+/** 把配方的覆寫疊到圖上（與後端 apply_recipe 相同語意；不動原圖）。 */
+export function applyOverrides(graph: FlowGraph, overrides: Record<string, Record<string, unknown>> | null | undefined): FlowGraph {
+  if (!overrides || Object.keys(overrides).length === 0) return graph
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => {
+      const patch = overrides[n.id]
+      return patch && typeof patch === 'object' ? { ...n, params: { ...(n.params ?? {}), ...patch } } : n
+    }),
+  }
+}
+
+// ---- Golden Set ----
+export function useGolden(flowId: number | null) {
+  return useQuery({
+    queryKey: keys.golden(flowId ?? 0),
+    queryFn: () => api.get<GoldenList>(`/vision/flows/${flowId}/golden`),
+    enabled: flowId !== null,
+  })
+}
+
+export function useGoldenBaseline(flowId: number | null) {
+  return useQuery({
+    queryKey: keys.goldenBaseline(flowId ?? 0),
+    queryFn: () => api.get<{ baseline: GoldenBaseline | null; flow_version: number; case_count: number }>(`/vision/flows/${flowId}/golden/baseline`),
+    enabled: flowId !== null,
+  })
+}
+
+export interface GoldenFromBatchItem {
+  image_ref: string
+  name?: string
+  expect_status?: ExpectStatus
+  expect_outputs?: Record<string, unknown>
+  note?: string
+}
+
+export function useGoldenMutations(flowId: number) {
+  const client = useQueryClient()
+  const invalidate = () => {
+    void client.invalidateQueries({ queryKey: keys.golden(flowId) })
+    void client.invalidateQueries({ queryKey: keys.goldenBaseline(flowId) })
+  }
+  const upload = useMutation({
+    mutationFn: ({ files, expect_status, note }: { files: File[]; expect_status: ExpectStatus; note?: string }) => {
+      const form = new FormData()
+      for (const f of files) form.append('images', f)
+      form.append('expect_status', expect_status)
+      if (note) form.append('note', note)
+      return api.postForm<{ items: GoldenCase[]; created: number }>(`/vision/flows/${flowId}/golden`, form)
+    },
+    onSuccess: invalidate,
+  })
+  const fromBatch = useMutation({
+    mutationFn: (items: GoldenFromBatchItem[]) => api.post<{ items: GoldenCase[]; created: number }>(`/vision/flows/${flowId}/golden`, { from_batch: items }),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; name?: string; expect_status?: ExpectStatus; expect_outputs?: Record<string, unknown>; note?: string }) =>
+      api.patch<GoldenCase>(`/vision/flows/${flowId}/golden/${id}`, body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/flows/${flowId}/golden/${id}`),
+    onSuccess: invalidate,
+  })
+  const regress = useMutation({
+    mutationFn: (body: { graph?: FlowGraph | null; save_baseline?: boolean; fail_under?: number | null }) =>
+      api.post<RegressResult>(`/vision/flows/${flowId}/regress`, { graph: body.graph ?? null, save_baseline: Boolean(body.save_baseline), fail_under: body.fail_under ?? null }),
+    onSuccess: invalidate,
+  })
+  return { upload, fromBatch, patch, remove, regress }
+}
+
+// ---- 匯出／匯入 ----
+export function useImportFlow() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, source_id }: { file: File; source_id?: number | null }) => {
+      const form = new FormData()
+      form.append('file', file)
+      if (source_id) form.append('source_id', String(source_id))
+      return api.postForm<{ flow: Flow; created: boolean }>('/vision/flows/import', form)
+    },
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.flows }),
+  })
+}
+
+// ---- 連線（PLC／上位機） ----
+export function useConnections(enabled = true) {
+  return useQuery({
+    queryKey: keys.connections,
+    queryFn: () => api.get<{ items: Connection[] }>('/vision/connections'),
+    enabled,
+  })
+}
+
+export function useConnectionKinds() {
+  return useQuery({
+    queryKey: keys.connectionKinds,
+    queryFn: () => api.get<{ items: ConnectionKind[] }>('/vision/connections/kinds'),
+    select: (data) => data.items,
+    staleTime: Infinity,
+  })
+}
+
+export interface ConnectionBody {
+  name: string
+  kind: string
+  config: Record<string, unknown>
+  is_enabled: boolean
+}
+
+export function useConnectionMutations() {
+  const client = useQueryClient()
+  const invalidate = () => void client.invalidateQueries({ queryKey: keys.connections })
+  const create = useMutation({
+    mutationFn: (body: ConnectionBody) => api.post<Connection>('/vision/connections', body),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: Partial<ConnectionBody> & { id: number }) => api.patch<Connection>(`/vision/connections/${id}`, body),
+    onSuccess: invalidate,
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/connections/${id}`),
+    onSuccess: invalidate,
+  })
+  const test = useMutation({
+    mutationFn: (id: number) => api.post<ConnectionOpResult>(`/vision/connections/${id}/test`),
+    onSuccess: invalidate,
+  })
+  const write = useMutation({
+    mutationFn: ({ id, values, timeout_s }: { id: number; values: Record<string, unknown>; timeout_s?: number | null }) =>
+      api.post<ConnectionOpResult>(`/vision/connections/${id}/write`, { values, timeout_s: timeout_s ?? null }),
+    onSuccess: invalidate,
+  })
+  return { create, patch, remove, test, write }
+}
+
+export function fetchConnectionState(id: number, addresses = ''): Promise<ConnectionOpResult> {
+  return api.get<ConnectionOpResult>(`/vision/connections/${id}/state`, { addresses })
+}

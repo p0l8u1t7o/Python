@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 前後端合約</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
+  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  nav ul { columns: 2; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+
+<h1>VisionSequence 前後端合約（給平行開發的子任務看）</h1>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#backend">後端（已完成，勿改介面）</a></li>
+<li><a href="#graph">graph JSON</a></li>
+<li><a href="#roi">ROI region dict</a></li>
+<li><a href="#overlay">Overlay dict</a></li>
+<li><a href="#runreport">RunReport</a></li>
+<li><a href="#preview">試跑進階</a></li>
+<li><a href="#paramkind">Param.kind 補充</a></li>
+<li><a href="#frontend">前端骨架（已完成）</a></li>
+</ul></nav>
+
+<h2 id="backend">後端（已完成，勿改介面）</h2>
+<ul>
+<li>Django 5.1 + django-ninja，根目錄 <code>manage.py</code>，設定 <code>config/settings.py</code>（<code>VISION</code> dict）。</li>
+<li>工具框架 <code>apps/vision/tools/base.py</code>：<code>Param</code>、<code>Port</code>、<code>flow_out()</code>、<code>ToolContext</code>、<code>Result</code>、<code>Tool</code>（基底）、<code>register()</code>、<code>catalogue()</code>。</li>
+<li>ROI helper <code>apps/vision/tools/roi.py</code>：<code>crop(image, region, upright=)</code> → <code>Crop(image, x0, y0, mask, inverse)</code>，<code>Crop.to_full(x,y)</code>、<code>points_to_full(pts)</code>、<code>region_overlay(region)</code>、<code>mask_for()</code>、<code>transform_region()</code>。</li>
+<li>內建工具模組 <code>apps/vision/tools/builtin/{source,preprocess,locate,measure,detect,dl,logic,output}.py</code>，每個模組 <code>TOOLS = [...]</code>。</li>
+<li>引擎 <code>apps/vision/engine.py</code>（資料流 DAG，拓樸順序，flow 分支 gating），Runner <code>apps/vision/runner.py</code>（ThreadPool、SSE bus）。</li>
+<li>API 見 <code>apps/vision/api.py</code> 頂端 docstring。SSE：<code>GET /api/vision/flows/{id}/stream?since=</code>、<code>GET /api/vision/events</code>。</li>
+</ul>
+
+<h3 id="graph">graph JSON</h3>
+<pre>{
+  "nodes": [{"id": "blob-1", "type": "blob", "label": "找孔", "description": "", "enabled": true,
+             "continue_on_error": false, "color": "", "params": {...}, "position": {"x": 0, "y": 0}}],
+  "edges": [{"id": "e1", "source": "gray-1", "source_handle": "image", "target": "blob-1", "target_handle": "image"}]
+}</pre>
+<ul>
+<li><code>source_handle</code> = 來源節點輸出埠 key；<code>target_handle</code> = 目標輸入埠 key，或 <code>"_flow"</code>（控制輸入）。</li>
+<li>輸出埠 <code>type: "flow"</code> 的把手（例如 if_number 的 true/false）只能接到 <code>_flow</code>。</li>
+<li><code>type: "note"</code> 是註解，不執行，不能被連入。</li>
+</ul>
+
+<h3 id="roi">ROI region dict（Param kind=roi 的值）</h3>
+<pre>{"shape":"rect","x","y","w","h"} | {"shape":"rotated_rect","cx","cy","w","h","angle"} |
+{"shape":"circle","cx","cy","r"} | {"shape":"annulus","cx","cy","r_inner","r_outer"} |
+{"shape":"polygon","points":[[x,y],...]} | {"shape":"line","x1","y1","x2","y2"}</pre>
+<p>座標為<strong>該節點輸入影像</strong>的像素座標（原點左上）。</p>
+
+<h3 id="overlay">Overlay dict（Result.overlays；畫在該節點輸入影像座標）</h3>
+<p>kind: rect(x,y,w,h,angle?) / circle(cx,cy,r) / annulus / polygon(points) / polyline(points) / line(x1,y1,x2,y2) / point(x,y) / points(points) / text(x,y,text) / contours(contours=[[[x,y],...]]).</p>
+<p>共同欄位：color "#rrggbb"、label、width、dash、fill。</p>
+
+<h3 id="runreport">RunReport（POST run / preview 回傳、SSE <code>run_finished</code> 的 <code>run</code>）</h3>
+<pre>{id, flow_id, flow_version, trigger, status: ok|ng|failed, started_at, finished_at, duration_ms, error,
+ outputs: {...具名輸出},
+ nodes: {node_id: {status: ok|ng|error|skipped, duration_ms, message, branch, outputs: {port: value}, overlays: [...], overlay_on, detail, logs}}}</pre>
+<p>影像輸出的值為 <code>{"ref": "runid:node:port" | null, "width", "height", "channels"}</code>；<code>GET /api/vision/images/{ref}?max=1024&amp;fmt=jpeg|png</code>。</p>
+<p>preview 模式（<code>POST /flows/{id}/preview</code> body <code>{graph, context?, reuse_image_ref?}</code>）保留所有中間影像，且 <code>detail._input_ref</code> 指向該節點輸入影像的 ref。</p>
+
+<h3 id="preview">試跑進階（工具頁用）</h3>
+<ul>
+<li><code>POST /flows/{id}/preview</code> body：<code>until_node</code>（只跑到該步驟與其祖先）、<code>analysis: true</code>（回 <code>analysis: {input:{ref,histogram,stats}, output:{port,ref,histogram,stats}, series:{"blobs.area":{count,min,max,mean,values}}}</code>）。</li>
+<li><code>POST /flows/{id}/scratch-image</code>（multipart image）→ <code>{ref,width,height,name}</code>：暫存影像，不進來源庫；之後 preview 帶 <code>reuse_image_ref</code>。</li>
+<li><code>DELETE /flows/{id}/recent</code>：重置記憶體內執行紀錄與統計；SSE 事件 <code>cleared</code>。</li>
+</ul>
+
+<h3 id="paramkind">Param.kind 補充</h3>
+<ul>
+<li><code>range</code>：<strong>單一數值</strong>，以滑桿＋數字框呈現（用 minimum/maximum/step）；不是兩個數字。</li>
+<li>每個工具的 outputs 目錄末尾有隱含埠 <code>{"key":"_overlays","type":"list","implicit":true}</code>（該節點的標記），可接 draw_result 的 overlays。</li>
+</ul>
+
+<h2 id="frontend">前端骨架（已完成）</h2>
+<ul>
+<li><code>frontend/</code> Vite + React 19 + TS + Tailwind v4 + @xyflow/react + TanStack Query + react-router + lucide-react + i18next。</li>
+<li><code>src/index.css</code> 語意色票（bg-surface / text-muted / bg-brand / text-critical …、<code>.btn-primary</code> <code>.btn-secondary</code> <code>.btn-ghost</code> <code>.btn-icon</code> <code>.input</code> <code>.card</code>）。</li>
+<li><code>src/lib/api.ts</code>：<code>api.get/post/postForm/patch/delete</code>、<code>imageUrl(ref, max)</code>、<code>assetUrl</code>、<code>sourcePreviewUrl</code>、<code>streamUrl(flowId, since)</code>。</li>
+<li><code>src/lib/types.ts</code>：所有型別（ToolTypeDef、Region、Overlay、GraphNode、Flow、RunReport …）。</li>
+</ul>
+<h2 id="more">範本庫、批次測試、整合工具（apps/vision/api_more.py）</h2>
+<pre>GET    /vision/templates                    內建 builtin:&lt;key&gt; ＋ 自訂；graph 內 image_source.source_id 為 {SOURCE} 佔位符
+POST   /vision/templates                    {name, description, category, graph} → 存為範本（自動換成佔位符）
+DELETE /vision/templates/{id}               自訂範本（擁有者／管理員）
+POST   /vision/templates/{id}/instantiate   {source_id?, prefix?} → {graph, missing_source, name, description}
+POST   /vision/flows/{id}/batch             multipart images[]（≤50）＋可選 graph（JSON 字串）→ {items[{name, run_id, status, duration_ms, outputs, error, error_node, image_ref}], summary{total, ok, ng, failed, avg_ms, max_ms, wall_ms}}
+POST   /vision/flows/{id}/batch-source      {source_id, count, graph?}
+GET    /vision/integration/info             {http_base, tcp_host, tcp_port, tcp_listening, api_key_required, commands[]}
+POST   /vision/integration/tcp              {command} → {response, via: tcp|direct, elapsed_ms}</pre>
+<h2 id="recipes">配方、站台、教導</h2>
+<pre>GET/POST  /vision/flows/{id}/recipes            {name, description, param_overrides:{node_id:{param:value}}, is_default}
+PATCH/DELETE /vision/flows/{id}/recipes/{rid}
+POST /vision/flows/{id}/run        body 或 form 加 recipe（id 或名稱）；TCP：RUN 1 recipe=partA
+POST /vision/flows/{id}/preview    body 加 recipe
+RunReport 新增：station_id、recipe、warnings[]（例如「未完成現場教導」）
+PATCH /vision/flows/{id} {commissioned: true}   參數卡頁確認後設定
+Param 新增 teach: bool（參數卡頁只列 teach=true 的參數）</pre>
+<h2 id="recipe-io">配方匯出／匯入與合理化檢查（api_recipes.py）</h2>
+<pre>POST /vision/flows/{id}/recipes/check          {param_overrides, include_all?} →（include_all 時把流程所有宣告參數以圖值列為 unchanged；每項帶 teach、kind） {items[{key:"node.param", node_id, node_label, param, param_label, value, current, status, message}], summary}
+GET  /vision/flows/{id}/recipes/{rid}/export    .recipe.json：{schema_version, kind:"recipe", flow_name, flow_version, flow_fingerprint, tool_versions{node:{type,version}}, recipe{name,description,param_overrides,is_default}}
+GET  /vision/flows/{id}/recipes/export-all      kind:"recipes"
+POST /vision/flows/{id}/recipes/import/check    multipart file 或 JSON doc → {same_flow_name, fingerprint_match, recipes[{name, exists, items, summary}]}
+POST /vision/flows/{id}/recipes/import          {doc, name?, accept?:[key], is_default?, description?} → 只寫入接受的項目
+status：ok | unchanged | version_changed（可勾選接受）| node_missing | type_changed | param_missing | value_invalid（不可匯入）
+Tool.version（預設 1）進 catalogue；工具參數語意變更時 +1。</pre>
+</body>
+</html>

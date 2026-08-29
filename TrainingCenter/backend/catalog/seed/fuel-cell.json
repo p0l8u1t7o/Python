@@ -1,0 +1,975 @@
+{
+  "slug": "fuel-cell",
+  "name": "氫燃料電池發電平台",
+  "summary": "回收製程氫氣，經純化後送入 PEM 燃料電池堆發電，並以 DC/DC 與併網逆變器輸出電力。",
+  "description": "本平台將製程尾氣中的氫氣經過濾、調壓後送入質子交換膜（PEM）燃料電池堆，與空氣中的氧反應產生直流電。直流電先由 DC/DC 升壓穩壓，再經逆變器併入廠內電網。系統包含氫氣供應、空氣供應、水熱管理、電力轉換與安全監控五大子系統。",
+  "scene_key": "fuelcell",
+  "order": 1,
+  "modules": [
+    {
+      "slug": "h2-supply",
+      "name": "氫氣供應與純化模組",
+      "domain": "mechanical",
+      "description": "將廢氫緩衝、過濾、減壓並穩定供應至電堆陽極。",
+      "components": [
+        {
+          "slug": "h2-buffer-tank",
+          "name": "氫氣緩衝儲槽",
+          "category": "壓力容器",
+          "brand": "範例：Luxfer",
+          "part_number": "T-350-50L",
+          "function": "暫存回收氫氣，吸收上游流量波動，維持穩定供氣壓力。",
+          "install_location": "平台左側底座，鋼架固定架上（黃色標示區）",
+          "specs": {
+            "容量": "50 L",
+            "設計壓力": "35 bar",
+            "材質": "鋁合金內膽 + 碳纖維"
+          },
+          "pos": [
+            -1.6,
+            0.55,
+            0
+          ],
+          "mesh_name": "h2tank",
+          "photo_query": "cat:Hydrogen tanks | cat:Hydrogen storage | cat:Gas cylinders"
+        },
+        {
+          "slug": "h2-regulator",
+          "name": "氫氣減壓閥",
+          "category": "氣路元件",
+          "brand": "範例：Swagelok",
+          "part_number": "KPR1GRF412A20000",
+          "function": "將儲槽壓力降至電堆入口需要的 0.5～1.0 bar，並維持穩定。",
+          "install_location": "儲槽出口管路上，位於儲槽右側管架",
+          "specs": {
+            "入口壓力": "≤ 35 bar",
+            "出口壓力": "0～3.4 bar",
+            "接頭": "1/4\" VCR"
+          },
+          "pos": [
+            -1.05,
+            0.7,
+            0
+          ],
+          "mesh_name": "h2reg",
+          "animation_key": "flow",
+          "photo_query": "cat:Pressure regulators ~ regulator gas | gas pressure regulator"
+        },
+        {
+          "slug": "h2-solenoid",
+          "name": "氫氣供應電磁閥",
+          "category": "氣路元件",
+          "brand": "範例：Bürkert",
+          "part_number": "6027 (ATEX)",
+          "function": "由 PLC 控制氫氣供應通斷；異常或停機時自動關閉。",
+          "install_location": "減壓閥下游、電堆入口前的管路上",
+          "specs": {
+            "型式": "常閉 NC",
+            "電壓": "24 VDC",
+            "防爆": "ATEX Ex ia"
+          },
+          "pos": [
+            -0.7,
+            0.7,
+            0
+          ],
+          "mesh_name": "h2sol",
+          "animation_key": "valve",
+          "photo_query": "cat:Solenoid valves"
+        },
+        {
+          "slug": "h2-filter",
+          "name": "氫氣粒子過濾器",
+          "category": "氣路元件",
+          "brand": "範例：Swagelok",
+          "part_number": "SS-4F-7",
+          "function": "濾除氫氣中的粉塵與油霧，保護電堆觸媒層。",
+          "install_location": "減壓閥前段管路",
+          "specs": {
+            "過濾精度": "7 µm",
+            "材質": "316 SS"
+          },
+          "pos": [
+            -1.3,
+            0.7,
+            0
+          ],
+          "mesh_name": "h2filter",
+          "photo_query": "cat:Compressed air filters | inline gas filter"
+        },
+        {
+          "slug": "h2-purge-valve",
+          "name": "陽極排放（Purge）閥",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "VX2 系列",
+          "function": "定期排出陽極累積的氮氣與水分，維持電堆效率。",
+          "install_location": "電堆陽極出口，靠近平台右下方排放管",
+          "specs": {
+            "動作": "週期性脈衝",
+            "驅動": "24 VDC"
+          },
+          "pos": [
+            0.5,
+            0.35,
+            0.3
+          ],
+          "mesh_name": "purge",
+          "animation_key": "valve",
+          "photo_query": "cat:Solenoid valves | cat:Pneumatic valves"
+        },
+        {
+          "slug": "tube-fitting",
+          "name": "不鏽鋼雙套環管接頭 (Swagelok)",
+          "category": "接頭",
+          "brand": "範例：Swagelok",
+          "part_number": "SS-400-6",
+          "function": "氫氣管路的標準接頭，前後套環咬合管壁形成金屬密封；鎖緊圈數依規範（1-1/4 圈）。",
+          "install_location": "氫氣管路每個轉接處",
+          "specs": {
+            "管徑": "1/4\"",
+            "材質": "316 SS"
+          },
+          "pos": [
+            -1.2,
+            0.72,
+            0.1
+          ],
+          "mesh_name": "fit-tube",
+          "animation_key": "",
+          "photo_query": "Swagelok fitting | compression fitting stainless tube"
+        },
+        {
+          "slug": "vcr-fitting",
+          "name": "VCR 面封接頭",
+          "category": "接頭",
+          "brand": "範例：Swagelok",
+          "part_number": "SS-4-VCR",
+          "function": "以金屬墊片面封，洩漏率極低，用於電堆入口等高潔淨氫氣段；每次拆裝需換墊片。",
+          "install_location": "電堆陽極入口",
+          "specs": {
+            "密封": "金屬墊片",
+            "洩漏率": "< 4×10⁻⁹ atm·cc/s He"
+          },
+          "pos": [
+            -0.45,
+            0.7,
+            0.05
+          ],
+          "mesh_name": "fit-vcr",
+          "animation_key": "",
+          "photo_query": "VCR fitting face seal | stainless steel tube fitting | cat:Compression fittings"
+        }
+      ]
+    },
+    {
+      "slug": "stack-air",
+      "name": "電堆與空氣供應模組",
+      "domain": "mechanical",
+      "description": "PEM 電堆本體及供應陰極氧氣的鼓風／加濕系統。",
+      "components": [
+        {
+          "slug": "pem-stack",
+          "name": "PEM 燃料電池堆",
+          "category": "核心模組",
+          "brand": "範例：Ballard",
+          "part_number": "FCgen-LCS",
+          "function": "氫與氧在觸媒層進行電化學反應，直接輸出直流電並產生水與熱。",
+          "install_location": "平台中央，減震座上（銀色箱體）",
+          "specs": {
+            "額定功率": "10 kW",
+            "電壓範圍": "40～80 VDC",
+            "冷卻": "液冷"
+          },
+          "pos": [
+            0,
+            0.6,
+            0
+          ],
+          "mesh_name": "stack",
+          "animation_key": "glow",
+          "photo_query": "PEM fuel cell stack | cat:Fuel cells"
+        },
+        {
+          "slug": "air-blower",
+          "name": "空氣鼓風機",
+          "category": "動力元件",
+          "brand": "範例：ebm-papst",
+          "part_number": "G3G200",
+          "function": "提供陰極所需的空氣流量，流量由 PLC 依負載調節。",
+          "install_location": "電堆右側，空氣濾網後方",
+          "specs": {
+            "流量": "0～600 L/min",
+            "控制": "0～10 V 類比"
+          },
+          "pos": [
+            1.1,
+            0.35,
+            0.45
+          ],
+          "mesh_name": "blower",
+          "animation_key": "spin",
+          "photo_query": "cat:Centrifugal fans ~ blower fan | cat:Blowers ~ blower"
+        },
+        {
+          "slug": "air-filter",
+          "name": "空氣濾網",
+          "category": "氣路元件",
+          "brand": "範例：Mann+Hummel",
+          "part_number": "C 15 124/1",
+          "function": "過濾進氣中的粉塵，避免堵塞電堆流道。",
+          "install_location": "鼓風機進氣口",
+          "specs": {
+            "等級": "G4"
+          },
+          "pos": [
+            1.45,
+            0.35,
+            0.45
+          ],
+          "mesh_name": "airfilter",
+          "photo_query": "cat:Air filters"
+        },
+        {
+          "slug": "humidifier",
+          "name": "膜式加濕器",
+          "category": "熱流元件",
+          "brand": "範例：Perma Pure",
+          "part_number": "FC-Series",
+          "function": "用電堆排出的濕氣回收加濕進氣，維持質子交換膜含水率。",
+          "install_location": "鼓風機與電堆之間的進氣管上",
+          "specs": {
+            "型式": "膜式、無動力"
+          },
+          "pos": [
+            0.7,
+            0.5,
+            0.45
+          ],
+          "mesh_name": "humidifier",
+          "photo_query": "cat:Fuel cells ~ humidifier | industrial humidifier | cat:Humidifiers ~ humidifier"
+        }
+      ]
+    },
+    {
+      "slug": "thermal",
+      "name": "水熱管理模組",
+      "domain": "mechanical",
+      "description": "冷卻液循環帶走電堆反應熱，維持工作溫度 60～70 °C。",
+      "components": [
+        {
+          "slug": "coolant-pump",
+          "name": "冷卻液循環泵",
+          "category": "動力元件",
+          "brand": "範例：Pierburg",
+          "part_number": "CWA 100",
+          "function": "推動去離子冷卻液在電堆與散熱器間循環。",
+          "install_location": "電堆後方底部管路",
+          "specs": {
+            "流量": "≤ 100 L/min",
+            "電壓": "24 VDC"
+          },
+          "pos": [
+            -0.5,
+            0.2,
+            -0.7
+          ],
+          "mesh_name": "pump",
+          "animation_key": "spin",
+          "photo_query": "cat:Electric pumps | cat:Water pumps"
+        },
+        {
+          "slug": "radiator",
+          "name": "散熱器與風扇",
+          "category": "熱流元件",
+          "brand": "範例：Setrab",
+          "part_number": "ProLine",
+          "function": "將冷卻液熱量排至環境；風扇轉速依出口溫度 PID 控制。",
+          "install_location": "平台後側直立安裝（黑色鰭片）",
+          "specs": {
+            "散熱能力": "15 kW"
+          },
+          "pos": [
+            0,
+            0.7,
+            -1.3
+          ],
+          "mesh_name": "radiator",
+          "animation_key": "spin",
+          "photo_query": "cat:Radiators ~ radiator car | automotive radiator fan | cat:Radiators ~ radiator"
+        },
+        {
+          "slug": "di-filter",
+          "name": "去離子濾芯",
+          "category": "熱流元件",
+          "brand": "範例：Freudenberg",
+          "part_number": "DI-Filter",
+          "function": "維持冷卻液低導電度，避免電堆漏電。",
+          "install_location": "循環泵出口旁的濾罐",
+          "specs": {
+            "目標導電度": "< 5 µS/cm"
+          },
+          "pos": [
+            -0.9,
+            0.3,
+            -0.7
+          ],
+          "mesh_name": "difilter",
+          "photo_query": "cat:Water filters ~ cartridge housing | water filter housing cartridge | cat:Water filters ~ filter"
+        },
+        {
+          "slug": "coolant-quick-connect",
+          "name": "冷卻液快速接頭",
+          "category": "接頭",
+          "brand": "範例：CPC",
+          "part_number": "NS4 系列",
+          "function": "拆電堆或散熱器時可不排空冷卻液即斷開，雙向自動止漏。",
+          "install_location": "電堆冷卻液進出口軟管端",
+          "specs": {
+            "口徑": "1/2\"",
+            "材質": "PP / EPDM"
+          },
+          "pos": [
+            -0.2,
+            0.42,
+            -0.35
+          ],
+          "mesh_name": "fit-coolant",
+          "animation_key": "",
+          "photo_query": "quick disconnect coupling liquid | quick coupling hose | cat:Hoses ~ coupling"
+        }
+      ]
+    },
+    {
+      "slug": "power",
+      "name": "電力轉換模組",
+      "domain": "electrical",
+      "description": "把電堆的低壓直流轉換成穩定電壓並併入電網。",
+      "components": [
+        {
+          "slug": "dcdc",
+          "name": "DC/DC 升壓轉換器",
+          "category": "電力電子",
+          "brand": "範例：Delta",
+          "part_number": "DCDC-10K-400",
+          "function": "把電堆 40～80 V 升壓至 400 VDC 匯流排，並限制電堆電流。",
+          "install_location": "右側電力櫃上層",
+          "specs": {
+            "輸入": "40～80 VDC",
+            "輸出": "400 VDC",
+            "效率": "≥ 96%"
+          },
+          "pos": [
+            1.9,
+            1.0,
+            -0.8
+          ],
+          "mesh_name": "dcdc",
+          "photo_query": "cat:Boost converters | cat:Power electronics"
+        },
+        {
+          "slug": "inverter",
+          "name": "併網逆變器",
+          "category": "電力電子",
+          "brand": "範例：Delta",
+          "part_number": "RPI M10A",
+          "function": "把 400 VDC 轉為三相 380 VAC 併入廠內電網，具孤島保護。",
+          "install_location": "右側電力櫃下層",
+          "specs": {
+            "輸出": "3Φ 380 VAC 10 kW"
+          },
+          "pos": [
+            1.9,
+            0.45,
+            -0.8
+          ],
+          "mesh_name": "inverter",
+          "photo_query": "cat:Inverters | cat:Power electronics"
+        },
+        {
+          "slug": "battery",
+          "name": "緩衝電池組",
+          "category": "儲能",
+          "brand": "範例：CATL",
+          "part_number": "LFP 48V/100Ah",
+          "function": "啟動時提供輔機電力，並平滑負載瞬變。",
+          "install_location": "右側電力櫃底部",
+          "specs": {
+            "化學": "磷酸鐵鋰"
+          },
+          "pos": [
+            2.5,
+            0.3,
+            -0.8
+          ],
+          "mesh_name": "battery",
+          "photo_query": "cat:Lithium iron phosphate batteries | cat:Battery packs"
+        },
+        {
+          "slug": "dc-contactor",
+          "name": "直流接觸器",
+          "category": "配電元件",
+          "brand": "範例：TE Kilovac",
+          "part_number": "EV200",
+          "function": "電堆輸出主迴路的通斷，異常時由安全迴路強制斷開。",
+          "install_location": "DC/DC 輸入端子旁",
+          "specs": {
+            "額定": "500 A / 900 VDC"
+          },
+          "pos": [
+            1.5,
+            0.9,
+            -0.8
+          ],
+          "mesh_name": "contactor",
+          "photo_query": "cat:Contactors ~ contactor"
+        }
+      ]
+    },
+    {
+      "slug": "control",
+      "name": "控制與感測模組",
+      "domain": "electrical",
+      "description": "PLC 讀取感測器、控制閥與泵，並執行安全連鎖。",
+      "components": [
+        {
+          "slug": "plc",
+          "name": "PLC 主控制器",
+          "category": "控制器",
+          "brand": "範例：Siemens",
+          "part_number": "S7-1500 CPU 1515-2 PN",
+          "function": "執行啟停程序、流量／溫度 PID 與安全連鎖邏輯。",
+          "install_location": "左側控制櫃中央 DIN 軌",
+          "specs": {
+            "通訊": "PROFINET / Modbus TCP"
+          },
+          "pos": [
+            -2.2,
+            1.1,
+            -0.8
+          ],
+          "mesh_name": "plc",
+          "photo_query": "cat:Simatic | cat:Programmable logic controller"
+        },
+        {
+          "slug": "safety-plc",
+          "name": "安全 PLC / 安全繼電器",
+          "category": "安全元件",
+          "brand": "範例：Pilz",
+          "part_number": "PNOZ m B0",
+          "function": "監視氫氣洩漏、急停與門鎖；觸發時切斷氫氣與主迴路。",
+          "install_location": "控制櫃 PLC 右側",
+          "specs": {
+            "等級": "PL e / SIL 3"
+          },
+          "pos": [
+            -1.9,
+            1.1,
+            -0.8
+          ],
+          "mesh_name": "safetyplc",
+          "photo_query": "cat:Relays ~ relay module | safety relay module | cat:Relays ~ relay"
+        },
+        {
+          "slug": "h2-detector",
+          "name": "氫氣洩漏偵測器",
+          "category": "感測器",
+          "brand": "範例：Honeywell",
+          "part_number": "Sensepoint XCD",
+          "function": "偵測環境氫氣濃度，超過 25% LEL 時啟動排風與停機。",
+          "install_location": "平台頂棚（氫氣上飄，安裝於最高處）",
+          "specs": {
+            "量程": "0～100% LEL"
+          },
+          "pos": [
+            -0.5,
+            2.0,
+            0
+          ],
+          "mesh_name": "h2det",
+          "animation_key": "blink",
+          "photo_query": "cat:Gas sensors ~ detector gas"
+        },
+        {
+          "slug": "pressure-tx",
+          "name": "壓力變送器",
+          "category": "感測器",
+          "brand": "範例：Keller",
+          "part_number": "PA-21Y",
+          "function": "量測氫氣入口壓力回傳 PLC，作為減壓與洩漏判斷依據。",
+          "install_location": "減壓閥下游管路",
+          "specs": {
+            "輸出": "4～20 mA"
+          },
+          "pos": [
+            -0.85,
+            0.85,
+            0
+          ],
+          "mesh_name": "ptx",
+          "photo_query": "cat:Pressure transducers | cat:Pressure sensors"
+        },
+        {
+          "slug": "temp-rtd",
+          "name": "冷卻液溫度感測器 (Pt100)",
+          "category": "感測器",
+          "brand": "範例：Omron",
+          "part_number": "E52-P",
+          "function": "量測電堆進出口冷卻液溫度，作為風扇 PID 回授。",
+          "install_location": "電堆冷卻液出口管",
+          "specs": {
+            "型式": "3 線 Pt100"
+          },
+          "pos": [
+            0.3,
+            0.55,
+            -0.5
+          ],
+          "mesh_name": "rtd",
+          "photo_query": "cat:Resistance thermometers | cat:Temperature probes"
+        },
+        {
+          "slug": "cvm",
+          "name": "單電池電壓監視器 (CVM)",
+          "category": "感測器",
+          "brand": "範例：Smart Fuel Cell",
+          "part_number": "CVM-100",
+          "function": "監視電堆每一片單電池電壓，偵測膜乾燥、水淹或衰退。",
+          "install_location": "電堆側面，接線至每片電池",
+          "specs": {
+            "通道": "100 ch",
+            "通訊": "CAN"
+          },
+          "pos": [
+            0.45,
+            0.6,
+            0.1
+          ],
+          "mesh_name": "cvm",
+          "photo_query": "cat:Fuel cells"
+        },
+        {
+          "slug": "estop",
+          "name": "緊急停止按鈕",
+          "category": "安全元件",
+          "brand": "範例：IDEC",
+          "part_number": "XA1E",
+          "function": "人員發現異常時立即切斷氫氣與電力輸出。",
+          "install_location": "控制櫃門面右上角",
+          "specs": {
+            "接點": "2NC"
+          },
+          "pos": [
+            -2.4,
+            1.4,
+            -0.55
+          ],
+          "mesh_name": "estop",
+          "photo_query": "cat:Emergency stop buttons"
+        },
+        {
+          "slug": "hmi",
+          "name": "HMI 觸控螢幕",
+          "category": "人機介面",
+          "brand": "範例：Siemens",
+          "part_number": "TP1200 Comfort",
+          "function": "顯示壓力、溫度、功率與警報，操作啟停。",
+          "install_location": "控制櫃門面中央",
+          "specs": {
+            "尺寸": "12\""
+          },
+          "pos": [
+            -2.2,
+            1.3,
+            -0.55
+          ],
+          "mesh_name": "hmi",
+          "photo_query": "cat:Simatic ~ panel HMI | cat:Touchscreens ~ industrial panel"
+        }
+      ]
+    },
+    {
+      "slug": "software",
+      "name": "軟體與資料系統",
+      "domain": "software",
+      "description": "從 PLC 程式到雲端監控的軟體堆疊。",
+      "components": [
+        {
+          "slug": "plc-program",
+          "name": "PLC 控制程式 (TIA Portal)",
+          "category": "控制軟體",
+          "brand": "Siemens",
+          "part_number": "TIA Portal V19",
+          "function": "以 SCL / LAD 撰寫啟動吹掃、發電、停機吹掃等狀態機與 PID 迴路。",
+          "install_location": "PLC CPU 內；原始碼存於 Git 專案 fc-plc",
+          "specs": {
+            "語言": "SCL, LAD"
+          },
+          "pos": [
+            -2.2,
+            1.1,
+            -0.8
+          ],
+          "mesh_name": "plc",
+          "photo_query": "ladder logic | cat:Simatic"
+        },
+        {
+          "slug": "scada",
+          "name": "SCADA 監控系統",
+          "category": "監控軟體",
+          "brand": "範例：Ignition",
+          "part_number": "8.1",
+          "function": "集中顯示各平台即時數據、歷史趨勢與警報。",
+          "install_location": "機房伺服器 (VM: scada-01)",
+          "specs": {
+            "協定": "OPC UA"
+          },
+          "pos": [
+            -2.2,
+            1.3,
+            -0.55
+          ],
+          "mesh_name": "hmi",
+          "photo_query": "cat:SCADA"
+        },
+        {
+          "slug": "bms-firmware",
+          "name": "電池管理 (BMS) 韌體",
+          "category": "韌體",
+          "brand": "範例：Orion",
+          "part_number": "BMS 2",
+          "function": "監視電池組電壓／溫度並執行均衡與保護。",
+          "install_location": "電池組內建控制板",
+          "specs": {
+            "通訊": "CAN 2.0B"
+          },
+          "pos": [
+            2.5,
+            0.3,
+            -0.8
+          ],
+          "mesh_name": "battery",
+          "photo_query": "battery management system | cat:Battery packs"
+        },
+        {
+          "slug": "gateway",
+          "name": "IIoT 資料閘道",
+          "category": "資料軟體",
+          "brand": "範例：Moxa",
+          "part_number": "UC-8112 + Node-RED",
+          "function": "把 PLC 資料轉成 MQTT 上傳雲端，供能源報表使用。",
+          "install_location": "控制櫃網路區 DIN 軌",
+          "specs": {
+            "協定": "Modbus → MQTT"
+          },
+          "pos": [
+            -2.5,
+            0.9,
+            -0.8
+          ],
+          "mesh_name": "gateway",
+          "photo_query": "Moxa | industrial router | cat:Ethernet switches ~ industrial"
+        }
+      ]
+    },
+    {
+      "slug": "connectors",
+      "name": "接頭與配線模組",
+      "domain": "electrical",
+      "description": "感測器、動力與網路線路的標準接頭；新人拆裝線路前必須先認識。",
+      "components": [
+        {
+          "slug": "m12-connector",
+          "name": "M12 感測器圓形接頭",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "SAC-4P-M12MS",
+          "function": "感測器／電磁閥的標準防水接頭（IP67），A-code 3～5 pin；螺牙鎖緊避免振動鬆脫。",
+          "install_location": "各感測器線末端、遠端 I/O 箱側面",
+          "specs": {
+            "防護": "IP67",
+            "極數": "4 pin A-code"
+          },
+          "pos": [
+            -1.8,
+            0.75,
+            -0.55
+          ],
+          "mesh_name": "conn-m12",
+          "animation_key": "",
+          "photo_query": "M12 connector sensor | cat:Electrical connectors ~ M12"
+        },
+        {
+          "slug": "terminal-block",
+          "name": "DIN 軌端子台",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "UT 2,5",
+          "function": "櫃內配線的中繼點，每個端子有編號對應電路圖；接地端子為黃綠色。",
+          "install_location": "電控櫃下方 DIN 軌",
+          "specs": {
+            "線徑": "0.14～4 mm²"
+          },
+          "pos": [
+            -2.2,
+            0.55,
+            -0.52
+          ],
+          "mesh_name": "conn-terminal",
+          "animation_key": "",
+          "photo_query": "terminal block DIN rail | cat:Terminal blocks ~ DIN"
+        },
+        {
+          "slug": "cable-gland",
+          "name": "電纜固定頭 (Cable Gland)",
+          "category": "接頭",
+          "brand": "範例：Lapp",
+          "part_number": "SKINTOP ST-M20",
+          "function": "線纜穿入櫃體時固定並保持 IP 防護、防止拉扯。",
+          "install_location": "電控櫃底板進線處",
+          "specs": {
+            "防護": "IP68",
+            "線徑": "7～13 mm"
+          },
+          "pos": [
+            -2.2,
+            0.20000000000000007,
+            -0.52
+          ],
+          "mesh_name": "conn-gland",
+          "animation_key": "",
+          "photo_query": "cable gland | cat:Cable glands"
+        },
+        {
+          "slug": "heavy-duty-connector",
+          "name": "重載矩形接頭 (Harting)",
+          "category": "接頭",
+          "brand": "範例：Harting",
+          "part_number": "Han 24B",
+          "function": "多芯動力＋訊號一次插拔，機台分段運輸／維修時快速拆接。",
+          "install_location": "電控櫃側面與機台段間的線路介面",
+          "specs": {
+            "極數": "24+PE",
+            "電流": "16 A"
+          },
+          "pos": [
+            -1.7800000000000002,
+            0.9,
+            -0.8
+          ],
+          "mesh_name": "conn-hdc",
+          "animation_key": "",
+          "photo_query": "Harting connector | heavy duty connector industrial"
+        },
+        {
+          "slug": "ethernet-connector",
+          "name": "工業乙太網路接頭 (RJ45 / M12 D-code)",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "VS-08-RJ45-5-Q/IP20",
+          "function": "PLC、相機、手臂控制器之間的通訊線路接頭；工業級 RJ45 有鎖扣與防護殼。",
+          "install_location": "交換器與各控制器網路埠",
+          "specs": {
+            "等級": "Cat.5e",
+            "防護": "IP20 / IP67 (M12)"
+          },
+          "pos": [
+            -2.5,
+            0.95,
+            -0.55
+          ],
+          "mesh_name": "conn-rj45",
+          "animation_key": "",
+          "photo_query": "industrial ethernet connector M12 | RJ45 connector industrial | cat:RJ45 ~ industrial"
+        },
+        {
+          "slug": "power-connector",
+          "name": "動力接頭與馬達插頭",
+          "category": "接頭",
+          "brand": "範例：Intercontec",
+          "part_number": "M23",
+          "function": "伺服／變頻馬達的動力與編碼器線用專用航空插頭，接錯相序馬達會反轉。",
+          "install_location": "各馬達尾端",
+          "specs": {
+            "極數": "8 pin + 編碼器 17 pin"
+          },
+          "pos": [
+            -2.7,
+            0.6000000000000001,
+            -0.5
+          ],
+          "mesh_name": "conn-power",
+          "animation_key": "",
+          "photo_query": "M23 connector servo | circular connector industrial | cat:Electrical connectors ~ circular"
+        }
+      ]
+    },
+    {
+      "slug": "utility",
+      "name": "水氣電供應模組",
+      "domain": "utility",
+      "description": "設備需要的電力、壓縮空氣（與冷卻水）從哪裡來、怎麼開關、怎麼上鎖。",
+      "components": [
+        {
+          "slug": "main-breaker",
+          "name": "主電源無熔絲斷路器 (NFB) 與隔離開關",
+          "category": "水氣電供應",
+          "brand": "範例：Schneider",
+          "part_number": "NSX100",
+          "function": "設備電力總開關，具過載／短路保護；維修前務必切至 OFF 並上鎖掛牌 (LOTO)。",
+          "install_location": "電控櫃右側門把上方（紅黃色旋鈕）",
+          "specs": {
+            "額定": "3P 100 A",
+            "遮斷容量": "36 kA"
+          },
+          "pos": [
+            -2.55,
+            1.2,
+            -0.55
+          ],
+          "mesh_name": "util-breaker",
+          "animation_key": "blink",
+          "photo_query": "cat:Circuit breakers ~ industrial | circuit breaker cabinet | cat:Circuit breakers"
+        },
+        {
+          "slug": "power-inlet",
+          "name": "電源進線端與匯流排",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "廠務 3Φ 380 VAC 由此進入，經 NFB 後分配至驅動器、變壓器與 24 V 電源。",
+          "install_location": "電控櫃頂部進線孔 → 端子台 L1/L2/L3/N/PE",
+          "specs": {
+            "電壓": "3Φ 380 VAC 50/60 Hz",
+            "線徑": "14 mm²"
+          },
+          "pos": [
+            -2.55,
+            1.65,
+            -0.55
+          ],
+          "mesh_name": "util-inlet",
+          "animation_key": "",
+          "photo_query": "cat:Busbars ~ cabinet | busbar electrical cabinet | cat:Electrical enclosures ~ cabinet"
+        },
+        {
+          "slug": "grounding",
+          "name": "接地端子 (PE)",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "所有金屬機殼與櫃體以黃綠線接至 PE 排；接地不良會造成感電與雜訊。",
+          "install_location": "電控櫃底部 PE 排、機架接地點",
+          "specs": {
+            "接地電阻": "< 10 Ω"
+          },
+          "pos": [
+            -2.55,
+            0.3999999999999999,
+            -0.35000000000000003
+          ],
+          "mesh_name": "util-pe",
+          "animation_key": "",
+          "photo_query": "grounding busbar | earth terminal cabinet | cat:Electrical grounding"
+        },
+        {
+          "slug": "air-inlet",
+          "name": "壓縮空氣進氣口與主氣閥 (含排氣鎖定)",
+          "category": "水氣電供應",
+          "brand": "範例：SMC",
+          "part_number": "VHS40-04",
+          "function": "廠務壓縮空氣由此進入；主氣閥為可上鎖的 3 口閥，關閉時同時把下游殘壓排空。",
+          "install_location": "機架側面 FRL 前端（黃色手柄球閥）",
+          "specs": {
+            "供氣壓力": "0.6～0.7 MPa",
+            "口徑": "1/2\"",
+            "露點": "≤ 3 °C"
+          },
+          "pos": [
+            -2.6,
+            0.5,
+            0.4
+          ],
+          "mesh_name": "util-airvalve",
+          "animation_key": "valve",
+          "photo_query": "cat:Ball valves ~ pneumatic | lockout valve pneumatic | cat:Ball valves"
+        },
+        {
+          "slug": "water-inlet",
+          "name": "冷卻水進／出水口與球閥",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "廠務冰水（或純水）供應與回水，進出口有球閥與流量計；開機前先確認流量。",
+          "install_location": "平台後側散熱器旁（藍色進水、紅色回水）",
+          "specs": {
+            "水質": "去離子水 < 5 µS/cm",
+            "流量": "≥ 20 L/min",
+            "接頭": "1/2\" 快速接頭"
+          },
+          "pos": [
+            0.7,
+            0.35,
+            -1.3
+          ],
+          "mesh_name": "util-water",
+          "animation_key": "flow",
+          "photo_query": "cat:Ball valves ~ water | water ball valve pipe | cat:Water supply"
+        }
+      ]
+    }
+  ],
+  "utility_guide": [
+    {
+      "title": "電力 (Electricity)",
+      "icon": "bolt",
+      "items": [
+        "供電規格：3Φ 380 VAC ±10%、50/60 Hz，由廠務配電盤專用迴路供應，迴路 NFB 額定見電控櫃銘牌。",
+        "接點位置：電控櫃頂部進線 → 主 NFB → 端子台 L1/L2/L3/N/PE；控制電壓 24 VDC 由櫃內開關電源提供。",
+        "送電順序：確認櫃門關閉 → 廠務迴路 ON → 設備主 NFB ON → 控制電源 (24 V) ON → HMI 開機 → 復歸急停。",
+        "斷電順序：HMI 執行停機 → 急停 → 控制電源 OFF → 主 NFB OFF → 上鎖掛牌 (LOTO)。",
+        "安全：斷電後驅動器內電容仍有高壓，等待 5 分鐘並用電表確認 DC 匯流排 < 50 V 才可作業。"
+      ]
+    },
+    {
+      "title": "壓縮空氣 (Compressed Air)",
+      "icon": "air",
+      "items": [
+        "供氣規格：0.6～0.7 MPa、露點 ≤ 3 °C、含油量 ≤ 0.01 mg/m³（ISO 8573-1 Class 1.4.1），流量依銘牌。",
+        "接點位置：機架側面主氣閥（可上鎖 3 口閥）→ FRL 三點組合 → 電磁閥組 → 各氣缸。",
+        "供氣順序：確認 FRL 設定壓力 0.5 MPa → 慢開主氣閥（或用緩啟動閥）避免氣缸瞬間動作 → 檢查漏氣聲。",
+        "斷氣順序：關主氣閥 → 排氣口洩壓至 0 → 壓力表歸零後才可拆氣管；含蓄壓器的氣路需另外洩壓。",
+        "日常點檢：FRL 濾杯排水、壓力表讀值、氣管有無龜裂、速度控制閥有無鬆動。"
+      ]
+    },
+    {
+      "title": "冷卻水 (Cooling Water)",
+      "icon": "water",
+      "items": [
+        "水質：電堆冷卻迴路為去離子水，導電度 < 5 µS/cm；廠務冰水只接到板式熱交換器一次側，不可直接進電堆。",
+        "接點位置：平台後側散熱器旁，藍色為進水、紅色為回水，各有球閥與流量計。",
+        "供水順序：先開回水閥再開進水閥 → 確認流量 ≥ 20 L/min → 觀察管路無滲漏 → 才允許電堆啟動。",
+        "斷水順序：電堆停機且溫度 < 40 °C 後，先關進水再關回水；冬季長期停機需排空防凍。",
+        "點檢：去離子濾芯導電度、水位、泵浦噪音、快速接頭有無滲漏。"
+      ]
+    },
+    {
+      "title": "氫氣 (Hydrogen) 特別注意",
+      "icon": "gas",
+      "items": [
+        "氫氣為易燃氣體 (LEL 4%)，作業區禁火、使用防爆工具；頂棚偵測器 > 25% LEL 會自動切斷供氫。",
+        "供氫順序：開啟排風 → 確認氫氣偵測器正常 → 開儲槽閥 → 減壓閥設定 0.8 bar → 氮氣吹掃 → 才通氫。",
+        "斷氫順序：關儲槽閥 → 讓電堆消耗管內殘氫 → 氮氣吹掃 → 關閉電磁閥。"
+      ]
+    },
+    {
+      "title": "上鎖掛牌 (LOTO) 與點檢",
+      "icon": "lock",
+      "items": [
+        "維修前一律：斷電 → 斷氣（→ 斷水）→ 洩壓 → 上鎖 → 掛牌 → 嘗試啟動確認零能量。",
+        "每人一把鎖，誰上鎖誰解鎖；多人作業使用多鎖扣。",
+        "日常點檢表：電壓／電流讀值、供氣壓力、（水流量／溫度）、接地連續性、警報紀錄。"
+      ]
+    }
+  ]
+}

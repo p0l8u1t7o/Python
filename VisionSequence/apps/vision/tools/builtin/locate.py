@@ -1,0 +1,912 @@
+"""定位工具：範本比對、定位補正、ROI 跟隨、找圓、找直線、Hough。
+
+座標慣例：所有輸出與 overlays 都是「該節點輸入影像」的全圖座標。
+ROI 先裁切再運算，結果用 Crop.to_full / points_to_full 換回全圖。
+"""
+
+from __future__ import annotations
+
+import math
+import os
+import threading
+from collections import OrderedDict
+from typing import Any
+
+import cv2
+import numpy as np
+
+from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.roi import Crop, crop, region_center, region_overlay, transform_region
+
+
+def to_gray(image: np.ndarray) -> np.ndarray:
+    return image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+
+#: 解碼後的資產影像快取：(path, gray) → (mtime, size, image)。每次 run 重新 imdecode 一張
+#: 1280×960 的 PNG 要 5 ms，比大多數工具本身還慢；以檔案 mtime/size 判斷失效。
+_ASSET_CACHE: "OrderedDict[tuple[str, bool], tuple[float, int, np.ndarray]]" = OrderedDict()
+_ASSET_CACHE_MAX = 32
+_ASSET_LOCK = threading.Lock()
+
+
+def read_asset_image(ctx: ToolContext, key: str, *, gray: bool = True) -> np.ndarray:
+    """讀取資產影像（支援非 ASCII 路徑）。缺資產 → ToolError。
+
+    回傳的陣列是快取共用的，呼叫端不可原地修改。
+    """
+    asset_id = ctx.param(key)
+    if not asset_id:
+        raise ToolError(f"沒有設定資產 '{key}'")
+    path = ctx.asset_path(str(asset_id))
+    if not path:
+        raise ToolError(f"找不到資產 {asset_id}")
+    try:
+        st = os.stat(path)
+    except OSError as exc:
+        raise ToolError(f"讀取資產失敗：{exc}") from None
+    cache_key = (path, gray)
+    with _ASSET_LOCK:
+        hit = _ASSET_CACHE.get(cache_key)
+        if hit is not None and hit[0] == st.st_mtime and hit[1] == st.st_size:
+            _ASSET_CACHE.move_to_end(cache_key)
+            return hit[2]
+    try:
+        buf = np.fromfile(path, dtype=np.uint8)
+    except OSError as exc:
+        raise ToolError(f"讀取資產失敗：{exc}") from None
+    image = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE if gray else cv2.IMREAD_COLOR)
+    if image is None or image.size == 0:
+        raise ToolError(f"資產 {asset_id} 不是可解碼的影像")
+    with _ASSET_LOCK:
+        _ASSET_CACHE[cache_key] = (st.st_mtime, st.st_size, image)
+        _ASSET_CACHE.move_to_end(cache_key)
+        while len(_ASSET_CACHE) > _ASSET_CACHE_MAX:
+            _ASSET_CACHE.popitem(last=False)
+    return image
+
+
+def clear_asset_cache() -> None:
+    with _ASSET_LOCK:
+        _ASSET_CACHE.clear()
+
+
+POLARITY_OPTIONS = [
+    {"value": "any", "label": "任意"},
+    {"value": "dark_to_light", "label": "暗 → 亮"},
+    {"value": "light_to_dark", "label": "亮 → 暗"},
+]
+
+
+def smooth_profile(profile: np.ndarray, smoothing: int) -> np.ndarray:
+    profile = np.asarray(profile, dtype=np.float32)
+    k = int(smoothing)
+    if k <= 1 or len(profile) < 3:
+        return profile
+    if k % 2 == 0:
+        k += 1
+    k = min(k, len(profile) if len(profile) % 2 else len(profile) - 1)
+    return cv2.GaussianBlur(profile.reshape(1, -1), (k, 1), 0).reshape(-1)
+
+
+def find_edges_rows(profiles: np.ndarray, polarity: str = "any", threshold: float = 20.0, smoothing: int = 3) -> list[list[tuple[float, float]]]:
+    """對多條剖面（R×L）一次找邊緣；每列回傳 [(次像素位置, 帶號梯度強度)]，依位置排序。
+
+    與逐列呼叫 find_edges_1d 結果完全相同（平滑、梯度、非極大抑制、拋物線次像素
+    都是逐列獨立的運算），但整批用 OpenCV／numpy 做，找圓 180 條掃描線只要一次呼叫。
+    """
+    p = np.asarray(profiles, dtype=np.float32)
+    if p.ndim == 1:
+        p = p.reshape(1, -1)
+    rows, length = p.shape
+    if length < 3 or rows == 0:
+        return [[] for _ in range(rows)]
+    k = int(smoothing)
+    if k > 1:
+        if k % 2 == 0:
+            k += 1
+        k = min(k, length if length % 2 else length - 1)
+        p = cv2.GaussianBlur(p, (k, 1), 0)
+    grad = np.gradient(p, axis=1)
+    if polarity == "dark_to_light":
+        score = grad
+    elif polarity == "light_to_dark":
+        score = -grad
+    else:
+        score = np.abs(grad)
+    # 局部極大值（非極大抑制）：左鄰為 -inf、右鄰為 -inf 代表邊界
+    mask = np.empty(score.shape, dtype=bool)
+    mask[:, 0] = score[:, 0] > score[:, 1]
+    mask[:, -1] = score[:, -1] >= score[:, -2]
+    mask[:, 1:-1] = (score[:, 1:-1] >= score[:, :-2]) & (score[:, 1:-1] > score[:, 2:])
+    mask &= score >= threshold
+    ri, ci = np.nonzero(mask)
+    pos = ci.astype(np.float64)
+    inner = (ci > 0) & (ci < length - 1)
+    if inner.any():
+        r_in, c_in = ri[inner], ci[inner]
+        a = score[r_in, c_in - 1]
+        b = score[r_in, c_in]
+        c = score[r_in, c_in + 1]
+        denom = a - 2 * b + c
+        safe = np.abs(denom) > 1e-9
+        off = np.zeros(len(denom), dtype=np.float32)
+        np.divide(0.5 * (a - c), denom, out=off, where=safe)
+        off = np.clip(off, -0.5, 0.5)
+        off[~safe] = 0.0
+        pos[inner] += off.astype(np.float64)
+    strength = grad[ri, ci].astype(np.float64)
+    out: list[list[tuple[float, float]]] = [[] for _ in range(rows)]
+    for r, x, g in zip(ri.tolist(), pos.tolist(), strength.tolist()):
+        out[r].append((x, g))
+    return out
+
+
+def find_edges_1d(profile: np.ndarray, polarity: str = "any", threshold: float = 20.0, smoothing: int = 3) -> list[tuple[float, float]]:
+    """在一維灰階剖面找邊緣：回傳 [(次像素位置, 帶號梯度強度)]，依位置排序。
+
+    梯度為正代表沿掃描方向由暗到亮。
+    """
+    # 單條剖面用純量版本：峰值通常只有幾個，逐點處理比向量化版本少 0.1 ms 的 numpy 固定開銷。
+    p = smooth_profile(profile, smoothing)
+    if len(p) < 3:
+        return []
+    grad = np.gradient(p)
+    if polarity == "dark_to_light":
+        score = grad
+    elif polarity == "light_to_dark":
+        score = -grad
+    else:
+        score = np.abs(grad)
+    # 局部極大值（非極大抑制）
+    left = np.r_[-np.inf, score[:-1]]
+    right = np.r_[score[1:], -np.inf]
+    peaks = np.where((score >= left) & (score > right) & (score >= threshold))[0]
+    edges: list[tuple[float, float]] = []
+    for i in peaks:
+        pos = float(i)
+        if 0 < i < len(score) - 1:
+            a, b, c = score[i - 1], score[i], score[i + 1]
+            denom = a - 2 * b + c
+            if abs(denom) > 1e-9:
+                pos += float(np.clip(0.5 * (a - c) / denom, -0.5, 0.5))
+        edges.append((pos, float(grad[i])))
+    return edges
+
+
+def pick_edge(edges: list[tuple[float, float]], direction: str) -> tuple[float, float] | None:
+    if not edges:
+        return None
+    if direction == "last":
+        return edges[-1]
+    if direction == "strongest":
+        return max(edges, key=lambda e: abs(e[1]))
+    return edges[0]
+
+
+# ---------------------------------------------------------------------------
+# 圓擬合
+# ---------------------------------------------------------------------------
+def fit_circle_lsq(pts: np.ndarray) -> tuple[float, float, float] | None:
+    """代數最小平方（Kåsa）擬合圓。"""
+    pts = np.asarray(pts, dtype=np.float64)
+    if len(pts) < 3:
+        return None
+    x, y = pts[:, 0], pts[:, 1]
+    a = np.column_stack([x, y, np.ones_like(x)])
+    b = -(x**2 + y**2)
+    try:
+        sol, *_ = np.linalg.lstsq(a, b, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
+    cx, cy = -sol[0] / 2, -sol[1] / 2
+    r2 = cx**2 + cy**2 - sol[2]
+    if not np.isfinite(r2) or r2 <= 0:
+        return None
+    return float(cx), float(cy), float(math.sqrt(r2))
+
+
+def fit_circle_ransac(pts: np.ndarray, tol: float = 2.0, iterations: int = 200, seed: int = 0) -> tuple[tuple[float, float, float], np.ndarray] | None:
+    """RANSAC 擬合圓：所有取樣一次向量化（三點圓閉式解 + 距離矩陣），不逐次 lstsq。"""
+    pts = np.asarray(pts, dtype=np.float64)
+    n = len(pts)
+    if n < 3:
+        return None
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, n, size=(int(iterations), 3))
+    idx = idx[(idx[:, 0] != idx[:, 1]) & (idx[:, 1] != idx[:, 2]) & (idx[:, 0] != idx[:, 2])]
+    if len(idx) == 0:
+        return None
+    p = pts[idx]  # (m, 3, 2)
+    x1, y1 = p[:, 0, 0], p[:, 0, 1]
+    x2, y2 = p[:, 1, 0], p[:, 1, 1]
+    x3, y3 = p[:, 2, 0], p[:, 2, 1]
+    a, b = 2 * (x2 - x1), 2 * (y2 - y1)
+    c = x2 * x2 + y2 * y2 - x1 * x1 - y1 * y1
+    d, e = 2 * (x3 - x1), 2 * (y3 - y1)
+    f = x3 * x3 + y3 * y3 - x1 * x1 - y1 * y1
+    det = a * e - b * d
+    good = np.abs(det) > 1e-9
+    det = np.where(good, det, 1.0)
+    cx = (c * e - b * f) / det
+    cy = (a * f - c * d) / det
+    r = np.hypot(x1 - cx, y1 - cy)
+    dist = np.abs(np.hypot(pts[None, :, 0] - cx[:, None], pts[None, :, 1] - cy[:, None]) - r[:, None])
+    inl = dist <= tol
+    counts = inl.sum(axis=1)
+    counts[~good] = -1
+    best_i = int(counts.argmax())
+    if counts[best_i] < 3:
+        return None
+    best_inliers = inl[best_i]
+    best = (float(cx[best_i]), float(cy[best_i]), float(r[best_i]))
+    refit = fit_circle_lsq(pts[best_inliers]) or best
+    dd = np.abs(np.hypot(pts[:, 0] - refit[0], pts[:, 1] - refit[1]) - refit[2])
+    return refit, dd <= tol
+
+
+def fit_line_ransac(pts: np.ndarray, tol: float = 2.0, iterations: int = 200, seed: int = 0) -> tuple[tuple[float, float, float, float], np.ndarray] | None:
+    """回傳 ((vx, vy, x0, y0), inlier_mask)。取樣與距離計算一次向量化。"""
+    pts = np.asarray(pts, dtype=np.float64)
+    n = len(pts)
+    if n < 2:
+        return None
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, n, size=(int(iterations), 2))
+    idx = idx[idx[:, 0] != idx[:, 1]]
+    if len(idx) == 0:
+        return None
+    p0 = pts[idx[:, 0]]
+    d = pts[idx[:, 1]] - p0
+    norm = np.hypot(d[:, 0], d[:, 1])
+    good = norm >= 1e-9
+    norm = np.where(good, norm, 1.0)
+    nx, ny = -d[:, 1] / norm, d[:, 0] / norm
+    dist = np.abs((pts[None, :, 0] - p0[:, 0:1]) * nx[:, None] + (pts[None, :, 1] - p0[:, 1:2]) * ny[:, None])
+    inl = dist <= tol
+    counts = inl.sum(axis=1)
+    counts[~good] = -1
+    best_i = int(counts.argmax())
+    if counts[best_i] < 2:
+        return None
+    best_inliers = inl[best_i]
+    vx, vy, x0, y0 = cv2.fitLine(pts[best_inliers].astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
+    return (float(vx), float(vy), float(x0), float(y0)), best_inliers
+
+
+# ---------------------------------------------------------------------------
+# 範本比對
+# ---------------------------------------------------------------------------
+def _rotate_template(tpl: np.ndarray, angle: float) -> tuple[np.ndarray, np.ndarray | None]:
+    """旋轉範本（外框放大以免裁掉角），回傳 (旋轉後影像, 遮罩)；angle=0 不做事。"""
+    if abs(angle) < 1e-6:
+        return tpl, None
+    h, w = tpl.shape[:2]
+    rad = math.radians(angle)
+    cos, sin = abs(math.cos(rad)), abs(math.sin(rad))
+    nw = int(math.ceil(w * cos + h * sin))
+    nh = int(math.ceil(w * sin + h * cos))
+    m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+    m[0, 2] += nw / 2 - w / 2
+    m[1, 2] += nh / 2 - h / 2
+    rotated = cv2.warpAffine(tpl, m, (nw, nh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    mask = cv2.warpAffine(np.full((h, w), 255, np.uint8), m, (nw, nh), flags=cv2.INTER_NEAREST, borderValue=0)
+    return rotated, mask
+
+
+def _inscribed_half(angle: float, w: int, h: int) -> tuple[int, int] | None:
+    """w×h 的範本旋轉 angle 度後，仍完全落在有效像素內的置中軸對齊矩形半尺寸 (a, b)。
+
+    金字塔粗找用「所有角度共用的置中裁切」取代帶遮罩的 matchTemplate（帶遮罩慢 4 倍）：
+    每個角度都比同一塊中央區域，分數才能互相比較；細找仍用完整範本＋遮罩算精確分數。
+    太小（邊 < 8）回 None，粗找改走遮罩。
+    """
+    th = math.radians(abs(angle))
+    cos, sin = math.cos(th), math.sin(th)
+    hw, hh = w / 2, h / 2
+    s = min(hw / (hw * cos + hh * sin), hh / (hw * sin + hh * cos))
+    a, b = int(hw * s), int(hh * s)
+    if a < 4 or b < 4:
+        return None
+    return a, b
+
+
+def _center_crop(image: np.ndarray, a: int, b: int) -> tuple[np.ndarray, int, int]:
+    """取 image 中央 2a×2b 的區塊，回傳 (crop, x0, y0)。"""
+    nh, nw = image.shape[:2]
+    x0 = max(0, int(round(nw / 2 - a)))
+    y0 = max(0, int(round(nh / 2 - b)))
+    return image[y0 : min(nh, y0 + 2 * b), x0 : min(nw, x0 + 2 * a)], x0, y0
+
+
+def _match(image: np.ndarray, tpl: np.ndarray, mask: np.ndarray | None) -> np.ndarray | None:
+    th, tw = tpl.shape[:2]
+    if image.shape[0] < th or image.shape[1] < tw:
+        return None
+    if mask is not None:
+        result = cv2.matchTemplate(image, tpl, cv2.TM_CCOEFF_NORMED, mask=mask)
+    else:
+        result = cv2.matchTemplate(image, tpl, cv2.TM_CCOEFF_NORMED)
+    result = np.nan_to_num(result, nan=-1.0, posinf=-1.0, neginf=-1.0)
+    return result
+
+
+def _peaks(result: np.ndarray, threshold: float, max_n: int, tw: int, th: int) -> list[tuple[int, int, float]]:
+    """從相關圖抓局部最大值（以範本半尺寸做非極大抑制）。"""
+    res = result.copy()
+    out: list[tuple[int, int, float]] = []
+    rx, ry = max(1, tw // 2), max(1, th // 2)
+    while len(out) < max_n:
+        _, score, _, loc = cv2.minMaxLoc(res)
+        if score < threshold:
+            break
+        x, y = int(loc[0]), int(loc[1])
+        out.append((x, y, float(score)))
+        res[max(0, y - ry) : y + ry + 1, max(0, x - rx) : x + rx + 1] = -1.0
+    return out
+
+
+class TemplateMatchTool(Tool):
+    key = "template_match"
+    label = "範本比對"
+    description = "以正規化相關（NCC）在影像或搜尋範圍內找範本；支援旋轉搜尋與金字塔加速。"
+    category = "locate"
+    icon = "ScanSearch"
+    params = [
+        Param("template", "範本影像", kind="asset", accept="image", required=True, help_text="上傳的範本影像（灰階比對）。"),
+        Param("roi", "搜尋範圍", kind="roi", shapes=["rect", "rotated_rect"], help_text="留空則搜尋整張影像。"),
+        Param("threshold", "分數門檻", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, help_text="NCC 分數 0~1，低於此值不算匹配。", teach=True),
+        Param("max_matches", "最多匹配數", kind="number", default=1, minimum=1, maximum=500),
+        Param("angle_range", "旋轉範圍 ±", kind="number", default=0, minimum=0, maximum=180, unit="°", help_text="0 表示不做旋轉搜尋。", group="旋轉", teach=True),
+        Param("angle_step", "角度步進", kind="number", default=5, minimum=0.5, maximum=45, unit="°", group="旋轉"),
+        Param("pyramid", "金字塔加速", kind="boolean", default=True, help_text="先在 1/4 縮圖粗找，再在候選附近細找。範本很小時自動關閉。", group="進階"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "搜尋範圍（動態）", "region", required=False)]
+    outputs = [
+        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
+        Port("matches", "匹配", "matches"), Port("count", "數量", "number"),
+        Port("best_x", "最佳 X", "number"), Port("best_y", "最佳 Y", "number"),
+        Port("best_score", "最佳分數", "number"), Port("best_angle", "最佳角度", "number"),
+    ]
+    heavy = True
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        tpl = read_asset_image(ctx, "template")
+        region = ctx.roi()
+        c = crop(image, region, upright=True)
+        search = np.ascontiguousarray(c.image)
+        if search.size == 0:
+            raise ToolError("搜尋範圍落在影像外")
+        th, tw = tpl.shape[:2]
+        if search.shape[0] < th or search.shape[1] < tw:
+            raise ToolError(f"搜尋範圍 {search.shape[1]}×{search.shape[0]} 小於範本 {tw}×{th}")
+
+        threshold = float(np.clip(ctx.number("threshold", 0.7), 0, 1))
+        max_n = max(1, ctx.integer("max_matches", 1))
+        angle_range = abs(ctx.number("angle_range", 0))
+        angle_step = max(0.5, ctx.number("angle_step", 5))
+        if angle_range > 0:
+            angles = [float(a) for a in np.arange(-angle_range, angle_range + 1e-6, angle_step)]
+            if 0.0 not in angles:
+                angles.append(0.0)
+        else:
+            angles = [0.0]
+
+        scale = 4
+        use_pyramid = ctx.flag("pyramid", True) and min(th, tw) >= 32 and min(search.shape[:2]) >= scale * 8
+        candidates: list[tuple[int, int, float, float, int, int]] = []  # x, y, score, angle, w, h（搜尋圖座標）
+        if use_pyramid:
+            small = cv2.resize(search, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
+            tpl_small = cv2.resize(tpl, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
+            coarse: list[tuple[int, int, float, float, int, int]] = []  # x, y, score, angle, rw, rh（縮圖座標）
+            common = _inscribed_half(max(abs(a) for a in angles), tpl_small.shape[1], tpl_small.shape[0]) if len(angles) > 1 else None
+            for angle in angles:
+                rt, rm = _rotate_template(tpl_small, angle)
+                ox = oy = 0
+                if common is not None:
+                    rt_c, ox, oy = _center_crop(rt, *common)
+                    res = _match(small, rt_c, None)
+                else:
+                    res = _match(small, rt, rm)
+                if res is None:
+                    continue
+                for x, y, s in _peaks(res, max(0.0, threshold - 0.15), max_n * 3, rt.shape[1], rt.shape[0]):
+                    coarse.append((x - ox, y - oy, s, angle, rt.shape[1], rt.shape[0]))
+            coarse.sort(key=lambda t: -t[2])
+            # 剪枝：同一位置（中心距離 < 縮圖範本半尺寸）最多細找分數最高的 3 個角度，
+            # 總數上限 max_n*4；避免 5 個角度在同一目標上各細找一次。
+            selected: list[tuple[int, int, float, float, int, int]] = []
+            locs: list[list[float]] = []  # cx, cy, count
+            min_d_small = max(2.0, min(tpl_small.shape[:2]) / 2)
+            for cand in coarse:
+                ccx, ccy = cand[0] + cand[4] / 2, cand[1] + cand[5] / 2
+                slot = next((loc for loc in locs if math.hypot(ccx - loc[0], ccy - loc[1]) < min_d_small), None)
+                if slot is None:
+                    locs.append([ccx, ccy, 1])
+                elif slot[2] >= 3:
+                    continue
+                else:
+                    slot[2] += 1
+                selected.append(cand)
+                if len(selected) >= max_n * 4:
+                    break
+            for x, y, _, angle, _, _ in selected:
+                rt, rm = _rotate_template(tpl, angle)
+                rh, rw = rt.shape[:2]
+                pad = scale * 2
+                x0, y0 = max(0, x * scale - pad), max(0, y * scale - pad)
+                x1, y1 = min(search.shape[1], x * scale + rw + pad), min(search.shape[0], y * scale + rh + pad)
+                window = search[y0:y1, x0:x1]
+                res = _match(window, rt, rm)
+                if res is None:
+                    continue
+                _, s, _, loc = cv2.minMaxLoc(res)
+                if s >= threshold:
+                    candidates.append((x0 + int(loc[0]), y0 + int(loc[1]), float(s), angle, rw, rh))
+        else:
+            for angle in angles:
+                rt, rm = _rotate_template(tpl, angle)
+                res = _match(search, rt, rm)
+                if res is None:
+                    continue
+                for x, y, s in _peaks(res, threshold, max_n, rt.shape[1], rt.shape[0]):
+                    candidates.append((x, y, s, angle, rt.shape[1], rt.shape[0]))
+
+        # 跨角度的非極大抑制：中心距離小於範本半尺寸者視為同一目標
+        candidates.sort(key=lambda t: -t[2])
+        kept: list[tuple[int, int, float, float, int, int]] = []
+        min_d = max(2.0, min(tw, th) / 2)
+        for cand in candidates:
+            cx, cy = cand[0] + cand[4] / 2, cand[1] + cand[5] / 2
+            if all(math.hypot(cx - (k[0] + k[4] / 2), cy - (k[1] + k[5] / 2)) >= min_d for k in kept):
+                kept.append(cand)
+            if len(kept) >= max_n:
+                break
+
+        matches: list[dict[str, Any]] = []
+        overlays: list[dict[str, Any]] = []
+        if region is not None:
+            overlays.append(region_overlay(region, label="search"))
+        for x, y, s, angle, rw, rh in kept:
+            cx, cy = c.to_full(x + rw / 2, y + rh / 2)
+            fx, fy = c.to_full(x, y)
+            total_angle = angle + (float(region.get("angle", 0)) if region and region.get("shape") == "rotated_rect" else 0.0)
+            matches.append({
+                "x": round(fx, 2), "y": round(fy, 2), "w": tw, "h": th,
+                "cx": round(cx, 2), "cy": round(cy, 2), "score": round(s, 4), "angle": round(total_angle, 2),
+            })
+            overlays.append({"kind": "rect", "x": cx - tw / 2, "y": cy - th / 2, "w": tw, "h": th, "angle": total_angle, "color": "#22c55e", "width": 2, "label": f"{s:.2f}"})
+            overlays.append({"kind": "point", "x": cx, "y": cy, "color": "#22c55e"})
+        best = matches[0] if matches else None
+        return Result(
+            outputs={
+                "matches": matches, "count": len(matches),
+                "best_x": best["cx"] if best else float("nan"), "best_y": best["cy"] if best else float("nan"),
+                "best_score": best["score"] if best else 0.0, "best_angle": best["angle"] if best else 0.0,
+            },
+            overlays=overlays,
+            branch="found" if matches else "not_found",
+            status="ok" if matches else "ng",
+            message=f"{len(matches)} 個匹配" + (f"，最佳 {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else ""),
+        )
+
+
+# ---------------------------------------------------------------------------
+# 定位補正 / ROI 跟隨
+# ---------------------------------------------------------------------------
+def _current_pose(ctx: ToolContext) -> tuple[float, float, float]:
+    matches = ctx.inputs.get("matches")
+    if isinstance(matches, list) and matches:
+        m = matches[0]
+        if isinstance(m, dict):
+            x = m.get("cx", m.get("x"))
+            y = m.get("cy", m.get("y"))
+            if x is not None and y is not None:
+                return float(x), float(y), float(m.get("angle", 0) or 0)
+    a, b, cc = ctx.inputs.get("a"), ctx.inputs.get("b"), ctx.inputs.get("c")
+    if a is None or b is None:
+        raise ToolError("沒有目前位置：請連 matches 或 a/b（X/Y）")
+    try:
+        return float(a), float(b), float(cc or 0)
+    except (TypeError, ValueError):
+        raise ToolError("a/b/c 必須是數值") from None
+
+
+class ShapeAlignTool(Tool):
+    key = "shape_align"
+    label = "定位補正"
+    description = "比較目前定位結果與教導時的參考位置，算出平移／旋轉量（dx, dy, dθ），供 ROI 跟隨使用。"
+    category = "locate"
+    icon = "Move"
+    params = [
+        Param("ref_x", "參考 X", kind="number", required=True, default=0, help_text="教導時最佳匹配的中心 X（前端可一鍵帶入目前值）。"),
+        Param("ref_y", "參考 Y", kind="number", required=True, default=0),
+        Param("ref_angle", "參考角度", kind="number", default=0, unit="°"),
+        Param("use_angle", "套用旋轉", kind="boolean", default=True, help_text="關閉則 dθ 固定為 0，只做平移補正。"),
+    ]
+    inputs = [
+        Port("image", "影像", "image", required=False),
+        Port("matches", "匹配", "matches", required=False),
+        Port("a", "目前 X", "number", required=False), Port("b", "目前 Y", "number", required=False), Port("c", "目前角度", "number", required=False),
+    ]
+    outputs = [
+        Port("dx", "dx", "number"), Port("dy", "dy", "number"), Port("dtheta", "dθ", "number"),
+        Port("transform", "變換", "any"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        x, y, angle = _current_pose(ctx)
+        if not all(np.isfinite([x, y])):
+            raise ToolError("目前位置不是有效數值（可能沒找到目標）")
+        rx, ry, ra = ctx.number("ref_x"), ctx.number("ref_y"), ctx.number("ref_angle")
+        dx, dy = x - rx, y - ry
+        dtheta = (angle - ra) if ctx.flag("use_angle", True) else 0.0
+        dtheta = (dtheta + 180) % 360 - 180
+        transform = {"dx": dx, "dy": dy, "dtheta": dtheta, "pivot": [rx, ry], "current": [x, y, angle]}
+        overlays = [
+            {"kind": "point", "x": rx, "y": ry, "color": "#38bdf8", "label": "ref"},
+            {"kind": "point", "x": x, "y": y, "color": "#22c55e", "label": "now"},
+            {"kind": "line", "x1": rx, "y1": ry, "x2": x, "y2": y, "color": "#f59e0b", "width": 2},
+        ]
+        return Result(outputs={"dx": dx, "dy": dy, "dtheta": dtheta, "transform": transform}, overlays=overlays,
+                      message=f"dx={dx:.2f} dy={dy:.2f} dθ={dtheta:.2f}°")
+
+
+class FixtureRoiTool(Tool):
+    key = "fixture_roi"
+    label = "ROI 跟隨"
+    description = "把畫好的 ROI 依定位補正的 dx/dy/dθ 移動，輸出動態區域給下游工具的 ROI 輸入埠。"
+    category = "locate"
+    icon = "Locate"
+    params = [
+        Param("roi", "區域", kind="roi", required=True, shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "line"]),
+    ]
+    inputs = [Port("image", "影像", "image", required=False), Port("transform", "變換", "any")]
+    outputs = [Port("region", "區域", "region")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        region = ctx.params.get("roi")
+        if not isinstance(region, dict) or not region.get("shape"):
+            raise ToolError("沒有設定區域")
+        t = ctx.inputs.get("transform")
+        if not isinstance(t, dict):
+            raise ToolError("變換輸入必須是定位補正輸出的 transform")
+        try:
+            dx, dy, dtheta = float(t.get("dx", 0)), float(t.get("dy", 0)), float(t.get("dtheta", 0))
+        except (TypeError, ValueError):
+            raise ToolError("transform 內容不是數值") from None
+        pivot = t.get("pivot")
+        pivot_t = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else region_center(region)
+        moved = transform_region(region, dx, dy, dtheta, pivot=pivot_t)
+        overlays = [region_overlay(region, color="#94a3b8", label="原 ROI")]
+        moved_ov = region_overlay(moved, color="#22c55e", label="跟隨")
+        moved_ov["dash"] = False
+        moved_ov["width"] = 2
+        overlays.append(moved_ov)
+        return Result(outputs={"region": moved}, overlays=overlays, message=f"dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°")
+
+
+# ---------------------------------------------------------------------------
+# 找圓
+# ---------------------------------------------------------------------------
+class FindCircleTool(Tool):
+    key = "find_circle"
+    label = "找圓"
+    description = "從 ROI 中心向外發射徑向掃描線找邊緣點，再以最小平方或 RANSAC 擬合圓。"
+    category = "locate"
+    icon = "Circle"
+    params = [
+        Param("roi", "區域", kind="roi", required=True, shapes=["circle", "annulus", "rect"], help_text="圓／圓環：由中心往外掃到外半徑；矩形：掃到內切半徑。"),
+        Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, help_text="沿掃描線由內往外的灰階變化方向。"),
+        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, help_text="灰階梯度低於此值不算邊緣。", teach=True),
+        Param("num_rays", "掃描線數", kind="number", default=36, minimum=6, maximum=720),
+        Param("edge_select", "取哪個邊緣", kind="select", default="strongest", options=[{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個（最靠內）"}, {"value": "last", "label": "最後一個（最靠外）"}]),
+        Param("ransac", "RANSAC 剔除離群", kind="boolean", default=True),
+        Param("ransac_tol", "RANSAC 容差", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="進階"),
+        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [
+        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
+        Port("cx", "圓心 X", "number"), Port("cy", "圓心 Y", "number"), Port("r", "半徑", "number"),
+        Port("points", "邊緣點", "points"), Port("score", "分數", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("沒有設定區域")
+        shape = region.get("shape")
+        cx, cy = region_center(region)
+        if shape == "circle":
+            r_in, r_out = 0.0, float(region["r"])
+        elif shape == "annulus":
+            r_in, r_out = float(region["r_inner"]), float(region["r_outer"])
+        elif shape == "rect":
+            r_in, r_out = 0.0, min(float(region["w"]), float(region["h"])) / 2
+        else:
+            raise ToolError(f"找圓不支援 {shape} 區域")
+        if r_out - r_in < 3:
+            raise ToolError("區域半徑太小")
+        num_rays = max(6, ctx.integer("num_rays", 36))
+        n_samples = int(math.ceil(r_out - r_in)) + 1
+        radii = np.linspace(r_in, r_out, n_samples, dtype=np.float32)
+        thetas = np.linspace(0, 2 * math.pi, num_rays, endpoint=False, dtype=np.float32)
+        map_x = (cx + np.cos(thetas)[:, None] * radii[None, :]).astype(np.float32)
+        map_y = (cy + np.sin(thetas)[:, None] * radii[None, :]).astype(np.float32)
+        profiles = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        polarity = ctx.param("polarity", "any")
+        thr = ctx.number("edge_threshold", 20)
+        sel = ctx.param("edge_select", "strongest")
+        smoothing = ctx.integer("smoothing", 3)
+        pts: list[list[float]] = []
+        for i, edges in enumerate(find_edges_rows(profiles, polarity, thr, smoothing)):
+            e = pick_edge(edges, sel)
+            if e is None:
+                continue
+            rr = r_in + e[0] * (r_out - r_in) / max(1, n_samples - 1)
+            pts.append([cx + math.cos(thetas[i]) * rr, cy + math.sin(thetas[i]) * rr])
+        overlays = [region_overlay(region, label="roi")]
+        if len(pts) < 3:
+            return Result(outputs={"cx": float("nan"), "cy": float("nan"), "r": float("nan"), "points": pts, "score": 0.0},
+                          overlays=overlays, branch="not_found", status="ng", message=f"邊緣點不足（{len(pts)}）")
+        arr = np.asarray(pts, dtype=np.float64)
+        inliers = np.ones(len(arr), dtype=bool)
+        if ctx.flag("ransac", True):
+            fitted = fit_circle_ransac(arr, tol=ctx.number("ransac_tol", 2))
+            if fitted is None:
+                circle = fit_circle_lsq(arr)
+            else:
+                circle, inliers = fitted
+        else:
+            circle = fit_circle_lsq(arr)
+        if circle is None:
+            return Result(outputs={"cx": float("nan"), "cy": float("nan"), "r": float("nan"), "points": pts, "score": 0.0},
+                          overlays=overlays, branch="not_found", status="ng", message="擬合失敗")
+        fcx, fcy, fr = circle
+        resid = np.abs(np.hypot(arr[:, 0] - fcx, arr[:, 1] - fcy) - fr)
+        score = float(inliers.sum() / num_rays)
+        overlays += [
+            {"kind": "points", "points": arr[inliers].round(2).tolist(), "color": "#22c55e"},
+            {"kind": "points", "points": arr[~inliers].round(2).tolist(), "color": "#ef4444"},
+            {"kind": "circle", "cx": fcx, "cy": fcy, "r": fr, "color": "#22c55e", "width": 2, "label": f"r={fr:.1f}"},
+            {"kind": "line", "x1": fcx - 6, "y1": fcy, "x2": fcx + 6, "y2": fcy, "color": "#22c55e"},
+            {"kind": "line", "x1": fcx, "y1": fcy - 6, "x2": fcx, "y2": fcy + 6, "color": "#22c55e"},
+        ]
+        return Result(
+            outputs={"cx": fcx, "cy": fcy, "r": fr, "points": arr.round(2).tolist(), "score": score},
+            overlays=overlays, branch="found",
+            message=f"圓心 ({fcx:.1f}, {fcy:.1f}) r={fr:.1f}，{int(inliers.sum())}/{num_rays} 點，殘差 {float(resid[inliers].mean()):.2f}px",
+            detail={"rms": float(np.sqrt((resid[inliers] ** 2).mean()))},
+        )
+
+
+# ---------------------------------------------------------------------------
+# 找直線
+# ---------------------------------------------------------------------------
+def _as_rotated_rect(region: dict[str, Any]) -> dict[str, Any]:
+    if region.get("shape") == "rect":
+        return {"shape": "rotated_rect", "cx": region["x"] + region["w"] / 2, "cy": region["y"] + region["h"] / 2, "w": region["w"], "h": region["h"], "angle": 0.0}
+    if region.get("shape") == "rotated_rect":
+        return region
+    raise ToolError(f"此工具需要矩形／旋轉矩形區域，收到 {region.get('shape')}")
+
+
+def caliper_points(crop_img: np.ndarray, num: int, polarity: str, threshold: float, direction: str, smoothing: int) -> tuple[list[tuple[float, float, float]], bool]:
+    """在擺正的 crop 內，沿長邊等距放 num 條卡尺（垂直於長邊），每條回傳 (x, y, 強度)。
+
+    回傳 (points, horizontal)：horizontal=True 表示長邊為水平、卡尺沿 y 掃描。
+    """
+    h, w = crop_img.shape[:2]
+    horizontal = w >= h
+    length = w if horizontal else h
+    num = max(2, min(num, length))
+    band = max(1, length // num)
+    centers = np.linspace(band / 2, length - band / 2, num)
+    # 每條卡尺的剖面 = 帶內像素沿長邊平均；用長邊方向的累積和一次算完所有帶（整數和在 float64 精確）。
+    csum = np.cumsum(crop_img, axis=1 if horizontal else 0, dtype=np.float64)
+    a_idx = np.array([int(max(0, c - band / 2)) for c in centers])
+    b_idx = np.array([int(min(length, c + band / 2 + 1)) for c in centers])
+    if horizontal:
+        hi = csum[:, b_idx - 1]                       # (h, num)
+        lo = np.where(a_idx > 0, csum[:, np.maximum(a_idx - 1, 0)], 0.0)
+        profiles = ((hi - lo) / (b_idx - a_idx)[None, :]).T  # (num, h)
+    else:
+        hi = csum[b_idx - 1, :]
+        lo = np.where((a_idx > 0)[:, None], csum[np.maximum(a_idx - 1, 0), :], 0.0)
+        profiles = (hi - lo) / (b_idx - a_idx)[:, None]   # (num, w)
+    pts: list[tuple[float, float, float]] = []
+    for cpos, edges in zip(centers, find_edges_rows(profiles, polarity, threshold, smoothing)):
+        e = pick_edge(edges, direction)
+        if e is None:
+            continue
+        if horizontal:
+            pts.append((float(cpos), e[0], e[1]))
+        else:
+            pts.append((e[0], float(cpos), e[1]))
+    return pts, horizontal
+
+
+class FindLineTool(Tool):
+    key = "find_line"
+    label = "找直線"
+    description = "在矩形區域內放多條垂直於長邊的卡尺掃描線找邊緣點，再擬合直線（可 RANSAC）。"
+    category = "locate"
+    icon = "Slash"
+    params = [
+        Param("roi", "區域", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="長邊方向為直線方向，卡尺沿短邊掃描。"),
+        Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, help_text="沿短邊（由上到下／由左到右）的灰階變化。"),
+        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("num_calipers", "卡尺數", kind="number", default=20, minimum=2, maximum=500),
+        Param("direction", "取哪個邊緣", kind="select", default="strongest", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
+        Param("ransac", "RANSAC 剔除離群", kind="boolean", default=True),
+        Param("ransac_tol", "RANSAC 容差", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="進階"),
+        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [
+        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
+        Port("x1", "X1", "number"), Port("y1", "Y1", "number"), Port("x2", "X2", "number"), Port("y2", "Y2", "number"),
+        Port("angle", "角度", "number"), Port("rho", "ρ", "number"), Port("theta", "θ", "number"),
+        Port("line", "直線", "any"), Port("points", "邊緣點", "points"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("沒有設定區域")
+        rr = _as_rotated_rect(region)
+        c = crop(image, rr, upright=True)
+        if c.image.size == 0 or min(c.image.shape[:2]) < 3:
+            raise ToolError("區域太小或落在影像外")
+        pts_local, horizontal = caliper_points(
+            c.image, ctx.integer("num_calipers", 20), ctx.param("polarity", "any"),
+            ctx.number("edge_threshold", 20), ctx.param("direction", "strongest"), ctx.integer("smoothing", 3),
+        )
+        overlays = [region_overlay(region, label="roi")]
+        nan_out = {k: float("nan") for k in ("x1", "y1", "x2", "y2", "angle", "rho", "theta")}
+        if len(pts_local) < 2:
+            return Result(outputs={**nan_out, "line": None, "points": []}, overlays=overlays, branch="not_found", status="ng", message=f"邊緣點不足（{len(pts_local)}）")
+        full = c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local]))
+        inliers = np.ones(len(full), dtype=bool)
+        if ctx.flag("ransac", True) and len(full) >= 3:
+            fitted = fit_line_ransac(full, tol=ctx.number("ransac_tol", 2))
+            if fitted is not None:
+                (vx, vy, x0, y0), inliers = fitted
+            else:
+                vx, vy, x0, y0 = cv2.fitLine(full.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
+        else:
+            vx, vy, x0, y0 = cv2.fitLine(full.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
+        vx, vy, x0, y0 = float(vx), float(vy), float(x0), float(y0)
+        # 端點：把 ROI 長邊兩端投影到直線上
+        half = (rr["w"] if horizontal else rr["h"]) / 2
+        ang = math.radians(float(rr.get("angle", 0)))
+        ux, uy = (math.cos(ang), math.sin(ang)) if horizontal else (-math.sin(ang), math.cos(ang))
+        ends = []
+        for s in (-half, half):
+            px, py = rr["cx"] + ux * s, rr["cy"] + uy * s
+            t = (px - x0) * vx + (py - y0) * vy
+            ends.append((x0 + vx * t, y0 + vy * t))
+        (x1, y1), (x2, y2) = ends
+        angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+        # 法線式 ρ = x cosθ + y sinθ
+        nx, ny = -vy, vx
+        rho = x0 * nx + y0 * ny
+        theta = math.degrees(math.atan2(ny, nx))
+        if rho < 0:
+            rho, theta = -rho, theta + 180
+        theta = (theta + 180) % 360 - 180
+        line = {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "angle": angle}
+        dist = np.abs((full[:, 0] - x0) * nx + (full[:, 1] - y0) * ny)
+        overlays += [
+            {"kind": "points", "points": full[inliers].round(2).tolist(), "color": "#22c55e"},
+            {"kind": "points", "points": full[~inliers].round(2).tolist(), "color": "#ef4444"},
+            {"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2, "label": f"{angle:.2f}°"},
+        ]
+        return Result(
+            outputs={"x1": x1, "y1": y1, "x2": x2, "y2": y2, "angle": angle, "rho": rho, "theta": theta, "line": line, "points": full.round(2).tolist()},
+            overlays=overlays, branch="found",
+            message=f"角度 {angle:.2f}°，{int(inliers.sum())}/{len(full)} 點，殘差 {float(dist[inliers].mean()):.2f}px",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Hough
+# ---------------------------------------------------------------------------
+class HoughCirclesTool(Tool):
+    key = "hough_circles"
+    label = "Hough 找圓"
+    description = "cv2.HoughCircles（梯度法）在區域內找多個圓。"
+    category = "locate"
+    icon = "CircleDot"
+    params = [
+        Param("roi", "區域", kind="roi", shapes=["rect"], help_text="留空則整張影像。"),
+        Param("min_radius", "最小半徑", kind="number", default=10, minimum=1, unit="px"),
+        Param("max_radius", "最大半徑", kind="number", default=100, minimum=1, unit="px"),
+        Param("min_dist", "圓心最小間距", kind="number", default=20, minimum=1, unit="px"),
+        Param("param1", "Canny 高門檻", kind="number", default=100, minimum=1, maximum=500, group="進階"),
+        Param("param2", "累積門檻", kind="number", default=30, minimum=1, maximum=300, group="進階", help_text="越小找到越多（含誤判）。"),
+        Param("blur", "前置中值濾波核", kind="number", default=5, minimum=0, maximum=31, group="進階"),
+        Param("max_count", "最多輸出", kind="number", default=50, minimum=1, maximum=1000),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("circles", "圓", "list"), Port("count", "數量", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        sub = np.ascontiguousarray(c.image)
+        k = ctx.integer("blur", 5)
+        if k >= 3:
+            sub = cv2.medianBlur(sub, k | 1)
+        min_r, max_r = ctx.integer("min_radius", 10), ctx.integer("max_radius", 100)
+        found = cv2.HoughCircles(sub, cv2.HOUGH_GRADIENT, 1, max(1, ctx.number("min_dist", 20)),
+                                 param1=max(1, ctx.number("param1", 100)), param2=max(1, ctx.number("param2", 30)),
+                                 minRadius=min(min_r, max_r), maxRadius=max(min_r, max_r))
+        circles: list[dict[str, float]] = []
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
+        if found is not None:
+            for x, y, r in found[0][: ctx.integer("max_count", 50)]:
+                fx, fy = c.to_full(float(x), float(y))
+                circles.append({"cx": round(fx, 2), "cy": round(fy, 2), "r": round(float(r), 2)})
+                overlays.append({"kind": "circle", "cx": fx, "cy": fy, "r": float(r), "color": "#22c55e", "width": 2})
+        return Result(outputs={"circles": circles, "count": len(circles)}, overlays=overlays,
+                      branch="found" if circles else "not_found", status="ok" if circles else "ng", message=f"{len(circles)} 個圓")
+
+
+class HoughLinesTool(Tool):
+    key = "hough_lines"
+    label = "Hough 找線段"
+    description = "Canny 邊緣後以機率 Hough（HoughLinesP）找線段。"
+    category = "locate"
+    icon = "Spline"
+    params = [
+        Param("roi", "區域", kind="roi", shapes=["rect"], help_text="留空則整張影像。"),
+        Param("canny_low", "Canny 低門檻", kind="number", default=50, minimum=0, maximum=500),
+        Param("canny_high", "Canny 高門檻", kind="number", default=150, minimum=0, maximum=500),
+        Param("threshold", "累積門檻", kind="number", default=80, minimum=1, maximum=1000),
+        Param("min_length", "最短線段", kind="number", default=30, minimum=1, unit="px"),
+        Param("max_gap", "最大斷點間隙", kind="number", default=10, minimum=0, unit="px"),
+        Param("max_count", "最多輸出", kind="number", default=50, minimum=1, maximum=1000),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("lines", "線段", "list"), Port("count", "數量", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        edges = cv2.Canny(np.ascontiguousarray(c.image), ctx.number("canny_low", 50), ctx.number("canny_high", 150))
+        if c.mask is not None:
+            edges = cv2.bitwise_and(edges, c.mask)
+        found = cv2.HoughLinesP(edges, 1, np.pi / 180, max(1, ctx.integer("threshold", 80)),
+                                minLineLength=ctx.number("min_length", 30), maxLineGap=ctx.number("max_gap", 10))
+        lines: list[dict[str, float]] = []
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
+        if found is not None:
+            segs = found.reshape(-1, 4).astype(np.float64)
+            lengths = np.hypot(segs[:, 2] - segs[:, 0], segs[:, 3] - segs[:, 1])
+            for i in np.argsort(-lengths)[: ctx.integer("max_count", 50)]:
+                x1, y1 = c.to_full(segs[i, 0], segs[i, 1])
+                x2, y2 = c.to_full(segs[i, 2], segs[i, 3])
+                ang = math.degrees(math.atan2(y2 - y1, x2 - x1))
+                lines.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": round(float(lengths[i]), 2), "angle": round(ang, 2)})
+                overlays.append({"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2})
+        return Result(outputs={"lines": lines, "count": len(lines)}, overlays=overlays,
+                      branch="found" if lines else "not_found", status="ok" if lines else "ng", message=f"{len(lines)} 條線段")
+
+
+__all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "fit_circle_lsq", "fit_circle_ransac", "fit_line_ransac", "POLARITY_OPTIONS"]
+
+TOOLS = [
+    TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(),
+    FindCircleTool(), FindLineTool(), HoughCirclesTool(), HoughLinesTool(),
+]

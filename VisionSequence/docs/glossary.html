@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 名詞規範</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
+  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  nav ul { columns: 2; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+
+<h1>前端名詞規範（溝通用）</h1>
+<p>原則：一個東西只有一個名字；UI 文案、程式識別字、文件三處一致。新名詞先加進這張表再用。</p>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#pages">頁面（左側導覽，路由）</a></li>
+<li><a href="#editor">流程編輯器的區塊</a></li>
+<li><a href="#terms">核心名詞</a></li>
+<li><a href="#port-colors">埠型別顏色</a></li>
+<li><a href="#status">狀態用語</a></li>
+</ul></nav>
+
+<h2 id="pages">頁面（左側導覽，路由）</h2>
+<table>
+<tr><th>中文</th><th>路由</th><th>程式名</th><th>說明</th></tr>
+<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>所有流程的即時狀態卡片</td></tr>
+<tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
+<tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
+<tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁</td></tr>
+<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單</td></tr>
+<tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔</td></tr>
+<tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>
+<tr><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>金鑰、主題、語言、引擎鎖定、密碼</td></tr>
+<tr><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>名詞定義與操作說明</td></tr>
+<tr><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>登入／建立第一個管理員</td></tr>
+<tr><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>單一流程的執行歷史、良率、每小時 OK／NG、耗時趨勢（總覽卡片與頂列都有入口）</td></tr>
+<tr><td>整合頁</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、PLC 輸出（write_plc 的 mapping 格式）</td></tr>
+<tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試跑到該步驟、標記為已教導</td></tr>
+<tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
+<tr><td>連線</td><td><code>/connections</code></td><td>ConnectionsPage</td><td>PLC／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
+</table>
+
+<h2 id="editor">流程編輯器的區塊</h2>
+<table>
+<tr><th>中文</th><th>程式名</th><th>說明</th></tr>
+<tr><td>頂列</td><td>EditorToolbar</td><td>兩列：第一列流程名稱、儲存、範本下拉、「配方」鈕（開配方面板）、綁定配方下拉（有配方才顯示）、「未教導」標籤、參數卡／Golden Set／匯出／統計圖示；第二列試跑、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、寬度不足換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角</td></tr>
+<tr><td>工具箱</td><td>ToolPalette</td><td>左欄上半：可插入的工具（依類別分組、可搜尋）；一律拖曳到畫布新增（點擊無動作）；最上方是「收藏」（「最近使用」已移除）</td></tr>
+<tr><td>步驟選單</td><td>NodeContextMenu</td><td>右鍵點步驟：開啟工具頁、複製、停用／啟用、刪除、複製參數／貼上參數（同型別）</td></tr>
+<tr><td>批次測試</td><td>BatchTestModal</td><td>頂列「批次測試」開的 Modal：多張影像跑一輪、摘要、結果表（可勾選列「存為 Golden Set」）、CSV</td></tr>
+<tr><td>配方面板</td><td>RecipeDrawer（<code>components/recipes/</code>）</td><td>流程頁列上「配方」與參數卡頁「管理配方」開的側滑面板：綁定下拉、新增（可「以目前圖值作為覆寫（教導參數）」）／改名／複製／刪除／設綁定／匯出／全部匯出／匯入、展開編輯覆寫表；儲存與新增都先走「儲存範圍 Check List」</td></tr>
+<tr><td>儲存範圍 Check List</td><td>RecipeCheckList（<code>useSaveCheck</code>）</td><td>新增或儲存配方前呼叫 <code>POST /recipes/check</code>（<code>include_all: true</code>，流程所有宣告參數都列出，覆寫沒提到的以圖值列為 unchanged），逐項列出「步驟 › 參數：目前值 → 新值」＋狀態。分兩區：上方「教導參數」（teach=true；ok 預設勾、unchanged 不勾）、下方摺疊「其他參數（N）」（teach=false，預設收合、不勾，展開後可勾；ROI 值顯示摘要「rect 286×215 @ 373,277」）；version_changed 可勾、其餘紅色不可勾；勾選項目送出的值＝清單上的值（unchanged 就是圖值）。「以目前圖值作為覆寫（教導參數）」也走同一份清單</td></tr>
+<tr><td>匯入合理化檢查</td><td>RecipeImportModal</td><td>匯入配方前 <code>POST /recipes/import/check</code>：顯示流程名稱／指紋是否相同、每個配方的檢查清單，勾選後 <code>POST /recipes/import {doc, accept}</code>，結果顯示寫入／略過幾項</td></tr>
+<tr><td>綁定配方</td><td>BoundRecipeSelect／BoundBadge</td><td>「目前綁定執行的配方」= <code>is_default</code>；流程頁每列、編輯器頂列、配方面板都能選；「不用配方（圖值）」= 把目前預設的 is_default 設 false；執行一次／連續／外部觸發未指定 recipe 都用綁定；UI 顯示「綁定：partA」</td></tr>
+<tr><td>側欄摺疊</td><td>AppShell（localStorage <code>vs.sidebar</code>）</td><td>左側主選單可切換「只顯示圖示」／「圖示＋文字」，文字不換行；摺疊時 hover 顯示 tooltip；頂部導覽列與側欄底部都有摺疊鈕</td></tr>
+<tr><td>面板</td><td>Panel／Card（Gentelella x_panel）</td><td>內容以白底、細邊框、頂部標題列＋右側動作圖示、可摺疊的面板呈現；統計 KPI 用 Tile（tile_count：大數字＋小標）</td></tr>
+<tr><td>範本畫廊</td><td>TemplateGallery</td><td>範本卡片（節點示意縮圖）＋選來源＋流程名稱；流程頁「從範本建立」與頂列「載入範本」共用</td></tr>
+<tr><td>步驟清單</td><td>NodeList</td><td>左欄下半：本流程所有步驟；點一下畫布聚焦到該步驟</td></tr>
+<tr><td>影像視窗</td><td>ImageViewer</td><td>中欄上方：顯示影像、標記、ROI 編輯</td></tr>
+<tr><td>畫布</td><td>FlowCanvas</td><td>中欄下方：React Flow 畫布；右上角「選取／平移」切換（<code>CanvasModePanel</code>，與縮放滑桿同風格）</td></tr>
+<tr><td>側欄</td><td>Inspector</td><td>右欄：流程共用設定／選取步驟的基本設定與「開啟工具頁」</td></tr>
+<tr><td>結果分頁</td><td>ResultsPanel</td><td>側欄的「結果」分頁：最近執行（有配方時多一欄）、輸出值、錯誤、警告（<code>RunWarnings</code>：run.warnings 的黃色提示）</td></tr>
+<tr><td>鎖定橫幅</td><td>LockBanner</td><td>引擎鎖定時的黃色橫幅</td></tr>
+</table>
+
+<h2 id="terms">核心名詞</h2>
+<table>
+<tr><th>中文</th><th>英文／程式</th><th>定義</th></tr>
+<tr><td>流程</td><td>Flow</td><td>一張檢測圖（節點＋連線）；每位使用者各自擁有</td></tr>
+<tr><td>步驟</td><td>Node</td><td>畫布上的一個方塊；一個步驟就是一個工具的實例</td></tr>
+<tr><td>工具</td><td>Tool（ToolTypeDef）</td><td>工具箱裡的種類（灰階、Blob…）；<code>key</code> 是唯一識別字</td></tr>
+<tr><td>連線</td><td>Edge</td><td>步驟之間的線：來源輸出埠 → 目標輸入埠</td></tr>
+<tr><td>埠</td><td>Port</td><td>步驟左側為輸入埠、右側為輸出埠；有型別</td></tr>
+<tr><td>分支把手</td><td>Flow handle</td><td>型別為 <code>flow</code> 的輸出埠（true／false 等），只能接到步驟的「控制輸入」（菱形）</td></tr>
+<tr><td>參數</td><td>Param</td><td>步驟的設定值；種類是封閉集合（number、select、roi…）</td></tr>
+<tr><td>教導參數 / 參數卡</td><td>Teach param（<code>Param.teach</code>）／ Teach page</td><td>需要現場調機的參數（門檻、極性、公差…），工具定義以 <code>teach=True</code> 標記；「參數卡」頁只列全流程的教導參數，依步驟分組，換線調機不必開畫布</td></tr>
+<tr><td>公差判定</td><td>Tolerance judge（<code>tolerance_judge</code>）</td><td>量測值與「標稱值＋上偏差／＋下偏差」比較，走 pass／fail 分支；判定連同 nominal／upper／lower／unit／spec_source（圖面出處）寫進 <code>run.outputs.tolerances</code>，供 Cpk 與追溯</td></tr>
+<tr><td>同心度</td><td>Concentricity（<code>concentricity</code>）</td><td>兩圓圓心偏移量（deviation）；GD&amp;T 同心度 = 2×偏移，超過 max_deviation 走 ng 分支</td></tr>
+<tr><td>壁厚</td><td>Wall thickness（<code>wall_thickness</code>）</td><td>沿剖面找「外緣→內緣」成對邊緣的距離；多條卡尺取 min／max／mean</td></tr>
+<tr><td>區域 / ROI</td><td>Region</td><td>在影像上畫的檢測範圍（矩形、旋轉矩形、圓、環、多邊形、線）</td></tr>
+<tr><td>標記</td><td>Overlay</td><td>工具畫在影像上的結果圖形（框、圓、點、文字…）</td></tr>
+<tr><td>執行</td><td>Run</td><td>一次完整（或到某步驟為止）的流程執行；結果為 OK／NG／失敗</td></tr>
+<tr><td>試跑</td><td>Preview</td><td>用未儲存的圖執行、保留所有中間影像；不寫入歷史</td></tr>
+<tr><td>執行一次</td><td>Run once</td><td>用已儲存的圖執行一次；寫入歷史與統計。UI 已無此按鈕（整合方走 <code>POST /flows/{id}/run</code>、TCP 或整合頁）</td></tr>
+<tr><td>連續執行</td><td>Continuous</td><td>依間隔不停執行</td></tr>
+<tr><td>暫存影像</td><td>Scratch image</td><td>只為試跑上傳的影像，不進影像來源庫</td></tr>
+<tr><td>影像來源</td><td>Image source</td><td>相機／資料夾／合成／API 送圖的定義</td></tr>
+<tr><td>資產</td><td>Asset</td><td>範本影像、ONNX 模型等檔案</td></tr>
+<tr><td>判定</td><td>Judge</td><td>OK／NG 的結論（judge 工具）</td></tr>
+<tr><td>具名輸出</td><td>Output</td><td>回傳給自動化系統的鍵值（output 工具）</td></tr>
+<tr><td>引擎鎖定</td><td>Engine lock</td><td>整合方鎖住硬體：其他人只能編輯不能執行</td></tr>
+<tr><td>整合方</td><td>Integrator</td><td>以 API 金鑰呼叫的自動化系統</td></tr>
+<tr><td>重置</td><td>Reset</td><td>清除該流程在記憶體內的執行紀錄與統計</td></tr>
+<tr><td>範本庫</td><td>Template library（FlowTemplate）</td><td>流程範本：內建（<code>builtin:&lt;key&gt;</code>）或自訂（存為範本）；來源 id 以 <code>{SOURCE}</code> 佔位，建立／載入時再選影像來源</td></tr>
+<tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名</td></tr>
+<tr><td>批次測試</td><td>Batch test</td><td>多張影像（檔案／來源抓 N 張，≤50）用目前的圖各跑一次試跑，看良率與每張判定；影像只保留最近 8 次（KEEP_RUN_IMAGES），被淘汰的顯示「影像已釋放」</td></tr>
+<tr><td>統計</td><td>Statistics（StatsPage）</td><td>資料庫歷史的 KPI、每小時 OK／NG／失敗、耗時趨勢與執行歷史表；「記憶體即時統計」是引擎內的 FlowStats</td></tr>
+<tr><td>整合頁</td><td>Integration page</td><td>外部整合方的接口說明與測試工具；「事件監看」連 <code>/api/vision/events</code></td></tr>
+<tr><td>收藏</td><td>Favorites</td><td>工具箱裡按星號的工具（localStorage <code>vs.favoriteTools</code>）；「最近使用」已移除</td></tr>
+<tr><td>已教導 / 未教導</td><td>Commissioned（<code>Flow.commissioned</code>）</td><td>參數卡頁「標記為已教導」後為 true；false 時流程列表／總覽／頂列顯示「未教導」標籤，執行的 <code>RunReport.warnings</code> 帶「未完成現場教導」但不阻擋</td></tr>
+<tr><td>配方</td><td>Recipe（<code>FlowRecipe</code>）</td><td>同一流程的一組參數覆寫 <code>param_overrides = {node_id: {param: value}}</code>，多料號換線用；執行／試跑／TCP <code>recipe=</code> 可指定（名稱或 id），未指定用綁定配方（is_default）；參數卡頁「編輯對象」選了配方後改動寫進配方而非圖</td></tr>
+<tr><td>覆寫</td><td>Override</td><td>配方裡的一筆「步驟.參數＝值」；執行時疊到圖上再編譯</td></tr>
+<tr><td>Golden Set</td><td>Golden Set（<code>GoldenCase</code>）</td><td>有期望值（OK／NG／不限）的影像案例集，存在伺服器（不進影像快取）；來自上傳或批次測試結果</td></tr>
+<tr><td>案例</td><td>Golden case</td><td>Golden Set 裡的一張影像＋期望狀態＋（可選）期望輸出＋備註</td></tr>
+<tr><td>回歸</td><td>Regression（<code>POST /regress</code>）</td><td>用非試跑模式跑全部案例，與期望值和基準比對：total／match／mismatch／match_rate、混淆矩陣、退步（regressed）／進步（improved）清單；只對 mismatch 的案例保留影像</td></tr>
+<tr><td>基準</td><td>Baseline（<code>GoldenBaseline</code>）</td><td>某次回歸「存為基準」後每個案例的結果；下次回歸以它算退步／進步與「與基準不同」</td></tr>
+<tr><td>退步 / 進步</td><td>Regressed / Improved</td><td>基準符合、這次不符 = 退步（was → now）；反之 = 進步。改參數後最該看的清單</td></tr>
+<tr><td>合格門檻</td><td>fail_under</td><td>回歸的 match_rate 低於此值判定為未通過（CLI 退出碼非 0）</td></tr>
+<tr><td>站台</td><td>Station（<code>station_id</code>）</td><td>每筆 run 帶的站台代號（<code>VISION_STATION_ID</code>）；總覽卡片、統計頁顯示</td></tr>
+<tr><td>連線</td><td>Connection（<code>apps/comm</code>）</td><td>主動輸出到 PLC／上位機的連線定義：kind ∈ modbus_tcp／tcp_client／dio_sim／plugin；write_plc 工具以連線名稱引用（畫布上的「連線」Edge 是另一回事）</td></tr>
+<tr><td>寫入 PLC</td><td>write_plc</td><td>輸出類工具：依對映表（mapping：src → address，含 dtype／scale／offset／value）把判定、具名輸出或輸入埠的值寫到連線；失敗預設降級記警告</td></tr>
+<tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>
+<tr><td>匯出 / 匯入</td><td>Export / Import（<code>.flow.json</code>）</td><td>匯出：穩定序列化的流程檔（可進 git）；匯入：依檔內名稱 upsert，取像步驟的 <code>{SOURCE}</code> 佔位以選的來源取代；沒選來源時更新既有流程沿用原來源、新建流程留空</td></tr>
+</table>
+
+<h2 id="port-colors">埠型別顏色（固定，不重複）</h2>
+<table>
+<tr><th>型別</th><th>顏色</th><th>用途</th></tr>
+<tr><td>image</td><td>藍 <code>#3b82f6</code></td><td>影像</td></tr>
+<tr><td>region</td><td>紫 <code>#a855f7</code></td><td>ROI</td></tr>
+<tr><td>number</td><td>綠 <code>#22c55e</code></td><td>數值</td></tr>
+<tr><td>bool</td><td>橘 <code>#f97316</code></td><td>布林</td></tr>
+<tr><td>string</td><td>黃 <code>#eab308</code></td><td>字串</td></tr>
+<tr><td>points</td><td>青 <code>#06b6d4</code></td><td>點集合</td></tr>
+<tr><td>contours</td><td>靛 <code>#6366f1</code></td><td>輪廓</td></tr>
+<tr><td>matches</td><td>粉 <code>#ec4899</code></td><td>比對／偵測結果</td></tr>
+<tr><td>list</td><td>藍綠 <code>#14b8a6</code></td><td>一般清單（含標記）</td></tr>
+<tr><td>any</td><td>灰白 <code>#cbd5e1</code></td><td>任意</td></tr>
+<tr><td>flow</td><td>灰 <code>#94a3b8</code>（菱形）</td><td>分支</td></tr>
+</table>
+
+<h2 id="status">狀態用語</h2>
+<table>
+<tr><th>狀態</th><th>顏色</th><th>說明</th></tr>
+<tr><td>OK</td><td>綠</td><td>判定合格</td></tr>
+<tr><td>NG</td><td>紅</td><td>判定不良</td></tr>
+<tr><td>失敗</td><td>深紅框</td><td>工具錯誤／逾時／沒有影像；畫布上該步驟顯示錯誤訊息</td></tr>
+<tr><td>略過</td><td>灰淡</td><td>分支未選中或上游失敗</td></tr>
+<tr><td>執行中</td><td>脈動邊框</td><td>正在跑</td></tr>
+</table>
+</body>
+</html>

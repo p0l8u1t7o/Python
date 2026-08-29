@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 效能報告</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9em; }
+  th, td { border: 1px solid #e2e8f0; padding: .3rem .5rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  td:nth-child(n+2), th:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
+  .good { color: #15803d; font-weight: 600; }
+  .bad { color: #b91c1c; }
+  .noise { color: #94a3b8; }
+  nav ul { columns: 2; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+  .wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>VisionSequence 效能報告</h1>
+<p>對每個內建工具與引擎做基準量測，針對慢的工具做不改介面的優化，並記錄前後對照與給使用者的效能建議。原始數據在 <code>docs/bench-before.txt</code>、<code>docs/bench-after.txt</code>，量測腳本是 <code>scripts/bench_tools.py</code>。</p>
+
+<nav><ul>
+<li><a href="#env">1. 測試機與方法</a></li>
+<li><a href="#summary">2. 一頁摘要</a></li>
+<li><a href="#table">3. 每工具前後對照</a></li>
+<li><a href="#engine">4. 引擎與影像快取</a></li>
+<li><a href="#changes">5. 每個優化的做法與理由</a></li>
+<li><a href="#advice">6. 給使用者的效能建議</a></li>
+<li><a href="#rerun">7. 怎麼重跑</a></li>
+</ul></nav>
+
+<h2 id="env">1. 測試機與方法</h2>
+<table>
+<tr><th>項目</th><th style="text-align:left">內容</th></tr>
+<tr><td>CPU</td><td style="text-align:left">Intel Core Ultra 9 275HX（8 P-core + 16 E-core，筆電）；32 GB RAM；Windows 11 Home 26200</td></tr>
+<tr><td>軟體</td><td style="text-align:left">Python 3.12.10、OpenCV 4.11.0、numpy 2.2.3、onnxruntime（CPU）；<code>VISION_CV_THREADS=2</code>（專案預設）</td></tr>
+<tr><td>影像</td><td style="text-align:left"><code>SyntheticGrabber</code>（pattern=parts，seed=7，defect_rate=0）：1280×960 與 640×480 各一張 BGR。板子、5 個孔、條碼狀線條與高斯雜訊（σ=6）。</td></tr>
+<tr><td>工具參數</td><td style="text-align:left">每個工具用「合理」參數：ROI 落在板子／中心孔上；template_match 的範本是從同一張影像裁出的中心孔區域（PNG）；defect_diff 的良品範本是整張灰階圖；dl_* 用 <code>tests/_helpers.py</code> 的手刻 ONNX（GlobalAveragePool／Identity／Flatten）。同一工具有多種代表性設定就列多筆（例如 blob 的整圖與 ROI）。</td></tr>
+<tr><td>量測</td><td style="text-align:left">直接建 <code>ToolContext</code> 呼叫 <code>tool.execute()</code>（不經引擎）；每筆先暖機 3 次再跑 30 次，取 median 與 p95。引擎另外量示範流程「零件孔數檢測」整個 <code>engine.execute()</code> 與各節點分佈。after 以 <code>--pin</code> 綁 P-core＋高優先權。</td></tr>
+<tr><td>雜訊</td><td style="text-align:left">混合大小核筆電上，<strong>0.5 ms 以下的項目單輪雜訊約 ±0.1～0.15 ms</strong>（記憶體配置器狀態、時脈變動），因此對照表把「差異 &lt; 0.15 ms 或 &lt; 8%」標成 ≈（雜訊內），只有明顯改善才算數。沒有改動程式碼的工具（grayscale、blur、canny、hough、barcode…）本來就應該落在 ≈。</td></tr>
+</table>
+
+<h2 id="summary">2. 一頁摘要</h2>
+<table>
+<tr><th style="text-align:left">工具（1280×960）</th><th>before ms</th><th>after ms</th><th>改善</th><th style="text-align:left">主因</th></tr>
+<tr><td>blob（整圖、有雜訊）</td><td>53.5</td><td>9.0</td><td class="good">−83%</td><td style="text-align:left">幾萬個雜訊輪廓改用 connectedComponentsWithStats 先濾掉</td></tr>
+<tr><td>intensity（整圖）</td><td>10.6</td><td>0.96</td><td class="good">−91%</td><td style="text-align:left">calcHist 帶遮罩一次算完平均／標準差／極值／中位數</td></tr>
+<tr><td>histogram（整圖）</td><td>5.4</td><td>0.99</td><td class="good">−82%</td><td style="text-align:left">np.bincount → cv2.calcHist</td></tr>
+<tr><td>find_circle（36／180 線）</td><td>5.3 / 8.3</td><td>0.63 / 1.01</td><td class="good">−88%</td><td style="text-align:left">RANSAC 向量化、所有掃描線一次找邊緣</td></tr>
+<tr><td>find_line（20／100 卡尺）</td><td>1.06 / 2.87</td><td>0.65 / 0.77</td><td class="good">−39% / −73%</td><td style="text-align:left">卡尺剖面用累積和一次算、RANSAC 向量化</td></tr>
+<tr><td>template_match（旋轉 ±10°）</td><td>24.8</td><td>12.0</td><td class="good">−52%</td><td style="text-align:left">金字塔粗找不用遮罩比對、細找剪枝</td></tr>
+<tr><td>defect_diff（不對齊、ROI）</td><td>6.6</td><td>0.84</td><td class="good">−87%</td><td style="text-align:left">資產影像解碼快取（每次 5 ms 的 PNG 解碼不見了）</td></tr>
+<tr><td>defect_diff（相位對齊、整圖）</td><td>35.6</td><td>25.0</td><td class="good">−30%</td><td style="text-align:left">同上＋Hanning 視窗與範本前處理快取；剩下的是 phaseCorrelate 本身</td></tr>
+<tr><td>apply_mask</td><td>2.03</td><td>1.15</td><td class="good">−44%</td><td style="text-align:left">bitwise_and(mask=) → copyTo</td></tr>
+<tr><td>pixel_count（圓形 ROI）</td><td>0.14</td><td>0.04</td><td class="good">−71%</td><td style="text-align:left">遮罩只畫 ROI 外框大小，不再配置整張</td></tr>
+<tr><td>影像縮圖編碼（同 ref 第二次）</td><td>1.9～3.5</td><td>≈0</td><td class="good">快取</td><td style="text-align:left">ImageStore.encode LRU 64 筆；INTER_AREA 只在縮小 ≥ 2 倍時用</td></tr>
+</table>
+<p>示範流程「零件孔數檢測」整體（1280×960）：<strong>8.7 → 7.7 ms</strong>（blob 3.0 → 2.5 ms，其餘節點是 median blur 2.7 ms 與 draw_result 0.9 ms，都是 OpenCV 本身）。引擎固定開銷每節點約 6 µs（純邏輯節點串接量得），影像流程約 40～60 µs/節點，其中大半是釋放上一批影像的記憶體與 <code>_jsonable</code>，不是引擎迴圈本身。</p>
+
+<h2 id="table">3. 每工具前後對照</h2>
+<p>單位 ms；before／after 皆為 median，最後兩欄是 after 的 p95。改善欄：<span class="good">綠</span> ≥ 25%、<span class="noise">≈</span> 在雜訊內、<span class="bad">紅</span> 變慢（本次沒有超出雜訊的變慢項）。</p>
+<div class="wrap">
+<table>
+<thead><tr><th style="text-align:left">工具 / 設定</th><th>1280 before</th><th>1280 after</th><th>改善</th><th>640 before</th><th>640 after</th><th>改善</th><th>p95 1280</th><th>p95 640</th></tr></thead>
+<tbody>
+<tr><td>image_source</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.003</td><td>0.002</td></tr>
+<tr><td>grayscale</td><td>0.284</td><td>0.250</td><td><span class="noise">≈</span></td><td>0.035</td><td>0.072</td><td><span class="noise">≈</span></td><td>0.284</td><td>0.074</td></tr>
+<tr><td>crop (rect)</td><td>0.019</td><td>0.019</td><td><span class="noise">≈</span></td><td>0.009</td><td>0.009</td><td><span class="noise">≈</span></td><td>0.024</td><td>0.010</td></tr>
+<tr><td>crop (rotated)</td><td>0.640</td><td>0.625</td><td><span class="noise">≈</span></td><td>0.216</td><td>0.208</td><td><span class="noise">≈</span></td><td>1.185</td><td>0.217</td></tr>
+<tr><td>blur gaussian 5</td><td>1.354</td><td>1.220</td><td><span class="noise">≈</span></td><td>0.215</td><td>0.208</td><td><span class="noise">≈</span></td><td>1.288</td><td>0.216</td></tr>
+<tr><td>blur median 5</td><td>2.740</td><td>2.701</td><td><span class="noise">≈</span></td><td>1.107</td><td>1.068</td><td><span class="noise">≈</span></td><td>2.972</td><td>1.138</td></tr>
+<tr><td>threshold otsu</td><td>0.959</td><td>0.889</td><td><span class="noise">≈</span></td><td>0.174</td><td>0.167</td><td><span class="noise">≈</span></td><td>1.052</td><td>0.175</td></tr>
+<tr><td>threshold adaptive</td><td>4.745</td><td>4.439</td><td><span class="noise">≈</span></td><td>1.084</td><td>1.030</td><td><span class="noise">≈</span></td><td>4.650</td><td>1.078</td></tr>
+<tr><td>morphology open 5</td><td>0.436</td><td>0.393</td><td><span class="noise">≈</span></td><td>0.060</td><td>0.057</td><td><span class="noise">≈</span></td><td>0.435</td><td>0.059</td></tr>
+<tr><td>resize 0.5</td><td>0.123</td><td>0.118</td><td><span class="noise">≈</span></td><td>0.052</td><td>0.050</td><td><span class="noise">≈</span></td><td>0.127</td><td>0.051</td></tr>
+<tr><td>color_convert hsv_s</td><td>1.576</td><td>1.411</td><td><span>−10%</span></td><td>0.171</td><td>0.286</td><td><span class="noise">≈</span></td><td>1.461</td><td>0.453</td></tr>
+<tr><td>color_range</td><td>1.825</td><td>1.649</td><td><span>−10%</span></td><td>0.246</td><td>0.359</td><td><span class="noise">≈</span></td><td>2.231</td><td>0.381</td></tr>
+<tr><td>hist_eq clahe</td><td>1.567</td><td>1.531</td><td><span class="noise">≈</span></td><td>0.345</td><td>0.437</td><td><span class="noise">≈</span></td><td>1.645</td><td>0.454</td></tr>
+<tr><td>arithmetic absdiff</td><td>0.904</td><td>0.760</td><td><span class="noise">≈</span></td><td>0.023</td><td>0.028</td><td><span class="noise">≈</span></td><td>0.794</td><td>0.030</td></tr>
+<tr><td>apply_mask</td><td>2.031</td><td>1.145</td><td><span class="good">−44%</span></td><td>0.182</td><td>0.088</td><td><span class="noise">≈</span></td><td>1.375</td><td>0.097</td></tr>
+<tr><td>edges canny</td><td>4.021</td><td>3.633</td><td><span>−10%</span></td><td>0.632</td><td>0.633</td><td><span class="noise">≈</span></td><td>3.996</td><td>0.642</td></tr>
+<tr><td>rotate_flip 15deg</td><td>2.888</td><td>2.841</td><td><span class="noise">≈</span></td><td>0.760</td><td>0.907</td><td><span class="noise">≈</span></td><td>2.973</td><td>1.432</td></tr>
+<tr><td>template_match pyramid</td><td>2.759</td><td>2.434</td><td><span>−12%</span></td><td>0.668</td><td>0.482</td><td><span class="good">−28%</span></td><td>2.631</td><td>0.515</td></tr>
+<tr><td>template_match no-pyr</td><td>23.557</td><td>21.489</td><td><span>−9%</span></td><td>4.850</td><td>4.720</td><td><span class="noise">≈</span></td><td>22.407</td><td>5.127</td></tr>
+<tr><td>template_match rot ±10/5</td><td>24.799</td><td>12.000</td><td><span class="good">−52%</span></td><td>4.615</td><td>3.043</td><td><span class="good">−34%</span></td><td>12.462</td><td>3.263</td></tr>
+<tr><td>template_match roi+rot</td><td>14.885</td><td>7.952</td><td><span class="good">−47%</span></td><td>2.747</td><td>1.654</td><td><span class="good">−40%</span></td><td>9.073</td><td>1.666</td></tr>
+<tr><td>shape_align</td><td>0.004</td><td>0.004</td><td><span class="noise">≈</span></td><td>0.004</td><td>0.004</td><td><span class="noise">≈</span></td><td>0.004</td><td>0.004</td></tr>
+<tr><td>fixture_roi</td><td>0.005</td><td>0.005</td><td><span class="noise">≈</span></td><td>0.005</td><td>0.005</td><td><span class="noise">≈</span></td><td>0.006</td><td>0.006</td></tr>
+<tr><td>find_circle 36</td><td>5.314</td><td>0.634</td><td><span class="good">−88%</span></td><td>5.146</td><td>0.390</td><td><span class="good">−92%</span></td><td>0.752</td><td>0.413</td></tr>
+<tr><td>find_circle 180</td><td>8.289</td><td>1.010</td><td><span class="good">−88%</span></td><td>7.933</td><td>0.724</td><td><span class="good">−91%</span></td><td>1.187</td><td>0.740</td></tr>
+<tr><td>find_line 20</td><td>1.063</td><td>0.645</td><td><span class="good">−39%</span></td><td>2.699</td><td>0.362</td><td><span class="good">−87%</span></td><td>0.810</td><td>0.412</td></tr>
+<tr><td>find_line 100</td><td>2.870</td><td>0.769</td><td><span class="good">−73%</span></td><td>4.640</td><td>0.507</td><td><span class="good">−89%</span></td><td>0.795</td><td>0.551</td></tr>
+<tr><td>hough_circles</td><td>3.025</td><td>2.779</td><td><span>−8%</span></td><td>0.729</td><td>0.747</td><td><span class="noise">≈</span></td><td>3.067</td><td>0.775</td></tr>
+<tr><td>hough_lines</td><td>7.187</td><td>6.765</td><td><span class="noise">≈</span></td><td>1.978</td><td>1.849</td><td><span class="noise">≈</span></td><td>7.399</td><td>2.056</td></tr>
+<tr><td>caliper</td><td>0.402</td><td>0.538</td><td><span class="noise">≈</span></td><td>0.114</td><td>0.133</td><td><span class="noise">≈</span></td><td>0.642</td><td>0.148</td></tr>
+<tr><td>distance</td><td>0.003</td><td>0.003</td><td><span class="noise">≈</span></td><td>0.003</td><td>0.003</td><td><span class="noise">≈</span></td><td>0.004</td><td>0.004</td></tr>
+<tr><td>angle</td><td>0.003</td><td>0.004</td><td><span class="noise">≈</span></td><td>0.003</td><td>0.004</td><td><span class="noise">≈</span></td><td>0.004</td><td>0.004</td></tr>
+<tr><td>intensity (circle roi)</td><td>0.525</td><td>0.527</td><td><span class="noise">≈</span></td><td>0.105</td><td>0.092</td><td><span class="noise">≈</span></td><td>0.594</td><td>0.113</td></tr>
+<tr><td>intensity (full)</td><td>10.593</td><td>0.958</td><td><span class="good">−91%</span></td><td>2.396</td><td>0.206</td><td><span class="good">−91%</span></td><td>1.001</td><td>0.229</td></tr>
+<tr><td>calibration</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td></tr>
+<tr><td>histogram (rect roi)</td><td>1.343</td><td>0.746</td><td><span class="good">−44%</span></td><td>0.157</td><td>0.160</td><td><span class="noise">≈</span></td><td>0.807</td><td>0.170</td></tr>
+<tr><td>histogram (full)</td><td>5.390</td><td>0.989</td><td><span class="good">−82%</span></td><td>1.044</td><td>0.209</td><td><span class="good">−80%</span></td><td>1.107</td><td>0.222</td></tr>
+<tr><td>blob (gray, fixed)</td><td>53.465</td><td>8.995</td><td><span class="good">−83%</span></td><td>11.123</td><td>2.104</td><td><span class="good">−81%</span></td><td>9.472</td><td>2.377</td></tr>
+<tr><td>blob (mask, none)</td><td>54.153</td><td>10.335</td><td><span class="good">−81%</span></td><td>11.038</td><td>2.315</td><td><span class="good">−79%</span></td><td>10.935</td><td>2.566</td></tr>
+<tr><td>blob (roi circle)</td><td>0.269</td><td>0.199</td><td><span class="noise">≈</span></td><td>0.074</td><td>0.073</td><td><span class="noise">≈</span></td><td>0.224</td><td>0.087</td></tr>
+<tr><td>defect_diff phase</td><td>35.624</td><td>25.040</td><td><span class="good">−30%</span></td><td>7.525</td><td>5.127</td><td><span class="good">−32%</span></td><td>25.809</td><td>5.505</td></tr>
+<tr><td>defect_diff none roi</td><td>6.608</td><td>0.844</td><td><span class="good">−87%</span></td><td>1.600</td><td>0.157</td><td><span class="good">−90%</span></td><td>1.037</td><td>0.170</td></tr>
+<tr><td>barcode</td><td>10.586</td><td>9.773</td><td><span class="noise">≈</span></td><td>5.451</td><td>5.250</td><td><span class="noise">≈</span></td><td>10.073</td><td>5.629</td></tr>
+<tr><td>text_presence</td><td>0.377</td><td>0.517</td><td><span class="noise">≈</span></td><td>0.062</td><td>0.100</td><td><span class="noise">≈</span></td><td>0.563</td><td>0.104</td></tr>
+<tr><td>color_check</td><td>0.113</td><td>0.107</td><td><span class="noise">≈</span></td><td>0.037</td><td>0.037</td><td><span class="noise">≈</span></td><td>0.115</td><td>0.040</td></tr>
+<tr><td>edge_density</td><td>0.839</td><td>0.939</td><td><span class="noise">≈</span></td><td>0.205</td><td>0.234</td><td><span class="noise">≈</span></td><td>1.049</td><td>0.275</td></tr>
+<tr><td>pixel_count (full)</td><td>0.644</td><td>0.612</td><td><span class="noise">≈</span></td><td>0.101</td><td>0.100</td><td><span class="noise">≈</span></td><td>0.717</td><td>0.102</td></tr>
+<tr><td>pixel_count (circle)</td><td>0.139</td><td>0.041</td><td><span class="noise">≈</span></td><td>0.024</td><td>0.019</td><td><span class="noise">≈</span></td><td>0.043</td><td>0.020</td></tr>
+<tr><td>dl_classify</td><td>0.058</td><td>0.054</td><td><span class="noise">≈</span></td><td>0.041</td><td>0.040</td><td><span class="noise">≈</span></td><td>0.069</td><td>0.045</td></tr>
+<tr><td>dl_detect</td><td>0.083</td><td>0.077</td><td><span class="noise">≈</span></td><td>0.064</td><td>0.064</td><td><span class="noise">≈</span></td><td>0.094</td><td>0.072</td></tr>
+<tr><td>dl_segment</td><td>1.566</td><td>1.532</td><td><span class="noise">≈</span></td><td>0.296</td><td>0.220</td><td><span class="noise">≈</span></td><td>1.808</td><td>0.231</td></tr>
+<tr><td>if_number</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td></tr>
+<tr><td>in_range</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td></tr>
+<tr><td>bool_logic</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td></tr>
+<tr><td>formula</td><td>0.007</td><td>0.008</td><td><span class="noise">≈</span></td><td>0.008</td><td>0.007</td><td><span class="noise">≈</span></td><td>0.009</td><td>0.008</td></tr>
+<tr><td>count_list</td><td>0.001</td><td>0.001</td><td><span class="noise">≈</span></td><td>0.001</td><td>0.001</td><td><span class="noise">≈</span></td><td>0.001</td><td>0.001</td></tr>
+<tr><td>judge</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td></tr>
+<tr><td>output</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td></tr>
+<tr><td>save_image png</td><td>6.732</td><td>6.374</td><td><span class="noise">≈</span></td><td>1.892</td><td>1.870</td><td><span class="noise">≈</span></td><td>7.014</td><td>2.045</td></tr>
+<tr><td>draw_result</td><td>1.242</td><td>1.145</td><td><span class="noise">≈</span></td><td>0.114</td><td>0.120</td><td><span class="noise">≈</span></td><td>1.178</td><td>0.136</td></tr>
+</tbody>
+</table>
+</div>
+<p>沒有改動而仍慢的工具（都是 OpenCV／第三方本身的成本）：<code>template_match</code> 不開金字塔（整張 NCC 23 ms）、<code>barcode</code>（QR 偵測 10 ms）、<code>hough_lines</code>（7 ms）、<code>threshold adaptive</code>（4.5 ms）、<code>edges canny</code>（3.7 ms）、<code>save_image png</code>（PNG 壓縮 6.4 ms）、<code>defect_diff phase</code> 剩下的 <code>phaseCorrelate</code>（19 ms，1280×960 三次 FFT）。這些靠 ROI／縮圖處理（見第 6 節）。</p>
+
+<h2 id="engine">4. 引擎與影像快取</h2>
+<h3>4.1 示範流程「零件孔數檢測」各節點（1280×960，preview=False，after）</h3>
+<pre>
+src      0.005 ms   image_source
+gray     0.406 ms   grayscale
+draw     0.901 ms   draw_result（copy 3.6 MB + 畫標記）
+blur     2.661 ms   median 5×5（OpenCV）
+thr      0.175 ms   fixed threshold
+open     0.400 ms   morphology open 5
+blob     2.542 ms   blob（乾淨遮罩，5 個孔）
+cmp/out/ok  &lt; 0.01 ms
+合計 7.10 ms；整個 run 7.74 ms → 引擎固定開銷 0.44 ms（11 節點）
+</pre>
+<p>640×480 同流程 2.25 ms（節點 1.86，開銷 0.07 ms = 6 µs/節點）。</p>
+<h3>4.2 引擎固定開銷</h3>
+<ul>
+<li>40 個 formula 節點串接：整體 0.23 ms，<strong>5.7 µs/節點</strong>，其中工具本身 4.2 µs，引擎迴圈（ToolContext 建立、輸入收集、輸出登記）約 1.5 µs/節點，遠低於 0.05 ms 的門檻，沒有必要再精簡。</li>
+<li>影像流程量到的 40～60 µs/節點，用 cProfile 看，六成是 <code>ImageStore._drop_run_locked</code>：淘汰 8 次 run 之前的影像時釋放幾 MB 的 numpy 陣列（OS 回收頁面），這是「保留最近 N 次 run 影像」的固定成本；其餘是 <code>_jsonable</code>（blob 的 dict 列表）。</li>
+<li>仍做的兩個小修：<code>ToolContext.params</code> 每次 <code>dict()</code> 複製 → 一個 ctx 只複製一次（工具每個 <code>param()</code> 都會呼叫）；<code>_jsonable</code> 對純量清單（直方圖、剖面、點座標）不再逐項遞迴，先用 <code>type(v) in (float, int, str, bool, None)</code> 掃一遍直接回傳。<code>store.put</code> 原本就不複製影像。</li>
+</ul>
+<h3>4.3 ImageStore.encode（1280×960 BGR，JPEG 85）</h3>
+<table>
+<tr><th style="text-align:left">max_side</th><th>before（每次編碼）</th><th>after cold</th><th>after cached</th><th>大小</th></tr>
+<tr><td>None（原圖）</td><td>1.88</td><td>1.85</td><td>≈0.000</td><td>191 KB</td></tr>
+<tr><td>1600（編輯器檢視器）</td><td>1.87</td><td>1.84</td><td>≈0.000</td><td>191 KB</td></tr>
+<tr><td>1024（工具頁）</td><td>3.54</td><td>1.94</td><td>≈0.000</td><td>91 KB</td></tr>
+<tr><td>320（縮圖）</td><td>0.90</td><td>0.90</td><td>≈0.000</td><td>6 KB</td></tr>
+<tr><td>1024 PNG</td><td>25.2</td><td>23.7</td><td>≈0.000</td><td>606 KB</td></tr>
+</table>
+<p>結論：JPEG 編碼本身 1～2 ms 不是瓶頸；瓶頸是 (1) <code>INTER_AREA</code> 在「縮小不到一半」時走一般路徑（1280→1024 光縮放就 2.3 ms，比編碼還貴），改成縮小比例 ≤ 0.5 才用 INTER_AREA、否則 INTER_LINEAR；(2) 前端一次試跑會對同一張影像抓多次（節點卡片、檢視器、輸出頁），現在同 ref、同 max_side、同格式的結果快取 64 筆（LRU），ref 被覆寫／淘汰時一併清掉。PNG 仍然貴（23 ms），只有需要無損時才用 <code>fmt=png</code>。</p>
+
+<h2 id="changes">5. 每個優化的做法與理由</h2>
+<p>原則：工具的 key／params／ports／輸出格式與數值不變；能證明「結果完全相同」的才直接換算法，只有 template_match 的金字塔粗找（本來就是啟發式）改了候選產生方式。</p>
+
+<h3>5.1 blob：雜訊遮罩先用連通元件濾掉（<code>detect._prefilter_small</code>）</h3>
+<p>整圖固定門檻二值化後，背景雜訊會產生幾萬個 1～2 像素的白點；<code>findContours</code> 對 38k 個輪廓要 41 ms（每個輪廓都是一個 Python numpy 物件），再逐一 <code>contourArea</code> 又 9 ms。改為：先抽樣（每 8 列）數水平 0/255 轉換密度，超過 2% 才做 <code>connectedComponentsWithStats</code>（6.5 ms），把「外接框面積 &lt; min_area」的元件從遮罩清掉，再 <code>findContours</code>（0.7 ms）。外接框面積是 <code>contourArea</code> 的上界（即使有洞也成立），所以被清掉的元件本來就會被 min_area 篩掉——輪廓、面積、中心、bbox 全部與原本相同（等價測試對雜訊遮罩、乾淨遮罩、反相遮罩 × 5 種參數逐項比對過）。乾淨的遮罩（示範流程經 median＋open 後）不會觸發，不付 2.5 ms 的 CCWS 成本。輸出 mask 仍與原始遮罩做 AND，保留原行為。</p>
+
+<h3>5.2 intensity／histogram：一次 calcHist 推出全部統計（<code>measure._roi_hist</code>／<code>_hist_stats</code>）</h3>
+<p>原本把 ROI 像素抽成一維（非矩形要布林索引），再 <code>mean/std/min/max/np.median</code>——1.2M 像素的 <code>np.median</code> 要排序 5 ms、bincount 4.6 ms。改成 <code>cv2.calcHist</code>（帶 ROI 遮罩，0.5 ms）得到 256 階計數，平均＝Σh·v/n、標準差用二次通過（Σh·(v−mean)²/n，與 numpy 的定義一致）、極值取非零 bin、中位數用累積計數找第 (n−1)//2 與 n//2 個元素取平均（偶數時與 <code>np.median</code> 一樣取中間兩個的平均）。等價測試：整圖／圓／小矩形／多邊形的六個統計值差 &lt; 1e-9，直方圖逐 bin 相等，偶數奇數像素數的中位數相等。</p>
+
+<h3>5.3 find_circle／find_line／caliper：邊緣偵測批次化、RANSAC 向量化</h3>
+<ul>
+<li><code>locate.find_edges_rows()</code>：R 條剖面（找圓的 remap 結果本來就是 R×L 矩陣）一次做 GaussianBlur((k,1))、<code>np.gradient(axis=1)</code>、非極大抑制與拋物線次像素——每一步都是逐列獨立的運算，結果與逐列呼叫 <code>find_edges_1d</code> 完全相同（等價測試對 60 條真實與隨機剖面 × 3 種極性 × 3 種平滑逐一比對，含長度 1～5 的邊界情況）。單條剖面（caliper）保留純量版本，因為向量化的固定開銷反而多 0.1 ms。</li>
+<li><code>caliper_points()</code>：每條卡尺的帶內平均改用長邊方向的 <code>cumsum</code>（float64 整數和精確）一次算完所有帶，再交給 <code>find_edges_rows</code>；點座標與強度與舊版逐帶 <code>mean()</code> 完全相同。</li>
+<li><code>fit_circle_ransac</code>／<code>fit_line_ransac</code>：原本 200 次迭代各做一次 <code>rng.choice</code>＋<code>np.linalg.lstsq</code>（3.9 ms）。改成一次抽 200 組索引、三點圓閉式解（2×2 線性系統）與 200×n 距離矩陣，再對最佳內點集做一次 lstsq 重擬合。取樣序列與舊版不同（改用 <code>rng.integers</code> 並剔除重複索引），但最終結果由內點集決定，基準場景的內點數與殘差與舊版一字不差；測試容差 1 px 內全過。</li>
+<li>caliper 工具的剖面用 <code>cv2.reduce(REDUCE_AVG, CV_64F)</code>，與 numpy mean 對 uint8 結果相同（測試比對到小數一位）。</li>
+</ul>
+
+<h3>5.4 template_match：金字塔粗找不用遮罩、細找剪枝</h3>
+<p>帶遮罩的 <code>matchTemplate(TM_CCOEFF_NORMED, mask=)</code> 比不帶遮罩慢 4 倍（1/4 縮圖 2.8 vs 0.65 ms；細找視窗 2.6 vs 0.36 ms）。旋轉搜尋時每個角度的範本外框放大後必須帶遮罩。改法：</p>
+<ul>
+<li>粗找：所有角度共用「最大角度下仍完全落在有效像素內的置中軸對齊矩形」（<code>_inscribed_half</code>），每個角度只比這塊中央區域、不帶遮罩。同一塊區域讓各角度的分數可以互相比較（若各自用不同大小的裁切，小裁切會偏高，會把 0° 的正確候選擠掉——實作時踩到並修掉）。候選座標扣回裁切偏移，仍對應完整旋轉範本的左上角。</li>
+<li>剪枝：粗找候選依分數排序後，同一位置（中心距離 &lt; 縮圖範本半尺寸）最多細找 3 個角度，總數上限維持 <code>max_matches×4</code>。原本 5 個角度會在同一目標上各細找一次。</li>
+<li>細找與不開金字塔的路徑不變（完整範本＋遮罩，分數精確）。驗證：測試場景旋轉 +10／−7／0° 與大範本 +12／−6／0／+3°，金字塔開關兩種模式回傳相同的位置、角度與分數。</li>
+</ul>
+
+<h3>5.5 資產影像解碼快取（<code>locate.read_asset_image</code>）</h3>
+<p>每次 run 都 <code>np.fromfile</code>＋<code>imdecode</code> 範本：1280×960 的 PNG 要 5.5 ms，比大多數工具本身還慢。改為以 (path, gray) 為鍵快取解碼結果 32 筆（LRU），用檔案 mtime＋size 判斷失效（<code>os.stat</code> 約 10 µs）。回傳的陣列是共用的，工具不可原地修改（現有工具都只做 resize／crop／blur 產生新陣列）。這一項讓 template_match 的每次固定成本少 0.2 ms、defect_diff 少 5.5 ms。</p>
+
+<h3>5.6 defect_diff：Hanning 視窗與範本前處理快取</h3>
+<p><code>createHanningWindow</code> 1.5 ms、範本的縮放／裁切／模糊／轉 float32 約 1.7 ms，在同一組參數下每次相同。以 (範本尺寸, 裁切位置, 子圖尺寸, 模糊核, 對齊法) 為鍵快取 16 組，並抓著原範本陣列以身分比對（範本檔更新解碼出新陣列時自動失效）。剩下的 19 ms 是 <code>phaseCorrelate</code> 對 1280×960 做三次 FFT，屬演算法本身；要快請縮 ROI（ROI 640×384 的版本只要 0.8 ms）。</p>
+
+<h3>5.7 其他小項</h3>
+<ul>
+<li><code>apply_mask</code>：<code>cv2.bitwise_and(img, img, mask=)</code> 1.9 ms → <code>cv2.copyTo(img, mask)</code> 1.1 ms（新配置的目的地會先清零）；要填值時以填值為底再 copyTo，結果逐像素相同。</li>
+<li><code>roi.mask_for(offset=)</code>／<code>crop()</code>：非矩形 ROI 的遮罩只畫外框大小的視窗，不再配置整張影像大小再切片（pixel_count 圓形 ROI 0.14 → 0.04 ms；4K 影像差更多）。</li>
+<li><code>ImageStore.encode</code> 快取與縮圖插值（見 4.3）。</li>
+<li>引擎：<code>ToolContext.params</code> 快取、<code>_jsonable</code> 純量清單快速路徑（見 4.2）。</li>
+</ul>
+
+<h3>5.8 看過但沒改的</h3>
+<ul>
+<li><code>color_range</code> 已經直接對三通道 HSV 做 <code>inRange</code>；成本在 <code>cvtColor(BGR2HSV)</code>。</li>
+<li><code>draw_result</code> 只在灰階輸入時做一次 cvtColor，彩色輸入 <code>copy()</code>（必須，不能改到上游影像）。</li>
+<li><code>findContours</code> 已用 <code>RETR_EXTERNAL</code>＋<code>CHAIN_APPROX_SIMPLE</code>（關掉 external_only 才用 CCOMP）。</li>
+<li><code>crop</code> 工具的 <code>np.ascontiguousarray</code> 保留：輸出會進影像快取，若留著 view 會把整張原圖鎖在記憶體裡。</li>
+<li><code>save_image</code> 的 PNG 壓縮等級維持預設（改壓縮等級會改檔案內容）。</li>
+</ul>
+
+<h2 id="advice">6. 給使用者的效能建議</h2>
+<ol>
+<li><strong>先裁 ROI 再算。</strong>幾乎每個工具的成本都與像素數成正比：blob 整圖 9 ms、ROI 內 0.2 ms；defect_diff 整圖 25 ms、ROI 0.8 ms；intensity 整圖 1 ms、ROI 0.1 ms。用工具自己的「區域」參數，或前面放一個 <code>crop</code> 節點讓整條下游都在小圖上跑（定位後用 <code>fixture_roi</code> 跟隨）。</li>
+<li><strong>大圖先 <code>resize</code>。</strong>1280×960 → 640×480 幾乎所有工具快 4 倍；定位／計數類工具在半解析度上通常夠準，量測類再回原圖用 ROI 做。</li>
+<li><strong>二值化後先去雜訊再 blob。</strong>示範流程的 median 5 + open 5 讓 blob 只花 2.5 ms；直接對有雜訊的門檻結果做 blob，即使有新的預濾也要 9 ms。或把 <code>min_area</code> 設在合理值（預濾只在 min_area ≥ 4 時作用）。</li>
+<li><strong>template_match 開金字塔、範本 ≥ 32 px、旋轉範圍與步進別太細。</strong>不開金字塔整張 NCC 要 23 ms；旋轉角度數 × 每角度成本，±10°/5° 為 5 個角度 12 ms。給搜尋範圍 ROI 再減半。</li>
+<li><strong><code>VISION_CV_THREADS</code>。</strong>預設 2：單一工具的 OpenCV 平行度。產線一次只跑一條流程時可以設成 4（1280×960 的 blur／canny／cvtColor 約再快 1.5～2 倍）；多條流程並行（執行緒池 10 條）時維持 2 或 1，避免 OpenCV 執行緒彼此搶核心。改完重啟 <code>manage.py serve</code>。</li>
+<li><strong>觀看才編碼。</strong>影像快取延後到有人看才編 JPEG；連續模式全速跑時不要一直開著編輯器的大檢視器（每張 1600 邊 1.9 ms，現在同一張第二次以後免費）。需要無損才用 PNG（23 ms）。</li>
+<li><strong>關掉不需要的持久化與影像保留。</strong><code>VISION_KEEP_RUN_IMAGES</code>（預設 8）決定每條流程保留幾次 run 的所有節點影像，1280×960 的流程每次 run 約 6～10 MB；產線不用回看時設 1～2，減少記憶體與釋放成本（引擎開銷裡最大的一項）。<code>VISION_KEEP_RUN_ROWS</code>／背景 Persister 只寫摘要，成本低，但 SQLite 在慢磁碟上仍建議調大保留門檻或關閉。</li>
+<li><strong>defect_diff 的對齊方式。</strong>相位相關對整張 1280×960 要 19 ms；固定治具、位移很小時選「不對齊」（0.8 ms），或只在 ROI 內對齊。</li>
+<li><strong>條碼只掃需要的區域與類型。</strong>QR 偵測整張 10 ms；給 ROI 並把類型限制在 QR 或一維。</li>
+<li><strong>save_image 用 JPEG／BMP。</strong>PNG 壓縮 1280×960 要 6.4 ms（BMP 幾乎免費，JPEG 2 ms）；只存 NG（<code>only_ng</code>）。</li>
+</ol>
+
+<h2 id="rerun">7. 怎麼重跑</h2>
+<pre>
+.venv/Scripts/python.exe scripts/bench_tools.py                       # 印到 stdout
+.venv/Scripts/python.exe scripts/bench_tools.py -o docs/bench-after.txt --pin   # 綁 P-core＋高優先權（Windows）
+.venv/Scripts/python.exe scripts/bench_tools.py --repeat 3            # 每筆跑 3 輪取最小 median（更穩，但更久、筆電會熱）
+</pre>
+<p>驗證：<code>.venv/Scripts/python.exe manage.py test --noinput</code>（82 tests）與 <code>.venv/Scripts/python.exe -m ruff check apps tests scripts config</code> 在優化前後皆全綠；工具輸出格式與數值由 <code>tests/test_tools.py</code> 把關，另有一份新舊實作逐項比對的等價檢查（blob／intensity／histogram／find_edges／caliper_points／apply_mask／mask_for）在開發時全部相等。</p>
+</body>
+</html>

@@ -1,0 +1,350 @@
+"""深度學習工具：ONNX 分類、物件偵測（YOLOv5/v8 風格輸出）、語意分割。
+
+onnxruntime 為可選相依；未安裝時工具在執行時拋 ToolError，平台照常啟動。
+Session 依模型路徑快取在模組層（thread-safe）。
+"""
+
+from __future__ import annotations
+
+import threading
+from typing import Any
+
+import cv2
+import numpy as np
+
+from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.roi import crop, region_overlay
+
+try:  # pragma: no cover - 相依存在與否由環境決定
+    import onnxruntime as ort
+except ImportError:  # pragma: no cover
+    ort = None
+
+_SESSIONS: dict[str, Any] = {}
+_LOCK = threading.Lock()
+
+ROI_SHAPES = ["rect", "rotated_rect"]
+
+
+def get_session(path: str) -> Any:
+    if ort is None:
+        raise ToolError("未安裝 onnxruntime，無法執行深度學習工具")
+    with _LOCK:
+        sess = _SESSIONS.get(path)
+        if sess is None:
+            try:
+                opts = ort.SessionOptions()
+                opts.intra_op_num_threads = 2
+                sess = ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+            except Exception as exc:  # noqa: BLE001
+                raise ToolError(f"載入模型失敗：{str(exc)[:200]}") from None
+            _SESSIONS[path] = sess
+        return sess
+
+
+def clear_sessions() -> None:
+    with _LOCK:
+        _SESSIONS.clear()
+
+
+def _model_path(ctx: ToolContext) -> str:
+    asset_id = ctx.param("model")
+    if not asset_id:
+        raise ToolError("沒有設定模型")
+    path = ctx.asset_path(str(asset_id))
+    if not path:
+        raise ToolError(f"找不到模型資產 {asset_id}")
+    return path
+
+
+def _labels(ctx: ToolContext) -> list[str]:
+    raw = str(ctx.param("labels", "") or "")
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def _triplet(value: Any, default: tuple[float, float, float]) -> np.ndarray:
+    if value in (None, ""):
+        return np.array(default, dtype=np.float32)
+    try:
+        parts = [float(v) for v in str(value).replace(";", ",").split(",") if v.strip()]
+    except ValueError:
+        raise ToolError(f"mean/std 格式錯誤：{value!r}") from None
+    if len(parts) == 1:
+        parts = parts * 3
+    if len(parts) != 3:
+        raise ToolError(f"mean/std 需要 3 個數值：{value!r}")
+    return np.array(parts, dtype=np.float32)
+
+
+def _input_hw(sess: Any, fallback: int) -> tuple[int, int]:
+    """模型輸入固定尺寸則用模型的，否則用參數。"""
+    shape = sess.get_inputs()[0].shape
+    h, w = fallback, fallback
+    if len(shape) == 4:
+        if isinstance(shape[2], int) and shape[2] > 0:
+            h = shape[2]
+        if isinstance(shape[3], int) and shape[3] > 0:
+            w = shape[3]
+    return h, w
+
+
+def preprocess(image: np.ndarray, size: tuple[int, int], mean: np.ndarray, std: np.ndarray, color_order: str, *, letterbox: bool = False, scale_255: bool = True) -> tuple[np.ndarray, dict[str, float]]:
+    """影像 → NCHW float32。回傳 (tensor, {scale, pad_x, pad_y}) 供偵測框換回原座標。"""
+    h, w = size
+    if image.ndim == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    ih, iw = image.shape[:2]
+    if letterbox:
+        scale = min(w / iw, h / ih)
+        nw, nh = max(1, int(round(iw * scale))), max(1, int(round(ih * scale)))
+        resized = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_LINEAR)
+        canvas = np.full((h, w, 3), 114, dtype=np.uint8)
+        px, py = (w - nw) // 2, (h - nh) // 2
+        canvas[py : py + nh, px : px + nw] = resized
+        image = canvas
+        info = {"scale": scale, "pad_x": float(px), "pad_y": float(py)}
+    else:
+        image = cv2.resize(image, (w, h), interpolation=cv2.INTER_LINEAR)
+        info = {"scale_x": w / iw, "scale_y": h / ih, "pad_x": 0.0, "pad_y": 0.0}
+    if color_order == "rgb":
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    x = image.astype(np.float32)
+    if scale_255:
+        x /= 255.0
+    x = (x - mean) / std
+    return np.ascontiguousarray(x.transpose(2, 0, 1)[None]), info
+
+
+def softmax(v: np.ndarray) -> np.ndarray:
+    v = v.astype(np.float64) - v.max()
+    e = np.exp(v)
+    return e / e.sum()
+
+
+def _run(sess: Any, tensor: np.ndarray) -> list[np.ndarray]:
+    name = sess.get_inputs()[0].name
+    try:
+        return sess.run(None, {name: tensor})
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"推論失敗：{str(exc)[:200]}") from None
+
+
+def _common_params(size_default: int) -> list[Param]:
+    return [
+        Param("model", "ONNX 模型", kind="asset", accept="model", required=True),
+        Param("labels", "類別名稱", kind="multiline", default="", help_text="每行一個類別，順序與模型輸出一致；留空則用索引。"),
+        Param("input_size", "輸入尺寸", kind="number", default=size_default, minimum=8, maximum=4096, help_text="模型輸入為固定尺寸時以模型為準。"),
+        Param("mean", "Mean", kind="text", default="0.485,0.456,0.406", group="前處理", help_text="以 0~1 為單位；YOLO 通常填 0。"),
+        Param("std", "Std", kind="text", default="0.229,0.224,0.225", group="前處理", help_text="YOLO 通常填 1。"),
+        Param("color_order", "色彩順序", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB"}, {"value": "bgr", "label": "BGR"}], group="前處理"),
+        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
+    ]
+
+
+class DlClassifyTool(Tool):
+    key = "dl_classify"
+    label = "DL 分類"
+    description = "以 ONNX 分類模型判斷區域屬於哪一類；最高分類別分數達門檻走 pass。"
+    category = "dl"
+    icon = "Brain"
+    heavy = True
+    params = _common_params(224) + [
+        Param("top_k", "Top-K", kind="number", default=3, minimum=1, maximum=50),
+        Param("threshold", "分數門檻", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("pass_labels", "合格類別", kind="text", default="", help_text="逗號分隔；不為空時，最高分類別需在此清單內才 pass。"),
+        Param("apply_softmax", "輸出套用 softmax", kind="boolean", default=True, group="前處理", help_text="模型已輸出機率時可關閉。"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical"), Port("label", "類別", "string"), Port("score", "分數", "number"), Port("index", "索引", "number"), Port("top", "Top-K", "list")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        sess = get_session(_model_path(ctx))
+        region = ctx.roi()
+        c = crop(image, region, upright=True)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        size = _input_hw(sess, ctx.integer("input_size", 224))
+        tensor, _ = preprocess(np.ascontiguousarray(c.image), size, _triplet(ctx.param("mean"), (0.485, 0.456, 0.406)), _triplet(ctx.param("std"), (0.229, 0.224, 0.225)), ctx.param("color_order", "rgb"))
+        out = np.asarray(_run(sess, tensor)[0], dtype=np.float32).reshape(-1)
+        probs = softmax(out) if ctx.flag("apply_softmax", True) else out.astype(np.float64)
+        labels = _labels(ctx)
+        names = [labels[i] if i < len(labels) else str(i) for i in range(len(probs))]
+        order = np.argsort(-probs)[: ctx.integer("top_k", 3)]
+        top = [{"label": names[i], "index": int(i), "score": round(float(probs[i]), 4)} for i in order]
+        best = top[0]
+        allowed = [s.strip() for s in str(ctx.param("pass_labels", "") or "").split(",") if s.strip()]
+        ok = best["score"] >= ctx.number("threshold", 0.5) and (not allowed or best["label"] in allowed)
+        overlays = [region_overlay(region, color="#22c55e" if ok else "#ef4444", label=f"{best['label']} {best['score']:.2f}")] if region else [
+            {"kind": "text", "x": 8, "y": 24, "text": f"{best['label']} {best['score']:.2f}", "color": "#22c55e" if ok else "#ef4444"},
+        ]
+        return Result(outputs={"label": best["label"], "score": best["score"], "index": best["index"], "top": top}, overlays=overlays,
+                      branch="pass" if ok else "fail", status="ok" if ok else "ng", message=f"{best['label']} {best['score']:.3f}")
+
+
+def parse_yolo(out: np.ndarray, num_labels: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """把 YOLOv5（[1,N,5+nc]）或 YOLOv8（[1,4+nc,N]）輸出轉成 (boxes_xywh_center, scores, class_ids)。"""
+    arr = np.asarray(out, dtype=np.float32)
+    if arr.ndim == 3:
+        arr = arr[0]
+    if arr.ndim != 2:
+        raise ToolError(f"不支援的偵測輸出形狀 {list(np.asarray(out).shape)}")
+    # 判斷方向：通道數（4+nc 或 5+nc）通常遠小於候選框數
+    if arr.shape[0] < arr.shape[1] and arr.shape[0] < 512:
+        arr = arr.T
+    cols = arr.shape[1]
+    if cols < 5:
+        raise ToolError(f"偵測輸出欄位不足：{cols}")
+    if num_labels > 0 and cols == num_labels + 4:
+        has_obj = False  # v8：x,y,w,h,cls...
+    else:
+        has_obj = True  # v5：x,y,w,h,obj,cls...（cols==5 時只有 obj）
+    boxes = arr[:, :4]
+    if has_obj:
+        obj = arr[:, 4:5]
+        cls = arr[:, 5:]
+        if cls.shape[1] == 0:
+            scores, ids = obj.reshape(-1), np.zeros(len(arr), dtype=np.int64)
+        else:
+            ids = cls.argmax(axis=1)
+            scores = (obj.reshape(-1) * cls[np.arange(len(arr)), ids])
+    else:
+        cls = arr[:, 4:]
+        ids = cls.argmax(axis=1)
+        scores = cls[np.arange(len(arr)), ids]
+    return boxes, scores.astype(np.float32), ids.astype(np.int64)
+
+
+class DlDetectTool(Tool):
+    key = "dl_detect"
+    label = "DL 物件偵測"
+    description = "以 ONNX 偵測模型（YOLOv5/v8 風格輸出）找物件；含 letterbox 前處理與 NMS。"
+    category = "dl"
+    icon = "ScanFace"
+    heavy = True
+    params = [p if p.key not in ("mean", "std") else Param(p.key, p.label, kind="text", default="0" if p.key == "mean" else "1", group="前處理", help_text=p.help_text) for p in _common_params(640)] + [
+        Param("conf", "信心門檻", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("iou", "NMS IoU", kind="range", default=0.45, minimum=0, maximum=1, step=0.01),
+        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=1000),
+        Param("filter_labels", "只保留類別", kind="text", default="", help_text="逗號分隔；留空全部保留。"),
+        Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定"),
+        Param("normalized", "輸出座標為 0~1", kind="boolean", default=False, group="前處理", help_text="模型輸出框為正規化座標時開啟。"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("detections", "偵測結果", "matches"), Port("count", "數量", "number"), Port("matches", "匹配（含 cx, cy）", "matches"), Port("labels", "類別列表", "list")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        sess = get_session(_model_path(ctx))
+        region = ctx.roi()
+        c = crop(image, region, upright=True)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        sub = np.ascontiguousarray(c.image)
+        size = _input_hw(sess, ctx.integer("input_size", 640))
+        tensor, info = preprocess(sub, size, _triplet(ctx.param("mean"), (0, 0, 0)), _triplet(ctx.param("std"), (1, 1, 1)), ctx.param("color_order", "rgb"), letterbox=True)
+        labels = _labels(ctx)
+        boxes, scores, ids = parse_yolo(_run(sess, tensor)[0], len(labels))
+        conf = ctx.number("conf", 0.25)
+        keep = scores >= conf
+        boxes, scores, ids = boxes[keep], scores[keep], ids[keep]
+        if ctx.flag("normalized"):
+            boxes = boxes * np.array([size[1], size[0], size[1], size[0]], dtype=np.float32)
+        detections: list[dict[str, Any]] = []
+        if len(boxes):
+            # 中心 xywh → 左上 xywh（letterbox 座標）→ 原 crop 座標
+            xy = (boxes[:, :2] - boxes[:, 2:] / 2 - np.array([info["pad_x"], info["pad_y"]], dtype=np.float32)) / info["scale"]
+            wh = boxes[:, 2:] / info["scale"]
+            rects = np.hstack([xy, wh])
+            idx = cv2.dnn.NMSBoxes(rects.tolist(), scores.tolist(), conf, ctx.number("iou", 0.45))
+            idx = np.asarray(idx).reshape(-1) if idx is not None and len(idx) else np.array([], dtype=int)
+            allowed = [s.strip() for s in str(ctx.param("filter_labels", "") or "").split(",") if s.strip()]
+            sh, sw = sub.shape[:2]
+            for i in idx:
+                x, y, w, h = (float(v) for v in rects[i])
+                x0, y0 = max(0.0, x), max(0.0, y)
+                x1, y1 = min(float(sw), x + w), min(float(sh), y + h)
+                if x1 <= x0 or y1 <= y0:
+                    continue
+                name = labels[ids[i]] if ids[i] < len(labels) else str(int(ids[i]))
+                if allowed and name not in allowed:
+                    continue
+                fx, fy = c.to_full(x0, y0)
+                cx, cy = c.to_full((x0 + x1) / 2, (y0 + y1) / 2)
+                detections.append({"x": round(fx, 1), "y": round(fy, 1), "w": round(x1 - x0, 1), "h": round(y1 - y0, 1), "cx": round(cx, 1), "cy": round(cy, 1),
+                                   "label": name, "index": int(ids[i]), "score": round(float(scores[i]), 4)})
+            detections.sort(key=lambda d: -d["score"])
+            detections = detections[: ctx.integer("max_count", 100)]
+        angle = float(region.get("angle", 0)) if region and region.get("shape") == "rotated_rect" else 0.0
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
+        for d in detections:
+            overlays.append({"kind": "rect", "x": d["cx"] - d["w"] / 2, "y": d["cy"] - d["h"] / 2, "w": d["w"], "h": d["h"], "angle": angle, "color": "#22c55e", "width": 2, "label": f"{d['label']} {d['score']:.2f}"})
+        count = len(detections)
+        ok = count >= ctx.integer("min_count", 1)
+        return Result(outputs={"detections": detections, "count": count, "matches": detections, "labels": [d["label"] for d in detections]}, overlays=overlays,
+                      branch="found" if count else "not_found", status="ok" if ok else "ng", message=f"{count} 個物件")
+
+
+class DlSegmentTool(Tool):
+    key = "dl_segment"
+    label = "DL 語意分割"
+    description = "以 ONNX 分割模型輸出每像素類別（argmax），回傳類別遮罩與各類面積。"
+    category = "dl"
+    icon = "Layers"
+    heavy = True
+    params = _common_params(512) + [
+        Param("target_class", "目標類別索引", kind="number", default=1, minimum=0, help_text="mask 輸出為此類別的 0/255 遮罩；class_map 為全部類別索引。"),
+        Param("min_area", "合格最小面積", kind="number", default=0, minimum=0, unit="px²", group="判定"),
+        Param("max_area", "合格最大面積", kind="number", default=0, minimum=0, unit="px²", group="判定", help_text="0 表示不限。"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [flow_out("ok", "合格", "ok"), flow_out("ng", "不合格", "critical"), Port("mask", "目標遮罩", "image"), Port("class_map", "類別圖", "image"), Port("area", "目標面積", "number"), Port("classes", "各類面積", "list")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        sess = get_session(_model_path(ctx))
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        sub = np.ascontiguousarray(c.image)
+        size = _input_hw(sess, ctx.integer("input_size", 512))
+        tensor, _ = preprocess(sub, size, _triplet(ctx.param("mean"), (0.485, 0.456, 0.406)), _triplet(ctx.param("std"), (0.229, 0.224, 0.225)), ctx.param("color_order", "rgb"))
+        out = np.asarray(_run(sess, tensor)[0])
+        if out.ndim == 4:
+            out = out[0]
+        if out.ndim == 3:
+            if out.shape[0] <= 256 and out.shape[0] < out.shape[-1]:
+                cls = out.argmax(axis=0) if out.shape[0] > 1 else (out[0] > 0.5)
+            else:
+                cls = out.argmax(axis=-1)
+        elif out.ndim == 2:
+            cls = out
+        else:
+            raise ToolError(f"不支援的分割輸出形狀 {list(out.shape)}")
+        cls = np.asarray(cls).astype(np.uint8)
+        cls = cv2.resize(cls, (sub.shape[1], sub.shape[0]), interpolation=cv2.INTER_NEAREST)
+        if c.mask is not None:
+            cls[c.mask == 0] = 0
+        target = ctx.integer("target_class", 1)
+        mask_sub = ((cls == target).astype(np.uint8) * 255)
+        h, w = image.shape[:2]
+        full_mask = np.zeros((h, w), dtype=np.uint8)
+        full_cls = np.zeros((h, w), dtype=np.uint8)
+        full_mask[c.y0 : c.y0 + mask_sub.shape[0], c.x0 : c.x0 + mask_sub.shape[1]] = mask_sub
+        full_cls[c.y0 : c.y0 + cls.shape[0], c.x0 : c.x0 + cls.shape[1]] = cls
+        labels = _labels(ctx)
+        counts = np.bincount(cls.reshape(-1), minlength=max(len(labels), target + 1))
+        classes = [{"index": i, "label": labels[i] if i < len(labels) else str(i), "area": int(n)} for i, n in enumerate(counts) if n > 0]
+        area = int(counts[target]) if target < len(counts) else 0
+        lo, hi = ctx.number("min_area", 0), ctx.number("max_area", 0)
+        ok = area >= lo and (hi <= 0 or area <= hi)
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
+        if area:
+            contours, _ = cv2.findContours(full_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            overlays.append({"kind": "contours", "contours": [cnt.reshape(-1, 2).tolist() for cnt in contours], "color": "#22c55e" if ok else "#ef4444", "width": 1, "label": f"area={area}"})
+        return Result(outputs={"mask": full_mask, "class_map": full_cls, "area": area, "classes": classes}, overlays=overlays,
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"目標類別面積 {area}px²")
+
+
+TOOLS = [DlClassifyTool(), DlDetectTool(), DlSegmentTool()]

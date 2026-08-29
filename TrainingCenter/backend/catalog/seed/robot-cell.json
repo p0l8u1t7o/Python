@@ -1,0 +1,1100 @@
+{
+  "slug": "robot-cell",
+  "name": "多站機械手臂協作與視覺手眼協調",
+  "summary": "三台六軸機械手臂圍繞輸送線協同上下料、組裝與檢查，並以 2D/3D 視覺做手眼校正與隨機取放。",
+  "description": "工作站包含三台六軸手臂：R1 負責從料盤以視覺引導取料，R2 進行組裝與鎖固，R3 做外觀檢查與下料。各手臂上方或末端配置相機，經手眼校正（Hand-Eye Calibration）後可將影像座標轉成手臂座標。PLC 為主控，透過 EtherNet/IP 與各手臂控制器交握，並以安全 PLC 管理共用空間的干涉區。",
+  "scene_key": "robotcell",
+  "order": 4,
+  "modules": [
+    {
+      "slug": "robot-arm",
+      "name": "六軸機械手臂本體",
+      "domain": "mechanical",
+      "description": "以 R1 為例說明六軸手臂各部件（R2、R3 相同）。",
+      "components": [
+        {
+          "slug": "base",
+          "name": "底座 (Base)",
+          "category": "機械手臂部件",
+          "brand": "範例：Epson",
+          "part_number": "C8-A901S",
+          "function": "手臂固定基礎，內含 J1 減速機與線纜引入口。",
+          "install_location": "手臂最底部，鎖在機架安裝板上",
+          "specs": {
+            "安裝": "M12 × 4"
+          },
+          "pos": [
+            -1.6,
+            0.85,
+            0
+          ],
+          "mesh_name": "r1-base",
+          "photo_query": "cat:Industrial robots"
+        },
+        {
+          "slug": "j1",
+          "name": "J1 旋轉軸 (腰)",
+          "category": "機械手臂部件",
+          "brand": "",
+          "part_number": "",
+          "function": "整支手臂繞垂直軸旋轉，決定工作方位。",
+          "install_location": "底座上方",
+          "specs": {
+            "範圍": "±240°"
+          },
+          "pos": [
+            -1.6,
+            1.0,
+            0
+          ],
+          "mesh_name": "r1-j1",
+          "animation_key": "robot-joint",
+          "photo_query": "cat:KUKA robots | cat:Industrial robots"
+        },
+        {
+          "slug": "j2",
+          "name": "J2 肩軸與下臂 (Lower Arm)",
+          "category": "機械手臂部件",
+          "brand": "",
+          "part_number": "",
+          "function": "下臂前後擺動，決定伸展距離。",
+          "install_location": "J1 上方肩部",
+          "specs": {
+            "範圍": "-158°～+65°"
+          },
+          "pos": [
+            -1.6,
+            1.35,
+            0
+          ],
+          "mesh_name": "r1-j2",
+          "animation_key": "robot-joint",
+          "photo_query": "cat:Fanuc robots | cat:Industrial robots"
+        },
+        {
+          "slug": "j3",
+          "name": "J3 肘軸與上臂 (Upper Arm)",
+          "category": "機械手臂部件",
+          "brand": "",
+          "part_number": "",
+          "function": "上臂上下擺動，配合 J2 決定高度。",
+          "install_location": "下臂頂端",
+          "specs": {
+            "範圍": "-61°～+202°"
+          },
+          "pos": [
+            -1.6,
+            1.85,
+            0
+          ],
+          "mesh_name": "r1-j3",
+          "animation_key": "robot-joint",
+          "photo_query": "cat:ABB robots | cat:Industrial robots"
+        },
+        {
+          "slug": "j4-j6",
+          "name": "J4/J5/J6 腕部 (Wrist)",
+          "category": "機械手臂部件",
+          "brand": "",
+          "part_number": "",
+          "function": "三軸腕部決定末端工具姿態（旋轉、俯仰、翻轉）。",
+          "install_location": "上臂末端",
+          "specs": {
+            "J6 範圍": "±360°"
+          },
+          "pos": [
+            -1.2,
+            1.7,
+            0
+          ],
+          "mesh_name": "r1-wrist",
+          "animation_key": "robot-joint",
+          "photo_query": "cat:Universal Robots | cat:Robot arms"
+        },
+        {
+          "slug": "reducer",
+          "name": "諧波減速機",
+          "category": "機械手臂部件",
+          "brand": "範例：Harmonic Drive",
+          "part_number": "CSF-25",
+          "function": "把伺服馬達高速低扭矩轉成低速高扭矩，零背隙。",
+          "install_location": "每個關節內部",
+          "specs": {
+            "減速比": "1:100"
+          },
+          "pos": [
+            -1.6,
+            1.35,
+            0.12
+          ],
+          "mesh_name": "r1-j2",
+          "photo_query": "cat:Harmonic Drive | strain wave gear"
+        },
+        {
+          "slug": "joint-servo",
+          "name": "關節伺服馬達與編碼器",
+          "category": "機械手臂部件",
+          "brand": "範例：Yaskawa",
+          "part_number": "SGM7J",
+          "function": "驅動關節並以絕對編碼器回饋角度（斷電記憶）。",
+          "install_location": "每個關節減速機後方",
+          "specs": {
+            "編碼器": "24 bit 絕對式"
+          },
+          "pos": [
+            -1.6,
+            1.85,
+            0.12
+          ],
+          "mesh_name": "r1-j3",
+          "photo_query": "cat:Servomotors"
+        },
+        {
+          "slug": "brake",
+          "name": "關節煞車",
+          "category": "機械手臂部件",
+          "brand": "",
+          "part_number": "",
+          "function": "斷電時鎖住關節防止手臂下墜。",
+          "install_location": "J2、J3、J5 馬達內",
+          "specs": {},
+          "pos": [
+            -1.6,
+            1.35,
+            -0.12
+          ],
+          "mesh_name": "r1-j2",
+          "photo_query": "cat:Electromagnetic brakes"
+        },
+        {
+          "slug": "flange",
+          "name": "末端法蘭 (Tool Flange)",
+          "category": "機械手臂部件",
+          "brand": "",
+          "part_number": "ISO 9409-1-50-4-M6",
+          "function": "安裝夾爪或工具的標準介面。",
+          "install_location": "J6 末端",
+          "specs": {
+            "規格": "ISO 9409-1"
+          },
+          "pos": [
+            -1.0,
+            1.55,
+            0
+          ],
+          "mesh_name": "r1-flange",
+          "photo_query": "cat:Robot arms | cat:Universal Robots"
+        },
+        {
+          "slug": "dress-pack",
+          "name": "線纜管線包 (Dress Pack)",
+          "category": "機械手臂部件",
+          "brand": "範例：igus",
+          "part_number": "triflex R",
+          "function": "保護末端夾爪的氣管與訊號線隨手臂運動。",
+          "install_location": "沿上臂外側",
+          "specs": {},
+          "pos": [
+            -1.4,
+            1.9,
+            0.15
+          ],
+          "mesh_name": "r1-j3",
+          "photo_query": "cat:KUKA robots | cat:Industrial robots"
+        }
+      ]
+    },
+    {
+      "slug": "eoat",
+      "name": "末端工具與治具",
+      "domain": "mechanical",
+      "description": "各站手臂末端工具（EOAT）與周邊治具。",
+      "components": [
+        {
+          "slug": "pneumatic-gripper",
+          "name": "氣動平行夾爪 (R1)",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "MHZ2-20D",
+          "function": "夾取料盤上的工件。",
+          "install_location": "R1 末端法蘭",
+          "specs": {
+            "開閉行程": "10 mm",
+            "夾持力": "50 N"
+          },
+          "pos": [
+            -1.0,
+            1.45,
+            0
+          ],
+          "mesh_name": "r1-gripper",
+          "animation_key": "gripper",
+          "photo_query": "cat:Grippers | cat:Robot arms"
+        },
+        {
+          "slug": "vacuum-pad",
+          "name": "真空吸盤與真空產生器 (R3)",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "ZP2 + ZH10",
+          "function": "吸取平面工件下料；真空產生器以壓縮空氣產生負壓。",
+          "install_location": "R3 末端",
+          "specs": {
+            "吸盤": "Ø20 mm ×4"
+          },
+          "pos": [
+            1.0,
+            1.45,
+            0
+          ],
+          "mesh_name": "r3-gripper",
+          "animation_key": "gripper",
+          "photo_query": "cat:Vacuum grippers | cat:Suction cups"
+        },
+        {
+          "slug": "screwdriver",
+          "name": "電動鎖螺絲模組 (R2)",
+          "category": "工具",
+          "brand": "範例：HIOS",
+          "part_number": "BLG-5000 + 吸附起子",
+          "function": "組裝站鎖固螺絲，扭力達標回傳訊號。",
+          "install_location": "R2 末端",
+          "specs": {
+            "扭力": "0.2～0.5 N·m"
+          },
+          "pos": [
+            0,
+            1.45,
+            -1.5
+          ],
+          "mesh_name": "r2-tool",
+          "animation_key": "spin",
+          "photo_query": "cat:Electric screwdrivers | cat:Screwdrivers"
+        },
+        {
+          "slug": "tool-changer",
+          "name": "快換接頭",
+          "category": "機械手臂部件",
+          "brand": "範例：Schunk",
+          "part_number": "SWS-011",
+          "function": "手臂可自動更換夾爪或工具。",
+          "install_location": "法蘭與夾爪之間",
+          "specs": {},
+          "pos": [
+            -1.0,
+            1.5,
+            0
+          ],
+          "mesh_name": "r1-flange",
+          "photo_query": "robot tool changer | cat:Grippers"
+        },
+        {
+          "slug": "force-sensor",
+          "name": "六軸力覺感測器 (R2)",
+          "category": "感測器",
+          "brand": "範例：ATI",
+          "part_number": "Mini45",
+          "function": "組裝插件時偵測接觸力，避免硬碰撞。",
+          "install_location": "R2 法蘭與工具之間",
+          "specs": {
+            "Fz 量程": "580 N"
+          },
+          "pos": [
+            0,
+            1.5,
+            -1.5
+          ],
+          "mesh_name": "r2-tool",
+          "photo_query": "cat:Load cells"
+        },
+        {
+          "slug": "tray-feeder",
+          "name": "料盤供料機",
+          "category": "治具",
+          "brand": "範例：自製",
+          "part_number": "TF-4",
+          "function": "堆疊料盤逐一送出供 R1 取料。",
+          "install_location": "R1 左前方",
+          "specs": {},
+          "pos": [
+            -2.4,
+            0.8,
+            0.8
+          ],
+          "mesh_name": "tray",
+          "photo_query": "tray feeder | cat:Assembly lines"
+        },
+        {
+          "slug": "cell-conveyor",
+          "name": "站間輸送帶",
+          "category": "輸送帶模組",
+          "brand": "範例：台灣自製",
+          "part_number": "BC-2400-W250",
+          "function": "把治具在 R1→R2→R3 之間傳遞。",
+          "install_location": "工作站中央",
+          "specs": {
+            "長度": "2400 mm"
+          },
+          "pos": [
+            0,
+            0.75,
+            0
+          ],
+          "mesh_name": "belt",
+          "animation_key": "belt",
+          "photo_query": "conveyor belt assembly line | cat:Assembly lines ~ conveyor"
+        },
+        {
+          "slug": "fixture",
+          "name": "組裝治具與定位氣缸",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "CDQ2B25-20",
+          "function": "把治具在 R2 站精確夾持定位。",
+          "install_location": "R2 站輸送帶下方",
+          "specs": {},
+          "pos": [
+            0,
+            0.7,
+            -0.6
+          ],
+          "mesh_name": "fixture",
+          "animation_key": "cylinder",
+          "photo_query": "cat:Jigs | cat:Pneumatic cylinders"
+        },
+        {
+          "slug": "push-in-fitting",
+          "name": "氣管快速接頭 (Push-in Fitting)",
+          "category": "接頭",
+          "brand": "範例：SMC",
+          "part_number": "KQ2H04-M5",
+          "function": "夾爪／吸盤的 Ø4 氣管接頭，隨手臂運動的氣管要用耐彎折的 PU 管。",
+          "install_location": "夾爪氣口與手臂上的中繼板",
+          "specs": {
+            "管徑": "Ø4 mm",
+            "螺牙": "M5"
+          },
+          "pos": [
+            -1.05,
+            1.5,
+            0.08
+          ],
+          "mesh_name": "fit-pushin",
+          "animation_key": "",
+          "photo_query": "push-in fitting pneumatic | pneumatic fitting tube | cat:Pneumatics ~ fitting | cat:Pneumatic hoses ~ fitting"
+        },
+        {
+          "slug": "rotary-union",
+          "name": "旋轉接頭 (Rotary Union)",
+          "category": "接頭",
+          "brand": "範例：Deublin",
+          "part_number": "1101-020",
+          "function": "讓氣路穿過 J6 無限旋轉而不纏管。",
+          "install_location": "J6 末端與法蘭之間",
+          "specs": {
+            "通道": "2",
+            "壓力": "0.7 MPa"
+          },
+          "pos": [
+            -1.05,
+            1.55,
+            -0.06
+          ],
+          "mesh_name": "fit-rotary",
+          "animation_key": "",
+          "photo_query": "rotary union pneumatic | rotary joint swivel | cat:Swivel joints"
+        }
+      ]
+    },
+    {
+      "slug": "vision",
+      "name": "機器視覺與手眼協調",
+      "domain": "software",
+      "description": "相機配置與手眼校正相關硬體。",
+      "components": [
+        {
+          "slug": "fixed-camera",
+          "name": "固定式 2D 相機 (Eye-to-Hand)",
+          "category": "視覺元件",
+          "brand": "範例：Basler",
+          "part_number": "acA1920-40gm",
+          "function": "從料盤上方拍攝工件位置與角度，引導 R1 取料。校正後影像座標可轉換為手臂基座座標。",
+          "install_location": "R1 料盤正上方龍門架",
+          "specs": {
+            "解析度": "2.3 MP",
+            "鏡頭": "12 mm"
+          },
+          "pos": [
+            -2.4,
+            2.3,
+            0.8
+          ],
+          "mesh_name": "cam-fixed",
+          "animation_key": "flash",
+          "photo_query": "cat:Industrial cameras | cat:Machine vision"
+        },
+        {
+          "slug": "hand-camera",
+          "name": "手持式相機 (Eye-in-Hand, R2)",
+          "category": "視覺元件",
+          "brand": "範例：Cognex",
+          "part_number": "In-Sight 2800",
+          "function": "裝在手臂末端，近距離精確定位螺絲孔；隨手臂移動視野。",
+          "install_location": "R2 末端工具旁",
+          "specs": {},
+          "pos": [
+            0.15,
+            1.5,
+            -1.5
+          ],
+          "mesh_name": "r2-cam",
+          "animation_key": "flash",
+          "photo_query": "cat:Machine vision ~ camera | cat:Cognex ~ camera"
+        },
+        {
+          "slug": "3d-camera",
+          "name": "3D 結構光相機",
+          "category": "視覺元件",
+          "brand": "範例：Zivid",
+          "part_number": "Zivid 2+",
+          "function": "取得工件點雲，做散堆隨機取放 (Bin Picking) 的姿態估測。",
+          "install_location": "料箱上方支架",
+          "specs": {
+            "精度": "0.1 mm"
+          },
+          "pos": [
+            -2.4,
+            2.3,
+            -0.3
+          ],
+          "mesh_name": "cam-3d",
+          "animation_key": "flash",
+          "photo_query": "cat:Structured light ~ scanner camera | structured light 3D scanner"
+        },
+        {
+          "slug": "calib-board",
+          "name": "手眼校正板",
+          "category": "視覺元件",
+          "brand": "",
+          "part_number": "ChArUco 7×5",
+          "function": "校正時由手臂持板在相機前多姿態拍攝，求解相機↔手臂轉換矩陣。",
+          "install_location": "平時收納於治具架，校正時裝在法蘭",
+          "specs": {},
+          "pos": [
+            -2.6,
+            0.9,
+            -0.6
+          ],
+          "mesh_name": "calib",
+          "photo_query": "camera calibration chessboard | calibration checkerboard camera | checkerboard calibration"
+        },
+        {
+          "slug": "vision-ipc",
+          "name": "視覺工業電腦",
+          "category": "控制器",
+          "brand": "範例：Advantech",
+          "part_number": "MIC-770 + GPU",
+          "function": "執行影像演算法與 AI 推論，回傳座標給手臂。",
+          "install_location": "電控櫃",
+          "specs": {
+            "GPU": "RTX A2000"
+          },
+          "pos": [
+            2.8,
+            1.0,
+            -1.2
+          ],
+          "mesh_name": "ipc",
+          "photo_query": "cat:Industrial PCs | cat:Advantech"
+        },
+        {
+          "slug": "lighting",
+          "name": "條形 / 環形 LED 光源",
+          "category": "視覺元件",
+          "brand": "範例：CCS",
+          "part_number": "LDL2 / LDR2",
+          "function": "穩定照明避免環境光干擾。",
+          "install_location": "各相機周圍",
+          "specs": {},
+          "pos": [
+            -2.4,
+            2.15,
+            0.8
+          ],
+          "mesh_name": "cam-fixed",
+          "photo_query": "LED light bar | LED strip light | cat:LED lamps ~ LED"
+        }
+      ]
+    },
+    {
+      "slug": "control",
+      "name": "電控與安全",
+      "domain": "electrical",
+      "description": "主控 PLC、手臂控制器與安全系統。",
+      "components": [
+        {
+          "slug": "robot-controller",
+          "name": "機械手臂控制器 ×3",
+          "category": "控制器",
+          "brand": "範例：Epson",
+          "part_number": "RC700-A",
+          "function": "各手臂的伺服放大器、運動規劃與 I/O。",
+          "install_location": "電控櫃底部（三台並排）",
+          "specs": {
+            "通訊": "EtherNet/IP"
+          },
+          "pos": [
+            2.8,
+            0.4,
+            -1.2
+          ],
+          "mesh_name": "rc",
+          "photo_query": "robot controller | cat:Fanuc robots"
+        },
+        {
+          "slug": "teach-pendant",
+          "name": "教導器 (Teach Pendant)",
+          "category": "人機介面",
+          "brand": "範例：Epson",
+          "part_number": "TP3",
+          "function": "手動點動、教點位與除錯；含三段式致能開關。",
+          "install_location": "掛在電控櫃側掛架",
+          "specs": {},
+          "pos": [
+            3.1,
+            1.2,
+            -0.6
+          ],
+          "mesh_name": "pendant",
+          "photo_query": "cat:Teach pendants"
+        },
+        {
+          "slug": "master-plc",
+          "name": "主控 PLC",
+          "category": "控制器",
+          "brand": "範例：Siemens",
+          "part_number": "S7-1200 CPU 1214C",
+          "function": "統籌三台手臂與輸送帶的順序與交握。",
+          "install_location": "電控櫃上層",
+          "specs": {
+            "通訊": "PROFINET"
+          },
+          "pos": [
+            2.8,
+            1.3,
+            -1.2
+          ],
+          "mesh_name": "plc",
+          "photo_query": "cat:Simatic | cat:Programmable logic controller"
+        },
+        {
+          "slug": "safety-plc",
+          "name": "安全 PLC 與干涉區管理",
+          "category": "安全元件",
+          "brand": "範例：Siemens",
+          "part_number": "S7-1200F",
+          "function": "監視急停、安全門、光柵與掃描器；管理手臂共用空間避免碰撞。",
+          "install_location": "電控櫃 PLC 旁",
+          "specs": {
+            "等級": "PL d"
+          },
+          "pos": [
+            2.8,
+            1.15,
+            -1.2
+          ],
+          "mesh_name": "safety",
+          "photo_query": "cat:Simatic ~ S7 CPU | cat:Pilz ~ PNOZ"
+        },
+        {
+          "slug": "laser-scanner",
+          "name": "安全雷射掃描器",
+          "category": "安全元件",
+          "brand": "範例：Sick",
+          "part_number": "microScan3",
+          "function": "偵測人員進入警戒區減速、進入保護區停機。",
+          "install_location": "工作站開口兩下角",
+          "specs": {
+            "範圍": "5.5 m"
+          },
+          "pos": [
+            1.5,
+            0.3,
+            1.3
+          ],
+          "mesh_name": "scanner",
+          "animation_key": "blink",
+          "photo_query": "SICK laser scanner | lidar sensor | cat:Laser scanners ~ scanner"
+        },
+        {
+          "slug": "safety-fence",
+          "name": "安全圍籬與門鎖",
+          "category": "安全元件",
+          "brand": "範例：Pilz",
+          "part_number": "PSENmlock",
+          "function": "隔離工作區；門鎖未上鎖時手臂無法自動運轉。",
+          "install_location": "工作站四周",
+          "specs": {},
+          "pos": [
+            0,
+            1.0,
+            1.8
+          ],
+          "mesh_name": "fence",
+          "photo_query": "robot safety fence | robot cell fence | cat:Machine guarding ~ guard"
+        },
+        {
+          "slug": "valve-manifold",
+          "name": "電磁閥組 (夾爪 / 治具)",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "SY3000 (EtherNet/IP)",
+          "function": "切換夾爪開閉、真空與治具定位。",
+          "install_location": "各手臂底座旁閥箱",
+          "specs": {},
+          "pos": [
+            -1.9,
+            0.75,
+            -0.4
+          ],
+          "mesh_name": "manifold",
+          "animation_key": "valve",
+          "photo_query": "cat:Manifolds | cat:Solenoid valves"
+        },
+        {
+          "slug": "frl",
+          "name": "空壓三點組合 (FRL)",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "AC30-03",
+          "function": "供應乾淨穩定的壓縮空氣。",
+          "install_location": "工作站進氣口",
+          "specs": {},
+          "pos": [
+            2.6,
+            0.5,
+            0.9
+          ],
+          "mesh_name": "frl",
+          "photo_query": "cat:Compressed air filters | cat:Compressed air"
+        },
+        {
+          "slug": "switch",
+          "name": "工業乙太網路交換器",
+          "category": "通訊",
+          "brand": "範例：Moxa",
+          "part_number": "EDS-510E",
+          "function": "連接 PLC、手臂控制器、相機與 IPC。",
+          "install_location": "電控櫃網路區",
+          "specs": {
+            "埠數": "10"
+          },
+          "pos": [
+            2.8,
+            0.85,
+            -1.2
+          ],
+          "mesh_name": "switch",
+          "photo_query": "cat:Ethernet switches"
+        }
+      ]
+    },
+    {
+      "slug": "software",
+      "name": "軟體與演算法",
+      "domain": "software",
+      "description": "手臂程式、視覺演算法與協調邏輯。",
+      "components": [
+        {
+          "slug": "robot-program",
+          "name": "手臂程式 (SPEL+ / KAREL)",
+          "category": "控制軟體",
+          "brand": "Epson RC+",
+          "part_number": "RC+ 8.0",
+          "function": "定義取放點位、軌跡與 I/O 交握；接收視覺座標修正。",
+          "install_location": "各手臂控制器；原始碼於 Git 專案 cell-robot",
+          "specs": {},
+          "pos": [
+            2.8,
+            0.4,
+            -1.2
+          ],
+          "mesh_name": "rc",
+          "photo_query": "cat:Teach pendants | cat:Universal Robots"
+        },
+        {
+          "slug": "hand-eye-calib",
+          "name": "手眼校正程式",
+          "category": "視覺軟體",
+          "brand": "自製 (OpenCV calibrateHandEye)",
+          "part_number": "",
+          "function": "以多組手臂姿態與校正板影像求解 AX=XB，得到相機到手臂的轉換矩陣。",
+          "install_location": "視覺 IPC",
+          "specs": {
+            "方法": "Tsai / Park"
+          },
+          "pos": [
+            2.8,
+            1.0,
+            -1.2
+          ],
+          "mesh_name": "ipc",
+          "photo_query": "cat:Universal Robots ~ camera | robot camera calibration"
+        },
+        {
+          "slug": "vision-guidance",
+          "name": "視覺引導服務",
+          "category": "視覺軟體",
+          "brand": "自製 (Python + OpenCV / Halcon)",
+          "part_number": "",
+          "function": "偵測工件位置與角度，轉成手臂座標後透過 TCP 送給手臂。",
+          "install_location": "視覺 IPC 常駐服務",
+          "specs": {
+            "介面": "TCP socket / OPC UA"
+          },
+          "pos": [
+            2.8,
+            1.0,
+            -1.2
+          ],
+          "mesh_name": "ipc",
+          "photo_query": "cat:Industrial robots ~ vision camera | cat:Machine vision ~ robot"
+        },
+        {
+          "slug": "bin-picking",
+          "name": "3D 散堆取放演算法",
+          "category": "視覺軟體",
+          "brand": "範例：Photoneo / 自製 PCL",
+          "part_number": "",
+          "function": "從點雲比對 CAD 模型估測姿態，規劃無碰撞抓取。",
+          "install_location": "視覺 IPC (GPU)",
+          "specs": {},
+          "pos": [
+            -2.4,
+            2.3,
+            -0.3
+          ],
+          "mesh_name": "cam-3d",
+          "photo_query": "cat:Industrial robots ~ picking | bin picking robot"
+        },
+        {
+          "slug": "cell-plc-program",
+          "name": "主控 PLC 程式 (TIA Portal)",
+          "category": "控制軟體",
+          "brand": "Siemens",
+          "part_number": "TIA Portal V19",
+          "function": "站間交握、干涉區申請／釋放、生產計數。",
+          "install_location": "主控 PLC；原始碼於 Git 專案 cell-plc",
+          "specs": {},
+          "pos": [
+            2.8,
+            1.3,
+            -1.2
+          ],
+          "mesh_name": "plc",
+          "photo_query": "ladder logic | cat:Simatic"
+        },
+        {
+          "slug": "digital-twin",
+          "name": "離線模擬 / 數位分身",
+          "category": "模擬軟體",
+          "brand": "範例：RoboDK / Process Simulate",
+          "part_number": "",
+          "function": "離線驗證軌跡、節拍與干涉，減少現場停機。",
+          "install_location": "工程師工作站",
+          "specs": {},
+          "pos": [
+            3.1,
+            1.2,
+            -0.6
+          ],
+          "mesh_name": "pendant",
+          "photo_query": "robot simulation | cat:Industrial robots"
+        },
+        {
+          "slug": "hmi-ui",
+          "name": "工作站 HMI",
+          "category": "人機介面軟體",
+          "brand": "Siemens WinCC Unified",
+          "part_number": "",
+          "function": "顯示各手臂狀態、生產數與警報，切換配方。",
+          "install_location": "電控櫃門面觸控螢幕",
+          "specs": {},
+          "pos": [
+            3.1,
+            1.4,
+            -1.0
+          ],
+          "mesh_name": "hmi",
+          "photo_query": "cat:Simatic ~ panel HMI | HMI panel industrial | cat:Touchscreens ~ industrial"
+        }
+      ]
+    },
+    {
+      "slug": "connectors",
+      "name": "接頭與配線模組",
+      "domain": "electrical",
+      "description": "感測器、動力與網路線路的標準接頭；新人拆裝線路前必須先認識。",
+      "components": [
+        {
+          "slug": "m12-connector",
+          "name": "M12 感測器圓形接頭",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "SAC-4P-M12MS",
+          "function": "感測器／電磁閥的標準防水接頭（IP67），A-code 3～5 pin；螺牙鎖緊避免振動鬆脫。",
+          "install_location": "各感測器線末端、遠端 I/O 箱側面",
+          "specs": {
+            "防護": "IP67",
+            "極數": "4 pin A-code"
+          },
+          "pos": [
+            -1.9,
+            0.9,
+            -0.4
+          ],
+          "mesh_name": "conn-m12",
+          "animation_key": "",
+          "photo_query": "M12 connector sensor | cat:Electrical connectors ~ M12"
+        },
+        {
+          "slug": "terminal-block",
+          "name": "DIN 軌端子台",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "UT 2,5",
+          "function": "櫃內配線的中繼點，每個端子有編號對應電路圖；接地端子為黃綠色。",
+          "install_location": "電控櫃下方 DIN 軌",
+          "specs": {
+            "線徑": "0.14～4 mm²"
+          },
+          "pos": [
+            2.8,
+            0.55,
+            -0.9199999999999999
+          ],
+          "mesh_name": "conn-terminal",
+          "animation_key": "",
+          "photo_query": "terminal block DIN rail | cat:Terminal blocks ~ DIN"
+        },
+        {
+          "slug": "cable-gland",
+          "name": "電纜固定頭 (Cable Gland)",
+          "category": "接頭",
+          "brand": "範例：Lapp",
+          "part_number": "SKINTOP ST-M20",
+          "function": "線纜穿入櫃體時固定並保持 IP 防護、防止拉扯。",
+          "install_location": "電控櫃底板進線處",
+          "specs": {
+            "防護": "IP68",
+            "線徑": "7～13 mm"
+          },
+          "pos": [
+            2.8,
+            0.20000000000000007,
+            -0.9199999999999999
+          ],
+          "mesh_name": "conn-gland",
+          "animation_key": "",
+          "photo_query": "cable gland | cat:Cable glands"
+        },
+        {
+          "slug": "heavy-duty-connector",
+          "name": "重載矩形接頭 (Harting)",
+          "category": "接頭",
+          "brand": "範例：Harting",
+          "part_number": "Han 24B",
+          "function": "多芯動力＋訊號一次插拔，機台分段運輸／維修時快速拆接。",
+          "install_location": "電控櫃側面與機台段間的線路介面",
+          "specs": {
+            "極數": "24+PE",
+            "電流": "16 A"
+          },
+          "pos": [
+            3.2199999999999998,
+            0.9,
+            -1.2
+          ],
+          "mesh_name": "conn-hdc",
+          "animation_key": "",
+          "photo_query": "Harting connector | heavy duty connector industrial"
+        },
+        {
+          "slug": "ethernet-connector",
+          "name": "工業乙太網路接頭 (RJ45 / M12 D-code)",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "VS-08-RJ45-5-Q/IP20",
+          "function": "PLC、相機、手臂控制器之間的通訊線路接頭；工業級 RJ45 有鎖扣與防護殼。",
+          "install_location": "交換器與各控制器網路埠",
+          "specs": {
+            "等級": "Cat.5e",
+            "防護": "IP20 / IP67 (M12)"
+          },
+          "pos": [
+            2.55,
+            0.85,
+            -0.9
+          ],
+          "mesh_name": "conn-rj45",
+          "animation_key": "",
+          "photo_query": "industrial ethernet connector M12 | RJ45 connector industrial | cat:RJ45 ~ industrial"
+        },
+        {
+          "slug": "power-connector",
+          "name": "動力接頭與馬達插頭",
+          "category": "接頭",
+          "brand": "範例：Intercontec",
+          "part_number": "M23",
+          "function": "伺服／變頻馬達的動力與編碼器線用專用航空插頭，接錯相序馬達會反轉。",
+          "install_location": "各馬達尾端",
+          "specs": {
+            "極數": "8 pin + 編碼器 17 pin"
+          },
+          "pos": [
+            2.3,
+            0.6000000000000001,
+            -0.8999999999999999
+          ],
+          "mesh_name": "conn-power",
+          "animation_key": "",
+          "photo_query": "M23 connector servo | circular connector industrial | cat:Electrical connectors ~ circular"
+        }
+      ]
+    },
+    {
+      "slug": "utility",
+      "name": "水氣電供應模組",
+      "domain": "utility",
+      "description": "設備需要的電力、壓縮空氣（與冷卻水）從哪裡來、怎麼開關、怎麼上鎖。",
+      "components": [
+        {
+          "slug": "main-breaker",
+          "name": "主電源無熔絲斷路器 (NFB) 與隔離開關",
+          "category": "水氣電供應",
+          "brand": "範例：Schneider",
+          "part_number": "NSX100",
+          "function": "設備電力總開關，具過載／短路保護；維修前務必切至 OFF 並上鎖掛牌 (LOTO)。",
+          "install_location": "電控櫃右側門把上方（紅黃色旋鈕）",
+          "specs": {
+            "額定": "3P 100 A",
+            "遮斷容量": "36 kA"
+          },
+          "pos": [
+            3.4,
+            1.4,
+            -1.0
+          ],
+          "mesh_name": "util-breaker",
+          "animation_key": "blink",
+          "photo_query": "cat:Circuit breakers ~ industrial | circuit breaker cabinet | cat:Circuit breakers"
+        },
+        {
+          "slug": "power-inlet",
+          "name": "電源進線端與匯流排",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "廠務 3Φ 380 VAC 由此進入，經 NFB 後分配至驅動器、變壓器與 24 V 電源。",
+          "install_location": "電控櫃頂部進線孔 → 端子台 L1/L2/L3/N/PE",
+          "specs": {
+            "電壓": "3Φ 380 VAC 50/60 Hz",
+            "線徑": "14 mm²"
+          },
+          "pos": [
+            3.4,
+            1.8499999999999999,
+            -1.0
+          ],
+          "mesh_name": "util-inlet",
+          "animation_key": "",
+          "photo_query": "cat:Busbars ~ cabinet | busbar electrical cabinet | cat:Electrical enclosures ~ cabinet"
+        },
+        {
+          "slug": "grounding",
+          "name": "接地端子 (PE)",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "所有金屬機殼與櫃體以黃綠線接至 PE 排；接地不良會造成感電與雜訊。",
+          "install_location": "電控櫃底部 PE 排、機架接地點",
+          "specs": {
+            "接地電阻": "< 10 Ω"
+          },
+          "pos": [
+            3.4,
+            0.5999999999999999,
+            -0.8
+          ],
+          "mesh_name": "util-pe",
+          "animation_key": "",
+          "photo_query": "grounding busbar | earth terminal cabinet | cat:Electrical grounding"
+        },
+        {
+          "slug": "air-inlet",
+          "name": "壓縮空氣進氣口與主氣閥 (含排氣鎖定)",
+          "category": "水氣電供應",
+          "brand": "範例：SMC",
+          "part_number": "VHS40-04",
+          "function": "廠務壓縮空氣由此進入；主氣閥為可上鎖的 3 口閥，關閉時同時把下游殘壓排空。",
+          "install_location": "機架側面 FRL 前端（黃色手柄球閥）",
+          "specs": {
+            "供氣壓力": "0.6～0.7 MPa",
+            "口徑": "1/2\"",
+            "露點": "≤ 3 °C"
+          },
+          "pos": [
+            2.6,
+            0.5,
+            1.2
+          ],
+          "mesh_name": "util-airvalve",
+          "animation_key": "valve",
+          "photo_query": "cat:Ball valves ~ pneumatic | lockout valve pneumatic | cat:Ball valves"
+        }
+      ]
+    }
+  ],
+  "utility_guide": [
+    {
+      "title": "電力 (Electricity)",
+      "icon": "bolt",
+      "items": [
+        "供電規格：3Φ 380 VAC ±10%、50/60 Hz，由廠務配電盤專用迴路供應，迴路 NFB 額定見電控櫃銘牌。",
+        "接點位置：電控櫃頂部進線 → 主 NFB → 端子台 L1/L2/L3/N/PE；控制電壓 24 VDC 由櫃內開關電源提供。",
+        "送電順序：確認櫃門關閉 → 廠務迴路 ON → 設備主 NFB ON → 控制電源 (24 V) ON → HMI 開機 → 復歸急停。",
+        "斷電順序：HMI 執行停機 → 急停 → 控制電源 OFF → 主 NFB OFF → 上鎖掛牌 (LOTO)。",
+        "安全：斷電後驅動器內電容仍有高壓，等待 5 分鐘並用電表確認 DC 匯流排 < 50 V 才可作業。"
+      ]
+    },
+    {
+      "title": "壓縮空氣 (Compressed Air)",
+      "icon": "air",
+      "items": [
+        "供氣規格：0.6～0.7 MPa、露點 ≤ 3 °C、含油量 ≤ 0.01 mg/m³（ISO 8573-1 Class 1.4.1），流量依銘牌。",
+        "接點位置：機架側面主氣閥（可上鎖 3 口閥）→ FRL 三點組合 → 電磁閥組 → 各氣缸。",
+        "供氣順序：確認 FRL 設定壓力 0.5 MPa → 慢開主氣閥（或用緩啟動閥）避免氣缸瞬間動作 → 檢查漏氣聲。",
+        "斷氣順序：關主氣閥 → 排氣口洩壓至 0 → 壓力表歸零後才可拆氣管；含蓄壓器的氣路需另外洩壓。",
+        "日常點檢：FRL 濾杯排水、壓力表讀值、氣管有無龜裂、速度控制閥有無鬆動。"
+      ]
+    },
+    {
+      "title": "機械手臂專用注意事項",
+      "icon": "robot",
+      "items": [
+        "手臂控制器需獨立迴路（每台 1Φ 200～240 VAC 或 3Φ 200 VAC，依型號），電源異常會遺失原點需重新校正。",
+        "斷電前先把手臂移到 HOME 姿態；J2/J3 煞車失效時手臂會下墜，維修上臂需先以吊帶固定。",
+        "夾爪氣壓消失時工件會掉落，斷氣前先把工件放到安全位置。"
+      ]
+    },
+    {
+      "title": "上鎖掛牌 (LOTO) 與點檢",
+      "icon": "lock",
+      "items": [
+        "維修前一律：斷電 → 斷氣（→ 斷水）→ 洩壓 → 上鎖 → 掛牌 → 嘗試啟動確認零能量。",
+        "每人一把鎖，誰上鎖誰解鎖；多人作業使用多鎖扣。",
+        "日常點檢表：電壓／電流讀值、供氣壓力、（水流量／溫度）、接地連續性、警報紀錄。"
+      ]
+    }
+  ]
+}

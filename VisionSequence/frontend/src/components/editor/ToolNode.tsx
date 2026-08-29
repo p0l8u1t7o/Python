@@ -1,0 +1,172 @@
+/**
+ * 畫布上的工具卡片：左側輸入埠、右側輸出埠、左上角控制輸入菱形（_flow）。
+ * 執行狀態：ok 綠點、ng 橘點、error 紅框、skipped 淡化、running 旋轉光環。
+ */
+import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react'
+import * as icons from 'lucide-react'
+import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { FLOW_HANDLE, portColor } from '@/lib/ports'
+import type { ToolPort } from '@/lib/types'
+import type { ToolNodeData } from './graphMapping'
+
+export function iconFor(name: string | undefined): icons.LucideIcon {
+  return (name && (icons as unknown as Record<string, icons.LucideIcon>)[name]) || icons.Box
+}
+
+/** 黑或近白，看哪個在 hex 上讀得清楚。 */
+export function contrastText(hex: string): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!match) return ''
+  const value = parseInt(match[1], 16)
+  const r = value >> 16
+  const g = (value >> 8) & 255
+  const b = value & 255
+  return (r * 299 + g * 587 + b * 114) / 1000 >= 145 ? '#0f172a' : '#f8fafc'
+}
+
+const TONE_COLOR: Record<ToolPort['tone'], string> = {
+  neutral: 'var(--port-flow)',
+  ok: 'var(--ok)',
+  warn: 'var(--warning)',
+  critical: 'var(--critical)',
+}
+
+function PortRow({ port, side, customFg }: { port: ToolPort; side: 'in' | 'out'; customFg: string }) {
+  const isFlow = port.type === 'flow'
+  const color = isFlow ? TONE_COLOR[port.tone] : portColor(port.type)
+  // 隱含輸出埠（_overlays）：較小較淡，免得跟真正的資料輸出搶注意力。
+  const implicit = port.implicit === true
+  return (
+    <div className={`relative flex items-center ${implicit ? 'h-4 opacity-60' : 'h-5'} ${side === 'in' ? 'pl-3' : 'justify-end pr-3'}`}>
+      <span className={`truncate leading-none ${implicit ? 'text-[9px]' : 'text-[10px]'} ${customFg ? 'opacity-80' : 'text-muted'}`} title={`${port.label} (${port.type})`}>
+        {port.label}
+        {port.required && side === 'in' ? <span className="text-critical">*</span> : null}
+      </span>
+      <Handle
+        id={port.key}
+        type={side === 'in' ? 'target' : 'source'}
+        position={side === 'in' ? Position.Left : Position.Right}
+        className={`${implicit ? '!size-2' : '!size-2.5'} !border-2 ${isFlow ? '!rounded-none !rotate-45' : '!rounded-full'}`}
+        style={{ background: color, borderColor: 'var(--surface)' }}
+        title={`${port.key}: ${port.type}`}
+      />
+    </div>
+  )
+}
+
+function ToolNodeInner({ data, selected }: NodeProps) {
+  const { t } = useTranslation()
+  const node = data as ToolNodeData
+  const def = node.definition
+  const Icon = iconFor(def?.icon)
+  const report = node.report
+  const customBg = node.color && contrastText(node.color) ? node.color : ''
+  const fg = customBg ? contrastText(customBg) : ''
+  const status = report?.status
+
+  const border = selected
+    ? 'border-brand ring-2 ring-brand/35 shadow-lg shadow-brand/10'
+    : status === 'error'
+      ? 'border-critical ring-2 ring-critical/30'
+      : node.problem
+        ? 'border-critical'
+        : customBg
+          ? 'border-transparent'
+          : 'border-line'
+  const dot = status === 'ok' ? 'bg-ok' : status === 'ng' ? 'bg-warning' : status === 'error' ? 'bg-critical' : status === 'skipped' ? 'bg-line-strong' : ''
+
+  const inputs = def?.inputs ?? []
+  // 隱含埠排最後
+  const outputs = [...(def?.outputs ?? [])].sort((a, b) => Number(a.implicit === true) - Number(b.implicit === true))
+  const rows = Math.max(inputs.length, outputs.length)
+
+  return (
+    <div
+      className={`relative min-w-[200px] max-w-[260px] rounded-lg border-2 shadow-sm transition
+        ${customBg ? '' : 'bg-surface'} ${border}
+        ${!node.enabled ? 'border-dashed opacity-55' : ''}
+        ${status === 'skipped' ? 'opacity-60' : ''}
+        ${node.running ? 'vs-node-loading' : ''}`}
+      style={customBg ? { background: customBg, color: fg } : undefined}
+    >
+      {/* 控制輸入：左上角菱形。每個可執行節點都有，flow 分支只能接這裡。 */}
+      <Handle
+        id={FLOW_HANDLE}
+        type="target"
+        position={Position.Left}
+        className="!left-0 !top-3 !size-2.5 !-translate-x-1/2 !rotate-45 !rounded-none !border-2"
+        style={{ background: 'var(--port-flow)', borderColor: 'var(--surface)' }}
+        title={t('editor.flowHandle')}
+      />
+      <div className="flex items-start gap-2 px-3 pt-2">
+        <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md ${customBg ? '' : 'bg-brand-soft text-brand'}`} style={customBg ? { background: 'rgb(255 255 255 / 0.18)', color: fg } : undefined}>
+          <Icon size={14} aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium leading-tight">{node.label || def?.label || t('editor.unknownTool')}</p>
+          <p className={`truncate text-[10px] ${customBg ? 'opacity-75' : 'text-muted'}`}>
+            {def?.label ?? '?'}
+            {def?.heavy ? ` · ${t('editor.heavy')}` : ''}
+          </p>
+        </div>
+        {dot ? <span className={`mt-1 size-2.5 shrink-0 rounded-full ${dot}`} title={status} /> : null}
+        {!node.enabled ? <icons.PowerOff size={12} className="mt-1 shrink-0 opacity-70" aria-hidden /> : null}
+      </div>
+      {node.problem ? <p className="px-3 pt-1 text-[10px] text-critical">{node.problem}</p> : null}
+      {report?.message && status !== 'ok' ? (
+        <p className={`truncate px-3 pt-1 text-[10px] ${status === 'error' ? 'text-critical font-medium' : 'text-warning'}`} title={report.message} data-testid={status === 'error' ? 'node-error' : undefined}>
+          {report.message.split('\n')[0]}
+        </p>
+      ) : null}
+
+      {rows > 0 ? (
+        <div className="mt-1.5 grid grid-cols-2 pb-1.5">
+          <div>
+            {inputs.map((port) => (
+              <PortRow key={port.key} port={port} side="in" customFg={fg} />
+            ))}
+          </div>
+          <div>
+            {outputs.map((port) => (
+              <PortRow key={port.key} port={port} side="out" customFg={fg} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="pb-2" />
+      )}
+      {report ? (
+        <span className={`absolute bottom-0.5 right-2 text-[9px] tabular-nums ${customBg ? 'opacity-70' : 'text-subtle'}`}>
+          {Math.round(report.duration_ms)} ms
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+export const ToolNode = memo(ToolNodeInner)
+
+function NoteNodeInner({ data, selected }: NodeProps) {
+  const node = data as ToolNodeData
+  const customBg = node.color && contrastText(node.color) ? node.color : ''
+  const fg = customBg ? contrastText(customBg) : ''
+  return (
+    <div
+      className={`h-full min-h-[60px] w-full min-w-[160px] rounded-md border p-3 shadow-sm ${customBg ? '' : 'bg-warning-soft'} ${selected ? 'border-brand ring-2 ring-brand/35' : customBg ? 'border-transparent' : 'border-warning/40'}`}
+      style={customBg ? { background: customBg, color: fg } : undefined}
+    >
+      <NodeResizer isVisible={selected} minWidth={160} minHeight={60} maxWidth={640} maxHeight={480} />
+      <div className="flex h-full items-start gap-2">
+        <icons.StickyNote size={14} aria-hidden className={`mt-0.5 shrink-0 ${customBg ? 'opacity-80' : 'text-warning'}`} />
+        <div className="min-w-0 flex-1 overflow-hidden">
+          {node.label ? <p className="text-xs font-medium">{node.label}</p> : null}
+          <p className="whitespace-pre-wrap text-[11px] leading-snug opacity-85">{node.description || String(node.params?.text ?? '')}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export const NoteNode = memo(NoteNodeInner)

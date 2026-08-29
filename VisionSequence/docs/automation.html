@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 自動化整合</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
+  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  nav ul { columns: 2; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+
+<h1>自動化整合（PLC / 上位機 / MES）</h1>
+<p>三種接法，回傳格式相同；金鑰（<code>VISION_API_KEY</code>）有設定時 HTTP 帶 <code>X-API-Key</code> 或 <code>?api_key=</code>。</p>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#http">1. HTTP 同步執行</a></li>
+<li><a href="#tcp">2. TCP 一行指令</a></li>
+<li><a href="#sse">3. SSE 即時事件</a></li>
+<li><a href="#upload">4. 送圖來源</a></li>
+<li><a href="#perf">效能建議</a></li>
+<li><a href="#lock">5. 身分與引擎鎖定</a></li>
+<li><a href="#push">6. 主動輸出到 PLC</a></li>
+</ul></nav>
+
+<h2 id="http">1. HTTP 同步執行（最常用）</h2>
+<pre>POST /api/vision/flows/{flow_id}/run</pre>
+<ul>
+<li>JSON：<code>{"context": {"lot": "A123"}, "wait": true, "timeout_s": 5, "include_images": false}</code></li>
+<li>或 multipart：<code>image</code>（檔案，任何 OpenCV 能讀的格式）、<code>context</code>（JSON 字串）。附影像時 <code>image_source</code> 節點（mode=auto）直接用送來的影像，不抓相機。</li>
+<li><code>?wait=false</code> → 202 立即回，結果從 SSE 或 <code>GET /flows/{id}/recent</code> 取。</li>
+</ul>
+<p>回應（200）：</p>
+<pre>{"id": "…", "status": "ok|ng|failed", "duration_ms": 12.3,
+ "outputs": {"judge": "OK", "hole_count": 5, "width_mm": 12.34},
+ "nodes": {"blob-1": {"status": "ok", "duration_ms": 0.9, "message": "5 個 blob"}}, "error": ""}</pre>
+<ul>
+<li><code>outputs</code> 由流程中的 <strong>具名輸出（output）</strong> 與 <strong>OK/NG 判定（judge）</strong> 工具決定，鍵名自己取。</li>
+<li><code>status</code>：<code>ok</code>／<code>ng</code>（判定不良）／<code>failed</code>（工具錯誤、逾時、來源沒影像）。</li>
+<li>429 = 該流程排隊已滿（<code>VISION_MAX_QUEUE_PER_FLOW</code>）；409 = 流程停用。</li>
+</ul>
+<p>curl 範例：</p>
+<pre>curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -H "Content-Type: application/json" -d "{}"
+curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F context='{"lot":"A1"}'</pre>
+
+<h2 id="tcp">2. TCP 一行指令（PLC 最容易接）</h2>
+<p>連 <code>VISION_TCP_PORT</code>（預設 9000），每行一個指令、每行一個 JSON 回應（<code>\n</code> 結尾）：</p>
+<table>
+<tr><th>指令</th><th>回應</th></tr>
+<tr><td><code>RUN 1</code> / <code>RUN 零件孔數檢測 lot=A1</code></td><td><code>{"ok":true,"status":"ok","judge":"OK","outputs":{…},"duration_ms":12.3,"run_id":"…"}</code></td></tr>
+<tr><td><code>TRIGGER 1</code></td><td><code>{"ok":true,"queued":true}</code>（不等結果）</td></tr>
+<tr><td><code>STATUS</code> / <code>STATUS 1</code></td><td>容量／該流程統計</td></tr>
+<tr><td><code>START 1</code> / <code>STOP 1</code></td><td>連續模式</td></tr>
+<tr><td><code>LIST</code></td><td>所有流程</td></tr>
+<tr><td><code>PING</code></td><td><code>{"ok":true,"pong":true}</code></td></tr>
+</table>
+<p><code>key=value</code> 會放進 <code>context</code>，流程內公式或輸出可引用（未來擴充）。連線可長期保持，NODELAY 已開。</p>
+
+<h2 id="sse">3. SSE 即時事件（HMI / 看板）</h2>
+<pre>GET /api/vision/flows/{id}/stream?since=&lt;seq&gt;     單一流程
+GET /api/vision/events?since=&lt;seq&gt;                全部</pre>
+<p>事件：<code>run_queued</code>、<code>run_started</code>、<code>run_finished</code>（<code>run</code> = 完整結果、<code>stats</code> = 累計統計）、<code>continuous</code>、<code>stats</code>、<code>ping</code>（每 15 秒心跳；前端 40 秒沒收到任何訊息就當斷線重連，因為經 proxy 時後端死掉客戶端連線不一定會被關）、<code>bye</code>（55 秒後重連，帶回 <code>seq</code> 不漏事件）。<code>?outputs=0</code> 只送節點狀態不送輸出（省頻寬）。</p>
+
+<h2 id="upload">4. 相機不在本機時：送圖來源</h2>
+<p>建立 kind=<code>upload</code> 的影像來源，<code>POST /api/vision/sources/{id}/push</code>（multipart <code>image</code>）後，流程裡選它即可；<code>config.max_age_s</code> 可讓過期影像不被使用。</p>
+
+<h2 id="perf">效能建議</h2>
+<ul>
+<li>大圖先 <code>resize</code>／<code>crop</code> 再做重工具；<code>VISION_CV_THREADS=1~2</code> 讓多流程並行不互搶。</li>
+<li><code>VISION_PERSIST_RUNS=0</code> 關掉資料庫記錄只留記憶體統計（每分鐘上千次時）。</li>
+<li>流程間彼此獨立，同一流程同時只有一個 run（相機與狀態一致），不同流程並行到 <code>VISION_MAX_WORKERS</code>。</li>
+</ul>
+
+<h2 id="lock">5. 身分與引擎鎖定（硬體留給產線）</h2>
+<ul>
+<li>整合方以 <code>X-API-Key: &lt;VISION_API_KEY&gt;</code>（或 <code>?api_key=</code>）呼叫，是「機器身分」：永遠可執行，不受鎖定影響；TCP 介面同樣視為整合方。</li>
+<li>瀏覽器使用者以帳號登入（<code>POST /api/auth/login</code> → Bearer token）；每個使用者只看得到自己的流程與共用流程。</li>
+</ul>
+<p>鎖定流程：</p>
+<pre>POST   /api/vision/lock   X-API-Key: ...   {"reason": "量產中", "ttl_s": 28800}   → 鎖定（ttl 選填，逾時自動釋放）
+GET    /api/vision/lock                                                       → {"locked", "holder", "reason", "locked_at", "expires_at"}
+DELETE /api/vision/lock   X-API-Key: ...                                      → 解鎖</pre>
+<ul>
+<li>鎖定期間：使用者（含管理員）呼叫 run／preview／continuous 一律回 <strong>423</strong> <code>{"error": {"code": "engine_locked", ...}}</code>，但仍可登入、編輯、儲存流程；鎖定當下所有連續執行會被停止。</li>
+<li>管理員也能在設定頁鎖定／解鎖（例如維護時）；持有者自己可執行。</li>
+<li>建議整合方在開機／換線程式一開始就 <code>POST lock</code>（帶 ttl），停機時 <code>DELETE lock</code>。</li>
+</ul>
+
+<h2 id="push">6. 主動輸出到 PLC（引擎寫給你）</h2>
+<p>上面三種接法都是呼叫方來拿結果。如果 PLC 只想等一個 DO 或暫存器變化，改用<strong>主動輸出</strong>：設定頁建一條連線（<code>modbus_tcp</code>／<code>tcp_client</code>／<code>dio_sim</code>），流程末端放「寫入 PLC」（<code>write_plc</code>）工具填對映表，例如 <code>judge → coil:0</code>、<code>width_px → holding:100:float32</code>。寫入失敗預設只記警告、run 照常（產線不停線）。細節、位址格式、連線 API 與外掛見 <a href="plc.html">主動輸出到 PLC</a>。</p>
+</body>
+</html>

@@ -1,0 +1,1314 @@
+{
+  "results": {
+    "A01": {
+      "ok": true,
+      "note": ""
+    },
+    "A07": {
+      "ok": true,
+      "note": ""
+    },
+    "A02": {
+      "ok": true,
+      "note": ""
+    },
+    "A03": {
+      "ok": true,
+      "note": ""
+    },
+    "A04": {
+      "ok": true,
+      "note": ""
+    },
+    "A06": {
+      "ok": true,
+      "note": ""
+    },
+    "A05": {
+      "ok": true,
+      "note": ""
+    },
+    "A08": {
+      "ok": true,
+      "note": ""
+    },
+    "A09": {
+      "ok": true,
+      "note": ""
+    },
+    "B01": {
+      "ok": true,
+      "note": ""
+    },
+    "B02": {
+      "ok": true,
+      "note": ""
+    },
+    "B03": {
+      "ok": true,
+      "note": ""
+    },
+    "B04": {
+      "ok": true,
+      "note": ""
+    },
+    "B06": {
+      "ok": true,
+      "note": ""
+    },
+    "B05": {
+      "ok": true,
+      "note": ""
+    },
+    "B08": {
+      "ok": true,
+      "note": ""
+    },
+    "U05": {
+      "ok": true,
+      "note": ""
+    },
+    "R02": {
+      "ok": true,
+      "note": ""
+    },
+    "R03": {
+      "ok": true,
+      "note": ""
+    },
+    "R04": {
+      "ok": true,
+      "note": ""
+    },
+    "R05": {
+      "ok": true,
+      "note": ""
+    },
+    "R06": {
+      "ok": true,
+      "note": ""
+    },
+    "R07": {
+      "ok": true,
+      "note": ""
+    },
+    "R08": {
+      "ok": true,
+      "note": ""
+    },
+    "R01": {
+      "ok": true,
+      "note": ""
+    },
+    "B07": {
+      "ok": true,
+      "note": ""
+    },
+    "C01": {
+      "ok": true,
+      "note": ""
+    },
+    "C02": {
+      "ok": true,
+      "note": ""
+    },
+    "C03": {
+      "ok": true,
+      "note": ""
+    },
+    "C06": {
+      "ok": true,
+      "note": ""
+    },
+    "C07": {
+      "ok": true,
+      "note": ""
+    },
+    "C10": {
+      "ok": true,
+      "note": ""
+    },
+    "C04": {
+      "ok": true,
+      "note": ""
+    },
+    "C05": {
+      "ok": true,
+      "note": ""
+    },
+    "C08": {
+      "ok": true,
+      "note": ""
+    },
+    "C09": {
+      "ok": true,
+      "note": ""
+    },
+    "C11": {
+      "ok": true,
+      "note": ""
+    },
+    "D03": {
+      "ok": true,
+      "note": ""
+    },
+    "D10": {
+      "ok": true,
+      "note": ""
+    },
+    "D01": {
+      "ok": true,
+      "note": ""
+    },
+    "D02": {
+      "ok": true,
+      "note": ""
+    },
+    "D06": {
+      "ok": true,
+      "note": ""
+    },
+    "D08": {
+      "ok": true,
+      "note": ""
+    },
+    "D07": {
+      "ok": true,
+      "note": ""
+    },
+    "D09": {
+      "ok": true,
+      "note": ""
+    },
+    "D05": {
+      "ok": true,
+      "note": ""
+    },
+    "D04": {
+      "ok": true,
+      "note": ""
+    },
+    "H05": {
+      "ok": true,
+      "note": ""
+    },
+    "D12": {
+      "ok": true,
+      "note": ""
+    },
+    "D13": {
+      "ok": true,
+      "note": ""
+    },
+    "D11": {
+      "ok": true,
+      "note": ""
+    },
+    "E01": {
+      "ok": true,
+      "note": ""
+    },
+    "E02": {
+      "ok": true,
+      "note": ""
+    },
+    "E03": {
+      "ok": true,
+      "note": ""
+    },
+    "E04": {
+      "ok": true,
+      "note": ""
+    },
+    "E05": {
+      "ok": true,
+      "note": ""
+    },
+    "E06": {
+      "ok": true,
+      "note": ""
+    },
+    "E10": {
+      "ok": true,
+      "note": ""
+    },
+    "P01": {
+      "ok": true,
+      "note": ""
+    },
+    "P02": {
+      "ok": true,
+      "note": ""
+    },
+    "P03": {
+      "ok": true,
+      "note": ""
+    },
+    "P04": {
+      "ok": true,
+      "note": ""
+    },
+    "P05": {
+      "ok": true,
+      "note": ""
+    },
+    "P06": {
+      "ok": true,
+      "note": ""
+    },
+    "P07": {
+      "ok": true,
+      "note": ""
+    },
+    "P08": {
+      "ok": true,
+      "note": ""
+    },
+    "P09": {
+      "ok": true,
+      "note": ""
+    },
+    "P10": {
+      "ok": true,
+      "note": ""
+    },
+    "P11": {
+      "ok": true,
+      "note": ""
+    },
+    "P12": {
+      "ok": true,
+      "note": ""
+    },
+    "P13": {
+      "ok": true,
+      "note": ""
+    },
+    "Q01": {
+      "ok": true,
+      "note": ""
+    },
+    "Q02": {
+      "ok": true,
+      "note": ""
+    },
+    "Q03": {
+      "ok": true,
+      "note": ""
+    },
+    "Q04": {
+      "ok": true,
+      "note": ""
+    },
+    "Q05": {
+      "ok": true,
+      "note": ""
+    },
+    "Q06": {
+      "ok": true,
+      "note": ""
+    },
+    "T02": {
+      "ok": true,
+      "note": ""
+    },
+    "T03": {
+      "ok": true,
+      "note": ""
+    },
+    "T04": {
+      "ok": true,
+      "note": ""
+    },
+    "T05": {
+      "ok": true,
+      "note": ""
+    },
+    "T06": {
+      "ok": true,
+      "note": ""
+    },
+    "T08": {
+      "ok": true,
+      "note": ""
+    },
+    "T01": {
+      "ok": true,
+      "note": ""
+    },
+    "T07": {
+      "ok": true,
+      "note": ""
+    },
+    "U01": {
+      "ok": true,
+      "note": ""
+    },
+    "U02": {
+      "ok": true,
+      "note": ""
+    },
+    "U06": {
+      "ok": true,
+      "note": ""
+    },
+    "U07": {
+      "ok": true,
+      "note": ""
+    },
+    "O01": {
+      "ok": true,
+      "note": ""
+    },
+    "O02": {
+      "ok": true,
+      "note": ""
+    },
+    "O03": {
+      "ok": true,
+      "note": ""
+    },
+    "O04": {
+      "ok": true,
+      "note": ""
+    },
+    "O05": {
+      "ok": true,
+      "note": ""
+    },
+    "O06": {
+      "ok": true,
+      "note": ""
+    },
+    "O07": {
+      "ok": true,
+      "note": ""
+    },
+    "F14": {
+      "ok": true,
+      "note": ""
+    },
+    "F01": {
+      "ok": true,
+      "note": ""
+    },
+    "F02": {
+      "ok": true,
+      "note": ""
+    },
+    "F03": {
+      "ok": true,
+      "note": ""
+    },
+    "F18": {
+      "ok": true,
+      "note": ""
+    },
+    "F17": {
+      "ok": true,
+      "note": ""
+    },
+    "G01": {
+      "ok": true,
+      "note": ""
+    },
+    "G02": {
+      "ok": true,
+      "note": ""
+    },
+    "G03": {
+      "ok": true,
+      "note": ""
+    },
+    "G05": {
+      "ok": true,
+      "note": ""
+    },
+    "G07": {
+      "ok": true,
+      "note": ""
+    },
+    "G04": {
+      "ok": null,
+      "note": "已移除：工具箱「最近使用」（vs.recentTools）"
+    },
+    "G08": {
+      "ok": true,
+      "note": ""
+    },
+    "I14": {
+      "ok": true,
+      "note": ""
+    },
+    "G06": {
+      "ok": true,
+      "note": ""
+    },
+    "H01": {
+      "ok": true,
+      "note": ""
+    },
+    "H03": {
+      "ok": true,
+      "note": ""
+    },
+    "H04": {
+      "ok": true,
+      "note": ""
+    },
+    "I25": {
+      "ok": true,
+      "note": ""
+    },
+    "F05": {
+      "ok": true,
+      "note": ""
+    },
+    "F06": {
+      "ok": true,
+      "note": ""
+    },
+    "H02": {
+      "ok": true,
+      "note": ""
+    },
+    "F07": {
+      "ok": true,
+      "note": ""
+    },
+    "K01": {
+      "ok": true,
+      "note": ""
+    },
+    "K02": {
+      "ok": true,
+      "note": ""
+    },
+    "I22": {
+      "ok": true,
+      "note": ""
+    },
+    "K04": {
+      "ok": true,
+      "note": ""
+    },
+    "I21": {
+      "ok": true,
+      "note": ""
+    },
+    "I23": {
+      "ok": true,
+      "note": ""
+    },
+    "F15": {
+      "ok": true,
+      "note": ""
+    },
+    "F16": {
+      "ok": true,
+      "note": ""
+    },
+    "F24": {
+      "ok": true,
+      "note": ""
+    },
+    "F09": {
+      "ok": null,
+      "note": "已移除：「執行一次」按鈕（整合方走 API／整合頁）"
+    },
+    "F10": {
+      "ok": null,
+      "note": "已移除：「上傳影像執行」按鈕（只保留「上傳暫存影像」）"
+    },
+    "F25": {
+      "ok": true,
+      "note": ""
+    },
+    "F11": {
+      "ok": true,
+      "note": ""
+    },
+    "L01": {
+      "ok": true,
+      "note": ""
+    },
+    "L03": {
+      "ok": true,
+      "note": ""
+    },
+    "L04": {
+      "ok": true,
+      "note": ""
+    },
+    "L05": {
+      "ok": true,
+      "note": ""
+    },
+    "L06": {
+      "ok": true,
+      "note": ""
+    },
+    "I18": {
+      "ok": true,
+      "note": ""
+    },
+    "I19": {
+      "ok": true,
+      "note": ""
+    },
+    "L02": {
+      "ok": true,
+      "note": ""
+    },
+    "F12": {
+      "ok": true,
+      "note": ""
+    },
+    "J01": {
+      "ok": true,
+      "note": ""
+    },
+    "E08": {
+      "ok": true,
+      "note": ""
+    },
+    "E07": {
+      "ok": true,
+      "note": ""
+    },
+    "E09": {
+      "ok": true,
+      "note": ""
+    },
+    "F23": {
+      "ok": true,
+      "note": ""
+    },
+    "F21": {
+      "ok": true,
+      "note": ""
+    },
+    "J02": {
+      "ok": true,
+      "note": ""
+    },
+    "J06": {
+      "ok": true,
+      "note": ""
+    },
+    "J03": {
+      "ok": true,
+      "note": ""
+    },
+    "J04": {
+      "ok": true,
+      "note": ""
+    },
+    "J05": {
+      "ok": true,
+      "note": ""
+    },
+    "J07": {
+      "ok": true,
+      "note": ""
+    },
+    "J16": {
+      "ok": true,
+      "note": ""
+    },
+    "J09": {
+      "ok": true,
+      "note": ""
+    },
+    "J11": {
+      "ok": true,
+      "note": ""
+    },
+    "J12": {
+      "ok": true,
+      "note": ""
+    },
+    "J13": {
+      "ok": true,
+      "note": ""
+    },
+    "J10": {
+      "ok": true,
+      "note": ""
+    },
+    "J14": {
+      "ok": true,
+      "note": ""
+    },
+    "J15": {
+      "ok": true,
+      "note": ""
+    },
+    "N01": {
+      "ok": true,
+      "note": ""
+    },
+    "N03": {
+      "ok": true,
+      "note": ""
+    },
+    "N06": {
+      "ok": true,
+      "note": ""
+    },
+    "N07": {
+      "ok": true,
+      "note": ""
+    },
+    "N15": {
+      "ok": true,
+      "note": ""
+    },
+    "N17": {
+      "ok": true,
+      "note": ""
+    },
+    "N19": {
+      "ok": true,
+      "note": ""
+    },
+    "N20": {
+      "ok": true,
+      "note": ""
+    },
+    "N18": {
+      "ok": true,
+      "note": ""
+    },
+    "N16": {
+      "ok": true,
+      "note": ""
+    },
+    "N04": {
+      "ok": true,
+      "note": ""
+    },
+    "N05": {
+      "ok": true,
+      "note": ""
+    },
+    "N02": {
+      "ok": true,
+      "note": ""
+    },
+    "N13": {
+      "ok": true,
+      "note": ""
+    },
+    "N08": {
+      "ok": true,
+      "note": ""
+    },
+    "N21": {
+      "ok": true,
+      "note": ""
+    },
+    "N10": {
+      "ok": true,
+      "note": ""
+    },
+    "N12": {
+      "ok": true,
+      "note": ""
+    },
+    "N14": {
+      "ok": true,
+      "note": ""
+    },
+    "N09": {
+      "ok": true,
+      "note": ""
+    },
+    "N22": {
+      "ok": true,
+      "note": ""
+    },
+    "N23": {
+      "ok": true,
+      "note": ""
+    },
+    "F08": {
+      "ok": true,
+      "note": ""
+    },
+    "M11": {
+      "ok": true,
+      "note": ""
+    },
+    "M01": {
+      "ok": true,
+      "note": ""
+    },
+    "M02": {
+      "ok": true,
+      "note": ""
+    },
+    "M03": {
+      "ok": true,
+      "note": ""
+    },
+    "M06": {
+      "ok": true,
+      "note": ""
+    },
+    "M07": {
+      "ok": true,
+      "note": ""
+    },
+    "M08": {
+      "ok": true,
+      "note": ""
+    },
+    "M10": {
+      "ok": true,
+      "note": ""
+    },
+    "M05": {
+      "ok": true,
+      "note": ""
+    },
+    "M04": {
+      "ok": true,
+      "note": ""
+    },
+    "M09": {
+      "ok": true,
+      "note": ""
+    },
+    "S01": {
+      "ok": true,
+      "note": ""
+    },
+    "S02": {
+      "ok": true,
+      "note": ""
+    },
+    "S03": {
+      "ok": true,
+      "note": ""
+    },
+    "S04": {
+      "ok": true,
+      "note": ""
+    },
+    "S05": {
+      "ok": true,
+      "note": ""
+    },
+    "S06": {
+      "ok": true,
+      "note": ""
+    },
+    "S07": {
+      "ok": true,
+      "note": ""
+    },
+    "S08": {
+      "ok": true,
+      "note": ""
+    },
+    "V05": {
+      "ok": true,
+      "note": ""
+    },
+    "F19": {
+      "ok": true,
+      "note": ""
+    },
+    "V06": {
+      "ok": true,
+      "note": ""
+    },
+    "U04": {
+      "ok": true,
+      "note": ""
+    },
+    "V01": {
+      "ok": true,
+      "note": ""
+    },
+    "F20": {
+      "ok": true,
+      "note": ""
+    },
+    "N24": {
+      "ok": true,
+      "note": ""
+    },
+    "V07": {
+      "ok": true,
+      "note": ""
+    },
+    "V02": {
+      "ok": true,
+      "note": ""
+    },
+    "V03": {
+      "ok": true,
+      "note": ""
+    },
+    "V04": {
+      "ok": true,
+      "note": ""
+    },
+    "X01": {
+      "ok": true,
+      "note": ""
+    },
+    "X02": {
+      "ok": true,
+      "note": ""
+    },
+    "X03": {
+      "ok": true,
+      "note": ""
+    },
+    "X04": {
+      "ok": true,
+      "note": ""
+    },
+    "X05": {
+      "ok": true,
+      "note": ""
+    },
+    "X06": {
+      "ok": true,
+      "note": ""
+    },
+    "X07": {
+      "ok": true,
+      "note": ""
+    },
+    "X08": {
+      "ok": true,
+      "note": ""
+    },
+    "X09": {
+      "ok": true,
+      "note": ""
+    },
+    "X10": {
+      "ok": true,
+      "note": ""
+    },
+    "X11": {
+      "ok": true,
+      "note": ""
+    },
+    "X12": {
+      "ok": true,
+      "note": ""
+    },
+    "X13": {
+      "ok": true,
+      "note": ""
+    },
+    "X14": {
+      "ok": true,
+      "note": ""
+    },
+    "X16": {
+      "ok": true,
+      "note": ""
+    },
+    "X15": {
+      "ok": true,
+      "note": ""
+    },
+    "X17": {
+      "ok": true,
+      "note": ""
+    },
+    "Y01": {
+      "ok": true,
+      "note": ""
+    },
+    "Y02": {
+      "ok": true,
+      "note": ""
+    },
+    "Y03": {
+      "ok": true,
+      "note": ""
+    },
+    "Y04": {
+      "ok": true,
+      "note": ""
+    },
+    "Y05": {
+      "ok": true,
+      "note": ""
+    },
+    "Y06": {
+      "ok": true,
+      "note": ""
+    },
+    "Y07": {
+      "ok": true,
+      "note": ""
+    },
+    "Y09": {
+      "ok": true,
+      "note": ""
+    },
+    "Y08": {
+      "ok": true,
+      "note": ""
+    },
+    "Y10": {
+      "ok": true,
+      "note": ""
+    },
+    "Y11": {
+      "ok": true,
+      "note": ""
+    },
+    "Y12": {
+      "ok": true,
+      "note": ""
+    },
+    "Y13": {
+      "ok": true,
+      "note": ""
+    },
+    "Z01": {
+      "ok": true,
+      "note": ""
+    },
+    "Z02": {
+      "ok": true,
+      "note": ""
+    },
+    "Z03": {
+      "ok": true,
+      "note": ""
+    },
+    "Z04": {
+      "ok": true,
+      "note": ""
+    },
+    "Z05": {
+      "ok": true,
+      "note": ""
+    },
+    "Z06": {
+      "ok": true,
+      "note": ""
+    },
+    "Z07": {
+      "ok": true,
+      "note": ""
+    },
+    "Z08": {
+      "ok": true,
+      "note": ""
+    },
+    "Z10": {
+      "ok": true,
+      "note": ""
+    },
+    "Z09": {
+      "ok": true,
+      "note": ""
+    },
+    "Z11": {
+      "ok": true,
+      "note": ""
+    },
+    "Z12": {
+      "ok": true,
+      "note": ""
+    },
+    "IO01": {
+      "ok": true,
+      "note": ""
+    },
+    "IO02": {
+      "ok": true,
+      "note": ""
+    },
+    "IO03": {
+      "ok": true,
+      "note": ""
+    },
+    "IO04": {
+      "ok": true,
+      "note": ""
+    },
+    "IO06": {
+      "ok": true,
+      "note": ""
+    },
+    "IO05": {
+      "ok": true,
+      "note": ""
+    },
+    "IO08": {
+      "ok": true,
+      "note": ""
+    },
+    "IO10": {
+      "ok": true,
+      "note": ""
+    },
+    "IO09": {
+      "ok": true,
+      "note": ""
+    },
+    "IO11": {
+      "ok": true,
+      "note": ""
+    },
+    "IO12": {
+      "ok": true,
+      "note": ""
+    },
+    "ST01": {
+      "ok": true,
+      "note": ""
+    },
+    "ST02": {
+      "ok": true,
+      "note": ""
+    },
+    "ST03": {
+      "ok": true,
+      "note": ""
+    },
+    "ST04": {
+      "ok": true,
+      "note": ""
+    },
+    "ST05": {
+      "ok": true,
+      "note": ""
+    },
+    "ST06": {
+      "ok": true,
+      "note": ""
+    },
+    "ST07": {
+      "ok": true,
+      "note": ""
+    },
+    "ST08": {
+      "ok": true,
+      "note": ""
+    },
+    "ST09": {
+      "ok": true,
+      "note": ""
+    },
+    "ST10": {
+      "ok": true,
+      "note": ""
+    },
+    "ST11": {
+      "ok": true,
+      "note": ""
+    },
+    "ST12": {
+      "ok": true,
+      "note": ""
+    },
+    "ST13": {
+      "ok": true,
+      "note": ""
+    },
+    "RC01": {
+      "ok": true,
+      "note": ""
+    },
+    "RC02": {
+      "ok": true,
+      "note": ""
+    },
+    "RC03": {
+      "ok": true,
+      "note": ""
+    },
+    "RC04": {
+      "ok": true,
+      "note": ""
+    },
+    "RC05": {
+      "ok": true,
+      "note": ""
+    },
+    "RC06": {
+      "ok": true,
+      "note": ""
+    },
+    "RC07": {
+      "ok": true,
+      "note": ""
+    },
+    "RC08": {
+      "ok": true,
+      "note": ""
+    },
+    "RC09": {
+      "ok": true,
+      "note": ""
+    },
+    "RC10": {
+      "ok": true,
+      "note": ""
+    },
+    "RC11": {
+      "ok": true,
+      "note": ""
+    },
+    "RC13": {
+      "ok": true,
+      "note": ""
+    },
+    "RC12": {
+      "ok": true,
+      "note": ""
+    },
+    "U03": {
+      "ok": true,
+      "note": ""
+    },
+    "F22": {
+      "ok": true,
+      "note": ""
+    },
+    "W01": {
+      "ok": true,
+      "note": ""
+    },
+    "W02": {
+      "ok": true,
+      "note": ""
+    },
+    "W03": {
+      "ok": true,
+      "note": ""
+    },
+    "W04": {
+      "ok": true,
+      "note": ""
+    },
+    "W06": {
+      "ok": true,
+      "note": ""
+    },
+    "F04": {
+      "ok": true,
+      "note": ""
+    },
+    "I20": {
+      "ok": true,
+      "note": ""
+    },
+    "K03": {
+      "ok": true,
+      "note": ""
+    },
+    "J08": {
+      "ok": true,
+      "note": ""
+    },
+    "N11": {
+      "ok": true,
+      "note": ""
+    },
+    "F13": {
+      "ok": true,
+      "note": ""
+    },
+    "I01": {
+      "ok": true,
+      "note": ""
+    },
+    "I02": {
+      "ok": true,
+      "note": ""
+    },
+    "I05": {
+      "ok": true,
+      "note": ""
+    },
+    "I06": {
+      "ok": true,
+      "note": ""
+    },
+    "I15": {
+      "ok": true,
+      "note": ""
+    },
+    "I03": {
+      "ok": true,
+      "note": ""
+    },
+    "I04": {
+      "ok": true,
+      "note": ""
+    },
+    "I07": {
+      "ok": null,
+      "note": "註解節點沒有輸入把手，UI 上拉不到線；規則由 graphValidation.checkConnection 的 noteTarget 涵蓋"
+    },
+    "I08": {
+      "ok": true,
+      "note": ""
+    },
+    "K05": {
+      "ok": true,
+      "note": ""
+    },
+    "I10": {
+      "ok": true,
+      "note": ""
+    },
+    "I13": {
+      "ok": true,
+      "note": ""
+    },
+    "I12": {
+      "ok": true,
+      "note": ""
+    },
+    "I24": {
+      "ok": true,
+      "note": ""
+    },
+    "I09": {
+      "ok": true,
+      "note": ""
+    },
+    "I16": {
+      "ok": true,
+      "note": ""
+    },
+    "I17": {
+      "ok": true,
+      "note": ""
+    },
+    "IO07": {
+      "ok": true,
+      "note": ""
+    },
+    "I11": {
+      "ok": true,
+      "note": ""
+    },
+    "W05": {
+      "ok": true,
+      "note": ""
+    },
+    "I26": {
+      "ok": true,
+      "note": ""
+    }
+  },
+  "issues": [],
+  "shots": 475
+}

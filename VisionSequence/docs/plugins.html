@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 擴充外掛</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
+  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  nav ul { columns: 2; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+
+<h1>擴充：自訂工具與影像來源</h1>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#tools">自訂工具</a></li>
+<li><a href="#rules">規則</a></li>
+<li><a href="#sources">自訂影像來源</a></li>
+</ul></nav>
+
+<h2 id="tools">自訂工具</h2>
+<ol>
+<li>任意 Python 模組（例如 <code>plugins/my_tools.py</code>，專案根目錄下 <code>plugins/__init__.py</code> 建一個空檔）：</li>
+</ol>
+<pre>from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out, register
+from apps.vision.tools.roi import crop, region_overlay
+
+class DarkRatioTool(Tool):
+    key = "dark_ratio"                 # 全域唯一
+    label = "暗區比例"
+    description = "ROI 內灰階低於門檻的像素比例。"
+    category = "detect"                # source|preprocess|locate|measure|detect|dl|logic|output
+    icon = "Moon"                      # lucide-react 圖示名
+    params = [
+        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle"]),
+        Param("threshold", "門檻", kind="number", default=80, minimum=0, maximum=255),
+        Param("max_ratio", "允許比例", kind="number", default=0.1, minimum=0, maximum=1, step=0.01),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [Port("ratio", "比例", "number"), flow_out("pass", "通過", "ok"), flow_out("fail", "不良", "critical")]
+
+    def execute(self, ctx: ToolContext) -&gt; Result:
+        image = ctx.require_image()
+        if image.ndim == 3:
+            import cv2; image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        region = ctx.roi()
+        c = crop(image, region, upright=True)
+        if c.image.size == 0:
+            raise ToolError("ROI 在影像外")
+        mask = c.mask if c.mask is not None else None
+        pixels = c.image[mask &gt; 0] if mask is not None else c.image
+        ratio = float((pixels &lt; ctx.number("threshold", 80)).mean()) if pixels.size else 0.0
+        ok = ratio &lt;= ctx.number("max_ratio", 0.1)
+        overlays = [region_overlay(region, label=f"dark {ratio*100:.1f}%")] if region else []
+        return Result(outputs={"ratio": ratio}, branch="pass" if ok else "fail",
+                      status="ok" if ok else "ng", overlays=overlays, message=f"暗區 {ratio*100:.1f}%")
+
+register(DarkRatioTool())</pre>
+<ol start="2">
+<li><code>.env</code>：<code>VISION_TOOL_PLUGINS=plugins.my_tools</code>（逗號分隔多個）。重啟後端，前端調色盤自動出現。</li>
+</ol>
+
+<h3 id="rules">規則</h3>
+<ul>
+<li><code>Param.kind</code> 只能用 <code>PARAM_KINDS</code>；<code>Port.type</code> 只能用 <code>PORT_TYPES</code>（<code>apps/vision/tools/base.py</code>）。</li>
+<li>可預期失敗 <code>raise ToolError("…")</code>（節點 error、run failed）；「沒找到」回 <code>status="ng"</code> 或走分支，不要 raise。</li>
+<li>overlays 座標一律是該節點<strong>輸入影像</strong>的全圖座標；旋轉 ROI 用 <code>crop(upright=True)</code> 後以 <code>Crop.to_full()</code> 換回。</li>
+<li>不要在工具內 sleep 或碰資料庫；需要檔案用 <code>ctx.asset_path(id)</code>；需要相機用 <code>ctx.grab(source_id)</code>。</li>
+<li>重工具（DL 推論）把 session 快取在模組層並加鎖；<code>heavy = True</code> 讓前端提示。</li>
+</ul>
+
+<h2 id="sources">自訂影像來源（例如 GigE / 廠牌 SDK）</h2>
+<pre># plugins/gige.py
+import numpy as np
+from apps.vision.sources.grabbers import Grabber
+
+class GigEGrabber(Grabber):
+    kind = "gige"
+    def __init__(self, config, **kw):
+        super().__init__(config, **kw)
+        self.cam = open_camera(config.get("serial"))   # 廠牌 SDK
+        self.cam.set_exposure(float(config.get("exposure_us", 5000)))
+    def grab(self) -&gt; np.ndarray | None:
+        frame = self.cam.snap(timeout_ms=1000)
+        if frame is None:
+            self.last_error = "timeout"; return None
+        self.frames += 1
+        return frame                      # BGR 或灰階 uint8
+    def close(self): self.cam.close()
+    def info(self): return {**super().info(), "serial": self.config.get("serial")}</pre>
+<p><code>.env</code>：<code>VISION_SOURCE_PLUGINS=gige=plugins.gige:GigEGrabber</code>。前端「影像來源」頁 kind 下拉會出現 <code>gige</code>，config 以 JSON 填。</p>
+<p>同一個來源物件會被快取重用（設定變更才重開）；<code>grab()</code> 可能被多個流程的執行緒同時呼叫，內部要自己加鎖（<code>self._lock</code>）。</p>
+</body>
+</html>

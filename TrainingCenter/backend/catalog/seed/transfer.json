@@ -1,0 +1,913 @@
+{
+  "slug": "transfer",
+  "name": "自動化搬運移載設備",
+  "summary": "滾筒／皮帶輸送線搭配頂升移載機與 AGV 對接站，把載具在站間自動轉運。",
+  "description": "載具（治具板）在主輸送線上流動，到達分岔點時由頂升移載機將載具抬起並以 90° 方向送往支線或 AGV 對接站。系統靠光電／RFID 辨識載具、氣缸擋停定位，PLC 統籌路徑並與 AGV 調度系統交握。",
+  "scene_key": "transfer",
+  "order": 3,
+  "modules": [
+    {
+      "slug": "mainline",
+      "name": "主輸送線模組",
+      "domain": "mechanical",
+      "description": "承載載具直線輸送。",
+      "components": [
+        {
+          "slug": "roller-conveyor",
+          "name": "動力滾筒輸送機",
+          "category": "輸送帶模組",
+          "brand": "範例：Interroll",
+          "part_number": "RollerDrive EC5000",
+          "function": "以電動滾筒分區驅動載具前進，可做零壓力累積。",
+          "install_location": "主線全長（銀色滾筒段）",
+          "specs": {
+            "滾筒間距": "75 mm",
+            "區段長度": "600 mm",
+            "速度": "0.3～1.0 m/s"
+          },
+          "pos": [
+            -1.5,
+            0.75,
+            0
+          ],
+          "mesh_name": "rollers",
+          "animation_key": "rollers",
+          "photo_query": "cat:Roller conveyors ~ pallet roller warehouse | roller conveyor warehouse | cat:Roller conveyors ~ conveyor"
+        },
+        {
+          "slug": "belt-section",
+          "name": "皮帶輸送段",
+          "category": "輸送帶模組",
+          "brand": "範例：台灣自製",
+          "part_number": "BC-1200-W400",
+          "function": "銜接滾筒線與工作站，適合小尺寸或軟質載具。",
+          "install_location": "主線右端",
+          "specs": {
+            "皮帶": "PVC 綠色 2 mm"
+          },
+          "pos": [
+            1.6,
+            0.75,
+            0
+          ],
+          "mesh_name": "belt",
+          "animation_key": "belt",
+          "photo_query": "conveyor belt factory | cat:Assembly lines ~ conveyor | cat:Conveyor belts ~ conveyor"
+        },
+        {
+          "slug": "belt-motor",
+          "name": "皮帶減速馬達",
+          "category": "輸送帶模組",
+          "brand": "範例：SEW",
+          "part_number": "R17 DRS71S4",
+          "function": "驅動皮帶主動輪。",
+          "install_location": "皮帶段末端下方",
+          "specs": {
+            "功率": "0.37 kW"
+          },
+          "pos": [
+            2.3,
+            0.55,
+            0.3
+          ],
+          "mesh_name": "beltmotor",
+          "animation_key": "spin",
+          "photo_query": "cat:Gearmotors | cat:Electric motors"
+        },
+        {
+          "slug": "side-guide",
+          "name": "側導板",
+          "category": "輸送帶模組",
+          "brand": "",
+          "part_number": "",
+          "function": "限制載具橫向偏移，避免卡料。",
+          "install_location": "輸送機兩側全長",
+          "specs": {
+            "材質": "鋁擠 + UHMW-PE"
+          },
+          "pos": [
+            -1.5,
+            0.85,
+            0.28
+          ],
+          "mesh_name": "guide",
+          "photo_query": "cat:Roller conveyors ~ conveyor guide"
+        },
+        {
+          "slug": "carrier",
+          "name": "載具 (治具板)",
+          "category": "輸送帶模組",
+          "brand": "",
+          "part_number": "PAL-300",
+          "function": "承載工件並提供定位孔與 RFID 標籤。",
+          "install_location": "在輸送線上流動",
+          "specs": {
+            "尺寸": "300 × 300 mm",
+            "材質": "電木 + 鋁框"
+          },
+          "pos": [
+            -2.2,
+            0.82,
+            0
+          ],
+          "mesh_name": "carrier",
+          "animation_key": "carrier",
+          "photo_query": "cat:Pallets ~ plastic pallet | plastic pallet | cat:Pallets ~ pallet"
+        },
+        {
+          "slug": "stopper",
+          "name": "擋停氣缸",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "RSH20-15",
+          "function": "把載具擋停在站位，內建緩衝避免撞擊。",
+          "install_location": "移載機前方滾筒間",
+          "specs": {
+            "缸徑": "20 mm",
+            "行程": "15 mm"
+          },
+          "pos": [
+            -0.55,
+            0.72,
+            0
+          ],
+          "mesh_name": "stopper",
+          "animation_key": "cylinder",
+          "photo_query": "cat:Pneumatic cylinders"
+        }
+      ]
+    },
+    {
+      "slug": "lift-transfer",
+      "name": "頂升移載機模組",
+      "domain": "mechanical",
+      "description": "把載具抬起並 90° 轉向送往支線。",
+      "components": [
+        {
+          "slug": "lift-cyl",
+          "name": "頂升氣缸",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "MGPM32-50",
+          "function": "把橫向皮帶組抬高於滾筒面，接手載具。",
+          "install_location": "移載機正中央下方",
+          "specs": {
+            "型式": "三軸氣缸",
+            "缸徑": "32 mm",
+            "行程": "50 mm"
+          },
+          "pos": [
+            0,
+            0.5,
+            0
+          ],
+          "mesh_name": "liftcyl",
+          "animation_key": "cylinder",
+          "photo_query": "cat:Pneumatic cylinders"
+        },
+        {
+          "slug": "cross-belt",
+          "name": "橫向移載皮帶組",
+          "category": "輸送帶模組",
+          "brand": "範例：台灣自製",
+          "part_number": "XB-2",
+          "function": "抬起後把載具往 Z 方向輸出到支線。",
+          "install_location": "移載機頂部，夾在滾筒之間",
+          "specs": {
+            "皮帶": "圓皮帶 ×4"
+          },
+          "pos": [
+            0,
+            0.78,
+            0
+          ],
+          "mesh_name": "crossbelt",
+          "animation_key": "lift",
+          "photo_query": "transfer conveyor | cat:Roller conveyors ~ pallet | cat:Conveyor belts ~ conveyor"
+        },
+        {
+          "slug": "cross-motor",
+          "name": "橫移皮帶馬達",
+          "category": "輸送帶模組",
+          "brand": "範例：Oriental Motor",
+          "part_number": "BMU 系列 120W",
+          "function": "驅動橫向皮帶。",
+          "install_location": "移載機側面",
+          "specs": {
+            "功率": "120 W"
+          },
+          "pos": [
+            0.35,
+            0.6,
+            0
+          ],
+          "mesh_name": "crossmotor",
+          "animation_key": "spin",
+          "photo_query": "cat:Brushless DC electric motors ~ motor"
+        },
+        {
+          "slug": "guide-shaft",
+          "name": "導桿與線性軸承",
+          "category": "運動模組",
+          "brand": "範例：MISUMI",
+          "part_number": "PSFJ20 + LMK20",
+          "function": "導引頂升動作保持水平。",
+          "install_location": "頂升氣缸四角",
+          "specs": {
+            "軸徑": "20 mm"
+          },
+          "pos": [
+            -0.25,
+            0.55,
+            0.25
+          ],
+          "mesh_name": "shaft",
+          "photo_query": "linear bearing | cat:Bearings"
+        },
+        {
+          "slug": "shock",
+          "name": "油壓緩衝器",
+          "category": "運動模組",
+          "brand": "範例：ACE",
+          "part_number": "MC150",
+          "function": "吸收頂升上下極限的衝擊。",
+          "install_location": "頂升機構上下止點",
+          "specs": {},
+          "pos": [
+            0.25,
+            0.55,
+            -0.25
+          ],
+          "mesh_name": "shock",
+          "photo_query": "cat:Shock absorbers ~ shock absorber | cat:Dampers ~ damper"
+        },
+        {
+          "slug": "branch-conveyor",
+          "name": "支線滾筒輸送機",
+          "category": "輸送帶模組",
+          "brand": "範例：Interroll",
+          "part_number": "RollerDrive EC5000",
+          "function": "接收移載後的載具送往下一站或 AGV 對接站。",
+          "install_location": "移載機後方（Z 方向）",
+          "specs": {},
+          "pos": [
+            0,
+            0.75,
+            -1.4
+          ],
+          "mesh_name": "branch",
+          "animation_key": "rollers",
+          "photo_query": "roller conveyor warehouse | cat:Roller conveyors ~ pallet | cat:Roller conveyors ~ conveyor"
+        }
+      ]
+    },
+    {
+      "slug": "pneumatic",
+      "name": "氣路模組",
+      "domain": "mechanical",
+      "description": "壓縮空氣的處理與分配。",
+      "components": [
+        {
+          "slug": "frl",
+          "name": "空壓三點組合 (FRL)",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "AC40-04",
+          "function": "過濾水分粉塵、調整供氣壓力，保護下游元件。",
+          "install_location": "設備進氣口，機架左側立柱",
+          "specs": {
+            "設定壓力": "0.5 MPa",
+            "口徑": "1/2\""
+          },
+          "pos": [
+            -2.6,
+            0.45,
+            0.4
+          ],
+          "mesh_name": "frl",
+          "photo_query": "cat:Compressed air filters | cat:Compressed air"
+        },
+        {
+          "slug": "valve-manifold",
+          "name": "電磁閥歧管組",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "SY5000 8 聯 (EtherNet/IP)",
+          "function": "PLC 透過網路切換各氣缸動作。",
+          "install_location": "移載機旁的氣閥箱",
+          "specs": {
+            "型式": "5/2 單電控",
+            "通訊": "EtherNet/IP"
+          },
+          "pos": [
+            0.7,
+            0.45,
+            0.45
+          ],
+          "mesh_name": "manifold",
+          "animation_key": "valve",
+          "photo_query": "cat:Manifolds | cat:Solenoid valves"
+        },
+        {
+          "slug": "speed-controller",
+          "name": "速度控制閥",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "AS2201F-01-06S",
+          "function": "調節氣缸進排氣量，控制動作速度。",
+          "install_location": "各氣缸接頭上",
+          "specs": {
+            "型式": "排氣節流"
+          },
+          "pos": [
+            0.1,
+            0.5,
+            0.2
+          ],
+          "mesh_name": "speedctl",
+          "photo_query": "cat:Needle valves | cat:Pneumatics"
+        },
+        {
+          "slug": "air-tube",
+          "name": "氣管與快速接頭",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "TU0604 + KQ2",
+          "function": "連接閥組與氣缸，顏色區分進／出。",
+          "install_location": "沿機架線槽佈線",
+          "specs": {
+            "管徑": "Ø6 / Ø4 mm"
+          },
+          "pos": [
+            0.4,
+            0.5,
+            0.3
+          ],
+          "mesh_name": "tube",
+          "photo_query": "cat:Pneumatic hoses | cat:Pneumatics"
+        },
+        {
+          "slug": "pressure-switch",
+          "name": "數位壓力開關",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "ISE30A",
+          "function": "監視供氣壓力，低壓時發出警報並停機。",
+          "install_location": "FRL 出口",
+          "specs": {
+            "輸出": "PNP + 類比"
+          },
+          "pos": [
+            -2.4,
+            0.5,
+            0.4
+          ],
+          "mesh_name": "pswitch",
+          "animation_key": "blink",
+          "photo_query": "cat:Pressure switches ~ pressure switch | cat:Pressure gauges ~ digital"
+        },
+        {
+          "slug": "cylinder-sensor",
+          "name": "氣缸磁簧感測器",
+          "category": "氣路元件",
+          "brand": "範例：SMC",
+          "part_number": "D-M9P",
+          "function": "偵測氣缸到達伸出／縮回端。",
+          "install_location": "各氣缸缸筒溝槽",
+          "specs": {
+            "型式": "PNP 3 線"
+          },
+          "pos": [
+            0,
+            0.6,
+            0.1
+          ],
+          "mesh_name": "cylsensor",
+          "photo_query": "cat:Reed switches"
+        },
+        {
+          "slug": "quick-coupler",
+          "name": "氣源快速接頭 (Coupler)",
+          "category": "接頭",
+          "brand": "範例：SMC",
+          "part_number": "KK4S-08H",
+          "function": "機台與廠務氣源之間的快拆接頭，母座具自動止氣閥。",
+          "install_location": "主氣閥出口",
+          "specs": {
+            "口徑": "1/4\""
+          },
+          "pos": [
+            -2.8,
+            0.45,
+            0.4
+          ],
+          "mesh_name": "fit-coupler",
+          "animation_key": "",
+          "photo_query": "pneumatic quick coupler | air hose quick coupling"
+        }
+      ]
+    },
+    {
+      "slug": "control",
+      "name": "電控模組",
+      "domain": "electrical",
+      "description": "控制器、辨識與安全元件。",
+      "components": [
+        {
+          "slug": "plc",
+          "name": "PLC",
+          "category": "控制器",
+          "brand": "範例：Omron",
+          "part_number": "NX1P2-9024DT",
+          "function": "控制輸送、擋停、移載順序並與上位系統交握。",
+          "install_location": "電控箱上層 DIN 軌",
+          "specs": {
+            "通訊": "EtherCAT / EtherNet/IP"
+          },
+          "pos": [
+            2.9,
+            1.0,
+            -0.6
+          ],
+          "mesh_name": "plc",
+          "photo_query": "cat:Programmable logic controller ~ Omron | cat:Programmable logic controller ~ PLC"
+        },
+        {
+          "slug": "rollerdrive-ctrl",
+          "name": "電動滾筒控制卡",
+          "category": "驅動器",
+          "brand": "範例：Interroll",
+          "part_number": "MultiControl AI",
+          "function": "控制各區段電動滾筒啟停與速度，實現零壓力累積。",
+          "install_location": "輸送機側面線槽內",
+          "specs": {
+            "通訊": "EtherNet/IP"
+          },
+          "pos": [
+            -1.5,
+            0.6,
+            0.35
+          ],
+          "mesh_name": "rdctrl",
+          "photo_query": "cat:Interroll | cat:Roller conveyors"
+        },
+        {
+          "slug": "remote-io",
+          "name": "遠端 I/O 模組",
+          "category": "控制器",
+          "brand": "範例：Omron",
+          "part_number": "NX-ID/OD",
+          "function": "就近收集感測器訊號並驅動閥組，減少配線。",
+          "install_location": "移載機旁 I/O 箱",
+          "specs": {},
+          "pos": [
+            0.7,
+            0.6,
+            0.45
+          ],
+          "mesh_name": "rio",
+          "photo_query": "remote IO module | cat:DIN rail"
+        },
+        {
+          "slug": "rfid",
+          "name": "RFID 讀寫頭",
+          "category": "感測器",
+          "brand": "範例：Balluff",
+          "part_number": "BIS M-4xx",
+          "function": "讀取載具標籤取得工單與目的站。",
+          "install_location": "擋停站側面對準載具標籤",
+          "specs": {
+            "頻率": "13.56 MHz"
+          },
+          "pos": [
+            -0.8,
+            0.8,
+            0.3
+          ],
+          "mesh_name": "rfid",
+          "animation_key": "blink",
+          "photo_query": "RFID reader device | cat:RFID ~ reader | cat:RFID ~ tag"
+        },
+        {
+          "slug": "photo-sensors",
+          "name": "光電感測器（到位／滿料）",
+          "category": "感測器",
+          "brand": "範例：Sick",
+          "part_number": "W4S-3",
+          "function": "偵測載具到位與下游是否有空位。",
+          "install_location": "各站位側導板上",
+          "specs": {},
+          "pos": [
+            -0.4,
+            0.85,
+            0.3
+          ],
+          "mesh_name": "psensor",
+          "animation_key": "blink",
+          "photo_query": "cat:Photoelectric sensors"
+        },
+        {
+          "slug": "safety-relay",
+          "name": "安全繼電器與急停",
+          "category": "安全元件",
+          "brand": "範例：Omron",
+          "part_number": "G9SE-201",
+          "function": "急停時切斷馬達電源與氣源（排氣閥）。",
+          "install_location": "電控箱",
+          "specs": {
+            "等級": "PL d"
+          },
+          "pos": [
+            2.9,
+            0.8,
+            -0.6
+          ],
+          "mesh_name": "safety",
+          "photo_query": "cat:Relays"
+        },
+        {
+          "slug": "vfd",
+          "name": "變頻器",
+          "category": "驅動器",
+          "brand": "範例：Delta",
+          "part_number": "VFD-EL 0.4kW",
+          "function": "調整皮帶段馬達轉速。",
+          "install_location": "電控箱中層",
+          "specs": {},
+          "pos": [
+            2.9,
+            0.6,
+            -0.6
+          ],
+          "mesh_name": "vfd",
+          "photo_query": "cat:Variable frequency drives ~ drive inverter | cat:Delta Electronics ~ drive"
+        },
+        {
+          "slug": "agv-dock",
+          "name": "AGV 對接通訊模組",
+          "category": "通訊",
+          "brand": "範例：Sick / 光通訊",
+          "part_number": "ISD 300",
+          "function": "與 AGV 交握（可送／可收訊號），確保雙方輸送同步。",
+          "install_location": "支線末端對接口",
+          "specs": {
+            "型式": "紅外光通訊"
+          },
+          "pos": [
+            0,
+            0.9,
+            -2.1
+          ],
+          "mesh_name": "agvdock",
+          "animation_key": "blink",
+          "photo_query": "cat:Automated guided vehicles"
+        }
+      ]
+    },
+    {
+      "slug": "software",
+      "name": "軟體",
+      "domain": "software",
+      "description": "路徑控制與上位系統整合。",
+      "components": [
+        {
+          "slug": "plc-program",
+          "name": "PLC 程式 (Sysmac Studio)",
+          "category": "控制軟體",
+          "brand": "Omron",
+          "part_number": "Sysmac Studio",
+          "function": "站位交握、路徑選擇與異常處理。",
+          "install_location": "PLC 內；原始碼於 Git 專案 transfer-plc",
+          "specs": {
+            "語言": "ST, LD"
+          },
+          "pos": [
+            2.9,
+            1.0,
+            -0.6
+          ],
+          "mesh_name": "plc",
+          "photo_query": "ladder logic | cat:Omron"
+        },
+        {
+          "slug": "routing",
+          "name": "載具路徑管理服務",
+          "category": "資料軟體",
+          "brand": "自製 (Python)",
+          "part_number": "",
+          "function": "依 RFID 與工單決定每片載具的目的站，並更新在製品位置。",
+          "install_location": "線體伺服器",
+          "specs": {},
+          "pos": [
+            2.9,
+            1.0,
+            -0.6
+          ],
+          "mesh_name": "plc",
+          "photo_query": "cat:Automated guided vehicles | cat:Assembly lines"
+        },
+        {
+          "slug": "fleet",
+          "name": "AGV 調度系統",
+          "category": "資料軟體",
+          "brand": "範例：VDA5050 相容",
+          "part_number": "",
+          "function": "派車到對接站取放載具。",
+          "install_location": "廠務伺服器",
+          "specs": {
+            "協定": "VDA5050 / MQTT"
+          },
+          "pos": [
+            0,
+            0.9,
+            -2.1
+          ],
+          "mesh_name": "agvdock",
+          "photo_query": "cat:Automated guided vehicles"
+        },
+        {
+          "slug": "hmi-ui",
+          "name": "線體 HMI",
+          "category": "人機介面軟體",
+          "brand": "Omron NA 系列",
+          "part_number": "NA5-9W",
+          "function": "顯示各站狀態、手動操作與警報。",
+          "install_location": "電控箱門面",
+          "specs": {},
+          "pos": [
+            2.9,
+            1.3,
+            -0.35
+          ],
+          "mesh_name": "hmi",
+          "photo_query": "cat:Simatic ~ panel HMI | HMI panel industrial | cat:Touchscreens ~ industrial"
+        }
+      ]
+    },
+    {
+      "slug": "connectors",
+      "name": "接頭與配線模組",
+      "domain": "electrical",
+      "description": "感測器、動力與網路線路的標準接頭；新人拆裝線路前必須先認識。",
+      "components": [
+        {
+          "slug": "m12-connector",
+          "name": "M12 感測器圓形接頭",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "SAC-4P-M12MS",
+          "function": "感測器／電磁閥的標準防水接頭（IP67），A-code 3～5 pin；螺牙鎖緊避免振動鬆脫。",
+          "install_location": "各感測器線末端、遠端 I/O 箱側面",
+          "specs": {
+            "防護": "IP67",
+            "極數": "4 pin A-code"
+          },
+          "pos": [
+            0.7,
+            0.68,
+            0.45
+          ],
+          "mesh_name": "conn-m12",
+          "animation_key": "",
+          "photo_query": "M12 connector sensor | cat:Electrical connectors ~ M12"
+        },
+        {
+          "slug": "terminal-block",
+          "name": "DIN 軌端子台",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "UT 2,5",
+          "function": "櫃內配線的中繼點，每個端子有編號對應電路圖；接地端子為黃綠色。",
+          "install_location": "電控櫃下方 DIN 軌",
+          "specs": {
+            "線徑": "0.14～4 mm²"
+          },
+          "pos": [
+            2.9,
+            0.4,
+            -0.31999999999999995
+          ],
+          "mesh_name": "conn-terminal",
+          "animation_key": "",
+          "photo_query": "terminal block DIN rail | cat:Terminal blocks ~ DIN"
+        },
+        {
+          "slug": "cable-gland",
+          "name": "電纜固定頭 (Cable Gland)",
+          "category": "接頭",
+          "brand": "範例：Lapp",
+          "part_number": "SKINTOP ST-M20",
+          "function": "線纜穿入櫃體時固定並保持 IP 防護、防止拉扯。",
+          "install_location": "電控櫃底板進線處",
+          "specs": {
+            "防護": "IP68",
+            "線徑": "7～13 mm"
+          },
+          "pos": [
+            2.9,
+            0.050000000000000044,
+            -0.31999999999999995
+          ],
+          "mesh_name": "conn-gland",
+          "animation_key": "",
+          "photo_query": "cable gland | cat:Cable glands"
+        },
+        {
+          "slug": "heavy-duty-connector",
+          "name": "重載矩形接頭 (Harting)",
+          "category": "接頭",
+          "brand": "範例：Harting",
+          "part_number": "Han 24B",
+          "function": "多芯動力＋訊號一次插拔，機台分段運輸／維修時快速拆接。",
+          "install_location": "電控櫃側面與機台段間的線路介面",
+          "specs": {
+            "極數": "24+PE",
+            "電流": "16 A"
+          },
+          "pos": [
+            3.32,
+            0.75,
+            -0.6
+          ],
+          "mesh_name": "conn-hdc",
+          "animation_key": "",
+          "photo_query": "Harting connector | heavy duty connector industrial"
+        },
+        {
+          "slug": "ethernet-connector",
+          "name": "工業乙太網路接頭 (RJ45 / M12 D-code)",
+          "category": "接頭",
+          "brand": "範例：Phoenix Contact",
+          "part_number": "VS-08-RJ45-5-Q/IP20",
+          "function": "PLC、相機、手臂控制器之間的通訊線路接頭；工業級 RJ45 有鎖扣與防護殼。",
+          "install_location": "交換器與各控制器網路埠",
+          "specs": {
+            "等級": "Cat.5e",
+            "防護": "IP20 / IP67 (M12)"
+          },
+          "pos": [
+            2.9,
+            1.15,
+            -0.35
+          ],
+          "mesh_name": "conn-rj45",
+          "animation_key": "",
+          "photo_query": "industrial ethernet connector M12 | RJ45 connector industrial | cat:RJ45 ~ industrial"
+        },
+        {
+          "slug": "power-connector",
+          "name": "動力接頭與馬達插頭",
+          "category": "接頭",
+          "brand": "範例：Intercontec",
+          "part_number": "M23",
+          "function": "伺服／變頻馬達的動力與編碼器線用專用航空插頭，接錯相序馬達會反轉。",
+          "install_location": "各馬達尾端",
+          "specs": {
+            "極數": "8 pin + 編碼器 17 pin"
+          },
+          "pos": [
+            2.4,
+            0.45,
+            -0.3
+          ],
+          "mesh_name": "conn-power",
+          "animation_key": "",
+          "photo_query": "M23 connector servo | circular connector industrial | cat:Electrical connectors ~ circular"
+        }
+      ]
+    },
+    {
+      "slug": "utility",
+      "name": "水氣電供應模組",
+      "domain": "utility",
+      "description": "設備需要的電力、壓縮空氣（與冷卻水）從哪裡來、怎麼開關、怎麼上鎖。",
+      "components": [
+        {
+          "slug": "main-breaker",
+          "name": "主電源無熔絲斷路器 (NFB) 與隔離開關",
+          "category": "水氣電供應",
+          "brand": "範例：Schneider",
+          "part_number": "NSX100",
+          "function": "設備電力總開關，具過載／短路保護；維修前務必切至 OFF 並上鎖掛牌 (LOTO)。",
+          "install_location": "電控櫃右側門把上方（紅黃色旋鈕）",
+          "specs": {
+            "額定": "3P 100 A",
+            "遮斷容量": "36 kA"
+          },
+          "pos": [
+            3.25,
+            1.1,
+            -0.35
+          ],
+          "mesh_name": "util-breaker",
+          "animation_key": "blink",
+          "photo_query": "cat:Circuit breakers ~ industrial | circuit breaker cabinet | cat:Circuit breakers"
+        },
+        {
+          "slug": "power-inlet",
+          "name": "電源進線端與匯流排",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "廠務 3Φ 380 VAC 由此進入，經 NFB 後分配至驅動器、變壓器與 24 V 電源。",
+          "install_location": "電控櫃頂部進線孔 → 端子台 L1/L2/L3/N/PE",
+          "specs": {
+            "電壓": "3Φ 380 VAC 50/60 Hz",
+            "線徑": "14 mm²"
+          },
+          "pos": [
+            3.25,
+            1.55,
+            -0.35
+          ],
+          "mesh_name": "util-inlet",
+          "animation_key": "",
+          "photo_query": "cat:Busbars ~ cabinet | busbar electrical cabinet | cat:Electrical enclosures ~ cabinet"
+        },
+        {
+          "slug": "grounding",
+          "name": "接地端子 (PE)",
+          "category": "水氣電供應",
+          "brand": "",
+          "part_number": "",
+          "function": "所有金屬機殼與櫃體以黃綠線接至 PE 排；接地不良會造成感電與雜訊。",
+          "install_location": "電控櫃底部 PE 排、機架接地點",
+          "specs": {
+            "接地電阻": "< 10 Ω"
+          },
+          "pos": [
+            3.25,
+            0.30000000000000004,
+            -0.14999999999999997
+          ],
+          "mesh_name": "util-pe",
+          "animation_key": "",
+          "photo_query": "grounding busbar | earth terminal cabinet | cat:Electrical grounding"
+        },
+        {
+          "slug": "air-inlet",
+          "name": "壓縮空氣進氣口與主氣閥 (含排氣鎖定)",
+          "category": "水氣電供應",
+          "brand": "範例：SMC",
+          "part_number": "VHS40-04",
+          "function": "廠務壓縮空氣由此進入；主氣閥為可上鎖的 3 口閥，關閉時同時把下游殘壓排空。",
+          "install_location": "機架側面 FRL 前端（黃色手柄球閥）",
+          "specs": {
+            "供氣壓力": "0.6～0.7 MPa",
+            "口徑": "1/2\"",
+            "露點": "≤ 3 °C"
+          },
+          "pos": [
+            -2.9,
+            0.45,
+            0.4
+          ],
+          "mesh_name": "util-airvalve",
+          "animation_key": "valve",
+          "photo_query": "cat:Ball valves ~ pneumatic | lockout valve pneumatic | cat:Ball valves"
+        }
+      ]
+    }
+  ],
+  "utility_guide": [
+    {
+      "title": "電力 (Electricity)",
+      "icon": "bolt",
+      "items": [
+        "供電規格：3Φ 380 VAC ±10%、50/60 Hz，由廠務配電盤專用迴路供應，迴路 NFB 額定見電控櫃銘牌。",
+        "接點位置：電控櫃頂部進線 → 主 NFB → 端子台 L1/L2/L3/N/PE；控制電壓 24 VDC 由櫃內開關電源提供。",
+        "送電順序：確認櫃門關閉 → 廠務迴路 ON → 設備主 NFB ON → 控制電源 (24 V) ON → HMI 開機 → 復歸急停。",
+        "斷電順序：HMI 執行停機 → 急停 → 控制電源 OFF → 主 NFB OFF → 上鎖掛牌 (LOTO)。",
+        "安全：斷電後驅動器內電容仍有高壓，等待 5 分鐘並用電表確認 DC 匯流排 < 50 V 才可作業。"
+      ]
+    },
+    {
+      "title": "壓縮空氣 (Compressed Air)",
+      "icon": "air",
+      "items": [
+        "供氣規格：0.6～0.7 MPa、露點 ≤ 3 °C、含油量 ≤ 0.01 mg/m³（ISO 8573-1 Class 1.4.1），流量依銘牌。",
+        "接點位置：機架側面主氣閥（可上鎖 3 口閥）→ FRL 三點組合 → 電磁閥組 → 各氣缸。",
+        "供氣順序：確認 FRL 設定壓力 0.5 MPa → 慢開主氣閥（或用緩啟動閥）避免氣缸瞬間動作 → 檢查漏氣聲。",
+        "斷氣順序：關主氣閥 → 排氣口洩壓至 0 → 壓力表歸零後才可拆氣管；含蓄壓器的氣路需另外洩壓。",
+        "日常點檢：FRL 濾杯排水、壓力表讀值、氣管有無龜裂、速度控制閥有無鬆動。"
+      ]
+    },
+    {
+      "title": "AGV 對接站供電",
+      "icon": "bolt",
+      "items": [
+        "對接站的光通訊模組由線體 24 V 供電，AGV 本身由車載電池供電並在充電站補電，兩者無電氣連接。",
+        "AGV 充電站為獨立 48 V 迴路，維修對接站不需切 AGV 充電站電源。"
+      ]
+    },
+    {
+      "title": "上鎖掛牌 (LOTO) 與點檢",
+      "icon": "lock",
+      "items": [
+        "維修前一律：斷電 → 斷氣（→ 斷水）→ 洩壓 → 上鎖 → 掛牌 → 嘗試啟動確認零能量。",
+        "每人一把鎖，誰上鎖誰解鎖；多人作業使用多鎖扣。",
+        "日常點檢表：電壓／電流讀值、供氣壓力、（水流量／溫度）、接地連續性、警報紀錄。"
+      ]
+    }
+  ]
+}

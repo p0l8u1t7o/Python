@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence Golden Set 回歸與流程匯出</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
+  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  nav ul { columns: 2; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+<h1>Golden Set 回歸測試、流程匯出／匯入與 CLI</h1>
+<p>對應 <code>visionsequence-plan-v0.2.md</code> §3.2、§3.3。目標：<strong>改一個閾值，幾分鐘內知道哪幾張影像從 PASS 變 FAIL</strong>；流程能進 git、能 code review、能在 CI 跑。DB 仍是執行期的權威來源。</p>
+
+<nav><ul>
+<li><a href="#concept">1. 概念</a></li>
+<li><a href="#models">2. 資料模型</a></li>
+<li><a href="#expect">3. 期望值與比對規則</a></li>
+<li><a href="#api">4. Golden Set API</a></li>
+<li><a href="#regress">5. 回歸報告</a></li>
+<li><a href="#cli-regress">6. CLI：manage.py regress</a></li>
+<li><a href="#export">7. 流程匯出格式</a></li>
+<li><a href="#cli-flow">8. CLI：manage.py flow</a></li>
+<li><a href="#flow-api">9. 匯出／匯入 API</a></li>
+<li><a href="#ci">10. 進 CI</a></li>
+<li><a href="#files">11. 檔案與測試</a></li>
+</ul></nav>
+
+<h2 id="concept">1. 概念</h2>
+<ul>
+<li><strong>Golden case</strong>：一張影像＋期望結果（<code>expect_status</code>：ok／ng／any，與可選的 <code>expect_outputs</code>）。影像落地在 <code>ASSET_DIR/golden/&lt;flow_id&gt;/&lt;uuid&gt;.png</code>，<strong>不進 ImageStore</strong>；回歸時直接從路徑讀。</li>
+<li><strong>回歸（regress）</strong>：把該流程所有 golden case 用<strong>非 preview 模式</strong>跑一遍（不保留中間影像，幾百張也不會爆記憶體），逐張跟期望值比對得到 match／mismatch，並與上次<strong>基準</strong>比較得出 regressed／improved。只對 mismatch 的 case 再跑一次 preview 取影像 ref（上限 20 張）供前端檢視。</li>
+<li><strong>基準（baseline）</strong>：某個流程版本跑回歸時每個 case 的結果快照（<code>{case_id: {status, outputs, duration_ms}}</code>）。<code>save_baseline</code> 就新增一列，取最新的當比較對象。</li>
+</ul>
+
+<h2 id="models">2. 資料模型（apps/golden/models.py）</h2>
+<table>
+<tr><th>模型</th><th>欄位</th><th>說明</th></tr>
+<tr><td>GoldenCase</td><td>id、flow FK、name、image_path、expect_status(ok|ng|any)、expect_outputs JSON、note、created_at</td><td>刪除 case 時一併刪影像檔；流程刪除時 CASCADE（檔案留在磁碟，可手動清 <code>golden/&lt;flow_id&gt;</code>）。</td></tr>
+<tr><td>GoldenBaseline</td><td>flow FK、flow_version、results JSON、created_at</td><td>每次 <code>save_baseline</code> 新增一列；<code>GoldenBaseline.latest_for(flow_id)</code> 取最新。</td></tr>
+</table>
+
+<h2 id="expect">3. 期望值與比對規則</h2>
+<p>一個 case <strong>match</strong> 的條件：</p>
+<ol>
+<li><code>expect_status</code> 是 <code>ok</code> 或 <code>ng</code> 時，run 的 status 必須相同（<code>failed</code> 永遠不算 match）；<code>any</code> 不比對狀態。</li>
+<li><code>expect_outputs</code> 每個 key 都要在 run 的具名輸出（<code>output</code> 工具）裡出現且相符：</li>
+</ol>
+<pre>{"hole_count": 5,                          // 等值：數值以 float 比較；字串、bool、list 直接相等
+ "width_mm":  {"value": 12.4, "tol": 0.2},  // 數值容差：|now - 12.4| &lt;= 0.2
+ "code":      {"value": "A123"}}            // 只有 value 也可</pre>
+<p><strong>混淆矩陣</strong>以 <code>expect_status</code> 為真值，<code>ng</code> 是正例；預測「不是 ok」（ng 或 failed）算正例。<code>expect_status=any</code> 的 case 不計入。</p>
+<table>
+<tr><th></th><th>預測 ng／failed</th><th>預測 ok</th></tr>
+<tr><td>期望 ng</td><td>tp</td><td>fn（漏檢，最嚴重）</td></tr>
+<tr><td>期望 ok</td><td>fp（誤殺）</td><td>tn</td></tr>
+</table>
+
+<h2 id="api">4. Golden Set API</h2>
+<p>權限沿用流程規則：<strong>可見即可看／跑</strong>（<code>_visible_flows</code>），<strong>擁有者或管理員才可增刪改與儲存基準</strong>（<code>_editable_flow</code>），執行前 <code>principal.can_execute()</code>（引擎鎖定時 423）。</p>
+<table>
+<tr><th>方法／路徑</th><th>說明</th></tr>
+<tr><td><code>GET /api/vision/flows/{id}/golden</code></td><td><code>{items:[{id, name, expect_status, expect_outputs, note, created_at, image_url}], total, can_manage, baseline_version, baseline_at, flow_version}</code></td></tr>
+<tr><td><code>POST /api/vision/flows/{id}/golden</code>（multipart）</td><td><code>images[]</code>（≤200 張）＋ 可選 form <code>expect_status</code>、<code>note</code>、<code>expect_outputs</code>（JSON 字串）；每張一個 case，name = 檔名。回 201 <code>{items, created}</code>。</td></tr>
+<tr><td><code>POST /api/vision/flows/{id}/golden</code>（JSON）</td><td><code>{"from_batch": [{"image_ref", "name", "expect_status", "expect_outputs", "note"}]}</code>：從批次測試回傳的 <code>image_ref</code>（仍在影像快取內）建立；任何一個 ref 已不在快取 → 404 <code>image_gone</code>，整批不建。</td></tr>
+<tr><td><code>GET /api/vision/flows/{id}/golden/baseline</code></td><td><code>{baseline: {id, flow_version, results, created_at, case_count} | null, flow_version, case_count}</code></td></tr>
+<tr><td><code>GET /api/vision/flows/{id}/golden/{case_id}/image?max=&amp;fmt=&amp;q=</code></td><td>縮圖／原圖（jpeg 或 png）。給 <code>&lt;img&gt;</code> 用，接受 <code>?token=</code>／<code>?api_key=</code>。</td></tr>
+<tr><td><code>PATCH /api/vision/flows/{id}/golden/{case_id}</code></td><td><code>{name?, expect_status?, expect_outputs?, note?}</code></td></tr>
+<tr><td><code>DELETE /api/vision/flows/{id}/golden/{case_id}</code></td><td>204；刪影像檔。</td></tr>
+<tr><td><code>POST /api/vision/flows/{id}/regress</code></td><td><code>{graph?, save_baseline?, fail_under?}</code> → 回歸報告（下節）。<code>graph</code> 可帶編輯器裡未存檔的圖（同 preview）；<code>fail_under</code> 0～1，只影響 <code>passed</code>。</td></tr>
+</table>
+
+<h2 id="regress">5. 回歸報告</h2>
+<pre>{
+  "flow_id": 1, "flow_name": "hole_count", "flow_version": 7, "graph_override": false,
+  "total": 320, "match": 316, "mismatch": 4, "match_rate": 0.9875,
+  "regressed": [{"case_id": 42, "name": "0042.png", "was": "ok", "now": "ng", "node": "ng-judge", "error": "", "reasons": ["status ng != ok"]}],
+  "improved":  [{"case_id": 7,  "name": "0007.png", "was": "ng", "now": "ok", "node": null, "error": ""}],
+  "confusion": {"tp": 118, "fp": 2, "tn": 198, "fn": 2},
+  "cases": [{"case_id": 42, "name": "0042.png", "expect": "ok", "expect_outputs": {},
+             "status": "ng", "outputs": {"hole_count": 4}, "duration_ms": 12.3,
+             "match": false, "reasons": ["status ng != ok"],
+             "was": "ok", "was_match": true, "changed_since_baseline": true,
+             "node": "ng-judge", "error": "", "image_ref": "&lt;run&gt;:src:image", "preview_run_id": "..."}],
+  "duration_ms": 4210, "baseline_version": 6, "baseline_at": "...",
+  "fail_under": 0.98, "passed": true, "baseline_saved": false
+}</pre>
+<ul>
+<li><strong>regressed</strong>：基準結果符合期望、這次不符合。<strong>improved</strong>：反過來。兩者都以<em>目前的</em>期望值評估基準結果，所以改了 case 的期望值不會誤報 regressed。</li>
+<li><code>node</code>：出錯節點（status error）或第一個判 ng 的節點；<code>error</code> 是該節點訊息。</li>
+<li><code>changed_since_baseline</code>：status 或 outputs 與基準不同；沒有基準時為 null。</li>
+<li><code>image_ref</code> 只有 mismatch 的 case 才有（上限 20），用 <code>GET /api/vision/images/{ref}</code> 取；golden 影像本身永遠可用 <code>image_url</code>。</li>
+<li>回歸的 run 以 <code>trigger="regress"</code> 進統計與 FlowRun（受 <code>PERSIST_RUNS</code> 控制）；preview 補跑不入庫。</li>
+</ul>
+
+<h2 id="cli-regress">6. CLI：manage.py regress</h2>
+<pre>manage.py regress &lt;flow_id|name&gt; [--fail-under 0.98] [--json] [--save-baseline] [--graph file.flow.json --source &lt;id&gt;]</pre>
+<table>
+<tr><th>退出碼</th><th>意義</th></tr>
+<tr><td>0</td><td>match 率 ≥ 門檻（<code>--fail-under</code> 預設 1.0：任何 mismatch 都失敗）</td></tr>
+<tr><td>1</td><td>match 率低於門檻</td></tr>
+<tr><td>3</td><td>該流程沒有任何 golden case</td></tr>
+</table>
+<p>文字輸出重點放 <strong>REGRESSED</strong> 清單（哪幾張從 PASS 變 FAIL、哪個節點），<code>--json</code> 則印完整報告。<code>--graph</code> 用匯出檔內的圖取代 DB 的圖，適合在 CI 驗證 PR 裡改過的流程檔。</p>
+
+<h2 id="export">7. 流程匯出格式（apps/vision/serialize.py）</h2>
+<pre>{
+  "schema_version": 1,
+  "exported_at": "2026-08-28T06:00:00Z",
+  "name": "hole_count",
+  "description": "零件孔數檢測",
+  "continuous_interval_ms": 0,
+  "graph": {
+    "nodes": [
+      {
+        "id": "blob",
+        "type": "blob",
+        "label": "孔 blob",
+        "enabled": true,
+        "params": {
+          "max_area": 60000,
+          "min_area": 300,
+          "min_circularity": 0.6,
+          "sort_by": "area"
+        },
+        "position": {
+          "x": 1540,
+          "y": 40
+        }
+      },
+      {
+        "id": "src",
+        "type": "image_source",
+        "label": "取像",
+        "enabled": true,
+        "params": {
+          "source_id": "{SOURCE}"
+        },
+        "position": {
+          "x": 40,
+          "y": 40
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e-blob-count-cmp-value",
+        "source": "blob",
+        "source_handle": "count",
+        "target": "cmp",
+        "target_handle": "value"
+      }
+    ]
+  }
+}</pre>
+<p>為了讓 <code>git diff</code> 有意義，序列化是<strong>穩定</strong>的：</p>
+<ul>
+<li>頂層 key 固定順序；節點 key 順序 <code>id, type, label, description, enabled, continue_on_error, color, params, position, width, height</code>，其餘字母序；<code>params</code> 內容遞迴依 key 排序；邊 key 順序 <code>id, source, source_handle, target, target_handle</code>。</li>
+<li>節點依 <code>id</code> 排序、邊依 <code>(source, target, source_handle, target_handle)</code> 排序 → 畫布拖動、重新連線不產生 diff。</li>
+<li><code>position</code>（與 width/height）四捨五入到整數 → 微調位置不產生 diff。</li>
+<li><code>image_source.source_id</code> 換成 <code>{SOURCE}</code> 佔位符（複用範本庫 <code>templatize</code>），匯入時用 <code>--source</code>／<code>source_id</code> 換回；沒給則：新建的流程留空字串（仍可用送圖方式執行），<strong>更新既有流程時沿用原流程取像步驟的來源</strong>（同 id 優先，否則任一取像步驟的來源），不會把現場設好的來源清掉。</li>
+<li>先過 <code>validate_graph</code>，所以省略的 <code>source_handle</code>／<code>target_handle</code> 會被補齊後匯出。</li>
+<li>2 空格縮排、<code>ensure_ascii=False</code>、UTF-8 無 BOM、LF、檔尾一個換行。</li>
+<li><code>exported_at</code> 是真實匯出時間；要可重現（byte-identical）時設環境變數 <code>SOURCE_DATE_EPOCH=&lt;unix 秒&gt;</code>（reproducible-builds 慣例）。驗收測試 <code>tests/test_flow_cli.py</code> 以此驗證 export → import → export 兩次輸出完全相同。</li>
+</ul>
+<div class="note">匯入不改 graph JSON 格式，也不把 Flow.graph 搬出資料庫：檔案只是 DB 內容的穩定投影。</div>
+
+<h2 id="cli-flow">8. CLI：manage.py flow</h2>
+<pre>manage.py flow export &lt;id|name&gt; -o flows/hole_count.flow.json     # 省略 -o 印到 stdout
+manage.py flow import flows/hole_count.flow.json [--source 3] [--owner kevin]
+manage.py flow run &lt;id|name|file&gt; [--source 3] [--images ./samples] [--json]</pre>
+<ul>
+<li><strong>import</strong> 依 <code>name</code> upsert：存在則更新 graph／description／間隔並 <code>version+1</code>；不存在則建立（<code>--owner</code> 指定擁有者，未給為共用流程）。schema_version 不符、來源不存在、檔案不存在都以 CommandError 結束。</li>
+<li><strong>run</strong> 的第一個參數可以是 DB 裡的流程，也可以直接是 <code>.flow.json</code> 檔（不寫進 DB，用 graph_override 跑）。給 <code>--images</code> 資料夾就每張影像以 <code>input_image</code> 各跑一次（非 preview），逐張印 <code>status  ms  檔名  outputs</code>；否則跑一次（用流程的來源取像）。<code>--json</code> 印 <code>{flow, items[], total, ok, ng, failed}</code>。有任何 failed（含無法解碼）退出碼 2。</li>
+<li>run 的 trigger 是 <code>cli</code>，會進統計與 FlowRun。</li>
+</ul>
+
+<h2 id="flow-api">9. 匯出／匯入 API（apps/vision/api_flowio.py）</h2>
+<table>
+<tr><th>方法／路徑</th><th>說明</th></tr>
+<tr><td><code>GET /api/vision/flows/{id}/export</code></td><td>同格式 JSON 下載，<code>Content-Disposition: attachment; filename="&lt;name&gt;.flow.json"</code>；<code>?download=0</code> 不加下載檔頭。可見即可匯出。</td></tr>
+<tr><td><code>POST /api/vision/flows/import</code></td><td>JSON body：整份流程檔（可加 <code>source_id</code>）或 <code>{"doc": {...}, "source_id": 3}</code>；multipart：<code>file</code> ＋ form <code>source_id</code>。回 <code>{flow, created}</code>，新建 201、更新 200。更新既有流程需為擁有者或管理員（否則 404）；新建的擁有者是呼叫者。</td></tr>
+</table>
+<div class="note">路由順序：<code>/flows/import</code> 必須在 <code>/flows/{flow_id}</code> 之前註冊（ninja 的路徑參數不帶型別轉換），所以 <code>config/api.py</code> 把 flow-io 與 golden router 排在 vision router 前面。</div>
+
+<h2 id="ci">10. 進 CI</h2>
+<pre># 1. 把流程檔匯入乾淨的測試 DB，並指到 CI 用的來源（或不給來源，靠 --images 送圖）
+manage.py migrate
+manage.py flow import flows/hole_count.flow.json
+# 2. golden 影像另外以 API 建（或事先備份 ASSET_DIR/golden 與 DB）
+# 3. 回歸；rate &lt; 0.98 就讓 pipeline 失敗
+manage.py regress hole_count --fail-under 0.98 --json &gt; regress.json</pre>
+<p>PR 只改了 <code>.flow.json</code> 時，可以不匯入直接 <code>manage.py regress hole_count --graph flows/hole_count.flow.json --source 3</code>，用 PR 裡的圖對既有 golden set 跑。</p>
+
+<h2 id="files">11. 檔案與測試</h2>
+<table>
+<tr><th>檔案</th><th>內容</th></tr>
+<tr><td><code>apps/golden/models.py</code>、<code>migrations/0001_initial.py</code></td><td>GoldenCase、GoldenBaseline</td></tr>
+<tr><td><code>apps/golden/regress.py</code></td><td>影像存取、比對規則、<code>run_regression()</code>（API 與 CLI 共用）</td></tr>
+<tr><td><code>apps/golden/api.py</code></td><td>Golden Set 與 regress 端點</td></tr>
+<tr><td><code>apps/golden/management/commands/regress.py</code></td><td><code>manage.py regress</code></td></tr>
+<tr><td><code>apps/vision/serialize.py</code></td><td>穩定序列化、parse、import_flow、find_flow</td></tr>
+<tr><td><code>apps/vision/api_flowio.py</code></td><td>export／import 端點</td></tr>
+<tr><td><code>apps/vision/management/commands/flow.py</code></td><td><code>manage.py flow export|import|run</code></td></tr>
+<tr><td><code>tests/test_golden.py</code>、<code>tests/test_flow_cli.py</code></td><td>上傳／從批次建立／影像端點／比對規則／回歸報告與基準／CLI 退出碼／權限；匯出格式、byte-identical 往返、匯入 upsert、run 資料夾與檔案、API</td></tr>
+</table>
+</body>
+</html>

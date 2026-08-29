@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 主動輸出到 PLC</title>
+<style>
+  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
+  h1, h2, h3 { color: #0f172a; }
+  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
+  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
+  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
+  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #f8fafc; }
+  nav ul { columns: 2; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
+  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plc.html">主動輸出到 PLC</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+
+<h1>主動輸出到 PLC / 上位機</h1>
+<p><a href="automation.html">自動化整合</a>是<strong>被動</strong>的：PLC 或上位機呼叫我們拿結果。這一頁是<strong>主動</strong>的：流程跑完由引擎把判定與量測值寫進 PLC 的線圈／暫存器，或推一行文字給上位機。做法仿照影像來源：先在設定頁建「連線」（<code>Connection</code>），流程裡放一個 <strong>寫入 PLC</strong>（<code>write_plc</code>）工具指到該連線並填對映表。</p>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#kinds">1. 連線種類與 config</a></li>
+<li><a href="#address">2. 位址格式</a></li>
+<li><a href="#tool">3. write_plc 工具與 mapping</a></li>
+<li><a href="#degrade">4. 降級策略</a></li>
+<li><a href="#api">5. 連線 API</a></li>
+<li><a href="#plugin">6. 外掛 Writer</a></li>
+<li><a href="#internals">7. 內部結構</a></li>
+</ul></nav>
+
+<h2 id="kinds">1. 連線種類與 config</h2>
+<table>
+<tr><th>kind</th><th>用途</th><th>config</th></tr>
+<tr><td><code>modbus_tcp</code></td><td>PLC 線圈（DO）與保持暫存器（數值）。用 <code>pymodbus</code>。</td>
+<td><pre>{"host": "192.168.1.10", "port": 502, "unit_id": 1,
+ "timeout_s": 2, "word_order": "big"}</pre><code>word_order</code>：32/64 位元值的高低字組順序（多數 PLC 是 big；有些是 little）。</td></tr>
+<tr><td><code>tcp_client</code></td><td>長連線把結果送到上位機：一行文字（範本）或整包 JSON 一行。</td>
+<td><pre>{"host": "192.168.1.20", "port": 5000, "timeout_s": 2,
+ "template": "RESULT {judge} {width_px}",
+ "newline": "\n", "encoding": "utf-8", "wait_reply": false}</pre>沒有 <code>template</code> 就送 <code>{"judge": 1, "width_px": 12.3}\n</code>。範本缺欄位補空字串，不會炸。<code>wait_reply=true</code> 會等對方回一行，放進結果 <code>reply</code>。</td></tr>
+<tr><td><code>dio_sim</code></td><td>模擬 DIO：只把寫入值留在記憶體，供沒有 PLC 的機器測流程；<code>GET /state</code> 讀回。</td>
+<td><pre>{"channels": ["ok", "ng", "done"]}   或   {"channels": 8}</pre>有列 channels 時寫到未宣告的通道算失敗（方便測降級）；不列則任何名稱都收。</td></tr>
+<tr><td><code>plugin</code> / 外掛 kind</td><td>自訂 Writer（OPC UA、廠牌 SDK…）</td><td><code>{"class": "plugins.opcua:OpcUaWriter", ...}</code> 或用 <code>VISION_COMM_PLUGINS</code> 註冊的 kind，見 <a href="#plugin">6</a>。</td></tr>
+</table>
+<p>共用欄位：<code>timeout_s</code>（每次寫入的逾時，預設 2 秒）。連線設定改了（PATCH）會關閉舊連線，下次執行重開。</p>
+
+<h2 id="address">2. 位址格式（modbus_tcp）</h2>
+<table>
+<tr><th>位址</th><th>意義</th></tr>
+<tr><td><code>coil:10</code></td><td>線圈 10（bool）。別名 <code>co:</code>、<code>c:</code>。</td></tr>
+<tr><td><code>holding:100</code></td><td>保持暫存器 100，uint16（浮點會四捨五入、超出 0～65535 會夾住）。別名 <code>hr:</code>、<code>register:</code>。</td></tr>
+<tr><td><code>holding:100:int16</code> / <code>uint16</code> / <code>int32</code> / <code>uint32</code> / <code>int64</code> / <code>uint64</code> / <code>float32</code> / <code>float64</code></td><td>指定型別；32 位元佔 2 個暫存器、64 位元佔 4 個，字組順序依連線的 <code>word_order</code>。</td></tr>
+<tr><td><code>discrete:3</code>、<code>input:7</code></td><td>離散輸入／輸入暫存器，唯讀（只有 <code>read</code> 與 <code>/state</code> 用得到；寫入會回錯）。</td></tr>
+</table>
+<p>偏移可寫十六進位（<code>holding:0x100</code>）。偏移是 <strong>0 起算的協定位址</strong>（PLC 文件若寫 40001 就是 <code>holding:0</code>）。</p>
+<p><code>tcp_client</code> 的「位址」是範本裡的欄位名（<code>{judge}</code> → <code>"judge"</code>）；<code>dio_sim</code> 是通道名。</p>
+
+<h2 id="tool">3. write_plc 工具與 mapping</h2>
+<table>
+<tr><th>參數</th><th>說明</th></tr>
+<tr><td><code>connection</code>（text）</td><td>連線<strong>名稱</strong>（也接受數字 id）。</td></tr>
+<tr><td><code>mapping</code>（json）</td><td>陣列，每項一個位址，見下。</td></tr>
+<tr><td><code>on_error</code>（select）</td><td><code>warn</code>（預設）：寫入失敗只記警告、run 照常；<code>fail</code>：讓 run failed。</td></tr>
+<tr><td><code>timeout_s</code>（number）</td><td>0 = 用連線設定；否則覆寫這一次寫入的逾時。</td></tr>
+</table>
+<p>輸入埠 <code>values</code>（any，可多條）；輸出埠 <code>written</code>（寫入筆數）、<code>ok</code>（bool）。</p>
+<pre>[
+  {"src": "judge",    "address": "coil:0",              "dtype": "bool"},
+  {"src": "width_px", "address": "holding:100:float32", "scale": 1.0},
+  {"src": "hole_count", "address": "holding:102"},
+  {"src": "v0",       "address": "holding:103:int32",   "scale": 1000, "dtype": "int"},
+  {"address": "coil:1", "value": 1}
+]</pre>
+<table>
+<tr><th>欄位</th><th>說明</th></tr>
+<tr><td><code>src</code></td><td>值的來源：<code>judge</code>（run 判定，OK→1／NG→0）、<strong>具名輸出</strong>的名稱（<code>output</code> 工具寫進 <code>_outputs</code> 的鍵）、或本節點輸入埠 <code>values</code> 的第 N 條 <code>v0</code>、<code>v1</code>…（依連線順序）。</td></tr>
+<tr><td><code>address</code></td><td>目的地位址（省略時等於 <code>src</code>，tcp_client 常這樣用）。</td></tr>
+<tr><td><code>dtype</code></td><td><code>bool</code>／<code>int</code>／<code>float</code>：寫入前的型別轉換。modbus 位址本身帶型別時，writer 會再依位址轉一次。</td></tr>
+<tr><td><code>scale</code>、<code>offset</code></td><td><code>值 × scale + offset</code>（例如 mm 換成 µm 的整數：<code>scale: 1000, dtype: int</code>）。</td></tr>
+<tr><td><code>value</code></td><td>常數（例如「處理完成」握手位），有 <code>value</code> 就不看 <code>src</code>。</td></tr>
+</table>
+<p>找不到來源的項目<strong>略過</strong>並記在 <code>detail.missing</code>，其他項照寫；整張表都沒東西可寫時回「沒有可寫的值」（run 仍 ok）。</p>
+<p>節點順序：<code>write_plc</code> 沒有必填輸入，建議把 <code>judge.verdict</code>（或最後一個工具的輸出）接到 <code>values</code>，確保它在判定之後才執行。tcp_client 範例：</p>
+<pre>template = "RESULT {judge} {width_px} {lot}"
+mapping  = [{"src": "judge"}, {"src": "width_px"}, {"src": "lot"}]
+→ 送出 "RESULT 1 12.34 A123\n"</pre>
+
+<h2 id="degrade">4. 降級策略</h2>
+<div class="note">產線寧可漏傳一筆也不要停線：<strong>寫入失敗預設不讓 run failed</strong>。</div>
+<ul>
+<li>Writer 內部：每次寫入有逾時；失敗會關閉並<strong>重連一次</strong>再寫，第二次才算失敗（<code>CommError</code>）。</li>
+<li>工具：<code>on_error=warn</code>（預設）→ 節點 <code>status=ok</code>、message「寫入失敗（已降級）：…」、輸出 <code>ok=false</code>、節點 log 一筆 <code>warning</code>；run 的判定不受影響。<code>on_error=fail</code> → 節點 error，run failed。</li>
+<li>連線不存在／已停用／預先開啟失敗 → 同樣走降級（message 說明原因）。</li>
+<li>連線的 <code>info()</code> 累計 <code>writes</code>／<code>errors</code>／<code>reconnects</code>／<code>last_error</code>，設定頁與 <code>GET /connections</code> 看得到。</li>
+</ul>
+
+<h2 id="api">5. 連線 API</h2>
+<pre>GET    /api/vision/connections/kinds
+GET    /api/vision/connections                 任何登入者
+POST   /api/vision/connections                 管理員   {"name", "kind", "config", "is_enabled"}
+GET    /api/vision/connections/{id}
+PATCH  /api/vision/connections/{id}            管理員（設定變更會重開連線）
+DELETE /api/vision/connections/{id}            管理員
+POST   /api/vision/connections/{id}/test       管理員：重新連線 → {"ok": true, "info": {...}} 或 {"ok": false, "error": "…"}
+POST   /api/vision/connections/{id}/write      管理員：手動寫一筆 {"values": {"coil:0": 1, "holding:100:float32": 1.5}}
+GET    /api/vision/connections/{id}/state      讀回 ?addresses=coil:0,holding:100（dio_sim 不帶參數回全部通道）</pre>
+<p>整合方（API 金鑰）視為管理員。<code>test</code>／<code>write</code> 失敗以 200 + <code>ok=false</code> 回，方便整合頁顯示原因。</p>
+
+<h2 id="plugin">6. 外掛 Writer</h2>
+<pre># .env
+VISION_COMM_PLUGINS=opcua=plugins.opcua:OpcUaWriter
+
+# plugins/opcua.py
+from apps.comm.writers import Writer, CommError
+
+class OpcUaWriter(Writer):
+    kind = "opcua"
+    def __init__(self, config, **kw):
+        super().__init__(config, **kw)      # 取得 self.timeout、self._lock、計數器
+        self._open()
+    def _open(self):  ...                    # 連不上就 raise CommError
+    def _write(self, values):                # {address: value} → {"written": n}
+        ...
+    def _read(self, addresses): ...          # 選填
+    def _close(self): ...
+    def info(self): return {**super().info(), "endpoint": ...}</pre>
+<p>只覆寫 <code>_open/_write/_read/_close</code>；lock、逾時、重連一次、計數都在基底的 <code>write()/read()</code>。也可不設環境變數、直接建 kind=<code>plugin</code> 的連線並在 config 填 <code>"class": "plugins.opcua:OpcUaWriter"</code>。</p>
+
+<h2 id="internals">7. 內部結構</h2>
+<ul>
+<li><code>apps/comm/models.py</code>：<code>Connection(name unique, kind, config JSON, is_enabled, created_at, updated_at)</code>。</li>
+<li><code>apps/comm/writers.py</code>：<code>Writer</code> 基底、三個內建 writer、<code>open_connection(model)</code> 快取（<code>updated_at</code> 變才重開）、<code>close_connection</code>、<code>get_writer(name)</code>（純記憶體）、<code>prefetch_connections(compiled)</code>。</li>
+<li><strong>熱路徑不碰資料庫</strong>：<code>apps/comm/apps.py</code> 在 <code>ready()</code> 把 <code>prefetch_connections</code> 掛進 <code>Runner.prefetch_hooks</code>；Runner 編譯流程時（呼叫者執行緒）掃出 <code>write_plc</code> 節點的 <code>connection</code>，查 DB 並開好連線放進「名稱 → writer」快取。執行緒池內的工具只呼叫 <code>get_writer(name)</code>。</li>
+<li><code>apps/vision/tools/builtin/plc.py</code>：<code>write_plc</code> 工具。</li>
+<li><code>apps/comm/api.py</code>：連線 API，掛在 <code>/api/vision</code>。</li>
+<li>測試 <code>tests/test_comm.py</code>：dio_sim、tcp_client（本機臨時 socket server）、modbus_tcp（pymodbus 的 TCP server 跑在執行緒）、工具降級、Runner prefetch、API。</li>
+</ul>
+</body>
+</html>

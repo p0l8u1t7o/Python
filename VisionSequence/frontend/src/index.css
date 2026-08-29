@@ -1,0 +1,224 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 語意色票（Gentelella 風）。元件一律用 bg-surface / text-muted，不寫原始色碼；改這一段就能整站換色。
+   淺色：側欄深藍灰 #2A3F54、內容區淺灰 #F7F7F7、面板白底細邊框、主色 teal #1ABB9C。
+   深色：同一套語意，側欄與面板調暗。 */
+:root {
+  --canvas: #f7f7f7;
+  --surface: #ffffff;
+  --surface-muted: #f2f5f7;
+  --surface-raised: #ffffff;
+  --border: #e6e9ed;
+  --border-strong: #d0d6de;
+  --content: #2a3f54;
+  --content-muted: #73879c;
+  --content-subtle: #9aa9b8;
+  --heading: #2a3f54;
+
+  --brand: #1abb9c;
+  --brand-strong: #169f85;
+  --brand-soft: #e1f5ef;
+  --on-brand: #ffffff;
+  --accent: #2a3f54;
+
+  --ok: #26b99a;
+  --ok-soft: #e1f5ef;
+  --info: #3498db;
+  --info-soft: #e3f1fb;
+  --warning: #d9822b;
+  --warning-soft: #fdf1e3;
+  --critical: #d9534f;
+  --critical-soft: #fbe6e5;
+
+  --viewer-bg: #1c2230;
+
+  /* 側欄 */
+  --sidebar: #2a3f54;
+  --sidebar-text: #e7e7e7;
+  --sidebar-muted: #b9c3cf;
+  --sidebar-hover: #34495e;
+  --sidebar-active-bg: #ffffff;
+  --sidebar-active-text: #2a3f54;
+  --sidebar-brand: #1abb9c;
+  --sidebar-line: rgb(255 255 255 / 0.08);
+}
+
+.dark {
+  --canvas: #111820;
+  --surface: #1a2431;
+  --surface-muted: #202d3c;
+  --surface-raised: #1e2937;
+  --border: #2b3a4c;
+  --border-strong: #3b4d63;
+  --content: #e4ebf3;
+  --content-muted: #9db0c3;
+  --content-subtle: #6f8397;
+  --heading: #f2f6fa;
+
+  --brand: #1abb9c;
+  --brand-strong: #35d0b2;
+  --brand-soft: #14352f;
+  --on-brand: #04201a;
+  --accent: #9db0c3;
+
+  --ok: #3ccfad;
+  --ok-soft: #10332a;
+  --info: #5dade2;
+  --info-soft: #102a3d;
+  --warning: #f0a04b;
+  --warning-soft: #3a2a12;
+  --critical: #ef6f6b;
+  --critical-soft: #3f1a19;
+
+  --viewer-bg: #0a0d13;
+
+  --sidebar: #1a2633;
+  --sidebar-text: #dbe3ec;
+  --sidebar-muted: #93a4b6;
+  --sidebar-hover: #24344a;
+  --sidebar-active-bg: #263a4f;
+  --sidebar-active-text: #ffffff;
+  --sidebar-brand: #1abb9c;
+  --sidebar-line: rgb(255 255 255 / 0.06);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-raised: var(--surface-raised);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-content: var(--content);
+  --color-heading: var(--heading);
+  --color-muted: var(--content-muted);
+  --color-subtle: var(--content-subtle);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --color-viewer: var(--viewer-bg);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active-bg);
+  --color-sidebar-active-text: var(--sidebar-active-text);
+
+  --font-sans:
+    'Helvetica Neue', Helvetica, Arial, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
+
+  /* Gentelella 的圓角很小 */
+  --radius-lg: 4px;
+  --radius-xl: 5px;
+  --radius-2xl: 6px;
+  --radius-md: 3px;
+}
+
+@layer base {
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+  body { @apply bg-canvas text-content font-sans antialiased; margin: 0; overflow: hidden; }
+  * { border-color: var(--border); }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  h1, h2, h3, h4 { color: var(--heading); }
+}
+
+@layer components {
+  /* 面板（x_panel）：白底、細邊框、無明顯圓角。標題列 .panel-title 由 CardHeader 產生。 */
+  .card { @apply bg-surface border border-line rounded-md; }
+  .panel-title { @apply flex flex-wrap items-center justify-between gap-3 border-b-2 border-line px-4 py-2.5; }
+  .panel-title h2 { @apply text-[15px] font-semibold text-heading; }
+  /* 統計 tile_count：大數字＋小標 */
+  .tile-count { @apply bg-surface border border-line rounded-md px-4 py-3; }
+  .tile-count .tile-label { @apply text-[11px] font-semibold uppercase tracking-wide text-muted; }
+  .tile-count .tile-value { @apply mt-1 text-[28px] font-semibold leading-none text-heading; font-variant-numeric: tabular-nums; }
+  .tile-count .tile-unit { @apply ml-1 text-xs font-normal text-muted; }
+
+  .input {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-1.5 text-sm text-content
+      placeholder:text-subtle focus:border-brand focus:outline-none disabled:opacity-60;
+  }
+  /* Tailwind v4 的 @apply 不能引用同一層定義的 .btn，所以每個變體把共用樣式寫開。 */
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-brand text-on-brand hover:bg-brand-strong; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-line bg-surface text-content hover:bg-surface-muted; }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:bg-surface-muted hover:text-content; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-critical text-white hover:opacity-90; }
+  .btn-icon { @apply rounded-md p-1.5 text-muted transition hover:bg-surface-muted hover:text-content; }
+
+  /* 側欄項目（摺疊時的 tooltip 用 .nav-tip） */
+  .nav-item { @apply relative flex items-center gap-3 whitespace-nowrap px-4 py-2.5 text-[13px] text-sidebar-text transition-colors hover:bg-sidebar-hover; }
+  .nav-item.active { @apply bg-sidebar-active text-sidebar-active-text font-medium; }
+  .nav-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sidebar-brand); }
+  .nav-tip { @apply pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-sidebar px-2 py-1 text-xs text-sidebar-text opacity-0 shadow-lg transition-opacity; }
+  .nav-item:hover .nav-tip { opacity: 1; }
+
+  /* 執行中的節點：旋轉光環 */
+  .vs-node-loading { position: relative; }
+  .vs-node-loading::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    /* 矩形外框旋轉會變成掃過節點的斜線，改為脈動邊框。 */
+    border: 2px solid var(--brand);
+    animation: vs-pulse 1s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes vs-pulse { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.9; } }
+  @keyframes vs-spin { to { transform: rotate(360deg); } }
+}
+
+/* React Flow 的主題 */
+.react-flow { --xy-background-color: var(--canvas); }
+.react-flow__edge-path { stroke: var(--border-strong); stroke-width: 1.6; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: var(--brand); }
+.react-flow__handle { border: 1.5px solid var(--surface); }
+.react-flow__minimap { background: var(--surface) !important; }
+.react-flow__controls button { background: var(--surface) !important; border-color: var(--border) !important; color: var(--content) !important; fill: var(--content) !important; }
+
+/* 表單／表格的共用小樣式（精簡自 ZQS-Cloud）。 */
+@layer components {
+  .label { @apply mb-1 block text-xs font-medium text-muted; }
+  .hint { @apply mt-1 text-xs leading-relaxed text-subtle; }
+  .table-header { @apply whitespace-nowrap px-3 py-2 text-left text-xs font-semibold text-heading; }
+  .table-cell { @apply px-3 py-2 align-middle text-sm; }
+}
+
+/* 埠型別顏色：把手、邊、標籤共用同一組變數（docs/glossary.html「埠型別顏色」表，每種型別唯一）。 */
+:root {
+  --port-image: #3b82f6;
+  --port-number: #22c55e;
+  --port-bool: #f97316;
+  --port-region: #a855f7;
+  --port-flow: #94a3b8;
+  --port-points: #06b6d4;
+  --port-contours: #6366f1;
+  --port-matches: #ec4899;
+  --port-list: #14b8a6;
+  --port-string: #eab308;
+  --port-any: #cbd5e1;
+}
+
+/* 三欄拖曳分隔線 */
+.vs-resizer { @apply shrink-0 bg-line transition-colors hover:bg-brand; }
+.vs-resizer-x { width: 4px; cursor: col-resize; }
+.vs-resizer-y { height: 4px; cursor: row-resize; }
+
+/* 邊上的資料流小點動畫用；overlay 畫布不吃事件 */
+.vs-edge-flowing { stroke-dasharray: 6 4; animation: vs-dash 0.8s linear infinite; }
+@keyframes vs-dash { to { stroke-dashoffset: -20; } }

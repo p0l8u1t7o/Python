@@ -1,0 +1,2276 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自動化設備元件教育訓練 · 機構 / 電控 / 軟體</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#12212B;
+  --ink-2:#3A4E5C;
+  --paper:#E9EEF1;
+  --panel:#FFFFFF;
+  --line:#BCC9D1;
+  --line-soft:#D7E0E5;
+  --mech:#E08A00;
+  --elec:#CF3A26;
+  --soft:#0E7C8C;
+  --aoi:#6242C4;
+  --fcs:#17925C;
+  --accent:var(--elec);
+  --shadow:0 1px 0 rgba(18,33,43,.06), 0 12px 28px -18px rgba(18,33,43,.5);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:104px}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+  font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(circle at 1px 1px, rgba(18,33,43,.07) 1px, transparent 0);
+  background-size:22px 22px;
+}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+.eyebrow{
+  font-family:"Saira Condensed",sans-serif; font-weight:700; letter-spacing:.22em;
+  text-transform:uppercase; font-size:13px; color:var(--ink-2);
+}
+h1,h2,h3{line-height:1.3; margin:0}
+.wrap{max-width:1180px; margin:0 auto; padding:0 20px}
+
+/* ---------- 導覽列：控制盤按鈕列 ---------- */
+.topbar{
+  position:sticky; top:0; z-index:60; background:rgba(233,238,241,.94);
+  backdrop-filter:blur(8px); border-bottom:1px solid var(--line);
+}
+.topbar-in{display:flex; align-items:center; gap:14px; height:64px; max-width:1180px; margin:0 auto; padding:0 20px}
+.brand{display:flex; align-items:center; gap:10px; flex:0 0 auto}
+.brand .dot{width:12px;height:12px;border-radius:50%;background:var(--fcs);box-shadow:0 0 0 3px rgba(23,146,92,.18)}
+.brand b{font-weight:900; letter-spacing:.02em; font-size:15px}
+.brand span{font-size:11px; color:var(--ink-2); display:block; letter-spacing:.14em; font-family:"Saira Condensed",sans-serif; text-transform:uppercase}
+nav.tabs{display:flex; gap:4px; overflow-x:auto; flex:1 1 auto; scrollbar-width:none}
+nav.tabs::-webkit-scrollbar{display:none}
+nav.tabs a{
+  flex:0 0 auto; text-decoration:none; color:var(--ink-2); font-weight:700; font-size:14px;
+  padding:8px 12px; border:1px solid transparent; border-radius:3px; white-space:nowrap;
+}
+nav.tabs a:hover{background:#fff; border-color:var(--line); color:var(--ink)}
+.search{flex:0 0 auto; position:relative}
+.search input{
+  width:190px; padding:8px 12px 8px 32px; border:1px solid var(--line); background:#fff;
+  border-radius:3px; font-family:inherit; font-size:14px; color:var(--ink);
+}
+.search input:focus{outline:2px solid var(--soft); outline-offset:1px}
+.search svg{position:absolute; left:9px; top:9px; opacity:.5}
+@media(max-width:900px){ .search{display:none} }
+
+/* ---------- Hero ---------- */
+.hero{padding:52px 0 28px}
+.hero-grid{display:grid; grid-template-columns:minmax(0,1fr); gap:26px}
+h1{font-size:clamp(30px,5vw,52px); font-weight:900; letter-spacing:-.01em}
+h1 em{font-style:normal; position:relative; white-space:nowrap}
+h1 em::after{content:""; position:absolute; left:0; right:0; bottom:.08em; height:.28em; background:var(--mech); opacity:.45; z-index:-1}
+.lede{max-width:62ch; color:var(--ink-2); font-size:17px; margin-top:14px}
+.legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.chip{
+  display:inline-flex; align-items:center; gap:7px; background:#fff; border:1px solid var(--line);
+  padding:6px 12px; border-radius:999px; font-size:13px; font-weight:700;
+}
+.chip i{width:10px;height:10px;border-radius:2px;display:block}
+
+/* ---------- 機台剖視圖 ---------- */
+.figure{
+  background:var(--panel); border:1px solid var(--line); border-radius:4px;
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.figure-head{
+  display:flex; justify-content:space-between; align-items:center; gap:12px;
+  padding:12px 16px; border-bottom:1px solid var(--line-soft); background:#F6F9FA; flex-wrap:wrap;
+}
+.figure-head h3{font-size:15px; font-weight:900}
+.figure-head p{margin:0; font-size:12.5px; color:var(--ink-2)}
+.figure-body{padding:6px 6px 0}
+.figure svg{width:100%; height:auto; display:block}
+.hint{padding:10px 16px 14px; font-size:12.5px; color:var(--ink-2); border-top:1px solid var(--line-soft); background:#F6F9FA}
+
+.hot{cursor:pointer}
+.hot circle{fill:#fff; stroke:var(--ink); stroke-width:1.6; transition:.18s}
+.hot text{font-family:"JetBrains Mono",monospace; font-size:11px; font-weight:700; fill:var(--ink); pointer-events:none}
+.hot:hover circle,.hot:focus circle{fill:var(--mech); stroke:var(--ink); r:13}
+.hot:focus{outline:none}
+.mline{stroke:var(--ink); stroke-width:1.4; fill:none}
+.mfill{fill:#DDE5E9; stroke:var(--ink); stroke-width:1.4}
+.mfill-2{fill:#C3D0D7; stroke:var(--ink); stroke-width:1.4}
+.mdash{stroke:var(--ink-2); stroke-width:1.2; stroke-dasharray:6 5; fill:none}
+.lbl{font-family:"Saira Condensed",sans-serif; font-size:12px; font-weight:600; fill:var(--ink-2); letter-spacing:.06em}
+
+/* ---------- 區塊 ---------- */
+section{padding:56px 0 10px; border-top:1px solid var(--line); margin-top:44px}
+.sec-head{display:flex; gap:16px; align-items:flex-start; margin-bottom:8px}
+.sec-num{
+  font-family:"Saira Condensed",sans-serif; font-weight:700; font-size:13px; letter-spacing:.12em;
+  color:#fff; background:var(--accent); padding:4px 10px; border-radius:2px; margin-top:8px; flex:0 0 auto;
+}
+.sec-head h2{font-size:clamp(24px,3.4vw,34px); font-weight:900}
+.sec-head p{margin:8px 0 0; color:var(--ink-2); max-width:70ch}
+#mech{--accent:var(--mech)} #elec{--accent:var(--elec)} #soft{--accent:var(--soft)}
+#aoi{--accent:var(--aoi)} #fcs{--accent:var(--fcs)} #quiz{--accent:var(--ink)}
+
+/* ---------- 動畫展示盒 ---------- */
+.demo{
+  display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:0;
+  background:var(--panel); border:1px solid var(--line); border-radius:4px; margin:26px 0 34px;
+  box-shadow:var(--shadow); overflow:hidden;
+}
+@media(max-width:820px){ .demo{grid-template-columns:1fr} }
+.demo .stage{padding:14px; background:
+  linear-gradient(#F3F7F8,#F3F7F8) padding-box; border-right:1px solid var(--line-soft)}
+@media(max-width:820px){ .demo .stage{border-right:0; border-bottom:1px solid var(--line-soft)} }
+.demo .stage svg{width:100%; height:auto; display:block}
+.demo .notes{padding:20px}
+.demo .notes h4{margin:0 0 8px; font-size:16px; font-weight:900}
+.demo .notes ul{margin:0; padding-left:18px; font-size:14px; color:var(--ink-2)}
+.demo .notes li{margin-bottom:7px}
+.demo .notes li b{color:var(--ink)}
+
+/* ---------- 元件卡片 ---------- */
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; margin:8px 0 10px}
+.card{
+  background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--accent);
+  border-radius:3px; padding:14px 16px; cursor:pointer; transition:.15s; position:relative;
+}
+.card:hover{transform:translateY(-2px); box-shadow:var(--shadow)}
+.card.on{box-shadow:var(--shadow)}
+.card .id{font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--accent); font-weight:700; letter-spacing:.04em}
+.card h5{margin:2px 0 1px; font-size:16px; font-weight:900; letter-spacing:.01em}
+.card .en{font-family:"Saira Condensed",sans-serif; font-size:12.5px; letter-spacing:.09em; color:var(--ink-2); text-transform:uppercase}
+.card .fn{font-size:14px; margin:9px 0 0; color:var(--ink-2)}
+.card .more{max-height:0; overflow:hidden; transition:max-height .3s ease}
+.card.on .more{max-height:640px}
+.card .more-in{padding-top:12px; margin-top:12px; border-top:1px dashed var(--line)}
+.row{display:flex; gap:9px; font-size:13.5px; margin-bottom:8px; align-items:flex-start}
+.row .k{
+  flex:0 0 58px; font-family:"Saira Condensed",sans-serif; font-weight:700; font-size:11.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:#fff; background:var(--ink-2);
+  border-radius:2px; text-align:center; padding:2px 0; margin-top:3px;
+}
+.row.tip .k{background:var(--mech); color:var(--ink)}
+.row .v{color:var(--ink-2); flex:1}
+.card .toggle{position:absolute; right:12px; top:12px; font-size:11px; color:var(--ink-2); font-family:"Saira Condensed",sans-serif; letter-spacing:.1em}
+.card.on .toggle::after{content:"收合"} .card .toggle::after{content:"展開"}
+.card.flash{animation:flash 1.4s ease}
+@keyframes flash{0%,100%{background:var(--panel)} 20%{background:#FFF3D6}}
+
+/* ---------- 注意事項 ---------- */
+.callout{
+  background:#fff; border:1px solid var(--line); border-radius:4px; padding:18px 20px; margin:20px 0 8px;
+  border-top:3px solid var(--elec);
+}
+.callout h4{margin:0 0 10px; font-size:15px; font-weight:900; display:flex; align-items:center; gap:8px}
+.callout ol{margin:0; padding-left:20px; font-size:14px; color:var(--ink-2)}
+.callout li{margin-bottom:6px}
+
+/* ---------- 測驗 ---------- */
+.q{background:#fff; border:1px solid var(--line); border-radius:4px; padding:16px 18px; margin-bottom:12px}
+.q p{margin:0 0 10px; font-weight:700; font-size:15px}
+.q .opt{
+  display:block; width:100%; text-align:left; background:#F5F8F9; border:1px solid var(--line-soft);
+  padding:9px 12px; border-radius:3px; margin-bottom:6px; cursor:pointer; font-family:inherit; font-size:14px; color:var(--ink);
+}
+.q .opt:hover{border-color:var(--ink-2)}
+.q .opt.right{background:#DFF3E8; border-color:var(--fcs); font-weight:700}
+.q .opt.wrong{background:#FBE3DF; border-color:var(--elec)}
+.q .exp{display:none; font-size:13.5px; color:var(--ink-2); margin-top:8px; padding-top:8px; border-top:1px dashed var(--line)}
+.q.done .exp{display:block}
+
+footer{margin-top:60px; border-top:1px solid var(--line); padding:26px 0 60px; color:var(--ink-2); font-size:13px}
+.count{font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--ink-2); margin-bottom:10px}
+.empty{padding:26px; text-align:center; color:var(--ink-2); border:1px dashed var(--line); border-radius:4px}
+
+/* ---------- 動畫 ---------- */
+@keyframes gantry{0%,8%{transform:translateX(0)} 45%,55%{transform:translateX(215px)} 92%,100%{transform:translateX(0)}}
+@keyframes zdown{0%,30%{transform:translateY(0)} 42%,50%{transform:translateY(34px)} 62%,100%{transform:translateY(0)}}
+@keyframes beltmove{to{stroke-dashoffset:-40}}
+@keyframes towerR{0%,60%{opacity:.15} 70%,100%{opacity:1}}
+@keyframes towerG{0%,55%{opacity:1} 60%,100%{opacity:.15}}
+@keyframes rodout{0%,10%{transform:translateX(0)} 40%,60%{transform:translateX(72px)} 90%,100%{transform:translateX(0)}}
+@keyframes slide{0%,6%{transform:translateX(0)} 44%,56%{transform:translateX(150px)} 94%,100%{transform:translateX(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%{offset-distance:0%} 100%{offset-distance:100%}}
+@keyframes scanline{0%,5%{transform:translateX(0)} 60%,70%{transform:translateX(200px)} 100%{transform:translateX(0)}}
+@keyframes blip{0%,100%{opacity:.2} 50%{opacity:1}}
+@keyframes flow{to{stroke-dashoffset:-32}}
+@keyframes stateA{0%,20%{opacity:1}21%,100%{opacity:.18}}
+@keyframes stateB{0%,20%{opacity:.18}21%,45%{opacity:1}46%,100%{opacity:.18}}
+@keyframes stateC{0%,45%{opacity:.18}46%,70%{opacity:1}71%,100%{opacity:.18}}
+@keyframes stateD{0%,70%{opacity:.18}71%,100%{opacity:1}}
+.anim-gantry{animation:gantry 7s ease-in-out infinite}
+.anim-z{animation:zdown 7s ease-in-out infinite}
+.anim-belt{stroke-dasharray:14 26; animation:beltmove 1.6s linear infinite}
+.anim-red{animation:towerR 4s steps(1,end) infinite}
+.anim-green{animation:towerG 4s steps(1,end) infinite}
+.anim-rod{animation:rodout 4.5s cubic-bezier(.5,0,.3,1) infinite}
+.anim-slide{animation:slide 6s cubic-bezier(.45,0,.35,1) infinite}
+.anim-spin{animation:spin 2.4s linear infinite; transform-origin:center}
+.anim-scan{animation:scanline 5s ease-in-out infinite}
+.anim-blip{animation:blip 1.1s ease-in-out infinite}
+.anim-flow{stroke-dasharray:8 24; animation:flow 1.4s linear infinite}
+.s1{animation:stateA 8s linear infinite}.s2{animation:stateB 8s linear infinite}
+.s3{animation:stateC 8s linear infinite}.s4{animation:stateD 8s linear infinite}
+/* ---------- 元件照片槽 ---------- */
+.card{padding-top:0; overflow:hidden}
+.ph{position:relative; aspect-ratio:4/3; margin:0 -16px 12px; background:#EEF3F5; border-bottom:1px solid var(--line-soft)}
+.ph img{width:100%; height:100%; object-fit:cover; display:block}
+.ph.noimg img{display:none}
+.ph.noimg::after{
+  content:"尚無照片 · " attr(data-file); position:absolute; inset:0; display:flex;
+  align-items:center; justify-content:center; text-align:center; padding:12px;
+  font-family:"JetBrains Mono",monospace; font-size:10.5px; color:#7C8E99; line-height:1.6;
+  background-image:repeating-linear-gradient(45deg,#E4EBEE 0 9px,#EEF3F5 9px 18px);
+}
+.ph.over{outline:3px dashed var(--accent); outline-offset:-5px}
+.ph .cc{
+  position:absolute; left:0; right:0; bottom:0; color:#fff; font-size:10px; line-height:1.45;
+  padding:16px 8px 5px; font-family:"JetBrains Mono",monospace;
+  background:linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.78));
+}
+.ph .cc a{color:#fff}
+.ph .nx{
+  position:absolute; right:6px; top:6px; font-family:inherit; font-size:11px; font-weight:700;
+  background:rgba(18,33,43,.82); color:#fff; border:0; padding:4px 9px; border-radius:2px; cursor:pointer;
+}
+.ph .nx:hover{background:var(--elec)}
+.ph.loading::before{
+  content:"搜尋 Commons 圖片中…"; position:absolute; inset:0; z-index:2; display:flex;
+  align-items:center; justify-content:center; font-family:"JetBrains Mono",monospace;
+  font-size:11px; color:#5E7581; background:#E4EBEE;
+}
+.ph.nohit::after{content:"Commons 查無適合圖片 · " attr(data-file)}
+.card .toggle{background:rgba(255,255,255,.92); padding:2px 7px; border-radius:2px; border:1px solid var(--line-soft)}
+.card .id{display:inline-block; margin-top:2px}
+
+.photobar{
+  background:#fff; border:1px solid var(--line); border-top:3px solid var(--soft);
+  border-radius:4px; padding:18px 20px; margin:22px 0 0;
+}
+.photobar h4{margin:0 0 8px; font-size:15px; font-weight:900}
+.photobar p{margin:0 0 10px; font-size:14px; color:var(--ink-2)}
+.photobar code{font-family:"JetBrains Mono",monospace; font-size:12.5px; background:#EDF3F4; padding:1px 5px; border-radius:2px}
+.btn{
+  font-family:inherit; font-size:13.5px; font-weight:700; cursor:pointer; color:#fff;
+  background:var(--ink); border:0; padding:9px 16px; border-radius:3px; margin-right:8px;
+}
+.btn.ghost{background:#fff; color:var(--ink); border:1px solid var(--line)}
+.btn:hover{opacity:.88}
+
+/* ---------- 3D 觀察器 ---------- */
+.scene{
+  height:min(64vh,580px); position:relative; overflow:hidden; touch-action:none; cursor:grab;
+  perspective:1900px; perspective-origin:50% 42%;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 16%, rgba(255,255,255,.92), rgba(255,255,255,0) 62%),
+    linear-gradient(#F2F6F8 0%, #E2EAEE 46%, #C7D4DA 100%);
+}
+.scene.drag{cursor:grabbing}
+.world{position:absolute; left:50%; top:50%; transform-style:preserve-3d; transition:transform .65s cubic-bezier(.4,0,.2,1)}
+.world.nofx{transition:none}
+.box{position:absolute; left:0; top:0; transform-style:preserve-3d; transition:transform .55s cubic-bezier(.4,0,.2,1)}
+.face{
+  position:absolute; left:0; top:0; box-sizing:border-box; background:#C7D3D9;
+  border:1px solid rgba(18,33,43,.24);
+  box-shadow:inset 0 0 26px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.face.tp{filter:brightness(1.16)}
+.face.fr{filter:brightness(1.03)}
+.face.rt{filter:brightness(.88)}
+.face.lf{filter:brightness(.79)}
+.face.bk{filter:brightness(.70)}
+.face.bt{filter:brightness(.55)}
+.m-alu .face{background:
+  repeating-linear-gradient(0deg, rgba(255,255,255,.30) 0 2px, rgba(18,33,43,.13) 2px 4px, rgba(0,0,0,0) 4px 15px),
+  linear-gradient(102deg,#D3DCE1,#F1F5F7 26%,#C4CFD5 52%,#E8EDEF 76%,#CBD5DA)}
+.m-plate .face{background:
+  radial-gradient(circle at 24% 32%, rgba(255,255,255,.15) 0 2px, transparent 3px),
+  radial-gradient(circle at 66% 70%, rgba(255,255,255,.11) 0 2px, transparent 3px),
+  linear-gradient(120deg,#4C5459,#5E686D 45%,#434B50)}
+.m-steel .face{background:linear-gradient(110deg,#9FADB5,#C6D1D7 32%,#93A2AA 60%,#B7C3C9)}
+.m-paint .face{background:linear-gradient(115deg,#DFE6EA,#F4F7F8 34%,#D3DCE1)}
+.m-elec .face{background:linear-gradient(115deg,#DCE2E5,#EFF3F4 30%,#CED6DA)}
+.m-elec .face.rt{background:
+  repeating-linear-gradient(0deg, rgba(18,33,43,.28) 0 2px, transparent 2px 9px),
+  linear-gradient(#D8E0E4,#C3CDD3)}
+.m-armw .face{background:linear-gradient(112deg,#E9ECEC,#FBFCFC 30%,#DCE1E2 62%,#EFF2F2)}
+.m-armo .face{background:linear-gradient(112deg,#D9741F,#F2963E 32%,#C4630F 66%,#E5842C)}
+.m-belt .face{background:
+  repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0 1px, transparent 1px 11px),
+  linear-gradient(#3C4348,#2A3034)}
+.m-roller .face{background:linear-gradient(#E3EAED,#A9B7BE 42%,#7E8D95 72%,#B9C6CC)}
+.m-blk .face{background:linear-gradient(115deg,#3A4146,#4E565B 36%,#2E3438)}
+.m-opt .face{background:linear-gradient(115deg,#2E3439,#454D53 34%,#22282C)}
+.m-screen .face{background:linear-gradient(150deg,#20323C,#31505F 30%,#16242B 62%)}
+.m-screen .face.fr{background:
+  linear-gradient(152deg, rgba(255,255,255,.28) 0 18%, rgba(255,255,255,0) 44%),
+  linear-gradient(#1D3944,#122229)}
+.m-glass .face{
+  background:linear-gradient(145deg, rgba(255,255,255,.44) 0 20%, rgba(178,214,226,.15) 34%, rgba(255,255,255,.24) 66%, rgba(160,200,214,.13));
+  border-color:rgba(30,80,98,.32); box-shadow:inset 0 0 30px rgba(120,180,200,.22)}
+.m-lr .face{background:radial-gradient(circle at 40% 34%,#FF9083,#D2382A 62%,#A32418); box-shadow:0 0 24px rgba(210,56,42,.55)}
+.m-ly .face{background:radial-gradient(circle at 40% 34%,#FFE58A,#E5B400 62%,#B08A00)}
+.m-lg .face{background:radial-gradient(circle at 40% 34%,#8DE8BA,#1E9B62 62%,#136B43)}
+.p-guard.hide{display:none}
+.floor,.contact{position:absolute; left:0; top:0; pointer-events:none}
+.floor{
+  width:1500px; height:1100px; margin-left:-750px; margin-top:-550px;
+  transform:translate3d(0,266px,0) rotateX(90deg);
+  background:
+    repeating-linear-gradient(0deg, rgba(18,33,43,.055) 0 1px, transparent 1px 62px),
+    repeating-linear-gradient(90deg, rgba(18,33,43,.055) 0 1px, transparent 1px 62px),
+    radial-gradient(ellipse 44% 42% at 50% 50%, #EAF0F2, #C9D5DB 78%);
+}
+.contact{
+  width:760px; height:620px; margin-left:-380px; margin-top:-310px;
+  transform:translate3d(-10px,262px,10px) rotateX(90deg);
+  background:radial-gradient(ellipse 44% 46% at 50% 50%, rgba(18,33,43,.42), rgba(18,33,43,0) 72%);
+  filter:blur(14px);
+}
+.tag3d{position:absolute; left:0; top:0; transform-style:preserve-3d}
+.tag3d b{
+  position:absolute; transform:translate(-50%,-50%); white-space:nowrap; cursor:pointer;
+  background:#12212B; color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:2px;
+  letter-spacing:.03em; box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.tag3d b:hover{background:var(--elec)}
+.tag3d.off{display:none}
+.viewbar{display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px; border-bottom:1px solid var(--line-soft); background:#F6F9FA}
+.vbtn{
+  font-family:"Saira Condensed",sans-serif; font-size:13px; font-weight:700; letter-spacing:.08em;
+  padding:6px 12px; border:1px solid var(--line); background:#fff; color:var(--ink-2);
+  border-radius:2px; cursor:pointer;
+}
+.vbtn.on,.vbtn:hover{background:var(--ink); color:#fff; border-color:var(--ink)}
+
+/* ---------- 來料識別工具 ---------- */
+.idtool{background:#fff; border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow); overflow:hidden; margin:22px 0}
+.idtool .idhead{padding:12px 16px; background:#F6F9FA; border-bottom:1px solid var(--line-soft); font-size:14px; font-weight:900}
+.idlist{display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:8px; padding:14px}
+.idbtn{
+  text-align:left; font-family:inherit; font-size:13.5px; line-height:1.5; cursor:pointer; color:var(--ink);
+  background:#F4F8F9; border:1px solid var(--line-soft); border-left:3px solid var(--line); padding:10px 12px; border-radius:3px;
+}
+.idbtn:hover{border-left-color:var(--accent); background:#fff}
+.idbtn.on{border-left-color:var(--accent); background:#fff; box-shadow:var(--shadow); font-weight:700}
+.idout{padding:0 16px 18px; display:none; border-top:1px dashed var(--line)}
+.idout.show{display:block}
+.idout h5{margin:14px 0 6px; font-size:15px; font-weight:900}
+.idout p{margin:0 0 10px; font-size:14px; color:var(--ink-2)}
+.idout .cands{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px}
+.idout .cands button{
+  font-family:inherit; font-size:13px; cursor:pointer; background:var(--ink); color:#fff;
+  border:0; padding:5px 12px; border-radius:999px;
+}
+.idout .cands button:hover{background:var(--accent)}
+#ident{--accent:#B0500F} #pne{--accent:#0E7C8C} #cnv{--accent:#7A6A17}
+#arm{--accent:#1F6FB2}
+@keyframes j1{0%,100%{transform:rotate(0deg)} 30%{transform:rotate(-26deg)} 62%{transform:rotate(10deg)}}
+@keyframes j2{0%,100%{transform:rotate(0deg)} 30%{transform:rotate(34deg)} 62%{transform:rotate(-14deg)}}
+@keyframes j3{0%,100%{transform:rotate(0deg)} 30%{transform:rotate(-20deg)} 62%{transform:rotate(24deg)}}
+@keyframes grip{0%,24%{transform:translateY(0)} 34%,56%{transform:translateY(-5px)} 70%,100%{transform:translateY(0)}}
+@keyframes scaraA{0%,100%{transform:rotate(0deg)} 45%{transform:rotate(52deg)}}
+@keyframes scaraB{0%,100%{transform:rotate(0deg)} 45%{transform:rotate(-74deg)}}
+.anim-j1{animation:j1 5s ease-in-out infinite}
+.anim-j2{animation:j2 5s ease-in-out infinite}
+.anim-j3{animation:j3 5s ease-in-out infinite}
+.anim-grip{animation:grip 5s ease-in-out infinite}
+.anim-sa{animation:scaraA 4.4s ease-in-out infinite}
+.anim-sb{animation:scaraB 4.4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important; transition:none !important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <span class="dot"></span>
+      <div><b>設備元件入門</b><span>Machine Anatomy · Rev.A</span></div>
+    </div>
+    <nav class="tabs">
+      <a href="#overview">全機概覽</a>
+      <a href="#view3d">3D 觀察</a>
+      <a href="#ident">來料識別</a>
+      <a href="#mech">機構</a>
+      <a href="#pne">氣路</a>
+      <a href="#elec">電控</a>
+      <a href="#soft">軟體</a>
+      <a href="#cnv">輸送帶模組</a>
+      <a href="#arm">機械手臂</a>
+      <a href="#aoi">AOI 檢測機</a>
+      <a href="#fcs">氫燃料電池平台</a>
+      <a href="#quiz">隨堂測驗</a>
+    </nav>
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="搜尋元件 / 型號 / 功能" aria-label="搜尋元件">
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="overview">
+  <div class="hero-grid">
+    <div>
+      <div class="eyebrow">新人訓練 · 第一單元</div>
+      <h1>一台設備，<em>三個系統</em><br>拆開來看就不難。</h1>
+      <p class="lede">
+        機構讓東西動、電控讓它照指令動、軟體決定什麼時候動。找故障的時候，先判斷問題落在哪一層，
+        剩下的排查就只是縮小範圍。下面這張剖視圖是我們機台的通用骨架，點編號可以跳到對應元件。
+      </p>
+      <div class="legend">
+        <span class="chip"><i style="background:var(--mech)"></i>機構 MEC</span>
+        <span class="chip"><i style="background:var(--elec)"></i>電控 ELE</span>
+        <span class="chip"><i style="background:var(--soft)"></i>軟體 SFT</span>
+        <span class="chip"><i style="background:var(--aoi)"></i>AOI 光學</span>
+        <span class="chip"><i style="background:var(--fcs)"></i>氫燃料電池 FCS</span>
+      </div>
+    </div>
+
+    <div class="figure">
+      <div class="figure-head">
+        <div>
+          <h3>通用機台剖視圖（正視）</h3>
+          <p>以桌上型 XYZ 龍門機為例，AOI 機、組裝機、測試機的骨架都是這個結構。</p>
+        </div>
+        <p class="mono" style="font-size:11px">FIG-01</p>
+      </div>
+      <div class="figure-body">
+      <svg viewBox="0 0 1000 560" role="img" aria-label="自動化機台剖視示意圖">
+        <!-- 安全罩 -->
+        <rect x="95" y="92" width="700" height="300" class="mdash" rx="4"/>
+        <text x="105" y="86" class="lbl">SAFETY ENCLOSURE / 安全護罩</text>
+
+        <!-- 機架 -->
+        <rect x="120" y="392" width="680" height="86" class="mfill"/>
+        <line x1="120" y1="414" x2="800" y2="414" class="mline"/>
+        <line x1="240" y1="392" x2="240" y2="478" class="mline"/>
+        <line x1="560" y1="392" x2="560" y2="478" class="mline"/>
+        <line x1="680" y1="392" x2="680" y2="478" class="mline"/>
+        <!-- 腳座 -->
+        <rect x="140" y="478" width="34" height="16" class="mfill-2"/><rect x="146" y="494" width="22" height="8" class="mfill-2"/>
+        <rect x="746" y="478" width="34" height="16" class="mfill-2"/><rect x="752" y="494" width="22" height="8" class="mfill-2"/>
+
+        <!-- 定盤 -->
+        <rect x="140" y="360" width="640" height="32" class="mfill-2"/>
+        <!-- 線性滑軌 -->
+        <rect x="210" y="348" width="480" height="12" class="mfill"/>
+        <!-- 滾珠螺桿 -->
+        <line x1="215" y1="336" x2="685" y2="336" class="mline" stroke-width="3"/>
+        <g class="anim-spin" style="transform-origin:200px 336px">
+          <rect x="168" y="320" width="34" height="32" class="mfill-2" rx="2"/>
+        </g>
+        <rect x="150" y="316" width="24" height="40" class="mfill" rx="2"/>
+
+        <!-- 移動載台 + 龍門 -->
+        <g class="anim-gantry">
+          <rect x="300" y="322" width="96" height="30" class="mfill" rx="2"/>
+          <rect x="316" y="150" width="18" height="176" class="mfill-2"/>
+          <rect x="362" y="150" width="18" height="176" class="mfill-2"/>
+          <rect x="300" y="132" width="96" height="22" class="mfill"/>
+          <!-- Z 軸與工具頭 -->
+          <g class="anim-z">
+            <rect x="330" y="154" width="36" height="96" class="mfill-2" rx="2"/>
+            <rect x="322" y="250" width="52" height="40" class="mfill" rx="2"/>
+            <rect x="336" y="290" width="24" height="26" class="mfill-2"/>
+            <circle cx="348" cy="320" r="7" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+          </g>
+        </g>
+
+        <!-- 拖鏈 -->
+        <path d="M210 128 H300" class="mline" stroke-dasharray="9 5"/>
+
+        <!-- 輸送帶 -->
+        <rect x="430" y="330" width="330" height="26" class="mfill" rx="3"/>
+        <circle cx="446" cy="343" r="10" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+        <circle cx="744" cy="343" r="10" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+        <line x1="446" y1="333" x2="744" y2="333" class="mline anim-belt"/>
+        <rect x="560" y="308" width="40" height="22" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+
+        <!-- 三色燈 -->
+        <rect x="742" y="60" width="30" height="20" fill="#CF3A26" class="anim-red" stroke="#12212B" stroke-width="1.2"/>
+        <rect x="742" y="80" width="30" height="20" fill="#E0B400" stroke="#12212B" stroke-width="1.2" opacity=".2"/>
+        <rect x="742" y="100" width="30" height="20" fill="#17925C" class="anim-green" stroke="#12212B" stroke-width="1.2"/>
+        <line x1="757" y1="120" x2="757" y2="150" class="mline" stroke-width="3"/>
+
+        <!-- 電控箱 -->
+        <rect x="826" y="196" width="152" height="290" class="mfill" rx="3"/>
+        <line x1="826" y1="228" x2="978" y2="228" class="mline"/>
+        <text x="836" y="220" class="lbl">CONTROL PANEL</text>
+        <rect x="840" y="240" width="124" height="26" class="mfill-2"/>
+        <rect x="840" y="274" width="56" height="60" class="mfill-2"/>
+        <rect x="906" y="274" width="58" height="60" class="mfill-2"/>
+        <rect x="840" y="344" width="124" height="42" class="mfill-2"/>
+        <rect x="840" y="396" width="124" height="18" class="mfill-2"/>
+        <rect x="840" y="422" width="124" height="18" class="mfill-2"/>
+        <circle cx="972" cy="340" r="5" fill="#fff" stroke="#12212B"/>
+
+        <!-- HMI + 按鈕 -->
+        <rect x="640" y="404" width="120" height="62" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/>
+        <rect x="650" y="412" width="78" height="46" fill="#D7E4E8" stroke="#12212B" stroke-width="1"/>
+        <circle cx="746" cy="424" r="7" fill="#CF3A26" stroke="#12212B" stroke-width="1.4"/>
+        <circle cx="746" cy="448" r="6" fill="#17925C" stroke="#12212B" stroke-width="1.2"/>
+
+        <!-- 氣源三點組 -->
+        <rect x="34" y="300" width="26" height="56" class="mfill"/>
+        <rect x="64" y="300" width="26" height="56" class="mfill"/>
+        <circle cx="77" cy="288" r="12" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+        <line x1="90" y1="328" x2="140" y2="328" class="mline"/>
+
+        <!-- 安全光柵 -->
+        <rect x="104" y="180" width="14" height="180" class="mfill-2"/>
+        <rect x="772" y="180" width="14" height="180" class="mfill-2"/>
+        <g stroke="#CF3A26" stroke-width="1" opacity=".55">
+          <line x1="118" y1="210" x2="772" y2="210"/><line x1="118" y1="250" x2="772" y2="250"/>
+          <line x1="118" y1="290" x2="772" y2="290"/><line x1="118" y1="330" x2="772" y2="330"/>
+        </g>
+        <!-- 安全門開關 -->
+        <rect x="786" y="140" width="18" height="34" class="mfill-2"/>
+
+        <!-- 熱點 -->
+        <g id="hotspots"></g>
+      </svg>
+      </div>
+      <p class="hint">點圖上的編號 → 自動跳到該元件說明。手機上可左右捲動查看。</p>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 照片工作流 ============ -->
+<div class="photobar">
+  <h4>📷 把自家機台的照片放進來</h4>
+  <p>
+    每個元件卡片都有一個照片欄位，會自動去讀取 <code>photos/料號.jpg</code>。
+    例如滾珠螺桿的照片就存成 <code>photos/MEC-05.jpg</code>，放在跟這個網頁同一層的 <code>photos</code> 資料夾裡，重新整理就會出現。<br>
+    還沒拍照之前，也可以<b>直接把照片檔拖到卡片的灰色區域</b>立即預覽（僅本次瀏覽有效，用來確認構圖）。
+  </p>
+  <p style="font-size:13.5px">
+    <b>拍攝建議</b>：① 元件要能被認出來，帶一點周邊當方位參考　② 補一張「拉遠一點」的安裝位置照
+    ③ 有指示燈、旋鈕、標籤的元件要拍得清楚　④ 電控箱請在<b>斷電後</b>拍，不要對著帶電端子近拍。
+  </p>
+  <hr style="border:0;border-top:1px solid var(--line-soft);margin:16px 0">
+  <h4 style="margin-bottom:6px">🌐 還沒拍照？先用免費授權圖片頂著</h4>
+  <p>
+    按下面的按鈕，空白的照片欄位會自動去 <b>Wikimedia Commons</b> 找對應元件的圖片。
+    Commons 上的圖片都是公眾領域或創用 CC 授權，可以合法用在內部教材；每張圖下方會自動標示<b>作者與授權條款</b>，並附上原始頁面連結。
+  </p>
+  <p style="font-size:13.5px; color:var(--elec)">
+    <b>注意</b>：這些是「示意圖」，不是你們機台上那一顆。用來讓新人建立第一印象可以，
+    <b>正式教材與現場對照仍請換成自家實機照片</b>。有些冷門元件 Commons 沒有收錄，會顯示查無圖片，那是正常的。
+  </p>
+  <button class="btn" id="cc-load">載入 Commons 免費授權圖片</button>
+  <button class="btn ghost" id="dl-list">下載拍照清單 CSV</button>
+  <button class="btn ghost" id="dl-credit">下載圖片來源與授權清單</button>
+  <button class="btn ghost" id="dl-html">另存目前頁面</button>
+</div>
+
+<!-- ============ 3D 多角度觀察 ============ -->
+<section id="view3d" style="--accent:#12212B">
+  <div class="sec-head">
+    <span class="sec-num">3D</span>
+    <div>
+      <h2>多角度立體觀察</h2>
+      <p>用滑鼠拖曳可自由旋轉，滾輪縮放。切換視角按鈕可以看正視、側視、俯視；「分解檢視」會把模組拉開，看清楚它們是怎麼疊起來的。點藍色標籤可跳到該元件說明。</p>
+    </div>
+  </div>
+  <div class="figure">
+    <div class="viewbar">
+      <button class="vbtn on" data-rx="-22" data-ry="-34">等角 ISO</button>
+      <button class="vbtn" data-rx="0" data-ry="0">正視 FRONT</button>
+      <button class="vbtn" data-rx="0" data-ry="-90">側視 SIDE</button>
+      <button class="vbtn" data-rx="-88" data-ry="0">俯視 TOP</button>
+      <button class="vbtn" data-rx="0" data-ry="180">背視 REAR</button>
+      <button class="vbtn" data-rx="-16" data-ry="-140">後上方</button>
+      <span style="flex:1"></span>
+      <button class="vbtn" id="t-explode">分解檢視</button>
+      <button class="vbtn on" id="t-guard">顯示護罩</button>
+      <button class="vbtn on" id="t-tag">顯示標籤</button>
+    </div>
+    <div class="scene" id="scene"><div class="world" id="world"></div></div>
+    <p class="hint">配色說明：灰＝機構與骨架　·　紅褐＝電控　·　藍＝機械手臂　·　紫＝光學／檢測　·　半透明＝安全護罩。此為示意模型，比例經過簡化以利辨識。</p>
+  </div>
+</section>
+
+<!-- ============ 來料識別 ============ -->
+<section id="ident">
+  <div class="sec-head">
+    <span class="sec-num">INTAKE</span>
+    <div>
+      <h2>來料了，這到底是什麼元件？</h2>
+      <p>倉庫送來一箱東西，包裝上只有一組型號。這一章教你怎麼從外觀判斷大類、從哪裡找型號、以及該核對哪幾個欄位才敢簽收。<b>「看起來很像」不是驗收標準。</b></p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 340" role="img" aria-label="來料驗收流程與銘牌判讀">
+        <text x="16" y="22" class="lbl">A. INTAKE FLOW / 收料流程</text>
+        <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3A4E5C"/></marker></defs>
+        <g font-family="Noto Sans TC" font-size="12" font-weight="700" text-anchor="middle">
+          <rect x="16" y="36" width="92" height="40" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="62" y="61">點收數量</text>
+          <rect x="128" y="36" width="104" height="40" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="180" y="61">找銘牌／雷雕</text>
+          <rect x="252" y="36" width="104" height="40" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="304" y="61">比對 BOM 型號</text>
+          <rect x="376" y="36" width="104" height="40" fill="#FFF6E0" stroke="#E0B400" stroke-width="1.8" rx="3"/><text x="428" y="61">完全相符？</text>
+          <rect x="376" y="112" width="104" height="40" fill="#DFF3E8" stroke="#17925C" stroke-width="1.8" rx="3"/><text x="428" y="137" fill="#0F6B44">外觀檢查</text>
+          <rect x="500" y="112" width="104" height="40" fill="#DFF3E8" stroke="#17925C" stroke-width="1.8" rx="3"/><text x="552" y="137" fill="#0F6B44">貼標入庫</text>
+          <rect x="500" y="36" width="104" height="40" fill="#FBE3DF" stroke="#CF3A26" stroke-width="1.8" rx="3"/><text x="552" y="55" fill="#8E2A1B">隔離掛紅單</text><text x="552" y="70" font-size="10.5" font-weight="400" fill="#8E2A1B">通知採購／工程</text>
+        </g>
+        <g stroke="#3A4E5C" stroke-width="1.8" fill="none" marker-end="url(#ar3)">
+          <line x1="108" y1="56" x2="124" y2="56"/><line x1="232" y1="56" x2="248" y2="56"/><line x1="356" y1="56" x2="372" y2="56"/>
+          <line x1="428" y1="76" x2="428" y2="108"/><line x1="480" y1="132" x2="496" y2="132"/>
+          <line x1="480" y1="56" x2="496" y2="56"/>
+        </g>
+        <text x="440" y="98" font-family="Noto Sans TC" font-size="11" fill="#0F6B44" font-weight="700">是</text>
+        <text x="486" y="48" font-family="Noto Sans TC" font-size="11" fill="#8E2A1B" font-weight="700">否</text>
+
+        <text x="16" y="196" class="lbl">B. NAMEPLATE / 銘牌上要看的六件事</text>
+        <rect x="16" y="208" width="270" height="116" fill="#F0F4F5" stroke="#12212B" stroke-width="1.8" rx="3"/>
+        <line x1="16" y1="234" x2="286" y2="234" class="mline"/>
+        <g font-family="JetBrains Mono, monospace" font-size="11" fill="#12212B">
+          <text x="28" y="227" font-size="12" font-weight="700">MODEL　XXX-000-A1</text>
+          <text x="28" y="254">INPUT　DC 24V　0.2A</text>
+          <text x="28" y="272">OUTPUT　PNP　NO</text>
+          <text x="28" y="290">S/N　2411-00873</text>
+          <text x="28" y="308">MADE IN　XXXX　IP67</text>
+        </g>
+        <g font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">
+          <text x="300" y="222"><tspan font-weight="700" fill="#B0500F">① 型號</tspan>：最重要，要一字不差對 BOM</text>
+          <text x="300" y="244"><tspan font-weight="700" fill="#B0500F">② 電源規格</tspan>：24V／220V、AC 或 DC</text>
+          <text x="300" y="266"><tspan font-weight="700" fill="#B0500F">③ 訊號型式</tspan>：NPN／PNP、NO／NC</text>
+          <text x="300" y="288"><tspan font-weight="700" fill="#B0500F">④ 序號批號</tspan>：追溯與保固憑據</text>
+          <text x="300" y="310"><tspan font-weight="700" fill="#B0500F">⑤ 防護等級</tspan>：IP 等級決定能不能用在濕區</text>
+          <text x="300" y="332"><tspan font-weight="700" fill="#B0500F">⑥ 產地與製造日</tspan>：有壽命的品項要看</text>
+        </g>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>找不到銘牌時的順序</h4>
+      <ul>
+        <li><b>先看本體</b>：雷雕或印字通常在側面、尾端、或線材出口附近。氣缸看缸身、滑軌看側面、馬達看背面。</li>
+        <li><b>再看包裝</b>：外箱與內袋的標籤通常最完整，<b>拆封前先拍照留存</b>，很多人拆完就找不到型號了。</li>
+        <li><b>還是沒有</b>：量關鍵尺寸（缸徑、行程、軸徑、螺紋規格、線長）＋拍照，拿去問採購或工程，不要自己猜著上機。</li>
+        <li><b>混料最危險</b>：同型號不同行程、不同線長、左右手件、NPN 與 PNP，外觀幾乎一樣但完全不能互換。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="idtool">
+    <div class="idhead">🔍 外觀快速判別：先選最接近的長相，再看要核對哪些欄位</div>
+    <div class="idlist" id="idlist"></div>
+    <div class="idout" id="idout"></div>
+  </div>
+
+  <div class="callout">
+    <h4>⚠ 驗收與入庫的規矩</h4>
+    <ol>
+      <li><b>沒對過 BOM 型號不簽收。</b>型號差一個字尾，可能就是不同行程或不同輸出型式。</li>
+      <li><b>靜電包裝袋（防靜電銀袋）不要提前拆。</b>PLC 模組、驅動器、相機、感測放大器都怕靜電，要上機前才拆並且戴靜電環。</li>
+      <li><b>精密件不落地、不疊放。</b>滑軌、螺桿、荷重元、力覺感測器、鏡頭要平放在原包裝內。</li>
+      <li><b>有壽命的品項先看日期</b>：電池、O 型環、吸盤、氣管、氫氣感測器都有保存或校期限制。</li>
+      <li><b>異常品立刻隔離掛紅單</b>，不要暫放在良品區「等一下再處理」。混進去之後就找不出來了。</li>
+      <li><b>入庫要貼公司內部料號標籤</b>，並拍一張照補進教材的 <code style="font-family:'JetBrains Mono',monospace;font-size:12px">photos/</code> 資料夾。</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ 訊號鏈路（招牌動畫）============ -->
+<section id="chain" style="border-top:0; margin-top:10px; padding-top:20px">
+  <div class="sec-head">
+    <span class="sec-num" style="background:var(--ink)">CHAIN</span>
+    <div>
+      <h2>一個動作，走過哪些元件？</h2>
+      <p>新人最該先記住的不是零件名字，是這條鏈路。任何一個「機台不動」的問題，都是沿著這條線往回查。</p>
+    </div>
+  </div>
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 760 300" role="img" aria-label="訊號鏈路動畫">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" fill="#3A4E5C"/>
+          </marker>
+        </defs>
+        <g font-family="Noto Sans TC" font-size="13" font-weight="700" text-anchor="middle">
+          <rect x="20" y="118" width="112" height="62" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/>
+          <text x="76" y="144">感測器</text><text x="76" y="163" font-size="11" fill="#3A4E5C">物件到位</text>
+          <circle cx="128" cy="126" r="5" fill="#17925C" class="anim-blip"/>
+
+          <rect x="182" y="100" width="126" height="98" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/>
+          <text x="245" y="132">PLC</text><text x="245" y="152" font-size="11" fill="#3A4E5C">讀 I/O → 判斷</text>
+          <text x="245" y="170" font-size="11" fill="#3A4E5C">→ 輸出命令</text>
+
+          <rect x="358" y="118" width="112" height="62" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/>
+          <text x="414" y="144">驅動器</text><text x="414" y="163" font-size="11" fill="#3A4E5C">放大功率</text>
+
+          <rect x="520" y="118" width="100" height="62" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/>
+          <text x="570" y="144">馬達 / 氣缸</text><text x="570" y="163" font-size="11" fill="#3A4E5C">產生動力</text>
+
+          <rect x="660" y="118" width="80" height="62" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/>
+          <text x="700" y="144">機構</text><text x="700" y="163" font-size="11" fill="#3A4E5C">做動</text>
+        </g>
+        <g stroke="#3A4E5C" stroke-width="2" fill="none" marker-end="url(#ar)">
+          <line x1="132" y1="149" x2="176" y2="149"/>
+          <line x1="308" y1="149" x2="352" y2="149"/>
+          <line x1="470" y1="149" x2="514" y2="149"/>
+          <line x1="620" y1="149" x2="654" y2="149"/>
+        </g>
+        <g stroke="#CF3A26" stroke-width="2.4" fill="none">
+          <line x1="132" y1="149" x2="176" y2="149" class="anim-flow"/>
+          <line x1="308" y1="149" x2="352" y2="149" class="anim-flow"/>
+          <line x1="470" y1="149" x2="514" y2="149" class="anim-flow"/>
+          <line x1="620" y1="149" x2="654" y2="149" class="anim-flow"/>
+        </g>
+        <!-- 回授 -->
+        <path d="M700 180 V240 H414 V180" stroke="#0E7C8C" stroke-width="2" fill="none" stroke-dasharray="7 5"/>
+        <text x="556" y="258" font-family="Noto Sans TC" font-size="12" fill="#0E7C8C" text-anchor="middle" font-weight="700">編碼器 / 感測器回授：實際到哪裡了？</text>
+        <!-- 電源 -->
+        <path d="M245 100 V56 H76 V118" stroke="#E08A00" stroke-width="2" fill="none"/>
+        <text x="160" y="46" font-family="Noto Sans TC" font-size="12" fill="#B06E00" text-anchor="middle" font-weight="700">DC 24V 電源供應器</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>用這條鏈路排查「機台不動」</h4>
+      <ul>
+        <li><b>感測器有沒有亮？</b> 沒亮 → 物件沒到位、感測面髒、線鬆、24V 沒到。</li>
+        <li><b>PLC 輸入點有沒有 ON？</b> 感測器亮但輸入沒 ON → 線接錯點、NPN/PNP 接法錯。</li>
+        <li><b>PLC 輸出點有沒有 ON？</b> 沒 ON → 是程式條件沒成立，不是硬體壞。回去看互鎖條件。</li>
+        <li><b>輸出 ON 但沒動？</b> 看驅動器 / 電磁閥有沒有得電、有沒有跳警報、氣壓夠不夠。</li>
+        <li><b>都正常還是不動？</b> 才輪到懷疑機構卡死、耦合鬆脫、皮帶打滑。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 機構 ============ -->
+<section id="mech">
+  <div class="sec-head">
+    <span class="sec-num">PART 01</span>
+    <div>
+      <h2>機構系統</h2>
+      <p>負責「把力傳出去、把位置定準」。機構決定了機台精度的上限——電控和軟體只能維持精度，不能創造精度。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 280" role="img" aria-label="滾珠螺桿與氣壓缸動畫">
+        <text x="16" y="26" class="lbl">A. BALL SCREW + LINEAR GUIDE / 螺桿滑台</text>
+        <rect x="40" y="96" width="520" height="14" class="mfill"/>
+        <line x1="60" y1="76" x2="540" y2="76" class="mline" stroke-width="4"/>
+        <g class="anim-spin" style="transform-origin:44px 76px"><rect x="24" y="62" width="30" height="28" class="mfill-2" rx="2"/></g>
+        <rect x="0" y="58" width="24" height="36" class="mfill" rx="2"/>
+        <text x="2" y="48" class="lbl">馬達</text>
+        <g class="anim-slide">
+          <rect x="150" y="56" width="96" height="40" class="mfill" rx="2"/>
+          <text x="163" y="82" font-family="Noto Sans TC" font-size="12" font-weight="700" fill="#12212B">載台</text>
+        </g>
+        <text x="452" y="128" class="lbl">滑軌 LM GUIDE</text>
+        <line x1="60" y1="140" x2="540" y2="140" class="mdash"/>
+
+        <text x="16" y="184" class="lbl">B. PNEUMATIC CYLINDER / 氣壓缸</text>
+        <rect x="40" y="200" width="150" height="50" class="mfill" rx="3"/>
+        <g class="anim-rod">
+          <rect x="186" y="216" width="120" height="18" class="mfill-2"/>
+          <rect x="300" y="200" width="26" height="50" class="mfill" rx="2"/>
+        </g>
+        <rect x="46" y="188" width="16" height="12" fill="#fff" stroke="#12212B"/>
+        <rect x="168" y="188" width="16" height="12" fill="#fff" stroke="#12212B"/>
+        <text x="42" y="182" class="lbl">A 口</text><text x="164" y="182" class="lbl">B 口</text>
+        <circle cx="60" cy="262" r="6" fill="#17925C" stroke="#12212B" stroke-width="1.2"/>
+        <circle cx="182" cy="262" r="6" fill="#E9EEF1" stroke="#12212B" stroke-width="1.2"/>
+        <text x="72" y="267" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">磁簧開關：縮回到位</text>
+        <text x="196" y="267" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">磁簧開關：伸出到位</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>兩種最常見的驅動方式</h4>
+      <ul>
+        <li><b>螺桿滑台（伺服）</b>：可以停在任意位置、速度可調、可讀實際座標。用在需要精度或多點定位的軸。</li>
+        <li><b>氣壓缸</b>：只有伸出／縮回兩個位置，便宜、力量大、速度靠節流閥調。用在夾持、頂升、擋停這種二元動作。</li>
+        <li><b>怎麼知道氣缸到位？</b> 靠缸身上的磁簧開關（Reed Switch）。程式不會「假設」它到了，一定要等到位訊號。</li>
+        <li><b>常見錯誤</b>：氣缸沒到位訊號就往下走，結果撞機。這是新人改程式最容易犯的錯。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-mech"></div>
+  <div class="grid" id="g-mech"></div>
+
+  <div class="callout">
+    <h4>⚠ 機構作業安全</h4>
+    <ol>
+      <li>手進到機構範圍前，先<b>斷電 + 洩氣壓 + 掛牌上鎖（LOTO）</b>。只按急停不算安全，殘壓還在。</li>
+      <li>Z 軸、垂直軸在斷電後可能因自重掉落，維修前先加<b>安全支撐塊</b>。</li>
+      <li>手動盤動螺桿前，確認伺服已 Servo OFF，否則會頂著馬達。</li>
+      <li>不要用手指去確認吸盤有沒有真空——用真空壓力表看。</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ 氣路 ============ -->
+<section id="pne">
+  <div class="sec-head">
+    <span class="sec-num">PART 02</span>
+    <div>
+      <h2>氣路系統</h2>
+      <p>自動化機台一半以上的動作靠壓縮空氣。氣路的邏輯跟電路很像：<b>有一個「電源」（空壓機）、一路降壓分配、由「開關」（電磁閥）決定通往哪裡</b>。差別在於它會漏、會有水、而且斷電之後殘壓還在。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 330" role="img" aria-label="氣壓迴路圖">
+        <text x="16" y="22" class="lbl">PNEUMATIC CIRCUIT / 從空壓機到氣缸</text>
+        <g font-family="Noto Sans TC" font-size="11.5" font-weight="700" text-anchor="middle">
+          <rect x="16" y="40" width="80" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="56" y="60">空壓機</text><text x="56" y="76" font-size="10" font-weight="400" fill="#3A4E5C">產生壓力</text>
+          <rect x="112" y="40" width="72" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="148" y="60">儲氣桶</text><text x="148" y="76" font-size="10" font-weight="400" fill="#3A4E5C">穩壓</text>
+          <rect x="200" y="40" width="84" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="242" y="60">乾燥機</text><text x="242" y="76" font-size="10" font-weight="400" fill="#3A4E5C">除水</text>
+          <rect x="300" y="40" width="84" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="342" y="60">主管路</text><text x="342" y="76" font-size="10" font-weight="400" fill="#3A4E5C">分配到各機</text>
+        </g>
+        <g stroke="#0E7C8C" stroke-width="2.6" fill="none">
+          <line x1="96" y1="62" x2="110" y2="62"/><line x1="184" y1="62" x2="198" y2="62"/><line x1="284" y1="62" x2="298" y2="62"/>
+          <path d="M384 62 H420 V112"/>
+          <line x1="96" y1="62" x2="110" y2="62" class="anim-flow" stroke="#0A5B67"/>
+          <path d="M384 62 H420 V112" class="anim-flow" stroke="#0A5B67"/>
+        </g>
+        <text x="440" y="58" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">↓ 進入機台</text>
+
+        <!-- 機台內 -->
+        <rect x="30" y="106" width="560" height="146" fill="#F7FAFB" stroke="#B7C4CC" stroke-width="1.4" stroke-dasharray="7 5" rx="4"/>
+        <text x="40" y="124" class="lbl">機台內部 / MACHINE SIDE</text>
+        <g font-family="Noto Sans TC" font-size="11.5" font-weight="700" text-anchor="middle">
+          <rect x="384" y="132" width="72" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="420" y="152">球閥</text><text x="420" y="168" font-size="10" font-weight="400" fill="#3A4E5C">可上鎖</text>
+          <rect x="288" y="132" width="86" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="331" y="152">三點組合</text><text x="331" y="168" font-size="10" font-weight="400" fill="#3A4E5C">濾水／調壓</text>
+          <rect x="188" y="132" width="90" height="44" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="233" y="152">殘壓排氣閥</text><text x="233" y="168" font-size="10" font-weight="400" fill="#3A4E5C">斷電洩壓</text>
+          <rect x="62" y="132" width="116" height="44" fill="#E4EFF1" stroke="#0E7C8C" stroke-width="1.8" rx="3"/><text x="120" y="152">電磁閥島</text><text x="120" y="168" font-size="10" font-weight="400" fill="#3A4E5C">決定往哪一路</text>
+        </g>
+        <g stroke="#0E7C8C" stroke-width="2.4" fill="none">
+          <line x1="384" y1="154" x2="376" y2="154"/><line x1="288" y1="154" x2="280" y2="154"/><line x1="188" y1="154" x2="180" y2="154"/>
+          <path d="M100 176 V204 H70 V220"/><path d="M140 176 V204 H260 V220"/><path d="M120 176 V194 H430 V220"/>
+        </g>
+        <g font-family="Noto Sans TC" font-size="11" text-anchor="middle" fill="#3A4E5C">
+          <rect x="30" y="220" width="80" height="30" fill="#fff" stroke="#12212B" stroke-width="1.4" rx="2"/><text x="70" y="240">夾持氣缸</text>
+          <rect x="220" y="220" width="80" height="30" fill="#fff" stroke="#12212B" stroke-width="1.4" rx="2"/><text x="260" y="240">頂升氣缸</text>
+          <rect x="390" y="220" width="80" height="30" fill="#fff" stroke="#12212B" stroke-width="1.4" rx="2"/><text x="430" y="240">真空產生器</text>
+        </g>
+        <rect x="30" y="272" width="560" height="44" fill="#FFF6E0" stroke="#E0B400" stroke-width="1.5" rx="3"/>
+        <text x="44" y="292" font-family="Noto Sans TC" font-size="12.5" font-weight="700">維修前：關球閥 → 上鎖掛牌 → 按洩壓閥確認壓力表歸零 → 才可以拆</text>
+        <text x="44" y="309" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">只斷電不洩壓，氣缸裡的殘壓仍足以夾斷手指。</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>氣路的四個判斷點</h4>
+      <ul>
+        <li><b>壓力夠不夠？</b> 看調壓閥上的壓力表，不是聽聲音。動作慢、力量不足、到不了位，先量壓力。</li>
+        <li><b>有沒有水？</b> 濾水杯積水要排。水進到閥和氣缸會造成動作卡頓與內部鏽蝕。</li>
+        <li><b>是電的問題還是氣的問題？</b> 按電磁閥上的手動測試鈕：會動＝氣路正常，問題在電；不會動＝氣路或機構有問題。</li>
+        <li><b>有沒有漏？</b> 停機時應該安靜。持續有嘶嘶聲就是漏，用肥皂水找。漏氣是最大的隱形電費。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-pne"></div>
+  <div class="grid" id="g-pne"></div>
+
+  <div class="callout">
+    <h4>⚠ 氣路作業安全</h4>
+    <ol>
+      <li><b>先洩壓再拆管</b>。帶壓下拔快速接頭，氣管會像鞭子一樣甩出來。</li>
+      <li>不可以用壓縮空氣吹身體或衣服，也不可以對著人吹。高壓空氣可能造成皮下氣腫。</li>
+      <li>氣管切口要平整，插到底再輕拉確認。沒插到底會在運轉中彈開。</li>
+      <li>拆下的氣管不要隨手丟在地上踩，被壓扁的管子會造成間歇性動作異常，非常難查。</li>
+      <li>維修垂直氣缸前要確認上方沒有掛載重物，洩壓瞬間會掉下來。</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ 電控 ============ -->
+<section id="elec">
+  <div class="sec-head">
+    <span class="sec-num">PART 03</span>
+    <div>
+      <h2>電控系統</h2>
+      <p>負責「供電、下命令、收訊號、保安全」。打開電控箱，由上到下通常就是：<b>電源 → 保護 → 控制 → 驅動 → 端子</b> 這個順序。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 340" role="img" aria-label="電控箱盤面配置圖">
+        <rect x="30" y="14" width="560" height="312" fill="#fff" stroke="#12212B" stroke-width="2" rx="4"/>
+        <text x="42" y="38" class="lbl">CONTROL PANEL LAYOUT / 盤面配置（由上而下）</text>
+
+        <rect x="46" y="50" width="90" height="52" class="mfill-2" rx="2"/>
+        <text x="52" y="72" font-family="Noto Sans TC" font-size="12" font-weight="700">主開關</text>
+        <text x="52" y="90" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">NFB / 漏電</text>
+
+        <rect x="148" y="50" width="90" height="52" class="mfill-2" rx="2"/>
+        <text x="154" y="72" font-family="Noto Sans TC" font-size="12" font-weight="700">濾波器</text>
+        <text x="154" y="90" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">雜訊 / 突波</text>
+
+        <rect x="250" y="50" width="100" height="52" class="mfill-2" rx="2"/>
+        <text x="256" y="72" font-family="Noto Sans TC" font-size="12" font-weight="700">DC 電源</text>
+        <text x="256" y="90" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">AC220→DC24V</text>
+
+        <rect x="362" y="50" width="106" height="52" fill="#FBE3DF" stroke="#CF3A26" stroke-width="1.6" rx="2"/>
+        <text x="368" y="72" font-family="Noto Sans TC" font-size="12" font-weight="700">安全繼電器</text>
+        <text x="368" y="90" font-family="Noto Sans TC" font-size="11" fill="#8E2A1B">急停 / 門 / 光柵</text>
+        <circle cx="456" cy="60" r="4" fill="#CF3A26" class="anim-blip"/>
+
+        <rect x="46" y="118" width="140" height="82" fill="#E4EFF1" stroke="#0E7C8C" stroke-width="1.6" rx="2"/>
+        <text x="54" y="140" font-family="Noto Sans TC" font-size="12" font-weight="700">PLC 主機</text>
+        <text x="54" y="158" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">CPU + I/O 模組</text>
+        <g>
+          <rect x="54" y="168" width="10" height="10" fill="#17925C" class="anim-blip"/>
+          <rect x="70" y="168" width="10" height="10" fill="#17925C"/>
+          <rect x="86" y="168" width="10" height="10" fill="#DDE5E9" stroke="#B0BEC5"/>
+          <rect x="102" y="168" width="10" height="10" fill="#17925C" class="anim-blip"/>
+          <rect x="118" y="168" width="10" height="10" fill="#DDE5E9" stroke="#B0BEC5"/>
+        </g>
+        <text x="54" y="192" font-family="Noto Sans TC" font-size="10.5" fill="#3A4E5C">I/O 指示燈：眼睛第一站</text>
+
+        <rect x="200" y="118" width="76" height="82" class="mfill-2" rx="2"/>
+        <text x="206" y="140" font-family="Noto Sans TC" font-size="12" font-weight="700">驅動器</text>
+        <text x="206" y="158" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">X 軸</text>
+        <rect x="288" y="118" width="76" height="82" class="mfill-2" rx="2"/>
+        <text x="294" y="140" font-family="Noto Sans TC" font-size="12" font-weight="700">驅動器</text>
+        <text x="294" y="158" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">Y 軸</text>
+        <rect x="376" y="118" width="92" height="82" class="mfill-2" rx="2"/>
+        <text x="382" y="140" font-family="Noto Sans TC" font-size="12" font-weight="700">繼電器組</text>
+        <text x="382" y="158" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">SSR / MC</text>
+
+        <rect x="480" y="118" width="90" height="82" fill="#fff" stroke="#12212B" stroke-width="1.4" rx="2"/>
+        <text x="486" y="140" font-family="Noto Sans TC" font-size="12" font-weight="700">工業電腦</text>
+        <text x="486" y="158" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">影像 / 上位</text>
+
+        <rect x="46" y="216" width="522" height="34" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+        <g stroke="#12212B" stroke-width="1">
+          <line x1="70" y1="216" x2="70" y2="250"/><line x1="94" y1="216" x2="94" y2="250"/>
+          <line x1="118" y1="216" x2="118" y2="250"/><line x1="142" y1="216" x2="142" y2="250"/>
+          <line x1="166" y1="216" x2="166" y2="250"/><line x1="190" y1="216" x2="190" y2="250"/>
+          <line x1="214" y1="216" x2="214" y2="250"/><line x1="238" y1="216" x2="238" y2="250"/>
+          <line x1="262" y1="216" x2="262" y2="250"/><line x1="286" y1="216" x2="286" y2="250"/>
+        </g>
+        <text x="300" y="238" font-family="Noto Sans TC" font-size="12" font-weight="700">端子台：所有外部配線的交會點（線號一定要對）</text>
+
+        <rect x="46" y="266" width="522" height="20" class="mfill" rx="2"/>
+        <text x="54" y="281" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">線槽（走線用，禁止硬塞超過 60%）　|　下方為接地銅排 PE</text>
+        <line x1="46" y1="300" x2="568" y2="300" stroke="#17925C" stroke-width="3"/>
+        <text x="46" y="316" font-family="Noto Sans TC" font-size="11.5" fill="#17925C" font-weight="700">接地銅排 PE — 所有金屬件、屏蔽層都要回到這裡</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>看盤面的順序</h4>
+      <ul>
+        <li><b>先看有沒有電</b>：主開關 ON？DC 電源綠燈亮？24V 沒了，全部感測器都會「壞掉」。</li>
+        <li><b>再看安全迴路</b>：安全繼電器紅燈代表急停／門／光柵有一項沒復歸，此時所有動力輸出都被切掉，程式再對也不會動。</li>
+        <li><b>然後看 PLC I/O 燈</b>：輸入燈=外面訊號進來了；輸出燈=PLC 已經下命令了。這兩排燈能解決一半的問題。</li>
+        <li><b>最後看驅動器七段顯示</b>：有代碼就查手冊，別亂重開機把證據洗掉。</li>
+        <li><b>接地不是裝飾</b>：屏蔽線沒接地，編碼器會亂跳、影像會有雜訊。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-elec"></div>
+  <div class="grid" id="g-elec"></div>
+
+  <div class="callout">
+    <h4>⚠ 電控作業安全</h4>
+    <ol>
+      <li>盤內量測一律<b>單手操作</b>，另一隻手不要碰機殼。</li>
+      <li>伺服驅動器斷電後電容仍有殘壓，<b>等指示燈熄滅再動</b>（通常 5 分鐘以上）。</li>
+      <li>新人不得單獨進行帶電作業，必須有資深人員在場。</li>
+      <li>拔插編碼器線、通訊線前一定要先斷電，熱插拔會燒模組。</li>
+      <li>改任何安全迴路（急停、門鎖、光柵）都要經主管確認，不得短接了事。</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ 軟體 ============ -->
+<section id="soft">
+  <div class="sec-head">
+    <span class="sec-num">PART 04</span>
+    <div>
+      <h2>軟體系統</h2>
+      <p>負責「決定順序、記錄結果、跟人和其他系統對話」。設備的軟體不是一支程式，而是分層的：底層保安全與即時性，上層管資料與介面。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 330" role="img" aria-label="設備狀態機與步驟結構">
+        <text x="16" y="24" class="lbl">A. MACHINE STATE / 設備狀態機</text>
+        <g font-family="Noto Sans TC" font-size="12.5" font-weight="700" text-anchor="middle">
+          <g class="s1"><rect x="20" y="40" width="128" height="46" fill="#E4EFF1" stroke="#0E7C8C" stroke-width="1.8" rx="3"/><text x="84" y="69">待機 IDLE</text></g>
+          <g class="s2"><rect x="168" y="40" width="128" height="46" fill="#E4EFF1" stroke="#0E7C8C" stroke-width="1.8" rx="3"/><text x="232" y="69">回原點 HOME</text></g>
+          <g class="s3"><rect x="316" y="40" width="128" height="46" fill="#E4EFF1" stroke="#0E7C8C" stroke-width="1.8" rx="3"/><text x="380" y="69">自動運轉 RUN</text></g>
+          <g class="s4"><rect x="464" y="40" width="128" height="46" fill="#FBE3DF" stroke="#CF3A26" stroke-width="1.8" rx="3"/><text x="528" y="69">警報 ALARM</text></g>
+        </g>
+        <g stroke="#3A4E5C" stroke-width="1.8" fill="none" marker-end="url(#ar2)">
+          <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3A4E5C"/></marker></defs>
+          <line x1="148" y1="63" x2="162" y2="63"/><line x1="296" y1="63" x2="310" y2="63"/><line x1="444" y1="63" x2="458" y2="63"/>
+          <path d="M528 86 V106 H84 V90"/>
+        </g>
+        <text x="300" y="122" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C" text-anchor="middle">警報排除 + 復歸 → 回到待機，一律重新回原點才可再自動</text>
+
+        <text x="16" y="164" class="lbl">B. SEQUENCE STEP / 一個步驟長什麼樣</text>
+        <rect x="20" y="176" width="572" height="138" fill="#FBFDFD" stroke="#0E7C8C" stroke-width="1.4" rx="3"/>
+        <g font-family="JetBrains Mono, monospace" font-size="12.5" fill="#12212B">
+          <text x="36" y="200">{ "step": 12,</text>
+          <text x="36" y="222">  "action": "MOVE_ABS",   <tspan fill="#0E7C8C">// 做什麼</tspan></text>
+          <text x="36" y="244">  "axis": "X", "target": 125.40, <tspan fill="#0E7C8C">// 參數（現場教點）</tspan></text>
+          <text x="36" y="266">  "speed": 200, "timeout": 3000,</text>
+          <text x="36" y="288">  "waitFor": "X_INPOS", <tspan fill="#0E7C8C">// 到位條件，不可省略</tspan></text>
+          <text x="36" y="308">  "onFail": "ALARM_1204" }</text>
+        </g>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>看懂順序程式的三個重點</h4>
+      <ul>
+        <li><b>狀態先於步驟</b>：機台先決定自己在哪個狀態（待機／回原點／自動／警報），才輪到跑步驟。狀態不對，步驟不會執行。</li>
+        <li><b>每一步都要有結束條件</b>：不是「輸出 ON 之後等 1 秒」，而是「等到位訊號 ON」，並且要有 timeout。用時間當條件是不良習慣。</li>
+        <li><b>參數和邏輯要分開</b>：動作順序是設計時決定的，速度／座標／延遲是現場調的。分開存，換機種只要換參數。</li>
+        <li><b>異常要有代碼</b>：ALARM_1204 這種編號能直接對到排除手冊，比「錯誤發生」有用一百倍。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-soft"></div>
+  <div class="grid" id="g-soft"></div>
+</section>
+
+<!-- ============ AOI ============ -->
+<!-- ============ 輸送帶模組 ============ -->
+<section id="cnv">
+  <div class="sec-head">
+    <span class="sec-num">PART 05</span>
+    <div>
+      <h2>輸送帶模組</h2>
+      <p>輸送帶不只是「會動的帶子」。它是一個由<b>驅動、承載、導引、定位、偵測</b>五個部分組成的模組，而整條線的節拍與稼動率，通常卡在定位站而不是輸送速度。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 330" role="img" aria-label="輸送帶模組剖面與定位站動作">
+        <text x="16" y="22" class="lbl">A. SECTION / 模組剖面（從側面切開看）</text>
+        <!-- 支撐架 -->
+        <rect x="60" y="132" width="490" height="12" class="mfill"/>
+        <rect x="90" y="144" width="16" height="86" class="mfill-2"/>
+        <rect x="500" y="144" width="16" height="86" class="mfill-2"/>
+        <!-- 滾筒 -->
+        <circle cx="78" cy="112" r="22" fill="#DDE5E9" stroke="#12212B" stroke-width="1.8"/>
+        <circle cx="532" cy="112" r="22" fill="#DDE5E9" stroke="#12212B" stroke-width="1.8"/>
+        <circle cx="78" cy="112" r="6" fill="#12212B"/>
+        <!-- 皮帶 -->
+        <path d="M78 90 H532 M78 134 H532" stroke="#12212B" stroke-width="4" fill="none"/>
+        <path d="M78 90 H532" class="anim-belt" stroke="#E08A00" stroke-width="4"/>
+        <!-- 托板 -->
+        <rect x="100" y="118" width="410" height="12" class="mfill-2"/>
+        <!-- 馬達 -->
+        <rect x="18" y="94" width="42" height="38" class="mfill" rx="3"/>
+        <text x="16" y="86" class="lbl">減速馬達</text>
+        <!-- 工件 -->
+        <rect x="280" y="62" width="60" height="26" fill="#fff" stroke="#12212B" stroke-width="1.6"/>
+        <text x="286" y="56" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">載具 / 工件</text>
+        <g font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">
+          <text x="112" y="160">① 驅動滾筒（有動力那一端）</text>
+          <text x="112" y="178">② 從動滾筒（可調張力那一端）</text>
+          <text x="112" y="196">③ 托板：撐住皮帶避免下垂</text>
+          <text x="112" y="214">④ 側導板：防止工件掉出去</text>
+        </g>
+
+        <text x="16" y="252" class="lbl">B. STOP &amp; LIFT / 定位站的標準四步</text>
+        <g font-family="Noto Sans TC" font-size="11.5" font-weight="700" text-anchor="middle">
+          <g class="s1"><rect x="20" y="264" width="132" height="44" fill="#E4EFF1" stroke="#7A6A17" stroke-width="1.8" rx="3"/><text x="86" y="284">1 擋停器上升</text><text x="86" y="300" font-size="10" font-weight="400" fill="#3A4E5C">載具被擋住</text></g>
+          <g class="s2"><rect x="164" y="264" width="132" height="44" fill="#E4EFF1" stroke="#7A6A17" stroke-width="1.8" rx="3"/><text x="230" y="284">2 頂升定位</text><text x="230" y="300" font-size="10" font-weight="400" fill="#3A4E5C">脫離皮帶、銷入孔</text></g>
+          <g class="s3"><rect x="308" y="264" width="132" height="44" fill="#E4EFF1" stroke="#7A6A17" stroke-width="1.8" rx="3"/><text x="374" y="284">3 作業</text><text x="374" y="300" font-size="10" font-weight="400" fill="#3A4E5C">檢測／組裝／鎖付</text></g>
+          <g class="s4"><rect x="452" y="264" width="132" height="44" fill="#DFF3E8" stroke="#17925C" stroke-width="1.8" rx="3"/><text x="518" y="284">4 降下並放行</text><text x="518" y="300" font-size="10" font-weight="400" fill="#3A4E5C">擋停器縮回</text></g>
+        </g>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>看輸送線先看這幾件事</h4>
+      <ul>
+        <li><b>順序不能顛倒</b>：一定是擋停 → 頂升 → 作業 → 降下 → 放行。頂升還沒降下就放行，會把定位銷或載具刮壞。</li>
+        <li><b>皮帶跑偏調張力，不是換皮帶</b>。左右張力不均或滾筒不平行才是原因，換新的還是會偏。</li>
+        <li><b>累積式與非累積式</b>：累積式允許載具在線上排隊互相頂住（滾筒空轉），一般皮帶線不行，塞車會刮傷產品。</li>
+        <li><b>載具要有身分</b>：靠 RFID 或條碼，資料才跟得上實體。用「第幾個」來記位置，一旦有人手動拿走一個就全亂了。</li>
+        <li><b>夾點是最常見的傷害來源</b>：滾筒與皮帶交界、鏈條與齒輪處都要有護罩，運轉中不可以伸手撥料。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-cnv"></div>
+  <div class="grid" id="g-cnv"></div>
+</section>
+
+<section id="arm">
+  <div class="sec-head">
+    <span class="sec-num">PART 06</span>
+    <div>
+      <h2>機械手臂系統</h2>
+      <p>手臂是「可程式的機構」。它把原本要用一堆氣缸和滑台才能做到的動作，濃縮成一組可以隨時改點位的軸。代價是：<b>它的動作範圍很大，撞到人和撞到機構的風險也更大</b>。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 320" role="img" aria-label="機械手臂關節動畫">
+        <text x="16" y="22" class="lbl">A. 6-AXIS ARTICULATED / 六軸關節手臂（側視）</text>
+        <!-- 底座 -->
+        <rect x="112" y="252" width="76" height="26" class="mfill" rx="2"/>
+        <rect x="126" y="228" width="48" height="26" class="mfill-2" rx="2"/>
+        <text x="82" y="292" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">J1 底座迴旋</text>
+        <g class="anim-j1" style="transform-origin:150px 232px">
+          <rect x="134" y="132" width="32" height="104" class="mfill" rx="3"/>
+          <circle cx="150" cy="232" r="9" fill="#fff" stroke="#12212B" stroke-width="1.6"/>
+          <text x="168" y="196" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">J2 下臂</text>
+          <g class="anim-j2" style="transform-origin:150px 136px">
+            <rect x="146" y="120" width="116" height="30" class="mfill" rx="3"/>
+            <circle cx="150" cy="136" r="9" fill="#fff" stroke="#12212B" stroke-width="1.6"/>
+            <text x="182" y="112" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">J3 上臂</text>
+            <g class="anim-j3" style="transform-origin:258px 136px">
+              <rect x="252" y="124" width="62" height="24" class="mfill-2" rx="3"/>
+              <circle cx="258" cy="136" r="8" fill="#fff" stroke="#12212B" stroke-width="1.6"/>
+              <rect x="312" y="118" width="20" height="36" class="mfill" rx="2"/>
+              <text x="292" y="108" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">J4/5/6 手腕</text>
+              <g class="anim-grip">
+                <rect x="330" y="126" width="26" height="20" fill="#fff" stroke="#12212B" stroke-width="1.4"/>
+                <rect x="352" y="120" width="7" height="14" class="mfill-2"/>
+                <rect x="352" y="138" width="7" height="14" class="mfill-2"/>
+              </g>
+            </g>
+          </g>
+        </g>
+        <rect x="392" y="236" width="120" height="14" class="mfill-2"/>
+        <rect x="424" y="222" width="26" height="14" fill="#FFF2C2" stroke="#E0B400"/>
+        <text x="398" y="268" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">取放料盤</text>
+        <line x1="40" y1="278" x2="580" y2="278" class="mline"/>
+
+        <text x="16" y="308" class="lbl">TCP（工具中心點）＝ 手臂真正在意的那一個點，不是法蘭面中心</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>新人碰手臂前要先懂的四件事</h4>
+      <ul>
+        <li><b>座標系有很多套</b>：關節座標、世界座標、工具座標、工件座標。搞錯座標系按方向鍵，手臂會往你意想不到的方向跑。</li>
+        <li><b>TCP 設錯，點位全錯</b>：換了夾爪一定要重新設定工具中心點與負載重量，否則軌跡與速度都會偏。</li>
+        <li><b>示教用低速</b>：教點位時速度限制在 T1 模式（一般 250 mm/s 以下），而且人要站在可以隨時退開的位置。</li>
+        <li><b>手臂沒有「安全的直覺」</b>：它會照著點位走，就算路上有東西也一樣。改點位前要先在空跑模式確認軌跡。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 250" role="img" aria-label="SCARA 手臂俯視與工作範圍">
+        <text x="16" y="22" class="lbl">B. SCARA（俯視）與工作範圍 WORK ENVELOPE</text>
+        <circle cx="170" cy="140" r="118" fill="none" stroke="#1F6FB2" stroke-width="1.4" stroke-dasharray="7 6"/>
+        <circle cx="170" cy="140" r="44" fill="none" stroke="#CF3A26" stroke-width="1.4" stroke-dasharray="4 4"/>
+        <text x="252" y="42" font-family="Noto Sans TC" font-size="11.5" fill="#1F6FB2">藍虛線：可到達最大範圍</text>
+        <text x="252" y="62" font-family="Noto Sans TC" font-size="11.5" fill="#CF3A26">紅虛線：內側死角，靠太近會出現奇異點</text>
+        <g class="anim-sa" style="transform-origin:170px 140px">
+          <rect x="166" y="128" width="104" height="24" class="mfill" rx="4"/>
+          <circle cx="170" cy="140" r="12" fill="#fff" stroke="#12212B" stroke-width="1.8"/>
+          <g class="anim-sb" style="transform-origin:262px 140px">
+            <rect x="258" y="130" width="84" height="20" class="mfill-2" rx="4"/>
+            <circle cx="262" cy="140" r="9" fill="#fff" stroke="#12212B" stroke-width="1.6"/>
+            <circle cx="338" cy="140" r="11" fill="#fff" stroke="#1F6FB2" stroke-width="2.4"/>
+          </g>
+        </g>
+        <text x="252" y="86" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">SCARA：水平面快、垂直剛性高，最適合上下料與鎖螺絲。</text>
+        <rect x="430" y="176" width="150" height="46" fill="#FFF6E0" stroke="#E0B400" stroke-width="1.4" rx="3"/>
+        <text x="442" y="196" font-family="Noto Sans TC" font-size="11.5" font-weight="700">干涉區 Interference Zone</text>
+        <text x="442" y="213" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">兩台手臂共用區域要互鎖</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>選型的直覺</h4>
+      <ul>
+        <li><b>六軸</b>：姿態要變、要斜著進去、要繞過障礙 → 用六軸。彈性最大、速度與剛性較低。</li>
+        <li><b>SCARA</b>：從上往下取放、鎖付、點膠 → 用 SCARA。同樣節拍下比六軸快也便宜。</li>
+        <li><b>Delta</b>：輕薄小件高速分揀（配視覺追蹤輸送帶）→ 用 Delta。負載很小。</li>
+        <li><b>協作手臂</b>：需要人機共處、不方便架圍籬的站別。速度慢，且仍需做風險評估，不是「一定安全」。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-arm"></div>
+  <div class="grid" id="g-arm"></div>
+
+  <div class="callout">
+    <h4>⚠ 機械手臂作業安全</h4>
+    <ol>
+      <li>進入手臂工作範圍前，一律<b>斷電或轉到手動模式並持有 Enable 開關</b>，圍籬門要確實連鎖。</li>
+      <li>示教時<b>不要站在手臂與牆壁／機構之間</b>，永遠替自己留一條退路。</li>
+      <li>自動啟動前先確認：沒有人在範圍內、程式指標在起始步、手臂已在待機點位。</li>
+      <li>手臂斷電後可能因重力下墜，維修前要先支撐或使用剎車釋放的正確程序。</li>
+      <li>改過的點位要記錄並備份。手臂程式是財產，掉了就要重教一整天。</li>
+    </ol>
+  </div>
+</section>
+
+<section id="aoi">
+  <div class="sec-head">
+    <span class="sec-num">PART 07</span>
+    <div>
+      <h2>AOI 檢測機專屬元件</h2>
+      <p>AOI 機台在通用骨架上多了一套光學系統。<b>影像沒拍好，後面再厲害的演算法都救不回來</b>——所以光源和鏡頭比軟體先決定。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 320" role="img" aria-label="AOI 光學架構動畫">
+        <text x="16" y="24" class="lbl">OPTICAL STACK / 光學鏈：相機 → 鏡頭 → 光源 → 物件</text>
+        <g class="anim-scan">
+          <rect x="140" y="44" width="70" height="46" class="mfill" rx="2"/>
+          <text x="148" y="72" font-family="Noto Sans TC" font-size="12" font-weight="700">相機</text>
+          <rect x="158" y="90" width="34" height="40" class="mfill-2"/>
+          <text x="198" y="116" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">鏡頭</text>
+          <path d="M150 130 L120 196 M200 130 L230 196" stroke="#6242C4" stroke-width="1.2" stroke-dasharray="5 4"/>
+          <rect x="120" y="150" width="110" height="16" fill="#FFF2C2" stroke="#E0B400" stroke-width="1.2" rx="2"/>
+          <text x="236" y="163" font-family="Noto Sans TC" font-size="11" fill="#3A4E5C">環形光源</text>
+        </g>
+        <rect x="40" y="196" width="540" height="18" class="mfill-2"/>
+        <rect x="40" y="214" width="540" height="10" class="mfill"/>
+        <text x="44" y="240" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">精密 XY 平台（載著待測物移動，或相機移動）</text>
+
+        <text x="16" y="278" class="lbl">JUDGE / 判定結果</text>
+        <g font-family="Noto Sans TC" font-size="12" font-weight="700">
+          <rect x="120" y="262" width="80" height="34" fill="#DFF3E8" stroke="#17925C" stroke-width="1.6" rx="3"/><text x="140" y="284" fill="#0F6B44">OK 良品</text>
+          <rect x="216" y="262" width="80" height="34" fill="#FBE3DF" stroke="#CF3A26" stroke-width="1.6" rx="3"/><text x="236" y="284" fill="#8E2A1B">NG 不良</text>
+          <text x="312" y="284" font-size="11.5" font-weight="400" fill="#3A4E5C">→ 分選機構把 NG 推到不良區 + 存圖 + 寫資料庫</text>
+        </g>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>新人最需要建立的觀念</h4>
+      <ul>
+        <li><b>先調光，再調參數</b>：缺陷跟背景要有明顯明暗差。光打對了，門檻值幾乎不用細調。</li>
+        <li><b>不要用手機拍螢幕當證據</b>：抓到誤判時，把原始影像存下來，連同當時的參數與治具位置一起回報。</li>
+        <li><b>過殺 vs 漏檢</b>：漏檢（NG 判成 OK）流到客戶端是重大事故；過殺只是成本。設定門檻時兩者要分開統計。</li>
+        <li><b>校正板不是裝飾品</b>：換鏡頭、動到 Z 軸高度、換治具，都要重新做像素對毫米的校正。</li>
+        <li><b>鏡頭不要用手擦</b>：吹球 → 拭鏡紙 → 專用清潔液，順序不能顛倒。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-aoi"></div>
+  <div class="grid" id="g-aoi"></div>
+</section>
+
+<!-- ============ 氫燃料電池 ============ -->
+<section id="fcs">
+  <div class="sec-head">
+    <span class="sec-num">PART 08</span>
+    <div>
+      <h2>氫燃料電池發電平台</h2>
+      <p>這台跟一般機台最大的差別：<b>它處理的是可燃氣體與直流高電壓</b>。所有元件都要用「洩漏會怎樣、失效會怎樣」的角度來認識。</p>
+    </div>
+  </div>
+
+  <div class="demo">
+    <div class="stage">
+      <svg viewBox="0 0 620 320" role="img" aria-label="燃料電池系統流程圖">
+        <text x="16" y="24" class="lbl">SYSTEM FLOW / 系統流程</text>
+        <g font-family="Noto Sans TC" font-size="12" font-weight="700" text-anchor="middle">
+          <rect x="20" y="46" width="94" height="52" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="67" y="70">儲氫瓶</text><text x="67" y="88" font-size="10.5" font-weight="400" fill="#3A4E5C">高壓 H₂</text>
+          <rect x="140" y="46" width="94" height="52" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="187" y="70">減壓 + 閥</text><text x="187" y="88" font-size="10.5" font-weight="400" fill="#3A4E5C">調到工作壓</text>
+          <rect x="262" y="34" width="118" height="120" fill="#E8F5EE" stroke="#17925C" stroke-width="2" rx="3"/><text x="321" y="82">電堆 STACK</text><text x="321" y="102" font-size="10.5" font-weight="400" fill="#3A4E5C">H₂ + O₂ → 電 + 水 + 熱</text>
+          <rect x="410" y="46" width="90" height="52" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="455" y="70">DC/DC</text><text x="455" y="88" font-size="10.5" font-weight="400" fill="#3A4E5C">穩壓</text>
+          <rect x="516" y="46" width="86" height="52" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="559" y="70">逆變器</text><text x="559" y="88" font-size="10.5" font-weight="400" fill="#3A4E5C">DC→AC</text>
+          <rect x="140" y="188" width="94" height="46" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="187" y="216">空氣鼓風機</text>
+          <rect x="262" y="188" width="118" height="46" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="321" y="216">冷卻迴路</text>
+          <rect x="410" y="188" width="192" height="46" fill="#fff" stroke="#12212B" stroke-width="1.6" rx="3"/><text x="506" y="210">電池組 + 負載</text><text x="506" y="228" font-size="10.5" font-weight="400" fill="#3A4E5C">儲能 / 假負載 / 併網</text>
+        </g>
+        <g stroke="#17925C" stroke-width="2.4" fill="none">
+          <line x1="114" y1="72" x2="138" y2="72"/><line x1="234" y1="72" x2="260" y2="72"/>
+          <line x1="114" y1="72" x2="138" y2="72" class="anim-flow" stroke="#0F6B44"/>
+          <line x1="234" y1="72" x2="260" y2="72" class="anim-flow" stroke="#0F6B44"/>
+        </g>
+        <g stroke="#CF3A26" stroke-width="2.4" fill="none">
+          <line x1="380" y1="72" x2="408" y2="72"/><line x1="500" y1="72" x2="514" y2="72"/>
+          <path d="M559 98 V150 H506 V186"/>
+        </g>
+        <g stroke="#3A4E5C" stroke-width="1.8" fill="none" stroke-dasharray="6 4">
+          <path d="M187 188 V160 H300 V156"/><path d="M321 188 V158"/>
+        </g>
+        <rect x="20" y="256" width="582" height="46" fill="#FFF6E0" stroke="#E0B400" stroke-width="1.6" rx="3"/>
+        <circle cx="46" cy="279" r="8" fill="#CF3A26" class="anim-blip"/>
+        <text x="66" y="276" font-family="Noto Sans TC" font-size="12.5" font-weight="700" fill="#12212B">氫氣洩漏偵測器 + 通風風扇 + 緊急切斷閥</text>
+        <text x="66" y="294" font-family="Noto Sans TC" font-size="11.5" fill="#3A4E5C">偵測到濃度超標 → 立刻關主閥、開排風、切斷輸出，這條連鎖不經過一般 PLC 邏輯。</text>
+      </svg>
+    </div>
+    <div class="notes">
+      <h4>進場前一定要知道的事</h4>
+      <ul>
+        <li><b>氫氣無色無味</b>，聞不到不代表沒漏。以偵測器和肥皂水為準，不要靠感覺。</li>
+        <li><b>氫氣比空氣輕</b>，會往上累積，所以偵測器裝天花板、通風口也在上方。</li>
+        <li><b>爆炸範圍很寬</b>（空氣中約 4%～75%），現場禁明火、禁產生火花的工具、禁止穿易產生靜電的衣物。</li>
+        <li><b>直流電沒有零交越點</b>，拉弧不會自行熄滅。斷開直流迴路一定要照程序、用對開關。</li>
+        <li><b>電堆怕缺氣也怕反極</b>：啟停要照程序做吹掃，不能直接斷電走人。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="count" id="c-fcs"></div>
+  <div class="grid" id="g-fcs"></div>
+</section>
+
+<!-- ============ 測驗 ============ -->
+<section id="quiz">
+  <div class="sec-head">
+    <span class="sec-num">CHECK</span>
+    <div>
+      <h2>隨堂測驗</h2>
+      <p>選一個答案，會立刻顯示解說。答錯沒關係，重點是理解為什麼。</p>
+    </div>
+  </div>
+  <div id="quizbox"></div>
+  <p class="mono" id="score" style="margin-top:14px; font-size:13px; color:var(--ink-2)"></p>
+</section>
+
+<footer>
+  <p><b>使用方式</b>：新人第一週先讀「全機概覽 + 訊號鏈路」，第二週配合實機走一次機構與電控，第三週再進軟體與機種專章。<br>
+  每一張圖都可以印出來貼在機台旁邊當現場對照表。</p>
+  <p class="mono" style="opacity:.6">TRAINING MATERIAL · REV.A · 內容依實際機型調整</p>
+</footer>
+
+</div>
+
+<script>
+/* =========================================================
+   元件資料庫
+   id 編碼規則：系統代碼 + 流水號，對應 BOM 分類
+   ========================================================= */
+const DATA = [
+/* ---------- 機構 MEC ---------- */
+{id:"MEC-01",c:"mech",n:"鋁擠型機架",e:"Aluminium Extrusion Frame",f:"整台機器的骨架，撐住所有模組並吸收振動。",l:"機台最外層，桌面下方與四周立柱。",t:"角件螺絲鬆掉會讓整台機精度跑掉。定保要用扭力起子複緊，不是用手感。"},
+{id:"MEC-02",c:"mech",n:"定盤 / 基準平台",e:"Base Plate",f:"提供所有模組的共同安裝基準面，決定平行度與垂直度。",l:"機架上方，通常是厚鋁板、鑄鐵或大理石。",t:"上面不可以放工具、不可以敲擊。刮傷或撞凹＝整機基準毀了。"},
+{id:"MEC-03",c:"mech",n:"水平調整腳座",e:"Leveling Mount",f:"調整機台水平、隔絕地面振動。",l:"機架四角或六點支撐處。",t:"搬機後一定要重新用水平儀校正並鎖緊防鬆螺帽，否則會有一支腳懸空。"},
+{id:"MEC-04",c:"mech",n:"線性滑軌",e:"LM Guide / Linear Guide",f:"讓載台只能沿直線移動，承受側向力，決定直線度。",l:"每一個直線軸上，通常兩條平行安裝。",t:"滑塊要定期打油。滑軌上有鐵屑或撞擊痕跡會造成手感頓點，就要更換。"},
+{id:"MEC-05",c:"mech",n:"滾珠螺桿",e:"Ball Screw",f:"把馬達的旋轉變成直線位移，精度高、可承受推力。",l:"直線軸中央，兩端由支撐座固定。",t:"背隙（Backlash）會造成往復定位不一致。異音通常是缺油或珠子磨損。"},
+{id:"MEC-06",c:"mech",n:"螺桿支撐座",e:"BK / BF Support Unit",f:"固定螺桿兩端，一端固定（BK）一端浮動（BF），吸收熱膨脹。",l:"螺桿兩端。",t:"兩端都鎖死會讓螺桿熱脹後彎曲，這是常見的組裝錯誤。"},
+{id:"MEC-07",c:"mech",n:"聯軸器",e:"Coupling",f:"連接馬達軸與螺桿軸，傳遞扭力同時吸收微量偏心。",l:"馬達與螺桿之間。",t:"聯軸器鬆脫的症狀是：馬達有轉、機構沒動、但編碼器顯示正常。撞機後必檢查。"},
+{id:"MEC-08",c:"mech",n:"同步皮帶與皮帶輪",e:"Timing Belt & Pulley",f:"長行程、低成本的傳動方式，速度快但剛性低於螺桿。",l:"長行程軸、輸送模組、雙軸同動機構。",t:"張力太鬆會跳齒（位置整個偏掉），太緊會吃軸承。要用張力計或規定的撓度確認。"},
+{id:"MEC-09",c:"mech",n:"減速機",e:"Gearbox / Planetary Reducer",f:"降低轉速、放大扭力，也提高慣量匹配。",l:"馬達與被驅動軸之間。",t:"減速比會影響程式裡的脈波當量。換減速機一定要同步改參數，否則走的距離會不對。"},
+{id:"MEC-10",c:"mech",n:"氣壓缸",e:"Air Cylinder",f:"用壓縮空氣做二元往復動作（伸出／縮回），力量大、成本低。",l:"夾持、頂升、擋停、推料等位置。",t:"只有兩個位置，不能停中間。速度靠出口節流控制，不要調進氣端。"},
+{id:"MEC-11",c:"mech",n:"磁簧開關",e:"Reed / Auto Switch",f:"偵測氣缸活塞位置，回報「伸出到位／縮回到位」。",l:"套在氣缸外壁的溝槽上，可滑動調整。",t:"程式必須等到位訊號才往下走。位置沒調好會誤判到位而撞機。"},
+{id:"MEC-12",c:"mech",n:"速度控制閥",e:"Speed Controller",f:"調整氣缸的動作快慢，內含單向節流。",l:"直接鎖在氣缸的進排氣口上。",t:"順時針轉是變慢。調整時一格一格來，一次轉太多會讓機構暴衝。"},
+{id:"MEC-13",c:"mech",n:"三點組合（濾水器/調壓閥/油霧器）",e:"F.R.L. Unit",f:"過濾氣源水分雜質、調到設定壓力、必要時加潤滑。",l:"氣源進入機台的第一站，機台側面。",t:"每天開機看壓力表和排水杯。氣壓不足是「氣缸動作慢／到不了位」的第一嫌疑。"},
+{id:"MEC-14",c:"mech",n:"真空吸盤",e:"Vacuum Pad",f:"用負壓吸取平整、輕薄的工件。",l:"取放頭（Pick & Place Head）末端。",t:"吸盤是耗材，變硬或有裂痕就會漏氣掉件。掉件多先換吸盤再懷疑真空源。"},
+{id:"MEC-15",c:"mech",n:"真空產生器",e:"Vacuum Ejector",f:"用壓縮空氣產生真空，並在放料時提供破真空吹氣。",l:"靠近吸盤處，縮短管路反應才快。",t:"破真空吹氣太強會把小件吹飛，要用節流調整。"},
+{id:"MEC-16",c:"mech",n:"氣動夾爪",e:"Pneumatic Gripper",f:"以平行或三爪方式夾持工件。",l:"機械手末端或治具站。",t:"夾持力要能夾穩又不壓傷工件。更換品種時常需要換爪片（指型件）。"},
+{id:"MEC-17",c:"mech",n:"治具 / 定位夾治具",e:"Jig & Fixture",f:"讓每一顆工件都被放在完全相同的位置與姿態。",l:"工作站上，通常可快拆更換以對應不同機種。",t:"治具磨損是精度漂移最常見的原因，卻最容易被忽略。要納入定期檢驗。"},
+{id:"MEC-18",c:"mech",n:"定位銷 / 定位孔",e:"Locating Pin",f:"提供可重複的機械基準，讓拆裝後還能回到原位。",l:"治具與底板之間、模組與定盤之間。",t:"拆治具前先確認有定位銷再拆；沒有銷的模組拆下來就要重新校正。"},
+{id:"MEC-19",c:"mech",n:"凸輪分割器 / 分度盤",e:"Cam Indexer / Rotary Table",f:"讓轉盤精準停在固定角度，適合多工站同時作業。",l:"轉盤式（Turntable）機台中心。",t:"分割器有固定的停止位置，不要試著用程式讓它停在中間。"},
+{id:"MEC-20",c:"mech",n:"輸送帶模組",e:"Belt / Roller Conveyor",f:"把工件在站與站之間搬運。",l:"進料端、出料端、站間連接。",t:"皮帶跑偏是張力左右不均造成的，調整導輪不是換皮帶。"},
+{id:"MEC-21",c:"mech",n:"擋停與頂升機構",e:"Stopper & Lifter",f:"把移動中的載具停下並頂起定位，讓工站可以精密作業。",l:"輸送線上的每個作業站。",t:"順序一定是「先擋停 → 再頂升 → 作業 → 降下 → 放行」。順序錯會刮傷載具。"},
+{id:"MEC-22",c:"mech",n:"油壓緩衝器",e:"Shock Absorber",f:"吸收高速機構撞到終點時的衝擊，降低噪音與破壞。",l:"氣缸行程末端、載台極限位置。",t:"漏油或彈不回來就要換。少了它，撞擊會直接傳到機構與工件上。"},
+{id:"MEC-23",c:"mech",n:"拖鏈",e:"Cable Carrier",f:"保護跟著移動軸來回運動的電線與氣管，避免疲勞斷裂。",l:"每一個移動軸的走線路徑上。",t:"線材不可交叉纏繞、彎曲半徑要足夠。動力線與訊號線要分槽走。"},
+{id:"MEC-24",c:"mech",n:"軸承",e:"Bearing",f:"支撐旋轉軸並減少摩擦。",l:"皮帶輪、滾輪、轉盤、螺桿支撐座內。",t:"異音、發熱、晃動是三大更換訊號。壓入時要用治具，不能直接敲。"},
+{id:"MEC-25",c:"mech",n:"安全護罩與視窗",e:"Safety Guard / Window",f:"隔離人員與運動機構，也擋粉塵與光線干擾。",l:"機台四周，含可開啟的維修門。",t:"護罩門上的安全開關不可以用磁鐵或膠帶欺騙，這是重大違規。"},
+{id:"MEC-26",c:"mech",n:"直交式機械手 / 電動缸",e:"Cartesian Robot / Electric Actuator",f:"以 X-Y-Z 組合完成取放，行程與定位點可程式設定。",l:"取放站、上下料站。",t:"回原點沒完成前不可以下絕對座標命令，這是撞機第一大主因。"},
+
+/* ---------- 電控 ELE ---------- */
+{id:"ELE-01",c:"elec",n:"電控箱",e:"Control Cabinet",f:"容納並保護所有電氣元件，同時做防塵、防干擾與散熱管理。",l:"機台側邊或下方獨立箱體。",t:"箱門要隨手關。開著跑機台會進粉塵，也讓溫控失效。"},
+{id:"ELE-02",c:"elec",n:"無熔絲開關",e:"NFB / MCCB",f:"總電源開關，過載或短路時自動跳脫保護線路。",l:"電控箱最上方第一顆。",t:"跳脫一定有原因。連續復歸而不查原因是嚴重錯誤作業。"},
+{id:"ELE-03",c:"elec",n:"漏電斷路器",e:"RCD / ELCB",f:"偵測漏電流保護人身安全。",l:"主開關之後。",t:"每季要按測試鈕確認會跳。它保護的是人，不是機器。"},
+{id:"ELE-04",c:"elec",n:"電磁接觸器",e:"Magnetic Contactor",f:"用小訊號去切換大電流負載，也是安全迴路切斷動力的執行元件。",l:"電源區，常與安全繼電器串接。",t:"接觸器有觸點壽命。吸合有嗡嗡聲通常是線圈電壓不足或觸點髒。"},
+{id:"ELE-05",c:"elec",n:"雜訊濾波器 / 突波吸收器",e:"Noise Filter / Surge Absorber",f:"擋掉電源上的高頻雜訊與突波，保護 PLC 與電腦。",l:"主開關後、電源分配前。",t:"沒有它，變頻器一啟動就可能讓 PLC 亂當、通訊斷線。"},
+{id:"ELE-06",c:"elec",n:"交換式電源供應器",e:"SMPS / DC Power Supply",f:"把 AC 220V 轉成 DC 24V，供應所有感測器、繼電器與 I/O。",l:"電控箱上段。",t:"24V 掉了會讓全部感測器同時「壞掉」。看到大量訊號同時異常，先量 24V。"},
+{id:"ELE-07",c:"elec",n:"PLC 主機",e:"Programmable Logic Controller",f:"設備的大腦：循環讀取輸入、執行邏輯、輸出命令，即時且穩定。",l:"電控箱中段，通常裝在 DIN 導軌上。",t:"RUN/ERR 指示燈是第一手資訊。程式下載前務必先備份現場版本。"},
+{id:"ELE-08",c:"elec",n:"數位輸入 / 輸出模組",e:"DI / DO Module",f:"DI 收感測器訊號，DO 送出到繼電器、電磁閥、指示燈。",l:"PLC 主機旁擴充。",t:"要分清 NPN（漏型）與 PNP（源型）。接錯不會動作，嚴重時會燒點。"},
+{id:"ELE-09",c:"elec",n:"類比輸入 / 輸出模組",e:"AI / AO Module",f:"處理 4-20mA、0-10V 這類連續量，例如壓力、溫度、流量。",l:"PLC 擴充槽。",t:"類比線一定要用屏蔽線且單端接地，否則數值會跳動。"},
+{id:"ELE-10",c:"elec",n:"遠端 I/O",e:"Remote I/O",f:"把 I/O 佈到機台各處，用一條匯流排回主控，大幅減少配線。",l:"分散在各工站的小型接線盒內。",t:"站號（Node ID）撥碼不可重複。換模組時記得把撥碼設回原值。"},
+{id:"ELE-11",c:"elec",n:"伺服驅動器",e:"Servo Drive / Amplifier",f:"接收位置命令，控制伺服馬達的電流與轉速，並閉迴路修正誤差。",l:"電控箱中段，需散熱空間。",t:"警報代碼要記下來再處理。常見的過負載通常代表機構卡住，不是驅動器壞。"},
+{id:"ELE-12",c:"elec",n:"伺服馬達",e:"Servo Motor",f:"提供精確可控的旋轉動力，內建編碼器回授實際位置。",l:"每個伺服軸的末端，接聯軸器或減速機。",t:"垂直軸的馬達通常帶剎車。斷電前確認剎車有作用，否則 Z 軸會掉下來。"},
+{id:"ELE-13",c:"elec",n:"編碼器",e:"Encoder",f:"回報馬達或軸的實際角度／位置，是閉迴路控制的眼睛。",l:"馬達尾端（內建）或外掛在機構上。",t:"編碼器線與動力線同槽走會受干擾而位置跳動。絕對值型換電池時不能斷電。"},
+{id:"ELE-14",c:"elec",n:"步進馬達與驅動器",e:"Stepper Motor & Driver",f:"用脈波數控制角度，成本低，適合負載穩定的軸。",l:"低負載、低速的定位軸。",t:"開迴路的步進失步時「程式以為到了、實際沒到」。要靠原點感測器定期校正。"},
+{id:"ELE-15",c:"elec",n:"變頻器",e:"VFD / Inverter",f:"調整感應馬達的轉速，常用在輸送帶、泵、風車。",l:"電控箱，需獨立散熱與濾波。",t:"變頻器是雜訊大戶。輸出線一定要用屏蔽線並確實接地。"},
+{id:"ELE-16",c:"elec",n:"繼電器 / 固態繼電器",e:"Relay / SSR",f:"隔離 PLC 的小訊號與外部負載，並提供電流放大。",l:"電控箱中下段，插座式排列。",t:"繼電器是耗材。動作聲不對、接點沾黏會造成輸出關不掉，這很危險。"},
+{id:"ELE-17",c:"elec",n:"電磁閥",e:"Solenoid Valve",f:"接收電訊號切換氣路，是氣壓缸真正的「開關」。",l:"閥島（Manifold）上，靠近氣缸以縮短反應時間。",t:"閥上有手動測試鈕，可在斷電下試動作。用它可以快速分辨是電的問題還是氣的問題。"},
+{id:"ELE-18",c:"elec",n:"近接開關",e:"Proximity Sensor",f:"不接觸即可偵測金屬物體是否靠近。",l:"原點、極限、氣缸到位、金屬治具偵測。",t:"感測距離短，安裝距離要照規格。感測面沾鐵屑會一直 ON。"},
+{id:"ELE-19",c:"elec",n:"光電開關",e:"Photoelectric Sensor",f:"用光偵測物體有無，分對照式、回歸反射式、擴散反射式。",l:"進料偵測、料滿偵測、通過計數。",t:"透明或黑色工件要選對型式。鏡頭沾灰是誤動作的頭號原因，每天擦。"},
+{id:"ELE-20",c:"elec",n:"光纖感測器與放大器",e:"Fiber Sensor & Amplifier",f:"用細光纖伸進狹小空間偵測微小物件，靈敏度可在放大器上調整。",l:"治具內部、狹縫、微小件檢知。",t:"教導（Teach）時要用實際的有／無兩種狀態各按一次，不要憑感覺調旋鈕。"},
+{id:"ELE-21",c:"elec",n:"極限開關 / 微動開關",e:"Limit Switch",f:"機構走到最末端時強制切斷或通知，是最後一道機械保護。",l:"每個軸的行程兩端。",t:"軟體極限之外一定要有硬體極限。不可以因為誤動作就把它拆掉。"},
+{id:"ELE-22",c:"elec",n:"壓力 / 真空感測器",e:"Pressure & Vacuum Switch",f:"監測氣壓或真空度是否在設定範圍，作為連鎖條件。",l:"氣源主管、真空產生器出口。",t:"真空值判定要設遲滯，不然吸盤邊緣微漏會讓訊號一直抖動。"},
+{id:"ELE-23",c:"elec",n:"溫度感測與溫控器",e:"PT100 / Thermocouple + Controller",f:"量測並控制加熱或環境溫度，PID 自動調節。",l:"加熱板、烘烤區、電控箱內、燃料電池冷卻迴路。",t:"感測點位置比控制器參數重要。裝錯位置會讓實際溫度和顯示差很多。"},
+{id:"ELE-24",c:"elec",n:"荷重元",e:"Load Cell",f:"量測壓合力或重量，用在壓合、鎖付、秤重製程。",l:"壓合頭下方或秤重平台。",t:"荷重元怕側向力與過負載，撞一下就可能永久偏移，要定期用砝碼校驗。"},
+{id:"ELE-25",c:"elec",n:"緊急停止按鈕",e:"Emergency Stop",f:"由人直接切斷動力來源，紅色蘑菇頭、旋轉復歸。",l:"操作面、機台四周伸手可及處。",t:"急停不是暫停鍵。按下後要排除狀況、復歸、再回原點，不可直接續跑。"},
+{id:"ELE-26",c:"elec",n:"安全繼電器 / 安全控制器",e:"Safety Relay",f:"匯集急停、安全門、光柵訊號，以雙迴路（雙通道）確保單一故障也能停機。",l:"電控箱安全區，通常獨立標示。",t:"它的輸出直接切動力，跟一般 PLC 邏輯是分開的。任何跳線短接都是重大違規。"},
+{id:"ELE-27",c:"elec",n:"安全門連鎖開關",e:"Interlock Switch",f:"門一打開就切斷危險動作，部分附電磁鎖在運轉中鎖住門。",l:"每一扇維修門與護罩門。",t:"用備用鑰匙或磁鐵欺騙連鎖，是最常見也最嚴重的違規行為。"},
+{id:"ELE-28",c:"elec",n:"安全光柵",e:"Light Curtain",f:"在開放的進出料口形成光幕，有人手伸入立即停機。",l:"上下料口、無門的作業開口。",t:"要確認安全距離（停止時間 × 手速）。反光的機殼可能造成誤判，需做遮光處理。"},
+{id:"ELE-29",c:"elec",n:"三色燈與蜂鳴器",e:"Signal Tower & Buzzer",f:"用燈號向遠處的人表達機台狀態：綠=運轉、黃=待料或注意、紅=停機或警報。",l:"機台最高處。",t:"公司內燈號定義要一致。看到紅燈先看 HMI 的警報代碼，不要直接按復歸。"},
+{id:"ELE-30",c:"elec",n:"人機介面",e:"HMI / Touch Panel",f:"操作者的主要介面：手動操作、參數設定、警報顯示、生產計數。",l:"機台正面操作區。",t:"權限分級要落實。作業員層級不應該能改到機構參數。"},
+{id:"ELE-31",c:"elec",n:"端子台",e:"Terminal Block",f:"所有外部配線與盤內配線的交會點，方便量測與更換。",l:"電控箱下段。",t:"線號套管要對得上圖面。查線從端子台開始最快，不要從機構那端亂拉。"},
+{id:"ELE-32",c:"elec",n:"電控箱散熱裝置",e:"Panel Fan / Cooler",f:"排除驅動器與電源產生的熱，維持箱內溫度在規格內。",l:"電控箱上方或側面。",t:"濾網堵塞是夏天當機的常見原因。列入月保養清單。"},
+{id:"ELE-33",c:"elec",n:"接地與屏蔽",e:"Grounding & Shielding",f:"提供故障電流路徑保護人身，同時把干擾導走。",l:"接地銅排，連到所有金屬件與屏蔽層。",t:"屏蔽層原則上單端接地。兩端都接可能形成接地迴路，反而更吵。"},
+{id:"ELE-34",c:"elec",n:"工業電腦",e:"IPC",f:"跑影像處理、上位程式、資料庫與對外通訊。",l:"電控箱內或機台下方抽屜。",t:"不要拿它上網或安裝來路不明軟體。工控機一旦中毒，產線就停了。"},
+{id:"ELE-35",c:"elec",n:"讀碼器",e:"Barcode / DataMatrix Reader",f:"讀取工件上的序號，讓每一顆產品的資料可以被追溯。",l:"進料站、各檢測站。",t:"讀碼率低通常是光線或焦距問題，不是條碼本身。先確認打光角度。"},
+
+/* ---------- 軟體 SFT ---------- */
+{id:"SFT-01",c:"soft",n:"PLC 控制程式",e:"IEC 61131-3 LD / ST",f:"設備最底層的即時邏輯：I/O 處理、互鎖、動作順序、安全條件。",l:"跑在 PLC CPU 內，掃描週期通常幾毫秒。",t:"改程式前先備份、先確認是哪一版。線上修改（Online Edit）風險高，要有人監看機台。"},
+{id:"SFT-02",c:"soft",n:"順序控制與狀態機",e:"Sequence / State Machine",f:"用明確的狀態與轉移條件描述機台行為，避免程式變成一團互相干擾的條件。",l:"PLC 或上位程式的主架構。",t:"參考 GRAFCET／ISA-88／PackML 的狀態定義。狀態一多就要畫圖，不要只靠記憶。"},
+{id:"SFT-03",c:"soft",n:"互鎖邏輯",e:"Interlock Logic",f:"規定「什麼條件下不准動」，是防撞機與防傷人的核心。",l:"貫穿整個 PLC 程式。",t:"新增動作時要同步檢查互鎖。為了測試暫時拿掉的互鎖，一定要標記並確實加回去。"},
+{id:"SFT-04",c:"soft",n:"回原點程序",e:"Homing Routine",f:"用原點感測器加編碼器 Z 相建立絕對座標基準。",l:"每次開機或急停復歸後執行。",t:"沒完成回原點就下絕對座標＝撞機。這條規則沒有例外。"},
+{id:"SFT-05",c:"soft",n:"運動控制程式",e:"Motion Control",f:"點對點定位、多軸同動、插補、電子凸輪與加減速曲線規劃。",l:"運動控制器、PLC 運動模組或伺服系統內。",t:"加減速太陡會讓機構抖動與過衝。速度不是越快越好，穩定的節拍才是。"},
+{id:"SFT-06",c:"soft",n:"I/O 對照表",e:"I/O List",f:"記錄每個輸入輸出點的位址、線號、元件名稱與所在位置。",l:"文件與程式註解，兩邊必須一致。",t:"這是新人最該先讀的文件。沒有 I/O 表就去查線，效率差十倍。"},
+{id:"SFT-07",c:"soft",n:"配方管理",e:"Recipe Management",f:"把不同機種的參數（座標、速度、時間、判定值）整包切換。",l:"HMI 或上位軟體，存在檔案或資料庫。",t:"換線一定要確認配方名稱與版本。用錯配方是常見的批量報廢原因。"},
+{id:"SFT-08",c:"soft",n:"警報管理",e:"Alarm Handling",f:"用編號的警報描述異常，記錄發生時間、當時狀態並指引排除方式。",l:"PLC 產生、HMI 顯示、資料庫留存。",t:"警報要能分級（停機／警告／提示）。全部都停機會讓人習慣性亂按復歸。"},
+{id:"SFT-09",c:"soft",n:"HMI 畫面設計",e:"HMI Screen",f:"把機台狀態變成操作者看得懂的畫面：手動、自動、參數、警報、統計。",l:"觸控面板。",t:"手動頁面務必保留互鎖。很多撞機是在手動頁面按錯順序造成的。"},
+{id:"SFT-10",c:"soft",n:"上位機軟體",e:"Host Application",f:"處理影像、演算法、報表、資料庫與對外系統介接，跑在工業電腦上。",l:"IPC 上的 Windows／Linux 應用程式。",t:"上位機不負責安全。安全一定要做在 PLC 或安全控制器裡，不能靠 PC。"},
+{id:"SFT-11",c:"soft",n:"Modbus 通訊",e:"Modbus RTU / TCP",f:"最通用的工業通訊協定，用暫存器位址讀寫資料。",l:"PLC 與溫控器、變頻器、電表、上位機之間。",t:"位址從 0 還是 1 開始、大小端（Endian）順序，是最常見的踩雷點。"},
+{id:"SFT-12",c:"soft",n:"現場總線",e:"EtherCAT / CANopen",f:"高速同步的軸控與 I/O 匯流排，週期可到毫秒以下。",l:"PLC 與伺服驅動器、遠端 I/O 之間。",t:"接線有順序（IN/OUT 不可反接）。站點斷線時錯誤訊息會指出「第幾站之後」，從那裡找。"},
+{id:"SFT-13",c:"soft",n:"OPC UA",e:"OPC UA",f:"跨廠牌的標準化資料模型與通訊，用來對接 MES／SCADA。",l:"PLC 或閘道器提供 Server，上位系統當 Client。",t:"它帶有資料語意與安全機制，比自訂協定好維護，但要注意憑證與權限設定。"},
+{id:"SFT-14",c:"soft",n:"MQTT / IoT 上傳",e:"MQTT",f:"以發布／訂閱方式把設備資料送到雲端或內部平台，適合大量分散的點位。",l:"IPC 或閘道器上的服務。",t:"斷線重連與資料補傳要先設計好，不然停電那段時間的資料就永遠消失。"},
+{id:"SFT-15",c:"soft",n:"MES / ERP 介接",e:"MES Integration",f:"接收工單、回報產量與品質、確認機種與治具是否正確。",l:"上位軟體與工廠系統之間。",t:"介接規格要白紙黑字。欄位一改，產線就可能整條停下來。"},
+{id:"SFT-16",c:"soft",n:"資料庫",e:"SQLite / PostgreSQL",f:"儲存生產紀錄、量測值、警報歷史與影像索引。",l:"IPC 本機或廠內伺服器。",t:"寫入要考慮量。單筆逐次寫入在高節拍下會拖垮節拍，通常用批次寫入。"},
+{id:"SFT-17",c:"soft",n:"追溯與記錄",e:"Traceability & Logging",f:"讓每一顆產品都能查到：何時、哪台機、哪組參數、量到什麼值。",l:"貫穿 PLC 到資料庫的整條資料流。",t:"時間必須同步（NTP）。各機台時間不一致，追溯資料就對不起來。"},
+{id:"SFT-18",c:"soft",n:"稼動率統計",e:"OEE / Utilization",f:"統計可用率、性能與良率，找出真正的產能瓶頸。",l:"上位軟體或報表系統。",t:"停機原因要能分類。只知道「停了 30 分鐘」而不知道原因，數據沒有價值。"},
+{id:"SFT-19",c:"soft",n:"權限管理",e:"User Access Control",f:"依角色分級：作業員、技術員、工程師、管理者，各自能改的東西不同。",l:"HMI 與上位軟體。",t:"不要共用工程師帳號。出事時查不到是誰改的，就無法改善。"},
+{id:"SFT-20",c:"soft",n:"版本控管與備份",e:"Version Control & Backup",f:"保存 PLC 程式、HMI 畫面、參數與配方的每一次變更。",l:"公司內部版本庫或指定的備份路徑。",t:"改機前先備份、改完寫變更紀錄。「我只改一點點」是最常見的災難開頭。"},
+{id:"SFT-21",c:"soft",n:"離線模擬與數位分身",e:"Simulation / Digital Twin",f:"在沒有實機的情況下驗證程式邏輯與節拍，降低現場調機時間。",l:"開發端的模擬環境或軟 PLC。",t:"模擬能驗證邏輯順序，但驗證不了機構干涉與實際慣量。上機仍要慢速試跑。"},
+{id:"SFT-22",c:"soft",n:"遠端維護",e:"Remote Access",f:"透過 VPN 或遠端工具支援現場，縮短停機時間。",l:"IPC 或工業路由器。",t:"遠端連線時現場一定要有人看著機台。不可在無人狀態下遠端啟動設備。"},
+
+/* ---------- 氣路 PNE ---------- */
+{id:"PNE-01",c:"pne",n:"空壓機",e:"Air Compressor",f:"整廠壓縮空氣的來源，把大氣加壓到約 7～8 bar。",l:"獨立機房或廠務區，不在機台上。",t:"機台氣壓不足時要先確認是機台端還是廠務端。整條線同時變慢通常是廠務問題。"},
+{id:"PNE-02",c:"pne",n:"儲氣桶",e:"Air Receiver Tank",f:"儲存壓縮空氣、緩衝瞬間大量用氣、初步冷凝除水。",l:"空壓機旁。",t:"底部要定期排水。這是壓力容器，不可以自行焊補或改裝。"},
+{id:"PNE-03",c:"pne",n:"冷凍式乾燥機",e:"Refrigerated Air Dryer",f:"把空氣中的水氣冷凝排掉，降低露點。",l:"儲氣桶之後、主管路之前。",t:"乾燥機故障時水會一路跑進機台的閥和氣缸。氣路頻繁積水就要往這裡查。"},
+{id:"PNE-04",c:"pne",n:"主管路與排水點",e:"Main Piping & Drain",f:"把壓縮空氣送到各機台，管路帶有斜度讓水往低點集中。",l:"廠房天花板或牆面。",t:"支管要從主管的<b>上方</b>接出（鵝頸管），從下方接會把積水直接引進機台。"},
+{id:"PNE-05",c:"pne",n:"機台氣源球閥",e:"Ball Valve / Shut-off",f:"機台的氣源總開關，維修時的第一道隔離點。",l:"機台氣源入口，通常在側面下方。",t:"它應該是可上鎖的型式。維修掛牌上鎖（LOTO）就是鎖在這裡。"},
+{id:"PNE-06",c:"pne",n:"殘壓排氣閥／軟啟動閥",e:"Soft Start & Residual Pressure Relief Valve",f:"斷電時自動把機台內殘壓排掉；送氣時緩慢升壓，避免氣缸暴衝。",l:"氣源入口，三點組合之前或整合在內。",t:"沒有它，早上一送氣所有氣缸會同時彈出，非常危險。這個元件不可以拆掉或短路。"},
+{id:"PNE-07",c:"pne",n:"手動洩壓閥",e:"Manual Relief Valve",f:"讓人主動把機台內的壓力排掉並確認歸零。",l:"三點組合上或氣源盤面。",t:"進機台維修前一定要按它，並確認壓力表指到 0。這是保命動作，不是形式。"},
+{id:"PNE-08",c:"pne",n:"主過濾器",e:"Air Filter",f:"濾掉水分、鐵鏽與大顆粒雜質，是三點組合的第一顆。",l:"氣源入口。",t:"每天看濾水杯。杯體是塑膠件，不可以用有機溶劑擦，會龜裂爆開。"},
+{id:"PNE-09",c:"pne",n:"精密過濾器與活性碳過濾器",e:"Mist Separator / Carbon Filter",f:"進一步濾除油霧與微粒，供應對潔淨度敏感的設備。",l:"主過濾器之後，通常用在真空、光學、點膠、噴印場合。",t:"濾芯是耗材、有壽命，壓損上升就要換。堵塞會表現成「這一站氣壓總是比較低」。"},
+{id:"PNE-10",c:"pne",n:"調壓閥與壓力表",e:"Regulator & Gauge",f:"把來源壓力調到機台設定的工作壓力並維持穩定。",l:"三點組合中段。",t:"調整前先拉起旋鈕解鎖，調完壓回去。壓力表上應該有紅色的標準值標記，不要憑感覺調。"},
+{id:"PNE-11",c:"pne",n:"油霧器",e:"Lubricator",f:"在空氣中加入微量潤滑油，延長舊型氣缸與閥的壽命。",l:"三點組合最後一顆。",t:"現在多數元件是免潤滑型。<b>用錯場合反而會污染吸盤與工件</b>，不確定就不要加油。"},
+{id:"PNE-12",c:"pne",n:"壓力開關／數位壓力錶",e:"Pressure Switch",f:"監測壓力是否達到設定值，作為機台可以啟動的連鎖條件。",l:"氣源主管、真空迴路。",t:"設定值要留餘裕並設遲滯，否則壓力在臨界點附近抖動會讓機台一直跳警報。"},
+{id:"PNE-13",c:"pne",n:"電磁閥（二位五通）",e:"5/2 Solenoid Valve",f:"最常見的閥型，切換氣缸兩腔的進排氣，決定伸出或縮回。",l:"閥島上。",t:"單電控（一顆線圈）斷電會自動回到原位；雙電控（兩顆線圈）斷電會停在原處。選錯型式會讓斷電後的動作完全不同。"},
+{id:"PNE-14",c:"pne",n:"三位中封／中洩閥",e:"3-Position Valve",f:"多一個中間位置：中封＝停在原處鎖住；中洩＝兩腔洩壓可用手推動。",l:"需要中途停止或需要人工推動的軸。",t:"中封不是「剎車」，氣體可壓縮，受力仍會慢慢移動，不可拿來當支撐。"},
+{id:"PNE-15",c:"pne",n:"閥島",e:"Valve Manifold",f:"把多顆電磁閥集中在同一個底座，共用氣源與集中配線。",l:"機台氣路集中處，通常在機架內或電控箱旁。",t:"每一片閥都有編號並對應 I/O 表。維修時照編號換，不要憑位置記憶。"},
+{id:"PNE-16",c:"pne",n:"快速接頭",e:"Push-in Fitting",f:"免工具插拔的氣管接頭，有直通、彎頭、三通、消音型等。",l:"氣缸、閥島、分岐處。",t:"拆的時候要壓住外圈套環再拔管。硬拉會把內部夾爪拉壞，之後就一直漏。"},
+{id:"PNE-17",c:"pne",n:"氣管",e:"Tubing",f:"輸送壓縮空氣，常見 PU 與尼龍材質，以外徑標示（φ4／φ6／φ8）。",l:"貫穿整個氣路。",t:"管徑太細會讓氣缸沒力、動作變慢。換管要照原規格，不要「有什麼用什麼」。"},
+{id:"PNE-18",c:"pne",n:"分岐接頭與集氣塊",e:"Manifold Block / Tee",f:"把一路氣源分給多個負載。",l:"氣路分配點。",t:"分接太多路會互相搶氣。多顆氣缸同時動作卻沒力，先懷疑供氣路徑太細或分接過多。"},
+{id:"PNE-19",c:"pne",n:"單向閥",e:"Check Valve",f:"只允許氣流單向通過，防止逆流影響其他迴路。",l:"需要保壓或防止互相干擾的支路。",t:"裝反了整條迴路就不通。上面有箭頭指示流向，安裝前先確認。"},
+{id:"PNE-20",c:"pne",n:"快速排氣閥",e:"Quick Exhaust Valve",f:"讓氣缸就近排氣而不必回流到閥，大幅提高縮回速度。",l:"直接鎖在氣缸排氣口上。",t:"想讓某個動作更快時，先考慮它，比一味調大節流閥安全。"},
+{id:"PNE-21",c:"pne",n:"消音器",e:"Silencer",f:"降低排氣噪音並防止異物進入閥內。",l:"電磁閥與快排閥的排氣口。",t:"消音器堵塞會讓排氣不順，症狀是「氣缸縮回變慢」。它是耗材，會被油污堵死。"},
+{id:"PNE-22",c:"pne",n:"增壓閥",e:"Booster Regulator",f:"在局部把壓力提高到超過廠務供氣壓力，用於壓合等需要大出力的站。",l:"高出力工站附近。",t:"耗氣量很大。使用時要確認上游供氣足夠，否則會拖垮整台機的壓力。"},
+{id:"PNE-23",c:"pne",n:"真空過濾器與真空破壞",e:"Vacuum Filter & Blow-off",f:"保護真空迴路不被粉塵堵塞；放料時通入正壓讓工件確實脫離。",l:"真空產生器與吸盤之間。",t:"吸力變差先看真空過濾器是不是髒了，再懷疑吸盤或真空產生器。"},
+{id:"PNE-24",c:"pne",n:"漏氣檢查與耗氣量",e:"Leak Check & Air Consumption",f:"定期在停機狀態下確認有無洩漏，並掌握機台的耗氣量以評估供氣是否足夠。",l:"全機氣路，特別是接頭與拖鏈內的氣管。",t:"停機時應該安靜無聲。用肥皂水找漏最可靠。漏氣是看不見的持續成本，也是動作不穩的常見原因。"},
+
+/* ---------- 輸送帶模組 CNV ---------- */
+{id:"CNV-01",c:"cnv",n:"皮帶輸送機",e:"Belt Conveyor",f:"用連續皮帶承載並帶動工件，表面平整、適合裸件與小件。",l:"進料、出料、站間連接。",t:"工件與皮帶之間靠摩擦帶動，塞車時會刮傷產品，所以不適合累積式輸送。"},
+{id:"CNV-02",c:"cnv",n:"滾筒輸送機",e:"Roller Conveyor",f:"用一排滾筒承載箱體或載具，分無動力與動力式。",l:"載具循環線、包裝線。",t:"適合累積式：載具停下來時滾筒可以空轉，不會互相磨損。"},
+{id:"CNV-03",c:"cnv",n:"倍速鏈輸送機",e:"Speed-up Chain Conveyor",f:"鏈條上的滾子讓載具以鏈速數倍前進，停下時可原地累積。",l:"組裝線主幹道。",t:"這是自動化組裝線最常見的型式。載具背面的耐磨塊是耗材，磨薄了高度會變。"},
+{id:"CNV-04",c:"cnv",n:"模組帶／鏈板",e:"Modular Belt / Slat Chain",f:"由塑膠模組拼成的帶面，可轉彎、可爬坡、耐清洗。",l:"食品、飲料或需要轉彎的路徑。",t:"單片損壞可以局部更換，不必整條換。要留意銷子有沒有跑出來。"},
+{id:"CNV-05",c:"cnv",n:"驅動滾筒與減速馬達",e:"Drive Roller & Geared Motor",f:"提供動力的一端，速度由變頻器或減速比決定。",l:"輸送段的其中一端（通常在出料側）。",t:"皮帶打滑要看驅動滾筒表面是否磨光或有油。改速度前先確認下游站別跟得上。"},
+{id:"CNV-06",c:"cnv",n:"從動滾筒與張力調整",e:"Idler Roller & Take-up",f:"另一端的被動滾筒，透過調整螺絲控制皮帶張力與跑向。",l:"輸送段的另一端。",t:"跑偏時左右調整量要小、要交替微調。一次轉太多會讓皮帶邊緣磨損。"},
+{id:"CNV-07",c:"cnv",n:"輸送皮帶",e:"Conveyor Belt",f:"承載面，有 PVC、PU、矽膠、防靜電等材質與不同表面紋路。",l:"繞在兩端滾筒上。",t:"接合處（接頭）是最脆弱的地方。看到接頭起翹或開裂要盡快處理，斷在半夜最麻煩。"},
+{id:"CNV-08",c:"cnv",n:"托板與支撐架",e:"Support Plate / Frame",f:"從下方撐住皮帶，避免載重時下垂造成高度變化。",l:"皮帶上下層之間。",t:"托板磨損會讓輸送面下沉，導致定位站的高度基準改變，卻很少人往這裡想。"},
+{id:"CNV-09",c:"cnv",n:"側導板",e:"Side Guide",f:"限制工件的左右位置，避免掉落並做初步導正。",l:"輸送面兩側，多數可調整寬度。",t:"換機種時要重新調寬度。太緊會卡料，太鬆會歪斜進站。"},
+{id:"CNV-10",c:"cnv",n:"擋停器",e:"Stopper",f:"用氣缸伸出擋住前進中的載具，讓它停在工站位置。",l:"每個作業站的入口。",t:"擋停器多半附有緩衝器，用來吸收載具撞上來的衝擊。緩衝器失效會發出明顯撞擊聲。"},
+{id:"CNV-11",c:"cnv",n:"頂升定位平台",e:"Lift & Locate Unit",f:"把載具頂離輸送面並以定位銷插入定位孔，取得精密位置。",l:"擋停器後方的作業位置下方。",t:"載具必須完全脫離輸送面才算定位。沒頂到位就作業，等於在會動的東西上面工作。"},
+{id:"CNV-12",c:"cnv",n:"載具／治具板",e:"Pallet / Carrier",f:"承載工件在線上循環，把定位精度從輸送線轉移到載具上。",l:"整條線循環使用。",t:"載具是消耗品也是精度來源。變形、定位孔磨損的載具要挑出來修，不要讓它繼續跑。"},
+{id:"CNV-13",c:"cnv",n:"載具識別",e:"RFID / Barcode on Pallet",f:"讀取載具編號，讓系統知道這一台上面是哪一顆產品、做到哪一站。",l:"每個工站入口。",t:"讀取失敗要有處理流程。靠「順序推算」管資料，只要有人手動拿走一台就全錯。"},
+{id:"CNV-14",c:"cnv",n:"到位與滿料偵測",e:"Presence & Full Sensor",f:"偵測載具是否到站、前方是否已滿，決定要不要放行。",l:"擋停器前後、線段交界。",t:"滿料偵測是防止碰撞的關鍵。它失效時線會一路往前塞，直到把東西擠壞。"},
+{id:"CNV-15",c:"cnv",n:"分流與合流機構",e:"Divert / Merge Unit",f:"用移載、旋轉台或推桿讓載具轉向、進入支線或返回。",l:"線段轉角、支線入口、NG 排出口。",t:"分流動作進行中不可以放行下一台。這裡的互鎖漏掉，就會出現載具被撞飛的畫面。"},
+{id:"CNV-16",c:"cnv",n:"升降移載機",e:"Lifter / Transfer Unit",f:"在上下兩層輸送線之間搬移載具，讓空載具回流。",l:"線頭與線尾。",t:"升降平台與輸送面必須對齊才可以移載。高度感測失效會讓載具卡在半空中。"},
+{id:"CNV-17",c:"cnv",n:"夾點防護與安全罩",e:"Nip Guard",f:"遮蔽滾筒與皮帶、鏈條與齒輪的咬入點，避免捲入傷害。",l:"所有旋轉件與帶面的交界。",t:"運轉中絕對不可以伸手撥料或清異物。要處理就先停線，這是最常見的職災形態之一。"},
+{id:"CNV-18",c:"cnv",n:"輸送線保養",e:"Conveyor Maintenance",f:"日常檢查跑偏、張力、異音、潤滑、皮帶接頭與清潔。",l:"全線。",t:"新皮帶會有初期伸長，運轉一段時間後要回頭再調一次張力。異音通常是軸承或滾筒的預警。"},
+
+/* ---------- 機械手臂 ARM ---------- */
+{id:"ARM-01",c:"arm",n:"六軸關節機器人",e:"6-Axis Articulated Robot",f:"六個旋轉關節組合出任意位置與姿態，可繞過障礙、可傾斜進入。",l:"獨立底座固定在地面或機台定盤上。",t:"底座螺絲鬆動會讓所有點位偏掉。搬動或撞擊後必須重新確認原點與點位。"},
+{id:"ARM-02",c:"arm",n:"SCARA 水平多關節機器人",e:"SCARA Robot",f:"水平面上兩個旋轉軸加一個上下軸，水平速度快、垂直方向剛性高。",l:"取放站、鎖螺絲站、點膠站上方。",t:"垂直下壓的力量大但水平柔順，不適合需要側向施力的作業。"},
+{id:"ARM-03",c:"arm",n:"Delta 並聯機器人",e:"Delta / Parallel Robot",f:"三支連桿共同帶動一個平台，慣量極小、動作極快，適合輕小件高速分揀。",l:"倒吊在輸送帶上方的框架。",t:"負載通常只有 1～3 公斤。超載會讓連桿球接頭快速磨損。"},
+{id:"ARM-04",c:"arm",n:"協作型機器人",e:"Collaborative Robot",f:"內建力矩偵測，碰到人會停下來，可在有限條件下與人共處。",l:"人機混合作業站，通常不需要完整圍籬。",t:"協作不等於免評估。夾爪尖銳、速度提高、負載加重之後，仍然需要做風險評估與安全措施。"},
+{id:"ARM-05",c:"arm",n:"機器人控制器",e:"Robot Controller",f:"手臂的專用大腦：軌跡運算、各軸伺服控制、程式儲存與安全監控。",l:"手臂旁的獨立控制箱。",t:"控制器內存有全部點位與程式。更換或維修前務必做完整備份。"},
+{id:"ARM-06",c:"arm",n:"示教器",e:"Teach Pendant",f:"手動操作、教點位、看警報、切換模式的手持裝置。",l:"掛在控制箱或圍籬外的固定架上。",t:"上面的三段式 Enable 開關握太緊或完全放開都會停機，這是刻意的安全設計。用完要掛回架上，摔壞很貴。"},
+{id:"ARM-07",c:"arm",n:"各軸伺服馬達與剎車",e:"Joint Servo Motor & Brake",f:"驅動每一個關節，並在斷電時用剎車鎖住姿態避免手臂墜落。",l:"每個關節內部。",t:"聽到某一軸有異音或看到停機後緩慢下沉，很可能是剎車磨損，要立刻報修。"},
+{id:"ARM-08",c:"arm",n:"諧波減速機",e:"Harmonic Drive",f:"體積小、減速比大、背隙極小，多用在手腕等輕負載關節。",l:"J4～J6 手腕關節。",t:"怕衝擊負載。撞機之後就算外觀正常，也要確認重複定位精度有沒有變差。"},
+{id:"ARM-09",c:"arm",n:"RV 減速機",e:"RV Reducer",f:"剛性高、可承受大扭矩與衝擊，用在承重的大關節。",l:"J1～J3 底座與大臂關節。",t:"潤滑油有更換週期。油脂劣化會讓關節發熱、精度下降，屬於定期保養項目。"},
+{id:"ARM-10",c:"arm",n:"手臂本體連桿",e:"Arm Link / Casting",f:"連接各關節、承受負載與慣性力，剛性決定高速時的抖動程度。",l:"下臂、上臂。",t:"不可以在手臂上鑽孔、掛東西或當梯子踩。任何附加重量都會影響動態精度。"},
+{id:"ARM-11",c:"arm",n:"手腕與法蘭面",e:"Wrist & Tool Flange",f:"最末端的三個姿態軸，法蘭面是安裝末端工具的標準介面。",l:"手臂前端。",t:"法蘭面上有定位孔與螺孔規格（多為 ISO 9409）。自製轉接板要照規格做，不要憑目測鑽孔。"},
+{id:"ARM-12",c:"arm",n:"末端效應器",e:"End Effector / EOAT",f:"手臂真正接觸產品的部分：吸盤、夾爪、鎖付起子、點膠頭、焊槍。",l:"鎖在手腕法蘭面上。",t:"換工具後一定要重設 TCP 與負載參數，否則軌跡會偏、關節會過載。"},
+{id:"ARM-13",c:"arm",n:"快換裝置",e:"Tool Changer",f:"讓手臂自己更換不同工具，氣路與電路一起接通。",l:"法蘭面與工具之間，搭配工具架。",t:"換刀前後都要確認鎖定訊號。沒鎖好就移動，工具會在半空中掉下來。"},
+{id:"ARM-14",c:"arm",n:"管線包",e:"Dress Pack",f:"把跟著手臂運動的電纜與氣管整理固定，避免纏繞與疲勞斷裂。",l:"沿著手臂外側或穿過中空手腕。",t:"手臂反覆同一動作最容易磨斷線。定期檢查護套破損，別等到訊號時好時壞才處理。"},
+{id:"ARM-15",c:"arm",n:"力覺／扭矩感測器",e:"Force / Torque Sensor",f:"量測末端受力，用在插件、研磨、壓合這種需要「摸著做」的製程。",l:"法蘭面與工具之間。",t:"它很怕撞擊過載。搬運與安裝時要格外小心，一顆感測器的價格常常超過夾爪好幾倍。"},
+{id:"ARM-16",c:"arm",n:"視覺引導與手眼校正",e:"Vision Guided Robot / Hand-Eye Calibration",f:"用相機找出工件實際位置，把座標換算給手臂，讓工件不需要精密定位治具。",l:"相機固定在架上（Eye-to-Hand）或裝在手臂上（Eye-in-Hand）。",t:"相機或手臂只要動過，手眼校正就必須重做。這是抓取偏移最常見的原因。"},
+{id:"ARM-17",c:"arm",n:"工具中心點",e:"TCP",f:"手臂實際控制的那一個點，例如吸盤面中心或起子頭尖端。",l:"程式中的工具座標定義。",t:"TCP 設錯，直線運動會變成弧線、旋轉會繞錯中心。教點位前先用四點法確認 TCP。"},
+{id:"ARM-18",c:"arm",n:"座標系",e:"Coordinate Frames",f:"關節、世界、工具、工件四種座標，決定按方向鍵時手臂往哪裡動。",l:"程式與示教器設定中。",t:"教點位前先看示教器上顯示的是哪一套座標。搞錯就會往非預期方向撞過去。"},
+{id:"ARM-19",c:"arm",n:"原點校正",e:"Mastering / Zeroing",f:"建立各軸編碼器與機械原點的對應關係，是所有點位的基準。",l:"每一軸上的校正刻線或治具。",t:"換編碼器電池、拆馬達、嚴重撞機後都要重新校正。校正沒做好，全部點位都是錯的。"},
+{id:"ARM-20",c:"arm",n:"安全區域與干涉區",e:"Safety Zone / Interference Area",f:"用軟體限制手臂可進入的空間，或在多台手臂共用區域做互鎖。",l:"控制器的安全設定與 PLC 互鎖邏輯。",t:"兩台手臂共用區域一定要有互鎖旗標，一次只能一台進入。這條邏輯不可以為了節拍而取消。"},
+{id:"ARM-21",c:"arm",n:"奇異點",e:"Singularity",f:"某些姿態下手臂會失去一個自由度，關節瞬間需要極高轉速而報錯或暴衝。",l:"通常出現在手臂完全伸直、或手腕軸共線時。",t:"規劃路徑時避開伸直極限與正上方。遇到奇異點警報，改用關節運動或調整中繼點。"},
+{id:"ARM-22",c:"arm",n:"第七軸／行走軸",e:"Track / Linear Rail",f:"讓手臂沿地軌或天軌移動，擴大工作範圍或服務多台機。",l:"地面軌道或天車橫樑。",t:"行走軸也要納入干涉判斷。手臂本體沒撞到，不代表管線包不會被夾。"},
+{id:"ARM-23",c:"arm",n:"平衡缸／配重",e:"Balancer / Counterweight",f:"抵銷大臂的自重，降低 J2 軸的負擔並提升速度。",l:"大型手臂的 J2 關節旁。",t:"平衡缸內有高壓彈簧或氮氣，絕對不可以自行拆解，必須由原廠人員處理。"},
+{id:"ARM-24",c:"arm",n:"安全圍籬與區域掃描器",e:"Fence & Safety Scanner",f:"用實體圍籬或雷射掃描器界定人員不可進入的範圍，有人進入立即停機。",l:"手臂工作範圍外緣。",t:"掃描器的偵測區要涵蓋手臂加上工具的最大範圍，不是只有手臂本體。"},
+{id:"ARM-25",c:"arm",n:"負載與慣量設定",e:"Payload & Inertia Setting",f:"告訴控制器末端掛了多重、重心在哪，控制器據此規劃加減速。",l:"程式的工具負載參數。",t:"設定值比實際輕會過衝與震動，比實際重會變慢。換夾爪或抓取重物時務必更新。"},
+{id:"ARM-26",c:"arm",n:"點位教導與程式",e:"Teaching & Program",f:"記錄手臂要走的每一個位置與動作順序，是手臂的核心資產。",l:"控制器記憶體，須定期備份到外部。",t:"改點位一次只改一點並記錄。用「相對偏移」的寫法比一個一個重教好維護得多。"},
+
+/* ---------- AOI ---------- */
+{id:"AOI-01",c:"aoi",n:"面掃描相機",e:"Area Scan Camera",f:"一次拍一整張影像，適合定點取像的靜態檢測。",l:"檢測站上方或側面，鎖在 Z 軸或固定支架。",t:"解析度要由「最小缺陷尺寸」反推。至少要讓最小缺陷佔到 3～5 個像素。"},
+{id:"AOI-02",c:"aoi",n:"線掃描相機",e:"Line Scan Camera",f:"一次拍一條線，靠工件連續移動拼成完整影像，適合捲對捲或長件。",l:"輸送線上方，搭配編碼器觸發。",t:"速度必須與觸發同步，否則影像會拉長或壓縮。這類問題不是軟體能修的。"},
+{id:"AOI-03",c:"aoi",n:"鏡頭",e:"Lens",f:"決定視野、放大倍率、景深與畸變，直接影響量測準確度。",l:"鎖在相機前端。",t:"量測用途要用遠心鏡頭，避免距離變化造成尺寸誤差。光圈與焦距鎖定後要上鎖固螺絲。"},
+{id:"AOI-04",c:"aoi",n:"光源",e:"Illumination",f:"製造缺陷與背景的對比。環形、同軸、背光、條形、低角度、圓頂各有適用對象。",l:"工件上方、側面或下方（背光）。",t:"缺陷看不出來，八成是光的問題不是演算法的問題。先換光再調參數。"},
+{id:"AOI-05",c:"aoi",n:"光源控制器",e:"Light Controller",f:"穩定光源亮度並提供頻閃（Strobe）觸發，讓每張影像亮度一致。",l:"電控箱或相機附近。",t:"光源會衰減。定期用固定樣品確認灰階值，不要等到誤判變多才發現。"},
+{id:"AOI-06",c:"aoi",n:"取像觸發",e:"Trigger",f:"決定「什麼時候按快門」：感測器觸發、編碼器觸發或軟體觸發。",l:"檢測站入口的感測器或軸的編碼器。",t:"高速下軟體觸發會有抖動。要求精準對位就要用硬體觸發。"},
+{id:"AOI-07",c:"aoi",n:"影像傳輸介面",e:"GigE / USB3 / CoaXPress",f:"把影像從相機送到電腦，頻寬決定可用的解析度與幀率。",l:"相機到 IPC 之間的線材與介面卡。",t:"線長與品質很重要。影像偶爾掉幀常常是線材或網卡設定（Jumbo Frame）問題。"},
+{id:"AOI-08",c:"aoi",n:"精密 XY 平台",e:"Precision Stage",f:"帶著工件或相機移動到每個檢測位置，重複定位精度決定可檢測的最小特徵。",l:"檢測區底座。",t:"平台的重複定位誤差會直接變成量測誤差。定期用標準件驗證。"},
+{id:"AOI-09",c:"aoi",n:"Z 軸對焦",e:"Focus Axis",f:"調整相機到工件的距離以取得清晰影像，可做自動對焦。",l:"相機支架上。",t:"換治具或工件厚度變了，焦距就要重新設定並記錄在配方裡。"},
+{id:"AOI-10",c:"aoi",n:"校正板",e:"Calibration Target",f:"提供已知尺寸的圖案，建立像素與實際毫米的換算關係。",l:"保存在專用盒中，校正時放上平台。",t:"校正板要保持乾淨無刮痕。動過鏡頭、Z 軸或治具就要重新校正。"},
+{id:"AOI-11",c:"aoi",n:"傳統影像演算法",e:"Blob / Edge / Template Match",f:"用邊緣、面積、灰階、樣板比對來判定尺寸與外觀。",l:"上位軟體的檢測流程中。",t:"參數可解釋、可重現，出問題查得出原因，仍是量測類檢測的首選。"},
+{id:"AOI-12",c:"aoi",n:"深度學習檢測",e:"Deep Learning Inspection",f:"用模型判定難以用規則描述的外觀缺陷，如刮痕、髒污、不規則瑕疵。",l:"IPC 上的推論程式，常搭配 GPU 加速。",t:"模型好壞取決於資料。NG 樣本要收集完整並分類清楚，不能只丟一堆圖進去訓練。"},
+{id:"AOI-13",c:"aoi",n:"判定與分選",e:"Judgement & Sorting",f:"依門檻值判定 OK／NG，再由機構把不良品分流或做標記。",l:"檢測站之後的排出機構。",t:"NG 品的流向要能追溯。分選機構故障時，寧可停機也不要讓 NG 混流。"},
+{id:"AOI-14",c:"aoi",n:"複判與誤判管理",e:"Review Station & MSA",f:"人工複驗 AOI 判定結果，統計漏檢與過殺，回饋調整參數。",l:"線邊複判站與品質報表。",t:"漏檢與過殺要分開統計。用同一個數字管理兩件事，永遠調不好。"},
+
+/* ---------- 氫燃料電池 ---------- */
+{id:"FCS-01",c:"fcs",n:"燃料電池電堆",e:"Fuel Cell Stack",f:"系統核心：氫氣與空氣中的氧反應產生直流電、水與熱。",l:"平台中央，四周有氣路、冷卻與電力接點。",t:"電堆昂貴且怕缺氣、怕乾、怕水淹。啟停一定要照程序，不可直接斷電。"},
+{id:"FCS-02",c:"fcs",n:"儲氫瓶 / 儲氫罐",e:"Hydrogen Cylinder",f:"儲存燃料，可能是高壓鋼瓶或金屬氫化物儲罐。",l:"獨立通風的氣瓶區，須固定防倒。",t:"搬運要戴瓶帽、用推車、確實固定。氣瓶區禁明火與電焊。"},
+{id:"FCS-03",c:"fcs",n:"減壓閥 / 調壓器",e:"Pressure Regulator",f:"把鋼瓶高壓降到系統可用的工作壓力。",l:"氣瓶出口第一級。",t:"開瓶閥前先確認減壓閥調壓螺桿是鬆的，避免瞬間高壓衝擊。"},
+{id:"FCS-04",c:"fcs",n:"氫氣電磁閥 / 緊急切斷閥",e:"H₂ Solenoid / Shut-off Valve",f:"通電才開啟（常閉型），任何異常或斷電時自動切斷氫氣。",l:"氣瓶後、電堆進氣前。",t:"一定要選常閉型。停電時閥自動關閉，這是本質安全設計。"},
+{id:"FCS-05",c:"fcs",n:"質量流量計 / 控制器",e:"Mass Flow Meter / MFC",f:"量測並控制進入電堆的氫氣流量，也是效率計算的依據。",l:"氫氣主管路上。",t:"氣體種類設定要正確（換算係數不同），設錯會讓數據整體偏移。"},
+{id:"FCS-06",c:"fcs",n:"吹掃閥",e:"Purge Valve",f:"定期排出陽極側累積的水與雜質氣體，維持電堆效能。",l:"電堆陽極出口。",t:"吹掃排出的是含氫氣體，管路必須接到安全的排放點，不可直接排在室內。"},
+{id:"FCS-07",c:"fcs",n:"氫氣洩漏偵測器",e:"H₂ Gas Detector",f:"偵測空氣中氫氣濃度，超標時觸發警報與緊急連鎖。",l:"天花板、氣瓶區上方、電堆櫃體上方（氫氣往上跑）。",t:"有效期與校正期限要追蹤。感測器過期＝形同虛設。"},
+{id:"FCS-08",c:"fcs",n:"通風與排氣風扇",e:"Ventilation Fan",f:"持續換氣，避免氫氣在密閉空間累積到爆炸範圍。",l:"櫃體上方與空間上部。",t:"風扇失效必須連鎖停機。不要為了安靜而把它關掉。"},
+{id:"FCS-09",c:"fcs",n:"空氣供應（鼓風機 / 空壓機）",e:"Air Blower / Compressor",f:"提供陰極側所需的氧氣（空氣），流量隨負載變化。",l:"平台空氣側入口，前接空氣濾清器。",t:"濾網堵塞會讓電堆缺氧、輸出下降。這是輸出偏低時常被忽略的原因。"},
+{id:"FCS-10",c:"fcs",n:"加濕器",e:"Humidifier",f:"維持質子交換膜的含水量，太乾電阻升高，太濕會淹水。",l:"空氣進電堆之前。",t:"效率忽高忽低常與水管理有關，不一定是電堆劣化。"},
+{id:"FCS-11",c:"fcs",n:"冷卻迴路",e:"Cooling Loop",f:"用泵把冷卻液循環經過電堆與散熱器，把反應熱帶走。",l:"電堆兩側與散熱器風扇。",t:"必須用去離子水或指定冷卻液。自來水的導電度會造成漏電流與腐蝕。"},
+{id:"FCS-12",c:"fcs",n:"溫度與壓力感測器",e:"Temp / Pressure Sensors",f:"監控進出口壓差與電堆溫度，是保護連鎖的判斷依據。",l:"氫氣側、空氣側、冷卻側各關鍵點。",t:"壓差異常通常代表流道堵塞或水淹，要停機檢查而不是提高流量硬撐。"},
+{id:"FCS-13",c:"fcs",n:"DC/DC 轉換器",e:"DC/DC Converter",f:"把電堆輸出隨負載變動的電壓，穩定成系統匯流排電壓。",l:"電堆輸出端之後。",t:"直流側斷電後仍有殘壓，量測前務必確認已洩放並依規定戴絕緣手套。"},
+{id:"FCS-14",c:"fcs",n:"逆變器",e:"Inverter",f:"把直流電轉成交流電供一般負載使用，或併入市電。",l:"電力櫃內。",t:"併網有法規與併聯保護要求。孤島偵測與保護不可以關閉。"},
+{id:"FCS-15",c:"fcs",n:"電池組與電池管理系統",e:"Battery Pack & BMS",f:"作為緩衝，供應啟動電力與負載突增時的功率，並保護電池安全。",l:"電力櫃內獨立區域。",t:"BMS 的警報要當一回事。過充、過放、溫升異常都可能演變成熱失控。"},
+{id:"FCS-16",c:"fcs",n:"電子負載 / 假負載",e:"Electronic Load",f:"在測試時模擬各種負載條件，量測輸出特性與極化曲線。",l:"測試台架旁，需大量散熱。",t:"負載變化要漸進。突然加載會讓電堆瞬間缺氣，對膜有傷害。"},
+{id:"FCS-17",c:"fcs",n:"燃料電池控制器",e:"FCU / System Controller",f:"執行啟動、運轉、吹掃、停機程序，並管理所有保護連鎖。",l:"控制櫃內，與一般 PLC 分工或整合。",t:"它的啟停程序不能被外部隨意中斷。急停後要照復歸程序，不是重新上電就好。"},
+{id:"FCS-18",c:"fcs",n:"資料擷取與監控",e:"DAQ & Monitoring",f:"記錄電壓、電流、流量、溫度、壓力，用於效率分析與故障回溯。",l:"上位電腦與資料庫。",t:"單電池電壓（Cell Voltage）監測最能提早發現電堆異常，不要只看總電壓。"},
+{id:"FCS-19",c:"fcs",n:"安全連鎖",e:"Safety Interlock",f:"把氣體偵測、風扇、溫度、壓力、急停整合成硬體連鎖，異常時直接切斷氫氣與輸出。",l:"獨立於一般控制邏輯之外的安全迴路。",t:"這條迴路不可以被軟體旁路。測試連鎖功能要定期做並留紀錄。"},
+{id:"FCS-20",c:"fcs",n:"絕緣與接地監測",e:"Insulation Monitoring",f:"監測直流系統對地絕緣阻抗，預防漏電與感電。",l:"直流匯流排上。",t:"絕緣阻抗下降常發生在冷卻液滲漏之後。警報出現要立刻停機找漏。"}
+];
+
+/* 剖視圖熱點：座標 → 元件 */
+const HOT = [
+  {x:150,y:470,id:"MEC-01",t:"1"},
+  {x:200,y:376,id:"MEC-02",t:"2"},
+  {x:157,y:508,id:"MEC-03",t:"3"},
+  {x:246,y:354,id:"MEC-04",t:"4"},
+  {x:230,y:314,id:"MEC-05",t:"5"},
+  {x:160,y:296,id:"ELE-12",t:"6"},
+  {x:348,y:120,id:"MEC-26",t:"7"},
+  {x:348,y:340,id:"MEC-14",t:"8"},
+  {x:600,y:300,id:"ELE-19",t:"9"},
+  {x:690,y:322,id:"MEC-20",t:"10"},
+  {x:757,y:44,id:"ELE-29",t:"11"},
+  {x:900,y:212,id:"ELE-01",t:"12"},
+  {x:868,y:254,id:"ELE-06",t:"13"},
+  {x:868,y:304,id:"ELE-07",t:"14"},
+  {x:934,y:304,id:"ELE-11",t:"15"},
+  {x:902,y:366,id:"ELE-34",t:"16"},
+  {x:902,y:432,id:"ELE-31",t:"17"},
+  {x:688,y:392,id:"ELE-30",t:"18"},
+  {x:746,y:400,id:"ELE-25",t:"19"},
+  {x:62,y:276,id:"MEC-13",t:"20"},
+  {x:111,y:168,id:"ELE-28",t:"21"},
+  {x:795,y:128,id:"ELE-27",t:"22"},
+  {x:445,y:104,id:"MEC-25",t:"23"}
+];
+
+/* ---------- 產生熱點 ---------- */
+const hs = document.getElementById('hotspots');
+HOT.forEach(h=>{
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.setAttribute('class','hot');
+  g.setAttribute('tabindex','0');
+  g.setAttribute('role','button');
+  const comp = DATA.find(d=>d.id===h.id);
+  g.setAttribute('aria-label', (comp?comp.n:h.id));
+  g.innerHTML = `<circle cx="${h.x}" cy="${h.y}" r="12"></circle>
+    <text x="${h.x}" y="${h.y+4}" text-anchor="middle">${h.t}</text>
+    <title>${h.t}. ${comp?comp.n:h.id}（${h.id}）</title>`;
+  const go = ()=>jumpTo(h.id);
+  g.addEventListener('click',go);
+  g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}});
+  hs.appendChild(g);
+});
+
+/* ---------- 卡片渲染 ---------- */
+const CATS = [
+  {key:"mech", grid:"g-mech", count:"c-mech", label:"機構"},
+  {key:"pne",  grid:"g-pne",  count:"c-pne",  label:"氣路"},
+  {key:"elec", grid:"g-elec", count:"c-elec", label:"電控"},
+  {key:"soft", grid:"g-soft", count:"c-soft", label:"軟體"},
+  {key:"cnv",  grid:"g-cnv",  count:"c-cnv",  label:"輸送帶模組"},
+  {key:"arm",  grid:"g-arm",  count:"c-arm",  label:"機械手臂"},
+  {key:"aoi",  grid:"g-aoi",  count:"c-aoi",  label:"AOI 光學"},
+  {key:"fcs",  grid:"g-fcs",  count:"c-fcs",  label:"氫燃料電池"}
+];
+
+function cardHTML(d){
+  return `<article class="card" id="card-${d.id}" tabindex="0" role="button" aria-expanded="false">
+    <span class="toggle"></span>
+    <div class="ph noimg" data-file="photos/${d.id}.jpg">
+      <img src="photos/${d.id}.jpg" alt="${d.n}實體照片" loading="lazy">
+    </div>
+    <span class="id">${d.id}</span>
+    <h5>${d.n}</h5>
+    <div class="en">${d.e}</div>
+    <p class="fn">${d.f}</p>
+    <div class="more"><div class="more-in">
+      <div class="row"><span class="k">位置</span><span class="v">${d.l}</span></div>
+      <div class="row tip"><span class="k">重點</span><span class="v">${d.t}</span></div>
+    </div></div>
+  </article>`;
+}
+
+function render(filter){
+  const kw = (filter||"").trim().toLowerCase();
+  CATS.forEach(cat=>{
+    const list = DATA.filter(d=>d.c===cat.key && (!kw ||
+      (d.n+d.e+d.f+d.l+d.t+d.id).toLowerCase().includes(kw)));
+    const g = document.getElementById(cat.grid);
+    g.innerHTML = list.length ? list.map(cardHTML).join("")
+      : `<div class="empty" style="grid-column:1/-1">這個分類沒有符合「${filter}」的元件</div>`;
+    document.getElementById(cat.count).textContent =
+      `${cat.label}　${list.length} 項${kw?" / 已篩選":""}`;
+  });
+  bindCards();
+}
+
+function bindCards(){
+  document.querySelectorAll('.card').forEach(c=>{
+    const t = (e)=>{
+      if(e && e.target.closest('.ph')) return;   // 點照片不展開，方便拖放
+      c.classList.toggle('on');
+      c.setAttribute('aria-expanded', c.classList.contains('on'));
+    };
+    c.addEventListener('click',t);
+    c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();t();}});
+  });
+  // 照片：檔案存在就顯示
+  document.querySelectorAll('.ph img').forEach(img=>{
+    const wrap = img.parentElement;
+    if(img.complete && img.naturalWidth>0) wrap.classList.remove('noimg');
+    img.addEventListener('load', ()=>{ if(img.naturalWidth>0) wrap.classList.remove('noimg'); });
+    img.addEventListener('error', ()=> wrap.classList.add('noimg'));
+  });
+  // 照片：拖放預覽
+  document.querySelectorAll('.ph').forEach(ph=>{
+    ['dragenter','dragover'].forEach(ev=>ph.addEventListener(ev,e=>{
+      e.preventDefault(); e.stopPropagation(); ph.classList.add('over');
+    }));
+    ['dragleave','dragend'].forEach(ev=>ph.addEventListener(ev,()=>ph.classList.remove('over')));
+    ph.addEventListener('drop',e=>{
+      e.preventDefault(); e.stopPropagation(); ph.classList.remove('over');
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(!f || !f.type.startsWith('image/')) return;
+      const r = new FileReader();
+      r.onload = ()=>{ ph.querySelector('img').src = r.result; ph.classList.remove('noimg'); };
+      r.readAsDataURL(f);
+    });
+  });
+  if(typeof ccWatch === 'function') ccWatch();
+}
+
+/* ---------- 拍照清單 ---------- */
+function download(name, text, type){
+  const b = new Blob([text], {type:type||'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+}
+const CATNAME = {mech:"機構",elec:"電控",soft:"軟體",arm:"機械手臂",aoi:"AOI 光學",fcs:"氫燃料電池"};
+document.getElementById('dl-list').addEventListener('click',()=>{
+  const rows = [["料號","分類","元件名稱","英文","安裝位置","照片檔名","已拍攝"]]
+    .concat(DATA.filter(d=>d.c!=='soft').map(d=>[d.id,CATNAME[d.c],d.n,d.e,d.l,`photos/${d.id}.jpg`,""]));
+  const csv = "\ufeff" + rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+  download("設備元件拍照清單.csv", csv, "text/csv;charset=utf-8");
+});
+document.getElementById('dl-html').addEventListener('click',()=>{
+  download("自動化設備元件教育訓練.html",
+    "<!DOCTYPE html>\n"+document.documentElement.outerHTML, "text/html;charset=utf-8");
+});
+
+function jumpTo(id){
+  document.getElementById('q').value = "";
+  render("");
+  const el = document.getElementById('card-'+id);
+  if(!el) return;
+  el.classList.add('on','flash');
+  el.setAttribute('aria-expanded','true');
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  setTimeout(()=>el.classList.remove('flash'), 1600);
+}
+
+document.getElementById('q').addEventListener('input', e=>render(e.target.value));
+render("");
+
+/* =========================================================
+   3D 多角度觀察器（純 CSS 3D，不需要外部函式庫）
+   座標：x 向右、y 向下、z 向前。單位約 1px ≒ 4mm
+   ========================================================= */
+const PARTS = [
+  /* --- 機架（鋁擠型）與腳座 --- */
+  {x:0,   y:196, z:-142,w:436,h:44, d:44,  c:'m-alu', tag:'鋁擠型機架', id:'MEC-01', ex:[0,90,0]},
+  {x:0,   y:196, z:142, w:436,h:44, d:44,  c:'m-alu', ex:[0,90,0]},
+  {x:0,   y:104, z:-142,w:436,h:40, d:40,  c:'m-alu', ex:[0,90,0]},
+  {x:0,   y:104, z:142, w:436,h:40, d:40,  c:'m-alu', ex:[0,90,0]},
+  {x:-208,y:150, z:0,   w:40, h:44, d:284, c:'m-alu', ex:[0,90,0]},
+  {x:208, y:150, z:0,   w:40, h:44, d:284, c:'m-alu', ex:[0,90,0]},
+  {x:-208,y:154, z:-142,w:44, h:150,d:44,  c:'m-alu', ex:[0,90,0]},
+  {x:208, y:154, z:-142,w:44, h:150,d:44,  c:'m-alu', ex:[0,90,0]},
+  {x:-208,y:154, z:142, w:44, h:150,d:44,  c:'m-alu', ex:[0,90,0]},
+  {x:208, y:154, z:142, w:44, h:150,d:44,  c:'m-alu', ex:[0,90,0]},
+  {x:-208,y:238, z:-142,w:34, h:20, d:34,  c:'m-steel', r:4},
+  {x:208, y:238, z:-142,w:34, h:20, d:34,  c:'m-steel', r:4},
+  {x:-208,y:238, z:142, w:34, h:20, d:34,  c:'m-steel', r:4, tag:'調整腳座', id:'MEC-03', ex:[0,120,0]},
+  {x:208, y:238, z:142, w:34, h:20, d:34,  c:'m-steel', r:4},
+
+  /* --- 定盤 --- */
+  {x:0,   y:64,  z:0,   w:456,h:24, d:312, c:'m-plate', tag:'定盤', id:'MEC-02', ex:[0,-34,0]},
+
+  /* --- 直線軸：滑軌 / 螺桿 / 馬達 --- */
+  {x:0,   y:44,  z:-74, w:376,h:14, d:22,  c:'m-steel', tag:'線性滑軌', id:'MEC-04', ex:[0,-96,0]},
+  {x:0,   y:44,  z:74,  w:376,h:14, d:22,  c:'m-steel', ex:[0,-96,0]},
+  {x:0,   y:32,  z:0,   w:390,h:14, d:14,  c:'m-steel', r:7, tag:'滾珠螺桿', id:'MEC-05', ex:[0,-150,0]},
+  {x:-206,y:32,  z:0,   w:26, h:30, d:30,  c:'m-blk', ex:[-90,-150,0]},
+  {x:-244,y:32,  z:0,   w:52, h:40, d:40,  c:'m-blk', r:5, tag:'伺服馬達', id:'ELE-12', ex:[-150,-150,0]},
+  {x:-276,y:32,  z:0,   w:14, h:26, d:26,  c:'m-steel', ex:[-190,-150,0]},
+
+  /* --- 龍門與 Z 軸 --- */
+  {x:-152,y:-42, z:0,   w:36, h:176,d:44,  c:'m-alu'},
+  {x:152, y:-42, z:0,   w:36, h:176,d:44,  c:'m-alu'},
+  {x:0,   y:-142,z:0,   w:340,h:36, d:52,  c:'m-alu', tag:'龍門橫樑', id:'MEC-08', ex:[0,-100,0]},
+  {x:40,  y:-76, z:30,  w:56, h:96, d:54,  c:'m-paint', r:3, tag:'Z 軸工具頭', id:'MEC-26', ex:[0,-70,80]},
+  {x:40,  y:-14, z:30,  w:36, h:40, d:36,  c:'m-opt', r:3, tag:'相機', id:'AOI-01', ex:[0,-40,140]},
+  {x:40,  y:14,  z:30,  w:48, h:14, d:48,  c:'m-opt', r:6},
+  {x:-40, y:-160,z:0,   w:120,h:16, d:26,  c:'m-blk', r:3, tag:'拖鏈', id:'MEC-23', ex:[0,-140,0]},
+
+  /* --- 輸送帶模組 --- */
+  {x:0,   y:52,  z:126, w:420,h:10, d:78,  c:'m-belt', tag:'輸送皮帶', id:'CNV-07', ex:[0,-30,180]},
+  {x:-214,y:52,  z:126, w:28, h:28, d:80,  c:'m-roller', r:13, tag:'驅動滾筒', id:'CNV-05', ex:[-90,0,180]},
+  {x:214, y:52,  z:126, w:28, h:28, d:80,  c:'m-roller', r:13},
+  {x:0,   y:70,  z:126, w:400,h:12, d:70,  c:'m-steel', ex:[0,30,180]},
+  {x:0,   y:56,  z:90,  w:420,h:26, d:6,   c:'m-paint', tag:'側導板', id:'CNV-09', ex:[0,-20,140]},
+  {x:0,   y:56,  z:162, w:420,h:26, d:6,   c:'m-paint', ex:[0,-20,220]},
+  {x:-240,y:56,  z:126, w:44, h:44, d:52,  c:'m-blk', r:4, tag:'減速馬達', id:'CNV-05', ex:[-140,0,180]},
+  {x:60,  y:40,  z:126, w:44, h:14, d:44,  c:'m-armo', r:3, tag:'擋停器', id:'CNV-10', ex:[0,-80,190]},
+  {x:-60, y:74,  z:126, w:70, h:30, d:60,  c:'m-steel', tag:'頂升定位', id:'CNV-11', ex:[0,90,180]},
+
+  /* --- 機械手臂 --- */
+  {x:-150,y:34,  z:-30, w:88, h:36, d:88,  c:'m-armw', r:6, tag:'手臂底座', id:'ARM-01', ex:[-170,0,-60]},
+  {x:-150,y:-6,  z:-30, w:62, h:66, d:62,  c:'m-armo', r:8, ex:[-170,0,-60]},
+  {x:-150,y:-80, z:-30, w:34, h:92, d:38,  c:'m-armw', r:6, ex:[-170,-60,-60]},
+  {x:-116,y:-128,z:-30, w:110,h:30, d:34,  c:'m-armw', r:8, tag:'手臂連桿', id:'ARM-10', ex:[-170,-110,-60]},
+  {x:-60, y:-128,z:-30, w:26, h:26, d:40,  c:'m-armo', r:10, ex:[-170,-110,-60]},
+  {x:-60, y:-100,z:-30, w:26, h:44, d:26,  c:'m-armw', ex:[-150,-80,60]},
+  {x:-60, y:-72, z:-30, w:38, h:16, d:38,  c:'m-blk', r:3, tag:'夾爪 EOAT', id:'ARM-12', ex:[-130,-50,120]},
+  {x:-60, y:-58, z:-30, w:10, h:22, d:26,  c:'m-steel', ex:[-130,-50,120]},
+
+  /* --- 電控箱 --- */
+  {x:306, y:104, z:-46, w:128,h:220,d:118, c:'m-elec', r:3, tag:'電控箱', id:'ELE-01', ex:[200,0,-50]},
+  {x:371, y:104, z:-46, w:6,  h:206,d:104, c:'m-paint', r:2, ex:[290,0,-50]},
+  {x:374, y:104, z:-10, w:8,  h:44, d:10,  c:'m-steel', r:3, ex:[300,0,-50]},
+
+  /* --- 氣路：三點組合與閥島 --- */
+  {x:-262,y:120, z:150, w:34, h:76, d:34,  c:'m-steel', r:3, tag:'三點組合', id:'MEC-13', ex:[-170,60,120]},
+  {x:-222,y:120, z:150, w:34, h:76, d:34,  c:'m-steel', r:3, ex:[-170,60,120]},
+  {x:-242,y:70,  z:150, w:26, h:26, d:26,  c:'m-blk', r:12, ex:[-170,10,120]},
+  {x:-120,y:40,  z:-118,w:120,h:34, d:44,  c:'m-blk', r:3, tag:'電磁閥島', id:'PNE-15', ex:[-60,-90,-140]},
+
+  /* --- HMI 與三色燈 --- */
+  {x:150, y:22,  z:186, w:104,h:74, d:16,  c:'m-paint', r:4, ex:[0,0,160]},
+  {x:150, y:22,  z:194, w:86, h:56, d:4,   c:'m-screen', r:2, tag:'HMI 人機', id:'ELE-30', ex:[0,0,160]},
+  {x:190, y:-116,z:0,   w:12, h:56, d:12,  c:'m-steel', r:6},
+  {x:190, y:-158,z:0,   w:24, h:26, d:24,  c:'m-lg', r:3},
+  {x:190, y:-184,z:0,   w:24, h:26, d:24,  c:'m-ly', r:3},
+  {x:190, y:-210,z:0,   w:24, h:26, d:24,  c:'m-lr', r:3, tag:'三色燈', id:'ELE-29', ex:[0,-120,0]},
+
+  /* --- 安全護罩：鋁框 + 壓克力面板 --- */
+  {x:0,   y:-70, z:184, w:508,h:308,d:8,   c:'m-glass guard', tag:'安全護罩', id:'MEC-25', ex:[0,0,220]},
+  {x:-254,y:-70, z:0,   w:8,  h:308,d:368, c:'m-glass guard', ex:[-220,0,0]},
+  {x:254, y:-70, z:0,   w:8,  h:308,d:368, c:'m-glass guard', ex:[220,0,0]},
+  {x:0,   y:-224,z:0,   w:508,h:8,  d:368, c:'m-glass guard', ex:[0,-200,0]},
+  {x:-254,y:-70, z:184, w:26, h:314,d:26,  c:'m-alu guard', ex:[-220,0,220]},
+  {x:254, y:-70, z:184, w:26, h:314,d:26,  c:'m-alu guard', ex:[220,0,220]},
+  {x:-254,y:-70, z:-184,w:26, h:314,d:26,  c:'m-alu guard', ex:[-220,0,-220]},
+  {x:254, y:-70, z:-184,w:26, h:314,d:26,  c:'m-alu guard', ex:[220,0,-220]}
+];
+
+const world = document.getElementById('world');
+const scene = document.getElementById('scene');
+const tagEls = [];
+let view = {rx:-22, ry:-34, s:1}, exploded = false;
+
+function makeBox(o){
+  const el = document.createElement('div');
+  el.className = 'box ' + (o.c||'');
+  el._pos = o;
+  const F = [
+    ['fr', o.w, o.h, `translateZ(${o.d/2}px)`],
+    ['bk', o.w, o.h, `translateZ(${-o.d/2}px) rotateY(180deg)`],
+    ['rt', o.d, o.h, `translateX(${o.w/2}px) rotateY(90deg)`],
+    ['lf', o.d, o.h, `translateX(${-o.w/2}px) rotateY(-90deg)`],
+    ['tp', o.w, o.d, `translateY(${-o.h/2}px) rotateX(90deg)`],
+    ['bt', o.w, o.d, `translateY(${o.h/2}px) rotateX(-90deg)`]
+  ];
+  F.forEach(([cls,w,h,tf])=>{
+    const f = document.createElement('div');
+    f.className = 'face ' + cls;
+    f.style.cssText = `width:${w}px;height:${h}px;margin-left:${-w/2}px;margin-top:${-h/2}px;transform:${tf}`
+      + (o.r ? `;border-radius:${o.r}px` : '');
+    el.appendChild(f);
+  });
+  return el;
+}
+
+['floor','contact'].forEach(c=>{
+  const d = document.createElement('div'); d.className = c; world.appendChild(d);
+});
+
+PARTS.forEach(o=>{
+  world.appendChild(makeBox(o));
+  if(o.tag){
+    const t = document.createElement('div');
+    t.className = 'tag3d'; t._pos = o;
+    const b = document.createElement('b');
+    b.textContent = o.tag;
+    b.title = o.id + '　點擊查看說明';
+    b.addEventListener('click', ()=>jumpTo(o.id));
+    t.appendChild(b); world.appendChild(t); tagEls.push(t);
+  }
+});
+
+function place(){
+  const k = exploded ? 1 : 0;
+  world.querySelectorAll('.box').forEach(el=>{
+    const p = el._pos, e = p.ex || [0,0,0];
+    el.style.transform = `translate3d(${p.x+e[0]*k}px,${p.y+e[1]*k}px,${p.z+e[2]*k}px)`;
+  });
+  tagEls.forEach(t=>{
+    const p = t._pos, e = p.ex || [0,0,0];
+    t.style.transform =
+      `translate3d(${p.x+e[0]*k}px,${p.y+e[1]*k-p.h/2-16}px,${p.z+e[2]*k}px)` +
+      ` rotateY(${-view.ry}deg) rotateX(${-view.rx}deg)`;
+  });
+}
+function apply(){
+  world.style.transform = `rotateX(${view.rx}deg) rotateY(${view.ry}deg) scale(${view.s})`;
+  place();
+}
+apply();
+
+let drag = null;
+scene.addEventListener('pointerdown', e=>{
+  drag = {x:e.clientX, y:e.clientY, rx:view.rx, ry:view.ry};
+  scene.classList.add('drag'); world.classList.add('nofx');
+  scene.setPointerCapture(e.pointerId);
+});
+scene.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  view.ry = drag.ry + (e.clientX - drag.x) * .42;
+  view.rx = Math.max(-89, Math.min(89, drag.rx - (e.clientY - drag.y) * .32));
+  apply();
+  document.querySelectorAll('.viewbar .vbtn[data-rx]').forEach(b=>b.classList.remove('on'));
+});
+['pointerup','pointercancel'].forEach(ev=>scene.addEventListener(ev, ()=>{
+  drag = null; scene.classList.remove('drag'); world.classList.remove('nofx');
+}));
+scene.addEventListener('wheel', e=>{
+  e.preventDefault();
+  view.s = Math.max(.4, Math.min(2.2, view.s * (e.deltaY > 0 ? .92 : 1.08)));
+  world.classList.add('nofx'); apply();
+  clearTimeout(scene._t); scene._t = setTimeout(()=>world.classList.remove('nofx'), 140);
+}, {passive:false});
+
+document.querySelectorAll('.viewbar .vbtn[data-rx]').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.viewbar .vbtn[data-rx]').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    view.rx = +b.dataset.rx; view.ry = +b.dataset.ry; apply();
+  });
+});
+document.getElementById('t-explode').addEventListener('click', function(){
+  exploded = !exploded; this.classList.toggle('on', exploded);
+  this.textContent = exploded ? '合併檢視' : '分解檢視';
+  place();
+});
+document.getElementById('t-guard').addEventListener('click', function(){
+  const on = this.classList.toggle('on');
+  world.querySelectorAll('.guard').forEach(g=>g.classList.toggle('hide', !on));
+  this.textContent = on ? '顯示護罩' : '隱藏護罩';
+});
+document.getElementById('t-tag').addEventListener('click', function(){
+  const on = this.classList.toggle('on');
+  tagEls.forEach(t=>t.classList.toggle('off', !on));
+  this.textContent = on ? '顯示標籤' : '隱藏標籤';
+});
+
+/* =========================================================
+   Wikimedia Commons 免費授權圖片
+   授權：公眾領域或創用 CC，載入時自動標示作者與授權條款
+   ========================================================= */
+const WIKIQ = {
+"MEC-01":"aluminium extrusion profile","MEC-02":"surface plate metrology","MEC-03":"machine leveling foot",
+"MEC-04":"linear guide rail bearing","MEC-05":"ball screw","MEC-06":"ball screw support unit",
+"MEC-07":"flexible shaft coupling","MEC-08":"timing belt pulley","MEC-09":"planetary gearbox",
+"MEC-10":"pneumatic cylinder","MEC-11":"reed switch","MEC-12":"pneumatic flow control valve",
+"MEC-13":"air filter regulator lubricator","MEC-14":"vacuum suction cup","MEC-15":"vacuum ejector",
+"MEC-16":"pneumatic gripper","MEC-17":"machine tool fixture","MEC-18":"dowel pin",
+"MEC-19":"rotary indexing table","MEC-20":"belt conveyor","MEC-21":"conveyor stopper",
+"MEC-22":"industrial shock absorber","MEC-23":"cable carrier drag chain","MEC-24":"ball bearing",
+"MEC-25":"machine safety guard","MEC-26":"gantry robot",
+"PNE-01":"air compressor industrial","PNE-02":"air receiver tank","PNE-03":"refrigerated air dryer",
+"PNE-04":"compressed air piping","PNE-05":"ball valve","PNE-06":"pneumatic valve",
+"PNE-07":"pressure relief valve","PNE-08":"compressed air filter","PNE-09":"coalescing filter",
+"PNE-10":"pressure regulator gauge","PNE-11":"pneumatic lubricator","PNE-12":"pressure switch",
+"PNE-13":"pneumatic solenoid valve","PNE-14":"directional control valve","PNE-15":"pneumatic valve manifold",
+"PNE-16":"pneumatic push-in fitting","PNE-17":"polyurethane tubing","PNE-18":"pneumatic manifold block",
+"PNE-19":"check valve","PNE-20":"quick exhaust valve","PNE-21":"pneumatic silencer",
+"PNE-22":"pressure booster","PNE-23":"vacuum filter","PNE-24":"soap bubble leak test",
+"ELE-01":"electrical control cabinet","ELE-02":"miniature circuit breaker","ELE-03":"residual current device",
+"ELE-04":"magnetic contactor","ELE-05":"EMI filter","ELE-06":"DIN rail power supply",
+"ELE-07":"programmable logic controller","ELE-08":"PLC module","ELE-09":"analog input module",
+"ELE-10":"remote IO module","ELE-11":"servo drive","ELE-12":"servomotor","ELE-13":"rotary encoder",
+"ELE-14":"stepper motor","ELE-15":"variable frequency drive","ELE-16":"relay DIN rail",
+"ELE-17":"solenoid valve","ELE-18":"inductive proximity sensor","ELE-19":"photoelectric sensor",
+"ELE-20":"fiber optic sensor amplifier","ELE-21":"limit switch","ELE-22":"pneumatic pressure switch",
+"ELE-23":"PT100 temperature sensor","ELE-24":"load cell","ELE-25":"emergency stop button",
+"ELE-26":"safety relay","ELE-27":"safety interlock switch","ELE-28":"safety light curtain",
+"ELE-29":"signal tower light","ELE-30":"HMI touch panel","ELE-31":"terminal block",
+"ELE-32":"cabinet cooling fan","ELE-33":"grounding busbar","ELE-34":"industrial computer",
+"ELE-35":"barcode scanner industrial",
+"SFT-01":"ladder logic diagram","SFT-02":"GRAFCET","SFT-03":"interlock","SFT-04":"machine origin sensor","SFT-05":"motion control",
+"SFT-06":"wiring diagram","SFT-07":"recipe management","SFT-08":"alarm panel","SFT-09":"HMI screen","SFT-10":"industrial computer",
+"SFT-11":"Modbus","SFT-12":"EtherCAT","SFT-13":"OPC Unified Architecture","SFT-14":"MQTT",
+"SFT-15":"manufacturing execution system","SFT-16":"database server","SFT-17":"barcode traceability",
+"SFT-18":"overall equipment effectiveness","SFT-19":"access control login","SFT-20":"version control","SFT-21":"digital twin",
+"SFT-22":"remote access",
+"CNV-01":"belt conveyor","CNV-02":"roller conveyor","CNV-03":"chain conveyor",
+"CNV-04":"modular plastic belt conveyor","CNV-05":"geared motor","CNV-06":"conveyor roller",
+"CNV-07":"conveyor belt","CNV-08":"conveyor frame","CNV-09":"conveyor guide rail",
+"CNV-10":"conveyor stopper","CNV-11":"scissor lift table","CNV-12":"conveyor pallet",
+"CNV-13":"RFID reader industrial","CNV-14":"photoelectric sensor conveyor","CNV-15":"conveyor diverter",
+"CNV-16":"vertical conveyor","CNV-17":"conveyor guard","CNV-18":"conveyor maintenance",
+"ARM-01":"articulated industrial robot","ARM-02":"SCARA robot","ARM-03":"delta robot",
+"ARM-04":"collaborative robot","ARM-05":"robot controller","ARM-06":"robot teach pendant",
+"ARM-07":"servomotor","ARM-08":"harmonic drive gear","ARM-09":"cycloidal drive",
+"ARM-10":"industrial robot arm","ARM-11":"robot flange","ARM-12":"robot gripper",
+"ARM-13":"robot tool changer","ARM-14":"robot cable","ARM-15":"force torque sensor",
+"ARM-16":"robot vision camera","ARM-17":"robot kinematics","ARM-18":"robot coordinate system",
+"ARM-19":"robot calibration","ARM-20":"robot safety fence","ARM-21":"robot kinematics singularity",
+"ARM-22":"robot linear track","ARM-23":"industrial robot","ARM-24":"safety laser scanner",
+"ARM-25":"industrial robot payload","ARM-26":"robot programming",
+"AOI-01":"machine vision camera","AOI-02":"line scan camera","AOI-03":"machine vision lens",
+"AOI-04":"GigE Vision camera","AOI-05":"LED ring light machine vision","AOI-06":"LED controller",
+"AOI-07":"photoelectric sensor","AOI-08":"precision positioning stage","AOI-09":"focus mechanism",
+"AOI-10":"camera calibration checkerboard","AOI-11":"edge detection","AOI-12":"convolutional neural network",
+"AOI-13":"sorting machine","AOI-14":"quality inspection",
+"FCS-01":"fuel cell stack","FCS-02":"hydrogen cylinder","FCS-03":"gas pressure regulator",
+"FCS-04":"gas solenoid valve","FCS-05":"mass flow controller","FCS-06":"purge valve",
+"FCS-07":"gas detector","FCS-08":"industrial ventilation fan","FCS-09":"air blower",
+"FCS-10":"humidifier","FCS-11":"radiator coolant pump","FCS-12":"pressure gauge",
+"FCS-13":"DC-DC converter","FCS-14":"power inverter","FCS-15":"battery management system",
+"FCS-16":"electronic load","FCS-17":"control cabinet","FCS-18":"data acquisition",
+"FCS-19":"safety interlock","FCS-20":"insulation monitoring device"
+};
+
+const CREDITS = new Map();          // id -> {title,author,license,page}
+const CCACHE  = new Map();          // id -> {hits:[], idx:n}
+let ccOn = false;
+
+const strip = h => (h||"").replace(/<[^>]*>/g,"").replace(/\s+/g," ").trim().slice(0,70) || "未標示";
+
+async function ccSearch(id, d){
+  if(CCACHE.has(id)) return CCACHE.get(id);
+  const q = (WIKIQ[id] || d.e) + " filetype:bitmap";
+  const url = "https://commons.wikimedia.org/w/api.php?origin=*&format=json&action=query"
+    + "&generator=search&gsrnamespace=6&gsrlimit=6&gsrsearch=" + encodeURIComponent(q)
+    + "&prop=imageinfo&iiprop=url|extmetadata&iiurlwidth=560";
+  const res = await fetch(url);
+  if(!res.ok) throw new Error("commons " + res.status);
+  const data = await res.json();
+  const pages = (data.query && data.query.pages) ? Object.values(data.query.pages) : [];
+  const hits = pages
+    .filter(p => p.imageinfo && p.imageinfo[0] && p.imageinfo[0].thumburl)
+    .filter(p => !/\.svg$/i.test(p.title))
+    .map(p => {
+      const i = p.imageinfo[0], m = i.extmetadata || {};
+      return {
+        src: i.thumburl,
+        page: i.descriptionurl,
+        title: p.title.replace(/^File:/,""),
+        author: strip(m.Artist && m.Artist.value),
+        license: (m.LicenseShortName && m.LicenseShortName.value) || "見原始頁面"
+      };
+    });
+  const rec = {hits, idx:0};
+  CCACHE.set(id, rec);
+  return rec;
+}
+
+function ccShow(ph, id, rec){
+  const hit = rec.hits[rec.idx];
+  const img = ph.querySelector('img');
+  img.src = hit.src;
+  ph.classList.remove('noimg','nohit','loading');
+  ph.querySelectorAll('.cc,.nx').forEach(x=>x.remove());
+  const cap = document.createElement('div');
+  cap.className = 'cc';
+  cap.innerHTML = `${hit.author} · ${hit.license} · `
+    + `<a href="${hit.page}" target="_blank" rel="noopener">Wikimedia Commons</a>`;
+  ph.appendChild(cap);
+  if(rec.hits.length > 1){
+    const nx = document.createElement('button');
+    nx.className = 'nx'; nx.type = 'button'; nx.textContent = '換一張';
+    nx.addEventListener('click', e=>{
+      e.stopPropagation();
+      rec.idx = (rec.idx + 1) % rec.hits.length;
+      ccShow(ph, id, rec);
+    });
+    ph.appendChild(nx);
+  }
+  CREDITS.set(id, hit);
+}
+
+async function ccFill(ph){
+  if(!ccOn || ph.dataset.cc === 'done' || !ph.classList.contains('noimg')) return;
+  ph.dataset.cc = 'done';
+  const id = ph.closest('.card').id.replace('card-','');
+  const d = DATA.find(x=>x.id===id);
+  if(!d) return;
+  ph.classList.add('loading');
+  try{
+    const rec = await ccSearch(id, d);
+    if(rec.hits.length) ccShow(ph, id, rec);
+    else { ph.classList.remove('loading'); ph.classList.add('nohit'); }
+  }catch(err){
+    ph.classList.remove('loading');
+    ph.classList.add('nohit');
+    ph.dataset.cc = '';        // 允許稍後重試
+  }
+}
+
+const ccObserver = ('IntersectionObserver' in window)
+  ? new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting) ccFill(e.target); }),
+      {rootMargin:'300px'})
+  : null;
+
+function ccWatch(){
+  if(!ccOn) return;
+  document.querySelectorAll('.ph.noimg').forEach(ph=>{
+    if(ccObserver) ccObserver.observe(ph); else ccFill(ph);
+  });
+}
+
+document.getElementById('cc-load').addEventListener('click', function(){
+  ccOn = !ccOn;
+  this.textContent = ccOn ? '停止載入 Commons 圖片' : '載入 Commons 免費授權圖片';
+  if(ccOn) ccWatch();
+});
+
+document.getElementById('dl-credit').addEventListener('click', ()=>{
+  if(!CREDITS.size){
+    alert('目前還沒有載入任何 Commons 圖片。請先按「載入 Commons 免費授權圖片」。');
+    return;
+  }
+  const rows = [["料號","元件名稱","圖片檔名","作者","授權條款","原始頁面"]];
+  CREDITS.forEach((h,id)=>{
+    const d = DATA.find(x=>x.id===id);
+    rows.push([id, d?d.n:"", h.title, h.author, h.license, h.page]);
+  });
+  const csv = "\ufeff" + rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+  download("圖片來源與授權清單.csv", csv, "text/csv;charset=utf-8");
+});
+
+/* =========================================================
+   來料識別工具
+   ========================================================= */
+const IDENT = [
+ {look:"圓柱形金屬殼、外面整支螺紋、尾端出一條 3 芯線或接頭",
+  cands:["ELE-18","ELE-19"],
+  key:"看外殼雷雕：<b>M12／M18</b> 是螺紋規格；<b>Sn=</b> 後面是感測距離；<b>NPN／PNP</b>、<b>NO／NC</b> 決定接線方式。",
+  tell:"感應面是<b>整片塑膠或陶瓷、沒有透鏡</b>＝近接開關（只能測金屬）；<b>看得到鏡片、對著手會有紅光</b>＝光電開關。",
+  wrong:"最常混料的是 NPN 與 PNP。外觀完全一樣，接上去不會動作，嚴重時燒輸入點。"},
+
+ {look:"小塑膠盒、上面有旋鈕或按鍵和數字顯示、接一條扁扁的排線",
+  cands:["ELE-20"],
+  key:"確認是<b>放大器</b>還是<b>光纖頭</b>。放大器看型號與輸出型式；光纖看芯線型式（對照式／反射式）與可彎曲半徑。",
+  tell:"有數字顯示與教導鍵＝放大器本體。細細兩根像釣魚線的＝光纖頭，兩者要成套。",
+  wrong:"光纖頭有對照式與反射式之分，插孔一樣但用途完全不同，換錯會一直判定錯誤。"},
+
+ {look:"銀色長條金屬軌、上面套著可滑動的方塊",
+  cands:["MEC-04","MEC-05"],
+  key:"滑軌看<b>型號＋滑塊型式＋軌道長度</b>；螺桿看<b>軸徑 × 導程 × 全長</b>與兩端加工形狀。",
+  tell:"上面有滑塊、斷面像工字＝線性滑軌。整支是螺旋牙、兩端有階梯狀加工＝滾珠螺桿。",
+  wrong:"同型號不同長度、同軸徑不同導程，外觀非常像。長度與導程一定要實際量過。"},
+
+ {look:"帶軸的圓筒、尾端有電源與訊號接頭，本體有散熱鰭片或銘牌",
+  cands:["ELE-12","ELE-14","MEC-09"],
+  key:"銘牌看<b>額定功率／電壓／額定轉速／編碼器型式</b>，並確認<b>有無剎車</b>與<b>軸徑、鍵槽</b>。",
+  tell:"尾端有兩條線（動力＋編碼器）＝伺服馬達；只有一條粗線＝步進或感應馬達；前端多一截齒輪箱＝已含減速機。",
+  wrong:"有剎車與無剎車型號只差一兩碼。垂直軸拿到無剎車的裝上去，斷電就會掉下來。"},
+
+ {look:"鋁或不鏽鋼圓筒、側面有兩個氣管接口、一端伸出一根光亮的桿",
+  cands:["MEC-10","MEC-11"],
+  key:"缸身雷雕會有<b>缸徑 × 行程</b>與選項碼。要確認<b>安裝型式</b>（軸向、腳座、法蘭、耳環）與<b>桿端螺紋</b>。",
+  tell:"缸身上有可滑動的小方塊感測器＝附磁簧開關的磁性缸。有兩根平行桿子的是防轉型。",
+  wrong:"同缸徑不同行程外觀差異很小。行程差 5mm 裝上去就會撞到或到不了位。"},
+
+ {look:"一整排連在同一個底座上的塑膠閥體，每片上面有 LED 和一個小凹鈕",
+  cands:["PNE-13","PNE-15","ELE-17"],
+  key:"確認<b>通數與位數</b>（二位五通最常見）、<b>單電控或雙電控</b>、<b>電壓 DC24V</b>、以及底座的<b>接口尺寸</b>。",
+  tell:"一片上有一顆線圈＝單電控（斷電自動復位）；兩顆＝雙電控（斷電停在原處）。",
+  wrong:"單電控換成雙電控，斷電後氣缸不會自動歸位，安全行為完全改變。這是很嚴重的替換錯誤。"},
+
+ {look:"黑色或灰色扁盒、正面一整排端子與很多小指示燈，背後有導軌卡扣",
+  cands:["ELE-07","ELE-08","ELE-10"],
+  key:"看<b>點數與型式</b>（輸入／輸出、電晶體或繼電器輸出）、<b>電源電壓</b>、以及是否為擴充模組。",
+  tell:"上面標 X／Y 或 I／Q 並成排端子＝I/O 模組；有 RUN／ERROR 燈與通訊口＝CPU 本體。",
+  wrong:"電晶體輸出與繼電器輸出型號很接近。用錯會導致無法驅動負載，或反應速度不符需求。"},
+
+ {look:"較厚的金屬盒、背面有大散熱片、下方是粗的電源與馬達端子",
+  cands:["ELE-11","ELE-15"],
+  key:"看<b>適配馬達容量</b>、<b>輸入電壓相數</b>（單相／三相）、<b>控制模式與通訊介面</b>。",
+  tell:"有編碼器接頭（多針圓形或方形）＝伺服驅動器；只有 U/V/W 與參數面板＝變頻器。",
+  wrong:"驅動器與馬達必須是配對的容量與系列。混裝會直接報警甚至損壞。"},
+
+ {look:"方形金屬盒，正面有一圈鏡頭螺紋，側面有網路孔或 USB 孔",
+  cands:["AOI-01","AOI-03","AOI-07"],
+  key:"看<b>解析度、感測器尺寸、介面型式</b>；鏡頭看<b>焦距、接環（C/CS）、最大支援感測器尺寸</b>。",
+  tell:"盒體有散熱鰭片與網路孔＝工業相機；圓筒狀有兩圈刻度環（光圈／對焦）＝鏡頭。",
+  wrong:"鏡頭接環與感測器尺寸不匹配會出現黑角。相機與鏡頭要一起確認，不能分開驗收。"},
+
+ {look:"象牙白或橘色的鑄件，接合處是圓的，末端有一圈螺孔的平面",
+  cands:["ARM-01","ARM-11","ARM-12"],
+  key:"確認<b>型號、負載、臂展</b>是否與規劃一致，並清點<b>控制器、示教器、連接線</b>是否成套。",
+  tell:"末端那個有定位孔與一圈螺孔的平面就是法蘭面，末端工具鎖在這裡。",
+  wrong:"手臂、控制器、線材必須是同一組出廠配對。拆散混用可能無法啟動或需要重新設定。"},
+
+ {look:"成捲的帶子、一排滾筒、或有滾子的鏈條",
+  cands:["CNV-07","CNV-02","CNV-03"],
+  key:"皮帶看<b>長度、寬度、材質、接合方式</b>；滾筒看<b>直徑、軸長、軸型式</b>；鏈條看<b>節距與型號</b>。",
+  tell:"表面有紋路或防靜電標示的環狀帶＝輸送皮帶；帶滾子的鏈條＝倍速鏈。",
+  wrong:"皮帶長度只要差一點就裝不上或張不緊。訂之前要確認是「已接合的環狀」還是「散裝要現場接」。"},
+
+ {look:"透明或半透明的杯狀塑膠件、上面有金屬旋鈕與圓形錶頭",
+  cands:["MEC-13","PNE-08","PNE-10"],
+  key:"看<b>接口尺寸</b>（1/4″、3/8″）、<b>過濾精度</b>、<b>調壓範圍</b>、以及是否為<b>免油潤滑型</b>。",
+  tell:"有錶頭與旋鈕＝調壓閥；只有透明杯與排水鈕＝過濾器；杯裡有滴油視窗＝油霧器。",
+  wrong:"接口尺寸不對就裝不上，而且轉接會增加洩漏點。訂購前先量現場管路規格。"}
+];
+
+const idlist = document.getElementById('idlist');
+const idout  = document.getElementById('idout');
+IDENT.forEach((it,i)=>{
+  const b = document.createElement('button');
+  b.className = 'idbtn'; b.type = 'button';
+  b.textContent = it.look;
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.idbtn').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    idout.className = 'idout show';
+    idout.innerHTML =
+      `<h5>怎麼確定是哪一種</h5><p>${it.tell}</p>` +
+      `<h5>一定要核對的欄位</h5><p>${it.key}</p>` +
+      `<h5>最常見的收錯</h5><p>${it.wrong}</p>` +
+      `<h5>可能是這些元件（點擊看說明）</h5><div class="cands">` +
+      it.cands.map(id=>{
+        const d = DATA.find(x=>x.id===id);
+        return d ? `<button type="button" data-go="${id}">${d.id}　${d.n}</button>` : '';
+      }).join('') + `</div>`;
+    idout.querySelectorAll('[data-go]').forEach(x=>
+      x.addEventListener('click', ()=>jumpTo(x.dataset.go)));
+    idout.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+  idlist.appendChild(b);
+});
+
+/* ---------- 測驗 ---------- */
+const QUIZ = [
+ {q:"機台完全不動，操作員說「程式壞了」。你應該先確認什麼？",
+  o:["直接重新下載 PLC 程式","檢查安全迴路是否復歸（急停／門／光柵）","把互鎖條件先拿掉試試看","重開機台電源"],
+  a:1, e:"安全繼電器沒復歸時，動力輸出被硬體切斷，程式再正確也不會動。先看安全，再看 24V 電源，接著看 PLC I/O 燈。"},
+ {q:"氣壓缸伸出後，程式應該用什麼條件才往下一步？",
+  o:["延遲 1 秒","磁簧開關的到位訊號 ON","電磁閥輸出 ON 就好","目視確認"],
+  a:1, e:"用時間當條件在氣壓不足或負載變重時就會失效，造成撞機。正確做法是等到位訊號，並且設 timeout 保護。"},
+ {q:"關於回原點（Homing），下列哪一項正確？",
+  o:["開機後可以直接下絕對座標命令","急停復歸後不需要重新回原點","回原點完成前不可下絕對座標命令","回原點只是為了好看"],
+  a:2, e:"沒有建立座標基準之前，絕對座標是沒有意義的。這是撞機的第一大原因，沒有例外。"},
+ {q:"感測器指示燈有亮，但 PLC 對應的輸入燈沒有 ON，最可能是？",
+  o:["PLC CPU 壞了","程式邏輯寫錯","配線接錯點或 NPN/PNP 型式不符","機構卡住"],
+  a:2, e:"感測器本身有動作代表它有電也有偵測到。訊號沒進 PLC，問題在中間的配線或訊號型式。"},
+ {q:"AOI 檢測抓不到某個刮痕缺陷，第一步應該做什麼？",
+  o:["降低判定門檻值","調整光源型式與角度","重新訓練深度學習模型","換更高解析度的相機"],
+  a:1, e:"影像上看不見的東西，演算法也找不到。先讓缺陷在影像上有明顯對比，再談參數與模型。"},
+ {q:"氫氣洩漏偵測器為什麼裝在天花板？",
+  o:["方便維修","氫氣比空氣輕會往上累積","避免被人碰到","那裡通風最好"],
+  a:1, e:"氫氣密度遠小於空氣，洩漏後往上聚集。同理，通風口也設在空間上部。"},
+ {q:"伺服驅動器跳「過負載」警報，最合理的第一步是？",
+  o:["直接復歸重跑","把電流上限調高","記下警報代碼並檢查機構是否卡住或潤滑不良","更換驅動器"],
+  a:2, e:"過負載通常是機構端出問題的徵兆。調高電流是把保護關掉，會讓小問題變成大損壞。"},
+ {q:"為了測試方便，把某個互鎖條件暫時短接，正確做法是？",
+  o:["測完再說，反正記得住","做明顯標記、告知同仁，測完立刻復原並記錄","乾脆永久拿掉比較不麻煩","跟安全迴路一起短接省事"],
+  a:1, e:"安全迴路（急停、門鎖、光柵）絕對不可短接。一般互鎖若因測試需要暫時取消，必須有標記、有人知道、有紀錄，並在當天復原。"},
+ {q:"換線生產時，最容易造成整批報廢的疏失是？",
+  o:["忘記擦拭機台","沒有確認配方 / 治具與機種一致","沒有更新 OEE 報表","忘記關電控箱門"],
+  a:1, e:"配方或治具用錯，機台會很順暢地做出一整批不良品。換線第一件事就是雙重確認機種、配方版本與治具編號。"},
+ {q:"手臂換了一支比較重的夾爪，最少要重新設定什麼？",
+  o:["只要重教點位就好","TCP（工具中心點）與負載／慣量參數","把速度調快補回節拍","重新安裝控制器軟體"],
+  a:1, e:"TCP 決定軌跡是否正確，負載參數決定加減速規劃。兩者沒更新，會出現過衝、震動甚至關節過載警報。"},
+ {q:"示教機械手臂點位時，正確的站位是？",
+  o:["站在手臂與牆壁之間看得比較清楚","站在有退路的一側，並保持在低速模式","站在手臂正下方","請同事按住啟動鈕，自己進去調"],
+  a:1, e:"永遠替自己留退路，並使用 T1 低速模式與 Enable 開關。被手臂推擠到固定物之間，是機器人事故最常見的形態。"},
+ {q:"要進入機台內部維修氣動機構，正確順序是？",
+  o:["按急停就可以進去","關氣源球閥 → 上鎖掛牌 → 按洩壓閥確認壓力表歸零","先拆氣管再關氣源","把電磁閥手動鈕按住就好"],
+  a:1, e:"只斷電不洩壓，氣缸內殘壓仍足以造成夾傷。斷電、斷氣、洩壓、上鎖四件事要一起做。"},
+ {q:"輸送線的定位站，正確動作順序是？",
+  o:["頂升 → 擋停 → 作業 → 放行","擋停 → 頂升 → 作業 → 降下 → 放行","擋停 → 作業 → 放行","放行 → 擋停 → 頂升"],
+  a:1, e:"沒先擋停就頂升會頂到移動中的載具；沒降下就放行會刮壞定位銷與載具。順序錯誤是輸送線損傷的主因。"},
+ {q:"收到一顆感測器，外觀跟舊的一模一樣，但你不確定是不是同一顆。應該？",
+  o:["外觀一樣就直接換上去","比對銘牌型號、輸出型式（NPN/PNP）與 NO/NC，確認相符再上機","先裝上去試，不動再說","問旁邊的人有沒有印象"],
+  a:1, e:"NPN 與 PNP 外觀完全相同但不能互換，接錯不會動作甚至燒輸入點。驗收一律以銘牌型號對 BOM 為準。"},
+ {q:"下列哪一項工作不應該由上位電腦（IPC）負責？",
+  o:["影像處理與判定","生產資料寫入資料庫","安全停機邏輯","報表與人機介面"],
+  a:2, e:"安全必須做在 PLC 或安全控制器這類即時且可驗證的裝置上。PC 會當機、會更新、會被病毒影響，不能用來保護人。"}
+];
+
+const qb = document.getElementById('quizbox');
+let done = 0, right = 0;
+QUIZ.forEach((item,i)=>{
+  const d = document.createElement('div');
+  d.className='q';
+  d.innerHTML = `<p>${i+1}. ${item.q}</p>` +
+    item.o.map((o,j)=>`<button class="opt" data-i="${j}">${String.fromCharCode(65+j)}. ${o}</button>`).join("") +
+    `<div class="exp"><b>解說：</b>${item.e}</div>`;
+  d.querySelectorAll('.opt').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      if(d.classList.contains('done')) return;
+      const pick = +btn.dataset.i;
+      d.classList.add('done');
+      d.querySelectorAll('.opt')[item.a].classList.add('right');
+      if(pick!==item.a) btn.classList.add('wrong'); else right++;
+      done++;
+      document.getElementById('score').textContent =
+        `已作答 ${done} / ${QUIZ.length}　答對 ${right} 題`;
+    });
+  });
+  qb.appendChild(d);
+});
+</script>
+</body>
+</html>
