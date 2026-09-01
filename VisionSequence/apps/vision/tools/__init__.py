@@ -19,7 +19,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.dl",
     "apps.vision.tools.builtin.logic",
     "apps.vision.tools.builtin.output",
-    "apps.vision.tools.builtin.plc",
+    "apps.vision.tools.builtin.modbus",
 ]
 
 _registered = False

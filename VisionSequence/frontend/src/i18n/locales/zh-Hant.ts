@@ -554,7 +554,7 @@ const zhHant = {
   },
   connections: {
     title: '連線',
-    subtitle: 'PLC／上位機的主動輸出連線（write_plc 工具用名稱引用）',
+    subtitle: 'Modbus TCP／上位機的主動輸出連線（write_modbus 工具用名稱引用）',
     create: '新增連線',
     empty: '還沒有連線',
     kind: '種類',
@@ -576,7 +576,7 @@ const zhHant = {
     stateAddresses: '位址',
     read: '讀取',
     deleteTitle: '刪除連線',
-    deleteMessage: '確定要刪除連線「{{name}}」？使用它的 write_plc 步驟會降級（記警告）。',
+    deleteMessage: '確定要刪除連線「{{name}}」？使用它的 write_modbus 步驟會降級（記警告）。',
     created: '已建立連線',
     updated: '已更新連線',
     deleted: '已刪除連線',
@@ -597,7 +597,7 @@ const zhHant = {
       class: '類別路徑（module:Class）',
     },
     wordOrders: { big: 'big（高字組在前）', little: 'little（低字組在前）' },
-    goIntegration: '整合頁「PLC 輸出」說明 mapping 格式',
+    goIntegration: '整合頁「Modbus 輸出」說明 mapping 格式',
   },
   viewer: {
     noImage: '尚無影像',
@@ -777,7 +777,7 @@ const zhHant = {
   integration: {
     title: '整合',
     subtitle: '給外部整合方的接口說明與測試工具',
-    tabs: { http: 'HTTP API 測試', tcp: 'TCP 測試', events: '事件監看', lock: '鎖定', format: '回傳格式', plc: 'PLC 輸出' },
+    tabs: { http: 'HTTP API 測試', tcp: 'TCP 測試', events: '事件監看', lock: '鎖定', format: '回傳格式', modbus: 'Modbus 輸出' },
     info: { httpBase: 'HTTP 位址', tcp: 'TCP', listening: '監聽中', notListening: '未啟動', apiKey: 'API 金鑰', required: '必要', optional: '不需要', workers: '執行緒', timeout: '逾時（秒）' },
     http: {
       flow: '流程',
@@ -812,7 +812,7 @@ const zhHant = {
       history: '指令歷史',
       resend: '重送',
       clearHistory: '清除歷史',
-      howto: 'PLC／上位機接法',
+      howto: 'Modbus TCP／上位機接法',
       howtoLines: [
         '連到 {{host}}:{{port}}（TCP，建議 TCP_NODELAY）。',
         '一行一個指令，以 \\n 結尾；伺服器回一行 JSON，同樣以 \\n 結尾。',
@@ -840,9 +840,9 @@ const zhHant = {
       statusExample: '查詢',
       goSettings: '到設定頁鎖定／解鎖',
     },
-    plc: {
-      title: '主動輸出到 PLC／上位機',
-      intro: '「寫入 PLC」（write_plc）工具在流程內把判定、具名輸出或輸入埠的值寫到連線；連線在「連線」頁建立，工具的 connection 參數填連線名稱。寫入失敗預設只記警告（run 照常），可改為讓 run 失敗。',
+    modbus: {
+      title: '主動輸出（Modbus TCP／上位機）',
+      intro: '「寫入 Modbus」（write_modbus）工具在流程內把判定、具名輸出或輸入埠的值寫到連線；連線在「連線」頁建立，工具的 connection 參數填連線名稱。寫入失敗預設只記警告（run 照常），可改為讓 run 失敗。',
       goConnections: '到連線頁',
       mappingTitle: 'mapping 格式',
       mappingHint: '陣列，每項一個寫入：src 是值來源，address 是位址；可加 dtype、scale、offset 或直接給常數 value。',
@@ -860,7 +860,7 @@ const zhHant = {
       ],
       example: '範例',
       degrade: '降級：連線不存在、逾時或寫入失敗時，on_error=warn（預設）會在 run.warnings 記一筆並繼續；on_error=fail 讓 run 失敗。',
-      docs: '完整說明見 docs/plc.html',
+      docs: '完整說明見 docs/modbus.html',
     },
     format: {
       runReport: 'RunReport 欄位',

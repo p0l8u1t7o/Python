@@ -644,7 +644,7 @@ export function useImportFlow() {
   })
 }
 
-// ---- 連線（PLC／上位機） ----
+// ---- 連線（Modbus TCP／上位機） ----
 export function useConnections(enabled = true) {
   return useQuery({
     queryKey: keys.connections,

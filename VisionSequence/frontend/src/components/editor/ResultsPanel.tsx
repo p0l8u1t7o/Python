@@ -39,7 +39,7 @@ export function RunErrorBlock({ run, order, payloads, onGoto }: { run: RunReport
   )
 }
 
-/** run.warnings（例如「未完成現場教導」、PLC 寫入降級）：結果分頁頂端的黃色提示。 */
+/** run.warnings（例如「未完成現場教導」、Modbus 寫入降級）：結果分頁頂端的黃色提示。 */
 export function RunWarnings({ run }: { run: RunReport | null }) {
   const { t } = useTranslation()
   if (!run?.warnings?.length) return null

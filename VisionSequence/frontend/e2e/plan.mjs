@@ -3,7 +3,7 @@
  *   node frontend/e2e/plan.mjs
  * 需要：後端 :8000（manage.py serve）、前端 :5173（npm run dev）；帳號 admin/admin123（登入方式同 smoke.mjs）。
  * 流程：參數卡改值即時更新 → 執行一次看 warnings → 標記已教導 → 建配方 → 用配方執行 → 上傳 3 張 Golden 案例 → 回歸（存基準）
- *      → 再回歸 → 匯出 → 匯入 → 連線頁建 dio_sim → 測試 → 手動寫入 → 狀態檢視 → 加 write_plc 到流程跑一次（成功＋降級）→ 英文檢視器文案。
+ *      → 再回歸 → 匯出 → 匯入 → 連線頁建 dio_sim → 測試 → 手動寫入 → 狀態檢視 → 加 write_modbus 到流程跑一次（成功＋降級）→ 英文檢視器文案。
  * 截圖寫到 <repo>/Image/80-*.png；console.error／pageerror 全部列在結尾 ISSUES。
  */
 import { chromium } from 'file:///D:/Working%20Space/Python/ZQS-Cloud/frontend/node_modules/playwright/index.mjs'
@@ -348,11 +348,11 @@ await step('connections-test-write-state', async () => {
   await page.keyboard.press('Escape')
 })
 
-// ---------------------------------------------------------------- 6. write_plc 進流程
+// ---------------------------------------------------------------- 6. write_modbus 進流程
 await step('write-plc-run', async () => {
   const f = await api(`/flows/${FID}`)
   const graph = structuredClone(f.graph)
-  graph.nodes.push({ id: 'plc1', type: 'write_plc', label: 'PLC', position: { x: 1400, y: 300 }, params: { connection: 'sim-e2e', mapping: [{ src: 'judge', address: 'OK', dtype: 'bool' }, { value: 1, address: 'DO1', dtype: 'bool' }], on_error: 'warn' } })
+  graph.nodes.push({ id: 'plc1', type: 'write_modbus', label: 'Modbus', position: { x: 1400, y: 300 }, params: { connection: 'sim-e2e', mapping: [{ src: 'judge', address: 'OK', dtype: 'bool' }, { value: 1, address: 'DO1', dtype: 'bool' }], on_error: 'warn' } })
   await apiPatch(`/flows/${FID}`, { graph })
   await page.goto(`${BASE}/flows/${FID}`)
   await page.locator('.react-flow__node[data-id="plc1"]').waitFor({ timeout: 15000 })
@@ -363,16 +363,16 @@ await step('write-plc-run', async () => {
   const listId = await page.locator('[data-testid=param-connection]').getAttribute('list')
   const opts = await page.locator(`datalist[id="${listId}"] option`).count().catch(() => 0)
   console.log('connection datalist options', opts)
-  if (opts === 0) note('write_plc connection field has no datalist options')
+  if (opts === 0) note('write_modbus connection field has no datalist options')
   await shot(page, '80-17-write-plc-toolpage')
   await page.goto(`${BASE}/flows/${FID}`)
   await page.locator('.react-flow__node').first().waitFor({ timeout: 15000 })
   await page.locator('[data-testid=btn-run]').click()
   await page.waitForTimeout(3000)
   let run = (await api(`/flows/${FID}/recent?limit=1`)).items[0]
-  console.log('write_plc run:', run?.status, 'plc1', run?.nodes?.plc1?.status, run?.nodes?.plc1?.message, 'warnings', run?.warnings)
-  if (run?.nodes?.plc1?.status !== 'ok') note('write_plc node not ok: ' + JSON.stringify(run?.nodes?.plc1?.message))
-  if (run?.nodes?.plc1?.outputs?.written < 1) note('write_plc wrote nothing: ' + JSON.stringify(run?.nodes?.plc1?.outputs))
+  console.log('write_modbus run:', run?.status, 'plc1', run?.nodes?.plc1?.status, run?.nodes?.plc1?.message, 'warnings', run?.warnings)
+  if (run?.nodes?.plc1?.status !== 'ok') note('write_modbus node not ok: ' + JSON.stringify(run?.nodes?.plc1?.message))
+  if (run?.nodes?.plc1?.outputs?.written < 1) note('write_modbus wrote nothing: ' + JSON.stringify(run?.nodes?.plc1?.outputs))
   const st = await api(`/connections/${connId}/state`)
   console.log('dio state after run', JSON.stringify(st.values))
   // 降級：改成不存在的連線
@@ -385,11 +385,11 @@ await step('write-plc-run', async () => {
   await page.waitForTimeout(3000)
   run = (await api(`/flows/${FID}/recent?limit=1`)).items[0]
   console.log('degraded run:', run?.status, 'warnings', run?.warnings, 'plc1', run?.nodes?.plc1?.status)
-  if (run?.status === 'failed') note('degraded write_plc made the run failed (expected warn only)')
+  if (run?.status === 'failed') note('degraded write_modbus made the run failed (expected warn only)')
   // 降級是節點層級：status=ok、outputs.ok=false、message「寫入失敗（已降級）」、logs 有 warning（run.warnings 只放流程層級的提醒）
   const plc = run?.nodes?.plc1
   console.log('degraded plc1:', plc?.message, JSON.stringify(plc?.outputs), plc?.logs?.map((l) => l.level))
-  if (!plc || plc.outputs?.ok !== false || !/降級/.test(plc.message || '')) note('degraded write_plc did not report degrade: ' + JSON.stringify(plc?.message))
+  if (!plc || plc.outputs?.ok !== false || !/降級/.test(plc.message || '')) note('degraded write_modbus did not report degrade: ' + JSON.stringify(plc?.message))
   await page.getByRole('tab', { name: /結果/ }).click().catch(async () => page.getByRole('button', { name: /結果/ }).first().click())
   await page.waitForTimeout(500)
   if (run?.warnings?.length && (await page.locator('[data-testid=run-warnings]').count()) === 0) note('degrade warnings not shown in results tab')

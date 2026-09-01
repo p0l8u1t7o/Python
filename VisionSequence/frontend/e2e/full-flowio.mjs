@@ -1,4 +1,4 @@
-/** 模組 flowio：匯出／匯入、配方（編輯器／整合頁／統計／總覽）、write_plc 工具頁與執行、warnings 提示、未教導標籤、en／深色（IO）。 */
+/** 模組 flowio：匯出／匯入、配方（編輯器／整合頁／統計／總覽）、write_modbus 工具頁與執行、warnings 提示、未教導標籤、en／深色（IO）。 */
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -101,7 +101,7 @@ export async function run(h) {
     await h.shot(page, 'integration-plc', { full: true })
     await page.getByTestId('plc-go-connections').click()
     await page.waitForURL(/\/connections$/, { timeout: 5000 })
-    h.item('IO04', sel === 'true' && txt.includes('write_plc') && txt.includes('judge') && txt.includes('coil:') && txt.includes('降級') && code.includes('"src"') && code.includes('"address"') && lists >= 2 && /\/connections$/.test(page.url()), `sel=${sel} lists=${lists} code=${code.slice(0, 60).replace(/\n/g, ' ')} url=${page.url()}`)
+    h.item('IO04', sel === 'true' && txt.includes('write_modbus') && txt.includes('judge') && txt.includes('coil:') && txt.includes('降級') && code.includes('"src"') && code.includes('"address"') && lists >= 2 && /\/connections$/.test(page.url()), `sel=${sel} lists=${lists} code=${code.slice(0, 60).replace(/\n/g, ' ')} url=${page.url()}`)
   })
 
   let recipeA = null
@@ -229,7 +229,7 @@ export async function run(h) {
     h.item('IO09', warn.includes('未完成現場教導') && tbGone && warnGone && (last?.warnings?.length ?? 0) === 0, `warn=${warn.replace(/\n/g, ' ')} tbGone=${tbGone} warnGone=${warnGone} api=${JSON.stringify(last?.warnings)}`)
   })
 
-  await h.step('IO07 write_plc 工具與執行', async () => {
+  await h.step('IO07 write_modbus 工具與執行', async () => {
     const conn = await h.api.post('/vision/connections', { name: 'E2E plc-sim', kind: 'dio_sim', config: { channels: ['DO0', 'OK', 'NG'] }, is_enabled: true })
     await openEditor(plcFlow)
     const palette = page.locator('aside').first()
@@ -240,7 +240,7 @@ export async function run(h) {
       const pane = document.querySelector('.react-flow__pane')
       const r = pane.getBoundingClientRect()
       const dt = new DataTransfer()
-      dt.setData('application/x-vs-tool', 'write_plc')
+      dt.setData('application/x-vs-tool', 'write_modbus')
       // 放在畫布中上方（放太右下會被小地圖蓋住點不到）
       const x = r.left + r.width * 0.55
       const y = r.top + r.height * 0.3

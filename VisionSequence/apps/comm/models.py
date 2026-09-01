@@ -1,4 +1,4 @@
-"""通訊連線：主動輸出到 PLC / 上位機的目的地（仿 ImageSource 的模式，一列一條連線）。"""
+"""通訊連線：主動輸出到 Modbus TCP 設備／上位機的目的地（仿 ImageSource 的模式，一列一條連線）。"""
 
 from __future__ import annotations
 

@@ -43,7 +43,7 @@ const GLOSSARY_PAGES: [string, string, string, string][] = [
   ['統計', '/flows/:id/stats', 'StatsPage', '執行歷史、良率趨勢、每小時 OK／NG'],
   ['參數卡', '/flows/:id/teach', 'TeachPage', '全流程教導參數依步驟分組、即時試跑；配方下拉；標記為已教導'],
   ['Golden Set', '/flows/:id/golden', 'GoldenPage', '有期望值的影像案例與回歸測試（退步清單置頂）'],
-  ['連線', '/connections', 'ConnectionsPage', 'PLC／上位機的主動輸出連線：測試、手動寫入、狀態'],
+  ['連線', '/connections', 'ConnectionsPage', 'Modbus TCP／上位機的主動輸出連線：測試、手動寫入、狀態'],
   ['登入', '/login', 'LoginPage', '登入／建立第一個管理員'],
 ]
 
@@ -67,7 +67,7 @@ const GLOSSARY_CORE: [string, string, string][] = [
   ['Golden Set / 案例', 'Golden case', '有期望值（OK／NG／不限）的影像；來自上傳或批次測試結果'],
   ['回歸 / 基準', 'Regression / Baseline', '跑全部案例與期望值和基準比對；退步 = 基準符合、這次不符'],
   ['站台', 'Station (station_id)', '每筆 run 帶的站台代號（VISION_STATION_ID）'],
-  ['連線', 'Connection', '主動輸出到 PLC／上位機的連線（modbus_tcp／tcp_client／dio_sim／plugin）；write_plc 以名稱引用'],
+  ['連線', 'Connection', '主動輸出到 Modbus TCP／上位機的連線（modbus_tcp／tcp_client／dio_sim／plugin）；write_modbus 以名稱引用'],
   ['匯出 / 匯入', 'Export / Import (.flow.json)', '穩定序列化的流程檔；匯入依名稱 upsert，{SOURCE} 佔位以選的來源取代'],
   ['步驟', 'Node', '畫布上的一個方塊；一個步驟就是一個工具的實例'],
   ['工具', 'Tool（ToolTypeDef）', '工具箱裡的種類（灰階、Blob…）；key 是唯一識別字'],

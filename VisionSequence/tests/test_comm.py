@@ -1,4 +1,4 @@
-"""主動輸出到 PLC：writers（dio_sim / tcp_client / modbus_tcp）、write_plc 工具降級、連線 API。"""
+"""主動輸出（Modbus TCP）：writers（dio_sim / tcp_client / modbus_tcp）、write_modbus 工具降級、連線 API。"""
 
 from __future__ import annotations
 
@@ -206,7 +206,7 @@ class ModbusTests(SimpleTestCase):
         super().tearDownClass()
 
     def test_write_coil_holding_float32_int32(self):
-        w = ModbusTcpWriter({"host": "127.0.0.1", "port": self.server.port, "unit_id": 1, "timeout_s": 2}, name="plc")
+        w = ModbusTcpWriter({"host": "127.0.0.1", "port": self.server.port, "unit_id": 1, "timeout_s": 2}, name="mb")
         out = w.write({"coil:5": 1, "holding:100": 1234, "holding:200:float32": 3.5, "holding:300:int32": -70000, "holding:400:int16": -3})
         self.assertEqual(out["written"], 5)
         back = w.read(["coil:5", "coil:6", "holding:100", "holding:200:float32", "holding:300:int32", "holding:400:int16"])
@@ -223,20 +223,20 @@ class ModbusTests(SimpleTestCase):
         w.close()
 
     def test_readonly_area_rejected(self):
-        w = ModbusTcpWriter({"host": "127.0.0.1", "port": self.server.port}, name="plc")
+        w = ModbusTcpWriter({"host": "127.0.0.1", "port": self.server.port}, name="mb")
         with self.assertRaises(CommError):
             w.write({"input:1": 5})
         w.close()
 
     def test_unreachable_raises(self):
         with self.assertRaises(CommError):
-            ModbusTcpWriter({"host": "127.0.0.1", "port": free_port(), "timeout_s": 0.3}, name="plc")
+            ModbusTcpWriter({"host": "127.0.0.1", "port": free_port(), "timeout_s": 0.3}, name="mb")
 
 
 # ---------------------------------------------------------------------------
 # 工具
 # ---------------------------------------------------------------------------
-class WritePlcToolTests(SimpleTestCase):
+class WriteModbusToolTests(SimpleTestCase):
     def tearDown(self):
         writers.close_all()
 
@@ -251,7 +251,7 @@ class WritePlcToolTests(SimpleTestCase):
             {"address": "const", "value": 7},
             {"src": "missing", "address": "nothing"},
         ]
-        r = run_tool("write_plc", params={"connection": "sim", "mapping": mapping}, inputs={"values": [5, 1.5]},
+        r = run_tool("write_modbus", params={"connection": "sim", "mapping": mapping}, inputs={"values": [5, 1.5]},
                      context={"_judge": "ng", "_outputs": {"judge": "NG", "width_px": 123.4}})
         self.assertEqual(r.status, "ok", r.message)
         self.assertEqual(r.outputs, {"written": 5, "ok": True})
@@ -261,13 +261,13 @@ class WritePlcToolTests(SimpleTestCase):
     def test_judge_ok_is_one(self):
         sim = DioSimWriter({}, name="sim")
         writers.register_writer("sim", sim)
-        r = run_tool("write_plc", params={"connection": "sim", "mapping": [{"src": "judge", "address": "ok"}]}, context={"_judge": "ok"})
+        r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "ok"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
         self.assertEqual(sim.state["ok"], 1)
 
     def test_failure_degrades_by_default(self):
         writers.register_writer("sim", DioSimWriter({"channels": ["a"]}, name="sim"))
-        r = run_tool("write_plc", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}]}, context={"_judge": "ok"})
+        r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
         self.assertIn("降級", r.message)
         self.assertEqual(r.outputs, {"written": 0, "ok": False})
@@ -275,27 +275,27 @@ class WritePlcToolTests(SimpleTestCase):
 
     def test_failure_with_on_error_fail(self):
         writers.register_writer("sim", DioSimWriter({"channels": ["a"]}, name="sim"))
-        r = run_tool("write_plc", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}], "on_error": "fail"}, context={"_judge": "ok"})
+        r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}], "on_error": "fail"}, context={"_judge": "ok"})
         self.assertEqual(r.status, "error")
         self.assertNotIn("降級", r.message)
 
     def test_unknown_connection_degrades(self):
-        r = run_tool("write_plc", params={"connection": "nope", "mapping": [{"src": "judge", "address": "a"}]}, context={"_judge": "ok"})
+        r = run_tool("write_modbus", params={"connection": "nope", "mapping": [{"src": "judge", "address": "a"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
         self.assertIn("降級", r.message)
-        r = run_tool("write_plc", params={"connection": "nope", "mapping": [{"src": "judge", "address": "a"}], "on_error": "fail"}, context={"_judge": "ok"})
+        r = run_tool("write_modbus", params={"connection": "nope", "mapping": [{"src": "judge", "address": "a"}], "on_error": "fail"}, context={"_judge": "ok"})
         self.assertEqual(r.status, "error")
 
     def test_modbus_unreachable_degrades(self):
         port = free_port()
         with self.assertRaises(CommError):
-            ModbusTcpWriter({"host": "127.0.0.1", "port": port, "timeout_s": 0.3}, name="plc")
-        # 連線曾開成功但 PLC 之後消失：用假伺服器開、關掉、再寫
+            ModbusTcpWriter({"host": "127.0.0.1", "port": port, "timeout_s": 0.3}, name="mb")
+        # 連線曾開成功但設備之後消失：用假伺服器開、關掉、再寫
         srv = ModbusServer().start()
-        w = ModbusTcpWriter({"host": "127.0.0.1", "port": srv.port, "timeout_s": 0.5}, name="plc")
+        w = ModbusTcpWriter({"host": "127.0.0.1", "port": srv.port, "timeout_s": 0.5}, name="mb")
         srv.stop()
-        writers.register_writer("plc", w)
-        r = run_tool("write_plc", params={"connection": "plc", "mapping": [{"src": "judge", "address": "coil:0"}]}, context={"_judge": "ok"})
+        writers.register_writer("mb", w)
+        r = run_tool("write_modbus", params={"connection": "mb", "mapping": [{"src": "judge", "address": "coil:0"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
         self.assertIn("降級", r.message)
         self.assertGreaterEqual(w.info()["reconnects"], 1)
@@ -321,16 +321,16 @@ class RunnerIntegrationTests(TestCase):
             "nodes": [
                 {"id": "src", "type": "image_source", "params": {"source_id": self.source.id}},
                 {"id": "j", "type": "judge", "params": {"verdict": "ok"}},
-                {"id": "plc", "type": "write_plc", "params": {"connection": "sim", "mapping": mapping, "on_error": on_error}},
+                {"id": "mb", "type": "write_modbus", "params": {"connection": "sim", "mapping": mapping, "on_error": on_error}},
             ],
-            "edges": [{"source": "j", "source_handle": "verdict", "target": "plc", "target_handle": "values"}],
+            "edges": [{"source": "j", "source_handle": "verdict", "target": "mb", "target_handle": "values"}],
         }
 
     def test_prefetch_opens_connection_and_tool_writes(self):
         flow = Flow.objects.create(name="f", graph=self.graph([{"src": "judge", "address": "ok"}, {"address": "done", "value": 1}]))
         report = runner.run_sync(flow)
         self.assertEqual(report.status, "ok", report.error)
-        self.assertIn("已寫入 2 筆", report.nodes["plc"].message)
+        self.assertIn("已寫入 2 筆", report.nodes["mb"].message)
         w = writers.get_writer("sim")
         self.assertIsNotNone(w)
         self.assertEqual(w.state, {"done": 1, "ok": 1})
@@ -343,8 +343,8 @@ class RunnerIntegrationTests(TestCase):
         flow = Flow.objects.create(name="f", graph=self.graph([{"src": "judge", "address": "nope"}]))
         report = runner.run_sync(flow)
         self.assertEqual(report.status, "ok")
-        self.assertIn("降級", report.nodes["plc"].message)
-        self.assertEqual(report.nodes["plc"].logs[0]["level"], "warning")
+        self.assertIn("降級", report.nodes["mb"].message)
+        self.assertEqual(report.nodes["mb"].logs[0]["level"], "warning")
         flow2 = Flow.objects.create(name="f2", graph=self.graph([{"src": "judge", "address": "nope"}], on_error="fail"))
         report = runner.run_sync(flow2)
         self.assertEqual(report.status, "failed")
@@ -355,7 +355,7 @@ class RunnerIntegrationTests(TestCase):
         flow = Flow.objects.create(name="f", graph=self.graph([{"src": "judge", "address": "ok"}]))
         report = runner.run_sync(flow)
         self.assertEqual(report.status, "ok")
-        self.assertIn("降級", report.nodes["plc"].message)
+        self.assertIn("降級", report.nodes["mb"].message)
         self.assertIsNone(writers.get_writer("sim"))
 
 
@@ -412,7 +412,7 @@ class ConnectionApiTests(TestCase):
         self.assertEqual(self.client.get(f"/api/vision/connections/{cid}").status_code, 404)
 
     def test_test_endpoint_reports_error(self):
-        r = self.post("/api/vision/connections", {"name": "plc", "kind": "modbus_tcp", "config": {"host": "127.0.0.1", "port": free_port(), "timeout_s": 0.3}})
+        r = self.post("/api/vision/connections", {"name": "mb", "kind": "modbus_tcp", "config": {"host": "127.0.0.1", "port": free_port(), "timeout_s": 0.3}})
         cid = r.json()["id"]
         r = self.post(f"/api/vision/connections/{cid}/test")
         self.assertEqual(r.status_code, 200)

@@ -11,6 +11,8 @@ from apps.core.errors import ValidationError
 from apps.vision.tools import base as tools
 
 DECORATION_TYPES = ("note",)
+#: 改名過的工具 key：舊圖與舊匯出檔在驗證／編譯時自動換成新 key（DB 另有資料轉移）。
+LEGACY_TOOL_TYPES = {"write_plc": "write_modbus"}
 FLOW_IN = "_flow"  # 每個可執行節點的隱含控制輸入埠
 OVERLAYS_OUT = "_overlays"  # 每個可執行節點的隱含輸出埠：該節點的標記（list），供 draw_result 疊圖
 
@@ -67,6 +69,8 @@ def validate_graph(graph: Any) -> dict:
         if node_id in seen:
             raise GraphError(f"節點 id '{node_id}' 重複", node_id=node_id)
         node_type = str(node.get("type") or "")
+        if node_type in LEGACY_TOOL_TYPES:
+            node_type = node["type"] = LEGACY_TOOL_TYPES[node_type]
         if node_type not in DECORATION_TYPES:
             tools.get(node_type)  # 查無 → UnknownToolType（附可用 key）
         seen[node_id] = node
@@ -218,8 +222,9 @@ def compile_graph(graph: dict) -> CompiledGraph:
     for n in nodes:
         if n.get("type") in DECORATION_TYPES:
             continue
-        tool = tools.get(str(n["type"]))
-        cn = CompiledNode(id=str(n["id"]), type=str(n["type"]), node=n, tool=tool)
+        ntype = LEGACY_TOOL_TYPES.get(str(n["type"]), str(n["type"]))
+        tool = tools.get(ntype)
+        cn = CompiledNode(id=str(n["id"]), type=ntype, node=n, tool=tool)
         for p in tool.inputs:
             if p.type == "image":
                 cn.primary_image_port = p.key

@@ -1,4 +1,4 @@
-"""主動輸出：每種 kind 一個 Writer，`open_connection()` 依 Connection 設定建立並快取。
+"""主動輸出（Modbus TCP／上位機）：每種 kind 一個 Writer，`open_connection()` 依 Connection 設定建立並快取。
 
 Writer 介面：
     write(values: dict[address, value], *, timeout=None) -> dict   寫一批（內部 lock、逾時、斷線自動重連一次）
@@ -96,6 +96,13 @@ def coerce(value: Any, dtype: str) -> Any:
 # ---------------------------------------------------------------------------
 class Writer:
     kind = ""
+    #: 資料夾外掛的顯示資訊（設定頁 kind 下拉）；label 空字串時顯示「外掛：<kind>」。
+    label = ""
+    description = ""
+    #: config 欄位名稱提示（設定頁顯示用）。
+    fields: list[str] = []
+    #: False = 這個類別不掛載（apps.core.plugins 掃描時略過）。
+    enabled = True
 
     def __init__(self, config: dict[str, Any], *, connection_id: int = 0, name: str = "") -> None:
         self.config = config
@@ -368,7 +375,7 @@ class TcpClientWriter(Writer):
 # 模擬 DIO
 # ---------------------------------------------------------------------------
 class DioSimWriter(Writer):
-    """只記錄狀態，供沒有 PLC 的機器測流程。config.channels 有列時，寫到未宣告的通道算失敗。"""
+    """只記錄狀態，供沒有設備的機器測流程。config.channels 有列時，寫到未宣告的通道算失敗。"""
 
     kind = "dio_sim"
 
@@ -409,6 +416,9 @@ _BUILTIN: dict[str, type[Writer]] = {
     "dio_sim": DioSimWriter,
 }
 
+#: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
+_PLUGIN_KINDS: dict[str, type[Writer]] = {}
+
 _lock = threading.Lock()
 #: connection_id → (updated_at iso, writer)
 _open: dict[int, tuple[str, Writer]] = {}
@@ -416,9 +426,25 @@ _open: dict[int, tuple[str, Writer]] = {}
 _by_name: dict[str, Writer] = {}
 
 
+def register_kind(cls: type[Writer]) -> bool:
+    """註冊資料夾外掛的連線類別；kind 已存在（內建或先註冊者優先）回 False。"""
+    kind = str(getattr(cls, "kind", "") or "")
+    if not kind or kind in _BUILTIN:
+        log.warning("連線外掛 %s 的 kind '%s' 無效或與內建重複，略過", cls.__name__, kind)
+        return False
+    if kind in _PLUGIN_KINDS:
+        if _PLUGIN_KINDS[kind] is not cls:
+            log.warning("連線 kind '%s' 已被 %s 註冊，略過 %s", kind, _PLUGIN_KINDS[kind].__name__, cls.__name__)
+        return False
+    _PLUGIN_KINDS[kind] = cls
+    return True
+
+
 def _resolve_class(kind: str, config: dict[str, Any]) -> type[Writer]:
     if kind in _BUILTIN:
         return _BUILTIN[kind]
+    if kind in _PLUGIN_KINDS:
+        return _PLUGIN_KINDS[kind]
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     path = config.get("class") if kind == "plugin" else plugins.get(kind)
     if not path or ":" not in path:
@@ -500,10 +526,10 @@ def connection_info(conn) -> dict[str, Any]:
 
 
 def prefetch_connections(compiled) -> None:
-    """Runner prefetch hook：找出圖裡 write_plc 用到的連線名稱，在呼叫者執行緒先開好。"""
+    """Runner prefetch hook：找出圖裡 write_modbus 用到的連線名稱，在呼叫者執行緒先開好。"""
     names: set[str] = set()
     for cn in compiled.nodes.values():
-        if getattr(cn.tool, "key", "") != "write_plc":
+        if getattr(cn.tool, "key", "") != "write_modbus":
             continue
         value = (cn.node.get("params") or {}).get("connection")
         if value not in (None, ""):
@@ -535,18 +561,26 @@ def get_connection(connection_id: int):
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "label": "Modbus/TCP（PLC 線圈與暫存器）", "fields": ["host", "port", "unit_id", "timeout_s", "word_order"]},
+        {"kind": "modbus_tcp", "label": "Modbus/TCP（線圈與暫存器）", "fields": ["host", "port", "unit_id", "timeout_s", "word_order"]},
         {"kind": "tcp_client", "label": "TCP 文字／JSON（上位機）", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
         {"kind": "dio_sim", "label": "模擬 DIO（只記錄狀態）", "fields": ["channels"]},
     ]
+    for kind, cls in _PLUGIN_KINDS.items():
+        out.append({
+            "kind": kind,
+            "label": getattr(cls, "label", "") or f"外掛：{kind}",
+            "fields": list(getattr(cls, "fields", []) or []),
+            "description": getattr(cls, "description", ""),
+        })
     for kind in plugins:
-        out.append({"kind": kind, "label": f"外掛：{kind}", "fields": []})
+        if kind not in _PLUGIN_KINDS:
+            out.append({"kind": kind, "label": f"外掛：{kind}", "fields": []})
     out.append({"kind": "plugin", "label": "外掛（自訂類別路徑）", "fields": ["class"]})
     return out
 
 
 __all__ = [
     "CommError", "Writer", "ModbusTcpWriter", "TcpClientWriter", "DioSimWriter",
-    "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer",
+    "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer", "register_kind",
     "connection_info", "prefetch_connections", "get_connection", "kinds",
 ]

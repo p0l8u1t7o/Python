@@ -360,7 +360,7 @@ export async function run(h) {
     h.item('N23', txt.includes('找不到步驟「nope」') && link, `text=${txt.slice(0, 80).replace(/\n/g, '|')} link=${link}`)
   })
 
-  // N11（kind=json）：v0.2 起由 write_plc 的 mapping 欄位觸發，在 full-flowio.mjs IO07 回報
+  // N11（kind=json）：v0.2 起由 write_modbus 的 mapping 欄位觸發，在 full-flowio.mjs IO07 回報
 
   await h.api.del(`/vision/sources/${disabledSrc.id}`)
   await context.close()

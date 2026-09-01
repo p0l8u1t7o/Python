@@ -18,8 +18,8 @@ import { isImageRef, type IntegrationInfo, type TcpResult } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
-type IntegrationTab = 'http' | 'tcp' | 'events' | 'lock' | 'format' | 'plc'
-const TABS: IntegrationTab[] = ['http', 'tcp', 'events', 'lock', 'format', 'plc']
+type IntegrationTab = 'http' | 'tcp' | 'events' | 'lock' | 'format' | 'modbus'
+const TABS: IntegrationTab[] = ['http', 'tcp', 'events', 'lock', 'format', 'modbus']
 const TCP_HISTORY_KEY = 'vs.tcpHistory'
 const MAX_EVENTS = 200
 
@@ -604,9 +604,9 @@ function FormatTab() {
 }
 
 // ---------------------------------------------------------------------------
-// 分頁 6：PLC 輸出（write_plc 的 mapping 格式＋連到連線頁）
+// 分頁 6：Modbus 輸出（write_modbus 的 mapping 格式＋連到連線頁）
 // ---------------------------------------------------------------------------
-function PlcTab() {
+function ModbusTab() {
   const { t } = useTranslation()
   const lines = (key: string) => t(key, { returnObjects: true }) as unknown as string[]
   const example = `[
@@ -619,25 +619,25 @@ function PlcTab() {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <Card>
-        <CardHeader title={<span className="flex items-center gap-2"><Cable size={16} className="text-brand" />{t('integration.plc.title')}</span>} actions={<Link to="/connections" className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="plc-go-connections"><Plug size={13} /> {t('integration.plc.goConnections')}</Link>} />
+        <CardHeader title={<span className="flex items-center gap-2"><Cable size={16} className="text-brand" />{t('integration.modbus.title')}</span>} actions={<Link to="/connections" className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="modbus-go-connections"><Plug size={13} /> {t('integration.modbus.goConnections')}</Link>} />
         <CardBody className="space-y-3 text-sm leading-relaxed">
-          <p>{t('integration.plc.intro')}</p>
+          <p>{t('integration.modbus.intro')}</p>
           <div>
-            <p className="label">{t('integration.plc.srcTitle')}</p>
-            <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.plc.srcLines')) ? lines('integration.plc.srcLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
+            <p className="label">{t('integration.modbus.srcTitle')}</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.modbus.srcLines')) ? lines('integration.modbus.srcLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
           </div>
           <div>
-            <p className="label">{t('integration.plc.addressTitle')}</p>
-            <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.plc.addressLines')) ? lines('integration.plc.addressLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
+            <p className="label">{t('integration.modbus.addressTitle')}</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.modbus.addressLines')) ? lines('integration.modbus.addressLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
           </div>
-          <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('integration.plc.degrade')}</p>
-          <p className="text-xs text-muted">{t('integration.plc.docs')}</p>
+          <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('integration.modbus.degrade')}</p>
+          <p className="text-xs text-muted">{t('integration.modbus.docs')}</p>
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title={t('integration.plc.mappingTitle')} description={t('integration.plc.mappingHint')} />
+        <CardHeader title={t('integration.modbus.mappingTitle')} description={t('integration.modbus.mappingHint')} />
         <CardBody>
-          <CodeBlock title={t('integration.plc.example')} code={example} />
+          <CodeBlock title={t('integration.modbus.example')} code={example} />
         </CardBody>
       </Card>
     </div>
@@ -665,7 +665,7 @@ export function IntegrationPage() {
         {tab === 'events' ? <EventsTab /> : null}
         {tab === 'lock' && info.data ? <LockTab info={info.data} /> : null}
         {tab === 'format' ? <FormatTab /> : null}
-        {tab === 'plc' ? <PlcTab /> : null}
+        {tab === 'modbus' ? <ModbusTab /> : null}
       </div>
     </Page>
   )

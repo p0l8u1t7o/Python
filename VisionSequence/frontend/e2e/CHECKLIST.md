@@ -194,7 +194,7 @@
 - ✅ `N08` Param kind：source（下拉列影像來源、停用者 disabled、清空→null）
 - ✅ `N09` Param kind：asset（下拉、上傳按鈕→資產→自動選取＋toast、「從目前影像框選建立範本」→框選→建立範本 Modal→toast＋自動選取）
 - ✅ `N10` Param kind：color（color input＋hex 文字框）
-- ✅ `N11` Param kind：json（write_plc 的 mapping：textarea、非法 JSON 顯示錯誤、合法後參數更新；v0.2 起可由 UI 觸發，由 IO07 回報）
+- ✅ `N11` Param kind：json（write_modbus 的 mapping：textarea、非法 JSON 顯示錯誤、合法後參數更新；v0.2 起可由 UI 觸發，由 IO07 回報）
 - ✅ `N12` Param kind：expression（公式 textarea）
 - ✅ `N13` Param kind：output_key（monospace 輸入）
 - ✅ `N14` Param kind：multiline（DL labels textarea）
@@ -340,7 +340,7 @@
 - ✅ `Z06` 狀態檢視：dio_sim → 通道表（含剛寫入的值）＋重新整理；modbus → 位址輸入＋讀取 → 錯誤結果、無通道表
 - ✅ `Z07` 編輯：帶入既有值、改通道 → toast「已更新連線」、列 config 更新；改成同名 → 錯誤 toast（預期 409）
 - ✅ `Z08` 啟用開關 → PATCH → 列更新
-- ✅ `Z09` 刪除 → ConfirmDialog（訊息提到 write_plc 降級）→ toast「已刪除連線」→ 列消失
+- ✅ `Z09` 刪除 → ConfirmDialog（訊息提到 write_modbus 降級）→ toast「已刪除連線」→ 列消失
 - ✅ `Z10` 非管理員：新增 disabled（title「只有管理員…」）、測試／手動寫入／編輯／刪除／開關 disabled、狀態檢視可用
 - ✅ `Z11` 空狀態（mock）與錯誤狀態＋重試（mock 500）
 - ✅ `Z12` 1280×800 無水平捲軸；深色截圖（含手動寫入 Modal）
@@ -352,7 +352,7 @@
 - ✅ `IO04` 整合頁「PLC 輸出」分頁：`?tab=plc` 深連結、標題、「前往連線頁」→ /connections、src／address 清單、降級提示、mapping 範例 code
 - ✅ `IO05` 整合頁 HTTP 測試「配方」欄：片段（curl／Python）含 recipe、送出後 recent.recipe＝該配方；TCP 常用指令含 `RUN <id> recipe=<name>`、送出後回應含 recipe
 - ✅ `IO06` 編輯器頂列綁定配方下拉：無配方時隱藏；有配方後顯示（「不用配方（圖值）」＋配方名、目前綁定為選中）；選「不用配方」→ toast、API 全部 is_default=false；選回 partA → toast「已綁定配方」；試跑／API 執行（無 recipe）都用綁定配方 → recent.recipe；結果分頁最近執行表「配方」欄
-- ✅ `IO07` 工具箱 write_plc：插入 → 工具頁 connection 欄有 datalist（含連線名）、mapping 為 JSON textarea、on_error 下拉（warn／fail）；API 執行 → plc 節點 ok、dio_sim 狀態更新；連線不存在 → 節點 message「已降級」、run 不失敗、結果分頁看得到
+- ✅ `IO07` 工具箱 write_modbus：插入 → 工具頁 connection 欄有 datalist（含連線名）、mapping 為 JSON textarea、on_error 下拉（warn／fail）；API 執行 → plc 節點 ok、dio_sim 狀態更新；連線不存在 → 節點 message「已降級」、run 不失敗、結果分頁看得到
 - ✅ `IO08` 總覽卡片 card-meta「站台 ST01 · 配方 partA」；統計頁副標站台／配方、歷史表「配方」「站台」欄
 - ✅ `IO09` 未教導流程 API 執行 → 結果分頁 run-warnings「未完成現場教導」；標記後執行無 warnings、頂列標籤消失
 - ✅ `IO10` 流程列表「未教導」標籤＋名稱旁「綁定：partA」＋綁定欄「配方 (1)」鈕；總覽「未教導」badge；頂列 not-commissioned-badge

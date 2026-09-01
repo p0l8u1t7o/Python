@@ -1,4 +1,4 @@
-"""主動輸出到 PLC / 上位機：把 run 的結果依對映表寫到通訊連線（apps.comm）。
+"""主動輸出（Modbus TCP／上位機）：把 run 的結果依對映表寫到通訊連線（apps.comm）。
 
 熱路徑不碰資料庫：連線由 apps.comm 的 prefetch hook 在呼叫者執行緒開好，
 這裡只用 get_writer(name) 從記憶體拿；寫入失敗預設降級（run 仍 ok、記 warning）。
@@ -24,10 +24,10 @@ def _scalar(value: Any) -> Any:
     return value
 
 
-class WritePlcTool(Tool):
-    key = "write_plc"
-    label = "寫入 PLC"
-    description = "依對映表把判定、具名輸出或輸入埠的值寫到 PLC／上位機連線。寫入失敗預設只記警告不讓 run 失敗。"
+class WriteModbusTool(Tool):
+    key = "write_modbus"
+    label = "寫入 Modbus"
+    description = "依對映表把判定、具名輸出或輸入埠的值寫到 Modbus TCP／上位機連線。寫入失敗預設只記警告不讓 run 失敗。"
     category = "output"
     icon = "Cable"
     params = [
@@ -145,8 +145,8 @@ class WritePlcTool(Tool):
         detail = {**detail, "error": reason}
         if on_error == "fail":
             return Result(outputs={"written": 0, "ok": False}, status="error", message=f"寫入失敗：{reason}"[:500], detail=detail)
-        ctx.log(f"寫入 PLC 失敗（已降級）：{reason}", level="warning")
+        ctx.log(f"整合寫入失敗（已降級）：{reason}", level="warning")
         return Result(outputs={"written": 0, "ok": False}, status="ok", message=f"寫入失敗（已降級）：{reason}"[:500], detail=detail)
 
 
-TOOLS = [WritePlcTool()]
+TOOLS = [WriteModbusTool()]

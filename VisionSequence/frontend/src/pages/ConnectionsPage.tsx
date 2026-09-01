@@ -1,5 +1,5 @@
 /**
- * 連線（ConnectionsPage）`/connections`：PLC／上位機的主動輸出連線（apps/comm）。
+ * 連線（ConnectionsPage）`/connections`：Modbus TCP／上位機的主動輸出連線（apps/comm）。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
  * modbus_tcp: host/port/unit_id/timeout_s/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
  * dio_sim: channels；plugin: class。管理員才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
@@ -158,7 +158,7 @@ export function ConnectionsPage() {
     <Page>
       <PageHeader
         title={<span className="flex items-center gap-2"><Plug size={20} className="text-brand" />{t('connections.title')}</span>}
-        description={<span>{t('connections.subtitle')} · <Link to="/integration?tab=plc" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></span>}
+        description={<span>{t('connections.subtitle')} · <Link to="/integration?tab=modbus" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></span>}
         actions={<span title={isAdmin ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!isAdmin} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>}
       />
       <Card className="overflow-hidden">

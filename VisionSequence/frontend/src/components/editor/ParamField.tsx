@@ -82,7 +82,7 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
   const assets = useAssets(param.kind === 'asset' ? param.accept : '')
   const { uploadFile } = useAssetMutations()
   const fileInput = useRef<HTMLInputElement>(null)
-  // write_plc 的 connection（kind=text）改用連線清單當 datalist，保留自由輸入。
+  // write_modbus 的 connection（kind=text）改用連線清單當 datalist，保留自由輸入。
   const isConnection = param.key === 'connection' && param.kind === 'text'
   const connections = useConnections(isConnection)
   const listId = useId()

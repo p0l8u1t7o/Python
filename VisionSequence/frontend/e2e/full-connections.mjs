@@ -224,7 +224,7 @@ export async function run(h) {
     const t = await h.toast(page, /已刪除連線/)
     await page.waitForTimeout(500)
     const gone = (await row('E2E modbus').count()) === 0
-    h.item('Z09', msg.includes('E2E modbus') && msg.includes('write_plc') && Boolean(t) && gone, `msg=${msg.replace(/\n/g, ' ').slice(0, 80)} t=${t} gone=${gone}`)
+    h.item('Z09', msg.includes('E2E modbus') && msg.includes('write_modbus') && Boolean(t) && gone, `msg=${msg.replace(/\n/g, ' ').slice(0, 80)} t=${t} gone=${gone}`)
   })
 
   await h.step('Z11 空狀態與錯誤狀態', async () => {

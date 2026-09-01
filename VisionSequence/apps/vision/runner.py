@@ -285,7 +285,7 @@ class Runner:
         rt.compiled_version = flow.version
         return compiled
 
-    #: 其他子系統（例如 PLC 連線）在呼叫者執行緒預先開好資源的掛勾：fn(compiled) -> None。
+    #: 其他子系統（例如 Modbus 連線）在呼叫者執行緒預先開好資源的掛勾：fn(compiled) -> None。
     prefetch_hooks: list = []
 
     def _prefetch(self, compiled: CompiledGraph) -> None:

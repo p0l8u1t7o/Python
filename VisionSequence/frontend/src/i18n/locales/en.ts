@@ -321,7 +321,7 @@ const en = {
       history: 'History',
       resend: 'Resend',
       clearHistory: 'Clear history',
-      howto: 'PLC / host wiring',
+      howto: 'Modbus TCP / host wiring',
       howtoLines: [
         'Connect to {{host}}:{{port}} (TCP, TCP_NODELAY recommended).',
         'One command per line ending with \\n; the server replies one JSON line ending with \\n.',
@@ -535,7 +535,7 @@ const enExtra = {
   },
   connections: {
     title: 'Connections',
-    subtitle: 'Outbound PLC / host connections (referenced by name from the write_plc tool)',
+    subtitle: 'Outbound Modbus TCP / host connections (referenced by name from the write_modbus tool)',
     create: 'New connection',
     empty: 'No connections yet',
     kind: 'Kind',
@@ -557,7 +557,7 @@ const enExtra = {
     stateAddresses: 'Addresses',
     read: 'Read',
     deleteTitle: 'Delete connection',
-    deleteMessage: 'Delete connection "{{name}}"? write_plc steps using it will degrade (warning).',
+    deleteMessage: 'Delete connection "{{name}}"? write_modbus steps using it will degrade (warning).',
     created: 'Connection created',
     updated: 'Connection updated',
     deleted: 'Connection deleted',
@@ -578,7 +578,7 @@ const enExtra = {
       class: 'Class path (module:Class)',
     },
     wordOrders: { big: 'big (high word first)', little: 'little (low word first)' },
-    goIntegration: 'Mapping format is described on the Integration page ("PLC output")',
+    goIntegration: 'Mapping format is described on the Integration page ("Modbus output")',
   },
   viewer: {
     noImage: 'No image',
@@ -597,11 +597,11 @@ const enExtra = {
   dashboard: { station: 'Station', recipe: 'Recipe', notCommissioned: 'Not taught' },
   stats: { cols: { recipe: 'Recipe', station: 'Station' }, station: 'Station', recipe: 'Recipe' },
   integration: {
-    tabs: { plc: 'PLC output' },
+    tabs: { modbus: 'Modbus output' },
     http: { recipe: 'Recipe', recipeHint: 'Recipe name or id; blank = default recipe' },
-    plc: {
-      title: 'Outbound writes to PLC / host',
-      intro: 'The "write_plc" tool writes the judge, named outputs or input-port values to a connection from inside the flow; connections are created on the Connections page and referenced by name in the tool\'s connection parameter. Write failures only log a warning by default (the run continues) but can be set to fail the run.',
+    modbus: {
+      title: 'Outbound writes (Modbus TCP / host)',
+      intro: 'The "write_modbus" tool writes the judge, named outputs or input-port values to a connection from inside the flow; connections are created on the Connections page and referenced by name in the tool\'s connection parameter. Write failures only log a warning by default (the run continues) but can be set to fail the run.',
       goConnections: 'Go to Connections',
       mappingTitle: 'mapping format',
       mappingHint: 'Array; each entry is one write: src is the value source, address the target; optional dtype, scale, offset, or a constant value.',
@@ -615,7 +615,7 @@ const enExtra = {
       ],
       example: 'Example',
       degrade: 'Degrade: when the connection is missing, times out or the write fails, on_error=warn (default) appends to run.warnings and continues; on_error=fail fails the run.',
-      docs: 'Full description in docs/plc.html',
+      docs: 'Full description in docs/modbus.html',
     },
   },
   batch: { cols2: { pick: 'Pick' } },

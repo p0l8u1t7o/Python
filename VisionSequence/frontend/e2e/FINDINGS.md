@@ -86,12 +86,12 @@
 ## 殘留（未修，附理由）
 
 - ~~影像視窗（ImageViewer／Toolbar）文案是寫死的繁中；`SourcesPage` 排序下拉同樣寫死~~ → **已修**：`viewer.*`、`sources.sortOptions.*` 走 i18n（zh-Hant／en），viewer 元件用 `useTranslation`。
-- ~~`Param.kind = json` 沒有任何內建工具使用~~ → v0.2 起 `write_plc.mapping` 是 json 欄位，N11 由 IO07 實測（工具頁 textarea、非法 JSON 顯示錯誤）。
+- ~~`Param.kind = json` 沒有任何內建工具使用~~ → v0.2 起 `write_modbus.mapping` 是 json 欄位，N11 由 IO07 實測（工具頁 textarea、非法 JSON 顯示錯誤）。
 - **註解節點沒有輸入把手**：「連到註解被拒（noteTarget）」在 UI 上拉不到線，只由 `checkConnection` 規則保證（I07 ⏭）。
 - **編輯器側欄已沒有 ROI 編輯入口**：ROI 只能在工具頁編輯；「換選取步驟自動結束 ROI 編輯」的編輯器行為因此不適用（J15 註記）。
 - **停用流程仍可「試跑」但不能「執行一次」**（後端 `Runner.submit` 規則）：本次以頂列提示處理，未改後端語意。
 
-## v0.2 回合（參數卡／Golden Set／連線／匯出匯入／配方／write_plc；模組 teach、golden、connections、flowio，截圖 `Image/90-*.png`）
+## v0.2 回合（參數卡／Golden Set／連線／匯出匯入／配方／write_modbus；模組 teach、golden、connections、flowio，截圖 `Image/90-*.png`）
 
 ### 15. 參數卡「管理配方」Modal 有未儲存變更時按 Esc 直接關閉，跳過「放棄變更？」確認
 - 症狀：在管理配方 Modal 改覆寫表或改名後按 Esc，Modal 直接消失，變更不見（其他 Modal 都會先問）。
@@ -108,7 +108,7 @@
 ### 17. 測試骨架：新頁面的 i18n 命名空間沒納入未翻譯 key 檢查；截圖／清單／清理未涵蓋新功能
 - 修法：`full-lib.mjs` 的 `I18N_NS` 加 `app|teach|golden|connections|viewer`（並匯出 `I18N_RE` 給模組自用）；截圖前綴改 `90-`；`full-mark.mjs` 支援兩碼 ID（`IO01`）；`full.mjs` 加 teach／golden／connections／flowio 模組、清理配方／Golden 案例／連線／`(副本)` 流程、還原 `commissioned`、`demoFlow()` 排除副本與 E2E 流程、`--merge` 時以 ID 蓋掉舊 issue；`full-auth` B01 導覽改 9 項（多了「連線」）；`full-layout`／`full-lang` 加參數卡／Golden Set／連線／整合 PLC 分頁。
 - React Flow（dev）掛載 1 秒後檢查 attribution 是否可見，測試在 1 秒內離開編輯器會誤報 console.warning（元素已 unmount）：harness 忽略該訊息（附註不是產品問題）。
-- `N11`（Param.kind=json）自 v0.2 起可由 `write_plc` 的 `mapping` 欄位觸發，改由 IO07 回報，不再 ⏭（`full-tool.mjs` 移除 skip）。
+- `N11`（Param.kind=json）自 v0.2 起可由 `write_modbus` 的 `mapping` 欄位觸發，改由 IO07 回報，不再 ⏭（`full-tool.mjs` 移除 skip）。
 - 舊清單因新功能而變動的預期：D03 操作圖示 4 → 7（多了參數卡／Golden Set／匯出）、M03 批次結果表 7 → 8 欄（多了「存為 Golden Set」勾選欄）、J07 輸出影像改為輪詢等待像素改變（原 600ms 在整套走查負載下偶發不夠）。
 
 ### v0.2 回合殘留（未修，附理由）
