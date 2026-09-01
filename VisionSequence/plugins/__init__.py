@@ -12,6 +12,14 @@
         label = "顯示名稱"
         description = "說明文字"
 
+兩種形態：
+    plugins/my_tool.py               單檔外掛
+    plugins/my_project/__init__.py   資料夾型外掛（整個外掛專案丟進來；__init__.py 匯出要掛載的類別）
+
+外掛有自己的依賴時附 requirements.txt（資料夾型放在資料夾內、單檔用 <name>.requirements.txt），
+`.\scripts\dev.ps1 -Setup` 會自動安裝；同行程載入，依賴必須裝進平台的 .venv。
+Python 版本與平台不一致的外掛不能同行程載入，改跑 sidecar（見 docs/plugins.html「整合考量」）。
+
 規則與範例見 docs/plugins.html；本資料夾的 example_*.py 都是可直接執行的範例。
-檔名底線開頭（_xxx.py）不會被掃描。
+檔名底線開頭（_xxx.py／_xxx/）不會被掃描。
 """

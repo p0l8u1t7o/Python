@@ -140,3 +140,41 @@ class FolderLoaderTests(SimpleTestCase):
 
     def test_missing_folder_is_fine(self):
         self.assertEqual(load_folder_plugins(os.path.join(self.folder, "nope"), force=True), [])
+
+    def test_package_dir_plugin(self):
+        """資料夾型外掛：整個專案資料夾丟進來，__init__.py 匯出（或定義）要掛載的類別。"""
+        pkg = os.path.join(self.folder, "myproj")
+        os.makedirs(pkg)
+        with open(os.path.join(pkg, "impl.py"), "w", encoding="utf-8") as f:
+            f.write(textwrap.dedent("""
+                from apps.vision.tools.base import Result, Tool
+
+                class PkgTool(Tool):
+                    key = "t_pkg"
+                    label = "pkg"
+                    def execute(self, ctx):
+                        return Result(outputs={})
+            """))
+        with open(os.path.join(pkg, "__init__.py"), "w", encoding="utf-8") as f:
+            f.write("from .impl import PkgTool\n")
+        try:
+            mounted = load_folder_plugins(self.folder, force=True)
+            self.assertIn("tool:t_pkg", mounted)
+            self.assertTrue(base.has("t_pkg"))
+        finally:
+            base.unregister("t_pkg")
+
+    def test_missing_dependency_hint(self):
+        """外掛缺依賴：整體不炸、log 提示安裝該外掛的 requirements.txt。"""
+        pkg = os.path.join(self.folder, "needs_dep")
+        os.makedirs(pkg)
+        with open(os.path.join(pkg, "__init__.py"), "w", encoding="utf-8") as f:
+            f.write("import not_a_real_package_xyz\n")
+        with open(os.path.join(pkg, "requirements.txt"), "w", encoding="utf-8") as f:
+            f.write("not-a-real-package-xyz\n")
+        with self.assertLogs("apps.core.plugins", level="ERROR") as captured:
+            mounted = load_folder_plugins(self.folder, force=True)
+        self.assertEqual(mounted, [])
+        joined = "\n".join(captured.output)
+        self.assertIn("not_a_real_package_xyz", joined)
+        self.assertIn("requirements.txt", joined)

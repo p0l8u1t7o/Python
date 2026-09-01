@@ -4,22 +4,52 @@
 <meta charset="utf-8">
 <title>VisionSequence 擴充外掛</title>
 <style>
-  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
-  h1, h2, h3 { color: #0f172a; }
-  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
-  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
-  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
-  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
-  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
-  th { background: #f8fafc; }
-  nav ul { columns: 2; }
-  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
-  nav.site a { margin-right: .8rem; }
-  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html" aria-current="page">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<article class="doc">
 
 <h1>擴充外掛：資料夾丟檔即掛載</h1>
 
@@ -38,12 +68,13 @@
 <li><a href="#writers">3. 自訂整合輸出（範例二）</a></li>
 <li><a href="#sources">4. 自訂影像來源</a></li>
 <li><a href="#rules">5. 工具撰寫規則</a></li>
-<li><a href="#advanced">6. 進階：.env 手動掛載</a></li>
+<li><a href="#integration">6. 整合考量：依賴、獨立專案、Python 版本</a></li>
+<li><a href="#advanced">7. 進階：.env 手動掛載</a></li>
 </ul></nav>
 
 <h2 id="how">1. 掛載規則與外掛內變數</h2>
 <ul>
-<li>啟動時掃描 <code>plugins/*.py</code>（照檔名排序；底線開頭 <code>_xxx.py</code> 跳過），資料夾位置可用 <code>VISION_PLUGIN_DIR</code> 覆寫（預設專案根目錄 <code>plugins/</code>）。</li>
+<li>啟動時掃描 <code>plugins/</code> 下的<strong>單檔外掛</strong>（<code>x.py</code>）與<strong>資料夾型外掛</strong>（<code>x/__init__.py</code>，整個外掛專案丟進來）；照名稱排序，底線開頭（<code>_xxx.py</code>／<code>_xxx/</code>）跳過。資料夾位置可用 <code>VISION_PLUGIN_DIR</code> 覆寫（預設專案根目錄 <code>plugins/</code>）。</li>
 <li>每個檔案 import 後，<strong>自動偵測該檔案自己定義的</strong> <code>Tool</code>／<code>Grabber</code>／<code>Writer</code> 子類別並註冊；一個檔案可放多個類別、三類混放。</li>
 <li>key／kind 與內建或先載入的外掛重複時<strong>不覆蓋</strong>，記 log 略過；單一檔案載入失敗只記 log，不影響其他外掛與平台啟動。</li>
 <li>載入器在 <code>apps/core/plugins.py</code>；掛載結果看後端啟動 log（「外掛 xxx.py 掛載：tool:dark_ratio…」）。</li>
@@ -172,12 +203,44 @@ class GigEGrabber(Grabber):
 <li>現場要調的參數標 <code>teach=True</code>（參數卡頁只列這些）。</li>
 </ul>
 
-<h2 id="advanced">6. 進階：.env 手動掛載</h2>
+<h2 id="integration">6. 整合考量：依賴、獨立專案、Python 版本</h2>
+<p>外掛與平台<strong>同行程</strong>載入（這是影像能用 numpy 零複製傳遞、單節點 0.1 ms 等級的前提），因此整合的邊界很清楚：<strong>能 import 進平台 .venv 的就同行程掛載；不能的就跑成 sidecar 行程，經既有整合點接</strong>。三個常見情境：</p>
+
+<h3 id="q-deps">6-1. 外掛有自己的依賴（requirements）怎麼整合？</h3>
+<ul>
+<li>依賴必須裝進<strong>平台的 .venv</strong>（同行程沒有第二套 site-packages）。慣例：資料夾型外掛附 <code>plugins/&lt;name&gt;/requirements.txt</code>、單檔外掛附 <code>plugins/&lt;name&gt;.requirements.txt</code>；<code>.\scripts\dev.ps1 -Setup</code> 會自動全部安裝，手動則 <code>.venv\Scripts\pip install -r plugins\&lt;name&gt;\requirements.txt</code>。</li>
+<li>缺依賴時平台<strong>不會炸</strong>：該外掛載入失敗、記 log 並直接提示安裝指令，其他外掛與平台照常啟動。</li>
+<li>寫法上比照內建（pymodbus、onnxruntime）：重依賴放<strong>方法內 lazy import</strong>，讓「裝了才用得到」而不是「沒裝就掛」。</li>
+<li>版本衝突：requirements 用範圍（<code>&gt;=</code>）不要釘死；與平台 <code>requirements.txt</code> 衝突時以平台鎖定的版本為準（numpy／opencv 由平台決定，外掛不要另釘）。</li>
+</ul>
+
+<h3 id="q-project">6-2. 外掛是一個獨立專案（自己的 repo）怎麼整合？</h3>
+<p>三種方式，由簡到正式：</p>
+<table>
+<tr><th>方式</th><th>做法</th><th>適合</th></tr>
+<tr><td>(a) 整包資料夾丟進來</td><td>把專案（或其中的套件目錄）放到 <code>plugins/&lt;name&gt;/</code>，在 <code>__init__.py</code> import／定義要掛載的類別（子模組定義、<code>__init__</code> re-export 也認得），附 <code>requirements.txt</code>。</td><td>現場部署：複製資料夾＋重啟就完成</td></tr>
+<tr><td>(b) pip install＋薄轉接檔</td><td>外掛專案做成正常 Python 套件，<code>.venv\Scripts\pip install -e D:\path\to\proj</code> 裝進平台 venv；<code>plugins/</code> 放一支只有幾行的轉接檔：<code>from myproj.vision import MyTool, MyWriter</code>（re-import 即掛載）。</td><td>外掛獨立開發、有自己的測試與版本管理</td></tr>
+<tr><td>(c) .env 模組路徑</td><td>裝進 venv 後 <code>VISION_TOOL_PLUGINS=myproj.vision</code>（模組內自行 <code>register()</code>）。</td><td>不想動 plugins/ 資料夾的部署</td></tr>
+</table>
+<p>共同原則：<strong>外掛專案 import 平台、平台不 import 外掛專案</strong>（依賴方向單向），外掛只依賴四個穩定介面——<code>Tool</code>／<code>Grabber</code>／<code>Writer</code> 基底與 <code>tools/roi.py</code>；平台升級不保證其他內部模組的相容性。</p>
+
+<h3 id="q-python">6-3. 外掛的 Python 版本與平台不一致怎麼辦？</h3>
+<p>同一個行程只有一個直譯器，版本不一致（或依賴衝突到無法共存，例如各釘一個 numpy 大版）就<strong>不能同行程載入</strong>。解法是把外掛跑成 <strong>sidecar 行程</strong>（它自己的 Python、自己的 venv，由外掛作者維運），經平台既有的整合點接，平台核心不引入多直譯器／微服務（紅線）：</p>
+<table>
+<tr><th>外掛角色</th><th>sidecar 接法</th></tr>
+<tr><td>影像來源（取像端）</td><td>sidecar 自己取像後呼叫平台 HTTP：<code>POST /flows/{id}/run</code> 附影像，或先 <code>POST /sources/{id}/push</code>（upload 來源）再觸發；也可寫一支薄 <code>Grabber</code>（無依賴、平台版 Python）向 sidecar 的 HTTP/TCP 要一張圖。</td></tr>
+<tr><td>工具（推論／演算法）</td><td>寫一支薄 <code>Tool</code>：把影像 encode 後經 HTTP/TCP 丟給 sidecar、等結果回來填 <code>Result</code>。逾時要短、失敗回 <code>status="ng"</code> 或降級，不要讓 sidecar 掛掉拖垮 run。</td></tr>
+<tr><td>整合輸出（結果端）</td><td>寫一支薄 <code>Writer</code>（繼承後只做轉發）把 values 丟給 sidecar；或 sidecar 自己訂 SSE <code>/events</code>／輪詢 run API 拉結果，平台側零程式。</td></tr>
+</table>
+<p>選擇順序：<strong>先試 6-1（把依賴裝進平台 venv）→ 不行再 6-2(b)（套件化）→ 真的版本不相容才 6-3（sidecar）</strong>。sidecar 多一跳網路與序列化（影像來回約毫秒級），只留給非用不可的情境。</p>
+
+<h2 id="advanced">7. 進階：.env 手動掛載</h2>
 <p>不放 <code>plugins/</code> 資料夾（例如外掛裝成獨立套件）時，仍可用 .env 指定模組路徑：</p>
 <pre>VISION_PLUGIN_DIR=D:/site-plugins                     # 換掉資料夾位置（仍是自動偵測）
 VISION_TOOL_PLUGINS=mypkg.my_tools                    # import 該模組；模組內自行呼叫 register()
 VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber     # kind=module:Class
 VISION_COMM_PLUGINS=opcua=mypkg.opcua:OpcUaWriter     # kind=module:Class</pre>
 <p>另外「影像來源」與「連線」都保留 kind=<code>plugin</code>：建立時在 config 填 <code>"class": "mypkg.mod:Class"</code> 直接指定類別路徑。</p>
+</article>
 </body>
 </html>

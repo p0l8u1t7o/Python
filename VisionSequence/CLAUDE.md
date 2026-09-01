@@ -34,7 +34,7 @@
 
 ## 新增工具與外掛
 - 繼承 `apps.vision.tools.base.Tool`，宣告 `params`（kind 只能是 `PARAM_KINDS`）、`inputs`、`outputs`（type 只能是 `PORT_TYPES`），`execute(ctx) -> Result`。內建放進對應 builtin 模組的 `TOOLS`。
-- **資料夾外掛**：繼承 `Tool`／`Grabber`／`Writer` 的 .py 丟進 `plugins/` 即自動掛載（`apps/core/plugins.py` 掃描；不用改 .env）。外掛內 `ENABLED`（模組層）／`enabled`／`label`／`description`（類別層）控制掛載與顯示；key／kind 重複時內建優先。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
+- **資料夾外掛**：繼承 `Tool`／`Grabber`／`Writer` 的單檔（`plugins/x.py`）或資料夾型（`plugins/x/__init__.py`）丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`（模組層）／`enabled`／`label`／`description`（類別層）控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html「整合考量」。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 - 找不到東西回 `status="ng"` 或分支，不要 `raise`；可預期失敗 `raise ToolError(...)`。overlays 座標一律是**該節點輸入影像**的全圖座標；ROI 用 `tools/roi.py` 的 `crop()` 與 `Crop.to_full()`。
 - 前端不用改；想加新的 Param.kind 要同時改 `PARAM_KINDS` 與前端 `ParamField`。
 

@@ -50,12 +50,17 @@ def load_folder_plugins(directory: str | Path | None = None, *, force: bool = Fa
     _loaded_dirs.add(resolved)
     if not folder.is_dir():
         return []
+    # 單檔外掛（x.py）＋資料夾型外掛（x/__init__.py，整個外掛專案丟進來）。
+    entries = [p for p in folder.glob("*.py")] + [p for p in folder.iterdir() if p.is_dir() and (p / "__init__.py").exists()]
     mounted: list[str] = []
-    for path in sorted(folder.glob("*.py")):
+    for path in sorted(entries, key=lambda p: p.name):
         if path.name.startswith("_"):
             continue
         try:
             module = _import(path)
+        except ModuleNotFoundError as exc:
+            log.error("外掛 %s 載入失敗：缺少套件 %s。%s", path.name, exc.name, _requirements_hint(path))
+            continue
         except Exception:  # noqa: BLE001 — 單一外掛壞掉不影響其他外掛
             log.exception("外掛 %s 載入失敗，略過", path.name)
             continue
@@ -69,13 +74,24 @@ def load_folder_plugins(directory: str | Path | None = None, *, force: bool = Fa
     return mounted
 
 
+def _requirements_hint(path: Path) -> str:
+    """外掛附 requirements.txt 時，在缺依賴的錯誤旁提示安裝指令。"""
+    req = (path / "requirements.txt") if path.is_dir() else path.with_suffix(".requirements.txt")
+    if req.exists():
+        return f"請先安裝外掛依賴：.venv\\Scripts\\pip install -r \"{req}\""
+    return "外掛依賴必須裝進平台的 .venv（同行程載入），見 docs/plugins.html「整合考量」。"
+
+
 def _import(path: Path) -> ModuleType:
-    """優先用套件路徑 import（plugins/ 是專案根目錄下的套件）；其他位置用檔案路徑載入。"""
+    """優先用套件路徑 import（plugins/ 是專案根目錄下的套件）；其他位置用檔案路徑載入。
+    path 是 .py 檔（單檔外掛）或含 __init__.py 的資料夾（資料夾型外掛，掛載點是它的 __init__）。"""
     package_root = Path(settings.BASE_DIR) / "plugins"
     if path.parent.resolve() == package_root.resolve() and (package_root / "__init__.py").exists():
         return importlib.import_module(f"plugins.{path.stem}")
     name = f"_vs_folder_plugin_{path.stem}"
-    spec = importlib.util.spec_from_file_location(name, path)
+    target = path / "__init__.py" if path.is_dir() else path
+    locations = [str(path)] if path.is_dir() else None
+    spec = importlib.util.spec_from_file_location(name, target, submodule_search_locations=locations)
     if spec is None or spec.loader is None:
         raise ImportError(f"無法載入 {path}")
     module = importlib.util.module_from_spec(spec)
@@ -92,7 +108,8 @@ def _register_module(module: ModuleType) -> list[str]:
 
     out: list[str] = []
     for _, obj in inspect.getmembers(module, inspect.isclass):
-        if obj.__module__ != module.__name__:
+        # 只認外掛自己定義的類別（單檔＝同模組；資料夾型＝套件底下的子模組），import 進來的基底不算。
+        if obj.__module__ != module.__name__ and not obj.__module__.startswith(module.__name__ + "."):
             continue
         if not getattr(obj, "enabled", True):
             log.info("外掛類別 %s.%s 已停用（enabled = False），略過", module.__name__, obj.__name__)
