@@ -561,3 +561,73 @@ export interface ConnectionOpResult {
   result?: Record<string, unknown>
   values?: Record<string, unknown>
 }
+
+// ---- 深度學習教導（/vision/dl） ----
+export interface DlTrainerDef {
+  kind: string
+  label: string
+  description: string
+  label_mode: 'classes' | 'boxes'
+  tool_key: string
+  devices: string[]
+  min_per_class: number
+  params: ToolParam[]
+}
+
+export interface DlProject {
+  id: number
+  name: string
+  description: string
+  trainer_kind: string
+  classes: string[]
+  params: Record<string, unknown>
+  last_asset_id: string
+  last_metrics: Record<string, unknown>
+  created_at: string
+  updated_at: string
+  counts?: { total: number; unlabeled: number; per_class: Record<string, number> }
+}
+
+export interface DlSample {
+  id: string
+  label: string
+  labeled_by: '' | 'human' | 'auto'
+  score: number
+  width: number
+  height: number
+  created_at: string
+}
+
+export interface DlDevices {
+  onnxruntime: string
+  providers: string[]
+  accelerators: string[]
+  gpus: { name: string; memory_total_mb?: number; memory_used_mb?: number; utilization?: number }[]
+  preferred_providers: string[]
+  train_device: string
+  train_devices: string[]
+}
+
+export interface DlTrainJob {
+  id: string
+  project_id: number
+  project_name: string
+  trainer_kind: string
+  device: string
+  status: 'running' | 'done' | 'failed' | 'cancelled'
+  progress: number
+  stage: string
+  metrics: Record<string, unknown>
+  error: string
+  asset_id: string
+  asset_name: string
+  tool_key: string
+  tool_params: Record<string, unknown>
+  duration_s: number
+}
+
+export interface DlSuggestion {
+  id: string
+  label: string
+  score: number
+}

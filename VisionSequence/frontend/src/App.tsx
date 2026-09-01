@@ -16,6 +16,7 @@ import { SettingsPage } from '@/pages/SettingsPage'
 import { SourcesPage } from '@/pages/SourcesPage'
 import { StatsPage } from '@/pages/StatsPage'
 import { TeachPage } from '@/pages/TeachPage'
+import { DlPage } from '@/pages/DlPage'
 import { ToolPage } from '@/pages/ToolPage'
 import { UsersPage } from '@/pages/UsersPage'
 import { AuthProvider, useAuth } from '@/providers/AuthProvider'
@@ -44,6 +45,7 @@ const router = createBrowserRouter([
           { path: 'flows/:flowId/stats', element: <StatsPage /> },
           { path: 'flows/:flowId/teach', element: <TeachPage /> },
           { path: 'flows/:flowId/golden', element: <GoldenPage /> },
+          { path: 'dl', element: <DlPage /> },
           { path: 'connections', element: <ConnectionsPage /> },
           { path: 'integration', element: <IntegrationPage /> },
           { path: 'help', element: <HelpPage /> },

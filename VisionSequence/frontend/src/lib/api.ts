@@ -226,3 +226,8 @@ export const api = {
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
   delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
+
+/** 深度學習樣本影像（<img> 用；帶 token）。 */
+export function dlSampleUrl(id: string, max = 0): string {
+  return withKey(`${BASE_URL}/vision/dl/samples/${id}/file${max ? `?max=${max}` : ''}`)
+}

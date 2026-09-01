@@ -11,6 +11,12 @@ import type {
   Connection,
   ConnectionKind,
   ConnectionOpResult,
+  DlDevices,
+  DlProject,
+  DlSample,
+  DlSuggestion,
+  DlTrainJob,
+  DlTrainerDef,
   EngineLock,
   BatchResult,
   ExpectStatus,
@@ -698,4 +704,126 @@ export function useConnectionMutations() {
 
 export function fetchConnectionState(id: number, addresses = ''): Promise<ConnectionOpResult> {
   return api.get<ConnectionOpResult>(`/vision/connections/${id}/state`, { addresses })
+}
+
+// ---- 深度學習教導（/vision/dl） ----
+export function useDlTrainers() {
+  return useQuery({
+    queryKey: ['dl', 'trainers'],
+    queryFn: () => api.get<{ items: DlTrainerDef[] }>('/vision/dl/trainers'),
+    select: (data) => data.items,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useDlDevices() {
+  return useQuery({
+    queryKey: ['dl', 'devices'],
+    queryFn: () => api.get<DlDevices>('/vision/dl/devices'),
+    staleTime: 30_000,
+  })
+}
+
+export function useDlProjects() {
+  return useQuery({
+    queryKey: ['dl', 'projects'],
+    queryFn: () => api.get<{ items: DlProject[] }>('/vision/dl/projects'),
+    select: (data) => data.items,
+  })
+}
+
+export function useDlProject(id: number | null) {
+  return useQuery({
+    queryKey: ['dl', 'project', id],
+    queryFn: () => api.get<DlProject>(`/vision/dl/projects/${id}`),
+    enabled: id !== null,
+  })
+}
+
+export function useDlSamples(projectId: number | null) {
+  return useQuery({
+    queryKey: ['dl', 'samples', projectId],
+    queryFn: () => api.get<{ items: DlSample[] }>(`/vision/dl/projects/${projectId}/samples`),
+    select: (data) => data.items,
+    enabled: projectId !== null,
+  })
+}
+
+/** 訓練狀態輪詢：訓練中每 700ms、閒置停止。 */
+export function useDlTrainStatus(active: boolean) {
+  return useQuery({
+    queryKey: ['dl', 'train-status'],
+    queryFn: () => api.get<{ job: DlTrainJob | null }>('/vision/dl/train/status'),
+    select: (data) => data.job,
+    refetchInterval: active ? 700 : false,
+  })
+}
+
+export function useDlMutations() {
+  const client = useQueryClient()
+  const invalidateProjects = () => void client.invalidateQueries({ queryKey: ['dl', 'projects'] })
+  const invalidateProject = (id: number) => {
+    void client.invalidateQueries({ queryKey: ['dl', 'project', id] })
+    void client.invalidateQueries({ queryKey: ['dl', 'samples', id] })
+    invalidateProjects()
+  }
+  const createProject = useMutation({
+    mutationFn: (body: { name: string; trainer_kind: string; classes: string[]; description?: string }) =>
+      api.post<DlProject>('/vision/dl/projects', body),
+    onSuccess: invalidateProjects,
+  })
+  const patchProject = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; name?: string; classes?: string[]; params?: Record<string, unknown>; description?: string }) =>
+      api.patch<DlProject>(`/vision/dl/projects/${id}`, body),
+    onSuccess: (_, v) => invalidateProject(v.id),
+  })
+  const removeProject = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/dl/projects/${id}`),
+    onSuccess: invalidateProjects,
+  })
+  const uploadSamples = useMutation({
+    mutationFn: ({ projectId, files, label }: { projectId: number; files: File[]; label?: string }) => {
+      const form = new FormData()
+      for (const f of files) form.append('files', f)
+      form.append('label', label || '')
+      return api.postForm<{ items: DlSample[]; skipped: number }>(`/vision/dl/projects/${projectId}/samples`, form)
+    },
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const fromSource = useMutation({
+    mutationFn: ({ projectId, source_id, count, label }: { projectId: number; source_id: number; count: number; label?: string }) =>
+      api.post<{ items: DlSample[] }>(`/vision/dl/projects/${projectId}/samples/from-source`, { source_id, count, label: label || '' }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const setLabel = useMutation({
+    mutationFn: ({ id, label }: { id: string; label: string; projectId: number }) =>
+      api.patch<DlSample>(`/vision/dl/samples/${id}`, { label }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const removeSample = useMutation({
+    mutationFn: ({ id }: { id: string; projectId: number }) => api.delete(`/vision/dl/samples/${id}`),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const bulkLabels = useMutation({
+    mutationFn: ({ projectId, items }: { projectId: number; items: { id: string; label: string; score?: number; by?: string }[] }) =>
+      api.post<{ updated: number }>(`/vision/dl/projects/${projectId}/labels`, { items }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const autoLabel = useMutation({
+    mutationFn: ({ projectId, params }: { projectId: number; params?: Record<string, unknown> }) =>
+      api.post<{ items: DlSuggestion[] }>(`/vision/dl/projects/${projectId}/auto-label`, { params }),
+  })
+  const startTrain = useMutation({
+    mutationFn: ({ projectId, params, device, asset_name }: { projectId: number; params: Record<string, unknown>; device: string; asset_name: string }) =>
+      api.post<DlTrainJob>(`/vision/dl/projects/${projectId}/train`, { params, device, asset_name }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'train-status'] }),
+  })
+  const cancelTrain = useMutation({
+    mutationFn: () => api.post<{ cancelled: boolean }>('/vision/dl/train/cancel', {}),
+  })
+  const patchSettings = useMutation({
+    mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
+  })
+  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
 }
