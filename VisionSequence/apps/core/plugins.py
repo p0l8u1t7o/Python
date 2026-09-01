@@ -1,0 +1,112 @@
+"""資料夾外掛：把 .py 檔丟進專案根目錄的 plugins/ 就會自動掛載，不用改 .env。
+
+支援三類物件（都用繼承，放同一個檔案裡也可以）：
+    apps.vision.tools.base.Tool          自訂工具（畫布調色盤）
+    apps.vision.sources.grabbers.Grabber 自訂影像來源（kind）
+    apps.comm.writers.Writer             自訂整合輸出連線（kind）
+
+外掛檔內可用變數控制掛載與顯示（見 plugins/ 下的範例）：
+    ENABLED = False        模組層：整個檔案不掛載
+    class X(...):
+        enabled = False    類別層：只停用這個類別
+        label = "顯示名稱"
+        description = "說明"
+
+規則：
+- 檔名底線開頭（_xxx.py）跳過；掃描順序照檔名排序。
+- 只認「該檔案自己定義」的類別；import 進來的基底不會被重複註冊。
+- key／kind 已存在時跳過（內建優先），不覆蓋、不報錯，只記 log。
+- 單一檔案載入失敗只記 log，不影響其他外掛與平台啟動。
+"""
+
+from __future__ import annotations
+
+import importlib
+import importlib.util
+import inspect
+import logging
+import sys
+from pathlib import Path
+from types import ModuleType
+
+from django.conf import settings
+
+log = logging.getLogger(__name__)
+
+#: 已掃描過的資料夾（resolve 後的路徑），避免 ready() 被呼叫多次時重複 import。
+_loaded_dirs: set[str] = set()
+
+
+def plugin_dir() -> Path:
+    return Path(settings.VISION.get("PLUGIN_DIR") or (Path(settings.BASE_DIR) / "plugins"))
+
+
+def load_folder_plugins(directory: str | Path | None = None, *, force: bool = False) -> list[str]:
+    """掃描資料夾並掛載外掛。回傳掛載清單（"tool:key" / "source:kind" / "comm:kind"）。"""
+    folder = Path(directory) if directory else plugin_dir()
+    resolved = str(folder.resolve())
+    if not force and resolved in _loaded_dirs:
+        return []
+    _loaded_dirs.add(resolved)
+    if not folder.is_dir():
+        return []
+    mounted: list[str] = []
+    for path in sorted(folder.glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        try:
+            module = _import(path)
+        except Exception:  # noqa: BLE001 — 單一外掛壞掉不影響其他外掛
+            log.exception("外掛 %s 載入失敗，略過", path.name)
+            continue
+        if not getattr(module, "ENABLED", True):
+            log.info("外掛 %s 已停用（ENABLED = False），略過", path.name)
+            continue
+        found = _register_module(module)
+        if found:
+            log.info("外掛 %s 掛載：%s", path.name, ", ".join(found))
+        mounted += found
+    return mounted
+
+
+def _import(path: Path) -> ModuleType:
+    """優先用套件路徑 import（plugins/ 是專案根目錄下的套件）；其他位置用檔案路徑載入。"""
+    package_root = Path(settings.BASE_DIR) / "plugins"
+    if path.parent.resolve() == package_root.resolve() and (package_root / "__init__.py").exists():
+        return importlib.import_module(f"plugins.{path.stem}")
+    name = f"_vs_folder_plugin_{path.stem}"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"無法載入 {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _register_module(module: ModuleType) -> list[str]:
+    from apps.comm import writers
+    from apps.vision import sources
+    from apps.vision.sources.grabbers import Grabber
+    from apps.vision.tools import base
+
+    out: list[str] = []
+    for _, obj in inspect.getmembers(module, inspect.isclass):
+        if obj.__module__ != module.__name__:
+            continue
+        if not getattr(obj, "enabled", True):
+            log.info("外掛類別 %s.%s 已停用（enabled = False），略過", module.__name__, obj.__name__)
+            continue
+        if issubclass(obj, base.Tool) and getattr(obj, "key", ""):
+            if base.has(obj.key):
+                log.warning("外掛工具 '%s' 已存在，略過 %s", obj.key, obj.__name__)
+            else:
+                base.register(obj())
+                out.append(f"tool:{obj.key}")
+        elif issubclass(obj, Grabber) and getattr(obj, "kind", ""):
+            if sources.register_kind(obj):
+                out.append(f"source:{obj.kind}")
+        elif issubclass(obj, writers.Writer) and getattr(obj, "kind", ""):
+            if writers.register_kind(obj):
+                out.append(f"comm:{obj.kind}")
+    return out

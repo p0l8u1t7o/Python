@@ -117,6 +117,8 @@ VISION = {
     "PERSIST_RUNS": _env_bool("VISION_PERSIST_RUNS", True),
     # 資料庫保留的 run 記錄上限（每流程）。
     "KEEP_RUN_ROWS": _env_int("VISION_KEEP_RUN_ROWS", 2000),
+    # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。
+    "PLUGIN_DIR": Path(_env("VISION_PLUGIN_DIR", str(BASE_DIR / "plugins"))),
     # 外掛工具模組（逗號分隔的 python 模組路徑），啟動時 import；模組內呼叫 register()。
     "TOOL_PLUGINS": [m.strip() for m in _env("VISION_TOOL_PLUGINS", "").split(",") if m.strip()],
     # 影像來源外掛（kind -> "module:Class"），例如 GigE SDK 的封裝。

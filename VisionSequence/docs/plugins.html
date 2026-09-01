@@ -19,33 +19,72 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 
-<h1>擴充：自訂工具與影像來源</h1>
+<h1>擴充外掛：資料夾丟檔即掛載</h1>
+
+<p>三種擴充點都走同一套<strong>物件繼承</strong>：繼承對應的基底類別，把 <code>.py</code> 檔丟進專案根目錄的 <code>plugins/</code> 資料夾，<strong>重啟後端就會自動偵測掛載，不用改 <code>.env</code>、不用改前端</strong>。</p>
+
+<table>
+<tr><th>擴充什麼</th><th>繼承</th><th>掛載後出現在</th><th>出貨範例</th></tr>
+<tr><td>工具（畫布節點）</td><td><code>apps.vision.tools.base.Tool</code></td><td>編輯器調色盤（分類依 <code>category</code>）</td><td><code>plugins/example_dark_ratio.py</code></td></tr>
+<tr><td>影像來源</td><td><code>apps.vision.sources.grabbers.Grabber</code></td><td>「影像來源」頁 kind 下拉</td><td>本頁 <a href="#sources">§4</a>（GigE）</td></tr>
+<tr><td>整合輸出（連線）</td><td><code>apps.comm.writers.Writer</code></td><td>「連線」頁 kind 下拉</td><td><code>plugins/example_csv_writer.py</code></td></tr>
+</table>
 
 <nav><p><strong>本頁目錄</strong></p><ul>
-<li><a href="#tools">自訂工具</a></li>
-<li><a href="#rules">規則</a></li>
-<li><a href="#sources">自訂影像來源</a></li>
+<li><a href="#how">1. 掛載規則與外掛內變數</a></li>
+<li><a href="#tools">2. 自訂工具（範例一）</a></li>
+<li><a href="#writers">3. 自訂整合輸出（範例二）</a></li>
+<li><a href="#sources">4. 自訂影像來源</a></li>
+<li><a href="#rules">5. 工具撰寫規則</a></li>
+<li><a href="#advanced">6. 進階：.env 手動掛載</a></li>
 </ul></nav>
 
-<h2 id="tools">自訂工具</h2>
-<ol>
-<li>任意 Python 模組（例如 <code>plugins/my_tools.py</code>，專案根目錄下 <code>plugins/__init__.py</code> 建一個空檔）：</li>
-</ol>
-<pre>from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out, register
+<h2 id="how">1. 掛載規則與外掛內變數</h2>
+<ul>
+<li>啟動時掃描 <code>plugins/*.py</code>（照檔名排序；底線開頭 <code>_xxx.py</code> 跳過），資料夾位置可用 <code>VISION_PLUGIN_DIR</code> 覆寫（預設專案根目錄 <code>plugins/</code>）。</li>
+<li>每個檔案 import 後，<strong>自動偵測該檔案自己定義的</strong> <code>Tool</code>／<code>Grabber</code>／<code>Writer</code> 子類別並註冊；一個檔案可放多個類別、三類混放。</li>
+<li>key／kind 與內建或先載入的外掛重複時<strong>不覆蓋</strong>，記 log 略過；單一檔案載入失敗只記 log，不影響其他外掛與平台啟動。</li>
+<li>載入器在 <code>apps/core/plugins.py</code>；掛載結果看後端啟動 log（「外掛 xxx.py 掛載：tool:dark_ratio…」）。</li>
+</ul>
+<p>外掛檔內可用<strong>變數</strong>控制顯示與掛載（慣例放檔案最上面，現場要改名／停用不必動邏輯）：</p>
+<pre>DISPLAY_NAME = "暗區比例"       # 顯示名稱（label）
+DESCRIPTION  = "說明文字…"      # 說明（description）
+ENABLED      = True             # False = 整個檔案不掛載
+
+class MyTool(Tool):
+    label = DISPLAY_NAME
+    description = DESCRIPTION
+    enabled = ENABLED           # 類別層開關：False 只停用這個類別，同檔其他類別照常</pre>
+<table>
+<tr><th>變數</th><th>層級</th><th>作用</th></tr>
+<tr><td><code>ENABLED = False</code></td><td>模組（檔案最上層）</td><td>整個檔案不掛載</td></tr>
+<tr><td><code>enabled = False</code></td><td>類別屬性</td><td>只停用該類別</td></tr>
+<tr><td><code>label</code>／<code>description</code></td><td>類別屬性</td><td>顯示名稱與說明（工具顯示在調色盤；Grabber／Writer 顯示在 kind 下拉）</td></tr>
+<tr><td><code>fields</code></td><td>類別屬性（Grabber／Writer）</td><td>config 欄位名稱提示，設定頁顯示用，例如 <code>["path"]</code></td></tr>
+</table>
+
+<h2 id="tools">2. 自訂工具（範例一：<code>plugins/example_dark_ratio.py</code>）</h2>
+<pre>DISPLAY_NAME = "暗區比例（範例外掛）"
+DESCRIPTION = "ROI 內灰階低於門檻的像素比例，超過允許比例走「不良」分支。"
+ENABLED = True
+
+import cv2
+from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.roi import crop, region_overlay
 
 class DarkRatioTool(Tool):
-    key = "dark_ratio"                 # 全域唯一
-    label = "暗區比例"
-    description = "ROI 內灰階低於門檻的像素比例。"
+    key = "dark_ratio"                 # 全域唯一；圖 JSON 記這個
+    label = DISPLAY_NAME
+    description = DESCRIPTION
+    enabled = ENABLED
     category = "detect"                # source|preprocess|locate|measure|detect|dl|logic|output
     icon = "Moon"                      # lucide-react 圖示名
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle"]),
-        Param("threshold", "門檻", kind="number", default=80, minimum=0, maximum=255),
-        Param("max_ratio", "允許比例", kind="number", default=0.1, minimum=0, maximum=1, step=0.01),
+        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "polygon"]),
+        Param("threshold", "門檻", kind="number", default=80, minimum=0, maximum=255, teach=True),
+        Param("max_ratio", "允許比例", kind="number", default=0.1, minimum=0, maximum=1, step=0.01, teach=True),
     ]
     inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
     outputs = [Port("ratio", "比例", "number"), flow_out("pass", "通過", "ok"), flow_out("fail", "不良", "critical")]
@@ -53,40 +92,62 @@ class DarkRatioTool(Tool):
     def execute(self, ctx: ToolContext) -&gt; Result:
         image = ctx.require_image()
         if image.ndim == 3:
-            import cv2; image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         region = ctx.roi()
         c = crop(image, region, upright=True)
         if c.image.size == 0:
             raise ToolError("ROI 在影像外")
-        mask = c.mask if c.mask is not None else None
-        pixels = c.image[mask &gt; 0] if mask is not None else c.image
+        pixels = c.image[c.mask &gt; 0] if c.mask is not None else c.image
         ratio = float((pixels &lt; ctx.number("threshold", 80)).mean()) if pixels.size else 0.0
         ok = ratio &lt;= ctx.number("max_ratio", 0.1)
         overlays = [region_overlay(region, label=f"dark {ratio*100:.1f}%")] if region else []
         return Result(outputs={"ratio": ratio}, branch="pass" if ok else "fail",
-                      status="ok" if ok else "ng", overlays=overlays, message=f"暗區 {ratio*100:.1f}%")
+                      status="ok" if ok else "ng", overlays=overlays, message=f"暗區 {ratio*100:.1f}%")</pre>
+<p>不用寫任何 <code>register()</code>——放進資料夾就好。重啟後端，前端調色盤「檢測／識別」分類會出現「暗區比例（範例外掛）」。</p>
 
-register(DarkRatioTool())</pre>
-<ol start="2">
-<li><code>.env</code>：<code>VISION_TOOL_PLUGINS=plugins.my_tools</code>（逗號分隔多個）。重啟後端，前端調色盤自動出現。</li>
-</ol>
+<h2 id="writers">3. 自訂整合輸出（範例二：<code>plugins/example_csv_writer.py</code>）</h2>
+<p>整合輸出（<a href="modbus.html">Modbus 輸出</a>的「連線」）同樣用繼承擴充：繼承 <code>Writer</code>，只覆寫 <code>_open</code>／<code>_write</code>／<code>_read</code>／<code>_close</code>；lock、逾時、失敗重連一次、計數統計都在基底的 <code>write()</code>／<code>read()</code>。出貨範例把寫入值附加到 CSV 檔，沒有任何硬體也能驗完整條「流程 → 寫入 Modbus 工具 → 連線」路徑：</p>
+<pre>DISPLAY_NAME = "CSV 紀錄（範例外掛）"
+DESCRIPTION = "把每次寫入的值附加到 CSV 檔（time, address, value）。"
+ENABLED = True
 
-<h3 id="rules">規則</h3>
-<ul>
-<li><code>Param.kind</code> 只能用 <code>PARAM_KINDS</code>；<code>Port.type</code> 只能用 <code>PORT_TYPES</code>（<code>apps/vision/tools/base.py</code>）。</li>
-<li>可預期失敗 <code>raise ToolError("…")</code>（節點 error、run failed）；「沒找到」回 <code>status="ng"</code> 或走分支，不要 raise。</li>
-<li>overlays 座標一律是該節點<strong>輸入影像</strong>的全圖座標；旋轉 ROI 用 <code>crop(upright=True)</code> 後以 <code>Crop.to_full()</code> 換回。</li>
-<li>不要在工具內 sleep 或碰資料庫；需要檔案用 <code>ctx.asset_path(id)</code>；需要相機用 <code>ctx.grab(source_id)</code>。</li>
-<li>重工具（DL 推論）把 session 快取在模組層並加鎖；<code>heavy = True</code> 讓前端提示。</li>
-</ul>
+import csv, os, time
+from apps.comm.writers import CommError, Writer
+from apps.core.errors import ValidationError
 
-<h2 id="sources">自訂影像來源（例如 GigE / 廠牌 SDK）</h2>
-<pre># plugins/gige.py
+class CsvLogWriter(Writer):
+    kind = "csv_log"                   # Connection.kind 記這個
+    label = DISPLAY_NAME
+    description = DESCRIPTION
+    enabled = ENABLED
+    fields = ["path"]                  # 設定頁 config 欄位提示
+
+    def __init__(self, config, **kw):
+        super().__init__(config, **kw)
+        self.path = str(config.get("path") or "")
+        if not self.path:
+            raise ValidationError("csv_log 需要 path", code="comm_config")
+
+    def _write(self, values):          # {address: value} → {"written": n}
+        ...                            # 完整實作見 plugins/example_csv_writer.py
+</pre>
+<p>掛載後「連線」頁 kind 下拉出現「CSV 紀錄（範例外掛）」；建一條連線（config 填 <code>{"path": "D:/logs/results.csv"}</code>），流程末端放「寫入 Modbus」工具、connection 填連線名稱即可。OPC UA、廠牌 SDK 等照同樣模式：連不上 <code>raise CommError</code>，工具層會依 <code>on_error</code> 降級（預設不讓 run 失敗）。</p>
+
+<h2 id="sources">4. 自訂影像來源（例如 GigE / 廠牌 SDK）</h2>
+<pre># plugins/gige.py — 丟進 plugins/ 即掛載
+DISPLAY_NAME = "GigE 相機"
+ENABLED = True
+
 import numpy as np
 from apps.vision.sources.grabbers import Grabber
 
 class GigEGrabber(Grabber):
     kind = "gige"
+    label = DISPLAY_NAME
+    description = "廠牌 SDK 封裝；config: serial, exposure_us"
+    fields = ["serial", "exposure_us"]
+    enabled = ENABLED
+
     def __init__(self, config, **kw):
         super().__init__(config, **kw)
         self.cam = open_camera(config.get("serial"))   # 廠牌 SDK
@@ -99,7 +160,24 @@ class GigEGrabber(Grabber):
         return frame                      # BGR 或灰階 uint8
     def close(self): self.cam.close()
     def info(self): return {**super().info(), "serial": self.config.get("serial")}</pre>
-<p><code>.env</code>：<code>VISION_SOURCE_PLUGINS=gige=plugins.gige:GigEGrabber</code>。前端「影像來源」頁 kind 下拉會出現 <code>gige</code>，config 以 JSON 填。</p>
-<p>同一個來源物件會被快取重用（設定變更才重開）；<code>grab()</code> 可能被多個流程的執行緒同時呼叫，內部要自己加鎖（<code>self._lock</code>）。</p>
+<p>掛載後「影像來源」頁 kind 下拉出現該來源，config 以 JSON 填。同一個來源物件會被快取重用（設定變更才重開）；<code>grab()</code> 可能被多個流程的執行緒同時呼叫，內部要自己加鎖（<code>self._lock</code>）。</p>
+
+<h2 id="rules">5. 工具撰寫規則</h2>
+<ul>
+<li><code>Param.kind</code> 只能用 <code>PARAM_KINDS</code>；<code>Port.type</code> 只能用 <code>PORT_TYPES</code>（<code>apps/vision/tools/base.py</code>）。</li>
+<li>可預期失敗 <code>raise ToolError("…")</code>（節點 error、run failed）；「沒找到」回 <code>status="ng"</code> 或走分支，不要 raise。</li>
+<li>overlays 座標一律是該節點<strong>輸入影像</strong>的全圖座標；旋轉 ROI 用 <code>crop(upright=True)</code> 後以 <code>Crop.to_full()</code> 換回。</li>
+<li>不要在工具內 sleep 或碰資料庫；需要檔案用 <code>ctx.asset_path(id)</code>；需要相機用 <code>ctx.grab(source_id)</code>。</li>
+<li>重工具（DL 推論）把 session 快取在模組層並加鎖；<code>heavy = True</code> 讓前端提示。</li>
+<li>現場要調的參數標 <code>teach=True</code>（參數卡頁只列這些）。</li>
+</ul>
+
+<h2 id="advanced">6. 進階：.env 手動掛載</h2>
+<p>不放 <code>plugins/</code> 資料夾（例如外掛裝成獨立套件）時，仍可用 .env 指定模組路徑：</p>
+<pre>VISION_PLUGIN_DIR=D:/site-plugins                     # 換掉資料夾位置（仍是自動偵測）
+VISION_TOOL_PLUGINS=mypkg.my_tools                    # import 該模組；模組內自行呼叫 register()
+VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber     # kind=module:Class
+VISION_COMM_PLUGINS=opcua=mypkg.opcua:OpcUaWriter     # kind=module:Class</pre>
+<p>另外「影像來源」與「連線」都保留 kind=<code>plugin</code>：建立時在 config 填 <code>"class": "mypkg.mod:Class"</code> 直接指定類別路徑。</p>
 </body>
 </html>

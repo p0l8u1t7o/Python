@@ -4,8 +4,10 @@ Grabber 介面：
     grab() -> np.ndarray | None   取一張（BGR uint8 或灰階）
     close()
     info() -> dict                 狀態（前端顯示）
-外掛：settings.VISION["SOURCE_PLUGINS"] = {"gige": "plugins.gige:GigEGrabber"}，
-kind="plugin" 的來源以 config["class"] 指定，或直接用外掛 kind。
+外掛（三選一，見 docs/plugins.html）：
+- 資料夾外掛：繼承 Grabber 的 .py 丟進 plugins/，啟動時自動註冊（register_kind）。
+- settings.VISION["SOURCE_PLUGINS"] = {"gige": "plugins.gige:GigEGrabber"}。
+- kind="plugin" 的來源以 config["class"] 指定類別路徑。
 """
 
 from __future__ import annotations
@@ -31,14 +33,33 @@ _BUILTIN = {
     "upload": UploadGrabber,
 }
 
+#: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
+_PLUGIN_KINDS: dict[str, type[Grabber]] = {}
+
 _lock = threading.Lock()
 #: source_id → (updated_at iso, grabber)
 _open: dict[int, tuple[str, Grabber]] = {}
 
 
+def register_kind(cls: type[Grabber]) -> bool:
+    """註冊資料夾外掛的來源類別；kind 已存在（內建或先註冊者優先）回 False。"""
+    kind = str(getattr(cls, "kind", "") or "")
+    if not kind or kind in _BUILTIN:
+        log.warning("影像來源外掛 %s 的 kind '%s' 無效或與內建重複，略過", cls.__name__, kind)
+        return False
+    if kind in _PLUGIN_KINDS:
+        if _PLUGIN_KINDS[kind] is not cls:
+            log.warning("影像來源 kind '%s' 已被 %s 註冊，略過 %s", kind, _PLUGIN_KINDS[kind].__name__, cls.__name__)
+        return False
+    _PLUGIN_KINDS[kind] = cls
+    return True
+
+
 def _resolve_class(kind: str, config: dict[str, Any]):
     if kind in _BUILTIN:
         return _BUILTIN[kind]
+    if kind in _PLUGIN_KINDS:
+        return _PLUGIN_KINDS[kind]
     plugins = getattr(settings, "VISION", {}).get("SOURCE_PLUGINS", {})
     path = config.get("class") if kind == "plugin" else plugins.get(kind)
     if not path or ":" not in path:
@@ -123,7 +144,15 @@ def kinds() -> list[dict[str, Any]]:
         {"kind": "synthetic", "label": "合成測試影像", "fields": ["width", "height", "pattern", "seed"]},
         {"kind": "upload", "label": "手動上傳（API 送圖）", "fields": []},
     ]
+    for kind, cls in _PLUGIN_KINDS.items():
+        out.append({
+            "kind": kind,
+            "label": getattr(cls, "label", "") or f"外掛：{kind}",
+            "fields": list(getattr(cls, "fields", []) or []),
+            "description": getattr(cls, "description", ""),
+        })
     for kind in plugins:
-        out.append({"kind": kind, "label": f"外掛：{kind}", "fields": []})
+        if kind not in _PLUGIN_KINDS:
+            out.append({"kind": kind, "label": f"外掛：{kind}", "fields": []})
     out.append({"kind": "plugin", "label": "外掛（自訂類別路徑）", "fields": ["class"]})
     return out

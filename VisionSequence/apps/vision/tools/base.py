@@ -266,6 +266,8 @@ class Tool:
     heavy = False
     #: 參數語意變更時 +1：配方匯入會比對版本，提醒使用者確認。
     version = 1
+    #: False = 資料夾外掛掃描（apps.core.plugins）時不掛載這個類別。
+    enabled = True
 
     def execute(self, ctx: ToolContext) -> Result:  # pragma: no cover - 抽象
         raise NotImplementedError

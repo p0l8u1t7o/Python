@@ -27,6 +27,13 @@ def _read(path: str) -> np.ndarray | None:
 
 class Grabber:
     kind = ""
+    #: 資料夾外掛的顯示資訊（設定頁 kind 下拉）；label 空字串時顯示「外掛：<kind>」。
+    label = ""
+    description = ""
+    #: config 欄位名稱提示（設定頁顯示用）。
+    fields: list[str] = []
+    #: False = 這個類別不掛載（apps.core.plugins 掃描時略過）。
+    enabled = True
 
     def __init__(self, config: dict[str, Any], *, source_id: int = 0, name: str = "") -> None:
         self.config = config

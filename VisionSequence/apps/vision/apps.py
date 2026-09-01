@@ -29,3 +29,8 @@ class VisionConfig(AppConfig):
                 log.info("已載入工具外掛 %s", module)
             except Exception:  # noqa: BLE001
                 log.exception("工具外掛 %s 載入失敗", module)
+
+        # 資料夾外掛：plugins/ 下的 .py 自動偵測（工具／影像來源／整合連線）。
+        from apps.core.plugins import load_folder_plugins
+
+        load_folder_plugins()
