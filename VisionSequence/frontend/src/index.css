@@ -91,6 +91,83 @@
   --shadow-pop: 0 2px 8px rgb(0 0 0 / 0.45), 0 12px 32px rgb(0 0 0 / 0.55);
 }
 
+/* Cyberpunk / Glitch（Temp/Style.md）：深空黑＋霓虹綠/洋紅/青、等寬字、銳角、霓虹光暈、掃描線。
+   以 .dark 為底（html 同時掛 .dark 與 .theme-cyber，dark: variants 照常運作），放在 .dark 之後覆蓋。
+   字體用本機等寬字型堆疊（產線環境常離線，不抓 Google Fonts）。 */
+.theme-cyber {
+  --canvas: #0a0a0f;
+  --surface: #12121a;
+  --surface-muted: #1c1c2e;
+  --surface-raised: #12121a;
+  --border: #2a2a3a;
+  --border-strong: #3a3a52;
+  --content: #e0e0e0;
+  --content-muted: #8b93a7;
+  --content-subtle: #6b7280;
+  --heading: #f0f0f5;
+
+  --brand: #00ff88;
+  --brand-strong: #00cc6e;
+  --brand-soft: rgb(0 255 136 / 0.1);
+  --on-brand: #0a0a0f;
+  --accent: #00d4ff;
+
+  --ok: #00ff88;
+  --ok-soft: rgb(0 255 136 / 0.08);
+  --info: #00d4ff;
+  --info-soft: rgb(0 212 255 / 0.08);
+  --warning: #ffb020;
+  --warning-soft: rgb(255 176 32 / 0.1);
+  --critical: #ff3366;
+  --critical-soft: rgb(255 51 102 / 0.1);
+
+  --viewer-bg: #05050a;
+
+  --sidebar: #0a0a0f;
+  --sidebar-text: #cfd6e4;
+  --sidebar-muted: #6b7280;
+  --sidebar-hover: #1c1c2e;
+  --sidebar-active-bg: #12121a;
+  --sidebar-active-text: #00ff88;
+  --sidebar-brand: #00ff88;
+  --sidebar-line: rgb(0 255 136 / 0.12);
+
+  /* 設計系統以銳角為預設（radius.none/sm），整站圓角一起收斂 */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+
+  /* 柔影換成霓虹光暈 */
+  --shadow-card: 0 0 0 1px rgb(0 255 136 / 0.04), 0 0 14px rgb(0 255 136 / 0.05);
+  --shadow-pop: 0 0 6px rgb(0 255 136 / 0.35), 0 0 26px rgb(0 255 136 / 0.18);
+
+  --font-sans: 'Cascadia Code', Consolas, 'JetBrains Mono', 'Fira Code', 'Noto Sans TC', ui-monospace, monospace;
+}
+
+/* 電路格線底＋掃描線覆蓋（極淡、不吃事件；motion 偏好縮減時關掉掃描線） */
+.theme-cyber body {
+  background-image:
+    linear-gradient(rgb(0 255 136 / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(0 255 136 / 0.028) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.theme-cyber body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgb(0 0 0 / 0.1) 3px, rgb(0 0 0 / 0.1) 4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-cyber body::after { background: none; }
+}
+/* 霓虹聚焦光暈與標題微光 */
+.theme-cyber :focus-visible { box-shadow: 0 0 8px rgb(0 255 136 / 0.5); }
+.theme-cyber h1, .theme-cyber h2 { text-shadow: 0 0 12px rgb(0 255 136 / 0.18); }
+
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);

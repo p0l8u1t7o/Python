@@ -20,6 +20,17 @@ def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+class UserPref(models.Model):
+    """每個使用者的介面偏好（主題風格等）；OneToOne 掛在 auth.User 上，不動內建資料表。
+
+    ui 是小型 JSON（目前只有 theme）；前端登入後套用、切換時 PATCH /auth/prefs 回寫。
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="pref")
+    ui = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class AuthToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tokens")
     token_hash = models.CharField(max_length=64, unique=True)

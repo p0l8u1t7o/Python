@@ -58,6 +58,7 @@
 - 執行類端點（run／preview／continuous）都要 `principal(request).can_execute()`（鎖定時 423）；修改類端點用 `_editable_flow()`（擁有者或管理員）；讀取用 `_visible_flows()`。新增端點時照這三個接縫。
 - 鎖是 `EngineLock` 單列（id=1）；鎖定時會停掉所有連續執行並發 SSE `lock` 事件。
 - 測試裡預設沒有使用者 → bootstrap 放行；要測 401 先建一個 User。
+- 使用者介面偏好在 `UserPref`（OneToOne auth.User；`PATCH /auth/prefs`、`/auth/me` 帶回 prefs）。主題風格是封閉集合（後端 `UI_THEMES`＝前端 ThemeProvider `THEMES`＋index.html 開機腳本三處同步）；新主題＝index.css 加 `.theme-<id>` 變數覆蓋（顏色/圓角/陰影/字體 tokens 都可換）。
 
 ## 開發計畫 v0.2 的規則（visionsequence-plan-v0.2.md）
 - 新增工具 checklist：`register()`（放進模組 `TOOLS`）→ `tests/test_tools.py` 至少一案例 → `scripts/bench_tools.py` 加一筆 → 需要現場調的參數標 `teach=True`。

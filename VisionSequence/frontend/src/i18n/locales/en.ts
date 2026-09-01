@@ -349,7 +349,11 @@ const en = {
   },
   sources: { title: 'Source library', create: 'New source', empty: 'No sources yet' },
   assets: { title: 'Asset library', upload: 'Upload asset', empty: 'No assets yet' },
-  settings: { title: 'Settings', apiKey: 'API key', theme: 'Theme', language: 'Language' },
+  settings: {
+    title: 'Settings', apiKey: 'API key', theme: 'Theme', language: 'Language',
+    themeLight: 'Light', themeDark: 'Dark', themeCyber: 'Cyberpunk', themeSystem: 'System',
+    themeSaved: 'Signed in: your theme choice is saved to your account and follows you across devices.',
+  },
   templates: {
     title: 'Template library',
     fromTemplate: 'From template',

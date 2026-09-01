@@ -90,6 +90,32 @@ class AccountsTests(TestCase):
         self.assertEqual(self.post("/api/users", {"username": "alice", "password": "pass123"}, token=admin).status_code, 409)
         self.assertEqual(self.post("/api/users", {"username": "bob", "password": "12"}, token=admin).status_code, 422)
 
+    def test_ui_prefs_roundtrip(self):
+        """主題偏好：登入者 PATCH /auth/prefs 儲存 → /auth/me 帶回；非法主題 422、bootstrap 沒使用者 422。"""
+        # bootstrap（還沒有任何使用者）：沒有 user 可存
+        r = self.client.patch("/api/auth/prefs", data='{"theme": "cyber"}', content_type="application/json")
+        self.assertEqual(r.status_code, 422, r.content)
+        token = self.setup_admin()
+        r = self.get("/api/auth/me", token=token)
+        self.assertEqual(r.json()["prefs"], {})
+        r = self.client.patch("/api/auth/prefs", data='{"theme": "cyber"}', content_type="application/json",
+                              HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["prefs"]["theme"], "cyber")
+        r = self.get("/api/auth/me", token=token)
+        self.assertEqual(r.json()["prefs"]["theme"], "cyber")
+        # 換主題會覆蓋、非法主題擋下
+        r = self.client.patch("/api/auth/prefs", data='{"theme": "dark"}', content_type="application/json",
+                              HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(r.json()["prefs"]["theme"], "dark")
+        r = self.client.patch("/api/auth/prefs", data='{"theme": "rainbow"}', content_type="application/json",
+                              HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(r.status_code, 422)
+        # 各使用者各自一份
+        alice = self.make_user(token)
+        r = self.get("/api/auth/me", token=alice)
+        self.assertEqual(r.json()["prefs"], {})
+
     def test_change_password(self):
         token = self.setup_admin()
         self.assertEqual(self.post("/api/auth/password", {"old_password": "bad", "new_password": "newpass1"}, token=token).status_code, 400)

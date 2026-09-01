@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VisionSequence</title>
     <script>
-      // 第一次繪製前套用主題，避免閃一下錯的配色。
+      // 第一次繪製前套用主題風格，避免閃一下錯的配色（清單與 ThemeProvider 的 THEMES 同步）。
       try {
         const t = localStorage.getItem('vs.theme')
-        const dark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        const dark = t === 'dark' || t === 'cyber' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)
         if (dark) document.documentElement.classList.add('dark')
+        if (t === 'cyber') document.documentElement.classList.add('theme-cyber')
       } catch {}
     </script>
   </head>

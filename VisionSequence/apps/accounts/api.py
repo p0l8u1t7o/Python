@@ -25,7 +25,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Schema
 
-from apps.accounts.models import AuthToken, EngineLock, hash_token
+from apps.accounts.models import AuthToken, EngineLock, UserPref, hash_token
 from apps.accounts.security import principal, require_admin
 from apps.core.errors import APIError, Conflict, NotFound, ValidationError
 
@@ -48,6 +48,21 @@ class SetupIn(Schema):
 class PasswordIn(Schema):
     old_password: str
     new_password: str
+
+
+#: 前端可選的主題風格（封閉集合；前端 ThemeProvider 的 THEME 清單同步）。
+UI_THEMES = ("light", "dark", "system", "cyber")
+
+
+class PrefsIn(Schema):
+    theme: str | None = None
+
+
+def _prefs(user: User | None) -> dict:
+    if user is None:
+        return {}
+    row = UserPref.objects.filter(user=user).first()
+    return dict(row.ui or {}) if row else {}
 
 
 class UserIn(Schema):
@@ -127,7 +142,25 @@ def logout(request: HttpRequest):
 @router.get("/me")
 def me(request: HttpRequest):
     p = principal(request)
-    return {"kind": p.kind, "is_admin": p.is_admin, "user": user_out(p.user) if p.user else None, "lock": EngineLock.current().to_dict()}
+    return {"kind": p.kind, "is_admin": p.is_admin, "user": user_out(p.user) if p.user else None,
+            "prefs": _prefs(p.user), "lock": EngineLock.current().to_dict()}
+
+
+@router.patch("/prefs")
+def patch_prefs(request: HttpRequest, payload: PrefsIn):
+    """更新自己的介面偏好（主題風格等）；整合方金鑰沒有使用者，不適用。"""
+    p = principal(request)
+    if p.user is None:
+        raise ValidationError("整合方金鑰沒有使用者偏好可以儲存", code="no_user")
+    if payload.theme is not None and payload.theme not in UI_THEMES:
+        raise ValidationError(f"未知的主題 '{payload.theme}'", code="bad_theme", details={"available": list(UI_THEMES)})
+    row, _ = UserPref.objects.get_or_create(user=p.user)
+    ui = dict(row.ui or {})
+    if payload.theme is not None:
+        ui["theme"] = payload.theme
+    row.ui = ui
+    row.save(update_fields=["ui", "updated_at"])
+    return {"prefs": ui}
 
 
 @router.post("/password")

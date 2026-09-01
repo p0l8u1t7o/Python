@@ -325,6 +325,8 @@ export interface Me {
   kind: 'user' | 'integrator' | 'bootstrap'
   is_admin: boolean
   user: AuthUser | null
+  /** 使用者介面偏好（theme 等；整合方/bootstrap 為空物件） */
+  prefs: { theme?: string }
   lock: EngineLock
 }
 

@@ -3,11 +3,12 @@
  * - 401（api.ts 的 onSessionExpired）→ me 清空，RequireAuth 會導到 /login。
  * - lock 狀態放在 query 快取 ['engine-lock']：me.lock 預填、SSE lock 事件與 30 秒輪詢更新。
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { api, authToken, onSessionExpired, setAuthToken } from '@/lib/api'
 import { keys, useEngineLock } from '@/lib/queries'
+import { isThemePreference, useTheme } from '@/providers/ThemeProvider'
 import type { AuthUser, EngineLock, Me } from '@/lib/types'
 
 interface AuthContextValue {
@@ -34,11 +35,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [setupRequired, setSetupRequired] = useState(false)
   const [me, setMe] = useState<Me | null>(null)
+  // 主題經 ref 讀最新值：applyMe 的身分不能跟著 theme 變（refresh 的 effect 會重觸發）
+  const theme = useTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
 
   const applyMe = useCallback(
     (next: Me | null) => {
       setMe(next)
       if (next?.lock) client.setQueryData<EngineLock>(keys.lock, next.lock)
+      // 登入者存過主題 → 套用伺服端偏好（不回寫；跨裝置/重整都一致）
+      const remote = next?.prefs?.theme
+      if (isThemePreference(remote) && remote !== themeRef.current.preference) themeRef.current.adoptRemote(remote)
     },
     [client],
   )

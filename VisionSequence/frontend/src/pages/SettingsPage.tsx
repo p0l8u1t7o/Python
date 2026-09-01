@@ -112,15 +112,41 @@ export function SettingsPage() {
         <Card>
           <CardHeader title={t('settings.theme')} />
           <CardBody className="space-y-4">
-            <SegmentedControl<ThemePreference>
-              value={theme.preference}
-              onChange={theme.setPreference}
-              options={[
-                { value: 'light', label: t('settings.themeLight') },
-                { value: 'dark', label: t('settings.themeDark') },
-                { value: 'system', label: t('settings.themeSystem') },
-              ]}
-            />
+            {/* 主題風格卡：迷你預覽（底色＋面板＋主色點）；已登入者的選擇會存進使用者設定 */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="theme-picker">
+              {([
+                { value: 'light', label: t('settings.themeLight'), canvas: '#f7f7f7', surface: '#ffffff', brand: '#1abb9c', text: '#2a3f54' },
+                { value: 'dark', label: t('settings.themeDark'), canvas: '#111820', surface: '#1a2431', brand: '#1abb9c', text: '#e4ebf3' },
+                { value: 'cyber', label: t('settings.themeCyber'), canvas: '#0a0a0f', surface: '#12121a', brand: '#00ff88', text: '#e0e0e0' },
+                { value: 'system', label: t('settings.themeSystem'), canvas: '', surface: '', brand: '', text: '' },
+              ] as { value: ThemePreference; label: string; canvas: string; surface: string; brand: string; text: string }[]).map((o) => {
+                const active = theme.preference === o.value
+                return (
+                  <button key={o.value} type="button" onClick={() => theme.setPreference(o.value)} aria-pressed={active}
+                    className={`overflow-hidden rounded-lg border text-left transition-all ${active ? 'border-brand ring-2 ring-brand/40' : 'border-line hover:border-brand/50'}`}
+                    data-testid={`theme-${o.value}`}>
+                    {o.value === 'system' ? (
+                      <span className="flex h-14 w-full">
+                        <span className="h-full w-1/2 bg-[#f7f7f7] p-1.5"><span className="block h-full rounded border border-black/10 bg-white" /></span>
+                        <span className="h-full w-1/2 bg-[#111820] p-1.5"><span className="block h-full rounded border border-white/10 bg-[#1a2431]" /></span>
+                      </span>
+                    ) : (
+                      <span className="block h-14 w-full p-1.5" style={{ background: o.canvas }}>
+                        <span className="flex h-full flex-col justify-between rounded border border-black/10 p-1" style={{ background: o.surface }}>
+                          <span className="block h-1.5 w-2/3 rounded-full" style={{ background: o.text, opacity: 0.55 }} />
+                          <span className="flex items-center gap-1">
+                            <span className="size-2.5 rounded-full" style={{ background: o.brand, boxShadow: o.value === 'cyber' ? `0 0 6px ${o.brand}` : undefined }} />
+                            <span className="block h-1 w-1/3 rounded-full" style={{ background: o.brand, opacity: 0.7 }} />
+                          </span>
+                        </span>
+                      </span>
+                    )}
+                    <span className={`block px-2 py-1.5 text-xs font-medium ${active ? 'text-brand' : 'text-content'}`}>{o.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {auth.me?.kind === 'user' ? <p className="text-xs text-subtle">{t('settings.themeSaved')}</p> : null}
             <div>
               <p className="label">{t('settings.language')}</p>
               <SegmentedControl<Language>
