@@ -149,6 +149,25 @@ python backend/manage.py photo_report --missing  # 只列還沒有照片的
 > `photo_credit` / `photo_source_url`，前端也會顯示，方便日後追溯或撤換。
 > 內部教育訓練通常風險較低，對外發布請先確認授權，或加 `--rights` 只抓標示可自由使用的圖。
 
+### 手動匯入（不需要任何金鑰）
+
+挑好的圖直接丟資料夾，用檔名決定掛到哪裡：
+
+```bash
+python backend/manage.py import_photos D:\photos --dry-run   # 先看對應關係
+python backend/manage.py import_photos D:\photos --credit "翻攝自原廠型錄"
+```
+
+| 檔名 | 掛到 |
+|---|---|
+| `MEC-01.jpg` | 元件知識卡 MEC-01 |
+| `aoi/belt-conveyor.jpg` | AOI 設備的 belt-conveyor 元件（子資料夾＝設備 slug） |
+| `aoi__belt-conveyor.jpg` | 同上，用雙底線分隔 |
+| `frl.jpg` | 所有設備裡 slug 為 frl 的元件 |
+
+會驗證檔案真的是圖片、副檔名依實際格式決定，對不到的檔名會列出來而不是默默跳過。
+搭配 `Docs/photo-candidates.html` 的原廠連結挑圖，是目前最務實的做法。
+
 ### 來源三：公司自行拍攝
 
 1. 把照片放到 `backend/media/components/<設備 slug>/<元件 slug>.jpg`（也支援 png / webp）
@@ -174,7 +193,9 @@ python backend/manage.py photo_report --missing  # 只列還沒有照片的
 |---|---|---|
 | 學習地圖 | `/learn` | 3 個 Level、9 個章節；**修完一級的全部章節才解鎖下一級** |
 | 章節 | `/learn/<課程>/<章節>` | Markdown 教材 + 本章元件卡 + 標記完成；部分章節可跳到對應設備的 3D 頁 |
-| 技術知識庫 | `/knowledge` | 185 張元件知識卡（功用／安裝位置／現場重點），依 8 個系統分類 + 全文搜尋 |
+| 全站搜尋 | `/search` | 一次搜元件知識卡、設備元件、課程章節、技術文檔與實戰題目；**錯誤碼可直接搜**（如 `0x001B`、`-1073807339`） |
+| 元件知識卡 | `/knowledge` | 185 張元件知識卡（功用／安裝位置／現場重點），依 8 個系統分類 + 全文搜尋 |
+| 技術文檔 | `/docs` | 11 篇技術文檔（通訊協定、運動控制、視覺、除錯與錯誤碼速查），依分類與標籤篩選 |
 | 來料辨識 | `/identify` | 12 組「看到這個外觀 → 怎麼分辨 → 要核對什麼 → 常見收錯」 |
 | 隨堂測驗 | `/quiz` | 15 題單選，**由後端判題**（前端拿不到答案），登入後留作答紀錄 |
 | 實戰演練 | `/projects` | Mini Project 規格與驗收標準、提交 repo；導師在同一頁批改與評分 |

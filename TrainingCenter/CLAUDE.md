@@ -22,11 +22,13 @@
 - 元件照片兩條路：`manage.py fetch_photos`（Wikimedia Commons，依 seed 的 `photo_query`，`|` 分隔備用關鍵字）／`manage.py fetch_google_photos`（Google Custom Search JSON API，依 `backend/catalog/seed/image_queries.json`，同時處理 Component 與 KnowledgeCard）。後者需要 `.env` 的 `GOOGLE_CSE_API_KEY` 與 `GOOGLE_CSE_ID`。
 - 照片存檔路徑是前端寫死的約定：元件 `media/components/<設備 slug>/<元件 slug>.<ext>`、知識卡 `media/knowledge/<料號>.<ext>`。副檔名依實際解碼格式決定，不要照網址猜。
 - `manage.py photo_report` 產生 `Docs/photo-report.html` 縮圖對照表，用來檢查哪些圖抓錯（不分來源）。抓錯就改 `image_queries.json` 再 `--code/--slug ... --force` 單獨重抓。
+- `manage.py import_photos <資料夾>` 手動匯入（不需金鑰）：檔名 `MEC-01.jpg`→知識卡、`aoi/xxx.jpg` 或 `aoi__xxx.jpg`→該設備元件、`xxx.jpg`→所有同 slug 元件。
 - 抓圖指令不加 `--force` 只會處理 `photo` 為空的項目，所以 `--limit` 分天跑會自動接續，不需要額外記狀態。
 
 ## 驗證清單（改完必做）
 - 後端：`python backend/manage.py check`、`manage.py test training`；改 seed 後 `load_seed`（可重複執行，以 slug 為鍵 upsert）。
 - 前端：`cd frontend && npx tsc -p tsconfig.app.json --noEmit && npx vite build`。
+- `catalog/seed/*.json` 不是每個檔都是設備定義（`image_queries.json` 是抓圖關鍵字），`load_seed` 會跳過沒有頂層 `slug` 的檔案。往那個目錄丟新檔案前先確認。
 - 3D／版面改動：啟動兩個 server 後用 Playwright 截圖確認（scratchpad 內裝 playwright，Chromium 已在 ~/AppData/Local/ms-playwright）。
 
 ## 3D（text-to-cad CAD 為主）
@@ -35,6 +37,12 @@
 - 可動節點：`sub_compound(name, geometry + anim_datums(kind, pivot_m, axis_dir))`；前端 `GltfScene.tsx` 讀 `_pivot`／`_axis`／`_anim_<kind>`。
 - cadgen 的 `add_module(...).location` 不會匯出；幾何用 `place()` 烘成絕對座標。
 - `comp()` 會遞迴攤平巢狀清單；`export_gltf` 要 `unit=Unit.MM`。
+
+## 3D 動畫：一個場景一條時間軸
+- `Parts.tsx` 的 `useCycle(steps)` 是場景的循環計時器，回傳 ref（不觸發重繪），場景在自己的 `useFrame` 讀 `.i`／`.p`。步驟名稱變動會經 `SceneCtx.onStep` 回報，Viewer 顯示在右上角。
+- 動作要由循環驅動，不要各自跑自由正弦波：`Cylinder` 給 `drive`（命令 0/1）＋ `onPos`（回報實際位置）、`Blinker` 給 `on`、`BeltConveyor`／`RollerConveyor` 給 `run`、`RobotArm` 給 `pose`。這些 prop 都是選填，沒給就沿用舊的自由動作。
+- 感測器要看**實際位置**才亮（`pos > 0.96`），不要照步驟亮 —— 這樣才演得出教材的「程式要等到位訊號，不是等時間」。
+- 緩動用 `ease`（S 形，載台）與 `cushion`（氣缸，末端有緩衝沉降）。
 
 ## 3D 程序化模型慣例（備援場景）
 - 共用零件在 `frontend/src/three/Parts.tsx`：`RobotArm`（關節殼＋膠囊連桿重疊，轉動不露空隙）、`BeltConveyor`／`RollerConveyor`（含頭尾滾輪、側框、`Frame` 機架）、`Cylinder`、`Fan`、`Cabinet`。

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { IxCard, IxCardContent, IxContentHeader, IxPill, IxSpinner, IxTabItem, IxTabs, IxTypography } from '@siemens/ix-react';
 import { api, type Component, type Domain, type Equipment, DOMAIN_COLOR, DOMAIN_LABEL, DOMAINS } from '../api';
 import { Viewer, type HotspotItem } from '../three/Viewer';
@@ -9,6 +9,7 @@ const GUIDE_ICON: Record<string, string> = { bolt: '⚡', air: '💨', water: '�
 
 export default function EquipmentPage() {
   const { slug = '' } = useParams();
+  const [params] = useSearchParams();
   const [eq, setEq] = useState<Equipment | null>(null);
   const [domain, setDomain] = useState<Domain>('mechanical');
   const [selected, setSelected] = useState<Component | null>(null);
@@ -21,6 +22,22 @@ export default function EquipmentPage() {
     setDomain('mechanical');
     api.getEquipment(slug).then(setEq).catch(console.error);
   }, [slug]);
+
+  // 從全站搜尋帶 ?component=<id> 進來時，載入後直接選取並捲到該元件
+  const wanted = params.get('component');
+  useEffect(() => {
+    if (!eq || !wanted) return;
+    const id = Number(wanted);
+    for (const m of eq.modules) {
+      const c = m.components.find((x) => x.id === id);
+      if (c) {
+        setSelected(c);
+        setDomain(m.domain);
+        pendingScroll.current = c.id;
+        return;
+      }
+    }
+  }, [eq, wanted]);
 
   // 3D 可點選全部元件（不限目前分頁）；清單只顯示目前分頁
   const allHotspots: HotspotItem[] = useMemo(

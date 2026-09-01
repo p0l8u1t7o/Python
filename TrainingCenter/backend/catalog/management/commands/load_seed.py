@@ -24,6 +24,11 @@ class Command(BaseCommand):
         media_root = Path(settings.MEDIA_ROOT)
         for path in sorted(SEED_DIR.glob("*.json")):
             data = json.loads(path.read_text(encoding="utf-8"))
+            # seed 目錄裡不是每個 json 都是設備定義（例如 image_queries.json 是抓圖關鍵字），
+            # 沒有頂層 slug 的就跳過，並印出來避免無聲忽略。
+            if not isinstance(data, dict) or "slug" not in data:
+                self.stdout.write(f"  跳過 {path.name}（不是設備定義）")
+                continue
             modules_data = data.pop("modules", [])
             equipment, _ = Equipment.objects.update_or_create(slug=data["slug"], defaults=data)
             for m_order, m in enumerate(modules_data):

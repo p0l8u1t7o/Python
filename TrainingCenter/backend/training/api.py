@@ -4,6 +4,7 @@
 登入用 Django session：前端先 GET /api/training/csrf 取得 cookie，POST 時帶 X-CSRFToken。
 """
 
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -17,6 +18,8 @@ from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja.security import django_auth
 from ninja.utils import check_csrf
+
+from catalog.models import Component
 
 from .models import (
     Article,
@@ -155,6 +158,172 @@ def list_articles(request, category: str = "", tag: str = "", q: str = ""):
 @router.get("/articles/{slug}", response=ArticleOut)
 def get_article(request, slug: str):
     return get_object_or_404(Article.objects.select_related("author"), slug=slug, published=True)
+
+
+@router.get("/tags", response=list[str])
+def list_tags(request):
+    """技術文檔用過的所有標籤，供前端做標籤雲／篩選。"""
+    tags: set[str] = set()
+    for row in Article.objects.filter(published=True).values_list("tags", flat=True):
+        tags.update(t for t in (row or []) if t)
+    return sorted(tags, key=str.lower)
+
+
+# ---------------------------------------------------------------- 全站搜尋
+
+
+class SearchHit(Schema):
+    """一筆搜尋結果。kind 決定前端怎麼導頁。"""
+
+    kind: str          # card / component / lesson / article / project
+    title: str
+    subtitle: str      # 英文名、所屬設備、所屬課程…
+    snippet: str       # 命中的內文片段
+    badge: str         # 料號、分類、Level…
+    url: str           # 前端路由
+    score: int
+
+
+SNIPPET = 110
+
+
+_MD = [
+    (re.compile(r"```.*?```", re.S), " "),          # 程式碼區塊
+    (re.compile(r"!?\[([^\]]*)\]\([^)]*\)"), r"\1"),  # 連結／圖片只留文字
+    (re.compile(r"[*_`#>]+"), ""),                    # 粗體、標題、引言、行內碼
+    (re.compile(r"^\s*[-|:]+\s*$", re.M), " "),       # 表格分隔列
+    (re.compile(r"\|"), "　"),                        # 表格欄位分隔
+]
+
+
+def _snippet(text: str, needle: str) -> str:
+    """截出包含關鍵字的一小段內文，讓使用者知道為什麼命中。
+
+    內容是 Markdown，直接截會夾帶 `**`、`|`、`[]()` 這些符號，先清掉再截。
+    """
+    if not text:
+        return ""
+    for pattern, repl in _MD:
+        text = pattern.sub(repl, text)
+    flat = " ".join(text.split())
+    i = flat.lower().find(needle.lower())
+    if i < 0:
+        return flat[:SNIPPET] + ("…" if len(flat) > SNIPPET else "")
+    start = max(0, i - SNIPPET // 3)
+    out = flat[start : start + SNIPPET]
+    return ("…" if start else "") + out + ("…" if start + SNIPPET < len(flat) else "")
+
+
+def _rank(q: str, *fields: str) -> int:
+    """標題命中給高分、內文命中給低分；完全相符再加權。"""
+    ql = q.lower()
+    score = 0
+    for weight, text in zip((10, 6, 3, 2, 2, 2), fields):
+        t = (text or "").lower()
+        if not t:
+            continue
+        if t == ql:
+            score += weight * 3
+        elif t.startswith(ql):
+            score += weight * 2
+        elif ql in t:
+            score += weight
+    return score
+
+
+@router.get("/search", response=list[SearchHit])
+def search(request, q: str, kind: str = "", limit: int = 60):
+    """跨知識卡、設備元件、課程章節、技術文檔、實戰題目的全站搜尋。"""
+    q = (q or "").strip()
+    if len(q) < 1:
+        return []
+    hits: list[dict] = []
+    want = {k for k in kind.split(",") if k} or None
+
+    def allowed(k: str) -> bool:
+        return want is None or k in want
+
+    if allowed("card"):
+        qs = KnowledgeCard.objects.filter(
+            Q(name__icontains=q) | Q(name_en__icontains=q) | Q(code__icontains=q)
+            | Q(function__icontains=q) | Q(install_location__icontains=q) | Q(tip__icontains=q)
+        )
+        for c in qs[:limit]:
+            hits.append({
+                "kind": "card",
+                "title": c.name,
+                "subtitle": c.name_en,
+                "snippet": _snippet(c.function + "　" + c.tip, q),
+                "badge": f"{c.code}　{c.get_category_display()}",
+                "url": f"/knowledge?q={c.code}",
+                "score": _rank(q, c.name, c.code, c.name_en, c.function, c.install_location, c.tip),
+            })
+
+    if allowed("component"):
+        qs = Component.objects.select_related("module__equipment").filter(
+            Q(name__icontains=q) | Q(function__icontains=q) | Q(brand__icontains=q)
+            | Q(part_number__icontains=q) | Q(install_location__icontains=q)
+        )
+        for c in qs[:limit]:
+            eq = c.module.equipment
+            hits.append({
+                "kind": "component",
+                "title": c.name,
+                "subtitle": f"{eq.name} / {c.module.name}",
+                "snippet": _snippet(c.function, q),
+                "badge": c.brand or c.module.get_domain_display(),
+                "url": f"/equipment/{eq.slug}?component={c.id}",
+                "score": _rank(q, c.name, c.part_number, c.brand, c.function, c.install_location),
+            })
+
+    if allowed("lesson"):
+        qs = Lesson.objects.select_related("course").filter(
+            Q(title__icontains=q) | Q(summary__icontains=q) | Q(content_markdown__icontains=q)
+        )
+        for ls in qs[:limit]:
+            hits.append({
+                "kind": "lesson",
+                "title": ls.title,
+                "subtitle": ls.course.title,
+                "snippet": _snippet(ls.content_markdown or ls.summary, q),
+                "badge": f"Level {ls.course.level}",
+                "url": f"/learn/{ls.course.slug}/{ls.slug}",
+                "score": _rank(q, ls.title, "", ls.summary, ls.content_markdown),
+            })
+
+    if allowed("article"):
+        qs = Article.objects.filter(published=True).filter(
+            Q(title__icontains=q) | Q(summary__icontains=q)
+            | Q(content_markdown__icontains=q) | Q(tags__icontains=q)
+        )
+        for a in qs[:limit]:
+            hits.append({
+                "kind": "article",
+                "title": a.title,
+                "subtitle": "、".join(a.tags or []),
+                "snippet": _snippet(a.content_markdown or a.summary, q),
+                "badge": a.get_category_display(),
+                "url": f"/docs/{a.slug}",
+                "score": _rank(q, a.title, "", a.summary, a.content_markdown, str(a.tags)),
+            })
+
+    if allowed("project"):
+        qs = Project.objects.filter(published=True).filter(
+            Q(title__icontains=q) | Q(summary__icontains=q) | Q(spec_markdown__icontains=q)
+        )
+        for p in qs[:limit]:
+            hits.append({
+                "kind": "project",
+                "title": p.title,
+                "subtitle": p.summary,
+                "snippet": _snippet(p.spec_markdown, q),
+                "badge": f"Level {p.level}",
+                "url": f"/projects?open={p.slug}",
+                "score": _rank(q, p.title, "", p.summary, p.spec_markdown),
+            })
+
+    hits.sort(key=lambda h: -h["score"])
+    return hits[:limit]
 
 
 # ---------------------------------------------------------------- 課程

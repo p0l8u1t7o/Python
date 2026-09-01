@@ -13,6 +13,7 @@ import {
   iconBulb,
   iconCheckboxes,
   iconDocument,
+  iconDocumentInfo,
   iconEye,
   iconHome,
   iconPlant,
@@ -21,6 +22,7 @@ import {
   iconMaintenance,
   iconUser,
 } from '@siemens/ix-icons/icons';
+import HeaderSearch from './components/HeaderSearch';
 import { api, type EquipmentSummary } from './api';
 import { training, type Me } from './training';
 
@@ -66,7 +68,10 @@ export default function App() {
 
   return (
     <IxApplication>
-      <IxApplicationHeader name="設備教育訓練中心" />
+      <IxApplicationHeader name="設備教育訓練中心">
+        {/* default slot 會排在橫幅右側 */}
+        <HeaderSearch />
+      </IxApplicationHeader>
       <IxMenu>
         {item('/', iconHome, '設備總覽')}
         {equipment.map((e) => (
@@ -80,7 +85,8 @@ export default function App() {
           </IxMenuItem>
         ))}
         {item('/learn', iconBulb, '學習地圖')}
-        {item('/knowledge', iconBook, '技術知識庫')}
+        {item('/knowledge', iconBook, '元件知識卡')}
+        {item('/docs', iconDocumentInfo, '技術文檔')}
         {item('/identify', iconEye, '來料辨識')}
         {item('/quiz', iconCheckboxes, '隨堂測驗')}
         {item('/projects', iconDocument, '實戰演練')}

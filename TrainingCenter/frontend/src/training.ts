@@ -97,6 +97,32 @@ export interface Submission {
   reviewed_at: string | null;
 }
 
+export interface Article {
+  id: number;
+  slug: string;
+  title: string;
+  category: ArticleCategory;
+  tags: string[];
+  summary: string;
+  updated_at: string;
+  author: string | null;
+  content_markdown?: string;
+}
+
+export type ArticleCategory = 'hardware' | 'vision' | 'motion' | 'software' | 'troubleshooting';
+
+export type SearchKind = 'card' | 'component' | 'lesson' | 'article' | 'project';
+
+export interface SearchHit {
+  kind: SearchKind;
+  title: string;
+  subtitle: string;
+  snippet: string;
+  badge: string;
+  url: string;
+  score: number;
+}
+
 export interface Me {
   authenticated: boolean;
   username: string;
@@ -139,6 +165,26 @@ export const STATUS_LABEL: Record<Submission['status'], string> = {
   passed: '通過',
   rejected: '退回',
 };
+
+export const ARTICLE_CATEGORY_LABEL: Record<ArticleCategory, string> = {
+  hardware: '硬體與通訊',
+  vision: '視覺與 AI',
+  motion: '運動控制',
+  software: '軟體與系統',
+  troubleshooting: '除錯與 Log 分析',
+};
+
+export const ARTICLE_CATEGORIES = Object.keys(ARTICLE_CATEGORY_LABEL) as ArticleCategory[];
+
+export const SEARCH_KIND_LABEL: Record<SearchKind, string> = {
+  card: '元件知識卡',
+  component: '設備元件',
+  lesson: '課程章節',
+  article: '技術文檔',
+  project: '實戰題目',
+};
+
+export const SEARCH_KINDS = Object.keys(SEARCH_KIND_LABEL) as SearchKind[];
 
 export const ROLE_LABEL: Record<string, string> = {
   student: '學員',
@@ -211,6 +257,11 @@ export const training = {
   listCards: (p: { category?: string; q?: string; component_id?: number } = {}) =>
     get<KnowledgeCard[]>(`/cards${qs(p)}`),
   listIdentification: () => get<IdentificationGuide[]>('/identification'),
+  listArticles: (p: { category?: string; tag?: string; q?: string } = {}) =>
+    get<Article[]>(`/articles${qs(p)}`),
+  getArticle: (slug: string) => get<Required<Article>>(`/articles/${slug}`),
+  listTags: () => get<string[]>('/tags'),
+  search: (q: string, kind = '') => get<SearchHit[]>(`/search${qs({ q, kind })}`),
 
   // 課程
   listCourses: () => get<Course[]>('/courses'),

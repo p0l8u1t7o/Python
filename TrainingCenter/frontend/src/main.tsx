@@ -15,6 +15,8 @@ import IdentificationPage from './pages/IdentificationPage';
 import QuizPage from './pages/QuizPage';
 import ProjectsPage from './pages/ProjectsPage';
 import ProfilePage from './pages/ProfilePage';
+import SearchPage from './pages/SearchPage';
+import DocsPage from './pages/DocsPage';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -26,6 +28,9 @@ createRoot(document.getElementById('root')!).render(
           <Route path="learn" element={<LearningPathPage />} />
           <Route path="learn/:course/:lesson" element={<LessonPage />} />
           <Route path="knowledge" element={<KnowledgePage />} />
+          <Route path="search" element={<SearchPage />} />
+          <Route path="docs" element={<DocsPage />} />
+          <Route path="docs/:slug" element={<DocsPage />} />
           <Route path="identify" element={<IdentificationPage />} />
           <Route path="quiz" element={<QuizPage />} />
           <Route path="projects" element={<ProjectsPage />} />

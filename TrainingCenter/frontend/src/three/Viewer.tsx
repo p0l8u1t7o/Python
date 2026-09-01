@@ -145,6 +145,8 @@ interface ViewerProps {
 export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, onSelect }: ViewerProps) {
   const [view, setView] = useState('iso');
   const [playing, setPlaying] = useState(true);
+  // 目前的動作步驟（由場景的 useCycle 回報），讓學員看得懂機台正在做什麼
+  const [step, setStep] = useState('');
   const [hovered, setHovered] = useState<string | null>(null);
   const Scene = SCENES[sceneKey];
 
@@ -172,6 +174,12 @@ export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, 
         ))}
         <IxIconButton size="24" variant="subtle-secondary" icon={playing ? iconPause : iconPlay} onClick={() => setPlaying((p) => !p)} />
       </div>
+      {step && (
+        <div className="viewer-step">
+          <span className="viewer-step-dot" />
+          {step}
+        </div>
+      )}
       <div className="viewer-legend">拖曳旋轉 · 滾輪縮放 · 右鍵平移 · 滑鼠移到零件上會高亮並顯示名稱，點擊查看說明</div>
       <Canvas
         shadows
@@ -183,7 +191,7 @@ export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, 
         <color attach="background" args={['#1f242b']} />
         <fog attach="fog" args={['#1f242b', 12, 30]} />
         <Lighting />
-        <SceneCtx.Provider value={{ selected: selected?.mesh_name ?? null, hovered, playing, onSelect: selectByMesh, onHover: setHovered }}>
+        <SceneCtx.Provider value={{ selected: selected?.mesh_name ?? null, hovered, playing, onSelect: selectByMesh, onHover: setHovered, onStep: setStep }}>
           <Suspense fallback={null}>
             {modelFile ? (
               /* text-to-cad 整機 glb：節點名稱即 mesh_name，所有元件都有實體，不需 AutoParts */

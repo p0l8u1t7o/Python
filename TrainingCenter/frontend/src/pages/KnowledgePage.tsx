@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { IxContentHeader, IxInput, IxPill } from '@siemens/ix-react';
 import KnowledgeCards from '../components/KnowledgeCards';
 import {
@@ -13,8 +14,10 @@ import {
 /** 技術知識庫：185 張元件知識卡，依系統分類 + 全文關鍵字篩選。 */
 export default function KnowledgePage() {
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
+  const [params] = useSearchParams();
   const [cat, setCat] = useState<CardCategory | ''>('');
-  const [q, setQ] = useState('');
+  // 從搜尋頁帶料號進來時（/knowledge?q=MEC-01）直接套用
+  const [q, setQ] = useState(params.get('q') ?? '');
 
   useEffect(() => {
     training.listCards().then(setCards).catch(console.error);

@@ -15,6 +15,7 @@ from django.db import transaction
 
 from catalog.models import Component, Equipment
 from training.models import (
+    Article,
     Course,
     IdentificationGuide,
     KnowledgeCard,
@@ -98,6 +99,7 @@ class Command(BaseCommand):
         self.load_quiz()
         self.load_courses(cards)
         self.load_projects()
+        self.load_articles()
         self.link_components()
 
     # ------------------------------------------------------------------
@@ -159,6 +161,13 @@ class Command(BaseCommand):
                 | {"course": Course.objects.filter(slug=course_slug).first()},
             )
         self.stdout.write(f"專案    {Project.objects.count()}")
+
+    def load_articles(self):
+        for row in load("articles"):
+            Article.objects.update_or_create(
+                slug=row["slug"], defaults={k: v for k, v in row.items() if k != "slug"}
+            )
+        self.stdout.write(f"技術文檔 {Article.objects.count()}")
 
     def link_components(self):
         """把知識卡連到 catalog 裡的實機元件。同 slug 的元件（跨設備）一次全連。"""

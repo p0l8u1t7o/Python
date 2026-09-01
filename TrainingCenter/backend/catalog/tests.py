@@ -226,3 +226,74 @@ class CommandTests(TestCase):
         self.assertIn("完成：0 張下載", out)
         self.comp.refresh_from_db()
         self.assertFalse(self.comp.photo)
+
+
+class ImportPhotosTests(TestCase):
+    """手動匯入：檔名怎麼對到元件／知識卡、存到哪裡。"""
+
+    def setUp(self):
+        self.media = Path(tempfile.mkdtemp())
+        self.src = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.media, True)
+        self.addCleanup(shutil.rmtree, self.src, True)
+        eq = Equipment.objects.create(slug="aoi", name="AOI", summary="s", scene_key="aoi")
+        eq2 = Equipment.objects.create(slug="transfer", name="移載", summary="s", scene_key="transfer")
+        for e in (eq, eq2):
+            m = Module.objects.create(equipment=e, slug="m", name="模組", domain="mechanical")
+            Component.objects.create(module=m, slug="frl", name="FRL", function="f", install_location="l")
+        Module.objects.filter(equipment=eq).first().components.create(
+            slug="belt-conveyor", name="皮帶", function="f", install_location="l"
+        )
+
+    def write(self, rel: str):
+        p = self.src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(png_bytes())
+        return p
+
+    def run_cmd(self, **kw):
+        out, err = io.StringIO(), io.StringIO()
+        with override_settings(MEDIA_ROOT=self.media):
+            call_command("import_photos", str(self.src), stdout=out, stderr=err, **kw)
+        return out.getvalue() + err.getvalue()
+
+    def test_card_code_filename(self):
+        from training.models import KnowledgeCard
+
+        card = KnowledgeCard.objects.create(
+            code="MEC-01", category="mech", name="機架", function="f", install_location="l"
+        )
+        self.write("MEC-01.png")
+        self.run_cmd()
+        card.refresh_from_db()
+        self.assertEqual(card.photo.name, "knowledge/MEC-01.png")
+        self.assertTrue((self.media / "knowledge/MEC-01.png").exists())
+
+    def test_subfolder_selects_equipment(self):
+        self.write("aoi/belt-conveyor.png")
+        self.run_cmd()
+        c = Component.objects.get(slug="belt-conveyor")
+        self.assertEqual(c.photo.name, "components/aoi/belt-conveyor.png")
+
+    def test_double_underscore_selects_equipment(self):
+        self.write("transfer__frl.png")
+        self.run_cmd()
+        by_eq = {c.module.equipment.slug: c.photo.name for c in Component.objects.filter(slug="frl")}
+        self.assertEqual(by_eq["transfer"], "components/transfer/frl.png")
+        self.assertEqual(by_eq["aoi"], "", "指定設備時不該掛到其他設備")
+
+    def test_bare_slug_applies_to_every_equipment(self):
+        self.write("frl.png")
+        self.run_cmd()
+        names = {c.photo.name for c in Component.objects.filter(slug="frl")}
+        self.assertEqual(names, {"components/aoi/frl.png", "components/transfer/frl.png"})
+
+    def test_unmatched_filename_is_reported_not_silent(self):
+        self.write("NOPE-99.png")
+        self.assertIn("對不到", self.run_cmd())
+
+    def test_dry_run_writes_nothing(self):
+        self.write("aoi/belt-conveyor.png")
+        self.run_cmd(dry_run=True)
+        self.assertFalse(Component.objects.get(slug="belt-conveyor").photo)
+        self.assertFalse(any(self.media.rglob("*.png")))
