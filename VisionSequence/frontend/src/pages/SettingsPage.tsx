@@ -157,6 +157,7 @@ export function SettingsPage() {
                 }}
                 options={[
                   { value: 'zh-Hant', label: '繁體中文' },
+                  { value: 'zh-Hans', label: '简体中文' },
                   { value: 'en', label: 'English' },
                 ]}
               />

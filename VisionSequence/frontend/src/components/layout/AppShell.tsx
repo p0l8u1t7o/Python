@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Brain, Cable, Camera, ChevronDown, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Moon, Plug, Settings, ShieldCheck, Sun, UserRound, Users, Workflow } from 'lucide-react'
+import { Brain, Cable, Camera, ChevronDown, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, UserRound, Users, Workflow } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { LockBanner } from '@/components/auth/LockBanner'
@@ -14,7 +14,6 @@ import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
 import { useCapacity, useFlow } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
-import { useTheme } from '@/providers/ThemeProvider'
 
 const NAV = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true, admin: false },
@@ -146,7 +145,6 @@ function Breadcrumb() {
 
 export function AppShell() {
   const { t } = useTranslation()
-  const theme = useTheme()
   const auth = useAuth()
   const [collapsed, setCollapsed] = useState(readCollapsed)
   // 鎖定事件：流程串流會濾掉沒有 flow_id 的事件，所以這裡另開一條只聽 lock 的全域串流。
@@ -189,9 +187,6 @@ export function AppShell() {
           <span className="ml-auto flex items-center gap-2">
             <GlobalSearch />
             <CapacityPill />
-            <button type="button" onClick={theme.toggle} className="btn-icon" title={t('nav.theme')} aria-label={t('nav.theme')} data-testid="theme-toggle">
-              {theme.resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
             <UserMenu />
           </span>
         </header>

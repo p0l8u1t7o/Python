@@ -167,6 +167,27 @@
 /* 霓虹聚焦光暈與標題微光 */
 .theme-cyber :focus-visible { box-shadow: 0 0 8px rgb(0 255 136 / 0.5); }
 .theme-cyber h1, .theme-cyber h2 { text-shadow: 0 0 12px rgb(0 255 136 / 0.18); }
+/* 卡片＝holographic 面板（Style.md）：霓虹綠描邊＋光暈，左上/右下 HUD 角落括號 */
+.theme-cyber .card {
+  position: relative;
+  border-color: rgb(0 255 136 / 0.35);
+  box-shadow: 0 0 6px rgb(0 255 136 / 0.12), 0 0 18px rgb(0 255 136 / 0.06);
+}
+.theme-cyber .card::before,
+.theme-cyber .card::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--brand);
+  pointer-events: none;
+}
+.theme-cyber .card::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.theme-cyber .card::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.theme-cyber .tile-count {
+  border-color: rgb(0 255 136 / 0.35);
+  box-shadow: 0 0 6px rgb(0 255 136 / 0.12), 0 0 18px rgb(0 255 136 / 0.06);
+}
 
 @theme inline {
   --color-canvas: var(--canvas);

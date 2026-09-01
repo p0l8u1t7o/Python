@@ -12,7 +12,6 @@ const en = {
     help: 'Help',
     integration: 'Integration',
     connections: 'Connections',
-    theme: 'Toggle theme',
   },
   auth: {
     loginTitle: 'Sign in',

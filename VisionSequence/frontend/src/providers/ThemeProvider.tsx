@@ -29,7 +29,6 @@ interface ThemeContextValue {
   setPreference: (value: ThemePreference) => void
   /** 套用伺服端儲存的偏好（不回寫伺服器；AuthProvider 用） */
   adoptRemote: (value: ThemePreference) => void
-  toggle: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
@@ -105,7 +104,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       resolved,
       setPreference,
       adoptRemote,
-      toggle: () => setPreference(resolved === 'dark' ? 'light' : 'dark'),
     }),
     [preference, active, resolved, setPreference, adoptRemote],
   )

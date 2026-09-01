@@ -52,6 +52,7 @@
 
 ## 前端命名
 - UI 文案、元件名、i18n key 一律照 `docs/glossary.html`；新名詞先加表再用。
+- 語系：zh-Hant（完整、fallback）、zh-Hans（OpenCC tw2sp 由 zh-Hant 轉出＋詞彙微調「缺省→默认」；改文案後記得重轉或同步）、en（部分）。
 
 ## 帳號與鎖定（apps/accounts）
 - 身分在 `security.py`：`Principal(kind=integrator|user|bootstrap)`；`request.auth` 就是它。整合方 = API 金鑰、永遠可執行；沒有任何使用者時放行 bootstrap 讓 `/auth/setup` 能建帳號。

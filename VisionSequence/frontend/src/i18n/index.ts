@@ -7,14 +7,15 @@ import { initReactI18next } from 'react-i18next'
 
 import { LANGUAGE_KEY } from '@/lib/api'
 import en from './locales/en'
+import zhHans from './locales/zh-Hans'
 import zhHant from './locales/zh-Hant'
 
-export type Language = 'zh-Hant' | 'en'
+export type Language = 'zh-Hant' | 'zh-Hans' | 'en'
 
 export function storedLanguage(): Language {
   try {
     const value = localStorage.getItem(LANGUAGE_KEY)
-    return value === 'en' ? 'en' : 'zh-Hant'
+    return value === 'en' || value === 'zh-Hans' ? value : 'zh-Hant'
   } catch {
     return 'zh-Hant'
   }
@@ -33,6 +34,7 @@ export function setLanguage(language: Language) {
 void i18next.use(initReactI18next).init({
   resources: {
     'zh-Hant': { translation: zhHant },
+    'zh-Hans': { translation: zhHans },
     en: { translation: en },
   },
   lng: storedLanguage(),

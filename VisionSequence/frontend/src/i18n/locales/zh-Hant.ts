@@ -15,7 +15,6 @@ const zhHant = {
     integration: '整合',
     dl: '深度學習',
     connections: '連線',
-    theme: '切換深／淺色',
     section: '功能',
     collapse: '收合側欄',
     expand: '展開側欄',
