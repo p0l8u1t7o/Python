@@ -124,6 +124,12 @@ const en = {
     permission_denied: 'Permission denied',
     not_owner: 'Only administrators can modify shared flows; duplicate it first',
   },
+  search: {
+    placeholder: 'Search the platform…',
+    searching: 'Searching…',
+    noResults: 'No results for "{{q}}"',
+    groups: { pages: 'Pages', flows: 'Flows', tools: 'Tools', sources: 'Image sources', connections: 'Connections', assets: 'Assets' },
+  },
   capacity: { label: '{{active}}/{{max}} busy', idle: 'No flow is running' },
   status: {
     ok: 'OK',

@@ -10,6 +10,7 @@ import { Cable, Camera, ChevronDown, ChevronRight, HelpCircle, Images, KeyRound,
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { LockBanner } from '@/components/auth/LockBanner'
+import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
 import { useCapacity, useFlow } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
@@ -185,6 +186,7 @@ export function AppShell() {
           </button>
           <Breadcrumb />
           <span className="ml-auto flex items-center gap-2">
+            <GlobalSearch />
             <CapacityPill />
             <button type="button" onClick={theme.toggle} className="btn-icon" title={t('nav.theme')} aria-label={t('nav.theme')} data-testid="theme-toggle">
               {theme.resolved === 'dark' ? <Sun size={16} /> : <Moon size={16} />}

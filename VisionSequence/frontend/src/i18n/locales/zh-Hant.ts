@@ -167,6 +167,12 @@ const zhHant = {
     source_not_found: '影像來源不存在',
     bad_json: 'JSON 格式錯誤',
   },
+  search: {
+    placeholder: '搜尋平台內容…',
+    searching: '搜尋中…',
+    noResults: '沒有符合「{{q}}」的結果',
+    groups: { pages: '頁面', flows: '流程', tools: '工具', sources: '影像來源', connections: '連線', assets: '資產' },
+  },
   capacity: {
     label: '{{active}}/{{max}} 忙碌',
     idle: '目前沒有流程在執行',
