@@ -141,6 +141,40 @@ class PatchSegmentTests(SimpleTestCase):
 
 
 class YoloTrainerTests(SimpleTestCase):
+    def test_resolve_model(self):
+        from unittest import mock
+
+        from apps.vision.dl.yolo import _ASSET_NAME, resolve_model
+
+        # 官方資產名稱樣式（版本數字必要：yolo.pt / yolon.pt 這類不存在的名稱要攔下）
+        for name in ("yolov8n-seg.pt", "yolo11s-seg.pt", "yolov8x.pt"):
+            self.assertTrue(_ASSET_NAME.match(name), name)
+        for name in ("best.pt", "yolo.pt", "yolon.pt"):
+            self.assertFalse(_ASSET_NAME.match(name), name)
+        # 快取與下載全部隔離到暫存資料夾，不碰正式 ASSET_DIR
+        folder = temp_dir()
+        try:
+            with mock.patch("apps.vision.dl.yolo._weights_dir", return_value=folder):
+                path = os.path.join(folder, "custom.pt")
+                open(path, "wb").write(b"x")
+                self.assertEqual(resolve_model(path), path)
+                # 非官方名稱且不存在 → 原樣交給 ultralytics
+                self.assertEqual(resolve_model("D:/nope/best.pt"), "D:/nope/best.pt")
+                # 已下載過的底模直接回快取路徑
+                cached = os.path.join(folder, "yolov8n-seg.pt")
+                open(cached, "wb").write(b"x")
+                self.assertEqual(resolve_model("yolov8n-seg.pt"), cached)
+                # 下載失敗 → TrainError 附說明；.part 暫存檔要清乾淨
+                import urllib.error
+
+                with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("no net")):
+                    with self.assertRaises(TrainError) as ctx:
+                        resolve_model("yolo11n-seg.pt")
+                    self.assertIn("下載失敗", str(ctx.exception))
+                self.assertFalse([n for n in os.listdir(folder) if n.endswith(".part")])
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
     def test_catalogue_and_missing_deps(self):
         items = {t["kind"]: t for t in dl_base.catalogue()}
         self.assertIn("yolo_seg", items)

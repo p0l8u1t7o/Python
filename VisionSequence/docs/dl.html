@@ -99,7 +99,7 @@
 <h2 id="shapes">4. shapes 標記編輯器（分割／偵測）</h2>
 <p>label_mode=<code>shapes</code> 的模型（語意分割、實例分割）用<strong>標記編輯器</strong>：一張影像多個 polygon／bbox 實例，各有類別。座標一律 <strong>0~1 正規化</strong>儲存（與 YOLO txt 一致），只在畫布上換算像素。</p>
 <ul>
-<li><strong>編輯</strong>：拖曳畫新形狀（多邊形先拉出四角形再修）、拖曳頂點、雙擊邊線插點、Alt+點刪點、Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）。快捷鍵：V 選取、N 多邊形、B 框、O 自動優化、←/→ 換張、0~9 指定類別。</li>
+<li><strong>編輯</strong>：畫布左側是<strong>大圖示工具欄</strong>（選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵），上方是狀態列（上一張/下一張、樣本尺寸、標記數、未儲存指示、快捷鍵說明、儲存）與<strong>大顆類別按鈕</strong>（色點＋數字鍵標示＋計數）。操作：拖曳畫新形狀（多邊形先拉出四角形再修）、拖曳頂點、雙擊邊線插點、Alt+點刪點、Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）；快捷鍵 V/N/B/O、←/→ 換張、0~9 指定類別。</li>
 <li><strong>自動優化（輪廓貼邊）</strong>：前端純 JS——在降到最長邊 1280 的灰階梯度圖上，沿各頂點法線搜尋最強邊緣（帶位移懲罰）、迭代 3 次並平滑、Douglas–Peucker 簡化到 ≤120 點。不自動儲存，Ctrl+Z 可還原。</li>
 <li><strong>縮圖牆巡檢</strong>：左側縮圖直接畫上標記輪廓，快速看出哪些張標壞了；有自動標記建議的顯示「?」。</li>
 <li><strong>自動標記</strong>：shapes 模式的建議是整張圖的形狀集合（半透明畫在編輯器與縮圖上），可單張「接受建議」或整批接受；接受後記為 auto 待人工複查。</li>
@@ -110,7 +110,7 @@
 <tr><th>kind</th><th>任務／標記</th><th>做法</th><th>推論工具</th><th>依賴</th></tr>
 <tr><td><code>mlp_classify</code></td><td>影像分類（classes）</td><td>MLP、numpy 訓練、手刻 ONNX；前處理與工具預設一致</td><td>dl_classify</td><td>無（內建）</td></tr>
 <tr><td><code>patch_segment</code></td><td>語意分割（shapes）</td><td>patch 分類器（背景＋各類別）numpy 訓練 → 匯出<strong>全卷積 ONNX</strong>（Conv k×k → Relu → Conv 1×1，任意輸入尺寸）；CPU 數秒。適合顏色／紋理類區域與瑕疵</td><td>dl_segment（labels 首項為 background）</td><td>無（內建）</td></tr>
-<tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集 → 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 匯出 ONNX；best.pt 保留供自動標記與續訓</td><td><strong>dl_instance</strong>（新工具：letterbox＋NMS＋mask 合成，輸出每個實例的輪廓／類別／分數）</td><td><strong>可選</strong>：<code>pip install ultralytics</code>（含 torch，約 2~3GB；缺件時開始訓練會提示這行指令，平台其餘功能不受影響）</td></tr>
+<tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集 → 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 匯出 ONNX；best.pt 保留供自動標記與續訓。<strong>官方底模自動下載</strong>：基底模型填 yolov8n-seg.pt 等官方名稱時，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>（訓練 log 會顯示）；<strong>第一次自動標記</strong>（還沒有 best.pt）直接用底模提案輪廓，名稱對不上的類別掛到第一個類別，交給使用者確認改類</td><td><strong>dl_instance</strong>（新工具：letterbox＋NMS＋mask 合成，輸出每個實例的輪廓／類別／分數）</td><td><strong>可選</strong>：<code>pip install ultralytics</code>（含 torch，約 2~3GB；缺件時開始訓練會提示這行指令，平台其餘功能不受影響）</td></tr>
 </table>
 <p>訓練面板會顯示 <strong>loss／mAP 曲線</strong>（分割任務優先 (M) mask 指標；fitness 可能 &gt; 1，座標軸自動縮放）與<strong>增量訓練 log</strong>（環形緩衝 400 行，<code>GET /dl/train/status?log_from=N</code>）。</p>
 

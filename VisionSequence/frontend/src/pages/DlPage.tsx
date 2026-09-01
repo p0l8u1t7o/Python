@@ -18,14 +18,9 @@ import { dlSampleUrl } from '@/lib/api'
 import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useSources } from '@/lib/queries'
 import type { DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
+import { CURVE_COLORS, classColor, classColorAt } from '@/lib/colors'
 
 const NO_ACTIONS: InspectorActions = { roiEditingKey: null, setRoiEditing: () => {}, templateFromImage: () => {}, templateKey: null, hasImage: false }
-const CLASS_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
-
-function classColor(classes: string[], label: string): string {
-  const index = classes.indexOf(label)
-  return index >= 0 ? CLASS_COLORS[index % CLASS_COLORS.length] : '#94a3b8'
-}
 
 // ---------------------------------------------------------------------------
 // 建立專案
@@ -96,7 +91,7 @@ function ClassesModal({ open, onClose, classes, onSave, saving }: { open: boolea
         <div className="flex min-h-9 flex-wrap items-center gap-1.5">
           {list.map((c, i) => (
             <span key={c} className="flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs">
-              <span className="size-2 rounded-full" style={{ background: CLASS_COLORS[i % CLASS_COLORS.length] }} />
+              <span className="size-2 rounded-full" style={{ background: classColorAt(i) }} />
               {c}
               <button type="button" className="text-muted hover:text-critical" aria-label={`${t('common.delete')} ${c}`} onClick={() => setList((old) => old.filter((x) => x !== c))}><X size={12} /></button>
             </span>
@@ -220,8 +215,6 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   )
 }
 
-const CURVE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2']
-
 /** loss / 正確率 / mAP 曲線：key 從 history 動態取（分割任務的 fitness 可能 > 1，Y 軸不寫死）。 */
 function TrainCurves({ history }: { history: Record<string, number>[] }) {
   const keys = useMemo(() => {
@@ -285,13 +278,14 @@ function ImportProgress({ state }: { state: { done: number; total: number; faile
 // ---------------------------------------------------------------------------
 // 樣本網格
 // ---------------------------------------------------------------------------
-function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick }: {
+function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick, onDelete }: {
   project: DlProject
   samples: DlSample[]
   activeClass: string
   filter: string
   suggestions: Map<string, DlSuggestion>
   onPick: (sample: DlSample, alt: boolean) => void
+  onDelete: (sample: DlSample) => void
 }) {
   const { t } = useTranslation()
   const shown = samples.filter((s) => {
@@ -304,26 +298,33 @@ function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick
     return <EmptyState compact icon={<Camera className="size-6" />} title={t('dl.noSamples')} description={t('dl.noSamplesHint')} />
   }
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2" data-testid="dl-grid">
+    <div className={`grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2 ${activeClass ? 'cursor-crosshair' : ''}`} data-testid="dl-grid">
       {shown.map((s) => {
         const suggestion = !s.label ? suggestions.get(s.id) : undefined
         const color = s.label ? classColor(project.classes, s.label) : suggestion ? classColor(project.classes, suggestion.label) : 'transparent'
         return (
-          <button key={s.id} type="button" onClick={(e) => onPick(s, e.altKey)} title={activeClass ? t('dl.clickToLabel', { label: activeClass }) : undefined}
-            className="group relative overflow-hidden rounded-md border border-line bg-surface-muted text-left focus:outline-none focus:ring-2 focus:ring-brand">
+          <div key={s.id} className="group relative overflow-hidden rounded-md border border-line bg-surface-muted transition-shadow focus-within:ring-2 focus-within:ring-brand hover:ring-2 hover:ring-brand/50">
+            <button type="button" onClick={(e) => onPick(s, e.altKey)} title={activeClass ? t('dl.clickToLabel', { label: activeClass }) : undefined}
+              className="block w-full text-left focus:outline-none">
             <img src={dlSampleUrl(s.id, 256)} alt="" loading="lazy" className="aspect-square w-full object-cover" />
             {s.label ? (
               <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-white ${s.labeled_by === 'auto' ? 'opacity-80' : ''}`} style={{ background: color }}>
                 {s.label}{s.labeled_by === 'auto' ? ` ~${Math.round(s.score * 100)}%` : ''}
               </span>
             ) : suggestion ? (
-              <span className="absolute left-1 top-1 rounded border border-dashed border-white/80 px-1.5 py-0.5 text-[11px] text-white" style={{ background: `${color}cc` }}>
+              <span className="absolute left-1 top-1 rounded border border-dashed border-white/80 px-1.5 py-0.5 text-[11px] text-white" style={{ background: classColor(project.classes, suggestion.label, 0.8) }}>
                 {suggestion.label}? {Math.round(suggestion.score * 100)}%
               </span>
             ) : (
               <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[11px] text-white">{t('dl.unlabeled')}</span>
             )}
-          </button>
+            </button>
+            <button type="button" aria-label={t('common.delete')} title={t('common.delete')}
+              className="pointer-events-none absolute right-1 top-1 rounded bg-black/50 p-1 text-white opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 hover:!bg-critical"
+              onClick={(e) => { e.stopPropagation(); onDelete(s) }}>
+              <Trash2 size={12} />
+            </button>
+          </div>
         )
       })}
     </div>
@@ -447,6 +448,25 @@ export function DlPage() {
     })
   }
 
+  // classes 模式：數字鍵 0~9 切換目前類別（Modal 開啟或輸入中不觸發）
+  useEffect(() => {
+    if (isShapes || !project.data) return
+    const classes = project.data.classes
+    function onDigit(e: KeyboardEvent) {
+      if (editingClasses || creating || fromSourceOpen || deleting) return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el as HTMLElement).isContentEditable)) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (!/^[0-9]$/.test(e.key)) return
+      const label = classes[Number(e.key)]
+      if (!label) return
+      setActiveClass((old) => (old === label ? '' : label))
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onDigit, true)
+    return () => window.removeEventListener('keydown', onDigit, true)
+  }, [isShapes, project.data, editingClasses, creating, fromSourceOpen, deleting])
+
   const counts = project.data?.counts
   return (
     <Page wide>
@@ -520,26 +540,27 @@ export function DlPage() {
             <>
               <Card>
                 <CardBody className="space-y-2.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {project.data.classes.map((c) => {
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-1.5">
+                    {project.data.classes.map((c, i) => {
                       const active = activeClass === c
                       const color = classColor(project.data!.classes, c)
                       return (
-                        <button key={c} type="button" onClick={() => setActiveClass(active ? '' : c)}
-                          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${active ? 'border-transparent text-white' : 'border-line text-content hover:bg-surface-muted'}`}
+                        <button key={c} type="button" onClick={() => setActiveClass(active ? '' : c)} title={t('dl.classButtonTitle', { n: i })}
+                          className={`flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors ${active ? 'border-transparent text-white shadow-sm' : 'border-line text-content hover:bg-surface-muted'}`}
                           style={active ? { background: color } : undefined} data-testid={`dl-class-${c}`}>
-                          <span className="size-2 rounded-full" style={{ background: active ? '#fff' : color }} />
-                          {c}
-                          <span className={active ? 'opacity-80' : 'text-muted'}>{counts?.per_class[c] ?? 0}</span>
+                          <span className="size-3 shrink-0 rounded-full border border-black/10" style={{ background: active ? '#fff' : color }} />
+                          <span className="min-w-0 truncate">{c}</span>
+                          {i <= 9 ? <kbd className={`rounded border px-1 text-[10px] leading-4 ${active ? 'border-white/40 text-white/85' : 'border-line text-subtle'}`}>{i}</kbd> : null}
+                          <span className={`ml-auto tnum text-xs ${active ? 'opacity-80' : 'text-muted'}`}>{counts?.per_class[c] ?? 0}</span>
                         </button>
                       )
                     })}
-                    <button type="button" className="rounded-full border border-dashed border-line px-2.5 py-1 text-xs text-muted hover:bg-surface-muted"
+                    <button type="button" className="flex h-11 items-center justify-center gap-1.5 rounded-md border border-dashed border-line px-3 text-sm text-muted hover:bg-surface-muted"
                       onClick={() => setEditingClasses(true)} data-testid="dl-edit-classes">
                       {t('dl.editClasses')}
                     </button>
-                    <span className="ml-auto text-xs text-muted">{t('dl.progressCount', { labeled: (counts?.total ?? 0) - (counts?.unlabeled ?? 0), total: counts?.total ?? 0 })}</span>
                   </div>
+                  <p className="text-right text-xs text-muted">{t('dl.progressCount', { labeled: (counts?.total ?? 0) - (counts?.unlabeled ?? 0), total: counts?.total ?? 0 })}</p>
                   <p className="text-xs text-subtle">{activeClass ? t('dl.labelingHint', { label: activeClass }) : t('dl.pickClassHint')}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
@@ -569,7 +590,7 @@ export function DlPage() {
                 <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">{t('dl.classesFirst')}</p>
               ) : null}
               {samples.isLoading ? <LoadingState /> : (
-                <SampleGrid project={project.data} samples={samples.data ?? []} activeClass={activeClass} filter={filter} suggestions={suggestions} onPick={(s, alt) => void pick(s, alt)} />
+                <SampleGrid project={project.data} samples={samples.data ?? []} activeClass={activeClass} filter={filter} suggestions={suggestions} onPick={(s, alt) => void pick(s, alt)} onDelete={(s) => { if (projectId !== null) void removeSample.mutateAsync({ id: s.id, projectId }) }} />
               )}
             </>
           ) : projects.isLoading || project.isLoading ? <LoadingState /> : (

@@ -8,26 +8,22 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, MousePointer, Pentagon, Redo2, Save, Sparkles, Square, Trash2, Undo2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Keyboard, MousePointer, Pentagon, Save, Sparkles, Square, Trash2, Undo2 } from 'lucide-react'
 
 import { ImageViewer } from '@/components/viewer/ImageViewer'
-import { Button } from '@/components/ui'
+import { Button, IconButton, Modal } from '@/components/ui'
 import { dlSampleUrl } from '@/lib/api'
 import type { DlProject, DlSample, DlShape, DlSuggestion, Overlay, Region } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { buildGradientMap, optimizePolygon, type GradientMap } from './optimize'
 
-const CLASS_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
-const color = (classes: string[], label: string) => {
-  const i = classes.indexOf(label)
-  return i >= 0 ? CLASS_COLORS[i % CLASS_COLORS.length] : '#94a3b8'
-}
+import { classColor as color } from '@/lib/colors'
 
 type Mode = 'select' | 'polygon' | 'bbox'
 
 function isTyping(): boolean {
   const el = document.activeElement
-  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el as HTMLElement).isContentEditable)
 }
 
 // ---- 正規化 shapes ↔ 影像像素 Region ----
@@ -68,6 +64,10 @@ function pointInShape(shape: DlShape, nx: number, ny: number): boolean {
 // ---- 縮圖（把標記輪廓直接畫上去） ----
 function Thumb({ sample, classes, selected, hasSuggestion, onClick }: { sample: DlSample; classes: string[]; selected: boolean; hasSuggestion: boolean; onClick: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (selected) buttonRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
   // 影像只依 sample.id 載一次快取在 ref；shapes 變動（拖曳標記中每 frame）只重畫，不重新下載。
   const imgRef = useRef<{ id: string; img: HTMLImageElement | null; failed: boolean }>({ id: '', img: null, failed: false })
   const drawRef = useRef<() => void>(() => {})
@@ -134,7 +134,7 @@ function Thumb({ sample, classes, selected, hasSuggestion, onClick }: { sample: 
     img.src = dlSampleUrl(sample.id, 192)
   }, [sample.id, draw])
   return (
-    <button type="button" onClick={onClick}
+    <button ref={buttonRef} type="button" onClick={onClick}
       className={`relative w-full overflow-hidden rounded-md border text-left ${selected ? 'border-brand ring-2 ring-brand/40' : 'border-line hover:border-brand/50'}`}>
       <canvas ref={canvasRef} className="block w-full" />
       <span className="absolute left-1 top-1 rounded bg-black/50 px-1 text-[10px] text-white">
@@ -168,6 +168,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [activeClass, setActiveClass] = useState(classes[0] ?? '')
   const [saving, setSaving] = useState(false)
+  const [showKeys, setShowKeys] = useState(false)
   const gradientRef = useRef<{ id: string; map: GradientMap } | null>(null)
 
   const loadedIdRef = useRef<string | null>(null)
@@ -289,7 +290,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   // 會 preventDefault 把類別鍵吃掉）；1:1 仍可用工具列按鈕。
   useEffect(() => {
     function onDigit(e: KeyboardEvent) {
-      if (hotkeysDisabled || isTyping()) return
+      if (hotkeysDisabled || showKeys || isTyping()) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (!/^[0-9]$/.test(e.key)) return
       const label = classes[Number(e.key)]
@@ -304,7 +305,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (hotkeysDisabled || isTyping()) return
+      if (hotkeysDisabled || showKeys || isTyping()) return
       // ImageViewer 容器聚焦時自己處理 f/+/-/拖曳中Esc/頂點Delete（有 preventDefault），這裡讓路避免雙重觸發
       if (e.defaultPrevented) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
@@ -354,12 +355,12 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       }
     })
     for (const shape of suggestion?.shapes ?? []) {
-      const c = color(classes, shape.label)
+      const c = color(classes, shape.label, 0.6)
       if (shape.kind === 'bbox') {
         const [[x0, y0], [x1, y1]] = [shape.points[0], shape.points[1] ?? shape.points[0]]
-        out.push({ kind: 'rect', x: x0 * w, y: y0 * h, w: (x1 - x0) * w, h: (y1 - y0) * h, color: `${c}99`, label: `${shape.label}?`, width: 1 } as Overlay)
+        out.push({ kind: 'rect', x: x0 * w, y: y0 * h, w: (x1 - x0) * w, h: (y1 - y0) * h, color: c, label: `${shape.label}?`, width: 1 } as Overlay)
       } else {
-        out.push({ kind: 'polygon', points: shape.points.map(([x, y]) => [x * w, y * h]), color: `${c}99`, label: `${shape.label}?`, width: 1 } as Overlay)
+        out.push({ kind: 'polygon', points: shape.points.map(([x, y]) => [x * w, y * h]), color: c, label: `${shape.label}?`, width: 1 } as Overlay)
       }
     }
     return out
@@ -414,76 +415,127 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   }, [sample, mode, shapes])
 
   if (!sample) return null
-  const counts = shapes.length
+  const index = samples.findIndex((s) => s.id === sample.id)
+  const tools: { key: string; icon: React.ReactNode; label: string; kbd: string; active?: boolean; disabled?: boolean; onClick: () => void }[] = [
+    { key: 'select', icon: <MousePointer size={22} />, label: t('dl.modeSelect'), kbd: 'V', active: mode === 'select', onClick: () => setMode('select') },
+    { key: 'polygon', icon: <Pentagon size={22} />, label: t('dl.modePolygon'), kbd: 'N', active: mode === 'polygon', disabled: !classes.length, onClick: () => setMode('polygon') },
+    { key: 'bbox', icon: <Square size={22} />, label: t('dl.modeBbox'), kbd: 'B', active: mode === 'bbox', disabled: !classes.length, onClick: () => setMode('bbox') },
+    { key: 'sep1', icon: null, label: '', kbd: '', onClick: () => {} },
+    { key: 'optimize', icon: <Sparkles size={22} />, label: t('dl.optimize'), kbd: 'O', disabled: selectedIndex === null, onClick: () => void optimizeSelected() },
+    { key: 'delete', icon: <Trash2 size={22} />, label: t('dl.deleteShape'), kbd: 'Del', disabled: selectedIndex === null, onClick: removeSelected },
+    { key: 'undo', icon: <Undo2 size={22} />, label: t('dl.undo'), kbd: '^Z', disabled: !history.length, onClick: undo },
+  ]
   return (
-    <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
-      {/* 縮圖牆 */}
-      <div className="max-h-[70vh] space-y-1.5 overflow-y-auto pr-1" data-testid="dl-thumb-wall">
+    <div className="grid gap-3 lg:h-[calc(100vh-320px)] lg:min-h-[460px] lg:grid-cols-[180px_minmax(0,1fr)]">
+      {/* 縮圖牆（與畫布同高，自行捲動） */}
+      <div className="max-h-[50vh] space-y-1.5 overflow-y-auto pr-1 lg:max-h-none lg:h-full" data-testid="dl-thumb-wall">
         {samples.map((s) => (
           <Thumb key={s.id} sample={s.id === sample.id ? { ...s, shapes } : s} classes={classes} selected={s.id === sample.id} hasSuggestion={suggestions.has(s.id)} onClick={() => switchSample(s.id)} />
         ))}
       </div>
 
-      <div className="min-w-0 space-y-2">
-        {/* 工具列 */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button size="sm" active={mode === 'select'} onClick={() => setMode('select')} title="V"><MousePointer size={14} /> {t('dl.modeSelect')}</Button>
-          <Button size="sm" active={mode === 'polygon'} onClick={() => setMode('polygon')} disabled={!classes.length} title="N"><Pentagon size={14} /> {t('dl.modePolygon')}</Button>
-          <Button size="sm" active={mode === 'bbox'} onClick={() => setMode('bbox')} disabled={!classes.length} title="B"><Square size={14} /> {t('dl.modeBbox')}</Button>
-          <span className="mx-1 h-5 w-px bg-line" />
+      <div className="flex min-h-0 min-w-0 flex-col gap-2">
+        {/* 狀態列：導覽＋樣本資訊＋建議／儲存（固定位置不跳動） */}
+        <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <IconButton label={t('dl.prevSample')} size="md" variant="secondary" onClick={() => step(-1)}><ChevronLeft size={16} /></IconButton>
+          <IconButton label={t('dl.nextSample')} size="md" variant="secondary" onClick={() => step(1)}><ChevronRight size={16} /></IconButton>
+          <span className="tnum text-xs text-muted">{index + 1} / {samples.length}</span>
+          <span className="text-xs text-subtle">{sample.width}×{sample.height} · {shapes.length} {t('dl.shapesUnit')}</span>
+          {dirty ? <span className="flex items-center gap-1 text-xs font-medium text-warning"><span className="size-1.5 rounded-full bg-warning" />{t('dl.unsaved')}</span> : null}
+          <span className="ml-auto" />
+          <IconButton label={t('dl.shortcuts')} size="md" onClick={() => setShowKeys(true)}><Keyboard size={16} /></IconButton>
+          {suggestion?.shapes?.length ? (
+            <Button size="md" variant="primary" onClick={() => void onAcceptSuggestion(sample.id, suggestion.shapes!).then(() => loadedIdRef.current = null)}>
+              <Check size={15} /> {t('dl.acceptSuggestion', { count: suggestion.shapes.length })}
+            </Button>
+          ) : null}
+          <Button size="md" variant="primary" loading={saving} onClick={() => void save()} title="Ctrl+S" data-testid="dl-save-shapes">
+            <Save size={15} /> {t('common.save')}
+          </Button>
+        </div>
+
+        {/* 類別列：大顆可點（數字鍵對應），畫新形狀用目前類別 */}
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           {!classes.length ? (
-            <button type="button" className="rounded-full border border-dashed border-warning px-2.5 py-0.5 text-xs text-warning hover:bg-warning-soft" onClick={onEditClasses}>
+            <button type="button" className="flex h-10 items-center gap-2 rounded-md border border-dashed border-warning px-3 text-sm text-warning hover:bg-warning-soft" onClick={onEditClasses}>
               {t('dl.classesFirstShort')}
             </button>
           ) : null}
-          {classes.map((c, i) => (
-            <button key={c} type="button" onClick={() => assignClass(c)} title={String(i)}
-              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${activeClass === c ? 'border-transparent text-white' : 'border-line hover:bg-surface-muted'}`}
-              style={activeClass === c ? { background: color(classes, c) } : undefined}>
-              <span className="size-2 rounded-full" style={{ background: activeClass === c ? '#fff' : color(classes, c) }} />{c}
-            </button>
-          ))}
-          <span className="ml-auto" />
-          <Button size="sm" onClick={() => void optimizeSelected()} disabled={selectedIndex === null} title="O"><Sparkles size={14} /> {t('dl.optimize')}</Button>
-          <Button size="sm" onClick={removeSelected} disabled={selectedIndex === null} title="Delete"><Trash2 size={14} /></Button>
-          <Button size="sm" onClick={undo} disabled={!history.length} title="Ctrl+Z"><Undo2 size={14} /></Button>
-          {suggestion?.shapes?.length ? (
-            <Button size="sm" variant="primary" onClick={() => void onAcceptSuggestion(sample.id, suggestion.shapes!).then(() => loadedIdRef.current = null)}>
-              <Check size={14} /> {t('dl.acceptSuggestion', { count: suggestion.shapes.length })}
-            </Button>
-          ) : null}
-          <Button size="sm" variant="primary" loading={saving} onClick={() => void save()} title="Ctrl+S" data-testid="dl-save-shapes">
-            <Save size={14} /> {t('common.save')}{dirty ? ' *' : ''}
-          </Button>
+          {classes.map((c, i) => {
+            const active = activeClass === c
+            return (
+              <button key={c} type="button" onClick={() => assignClass(c)} title={t('dl.classButtonTitle', { n: i })}
+                className={`flex h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors ${active ? 'border-transparent text-white shadow-sm' : 'border-line text-content hover:bg-surface-muted'}`}
+                style={active ? { background: color(classes, c) } : undefined} data-testid={`dl-shape-class-${c}`}>
+                <span className="size-3 shrink-0 rounded-full border border-black/10" style={{ background: active ? '#fff' : color(classes, c) }} />
+                <span className="min-w-0 max-w-32 truncate">{c}</span>
+                {i <= 9 ? <kbd className={`rounded border px-1 text-[10px] leading-4 ${active ? 'border-white/40 text-white/85' : 'border-line text-subtle'}`}>{i}</kbd> : null}
+              </button>
+            )
+          })}
         </div>
-        <p className="text-xs text-subtle">{t('dl.shapeHint', { count: counts })}</p>
-        <div className="h-[62vh] min-h-[380px]">
-          <ImageViewer
-            className="h-full w-full"
-            src={dlSampleUrl(sample.id, 1600)}
-            imageWidth={sample.width}
-            imageHeight={sample.height}
-            overlays={overlays}
-            roi={mode === 'select' ? editingRegion : null}
-            roiShapes={
-              // 編輯中：把手工具列只開放該形狀自己的種類，避免 bbox↔polygon／circle 等互轉毀掉標記資料
-              mode === 'polygon' ? ['polygon']
-                : mode === 'bbox' ? ['rect']
-                  : selectedIndex !== null ? (shapes[selectedIndex]?.kind === 'bbox' ? ['rect'] : ['polygon'])
-                    : undefined
-            }
-            onRoiChange={mode === 'select' && selectedIndex === null ? undefined : onRoiChange}
-            onPick={onPick}
-            badge={dirty ? { text: t('dl.unsaved'), tone: 'neutral' } : null}
-          />
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Button size="sm" onClick={() => step(-1)}>←</Button>
-          <Button size="sm" onClick={() => step(1)}>→</Button>
-          <span>{samples.findIndex((s) => s.id === sample.id) + 1} / {samples.length}</span>
-          <Redo2 size={12} className="ml-2 opacity-0" aria-hidden />
+
+        {/* 工具欄（大圖示）＋畫布 */}
+        <div className="flex h-[55vh] min-h-[380px] gap-2 lg:h-auto lg:min-h-0 lg:flex-1">
+          <div className="flex w-14 shrink-0 flex-col items-center gap-1 self-stretch overflow-y-auto rounded-md border border-line bg-surface p-1.5" data-testid="dl-tool-rail">
+            {tools.map((tool) =>
+              tool.icon === null ? (
+                <span key={tool.key} className="my-1 h-px w-8 shrink-0 bg-line" />
+              ) : (
+                <button key={tool.key} type="button" onClick={tool.onClick} disabled={tool.disabled}
+                  title={`${tool.label}（${tool.kbd}）`} aria-label={tool.label} aria-pressed={tool.active}
+                  className={`flex size-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40
+                    ${tool.active ? 'bg-brand-soft text-brand ring-1 ring-brand' : 'text-muted hover:bg-surface-muted hover:text-content'}`}
+                  data-testid={`dl-tool-${tool.key}`}>
+                  {tool.icon}
+                  <kbd className="text-[9px] leading-none text-subtle">{tool.kbd}</kbd>
+                </button>
+              ),
+            )}
+          </div>
+          <div className="min-h-0 min-w-0 flex-1">
+            <ImageViewer
+              className="h-full w-full"
+              src={dlSampleUrl(sample.id, 1600)}
+              imageWidth={sample.width}
+              imageHeight={sample.height}
+              overlays={overlays}
+              roi={mode === 'select' ? editingRegion : null}
+              roiShapes={
+                // 編輯中：把手工具列只開放該形狀自己的種類，避免 bbox↔polygon／circle 等互轉毀掉標記資料
+                mode === 'polygon' ? ['polygon']
+                  : mode === 'bbox' ? ['rect']
+                    : selectedIndex !== null ? (shapes[selectedIndex]?.kind === 'bbox' ? ['rect'] : ['polygon'])
+                      : undefined
+              }
+              onRoiChange={mode === 'select' && selectedIndex === null ? undefined : onRoiChange}
+              onPick={onPick}
+              badge={dirty ? { text: t('dl.unsaved'), tone: 'neutral' } : null}
+            />
+          </div>
         </div>
       </div>
+
+      <Modal open={showKeys} onClose={() => setShowKeys(false)} title={t('dl.shortcuts')} size="sm">
+        <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+          {([
+            ['V / N / B', t('dl.keyModes')],
+            ['0～9', t('dl.keyClasses')],
+            ['O', t('dl.keyOptimize')],
+            ['Delete', t('dl.keyDelete')],
+            [t('dl.kbdAltVertex'), t('dl.keyDeleteVertex')],
+            [t('dl.kbdDblEdge'), t('dl.keyInsertVertex')],
+            ['Ctrl+Z / Ctrl+S', t('dl.keyUndoSave')],
+            ['← → / A D', t('dl.keyNav')],
+            [t('dl.kbdView'), t('dl.keyView')],
+          ] as [string, string][]).map(([k, desc]) => (
+            <span key={k} className="contents">
+              <kbd className="rounded border border-line bg-surface-muted px-1.5 py-0.5 text-center text-xs">{k}</kbd>
+              <span className="text-muted">{desc}</span>
+            </span>
+          ))}
+        </div>
+      </Modal>
     </div>
   )
 }

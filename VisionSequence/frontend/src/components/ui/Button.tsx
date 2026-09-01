@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle'
-type Size = 'xs' | 'sm' | 'md'
+type Size = 'xs' | 'sm' | 'md' | 'lg'
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-brand text-on-brand hover:bg-brand-strong border border-transparent',
@@ -16,6 +16,7 @@ const SIZES: Record<Size, string> = {
   xs: 'h-7 px-2 text-xs gap-1',
   sm: 'h-8 px-2.5 text-xs gap-1.5',
   md: 'h-9 px-3.5 text-sm gap-2',
+  lg: 'h-11 px-4 text-sm gap-2',
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -46,7 +47,7 @@ export function Button({ variant = 'secondary', size = 'md', loading = false, ic
 
 /** 純圖示按鈕；label 同時是 title 與無障礙名稱。 */
 export function IconButton({ label, variant = 'ghost', size = 'md', className = '', children, active, ...rest }: Omit<ButtonProps, 'children'> & { label: string; children: ReactNode }) {
-  const dim = size === 'md' ? 'size-8' : 'size-7'
+  const dim = size === 'lg' ? 'size-11' : size === 'md' ? 'size-8' : 'size-7'
   return (
     <button
       type="button"
