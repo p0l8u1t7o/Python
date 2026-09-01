@@ -124,3 +124,56 @@ class Asset(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+# ---------------------------------------------------------------------------
+# 平台內深度學習教導（apps/vision/dl）
+# ---------------------------------------------------------------------------
+class DlProject(models.Model):
+    """一個教導專案：一種模型（trainer_kind）＋類別清單＋樣本集。"""
+
+    name = models.CharField(max_length=120, unique=True)
+    description = models.TextField(blank=True, default="")
+    trainer_kind = models.CharField(max_length=40)
+    #: 類別名稱清單（label_mode=classes）。
+    classes = models.JSONField(default=list)
+    #: 訓練超參數（依 trainer 的 params 宣告；空 = 用預設）。
+    params = models.JSONField(default=dict)
+    #: 最近一次成功訓練的資產與指標。
+    last_asset_id = models.CharField(max_length=40, blank=True, default="")
+    last_metrics = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+
+class DlSample(models.Model):
+    """一張樣本影像；檔案存 ASSET_DIR/dl/<project_id>/<id>.png。"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(DlProject, on_delete=models.CASCADE, related_name="samples")
+    #: "" = 未標記；classes 模式存類別名。
+    label = models.CharField(max_length=80, blank=True, default="")
+    #: 標記來源：human | auto（自動標記後尚未人工確認）。
+    labeled_by = models.CharField(max_length=10, blank=True, default="")
+    #: 自動標記的信心分數。
+    score = models.FloatField(default=0)
+    path = models.CharField(max_length=500)
+    width = models.PositiveIntegerField(default=0)
+    height = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["project", "label"])]
+
+
+class DlSettings(models.Model):
+    """單列（id=1）：推論 providers 與訓練裝置偏好（devices.py 讀進記憶體快取）。"""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    providers = models.JSONField(default=list)
+    train_device = models.CharField(max_length=20, default="cpu")
+    updated_at = models.DateTimeField(auto_now=True)

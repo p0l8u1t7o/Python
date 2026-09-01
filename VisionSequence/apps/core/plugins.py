@@ -103,6 +103,7 @@ def _import(path: Path) -> ModuleType:
 def _register_module(module: ModuleType) -> list[str]:
     from apps.comm import writers
     from apps.vision import sources
+    from apps.vision.dl import base as dl_base
     from apps.vision.sources.grabbers import Grabber
     from apps.vision.tools import base
 
@@ -126,4 +127,7 @@ def _register_module(module: ModuleType) -> list[str]:
         elif issubclass(obj, writers.Writer) and getattr(obj, "kind", ""):
             if writers.register_kind(obj):
                 out.append(f"comm:{obj.kind}")
+        elif issubclass(obj, dl_base.Trainer) and getattr(obj, "kind", ""):
+            if dl_base.register_trainer(obj):
+                out.append(f"dl:{obj.kind}")
     return out

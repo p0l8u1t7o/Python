@@ -49,6 +49,7 @@ from apps.vision.api_recipes import router as recipes_router  # noqa: E402
 from apps.comm.api import router as comm_router  # noqa: E402
 from apps.vision.api_flowio import router as flowio_router  # noqa: E402
 from apps.golden.api import router as golden_router  # noqa: E402
+from apps.vision.dl.api import router as dl_router  # noqa: E402
 
 api.add_router("/auth", auth_router)
 api.add_router("/users", users_router)
@@ -60,3 +61,4 @@ api.add_router("/vision", recipes_router)
 api.add_router("/vision", vision_router)
 api.add_router("/vision", more_router)
 api.add_router("/vision", comm_router)
+api.add_router("/vision", dl_router)

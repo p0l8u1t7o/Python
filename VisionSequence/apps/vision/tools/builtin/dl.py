@@ -33,9 +33,12 @@ def get_session(path: str) -> Any:
         sess = _SESSIONS.get(path)
         if sess is None:
             try:
+                from apps.vision.dl.devices import preferred_providers
+
                 opts = ort.SessionOptions()
                 opts.intra_op_num_threads = 2
-                sess = ort.InferenceSession(path, opts, providers=["CPUExecutionProvider"])
+                # providers 依設定頁選擇（純記憶體查詢；變更設定會 clear_sessions 重建）。
+                sess = ort.InferenceSession(path, opts, providers=preferred_providers())
             except Exception as exc:  # noqa: BLE001
                 raise ToolError(f"載入模型失敗：{str(exc)[:200]}") from None
             _SESSIONS[path] = sess

@@ -4,6 +4,7 @@
     apps.vision.tools.base.Tool          自訂工具 → 出現在畫布調色盤
     apps.vision.sources.grabbers.Grabber 自訂影像來源 → 出現在「影像來源」kind 下拉
     apps.comm.writers.Writer             自訂整合輸出 → 出現在「連線」kind 下拉
+    apps.vision.dl.base.Trainer          自訂深度學習模型種類 → 出現在「深度學習」教導頁
 
 每個外掛檔內可用變數控制顯示與掛載（慣例寫在檔案最上面，方便現場修改）：
     ENABLED = False        整個檔案不掛載

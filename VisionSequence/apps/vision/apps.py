@@ -30,7 +30,13 @@ class VisionConfig(AppConfig):
             except Exception:  # noqa: BLE001
                 log.exception("工具外掛 %s 載入失敗", module)
 
-        # 資料夾外掛：plugins/ 下的 .py 自動偵測（工具／影像來源／整合連線）。
+        # 深度學習教導：內建 trainer 與裝置設定（外掛 trainer 由資料夾外掛掛載）。
+        from apps.vision.dl import base as dl_base, devices
+
+        dl_base.register_builtins()
+        devices.load_settings()
+
+        # 資料夾外掛：plugins/ 下的 .py 自動偵測（工具／影像來源／整合連線／trainer）。
         from apps.core.plugins import load_folder_plugins
 
         load_folder_plugins()
