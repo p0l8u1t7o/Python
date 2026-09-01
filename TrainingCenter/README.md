@@ -77,7 +77,79 @@ API 文件：http://127.0.0.1:8001/api/docs
 - 抓到的照片是「同類示意」而非該型號；目前約 85% 合適，已知仍不理想的有：散熱器與風扇、IIoT 資料閘道、環形 LED 光源、RFID 讀寫頭、橫向移載皮帶組、條形 LED 光源、手眼校正板。請在 `/admin` 檢視，不合適的可換 `photo_query` 後 `--force` 重抓，或直接上傳自拍照片（自拍照片優先，`fetch_photos` 不會覆蓋已有照片，除非 `--force`）。
 - 修改關鍵字：編輯 `backend/catalog/seed/add_photo_queries.py` 後執行它，再 `load_seed`。
 
-### 來源二：公司自行拍攝
+### 來源二：Google 圖片（`fetch_google_photos`）
+
+Commons 對工業元件的覆蓋率不好（實測約四成抓錯），想要原廠產品照就用這個。
+
+**設定**（一次就好，填在專案根目錄 `.env`）：
+
+1. 到 Google Cloud 建一把 API key，並在同一個專案啟用 **Custom Search API**。
+2. 到 <https://programmablesearchengine.google.com/> 建搜尋引擎，開「**搜尋整個網路**」與「**圖片搜尋**」，複製搜尋引擎 ID（cx）。
+3. 填進 `.env`：
+
+```
+GOOGLE_CSE_API_KEY=...
+GOOGLE_CSE_ID=...
+```
+
+改完要 `.\stop.ps1` 再 `.\start.ps1`（`.env` 在啟動時載入）。
+
+**用法**：
+
+```bash
+python backend/manage.py fetch_google_photos --dry-run     # 先看會抓什麼、用掉幾次查詢
+python backend/manage.py fetch_google_photos               # 只補沒照片的
+python backend/manage.py fetch_google_photos --target cards --category arm
+python backend/manage.py fetch_google_photos --equipment aoi --limit 20
+python backend/manage.py fetch_google_photos --code MEC-01 --force
+python backend/manage.py fetch_google_photos --rights cc_publicdomain,cc_attribute
+```
+
+**免費層每天只有 100 次查詢**，一筆一次。全部 360 筆（175 元件 + 185 知識卡）要分四天，
+或用 `--limit` / `--target` / `--category` 分批。配額用完會停下來並保留已抓到的，隔天接著跑即可。
+
+**存檔位置與檔名**（前端就是照這個路徑讀，不要自己改）：
+
+| 對象 | 路徑 |
+|---|---|
+| 設備元件 `Component` | `media/components/<設備 slug>/<元件 slug>.<ext>` |
+| 元件知識卡 `KnowledgeCard` | `media/knowledge/<料號>.<ext>`（例 `knowledge/MEC-01.jpg`） |
+
+副檔名依實際解碼出來的格式決定（jpg／png／webp），不是照網址猜的。
+
+**搜尋關鍵字**在 `backend/catalog/seed/image_queries.json`，抓到的圖不對就改那裡再 `--force` 重抓；
+也可以用 `--queries 自己的檔.json` 指向覆寫檔。
+
+**分四天抓完**（免費層每天 100 次查詢，一筆一次；用 95 留點餘裕）：
+
+| 天 | 指令 | 抓什麼 |
+|---|---|---|
+| 第 1 天 | `... fetch_google_photos --target cards --limit 95` | 知識卡 95 / 185 |
+| 第 2 天 | `... fetch_google_photos --target cards --limit 95` | 知識卡剩下 90 |
+| 第 3 天 | `... fetch_google_photos --target components --limit 95` | 設備元件 95 / 175 |
+| 第 4 天 | `... fetch_google_photos --target components --limit 95` | 設備元件剩下 80 |
+
+**不加 `--force` 就只會抓還沒有照片的**，所以每天跑同一行就會自動接續，不會重覆也不會漏。
+配額中途用完也一樣，隔天接著跑即可。
+
+**檢查抓得對不對**：
+
+```bash
+python backend/manage.py photo_report            # 產生 Docs/photo-report.html 縮圖對照表
+python backend/manage.py photo_report --missing  # 只列還沒有照片的
+```
+
+用瀏覽器開，紅框是還沒有照片的。看到抓錯的就改 `image_queries.json` 的關鍵字，再
+`fetch_google_photos --code MEC-01 --force`（或 `--slug <元件 slug>`）單獨重抓。
+
+**品質把關**：每筆取 5 個候選依序嘗試，會擋掉非圖片、壞檔、短邊 < 200px 與 > 8MB 的檔案，
+第一個能通過的才存檔。
+
+> **版權**：Google 圖片搜到的多半是有版權的第三方圖片。指令會把來源網站與來源頁寫進
+> `photo_credit` / `photo_source_url`，前端也會顯示，方便日後追溯或撤換。
+> 內部教育訓練通常風險較低，對外發布請先確認授權，或加 `--rights` 只抓標示可自由使用的圖。
+
+### 來源三：公司自行拍攝
 
 1. 把照片放到 `backend/media/components/<設備 slug>/<元件 slug>.jpg`（也支援 png / webp）
    - 設備 slug：`fuel-cell`、`aoi`、`transfer`、`robot-cell`
@@ -85,12 +157,58 @@ API 文件：http://127.0.0.1:8001/api/docs
 2. 重新執行 `python manage.py load_seed`，會自動掛上照片
 3. 或直接到 `/admin` → Components 逐一上傳，並填寫 `photo_credit`（拍攝者／來源）
 
-> 照片請使用公司自行拍攝或取得授權的圖片；種子資料中的品牌與型號為「範例」，請依實際 BOM 修改。
+> 三種來源可以混用：Commons 抓得準的直接用，抓不準的改用 Google 圖片，關鍵元件最好還是自己拍。
+> 種子資料中的品牌與型號為「範例」，請依實際 BOM 修改。
 
 ## 互動方式
 
 - 設備頁：滑鼠移到 3D 零件上高亮並顯示名稱；點擊任何零件（不限目前分頁）會自動切到該元件所屬的領域分頁、捲到分頁頂顯示詳細資訊，並把清單中的該列捲入視野。
 - 元件字典：依機構／電控／軟體／水氣電分頁，再用類別 pill 與關鍵字過濾。
+
+## 教育訓練平台（LMS）
+
+除了設備 3D 之外，平台另有一套依 `Automation_Training_Hub_PRD.md` 建的學習系統（`backend/training/`），
+教材內容來自 `Docs/automation-training.html`：
+
+| 功能 | 路徑 | 內容 |
+|---|---|---|
+| 學習地圖 | `/learn` | 3 個 Level、9 個章節；**修完一級的全部章節才解鎖下一級** |
+| 章節 | `/learn/<課程>/<章節>` | Markdown 教材 + 本章元件卡 + 標記完成；部分章節可跳到對應設備的 3D 頁 |
+| 技術知識庫 | `/knowledge` | 185 張元件知識卡（功用／安裝位置／現場重點），依 8 個系統分類 + 全文搜尋 |
+| 來料辨識 | `/identify` | 12 組「看到這個外觀 → 怎麼分辨 → 要核對什麼 → 常見收錯」 |
+| 隨堂測驗 | `/quiz` | 15 題單選，**由後端判題**（前端拿不到答案），登入後留作答紀錄 |
+| 實戰演練 | `/projects` | Mini Project 規格與驗收標準、提交 repo；導師在同一頁批改與評分 |
+| 個人中心 | `/me` | 登入／註冊、章節完成度與測驗統計 |
+
+### 角色
+
+`training.Profile.role` 分三級，註冊一律開為**學員**，導師與管理員請在 `/admin` → Profiles 調整：
+
+- **學員**：瀏覽全部教材、作答、提交專案，只看得到自己的提交紀錄。
+- **導師**：另可在 `/projects` 批改所有人的提交、給分與評語；在 `/admin` 上架課程與撰寫技術文檔。
+- **管理員**：同導師，另負責帳號與權限。
+
+### 知識卡與實機元件的關係
+
+`catalog.Component` 是「某台設備的某顆料」（綁 Equipment/Module，有 3D 座標與 mesh）；
+`training.KnowledgeCard` 是「這類元件的通用知識」（跨設備）。兩者用 M2M 連結，
+對照表在 `backend/training/management/commands/load_training_seed.py` 的 `LINKS`（目前對到 137/175 個元件）。
+
+### 匯入教材
+
+```bash
+python backend/manage.py load_training_seed          # 以 code / slug upsert，可重複執行
+python backend/manage.py load_training_seed --relink # 只重建知識卡與元件的關聯
+```
+
+種子在 `backend/training/seed/`（knowledge_cards / identification / quiz / courses / projects）。
+要改教材文字直接編 JSON 再跑一次即可；`load_seed`（設備元件）與 `load_training_seed`（教材）互不影響。
+
+### 驗證
+
+```bash
+python backend/manage.py test training   # 解鎖規則、判題不外洩答案、角色權限、CSRF
+```
 
 ## CAD Studio：輸入文字 → 產生 3D CAD → 匯出
 

@@ -8,8 +8,10 @@ from .models import Component, Equipment, Module
 api = NinjaAPI(title="TrainingCenter API", version="1.0")
 
 from cadstudio.api import router as cad_router  # noqa: E402
+from training.api import router as training_router  # noqa: E402
 
 api.add_router("/cad", cad_router)
+api.add_router("/training", training_router)
 
 
 class ComponentOut(Schema):

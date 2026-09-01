@@ -153,3 +153,190 @@ body { font-family: 'Siemens Sans', 'Noto Sans TC', 'Microsoft JhengHei', system
 .studio-job img, .studio-job .ph { width: 56px; height: 42px; object-fit: cover; border-radius: 3px; background: var(--theme-color-4); }
 .studio-job .title { font-size: 0.85rem; font-weight: 600; }
 .studio-job .sub { font-size: 0.72rem; color: var(--theme-color-soft-text); }
+
+/* ===================== 教育訓練（LMS） ===================== */
+
+.filter-bar {
+  display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0;
+}
+.section-title { margin: 1.75rem 0 0.75rem; font-size: 1rem; }
+.muted { color: var(--theme-color-soft-text); font-size: 0.8rem; }
+
+/* --- Markdown --- */
+.md { max-width: 78ch; line-height: 1.75; }
+.md h1 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+.md h2 { font-size: 1.05rem; margin: 1.5rem 0 0.5rem; }
+.md h3 { font-size: 0.95rem; margin: 1.4rem 0 0.5rem; }
+.md p { margin: 0.6rem 0; }
+.md ul, .md ol { margin: 0.6rem 0; padding-left: 1.4rem; }
+.md li { margin: 0.35rem 0; }
+.md blockquote {
+  margin: 1rem 0; padding: 0.75rem 1rem;
+  border-left: 3px solid var(--theme-color-alarm);
+  background: var(--theme-color-2); border-radius: 0 4px 4px 0;
+}
+.md blockquote p:first-child { margin-top: 0; }
+.md blockquote ol { margin: 0.4rem 0 0; }
+.md code {
+  font-family: Consolas, monospace; font-size: 0.85em;
+  background: var(--theme-color-3); padding: 0.1em 0.35em; border-radius: 3px;
+}
+.md pre { background: var(--theme-color-2); padding: 0.75rem; border-radius: 4px; overflow-x: auto; }
+.md table { border-collapse: collapse; margin: 0.75rem 0; }
+.md th, .md td { border: 1px solid var(--theme-color-soft-bdr); padding: 0.35rem 0.6rem; }
+
+/* --- 元件知識卡 --- */
+.kcard-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem;
+}
+.kcard {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 0.75rem; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.kcard:hover, .kcard:focus { background: var(--theme-color-3); outline: none; }
+.kcard.open { border-color: var(--theme-color-primary); }
+.kcard-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.kcard-code {
+  font-family: Consolas, monospace; font-size: 0.7rem; font-weight: 700;
+  color: #0b0f14; padding: 0.1rem 0.4rem; border-radius: 2px;
+}
+.kcard-cat { font-size: 0.7rem; color: var(--theme-color-soft-text); }
+.kcard-photo {
+  width: 100%; height: 120px; object-fit: contain;
+  background: var(--theme-color-1); border-radius: 3px; margin-bottom: 0.4rem;
+}
+.kcard h5 { margin: 0; font-size: 0.95rem; }
+.kcard-en { font-size: 0.75rem; color: var(--theme-color-soft-text); margin-bottom: 0.4rem; }
+.kcard-fn, .kcard-more p {
+  display: flex; gap: 0.4rem; align-items: flex-start;
+  font-size: 0.82rem; margin: 0.35rem 0; line-height: 1.55;
+}
+.kcard-more { border-top: 1px solid var(--theme-color-soft-bdr); margin-top: 0.5rem; padding-top: 0.5rem; }
+.kcard-more b { display: block; font-size: 0.72rem; color: var(--theme-color-soft-text); }
+.kcard-more .tip ix-icon { color: var(--theme-color-warning); }
+.kcard-credit { font-size: 0.68rem; color: var(--theme-color-soft-text); margin-top: 0.4rem; }
+.kcard-empty { color: var(--theme-color-soft-text); padding: 1rem 0; }
+
+/* --- 來料辨識 --- */
+.ident-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 1000px) { .ident-layout { grid-template-columns: 1fr; } }
+.ident-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.ident-btn {
+  text-align: left; padding: 0.6rem 0.75rem; font: inherit; font-size: 0.82rem;
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); color: inherit; cursor: pointer; line-height: 1.5;
+}
+.ident-btn:hover { background: var(--theme-color-3); }
+.ident-btn.on { border-color: var(--theme-color-primary); background: var(--theme-color-3); }
+.ident-out {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 1rem; min-height: 200px;
+}
+.ident-out h4 { margin: 1rem 0 0.3rem; font-size: 0.85rem; }
+.ident-out h4:first-child { margin-top: 0; }
+.ident-out h4.warn { color: var(--theme-color-warning); }
+.ident-out p { margin: 0; font-size: 0.85rem; line-height: 1.7; }
+.ident-hint { color: var(--theme-color-soft-text); }
+
+/* --- 學習地圖 --- */
+.level-block { margin-bottom: 2rem; }
+.level-title { display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; margin: 0 0 0.75rem; }
+.level-badge {
+  font-family: Consolas, monospace; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+  background: var(--theme-color-primary); color: var(--theme-color-primary--contrast);
+  padding: 0.15rem 0.45rem; border-radius: 2px;
+}
+.level-badge.small { font-size: 0.62rem; }
+.course-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 0.75rem; }
+.course-card {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 1rem;
+}
+.course-card.locked { opacity: 0.55; }
+.course-card header { display: flex; align-items: center; gap: 0.5rem; }
+.course-card h4 { margin: 0; font-size: 1rem; }
+.course-desc { font-size: 0.82rem; color: var(--theme-color-soft-text); line-height: 1.6; }
+.course-progress { font-size: 0.75rem; color: var(--theme-color-soft-text); margin-bottom: 0.4rem; }
+.lesson-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.lesson-list button {
+  width: 100%; display: grid; grid-template-columns: 20px 1fr auto; gap: 0.4rem; align-items: center;
+  text-align: left; font: inherit; font-size: 0.85rem; padding: 0.4rem 0.5rem;
+  border: 1px solid transparent; border-radius: 3px;
+  background: var(--theme-color-3); color: inherit; cursor: pointer;
+}
+.lesson-list button:hover:not(:disabled) { border-color: var(--theme-color-primary); }
+.lesson-list button:disabled { cursor: not-allowed; opacity: 0.6; }
+.lesson-list .tick { color: var(--theme-color-success); display: flex; }
+.lesson-list .lesson-n { font-size: 0.7rem; color: var(--theme-color-soft-text); }
+.locked-note { font-size: 0.72rem; color: var(--theme-color-soft-text); margin-top: 0.5rem; }
+.lesson-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.75rem 0 1.25rem; }
+
+/* --- 測驗 --- */
+.quiz-list { display: flex; flex-direction: column; gap: 0.75rem; max-width: 900px; }
+.quiz-item {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 1rem;
+}
+.quiz-item h4 { margin: 0 0 0.6rem; font-size: 0.95rem; display: flex; gap: 0.5rem; line-height: 1.6; }
+.quiz-no {
+  font-family: Consolas, monospace; font-size: 0.72rem; font-weight: 700;
+  color: var(--theme-color-soft-text); flex: 0 0 auto; padding-top: 0.15rem;
+}
+.quiz-options { display: flex; flex-direction: column; gap: 0.3rem; }
+.quiz-opt {
+  display: flex; gap: 0.5rem; align-items: flex-start; text-align: left;
+  font: inherit; font-size: 0.85rem; padding: 0.5rem 0.6rem;
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 3px;
+  background: var(--theme-color-3); color: inherit; cursor: pointer;
+}
+.quiz-opt:hover:not(:disabled) { border-color: var(--theme-color-primary); }
+.quiz-opt:disabled { cursor: default; }
+.quiz-opt.right { border-color: var(--theme-color-success); }
+.quiz-opt.wrong { border-color: var(--theme-color-alarm); }
+.quiz-key { font-family: Consolas, monospace; font-weight: 700; color: var(--theme-color-soft-text); }
+.quiz-exp { font-size: 0.82rem; line-height: 1.65; margin: 0.6rem 0 0; padding-left: 0.6rem; border-left: 3px solid; }
+.quiz-exp.ok { border-color: var(--theme-color-success); }
+.quiz-exp.ng { border-color: var(--theme-color-alarm); }
+.quiz-exp b { margin-right: 0.35rem; }
+.quiz-prev { font-size: 0.72rem; color: var(--theme-color-soft-text); margin: 0.5rem 0 0; }
+
+/* --- Mini Project --- */
+.project-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.project-card {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 1rem;
+}
+.project-card header { display: flex; align-items: center; gap: 0.6rem; cursor: pointer; }
+.project-card h4 { margin: 0; font-size: 1rem; }
+.project-summary { font-size: 0.85rem; color: var(--theme-color-soft-text); margin: 0.4rem 0 0; }
+.project-body { border-top: 1px solid var(--theme-color-soft-bdr); margin-top: 0.75rem; padding-top: 0.75rem; }
+.submit-box, .review-box, .auth-form {
+  display: flex; flex-direction: column; gap: 0.6rem; max-width: 560px; margin-top: 1rem;
+}
+.auth-actions { display: flex; gap: 0.5rem; }
+.sub-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.sub-row {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 0.75rem;
+}
+.sub-head { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; font-size: 0.85rem; }
+.sub-note, .sub-feedback { font-size: 0.82rem; margin: 0.4rem 0 0; line-height: 1.6; }
+.sub-feedback b { display: block; font-size: 0.72rem; color: var(--theme-color-soft-text); }
+.status {
+  font-size: 0.7rem; padding: 0.1rem 0.45rem; border-radius: 999px;
+  border: 1px solid var(--theme-color-soft-bdr);
+}
+.status-passed { border-color: var(--theme-color-success); color: var(--theme-color-success); }
+.status-rejected { border-color: var(--theme-color-alarm); color: var(--theme-color-alarm); }
+.status-under_review { border-color: var(--theme-color-warning); color: var(--theme-color-warning); }
+.score { font-weight: 700; }
+
+/* --- 個人中心 --- */
+.stat-row { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0 1.5rem; }
+.stat {
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 4px;
+  background: var(--theme-color-2); padding: 1rem; min-width: 220px;
+}
+.stat-n { font-size: 1.6rem; font-weight: 700; }
+.stat-l { font-size: 0.78rem; color: var(--theme-color-soft-text); margin-bottom: 0.5rem; }

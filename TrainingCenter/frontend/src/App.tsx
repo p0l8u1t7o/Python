@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   IxApplication,
@@ -7,8 +7,22 @@ import {
   IxMenu,
   IxMenuItem,
 } from '@siemens/ix-react';
-import { iconBook, iconBoxOpen, iconHome, iconPlant, iconRoboticArm, iconSearch, iconMaintenance } from '@siemens/ix-icons/icons';
+import {
+  iconBook,
+  iconBoxOpen,
+  iconBulb,
+  iconCheckboxes,
+  iconDocument,
+  iconEye,
+  iconHome,
+  iconPlant,
+  iconRoboticArm,
+  iconSearch,
+  iconMaintenance,
+  iconUser,
+} from '@siemens/ix-icons/icons';
 import { api, type EquipmentSummary } from './api';
+import { training, type Me } from './training';
 
 const SCENE_ICON: Record<string, string> = {
   fuelcell: iconPlant,
@@ -17,22 +31,44 @@ const SCENE_ICON: Record<string, string> = {
   robotcell: iconRoboticArm,
 };
 
+/** 所有頁面共用的 outlet context。 */
+export interface AppContext {
+  equipment: EquipmentSummary[];
+  me: Me | null;
+  refreshMe: () => Promise<void>;
+}
+
 export default function App() {
   const [equipment, setEquipment] = useState<EquipmentSummary[]>([]);
+  const [me, setMe] = useState<Me | null>(null);
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
+  const refreshMe = useCallback(async () => {
+    setMe(await training.me().catch(() => null));
+  }, []);
+
   useEffect(() => {
     api.listEquipment().then(setEquipment).catch(console.error);
-  }, []);
+    refreshMe();
+  }, [refreshMe]);
+
+  const item = (path: string, icon: string, label: string) => (
+    <IxMenuItem
+      key={path}
+      icon={icon}
+      active={pathname === path || pathname.startsWith(path + '/')}
+      onClick={() => navigate(path)}
+    >
+      {label}
+    </IxMenuItem>
+  );
 
   return (
     <IxApplication>
       <IxApplicationHeader name="設備教育訓練中心" />
       <IxMenu>
-        <IxMenuItem icon={iconHome} active={pathname === '/'} onClick={() => navigate('/')}>
-          設備總覽
-        </IxMenuItem>
+        {item('/', iconHome, '設備總覽')}
         {equipment.map((e) => (
           <IxMenuItem
             key={e.slug}
@@ -43,15 +79,17 @@ export default function App() {
             {e.name}
           </IxMenuItem>
         ))}
-        <IxMenuItem icon={iconBook} active={pathname === '/glossary'} onClick={() => navigate('/glossary')}>
-          元件字典
-        </IxMenuItem>
-        <IxMenuItem icon={iconBoxOpen} active={pathname === '/cad-studio'} onClick={() => navigate('/cad-studio')}>
-          CAD Studio
-        </IxMenuItem>
+        {item('/learn', iconBulb, '學習地圖')}
+        {item('/knowledge', iconBook, '技術知識庫')}
+        {item('/identify', iconEye, '來料辨識')}
+        {item('/quiz', iconCheckboxes, '隨堂測驗')}
+        {item('/projects', iconDocument, '實戰演練')}
+        {item('/glossary', iconBook, '元件字典')}
+        {item('/cad-studio', iconBoxOpen, 'CAD Studio')}
+        {item('/me', iconUser, me?.authenticated ? me.display_name : '登入')}
       </IxMenu>
       <IxContent>
-        <Outlet context={{ equipment }} />
+        <Outlet context={{ equipment, me, refreshMe } satisfies AppContext} />
       </IxContent>
     </IxApplication>
   );

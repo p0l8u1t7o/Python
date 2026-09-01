@@ -36,7 +36,28 @@ SECRET_KEY = 'django-insecure-s8kqozw#@t=q#ltp8y__(no7ucf+$f5e+qllm(2)#k!85xx0+d
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+def _lan_ips() -> list[str]:
+    """本機的區網 IPv4。用來讓同區網的手機能透過 Vite（0.0.0.0:5174）連進來測試。
+
+    Vite 代理會原樣轉送瀏覽器的 Host／Origin（例如 192.168.x.x:5174），
+    沒列進 ALLOWED_HOSTS 與 CSRF_TRUSTED_ORIGINS 的話，Django 會回 400／403。
+    """
+    import socket
+
+    ips = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith(("127.", "169.254.")):
+                ips.add(ip)
+    except OSError:
+        pass
+    return sorted(ips)
+
+
+_LAN_IPS = _lan_ips()
+
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]", *_LAN_IPS]
 
 
 # Application definition
@@ -52,6 +73,7 @@ INSTALLED_APPS = [
     'ninja',
     'catalog',
     'cadstudio',
+    'training',
 ]
 
 MIDDLEWARE = [
@@ -144,4 +166,12 @@ MAILERS = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-CORS_ALLOWED_ORIGINS = ["http://localhost:5174", "http://127.0.0.1:5174"]
+_WEB_ORIGINS = [
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    *[f"http://{ip}:5174" for ip in _LAN_IPS],  # 同區網的手機／平板
+]
+CORS_ALLOWED_ORIGINS = _WEB_ORIGINS
+# 前端走 Vite proxy（5174）打到 Django（8001），瀏覽器送的 Origin 與 Django 看到的 Host 不一致，
+# 不列在這裡的話所有帶 Origin 的寫入請求都會被 CSRF 擋掉。
+CSRF_TRUSTED_ORIGINS = _WEB_ORIGINS

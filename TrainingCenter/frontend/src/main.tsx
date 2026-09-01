@@ -8,6 +8,13 @@ import Home from './pages/Home';
 import EquipmentPage from './pages/EquipmentPage';
 import GlossaryPage from './pages/GlossaryPage';
 import CadStudioPage from './pages/CadStudioPage';
+import LearningPathPage from './pages/LearningPathPage';
+import LessonPage from './pages/LessonPage';
+import KnowledgePage from './pages/KnowledgePage';
+import IdentificationPage from './pages/IdentificationPage';
+import QuizPage from './pages/QuizPage';
+import ProjectsPage from './pages/ProjectsPage';
+import ProfilePage from './pages/ProfilePage';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,6 +23,13 @@ createRoot(document.getElementById('root')!).render(
         <Route element={<App />}>
           <Route index element={<Home />} />
           <Route path="equipment/:slug" element={<EquipmentPage />} />
+          <Route path="learn" element={<LearningPathPage />} />
+          <Route path="learn/:course/:lesson" element={<LessonPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
+          <Route path="identify" element={<IdentificationPage />} />
+          <Route path="quiz" element={<QuizPage />} />
+          <Route path="projects" element={<ProjectsPage />} />
+          <Route path="me" element={<ProfilePage />} />
           <Route path="glossary" element={<GlossaryPage />} />
           <Route path="cad-studio" element={<CadStudioPage />} />
         </Route>

@@ -2,11 +2,16 @@
 
 自動化設備教育訓練平台：設備 → 模組（機構／電控／軟體）→ 元件，含 3D 檢視與動畫。使用說明見 README.md。
 
+兩個 Django app 分工：`catalog` 是設備 BOM 與 3D（Equipment→Module→Component）；
+`training` 是 LMS（課程／知識卡／來料辨識／測驗／Mini Project），規格見 `Automation_Training_Hub_PRD.md`，
+教材原始檔是 `Docs/automation-training.html`。兩者用 `KnowledgeCard.components` M2M 互連。
+
 ## 語言與慣例
 - 對話與文件使用繁體中文；程式碼、識別字與技術術語保持英文。
 - 種子資料與 UI 文案一律繁中；品牌／型號標示「範例：」代表尚未對照實際 BOM。
 - 領域固定四個：mechanical／electrical／software／utility（水氣電）；機器視覺相關模組歸 software。
 - 改 seed 的流程：`update_v2.py`（結構性調整）→ `add_photo_queries.py`（照片關鍵字）→ `load_seed` → `fetch_photos`。
+- 改教材（LMS）的流程：編 `backend/training/seed/*.json` → `load_training_seed`（以 code／slug upsert，可重複執行）。
 
 ## 開發環境
 - Python 3.12 於 `.venv/`；一律用 `.venv/Scripts/python.exe`（Git Bash：`./.venv/Scripts/python.exe`）。
@@ -14,10 +19,13 @@
 - 前端在 `frontend/`，Node 24；`npm run dev` 走 Vite proxy 到 Django 8001。
 - 啟停：`.\start.ps1`（背景；`-Attach` 前景 Ctrl+C 即停）/ `.\stop.ps1`（taskkill /T 砍程序樹＋釋放埠）；Web 5174、API 8001。Django 以 `--noreload` 啟動，改後端要重啟。
 - CAD Studio（`backend/cadstudio/`）：AI 產碼預設 Gemini（OpenAI 相容端點，`openai` SDK），可切 openai_compat／claude，建置走 `runner.py` 呼叫 skill 工具；金鑰與設定放專案根目錄 `.env`（settings.py 與 start.ps1 都會載入，已 gitignore）。
-- 元件照片：`manage.py fetch_photos` 從 Wikimedia Commons 依 seed 的 `photo_query` 抓（`|` 分隔備用關鍵字）。
+- 元件照片兩條路：`manage.py fetch_photos`（Wikimedia Commons，依 seed 的 `photo_query`，`|` 分隔備用關鍵字）／`manage.py fetch_google_photos`（Google Custom Search JSON API，依 `backend/catalog/seed/image_queries.json`，同時處理 Component 與 KnowledgeCard）。後者需要 `.env` 的 `GOOGLE_CSE_API_KEY` 與 `GOOGLE_CSE_ID`。
+- 照片存檔路徑是前端寫死的約定：元件 `media/components/<設備 slug>/<元件 slug>.<ext>`、知識卡 `media/knowledge/<料號>.<ext>`。副檔名依實際解碼格式決定，不要照網址猜。
+- `manage.py photo_report` 產生 `Docs/photo-report.html` 縮圖對照表，用來檢查哪些圖抓錯（不分來源）。抓錯就改 `image_queries.json` 再 `--code/--slug ... --force` 單獨重抓。
+- 抓圖指令不加 `--force` 只會處理 `photo` 為空的項目，所以 `--limit` 分天跑會自動接續，不需要額外記狀態。
 
 ## 驗證清單（改完必做）
-- 後端：`python backend/manage.py check`、改 seed 後 `load_seed`（可重複執行，以 slug 為鍵 upsert）。
+- 後端：`python backend/manage.py check`、`manage.py test training`；改 seed 後 `load_seed`（可重複執行，以 slug 為鍵 upsert）。
 - 前端：`cd frontend && npx tsc -p tsconfig.app.json --noEmit && npx vite build`。
 - 3D／版面改動：啟動兩個 server 後用 Playwright 截圖確認（scratchpad 內裝 playwright，Chromium 已在 ~/AppData/Local/ms-playwright）。
 
@@ -51,3 +59,12 @@
 - CAD Studio 早期版本的模式切換讓使用者誤按「直接執行程式」而建置範本；現在是兩個明確按鈕（AI 產生／執行下方程式），不要再做隱性模式。
 - `parts.col()` 同時接受 hex 字串與 build123d Color（AI 常傳 `srgb()` 物件）。`runner.HEADER` 對 `AssemblyHelper.add` 加了 `loc/location/position/rotation` 相容包裝與 `asm.root`；AI 模式失敗會自動修復最多 `MAX_REPAIR=2` 次。
 - Commons 分類名稱要先用 `prop=categoryinfo` 確認存在（很多直覺名稱不存在，如 Safety relays、Light curtains）。
+- Commons 對工業元件的覆蓋率很差，自動抓圖約四成會抓錯（安全光柵→數位顯微鏡、三色燈→燈塔油畫）。候選清單與各元件的原廠／搜尋連結整理在 `Docs/photo-candidates.{md,html,json}`。
+- 不要去爬 `images.google.com`：結果是 JS 動態產生的，HTML 裡沒有原圖網址，而且違反 Google 服務條款、很快會被擋。要用官方的 Custom Search JSON API（免費層每天 100 次查詢，一筆元件一次）。
+- 前端走 Vite proxy（5174）打到 Django（8001），瀏覽器的 `Origin` 與 Django 看到的 `Host` 不一致，**沒設 `CSRF_TRUSTED_ORIGINS` 的話所有寫入請求都會 403**。症狀是 GET 全正常、POST 全掛。
+- django-ninja 1.6 拿掉了 `NinjaAPI(csrf=...)`；只有 `auth=django_auth`（SessionAuth）的端點會做 CSRF 檢查，沒有 `auth=` 的 POST 預設 csrf_exempt。login／register／作答這類要自己呼叫 `ninja.utils.check_csrf`（見 `training/api.py` 的 `require_csrf`）。
+- ninja 的 view 回傳 dict 不是 HttpResponse，所以 `@ensure_csrf_cookie`／`@csrf_protect` 這類 Django 裝飾器會炸（`'dict' object has no attribute 'set_cookie'`）。要發 csrftoken 就直接呼叫 `django.middleware.csrf.get_token(request)`。
+- `IxButton` 沒有 `outline`（`IxPill` 才有），外框樣式用 `variant="subtle-secondary"`；`IxMessageBar` 是 `onClosedChange` 不是 `onCloseClick`，type 沒有 `danger`（用 `alarm`）；`IxInput` 的 type 不接受 `number`。
+- 前端 tsconfig 開了 `erasableSyntaxOnly`，不能用建構子參數屬性（`constructor(public x: number)`）。
+- Playwright 測 iX 元件要用 `page.locator('ix-button', { hasText: '…' })`；`getByRole('button')` 抓不到 web component。
+- Bash 工具的 heredoc 內容一大就會被截斷（約 9KB 起），寫大檔用 Write 工具，別用 `cat <<EOF`。
