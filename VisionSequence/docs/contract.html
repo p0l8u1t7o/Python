@@ -4,22 +4,52 @@
 <meta charset="utf-8">
 <title>VisionSequence 前後端合約</title>
 <style>
-  body { font-family: system-ui, "Noto Sans TC", "Microsoft JhengHei", sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; line-height: 1.65; color: #1e293b; }
-  h1, h2, h3 { color: #0f172a; }
-  h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: .3rem; margin-top: 2.5rem; }
-  code, pre { font-family: ui-monospace, Consolas, monospace; font-size: .9em; }
-  pre { background: #f1f5f9; padding: .8rem 1rem; overflow-x: auto; border-radius: 6px; }
-  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93em; }
-  th, td { border: 1px solid #e2e8f0; padding: .4rem .6rem; text-align: left; vertical-align: top; }
-  th { background: #f8fafc; }
-  nav ul { columns: 2; }
-  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
-  nav.site a { margin-right: .8rem; }
-  .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<article class="doc">
 
 <h1>VisionSequence 前後端合約（給平行開發的子任務看）</h1>
 
@@ -118,5 +148,6 @@ POST /vision/flows/{id}/recipes/import/check    multipart file 或 JSON doc → 
 POST /vision/flows/{id}/recipes/import          {doc, name?, accept?:[key], is_default?, description?} → 只寫入接受的項目
 status：ok | unchanged | version_changed（可勾選接受）| node_missing | type_changed | param_missing | value_invalid（不可匯入）
 Tool.version（預設 1）進 catalogue；工具參數語意變更時 +1。</pre>
+</article>
 </body>
 </html>
