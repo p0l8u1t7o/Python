@@ -750,13 +750,13 @@ export function useDlSamples(projectId: number | null) {
   })
 }
 
-/** 訓練狀態輪詢：訓練中每 700ms、閒置停止。 */
-export function useDlTrainStatus(active: boolean) {
+/** 訓練狀態輪詢：訓練中每 700ms、閒置放慢到 5 秒。 */
+export function useDlTrainStatus(active = true) {
   return useQuery({
     queryKey: ['dl', 'train-status'],
     queryFn: () => api.get<{ job: DlTrainJob | null }>('/vision/dl/train/status'),
     select: (data) => data.job,
-    refetchInterval: active ? 700 : false,
+    refetchInterval: (query) => (active ? (query.state.data?.job?.status === 'running' ? 700 : 5000) : false),
   })
 }
 

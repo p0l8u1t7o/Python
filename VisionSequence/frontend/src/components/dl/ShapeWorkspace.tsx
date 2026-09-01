@@ -68,34 +68,71 @@ function pointInShape(shape: DlShape, nx: number, ny: number): boolean {
 // ---- 縮圖（把標記輪廓直接畫上去） ----
 function Thumb({ sample, classes, selected, hasSuggestion, onClick }: { sample: DlSample; classes: string[]; selected: boolean; hasSuggestion: boolean; onClick: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
+  // 影像只依 sample.id 載一次快取在 ref；shapes 變動（拖曳標記中每 frame）只重畫，不重新下載。
+  const imgRef = useRef<{ id: string; img: HTMLImageElement | null; failed: boolean }>({ id: '', img: null, failed: false })
+  const drawRef = useRef<() => void>(() => {})
+
+  const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const img = new Image()
-    img.onload = () => {
-      const w = 168
-      const h = Math.max(24, Math.round((sample.height / Math.max(1, sample.width)) * w))
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(img, 0, 0, w, h)
-      for (const shape of sample.shapes ?? []) {
-        ctx.strokeStyle = color(classes, shape.label)
-        ctx.lineWidth = 1.5
-        ctx.beginPath()
-        if (shape.kind === 'bbox') {
-          const [[x0, y0], [x1, y1]] = [shape.points[0], shape.points[1] ?? shape.points[0]]
-          ctx.strokeRect(x0 * w, y0 * h, (x1 - x0) * w, (y1 - y0) * h)
-        } else {
-          shape.points.forEach(([x, y], i) => (i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)))
-          ctx.closePath()
-          ctx.stroke()
-        }
+    const w = 168
+    const h = Math.max(24, Math.round((sample.height / Math.max(1, sample.width)) * w))
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const entry = imgRef.current
+    if (entry.failed) {
+      ctx.fillStyle = '#e2e8f0'
+      ctx.fillRect(0, 0, w, h)
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '11px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('!', w / 2, h / 2)
+      return
+    }
+    if (!entry.img) {
+      ctx.fillStyle = '#f1f5f9'
+      ctx.fillRect(0, 0, w, h)
+      return
+    }
+    ctx.drawImage(entry.img, 0, 0, w, h)
+    for (const shape of sample.shapes ?? []) {
+      ctx.strokeStyle = color(classes, shape.label)
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      if (shape.kind === 'bbox') {
+        const [[x0, y0], [x1, y1]] = [shape.points[0], shape.points[1] ?? shape.points[0]]
+        ctx.strokeRect(x0 * w, y0 * h, (x1 - x0) * w, (y1 - y0) * h)
+      } else {
+        shape.points.forEach(([x, y], i) => (i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)))
+        ctx.closePath()
+        ctx.stroke()
       }
     }
+  }, [sample.shapes, sample.width, sample.height, classes])
+
+  drawRef.current = draw
+  useEffect(() => {
+    if (imgRef.current.id === sample.id) {
+      draw()
+      return
+    }
+    imgRef.current = { id: sample.id, img: null, failed: false }
+    draw()
+    const img = new Image()
+    img.onload = () => {
+      if (imgRef.current.id !== sample.id) return
+      imgRef.current.img = img
+      drawRef.current() // 用最新的 draw（載入期間 shapes 可能已變）
+    }
+    img.onerror = () => {
+      if (imgRef.current.id !== sample.id) return
+      imgRef.current.failed = true
+      drawRef.current()
+    }
     img.src = dlSampleUrl(sample.id, 192)
-  }, [sample.id, sample.shapes, sample.width, sample.height, classes])
+  }, [sample.id, draw])
   return (
     <button type="button" onClick={onClick}
       className={`relative w-full overflow-hidden rounded-md border text-left ${selected ? 'border-brand ring-2 ring-brand/40' : 'border-line hover:border-brand/50'}`}>
@@ -109,12 +146,15 @@ function Thumb({ sample, classes, selected, hasSuggestion, onClick }: { sample: 
 }
 
 // ---------------------------------------------------------------------------
-export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion }: {
+export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion, onEditClasses, hotkeysDisabled = false }: {
   project: DlProject
   samples: DlSample[]
   suggestions: Map<string, DlSuggestion>
   onSave: (sampleId: string, shapes: DlShape[]) => Promise<void>
   onAcceptSuggestion: (sampleId: string, shapes: DlShape[]) => Promise<void>
+  onEditClasses?: () => void
+  /** 上層 Modal 開啟時停用快捷鍵，避免 Delete／←→ 打到背後的工作區 */
+  hotkeysDisabled?: boolean
 }) {
   const { t } = useTranslation()
   const toast = useToast()
@@ -230,9 +270,43 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   }
 
   // 鍵盤快捷鍵
+  // classes prop 變動（編輯類別後）：activeClass 重設、本地 shapes 過濾掉已刪類別（與後端
+  // patch_project 的清理一致，否則殘留形狀會讓之後每次儲存被驗證拒絕）、清空時退回選取模式。
+  useEffect(() => {
+    if (activeClass && !classes.includes(activeClass)) setActiveClass(classes[0] ?? '')
+    else if (!activeClass && classes.length) setActiveClass(classes[0])
+    if (!classes.length) setMode('select')
+    setShapes((old) => {
+      if (old.every((s) => classes.includes(s.label))) return old
+      setSelectedIndex(null)
+      setHistory([])
+      return old.filter((s) => classes.includes(s.label))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(classes)])
+
+  // 數字鍵指定類別：掛 capture 階段，先於 ImageViewer 容器的 keydown（它的 '1' 是 1:1 縮放，
+  // 會 preventDefault 把類別鍵吃掉）；1:1 仍可用工具列按鈕。
+  useEffect(() => {
+    function onDigit(e: KeyboardEvent) {
+      if (hotkeysDisabled || isTyping()) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (!/^[0-9]$/.test(e.key)) return
+      const label = classes[Number(e.key)]
+      if (!label) return
+      assignClass(label)
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    window.addEventListener('keydown', onDigit, true)
+    return () => window.removeEventListener('keydown', onDigit, true)
+  })
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTyping()) return
+      if (hotkeysDisabled || isTyping()) return
+      // ImageViewer 容器聚焦時自己處理 f/+/-/拖曳中Esc/頂點Delete（有 preventDefault），這裡讓路避免雙重觸發
+      if (e.defaultPrevented) return
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         void save()
@@ -246,8 +320,8 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const key = e.key.toLowerCase()
       if (key === 'v') setMode('select')
-      else if (key === 'n') setMode('polygon')
-      else if (key === 'b') setMode('bbox')
+      else if (key === 'n' && classes.length) setMode('polygon')
+      else if (key === 'b' && classes.length) setMode('bbox')
       else if (key === 'o') void optimizeSelected()
       else if (key === 'delete') removeSelected()
       else if (key === 'escape') {
@@ -255,10 +329,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
         setSelectedIndex(null)
       } else if (key === 'arrowleft' || key === 'a') step(-1)
       else if (key === 'arrowright' || key === 'd') step(1)
-      else if (/^[0-9]$/.test(key)) {
-        const label = classes[Number(key)]
-        if (label) assignClass(label)
-      } else return
+      else return
       e.preventDefault()
     }
     window.addEventListener('keydown', onKey)
@@ -284,7 +355,12 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     })
     for (const shape of suggestion?.shapes ?? []) {
       const c = color(classes, shape.label)
-      out.push({ kind: 'polygon', points: shape.points.map(([x, y]) => [x * w, y * h]), color: `${c}99`, label: `${shape.label}?`, width: 1 } as Overlay)
+      if (shape.kind === 'bbox') {
+        const [[x0, y0], [x1, y1]] = [shape.points[0], shape.points[1] ?? shape.points[0]]
+        out.push({ kind: 'rect', x: x0 * w, y: y0 * h, w: (x1 - x0) * w, h: (y1 - y0) * h, color: `${c}99`, label: `${shape.label}?`, width: 1 } as Overlay)
+      } else {
+        out.push({ kind: 'polygon', points: shape.points.map(([x, y]) => [x * w, y * h]), color: `${c}99`, label: `${shape.label}?`, width: 1 } as Overlay)
+      }
     }
     return out
   }, [sample, shapes, selectedIndex, suggestion, classes])
@@ -352,9 +428,14 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
         {/* 工具列 */}
         <div className="flex flex-wrap items-center gap-1.5">
           <Button size="sm" active={mode === 'select'} onClick={() => setMode('select')} title="V"><MousePointer size={14} /> {t('dl.modeSelect')}</Button>
-          <Button size="sm" active={mode === 'polygon'} onClick={() => setMode('polygon')} title="N"><Pentagon size={14} /> {t('dl.modePolygon')}</Button>
-          <Button size="sm" active={mode === 'bbox'} onClick={() => setMode('bbox')} title="B"><Square size={14} /> {t('dl.modeBbox')}</Button>
+          <Button size="sm" active={mode === 'polygon'} onClick={() => setMode('polygon')} disabled={!classes.length} title="N"><Pentagon size={14} /> {t('dl.modePolygon')}</Button>
+          <Button size="sm" active={mode === 'bbox'} onClick={() => setMode('bbox')} disabled={!classes.length} title="B"><Square size={14} /> {t('dl.modeBbox')}</Button>
           <span className="mx-1 h-5 w-px bg-line" />
+          {!classes.length ? (
+            <button type="button" className="rounded-full border border-dashed border-warning px-2.5 py-0.5 text-xs text-warning hover:bg-warning-soft" onClick={onEditClasses}>
+              {t('dl.classesFirstShort')}
+            </button>
+          ) : null}
           {classes.map((c, i) => (
             <button key={c} type="button" onClick={() => assignClass(c)} title={String(i)}
               className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${activeClass === c ? 'border-transparent text-white' : 'border-line hover:bg-surface-muted'}`}
@@ -378,12 +459,19 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
         <p className="text-xs text-subtle">{t('dl.shapeHint', { count: counts })}</p>
         <div className="h-[62vh] min-h-[380px]">
           <ImageViewer
+            className="h-full w-full"
             src={dlSampleUrl(sample.id, 1600)}
             imageWidth={sample.width}
             imageHeight={sample.height}
             overlays={overlays}
             roi={mode === 'select' ? editingRegion : null}
-            roiShapes={mode === 'polygon' ? ['polygon'] : mode === 'bbox' ? ['rect'] : undefined}
+            roiShapes={
+              // 編輯中：把手工具列只開放該形狀自己的種類，避免 bbox↔polygon／circle 等互轉毀掉標記資料
+              mode === 'polygon' ? ['polygon']
+                : mode === 'bbox' ? ['rect']
+                  : selectedIndex !== null ? (shapes[selectedIndex]?.kind === 'bbox' ? ['rect'] : ['polygon'])
+                    : undefined
+            }
             onRoiChange={mode === 'select' && selectedIndex === null ? undefined : onRoiChange}
             onPick={onPick}
             badge={dirty ? { text: t('dl.unsaved'), tone: 'neutral' } : null}

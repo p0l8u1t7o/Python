@@ -176,11 +176,23 @@ def patch_project(request: HttpRequest, project_id: int):
     if "description" in body:
         project.description = str(body["description"] or "")
     if "classes" in body:
-        classes = [str(c).strip() for c in (body["classes"] or []) if str(c).strip()]
+        from django.db import transaction
+
+        classes = list(dict.fromkeys(str(c).strip() for c in (body["classes"] or []) if str(c).strip()))  # 去重保序
         removed = set(project.classes or []) - set(classes)
         project.classes = classes
-        if removed:  # 被移除類別的樣本改回未標記
-            project.samples.filter(label__in=list(removed)).update(label="", labeled_by="", score=0)
+        with transaction.atomic():  # 清標記與寫入新類別要一起成立（清掉的標記不可復原）
+            if removed:  # 被移除類別的標記一併清掉（label 與 shapes；殘留會讓之後的儲存被驗證拒絕）
+                project.samples.filter(label__in=list(removed)).update(label="", labeled_by="", score=0)
+                for sample in project.samples.all():
+                    kept = [sh for sh in (sample.shapes or []) if sh.get("label") not in removed]
+                    if len(kept) != len(sample.shapes or []):
+                        sample.shapes = kept
+                        if not kept:
+                            sample.labeled_by = ""
+                            sample.score = 0
+                        sample.save(update_fields=["shapes", "labeled_by", "score"])
+            project.save()
     if "params" in body and isinstance(body["params"], dict):
         project.params = body["params"]
     project.save()
@@ -252,7 +264,12 @@ def sample_file(request: HttpRequest, sample_id: uuid.UUID, max: int = 0):
     if sample is None or not os.path.isfile(sample.path):
         raise NotFound("樣本不存在", code="dl_sample_not_found")
     image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
-    return HttpResponse(encode_image(image, max_side=max or None, fmt="jpg"), content_type="image/jpeg")
+    if image is None:
+        raise NotFound("樣本影像檔損毀或已遺失", code="dl_sample_not_found")
+    response = HttpResponse(encode_image(image, max_side=max or None, fmt="jpeg"), content_type="image/jpeg")
+    # 樣本影像不可變（同 id 內容不會改）：讓瀏覽器快取，儲存標記後縮圖牆不用整批重抓。
+    response["Cache-Control"] = "private, max-age=31536000, immutable"
+    return response
 
 
 @router.patch("/dl/samples/{sample_id}")

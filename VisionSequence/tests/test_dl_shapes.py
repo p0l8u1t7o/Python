@@ -240,6 +240,58 @@ class ShapesApiTests(TransactionTestCase):
         self.assertTrue(auto)
         self.assertTrue(auto[0]["shapes"])
 
+    def test_create_without_classes_then_edit(self):
+        """建案不給類別（前端已拿掉輸入欄），之後在專案頁 PATCH classes。"""
+        r = self.post("/api/vision/dl/projects", {"name": f"empty-{uuid.uuid4().hex[:6]}", "trainer_kind": "patch_segment", "classes": []})
+        self.assertEqual(r.status_code, 201, r.content)
+        pid = r.json()["id"]
+        self.assertEqual(r.json()["classes"], [])
+        r = self.client.patch(f"/api/vision/dl/projects/{pid}", data='{"classes": ["spot", "edge"]}', content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["classes"], ["spot", "edge"])
+
+    def test_remove_class_clears_shapes(self):
+        """移除類別要把該類的 shapes 一併清掉，否則之後儲存會被 validate_shapes 拒絕。"""
+        import json as _json
+
+        project = self._project()
+        pid = project["id"]
+        self.client.patch(f"/api/vision/dl/projects/{pid}", data='{"classes": ["spot", "edge"]}', content_type="application/json")
+        sample, shapes = self._upload(pid, 77)
+        mixed = shapes + [{"label": "edge", "kind": "bbox", "points": [[0.1, 0.1], [0.2, 0.2]]}]
+        r = self.client.patch(f"/api/vision/dl/samples/{sample['id']}", data=_json.dumps({"shapes": mixed}), content_type="application/json")
+        self.assertEqual(len(r.json()["shapes"]), 2)
+        # 移除 edge 類別 → 該 shape 被清、spot 保留
+        r = self.client.patch(f"/api/vision/dl/projects/{pid}", data='{"classes": ["spot"]}', content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        row = self.client.get(f"/api/vision/dl/projects/{pid}/samples").json()["items"][0]
+        self.assertEqual([s["label"] for s in row["shapes"]], ["spot"])
+        # 之後照常可以儲存
+        r = self.client.patch(f"/api/vision/dl/samples/{sample['id']}", data=_json.dumps({"shapes": row["shapes"]}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        # 唯一類別被移除 → shapes 全清、labeled_by 歸零
+        r = self.client.patch(f"/api/vision/dl/projects/{pid}", data='{"classes": []}', content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        row = self.client.get(f"/api/vision/dl/projects/{pid}/samples").json()["items"][0]
+        self.assertEqual(row["shapes"], [])
+        self.assertEqual(row["labeled_by"], "")
+        self.assertEqual(row["score"], 0)
+
+    def test_sample_file_cache_and_corrupt(self):
+        project = self._project()
+        sample, _ = self._upload(project["id"], 88)
+        r = self.client.get(f"/api/vision/dl/samples/{sample['id']}/file")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("immutable", r["Cache-Control"])
+        # 檔案損毀 → 404 而非 500
+        from apps.vision.models import DlSample
+
+        row = DlSample.objects.get(pk=sample["id"])
+        with open(row.path, "wb") as f:
+            f.write(b"not an image")
+        r = self.client.get(f"/api/vision/dl/samples/{sample['id']}/file")
+        self.assertEqual(r.status_code, 404)
+
     def test_dataset_export_import_endpoints(self):
         import json as _json
 

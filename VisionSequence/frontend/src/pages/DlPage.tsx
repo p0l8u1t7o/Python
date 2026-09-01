@@ -36,13 +36,12 @@ function CreateProjectModal({ open, onClose, trainers, onCreated }: { open: bool
   const { createProject } = useDlMutations()
   const [name, setName] = useState('')
   const [kind, setKind] = useState(trainers[0]?.kind ?? '')
-  const [classText, setClassText] = useState('OK, NG')
   const trainer = trainers.find((x) => x.kind === (kind || trainers[0]?.kind))
 
   async function submit() {
-    const classes = classText.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)
     try {
-      const project = await createProject.mutateAsync({ name: name.trim(), trainer_kind: trainer?.kind ?? '', classes })
+      // 類別與超參數都在專案頁內設定（各模型各自的頁面），建立時只要名稱與模型種類。
+      const project = await createProject.mutateAsync({ name: name.trim(), trainer_kind: trainer?.kind ?? '', classes: [] })
       toast.success(t('dl.created'))
       onCreated(project)
       onClose()
@@ -60,7 +59,55 @@ function CreateProjectModal({ open, onClose, trainers, onCreated }: { open: bool
         <Select label={t('dl.trainerKind')} value={kind || trainers[0]?.kind || ''} onChange={(e) => setKind(e.target.value)}
           options={trainers.map((x) => ({ value: x.kind, label: x.label }))} />
         {trainer ? <p className="text-xs text-muted">{trainer.description}</p> : null}
-        <TextInput label={t('dl.classesInput')} hint={t('dl.classesHint')} value={classText} onChange={(e) => setClassText(e.target.value)} />
+        <p className="text-xs text-subtle">{t('dl.createHint')}</p>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 類別編輯（專案頁內設定；classes / shapes 兩種模式共用）
+// ---------------------------------------------------------------------------
+function ClassesModal({ open, onClose, classes, onSave, saving }: { open: boolean; onClose: () => void; classes: string[]; onSave: (list: string[]) => Promise<void>; saving: boolean }) {
+  const { t } = useTranslation()
+  const [list, setList] = useState<string[]>(classes)
+  const [text, setText] = useState('')
+  useEffect(() => {
+    if (open) {
+      setList(classes)
+      setText('')
+    }
+  }, [open, classes])
+
+  function add() {
+    // 同一次輸入內也要去重（例如「A,A」），否則 chips 的 key 會撞、顏色索引錯亂
+    const names = [...new Set(text.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean))].filter((n) => !list.includes(n))
+    if (names.length) setList((old) => [...old, ...names])
+    setText('')
+  }
+
+  // dirty 涵蓋清單增刪（不只輸入框文字），Esc／點背景才會先確認
+  const listDirty = text !== '' || JSON.stringify(list) !== JSON.stringify(classes)
+
+  return (
+    <Modal open={open} onClose={onClose} title={t('dl.classesTitle')} description={t('dl.classesRemoveHint')} dirty={listDirty}
+      footer={<><Button onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={saving} onClick={() => void onSave(list).then(onClose).catch(() => {})} data-testid="dl-classes-save">{t('common.save')}</Button></>}>
+      <div className="space-y-3">
+        <div className="flex min-h-9 flex-wrap items-center gap-1.5">
+          {list.map((c, i) => (
+            <span key={c} className="flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-xs">
+              <span className="size-2 rounded-full" style={{ background: CLASS_COLORS[i % CLASS_COLORS.length] }} />
+              {c}
+              <button type="button" className="text-muted hover:text-critical" aria-label={`${t('common.delete')} ${c}`} onClick={() => setList((old) => old.filter((x) => x !== c))}><X size={12} /></button>
+            </span>
+          ))}
+          {!list.length ? <span className="text-xs text-subtle">{t('dl.noClasses')}</span> : null}
+        </div>
+        <div className="flex items-end gap-2">
+          <TextInput label={t('dl.addClass')} hint={t('dl.classesHint')} value={text} onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }} data-testid="dl-class-input" />
+          <Button className="mb-6" onClick={add} disabled={!text.trim()}><Plus size={14} /></Button>
+        </div>
       </div>
     </Modal>
   )
@@ -69,7 +116,7 @@ function CreateProjectModal({ open, onClose, trainers, onCreated }: { open: bool
 // ---------------------------------------------------------------------------
 // 從影像來源收集樣本
 // ---------------------------------------------------------------------------
-function FromSourceModal({ open, onClose, project }: { open: boolean; onClose: () => void; project: DlProject }) {
+function FromSourceModal({ open, onClose, project, showLabel }: { open: boolean; onClose: () => void; project: DlProject; showLabel: boolean }) {
   const { t } = useTranslation()
   const toast = useToast()
   const sources = useSources()
@@ -95,8 +142,10 @@ function FromSourceModal({ open, onClose, project }: { open: boolean; onClose: (
         <Select label={t('dl.source')} value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder={t('dl.pickSource')}
           options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name}（${s.kind}）` }))} />
         <TextInput label={t('dl.grabCount')} type="number" min={1} max={50} value={count} onChange={(e) => setCount(e.target.value)} />
-        <Select label={t('dl.presetLabel')} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('dl.unlabeled')}
-          options={project.classes.map((c) => ({ value: c, label: c }))} />
+        {showLabel ? (
+          <Select label={t('dl.presetLabel')} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('dl.unlabeled')}
+            options={project.classes.map((c) => ({ value: c, label: c }))} />
+        ) : null}
       </div>
     </Modal>
   )
@@ -215,6 +264,25 @@ function TrainLog({ logs }: { logs: string[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// 匯入進度（分批上傳時顯示 done/total 與失敗數）
+// ---------------------------------------------------------------------------
+function ImportProgress({ state }: { state: { done: number; total: number; failed: number } | null }) {
+  const { t } = useTranslation()
+  if (!state) return null
+  return (
+    <div className="space-y-1" data-testid="dl-import-progress">
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted">
+        <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${Math.round((state.done / Math.max(1, state.total)) * 100)}%` }} />
+      </div>
+      <p className="text-xs text-muted">
+        {t('dl.importing', { done: state.done, total: state.total })}
+        {state.failed ? <span className="text-critical">（{t('dl.importFailedCount', { failed: state.failed })}）</span> : null}
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // 樣本網格
 // ---------------------------------------------------------------------------
 function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick }: {
@@ -279,10 +347,13 @@ export function DlPage() {
 
   const [creating, setCreating] = useState(false)
   const [fromSourceOpen, setFromSourceOpen] = useState(false)
+  const [editingClasses, setEditingClasses] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [activeClass, setActiveClass] = useState('')
   const [filter, setFilter] = useState('__all__')
   const [suggestions, setSuggestions] = useState<Map<string, DlSuggestion>>(new Map())
+  //: 匯入進度（分批上傳：done/total/failed；null = 沒有匯入在跑）
+  const [importing, setImporting] = useState<{ done: number; total: number; failed: number } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const trainer = useMemo(() => trainers.data?.find((x) => x.kind === project.data?.trainer_kind), [trainers.data, project.data])
@@ -291,11 +362,42 @@ export function DlPage() {
 
   async function onFiles(list: FileList | null) {
     if (!list?.length || projectId === null) return
+    if (importing) return // 匯入中不可重入（兩個迴圈會互相覆寫進度）
+    // 分批上傳（每批 4 張）：邊傳邊顯示進度與狀態，縮圖牆也會即時長出來。
+    const files = Array.from(list)
+    const batch = 4
+    let done = 0
+    let added = 0
+    let failed = 0
+    setImporting({ done: 0, total: files.length, failed: 0 })
     try {
-      const r = await uploadSamples.mutateAsync({ projectId, files: Array.from(list), label: activeClass })
-      toast.success(t('dl.uploaded', { count: r.items.length }))
+      for (let i = 0; i < files.length; i += batch) {
+        const chunk = files.slice(i, i + batch)
+        try {
+          const r = await uploadSamples.mutateAsync({ projectId, files: chunk, label: isShapes ? '' : activeClass })
+          added += r.items.length
+          failed += r.skipped + (chunk.length - r.items.length - r.skipped)
+        } catch {
+          failed += chunk.length
+        }
+        done += chunk.length
+        setImporting({ done, total: files.length, failed })
+      }
+      if (failed) toast.warning(t('dl.importedWithFail', { count: added, failed }))
+      else toast.success(t('dl.uploaded', { count: added }))
+    } finally {
+      setImporting(null)
+    }
+  }
+
+  async function saveClasses(list: string[]) {
+    if (projectId === null) return
+    try {
+      await patchProject.mutateAsync({ id: projectId, classes: list })
+      if (activeClass && !list.includes(activeClass)) setActiveClass('')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
+      throw e // Modal 據此保持開啟
     }
   }
 
@@ -387,8 +489,8 @@ export function DlPage() {
                 <CardBody className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
-                    <Button size="sm" onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
-                    <Button size="sm" onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
+                    <Button size="sm" disabled={!!importing} onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
+                    <Button size="sm" disabled={!!importing} onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
                     <Button size="sm" variant="primary" loading={autoLabel.isPending} onClick={() => void runAutoLabel()} data-testid="dl-auto"><Sparkles size={14} /> {t('dl.autoLabel')}</Button>
                     {suggestions.size ? (
                       <>
@@ -396,14 +498,20 @@ export function DlPage() {
                         <Button size="sm" onClick={() => setSuggestions(new Map())}><X size={14} /> {t('dl.clearSuggestions')}</Button>
                       </>
                     ) : null}
+                    <Button size="sm" onClick={() => setEditingClasses(true)} data-testid="dl-edit-classes">{t('dl.editClasses')}</Button>
                     <span className="ml-auto text-xs text-muted">{t('dl.progressCount', { labeled: (counts?.total ?? 0) - (counts?.unlabeled ?? 0), total: counts?.total ?? 0 })}</span>
                     <Button size="sm" variant="ghost" title={t('dl.deleteProject')} onClick={() => setDeleting(true)}><Trash2 size={14} /></Button>
                   </div>
+                  <ImportProgress state={importing} />
                 </CardBody>
               </Card>
+              {!project.data.classes.length ? (
+                <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">{t('dl.classesFirst')}</p>
+              ) : null}
               {samples.isLoading ? <LoadingState /> : (samples.data ?? []).length ? (
-                <ShapeWorkspace project={project.data} samples={samples.data ?? []} suggestions={suggestions}
-                  onSave={saveShapes} onAcceptSuggestion={acceptOneSuggestion} />
+                <ShapeWorkspace key={project.data.id} project={project.data} samples={samples.data ?? []} suggestions={suggestions}
+                  onSave={saveShapes} onAcceptSuggestion={acceptOneSuggestion} onEditClasses={() => setEditingClasses(true)}
+                  hotkeysDisabled={editingClasses || creating || fromSourceOpen || deleting} />
               ) : (
                 <EmptyState compact icon={<Camera className="size-6" />} title={t('dl.noSamples')} description={t('dl.noSamplesHint')} />
               )}
@@ -427,10 +535,7 @@ export function DlPage() {
                       )
                     })}
                     <button type="button" className="rounded-full border border-dashed border-line px-2.5 py-1 text-xs text-muted hover:bg-surface-muted"
-                      onClick={() => {
-                        const value = window.prompt(t('dl.classesPrompt'), project.data!.classes.join(', '))
-                        if (value !== null && projectId !== null) void patchProject.mutateAsync({ id: projectId, classes: value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })
-                      }}>
+                      onClick={() => setEditingClasses(true)} data-testid="dl-edit-classes">
                       {t('dl.editClasses')}
                     </button>
                     <span className="ml-auto text-xs text-muted">{t('dl.progressCount', { labeled: (counts?.total ?? 0) - (counts?.unlabeled ?? 0), total: counts?.total ?? 0 })}</span>
@@ -438,8 +543,8 @@ export function DlPage() {
                   <p className="text-xs text-subtle">{activeClass ? t('dl.labelingHint', { label: activeClass }) : t('dl.pickClassHint')}</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
-                    <Button size="sm" onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
-                    <Button size="sm" onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
+                    <Button size="sm" disabled={!!importing} onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
+                    <Button size="sm" disabled={!!importing} onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
                     <Button size="sm" variant="primary" loading={autoLabel.isPending} onClick={() => void runAutoLabel()} data-testid="dl-auto"><Sparkles size={14} /> {t('dl.autoLabel')}</Button>
                     {suggestions.size ? (
                       <>
@@ -457,8 +562,12 @@ export function DlPage() {
                       ]} />
                     <Button size="sm" variant="ghost" title={t('dl.deleteProject')} onClick={() => setDeleting(true)}><Trash2 size={14} /></Button>
                   </div>
+                  <ImportProgress state={importing} />
                 </CardBody>
               </Card>
+              {!project.data.classes.length ? (
+                <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">{t('dl.classesFirst')}</p>
+              ) : null}
               {samples.isLoading ? <LoadingState /> : (
                 <SampleGrid project={project.data} samples={samples.data ?? []} activeClass={activeClass} filter={filter} suggestions={suggestions} onPick={(s, alt) => void pick(s, alt)} />
               )}
@@ -475,8 +584,9 @@ export function DlPage() {
         </div>
       </div>
 
-      <CreateProjectModal open={creating} onClose={() => setCreating(false)} trainers={trainers.data ?? []} onCreated={(p) => setSelected(p.id)} />
-      {project.data ? <FromSourceModal open={fromSourceOpen} onClose={() => setFromSourceOpen(false)} project={project.data} /> : null}
+      <CreateProjectModal open={creating} onClose={() => setCreating(false)} trainers={trainers.data ?? []} onCreated={(p) => { setSelected(p.id); setEditingClasses(true) }} />
+      {project.data ? <ClassesModal open={editingClasses} onClose={() => setEditingClasses(false)} classes={project.data.classes} onSave={saveClasses} saving={patchProject.isPending} /> : null}
+      {project.data ? <FromSourceModal open={fromSourceOpen} onClose={() => setFromSourceOpen(false)} project={project.data} showLabel={!isShapes} /> : null}
       <ConfirmDialog open={deleting} onClose={() => setDeleting(false)} danger title={t('dl.deleteProject')}
         message={t('dl.deleteMessage', { name: project.data?.name ?? '' })}
         onConfirm={() => {

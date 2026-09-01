@@ -128,6 +128,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   const [grid, setGrid] = useState(true)
   const [showOverlays, setShowOverlays] = useState(true)
   const [loaded, setLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [drawShape, setDrawShape] = useState<RoiShape | null>(null)
 
   const allowedShapes = roiShapes ?? ALL_SHAPES
@@ -302,7 +303,9 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   const fit = useCallback(() => {
     const [W, H] = dims()
     const { w, h } = sizeRef.current
-    if (W <= 0 || H <= 0 || w <= 0 || h <= 0) return
+    // w/h <= 1：容器尚未排版（resize 會把 0 clamp 成 1）。此時不 fit 也不標記 fitted，
+    // 等 ResizeObserver 拿到真實尺寸再走 !fittedRef → fit()，否則視角會鎖死在退化縮放。
+    if (W <= 0 || H <= 0 || w <= 1 || h <= 1) return
     fittedRef.current = true
     setViewport(fitViewport(w, h, W, H))
   }, [dims, setViewport])
@@ -389,6 +392,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   // ---------------- 影像載入 ----------------
 
   useEffect(() => {
+    setLoadError(false)
     if (!src) {
       imgRef.current = null
       samplerRef.current = null
@@ -431,7 +435,12 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     }
     img.onerror = () => {
       if (cancelled) return
+      // 清掉殘影（切換樣本失敗時不該顯示上一張），並顯示載入失敗提示。
+      imgRef.current = null
+      samplerRef.current = null
       setLoaded(false)
+      setLoadError(true)
+      schedule(true, true)
     }
     img.src = src
     return () => {
@@ -569,7 +578,8 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           setCursor('move')
         } else {
           selectedVertexRef.current = null
-          startPan(false)
+          // 編輯模式點在形狀外：仍允許「點一下」回 onPick（呼叫端用來改選其他形狀／取消選取）。
+          startPan(!!L.onPick)
         }
         schedule(false, true)
         ov.setPointerCapture(ev.pointerId)
@@ -736,8 +746,9 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
             liveRoiRef.current = null
             pendingRoiRef.current = null
             schedule(true, true)
+            break
           }
-          break
+          return // 沒在拖曳就放行給上層（DL 工作區用 Esc 取消選取）
         case 'Backspace':
         case 'Delete': {
           const i = selectedVertexRef.current
@@ -745,8 +756,10 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
             const points = L.roi.points.filter((_, k) => k !== i)
             selectedVertexRef.current = null
             emitRoi({ shape: 'polygon', points }, true)
+            break
           }
-          break
+          // 沒有頂點可刪就放行（不 preventDefault），讓上層（例如 DL 標記工作區的「刪形狀」）處理
+          return
         }
         default:
           return
@@ -838,6 +851,11 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       {!src && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-subtle">
           {t('viewer.noImage')}
+        </div>
+      )}
+      {src && loadError && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-critical">
+          {t('viewer.loadFailed')}
         </div>
       )}
     </div>
