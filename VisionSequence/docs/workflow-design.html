@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html" aria-current="page">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html" aria-current="page">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 <article class="doc">
 
 <h1>工作流程設計手冊</h1>
@@ -65,7 +65,7 @@
 <li><a href="#hotpath">5. 熱路徑不碰資料庫</a></li>
 <li><a href="#degrade">6. 降級策略：產線不停線</a></li>
 <li><a href="#recipe">7. 配方與站台</a></li>
-<li><a href="#extend">8. 三個擴充接縫（外掛）</a></li>
+<li><a href="#extend">8. 四個擴充接縫（外掛）</a></li>
 <li><a href="#lock">9. 帳號與引擎鎖定</a></li>
 <li><a href="#rules">10. 要守住的原則（紅線）</a></li>
 <li><a href="#terms">11. 名詞對照（ZQS ↔ VisionSequence）</a></li>
@@ -150,13 +150,14 @@ GET /flows/catalogue          POST /flows/{id}/run（或 TCP RUN）      SSE /ev
 <li><strong>現場教導（teach）</strong>：參數標 <code>teach=True</code> 的才出現在參數卡頁——現場人員只看得到該調的，其他鎖在工程師的編輯器裡。</li>
 </ul>
 
-<h2 id="extend">8. 三個擴充接縫（外掛）</h2>
-<p>平台刻意只留三個擴充點，全部走<strong>物件繼承 + 資料夾自動偵測</strong>（繼承基底類別、丟進 <code>plugins/</code>、重啟即掛載；外掛檔內用 <code>ENABLED</code>／<code>label</code>／<code>description</code> 變數控制掛載與顯示，詳見<a href="plugins.html">擴充外掛</a>）：</p>
+<h2 id="extend">8. 四個擴充接縫（外掛）</h2>
+<p>平台刻意只留四個擴充點，全部走<strong>物件繼承 + 資料夾自動偵測</strong>（繼承基底類別、丟進 <code>plugins/</code>、重啟即掛載；外掛檔內用 <code>ENABLED</code>／<code>label</code>／<code>description</code> 變數控制掛載與顯示，詳見<a href="plugins.html">擴充外掛</a>）：</p>
 <table>
 <tr><th>接縫</th><th>基底</th><th>解決什麼</th></tr>
 <tr><td>工具</td><td><code>Tool</code></td><td>新的檢測／量測／邏輯節點；前端零改動出現在調色盤</td></tr>
 <tr><td>影像來源</td><td><code>Grabber</code></td><td>GigE、廠牌 SDK 等取像方式；設定頁 kind 下拉自動出現</td></tr>
 <tr><td>整合輸出</td><td><code>Writer</code></td><td>Modbus TCP 之外的目的地（OPC UA、MES、檔案…）；沿用降級與重連框架</td></tr>
+<tr><td>深度學習模型</td><td><code>Trainer</code></td><td>新的可訓練模型種類；教導 UI 由目錄資料驅動、共用，產物一律是 ONNX 資產</td></tr>
 </table>
 <p>三個接縫共用同一套哲學：<strong>基底類別把並發、逾時、重試、統計都做完</strong>，子類只填「怎麼抓一張圖」「怎麼寫一批值」「怎麼算這個節點」。擴充者寫的程式碼越少，現場出事的面積越小。</p>
 

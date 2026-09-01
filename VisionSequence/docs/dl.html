@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 深度學習教導</title>
+<style>
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html" aria-current="page">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<article class="doc">
+
+<h1>深度學習教導：平台內標記、訓練、匯出</h1>
+<p>「深度學習」頁（<code>/dl</code>）讓使用者<strong>不出平台</strong>完成一輪教導：建立教導專案 → 收集樣本（上傳或從影像來源連抓）→ 標記（含<strong>自動標記</strong>加速）→ 在<strong>伺服端</strong>訓練（可看 GPU／加速器資訊並選擇裝置）→ 模型自動匯出成<strong>資產</strong>，在流程的「DL 分類」等工具直接選用。模型種類（trainer）是 registry，之後導入其他深度學習模型<strong>共用同一套 UI</strong>，前端不用改。</p>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#flow">1. 教導流程（使用者視角）</a></li>
+<li><a href="#auto">2. 自動標記</a></li>
+<li><a href="#devices">3. 伺服端資源與裝置設定</a></li>
+<li><a href="#builtin">4. 內建模型：影像分類（MLP）</a></li>
+<li><a href="#extend">5. 擴充：新的模型種類（Trainer）</a></li>
+<li><a href="#api">6. API</a></li>
+<li><a href="#internals">7. 內部結構與設計取捨</a></li>
+</ul></nav>
+
+<h2 id="flow">1. 教導流程（使用者視角）</h2>
+<ol>
+<li><strong>建立教導專案</strong>：取名、選模型種類、定義類別（例如 <code>OK, NG</code>；之後可隨時增減）。</li>
+<li><strong>收集樣本</strong>：「上傳影像」（多選）或「從來源取像」（選影像來源連抓 N 張，可預先標記）。</li>
+<li><strong>標記</strong>：點一個類別 chip，再點縮圖即標記；再點一次取消；Alt＋點刪除樣本。每類的張數顯示在 chip 上。</li>
+<li><strong>訓練</strong>：右側面板調超參數（表單由 trainer 的宣告產生）、選裝置、給模型資產名稱 → 開始。進度條與指標（訓練／驗證正確率）即時更新；訓練跑在背景，不占用檢測執行緒池。</li>
+<li><strong>使用</strong>：完成後模型出現在資產庫（kind=model），流程裡加「DL 分類」工具、選這個模型、labels 貼上類別清單即可（trainer 會回報建議參數，內建分類器與工具預設前處理完全一致，其餘參數用預設值就對）。</li>
+</ol>
+
+<h2 id="auto">2. 自動標記</h2>
+<p>標記是導入最花時間的一步，所以每個 trainer 可實作 <code>suggest()</code>：對未標記樣本提出「建議類別＋信心分數」。內建分類器用<strong>特徵空間的 cosine kNN（k=3）</strong>——只要每類標了幾張就開始有用，秒回、不用等訓練。</p>
+<ul>
+<li>按「自動標記」→ 未標記的縮圖出現虛線框建議（<code>NG? 87%</code>）→「接受全部」批次寫入，或個別點掉重標。</li>
+<li>自動標記的樣本記為 <code>labeled_by=auto</code>（縮圖上有 <code>~87%</code> 標示、可用篩選「自動標記（待確認）」複查）；人工改標後轉為 <code>human</code>。</li>
+<li>只有 <code>human</code> 標記會拿來當 kNN 參考，避免自動標記自我增強。</li>
+</ul>
+
+<h2 id="devices">3. 伺服端資源與裝置設定</h2>
+<p>訓練與推論都用<strong>伺服器</strong>的資源。頁面頂端顯示偵測到的加速器與 GPU（<code>GET /dl/devices</code>）：</p>
+<table>
+<tr><th>欄位</th><th>內容</th></tr>
+<tr><td><code>providers</code></td><td>此伺服器的 onnxruntime execution providers（CPU／CUDA／DirectML／TensorRT…，依安裝的 onnxruntime 套件而定）。</td></tr>
+<tr><td><code>gpus</code></td><td>NVIDIA GPU 名稱、記憶體用量、使用率（有 <code>nvidia-smi</code> 才有；查不到就空）。</td></tr>
+<tr><td><code>preferred_providers</code>／<code>train_device</code></td><td>使用者目前的選擇（<code>PATCH /dl/settings</code>，管理員）。</td></tr>
+</table>
+<ul>
+<li><strong>推論</strong>：<code>preferred_providers</code> 決定 dl_* 工具建 ort session 的 providers（自動過濾不可用者、CPU 墊底）；改設定會清掉 session 快取立即生效。要用 GPU 推論，把 <code>onnxruntime</code> 換成 <code>onnxruntime-gpu</code>（或 <code>onnxruntime-directml</code>）後在此選擇。</li>
+<li><strong>訓練</strong>：裝置下拉列出伺服器可用且該 trainer 支援的裝置（trainer 宣告 <code>devices</code>；內建 MLP 為 CPU，數秒內完成）。</li>
+</ul>
+
+<h2 id="builtin">4. 內建模型：影像分類（MLP）</h2>
+<table>
+<tr><th>項目</th><th>內容</th></tr>
+<tr><td>kind</td><td><code>mlp_classify</code>（標記模式 <code>classes</code>；訓練產物給 <code>dl_classify</code> 用）</td></tr>
+<tr><td>做法</td><td>樣本 resize 到輸入尺寸（32～128）→ RGB、ImageNet mean/std（與工具預設一致）→ 單隱藏層全連接網路，numpy 全批次梯度下降，分層切驗證集</td></tr>
+<tr><td>匯出</td><td>手刻 ONNX（<code>Flatten→MatMul→Add→Relu→MatMul→Add</code>，權重進 initializer；<code>apps/vision/dl/onnx_io.py</code>，不引入 onnx／torch 依賴）</td></tr>
+<tr><td>超參數</td><td>輸入尺寸、隱藏層寬度、訓練回合、學習率、驗證比例（都有合理預設）</td></tr>
+<tr><td>適用</td><td>外觀類別區分（正反面、型號、明顯瑕疵有無）。特徵是原始像素，光照位移變化大的場景請靠 ROI 裁切與較大的輸入尺寸。</td></tr>
+</table>
+
+<h2 id="extend">5. 擴充：新的模型種類（Trainer）</h2>
+<p>與工具／來源／連線同一套模式：繼承 <code>apps.vision.dl.base.Trainer</code>，丟進 <code>plugins/</code> 即掛載（見<a href="plugins.html">擴充外掛</a>）。前端的專案建立、標記、超參數表單、訓練面板全部由 <code>GET /dl/trainers</code> 目錄驅動——<strong>加新模型不用改前端</strong>。</p>
+<pre># plugins/my_trainer.py — 丟進 plugins/ 即掛載
+from apps.vision.dl.base import SampleRef, Suggestion, Trainer, TrainError, TrainResult
+from apps.vision.tools.base import Param
+
+class MyTrainer(Trainer):
+    kind = "my_model"
+    label = "我的模型"
+    description = "…"
+    label_mode = "classes"        # 封閉集合：classes（boxes 保留給未來偵測）
+    tool_key = "dl_classify"      # 訓練產物給哪個工具用
+    devices = ("cpu", "cuda")     # 支援的訓練裝置（會與伺服器實際資源取交集）
+    params = [Param("epochs", "訓練回合", kind="number", default=100)]
+
+    def train(self, samples, classes, params, device, progress):
+        # progress(0~1, "階段", metrics)：定期呼叫；取消時它會拋 TrainCancelled
+        ...
+        return TrainResult(onnx_bytes=..., metrics={...}, tool_key="dl_classify",
+                           tool_params={"labels": "\n".join(classes), ...})
+
+    def suggest(self, labeled, unlabeled, classes, params):  # 自動標記（選配）
+        return [Suggestion(sample_id=s.id, label="OK", score=0.9) for s in unlabeled]</pre>
+<ul>
+<li>訓練用 torch 等重依賴時附 requirements.txt（<a href="plugins.html#integration">整合考量</a>）；在 <code>train()</code> 內 lazy import，缺件時拋 <code>TrainError</code> 附安裝提示。</li>
+<li>產物必須是 <strong>ONNX bytes</strong>——這是「訓練」與「推論」的唯一合約：推論端永遠走 onnxruntime，trainer 想用什麼框架訓練都行。</li>
+<li><code>label_mode</code> 是封閉集合：要加 <code>boxes</code>（物件偵測標記）時，後端集合與前端標記介面同步擴充，其他 UI 照舊共用。</li>
+</ul>
+
+<h2 id="api">6. API</h2>
+<pre>GET    /api/vision/dl/trainers                     模型種類目錄（前端表單由此產生）
+GET    /api/vision/dl/devices                      providers／GPU 資訊＋目前設定
+PATCH  /api/vision/dl/settings                     管理員 {"providers": [...], "train_device": "cpu"}
+GET    /api/vision/dl/projects                     專案清單（含 counts）
+POST   /api/vision/dl/projects                     {"name", "trainer_kind", "classes": [...]}
+GET/PATCH/DELETE /api/vision/dl/projects/{id}      classes 移除類別會把該類樣本改回未標記
+GET    /api/vision/dl/projects/{id}/samples        ?label= 篩選
+POST   /api/vision/dl/projects/{id}/samples        multipart files[]（可帶 label）
+POST   /api/vision/dl/projects/{id}/samples/from-source   {"source_id", "count", "label"?}
+GET    /api/vision/dl/samples/{id}/file            縮圖（?max=；&lt;img&gt; 用，token 走 query）
+PATCH  /api/vision/dl/samples/{id}                 {"label": "..."}（"" = 取消標記）
+DELETE /api/vision/dl/samples/{id}
+POST   /api/vision/dl/projects/{id}/labels         批次標記 {"items": [{"id","label","score"?,"by"?}]}
+POST   /api/vision/dl/projects/{id}/auto-label     → 建議清單（不落地；接受才寫入）
+POST   /api/vision/dl/projects/{id}/train          202 {"params", "device", "asset_name"}；訓練中回 409
+GET    /api/vision/dl/train/status                 輪詢進度（progress／stage／metrics）
+POST   /api/vision/dl/train/cancel</pre>
+<p>權限：讀取／標記／訓練 = 任何登入者（整合方金鑰亦可）；訓練另過 <code>can_execute()</code>（引擎鎖定時 423）；裝置設定 = 管理員。</p>
+
+<h2 id="internals">7. 內部結構與設計取捨</h2>
+<ul>
+<li><code>apps/vision/dl/</code>：<code>base.py</code>（Trainer registry）、<code>builtin.py</code>（MLP 分類）、<code>onnx_io.py</code>（手刻 ONNX）、<code>devices.py</code>、<code>jobs.py</code>（訓練工作）、<code>api.py</code>。前端 <code>frontend/src/pages/DlPage.tsx</code>（超參數表單直接重用編輯器的 <code>ParamField</code>）。</li>
+<li>資料模型：<code>DlProject</code>／<code>DlSample</code>（影像檔在 <code>ASSET_DIR/dl/&lt;project_id&gt;/</code>，中文路徑用 imencode+tofile）／<code>DlSettings</code>（單列）。</li>
+<li><strong>單一訓練槽</strong>：一次一個訓練（背景執行緒，不進檢測執行緒池），第二個回 409。訓練是教導期行為，不需要佇列；進度用輪詢（700ms），不進 SSE bus。</li>
+<li><strong>providers 是熱路徑設定</strong>：dl 工具建 session 只讀記憶體快取（<code>devices.preferred_providers()</code>）；DB 只在啟動與設定端點碰，改設定會 <code>clear_sessions()</code> 重建。</li>
+<li><strong>不引入 torch</strong>：內建 trainer 用 numpy 訓練、手刻 ONNX 匯出，平台依賴不變；重框架留給外掛 trainer（自帶 requirements 或 sidecar）。</li>
+<li>測試 <code>tests/test_dl_teach.py</code>：ONNX 匯出＋dl_classify 端到端、樣本不足、自動標記正確率、API 標記流、背景訓練工作（TransactionTestCase）。</li>
+</ul>
+</article>
+</body>
+</html>

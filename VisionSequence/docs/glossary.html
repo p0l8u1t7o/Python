@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 <article class="doc">
 
 <h1>前端名詞規範（溝通用）</h1>
@@ -79,6 +79,7 @@
 <tr><td>整合頁</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出（write_modbus 的 mapping 格式）</td></tr>
 <tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試跑到該步驟、標記為已教導</td></tr>
 <tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
+<tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集與標記、自動標記、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
 <tr><td>連線</td><td><code>/connections</code></td><td>ConnectionsPage</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
 <tr><td>全域搜尋</td><td>—（頂部導覽列）</td><td>GlobalSearch</td><td>搜尋全平台內容：頁面、流程、工具、影像來源、連線、資產；Ctrl+K 聚焦、↑↓ 選擇、Enter 前往</td></tr>
 </table>
@@ -151,6 +152,9 @@
 <tr><td>站台</td><td>Station（<code>station_id</code>）</td><td>每筆 run 帶的站台代號（<code>VISION_STATION_ID</code>）；總覽卡片、統計頁顯示</td></tr>
 <tr><td>連線</td><td>Connection（<code>apps/comm</code>）</td><td>主動輸出到 Modbus TCP／上位機的連線定義：kind ∈ modbus_tcp／tcp_client／dio_sim／plugin；write_modbus 工具以連線名稱引用（畫布上的「連線」Edge 是另一回事）</td></tr>
 <tr><td>寫入 Modbus</td><td>write_modbus</td><td>輸出類工具：依對映表（mapping：src → address，含 dtype／scale／offset／value）把判定、具名輸出或輸入埠的值寫到連線；失敗預設降級記警告</td></tr>
+<tr><td>教導專案</td><td>DlProject（<code>apps/vision/dl</code>）</td><td>一種模型（trainer kind）＋類別清單＋樣本集；訓練產物匯出成 kind=model 的資產</td></tr>
+<tr><td>自動標記</td><td>Auto label（<code>Trainer.suggest</code>）</td><td>對未標記樣本提出建議類別與信心分數（虛線框顯示、批次接受）；接受後記為 auto、人工確認轉 human</td></tr>
+<tr><td>模型種類</td><td>Trainer（<code>apps/vision/dl/base.py</code>）</td><td>可訓練的模型類型 registry；宣告超參數（Param）、標記模式、支援裝置，實作 train／suggest；外掛可新增</td></tr>
 <tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
 <tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>
 <tr><td>匯出 / 匯入</td><td>Export / Import（<code>.flow.json</code>）</td><td>匯出：穩定序列化的流程檔（可進 git）；匯入：依檔內名稱 upsert，取像步驟的 <code>{SOURCE}</code> 佔位以選的來源取代；沒選來源時更新既有流程沿用原來源、新建流程留空</td></tr>

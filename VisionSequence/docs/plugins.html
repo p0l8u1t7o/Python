@@ -48,18 +48,19 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html" aria-current="page">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html" aria-current="page">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 <article class="doc">
 
 <h1>擴充外掛：資料夾丟檔即掛載</h1>
 
-<p>三種擴充點都走同一套<strong>物件繼承</strong>：繼承對應的基底類別，把 <code>.py</code> 檔丟進專案根目錄的 <code>plugins/</code> 資料夾，<strong>重啟後端就會自動偵測掛載，不用改 <code>.env</code>、不用改前端</strong>。</p>
+<p>四種擴充點都走同一套<strong>物件繼承</strong>：繼承對應的基底類別，把 <code>.py</code> 檔丟進專案根目錄的 <code>plugins/</code> 資料夾，<strong>重啟後端就會自動偵測掛載，不用改 <code>.env</code>、不用改前端</strong>。</p>
 
 <table>
 <tr><th>擴充什麼</th><th>繼承</th><th>掛載後出現在</th><th>出貨範例</th></tr>
 <tr><td>工具（畫布節點）</td><td><code>apps.vision.tools.base.Tool</code></td><td>編輯器調色盤（分類依 <code>category</code>）</td><td><code>plugins/example_dark_ratio.py</code></td></tr>
 <tr><td>影像來源</td><td><code>apps.vision.sources.grabbers.Grabber</code></td><td>「影像來源」頁 kind 下拉</td><td>本頁 <a href="#sources">§4</a>（GigE）</td></tr>
 <tr><td>整合輸出（連線）</td><td><code>apps.comm.writers.Writer</code></td><td>「連線」頁 kind 下拉</td><td><code>plugins/example_csv_writer.py</code></td></tr>
+<tr><td>深度學習模型種類</td><td><code>apps.vision.dl.base.Trainer</code></td><td>「深度學習」頁的模型種類下拉（教導 UI 共用）</td><td>寫法見<a href="dl.html#extend">深度學習教導 §5</a></td></tr>
 </table>
 
 <nav><p><strong>本頁目錄</strong></p><ul>
@@ -75,7 +76,7 @@
 <h2 id="how">1. 掛載規則與外掛內變數</h2>
 <ul>
 <li>啟動時掃描 <code>plugins/</code> 下的<strong>單檔外掛</strong>（<code>x.py</code>）與<strong>資料夾型外掛</strong>（<code>x/__init__.py</code>，整個外掛專案丟進來）；照名稱排序，底線開頭（<code>_xxx.py</code>／<code>_xxx/</code>）跳過。資料夾位置可用 <code>VISION_PLUGIN_DIR</code> 覆寫（預設專案根目錄 <code>plugins/</code>）。</li>
-<li>每個檔案 import 後，<strong>自動偵測該檔案自己定義的</strong> <code>Tool</code>／<code>Grabber</code>／<code>Writer</code> 子類別並註冊；一個檔案可放多個類別、三類混放。</li>
+<li>每個檔案 import 後，<strong>自動偵測該檔案自己定義的</strong> <code>Tool</code>／<code>Grabber</code>／<code>Writer</code>／<code>Trainer</code> 子類別並註冊；一個檔案可放多個類別、三類混放。</li>
 <li>key／kind 與內建或先載入的外掛重複時<strong>不覆蓋</strong>，記 log 略過；單一檔案載入失敗只記 log，不影響其他外掛與平台啟動。</li>
 <li>載入器在 <code>apps/core/plugins.py</code>；掛載結果看後端啟動 log（「外掛 xxx.py 掛載：tool:dark_ratio…」）。</li>
 </ul>

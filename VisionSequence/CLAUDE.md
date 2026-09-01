@@ -8,7 +8,7 @@
 - 一個需求一個 commit，結尾 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`。
 
 ## 專案形狀
-- `config/`（settings：`VISION` dict 全部走 .env）、`apps/vision/`（models / graph / engine / runner / images / api / stream / tcp_server / sources / tools）、`apps/comm/`（Modbus TCP／上位機主動輸出）、`plugins/`（資料夾外掛）、`frontend/`（Vite + React 19 + Tailwind v4 + @xyflow/react）、`tests/`、`docs/`。
+- `config/`（settings：`VISION` dict 全部走 .env）、`apps/vision/`（models / graph / engine / runner / images / api / stream / tcp_server / sources / tools / dl）、`apps/comm/`（Modbus TCP／上位機主動輸出）、`plugins/`（資料夾外掛）、`frontend/`（Vite + React 19 + Tailwind v4 + @xyflow/react）、`tests/`、`docs/`。
 - 引擎是**資料流 DAG**（不是 ZQS 的 DB token stepper）：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像用 numpy 在記憶體傳。`_flow` 隱含輸入埠 = 控制分支；`_overlays` 隱含輸出埠 = 該節點標記。
 - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP。`runserver` 只用來開發（且加 `--noreload`，否則工具外掛與執行緒池會被重載兩次）。
 
@@ -37,6 +37,12 @@
 - **資料夾外掛**：繼承 `Tool`／`Grabber`／`Writer` 的單檔（`plugins/x.py`）或資料夾型（`plugins/x/__init__.py`）丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`（模組層）／`enabled`／`label`／`description`（類別層）控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html「整合考量」。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 - 找不到東西回 `status="ng"` 或分支，不要 `raise`；可預期失敗 `raise ToolError(...)`。overlays 座標一律是**該節點輸入影像**的全圖座標；ROI 用 `tools/roi.py` 的 `crop()` 與 `Crop.to_full()`。
 - 前端不用改；想加新的 Param.kind 要同時改 `PARAM_KINDS` 與前端 `ParamField`。
+
+## 深度學習教導（apps/vision/dl）
+- `Trainer` registry（base.py）：kind／label_mode（封閉集合）／params（沿用 Param）／devices，實作 `train()`（回 ONNX bytes＋tool_params）與 `suggest()`（自動標記）；內建 `mlp_classify`（numpy 訓練、`onnx_io.py` 手刻 ONNX，不引入 torch/onnx 依賴）。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動、共用。
+- 訓練跑背景執行緒（jobs.py，單一訓練槽、409 擋第二個），不占檢測執行緒池；前端輪詢 `/dl/train/status`。產物存成 kind=model 資產，`dl_classify` 直接用（前處理與工具預設一致）。
+- 推論 providers 是熱路徑設定：工具只讀 `devices.preferred_providers()`（記憶體）；`PATCH /dl/settings` 寫 DB＋更新快取＋`clear_sessions()`。
+- 樣本影像在 `ASSET_DIR/dl/<project_id>/`；訓練執行緒自己開 DB 連線、結束 `close_old_connections()`。詳見 docs/dl.html。
 
 ## 文件
 - **`docs/` 下只放 HTML**（每頁內嵌同一段 CSS、無外部依賴）；新文件也要 HTML，並在 `docs/index.html` 加連結。改了行為要同步更新對應的 docs 頁與 `CLAUDE.md`。
