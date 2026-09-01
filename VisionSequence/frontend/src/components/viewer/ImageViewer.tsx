@@ -46,7 +46,8 @@ import {
 import { Toolbar } from './Toolbar'
 import {
   fitViewport,
-  setScaleCentered,
+  recenterOnResize,
+  scaleCenteredOnImage,
   toImage,
   useViewport,
   zoomAt,
@@ -65,6 +66,8 @@ export interface ImageViewerProps {
   className?: string
   badge?: { text: string; tone: 'ok' | 'ng' | 'neutral' } | null
   onPick?: (x: number, y: number) => void
+  /** 游標在影像上的位置（影像像素座標；離開畫布時為 null）。以 rAF 節流，只在有傳時才回報。 */
+  onHover?: (point: [number, number] | null) => void
   /** 受控視角（可選）：與另一個檢視器同步用 */
   viewport?: Viewport | null
   onViewportChange?: (vp: Viewport) => void
@@ -100,6 +103,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     className,
     badge,
     onPick,
+    onHover,
     viewport,
     onViewportChange,
   } = props
@@ -124,6 +128,8 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   const pendingRoiRef = useRef<Region | null>(null)
   const selectedVertexRef = useRef<number | null>(null)
   const rafRef = useRef<{ id: number; image: boolean; overlay: boolean }>({ id: 0, image: false, overlay: false })
+  /** onHover 的 rAF 節流（高更新率滑鼠一秒可觸發上千次 pointermove） */
+  const hoverEmitRef = useRef<{ id: number; point: [number, number] | null }>({ id: 0, point: null })
 
   const [grid, setGrid] = useState(true)
   const [showOverlays, setShowOverlays] = useState(true)
@@ -148,6 +154,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     roi,
     onRoiChange,
     onPick,
+    onHover,
     editMode,
     drawMode,
     activeDrawShape,
@@ -161,6 +168,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     roi,
     onRoiChange,
     onPick,
+    onHover,
     editMode,
     drawMode,
     activeDrawShape,
@@ -318,10 +326,14 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     [setViewport, vpRef],
   )
 
+  /** 1:1（100%）：比例設為 1 並把影像置中。不保留舊平移量，避免縮放／改視窗後影像跑到畫面外。 */
   const oneToOne = useCallback(() => {
+    const [W, H] = dims()
     const { w, h } = sizeRef.current
-    setViewport(setScaleCentered(vpRef.current, w, h, 1))
-  }, [setViewport, vpRef])
+    if (W <= 0 || H <= 0 || w <= 1 || h <= 1) return
+    fittedRef.current = true
+    setViewport(scaleCenteredOnImage(w, h, W, H, 1))
+  }, [dims, setViewport])
 
   // ---------------- ROI 回報（每 frame 最多一次） ----------------
 
@@ -372,7 +384,13 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       const dpr = window.devicePixelRatio || 1
       const w = Math.max(1, Math.round(rect.width))
       const h = Math.max(1, Math.round(rect.height))
+      const prev = sizeRef.current
       sizeRef.current = { w, h, dpr }
+      // 容器尺寸變了（視窗縮放、面板展開）：平移量跟著補一半差值，
+      // 讓畫面中心看的內容不變；否則影像會往左上偏，看起來像跑位。
+      if (fittedRef.current && (prev.w !== w || prev.h !== h)) {
+        vpRef.current = recenterOnResize(vpRef.current, prev.w, prev.h, w, h)
+      }
       for (const c of [imgCanvasRef.current, ovCanvasRef.current]) {
         if (!c) continue
         c.width = Math.round(w * dpr)
@@ -487,6 +505,17 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       if (ov.style.cursor !== c) ov.style.cursor = c
     }
 
+    const emitHover = (sx: number, sy: number) => {
+      if (!latest.current.onHover) return
+      const [ix, iy] = toImage(vpRef.current, sx, sy)
+      hoverEmitRef.current.point = [ix, iy]
+      if (hoverEmitRef.current.id) return
+      hoverEmitRef.current.id = requestAnimationFrame(() => {
+        hoverEmitRef.current.id = 0
+        latest.current.onHover?.(hoverEmitRef.current.point)
+      })
+    }
+
     const updatePixelLabel = (sx: number, sy: number) => {
       const elp = pixelRef.current
       if (!elp) return
@@ -538,6 +567,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       const factor = Math.exp(-delta * 0.0018)
       setViewport(zoomAt(vpRef.current, sx, sy, factor))
       updatePixelLabel(sx, sy)
+      emitHover(sx, sy)
     }
 
     const onPointerDown = (ev: PointerEvent) => {
@@ -606,6 +636,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         const [ix, iy] = toImage(vpRef.current, sx, sy)
         hoverCursor(ix, iy)
         updatePixelLabel(sx, sy)
+        emitHover(sx, sy)
         return
       }
       switch (drag.kind) {
@@ -645,6 +676,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         }
       }
       updatePixelLabel(sx, sy)
+      emitHover(sx, sy)
     }
 
     const onPointerUp = (ev: PointerEvent) => {
@@ -715,6 +747,10 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
 
     const onPointerLeave = () => {
       if (pixelRef.current) pixelRef.current.textContent = ''
+      if (latest.current.onHover) {
+        hoverEmitRef.current.point = null
+        latest.current.onHover(null)
+      }
       if (hoverRef.current && !dragRef.current) {
         hoverRef.current = null
         schedule(false, true)
@@ -794,6 +830,10 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       if (rafRef.current.id) {
         cancelAnimationFrame(rafRef.current.id)
         rafRef.current.id = 0
+      }
+      if (hoverEmitRef.current.id) {
+        cancelAnimationFrame(hoverEmitRef.current.id)
+        hoverEmitRef.current.id = 0
       }
     }
   }, [dims, emitRoi, env, fit, flushRoi, oneToOne, schedule, setViewport, vpRef, zoomBy])

@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { Check, ChevronLeft, ChevronRight, Keyboard, MousePointer, Pentagon, Save, Sparkles, Square, Trash2, Undo2 } from 'lucide-react'
 
 import { ImageViewer } from '@/components/viewer/ImageViewer'
+import { Thumb } from './Thumb'
 import { Button, IconButton, Modal } from '@/components/ui'
 import { dlSampleUrl } from '@/lib/api'
 import type { DlProject, DlSample, DlShape, DlSuggestion, Overlay, Region } from '@/lib/types'
@@ -61,90 +62,6 @@ function pointInShape(shape: DlShape, nx: number, ny: number): boolean {
   return inside
 }
 
-// ---- 縮圖（把標記輪廓直接畫上去） ----
-function Thumb({ sample, classes, selected, hasSuggestion, onClick }: { sample: DlSample; classes: string[]; selected: boolean; hasSuggestion: boolean; onClick: () => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    if (selected) buttonRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [selected])
-  // 影像只依 sample.id 載一次快取在 ref；shapes 變動（拖曳標記中每 frame）只重畫，不重新下載。
-  const imgRef = useRef<{ id: string; img: HTMLImageElement | null; failed: boolean }>({ id: '', img: null, failed: false })
-  const drawRef = useRef<() => void>(() => {})
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const w = 168
-    const h = Math.max(24, Math.round((sample.height / Math.max(1, sample.width)) * w))
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const entry = imgRef.current
-    if (entry.failed) {
-      ctx.fillStyle = '#e2e8f0'
-      ctx.fillRect(0, 0, w, h)
-      ctx.fillStyle = '#94a3b8'
-      ctx.font = '11px sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText('!', w / 2, h / 2)
-      return
-    }
-    if (!entry.img) {
-      ctx.fillStyle = '#f1f5f9'
-      ctx.fillRect(0, 0, w, h)
-      return
-    }
-    ctx.drawImage(entry.img, 0, 0, w, h)
-    for (const shape of sample.shapes ?? []) {
-      ctx.strokeStyle = color(classes, shape.label)
-      ctx.lineWidth = 1.5
-      ctx.beginPath()
-      if (shape.kind === 'bbox') {
-        const [[x0, y0], [x1, y1]] = [shape.points[0], shape.points[1] ?? shape.points[0]]
-        ctx.strokeRect(x0 * w, y0 * h, (x1 - x0) * w, (y1 - y0) * h)
-      } else {
-        shape.points.forEach(([x, y], i) => (i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)))
-        ctx.closePath()
-        ctx.stroke()
-      }
-    }
-  }, [sample.shapes, sample.width, sample.height, classes])
-
-  drawRef.current = draw
-  useEffect(() => {
-    if (imgRef.current.id === sample.id) {
-      draw()
-      return
-    }
-    imgRef.current = { id: sample.id, img: null, failed: false }
-    draw()
-    const img = new Image()
-    img.onload = () => {
-      if (imgRef.current.id !== sample.id) return
-      imgRef.current.img = img
-      drawRef.current() // 用最新的 draw（載入期間 shapes 可能已變）
-    }
-    img.onerror = () => {
-      if (imgRef.current.id !== sample.id) return
-      imgRef.current.failed = true
-      drawRef.current()
-    }
-    img.src = dlSampleUrl(sample.id, 192)
-  }, [sample.id, draw])
-  return (
-    <button ref={buttonRef} type="button" onClick={onClick}
-      className={`relative w-full overflow-hidden rounded-md border text-left ${selected ? 'border-brand ring-2 ring-brand/40' : 'border-line hover:border-brand/50'}`}>
-      <canvas ref={canvasRef} className="block w-full" />
-      <span className="absolute left-1 top-1 rounded bg-black/50 px-1 text-[10px] text-white">
-        {(sample.shapes ?? []).length || (hasSuggestion ? '?' : '—')}
-        {sample.labeled_by === 'auto' ? ' auto' : ''}
-      </span>
-    </button>
-  )
-}
-
 // ---------------------------------------------------------------------------
 export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion, onEditClasses, hotkeysDisabled = false }: {
   project: DlProject
@@ -169,7 +86,13 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   const [activeClass, setActiveClass] = useState(classes[0] ?? '')
   const [saving, setSaving] = useState(false)
   const [showKeys, setShowKeys] = useState(false)
+  /** 逐點繪製中的多邊形（影像像素座標）；點數不限，點回起點或 Enter 才閉合。 */
+  const [draft, setDraft] = useState<[number, number][]>([])
+  /** 繪製中的游標位置（畫橡皮筋線用） */
+  const [hover, setHover] = useState<[number, number] | null>(null)
   const gradientRef = useRef<{ id: string; map: GradientMap } | null>(null)
+  /** 目前視角：閉合判定要用螢幕距離換算，放 ref 免得每次縮放都 re-render */
+  const viewportRef = useRef({ scale: 1, tx: 0, ty: 0 })
 
   const loadedIdRef = useRef<string | null>(null)
   useEffect(() => {
@@ -180,7 +103,17 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     setDirty(false)
     setSelectedIndex(null)
     setMode('select')
+    setDraft([])
+    setHover(null)
   }, [sample])
+
+  // 離開多邊形模式（切工具、被清空類別退回選取）時，丟掉未完成的繪製
+  useEffect(() => {
+    if (mode !== 'polygon') {
+      setDraft([])
+      setHover(null)
+    }
+  }, [mode])
 
   const pushHistory = useCallback(() => {
     setHistory((old) => [...old.slice(-40), shapes.map((s) => ({ ...s, points: s.points.map((p) => [...p] as [number, number]) }))])
@@ -320,6 +253,19 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const key = e.key.toLowerCase()
+      // 繪製中：Enter 完成、Esc 取消、Backspace 退回上一點（優先於一般快捷鍵）
+      if (draft.length) {
+        if (key === 'enter') commitDraft()
+        else if (key === 'escape') cancelDraft()
+        else if (key === 'backspace') setDraft((old) => old.slice(0, -1))
+        else if (key !== 'v') return
+        else {
+          cancelDraft()
+          setMode('select')
+        }
+        e.preventDefault()
+        return
+      }
       if (key === 'v') setMode('select')
       else if (key === 'n' && classes.length) setMode('polygon')
       else if (key === 'b' && classes.length) setMode('bbox')
@@ -363,8 +309,16 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
         out.push({ kind: 'polygon', points: shape.points.map(([x, y]) => [x * w, y * h]), color: c, label: `${shape.label}?`, width: 1 } as Overlay)
       }
     }
+    // 繪製中的多邊形：已點的折線＋頂點，起點畫大一點（提示點它閉合），到游標畫虛線橡皮筋
+    if (draft.length) {
+      const c = color(classes, activeClass || classes[0] || '')
+      const rubber = hover ? [...draft, hover] : draft
+      out.push({ kind: 'polyline', points: rubber.map(([x, y]) => [x, y]), color: c, width: 2, dash: true } as Overlay)
+      out.push({ kind: 'points', points: draft.map(([x, y]) => [x, y]), color: c, width: 2 } as Overlay)
+      out.push({ kind: 'point', x: draft[0][0], y: draft[0][1], color: c, width: 3 } as Overlay)
+    }
     return out
-  }, [sample, shapes, selectedIndex, suggestion, classes])
+  }, [sample, shapes, selectedIndex, suggestion, classes, draft, hover, activeClass])
 
   const editingRegion = useMemo<Region | null>(() => {
     if (!sample || selectedIndex === null) return null
@@ -401,8 +355,54 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     setMode('select')
   }, [sample, mode, selectedIndex, shapes, activeClass, classes, pushHistory])
 
+  /** 繪製中的多邊形收尾：至少 3 點才成形，之後回到選取模式並選中新形狀。 */
+  const commitDraft = useCallback(() => {
+    if (!sample) return
+    const points = draft
+    setDraft([])
+    setHover(null)
+    if (points.length < 3) {
+      if (points.length) toast.warning(t('dl.polygonNeedsPoints'))
+      setMode('select')
+      return
+    }
+    const label = activeClass || classes[0] || ''
+    pushHistory()
+    const cl = (v: number) => Math.min(1, Math.max(0, v))
+    const shape: DlShape = {
+      label,
+      kind: 'polygon',
+      points: points.map(([x, y]) => [cl(x / sample.width), cl(y / sample.height)] as [number, number]),
+    }
+    setShapes((old) => {
+      setSelectedIndex(old.length)
+      return [...old, shape]
+    })
+    setDirty(true)
+    setMode('select')
+  }, [sample, draft, activeClass, classes, pushHistory, toast, t])
+
+  const cancelDraft = useCallback(() => {
+    setDraft([])
+    setHover(null)
+  }, [])
+
   const onPick = useCallback((x: number, y: number) => {
-    if (!sample || mode !== 'select') return
+    if (!sample) return
+    if (mode === 'polygon') {
+      // 逐點繪製：點回第一點附近（螢幕 12px 內）即閉合，否則推一個新點。
+      const closeDist = 12 / Math.max(0.05, viewportRef.current.scale)
+      if (draft.length >= 3) {
+        const [fx, fy] = draft[0]
+        if (Math.hypot(x - fx, y - fy) <= closeDist) {
+          commitDraft()
+          return
+        }
+      }
+      setDraft((old) => [...old, [x, y] as [number, number]])
+      return
+    }
+    if (mode !== 'select') return
     const nx = x / sample.width
     const ny = y / sample.height
     for (let i = shapes.length - 1; i >= 0; i--) {
@@ -412,7 +412,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       }
     }
     setSelectedIndex(null)
-  }, [sample, mode, shapes])
+  }, [sample, mode, shapes, draft, commitDraft])
 
   if (!sample) return null
   const index = samples.findIndex((s) => s.id === sample.id)
@@ -441,6 +441,9 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
           <IconButton label={t('dl.nextSample')} size="md" variant="secondary" onClick={() => step(1)}><ChevronRight size={16} /></IconButton>
           <span className="tnum text-xs text-muted">{index + 1} / {samples.length}</span>
           <span className="text-xs text-subtle">{sample.width}×{sample.height} · {shapes.length} {t('dl.shapesUnit')}</span>
+          {mode === 'polygon' ? (
+            <span className="text-xs font-medium text-brand">{t('dl.drawingPolygon', { count: draft.length })}</span>
+          ) : null}
           {dirty ? <span className="flex items-center gap-1 text-xs font-medium text-warning"><span className="size-1.5 rounded-full bg-warning" />{t('dl.unsaved')}</span> : null}
           <span className="ml-auto" />
           <IconButton label={t('dl.shortcuts')} size="md" onClick={() => setShowKeys(true)}><Keyboard size={16} /></IconButton>
@@ -502,14 +505,16 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
               overlays={overlays}
               roi={mode === 'select' ? editingRegion : null}
               roiShapes={
+                // 多邊形改走逐點繪製（onPick），不交給檢視器的拖曳繪製——拖曳只能產生固定四角形。
                 // 編輯中：把手工具列只開放該形狀自己的種類，避免 bbox↔polygon／circle 等互轉毀掉標記資料
-                mode === 'polygon' ? ['polygon']
-                  : mode === 'bbox' ? ['rect']
-                    : selectedIndex !== null ? (shapes[selectedIndex]?.kind === 'bbox' ? ['rect'] : ['polygon'])
-                      : undefined
+                mode === 'bbox' ? ['rect']
+                  : mode === 'select' && selectedIndex !== null ? (shapes[selectedIndex]?.kind === 'bbox' ? ['rect'] : ['polygon'])
+                    : undefined
               }
-              onRoiChange={mode === 'select' && selectedIndex === null ? undefined : onRoiChange}
+              onRoiChange={mode === 'bbox' || (mode === 'select' && selectedIndex !== null) ? onRoiChange : undefined}
               onPick={onPick}
+              onHover={mode === 'polygon' && draft.length ? setHover : undefined}
+              onViewportChange={(vp) => { viewportRef.current = vp }}
               badge={dirty ? { text: t('dl.unsaved'), tone: 'neutral' } : null}
             />
           </div>

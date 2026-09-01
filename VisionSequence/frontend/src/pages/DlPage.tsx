@@ -6,14 +6,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Brain, Camera, Check, Cpu, Play, Plus, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
+import { Brain, Camera, Check, Cpu, Image as ImageIcon, LayoutGrid, Play, Plus, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
 
+import { ClassifyWorkspace } from '@/components/dl/ClassifyWorkspace'
 import { ShapeWorkspace } from '@/components/dl/ShapeWorkspace'
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Select, TextInput } from '@/components/ui'
+import { Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, SegmentedControl, Select, TextInput } from '@/components/ui'
 import { dlSampleUrl } from '@/lib/api'
 import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useSources } from '@/lib/queries'
 import type { DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
@@ -170,30 +171,44 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   }
 
   const metrics = (mine ? job.data?.metrics : project.last_metrics) as Record<string, unknown> | undefined
+  // 超參數依 Param.group 分組：主要參數直接顯示，其餘（進階…）收進可摺疊區塊，表單才不會過長
+  const mainParams = trainer.params.filter((p) => !p.group)
+  const groups = trainer.params.reduce<Record<string, typeof trainer.params>>((acc, p) => {
+    if (p.group) (acc[p.group] ??= []).push(p)
+    return acc
+  }, {})
+  const field = (p: (typeof trainer.params)[number]) => (
+    <ParamField key={p.key} param={p} value={params[p.key] ?? p.default} onChange={(v) => setParams((old) => ({ ...old, [p.key]: v }))} actions={NO_ACTIONS} />
+  )
+  const percent = Math.round((job.data?.progress ?? 0) * 100)
+  const statusTone: Record<string, 'ok' | 'info' | 'warning' | 'critical'> = { running: 'info', done: 'ok', failed: 'critical', cancelled: 'warning' }
+
   return (
     <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><Cpu size={15} className="text-brand" />{t('dl.train')}</span>} description={t('dl.trainHint')} />
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Cpu size={15} className="text-brand" />{t('dl.train')}</span>}
+        description={t('dl.trainHint')}
+        actions={mine && job.data ? <Badge tone={statusTone[job.data.status] ?? 'neutral'}>{t(`dl.status.${job.data.status}`, { defaultValue: job.data.status })}</Badge> : null}
+      />
       <CardBody className="space-y-3 text-sm">
-        {trainer.params.map((p) => (
-          <ParamField key={p.key} param={p} value={params[p.key] ?? p.default} onChange={(v) => setParams((old) => ({ ...old, [p.key]: v }))} actions={NO_ACTIONS} />
-        ))}
-        <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
-          hint={devices.data?.gpus.length ? devices.data.gpus.map((g) => g.name).join('、') : t('dl.noGpu')}
-          options={(devices.data?.train_devices ?? ['cpu']).filter((d) => trainer.devices.includes(d) || d === 'cpu').map((d) => ({ value: d, label: d.toUpperCase() }))} />
-        <TextInput label={t('dl.assetName')} placeholder={`${project.name}-model`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
+        {/* 執行中：進度條（階段 + 百分比）與中止 */}
         {running ? (
-          <div className="space-y-2">
-            <div className="h-2 overflow-hidden rounded-full bg-surface-muted">
-              <div className="h-full rounded-full bg-brand transition-[width]" style={{ width: `${Math.round((job.data?.progress ?? 0) * 100)}%` }} />
+          <div className="space-y-1.5 rounded-md border border-line bg-surface-muted px-3 py-2.5" data-testid="dl-progress">
+            <div className="h-2 overflow-hidden rounded-full bg-line">
+              <div className="h-full rounded-full bg-gradient-to-r from-brand to-info transition-[width] duration-300" style={{ width: `${percent}%` }} />
             </div>
-            <p className="text-xs text-muted">{job.data?.stage}（{job.data?.project_name}）</p>
-            <Button size="sm" onClick={() => void cancelTrain.mutateAsync()}><Square size={13} /> {t('dl.cancel')}</Button>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="min-w-0 truncate text-muted">{job.data?.stage}{mine ? '' : `（${job.data?.project_name}）`}</span>
+              <span className="tnum shrink-0 font-medium text-content">{percent}%</span>
+            </div>
+            <div className="flex items-center gap-2 pt-0.5">
+              <Button size="sm" onClick={() => void cancelTrain.mutateAsync()}><Square size={13} /> {t('dl.cancel')}</Button>
+              <span className="tnum text-xs text-subtle">{t('dl.elapsed', { s: Math.round(job.data?.duration_s ?? 0) })}</span>
+            </div>
           </div>
-        ) : (
-          <Button variant="primary" loading={startTrain.isPending} onClick={() => void start()} data-testid="dl-train">
-            <Play size={14} /> {t('dl.start')}
-          </Button>
-        )}
+        ) : null}
+
+        {/* 最近一次結果 */}
         {mine && job.data?.status === 'failed' ? <p className="rounded-md bg-critical-soft px-2.5 py-1.5 text-xs text-critical">{job.data.error}</p> : null}
         {mine && job.data?.status === 'done' ? (
           <p className="rounded-md bg-ok-soft px-2.5 py-1.5 text-xs text-ok">
@@ -201,15 +216,41 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
             {' · '}{t('dl.useInTool', { tool: job.data.tool_key })}
           </p>
         ) : null}
+
+        {/* 指標：大數字磚 */}
         {metrics && Object.keys(metrics).length ? (
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-line px-3 py-2 text-xs">
-            {['train_accuracy', 'val_accuracy', 'loss', 'samples', 'mAP50', 'mAP50-95'].filter((k) => metrics[k] !== undefined && metrics[k] !== null).map((k) => (
-              <span key={k} className="contents"><dt className="text-muted">{t(`dl.metrics.${k}`, { defaultValue: k })}</dt><dd className="tnum text-right">{String(metrics[k])}</dd></span>
+          <div className="grid grid-cols-2 gap-1.5" data-testid="dl-metrics">
+            {['train_accuracy', 'val_accuracy', 'mAP50', 'mAP50-95', 'loss', 'samples'].filter((k) => metrics[k] !== undefined && metrics[k] !== null).slice(0, 4).map((k) => (
+              <div key={k} className="rounded-md border border-line px-2.5 py-1.5">
+                <p className="truncate text-[11px] text-muted">{t(`dl.metrics.${k}`, { defaultValue: k })}</p>
+                <p className="tnum text-lg font-semibold leading-tight text-heading">
+                  {typeof metrics[k] === 'number' && k !== 'samples' && (metrics[k] as number) <= 1 ? `${Math.round((metrics[k] as number) * 100)}%` : String(metrics[k])}
+                </p>
+              </div>
             ))}
-          </dl>
+          </div>
         ) : null}
         {mine && (job.data?.history?.length ?? 0) > 1 ? <TrainCurves history={job.data!.history} /> : null}
         {mine && job.data?.logs?.length ? <TrainLog logs={job.data.logs} /> : null}
+
+        {/* 設定 */}
+        {mainParams.map(field)}
+        <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
+          hint={devices.data?.gpus.length ? devices.data.gpus.map((g) => g.name).join('、') : t('dl.noGpu')}
+          options={(devices.data?.train_devices ?? ['cpu']).filter((d) => trainer.devices.includes(d) || d === 'cpu').map((d) => ({ value: d, label: d.toUpperCase() }))} />
+        <TextInput label={t('dl.assetName')} placeholder={`${project.name}-model`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
+        {Object.entries(groups).map(([name, list]) => (
+          <details key={name} className="rounded-md border border-line px-2.5 py-1.5">
+            <summary className="cursor-pointer select-none text-xs font-medium text-muted">{name}（{list.length}）</summary>
+            <div className="space-y-3 pt-2">{list.map(field)}</div>
+          </details>
+        ))}
+
+        {!running ? (
+          <Button variant="primary" className="w-full" loading={startTrain.isPending} onClick={() => void start()} data-testid="dl-train">
+            <Play size={14} /> {t('dl.start')}
+          </Button>
+        ) : null}
       </CardBody>
     </Card>
   )
@@ -244,16 +285,33 @@ function TrainCurves({ history }: { history: Record<string, number>[] }) {
 
 /** 訓練 log（環形緩衝的最近 400 行；自動捲到底）。 */
 function TrainLog({ logs }: { logs: string[] }) {
+  const { t } = useTranslation()
   const ref = useRef<HTMLPreElement>(null)
   useEffect(() => {
     const el = ref.current
     if (el) el.scrollTop = el.scrollHeight
   }, [logs.length])
   return (
-    <pre ref={ref} className="max-h-36 overflow-y-auto rounded-md bg-[#0f172a] px-2.5 py-2 text-[11px] leading-relaxed text-slate-300" data-testid="dl-train-log">
-      {logs.join('\n')}
-    </pre>
+    <div className="overflow-hidden rounded-md border border-line">
+      <div className="flex items-center justify-between border-b border-line bg-surface-muted px-2.5 py-1 text-[11px] text-muted">
+        <span>{t('dl.trainLog')}</span>
+        <span className="tnum">{logs.length}</span>
+      </div>
+      <pre ref={ref} className="max-h-40 overflow-y-auto bg-[#0f172a] px-2.5 py-2 text-[11px] leading-relaxed text-slate-300" data-testid="dl-train-log">
+        {logs.join('\n')}
+      </pre>
+    </div>
   )
+}
+
+/** 樣本篩選（網格與大圖檢視共用）：全部／未標記／自動標記待確認／指定類別。 */
+function filterSamples(samples: DlSample[], filter: string): DlSample[] {
+  return samples.filter((s) => {
+    if (filter === '__all__') return true
+    if (filter === '__unlabeled__') return !s.label
+    if (filter === '__auto__') return s.labeled_by === 'auto'
+    return s.label === filter
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -278,22 +336,18 @@ function ImportProgress({ state }: { state: { done: number; total: number; faile
 // ---------------------------------------------------------------------------
 // 樣本網格
 // ---------------------------------------------------------------------------
-function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick, onDelete }: {
+function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick, onView, onDelete }: {
   project: DlProject
   samples: DlSample[]
   activeClass: string
   filter: string
   suggestions: Map<string, DlSuggestion>
   onPick: (sample: DlSample, alt: boolean) => void
+  onView: (sample: DlSample) => void
   onDelete: (sample: DlSample) => void
 }) {
   const { t } = useTranslation()
-  const shown = samples.filter((s) => {
-    if (filter === '__all__') return true
-    if (filter === '__unlabeled__') return !s.label
-    if (filter === '__auto__') return s.labeled_by === 'auto'
-    return s.label === filter
-  })
+  const shown = filterSamples(samples, filter)
   if (!shown.length) {
     return <EmptyState compact icon={<Camera className="size-6" />} title={t('dl.noSamples')} description={t('dl.noSamplesHint')} />
   }
@@ -319,11 +373,18 @@ function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick
               <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[11px] text-white">{t('dl.unlabeled')}</span>
             )}
             </button>
-            <button type="button" aria-label={t('common.delete')} title={t('common.delete')}
-              className="pointer-events-none absolute right-1 top-1 rounded bg-black/50 p-1 text-white opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 hover:!bg-critical"
-              onClick={(e) => { e.stopPropagation(); onDelete(s) }}>
-              <Trash2 size={12} />
-            </button>
+            <span className="pointer-events-none absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+              <button type="button" aria-label={t('dl.viewLarge')} title={t('dl.viewLarge')}
+                className="pointer-events-none rounded bg-black/50 p-1 text-white focus-visible:pointer-events-auto group-hover:pointer-events-auto hover:!bg-brand"
+                onClick={(e) => { e.stopPropagation(); onView(s) }}>
+                <ImageIcon size={12} />
+              </button>
+              <button type="button" aria-label={t('common.delete')} title={t('common.delete')}
+                className="pointer-events-none rounded bg-black/50 p-1 text-white focus-visible:pointer-events-auto group-hover:pointer-events-auto hover:!bg-critical"
+                onClick={(e) => { e.stopPropagation(); onDelete(s) }}>
+                <Trash2 size={12} />
+              </button>
+            </span>
           </div>
         )
       })}
@@ -355,6 +416,9 @@ export function DlPage() {
   const [suggestions, setSuggestions] = useState<Map<string, DlSuggestion>>(new Map())
   //: 匯入進度（分批上傳：done/total/failed；null = 沒有匯入在跑）
   const [importing, setImporting] = useState<{ done: number; total: number; failed: number } | null>(null)
+  //: classes 模式的檢視方式：grid = 縮圖網格（快速標記）、viewer = 大圖檢視（看細節）
+  const [classifyView, setClassifyView] = useState<'grid' | 'viewer'>('grid')
+  const [viewingId, setViewingId] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const trainer = useMemo(() => trainers.data?.find((x) => x.kind === project.data?.trainer_kind), [trainers.data, project.data])
@@ -450,7 +514,7 @@ export function DlPage() {
 
   // classes 模式：數字鍵 0~9 切換目前類別（Modal 開啟或輸入中不觸發）
   useEffect(() => {
-    if (isShapes || !project.data) return
+    if (isShapes || !project.data || classifyView === 'viewer') return
     const classes = project.data.classes
     function onDigit(e: KeyboardEvent) {
       if (editingClasses || creating || fromSourceOpen || deleting) return
@@ -465,7 +529,7 @@ export function DlPage() {
     }
     window.addEventListener('keydown', onDigit, true)
     return () => window.removeEventListener('keydown', onDigit, true)
-  }, [isShapes, project.data, editingClasses, creating, fromSourceOpen, deleting])
+  }, [isShapes, project.data, classifyView, editingClasses, creating, fromSourceOpen, deleting])
 
   const counts = project.data?.counts
   return (
@@ -481,7 +545,8 @@ export function DlPage() {
           </span>
         }
       />
-      <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+      {/* lg 只給兩欄（1024~1280 時三欄會把畫布擠到很窄），xl 才把訓練面板收進第三欄 */}
+      <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[200px_minmax(0,1fr)_330px]">
         {/* 專案清單 */}
         <Card>
           <CardHeader title={t('dl.projects')} actions={<Button size="sm" onClick={() => setCreating(true)} data-testid="dl-new"><Plus size={14} /> {t('common.create')}</Button>} />
@@ -574,6 +639,11 @@ export function DlPage() {
                       </>
                     ) : null}
                     <span className="ml-auto" />
+                    <SegmentedControl size="sm" value={classifyView} onChange={setClassifyView}
+                      options={[
+                        { value: 'grid', label: <span className="flex items-center gap-1"><LayoutGrid size={13} />{t('dl.viewGrid')}</span>, title: t('dl.viewGrid') },
+                        { value: 'viewer', label: <span className="flex items-center gap-1"><ImageIcon size={13} />{t('dl.viewLarge')}</span>, title: t('dl.viewLarge') },
+                      ]} />
                     <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="!h-8 !text-xs"
                       options={[
                         { value: '__all__', label: t('dl.filterAll') },
@@ -589,8 +659,17 @@ export function DlPage() {
               {!project.data.classes.length ? (
                 <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">{t('dl.classesFirst')}</p>
               ) : null}
-              {samples.isLoading ? <LoadingState /> : (
-                <SampleGrid project={project.data} samples={samples.data ?? []} activeClass={activeClass} filter={filter} suggestions={suggestions} onPick={(s, alt) => void pick(s, alt)} onDelete={(s) => { if (projectId !== null) void removeSample.mutateAsync({ id: s.id, projectId }) }} />
+              {samples.isLoading ? <LoadingState /> : classifyView === 'viewer' && filterSamples(samples.data ?? [], filter).length ? (
+                <ClassifyWorkspace project={project.data} samples={filterSamples(samples.data ?? [], filter)} suggestions={suggestions}
+                  selectedId={viewingId} onSelect={setViewingId}
+                  onLabel={(s, label) => { if (projectId !== null) void setLabel.mutateAsync({ id: s.id, label, projectId }) }}
+                  onDelete={(s) => { if (projectId !== null) void removeSample.mutateAsync({ id: s.id, projectId }) }}
+                  hotkeysDisabled={editingClasses || creating || fromSourceOpen || deleting} />
+              ) : (
+                <SampleGrid project={project.data} samples={samples.data ?? []} activeClass={activeClass} filter={filter} suggestions={suggestions}
+                  onPick={(s, alt) => void pick(s, alt)}
+                  onView={(s) => { setViewingId(s.id); setClassifyView('viewer') }}
+                  onDelete={(s) => { if (projectId !== null) void removeSample.mutateAsync({ id: s.id, projectId }) }} />
               )}
             </>
           ) : projects.isLoading || project.isLoading ? <LoadingState /> : (

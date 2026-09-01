@@ -60,10 +60,19 @@ export function zoomAt(vp: Viewport, sx: number, sy: number, factor: number): Vi
   return { scale, tx: sx - (sx - vp.tx) * k, ty: sy - (sy - vp.ty) * k }
 }
 
-/** 設定絕對比例，以視窗中心為基準 */
-export function setScaleCentered(vp: Viewport, viewW: number, viewH: number, scale: number): Viewport {
-  const target = clampScale(scale)
-  return zoomAt(vp, viewW / 2, viewH / 2, target / vp.scale)
+/**
+ * 指定比例並把整張影像置中（1:1／100% 用）。
+ * 不沿用舊的平移量——否則先縮放平移過、或容器尺寸變過之後，影像會停在畫面外看似「跑位」。
+ */
+export function scaleCenteredOnImage(viewW: number, viewH: number, imgW: number, imgH: number, scale = 1): Viewport {
+  const s = clampScale(scale)
+  return { scale: s, tx: (viewW - imgW * s) / 2, ty: (viewH - imgH * s) / 2 }
+}
+
+/** 容器尺寸改變時保持「畫面中心對應的影像位置」不變。 */
+export function recenterOnResize(vp: Viewport, prevW: number, prevH: number, nextW: number, nextH: number): Viewport {
+  if (prevW <= 1 || prevH <= 1) return vp
+  return { scale: vp.scale, tx: vp.tx + (nextW - prevW) / 2, ty: vp.ty + (nextH - prevH) / 2 }
 }
 
 /** 用 ref 持有視角；回傳 ref 本身，讓事件處理直接讀寫。 */

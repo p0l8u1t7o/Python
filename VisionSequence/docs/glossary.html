@@ -156,6 +156,7 @@
 <tr><td>自動標記</td><td>Auto label（<code>Trainer.suggest</code>）</td><td>對未標記樣本提出建議類別與信心分數（虛線框顯示、批次接受）；接受後記為 auto、人工確認轉 human</td></tr>
 <tr><td>模型種類</td><td>Trainer（<code>apps/vision/dl/base.py</code>）</td><td>可訓練的模型類型 registry；宣告超參數（Param）、標記模式、支援裝置，實作 train／suggest；外掛可新增</td></tr>
 <tr><td>標記編輯器</td><td>ShapeWorkspace（<code>components/dl</code>）</td><td>shapes 模式（分割／偵測）的標記工作區：縮圖牆巡檢、polygon/bbox 編輯、自動優化（輪廓貼邊）、快捷鍵；座標 0~1 正規化</td></tr>
+<tr><td>大圖檢視</td><td>ClassifyWorkspace（<code>components/dl</code>）</td><td>分類教導的大圖工作區：縮圖牆＋原圖檢視器（縮放／1:1）＋類別按鈕標記；與網格檢視切換、共用篩選</td></tr>
 <tr><td>工具欄</td><td>ToolRail（標記編輯器內）</td><td>標記編輯器畫布左側的大圖示垂直工具欄：選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵</td></tr>
 <tr><td>DL 實例分割</td><td>dl_instance</td><td>DL 類工具：YOLO-seg 風格 ONNX 推論（letterbox、NMS、mask 合成），輸出每個實例的輪廓／類別／分數；可在深度學習頁教導</td></tr>
 <tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
