@@ -8,7 +8,7 @@
 - 一個需求一個 commit，結尾 `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`。
 
 ## 專案形狀
-- `config/`（settings：`VISION` dict 全部走 .env）、`apps/vision/`（models / graph / engine / runner / images / api / stream / tcp_server / sources / tools）、`frontend/`（Vite + React 19 + Tailwind v4 + @xyflow/react）、`tests/`、`docs/`。
+- `config/`（settings：`VISION` dict 全部走 .env）、`apps/vision/`（models / graph / engine / runner / images / api / stream / tcp_server / sources / tools）、`apps/comm/`（Modbus TCP／上位機主動輸出）、`plugins/`（資料夾外掛）、`frontend/`（Vite + React 19 + Tailwind v4 + @xyflow/react）、`tests/`、`docs/`。
 - 引擎是**資料流 DAG**（不是 ZQS 的 DB token stepper）：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像用 numpy 在記憶體傳。`_flow` 隱含輸入埠 = 控制分支；`_overlays` 隱含輸出埠 = 該節點標記。
 - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP。`runserver` 只用來開發（且加 `--noreload`，否則工具外掛與執行緒池會被重載兩次）。
 
@@ -32,8 +32,9 @@
 - Windows 中文路徑：讀圖用 `np.fromfile` + `cv2.imdecode`，寫圖用 `imencode` + `tofile`。
 - Git Bash heredoc 會吞反斜線；長內容用 Write 寫檔。`.ps1` 保留 UTF-8 BOM。
 
-## 新增工具
-- 繼承 `apps.vision.tools.base.Tool`，宣告 `params`（kind 只能是 `PARAM_KINDS`）、`inputs`、`outputs`（type 只能是 `PORT_TYPES`），`execute(ctx) -> Result`。放進對應 builtin 模組的 `TOOLS`，或外掛模組內 `register()`。
+## 新增工具與外掛
+- 繼承 `apps.vision.tools.base.Tool`，宣告 `params`（kind 只能是 `PARAM_KINDS`）、`inputs`、`outputs`（type 只能是 `PORT_TYPES`），`execute(ctx) -> Result`。內建放進對應 builtin 模組的 `TOOLS`。
+- **資料夾外掛**：繼承 `Tool`／`Grabber`／`Writer` 的 .py 丟進 `plugins/` 即自動掛載（`apps/core/plugins.py` 掃描；不用改 .env）。外掛內 `ENABLED`（模組層）／`enabled`／`label`／`description`（類別層）控制掛載與顯示；key／kind 重複時內建優先。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 - 找不到東西回 `status="ng"` 或分支，不要 `raise`；可預期失敗 `raise ToolError(...)`。overlays 座標一律是**該節點輸入影像**的全圖座標；ROI 用 `tools/roi.py` 的 `crop()` 與 `Crop.to_full()`。
 - 前端不用改；想加新的 Param.kind 要同時改 `PARAM_KINDS` 與前端 `ParamField`。
 

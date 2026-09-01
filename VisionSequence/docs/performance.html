@@ -19,9 +19,12 @@
   nav ul { columns: 2; }
   .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: .5rem .8rem; margin: 1rem 0; }
   .wrap { overflow-x: auto; }
+  nav.site { font-size: .9em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: .5rem; margin-bottom: 1.5rem; }
+  nav.site a { margin-right: .8rem; }
 </style>
 </head>
 <body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 <h1>VisionSequence 效能報告</h1>
 <p>對每個內建工具與引擎做基準量測，針對慢的工具做不改介面的優化，並記錄前後對照與給使用者的效能建議。原始數據在 <code>docs/bench-before.txt</code>、<code>docs/bench-after.txt</code>，量測腳本是 <code>scripts/bench_tools.py</code>。</p>
 

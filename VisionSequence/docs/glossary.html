@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 
 <h1>前端名詞規範（溝通用）</h1>
 <p>原則：一個東西只有一個名字；UI 文案、程式識別字、文件三處一致。新名詞先加進這張表再用。</p>
@@ -46,10 +46,10 @@
 <tr><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>名詞定義與操作說明</td></tr>
 <tr><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>登入／建立第一個管理員</td></tr>
 <tr><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>單一流程的執行歷史、良率、每小時 OK／NG、耗時趨勢（總覽卡片與頂列都有入口）</td></tr>
-<tr><td>整合頁</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、PLC 輸出（write_plc 的 mapping 格式）</td></tr>
+<tr><td>整合頁</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出（write_modbus 的 mapping 格式）</td></tr>
 <tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試跑到該步驟、標記為已教導</td></tr>
 <tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
-<tr><td>連線</td><td><code>/connections</code></td><td>ConnectionsPage</td><td>PLC／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
+<tr><td>連線</td><td><code>/connections</code></td><td>ConnectionsPage</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
 </table>
 
 <h2 id="editor">流程編輯器的區塊</h2>
@@ -118,8 +118,9 @@
 <tr><td>退步 / 進步</td><td>Regressed / Improved</td><td>基準符合、這次不符 = 退步（was → now）；反之 = 進步。改參數後最該看的清單</td></tr>
 <tr><td>合格門檻</td><td>fail_under</td><td>回歸的 match_rate 低於此值判定為未通過（CLI 退出碼非 0）</td></tr>
 <tr><td>站台</td><td>Station（<code>station_id</code>）</td><td>每筆 run 帶的站台代號（<code>VISION_STATION_ID</code>）；總覽卡片、統計頁顯示</td></tr>
-<tr><td>連線</td><td>Connection（<code>apps/comm</code>）</td><td>主動輸出到 PLC／上位機的連線定義：kind ∈ modbus_tcp／tcp_client／dio_sim／plugin；write_plc 工具以連線名稱引用（畫布上的「連線」Edge 是另一回事）</td></tr>
-<tr><td>寫入 PLC</td><td>write_plc</td><td>輸出類工具：依對映表（mapping：src → address，含 dtype／scale／offset／value）把判定、具名輸出或輸入埠的值寫到連線；失敗預設降級記警告</td></tr>
+<tr><td>連線</td><td>Connection（<code>apps/comm</code>）</td><td>主動輸出到 Modbus TCP／上位機的連線定義：kind ∈ modbus_tcp／tcp_client／dio_sim／plugin；write_modbus 工具以連線名稱引用（畫布上的「連線」Edge 是另一回事）</td></tr>
+<tr><td>寫入 Modbus</td><td>write_modbus</td><td>輸出類工具：依對映表（mapping：src → address，含 dtype／scale／offset／value）把判定、具名輸出或輸入埠的值寫到連線；失敗預設降級記警告</td></tr>
+<tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
 <tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>
 <tr><td>匯出 / 匯入</td><td>Export / Import（<code>.flow.json</code>）</td><td>匯出：穩定序列化的流程檔（可進 git）；匯入：依檔內名稱 upsert，取像步驟的 <code>{SOURCE}</code> 佔位以選的來源取代；沒選來源時更新既有流程沿用原來源、新建流程留空</td></tr>
 </table>

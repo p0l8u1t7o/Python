@@ -1,7 +1,7 @@
 # VisionSequence — 工業機器視覺流程平台
 
 類 Hikrobot VisionMaster 的畫布式機器視覺平台：自動化人員在瀏覽器裡拉工具節點、在影像上畫 ROI、
-調參數即時看結果，再以 HTTP / TCP 讓 PLC 或上位機觸發檢測並取回 OK/NG 與量測值。
+調參數即時看結果，再以 HTTP / TCP 讓 Modbus TCP 設備或上位機觸發檢測並取回 OK/NG 與量測值。
 
 - 後端：Django 5.1 + django-ninja + OpenCV / numpy（可選 onnxruntime 深度學習推論）
 - 前端：React 19 + Vite + TypeScript + Tailwind v4 + React Flow
@@ -43,7 +43,8 @@ API 文件：http://127.0.0.1:8000/api/docs
 - **Golden Set 回歸**：案例＋期望值、基準比對列出 regressed、`manage.py regress <flow> --fail-under 0.98` 可進 CI
 - **流程匯出／匯入**：`manage.py flow export|import|run`，穩定序列化可進 git
 - **站台識別** `VISION_STATION_ID` 寫進每筆執行紀錄與回傳
-- **PLC 主動輸出**：連線（Modbus TCP／TCP 文字／模擬 DIO／外掛）＋ `write_plc` 工具，失敗降級不停線
+- **Modbus 主動輸出**：連線（Modbus TCP／TCP 文字／模擬 DIO／外掛）＋ `write_modbus` 工具，失敗降級不停線
+- **資料夾外掛**：繼承 Tool／Grabber／Writer 的 .py 丟進 `plugins/` 自動偵測掛載（不用改 .env），外掛內變數控制名稱／說明／是否掛載
 - **量測工具**：fit_arc、fit_ellipse、wall_thickness、concentricity、chamfer_angle、tolerance_judge（保留標稱值與公差來源）＋「深抽杯件量測」範本
 - 尚未做：標定子系統、GenICam 內建來源、C 級（零樣本異常、少樣本訓練、GPU、LLM 生成流程）
 
@@ -51,11 +52,11 @@ API 文件：http://127.0.0.1:8000/api/docs
 
 - `docs/index.html` — 文件總覽（docs/ 一律 HTML）
 - `docs/architecture.html` — 設計手冊（資料模型、工具框架、引擎、Runner、API、前端、踩過的坑）
-- `docs/automation.html` — PLC / 上位機整合（HTTP、TCP、SSE、回傳格式）
+- `docs/automation.html` — 設備 / 上位機整合（HTTP、TCP、SSE、回傳格式）
 - `docs/golden.html` — Golden Set 回歸與流程匯出入
-- `docs/plc.html` — PLC 主動輸出（連線、位址、mapping、降級）
+- `docs/modbus.html` — Modbus 主動輸出（連線、位址、mapping、降級）
 - `docs/performance.html` — 效能報告
-- `docs/plugins.html` — 自訂工具與影像來源外掛
+- `docs/plugins.html` — 擴充外掛（資料夾丟檔即掛載：工具／影像來源／整合輸出）
 - `docs/contract.html` — 前後端資料合約
 - `docs/glossary.html` — 前端名詞與命名規範（頁面、區塊、埠顏色、狀態用語）
 - `CLAUDE.md` — 開發須知與驗證清單

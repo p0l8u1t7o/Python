@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 <h1>VisionSequence 設計手冊</h1>
 <p>給要維護或擴充這個平台的人看。與 <a href="workflow-design.html">workflow-design.html</a>（ZQS Cloud 的控制流程引擎）同一套思想，但引擎換成毫秒級的<strong>行程內資料流</strong>。</p>
 
@@ -36,7 +36,7 @@
 <li><a href="#frontend">9. 前端</a></li>
 <li><a href="#accounts">9b. 帳號與引擎鎖定</a></li>
 <li><a href="#more">9c. 範本庫／批次／整合</a></li>
-<li><a href="#plan">9d. 參數卡／配方／Golden Set／PLC</a></li>
+<li><a href="#plan">9d. 參數卡／配方／Golden Set／Modbus</a></li>
 <li><a href="#settings">10. 設定值</a></li>
 <li><a href="#tests">11. 測試</a></li>
 <li><a href="#pitfalls">12. 踩過的坑</a></li>
@@ -148,7 +148,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <p>ref = <code>"{run_id}:{node_id}:{port}"</code>。每流程保留最近 KEEP_RUN_IMAGES 次 run 的影像；全域 IMAGE_CACHE_MB 以 bytes 計 LRU。<code>encode(ref, max_side, fmt, quality)</code> 延遲到有人要看才做，且依請求最長邊縮小（前端預設 1600）。浮點／16 位元影像正規化到 8 位元顯示。</p>
 
 <h2 id="sources">7. 影像來源（sources/）</h2>
-<p><code>open_source(model)</code> 依 kind 建 Grabber 並快取（updated_at 變了才重開）。內建：folder（循環讀檔、排序、pattern）、file（mtime 變了重讀）、usb（OpenCV，BUFFERSIZE=1，先 grab 丟舊幀）、synthetic（合成零件：隨機位移／旋轉、30% 缺孔或刮痕，讓沒相機也能走完整流程）、upload（API push）。外掛：<code>VISION_SOURCE_PLUGINS=gige=plugins.gige:GigEGrabber</code>。Grabber 會被多執行緒同時呼叫，內部要加鎖。</p>
+<p><code>open_source(model)</code> 依 kind 建 Grabber 並快取（updated_at 變了才重開）。內建：folder（循環讀檔、排序、pattern）、file（mtime 變了重讀）、usb（OpenCV，BUFFERSIZE=1，先 grab 丟舊幀）、synthetic（合成零件：隨機位移／旋轉、30% 缺孔或刮痕，讓沒相機也能走完整流程）、upload（API push）。外掛：繼承 <code>Grabber</code> 的 .py 丟進 <code>plugins/</code> 自動掛載（或 <code>VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber</code>），見 plugins.html。Grabber 會被多執行緒同時呼叫，內部要加鎖。</p>
 
 <h2 id="api">8. API / SSE / TCP</h2>
 <p>完整清單見 <code>apps/vision/api.py</code> 頂端 docstring；整合方式見 <a href="automation.html">automation.html</a>。重點：</p>
@@ -187,16 +187,16 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <ul>
 <li><strong>範本</strong>：內建範本由 <code>demo.py</code> 的建構器以 <code>{SOURCE}</code> 佔位符產生（孔數、曝光、定位＋卡尺、顏色有無、條碼），自訂範本存 <code>FlowTemplate</code>；<code>instantiate</code> 換回來源 id 並可加節點前綴避免撞名。範本不綁機器的來源 id，這是「點一下就能用」的前提。</li>
 <li><strong>批次測試</strong>：每張影像以 preview 模式跑（影像留在快取），回每張的判定／輸出／錯誤節點與來源影像 ref；上限 50 張，記憶體受 KEEP_RUN_IMAGES 限制、舊的會被釋放。</li>
-<li><strong>整合工具</strong>：<code>integration/tcp</code> 真的連本機 TCP 埠送一行指令（埠沒開時直接呼叫 <code>handle_command</code> 並標 <code>via=direct</code>），讓整合方在瀏覽器裡就能驗證 PLC 端要送的字串。</li>
+<li><strong>整合工具</strong>：<code>integration/tcp</code> 真的連本機 TCP 埠送一行指令（埠沒開時直接呼叫 <code>handle_command</code> 並標 <code>via=direct</code>），讓整合方在瀏覽器裡就能驗證設備端要送的字串。</li>
 </ul>
 
-<h2 id="plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、PLC</h2>
+<h2 id="plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</h2>
 <ul>
 <li><strong>Param.teach</strong>：工具把需要現場教導的參數標 <code>teach=True</code>，參數卡頁（/flows/:id/teach）只列這些並即時試跑到該步驟；<code>Flow.commissioned</code> 未確認時 RunReport 帶 <code>warnings</code>，不阻擋。</li>
 <li><strong>配方 FlowRecipe</strong>：<code>param_overrides = {node_id: {param: value}}</code>，執行時 <code>apply_recipe()</code> 疊到圖上再編譯，快取鍵 <code>(version, recipe_id, updated_at)</code>；HTTP <code>recipe</code>、TCP <code>recipe=</code>、未指定用預設配方。覆寫只能指向存在的節點與宣告過的參數，疊完的圖要能過 validate_graph。</li>
 <li><strong>station_id</strong>：<code>VISION_STATION_ID</code> 寫進 FlowRun、RunReport、TCP 回應；索引 (station_id, -started_at)。</li>
 <li><strong>Golden Set</strong>（apps/golden）：案例＋期望值、回歸以非 preview 跑、只對 mismatch 取影像；基準比對列出 regressed；CLI <code>manage.py regress</code> 可進 CI。流程匯出入 <code>manage.py flow export|import|run</code>（穩定序列化：排序、整數座標、{SOURCE} 佔位符）。詳見 golden.html。</li>
-<li><strong>PLC 主動輸出</strong>（apps/comm）：Connection（modbus_tcp／tcp_client／dio_sim／外掛）＋ <code>write_plc</code> 工具，連線在 <code>Runner.prefetch_hooks</code> 於呼叫者執行緒開好，寫入失敗預設降級不讓 run failed。詳見 plc.html。</li>
+<li><strong>Modbus 主動輸出</strong>（apps/comm）：Connection（modbus_tcp／tcp_client／dio_sim／外掛）＋ <code>write_modbus</code> 工具，連線在 <code>Runner.prefetch_hooks</code> 於呼叫者執行緒開好，寫入失敗預設降級不讓 run failed。詳見 modbus.html。</li>
 <li>未做（依計畫排後）：標定子系統（§4.2）、GenICam 內建來源（§4.5）、C 級差異化。</li>
 </ul>
 
@@ -210,7 +210,8 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <tr><td>VISION_IMAGE_CACHE_MB</td><td>1024</td><td>影像快取總量</td></tr>
 <tr><td>VISION_PERSIST_RUNS / KEEP_RUN_ROWS</td><td>1 / 2000</td><td>DB 記錄開關與每流程保留列數</td></tr>
 <tr><td>VISION_CV_THREADS</td><td>2</td><td>cv2.setNumThreads；多流程並行建議 1～2</td></tr>
-<tr><td>VISION_TOOL_PLUGINS / SOURCE_PLUGINS</td><td>空</td><td>外掛</td></tr>
+<tr><td>VISION_PLUGIN_DIR</td><td>./plugins</td><td>資料夾外掛（自動偵測）</td></tr>
+<tr><td>VISION_TOOL_PLUGINS / SOURCE_PLUGINS / COMM_PLUGINS</td><td>空</td><td>模組路徑外掛（進階）</td></tr>
 <tr><td>VISION_API_KEY</td><td>空</td><td>選填金鑰</td></tr>
 <tr><td>VISION_TCP_HOST / PORT</td><td>0.0.0.0 / 9000</td><td>TCP 介面</td></tr>
 </table>

@@ -19,9 +19,9 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="performance.html">效能報告</a><a href="workflow-design.html">工作流程設計手冊</a><a href="golden.html">Golden Set 與匯出</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
 
-<h1>自動化整合（PLC / 上位機 / MES）</h1>
+<h1>自動化整合（Modbus TCP / 上位機 / MES）</h1>
 <p>三種接法，回傳格式相同；金鑰（<code>VISION_API_KEY</code>）有設定時 HTTP 帶 <code>X-API-Key</code> 或 <code>?api_key=</code>。</p>
 
 <nav><p><strong>本頁目錄</strong></p><ul>
@@ -31,7 +31,7 @@
 <li><a href="#upload">4. 送圖來源</a></li>
 <li><a href="#perf">效能建議</a></li>
 <li><a href="#lock">5. 身分與引擎鎖定</a></li>
-<li><a href="#push">6. 主動輸出到 PLC</a></li>
+<li><a href="#push">6. 主動輸出（Modbus TCP）</a></li>
 </ul></nav>
 
 <h2 id="http">1. HTTP 同步執行（最常用）</h2>
@@ -54,7 +54,7 @@
 <pre>curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -H "Content-Type: application/json" -d "{}"
 curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F context='{"lot":"A1"}'</pre>
 
-<h2 id="tcp">2. TCP 一行指令（PLC 最容易接）</h2>
+<h2 id="tcp">2. TCP 一行指令（設備最容易接）</h2>
 <p>連 <code>VISION_TCP_PORT</code>（預設 9000），每行一個指令、每行一個 JSON 回應（<code>\n</code> 結尾）：</p>
 <table>
 <tr><th>指令</th><th>回應</th></tr>
@@ -97,7 +97,7 @@ DELETE /api/vision/lock   X-API-Key: ...                                      �
 <li>建議整合方在開機／換線程式一開始就 <code>POST lock</code>（帶 ttl），停機時 <code>DELETE lock</code>。</li>
 </ul>
 
-<h2 id="push">6. 主動輸出到 PLC（引擎寫給你）</h2>
-<p>上面三種接法都是呼叫方來拿結果。如果 PLC 只想等一個 DO 或暫存器變化，改用<strong>主動輸出</strong>：設定頁建一條連線（<code>modbus_tcp</code>／<code>tcp_client</code>／<code>dio_sim</code>），流程末端放「寫入 PLC」（<code>write_plc</code>）工具填對映表，例如 <code>judge → coil:0</code>、<code>width_px → holding:100:float32</code>。寫入失敗預設只記警告、run 照常（產線不停線）。細節、位址格式、連線 API 與外掛見 <a href="plc.html">主動輸出到 PLC</a>。</p>
+<h2 id="push">6. 主動輸出（Modbus TCP，引擎寫給你）</h2>
+<p>上面三種接法都是呼叫方來拿結果。如果設備只想等一個 DO 或暫存器變化，改用<strong>主動輸出</strong>：設定頁建一條連線（<code>modbus_tcp</code>／<code>tcp_client</code>／<code>dio_sim</code>），流程末端放「寫入 Modbus」（<code>write_modbus</code>）工具填對映表，例如 <code>judge → coil:0</code>、<code>width_px → holding:100:float32</code>。寫入失敗預設只記警告、run 照常（產線不停線）。細節、位址格式、連線 API 與外掛見 <a href="modbus.html">Modbus 輸出</a>。</p>
 </body>
 </html>
