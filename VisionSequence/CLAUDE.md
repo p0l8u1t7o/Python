@@ -39,7 +39,8 @@
 - 前端不用改；想加新的 Param.kind 要同時改 `PARAM_KINDS` 與前端 `ParamField`。
 
 ## 深度學習教導（apps/vision/dl）
-- `Trainer` registry（base.py）：kind／label_mode（封閉集合）／params（沿用 Param）／devices，實作 `train()`（回 ONNX bytes＋tool_params）與 `suggest()`（自動標記）；內建 `mlp_classify`（numpy 訓練、`onnx_io.py` 手刻 ONNX，不引入 torch/onnx 依賴）。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動、共用。
+- `Trainer` registry（base.py）：kind／label_mode（封閉集合：classes｜shapes）／params（沿用 Param）／devices，實作 `train()`（回 ONNX bytes＋tool_params）與 `suggest()`（自動標記）。內建：`mlp_classify`（分類）、`patch_segment`（輕量語意分割，全卷積手刻 ONNX 給 dl_segment）、`yolo_seg`（實例分割；torch/ultralytics **可選安裝、延後 import**，缺件訓練時提示 pip 指令；產物給新工具 `dl_instance`）。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動、共用。
+- shapes 標記存 DlSample.shapes（0~1 正規化），`shapes.py` 與 YOLO txt 互轉（TAB/LF，相容 VisionStereo）；`dataset-export`／`dataset-import` API 雙向互通。訓練 job 帶 history 曲線與 log 環形緩衝（`?log_from=`）。
 - 訓練跑背景執行緒（jobs.py，單一訓練槽、409 擋第二個），不占檢測執行緒池；前端輪詢 `/dl/train/status`。產物存成 kind=model 資產，`dl_classify` 直接用（前處理與工具預設一致）。
 - 推論 providers 是熱路徑設定：工具只讀 `devices.preferred_providers()`（記憶體）；`PATCH /dl/settings` 寫 DB＋更新快取＋`clear_sessions()`。
 - 樣本影像在 `ASSET_DIR/dl/<project_id>/`；訓練執行緒自己開 DB 連線、結束 `close_old_connections()`。詳見 docs/dl.html。

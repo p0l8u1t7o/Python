@@ -44,7 +44,7 @@ API 文件：http://127.0.0.1:8000/api/docs
 - **流程匯出／匯入**：`manage.py flow export|import|run`，穩定序列化可進 git
 - **站台識別** `VISION_STATION_ID` 寫進每筆執行紀錄與回傳
 - **Modbus 主動輸出**：連線（Modbus TCP／TCP 文字／模擬 DIO／外掛）＋ `write_modbus` 工具，失敗降級不停線
-- **深度學習教導**（`/dl`）：平台內標記（自動標記加速）、伺服端訓練（GPU／provider 資訊與選擇）、模型匯出到資產直接給 `dl_classify` 用；模型種類（Trainer）可用外掛擴充、UI 共用
+- **深度學習教導**（`/dl`）：平台內標記（分類＋polygon/bbox 標記編輯器、自動標記、輪廓貼邊）、伺服端訓練（GPU／provider 資訊與選擇、loss/mAP 曲線、log、可中止）、模型匯出到資產直接給 `dl_classify`／`dl_segment`／`dl_instance` 用；內建分類／輕量語意分割，實例分割（YOLO-seg）選裝 ultralytics；YOLO 資料集匯出入可與 VisionStereo 互通；模型種類（Trainer）可用外掛擴充、UI 共用
 - **資料夾外掛**：繼承 Tool／Grabber／Writer 的 .py 丟進 `plugins/` 自動偵測掛載（不用改 .env），外掛內變數控制名稱／說明／是否掛載
 - **量測工具**：fit_arc、fit_ellipse、wall_thickness、concentricity、chamfer_angle、tolerance_judge（保留標稱值與公差來源）＋「深抽杯件量測」範本
 - 尚未做：標定子系統、GenICam 內建來源、C 級（零樣本異常、少樣本訓練、GPU、LLM 生成流程）
