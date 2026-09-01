@@ -3,17 +3,20 @@
  * 自動標記（kNN 建議＋批次接受）、伺服端訓練（裝置選擇、進度、指標）、匯出模型到資產庫。
  * UI 由 /dl/trainers 的目錄資料驅動（超參數表單直接用 ParamField），之後導入新模型種類不用改前端。
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Brain, Camera, Check, Cpu, Play, Plus, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 
+import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
+
+import { ShapeWorkspace } from '@/components/dl/ShapeWorkspace'
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Select, TextInput } from '@/components/ui'
 import { dlSampleUrl } from '@/lib/api'
 import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useSources } from '@/lib/queries'
-import type { DlProject, DlSample, DlSuggestion, DlTrainerDef } from '@/lib/types'
+import type { DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
 const NO_ACTIONS: InspectorActions = { roiEditingKey: null, setRoiEditing: () => {}, templateFromImage: () => {}, templateKey: null, hasImage: false }
@@ -156,13 +159,58 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         ) : null}
         {metrics && Object.keys(metrics).length ? (
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-line px-3 py-2 text-xs">
-            {['train_accuracy', 'val_accuracy', 'loss', 'samples'].filter((k) => metrics[k] !== undefined && metrics[k] !== null).map((k) => (
-              <span key={k} className="contents"><dt className="text-muted">{t(`dl.metrics.${k}`)}</dt><dd className="tnum text-right">{String(metrics[k])}</dd></span>
+            {['train_accuracy', 'val_accuracy', 'loss', 'samples', 'mAP50', 'mAP50-95'].filter((k) => metrics[k] !== undefined && metrics[k] !== null).map((k) => (
+              <span key={k} className="contents"><dt className="text-muted">{t(`dl.metrics.${k}`, { defaultValue: k })}</dt><dd className="tnum text-right">{String(metrics[k])}</dd></span>
             ))}
           </dl>
         ) : null}
+        {mine && (job.data?.history?.length ?? 0) > 1 ? <TrainCurves history={job.data!.history} /> : null}
+        {mine && job.data?.logs?.length ? <TrainLog logs={job.data.logs} /> : null}
       </CardBody>
     </Card>
+  )
+}
+
+const CURVE_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2']
+
+/** loss / 正確率 / mAP 曲線：key 從 history 動態取（分割任務的 fitness 可能 > 1，Y 軸不寫死）。 */
+function TrainCurves({ history }: { history: Record<string, number>[] }) {
+  const keys = useMemo(() => {
+    const seen = new Set<string>()
+    for (const point of history) for (const k of Object.keys(point)) if (k !== 'epoch') seen.add(k)
+    const preferred = ['loss', 'train_accuracy', 'val_accuracy', 'mAP50', 'mAP50-95', 'precision', 'recall']
+    const ordered = [...preferred.filter((k) => seen.has(k)), ...[...seen].filter((k) => !preferred.includes(k))]
+    return ordered.slice(0, 4)
+  }, [history])
+  if (!keys.length) return null
+  return (
+    <div className="h-44 rounded-md border border-line p-1" data-testid="dl-curves">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={history} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
+          <XAxis dataKey="epoch" tick={{ fontSize: 10 }} stroke="var(--color-muted, #94a3b8)" />
+          <YAxis tick={{ fontSize: 10 }} stroke="var(--color-muted, #94a3b8)" domain={['auto', 'auto']} />
+          <ChartTooltip contentStyle={{ fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          {keys.map((k, i) => (
+            <Line key={k} type="monotone" dataKey={k} stroke={CURVE_COLORS[i % CURVE_COLORS.length]} dot={false} strokeWidth={1.5} isAnimationActive={false} connectNulls />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+/** 訓練 log（環形緩衝的最近 400 行；自動捲到底）。 */
+function TrainLog({ logs }: { logs: string[] }) {
+  const ref = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [logs.length])
+  return (
+    <pre ref={ref} className="max-h-36 overflow-y-auto rounded-md bg-[#0f172a] px-2.5 py-2 text-[11px] leading-relaxed text-slate-300" data-testid="dl-train-log">
+      {logs.join('\n')}
+    </pre>
   )
 }
 
@@ -227,7 +275,7 @@ export function DlPage() {
   const projectId = selected ?? projects.data?.[0]?.id ?? null
   const project = useDlProject(projectId)
   const samples = useDlSamples(projectId)
-  const { uploadSamples, setLabel, removeSample, bulkLabels, autoLabel, removeProject, patchProject } = useDlMutations()
+  const { uploadSamples, setLabel, setShapes, removeSample, bulkLabels, autoLabel, removeProject, patchProject } = useDlMutations()
 
   const [creating, setCreating] = useState(false)
   const [fromSourceOpen, setFromSourceOpen] = useState(false)
@@ -238,6 +286,7 @@ export function DlPage() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const trainer = useMemo(() => trainers.data?.find((x) => x.kind === project.data?.trainer_kind), [trainers.data, project.data])
+  const isShapes = trainer?.label_mode === 'shapes'
   const accel = devices.data?.accelerators ?? []
 
   async function onFiles(list: FileList | null) {
@@ -274,10 +323,26 @@ export function DlPage() {
 
   async function acceptSuggestions() {
     if (projectId === null || !suggestions.size) return
-    const items = Array.from(suggestions.values()).map((s) => ({ id: s.id, label: s.label, score: s.score, by: 'auto' }))
+    const items = Array.from(suggestions.values()).map((s) =>
+      s.shapes ? { id: s.id, shapes: s.shapes, score: s.score, by: 'auto' } : { id: s.id, label: s.label, score: s.score, by: 'auto' })
     await bulkLabels.mutateAsync({ projectId, items })
     setSuggestions(new Map())
     toast.success(t('dl.accepted', { count: items.length }))
+  }
+
+  async function saveShapes(sampleId: string, shapes: DlShape[]) {
+    if (projectId === null) return
+    await setShapes.mutateAsync({ id: sampleId, shapes, projectId })
+  }
+
+  async function acceptOneSuggestion(sampleId: string, shapes: DlShape[]) {
+    if (projectId === null) return
+    await bulkLabels.mutateAsync({ projectId, items: [{ id: sampleId, shapes, by: 'auto', score: suggestions.get(sampleId)?.score }] })
+    setSuggestions((old) => {
+      const next = new Map(old)
+      next.delete(sampleId)
+      return next
+    })
   }
 
   const counts = project.data?.counts
@@ -316,7 +381,34 @@ export function DlPage() {
 
         {/* 標記工作區 */}
         <div className="min-w-0 space-y-3">
-          {project.data ? (
+          {project.data && isShapes ? (
+            <>
+              <Card>
+                <CardBody className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
+                    <Button size="sm" onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
+                    <Button size="sm" onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
+                    <Button size="sm" variant="primary" loading={autoLabel.isPending} onClick={() => void runAutoLabel()} data-testid="dl-auto"><Sparkles size={14} /> {t('dl.autoLabel')}</Button>
+                    {suggestions.size ? (
+                      <>
+                        <Button size="sm" variant="primary" onClick={() => void acceptSuggestions()}><Check size={14} /> {t('dl.acceptAll', { count: suggestions.size })}</Button>
+                        <Button size="sm" onClick={() => setSuggestions(new Map())}><X size={14} /> {t('dl.clearSuggestions')}</Button>
+                      </>
+                    ) : null}
+                    <span className="ml-auto text-xs text-muted">{t('dl.progressCount', { labeled: (counts?.total ?? 0) - (counts?.unlabeled ?? 0), total: counts?.total ?? 0 })}</span>
+                    <Button size="sm" variant="ghost" title={t('dl.deleteProject')} onClick={() => setDeleting(true)}><Trash2 size={14} /></Button>
+                  </div>
+                </CardBody>
+              </Card>
+              {samples.isLoading ? <LoadingState /> : (samples.data ?? []).length ? (
+                <ShapeWorkspace project={project.data} samples={samples.data ?? []} suggestions={suggestions}
+                  onSave={saveShapes} onAcceptSuggestion={acceptOneSuggestion} />
+              ) : (
+                <EmptyState compact icon={<Camera className="size-6" />} title={t('dl.noSamples')} description={t('dl.noSamplesHint')} />
+              )}
+            </>
+          ) : project.data ? (
             <>
               <Card>
                 <CardBody className="space-y-2.5">

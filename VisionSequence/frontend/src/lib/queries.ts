@@ -14,6 +14,7 @@ import type {
   DlDevices,
   DlProject,
   DlSample,
+  DlShape,
   DlSuggestion,
   DlTrainJob,
   DlTrainerDef,
@@ -800,12 +801,17 @@ export function useDlMutations() {
       api.patch<DlSample>(`/vision/dl/samples/${id}`, { label }),
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
+  const setShapes = useMutation({
+    mutationFn: ({ id, shapes }: { id: string; shapes: DlShape[]; projectId: number }) =>
+      api.patch<DlSample>(`/vision/dl/samples/${id}`, { shapes }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
   const removeSample = useMutation({
     mutationFn: ({ id }: { id: string; projectId: number }) => api.delete(`/vision/dl/samples/${id}`),
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
   const bulkLabels = useMutation({
-    mutationFn: ({ projectId, items }: { projectId: number; items: { id: string; label: string; score?: number; by?: string }[] }) =>
+    mutationFn: ({ projectId, items }: { projectId: number; items: { id: string; label?: string; shapes?: DlShape[]; score?: number; by?: string }[] }) =>
       api.post<{ updated: number }>(`/vision/dl/projects/${projectId}/labels`, { items }),
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
@@ -825,5 +831,5 @@ export function useDlMutations() {
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
 }

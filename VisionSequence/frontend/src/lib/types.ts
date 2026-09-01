@@ -567,7 +567,7 @@ export interface DlTrainerDef {
   kind: string
   label: string
   description: string
-  label_mode: 'classes' | 'boxes'
+  label_mode: 'classes' | 'shapes'
   tool_key: string
   devices: string[]
   min_per_class: number
@@ -588,6 +588,13 @@ export interface DlProject {
   counts?: { total: number; unlabeled: number; per_class: Record<string, number> }
 }
 
+export interface DlShape {
+  label: string
+  kind: 'polygon' | 'bbox'
+  /** 0~1 正規化座標；bbox 為 [左上, 右下] 兩點 */
+  points: [number, number][]
+}
+
 export interface DlSample {
   id: string
   label: string
@@ -596,6 +603,7 @@ export interface DlSample {
   width: number
   height: number
   created_at: string
+  shapes: DlShape[]
 }
 
 export interface DlDevices {
@@ -624,10 +632,15 @@ export interface DlTrainJob {
   tool_key: string
   tool_params: Record<string, unknown>
   duration_s: number
+  history: Record<string, number>[]
+  logs: string[]
+  log_from: number
+  log_next: number
 }
 
 export interface DlSuggestion {
   id: string
   label: string
   score: number
+  shapes?: DlShape[]
 }
