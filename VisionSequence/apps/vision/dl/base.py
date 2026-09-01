@@ -22,8 +22,9 @@ from apps.vision.tools.base import Param
 
 log = logging.getLogger(__name__)
 
-#: 標記模式（封閉集合；前端標記介面依此切換）。目前實作 classes；boxes 供未來偵測模型。
-LABEL_MODES = ("classes", "boxes")
+#: 標記模式（封閉集合；前端標記介面依此切換）：
+#: classes = 整張影像一個類別；shapes = 一張影像多個 polygon/bbox 實例（分割／偵測）。
+LABEL_MODES = ("classes", "shapes")
 
 
 class TrainError(Exception):
@@ -36,11 +37,15 @@ class TrainCancelled(Exception):
 
 @dataclass
 class SampleRef:
-    """一筆標記樣本的參照；影像用 load() 才讀（訓練逐張抽特徵，不整批進記憶體）。"""
+    """一筆標記樣本的參照；影像用 load() 才讀（訓練逐張抽特徵，不整批進記憶體）。
+
+    shapes（label_mode=shapes 用）：[{"label": 類別名, "kind": "polygon"|"bbox", "points": [[x,y],…]}]，
+    座標一律 0~1 正規化（與 YOLO txt 一致）。"""
 
     id: str
-    label: str  # "" = 未標記
+    label: str  # classes 模式："" = 未標記
     path: str
+    shapes: list[dict[str, Any]] = field(default_factory=list)
 
     def load(self) -> np.ndarray | None:
         try:
@@ -64,11 +69,12 @@ class TrainResult:
 
 @dataclass
 class Suggestion:
-    """自動標記建議：對未標記樣本提出 label 與信心分數。"""
+    """自動標記建議：classes 模式給 label；shapes 模式給 shapes（整張圖的建議形狀）。"""
 
     sample_id: str
     label: str
     score: float
+    shapes: list[dict[str, Any]] | None = None
 
 
 #: progress(fraction 0~1, stage 說明, metrics 或 None)；實作要定期呼叫，並在拋 TrainCancelled 時停止。
@@ -164,8 +170,8 @@ def register_builtins() -> None:
     global _registered
     if _registered:
         return
-    from apps.vision.dl import builtin
+    from apps.vision.dl import builtin, yolo
 
-    for cls in builtin.TRAINERS:
+    for cls in builtin.TRAINERS + yolo.TRAINERS:
         register_trainer(cls)
     _registered = True

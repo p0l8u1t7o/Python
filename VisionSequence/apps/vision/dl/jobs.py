@@ -42,8 +42,26 @@ class TrainJob:
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
     cancel = False
+    #: 每個 epoch 的指標（loss/mAP 曲線用）：[{"epoch": n, ...}]。
+    history: list[dict[str, Any]] = field(default_factory=list)
+    #: 訓練 log 環形緩衝（最近 _LOG_KEEP 行）＋已丟棄行數（換算全域行號）。
+    logs: list[str] = field(default_factory=list)
+    log_base: int = 0
 
-    def to_dict(self) -> dict[str, Any]:
+    def add_log(self, message: str) -> None:
+        stamp = time.strftime("%H:%M:%S")
+        self.logs.append(f"[{stamp}] {message}")
+        overflow = len(self.logs) - _LOG_KEEP
+        if overflow > 0:
+            del self.logs[:overflow]
+            self.log_base += overflow
+
+    def to_dict(self, log_from: int | None = None) -> dict[str, Any]:
+        if log_from is None:
+            logs, log_from_out = list(self.logs), self.log_base
+        else:
+            offset = max(0, log_from - self.log_base)
+            logs, log_from_out = self.logs[offset:], max(log_from, self.log_base)
         return {
             "id": self.id, "project_id": self.project_id, "project_name": self.project_name,
             "trainer_kind": self.trainer_kind, "device": self.device, "status": self.status,
@@ -52,16 +70,51 @@ class TrainJob:
             "tool_key": self.tool_key, "tool_params": self.tool_params,
             "started_at": self.started_at, "finished_at": self.finished_at,
             "duration_s": round((self.finished_at or time.time()) - self.started_at, 1),
+            "history": list(self.history),
+            "logs": logs, "log_from": log_from_out, "log_next": self.log_base + len(self.logs),
         }
 
+
+_LOG_KEEP = 400
 
 _lock = threading.Lock()
 _job: TrainJob | None = None  # 最近一個（含執行中）
 
 
-def status() -> dict[str, Any] | None:
+class TrainProgress:
+    """交給 trainer 的進度物件：可呼叫（相容 ProgressFn），另有 log()／history()。"""
+
+    def __init__(self, job: TrainJob) -> None:
+        self._job = job
+
+    def __call__(self, fraction: float, stage: str, metrics: dict[str, Any] | None) -> None:
+        if self._job.cancel:
+            raise TrainCancelled()
+        self._job.progress, self._job.stage = float(fraction), str(stage)
+        if metrics:
+            self._job.metrics = metrics
+            # 帶 epoch 的指標自動累積成曲線（trainer 不用自己呼叫 history()）
+            epoch = metrics.get("epoch")
+            if isinstance(epoch, int) and (not self._job.history or self._job.history[-1].get("epoch") != epoch):
+                point = {k: v for k, v in metrics.items() if isinstance(v, (int, float)) and k not in ("epochs", "samples", "val_samples")}
+                if len(point) > 1:
+                    self._job.history.append(point)
+
+    def log(self, message: str) -> None:
+        self._job.add_log(str(message))
+
+    def history(self, point: dict[str, Any]) -> None:
+        """一個 epoch 的指標點（loss/mAP 曲線）；同 epoch 已存在時合併更新。"""
+        epoch = point.get("epoch")
+        if self._job.history and self._job.history[-1].get("epoch") == epoch:
+            self._job.history[-1].update(point)
+        else:
+            self._job.history.append(dict(point))
+
+
+def status(log_from: int | None = None) -> dict[str, Any] | None:
     with _lock:
-        return _job.to_dict() if _job else None
+        return _job.to_dict(log_from) if _job else None
 
 
 def cancel() -> bool:
@@ -115,16 +168,10 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     trainer = get_trainer(job.trainer_kind)
     project = DlProject.objects.get(pk=project_id)
     rows = list(project.samples.all())
-    samples = [SampleRef(id=str(r.id), label=r.label, path=r.path) for r in rows]
+    samples = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or [])) for r in rows]
     classes = [str(c) for c in (project.classes or [])]
 
-    def progress(fraction: float, stage: str, metrics: dict[str, Any] | None) -> None:
-        if job.cancel:
-            raise TrainCancelled()
-        job.progress, job.stage = float(fraction), str(stage)
-        if metrics:
-            job.metrics = metrics
-
+    progress = TrainProgress(job)
     result = trainer.train(samples, classes, params, job.device, progress)
 
     asset_id = uuid.uuid4()

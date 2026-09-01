@@ -156,6 +156,8 @@ class DlSample(models.Model):
     project = models.ForeignKey(DlProject, on_delete=models.CASCADE, related_name="samples")
     #: "" = 未標記；classes 模式存類別名。
     label = models.CharField(max_length=80, blank=True, default="")
+    #: shapes 模式：[{"label": 類別名, "kind": "polygon"|"bbox", "points": [[x,y],…]}]，座標 0~1 正規化。
+    shapes = models.JSONField(default=list, blank=True)
     #: 標記來源：human | auto（自動標記後尚未人工確認）。
     labeled_by = models.CharField(max_length=10, blank=True, default="")
     #: 自動標記的信心分數。

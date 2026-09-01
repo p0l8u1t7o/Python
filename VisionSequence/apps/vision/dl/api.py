@@ -52,11 +52,28 @@ def _sample_dir(project: DlProject) -> str:
     return folder
 
 
+def _label_mode(project: DlProject) -> str:
+    try:
+        return dl_base.get_trainer(project.trainer_kind).label_mode
+    except Exception:  # noqa: BLE001 — 外掛 trainer 被移除時仍可瀏覽
+        return "classes"
+
+
 def _counts(project: DlProject) -> dict[str, Any]:
-    rows = project.samples.values_list("label", flat=True)
-    labels = list(rows)
-    per_class = {c: labels.count(c) for c in (project.classes or [])}
-    return {"total": len(labels), "unlabeled": labels.count(""), "per_class": per_class}
+    classes = list(project.classes or [])
+    if _label_mode(project) == "shapes":
+        rows = list(project.samples.values_list("shapes", flat=True))
+        per_class = {c: 0 for c in classes}
+        labeled = 0
+        for shp in rows:
+            if shp:
+                labeled += 1
+                for shape in shp:
+                    if shape.get("label") in per_class:
+                        per_class[shape["label"]] += 1
+        return {"total": len(rows), "unlabeled": len(rows) - labeled, "per_class": per_class}
+    labels = list(project.samples.values_list("label", flat=True))
+    return {"total": len(labels), "unlabeled": labels.count(""), "per_class": {c: labels.count(c) for c in classes}}
 
 
 def _project_out(project: DlProject, *, counts: bool = True) -> dict[str, Any]:
@@ -76,6 +93,7 @@ def _sample_out(sample: DlSample) -> dict[str, Any]:
     return {
         "id": str(sample.id), "label": sample.label, "labeled_by": sample.labeled_by,
         "score": sample.score, "width": sample.width, "height": sample.height, "created_at": sample.created_at,
+        "shapes": list(sample.shapes or []),
     }
 
 
@@ -243,6 +261,7 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
     if sample is None:
         raise NotFound("樣本不存在", code="dl_sample_not_found")
     body = _body(request)
+    fields = []
     if "label" in body:
         label = str(body["label"] or "")
         if label and label not in (sample.project.classes or []):
@@ -250,7 +269,16 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
         sample.label = label
         sample.labeled_by = "human" if label else ""
         sample.score = 0
-        sample.save(update_fields=["label", "labeled_by", "score"])
+        fields += ["label", "labeled_by", "score"]
+    if "shapes" in body:
+        from apps.vision.dl.shapes import validate_shapes
+
+        sample.shapes = validate_shapes(body["shapes"], list(sample.project.classes or []))
+        sample.labeled_by = "human" if sample.shapes else ""
+        sample.score = 0
+        fields += ["shapes", "labeled_by", "score"]
+    if fields:
+        sample.save(update_fields=sorted(set(fields)))
     return _sample_out(sample)
 
 
@@ -275,18 +303,73 @@ def bulk_label(request: HttpRequest, project_id: int):
     items = body.get("items")
     if not isinstance(items, list):
         raise ValidationError("需要 items 清單", code="bad_items")
+    from apps.vision.dl.shapes import validate_shapes
+
     classes = set(project.classes or [])
     updated = 0
     for item in items:
         if not isinstance(item, dict):
             continue
+        by = "auto" if str(item.get("by") or "") == "auto" else "human"
+        score = float(item.get("score") or 0)
+        rows = project.samples.filter(pk=item.get("id"))
+        if "shapes" in item:
+            shapes = validate_shapes(item["shapes"], list(project.classes or []))
+            updated += rows.update(shapes=shapes, labeled_by=by if shapes else "", score=score)
+            continue
         label = str(item.get("label") or "")
         if label and label not in classes:
             continue
-        by = "auto" if str(item.get("by") or "") == "auto" else "human"
-        rows = project.samples.filter(pk=item.get("id"))
-        updated += rows.update(label=label, labeled_by=by if label else "", score=float(item.get("score") or 0))
+        updated += rows.update(label=label, labeled_by=by if label else "", score=score)
     return {"updated": updated, "counts": _counts(project)}
+
+
+# ---------------------------------------------------------------------------
+# YOLO 資料集匯出／匯入（與 VisionStereo 等工具互通；伺服器本機路徑）
+# ---------------------------------------------------------------------------
+@router.post("/dl/projects/{project_id}/dataset-export")
+def dataset_export(request: HttpRequest, project_id: int):
+    """{"dir": 目的資料夾, "val_ratio"?: 0.2} → 寫出 images/labels/{train,val} + data.yaml。"""
+    from apps.vision.dl.shapes import export_dataset
+
+    project = _project(project_id)
+    body = _body(request)
+    out_dir = str(body.get("dir") or "").strip()
+    if not out_dir:
+        raise ValidationError("需要 dir（伺服器上的目的資料夾）", code="bad_dir")
+    rows = [(r.id.hex, r.path, list(r.shapes or [])) for r in project.samples.all()]
+    return export_dataset(rows, list(project.classes or []), out_dir, val_ratio=float(body.get("val_ratio") or 0.2))
+
+
+@router.post("/dl/projects/{project_id}/dataset-import")
+def dataset_import(request: HttpRequest, project_id: int):
+    """{"dir": YOLO 資料夾} → 把 images/labels 匯入成樣本（shapes）。類別依 data.yaml 對應，缺的自動補進專案。"""
+    from apps.vision.dl.shapes import iter_dataset, read_yaml_classes, yolo_to_shapes
+
+    project = _project(project_id)
+    body = _body(request)
+    root = str(body.get("dir") or "").strip()
+    if not root or not os.path.isdir(root):
+        raise ValidationError("需要 dir（伺服器上既有的 YOLO 資料夾）", code="bad_dir")
+    classes = read_yaml_classes(root) or list(project.classes or [])
+    missing = [c for c in classes if c not in (project.classes or [])]
+    if missing:
+        project.classes = list(project.classes or []) + missing
+        project.save(update_fields=["classes", "updated_at"])
+    imported = skipped = 0
+    for image_path, label_text in iter_dataset(root):
+        image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            skipped += 1
+            continue
+        sample = _save_sample(project, image)
+        shapes = yolo_to_shapes(label_text, classes)
+        if shapes:
+            sample.shapes = shapes
+            sample.labeled_by = "human"
+            sample.save(update_fields=["shapes", "labeled_by"])
+        imported += 1
+    return {"imported": imported, "skipped": skipped, "counts": _counts(project), "classes": list(project.classes or [])}
 
 
 # ---------------------------------------------------------------------------
@@ -298,14 +381,27 @@ def auto_label(request: HttpRequest, project_id: int):
     project = _project(project_id)
     trainer = dl_base.get_trainer(project.trainer_kind)
     rows = list(project.samples.all())
-    labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path) for r in rows if r.label and r.labeled_by == "human"]
-    unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.label or r.labeled_by == "auto"]
+    if trainer.label_mode == "shapes":
+        labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or [])) for r in rows if r.shapes and r.labeled_by == "human"]
+        unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.shapes or r.labeled_by == "auto"]
+    else:
+        labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path) for r in rows if r.label and r.labeled_by == "human"]
+        unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.label or r.labeled_by == "auto"]
     params = {**dict(project.params or {}), **(_body(request).get("params") or {})}
+    weights = (project.last_metrics or {}).get("weights_path")
+    if weights and "weights" not in params:
+        params["weights"] = weights  # yolo trainer 沿用上次訓練的 best.pt
     try:
         suggestions = trainer.suggest(labeled, unlabeled, list(project.classes or []), params)
     except TrainError as exc:
         raise ValidationError(str(exc), code="auto_label_failed") from None
-    return {"items": [{"id": s.sample_id, "label": s.label, "score": s.score} for s in suggestions]}
+    items = []
+    for sg in suggestions:
+        item = {"id": sg.sample_id, "label": sg.label, "score": sg.score}
+        if sg.shapes is not None:
+            item["shapes"] = sg.shapes
+        items.append(item)
+    return {"items": items}
 
 
 @router.post("/dl/projects/{project_id}/train", response={202: dict})
@@ -322,8 +418,8 @@ def start_training(request: HttpRequest, project_id: int):
 
 
 @router.get("/dl/train/status")
-def train_status(request: HttpRequest):
-    return {"job": jobs.status()}
+def train_status(request: HttpRequest, log_from: int = -1):
+    return {"job": jobs.status(None if log_from < 0 else log_from)}
 
 
 @router.post("/dl/train/cancel")

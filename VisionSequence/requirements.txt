@@ -21,6 +21,11 @@ pymodbus==3.15.0               # write_plc 工具的 Modbus/TCP 客戶端（apps
 # ---- 可選：深度學習推論 -------------------------------------------------------
 onnxruntime==1.20.1            # dl_classify / dl_detect 工具；未安裝時工具會在執行時回報 error 而非整個平台失效
 
+# ---- 可選：YOLO 實例分割訓練（不在預設安裝內；約 2~3GB） ----------------------------
+# 平台照常啟動，「實例分割（YOLO-seg）」開始訓練時才 import，缺件會提示這行指令：
+#   .venv\Scripts\pip install ultralytics        # 會帶 torch；GPU 版 torch 照 pytorch.org 指示裝
+# ultralytics>=8.3
+
 # ---- 執行環境 ---------------------------------------------------------------
 uvicorn[standard]==0.34.0      # ASGI（SSE 即時串流）；正式環境單 worker（引擎狀態在行程內）
 whitenoise==6.8.2              # 靜態檔（前端 build 產物）

@@ -350,4 +350,134 @@ class DlSegmentTool(Tool):
                       branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"目標類別面積 {area}px²")
 
 
-TOOLS = [DlClassifyTool(), DlDetectTool(), DlSegmentTool()]
+def _sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-np.clip(x, -30, 30)))
+
+
+def parse_yolo_seg(det: np.ndarray, protos: np.ndarray, *, conf: float, iou: float, max_count: int, size: tuple[int, int]) -> list[dict[str, Any]]:
+    """YOLOv8-seg 輸出 → 實例清單（letterbox 空間座標）。
+
+    det: [1, 4+nc+nm, N] 或 [1, N, 4+nc+nm]；protos: [1, nm, mh, mw]。
+    回傳 [{box(xyxy), score, class_id, mask(HxW bool, letterbox 空間)}]。
+    """
+    d = np.asarray(det, dtype=np.float32)
+    if d.ndim == 3:
+        d = d[0]
+    p = np.asarray(protos, dtype=np.float32)
+    if p.ndim == 4:
+        p = p[0]
+    nm = p.shape[0]
+    # 通道維（4+nc+nm）遠小於候選框數 → 轉成 [N, ch]
+    if d.shape[0] < d.shape[1]:
+        d = d.T
+    ch = d.shape[1]
+    nc = ch - 4 - nm
+    if nc < 1:
+        raise ToolError(f"不是 YOLO-seg 輸出（欄位 {ch}、protos {nm}）")
+    boxes_cxcywh = d[:, :4]
+    cls_scores = d[:, 4 : 4 + nc]
+    coefs = d[:, 4 + nc :]
+    scores = cls_scores.max(axis=1)
+    keep = scores >= conf
+    if not keep.any():
+        return []
+    boxes_cxcywh, cls_scores, coefs, scores = boxes_cxcywh[keep], cls_scores[keep], coefs[keep], scores[keep]
+    ids = cls_scores.argmax(axis=1)
+    xywh = np.stack([boxes_cxcywh[:, 0] - boxes_cxcywh[:, 2] / 2, boxes_cxcywh[:, 1] - boxes_cxcywh[:, 3] / 2, boxes_cxcywh[:, 2], boxes_cxcywh[:, 3]], axis=1)
+    picked = cv2.dnn.NMSBoxes(xywh.tolist(), scores.tolist(), conf, iou)
+    picked = np.asarray(picked).reshape(-1)[:max_count]
+    if not len(picked):
+        return []
+    h, w = size
+    mh, mw = p.shape[1], p.shape[2]
+    proto_flat = p.reshape(nm, -1)
+    out: list[dict[str, Any]] = []
+    for i in picked:
+        mask_small = _sigmoid(coefs[i] @ proto_flat).reshape(mh, mw)
+        mask = cv2.resize(mask_small, (w, h), interpolation=cv2.INTER_LINEAR) > 0.5
+        x0, y0, bw, bh = xywh[i]
+        x1, y1 = x0 + bw, y0 + bh
+        box_mask = np.zeros((h, w), dtype=bool)
+        xa, ya = max(0, int(x0)), max(0, int(y0))
+        xb, yb = min(w, int(np.ceil(x1))), min(h, int(np.ceil(y1)))
+        if xb > xa and yb > ya:
+            box_mask[ya:yb, xa:xb] = True
+        mask &= box_mask
+        out.append({"box": (float(x0), float(y0), float(x1), float(y1)), "score": float(scores[i]), "class_id": int(ids[i]), "mask": mask})
+    return out
+
+
+class DlInstanceTool(Tool):
+    key = "dl_instance"
+    label = "DL 實例分割"
+    description = "以 YOLO-seg 風格的 ONNX 模型找出每個物件的輪廓與類別（含 letterbox 前處理、NMS 與 mask 合成）。可在平台的深度學習頁教導。"
+    category = "dl"
+    icon = "Shapes"
+    heavy = True
+    params = [p if p.key not in ("mean", "std") else Param(p.key, p.label, kind="text", default="0" if p.key == "mean" else "1", group="前處理", help_text=p.help_text) for p in _common_params(640)] + [
+        Param("conf", "信心門檻", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("iou", "NMS IoU", kind="range", default=0.45, minimum=0, maximum=1, step=0.01),
+        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=1000),
+        Param("filter_labels", "只保留類別", kind="text", default="", help_text="逗號分隔；留空全部保留。"),
+        Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定"),
+        Param("max_count_ok", "合格最多數量", kind="number", default=0, minimum=0, group="判定", help_text="0 表示不限。"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("count", "數量", "number"), Port("matches", "實例", "matches"), Port("mask", "聯合遮罩", "image"), Port("contours", "輪廓", "contours")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        sess = get_session(_model_path(ctx))
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        sub = np.ascontiguousarray(c.image)
+        size = _input_hw(sess, ctx.integer("input_size", 640))
+        tensor, info = preprocess(sub, size, _triplet(ctx.param("mean"), (0.0, 0.0, 0.0)), _triplet(ctx.param("std"), (1.0, 1.0, 1.0)), ctx.param("color_order", "rgb"), letterbox=True)
+        outputs = _run(sess, tensor)
+        protos = next((o for o in outputs if np.asarray(o).ndim == 4), None)
+        det = next((o for o in outputs if np.asarray(o) is not protos), None)
+        if protos is None or det is None:
+            raise ToolError("模型輸出不含 protos（不是 YOLO-seg 模型？）")
+        instances = parse_yolo_seg(det, protos, conf=ctx.number("conf", 0.25), iou=ctx.number("iou", 0.45), max_count=ctx.integer("max_count", 100), size=size)
+
+        labels = _labels(ctx)
+        allowed = {s.strip() for s in str(ctx.param("filter_labels", "") or "").split(",") if s.strip()}
+        scale, pad_x, pad_y = info.get("scale", 1.0), info["pad_x"], info["pad_y"]
+        sh, sw = sub.shape[:2]
+        full_h, full_w = image.shape[:2]
+        union = np.zeros((full_h, full_w), dtype=np.uint8)
+        matches, contour_list, overlays = [], [], []
+        for inst in instances:
+            name = labels[inst["class_id"]] if inst["class_id"] < len(labels) else str(inst["class_id"])
+            if allowed and name not in allowed:
+                continue
+            # letterbox 空間 → 子圖 → 全圖
+            mask_lb = inst["mask"]
+            x_lo, y_lo = int(round(pad_x)), int(round(pad_y))
+            mask_sub_lb = mask_lb[y_lo : y_lo + max(1, int(round(sh * scale))), x_lo : x_lo + max(1, int(round(sw * scale)))]
+            mask_sub = cv2.resize(mask_sub_lb.astype(np.uint8), (sw, sh), interpolation=cv2.INTER_NEAREST)
+            area = int(mask_sub.sum())
+            if not area:
+                continue
+            union[c.y0 : c.y0 + sh, c.x0 : c.x0 + sw] |= mask_sub * 255
+            contours, _ = cv2.findContours(mask_sub * 255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            polys = [(cnt.reshape(-1, 2) + [c.x0, c.y0]).tolist() for cnt in contours if len(cnt) >= 3]
+            contour_list += polys
+            x0, y0, x1, y1 = inst["box"]
+            bx0, by0 = (x0 - pad_x) / scale + c.x0, (y0 - pad_y) / scale + c.y0
+            bx1, by1 = (x1 - pad_x) / scale + c.x0, (y1 - pad_y) / scale + c.y0
+            matches.append({"label": name, "score": round(inst["score"], 4), "x": round(bx0, 1), "y": round(by0, 1), "w": round(bx1 - bx0, 1), "h": round(by1 - by0, 1), "area": area})
+            if polys:
+                overlays.append({"kind": "contours", "contours": polys, "color": "#22c55e", "width": 1, "label": f"{name} {inst['score']:.2f}"})
+        if region:
+            overlays.append(region_overlay(region, label="roi"))
+        count = len(matches)
+        lo, hi = ctx.integer("min_count", 1), ctx.integer("max_count_ok", 0)
+        ok = count >= lo and (hi <= 0 or count <= hi)
+        return Result(outputs={"count": count, "matches": matches, "mask": union, "contours": [np.array(p).reshape(-1, 1, 2) for p in contour_list]},
+                      overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng", message=f"{count} 個實例")
+
+
+TOOLS = [DlClassifyTool(), DlDetectTool(), DlSegmentTool(), DlInstanceTool()]
