@@ -14,19 +14,22 @@ import { dlSampleUrl } from '@/lib/api'
 import { classColor } from '@/lib/colors'
 import type { DlProject, DlSample, DlSuggestion } from '@/lib/types'
 import { Thumb } from './Thumb'
+import { nextSplit } from './split'
 
 function isTyping(): boolean {
   const el = document.activeElement
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el as HTMLElement).isContentEditable)
 }
 
-export function ClassifyWorkspace({ project, samples, suggestions, selectedId, onSelect, onLabel, onDelete, hotkeysDisabled = false }: {
+export function ClassifyWorkspace({ project, samples, suggestions, selectedId, onSelect, onLabel, onSetSplit, onDelete, hotkeysDisabled = false }: {
   project: DlProject
   samples: DlSample[]
   suggestions: Map<string, DlSuggestion>
   selectedId: string | null
   onSelect: (id: string) => void
   onLabel: (sample: DlSample, label: string) => void
+  /** 點分割 chip 循環切換 train/val/test/未指定 */
+  onSetSplit?: (sample: DlSample, split: DlSample['split']) => void
   onDelete: (sample: DlSample) => void
   hotkeysDisabled?: boolean
 }) {
@@ -76,6 +79,13 @@ export function ClassifyWorkspace({ project, samples, suggestions, selectedId, o
           <IconButton label={t('dl.nextSample')} size="md" variant="secondary" onClick={() => step(1)}><ChevronRight size={16} /></IconButton>
           <span className="tnum text-xs text-muted">{index + 1} / {samples.length}</span>
           <span className="text-xs text-subtle">{sample.width}×{sample.height}</span>
+          {onSetSplit ? (
+            <button type="button" title={t('dl.splitCycleHint')} onClick={() => onSetSplit(sample, nextSplit(sample.split))}
+              className={`rounded border px-1.5 py-0.5 text-[11px] transition-colors hover:bg-surface-muted ${sample.split ? 'border-line font-medium text-content' : 'border-dashed border-line text-subtle'}`}
+              data-testid="dl-split-chip">
+              {t(`dl.split.${sample.split || 'unassigned'}`)}
+            </button>
+          ) : null}
           {sample.label ? (
             <span className="rounded px-2 py-0.5 text-xs font-medium text-white" style={{ background: classColor(classes, sample.label) }}>
               {sample.label}{sample.labeled_by === 'auto' ? ` · ${t('dl.filterAuto')}` : ''}

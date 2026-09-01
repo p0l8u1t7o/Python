@@ -44,6 +44,16 @@ def _load_features(samples: list[SampleRef], size: int) -> tuple[np.ndarray, lis
     return np.stack(feats), kept
 
 
+def _augmented(image: np.ndarray, jitter: float):
+    """訓練用增強副本：水平翻轉＋亮度 ±jitter（convertScaleAbs 飽和裁切，驗證集不做）。"""
+    import cv2
+
+    yield cv2.flip(image, 1)
+    if jitter > 0:
+        yield cv2.convertScaleAbs(image, alpha=1.0 + jitter)
+        yield cv2.convertScaleAbs(image, alpha=1.0 - jitter)
+
+
 class MlpClassifierTrainer(Trainer):
     kind = "mlp_classify"
     label = "影像分類（MLP）"
@@ -57,7 +67,9 @@ class MlpClassifierTrainer(Trainer):
         Param("hidden", "隱藏層寬度", kind="number", default=64, minimum=8, maximum=512, group="進階"),
         Param("epochs", "訓練回合", kind="number", default=300, minimum=10, maximum=5000, group="進階"),
         Param("learning_rate", "學習率", kind="number", default=0.05, minimum=0.0001, maximum=1, step=0.001, group="進階"),
-        Param("val_split", "驗證比例", kind="number", default=0.2, minimum=0, maximum=0.5, step=0.05, group="進階", help_text="0 = 全部拿去訓練（樣本很少時）。"),
+        Param("val_split", "驗證比例", kind="number", default=0.2, minimum=0, maximum=0.5, step=0.05, group="進階", help_text="0 = 全部拿去訓練（樣本很少時）。樣本有人工指定 val 分割時以指定為準。"),
+        Param("augment", "啟用資料增強", kind="boolean", default=False, group="增強", help_text="訓練集加入水平翻轉與亮度擾動副本（驗證集不動）；樣本少時可提升泛化。"),
+        Param("augment_brightness", "亮度擾動幅度", kind="range", default=0.2, minimum=0.0, maximum=0.5, step=0.05, group="增強"),
     ]
 
     def train(self, samples: list[SampleRef], classes: list[str], params: dict[str, Any], device: str, progress: ProgressFn) -> TrainResult:
@@ -67,7 +79,9 @@ class MlpClassifierTrainer(Trainer):
         lr = float(params.get("learning_rate") or 0.05)
         val_split = float(params.get("val_split") if params.get("val_split") is not None else 0.2)
 
-        labeled = [s for s in samples if s.label in classes]
+        # test 分割不進訓練（保留給訓練後的盲測）；val 有人工指定就照指定
+        labeled = [s for s in samples if s.label in classes and s.split != "test"]
+        n_test = sum(1 for s in samples if s.label in classes and s.split == "test")
         counts = {c: sum(1 for s in labeled if s.label == c) for c in classes}
         lacking = [f"{c}×{n}" for c, n in counts.items() if n < self.min_per_class]
         if len(classes) < 2:
@@ -81,18 +95,39 @@ class MlpClassifierTrainer(Trainer):
             raise TrainError("樣本影像讀取失敗")
         y = np.array([classes.index(s.label) for s in kept], dtype=np.int64)
 
-        # 分層切驗證集（每類至少留 1 張在訓練集）
         rng = np.random.default_rng(7)
-        val_idx: list[int] = []
-        if val_split > 0:
-            for ci in range(len(classes)):
-                idx = np.flatnonzero(y == ci)
-                rng.shuffle(idx)
-                take = min(len(idx) - 1, max(0, int(round(len(idx) * val_split))))
-                val_idx += list(idx[:take])
-        val_mask = np.zeros(len(y), dtype=bool)
-        val_mask[val_idx] = True
+        val_mask = np.array([s.split == "val" for s in kept], dtype=bool)
+        if not val_mask.any():
+            # 沒有人工指定：分層隨機切驗證集（每類至少留 1 張在訓練集）
+            val_idx: list[int] = []
+            if val_split > 0:
+                for ci in range(len(classes)):
+                    idx = np.flatnonzero(y == ci)
+                    rng.shuffle(idx)
+                    take = min(len(idx) - 1, max(0, int(round(len(idx) * val_split))))
+                    val_idx += list(idx[:take])
+            val_mask[val_idx] = True
+        if val_mask.all():
+            raise TrainError("所有樣本都被指定為驗證（val），沒有訓練樣本")
         xt, yt, xv, yv = x[~val_mask], y[~val_mask], x[val_mask], y[val_mask]
+
+        # 資料增強：只加在訓練集（重載原圖做翻轉／亮度擾動，特徵接在後面）
+        n_aug = 0
+        if bool(params.get("augment")):
+            jitter = float(params.get("augment_brightness") if params.get("augment_brightness") is not None else 0.2)
+            progress(0.04, "產生增強樣本", None)
+            aug_feats, aug_y = [], []
+            for i in np.flatnonzero(~val_mask):
+                image = kept[int(i)].load()
+                if image is None:
+                    continue
+                for aug in _augmented(image, jitter):
+                    aug_feats.append(_features(aug, size))
+                    aug_y.append(y[int(i)])
+            if aug_feats:
+                xt = np.concatenate([xt, np.stack(aug_feats)])
+                yt = np.concatenate([yt, np.array(aug_y, dtype=np.int64)])
+                n_aug = len(aug_y)
 
         d, c = x.shape[1], len(classes)
         w1 = rng.normal(0, np.sqrt(2.0 / d), (d, hidden)).astype(np.float32)
@@ -140,6 +175,10 @@ class MlpClassifierTrainer(Trainer):
                 }
                 progress(0.05 + 0.9 * (epoch + 1) / epochs, f"訓練中（{epoch + 1}/{epochs}）", metrics)
 
+        if n_aug:
+            metrics["augmented"] = n_aug
+        if n_test:
+            metrics["test_holdout"] = n_test
         progress(0.97, "匯出 ONNX", metrics)
         onnx = build_mlp(w1, b1, w2, b2, channels=3, size=size)
         return TrainResult(
@@ -263,6 +302,7 @@ class PatchSegmentTrainer(Trainer):
         Param("epochs", "訓練回合", kind="number", default=400, minimum=10, maximum=5000, group="進階"),
         Param("learning_rate", "學習率", kind="number", default=0.1, minimum=0.0001, maximum=1, step=0.001, group="進階"),
         Param("samples_per_image", "每張取樣像素數", kind="number", default=4000, minimum=500, maximum=20000, group="進階"),
+        Param("augment", "啟用資料增強", kind="boolean", default=False, group="增強", help_text="每張樣本追加水平翻轉版本的取樣（標記同步翻轉）。"),
     ]
 
     def _dataset(self, samples, classes, params):
@@ -271,15 +311,13 @@ class PatchSegmentTrainer(Trainer):
         size = int(params.get("input_size") or 192)
         k = int(params.get("kernel") or 7)
         per_image = int(params.get("samples_per_image") or 4000)
+        augment = bool(params.get("augment"))
         rng = np.random.default_rng(7)
         xs_list, ys_list = [], []
-        labeled = [s for s in samples if s.shapes]
-        for s in labeled:
-            image = s.load()
-            if image is None:
-                continue
-            chw = _seg_features(image, size)
-            mask = rasterize(s.shapes, classes, size, size)
+        # test 分割不進訓練（保留給訓練後的盲測）
+        labeled = [s for s in samples if s.shapes and s.split != "test"]
+
+        def take_from(chw: np.ndarray, mask: np.ndarray) -> None:
             # 各類（含背景）平衡取樣
             per_class = max(1, per_image // (len(classes) + 1))
             pys, pxs = [], []
@@ -291,10 +329,20 @@ class PatchSegmentTrainer(Trainer):
                 pys.append(take // size)
                 pxs.append(take % size)
             if not pys:
-                continue
+                return
             yy, xx = np.concatenate(pys), np.concatenate(pxs)
             xs_list.append(_patches_at(chw, yy, xx, k))
             ys_list.append(mask[yy, xx].astype(np.int64))
+
+        for s in labeled:
+            image = s.load()
+            if image is None:
+                continue
+            chw = _seg_features(image, size)
+            mask = rasterize(s.shapes, classes, size, size)
+            take_from(chw, mask)
+            if augment:
+                take_from(np.ascontiguousarray(chw[:, :, ::-1]), np.ascontiguousarray(mask[:, ::-1]))
         if not xs_list:
             raise TrainError("沒有任何帶 shapes 標記的樣本（先在標記編輯器畫出區域）")
         return np.concatenate(xs_list), np.concatenate(ys_list), size, k

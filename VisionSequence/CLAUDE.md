@@ -43,6 +43,8 @@
 - shapes 標記存 DlSample.shapes（0~1 正規化），`shapes.py` 與 YOLO txt 互轉（TAB/LF，相容 VisionStereo）；`dataset-export`／`dataset-import` API 雙向互通。訓練 job 帶 history 曲線與 log 環形緩衝（`?log_from=`）。
 - 訓練跑背景執行緒（jobs.py，單一訓練槽、409 擋第二個），不占檢測執行緒池；前端輪詢 `/dl/train/status`。產物存成 kind=model 資產，`dl_classify` 直接用（前處理與工具預設一致）。
 - 推論 providers 是熱路徑設定：工具只讀 `devices.preferred_providers()`（記憶體）；`PATCH /dl/settings` 寫 DB＋更新快取＋`clear_sessions()`。
+- 資料集管理：樣本以**解碼後像素 SHA256** 去重（上傳／zip 批次／連抓／匯入都回報 duplicates）；`DlSample.split`（train/val/test，`POST /split` 分層自動分派；val=驗證集、test 不進訓練）；`DlDatasetVersion` 凍結成 zip 資產（kind=dataset，shapes=YOLO 樹、classes=類別資料夾＋manifest）。
+- SAM 智慧選取（`sam.py`）：標記編輯器點一下物件→polygon 掛目前類別；`mobile_sam.pt` 經 `yolo.resolve_model` 自動下載（`_ASSET_NAME` 白名單含 SAM 系列）、與 yolo_seg 同一套可選依賴；session 模組層快取＋鎖。增強參數放「增強」群組（預設關：內建=翻轉＋亮度、yolo=degrees/fliplr/mosaic）。
 - 樣本影像在 `ASSET_DIR/dl/<project_id>/`；訓練執行緒自己開 DB 連線、結束 `close_old_connections()`。詳見 docs/dl.html。
 
 ## 文件

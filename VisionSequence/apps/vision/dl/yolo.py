@@ -39,9 +39,10 @@ def _import_ultralytics():
         raise TrainError(f"未安裝 ultralytics／torch。{_INSTALL_HINT}") from None
 
 
-#: ultralytics 官方資產（yolov8n-seg.pt、yolo11s-seg.pt…）的下載位置。
+#: ultralytics 官方資產（yolov8n-seg.pt、yolo11s-seg.pt、mobile_sam.pt…）的下載位置。
 _ASSET_URL = "https://github.com/ultralytics/assets/releases/download/v8.3.0/{name}"
-_ASSET_NAME = re.compile(r"^yolo(v?\d+)[a-z]?(-seg)?\.pt$")
+#: 允許自動下載的官方檔名：YOLO 底模＋SAM 系列（智慧選取用 mobile_sam／sam2）。
+_ASSET_NAME = re.compile(r"^(yolo(v?\d+)[a-z]?(-seg)?|mobile_sam|sam_[bl]|sam2(\.1)?_[tsbl]|FastSAM-[sx])\.pt$")
 
 
 def _weights_dir() -> str:
@@ -146,6 +147,9 @@ class YoloSegTrainer(Trainer):
         Param("val_ratio", "驗證比例", kind="number", default=0.2, minimum=0.05, maximum=0.5, step=0.05, group="進階"),
         Param("workers", "DataLoader workers", kind="number", default=0, minimum=0, maximum=16, group="進階", help_text="Windows 建議 0（在背景執行緒跑訓練時最穩）。"),
         Param("suggest_conf", "自動標記信心門檻", kind="range", default=0.4, minimum=0.05, maximum=0.95, step=0.05, group="進階", help_text="還沒訓練過時用官方底模提案（輪廓掛到第一個類別，請確認後改類）；訓練過後自動改用 best.pt。"),
+        Param("degrees", "旋轉角度（±）", kind="number", default=0, minimum=0, maximum=180, group="增強", help_text="隨機旋轉的最大角度；物件方向固定的產線建議 0。"),
+        Param("fliplr", "水平翻轉機率", kind="range", default=0.5, minimum=0, maximum=1, step=0.1, group="增強"),
+        Param("mosaic", "馬賽克增強", kind="range", default=1.0, minimum=0, maximum=1, step=0.1, group="增強", help_text="把 4 張樣本拼成一張訓練；樣本很少時建議調低。"),
     ]
 
     def train(self, samples: list[SampleRef], classes: list[str], params: dict[str, Any], device: str, progress: ProgressFn) -> TrainResult:
@@ -173,9 +177,10 @@ class YoloSegTrainer(Trainer):
 
         try:
             stats = export_dataset(
-                ((s.id, s.path, s.shapes) for s in samples), classes, work,
+                ((s.id, s.path, s.shapes, s.split) for s in samples), classes, work,
                 val_ratio=float(params.get("val_ratio") or 0.2))
-            _plog(progress, f"資料集：train {stats['train']}、val {stats['val']}（{work}）")
+            _plog(progress, f"資料集：train {stats['train']}、val {stats['val']}"
+                  + (f"、test {stats['test']}" if stats.get("test") else "") + f"（{work}）")
             if stats["train"] < 1 or stats["val"] < 1:
                 raise TrainError("已標記樣本太少：train 與 val 至少各要 1 張（建議每類 10 張以上）")
 
@@ -225,6 +230,9 @@ class YoloSegTrainer(Trainer):
                 data=os.path.join(work, "data.yaml"), epochs=epochs, imgsz=imgsz,
                 batch=int(params.get("batch") or 8), patience=int(params.get("patience") or 50),
                 lr0=float(params.get("lr0") or 0.001), workers=int(params.get("workers") or 0),
+                degrees=float(params.get("degrees") or 0.0),
+                fliplr=float(params.get("fliplr")) if params.get("fliplr") is not None else 0.5,
+                mosaic=float(params.get("mosaic")) if params.get("mosaic") is not None else 1.0,
                 device=device, project=os.path.join(work, "runs"), name="train", verbose=False, plots=False,
             )
 

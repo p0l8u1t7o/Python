@@ -59,17 +59,18 @@
 <li><a href="#auto">2. 自動標記</a></li>
 <li><a href="#devices">3. 伺服端資源與裝置設定</a></li>
 <li><a href="#shapes">4. shapes 標記編輯器（分割／偵測）</a></li>
-<li><a href="#builtin">5. 內建模型</a></li>
-<li><a href="#interop">6. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</a></li>
-<li><a href="#extend">7. 擴充：新的模型種類（Trainer）</a></li>
-<li><a href="#api">8. API</a></li>
-<li><a href="#internals">9. 內部結構與設計取捨</a></li>
+<li><a href="#dataset">5. 資料集管理（去重、分割、版本）</a></li>
+<li><a href="#builtin">6. 內建模型與資料增強</a></li>
+<li><a href="#interop">7. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</a></li>
+<li><a href="#extend">8. 擴充：新的模型種類（Trainer）</a></li>
+<li><a href="#api">9. API</a></li>
+<li><a href="#internals">10. 內部結構與設計取捨</a></li>
 </ul></nav>
 
 <h2 id="flow">1. 教導流程（使用者視角）</h2>
 <ol>
 <li><strong>建立教導專案</strong>：取名、選模型種類、定義類別（例如 <code>OK, NG</code>；之後可隨時增減）。</li>
-<li><strong>收集樣本</strong>：「上傳影像」（多選）或「從來源取像」（選影像來源連抓 N 張，可預先標記）。</li>
+<li><strong>收集樣本</strong>：「上傳影像」（多選，<strong>也接受 zip 批次包</strong>）或「從來源取像」（選影像來源連抓 N 張，可預先標記）。上傳一律以<strong>像素 SHA256 去重</strong>——同一張圖重傳（或 zip 裡重複）自動略過並回報張數。</li>
 <li><strong>標記</strong>（分類）：兩種檢視——<strong>網格</strong>（點一個類別按鈕，再點縮圖即標記，適合大量快速標記；hover 縮圖有放大與刪除鈕）與<strong>大圖</strong>（左縮圖牆＋右原圖檢視器，可縮放／1:1 看細節，下方類別按鈕或 0~9 標記、←/→ 換張）。兩種檢視共用篩選條件。</li>
 <li><strong>訓練</strong>：右側面板調超參數（表單由 trainer 的宣告產生）、選裝置、給模型資產名稱 → 開始。進度條與指標（訓練／驗證正確率）即時更新；訓練跑在背景，不占用檢測執行緒池。</li>
 <li><strong>使用</strong>：完成後模型出現在資產庫（kind=model），流程裡加「DL 分類」工具、選這個模型、labels 貼上類別清單即可（trainer 會回報建議參數，內建分類器與工具預設前處理完全一致，其餘參數用預設值就對）。</li>
@@ -101,22 +102,32 @@
 <ul>
 <li><strong>編輯</strong>：畫布左側是<strong>大圖示工具欄</strong>（選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵），上方是狀態列（上一張/下一張、樣本尺寸、標記數、繪製提示、未儲存指示、快捷鍵說明、儲存）與<strong>大顆類別按鈕</strong>（色點＋數字鍵標示＋計數）。</li>
 <li><strong>多邊形＝逐點繪製，點數不限</strong>：按 N（或工具欄）後每點一下加一個頂點，畫面即時顯示折線與到游標的虛線；<strong>點回第一點</strong>或按 <code>Enter</code> 閉合，<code>Backspace</code> 退一點、<code>Esc</code> 取消。完成後自動回到選取模式並選中新形狀，可再拖曳頂點、雙擊邊線插點、Alt+點刪點微調。方框（B）維持拖曳畫出。</li>
-<li><strong>其他操作</strong>：Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）；快捷鍵 V/N/B/O、←/→ 換張、0~9 指定類別。</li>
+<li><strong>智慧選取（SAM 點擊出輪廓）</strong>：按 S（魔杖）後<strong>點一下物件</strong>，伺服端用 SAM 分割出輪廓、簡化成 polygon 掛上目前類別，可連續點下一個物件；Ctrl+Z 可還原。權重預設 <code>mobile_sam.pt</code>（約 40MB，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>）；需要 <code>pip install ultralytics</code>（與 yolo_seg 同一套可選依賴，缺件會提示指令）。</li>
+<li><strong>其他操作</strong>：Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）；快捷鍵 V/N(P)/B/S/O、←/→ 換張、0~9 指定類別。</li>
 <li><strong>自動優化（輪廓貼邊）</strong>：前端純 JS——在降到最長邊 1280 的灰階梯度圖上，沿各頂點法線搜尋最強邊緣（帶位移懲罰）、迭代 3 次並平滑、Douglas–Peucker 簡化到 ≤120 點。不自動儲存，Ctrl+Z 可還原。</li>
 <li><strong>縮圖牆巡檢</strong>：左側縮圖直接畫上標記輪廓，快速看出哪些張標壞了；有自動標記建議的顯示「?」。</li>
 <li><strong>自動標記</strong>：shapes 模式的建議是整張圖的形狀集合（半透明畫在編輯器與縮圖上），可單張「接受建議」或整批接受；接受後記為 auto 待人工複查。</li>
 </ul>
 
-<h2 id="builtin">5. 內建模型</h2>
+<h2 id="dataset">5. 資料集管理（去重、分割、版本）</h2>
+<ul>
+<li><strong>重複偵測</strong>：每張樣本存「解碼後像素的 SHA256」（<code>DlSample.sha256</code>），上傳／zip 匯入／從來源連抓／資料夾匯入都在同專案內去重，回報 <code>duplicates</code> 數；靜態畫面連抓 N 張只會留一份。</li>
+<li><strong>train/val/test 分割</strong>：右欄「資料集」面板顯示各分割張數；「自動分割」輸入驗證與測試比例後<strong>分層</strong>隨機指派（classes 依類別、shapes 依有無標記；會重新指派全部樣本）。個別樣本可在標記工作區狀態列點<strong>分割 chip</strong> 循環切換（訓練→驗證→測試→未指定），縮圖網格也有角標、篩選下拉可只看某個分割。</li>
+<li><strong>訓練如何用分割</strong>：指定 <code>val</code> 的樣本當驗證集（沒指定就按 val 比例隨機）；指定 <code>test</code> 的樣本<strong>不進訓練</strong>（保留給訓練後的盲測，指標會回報 <code>test_holdout</code>）。yolo_seg 匯出暫存資料集時同樣尊重指定（未指定者隨機補 val）。</li>
+<li><strong>版本凍結</strong>：「凍結」把當下的樣本＋標記＋分割匯出成 zip 存進<strong>資產庫（kind=dataset）</strong>並記錄統計（總數／各類張數／分割數）——shapes 專案是 YOLO 樹（images/labels/{train,val,test}+data.yaml）、classes 專案是類別資料夾＋manifest.json。版本清單可下載 zip 或刪除（zip 一併刪）。</li>
+</ul>
+
+<h2 id="builtin">6. 內建模型與資料增強</h2>
 <table>
 <tr><th>kind</th><th>任務／標記</th><th>做法</th><th>推論工具</th><th>依賴</th></tr>
 <tr><td><code>mlp_classify</code></td><td>影像分類（classes）</td><td>MLP、numpy 訓練、手刻 ONNX；前處理與工具預設一致</td><td>dl_classify</td><td>無（內建）</td></tr>
 <tr><td><code>patch_segment</code></td><td>語意分割（shapes）</td><td>patch 分類器（背景＋各類別）numpy 訓練 → 匯出<strong>全卷積 ONNX</strong>（Conv k×k → Relu → Conv 1×1，任意輸入尺寸）；CPU 數秒。適合顏色／紋理類區域與瑕疵</td><td>dl_segment（labels 首項為 background）</td><td>無（內建）</td></tr>
 <tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集 → 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 匯出 ONNX；best.pt 保留供自動標記與續訓。<strong>官方底模自動下載</strong>：基底模型填 yolov8n-seg.pt 等官方名稱時，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>（訓練 log 會顯示）；<strong>第一次自動標記</strong>（還沒有 best.pt）直接用底模提案輪廓，名稱對不上的類別掛到第一個類別，交給使用者確認改類</td><td><strong>dl_instance</strong>（新工具：letterbox＋NMS＋mask 合成，輸出每個實例的輪廓／類別／分數）</td><td><strong>可選</strong>：<code>pip install ultralytics</code>（含 torch，約 2~3GB；缺件時開始訓練會提示這行指令，平台其餘功能不受影響）</td></tr>
 </table>
+<p><strong>資料增強</strong>（超參數的「增強」群組，預設關閉不影響既有行為）：mlp_classify 開啟後訓練集加入水平翻轉＋亮度 ±擾動副本（驗證集不動，指標回報 <code>augmented</code> 張數）；patch_segment 每張追加水平翻轉版本的取樣（標記同步翻轉）；yolo_seg 直接曝露 ultralytics 的 <code>degrees</code>／<code>fliplr</code>／<code>mosaic</code>。</p>
 <p>訓練面板會顯示 <strong>loss／mAP 曲線</strong>（分割任務優先 (M) mask 指標；fitness 可能 &gt; 1，座標軸自動縮放）與<strong>增量訓練 log</strong>（環形緩衝 400 行，<code>GET /dl/train/status?log_from=N</code>）。</p>
 
-<h2 id="interop">6. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</h2>
+<h2 id="interop">7. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</h2>
 <p>標記存 DB，但可與 YOLO txt 資料集雙向互通（格式相容 VisionStereo 的網頁標註工具：<strong>TAB 分隔、LF 換行、utf-8-sig 讀、6 位小數</strong>；5 欄=bbox、≥7 欄偶數座標=polygon）：</p>
 <pre>POST /api/vision/dl/projects/{id}/dataset-export   {"dir": "D:/TrainingImage/NEW", "val_ratio": 0.2}
 POST /api/vision/dl/projects/{id}/dataset-import   {"dir": "D:/TrainingImage/ATD3"}</pre>
@@ -134,7 +145,7 @@ POST /api/vision/dl/projects/{id}/dataset-import   {"dir": "D:/TrainingImage/ATD
 <tr><td>適用</td><td>外觀類別區分（正反面、型號、明顯瑕疵有無）。特徵是原始像素，光照位移變化大的場景請靠 ROI 裁切與較大的輸入尺寸。</td></tr>
 </table>
 
-<h2 id="extend">7. 擴充：新的模型種類（Trainer）</h2>
+<h2 id="extend">8. 擴充：新的模型種類（Trainer）</h2>
 <p>與工具／來源／連線同一套模式：繼承 <code>apps.vision.dl.base.Trainer</code>，丟進 <code>plugins/</code> 即掛載（見<a href="plugins.html">擴充外掛</a>）。前端的專案建立、標記、超參數表單、訓練面板全部由 <code>GET /dl/trainers</code> 目錄驅動——<strong>加新模型不用改前端</strong>。</p>
 <pre># plugins/my_trainer.py — 丟進 plugins/ 即掛載
 from apps.vision.dl.base import SampleRef, Suggestion, Trainer, TrainError, TrainResult
@@ -163,34 +174,39 @@ class MyTrainer(Trainer):
 <li><code>label_mode</code> 是封閉集合：要加 <code>boxes</code>（物件偵測標記）時，後端集合與前端標記介面同步擴充，其他 UI 照舊共用。</li>
 </ul>
 
-<h2 id="api">8. API</h2>
+<h2 id="api">9. API</h2>
 <pre>GET    /api/vision/dl/trainers                     模型種類目錄（前端表單由此產生）
 GET    /api/vision/dl/devices                      providers／GPU 資訊＋目前設定
 PATCH  /api/vision/dl/settings                     管理員 {"providers": [...], "train_device": "cpu"}
 GET    /api/vision/dl/projects                     專案清單（含 counts）
 POST   /api/vision/dl/projects                     {"name", "trainer_kind", "classes": [...]}
 GET/PATCH/DELETE /api/vision/dl/projects/{id}      classes 移除類別會把該類樣本改回未標記
-GET    /api/vision/dl/projects/{id}/samples        ?label= 篩選
-POST   /api/vision/dl/projects/{id}/samples        multipart files[]（可帶 label）
+GET    /api/vision/dl/projects/{id}/samples        ?label=、?split= 篩選
+POST   /api/vision/dl/projects/{id}/samples        multipart files[]（可帶 label；接受 zip；像素去重回報 duplicates）
 POST   /api/vision/dl/projects/{id}/samples/from-source   {"source_id", "count", "label"?}
 GET    /api/vision/dl/samples/{id}/file            縮圖（?max=；&lt;img&gt; 用，token 走 query）
-PATCH  /api/vision/dl/samples/{id}                 {"label": "..."} 或 {"shapes": [...]}（空 = 取消標記）
+PATCH  /api/vision/dl/samples/{id}                 {"label"} 或 {"shapes"}（空 = 取消標記）或 {"split": "train|val|test|"}
 DELETE /api/vision/dl/samples/{id}
 POST   /api/vision/dl/projects/{id}/labels         批次標記 {"items": [{"id","label","score"?,"by"?}]}
 POST   /api/vision/dl/projects/{id}/auto-label     → 建議清單（不落地；接受才寫入）
+POST   /api/vision/dl/projects/{id}/split          自動分割 {"val": 0.15, "test": 0.1, "seed"?}（分層）
+GET/POST /api/vision/dl/projects/{id}/versions     資料集版本清單／凍結 {"name"?, "note"?}（zip 存資產庫）
+DELETE /api/vision/dl/versions/{id}                刪版本（zip 資產一併刪）
+POST   /api/vision/dl/projects/{id}/sam-point      智慧選取 {"sample_id", "points": [[x,y] 0~1], "model"?} → shapes
 POST   /api/vision/dl/projects/{id}/train          202 {"params", "device", "asset_name"}；訓練中回 409
 GET    /api/vision/dl/train/status?log_from=N      輪詢進度（progress／stage／metrics／history 曲線／增量 log）
 POST   /api/vision/dl/train/cancel</pre>
 <p>權限：讀取／標記／訓練 = 任何登入者（整合方金鑰亦可）；訓練另過 <code>can_execute()</code>（引擎鎖定時 423）；裝置設定 = 管理員。</p>
 
-<h2 id="internals">9. 內部結構與設計取捨</h2>
+<h2 id="internals">10. 內部結構與設計取捨</h2>
 <ul>
-<li><code>apps/vision/dl/</code>：<code>base.py</code>（Trainer registry）、<code>builtin.py</code>（MLP 分類＋輕量語意分割）、<code>yolo.py</code>（YOLO-seg，延後 import）、<code>shapes.py</code>（shapes 驗證／YOLO txt 互轉／rasterize／資料集匯出入）、<code>onnx_io.py</code>（手刻 ONNX，含 Conv 與 initializer）、<code>devices.py</code>、<code>jobs.py</code>（訓練工作＋history＋log 環形緩衝）、<code>api.py</code>。前端 <code>DlPage.tsx</code>＋<code>components/dl/ShapeWorkspace.tsx</code>（重用 ImageViewer 的 ROI 編輯）＋<code>components/dl/optimize.ts</code>（輪廓貼邊）。</li>
-<li>資料模型：<code>DlProject</code>／<code>DlSample</code>（影像檔在 <code>ASSET_DIR/dl/&lt;project_id&gt;/</code>，中文路徑用 imencode+tofile）／<code>DlSettings</code>（單列）。</li>
+<li><code>apps/vision/dl/</code>：<code>base.py</code>（Trainer registry）、<code>builtin.py</code>（MLP 分類＋輕量語意分割）、<code>yolo.py</code>（YOLO-seg，延後 import）、<code>shapes.py</code>（shapes 驗證／YOLO txt 互轉／rasterize／資料集匯出入）、<code>onnx_io.py</code>（手刻 ONNX，含 Conv 與 initializer）、<code>sam.py</code>（SAM 點擊智慧標記，延後 import、session 快取）、<code>devices.py</code>、<code>jobs.py</code>（訓練工作＋history＋log 環形緩衝）、<code>api.py</code>。前端 <code>DlPage.tsx</code>＋<code>components/dl/ShapeWorkspace.tsx</code>（重用 ImageViewer 的 ROI 編輯）＋<code>components/dl/optimize.ts</code>（輪廓貼邊）。</li>
+<li>資料模型：<code>DlProject</code>／<code>DlSample</code>（影像檔在 <code>ASSET_DIR/dl/&lt;project_id&gt;/</code>，中文路徑用 imencode+tofile；<code>sha256</code> 去重、<code>split</code> 分割）／<code>DlDatasetVersion</code>（版本統計＋asset_id）／<code>DlSettings</code>（單列）。</li>
+<li><strong>對照 Roboflow 式規格（Temp/gemini-code）的取捨</strong>：功能照做（去重、分割、版本、增強、SAM 點擊標記、訓練指標），但架構落在既有紅線內——Celery+Redis → <strong>單一訓練槽背景執行緒</strong>（教導期行為不需要佇列與新基礎設施）；React-Konva → 既有<strong>自製雙層 canvas ImageViewer</strong>；DRF → 既有 django-ninja；SQLite WAL 與 0~1 正規化 JSON 座標本來就是平台慣例。Grounding DINO 文字提示與 TorchScript 匯出不做（auto-label 已由各 trainer 的 suggest() 涵蓋；ONNX 是訓練↔推論唯一合約），需要時走外掛 trainer。</li>
 <li><strong>單一訓練槽</strong>：一次一個訓練（背景執行緒，不進檢測執行緒池），第二個回 409。訓練是教導期行為，不需要佇列；進度用輪詢（700ms），不進 SSE bus。</li>
 <li><strong>providers 是熱路徑設定</strong>：dl 工具建 session 只讀記憶體快取（<code>devices.preferred_providers()</code>）；DB 只在啟動與設定端點碰，改設定會 <code>clear_sessions()</code> 重建。</li>
 <li><strong>不引入 torch</strong>：內建 trainer 用 numpy 訓練、手刻 ONNX 匯出，平台依賴不變；重框架留給外掛 trainer（自帶 requirements 或 sidecar）。</li>
-<li>測試 <code>tests/test_dl_teach.py</code>：ONNX 匯出＋dl_classify 端到端、樣本不足、自動標記正確率、API 標記流、背景訓練工作（TransactionTestCase）。</li>
+<li>測試 <code>tests/test_dl_teach.py</code>：ONNX 匯出＋dl_classify 端到端、樣本不足、自動標記正確率、API 標記流、背景訓練工作（TransactionTestCase）、split／augment 訓練行為、去重與 zip 匯入、自動分割、版本凍結、SAM 缺件提示。</li>
 </ul>
 </article>
 </body>

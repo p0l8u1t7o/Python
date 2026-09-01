@@ -3,15 +3,16 @@
  * 左：縮圖牆（直接畫上標記輪廓，快速巡檢）；右：ImageViewer 編輯器。
  * 重用 ImageViewer 的 ROI 編輯（頂點拖曳、雙擊邊線插點、Alt+點刪點、繪製模式）：
  * 選中的形狀當作 roi 編輯，其他形狀畫成 overlays。座標存 0~1 正規化，只在畫布上換算像素。
- * 快捷鍵：V 選取、N 多邊形、B 框、O 自動優化、Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存、
- * ←/→ 上下張、Esc 取消、0~9 指定類別。
+ * 快捷鍵：V 選取、N/P 多邊形、B 框、S 智慧選取（SAM 點擊出輪廓）、O 自動優化、Delete 刪形狀、
+ * Ctrl+Z 還原、Ctrl+S 儲存、←/→ 上下張、Esc 取消、0~9 指定類別。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronLeft, ChevronRight, Keyboard, MousePointer, Pentagon, Save, Sparkles, Square, Trash2, Undo2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Keyboard, MousePointer, Pentagon, Save, Sparkles, Square, Trash2, Undo2, Wand2 } from 'lucide-react'
 
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Thumb } from './Thumb'
+import { nextSplit } from './split'
 import { Button, IconButton, Modal } from '@/components/ui'
 import { dlSampleUrl } from '@/lib/api'
 import type { DlProject, DlSample, DlShape, DlSuggestion, Overlay, Region } from '@/lib/types'
@@ -20,7 +21,7 @@ import { buildGradientMap, optimizePolygon, type GradientMap } from './optimize'
 
 import { classColor as color } from '@/lib/colors'
 
-type Mode = 'select' | 'polygon' | 'bbox'
+type Mode = 'select' | 'polygon' | 'bbox' | 'smart'
 
 function isTyping(): boolean {
   const el = document.activeElement
@@ -63,13 +64,17 @@ function pointInShape(shape: DlShape, nx: number, ny: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion, onEditClasses, hotkeysDisabled = false }: {
+export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion, onEditClasses, onSamPoint, onSetSplit, hotkeysDisabled = false }: {
   project: DlProject
   samples: DlSample[]
   suggestions: Map<string, DlSuggestion>
   onSave: (sampleId: string, shapes: DlShape[]) => Promise<void>
   onAcceptSuggestion: (sampleId: string, shapes: DlShape[]) => Promise<void>
   onEditClasses?: () => void
+  /** SAM 智慧選取：點一下物件 → 回傳 polygon 建議（0~1 座標；label 由這裡掛目前類別） */
+  onSamPoint?: (sampleId: string, point: [number, number]) => Promise<DlShape[]>
+  /** 點分割 chip 循環切換 train/val/test/未指定 */
+  onSetSplit?: (sample: DlSample, split: DlSample['split']) => void
   /** 上層 Modal 開啟時停用快捷鍵，避免 Delete／←→ 打到背後的工作區 */
   hotkeysDisabled?: boolean
 }) {
@@ -85,6 +90,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [activeClass, setActiveClass] = useState(classes[0] ?? '')
   const [saving, setSaving] = useState(false)
+  const [samBusy, setSamBusy] = useState(false)
   const [showKeys, setShowKeys] = useState(false)
   /** 逐點繪製中的多邊形（影像像素座標）；點數不限，點回起點或 Enter 才閉合。 */
   const [draft, setDraft] = useState<[number, number][]>([])
@@ -267,8 +273,9 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
         return
       }
       if (key === 'v') setMode('select')
-      else if (key === 'n' && classes.length) setMode('polygon')
+      else if ((key === 'n' || key === 'p') && classes.length) setMode('polygon')
       else if (key === 'b' && classes.length) setMode('bbox')
+      else if (key === 's' && onSamPoint && classes.length) setMode('smart')
       else if (key === 'o') void optimizeSelected()
       else if (key === 'delete') removeSelected()
       else if (key === 'escape') {
@@ -387,8 +394,35 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     setHover(null)
   }, [])
 
+  const smartPick = useCallback(async (nx: number, ny: number) => {
+    if (!sample || !onSamPoint || samBusy) return
+    setSamBusy(true)
+    try {
+      const label = activeClass || classes[0] || ''
+      const found = (await onSamPoint(sample.id, [nx, ny])).map((sh) => ({ ...sh, label }))
+      if (!found.length) {
+        toast.push(t('dl.smartNoResult'), 'info')
+        return
+      }
+      pushHistory()
+      setShapes((old) => {
+        setSelectedIndex(old.length + found.length - 1)
+        return [...old, ...found]
+      })
+      setDirty(true) // 留在 smart 模式：可以繼續點下一個物件
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSamBusy(false)
+    }
+  }, [sample, onSamPoint, samBusy, activeClass, classes, pushHistory, toast, t])
+
   const onPick = useCallback((x: number, y: number) => {
     if (!sample) return
+    if (mode === 'smart') {
+      void smartPick(x / sample.width, y / sample.height)
+      return
+    }
     if (mode === 'polygon') {
       // 逐點繪製：點回第一點附近（螢幕 12px 內）即閉合，否則推一個新點。
       const closeDist = 12 / Math.max(0.05, viewportRef.current.scale)
@@ -412,7 +446,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       }
     }
     setSelectedIndex(null)
-  }, [sample, mode, shapes, draft, commitDraft])
+  }, [sample, mode, shapes, draft, commitDraft, smartPick])
 
   if (!sample) return null
   const index = samples.findIndex((s) => s.id === sample.id)
@@ -420,6 +454,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     { key: 'select', icon: <MousePointer size={22} />, label: t('dl.modeSelect'), kbd: 'V', active: mode === 'select', onClick: () => setMode('select') },
     { key: 'polygon', icon: <Pentagon size={22} />, label: t('dl.modePolygon'), kbd: 'N', active: mode === 'polygon', disabled: !classes.length, onClick: () => setMode('polygon') },
     { key: 'bbox', icon: <Square size={22} />, label: t('dl.modeBbox'), kbd: 'B', active: mode === 'bbox', disabled: !classes.length, onClick: () => setMode('bbox') },
+    ...(onSamPoint ? [{ key: 'smart', icon: <Wand2 size={22} />, label: t('dl.modeSmart'), kbd: 'S', active: mode === 'smart', disabled: !classes.length, onClick: () => setMode('smart') }] : []),
     { key: 'sep1', icon: null, label: '', kbd: '', onClick: () => {} },
     { key: 'optimize', icon: <Sparkles size={22} />, label: t('dl.optimize'), kbd: 'O', disabled: selectedIndex === null, onClick: () => void optimizeSelected() },
     { key: 'delete', icon: <Trash2 size={22} />, label: t('dl.deleteShape'), kbd: 'Del', disabled: selectedIndex === null, onClick: removeSelected },
@@ -441,8 +476,18 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
           <IconButton label={t('dl.nextSample')} size="md" variant="secondary" onClick={() => step(1)}><ChevronRight size={16} /></IconButton>
           <span className="tnum text-xs text-muted">{index + 1} / {samples.length}</span>
           <span className="text-xs text-subtle">{sample.width}×{sample.height} · {shapes.length} {t('dl.shapesUnit')}</span>
+          {onSetSplit ? (
+            <button type="button" title={t('dl.splitCycleHint')} onClick={() => onSetSplit(sample, nextSplit(sample.split))}
+              className={`rounded border px-1.5 py-0.5 text-[11px] transition-colors hover:bg-surface-muted ${sample.split ? 'border-line font-medium text-content' : 'border-dashed border-line text-subtle'}`}
+              data-testid="dl-split-chip">
+              {t(`dl.split.${sample.split || 'unassigned'}`)}
+            </button>
+          ) : null}
           {mode === 'polygon' ? (
             <span className="text-xs font-medium text-brand">{t('dl.drawingPolygon', { count: draft.length })}</span>
+          ) : null}
+          {mode === 'smart' ? (
+            <span className="text-xs font-medium text-brand">{samBusy ? t('dl.smartBusy') : t('dl.smartHint')}</span>
           ) : null}
           {dirty ? <span className="flex items-center gap-1 text-xs font-medium text-warning"><span className="size-1.5 rounded-full bg-warning" />{t('dl.unsaved')}</span> : null}
           <span className="ml-auto" />
@@ -524,7 +569,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       <Modal open={showKeys} onClose={() => setShowKeys(false)} title={t('dl.shortcuts')} size="sm">
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           {([
-            ['V / N / B', t('dl.keyModes')],
+            ['V / N / B / S', t('dl.keyModes')],
             ['0～9', t('dl.keyClasses')],
             ['O', t('dl.keyOptimize')],
             ['Delete', t('dl.keyDelete')],

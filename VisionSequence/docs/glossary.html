@@ -79,7 +79,7 @@
 <tr><td>整合頁</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出（write_modbus 的 mapping 格式）</td></tr>
 <tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試跑到該步驟、標記為已教導</td></tr>
 <tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
-<tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集與標記、自動標記、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
+<tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集（zip 批次、去重）與標記、自動標記與智慧選取、資料集分割與版本、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
 <tr><td>連線</td><td><code>/connections</code></td><td>ConnectionsPage</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
 <tr><td>全域搜尋</td><td>—（頂部導覽列）</td><td>GlobalSearch</td><td>搜尋全平台內容：頁面、流程、工具、影像來源、連線、資產；Ctrl+K 聚焦、↑↓ 選擇、Enter 前往</td></tr>
 </table>
@@ -157,7 +157,12 @@
 <tr><td>模型種類</td><td>Trainer（<code>apps/vision/dl/base.py</code>）</td><td>可訓練的模型類型 registry；宣告超參數（Param）、標記模式、支援裝置，實作 train／suggest；外掛可新增</td></tr>
 <tr><td>標記編輯器</td><td>ShapeWorkspace（<code>components/dl</code>）</td><td>shapes 模式（分割／偵測）的標記工作區：縮圖牆巡檢、polygon/bbox 編輯、自動優化（輪廓貼邊）、快捷鍵；座標 0~1 正規化</td></tr>
 <tr><td>大圖檢視</td><td>ClassifyWorkspace（<code>components/dl</code>）</td><td>分類教導的大圖工作區：縮圖牆＋原圖檢視器（縮放／1:1）＋類別按鈕標記；與網格檢視切換、共用篩選</td></tr>
-<tr><td>工具欄</td><td>ToolRail（標記編輯器內）</td><td>標記編輯器畫布左側的大圖示垂直工具欄：選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵</td></tr>
+<tr><td>工具欄</td><td>ToolRail（標記編輯器內）</td><td>標記編輯器畫布左側的大圖示垂直工具欄：選取／多邊形／框／智慧選取／自動優化／刪除／還原，各鈕標示快捷鍵</td></tr>
+<tr><td>智慧選取</td><td>Smart select（<code>apps/vision/dl/sam.py</code>）</td><td>標記編輯器的 SAM 點擊標記：點一下物件 → 伺服端分割出輪廓 → polygon 掛目前類別；權重預設 mobile_sam.pt 自動下載，需可選安裝 ultralytics</td></tr>
+<tr><td>資料集分割</td><td>Split（<code>DlSample.split</code>）</td><td>train／val／test／未指定；「自動分割」分層隨機指派，狀態列分割 chip 可單張切換；val 當驗證集、test 不進訓練</td></tr>
+<tr><td>資料集版本</td><td>Dataset version（<code>DlDatasetVersion</code>）</td><td>凍結當下樣本＋標記＋分割成 zip 存進資產庫（kind=dataset）；shapes=YOLO 樹、classes=類別資料夾＋manifest；可下載、刪除</td></tr>
+<tr><td>資料增強</td><td>Augment（超參數「增強」群組）</td><td>訓練時擴增樣本：內建模型為翻轉＋亮度擾動（只加訓練集）、yolo_seg 曝露 degrees／fliplr／mosaic；預設關閉</td></tr>
+<tr><td>重複偵測</td><td>Dedupe（<code>DlSample.sha256</code>）</td><td>上傳／匯入／連抓時以解碼後像素的 SHA256 在同專案內去重，回報 duplicates 張數</td></tr>
 <tr><td>DL 實例分割</td><td>dl_instance</td><td>DL 類工具：YOLO-seg 風格 ONNX 推論（letterbox、NMS、mask 合成），輸出每個實例的輪廓／類別／分數；可在深度學習頁教導</td></tr>
 <tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
 <tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>

@@ -87,6 +87,17 @@ class TrainerTests(SimpleTestCase):
         self.assertEqual(items["mlp_classify"]["label_mode"], "classes")
         self.assertTrue(items["mlp_classify"]["params"])
 
+    def test_train_respects_split_and_augment(self):
+        """指定 split：val 樣本進驗證集、test 樣本不進訓練；augment 副本只加在訓練集。"""
+        for i, ref in enumerate(self.refs):
+            ref.split = "val" if i < 2 else "test" if i == 2 else "train"
+        result = MlpClassifierTrainer().train(
+            self.refs, ["dark", "bright"], {"input_size": 32, "epochs": 60, "augment": True}, "cpu", lambda *a: None)
+        self.assertEqual(result.metrics["val_samples"], 2)
+        self.assertEqual(result.metrics["test_holdout"], 1)
+        self.assertEqual(result.metrics["samples"], len(self.refs) - 1)  # test 不在訓練池
+        self.assertEqual(result.metrics["augmented"], (len(self.refs) - 3) * 3)  # 翻轉＋亮度×2
+
 
 class DlApiTests(TransactionTestCase):
     """API 與背景訓練工作（訓練執行緒寫 DB → TransactionTestCase）。"""
@@ -194,3 +205,115 @@ class DlApiTests(TransactionTestCase):
             time.sleep(0.1)
         self.assertEqual(job["status"], "failed")
         self.assertIn("樣本", job["error"])
+
+
+class DlDatasetApiTests(TransactionTestCase):
+    """資料集管理 API：像素去重、zip 批次匯入、train/val/test 自動分割、版本凍結。"""
+
+    def setUp(self):
+        self.client = Client()
+
+    def post(self, url, body=None, **kw):
+        return self.client.post(url, data=body, content_type="application/json", **kw)
+
+    def _create_project(self):
+        r = self.post("/api/vision/dl/projects", {"name": f"p-{uuid.uuid4().hex[:6]}", "trainer_kind": "mlp_classify", "classes": ["dark", "bright"]})
+        self.assertEqual(r.status_code, 201, r.content)
+        return r.json()
+
+    def _png(self, bright: bool, seed: int) -> bytes:
+        ok, buf = cv2.imencode(".png", _sample_image(bright, seed))
+        assert ok
+        return buf.tobytes()
+
+    def _upload_file(self, pid, name, data, label=""):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        file = SimpleUploadedFile(name, data, content_type="application/octet-stream")
+        r = self.client.post(f"/api/vision/dl/projects/{pid}/samples", {"files": file, "label": label})
+        self.assertEqual(r.status_code, 201, r.content)
+        return r.json()
+
+    def test_upload_dedupe_and_zip(self):
+        import io
+        import zipfile
+
+        pid = self._create_project()["id"]
+        png = self._png(True, 1)
+        out = self._upload_file(pid, "a.png", png)
+        self.assertEqual((len(out["items"]), out["duplicates"]), (1, 0))
+        # 同一張再傳一次 → 去重
+        out = self._upload_file(pid, "a2.png", png)
+        self.assertEqual((len(out["items"]), out["duplicates"]), (0, 1))
+        # zip：一張重複、一張新的、一個非影像（略過不算失敗）
+        blob = io.BytesIO()
+        with zipfile.ZipFile(blob, "w") as z:
+            z.writestr("dup.png", png)
+            z.writestr("sub/new.png", self._png(False, 2))
+            z.writestr("note.txt", b"skip me")
+        out = self._upload_file(pid, "batch.zip", blob.getvalue())
+        self.assertEqual((len(out["items"]), out["duplicates"], out["skipped"]), (1, 1, 0))
+        r = self.client.get(f"/api/vision/dl/projects/{pid}/samples")
+        self.assertEqual(len(r.json()["items"]), 2)
+
+    def test_auto_split_filter_and_patch(self):
+        pid = self._create_project()["id"]
+        for i in range(10):
+            bright = i % 2 == 0
+            self._upload_file(pid, f"s{i}.png", self._png(bright, 10 + i), label="bright" if bright else "dark")
+        r = self.post(f"/api/vision/dl/projects/{pid}/split", {"val": 0.2, "test": 0.2, "seed": 1})
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        self.assertEqual(data["train"] + data["val"] + data["test"], 10)
+        self.assertEqual((data["val"], data["test"]), (2, 2))  # 每類 5 張 → 各 1 val、1 test（分層）
+        r = self.client.get(f"/api/vision/dl/projects/{pid}/samples", {"split": "val"})
+        items = r.json()["items"]
+        self.assertEqual(len(items), 2)
+        self.assertEqual({s["label"] for s in items}, {"bright", "dark"})
+        # 單張改分割與非法值
+        r = self.client.patch(f"/api/vision/dl/samples/{items[0]['id']}", data='{"split": "test"}', content_type="application/json")
+        self.assertEqual(r.json()["split"], "test")
+        r = self.client.patch(f"/api/vision/dl/samples/{items[0]['id']}", data='{"split": "nope"}', content_type="application/json")
+        self.assertEqual(r.status_code, 422)
+
+    def test_version_freeze_and_delete(self):
+        import zipfile
+
+        pid = self._create_project()["id"]
+        self._upload_file(pid, "a.png", self._png(True, 30), label="bright")
+        self._upload_file(pid, "b.png", self._png(False, 31), label="dark")
+        self._upload_file(pid, "c.png", self._png(True, 32))
+        r = self.post(f"/api/vision/dl/projects/{pid}/versions", {"note": "第一版"})
+        self.assertEqual(r.status_code, 201, r.content)
+        ver = r.json()
+        self.assertEqual(ver["name"], "v1")
+        self.assertEqual(ver["stats"]["total"], 3)
+        asset = Asset.objects.get(pk=ver["asset_id"])
+        self.assertEqual(asset.kind, "dataset")
+        self.assertTrue(os.path.isfile(asset.path))
+        with zipfile.ZipFile(asset.path) as z:
+            names = z.namelist()
+        self.assertIn("manifest.json", names)
+        self.assertTrue(any(n.startswith("bright/") for n in names))
+        self.assertTrue(any(n.startswith("_unlabeled/") for n in names))
+        r = self.client.get(f"/api/vision/dl/projects/{pid}/versions")
+        self.assertEqual(len(r.json()["items"]), 1)
+        path = asset.path
+        r = self.client.delete(f"/api/vision/dl/versions/{ver['id']}")
+        self.assertEqual(r.status_code, 204)
+        self.assertFalse(os.path.isfile(path))
+        self.assertFalse(Asset.objects.filter(pk=ver["asset_id"]).exists())
+
+    def test_sam_point_missing_deps(self):
+        import importlib.util
+
+        if importlib.util.find_spec("ultralytics"):
+            self.skipTest("ultralytics 已安裝，缺件訊息不適用")
+        pid = self._create_project()["id"]
+        sid = self._upload_file(pid, "a.png", self._png(True, 40))["items"][0]["id"]
+        r = self.post(f"/api/vision/dl/projects/{pid}/sam-point", {"sample_id": sid, "points": [[0.5, 0.5]]})
+        self.assertEqual(r.status_code, 422, r.content)
+        self.assertIn("ultralytics", r.json()["error"]["message"])
+        # 缺 points → 參數錯誤
+        r = self.post(f"/api/vision/dl/projects/{pid}/sam-point", {"sample_id": sid})
+        self.assertEqual(r.status_code, 422)

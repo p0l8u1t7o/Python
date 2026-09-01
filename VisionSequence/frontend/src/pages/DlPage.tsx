@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Brain, Camera, Check, Cpu, Image as ImageIcon, LayoutGrid, Play, Plus, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
+import { Archive, Brain, Camera, Check, Cpu, Database, Download, Image as ImageIcon, LayoutGrid, Play, Plus, Shuffle, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
 
@@ -15,9 +15,9 @@ import { ShapeWorkspace } from '@/components/dl/ShapeWorkspace'
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, SegmentedControl, Select, TextInput } from '@/components/ui'
-import { dlSampleUrl } from '@/lib/api'
-import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useSources } from '@/lib/queries'
-import type { DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
+import { assetUrl, dlSampleUrl } from '@/lib/api'
+import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useDlVersions, useSources } from '@/lib/queries'
+import type { DlDatasetVersion, DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { CURVE_COLORS, classColor, classColorAt } from '@/lib/colors'
 
@@ -124,7 +124,7 @@ function FromSourceModal({ open, onClose, project, showLabel }: { open: boolean;
   async function submit() {
     try {
       const r = await fromSource.mutateAsync({ projectId: project.id, source_id: Number(sourceId), count: Number(count) || 1, label })
-      toast.success(t('dl.grabbed', { count: r.items.length }))
+      toast.success(r.duplicates ? t('dl.grabbedDup', { count: r.items.length, dup: r.duplicates }) : t('dl.grabbed', { count: r.items.length }))
       onClose()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
@@ -304,12 +304,109 @@ function TrainLog({ logs }: { logs: string[] }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// 資料集面板：train/val/test 分割與版本凍結（zip 存資產庫可下載）
+// ---------------------------------------------------------------------------
+function DatasetPanel({ project, samples }: { project: DlProject; samples: DlSample[] }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const versions = useDlVersions(project.id)
+  const { autoSplit, freezeVersion, removeVersion } = useDlMutations()
+  const [val, setVal] = useState('15')
+  const [test, setTest] = useState('10')
+  const [verName, setVerName] = useState('')
+  const [deletingVersion, setDeletingVersion] = useState<DlDatasetVersion | null>(null)
+  const splitCounts = useMemo(() => {
+    const c = { train: 0, val: 0, test: 0, unassigned: 0 }
+    for (const s of samples) c[s.split || 'unassigned'] += 1
+    return c
+  }, [samples])
+
+  async function runSplit() {
+    try {
+      const r = await autoSplit.mutateAsync({ projectId: project.id, val: (Number(val) || 0) / 100, test: (Number(test) || 0) / 100 })
+      toast.success(t('dl.splitDone', r))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function freeze() {
+    try {
+      const r = await freezeVersion.mutateAsync({ projectId: project.id, name: verName.trim() || undefined })
+      setVerName('')
+      toast.success(t('dl.frozen', { name: r.name }))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title={<span className="flex items-center gap-2"><Database size={15} className="text-brand" />{t('dl.dataset')}</span>} description={t('dl.datasetHint')} />
+      <CardBody className="space-y-3 text-sm">
+        {/* 分割統計（本地即時算，跟著標記與分割操作更新） */}
+        <div className="grid grid-cols-4 gap-1.5 text-center" data-testid="dl-split-stats">
+          {(['train', 'val', 'test', 'unassigned'] as const).map((k) => (
+            <div key={k} className="rounded-md border border-line px-1 py-1.5">
+              <p className="truncate text-[11px] text-muted">{t(`dl.split.${k}`)}</p>
+              <p className="tnum text-base font-semibold leading-tight text-heading">{splitCounts[k]}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-end gap-2">
+          <TextInput label={t('dl.valPercent')} type="number" min={0} max={50} value={val} onChange={(e) => setVal(e.target.value)} />
+          <TextInput label={t('dl.testPercent')} type="number" min={0} max={50} value={test} onChange={(e) => setTest(e.target.value)} />
+          <Button loading={autoSplit.isPending} disabled={!samples.length} title={t('dl.autoSplitHint')} onClick={() => void runSplit()} data-testid="dl-auto-split">
+            <Shuffle size={14} /> {t('dl.autoSplit')}
+          </Button>
+        </div>
+        {/* 版本清單與凍結 */}
+        <div className="space-y-1.5 border-t border-line pt-2.5">
+          <p className="text-xs font-medium text-muted">{t('dl.versions')}</p>
+          {(versions.data ?? []).map((v) => (
+            <div key={v.id} className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1.5 text-xs">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{v.name}</span>
+                <span className="block truncate text-subtle">
+                  {new Date(v.created_at).toLocaleString()} · {v.stats.total ?? 0} {t('dl.samplesUnit')}
+                </span>
+              </span>
+              <a className="rounded p-1 text-muted hover:bg-surface-muted hover:text-content" href={assetUrl(v.asset_id)}
+                download={`${project.name}-${v.name}.zip`} title={t('dl.download')} aria-label={t('dl.download')}>
+                <Download size={13} />
+              </a>
+              <button type="button" className="rounded p-1 text-muted hover:bg-surface-muted hover:text-critical" title={t('dl.deleteVersion')}
+                aria-label={t('dl.deleteVersion')} onClick={() => setDeletingVersion(v)}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+          {versions.data && !versions.data.length ? <p className="text-xs text-subtle">{t('dl.noVersions')}</p> : null}
+          <div className="flex items-end gap-2">
+            <TextInput label={t('dl.versionName')} placeholder={`v${(versions.data?.length ?? 0) + 1}`} value={verName} onChange={(e) => setVerName(e.target.value)} />
+            <Button loading={freezeVersion.isPending} disabled={!samples.length} onClick={() => void freeze()} data-testid="dl-freeze">
+              <Archive size={14} /> {t('dl.freeze')}
+            </Button>
+          </div>
+        </div>
+      </CardBody>
+      <ConfirmDialog open={deletingVersion !== null} onClose={() => setDeletingVersion(null)} danger title={t('dl.deleteVersion')}
+        message={t('dl.deleteVersionMessage', { name: deletingVersion?.name ?? '' })}
+        onConfirm={() => {
+          if (deletingVersion) void removeVersion.mutateAsync({ id: deletingVersion.id, projectId: project.id }).then(() => setDeletingVersion(null))
+        }} />
+    </Card>
+  )
+}
+
 /** 樣本篩選（網格與大圖檢視共用）：全部／未標記／自動標記待確認／指定類別。 */
 function filterSamples(samples: DlSample[], filter: string): DlSample[] {
   return samples.filter((s) => {
     if (filter === '__all__') return true
     if (filter === '__unlabeled__') return !s.label
     if (filter === '__auto__') return s.labeled_by === 'auto'
+    if (filter === '__train__' || filter === '__val__' || filter === '__test__') return s.split === filter.slice(2, -2)
     return s.label === filter
   })
 }
@@ -372,6 +469,7 @@ function SampleGrid({ project, samples, activeClass, filter, suggestions, onPick
             ) : (
               <span className="absolute left-1 top-1 rounded bg-black/45 px-1.5 py-0.5 text-[11px] text-white">{t('dl.unlabeled')}</span>
             )}
+            {s.split ? <span className="absolute bottom-1 left-1 rounded bg-black/45 px-1 py-0.5 text-[10px] text-white">{t(`dl.split.${s.split}`)}</span> : null}
             </button>
             <span className="pointer-events-none absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
               <button type="button" aria-label={t('dl.viewLarge')} title={t('dl.viewLarge')}
@@ -405,7 +503,7 @@ export function DlPage() {
   const projectId = selected ?? projects.data?.[0]?.id ?? null
   const project = useDlProject(projectId)
   const samples = useDlSamples(projectId)
-  const { uploadSamples, setLabel, setShapes, removeSample, bulkLabels, autoLabel, removeProject, patchProject } = useDlMutations()
+  const { uploadSamples, setLabel, setShapes, setSplit, samPoint, removeSample, bulkLabels, autoLabel, removeProject, patchProject } = useDlMutations()
 
   const [creating, setCreating] = useState(false)
   const [fromSourceOpen, setFromSourceOpen] = useState(false)
@@ -434,6 +532,7 @@ export function DlPage() {
     let done = 0
     let added = 0
     let failed = 0
+    let dups = 0
     setImporting({ done: 0, total: files.length, failed: 0 })
     try {
       for (let i = 0; i < files.length; i += batch) {
@@ -441,7 +540,8 @@ export function DlPage() {
         try {
           const r = await uploadSamples.mutateAsync({ projectId, files: chunk, label: isShapes ? '' : activeClass })
           added += r.items.length
-          failed += r.skipped + (chunk.length - r.items.length - r.skipped)
+          failed += r.skipped // zip 一個檔可能展開多張，改用後端回報的失敗數
+          dups += r.duplicates
         } catch {
           failed += chunk.length
         }
@@ -449,6 +549,7 @@ export function DlPage() {
         setImporting({ done, total: files.length, failed })
       }
       if (failed) toast.warning(t('dl.importedWithFail', { count: added, failed }))
+      else if (dups) toast.success(t('dl.uploadedDup', { count: added, dup: dups }))
       else toast.success(t('dl.uploaded', { count: added }))
     } finally {
       setImporting(null)
@@ -573,7 +674,7 @@ export function DlPage() {
               <Card>
                 <CardBody className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
+                    <input ref={fileInput} type="file" accept="image/*,.zip" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
                     <Button size="sm" disabled={!!importing} onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
                     <Button size="sm" disabled={!!importing} onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
                     <Button size="sm" variant="primary" loading={autoLabel.isPending} onClick={() => void runAutoLabel()} data-testid="dl-auto"><Sparkles size={14} /> {t('dl.autoLabel')}</Button>
@@ -596,6 +697,8 @@ export function DlPage() {
               {samples.isLoading ? <LoadingState /> : (samples.data ?? []).length ? (
                 <ShapeWorkspace key={project.data.id} project={project.data} samples={samples.data ?? []} suggestions={suggestions}
                   onSave={saveShapes} onAcceptSuggestion={acceptOneSuggestion} onEditClasses={() => setEditingClasses(true)}
+                  onSamPoint={projectId === null ? undefined : async (sampleId, point) => (await samPoint.mutateAsync({ projectId, sampleId, points: [point] })).shapes}
+                  onSetSplit={(s, split) => { if (projectId !== null) void setSplit.mutateAsync({ id: s.id, split, projectId }) }}
                   hotkeysDisabled={editingClasses || creating || fromSourceOpen || deleting} />
               ) : (
                 <EmptyState compact icon={<Camera className="size-6" />} title={t('dl.noSamples')} description={t('dl.noSamplesHint')} />
@@ -628,7 +731,7 @@ export function DlPage() {
                   <p className="text-right text-xs text-muted">{t('dl.progressCount', { labeled: (counts?.total ?? 0) - (counts?.unlabeled ?? 0), total: counts?.total ?? 0 })}</p>
                   <p className="text-xs text-subtle">{activeClass ? t('dl.labelingHint', { label: activeClass }) : t('dl.pickClassHint')}</p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
+                    <input ref={fileInput} type="file" accept="image/*,.zip" multiple hidden onChange={(e) => { void onFiles(e.target.files); e.target.value = '' }} />
                     <Button size="sm" disabled={!!importing} onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
                     <Button size="sm" disabled={!!importing} onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
                     <Button size="sm" variant="primary" loading={autoLabel.isPending} onClick={() => void runAutoLabel()} data-testid="dl-auto"><Sparkles size={14} /> {t('dl.autoLabel')}</Button>
@@ -649,6 +752,9 @@ export function DlPage() {
                         { value: '__all__', label: t('dl.filterAll') },
                         { value: '__unlabeled__', label: `${t('dl.unlabeled')}（${counts?.unlabeled ?? 0}）` },
                         { value: '__auto__', label: t('dl.filterAuto') },
+                        { value: '__train__', label: `${t('dl.split.train')}（train）` },
+                        { value: '__val__', label: `${t('dl.split.val')}（val）` },
+                        { value: '__test__', label: `${t('dl.split.test')}（test）` },
                         ...project.data.classes.map((c) => ({ value: c, label: c })),
                       ]} />
                     <Button size="sm" variant="ghost" title={t('dl.deleteProject')} onClick={() => setDeleting(true)}><Trash2 size={14} /></Button>
@@ -663,6 +769,7 @@ export function DlPage() {
                 <ClassifyWorkspace project={project.data} samples={filterSamples(samples.data ?? [], filter)} suggestions={suggestions}
                   selectedId={viewingId} onSelect={setViewingId}
                   onLabel={(s, label) => { if (projectId !== null) void setLabel.mutateAsync({ id: s.id, label, projectId }) }}
+                  onSetSplit={(s, split) => { if (projectId !== null) void setSplit.mutateAsync({ id: s.id, split, projectId }) }}
                   onDelete={(s) => { if (projectId !== null) void removeSample.mutateAsync({ id: s.id, projectId }) }}
                   hotkeysDisabled={editingClasses || creating || fromSourceOpen || deleting} />
               ) : (
@@ -681,6 +788,7 @@ export function DlPage() {
         {/* 訓練面板 */}
         <div className="space-y-3">
           {project.data && trainer ? <TrainPanel key={project.data.id} project={project.data} trainer={trainer} /> : null}
+          {project.data ? <DatasetPanel key={`ds-${project.data.id}`} project={project.data} samples={samples.data ?? []} /> : null}
         </div>
       </div>
 

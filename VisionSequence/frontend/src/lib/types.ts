@@ -604,6 +604,23 @@ export interface DlSample {
   height: number
   created_at: string
   shapes: DlShape[]
+  /** 資料集分割：train｜val｜test；'' = 未指定 */
+  split: '' | 'train' | 'val' | 'test'
+}
+
+export interface DlDatasetVersion {
+  id: number
+  name: string
+  note: string
+  stats: {
+    total?: number
+    unlabeled?: number
+    per_class?: Record<string, number>
+    classes?: string[]
+    split?: { train: number; val: number; test: number }
+  }
+  asset_id: string
+  created_at: string
 }
 
 export interface DlDevices {

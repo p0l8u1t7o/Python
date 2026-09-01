@@ -6,10 +6,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import os
 import shutil
+import tempfile
 import uuid
+import zipfile
 from typing import Any
 
 import cv2
@@ -23,7 +27,7 @@ from apps.core.errors import NotFound, ValidationError
 from apps.vision.dl import base as dl_base, devices, jobs
 from apps.vision.dl.base import SampleRef, TrainError
 from apps.vision.images import encode_image
-from apps.vision.models import DlProject, DlSample
+from apps.vision.models import Asset, DlDatasetVersion, DlProject, DlSample
 from apps.vision.sources import grab_by_id
 
 router = Router(tags=["dl"])
@@ -93,11 +97,22 @@ def _sample_out(sample: DlSample) -> dict[str, Any]:
     return {
         "id": str(sample.id), "label": sample.label, "labeled_by": sample.labeled_by,
         "score": sample.score, "width": sample.width, "height": sample.height, "created_at": sample.created_at,
-        "shapes": list(sample.shapes or []),
+        "shapes": list(sample.shapes or []), "split": sample.split,
     }
 
 
-def _save_sample(project: DlProject, image: np.ndarray, label: str = "") -> DlSample:
+def _pixels_sha256(image: np.ndarray) -> str:
+    """解碼後像素的 SHA256（含形狀，避免不同尺寸同 bytes 撞雜湊）；同專案內去重用。"""
+    digest = hashlib.sha256(str(image.shape).encode())
+    digest.update(image.tobytes())
+    return digest.hexdigest()
+
+
+def _is_duplicate(project: DlProject, sha: str) -> bool:
+    return bool(sha) and project.samples.filter(sha256=sha).exists()
+
+
+def _save_sample(project: DlProject, image: np.ndarray, label: str = "", sha: str = "") -> DlSample:
     sample_id = uuid.uuid4()
     path = os.path.join(_sample_dir(project), f"{sample_id.hex}.png")
     ok, buf = cv2.imencode(".png", image)
@@ -107,7 +122,37 @@ def _save_sample(project: DlProject, image: np.ndarray, label: str = "") -> DlSa
     return DlSample.objects.create(
         id=sample_id, project=project, label=label, labeled_by="human" if label else "",
         path=path, width=int(image.shape[1]), height=int(image.shape[0]),
+        sha256=sha or _pixels_sha256(image),
     )
+
+
+#: ZIP 批次匯入接受的影像副檔名與單一 zip 的檔數上限（避免 zip 炸彈把行程吃滿）。
+_ZIP_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
+_ZIP_MAX_ENTRIES = 2000
+
+
+def _iter_upload_images(file: UploadedFile):
+    """一個上傳檔 → 逐張 (影像, 是否解碼失敗)。zip 檔內的影像逐一展開，其餘視為單張影像。"""
+    name = (file.name or "").lower()
+    data = file.read()
+    if not name.endswith(".zip"):
+        yield cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        return
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        yield None
+        return
+    count = 0
+    for info in archive.infolist():
+        if info.is_dir() or count >= _ZIP_MAX_ENTRIES:
+            continue
+        entry = info.filename
+        base = os.path.basename(entry)
+        if base.startswith(".") or "__MACOSX" in entry or not entry.lower().endswith(_ZIP_IMAGE_EXTS):
+            continue
+        count += 1
+        yield cv2.imdecode(np.frombuffer(archive.read(info), dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
 # ---------------------------------------------------------------------------
@@ -212,27 +257,36 @@ def delete_project(request: HttpRequest, project_id: int):
 # 樣本：上傳、從來源收集、標記
 # ---------------------------------------------------------------------------
 @router.get("/dl/projects/{project_id}/samples")
-def list_samples(request: HttpRequest, project_id: int, label: str = "__all__"):
+def list_samples(request: HttpRequest, project_id: int, label: str = "__all__", split: str = "__all__"):
     project = _project(project_id)
     qs = project.samples.all()
     if label != "__all__":
         qs = qs.filter(label=label)
+    if split != "__all__":
+        qs = qs.filter(split=split)
     return {"items": [_sample_out(s) for s in qs]}
 
 
 @router.post("/dl/projects/{project_id}/samples", response={201: dict})
 def upload_samples(request: HttpRequest, project_id: int, files: list[UploadedFile] = File(...), label: str = Form("")):
+    """上傳樣本影像（可混 zip 批次包）；解碼後以像素 SHA256 去重，重複的略過並回報 duplicates。"""
     project = _project(project_id)
     if label and label not in (project.classes or []):
         raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
-    created, skipped = [], 0
+    created, skipped, duplicates = [], 0, 0
+    seen: set[str] = set()  # 同一批內的重複（例如 zip 裡同圖兩份）也擋
     for file in files:
-        image = cv2.imdecode(np.frombuffer(file.read(), dtype=np.uint8), cv2.IMREAD_COLOR)
-        if image is None:
-            skipped += 1
-            continue
-        created.append(_sample_out(_save_sample(project, image, label)))
-    return 201, {"items": created, "skipped": skipped}
+        for image in _iter_upload_images(file):
+            if image is None:
+                skipped += 1
+                continue
+            sha = _pixels_sha256(image)
+            if sha in seen or _is_duplicate(project, sha):
+                duplicates += 1
+                continue
+            seen.add(sha)
+            created.append(_sample_out(_save_sample(project, image, label, sha=sha)))
+    return 201, {"items": created, "skipped": skipped, "duplicates": duplicates}
 
 
 @router.post("/dl/projects/{project_id}/samples/from-source", response={201: dict})
@@ -245,15 +299,19 @@ def samples_from_source(request: HttpRequest, project_id: int):
     label = str(body.get("label") or "")
     if label and label not in (project.classes or []):
         raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
-    created = []
+    created, duplicates = [], 0
     for _ in range(count):
         image = grab_by_id(source_id)
         if image is None:
             break
-        created.append(_sample_out(_save_sample(project, image, label)))
-    if not created:
+        sha = _pixels_sha256(image)
+        if _is_duplicate(project, sha):  # 靜態畫面連抓 N 張會是同一張，去重後只留一份
+            duplicates += 1
+            continue
+        created.append(_sample_out(_save_sample(project, image, label, sha=sha)))
+    if not created and not duplicates:
         raise ValidationError("來源沒有取到任何影像", code="grab_failed")
-    return 201, {"items": created}
+    return 201, {"items": created, "duplicates": duplicates}
 
 
 @router.get("/dl/samples/{sample_id}/file", auth=None)
@@ -294,6 +352,12 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
         sample.labeled_by = "human" if sample.shapes else ""
         sample.score = 0
         fields += ["shapes", "labeled_by", "score"]
+    if "split" in body:
+        split = str(body["split"] or "")
+        if split not in ("", "train", "val", "test"):
+            raise ValidationError("split 只能是 train／val／test 或空字串", code="bad_split")
+        sample.split = split
+        fields += ["split"]
     if fields:
         sample.save(update_fields=sorted(set(fields)))
     return _sample_out(sample)
@@ -341,6 +405,40 @@ def bulk_label(request: HttpRequest, project_id: int):
     return {"updated": updated, "counts": _counts(project)}
 
 
+@router.post("/dl/projects/{project_id}/split")
+def auto_split(request: HttpRequest, project_id: int):
+    """自動分 train/val/test：{"val": 0.15, "test": 0.0, "seed"?}。
+
+    classes 模式依類別分層（每類比例一致）；shapes 模式依「有無標記」分層。
+    整批重新指派（含之前手動指定的）；個別樣本事後可用 PATCH /dl/samples/{id} 改。
+    """
+    project = _project(project_id)
+    body = _body(request)
+    val = min(0.5, max(0.0, float(body.get("val") if body.get("val") is not None else 0.15)))
+    test = min(0.5, max(0.0, float(body.get("test") or 0.0)))
+    if val + test >= 1.0:
+        raise ValidationError("val + test 比例必須小於 1", code="bad_ratio")
+    rows = list(project.samples.values_list("id", "label", "shapes"))
+    if not rows:
+        raise ValidationError("沒有任何樣本可分割", code="no_samples")
+    rng = np.random.default_rng(int(body["seed"]) if body.get("seed") is not None else None)
+    groups: dict[str, list] = {}
+    for sid, label, shp in rows:
+        key = label if _label_mode(project) == "classes" else ("labeled" if shp else "")
+        groups.setdefault(key, []).append(sid)
+    assign: dict[str, list] = {"train": [], "val": [], "test": []}
+    for ids in groups.values():
+        order = rng.permutation(len(ids))
+        n_test = int(round(len(ids) * test))
+        n_val = min(len(ids) - n_test, int(round(len(ids) * val)))
+        for pos, i in enumerate(order):
+            split = "test" if pos < n_test else "val" if pos < n_test + n_val else "train"
+            assign[split].append(ids[int(i)])
+    for split, ids in assign.items():
+        project.samples.filter(pk__in=ids).update(split=split)
+    return {"train": len(assign["train"]), "val": len(assign["val"]), "test": len(assign["test"])}
+
+
 # ---------------------------------------------------------------------------
 # YOLO 資料集匯出／匯入（與 VisionStereo 等工具互通；伺服器本機路徑）
 # ---------------------------------------------------------------------------
@@ -373,20 +471,143 @@ def dataset_import(request: HttpRequest, project_id: int):
     if missing:
         project.classes = list(project.classes or []) + missing
         project.save(update_fields=["classes", "updated_at"])
-    imported = skipped = 0
+    imported = skipped = duplicates = 0
     for image_path, label_text in iter_dataset(root):
         image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None:
             skipped += 1
             continue
-        sample = _save_sample(project, image)
+        sha = _pixels_sha256(image)
+        if _is_duplicate(project, sha):  # 重匯同一個資料夾不會長出兩份
+            duplicates += 1
+            continue
+        sample = _save_sample(project, image, sha=sha)
         shapes = yolo_to_shapes(label_text, classes)
         if shapes:
             sample.shapes = shapes
             sample.labeled_by = "human"
             sample.save(update_fields=["shapes", "labeled_by"])
         imported += 1
-    return {"imported": imported, "skipped": skipped, "counts": _counts(project), "classes": list(project.classes or [])}
+    return {"imported": imported, "skipped": skipped, "duplicates": duplicates, "counts": _counts(project), "classes": list(project.classes or [])}
+
+
+# ---------------------------------------------------------------------------
+# 資料集版本：凍結目前樣本＋標記成 zip 存進資產庫（kind=dataset），之後可下載回溯
+# ---------------------------------------------------------------------------
+def _version_out(version: DlDatasetVersion) -> dict[str, Any]:
+    return {
+        "id": version.id, "name": version.name, "note": version.note,
+        "stats": dict(version.stats or {}), "asset_id": version.asset_id, "created_at": version.created_at,
+    }
+
+
+def _freeze_zip(project: DlProject, work: str) -> None:
+    """把專案目前的樣本寫進 work：shapes 模式 = YOLO 樹；classes 模式 = 類別資料夾＋manifest。"""
+    rows = list(project.samples.all())
+    if _label_mode(project) == "shapes":
+        from apps.vision.dl.shapes import export_dataset
+
+        export_dataset(((r.id.hex, r.path, list(r.shapes or []), r.split) for r in rows),
+                       list(project.classes or []), work)
+        return
+    items = []
+    for r in rows:
+        folder = r.label or "_unlabeled"
+        os.makedirs(os.path.join(work, folder), exist_ok=True)
+        try:
+            shutil.copyfile(r.path, os.path.join(work, folder, f"{r.id.hex}.png"))
+        except OSError:
+            continue
+        items.append({"file": f"{folder}/{r.id.hex}.png", "label": r.label, "split": r.split})
+    if not items:
+        raise ValidationError("沒有任何樣本可凍結", code="no_samples")
+    with open(os.path.join(work, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"classes": list(project.classes or []), "items": items}, f, ensure_ascii=False, indent=1)
+
+
+@router.get("/dl/projects/{project_id}/versions")
+def list_versions(request: HttpRequest, project_id: int):
+    project = _project(project_id)
+    return {"items": [_version_out(v) for v in project.versions.all()]}
+
+
+@router.post("/dl/projects/{project_id}/versions", response={201: dict})
+def create_version(request: HttpRequest, project_id: int):
+    """凍結資料集版本：{"name"?: 顯示名, "note"?: 備註}。"""
+    project = _project(project_id)
+    body = _body(request)
+    name = str(body.get("name") or "").strip() or f"v{project.versions.count() + 1}"
+    splits = list(project.samples.values_list("split", flat=True))
+    stats = {**_counts(project), "classes": list(project.classes or []),
+             "split": {k: splits.count(k) for k in ("train", "val", "test")}}
+    work = tempfile.mkdtemp(prefix="vs-dlver-")
+    try:
+        _freeze_zip(project, work)
+        asset_id = uuid.uuid4()
+        zip_path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for root, _dirs, names in os.walk(work):
+                for fname in names:
+                    full = os.path.join(root, fname)
+                    archive.write(full, os.path.relpath(full, work))
+        Asset.objects.create(
+            id=asset_id, name=f"{project.name}-{name}", kind="dataset", path=zip_path,
+            size=os.path.getsize(zip_path), meta={"project": project.name, "version": name, "stats": stats},
+        )
+        version = DlDatasetVersion.objects.create(
+            project=project, name=name, note=str(body.get("note") or ""), stats=stats, asset_id=asset_id.hex)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return 201, _version_out(version)
+
+
+@router.delete("/dl/versions/{version_id}", response={204: None})
+def delete_version(request: HttpRequest, version_id: int):
+    version = DlDatasetVersion.objects.filter(pk=version_id).first()
+    if version is None:
+        raise NotFound("資料集版本不存在", code="dl_version_not_found")
+    asset = Asset.objects.filter(pk=version.asset_id).first() if version.asset_id else None
+    if asset is not None:
+        try:
+            os.remove(asset.path)
+        except OSError:
+            pass
+        asset.delete()
+    version.delete()
+    return 204, None
+
+
+# ---------------------------------------------------------------------------
+# SAM 點擊智慧標記（點一下物件 → polygon 建議；ultralytics 可選安裝）
+# ---------------------------------------------------------------------------
+@router.post("/dl/projects/{project_id}/sam-point")
+def sam_point(request: HttpRequest, project_id: int):
+    """{"sample_id", "points": [[x,y] 0~1], "labels"?: [1|0…], "model"?} → {"shapes": [...]}。
+
+    label 由前端掛目前類別；第一次使用會自動下載 mobile_sam.pt（回應會比較久）。
+    """
+    from apps.vision.dl import sam
+
+    project = _project(project_id)
+    body = _body(request)
+    sample = project.samples.filter(pk=body.get("sample_id")).first()
+    if sample is None:
+        raise NotFound("樣本不存在", code="dl_sample_not_found")
+    points = body.get("points")
+    if not isinstance(points, list) or not points:
+        raise ValidationError("需要 points（0~1 正規化座標清單）", code="bad_points")
+    image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        raise NotFound("樣本影像檔損毀或已遺失", code="dl_sample_not_found")
+    device = devices.train_device() if devices.train_device() in ("cuda",) else "cpu"
+    try:
+        shapes = sam.suggest_shapes(
+            image, [[float(p[0]), float(p[1])] for p in points],
+            [int(v) for v in body.get("labels") or []] or None,
+            model_name=str(body.get("model") or ""), device=device)
+    except TrainError as exc:
+        raise ValidationError(str(exc), code="sam_failed") from None
+    return {"shapes": shapes}
 
 
 # ---------------------------------------------------------------------------

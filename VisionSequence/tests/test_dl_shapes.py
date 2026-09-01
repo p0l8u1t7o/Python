@@ -96,6 +96,21 @@ class ShapeFormatTests(SimpleTestCase):
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
+    def test_dataset_export_respects_split(self):
+        folder = temp_dir()
+        out = os.path.join(folder, "ds")
+        try:
+            refs = _write_seg_samples(folder, 5)
+            splits = ["train", "train", "val", "test", ""]  # 未指定的照 val_ratio（=0 → 進 train）
+            stats = export_dataset(((r.id, r.path, r.shapes, sp) for r, sp in zip(refs, splits)), CLASSES, out, val_ratio=0.0)
+            self.assertEqual((stats["train"], stats["val"], stats["test"]), (3, 1, 1))
+            self.assertTrue(os.path.isfile(os.path.join(out, "images", "test", "3.jpg")))
+            self.assertTrue(os.path.isfile(os.path.join(out, "images", "val", "2.jpg")))
+            with open(os.path.join(out, "data.yaml"), encoding="utf-8") as f:
+                self.assertIn("test: images/test", f.read())
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
 
 class PatchSegmentTests(SimpleTestCase):
     def setUp(self):

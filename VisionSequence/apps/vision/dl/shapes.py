@@ -124,23 +124,31 @@ def rasterize(shapes: list[dict[str, Any]], classes: list[str], height: int, wid
 # 資料集匯出／匯入（與 VisionStereo 互通）
 # ---------------------------------------------------------------------------
 def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: float = 0.2, seed: int = 7) -> dict[str, Any]:
-    """把有標記的樣本寫成 YOLO 資料集（images/labels/{train,val} + data.yaml）。回傳統計。
+    """把有標記的樣本寫成 YOLO 資料集（images/labels/{train,val[,test]} + data.yaml）。回傳統計。
 
-    samples：iterable of (id_hex, image_path, shapes)。已存在的 data.yaml 不覆寫（相容 WebTraining 慣例）。
+    samples：iterable of (id_hex, image_path, shapes[, split])。第 4 欄 split（train｜val｜test）
+    有指定就照指定；未指定的樣本照 val_ratio 隨機進 val（沒有任何指定 val 時至少 1 張）。
+    已存在的 data.yaml 不覆寫（相容 WebTraining 慣例）。
     """
     rng = np.random.default_rng(seed)
-    rows = [(sid, path, shp) for sid, path, shp in samples if shp]
+    rows = [(r[0], r[1], r[2], r[3] if len(r) > 3 and r[3] in ("train", "val", "test") else "") for r in samples if r[2]]
     if not rows:
         raise ValidationError("沒有任何已標記（shapes）的樣本可匯出", code="no_labeled_samples")
-    order = rng.permutation(len(rows))
-    n_val = max(1, int(round(len(rows) * val_ratio))) if val_ratio > 0 and len(rows) > 1 else 0
-    val_set = {int(i) for i in order[:n_val]}
-    counts = {"train": 0, "val": 0}
-    for split in ("train", "val"):
+    # 未指定 split 的樣本隨機補 val；已有人工指定 val 時不強迫至少 1 張（尊重指定）
+    unassigned = [i for i, r in enumerate(rows) if not r[3]]
+    explicit_val = any(r[3] == "val" for r in rows)
+    n_val = int(round(len(unassigned) * val_ratio)) if val_ratio > 0 else 0
+    if not explicit_val and val_ratio > 0 and len(rows) > 1 and unassigned:
+        n_val = max(1, n_val)
+    order = rng.permutation(len(unassigned))
+    val_set = {unassigned[int(i)] for i in order[:n_val]}
+    has_test = any(r[3] == "test" for r in rows)
+    counts = {"train": 0, "val": 0, "test": 0}
+    for split in ("train", "val", *(("test",) if has_test else ())):
         os.makedirs(os.path.join(out_dir, "images", split), exist_ok=True)
         os.makedirs(os.path.join(out_dir, "labels", split), exist_ok=True)
-    for i, (sid, path, shp) in enumerate(rows):
-        split = "val" if i in val_set else "train"
+    for i, (sid, path, shp, assigned) in enumerate(rows):
+        split = assigned or ("val" if i in val_set else "train")
         image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None:
             continue
@@ -154,15 +162,16 @@ def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: floa
     yaml_path = os.path.join(out_dir, "data.yaml")
     if not os.path.exists(yaml_path):
         names = "\n".join(f"  {i}: {c}" for i, c in enumerate(classes))
+        test_line = "test: images/test\n" if counts["test"] else ""
         with open(yaml_path, "w", encoding="utf-8", newline="\n") as f:
-            f.write(f"path: {os.path.abspath(out_dir)}\ntrain: images/train\nval: images/val\nnc: {len(classes)}\nnames:\n{names}\n")
+            f.write(f"path: {os.path.abspath(out_dir)}\ntrain: images/train\nval: images/val\n{test_line}nc: {len(classes)}\nnames:\n{names}\n")
     # ultralytics 會快取掃描結果；清掉避免沿用舊標記（WebTraining.md §4 的坑）
     for cache in glob.glob(os.path.join(out_dir, "labels", "*.cache")):
         try:
             os.remove(cache)
         except OSError:
             pass
-    return {"dir": os.path.abspath(out_dir), "train": counts["train"], "val": counts["val"], "classes": classes}
+    return {"dir": os.path.abspath(out_dir), "train": counts["train"], "val": counts["val"], "test": counts["test"], "classes": classes}
 
 
 def iter_dataset(root: str) -> list[tuple[str, str]]:

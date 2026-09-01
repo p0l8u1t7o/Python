@@ -162,6 +162,10 @@ class DlSample(models.Model):
     labeled_by = models.CharField(max_length=10, blank=True, default="")
     #: 自動標記的信心分數。
     score = models.FloatField(default=0)
+    #: 解碼後像素的 SHA256（同專案內去重；舊資料為空字串，不參與比對）。
+    sha256 = models.CharField(max_length=64, blank=True, default="")
+    #: 資料集分割：train｜val｜test；"" = 未指定（匯出／訓練時隨機分）。
+    split = models.CharField(max_length=8, blank=True, default="")
     path = models.CharField(max_length=500)
     width = models.PositiveIntegerField(default=0)
     height = models.PositiveIntegerField(default=0)
@@ -169,7 +173,23 @@ class DlSample(models.Model):
 
     class Meta:
         ordering = ["created_at"]
-        indexes = [models.Index(fields=["project", "label"])]
+        indexes = [models.Index(fields=["project", "label"]), models.Index(fields=["project", "sha256"])]
+
+
+class DlDatasetVersion(models.Model):
+    """凍結一份資料集版本：把當下樣本與標記匯出成 zip 存進資產庫（kind=dataset），可下載回溯。"""
+
+    project = models.ForeignKey(DlProject, on_delete=models.CASCADE, related_name="versions")
+    name = models.CharField(max_length=120)
+    note = models.TextField(blank=True, default="")
+    #: 凍結當下的統計：total／labeled／per_class／split 數量／classes。
+    stats = models.JSONField(default=dict)
+    #: 對應 Asset（zip 檔）的 UUID hex；資產被刪時版本仍留統計。
+    asset_id = models.CharField(max_length=40, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class DlSettings(models.Model):

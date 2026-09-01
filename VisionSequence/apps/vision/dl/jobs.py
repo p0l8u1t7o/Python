@@ -168,7 +168,7 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     trainer = get_trainer(job.trainer_kind)
     project = DlProject.objects.get(pk=project_id)
     rows = list(project.samples.all())
-    samples = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or [])) for r in rows]
+    samples = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or []), split=r.split) for r in rows]
     classes = [str(c) for c in (project.classes or [])]
 
     progress = TrainProgress(job)

@@ -46,6 +46,8 @@ class SampleRef:
     label: str  # classes 模式："" = 未標記
     path: str
     shapes: list[dict[str, Any]] = field(default_factory=list)
+    #: 資料集分割：train｜val｜test；"" = 未指定（由 trainer 依 val 比例隨機分）。
+    split: str = ""
 
     def load(self) -> np.ndarray | None:
         try:

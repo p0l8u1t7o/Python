@@ -12,6 +12,7 @@ import type {
   ConnectionKind,
   ConnectionOpResult,
   DlDevices,
+  DlDatasetVersion,
   DlProject,
   DlSample,
   DlShape,
@@ -750,6 +751,15 @@ export function useDlSamples(projectId: number | null) {
   })
 }
 
+export function useDlVersions(projectId: number | null) {
+  return useQuery({
+    queryKey: ['dl', 'versions', projectId],
+    queryFn: () => api.get<{ items: DlDatasetVersion[] }>(`/vision/dl/projects/${projectId}/versions`),
+    select: (data) => data.items,
+    enabled: projectId !== null,
+  })
+}
+
 /** 訓練狀態輪詢：訓練中每 700ms、閒置放慢到 5 秒。 */
 export function useDlTrainStatus(active = true) {
   return useQuery({
@@ -787,13 +797,13 @@ export function useDlMutations() {
       const form = new FormData()
       for (const f of files) form.append('files', f)
       form.append('label', label || '')
-      return api.postForm<{ items: DlSample[]; skipped: number }>(`/vision/dl/projects/${projectId}/samples`, form)
+      return api.postForm<{ items: DlSample[]; skipped: number; duplicates: number }>(`/vision/dl/projects/${projectId}/samples`, form)
     },
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
   const fromSource = useMutation({
     mutationFn: ({ projectId, source_id, count, label }: { projectId: number; source_id: number; count: number; label?: string }) =>
-      api.post<{ items: DlSample[] }>(`/vision/dl/projects/${projectId}/samples/from-source`, { source_id, count, label: label || '' }),
+      api.post<{ items: DlSample[]; duplicates: number }>(`/vision/dl/projects/${projectId}/samples/from-source`, { source_id, count, label: label || '' }),
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
   const setLabel = useMutation({
@@ -809,6 +819,29 @@ export function useDlMutations() {
   const removeSample = useMutation({
     mutationFn: ({ id }: { id: string; projectId: number }) => api.delete(`/vision/dl/samples/${id}`),
     onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const setSplit = useMutation({
+    mutationFn: ({ id, split }: { id: string; split: DlSample['split']; projectId: number }) =>
+      api.patch<DlSample>(`/vision/dl/samples/${id}`, { split }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const autoSplit = useMutation({
+    mutationFn: ({ projectId, val, test }: { projectId: number; val: number; test: number }) =>
+      api.post<{ train: number; val: number; test: number }>(`/vision/dl/projects/${projectId}/split`, { val, test }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const freezeVersion = useMutation({
+    mutationFn: ({ projectId, name, note }: { projectId: number; name?: string; note?: string }) =>
+      api.post<DlDatasetVersion>(`/vision/dl/projects/${projectId}/versions`, { name, note }),
+    onSuccess: (_, v) => void client.invalidateQueries({ queryKey: ['dl', 'versions', v.projectId] }),
+  })
+  const removeVersion = useMutation({
+    mutationFn: ({ id }: { id: number; projectId: number }) => api.delete(`/vision/dl/versions/${id}`),
+    onSuccess: (_, v) => void client.invalidateQueries({ queryKey: ['dl', 'versions', v.projectId] }),
+  })
+  const samPoint = useMutation({
+    mutationFn: ({ projectId, sampleId, points, model }: { projectId: number; sampleId: string; points: [number, number][]; model?: string }) =>
+      api.post<{ shapes: DlShape[] }>(`/vision/dl/projects/${projectId}/sam-point`, { sample_id: sampleId, points, model }),
   })
   const bulkLabels = useMutation({
     mutationFn: ({ projectId, items }: { projectId: number; items: { id: string; label?: string; shapes?: DlShape[]; score?: number; by?: string }[] }) =>
@@ -831,5 +864,5 @@ export function useDlMutations() {
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
 }
