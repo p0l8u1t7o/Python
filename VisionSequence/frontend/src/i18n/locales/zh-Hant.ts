@@ -249,7 +249,7 @@ const zhHant = {
     keyUndoSave: '還原／儲存',
     keyNav: '上一張／下一張',
     keyView: '符合視窗／縮放／平移',
-    drawingPolygon: '新增多邊形中（已 {{count}} 點：點回起點或 Enter 完成、Backspace 退一點、Esc 取消）',
+    drawingPolygon: '新增多邊形中（已 {{count}} 點：雙擊、點回起點或 Enter 完成、Backspace 退一點、Esc 取消）',
     polygonNeedsPoints: '多邊形至少要 3 個點',
     viewGrid: '網格',
     viewLarge: '大圖',

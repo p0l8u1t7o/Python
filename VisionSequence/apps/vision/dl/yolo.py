@@ -26,7 +26,7 @@ from apps.vision.tools.base import Param
 
 log = logging.getLogger(__name__)
 
-_INSTALL_HINT = "需要安裝訓練依賴：.venv\\Scripts\\pip install ultralytics（含 torch；GPU 版 torch 請照 pytorch.org 指示安裝）"
+_INSTALL_HINT = "需要安裝訓練依賴：.venv\\Scripts\\pip install ultralytics onnx onnxslim（含 torch；GPU 版 torch 請照 pytorch.org 指示安裝，例如 --index-url https://download.pytorch.org/whl/cu128）"
 
 
 def _import_ultralytics():

@@ -206,7 +206,7 @@ const en = {
     keyUndoSave: 'Undo / save',
     keyNav: 'Previous / next sample',
     keyView: 'Fit / zoom / pan',
-    drawingPolygon: 'Drawing polygon ({{count}} points: click the first point or press Enter to finish, Backspace to undo a point, Esc to cancel)',
+    drawingPolygon: 'Drawing polygon ({{count}} points: double-click, click the first point or press Enter to finish, Backspace to undo a point, Esc to cancel)',
     polygonNeedsPoints: 'A polygon needs at least 3 points',
     viewGrid: 'Grid',
     viewLarge: 'Large view',

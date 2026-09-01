@@ -4,7 +4,7 @@
  * - shapes 模式把標記輪廓直接畫在縮圖上（快速巡檢哪幾張標壞了）。
  * - classes 模式用 labelText／labelColor 顯示類別色條。
  */
-import { useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 
 import { dlSampleUrl } from '@/lib/api'
 import { classColor } from '@/lib/colors'
@@ -21,7 +21,7 @@ export interface ThumbProps {
   onClick: () => void
 }
 
-export function Thumb({ sample, classes, selected, hasSuggestion = false, labelText, onClick }: ThumbProps) {
+function ThumbImpl({ sample, classes, selected, hasSuggestion = false, labelText, onClick }: ThumbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -112,3 +112,9 @@ export function Thumb({ sample, classes, selected, hasSuggestion = false, labelT
     </button>
   )
 }
+
+/** 縮圖牆可能上百顆，而逐點繪製的 hover／draft 每次滑鼠移動都讓工作區重繪——
+ *  memo 擋掉無關縮圖的重繪。onClick 刻意不比（每次 render 都是新 closure，但行為只依 sample.id）。 */
+export const Thumb = memo(ThumbImpl, (a, b) =>
+  a.sample === b.sample && a.classes === b.classes && a.selected === b.selected &&
+  a.hasSuggestion === b.hasSuggestion && a.labelText === b.labelText)

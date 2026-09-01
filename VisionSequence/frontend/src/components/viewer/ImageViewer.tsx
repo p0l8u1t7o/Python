@@ -66,6 +66,8 @@ export interface ImageViewerProps {
   className?: string
   badge?: { text: string; tone: 'ok' | 'ng' | 'neutral' } | null
   onPick?: (x: number, y: number) => void
+  /** 雙擊影像（影像像素座標）；有傳時雙擊不再觸發 fit（逐點繪製用雙擊收尾）。 */
+  onDoublePick?: (x: number, y: number) => void
   /** 游標在影像上的位置（影像像素座標；離開畫布時為 null）。以 rAF 節流，只在有傳時才回報。 */
   onHover?: (point: [number, number] | null) => void
   /** 受控視角（可選）：與另一個檢視器同步用 */
@@ -103,6 +105,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     className,
     badge,
     onPick,
+    onDoublePick,
     onHover,
     viewport,
     onViewportChange,
@@ -154,6 +157,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     roi,
     onRoiChange,
     onPick,
+    onDoublePick,
     onHover,
     editMode,
     drawMode,
@@ -168,6 +172,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     roi,
     onRoiChange,
     onPick,
+    onDoublePick,
     onHover,
     editMode,
     drawMode,
@@ -739,6 +744,11 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           emitRoi({ shape: 'polygon', points }, true)
           return
         }
+      }
+      if (L.onDoublePick) {
+        // 逐點繪製的雙擊收尾：交給呼叫端處理，不觸發 fit（避免畫到一半視角跳掉）
+        L.onDoublePick(Math.floor(ix), Math.floor(iy))
+        return
       }
       fit()
     }

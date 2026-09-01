@@ -43,6 +43,10 @@
   --sidebar-active-text: #2a3f54;
   --sidebar-brand: #1abb9c;
   --sidebar-line: rgb(255 255 255 / 0.08);
+
+  /* 立體感：卡片浮起、彈出層更高（深色用黑影，淺色用主題藍灰影） */
+  --shadow-card: 0 1px 2px rgb(42 63 84 / 0.05), 0 3px 10px rgb(42 63 84 / 0.06);
+  --shadow-pop: 0 2px 6px rgb(42 63 84 / 0.1), 0 10px 28px rgb(42 63 84 / 0.16);
 }
 
 .dark {
@@ -82,6 +86,9 @@
   --sidebar-active-text: #ffffff;
   --sidebar-brand: #1abb9c;
   --sidebar-line: rgb(255 255 255 / 0.06);
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 14px rgb(0 0 0 / 0.3);
+  --shadow-pop: 0 2px 8px rgb(0 0 0 / 0.45), 0 12px 32px rgb(0 0 0 / 0.55);
 }
 
 @theme inline {
@@ -120,11 +127,12 @@
     'Helvetica Neue', Helvetica, Arial, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace;
 
-  /* Gentelella 的圓角很小 */
-  --radius-lg: 4px;
-  --radius-xl: 5px;
-  --radius-2xl: 6px;
-  --radius-md: 3px;
+  /* 圓角設計：整站放大（元件用 rounded-md/lg/xl 即套用；小 chips 的 rounded/rounded-full 不受影響） */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
 }
 
 @layer base {
@@ -138,32 +146,33 @@
 }
 
 @layer components {
-  /* 面板（x_panel）：白底、細邊框、無明顯圓角。標題列 .panel-title 由 CardHeader 產生。 */
-  .card { @apply bg-surface border border-line rounded-md; }
-  .panel-title { @apply flex flex-wrap items-center justify-between gap-3 border-b-2 border-line px-4 py-2.5; }
+  /* 面板：白底、細邊框、大圓角＋浮起陰影（立體感）。標題列 .panel-title 由 CardHeader 產生。 */
+  .card { @apply bg-surface border border-line rounded-xl; box-shadow: var(--shadow-card); }
+  .panel-title { @apply flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5; }
   .panel-title h2 { @apply text-[15px] font-semibold text-heading; }
   /* 統計 tile_count：大數字＋小標 */
-  .tile-count { @apply bg-surface border border-line rounded-md px-4 py-3; }
+  .tile-count { @apply bg-surface border border-line rounded-xl px-4 py-3; box-shadow: var(--shadow-card); }
   .tile-count .tile-label { @apply text-[11px] font-semibold uppercase tracking-wide text-muted; }
   .tile-count .tile-value { @apply mt-1 text-[28px] font-semibold leading-none text-heading; font-variant-numeric: tabular-nums; }
   .tile-count .tile-unit { @apply ml-1 text-xs font-normal text-muted; }
 
   .input {
     @apply w-full rounded-md border border-line bg-surface px-3 py-1.5 text-sm text-content
-      placeholder:text-subtle focus:border-brand focus:outline-none disabled:opacity-60;
+      placeholder:text-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60;
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.04);
   }
   /* Tailwind v4 的 @apply 不能引用同一層定義的 .btn，所以每個變體把共用樣式寫開。 */
   .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-primary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-brand text-on-brand hover:bg-brand-strong; }
-  .btn-secondary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-line bg-surface text-content hover:bg-surface-muted; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-gradient-to-b from-brand to-brand-strong text-on-brand shadow-sm shadow-brand/30 hover:brightness-105 active:translate-y-px active:shadow-none; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 border border-line bg-surface text-content shadow-xs hover:bg-surface-muted active:translate-y-px active:shadow-none; }
   .btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:bg-surface-muted hover:text-content; }
-  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-critical text-white hover:opacity-90; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-critical text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none; }
   .btn-icon { @apply rounded-md p-1.5 text-muted transition hover:bg-surface-muted hover:text-content; }
 
-  /* 側欄項目（摺疊時的 tooltip 用 .nav-tip） */
-  .nav-item { @apply relative flex items-center gap-3 whitespace-nowrap px-4 py-2.5 text-[13px] text-sidebar-text transition-colors hover:bg-sidebar-hover; }
-  .nav-item.active { @apply bg-sidebar-active text-sidebar-active-text font-medium; }
-  .nav-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sidebar-brand); }
+  /* 側欄項目（摺疊時的 tooltip 用 .nav-tip）：圓角膠囊＋左側圓頭指示條 */
+  .nav-item { @apply relative mx-1.5 flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-[13px] text-sidebar-text transition-colors hover:bg-sidebar-hover; }
+  .nav-item.active { @apply bg-sidebar-active text-sidebar-active-text font-medium shadow-sm; }
+  .nav-item.active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 9999px; background: var(--sidebar-brand); }
   .nav-tip { @apply pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-sidebar px-2 py-1 text-xs text-sidebar-text opacity-0 shadow-lg transition-opacity; }
   .nav-item:hover .nav-tip { opacity: 1; }
 

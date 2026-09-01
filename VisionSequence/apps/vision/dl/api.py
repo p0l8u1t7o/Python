@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from collections import Counter
 import os
 import shutil
 import tempfile
@@ -76,8 +77,9 @@ def _counts(project: DlProject) -> dict[str, Any]:
                     if shape.get("label") in per_class:
                         per_class[shape["label"]] += 1
         return {"total": len(rows), "unlabeled": len(rows) - labeled, "per_class": per_class}
-    labels = list(project.samples.values_list("label", flat=True))
-    return {"total": len(labels), "unlabeled": labels.count(""), "per_class": {c: labels.count(c) for c in classes}}
+    tally = Counter(project.samples.values_list("label", flat=True))
+    total = sum(tally.values())
+    return {"total": total, "unlabeled": tally.get("", 0), "per_class": {c: tally.get(c, 0) for c in classes}}
 
 
 def _project_out(project: DlProject, *, counts: bool = True) -> dict[str, Any]:
@@ -108,8 +110,9 @@ def _pixels_sha256(image: np.ndarray) -> str:
     return digest.hexdigest()
 
 
-def _is_duplicate(project: DlProject, sha: str) -> bool:
-    return bool(sha) and project.samples.filter(sha256=sha).exists()
+def _existing_shas(project: DlProject) -> set[str]:
+    """同專案已存在的像素雜湊，一次查回（之後純記憶體比對；空字串=舊資料，略過）。"""
+    return {h for h in project.samples.values_list("sha256", flat=True) if h}
 
 
 def _save_sample(project: DlProject, image: np.ndarray, label: str = "", sha: str = "") -> DlSample:
@@ -274,14 +277,14 @@ def upload_samples(request: HttpRequest, project_id: int, files: list[UploadedFi
     if label and label not in (project.classes or []):
         raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
     created, skipped, duplicates = [], 0, 0
-    seen: set[str] = set()  # 同一批內的重複（例如 zip 裡同圖兩份）也擋
+    seen = _existing_shas(project)  # 既有＋同批內（zip 裡同圖兩份）都擋；一次查回不逐張打 DB
     for file in files:
         for image in _iter_upload_images(file):
             if image is None:
                 skipped += 1
                 continue
             sha = _pixels_sha256(image)
-            if sha in seen or _is_duplicate(project, sha):
+            if sha in seen:
                 duplicates += 1
                 continue
             seen.add(sha)
@@ -300,14 +303,16 @@ def samples_from_source(request: HttpRequest, project_id: int):
     if label and label not in (project.classes or []):
         raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
     created, duplicates = [], 0
+    seen = _existing_shas(project)
     for _ in range(count):
         image = grab_by_id(source_id)
         if image is None:
             break
         sha = _pixels_sha256(image)
-        if _is_duplicate(project, sha):  # 靜態畫面連抓 N 張會是同一張，去重後只留一份
+        if sha in seen:  # 靜態畫面連抓 N 張會是同一張，去重後只留一份
             duplicates += 1
             continue
+        seen.add(sha)
         created.append(_sample_out(_save_sample(project, image, label, sha=sha)))
     if not created and not duplicates:
         raise ValidationError("來源沒有取到任何影像", code="grab_failed")
@@ -472,15 +477,17 @@ def dataset_import(request: HttpRequest, project_id: int):
         project.classes = list(project.classes or []) + missing
         project.save(update_fields=["classes", "updated_at"])
     imported = skipped = duplicates = 0
+    seen = _existing_shas(project)
     for image_path, label_text in iter_dataset(root):
         image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if image is None:
             skipped += 1
             continue
         sha = _pixels_sha256(image)
-        if _is_duplicate(project, sha):  # 重匯同一個資料夾不會長出兩份
+        if sha in seen:  # 重匯同一個資料夾不會長出兩份
             duplicates += 1
             continue
+        seen.add(sha)
         sample = _save_sample(project, image, sha=sha)
         shapes = yolo_to_shapes(label_text, classes)
         if shapes:

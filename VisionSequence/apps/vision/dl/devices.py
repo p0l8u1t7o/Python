@@ -29,6 +29,24 @@ def available_providers() -> list[str]:
         return []
 
 
+_torch_cuda: bool | None = None
+
+
+def _torch_cuda_available() -> bool:
+    """torch 的 CUDA 可用性——訓練走 torch，不能只看 onnxruntime providers
+    （裝 CPU 版 onnxruntime＋CUDA 版 torch 時，訓練裝置仍應列出 cuda）。
+    torch import 很重（秒級），查一次就快取。"""
+    global _torch_cuda
+    if _torch_cuda is None:
+        try:
+            import torch
+
+            _torch_cuda = bool(torch.cuda.is_available())
+        except Exception:  # noqa: BLE001 — 未安裝或初始化失敗都當沒有
+            _torch_cuda = False
+    return _torch_cuda
+
+
 def _gpus() -> list[dict[str, Any]]:
     """NVIDIA GPU 資訊（nvidia-smi 存在才有；查不到就空清單，不報錯）。"""
     try:
@@ -64,7 +82,7 @@ def info() -> dict[str, Any]:
     with _lock:
         preferred = list(_preferred)
         train_device = _train_device
-    train_devices = ["cpu"] + (["cuda"] if any("CUDA" in p for p in providers) else [])
+    train_devices = ["cpu"] + (["cuda"] if (_torch_cuda_available() or any("CUDA" in p for p in providers)) else [])
     return {
         "onnxruntime": ort_version,
         "providers": providers,

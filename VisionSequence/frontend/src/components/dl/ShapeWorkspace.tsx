@@ -154,6 +154,9 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     loadedIdRef.current = null
     setSelectedId(id)
   }
+  // Thumb 有 memo（比較器刻意忽略 onClick）：閉包可能是舊 render 的，經 ref 轉一手才讀得到最新 dirty
+  const switchSampleRef = useRef(switchSample)
+  switchSampleRef.current = switchSample
 
   function step(delta: number) {
     if (!sample) return
@@ -291,6 +294,8 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   })
 
   // ---- ImageViewer 接線 ----
+  // 選中縮圖要畫「編輯中」的 shapes：物件用 useMemo 保持穩定，hover 重繪時 Thumb 的 memo 才擋得住
+  const selectedThumbSample = useMemo(() => (sample ? { ...sample, shapes } : null), [sample, shapes])
   const suggestion = sample ? suggestions.get(sample.id) : undefined
   const overlays = useMemo<Overlay[]>(() => {
     if (!sample) return []
@@ -363,9 +368,8 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   }, [sample, mode, selectedIndex, shapes, activeClass, classes, pushHistory])
 
   /** 繪製中的多邊形收尾：至少 3 點才成形，之後回到選取模式並選中新形狀。 */
-  const commitDraft = useCallback(() => {
+  const finishDraft = useCallback((points: [number, number][]) => {
     if (!sample) return
-    const points = draft
     setDraft([])
     setHover(null)
     if (points.length < 3) {
@@ -387,7 +391,23 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     })
     setDirty(true)
     setMode('select')
-  }, [sample, draft, activeClass, classes, pushHistory, toast, t])
+  }, [sample, activeClass, classes, pushHistory, toast, t])
+
+  const commitDraft = useCallback(() => finishDraft(draft), [finishDraft, draft])
+
+  /** 雙擊收尾：雙擊本身會先觸發 1~2 次單擊（尾端多出重複點），先去掉再閉合；點不夠就先不收（繼續畫）。 */
+  const doubleFinish = useCallback(() => {
+    const eps = 8 / Math.max(0.05, viewportRef.current.scale)
+    let points = draft
+    while (points.length >= 2) {
+      const [lx, ly] = points[points.length - 1]
+      const [px, py] = points[points.length - 2]
+      if (Math.hypot(lx - px, ly - py) > eps) break
+      points = points.slice(0, -1)
+    }
+    if (points.length < 3) return
+    finishDraft(points)
+  }, [draft, finishDraft])
 
   const cancelDraft = useCallback(() => {
     setDraft([])
@@ -465,7 +485,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       {/* 縮圖牆（與畫布同高，自行捲動） */}
       <div className="max-h-[50vh] space-y-1.5 overflow-y-auto pr-1 lg:max-h-none lg:h-full" data-testid="dl-thumb-wall">
         {samples.map((s) => (
-          <Thumb key={s.id} sample={s.id === sample.id ? { ...s, shapes } : s} classes={classes} selected={s.id === sample.id} hasSuggestion={suggestions.has(s.id)} onClick={() => switchSample(s.id)} />
+          <Thumb key={s.id} sample={s.id === sample.id && selectedThumbSample ? selectedThumbSample : s} classes={classes} selected={s.id === sample.id} hasSuggestion={suggestions.has(s.id)} onClick={() => switchSampleRef.current(s.id)} />
         ))}
       </div>
 
@@ -559,6 +579,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
               onRoiChange={mode === 'bbox' || (mode === 'select' && selectedIndex !== null) ? onRoiChange : undefined}
               onPick={onPick}
               onHover={mode === 'polygon' && draft.length ? setHover : undefined}
+              onDoublePick={mode === 'polygon' && draft.length ? doubleFinish : undefined}
               onViewportChange={(vp) => { viewportRef.current = vp }}
               badge={dirty ? { text: t('dl.unsaved'), tone: 'neutral' } : null}
             />
