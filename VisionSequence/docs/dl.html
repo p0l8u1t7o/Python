@@ -133,7 +133,8 @@
 POST /api/vision/dl/projects/{id}/dataset-import   {"dir": "D:/TrainingImage/ATD3"}</pre>
 <ul>
 <li>匯出：images/labels/{train,val}＋data.yaml（已存在的 data.yaml 不覆寫）；寫完自動清 <code>labels/*.cache</code>（ultralytics 的快取坑）。</li>
-<li>匯入：接受 <code>root/</code> 或 <code>root/dataset/</code> 佈局、任何 split 子資料夾；data.yaml 的類別若專案沒有會自動補進類別清單。</li>
+<li>匯入：接受 <code>root/</code> 或 <code>root/dataset/</code> 佈局、任何 split 子資料夾；data.yaml 的類別若專案沒有會自動補進類別清單，重複影像（像素雜湊）會略過。</li>
+<li><strong>前端入口</strong>：右欄「資料集」面板的「匯出 YOLO／匯入 YOLO」（shapes 專案；填伺服器主機上的資料夾路徑）。</li>
 </ul>
 
 <table>

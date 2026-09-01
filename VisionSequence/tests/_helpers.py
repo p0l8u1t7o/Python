@@ -117,3 +117,27 @@ def gap_classifier_onnx(folder: str, size: int = 8) -> str:
 def identity_onnx(folder: str, size: int = 8) -> str:
     """x[1,3,s,s] → Identity → y[1,3,s,s]：當分割模型用（3 類，argmax 為最大通道）。"""
     return write_onnx(os.path.join(folder, "id.onnx"), [("Identity", ["x"], ["y"])], [("x", [1, 3, size, size])], [("y", [1, 3, size, size])])
+
+
+def yolo_seg_onnx(folder: str, size: int = 64) -> str:
+    """固定輸出的 YOLO-seg 風格模型（dl_instance 的接線測試：letterbox／NMS／mask 合成／座標回映）。
+
+    det[1,9,16]（4 box + 1 類 + 4 mask 係數；只有第 0 個候選過信心門檻，框在 letterbox 中央 40%）
+    ＋ protos[1,4,8,8] 全 1（sigmoid(係數和 20)≈1 → mask 蓋滿框內）。輸入影像內容不影響輸出。
+    """
+    from apps.vision.dl.onnx_io import build_model
+
+    n = 16
+    det = np.zeros((1, 9, n), dtype=np.float32)
+    det[0, :, 0] = [size / 2, size / 2, size * 0.4, size * 0.4, 0.9, 5, 5, 5, 5]
+    protos = np.ones((1, 4, 8, 8), dtype=np.float32)
+    model = build_model(
+        nodes=[("Identity", ["det0"], ["det"]), ("Identity", ["protos0"], ["protos"]), ("Identity", ["x"], ["unused"])],
+        inputs=[("x", [1, 3, size, size])],
+        outputs=[("det", [1, 9, n]), ("protos", [1, 4, 8, 8])],
+        initializers={"det0": det, "protos0": protos},
+    )
+    path = os.path.join(folder, "seg.onnx")
+    with open(path, "wb") as f:
+        f.write(model)
+    return path

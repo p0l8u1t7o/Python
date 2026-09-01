@@ -212,6 +212,27 @@ class YoloTrainerTests(SimpleTestCase):
                 shutil.rmtree(folder, ignore_errors=True)
 
 
+class CleanMetricsTests(SimpleTestCase):
+    def test_mask_metrics_kept_box_dropped(self):
+        """分割任務：metrics/ 前綴去掉、(M) 指標保留、(B) 讓路；純 loss 鍵不受影響。"""
+        from apps.vision.dl.yolo import _clean_metrics
+
+        raw = {
+            "metrics/precision(B)": 0.5, "metrics/recall(B)": 0.4,
+            "metrics/mAP50(B)": 0.31, "metrics/mAP50-95(B)": 0.2,
+            "metrics/precision(M)": 0.6, "metrics/recall(M)": 0.55,
+            "metrics/mAP50(M)": 0.42, "metrics/mAP50-95(M)": 0.3,
+            "val/box_loss": 1.2, "fitness": 0.35,
+        }
+        out = _clean_metrics(raw)
+        self.assertEqual(out["mAP50"], 0.42)  # (M) 蓋過 (B)
+        self.assertEqual(out["precision"], 0.6)
+        self.assertEqual(out["val/box_loss"], 1.2)
+        # 只有 (B)（偵測任務）時保留 (B) 的值
+        out2 = _clean_metrics({"metrics/mAP50(B)": 0.7, "metrics/precision(B)": 0.9})
+        self.assertEqual((out2["mAP50"], out2["precision"]), (0.7, 0.9))
+
+
 class ParseYoloSegTests(SimpleTestCase):
     def test_synthetic_instance(self):
         """手工組一組 YOLO-seg 風格輸出：一個高信心框＋讓 mask 在框內為正的 protos。"""

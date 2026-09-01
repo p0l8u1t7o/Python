@@ -307,15 +307,18 @@ function TrainLog({ logs }: { logs: string[] }) {
 // ---------------------------------------------------------------------------
 // 資料集面板：train/val/test 分割與版本凍結（zip 存資產庫可下載）
 // ---------------------------------------------------------------------------
-function DatasetPanel({ project, samples }: { project: DlProject; samples: DlSample[] }) {
+function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samples: DlSample[]; isShapes: boolean }) {
   const { t } = useTranslation()
   const toast = useToast()
   const versions = useDlVersions(project.id)
-  const { autoSplit, freezeVersion, removeVersion } = useDlMutations()
+  const { autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport } = useDlMutations()
   const [val, setVal] = useState('15')
   const [test, setTest] = useState('10')
   const [verName, setVerName] = useState('')
   const [deletingVersion, setDeletingVersion] = useState<DlDatasetVersion | null>(null)
+  //: YOLO 資料集互通（shapes 專案；伺服器本機路徑）：null = 關閉
+  const [interop, setInterop] = useState<'export' | 'import' | null>(null)
+  const [interopDir, setInteropDir] = useState('')
   const splitCounts = useMemo(() => {
     const c = { train: 0, val: 0, test: 0, unassigned: 0 }
     for (const s of samples) c[s.split || 'unassigned'] += 1
@@ -326,6 +329,23 @@ function DatasetPanel({ project, samples }: { project: DlProject; samples: DlSam
     try {
       const r = await autoSplit.mutateAsync({ projectId: project.id, val: (Number(val) || 0) / 100, test: (Number(test) || 0) / 100 })
       toast.success(t('dl.splitDone', r))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function runInterop() {
+    const dir = interopDir.trim()
+    if (!dir) return
+    try {
+      if (interop === 'export') {
+        const r = await datasetExport.mutateAsync({ projectId: project.id, dir, val_ratio: (Number(val) || 0) / 100 })
+        toast.success(t('dl.exported', r))
+      } else {
+        const r = await datasetImport.mutateAsync({ projectId: project.id, dir })
+        toast.success(t('dl.importedYolo', r))
+      }
+      setInterop(null)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     }
@@ -390,7 +410,29 @@ function DatasetPanel({ project, samples }: { project: DlProject; samples: DlSam
             </Button>
           </div>
         </div>
+        {/* YOLO txt 互通（shapes 專案；VisionStereo 格式，伺服器本機路徑） */}
+        {isShapes ? (
+          <div className="space-y-1.5 border-t border-line pt-2.5">
+            <p className="text-xs font-medium text-muted">{t('dl.interop')}</p>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!samples.length} onClick={() => setInterop('export')} data-testid="dl-yolo-export"><Download size={13} /> {t('dl.exportYolo')}</Button>
+              <Button size="sm" onClick={() => setInterop('import')} data-testid="dl-yolo-import"><Upload size={13} /> {t('dl.importYolo')}</Button>
+            </div>
+            <p className="text-xs text-subtle">{t('dl.interopHint')}</p>
+          </div>
+        ) : null}
       </CardBody>
+      <Modal open={interop !== null} onClose={() => setInterop(null)} title={interop === 'export' ? t('dl.exportYolo') : t('dl.importYolo')} dirty={Boolean(interopDir)}
+        footer={<><Button onClick={() => setInterop(null)}>{t('common.cancel')}</Button>
+          <Button variant="primary" loading={datasetExport.isPending || datasetImport.isPending} disabled={!interopDir.trim()} onClick={() => void runInterop()} data-testid="dl-interop-go">
+            {interop === 'export' ? t('dl.exportYolo') : t('dl.importYolo')}
+          </Button></>}>
+        <div className="space-y-3">
+          <TextInput label={t('dl.serverDir')} hint={t('dl.serverDirHint')} placeholder="D:\Datasets\part1" value={interopDir}
+            onChange={(e) => setInteropDir(e.target.value)} autoFocus data-testid="dl-interop-dir" />
+          <p className="text-xs text-subtle">{interop === 'export' ? t('dl.exportYoloHint', { val }) : t('dl.importYoloHint')}</p>
+        </div>
+      </Modal>
       <ConfirmDialog open={deletingVersion !== null} onClose={() => setDeletingVersion(null)} danger title={t('dl.deleteVersion')}
         message={t('dl.deleteVersionMessage', { name: deletingVersion?.name ?? '' })}
         onConfirm={() => {
@@ -788,7 +830,7 @@ export function DlPage() {
         {/* 訓練面板 */}
         <div className="space-y-3">
           {project.data && trainer ? <TrainPanel key={project.data.id} project={project.data} trainer={trainer} /> : null}
-          {project.data ? <DatasetPanel key={`ds-${project.data.id}`} project={project.data} samples={samples.data ?? []} /> : null}
+          {project.data ? <DatasetPanel key={`ds-${project.data.id}`} project={project.data} samples={samples.data ?? []} isShapes={!!isShapes} /> : null}
         </div>
       </div>
 

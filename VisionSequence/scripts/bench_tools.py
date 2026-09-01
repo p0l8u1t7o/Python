@@ -44,7 +44,7 @@ from apps.vision.images import ImageStore, encode_image  # noqa: E402
 from apps.vision.sources.grabbers import SyntheticGrabber  # noqa: E402
 from apps.vision.tools import base, register_builtins  # noqa: E402
 from apps.vision.tools.base import Result, ToolContext  # noqa: E402
-from tests._helpers import _field_bytes, _field_str, _field_varint, _value_info, gap_classifier_onnx, identity_onnx, save_png  # noqa: E402
+from tests._helpers import _field_bytes, _field_str, _field_varint, _value_info, gap_classifier_onnx, identity_onnx, save_png, yolo_seg_onnx  # noqa: E402
 
 register_builtins()
 
@@ -146,7 +146,7 @@ class Scene:
         self.template = save_png(self.gray[cy - r : cy + r, cx - r : cx + r], folder, f"tpl_{w}.png")
         self.golden = save_png(self.gray, folder, f"golden_{w}.png")
         self.mask = cv2.threshold(self.gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder)}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder)}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -230,6 +230,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("dl_classify", "dl_classify", big, {"model": "gap", "roi": plate}, {}, {}),
         ("dl_detect", "dl_detect", big, {"model": "yolo", "labels": "a\nb\nc\nd", "roi": plate, "conf": 0.1}, {}, {}),
         ("dl_segment", "dl_segment", big, {"model": "idn", "roi": plate}, {}, {}),
+        ("dl_instance", "dl_instance", big, {"model": "seg", "labels": "obj", "conf": 0.5, "roi": plate}, {}, {}),
         # logic
         ("if_number", "if_number", None, {"operator": "eq", "threshold": 5}, {"value": 5}, {}),
         ("in_range", "in_range", None, {"low": 0, "high": 10}, {"value": 5}, {}),

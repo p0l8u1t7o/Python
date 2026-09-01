@@ -123,7 +123,9 @@ def _clean_metrics(raw: dict[str, Any]) -> dict[str, Any]:
         except (TypeError, ValueError):
             continue
         base = name.replace("(B)", "").replace("(M)", "")
-        if name.endswith("(B)") and (base + "(M)") in raw or (("metrics/" + base + "(M)") in raw):
+        # 只有「同名 (M) 指標存在」時才略過 (B)（分割任務優先 mask 指標）。
+        # 注意括號：寫成 `A and B or C` 會讓 (M) 鍵自己命中 C 而全部被丟掉（mAP 曲線就消失了）。
+        if name.endswith("(B)") and (base + "(M)" in raw or "metrics/" + base + "(M)" in raw):
             continue
         out[base] = value
     return out
@@ -286,7 +288,15 @@ class YoloSegTrainer(Trainer):
         model = YOLO(weights)
         names = {int(k): str(v) for k, v in (getattr(model, "names", {}) or {}).items()}
         conf = float(params.get("suggest_conf") or 0.4)
-        imgsz = int(params.get("imgsz") or 640)
+        imgsz = int(params.get("imgsz") or 0)
+        if not imgsz:
+            # 用權重檔記錄的訓練 imgsz：推論尺寸與訓練不一致時（例如訓練 320、預設 640）會整批漏檢
+            try:
+                ckpt = getattr(model, "ckpt", None) or {}
+                imgsz = int((ckpt.get("train_args") or {}).get("imgsz") or 0) if isinstance(ckpt, dict) else 0
+            except (TypeError, ValueError):
+                imgsz = 0
+        imgsz = imgsz or 640
         out: list[Suggestion] = []
         for s in unlabeled:
             image = s.load()

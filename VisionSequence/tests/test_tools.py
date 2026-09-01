@@ -20,6 +20,7 @@ from tests._helpers import (
     run_tool,
     save_png,
     temp_dir,
+    yolo_seg_onnx,
 )
 
 
@@ -30,7 +31,7 @@ class RegistryTests(SimpleTestCase):
             "caliper", "distance", "angle", "intensity", "calibration", "histogram",
             "fit_arc", "fit_ellipse", "wall_thickness", "concentricity", "chamfer_angle", "tolerance_judge",
             "blob", "defect_diff", "barcode", "text_presence", "color_check", "edge_density", "pixel_count",
-            "dl_classify", "dl_detect", "dl_segment",
+            "dl_classify", "dl_detect", "dl_segment", "dl_instance",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -537,6 +538,32 @@ class DlTests(SimpleTestCase):
         self.assertEqual(r.outputs["area"], 800)
         self.assertEqual({c["label"]: c["area"] for c in r.outputs["classes"]}, {"b": 800, "r": 800})
         self.assertEqual(r.branch, "ok")
+
+    def test_instance_with_synthetic_seg_model(self):
+        """dl_instance 接線：letterbox 前處理、NMS、mask 合成、座標回映到全圖。"""
+        folder = temp_dir()
+        model = yolo_seg_onnx(folder, 64)
+        img = np.full((128, 128, 3), 50, np.uint8)
+        r = run_tool("dl_instance", img, {"model": "m", "labels": "obj", "conf": 0.5}, assets={"m": model})
+        self.assertEqual(r.outputs["count"], 1, r.message)
+        self.assertEqual(r.branch, "found")
+        m0 = r.outputs["matches"][0]
+        self.assertEqual(m0["label"], "obj")
+        self.assertGreater(m0["score"], 0.5)
+        # letterbox 中央 40% 的框 → 全圖中央（128×128、scale 0.5）：約 (38.4, 38.4)~(89.6, 89.6)
+        self.assertAlmostEqual(m0["x"], 38.4, delta=3)
+        self.assertAlmostEqual(m0["w"], 51.2, delta=4)
+        mask = r.outputs["mask"]
+        self.assertEqual(mask.shape, (128, 128))
+        self.assertEqual(int(mask[64, 64]), 255)
+        self.assertEqual(int(mask[5, 5]), 0)
+        self.assertTrue(r.outputs["contours"])
+        # 信心門檻高過唯一候選 → not_found 分支、status 依 min_count 判 ng
+        r2 = run_tool("dl_instance", img, {"model": "m", "labels": "obj", "conf": 0.95}, assets={"m": model})
+        self.assertEqual((r2.outputs["count"], r2.branch, r2.status), (0, "not_found", "ng"))
+        # filter_labels 對不上 → 全被濾掉
+        r3 = run_tool("dl_instance", img, {"model": "m", "labels": "obj", "conf": 0.5, "filter_labels": "nope"}, assets={"m": model})
+        self.assertEqual(r3.outputs["count"], 0)
 
     def test_missing_model_and_bad_model(self):
         with self.assertRaises(ToolError):

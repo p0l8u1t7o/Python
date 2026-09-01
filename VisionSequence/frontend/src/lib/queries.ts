@@ -839,6 +839,15 @@ export function useDlMutations() {
     mutationFn: ({ id }: { id: number; projectId: number }) => api.delete(`/vision/dl/versions/${id}`),
     onSuccess: (_, v) => void client.invalidateQueries({ queryKey: ['dl', 'versions', v.projectId] }),
   })
+  const datasetExport = useMutation({
+    mutationFn: ({ projectId, dir, val_ratio }: { projectId: number; dir: string; val_ratio?: number }) =>
+      api.post<{ dir: string; train: number; val: number; test: number }>(`/vision/dl/projects/${projectId}/dataset-export`, { dir, val_ratio }),
+  })
+  const datasetImport = useMutation({
+    mutationFn: ({ projectId, dir }: { projectId: number; dir: string }) =>
+      api.post<{ imported: number; skipped: number; duplicates: number; classes: string[] }>(`/vision/dl/projects/${projectId}/dataset-import`, { dir }),
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
   const samPoint = useMutation({
     mutationFn: ({ projectId, sampleId, points, model }: { projectId: number; sampleId: string; points: [number, number][]; model?: string }) =>
       api.post<{ shapes: DlShape[] }>(`/vision/dl/projects/${projectId}/sam-point`, { sample_id: sampleId, points, model }),
@@ -864,5 +873,5 @@ export function useDlMutations() {
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
 }
