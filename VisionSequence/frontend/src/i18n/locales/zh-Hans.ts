@@ -904,7 +904,7 @@ const zhHans = {
     missingSource: '请在取像步骤选择影像来源',
     empty: '没有符合的范本',
     menu: '范本',
-    categories: { count: '计数', quality: '品质', measure: '量测', detect: '侦测', identify: '识别', custom: '自订' },
+    categories: { count: '计数', quality: '品质', measure: '量测', detect: '侦测', identify: '识别', tutorial: '教学', custom: '自订' },
   },
   batch: {
     title: '批量测试',
@@ -1064,6 +1064,9 @@ const zhHans = {
     favorite: '收藏',
     unfavorite: '取消收藏',
     noFavorites: '按工具旁的星号加入收藏',
+    addNote: '新增注解',
+    addNoteHint: '在画布放一张便利贴，写流程说明或现场调机备注',
+    noteDefaultLabel: '注解',
   },
   nodeMenu: {
     openTool: '打开工具页',

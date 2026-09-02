@@ -904,7 +904,7 @@ const zhHant = {
     missingSource: '請在取像步驟選擇影像來源',
     empty: '沒有符合的範本',
     menu: '範本',
-    categories: { count: '計數', quality: '品質', measure: '量測', detect: '偵測', identify: '識別', custom: '自訂' },
+    categories: { count: '計數', quality: '品質', measure: '量測', detect: '偵測', identify: '識別', tutorial: '教學', custom: '自訂' },
   },
   batch: {
     title: '批次測試',
@@ -1064,6 +1064,9 @@ const zhHant = {
     favorite: '收藏',
     unfavorite: '取消收藏',
     noFavorites: '按工具旁的星號加入收藏',
+    addNote: '新增註解',
+    addNoteHint: '在畫布放一張便利貼，寫流程說明或現場調機備註',
+    noteDefaultLabel: '註解',
   },
   nodeMenu: {
     openTool: '開啟工具頁',

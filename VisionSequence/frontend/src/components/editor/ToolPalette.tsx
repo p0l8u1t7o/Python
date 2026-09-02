@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Search, Star } from 'lucide-react'
+import { Plus, Search, Star, StickyNote } from 'lucide-react'
 
 import { Modal } from '@/components/ui'
 import type { ToolCatalogue, ToolTypeDef } from '@/lib/types'
@@ -33,12 +33,13 @@ export function writeFavorites(list: string[]) {
   }
 }
 
-/** 左欄：新增工具按鈕＋收藏清單（可拖曳；點擊直接插入畫布中央）。 */
-export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert }: {
+/** 左欄：新增工具／註解按鈕＋收藏清單（可拖曳；點擊直接插入畫布中央）。 */
+export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert, onAddNote }: {
   catalogue: ToolCatalogue | undefined
   favorites: string[]
   onOpenPicker: () => void
   onInsert: (def: ToolTypeDef) => void
+  onAddNote: () => void
 }) {
   const { t } = useTranslation()
   const byKey = useMemo(() => new Map((catalogue?.items ?? []).map((d) => [d.key, d])), [catalogue])
@@ -48,6 +49,10 @@ export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert }: 
       <button type="button" onClick={onOpenPicker} data-testid="btn-add-tool"
         className="btn-primary w-full !justify-center !py-2 text-sm">
         <Plus size={16} /> {t('palette.addTool')}
+      </button>
+      <button type="button" onClick={onAddNote} data-testid="btn-add-note"
+        className="btn w-full !justify-center !py-1.5 text-xs" title={t('palette.addNoteHint')}>
+        <StickyNote size={14} /> {t('palette.addNote')}
       </button>
       <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted">{t('palette.favorites')}</p>
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
@@ -121,9 +126,9 @@ export function ToolPicker({ open, onClose, catalogue, favorites, onToggleFavori
 
   return (
     <Modal open={open} onClose={onClose} title={t('palette.pickerTitle')} size="lg">
-      <div className="grid max-h-[70vh] grid-cols-[170px_minmax(0,1fr)] gap-3" data-testid="tool-picker">
+      <div className="grid h-[70vh] min-h-0 grid-cols-[170px_minmax(0,1fr)] gap-3 overflow-hidden" data-testid="tool-picker">
         {/* 左：功能分群 */}
-        <div className="space-y-1 overflow-y-auto pr-1">
+        <div className="min-h-0 space-y-1 overflow-y-auto pr-1">
           {tab('__all__', t('palette.allTools'), catalogue?.items.length ?? 0)}
           {tab('__fav__', t('palette.favorites'), favorites.length)}
           <div className="my-1 h-px bg-line" />

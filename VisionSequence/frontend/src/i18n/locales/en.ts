@@ -411,7 +411,7 @@ const en = {
     missingSource: 'Choose an image source in the capture step',
     empty: 'No matching template',
     menu: 'Templates',
-    categories: { count: 'Count', quality: 'Quality', measure: 'Measure', detect: 'Detect', identify: 'Identify', custom: 'Custom' },
+    categories: { count: 'Count', quality: 'Quality', measure: 'Measure', detect: 'Detect', identify: 'Identify', tutorial: 'Tutorial', custom: 'Custom' },
   },
   batch: {
     title: 'Batch test',
@@ -538,7 +538,8 @@ const en = {
     allTools: 'All tools',
     pickHint: 'Click to add to the canvas',
     favClickHint: 'Click to add at canvas center; drag onto the canvas also works',
-    noResults: 'No matching tools', favorites: 'Favorites', favorite: 'Favorite', unfavorite: 'Unfavorite', noFavorites: 'Click the star next to a tool to add it' },
+    noResults: 'No matching tools', favorites: 'Favorites', favorite: 'Favorite', unfavorite: 'Unfavorite', noFavorites: 'Click the star next to a tool to add it',
+    addNote: 'Add note', addNoteHint: 'Drop a sticky note on the canvas for flow instructions or tuning remarks', noteDefaultLabel: 'Note' },
   nodeMenu: {
     openTool: 'Open tool page',
     duplicate: 'Duplicate',

@@ -54,14 +54,7 @@ class InstantiateIn(Schema):
 
 def _builtin_templates() -> list[dict[str, Any]]:
     items = []
-    for key, name, desc, category, builder in (
-        ("hole_count", "零件孔數檢測", "灰階→去雜訊→二值化→形態學→Blob 計數→數值判斷→OK/NG；含具名輸出與結果影像", "count", demo.hole_count_flow),
-        ("exposure", "曝光檢查", "縮圖→Otsu 門檻→範圍判斷→OK/NG", "quality", demo.brightness_gate_flow),
-        ("locate_measure", "定位＋卡尺量測", "範本比對→定位補正→ROI 跟隨→卡尺寬度→公差判定", "measure", demo.locate_measure_flow),
-        ("cup_measure", "深抽杯件量測", "範本比對→定位補正→ROI 跟隨×3→外徑／內徑找圓＋壁厚→同心度→公差判定×3→具名輸出→OK/NG", "measure", demo.cup_measure_flow),
-        ("color_presence", "顏色／有無檢測", "色彩範圍遮罩→像素計數→門檻判定", "detect", demo.color_presence_flow),
-        ("barcode_read", "條碼／QR 讀取", "讀碼→是否讀到→具名輸出", "identify", demo.barcode_flow),
-    ):
+    for key, name, desc, category, builder in demo.BUILTIN_TEMPLATES:
         graph = builder(SOURCE_PLACEHOLDER)
         items.append({
             "id": f"builtin:{key}", "name": name, "description": desc, "category": category, "source": "builtin",

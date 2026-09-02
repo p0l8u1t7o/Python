@@ -1,10 +1,11 @@
 """示範流程（程式化產生，經 validate_graph 後寫入）。
 
 節點用 _node / _edge helper 建，座標以 300×170 網格排，讓畫布一開就整齊。
-每個樣板配一組合成樣本圖（apps/vision/demo_images.py，folder 來源、群組「範例」），
-座標與公差都對齊合成圖的標稱值，seed 完開箱就能執行；範本／良品資產也在 seed 時
-從樣本圖自動裁切建立。深度學習（dl_*）、save_image 與 write_modbus 需要模型／連線，
-不入樣板，見各流程便利貼說明。
+範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES → GET /vision/templates 的 builtin 項），
+seed_demo 只建 2 個示範流程＋每個樣板一組合成樣本圖（apps/vision/demo_images.py，
+folder 來源、群組「範例」）＋範本／良品資產（從樣本圖自動裁切）。座標與公差都對齊
+合成圖的標稱值，範本掛上對應的「範例：⋯」來源就能執行。深度學習（dl_*）、save_image
+與 write_modbus 需要模型／連線，不入樣板，見各流程便利貼說明。
 """
 
 from __future__ import annotations
@@ -496,6 +497,60 @@ def label_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def _demo_asset(name: str) -> str:
+    """seed 建立的範例資產 id；還沒 seed 就回空字串（範本照樣能載入，資產欄留給使用者填）。"""
+    row = Asset.objects.filter(name=name, kind="image").only("id").first()
+    return str(row.id) if row else ""
+
+
+#: 範本畫廊的內建範本目錄：(key, 名稱, 說明, 分類, builder)。
+#: builder 在 request 時才呼叫（範例資產 id 由 _demo_asset 現查，seed 過就開箱即用）。
+BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
+    ("hole_count", "零件孔數檢測", "灰階→去雜訊→二值化→形態學→Blob 計數→數值判斷→OK/NG；含具名輸出與結果影像", "count", hole_count_flow),
+    ("exposure", "曝光檢查", "縮圖→Otsu 門檻→範圍判斷→OK/NG", "quality", brightness_gate_flow),
+    ("circle_gauge", "圓孔尺寸量測", "找圓→直徑→像素校正成 mm→公差判定；扇形 ROI 弧擬合與橢圓圓度", "measure", circle_gauge_flow),
+    ("edge_angle", "邊線夾角", "兩條找線→夾角公差；兩線交點座標與 45° 斜切角量測", "measure", edge_angle_flow),
+    ("golden_compare", "印刷良品比對", "與良品範本差異比對，抓多印／髒污／缺損；範本資產可由 seed 樣本自動建立", "quality",
+     lambda sid: golden_compare_flow(sid, _demo_asset("範例：印刷良品範本"))),
+    ("fft_defect", "織紋瑕疵檢測", "頻域低通濾掉週期織紋，殘留暗痕＝刮痕；含遮罩套用取缺陷區", "quality", fft_defect_flow),
+    ("preprocess_lab", "前處理與量測教學", "位深／查找表／濾波／翻轉影像鏈＋線剖面／統計／直方圖／邊緣密度等量測工具課", "tutorial", preprocess_lab_flow),
+    ("geometry_count", "多圓幾何計數", "霍夫找圓計數、霍夫找線清單計數、兩孔找圓→圓心距", "count", geometry_count_flow),
+    ("color_presence", "顏色／有無檢測", "色彩範圍遮罩→像素計數→門檻判定", "detect", color_presence_flow),
+    ("color_verify", "顏色比對", "區域平均色與目標色比距離→判定；顏色統計輸出色碼", "detect", color_verify_flow),
+    ("barcode_read", "條碼／QR 讀取", "讀碼→是否讀到→具名輸出", "identify", barcode_flow),
+    ("label_read", "條碼標籤讀取（透視校正）", "四點透視校正把斜貼標籤拉正→讀碼；序號區文字有無檢查", "identify", label_flow),
+    ("locate_measure", "定位＋卡尺量測", "範本比對→定位補正→ROI 跟隨→卡尺寬度→公差判定", "measure",
+     lambda sid: locate_measure_flow(sid, _demo_asset("範例：定位十字範本"))),
+    ("cup_measure", "深抽杯件量測", "範本比對→定位補正→ROI 跟隨×3→外徑／內徑找圓＋壁厚→同心度→公差判定×3→具名輸出→OK/NG", "measure",
+     lambda sid: cup_measure_flow(sid, _demo_asset("範例：杯件定位範本"))),
+)
+
+#: builtin 範本 key → 對應的範例樣本來源名稱（測試與文件用；hole_count／exposure 用合成來源）。
+TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
+    "hole_count": "示範：合成零件",
+    "exposure": "示範：合成零件",
+    "circle_gauge": "範例：圓孔量測",
+    "edge_angle": "範例：邊線夾角",
+    "golden_compare": "範例：印刷良品比對",
+    "fft_defect": "範例：織紋瑕疵",
+    "preprocess_lab": "範例：前處理教學圖",
+    "geometry_count": "範例：多圓幾何",
+    "color_presence": "範例：顏色檢驗",
+    "color_verify": "範例：顏色檢驗",
+    "barcode_read": "範例：條碼標籤",
+    "label_read": "範例：條碼標籤",
+    "locate_measure": "範例：定位量測",
+    "cup_measure": "範例：杯件量測",
+}
+
+#: 舊版 seed 建過、現改由範本畫廊提供的流程名稱（seed 時清掉，避免流程清單被塞滿）。
+_GALLERY_FLOW_NAMES = (
+    "範例：圓孔尺寸量測", "範例：邊線夾角", "範例：印刷良品比對", "範例：織紋瑕疵檢測",
+    "範例：前處理與量測教學", "範例：多圓幾何計數", "範例：顏色有無檢測", "範例：顏色比對",
+    "範例：條碼標籤讀取", "範例：定位量測", "範例：杯件量測",
+)
+
+
 def seed_demo() -> list[str]:
     from apps.vision import demo_images
 
@@ -551,24 +606,23 @@ def seed_demo() -> list[str]:
         created.append(f"資產 {asset.name}（新建）")
         return str(asset.id)
 
-    marker_tpl = sample_asset("範例：定位十字範本", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
-    cup_tpl = sample_asset("範例：杯件定位範本", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
-    golden = sample_asset("範例：印刷良品範本", "golden_print", None)
+    # 每個範本畫廊樣板一組樣本來源；範例資產從樣本圖自動裁切（builtin 範本 instantiate 時現查）。
+    for key in demo_images.SAMPLE_SETS:
+        folder_source(key)
+    sample_asset("範例：定位十字範本", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
+    sample_asset("範例：杯件定位範本", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
+    sample_asset("範例：印刷良品範本", "golden_print", None)
+
+    # 範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES），不佔流程清單；清掉舊版 seed 建過的流程。
+    stale = Flow.objects.filter(name__in=_GALLERY_FLOW_NAMES)
+    removed = stale.count()
+    if removed:
+        stale.delete()
+        created.append(f"移除 {removed} 個舊版範例流程（改由範本畫廊提供）")
 
     specs: list[tuple[str, str, Any, Any]] = [
         ("示範：零件孔數檢測", "灰階→二值化→blob 計數→判定；示範分支與具名輸出", hole_count_flow, source),
         ("示範：曝光檢查", "以 Otsu 門檻判斷曝光是否正常", brightness_gate_flow, source),
-        ("範例：圓孔尺寸量測", "找圓→像素校正→公差判定；扇形 ROI 弧擬合與橢圓圓度", circle_gauge_flow, folder_source("circle_part")),
-        ("範例：邊線夾角", "兩條找線→夾角公差；交點座標與倒角量測", edge_angle_flow, folder_source("l_bracket")),
-        ("範例：印刷良品比對", "與良品範本差異比對，抓多印／髒污／缺損", lambda sid: golden_compare_flow(sid, golden), folder_source("golden_print")),
-        ("範例：織紋瑕疵檢測", "頻域低通濾掉週期織紋，殘留暗痕＝刮痕", fft_defect_flow, folder_source("textile")),
-        ("範例：前處理與量測教學", "位深／查找表／濾波影像鏈＋剖面／統計／直方圖工具課", preprocess_lab_flow, folder_source("gradient_chart")),
-        ("範例：多圓幾何計數", "霍夫找圓計數、霍夫找線、兩孔圓心距", geometry_count_flow, folder_source("multi_circles")),
-        ("範例：顏色有無檢測", "HSV 範圍遮罩→像素計數→有料判定", color_presence_flow, folder_source("color_blocks")),
-        ("範例：顏色比對", "區域平均色與目標色比距離；顏色統計輸出色碼", color_verify_flow, folder_source("color_blocks")),
-        ("範例：條碼標籤讀取", "四點透視校正拉正標籤→讀碼；序號區文字有無", label_flow, folder_source("label_qr")),
-        ("範例：定位量測", "範本定位→ROI 跟隨→卡尺量寬→公差", lambda sid: locate_measure_flow(sid, marker_tpl), folder_source("marker_plate")),
-        ("範例：杯件量測", "定位→外徑／內徑找圓＋壁厚→同心度→多重公差", lambda sid: cup_measure_flow(sid, cup_tpl), folder_source("cup")),
     ]
     for name, desc, builder, src in specs:
         graph = validate_graph(builder(src.id))

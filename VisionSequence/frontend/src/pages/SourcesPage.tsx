@@ -186,13 +186,13 @@ export function SourcesPage() {
         ) : (
           <Table>
             <THead>
+              <Th>{t('common.actions')}</Th>
               <Th>{t('common.name')}</Th>
               <Th>{t('common.group')}</Th>
               <Th>{t('sources.kind')}</Th>
               <Th>{t('sources.config')}</Th>
               <Th>{t('sources.status')}</Th>
               <Th align="center">{t('common.enabled')}</Th>
-              <Th align="right">{t('common.actions')}</Th>
             </THead>
             <TBody>
               {sources.data.items.length === 0 ? (
@@ -200,13 +200,7 @@ export function SourcesPage() {
               ) : (
                 sources.data.items.filter((s) => matchGroup(s, groupFilter)).map((s) => (
                   <Tr key={s.id}>
-                    <Td className="font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
-                    <Td>{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
-                    <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
-                    <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.config)}>{JSON.stringify(s.config)}</code></Td>
-                    <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.status)}>{JSON.stringify(s.status)}</code></Td>
-                    <Td align="center"><Switch checked={s.is_enabled} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
-                    <Td align="right">
+                    <Td>
                       <span className="inline-flex gap-1">
                         {s.kind === 'upload' ? (
                           <label className="btn-icon cursor-pointer" title={t('common.upload')}>
@@ -219,6 +213,12 @@ export function SourcesPage() {
                         <IconButton label={t('common.delete')} onClick={() => setPendingDelete(s)}><Trash2 size={15} className="text-critical" /></IconButton>
                       </span>
                     </Td>
+                    <Td className="font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
+                    <Td>{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
+                    <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
+                    <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.config)}>{JSON.stringify(s.config)}</code></Td>
+                    <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.status)}>{JSON.stringify(s.status)}</code></Td>
+                    <Td align="center"><Switch checked={s.is_enabled} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
                   </Tr>
                 ))
               )}

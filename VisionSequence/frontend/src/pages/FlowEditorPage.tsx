@@ -476,6 +476,22 @@ function EditorInner({ flowId }: { flowId: number }) {
     [insertNode, screenToFlowPosition],
   )
 
+  const insertNoteAtCenter = useCallback(() => {
+    pushHistory()
+    const jitter = () => Math.round((Math.random() - 0.5) * 60)
+    const p = screenToFlowPosition({ x: window.innerWidth * 0.55 + jitter(), y: window.innerHeight * 0.55 + jitter() })
+    const id = nextNodeId(new Set(payloads.current.keys()), 'note')
+    const payload: GraphNode = {
+      id, type: 'note', label: t('palette.noteDefaultLabel'), description: '', enabled: true, params: {},
+      position: { x: Math.round(p.x), y: Math.round(p.y) }, width: 260, height: 100,
+    }
+    payloads.current.set(id, payload)
+    setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), { ...toFlowNode(payload, undefined), selected: true }])
+    setSelectedId(id)
+    setRightTab('inspector')
+    setDirty(true)
+  }, [pushHistory, screenToFlowPosition, setNodes, t])
+
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       const key = e.dataTransfer.getData(DRAG_MIME)
@@ -893,7 +909,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         {/* 左：工具箱 + 步驟清單 */}
         <aside className="flex shrink-0 flex-col border-r border-line bg-surface" style={{ width: layout.left }}>
           <div className="min-h-0 flex-[2]">
-            <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} />
+            <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} />
           </div>
           <p className="border-y border-line px-3 py-1.5 text-xs font-semibold text-muted">{t('editor.nodeList')} <span className="tnum font-normal">({graphNodes.length})</span></p>
           <div className="min-h-0 flex-[3] overflow-hidden">

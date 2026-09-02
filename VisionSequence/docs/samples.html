@@ -47,14 +47,15 @@
   @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
 </style>
 </head>
-</head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html" aria-current="page">範例樣板</a></nav>
 <article class="doc wide">
 
 <h1>範例樣板與合成樣本圖</h1>
-<p><code>manage.py seed_demo</code>（或 <code>dev.ps1 -Setup</code>）會建立一整組<strong>開箱即跑</strong>的範例：
-13 個流程樣板、每個樣板一組合成樣本圖（folder 影像來源、群組「範例」）、以及樣板需要的範本／良品資產。
+<p>範例樣板放在<strong>範本畫廊</strong>（流程頁「從範本建立」、編輯器頂列「載入範本」，共 14 個內建範本），
+不佔流程清單。<code>manage.py seed_demo</code>（或 <code>dev.ps1 -Setup</code>）建立配套：2 個示範流程、
+每個樣板一組合成樣本圖（folder 影像來源、群組「範例」）、以及範本／良品資產。
+從範本建立流程時選對應的「範例：⋯」來源就<strong>開箱即跑</strong>；
 內建 61 個工具中有 55 個至少出現在一個樣板裡，開啟任一樣板就能看到該工具的實際接法與參數。</p>
 
 <div class="note">每組樣本圖固定 4 張（教學圖 3 張）、其中最後一張刻意做成不良品；來源設為循環讀取，
@@ -62,20 +63,20 @@
 
 <h2 id="list">樣板一覽</h2>
 <table>
-<tr><th>流程</th><th>樣本圖</th><th>它教你什麼</th><th>主要工具</th></tr>
-<tr><td>示範：零件孔數檢測</td><td>合成零件（隨機位移／缺孔）</td><td>最基本的「二值化→blob→計數→分支判定」骨架</td><td><code>grayscale</code> <code>blur</code> <code>threshold</code> <code>morphology</code> <code>blob</code> <code>if_number</code> <code>judge</code> <code>output</code> <code>draw_result</code></td></tr>
-<tr><td>示範：曝光檢查</td><td>同上</td><td>純前處理＋邏輯的守門流程（縮小加速、Otsu 門檻當曝光指標）</td><td><code>resize</code> <code>threshold</code> <code>in_range</code></td></tr>
-<tr><td>範例：圓孔尺寸量測</td><td>亮板＋暗圓孔（孔徑第 4 張超差）</td><td>找圓→像素校正成 mm→公差判定；<strong>扇形 ROI</strong>（環形＋起迄角）弧擬合、橢圓擬合看圓度</td><td><code>find_circle</code> <code>formula</code> <code>calibration</code> <code>tolerance_judge</code> <code>fit_arc</code> <code>fit_ellipse</code></td></tr>
-<tr><td>範例：邊線夾角</td><td>L 形工件（夾角第 4 張 84°；右下 45° 斜切角）</td><td>兩條找線量夾角與交點；倒角工具量斜切角</td><td><code>find_line</code> <code>angle</code> <code>geometry</code> <code>chamfer_angle</code> <code>in_range</code></td></tr>
-<tr><td>範例：印刷良品比對</td><td>印刷圖案（第 4 張多一塊污漬）</td><td>與良品範本做差異比對，抓「不知道長怎樣」的缺陷；範本資產由 seed 自動建立</td><td><code>defect_diff</code></td></tr>
-<tr><td>範例：織紋瑕疵檢測</td><td>週期織紋（第 4 張有刮痕）</td><td>頻域低通把規律紋理整片濾掉，殘下的暗痕＝缺陷；遮罩套用取出缺陷區</td><td><code>fft_filter</code> <code>threshold</code> <code>blob</code> <code>apply_mask</code></td></tr>
-<tr><td>範例：前處理與量測教學</td><td>漸層＋灰階階梯＋暗溝</td><td>影像鏈（位深→Gamma→銳化→翻轉→前後差異）與量測課（線剖面、區域統計、直方圖、邊緣密度、暗部比例、裁切、色彩面）</td><td><code>convert_depth</code> <code>lut</code> <code>filter</code> <code>rotate_flip</code> <code>arithmetic</code> <code>line_profile</code> <code>intensity</code> <code>histogram</code> <code>edge_density</code> <code>dark_ratio</code> <code>crop</code> <code>color_convert</code></td></tr>
-<tr><td>範例：多圓幾何計數</td><td>5 個圓孔＋2 條斜線（第 4 張少一孔）</td><td>霍夫「一次抓很多圓」vs 找圓「精量測一個圓」的分工；線段清單計數；兩孔圓心距</td><td><code>hough_circles</code> <code>hough_lines</code> <code>count_list</code> <code>find_circle</code> <code>distance</code></td></tr>
-<tr><td>範例：顏色有無檢測</td><td>三色塊（第 4 張紅色偏橘）</td><td>HSV 範圍遮罩→像素計數的「有料／缺料」判定</td><td><code>color_range</code> <code>pixel_count</code></td></tr>
-<tr><td>範例：顏色比對</td><td>同上</td><td>區域平均色與目標色比距離（驗色）；顏色統計輸出色碼給上位機</td><td><code>color_check</code> <code>color_stats</code></td></tr>
-<tr><td>範例：條碼標籤讀取</td><td>斜貼標籤＋QR（第 4 張沒印碼）</td><td>四點透視校正把斜標籤拉正再讀碼；序號區文字有無檢查</td><td><code>warp_perspective</code> <code>barcode</code> <code>text_presence</code></td></tr>
-<tr><td>範例：定位量測</td><td>十字標記＋亮帶（第 4 張帶太寬）</td><td>範本定位→ROI 跟隨→卡尺量寬的定位補正三件套；範本資產由 seed 自動裁切</td><td><code>template_match</code> <code>shape_align</code> <code>fixture_roi</code> <code>caliper</code></td></tr>
-<tr><td>範例：杯件量測</td><td>同心圓杯口＋壁厚剖面（第 4 張外徑超差）</td><td>完整量測流程：定位、三個 ROI 跟隨、外徑／內徑找圓、<strong>線段 ROI</strong> 橫切量壁厚、同心度、多重公差彙總</td><td><code>find_circle</code> <code>wall_thickness</code> <code>concentricity</code> <code>tolerance_judge</code> <code>bool_logic</code></td></tr>
+<tr><th>範本</th><th>樣本圖</th><th>它教你什麼</th><th>主要工具</th></tr>
+<tr><td>零件孔數檢測</td><td>合成零件（隨機位移／缺孔）</td><td>最基本的「二值化→blob→計數→分支判定」骨架</td><td><code>grayscale</code> <code>blur</code> <code>threshold</code> <code>morphology</code> <code>blob</code> <code>if_number</code> <code>judge</code> <code>output</code> <code>draw_result</code></td></tr>
+<tr><td>曝光檢查</td><td>同上</td><td>純前處理＋邏輯的守門流程（縮小加速、Otsu 門檻當曝光指標）</td><td><code>resize</code> <code>threshold</code> <code>in_range</code></td></tr>
+<tr><td>圓孔尺寸量測</td><td>亮板＋暗圓孔（孔徑第 4 張超差）</td><td>找圓→像素校正成 mm→公差判定；<strong>扇形 ROI</strong>（環形＋起迄角）弧擬合、橢圓擬合看圓度</td><td><code>find_circle</code> <code>formula</code> <code>calibration</code> <code>tolerance_judge</code> <code>fit_arc</code> <code>fit_ellipse</code></td></tr>
+<tr><td>邊線夾角</td><td>L 形工件（夾角第 4 張 84°；右下 45° 斜切角）</td><td>兩條找線量夾角與交點；倒角工具量斜切角</td><td><code>find_line</code> <code>angle</code> <code>geometry</code> <code>chamfer_angle</code> <code>in_range</code></td></tr>
+<tr><td>印刷良品比對</td><td>印刷圖案（第 4 張多一塊污漬）</td><td>與良品範本做差異比對，抓「不知道長怎樣」的缺陷；範本資產由 seed 自動建立</td><td><code>defect_diff</code></td></tr>
+<tr><td>織紋瑕疵檢測</td><td>週期織紋（第 4 張有刮痕）</td><td>頻域低通把規律紋理整片濾掉，殘下的暗痕＝缺陷；遮罩套用取出缺陷區</td><td><code>fft_filter</code> <code>threshold</code> <code>blob</code> <code>apply_mask</code></td></tr>
+<tr><td>前處理與量測教學</td><td>漸層＋灰階階梯＋暗溝</td><td>影像鏈（位深→Gamma→銳化→翻轉→前後差異）與量測課（線剖面、區域統計、直方圖、邊緣密度、暗部比例、裁切、色彩面）</td><td><code>convert_depth</code> <code>lut</code> <code>filter</code> <code>rotate_flip</code> <code>arithmetic</code> <code>line_profile</code> <code>intensity</code> <code>histogram</code> <code>edge_density</code> <code>dark_ratio</code> <code>crop</code> <code>color_convert</code></td></tr>
+<tr><td>多圓幾何計數</td><td>5 個圓孔＋2 條斜線（第 4 張少一孔）</td><td>霍夫「一次抓很多圓」vs 找圓「精量測一個圓」的分工；線段清單計數；兩孔圓心距</td><td><code>hough_circles</code> <code>hough_lines</code> <code>count_list</code> <code>find_circle</code> <code>distance</code></td></tr>
+<tr><td>顏色／有無檢測</td><td>三色塊（第 4 張紅色偏橘）</td><td>HSV 範圍遮罩→像素計數的「有料／缺料」判定</td><td><code>color_range</code> <code>pixel_count</code></td></tr>
+<tr><td>顏色比對</td><td>同上</td><td>區域平均色與目標色比距離（驗色）；顏色統計輸出色碼給上位機</td><td><code>color_check</code> <code>color_stats</code></td></tr>
+<tr><td>條碼標籤讀取（透視校正）</td><td>斜貼標籤＋QR（第 4 張沒印碼）</td><td>四點透視校正把斜標籤拉正再讀碼；序號區文字有無檢查</td><td><code>warp_perspective</code> <code>barcode</code> <code>text_presence</code></td></tr>
+<tr><td>定位＋卡尺量測</td><td>十字標記＋亮帶（第 4 張帶太寬）</td><td>範本定位→ROI 跟隨→卡尺量寬的定位補正三件套；範本資產由 seed 自動裁切</td><td><code>template_match</code> <code>shape_align</code> <code>fixture_roi</code> <code>caliper</code></td></tr>
+<tr><td>深抽杯件量測</td><td>同心圓杯口＋壁厚剖面（第 4 張外徑超差）</td><td>完整量測流程：定位、三個 ROI 跟隨、外徑／內徑找圓、<strong>線段 ROI</strong> 橫切量壁厚、同心度、多重公差彙總</td><td><code>find_circle</code> <code>wall_thickness</code> <code>concentricity</code> <code>tolerance_judge</code> <code>bool_logic</code></td></tr>
 </table>
 
 <h2 id="files">樣本圖與資產放在哪</h2>
@@ -92,8 +93,9 @@
 接法見各工具說明與<a href="dl.html">深度學習教導</a>、<a href="modbus.html">Modbus 輸出</a>。</p>
 
 <h2 id="test">品質保證</h2>
-<p><code>tests/test_demo.py</code> 會在每次測試把整組範例 seed 進暫存環境並逐一實跑，
-鎖住「每個樣板都能執行、沒有錯誤節點」這條線；樣板或工具改壞會直接紅。</p>
+<p><code>tests/test_demo.py</code> 會在每次測試把整組範例 seed 進暫存環境，
+並把每個內建範本掛上對應的樣本來源實跑一輪，鎖住「每個樣板都能執行、沒有錯誤節點」這條線；
+樣板或工具改壞會直接紅。另外兩個簡化範本「零件孔數檢測（合成來源版）」與「條碼／QR 讀取」也在畫廊裡。</p>
 
 </article>
 </body>
