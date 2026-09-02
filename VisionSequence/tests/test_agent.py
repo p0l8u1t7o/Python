@@ -258,7 +258,14 @@ class ImageStorePinnedTests(TestCase):
         # 供應商錯誤翻譯（不打外網）
         self.assertIn("金鑰無效", providers._explain(RuntimeError("HTTP 400: API key not valid. Please pass a valid API key.")))
         self.assertIn("模型", providers._explain(RuntimeError("HTTP 404: model 'nope' does not exist")))
+        self.assertIn("gemini-3.6-flash", providers._explain(RuntimeError('HTTP 404: {"error": {"message": "This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.6-flash"}}')))
+        self.assertIn("過載", providers._explain(RuntimeError("HTTP 503: This model is currently experiencing high demand")))
         self.assertIn("anthropic", providers._explain(ImportError("No module named 'anthropic'")))
+        # 列模型：離線回空、缺金鑰回原因（不打外網）
+        self.assertEqual(providers.list_models(providers.AgentSettings())["models"], [])
+        out = providers.list_models(providers.AgentSettings(provider="openai", api_key="", source="user"))
+        self.assertFalse(out["ok"])
+        self.assertEqual(self.client.post("/api/vision/agent/settings/models").json()["ok"], True)
 
 
 class ProviderSettingsTests(TestCase):

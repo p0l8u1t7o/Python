@@ -137,6 +137,12 @@ def get_agent_skill(request: HttpRequest, key: str):
         raise NotFound(f"沒有 '{key}' 這個技能", code="skill_not_found") from None
 
 
+@router.post("/agent/settings/models")
+def list_agent_models(request: HttpRequest):
+    """用目前生效的設定列出金鑰可用的模型名（先儲存供應商與金鑰再按）。"""
+    return providers.list_models(_settings_for(request))
+
+
 @router.post("/agent/settings/test")
 def test_agent_settings(request: HttpRequest):
     """用目前生效的設定打一個最小請求，回成功與否＋失敗原因（金鑰錯、缺套件、模型名錯、網路）。"""

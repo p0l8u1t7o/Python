@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -22,7 +23,8 @@ from django.conf import settings as dj_settings
 log = logging.getLogger("vision.agent")
 
 PROVIDERS = ("offline", "claude", "openai", "gemini")
-DEFAULT_MODELS = {"claude": "claude-opus-5", "openai": "gpt-4o", "gemini": "gemini-2.0-flash"}
+#: 各供應商預設模型。供應商會下架舊模型（Gemini 2.0/2.5 flash 已停），404 時 _explain 會提示改用建議名稱。
+DEFAULT_MODELS = {"claude": "claude-opus-5", "openai": "gpt-4o", "gemini": "gemini-3.6-flash"}
 PROVIDER_LABELS = {"offline": "離線規則引擎", "claude": "Claude（Anthropic）", "openai": "GPT（OpenAI）", "gemini": "Gemini（Google）"}
 
 
@@ -183,13 +185,15 @@ def _explain(exc: BaseException) -> str:
     if isinstance(exc, ImportError):
         return "尚未安裝 anthropic 套件（pip install anthropic）"
     if "503" in msg or "high demand" in low or "overloaded" in low or "unavailable" in low:
-        return "供應商目前過載（503），稍後再試或換一個模型（例如 gemini-2.0-flash／gemini-2.5-flash）"
+        return "供應商目前過載（503），稍後再試或換一個模型（Gemini 建議 gemini-3.6-flash；「-latest」別名在高峰常過載）"
     if "401" in msg or "authentication" in low or "invalid x-api-key" in low or "api key not valid" in low or "incorrect api key" in low:
         return f"API 金鑰無效或被拒絕：{msg[:160]}"
     if "403" in msg or "permission" in low:
         return f"金鑰沒有權限：{msg[:160]}"
-    if "404" in msg or "not_found" in low or "model" in low and ("not found" in low or "does not exist" in low):
-        return f"模型名稱不存在或無權使用：{msg[:160]}"
+    if "404" in msg or "not_found" in low or "model" in low and ("not found" in low or "does not exist" in low or "no longer available" in low):
+        hint = re.search(r"use models/([\w.\-]+)", msg)
+        suggested = f"，供應商建議改用 {hint.group(1)}" if hint else ""
+        return f"模型名稱不存在、已下架或無權使用{suggested}：{msg[:140]}"
     if "429" in msg or "rate" in low and "limit" in low:
         return f"超過供應商速率／額度限制：{msg[:160]}"
     if "timed out" in low or "timeout" in low:
@@ -197,6 +201,39 @@ def _explain(exc: BaseException) -> str:
     if "urlopen error" in low or "name or service not known" in low or "getaddrinfo" in low or "connection" in low:
         return f"無法連到供應商：{msg[:160]}"
     return msg[:200] or exc.__class__.__name__
+
+
+def _get_json(url: str, headers: dict[str, str], timeout: float) -> dict[str, Any]:
+    req = urllib.request.Request(url, method="GET", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - 固定的供應商網址
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"HTTP {exc.code}: {exc.read().decode(errors='replace')[:500]}") from None
+
+
+def list_models(s: AgentSettings) -> dict[str, Any]:
+    """列出這把金鑰能用的模型名（給設定視窗選）。回 {ok, models:[...], reason}。"""
+    if s.provider == "offline":
+        return {"ok": True, "models": [], "reason": ""}
+    reason = missing_reason(s)
+    if reason:
+        return {"ok": False, "models": [], "reason": reason}
+    try:
+        if s.provider == "claude":
+            import anthropic
+
+            client = anthropic.Anthropic(api_key=s.api_key, timeout=TEST_TIMEOUT, max_retries=1)
+            names = [m.id for m in client.models.list()]
+        elif s.provider == "openai":
+            out = _get_json("https://api.openai.com/v1/models", {"Authorization": f"Bearer {s.api_key}"}, TEST_TIMEOUT)
+            names = sorted(m["id"] for m in out.get("data", []) if any(t in m["id"] for t in ("gpt", "o1", "o3", "o4")))
+        else:  # gemini：只留支援 generateContent 的
+            out = _get_json("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {"x-goog-api-key": s.api_key}, TEST_TIMEOUT)
+            names = [m["name"].removeprefix("models/") for m in out.get("models", []) if "generateContent" in (m.get("supportedGenerationMethods") or [])]
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "models": [], "reason": _explain(exc)}
+    return {"ok": True, "models": names[:60], "reason": ""}
 
 
 def test_connection(s: AgentSettings) -> dict[str, Any]:

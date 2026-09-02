@@ -88,6 +88,19 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string } | null>(null)
+  const [listing, setListing] = useState(false)
+  const [models, setModels] = useState<{ ok: boolean; models: string[]; reason: string } | null>(null)
+
+  async function listModels() {
+    setListing(true)
+    try {
+      setModels(await api.post<{ ok: boolean; models: string[]; reason: string }>('/vision/agent/settings/models'))
+    } catch (error) {
+      setModels({ ok: false, models: [], reason: errorMessage(error) })
+    } finally {
+      setListing(false)
+    }
+  }
   const current = mine.data
   const effProvider = provider || current?.provider || 'offline'
   const defaultModel = info?.providers.find((p) => p.value === effProvider)?.default_model ?? ''
@@ -137,7 +150,23 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
           options={(info?.providers ?? []).map((p) => ({ value: p.value, label: p.label }))} data-testid="agent-provider" />
         {effProvider !== 'offline' ? (
           <>
-            <TextInput label={t('agent.model')} placeholder={defaultModel} value={model || (provider ? '' : current?.model ?? '')} onChange={(e) => setModel(e.target.value)} />
+            <div className="space-y-1.5">
+              <div className="flex items-end gap-2">
+                <TextInput label={t('agent.model')} placeholder={defaultModel} value={model || (provider ? '' : current?.model ?? '')} onChange={(e) => setModel(e.target.value)} data-testid="agent-model" />
+                <Button loading={listing} disabled={!current?.has_key} title={current?.has_key ? t('agent.listModelsHint') : t('agent.listModelsNeedKey')} onClick={() => void listModels()} data-testid="agent-list-models">{t('agent.listModels')}</Button>
+              </div>
+              {models ? (
+                models.ok ? (
+                  models.models.length ? (
+                    <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto" data-testid="agent-models">
+                      {models.models.map((m) => (
+                        <button key={m} type="button" onClick={() => setModel(m)} className={`rounded-full border px-2 py-0.5 font-mono text-[11px] ${m === (model || current?.model) ? 'border-brand bg-brand-soft text-brand' : 'border-line text-muted hover:bg-surface-muted'}`}>{m}</button>
+                      ))}
+                    </div>
+                  ) : <p className="text-[11px] text-subtle">{t('agent.noModels')}</p>
+                ) : <p className="text-[11px] text-critical">{models.reason}</p>
+              ) : null}
+            </div>
             <div className="space-y-1">
               <TextInput label={t('agent.apiKey')} type="password" placeholder={current?.has_key ? t('agent.keySet', { hint: current.key_hint }) : 'sk-…'} value={apiKey} onChange={(e) => setApiKey(e.target.value)} data-testid="agent-key" />
               <p className="text-[11px] text-subtle">{t('agent.apiKeyHint')}</p>

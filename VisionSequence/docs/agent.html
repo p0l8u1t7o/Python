@@ -86,7 +86,7 @@
 <tr><td>offline</td><td>規則引擎（intents + synth），零外部呼叫</td><td>—</td></tr>
 <tr><td>claude</td><td>官方 <code>anthropic</code> SDK（可選安裝、延後 import）</td><td>claude-opus-5</td></tr>
 <tr><td>openai</td><td>REST <code>/v1/chat/completions</code>（標準庫 urllib，零依賴）</td><td>gpt-4o</td></tr>
-<tr><td>gemini</td><td>REST <code>generateContent</code>（標準庫 urllib，零依賴）</td><td>gemini-2.0-flash</td></tr>
+<tr><td>gemini</td><td>REST <code>generateContent</code>（標準庫 urllib，零依賴）</td><td>gemini-3.6-flash（2.0／2.5 flash 已被 Google 下架；「-latest」別名高峰常 503）</td></tr>
 </table>
 <p>解析順序：使用者自己的設定（明確選 offline 也算）→ 伺服器 <code>.env</code>（<code>VISION_AGENT_PROVIDER</code>／<code>VISION_AGENT_API_KEY</code>／<code>VISION_AGENT_MODEL</code>）→ offline。
 整合方（API 金鑰身分）沒有使用者，一律用伺服器設定。LLM 呼叫失敗（金鑰錯、逾時、輸出無效）自動落回規則引擎，功能不中斷。</p>
