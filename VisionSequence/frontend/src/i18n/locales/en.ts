@@ -89,6 +89,9 @@ const en = {
     released: 'Engine unlocked',
   },
   common: {
+    group: 'Group',
+    groupAll: 'All',
+    ungrouped: 'Ungrouped',
     save: 'Save',
     saved: 'Saved',
     cancel: 'Cancel',
@@ -347,7 +350,7 @@ const en = {
     toolsCount: '{{count}} tools',
   },
   sources: { title: 'Source library', create: 'New source', empty: 'No sources yet' },
-  assets: { title: 'Asset library', upload: 'Upload asset', empty: 'No assets yet' },
+  assets: { editGroup: 'Edit name / group', title: 'Asset library', upload: 'Upload asset', empty: 'No assets yet' },
   settings: {
     title: 'Settings', apiKey: 'API key', theme: 'Theme', language: 'Language',
     themeLight: 'Light', themeDark: 'Dark', themeCyber: 'Cyberpunk', themeSystem: 'System',
@@ -739,7 +742,11 @@ const enExtra = {
     shapes: { rect: 'Rectangle', rotated_rect: 'Rotated rectangle', circle: 'Circle', annulus: 'Annulus', polygon: 'Polygon', line: 'Line' },
   },
   sources: { sortOptions: { name: 'File name', mtime: 'Modified time', random: 'Random' } },
-  dashboard: { station: 'Station', recipe: 'Recipe', notCommissioned: 'Not taught' },
+  dashboard: {
+    station: 'Station', recipe: 'Recipe', notCommissioned: 'Not taught',
+    watch: 'Watch live', watchTitle: '{{name}} — live inspection',
+    waitingRun: 'Waiting for the next inspection… (shows instantly when the external API or continuous mode triggers a run)',
+  },
   stats: { cols: { recipe: 'Recipe', station: 'Station' }, station: 'Station', recipe: 'Recipe' },
   integration: {
     tabs: { modbus: 'Modbus output' },

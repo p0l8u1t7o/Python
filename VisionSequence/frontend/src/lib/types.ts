@@ -262,6 +262,8 @@ export interface Capacity {
 export interface ImageSource {
   id: number
   name: string
+  /** 使用者自訂群組（'' = 未分組） */
+  group: string
   kind: string
   config: Record<string, unknown>
   is_enabled: boolean
@@ -279,6 +281,8 @@ export interface SourceKind {
 export interface Asset {
   id: string
   name: string
+  /** 使用者自訂群組（'' = 未分組） */
+  group: string
   kind: 'image' | 'model' | 'file'
   size: number
   meta: Record<string, unknown>

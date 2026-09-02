@@ -101,6 +101,9 @@ const zhHans = {
     released: '引擎已解锁',
   },
   common: {
+    group: '分组',
+    groupAll: '全部',
+    ungrouped: '未分组',
     save: '保存',
     saved: '已保存',
     cancel: '取消',
@@ -325,6 +328,9 @@ const zhHans = {
     none: '尚未运行',
   },
   dashboard: {
+    watch: '观看检测画面',
+    watchTitle: '{{name}}－实时检测',
+    waitingRun: '等待下一次检测…（外部 API 或连续运行触发后实时显示）',
     title: '总览',
     subtitle: '所有流程的即时状态',
     empty: '还没有任何流程',
@@ -807,6 +813,7 @@ const zhHans = {
     sortOptions: { name: '文件名', mtime: '修改时间', random: '随机' },
   },
   assets: {
+    editGroup: '编辑名称／分组',
     title: '资产库',
     subtitle: '范本影像、模型与其他文件',
     upload: '上传资产',

@@ -84,6 +84,8 @@ SOURCE_KINDS = ("folder", "file", "usb", "synthetic", "upload", "plugin")
 class ImageSource(models.Model):
     name = models.CharField(max_length=120, unique=True)
     kind = models.CharField(max_length=20)
+    #: 使用者自訂群組（自由文字；"" = 未分組）。前端依群組篩選／分區顯示。
+    group = models.CharField(max_length=60, blank=True, default="")
     #: 依 kind 不同：folder {path, loop, sort}；file {path}；usb {index, width, height, fps}；
     #: synthetic {width, height, pattern}；plugin {class, ...}
     config = models.JSONField(default=dict)
@@ -115,7 +117,9 @@ class FlowTemplate(models.Model):
 class Asset(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
-    kind = models.CharField(max_length=20)  # image | model | file
+    kind = models.CharField(max_length=20)  # image | model | file | dataset
+    #: 使用者自訂群組（自由文字；"" = 未分組）。
+    group = models.CharField(max_length=60, blank=True, default="")
     path = models.CharField(max_length=500)
     size = models.PositiveBigIntegerField(default=0)
     #: 影像資產的寬高，模型資產的輸入形狀等。

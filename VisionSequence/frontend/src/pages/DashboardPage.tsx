@@ -1,14 +1,18 @@
-/** 總覽：每個流程一張卡，訂閱全域 SSE 即時更新（stats 由 flowStream 寫進 flows 快取）。 */
+/** 總覽：每個流程一張卡，訂閱全域 SSE 即時更新（stats 由 flowStream 寫進 flows 快取）；
+ *  「觀看」開即時監看 Modal——訂該流程的 SSE，外部 API／連續執行觸發的每筆檢測都會即時顯示。 */
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, BarChart3, Radio, Workflow } from 'lucide-react'
+import { Activity, BarChart3, MonitorPlay, Radio, Workflow } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '@/components/ui'
+import { ImageViewer } from '@/components/viewer/ImageViewer'
+import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, Modal, PageHeader, StatusBadge } from '@/components/ui'
 import { TrendStrip } from '@/pages/StatsPage'
+import { imageUrl } from '@/lib/api'
 import { useFlowStream } from '@/lib/flowStream'
 import { useCapacity, useFlows, useRecentRuns } from '@/lib/queries'
-import type { Flow } from '@/lib/types'
+import type { Flow, RunReport } from '@/lib/types'
 
 function CapacityBar() {
   const { t } = useTranslation()
@@ -33,7 +37,58 @@ function CapacityBar() {
   )
 }
 
-function FlowCard({ flow }: { flow: Flow }) {
+/** run 裡最後一個影像輸出（節點依執行順序寫入 report，倒著找即可）。 */
+function lastImage(run: RunReport): { ref: string; width: number; height: number } | null {
+  const reports = Object.values(run.nodes)
+  for (let i = reports.length - 1; i >= 0; i -= 1) {
+    for (const v of Object.values(reports[i].outputs)) {
+      if (v && typeof v === 'object' && 'ref' in v && 'width' in v) {
+        const r = v as { ref: string | null; width: number; height: number }
+        if (r.ref) return { ref: r.ref, width: r.width, height: r.height }
+      }
+    }
+  }
+  return null
+}
+
+/** 即時監看：訂該流程的 SSE（含輸出），每筆完成的 run 立刻換上最新影像與判定。 */
+function FlowLiveMonitor({ flow }: { flow: Flow }) {
+  const { t } = useTranslation()
+  const [run, setRun] = useState<RunReport | null>(null)
+  useFlowStream(flow.id, true, (event) => {
+    if (event.type === 'run_finished' && event.run) setRun(event.run)
+  })
+  const image = run ? lastImage(run) : null
+  const overlays = useMemo(() => (run ? Object.values(run.nodes).flatMap((n) => n.overlays ?? []) : []), [run])
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        {run ? (
+          <>
+            <StatusBadge status={run.status} />
+            <span className="tnum">{Math.round(run.duration_ms)} ms</span>
+            <span>{run.trigger}</span>
+            {run.station_id ? <span>{t('dashboard.station')} <code className="font-mono">{run.station_id}</code></span> : null}
+            {run.recipe ? <span>{t('dashboard.recipe')} <code className="font-mono">{run.recipe}</code></span> : null}
+            <span className="tnum text-subtle">#{run.id.slice(0, 8)}</span>
+          </>
+        ) : (
+          <span className="flex items-center gap-1.5"><span className="size-1.5 animate-pulse rounded-full bg-brand" />{t('dashboard.waitingRun')}</span>
+        )}
+      </div>
+      <div className="h-[62vh] min-h-80">
+        {image && run ? (
+          <ImageViewer className="h-full w-full" src={imageUrl(image.ref, 1600)} imageWidth={image.width} imageHeight={image.height}
+            overlays={overlays} badge={{ text: run.status.toUpperCase(), tone: run.status === 'ok' ? 'ok' : 'ng' }} />
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-lg bg-viewer text-sm text-white/60">{t('dashboard.waitingRun')}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FlowCard({ flow, onWatch }: { flow: Flow; onWatch: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const s = flow.stats
@@ -62,6 +117,9 @@ function FlowCard({ flow }: { flow: Flow }) {
             {!flow.is_enabled ? <Badge>{t('common.disabled')}</Badge> : null}
             {flow.commissioned === false ? <Badge tone="warning">{t('dashboard.notCommissioned')}</Badge> : null}
             {/* 卡片本身是 <a>，裡面不能再放 <a>（React 19 會警告 hydration），改用 button 導頁。 */}
+            <button type="button" className="btn-icon !p-1" title={t('dashboard.watch')} aria-label={t('dashboard.watch')} onClick={(e) => { e.preventDefault(); e.stopPropagation(); onWatch() }} data-testid="card-watch">
+              <MonitorPlay size={14} />
+            </button>
             <button type="button" className="btn-icon !p-1" title={t('stats.open')} aria-label={t('stats.open')} onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/flows/${flow.id}/stats`) }} data-testid="card-stats">
               <BarChart3 size={14} />
             </button>
@@ -102,6 +160,7 @@ export function DashboardPage() {
   const { t } = useTranslation()
   const flows = useFlows()
   const stream = useFlowStream(null, true)
+  const [watching, setWatching] = useState<Flow | null>(null)
 
   return (
     <Page>
@@ -125,10 +184,14 @@ export function DashboardPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {flows.data.items.map((flow) => (
-            <FlowCard key={flow.id} flow={flow} />
+            <FlowCard key={flow.id} flow={flow} onWatch={() => setWatching(flow)} />
           ))}
         </div>
       )}
+
+      <Modal open={watching !== null} onClose={() => setWatching(null)} size="lg" title={t('dashboard.watchTitle', { name: watching?.name ?? '' })}>
+        {watching ? <FlowLiveMonitor key={watching.id} flow={watching} /> : null}
+      </Modal>
     </Page>
   )
 }

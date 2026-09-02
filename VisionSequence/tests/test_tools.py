@@ -496,6 +496,34 @@ class DetectTests(SimpleTestCase):
 # ---------------------------------------------------------------------------
 # dl
 # ---------------------------------------------------------------------------
+class ToolPurityTests(SimpleTestCase):
+    """保證：工具的標記（overlays）只是顯示層 metadata——不畫進影像、也不就地修改輸入影像。
+    下一個工具收到的影像不受上一個工具的標記影響（draw_result 也只畫在自己的 copy）。"""
+
+    def test_tools_do_not_mutate_input_images(self):
+        import os
+        import shutil
+        import sys
+
+        scripts = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from bench_tools import Scene, cases, make_ctx
+
+        folder = temp_dir()
+        try:
+            scene = Scene(640, 480, folder)
+            for name, key, image, params, inputs, context in cases(scene):
+                snapshots = [(k, v, v.copy()) for k, v in {"image": image, **inputs, **context}.items() if isinstance(v, np.ndarray)]
+                if not snapshots:
+                    continue
+                base.get(key).execute(make_ctx(key, image, params, inputs, scene.assets, context))
+                for port, arr, snap in snapshots:
+                    self.assertTrue(np.array_equal(arr, snap), f"{name}（{key}）就地修改了輸入 '{port}' 的影像")
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 class DlTests(SimpleTestCase):
     def setUp(self):
         if dl_mod.ort is None:

@@ -65,12 +65,12 @@
 <h2 id="pages">頁面（左側導覽，路由）</h2>
 <table>
 <tr><th>中文</th><th>路由</th><th>程式名</th><th>說明</th></tr>
-<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>所有流程的即時狀態卡片</td></tr>
+<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>所有流程的即時狀態卡片；卡片「觀看」開即時監看 Modal（訂該流程 SSE，外部 API／連續執行的每筆檢測即時顯示影像＋標記＋判定；一般用戶可看見的流程都能觀看）</td></tr>
 <tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
 <tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
 <tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁</td></tr>
-<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單</td></tr>
-<tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔</td></tr>
+<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（自由文字，chips 篩選、表單 datalist 建議既有群組）</td></tr>
+<tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（chips 篩選、上傳可帶群組、卡片可編輯名稱／群組 <code>PATCH /assets/{id}</code>）</td></tr>
 <tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>
 <tr><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>金鑰、主題風格（淺色／深色／Cyberpunk／跟隨系統；預覽卡選擇＝唯一切換入口（頂列切換鈕已移除），登入者存進使用者設定 <code>PATCH /auth/prefs</code>）、語言（繁中／簡中／English）、引擎鎖定、密碼</td></tr>
 <tr><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>名詞定義與操作說明</td></tr>

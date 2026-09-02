@@ -81,6 +81,7 @@ def _source_out(source: ImageSource) -> dict[str, Any]:
         "id": source.id,
         "name": source.name,
         "kind": source.kind,
+        "group": source.group,
         "config": source.config or {},
         "is_enabled": source.is_enabled,
         "status": source_info(source),
@@ -94,6 +95,7 @@ def _asset_out(asset: Asset) -> dict[str, Any]:
         "id": str(asset.id),
         "name": asset.name,
         "kind": asset.kind,
+        "group": asset.group,
         "size": asset.size,
         "meta": asset.meta or {},
         "created_at": asset.created_at.isoformat(),
@@ -607,7 +609,7 @@ def list_sources(request: HttpRequest):
 def create_source(request: HttpRequest, payload: schemas.SourceIn):
     try:
         with transaction.atomic():
-            source = ImageSource.objects.create(name=payload.name.strip(), kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled)
+            source = ImageSource.objects.create(name=payload.name.strip(), kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled, group=payload.group.strip())
     except IntegrityError:
         raise Conflict("已有同名來源", code="source_name_taken") from None
     return 201, _source_out(source)
@@ -636,6 +638,8 @@ def patch_source(request: HttpRequest, source_id: int, payload: schemas.SourcePa
         source.config = payload.config
     if payload.is_enabled is not None:
         source.is_enabled = payload.is_enabled
+    if payload.group is not None:
+        source.group = payload.group.strip()
     try:
         with transaction.atomic():
             source.save()
@@ -688,7 +692,7 @@ def list_assets(request: HttpRequest, kind: str = ""):
 
 
 @router.post("/assets", response={201: dict})
-def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str = Form("image"), name: str = Form("")):
+def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str = Form("image"), name: str = Form(""), group: str = Form("")):
     if kind not in ("image", "model", "file"):
         raise ValidationError("kind 必須是 image / model / file", code="bad_kind")
     asset_id = uuid.uuid4()
@@ -704,8 +708,9 @@ def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str
         meta = {"width": int(image.shape[1]), "height": int(image.shape[0]), "channels": int(image.shape[2]) if image.ndim == 3 else 1}
     with open(path, "wb") as fh:
         fh.write(data)
-    asset = Asset.objects.create(id=asset_id, name=name or file.name or asset_id.hex, kind=kind, path=path, size=len(data), meta=meta)
+    asset = Asset.objects.create(id=asset_id, name=name or file.name or asset_id.hex, kind=kind, path=path, size=len(data), meta=meta, group=group.strip())
     return 201, _asset_out(asset)
+
 
 
 @router.post("/assets/from-image", response={201: dict})
@@ -735,6 +740,31 @@ def asset_from_image(request: HttpRequest):
         size=int(buf.size), meta={"width": int(piece.shape[1]), "height": int(piece.shape[0]), "channels": int(piece.shape[2]) if piece.ndim == 3 else 1},
     )
     return 201, _asset_out(asset)
+
+
+@router.patch("/assets/{asset_id}")
+def patch_asset(request: HttpRequest, asset_id: uuid.UUID):
+    """改名／改群組：{"name"?, "group"?}（檔案內容不可改，重傳即可）。
+
+    注意要註冊在 /assets/from-image 之後——ninja 依註冊順序比對，{asset_id} 會把靜態子路徑攔成 405。
+    """
+    asset = Asset.objects.filter(pk=asset_id).first()
+    if asset is None:
+        raise NotFound("資產不存在", code="asset_not_found")
+    try:
+        body = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+    fields = []
+    if "name" in body and str(body["name"]).strip():
+        asset.name = str(body["name"]).strip()[:200]
+        fields.append("name")
+    if "group" in body:
+        asset.group = str(body["group"] or "").strip()[:60]
+        fields.append("group")
+    if fields:
+        asset.save(update_fields=fields)
+    return _asset_out(asset)
 
 
 @router.get("/assets/{asset_id}/file", auth=None)

@@ -201,7 +201,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [layout, setLayout] = useState<LayoutState>(readLayout)
   const [rightTab, setRightTab] = useState<'inspector' | 'results'>('inspector')
   const [viewMode, setViewMode] = useState<'input' | 'output'>('input')
-  const [split, setSplit] = useState(false)
+  const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
   const [allOverlays, setAllOverlays] = useState(false)
   const [pinnedRunId, setPinnedRunId] = useState<string | null>(null)
   const [roiEditingKey, setRoiEditingKey] = useState<string | null>(null)

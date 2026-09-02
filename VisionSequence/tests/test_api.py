@@ -155,6 +155,27 @@ class ApiTests(TestCase):
         r = self.client.delete(f"/api/vision/sources/{sid}")
         self.assertEqual(r.status_code, 204)
 
+    def test_source_and_asset_groups(self):
+        """群組分類管理：來源／資產帶 group 建立、可 PATCH 改群組。"""
+        r = self.client.post("/api/vision/sources", data=json.dumps({"name": "g1", "kind": "synthetic", "config": {"width": 64, "height": 48}, "group": "站別A"}), content_type="application/json")
+        self.assertEqual(r.status_code, 201, r.content)
+        sid = r.json()["id"]
+        self.assertEqual(r.json()["group"], "站別A")
+        r = self.client.patch(f"/api/vision/sources/{sid}", data=json.dumps({"group": " 站別B "}), content_type="application/json")
+        self.assertEqual(r.json()["group"], "站別B")
+        upload = io.BytesIO(png_bytes(20, 20))
+        upload.name = "g.png"
+        r = self.client.post("/api/vision/assets", data={"file": upload, "kind": "image", "name": "g", "group": "料號X"})
+        self.assertEqual(r.status_code, 201, r.content)
+        aid = r.json()["id"]
+        self.assertEqual(r.json()["group"], "料號X")
+        r = self.client.patch(f"/api/vision/assets/{aid}", data=json.dumps({"group": "料號Y", "name": "g2"}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual((r.json()["group"], r.json()["name"]), ("料號Y", "g2"))
+        r = self.client.get("/api/vision/assets")
+        row = next(a for a in r.json()["items"] if a["id"] == aid)
+        self.assertEqual(row["group"], "料號Y")
+
     def test_assets_upload_and_from_image(self):
         upload = io.BytesIO(png_bytes(40, 30))
         upload.name = "tpl.png"

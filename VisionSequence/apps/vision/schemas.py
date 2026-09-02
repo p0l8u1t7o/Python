@@ -80,6 +80,7 @@ class SourceIn(Schema):
     kind: str
     config: dict[str, Any] = {}
     is_enabled: bool = True
+    group: str = ""
 
 
 class SourcePatch(Schema):
@@ -87,6 +88,7 @@ class SourcePatch(Schema):
     kind: str | None = None
     config: dict[str, Any] | None = None
     is_enabled: bool | None = None
+    group: str | None = None
 
 
 class SourceOut(Schema):

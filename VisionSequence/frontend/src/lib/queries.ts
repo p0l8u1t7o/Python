@@ -306,6 +306,7 @@ export interface SourceBody {
   kind: string
   config: Record<string, unknown>
   is_enabled: boolean
+  group?: string
 }
 
 export function useSourceMutations() {
@@ -346,13 +347,18 @@ export function useAssetMutations() {
   const client = useQueryClient()
   const invalidate = () => void client.invalidateQueries({ queryKey: ['assets'] })
   const uploadFile = useMutation({
-    mutationFn: ({ file, kind, name }: { file: File; kind: Asset['kind']; name?: string }) => {
+    mutationFn: ({ file, kind, name, group }: { file: File; kind: Asset['kind']; name?: string; group?: string }) => {
       const form = new FormData()
       form.append('file', file)
       form.append('kind', kind)
       form.append('name', name || file.name)
+      form.append('group', group || '')
       return api.postForm<Asset>('/vision/assets', form)
     },
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; group?: string }) => api.patch<Asset>(`/vision/assets/${id}`, body),
     onSuccess: invalidate,
   })
   const fromImage = useMutation({
@@ -364,7 +370,7 @@ export function useAssetMutations() {
     mutationFn: (id: string) => api.delete(`/vision/assets/${id}`),
     onSuccess: invalidate,
   })
-  return { uploadFile, fromImage, remove }
+  return { uploadFile, fromImage, patch, remove }
 }
 
 // ---- 引擎鎖定 ----

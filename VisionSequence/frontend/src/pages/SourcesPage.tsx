@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Camera, Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
+import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupInput, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, groupNames, matchGroup } from '@/components/ui'
 import { sourcePreviewUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
@@ -49,6 +49,7 @@ export function SourcesPage() {
   const kinds = useSourceKinds()
   const { create, patch, remove, push } = useSourceMutations()
   const [editing, setEditing] = useState<{ id: number | null; body: SourceBody } | null>(null)
+  const [groupFilter, setGroupFilter] = useState(GROUP_ALL)
   const [pendingDelete, setPendingDelete] = useState<ImageSource | null>(null)
   const [preview, setPreview] = useState<{ source: ImageSource; url: string } | null>(null)
 
@@ -57,7 +58,7 @@ export function SourcesPage() {
 
   function openCreate() {
     const kind = kindList[0]?.kind ?? 'folder'
-    setEditing({ id: null, body: { name: '', kind, config: defaultsFor(kind), is_enabled: true } })
+    setEditing({ id: null, body: { name: '', kind, config: defaultsFor(kind), is_enabled: true, group: groupFilter === GROUP_ALL || groupFilter === '__none__' ? '' : groupFilter } })
   }
   function defaultsFor(kind: string): Record<string, unknown> {
     const out: Record<string, unknown> = {}
@@ -109,6 +110,7 @@ export function SourcesPage() {
   return (
     <Page>
       <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button>} />
+      <GroupChips items={sources.data?.items ?? []} value={groupFilter} onChange={setGroupFilter} />
       <Card className="overflow-hidden">
         {sources.isPending ? (
           <LoadingState />
@@ -118,6 +120,7 @@ export function SourcesPage() {
           <Table>
             <THead>
               <Th>{t('common.name')}</Th>
+              <Th>{t('common.group')}</Th>
               <Th>{t('sources.kind')}</Th>
               <Th>{t('sources.config')}</Th>
               <Th>{t('sources.status')}</Th>
@@ -126,11 +129,12 @@ export function SourcesPage() {
             </THead>
             <TBody>
               {sources.data.items.length === 0 ? (
-                <EmptyRow colSpan={6} message={<span className="inline-flex flex-col items-center gap-1"><Camera className="size-5" />{t('sources.empty')}</span>} />
+                <EmptyRow colSpan={7} message={<span className="inline-flex flex-col items-center gap-1"><Camera className="size-5" />{t('sources.empty')}</span>} />
               ) : (
-                sources.data.items.map((s) => (
+                sources.data.items.filter((s) => matchGroup(s, groupFilter)).map((s) => (
                   <Tr key={s.id}>
                     <Td className="font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
+                    <Td>{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
                     <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
                     <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.config)}>{JSON.stringify(s.config)}</code></Td>
                     <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.status)}>{JSON.stringify(s.status)}</code></Td>
@@ -144,7 +148,7 @@ export function SourcesPage() {
                           </label>
                         ) : null}
                         <IconButton label={t('sources.preview')} onClick={() => setPreview({ source: s, url: sourcePreviewUrl(s.id) })}><Eye size={15} /></IconButton>
-                        <IconButton label={t('common.edit')} onClick={() => setEditing({ id: s.id, body: { name: s.name, kind: s.kind, config: { ...s.config }, is_enabled: s.is_enabled } })}><Pencil size={15} /></IconButton>
+                        <IconButton label={t('common.edit')} onClick={() => setEditing({ id: s.id, body: { name: s.name, kind: s.kind, config: { ...s.config }, is_enabled: s.is_enabled, group: s.group } })}><Pencil size={15} /></IconButton>
                         <IconButton label={t('common.delete')} onClick={() => setPendingDelete(s)}><Trash2 size={15} className="text-critical" /></IconButton>
                       </span>
                     </Td>
@@ -170,6 +174,8 @@ export function SourcesPage() {
         {body ? (
           <div className="space-y-3">
             <TextInput label={t('common.name')} required autoFocus value={body.name} onChange={(e) => setEditing({ ...editing!, body: { ...body, name: e.target.value } })} />
+            <GroupInput label={t('common.group')} value={body.group ?? ''} suggestions={groupNames(sources.data?.items ?? [])}
+              onChange={(v) => setEditing({ ...editing!, body: { ...body, group: v } })} />
             <Select label={t('sources.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} />
             {(fieldsFor.get(body.kind) ?? []).map((field) => (
               <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />

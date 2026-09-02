@@ -101,6 +101,9 @@ const zhHant = {
     released: '引擎已解鎖',
   },
   common: {
+    group: '群組',
+    groupAll: '全部',
+    ungrouped: '未分組',
     save: '儲存',
     saved: '已儲存',
     cancel: '取消',
@@ -325,6 +328,9 @@ const zhHant = {
     none: '尚未執行',
   },
   dashboard: {
+    watch: '觀看檢測畫面',
+    watchTitle: '{{name}}－即時檢測',
+    waitingRun: '等待下一次檢測…（外部 API 或連續執行觸發後即時顯示）',
     title: '總覽',
     subtitle: '所有流程的即時狀態',
     empty: '還沒有任何流程',
@@ -807,6 +813,7 @@ const zhHant = {
     sortOptions: { name: '檔名', mtime: '修改時間', random: '隨機' },
   },
   assets: {
+    editGroup: '編輯名稱／群組',
     title: '資產庫',
     subtitle: '範本影像、模型與其他檔案',
     upload: '上傳資產',
