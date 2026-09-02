@@ -137,7 +137,9 @@ export function resolveView(run: RunReport | null, selectedId: string | null, mo
   const useInput = mode === 'input' && input !== null ? true : output === null && input !== null
   const chosen = useInput ? input : output
   if (!chosen) return { ...empty, nodeId, hasInput: false, hasOutput: false }
-  let overlays: Overlay[] = useInput || !input ? report.overlays : []
+  // 「執行前」（明確選 input）一律乾淨——標記是檢測「結果」，只該出現在執行後；
+  // 無影像輸出的工具（找圓/blob…）在 output 模式 fallback 到輸入圖，那才疊標記。
+  let overlays: Overlay[] = mode === 'input' && input !== null ? [] : useInput || !input ? report.overlays : []
   if (allOverlays) {
     overlays = order.flatMap((id) => run.nodes[id]?.overlays ?? [])
   }
