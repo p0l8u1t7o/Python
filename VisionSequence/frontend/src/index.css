@@ -146,23 +146,17 @@
   --font-sans: 'Cascadia Code', Consolas, 'JetBrains Mono', 'Fira Code', 'Noto Sans TC', ui-monospace, monospace;
 }
 
-/* 電路格線底＋掃描線覆蓋（極淡、不吃事件；motion 偏好縮減時關掉掃描線） */
+/* 電路格線＋掃描線只鋪在「底層」（body 背景）與側欄——不用全頁覆疊，
+   否則橫條會壓在影像檢視器／縮圖上干擾看圖。影像永遠在這些背景之上，完全乾淨。 */
 .theme-cyber body {
   background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 3px, rgb(0 0 0 / 0.14) 3px, rgb(0 0 0 / 0.14) 4px),
     linear-gradient(rgb(0 255 136 / 0.028) 1px, transparent 1px),
     linear-gradient(90deg, rgb(0 255 136 / 0.028) 1px, transparent 1px);
-  background-size: 44px 44px;
+  background-size: auto, 44px 44px, 44px 44px;
 }
-.theme-cyber body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  pointer-events: none;
-  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgb(0 0 0 / 0.1) 3px, rgb(0 0 0 / 0.1) 4px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .theme-cyber body::after { background: none; }
+.theme-cyber [data-testid='sidebar'] {
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 3px, rgb(0 0 0 / 0.2) 3px, rgb(0 0 0 / 0.2) 4px);
 }
 /* 霓虹聚焦光暈與標題微光 */
 .theme-cyber :focus-visible { box-shadow: 0 0 8px rgb(0 255 136 / 0.5); }
