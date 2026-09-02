@@ -2,7 +2,7 @@
  * 工具頁（ToolPage）：單一步驟的專屬調參頁 `/flows/:id/tools/:nodeId`。
  *
  * 版面：左＝參數表單；中＝「執行前」／「執行後」並排（沒有影像輸出的工具，執行後把標記疊在
- * 輸入影像上＋輸出值表）＋下方參考資訊（直方圖／統計／series 橫向排列）；
+ * 輸入影像上；輸出值只列在下方參考資訊，不疊浮層擋圖）＋下方參考資訊（直方圖／統計／series 橫向排列）；
  * 右＝按鍵（儲存／執行到此步驟／自動套用／重用影像／暫存影像）。
  *
  * 執行模式：預設「按執行鈕才跑」（改參數只暫存生效；可開自動套用改回 250 ms 防抖即跑）。
@@ -368,21 +368,6 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
               <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">
                 {t('editor.viewer.after')}{output ? '' : ` · ${t('tool.overlaysOnInput')}`}
               </span>
-              {!output && report ? (
-                <div className="absolute right-2 bottom-2 max-h-48 w-64 overflow-auto rounded-lg border border-line bg-surface/95 p-2 text-[11px] backdrop-blur" data-testid="tool-output-values">
-                  <p className="mb-1 font-semibold text-muted">{t('editor.result.outputs')}</p>
-                  <table className="w-full">
-                    <tbody className="divide-y divide-line">
-                      {Object.entries(report.outputs).map(([key, value]) => (
-                        <tr key={key}>
-                          <td className="py-0.5 pr-2 font-mono text-muted">{key}</td>
-                          <td className="py-0.5 text-right font-mono">{formatValue(value)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
             </div>
           </div>
           {report?.message && status !== 'ok' ? (

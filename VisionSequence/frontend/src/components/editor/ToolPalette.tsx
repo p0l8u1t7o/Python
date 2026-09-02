@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Search, Star, StickyNote } from 'lucide-react'
+import { Plus, Search, Star, StickyNote, X } from 'lucide-react'
 
 import { Modal } from '@/components/ui'
 import type { ToolCatalogue, ToolTypeDef } from '@/lib/types'
@@ -33,13 +33,14 @@ export function writeFavorites(list: string[]) {
   }
 }
 
-/** 左欄：新增工具／註解按鈕＋收藏清單（可拖曳；點擊直接插入畫布中央）。 */
-export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert, onAddNote }: {
+/** 左欄：新增工具／註解按鈕＋收藏清單（可拖曳；點擊插入畫布中央；hover 出現移除鈕）。 */
+export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert, onAddNote, onToggleFavorite }: {
   catalogue: ToolCatalogue | undefined
   favorites: string[]
   onOpenPicker: () => void
   onInsert: (def: ToolTypeDef) => void
   onAddNote: () => void
+  onToggleFavorite: (key: string) => void
 }) {
   const { t } = useTranslation()
   const byKey = useMemo(() => new Map((catalogue?.items ?? []).map((d) => [d.key, d])), [catalogue])
@@ -59,18 +60,26 @@ export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert, on
         {favDefs.map((def) => {
           const Icon = iconFor(def.icon)
           return (
-            <button key={def.key} type="button" title={`${def.description}\n${t('palette.favClickHint')}`}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData(DRAG_MIME, def.key)
-                e.dataTransfer.effectAllowed = 'copy'
-              }}
-              onClick={() => onInsert(def)}
-              className="flex w-full cursor-grab select-none items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-surface-muted active:cursor-grabbing"
-              data-testid="palette-tool" data-tool-key={def.key}>
-              <Icon size={14} className="shrink-0 text-brand" aria-hidden />
-              <span className="truncate">{def.label}</span>
-            </button>
+            <div key={def.key} className="group relative">
+              <button type="button" title={`${def.description}\n${t('palette.favClickHint')}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(DRAG_MIME, def.key)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+                onClick={() => onInsert(def)}
+                className="flex w-full cursor-grab select-none items-center gap-2 rounded-md px-2 py-1.5 pr-7 text-left text-xs hover:bg-surface-muted active:cursor-grabbing"
+                data-testid="palette-tool" data-tool-key={def.key}>
+                <Icon size={14} className="shrink-0 text-brand" aria-hidden />
+                <span className="truncate">{def.label}</span>
+              </button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); onToggleFavorite(def.key) }}
+                aria-label={t('palette.unfavorite')} title={t('palette.unfavorite')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-subtle opacity-0 transition-opacity hover:bg-surface-muted hover:text-critical group-hover:opacity-100"
+                data-testid="palette-unfav" data-tool-key={def.key}>
+                <X size={12} aria-hidden />
+              </button>
+            </div>
           )
         })}
         {!favDefs.length ? <p className="px-2 py-1 text-[11px] text-subtle">{t('palette.noFavorites')}</p> : null}
@@ -141,7 +150,7 @@ export function ToolPicker({ open, onClose, catalogue, favorites, onToggleFavori
             <input className="input !pl-8" placeholder={t('editor.searchTools')} value={query} autoFocus
               onChange={(e) => setQuery(e.target.value)} data-testid="picker-search" />
           </div>
-          <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-2.5 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-1 gap-2.5 overflow-y-auto p-1 sm:grid-cols-2 xl:grid-cols-3">
             {shown.map((def) => {
               const Icon = iconFor(def.icon)
               const fav = favorites.includes(def.key)

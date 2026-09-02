@@ -909,7 +909,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         {/* 左：工具箱 + 步驟清單 */}
         <aside className="flex shrink-0 flex-col border-r border-line bg-surface" style={{ width: layout.left }}>
           <div className="min-h-0 flex-[2]">
-            <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} />
+            <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} onToggleFavorite={toggleFavorite} />
           </div>
           <p className="border-y border-line px-3 py-1.5 text-xs font-semibold text-muted">{t('editor.nodeList')} <span className="tnum font-normal">({graphNodes.length})</span></p>
           <div className="min-h-0 flex-[3] overflow-hidden">
