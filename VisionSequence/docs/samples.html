@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 範例樣板</title>
+<style>
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+</style>
+</head>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html" aria-current="page">範例樣板</a></nav>
+<article class="doc wide">
+
+<h1>範例樣板與合成樣本圖</h1>
+<p><code>manage.py seed_demo</code>（或 <code>dev.ps1 -Setup</code>）會建立一整組<strong>開箱即跑</strong>的範例：
+13 個流程樣板、每個樣板一組合成樣本圖（folder 影像來源、群組「範例」）、以及樣板需要的範本／良品資產。
+內建 61 個工具中有 55 個至少出現在一個樣板裡，開啟任一樣板就能看到該工具的實際接法與參數。</p>
+
+<div class="note">每組樣本圖固定 4 張（教學圖 3 張）、其中最後一張刻意做成不良品；來源設為循環讀取，
+連續執行或連按「執行」就會看到 OK→OK→OK→NG 的節奏。座標與公差都對齊合成圖的標稱值，不需要調參就會動。</div>
+
+<h2 id="list">樣板一覽</h2>
+<table>
+<tr><th>流程</th><th>樣本圖</th><th>它教你什麼</th><th>主要工具</th></tr>
+<tr><td>示範：零件孔數檢測</td><td>合成零件（隨機位移／缺孔）</td><td>最基本的「二值化→blob→計數→分支判定」骨架</td><td><code>grayscale</code> <code>blur</code> <code>threshold</code> <code>morphology</code> <code>blob</code> <code>if_number</code> <code>judge</code> <code>output</code> <code>draw_result</code></td></tr>
+<tr><td>示範：曝光檢查</td><td>同上</td><td>純前處理＋邏輯的守門流程（縮小加速、Otsu 門檻當曝光指標）</td><td><code>resize</code> <code>threshold</code> <code>in_range</code></td></tr>
+<tr><td>範例：圓孔尺寸量測</td><td>亮板＋暗圓孔（孔徑第 4 張超差）</td><td>找圓→像素校正成 mm→公差判定；<strong>扇形 ROI</strong>（環形＋起迄角）弧擬合、橢圓擬合看圓度</td><td><code>find_circle</code> <code>formula</code> <code>calibration</code> <code>tolerance_judge</code> <code>fit_arc</code> <code>fit_ellipse</code></td></tr>
+<tr><td>範例：邊線夾角</td><td>L 形工件（夾角第 4 張 84°；右下 45° 斜切角）</td><td>兩條找線量夾角與交點；倒角工具量斜切角</td><td><code>find_line</code> <code>angle</code> <code>geometry</code> <code>chamfer_angle</code> <code>in_range</code></td></tr>
+<tr><td>範例：印刷良品比對</td><td>印刷圖案（第 4 張多一塊污漬）</td><td>與良品範本做差異比對，抓「不知道長怎樣」的缺陷；範本資產由 seed 自動建立</td><td><code>defect_diff</code></td></tr>
+<tr><td>範例：織紋瑕疵檢測</td><td>週期織紋（第 4 張有刮痕）</td><td>頻域低通把規律紋理整片濾掉，殘下的暗痕＝缺陷；遮罩套用取出缺陷區</td><td><code>fft_filter</code> <code>threshold</code> <code>blob</code> <code>apply_mask</code></td></tr>
+<tr><td>範例：前處理與量測教學</td><td>漸層＋灰階階梯＋暗溝</td><td>影像鏈（位深→Gamma→銳化→翻轉→前後差異）與量測課（線剖面、區域統計、直方圖、邊緣密度、暗部比例、裁切、色彩面）</td><td><code>convert_depth</code> <code>lut</code> <code>filter</code> <code>rotate_flip</code> <code>arithmetic</code> <code>line_profile</code> <code>intensity</code> <code>histogram</code> <code>edge_density</code> <code>dark_ratio</code> <code>crop</code> <code>color_convert</code></td></tr>
+<tr><td>範例：多圓幾何計數</td><td>5 個圓孔＋2 條斜線（第 4 張少一孔）</td><td>霍夫「一次抓很多圓」vs 找圓「精量測一個圓」的分工；線段清單計數；兩孔圓心距</td><td><code>hough_circles</code> <code>hough_lines</code> <code>count_list</code> <code>find_circle</code> <code>distance</code></td></tr>
+<tr><td>範例：顏色有無檢測</td><td>三色塊（第 4 張紅色偏橘）</td><td>HSV 範圍遮罩→像素計數的「有料／缺料」判定</td><td><code>color_range</code> <code>pixel_count</code></td></tr>
+<tr><td>範例：顏色比對</td><td>同上</td><td>區域平均色與目標色比距離（驗色）；顏色統計輸出色碼給上位機</td><td><code>color_check</code> <code>color_stats</code></td></tr>
+<tr><td>範例：條碼標籤讀取</td><td>斜貼標籤＋QR（第 4 張沒印碼）</td><td>四點透視校正把斜標籤拉正再讀碼；序號區文字有無檢查</td><td><code>warp_perspective</code> <code>barcode</code> <code>text_presence</code></td></tr>
+<tr><td>範例：定位量測</td><td>十字標記＋亮帶（第 4 張帶太寬）</td><td>範本定位→ROI 跟隨→卡尺量寬的定位補正三件套；範本資產由 seed 自動裁切</td><td><code>template_match</code> <code>shape_align</code> <code>fixture_roi</code> <code>caliper</code></td></tr>
+<tr><td>範例：杯件量測</td><td>同心圓杯口＋壁厚剖面（第 4 張外徑超差）</td><td>完整量測流程：定位、三個 ROI 跟隨、外徑／內徑找圓、<strong>線段 ROI</strong> 橫切量壁厚、同心度、多重公差彙總</td><td><code>find_circle</code> <code>wall_thickness</code> <code>concentricity</code> <code>tolerance_judge</code> <code>bool_logic</code></td></tr>
+</table>
+
+<h2 id="files">樣本圖與資產放在哪</h2>
+<ul>
+<li>樣本圖：<code>data/samples/&lt;樣板&gt;/01.png…</code>（<code>apps/vision/demo_images.py</code> 產生；資料夾已有 PNG 就沿用）。想重新生成：刪掉該資料夾再跑一次 <code>manage.py seed_demo</code>。</li>
+<li>影像來源：每組樣本一個 folder 來源，名稱「範例：⋯」、群組「範例」、循環讀取。</li>
+<li>資產：定位十字範本 ×2 與印刷良品範本，從樣本圖第 1 張自動裁切，群組「範例」。</li>
+<li><code>seed_demo</code> 可重複執行：來源與資產沿用既有的，流程 graph 會更新成最新版。</li>
+</ul>
+
+<h2 id="not-included">沒有進樣板的工具</h2>
+<p><code>dl_classify</code>／<code>dl_detect</code>／<code>dl_segment</code>／<code>dl_instance</code> 需要先在「深度學習教導」訓練出模型資產；
+<code>write_modbus</code> 需要實際的 Modbus 連線；<code>save_image</code> 會在每次執行寫檔，不適合放在循環執行的範例裡。
+接法見各工具說明與<a href="dl.html">深度學習教導</a>、<a href="modbus.html">Modbus 輸出</a>。</p>
+
+<h2 id="test">品質保證</h2>
+<p><code>tests/test_demo.py</code> 會在每次測試把整組範例 seed 進暫存環境並逐一實跑，
+鎖住「每個樣板都能執行、沒有錯誤節點」這條線；樣板或工具改壞會直接紅。</p>
+
+</article>
+</body>
+</html>

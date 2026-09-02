@@ -15,6 +15,7 @@
 ## 啟動
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
+- `seed_demo` 建 13 個範例樣板（`apps/vision/demo.py`）＋合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；`tests/test_demo.py` 逐樣板實跑鎖住。樣板一覽見 docs/samples.html。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ## 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`。
