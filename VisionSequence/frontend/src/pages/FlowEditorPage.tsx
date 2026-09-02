@@ -28,6 +28,7 @@ import {
 } from '@xyflow/react'
 import { Camera, Check, Columns2, Layers, RotateCcw } from 'lucide-react'
 
+import { AiAssistPanel } from '@/components/editor/AiAssistPanel'
 import { BatchTestModal } from '@/components/editor/BatchTestModal'
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
@@ -211,7 +212,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       return next
     })
   }, [])
-  const [rightTab, setRightTab] = useState<'inspector' | 'results'>('inspector')
+  const [rightTab, setRightTab] = useState<'inspector' | 'results' | 'ai'>('inspector')
   const [viewMode, setViewMode] = useState<'input' | 'output'>('input')
   const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
   const [allOverlays, setAllOverlays] = useState(false)
@@ -1044,10 +1045,14 @@ function EditorInner({ flowId }: { flowId: number }) {
             tabs={[
               { value: 'inspector', label: t('editor.inspector') },
               { value: 'results', label: t('editor.results'), badge: activeRun ? <StatusBadge status={activeRun.status} className="ml-1 !px-1.5 !py-0 !text-[10px]" /> : undefined },
+              { value: 'ai', label: t('agent.editorTab') },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {rightTab === 'inspector' ? (
+            {rightTab === 'ai' ? (
+              <AiAssistPanel graph={currentGraph} imageRef={lastSourceRef} execLocked={execLocked}
+                onApply={(g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}：${why}` : t('agent.applied')) }} />
+            ) : rightTab === 'inspector' ? (
               selectedCount > 1 ? (
                 <div className="space-y-3 p-3" data-testid="multi-select">
                   <p className="text-sm font-medium">{t('editor.multiSelected', { count: selectedCount })}</p>
@@ -1124,7 +1129,8 @@ function EditorInner({ flowId }: { flowId: number }) {
       <ConfirmDialog open={askReset} onClose={() => setAskReset(false)} onConfirm={() => void doReset()} title={t('editor.reset')} message={t('editor.resetConfirm')} confirmLabel={t('editor.reset')} danger loading={clearRecent.isPending} />
       <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
-      <BatchTestModal open={batchOpen} onClose={() => setBatchOpen(false)} flowId={flowId} graph={currentGraph} dirty={dirty} execLocked={execLocked} onView={(item) => void viewBatchRun(item)} />
+      <BatchTestModal open={batchOpen} onClose={() => setBatchOpen(false)} flowId={flowId} graph={currentGraph} dirty={dirty} execLocked={execLocked} onView={(item) => void viewBatchRun(item)}
+        onApplyGraph={(g) => { pushHistory(); restoreGraph(g); toast.success(t('agent.applied')) }} />
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />
       <RecipeDrawer open={recipesOpen} onClose={() => setRecipesOpen(false)} flowId={flowId} readOnly={readOnly} />
       <SaveTemplateModal open={saveTemplateOpen} onClose={() => setSaveTemplateOpen(false)} graph={currentGraph} defaultName={meta.name} />

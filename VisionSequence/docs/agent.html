@@ -58,6 +58,10 @@
 不滿意就用口語回饋（「太敏感」「漏抓」「改成 4 個」）迭代微調，滿意後一鍵存成流程、進編輯器繼續調。</p>
 
 <nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#multi">多張影像與 ROI 編號</a></li>
+<li><a href="#providers">AI 代理來源與金鑰</a></li>
+<li><a href="#editor">流程頁面裡的 AI 助手</a></li>
+<li><a href="#tune">跑多筆影像後請 AI 調整</a></li>
 <li><a href="#arch">架構</a></li>
 <li><a href="#rules">離線規則引擎</a></li>
 <li><a href="#llm">LLM 生成（可選）</a></li>
@@ -65,6 +69,43 @@
 <li><a href="#api">API</a></li>
 <li><a href="#design">設計取捨</a></li>
 </ul></nav>
+
+<h2 id="multi">多張影像與 ROI 編號</h2>
+<p>可以一次上傳多張影像（縮圖列切換），在每張影像上各自圈 ROI；ROI 依加入順序編號
+<code>ROI01、ROI02…</code>，每個 ROI 可補一句提示，提示詞也能直接引用編號：</p>
+<pre>ROI01 的位置是好品，ROI02 的位置是壞品，找出差異</pre>
+<p>這句會觸發「良品比對」意圖：好品 ROI 自動裁成範本資產（資產庫群組「AI 助手」），檢測框套在壞品 ROI 的位置（尺寸與範本一致），
+生成 <code>defect_diff</code> 流程。生成後<strong>每張影像都會實跑</strong>，縮圖角落標 OK／NG，切換影像就看該張的 overlay 與輸出。</p>
+
+<h2 id="providers">AI 代理來源與金鑰（每人各自儲存）</h2>
+<p>AI 助手頁右上「AI 供應商」：選 <strong>離線規則引擎／Claude／GPT／Gemini</strong>，填自己的 API 金鑰與模型名（留空用預設）。
+設定存在登入帳號（<code>UserPref.agent</code>），別人看不到、也不會跟著 <code>/auth/me</code> 回到瀏覽器——API 只回「已設定＋尾 4 碼」。</p>
+<table>
+<tr><th>來源</th><th>實作</th><th>預設模型</th></tr>
+<tr><td>offline</td><td>規則引擎（intents + synth），零外部呼叫</td><td>—</td></tr>
+<tr><td>claude</td><td>官方 <code>anthropic</code> SDK（可選安裝、延後 import）</td><td>claude-opus-5</td></tr>
+<tr><td>openai</td><td>REST <code>/v1/chat/completions</code>（標準庫 urllib，零依賴）</td><td>gpt-4o</td></tr>
+<tr><td>gemini</td><td>REST <code>generateContent</code>（標準庫 urllib，零依賴）</td><td>gemini-2.0-flash</td></tr>
+</table>
+<p>解析順序：使用者自己的設定（明確選 offline 也算）→ 伺服器 <code>.env</code>（<code>VISION_AGENT_PROVIDER</code>／<code>VISION_AGENT_API_KEY</code>／<code>VISION_AGENT_MODEL</code>）→ offline。
+整合方（API 金鑰身分）沒有使用者，一律用伺服器設定。LLM 呼叫失敗（金鑰錯、逾時、輸出無效）自動落回規則引擎，功能不中斷。</p>
+
+<h2 id="editor">流程頁面裡的 AI 助手</h2>
+<p>編輯器右側多了「AI」分頁：用一句話請助手修改<strong>目前畫布</strong>（未儲存的也算），回覆附「改了什麼」與試跑結果（用最近一次執行的影像），按「套用到畫布」寫回（可復原）。</p>
+<table>
+<tr><th>離線指令句型</th><th>效果</th></tr>
+<tr><td>把 二值化 的 threshold 改成 80</td><td>依節點標題／id／工具名找節點，參數名可用 key 或中文標籤</td></tr>
+<tr><td>停用 去雜訊 ／ 啟用 去雜訊</td><td>切換節點 enabled</td></tr>
+<tr><td>刪除 結果影像</td><td>刪節點與相關連線（image_source 不可刪）</td></tr>
+<tr><td>太敏感／漏抓／改成 4 個／±0.2</td><td>同「迭代微調」的參數映射</td></tr>
+</table>
+<p>接上 LLM 供應商後不限句型：可以「在找圓後面加公差判定 ±0.5」「把顏色比對換成顏色範圍＋像素計數」，LLM 收到目前 graph 與工具目錄，只動需要動的部分並保留節點 id。</p>
+
+<h2 id="tune">跑多筆影像後請 AI 調整</h2>
+<p>「批次測試」跑完一批影像後，結果表下方有「請 AI 依這批結果調整」：輸入提示詞（「NG 的那幾張其實是好品，太敏感了」「改成 4 個」），
+助手拿到每張的判定與輸出值（LLM 模式還會看到幾張縮圖），調整流程後<strong>在同一批影像重跑</strong>，回報「調整前 → 後」的 OK／NG／失敗數與逐張變化，滿意再「套用到畫布」。</p>
+<pre>POST /api/vision/agent/tune  {graph, instruction, runs:[{name, image_ref, status, outputs}]}
+→ {graph, rationale, changes, before:{ok,ng,failed}, after:{…}, items:[{name, before, after}], applied}</pre>
 
 <h2 id="arch">架構</h2>
 <p>助手的產物就是<strong>標準 graph JSON</strong>——跑在既有的資料流引擎上、可在編輯器打開、
@@ -90,8 +131,9 @@
 <tr><td><code>apps/vision/agent/analysis.py</code></td><td>ROI 特徵包：平均/標準差/Otsu、暗部佔比、邊緣密度、HSV 主色、暗亮粒子統計（連通元件）、霍夫圓形試探。規則引擎靠它自動調參；LLM 拿它的文字摘要省 token。</td></tr>
 <tr><td><code>intents.py</code></td><td>提示詞（中英關鍵詞）＋ROI 形狀＋特徵 → 意圖（封閉集合：count / diameter / width / angle / defect / color_match / color_presence / presence / brightness / barcode / generic），並抽出期望數量、標稱值、公差、mm/px 換算。</td></tr>
 <tr><td><code>synth.py</code></td><td>每種意圖一個合成器：掛使用者 ROI、用特徵自動填參數（門檻極性、blob 最小面積、HSV 範圍、環形 ROI 自動生成……），輸出 graph＋設計理由。</td></tr>
-<tr><td><code>llm.py</code></td><td>Claude 供應器（可選）：工具目錄＋graph 規格＋合成規則放進可快取的 system 段，影像縮圖＋ROI＋特徵摘要進 user 訊息；輸出 JSON 經 validate_graph 把關，失敗帶錯誤重試一次。</td></tr>
-<tr><td><code>service.py</code></td><td>編排與試跑；規則式微調（口語回饋 → 參數調整映射）。LLM 失敗自動落回規則引擎。</td></tr>
+<tr><td><code>providers.py</code></td><td>供應商：offline／claude（anthropic SDK）／openai／gemini（REST）；設定解析（使用者 → 伺服器 → offline）、金鑰遮罩。</td></tr>
+<tr><td><code>llm.py</code></td><td>四種任務（generate／refine／edit／tune）共用 system（工具目錄＋graph 規格＋規則，可快取）；影像縮圖＋ROI 編號＋特徵摘要進 user；輸出 JSON 經 validate_graph 把關，失敗帶錯誤重試一次。</td></tr>
+<tr><td><code>service.py</code></td><td>編排與試跑（多張影像各跑一次）；規則式微調／指令解析（edit_rules）／批次調參（tune）。LLM 失敗自動落回規則引擎。</td></tr>
 <tr><td><code>api.py</code></td><td><code>/vision/agent/*</code> 端點；執行類權限（鎖定時 423）。</td></tr>
 </table>
 
@@ -137,11 +179,15 @@
 <p>LLM 模式下微調直接把「目前 graph＋回饋」交給 LLM 修改。每次微調都重新實跑。</p>
 
 <h2 id="api">API</h2>
-<pre>POST /api/vision/agent/image      multipart image → {ref, width, height}
-POST /api/vision/agent/generate   {ref, prompt, regions:[{region, hint?}], use_llm?}
-                                  → {graph, rationale, provider, intent, report}
-POST /api/vision/agent/refine     {ref, prompt, regions, graph, feedback} → 同上
-GET  /api/vision/agent/info       {llm, model, provider}</pre>
+<pre>GET   /api/vision/agent/info       目前生效的供應商（不含金鑰）＋可選清單
+GET   /api/vision/agent/settings   自己的供應商設定（金鑰只回尾碼）
+PATCH /api/vision/agent/settings   {provider, model?, api_key?, clear_key?}
+POST  /api/vision/agent/image      multipart image → {ref, width, height}
+POST  /api/vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?}
+                                   → {graph, rationale, provider, intent, report, reports, main_image}
+POST  /api/vision/agent/refine     {images, prompt, regions, graph, feedback} → 同上
+POST  /api/vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
+POST  /api/vision/agent/tune       {graph, instruction, runs} → 前後對比（見上）</pre>
 <p><code>report</code> 與 preview 端點同格式（各節點狀態／輸出／overlay／影像 ref）。
 regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulus / polygon / line，全圖像素座標）。
 執行類端點：引擎鎖定時 423；一般使用者可用。</p>

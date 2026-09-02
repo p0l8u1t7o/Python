@@ -1,6 +1,6 @@
-"""AI 助手測試：意圖解析、流程合成（validate 過）、在合成影像上端到端試跑、API 表面。
+"""AI 助手測試：意圖解析、流程合成（validate 過）、多影像端到端試跑、編輯指令、批次調參、API 表面、每人供應商設定。
 
-LLM 供應器不打外網：只驗 available() 在沒金鑰時為 False、generate 走規則引擎。
+LLM 供應器不打外網：只驗設定解析與「沒金鑰＝離線」。
 """
 
 from __future__ import annotations
@@ -10,10 +10,12 @@ import json
 
 import cv2
 import numpy as np
+from django.contrib.auth.models import User
 from django.test import TestCase
 
-from apps.vision.agent import analysis, intents, service, synth
+from apps.vision.agent import analysis, intents, providers, service, synth
 from apps.vision.graph import validate_graph
+from apps.vision.models import Asset
 
 
 def part_image(holes: int = 5) -> np.ndarray:
@@ -30,10 +32,19 @@ def red_block_image() -> np.ndarray:
     return img
 
 
+def print_image(stain: bool) -> np.ndarray:
+    img = np.full((480, 640, 3), 225, np.uint8)
+    cv2.rectangle(img, (120, 100), (520, 380), (60, 70, 80), 4)
+    cv2.circle(img, (220, 240), 60, (50, 60, 200), -1)
+    if stain:
+        cv2.circle(img, (420, 300), 25, (30, 30, 30), -1)
+    return img
+
+
 class IntentTests(TestCase):
     def _parse(self, prompt: str, image: np.ndarray, region: dict | None = None):
-        regions = [{"region": region}] if region else []
-        feats = analysis.analyze(image, regions)
+        regions = [{"region": region, "image": 0}] if region else []
+        feats = analysis.analyze([image], regions)
         return intents.parse(prompt, regions, feats)
 
     def test_keyword_intents(self):
@@ -68,6 +79,17 @@ class IntentTests(TestCase):
         self.assertEqual(intent.kind, "color_match")
         self.assertTrue(intent.color_hex.startswith("#"))
 
+    def test_golden_roles_from_prompt_and_hints(self):
+        regions = [{"region": {"shape": "rect", "x": 100, "y": 80, "w": 440, "h": 320}, "image": 0, "hint": ""},
+                   {"region": {"shape": "rect", "x": 100, "y": 80, "w": 440, "h": 320}, "image": 1, "hint": ""}]
+        feats = analysis.analyze([print_image(False), print_image(True)], regions)
+        intent = intents.parse("ROI01 的位置是好品，ROI02 的位置是壞品", regions, feats)
+        self.assertEqual(intent.kind, "golden")
+        self.assertEqual((intent.good_roi, intent.bad_roi), (0, 1))
+        regions[0]["hint"], regions[1]["hint"] = "壞品", "良品"
+        intent = intents.parse("比對這兩塊", regions, feats)
+        self.assertEqual((intent.good_roi, intent.bad_roi), (1, 0))
+
     def test_vague_prompt_falls_back(self):
         intent = self._parse("看一下這個", np.full((200, 200, 3), 128, np.uint8))
         self.assertIn(intent.kind, ("generic", "count", "diameter"))
@@ -77,86 +99,175 @@ class SynthTests(TestCase):
     def test_all_synthesizers_validate(self):
         img = part_image()
         region = {"shape": "rect", "x": 50, "y": 100, "w": 540, "h": 280}
-        regions = [{"region": region}, {"region": {"shape": "rect", "x": 60, "y": 60, "w": 120, "h": 300}}]
-        feats = analysis.analyze(img, regions)
+        regions = [{"region": region, "image": 0}, {"region": {"shape": "rect", "x": 60, "y": 60, "w": 120, "h": 300}, "image": 0}]
+        feats = analysis.analyze([img], regions)
         for kind in intents.INTENT_KINDS:
-            intent = intents.Intent(kind=kind, expected_count=5, nominal=100, tol=5)
-            graph, rationale = synth.SYNTHESIZERS[kind](intent, regions, feats)
+            intent = intents.Intent(kind=kind, expected_count=5, nominal=100, tol=5, good_roi=0, bad_roi=1)
+            graph, rationale = synth.synthesize(intent, regions, feats)
             validate_graph(graph)  # 不合法會 raise
             self.assertTrue(rationale)
 
 
 class ServiceTests(TestCase):
     def test_generate_count_end_to_end(self):
-        img = part_image(5)
-        result = service.generate(img, [], "應該有 5 個孔")
+        result = service.generate([part_image(5)], [], "應該有 5 個孔")
         self.assertEqual(result["provider"], "rules")
         self.assertEqual(result["intent"], "count")
         self.assertEqual(result["report"]["status"], "ok", result["report"].get("error"))
         self.assertEqual(result["report"]["outputs"].get("count"), 5)
-        # 少一個孔 → NG
-        result_ng = service.generate(part_image(4), [], "應該有 5 個孔")
+        result_ng = service.generate([part_image(4)], [], "應該有 5 個孔")
         self.assertEqual(result_ng["report"]["status"], "ng")
+
+    def test_generate_multi_image_reports(self):
+        result = service.generate([part_image(5), part_image(4)], [], "應該有 5 個孔")
+        self.assertEqual([r["status"] for r in result["reports"]], ["ok", "ng"])
+        self.assertEqual(result["main_image"], 0)
+
+    def test_generate_golden_from_two_images(self):
+        roi = {"shape": "rect", "x": 100, "y": 80, "w": 440, "h": 320}
+        regions = [{"region": roi, "image": 0, "hint": "好品"}, {"region": roi, "image": 1, "hint": "壞品"}]
+        result = service.generate([print_image(False), print_image(True)], regions, "ROI01 是好品，ROI02 是壞品，找出差異")
+        self.assertEqual(result["intent"], "golden")
+        self.assertEqual(result["main_image"], 1)  # 壞品那張當主影像
+        self.assertEqual([r["status"] for r in result["reports"]], ["ok", "ng"])
+        self.assertEqual(Asset.objects.filter(group="AI 助手").count(), 1)
 
     def test_generate_color_presence(self):
         region = {"shape": "rect", "x": 220, "y": 170, "w": 200, "h": 140}
-        result = service.generate(red_block_image(), [{"region": region}], "檢查紅色膠塞有沒有")
+        result = service.generate([red_block_image()], [{"region": region, "image": 0}], "檢查紅色膠塞有沒有")
         self.assertIn(result["intent"], ("color_presence", "presence"))
         self.assertEqual(result["report"]["status"], "ok", result["report"].get("error"))
 
     def test_refine_rules_adjusts_params(self):
         img = part_image(5)
-        result = service.generate(img, [], "應該有 5 個孔")
-        refined = service.refine(img, [], "應該有 5 個孔", result["graph"], "改成 4 個")
+        result = service.generate([img], [], "應該有 5 個孔")
+        refined = service.refine([img], [], "應該有 5 個孔", result["graph"], "改成 4 個")
         thr = next(n for n in refined["graph"]["nodes"] if n["type"] == "if_number")
         self.assertEqual(thr["params"]["threshold"], 4)
-        self.assertEqual(refined["report"]["status"], "ng")  # 5 顆 vs 期望 4 → NG
+        self.assertEqual(refined["report"]["status"], "ng")
 
     def test_refine_looser(self):
         img = part_image(5)
-        result = service.generate(img, [], "應該有 5 個孔")
+        result = service.generate([img], [], "應該有 5 個孔")
         before = next(n for n in result["graph"]["nodes"] if n["type"] == "blob")["params"]["min_area"]
-        refined = service.refine(img, [], "應該有 5 個孔", result["graph"], "太敏感了，誤判很多")
+        refined = service.refine([img], [], "應該有 5 個孔", result["graph"], "太敏感了，誤判很多")
         after = next(n for n in refined["graph"]["nodes"] if n["type"] == "blob")["params"]["min_area"]
         self.assertGreater(after, before)
 
-    def test_llm_unavailable_without_key(self):
-        from apps.vision.agent import llm
+    def test_edit_rules(self):
+        img = part_image(5)
+        graph = service.generate([img], [], "應該有 5 個孔")["graph"]
+        out = service.edit(graph, "把 二值化 的 threshold 改成 80", img)
+        self.assertTrue(out["applied"], out["rationale"])
+        thr = next(n for n in out["graph"]["nodes"] if n["type"] == "threshold")
+        self.assertEqual(thr["params"]["threshold"], 80)
+        out = service.edit(graph, "停用 去雜訊", None)
+        blur = next(n for n in out["graph"]["nodes"] if n["type"] == "blur")
+        self.assertFalse(blur["enabled"])
+        out = service.edit(graph, "刪除 結果影像", None)
+        self.assertFalse(any(n["type"] == "draw_result" for n in out["graph"]["nodes"]))
+        out = service.edit(graph, "幫我泡杯咖啡", None)
+        self.assertFalse(out["applied"])
 
-        self.assertFalse(llm.available())
+    def test_tune_reruns_batch(self):
+        imgs = {"a": part_image(5), "b": part_image(4)}
+        graph = service.generate([imgs["a"]], [], "應該有 5 個孔")["graph"]
+        runs = [{"name": "a", "image_ref": "a", "status": "ok", "outputs": {"count": 5}},
+                {"name": "b", "image_ref": "b", "status": "ng", "outputs": {"count": 4}}]
+        out = service.tune(graph, "改成 4 個", runs, imgs)
+        self.assertTrue(out["applied"])
+        self.assertEqual(out["before"], {"ok": 1, "ng": 1, "failed": 0})
+        self.assertEqual(out["after"], {"ok": 1, "ng": 1, "failed": 0})
+        self.assertEqual([it["after"] for it in out["items"]], ["ng", "ok"])
+
+
+class ProviderSettingsTests(TestCase):
+    def test_server_default_is_offline_without_key(self):
+        s = providers.server_settings()
+        self.assertEqual(s.provider, "offline")
+        self.assertFalse(providers.available(s))
+
+    def test_user_settings_override_server(self):
+        user = User.objects.create_user("u1", password="pw")
+        self.assertEqual(providers.resolve(user).provider, "offline")
+        from apps.accounts.models import UserPref
+
+        UserPref.objects.create(user=user, agent={"provider": "openai", "model": "gpt-4o", "api_key": "sk-test-12345678"})
+        s = providers.resolve(user)
+        self.assertEqual((s.provider, s.source), ("openai", "user"))
+        self.assertTrue(s.uses_llm)
+        pub = s.public()
+        self.assertEqual(pub["key_hint"], "…5678")
+        self.assertNotIn("api_key", pub)
 
 
 class AgentApiTests(TestCase):
-    def _upload(self):
-        ok, buf = cv2.imencode(".png", part_image(5))
+    def _upload(self, img=None):
+        ok, buf = cv2.imencode(".png", part_image(5) if img is None else img)
         f = io.BytesIO(buf.tobytes())
         f.name = "part.png"
         r = self.client.post("/api/vision/agent/image", data={"image": f})
         self.assertEqual(r.status_code, 201, r.content)
         return r.json()["ref"]
 
+    def _json(self, path, body):
+        return self.client.post(path, data=json.dumps(body), content_type="application/json")
+
     def test_info(self):
         r = self.client.get("/api/vision/agent/info")
         self.assertEqual(r.status_code, 200)
         self.assertFalse(r.json()["llm"])
+        self.assertEqual([p["value"] for p in r.json()["providers"]], list(providers.PROVIDERS))
 
     def test_generate_and_refine_roundtrip(self):
         ref = self._upload()
-        r = self.client.post("/api/vision/agent/generate",
-                             data=json.dumps({"ref": ref, "prompt": "應該有 5 個孔"}),
-                             content_type="application/json")
+        r = self._json("/api/vision/agent/generate", {"images": [ref], "prompt": "應該有 5 個孔"})
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertEqual(body["report"]["status"], "ok")
-        self.assertTrue(any(n["type"] == "judge" for n in body["graph"]["nodes"]))
-        r = self.client.post("/api/vision/agent/refine",
-                             data=json.dumps({"ref": ref, "prompt": "應該有 5 個孔", "graph": body["graph"], "feedback": "改成 6 個"}),
-                             content_type="application/json")
+        self.assertEqual(len(body["reports"]), 1)
+        r = self._json("/api/vision/agent/refine", {"images": [ref], "prompt": "應該有 5 個孔", "graph": body["graph"], "feedback": "改成 6 個"})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["report"]["status"], "ng")
 
+    def test_legacy_single_ref_still_works(self):
+        ref = self._upload()
+        r = self._json("/api/vision/agent/generate", {"ref": ref, "prompt": "應該有 5 個孔"})
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_edit_and_tune_endpoints(self):
+        ref = self._upload()
+        graph = self._json("/api/vision/agent/generate", {"images": [ref], "prompt": "應該有 5 個孔"}).json()["graph"]
+        r = self._json("/api/vision/agent/edit", {"graph": graph, "instruction": "把 二值化 的 threshold 改成 90", "image_ref": ref})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.json()["applied"])
+        self.assertIsNotNone(r.json()["report"])
+        ref_ng = self._upload(part_image(4))
+        runs = [{"name": "a", "image_ref": ref, "status": "ok", "outputs": {"count": 5}}, {"name": "b", "image_ref": ref_ng, "status": "ng", "outputs": {"count": 4}}]
+        r = self._json("/api/vision/agent/tune", {"graph": graph, "instruction": "改成 4 個", "runs": runs})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["after"], {"ok": 1, "ng": 1, "failed": 0})
+
     def test_generate_missing_image(self):
-        r = self.client.post("/api/vision/agent/generate",
-                             data=json.dumps({"ref": "agentnope:upload:image", "prompt": "x"}),
-                             content_type="application/json")
+        r = self._json("/api/vision/agent/generate", {"images": ["agentnope:upload:image"], "prompt": "x"})
         self.assertEqual(r.status_code, 404)
+
+    def test_settings_roundtrip_per_user(self):
+        # 沒有任何使用者 → bootstrap 放行 setup，拿 token 後以該使用者身分操作
+        token = self._json("/api/auth/setup", {"username": "admin", "password": "secret1"}).json()["token"]
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+        r = self.client.get("/api/vision/agent/settings", **auth)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(r.json()["configured"])
+        r = self.client.patch("/api/vision/agent/settings", data=json.dumps({"provider": "gemini", "api_key": "AIza-abcdefgh"}), content_type="application/json", **auth)
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual(body["provider"], "gemini")
+        self.assertTrue(body["has_key"])
+        self.assertEqual(body["key_hint"], "…efgh")
+        self.assertNotIn("api_key", body)
+        # info 反映使用者自己的設定；/auth/me 的 prefs 不含金鑰
+        self.assertEqual(self.client.get("/api/vision/agent/info", **auth).json()["provider"], "gemini")
+        self.assertNotIn("api_key", json.dumps(self.client.get("/api/auth/me", **auth).json()))
+        r = self.client.patch("/api/vision/agent/settings", data=json.dumps({"provider": "gemini", "clear_key": True}), content_type="application/json", **auth)
+        self.assertFalse(r.json()["has_key"])

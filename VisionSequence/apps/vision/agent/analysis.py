@@ -1,7 +1,7 @@
 """ROI 影像特徵量測：規則引擎靠它自動調參，LLM 供應器把它當文字摘要。
 
-所有量測都在「使用者圈的 ROI」內做（沒圈就整張圖），輸出純 Python 純量，
-可直接 JSON 化。不修改輸入影像。
+支援多張影像：每個 ROI 帶 `image`（影像索引，預設 0），在自己那張圖上量。
+所有量測輸出純 Python 純量，可直接 JSON 化。不修改輸入影像。
 """
 
 from __future__ import annotations
@@ -88,28 +88,40 @@ def analyze_region(image: np.ndarray, region: dict[str, Any] | None) -> dict[str
     return info
 
 
-def analyze(image: np.ndarray, regions: list[dict[str, Any]]) -> dict[str, Any]:
-    """整張影像＋各 ROI 的特徵摘要。regions 可為空（整張圖當一個 ROI）。"""
+def analyze(images: list[np.ndarray], regions: list[dict[str, Any]]) -> dict[str, Any]:
+    """多張影像＋各 ROI 的特徵摘要。regions[i] 可帶 image（影像索引，預設 0）。"""
+    first = images[0]
+    rows = []
+    for r in regions:
+        idx = int(r.get("image", 0) or 0)
+        img = images[idx] if 0 <= idx < len(images) else first
+        row = analyze_region(img, r.get("region"))
+        row["image"] = idx
+        row["hint"] = str(r.get("hint") or "")
+        rows.append(row)
     return {
-        "width": int(image.shape[1]),
-        "height": int(image.shape[0]),
-        "channels": int(image.shape[2]) if image.ndim == 3 else 1,
-        "full": analyze_region(image, None),
-        "regions": [analyze_region(image, r.get("region")) for r in regions],
+        "width": int(first.shape[1]),
+        "height": int(first.shape[0]),
+        "channels": int(first.shape[2]) if first.ndim == 3 else 1,
+        "image_count": len(images),
+        "images": [{"index": i, "width": int(im.shape[1]), "height": int(im.shape[0])} for i, im in enumerate(images)],
+        "full": analyze_region(first, None),
+        "regions": rows,
     }
 
 
 def summarize_for_llm(analysis: dict[str, Any]) -> str:
     """把特徵包壓成給 LLM 的短文字（省 token、避免傳原始陣列）。"""
-    lines = [f"影像 {analysis['width']}x{analysis['height']} px，{analysis['channels']} 通道。"]
+    lines = [f"共 {analysis.get('image_count', 1)} 張影像；影像 1 為 {analysis['width']}x{analysis['height']} px，{analysis['channels']} 通道。"]
     for i, r in enumerate(analysis.get("regions", []), start=1):
         if r.get("empty"):
-            lines.append(f"ROI{i}: 空區域")
+            lines.append(f"ROI{i:02d}: 空區域")
             continue
         b = r.get("bounds", {})
         dom = r.get("dominant", {})
+        hint = f"，使用者提示「{r['hint']}」" if r.get("hint") else ""
         lines.append(
-            f"ROI{i}（{r.get('shape', '?')} @ {b.get('x')},{b.get('y')} {b.get('w')}x{b.get('h')}）："
+            f"ROI{i:02d}（影像 {r.get('image', 0) + 1}，{r.get('shape', '?')} @ {b.get('x')},{b.get('y')} {b.get('w')}x{b.get('h')}{hint}）："
             f"平均灰階 {r['mean']}±{r['std']}，Otsu {r['otsu']}，暗部佔比 {r['dark_ratio']}，"
             f"邊緣密度 {r['edge_ratio']}，主色 {dom.get('hex')}（H{dom.get('h')} S{dom.get('s')} V{dom.get('v')}），"
             f"暗粒子 {r['blobs']['dark']['count']} 顆（中位面積 {r['blobs']['dark']['median_area']}px²）、"

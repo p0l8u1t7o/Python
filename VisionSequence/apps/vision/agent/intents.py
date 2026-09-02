@@ -11,9 +11,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 INTENT_KINDS = (
-    "barcode", "count", "diameter", "width", "angle",
+    "barcode", "count", "diameter", "width", "angle", "golden",
     "defect", "color_match", "color_presence", "presence", "brightness", "generic",
 )
+
+_GOOD_WORDS = ("好品", "良品", "ok 品", "ok品", "正常品", "正常", "合格", "golden", "good", "reference", "範本", "范本")
+_BAD_WORDS = ("壞品", "坏品", "不良", "ng 品", "ng品", "瑕疵品", "缺陷品", "異常", "异常", "不合格", "bad", "defective")
 
 _CN_NUM = {"一": 1, "二": 2, "兩": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
@@ -31,8 +34,41 @@ class Intent:
     mm_per_px: float | None = None
     #: 顏色比對的目標色（十六進位；預設取 ROI 主色）。
     color_hex: str = ""
+    #: 良品比對：哪個 ROI 是好品（當範本）、哪個是壞品（示範缺陷）；索引以 0 起算。
+    good_roi: int | None = None
+    bad_roi: int | None = None
     #: 解析過程的說明（rationale 的素材）。
     notes: list[str] = field(default_factory=list)
+
+
+def _roi_refs(text: str, tag_words: tuple[str, ...]) -> list[int]:
+    """找「ROI01 是好品」這種指涉：回傳被 tag_words 修飾的 ROI 索引（0 起算）。"""
+    out: list[int] = []
+    for m in re.finditer(r"roi\s*0*(\d+)", text, re.IGNORECASE):
+        idx = int(m.group(1)) - 1
+        window = text[m.end():m.end() + 14].lower()
+        if any(w in window for w in tag_words):
+            out.append(idx)
+    return out
+
+
+def _golden_roles(text: str, regions: list[dict[str, Any]]) -> tuple[int | None, int | None]:
+    """好品／壞品 ROI 的角色：ROI 自己的 hint 優先，其次提示詞裡的「ROI01 是好品」。"""
+    good = bad = None
+    for i, r in enumerate(regions):
+        hint = str(r.get("hint") or "").lower()
+        if good is None and any(w in hint for w in _GOOD_WORDS):
+            good = i
+        elif bad is None and any(w in hint for w in _BAD_WORDS):
+            bad = i
+    low = text.lower()
+    if good is None:
+        refs = _roi_refs(low, _GOOD_WORDS)
+        good = refs[0] if refs else None
+    if bad is None:
+        refs = _roi_refs(low, _BAD_WORDS)
+        bad = refs[0] if refs else None
+    return good, bad
 
 
 def _find_number(text: str, patterns: list[str]) -> float | None:
@@ -86,6 +122,12 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
         intent.unit = "mm"
 
     # --- 特異性排序的意圖判斷 ---
+    good, bad = _golden_roles(text, regions)
+    if good is not None and (bad is not None or _has(low, *_BAD_WORDS) or _has(low, "比對", "比对", "差異", "差异", "compare")):
+        intent.kind = "golden"
+        intent.good_roi, intent.bad_roi = good, bad
+        intent.notes.append(f"良品比對：ROI{good + 1:02d} 當好品範本" + (f"、ROI{bad + 1:02d} 是壞品示範" if bad is not None else ""))
+        return intent
     if _has(low, "條碼", "条码", "二維碼", "二维码", "qr", "barcode", "讀碼", "读码", "掃碼", "扫码"):
         intent.kind = "barcode"
         intent.notes.append("提示詞含讀碼關鍵詞")

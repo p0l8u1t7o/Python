@@ -5,11 +5,11 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Download, Eye, FolderOpen, Gem, ImageOff, Play } from 'lucide-react'
+import { Check, Download, Eye, FolderOpen, Gem, ImageOff, Play, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Badge, Button, Checkbox, Modal, SegmentedControl, Select, StatusBadge, TextInput } from '@/components/ui'
-import { imageUrl } from '@/lib/api'
+import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useBatchFromSource, useBatchTest, useGoldenMutations, useSources } from '@/lib/queries'
 import type { BatchItem, BatchResult, FlowGraph } from '@/lib/types'
@@ -53,6 +53,19 @@ export interface BatchTestModalProps {
   execLocked: boolean
   /** 點某列 → 在影像視窗檢視那次 run（呼叫端抓 GET /runs/{id}） */
   onView: (item: BatchItem) => void
+  /** 「請 AI 調整」後把新 graph 套回畫布 */
+  onApplyGraph?: (graph: FlowGraph) => void
+}
+
+interface TuneResult {
+  graph: FlowGraph
+  rationale: string
+  provider: string
+  changes: string[]
+  before: { ok: number; ng: number; failed: number }
+  after: { ok: number; ng: number; failed: number } | null
+  items: { name: string; before: string; after: string }[]
+  applied: boolean
 }
 
 export function BatchTestModal(p: BatchTestModalProps) {
@@ -74,6 +87,24 @@ export function BatchTestModal(p: BatchTestModalProps) {
   const golden = useGoldenMutations(p.flowId)
   /** 勾選要存進 Golden Set 的列（run_id） */
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  /** 請 AI 依批次結果調整流程 */
+  const [tuneText, setTuneText] = useState('')
+  const [tuning, setTuning] = useState(false)
+  const [tuneResult, setTuneResult] = useState<TuneResult | null>(null)
+
+  async function tune() {
+    if (!result || !tuneText.trim()) return
+    setTuning(true)
+    try {
+      const runs = result.items.map((it) => ({ name: it.name, image_ref: it.image_ref ?? '', status: it.status, outputs: it.outputs }))
+      const r = await api.post<TuneResult>('/vision/agent/tune', { graph: p.graph(), instruction: tuneText.trim(), runs })
+      setTuneResult(r)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setTuning(false)
+    }
+  }
 
   async function saveGolden() {
     if (!result) return
@@ -247,6 +278,28 @@ export function BatchTestModal(p: BatchTestModalProps) {
               </table>
             </div>
             {selectedRun ? <p className="mt-1 text-[11px] text-muted"><Badge tone="brand">{t('batch.viewing', { name: result.items.find((it) => it.run_id === selectedRun)?.name ?? '' })}</Badge></p> : null}
+
+            {/* 請 AI 依這批結果調整流程／參數 */}
+            <div className="mt-3 space-y-2 rounded-lg border border-line p-3" data-testid="batch-tune">
+              <p className="flex items-center gap-1.5 text-xs font-semibold"><Sparkles size={13} className="text-brand" /> {t('agent.tuneTitle')}</p>
+              <div className="flex gap-2">
+                <input className="input flex-1 !py-1.5 text-xs" placeholder={t('agent.tunePlaceholder')} value={tuneText}
+                  onChange={(e) => setTuneText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void tune() }} data-testid="batch-tune-input" />
+                <Button size="sm" variant="primary" loading={tuning} disabled={!tuneText.trim() || p.execLocked} onClick={() => void tune()} data-testid="batch-tune-run">{t('agent.tune')}</Button>
+              </div>
+              {tuneResult ? (
+                <div className="space-y-1.5 text-xs">
+                  <p className="text-muted">{tuneResult.rationale}</p>
+                  {tuneResult.changes.length ? <ul className="list-disc pl-4 text-[11px] text-muted">{tuneResult.changes.map((c, i) => <li key={i}>{c}</li>)}</ul> : null}
+                  {tuneResult.applied && tuneResult.after ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="tnum">{t('agent.beforeAfter')}：OK {tuneResult.before.ok} → <b className="text-ok">{tuneResult.after.ok}</b>、NG {tuneResult.before.ng} → <b className="text-warning">{tuneResult.after.ng}</b>、{t('batch.summary.failed')} {tuneResult.before.failed} → <b className="text-critical">{tuneResult.after.failed}</b></span>
+                      {p.onApplyGraph ? <Button size="xs" variant="primary" icon={<Check size={12} />} onClick={() => p.onApplyGraph?.(tuneResult.graph)} data-testid="batch-tune-apply">{t('agent.apply')}</Button> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : (
           <p className="text-xs text-muted">{running ? t('batch.running', { count: files.length || Number(count) }) : t('batch.noResults')}</p>

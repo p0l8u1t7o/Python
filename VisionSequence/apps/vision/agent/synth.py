@@ -7,10 +7,13 @@ image_source 不綁來源（mode=auto：試跑吃上傳影像，存成流程後�
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from apps.vision.agent.intents import Intent
 from apps.vision.demo import _edge, _node, _note
+
+#: 良品比對用：把某張影像的 ROI 裁成範本資產，回 asset id。(image_index, region, name) -> id
+MakeAsset = Callable[[int, dict[str, Any], str], str]
 
 
 def _src_gray(prompt_note: str) -> tuple[list[dict], list[dict]]:
@@ -327,7 +330,54 @@ SYNTHESIZERS = {
 }
 
 
-def synthesize(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    graph, why = SYNTHESIZERS[intent.kind](intent, regions, analysis)
+def _same_size_rect(good_bounds: dict[str, Any], target_bounds: dict[str, Any]) -> dict[str, Any]:
+    """良品比對的檢測框：位置取目標 ROI 的中心、尺寸取好品 ROI（範本必須與檢測區同尺寸）。"""
+    w, h = int(good_bounds["w"]), int(good_bounds["h"])
+    cx = target_bounds["x"] + target_bounds["w"] / 2
+    cy = target_bounds["y"] + target_bounds["h"] / 2
+    return {"shape": "rect", "x": int(round(cx - w / 2)), "y": int(round(cy - h / 2)), "w": w, "h": h}
+
+
+def synth_golden(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any], make_asset: MakeAsset | None) -> tuple[dict, str]:
+    rows = analysis.get("regions") or []
+    good_idx = intent.good_roi if intent.good_roi is not None else 0
+    good = regions[good_idx] if good_idx < len(regions) else None
+    bad = regions[intent.bad_roi] if intent.bad_roi is not None and intent.bad_roi < len(regions) else None
+    template_id = ""
+    if good is not None and make_asset is not None:
+        template_id = make_asset(int(good.get("image", 0) or 0), good["region"], "AI 助手：良品範本")
+    good_bounds = rows[good_idx].get("bounds") if good_idx < len(rows) and rows[good_idx].get("bounds") else None
+    if bad is not None and good_bounds and rows[intent.bad_roi].get("bounds"):
+        roi = _same_size_rect(good_bounds, rows[intent.bad_roi]["bounds"])
+    elif good_bounds:
+        roi = {"shape": "rect", **good_bounds}
+    else:
+        roi = good["region"] if good else None
+    nodes = [
+        _node("src", "image_source", 0, 0, "取像", mode="auto"),
+        _node("diff", "defect_diff", 1, 0, "良品比對", template=template_id, roi=roi, align="phase", threshold=40, min_area=100),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG：與良品有差異", verdict="ng", label="defect"),
+        _node("out_n", "output", 2, 2, "輸出缺陷數", name="defect_count"),
+        _node("out_a", "output", 3, 2, "輸出缺陷面積", name="defect_area"),
+        _note("hint", 0, 1, "AI 助手", "由 AI 助手生成：良品比對。範本＝你圈的好品 ROI（已存成資產），檢測框與範本同尺寸。\n位移由相位對齊補正；差異門檻與最小面積決定靈敏度。"),
+    ]
+    edges = [
+        _edge("src", "diff"),
+        _edge("diff", "ok", "ok", "_flow"), _edge("diff", "ng", "defect", "_flow"),
+        _edge("diff", "out_n", "count", "value"), _edge("diff", "out_a", "total_area", "value"),
+    ]
+    why = "好品 ROI 裁成範本資產，在檢測框內做差異比對"
+    if not template_id:
+        why += "（範本尚未建立：請在「良品比對」工具頁上傳或框選範本）"
+    return _finish(nodes, edges, col=3), why
+
+
+def synthesize(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any], *,
+               make_asset: MakeAsset | None = None) -> tuple[dict[str, Any], str]:
+    if intent.kind == "golden":
+        graph, why = synth_golden(intent, regions, analysis, make_asset)
+    else:
+        graph, why = SYNTHESIZERS[intent.kind](intent, regions, analysis)
     rationale = "；".join([*intent.notes, why])
     return graph, rationale

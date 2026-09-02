@@ -41,7 +41,8 @@
 
 ## AI 助手（apps/vision/agent）
 - 上傳影像＋圈 ROI＋提示詞 → 生成標準 graph 並在該影像實跑（`service.generate/refine`、`/vision/agent/*`、前端 `/agent`）。
-- 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序）；`llm.py` Claude 生成（`VISION_AGENT_API_KEY`＋`pip install anthropic` 才啟用、延後 import，失敗自動落回規則）。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB）。
+- 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序）；`providers.py` 多供應商（claude 走 anthropic SDK 延後 import；openai／gemini 走 urllib REST 零依賴）＋`llm.py` 四種任務（generate／refine／edit／tune）。設定解析 `providers.resolve(user)`：使用者自己的 `UserPref.agent`（每人各自存、金鑰不回前端）→ .env（`VISION_AGENT_PROVIDER/API_KEY/MODEL`）→ offline；LLM 失敗自動落回規則。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB；多張影像各跑一次回 `reports`）。
+- 多圖＋ROI 編號（ROI01…，regions[i].image 指影像索引；提示詞「ROI01 是好品、ROI02 是壞品」→ golden 意圖，好品 ROI 自動裁成資產）。編輯器右側「AI」分頁走 `/agent/edit`（離線句型見 `service.edit_rules`）；批次測試「請 AI 調整」走 `/agent/tune`（同批影像重跑回前後對比）。
 - 新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
 
 ## 深度學習教導（apps/vision/dl）

@@ -28,6 +28,8 @@ class UserPref(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="pref")
     ui = models.JSONField(default=dict, blank=True)
+    #: AI 助手供應商設定 {provider, model, api_key}；金鑰只在伺服器，API 只回尾碼提示，不進 /auth/me。
+    agent = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
 
