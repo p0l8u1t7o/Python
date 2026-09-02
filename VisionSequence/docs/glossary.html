@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>前端名詞規範（溝通用）</h1>
@@ -65,7 +65,7 @@
 <h2 id="pages">頁面（左側導覽，路由）</h2>
 <table>
 <tr><th>中文</th><th>路由</th><th>程式名</th><th>說明</th></tr>
-<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕），中央＝選中流程的即時影像、右欄＝即時檢測資訊；沒有事件時預設顯示最後一次執行結果（<code>GET /flows/{id}/recent</code>，網頁試跑也算）；訂該流程 SSE 即時更新；一般用戶可看見的流程都能觀看</td></tr>
+<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕），中央＝選中流程的即時影像、右欄＝即時檢測資訊；沒有事件時預設顯示最後一次執行結果（<code>GET /flows/{id}/recent</code>，網頁試執行也算）；訂該流程 SSE 即時更新；一般用戶可看見的流程都能觀看</td></tr>
 <tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
 <tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
 <tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁。版面：左＝參數、中＝執行前/後影像＋下方參考資訊（直方圖/統計/series 橫向排列）、右＝按鍵（儲存/執行到此步驟/自動套用/重用影像/暫存影像）。預設按「執行到此步驟」才跑（可開自動套用）；有 ROI 參數且有值時進頁直接顯示可拖曳；參數只寫共享草稿、「儲存」才寫回後台，「返回」只在真的有未儲存變更時 confirm（儲存後＝新基準）並放棄本頁編輯</td></tr>
@@ -77,7 +77,7 @@
 <tr><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>登入／建立第一個管理員</td></tr>
 <tr><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>單一流程的執行歷史、良率、每小時 OK／NG、耗時趨勢（總覽卡片與頂列都有入口）</td></tr>
 <tr><td>外部整合</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出、連線（原 /connections 併入為分頁）；左側選單名稱「外部整合」</td></tr>
-<tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試跑到該步驟、標記為已教導</td></tr>
+<tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試執行到該步驟、標記為已教導</td></tr>
 <tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
 <tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集（zip 批次、去重）與標記、自動標記與智慧選取、資料集分割與版本、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
 <tr><td>連線</td><td><code>/integration?tab=connections</code>（舊 /connections 轉址）</td><td>ConnectionsSection（併入外部整合頁分頁）</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
@@ -88,7 +88,7 @@
 <h2 id="editor">流程編輯器的區塊</h2>
 <table>
 <tr><th>中文</th><th>程式名</th><th>說明</th></tr>
-<tr><td>頂列</td><td>EditorToolbar</td><td>兩列：第一列流程名稱、儲存、範本下拉、「配方」鈕（開配方面板）、綁定配方下拉（有配方才顯示）、「未教導」標籤、參數卡／Golden Set／匯出／統計圖示；第二列試跑、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、寬度不足換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角</td></tr>
+<tr><td>頂列</td><td>EditorToolbar</td><td>兩列：第一列流程名稱、儲存、範本下拉、「配方」鈕（開配方面板）、綁定配方下拉（有配方才顯示）、「未教導」標籤、參數卡／Golden Set／匯出／統計圖示；第二列試執行、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、寬度不足換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角</td></tr>
 <tr><td>工具箱</td><td>ToolPalette（FavoriteTools＋ToolPicker）</td><td>左欄上半＝「新增工具」按鈕＋收藏清單（點擊插入畫布中央、也可拖曳）；按鈕開「選擇工具」視窗：左側功能分群快速切換、右側大圖示卡片與完整說明、可搜尋、可收藏，點卡即插入畫布</td></tr>
 <tr><td>步驟選單</td><td>NodeContextMenu</td><td>右鍵點步驟：開啟工具頁、複製、停用／啟用、刪除、複製參數／貼上參數（同型別）</td></tr>
 <tr><td>批次測試</td><td>BatchTestModal</td><td>頂列「批次測試」開的 Modal：多張影像跑一輪、摘要、結果表（可勾選列「存為 Golden Set」）、CSV</td></tr>
@@ -99,7 +99,7 @@
 <tr><td>側欄摺疊</td><td>AppShell（localStorage <code>vs.sidebar</code>）</td><td>左側主選單可切換「只顯示圖示」／「圖示＋文字」，文字不換行；摺疊時 hover 顯示 tooltip；頂部導覽列與側欄底部都有摺疊鈕</td></tr>
 <tr><td>面板</td><td>Panel／Card（Gentelella x_panel）</td><td>內容以白底、細邊框、頂部標題列＋右側動作圖示、可摺疊的面板呈現；統計 KPI 用 Tile（tile_count：大數字＋小標）</td></tr>
 <tr><td>範本畫廊</td><td>TemplateGallery</td><td>範本卡片（節點示意縮圖）＋選來源＋流程名稱；流程頁「從範本建立」與頂列「載入範本」共用</td></tr>
-<tr><td>步驟清單</td><td>NodeList</td><td>左欄下半：本流程所有步驟；點一下畫布聚焦到該步驟</td></tr>
+<tr><td>步驟清單</td><td>NodeList</td><td>左欄下半：本流程所有步驟；點選畫布聚焦到該步驟</td></tr>
 <tr><td>影像視窗</td><td>ImageViewer</td><td>中欄上方：顯示影像、標記、ROI 編輯</td></tr>
 <tr><td>畫布</td><td>FlowCanvas</td><td>中欄下方：React Flow 畫布；右上角「選取／平移」切換（<code>CanvasModePanel</code>，與縮放滑桿同風格）</td></tr>
 <tr><td>側欄</td><td>Inspector</td><td>右欄：流程共用設定／選取步驟的基本設定與「開啟工具頁」</td></tr>
@@ -124,10 +124,10 @@
 <tr><td>區域 / ROI</td><td>Region</td><td>在影像上畫的檢測範圍（矩形、旋轉矩形、圓、環、多邊形、線）</td></tr>
 <tr><td>標記</td><td>Overlay</td><td>工具畫在影像上的結果圖形（框、圓、點、文字…）</td></tr>
 <tr><td>執行</td><td>Run</td><td>一次完整（或到某步驟為止）的流程執行；結果為 OK／NG／失敗</td></tr>
-<tr><td>試跑</td><td>Preview</td><td>用未儲存的圖執行、保留所有中間影像；不寫入歷史</td></tr>
+<tr><td>試執行</td><td>Preview</td><td>用未儲存的圖執行、保留所有中間影像；不寫入歷史</td></tr>
 <tr><td>執行一次</td><td>Run once</td><td>用已儲存的圖執行一次；寫入歷史與統計。UI 已無此按鈕（整合方走 <code>POST /flows/{id}/run</code>、TCP 或整合頁）</td></tr>
 <tr><td>連續執行</td><td>Continuous</td><td>依間隔不停執行</td></tr>
-<tr><td>暫存影像</td><td>Scratch image</td><td>只為試跑上傳的影像，不進影像來源庫</td></tr>
+<tr><td>暫存影像</td><td>Scratch image</td><td>只為試執行上傳的影像，不進影像來源庫</td></tr>
 <tr><td>影像來源</td><td>Image source</td><td>相機／資料夾／合成／API 送圖的定義</td></tr>
 <tr><td>資產</td><td>Asset</td><td>範本影像、ONNX 模型等檔案</td></tr>
 <tr><td>判定</td><td>Judge</td><td>OK／NG 的結論（judge 工具）</td></tr>
@@ -139,16 +139,16 @@
 <tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名；範例樣板（<code>demo.BUILTIN_TEMPLATES</code>）都在這裡，配「範例：⋯」樣本來源即可執行</td></tr>
 <tr><td>註解</td><td>Note（畫布便利貼）</td><td>graph 的裝飾節點（type=note，不參與執行）；工具箱「新增註解」放到畫布中央，選中後在屬性面板改標題／內文、拖角落調大小</td></tr>
 <tr><td>AI 助手</td><td>Agent（<code>/agent</code>、AgentPage、<code>apps/vision/agent</code>）</td><td>上傳影像＋圈 ROI＋提示詞 → 自動生成流程 graph 並實跑；離線規則引擎（意圖→合成器）＋可選 LLM 生成（<code>VISION_AGENT_API_KEY</code>）。見 docs/agent.html</td></tr>
-<tr><td>批次測試</td><td>Batch test</td><td>多張影像（檔案／來源抓 N 張，≤50）用目前的圖各跑一次試跑，看良率與每張判定；影像只保留最近 8 次（KEEP_RUN_IMAGES），被淘汰的顯示「影像已釋放」</td></tr>
+<tr><td>批次測試</td><td>Batch test</td><td>多張影像（檔案／來源抓 N 張，≤50）用目前的圖各跑一次試執行，看良率與每張判定；影像只保留最近 8 次（KEEP_RUN_IMAGES），被淘汰的顯示「影像已釋放」</td></tr>
 <tr><td>統計</td><td>Statistics（StatsPage）</td><td>資料庫歷史的 KPI、每小時 OK／NG／失敗、耗時趨勢與執行歷史表；「記憶體即時統計」是引擎內的 FlowStats</td></tr>
 <tr><td>整合頁</td><td>Integration page</td><td>外部整合方的接口說明與測試工具；「事件監看」連 <code>/api/vision/events</code></td></tr>
 <tr><td>收藏</td><td>Favorites</td><td>工具箱裡按星號的工具（localStorage <code>vs.favoriteTools</code>）；「最近使用」已移除</td></tr>
 <tr><td>已教導 / 未教導</td><td>Commissioned（<code>Flow.commissioned</code>）</td><td>參數卡頁「標記為已教導」後為 true；false 時流程列表／總覽／頂列顯示「未教導」標籤，執行的 <code>RunReport.warnings</code> 帶「未完成現場教導」但不阻擋</td></tr>
-<tr><td>配方</td><td>Recipe（<code>FlowRecipe</code>）</td><td>同一流程的一組參數覆寫 <code>param_overrides = {node_id: {param: value}}</code>，多料號換線用；執行／試跑／TCP <code>recipe=</code> 可指定（名稱或 id），未指定用綁定配方（is_default）；參數卡頁「編輯對象」選了配方後改動寫進配方而非圖</td></tr>
+<tr><td>配方</td><td>Recipe（<code>FlowRecipe</code>）</td><td>同一流程的一組參數覆寫 <code>param_overrides = {node_id: {param: value}}</code>，多料號換線用；執行／試執行／TCP <code>recipe=</code> 可指定（名稱或 id），未指定用綁定配方（is_default）；參數卡頁「編輯對象」選了配方後改動寫進配方而非圖</td></tr>
 <tr><td>覆寫</td><td>Override</td><td>配方裡的一筆「步驟.參數＝值」；執行時疊到圖上再編譯</td></tr>
 <tr><td>Golden Set</td><td>Golden Set（<code>GoldenCase</code>）</td><td>有期望值（OK／NG／不限）的影像案例集，存在伺服器（不進影像快取）；來自上傳或批次測試結果</td></tr>
 <tr><td>案例</td><td>Golden case</td><td>Golden Set 裡的一張影像＋期望狀態＋（可選）期望輸出＋備註</td></tr>
-<tr><td>回歸</td><td>Regression（<code>POST /regress</code>）</td><td>用非試跑模式跑全部案例，與期望值和基準比對：total／match／mismatch／match_rate、混淆矩陣、退步（regressed）／進步（improved）清單；只對 mismatch 的案例保留影像</td></tr>
+<tr><td>回歸</td><td>Regression（<code>POST /regress</code>）</td><td>以正式模式執行全部案例，與期望值和基準比對：total／match／mismatch／match_rate、混淆矩陣、退步（regressed）／進步（improved）清單；只對 mismatch 的案例保留影像</td></tr>
 <tr><td>基準</td><td>Baseline（<code>GoldenBaseline</code>）</td><td>某次回歸「存為基準」後每個案例的結果；下次回歸以它算退步／進步與「與基準不同」</td></tr>
 <tr><td>退步 / 進步</td><td>Regressed / Improved</td><td>基準符合、這次不符 = 退步（was → now）；反之 = 進步。改參數後最該看的清單</td></tr>
 <tr><td>合格門檻</td><td>fail_under</td><td>回歸的 match_rate 低於此值判定為未通過（CLI 退出碼非 0）</td></tr>
@@ -161,7 +161,7 @@
 <tr><td>標記編輯器</td><td>ShapeWorkspace（<code>components/dl</code>）</td><td>shapes 模式（分割／偵測）的標記工作區：縮圖牆巡檢、polygon/bbox 編輯、自動優化（輪廓貼邊）、快捷鍵；座標 0~1 正規化</td></tr>
 <tr><td>大圖檢視</td><td>ClassifyWorkspace（<code>components/dl</code>）</td><td>分類教導的大圖工作區：縮圖牆＋原圖檢視器（縮放／1:1）＋類別按鈕標記；與網格檢視切換、共用篩選</td></tr>
 <tr><td>工具欄</td><td>ToolRail（標記編輯器內）</td><td>標記編輯器畫布左側的大圖示垂直工具欄：選取／多邊形／框／智慧選取／自動優化／刪除／還原，各鈕標示快捷鍵</td></tr>
-<tr><td>智慧選取</td><td>Smart select（<code>apps/vision/dl/sam.py</code>）</td><td>標記編輯器的 SAM 點擊標記：點一下物件 → 伺服端分割出輪廓 → polygon 掛目前類別；權重預設 mobile_sam.pt 自動下載，需可選安裝 ultralytics</td></tr>
+<tr><td>智慧選取</td><td>Smart select（<code>apps/vision/dl/sam.py</code>）</td><td>標記編輯器的 SAM 點擊標記：點選物件 → 伺服端分割出輪廓 → polygon 掛目前類別；權重預設 mobile_sam.pt 自動下載，需可選安裝 ultralytics</td></tr>
 <tr><td>資料集分割</td><td>Split（<code>DlSample.split</code>）</td><td>train／val／test／未指定；「自動分割」分層隨機指派，狀態列分割 chip 可單張切換；val 當驗證集、test 不進訓練</td></tr>
 <tr><td>資料集版本</td><td>Dataset version（<code>DlDatasetVersion</code>）</td><td>凍結當下樣本＋標記＋分割成 zip 存進資產庫（kind=dataset）；shapes=YOLO 樹、classes=類別資料夾＋manifest；可下載、刪除</td></tr>
 <tr><td>資料增強</td><td>Augment（超參數「增強」群組）</td><td>訓練時擴增樣本：內建模型為翻轉＋亮度擾動（只加訓練集）、yolo_seg 曝露 degrees／fliplr／mosaic；預設關閉</td></tr>
@@ -200,6 +200,22 @@
 <tr><td>略過</td><td>灰淡</td><td>分支未選中或上游失敗</td></tr>
 <tr><td>執行中</td><td>脈動邊框</td><td>正在跑</td></tr>
 </table>
+
+<h2 id="tone">文案用詞規範（商用產品語氣）</h2>
+<table>
+<tr><th>避免</th><th>使用</th><th>說明</th></tr>
+<tr><td>點一下、按一下</td><td>點選</td><td>操作動詞統一</td></tr>
+<tr><td>試跑、跑一次</td><td>試執行、執行一次</td><td>「試執行」＝用目前畫布（含未儲存）執行並保留中間影像</td></tr>
+<tr><td>還沒有、沒有</td><td>尚無、尚未、無</td><td>空狀態文案</td></tr>
+<tr><td>不能</td><td>無法、不得</td><td>限制與驗證訊息（範圍限制用「不得」）</td></tr>
+<tr><td>這個、這次</td><td>此、此次</td><td></td></tr>
+<tr><td>抓、抓取</td><td>擷取、偵測</td><td>取像用「擷取」，偵測用「偵測」</td></tr>
+<tr><td>你</td><td>您</td><td>稱呼使用者</td></tr>
+<tr><td>太敏感、漏抓</td><td>誤判過多、漏檢</td><td>檢測結果描述（AI 助手回饋辨識仍接受口語同義詞）</td></tr>
+<tr><td>接上、拉正、掛</td><td>連接、校正、套用</td><td></td></tr>
+</table>
+<p>範例提示詞（給 AI 助手的自然語言範例）可保留口語；其餘 UI 文案、說明頁、文件一律依此表。<code>frontend/src/test/i18n.test.ts</code> 以禁用詞清單自動檢查。</p>
+
 </article>
 </body>
 </html>

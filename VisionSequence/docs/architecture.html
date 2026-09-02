@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html" aria-current="page">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html" aria-current="page">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc wide">
 <h1>VisionSequence 設計手冊</h1>
 <p>給要維護或擴充這個平台的人看。與 <a href="workflow-design.html">workflow-design.html</a>（ZQS Cloud 的控制流程引擎）同一套思想，但引擎換成毫秒級的<strong>行程內資料流</strong>。</p>
@@ -184,7 +184,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <p>完整清單見 <code>apps/vision/api.py</code> 頂端 docstring；整合方式見 <a href="automation.html">automation.html</a>。重點：</p>
 <ul>
 <li><code>POST /flows/{id}/run</code>：JSON 或 multipart 附 image；<code>wait</code>、<code>timeout_s</code>、<code>include_images</code>（預設不含節點輸出，產線回傳要小）。</li>
-<li><code>POST /flows/{id}/preview</code>：用未存檔的圖試跑，保留全部中間影像；<code>reuse_image_ref</code> 讓調參數時畫面固定。</li>
+<li><code>POST /flows/{id}/preview</code>：用未存檔的圖試執行，保留全部中間影像；<code>reuse_image_ref</code> 讓調參數時畫面固定。</li>
 <li><code>POST /flows/{id}/preview</code> 的 <code>until_node</code>／<code>analysis</code>：工具頁即時調參只跑到該步驟（<code>graph.restrict_to()</code> 取祖先子圖），並回傳直方圖與數值分布；<code>POST /flows/{id}/scratch-image</code> 暫存影像進快取不進來源庫；<code>DELETE /flows/{id}/recent</code> 重置。</li>
 <li><code>GET /images/{ref}?max=&amp;fmt=</code>、<code>GET /flows/{id}/recent</code>、<code>GET /flows/{id}/runs</code>（DB）、<code>GET /flows/{id}/stats</code>（每小時 OK/NG）。</li>
 <li>SSE 不經 ninja（config/urls.py 直接路由）：<code>hello / stats / run_queued / run_started / run_finished / continuous / ping / bye</code>；55 秒關閉、client 帶 since 重連；client 40 秒沒訊息（含 ping）就主動重連。</li>
@@ -198,7 +198,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <tr><td>lib/api.ts、lib/types.ts、lib/queries.ts</td><td>API 客戶端、型別、TanStack hooks</td></tr>
 <tr><td>lib/flowStream.ts</td><td>SSE → query cache（recent runs、stats），斷線重連帶 seq</td></tr>
 <tr><td>lib/graphValidation.ts</td><td>必填參數、範圍、未連線必填埠、型別相容（onConnect 用）</td></tr>
-<tr><td>pages/FlowEditorPage.tsx + components/editor/*</td><td>三欄可拖曳：調色盤｜影像檢視器（上，最大）＋畫布（下）｜檢視面板／結果。試跑、執行、連續、復原、複製貼上、自動排列。</td></tr>
+<tr><td>pages/FlowEditorPage.tsx + components/editor/*</td><td>三欄可拖曳：調色盤｜影像檢視器（上，最大）＋畫布（下）｜檢視面板／結果。試執行、執行、連續、復原、複製貼上、自動排列。</td></tr>
 <tr><td>components/viewer/ImageViewer.tsx</td><td>Canvas 檢視器：以游標為中心縮放、平移、fit/1:1、像素座標與灰階值、像素格線、overlays（線寬固定螢幕像素、Path2D 批次）、ROI 六種形狀的把手編輯與繪製模式。視角在 ref 裡、rAF 合併重繪，拖曳不觸發 React state。</td></tr>
 <tr><td>components/editor/ToolNode.tsx / FlowEdge.tsx</td><td>左輸入右輸出、埠依型別上色、flow 把手菱形、執行狀態（ok/ng/error/skipped/running）、耗時小字；邊依來源埠型別上色、有資料流過時動畫</td></tr>
 <tr><td>pages/Dashboard / Flows / Sources / Assets / Settings</td><td>總覽（全域 SSE）、列表、來源 CRUD＋預覽、資產上傳、金鑰／主題／語言</td></tr>
@@ -215,14 +215,14 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 
 <h2 id="more">9c. 範本庫、批次測試、整合工具（api_more.py）</h2>
 <ul>
-<li><strong>範本</strong>：內建範本由 <code>demo.py</code> 的建構器以 <code>{SOURCE}</code> 佔位符產生（孔數、曝光、定位＋卡尺、顏色有無、條碼），自訂範本存 <code>FlowTemplate</code>；<code>instantiate</code> 換回來源 id 並可加節點前綴避免撞名。範本不綁機器的來源 id，這是「點一下就能用」的前提。</li>
+<li><strong>範本</strong>：內建範本由 <code>demo.py</code> 的建構器以 <code>{SOURCE}</code> 佔位符產生（孔數、曝光、定位＋卡尺、顏色有無、條碼），自訂範本存 <code>FlowTemplate</code>；<code>instantiate</code> 換回來源 id 並可加節點前綴避免撞名。範本不綁機器的來源 id，這是「點選就能用」的前提。</li>
 <li><strong>批次測試</strong>：每張影像以 preview 模式跑（影像留在快取），回每張的判定／輸出／錯誤節點與來源影像 ref；上限 50 張，記憶體受 KEEP_RUN_IMAGES 限制、舊的會被釋放。</li>
 <li><strong>整合工具</strong>：<code>integration/tcp</code> 真的連本機 TCP 埠送一行指令（埠沒開時直接呼叫 <code>handle_command</code> 並標 <code>via=direct</code>），讓整合方在瀏覽器裡就能驗證設備端要送的字串。</li>
 </ul>
 
 <h2 id="plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</h2>
 <ul>
-<li><strong>Param.teach</strong>：工具把需要現場教導的參數標 <code>teach=True</code>，參數卡頁（/flows/:id/teach）只列這些並即時試跑到該步驟；<code>Flow.commissioned</code> 未確認時 RunReport 帶 <code>warnings</code>，不阻擋。</li>
+<li><strong>Param.teach</strong>：工具把需要現場教導的參數標 <code>teach=True</code>，參數卡頁（/flows/:id/teach）只列這些並即時試執行到該步驟；<code>Flow.commissioned</code> 未確認時 RunReport 帶 <code>warnings</code>，不阻擋。</li>
 <li><strong>配方 FlowRecipe</strong>：<code>param_overrides = {node_id: {param: value}}</code>，執行時 <code>apply_recipe()</code> 疊到圖上再編譯，快取鍵 <code>(version, recipe_id, updated_at)</code>；HTTP <code>recipe</code>、TCP <code>recipe=</code>、未指定用預設配方。覆寫只能指向存在的節點與宣告過的參數，疊完的圖要能過 validate_graph。</li>
 <li><strong>station_id</strong>：<code>VISION_STATION_ID</code> 寫進 FlowRun、RunReport、TCP 回應；索引 (station_id, -started_at)。</li>
 <li><strong>Golden Set</strong>（apps/golden）：案例＋期望值、回歸以非 preview 跑、只對 mismatch 取影像；基準比對列出 regressed；CLI <code>manage.py regress</code> 可進 CI。流程匯出入 <code>manage.py flow export|import|run</code>（穩定序列化：排序、整數座標、{SOURCE} 佔位符）。詳見 golden.html。</li>
@@ -257,7 +257,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <tr><td>3</td><td>ninja 啟動就 TypeError abstract</td><td>APIKeyHeader 要實作 <code>authenticate</code></td><td>覆寫 <code>__call__</code> 放行無金鑰、實作 authenticate</td></tr>
 <tr><td>4</td><td>測試裡第二個查詢 TransactionManagementError</td><td>IntegrityError 沒包在 atomic 內</td><td>create/save 包 <code>transaction.atomic()</code> 再 catch</td></tr>
 <tr><td>5</td><td>測試後面全部「Cannot operate on a closed database」</td><td><code>handle_command</code> 在呼叫者執行緒 <code>close_old_connections()</code></td><td>只在 TCP handler 自己的執行緒收連線</td></tr>
-<tr><td>6</td><td>測試跑 55 秒</td><td>test client 把 SSE 串流讀完</td><td><code>?max_seconds=</code></td></tr>
+<tr><td>6</td><td>測試執行 55 秒</td><td>test client 把 SSE 串流讀完</td><td><code>?max_seconds=</code></td></tr>
 <tr><td>7</td><td>示範流程孔數老是 3</td><td>合成影像的條碼／文字與中心孔黏在一起，圓形度被拉低</td><td>版面避開孔位；示範 max_area 放寬。教訓：示範資料要先跑 40 次看分布</td></tr>
 <tr><td>8</td><td>demo helper <code>_node(label=…)</code> 與 judge 的 label 參數撞名</td><td>位置參數與 **params 同名</td><td>helper 改 title</td></tr>
 <tr><td>9</td><td>Windows 中文路徑讀圖回 None</td><td>預設讀圖 API 不吃非 ASCII</td><td><code>np.fromfile</code>＋<code>imdecode</code>、<code>imencode</code>＋<code>tofile</code></td></tr>

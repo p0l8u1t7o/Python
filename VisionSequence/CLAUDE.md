@@ -10,6 +10,7 @@
 ## 專案形狀
 - `config/`（settings：`VISION` dict 全部走 .env）、`apps/vision/`（models / graph / engine / runner / images / api / stream / tcp_server / sources / tools / dl）、`apps/comm/`（Modbus TCP／上位機主動輸出）、`plugins/`（資料夾外掛）、`frontend/`（Vite + React 19 + Tailwind v4 + @xyflow/react）、`tests/`、`docs/`。
 - 引擎是**資料流 DAG**（不是 ZQS 的 DB token stepper）：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像用 numpy 在記憶體傳。`_flow` 隱含輸入埠 = 控制分支；`_overlays` 隱含輸出埠 = 該節點標記；`_image` 隱含直通埠 = 每個工具預設可把影像傳進（無 image 輸入者）、傳出（原樣，引擎在 execute 後發值；宣告輸出之後登記）。
+- 前後端解耦：前端只透過 `lib/api.ts`（`BASE_URL`＝`VITE_API_BASE_URL` 或 `/api`）與 `lib/queries.ts` 呼叫後端，不直接 fetch；各頁 lazy chunk。獨立部署前端時設 `VITE_API_BASE_URL` 與後端 `CORS_ALLOWED_ORIGINS`；同站部署由 whitenoise 服務 build 產物。
 - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP。`runserver` 只用來開發（且加 `--noreload`，否則工具外掛與執行緒池會被重載兩次）。
 
 ## 啟動
@@ -18,8 +19,8 @@
 - `seed_demo` 建 13 個範例樣板（`apps/vision/demo.py`）＋合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；`tests/test_demo.py` 逐樣板實跑鎖住。樣板一覽見 docs/samples.html。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ## 驗證清單（改完就跑，報告附實際結果）
-- 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`。
-- 前端：`cd frontend && npm run -s typecheck && npm run build`。
+- 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`（`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx；新增 GET 端點記得加進清單）。
+- 前端：`cd frontend && npm run -s typecheck && npm test && npm run build`（vitest：i18n 三語系 key 對齊與用詞規範、純函式單元、各頁 render smoke；新頁面要在 `src/test/pages.test.tsx` 加一個 case，新 API 路徑在 `src/test/apiMock.ts` 補假資料）。
 - 改了頁面就開瀏覽器看一眼（影像檢視器與畫布的問題肉眼最快）。
 
 ## 踩過的坑
@@ -61,6 +62,7 @@
 
 ## 前端命名
 - UI 文案、元件名、i18n key 一律照 `docs/glossary.html`；新名詞先加表再用。
+- **文案用商用產品語氣**：「點選」不用「點一下」、「試執行」不用「試跑」、「尚無／無法／此」不用「還沒有／不能／這個」、稱呼使用者用「您」、範例提示詞除外。`src/test/i18n.test.ts` 有禁用詞清單會擋。
 - 語系：zh-Hant（完整、fallback）、zh-Hans（OpenCC tw2sp 由 zh-Hant 轉出＋詞彙微調「缺省→默认」；改文案後記得重轉或同步）、en（部分）。
 
 ## 帳號與鎖定（apps/accounts）

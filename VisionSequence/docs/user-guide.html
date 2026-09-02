@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 使用者手冊</title>
+<style>
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html" aria-current="page">使用者手冊</a></nav>
+<article class="doc">
+
+<h1>使用者手冊</h1>
+<p>本手冊依操作順序說明 VisionSequence 的各項功能：從登入、建立流程、調整工具參數，到批次測試、範本、AI 助手、深度學習教導與外部整合。介面內的「說明」頁提供同樣內容的精簡版與工具目錄。</p>
+
+<nav><p><strong>目錄</strong></p><ul>
+<li><a href="#login">1. 登入與帳號</a></li>
+<li><a href="#sources">2. 影像來源庫與資產庫</a></li>
+<li><a href="#flow">3. 建立與編輯流程</a></li>
+<li><a href="#tool">4. 工具頁與 ROI</a></li>
+<li><a href="#run">5. 試執行、執行與連續執行</a></li>
+<li><a href="#batch">6. 批次測試與 Golden Set</a></li>
+<li><a href="#templates">7. 範本畫廊</a></li>
+<li><a href="#agent">8. AI 助手</a></li>
+<li><a href="#dl">9. 深度學習教導</a></li>
+<li><a href="#integration">10. 外部整合與引擎鎖定</a></li>
+<li><a href="#settings">11. 設定與個人偏好</a></li>
+<li><a href="#faq">12. 常見問題</a></li>
+</ul></nav>
+
+<h2 id="login">1. 登入與帳號</h2>
+<ul>
+<li>系統尚無任何使用者時，登入頁會顯示「建立第一個管理員」；建立後即以該帳號登入。</li>
+<li>管理員可於「使用者」頁新增帳號、指定管理員、停用或重設密碼。一般使用者只能編輯自己建立的流程；共用流程（無擁有者）僅管理員可修改。</li>
+<li>右上角使用者選單可修改密碼與登出。整合方以 API 金鑰存取，不需登入。</li>
+</ul>
+
+<h2 id="sources">2. 影像來源庫與資產庫</h2>
+<ul>
+<li><strong>影像來源</strong>：相機（USB／GigE 外掛）、資料夾（循環讀取）、單一檔案、上傳、合成影像。folder／file 類型可按「瀏覽」開啟伺服器檔案瀏覽器選路徑；USB 類型可「掃描相機」列出可用裝置。</li>
+<li><strong>資產</strong>：範本影像（定位、良品比對）、模型檔（ONNX）、資料集 zip。工具頁可「從目前影像框選建立範本」直接存成資產。</li>
+<li>兩者皆可建立<strong>群組</strong>分類（清單上方晶片篩選、「管理群組」改名或刪除）。範例來源與資產位於「範例」群組。</li>
+</ul>
+
+<h2 id="flow">3. 建立與編輯流程</h2>
+<ol>
+<li>「流程」頁「新增流程」，或「從範本建立」。</li>
+<li>編輯器左欄「新增工具」開啟工具選擇視窗（依類別分群、可搜尋、可收藏），點選即加入畫布中央；「新增註解」放置便利貼。</li>
+<li>連線：由上一步的輸出埠拖曳至下一步的輸入埠；同色（同型別）的埠才能相接。判斷類工具的分支埠接到目標步驟的 <code>_flow</code> 埠即為條件執行。</li>
+<li>右側面板：選取步驟後可改標題、啟用狀態、顏色與參數；「開啟工具頁」進入專屬調參頁。</li>
+<li>Ctrl+S 儲存。未儲存的變更會保留為草稿，離開再回來仍在；「執行一次」與「連續執行」使用已儲存的版本。</li>
+</ol>
+
+<h2 id="tool">4. 工具頁與 ROI</h2>
+<ul>
+<li>版面：左為參數、中為「執行前／執行後」影像、下為參考資訊（直方圖、統計、輸出值）、右為操作按鍵。</li>
+<li>參數變更後預設<strong>不會</strong>自動執行；按「試執行至此步驟」查看結果。開啟「自動套用」則變更後 250 ms 自動執行。</li>
+<li>參數修改為暫存狀態：按「儲存」寫回流程；未儲存直接返回編輯器會詢問是否放棄。</li>
+<li>ROI：有「區域」參數的工具進頁即顯示 ROI；在影像上拖曳繪製矩形／旋轉矩形／圓／橢圓／環（可設起迄角）／多邊形／折線／線段／點，座標為該步驟輸入影像的像素座標。</li>
+<li>「上傳暫存影像」只為試執行放一張影像（不進來源庫）；「用上次影像重跑」固定同一張影像調參。</li>
+</ul>
+
+<h2 id="run">5. 試執行、執行與連續執行</h2>
+<table>
+<tr><th>動作</th><th>使用的版本</th><th>說明</th></tr>
+<tr><td>試執行</td><td>目前畫布（含未儲存）</td><td>保留所有中間影像；不寫入執行紀錄。</td></tr>
+<tr><td>執行一次</td><td>已儲存</td><td>與外部觸發相同的正式執行；寫入執行紀錄與統計。</td></tr>
+<tr><td>連續執行</td><td>已儲存</td><td>依設定間隔反覆執行；總覽頁可觀看即時影像與結果。</td></tr>
+</table>
+<p>總覽頁左側選擇流程，中央顯示最近一次執行的影像與標記、右側顯示判定與輸出值；無事件時顯示最後一次執行結果。</p>
+
+<h2 id="batch">6. 批次測試與 Golden Set</h2>
+<ul>
+<li>編輯器頂列「批次測試」：拖入多張影像或從來源擷取 N 張，一次執行並列出逐張判定、耗時與輸出；可匯出 CSV。</li>
+<li>勾選案例「存入 Golden Set」作為回歸基準；「Golden Set」頁可設定期望值並執行回歸，退步案例置頂。</li>
+<li>結果下方「請 AI 依這批結果調整」：輸入回饋語句，AI 助手調整參數後在同批影像重跑並顯示調整前後的對比，滿意再套用到畫布。</li>
+</ul>
+
+<h2 id="templates">7. 範本畫廊</h2>
+<p>14 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測等）皆附合成樣本圖；建立時選擇對應的「範例：⋯」來源即可直接執行。自己的流程可「存為範本」供他人重用。詳見<a href="samples.html">範例樣板</a>。</p>
+
+<h2 id="agent">8. AI 助手</h2>
+<ol>
+<li>上傳一張或多張影像；在影像上圈選檢測位置，每個 ROI 自動編號（ROI01、ROI02…）並可補充提示。</li>
+<li>以一句話描述需求，例如「應該有 5 個孔」「量直徑 17.5±0.4mm」「ROI01 是好品，ROI02 是壞品，找出差異」。</li>
+<li>按「生成檢測流程」：助手生成流程並在每張影像實跑，影像上疊顯檢測標記、縮圖標示 OK／NG。</li>
+<li>以回饋語句微調（「誤判過多」「期望數量改為 4」「公差 ±0.2」），滿意後「存成流程」進入編輯器。</li>
+</ol>
+<p>右上「AI 供應商」可選擇離線規則引擎或 Claude／GPT／Gemini 並填入個人 API 金鑰（僅存於伺服器、綁定帳號）；儲存後自動測試連線並顯示結果，「列出可用模型」可查詢金鑰可用的模型名。「AI 技能」可瀏覽助手所遵循的平台規則與工具要領。詳見 <a href="agent.html">AI 助手</a>。</p>
+
+<h2 id="dl">9. 深度學習教導</h2>
+<ol>
+<li>建立教導專案並選擇模型種類（分類、語意分割、實例分割）。</li>
+<li>收集樣本：上傳、zip 批次、從來源連續擷取或匯入資料集；重複影像自動略過。</li>
+<li>標記：分類以點選縮圖指定類別；分割以多邊形／矩形標記，可用「智慧選取」點選物件自動描邊；可先「自動標記」再確認。</li>
+<li>分割 train／val／test、凍結資料集版本，按「開始訓練」；完成後模型匯出至資產庫，於流程中以 DL 工具使用。</li>
+</ol>
+<p>詳見 <a href="dl.html">深度學習教導</a>。</p>
+
+<h2 id="integration">10. 外部整合與引擎鎖定</h2>
+<ul>
+<li>「外部整合」頁提供 HTTP／TCP 測試工具、即時事件監看、Modbus 連線與主動輸出設定、回傳格式說明。</li>
+<li>HTTP：<code>POST /api/vision/flows/{id}/run</code>（可附影像、指定配方）；TCP：<code>RUN &lt;id&gt;</code> 一行指令；事件：SSE 串流。</li>
+<li>整合方可以 API 金鑰鎖定引擎：鎖定期間使用者僅能編輯流程，所有連續執行停止。</li>
+</ul>
+<p>詳見 <a href="automation.html">自動化整合</a>與 <a href="modbus.html">Modbus 輸出</a>。</p>
+
+<h2 id="settings">11. 設定與個人偏好</h2>
+<ul>
+<li>介面語言（繁體中文／簡體中文／English）與主題風格（淺色／深色／Cyberpunk／跟隨系統）儲存於個人帳號，跨裝置一致。</li>
+<li>管理員可於設定頁管理 API 金鑰與引擎鎖定。</li>
+</ul>
+
+<h2 id="faq">12. 常見問題</h2>
+<table>
+<tr><th>狀況</th><th>處理方式</th></tr>
+<tr><td>試執行顯示「影像已不在快取中」</td><td>重新上傳暫存影像或執行一次流程取得新影像。</td></tr>
+<tr><td>找圓／找線回報找不到</td><td>確認 ROI 蓋住邊緣（找圓用環形 ROI、卡尺 ROI 橫跨兩條邊），降低邊緣門檻或調整極性。</td></tr>
+<tr><td>AI 供應商測試連線失敗</td><td>依視窗顯示的原因處理：金鑰無效、模型已下架（依提示改名）、供應商過載（稍後再試或換模型）、逾時（檢查網路）。</td></tr>
+<tr><td>執行回報「引擎已鎖定」</td><td>整合方鎖定中；等待解鎖或由管理員解除。</td></tr>
+<tr><td>連續執行卡在「佇列已滿」</td><td>降低執行間隔或檢查流程耗時；可於效能報告了解各工具成本。</td></tr>
+</table>
+
+</article>
+</body>
+</html>

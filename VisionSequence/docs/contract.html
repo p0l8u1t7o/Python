@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>VisionSequence 前後端合約（給平行開發的子任務看）</h1>
@@ -59,7 +59,7 @@
 <li><a href="#roi">ROI region dict</a></li>
 <li><a href="#overlay">Overlay dict</a></li>
 <li><a href="#runreport">RunReport</a></li>
-<li><a href="#preview">試跑進階</a></li>
+<li><a href="#preview">試執行進階</a></li>
 <li><a href="#paramkind">Param.kind 補充</a></li>
 <li><a href="#frontend">前端骨架（已完成）</a></li>
 </ul></nav>
@@ -103,7 +103,7 @@
 <p>影像輸出的值為 <code>{"ref": "runid:node:port" | null, "width", "height", "channels"}</code>；<code>GET /api/vision/images/{ref}?max=1024&amp;fmt=jpeg|png</code>。</p>
 <p>preview 模式（<code>POST /flows/{id}/preview</code> body <code>{graph, context?, reuse_image_ref?}</code>）保留所有中間影像，且 <code>detail._input_ref</code> 指向該節點輸入影像的 ref。</p>
 
-<h3 id="preview">試跑進階（工具頁用）</h3>
+<h3 id="preview">試執行進階（工具頁用）</h3>
 <ul>
 <li><code>POST /flows/{id}/preview</code> body：<code>until_node</code>（只跑到該步驟與其祖先）、<code>analysis: true</code>（回 <code>analysis: {input:{ref,histogram,stats}, output:{port,ref,histogram,stats}, series:{"blobs.area":{count,min,max,mean,values}}}</code>）。</li>
 <li><code>POST /flows/{id}/scratch-image</code>（multipart image）→ <code>{ref,width,height,name}</code>：暫存影像，不進來源庫；之後 preview 帶 <code>reuse_image_ref</code>。</li>
@@ -150,6 +150,21 @@ POST /vision/flows/{id}/recipes/import/check    multipart file 或 JSON doc → 
 POST /vision/flows/{id}/recipes/import          {doc, name?, accept?:[key], is_default?, description?} → 只寫入接受的項目
 status：ok | unchanged | version_changed（可勾選接受）| node_missing | type_changed | param_missing | value_invalid（不可匯入）
 Tool.version（預設 1）進 catalogue；工具參數語意變更時 +1。</pre>
+
+<h2 id="deploy">前後端解耦部署</h2>
+<p>前端是純靜態 SPA，只透過 <code>frontend/src/lib/api.ts</code>（HTTP）與 <code>lib/flowStream.ts</code>（SSE）和後端往來；所有路徑以 <code>BASE_URL</code> 為基底，頁面程式碼不直接呼叫 <code>fetch</code>。</p>
+<table>
+<tr><th>部署方式</th><th>前端</th><th>後端</th></tr>
+<tr><td>同站（預設）</td><td><code>npm run build</code> 產物由 whitenoise 隨 API 行程服務，<code>BASE_URL=/api</code></td><td><code>manage.py serve</code></td></tr>
+<tr><td>開發</td><td>Vite dev server，<code>/api</code> 代理到 8000</td><td>同上</td></tr>
+<tr><td>獨立部署</td><td>build 時設 <code>VITE_API_BASE_URL=https://vision.example.com/api</code>，放任何靜態主機／CDN</td><td>.env 設 <code>CORS_ALLOWED_ORIGINS=https://console.example.com</code></td></tr>
+</table>
+<ul>
+<li>認證：登入 token 走 <code>Authorization: Bearer</code>；整合方 API 金鑰走 <code>X-API-Key</code>。影像／SSE 這類 <code>&lt;img&gt;</code>／EventSource 無法帶 header 的請求以 <code>?token=</code>／<code>?api_key=</code> 附帶（<code>withKey()</code>）。</li>
+<li>各頁面為獨立 lazy chunk（<code>App.tsx</code>），首屏只載入外框與當前頁；共用大套件（React、React Flow、圖表）另切 chunk 以利快取。</li>
+<li>回應格式與錯誤碼見本頁上方各節；新增端點時只要維持這些 schema，前端不需改動即可相容。</li>
+</ul>
+
 </article>
 </body>
 </html>

@@ -52,7 +52,16 @@ class InstantiateIn(Schema):
     prefix: str = ""
 
 
+_BUILTIN_CACHE: dict[str, Any] = {"at": 0.0, "items": []}
+_BUILTIN_TTL_S = 30.0
+
+
 def _builtin_templates() -> list[dict[str, Any]]:
+    """內建範本目錄。builder 要跑 14 次＋查範例資產，每次開畫廊都重算太浪費：快取 30 秒
+    （範例資產只在 seed 時建立，短 TTL 足以在 seed 後自動更新）。"""
+    now = time.monotonic()
+    if _BUILTIN_CACHE["items"] and now - _BUILTIN_CACHE["at"] < _BUILTIN_TTL_S:
+        return _BUILTIN_CACHE["items"]
     items = []
     for key, name, desc, category, builder in demo.BUILTIN_TEMPLATES:
         graph = builder(SOURCE_PLACEHOLDER)
@@ -60,6 +69,7 @@ def _builtin_templates() -> list[dict[str, Any]]:
             "id": f"builtin:{key}", "name": name, "description": desc, "category": category, "source": "builtin",
             "node_count": len(graph["nodes"]), "graph": graph, "owner_name": "", "created_at": None,
         })
+    _BUILTIN_CACHE.update(at=now, items=items)
     return items
 
 

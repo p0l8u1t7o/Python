@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html" aria-current="page">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html" aria-current="page">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>深度學習教導：平台內標記、訓練、匯出</h1>
@@ -101,8 +101,8 @@
 <p>label_mode=<code>shapes</code> 的模型（語意分割、實例分割）用<strong>標記編輯器</strong>：一張影像多個 polygon／bbox 實例，各有類別。座標一律 <strong>0~1 正規化</strong>儲存（與 YOLO txt 一致），只在畫布上換算像素。</p>
 <ul>
 <li><strong>編輯</strong>：畫布左側是<strong>大圖示工具欄</strong>（選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵），上方是狀態列（上一張/下一張、樣本尺寸、標記數、繪製提示、未儲存指示、快捷鍵說明、儲存）與<strong>大顆類別按鈕</strong>（色點＋數字鍵標示＋計數）。</li>
-<li><strong>多邊形＝逐點繪製，點數不限</strong>：按 N（或工具欄）後每點一下加一個頂點，畫面即時顯示折線與到游標的虛線；<strong>雙擊</strong>、<strong>點回第一點</strong>或按 <code>Enter</code> 閉合，<code>Backspace</code> 退一點、<code>Esc</code> 取消。完成後自動回到選取模式並選中新形狀，可再拖曳頂點、雙擊邊線插點、Alt+點刪點微調。方框（B）維持拖曳畫出。</li>
-<li><strong>智慧選取（SAM 點擊出輪廓）</strong>：按 S（魔杖）後<strong>點一下物件</strong>，伺服端用 SAM 分割出輪廓、簡化成 polygon 掛上目前類別，可連續點下一個物件；Ctrl+Z 可還原。權重預設 <code>mobile_sam.pt</code>（約 40MB，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>）；需要 <code>pip install ultralytics onnx onnxslim</code>（與 yolo_seg 同一套可選依賴，缺件會提示指令）。</li>
+<li><strong>多邊形＝逐點繪製，點數不限</strong>：按 N（或工具欄）後每點選加一個頂點，畫面即時顯示折線與到游標的虛線；<strong>雙擊</strong>、<strong>點回第一點</strong>或按 <code>Enter</code> 閉合，<code>Backspace</code> 退一點、<code>Esc</code> 取消。完成後自動回到選取模式並選中新形狀，可再拖曳頂點、雙擊邊線插點、Alt+點刪點微調。方框（B）維持拖曳畫出。</li>
+<li><strong>智慧選取（SAM 點擊出輪廓）</strong>：按 S（魔杖）後<strong>點選物件</strong>，伺服端用 SAM 分割出輪廓、簡化成 polygon 掛上目前類別，可連續點下一個物件；Ctrl+Z 可還原。權重預設 <code>mobile_sam.pt</code>（約 40MB，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>）；需要 <code>pip install ultralytics onnx onnxslim</code>（與 yolo_seg 同一套可選依賴，缺件會提示指令）。</li>
 <li><strong>其他操作</strong>：Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）；快捷鍵 V/N(P)/B/S/O、←/→ 換張、0~9 指定類別。</li>
 <li><strong>自動優化（輪廓貼邊）</strong>：前端純 JS——在降到最長邊 1280 的灰階梯度圖上，沿各頂點法線搜尋最強邊緣（帶位移懲罰）、迭代 3 次並平滑、Douglas–Peucker 簡化到 ≤120 點。不自動儲存，Ctrl+Z 可還原。</li>
 <li><strong>縮圖牆巡檢</strong>：左側縮圖直接畫上標記輪廓，快速看出哪些張標壞了；有自動標記建議的顯示「?」。</li>

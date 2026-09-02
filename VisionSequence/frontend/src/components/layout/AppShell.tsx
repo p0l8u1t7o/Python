@@ -3,12 +3,13 @@
  * 頂部白色導覽列（摺疊鈕、麵包屑、容量、主題切換、使用者選單）＋內容區。
  * 引擎鎖定時內容區最上方出現黃色橫幅。
  */
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, Brain, Camera, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
+import { LoadingState } from '@/components/ui'
 import { LockBanner } from '@/components/auth/LockBanner'
 import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
@@ -234,7 +235,7 @@ export function AppShell() {
         </header>
         <LockBanner />
         <div className="min-h-0 flex-1 overflow-hidden">
-          <Outlet />
+          <Suspense fallback={<LoadingState />}><Outlet /></Suspense>
         </div>
       </main>
     </div>

@@ -11,7 +11,7 @@ import { Cable, Check, Copy, Pause, Play, Plug, Send, Trash2 } from 'lucide-reac
 import { Page } from '@/components/layout/AppShell'
 import { ConnectionsSection } from '@/pages/ConnectionsPage'
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, DetailRow, PageHeader, Select, StatusBadge, TextArea, TextInput, Tabs } from '@/components/ui'
-import { apiKey, authToken, imageUrl, streamUrl } from '@/lib/api'
+import { BASE_URL, apiKey, authToken, imageUrl, streamUrl } from '@/lib/api'
 import { watchdog } from '@/lib/flowStream'
 import { errorMessage } from '@/lib/errors'
 import { useFlows, useIntegrationInfo, useTcpCommand } from '@/lib/queries'
@@ -177,7 +177,7 @@ function HttpTab({ info }: { info: IntegrationInfo }) {
     }
     const t0 = performance.now()
     try {
-      const resp = await fetch(`/api/vision/flows/${flowId}/run?${qs.toString()}`, { method: 'POST', headers, body })
+      const resp = await fetch(`${BASE_URL}/vision/flows/${flowId}/run?${qs.toString()}`, { method: 'POST', headers, body })
       let parsed: unknown
       try {
         parsed = await resp.json()

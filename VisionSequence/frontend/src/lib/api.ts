@@ -4,7 +4,8 @@
  * 401 → 清 token 並通知 AuthProvider（onSessionExpired）導到登入頁。
  */
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
+/** API 基底：獨立部署前端時以 VITE_API_BASE_URL 指向後端（含 /api）；同源時走 /api（dev 由 Vite 代理、正式由 whitenoise 同站服務）。 */
+export const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
 export const API_KEY_STORAGE = 'vs.apiKey'
 export const TOKEN_STORAGE = 'vs.token'
 export const THEME_KEY = 'vs.theme'

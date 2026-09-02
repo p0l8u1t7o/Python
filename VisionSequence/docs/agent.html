@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html" aria-current="page">AI 助手</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html" aria-current="page">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>AI 助手：上傳影像＋圈選＋提示詞 → 自動生成檢測流程</h1>
@@ -92,7 +92,7 @@
 整合方（API 金鑰身分）沒有使用者，一律用伺服器設定。LLM 呼叫失敗（金鑰錯、逾時、輸出無效）自動落回規則引擎，功能不中斷。</p>
 
 <h2 id="editor">流程頁面裡的 AI 助手</h2>
-<p>編輯器右側多了「AI」分頁：用一句話請助手修改<strong>目前畫布</strong>（未儲存的也算），回覆附「改了什麼」與試跑結果（用最近一次執行的影像），按「套用到畫布」寫回（可復原）。</p>
+<p>編輯器右側多了「AI」分頁：用一句話請助手修改<strong>目前畫布</strong>（未儲存的也算），回覆附「改了什麼」與試執行結果（用最近一次執行的影像），按「套用到畫布」寫回（可復原）。</p>
 <table>
 <tr><th>離線指令句型</th><th>效果</th></tr>
 <tr><td>把 二值化 的 threshold 改成 80</td><td>依節點標題／id／工具名找節點，參數名可用 key 或中文標籤</td></tr>
@@ -146,7 +146,7 @@
 <tr><td><code>providers.py</code></td><td>供應商：offline／claude（anthropic SDK）／openai／gemini（REST）；設定解析（使用者 → 伺服器 → offline）、金鑰遮罩。</td></tr>
 <tr><td><code>skills.py</code>＋<code>skills/*.md</code></td><td>AI 代理技能：平台規則／設計原則／每工具要領的載入與組裝，相關工具挑選，技能 API。</td></tr>
 <tr><td><code>llm.py</code></td><td>四種任務（generate／refine／edit／tune）共用 system（工具目錄＋graph 規格＋規則，可快取）；影像縮圖＋ROI 編號＋特徵摘要進 user；輸出 JSON 經 validate_graph 把關，失敗帶錯誤重試一次。</td></tr>
-<tr><td><code>service.py</code></td><td>編排與試跑（多張影像各跑一次）；規則式微調／指令解析（edit_rules）／批次調參（tune）。LLM 失敗自動落回規則引擎。</td></tr>
+<tr><td><code>service.py</code></td><td>編排與試執行（多張影像各跑一次）；規則式微調／指令解析（edit_rules）／批次調參（tune）。LLM 失敗自動落回規則引擎。</td></tr>
 <tr><td><code>api.py</code></td><td><code>/vision/agent/*</code> 端點；執行類權限（鎖定時 423）。</td></tr>
 </table>
 
@@ -211,7 +211,7 @@ regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulu
 <li><strong>規則引擎當地板、LLM 當天花板</strong>：規則引擎覆蓋工廠 8 成常見檢測且完全離線；LLM 是加值選配，掛了金鑰立刻變聰明，拔了金鑰功能不缺。</li>
 <li><strong>一律實跑驗證</strong>：不管誰生成，都要在使用者影像上真的跑一遍才回給前端——「看起來合理」不算數，OK/NG 與 overlay 才算。</li>
 <li><strong>深度學習不自動生成</strong>：dl_* 工具需要先訓練模型，助手在需要時會在 note 提示走「深度學習教導」頁；write_modbus 需要連線設定，同樣不生成。</li>
-<li><strong>紅線不動</strong>：不改 graph 格式、不動引擎、單一 API 行程；agent 試跑用呼叫者執行緒直跑 engine.execute，不佔流程執行緒池。</li>
+<li><strong>紅線不動</strong>：不改 graph 格式、不動引擎、單一 API 行程；agent 試執行用呼叫者執行緒直跑 engine.execute，不佔流程執行緒池。</li>
 </ul>
 
 </article>

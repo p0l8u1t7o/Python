@@ -236,7 +236,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         {/* 設定 */}
         {mainParams.map(field)}
         <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
-          hint={devices.data?.gpus.length ? devices.data.gpus.map((g) => g.name).join('、') : t('dl.noGpu')}
+          hint={devices.data?.gpus?.length ? devices.data.gpus.map((g) => g.name).join('、') : t('dl.noGpu')}
           options={(devices.data?.train_devices ?? ['cpu']).filter((d) => trainer.devices.includes(d) || d === 'cpu').map((d) => ({ value: d, label: d.toUpperCase() }))} />
         <TextInput label={t('dl.assetName')} placeholder={`${project.name}-model`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
         {Object.entries(groups).map(([name, list]) => (
@@ -686,7 +686,7 @@ export function DlPage() {
           <span className="flex items-center gap-2 text-xs text-muted" title={(devices.data?.providers ?? []).join('\n')}>
             <Cpu size={14} />
             {devices.data ? (accel.length ? t('dl.accelOn', { list: accel.map((p) => p.replace('ExecutionProvider', '')).join('、') }) : t('dl.cpuOnly')) : '…'}
-            {devices.data?.gpus.length ? <Badge tone="ok">{devices.data.gpus[0].name}</Badge> : null}
+            {devices.data?.gpus?.length ? <Badge tone="ok">{devices.data.gpus[0].name}</Badge> : null}
           </span>
         }
       />
