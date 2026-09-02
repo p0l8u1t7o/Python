@@ -1115,6 +1115,7 @@ const zhHant = {
     tune: '調整',
     beforeAfter: '調整前 → 後',
     testConnection: '測試連線',
+    testing: '測試中（最多 15 秒）…',
     testOk: '設定成功：{{model}} 回應正常（{{ms}} ms）',
     testFailed: '設定失敗：{{reason}}',
     testOffline: '離線規則引擎，不需連線',

@@ -129,7 +129,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
     <Modal open={open} onClose={onClose} title={t('agent.settings')} description={t('agent.settingsHint')}
       footer={<>
         <Button onClick={onClose}>{t('common.close')}</Button>
-        <Button loading={testing} disabled={saving} onClick={() => void testConnection()} data-testid="agent-settings-test">{t('agent.testConnection')}</Button>
+        <Button loading={testing} disabled={saving} onClick={() => void testConnection()} data-testid="agent-settings-test">{testing ? t('agent.testing') : t('agent.testConnection')}</Button>
         <Button variant="primary" loading={saving} onClick={() => void save()} data-testid="agent-settings-save">{t('common.save')}</Button>
       </>}>
       <div className="space-y-3">

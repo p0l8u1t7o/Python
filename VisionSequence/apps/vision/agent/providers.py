@@ -124,10 +124,15 @@ def _post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout:
         raise RuntimeError(f"HTTP {exc.code}: {detail}") from None
 
 
-def _claude(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]]) -> str:
+#: 生成用的逾時（秒）；連線測試另用短逾時，免得使用者對著轉圈等兩分鐘。
+GENERATE_TIMEOUT = 120.0
+TEST_TIMEOUT = 15.0
+
+
+def _claude(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]], timeout: float) -> str:
     import anthropic
 
-    client = anthropic.Anthropic(api_key=s.api_key)
+    client = anthropic.Anthropic(api_key=s.api_key, timeout=timeout, max_retries=1)
     parts: list[dict[str, Any]] = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}} for b64 in images]
     parts.append({"type": "text", "text": text})
     messages = [{"role": "user", "content": parts}, *history]
@@ -139,16 +144,16 @@ def _claude(s: AgentSettings, system: str, images: list[str], text: str, history
     return next((b.text for b in response.content if b.type == "text"), "")
 
 
-def _openai(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]]) -> str:
+def _openai(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]], timeout: float) -> str:
     content: list[dict[str, Any]] = [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}} for b64 in images]
     content.append({"type": "text", "text": text})
     messages = [{"role": "system", "content": system}, {"role": "user", "content": content}, *history]
     body = {"model": model_of(s), "messages": messages, "max_tokens": 8000}
-    out = _post_json("https://api.openai.com/v1/chat/completions", body, {"Authorization": f"Bearer {s.api_key}"})
+    out = _post_json("https://api.openai.com/v1/chat/completions", body, {"Authorization": f"Bearer {s.api_key}"}, timeout=timeout)
     return str(out["choices"][0]["message"]["content"])
 
 
-def _gemini(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]]) -> str:
+def _gemini(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]], timeout: float) -> str:
     parts: list[dict[str, Any]] = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}} for b64 in images]
     parts.append({"text": text})
     contents = [{"role": "user", "parts": parts}]
@@ -156,18 +161,19 @@ def _gemini(s: AgentSettings, system: str, images: list[str], text: str, history
         contents.append({"role": "model" if turn["role"] == "assistant" else "user", "parts": [{"text": str(turn["content"])}]})
     body = {"system_instruction": {"parts": [{"text": system}]}, "contents": contents, "generationConfig": {"maxOutputTokens": 8000}}
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_of(s)}:generateContent"
-    out = _post_json(url, body, {"x-goog-api-key": s.api_key})
+    out = _post_json(url, body, {"x-goog-api-key": s.api_key}, timeout=timeout)
     return "".join(p.get("text", "") for p in out["candidates"][0]["content"]["parts"])
 
 
 _IMPL = {"claude": _claude, "openai": _openai, "gemini": _gemini}
 
 
-def complete(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]] | None = None) -> str:
+def complete(s: AgentSettings, system: str, images: list[str], text: str, history: list[dict[str, Any]] | None = None,
+             *, timeout: float = GENERATE_TIMEOUT) -> str:
     """一次對話：system＋（影像 jpeg base64 們＋文字）＋可選的後續回合 → 文字回應。"""
     if s.provider not in _IMPL:
         raise RuntimeError(f"供應商 {s.provider} 不支援 LLM 生成")
-    return _IMPL[s.provider](s, system, images, text, history or [])
+    return _IMPL[s.provider](s, system, images, text, history or [], timeout)
 
 
 def _explain(exc: BaseException) -> str:
@@ -176,6 +182,8 @@ def _explain(exc: BaseException) -> str:
     low = msg.lower()
     if isinstance(exc, ImportError):
         return "尚未安裝 anthropic 套件（pip install anthropic）"
+    if "503" in msg or "high demand" in low or "overloaded" in low or "unavailable" in low:
+        return "供應商目前過載（503），稍後再試或換一個模型（例如 gemini-2.0-flash／gemini-2.5-flash）"
     if "401" in msg or "authentication" in low or "invalid x-api-key" in low or "api key not valid" in low or "incorrect api key" in low:
         return f"API 金鑰無效或被拒絕：{msg[:160]}"
     if "403" in msg or "permission" in low:
@@ -185,7 +193,7 @@ def _explain(exc: BaseException) -> str:
     if "429" in msg or "rate" in low and "limit" in low:
         return f"超過供應商速率／額度限制：{msg[:160]}"
     if "timed out" in low or "timeout" in low:
-        return "連線逾時：檢查網路或代理設定"
+        return f"供應商 {int(TEST_TIMEOUT)} 秒內沒回應：可能是模型過載或網路／代理問題，稍後再試或換模型"
     if "urlopen error" in low or "name or service not known" in low or "getaddrinfo" in low or "connection" in low:
         return f"無法連到供應商：{msg[:160]}"
     return msg[:200] or exc.__class__.__name__
@@ -203,7 +211,7 @@ def test_connection(s: AgentSettings) -> dict[str, Any]:
         return {**base, "ok": False, "latency_ms": 0, "reply": "", "reason": reason}
     t0 = time.perf_counter()
     try:
-        reply = complete(s, "你是連線測試。只回覆兩個字母：OK", [], "ping")
+        reply = complete(s, "你是連線測試。只回覆兩個字母：OK", [], "ping", timeout=TEST_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - 任何失敗都要翻成原因回前端
         log.warning("agent 供應商連線測試失敗（%s）：%s", s.provider, exc)
         return {**base, "ok": False, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": "", "reason": _explain(exc)}

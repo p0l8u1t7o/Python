@@ -1115,6 +1115,7 @@ const zhHans = {
     tune: '调整',
     beforeAfter: '调整前 → 后',
     testConnection: '测试连接',
+    testing: '测试中（最多 15 秒）…',
     testOk: '设置成功：{{model}} 响应正常（{{ms}} ms）',
     testFailed: '设置失败：{{reason}}',
     testOffline: '离线规则引擎，不需连接',
