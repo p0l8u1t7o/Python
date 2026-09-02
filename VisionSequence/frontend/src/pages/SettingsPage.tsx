@@ -47,9 +47,7 @@ function EngineLockCard() {
   }
 
   return (
-    <Card>
-      <CardHeader title={t('lock.title')} description={t('lock.settingsHint')} />
-      <CardBody className="space-y-3">
+    <Panel title={t('lock.title')} description={t('lock.settingsHint')} bodyClassName="space-y-3 p-4">
         <div className="flex items-center gap-2 text-sm" data-testid="lock-status">
           {lock.locked ? <Lock size={15} className="text-warning" /> : <Unlock size={15} className="text-ok" />}
           <Badge tone={lock.locked ? 'warning' : 'ok'}>{lock.locked ? t('lock.locked') : t('lock.unlocked')}</Badge>
@@ -76,8 +74,7 @@ function EngineLockCard() {
         ) : (
           <p className="text-xs text-muted">{t('lock.adminOnly')}</p>
         )}
-      </CardBody>
-    </Card>
+    </Panel>
   )
 }
 
@@ -102,16 +99,11 @@ export function SettingsPage() {
     <Page>
       <PageHeader title={t('settings.title')} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title={t('settings.apiKey')} description={t('settings.apiKeyHint')} />
-          <CardBody className="flex items-end gap-2">
+        <Panel title={t('settings.apiKey')} description={t('settings.apiKeyHint')} bodyClassName="flex items-end gap-2 p-4">
             <TextInput className="font-mono" type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
             <Button variant="primary" onClick={saveKey}>{t('common.save')}</Button>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title={t('settings.theme')} />
-          <CardBody className="space-y-4">
+        </Panel>
+        <Panel title={t('settings.theme')} bodyClassName="space-y-4 p-4">
             {/* 主題風格卡：迷你預覽（底色＋面板＋主色點）；已登入者的選擇會存進使用者設定 */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="theme-picker">
               {([
@@ -162,8 +154,7 @@ export function SettingsPage() {
                 ]}
               />
             </div>
-          </CardBody>
-        </Card>
+        </Panel>
         <EngineLockCard />
         <Card>
           <CardHeader title={t('auth.account')} />

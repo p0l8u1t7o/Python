@@ -310,6 +310,7 @@ const zhHant = {
   capacity: {
     label: '{{active}}/{{max}} 忙碌',
     idle: '目前沒有流程在執行',
+    continuous: '連續',
     images: '快取 {{images}} 張影像（{{mb}} MB）',
   },
   status: {

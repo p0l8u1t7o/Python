@@ -14,7 +14,7 @@ import { ClassifyWorkspace } from '@/components/dl/ClassifyWorkspace'
 import { ShapeWorkspace } from '@/components/dl/ShapeWorkspace'
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, CardBody, CardHeader, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, SegmentedControl, Select, TextInput } from '@/components/ui'
+import { Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Panel, SegmentedControl, Select, TextInput } from '@/components/ui'
 import { assetUrl, dlSampleUrl } from '@/lib/api'
 import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useDlVersions, useSources } from '@/lib/queries'
 import type { DlDatasetVersion, DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
@@ -184,13 +184,13 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   const statusTone: Record<string, 'ok' | 'info' | 'warning' | 'critical'> = { running: 'info', done: 'ok', failed: 'critical', cancelled: 'warning' }
 
   return (
-    <Card>
-      <CardHeader
-        title={<span className="flex items-center gap-2"><Cpu size={15} className="text-brand" />{t('dl.train')}</span>}
-        description={t('dl.trainHint')}
-        actions={mine && job.data ? <Badge tone={statusTone[job.data.status] ?? 'neutral'}>{t(`dl.status.${job.data.status}`, { defaultValue: job.data.status })}</Badge> : null}
-      />
-      <CardBody className="space-y-3 text-sm">
+    <Panel
+      title={<span className="flex items-center gap-2"><Cpu size={15} className="text-brand" />{t('dl.train')}</span>}
+      description={t('dl.trainHint')}
+      actions={mine && job.data ? <Badge tone={statusTone[job.data.status] ?? 'neutral'}>{t(`dl.status.${job.data.status}`, { defaultValue: job.data.status })}</Badge> : null}
+      bodyClassName="space-y-3 p-4 text-sm" testId="dl-train-panel"
+    >
+      <div className="space-y-3">
         {/* 執行中：進度條（階段 + 百分比）與中止 */}
         {running ? (
           <div className="space-y-1.5 rounded-md border border-line bg-surface-muted px-3 py-2.5" data-testid="dl-progress">
@@ -251,8 +251,8 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
             <Play size={14} /> {t('dl.start')}
           </Button>
         ) : null}
-      </CardBody>
-    </Card>
+      </div>
+    </Panel>
   )
 }
 
@@ -362,9 +362,11 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
   }
 
   return (
-    <Card>
-      <CardHeader title={<span className="flex items-center gap-2"><Database size={15} className="text-brand" />{t('dl.dataset')}</span>} description={t('dl.datasetHint')} />
-      <CardBody className="space-y-3 text-sm">
+    <Panel
+      title={<span className="flex items-center gap-2"><Database size={15} className="text-brand" />{t('dl.dataset')}</span>}
+      description={t('dl.datasetHint')} defaultCollapsed bodyClassName="p-4" testId="dl-dataset-panel"
+    >
+      <div className="space-y-3 text-sm">
         {/* 分割統計（本地即時算，跟著標記與分割操作更新） */}
         <div className="grid grid-cols-4 gap-1.5 text-center" data-testid="dl-split-stats">
           {(['train', 'val', 'test', 'unassigned'] as const).map((k) => (
@@ -421,7 +423,7 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
             <p className="text-xs text-subtle">{t('dl.interopHint')}</p>
           </div>
         ) : null}
-      </CardBody>
+      </div>
       <Modal open={interop !== null} onClose={() => setInterop(null)} title={interop === 'export' ? t('dl.exportYolo') : t('dl.importYolo')} dirty={Boolean(interopDir)}
         footer={<><Button onClick={() => setInterop(null)}>{t('common.cancel')}</Button>
           <Button variant="primary" loading={datasetExport.isPending || datasetImport.isPending} disabled={!interopDir.trim()} onClick={() => void runInterop()} data-testid="dl-interop-go">
@@ -438,7 +440,7 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
         onConfirm={() => {
           if (deletingVersion) void removeVersion.mutateAsync({ id: deletingVersion.id, projectId: project.id }).then(() => setDeletingVersion(null))
         }} />
-    </Card>
+    </Panel>
   )
 }
 
@@ -691,9 +693,7 @@ export function DlPage() {
       {/* lg 只給兩欄（1024~1280 時三欄會把畫布擠到很窄），xl 才把訓練面板收進第三欄 */}
       <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[200px_minmax(0,1fr)_330px]">
         {/* 專案清單 */}
-        <Card>
-          <CardHeader title={t('dl.projects')} actions={<Button size="sm" onClick={() => setCreating(true)} data-testid="dl-new"><Plus size={14} /> {t('common.create')}</Button>} />
-          <CardBody className="p-1.5">
+        <Panel title={t('dl.projects')} actions={<Button size="sm" onClick={() => setCreating(true)} data-testid="dl-new"><Plus size={14} /> {t('common.create')}</Button>} bodyClassName="p-1.5">
             {projects.isLoading ? <LoadingState compact /> : null}
             {(projects.data ?? []).map((p) => (
               <button key={p.id} type="button" onClick={() => { setSelected(p.id); setSuggestions(new Map()); setActiveClass(''); setFilter('__all__') }}
@@ -706,8 +706,7 @@ export function DlPage() {
               </button>
             ))}
             {projects.data && !projects.data.length ? <EmptyState compact title={t('dl.noProjects')} description={t('dl.noProjectsHint')} /> : null}
-          </CardBody>
-        </Card>
+        </Panel>
 
         {/* 標記工作區 */}
         <div className="min-w-0 space-y-3">

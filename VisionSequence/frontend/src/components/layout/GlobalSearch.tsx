@@ -49,6 +49,12 @@ export function GlobalSearch() {
   const [debounced, setDebounced] = useState('')
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
+  //: 頂列預設只顯示放大鏡 icon；點擊（或 Ctrl+K）才展開輸入框，清空離開時收回
+  const [expanded, setExpanded] = useState(false)
+
+  useEffect(() => {
+    if (expanded) inputRef.current?.focus()
+  }, [expanded])
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(q.trim()), 250)
@@ -60,6 +66,7 @@ export function GlobalSearch() {
     function onKey(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
+        setExpanded(true) // 收合時先展開；已展開時 effect 不重跑，直接聚焦
         inputRef.current?.focus()
         inputRef.current?.select()
       }
@@ -152,6 +159,14 @@ export function GlobalSearch() {
 
   const loading = enabled && (flows.isLoading || tools.isLoading)
   let lastGroup = ''
+  if (!expanded) {
+    return (
+      <button type="button" className="btn-icon hidden sm:block" onClick={() => setExpanded(true)}
+        title={`${t('search.placeholder')}（Ctrl K）`} aria-label={t('search.placeholder')} data-testid="global-search">
+        <Search size={16} />
+      </button>
+    )
+  }
   return (
     <div className="relative hidden sm:block" data-testid="global-search">
       <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
@@ -164,11 +179,14 @@ export function GlobalSearch() {
           setOpen(true)
         }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => setTimeout(() => {
+          setOpen(false)
+          if (!inputRef.current?.value.trim()) setExpanded(false) // 空的就收回 icon
+        }, 150)}
         onKeyDown={onKeyDown}
         placeholder={t('search.placeholder')}
         aria-label={t('search.placeholder')}
-        className="h-8 w-44 rounded-md border border-line bg-surface-muted pl-8 pr-12 text-[13px] text-content outline-none transition-[width,border-color] duration-150 placeholder:text-subtle focus:w-72 focus:border-brand focus:bg-surface"
+        className="h-8 w-72 rounded-md border border-brand bg-surface pl-8 pr-12 text-[13px] text-content outline-none placeholder:text-subtle"
         data-testid="global-search-input"
       />
       <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line bg-surface px-1 text-[10px] text-subtle">Ctrl K</kbd>

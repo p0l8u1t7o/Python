@@ -264,7 +264,7 @@ const en = {
     noResults: 'No results for "{{q}}"',
     groups: { pages: 'Pages', flows: 'Flows', tools: 'Tools', sources: 'Image sources', connections: 'Connections', assets: 'Assets' },
   },
-  capacity: { label: '{{active}}/{{max}} busy', idle: 'No flow is running' },
+  capacity: { continuous: 'continuous', label: '{{active}}/{{max}} busy', idle: 'No flow is running' },
   status: {
     ok: 'OK',
     ng: 'NG',

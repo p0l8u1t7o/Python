@@ -310,6 +310,7 @@ const zhHans = {
   capacity: {
     label: '{{active}}/{{max}} 忙碌',
     idle: '目前没有流程在运行',
+    continuous: '连续',
     images: '缓存 {{images}} 张影像（{{mb}} MB）',
   },
   status: {

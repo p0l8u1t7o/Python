@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Brain, Cable, Camera, ChevronDown, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Cable, Camera, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, UserRound, Users, Workflow } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { LockBanner } from '@/components/auth/LockBanner'
@@ -53,6 +53,50 @@ export function CapacityPill({ compact = false }: { compact?: boolean }) {
   )
 }
 
+/** 頂列容量：icon＋執行數角標，點開才列出執行中的流程（頂列按鍵先 icon、點擊出清單）。 */
+function CapacityMenu() {
+  const { t } = useTranslation()
+  const capacity = useCapacity()
+  const [open, setOpen] = useState(false)
+  const data = capacity.data
+  if (!data) return null
+  const ratio = data.max_workers ? data.active / data.max_workers : 0
+  const tone = ratio >= 1 ? 'text-critical' : ratio >= 0.7 ? 'text-warning' : data.active ? 'text-ok' : 'text-muted'
+  return (
+    <div className="relative">
+      <button type="button" className="btn-icon relative" onClick={() => setOpen((v) => !v)}
+        title={t('capacity.label', { active: data.active, max: data.max_workers })}
+        aria-label={t('capacity.label', { active: data.active, max: data.max_workers })} data-testid="capacity-menu">
+        <Activity size={16} className={tone} />
+        {data.active ? (
+          <span className="tnum absolute -right-0.5 -top-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-brand px-0.5 text-[9px] font-semibold leading-3.5 text-on-brand">
+            {data.active}
+          </span>
+        ) : null}
+      </button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute right-0 top-full z-40 mt-1 w-60 rounded-md border border-line bg-surface p-1.5 text-sm shadow-lg" role="menu" data-testid="capacity-list">
+            <p className="tnum px-2 py-1.5 text-xs font-medium text-muted">{t('capacity.label', { active: data.active, max: data.max_workers })}</p>
+            {data.flows.length ? (
+              data.flows.map((f) => (
+                <div key={f.flow_id} className="flex items-center gap-2 rounded-md px-2 py-1.5">
+                  <Workflow size={14} className="shrink-0 text-muted" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{f.flow_name || `#${f.flow_id}`}</span>
+                  {f.continuous ? <span className="shrink-0 rounded bg-info-soft px-1.5 py-0.5 text-[10px] text-info">{t('capacity.continuous')}</span> : null}
+                </div>
+              ))
+            ) : (
+              <p className="px-2 py-1.5 text-xs text-subtle">{t('capacity.idle')}</p>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 /** 頂部導覽列右側：目前使用者、修改密碼、登出。 */
 function UserMenu() {
   const { t } = useTranslation()
@@ -74,7 +118,7 @@ function UserMenu() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 items-center gap-2 rounded-md px-2 text-sm text-content transition-colors hover:bg-surface-muted"
+        className="btn-icon"
         title={`${name}${auth.isAdmin ? `（${t('auth.admin')}）` : ''}`}
         aria-label={t('auth.currentUser')}
         data-testid="user-menu"
@@ -83,8 +127,6 @@ function UserMenu() {
           <UserRound size={16} aria-hidden />
           {auth.isAdmin ? <ShieldCheck size={10} className="absolute -right-1 -bottom-0.5 text-brand" aria-hidden /> : null}
         </span>
-        <span className="max-w-32 truncate">{name}</span>
-        <ChevronDown size={14} className="text-muted" aria-hidden />
       </button>
       {open ? (
         <>
@@ -184,9 +226,9 @@ export function AppShell() {
             <Menu size={18} />
           </button>
           <Breadcrumb />
-          <span className="ml-auto flex items-center gap-2">
+          <span className="ml-auto flex items-center gap-1">
             <GlobalSearch />
-            <CapacityPill />
+            <CapacityMenu />
             <UserMenu />
           </span>
         </header>
