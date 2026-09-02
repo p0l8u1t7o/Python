@@ -1,10 +1,9 @@
 /**
  * 工具頁（ToolPage）：單一步驟的專屬調參頁 `/flows/:id/tools/:nodeId`。
  *
- * 左：該步驟完整參數表單（ParamForm，含 ROI 在影像上編輯）。
- * 中：「執行前」（該步驟輸入影像 detail._input_ref）／「執行後」（第一個影像輸出；沒有影像輸出的工具改為
- *     把標記疊在輸入影像上＋輸出值表）並排；兩個影像視窗各自 fit／縮放，不同步視角。
- * 右：參考資訊：輸入／輸出直方圖與灰階統計、數值分布（series）、outputs、耗時、訊息、logs。
+ * 版面：左＝參考資訊（直方圖／統計／series／outputs／logs）；中＝「執行前」／「執行後」並排
+ *（沒有影像輸出的工具，執行後把標記疊在輸入影像上＋輸出值表）＋下方參數表單（寬螢幕多欄）；
+ * 右＝按鍵（儲存／執行到此步驟／自動套用／重用影像／暫存影像）。
  *
  * 執行模式：預設「按執行鈕才跑」（改參數只暫存生效；可開自動套用改回 250 ms 防抖即跑）。
  * 參數編輯只寫入共享草稿（lib/flowDraft.ts），按「儲存」才寫回後台；按「返回」且未儲存時，
@@ -174,7 +173,8 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   /** 返回編輯器：本頁改過參數且未儲存 → confirm 後還原此步驟到進頁狀態（放棄編輯）。 */
   function goBack() {
     const snap = entryRef.current
-    const changed = snap && node ? JSON.stringify(node) !== snap.json : false
+    // 草稿不 dirty（剛儲存過／沒改過）就直接回去；dirty 才比對本頁是否動過此節點
+    const changed = Boolean(draft?.dirty) && snap && node ? JSON.stringify(node) !== snap.json : false
     if (changed && snap) {
       if (!window.confirm(t('tool.discardConfirm'))) return
       patchDraftNode(flowId, nodeId, JSON.parse(snap.json) as Partial<GraphNode>)
@@ -210,13 +210,16 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     try {
       const saved = await patch.mutateAsync({ id: flowId, name: draft.name.trim() || t('editor.untitled'), description: draft.description, graph: draft.graph })
       setDraft(flowId, { ...draft, baseVersion: saved.version, dirty: false })
+      // 儲存成功＝新的基準：之後按返回不再詢問、也不會把已儲存的參數還原掉
+      const savedNode = draft.graph.nodes.find((n) => n.id === nodeId)
+      if (savedNode) entryRef.current = { key: `${flowId}:${nodeId}`, json: JSON.stringify(savedNode), dirty: false }
       toast.success(t('editor.toast.saved'))
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
       setSaving(false)
     }
-  }, [draft, readOnly, patch, flowId, toast, t])
+  }, [draft, readOnly, patch, flowId, nodeId, toast, t])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -324,112 +327,13 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
           {node.label || def.label}
           <span className="font-mono text-[11px] font-normal text-muted">{def.label} · {node.id}</span>
         </span>
-        <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-        <Button size="sm" variant={dirty ? 'primary' : 'secondary'} icon={<Save size={14} />} loading={saving} disabled={readOnly} onClick={() => void save()} data-testid="tool-save">
-          {dirty ? t('editor.save') : t('editor.savedState')}
-        </Button>
         {dirty ? <span className="text-[11px] text-warning">{t('editor.unsaved')}</span> : null}
-        <Button size="sm" icon={<FlaskConical size={14} />} loading={updating && !autoApply} disabled={execLocked} onClick={() => void runPreview()} data-testid="tool-preview">
-          {t('tool.previewUntil')}
-        </Button>
-        <label className="flex items-center gap-1 text-[11px] text-muted" title={t('editor.reuseImageHint')}>
-          <input type="checkbox" className="accent-[var(--brand)]" checked={reuse} disabled={Boolean(scratch) || !lastSourceRef} onChange={(e) => setReuse(e.target.checked)} />
-          {t('editor.reuseImage')}
-        </label>
-        {scratch ? (
-          <ScratchBadge scratch={scratch} onClear={() => updateSession(flowId, { scratch: null })} />
-        ) : (
-          <Button size="sm" icon={<ImageUp size={14} />} loading={scratchUpload.isPending} onClick={() => scratchInput.current?.click()} data-testid="tool-scratch">
-            {t('editor.scratchUpload')}
-          </Button>
-        )}
-        <input
-          ref={scratchInput}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          data-testid="scratch-input"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            e.target.value = ''
-            if (file) void uploadScratch(file)
-          }}
-        />
-        <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-        <label className="flex items-center gap-1.5 text-[11px] text-muted" title={t('tool.autoApplyHint')}>
-          <Switch checked={autoApply} onChange={setAutoApply} label={t('tool.autoApply')} />
-          {t('tool.autoApply')}
-        </label>
-        {updating ? (
-          <span className="flex items-center gap-1 text-[11px] text-brand" data-testid="tool-updating">
-            <Loader2 size={12} className="animate-spin" /> {t('tool.updating')}
-          </span>
-        ) : null}
-        {previewError ? <span className="text-[11px] text-critical" data-testid="tool-preview-error">{previewError}</span> : null}
       </header>
 
       {/* 三欄 */}
       <div className="flex min-h-0 flex-1">
-        {/* 左：參數 */}
-        <aside className="w-80 shrink-0 overflow-y-auto border-r border-line bg-surface p-3" data-testid="tool-params">
-          <p className="mb-2 text-xs font-semibold text-muted">{t('editor.parameters')}</p>
-          {def.description ? <p className="mb-3 text-xs text-muted">{def.description}</p> : null}
-          <ParamForm node={node} definition={def} edges={edges} actions={actions} onChange={onChange} />
-        </aside>
-
-        {/* 中：前／後影像 */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative flex min-h-0 flex-1">
-            <div className="relative min-w-0 flex-1" data-testid="tool-before">
-              {/* 執行前一律乾淨（標記只出現在右邊「執行後」；ROI 框是參數顯示，不算標記） */}
-              <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={[]} toolbar className="h-full w-full" badge={null} {...beforeRoi} />
-              <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span>
-              {templateKey ? (
-                <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
-                  <span className="text-brand">{t('editor.viewer.templateHint')}</span>
-                  <Button size="xs" variant="primary" icon={<Check size={12} />} disabled={!templateRegion} onClick={() => setAskTemplateName(true)}>{t('editor.viewer.templateCreate')}</Button>
-                </div>
-              ) : null}
-              {roiEditingKey ? (
-                <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
-                  <span className="text-brand">{t('editor.viewer.roiEditing')}</span>
-                  <Button size="xs" variant="primary" icon={<Check size={12} />} onClick={() => setRoiEditingKey(null)}>{t('editor.viewer.done')}</Button>
-                </div>
-              ) : null}
-            </div>
-            <div className="relative min-w-0 flex-1 border-l border-line" data-testid="tool-after">
-              {output ? (
-                <ImageViewer src={output.ref ? imageUrl(output.ref, 1600) : null} imageWidth={output.width} imageHeight={output.height} overlays={[]} toolbar className="h-full w-full" badge={badge} />
-              ) : (
-                <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={report?.overlays ?? []} toolbar className="h-full w-full" badge={badge} />
-              )}
-              <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">
-                {t('editor.viewer.after')}{output ? '' : ` · ${t('tool.overlaysOnInput')}`}
-              </span>
-              {!output && report ? (
-                <div className="absolute right-2 bottom-2 max-h-48 w-64 overflow-auto rounded-lg border border-line bg-surface/95 p-2 text-[11px] backdrop-blur" data-testid="tool-output-values">
-                  <p className="mb-1 font-semibold text-muted">{t('editor.result.outputs')}</p>
-                  <table className="w-full">
-                    <tbody className="divide-y divide-line">
-                      {Object.entries(report.outputs).map(([key, value]) => (
-                        <tr key={key}>
-                          <td className="py-0.5 pr-2 font-mono text-muted">{key}</td>
-                          <td className="py-0.5 text-right font-mono">{formatValue(value)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </div>
-          </div>
-          {report?.message && status !== 'ok' ? (
-            <p className={`border-t border-line px-3 py-1.5 text-xs ${status === 'error' ? 'bg-critical-soft text-critical' : 'bg-warning-soft text-warning'}`} data-testid="tool-message">{report.message}</p>
-          ) : null}
-        </div>
-
-        {/* 右：參考資訊 */}
-        <aside className="w-80 shrink-0 overflow-y-auto border-l border-line bg-surface p-3 text-sm" data-testid="tool-reference">
+        {/* 左：參考資訊 */}
+        <aside className="w-72 shrink-0 overflow-y-auto border-r border-line bg-surface p-3 text-sm" data-testid="tool-reference">
           <p className="mb-2 text-xs font-semibold text-muted">{t('tool.reference')}</p>
           {report ? (
             <dl className="mb-3">
@@ -497,6 +401,111 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
             </div>
           ) : null}
         </aside>
+        {/* 中：前／後影像 */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1">
+            <div className="relative min-w-0 flex-1" data-testid="tool-before">
+              {/* 執行前一律乾淨（標記只出現在右邊「執行後」；ROI 框是參數顯示，不算標記） */}
+              <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={[]} toolbar className="h-full w-full" badge={null} {...beforeRoi} />
+              <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span>
+              {templateKey ? (
+                <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
+                  <span className="text-brand">{t('editor.viewer.templateHint')}</span>
+                  <Button size="xs" variant="primary" icon={<Check size={12} />} disabled={!templateRegion} onClick={() => setAskTemplateName(true)}>{t('editor.viewer.templateCreate')}</Button>
+                </div>
+              ) : null}
+              {roiEditingKey ? (
+                <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
+                  <span className="text-brand">{t('editor.viewer.roiEditing')}</span>
+                  <Button size="xs" variant="primary" icon={<Check size={12} />} onClick={() => setRoiEditingKey(null)}>{t('editor.viewer.done')}</Button>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative min-w-0 flex-1 border-l border-line" data-testid="tool-after">
+              {output ? (
+                <ImageViewer src={output.ref ? imageUrl(output.ref, 1600) : null} imageWidth={output.width} imageHeight={output.height} overlays={[]} toolbar className="h-full w-full" badge={badge} />
+              ) : (
+                <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={report?.overlays ?? []} toolbar className="h-full w-full" badge={badge} />
+              )}
+              <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">
+                {t('editor.viewer.after')}{output ? '' : ` · ${t('tool.overlaysOnInput')}`}
+              </span>
+              {!output && report ? (
+                <div className="absolute right-2 bottom-2 max-h-48 w-64 overflow-auto rounded-lg border border-line bg-surface/95 p-2 text-[11px] backdrop-blur" data-testid="tool-output-values">
+                  <p className="mb-1 font-semibold text-muted">{t('editor.result.outputs')}</p>
+                  <table className="w-full">
+                    <tbody className="divide-y divide-line">
+                      {Object.entries(report.outputs).map(([key, value]) => (
+                        <tr key={key}>
+                          <td className="py-0.5 pr-2 font-mono text-muted">{key}</td>
+                          <td className="py-0.5 text-right font-mono">{formatValue(value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          {report?.message && status !== 'ok' ? (
+            <p className={`border-t border-line px-3 py-1.5 text-xs ${status === 'error' ? 'bg-critical-soft text-critical' : 'bg-warning-soft text-warning'}`} data-testid="tool-message">{report.message}</p>
+          ) : null}
+          {/* 下：參數（寬螢幕自動多欄；各欄位不跨欄斷裂） */}
+          <div className="max-h-[38%] min-h-44 shrink-0 overflow-y-auto border-t border-line bg-surface p-3" data-testid="tool-params">
+            <p className="mb-2 text-xs font-semibold text-muted">
+              {t('editor.parameters')}
+              {def.description ? <span className="ml-2 font-normal text-subtle">{def.description}</span> : null}
+            </p>
+            <div className="columns-1 gap-6 lg:columns-2 2xl:columns-3 [&_[data-param]]:mb-3 [&_[data-param]]:break-inside-avoid">
+              <ParamForm node={node} definition={def} edges={edges} actions={actions} onChange={onChange} />
+            </div>
+          </div>
+        </div>
+
+        {/* 右：按鍵 */}
+        <aside className="flex w-56 shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-line bg-surface p-3" data-testid="tool-actions">
+          <p className="text-xs font-semibold text-muted">{t('common.actions')}</p>
+          <Button variant={dirty ? 'primary' : 'secondary'} icon={<Save size={14} />} loading={saving} disabled={readOnly} onClick={() => void save()} data-testid="tool-save">
+            {dirty ? t('editor.save') : t('editor.savedState')}
+          </Button>
+          <Button icon={<FlaskConical size={14} />} loading={updating && !autoApply} disabled={execLocked} onClick={() => void runPreview()} data-testid="tool-preview">
+            {t('tool.previewUntil')}
+          </Button>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted" title={t('tool.autoApplyHint')}>
+            <Switch checked={autoApply} onChange={setAutoApply} label={t('tool.autoApply')} />
+            {t('tool.autoApply')}
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-muted" title={t('editor.reuseImageHint')}>
+            <input type="checkbox" className="accent-[var(--brand)]" checked={reuse} disabled={Boolean(scratch) || !lastSourceRef} onChange={(e) => setReuse(e.target.checked)} />
+            {t('editor.reuseImage')}
+          </label>
+          {scratch ? (
+            <ScratchBadge scratch={scratch} onClear={() => updateSession(flowId, { scratch: null })} />
+          ) : (
+            <Button icon={<ImageUp size={14} />} loading={scratchUpload.isPending} onClick={() => scratchInput.current?.click()} data-testid="tool-scratch">
+              {t('editor.scratchUpload')}
+            </Button>
+          )}
+          <input
+            ref={scratchInput}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            data-testid="scratch-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (file) void uploadScratch(file)
+            }}
+          />
+          {updating ? (
+            <span className="flex items-center gap-1 text-[11px] text-brand" data-testid="tool-updating">
+              <Loader2 size={12} className="animate-spin" /> {t('tool.updating')}
+            </span>
+          ) : null}
+          {previewError ? <span className="text-[11px] text-critical" data-testid="tool-preview-error">{previewError}</span> : null}
+        </aside>
+
       </div>
 
       <Modal

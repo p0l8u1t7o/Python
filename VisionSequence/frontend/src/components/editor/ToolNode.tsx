@@ -138,9 +138,10 @@ function ToolNodeInner({ data, selected }: NodeProps) {
         <div className="pb-2" />
       )}
       {report ? (
-        <span className={`absolute bottom-0.5 right-2 text-[9px] tabular-nums ${customBg ? 'opacity-70' : 'text-subtle'}`}>
+        // 獨立一列（不用 absolute）：疊在角落會壓到最後一個輸出埠的名稱
+        <p className={`px-3 pb-1 text-right text-[9px] leading-none tabular-nums ${customBg ? 'opacity-70' : 'text-subtle'}`}>
           {Math.round(report.duration_ms)} ms
-        </span>
+        </p>
       ) : null}
     </div>
   )
