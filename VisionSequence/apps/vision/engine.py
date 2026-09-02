@@ -308,7 +308,8 @@ def execute(
             thru = v if isinstance(v, np.ndarray) else None
         if isinstance(thru, np.ndarray):
             outputs[(node_id, "_image")] = thru
-            if preview or (node_id, "_image") in compiled.consumed:
+            # 只在被接走時放進 report：直通埠不是「執行後」結果，viewer／分析都不該看到它
+            if (node_id, "_image") in compiled.consumed:
                 node_report.outputs["_image"] = store.put(f"{run_id}:{node_id}:_image", thru, flow_id=flow_id, run_id=run_id)
         # 讓前端也能看到 primary 輸入影像（overlay 座標系）——只在試跑時，避免重複快取。
         if preview and cn.primary_image_port and isinstance(inputs.get(cn.primary_image_port), np.ndarray):

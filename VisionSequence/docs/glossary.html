@@ -65,10 +65,10 @@
 <h2 id="pages">頁面（左側導覽，路由）</h2>
 <table>
 <tr><th>中文</th><th>路由</th><th>程式名</th><th>說明</th></tr>
-<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕）＋即時檢測資訊（判定/耗時/工站/配方/具名輸出），中央＝選中流程的即時影像（訂該流程 SSE，外部 API／連續執行的每筆檢測即時更新；一般用戶可看見的流程都能觀看）</td></tr>
+<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕），中央＝選中流程的即時影像、右欄＝即時檢測資訊；沒有事件時預設顯示最後一次執行結果（<code>GET /flows/{id}/recent</code>，網頁試跑也算）；訂該流程 SSE 即時更新；一般用戶可看見的流程都能觀看</td></tr>
 <tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
 <tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
-<tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁</td></tr>
+<tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁：預設按「執行到此步驟」才跑（可開自動套用）；有 ROI 參數且有值時進頁直接顯示可拖曳；參數只寫共享草稿、「儲存」才寫回後台，「返回」未儲存會 confirm 後放棄本頁編輯</td></tr>
 <tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal 可新增/改名/刪除——刪除可選連刪資源或改未分組；chips 篩選、編輯時下拉選群組）</td></tr>
 <tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（同來源庫：管理群組 Modal、chips 篩選、上傳/編輯下拉選群組 <code>PATCH /assets/{id}</code>）</td></tr>
 <tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>

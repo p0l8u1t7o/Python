@@ -566,6 +566,7 @@ const zhHans = {
     fps: '{{fps}} fps',
   },
   tool: {
+    discardConfirm: '此步骤有未保存的参数编辑，返回编辑器将放弃这些更改。确定返回？',
     back: '返回编辑器',
     previewUntil: '试跑到此步骤',
     autoApply: '自动套用',

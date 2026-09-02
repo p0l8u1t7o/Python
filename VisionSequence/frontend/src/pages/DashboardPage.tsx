@@ -1,7 +1,7 @@
 /** 總覽：左欄＝流程卡垂直清單（點卡＝選擇觀看，不再跳編輯器；編輯器／統計改小圖示鈕）＋
  *  即時檢測資訊；中央＝選中流程的即時影像。訂該流程 SSE（含輸出），外部 API／連續執行
  *  觸發的每筆檢測完成立即更新。全域 SSE 照樣把 stats 寫進 flows 快取（卡片數字即時）。 */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, BarChart3, MonitorPlay, Pencil, Radio, Workflow } from 'lucide-react'
@@ -10,7 +10,7 @@ import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '@/components/ui'
 import { TrendStrip } from '@/pages/StatsPage'
-import { imageUrl } from '@/lib/api'
+import { api, imageUrl } from '@/lib/api'
 import { useFlowStream } from '@/lib/flowStream'
 import { useCapacity, useFlows, useRecentRuns } from '@/lib/queries'
 import type { Flow, RunReport } from '@/lib/types'
@@ -41,11 +41,14 @@ function CapacityBar() {
 /** run 裡最後一個影像輸出（節點依執行順序寫入 report，倒著找即可）。 */
 function lastImage(run: RunReport): { ref: string; width: number; height: number } | null {
   const reports = Object.values(run.nodes)
-  for (let i = reports.length - 1; i >= 0; i -= 1) {
-    for (const v of Object.values(reports[i].outputs)) {
-      if (v && typeof v === 'object' && 'ref' in v && 'width' in v) {
-        const r = v as { ref: string | null; width: number; height: number }
-        if (r.ref) return { ref: r.ref, width: r.width, height: r.height }
+  for (const skipThru of [true, false]) {
+    for (let i = reports.length - 1; i >= 0; i -= 1) {
+      for (const [key, v] of Object.entries(reports[i].outputs)) {
+        if (skipThru && key === '_image') continue // 優先真正的輸出；只剩直通才用
+        if (v && typeof v === 'object' && 'ref' in v && 'width' in v) {
+          const r = v as { ref: string | null; width: number; height: number }
+          if (r.ref) return { ref: r.ref, width: r.width, height: r.height }
+        }
       }
     }
   }
@@ -56,12 +59,31 @@ function lastImage(run: RunReport): { ref: string; width: number; height: number
 function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) => void }) {
   const { t } = useTranslation()
   const [run, setRun] = useState<RunReport | null>(null)
+  const runRef = useRef(run)
+  runRef.current = run
+  const onRunRef = useRef(onRun)
+  onRunRef.current = onRun
   useFlowStream(flow.id, true, (event) => {
     if (event.type === 'run_finished' && event.run) {
       setRun(event.run)
       onRun(event.run)
     }
   })
+  // 沒有事件之前，先顯示最後一次執行結果（引擎記憶體的 recent；網頁試跑也算）
+  useEffect(() => {
+    let cancelled = false
+    void api.get<{ items: RunReport[] }>(`/vision/flows/${flow.id}/recent`, { limit: 1 })
+      .then((r) => {
+        if (!cancelled && !runRef.current && r.items[0]) {
+          setRun(r.items[0])
+          onRunRef.current(r.items[0])
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [flow.id])
   const image = run ? lastImage(run) : null
   const overlays = useMemo(() => (run ? Object.values(run.nodes).flatMap((n) => n.overlays ?? []) : []), [run])
   if (!image || !run) {
@@ -192,15 +214,12 @@ export function DashboardPage() {
       ) : items.length === 0 ? (
         <EmptyState icon={<Workflow className="size-6" />} title={t('dashboard.empty')} description={t('dashboard.createFirst')} action={<Link to="/flows"><Button variant="primary">{t('flows.create')}</Button></Link>} />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-          {/* 左欄：流程卡垂直清單 ＋ 即時檢測資訊 */}
-          <div className="flex min-w-0 flex-col gap-3">
-            <div className="space-y-2 lg:max-h-[46vh] lg:overflow-y-auto lg:pr-1" data-testid="dash-flow-list">
-              {items.map((flow) => (
-                <FlowCard key={flow.id} flow={flow} selected={flow.id === watchingId} onSelect={() => setWatchingId(flow.id)} />
-              ))}
-            </div>
-            <LiveInfo run={lastRun} />
+        <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+          {/* 左欄：流程卡垂直清單 */}
+          <div className="space-y-2 lg:max-h-[calc(100vh-280px)] lg:overflow-y-auto lg:pr-1" data-testid="dash-flow-list">
+            {items.map((flow) => (
+              <FlowCard key={flow.id} flow={flow} selected={flow.id === watchingId} onSelect={() => setWatchingId(flow.id)} />
+            ))}
           </div>
           {/* 中央：即時影像 */}
           <div className="h-[52vh] min-h-80 lg:h-[calc(100vh-280px)] lg:min-h-[480px]">
@@ -209,6 +228,10 @@ export function DashboardPage() {
             ) : (
               <div className="flex h-full items-center justify-center rounded-lg bg-viewer text-sm text-white/60">{t('dashboard.selectFlow')}</div>
             )}
+          </div>
+          {/* 右欄：即時檢測資訊 */}
+          <div className="min-w-0">
+            <LiveInfo run={lastRun} />
           </div>
         </div>
       )}

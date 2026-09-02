@@ -566,6 +566,7 @@ const zhHant = {
     fps: '{{fps}} fps',
   },
   tool: {
+    discardConfirm: '此步驟有未儲存的參數編輯，返回編輯器將放棄這些變更。確定返回？',
     back: '返回編輯器',
     previewUntil: '試跑到此步驟',
     autoApply: '自動套用',

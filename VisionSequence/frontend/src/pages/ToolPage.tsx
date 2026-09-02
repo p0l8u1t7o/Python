@@ -6,13 +6,13 @@
  *     把標記疊在輸入影像上＋輸出值表）並排；兩個影像視窗各自 fit／縮放，不同步視角。
  * 右：參考資訊：輸入／輸出直方圖與灰階統計、數值分布（series）、outputs、耗時、訊息、logs。
  *
- * 即時調參：參數改變後 250 ms 自動試跑到此步驟（until_node＋analysis＋固定的來源影像 ref）；
- * 連續請求用 AbortController 取消舊的，只採用最後一次回應。圖是 lib/flowDraft.ts 的共享草稿，
- * 回編輯器會看到同一份變更。
+ * 執行模式：預設「按執行鈕才跑」（改參數只暫存生效；可開自動套用改回 250 ms 防抖即跑）。
+ * 參數編輯只寫入共享草稿（lib/flowDraft.ts），按「儲存」才寫回後台；按「返回」且未儲存時，
+ * 本頁對此步驟的參數編輯會被放棄（confirm 後還原進頁時的狀態）。有 ROI 參數且已有值時進頁直接顯示。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useBlocker, useParams } from 'react-router-dom'
+import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, FlaskConical, ImageUp, Loader2, Save } from 'lucide-react'
 
 import { ScratchBadge } from '@/components/editor/EditorToolbar'
@@ -59,13 +59,16 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const { fromImage } = useAssetMutations()
   const session = useFlowSession(flowId)
 
-  const [autoApply, setAutoApply] = useState(true)
+  const [autoApply, setAutoApply] = useState(false) // 預設按「執行」鈕才跑；要即時的自己開自動套用
   const [reuse, setReuse] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<NodeAnalysis | null>(null)
   const [roiEditingKey, setRoiEditingKey] = useState<string | null>(null)
+  const navigate = useNavigate()
+  //: 進頁時此步驟的快照：返回未儲存時還原（放棄本頁的參數編輯）
+  const entryRef = useRef<{ key: string; json: string; dirty: boolean } | null>(null)
   const [templateKey, setTemplateKey] = useState<string | null>(null)
   const [templateRegion, setTemplateRegion] = useState<Region | null>(null)
   const [templateName, setTemplateName] = useState('')
@@ -79,6 +82,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   }, [catalogue.data])
 
   // ---- 草稿：沒有（或伺服器版本變了）就用伺服器的圖建一份 ----
+  const editorPath = `/flows/${flowId}`
   useEffect(() => {
     const data = flow.data
     if (!data) return
@@ -156,6 +160,29 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     bootedFor.current = key
     void runPreview()
   }, [graph, def, execLocked, flowId, nodeId, runPreview])
+
+  // 進頁快照（返回未儲存時還原用）＋有 ROI 參數且已有值 → 直接顯示、可立即拖曳
+  useEffect(() => {
+    if (!def || !node || !draft) return
+    const key = `${flowId}:${nodeId}`
+    if (entryRef.current?.key === key) return
+    entryRef.current = { key, json: JSON.stringify(node), dirty: draft.dirty }
+    const roi = def.params.find((p) => p.kind === 'roi' && node.params?.[p.key])
+    if (roi) setRoiEditingKey(roi.key)
+  }, [def, node, draft, flowId, nodeId])
+
+  /** 返回編輯器：本頁改過參數且未儲存 → confirm 後還原此步驟到進頁狀態（放棄編輯）。 */
+  function goBack() {
+    const snap = entryRef.current
+    const changed = snap && node ? JSON.stringify(node) !== snap.json : false
+    if (changed && snap) {
+      if (!window.confirm(t('tool.discardConfirm'))) return
+      patchDraftNode(flowId, nodeId, JSON.parse(snap.json) as Partial<GraphNode>)
+      const cur = getSession(flowId).draft
+      if (cur && !snap.dirty) setDraft(flowId, { ...cur, dirty: false })
+    }
+    navigate(editorPath)
+  }
   useEffect(
     () => () => {
       window.clearTimeout(timerRef.current)
@@ -209,8 +236,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [save])
 
-  // ---- 離開攔截（回編輯器不算：草稿帶回去） ----
-  const editorPath = `/flows/${flowId}`
+  // ---- 離開攔截（回編輯器經 goBack 處理，不在此攔） ----
   const dirty = Boolean(draft?.dirty)
   const blocker = useBlocker(
     useCallback(
@@ -290,9 +316,9 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     <div className="flex h-full flex-col" data-testid="tool-page">
       {/* 頂列 */}
       <header className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface px-3 py-1.5">
-        <Link to={editorPath} className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="btn-back">
+        <button type="button" onClick={goBack} className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="btn-back">
           <ArrowLeft size={14} /> {t('tool.back')}
-        </Link>
+        </button>
         <span className="flex items-center gap-1.5 text-sm font-semibold">
           <span className="flex size-6 items-center justify-center rounded-md bg-brand-soft text-brand"><Icon size={14} /></span>
           {node.label || def.label}

@@ -339,6 +339,7 @@ const en = {
     toast: { scratchUploaded: 'Scratch image "{{name}}" uploaded ({{w}}×{{h}})', resetDone: 'Reset done' },
   },
   tool: {
+    discardConfirm: 'This step has unsaved parameter edits; going back will discard them. Continue?',
     back: 'Back to editor',
     previewUntil: 'Preview up to this step',
     autoApply: 'Auto apply',

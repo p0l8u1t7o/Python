@@ -123,6 +123,11 @@ class ImageThruTests(SimpleTestCase):
         self.assertIsInstance(out, dict)
         self.assertEqual((out["width"], out["height"]), (60, 40))
         self.assertEqual(report.nodes["f"].outputs.get("value"), 1.0)
+        # 直通 ref 只在「被接走」的節點出現：viewer 才不會把直通當成「執行後」影像（overlay 會消失）
+        self.assertIn("_image", report.nodes["blob"].outputs)
+        self.assertNotIn("_image", report.nodes["th"].outputs)
+        # blob 的 overlays 是 metadata：仍在 report、且沒畫進直通影像（上面已驗尺寸/內容）
+        self.assertNotIn("_image", report.nodes["src"].outputs)
 
     def test_catalogue_declares_thru_ports(self):
         from apps.vision.tools import base as tools_base

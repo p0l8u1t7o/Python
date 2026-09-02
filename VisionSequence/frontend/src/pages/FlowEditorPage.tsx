@@ -91,7 +91,8 @@ export interface ViewTarget {
 
 export function firstImageOutput(report: NodeReport | undefined): { ref: string | null; width: number; height: number } | null {
   if (!report) return null
-  for (const value of Object.values(report.outputs)) {
+  for (const [key, value] of Object.entries(report.outputs)) {
+    if (key === '_image') continue // 隱含直通埠＝原影像，不是「執行後」結果（否則 overlay 會消失、前後看起來相反）
     if (isImageRef(value)) return { ref: value.ref, width: value.width, height: value.height }
   }
   return null
