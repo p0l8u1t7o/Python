@@ -138,6 +138,7 @@
 <tr><td>範本庫</td><td>Template library（FlowTemplate）</td><td>流程範本：內建（<code>builtin:&lt;key&gt;</code>）或自訂（存為範本）；來源 id 以 <code>{SOURCE}</code> 佔位，建立／載入時再選影像來源</td></tr>
 <tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名；範例樣板（<code>demo.BUILTIN_TEMPLATES</code>）都在這裡，配「範例：⋯」樣本來源即可執行</td></tr>
 <tr><td>註解</td><td>Note（畫布便利貼）</td><td>graph 的裝飾節點（type=note，不參與執行）；工具箱「新增註解」放到畫布中央，選中後在屬性面板改標題／內文、拖角落調大小</td></tr>
+<tr><td>AI 助手</td><td>Agent（<code>/agent</code>、AgentPage、<code>apps/vision/agent</code>）</td><td>上傳影像＋圈 ROI＋提示詞 → 自動生成流程 graph 並實跑；離線規則引擎（意圖→合成器）＋可選 LLM 生成（<code>VISION_AGENT_API_KEY</code>）。見 docs/agent.html</td></tr>
 <tr><td>批次測試</td><td>Batch test</td><td>多張影像（檔案／來源抓 N 張，≤50）用目前的圖各跑一次試跑，看良率與每張判定；影像只保留最近 8 次（KEEP_RUN_IMAGES），被淘汰的顯示「影像已釋放」</td></tr>
 <tr><td>統計</td><td>Statistics（StatsPage）</td><td>資料庫歷史的 KPI、每小時 OK／NG／失敗、耗時趨勢與執行歷史表；「記憶體即時統計」是引擎內的 FlowStats</td></tr>
 <tr><td>整合頁</td><td>Integration page</td><td>外部整合方的接口說明與測試工具；「事件監看」連 <code>/api/vision/events</code></td></tr>

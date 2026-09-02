@@ -145,6 +145,10 @@ VISION = {
     # TCP 自動化介面（manage.py run_tcp_server）。
     "TCP_HOST": _env("VISION_TCP_HOST", "0.0.0.0"),
     "TCP_PORT": _env_int("VISION_TCP_PORT", 9000),
+    # AI 助手（apps/vision/agent）：設定金鑰＋安裝 anthropic 才啟用 LLM 生成；
+    # 沒設定時規則引擎完全離線可用。影像會縮圖後送到 LLM 供應商，內網環境請留空。
+    "AGENT_API_KEY": _env("VISION_AGENT_API_KEY", ""),
+    "AGENT_MODEL": _env("VISION_AGENT_MODEL", "claude-opus-5"),
 }
 VISION["ASSET_DIR"].mkdir(parents=True, exist_ok=True)
 

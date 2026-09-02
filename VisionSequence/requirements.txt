@@ -26,6 +26,11 @@ onnxruntime==1.20.1            # dl_classify / dl_detect 工具；未安裝時�
 #   .venv\Scripts\pip install ultralytics        # 會帶 torch；GPU 版 torch 照 pytorch.org 指示裝
 # ultralytics>=8.3
 
+# ---- 可選：AI 助手的 LLM 生成（apps/vision/agent） ---------------------------------
+# 不裝也能用（離線規則引擎）；要用 LLM 生成流程：pip install anthropic 並在 .env 設
+# VISION_AGENT_API_KEY（影像會縮圖後送到 LLM 供應商，內網環境請留空）。
+# anthropic>=1.0
+
 # ---- 執行環境 ---------------------------------------------------------------
 uvicorn[standard]==0.34.0      # ASGI（SSE 即時串流）；正式環境單 worker（引擎狀態在行程內）
 whitenoise==6.8.2              # 靜態檔（前端 build 產物）

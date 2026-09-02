@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence AI 助手</title>
+<style>
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html" aria-current="page">AI 助手</a></nav>
+<article class="doc">
+
+<h1>AI 助手：上傳影像＋圈選＋提示詞 → 自動生成檢測流程</h1>
+<p>AI 助手（側欄「AI 助手」，<code>/agent</code>）讓不熟工具鏈的使用者用三步驟建立檢測：
+<strong>上傳影像 → 在影像上圈選檢測位置（可多個 ROI、各配提示）→ 用一句話描述需求</strong>。
+助手生成一個標準的流程 graph，立刻在這張影像上實跑並把檢測標記疊回圖上；
+不滿意就用口語回饋（「太敏感」「漏抓」「改成 4 個」）迭代微調，滿意後一鍵存成流程、進編輯器繼續調。</p>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#arch">架構</a></li>
+<li><a href="#rules">離線規則引擎</a></li>
+<li><a href="#llm">LLM 生成（可選）</a></li>
+<li><a href="#refine">迭代微調</a></li>
+<li><a href="#api">API</a></li>
+<li><a href="#design">設計取捨</a></li>
+</ul></nav>
+
+<h2 id="arch">架構</h2>
+<p>助手的產物就是<strong>標準 graph JSON</strong>——跑在既有的資料流引擎上、可在編輯器打開、
+可掛任何影像來源、可綁配方與 TCP／HTTP 觸發。助手本身只是「會寫流程的層」，沒有第二套執行路徑。</p>
+<pre>使用者影像 + ROI + 提示詞
+        │
+        ▼
+  analysis.py ── ROI 特徵量測（直方圖/Otsu/邊緣密度/主色/圓形試探/粒子統計）
+        │
+        ▼
+  ┌─ 生成（二選一，自動切換）──────────────────────────┐
+  │  llm.py    有 VISION_AGENT_API_KEY → Claude 生成    │
+  │  intents.py + synth.py   否則 → 離線規則引擎        │
+  └────────────────────────────────────────────────┘
+        │  graph（一律經 validate_graph 把關）
+        ▼
+  service.trial_run ── 在上傳影像上實跑（engine.execute，不落 DB、不佔流程執行緒池）
+        │
+        ▼
+  {graph, rationale, report}  ← 前端顯示 overlay／輸出值／OK-NG，可回饋微調或存成流程</pre>
+<table>
+<tr><th>模組</th><th>職責</th></tr>
+<tr><td><code>apps/vision/agent/analysis.py</code></td><td>ROI 特徵包：平均/標準差/Otsu、暗部佔比、邊緣密度、HSV 主色、暗亮粒子統計（連通元件）、霍夫圓形試探。規則引擎靠它自動調參；LLM 拿它的文字摘要省 token。</td></tr>
+<tr><td><code>intents.py</code></td><td>提示詞（中英關鍵詞）＋ROI 形狀＋特徵 → 意圖（封閉集合：count / diameter / width / angle / defect / color_match / color_presence / presence / brightness / barcode / generic），並抽出期望數量、標稱值、公差、mm/px 換算。</td></tr>
+<tr><td><code>synth.py</code></td><td>每種意圖一個合成器：掛使用者 ROI、用特徵自動填參數（門檻極性、blob 最小面積、HSV 範圍、環形 ROI 自動生成……），輸出 graph＋設計理由。</td></tr>
+<tr><td><code>llm.py</code></td><td>Claude 供應器（可選）：工具目錄＋graph 規格＋合成規則放進可快取的 system 段，影像縮圖＋ROI＋特徵摘要進 user 訊息；輸出 JSON 經 validate_graph 把關，失敗帶錯誤重試一次。</td></tr>
+<tr><td><code>service.py</code></td><td>編排與試跑；規則式微調（口語回饋 → 參數調整映射）。LLM 失敗自動落回規則引擎。</td></tr>
+<tr><td><code>api.py</code></td><td><code>/vision/agent/*</code> 端點；執行類權限（鎖定時 423）。</td></tr>
+</table>
+
+<h2 id="rules">離線規則引擎</h2>
+<p>預設模式，<strong>完全離線</strong>、零外部依賴。意圖判斷按特異性排序（讀碼／角度這種明確詞優先、
+泛用的「有無」殿後），自動調參全部來自 ROI 特徵：</p>
+<table>
+<tr><th>提示詞（例）</th><th>意圖</th><th>生成的流程骨架</th><th>自動參數</th></tr>
+<tr><td>應該有 5 個孔</td><td>count</td><td>灰階→去雜訊→二值化→開運算→blob→數量判斷→OK/NG</td><td>二值化極性（暗/亮粒子哪邊多）、blob 最小面積（中位面積 ×0.3）</td></tr>
+<tr><td>量直徑 17.5±0.4mm，0.05mm=1px</td><td>diameter</td><td>找圓→直徑→像素校正→公差判定</td><td>圓 ROI 自動轉環形（r×0.6~1.4）、mm/px、公差</td></tr>
+<tr><td>量寬度 160±10</td><td>width</td><td>卡尺→公差判定</td><td>—</td></tr>
+<tr><td>兩條邊的夾角 90±1</td><td>angle</td><td>找線×2→夾角→範圍判定（需兩個 ROI）</td><td>—</td></tr>
+<tr><td>表面有沒有刮痕</td><td>defect</td><td>模糊→固定門檻→開運算→blob→0 個才 OK</td><td>門檻＝ROI 平均往暗/亮偏 3σ（缺陷極性由粒子試探決定）</td></tr>
+<tr><td>這塊顏色對不對</td><td>color_match</td><td>顏色比對→OK/NG＋顏色統計</td><td>目標色＝ROI 主色</td></tr>
+<tr><td>紅色膠塞有沒有</td><td>color_presence</td><td>顏色範圍遮罩→像素計數→判定</td><td>HSV 範圍＝ROI 主色 ±12°、門檻＝ROI 面積/4</td></tr>
+<tr><td>讀取條碼</td><td>barcode</td><td>讀碼→OK/NG＋內容輸出</td><td>—</td></tr>
+<tr><td>亮度是否正常</td><td>brightness</td><td>區域統計→範圍判定</td><td>範圍＝目前平均 ±30%</td></tr>
+<tr><td>（不明確）</td><td>generic</td><td>統計／直方圖／邊緣密度資訊流程</td><td>note 節點提示補充需求</td></tr>
+</table>
+
+<h2 id="llm">LLM 生成（可選）</h2>
+<p>在 <code>.env</code> 設 <code>VISION_AGENT_API_KEY</code>（Anthropic API 金鑰）並
+<code>pip install anthropic</code> 後，生成改由 Claude 執行（<code>VISION_AGENT_MODEL</code>
+預設 <code>claude-opus-5</code>）。LLM 看得懂更自由的描述（「杯口內外緣都量、壁厚也要」），
+可以組合規則引擎沒有的流程形狀。</p>
+<ul>
+<li><strong>把關不變</strong>：LLM 輸出的 graph 一樣經 <code>validate_graph</code>＋實跑驗證；無效輸出帶錯誤重試一次，再失敗自動落回規則引擎。</li>
+<li><strong>金鑰只在伺服器</strong>：前端永遠打自己的後端；金鑰不進瀏覽器。</li>
+<li><strong>資料外流邊界</strong>：啟用 LLM 時「縮圖後的影像＋ROI＋特徵摘要」會送到 LLM 供應商。內網／保密環境不要設金鑰——規則引擎功能完整。</li>
+<li><strong>成本控制</strong>：工具目錄與規格放在可快取的 system 段（prompt caching），迭代微調時只付增量。</li>
+</ul>
+
+<h2 id="refine">迭代微調</h2>
+<p>生成結果附「設計理由」與實跑報告。回饋框輸入口語即可：</p>
+<table>
+<tr><th>回饋</th><th>規則引擎的調整</th></tr>
+<tr><td>太敏感／誤判／抓太多</td><td>blob 最小面積 ×2、顏色容差 +40%、比對分數門檻 −0.1</td></tr>
+<tr><td>漏抓／抓不到／太鬆</td><td>blob 最小面積 ×0.5、邊緣門檻 ×0.6、顏色容差 −30%</td></tr>
+<tr><td>改成 4 個</td><td>數量判斷的期望值改 4</td></tr>
+<tr><td>±0.2</td><td>公差判定改 ±0.2</td></tr>
+<tr><td>（對應不到參數）</td><td>回饋併入需求重新生成</td></tr>
+</table>
+<p>LLM 模式下微調直接把「目前 graph＋回饋」交給 LLM 修改。每次微調都重新實跑。</p>
+
+<h2 id="api">API</h2>
+<pre>POST /api/vision/agent/image      multipart image → {ref, width, height}
+POST /api/vision/agent/generate   {ref, prompt, regions:[{region, hint?}], use_llm?}
+                                  → {graph, rationale, provider, intent, report}
+POST /api/vision/agent/refine     {ref, prompt, regions, graph, feedback} → 同上
+GET  /api/vision/agent/info       {llm, model, provider}</pre>
+<p><code>report</code> 與 preview 端點同格式（各節點狀態／輸出／overlay／影像 ref）。
+regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulus / polygon / line，全圖像素座標）。
+執行類端點：引擎鎖定時 423；一般使用者可用。</p>
+
+<h2 id="design">設計取捨</h2>
+<ul>
+<li><strong>產物是 graph，不是黑盒</strong>：助手生成的每個流程都能在編輯器打開、逐工具檢視參數，現場工程師看得懂、改得動；助手是「起手式產生器」，不是取代編輯器。</li>
+<li><strong>規則引擎當地板、LLM 當天花板</strong>：規則引擎覆蓋工廠 8 成常見檢測且完全離線；LLM 是加值選配，掛了金鑰立刻變聰明，拔了金鑰功能不缺。</li>
+<li><strong>一律實跑驗證</strong>：不管誰生成，都要在使用者影像上真的跑一遍才回給前端——「看起來合理」不算數，OK/NG 與 overlay 才算。</li>
+<li><strong>深度學習不自動生成</strong>：dl_* 工具需要先訓練模型，助手在需要時會在 note 提示走「深度學習教導」頁；write_modbus 需要連線設定，同樣不生成。</li>
+<li><strong>紅線不動</strong>：不改 graph 格式、不動引擎、單一 API 行程；agent 試跑用呼叫者執行緒直跑 engine.execute，不佔流程執行緒池。</li>
+</ul>
+
+</article>
+</body>
+</html>

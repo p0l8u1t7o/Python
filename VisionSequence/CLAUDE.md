@@ -39,6 +39,11 @@
 - 找不到東西回 `status="ng"` 或分支，不要 `raise`；可預期失敗 `raise ToolError(...)`。overlays 座標一律是**該節點輸入影像**的全圖座標；ROI 用 `tools/roi.py` 的 `crop()` 與 `Crop.to_full()`。**overlays 只是顯示層 metadata——不得畫進影像、不得就地修改輸入 ndarray**（下游工具的檢測不受標記影響；`tests/test_tools.py ToolPurityTests` 全工具掃描鎖住這條）。
 - 前端不用改；想加新的 Param.kind 要同時改 `PARAM_KINDS` 與前端 `ParamField`。
 
+## AI 助手（apps/vision/agent）
+- 上傳影像＋圈 ROI＋提示詞 → 生成標準 graph 並在該影像實跑（`service.generate/refine`、`/vision/agent/*`、前端 `/agent`）。
+- 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序）；`llm.py` Claude 生成（`VISION_AGENT_API_KEY`＋`pip install anthropic` 才啟用、延後 import，失敗自動落回規則）。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB）。
+- 新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
+
 ## 深度學習教導（apps/vision/dl）
 - `Trainer` registry（base.py）：kind／label_mode（封閉集合：classes｜shapes）／params（沿用 Param）／devices，實作 `train()`（回 ONNX bytes＋tool_params）與 `suggest()`（自動標記）。內建：`mlp_classify`（分類）、`patch_segment`（輕量語意分割，全卷積手刻 ONNX 給 dl_segment）、`yolo_seg`（實例分割；torch/ultralytics **可選安裝、延後 import**，缺件訓練時提示 pip 指令；產物給新工具 `dl_instance`）。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動、共用。
 - shapes 標記存 DlSample.shapes（0~1 正規化），`shapes.py` 與 YOLO txt 互轉（TAB/LF，相容 VisionStereo）；`dataset-export`／`dataset-import` API 雙向互通。訓練 job 帶 history 曲線與 log 環形緩衝（`?log_from=`）。

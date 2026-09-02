@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { Brain, Cable, Camera, FileText, Images, LayoutDashboard, Plug, Search, Settings, Users, Workflow, Wrench } from 'lucide-react'
+import { Brain, Cable, Camera, FileText, Images, LayoutDashboard, Plug, Search, Settings, Sparkles, Users, Workflow, Wrench } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { useAuth } from '@/providers/AuthProvider'
@@ -19,6 +19,7 @@ const PAGES = [
   { to: '/sources', key: 'sources', icon: Camera, admin: false },
   { to: '/assets', key: 'assets', icon: Images, admin: false },
   { to: '/dl', key: 'dl', icon: Brain, admin: false },
+  { to: '/agent', key: 'agent', icon: Sparkles, admin: false },
   { to: '/integration', key: 'integration', icon: Plug, admin: false },
   { to: '/users', key: 'users', icon: Users, admin: true },
   { to: '/settings', key: 'settings', icon: Settings, admin: false },

@@ -3,6 +3,7 @@ import { Navigate, Outlet, RouterProvider, createBrowserRouter, useLocation } fr
 
 import { AppShell } from '@/components/layout/AppShell'
 import { LoadingState } from '@/components/ui'
+import { AgentPage } from '@/pages/AgentPage'
 import { AssetsPage } from '@/pages/AssetsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { FlowEditorPage } from '@/pages/FlowEditorPage'
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
           { path: 'flows/:flowId/teach', element: <TeachPage /> },
           { path: 'flows/:flowId/golden', element: <GoldenPage /> },
           { path: 'dl', element: <DlPage /> },
+          { path: 'agent', element: <AgentPage /> },
           { path: 'connections', element: <Navigate to="/integration?tab=connections" replace /> },
           { path: 'integration', element: <IntegrationPage /> },
           { path: 'help', element: <HelpPage /> },
