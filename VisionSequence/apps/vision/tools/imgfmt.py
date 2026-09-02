@@ -1,10 +1,10 @@
-"""影像位深支援（NI Vision 對照：Grayscale U8/I16/SGL、RGB U32/U64）。
+"""影像位深支援（8 位元／16 位元／浮點灰階與彩色）。
 
 平台內部以 numpy dtype 表示：
 - "u8"  = uint8（預設；灰階 HxW 或 BGR HxWx3）
 - "u16" = uint16（16-bit 灰階或每通道 16-bit 的 RGB U64）
 - "f32" = float32（SGL 浮點灰階；例如 FFT／校正中間結果）
-（NI 的 I16 讀入時轉 u16 偏移或 f32；HSL U32 是編碼方式，平台以 color_convert 取 H/S/L 通道處理。）
+（16-bit 有號灰階讀入時轉 u16 偏移或 f32；HSL 是編碼方式，平台以 color_convert 取 H/S/L 通道處理。）
 
 工具透過 `Tool.accepts` 宣告可以吃的位深；ToolContext.image() 是**中央接縫**——
 不在宣告內的位深會自動正規化成 u8（產生新陣列，不動輸入），所以任何工具丟什麼影像都不會炸。

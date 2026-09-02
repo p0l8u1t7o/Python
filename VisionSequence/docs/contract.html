@@ -114,7 +114,7 @@
 <ul>
 <li><code>range</code>：<strong>單一數值</strong>，以滑桿＋數字框呈現（用 minimum/maximum/step）；不是兩個數字。</li>
 <li>每個工具的 outputs 目錄末尾有隱含埠 <code>{"key":"_overlays","type":"list","implicit":true}</code>（該節點的標記），可接 draw_result 的 overlays。</li>
-<li><strong>影像位深</strong>：image 埠可承載 uint8（預設）、uint16（16-bit 灰階／RGB U64）、float32（SGL 浮點）。工具以 <code>Tool.accepts</code> 宣告支援的位深；宣告外的位深由 <code>ToolContext.image()</code> 自動正規化成 u8（u16 右移 8、浮點 min-max；不動輸入陣列）。顯式轉換用 <code>convert_depth</code> 工具。詳見 <a href="ni-vision.html">NI Vision 對照</a>。</li>
+<li><strong>影像位深</strong>：image 埠可承載 uint8（預設）、uint16（16-bit 灰階／RGB U64）、float32（SGL 浮點）。工具以 <code>Tool.accepts</code> 宣告支援的位深；宣告外的位深由 <code>ToolContext.image()</code> 自動正規化成 u8（u16 右移 8、浮點 min-max；不動輸入陣列）。顯式轉換用 <code>convert_depth</code> 工具。詳見 <a href="vision-capabilities.html">檢測功能設計</a>。</li>
 <li>每個工具的 outputs 另有隱含影像直通埠 <code>{"key":"_image","type":"image","implicit":true}</code>：原影像原樣往下傳（標記只是 metadata、不畫進影像，下游檢測不受影響）；沒有任何 image 輸入的工具（邏輯類）inputs 也補 <code>_image</code> 直通輸入，影像可經過任何工具。停用的節點照樣直通。直通 ref 只在「被接走」時出現在 run report（它不是「執行後」結果；檢視器與工具頁分析一律忽略 <code>_image</code>）。</li>
 </ul>
 

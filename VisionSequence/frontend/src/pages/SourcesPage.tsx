@@ -1,12 +1,13 @@
 /** 影像來源 CRUD。config 欄位依 kind 的 fields 顯示（伺服器 /sources/kinds 給）。 */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { Camera, Eye, FolderOpen, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupSelect, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, matchGroup } from '@/components/ui'
 import { GroupManager } from '@/components/GroupManager'
-import { sourcePreviewUrl } from '@/lib/api'
+import { api, sourcePreviewUrl } from '@/lib/api'
+import { FsBrowser } from '@/components/FsBrowser'
 import { errorMessage } from '@/lib/errors'
 import { useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
 import type { ImageSource } from '@/lib/types'
@@ -28,10 +29,58 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select'> = {
 }
 const FIELD_DEFAULT: Record<string, unknown> = { loop: true, sort: 'name', pattern: '*.png;*.jpg;*.bmp', index: 0, width: 640, height: 480, fps: 0, seed: 0, defect_rate: 0.3 }
 
-function ConfigField({ kind, field, value, onChange }: { kind: string; field: string; value: unknown; onChange: (v: unknown) => void }) {
+function ConfigField({ kind, field, value, onChange, onBrowse, cameras, onScanCameras, scanning }: {
+  kind: string
+  field: string
+  value: unknown
+  onChange: (v: unknown) => void
+  onBrowse?: (mode: 'dir' | 'file') => void
+  cameras?: { index: number; width: number; height: number; in_use_by: string }[] | null
+  onScanCameras?: () => void
+  scanning?: boolean
+}) {
   const { t } = useTranslation()
   const label = t(`sources.fields.${field}`, { defaultValue: field })
   const type = FIELD_TYPE[field] ?? 'text'
+  // folder/file 的 path：可開伺服器檔案瀏覽器選路徑
+  if (field === 'path' && (kind === 'folder' || kind === 'file') && onBrowse) {
+    return (
+      <div className="flex items-end gap-2">
+        <TextInput label={label} className="font-mono" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+        <Button title={t('fs.browse')} onClick={() => onBrowse(kind === 'folder' ? 'dir' : 'file')} data-testid="cfg-browse">
+          <FolderOpen size={14} /> {t('fs.browse')}
+        </Button>
+      </div>
+    )
+  }
+  // usb 的 index：掃描伺服器上的相機供選擇
+  if (field === 'index' && kind === 'usb' && onScanCameras) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-end gap-2">
+          <TextInput label={label} type="number" value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
+          <Button loading={scanning} onClick={onScanCameras} title={t('sources.scanHint')} data-testid="cfg-scan">
+            <RefreshCw size={14} /> {t('sources.scanCameras')}
+          </Button>
+        </div>
+        {cameras ? (
+          cameras.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {cameras.map((c) => (
+                <button key={c.index} type="button" onClick={() => onChange(c.index)} aria-pressed={Number(value) === c.index}
+                  className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${Number(value) === c.index ? 'border-transparent bg-brand text-on-brand' : 'border-line hover:bg-surface-muted'}`}
+                  data-testid={`cfg-cam-${c.index}`}>
+                  {t('sources.cameraN', { n: c.index })}{c.width ? ` · ${c.width}×${c.height}` : ''}{c.in_use_by ? ` · ${t('sources.inUseBy', { name: c.in_use_by })}` : ''}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-subtle">{t('sources.noCameras')}</p>
+          )
+        ) : null}
+      </div>
+    )
+  }
   if (type === 'boolean') return <Checkbox label={label} checked={Boolean(value)} onChange={onChange} />
   if (type === 'select' && field === 'sort') {
     return <Select label={label} value={String(value ?? 'name')} onChange={(e) => onChange(e.target.value)} options={['name', 'mtime', 'random'].map((v) => ({ value: v, label: t(`sources.sortOptions.${v}`) }))} />
@@ -55,6 +104,21 @@ export function SourcesPage() {
   const groups = useGroups('source')
   const [pendingDelete, setPendingDelete] = useState<ImageSource | null>(null)
   const [preview, setPreview] = useState<{ source: ImageSource; url: string } | null>(null)
+  const [browsing, setBrowsing] = useState<'dir' | 'file' | null>(null)
+  const [cameras, setCameras] = useState<{ index: number; width: number; height: number; in_use_by: string }[] | null>(null)
+  const [scanning, setScanning] = useState(false)
+
+  async function scanCameras() {
+    setScanning(true)
+    try {
+      const r = await api.get<{ items: { index: number; width: number; height: number; in_use_by: string }[] }>('/vision/sources/usb-scan')
+      setCameras(r.items)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setScanning(false)
+    }
+  }
 
   const kindList = kinds.data ?? []
   const fieldsFor = useMemo(() => new Map(kindList.map((k) => [k.kind, k.fields])), [kindList])
@@ -181,7 +245,9 @@ export function SourcesPage() {
               onChange={(v) => setEditing({ ...editing!, body: { ...body, group: v } })} />
             <Select label={t('sources.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} />
             {(fieldsFor.get(body.kind) ?? []).map((field) => (
-              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
+              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]}
+                onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })}
+                onBrowse={(mode) => setBrowsing(mode)} cameras={cameras} onScanCameras={() => void scanCameras()} scanning={scanning} />
             ))}
             <Checkbox label={t('common.enabled')} checked={body.is_enabled} onChange={(v) => setEditing({ ...editing!, body: { ...body, is_enabled: v } })} />
           </div>
@@ -197,6 +263,9 @@ export function SourcesPage() {
       </Modal>
 
       <GroupManager kind="source" open={managingGroups} onClose={() => setManagingGroups(false)} />
+      <FsBrowser open={browsing !== null} onClose={() => setBrowsing(null)} mode={browsing ?? 'dir'}
+        initial={String(body?.config.path ?? '')}
+        onPick={(picked) => { if (editing && body) setEditing({ ...editing, body: { ...body, config: { ...body.config, path: picked } } }) }} />
       <ConfirmDialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)} onConfirm={() => void onDelete()} title={t('sources.deleteTitle')} message={t('sources.deleteMessage', { name: pendingDelete?.name ?? '' })} confirmLabel={t('common.delete')} danger loading={remove.isPending} />
     </Page>
   )

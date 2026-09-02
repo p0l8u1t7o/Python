@@ -68,8 +68,8 @@
 <tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕），中央＝選中流程的即時影像、右欄＝即時檢測資訊；沒有事件時預設顯示最後一次執行結果（<code>GET /flows/{id}/recent</code>，網頁試跑也算）；訂該流程 SSE 即時更新；一般用戶可看見的流程都能觀看</td></tr>
 <tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
 <tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
-<tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁。版面：左＝參考資訊、中＝執行前/後影像＋下方參數（寬螢幕多欄）、右＝按鍵（儲存/執行到此步驟/自動套用/重用影像/暫存影像）。預設按「執行到此步驟」才跑（可開自動套用）；有 ROI 參數且有值時進頁直接顯示可拖曳；參數只寫共享草稿、「儲存」才寫回後台，「返回」只在真的有未儲存變更時 confirm（儲存後＝新基準）並放棄本頁編輯</td></tr>
-<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal 可新增/改名/刪除——刪除可選連刪資源或改未分組；chips 篩選、編輯時下拉選群組）</td></tr>
+<tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁。版面：左＝參數、中＝執行前/後影像＋下方參考資訊（直方圖/統計/series 橫向排列）、右＝按鍵（儲存/執行到此步驟/自動套用/重用影像/暫存影像）。預設按「執行到此步驟」才跑（可開自動套用）；有 ROI 參數且有值時進頁直接顯示可拖曳；參數只寫共享草稿、「儲存」才寫回後台，「返回」只在真的有未儲存變更時 confirm（儲存後＝新基準）並放棄本頁編輯</td></tr>
+<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal、chips 篩選、下拉選群組）；folder/file 的路徑可開伺服器檔案瀏覽器（GET /vision/fs）選取、usb 可「掃描相機」枚舉伺服器上的裝置（GET /sources/usb-scan）</td></tr>
 <tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（同來源庫：管理群組 Modal、chips 篩選、上傳/編輯下拉選群組 <code>PATCH /assets/{id}</code>）</td></tr>
 <tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>
 <tr><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>金鑰、主題風格（淺色／深色／Cyberpunk／跟隨系統；預覽卡選擇＝唯一切換入口（頂列切換鈕已移除），登入者存進使用者設定 <code>PATCH /auth/prefs</code>）、語言（繁中／簡中／English）、引擎鎖定、密碼</td></tr>
@@ -89,7 +89,7 @@
 <table>
 <tr><th>中文</th><th>程式名</th><th>說明</th></tr>
 <tr><td>頂列</td><td>EditorToolbar</td><td>兩列：第一列流程名稱、儲存、範本下拉、「配方」鈕（開配方面板）、綁定配方下拉（有配方才顯示）、「未教導」標籤、參數卡／Golden Set／匯出／統計圖示；第二列試跑、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、寬度不足換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角</td></tr>
-<tr><td>工具箱</td><td>ToolPalette</td><td>左欄上半：可插入的工具（依類別分組、可搜尋）；一律拖曳到畫布新增（點擊無動作）；最上方是「收藏」（「最近使用」已移除）</td></tr>
+<tr><td>工具箱</td><td>ToolPalette（FavoriteTools＋ToolPicker）</td><td>左欄上半＝「新增工具」按鈕＋收藏清單（點擊插入畫布中央、也可拖曳）；按鈕開「選擇工具」視窗：左側功能分群快速切換、右側大圖示卡片與完整說明、可搜尋、可收藏，點卡即插入畫布</td></tr>
 <tr><td>步驟選單</td><td>NodeContextMenu</td><td>右鍵點步驟：開啟工具頁、複製、停用／啟用、刪除、複製參數／貼上參數（同型別）</td></tr>
 <tr><td>批次測試</td><td>BatchTestModal</td><td>頂列「批次測試」開的 Modal：多張影像跑一輪、摘要、結果表（可勾選列「存為 Golden Set」）、CSV</td></tr>
 <tr><td>配方面板</td><td>RecipeDrawer（<code>components/recipes/</code>）</td><td>流程頁列上「配方」與參數卡頁「管理配方」開的側滑面板：綁定下拉、新增（可「以目前圖值作為覆寫（教導參數）」）／改名／複製／刪除／設綁定／匯出／全部匯出／匯入、展開編輯覆寫表；儲存與新增都先走「儲存範圍 Check List」</td></tr>
@@ -168,7 +168,7 @@
 <tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
 <tr><td>主題風格</td><td>Theme（<code>ThemeProvider</code>／<code>UserPref</code>）</td><td>light／dark／cyber（Temp/Style.md 的 Cyberpunk：霓虹綠、銳角、掃描線只鋪在頁面底與側欄——不覆疊影像區，全走 CSS 變數 tokens）／system；localStorage＋登入者回寫 /auth/prefs、/auth/me 帶回跨裝置套用</td></tr>
 <tr><td>影像位深</td><td>Depth（<code>tools/imgfmt.py</code>／<code>Tool.accepts</code>）</td><td>u8／u16／f32（NI 的 U8/I16/SGL/RGB U64 對照）；宣告外位深進工具時自動正規化 u8，顯式轉換用「位深轉換」工具；讀檔 IMREAD_UNCHANGED 保留 16-bit</td></tr>
-<tr><td>NI Vision 對照</td><td>docs/ni-vision.html</td><td>ROI 工具種類（含新 ellipse/point/polyline/annulus 扇形）、位深設計、NI 檢測工具對應表（lut/filter/fft_filter/convert_depth/warp_perspective/line_profile/color_stats/geometry 等新工具）與刻意不做項</td></tr>
+<tr><td>檢測功能設計</td><td>docs/vision-capabilities.html</td><td>ROI 工具種類（含 ellipse/point/polyline/annulus 扇形）、位深設計、檢測工具總覽（lut/filter/fft_filter/convert_depth/warp_perspective/line_profile/color_stats/geometry 等）與取捨</td></tr>
 <tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>
 <tr><td>匯出 / 匯入</td><td>Export / Import（<code>.flow.json</code>）</td><td>匯出：穩定序列化的流程檔（可進 git）；匯入：依檔內名稱 upsert，取像步驟的 <code>{SOURCE}</code> 佔位以選的來源取代；沒選來源時更新既有流程沿用原來源、新建流程留空</td></tr>
 </table>

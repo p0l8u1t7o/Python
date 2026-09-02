@@ -265,7 +265,7 @@ class IntensityTool(Tool):
     description = "區域內的灰階平均、標準差、最小、最大、中位數。"
     category = "measure"
     icon = "Sun"
-    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "point"], help_text="留空則整張影像；點＝單一像素（NI light meter point）。")]
+    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "point"], help_text="留空則整張影像；點＝單一像素。")]
     inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
     outputs = [Port("mean", "平均", "number"), Port("std", "標準差", "number"), Port("min", "最小", "number"), Port("max", "最大", "number"), Port("median", "中位數", "number"), Port("pixels", "像素數", "number")]
 
@@ -897,7 +897,7 @@ class ToleranceJudgeTool(Tool):
 class LineProfileTool(Tool):
     key = "line_profile"
     label = "線剖面"
-    description = "NI Vision 的 Line Profile 對照：沿著線（或折線）取灰階值，輸出剖面序列與統計；抓斷差、亮暗帶、掃描線缺陷。"
+    description = "沿著線（或折線）取灰階值，輸出剖面序列與統計；抓斷差、亮暗帶、掃描線缺陷。"
     category = "measure"
     icon = "Activity"
     accepts = ("u8", "u16", "f32")
@@ -954,7 +954,7 @@ class LineProfileTool(Tool):
 class ColorStatsTool(Tool):
     key = "color_stats"
     label = "色彩統計"
-    description = "NI Vision 的 Color Statistics 對照：區域內 RGB 與 HSV 的平均／標準差、主色相；供顏色驗證與上下游邏輯判斷。"
+    description = "區域內 RGB 與 HSV 的平均／標準差、主色相與平均色；供顏色驗證與上下游邏輯判斷。"
     category = "measure"
     icon = "Palette"
     params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "ellipse"], help_text="留空則整張影像。")]
@@ -980,7 +980,7 @@ class ColorStatsTool(Tool):
         mean_bgr = sel.reshape(-1, 3).mean(axis=0)
         hsv = cv2.cvtColor(c.image, cv2.COLOR_BGR2HSV)
         hsel = hsv[mask > 0].reshape(-1, 3).astype(np.float32)
-        # 色相是圓的：用向量平均（OpenCV H 0~179）
+        # 色相是圓的：用向量平均（H 值域 0~179）
         ang = hsel[:, 0] / 180.0 * 2 * np.pi
         mean_h = float((np.arctan2(np.sin(ang).mean(), np.cos(ang).mean()) % (2 * np.pi)) / (2 * np.pi) * 180.0)
         outputs = {
@@ -1013,7 +1013,7 @@ def _as_point(value: Any) -> tuple[float, float] | None:
 class GeometryTool(Tool):
     key = "geometry"
     label = "幾何計算"
-    description = "NI Vision 的 Analytic Geometry 對照：兩線交點、點到線垂距、兩點中點、點在線上的投影。線＝{x1,y1,x2,y2}、點＝[x,y] 或 {x,y}（接找線／找圓等工具的輸出）。"
+    description = "解析幾何：兩線交點、點到線垂距、兩點中點、點在線上的投影。線＝{x1,y1,x2,y2}、點＝[x,y] 或 {x,y}（接找線／找圓等工具的輸出）。"
     category = "measure"
     icon = "Ruler"
     params = [

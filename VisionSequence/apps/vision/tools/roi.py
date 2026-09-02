@@ -106,7 +106,7 @@ def mask_for(region: dict[str, Any], w: int, h: int, *, offset: tuple[int, int] 
         if a0 is None or a1 is None:
             cv2.circle(mask, c, r_out, 255, -1)
         else:
-            # 扇形環（NI annulus 的 start/end angle）：外圓 pie 填滿再挖內圓
+            # 扇形環（起迄角）：外圓 pie 填滿再挖內圓
             cv2.ellipse(mask, c, (r_out, r_out), 0, float(a0), float(a1), 255, -1)
         cv2.circle(mask, c, int(round(region["r_inner"])), 0, -1)
     elif shape == "ellipse":

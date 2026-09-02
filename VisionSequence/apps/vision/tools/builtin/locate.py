@@ -93,7 +93,7 @@ def find_edges_rows(profiles: np.ndarray, polarity: str = "any", threshold: floa
     """對多條剖面（R×L）一次找邊緣；每列回傳 [(次像素位置, 帶號梯度強度)]，依位置排序。
 
     與逐列呼叫 find_edges_1d 結果完全相同（平滑、梯度、非極大抑制、拋物線次像素
-    都是逐列獨立的運算），但整批用 OpenCV／numpy 做，找圓 180 條掃描線只要一次呼叫。
+    都是逐列獨立的運算），但整批向量化處理，找圓 180 條掃描線只要一次呼叫。
     """
     p = np.asarray(profiles, dtype=np.float32)
     if p.ndim == 1:

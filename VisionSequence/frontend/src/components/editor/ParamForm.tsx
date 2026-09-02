@@ -29,7 +29,7 @@ export function ParamForm({ node, definition, edges, onChange, actions }: { node
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {visibleParams.length === 0 ? <p className="text-xs text-muted">{t('editor.noParameters')}</p> : basic.map(renderParam)}
       {advanced.length > 0 ? (
         <div>
@@ -37,7 +37,7 @@ export function ParamForm({ node, definition, edges, onChange, actions }: { node
             {showAdvanced ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             {t('common.advanced')}（{advanced.length}）
           </button>
-          {showAdvanced ? <div className="mt-2 space-y-3 border-l-2 border-line pl-3">{advanced.map(renderParam)}</div> : null}
+          {showAdvanced ? <div className="mt-2.5 space-y-4 border-l-2 border-line pl-3">{advanced.map(renderParam)}</div> : null}
         </div>
       ) : null}
       {problems.filter((p) => p.key.startsWith('in:') || p.key.startsWith('out:')).map((p) => (

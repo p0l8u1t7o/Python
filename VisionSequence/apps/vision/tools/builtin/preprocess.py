@@ -1,4 +1,4 @@
-"""影像前處理工具。全部 OpenCV，盡量零拷貝。"""
+"""影像前處理工具。盡量零拷貝。"""
 
 from __future__ import annotations
 
@@ -256,26 +256,6 @@ class ColorRangeTool(Tool):
         return Result(outputs={"image": mask, "ratio": ratio}, message=f"覆蓋 {ratio*100:.2f}%")
 
 
-class HistogramEqTool(Tool):
-    key = "hist_eq"
-    label = "對比增強"
-    description = "直方圖等化或 CLAHE（區域對比）。"
-    icon = "BarChart3"
-    params = [
-        Param("method", "方法", kind="select", default="clahe", options=[{"value": "clahe", "label": "CLAHE"}, {"value": "global", "label": "全域等化"}]),
-        Param("clip", "CLAHE clip", kind="number", default=2.0, minimum=0.1, maximum=40, step=0.1),
-        Param("tile", "CLAHE 格數", kind="number", default=8, minimum=1, maximum=64),
-    ]
-
-    def execute(self, ctx: ToolContext) -> Result:
-        gray = to_gray(ctx.require_image())
-        if ctx.param("method", "clahe") == "global":
-            return Result(outputs={"image": cv2.equalizeHist(gray)})
-        t = ctx.integer("tile", 8)
-        clahe = cv2.createCLAHE(clipLimit=ctx.number("clip", 2.0), tileGridSize=(t, t))
-        return Result(outputs={"image": clahe.apply(gray)})
-
-
 class ArithmeticTool(Tool):
     key = "arithmetic"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
@@ -336,36 +316,6 @@ class MaskApplyTool(Tool):
         return Result(outputs={"image": out})
 
 
-class EdgeTool(Tool):
-    key = "edges"
-    label = "邊緣（Canny / Sobel）"
-    description = "邊緣影像；Canny 輸出二值邊緣，Sobel/Laplacian 輸出梯度強度。"
-    category = "preprocess"
-    icon = "Activity"
-    params = [
-        Param("method", "方法", kind="select", default="canny", options=[{"value": "canny", "label": "Canny"}, {"value": "sobel", "label": "Sobel"}, {"value": "laplacian", "label": "Laplacian"}]),
-        Param("low", "Canny 低門檻", kind="number", default=50, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}),
-        Param("high", "Canny 高門檻", kind="number", default=150, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}),
-        Param("ksize", "核大小", kind="number", default=3, minimum=1, maximum=7, step=2),
-    ]
-
-    def execute(self, ctx: ToolContext) -> Result:
-        gray = to_gray(ctx.require_image())
-        method = ctx.param("method", "canny")
-        k = ctx.integer("ksize", 3)
-        if k % 2 == 0:
-            k += 1
-        if method == "canny":
-            out = cv2.Canny(gray, ctx.number("low", 50), ctx.number("high", 150), apertureSize=min(7, max(3, k)))
-        elif method == "sobel":
-            gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=k)
-            gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=k)
-            out = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
-        else:
-            out = cv2.convertScaleAbs(cv2.Laplacian(gray, cv2.CV_32F, ksize=k))
-        return Result(outputs={"image": out})
-
-
 class RotateFlipTool(Tool):
     key = "rotate_flip"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
@@ -411,7 +361,7 @@ class RotateFlipTool(Tool):
 class ConvertDepthTool(Tool):
     key = "convert_depth"
     label = "位深轉換"
-    description = "8 位元／16 位元／浮點影像互轉（NI Vision 的 U8/I16/SGL 對照）。轉 8 位元可選右移（線性、可預期）或 min-max 拉伸（吃滿動態範圍）。"
+    description = "8 位元／16 位元／浮點影像互轉。轉 8 位元可選右移（線性、可預期）或 min-max 拉伸（吃滿動態範圍）。"
     category = "preprocess"
     icon = "Binary"
     accepts = ("u8", "u16", "f32")
@@ -460,7 +410,7 @@ class ConvertDepthTool(Tool):
 class LutTool(Tool):
     key = "lut"
     label = "查表轉換（LUT）"
-    description = "NI Vision 的 Lookup Table 對照：線性（亮度／對比）、Gamma（次方）、對數、指數、平方、開根號、反相；彩色逐通道套用。"
+    description = "灰階轉換與對比增強：線性（亮度／對比）、Gamma、對數、指數、平方、開根號、反相、直方圖等化、CLAHE；查表類彩色逐通道套用。"
     category = "preprocess"
     icon = "Spline"
     params = [
@@ -468,7 +418,10 @@ class LutTool(Tool):
             {"value": "linear", "label": "線性（亮度／對比）"}, {"value": "power", "label": "Gamma（次方）"},
             {"value": "log", "label": "對數（暗部展開）"}, {"value": "exp", "label": "指數（亮部展開）"},
             {"value": "sqrt", "label": "開根號"}, {"value": "square", "label": "平方"}, {"value": "invert", "label": "反相"},
+            {"value": "equalize", "label": "直方圖等化"}, {"value": "clahe", "label": "CLAHE（區域對比）"},
         ]),
+        Param("clip", "CLAHE clip", kind="number", default=2.0, minimum=0.1, maximum=40, step=0.1, visible_when={"param": "mode", "in": ["clahe"]}),
+        Param("tile", "CLAHE 格數", kind="number", default=8, minimum=1, maximum=64, visible_when={"param": "mode", "in": ["clahe"]}),
         Param("brightness", "亮度", kind="range", default=0, minimum=-100, maximum=100, step=1, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
         Param("contrast", "對比", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.05, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
         Param("gamma", "Gamma", kind="range", default=1.0, minimum=0.1, maximum=5.0, step=0.05, visible_when={"param": "mode", "in": ["power"]}, teach=True),
@@ -478,7 +431,16 @@ class LutTool(Tool):
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
-        mode = ctx.param("mode", "linear")
+        # 舊「對比增強」（hist_eq）併入：參數名 method、值 global → equalize
+        mode = ctx.param("mode", "") or ctx.param("method", "") or "linear"
+        if mode == "global":
+            mode = "equalize"
+        if mode == "equalize":
+            return Result(outputs={"image": cv2.equalizeHist(to_gray(image))}, message=mode)
+        if mode == "clahe":
+            t = max(1, ctx.integer("tile", 8))
+            clahe = cv2.createCLAHE(clipLimit=ctx.number("clip", 2.0), tileGridSize=(t, t))
+            return Result(outputs={"image": clahe.apply(to_gray(image))}, message=mode)
         x = np.arange(256, dtype=np.float32)
         if mode == "linear":
             table = (x - 128.0) * ctx.number("contrast", 1.0) + 128.0 + ctx.number("brightness", 0.0)
@@ -501,17 +463,20 @@ class LutTool(Tool):
 class FilterTool(Tool):
     key = "filter"
     label = "卷積濾波"
-    description = "NI Vision 的 Convolution 濾波對照：銳利化、Laplacian、Sobel／Prewitt 梯度、高通、浮雕，或自訂 3×3 kernel（JSON）。平滑用「模糊」工具。"
+    description = "卷積與邊緣濾波：銳利化、Canny 邊緣、Laplacian、Sobel／Prewitt 梯度、高通、浮雕，或自訂 3×3 kernel（JSON）。平滑用「模糊」工具。"
     category = "preprocess"
     icon = "Grid3x3"
     params = [
         Param("method", "方法", kind="select", default="sharpen", options=[
-            {"value": "sharpen", "label": "銳利化"}, {"value": "laplacian", "label": "Laplacian"},
+            {"value": "sharpen", "label": "銳利化"}, {"value": "canny", "label": "Canny 邊緣（二值）"}, {"value": "laplacian", "label": "Laplacian"},
             {"value": "gradient", "label": "梯度強度（Sobel）"}, {"value": "sobel_x", "label": "Sobel X"}, {"value": "sobel_y", "label": "Sobel Y"},
             {"value": "prewitt", "label": "Prewitt 梯度"}, {"value": "highpass", "label": "高通"}, {"value": "emboss", "label": "浮雕"},
             {"value": "custom", "label": "自訂 3×3"},
         ]),
         Param("strength", "強度", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.1, visible_when={"param": "method", "in": ["sharpen"]}, teach=True),
+        Param("low", "Canny 低門檻", kind="number", default=50, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
+        Param("high", "Canny 高門檻", kind="number", default=150, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
+        Param("ksize", "核大小", kind="number", default=3, minimum=1, maximum=7, step=2, visible_when={"param": "method", "in": ["canny", "laplacian", "gradient", "sobel_x", "sobel_y"]}),
         Param("kernel", "自訂 kernel", kind="json", default=[[0, -1, 0], [-1, 5, -1], [0, -1, 0]], visible_when={"param": "method", "in": ["custom"]}, help_text="3×3 數字陣列。"),
     ]
     inputs = [Port("image", "影像", "image")]
@@ -520,16 +485,24 @@ class FilterTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
         method = ctx.param("method", "sharpen")
+        if method == "sobel":
+            method = "gradient"  # 舊「邊緣」工具（edges）併入後的別名
+        ksize = ctx.integer("ksize", 3)
+        if ksize % 2 == 0:
+            ksize += 1
+        ksize = min(7, max(1, ksize))
         if method == "sharpen":
             k = float(ctx.number("strength", 1.0))
             kernel = np.array([[0, -k, 0], [-k, 1 + 4 * k, -k], [0, -k, 0]], dtype=np.float32)
             out = cv2.filter2D(image, -1, kernel)
+        elif method == "canny":
+            out = cv2.Canny(to_gray(image), ctx.number("low", 50), ctx.number("high", 150), apertureSize=max(3, ksize))
         elif method == "laplacian":
-            out = cv2.convertScaleAbs(cv2.Laplacian(to_gray(image), cv2.CV_32F, ksize=3))
+            out = cv2.convertScaleAbs(cv2.Laplacian(to_gray(image), cv2.CV_32F, ksize=ksize))
         elif method in ("gradient", "sobel_x", "sobel_y"):
             g = to_gray(image)
-            gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
-            gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
+            gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=ksize)
+            gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=ksize)
             if method == "sobel_x":
                 out = cv2.convertScaleAbs(gx)
             elif method == "sobel_y":
@@ -563,7 +536,7 @@ class FilterTool(Tool):
 class FftFilterTool(Tool):
     key = "fft_filter"
     label = "頻域濾波（FFT）"
-    description = "NI Vision 的 FFT 濾波對照：低通去週期性紋理／雜訊、高通留邊緣，截斷（truncate）或高斯衰減（attenuate）。另輸出頻譜圖供檢視。"
+    description = "頻域濾波：低通去週期性紋理／雜訊、高通留邊緣，截斷（truncate）或高斯衰減（attenuate）。另輸出頻譜圖供檢視。"
     category = "preprocess"
     icon = "AudioWaveform"
     heavy = True
@@ -611,7 +584,7 @@ class FftFilterTool(Tool):
 class WarpPerspectiveTool(Tool):
     key = "warp_perspective"
     label = "透視校正"
-    description = "把畫面上的四邊形區域攤平成矩形（NI Vision 透視校正的輕量版）：斜拍的板面／標籤校正後再量測。"
+    description = "把畫面上的四邊形區域攤平成矩形：斜拍的板面／標籤校正後再量測。"
     category = "preprocess"
     icon = "Frame"
     accepts = ("u8", "u16", "f32")
@@ -649,6 +622,6 @@ class WarpPerspectiveTool(Tool):
 
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
-    ColorConvertTool(), ColorRangeTool(), HistogramEqTool(), ArithmeticTool(), MaskApplyTool(), EdgeTool(), RotateFlipTool(),
+    ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
     ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(),
 ]

@@ -12,7 +12,8 @@ from apps.vision.tools import base as tools
 
 DECORATION_TYPES = ("note",)
 #: 改名過的工具 key：舊圖與舊匯出檔在驗證／編譯時自動換成新 key（DB 另有資料轉移）。
-LEGACY_TOOL_TYPES = {"write_plc": "write_modbus"}
+#: 併掉／改名的工具：舊 graph 載入（validate/compile）時自動換 type；參數名刻意相容，值照舊可用。
+LEGACY_TOOL_TYPES = {"write_plc": "write_modbus", "edges": "filter", "hist_eq": "lut"}
 FLOW_IN = "_flow"  # 每個可執行節點的隱含控制輸入埠
 OVERLAYS_OUT = "_overlays"  # 每個可執行節點的隱含輸出埠：該節點的標記（list），供 draw_result 疊圖
 IMAGE_THRU = "_image"  # 隱含影像直通埠：每個工具預設可把影像傳進（無 image 輸入者）、傳出（原樣）

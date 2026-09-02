@@ -74,7 +74,7 @@
 <table>
 <tr><th>項目</th><th style="text-align:left">內容</th></tr>
 <tr><td>CPU</td><td style="text-align:left">Intel Core Ultra 9 275HX（8 P-core + 16 E-core，筆電）；32 GB RAM；Windows 11 Home 26200</td></tr>
-<tr><td>軟體</td><td style="text-align:left">Python 3.12.10、OpenCV 4.11.0、numpy 2.2.3、onnxruntime（CPU）；<code>VISION_CV_THREADS=2</code>（專案預設）</td></tr>
+<tr><td>軟體</td><td style="text-align:left">Python 3.12.10、影像演算法庫 4.11、numpy 2.2.3、onnxruntime（CPU）；<code>VISION_CV_THREADS=2</code>（專案預設）</td></tr>
 <tr><td>影像</td><td style="text-align:left"><code>SyntheticGrabber</code>（pattern=parts，seed=7，defect_rate=0）：1280×960 與 640×480 各一張 BGR。板子、5 個孔、條碼狀線條與高斯雜訊（σ=6）。</td></tr>
 <tr><td>工具參數</td><td style="text-align:left">每個工具用「合理」參數：ROI 落在板子／中心孔上；template_match 的範本是從同一張影像裁出的中心孔區域（PNG）；defect_diff 的良品範本是整張灰階圖；dl_* 用 <code>tests/_helpers.py</code> 的手刻 ONNX（GlobalAveragePool／Identity／Flatten）。同一工具有多種代表性設定就列多筆（例如 blob 的整圖與 ROI）。</td></tr>
 <tr><td>量測</td><td style="text-align:left">直接建 <code>ToolContext</code> 呼叫 <code>tool.execute()</code>（不經引擎）；每筆先暖機 3 次再跑 30 次，取 median 與 p95。引擎另外量示範流程「零件孔數檢測」整個 <code>engine.execute()</code> 與各節點分佈。after 以 <code>--pin</code> 綁 P-core＋高優先權。</td></tr>
@@ -86,7 +86,7 @@
 <tr><th style="text-align:left">工具（1280×960）</th><th>before ms</th><th>after ms</th><th>改善</th><th style="text-align:left">主因</th></tr>
 <tr><td>blob（整圖、有雜訊）</td><td>53.5</td><td>9.0</td><td class="good">−83%</td><td style="text-align:left">幾萬個雜訊輪廓改用 connectedComponentsWithStats 先濾掉</td></tr>
 <tr><td>intensity（整圖）</td><td>10.6</td><td>0.96</td><td class="good">−91%</td><td style="text-align:left">calcHist 帶遮罩一次算完平均／標準差／極值／中位數</td></tr>
-<tr><td>histogram（整圖）</td><td>5.4</td><td>0.99</td><td class="good">−82%</td><td style="text-align:left">np.bincount → cv2.calcHist</td></tr>
+<tr><td>histogram（整圖）</td><td>5.4</td><td>0.99</td><td class="good">−82%</td><td style="text-align:left">np.bincount → 直方圖原生實作</td></tr>
 <tr><td>find_circle（36／180 線）</td><td>5.3 / 8.3</td><td>0.63 / 1.01</td><td class="good">−88%</td><td style="text-align:left">RANSAC 向量化、所有掃描線一次找邊緣</td></tr>
 <tr><td>find_line（20／100 卡尺）</td><td>1.06 / 2.87</td><td>0.65 / 0.77</td><td class="good">−39% / −73%</td><td style="text-align:left">卡尺剖面用累積和一次算、RANSAC 向量化</td></tr>
 <tr><td>template_match（旋轉 ±10°）</td><td>24.8</td><td>12.0</td><td class="good">−52%</td><td style="text-align:left">金字塔粗找不用遮罩比對、細找剪枝</td></tr>
@@ -96,7 +96,7 @@
 <tr><td>pixel_count（圓形 ROI）</td><td>0.14</td><td>0.04</td><td class="good">−71%</td><td style="text-align:left">遮罩只畫 ROI 外框大小，不再配置整張</td></tr>
 <tr><td>影像縮圖編碼（同 ref 第二次）</td><td>1.9～3.5</td><td>≈0</td><td class="good">快取</td><td style="text-align:left">ImageStore.encode LRU 64 筆；INTER_AREA 只在縮小 ≥ 2 倍時用</td></tr>
 </table>
-<p>示範流程「零件孔數檢測」整體（1280×960）：<strong>8.7 → 7.7 ms</strong>（blob 3.0 → 2.5 ms，其餘節點是 median blur 2.7 ms 與 draw_result 0.9 ms，都是 OpenCV 本身）。引擎固定開銷每節點約 6 µs（純邏輯節點串接量得），影像流程約 40～60 µs/節點，其中大半是釋放上一批影像的記憶體與 <code>_jsonable</code>，不是引擎迴圈本身。</p>
+<p>示範流程「零件孔數檢測」整體（1280×960）：<strong>8.7 → 7.7 ms</strong>（blob 3.0 → 2.5 ms，其餘節點是 median blur 2.7 ms 與 draw_result 0.9 ms，都是底層演算法本身）。引擎固定開銷每節點約 6 µs（純邏輯節點串接量得），影像流程約 40～60 µs/節點，其中大半是釋放上一批影像的記憶體與 <code>_jsonable</code>，不是引擎迴圈本身。</p>
 
 <h2 id="table">3. 每工具前後對照</h2>
 <p>單位 ms；before／after 皆為 median，最後兩欄是 after 的 p95。改善欄：<span class="good">綠</span> ≥ 25%、<span class="noise">≈</span> 在雜訊內、<span class="bad">紅</span> 變慢（本次沒有超出雜訊的變慢項）。</p>
@@ -167,7 +167,7 @@
 </tbody>
 </table>
 </div>
-<p>沒有改動而仍慢的工具（都是 OpenCV／第三方本身的成本）：<code>template_match</code> 不開金字塔（整張 NCC 23 ms）、<code>barcode</code>（QR 偵測 10 ms）、<code>hough_lines</code>（7 ms）、<code>threshold adaptive</code>（4.5 ms）、<code>edges canny</code>（3.7 ms）、<code>save_image png</code>（PNG 壓縮 6.4 ms）、<code>defect_diff phase</code> 剩下的 <code>phaseCorrelate</code>（19 ms，1280×960 三次 FFT）。這些靠 ROI／縮圖處理（見第 6 節）。</p>
+<p>沒有改動而仍慢的工具（都是底層演算法／第三方本身的成本）：<code>template_match</code> 不開金字塔（整張 NCC 23 ms）、<code>barcode</code>（QR 偵測 10 ms）、<code>hough_lines</code>（7 ms）、<code>threshold adaptive</code>（4.5 ms）、<code>edges canny</code>（3.7 ms）、<code>save_image png</code>（PNG 壓縮 6.4 ms）、<code>defect_diff phase</code> 剩下的 <code>phaseCorrelate</code>（19 ms，1280×960 三次 FFT）。這些靠 ROI／縮圖處理（見第 6 節）。</p>
 
 <h2 id="engine">4. 引擎與影像快取</h2>
 <h3>4.1 示範流程「零件孔數檢測」各節點（1280×960，preview=False，after）</h3>
@@ -175,7 +175,7 @@
 src      0.005 ms   image_source
 gray     0.406 ms   grayscale
 draw     0.901 ms   draw_result（copy 3.6 MB + 畫標記）
-blur     2.661 ms   median 5×5（OpenCV）
+blur     2.661 ms   median 5×5
 thr      0.175 ms   fixed threshold
 open     0.400 ms   morphology open 5
 blob     2.542 ms   blob（乾淨遮罩，5 個孔）
@@ -207,14 +207,14 @@ cmp/out/ok  &lt; 0.01 ms
 <p>整圖固定門檻二值化後，背景雜訊會產生幾萬個 1～2 像素的白點；<code>findContours</code> 對 38k 個輪廓要 41 ms（每個輪廓都是一個 Python numpy 物件），再逐一 <code>contourArea</code> 又 9 ms。改為：先抽樣（每 8 列）數水平 0/255 轉換密度，超過 2% 才做 <code>connectedComponentsWithStats</code>（6.5 ms），把「外接框面積 &lt; min_area」的元件從遮罩清掉，再 <code>findContours</code>（0.7 ms）。外接框面積是 <code>contourArea</code> 的上界（即使有洞也成立），所以被清掉的元件本來就會被 min_area 篩掉——輪廓、面積、中心、bbox 全部與原本相同（等價測試對雜訊遮罩、乾淨遮罩、反相遮罩 × 5 種參數逐項比對過）。乾淨的遮罩（示範流程經 median＋open 後）不會觸發，不付 2.5 ms 的 CCWS 成本。輸出 mask 仍與原始遮罩做 AND，保留原行為。</p>
 
 <h3>5.2 intensity／histogram：一次 calcHist 推出全部統計（<code>measure._roi_hist</code>／<code>_hist_stats</code>）</h3>
-<p>原本把 ROI 像素抽成一維（非矩形要布林索引），再 <code>mean/std/min/max/np.median</code>——1.2M 像素的 <code>np.median</code> 要排序 5 ms、bincount 4.6 ms。改成 <code>cv2.calcHist</code>（帶 ROI 遮罩，0.5 ms）得到 256 階計數，平均＝Σh·v/n、標準差用二次通過（Σh·(v−mean)²/n，與 numpy 的定義一致）、極值取非零 bin、中位數用累積計數找第 (n−1)//2 與 n//2 個元素取平均（偶數時與 <code>np.median</code> 一樣取中間兩個的平均）。等價測試：整圖／圓／小矩形／多邊形的六個統計值差 &lt; 1e-9，直方圖逐 bin 相等，偶數奇數像素數的中位數相等。</p>
+<p>原本把 ROI 像素抽成一維（非矩形要布林索引），再 <code>mean/std/min/max/np.median</code>——1.2M 像素的 <code>np.median</code> 要排序 5 ms、bincount 4.6 ms。改成原生直方圖計算（帶 ROI 遮罩，0.5 ms）得到 256 階計數，平均＝Σh·v/n、標準差用二次通過（Σh·(v−mean)²/n，與 numpy 的定義一致）、極值取非零 bin、中位數用累積計數找第 (n−1)//2 與 n//2 個元素取平均（偶數時與 <code>np.median</code> 一樣取中間兩個的平均）。等價測試：整圖／圓／小矩形／多邊形的六個統計值差 &lt; 1e-9，直方圖逐 bin 相等，偶數奇數像素數的中位數相等。</p>
 
 <h3>5.3 find_circle／find_line／caliper：邊緣偵測批次化、RANSAC 向量化</h3>
 <ul>
 <li><code>locate.find_edges_rows()</code>：R 條剖面（找圓的 remap 結果本來就是 R×L 矩陣）一次做 GaussianBlur((k,1))、<code>np.gradient(axis=1)</code>、非極大抑制與拋物線次像素——每一步都是逐列獨立的運算，結果與逐列呼叫 <code>find_edges_1d</code> 完全相同（等價測試對 60 條真實與隨機剖面 × 3 種極性 × 3 種平滑逐一比對，含長度 1～5 的邊界情況）。單條剖面（caliper）保留純量版本，因為向量化的固定開銷反而多 0.1 ms。</li>
 <li><code>caliper_points()</code>：每條卡尺的帶內平均改用長邊方向的 <code>cumsum</code>（float64 整數和精確）一次算完所有帶，再交給 <code>find_edges_rows</code>；點座標與強度與舊版逐帶 <code>mean()</code> 完全相同。</li>
 <li><code>fit_circle_ransac</code>／<code>fit_line_ransac</code>：原本 200 次迭代各做一次 <code>rng.choice</code>＋<code>np.linalg.lstsq</code>（3.9 ms）。改成一次抽 200 組索引、三點圓閉式解（2×2 線性系統）與 200×n 距離矩陣，再對最佳內點集做一次 lstsq 重擬合。取樣序列與舊版不同（改用 <code>rng.integers</code> 並剔除重複索引），但最終結果由內點集決定，基準場景的內點數與殘差與舊版一字不差；測試容差 1 px 內全過。</li>
-<li>caliper 工具的剖面用 <code>cv2.reduce(REDUCE_AVG, CV_64F)</code>，與 numpy mean 對 uint8 結果相同（測試比對到小數一位）。</li>
+<li>caliper 工具的剖面改用原生的逐行平均（CV_64F 精度），與 numpy mean 對 uint8 結果相同（測試比對到小數一位）。</li>
 </ul>
 
 <h3>5.4 template_match：金字塔粗找不用遮罩、細找剪枝</h3>
@@ -233,7 +233,7 @@ cmp/out/ok  &lt; 0.01 ms
 
 <h3>5.7 其他小項</h3>
 <ul>
-<li><code>apply_mask</code>：<code>cv2.bitwise_and(img, img, mask=)</code> 1.9 ms → <code>cv2.copyTo(img, mask)</code> 1.1 ms（新配置的目的地會先清零）；要填值時以填值為底再 copyTo，結果逐像素相同。</li>
+<li><code>apply_mask</code>：逐位元 AND（1.9 ms）改為帶遮罩複製（1.1 ms；新配置的目的地會先清零）；要填值時以填值為底再複製，結果逐像素相同。</li>
 <li><code>roi.mask_for(offset=)</code>／<code>crop()</code>：非矩形 ROI 的遮罩只畫外框大小的視窗，不再配置整張影像大小再切片（pixel_count 圓形 ROI 0.14 → 0.04 ms；4K 影像差更多）。</li>
 <li><code>ImageStore.encode</code> 快取與縮圖插值（見 4.3）。</li>
 <li>引擎：<code>ToolContext.params</code> 快取、<code>_jsonable</code> 純量清單快速路徑（見 4.2）。</li>
@@ -254,7 +254,7 @@ cmp/out/ok  &lt; 0.01 ms
 <li><strong>大圖先 <code>resize</code>。</strong>1280×960 → 640×480 幾乎所有工具快 4 倍；定位／計數類工具在半解析度上通常夠準，量測類再回原圖用 ROI 做。</li>
 <li><strong>二值化後先去雜訊再 blob。</strong>示範流程的 median 5 + open 5 讓 blob 只花 2.5 ms；直接對有雜訊的門檻結果做 blob，即使有新的預濾也要 9 ms。或把 <code>min_area</code> 設在合理值（預濾只在 min_area ≥ 4 時作用）。</li>
 <li><strong>template_match 開金字塔、範本 ≥ 32 px、旋轉範圍與步進別太細。</strong>不開金字塔整張 NCC 要 23 ms；旋轉角度數 × 每角度成本，±10°/5° 為 5 個角度 12 ms。給搜尋範圍 ROI 再減半。</li>
-<li><strong><code>VISION_CV_THREADS</code>。</strong>預設 2：單一工具的 OpenCV 平行度。產線一次只跑一條流程時可以設成 4（1280×960 的 blur／canny／cvtColor 約再快 1.5～2 倍）；多條流程並行（執行緒池 10 條）時維持 2 或 1，避免 OpenCV 執行緒彼此搶核心。改完重啟 <code>manage.py serve</code>。</li>
+<li><strong><code>VISION_CV_THREADS</code>。</strong>預設 2：單一工具的演算法平行度。產線一次只跑一條流程時可以設成 4（1280×960 的 blur／canny／cvtColor 約再快 1.5～2 倍）；多條流程並行（執行緒池 10 條）時維持 2 或 1，避免演算法執行緒彼此搶核心。改完重啟 <code>manage.py serve</code>。</li>
 <li><strong>觀看才編碼。</strong>影像快取延後到有人看才編 JPEG；連續模式全速跑時不要一直開著編輯器的大檢視器（每張 1600 邊 1.9 ms，現在同一張第二次以後免費）。需要無損才用 PNG（23 ms）。</li>
 <li><strong>關掉不需要的持久化與影像保留。</strong><code>VISION_KEEP_RUN_IMAGES</code>（預設 8）決定每條流程保留幾次 run 的所有節點影像，1280×960 的流程每次 run 約 6～10 MB；產線不用回看時設 1～2，減少記憶體與釋放成本（引擎開銷裡最大的一項）。<code>VISION_KEEP_RUN_ROWS</code>／背景 Persister 只寫摘要，成本低，但 SQLite 在慢磁碟上仍建議調大保留門檻或關閉。</li>
 <li><strong>defect_diff 的對齊方式。</strong>相位相關對整張 1280×960 要 19 ms；固定治具、位移很小時選「不對齊」（0.8 ms），或只在 ROI 內對齊。</li>

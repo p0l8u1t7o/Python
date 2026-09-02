@@ -100,7 +100,7 @@ GET /flows/catalogue          POST /flows/{id}/run（或 TCP RUN）      SSE /ev
 <tr><td>問的問題</td><td>「下一步走到哪個節點？」</td><td>「這個節點的輸入資料是什麼？」</td></tr>
 <tr><td>執行單位</td><td>DB 裡的 token，stepper 每 tick 推一步；一次執行可以活數小時、跨行程重啟</td><td>一次函式呼叫；一次 run 幾十毫秒～幾秒，在一條執行緒內跑完</td></tr>
 <tr><td>節點間傳什麼</td><td>控制權（token 位置）＋變數表</td><td>資料本身：影像（numpy）、數值、點集、輪廓，沿邊在記憶體傳</td></tr>
-<tr><td>並行</td><td>token 數＝並行分支數</td><td>執行緒池大小＝同時忙碌的流程數；單一 run 內不並行（OpenCV 自己已多核）</td></tr>
+<tr><td>並行</td><td>token 數＝並行分支數</td><td>執行緒池大小＝同時忙碌的流程數；單一 run 內不並行（工具內部演算法已多核）</td></tr>
 <tr><td>持久化</td><td>每步寫 DB（token、log），重啟續跑</td><td>跑完才寫一列 FlowRun（背景批次）；當機丟的是「這一張」，下一張照跑</td></tr>
 </table>
 <p>機器視覺的一次檢測是「取像 → 前處理 → 定位 → 量測 → 判定」的短生命週期資料管線，讓它走 DB token stepper 會把毫秒級的事拉成秒級、還把影像逼到落地。反過來，產線排程那種「等訊號、跨小時、要斷點續跑」的長流程也不該塞進資料流引擎。<strong>兩個引擎，各管各的問題。</strong></p>

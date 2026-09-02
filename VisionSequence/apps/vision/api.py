@@ -696,6 +696,67 @@ def delete_group(request: HttpRequest, group_id: int, delete_items: bool = False
 
 
 # ---------------------------------------------------------------------------
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp")
+
+
+@router.get("/fs")
+def browse_fs(request: HttpRequest, path: str = ""):
+    """伺服器檔案瀏覽（來源設定選資料夾／影像檔用；登入者可用——來源路徑本來就是伺服器路徑）。
+
+    空 path＝磁碟機清單（Windows）或根目錄（POSIX）。每層最多列 500 項，影像檔以副檔名過濾。
+    """
+    import string
+
+    if not path.strip():
+        if os.name == "nt":
+            drives = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+            return {"path": "", "parent": None, "dirs": drives, "files": []}
+        path = "/"
+    path = os.path.abspath(path)
+    if not os.path.isdir(path):
+        raise NotFound("資料夾不存在", code="dir_not_found")
+    dirs, files = [], []
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                if entry.name.startswith((".", "$")) or len(dirs) + len(files) >= 500:
+                    continue
+                try:
+                    if entry.is_dir():
+                        dirs.append(entry.name)
+                    elif entry.name.lower().endswith(IMAGE_EXTS):
+                        files.append(entry.name)
+                except OSError:
+                    continue
+    except PermissionError:
+        raise ValidationError("沒有權限讀取此資料夾", code="permission_denied") from None
+    parent = os.path.dirname(path.rstrip("\/"))
+    if os.name == "nt" and len(path) <= 3:
+        parent = ""  # 磁碟機根 → 回磁碟機清單
+    return {"path": path, "parent": parent if parent != path else None, "dirs": sorted(dirs, key=str.lower), "files": sorted(files, key=str.lower)}
+
+
+@router.get("/sources/usb-scan")
+def usb_scan(request: HttpRequest, max_index: int = 6):
+    """枚舉伺服器上的相機：逐一開啟探測（會短暫佔用裝置，掃描時暫停使用中的取像）。"""
+    max_index = max(1, min(10, max_index))
+    in_use = {int((s.config or {}).get("index", -1)): s.name for s in ImageSource.objects.filter(kind="usb")}
+    items = []
+    for i in range(max_index):
+        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(i)
+        try:
+            if cap.isOpened():
+                items.append({
+                    "index": i,
+                    "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 0,
+                    "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 0,
+                    "in_use_by": in_use.get(i, ""),
+                })
+        finally:
+            cap.release()
+    return {"items": items}
+
+
 @router.get("/sources/kinds")
 def list_source_kinds(request: HttpRequest):
     return {"items": source_kinds()}

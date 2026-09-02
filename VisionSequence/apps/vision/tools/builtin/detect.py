@@ -114,7 +114,7 @@ def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0,
 
 
 def _watershed_split(mask: np.ndarray) -> np.ndarray:
-    """距離轉換＋分水嶺把黏連粒子切開（NI Vision separate touching particles 對照）。"""
+    """距離轉換＋分水嶺把黏連粒子切開。"""
     dist = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
     if dist.max() <= 0:
         return mask
@@ -151,7 +151,7 @@ class BlobTool(Tool):
         Param("sort_by", "排序", kind="select", default="area", options=[
             {"value": "area", "label": "面積（大→小）"}, {"value": "x", "label": "X（左→右）"}, {"value": "y", "label": "Y（上→下）"}, {"value": "circularity", "label": "圓形度（高→低）"},
         ]),
-        Param("separate", "分離黏連粒子", kind="boolean", default=False, group="進階", help_text="距離轉換＋分水嶺把黏在一起的粒子切開再量測（NI Vision 的 separate touching particles）。"),
+        Param("separate", "分離黏連粒子", kind="boolean", default=False, group="進階", help_text="距離轉換＋分水嶺把黏在一起的粒子切開再量測。"),
         Param("fill_holes", "填滿孔洞", kind="boolean", default=False, group="進階"),
         Param("external_only", "只取最外層輪廓", kind="boolean", default=True, group="進階", help_text="關閉時面積會扣掉孔洞。"),
         Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定", help_text="找到的 blob 少於此值判 NG。"),
@@ -377,7 +377,7 @@ class DefectDiffTool(Tool):
 class BarcodeTool(Tool):
     key = "barcode"
     label = "條碼 / QR"
-    description = "解碼 QR code 與一維條碼（EAN/UPC/Code128 等；需 OpenCV 有 barcode 模組）。"
+    description = "解碼 QR code 與一維條碼（EAN/UPC/Code128 等）。"
     category = "detect"
     icon = "QrCode"
     params = [
@@ -416,7 +416,7 @@ class BarcodeTool(Tool):
             except (AttributeError, cv2.error):
                 result = None
                 if types == "1d":
-                    ctx.log("此 OpenCV 沒有 barcode 模組", level="warn")
+                    ctx.log("此環境沒有條碼解碼模組", level="warn")
             if result:
                 ok, infos, kinds, pts = (result + (None,))[:4] if len(result) == 3 else result
                 if ok and pts is not None:

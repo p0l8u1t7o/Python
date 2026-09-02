@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence NI Vision 功能對照</title>
+<title>VisionSequence 檢測功能設計</title>
 <style>
   :root {
     --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
@@ -48,11 +48,11 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="ni-vision.html" aria-current="page">NI Vision 對照</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html" aria-current="page">檢測功能設計</a></nav>
 <article class="doc">
 
-<h1>NI Vision 功能對照：ROI、影像格式、檢測工具</h1>
-<p>本頁對照 <em>NI Vision for LabVIEW User Manual</em>（371007B-01）的功能面，記錄平台的 ROI 工具種類與實作方式、多位深影像格式的處理設計，以及 NI 檢測工具在平台上的對應（含本輪新增與刻意不做的項目）。</p>
+<h1>檢測功能設計：ROI、影像格式、檢測工具</h1>
+<p>本頁以業界標準機器視覺軟體的功能面為基準，記錄平台的 ROI 工具種類與實作方式、多位深影像格式的處理設計，以及各類檢測功能在平台上的對應（含新增與刻意不做的項目）。</p>
 
 <nav><p><strong>本頁目錄</strong></p><ul>
 <li><a href="#roi">1. ROI 工具種類與實作</a></li>
@@ -62,13 +62,13 @@
 </ul></nav>
 
 <h2 id="roi">1. ROI 工具種類與實作</h2>
-<p>NI 的 ROI 工具面板（手冊 Table 3-1）對照。region 是自由 dict（<code>tools/roi.py</code> 檔頭是唯一格式定義），所有工具走同一組 helper：<code>bounding_rect / mask_for / crop / region_overlay / region_center / transform_region</code>；前端 ImageViewer 的 <code>roiEditor.ts</code>／<code>geometry.ts</code> 提供繪製、把手編輯、命中判定。</p>
+<p>ROI 工具面板（業界慣例的完整形狀集合）。region 是自由 dict（<code>tools/roi.py</code> 檔頭是唯一格式定義），所有工具走同一組 helper：<code>bounding_rect / mask_for / crop / region_overlay / region_center / transform_region</code>；前端 ImageViewer 的 <code>roiEditor.ts</code>／<code>geometry.ts</code> 提供繪製、把手編輯、命中判定。</p>
 <table>
-<tr><th>NI 工具</th><th>平台 shape</th><th>狀態</th><th>實作重點</th></tr>
+<tr><th>形狀</th><th>平台 shape</th><th>狀態</th><th>實作重點</th></tr>
 <tr><td>Rectangle</td><td><code>rect</code></td><td>原有</td><td>8 向把手</td></tr>
 <tr><td>Rotated Rectangle</td><td><code>rotated_rect</code></td><td>原有</td><td>旋轉把手＋量測工具 <code>crop(upright=True)</code> 擺正</td></tr>
-<tr><td>Oval</td><td><code>ellipse</code>（cx, cy, rx, ry, angle）</td><td><strong>本輪新增</strong></td><td>兩軸半徑把手＋旋轉把手；遮罩 <code>cv2.ellipse</code>、overlay 以 36 邊形近似</td></tr>
-<tr><td>Point</td><td><code>point</code>（x, y）</td><td><strong>本輪新增</strong></td><td>單像素遮罩；灰階統計工具的 light-meter point 對照</td></tr>
+<tr><td>Oval</td><td><code>ellipse</code>（cx, cy, rx, ry, angle）</td><td><strong>本輪新增</strong></td><td>兩軸半徑把手＋旋轉把手；遮罩用橢圓填色、overlay 以 36 邊形近似</td></tr>
+<tr><td>Point</td><td><code>point</code>（x, y）</td><td><strong>本輪新增</strong></td><td>單像素遮罩；灰階統計工具的單點量測</td></tr>
 <tr><td>Line</td><td><code>line</code></td><td>原有</td><td>端點把手、Shift 15° 吸附</td></tr>
 <tr><td>Broken Line</td><td><code>polyline</code>（points）</td><td><strong>本輪新增</strong></td><td>不閉合折線：頂點拖曳／雙擊邊插點／右鍵刪點（沿用 polygon 編輯路徑）；線剖面工具用</td></tr>
 <tr><td>Polygon</td><td><code>polygon</code></td><td>原有</td><td>頂點編輯；標記編輯器另有逐點繪製</td></tr>
@@ -78,23 +78,23 @@
 <p>ROI 一律可經 <code>region</code> 輸入埠動態傳入（定位工具的跟隨 ROI），<code>transform_region()</code> 支援所有形狀的平移／旋轉。</p>
 
 <h2 id="depth">2. 影像格式（位深）設計</h2>
-<p>NI 的影像型別：Grayscale U8／I16／SGL（浮點）、Complex、RGB U32、HSL U32、RGB U64。平台以 numpy dtype 對應（<code>tools/imgfmt.py</code>）：</p>
+<p>常見的機器視覺影像型別：Grayscale U8／I16／SGL（浮點）、Complex、RGB U32、HSL U32、RGB U64。平台以 numpy dtype 對應（<code>tools/imgfmt.py</code>）：</p>
 <table>
-<tr><th>NI 型別</th><th>平台表示</th><th>說明</th></tr>
+<tr><th>常見型別</th><th>平台表示</th><th>說明</th></tr>
 <tr><td>Grayscale U8／RGB U32</td><td><code>uint8</code>（HxW 或 HxWx3 BGR）</td><td>預設；所有工具都支援</td></tr>
-<tr><td>Grayscale I16</td><td><code>uint16</code></td><td>16-bit PNG/TIFF 讀檔（<code>IMREAD_UNCHANGED</code>）原樣保留；I16 語意上偏移為無號</td></tr>
+<tr><td>Grayscale I16</td><td><code>uint16</code></td><td>16-bit PNG/TIFF 讀檔（原樣讀取）原樣保留；16-bit 有號語意上偏移為無號</td></tr>
 <tr><td>RGB U64</td><td><code>uint16</code> ×3（BGR）</td><td>每通道 16-bit</td></tr>
 <tr><td>Grayscale SGL</td><td><code>float32</code></td><td>浮點 TIFF／FFT 與校正中間結果</td></tr>
 <tr><td>HSL U32</td><td>—（編碼方式）</td><td>不需原生儲存：<code>color_convert</code> 取 H/S/L/V 通道處理、<code>color_stats</code> 輸出 HSV 統計</td></tr>
 <tr><td>Complex</td><td>—（工具內部）</td><td><code>fft_filter</code> 內部使用，不進資料流</td></tr>
 </table>
-<p><strong>中央接縫</strong>：工具以 <code>Tool.accepts = ("u8",…)</code> 宣告可吃的位深；<code>ToolContext.image()</code> 對宣告外的位深自動 <code>normalize_u8</code>（u16 右移 8＝線性可預期、浮點 min-max；產生新陣列不動輸入）——<strong>任何工具丟任何位深都不會炸</strong>。cv2 原生支援多位深的工具（crop／resize／blur／morphology／arithmetic／apply_mask／grayscale／rotate_flip／save_image／convert_depth／fft_filter／line_profile／warp_perspective）宣告放寬、原樣進出。顯示端 <code>encode_image</code> 本來就會把非 u8 正規化後編碼。要顯式控制轉換用「位深轉換」工具。</p>
+<p><strong>中央接縫</strong>：工具以 <code>Tool.accepts = ("u8",…)</code> 宣告可吃的位深；<code>ToolContext.image()</code> 對宣告外的位深自動 <code>normalize_u8</code>（u16 右移 8＝線性可預期、浮點 min-max；產生新陣列不動輸入）——<strong>任何工具丟任何位深都不會炸</strong>。底層演算法原生支援多位深的工具（crop／resize／blur／morphology／arithmetic／apply_mask／grayscale／rotate_flip／save_image／convert_depth／fft_filter／line_profile／warp_perspective）宣告放寬、原樣進出。顯示端 <code>encode_image</code> 本來就會把非 u8 正規化後編碼。要顯式控制轉換用「位深轉換」工具。</p>
 
 <h2 id="tools">3. 檢測工具對照表</h2>
 <table>
-<tr><th>NI 功能</th><th>平台工具</th><th>狀態</th></tr>
-<tr><td>Lookup Table（linear/log/exp/power/sqrt/square、BCG）</td><td><code>lut</code> 查表轉換</td><td><strong>本輪新增</strong></td></tr>
-<tr><td>Convolution／Nth-order 濾波</td><td><code>filter</code>（sharpen/laplacian/sobel/prewitt/highpass/emboss/自訂 3×3）；平滑＝<code>blur</code>（gaussian/median/mean）</td><td><strong>本輪新增</strong></td></tr>
+<tr><th>功能</th><th>平台工具</th><th>狀態</th></tr>
+<tr><td>Lookup Table（linear/log/exp/power/sqrt/square、BCG）</td><td><code>lut</code> 查表轉換（含直方圖等化／CLAHE；原「對比增強」工具已併入。舊流程的節點自動映射、參數照舊）</td><td><strong>本輪新增</strong></td></tr>
+<tr><td>Convolution／Nth-order 濾波</td><td><code>filter</code>（sharpen/canny/laplacian/sobel/prewitt/highpass/emboss/自訂 3×3；原「邊緣」工具已併入）；平滑＝<code>blur</code></td><td><strong>本輪新增</strong></td></tr>
 <tr><td>FFT 頻域濾波（truncate/attenuate）</td><td><code>fft_filter</code>（含頻譜輸出）</td><td><strong>本輪新增</strong></td></tr>
 <tr><td>Grayscale morphology</td><td><code>morphology</code>（erode/dilate/open/close…；多位深）</td><td>原有</td></tr>
 <tr><td>Thresholding（global auto／local adaptive）</td><td><code>threshold</code>：fixed/Otsu/<strong>Triangle（新）</strong>/adaptive mean/gaussian/range</td><td>原有＋新增</td></tr>
@@ -111,7 +111,7 @@
 <tr><td>Fit line/circle/ellipse</td><td><code>find_line</code>／<code>fit_arc</code>／<code>fit_ellipse</code></td><td>原有</td></tr>
 <tr><td>Perspective calibration（攤平）</td><td><code>warp_perspective</code>（四點 → 矩形）；比例換算＝<code>calibration</code></td><td><strong>本輪新增</strong></td></tr>
 <tr><td>Golden template comparison</td><td><code>defect_diff</code>（含相位對齊）＋Golden Set 回歸頁</td><td>原有</td></tr>
-<tr><td>Barcode（1D／DataMatrix／PDF417）</td><td><code>barcode</code>（zbar／OpenCV 後端依安裝）</td><td>原有</td></tr>
+<tr><td>Barcode（1D／DataMatrix／PDF417）</td><td><code>barcode</code>（zbar／底層演算法庫 後端依安裝）</td><td>原有</td></tr>
 <tr><td>Classification</td><td><code>dl_classify</code>（平台內教導）</td><td>原有</td></tr>
 <tr><td>Watershed／binary morphology 進階</td><td>blob separate＋<code>morphology</code></td><td>原有＋新增</td></tr>
 </table>

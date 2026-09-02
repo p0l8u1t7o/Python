@@ -68,7 +68,7 @@
 <pre>POST /api/vision/flows/{flow_id}/run</pre>
 <ul>
 <li>JSON：<code>{"context": {"lot": "A123"}, "wait": true, "timeout_s": 5, "include_images": false}</code></li>
-<li>或 multipart：<code>image</code>（檔案，任何 OpenCV 能讀的格式）、<code>context</code>（JSON 字串）。附影像時 <code>image_source</code> 節點（mode=auto）直接用送來的影像，不抓相機。</li>
+<li>或 multipart：<code>image</code>（檔案，常見影像格式：PNG／JPG／BMP／TIFF 等）、<code>context</code>（JSON 字串）。附影像時 <code>image_source</code> 節點（mode=auto）直接用送來的影像，不抓相機。</li>
 <li><code>?wait=false</code> → 202 立即回，結果從 SSE 或 <code>GET /flows/{id}/recent</code> 取。</li>
 </ul>
 <p>回應（200）：</p>

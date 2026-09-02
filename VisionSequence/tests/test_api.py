@@ -330,3 +330,33 @@ class ResourceGroupTests(ApiTests.__bases__[0]):
         self.assertEqual(r.status_code, 204)
         r = self.client.get("/api/vision/assets")
         self.assertNotIn(asset["id"], [x["id"] for x in r.json()["items"]])
+
+
+class FsBrowseTests(ApiTests.__bases__[0]):
+    """伺服器檔案瀏覽與相機掃描端點。"""
+
+    def test_browse_fs(self):
+        import os
+        import tempfile
+
+        base = tempfile.mkdtemp(prefix="vs-fs-")
+        os.makedirs(os.path.join(base, "sub"))
+        with open(os.path.join(base, "a.png"), "wb") as f:
+            f.write(b"x")
+        with open(os.path.join(base, "b.txt"), "wb") as f:
+            f.write(b"x")
+        r = self.client.get("/api/vision/fs", {"path": base})
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        self.assertIn("sub", data["dirs"])
+        self.assertEqual(data["files"], ["a.png"])  # 非影像檔被濾掉
+        self.assertTrue(data["parent"])
+        r = self.client.get("/api/vision/fs", {"path": os.path.join(base, "nope")})
+        self.assertEqual(r.status_code, 404)
+        r = self.client.get("/api/vision/fs")
+        self.assertEqual(r.status_code, 200)  # 根：磁碟機清單／根目錄
+
+    def test_usb_scan_shape(self):
+        r = self.client.get("/api/vision/sources/usb-scan", {"max_index": 1})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn("items", r.json())  # 無相機環境回空清單

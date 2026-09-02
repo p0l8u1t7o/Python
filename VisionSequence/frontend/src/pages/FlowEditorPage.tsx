@@ -34,7 +34,7 @@ import { FlowCanvas, readInteractionMode, storeInteractionMode, type Interaction
 import { Inspector } from '@/components/editor/Inspector'
 import { NodeContextMenu, type NodeMenuState } from '@/components/editor/NodeContextMenu'
 import { NodeList } from '@/components/editor/NodeList'
-import { ToolPalette } from '@/components/editor/ToolPalette'
+import { FavoriteTools, ToolPicker, readFavorites, writeFavorites } from '@/components/editor/ToolPalette'
 import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings } from '@/components/editor/ResultsPanel'
 import { DRAG_MIME, HISTORY_LIMIT, computeLayout, edgeProps, graphFrom, isTypingTarget, nextNodeId, nodeDataFrom, toFlowEdges, toFlowNode, toFlowNodes, type ToolNodeData } from '@/components/editor/graphMapping'
 import { useResizer } from '@/components/editor/useResizer'
@@ -65,11 +65,11 @@ interface LayoutState {
 function readLayout(): LayoutState {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY)
-    if (raw) return { left: 220, right: 320, canvas: 0.4, ...(JSON.parse(raw) as Partial<LayoutState>) }
+    if (raw) return { left: 190, right: 290, canvas: 0.42, ...(JSON.parse(raw) as Partial<LayoutState>) }
   } catch {
     /* ignore */
   }
-  return { left: 220, right: 320, canvas: 0.4 }
+  return { left: 190, right: 290, canvas: 0.42 }
 }
 
 function isEdit(change: NodeChange | EdgeChange): boolean {
@@ -202,6 +202,15 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [meta, setMeta] = useState({ name: '', description: '' })
   const [dirty, setDirty] = useState(false)
   const [layout, setLayout] = useState<LayoutState>(readLayout)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [favorites, setFavorites] = useState<string[]>(readFavorites)
+  const toggleFavorite = useCallback((key: string) => {
+    setFavorites((old) => {
+      const next = old.includes(key) ? old.filter((k) => k !== key) : [...old, key]
+      writeFavorites(next)
+      return next
+    })
+  }, [])
   const [rightTab, setRightTab] = useState<'inspector' | 'results'>('inspector')
   const [viewMode, setViewMode] = useState<'input' | 'output'>('input')
   const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
@@ -457,6 +466,16 @@ function EditorInner({ flowId }: { flowId: number }) {
       e.dataTransfer.dropEffect = 'copy'
     }
   }, [])
+  const insertAtCenter = useCallback(
+    (def: ToolTypeDef) => {
+      const jitter = () => Math.round((Math.random() - 0.5) * 60)
+      const p = screenToFlowPosition({ x: window.innerWidth * 0.55 + jitter(), y: window.innerHeight * 0.55 + jitter() })
+      insertNode(def, { x: Math.round(p.x), y: Math.round(p.y) })
+      setPickerOpen(false)
+    },
+    [insertNode, screenToFlowPosition],
+  )
+
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       const key = e.dataTransfer.getData(DRAG_MIME)
@@ -873,12 +892,11 @@ function EditorInner({ flowId }: { flowId: number }) {
       <div className="flex min-h-0 flex-1">
         {/* 左：工具箱 + 步驟清單 */}
         <aside className="flex shrink-0 flex-col border-r border-line bg-surface" style={{ width: layout.left }}>
-          <p className="border-b border-line px-3 py-1.5 text-xs font-semibold text-muted">{t('editor.palette')} <span className="font-normal">· {t('editor.paletteHint')}</span></p>
-          <div className="min-h-0 flex-[3]">
-            <ToolPalette catalogue={catalogue.data} />
+          <div className="min-h-0 flex-[2]">
+            <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} />
           </div>
           <p className="border-y border-line px-3 py-1.5 text-xs font-semibold text-muted">{t('editor.nodeList')} <span className="tnum font-normal">({graphNodes.length})</span></p>
-          <div className="min-h-0 flex-[2] overflow-hidden">
+          <div className="min-h-0 flex-[3] overflow-hidden">
             <NodeList nodes={graphNodes} defs={defs} selectedId={selectedId} statuses={nodeStatuses} onSelect={focusNode} />
           </div>
         </aside>
@@ -1088,6 +1106,8 @@ function EditorInner({ flowId }: { flowId: number }) {
         <TextInput label={t('editor.viewer.templateName')} autoFocus value={templateName} onChange={(e) => setTemplateName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void createTemplate()} />
       </Modal>
       <ConfirmDialog open={askReset} onClose={() => setAskReset(false)} onConfirm={() => void doReset()} title={t('editor.reset')} message={t('editor.resetConfirm')} confirmLabel={t('editor.reset')} danger loading={clearRecent.isPending} />
+      <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
+        favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
       <BatchTestModal open={batchOpen} onClose={() => setBatchOpen(false)} flowId={flowId} graph={currentGraph} dirty={dirty} execLocked={execLocked} onView={(item) => void viewBatchRun(item)} />
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />
       <RecipeDrawer open={recipesOpen} onClose={() => setRecipesOpen(false)} flowId={flowId} readOnly={readOnly} />

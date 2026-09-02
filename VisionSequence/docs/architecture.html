@@ -165,7 +165,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <h2 id="runner">5. Runner 與並行（runner.py）</h2>
 <table>
 <tr><th>元件</th><th>做什麼</th></tr>
-<tr><td>ThreadPoolExecutor(MAX_WORKERS=10)</td><td>同時忙碌的流程數上限；<code>.env</code> 擴充。OpenCV 自己釋放 GIL，多執行緒真的平行（實測 12 流程 40 ms）。</td></tr>
+<tr><td>ThreadPoolExecutor(MAX_WORKERS=10)</td><td>同時忙碌的流程數上限；<code>.env</code> 擴充。影像演算法在原生層執行、會釋放 GIL，多執行緒真的平行（實測 12 流程 40 ms）。</td></tr>
 <tr><td>FlowRuntime（每流程）</td><td>編譯快取（依 version）、<code>lock</code>（同流程一次一個 run：相機與狀態一致）、queued 計數（超過 MAX_QUEUE_PER_FLOW → 429）、stats、recent（最近 N 次 RunReport）、continuous loop。</td></tr>
 <tr><td><code>_prefetch()</code></td><td>在<strong>呼叫者執行緒</strong>把 source 參數的來源打開、asset 參數的路徑查好——執行緒池內的熱路徑不碰資料庫。</td></tr>
 <tr><td>EventBus</td><td>Condition + 環形緩衝（500 筆），SSE 用 <code>wait(since)</code> 取增量；重連帶 seq 不漏事件。</td></tr>
@@ -178,7 +178,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <p>ref = <code>"{run_id}:{node_id}:{port}"</code>。每流程保留最近 KEEP_RUN_IMAGES 次 run 的影像；全域 IMAGE_CACHE_MB 以 bytes 計 LRU。<code>encode(ref, max_side, fmt, quality)</code> 延遲到有人要看才做，且依請求最長邊縮小（前端預設 1600）。浮點／16 位元影像正規化到 8 位元顯示。</p>
 
 <h2 id="sources">7. 影像來源（sources/）</h2>
-<p><code>open_source(model)</code> 依 kind 建 Grabber 並快取（updated_at 變了才重開）。內建：folder（循環讀檔、排序、pattern）、file（mtime 變了重讀）、usb（OpenCV，BUFFERSIZE=1，先 grab 丟舊幀）、synthetic（合成零件：隨機位移／旋轉、30% 缺孔或刮痕，讓沒相機也能走完整流程）、upload（API push）。外掛：繼承 <code>Grabber</code> 的 .py 丟進 <code>plugins/</code> 自動掛載（或 <code>VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber</code>），見 plugins.html。Grabber 會被多執行緒同時呼叫，內部要加鎖。</p>
+<p><code>open_source(model)</code> 依 kind 建 Grabber 並快取（updated_at 變了才重開）。內建：folder（循環讀檔、排序、pattern）、file（mtime 變了重讀）、usb（BUFFERSIZE=1，先 grab 丟舊幀）、synthetic（合成零件：隨機位移／旋轉、30% 缺孔或刮痕，讓沒相機也能走完整流程）、upload（API push）。外掛：繼承 <code>Grabber</code> 的 .py 丟進 <code>plugins/</code> 自動掛載（或 <code>VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber</code>），見 plugins.html。Grabber 會被多執行緒同時呼叫，內部要加鎖。</p>
 
 <h2 id="api">8. API / SSE / TCP</h2>
 <p>完整清單見 <code>apps/vision/api.py</code> 頂端 docstring；整合方式見 <a href="automation.html">automation.html</a>。重點：</p>
@@ -239,7 +239,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <tr><td>VISION_KEEP_RUN_IMAGES</td><td>8</td><td>每流程記憶體保留的 run 數（含影像）</td></tr>
 <tr><td>VISION_IMAGE_CACHE_MB</td><td>1024</td><td>影像快取總量</td></tr>
 <tr><td>VISION_PERSIST_RUNS / KEEP_RUN_ROWS</td><td>1 / 2000</td><td>DB 記錄開關與每流程保留列數</td></tr>
-<tr><td>VISION_CV_THREADS</td><td>2</td><td>cv2.setNumThreads；多流程並行建議 1～2</td></tr>
+<tr><td>VISION_CV_THREADS</td><td>2</td><td>單一工具的演算法平行度；多流程並行建議 1～2</td></tr>
 <tr><td>VISION_PLUGIN_DIR</td><td>./plugins</td><td>資料夾外掛（自動偵測）</td></tr>
 <tr><td>VISION_TOOL_PLUGINS / SOURCE_PLUGINS / COMM_PLUGINS</td><td>空</td><td>模組路徑外掛（進階）</td></tr>
 <tr><td>VISION_API_KEY</td><td>空</td><td>選填金鑰</td></tr>
@@ -260,7 +260,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <tr><td>6</td><td>測試跑 55 秒</td><td>test client 把 SSE 串流讀完</td><td><code>?max_seconds=</code></td></tr>
 <tr><td>7</td><td>示範流程孔數老是 3</td><td>合成影像的條碼／文字與中心孔黏在一起，圓形度被拉低</td><td>版面避開孔位；示範 max_area 放寬。教訓：示範資料要先跑 40 次看分布</td></tr>
 <tr><td>8</td><td>demo helper <code>_node(label=…)</code> 與 judge 的 label 參數撞名</td><td>位置參數與 **params 同名</td><td>helper 改 title</td></tr>
-<tr><td>9</td><td>Windows 中文路徑讀圖回 None</td><td>cv2.imread 不吃非 ASCII</td><td><code>np.fromfile</code>＋<code>imdecode</code>、<code>imencode</code>＋<code>tofile</code></td></tr>
+<tr><td>9</td><td>Windows 中文路徑讀圖回 None</td><td>預設讀圖 API 不吃非 ASCII</td><td><code>np.fromfile</code>＋<code>imdecode</code>、<code>imencode</code>＋<code>tofile</code></td></tr>
 <tr><td>10</td><td>結果影像接不到上游標記</td><td>overlays 在 Result 不在 outputs</td><td>隱含輸出埠 <code>_overlays</code>（graph/engine/catalogue 三處）</td></tr>
 </table>
 </article>

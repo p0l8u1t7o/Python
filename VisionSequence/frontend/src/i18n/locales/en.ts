@@ -279,6 +279,17 @@ const en = {
     deleteKeep: 'Keep items',
     deleteWithItems: 'Delete with {{count}} items',
   },
+  fs: {
+    pickDir: 'Pick a folder',
+    pickFile: 'Pick an image file',
+    serverHint: 'Browsing files on the machine running the backend (same machine on an all-in-one box).',
+    path: 'Path',
+    go: 'Go',
+    up: 'Up',
+    browse: 'Browse…',
+    useThisDir: 'Use this folder',
+    empty: '(no subfolders or image files)',
+  },
   capacity: { continuous: 'continuous', label: '{{active}}/{{max}} busy', idle: 'No flow is running' },
   status: {
     ok: 'OK',
@@ -362,7 +373,12 @@ const en = {
     portsHint: 'One colour per type; only matching (or compatible) ports connect.',
     toolsCount: '{{count}} tools',
   },
-  sources: { title: 'Source library', create: 'New source', empty: 'No sources yet' },
+  sources: {
+    title: 'Source library', create: 'New source', empty: 'No sources yet',
+    scanCameras: 'Scan cameras', scanHint: 'Probes devices on the server one by one (briefly occupies each)',
+    cameraN: 'Camera #{{n}}', inUseBy: 'in use: {{name}}',
+    noCameras: 'No cameras detected. Make sure they are attached to the server host and not in use.',
+  },
   assets: { editGroup: 'Edit name / group', title: 'Asset library', upload: 'Upload asset', empty: 'No assets yet' },
   settings: {
     title: 'Settings', apiKey: 'API key', theme: 'Theme', language: 'Language',
@@ -516,7 +532,13 @@ const en = {
       cols: { field: 'Field', type: 'Type', desc: 'Description', code: 'code', http: 'HTTP', when: 'When' },
     },
   },
-  palette: { favorites: 'Favorites', favorite: 'Favorite', unfavorite: 'Unfavorite', noFavorites: 'Click the star next to a tool to add it' },
+  palette: {
+    addTool: 'Add tool',
+    pickerTitle: 'Pick a tool',
+    allTools: 'All tools',
+    pickHint: 'Click to add to the canvas',
+    favClickHint: 'Click to add at canvas center; drag onto the canvas also works',
+    noResults: 'No matching tools', favorites: 'Favorites', favorite: 'Favorite', unfavorite: 'Unfavorite', noFavorites: 'Click the star next to a tool to add it' },
   nodeMenu: {
     openTool: 'Open tool page',
     duplicate: 'Duplicate',
