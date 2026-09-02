@@ -129,9 +129,15 @@ def _passthrough(cn: CompiledNode, inputs: dict[str, Any]) -> dict[str, Any] | N
     """停用的節點若能直通就直通：第一個 image 輸入 → 同型別的第一個 image 輸出。"""
     in_ports = [p for p in cn.tool.inputs if p.type == "image"]
     out_ports = [p for p in cn.tool.outputs if p.type == "image"]
+    out: dict[str, Any] = {}
     if in_ports and out_ports and isinstance(inputs.get(in_ports[0].key), np.ndarray):
-        return {out_ports[0].key: inputs[in_ports[0].key]}
-    return None
+        out[out_ports[0].key] = inputs[in_ports[0].key]
+    thru = inputs.get("_image")
+    if not isinstance(thru, np.ndarray) and in_ports:
+        thru = inputs.get(in_ports[0].key)
+    if isinstance(thru, np.ndarray):
+        out["_image"] = thru  # 隱含直通輸出：停用時也照樣往下傳
+    return out or None
 
 
 def execute(
@@ -210,6 +216,13 @@ def execute(
                 # 未連線的必填輸入：來源工具可以自己抓（例如 image_source），其他標錯。
                 if not getattr(cn.tool, "allows_unconnected", False):
                     blocked = blocked or f"輸入埠 '{port.key}' 未連線"
+        # 隱含影像直通輸入（_image）：不進工具邏輯，只作為本節點直通輸出的來源
+        for src, sport in cn.inputs.get("_image", []):
+            if status_of.get(src) in ("ok", "ng"):
+                value = outputs.get((src, sport))
+                if isinstance(value, np.ndarray):
+                    inputs["_image"] = value
+                    break
         if blocked:
             node_report.status = "skipped"
             node_report.message = blocked
@@ -287,6 +300,16 @@ def execute(
                 continue
             else:
                 node_report.outputs[k] = _jsonable(v)
+        # 影像直通（_image，宣告輸出之後才登記——分析／檢視優先看真正的輸出埠）：
+        # 原影像原樣往下傳；overlays 只是 metadata、工具不就地改影像，下游檢測不受標記影響。
+        thru = inputs.get("_image")
+        if not isinstance(thru, np.ndarray) and cn.primary_image_port:
+            v = inputs.get(cn.primary_image_port)
+            thru = v if isinstance(v, np.ndarray) else None
+        if isinstance(thru, np.ndarray):
+            outputs[(node_id, "_image")] = thru
+            if preview or (node_id, "_image") in compiled.consumed:
+                node_report.outputs["_image"] = store.put(f"{run_id}:{node_id}:_image", thru, flow_id=flow_id, run_id=run_id)
         # 讓前端也能看到 primary 輸入影像（overlay 座標系）——只在試跑時，避免重複快取。
         if preview and cn.primary_image_port and isinstance(inputs.get(cn.primary_image_port), np.ndarray):
             src = next((s for s in cn.inputs.get(cn.primary_image_port, [])), None)

@@ -114,6 +114,7 @@
 <ul>
 <li><code>range</code>：<strong>單一數值</strong>，以滑桿＋數字框呈現（用 minimum/maximum/step）；不是兩個數字。</li>
 <li>每個工具的 outputs 目錄末尾有隱含埠 <code>{"key":"_overlays","type":"list","implicit":true}</code>（該節點的標記），可接 draw_result 的 overlays。</li>
+<li>每個工具的 outputs 另有隱含影像直通埠 <code>{"key":"_image","type":"image","implicit":true}</code>：原影像原樣往下傳（標記只是 metadata、不畫進影像，下游檢測不受影響）；沒有任何 image 輸入的工具（邏輯類）inputs 也補 <code>_image</code> 直通輸入，影像可經過任何工具。停用的節點照樣直通。</li>
 </ul>
 
 <h2 id="frontend">前端骨架（已完成）</h2>

@@ -4,10 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { FileBox, Images, Pencil, Trash2, Upload } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, GROUP_ALL, GroupChips, GroupInput, LoadingState, Modal, PageHeader, Select, TextInput, groupNames, matchGroup } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, GROUP_ALL, GroupChips, GroupSelect, LoadingState, Modal, PageHeader, Select, TextInput, matchGroup } from '@/components/ui'
+import { GroupManager } from '@/components/GroupManager'
 import { assetUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
-import { useAssetMutations, useAssets } from '@/lib/queries'
+import { useAssetMutations, useAssets, useGroups } from '@/lib/queries'
 import type { Asset } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -27,6 +28,8 @@ export function AssetsPage() {
   const [form, setForm] = useState<{ file: File | null; kind: Asset['kind']; name: string; group: string }>({ file: null, kind: 'image', name: '', group: '' })
   const [pendingDelete, setPendingDelete] = useState<Asset | null>(null)
   const [groupFilter, setGroupFilter] = useState(GROUP_ALL)
+  const [managingGroups, setManagingGroups] = useState(false)
+  const groups = useGroups('asset')
   //: 編輯名稱／群組的小 Modal
   const [editing, setEditing] = useState<{ asset: Asset; name: string; group: string } | null>(null)
 
@@ -74,6 +77,7 @@ export function AssetsPage() {
         actions={
           <>
             <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} placeholder={t('common.none')} options={kindOptions} className="w-36" />
+            <Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button>
             <Button variant="primary" icon={<Upload size={15} />} onClick={() => setUploading(true)}>{t('assets.upload')}</Button>
           </>
         }
@@ -133,7 +137,7 @@ export function AssetsPage() {
             <input type="file" className="input" accept={form.kind === 'image' ? 'image/*' : undefined} onChange={(e) => setForm({ ...form, file: e.target.files?.[0] ?? null })} />
           </div>
           <TextInput label={t('common.name')} value={form.name} placeholder={form.file?.name ?? ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <GroupInput label={t('common.group')} value={form.group} suggestions={groupNames(assets.data?.items ?? [])} onChange={(v) => setForm({ ...form, group: v })} />
+          <GroupSelect label={t('common.group')} value={form.group} groups={groups.data ?? []} onChange={(v) => setForm({ ...form, group: v })} />
         </div>
       </Modal>
 
@@ -143,11 +147,12 @@ export function AssetsPage() {
         {editing ? (
           <div className="space-y-3">
             <TextInput label={t('common.name')} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-            <GroupInput label={t('common.group')} value={editing.group} suggestions={groupNames(assets.data?.items ?? [])} onChange={(v) => setEditing({ ...editing, group: v })} />
+            <GroupSelect label={t('common.group')} value={editing.group} groups={groups.data ?? []} onChange={(v) => setEditing({ ...editing, group: v })} />
           </div>
         ) : null}
       </Modal>
 
+      <GroupManager kind="asset" open={managingGroups} onClose={() => setManagingGroups(false)} />
       <ConfirmDialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)} onConfirm={() => void onDelete()} title={t('assets.deleteTitle')} message={t('assets.deleteMessage', { name: pendingDelete?.name ?? '' })} confirmLabel={t('common.delete')} danger loading={remove.isPending} />
     </Page>
   )

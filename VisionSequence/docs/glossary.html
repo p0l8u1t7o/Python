@@ -65,22 +65,22 @@
 <h2 id="pages">頁面（左側導覽，路由）</h2>
 <table>
 <tr><th>中文</th><th>路由</th><th>程式名</th><th>說明</th></tr>
-<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>所有流程的即時狀態卡片；卡片「觀看」開即時監看 Modal（訂該流程 SSE，外部 API／連續執行的每筆檢測即時顯示影像＋標記＋判定；一般用戶可看見的流程都能觀看）</td></tr>
+<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕）＋即時檢測資訊（判定/耗時/工站/配方/具名輸出），中央＝選中流程的即時影像（訂該流程 SSE，外部 API／連續執行的每筆檢測即時更新；一般用戶可看見的流程都能觀看）</td></tr>
 <tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
 <tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
 <tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁</td></tr>
-<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（自由文字，chips 篩選、表單 datalist 建議既有群組）</td></tr>
-<tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（chips 篩選、上傳可帶群組、卡片可編輯名稱／群組 <code>PATCH /assets/{id}</code>）</td></tr>
+<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal 可新增/改名/刪除——刪除可選連刪資源或改未分組；chips 篩選、編輯時下拉選群組）</td></tr>
+<tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（同來源庫：管理群組 Modal、chips 篩選、上傳/編輯下拉選群組 <code>PATCH /assets/{id}</code>）</td></tr>
 <tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>
 <tr><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>金鑰、主題風格（淺色／深色／Cyberpunk／跟隨系統；預覽卡選擇＝唯一切換入口（頂列切換鈕已移除），登入者存進使用者設定 <code>PATCH /auth/prefs</code>）、語言（繁中／簡中／English）、引擎鎖定、密碼</td></tr>
 <tr><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>名詞定義與操作說明</td></tr>
 <tr><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>登入／建立第一個管理員</td></tr>
 <tr><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>單一流程的執行歷史、良率、每小時 OK／NG、耗時趨勢（總覽卡片與頂列都有入口）</td></tr>
-<tr><td>整合頁</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出（write_modbus 的 mapping 格式）</td></tr>
+<tr><td>外部整合</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出、連線（原 /connections 併入為分頁）；左側選單名稱「外部整合」</td></tr>
 <tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試跑到該步驟、標記為已教導</td></tr>
 <tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
 <tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集（zip 批次、去重）與標記、自動標記與智慧選取、資料集分割與版本、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
-<tr><td>連線</td><td><code>/connections</code></td><td>ConnectionsPage</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
+<tr><td>連線</td><td><code>/integration?tab=connections</code>（舊 /connections 轉址）</td><td>ConnectionsSection（併入外部整合頁分頁）</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
 <tr><td>全域搜尋</td><td>—（頂部導覽列）</td><td>GlobalSearch</td><td>搜尋全平台內容：頁面、流程、工具、影像來源、連線、資產；預設收合成放大鏡 icon，點擊或 Ctrl+K 展開輸入框（清空離開自動收回）、↑↓ 選擇、Enter 前往</td></tr>
 <tr><td>頂列</td><td>—（AppShell topbar）</td><td>topbar</td><td>右側一律 icon 鈕（gap-1）：搜尋（點開輸入框）、容量 CapacityMenu（icon＋執行數角標，點開列出執行中流程與連續標記）、使用者（頭像，點開名稱／改密碼／登出）；深淺色切換鈕已移除（主題只在設定頁）</td></tr>
 </table>

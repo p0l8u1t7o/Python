@@ -10,7 +10,7 @@ const en = {
     settings: 'Settings',
     users: 'Users',
     help: 'Help',
-    integration: 'Integration',
+    integration: 'External integration',
     connections: 'Connections',
   },
   auth: {
@@ -267,6 +267,18 @@ const en = {
     noResults: 'No results for "{{q}}"',
     groups: { pages: 'Pages', flows: 'Flows', tools: 'Tools', sources: 'Image sources', connections: 'Connections', assets: 'Assets' },
   },
+  groups: {
+    manage: 'Manage groups',
+    manageHint: 'Create, rename or delete groups; renaming updates the group on its items.',
+    itemCount: '{{count}} items',
+    rename: 'Rename',
+    empty: 'No groups yet — add one below.',
+    newName: 'New group name',
+    deleteTitle: 'Delete group "{{name}}"',
+    deleteMessage: 'This group has {{count}} items. Delete them too, or keep them (ungrouped)?',
+    deleteKeep: 'Keep items',
+    deleteWithItems: 'Delete with {{count}} items',
+  },
   capacity: { continuous: 'continuous', label: '{{active}}/{{max}} busy', idle: 'No flow is running' },
   status: {
     ok: 'OK',
@@ -435,7 +447,7 @@ const en = {
   integration: {
     title: 'Integration',
     subtitle: 'API reference and test tools for integrators',
-    tabs: { http: 'HTTP API test', tcp: 'TCP test', events: 'Event monitor', lock: 'Lock', format: 'Response format' },
+    tabs: { http: 'HTTP API test', tcp: 'TCP test', events: 'Event monitor', lock: 'Lock', format: 'Response format', modbus: 'Modbus output', connections: 'Connections' },
     info: { httpBase: 'HTTP base', tcp: 'TCP', listening: 'listening', notListening: 'not running', apiKey: 'API key', required: 'required', optional: 'not required', workers: 'Workers', timeout: 'Timeout (s)' },
     http: {
       flow: 'Flow',
@@ -745,6 +757,9 @@ const enExtra = {
   dashboard: {
     station: 'Station', recipe: 'Recipe', notCommissioned: 'Not taught',
     watch: 'Watch live', watchTitle: '{{name}} — live inspection',
+    selectFlow: 'Pick a flow card on the left to watch',
+    liveInfo: 'Live inspection info',
+    openEditor: 'Open editor',
     waitingRun: 'Waiting for the next inspection… (shows instantly when the external API or continuous mode triggers a run)',
   },
   stats: { cols: { recipe: 'Recipe', station: 'Station' }, station: 'Station', recipe: 'Recipe' },

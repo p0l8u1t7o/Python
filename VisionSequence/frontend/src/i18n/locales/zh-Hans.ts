@@ -12,7 +12,7 @@ const zhHans = {
     settings: '设置',
     users: '用户',
     help: '说明',
-    integration: '集成',
+    integration: '外部集成',
     dl: '深度学习',
     connections: '连接',
     section: '功能',
@@ -310,6 +310,18 @@ const zhHans = {
     noResults: '没有符合「{{q}}」的结果',
     groups: { pages: '页面', flows: '流程', tools: '工具', sources: '影像来源', connections: '连接', assets: '资产' },
   },
+  groups: {
+    manage: '管理分组',
+    manageHint: '新增、改名、删除分组；改名会联动更新项目上的分组。',
+    itemCount: '{{count}} 个项目',
+    rename: '重命名',
+    empty: '还没有分组，先在下方新增。',
+    newName: '新分组名称',
+    deleteTitle: '删除分组「{{name}}」',
+    deleteMessage: '分组下有 {{count}} 个项目。要连同项目一并删除，还是保留项目（变为未分组）？',
+    deleteKeep: '保留项目',
+    deleteWithItems: '连同 {{count}} 个项目删除',
+  },
   capacity: {
     label: '{{active}}/{{max}} 忙碌',
     idle: '目前没有流程在运行',
@@ -330,6 +342,9 @@ const zhHans = {
   dashboard: {
     watch: '观看检测画面',
     watchTitle: '{{name}}－实时检测',
+    selectFlow: '点左侧流程卡选择要观看的流程',
+    liveInfo: '实时检测信息',
+    openEditor: '打开编辑器',
     waitingRun: '等待下一次检测…（外部 API 或连续运行触发后实时显示）',
     title: '总览',
     subtitle: '所有流程的即时状态',
@@ -928,7 +943,7 @@ const zhHans = {
   integration: {
     title: '集成',
     subtitle: '给外部集成方的接口说明与测试工具',
-    tabs: { http: 'HTTP API 测试', tcp: 'TCP 测试', events: '事件监看', lock: '锁定', format: '回传格式', modbus: 'Modbus 输出' },
+    tabs: { http: 'HTTP API 测试', tcp: 'TCP 测试', events: '事件监看', lock: '锁定', format: '回传格式', modbus: 'Modbus 输出', connections: '连线' },
     info: { httpBase: 'HTTP 地址', tcp: 'TCP', listening: '监听中', notListening: '未启动', apiKey: 'API 密钥', required: '必要', optional: '不需要', workers: '线程', timeout: '逾时（秒）' },
     http: {
       flow: '流程',

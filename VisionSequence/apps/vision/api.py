@@ -43,7 +43,7 @@ from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationErr
 from apps.vision import schemas
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
-from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource
+from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
 from apps.vision.runner import get_flow, runner
 from apps.vision.sources import close_source, grab_by_id, kinds as source_kinds, open_source, source_info
 from apps.vision.tools import base as tools
@@ -457,7 +457,8 @@ def _node_analysis(report, node_id: str) -> dict[str, Any]:
     if image_in is not None:
         g = image_in if image_in.ndim == 2 else cv2.cvtColor(image_in, cv2.COLOR_BGR2GRAY)
         out["input"]["stats"] = {"mean": float(g.mean()), "std": float(g.std()), "min": int(g.min()), "max": int(g.max()), "width": int(g.shape[1]), "height": int(g.shape[0])}
-    for key, value in node.outputs.items():
+    # 隱含直通埠（_image）排最後：分析要看的是工具「真正的」影像輸出
+    for key, value in sorted(node.outputs.items(), key=lambda kv: kv[0].startswith("_")):
         if isinstance(value, dict) and value.get("ref"):
             image_out = store.get(value["ref"])
             if image_out is not None:
@@ -594,6 +595,106 @@ def get_image(request: HttpRequest, ref: str, max: int = 0, fmt: str = "jpeg", q
 
 # ---------------------------------------------------------------------------
 # 影像來源
+# 資源群組（影像來源庫／資產庫共用）
+# ---------------------------------------------------------------------------
+def _json_body(request: HttpRequest) -> dict:
+    try:
+        body = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+    return body if isinstance(body, dict) else {}
+
+
+def _group_kind(kind: str) -> str:
+    if kind not in ("source", "asset"):
+        raise ValidationError("kind 必須是 source 或 asset", code="bad_kind")
+    return kind
+
+
+def _group_items(kind: str):
+    return ImageSource.objects if kind == "source" else Asset.objects
+
+
+def _group_counts(kind: str) -> dict[str, int]:
+    from collections import Counter
+
+    return Counter(g for g in _group_items(kind).values_list("group", flat=True) if g)
+
+
+@router.get("/groups")
+def list_groups(request: HttpRequest, kind: str):
+    """群組清單（含項目數）。項目上出現但表裡沒有的群組自動補列（舊資料回填）。"""
+    kind = _group_kind(kind)
+    counts = _group_counts(kind)
+    known = set(ResourceGroup.objects.filter(kind=kind).values_list("name", flat=True))
+    for name in counts.keys() - known:
+        with transaction.atomic():
+            ResourceGroup.objects.get_or_create(kind=kind, name=name)
+    rows = ResourceGroup.objects.filter(kind=kind)
+    return {"items": [{"id": g.id, "name": g.name, "count": counts.get(g.name, 0)} for g in rows]}
+
+
+@router.post("/groups", response={201: dict})
+def create_group(request: HttpRequest):
+    body = _json_body(request)
+    kind = _group_kind(str(body.get("kind") or ""))
+    name = str(body.get("name") or "").strip()[:60]
+    if not name:
+        raise ValidationError("需要群組名稱", code="bad_name")
+    try:
+        with transaction.atomic():
+            row = ResourceGroup.objects.create(kind=kind, name=name)
+    except IntegrityError:
+        raise Conflict("已有同名群組", code="group_name_taken") from None
+    return 201, {"id": row.id, "name": row.name, "count": _group_counts(kind).get(name, 0)}
+
+
+@router.patch("/groups/{group_id}")
+def rename_group(request: HttpRequest, group_id: int):
+    """改名：{"name"}；群組下項目的 group 字串一併更新。"""
+    row = ResourceGroup.objects.filter(pk=group_id).first()
+    if row is None:
+        raise NotFound("群組不存在", code="group_not_found")
+    name = str(_json_body(request).get("name") or "").strip()[:60]
+    if not name:
+        raise ValidationError("需要群組名稱", code="bad_name")
+    old_name = row.name
+    try:
+        with transaction.atomic():
+            row.name = name
+            row.save(update_fields=["name"])
+            _group_items(row.kind).filter(group=old_name).update(group=name)
+    except IntegrityError:
+        raise Conflict("已有同名群組", code="group_name_taken") from None
+    return {"id": row.id, "name": row.name, "count": _group_counts(row.kind).get(name, 0)}
+
+
+@router.delete("/groups/{group_id}", response={204: None})
+def delete_group(request: HttpRequest, group_id: int, delete_items: bool = False):
+    """刪群組。delete_items=1 連同群組下的資源一併刪（資產含檔案）；否則所屬資源變為未分組。"""
+    row = ResourceGroup.objects.filter(pk=group_id).first()
+    if row is None:
+        raise NotFound("群組不存在", code="group_not_found")
+    items = _group_items(row.kind).filter(group=row.name)
+    if delete_items:
+        if row.kind == "source":
+            for source in items:
+                close_source(source.id)
+            items.delete()
+        else:
+            for asset in items:
+                try:
+                    os.remove(asset.path)
+                except OSError:
+                    pass
+                runner.forget_asset(str(asset.id))
+            items.delete()
+    else:
+        items.update(group="")
+    row.delete()
+    return 204, None
+
+
 # ---------------------------------------------------------------------------
 @router.get("/sources/kinds")
 def list_source_kinds(request: HttpRequest):

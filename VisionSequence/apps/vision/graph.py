@@ -15,6 +15,7 @@ DECORATION_TYPES = ("note",)
 LEGACY_TOOL_TYPES = {"write_plc": "write_modbus"}
 FLOW_IN = "_flow"  # 每個可執行節點的隱含控制輸入埠
 OVERLAYS_OUT = "_overlays"  # 每個可執行節點的隱含輸出埠：該節點的標記（list），供 draw_result 疊圖
+IMAGE_THRU = "_image"  # 隱含影像直通埠：每個工具預設可把影像傳進（無 image 輸入者）、傳出（原樣）
 
 
 class GraphError(ValidationError):
@@ -84,6 +85,8 @@ def validate_graph(graph: Any) -> dict:
             return "flow"
         if direction == "out" and key == OVERLAYS_OUT:
             return "list"
+        if key == IMAGE_THRU:
+            return "image"
         ports = tool.inputs if direction == "in" else tool.outputs
         for port in ports:
             if port.key == key:
@@ -128,10 +131,11 @@ def validate_graph(graph: Any) -> dict:
                 port=t_handle,
             )
         if tt != "flow":
-            in_port = next(p for p in t_tool.inputs if p.key == t_handle)
+            # 隱含直通埠不在宣告清單裡，一律單線
+            multiple = False if t_handle == IMAGE_THRU else next(p for p in t_tool.inputs if p.key == t_handle).multiple
             count = connected_inputs.get((target, t_handle), 0) + 1
             connected_inputs[(target, t_handle)] = count
-            if count > 1 and not in_port.multiple:
+            if count > 1 and not multiple:
                 raise GraphError(
                     f"節點 '{target}' 的輸入埠 '{t_handle}' 只能接一條線",
                     node_id=target,

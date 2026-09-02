@@ -335,6 +335,45 @@ export function useSourceMutations() {
   return { create, patch, remove, push }
 }
 
+// ---- 資源群組（影像來源庫／資產庫共用） ----
+export interface ResourceGroup {
+  id: number
+  name: string
+  count: number
+}
+
+export function useGroups(kind: 'source' | 'asset', enabled = true) {
+  return useQuery({
+    queryKey: ['groups', kind],
+    queryFn: () => api.get<{ items: ResourceGroup[] }>('/vision/groups', { kind }),
+    select: (data) => data.items,
+    enabled,
+  })
+}
+
+export function useGroupMutations(kind: 'source' | 'asset') {
+  const client = useQueryClient()
+  const invalidate = () => {
+    void client.invalidateQueries({ queryKey: ['groups', kind] })
+    // 改名／刪除會連動項目的 group 字串
+    void client.invalidateQueries({ queryKey: kind === 'source' ? keys.sources : ['assets'] })
+  }
+  const createGroup = useMutation({
+    mutationFn: (name: string) => api.post<ResourceGroup>('/vision/groups', { kind, name }),
+    onSuccess: invalidate,
+  })
+  const renameGroup = useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) => api.patch<ResourceGroup>(`/vision/groups/${id}`, { name }),
+    onSuccess: invalidate,
+  })
+  const removeGroup = useMutation({
+    mutationFn: ({ id, deleteItems }: { id: number; deleteItems: boolean }) =>
+      request<void>(`/vision/groups/${id}`, { method: 'DELETE', query: { delete_items: deleteItems ? '1' : '' } }),
+    onSuccess: invalidate,
+  })
+  return { createGroup, renameGroup, removeGroup }
+}
+
 // ---- 資產 ----
 export function useAssets(kind = '') {
   return useQuery({

@@ -9,6 +9,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Cable, Check, Copy, Pause, Play, Plug, Send, Trash2 } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
+import { ConnectionsSection } from '@/pages/ConnectionsPage'
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, DetailRow, PageHeader, Select, StatusBadge, TextArea, TextInput, Tabs } from '@/components/ui'
 import { apiKey, authToken, imageUrl, streamUrl } from '@/lib/api'
 import { watchdog } from '@/lib/flowStream'
@@ -18,8 +19,8 @@ import { isImageRef, type IntegrationInfo, type TcpResult } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
-type IntegrationTab = 'http' | 'tcp' | 'events' | 'lock' | 'format' | 'modbus'
-const TABS: IntegrationTab[] = ['http', 'tcp', 'events', 'lock', 'format', 'modbus']
+type IntegrationTab = 'http' | 'tcp' | 'events' | 'lock' | 'format' | 'modbus' | 'connections'
+const TABS: IntegrationTab[] = ['http', 'tcp', 'events', 'lock', 'format', 'modbus', 'connections']
 const TCP_HISTORY_KEY = 'vs.tcpHistory'
 const MAX_EVENTS = 200
 
@@ -666,6 +667,7 @@ export function IntegrationPage() {
         {tab === 'lock' && info.data ? <LockTab info={info.data} /> : null}
         {tab === 'format' ? <FormatTab /> : null}
         {tab === 'modbus' ? <ModbusTab /> : null}
+        {tab === 'connections' ? <ConnectionsSection /> : null}
       </div>
     </Page>
   )

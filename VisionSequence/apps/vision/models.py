@@ -114,6 +114,21 @@ class FlowTemplate(models.Model):
         ordering = ["name"]
 
 
+class ResourceGroup(models.Model):
+    """使用者自訂的資源群組（影像來源庫／資產庫共用）：kind=source|asset。
+
+    項目上的 group 仍是字串（鬆耦合）；這張表讓「空群組」可以存在、支援改名／刪除管理。
+    列表 API 會把項目上出現但表裡沒有的群組自動補列（舊資料回填）。"""
+
+    kind = models.CharField(max_length=10)  # source | asset
+    name = models.CharField(max_length=60)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = [("kind", "name")]
+
+
 class Asset(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)

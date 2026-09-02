@@ -59,3 +59,28 @@ export function GroupInput({ value, onChange, suggestions, label }: {
     </div>
   )
 }
+
+/** 群組下拉（項目編輯用）：從已建立的群組選（含「未分組」）；群組本身在 GroupManager 管理。 */
+export function GroupSelect({ value, onChange, groups, label }: {
+  value: string
+  onChange: (value: string) => void
+  groups: { name: string }[]
+  label: string
+}) {
+  const { t } = useTranslation()
+  const names = groups.map((g) => g.name)
+  const options = [
+    { value: '', label: t('common.ungrouped') },
+    // 值不在清單裡（舊資料）也要顯示，不然 select 會靜默落到第一項
+    ...(value && !names.includes(value) ? [{ value, label: value }] : []),
+    ...names.map((name) => ({ value: name, label: name })),
+  ]
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  )
+}

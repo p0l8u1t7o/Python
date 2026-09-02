@@ -20,7 +20,6 @@ const PAGES = [
   { to: '/assets', key: 'assets', icon: Images, admin: false },
   { to: '/dl', key: 'dl', icon: Brain, admin: false },
   { to: '/integration', key: 'integration', icon: Plug, admin: false },
-  { to: '/connections', key: 'connections', icon: Cable, admin: false },
   { to: '/users', key: 'users', icon: Users, admin: true },
   { to: '/settings', key: 'settings', icon: Settings, admin: false },
   { to: '/help', key: 'help', icon: FileText, admin: false },
@@ -125,7 +124,7 @@ export function GlobalSearch() {
       out.push({ group: 'sources', label: s.name, sub: s.kind, to: '/sources', icon: Camera })
     }
     for (const c of (connections.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
-      out.push({ group: 'connections', label: c.name, sub: c.kind, to: '/connections', icon: Cable })
+      out.push({ group: 'connections', label: c.name, sub: c.kind, to: '/integration?tab=connections', icon: Cable })
     }
     for (const a of (assets.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
       out.push({ group: 'assets', label: a.name, sub: a.kind, to: '/assets', icon: Images })

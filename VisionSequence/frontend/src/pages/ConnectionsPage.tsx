@@ -1,5 +1,6 @@
 /**
- * 連線（ConnectionsPage）`/connections`：Modbus TCP／上位機的主動輸出連線（apps/comm）。
+ * 連線（ConnectionsSection）：Modbus TCP／上位機的主動輸出連線（apps/comm）。
+ * 已併入「外部整合」頁（/integration?tab=connections）的分頁；本檔只輸出區塊內容。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
  * modbus_tcp: host/port/unit_id/timeout_s/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
  * dio_sim: channels；plugin: class。管理員才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
@@ -9,8 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Activity, Cable, Pencil, PenLine, Plug, Plus, Trash2 } from 'lucide-react'
 
-import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
+import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, Select, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
 import { fetchConnectionState, useConnectionKinds, useConnectionMutations, useConnections, type ConnectionBody } from '@/lib/queries'
 import type { Connection, ConnectionOpResult } from '@/lib/types'
@@ -61,7 +61,7 @@ function ResultBox({ result }: { result: ConnectionOpResult | null }) {
   )
 }
 
-export function ConnectionsPage() {
+export function ConnectionsSection() {
   const { t } = useTranslation()
   const toast = useToast()
   const auth = useAuth()
@@ -155,12 +155,11 @@ export function ConnectionsPage() {
 
   const body = editing?.body
   return (
-    <Page>
-      <PageHeader
-        title={<span className="flex items-center gap-2"><Plug size={20} className="text-brand" />{t('connections.title')}</span>}
-        description={<span>{t('connections.subtitle')} · <Link to="/integration?tab=modbus" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></span>}
-        actions={<span title={isAdmin ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!isAdmin} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>}
-      />
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted">{t('connections.subtitle')} · <Link to="/integration?tab=modbus" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></p>
+        <span title={isAdmin ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!isAdmin} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>
+      </div>
       <Card className="overflow-hidden">
         {connections.isPending ? (
           <LoadingState />
@@ -282,6 +281,6 @@ export function ConnectionsPage() {
       </Modal>
 
       <ConfirmDialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)} onConfirm={() => void onDelete()} title={t('connections.deleteTitle')} message={t('connections.deleteMessage', { name: pendingDelete?.name ?? '' })} confirmLabel={t('common.delete')} danger loading={remove.isPending} />
-    </Page>
+    </>
   )
 }

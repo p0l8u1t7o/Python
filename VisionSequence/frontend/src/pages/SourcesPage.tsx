@@ -4,10 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { Camera, Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupInput, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, groupNames, matchGroup } from '@/components/ui'
+import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupSelect, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, matchGroup } from '@/components/ui'
+import { GroupManager } from '@/components/GroupManager'
 import { sourcePreviewUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
-import { useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
+import { useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
 import type { ImageSource } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -50,6 +51,8 @@ export function SourcesPage() {
   const { create, patch, remove, push } = useSourceMutations()
   const [editing, setEditing] = useState<{ id: number | null; body: SourceBody } | null>(null)
   const [groupFilter, setGroupFilter] = useState(GROUP_ALL)
+  const [managingGroups, setManagingGroups] = useState(false)
+  const groups = useGroups('source')
   const [pendingDelete, setPendingDelete] = useState<ImageSource | null>(null)
   const [preview, setPreview] = useState<{ source: ImageSource; url: string } | null>(null)
 
@@ -109,7 +112,7 @@ export function SourcesPage() {
   const body = editing?.body
   return (
     <Page>
-      <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button>} />
+      <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<><Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button><Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button></>} />
       <GroupChips items={sources.data?.items ?? []} value={groupFilter} onChange={setGroupFilter} />
       <Card className="overflow-hidden">
         {sources.isPending ? (
@@ -174,7 +177,7 @@ export function SourcesPage() {
         {body ? (
           <div className="space-y-3">
             <TextInput label={t('common.name')} required autoFocus value={body.name} onChange={(e) => setEditing({ ...editing!, body: { ...body, name: e.target.value } })} />
-            <GroupInput label={t('common.group')} value={body.group ?? ''} suggestions={groupNames(sources.data?.items ?? [])}
+            <GroupSelect label={t('common.group')} value={body.group ?? ''} groups={groups.data ?? []}
               onChange={(v) => setEditing({ ...editing!, body: { ...body, group: v } })} />
             <Select label={t('sources.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} />
             {(fieldsFor.get(body.kind) ?? []).map((field) => (
@@ -193,6 +196,7 @@ export function SourcesPage() {
         ) : null}
       </Modal>
 
+      <GroupManager kind="source" open={managingGroups} onClose={() => setManagingGroups(false)} />
       <ConfirmDialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)} onConfirm={() => void onDelete()} title={t('sources.deleteTitle')} message={t('sources.deleteMessage', { name: pendingDelete?.name ?? '' })} confirmLabel={t('common.delete')} danger loading={remove.isPending} />
     </Page>
   )

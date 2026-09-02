@@ -12,7 +12,7 @@ const zhHant = {
     settings: '設定',
     users: '使用者',
     help: '說明',
-    integration: '整合',
+    integration: '外部整合',
     dl: '深度學習',
     connections: '連線',
     section: '功能',
@@ -310,6 +310,18 @@ const zhHant = {
     noResults: '沒有符合「{{q}}」的結果',
     groups: { pages: '頁面', flows: '流程', tools: '工具', sources: '影像來源', connections: '連線', assets: '資產' },
   },
+  groups: {
+    manage: '管理群組',
+    manageHint: '新增、改名、刪除群組；改名會連動更新項目上的群組。',
+    itemCount: '{{count}} 個項目',
+    rename: '重新命名',
+    empty: '還沒有群組，先在下方新增。',
+    newName: '新群組名稱',
+    deleteTitle: '刪除群組「{{name}}」',
+    deleteMessage: '群組下有 {{count}} 個項目。要連同項目一併刪除，還是保留項目（變為未分組）？',
+    deleteKeep: '保留項目',
+    deleteWithItems: '連同 {{count}} 個項目刪除',
+  },
   capacity: {
     label: '{{active}}/{{max}} 忙碌',
     idle: '目前沒有流程在執行',
@@ -330,6 +342,9 @@ const zhHant = {
   dashboard: {
     watch: '觀看檢測畫面',
     watchTitle: '{{name}}－即時檢測',
+    selectFlow: '點左側流程卡選擇要觀看的流程',
+    liveInfo: '即時檢測資訊',
+    openEditor: '開啟編輯器',
     waitingRun: '等待下一次檢測…（外部 API 或連續執行觸發後即時顯示）',
     title: '總覽',
     subtitle: '所有流程的即時狀態',
@@ -928,7 +943,7 @@ const zhHant = {
   integration: {
     title: '整合',
     subtitle: '給外部整合方的接口說明與測試工具',
-    tabs: { http: 'HTTP API 測試', tcp: 'TCP 測試', events: '事件監看', lock: '鎖定', format: '回傳格式', modbus: 'Modbus 輸出' },
+    tabs: { http: 'HTTP API 測試', tcp: 'TCP 測試', events: '事件監看', lock: '鎖定', format: '回傳格式', modbus: 'Modbus 輸出', connections: '連線' },
     info: { httpBase: 'HTTP 位址', tcp: 'TCP', listening: '監聽中', notListening: '未啟動', apiKey: 'API 金鑰', required: '必要', optional: '不需要', workers: '執行緒', timeout: '逾時（秒）' },
     http: {
       flow: '流程',

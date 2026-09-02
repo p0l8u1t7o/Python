@@ -9,7 +9,7 @@
 
 ## 專案形狀
 - `config/`（settings：`VISION` dict 全部走 .env）、`apps/vision/`（models / graph / engine / runner / images / api / stream / tcp_server / sources / tools / dl）、`apps/comm/`（Modbus TCP／上位機主動輸出）、`plugins/`（資料夾外掛）、`frontend/`（Vite + React 19 + Tailwind v4 + @xyflow/react）、`tests/`、`docs/`。
-- 引擎是**資料流 DAG**（不是 ZQS 的 DB token stepper）：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像用 numpy 在記憶體傳。`_flow` 隱含輸入埠 = 控制分支；`_overlays` 隱含輸出埠 = 該節點標記。
+- 引擎是**資料流 DAG**（不是 ZQS 的 DB token stepper）：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像用 numpy 在記憶體傳。`_flow` 隱含輸入埠 = 控制分支；`_overlays` 隱含輸出埠 = 該節點標記；`_image` 隱含直通埠 = 每個工具預設可把影像傳進（無 image 輸入者）、傳出（原樣，引擎在 execute 後發值；宣告輸出之後登記）。
 - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP。`runserver` 只用來開發（且加 `--noreload`，否則工具外掛與執行緒池會被重載兩次）。
 
 ## 啟動

@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Cable, Camera, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, UserRound, Users, Workflow } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { LockBanner } from '@/components/auth/LockBanner'
@@ -22,7 +22,6 @@ const NAV = [
   { to: '/assets', key: 'assets', icon: Images, end: false, admin: false },
   { to: '/dl', key: 'dl', icon: Brain, end: false, admin: false },
   { to: '/integration', key: 'integration', icon: Plug, end: false, admin: false },
-  { to: '/connections', key: 'connections', icon: Cable, end: false, admin: false },
   { to: '/users', key: 'users', icon: Users, end: false, admin: true },
   { to: '/settings', key: 'settings', icon: Settings, end: false, admin: false },
   { to: '/help', key: 'help', icon: HelpCircle, end: false, admin: false },

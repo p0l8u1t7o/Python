@@ -337,6 +337,10 @@ CATEGORY_LABELS = {
 
 #: 每個工具都有的隱含輸出：本節點的標記（overlays），接給 draw_result 疊圖。
 IMPLICIT_OVERLAYS_PORT = {"key": "_overlays", "label": "標記", "type": "list", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
+#: 影像直通（每個工具預設可把影像傳進、傳出）：輸出＝原影像原樣往下傳（標記只是 metadata 不畫進影像）；
+#: 沒有任何 image 輸入的工具（邏輯類）另補直通輸入。引擎在 execute 後負責發值（工具本身不讀不寫）。
+IMPLICIT_IMAGE_OUT = {"key": "_image", "label": "影像（直通）", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
+IMPLICIT_IMAGE_IN = {"key": "_image", "label": "影像（直通）", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
 
 
 def catalogue() -> list[dict[str, Any]]:
@@ -351,8 +355,8 @@ def catalogue() -> list[dict[str, Any]]:
             "heavy": bool(getattr(t, "heavy", False)),
             "version": int(getattr(t, "version", 1)),
             "params": [p.as_dict() for p in t.params],
-            "inputs": [p.as_dict() for p in t.inputs],
-            "outputs": [p.as_dict() for p in t.outputs] + [IMPLICIT_OVERLAYS_PORT],
+            "inputs": [p.as_dict() for p in t.inputs] + ([] if any(p.type == "image" for p in t.inputs) else [IMPLICIT_IMAGE_IN]),
+            "outputs": [p.as_dict() for p in t.outputs] + [IMPLICIT_IMAGE_OUT, IMPLICIT_OVERLAYS_PORT],
         }
         for t in all_types()
     ]

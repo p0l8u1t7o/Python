@@ -288,3 +288,45 @@ class PersistedRunTests(TransactionTestCase):
         stats = self.client.get(f"/api/vision/flows/{flow['id']}/stats").json()
         self.assertGreaterEqual(stats["total"], 3)
         self.assertGreaterEqual(stats["by_status"].get("ok", 0), 3)
+
+
+class ResourceGroupTests(ApiTests.__bases__[0]):
+    """資源群組管理：清單（含回填）、新增、改名（項目連動）、刪除（連刪或改未分組）。"""
+
+    def test_group_lifecycle(self):
+        def mk(name, group):
+            return self.client.post("/api/vision/sources", data=json.dumps({"name": name, "kind": "synthetic", "config": {"width": 32, "height": 32}, "group": group}), content_type="application/json").json()
+        a = mk("ga", "甲組")
+        mk("gb", "甲組")
+        mk("gc", "")
+        # 清單：項目上的群組自動回填成列
+        r = self.client.get("/api/vision/groups", {"kind": "source"})
+        items = {g["name"]: g for g in r.json()["items"]}
+        self.assertEqual(items["甲組"]["count"], 2)
+        gid = items["甲組"]["id"]
+        # 新增空群組
+        r = self.client.post("/api/vision/groups", data=json.dumps({"kind": "source", "name": "乙組"}), content_type="application/json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()["count"], 0)
+        r = self.client.post("/api/vision/groups", data=json.dumps({"kind": "source", "name": "乙組"}), content_type="application/json")
+        self.assertEqual(r.status_code, 409)
+        # 改名：項目的 group 字串連動
+        r = self.client.patch(f"/api/vision/groups/{gid}", data=json.dumps({"name": "甲組2"}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        row = self.client.get(f"/api/vision/sources/{a['id']}").json()
+        self.assertEqual(row["group"], "甲組2")
+        # 刪除（不連刪）：項目變未分組
+        r = self.client.delete(f"/api/vision/groups/{gid}")
+        self.assertEqual(r.status_code, 204)
+        row = self.client.get(f"/api/vision/sources/{a['id']}").json()
+        self.assertEqual(row["group"], "")
+        # 刪除（連刪）：資產走檔案刪除路徑
+        upload = io.BytesIO(png_bytes(16, 16))
+        upload.name = "z.png"
+        asset = self.client.post("/api/vision/assets", data={"file": upload, "kind": "image", "name": "z", "group": "丙組"}).json()
+        r = self.client.get("/api/vision/groups", {"kind": "asset"})
+        gid2 = next(g["id"] for g in r.json()["items"] if g["name"] == "丙組")
+        r = self.client.delete(f"/api/vision/groups/{gid2}?delete_items=1")
+        self.assertEqual(r.status_code, 204)
+        r = self.client.get("/api/vision/assets")
+        self.assertNotIn(asset["id"], [x["id"] for x in r.json()["items"]])
