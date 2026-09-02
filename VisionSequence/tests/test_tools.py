@@ -32,6 +32,7 @@ class RegistryTests(SimpleTestCase):
             "fit_arc", "fit_ellipse", "wall_thickness", "concentricity", "chamfer_angle", "tolerance_judge",
             "blob", "defect_diff", "barcode", "text_presence", "color_check", "edge_density", "pixel_count",
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
+            "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -631,3 +632,165 @@ class DlTests(SimpleTestCase):
         self.assertAlmostEqual(info["scale"], 0.32)
         self.assertEqual(info["pad_y"], 16)
         self.assertAlmostEqual(float(t[0, 0, 0, 0]), 114 / 255, places=5)  # 上方 padding
+
+
+class NiVisionToolTests(SimpleTestCase):
+    """NI Vision 對照的新工具：LUT／卷積濾波／FFT／位深轉換／透視校正／線剖面／色彩統計／幾何計算。"""
+
+    def test_lut_gamma_and_linear(self):
+        img = np.full((10, 10), 64, np.uint8)
+        r = run_tool("lut", img, {"mode": "power", "gamma": 0.5})
+        self.assertEqual(int(r.outputs["image"][0, 0]), 127)  # sqrt(64/255)*255
+        r = run_tool("lut", img, {"mode": "linear", "brightness": 20, "contrast": 1.0})
+        self.assertEqual(int(r.outputs["image"][0, 0]), 84)
+        r = run_tool("lut", img, {"mode": "invert"})
+        self.assertEqual(int(r.outputs["image"][0, 0]), 191)
+
+    def test_filter_gradient_highlights_edges(self):
+        img = np.zeros((20, 40), np.uint8)
+        img[:, 20:] = 200
+        r = run_tool("filter", img, {"method": "gradient"})
+        out = r.outputs["image"]
+        self.assertGreater(int(out[10, 20]), 100)  # 邊緣處梯度大
+        self.assertEqual(int(out[10, 5]), 0)  # 平坦區為 0
+        with self.assertRaises(ToolError):
+            run_tool("filter", img, {"method": "custom", "kernel": [[1, 2], [3, 4]]})
+
+    def test_fft_lowpass_removes_stripes(self):
+        # 高頻直條紋：低通後振幅應大幅下降
+        x = np.arange(64)
+        img = (128 + 100 * np.sin(x * np.pi / 2)).astype(np.uint8)[None, :].repeat(64, axis=0)
+        r = run_tool("fft_filter", img, {"mode": "lowpass", "style": "truncate", "cutoff": 0.1})
+        out = r.outputs["image"]
+        self.assertLess(float(out.std()), float(img.std()) * 0.3)
+        self.assertEqual(r.outputs["spectrum"].shape, img.shape)
+
+    def test_convert_depth_roundtrip(self):
+        img = np.full((5, 5), 100, np.uint8)
+        up = run_tool("convert_depth", img, {"to": "u16"}).outputs["image"]
+        self.assertEqual(up.dtype, np.uint16)
+        self.assertEqual(int(up[0, 0]), 100 << 8)
+        back = run_tool("convert_depth", up, {"to": "u8", "scale": "shift"}).outputs["image"]
+        self.assertEqual(back.dtype, np.uint8)
+        self.assertEqual(int(back[0, 0]), 100)
+        f = run_tool("convert_depth", img, {"to": "f32"}).outputs["image"]
+        self.assertEqual(f.dtype, np.float32)
+
+    def test_warp_perspective(self):
+        img = np.zeros((80, 100, 3), np.uint8)
+        cv2.rectangle(img, (20, 20), (80, 60), (0, 255, 0), -1)
+        r = run_tool("warp_perspective", img, {"roi": {"shape": "polygon", "points": [[20, 20], [80, 20], [80, 60], [20, 60]]}, "width": 60, "height": 40})
+        out = r.outputs["image"]
+        self.assertEqual(out.shape[:2], (40, 60))
+        self.assertGreater(int(out[20, 30, 1]), 200)  # 中央是綠色
+        with self.assertRaises(ToolError):
+            run_tool("warp_perspective", img, {"roi": {"shape": "polygon", "points": [[0, 0], [1, 0], [1, 1]]}})
+
+    def test_line_profile(self):
+        img = np.zeros((40, 60), np.uint8)
+        img[:, 30:] = 200
+        r = run_tool("line_profile", img, {"roi": {"shape": "line", "x1": 5, "y1": 20, "x2": 55, "y2": 20}})
+        self.assertEqual(len(r.outputs["values"]), 50)
+        self.assertEqual(r.outputs["min"], 0.0)
+        self.assertEqual(r.outputs["max"], 200.0)
+        r = run_tool("line_profile", img, {"roi": {"shape": "polyline", "points": [[5, 5], [30, 35], [55, 5]]}, "samples": 40})
+        self.assertEqual(len(r.outputs["values"]), 40)
+
+    def test_color_stats(self):
+        img = np.zeros((20, 20, 3), np.uint8)
+        img[:] = (30, 30, 220)  # BGR 紅
+        r = run_tool("color_stats", img, {})
+        self.assertGreater(r.outputs["mean_r"], 200)
+        self.assertLess(r.outputs["mean_b"], 40)
+        self.assertTrue(r.outputs["hex"].startswith("#dc"))
+
+    def test_geometry_modes(self):
+        r = run_tool("geometry", None, {"mode": "intersect"}, inputs={"a": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}, "b": {"x1": 0, "y1": 10, "x2": 10, "y2": 0}})
+        self.assertEqual((r.outputs["x"], r.outputs["y"]), (5.0, 5.0))
+        r = run_tool("geometry", None, {"mode": "point_line"}, inputs={"a": [5, 0], "b": {"x1": 0, "y1": 10, "x2": 10, "y2": 10}})
+        self.assertEqual(r.outputs["distance"], 10.0)
+        r = run_tool("geometry", None, {"mode": "midpoint"}, inputs={"a": [0, 0], "b": [10, 20]})
+        self.assertEqual((r.outputs["x"], r.outputs["y"]), (5.0, 10.0))
+        r = run_tool("geometry", None, {"mode": "intersect"}, inputs={"a": {"x1": 0, "y1": 0, "x2": 10, "y2": 0}, "b": {"x1": 0, "y1": 5, "x2": 10, "y2": 5}})
+        self.assertEqual(r.status, "ng")  # 平行
+
+    def test_blob_separate_and_fields(self):
+        img = np.zeros((80, 130), np.uint8)
+        cv2.circle(img, (40, 40), 20, 255, -1)
+        cv2.circle(img, (76, 40), 20, 255, -1)
+        base = {"threshold_method": "fixed", "threshold": 100, "min_area": 50}
+        self.assertEqual(run_tool("blob", img, base).outputs["count"], 1)
+        r = run_tool("blob", img, {**base, "separate": True})
+        self.assertEqual(r.outputs["count"], 2)
+        b = r.outputs["blobs"][0]
+        for field_name in ("perimeter", "orientation", "elongation"):
+            self.assertIn(field_name, b)
+
+    def test_threshold_triangle(self):
+        img = np.zeros((30, 30), np.uint8)
+        img[10:20, 10:20] = 220
+        r = run_tool("threshold", img, {"method": "triangle"})
+        self.assertEqual(int(r.outputs["image"][15, 15]), 255)
+
+
+class ImageDepthTests(SimpleTestCase):
+    """位深（NI 的 U8/I16/SGL/RGB U64 對照）：宣告支援的工具原樣進出、其他自動正規化 u8。"""
+
+    def test_transparent_tools_keep_depth(self):
+        u16 = np.full((20, 20), 30000, np.uint16)
+        self.assertEqual(run_tool("blur", u16, {"method": "gaussian", "ksize": 3}).outputs["image"].dtype, np.uint16)
+        self.assertEqual(run_tool("crop", u16, {"roi": {"shape": "rect", "x": 2, "y": 2, "w": 10, "h": 10}}).outputs["image"].dtype, np.uint16)
+        f32 = np.random.default_rng(1).random((20, 20)).astype(np.float32)
+        self.assertEqual(run_tool("resize", f32, {"scale": 0.5}).outputs["image"].dtype, np.float32)
+
+    def test_u8_tools_auto_normalize(self):
+        # threshold 只吃 u8：u16 進來自動右移 8 正規化，不炸、行為合理
+        u16 = np.zeros((20, 20), np.uint16)
+        u16[5:15, 5:15] = 60000  # >>8 = 234
+        r = run_tool("threshold", u16, {"method": "fixed", "threshold": 128})
+        self.assertEqual(int(r.outputs["image"][10, 10]), 255)
+        self.assertEqual(int(r.outputs["image"][1, 1]), 0)
+        r = run_tool("histogram", u16, {})
+        self.assertEqual(r.status, "ok")
+
+    def test_purity_on_u16(self):
+        u16 = np.full((20, 20), 40000, np.uint16)
+        snap = u16.copy()
+        run_tool("threshold", u16, {"method": "otsu"})
+        self.assertTrue(np.array_equal(u16, snap))  # 正規化產生新陣列，不動輸入
+
+
+class RoiShapeTests(SimpleTestCase):
+    """ROI 新形狀（NI 工具面板對照）：ellipse／annulus 扇形／point／polyline。"""
+
+    def test_ellipse_mask_and_transform(self):
+        from apps.vision.tools.roi import mask_for, transform_region
+
+        m = mask_for({"shape": "ellipse", "cx": 50, "cy": 40, "rx": 30, "ry": 15, "angle": 0}, 100, 80)
+        area = int(m.sum() / 255)
+        self.assertAlmostEqual(area, 3.14159 * 30 * 15, delta=area * 0.1)
+        out = transform_region({"shape": "ellipse", "cx": 10, "cy": 10, "rx": 5, "ry": 3, "angle": 0}, 5, 0, 90, (0, 0))
+        self.assertEqual(out["angle"], 90.0)
+
+    def test_annulus_sector(self):
+        from apps.vision.tools.roi import mask_for
+
+        sector = mask_for({"shape": "annulus", "cx": 50, "cy": 40, "r_inner": 10, "r_outer": 30, "a0": 0, "a1": 90}, 100, 80)
+        full = mask_for({"shape": "annulus", "cx": 50, "cy": 40, "r_inner": 10, "r_outer": 30}, 100, 80)
+        self.assertAlmostEqual(sector.sum() / full.sum(), 0.25, delta=0.05)
+
+    def test_point_and_polyline(self):
+        from apps.vision.tools.roi import bounding_rect, mask_for, region_overlay
+
+        self.assertEqual(bounding_rect({"shape": "point", "x": 5, "y": 6}, 100, 80), (5, 6, 1, 1))
+        m = mask_for({"shape": "polyline", "points": [[0, 0], [50, 0], [50, 40]]}, 100, 80)
+        self.assertAlmostEqual(int(m.sum() / 255), 90, delta=3)
+        self.assertEqual(region_overlay({"shape": "point", "x": 1, "y": 2})["kind"], "point")
+        self.assertEqual(region_overlay({"shape": "ellipse", "cx": 5, "cy": 5, "rx": 3, "ry": 2})["kind"], "polygon")
+
+    def test_intensity_point_roi(self):
+        img = np.zeros((20, 20), np.uint8)
+        img[7, 9] = 137
+        r = run_tool("intensity", img, {"roi": {"shape": "point", "x": 9, "y": 7}})
+        self.assertEqual(r.outputs["mean"], 137.0)
+        self.assertEqual(r.outputs["pixels"], 1)

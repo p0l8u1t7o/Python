@@ -14,7 +14,7 @@ from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolE
 from apps.vision.tools.builtin.locate import read_asset_image, to_gray
 from apps.vision.tools.roi import crop, region_overlay
 
-ROI_SHAPES = ["rect", "rotated_rect", "circle", "annulus", "polygon"]
+ROI_SHAPES = ["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon"]
 
 
 def _binarize(gray: np.ndarray, method: str, threshold: float, polarity: str) -> np.ndarray:
@@ -113,6 +113,24 @@ def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0,
     return blobs, kept
 
 
+def _watershed_split(mask: np.ndarray) -> np.ndarray:
+    """距離轉換＋分水嶺把黏連粒子切開（NI Vision separate touching particles 對照）。"""
+    dist = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+    if dist.max() <= 0:
+        return mask
+    _, peaks = cv2.threshold(dist, 0.5 * float(dist.max()), 255, cv2.THRESH_BINARY)
+    peaks = peaks.astype(np.uint8)
+    n, markers = cv2.connectedComponents(peaks)
+    if n <= 2:  # 只有一顆種子：切不開，原樣返回
+        return mask
+    markers = markers + 1
+    markers[(mask > 0) & (peaks == 0)] = 0
+    cv2.watershed(cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR), markers)
+    out = mask.copy()
+    out[markers == -1] = 0
+    return out
+
+
 class BlobTool(Tool):
     key = "blob"
     label = "Blob 分析"
@@ -133,6 +151,7 @@ class BlobTool(Tool):
         Param("sort_by", "排序", kind="select", default="area", options=[
             {"value": "area", "label": "面積（大→小）"}, {"value": "x", "label": "X（左→右）"}, {"value": "y", "label": "Y（上→下）"}, {"value": "circularity", "label": "圓形度（高→低）"},
         ]),
+        Param("separate", "分離黏連粒子", kind="boolean", default=False, group="進階", help_text="距離轉換＋分水嶺把黏在一起的粒子切開再量測（NI Vision 的 separate touching particles）。"),
         Param("fill_holes", "填滿孔洞", kind="boolean", default=False, group="進階"),
         Param("external_only", "只取最外層輪廓", kind="boolean", default=True, group="進階", help_text="關閉時面積會扣掉孔洞。"),
         Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定", help_text="找到的 blob 少於此值判 NG。"),
@@ -157,6 +176,8 @@ class BlobTool(Tool):
         mask = _binarize(np.ascontiguousarray(c.image), ctx.param("threshold_method", "otsu"), ctx.number("threshold", 128), polarity)
         if c.mask is not None:
             mask = cv2.bitwise_and(mask, c.mask)
+        if ctx.flag("separate"):
+            mask = _watershed_split(mask)
         blobs, contours = analyze_blobs(
             mask, min_area=ctx.number("min_area", 50), max_area=ctx.number("max_area", 0),
             min_circularity=ctx.number("min_circularity", 0), external_only=ctx.flag("external_only", True), fill_holes=ctx.flag("fill_holes"),
@@ -169,10 +190,20 @@ class BlobTool(Tool):
         # 換回全圖座標
         offset = np.array([c.x0, c.y0], dtype=np.int32)
         full_contours = [cnt + offset for cnt in contours]
-        for b in blobs:
+        for b, cnt in zip(blobs, full_contours):
             b["cx"] += c.x0
             b["cy"] += c.y0
             b["bbox"] = [b["bbox"][0] + c.x0, b["bbox"][1] + c.y0, b["bbox"][2], b["bbox"][3]]
+            # NI 粒子量測對照：周長／方向／伸長比（fitEllipse 需要至少 5 點）
+            b["perimeter"] = round(float(cv2.arcLength(cnt, True)), 2)
+            if len(cnt) >= 5:
+                _, (d1, d2), ang = cv2.fitEllipse(cnt)
+                minor = min(d1, d2)
+                b["orientation"] = round(float(ang), 2)
+                b["elongation"] = round(float(max(d1, d2) / minor), 3) if minor > 0 else 0.0
+            else:
+                b["orientation"] = 0.0
+                b["elongation"] = 1.0
         out_mask = np.zeros(gray.shape, dtype=np.uint8)
         if full_contours:
             cv2.drawContours(out_mask, full_contours, -1, 255, -1)

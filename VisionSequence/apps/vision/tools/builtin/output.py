@@ -88,6 +88,7 @@ class OutputValueTool(Tool):
 
 class SaveImageTool(Tool):
     key = "save_image"
+    accepts = ("u8", "u16", "f32")  # 16-bit PNG/TIFF 原樣存檔
     label = "存檔"
     description = "把影像存到資料夾（依判定 OK/NG 分子資料夾可選）。檔名含時間戳與 run id。"
     category = "output"

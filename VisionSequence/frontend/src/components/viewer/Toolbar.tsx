@@ -5,7 +5,7 @@
  */
 import type { RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
+import { Crosshair, Spline, Egg,
   Circle,
   CircleDot,
   Grid3x3,
@@ -47,9 +47,12 @@ const SHAPE_ICON: Record<RoiShape, typeof Circle> = {
   rect: RectangleHorizontal,
   rotated_rect: RotateCw,
   circle: Circle,
+  ellipse: Egg,
   annulus: CircleDot,
   polygon: Pentagon,
+  polyline: Spline,
   line: Slash,
+  point: Crosshair,
 }
 
 const btn =

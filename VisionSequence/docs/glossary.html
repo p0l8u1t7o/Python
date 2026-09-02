@@ -167,6 +167,8 @@
 <tr><td>DL 實例分割</td><td>dl_instance</td><td>DL 類工具：YOLO-seg 風格 ONNX 推論（letterbox、NMS、mask 合成），輸出每個實例的輪廓／類別／分數；可在深度學習頁教導</td></tr>
 <tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
 <tr><td>主題風格</td><td>Theme（<code>ThemeProvider</code>／<code>UserPref</code>）</td><td>light／dark／cyber（Temp/Style.md 的 Cyberpunk：霓虹綠、銳角、掃描線只鋪在頁面底與側欄——不覆疊影像區，全走 CSS 變數 tokens）／system；localStorage＋登入者回寫 /auth/prefs、/auth/me 帶回跨裝置套用</td></tr>
+<tr><td>影像位深</td><td>Depth（<code>tools/imgfmt.py</code>／<code>Tool.accepts</code>）</td><td>u8／u16／f32（NI 的 U8/I16/SGL/RGB U64 對照）；宣告外位深進工具時自動正規化 u8，顯式轉換用「位深轉換」工具；讀檔 IMREAD_UNCHANGED 保留 16-bit</td></tr>
+<tr><td>NI Vision 對照</td><td>docs/ni-vision.html</td><td>ROI 工具種類（含新 ellipse/point/polyline/annulus 扇形）、位深設計、NI 檢測工具對應表（lut/filter/fft_filter/convert_depth/warp_perspective/line_profile/color_stats/geometry 等新工具）與刻意不做項</td></tr>
 <tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>
 <tr><td>匯出 / 匯入</td><td>Export / Import（<code>.flow.json</code>）</td><td>匯出：穩定序列化的流程檔（可進 git）；匯入：依檔內名稱 upsert，取像步驟的 <code>{SOURCE}</code> 佔位以選的來源取代；沒選來源時更新既有流程沿用原來源、新建流程留空</td></tr>
 </table>

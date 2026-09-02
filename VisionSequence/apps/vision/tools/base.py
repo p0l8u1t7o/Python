@@ -155,6 +155,8 @@ class ToolContext:
     grab: Callable[[str], np.ndarray | None]
     #: 是否為編輯器內的試跑（可保留更多除錯輸出）。
     preview: bool = False
+    #: 本工具宣告可吃的影像位深（Tool.accepts；image() 會把宣告外的位深自動正規化成 u8）。
+    depth: tuple[str, ...] = ("u8",)
     _params_cache: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
@@ -186,7 +188,12 @@ class ToolContext:
 
     def image(self, key: str = "image") -> np.ndarray | None:
         value = self.inputs.get(key)
-        return value if isinstance(value, np.ndarray) else None
+        if not isinstance(value, np.ndarray):
+            return None
+        # 位深中央接縫：工具沒宣告支援的位深（16-bit／浮點）自動正規化成 u8（新陣列，不動輸入）
+        from apps.vision.tools import imgfmt
+
+        return imgfmt.coerce(value, self.depth)
 
     def require_image(self, key: str = "image") -> np.ndarray:
         image = self.image(key)
@@ -268,6 +275,10 @@ class Tool:
     version = 1
     #: False = 資料夾外掛掃描（apps.core.plugins）時不掛載這個類別。
     enabled = True
+
+    #: 可吃的影像位深（imgfmt.DEPTHS 子集合）。預設只吃 u8：其他位深進來會被自動
+    #: 正規化（工具永遠不炸）；能原生處理 16-bit／浮點的工具自行宣告放寬。
+    accepts: tuple[str, ...] = ("u8",)
 
     def execute(self, ctx: ToolContext) -> Result:  # pragma: no cover - 抽象
         raise NotImplementedError

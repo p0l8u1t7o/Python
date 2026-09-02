@@ -15,6 +15,7 @@ def to_gray(image: np.ndarray) -> np.ndarray:
 
 class GrayscaleTool(Tool):
     key = "grayscale"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "灰階"
     description = "彩色轉灰階；已是灰階則直通。"
     icon = "Contrast"
@@ -25,6 +26,7 @@ class GrayscaleTool(Tool):
 
 class CropTool(Tool):
     key = "crop"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "裁切 ROI"
     description = "裁出區域成為新影像（旋轉矩形會擺正）。下游工具在小圖上跑會快很多。"
     icon = "Crop"
@@ -49,6 +51,7 @@ class CropTool(Tool):
 
 class BlurTool(Tool):
     key = "blur"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "平滑 / 去雜訊"
     description = "高斯、中值、雙邊或均值濾波。"
     icon = "Droplets"
@@ -87,6 +90,7 @@ class ThresholdTool(Tool):
     params = [
         Param("method", "方法", kind="select", default="otsu", options=[
             {"value": "fixed", "label": "固定門檻"}, {"value": "otsu", "label": "Otsu 自動"},
+            {"value": "triangle", "label": "Triangle 自動"},
             {"value": "adaptive_mean", "label": "自適應（均值）"}, {"value": "adaptive_gaussian", "label": "自適應（高斯）"},
             {"value": "range", "label": "灰階範圍"},
         ]),
@@ -106,6 +110,8 @@ class ThresholdTool(Tool):
         used = 0.0
         if method == "otsu":
             used, out = cv2.threshold(gray, 0, 255, (cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY) | cv2.THRESH_OTSU)
+        elif method == "triangle":
+            used, out = cv2.threshold(gray, 0, 255, (cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY) | cv2.THRESH_TRIANGLE)
         elif method in ("adaptive_mean", "adaptive_gaussian"):
             b = max(3, ctx.integer("block", 31))
             if b % 2 == 0:
@@ -123,6 +129,7 @@ class ThresholdTool(Tool):
 
 class MorphologyTool(Tool):
     key = "morphology"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "形態學"
     description = "侵蝕、膨脹、開、閉、梯度、頂帽、黑帽。"
     icon = "Shapes"
@@ -155,6 +162,7 @@ class MorphologyTool(Tool):
 
 class ResizeTool(Tool):
     key = "resize"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "縮放"
     description = "依比例或指定尺寸縮放；大圖先縮小再處理是最有效的加速。"
     icon = "Scaling"
@@ -270,6 +278,7 @@ class HistogramEqTool(Tool):
 
 class ArithmeticTool(Tool):
     key = "arithmetic"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "影像運算"
     description = "兩張影像相加／相減／差異／AND／OR，或單張的反相、亮度對比調整。"
     icon = "Calculator"
@@ -305,6 +314,7 @@ class ArithmeticTool(Tool):
 
 class MaskApplyTool(Tool):
     key = "apply_mask"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "套用遮罩"
     description = "只保留遮罩為 255 的像素（其餘設為指定灰階）。"
     icon = "Layers"
@@ -358,6 +368,7 @@ class EdgeTool(Tool):
 
 class RotateFlipTool(Tool):
     key = "rotate_flip"
+    accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "旋轉 / 翻轉"
     description = "90 度倍數旋轉、任意角度旋轉、水平／垂直翻轉。"
     icon = "RotateCw"
@@ -397,7 +408,247 @@ class RotateFlipTool(Tool):
         return Result(outputs={"image": image})
 
 
+class ConvertDepthTool(Tool):
+    key = "convert_depth"
+    label = "位深轉換"
+    description = "8 位元／16 位元／浮點影像互轉（NI Vision 的 U8/I16/SGL 對照）。轉 8 位元可選右移（線性、可預期）或 min-max 拉伸（吃滿動態範圍）。"
+    category = "preprocess"
+    icon = "Binary"
+    accepts = ("u8", "u16", "f32")
+    params = [
+        Param("to", "目標位深", kind="select", default="u8", options=[
+            {"value": "u8", "label": "8 位元（U8）"}, {"value": "u16", "label": "16 位元（U16）"}, {"value": "f32", "label": "浮點（SGL）"},
+        ]),
+        Param("scale", "轉 8 位元方式", kind="select", default="shift", options=[
+            {"value": "shift", "label": "等比例（16-bit 右移 8）"}, {"value": "minmax", "label": "min-max 拉伸"}, {"value": "clip", "label": "直接裁切"},
+        ], visible_when={"param": "to", "in": ["u8"]}),
+    ]
+    inputs = [Port("image", "影像", "image")]
+    outputs = [Port("image", "影像", "image"), Port("depth", "位深", "string")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        from apps.vision.tools import imgfmt
+
+        image = ctx.require_image()
+        to = ctx.param("to", "u8")
+        if to == "u8":
+            scale = ctx.param("scale", "shift")
+            if image.dtype == np.uint8:
+                out = image
+            elif scale == "clip":
+                out = np.clip(image, 0, 255).astype(np.uint8)
+            elif scale == "minmax":
+                x = image.astype(np.float32)
+                lo, hi = float(np.nanmin(x)), float(np.nanmax(x))
+                out = np.clip((x - lo) * (255.0 / (hi - lo) if hi > lo else 1.0), 0, 255).astype(np.uint8)
+            else:
+                out = imgfmt.normalize_u8(image)
+        elif to == "u16":
+            if image.dtype == np.uint16:
+                out = image
+            elif image.dtype == np.uint8:
+                out = image.astype(np.uint16) << 8
+            else:
+                x = image.astype(np.float32)
+                lo, hi = float(np.nanmin(x)), float(np.nanmax(x))
+                out = np.clip((x - lo) * (65535.0 / (hi - lo) if hi > lo else 1.0), 0, 65535).astype(np.uint16)
+        else:
+            out = image.astype(np.float32)
+        return Result(outputs={"image": out, "depth": imgfmt.depth_of(out)}, message=f"→ {imgfmt.depth_of(out)}")
+
+
+class LutTool(Tool):
+    key = "lut"
+    label = "查表轉換（LUT）"
+    description = "NI Vision 的 Lookup Table 對照：線性（亮度／對比）、Gamma（次方）、對數、指數、平方、開根號、反相；彩色逐通道套用。"
+    category = "preprocess"
+    icon = "Spline"
+    params = [
+        Param("mode", "轉換", kind="select", default="linear", options=[
+            {"value": "linear", "label": "線性（亮度／對比）"}, {"value": "power", "label": "Gamma（次方）"},
+            {"value": "log", "label": "對數（暗部展開）"}, {"value": "exp", "label": "指數（亮部展開）"},
+            {"value": "sqrt", "label": "開根號"}, {"value": "square", "label": "平方"}, {"value": "invert", "label": "反相"},
+        ]),
+        Param("brightness", "亮度", kind="range", default=0, minimum=-100, maximum=100, step=1, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
+        Param("contrast", "對比", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.05, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
+        Param("gamma", "Gamma", kind="range", default=1.0, minimum=0.1, maximum=5.0, step=0.05, visible_when={"param": "mode", "in": ["power"]}, teach=True),
+    ]
+    inputs = [Port("image", "影像", "image")]
+    outputs = [Port("image", "影像", "image")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        mode = ctx.param("mode", "linear")
+        x = np.arange(256, dtype=np.float32)
+        if mode == "linear":
+            table = (x - 128.0) * ctx.number("contrast", 1.0) + 128.0 + ctx.number("brightness", 0.0)
+        elif mode == "power":
+            table = np.power(x / 255.0, ctx.number("gamma", 1.0)) * 255.0
+        elif mode == "log":
+            table = np.log1p(x) * (255.0 / np.log1p(255.0))
+        elif mode == "exp":
+            table = (np.expm1(x / 255.0 * 4.0)) * (255.0 / np.expm1(4.0))
+        elif mode == "sqrt":
+            table = np.sqrt(x / 255.0) * 255.0
+        elif mode == "square":
+            table = np.square(x / 255.0) * 255.0
+        else:
+            table = 255.0 - x
+        lut = np.clip(table, 0, 255).astype(np.uint8)
+        return Result(outputs={"image": cv2.LUT(image, lut)}, message=mode)
+
+
+class FilterTool(Tool):
+    key = "filter"
+    label = "卷積濾波"
+    description = "NI Vision 的 Convolution 濾波對照：銳利化、Laplacian、Sobel／Prewitt 梯度、高通、浮雕，或自訂 3×3 kernel（JSON）。平滑用「模糊」工具。"
+    category = "preprocess"
+    icon = "Grid3x3"
+    params = [
+        Param("method", "方法", kind="select", default="sharpen", options=[
+            {"value": "sharpen", "label": "銳利化"}, {"value": "laplacian", "label": "Laplacian"},
+            {"value": "gradient", "label": "梯度強度（Sobel）"}, {"value": "sobel_x", "label": "Sobel X"}, {"value": "sobel_y", "label": "Sobel Y"},
+            {"value": "prewitt", "label": "Prewitt 梯度"}, {"value": "highpass", "label": "高通"}, {"value": "emboss", "label": "浮雕"},
+            {"value": "custom", "label": "自訂 3×3"},
+        ]),
+        Param("strength", "強度", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.1, visible_when={"param": "method", "in": ["sharpen"]}, teach=True),
+        Param("kernel", "自訂 kernel", kind="json", default=[[0, -1, 0], [-1, 5, -1], [0, -1, 0]], visible_when={"param": "method", "in": ["custom"]}, help_text="3×3 數字陣列。"),
+    ]
+    inputs = [Port("image", "影像", "image")]
+    outputs = [Port("image", "影像", "image")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        method = ctx.param("method", "sharpen")
+        if method == "sharpen":
+            k = float(ctx.number("strength", 1.0))
+            kernel = np.array([[0, -k, 0], [-k, 1 + 4 * k, -k], [0, -k, 0]], dtype=np.float32)
+            out = cv2.filter2D(image, -1, kernel)
+        elif method == "laplacian":
+            out = cv2.convertScaleAbs(cv2.Laplacian(to_gray(image), cv2.CV_32F, ksize=3))
+        elif method in ("gradient", "sobel_x", "sobel_y"):
+            g = to_gray(image)
+            gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
+            if method == "sobel_x":
+                out = cv2.convertScaleAbs(gx)
+            elif method == "sobel_y":
+                out = cv2.convertScaleAbs(gy)
+            else:
+                out = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
+        elif method == "prewitt":
+            g = to_gray(image).astype(np.float32)
+            kx = np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]], dtype=np.float32)
+            gx = cv2.filter2D(g, -1, kx)
+            gy = cv2.filter2D(g, -1, kx.T)
+            out = cv2.convertScaleAbs(cv2.magnitude(gx, gy))
+        elif method == "highpass":
+            g = to_gray(image)
+            out = cv2.convertScaleAbs(g.astype(np.float32) - cv2.GaussianBlur(g, (0, 0), 3).astype(np.float32) + 128.0)
+        elif method == "emboss":
+            kernel = np.array([[-2, -1, 0], [-1, 1, 1], [0, 1, 2]], dtype=np.float32)
+            out = cv2.filter2D(to_gray(image), -1, kernel)
+        else:
+            raw = ctx.param("kernel")
+            try:
+                kernel = np.asarray(raw, dtype=np.float32)
+                if kernel.shape != (3, 3):
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise ToolError("自訂 kernel 必須是 3×3 數字陣列") from None
+            out = cv2.filter2D(image, -1, kernel)
+        return Result(outputs={"image": out}, message=method)
+
+
+class FftFilterTool(Tool):
+    key = "fft_filter"
+    label = "頻域濾波（FFT）"
+    description = "NI Vision 的 FFT 濾波對照：低通去週期性紋理／雜訊、高通留邊緣，截斷（truncate）或高斯衰減（attenuate）。另輸出頻譜圖供檢視。"
+    category = "preprocess"
+    icon = "AudioWaveform"
+    heavy = True
+    accepts = ("u8", "u16", "f32")
+    params = [
+        Param("mode", "濾波", kind="select", default="lowpass", options=[
+            {"value": "lowpass", "label": "低通（保留大結構）"}, {"value": "highpass", "label": "高通（保留邊緣／細紋）"},
+        ]),
+        Param("style", "方式", kind="select", default="attenuate", options=[
+            {"value": "truncate", "label": "截斷"}, {"value": "attenuate", "label": "高斯衰減"},
+        ]),
+        Param("cutoff", "截止（半徑比例）", kind="range", default=0.1, minimum=0.01, maximum=1.0, step=0.01, teach=True),
+    ]
+    inputs = [Port("image", "影像", "image")]
+    outputs = [Port("image", "影像", "image"), Port("spectrum", "頻譜", "image")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        gray = to_gray(image)
+        x = gray.astype(np.float32)
+        f = np.fft.fftshift(np.fft.fft2(x))
+        h, w = x.shape
+        yy, xx = np.ogrid[:h, :w]
+        r = np.hypot(yy - h / 2.0, xx - w / 2.0) / (min(h, w) / 2.0)
+        cutoff = max(0.01, ctx.number("cutoff", 0.1))
+        if ctx.param("style", "attenuate") == "truncate":
+            mask = (r <= cutoff).astype(np.float32)
+        else:
+            mask = np.exp(-(r / cutoff) ** 2).astype(np.float32)
+        if ctx.param("mode", "lowpass") == "highpass":
+            mask = 1.0 - mask
+        out_f = np.fft.ifft2(np.fft.ifftshift(f * mask))
+        out = np.abs(out_f)
+        if gray.dtype == np.uint8:
+            out = np.clip(out, 0, 255).astype(np.uint8)
+        elif gray.dtype == np.uint16:
+            out = np.clip(out, 0, 65535).astype(np.uint16)
+        else:
+            out = out.astype(np.float32)
+        spectrum = np.log1p(np.abs(f))
+        spectrum = (spectrum / spectrum.max() * 255.0).astype(np.uint8) if spectrum.max() > 0 else np.zeros_like(gray, dtype=np.uint8)
+        return Result(outputs={"image": out, "spectrum": spectrum}, message=f"{ctx.param('mode', 'lowpass')} r={cutoff:g}")
+
+
+class WarpPerspectiveTool(Tool):
+    key = "warp_perspective"
+    label = "透視校正"
+    description = "把畫面上的四邊形區域攤平成矩形（NI Vision 透視校正的輕量版）：斜拍的板面／標籤校正後再量測。"
+    category = "preprocess"
+    icon = "Frame"
+    accepts = ("u8", "u16", "f32")
+    params = [
+        Param("roi", "來源四邊形", kind="roi", shapes=["polygon"], required=True, teach=True, help_text="畫 4 個點（多於 4 點取前 4 點）。"),
+        Param("width", "輸出寬", kind="number", default=0, minimum=0, help_text="0 = 依邊長自動。"),
+        Param("height", "輸出高", kind="number", default=0, minimum=0),
+    ]
+    inputs = [Port("image", "影像", "image")]
+    outputs = [Port("image", "影像", "image")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        region = ctx.roi()
+        pts = (region or {}).get("points") or []
+        if len(pts) < 4:
+            raise ToolError("透視校正需要 4 個點的多邊形 ROI")
+        src = np.array(pts[:4], dtype=np.float32)
+        # 依「左上、右上、右下、左下」排序（點可依任意順序畫）
+        c = src.mean(axis=0)
+        angles = np.arctan2(src[:, 1] - c[1], src[:, 0] - c[0])
+        src = src[np.argsort(angles)]
+        top = src[np.argsort(src[:, 1])][:2]
+        tl = top[np.argmin(top[:, 0])]
+        start = int(np.where((src == tl).all(axis=1))[0][0])
+        src = np.roll(src, -start, axis=0)
+        w_out = int(ctx.number("width", 0)) or int(round(max(np.linalg.norm(src[1] - src[0]), np.linalg.norm(src[2] - src[3]))))
+        h_out = int(ctx.number("height", 0)) or int(round(max(np.linalg.norm(src[3] - src[0]), np.linalg.norm(src[2] - src[1]))))
+        w_out, h_out = max(2, w_out), max(2, h_out)
+        dst = np.array([[0, 0], [w_out - 1, 0], [w_out - 1, h_out - 1], [0, h_out - 1]], dtype=np.float32)
+        matrix = cv2.getPerspectiveTransform(src, dst)
+        out = cv2.warpPerspective(image, matrix, (w_out, h_out))
+        return Result(outputs={"image": out}, overlays=[region_overlay(region, label="src")], message=f"{w_out}×{h_out}")
+
+
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
     ColorConvertTool(), ColorRangeTool(), HistogramEqTool(), ArithmeticTool(), MaskApplyTool(), EdgeTool(), RotateFlipTool(),
+    ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(),
 ]

@@ -82,15 +82,18 @@ export interface ToolCatalogue {
 }
 
 // ---- ROI（與後端 apps/vision/tools/roi.py 一致） ----
-export type RoiShape = 'rect' | 'rotated_rect' | 'circle' | 'annulus' | 'polygon' | 'line'
+export type RoiShape = 'rect' | 'rotated_rect' | 'circle' | 'ellipse' | 'annulus' | 'polygon' | 'polyline' | 'line' | 'point'
 
 export type Region =
   | { shape: 'rect'; x: number; y: number; w: number; h: number }
   | { shape: 'rotated_rect'; cx: number; cy: number; w: number; h: number; angle: number }
   | { shape: 'circle'; cx: number; cy: number; r: number }
-  | { shape: 'annulus'; cx: number; cy: number; r_inner: number; r_outer: number }
+  | { shape: 'ellipse'; cx: number; cy: number; rx: number; ry: number; angle: number }
+  | { shape: 'annulus'; cx: number; cy: number; r_inner: number; r_outer: number; a0?: number; a1?: number }
   | { shape: 'polygon'; points: [number, number][] }
+  | { shape: 'polyline'; points: [number, number][] }
   | { shape: 'line'; x1: number; y1: number; x2: number; y2: number }
+  | { shape: 'point'; x: number; y: number }
 
 // ---- Overlay（工具回傳、畫在輸入影像座標上） ----
 export type Overlay = {

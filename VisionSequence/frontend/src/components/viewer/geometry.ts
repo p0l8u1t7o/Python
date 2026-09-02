@@ -61,8 +61,18 @@ export function regionBounds(r: Region): Bounds {
       return { x: r.cx - r.r, y: r.cy - r.r, w: r.r * 2, h: r.r * 2 }
     case 'annulus':
       return { x: r.cx - r.r_outer, y: r.cy - r.r_outer, w: r.r_outer * 2, h: r.r_outer * 2 }
+    case 'ellipse': {
+      const c = Math.abs(Math.cos(r.angle * DEG))
+      const s = Math.abs(Math.sin(r.angle * DEG))
+      const ew = r.rx * c + r.ry * s
+      const eh = r.rx * s + r.ry * c
+      return { x: r.cx - ew, y: r.cy - eh, w: ew * 2, h: eh * 2 }
+    }
     case 'polygon':
+    case 'polyline':
       return pointsBounds(r.points)
+    case 'point':
+      return { x: r.x, y: r.y, w: 1, h: 1 }
     case 'line':
       return pointsBounds([
         [r.x1, r.y1],
@@ -107,6 +117,12 @@ export function convertRegion(r: Region, shape: RoiShape): Region {
         ],
       }
     }
+    case 'ellipse':
+      return { shape: 'ellipse', cx, cy, rx: w / 2, ry: h / 2, angle: 0 }
+    case 'polyline':
+      return { shape: 'polyline', points: [[b.x, cy], [b.x + w, cy]] }
+    case 'point':
+      return { shape: 'point', x: cx, y: cy }
     case 'line':
       return { shape: 'line', x1: b.x, y1: cy, x2: b.x + w, y2: cy }
   }
@@ -138,6 +154,12 @@ export function regionFromDrag(shape: RoiShape, x0: number, y0: number, x1: numb
           [x, y + h],
         ],
       }
+    case 'ellipse':
+      return { shape: 'ellipse', cx: x + w / 2, cy: y + h / 2, rx: Math.max(w / 2, 1), ry: Math.max(h / 2, 1), angle: 0 }
+    case 'polyline':
+      return { shape: 'polyline', points: [[x0, y0], [x1, y1]] }
+    case 'point':
+      return { shape: 'point', x: x1, y: y1 }
     case 'line':
       return { shape: 'line', x1: x0, y1: y0, x2: x1, y2: y1 }
   }
@@ -150,9 +172,13 @@ export function translateRegion(r: Region, dx: number, dy: number): Region {
     case 'rotated_rect':
     case 'circle':
     case 'annulus':
+    case 'ellipse':
       return { ...r, cx: r.cx + dx, cy: r.cy + dy }
     case 'polygon':
+    case 'polyline':
       return { ...r, points: r.points.map(([x, y]) => [x + dx, y + dy]) }
+    case 'point':
+      return { ...r, x: r.x + dx, y: r.y + dy }
     case 'line':
       return { ...r, x1: r.x1 + dx, y1: r.y1 + dy, x2: r.x2 + dx, y2: r.y2 + dy }
   }
@@ -193,8 +219,17 @@ export function clampRegion(r: Region, W: number, H: number): Region {
         r_outer: outer,
       }
     }
+    case 'ellipse': {
+      const rx = Math.min(r.rx, W / 2)
+      const ry = Math.min(r.ry, H / 2)
+      return { ...r, rx, ry, cx: clamp(r.cx, rx, W - rx), cy: clamp(r.cy, ry, H - ry) }
+    }
     case 'polygon':
       return { shape: 'polygon', points: r.points.map(([x, y]) => [clamp(x, 0, W), clamp(y, 0, H)]) }
+    case 'polyline':
+      return { shape: 'polyline', points: r.points.map(([x, y]) => [clamp(x, 0, W), clamp(y, 0, H)]) }
+    case 'point':
+      return { shape: 'point', x: clamp(r.x, 0, W - 1), y: clamp(r.y, 0, H - 1) }
     case 'line':
       return {
         shape: 'line',
@@ -226,15 +261,21 @@ export function roundRegion(r: Region): Region {
     case 'annulus': {
       const outer = Math.max(2, R(r.r_outer))
       return {
-        shape: 'annulus',
+        ...r,
         cx: R(r.cx),
         cy: R(r.cy),
         r_inner: clamp(R(r.r_inner), 0, outer - 1),
         r_outer: outer,
       }
     }
+    case 'ellipse':
+      return { shape: 'ellipse', cx: R(r.cx), cy: R(r.cy), rx: Math.max(1, R(r.rx)), ry: Math.max(1, R(r.ry)), angle: Math.round(normalizeAngle(r.angle) * 10) / 10 }
     case 'polygon':
       return { shape: 'polygon', points: r.points.map(([x, y]) => [R(x), R(y)]) }
+    case 'polyline':
+      return { shape: 'polyline', points: r.points.map(([x, y]) => [R(x), R(y)]) }
+    case 'point':
+      return { shape: 'point', x: R(r.x), y: R(r.y) }
     case 'line':
       return { shape: 'line', x1: R(r.x1), y1: R(r.y1), x2: R(r.x2), y2: R(r.y2) }
   }

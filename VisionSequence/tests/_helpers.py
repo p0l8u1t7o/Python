@@ -26,6 +26,7 @@ def run_tool(key: str, image: np.ndarray | None = None, params: dict[str, Any] |
         run_id="test", flow_id=1, node={"id": key, "type": key, "params": params or {}}, inputs=ins,
         context=context if context is not None else {}, moment=0.0, log=lambda *a, **k: None,
         asset_path=lambda aid: (assets or {}).get(str(aid)), grab=lambda sid: None, preview=True,
+        depth=getattr(tool, "accepts", ("u8",)),
     )
     return tool.execute(ctx)
 

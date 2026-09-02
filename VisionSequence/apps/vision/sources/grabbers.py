@@ -22,7 +22,12 @@ def _read(path: str) -> np.ndarray | None:
         return None
     if data.size == 0:
         return None
-    return cv2.imdecode(data, cv2.IMREAD_UNCHANGED if path.lower().endswith((".tif", ".tiff")) else cv2.IMREAD_COLOR)
+    image = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)  # 16-bit PNG/TIFF、浮點 TIFF 原樣保留
+    if image is None:
+        return None
+    from apps.vision.tools.imgfmt import strip_alpha
+
+    return strip_alpha(image)
 
 
 class Grabber:

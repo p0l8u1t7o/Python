@@ -259,6 +259,7 @@ def execute(
             node=cn.node,
             inputs=inputs,
             context=context,
+            depth=getattr(cn.tool, "accepts", ("u8",)),
             moment=time.time(),
             log=_log,
             asset_path=asset_path,

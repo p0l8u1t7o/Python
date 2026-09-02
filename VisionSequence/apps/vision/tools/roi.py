@@ -4,9 +4,12 @@ region dict 形狀：
   {"shape": "rect", "x", "y", "w", "h"}
   {"shape": "rotated_rect", "cx", "cy", "w", "h", "angle"}   angle 為度，順時針
   {"shape": "circle", "cx", "cy", "r"}
-  {"shape": "annulus", "cx", "cy", "r_inner", "r_outer"}
+  {"shape": "annulus", "cx", "cy", "r_inner", "r_outer"[, "a0", "a1"]}   a0/a1 為扇形起迄角（度；省略＝整圈）
+  {"shape": "ellipse", "cx", "cy", "rx", "ry"[, "angle"]}    NI 的 Oval（含旋轉）
   {"shape": "polygon", "points": [[x, y], ...]}
+  {"shape": "polyline", "points": [[x, y], ...]}             NI 的 Broken Line（不閉合）
   {"shape": "line", "x1", "y1", "x2", "y2"}
+  {"shape": "point", "x", "y"}
 所有工具都用這裡的 helper，座標慣例只在一處。
 """
 
@@ -58,9 +61,16 @@ def bounding_rect(region: dict[str, Any], w: int, h: int) -> tuple[int, int, int
     elif shape == "annulus":
         r = float(region["r_outer"])
         x, y, rw, rh = region["cx"] - r, region["cy"] - r, 2 * r, 2 * r
-    elif shape == "polygon":
+    elif shape == "ellipse":
+        pts = cv2.ellipse2Poly((int(round(region["cx"])), int(round(region["cy"]))),
+                               (max(1, int(round(region["rx"]))), max(1, int(round(region["ry"])))),
+                               int(round(float(region.get("angle", 0)))), 0, 360, 10)
+        x, y, rw, rh = cv2.boundingRect(pts)
+    elif shape in ("polygon", "polyline"):
         pts = np.asarray(region["points"], dtype=np.float32)
         x, y, rw, rh = cv2.boundingRect(pts)
+    elif shape == "point":
+        x, y, rw, rh = float(region["x"]), float(region["y"]), 1, 1
     elif shape == "line":
         xs = [region["x1"], region["x2"]]
         ys = [region["y1"], region["y2"]]
@@ -91,10 +101,26 @@ def mask_for(region: dict[str, Any], w: int, h: int, *, offset: tuple[int, int] 
         cv2.circle(mask, (int(round(region["cx"])) - ox, int(round(region["cy"])) - oy), int(round(region["r"])), 255, -1)
     elif shape == "annulus":
         c = (int(round(region["cx"])) - ox, int(round(region["cy"])) - oy)
-        cv2.circle(mask, c, int(round(region["r_outer"])), 255, -1)
+        r_out = int(round(region["r_outer"]))
+        a0, a1 = region.get("a0"), region.get("a1")
+        if a0 is None or a1 is None:
+            cv2.circle(mask, c, r_out, 255, -1)
+        else:
+            # 扇形環（NI annulus 的 start/end angle）：外圓 pie 填滿再挖內圓
+            cv2.ellipse(mask, c, (r_out, r_out), 0, float(a0), float(a1), 255, -1)
         cv2.circle(mask, c, int(round(region["r_inner"])), 0, -1)
+    elif shape == "ellipse":
+        cv2.ellipse(mask, (int(round(region["cx"])) - ox, int(round(region["cy"])) - oy),
+                    (max(1, int(round(region["rx"]))), max(1, int(round(region["ry"])))),
+                    float(region.get("angle", 0)), 0, 360, 255, -1)
     elif shape == "polygon":
         cv2.fillPoly(mask, [np.round(np.asarray(region["points"]) - np.array([ox, oy])).astype(np.int32)], 255)
+    elif shape == "polyline":
+        cv2.polylines(mask, [np.round(np.asarray(region["points"]) - np.array([ox, oy])).astype(np.int32)], False, 255, 1)
+    elif shape == "point":
+        px, py = int(round(region["x"])) - ox, int(round(region["y"])) - oy
+        if 0 <= py < h and 0 <= px < w:
+            mask[py, px] = 255
     elif shape == "line":
         cv2.line(mask, (int(region["x1"]) - ox, int(region["y1"]) - oy), (int(region["x2"]) - ox, int(region["y2"]) - oy), 255, 1)
     return mask
@@ -144,8 +170,18 @@ def region_overlay(region: dict[str, Any], color: str = "#38bdf8", label: str = 
         return {"kind": "circle", "cx": region["cx"], "cy": region["cy"], "r": region["r"], **base}
     if shape == "annulus":
         return {"kind": "annulus", "cx": region["cx"], "cy": region["cy"], "r_inner": region["r_inner"], "r_outer": region["r_outer"], **base}
+    if shape == "ellipse":
+        # overlay 渲染器沒有 ellipse kind：以 36 邊形近似（顯示層足夠）
+        pts = cv2.ellipse2Poly((int(round(region["cx"])), int(round(region["cy"]))),
+                               (max(1, int(round(region["rx"]))), max(1, int(round(region["ry"])))),
+                               int(round(float(region.get("angle", 0)))), 0, 360, 10)
+        return {"kind": "polygon", "points": pts.tolist(), **base}
     if shape == "polygon":
         return {"kind": "polygon", "points": region["points"], **base}
+    if shape == "polyline":
+        return {"kind": "polyline", "points": region["points"], **base}
+    if shape == "point":
+        return {"kind": "point", "x": region["x"], "y": region["y"], **base}
     if shape == "line":
         return {"kind": "line", "x1": region["x1"], "y1": region["y1"], "x2": region["x2"], "y2": region["y2"], **base}
     return {"kind": "text", "x": 0, "y": 0, "text": f"unknown roi {shape}", **base}
@@ -155,9 +191,11 @@ def region_center(region: dict[str, Any]) -> tuple[float, float]:
     shape = region.get("shape")
     if shape == "rect":
         return region["x"] + region["w"] / 2, region["y"] + region["h"] / 2
-    if shape in ("rotated_rect", "circle", "annulus"):
+    if shape in ("rotated_rect", "circle", "annulus", "ellipse"):
         return float(region["cx"]), float(region["cy"])
-    if shape == "polygon":
+    if shape == "point":
+        return float(region["x"]), float(region["y"])
+    if shape in ("polygon", "polyline"):
         pts = np.asarray(region["points"], dtype=np.float64)
         return float(pts[:, 0].mean()), float(pts[:, 1].mean())
     if shape == "line":
@@ -186,13 +224,16 @@ def transform_region(region: dict[str, Any], dx: float, dy: float, dtheta: float
         else:
             out["x"] = region["x"] + dx
             out["y"] = region["y"] + dy
-    elif shape in ("rotated_rect", "circle", "annulus"):
+    elif shape in ("rotated_rect", "circle", "annulus", "ellipse"):
         cx, cy = rot(region["cx"], region["cy"])
         out["cx"], out["cy"] = cx + dx, cy + dy
-        if shape == "rotated_rect":
+        if shape in ("rotated_rect", "ellipse"):
             out["angle"] = float(region.get("angle", 0)) + dtheta
-    elif shape == "polygon":
+    elif shape in ("polygon", "polyline"):
         out["points"] = [[px + dx, py + dy] for px, py in (rot(*p) for p in region["points"])]
+    elif shape == "point":
+        x, y = rot(region["x"], region["y"])
+        out.update({"x": x + dx, "y": y + dy})
     elif shape == "line":
         x1, y1 = rot(region["x1"], region["y1"])
         x2, y2 = rot(region["x2"], region["y2"])

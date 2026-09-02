@@ -265,7 +265,7 @@ class IntensityTool(Tool):
     description = "區域內的灰階平均、標準差、最小、最大、中位數。"
     category = "measure"
     icon = "Sun"
-    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon"], help_text="留空則整張影像。")]
+    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "point"], help_text="留空則整張影像；點＝單一像素（NI light meter point）。")]
     inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
     outputs = [Port("mean", "平均", "number"), Port("std", "標準差", "number"), Port("min", "最小", "number"), Port("max", "最大", "number"), Port("median", "中位數", "number"), Port("pixels", "像素數", "number")]
 
@@ -892,7 +892,184 @@ class ToleranceJudgeTool(Tool):
         )
 
 
+
+
+class LineProfileTool(Tool):
+    key = "line_profile"
+    label = "線剖面"
+    description = "NI Vision 的 Line Profile 對照：沿著線（或折線）取灰階值，輸出剖面序列與統計；抓斷差、亮暗帶、掃描線缺陷。"
+    category = "measure"
+    icon = "Activity"
+    accepts = ("u8", "u16", "f32")
+    params = [
+        Param("roi", "線", kind="roi", shapes=["line", "polyline"], required=True, teach=True),
+        Param("samples", "取樣點數", kind="number", default=0, minimum=0, maximum=10000, help_text="0 = 每像素一點。"),
+    ]
+    inputs = [Port("image", "影像", "image"), Port("roi", "線（動態）", "region", required=False)]
+    outputs = [
+        Port("values", "剖面值", "list"), Port("mean", "平均", "number"), Port("std", "標準差", "number"),
+        Port("min", "最小", "number"), Port("max", "最大", "number"), Port("length", "長度", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        region = ctx.roi()
+        if not region:
+            raise ToolError("需要線（line／polyline）ROI")
+        if region.get("shape") == "line":
+            pts = [[float(region["x1"]), float(region["y1"])], [float(region["x2"]), float(region["y2"])]]
+        elif region.get("shape") in ("polyline", "polygon"):
+            pts = [[float(x), float(y)] for x, y in (region.get("points") or [])]
+        else:
+            raise ToolError(f"線剖面不支援 '{region.get('shape')}' ROI")
+        if len(pts) < 2:
+            raise ToolError("至少要兩個點")
+        seg = np.diff(np.asarray(pts, dtype=np.float64), axis=0)
+        seg_len = np.hypot(seg[:, 0], seg[:, 1])
+        total = float(seg_len.sum())
+        if total < 1:
+            raise ToolError("線長度為 0")
+        n = ctx.integer("samples", 0) or int(round(total))
+        n = max(2, min(10000, n))
+        # 沿折線等距取樣（雙線性）
+        t = np.linspace(0.0, total, n)
+        cum = np.concatenate([[0.0], np.cumsum(seg_len)])
+        xs = np.interp(t, cum, [p[0] for p in pts])
+        ys = np.interp(t, cum, [p[1] for p in pts])
+        h, w = gray.shape[:2]
+        maps_x = np.clip(xs, 0, w - 1).astype(np.float32).reshape(1, -1)
+        maps_y = np.clip(ys, 0, h - 1).astype(np.float32).reshape(1, -1)
+        values = cv2.remap(gray.astype(np.float32), maps_x, maps_y, cv2.INTER_LINEAR).reshape(-1)
+        stats = {
+            "values": [round(float(v), 3) for v in values],
+            "mean": round(float(values.mean()), 3), "std": round(float(values.std()), 3),
+            "min": round(float(values.min()), 3), "max": round(float(values.max()), 3),
+            "length": round(total, 2),
+        }
+        overlays = [region_overlay(region, label=f"profile n={n}")]
+        return Result(outputs=stats, overlays=overlays, message=f"{n} 點，mean {stats['mean']:.1f}")
+
+
+class ColorStatsTool(Tool):
+    key = "color_stats"
+    label = "色彩統計"
+    description = "NI Vision 的 Color Statistics 對照：區域內 RGB 與 HSV 的平均／標準差、主色相；供顏色驗證與上下游邏輯判斷。"
+    category = "measure"
+    icon = "Palette"
+    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "ellipse"], help_text="留空則整張影像。")]
+    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    outputs = [
+        Port("mean_r", "R 平均", "number"), Port("mean_g", "G 平均", "number"), Port("mean_b", "B 平均", "number"),
+        Port("mean_h", "色相平均", "number"), Port("mean_s", "飽和度平均", "number"), Port("mean_v", "明度平均", "number"),
+        Port("std_v", "明度標準差", "number"), Port("hex", "平均色", "string"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        if image.ndim == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("區域落在影像外")
+        mask = c.mask if c.mask is not None else np.full(c.image.shape[:2], 255, np.uint8)
+        sel = c.image[mask > 0]
+        if not len(sel):
+            raise ToolError("區域內沒有像素")
+        mean_bgr = sel.reshape(-1, 3).mean(axis=0)
+        hsv = cv2.cvtColor(c.image, cv2.COLOR_BGR2HSV)
+        hsel = hsv[mask > 0].reshape(-1, 3).astype(np.float32)
+        # 色相是圓的：用向量平均（OpenCV H 0~179）
+        ang = hsel[:, 0] / 180.0 * 2 * np.pi
+        mean_h = float((np.arctan2(np.sin(ang).mean(), np.cos(ang).mean()) % (2 * np.pi)) / (2 * np.pi) * 180.0)
+        outputs = {
+            "mean_r": round(float(mean_bgr[2]), 1), "mean_g": round(float(mean_bgr[1]), 1), "mean_b": round(float(mean_bgr[0]), 1),
+            "mean_h": round(mean_h, 1), "mean_s": round(float(hsel[:, 1].mean()), 1), "mean_v": round(float(hsel[:, 2].mean()), 1),
+            "std_v": round(float(hsel[:, 2].std()), 2),
+            "hex": "#%02x%02x%02x" % (int(mean_bgr[2]), int(mean_bgr[1]), int(mean_bgr[0])),
+        }
+        overlays = [region_overlay(region, label=outputs["hex"])] if region else []
+        return Result(outputs=outputs, overlays=overlays, message=f"{outputs['hex']} H{outputs['mean_h']:.0f}")
+
+
+def _as_line(value: Any) -> tuple[float, float, float, float] | None:
+    if isinstance(value, dict) and all(k in value for k in ("x1", "y1", "x2", "y2")):
+        return float(value["x1"]), float(value["y1"]), float(value["x2"]), float(value["y2"])
+    return None
+
+
+def _as_point(value: Any) -> tuple[float, float] | None:
+    if isinstance(value, dict) and "x" in value and "y" in value:
+        return float(value["x"]), float(value["y"])
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        try:
+            return float(value[0]), float(value[1])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+class GeometryTool(Tool):
+    key = "geometry"
+    label = "幾何計算"
+    description = "NI Vision 的 Analytic Geometry 對照：兩線交點、點到線垂距、兩點中點、點在線上的投影。線＝{x1,y1,x2,y2}、點＝[x,y] 或 {x,y}（接找線／找圓等工具的輸出）。"
+    category = "measure"
+    icon = "Ruler"
+    params = [
+        Param("mode", "計算", kind="select", default="intersect", options=[
+            {"value": "intersect", "label": "兩線交點"}, {"value": "point_line", "label": "點到線垂距"},
+            {"value": "midpoint", "label": "兩點中點"}, {"value": "project", "label": "點投影到線"},
+        ]),
+    ]
+    inputs = [Port("a", "A（線／點）", "any"), Port("b", "B（線／點）", "any")]
+    outputs = [Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "距離", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        mode = ctx.param("mode", "intersect")
+        a, b = ctx.inputs.get("a"), ctx.inputs.get("b")
+        if mode == "intersect":
+            la, lb = _as_line(a), _as_line(b)
+            if not la or not lb:
+                raise ToolError("兩線交點需要兩條線 {x1,y1,x2,y2}")
+            x1, y1, x2, y2 = la
+            x3, y3, x4, y4 = lb
+            denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+            if abs(denom) < 1e-9:
+                return Result(status="ng", message="兩線平行，沒有交點", outputs={"x": 0.0, "y": 0.0, "distance": 0.0})
+            px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom
+            py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
+            overlays = [{"kind": "point", "x": px, "y": py, "label": "交點"}]
+            return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": 0.0}, overlays=overlays, message=f"({px:.1f}, {py:.1f})")
+        if mode == "midpoint":
+            pa, pb = _as_point(a), _as_point(b)
+            if not pa or not pb:
+                raise ToolError("中點需要兩個點")
+            mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+            d = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
+            return Result(outputs={"x": round(mx, 2), "y": round(my, 2), "distance": round(d, 2)},
+                          overlays=[{"kind": "point", "x": mx, "y": my, "label": "中點"}], message=f"({mx:.1f}, {my:.1f})")
+        # point_line / project：a=點、b=線
+        pa, lb = _as_point(a), _as_line(b)
+        if not pa and _as_point(b) and _as_line(a):  # 接反了也行
+            pa, lb = _as_point(b), _as_line(a)
+        if not pa or not lb:
+            raise ToolError("需要一個點與一條線")
+        x1, y1, x2, y2 = lb
+        dx, dy = x2 - x1, y2 - y1
+        norm = dx * dx + dy * dy
+        if norm < 1e-9:
+            raise ToolError("線的兩端點重合")
+        t = ((pa[0] - x1) * dx + (pa[1] - y1) * dy) / norm
+        px, py = x1 + t * dx, y1 + t * dy
+        d = math.hypot(pa[0] - px, pa[1] - py)
+        overlays = [{"kind": "line", "x1": pa[0], "y1": pa[1], "x2": px, "y2": py, "label": f"{d:.1f}px"}]
+        return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": round(d, 2)}, overlays=overlays,
+                      message=f"垂距 {d:.2f}px" if mode == "point_line" else f"投影 ({px:.1f}, {py:.1f})")
+
+
 TOOLS = [
     CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
+    LineProfileTool(), ColorStatsTool(), GeometryTool(),
 ]

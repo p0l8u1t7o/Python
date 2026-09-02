@@ -26,10 +26,15 @@ export type HandleKind =
   | 'resize' // rect / rotated_rect 8 個
   | 'rotate'
   | 'radius' // circle
+  | 'rx' // ellipse 兩軸
+  | 'ry'
   | 'inner' // annulus
   | 'outer'
-  | 'vertex' // polygon
+  | 'angle0' // annulus 扇形起迄角
+  | 'angle1'
+  | 'vertex' // polygon / polyline
   | 'endpoint' // line
+  | 'move' // point
 
 export interface Handle {
   kind: HandleKind
@@ -119,9 +124,29 @@ export function getHandles(r: Region, env: DrawEnv): Handle[] {
           round: true,
         })
       }
+      if (r.a0 !== undefined && r.a1 !== undefined) {
+        const mid = (r.r_inner + r.r_outer) / 2
+        hs.push({ kind: 'angle0', x: r.cx + Math.cos(r.a0 * DEG) * mid, y: r.cy + Math.sin(r.a0 * DEG) * mid, cursor: 'grab', round: true })
+        hs.push({ kind: 'angle1', x: r.cx + Math.cos(r.a1 * DEG) * mid, y: r.cy + Math.sin(r.a1 * DEG) * mid, cursor: 'grab', round: true })
+      }
       break
+    case 'ellipse': {
+      const c = Math.cos(r.angle * DEG)
+      const s2 = Math.sin(r.angle * DEG)
+      hs.push({ kind: 'rx', x: r.cx + r.rx * c, y: r.cy + r.rx * s2, cursor: 'ew-resize', round: true })
+      hs.push({ kind: 'rx', x: r.cx - r.rx * c, y: r.cy - r.rx * s2, cursor: 'ew-resize', round: true })
+      hs.push({ kind: 'ry', x: r.cx - r.ry * s2, y: r.cy + r.ry * c, cursor: 'ns-resize', round: true })
+      hs.push({ kind: 'ry', x: r.cx + r.ry * s2, y: r.cy - r.ry * c, cursor: 'ns-resize', round: true })
+      const off = ROTATE_HANDLE_OFFSET / env.scale
+      hs.push({ kind: 'rotate', x: r.cx + (r.ry + off) * s2, y: r.cy - (r.ry + off) * c, cursor: 'grab', round: true })
+      break
+    }
     case 'polygon':
+    case 'polyline':
       r.points.forEach(([x, y], i) => hs.push({ kind: 'vertex', x, y, index: i, cursor: 'move' }))
+      break
+    case 'point':
+      hs.push({ kind: 'move', x: r.x, y: r.y, cursor: 'move', round: true })
       break
     case 'line':
       hs.push({ kind: 'endpoint', x: r.x1, y: r.y1, index: 0, cursor: 'move' })
@@ -167,8 +192,25 @@ export function hitBody(r: Region, ix: number, iy: number, scale: number): boole
       const d = Math.hypot(ix - r.cx, iy - r.cy)
       return d <= r.r_outer && d >= r.r_inner
     }
+    case 'ellipse': {
+      const c = Math.cos(-r.angle * DEG)
+      const s = Math.sin(-r.angle * DEG)
+      const dx = ix - r.cx
+      const dy = iy - r.cy
+      const lx = dx * c - dy * s
+      const ly = dx * s + dy * c
+      return (lx * lx) / Math.max(1, r.rx * r.rx) + (ly * ly) / Math.max(1, r.ry * r.ry) <= 1
+    }
     case 'polygon':
       return pointInPolygon(ix, iy, r.points)
+    case 'polyline': {
+      for (let i = 0; i < r.points.length - 1; i++) {
+        if (distToSegment(ix, iy, r.points[i][0], r.points[i][1], r.points[i + 1][0], r.points[i + 1][1]) <= tol) return true
+      }
+      return false
+    }
+    case 'point':
+      return Math.hypot(ix - r.x, iy - r.y) <= tol
     case 'line':
       return distToSegment(ix, iy, r.x1, r.y1, r.x2, r.y2) <= tol
   }
@@ -176,7 +218,7 @@ export function hitBody(r: Region, ix: number, iy: number, scale: number): boole
 
 /** polygon：找最近的邊（雙擊新增頂點用），回傳插入位置（在該索引之後） */
 export function hitPolygonEdge(
-  r: Extract<Region, { shape: 'polygon' }>,
+  r: Extract<Region, { shape: 'polygon' | 'polyline' }>,
   ix: number,
   iy: number,
   scale: number,
@@ -184,10 +226,10 @@ export function hitPolygonEdge(
   const tol = HIT_TOLERANCE / scale
   let best: number | null = null
   let bestD = tol
-  const n = r.points.length
+  const n = r.shape === 'polyline' ? r.points.length - 1 : r.points.length
   for (let i = 0; i < n; i++) {
     const [x1, y1] = r.points[i]
-    const [x2, y2] = r.points[(i + 1) % n]
+    const [x2, y2] = r.points[(i + 1) % r.points.length]
     const d = distToSegment(ix, iy, x1, y1, x2, y2)
     if (d <= bestD) {
       bestD = d
@@ -269,11 +311,36 @@ export function applyHandleDrag(
     case 'circle':
       return { ...r0, r: Math.max(1, Math.hypot(ix - r0.cx, iy - r0.cy)) }
     case 'annulus': {
+      if (h.kind === 'angle0' || h.kind === 'angle1') {
+        let a = Math.atan2(iy - r0.cy, ix - r0.cx) / DEG
+        if (shift) a = snapAngle(a)
+        a = normalizeAngle(a)
+        return h.kind === 'angle0' ? { ...r0, a0: a } : { ...r0, a1: a }
+      }
       const d = Math.hypot(ix - r0.cx, iy - r0.cy)
       if (h.kind === 'inner') return { ...r0, r_inner: Math.max(0, Math.min(d, r0.r_outer - 1)) }
       return { ...r0, r_outer: Math.max(d, r0.r_inner + 1, 1) }
     }
-    case 'polygon': {
+    case 'ellipse': {
+      if (h.kind === 'rotate') {
+        let a = Math.atan2(iy - r0.cy, ix - r0.cx) / DEG + 90
+        if (shift) a = snapAngle(a)
+        return { ...r0, angle: normalizeAngle(a) }
+      }
+      const c = Math.cos(-r0.angle * DEG)
+      const s = Math.sin(-r0.angle * DEG)
+      const dx = ix - r0.cx
+      const dy = iy - r0.cy
+      const lx = dx * c - dy * s
+      const ly = dx * s + dy * c
+      if (h.kind === 'rx') return { ...r0, rx: Math.max(1, Math.abs(lx)) }
+      if (h.kind === 'ry') return { ...r0, ry: Math.max(1, Math.abs(ly)) }
+      return r0
+    }
+    case 'point':
+      return { ...r0, x: ix, y: iy }
+    case 'polygon':
+    case 'polyline': {
       const i = h.index ?? 0
       const points = r0.points.map((p, k) => (k === i ? ([ix, iy] as [number, number]) : p))
       return { ...r0, points }
@@ -364,14 +431,36 @@ export function drawRoi(ctx: CanvasRenderingContext2D, env: DrawEnv, r: Region, 
       ctx.stroke()
       drawCross(ctx, r.cx, r.cy, px(5))
       break
-    case 'annulus':
+    case 'annulus': {
+      const a0 = ((r.a0 ?? 0) * Math.PI) / 180
+      const a1 = ((r.a1 ?? 360) * Math.PI) / 180
+      const sector = r.a0 !== undefined && r.a1 !== undefined
       ctx.beginPath()
-      ctx.arc(r.cx, r.cy, Math.max(r.r_outer, 0), 0, Math.PI * 2)
-      ctx.moveTo(r.cx + r.r_inner, r.cy)
-      ctx.arc(r.cx, r.cy, Math.max(r.r_inner, 0), 0, Math.PI * 2, true)
-      ctx.fill('evenodd')
+      ctx.arc(r.cx, r.cy, Math.max(r.r_outer, 0), a0, sector ? a1 : Math.PI * 2)
+      ctx.arc(r.cx, r.cy, Math.max(r.r_inner, 0), sector ? a1 : Math.PI * 2, a0, true)
+      ctx.closePath()
+      ctx.fill()
       ctx.stroke()
       drawCross(ctx, r.cx, r.cy, px(5))
+      break
+    }
+    case 'ellipse':
+      ctx.beginPath()
+      ctx.ellipse(r.cx, r.cy, Math.max(r.rx, 1), Math.max(r.ry, 1), r.angle * DEG, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      drawCross(ctx, r.cx, r.cy, px(5))
+      break
+    case 'polyline':
+      if (r.points.length >= 2) {
+        ctx.beginPath()
+        ctx.moveTo(r.points[0][0], r.points[0][1])
+        for (let i = 1; i < r.points.length; i++) ctx.lineTo(r.points[i][0], r.points[i][1])
+        ctx.stroke()
+      }
+      break
+    case 'point':
+      drawCross(ctx, r.x, r.y, px(8))
       break
     case 'polygon':
       if (r.points.length >= 2) {
@@ -439,8 +528,14 @@ export function describeRegion(r: Region): string {
       return `circle r=${R(r.r)} @ ${R(r.cx)},${R(r.cy)}`
     case 'annulus':
       return `annulus r=${R(r.r_inner)}~${R(r.r_outer)} @ ${R(r.cx)},${R(r.cy)}`
+    case 'ellipse':
+      return `ellipse ${R(r.rx)}×${R(r.ry)} ∠${r.angle.toFixed(1)}° @ ${R(r.cx)},${R(r.cy)}`
     case 'polygon':
       return `polygon ${r.points.length} pts`
+    case 'polyline':
+      return `polyline ${r.points.length} pts`
+    case 'point':
+      return `point @ ${R(r.x)},${R(r.y)}`
     case 'line':
       return `line ${R(Math.hypot(r.x2 - r.x1, r.y2 - r.y1))}px ∠${(Math.atan2(r.y2 - r.y1, r.x2 - r.x1) / DEG).toFixed(1)}°`
   }

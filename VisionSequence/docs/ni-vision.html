@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence NI Vision 功能對照</title>
+<style>
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="ni-vision.html" aria-current="page">NI Vision 對照</a></nav>
+<article class="doc">
+
+<h1>NI Vision 功能對照：ROI、影像格式、檢測工具</h1>
+<p>本頁對照 <em>NI Vision for LabVIEW User Manual</em>（371007B-01）的功能面，記錄平台的 ROI 工具種類與實作方式、多位深影像格式的處理設計，以及 NI 檢測工具在平台上的對應（含本輪新增與刻意不做的項目）。</p>
+
+<nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#roi">1. ROI 工具種類與實作</a></li>
+<li><a href="#depth">2. 影像格式（位深）設計</a></li>
+<li><a href="#tools">3. 檢測工具對照表</a></li>
+<li><a href="#skip">4. 刻意不做／外掛路徑</a></li>
+</ul></nav>
+
+<h2 id="roi">1. ROI 工具種類與實作</h2>
+<p>NI 的 ROI 工具面板（手冊 Table 3-1）對照。region 是自由 dict（<code>tools/roi.py</code> 檔頭是唯一格式定義），所有工具走同一組 helper：<code>bounding_rect / mask_for / crop / region_overlay / region_center / transform_region</code>；前端 ImageViewer 的 <code>roiEditor.ts</code>／<code>geometry.ts</code> 提供繪製、把手編輯、命中判定。</p>
+<table>
+<tr><th>NI 工具</th><th>平台 shape</th><th>狀態</th><th>實作重點</th></tr>
+<tr><td>Rectangle</td><td><code>rect</code></td><td>原有</td><td>8 向把手</td></tr>
+<tr><td>Rotated Rectangle</td><td><code>rotated_rect</code></td><td>原有</td><td>旋轉把手＋量測工具 <code>crop(upright=True)</code> 擺正</td></tr>
+<tr><td>Oval</td><td><code>ellipse</code>（cx, cy, rx, ry, angle）</td><td><strong>本輪新增</strong></td><td>兩軸半徑把手＋旋轉把手；遮罩 <code>cv2.ellipse</code>、overlay 以 36 邊形近似</td></tr>
+<tr><td>Point</td><td><code>point</code>（x, y）</td><td><strong>本輪新增</strong></td><td>單像素遮罩；灰階統計工具的 light-meter point 對照</td></tr>
+<tr><td>Line</td><td><code>line</code></td><td>原有</td><td>端點把手、Shift 15° 吸附</td></tr>
+<tr><td>Broken Line</td><td><code>polyline</code>（points）</td><td><strong>本輪新增</strong></td><td>不閉合折線：頂點拖曳／雙擊邊插點／右鍵刪點（沿用 polygon 編輯路徑）；線剖面工具用</td></tr>
+<tr><td>Polygon</td><td><code>polygon</code></td><td>原有</td><td>頂點編輯；標記編輯器另有逐點繪製</td></tr>
+<tr><td>Annulus（含起迄角）</td><td><code>annulus</code>（＋選填 <code>a0</code>/<code>a1</code>）</td><td>扇形角度<strong>本輪新增</strong></td><td>內外半徑把手＋（有 a0/a1 時）兩顆角度把手；遮罩＝外圓扇形填滿再挖內圓</td></tr>
+<tr><td>Freehand Region / Freehand Line</td><td>—</td><td>不做</td><td>polygon／polyline 逐點已覆蓋用途；自由手繪對產線 ROI 重現性差</td></tr>
+</table>
+<p>ROI 一律可經 <code>region</code> 輸入埠動態傳入（定位工具的跟隨 ROI），<code>transform_region()</code> 支援所有形狀的平移／旋轉。</p>
+
+<h2 id="depth">2. 影像格式（位深）設計</h2>
+<p>NI 的影像型別：Grayscale U8／I16／SGL（浮點）、Complex、RGB U32、HSL U32、RGB U64。平台以 numpy dtype 對應（<code>tools/imgfmt.py</code>）：</p>
+<table>
+<tr><th>NI 型別</th><th>平台表示</th><th>說明</th></tr>
+<tr><td>Grayscale U8／RGB U32</td><td><code>uint8</code>（HxW 或 HxWx3 BGR）</td><td>預設；所有工具都支援</td></tr>
+<tr><td>Grayscale I16</td><td><code>uint16</code></td><td>16-bit PNG/TIFF 讀檔（<code>IMREAD_UNCHANGED</code>）原樣保留；I16 語意上偏移為無號</td></tr>
+<tr><td>RGB U64</td><td><code>uint16</code> ×3（BGR）</td><td>每通道 16-bit</td></tr>
+<tr><td>Grayscale SGL</td><td><code>float32</code></td><td>浮點 TIFF／FFT 與校正中間結果</td></tr>
+<tr><td>HSL U32</td><td>—（編碼方式）</td><td>不需原生儲存：<code>color_convert</code> 取 H/S/L/V 通道處理、<code>color_stats</code> 輸出 HSV 統計</td></tr>
+<tr><td>Complex</td><td>—（工具內部）</td><td><code>fft_filter</code> 內部使用，不進資料流</td></tr>
+</table>
+<p><strong>中央接縫</strong>：工具以 <code>Tool.accepts = ("u8",…)</code> 宣告可吃的位深；<code>ToolContext.image()</code> 對宣告外的位深自動 <code>normalize_u8</code>（u16 右移 8＝線性可預期、浮點 min-max；產生新陣列不動輸入）——<strong>任何工具丟任何位深都不會炸</strong>。cv2 原生支援多位深的工具（crop／resize／blur／morphology／arithmetic／apply_mask／grayscale／rotate_flip／save_image／convert_depth／fft_filter／line_profile／warp_perspective）宣告放寬、原樣進出。顯示端 <code>encode_image</code> 本來就會把非 u8 正規化後編碼。要顯式控制轉換用「位深轉換」工具。</p>
+
+<h2 id="tools">3. 檢測工具對照表</h2>
+<table>
+<tr><th>NI 功能</th><th>平台工具</th><th>狀態</th></tr>
+<tr><td>Lookup Table（linear/log/exp/power/sqrt/square、BCG）</td><td><code>lut</code> 查表轉換</td><td><strong>本輪新增</strong></td></tr>
+<tr><td>Convolution／Nth-order 濾波</td><td><code>filter</code>（sharpen/laplacian/sobel/prewitt/highpass/emboss/自訂 3×3）；平滑＝<code>blur</code>（gaussian/median/mean）</td><td><strong>本輪新增</strong></td></tr>
+<tr><td>FFT 頻域濾波（truncate/attenuate）</td><td><code>fft_filter</code>（含頻譜輸出）</td><td><strong>本輪新增</strong></td></tr>
+<tr><td>Grayscale morphology</td><td><code>morphology</code>（erode/dilate/open/close…；多位深）</td><td>原有</td></tr>
+<tr><td>Thresholding（global auto／local adaptive）</td><td><code>threshold</code>：fixed/Otsu/<strong>Triangle（新）</strong>/adaptive mean/gaussian/range</td><td>原有＋新增</td></tr>
+<tr><td>Particle analysis（量測、filter）</td><td><code>blob</code>：面積/圓形度/bbox＋<strong>新增</strong> perimeter/orientation/elongation</td><td>原有＋新增</td></tr>
+<tr><td>Separate touching particles（watershed）</td><td><code>blob</code> 的「分離黏連粒子」參數（距離轉換＋分水嶺）</td><td><strong>本輪新增</strong></td></tr>
+<tr><td>Light meter（point/line/rect）</td><td><code>intensity</code>（含 <strong>point ROI 新增</strong>）、<code>line_profile</code>（<strong>新增</strong>：折線剖面＋統計）</td><td>原有＋新增</td></tr>
+<tr><td>Color statistics</td><td><code>color_stats</code>（RGB/HSV 統計、主色相、平均色）</td><td><strong>本輪新增</strong></td></tr>
+<tr><td>Color comparison</td><td><code>color_check</code>／<code>color_range</code></td><td>原有</td></tr>
+<tr><td>Edge detection：find lines/circles（rake/spoke）</td><td><code>find_line</code>／<code>find_circle</code>（RANSAC）</td><td>原有</td></tr>
+<tr><td>Edge points along contour（caliper）</td><td><code>caliper</code>／<code>wall_thickness</code>／<code>chamfer_angle</code></td><td>原有</td></tr>
+<tr><td>Pattern matching（NCC、金字塔、旋轉）</td><td><code>template_match</code></td><td>原有</td></tr>
+<tr><td>Coordinate transformation（定位跟隨）</td><td><code>shape_align</code>／<code>fixture_roi</code></td><td>原有</td></tr>
+<tr><td>Analytic geometry</td><td><code>distance</code>／<code>angle</code>＋<code>geometry</code>（<strong>新增</strong>：兩線交點、點線垂距、中點、投影）</td><td>原有＋新增</td></tr>
+<tr><td>Fit line/circle/ellipse</td><td><code>find_line</code>／<code>fit_arc</code>／<code>fit_ellipse</code></td><td>原有</td></tr>
+<tr><td>Perspective calibration（攤平）</td><td><code>warp_perspective</code>（四點 → 矩形）；比例換算＝<code>calibration</code></td><td><strong>本輪新增</strong></td></tr>
+<tr><td>Golden template comparison</td><td><code>defect_diff</code>（含相位對齊）＋Golden Set 回歸頁</td><td>原有</td></tr>
+<tr><td>Barcode（1D／DataMatrix／PDF417）</td><td><code>barcode</code>（zbar／OpenCV 後端依安裝）</td><td>原有</td></tr>
+<tr><td>Classification</td><td><code>dl_classify</code>（平台內教導）</td><td>原有</td></tr>
+<tr><td>Watershed／binary morphology 進階</td><td>blob separate＋<code>morphology</code></td><td>原有＋新增</td></tr>
+</table>
+
+<h2 id="skip">4. 刻意不做／外掛路徑</h2>
+<ul>
+<li><strong>Geometric matching／Color pattern matching／Color location</strong>：演算法量體大且 <code>template_match</code>＋DL 工具（dl_detect/dl_instance）已覆蓋多數場景；需要時以外掛工具導入（<a href="plugins.html">擴充外掛</a>）。</li>
+<li><strong>OCR／字元驗證、Instrument readers（meter/LCD）</strong>：現代做法是 DL——用深度學習頁教導或掛 OCR 外掛；<code>text_presence</code> 提供「有沒有字」的輕量檢查。</li>
+<li><strong>非線性鏡頭畸變標定（error map／correction table）</strong>：需要標定板工作流；先以 <code>warp_perspective</code>（透視）＋<code>calibration</code>（比例）覆蓋，畸變標定留待外掛或後續版本。</li>
+<li><strong>Freehand ROI</strong>：見 §1。</li>
+<li><strong>Complex 影像型別</strong>：只在 <code>fft_filter</code> 內部存在，不作為埠型別（避免資料流複雜化）。</li>
+</ul>
+
+</article>
+</body>
+</html>

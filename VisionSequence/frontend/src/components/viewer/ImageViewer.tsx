@@ -75,7 +75,7 @@ export interface ImageViewerProps {
   onViewportChange?: (vp: Viewport) => void
 }
 
-const ALL_SHAPES: RoiShape[] = ['rect', 'rotated_rect', 'circle', 'annulus', 'polygon', 'line']
+const ALL_SHAPES: RoiShape[] = ['rect', 'rotated_rect', 'circle', 'ellipse', 'annulus', 'polygon', 'line']
 const GRID_MIN_SCALE = 8
 
 type Drag =
@@ -595,11 +595,12 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         const hs = getHandles(L.roi, env())
         const h = hitHandle(hs, ix, iy, vpRef.current.scale)
         if (ev.button === 2) {
-          // 右鍵刪除多邊形頂點
-          if (h?.kind === 'vertex' && L.roi.shape === 'polygon' && L.roi.points.length > 3) {
-            const points = L.roi.points.filter((_, i) => i !== h.index)
+          // 右鍵刪除多邊形／折線頂點（polyline 至少留 2 點、polygon 至少 3 點；刪點後保留原形狀）
+          const poly = L.roi.shape === 'polygon' || L.roi.shape === 'polyline' ? L.roi : null
+          if (h?.kind === 'vertex' && poly && poly.points.length > (poly.shape === 'polyline' ? 2 : 3)) {
+            const points = poly.points.filter((_, i) => i !== h.index)
             selectedVertexRef.current = null
-            emitRoi({ shape: 'polygon', points }, true)
+            emitRoi({ shape: poly.shape, points }, true)
           }
           return
         }
@@ -733,7 +734,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       const [sx, sy] = localPoint(ev)
       const [ix, iy] = toImage(vpRef.current, sx, sy)
       const L = latest.current
-      if (L.editMode && L.roi?.shape === 'polygon') {
+      if (L.editMode && (L.roi?.shape === 'polygon' || L.roi?.shape === 'polyline')) {
         const hs = getHandles(L.roi, env())
         if (hitHandle(hs, ix, iy, vpRef.current.scale)) return
         const edge = hitPolygonEdge(L.roi, ix, iy, vpRef.current.scale)
@@ -741,7 +742,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           const points = [...L.roi.points]
           points.splice(edge + 1, 0, [ix, iy])
           selectedVertexRef.current = edge + 1
-          emitRoi({ shape: 'polygon', points }, true)
+          emitRoi({ shape: L.roi.shape, points }, true)  // polyline 插點後保持折線
           return
         }
       }
@@ -798,10 +799,11 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         case 'Backspace':
         case 'Delete': {
           const i = selectedVertexRef.current
-          if (L.editMode && L.roi?.shape === 'polygon' && i !== null && L.roi.points.length > 3) {
-            const points = L.roi.points.filter((_, k) => k !== i)
+          const poly = L.roi && (L.roi.shape === 'polygon' || L.roi.shape === 'polyline') ? L.roi : null
+          if (L.editMode && poly && poly.points.length > (poly.shape === 'polyline' ? 2 : 3) && i !== null) {
+            const points = poly.points.filter((_, k) => k !== i)
             selectedVertexRef.current = null
-            emitRoi({ shape: 'polygon', points }, true)
+            emitRoi({ shape: poly.shape, points }, true)
             break
           }
           // 沒有頂點可刪就放行（不 preventDefault），讓上層（例如 DL 標記工作區的「刪形狀」）處理

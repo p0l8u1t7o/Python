@@ -65,6 +65,7 @@
 - 新增工具 checklist：`register()`（放進模組 `TOOLS`）→ `tests/test_tools.py` 至少一案例 → `scripts/bench_tools.py` 加一筆 → 需要現場調的參數標 `teach=True`。
 - **改動優化過的函式**（blob 預濾、`_roi_hist`、`find_edges_rows`、`caliper_points`、`apply_mask`、`mask_for`、RANSAC 向量化、template_match 金字塔）必須重跑等價性檢查，不能只看測試綠。
 - 新增 `Param.kind` 或 `Port.type`：後端封閉集合、前端 `ParamField` switch、`catalogue()`、`docs/contract.html`、`docs/glossary.html` 五處同步。
+- 影像位深：工具預設只吃 u8（其他自動正規化）；cv2 原生支援 u16/f32 的工具宣告 `accepts = ("u8","u16","f32")`。新增 ROI 形狀＝`tools/roi.py` 各 helper＋前端 `types.ts Region`／`roiEditor.ts`／`geometry.ts` 的 switch 同步（typecheck 會抓漏），見 docs/ni-vision.html。
 - 紅線：不重寫引擎、不改 graph JSON 格式、不把 `Flow.graph` 搬出資料庫、不引入 Node.js／微服務。
 - 配方（`FlowRecipe`）：執行時 `apply_recipe()` 疊參數再編譯，編譯快取鍵 `(version, recipe_id, updated_at)`；`run`／`preview`／TCP `recipe=` 都可指定，未指定用預設配方。
 - 每筆 run 帶 `station_id`（`VISION_STATION_ID`）；未 `commissioned` 的流程只加 warnings 不阻擋。

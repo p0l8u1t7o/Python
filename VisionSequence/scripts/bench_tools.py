@@ -62,10 +62,13 @@ def make_ctx(key: str, image: np.ndarray | None, params: dict[str, Any], inputs:
     if image is not None:
         ins["image"] = image
     ins.update(inputs)
+    from apps.vision.tools import base as _base
+
     return ToolContext(
         run_id="bench", flow_id=1, node={"id": key, "type": key, "params": params}, inputs=ins,
         context=context, moment=0.0, log=lambda *a, **k: None,
         asset_path=lambda aid: assets.get(str(aid)), grab=lambda sid: None, preview=False,
+        depth=getattr(_base.get(key), "accepts", ("u8",)),
     )
 
 
@@ -186,6 +189,11 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("apply_mask", "apply_mask", big, {"fill": 0}, {"mask": s.mask}, {}),
         ("edges canny", "edges", big, {"method": "canny"}, {}, {}),
         ("rotate_flip 15deg", "rotate_flip", big, {"angle": 15, "keep_size": True}, {}, {}),
+        ("convert_depth u16", "convert_depth", big, {"to": "u16"}, {}, {}),
+        ("lut gamma", "lut", big, {"mode": "power", "gamma": 0.6}, {}, {}),
+        ("filter gradient", "filter", big, {"method": "gradient"}, {}, {}),
+        ("fft_filter lowpass", "fft_filter", gray, {"mode": "lowpass", "cutoff": 0.15}, {}, {}),
+        ("warp_perspective", "warp_perspective", big, {"roi": {"shape": "polygon", "points": [[s.cx - m * 0.2, s.cy - m * 0.15], [s.cx + m * 0.22, s.cy - m * 0.12], [s.cx + m * 0.2, s.cy + m * 0.15], [s.cx - m * 0.18, s.cy + m * 0.16]]}}, {}, {}),
         # locate
         ("template_match pyramid", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6}, {}, {}),
         ("template_match no-pyr", "template_match", big, {"template": "tpl", "pyramid": False, "threshold": 0.6}, {}, {}),
@@ -214,6 +222,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("concentricity", "concentricity", None, {"max_deviation": 5}, {"a": {"cx": s.cx, "cy": s.cy, "r": 50}, "bx": s.cx + 1, "by": s.cy - 2, "br": 20}, {}),
         ("chamfer_angle 40", "chamfer_angle", big, {"roi": top_edge, "num_calipers": 40}, {}, {}),
         ("tolerance_judge", "tolerance_judge", None, {"nominal": 12, "upper_tol": 0.05, "lower_tol": -0.05}, {"value": 12.02}, {"_outputs": {}}),
+        ("line_profile", "line_profile", big, {"roi": {"shape": "line", "x1": s.cx - m * 0.2, "y1": s.cy, "x2": s.cx + m * 0.2, "y2": s.cy}}, {}, {}),
+        ("color_stats", "color_stats", big, {"roi": plate}, {}, {}),
+        ("geometry intersect", "geometry", None, {"mode": "intersect"}, {"a": {"x1": 0, "y1": 0, "x2": 100, "y2": 100}, "b": {"x1": 0, "y1": 100, "x2": 100, "y2": 0}}, {}),
+        ("blob separate", "blob", s.mask, {"threshold_method": "none", "min_area": 300, "separate": True}, {}, {}),
         # detect
         ("blob (gray, fixed)", "blob", gray, {"threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {}, {}),
         ("blob (mask, none)", "blob", s.mask, {"threshold_method": "none", "min_area": 300}, {}, {}),
