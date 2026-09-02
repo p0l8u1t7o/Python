@@ -1,0 +1,225 @@
+"""AI 代理技能（skills）：讓 LLM 快速理解平台規則、設計原則與每個工具怎麼用。
+
+skills/ 目錄：
+- platform.md：平台規則（graph 格式、埠、控制分支、ROI、收尾、禁止事項）——system 的固定段。
+- design.md：流程設計原則與工具選用表——system 的固定段。
+- tools.md：每個工具的人工要領（`## <type>` 分段）；沒寫到的工具用自動骨架。
+每個工具的完整技能＝自動骨架（label／說明／參數表／埠表，從 Tool 定義生成）＋人工要領。
+
+組裝策略：system 段只放穩定內容（規則＋原則＋全工具精簡目錄，可快取）；本次相關工具的完整技能
+放進 user 訊息（依提示詞關鍵詞、ROI 形狀、既有 graph 的工具挑選），避免 61 個工具全文塞爆。
+"""
+
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+from apps.vision.tools import base as tools
+
+SKILL_DIR = Path(__file__).parent / "skills"
+
+#: 永遠帶完整技能的核心工具。
+CORE_TOOLS = ("image_source", "grayscale", "threshold", "blob", "if_number", "in_range", "judge", "output", "draw_result", "note")
+
+#: 提示詞關鍵詞 → 相關工具（中英）。
+KEYWORD_TOOLS: dict[str, tuple[str, ...]] = {
+    "直徑|直径|孔徑|孔径|半徑|半径|圓|圆|circle|diameter|round": ("find_circle", "hough_circles", "fit_ellipse", "fit_arc", "formula", "calibration", "tolerance_judge", "distance", "concentricity"),
+    "寬|宽|厚|間距|间距|距離|距离|width|gap|thickness|distance": ("caliper", "wall_thickness", "find_line", "distance", "calibration", "tolerance_judge"),
+    "角度|夾角|夹角|斜|倒角|angle|chamfer": ("find_line", "angle", "chamfer_angle", "geometry"),
+    "幾個|几个|數量|数量|計數|计数|count|個|个|顆|颗": ("blob", "hough_circles", "count_list", "morphology", "blur"),
+    "刮痕|瑕疵|缺陷|髒|脏|污|破損|破损|異物|异物|defect|scratch|良品|好品|壞品|坏品": ("defect_diff", "fft_filter", "blur", "morphology", "blob", "apply_mask", "edge_density", "template_match"),
+    "顏色|颜色|色差|偏色|color|紅|红|綠|绿|藍|蓝|黃|黄": ("color_check", "color_stats", "color_range", "pixel_count", "color_convert"),
+    "有沒有|有没有|有無|有无|是否|缺料|presence|missing": ("blob", "pixel_count", "color_range", "template_match", "intensity"),
+    "條碼|条码|二維碼|二维码|qr|barcode|讀碼|读码|標籤|标签": ("barcode", "warp_perspective", "text_presence"),
+    "文字|序號|序号|印字|text": ("text_presence", "warp_perspective"),
+    "亮度|曝光|太暗|太亮|brightness|exposure": ("intensity", "histogram", "lut", "resize"),
+    "定位|位移|偏移|範本|范本|template|align|跟隨|跟随": ("template_match", "shape_align", "fixture_roi"),
+    "紋|纹|網點|网点|週期|周期|texture|pattern": ("fft_filter", "threshold", "blob"),
+    "斜貼|斜贴|透視|透视|拉正|perspective|warp": ("warp_perspective",),
+    "剖面|profile|溝|沟": ("line_profile",),
+    "mm|毫米|公厘|公差|標稱|标称|tolerance": ("calibration", "tolerance_judge", "bool_logic"),
+}
+
+#: 意圖 → 工具（規則引擎解析出意圖時用）。
+INTENT_TOOLS: dict[str, tuple[str, ...]] = {
+    "count": ("blur", "morphology", "blob"),
+    "diameter": ("find_circle", "formula", "calibration", "tolerance_judge", "fit_arc", "fit_ellipse"),
+    "width": ("caliper", "tolerance_judge"),
+    "angle": ("find_line", "angle", "geometry", "chamfer_angle"),
+    "golden": ("defect_diff",),
+    "defect": ("blur", "morphology", "apply_mask", "fft_filter", "defect_diff"),
+    "color_match": ("color_check", "color_stats"),
+    "color_presence": ("color_range", "pixel_count"),
+    "presence": ("blob", "intensity"),
+    "brightness": ("intensity", "histogram"),
+    "barcode": ("barcode", "warp_perspective", "text_presence"),
+    "generic": ("intensity", "histogram", "edge_density"),
+}
+
+_ROI_TOOLS = {
+    "circle": ("find_circle", "fit_ellipse"), "annulus": ("find_circle", "fit_arc"),
+    "line": ("line_profile", "wall_thickness"), "polygon": ("warp_perspective",),
+    "rotated_rect": ("caliper", "find_line"), "polyline": ("line_profile",),
+}
+
+
+@lru_cache(maxsize=1)
+def platform_text() -> str:
+    return (SKILL_DIR / "platform.md").read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def design_text() -> str:
+    return (SKILL_DIR / "design.md").read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def curated_notes() -> dict[str, str]:
+    """tools.md 的 `## <type>` 分段 → {type: 要領文字}。"""
+    text = (SKILL_DIR / "tools.md").read_text(encoding="utf-8")
+    notes: dict[str, str] = {}
+    for m in re.finditer(r"^## (\S+)\s*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL):
+        notes[m.group(1).strip()] = m.group(2).strip()
+    return notes
+
+
+def _param_line(p: Any) -> str:
+    bits = [f"`{p.key}`（{p.label}，{p.kind}"]
+    if p.default not in (None, ""):
+        bits.append(f"，預設 {p.default!r}")
+    rng = []
+    if getattr(p, "minimum", None) is not None:
+        rng.append(f"≥{p.minimum}")
+    if getattr(p, "maximum", None) is not None:
+        rng.append(f"≤{p.maximum}")
+    if rng:
+        bits.append("，範圍 " + " ".join(rng))
+    if getattr(p, "unit", ""):
+        bits.append(f"，單位 {p.unit}")
+    if getattr(p, "options", None):
+        bits.append("，選項 " + "/".join(str(o["value"]) for o in p.options))
+    if getattr(p, "shapes", None):
+        bits.append("，形狀 " + "/".join(p.shapes))
+    if getattr(p, "required", False):
+        bits.append("，必填")
+    if getattr(p, "teach", False):
+        bits.append("，現場調機參數")
+    line = "".join(bits) + "）"
+    if getattr(p, "help_text", ""):
+        line += f"：{p.help_text}"
+    return "- " + line
+
+
+def tool_skill(key: str) -> str:
+    """單一工具的完整技能（markdown）：自動骨架＋人工要領。note 不是工具，只有要領。"""
+    notes = curated_notes()
+    if key == "note":
+        return "# note（畫布便利貼）\n\n" + notes.get("note", "")
+    if not tools.has(key):
+        raise KeyError(key)
+    t = tools.get(key)
+    lines = [f"# {t.key}（{t.label}）", "", f"分類：{tools.CATEGORY_LABELS.get(t.category, t.category)}", ""]
+    if t.description:
+        lines += [t.description, ""]
+    if key in notes:
+        lines += ["## 使用要領", "", notes[key], ""]
+    lines += ["## 參數", ""]
+    lines += [_param_line(p) for p in t.params] or ["（無）"]
+    lines += ["", "## 輸入埠", ""]
+    lines += [f"- `{p.key}`（{p.label}，{p.type}{'' if getattr(p, 'required', True) else '，選填'}）" for p in t.inputs] or ["（無）"]
+    lines += ["", "## 輸出埠", ""]
+    lines += [f"- `{p.key}`（{p.label}，{p.type}）" for p in t.outputs] or ["（無）"]
+    extras = []
+    if getattr(t, "accepts", ("u8",)) != ("u8",):
+        extras.append("可吃位深：" + "/".join(t.accepts))
+    if getattr(t, "heavy", False):
+        extras.append("可能耗時較久")
+    if extras:
+        lines += ["", "；".join(extras)]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def list_skills() -> list[dict[str, Any]]:
+    notes = curated_notes()
+    items: list[dict[str, Any]] = [
+        {"key": "platform", "label": "平台規則", "category": "guide", "curated": True},
+        {"key": "design", "label": "流程設計原則", "category": "guide", "curated": True},
+    ]
+    for t in sorted(tools.all_types(), key=lambda x: (x.category, x.key)):
+        items.append({"key": t.key, "label": t.label, "category": t.category, "curated": t.key in notes})
+    items.append({"key": "note", "label": "註解（便利貼）", "category": "guide", "curated": "note" in notes})
+    return items
+
+
+def skill_text(key: str) -> str:
+    if key == "platform":
+        return platform_text()
+    if key == "design":
+        return design_text()
+    return tool_skill(key)
+
+
+def _generatable(t: Any) -> bool:
+    return not (t.key.startswith("dl_") or t.key in ("write_modbus", "save_image"))
+
+
+@lru_cache(maxsize=1)
+def brief_catalogue() -> str:
+    """全工具一行式目錄（type｜名稱｜一句話），放在 system 段讓 LLM 知道有什麼可用。"""
+    rows = []
+    for t in sorted(tools.all_types(), key=lambda x: (x.category, x.key)):
+        if not _generatable(t):
+            continue
+        desc = (t.description or "").replace("\n", " ")
+        rows.append(f"- {t.key}（{t.label}，{tools.CATEGORY_LABELS.get(t.category, t.category)}）：{desc[:80]}")
+    return "\n".join(rows)
+
+
+def select_tools(text: str, regions: list[dict[str, Any]] | None = None, *, intent_kind: str = "",
+                 graph: dict[str, Any] | None = None, limit: int = 18) -> list[str]:
+    """本次要附完整技能的工具：核心 ∪ 關鍵詞命中 ∪ 意圖對應 ∪ ROI 形狀 ∪ 既有 graph 用到的。"""
+    picked: list[str] = list(CORE_TOOLS)
+
+    def add(keys: tuple[str, ...] | list[str]) -> None:
+        for k in keys:
+            if k not in picked and (k == "note" or tools.has(k)):
+                picked.append(k)
+
+    if graph:
+        add([n.get("type", "") for n in graph.get("nodes", []) if n.get("type") != "note"])
+    low = (text or "").lower()
+    for pattern, keys in KEYWORD_TOOLS.items():
+        if re.search(pattern, low):
+            add(keys)
+    if intent_kind in INTENT_TOOLS:
+        add(INTENT_TOOLS[intent_kind])
+    for r in regions or []:
+        shape = str((r.get("region") or {}).get("shape", ""))
+        add(_ROI_TOOLS.get(shape, ()))
+    return picked[:limit]
+
+
+@lru_cache(maxsize=1)
+def build_system() -> str:
+    """穩定的 system 段（可快取）：平台規則＋設計原則＋精簡目錄＋輸出格式。"""
+    return "\n\n".join([
+        platform_text().strip(),
+        design_text().strip(),
+        "# 工具目錄（精簡；本次相關工具的完整參數與要領會附在使用者訊息裡）\n\n" + brief_catalogue(),
+        "# 輸出\n\n只輸出一個 JSON 物件，不要任何其他文字或 markdown 圍欄：\n"
+        '{"graph": {...}, "rationale": "繁體中文說明（生成理由／改了什麼）"}',
+    ])
+
+
+def focus_text(keys: list[str]) -> str:
+    """相關工具的完整技能（放進 user 訊息）。"""
+    parts = []
+    for k in keys:
+        try:
+            parts.append(skill_text(k))
+        except KeyError:
+            continue
+    return "# 本次相關工具的完整技能\n\n" + "\n---\n".join(parts)

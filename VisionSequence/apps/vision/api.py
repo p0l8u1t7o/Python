@@ -494,7 +494,7 @@ def upload_scratch_image(request: HttpRequest, flow_id: int, image: UploadedFile
         raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
     frame = _decode_upload(image)
     run_id = f"scratch{uuid.uuid4().hex[:12]}"
-    info = store.put(f"{run_id}:upload:image", frame, flow_id=flow.id, run_id=run_id)
+    info = store.put(f"{run_id}:upload:image", frame, flow_id=flow.id, run_id=run_id, pinned=True)
     return 201, {**info, "name": image.name}
 
 
@@ -730,7 +730,7 @@ def browse_fs(request: HttpRequest, path: str = ""):
                     continue
     except PermissionError:
         raise ValidationError("沒有權限讀取此資料夾", code="permission_denied") from None
-    parent = os.path.dirname(path.rstrip("\/"))
+    parent = os.path.dirname(path.rstrip("\\/"))
     if os.name == "nt" and len(path) <= 3:
         parent = ""  # 磁碟機根 → 回磁碟機清單
     return {"path": path, "parent": parent if parent != path else None, "dirs": sorted(dirs, key=str.lower), "files": sorted(files, key=str.lower)}

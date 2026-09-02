@@ -168,3 +168,43 @@ def complete(s: AgentSettings, system: str, images: list[str], text: str, histor
     if s.provider not in _IMPL:
         raise RuntimeError(f"供應商 {s.provider} 不支援 LLM 生成")
     return _IMPL[s.provider](s, system, images, text, history or [])
+
+
+def _explain(exc: BaseException) -> str:
+    """把供應商例外翻成使用者看得懂的一句話。"""
+    msg = str(exc)
+    low = msg.lower()
+    if isinstance(exc, ImportError):
+        return "尚未安裝 anthropic 套件（pip install anthropic）"
+    if "401" in msg or "authentication" in low or "invalid x-api-key" in low or "api key not valid" in low or "incorrect api key" in low:
+        return f"API 金鑰無效或被拒絕：{msg[:160]}"
+    if "403" in msg or "permission" in low:
+        return f"金鑰沒有權限：{msg[:160]}"
+    if "404" in msg or "not_found" in low or "model" in low and ("not found" in low or "does not exist" in low):
+        return f"模型名稱不存在或無權使用：{msg[:160]}"
+    if "429" in msg or "rate" in low and "limit" in low:
+        return f"超過供應商速率／額度限制：{msg[:160]}"
+    if "timed out" in low or "timeout" in low:
+        return "連線逾時：檢查網路或代理設定"
+    if "urlopen error" in low or "name or service not known" in low or "getaddrinfo" in low or "connection" in low:
+        return f"無法連到供應商：{msg[:160]}"
+    return msg[:200] or exc.__class__.__name__
+
+
+def test_connection(s: AgentSettings) -> dict[str, Any]:
+    """打一個最小請求驗證設定；回 {ok, provider, model, latency_ms, reply, reason}。"""
+    import time
+
+    base = {"provider": s.provider, "model": model_of(s), "source": s.source}
+    if s.provider == "offline":
+        return {**base, "ok": True, "latency_ms": 0, "reply": "", "reason": "離線規則引擎不需連線"}
+    reason = missing_reason(s)
+    if reason:
+        return {**base, "ok": False, "latency_ms": 0, "reply": "", "reason": reason}
+    t0 = time.perf_counter()
+    try:
+        reply = complete(s, "你是連線測試。只回覆兩個字母：OK", [], "ping")
+    except Exception as exc:  # noqa: BLE001 - 任何失敗都要翻成原因回前端
+        log.warning("agent 供應商連線測試失敗（%s）：%s", s.provider, exc)
+        return {**base, "ok": False, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": "", "reason": _explain(exc)}
+    return {**base, "ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": reply.strip()[:80], "reason": ""}

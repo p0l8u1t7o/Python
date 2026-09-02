@@ -40,7 +40,9 @@ class ImageStore:
         self._encoded_by_ref: dict[str, set[tuple[str, int | None, str, int]]] = {}
 
     # -- 寫入 -------------------------------------------------------------
-    def put(self, ref: str, image: np.ndarray, *, flow_id: int, run_id: str) -> dict:
+    def put(self, ref: str, image: np.ndarray, *, flow_id: int, run_id: str, pinned: bool = False) -> dict:
+        """pinned=True（暫存上傳、AI 助手影像）：不佔該流程「最近 N 次 run」的名額、不被 run 輪替淘汰，
+        只受總容量 LRU 管理——否則工具頁每試跑一次就多一個 run，第 N+1 次就把暫存影像擠掉。"""
         if not isinstance(image, np.ndarray) or image.ndim not in (2, 3):
             raise ValueError("只接受 2D/3D ndarray")
         with self._lock:
@@ -51,12 +53,13 @@ class ImageStore:
             self._images[ref] = image
             self._bytes += image.nbytes
             self._refs_by_run.setdefault(run_id, []).append(ref)
-            runs = self._runs_by_flow.setdefault(flow_id, [])
-            if run_id not in runs:
-                runs.append(run_id)
-                keep = int(_cfg("KEEP_RUN_IMAGES", 8))
-                while len(runs) > keep:
-                    self._drop_run_locked(runs.pop(0))
+            if not pinned:
+                runs = self._runs_by_flow.setdefault(flow_id, [])
+                if run_id not in runs:
+                    runs.append(run_id)
+                    keep = int(_cfg("KEEP_RUN_IMAGES", 8))
+                    while len(runs) > keep:
+                        self._drop_run_locked(runs.pop(0))
             self._enforce_budget_locked()
         h, w = image.shape[:2]
         return {"ref": ref, "width": int(w), "height": int(h), "channels": int(image.shape[2]) if image.ndim == 3 else 1}

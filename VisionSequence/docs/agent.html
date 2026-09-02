@@ -62,6 +62,7 @@
 <li><a href="#providers">AI 代理來源與金鑰</a></li>
 <li><a href="#editor">流程頁面裡的 AI 助手</a></li>
 <li><a href="#tune">跑多筆影像後請 AI 調整</a></li>
+<li><a href="#skills">AI 代理技能</a></li>
 <li><a href="#arch">架構</a></li>
 <li><a href="#rules">離線規則引擎</a></li>
 <li><a href="#llm">LLM 生成（可選）</a></li>
@@ -107,6 +108,17 @@
 <pre>POST /api/vision/agent/tune  {graph, instruction, runs:[{name, image_ref, status, outputs}]}
 → {graph, rationale, changes, before:{ok,ng,failed}, after:{…}, items:[{name, before, after}], applied}</pre>
 
+<h2 id="skills">AI 代理技能（skills）</h2>
+<p>LLM 之所以能「照平台規則」設計流程，是因為每次都先讀 <code>apps/vision/agent/skills/</code> 這三份文件——它們既是給 AI 讀的提示詞，也是給人看的說明（AI 助手頁右上「AI 技能」可瀏覽，<code>GET /api/vision/agent/skills</code>）：</p>
+<table>
+<tr><th>檔案</th><th>內容</th><th>放在哪</th></tr>
+<tr><td><code>platform.md</code></td><td>平台規則：graph 格式、埠與 <code>_flow</code> 控制分支、ROI 座標與形狀、收尾規則（judge／output／not_found）、位深、禁止事項、note、排版</td><td>system（固定、可快取）</td></tr>
+<tr><td><code>design.md</code></td><td>流程設計原則：標準骨架、依需求選工具表、自動調參要領、多張影像／好品壞品、常見錯誤</td><td>system（固定、可快取）</td></tr>
+<tr><td><code>tools.md</code></td><td>每個工具的人工要領（<code>## &lt;type&gt;</code> 分段）：什麼時候用、怎麼接、參數怎麼調、陷阱。平台再自動把該工具的參數表（含範圍／選項／單位／說明）、輸入輸出埠、位深補在後面，組成完整技能</td><td>依本次相關性挑選後放進使用者訊息</td></tr>
+</table>
+<p>相關性挑選（<code>skills.select_tools</code>）：核心工具永遠帶（image_source／grayscale／threshold／blob／if_number／in_range／judge／output／draw_result／note）＋提示詞關鍵詞（「直徑」→ find_circle、calibration、tolerance_judge…）＋規則引擎解析出的意圖＋使用者圈的 ROI 形狀（line → wall_thickness／line_profile）＋既有 graph 已用到的工具，上限 18 個。其他工具只以一行式目錄列在 system，LLM 需要時知道有它。</p>
+<p>這樣 system 段完全穩定（prompt caching 命中），而每次真正需要細節的工具都有完整參數與要領。想讓 AI 更懂你的場域（廠內慣用參數、特定工件的接法），直接編輯這些 markdown 即可，不用改程式。</p>
+
 <h2 id="arch">架構</h2>
 <p>助手的產物就是<strong>標準 graph JSON</strong>——跑在既有的資料流引擎上、可在編輯器打開、
 可掛任何影像來源、可綁配方與 TCP／HTTP 觸發。助手本身只是「會寫流程的層」，沒有第二套執行路徑。</p>
@@ -132,6 +144,7 @@
 <tr><td><code>intents.py</code></td><td>提示詞（中英關鍵詞）＋ROI 形狀＋特徵 → 意圖（封閉集合：count / diameter / width / angle / defect / color_match / color_presence / presence / brightness / barcode / generic），並抽出期望數量、標稱值、公差、mm/px 換算。</td></tr>
 <tr><td><code>synth.py</code></td><td>每種意圖一個合成器：掛使用者 ROI、用特徵自動填參數（門檻極性、blob 最小面積、HSV 範圍、環形 ROI 自動生成……），輸出 graph＋設計理由。</td></tr>
 <tr><td><code>providers.py</code></td><td>供應商：offline／claude（anthropic SDK）／openai／gemini（REST）；設定解析（使用者 → 伺服器 → offline）、金鑰遮罩。</td></tr>
+<tr><td><code>skills.py</code>＋<code>skills/*.md</code></td><td>AI 代理技能：平台規則／設計原則／每工具要領的載入與組裝，相關工具挑選，技能 API。</td></tr>
 <tr><td><code>llm.py</code></td><td>四種任務（generate／refine／edit／tune）共用 system（工具目錄＋graph 規格＋規則，可快取）；影像縮圖＋ROI 編號＋特徵摘要進 user；輸出 JSON 經 validate_graph 把關，失敗帶錯誤重試一次。</td></tr>
 <tr><td><code>service.py</code></td><td>編排與試跑（多張影像各跑一次）；規則式微調／指令解析（edit_rules）／批次調參（tune）。LLM 失敗自動落回規則引擎。</td></tr>
 <tr><td><code>api.py</code></td><td><code>/vision/agent/*</code> 端點；執行類權限（鎖定時 423）。</td></tr>
@@ -161,7 +174,7 @@
 可以組合規則引擎沒有的流程形狀。</p>
 <ul>
 <li><strong>把關不變</strong>：LLM 輸出的 graph 一樣經 <code>validate_graph</code>＋實跑驗證；無效輸出帶錯誤重試一次，再失敗自動落回規則引擎。</li>
-<li><strong>金鑰只在伺服器</strong>：前端永遠打自己的後端；金鑰不進瀏覽器。</li>
+<li><strong>金鑰只在伺服器</strong>：前端永遠打自己的後端；金鑰不進瀏覽器。儲存設定後會立刻打一個最小請求驗證（<code>POST /agent/settings/test</code>），成功顯示模型與延遲、失敗顯示原因（金鑰無效／缺套件／模型不存在／連不上）。</li>
 <li><strong>資料外流邊界</strong>：啟用 LLM 時「縮圖後的影像＋ROI＋特徵摘要」會送到 LLM 供應商。內網／保密環境不要設金鑰——規則引擎功能完整。</li>
 <li><strong>成本控制</strong>：工具目錄與規格放在可快取的 system 段（prompt caching），迭代微調時只付增量。</li>
 </ul>

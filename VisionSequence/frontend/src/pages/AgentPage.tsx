@@ -7,7 +7,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bot, Loader2, Plus, Save, Settings2, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { BookOpen, Bot, Loader2, Plus, Save, Settings2, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
 import { TemplateThumb } from '@/components/templates/TemplateGallery'
@@ -86,9 +86,26 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string } | null>(null)
   const current = mine.data
   const effProvider = provider || current?.provider || 'offline'
   const defaultModel = info?.providers.find((p) => p.value === effProvider)?.default_model ?? ''
+
+  async function testConnection() {
+    setTesting(true)
+    try {
+      const r = await api.post<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string }>('/vision/agent/settings/test')
+      setTestResult(r)
+      return r
+    } catch (error) {
+      const r = { ok: false, provider: effProvider, model: '', latency_ms: 0, reason: errorMessage(error) }
+      setTestResult(r)
+      return r
+    } finally {
+      setTesting(false)
+    }
+  }
 
   async function save(clearKey = false) {
     setSaving(true)
@@ -97,8 +114,10 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
       await client.invalidateQueries({ queryKey: ['agent-info'] })
       await client.invalidateQueries({ queryKey: ['agent-settings'] })
       setApiKey('')
-      toast.success(t('agent.settingsSaved'))
-      if (!clearKey) onClose()
+      // 存完立刻打一次最小請求：成功／失敗原因直接顯示在視窗裡，不用猜
+      const r = await testConnection()
+      if (r.ok) toast.success(effProvider === 'offline' ? t('agent.settingsSaved') : t('agent.testOk', { model: r.model, ms: r.latency_ms }))
+      else toast.error(t('agent.testFailed', { reason: r.reason }))
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
@@ -108,7 +127,11 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
 
   return (
     <Modal open={open} onClose={onClose} title={t('agent.settings')} description={t('agent.settingsHint')}
-      footer={<><Button onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={saving} onClick={() => void save()} data-testid="agent-settings-save">{t('common.save')}</Button></>}>
+      footer={<>
+        <Button onClick={onClose}>{t('common.close')}</Button>
+        <Button loading={testing} disabled={saving} onClick={() => void testConnection()} data-testid="agent-settings-test">{t('agent.testConnection')}</Button>
+        <Button variant="primary" loading={saving} onClick={() => void save()} data-testid="agent-settings-save">{t('common.save')}</Button>
+      </>}>
       <div className="space-y-3">
         <Select label={t('agent.provider')} value={effProvider} onChange={(e) => setProvider(e.target.value)}
           options={(info?.providers ?? []).map((p) => ({ value: p.value, label: p.label }))} data-testid="agent-provider" />
@@ -125,6 +148,39 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
           <p className="text-xs text-muted">{t('agent.offlineHint')}</p>
         )}
         {current?.server?.llm ? <p className="text-[11px] text-subtle">{t('agent.serverHasKey', { provider: current.server.provider })}</p> : null}
+        {testResult ? (
+          <div className={`rounded-lg border px-3 py-2 text-xs ${testResult.ok ? 'border-ok/40 bg-ok-soft text-ok' : 'border-critical/40 bg-critical-soft text-critical'}`} data-testid="agent-test-result">
+            {testResult.ok
+              ? (testResult.provider === 'offline' ? t('agent.testOffline') : t('agent.testOk', { model: testResult.model, ms: testResult.latency_ms }))
+              : t('agent.testFailed', { reason: testResult.reason })}
+          </div>
+        ) : null}
+      </div>
+    </Modal>
+  )
+}
+
+/** AI 技能瀏覽：左列表（指南＋各工具）、右 markdown 原文——AI 代理讀的就是這份。 */
+function SkillsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation()
+  const [key, setKey] = useState('platform')
+  const list = useQuery({ queryKey: ['agent-skills'], queryFn: () => api.get<{ items: { key: string; label: string; category: string; curated: boolean }[] }>('/vision/agent/skills'), enabled: open })
+  const doc = useQuery({ queryKey: ['agent-skill', key], queryFn: () => api.get<{ key: string; markdown: string }>(`/vision/agent/skills/${key}`), enabled: open })
+  return (
+    <Modal open={open} onClose={onClose} size="xl" title={t('agent.skills')} description={t('agent.skillsHint')}>
+      <div className="grid h-[65vh] min-h-0 grid-cols-[220px_minmax(0,1fr)] gap-3 overflow-hidden">
+        <div className="min-h-0 space-y-0.5 overflow-y-auto pr-1 text-xs" data-testid="skills-list">
+          {(list.data?.items ?? []).map((it) => (
+            <button key={it.key} type="button" onClick={() => setKey(it.key)}
+              className={`flex w-full items-center justify-between rounded px-2 py-1 text-left ${it.key === key ? 'bg-brand-soft text-brand' : 'hover:bg-surface-muted'}`}>
+              <span className="truncate">{it.category === 'guide' ? `📘 ${it.label}` : `${it.label} · ${it.key}`}</span>
+              {it.curated && it.category !== 'guide' ? <span className="ml-1 shrink-0 text-[9px] text-subtle" title={t('agent.skillsCurated')}>★</span> : null}
+            </button>
+          ))}
+        </div>
+        <pre className="min-h-0 overflow-auto rounded-lg border border-line bg-surface-muted p-3 text-[11px] leading-relaxed whitespace-pre-wrap" data-testid="skills-doc">
+          {doc.data?.markdown ?? ''}
+        </pre>
       </div>
     </Modal>
   )
@@ -146,6 +202,7 @@ export function AgentPage() {
   const [busy, setBusy] = useState<'generate' | 'refine' | 'save' | null>(null)
   const [showOverlays, setShowOverlays] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [skillsOpen, setSkillsOpen] = useState(false)
   const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<AgentInfo>('/vision/agent/info') })
 
   const image = images[active] ?? null
@@ -260,6 +317,7 @@ export function AgentPage() {
                   <Bot size={12} /> {info.data.llm ? t('agent.providerLlm', { model: info.data.model }) : t('agent.providerRules')}
                 </Badge>
               ) : null}
+              <Button size="sm" icon={<BookOpen size={14} />} onClick={() => setSkillsOpen(true)} data-testid="agent-skills">{t('agent.skills')}</Button>
               <Button size="sm" icon={<Settings2 size={14} />} onClick={() => setSettingsOpen(true)} data-testid="agent-settings">{t('agent.settings')}</Button>
             </>
           }
@@ -409,6 +467,7 @@ export function AgentPage() {
         </div>
       </div>
       <ProviderSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} info={info.data} />
+      <SkillsModal open={skillsOpen} onClose={() => setSkillsOpen(false)} />
     </Page>
   )
 }

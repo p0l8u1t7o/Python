@@ -44,6 +44,8 @@
 - 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序）；`providers.py` 多供應商（claude 走 anthropic SDK 延後 import；openai／gemini 走 urllib REST 零依賴）＋`llm.py` 四種任務（generate／refine／edit／tune）。設定解析 `providers.resolve(user)`：使用者自己的 `UserPref.agent`（每人各自存、金鑰不回前端）→ .env（`VISION_AGENT_PROVIDER/API_KEY/MODEL`）→ offline；LLM 失敗自動落回規則。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB；多張影像各跑一次回 `reports`）。
 - 多圖＋ROI 編號（ROI01…，regions[i].image 指影像索引；提示詞「ROI01 是好品、ROI02 是壞品」→ golden 意圖，好品 ROI 自動裁成資產）。編輯器右側「AI」分頁走 `/agent/edit`（離線句型見 `service.edit_rules`）；批次測試「請 AI 調整」走 `/agent/tune`（同批影像重跑回前後對比）。
 - 新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
+- AI 代理技能在 `agent/skills/`（platform.md 平台規則、design.md 設計原則、tools.md 每工具要領 `## <type>` 分段）；`skills.py` 組裝：system＝規則＋原則＋精簡目錄（穩定可快取），相關工具完整技能（自動骨架＋要領）由 `select_tools` 挑進 user 訊息。**新增工具要在 tools.md 補一段要領**（測試只驗有骨架，要領是品質）。
+- 暫存影像／AI 助手上傳走 `store.put(..., pinned=True)`：不佔流程「最近 N 次 run」名額（否則工具頁試跑 N+1 次就把暫存影像擠掉）。供應商設定存完會打 `providers.test_connection` 驗證並回原因。
 
 ## 深度學習教導（apps/vision/dl）
 - `Trainer` registry（base.py）：kind／label_mode（封閉集合：classes｜shapes）／params（沿用 Param）／devices，實作 `train()`（回 ONNX bytes＋tool_params）與 `suggest()`（自動標記）。內建：`mlp_classify`（分類）、`patch_segment`（輕量語意分割，全卷積手刻 ONNX 給 dl_segment）、`yolo_seg`（實例分割；torch/ultralytics **可選安裝、延後 import**，缺件訓練時提示 pip 指令；產物給新工具 `dl_instance`）。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動、共用。

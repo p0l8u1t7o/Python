@@ -181,6 +181,86 @@ class ServiceTests(TestCase):
         self.assertEqual([it["after"] for it in out["items"]], ["ng", "ok"])
 
 
+class SkillsTests(TestCase):
+    def test_every_tool_has_a_skill_and_core_ones_are_curated(self):
+        from apps.vision.agent import skills
+        from apps.vision.tools import base as tools
+
+        items = skills.list_skills()
+        keys = {it["key"] for it in items}
+        self.assertTrue({"platform", "design", "note"} <= keys)
+        for t in tools.all_types():
+            self.assertIn(t.key, keys)
+            text = skills.skill_text(t.key)
+            self.assertIn("## 參數", text)
+            self.assertIn("## 輸出埠", text)
+        curated = {it["key"] for it in items if it["curated"]}
+        self.assertTrue({"find_circle", "caliper", "blob", "defect_diff", "judge", "output", "template_match"} <= curated)
+        self.assertGreaterEqual(len(curated), 40)
+
+    def test_select_tools_by_keywords_roi_intent_and_graph(self):
+        from apps.vision.agent import skills
+
+        picked = skills.select_tools("量孔的直徑 17.5±0.4mm")
+        self.assertIn("find_circle", picked)
+        self.assertIn("tolerance_judge", picked)
+        self.assertIn("judge", picked)  # 核心永遠在
+        picked = skills.select_tools("", [{"region": {"shape": "line", "x1": 0, "y1": 0, "x2": 1, "y2": 1}}])
+        self.assertIn("wall_thickness", picked)
+        picked = skills.select_tools("", intent_kind="golden")
+        self.assertIn("defect_diff", picked)
+        graph = {"nodes": [{"id": "a", "type": "fft_filter"}]}
+        self.assertIn("fft_filter", skills.select_tools("", graph=graph))
+
+    def test_system_prompt_is_stable_and_carries_platform_rules(self):
+        from apps.vision.agent import llm, skills
+
+        s1, s2 = llm.system_prompt(), llm.system_prompt()
+        self.assertEqual(s1, s2)
+        self.assertIn("平台規則", s1)
+        self.assertIn("收尾規則", s1)
+        self.assertIn("# 工具目錄", s1)
+        self.assertNotIn("dl_classify", skills.brief_catalogue())  # 不生成的工具不進目錄
+        focus = skills.focus_text(["find_circle"])
+        self.assertIn("annulus", focus)
+
+    def test_skills_api(self):
+        r = self.client.get("/api/vision/agent/skills")
+        self.assertEqual(r.status_code, 200)
+        self.assertGreater(len(r.json()["items"]), 50)
+        r = self.client.get("/api/vision/agent/skills/find_circle")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("找圓", r.json()["markdown"])
+        self.assertEqual(self.client.get("/api/vision/agent/skills/nope").status_code, 404)
+
+
+class ImageStorePinnedTests(TestCase):
+    def test_pinned_scratch_survives_run_rotation(self):
+        from apps.vision.images import ImageStore
+
+        s = ImageStore()
+        img = np.zeros((4, 4), np.uint8)
+        s.put("scratch1:upload:image", img, flow_id=7, run_id="scratch1", pinned=True)
+        for i in range(12):  # 超過 KEEP_RUN_IMAGES（8）次試跑
+            s.put(f"run{i}:n:image", img, flow_id=7, run_id=f"run{i}")
+        self.assertIsNotNone(s.get("scratch1:upload:image"))
+        self.assertIsNone(s.get("run0:n:image"))  # 一般 run 照舊輪替
+
+    def test_settings_test_endpoint(self):
+        r = self.client.post("/api/vision/agent/settings/test")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])  # 伺服器預設離線
+        from apps.vision.agent import providers
+
+        out = providers.test_connection(providers.AgentSettings(provider="claude", api_key="", source="user"))
+        self.assertFalse(out["ok"])
+        self.assertIn("金鑰", out["reason"])
+        # 供應商錯誤翻譯（不打外網）
+        self.assertIn("金鑰無效", providers._explain(RuntimeError("HTTP 400: API key not valid. Please pass a valid API key.")))
+        self.assertIn("模型", providers._explain(RuntimeError("HTTP 404: model 'nope' does not exist")))
+        self.assertIn("anthropic", providers._explain(ImportError("No module named 'anthropic'")))
+
+
 class ProviderSettingsTests(TestCase):
     def test_server_default_is_offline_without_key(self):
         s = providers.server_settings()

@@ -1,0 +1,52 @@
+# 檢測流程設計原則
+
+## 標準骨架
+
+```
+取像 → 前處理 → （定位補正）→ 檢測／量測 → 判定 → 輸出
+```
+
+- **前處理**：`grayscale` 幾乎必做；雜訊多先 `blur`（median 對椒鹽雜訊最好）；對比差用 `lut`（gamma／CLAHE）；二值化用 `threshold`（不確定門檻用 `otsu`），二值化後 `morphology`（open 去雜點、close 補洞）。
+- **定位補正**：工件位置會變就用「範本比對 → 定位補正 → ROI 跟隨」三件套；只是小位移且特徵單一，用 `find_circle`／`find_line` 直接在大一點的 ROI 裡找也行。
+- **判定**：數值走 `if_number`／`in_range`／`tolerance_judge`，多個條件用 `bool_logic(and)` 彙總後 `judge(by_input)`；不良分支各接 `judge(ng, label=原因)`，讓上位機看得出是哪種 NG。
+
+## 依需求選工具
+
+| 需求 | 首選 | 備選／搭配 |
+|---|---|---|
+| 數幾個 | `threshold` → `morphology` → `blob` → `if_number(eq N)` | 圓形零件多時 `hough_circles.count` |
+| 有沒有（無色） | `blob(min_count=1)` 的 found/not_found | `template_match` 找特徵、`intensity` 亮度差 |
+| 有沒有（有色） | `color_range` → `pixel_count` | `color_check` 比平均色 |
+| 顏色對不對 | `color_check(color=目標色)` | `color_stats` 輸出色碼給上位機 |
+| 圓的直徑／圓心 | `find_circle`（annulus ROI）→ `formula(a*2)` | 多圓 `hough_circles`；圓度 `fit_ellipse.roundness`；只有一段弧 `fit_arc` |
+| 寬度／間距 | `caliper`（ROI 橫跨兩條邊） | 多點壁厚 `wall_thickness`（line ROI 橫切壁） |
+| 角度 | `find_line`×2 → `angle` | 斜切角 `chamfer_angle`；交點 `geometry(intersect)` |
+| 距離 | 兩個找圓／找線 → `distance` | 點到線 `geometry(point_line)` |
+| 換算 mm | `calibration(pixel_size_mm)` 在數值進 `tolerance_judge` 之前 | |
+| 表面缺陷（有良品） | `defect_diff(template=良品資產)` | |
+| 表面缺陷（規律紋理） | `fft_filter(lowpass)` → `threshold` → `blob` | |
+| 表面缺陷（均勻表面） | `blur` → `threshold(fixed, 平均±3σ)` → `morphology` → `blob(count==0)` | `edge_density` 守門 |
+| 讀碼 | `barcode` | 斜貼先 `warp_perspective` 拉正；文字有無 `text_presence` |
+| 亮度／曝光守門 | `intensity.mean` → `in_range` | `histogram.otsu` |
+
+## 自動調參要領
+
+- 二值化極性：目標比背景暗 → `invert=true`（或 blob `polarity="dark"`）。
+- `blob.min_area`：目標粒子面積的 1/3 左右；`max_area` 擋整片背景。
+- 找圓／找線 `edge_threshold`：對比高（>100 灰階差）用 20～40；對比低用 8～15；`polarity` 依「由 ROI 內→外」遇到的灰階變化選。
+- 公差：使用者給標稱值沒給公差時，量測類預設 ±2%（直徑）或 ±5%（寬度），角度 ±1°。
+- 顏色範圍：H 取主色 ±12°、S 與 V 下限取主色的 40%（光源變動大時再放寬）。
+- 缺陷門檻：ROI 平均灰階往缺陷極性偏 max(30, 3σ)；最小面積擋雜訊（≥ 200 px²）。
+
+## 多張影像／好品壞品
+
+- 使用者說「ROI01 是好品、ROI02 是壞品」：好品 ROI 裁成範本資產 → `defect_diff(template=資產id, roi=壞品位置且與範本同尺寸)`；主影像用壞品那張試跑，應得到 NG。
+- 多張影像的流程要對每張都合理（同一套參數）；差異大時用定位補正，不要為每張各寫一套。
+
+## 常見錯誤
+
+- 忘了 `grayscale` 就接 `threshold`（彩色進二值化會走 BGR 平均，結果不穩）。
+- 把 `not_found` 接到 `_flow` 以外的埠。
+- `judge` 只接一邊分支，另一邊沒收尾。
+- ROI 用了工具不支援的形狀。
+- 數值埠接錯型別（list 接到 number）。

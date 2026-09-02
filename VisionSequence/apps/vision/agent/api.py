@@ -25,7 +25,7 @@ from ninja import File, Router, Schema, UploadedFile
 from apps.accounts.models import UserPref
 from apps.accounts.security import principal
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.agent import providers, service
+from apps.vision.agent import providers, service, skills
 from apps.vision.api import _decode_upload
 from apps.vision.images import store
 
@@ -123,12 +123,32 @@ def patch_agent_settings(request: HttpRequest, payload: SettingsIn):
     return {"configured": True, **mine.public(), "reason": providers.missing_reason(mine)}
 
 
+@router.get("/agent/skills")
+def list_agent_skills(request: HttpRequest):
+    """AI 代理技能清單：平台規則、設計原則、每個工具的使用要領（給人看，也是 LLM 讀的同一份）。"""
+    return {"items": skills.list_skills()}
+
+
+@router.get("/agent/skills/{key}")
+def get_agent_skill(request: HttpRequest, key: str):
+    try:
+        return {"key": key, "markdown": skills.skill_text(key)}
+    except KeyError:
+        raise NotFound(f"沒有 '{key}' 這個技能", code="skill_not_found") from None
+
+
+@router.post("/agent/settings/test")
+def test_agent_settings(request: HttpRequest):
+    """用目前生效的設定打一個最小請求，回成功與否＋失敗原因（金鑰錯、缺套件、模型名錯、網路）。"""
+    return providers.test_connection(_settings_for(request))
+
+
 @router.post("/agent/image", response={201: dict})
 def upload_agent_image(request: HttpRequest, image: UploadedFile = File(...)):
     principal(request).can_execute()
     frame = _decode_upload(image)
     run_id = f"agent{uuid.uuid4().hex[:12]}"
-    info = store.put(f"{run_id}:upload:image", frame, flow_id=service.AGENT_FLOW_ID, run_id=run_id)
+    info = store.put(f"{run_id}:upload:image", frame, flow_id=service.AGENT_FLOW_ID, run_id=run_id, pinned=True)
     return 201, {**info, "name": image.name}
 
 

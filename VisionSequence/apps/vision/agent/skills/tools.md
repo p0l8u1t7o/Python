@@ -1,0 +1,174 @@
+# 工具使用要領（AI 代理技能；每段以 `## <工具 type>` 開頭）
+
+每段寫「什麼時候用、怎麼接、參數要領、陷阱」。參數與埠的完整定義由平台自動附在後面，這裡只寫目錄看不出來的經驗。
+
+## image_source
+流程的起點、只能有一個。AI 生成時 `params` 只填 `{"mode": "auto"}`：試跑吃上傳影像，存成流程後使用者在編輯器選來源。不要綁 `source_id`。
+
+## grayscale
+幾乎所有幾何／二值化工具的前置。彩色判斷（color_range／color_check／color_stats）**不要**經過它。
+
+## blur
+去雜訊。`median`（ksize 3～7）對椒鹽雜訊最好且保邊；`gaussian` 對高斯雜訊；`bilateral` 保邊但慢。ksize 必須是奇數。
+
+## threshold
+二值化。門檻不確定用 `method="otsu"`；背景不均用 `adaptive`（block 31～101、c 5～10）；已知固定灰階用 `fixed`。目標比背景暗要 `invert=true`（讓目標變白 255）。輸出 `threshold_used` 可當曝光指標。
+
+## morphology
+二值化後整理：`open` 去小雜點、`close` 補小洞、`erode`／`dilate` 調粗細。ksize 3～7；比目標小、比雜訊大。
+
+## lut
+灰階映射：`gamma`<1 提亮暗部、>1 壓亮部；`clahe` 局部對比（clip 2～4、tile 8）；`linear` 用 brightness／contrast。放在 threshold 前面救對比。
+
+## filter
+銳化／邊緣：`sharpen` 補模糊；`canny`（low/high 約 1:2～1:3）取邊緣圖給 hough_lines／edge_density；`laplacian`／`sobel` 取梯度圖。
+
+## fft_filter
+頻域濾波。規律紋理（織紋、網點、印刷網格）背景：`lowpass` cutoff 0.05～0.1 把紋理濾掉，殘留的大尺度暗痕就是缺陷；`highpass` 去掉光照漸層。輸出 `spectrum` 可看頻譜。
+
+## crop
+裁 ROI 成小圖加速，輸出 `offset_x/offset_y`。裁完的座標系變了：下游工具的 overlay 會在小圖座標，要回全圖記得加 offset。
+
+## resize
+`scale` 0.25～0.5 縮小加速守門類流程（曝光、粗略計數）；量測流程不要縮，精度會掉。
+
+## color_convert
+取單一色彩面：`hsv_s`（飽和度，抓有色物件最穩）、`hsv_h`、`hsv_v`、`lab_a/b`。輸出是灰階圖，可直接接 threshold。
+
+## color_range
+HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段），S/V 0～255。輸出遮罩＋`ratio`。接 pixel_count 判斷有無。
+
+## apply_mask
+把遮罩（255 保留、0 填 fill）套到影像，常用來只留缺陷區或只看某個色塊；`mask` 埠接 blob.mask／threshold 影像。
+
+## arithmetic
+兩張影像運算：`absdiff` 看處理前後或兩張差異；`subtract` 去背景（先拍空景）；`add`／`multiply` 做加權。兩張尺寸要一致。
+
+## warp_perspective
+四點透視校正：`roi` 用 `polygon` 四個角點（順序自動排），`width/height` 給輸出尺寸。標籤斜貼、相機斜拍時放在 barcode／text_presence／量測前面。
+
+## convert_depth
+16-bit／浮點影像轉 8-bit（`shift` 右移保線性、`minmax` 拉滿），或反向。多數工具會自動正規化，只有要控制映射方式時才放。
+
+## rotate_flip
+固定角度旋轉／翻轉（相機裝反）。`keep_size=true` 不改尺寸會裁角。
+
+## template_match
+範本比對定位：`template` 是資產 id（使用者框選建立），`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。AI 生成時沒有資產可填就留空並在 note 提醒。
+
+## shape_align
+定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。
+
+## fixture_roi
+ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.transform，輸出 `region` 接量測工具的 `roi` 輸入埠。每個要跟著動的 ROI 一個 fixture_roi。
+
+## find_circle
+射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
+
+## find_line
+卡尺式找直線：`roi` rect/rotated_rect，短邊方向掃描；輸出 `line`（接 angle／geometry 的 a/b）、`x1..y2`、`angle`。`direction` first/last/strongest 選邊。多用 RANSAC（預設開）抗雜點。
+
+## caliper
+量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。輸出 `width`（px）。
+
+## wall_thickness
+沿壁放多條卡尺量厚度：`roi` 用 **line 橫切壁**（最直觀）或矩形長邊沿壁。輸出 `thickness`（平均）、min/max。「沒有找到成對的邊緣」通常是掃描方向錯或 band 太窄。
+
+## fit_arc
+只有一段弧（缺口、扇形）時用，`roi` 用 annulus 加 `a0/a1` 起迄角。輸出 radius、cx/cy、residual_rms。
+
+## fit_ellipse
+橢圓擬合看圓度：`roundness` 越接近 1 越圓；也能量斜拍的圓。
+
+## hough_circles
+一次抓很多圓（計數用，精度普通）：`min_radius/max_radius` 夾住目標半徑、`min_dist` ≥ 直徑、`param2` 15～30（越低越敏感）。輸出 `circles`（list）與 `count`。
+
+## hough_lines
+抓線段清單：先 canny（`canny_low/high`），`threshold` 投票數、`min_length` 擋短線。輸出 `lines`（list，可接 count_list）。
+
+## chamfer_angle
+倒角／斜切角：ROI 長邊沿輪廓走向、同時包住主邊與倒角段；輸出 `angle_deg`、`length`、交點。
+
+## angle
+兩條線夾角：`a/b` 接 find_line.line（或八個端點數值）。`range` 0_90 折成銳角、0_180 保留方向。
+
+## distance
+兩點距離：`ax/ay/bx/by` 接 find_circle.cx/cy 等；輸出 `distance/dx/dy`（px）。
+
+## geometry
+兩線交點、點到線垂距、中點、投影：`a/b` 接 line 或 point（any 型）。
+
+## concentricity
+兩圓同心度：a/b 接 find_circle 的 cx/cy/r，`max_deviation` 填圖面同心度公差的一半。輸出 in_spec 給 bool_logic。
+
+## calibration
+像素→mm：`pixel_size` 模式填 `pixel_size_mm`（0.05 mm/px 之類）；或 `two_point` 用 px_distance/real_mm。`value` 進、`mm` 出，放在 tolerance_judge 前。
+
+## tolerance_judge
+標稱值±公差判定：`nominal/upper_tol/lower_tol/unit/spec_source/name`。輸出 `in_spec`（bool，接 bool_logic 或 judge by_input）、`pass/fail` 分支、`deviation`。
+
+## in_range
+數值落在 [low, high] → `inside`／`outside` 分支。簡單守門用它；有標稱值用 tolerance_judge。
+
+## if_number
+數值比較（eq/ne/gt/ge/lt/le）→ `true/false` 分支。計數 == N 就是它。
+
+## bool_logic
+多個 bool 彙總（and/or/not）：`values` 埠可接多條邊。輸出 `result` 給 judge(by_input)。
+
+## formula
+數值算式：`expression` 用 a/b/c 變數（`a*2`、`(a+b)/2`）。輸出 `value`。
+
+## count_list
+清單長度（hough_lines.lines、blob.blobs 等）→ `count`。
+
+## judge
+決定 run 的 OK/NG：`verdict` ok/ng 放在分支下游、`by_input` 收 bool。`label` 寫 NG 原因（上位機看得到）。每條互斥分支各接一個。
+
+## output
+具名輸出：`name` 英文鍵名，`value` 埠接數值／字串／影像。上位機從 `outputs[name]` 拿。
+
+## draw_result
+把所有 overlay 畫到影像上輸出（總覽／存檔用）；輸入接原圖。
+
+## blob
+粒子分析：內建二值化（`threshold_method` otsu/fixed、`polarity` bright/dark）或接已二值化的影像（fixed+128+bright）。`min_area/max_area/min_circularity` 篩選；黏連粒子 `separate=true`（分水嶺）。輸出 `count`、`blobs`、`centers`、`mask`、`found/not_found`（`min_count` 決定）。
+
+## pixel_count
+數 ≥ threshold 的像素：接 color_range／threshold 輸出，`min_count/max_count` 決定 ok/ng。
+
+## dark_ratio
+暗部佔比守門：`threshold` 以下的比例 > `max_ratio` → fail。
+
+## intensity
+ROI 灰階統計（mean/std/min/max/median）。亮度守門、簡單有無。
+
+## histogram
+直方圖與 Otsu 門檻／峰值；教學與曝光診斷。
+
+## line_profile
+沿線／折線取灰階剖面：量溝深、找邊緣位置、看印刷條紋。`roi` 用 line/polyline。
+
+## edge_density
+Canny 邊緣像素比例 > `max_ratio` → ng：畫面異常（髒污、雜訊、對焦跑掉）守門。
+
+## color_check
+ROI 平均色與目標色（`color` 十六進位）距離 ≤ `tolerance` → match。`space` rgb/hsv；目標色用使用者 ROI 的主色最穩。
+
+## color_stats
+ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_number。
+
+## defect_diff
+良品差異比對：`template` 良品資產（與 ROI 同尺寸），`align=phase` 補位移，`threshold`（灰階差）與 `min_area` 決定靈敏度，`border` 忽略對齊邊界假差異。輸出 `ok/defect` 分支、`count/total_area`、`defect_mask`。
+
+## barcode
+一維碼／QR：`roi` 縮小範圍加速；`expected` 填預期內容可直接判定。輸出 `first`（字串）、`count`、`found/not_found`。
+
+## text_presence
+文字有無（筆畫密度，不是 OCR）：`roi` 框住字區，`polarity` dark/bright，`min_ratio/max_ratio` 決定 present。
+
+## save_image
+每次執行寫檔；AI 不生成，需要時提醒使用者手動加。
+
+## note
+不是工具：畫布便利貼（type=note、不接邊），寫流程說明或調機備註。

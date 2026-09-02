@@ -107,13 +107,13 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
     """上傳影像們＋ROI＋提示詞 → {graph, rationale, provider, intent, report, reports}。"""
     settings = settings or providers.server_settings()
     feats = analysis_mod.analyze(images, regions)
-    got = _try_llm(settings, use_llm, images=images, regions=regions, prompt=prompt, analysis=feats)
+    intent = intents.parse(prompt, regions, feats)  # 規則引擎的意圖也拿來幫 LLM 挑相關工具技能
+    got = _try_llm(settings, use_llm, images=images, regions=regions, prompt=prompt, analysis=feats, intent_kind=intent.kind)
     if got is not None:
         graph, rationale = got
-        main = _main_image(regions, None, len(images))
+        main = _main_image(regions, intent, len(images))
         report, reports = _run_all(graph, images, main)
-        return _result(graph, rationale, settings.provider, "", report, reports, main_image=main)
-    intent = intents.parse(prompt, regions, feats)
+        return _result(graph, rationale, settings.provider, intent.kind, report, reports, main_image=main)
     graph, rationale = synth.synthesize(intent, regions, feats, make_asset=_make_asset_factory(images))
     graph = validate_graph(graph)
     main = _main_image(regions, intent, len(images))

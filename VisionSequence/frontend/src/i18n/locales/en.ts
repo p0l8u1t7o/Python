@@ -562,7 +562,10 @@ const en = {
     instructionPlaceholder: 'Tell the assistant what to change…', send: 'Send', thinking: 'Assistant is working…',
     apply: 'Apply to canvas', applied: 'Applied the assistant\'s change (undo available)',
     tuneTitle: 'Ask AI to tune from these results', tunePlaceholder: 'e.g. the NG ones are actually good - too sensitive; expect 4; ±0.3',
-    tune: 'Tune', beforeAfter: 'Before → after' },
+    tune: 'Tune', beforeAfter: 'Before → after',
+    testConnection: 'Test connection', testOk: 'Configured: {{model}} responded ({{ms}} ms)', testFailed: 'Setup failed: {{reason}}', testOffline: 'Offline rule engine - no connection needed',
+    skills: 'AI skills', skillsHint: 'This is exactly what the AI agent reads: platform rules, flow design principles and per-tool know-how. Edit the markdown under apps/vision/agent/skills/ to teach it your site.',
+    skillsGuide: 'Guide', skillsCurated: 'curated' },
   palette: {
     addTool: 'Add tool',
     pickerTitle: 'Pick a tool',
