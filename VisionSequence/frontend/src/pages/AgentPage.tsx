@@ -7,7 +7,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Bot, Loader2, Plus, Save, Settings2, Sparkles, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { BookOpen, Bot, HelpCircle, Loader2, Plus, Save, Settings2, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
 import { TemplateThumb } from '@/components/templates/TemplateGallery'
@@ -31,6 +31,23 @@ interface RoiItem {
   image: number
 }
 
+interface Question {
+  id: string
+  text: string
+  kind: 'choice' | 'number' | 'text' | 'roi'
+  optional?: boolean
+  hint?: string
+  options?: { value: string; label: string }[]
+}
+
+interface ClarifyResult {
+  ready: boolean
+  questions: Question[]
+  summary: string
+  intent: string
+  provider: string
+}
+
 interface AgentResult {
   graph: FlowGraph
   rationale: string
@@ -39,6 +56,7 @@ interface AgentResult {
   report: RunReport
   reports: RunReport[]
   main_image: number
+  warnings?: string[]
 }
 
 interface AgentInfo {
@@ -228,7 +246,11 @@ export function AgentPage() {
   const [result, setResult] = useState<AgentResult | null>(null)
   const [feedback, setFeedback] = useState('')
   const [flowName, setFlowName] = useState('')
-  const [busy, setBusy] = useState<'generate' | 'refine' | 'save' | null>(null)
+  const [busy, setBusy] = useState<'clarify' | 'generate' | 'refine' | 'save' | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  /** 詢問機制：助手提出的問題與使用者的回答（id → answer） */
+  const [clarify, setClarify] = useState<ClarifyResult | null>(null)
+  const [answers, setAnswers] = useState<Record<string, string>>({})
   const [showOverlays, setShowOverlays] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
@@ -286,31 +308,93 @@ export function AgentPage() {
     return { images: images.map((im) => im.ref), prompt, regions }
   }, [rois, drawing, images, prompt, active])
 
-  async function generate() {
+  function abort() {
+    abortRef.current?.abort()
+  }
+
+  function newController(kind: 'clarify' | 'generate' | 'refine' | 'save') {
+    const controller = new AbortController()
+    abortRef.current = controller
+    setBusy(kind)
+    return controller
+  }
+
+  const answerList = useMemo(() => Object.entries(answers).map(([id, answer]) => ({ id, answer })), [answers])
+
+  /** 第一階段：請助手確認資訊是否足夠；不足就顯示問題卡。skip=true 直接生成。 */
+  async function generate(skip = false) {
     if (!images.length) return
-    setBusy('generate')
+    if (skip) {
+      await runGenerate()
+      return
+    }
+    const controller = newController('clarify')
     try {
-      const r = await api.post<AgentResult>('/vision/agent/generate', payload)
+      const r = await api.post<ClarifyResult>('/vision/agent/clarify', { ...payload, answers: answerList }, undefined, controller.signal)
+      if (r.ready) {
+        setClarify(null)
+        await runGenerate()
+      } else {
+        setClarify(r)
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) toast.error(errorMessage(error))
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
+      setBusy((b) => (b === 'clarify' ? null : b))
+    }
+  }
+
+  /** 回答完目前這一輪問題後再確認一次（可能還有下一輪或直接生成）。 */
+  async function continueClarify() {
+    // 沒回答的題目也記為「已問過」（空字串），助手不會重問
+    const filled = { ...answers }
+    for (const q of clarify?.questions ?? []) if (!(q.id in filled)) filled[q.id] = ''
+    setAnswers(filled)
+    setClarify(null)
+    const controller = newController('clarify')
+    try {
+      const list = Object.entries(filled).map(([id, answer]) => ({ id, answer }))
+      const r = await api.post<ClarifyResult>('/vision/agent/clarify', { ...payload, answers: list }, undefined, controller.signal)
+      if (r.ready) await runGenerate(list)
+      else setClarify(r)
+    } catch (error) {
+      if (!controller.signal.aborted) toast.error(errorMessage(error))
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
+      setBusy((b) => (b === 'clarify' ? null : b))
+    }
+  }
+
+  /** 第二階段：真的生成（帶問答）。 */
+  async function runGenerate(list: { id: string; answer: string }[] = answerList) {
+    const controller = newController('generate')
+    try {
+      const r = await api.post<AgentResult>('/vision/agent/generate', { ...payload, answers: list }, undefined, controller.signal)
       setResult(r)
+      setClarify(null)
       setActive(Math.min(r.main_image ?? 0, images.length - 1))
       setFeedback('')
     } catch (error) {
-      toast.error(errorMessage(error))
+      if (controller.signal.aborted) toast.success(t('agent.aborted'))
+      else toast.error(errorMessage(error))
     } finally {
+      if (abortRef.current === controller) abortRef.current = null
       setBusy(null)
     }
   }
 
   async function refine() {
     if (!images.length || !result || !feedback.trim()) return
-    setBusy('refine')
+    const controller = newController('refine')
     try {
-      const r = await api.post<AgentResult>('/vision/agent/refine', { ...payload, graph: result.graph, feedback })
+      const r = await api.post<AgentResult>('/vision/agent/refine', { ...payload, graph: result.graph, feedback, answers: answerList }, undefined, controller.signal)
       setResult(r)
       setFeedback('')
     } catch (error) {
-      toast.error(errorMessage(error))
+      if (!controller.signal.aborted) toast.error(errorMessage(error))
     } finally {
+      if (abortRef.current === controller) abortRef.current = null
       setBusy(null)
     }
   }
@@ -411,12 +495,54 @@ export function AgentPage() {
                   </button>
                 ))}
               </div>
-              <Button variant="primary" className="w-full !justify-center" disabled={!images.length || busy !== null}
-                icon={busy === 'generate' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                onClick={() => void generate()} data-testid="agent-generate">
-                {result ? t('agent.regenerate') : t('agent.generate')}
-              </Button>
+              {busy === 'clarify' || busy === 'generate' ? (
+                <div className="flex gap-2">
+                  <span className="flex flex-1 items-center gap-2 rounded-md border border-line px-3 text-xs text-muted"><Loader2 size={14} className="animate-spin" /> {busy === 'clarify' ? t('agent.clarifying') : t('agent.thinking')}</span>
+                  <Button variant="danger" icon={<Square size={14} />} onClick={abort} data-testid="agent-abort">{t('agent.abort')}</Button>
+                </div>
+              ) : (
+                <Button variant="primary" className="w-full !justify-center" disabled={!images.length || busy !== null}
+                  icon={<Sparkles size={14} />} onClick={() => void generate()} data-testid="agent-generate">
+                  {result ? t('agent.regenerate') : t('agent.generate')}
+                </Button>
+              )}
+              {answerList.length && !clarify ? <p className="text-[11px] text-subtle">{t('agent.answersKept', { count: answerList.length })} <button type="button" className="underline" onClick={() => setAnswers({})}>{t('common.clear')}</button></p> : null}
             </Card>
+
+            {clarify && !clarify.ready ? (
+              <Card className="space-y-3 border-brand/40 p-3" data-testid="agent-clarify">
+                <div className="flex items-center gap-2">
+                  <HelpCircle size={14} className="text-brand" />
+                  <p className="text-xs font-semibold">{t('agent.clarifyTitle')}</p>
+                </div>
+                {clarify.summary ? <p className="text-[11px] text-muted">{t('agent.clarifySummary')}：{clarify.summary}</p> : null}
+                {clarify.questions.map((q, i) => (
+                  <div key={q.id} className="space-y-1.5" data-testid={`agent-question-${q.id}`}>
+                    <p className="text-xs">{i + 1}. {q.text}{q.optional ? <span className="ml-1 text-subtle">{t('agent.optional')}</span> : null}</p>
+                    {q.hint ? <p className="text-[11px] text-subtle">{q.hint}</p> : null}
+                    {q.kind === 'choice' ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {(q.options ?? []).map((o) => (
+                          <button key={o.value} type="button" onClick={() => setAnswers((a) => ({ ...a, [q.id]: o.value }))}
+                            className={`rounded-full border px-2.5 py-1 text-xs ${answers[q.id] === o.value ? 'border-brand bg-brand-soft text-brand' : 'border-line text-muted hover:bg-surface-muted'}`}>
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : q.kind === 'roi' ? (
+                      <p className="rounded bg-brand-soft px-2 py-1 text-[11px] text-brand">{t('agent.roiQuestionHint')}</p>
+                    ) : (
+                      <TextInput className="text-xs" type={q.kind === 'number' ? 'number' : 'text'} value={answers[q.id] ?? ''}
+                        onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))} placeholder={t('agent.answerPlaceholder')} />
+                    )}
+                  </div>
+                ))}
+                <div className="flex gap-2">
+                  <Button variant="primary" className="flex-1 !justify-center" disabled={busy !== null} onClick={() => void continueClarify()} data-testid="agent-clarify-continue">{t('agent.continue')}</Button>
+                  <Button disabled={busy !== null} onClick={() => { setClarify(null); void generate(true) }} data-testid="agent-clarify-skip">{t('agent.skipQuestions')}</Button>
+                </div>
+              </Card>
+            ) : null}
 
             {result ? (
               <Card className="space-y-2 p-3" data-testid="agent-result">
@@ -426,6 +552,11 @@ export function AgentPage() {
                 </div>
                 <TemplateThumb graph={result.graph} className="h-20 w-full rounded bg-surface-muted" />
                 <p className="text-xs leading-relaxed text-muted">{result.rationale}</p>
+                {result.warnings?.length ? (
+                  <ul className="list-disc rounded bg-warning-soft px-2 py-1 pl-5 text-[11px] text-warning" data-testid="agent-warnings">
+                    {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                ) : null}
                 {activeReport && Object.keys(activeReport.outputs).length ? (
                   <table className="w-full text-xs">
                     <tbody className="divide-y divide-line">

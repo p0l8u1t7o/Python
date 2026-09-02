@@ -91,17 +91,21 @@ export function BatchTestModal(p: BatchTestModalProps) {
   const [tuneText, setTuneText] = useState('')
   const [tuning, setTuning] = useState(false)
   const [tuneResult, setTuneResult] = useState<TuneResult | null>(null)
+  const tuneAbort = useRef<AbortController | null>(null)
 
   async function tune() {
     if (!result || !tuneText.trim()) return
     setTuning(true)
+    const controller = new AbortController()
+    tuneAbort.current = controller
     try {
       const runs = result.items.map((it) => ({ name: it.name, image_ref: it.image_ref ?? '', status: it.status, outputs: it.outputs }))
-      const r = await api.post<TuneResult>('/vision/agent/tune', { graph: p.graph(), instruction: tuneText.trim(), runs })
+      const r = await api.post<TuneResult>('/vision/agent/tune', { graph: p.graph(), instruction: tuneText.trim(), runs }, undefined, controller.signal)
       setTuneResult(r)
     } catch (error) {
-      toast.error(errorMessage(error))
+      if (!controller.signal.aborted) toast.error(errorMessage(error))
     } finally {
+      if (tuneAbort.current === controller) tuneAbort.current = null
       setTuning(false)
     }
   }
@@ -285,7 +289,11 @@ export function BatchTestModal(p: BatchTestModalProps) {
               <div className="flex gap-2">
                 <input className="input flex-1 !py-1.5 text-xs" placeholder={t('agent.tunePlaceholder')} value={tuneText}
                   onChange={(e) => setTuneText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void tune() }} data-testid="batch-tune-input" />
-                <Button size="sm" variant="primary" loading={tuning} disabled={!tuneText.trim() || p.execLocked} onClick={() => void tune()} data-testid="batch-tune-run">{t('agent.tune')}</Button>
+                {tuning ? (
+                  <Button size="sm" variant="danger" onClick={() => tuneAbort.current?.abort()} data-testid="batch-tune-abort">{t('agent.abort')}</Button>
+                ) : (
+                  <Button size="sm" variant="primary" disabled={!tuneText.trim() || p.execLocked} onClick={() => void tune()} data-testid="batch-tune-run">{t('agent.tune')}</Button>
+                )}
               </div>
               {tuneResult ? (
                 <div className="space-y-1.5 text-xs">

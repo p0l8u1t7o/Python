@@ -4,7 +4,8 @@ GET   /vision/agent/info       目前生效的供應商（使用者設定優先�
 GET   /vision/agent/settings   登入使用者自己的供應商設定（金鑰只回尾碼）
 PATCH /vision/agent/settings   {provider, model?, api_key?, clear_key?}
 POST  /vision/agent/image      上傳影像進快取 → {ref, width, height}
-POST  /vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?}
+POST  /vision/agent/clarify    {images, prompt, regions, answers?} → {ready, questions[], summary, intent}
+POST  /vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?, answers?}
                                → {graph, rationale, provider, intent, report, reports, main_image}
 POST  /vision/agent/refine     {images, prompt, regions, graph, feedback} → 同上
 POST  /vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
@@ -47,6 +48,8 @@ class GenerateIn(Schema):
     regions: list[RegionIn] = []
     #: None＝有設定 LLM 就用；False＝強制離線規則引擎。
     use_llm: bool | None = None
+    #: 詢問機制的回答 [{id, answer}]；會併進提示詞。
+    answers: list[dict[str, Any]] = []
 
 
 class RefineIn(GenerateIn):
@@ -176,10 +179,17 @@ def _regions(payload: list[RegionIn]) -> list[dict[str, Any]]:
     return [{"region": r.region, "hint": r.hint, "image": r.image} for r in payload]
 
 
+@router.post("/agent/clarify")
+def agent_clarify(request: HttpRequest, payload: GenerateIn):
+    """生成前的確認：回 ready 或最多 3 個問題（規則或 LLM）。不執行流程。"""
+    principal(request).can_execute()
+    return service.clarify(_images(payload), _regions(payload.regions), payload.prompt, payload.answers, _settings_for(request))
+
+
 @router.post("/agent/generate")
 def agent_generate(request: HttpRequest, payload: GenerateIn):
     principal(request).can_execute()
-    return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm)
+    return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm, answers=payload.answers)
 
 
 @router.post("/agent/refine")

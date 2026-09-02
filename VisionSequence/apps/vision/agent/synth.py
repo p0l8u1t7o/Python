@@ -51,6 +51,8 @@ def synth_count(intent: Intent, regions: list, analysis: dict) -> tuple[dict, st
     dark = info.get("blobs", {}).get("dark", {})
     bright = info.get("blobs", {}).get("bright", {})
     invert = dark.get("count", 0) >= bright.get("count", 0)
+    if intent.polarity in ("dark", "bright"):
+        invert = intent.polarity == "dark"
     probe = dark if invert else bright
     min_area = max(30, int(probe.get("median_area", 0) * 0.3)) if probe.get("count") else max(30, int(info.get("w", 100) * info.get("h", 100) * 0.001))
     nodes, edges = _src_gray("由 AI 助手生成：計數流程。粒子抓不對時調「二值化」門檻與 blob 最小面積。")
@@ -169,6 +171,8 @@ def synth_defect(intent: Intent, regions: list, analysis: dict) -> tuple[dict, s
     mean = float(info.get("mean", 128))
     std = float(info.get("std", 20))
     dark_more = info.get("blobs", {}).get("dark", {}).get("count", 0) >= info.get("blobs", {}).get("bright", {}).get("count", 0)
+    if intent.polarity in ("dark", "bright"):
+        dark_more = intent.polarity == "dark"
     offset = max(30.0, 3 * std)
     thr = max(5.0, mean - offset) if dark_more else min(250.0, mean + offset)
     nodes, edges = _src_gray("由 AI 助手生成：表面缺陷。門檻＝ROI 平均灰階往" + ("暗" if dark_more else "亮") + "偏 3σ；誤抓就把門檻再往外調、最小面積調大。")

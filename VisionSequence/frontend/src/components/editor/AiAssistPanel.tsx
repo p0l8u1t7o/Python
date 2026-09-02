@@ -3,10 +3,10 @@
  * 送 POST /vision/agent/edit（帶目前畫布 graph 與最近一次影像 ref 供試跑），回來的 graph 由使用者按「套用」寫回畫布。
  * 沒接 LLM 時走離線指令解析（支援的句型見面板提示）。
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Check, Loader2, Send } from 'lucide-react'
+import { Bot, Check, Loader2, Send, Square } from 'lucide-react'
 
 import { Badge, Button, StatusBadge } from '@/components/ui'
 import { api } from '@/lib/api'
@@ -45,6 +45,11 @@ export function AiAssistPanel({ graph, imageRef, onApply, execLocked }: AiAssist
   const [turns, setTurns] = useState<Turn[]>([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+
+  function abort() {
+    abortRef.current?.abort()
+  }
 
   async function send() {
     const instruction = text.trim()
@@ -52,13 +57,20 @@ export function AiAssistPanel({ graph, imageRef, onApply, execLocked }: AiAssist
     setTurns((list) => [...list, { role: 'user', text: instruction }])
     setText('')
     setBusy(true)
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
-      const r = await api.post<EditResult>('/vision/agent/edit', { graph: graph(), instruction, image_ref: imageRef ?? '' })
+      const r = await api.post<EditResult>('/vision/agent/edit', { graph: graph(), instruction, image_ref: imageRef ?? '' }, undefined, controller.signal)
       setTurns((list) => [...list, { role: 'assistant', text: r.rationale, result: r }])
     } catch (error) {
-      toast.error(errorMessage(error))
-      setTurns((list) => [...list, { role: 'assistant', text: errorMessage(error) }])
+      if (controller.signal.aborted) {
+        setTurns((list) => [...list, { role: 'assistant', text: t('agent.aborted') }])
+      } else {
+        toast.error(errorMessage(error))
+        setTurns((list) => [...list, { role: 'assistant', text: errorMessage(error) }])
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null
       setBusy(false)
     }
   }
@@ -95,7 +107,12 @@ export function AiAssistPanel({ graph, imageRef, onApply, execLocked }: AiAssist
             ) : null}
           </div>
         ))}
-        {busy ? <p className="flex items-center gap-1 text-subtle"><Loader2 size={12} className="animate-spin" /> {t('agent.thinking')}</p> : null}
+        {busy ? (
+          <p className="flex items-center gap-2 text-subtle">
+            <Loader2 size={12} className="animate-spin" /> {t('agent.thinking')}
+            <button type="button" onClick={abort} className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[11px] text-critical hover:bg-surface-muted" data-testid="ai-abort"><Square size={10} /> {t('agent.abort')}</button>
+          </p>
+        ) : null}
       </div>
       <div className="flex gap-1.5 border-t border-line p-2">
         <input className="input flex-1 !py-1.5 text-xs" placeholder={t('agent.instructionPlaceholder')} value={text}

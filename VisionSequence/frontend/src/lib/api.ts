@@ -220,8 +220,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
 export const api = {
   get: <T>(path: string, query?: Record<string, unknown>) => request<T>(path, { query }),
-  post: <T>(path: string, body?: unknown, query?: Record<string, unknown>) =>
-    request<T>(path, { method: 'POST', body: body ?? {}, query }),
+  post: <T>(path: string, body?: unknown, query?: Record<string, unknown>, signal?: AbortSignal) =>
+    request<T>(path, { method: 'POST', body: body ?? {}, query, signal }),
   postForm: <T>(path: string, form: FormData, query?: Record<string, unknown>) =>
     request<T>(path, { method: 'POST', form, query }),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),

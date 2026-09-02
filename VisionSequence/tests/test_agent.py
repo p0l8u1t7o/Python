@@ -268,6 +268,67 @@ class ImageStorePinnedTests(TestCase):
         self.assertEqual(self.client.post("/api/vision/agent/settings/models").json()["ok"], True)
 
 
+class ClarifyTests(TestCase):
+    """詢問機制：資訊不足先問、答了就 ready、答案併進提示詞影響生成。"""
+
+    def test_vague_prompt_asks_for_goal_then_ready(self):
+        img = part_image(5)
+        out = service.clarify([img], [], "看一下這個")
+        self.assertFalse(out["ready"])
+        self.assertEqual(out["questions"][0]["id"], "goal")
+        self.assertEqual(out["questions"][0]["kind"], "choice")
+        out2 = service.clarify([img], [], "看一下這個", answers=[{"id": "goal", "answer": "count"}, {"id": "count", "answer": "5"}, {"id": "roi_scope", "answer": "whole"}])
+        self.assertTrue(out2["ready"], out2)
+        self.assertEqual(out2["intent"], "count")
+
+    def test_count_without_number_asks_optional_and_is_ready(self):
+        out = service.clarify([part_image(5)], [], "數一數有幾個孔")
+        ids = [q["id"] for q in out["questions"]]
+        self.assertIn("count", ids)
+        self.assertTrue(all(q["optional"] for q in out["questions"] if q["id"] == "count"))
+        self.assertIn("roi_scope", ids)  # 沒圈 ROI → 問範圍（必答）
+        self.assertFalse(out["ready"])
+
+    def test_diameter_needs_roi_and_mm_scale(self):
+        img = np.full((300, 300, 3), 200, np.uint8)  # 沒有圓 → 一定要 ROI
+        out = service.clarify([img], [], "量直徑 10±0.2mm")
+        ids = [q["id"] for q in out["questions"]]
+        self.assertIn("roi", ids)
+        self.assertIn("mm_per_px", ids)
+        self.assertFalse(out["ready"])
+
+    def test_angle_needs_two_rois(self):
+        roi = {"shape": "rect", "x": 10, "y": 10, "w": 100, "h": 50}
+        out = service.clarify([part_image()], [{"region": roi, "image": 0}], "兩邊夾角 90±1")
+        self.assertEqual(out["questions"][0]["id"], "roi")
+
+    def test_answers_flow_into_generation(self):
+        img = part_image(5)
+        answers = [{"id": "goal", "answer": "count"}, {"id": "count", "answer": "4"}, {"id": "polarity", "answer": "dark"}, {"id": "roi_scope", "answer": "whole"}]
+        result = service.generate([img], [], "看一下這個", answers=answers)
+        self.assertEqual(result["intent"], "count")
+        self.assertEqual(result["report"]["status"], "ng")  # 5 顆 vs 期望 4
+        thr = next(n for n in result["graph"]["nodes"] if n["type"] == "threshold")
+        self.assertTrue(thr["params"]["invert"])  # 極性回答生效
+        self.assertEqual(result["warnings"], [])
+
+    def test_generate_without_answers_reports_warnings(self):
+        result = service.generate([part_image(5)], [], "數一數有幾個孔")
+        self.assertTrue(any("期望的數量" in w for w in result["warnings"]))
+
+    def test_clarify_api(self):
+        ok, buf = cv2.imencode(".png", part_image(5))
+        f = io.BytesIO(buf.tobytes())
+        f.name = "p.png"
+        ref = self.client.post("/api/vision/agent/image", data={"image": f}).json()["ref"]
+        r = self.client.post("/api/vision/agent/clarify", data=json.dumps({"images": [ref], "prompt": "看一下"}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(r.json()["ready"])
+        r = self.client.post("/api/vision/agent/generate", data=json.dumps({"images": [ref], "prompt": "看一下", "answers": [{"id": "goal", "answer": "count"}]}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["intent"], "count")
+
+
 class ProviderSettingsTests(TestCase):
     def test_server_default_is_offline_without_key(self):
         s = providers.server_settings()

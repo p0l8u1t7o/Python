@@ -19,6 +19,7 @@ from django.conf import settings as dj_settings
 
 from apps.vision import engine
 from apps.vision.agent import analysis as analysis_mod
+from apps.vision.agent import clarify as clarify_mod
 from apps.vision.agent import intents, llm, providers, synth
 from apps.vision.graph import compile_graph, validate_graph
 from apps.vision.models import Asset
@@ -102,10 +103,35 @@ def _try_llm(settings: providers.AgentSettings, use_llm: bool | None, **kw: Any)
         return None
 
 
+def effective_prompt(prompt: str, answers: list[dict[str, Any]] | None) -> str:
+    """提示詞＋問答補充句（詢問機制的答案就這樣併進去，規則與 LLM 都讀得到）。"""
+    extra = clarify_mod.answers_to_text(answers or [])
+    return f"{prompt.strip()}\n{extra}".strip() if extra else prompt.strip()
+
+
+def clarify(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str, answers: list[dict[str, Any]] | None = None,
+            settings: providers.AgentSettings | None = None) -> dict[str, Any]:
+    """生成前的確認：資訊足夠回 ready=True；否則回最多 3 個問題。LLM 可用時由它提問，失敗落回規則。"""
+    settings = settings or providers.server_settings()
+    feats = analysis_mod.analyze(images, regions)
+    text = effective_prompt(prompt, answers)
+    intent = intents.parse(text, regions, feats)
+    if providers.available(settings):
+        try:
+            out = llm.clarify(settings, images, regions, text, feats, answers or [], intent_kind=intent.kind)
+            out["intent"] = intent.kind
+            return out
+        except Exception:  # noqa: BLE001
+            log.exception("LLM（%s）提問失敗，落回規則", settings.provider)
+    return clarify_mod.clarify(intent, regions, feats, answers or [])
+
+
 def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
-             settings: providers.AgentSettings | None = None, *, use_llm: bool | None = None) -> dict[str, Any]:
+             settings: providers.AgentSettings | None = None, *, use_llm: bool | None = None,
+             answers: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """上傳影像們＋ROI＋提示詞 → {graph, rationale, provider, intent, report, reports}。"""
     settings = settings or providers.server_settings()
+    prompt = effective_prompt(prompt, answers)
     feats = analysis_mod.analyze(images, regions)
     intent = intents.parse(prompt, regions, feats)  # 規則引擎的意圖也拿來幫 LLM 挑相關工具技能
     got = _try_llm(settings, use_llm, images=images, regions=regions, prompt=prompt, analysis=feats, intent_kind=intent.kind)
@@ -118,7 +144,9 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
     graph = validate_graph(graph)
     main = _main_image(regions, intent, len(images))
     report, reports = _run_all(graph, images, main)
-    return _result(graph, rationale, "rules", intent.kind, report, reports, main_image=main)
+    open_qs = clarify_mod.build_questions(intent, regions, feats, {str(a.get("id", "")) for a in (answers or [])})
+    warnings = [f"未提供「{q['text']}」，已用預設值" for q in open_qs]
+    return _result(graph, rationale, "rules", intent.kind, report, reports, main_image=main, warnings=warnings)
 
 
 # ---------------------------------------------------------------------------

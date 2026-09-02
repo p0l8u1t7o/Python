@@ -34,6 +34,8 @@ class Intent:
     mm_per_px: float | None = None
     #: 顏色比對的目標色（十六進位；預設取 ROI 主色）。
     color_hex: str = ""
+    #: 目標相對背景的極性（dark／bright）；None 交給特徵自動判斷。
+    polarity: str | None = None
     #: 良品比對：哪個 ROI 是好品（當範本）、哪個是壞品（示範缺陷）；索引以 0 起算。
     good_roi: int | None = None
     bad_roi: int | None = None
@@ -120,6 +122,11 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
         intent.unit = "mm"
     elif re.search(r"mm|毫米|公厘", text) and intent.nominal is not None:
         intent.unit = "mm"
+
+    if _has(low, "比背景暗", "暗色", "黑色目標", "darker", "dark target"):
+        intent.polarity = "dark"
+    elif _has(low, "比背景亮", "亮色", "白色目標", "brighter", "bright target"):
+        intent.polarity = "bright"
 
     # --- 特異性排序的意圖判斷 ---
     good, bad = _golden_roles(text, regions)

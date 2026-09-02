@@ -77,6 +77,40 @@ def _user_text(task: str, prompt: str, regions: list[dict[str, Any]], analysis: 
     return "\n".join(lines)
 
 
+_CLARIFY_INSTRUCTION = """你現在是「謹慎的助手」：先判斷目前的影像、ROI 與需求描述是否足以設計一個可靠的檢測流程。
+- 資訊足夠（目標、位置、判定基準都明確或可合理預設）→ ready=true，不要提問。
+- 資訊不足 → ready=false，提出最多 3 個最關鍵的問題；每題給 id（英數）、text（繁中一句話）、kind（choice／number／text／roi）、
+  choice 要附 options [{value,label}]，可略過的題目 optional=true；kind=roi 表示需要使用者在影像上再圈選。
+- 不要問已經回答過或提示詞已說明的事；不要問與檢測無關的事。
+只輸出 JSON：{"ready": bool, "questions": [...], "summary": "一句話說明你目前的判讀（繁中）"}"""
+
+
+def clarify(settings: providers.AgentSettings, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
+            analysis: dict[str, Any] | None, answers: list[dict[str, Any]], *, intent_kind: str = "") -> dict[str, Any]:
+    """LLM 版詢問：回 {ready, questions, summary, provider}；格式錯就 raise 讓呼叫端落回規則。"""
+    encoded = [encode_image(im) for im in images[:6]]
+    text = _user_text("generate", prompt, regions, analysis, None, "", "", intent_kind=intent_kind)
+    if answers:
+        text += "\n已回答的問題：" + json.dumps(answers, ensure_ascii=False)
+    text += "\n\n" + _CLARIFY_INSTRUCTION
+    reply = providers.complete(settings, system_prompt(), encoded, text)
+    payload = parse_reply(reply)
+    questions = []
+    for q in list(payload.get("questions") or [])[:3]:
+        kind = str(q.get("kind") or "text")
+        if kind not in ("choice", "number", "text", "roi"):
+            kind = "text"
+        item: dict[str, Any] = {"id": str(q.get("id") or f"q{len(questions) + 1}"), "text": str(q.get("text") or ""), "kind": kind, "optional": bool(q.get("optional"))}
+        if kind == "choice":
+            item["options"] = [{"value": str(o.get("value")), "label": str(o.get("label") or o.get("value"))} for o in (q.get("options") or []) if isinstance(o, dict)]
+        if q.get("hint"):
+            item["hint"] = str(q["hint"])
+        if item["text"]:
+            questions.append(item)
+    ready = bool(payload.get("ready")) or not questions
+    return {"ready": ready, "questions": [] if ready else questions, "summary": str(payload.get("summary") or ""), "provider": settings.provider}
+
+
 def generate(settings: providers.AgentSettings, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
              analysis: dict[str, Any] | None, *, task: str = "generate", previous_graph: dict[str, Any] | None = None,
              feedback: str = "", batch_summary: str = "", intent_kind: str = "") -> tuple[dict[str, Any], str]:

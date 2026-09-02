@@ -58,6 +58,7 @@
 不滿意就用口語回饋（「太敏感」「漏抓」「改成 4 個」）迭代微調，滿意後一鍵存成流程、進編輯器繼續調。</p>
 
 <nav><p><strong>本頁目錄</strong></p><ul>
+<li><a href="#clarify">詢問機制</a></li>
 <li><a href="#multi">多張影像與 ROI 編號</a></li>
 <li><a href="#providers">AI 代理來源與金鑰</a></li>
 <li><a href="#editor">流程頁面裡的 AI 助手</a></li>
@@ -70,6 +71,20 @@
 <li><a href="#api">API</a></li>
 <li><a href="#design">設計取捨</a></li>
 </ul></nav>
+
+<h2 id="clarify">詢問機制：先確認再生成</h2>
+<p>按下「生成檢測流程」時助手不會直接動手，而是先呼叫 <code>POST /agent/clarify</code> 判斷資訊是否足夠；不足就提出<strong>最多 3 個</strong>關鍵問題（選項／數值／文字／「請再圈 ROI」四種），回答後再確認一次，可能還有下一輪，直到 ready 才生成。可隨時「略過提問直接生成」，此時結果卡會列出「未提供…，已用預設值」的警示。</p>
+<table>
+<tr><th>情況</th><th>助手會問</th></tr>
+<tr><td>提示詞不明確（「看一下」「檢查」）</td><td>要檢測什麼？（計數／直徑／寬度／角度／缺陷／顏色／有無／讀碼／亮度）</td></tr>
+<tr><td>計數但沒給數量</td><td>期望數量？（可略過→只回報）；沒圈 ROI → 整張還是特定區域；暗亮粒子數相近 → 目標比背景暗還是亮？</td></tr>
+<tr><td>量直徑但沒有圓形 ROI 也偵測不到圓</td><td>請在孔緣圈環形 ROI；要 mm 卻沒像素尺寸 → 每像素幾 mm？</td></tr>
+<tr><td>量寬度／角度</td><td>缺 ROI 或第二條邊的 ROI；標稱與公差（可略過）</td></tr>
+<tr><td>表面缺陷</td><td>有沒有良品可比對？（有 → 走良品比對）</td></tr>
+<tr><td>顏色判斷沒圈 ROI</td><td>請圈要判斷的區域（目標色取自 ROI）</td></tr>
+</table>
+<p>回答以補充句併回提示詞（例：「期望 5 個」「目標比背景暗」「標稱 17.5±0.4mm」），規則引擎與 LLM 都讀同一份；LLM 模式下由模型依 <code>skills/design.md</code> 的「謹慎原則」自行決定要不要問、問什麼，格式不合就落回規則版問題。</p>
+<p><strong>中斷</strong>：助手確認或生成中，按鈕會變成「中斷」；編輯器 AI 分頁與批次測試的「請 AI 調整」也有同樣的中斷鍵（前端取消請求，伺服器端該次呼叫結束後不會套用任何結果）。</p>
 
 <h2 id="multi">多張影像與 ROI 編號</h2>
 <p>可以一次上傳多張影像（縮圖列切換），在每張影像上各自圈 ROI；ROI 依加入順序編號
@@ -196,7 +211,8 @@
 GET   /api/vision/agent/settings   自己的供應商設定（金鑰只回尾碼）
 PATCH /api/vision/agent/settings   {provider, model?, api_key?, clear_key?}
 POST  /api/vision/agent/image      multipart image → {ref, width, height}
-POST  /api/vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?}
+POST  /api/vision/agent/clarify    {images, prompt, regions, answers?} → {ready, questions[], summary, intent}
+POST  /api/vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?, answers?}
                                    → {graph, rationale, provider, intent, report, reports, main_image}
 POST  /api/vision/agent/refine     {images, prompt, regions, graph, feedback} → 同上
 POST  /api/vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}

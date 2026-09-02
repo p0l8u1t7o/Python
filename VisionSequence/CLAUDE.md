@@ -44,7 +44,8 @@
 - 上傳影像＋圈 ROI＋提示詞 → 生成標準 graph 並在該影像實跑（`service.generate/refine`、`/vision/agent/*`、前端 `/agent`）。
 - 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序）；`providers.py` 多供應商（claude 走 anthropic SDK 延後 import；openai／gemini 走 urllib REST 零依賴）＋`llm.py` 四種任務（generate／refine／edit／tune）。設定解析 `providers.resolve(user)`：使用者自己的 `UserPref.agent`（每人各自存、金鑰不回前端）→ .env（`VISION_AGENT_PROVIDER/API_KEY/MODEL`）→ offline；LLM 失敗自動落回規則。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB；多張影像各跑一次回 `reports`）。
 - 多圖＋ROI 編號（ROI01…，regions[i].image 指影像索引；提示詞「ROI01 是好品、ROI02 是壞品」→ golden 意圖，好品 ROI 自動裁成資產）。編輯器右側「AI」分頁走 `/agent/edit`（離線句型見 `service.edit_rules`）；批次測試「請 AI 調整」走 `/agent/tune`（同批影像重跑回前後對比）。
-- 新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
+- 詢問機制 `clarify.py`：生成前 `/agent/clarify` 依意圖找關鍵缺口提問（最多 3 題，answers 以補充句併回提示詞 `service.effective_prompt`）；LLM 版 `llm.clarify`，失敗落回規則。generate 回 `warnings`（未回答的缺口用了預設值）。前端所有助手呼叫帶 AbortController（中斷鍵）。
+- 新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`tests/test_agent.py` 案例，並在 `clarify.build_questions` 補該意圖的缺口問題。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
 - AI 代理技能在 `agent/skills/`（platform.md 平台規則、design.md 設計原則、tools.md 每工具要領 `## <type>` 分段）；`skills.py` 組裝：system＝規則＋原則＋精簡目錄（穩定可快取），相關工具完整技能（自動骨架＋要領）由 `select_tools` 挑進 user 訊息。**新增工具要在 tools.md 補一段要領**（測試只驗有骨架，要領是品質）。
 - 暫存影像／AI 助手上傳走 `store.put(..., pinned=True)`：不佔流程「最近 N 次 run」名額（否則工具頁試跑 N+1 次就把暫存影像擠掉）。供應商設定存完會打 `providers.test_connection` 驗證並回原因。
 
