@@ -174,20 +174,36 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     progress = TrainProgress(job)
     result = trainer.train(samples, classes, params, job.device, progress)
 
-    asset_id = uuid.uuid4()
-    path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.onnx")
+    has_weights = bool(result.weights_bytes and result.weights_tool_key)
+    onnx_id = uuid.uuid4()
+    onnx_name = f"{job.asset_name}（ONNX）" if has_weights else job.asset_name
+    path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{onnx_id.hex}.onnx")
     with open(path, "wb") as f:
         f.write(result.onnx_bytes)
     Asset.objects.create(
-        id=asset_id, name=job.asset_name, kind="model", path=path, size=len(result.onnx_bytes),
-        meta={"trainer": job.trainer_kind, "project": project.name, "tool_key": result.tool_key, "tool_params": result.tool_params, "metrics": result.metrics},
+        id=onnx_id, name=onnx_name, kind="model", path=path, size=len(result.onnx_bytes),
+        meta={"trainer": job.trainer_kind, "project": project.name, "tool_key": result.tool_key, "tool_params": result.tool_params, "metrics": result.metrics, "format": "onnx"},
     )
-    project.last_asset_id = asset_id.hex
+    primary_id, tool_key, tool_params = onnx_id, result.tool_key, result.tool_params
+    if has_weights:
+        # 原生權重（best.pt）另存一個資產，成為專案主產物：對應的 yolo_* 工具直接選它
+        weights_id = uuid.uuid4()
+        wpath = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{weights_id.hex}{result.weights_ext}")
+        with open(wpath, "wb") as f:
+            f.write(result.weights_bytes)
+        Asset.objects.create(
+            id=weights_id, name=job.asset_name, kind="model", path=wpath, size=len(result.weights_bytes),
+            meta={"trainer": job.trainer_kind, "project": project.name, "tool_key": result.weights_tool_key, "tool_params": result.weights_tool_params,
+                  "metrics": result.metrics, "format": result.weights_ext.lstrip("."), "onnx_asset_id": onnx_id.hex},
+        )
+        primary_id, tool_key, tool_params = weights_id, result.weights_tool_key, result.weights_tool_params
+    result.metrics = {**result.metrics, "onnx_asset_id": onnx_id.hex}
+    project.last_asset_id = primary_id.hex
     project.last_metrics = result.metrics
     project.save(update_fields=["last_asset_id", "last_metrics", "updated_at"])
 
     job.metrics = result.metrics
-    job.asset_id = asset_id.hex
-    job.tool_key = result.tool_key
-    job.tool_params = result.tool_params
+    job.asset_id = primary_id.hex
+    job.tool_key = tool_key
+    job.tool_params = tool_params
     job.progress, job.stage, job.status = 1.0, "完成", "done"

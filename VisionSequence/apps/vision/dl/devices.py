@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 #: 使用者選擇的推論 providers（記憶體快取；空 = 自動：照 available 順序）。
 _preferred: list[str] = []
 #: 訓練裝置偏好（cpu / cuda…）。
-_train_device = "cpu"
+_train_device = ""  # "" = 未設定 → 有 CUDA 就用 cuda
 _lock = threading.Lock()
 
 
@@ -106,8 +106,10 @@ def preferred_providers() -> list[str]:
 
 
 def train_device() -> str:
+    """訓練裝置：使用者在設定頁選的；沒設過時有 CUDA 就用 cuda（有 GPU 的機器不該預設用 CPU 訓練）。"""
     with _lock:
-        return _train_device
+        chosen = _train_device
+    return chosen or ("cuda" if _torch_cuda_available() else "cpu")
 
 
 def load_settings() -> None:
@@ -128,7 +130,7 @@ def load_settings() -> None:
         if row:
             with _lock:
                 _preferred = [str(p) for p in (row.providers or [])]
-                _train_device = str(row.train_device or "cpu")
+                _train_device = str(row.train_device or "")
     except Exception:  # noqa: BLE001 — migrate 前／測試環境
         log.debug("DL 設定尚無法載入（資料表未建立）", exc_info=True)
 
@@ -153,6 +155,6 @@ def save_settings(providers: list[str] | None, device: str | None) -> dict[str, 
     row.save()
     with _lock:
         _preferred = [str(p) for p in (row.providers or [])]
-        _train_device = str(row.train_device or "cpu")
+        _train_device = str(row.train_device or "")
     clear_sessions()
     return info()

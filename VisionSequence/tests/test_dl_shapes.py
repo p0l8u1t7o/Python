@@ -194,7 +194,7 @@ class YoloTrainerTests(SimpleTestCase):
         items = {t["kind"]: t for t in dl_base.catalogue()}
         self.assertIn("yolo_seg", items)
         self.assertEqual(items["yolo_seg"]["label_mode"], "shapes")
-        self.assertEqual(items["yolo_seg"]["tool_key"], "dl_instance")
+        self.assertEqual(items["yolo_seg"]["tool_key"], "yolo_segment")  # 主產物 best.pt 給原生工具；ONNX 副產物給 dl_instance
         try:
             import ultralytics  # noqa: F401
 

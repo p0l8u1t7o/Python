@@ -243,6 +243,12 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("dl_detect", "dl_detect", big, {"model": "yolo", "labels": "a\nb\nc\nd", "roi": plate, "conf": 0.1}, {}, {}),
         ("dl_segment", "dl_segment", big, {"model": "idn", "roi": plate}, {}, {}),
         ("dl_instance", "dl_instance", big, {"model": "seg", "labels": "obj", "conf": 0.5, "roi": plate}, {}, {}),
+        # yolo（原生 ultralytics；只在 VISION_TEST_DL=1 時納入：需要 torch＋官方底模）
+        *([("yolo_detect", "yolo_detect", big, {"model_name": "yolo11n.pt", "roi": plate, "conf": 0.1}, {}, {}),
+           ("yolo_segment", "yolo_segment", big, {"model_name": "yolo11n-seg.pt", "roi": plate, "conf": 0.1}, {}, {}),
+           ("yolo_classify", "yolo_classify", big, {"model_name": "yolo11n-cls.pt", "roi": plate}, {}, {}),
+           ("yolo_pose", "yolo_pose", big, {"model_name": "yolo11n-pose.pt", "conf": 0.1}, {}, {}),
+           ("yolo_obb", "yolo_obb", big, {"model_name": "yolo11n-obb.pt", "conf": 0.1}, {}, {})] if os.environ.get("VISION_TEST_DL") == "1" else []),
         # logic
         ("if_number", "if_number", None, {"operator": "eq", "threshold": 5}, {"value": 5}, {}),
         ("in_range", "in_range", None, {"low": 0, "high": 10}, {"value": 5}, {}),

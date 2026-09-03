@@ -67,6 +67,11 @@ class TrainResult:
     tool_key: str = "dl_classify"
     #: 放進該工具即可用的建議參數（input_size、mean、std、labels…）。
     tool_params: dict[str, Any] = field(default_factory=dict)
+    #: 可選的原生權重（例如 YOLO best.pt）：另存一個 model 資產給 weights_tool_key 工具；有的話成為專案主產物。
+    weights_bytes: bytes = b""
+    weights_ext: str = ".pt"
+    weights_tool_key: str = ""
+    weights_tool_params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

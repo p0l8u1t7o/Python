@@ -55,20 +55,48 @@ def validate_shapes(raw: Any, classes: list[str]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # YOLO txt 互轉
 # ---------------------------------------------------------------------------
-def shapes_to_yolo(shapes: list[dict[str, Any]], classes: list[str]) -> str:
-    """→ YOLO txt 內容（TAB 分隔、LF、6 位小數）。不在類別清單的形狀略過。"""
+#: 匯出任務：mixed（原樣：bbox 5 欄、polygon 多邊形；資料集匯出／匯入互通用）、segment（polygon；bbox 轉四角，
+#: ultralytics 分割訓練不吃 5 欄）、detect（bbox；polygon 取外接框）、obb（四角；polygon 取最小外接旋轉矩形）。
+EXPORT_TASKS = ("mixed", "segment", "detect", "obb")
+
+
+def _row_values(shape: dict[str, Any], task: str) -> list[float] | None:
+    points = shape.get("points") or []
+    kind = shape.get("kind")
+    if kind == "bbox":
+        if len(points) < 2:
+            return None
+        (x0, y0), (x1, y1) = points[0], points[1]
+        x0, x1 = min(x0, x1), max(x0, x1)
+        y0, y1 = min(y0, y1), max(y0, y1)
+        if task in ("detect", "mixed"):
+            return [(x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0]
+        return [x0, y0, x1, y0, x1, y1, x0, y1]  # segment／obb：四角
+    if len(points) < 3:
+        return None
+    if task == "detect":
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        return [(x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0]
+    if task == "obb":
+        # 正規化座標的最小外接旋轉矩形（用 1000×1000 的虛擬像素避免 float 精度問題）
+        arr = np.asarray([[p[0] * 1000.0, p[1] * 1000.0] for p in points], dtype=np.float32)
+        box = cv2.boxPoints(cv2.minAreaRect(arr))
+        return [float(v) / 1000.0 for pt in box for v in pt]
+    return [v for pt in points for v in pt]
+
+
+def shapes_to_yolo(shapes: list[dict[str, Any]], classes: list[str], task: str = "mixed") -> str:
+    """→ YOLO txt 內容（TAB 分隔、LF、6 位小數）。不在類別清單的形狀略過；依 task 轉換形狀（見 EXPORT_TASKS）。"""
+    if task not in EXPORT_TASKS:
+        raise ValidationError(f"未知的匯出任務 '{task}'", code="bad_task")
     lines = []
     for shape in shapes or []:
         if shape.get("label") not in classes:
             continue
         cls = classes.index(shape["label"])
-        points = shape.get("points") or []
-        if shape.get("kind") == "bbox" and len(points) >= 2:
-            (x0, y0), (x1, y1) = points[0], points[1]
-            values = [(x0 + x1) / 2, (y0 + y1) / 2, abs(x1 - x0), abs(y1 - y0)]
-        elif len(points) >= 3:
-            values = [v for pt in points for v in pt]
-        else:
+        values = _row_values(shape, task)
+        if values is None:
             continue
         lines.append("\t".join([str(cls)] + [f"{min(1.0, max(0.0, v)):.6f}" for v in values]))
     return "\n".join(lines) + ("\n" if lines else "")
@@ -123,7 +151,7 @@ def rasterize(shapes: list[dict[str, Any]], classes: list[str], height: int, wid
 # ---------------------------------------------------------------------------
 # 資料集匯出／匯入（與 VisionStereo 互通）
 # ---------------------------------------------------------------------------
-def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: float = 0.2, seed: int = 7) -> dict[str, Any]:
+def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: float = 0.2, seed: int = 7, task: str = "mixed") -> dict[str, Any]:
     """把有標記的樣本寫成 YOLO 資料集（images/labels/{train,val[,test]} + data.yaml）。回傳統計。
 
     samples：iterable of (id_hex, image_path, shapes[, split])。第 4 欄 split（train｜val｜test）
@@ -157,7 +185,7 @@ def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: floa
             continue
         buf.tofile(os.path.join(out_dir, "images", split, f"{sid}.jpg"))
         with open(os.path.join(out_dir, "labels", split, f"{sid}.txt"), "w", encoding="utf-8", newline="\n") as f:
-            f.write(shapes_to_yolo(shp, classes))
+            f.write(shapes_to_yolo(shp, classes, task))
         counts[split] += 1
     yaml_path = os.path.join(out_dir, "data.yaml")
     if not os.path.exists(yaml_path):
@@ -171,7 +199,48 @@ def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: floa
             os.remove(cache)
         except OSError:
             pass
-    return {"dir": os.path.abspath(out_dir), "train": counts["train"], "val": counts["val"], "test": counts["test"], "classes": classes}
+    return {"dir": os.path.abspath(out_dir), "train": counts["train"], "val": counts["val"], "test": counts["test"], "classes": classes, "task": task}
+
+
+def export_classify_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: float = 0.2, seed: int = 7) -> dict[str, Any]:
+    """classes 模式 → ultralytics 分類資料集（out_dir/{train,val[,test]}/<class>/<id>.jpg）。
+
+    samples：iterable of (id_hex, image_path, label[, split])。類別索引以資料夾名排序為準（ultralytics 慣例），
+    所以訓練後要用 model.names 取類別順序，不能假設與 classes 相同。"""
+    rng = np.random.default_rng(seed)
+    rows = [(r[0], r[1], r[2], r[3] if len(r) > 3 and r[3] in ("train", "val", "test") else "") for r in samples if r[2] in classes]
+    if not rows:
+        raise ValidationError("沒有任何已標記的樣本可匯出", code="no_labeled_samples")
+    unassigned = [i for i, r in enumerate(rows) if not r[3]]
+    explicit_val = any(r[3] == "val" for r in rows)
+    n_val = int(round(len(unassigned) * val_ratio)) if val_ratio > 0 else 0
+    if not explicit_val and val_ratio > 0 and len(rows) > 1 and unassigned:
+        n_val = max(1, n_val)
+    order = rng.permutation(len(unassigned))
+    val_set = {unassigned[int(i)] for i in order[:n_val]}
+    counts = {"train": 0, "val": 0, "test": 0}
+    for i, (sid, path, label, assigned) in enumerate(rows):
+        split = assigned or ("val" if i in val_set else "train")
+        image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            continue
+        ok, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        if not ok:
+            continue
+        folder = os.path.join(out_dir, split, _safe_name(label))
+        os.makedirs(folder, exist_ok=True)
+        buf.tofile(os.path.join(folder, f"{sid}.jpg"))
+        counts[split] += 1
+    # 每個 split 都要有全部類別的資料夾（ultralytics 以 train 的資料夾決定 names；val 缺類別會對不上索引）
+    for split in ("train", "val"):
+        for c in classes:
+            os.makedirs(os.path.join(out_dir, split, _safe_name(c)), exist_ok=True)
+    return {"dir": os.path.abspath(out_dir), "train": counts["train"], "val": counts["val"], "test": counts["test"], "classes": sorted(classes), "task": "classify"}
+
+
+def _safe_name(label: str) -> str:
+    """類別名當資料夾名：去掉路徑分隔與不可見字元（中文可以）。"""
+    return "".join(ch for ch in str(label) if ch not in "\\/:*?\"<>|\n\r\t").strip() or "class"
 
 
 def iter_dataset(root: str) -> list[tuple[str, str]]:

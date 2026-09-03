@@ -172,3 +172,18 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 
 ## note
 不是工具：畫布便利貼（type=note、不接邊），寫流程說明或調機備註。
+
+## yolo_detect
+ultralytics YOLO 物件偵測（原生 torch 推論，GPU 自動使用）：`model` 選教導頁訓練的 .pt 資產，沒選時用 `model_name` 官方底模（`yolo11n.pt`，COCO 80 類，第一次自動下載）。`conf` 是主要調機參數、`iou` NMS、`filter_labels` 只留某些類別、`min_count/max_count_ok` 決定 ok/ng。輸出 `detections/matches`（x,y,w,h,cx,cy,label,score）、`count`、`labels`；`found/not_found` 分支。要客製類別請先在「深度學習教導」用「物件偵測（YOLO）」訓練。
+
+## yolo_segment
+ultralytics YOLO-seg 實例分割：同 yolo_detect 的模型與門檻參數，另有 `min_area` 濾小實例。輸出 `count`、`matches`（含 area）、`mask`（聯合遮罩，可接 blob／pixel_count）、`contours`（可接 geometry／量測）、`labels`。底模 `yolo11n-seg.pt`；自訂類別用「實例分割（YOLO-seg）」訓練。
+
+## yolo_classify
+ultralytics YOLO-cls 影像分類：`imgsz` 224；`threshold` 分數門檻、`pass_labels` 合格類別、`top_k`。輸出 `label/score/index/top`，`pass/fail` 分支。底模 `yolo11n-cls.pt` 是 ImageNet 類別，實務上必用「影像分類（YOLO-cls）」訓練自己的類別。
+
+## yolo_pose
+YOLO-pose 關鍵點：輸出每個物件的 `keypoints`（[x,y,conf]×N，COCO 人體 17 點）與 `matches` 框；`kpt_conf` 只影響顯示。適合姿勢／位置檢查、人員闖入。平台目前不提供關鍵點標記訓練，需用官方或自備 pose 權重。
+
+## yolo_obb
+YOLO-obb 旋轉框：輸出 `matches`（cx, cy, w, h, angle°, points 四角）、`contours`（四角輪廓）；適合傾斜擺放的工件計數／定位，角度可接 formula／tolerance_judge 做方向檢查。底模 `yolo11n-obb.pt`（DOTA 航拍類別）僅供試用，自訂類別用「旋轉框偵測（YOLO-obb）」訓練（polygon 標記自動取最小外接旋轉矩形）。

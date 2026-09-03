@@ -1,4 +1,4 @@
-"""YOLO 實例分割 trainer（torch + ultralytics，可選依賴、延後 import）。
+"""YOLO trainers（torch + ultralytics，可選依賴、延後 import）：實例分割、物件偵測、影像分類、旋轉框（OBB）。
 
 沒安裝 torch/ultralytics 時平台照常啟動、trainer 照常列在目錄；開始訓練／自動標記時
 才 import，缺件回 TrainError 附安裝指令。做法對齊 Temp/WebTraining.md（trainJob.py）：
@@ -7,6 +7,10 @@
 - final_eval 會多觸發一次 on_fit_epoch_end，用「最後真的開始的 epoch」擋掉。
 - 指標去掉 metrics/ 前綴；分割任務優先 (M)（mask）、退回 (B)（box）。
 - 設 YOLO_OFFLINE=1 避免無網路環境卡住（基底權重 .pt 第一次仍需可取得）。
+
+產物：best.pt（主產物，給原生 yolo_* 工具，GPU 推論、後處理與訓練一致）＋ ONNX（副產物，給 dl_* ONNX 工具或
+外部執行環境）；兩者都存成 model 資產（jobs._train），專案的 last_asset 指向 .pt。
+姿態（pose）訓練需要關鍵點標記介面，目前只提供推論工具（yolo_pose 用官方或自備權重）。
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import tempfile
 import threading
 from typing import Any
 
+import cv2
 import numpy as np
 
 from apps.vision.dl.base import ProgressFn, SampleRef, Suggestion, TrainCancelled, Trainer, TrainError, TrainResult
@@ -26,7 +31,7 @@ from apps.vision.tools.base import Param
 
 log = logging.getLogger(__name__)
 
-_INSTALL_HINT = "需要安裝訓練依賴：.venv\\Scripts\\pip install ultralytics onnx onnxslim（含 torch；GPU 版 torch 請照 pytorch.org 指示安裝，例如 --index-url https://download.pytorch.org/whl/cu128）"
+_INSTALL_HINT = "需要安裝訓練依賴：.\\scripts\\setup_dl.ps1（先裝 cu128 的 torch 再裝 ultralytics／onnx／onnxslim／onnxruntime-gpu；細節見 requirements-dl.txt 與 docs/dl.html「安裝與踩坑」）"
 
 
 def _import_ultralytics():
@@ -39,10 +44,11 @@ def _import_ultralytics():
         raise TrainError(f"未安裝 ultralytics／torch。{_INSTALL_HINT}") from None
 
 
-#: ultralytics 官方資產（yolov8n-seg.pt、yolo11s-seg.pt、mobile_sam.pt…）的下載位置。
-_ASSET_URL = "https://github.com/ultralytics/assets/releases/download/v8.3.0/{name}"
-#: 允許自動下載的官方檔名：YOLO 底模＋SAM 系列（智慧選取用 mobile_sam／sam2）。
-_ASSET_NAME = re.compile(r"^(yolo(v?\d+)[a-z]?(-seg)?|mobile_sam|sam_[bl]|sam2(\.1)?_[tsbl]|FastSAM-[sx])\.pt$")
+#: ultralytics 官方資產的下載位置：新模型（yolo26…）在 v8.4.0，舊的（yolov8／yolo11／SAM）在 v8.3.0；依序嘗試。
+_ASSET_RELEASES = ("v8.4.0", "v8.3.0")
+_ASSET_URL = "https://github.com/ultralytics/assets/releases/download/{release}/{name}"
+#: 允許自動下載的官方檔名：YOLO 底模（任務後綴 -seg／-cls／-pose／-obb 等）＋SAM 系列（智慧選取用 mobile_sam／sam2）。
+_ASSET_NAME = re.compile(r"^(yolo(v?\d+)[a-z]?(-[a-z0-9]+)*|mobile_sam|sam_[bl]|sam2(\.1)?_[tsbl]|FastSAM-[sx])\.pt$")
 
 
 def _weights_dir() -> str:
@@ -54,7 +60,7 @@ def _weights_dir() -> str:
 
 
 def resolve_model(name: str, log_fn=None) -> str:
-    """把模型參數解析成本地檔案路徑；官方底模名稱（yolov8n-seg.pt 等）不存在時自動下載。
+    """把模型參數解析成本地檔案路徑；官方底模名稱（yolo11n.pt、yolo11n-seg.pt、sam2.1_t.pt 等）不存在時自動下載。
 
     YOLO_OFFLINE=1 讓 ultralytics 不自己連網，所以底模由我們下載到 ASSET_DIR/dl/weights/，
     第一次自動教導／訓練不用手動準備 .pt。下載失敗（無網路）回 TrainError 說明。
@@ -68,36 +74,45 @@ def resolve_model(name: str, log_fn=None) -> str:
     target = os.path.join(_weights_dir(), base)
     if os.path.isfile(target):
         return target
-    url = _ASSET_URL.format(name=base)
     # 序列化下載：訓練執行緒與 auto-label 請求可能同時發現快取不存在（共用 .part 會互踩、
     # Windows 下還會把交錯寫入的損毀檔升級成永久快取），取得鎖後重查一次直接省掉重複下載。
     with _download_lock:
         if os.path.isfile(target):
             return target
+        _download(base, target, log_fn)
+    if log_fn:
+        log_fn(f"底模 {base} 已下載到 {target}")
+    return target
+
+
+def _download(base: str, target: str, log_fn=None) -> None:
+    import http.client
+    import urllib.error
+    import urllib.request
+
+    last_error = ""
+    for release in _ASSET_RELEASES:
+        url = _ASSET_URL.format(release=release, name=base)
         if log_fn:
             log_fn(f"下載底模 {base}（第一次使用；{url}）…")
         log.info("下載 YOLO 底模 %s ← %s", base, url)
-        import http.client
-        import urllib.error
-        import urllib.request
-
         fd, tmp = tempfile.mkstemp(dir=_weights_dir(), suffix=".part")
         try:
             # fdopen 放前面：urlopen 失敗時 with 會先把 fd 關掉，Windows 才刪得掉 .part
             with os.fdopen(fd, "wb") as f, urllib.request.urlopen(url, timeout=120) as resp:
                 shutil.copyfileobj(resp, f)
             os.replace(tmp, target)
+            return
         except urllib.error.HTTPError as exc:
             _cleanup(tmp)
             if exc.code == 404:
-                raise TrainError(f"模型名稱 {base} 不存在（官方資產沒有這個檔）。請確認「基底模型」參數，例如 yolov8n-seg.pt。") from None
+                last_error = f"HTTP 404（{url}）"
+                continue  # 下一個 release
             raise TrainError(f"底模 {base} 下載失敗（HTTP {exc.code}）。{url}") from None
         except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
             _cleanup(tmp)
             raise TrainError(f"底模 {base} 下載失敗（{exc}）。請確認伺服器可連網，或手動下載後把路徑填進「基底模型」參數：{url}") from None
-    if log_fn:
-        log_fn(f"底模 {base} 已下載到 {target}")
-    return target
+    raise TrainError(f"模型名稱 {base} 不存在（官方資產沒有這個檔；{last_error}）。請確認名稱，例如 yolo11n.pt、yolo11n-seg.pt、yolo11n-cls.pt、yolo11n-obb.pt。")
 
 
 _download_lock = threading.Lock()
@@ -131,34 +146,46 @@ def _clean_metrics(raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-class YoloSegTrainer(Trainer):
-    kind = "yolo_seg"
-    label = "實例分割（YOLO-seg）"
-    description = "用 polygon 標記訓練 YOLO segmentation 模型（找出每個物件的輪廓與類別）；需要另裝 ultralytics（torch），建議有 NVIDIA GPU。官方底模第一次使用會自動下載；還沒訓練過也能自動標記（用底模提案輪廓、掛到第一個類別）。匯出 ONNX 給「DL 實例分割」工具。"
-    label_mode = "shapes"
-    tool_key = "dl_instance"
-    devices = ("cuda", "cpu")
-    min_per_class = 1
-    params = [
-        Param("model", "基底模型", kind="text", default="yolov8n-seg.pt", help_text="ultralytics 模型名稱或 .pt 路徑；也可填上次訓練的 best.pt 續訓。"),
+def _params(base_model: str, task: str) -> list[Param]:
+    imgsz = ([{"value": 224, "label": "224（建議）"}, {"value": 320, "label": "320"}] if task == "classify"
+             else [{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640（建議）"}, {"value": 960, "label": "960"}])
+    out = [
+        Param("model", "基底模型", kind="text", default=base_model, help_text="ultralytics 模型名稱（第一次使用自動下載）或 .pt 路徑；也可填上次訓練的 best.pt 續訓。"),
         Param("epochs", "訓練回合", kind="number", default=100, minimum=1, maximum=2000),
-        Param("imgsz", "影像尺寸", kind="select", default=640, options=[{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640（建議）"}, {"value": 960, "label": "960"}]),
+        Param("imgsz", "影像尺寸", kind="select", default=224 if task == "classify" else 640, options=imgsz),
         Param("batch", "Batch", kind="number", default=8, minimum=1, maximum=128, group="進階"),
         Param("patience", "Early stop 耐心值", kind="number", default=50, minimum=0, maximum=500, group="進階"),
         Param("lr0", "初始學習率", kind="number", default=0.001, minimum=0.00001, maximum=0.1, step=0.0001, group="進階"),
         Param("val_ratio", "驗證比例", kind="number", default=0.2, minimum=0.05, maximum=0.5, step=0.05, group="進階"),
         Param("workers", "DataLoader workers", kind="number", default=0, minimum=0, maximum=16, group="進階", help_text="Windows 建議 0（在背景執行緒跑訓練時最穩）。"),
-        Param("suggest_conf", "自動標記信心門檻", kind="range", default=0.4, minimum=0.05, maximum=0.95, step=0.05, group="進階", help_text="還沒訓練過時用官方底模提案（輪廓掛到第一個類別，請確認後改類）；訓練過後自動改用 best.pt。"),
+        Param("suggest_conf", "自動標記信心門檻", kind="range", default=0.4, minimum=0.05, maximum=0.95, step=0.05, group="進階",
+              help_text="還沒訓練過時用官方底模提案（名稱對不上的掛第一個類別，請確認後改類）；訓練過後自動改用 best.pt。"),
         Param("degrees", "旋轉角度（±）", kind="number", default=0, minimum=0, maximum=180, group="增強", help_text="隨機旋轉的最大角度；物件方向固定的產線建議 0。"),
         Param("fliplr", "水平翻轉機率", kind="range", default=0.5, minimum=0, maximum=1, step=0.1, group="增強"),
-        Param("mosaic", "馬賽克增強", kind="range", default=1.0, minimum=0, maximum=1, step=0.1, group="增強", help_text="把 4 張樣本拼成一張訓練；樣本很少時建議調低。"),
     ]
+    if task != "classify":
+        out.append(Param("mosaic", "馬賽克增強", kind="range", default=1.0, minimum=0, maximum=1, step=0.1, group="增強", help_text="把 4 張樣本拼成一張訓練；樣本很少時建議調低。"))
+    return out
+
+
+class _YoloTrainer(Trainer):
+    """四個 YOLO trainer 的共同流程：資料集匯出 → 訓練（callbacks）→ best.pt ＋ ONNX；suggest 依任務轉 shapes／label。"""
+
+    task = "segment"  # segment | detect | classify | obb
+    base_model = "yolov8n-seg.pt"
+    label_mode = "shapes"
+    tool_key = "yolo_segment"  # 主產物 best.pt 給的原生工具
+    onnx_tool_key = "dl_instance"  # 副產物 ONNX 給的工具（"" = 沒有對應的 ONNX 工具）
+    devices = ("cuda", "cpu")
+    min_per_class = 1
 
     def train(self, samples: list[SampleRef], classes: list[str], params: dict[str, Any], device: str, progress: ProgressFn) -> TrainResult:
-        from apps.vision.dl.shapes import export_dataset
+        from apps.vision.dl.shapes import export_classify_dataset, export_dataset
 
         if not classes:
             raise TrainError("至少要定義 1 個類別")
+        if self.task == "classify" and len(classes) < 2:
+            raise TrainError("分類至少要 2 個類別")
         YOLO = _import_ultralytics()
         import torch
 
@@ -178,17 +205,23 @@ class YoloSegTrainer(Trainer):
                 stopping = True
 
         try:
-            stats = export_dataset(
-                ((s.id, s.path, s.shapes, s.split) for s in samples), classes, work,
-                val_ratio=float(params.get("val_ratio") or 0.2))
-            _plog(progress, f"資料集：train {stats['train']}、val {stats['val']}"
+            val_ratio = float(params.get("val_ratio") or 0.2)
+            if self.task == "classify":
+                stats = export_classify_dataset(((s.id, s.path, s.label, s.split) for s in samples), classes, work, val_ratio=val_ratio)
+                data = work
+            else:
+                stats = export_dataset(((s.id, s.path, s.shapes, s.split) for s in samples), classes, work, val_ratio=val_ratio, task=self.task)
+                data = os.path.join(work, "data.yaml")
+            _plog(progress, f"資料集（{self.task}）：train {stats['train']}、val {stats['val']}"
                   + (f"、test {stats['test']}" if stats.get("test") else "") + f"（{work}）")
             if stats["train"] < 1 or stats["val"] < 1:
                 raise TrainError("已標記樣本太少：train 與 val 至少各要 1 張（建議每類 10 張以上）")
 
-            model = YOLO(resolve_model(str(params.get("model") or "yolov8n-seg.pt"), lambda m: _plog(progress, m)))
+            model = YOLO(resolve_model(str(params.get("model") or self.base_model), lambda m: _plog(progress, m)))
+            if str(getattr(model, "task", "") or self.task) != self.task:
+                raise TrainError(f"基底模型任務是 {model.task}，此 trainer 需要 {self.task} 的底模（例如 {self.base_model}）")
             epochs = int(params.get("epochs") or 100)
-            imgsz = int(params.get("imgsz") or 640)
+            imgsz = int(params.get("imgsz") or (224 if self.task == "classify" else 640))
             state: dict[str, Any] = {"epochs": epochs, "batches": 1, "batch": 0, "epoch": 0, "last_started": -1}
             history: list[dict[str, Any]] = []
 
@@ -228,23 +261,32 @@ class YoloSegTrainer(Trainer):
                               ("on_train_batch_end", on_train_batch_end), ("on_fit_epoch_end", on_fit_epoch_end)):
                 model.add_callback(event, fn)
 
-            model.train(
-                data=os.path.join(work, "data.yaml"), epochs=epochs, imgsz=imgsz,
+            train_kw: dict[str, Any] = dict(
+                data=data, epochs=epochs, imgsz=imgsz,
                 batch=int(params.get("batch") or 8), patience=int(params.get("patience") or 50),
                 lr0=float(params.get("lr0") or 0.001), workers=int(params.get("workers") or 0),
                 degrees=float(params.get("degrees") or 0.0),
                 fliplr=float(params.get("fliplr")) if params.get("fliplr") is not None else 0.5,
-                mosaic=float(params.get("mosaic")) if params.get("mosaic") is not None else 1.0,
                 device=device, project=os.path.join(work, "runs"), name="train", verbose=False, plots=False,
             )
+            if self.task != "classify":
+                train_kw["mosaic"] = float(params.get("mosaic")) if params.get("mosaic") is not None else 1.0
+            model.train(**train_kw)
 
             trainer = model.trainer
             best = str(getattr(trainer, "best", "") or "")
+            if not (best and os.path.isfile(best)):
+                last = str(getattr(trainer, "last", "") or "")
+                best = last if last and os.path.isfile(last) else ""
             report(0.93, "匯出 ONNX", None)
-            export_model = YOLO(best) if best and os.path.isfile(best) else model
+            export_model = YOLO(best) if best else model
             onnx_path = export_model.export(format="onnx", imgsz=imgsz, dynamic=False, verbose=False)
             with open(str(onnx_path), "rb") as f:
                 onnx_bytes = f.read()
+            weights_bytes = b""
+            if best:
+                with open(best, "rb") as f:
+                    weights_bytes = f.read()
 
             # 保留 best.pt（自動標記與續訓用）
             from django.conf import settings
@@ -252,23 +294,37 @@ class YoloSegTrainer(Trainer):
             weights_dir = os.path.join(str(settings.VISION["ASSET_DIR"]), "dl", "weights")
             os.makedirs(weights_dir, exist_ok=True)
             weights_path = ""
-            if best and os.path.isfile(best):
+            if best:
                 weights_path = os.path.join(weights_dir, f"{os.path.basename(work)}-best.pt")
                 shutil.copyfile(best, weights_path)
 
+            names = getattr(export_model, "names", None) or {}
+            ordered = [str(names[k]) for k in sorted(names)] if isinstance(names, dict) else [str(v) for v in names]
             last_point = history[-1] if history else {}
-            metrics = {**last_point, "stopped_early": stopping, "weights_path": weights_path, "device": device}
+            metrics = {**last_point, "stopped_early": stopping, "weights_path": weights_path, "device": device, "task": self.task, "classes": ordered or classes}
+            native = {"model_name": "", "imgsz": imgsz, "conf": 0.25, "iou": 0.45} if self.task != "classify" else {"model_name": "", "imgsz": imgsz, "threshold": 0.5}
+            onnx_params = self._onnx_params(ordered or classes, imgsz)
             return TrainResult(
-                onnx_bytes=onnx_bytes, metrics=metrics, tool_key=self.tool_key,
-                tool_params={"labels": "\n".join(classes), "input_size": imgsz, "conf": 0.25, "iou": 0.45},
+                onnx_bytes=onnx_bytes, metrics=metrics, tool_key=self.onnx_tool_key, tool_params=onnx_params,
+                weights_bytes=weights_bytes, weights_ext=".pt", weights_tool_key=self.tool_key, weights_tool_params=native,
             )
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
+    def _onnx_params(self, classes: list[str], imgsz: int) -> dict[str, Any]:
+        if self.task == "classify":
+            # YOLO-cls 匯出的 ONNX 已含 softmax；前處理只除以 255（RGB）
+            return {"labels": "\n".join(classes), "input_size": imgsz, "mean": "0", "std": "1", "color_order": "rgb", "apply_softmax": False}
+        if self.task == "obb":
+            return {"labels": "\n".join(classes), "input_size": imgsz}
+        return {"labels": "\n".join(classes), "input_size": imgsz, "conf": 0.25, "iou": 0.45}
+
+    # ------------------------------------------------------------------ 自動標記
     def suggest(self, labeled: list[SampleRef], unlabeled: list[SampleRef], classes: list[str], params: dict[str, Any]) -> list[Suggestion]:
         """自動標記：優先用上次訓練的 best.pt（或 params.weights 指定的 .pt）；
-        第一次教導還沒有權重時，改用官方底模（COCO 預訓練，缺檔自動下載）產生物件輪廓提案——
-        底模不認得你的類別，名稱對不上的提案一律掛到第一個類別，交給使用者確認／改類。"""
+        第一次教導還沒有權重時，改用官方底模（COCO／ImageNet 預訓練，缺檔自動下載）產生提案——
+        底模不認得你的類別：shapes 任務名稱對不上的提案一律掛到第一個類別交給使用者確認；分類任務底模的類別名
+        對不上就沒有提案（分類的提案只有訓練過才有意義）。"""
         if not unlabeled:
             return []
         if not classes:
@@ -278,13 +334,11 @@ class YoloSegTrainer(Trainer):
         if weights and not os.path.isfile(weights):
             raise TrainError(f"上次訓練的權重已遺失（{weights}）。重新訓練一次，或清掉專案參數 weights。")
         if not weights:
-            weights = resolve_model(str(params.get("model") or "yolov8n-seg.pt"))
+            weights = resolve_model(str(params.get("model") or self.base_model))
             if not os.path.isfile(weights):
                 raise TrainError(f"找不到模型檔 {weights}。填官方底模名稱（會自動下載）或既有 .pt 路徑。")
             using_base = True
         YOLO = _import_ultralytics()
-        import cv2
-
         model = YOLO(weights)
         names = {int(k): str(v) for k, v in (getattr(model, "names", {}) or {}).items()}
         conf = float(params.get("suggest_conf") or 0.4)
@@ -296,7 +350,7 @@ class YoloSegTrainer(Trainer):
                 imgsz = int((ckpt.get("train_args") or {}).get("imgsz") or 0) if isinstance(ckpt, dict) else 0
             except (TypeError, ValueError):
                 imgsz = 0
-        imgsz = imgsz or 640
+        imgsz = imgsz or (224 if self.task == "classify" else 640)
         out: list[Suggestion] = []
         for s in unlabeled:
             image = s.load()
@@ -304,34 +358,122 @@ class YoloSegTrainer(Trainer):
                 continue
             h, w = image.shape[:2]
             # 底模提案限制數量：COCO 場景（人群/車流）會一口氣提案幾十個，全掛第一類會灌爆樣本
-            results = model.predict(image, conf=conf, imgsz=imgsz, max_det=20 if using_base else 100, verbose=False)
+            results = model.predict(image, conf=conf if self.task != "classify" else 0.0, imgsz=imgsz, max_det=20 if using_base else 100, verbose=False)
             if not results:
                 continue
             r = results[0]
-            if r.masks is None:
+            if self.task == "classify":
+                probs = getattr(r, "probs", None)
+                if probs is None:
+                    continue
+                label = names.get(int(probs.top1), "")
+                score = float(probs.top1conf)
+                if label in classes and score >= conf:
+                    out.append(Suggestion(sample_id=s.id, label=label, score=round(score, 4)))
                 continue
-            shapes_out, scores = [], []
-            boxes = r.boxes
-            for i, poly in enumerate(r.masks.xy):
-                cls_id = int(boxes.cls[i].item())
-                label = names.get(cls_id, str(cls_id))
-                if label not in classes:
-                    if not using_base:
-                        continue
-                    label = classes[0]  # 底模提案：名稱對不上就掛第一個類別，交給使用者改
-                points = np.asarray(poly, dtype=np.float64)
-                if len(points) < 3:
-                    continue
-                eps = 0.005 * cv2.arcLength(points.astype(np.float32).reshape(-1, 1, 2), True)
-                approx = cv2.approxPolyDP(points.astype(np.float32).reshape(-1, 1, 2), eps, True).reshape(-1, 2)
-                if len(approx) < 3:
-                    continue
-                shapes_out.append({"label": label, "kind": "polygon",
-                                   "points": [[float(px) / w, float(py) / h] for px, py in approx]})
-                scores.append(float(boxes.conf[i].item()))
+            shapes_out, scores = self._shapes_from_result(r, names, classes, using_base, w, h)
             if shapes_out:
                 out.append(Suggestion(sample_id=s.id, label="", score=round(float(np.mean(scores)), 4), shapes=shapes_out))
         return out
+
+    def _shapes_from_result(self, r: Any, names: dict[int, str], classes: list[str], using_base: bool, w: int, h: int) -> tuple[list[dict[str, Any]], list[float]]:
+        shapes_out: list[dict[str, Any]] = []
+        scores: list[float] = []
+
+        def pick_label(cls_id: int) -> str | None:
+            label = names.get(cls_id, str(cls_id))
+            if label in classes:
+                return label
+            return classes[0] if using_base else None  # 底模提案：名稱對不上就掛第一個類別，交給使用者改
+
+        cl = lambda v: float(min(1.0, max(0.0, v)))  # noqa: E731
+        if self.task == "segment":
+            if r.masks is None:
+                return shapes_out, scores
+            boxes = r.boxes
+            for i, poly in enumerate(r.masks.xy):
+                label = pick_label(int(boxes.cls[i].item()))
+                if label is None:
+                    continue
+                points = np.asarray(poly, dtype=np.float32)
+                if len(points) < 3:
+                    continue
+                eps = 0.005 * cv2.arcLength(points.reshape(-1, 1, 2), True)
+                approx = cv2.approxPolyDP(points.reshape(-1, 1, 2), eps, True).reshape(-1, 2)
+                if len(approx) < 3:
+                    continue
+                shapes_out.append({"label": label, "kind": "polygon", "points": [[cl(px / w), cl(py / h)] for px, py in approx]})
+                scores.append(float(boxes.conf[i].item()))
+        elif self.task == "detect":
+            boxes = r.boxes
+            if boxes is None:
+                return shapes_out, scores
+            xyxy = boxes.xyxy.cpu().numpy()
+            for i in range(len(xyxy)):
+                label = pick_label(int(boxes.cls[i].item()))
+                if label is None:
+                    continue
+                x0, y0, x1, y1 = (float(v) for v in xyxy[i])
+                shapes_out.append({"label": label, "kind": "bbox", "points": [[cl(x0 / w), cl(y0 / h)], [cl(x1 / w), cl(y1 / h)]]})
+                scores.append(float(boxes.conf[i].item()))
+        elif self.task == "obb":
+            obb = getattr(r, "obb", None)
+            if obb is None:
+                return shapes_out, scores
+            corners = obb.xyxyxyxy.cpu().numpy()
+            for i in range(len(corners)):
+                label = pick_label(int(obb.cls[i].item()))
+                if label is None:
+                    continue
+                shapes_out.append({"label": label, "kind": "polygon", "points": [[cl(float(x) / w), cl(float(y) / h)] for x, y in corners[i]]})
+                scores.append(float(obb.conf[i].item()))
+        return shapes_out, scores
+
+
+class YoloSegTrainer(_YoloTrainer):
+    kind = "yolo_seg"
+    label = "實例分割（YOLO-seg）"
+    description = "用 polygon 標記訓練 YOLO segmentation 模型（找出每個物件的輪廓與類別）；需要 ultralytics（torch），建議有 NVIDIA GPU。官方底模第一次使用會自動下載；還沒訓練過也能自動標記（用底模提案輪廓、掛到第一個類別）。產物：best.pt 給「YOLO 實例分割」工具、ONNX 給「DL 實例分割」工具。"
+    task = "segment"
+    base_model = "yolov8n-seg.pt"
+    tool_key = "yolo_segment"
+    onnx_tool_key = "dl_instance"
+    params = _params("yolov8n-seg.pt", "segment")
+
+
+class YoloDetectTrainer(_YoloTrainer):
+    kind = "yolo_detect"
+    label = "物件偵測（YOLO）"
+    description = "用 bbox（或 polygon，會取外接框）標記訓練 YOLO 偵測模型：找出每個物件的框與類別。速度最快、標記最省；產物：best.pt 給「YOLO 物件偵測」工具、ONNX 給「DL 物件偵測」工具。"
+    task = "detect"
+    base_model = "yolo11n.pt"
+    tool_key = "yolo_detect"
+    onnx_tool_key = "dl_detect"
+    params = _params("yolo11n.pt", "detect")
+
+
+class YoloClassifyTrainer(_YoloTrainer):
+    kind = "yolo_cls"
+    label = "影像分類（YOLO-cls）"
+    description = "整張影像一個類別，訓練 YOLO 分類模型（ImageNet 預訓練底模微調）；比內建 MLP 分類器準、需要 ultralytics（torch）。產物：best.pt 給「YOLO 分類」工具、ONNX 給「DL 分類」工具。"
+    task = "classify"
+    base_model = "yolo11n-cls.pt"
+    label_mode = "classes"
+    tool_key = "yolo_classify"
+    onnx_tool_key = "dl_classify"
+    min_per_class = 2
+    params = _params("yolo11n-cls.pt", "classify")
+
+
+class YoloObbTrainer(_YoloTrainer):
+    kind = "yolo_obb"
+    label = "旋轉框偵測（YOLO-obb）"
+    description = "用 polygon（取最小外接旋轉矩形）或 bbox 標記訓練 YOLO OBB 模型：回每個物件的旋轉矩形（中心、寬高、角度），適合傾斜擺放的工件。產物：best.pt 給「YOLO 旋轉框」工具（ONNX 僅供外部使用）。"
+    task = "obb"
+    base_model = "yolo11n-obb.pt"
+    tool_key = "yolo_obb"
+    onnx_tool_key = ""
+    params = _params("yolo11n-obb.pt", "obb")
 
 
 def _plog(progress: Any, message: str) -> None:
@@ -340,4 +482,4 @@ def _plog(progress: Any, message: str) -> None:
     log.info(message)
 
 
-TRAINERS = [YoloSegTrainer]
+TRAINERS = [YoloSegTrainer, YoloDetectTrainer, YoloClassifyTrainer, YoloObbTrainer]
