@@ -828,13 +828,13 @@ export function AgentPage() {
             </Card>
 
             {jobApi.job ? (
-              <Card className="space-y-2 p-3" data-testid="agent-job">
+              <Card className="space-y-2 p-3" testId="agent-job">
                 <AgentTimeline job={jobApi.job} steps={jobApi.steps} onCancel={abort} />
               </Card>
             ) : null}
 
             {clarify && !clarify.ready ? (
-              <Card className="space-y-3 border-brand/40 p-3" data-testid="agent-clarify">
+              <Card className="space-y-3 border-brand/40 p-3" testId="agent-clarify">
                 <div className="flex items-center gap-2">
                   <HelpCircle size={14} className="text-brand" />
                   <p className="text-xs font-semibold">{t('agent.clarifyTitle')}</p>
@@ -869,7 +869,7 @@ export function AgentPage() {
             ) : null}
 
             {result ? (
-              <Card className="space-y-2 p-3" data-testid="agent-result">
+              <Card className="space-y-2 p-3" testId="agent-result">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-muted">4 · {t('agent.stepResult')}</p>
                   <Badge tone={badgeTone(activeReport?.status)}>{t('agent.imageN', { n: active + 1 })} · {activeReport?.status?.toUpperCase()} · {Math.round(activeReport?.duration_ms ?? 0)} ms</Badge>

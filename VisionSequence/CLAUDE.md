@@ -110,5 +110,7 @@
 - **Git Bash heredoc 會吞反斜線**（`"\n"` 變真換行）且長內容會被截斷（unexpected EOF）：長內容、含反斜線或 TSX 的檔案一律用 Write 工具寫檔，再用 Bash 執行 patch 腳本。`.ps1` 保留 UTF-8 BOM。
 - Vite dev server 的 `/api` 代理與直打後端行為一致；LLM 供應商 hang 時不會拖垮平台（uvicorn 執行緒池），但要給短逾時。
 - 前端 `max-h` 擋不住 CSS grid 內容溢出：Modal 內部要捲動就用固定高 `h-[..]` + `min-h-0` + `overflow-hidden`，捲動容器留內距免得 hover 邊框被裁。
+- 前端 `Card` 只認 `testId` 屬性，寫 `data-testid` 會被丟掉（TS 不會報錯）；要給測試或截圖腳本用的 Card 一律用 `testId=`。
+- `manage.py agent_bench --llm` 用伺服器供應商；要用某位使用者的金鑰跑就在 shell 裡 `bench.run_bench(providers.resolve(user), use_llm=True)`。LLM 單次生成實測（gemini-3.5-flash-lite）判定 76%、有效 81%，規則引擎 100%——LLM 產物一定要過試執行；全部失敗時 `service.generate` 已會退回規則。
 - **Gemini 3 function calling**：模型回的 `functionCall` part 帶 `thoughtSignature`，下一回合必須原樣回傳（`ToolReply.raw` → 歷史 `raw` → `gemini_contents` 直接用原生 parts），否則 400「missing a thought_signature」；實機用 gemini-3.5-flash-lite 驗過代理迴圈 4 回合 5.6 秒完成。
 - i18n：一次多檔替換若中途失敗要檢查已成功的檔案，避免重複插入（TS1117）；en 是單行物件格式，錨點與 zh 不同。

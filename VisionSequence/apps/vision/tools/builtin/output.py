@@ -140,8 +140,13 @@ class DrawResultTool(Tool):
         canvas = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) if image.ndim == 2 else image.copy()
         thickness = ctx.integer("thickness", 2)
         for group in ctx.inputs.get("overlays") or []:
-            for ov in group or []:
-                draw_overlay(canvas, ov, thickness)
+            if isinstance(group, dict):  # 單一 overlay 直接接進來
+                group = [group]
+            if not isinstance(group, (list, tuple)):  # 接錯埠（影像／數值）就略過，不讓結果影像整個炸掉
+                continue
+            for ov in group:
+                if isinstance(ov, dict):
+                    draw_overlay(canvas, ov, thickness)
         if ctx.flag("banner", True):
             judge = str(ctx.context.get("_judge") or "").upper()
             if judge:

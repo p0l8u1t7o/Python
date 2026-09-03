@@ -238,7 +238,7 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
 
       {/* 自動調參結果 */}
       {tuned ? (
-        <Card className="mb-4" data-testid="golden-autotune-result">
+        <Card className="mb-4" testId="golden-autotune-result">
           <CardHeader
             title={<span className="flex items-center gap-2"><Wand2 size={16} className="text-brand" />{t('golden.autotuneResult')} <Badge tone={tuned.improved ? 'ok' : 'neutral'}>{t('golden.autotuneMatch', { before: tuned.before.match, after: tuned.after.match, total: tuned.after.total })}</Badge>{tuned.budget_hit ? <Badge tone="critical">{t('golden.autotuneBudget')}</Badge> : null}{tuned.graph_override ? <Badge>{t('golden.useDraft')}</Badge> : null}</span>}
             description={t('golden.autotuneStats', { cases: tuned.cases, evals: tuned.evals, ms: tuned.elapsed_ms })}

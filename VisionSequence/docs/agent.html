@@ -253,6 +253,7 @@ regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulu
 
 <h2 id="bench">評測基準</h2>
 <p><code>manage.py agent_bench</code> 用 <code>apps/vision/agent/bench.py</code> 的案例（合成樣本圖＋ROI＋提示詞＋期望意圖與每張影像的期望判定）跑離線規則引擎，印出意圖準確率、判定準確率（案例／影像）、graph 有效率與耗時；<code>--llm</code> 改用伺服器供應商、<code>--keys</code> 只跑指定案例、<code>--json</code> 輸出完整結果。<code>tests/test_agent_bench.py</code> 以門檻守住回歸（目前意圖 ≥ 0.9、判定 ≥ 0.8、全部有效），之後每個能力提升都用同一把尺量。案例可帶 <code>labels</code>（影像標記）以覆蓋候選排名與自動調參路徑；Phase 1 新增印字、中心距、圖案、定位＋卡尺、計數＋標記五個案例（共 21 個）。</p>
+<p><strong>LLM 模式實測</strong>（<code>--llm</code>，gemini-3.5-flash-lite 單次生成，2026-09）：意圖 100%、判定 76%、有效 81%、平均每案例約 7 秒。失敗型態有三種：驗證擋下（埠型別接錯、邊指到不存在的節點）→ 已自動落回規則並回 warnings；驗證過但實跑全部失敗（範本資產 id 亂填、把輪廓接進結果影像的標記埠）→ 現在 <code>service.generate</code> 會在試執行全部失敗時改用規則引擎並說明原因，<code>draw_result</code> 也會略過不是標記的輸入；純判定錯（顏色有無門檻太鬆）→ 模型能力，交給影像標記與自動調參。規則引擎在同一組案例是 100%，所以單次 LLM 生成適合當「起點」，代理模式或標記＋自動調參才是把判定拉到位的手段。</p>
 
 <h2 id="design">設計取捨</h2>
 <ul>

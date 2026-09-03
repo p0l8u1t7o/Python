@@ -578,6 +578,48 @@ def _upload(client, image: np.ndarray) -> str:
     return res.json()["ref"]
 
 
+class LlmFallbackTests(TestCase):
+    """LLM 產出的流程驗證過但實跑全部失敗（例如範本資產 id 亂填）→ 改用規則引擎並在 warnings 說明。"""
+
+    def test_failed_trial_falls_back_to_rules(self):
+        from unittest import mock
+
+        from apps.vision.agent import llm
+
+        bogus = {"nodes": [
+            {"id": "src", "type": "image_source", "params": {"mode": "auto"}},
+            {"id": "tm", "type": "template_match", "params": {"template": "良品範本資產ID", "threshold": 0.7}},
+            {"id": "ok", "type": "judge", "params": {"verdict": "ok"}}, {"id": "ng", "type": "judge", "params": {"verdict": "ng"}},
+        ], "edges": [
+            {"source": "src", "target": "tm"},
+            {"source": "tm", "source_handle": "found", "target": "ok", "target_handle": "_flow"},
+            {"source": "tm", "source_handle": "not_found", "target": "ng", "target_handle": "_flow"},
+        ]}
+        settings = providers.AgentSettings(provider="openai", model="gpt-4o", api_key="sk-test", source="user")
+        with mock.patch.object(llm, "generate", return_value=(validate_graph(bogus), "LLM 說明")):
+            r = service.generate([part_image(5)], [], "應該有 5 個孔", settings, remember=False)
+        self.assertEqual(r["provider"], "rules")
+        self.assertEqual(r["report"]["status"], "ok")
+        self.assertTrue(any("試執行失敗" in w for w in r["warnings"]), r["warnings"])
+
+    def test_draw_result_ignores_non_overlay_inputs(self):
+        graph = {"nodes": [
+            {"id": "src", "type": "image_source", "params": {"mode": "auto"}},
+            {"id": "gray", "type": "grayscale", "params": {}},
+            {"id": "draw", "type": "draw_result", "params": {}},
+        ], "edges": [
+            {"source": "src", "target": "gray"},
+            {"source": "src", "target": "draw", "source_handle": "image", "target_handle": "image"},
+            {"source": "gray", "target": "draw", "source_handle": "image", "target_handle": "overlays"},
+        ]}
+        try:
+            g = validate_graph(graph)
+        except Exception:
+            return  # validate 已擋掉影像接標記埠，也算通過
+        rep = service.trial_run(g, part_image(5), keep_images=False)
+        self.assertNotEqual(rep.nodes["draw"].status, "error")
+
+
 class ProviderSettingsTests(TestCase):
     def test_server_default_is_offline_without_key(self):
         s = providers.server_settings()

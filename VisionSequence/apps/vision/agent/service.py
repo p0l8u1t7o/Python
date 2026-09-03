@@ -122,6 +122,16 @@ def _rank_candidates(cands: list[dict[str, Any]], images: list[np.ndarray], expe
     return ranked, win
 
 
+def _broken_nodes(reports: list[dict[str, Any]]) -> str:
+    """試跑報告裡的錯誤節點摘要（節點：訊息），沒有回空字串。"""
+    seen: dict[str, str] = {}
+    for r in reports:
+        for nid, nr in (r.get("nodes") or {}).items():
+            if nr.get("status") == "error" and nid not in seen:
+                seen[nid] = str(nr.get("message") or "")[:80]
+    return "；".join(f"{k}：{v}" if v else k for k, v in list(seen.items())[:3])
+
+
 def _labels_text(expected: list[str]) -> str:
     marks = [f"影像 {i + 1} 應判 {e.upper()}" for i, e in enumerate(expected) if e]
     return ("影像期望判定：" + "、".join(marks)) if marks else ""
@@ -230,6 +240,13 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
         graph, rationale = got
         main = _main_image(regions, intent, len(images))
         report, reports = _run_all(graph, images, main)
+        broken = _broken_nodes(reports)
+        if broken and all(r.get("status") not in ("ok", "ng") for r in reports):
+            # LLM 的流程驗證過但實跑就炸（例如範本資產 id 亂填、埠接錯）：不把失敗結果丟給使用者，改用規則引擎並說明
+            llm_reason = f"LLM（{settings.provider}）產出的流程試執行失敗（{broken}），已改用規則引擎"
+            log.warning(llm_reason)
+            got = None
+    if got is not None:
         result = _result(graph, rationale, settings.provider, intent.kind, report, reports, main_image=main, candidates=[], labels=expected, similar=similar_out)
     else:
         cands = synth.candidates(intent, regions, feats, make_asset=_make_asset_factory(images), priors=priors)
