@@ -70,7 +70,11 @@ export interface BatchRunItem {
 export interface BatchRun {
   id: number
   set_id: number
+  /** 這次執行用的流程（可與影像集建立時的流程不同） */
   flow_id: number
+  flow_name: string
+  /** 影像集建立時所屬的流程 */
+  set_flow_id: number
   flow_version: number
   label: string
   note: string
@@ -92,7 +96,9 @@ export interface BatchRun {
 
 export interface BatchSet {
   id: number
+  /** 影像集建立時所屬的流程（只是歸屬；可用任一流程測試） */
   flow_id: number
+  flow_name: string
   name: string
   source: string
   image_count: number
@@ -196,18 +202,19 @@ export function batchImageUrl(setId: number, index: number, max = 0): string {
 export const RUNNING: ReadonlySet<string> = new Set(['queued', 'running'])
 
 export const batchKeys = {
-  sets: (flowId: number) => ['batch-sets', flowId] as const,
+  /** 影像集是測試資料、可用任一流程測，所以清單不分流程（後端 flow_id 選填） */
+  sets: () => ['batch-sets'] as const,
   set: (id: number) => ['batch-set', id] as const,
   runs: (setId: number) => ['batch-runs', setId] as const,
   run: (id: number) => ['batch-run', id] as const,
   insights: (id: number) => ['batch-insights', id] as const,
 }
 
-export function useBatchSets(flowId: number | null) {
+/** 所有看得見的影像集（跨流程）：選好影像集後再選要用哪個流程測。 */
+export function useBatchSets() {
   return useQuery({
-    queryKey: batchKeys.sets(flowId ?? 0),
-    queryFn: () => api.get<BatchSetList>('/vision/batch/sets', { flow_id: flowId }),
-    enabled: flowId !== null,
+    queryKey: batchKeys.sets(),
+    queryFn: () => api.get<BatchSetList>('/vision/batch/sets'),
   })
 }
 
@@ -262,6 +269,8 @@ export function tuneBatch(body: { batch_run_id: number; instruction: string; gra
 }
 
 export interface RunCreate {
+  /** 用哪個流程測（省略＝影像集的流程） */
+  flow_id?: number | null
   mode?: 'run' | 'autotune'
   graph?: FlowGraph | null
   recipe_id?: number | null
@@ -275,9 +284,7 @@ export interface RunCreate {
 
 export function useBatchMutations(flowId: number | null) {
   const client = useQueryClient()
-  const invalidateSets = () => {
-    if (flowId !== null) void client.invalidateQueries({ queryKey: batchKeys.sets(flowId) })
-  }
+  const invalidateSets = () => void client.invalidateQueries({ queryKey: batchKeys.sets() })
   const invalidateSet = (setId: number) => {
     invalidateSets()
     void client.invalidateQueries({ queryKey: batchKeys.set(setId) })

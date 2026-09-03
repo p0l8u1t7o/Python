@@ -68,16 +68,16 @@
 
 <h2 id="concept">1. 概念：影像集與執行</h2>
 <ul>
-<li><strong>影像集（BatchSet）</strong>：一組批量測試用的影像（上傳或從影像來源擷取，一個影像集最多 <code>VISION_BATCH_MAX_IMAGES</code>＝200 張），檔案存在伺服器；<strong>期望標記（OK／NG）屬於影像</strong>，同一組影像重複執行時保留。</li>
-<li><strong>批次執行（BatchRun）</strong>：用某份 graph 快照把影像集跑一遍；逐張結果（狀態、耗時、具名輸出、各節點狀態與純量輸出、錯誤）與 summary 一起暫存。執行可標 <code>parent</code>（由哪一次調參而來），來源 <code>origin</code>＝manual／draft／autotune／ai_tune。</li>
+<li><strong>影像集（BatchSet）</strong>：一組批量測試用的影像（上傳或從影像來源擷取，一個影像集最多 <code>VISION_BATCH_MAX_IMAGES</code>＝200 張），檔案存在伺服器；<strong>期望標記（OK／NG）屬於影像</strong>，同一組影像重複執行時保留。<code>flow</code> 只是<strong>建立時的歸屬</strong>（淘汰也按它計）——影像集是測試資料，<strong>可以拿去測任何看得見的流程</strong>。</li>
+<li><strong>批次執行（BatchRun）</strong>：用某份 graph 快照把影像集跑一遍；逐張結果（狀態、耗時、具名輸出、各節點狀態與純量輸出、錯誤）與 summary 一起暫存。執行可標 <code>parent</code>（由哪一次調參而來），來源 <code>origin</code>＝manual／draft／autotune／ai_tune。<code>flow</code> 記錄<strong>這次用哪個流程測</strong>（與影像集的流程不同時前端標出流程名稱），空＝影像集的流程。</li>
 <li>與 Golden Set 的分工：Golden Set 是<strong>正式回歸基準</strong>（少量、期望值精確、進 CI）；批次測試是<strong>調機工作台</strong>（多量、可反覆重跑、資料會淘汰）。批次頁勾選影像可一鍵「存入 Golden Set」。</li>
 </ul>
 
 <h2 id="flow">2. 操作流程</h2>
 <ol>
-<li>頂列選擇流程（或從編輯器「批次測試」帶入）。</li>
-<li>「新增影像集」：上傳影像檔，或從影像來源擷取 N 張。</li>
-<li>「執行此影像集」：背景執行、執行紀錄顯示進度，可中斷。</li>
+<li>「新增影像集」：上傳影像檔，或從影像來源擷取 N 張（影像集清單跨流程，目前測試流程的排前面）。</li>
+<li>頂列「測試流程」＝要用哪個流程測（從編輯器「批次測試」帶入，或選影像集時自動帶成它建立時的流程）。同一組影像可以換流程再測一次，兩次執行都掛在同一個影像集，能直接比較。</li>
+<li>「以「<em>流程名稱</em>」執行」：背景執行、執行紀錄顯示進度，可中斷；用別的流程測的執行會標出流程名稱。</li>
 <li>「影像集」分頁為每張影像標記期望 OK／NG（或全部 OK／NG）；「結果」分頁的期望欄也可改。命中率、混淆矩陣立即更新。</li>
 <li>「洞察」分頁：未命中影像、出錯節點、判定門檻建議、具名輸出分佈（依期望分兩色）、歷次執行趨勢；「套用建議並重新執行」直接產生新的一次執行。</li>
 <li>「調參」分頁：現場調機參數（teach）分組編輯 → 「重新執行」（新執行的 parent＝目前選取的執行）→ 「比較」分頁逐張對照。</li>
@@ -89,7 +89,7 @@
 <table>
 <tr><th>模型</th><th>欄位</th></tr>
 <tr><td><code>BatchSet</code></td><td><code>flow</code>、<code>owner</code>、<code>name</code>、<code>source</code>（upload／source:名稱）、<code>images</code> JSON <code>[{index, name, path, width, height, expected, expect_outputs, note}]</code>、<code>image_count</code>、<code>size_bytes</code>、時間戳。檔案在 <code>ASSET_DIR/batch/&lt;set_id&gt;/NNN.png</code>，刪除影像集即 <code>rmtree</code>。</td></tr>
-<tr><td><code>BatchRun</code></td><td><code>batch_set</code>、<code>parent</code>、<code>owner</code>、<code>flow_version</code>、<code>graph</code>（實際執行的快照，配方已疊上）、<code>recipe_name</code>、<code>label</code>／<code>note</code>、<code>origin</code>、<code>status</code>（queued／running／done／cancelled／failed）、<code>progress_done</code>／<code>progress_total</code>、<code>summary</code>、<code>items</code>（逐張：<code>status, duration_ms, outputs, error, error_node, nodes{id:{status, duration_ms, message, branch, outputs}}</code>，只存純量，NaN 轉 null）、<code>insights</code>（洞察快取）、<code>meta</code>（自動調參／AI 調整的說明）、<code>error</code>、時間戳。</td></tr>
+<tr><td><code>BatchRun</code></td><td><code>batch_set</code>、<code>flow</code>（這次用哪個流程測，空＝影像集的流程；流程被刪除時 SET_NULL 退回）、<code>parent</code>、<code>owner</code>、<code>flow_version</code>、<code>graph</code>（實際執行的快照，配方已疊上）、<code>recipe_name</code>、<code>label</code>／<code>note</code>、<code>origin</code>、<code>status</code>（queued／running／done／cancelled／failed）、<code>progress_done</code>／<code>progress_total</code>、<code>summary</code>、<code>items</code>（逐張：<code>status, duration_ms, outputs, error, error_node, nodes{id:{status, duration_ms, message, branch, outputs}}</code>，只存純量，NaN 轉 null）、<code>insights</code>（洞察快取）、<code>meta</code>（自動調參／AI 調整的說明）、<code>error</code>、時間戳。</td></tr>
 </table>
 <p>命中（match）不存在 items 裡：標記可事後修改，序列化時用 <code>apps/golden/regress.evaluate_expect</code> 現算；改標記後 <code>store.refresh_matches</code> 重算該影像集所有已完成執行的 summary 與洞察。</p>
 
@@ -129,7 +129,8 @@
 </ul>
 
 <h2 id="api">8. API（apps/vision/batch/api.py）</h2>
-<pre>GET    /vision/batch/sets?flow_id=                    {items[set…含 latest_run], total, max_images, keep_sets, keep_runs}
+<pre>GET    /vision/batch/sets[?flow_id=]                  {items[set…含 flow_name、latest_run], total, max_images, keep_sets, keep_runs}
+                                                      flow_id 省略＝所有看得見的影像集（影像集可測任一流程）
 POST   /vision/batch/sets                             multipart images[]＋flow_id＋name? → 201 set（含 images）
 POST   /vision/batch/sets/from-source                 {flow_id, source_id, count, name?} → 201
 GET    /vision/batch/sets/{id}                        set（含 images、latest_run、can_manage）
@@ -137,8 +138,8 @@ PATCH  /vision/batch/sets/{id}                        {name?, labels:[{index, ex
 DELETE /vision/batch/sets/{id}                        204（執行中 409）
 GET    /vision/batch/sets/{id}/images/{index}?max=    影像（?token= 可用於 &lt;img&gt;）
 POST   /vision/batch/sets/{id}/to-golden              {indexes?, expect_from: label|status, run_id?, note?} → 201 {created, ids}
-GET    /vision/batch/sets/{id}/runs                   {items[run 精簡], total}
-POST   /vision/batch/sets/{id}/runs                   {mode: run|autotune, graph?, recipe_id?, label?, note?, parent_run_id?, origin?, max_evals?, deadline_s?} → 202 run
+GET    /vision/batch/sets/{id}/runs                   {items[run 精簡…含 flow_id／flow_name／set_flow_id], total}
+POST   /vision/batch/sets/{id}/runs                   {flow_id?（用哪個流程測，省略＝影像集的流程）, mode: run|autotune, graph?, recipe_id?, label?, note?, parent_run_id?, origin?, max_evals?, deadline_s?} → 202 run
 GET    /vision/batch/runs/{id}?items=1                run（items 含 name/expected/match/reasons/image_url、graph、progress）
 PATCH  /vision/batch/runs/{id}                        {label?, note?}
 POST   /vision/batch/runs/{id}/cancel                 {cancelled}

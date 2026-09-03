@@ -1,8 +1,8 @@
 """批次測試 API（/vision/batch/...）。
 
-影像集：GET /batch/sets?flow_id=、POST /batch/sets（multipart images[]＋flow_id、name）、POST /batch/sets/from-source、
+影像集：GET /batch/sets（flow_id 選填，省略＝所有看得見的影像集）、POST /batch/sets（multipart images[]＋flow_id、name）、POST /batch/sets/from-source、
         GET/PATCH/DELETE /batch/sets/{id}、GET /batch/sets/{id}/images/{index}、POST /batch/sets/{id}/to-golden
-執行：  GET /batch/sets/{id}/runs、POST /batch/sets/{id}/runs（mode=run|autotune，202 背景）、GET/PATCH/DELETE /batch/runs/{id}、
+執行：  GET /batch/sets/{id}/runs、POST /batch/sets/{id}/runs（flow_id 選填＝用哪個流程測，mode=run|autotune，202 背景）、GET/PATCH/DELETE /batch/runs/{id}、
         POST /batch/runs/{id}/cancel、GET /batch/runs/{id}/insights、GET /batch/runs/{id}/compare?other=、
         POST /batch/runs/{id}/rows/{index}/preview（單張重跑取標記）、POST /batch/runs/{id}/to-recipe
 可見性沿用流程的 _visible_flows；建立與執行需 can_execute；刪除需影像集擁有者或流程可編輯者。
@@ -46,14 +46,14 @@ def _visible_flow(request: HttpRequest, flow_id: int) -> Flow:
 
 
 def _set_or_404(request: HttpRequest, set_id: int) -> BatchSet:
-    s = BatchSet.objects.select_related("flow").filter(pk=set_id).first()
+    s = BatchSet.objects.select_related("flow").filter(pk=set_id).first()  # noqa: F841 - 可見性以流程為準
     if s is None or not _visible_flows(request).filter(pk=s.flow_id).exists():
         raise NotFound(f"影像集 {set_id} 不存在", code="set_not_found")
     return s
 
 
 def _run_or_404(request: HttpRequest, run_id: int) -> BatchRun:
-    r = BatchRun.objects.select_related("batch_set__flow").filter(pk=run_id).first()
+    r = BatchRun.objects.select_related("batch_set__flow", "flow").filter(pk=run_id).first()
     if r is None or not _visible_flows(request).filter(pk=r.batch_set.flow_id).exists():
         raise NotFound(f"批次執行 {run_id} 不存在", code="run_not_found")
     return store.reconcile(r)
@@ -96,9 +96,14 @@ def _latest_runs(sets: list[BatchSet]) -> dict[int, BatchRun]:
 # 影像集
 # ---------------------------------------------------------------------------
 @router.get("/batch/sets")
-def list_sets(request: HttpRequest, flow_id: int):
-    flow = _visible_flow(request, flow_id)
-    sets = list(BatchSet.objects.filter(flow=flow).order_by("-created_at"))
+def list_sets(request: HttpRequest, flow_id: int | None = None):
+    """影像集清單。flow_id 給定＝只看該流程建立的；省略＝所有看得見的（影像集是測試資料，可用任一流程測）。"""
+    query = BatchSet.objects.select_related("flow")
+    if flow_id is not None:
+        query = query.filter(flow=_visible_flow(request, flow_id))
+    else:
+        query = query.filter(flow__in=_visible_flows(request))
+    sets = list(query.order_by("-created_at"))
     latest = _latest_runs(sets)
     return {
         "items": [store.set_out(s, latest=latest.get(s.id)) for s in sets], "total": len(sets),
@@ -284,6 +289,8 @@ def set_to_golden(request: HttpRequest, set_id: int, payload: ToGoldenIn):
 # 執行
 # ---------------------------------------------------------------------------
 class RunCreate(Schema):
+    #: 用哪個流程測（省略＝影像集的流程）；影像集只是測試資料，可以拿去測任何看得見的流程。
+    flow_id: int | None = None
     mode: str = "run"
     graph: dict[str, Any] | None = None
     recipe_id: int | None = None
@@ -311,7 +318,7 @@ def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
     s = _set_or_404(request, set_id)
     p = principal(request)
     p.can_execute()
-    flow = s.flow
+    flow = _visible_flow(request, payload.flow_id) if payload.flow_id is not None else s.flow
     if payload.mode not in ("run", "autotune"):
         raise ValidationError("mode 必須是 run 或 autotune", code="bad_mode")
     if not s.images:
@@ -321,7 +328,9 @@ def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
         parent = _run_or_404(request, payload.parent_run_id)
         if parent.batch_set_id != s.id:
             raise ValidationError("parent_run_id 必須屬於同一個影像集", code="bad_parent")
-    graph = payload.graph or (parent.graph if parent is not None else flow.graph)
+    # 沒帶 graph：同流程接續上一次的參數，換流程則用該流程的現圖（別把別的流程的參數帶過來）
+    inherit = parent.graph if (parent is not None and store.run_flow(parent).id == flow.id) else None
+    graph = payload.graph or inherit or flow.graph
     recipe_name = ""
     if payload.recipe_id is not None:
         recipe = resolve_recipe(flow, str(payload.recipe_id))
@@ -332,7 +341,7 @@ def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
         raise ValidationError("自動調參需要先為影像標記期望 OK／NG", code="no_labels")
     origin = "autotune" if payload.mode == "autotune" else (payload.origin if payload.origin in ORIGINS else "manual")
     run = BatchRun.objects.create(
-        batch_set=s, parent=parent, owner=p.user, flow_version=flow.version, graph=graph, recipe_name=recipe_name,
+        batch_set=s, flow=None if flow.id == s.flow_id else flow, parent=parent, owner=p.user, flow_version=flow.version, graph=graph, recipe_name=recipe_name,
         label=payload.label[:120], note=payload.note[:2000], origin=origin, status="queued", progress_total=len(s.images),
     )
     try:
@@ -445,7 +454,7 @@ def preview_row(request: HttpRequest, run_id: int, index: int, payload: PreviewI
     if image is None:
         raise NotFound("影像檔不存在", code="image_gone")
     graph = validate_graph(payload.graph) if payload.graph else r.graph
-    report = runner.run_sync(r.batch_set.flow, trigger="preview", preview=True, graph_override=graph, input_image=image)
+    report = runner.run_sync(store.run_flow(r), trigger="preview", preview=True, graph_override=graph, input_image=image)
     return report.to_dict(include_node_outputs=True)
 
 
@@ -459,7 +468,7 @@ class ToRecipeIn(Schema):
 def run_to_recipe(request: HttpRequest, run_id: int, payload: ToRecipeIn):
     """把這次執行的參數與流程現圖的差異存成配方。"""
     r = _run_or_404(request, run_id)
-    flow = r.batch_set.flow
+    flow = store.run_flow(r)
     if not principal(request).can_edit_flow(flow):
         raise PermissionDenied("只有流程擁有者或管理員能建立配方", code="not_owner")
     overrides = store.to_overrides(store.graph_param_diff(flow.graph, r.graph))

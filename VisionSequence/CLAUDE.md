@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：66 個內建工具（8 類）、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 363 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：66 個內建工具（8 類）、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 364 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -95,6 +95,7 @@
 - 特徵驅動參數：`analysis` 的 `mad`（穩健 σ）／`smooth_mad`（低通後 σ，紋理面缺陷門檻用）／`gradient`／`color_std`／`area`；`synth` 的 `_blob_min_area`、`_clip`；計數意圖 `round_target` 加圓形度下限排除線段。新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`clarify.build_questions` 缺口問題＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
 
 ### 批次測試（apps/vision/batch）
+- **影像集是測試資料、可測任一流程**：`BatchSet.flow` 只是建立歸屬（淘汰按它計），`BatchRun.flow`（migration 0013，null＝影像集的流程）記錄這次用哪個流程測；`store.run_flow(run)` 是唯一取用點（jobs 執行、preview、to-recipe 都走它）。`GET /batch/sets` 的 `flow_id` 選填（省略＝所有看得見的），所以前端影像集清單跨流程、頂列選單是「測試流程」；沒帶 graph 又換流程時不沿用 parent 的參數。前端 `useBatchSets()` 不分流程（快取鍵 `['batch-sets']`），清單重抓中不改選取（否則剛建立的影像集選取會被舊清單蓋掉），`startRun` 只在同一影像集內帶 `parent_run_id`。
 - 兩個模型：`BatchSet`（影像檔在 `ASSET_DIR/batch/<id>/NNN.png`，`images` JSON 帶期望標記）、`BatchRun`（graph 快照＋`items` 逐張結果含各節點**純量**輸出（NaN 轉 null，SQLite JSON_VALID 會擋）＋`summary`＋`insights` 快取，`parent` 串調參前後，`origin`＝manual／draft／autotune／ai_tune）。命中不存，讀時用 `regress.evaluate_expect` 現算；改標記後 `store.refresh_matches`。
 - 執行走 `batch/jobs.py` 背景執行緒：`runner.compiled_for(flow, graph_override=)` 編一次、每張 `engine.execute(flow_id=BATCH_FLOW_ID=-1, preview=False)` 後 `store.drop_run`——**不走 runner 佇列**（不計統計、不發 SSE、不寫 FlowRun、不隱含套預設配方）。進度每 10 張／2 秒 `update()`；`jobs.wait()` 給測試；重啟殘留 running 讀取時 `store.reconcile` 標 failed。autotune 模式先 `autotune.coordinate_search`（未命中優先抽樣 ≤40）再全量重跑。
 - `insights.compute` 純函式：沿 `value` 輸入邊找判定節點的上游值（所以 items 一定要存節點純量輸出），if_number 掃相鄰中點、in_range 只動有 NG 那側、tolerance_judge 只列分佈；`suggestions_of`／`apply_suggestions` 給諮詢與前端套用。
@@ -112,7 +113,7 @@
 - 全域 AI 助手：`components/assistant/AssistantDock.tsx`（對話存 localStorage `vs.assistant.v1`、模式晶片、快速提示、參考連結、套用到畫布／套用建議／新執行、代理工作走 `useAgentJob`＋`AgentTimeline`）；頁面用 `lib/assistantContext.ts` 的 `useRegisterAssistantContext({kind, flowId, flowName, nodeType, batchRunId, imageRef, getGraph, applyGraph, applySuggestions, onNewRun}, deps)` 登記脈絡（編輯器、工具頁、批次頁已登記；未登記的頁面由路徑推 kind）。編輯器右側與批次頁的 AI 分頁已併入 dock（`AiAssistPanel`／`BatchAiPanel` 已刪），新頁面要讓助手能「動手」就登記回呼。
 - **第一次使用的引導**：編輯器有取像步驟沒選來源又沒暫存影像時顯示橫幅（`no-source-banner`：內嵌來源下拉直接 `patchNode` 寫 `source_id`、上傳暫存影像、管理來源連結）；總覽流程卡有「執行一次」（`useRunFlow` wait）；DL 訓練完成的「建立流程使用此模型」直接建 `取像→工具（model＝資產）` 流程並導到編輯器；批次頁建立影像集後自動跑第一次（`startRun(null, opts, setId)`）。`GET /dl/devices` 的 `train_device` 回解析後的裝置（未設定＝有 CUDA 就 cuda）。取像步驟在 `Inspector` 有 `SourceSection`（來源下拉＋`sourcePreviewUrl` 縮圖，直接改 `params.source_id`）；來源表單「測試擷取」打 `POST /sources/test {kind, config}`（`sources.try_grab` 建暫時 grabber 抓一張就關、不快取不落地，回尺寸／耗時／data URL 縮圖，失敗 422 帶原因）。
 - **離開未儲存的確認**一律用 `lib/useConfirm.tsx`（`const { confirm, dialog } = useConfirm()`，`await confirm(message, { title, confirmLabel })` 回布林、`{dialog}` 放進 JSX）取代 `window.confirm`（編輯器／工具頁／教導頁的 `useBlocker` 與範本載入、返回編輯器都已改）；`beforeunload` 仍是瀏覽器原生。
-- 工具箱：`FavoriteTools`（新增工具／新增註解／收藏，hover 可移除）＋`ToolPicker`（Modal 固定高、內部捲動）。畫布 ⇄ graph 的轉換在 `graphMapping.ts`；note 是裝飾節點（type=note，不接邊）。
+- 工具箱：`FavoriteTools`（新增工具／新增註解／收藏，hover 可移除）＋`ToolPicker`（xl Modal 三欄：分類｜工具清單（名稱完整不截斷）｜點選工具的完整詳細說明（說明全文、輸入／輸出埠帶型別色點、參數表含型別／預設／範圍／現場教導）；每欄獨立捲動，「加入畫布」或雙擊插入，< 768px 改上下堆疊＋返回鍵）。畫布 ⇄ graph 的轉換在 `graphMapping.ts`；note 是裝飾節點（type=note，不接邊）。
 - 工具頁 `ToolPage`：參數改在草稿（`flowDraft.patchDraftNode`），儲存才寫回；`goBack` 只在 dirty 時比對快照；輸出值只列在下方參考資訊，不疊浮層擋圖。
 - 影像檢視器：`roiEditor.ts`（互動）與 `geometry.ts`（純函式，有單元測試）分離；ROI 形狀 switch 要 exhaustive。
 - 版面：一般頁面用 `Page` 容器（`AppShell.tsx`）取得一致內距（底部 `pb-24` 留給右下角 AI 助手浮動鈕）；全高頁（編輯器、參數卡）自帶 header。

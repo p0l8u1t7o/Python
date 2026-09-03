@@ -305,9 +305,14 @@ class BatchSet(models.Model):
 
 
 class BatchRun(models.Model):
-    """一次批次執行：graph 快照＋逐張結果（含各節點純量輸出）＋summary／洞察快取；parent 串起調參前後。"""
+    """一次批次執行：graph 快照＋逐張結果（含各節點純量輸出）＋summary／洞察快取；parent 串起調參前後。
+
+    影像集只是測試資料，`flow` 記錄這次「用哪個流程測」（可以不是影像集建立時的流程）；空＝用影像集的流程。
+    """
 
     batch_set = models.ForeignKey(BatchSet, on_delete=models.CASCADE, related_name="runs")
+    #: 這次執行用的流程（跨流程測試時與 batch_set.flow 不同）；流程被刪除時退回影像集的流程。
+    flow = models.ForeignKey(Flow, null=True, blank=True, on_delete=models.SET_NULL, related_name="batch_runs")
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children")
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="batch_runs")
     flow_version = models.PositiveIntegerField(default=0)
@@ -335,6 +340,11 @@ class BatchRun(models.Model):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["batch_set", "-created_at"])]
+
+    @property
+    def target_flow(self) -> Flow:
+        """這次執行用的流程（flow 為空＝影像集的流程）。"""
+        return self.flow or self.batch_set.flow
 
     def __str__(self) -> str:
         return f"BatchRun {self.pk} ({self.status})"

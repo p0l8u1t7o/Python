@@ -153,10 +153,16 @@ def image_url(set_id: int, index: int) -> str:
     return f"/api/vision/batch/sets/{set_id}/images/{index}"
 
 
+def run_flow(r: BatchRun) -> Flow:
+    """一次執行實際用的流程：BatchRun.flow（跨流程測試）優先，否則影像集的流程。"""
+    return r.flow or r.batch_set.flow
+
+
 def set_out(s: BatchSet, *, full: bool = False, latest: BatchRun | None = None) -> dict[str, Any]:
     images = s.images or []
     out: dict[str, Any] = {
-        "id": s.id, "flow_id": s.flow_id, "name": s.name, "source": s.source, "image_count": s.image_count, "size_bytes": s.size_bytes,
+        "id": s.id, "flow_id": s.flow_id, "flow_name": s.flow.name if s.flow_id else "", "name": s.name, "source": s.source,
+        "image_count": s.image_count, "size_bytes": s.size_bytes,
         "owner_id": s.owner_id, "labeled": {"ok": sum(1 for im in images if im.get("expected") == "ok"), "ng": sum(1 for im in images if im.get("expected") == "ng")},
         "created_at": s.created_at.isoformat() if s.created_at else None, "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
@@ -175,8 +181,10 @@ def run_out(r: BatchRun, *, batch_set: BatchSet | None = None, items: bool = Fal
         prog.update({k: progress[k] for k in ("done", "total", "stage") if k in progress})
     finished = r.finished_at.timestamp() if r.finished_at else None
     created = r.created_at.timestamp() if r.created_at else time.time()
+    flow = r.flow or s.flow
     out: dict[str, Any] = {
-        "id": r.id, "set_id": r.batch_set_id, "flow_id": s.flow_id, "flow_version": r.flow_version, "label": r.label, "note": r.note,
+        "id": r.id, "set_id": r.batch_set_id, "flow_id": flow.id, "flow_name": flow.name, "set_flow_id": s.flow_id,
+        "flow_version": r.flow_version, "label": r.label, "note": r.note,
         "origin": r.origin, "status": r.status, "progress": prog, "summary": r.summary or {}, "parent_id": r.parent_id, "owner_id": r.owner_id,
         "recipe_name": r.recipe_name, "meta": r.meta or {}, "error": r.error,
         "created_at": r.created_at.isoformat() if r.created_at else None, "finished_at": r.finished_at.isoformat() if r.finished_at else None,
@@ -228,10 +236,13 @@ def finalize_run(run: BatchRun, rows: list[dict[str, Any]], *, wall_ms: float, s
 
 
 def save_completed_run(batch_set: BatchSet, graph: dict[str, Any], rows: list[dict[str, Any]], *, origin: str, parent: BatchRun | None = None,
-                       label: str = "", owner: Any = None, meta: dict[str, Any] | None = None, wall_ms: float = 0.0) -> BatchRun:
-    """AI 調整等已在別處跑完的結果直接落成一筆 done 的執行（不重跑）。"""
+                       label: str = "", owner: Any = None, meta: dict[str, Any] | None = None, wall_ms: float = 0.0,
+                       flow: Flow | None = None) -> BatchRun:
+    """AI 調整等已在別處跑完的結果直接落成一筆 done 的執行（不重跑）。flow 給定＝沿用來源執行的測試流程。"""
+    target = flow or batch_set.flow
     run = BatchRun.objects.create(
-        batch_set=batch_set, parent=parent, owner=owner if getattr(owner, "pk", None) else None, flow_version=batch_set.flow.version,
+        batch_set=batch_set, flow=None if target.id == batch_set.flow_id else target, parent=parent,
+        owner=owner if getattr(owner, "pk", None) else None, flow_version=target.version,
         graph=graph, label=label[:120], origin=origin, status="running", progress_total=batch_set.image_count,
     )
     return finalize_run(run, rows, wall_ms=wall_ms, status="done", graph=graph, meta=meta)
@@ -240,14 +251,14 @@ def save_completed_run(batch_set: BatchSet, graph: dict[str, Any], rows: list[di
 def persist_tune(batch_run_id: int, graph: dict[str, Any], items: list[dict[str, Any]], *, origin: str = "ai_tune", label: str = "",
                  owner: Any = None, meta: dict[str, Any] | None = None) -> BatchRun | None:
     """AI 調整（tune／autotune／代理）在持久化批次上跑完的逐張結果（service._rerun_items detail=True）落成新的一次執行。"""
-    run = BatchRun.objects.select_related("batch_set__flow").filter(pk=batch_run_id).first()
+    run = BatchRun.objects.select_related("batch_set__flow", "flow").filter(pk=batch_run_id).first()
     if run is None:
         return None
     rows = [{k: it.get(k) for k in ("index", "status", "duration_ms", "outputs", "error", "error_node", "nodes")}
             for it in items if it.get("index") is not None and isinstance(it.get("nodes"), dict)]
     if not rows:
         return None
-    return save_completed_run(run.batch_set, graph, rows, origin=origin, parent=run, label=label, owner=owner, meta=meta)
+    return save_completed_run(run.batch_set, graph, rows, origin=origin, parent=run, label=label, owner=owner, meta=meta, flow=run_flow(run))
 
 
 def refresh_matches(batch_set: BatchSet) -> None:

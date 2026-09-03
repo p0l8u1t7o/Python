@@ -12,8 +12,8 @@ const TONES: Record<Tone, string> = {
   critical: 'bg-critical-soft text-critical',
 }
 
-export function Badge({ tone = 'neutral', children, className = '' }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]} ${className}`}>{children}</span>
+export function Badge({ tone = 'neutral', children, className = '', title }: { tone?: Tone; children: ReactNode; className?: string; title?: string }) {
+  return <span title={title} className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]} ${className}`}>{children}</span>
 }
 
 /** run / node 狀態 → 色調。ng 用橘（是判定，不是程式錯）；failed/error 才用紅。 */

@@ -1,5 +1,5 @@
 /**
- * 批次測試（/batch）：選流程 → 影像集（上傳／來源）→ 批量執行（背景、進度）→ 每次結果暫存 → 期望標記與命中率 →
+ * 批次測試（/batch）：影像集（上傳／來源，跨流程共用）→ 選「測試流程」→ 批量執行（背景、進度）→ 每次結果暫存 → 期望標記與命中率 →
  * 洞察（建議門檻）→ 調參重跑／比較 → 寫回流程／存為配方／帶回編輯器 → AI 諮詢與調整（結果成為新的一次執行）。
  * 查詢參數：?flow=&set=&run=&draft=1（編輯器頂列「批次測試」帶草稿過來）。
  */
@@ -48,14 +48,15 @@ export function BatchPage() {
   const flow = useFlow(flowId)
   const catalogue = useToolTypes()
   const defs = useMemo(() => new Map<string, ToolTypeDef>((catalogue.data?.items ?? []).map((d) => [d.key, d])), [catalogue.data])
-  const sets = useBatchSets(flowId)
+  const sets = useBatchSets()
   const [setId, setSetId] = useState<number | null>(num(params.get('set')))
   const [runId, setRunId] = useState<number | null>(num(params.get('run')))
   const [compareId, setCompareId] = useState<number | null>(null)
   const [compare, setCompare] = useState<BatchCompare | null>(null)
   const [tab, setTab] = useState<TabKey>('result')
   const [graph, setGraph] = useState<FlowGraph | null>(null)
-  const [graphSource, setGraphSource] = useState<number | null>(null)
+  //: 工作圖的來源鍵：draft｜run:<id>（同流程才沿用）｜flow:<id>:<version>
+  const [graphSource, setGraphSource] = useState<string>('')
   const [newOpen, setNewOpen] = useState(false)
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'set' | 'run'; id: number; name: string; setId: number } | null>(null)
@@ -87,25 +88,27 @@ export function BatchPage() {
 
   // ---- 選第一個影像集／最新執行 ----
   useEffect(() => {
-    if (!sets.data) return
+    // isFetching 時不動：剛建立的影像集在清單重抓完成前不算「不存在」，否則選取會被舊清單蓋掉
+    if (!sets.data || sets.isFetching) return
     if (setId === null || !setItems.some((s) => s.id === setId)) setSetId(setItems[0]?.id ?? null)
-  }, [sets.data, setItems, setId])
+  }, [sets.data, sets.isFetching, setItems, setId])
   useEffect(() => {
     if (!runs.data) return
     if (runId === null || !runItems.some((r) => r.id === runId)) setRunId(runItems[0]?.id ?? null)
     if (compareId !== null && !runItems.some((r) => r.id === compareId)) setCompareId(null)
   }, [runs.data, runItems, runId, compareId])
-  // ---- 工作圖：切換執行時取該次的 graph；勾草稿時取草稿 ----
+  // ---- 工作圖：勾草稿用草稿；同流程的執行沿用該次 graph；換測試流程用該流程的現圖 ----
+  const graphKey = useDraft && draft ? 'draft'
+    : run.data?.graph && run.data.flow_id === flowId ? `run:${run.data.id}`
+      : flow.data ? `flow:${flow.data.id}:${flow.data.version}` : ''
   useEffect(() => {
-    if (useDraft && draft) {
-      if (graphSource !== -1) { setGraph(draft.graph); setGraphSource(-1) }
-      return
-    }
-    const r = run.data
-    if (r?.graph && graphSource !== r.id) { setGraph(r.graph); setGraphSource(r.id) }
-    else if (!r && flow.data && graph === null) { setGraph(flow.data.graph); setGraphSource(null) }
+    if (!graphKey || graphKey === graphSource) return
+    const next = graphKey === 'draft' ? draft?.graph : graphKey.startsWith('run:') ? run.data?.graph : flow.data?.graph
+    if (!next) return
+    setGraph(next)
+    setGraphSource(graphKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run.data?.id, run.data?.graph, useDraft, draft, flow.data])
+  }, [graphKey])
   // ---- 執行結束：影像集清單的「最近執行」與洞察要跟著更新 ----
   const runStatus = run.data?.status
   useEffect(() => {
@@ -121,15 +124,28 @@ export function BatchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, compareId, run.data?.status])
 
+  /** 換測試流程：影像集與執行紀錄留著（同一組影像可以比不同流程），工作圖交給 graphKey 重取。 */
   const selectFlow = useCallback((id: number) => {
-    setSetId(null); setRunId(null); setCompareId(null); setGraph(null); setGraphSource(null)
-    setParams({ flow: String(id) }, { replace: true })
-  }, [setParams])
+    setCompareId(null)
+    const next = new URLSearchParams(params)
+    next.set('flow', String(id))
+    setParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, setParams])
+
+  /** 選影像集：預設把測試流程切回它所屬的流程（要測別的流程再改上方選單）。 */
+  const selectSet = useCallback((id: number, setFlowId: number | null) => {
+    setSetId(id); setRunId(null); setCompareId(null)
+    if (setFlowId !== null && setFlowId !== flowId) selectFlow(setFlowId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowId, selectFlow])
 
   async function startRun(g: FlowGraph | null, opts: { origin?: 'manual' | 'draft'; label?: string; mode?: 'run' | 'autotune' } = {}, targetSetId: number | null = setId) {
     if (targetSetId === null) return
     try {
-      const r = await mut.startRun.mutateAsync({ setId: targetSetId, graph: g, origin: opts.origin ?? (useDraft && draft ? 'draft' : 'manual'), label: opts.label ?? '', parent_run_id: runId, mode: opts.mode ?? 'run', max_evals: 40, deadline_s: 60 })
+      // parent 只在同一個影像集內有意義（後端會擋）：剛建立的影像集不能接上一個影像集的執行
+      const parent = targetSetId === setId ? runId : null
+      const r = await mut.startRun.mutateAsync({ setId: targetSetId, flow_id: flowId, graph: g, origin: opts.origin ?? (useDraft && draft ? 'draft' : 'manual'), label: opts.label ?? '', parent_run_id: parent, mode: opts.mode ?? 'run', max_evals: 40, deadline_s: 60 })
       setRunId(r.id)
       setTab('result')
       toast.success(t('batchPage.started', { id: r.id }))
@@ -219,7 +235,7 @@ export function BatchPage() {
         actions={
           <>
             <Checkbox label={t('batchPage.useDraft')} hint={draft ? t('editor.unsaved') : t('batchPage.useDraftHint')} checked={useDraft && Boolean(draft)} disabled={!draft} onChange={setUseDraft} />
-            <Select label={t('batchPage.flow')} className="!py-1 text-xs" value={flowId ? String(flowId) : ''} onChange={(e) => selectFlow(Number(e.target.value))} placeholder={t('batchPage.pickFlow')}
+            <Select label={t('batchPage.testFlow')} hint={t('batchPage.testFlowHint')} className="!py-1 text-xs" value={flowId ? String(flowId) : ''} onChange={(e) => selectFlow(Number(e.target.value))} placeholder={t('batchPage.pickFlow')}
               options={(flows.data?.items ?? []).map((f) => ({ value: String(f.id), label: f.name }))} data-testid="batch-flow" />
           </>
         }
@@ -228,7 +244,7 @@ export function BatchPage() {
         <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
           <div className="space-y-4">
             <Card className="p-3">
-              <BatchSetList sets={setItems} selectedId={setId} onSelect={(id) => { setSetId(id); setRunId(null); setCompareId(null) }} onNew={() => setNewOpen(true)}
+              <BatchSetList sets={setItems} selectedId={setId} flowId={flowId} onSelect={(id) => selectSet(id, setItems.find((s) => s.id === id)?.flow_id ?? null)} onNew={() => setNewOpen(true)}
                 onDelete={(s) => setPendingDelete({ kind: 'set', id: s.id, name: s.name, setId: s.id })} keep={{ sets: sets.data?.keep_sets ?? 10, runs: sets.data?.keep_runs ?? 20 }} />
             </Card>
             {setId !== null ? (
@@ -238,8 +254,11 @@ export function BatchPage() {
                   onDelete={(r) => setPendingDelete({ kind: 'run', id: r.id, name: r.label || `#${r.id}`, setId: r.set_id })} />
                 <div className="mt-2">
                   <button type="button" className="btn-secondary w-full text-xs" disabled={!currentSet?.image_count || mut.startRun.isPending} onClick={() => void startRun(useDraft && draft ? draft.graph : null, { label: '' })} data-testid="batch-run-start">
-                    ▶ {t('batchPage.run')}{useDraft && draft ? `（${t('batchPage.origin.draft')}）` : ''}
+                    ▶ {t('batchPage.runWith', { flow: flow.data?.name ?? '' })}{useDraft && draft ? `（${t('batchPage.origin.draft')}）` : ''}
                   </button>
+                  {currentSet && currentSet.flow_id !== flowId ? (
+                    <p className="mt-1 text-[11px] text-info" data-testid="batch-cross-flow">{t('batchPage.crossFlow', { set: currentSet.flow_name, flow: flow.data?.name ?? '' })}</p>
+                  ) : null}
                 </div>
               </Card>
             ) : null}
@@ -252,9 +271,9 @@ export function BatchPage() {
               {tab === 'images' ? (currentSet ? <BatchImagesGrid set={currentSet} run={currentRun} onLabel={(i, e) => void label(i, e)} onBulk={(e) => void bulkLabel(e)} onPreview={setPreviewIndex} canManage={canManage} /> : <EmptyState title={t('batchPage.noSets')} compact />) : null}
               {tab === 'insights' ? (currentRun && currentSet ? <BatchInsightsPanel insights={insights.data} runs={runItems} set={currentSet} run={currentRun} onApply={apply} onPreview={setPreviewIndex} /> : <EmptyState title={t('batchPage.noRuns')} compact />) : null}
               {tab === 'compare' ? <BatchComparePanel compare={compare} onPreview={setPreviewIndex} /> : null}
-              {tab === 'tune' ? <BatchTunePanel graph={graph} baseGraph={flow.data?.graph ?? null} defs={defs} canEditFlow={canEditFlow} sourceRunId={graphSource !== null && graphSource > 0 ? graphSource : null}
+              {tab === 'tune' ? <BatchTunePanel graph={graph} baseGraph={flow.data?.graph ?? null} defs={defs} canEditFlow={canEditFlow} sourceRunId={graphSource.startsWith('run:') ? Number(graphSource.slice(4)) : null}
                 onChange={setGraph} onRun={() => void startRun(graph, { label: t('batchPage.tune.runLabel') })} onSaveFlow={() => void saveFlow()} onSaveRecipe={(n) => void saveRecipe(n)}
-                onReset={() => { setGraph(run.data?.graph ?? flow.data?.graph ?? null); setGraphSource(run.data?.id ?? null) }} onToEditor={toEditor} busy={mut.startRun.isPending}
+                onReset={() => setGraphSource('')} onToEditor={toEditor} busy={mut.startRun.isPending}
                 hasLabels={hasLabels} onAutotune={() => void startRun(graph, { mode: 'autotune', label: t('batchPage.origin.autotune') })} /> : null}
             </div>
           </Card>

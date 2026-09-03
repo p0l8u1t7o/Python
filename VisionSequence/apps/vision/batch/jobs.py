@@ -170,9 +170,9 @@ def _run(job: BatchJob) -> None:
     from django.utils import timezone
 
     try:
-        run = BatchRun.objects.select_related("batch_set__flow").get(pk=job.run_id)
+        run = BatchRun.objects.select_related("batch_set__flow", "flow").get(pk=job.run_id)
         batch_set = run.batch_set
-        flow = batch_set.flow
+        flow = store.run_flow(run)  # 跨流程測試：用這次指定的流程
         images = list(batch_set.images or [])
         job.total = len(images)
         graph, meta = (run.graph, None)
@@ -191,7 +191,7 @@ def _run(job: BatchJob) -> None:
 
         rows, wall = execute_rows(flow, graph, images, on_row=on_row, cancelled=lambda: job.cancel_flag)
         status = "cancelled" if (job.cancel_flag and len(rows) < len(images)) else "done"
-        run = BatchRun.objects.select_related("batch_set__flow").get(pk=job.run_id)
+        run = BatchRun.objects.select_related("batch_set__flow", "flow").get(pk=job.run_id)
         store.finalize_run(run, rows, wall_ms=wall, status=status, graph=graph, meta=meta)
         job.status = status
     except Exception as exc:  # noqa: BLE001 - 批次失敗不影響平台

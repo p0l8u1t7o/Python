@@ -1,6 +1,7 @@
-/** 執行紀錄（左欄下半）：每次執行的來源、狀態／進度、OK／NG／失敗、命中率；可中斷、刪除、勾選比較。 */
+/** 執行紀錄（左欄下半）：每次執行的來源、狀態／進度、OK／NG／失敗、命中率；可中斷、刪除、勾選比較。
+ *  用別的流程測的執行會標出流程名稱（flow_id ≠ set_flow_id）。 */
 import { useTranslation } from 'react-i18next'
-import { GitCompare, History, Square, Trash2 } from 'lucide-react'
+import { GitCompare, History, Square, Trash2, Workflow } from 'lucide-react'
 
 import { Badge, type Tone } from '@/components/ui'
 import { RUNNING, fmtPct, type BatchRun } from '@/lib/batch'
@@ -37,6 +38,7 @@ export function BatchRunList({ runs, selectedId, onSelect, compareId, onCompare,
                 className={`group cursor-pointer rounded-lg border px-2.5 py-2 text-xs ${r.id === selectedId ? 'border-brand bg-brand-soft/40' : compareId === r.id ? 'border-warning/60 bg-warning-soft/40' : 'border-line hover:bg-surface-muted/70'}`} data-testid="batch-run-row">
                 <div className="flex items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate font-medium" title={runTitle(r)}>{runTitle(r)}</span>
+                  {r.flow_id !== r.set_flow_id ? <Badge tone="info" title={t('batchPage.runFlowHint')}><Workflow size={10} aria-hidden />{r.flow_name}</Badge> : null}
                   <Badge tone={ORIGIN_TONE[r.origin] ?? 'neutral'}>{t(`batchPage.origin.${r.origin}`)}</Badge>
                   <Badge tone={STATUS_TONE[r.status] ?? 'neutral'}>{t(`batchPage.status.${r.status}`)}</Badge>
                 </div>

@@ -188,6 +188,47 @@ class BatchApiTests(TransactionTestCase):
         self.assertEqual(r["Content-Type"], "image/jpeg")
         self.assertEqual(self.client.get(f"/api/vision/batch/sets/{s['id']}/images/9").status_code, 404)
 
+    # -- 同一組影像測不同流程 --------------------------------------------------------
+    def test_run_with_another_flow(self):
+        """影像集是測試資料：清單跨流程可見，執行可指定 flow_id，逐張結果依該流程的圖。"""
+        other = Flow.objects.create(name="gate-high", graph=gate_graph(self.source.id, low=250))  # 門檻拉高 → 全部 ng
+        s = self._set([png(200, name="bright.png"), png(20, name="dark.png")])
+        # 不帶 flow_id 的清單看得到（跨流程）；帶 flow_id 只看該流程建立的
+        allsets = self._json("get", "/api/vision/batch/sets").json()
+        self.assertIn(s["id"], [x["id"] for x in allsets["items"]])
+        self.assertEqual(next(x for x in allsets["items"] if x["id"] == s["id"])["flow_name"], self.flow.name)
+        only_other = self._json("get", f"/api/vision/batch/sets?flow_id={other.id}").json()
+        self.assertEqual([x["id"] for x in only_other["items"]], [])
+        # 預設用影像集的流程：亮的 ok、暗的 ng
+        base = self._run(s["id"])
+        self.assertEqual([it["status"] for it in base["items"]], ["ok", "ng"])
+        self.assertEqual((base["flow_id"], base["set_flow_id"]), (self.flow.id, self.flow.id))
+        # 指定另一個流程：門檻 250 → 兩張都 ng；影像集歸屬不變
+        cross = self._run(s["id"], flow_id=other.id, label="換流程")
+        self.assertEqual([it["status"] for it in cross["items"]], ["ng", "ng"])
+        self.assertEqual((cross["flow_id"], cross["flow_name"], cross["set_flow_id"]), (other.id, other.name, self.flow.id))
+        self.assertEqual(BatchSet.objects.get(pk=s["id"]).flow_id, self.flow.id)
+        # 兩次執行都掛在同一個影像集，可以互相比較
+        runs = self._json("get", f"/api/vision/batch/sets/{s['id']}/runs").json()
+        self.assertEqual({r["id"] for r in runs["items"]}, {base["id"], cross["id"]})
+        # 沒帶 graph 的接續：換流程時用該流程的現圖，不沿用上一次（別的流程）的參數
+        again = self._run(s["id"], flow_id=other.id, parent_run_id=base["id"])
+        self.assertEqual([it["status"] for it in again["items"]], ["ng", "ng"])
+        self.assertEqual(again["graph"]["nodes"][3]["params"]["low"], 250)
+        # 單張預覽與存為配方都用這次執行的流程
+        r = self._json("post", f"/api/vision/batch/runs/{cross['id']}/rows/0/preview", {})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["status"], "ng")
+        r = self._json("post", f"/api/vision/batch/runs/{cross['id']}/to-recipe", {"name": "n/a"})
+        self.assertEqual(r.status_code, 422, r.content)  # 與該流程現圖相同 → 沒有差異可存
+        tuned = self._run(s["id"], flow_id=other.id, graph=gate_graph(self.source.id, low=10))
+        r = self._json("post", f"/api/vision/batch/runs/{tuned['id']}/to-recipe", {"name": "低門檻"})
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(FlowRecipe.objects.get(name="低門檻").flow_id, other.id)
+        # 看不見的流程不能拿來測
+        r = self._json("post", f"/api/vision/batch/sets/{s['id']}/runs", {"flow_id": 999999})
+        self.assertEqual(r.status_code, 404, r.content)
+
     def test_from_source_prune_and_limits(self):
         r = self._json("post", "/api/vision/batch/sets/from-source", {"flow_id": self.flow.id, "source_id": self.source.id, "count": 2})
         self.assertEqual(r.status_code, 201, r.content)
