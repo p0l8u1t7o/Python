@@ -8,6 +8,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, Brain, Camera, ChevronRight, FlaskConical, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
+import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { LoadingState } from '@/components/ui'
 import { LockBanner } from '@/components/auth/LockBanner'
@@ -235,6 +236,7 @@ export function AppShell() {
           </span>
         </header>
         <LockBanner />
+        <AssistantDock />
         <div className="min-h-0 flex-1 overflow-hidden">
           <Suspense fallback={<LoadingState />}><Outlet /></Suspense>
         </div>

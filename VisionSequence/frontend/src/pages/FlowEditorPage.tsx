@@ -28,7 +28,6 @@ import {
 } from '@xyflow/react'
 import { Camera, Check, Columns2, Layers, RotateCcw } from 'lucide-react'
 
-import { AiAssistPanel } from '@/components/editor/AiAssistPanel'
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
 import { Inspector } from '@/components/editor/Inspector'
@@ -45,6 +44,7 @@ import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
 import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useToolTypes } from '@/lib/queries'
@@ -211,7 +211,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       return next
     })
   }, [])
-  const [rightTab, setRightTab] = useState<'inspector' | 'results' | 'ai'>('inspector')
+  const [rightTab, setRightTab] = useState<'inspector' | 'results'>('inspector')
   const [viewMode, setViewMode] = useState<'input' | 'output'>('input')
   const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
   const [allOverlays, setAllOverlays] = useState(false)
@@ -614,6 +614,11 @@ function EditorInner({ flowId }: { flowId: number }) {
   }, [readOnly, problemMap.size, patch, flowId, meta, currentGraph, toast, t])
 
   const lastSourceRef = useMemo(() => sourceRefOf(activeRun, payloads.current), [activeRun])
+  //: 全域 AI 助手：在編輯器內可直接請助手修改目前畫布（套用走復原堆疊）
+  useRegisterAssistantContext({
+    kind: 'flow_editor', flowId, flowName: meta.name, imageRef: lastSourceRef, execLocked, getGraph: currentGraph,
+    applyGraph: (g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}：${why}` : t('agent.applied')) },
+  }, [flowId, meta.name, lastSourceRef, execLocked])
   /** 固定的來源影像：暫存影像優先，其次「用上次影像重跑」。 */
   const pinnedRef = scratch?.ref ?? (reuseImage ? lastSourceRef : null)
 
@@ -1029,14 +1034,10 @@ function EditorInner({ flowId }: { flowId: number }) {
             tabs={[
               { value: 'inspector', label: t('editor.inspector') },
               { value: 'results', label: t('editor.results'), badge: activeRun ? <StatusBadge status={activeRun.status} className="ml-1 !px-1.5 !py-0 !text-[10px]" /> : undefined },
-              { value: 'ai', label: t('agent.editorTab') },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {rightTab === 'ai' ? (
-              <AiAssistPanel graph={currentGraph} imageRef={lastSourceRef} execLocked={execLocked}
-                onApply={(g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}：${why}` : t('agent.applied')) }} />
-            ) : rightTab === 'inspector' ? (
+            {rightTab === 'inspector' ? (
               selectedCount > 1 ? (
                 <div className="space-y-3 p-3" data-testid="multi-select">
                   <p className="text-sm font-medium">{t('editor.multiSelected', { count: selectedCount })}</p>

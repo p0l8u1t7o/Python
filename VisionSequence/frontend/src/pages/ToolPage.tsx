@@ -24,6 +24,7 @@ import { iconFor } from '@/components/editor/ToolNode'
 import { Button, DetailRow, ErrorState, LoadingState, Modal, StatusBadge, Switch, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
+import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { errorMessage } from '@/lib/errors'
 import { getSession, patchDraftNode, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { previewFlow, useAssetMutations, useFlow, useFlowMutations, useScratchImage, useToolTypes } from '@/lib/queries'
@@ -97,6 +98,8 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const node = useMemo(() => graph?.nodes.find((n) => n.id === nodeId), [graph, nodeId])
   const def = node ? defs.get(node.type) : undefined
   const payloads = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n])), [graph])
+  //: 全域 AI 助手：知道目前在哪個工具，就能回答此工具的參數要領
+  useRegisterAssistantContext({ kind: 'tool', flowId, flowName: flow.data?.name, nodeId, nodeType: node?.type, getGraph: () => getSession(flowId).draft?.graph ?? flow.data?.graph ?? null }, [flowId, nodeId, node?.type, flow.data?.name])
   const edges = graph?.edges ?? []
 
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)

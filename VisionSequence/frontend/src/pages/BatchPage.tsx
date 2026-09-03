@@ -6,9 +6,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { BarChart3, Bot, GitCompare, Images, ListChecks, SlidersHorizontal } from 'lucide-react'
+import { BarChart3, GitCompare, Images, ListChecks, SlidersHorizontal } from 'lucide-react'
 
-import { BatchAiPanel } from '@/components/batch/BatchAiPanel'
 import { BatchComparePanel } from '@/components/batch/BatchCompare'
 import { BatchImagesGrid } from '@/components/batch/BatchImagesGrid'
 import { BatchInsightsPanel } from '@/components/batch/BatchInsights'
@@ -22,6 +21,7 @@ import { Page } from '@/components/layout/AppShell'
 import { compactOverrides } from '@/components/recipes/RecipeDrawer'
 import { Card, Checkbox, ConfirmDialog, EmptyState, PageHeader, Select, Tabs } from '@/components/ui'
 import { RUNNING, applySuggestions, fetchCompare, paramDiff, useBatchInsights, useBatchMutations, useBatchRun, useBatchRuns, useBatchSet, useBatchSets, type BatchCompare, type BatchRun, type BatchSet, type Expected, type Suggestion } from '@/lib/batch'
+import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { errorMessage } from '@/lib/errors'
 import { setDraft, useFlowSession } from '@/lib/flowDraft'
 import { useFlow, useFlowMutations, useFlows, useRecipeMutations, useToolTypes } from '@/lib/queries'
@@ -29,7 +29,7 @@ import type { FlowGraph, ToolTypeDef } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
-type TabKey = 'result' | 'images' | 'insights' | 'compare' | 'tune' | 'ai'
+type TabKey = 'result' | 'images' | 'insights' | 'compare' | 'tune'
 
 function num(v: string | null): number | null {
   const n = v ? Number(v) : NaN
@@ -202,10 +202,14 @@ export function BatchPage() {
     { value: 'insights' as const, label: t('batchPage.tabs.insights'), icon: BarChart3 },
     { value: 'compare' as const, label: t('batchPage.tabs.compare'), icon: GitCompare },
     { value: 'tune' as const, label: t('batchPage.tabs.tune'), icon: SlidersHorizontal },
-    { value: 'ai' as const, label: t('batchPage.tabs.ai'), icon: Bot },
   ]
   const currentRun: BatchRun | null = run.data ?? null
   const currentSet: BatchSet | null = set.data ?? null
+  //: 全域 AI 助手：選定一次已完成的執行後可資料諮詢／依資料調整，建議可套進調參面板、新執行自動選中
+  useRegisterAssistantContext({
+    kind: 'batch', flowId, flowName: flow.data?.name, batchRunId: currentRun?.status === 'done' ? currentRun.id : null,
+    getGraph: () => graph ?? run.data?.graph ?? flow.data?.graph ?? null, applySuggestions: (sugs) => apply(sugs, false), onNewRun,
+  }, [flowId, flow.data?.name, currentRun?.id, currentRun?.status, graph, setId])
 
   return (
     <Page wide>
@@ -250,8 +254,8 @@ export function BatchPage() {
               {tab === 'compare' ? <BatchComparePanel compare={compare} onPreview={setPreviewIndex} /> : null}
               {tab === 'tune' ? <BatchTunePanel graph={graph} baseGraph={flow.data?.graph ?? null} defs={defs} canEditFlow={canEditFlow} sourceRunId={graphSource !== null && graphSource > 0 ? graphSource : null}
                 onChange={setGraph} onRun={() => void startRun(graph, { label: t('batchPage.tune.runLabel') })} onSaveFlow={() => void saveFlow()} onSaveRecipe={(n) => void saveRecipe(n)}
-                onReset={() => { setGraph(run.data?.graph ?? flow.data?.graph ?? null); setGraphSource(run.data?.id ?? null) }} onToEditor={toEditor} busy={mut.startRun.isPending} /> : null}
-              {tab === 'ai' ? <BatchAiPanel run={currentRun} graph={graph} hasLabels={hasLabels} onApply={(s) => apply(s, false)} onNewRun={onNewRun} onAutotune={() => void startRun(graph, { mode: 'autotune', label: t('batchPage.origin.autotune') })} busy={mut.startRun.isPending} /> : null}
+                onReset={() => { setGraph(run.data?.graph ?? flow.data?.graph ?? null); setGraphSource(run.data?.id ?? null) }} onToEditor={toEditor} busy={mut.startRun.isPending}
+                hasLabels={hasLabels} onAutotune={() => void startRun(graph, { mode: 'autotune', label: t('batchPage.origin.autotune') })} /> : null}
             </div>
           </Card>
         </div>

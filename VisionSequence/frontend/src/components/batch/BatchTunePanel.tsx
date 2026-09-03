@@ -1,7 +1,7 @@
 /** 調參面板：工作圖的現場調機參數（teach）分組編輯 → 重新執行同一影像集；滿意後寫回流程、存為配方或帶回編輯器。 */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, BookmarkPlus, Play, RotateCcw, Save } from 'lucide-react'
+import { ArrowLeft, BookmarkPlus, Play, RotateCcw, Save, Wand2 } from 'lucide-react'
 
 import { ParamField, type InspectorActions } from '@/components/editor/ParamField'
 import { Badge, Button, TextInput } from '@/components/ui'
@@ -11,7 +11,7 @@ import type { FlowGraph, ToolTypeDef } from '@/lib/types'
 
 const NO_ACTIONS: InspectorActions = { roiEditingKey: null, setRoiEditing: () => undefined, templateFromImage: () => undefined, templateKey: null, hasImage: false }
 
-export function BatchTunePanel({ graph, baseGraph, defs, canEditFlow, sourceRunId, onChange, onRun, onSaveFlow, onSaveRecipe, onReset, onToEditor, busy }: {
+export function BatchTunePanel({ graph, baseGraph, defs, canEditFlow, sourceRunId, onChange, onRun, onSaveFlow, onSaveRecipe, onReset, onToEditor, busy, hasLabels = false, onAutotune }: {
   graph: FlowGraph | null
   baseGraph: FlowGraph | null
   defs: Map<string, ToolTypeDef>
@@ -24,6 +24,8 @@ export function BatchTunePanel({ graph, baseGraph, defs, canEditFlow, sourceRunI
   onReset: () => void
   onToEditor: () => void
   busy: boolean
+  hasLabels?: boolean
+  onAutotune?: () => void
 }) {
   const { t } = useTranslation()
   const [recipeName, setRecipeName] = useState('')
@@ -45,6 +47,7 @@ export function BatchTunePanel({ graph, baseGraph, defs, canEditFlow, sourceRunI
       </div>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="primary" icon={<Play size={14} />} loading={busy} onClick={onRun} data-testid="batch-tune-run">{t('batchPage.tune.run')}</Button>
+        {onAutotune ? <Button size="sm" icon={<Wand2 size={14} />} disabled={!hasLabels || busy} title={hasLabels ? t('batchPage.ai.autotuneHint') : t('batchPage.ai.noLabels')} onClick={onAutotune} data-testid="batch-tune-autotune">{t('batchPage.ai.autotune')}</Button> : null}
         <Button size="sm" icon={<RotateCcw size={14} />} disabled={!diff.length} onClick={onReset}>{t('batchPage.tune.reset')}</Button>
         <Button size="sm" icon={<ArrowLeft size={14} />} onClick={onToEditor}>{t('batchPage.tune.toEditor')}</Button>
         <Button size="sm" icon={<Save size={14} />} disabled={!canEditFlow || !diff.length} title={canEditFlow ? undefined : t('golden.readOnly')} onClick={onSaveFlow} data-testid="batch-tune-save-flow">{t('batchPage.tune.saveFlow')}</Button>
