@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronRight, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronRight, FlaskConical, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { LoadingState } from '@/components/ui'
@@ -19,6 +19,7 @@ import { useAuth } from '@/providers/AuthProvider'
 const NAV = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true, admin: false },
   { to: '/flows', key: 'flows', icon: Workflow, end: false, admin: false },
+  { to: '/batch', key: 'batch', icon: FlaskConical, end: false, admin: false },
   { to: '/sources', key: 'sources', icon: Camera, end: false, admin: false },
   { to: '/assets', key: 'assets', icon: Images, end: false, admin: false },
   { to: '/dl', key: 'dl', icon: Brain, end: false, admin: false },
@@ -207,7 +208,7 @@ export function AppShell() {
           {!collapsed ? <span className="truncate text-[15px] font-semibold text-white">{t('app.name')}</span> : null}
         </div>
         {!collapsed ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
-        {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（9 項一定塞得下） */}
+        {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
         <div className={`flex-1 ${collapsed ? 'overflow-visible' : 'overflow-y-auto'}`}>
           {NAV.filter((item) => !item.admin || auth.isAdmin).map(({ to, key, icon: Icon, end }) => (
             <NavLink key={key} to={to} end={end} title={collapsed ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${collapsed ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>

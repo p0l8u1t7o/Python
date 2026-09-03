@@ -14,6 +14,7 @@ const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ 
 const FlowEditorPage = lazy(() => import('@/pages/FlowEditorPage').then((m) => ({ default: m.FlowEditorPage })))
 const FlowsPage = lazy(() => import('@/pages/FlowsPage').then((m) => ({ default: m.FlowsPage })))
 const GoldenPage = lazy(() => import('@/pages/GoldenPage').then((m) => ({ default: m.GoldenPage })))
+const BatchPage = lazy(() => import('@/pages/BatchPage').then((m) => ({ default: m.BatchPage })))
 const HelpPage = lazy(() => import('@/pages/HelpPage').then((m) => ({ default: m.HelpPage })))
 const IntegrationPage = lazy(() => import('@/pages/IntegrationPage').then((m) => ({ default: m.IntegrationPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
@@ -48,6 +49,7 @@ const router = createBrowserRouter([
           { path: 'flows/:flowId/stats', element: <StatsPage /> },
           { path: 'flows/:flowId/teach', element: <TeachPage /> },
           { path: 'flows/:flowId/golden', element: <GoldenPage /> },
+          { path: 'batch', element: <BatchPage /> },
           { path: 'dl', element: <DlPage /> },
           { path: 'agent', element: <AgentPage /> },
           { path: 'connections', element: <Navigate to="/integration?tab=connections" replace /> },

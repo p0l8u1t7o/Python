@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
-import { Brain, Cable, Camera, FileText, Images, LayoutDashboard, Plug, Search, Settings, Sparkles, Users, Workflow, Wrench } from 'lucide-react'
+import { Brain, Cable, Camera, FileText, FlaskConical, Images, LayoutDashboard, Plug, Search, Settings, Sparkles, Users, Workflow, Wrench } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { useAuth } from '@/providers/AuthProvider'
@@ -16,6 +16,7 @@ import type { Asset, Connection, Flow, ImageSource, Page, ToolCatalogue } from '
 const PAGES = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, admin: false },
   { to: '/flows', key: 'flows', icon: Workflow, admin: false },
+  { to: '/batch', key: 'batch', icon: FlaskConical, admin: false },
   { to: '/sources', key: 'sources', icon: Camera, admin: false },
   { to: '/assets', key: 'assets', icon: Images, admin: false },
   { to: '/dl', key: 'dl', icon: Brain, admin: false },

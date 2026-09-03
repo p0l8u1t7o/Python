@@ -29,7 +29,6 @@ import {
 import { Camera, Check, Columns2, Layers, RotateCcw } from 'lucide-react'
 
 import { AiAssistPanel } from '@/components/editor/AiAssistPanel'
-import { BatchTestModal } from '@/components/editor/BatchTestModal'
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
 import { Inspector } from '@/components/editor/Inspector'
@@ -48,8 +47,8 @@ import { errorMessage } from '@/lib/errors'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
-import { fetchRun, useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useToolTypes } from '@/lib/queries'
-import { isImageRef, type BatchItem, type FlowGraph, type GraphEdge, type GraphNode, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
+import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useToolTypes } from '@/lib/queries'
+import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -224,7 +223,6 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [askTemplateName, setAskTemplateName] = useState(false)
   const [askReset, setAskReset] = useState(false)
   const [interaction, setInteraction] = useState<InteractionMode>(readInteractionMode)
-  const [batchOpen, setBatchOpen] = useState(false)
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false)
   const [nodeMenu, setNodeMenu] = useState<NodeMenuState | null>(null)
@@ -697,20 +695,6 @@ function EditorInner({ flowId }: { flowId: number }) {
     return `t${n}_`
   }, [nodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- 批次測試：點某列 → 抓那次 run 顯示在影像視窗 ----
-  const viewBatchRun = useCallback(
-    async (item: BatchItem) => {
-      try {
-        const run = await fetchRun(item.run_id)
-        setPreviewRun(run)
-        setPinnedRunId(run.id)
-        setRightTab('results')
-      } catch {
-        toast.warning(t('batch.runGone'))
-      }
-    },
-    [setPreviewRun, toast, t],
-  )
 
   // ---- 步驟右鍵選單 ----
   const duplicateNode = useCallback(
@@ -896,7 +880,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         onAutoLayout={autoLayout}
         resetting={clearRecent.isPending}
         onReset={() => setAskReset(true)}
-        onBatchTest={() => setBatchOpen(true)}
+        onBatchTest={() => navigate(`/batch?flow=${flowId}${dirty ? '&draft=1' : ''}`)}
         onLoadTemplate={() => setGalleryOpen(true)}
         onSaveTemplate={() => setSaveTemplateOpen(true)}
         recipes={recipes.data?.items ?? []}
@@ -1129,8 +1113,6 @@ function EditorInner({ flowId }: { flowId: number }) {
       <ConfirmDialog open={askReset} onClose={() => setAskReset(false)} onConfirm={() => void doReset()} title={t('editor.reset')} message={t('editor.resetConfirm')} confirmLabel={t('editor.reset')} danger loading={clearRecent.isPending} />
       <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />
-      <BatchTestModal open={batchOpen} onClose={() => setBatchOpen(false)} flowId={flowId} graph={currentGraph} dirty={dirty} execLocked={execLocked} onView={(item) => void viewBatchRun(item)}
-        onApplyGraph={(g) => { pushHistory(); restoreGraph(g); toast.success(t('agent.applied')) }} />
       <TemplateGallery open={galleryOpen} onClose={() => setGalleryOpen(false)} mode="load" prefix={templatePrefix} onPick={loadTemplate} />
       <RecipeDrawer open={recipesOpen} onClose={() => setRecipesOpen(false)} flowId={flowId} readOnly={readOnly} />
       <SaveTemplateModal open={saveTemplateOpen} onClose={() => setSaveTemplateOpen(false)} graph={currentGraph} defaultName={meta.name} />

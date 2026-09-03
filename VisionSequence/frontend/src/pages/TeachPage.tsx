@@ -29,20 +29,15 @@ import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { getSession, patchDraftNode, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
-import { paramVisible } from '@/lib/graphValidation'
 import { applyOverrides, previewFlow, useFlow, useFlowMutations, useRecipeMutations, useRecipes, useScratchImage, useToolTypes } from '@/lib/queries'
-import type { FlowGraph, GraphNode, NodeReport, RunReport, ToolParam, ToolTypeDef } from '@/lib/types'
+import type { FlowGraph, NodeReport, RunReport, ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
+import { teachGroupsOf, type TeachGroup } from '@/lib/teachGroups'
 import { useToast } from '@/providers/ToastProvider'
-import { inputImage, sourceRefOf, topoOrder } from './FlowEditorPage'
+import { inputImage, sourceRefOf } from './FlowEditorPage'
 
 const DEBOUNCE_MS = 250
 
-interface TeachGroup {
-  node: GraphNode
-  def: ToolTypeDef
-  params: ToolParam[]
-}
 
 /** 參數卡不做 ROI／範本編輯（教導參數都是數值／選項）。 */
 const NO_ACTIONS: InspectorActions = { roiEditingKey: null, setRoiEditing: () => undefined, templateFromImage: () => undefined, templateKey: null, hasImage: false }
@@ -97,19 +92,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   const payloads = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n])), [graph])
   const edges = graph?.edges ?? []
 
-  const groups = useMemo<TeachGroup[]>(() => {
-    if (!graph) return []
-    const order = topoOrder(graph.nodes, graph.edges)
-    const out: TeachGroup[] = []
-    for (const id of order) {
-      const node = payloads.get(id)
-      const def = node ? defs.get(node.type) : undefined
-      if (!node || !def) continue
-      const params = def.params.filter((p) => p.teach && paramVisible(p, node.params ?? {}))
-      if (params.length) out.push({ node, def, params })
-    }
-    return out
-  }, [graph, payloads, defs])
+  const groups = useMemo<TeachGroup[]>(() => teachGroupsOf(graph, defs), [graph, defs])
 
   useEffect(() => {
     if ((!focusId || !groups.some((g) => g.node.id === focusId)) && groups.length) setFocusId(groups[0].node.id)

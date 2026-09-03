@@ -20,7 +20,6 @@ import type {
   DlTrainJob,
   DlTrainerDef,
   EngineLock,
-  BatchResult,
   ExpectStatus,
   Flow,
   FlowGraph,
@@ -502,27 +501,6 @@ export function useTemplateMutations() {
       api.post<TemplateInstance>(`/vision/templates/${encodeURIComponent(id)}/instantiate`, { source_id: source_id ?? null, prefix: prefix ?? '' }),
   })
   return { create, remove, instantiate }
-}
-
-// ---- 批次測試 ----
-export function useBatchTest() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: ({ flowId, files, graph, signal }: { flowId: number; files: File[]; graph?: FlowGraph | null; signal?: AbortSignal }) => {
-      const form = new FormData()
-      for (const file of files) form.append('images', file)
-      if (graph) form.append('graph', JSON.stringify(graph))
-      return request<BatchResult>(`/vision/flows/${flowId}/batch`, { method: 'POST', form, signal })
-    },
-    onSuccess: () => void client.invalidateQueries({ queryKey: keys.capacity }),
-  })
-}
-
-export function useBatchFromSource() {
-  return useMutation({
-    mutationFn: ({ flowId, source_id, count, graph }: { flowId: number; source_id: number; count: number; graph?: FlowGraph | null }) =>
-      api.post<BatchResult>(`/vision/flows/${flowId}/batch-source`, { source_id, count, graph: graph ?? null }),
-  })
 }
 
 /** 單一 run（記憶體 recent 內或資料庫）；不在了會 404 run_not_found。 */

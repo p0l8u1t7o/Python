@@ -28,6 +28,14 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(screen.getByText('離線規則引擎')).toBeInTheDocument())
   })
 
+  it('BatchPage renders flow picker and empty image sets', async () => {
+    const { BatchPage } = await import('@/pages/BatchPage')
+    renderPage(<BatchPage />, { route: '/batch' })
+    expect((await screen.findAllByText('批次測試')).length).toBeGreaterThan(0)
+    expect(await screen.findByTestId('batch-no-sets')).toBeInTheDocument()
+    expect(screen.getByTestId('batch-new-set')).toBeInTheDocument()
+  })
+
   it('FlowsPage lists flows from the API', async () => {
     const { FlowsPage } = await import('@/pages/FlowsPage')
     renderPage(<FlowsPage />, { route: '/flows' })

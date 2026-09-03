@@ -360,24 +360,6 @@ export interface TemplateInstance {
 }
 
 // ---- 批次測試 ----
-export interface BatchItem {
-  name: string
-  run_id: string
-  status: RunStatus | string
-  duration_ms: number
-  outputs: Record<string, unknown>
-  error: string
-  error_node: string | null
-  image_ref: string | null
-  width: number
-  height: number
-}
-
-export interface BatchResult {
-  items: BatchItem[]
-  summary: { total: number; ok: number; ng: number; failed: number; avg_ms: number; max_ms: number; wall_ms: number }
-}
-
 // ---- 統計（GET /flows/{id}/stats） ----
 export interface FlowStatsDb {
   hours: number
