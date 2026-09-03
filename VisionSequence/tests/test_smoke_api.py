@@ -42,6 +42,16 @@ class GetEndpointsSmokeTests(TransactionTestCase):
         r = self.client.post(f"/api/vision/flows/{self.flow.id}/run", data=json.dumps({"wait": True}), content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content)
         self.run_id = r.json()["id"]
+        # 批次測試：一個影像集＋一次執行（背景執行緒，等它跑完）
+        from apps.vision.batch import jobs as batch_jobs
+
+        r = self.client.post("/api/vision/batch/sets", data={"images": [_png_upload()], "flow_id": self.flow.id, "name": "smoke"})
+        self.assertEqual(r.status_code, 201, r.content)
+        self.set_id = r.json()["id"]
+        r = self.client.post(f"/api/vision/batch/sets/{self.set_id}/runs", data=json.dumps({}), content_type="application/json")
+        self.assertEqual(r.status_code, 202, r.content)
+        self.batch_run_id = r.json()["id"]
+        batch_jobs.wait(self.batch_run_id)
 
     def test_get_endpoints_do_not_5xx(self):
         fid, sid, aid = self.flow.id, self.source.id, self.asset.id
@@ -55,6 +65,9 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info",
             "/api/vision/connections", "/api/vision/dl/projects", "/api/vision/dl/trainers", "/api/vision/dl/devices", "/api/vision/dl/train/status",
             "/api/vision/agent/info", "/api/vision/agent/jobs", "/api/vision/agent/sessions", "/api/vision/agent/skills/custom", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",
+            f"/api/vision/batch/sets?flow_id={fid}", f"/api/vision/batch/sets/{self.set_id}", f"/api/vision/batch/sets/{self.set_id}/runs",
+            f"/api/vision/batch/sets/{self.set_id}/images/0?max=32", f"/api/vision/batch/runs/{self.batch_run_id}",
+            f"/api/vision/batch/runs/{self.batch_run_id}/insights", f"/api/vision/batch/runs/{self.batch_run_id}/compare?other={self.batch_run_id}",
             f"/api/vision/flows/{fid}/events?max_seconds=0.2",
         ]
         bad = []

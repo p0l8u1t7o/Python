@@ -272,3 +272,69 @@ class AgentSkill(models.Model):
     class Meta:
         unique_together = [("key", "scope", "owner")]
         ordering = ["key", "scope"]
+
+
+# ---------------------------------------------------------------------------
+# 批次測試（apps/vision/batch）
+# ---------------------------------------------------------------------------
+BATCH_RUN_STATUSES = ("queued", "running", "done", "cancelled", "failed")
+BATCH_ORIGINS = ("manual", "draft", "autotune", "ai_tune")
+
+
+class BatchSet(models.Model):
+    """影像集：一組批量測試用的影像（檔案在 ASSET_DIR/batch/<id>/NNN.png）＋每張的期望標記；同一組影像可重複執行比較參數。"""
+
+    flow = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name="batch_sets")
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="batch_sets")
+    name = models.CharField(max_length=120)
+    #: upload 或 source:<來源名稱>
+    source = models.CharField(max_length=120, blank=True, default="")
+    #: [{index, name, path, width, height, expected(""|"ok"|"ng"), expect_outputs{}, note}]
+    images = models.JSONField(default=list, blank=True)
+    image_count = models.PositiveIntegerField(default=0)
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["flow", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"BatchSet {self.pk} ({self.name})"
+
+
+class BatchRun(models.Model):
+    """一次批次執行：graph 快照＋逐張結果（含各節點純量輸出）＋summary／洞察快取；parent 串起調參前後。"""
+
+    batch_set = models.ForeignKey(BatchSet, on_delete=models.CASCADE, related_name="runs")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children")
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="batch_runs")
+    flow_version = models.PositiveIntegerField(default=0)
+    graph = models.JSONField(default=dict)
+    recipe_name = models.CharField(max_length=80, blank=True, default="")
+    label = models.CharField(max_length=120, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    #: manual | draft | autotune | ai_tune
+    origin = models.CharField(max_length=12, default="manual")
+    #: queued | running | done | cancelled | failed
+    status = models.CharField(max_length=12, default="queued")
+    progress_done = models.PositiveIntegerField(default=0)
+    progress_total = models.PositiveIntegerField(default=0)
+    #: {total, ok, ng, failed, avg_ms, max_ms, wall_ms, labeled, match, match_rate, confusion}
+    summary = models.JSONField(default=dict, blank=True)
+    #: [{index, status, duration_ms, outputs, error, error_node, nodes:{id:{status, duration_ms, message, branch, outputs}}}]
+    items = models.JSONField(default=list, blank=True)
+    insights = models.JSONField(default=dict, blank=True)
+    #: autotune／ai_tune 的說明（change_text、rationale、evals…）
+    meta = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["batch_set", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"BatchRun {self.pk} ({self.status})"

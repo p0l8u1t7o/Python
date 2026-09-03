@@ -11,6 +11,8 @@ POST  /vision/agent/refine     {images, prompt, regions, graph, feedback} → �
 POST  /vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
 POST  /vision/agent/run        {images, graph, main?} → {graph, report, reports, main_image}（切換候選方案）
 POST  /vision/agent/autotune   {graph, runs:[{name, image_ref, status, expected}], max_evals?, deadline_s?} → 同 tune ＋ autotune 摘要
+                               tune／autotune／jobs(task=tune) 可改帶 batch_run_id（持久化批次），結果落成新 BatchRun（回應 batch_run_id）
+POST  /vision/agent/consult    {batch_run_id, question, graph?} → {answer, provider, insights, suggestions[], warnings}
 POST  /vision/agent/jobs       代理模式背景工作 {task, images, prompt, regions, answers, labels, graph?, instruction?, runs?} → 202 {id, status, steps…}
 GET   /vision/agent/jobs[/{id}?step_from=]、POST /jobs/{id}/cancel、POST /jobs/{id}/answer {answers}
 GET   /vision/agent/sessions[/{id}]、PATCH /sessions/{id} {rating, success, note, flow_id}、POST /sessions/{id}/restore、DELETE
@@ -32,6 +34,7 @@ from ninja import File, Router, Schema, UploadedFile
 from apps.accounts.models import UserPref
 from apps.accounts.security import principal
 from apps.core.errors import NotFound, ValidationError
+from apps.vision.agent import consult as consult_mod
 from apps.vision.agent import jobs, loop, memory, providers, service, skills
 from apps.vision.models import AgentSession, AgentSkill, Flow
 from apps.vision.api import _decode_upload
@@ -69,10 +72,18 @@ class RunGraphIn(Schema):
 
 
 class AutotuneIn(Schema):
-    graph: dict[str, Any]
+    graph: dict[str, Any] | None = None
     runs: list["RunIn"] = []
     max_evals: int = 60
     deadline_s: float = 25.0
+    #: 持久化批次：影像與逐張資料從 BatchRun 取（graph 缺省＝該次執行的 graph）
+    batch_run_id: int | None = None
+
+
+class ConsultIn(Schema):
+    batch_run_id: int
+    question: str
+    graph: dict[str, Any] | None = None
 
 
 class RefineIn(GenerateIn):
@@ -95,9 +106,10 @@ class RunIn(Schema):
 
 
 class TuneIn(Schema):
-    graph: dict[str, Any]
+    graph: dict[str, Any] | None = None
     instruction: str
     runs: list[RunIn] = []
+    batch_run_id: int | None = None
 
 
 class SettingsIn(Schema):
@@ -116,6 +128,7 @@ class JobIn(GenerateIn):
     graph: dict[str, Any] | None = None
     instruction: str = ""
     runs: list["RunIn"] = []
+    batch_run_id: int | None = None
     max_turns: int = 12
     max_trials: int = 8
     deadline_s: float = 240.0
@@ -139,6 +152,43 @@ class SessionPatch(Schema):
 
 def _settings_for(request: HttpRequest) -> providers.AgentSettings:
     return providers.resolve(principal(request).user)
+
+
+def _run_images(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """批次列的影像 ref → 快取影像（已釋放的略過）。"""
+    images = {r["image_ref"]: store.get(r["image_ref"]) for r in runs if r.get("image_ref")}
+    return {k: v for k, v in images.items() if v is not None}
+
+
+def _batch_context(request: HttpRequest, batch_run_id: int, graph: dict[str, Any] | None):
+    """持久化批次：runs 列（未命中優先，帶 index）＋磁碟影像＋graph（缺省＝該次執行的 graph）＋洞察文字。"""
+    from apps.vision.batch import insights as insights_mod
+    from apps.vision.batch import store as bstore
+    from apps.vision.batch.api import _run_or_404
+
+    run = _run_or_404(request, batch_run_id)
+    bset = run.batch_set
+    by_index = {int(im["index"]): im for im in bset.images or []}
+    runs: list[dict[str, Any]] = []
+    images: dict[str, Any] = {}
+    for it in run.items or []:
+        idx = int(it.get("index", -1))
+        im = by_index.get(idx)
+        if im is None:
+            continue
+        img = bstore.load_image(im)
+        if img is None:
+            continue
+        ref = f"batch:{bset.id}:{idx}"
+        images[ref] = img
+        m, _ = bstore.row_match(it, im)
+        runs.append({"name": str(im.get("name") or f"#{idx + 1}"), "image_ref": ref, "status": str(it.get("status", "")), "outputs": it.get("outputs") or {},
+                     "expected": str(im.get("expected") or ""), "index": idx, "mismatch": m is False})
+    runs.sort(key=lambda r: 0 if r["mismatch"] else 1)
+    for r in runs:
+        r.pop("mismatch", None)
+    ins = run.insights or insights_mod.compute(run.graph, run.items or [], bset.images or [])
+    return run, bset, (graph or run.graph), runs, images, "\n".join(ins.get("text") or [])
 
 
 @router.get("/agent/info")
@@ -317,11 +367,23 @@ def agent_run(request: HttpRequest, payload: RunGraphIn):
 @router.post("/agent/autotune")
 def agent_autotune(request: HttpRequest, payload: AutotuneIn):
     """批次測試的自動調參：runs[].expected（ok／ng）當標記，只動現場調機參數。"""
-    principal(request).can_execute()
+    p = principal(request)
+    p.can_execute()
+    limits = {"max_evals": max(1, min(200, payload.max_evals)), "deadline_s": max(1.0, min(120.0, payload.deadline_s))}
+    if payload.batch_run_id is not None:
+        run, bset, graph, runs, images, _ = _batch_context(request, payload.batch_run_id, payload.graph)
+        result = service.autotune_runs(graph, runs, images, detail=True, **limits)
+        new = None
+        if result.get("applied"):
+            from apps.vision.batch import store as bstore
+
+            new = bstore.persist_tune(run.id, result["graph"], result["items"], origin="autotune", label="自動調參", owner=p.user,
+                                      meta={"rationale": result["rationale"], "changes": result["changes"], "autotune": result.get("autotune")})
+        return {**result, "batch_run_id": new.id if new else None}
+    if payload.graph is None:
+        raise ValidationError("需要 graph 或 batch_run_id", code="bad_request")
     runs = [r.dict() for r in payload.runs]
-    images = {r["image_ref"]: store.get(r["image_ref"]) for r in runs if r.get("image_ref")}
-    images = {k: v for k, v in images.items() if v is not None}
-    return service.autotune_runs(payload.graph, runs, images, max_evals=max(1, min(200, payload.max_evals)), deadline_s=max(1.0, min(120.0, payload.deadline_s)))
+    return service.autotune_runs(payload.graph, runs, _run_images(runs), **limits)
 
 
 @router.post("/agent/refine")
@@ -350,17 +412,22 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
     images = _images(payload) if (payload.images or payload.ref) else []
     if payload.task == "generate" and not images:
         raise ValidationError("至少要一張影像", code="no_image")
-    if payload.task in ("edit", "tune") and (payload.graph is None or not payload.instruction.strip()):
+    graph, extra_summary, batch_run_id = payload.graph, "", None
+    if payload.task == "tune" and payload.batch_run_id is not None:
+        run, _bset, graph, runs, run_images, extra_summary = _batch_context(request, payload.batch_run_id, payload.graph)
+        batch_run_id = run.id
+    else:
+        runs = [r.dict() for r in payload.runs]
+        run_images = _run_images(runs)
+    if payload.task in ("edit", "tune") and (graph is None or not payload.instruction.strip()):
         raise ValidationError("edit／tune 需要 graph 與 instruction", code="bad_request")
-    runs = [r.dict() for r in payload.runs]
-    run_images = {r["image_ref"]: store.get(r["image_ref"]) for r in runs if r.get("image_ref")}
-    run_images = {k: v for k, v in run_images.items() if v is not None}
     if payload.task == "tune" and not images:
-        images = list(run_images.values())[:4]
-    state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=payload.labels,
-                                graph=payload.graph, instruction=payload.instruction, runs=runs, owner=principal(request).user)
+        images = [run_images[r["image_ref"]] for r in runs if r.get("image_ref") in run_images][:4]  # 持久化批次已把未命中排前面
+    labels = payload.labels or ([r.get("expected", "") for r in runs][:4] if payload.task == "tune" and batch_run_id else [])
+    state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=labels,
+                                graph=graph, instruction=payload.instruction, runs=runs, owner=principal(request).user, extra_summary=extra_summary)
     budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
-    return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images)
+    return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images, batch_run_id=batch_run_id)
 
 
 @router.get("/agent/jobs")
@@ -466,10 +533,37 @@ def delete_session(request: HttpRequest, session_id: int):
 
 @router.post("/agent/tune")
 def agent_tune(request: HttpRequest, payload: TuneIn):
-    principal(request).can_execute()
+    p = principal(request)
+    p.can_execute()
     if not payload.instruction.strip():
         raise ValidationError("指令不能是空的", code="empty_instruction")
+    if payload.batch_run_id is not None:
+        run, bset, graph, runs, images, extra = _batch_context(request, payload.batch_run_id, payload.graph)
+        result = service.tune(graph, payload.instruction, runs, images, _settings_for(request), extra_summary=extra, detail=True)
+        new = None
+        if result.get("applied"):
+            from apps.vision.batch import store as bstore
+
+            origin = "autotune" if result.get("provider") == "autotune" else "ai_tune"
+            new = bstore.persist_tune(run.id, result["graph"], result["items"], origin=origin, label=payload.instruction[:60], owner=p.user,
+                                      meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune")})
+        return {**result, "batch_run_id": new.id if new else None}
+    if payload.graph is None:
+        raise ValidationError("需要 graph 或 batch_run_id", code="bad_request")
     runs = [r.dict() for r in payload.runs]
-    images = {r["image_ref"]: store.get(r["image_ref"]) for r in runs if r.get("image_ref")}
-    images = {k: v for k, v in images.items() if v is not None}
-    return service.tune(payload.graph, payload.instruction, runs, images, _settings_for(request))
+    return service.tune(payload.graph, payload.instruction, runs, _run_images(runs), _settings_for(request))
+
+
+@router.post("/agent/consult")
+def agent_consult(request: HttpRequest, payload: ConsultIn):
+    """資料諮詢：針對一次批次執行的資料回答問題，附規則洞察與可套用的參數建議。"""
+    from apps.vision.batch.api import _run_or_404
+
+    p = principal(request)
+    p.can_execute()
+    if not payload.question.strip():
+        raise ValidationError("問題不能是空的", code="empty_question")
+    run = _run_or_404(request, payload.batch_run_id)
+    if run.status != "done":
+        raise ValidationError("這次執行尚未完成", code="run_not_done")
+    return consult_mod.consult(run, run.batch_set, payload.question.strip(), _settings_for(request), graph=payload.graph, user=p.user)

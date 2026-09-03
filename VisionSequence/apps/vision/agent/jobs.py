@@ -45,6 +45,8 @@ class AgentJob:
     #: tune 專用：批次列與影像
     runs: list[dict[str, Any]] = field(default_factory=list)
     run_images: dict[str, np.ndarray] = field(default_factory=dict)
+    #: 持久化批次（BatchRun）id：tune 結果會落成新的一次執行
+    batch_run_id: int | None = None
     fallback_reason: str = ""
 
     def to_dict(self, step_from: int = 0) -> dict[str, Any]:
@@ -53,7 +55,7 @@ class AgentJob:
             "id": self.id, "task": self.task, "status": self.status, "provider": self.settings.provider, "model": providers.model_of(self.settings),
             "mode": self.settings.mode, "turns": self.turns, "trials": self.state.trials, "tool_calls": self.state.tool_calls,
             "budget": self.budget.to_dict(), "steps": steps[max(0, step_from):], "step_next": len(steps),
-            "questions": self.questions, "result": self.result, "error": self.error, "fallback_reason": self.fallback_reason,
+            "questions": self.questions, "result": self.result, "error": self.error, "fallback_reason": self.fallback_reason, "batch_run_id": self.batch_run_id,
             "created_at": self.created_at, "finished_at": self.finished_at, "duration_s": round((self.finished_at or time.time()) - self.created_at, 1),
         }
 
@@ -96,11 +98,11 @@ def cancel(job_id: str) -> bool:
 
 
 def start(task: str, settings: providers.AgentSettings, state: actions.AgentState, budget: loop.Budget | None = None, *,
-          runs: list[dict[str, Any]] | None = None, run_images: dict[str, np.ndarray] | None = None) -> dict[str, Any]:
+          runs: list[dict[str, Any]] | None = None, run_images: dict[str, np.ndarray] | None = None, batch_run_id: int | None = None) -> dict[str, Any]:
     if task not in TASKS:
         raise ValidationError(f"未知的工作類型 '{task}'", code="bad_task")
     job = AgentJob(id=uuid.uuid4().hex[:12], task=task, settings=settings, state=state, budget=budget or loop.Budget(),
-                   runs=list(runs or []), run_images=dict(run_images or {}))
+                   runs=list(runs or []), run_images=dict(run_images or {}), batch_run_id=batch_run_id)
     with _lock:
         _prune_locked()
         if sum(1 for j in _jobs.values() if j.status == "running") >= MAX_RUNNING:
@@ -188,11 +190,28 @@ def _run_single(job: AgentJob) -> None:
     elif job.task == "edit":
         job.result = service.edit(st.graph or {"nodes": [], "edges": []}, st.feedback, st.images[0] if st.images else None, job.settings)
     else:
-        job.result = service.tune(st.graph or {"nodes": [], "edges": []}, st.feedback, job.runs, job.run_images, job.settings)
+        job.result = service.tune(st.graph or {"nodes": [], "edges": []}, st.feedback, job.runs, job.run_images, job.settings,
+                                  extra_summary=st.batch_summary if job.batch_run_id else "", detail=bool(job.batch_run_id))
+        _persist_batch(job, job.result.get("graph") or st.graph, job.result.get("items") or [], job.result.get("rationale", ""), job.result.get("changes") or [])
     if job.fallback_reason:
         job.result.setdefault("warnings", []).insert(0, job.fallback_reason)
     job.status, job.finished_at = "done", time.time()
     job.state.step("done", "完成（單次）", str(job.result.get("rationale") or "")[:300])
+
+
+def _persist_batch(job: AgentJob, graph: dict[str, Any] | None, items: list[dict[str, Any]], rationale: str, changes: list[str]) -> None:
+    """持久化批次的 tune：把重跑結果落成新的一次執行（origin=ai_tune），result 帶 batch_run_id。"""
+    if not job.batch_run_id or not graph or not job.result:
+        return
+    try:
+        from apps.vision.batch import store as bstore
+
+        new = bstore.persist_tune(job.batch_run_id, graph, items, origin="ai_tune", label=(job.state.feedback or "AI 調整")[:60], owner=job.state.owner,
+                                  meta={"rationale": rationale[:2000], "changes": list(changes)[:50], "provider": job.settings.provider, "agentic": job.task == "tune" and job.status == "running"})
+        job.result["batch_run_id"] = new.id if new else None
+    except Exception:  # noqa: BLE001
+        log.warning("批次結果落地失敗", exc_info=True)
+        job.result["batch_run_id"] = None
 
 
 def _finalize(job: AgentJob, status: str) -> None:
@@ -221,8 +240,10 @@ def _finalize(job: AgentJob, status: str) -> None:
         job.result = {"graph": graph, "rationale": st.rationale, "provider": job.settings.provider, "changes": [s["detail"] for s in st.steps if s["kind"] == "tool" and s["title"] == "patch_graph"],
                       "report": report, "applied": True, "warnings": warnings, "agentic": True, "turns": job.turns}
     else:
-        items = service._rerun_items(graph, job.runs, job.run_images)
-        job.result = {"graph": graph, "rationale": st.rationale, "provider": job.settings.provider, "changes": [s["detail"] for s in st.steps if s["kind"] == "tool" and s["title"] == "patch_graph"],
+        items = service._rerun_items(graph, job.runs, job.run_images, keep_images=not job.batch_run_id, detail=bool(job.batch_run_id))
+        changes = [s["detail"] for s in st.steps if s["kind"] == "tool" and s["title"] == "patch_graph"]
+        job.result = {"graph": graph, "rationale": st.rationale, "provider": job.settings.provider, "changes": changes,
                       "before": service._tally([r.get("status", "") for r in job.runs]), "after": service._tally([it["after"] for it in items]), "items": items,
                       "applied": True, "warnings": warnings, "agentic": True, "turns": job.turns}
+        _persist_batch(job, graph, items, st.rationale, changes)
     job.status, job.finished_at = status, time.time()

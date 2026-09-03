@@ -493,21 +493,27 @@ def wants_autotune(instruction: str) -> bool:
     return any(w in low for w in _AUTOTUNE_WORDS)
 
 
-def _rerun_items(graph: dict[str, Any], runs: list[dict[str, Any]], images: dict[str, np.ndarray]) -> list[dict[str, Any]]:
+def _rerun_items(graph: dict[str, Any], runs: list[dict[str, Any]], images: dict[str, np.ndarray], *, keep_images: bool = True,
+                 detail: bool = False) -> list[dict[str, Any]]:
+    """同一批影像用新 graph 重跑；detail=True 多回逐節點純量輸出（持久化批次要落成新執行時用）。"""
+    from apps.vision.batch.store import compact_row
+
     items = []
     for r in runs:
         ref = r.get("image_ref")
         if ref not in images:
             items.append({"name": r.get("name", "?"), "before": r.get("status", ""), "after": "gone"})
             continue
-        rep = trial_run(graph, images[ref])
-        items.append({"name": r.get("name", "?"), "before": r.get("status", ""), "after": rep.status, "run_id": rep.id, "outputs": rep.outputs,
-                      "expected": r.get("expected", "")})
+        rep = trial_run(graph, images[ref], keep_images=keep_images)
+        row = {"name": r.get("name", "?"), "before": r.get("status", ""), "after": rep.status, "run_id": rep.id, "outputs": rep.outputs, "expected": r.get("expected", "")}
+        if detail and r.get("index") is not None:
+            row = {**compact_row(int(r["index"]), rep), **row}
+        items.append(row)
     return items
 
 
 def autotune_runs(graph: dict[str, Any], runs: list[dict[str, Any]], images: dict[str, np.ndarray], *,
-                  max_evals: int = 60, deadline_s: float = 25.0) -> dict[str, Any]:
+                  max_evals: int = 60, deadline_s: float = 25.0, detail: bool = False) -> dict[str, Any]:
     """批次測試的自動調參：每列的 expected（ok／ng）當標記，座標下降找更好的現場參數；回與 tune 相同形狀＋autotune 摘要。"""
     labeled = [autotune.Labeled(images[r["image_ref"]], str(r.get("expected", "")).lower(), {}, str(r.get("name", "")))
                for r in runs if r.get("image_ref") in images and str(r.get("expected", "")).lower() in ("ok", "ng")]
@@ -517,7 +523,7 @@ def autotune_runs(graph: dict[str, Any], runs: list[dict[str, Any]], images: dic
                 "provider": "autotune", "changes": [], "before": before, "after": None, "items": [], "applied": False}
     graph = validate_graph(graph)
     res = autotune.coordinate_search(graph, labeled, max_evals=max_evals, deadline_s=deadline_s, trial=_quiet_trial)
-    items = _rerun_items(res["graph"], runs, images)
+    items = _rerun_items(res["graph"], runs, images, keep_images=not detail, detail=detail)
     b, a = res["before"], res["after"]
     rationale = ("自動調參：" + ("、".join(res["change_text"]) if res["improved"] else "在預算內找不到更好的參數，維持原參數")
                  + f"；標記命中 {b['match']}/{b['total']} → {a['match']}/{a['total']}，評估 {res['evals']} 次、{res['elapsed_ms']} ms"
@@ -528,26 +534,30 @@ def autotune_runs(graph: dict[str, Any], runs: list[dict[str, Any]], images: dic
 
 
 def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], images: dict[str, np.ndarray],
-         settings: providers.AgentSettings | None = None) -> dict[str, Any]:
-    """跑多筆影像後依提示詞調整：指令要求自動調參（或離線且有期望標記）就走資料驅動搜尋；否則 LLM 帶批次摘要、規則走回饋映射。調完在同一批影像重跑回報前後對比。"""
+         settings: providers.AgentSettings | None = None, *, extra_summary: str = "", detail: bool = False) -> dict[str, Any]:
+    """跑多筆影像後依提示詞調整：指令要求自動調參（或離線且有期望標記）就走資料驅動搜尋；否則 LLM 帶批次摘要（extra_summary＝資料洞察）、
+    規則走回饋映射。調完在同一批影像重跑回報前後對比；detail=True 多回逐節點資料（持久化批次落成新執行）。"""
     settings = settings or providers.server_settings()
     labeled_n = sum(1 for r in runs if str(r.get("expected", "")).lower() in ("ok", "ng") and r.get("image_ref") in images)
-    if wants_autotune(instruction) or (labeled_n >= 2 and not providers.available(settings)):
-        return autotune_runs(graph, runs, images)
+    if wants_autotune(instruction):
+        return autotune_runs(graph, runs, images, detail=detail)
     sample = [images[r["image_ref"]] for r in runs if r.get("image_ref") in images][:4]
+    summary = (extra_summary.strip() + "\n" if extra_summary.strip() else "") + _batch_summary(runs)
     got, llm_reason = _try_llm(settings, None, images=sample, regions=[], prompt="", analysis=None,
-                               task="tune", previous_graph=graph, feedback=instruction, batch_summary=_batch_summary(runs))
+                               task="tune", previous_graph=graph, feedback=instruction, batch_summary=summary)
     if got is not None:
         new_graph, rationale = got
         provider, changes = settings.provider, []
     else:
         new_graph, changes = edit_rules(graph, instruction)
+        if not changes and labeled_n >= 2:  # 指令對不上規則但有期望標記：退而用資料驅動自動調參
+            return autotune_runs(graph, runs, images, detail=detail)
         if not changes:
             return {"graph": graph, "rationale": "看不懂這個指令；離線模式支援「太敏感／漏抓／改成 N 個／±x」與「把 <節點> 的 <參數> 改成 <值>」。",
                     "provider": "rules", "changes": [], "before": _tally([r.get("status", "") for r in runs]), "after": None, "items": [], "applied": False}
         new_graph = validate_graph(new_graph)
         provider, rationale = "rules", (llm_reason + "\n" if llm_reason else "") + "已調整：" + "、".join(changes)
-    items = _rerun_items(new_graph, runs, images)
+    items = _rerun_items(new_graph, runs, images, keep_images=not detail, detail=detail)
     return {"graph": new_graph, "rationale": rationale, "provider": provider, "changes": changes,
             "before": _tally([r.get("status", "") for r in runs]), "after": _tally([it["after"] for it in items]), "items": items, "applied": True}
 
@@ -559,7 +569,7 @@ def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], im
 def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str, *,
                 answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None,
                 graph: dict[str, Any] | None = None, instruction: str = "", runs: list[dict[str, Any]] | None = None,
-                owner: Any = None) -> actions.AgentState:
+                owner: Any = None, extra_summary: str = "") -> actions.AgentState:
     """代理迴圈的初始狀態：分析、意圖、期望標記、make_asset、相似成功案例的先驗；edit／tune 帶既有 graph 與指令。"""
     text = effective_prompt(prompt, answers)
     feats = analysis_mod.analyze(images, regions) if images else None
@@ -569,7 +579,8 @@ def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any
         task=task, images=images, regions=regions, prompt=text, analysis=feats, intent=intent,
         expected=expected_labels(regions, labels, len(images)), make_asset=_make_asset_factory(images) if images else None,
         graph=validate_graph(graph) if graph else None, feedback=instruction, answers=list(answers or []),
-        batch_summary=_batch_summary(runs) if runs else "", owner=owner, priors=priors, examples=examples,
+        batch_summary=((extra_summary.strip() + "\n") if extra_summary.strip() else "") + (_batch_summary(runs) if runs else ""),
+        owner=owner, priors=priors, examples=examples,
     )
     return state
 
