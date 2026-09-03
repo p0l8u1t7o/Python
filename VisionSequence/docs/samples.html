@@ -77,6 +77,10 @@
 <tr><td>條碼標籤讀取（透視校正）</td><td>斜貼標籤＋QR（第 4 張沒印碼）</td><td>四點透視校正把斜標籤拉正再讀碼；序號區文字有無檢查</td><td><code>warp_perspective</code> <code>barcode</code> <code>text_presence</code></td></tr>
 <tr><td>定位＋卡尺量測</td><td>十字標記＋亮帶（第 4 張帶太寬）</td><td>範本定位→ROI 跟隨→卡尺量寬的定位補正三件套；範本資產由 seed 自動裁切</td><td><code>template_match</code> <code>shape_align</code> <code>fixture_roi</code> <code>caliper</code></td></tr>
 <tr><td>深抽杯件量測</td><td>同心圓杯口＋壁厚剖面（第 4 張外徑超差）</td><td>完整量測流程：定位、三個 ROI 跟隨、外徑／內徑找圓、<strong>線段 ROI</strong> 橫切量壁厚、同心度、多重公差彙總</td><td><code>find_circle</code> <code>wall_thickness</code> <code>concentricity</code> <code>tolerance_judge</code> <code>bool_logic</code></td></tr>
+<tr><td>YOLO 物件計數（官方底模）</td><td>停止標誌（第 4 張只有 1 個、第 5 張 3 個）</td><td>不用訓練的深度學習：COCO 底模 yolo11n.pt 直接辨識，數量判定；第一次執行自動下載權重（需 DL 依賴）</td><td><code>yolo_detect</code> <code>if_number</code></td></tr>
+<tr><td>YOLO 實例分割：標誌面積</td><td>同上</td><td>分割輸出的聯合遮罩接像素計數＝總面積，門檻判定；示範分割結果接後續量測</td><td><code>yolo_segment</code> <code>pixel_count</code></td></tr>
+<tr><td>DL 分類：良品／缺孔（教導模型）</td><td>暗底亮圓盤（第 5、6 張缺中央孔）</td><td>教導產物怎麼進流程：seed 用內建 MLP（資料增強）訓練 30 張合成樣本成「範例：分類模型」，dl_classify 判 pass／fail；整張縮圖的像素分類適合「整體外觀不同」的類別</td><td><code>dl_classify</code></td></tr>
+<tr><td>DL 語意分割：刮痕面積（教導模型）</td><td>紋理板（第 4、5 張有刮痕）</td><td>seed 用 patch_segment 訓練 10 張 polygon 標記成「範例：分割模型」，dl_segment 面積門檻判定</td><td><code>dl_segment</code></td></tr>
 </table>
 
 <h2 id="files">樣本圖與資產放在哪</h2>
@@ -88,11 +92,12 @@
 </ul>
 
 <h2 id="not-included">沒有進樣板的工具</h2>
-<p><code>dl_classify</code>／<code>dl_detect</code>／<code>dl_segment</code>／<code>dl_instance</code> 需要先在「深度學習教導」訓練出模型資產；
+<p>深度學習類：<code>yolo_pose</code>（需真人影像）、<code>yolo_obb</code>（需訓練或 DOTA 類影像）、<code>yolo_classify</code>／<code>dl_instance</code>／<code>dl_detect</code>（與已進樣板的同類工具接線相同）；<code>dl_classify</code>／<code>dl_detect</code>／<code>dl_segment</code>／<code>dl_instance</code> 需要先在「深度學習教導」訓練出模型資產；
 <code>write_modbus</code> 需要實際的 Modbus 連線；<code>save_image</code> 會在每次執行寫檔，不適合放在循環執行的範例裡。
 接法見各工具說明與<a href="dl.html">深度學習教導</a>、<a href="modbus.html">Modbus 輸出</a>。</p>
 
 <h2 id="test">品質保證</h2>
+<p>DL 範本：<code>tests/test_demo.py</code> 對兩個教導模型範本實跑（seed 會訓練模型，CPU 數秒）；兩個 YOLO 範本需要 DL 依賴，只驗 graph，實跑在 <code>VISION_TEST_DL=1 manage.py test tests.test_dl_live</code>（五張樣本依序 OK、OK、OK、NG、NG）。</p>
 <p><code>tests/test_demo.py</code> 會在每次測試把整組範例 seed 進暫存環境，
 並把每個內建範本掛上對應的樣本來源實跑一輪，鎖住「每個樣板都能執行、沒有錯誤節點」這條線；
 樣板或工具改壞會直接紅。另外兩個簡化範本「零件孔數檢測（合成來源版）」與「條碼／QR 讀取」也在畫廊裡。</p>

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：66 個內建工具（8 類）、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 319 項＋前端 39 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：66 個內建工具（8 類）、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 350 項＋前端 39 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -28,7 +28,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，14 個）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，18 個：含 4 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -82,6 +82,7 @@
 - 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序；`Intent.polarity` 可由提示詞／問答覆寫極性）；`providers.py` 多供應商（claude 走 anthropic SDK 延後 import；openai／gemini 走 urllib REST 零依賴；`GENERATE_TIMEOUT` 120s／`TEST_TIMEOUT` 15s；`_explain` 把供應商例外翻成原因，404 會帶出供應商建議的替代模型名）＋`llm.py` 四種任務（generate／refine／edit／tune）＋`llm.clarify`。設定解析 `providers.resolve(user)`：使用者自己的 `UserPref.agent` → .env（`VISION_AGENT_PROVIDER/API_KEY/MODEL`）→ offline；LLM 失敗自動落回規則。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB；多張影像各跑一次回 `reports`）。
 - 詢問機制 `clarify.py`：生成前 `/agent/clarify` 依意圖找關鍵缺口提問（最多 3 題，choice／number／text／roi，可 optional；問過的不重問，全部問完即 ready）；answers 以補充句併回提示詞（`service.effective_prompt`），規則與 LLM 讀同一份；generate 回 `warnings`（未回答的缺口用了預設值）。前端所有助手呼叫帶 AbortController（中斷鍵）。
 - **全域 AI 助手** `help.py`＋`POST /agent/chat`：前端 `AssistantDock`（掛在 AppShell，任何頁面右下角）送 `{message, mode, context{kind, flow_id, node_type, batch_run_id, image_ref, graph}, history}`；`api.chat_intent` 依脈絡分流——問句一律 help；修改語氣在 flow_editor／tool（帶 graph）→ `service.edit`、在 batch（帶 batch_run_id）→ `service.tune`＋`persist_tune`；batch 的資料字眼 → `consult.consult`；代理模式下 edit／tune 回 `{agentic: true}` 讓前端改走 `/agent/jobs`。`help.answer`：docs/*.html 拆 h2／h3 章節（帶錨點）＋每個工具技能 → BM25（中文雙字詞、標題與頁面加權；docs mtime 變了自動重建），LLM 只依片段回答並列參考章節，離線／失敗回 `offline_answer` 節錄；`sources[].url` 指向 `/docs/<page>#<anchor>`（`config/urls.py` 用 `serve` 提供 docs、vite 代理 `/docs`）。改了 docs 章節標題會影響檢索測試（`tests/test_agent_help.py`）。`tests/test_assistant_deep.py` 守門檻：分流語料 40 句準確率 ≥ 0.95、說明檢索基準 24 題 hit@3 ≥ 0.85／hit@1 ≥ 0.6，並涵蓋邊界輸入、索引重建、多執行緒、權限／鎖定（問答不受鎖定影響，修改／諮詢／調整 423）、代理模式經 /agent/jobs；改分流規則或索引要跑。
+- 深度學習深度測試：`tests/test_dl_deep.py`（不需 torch：dl_* 邊界、內建 trainer 增強／取消／建議、訓練工作 409／取消／失敗、yolo_* 用假 Results 驗座標回映與判定、yolo_runtime 快取／裝置／下載退回、SAM 幾何與全圖提案、YOLO trainer 提案轉換）永遠跑；`VISION_TEST_DL=1 manage.py test tests.test_dl_live`（六個 trainer 經 API 走完、訓練中取消、輸入邊界／FP16／並行／ONNX 資產／CUDA provider、SAM 正負點多框、各 trainer 自動標記、DL 範本五張樣本 OK/NG）約 3 分鐘，改 DL 相關一定跑。
 - 多圖＋ROI 編號（ROI01…，regions[i].image 指影像索引；「ROI01 是好品、ROI02 是壞品」→ golden 意圖，好品 ROI 自動裁成資產）。全域 AI 助手在編輯器走 `/agent/chat`→`service.edit`（`/agent/edit` 仍可直接呼叫）（離線句型見 `service.edit_rules`）；批次頁的依資料調整走 `/agent/chat`→`service.tune`（`/agent/tune` 仍可直接呼叫）（同批影像重跑回前後對比）。
 - AI 代理技能在 `agent/skills/`（platform.md 平台規則、design.md 設計原則含謹慎原則、agentic.md 代理工作方式、tools.md 每工具要領 `## <type>` 分段）；`skills.py` 組裝：system＝規則＋原則＋精簡目錄（穩定可快取），相關工具完整技能（自動骨架＋要領）由 `select_tools` 挑進 user 訊息。**新增工具要在 tools.md 補一段要領**。
 - 供應商：`openai_compatible`（Ollama／vLLM／LM Studio；`base_url`、金鑰可空）與 OpenAI／Gemini 的 JSON 模式在 `providers.openai_body`／`_gemini`；OpenAI 推理模型（o 系列／gpt-5）自動用 `max_completion_tokens`；生成逾時 `providers.generate_timeout()`（`VISION_AGENT_TIMEOUT_S`）。LLM 失敗時 `service._try_llm` 回 `(None, reason)`，原因進回應 `warnings`。

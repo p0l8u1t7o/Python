@@ -77,6 +77,8 @@
 <li><strong>使用</strong>：完成後模型出現在資產庫（kind=model），流程裡加「DL 分類」工具、選這個模型、labels 貼上類別清單即可（trainer 會回報建議參數，內建分類器與工具預設前處理完全一致，其餘參數用預設值就對）。</li>
 </ol>
 
+<p><strong>範例畫廊裡的 DL 範本</strong>：「YOLO 物件計數（官方底模）」「YOLO 實例分割：標誌面積」用 COCO 底模不需訓練；「DL 分類：良品／缺孔」「DL 語意分割：刮痕面積」用 seed_demo 以內建 trainer 訓練的示範模型（資產「範例：分類模型（良品／缺孔）」「範例：分割模型（刮痕）」），示範教導產物如何進流程；見 <a href="samples.html">範例樣板</a>。</p>
+
 <h2 id="auto">2. 自動標記</h2>
 <p>標記是導入最花時間的一步，所以每個 trainer 可實作 <code>suggest()</code>：對未標記樣本提出「建議類別＋信心分數」。內建分類器用<strong>特徵空間的 cosine kNN（k=3）</strong>——只要每類標了幾張就開始有用，秒回、不用等訓練。</p>
 <ul>
@@ -125,7 +127,7 @@
 <h2 id="builtin">6. 內建模型與資料增強</h2>
 <table>
 <tr><th>kind</th><th>任務／標記</th><th>做法</th><th>推論工具</th><th>依賴</th></tr>
-<tr><td><code>mlp_classify</code></td><td>影像分類（classes）</td><td>MLP、numpy 訓練、手刻 ONNX；前處理與工具預設一致</td><td>dl_classify</td><td>無（內建）</td></tr>
+<tr><td><code>mlp_classify</code></td><td>影像分類（classes）</td><td>MLP、numpy 訓練、手刻 ONNX；前處理與工具預設一致。全批次梯度下降有<strong>學習率保護</strong>：前 10% 若 loss 停在 ln(k)、正確率＝隨機（隱藏層被大 lr 打死），自動砍 lr 為 1/4 重來（最多 3 次，metrics.lr_restarts）。看的是整張縮圖像素，適合整體外觀不同的類別；位置隨機的細小瑕疵請用 patch_segment／YOLO</td><td>dl_classify</td><td>無（內建）</td></tr>
 <tr><td><code>patch_segment</code></td><td>語意分割（shapes）</td><td>patch 分類器（背景＋各類別）numpy 訓練 → 匯出<strong>全卷積 ONNX</strong>（Conv k×k → Relu → Conv 1×1，任意輸入尺寸）；CPU 數秒。適合顏色／紋理類區域與瑕疵</td><td>dl_segment（labels 首項為 background）</td><td>無（內建）</td></tr>
 <tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集（bbox 標記轉四角 polygon）→ 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 產物 <strong>best.pt＋ONNX 兩個資產</strong>（.pt 是主產物、專案 last_asset 指向它；ONNX 資產名加「（ONNX）」）；best.pt 另留一份供自動標記與續訓。官方底模（yolov8n-seg.pt、yolo11n-seg.pt…）第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code></td><td><strong>yolo_segment</strong>（.pt，GPU）／dl_instance（ONNX）</td><td rowspan="4"><strong>可選</strong>：<code>.\scripts\setup_dl.ps1</code>（requirements-dl.txt；torch cu128＋ultralytics＋onnxruntime-gpu，約 3GB；見 §11）</td></tr>
 <tr><td><code>yolo_detect</code></td><td>物件偵測（shapes）</td><td>bbox（polygon 取外接框）→ YOLO detect 訓練；底模 yolo11n.pt。最快、標記最省</td><td><strong>yolo_detect</strong>／dl_detect</td></tr>

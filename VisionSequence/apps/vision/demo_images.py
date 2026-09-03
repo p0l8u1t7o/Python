@@ -185,6 +185,83 @@ def marker_plate() -> list[np.ndarray]:
     return out
 
 
+def _stop_sign(img: np.ndarray, cx: int, cy: int, r: int) -> None:
+    """紅色八角形＋白字 STOP：COCO 底模（yolo11n）對這種合成標誌信心 0.9 以上，拿來示範不用訓練的 YOLO 工具。"""
+    pts = np.array([(int(cx + r * np.cos(np.deg2rad(22.5 + 45 * i))), int(cy + r * np.sin(np.deg2rad(22.5 + 45 * i)))) for i in range(8)])
+    cv2.fillPoly(img, [pts], (30, 30, 200))
+    cv2.polylines(img, [pts], True, (255, 255, 255), max(2, r // 18))
+    scale = r / 50.0
+    (tw, th), _ = cv2.getTextSize("STOP", cv2.FONT_HERSHEY_SIMPLEX, scale, max(2, int(3 * scale)))
+    cv2.putText(img, "STOP", (int(cx - tw / 2), int(cy + th / 2)), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), max(2, int(3 * scale)))
+
+
+def stop_signs() -> list[np.ndarray]:
+    """YOLO 物件計數／實例分割：每張應有 2 個停止標誌；第 4 張只有 1 個、第 5 張有 3 個（NG）。"""
+    specs = [
+        [(160, 240, 70), (470, 240, 70)],
+        [(140, 200, 55), (500, 280, 85)],
+        [(200, 300, 90), (480, 160, 60)],
+        [(320, 240, 45)],
+        [(120, 130, 80), (330, 260, 85), (540, 380, 75)],
+    ]
+    out = []
+    for i, spec in enumerate(specs):
+        img = np.full((480, 640, 3), (200, 205, 210), np.uint8)
+        for cx, cy, r in spec:
+            _stop_sign(img, cx, cy, r)
+        out.append(_noise(img, 3, i))
+    return out
+
+
+def _disc_part(seed: int, missing_hole: bool) -> np.ndarray:
+    """分類教導：暗底亮圓盤零件（治具固定、位置 ±8 px）；NG 版少了中央孔。
+    內建 MLP 分類器吃的是整張縮圖的像素，適合這種「整體外觀不同」的類別；位置隨機的細刮痕請改用語意分割或 YOLO。"""
+    rng = np.random.default_rng(seed)
+    img = _canvas(320, 320, 35)
+    cx, cy = 160 + int(rng.integers(-8, 9)), 160 + int(rng.integers(-8, 9))
+    cv2.circle(img, (cx, cy), 110, (205, 205, 208), -1)
+    if not missing_hole:
+        cv2.circle(img, (cx, cy), 28, (60, 60, 62), -1)
+    return _noise(img, 3, seed)
+
+
+def dl_parts() -> list[np.ndarray]:
+    """DL 分類範本的樣本圖：4 張良品（有中央孔）、2 張缺孔（NG）。"""
+    return [_disc_part(100 + i, missing_hole=i >= 4) for i in range(6)]
+
+
+def dl_parts_labeled(n_per_class: int = 15) -> list[tuple[np.ndarray, str]]:
+    """seed 用來訓練示範分類模型的標記資料（與樣本圖不同 seed，避免「背答案」）。"""
+    return [(_disc_part(1000 + i, False), "ok") for i in range(n_per_class)] + [(_disc_part(2000 + i, True), "ng") for i in range(n_per_class)]
+
+
+def _scratch_plate(seed: int, n_scratch: int) -> tuple[np.ndarray, list[dict]]:
+    """分割教導：紋理鋁板＋ n 道暗刮痕；回 (影像, shapes[polygon，0~1 正規化])。"""
+    rng = np.random.default_rng(seed)
+    base = np.full((320, 320, 3), 150, np.uint8)
+    tex = rng.normal(0, 9, (320, 320, 1)).astype(np.int16)
+    img = np.clip(base.astype(np.int16) + tex, 0, 255).astype(np.uint8)
+    shapes = []
+    for _ in range(n_scratch):
+        cx, cy = int(rng.integers(70, 250)), int(rng.integers(70, 250))
+        length, thick = int(rng.integers(70, 140)), int(rng.integers(6, 10))
+        ang = float(rng.uniform(0, 180))
+        box = cv2.boxPoints(((float(cx), float(cy)), (float(length), float(thick)), ang)).astype(np.int32)
+        cv2.fillPoly(img, [box], (58, 58, 60))
+        shapes.append({"label": "scratch", "kind": "polygon", "points": [[float(np.clip(x / 320, 0, 1)), float(np.clip(y / 320, 0, 1))] for x, y in box]})
+    return _noise(img, 2, seed), shapes
+
+
+def dl_scratch() -> list[np.ndarray]:
+    """DL 語意分割範本的樣本圖：3 張乾淨、2 張有刮痕（NG）。"""
+    return [_scratch_plate(300 + i, 0 if i < 3 else (1 if i == 3 else 2))[0] for i in range(5)]
+
+
+def dl_scratch_labeled(n: int = 10) -> list[tuple[np.ndarray, list[dict]]]:
+    """seed 用來訓練示範分割模型的標記資料：每張 1～2 道刮痕。"""
+    return [_scratch_plate(3000 + i, 1 + i % 2) for i in range(n)]
+
+
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "circle_part": ("圓孔量測", circle_part),
@@ -197,6 +274,9 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "label_qr": ("條碼標籤", label_qr),
     "cup": ("杯件量測", cup),
     "marker_plate": ("定位量測", marker_plate),
+    "stop_signs": ("停止標誌", stop_signs),
+    "dl_parts": ("分類教導", dl_parts),
+    "dl_scratch": ("分割教導", dl_scratch),
 }
 
 

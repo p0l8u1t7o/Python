@@ -497,6 +497,94 @@ def label_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def yolo_count_flow(source_id: Any) -> dict[str, Any]:
+    """YOLO 物件計數（官方底模）：yolo_detect 只留 stop sign → 數量 = 2 → OK；不用訓練，第一次執行自動下載 yolo11n.pt。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
+        _node("det", "yolo_detect", 1, 0, "YOLO 找標誌", model_name="yolo11n.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
+        _node("cmp", "if_number", 2, 0, "標誌 = 2？", operator="eq", threshold=2),
+        _node("ok", "judge", 3, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG：數量不對", verdict="ng", label="sign_count"),
+        _node("out", "output", 2, 1, "輸出數量", name="sign_count"),
+        _node("draw", "draw_result", 2, 2, "結果影像"),
+        _note("n1", 0, 1, "說明", "官方 COCO 底模（yolo11n.pt）直接辨識停止標誌，不需訓練；第一次執行會下載約 5MB 權重。\n要辨識自己的物件：到「深度學習」用「物件偵測（YOLO）」訓練，再把「模型資產」選成訓練產物。"),
+    ]
+    edges = [
+        _edge("src", "det"), _edge("det", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("det", "out", "count", "value"), _edge("src", "draw", "image", "image"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def yolo_area_flow(source_id: Any) -> dict[str, Any]:
+    """YOLO 實例分割（官方底模）：yolo_segment 的聯合遮罩 → 像素計數（面積）→ 門檻判定；輸出標誌面積。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
+        _node("seg", "yolo_segment", 1, 0, "YOLO 分割標誌", model_name="yolo11n-seg.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
+        _node("area", "pixel_count", 2, 0, "標誌面積", threshold=128, min_count=15000, max_count=45000),
+        _node("ok", "judge", 3, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG：面積異常", verdict="ng", label="sign_area"),
+        _node("out", "output", 2, 1, "輸出面積", name="sign_area"),
+        _node("draw", "draw_result", 2, 2, "結果影像"),
+        _note("n1", 0, 1, "說明", "分割模型輸出每個實例的輪廓與聯合遮罩；遮罩接像素計數就是總面積（也可接 blob 逐個量測）。\n第 4 張只有 1 個標誌、第 5 張有 3 個，面積落在門檻外走 NG。"),
+    ]
+    edges = [
+        _edge("src", "seg"), _edge("seg", "area", "mask", "image"),
+        _edge("area", "ok", "ok", "_flow"), _edge("area", "ng", "ng", "_flow"),
+        _edge("area", "out", "count", "value"), _edge("src", "draw", "image", "image"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def dl_classify_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})) -> dict[str, Any]:
+    """DL 分類（教導模型）：seed 用內建 MLP 分類器訓練「良品／缺孔」示範模型，dl_classify 判 pass／fail。"""
+    asset_id, tool_params = model
+    params = {**tool_params, "model": asset_id, "threshold": 0.5, "pass_labels": "ok", "top_k": 2}
+    nodes = [
+        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
+        _node("cls", "dl_classify", 1, 0, "DL 分類：良品？", **params),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG：缺孔", verdict="ng", label="missing_hole"),
+        _node("out", "output", 2, 2, "輸出分數", name="ok_score"),
+        _node("draw", "draw_result", 1, 2, "結果影像"),
+        _note("n1", 0, 1, "說明", "模型「範例：分類模型（良品／缺孔）」由 seed_demo 用 30 張合成樣本訓練（內建 MLP，CPU 數秒）。\n內建 MLP 看的是整張縮圖，適合整體外觀不同的類別；位置隨機的細小瑕疵請用語意分割或 YOLO。自己的零件：到「深度學習」建分類專案、標記幾張、按訓練，再把此節點的模型資產換成產物。"),
+    ]
+    edges = [
+        _edge("src", "cls"), _edge("cls", "ok", "pass", "_flow"), _edge("cls", "ng", "fail", "_flow"),
+        _edge("cls", "out", "score", "value"), _edge("src", "draw", "image", "image"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def dl_segment_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})) -> dict[str, Any]:
+    """DL 語意分割（教導模型）：seed 用 patch_segment 訓練「刮痕」示範模型，dl_segment 的刮痕面積超過門檻走 NG。"""
+    asset_id, tool_params = model
+    params = {**tool_params, "model": asset_id, "target_class": 1, "min_area": 0, "max_area": 300}
+    nodes = [
+        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
+        _node("seg", "dl_segment", 1, 0, "DL 分割：刮痕", **params),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG：刮痕面積過大", verdict="ng", label="scratch_area"),
+        _node("out", "output", 2, 2, "輸出面積", name="scratch_area"),
+        _node("draw", "draw_result", 1, 2, "結果影像"),
+        _note("n1", 0, 1, "說明", "模型「範例：分割模型（刮痕）」由 seed_demo 用 10 張合成樣本（polygon 標記）訓練，全卷積 ONNX、CPU 推論。\n遮罩輸出可再接 blob 逐條量刮痕長度；換成自己的瑕疵請到「深度學習」用「語意分割」專案訓練。"),
+    ]
+    edges = [
+        _edge("src", "seg"), _edge("seg", "ok", "ok", "_flow"), _edge("seg", "ng", "ng", "_flow"),
+        _edge("seg", "out", "area", "value"), _edge("src", "draw", "image", "image"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
+    """seed 訓練的示範模型資產：(asset id, 建議的工具參數)；還沒 seed 就回空（範本照樣能載入）。"""
+    row = Asset.objects.filter(name=name, kind="model").only("id", "meta").first()
+    if not row:
+        return "", {}
+    return str(row.id), dict((row.meta or {}).get("tool_params") or {})
+
+
 def _demo_asset(name: str) -> str:
     """seed 建立的範例資產 id；還沒 seed 就回空字串（範本照樣能載入，資產欄留給使用者填）。"""
     row = Asset.objects.filter(name=name, kind="image").only("id").first()
@@ -523,6 +611,12 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: locate_measure_flow(sid, _demo_asset("範例：定位十字範本"))),
     ("cup_measure", "深抽杯件量測", "範本比對→定位補正→ROI 跟隨×3→外徑／內徑找圓＋壁厚→同心度→公差判定×3→具名輸出→OK/NG", "measure",
      lambda sid: cup_measure_flow(sid, _demo_asset("範例：杯件定位範本"))),
+    ("yolo_count", "YOLO 物件計數（官方底模）", "yolo_detect 用 COCO 底模找停止標誌→數量判定；不需訓練、GPU 自動使用（需安裝 DL 依賴）", "count", yolo_count_flow),
+    ("yolo_area", "YOLO 實例分割：標誌面積", "yolo_segment 聯合遮罩→像素計數→面積門檻；示範分割輸出接後續量測（需安裝 DL 依賴）", "detect", yolo_area_flow),
+    ("dl_classify_demo", "DL 分類：良品／缺孔（教導模型）", "seed 訓練的內建 MLP 分類模型→dl_classify pass/fail；示範教導產物如何進流程", "quality",
+     lambda sid: dl_classify_flow(sid, _demo_model("範例：分類模型（良品／缺孔）"))),
+    ("dl_segment_demo", "DL 語意分割：刮痕面積（教導模型）", "seed 訓練的 patch_segment 模型→dl_segment 刮痕面積門檻→OK/NG", "quality",
+     lambda sid: dl_segment_flow(sid, _demo_model("範例：分割模型（刮痕）"))),
 )
 
 #: builtin 範本 key → 對應的範例樣本來源名稱（測試與文件用；hole_count／exposure 用合成來源）。
@@ -541,7 +635,61 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "label_read": "範例：條碼標籤",
     "locate_measure": "範例：定位量測",
     "cup_measure": "範例：杯件量測",
+    "yolo_count": "範例：停止標誌",
+    "yolo_area": "範例：停止標誌",
+    "dl_classify_demo": "範例：分類教導",
+    "dl_segment_demo": "範例：分割教導",
 }
+
+#: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
+TEMPLATES_NEED_DL = ("yolo_count", "yolo_area")
+
+
+def _seed_demo_models(created: list[str]) -> None:
+    """用內建 CPU trainer 訓練兩個示範模型資產（分類：良品／缺孔、分割：刮痕），給 DL 範本開箱即用；已存在就沿用。"""
+    import os
+    import shutil
+    import tempfile
+    import uuid as _uuid
+
+    import cv2
+    from django.conf import settings
+
+    from apps.vision import demo_images
+    from apps.vision.dl import base as dl_base
+    from apps.vision.dl.base import SampleRef
+
+    dl_base.register_builtins()
+    specs = (
+        ("範例：分類模型（良品／缺孔）", "mlp_classify", demo_images.dl_parts_labeled, ["ok", "ng"], {"input_size": 64, "epochs": 300, "val_split": 0.2, "augment": True}),
+        ("範例：分割模型（刮痕）", "patch_segment", demo_images.dl_scratch_labeled, ["scratch"], {"input_size": 128, "epochs": 200, "samples_per_image": 2000}),
+    )
+    for name, kind, maker, classes, params in specs:
+        if Asset.objects.filter(name=name, kind="model").exists():
+            continue
+        tmp = tempfile.mkdtemp(prefix="vs-demo-dl-")
+        try:
+            refs: list[SampleRef] = []
+            for i, (image, label) in enumerate(maker()):
+                path = os.path.join(tmp, f"s{i:02d}.png")
+                ok, buf = cv2.imencode(".png", image)
+                buf.tofile(path)
+                if isinstance(label, list):
+                    refs.append(SampleRef(id=f"s{i}", label="", path=path, shapes=label))
+                else:
+                    refs.append(SampleRef(id=f"s{i}", label=str(label), path=path))
+            result = dl_base.get_trainer(kind).train(refs, classes, params, "cpu", lambda f, s, m: None)
+            asset_id = _uuid.uuid4()
+            path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.onnx")
+            with open(path, "wb") as f:
+                f.write(result.onnx_bytes)
+            Asset.objects.create(
+                id=asset_id, name=name, kind="model", group="範例", path=path, size=len(result.onnx_bytes),
+                meta={"trainer": kind, "project": "範例", "tool_key": result.tool_key, "tool_params": result.tool_params, "metrics": result.metrics, "format": "onnx"},
+            )
+            created.append(f"模型資產 {name}（新建，{kind}）")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 #: 舊版 seed 建過、現改由範本畫廊提供的流程名稱（seed 時清掉，避免流程清單被塞滿）。
 _GALLERY_FLOW_NAMES = (
@@ -612,6 +760,7 @@ def seed_demo() -> list[str]:
     sample_asset("範例：定位十字範本", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
     sample_asset("範例：杯件定位範本", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
     sample_asset("範例：印刷良品範本", "golden_print", None)
+    _seed_demo_models(created)
 
     # 範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES），不佔流程清單；清掉舊版 seed 建過的流程。
     stale = Flow.objects.filter(name__in=_GALLERY_FLOW_NAMES)

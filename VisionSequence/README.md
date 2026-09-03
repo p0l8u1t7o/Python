@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 66 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 319 項＋前端 39 項自動測試 |
+| 規模 | 66 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 350 項＋前端 39 項自動測試 |
 
 ---
 
@@ -85,7 +85,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。
 
 ### 範本畫廊與範例樣板
-14 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 55/61 個工具。詳見 `docs/samples.html`。
+18 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 55/61 個工具。詳見 `docs/samples.html`。
 
 ### AI 助手（`/agent`）
 
@@ -190,7 +190,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/golden/` | Golden 案例、基準、回歸 |
 | `apps/vision/batch/` | 批次測試：`store`（檔案／序列化／淘汰）、`jobs`（背景執行）、`insights`（洞察與建議門檻）、`api` |
 | `apps/vision/management/commands/` | `serve`、`seed_demo`、`flow export|import|run`、`run_tcp_server`、`regress`、`create_admin` |
-| `tests/` | 20 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
+| `tests/` | 22 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
 
 ### 前端（`frontend/src/`，約 21.5k 行 TS/TSX）
 
@@ -301,7 +301,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 ## 驗證與測試
 
 ```bash
-# 後端：319 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
+# 後端：350 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
 .venv/Scripts/python.exe manage.py test --noinput
 .venv/Scripts/python.exe -m ruff check apps tests config
 
