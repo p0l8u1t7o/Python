@@ -16,6 +16,7 @@ const en = {
     connections: 'Connections',
   },
   auth: {
+    tagline: 'Canvas-based machine vision inspection platform',
     loginTitle: 'Sign in',
     setupTitle: 'Create the first administrator',
     setupHint: 'No user exists yet. Create an administrator account, then sign in with it to add other users.',

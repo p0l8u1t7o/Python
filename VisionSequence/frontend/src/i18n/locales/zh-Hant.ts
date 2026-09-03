@@ -29,6 +29,7 @@ const zhHant = {
     golden: 'Golden Set',
   },
   auth: {
+    tagline: '畫布式機器視覺檢測平台',
     loginTitle: '登入',
     setupTitle: '建立第一個管理員',
     setupHint: '系統尚未有任何使用者；請先建立管理員帳號，之後用它登入並新增其他使用者。',

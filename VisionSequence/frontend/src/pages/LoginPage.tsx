@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { LogIn, ShieldPlus } from 'lucide-react'
 
-import { Button, LoadingState, TextInput } from '@/components/ui'
+import { BrandMark, Button, LoadingState, TextInput } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
 import { useAuth } from '@/providers/AuthProvider'
 
@@ -49,17 +49,24 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-canvas p-4">
-      <form onSubmit={(e) => void onSubmit(e)} className="card w-full max-w-sm space-y-4 p-6" data-testid="login-form">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-brand text-on-brand">
-            <span className="text-sm font-bold">VS</span>
-          </div>
-          <div>
-            <h1 className="text-base font-semibold">{t('app.name')}</h1>
-            <p className="text-xs text-muted">{setupMode ? t('auth.setupTitle') : t('auth.loginTitle')}</p>
-          </div>
+    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-canvas p-4">
+      {/* 背景：品牌色柔光＋淡格線，讓登入頁有產品感而不干擾表單 */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-60"
+        aria-hidden
+        style={{
+          backgroundImage: 'radial-gradient(640px 420px at 50% 28%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 70%), linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
+          backgroundSize: 'auto, 40px 40px, 40px 40px',
+        }}
+      />
+      <div className="relative w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <BrandMark size={56} className="rounded-2xl shadow-lg shadow-brand/30" />
+          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-heading">{t('app.name')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('auth.tagline')}</p>
         </div>
+      <form onSubmit={(e) => void onSubmit(e)} className="card w-full space-y-4 p-6" data-testid="login-form">
+        <p className="text-sm font-semibold text-heading">{setupMode ? t('auth.setupTitle') : t('auth.loginTitle')}</p>
         {setupMode ? <p className="rounded-lg bg-brand-soft px-3 py-2 text-xs text-brand">{t('auth.setupHint')}</p> : null}
         <TextInput label={t('auth.username')} autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
         <TextInput label={t('auth.password')} type="password" autoComplete={setupMode ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} hint={setupMode ? t('auth.passwordHint') : undefined} />
@@ -69,6 +76,7 @@ export function LoginPage() {
           {setupMode ? t('auth.setupSubmit') : t('auth.loginSubmit')}
         </Button>
       </form>
+      </div>
     </div>
   )
 }

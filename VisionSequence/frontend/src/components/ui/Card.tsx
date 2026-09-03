@@ -63,8 +63,8 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
       {/* basis-60：標題至少 240px 才跟動作同列，否則動作換到下一列（避免標題被擠成一字一行） */}
       <div className="min-w-0 flex-1 basis-60">
-        <h1 className="text-[22px] font-normal leading-tight text-heading">{title}</h1>
-        {description ? <p className="mt-1 text-[13px] text-muted">{description}</p> : null}
+        <h1 className="text-xl font-semibold leading-tight tracking-tight text-heading">{title}</h1>
+        {description ? <p className="mt-1 text-[13px] leading-snug text-muted">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -75,7 +75,7 @@ export function DetailRow({ label, children, mono = false }: { label: ReactNode;
   return (
     <div className="flex items-baseline justify-between gap-4 py-1">
       <dt className="shrink-0 text-xs text-muted">{label}</dt>
-      <dd className={`min-w-0 break-all text-right text-sm text-content ${mono ? 'font-mono text-xs' : ''}`}>{children}</dd>
+      <dd className={`min-w-0 text-right text-sm text-content [overflow-wrap:anywhere] ${mono ? 'font-mono text-xs' : ''}`}>{children}</dd>
     </div>
   )
 }

@@ -90,8 +90,12 @@ function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) 
   const overlays = useMemo(() => (run ? Object.values(run.nodes).flatMap((n) => n.overlays ?? []) : []), [run])
   if (!image || !run) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg bg-viewer text-sm text-white/60">
-        <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-brand" />{t('dashboard.waitingRun')}</span>
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg bg-viewer px-6 text-center text-white/70">
+        <span className="flex size-14 items-center justify-center rounded-full border border-white/10 bg-white/5">
+          <MonitorPlay size={24} className="text-brand" aria-hidden />
+        </span>
+        <p className="text-sm font-medium text-white/85">{flow.name}</p>
+        <p className="flex items-center gap-2 text-xs text-white/55"><span className="size-1.5 animate-pulse rounded-full bg-brand" />{t('dashboard.waitingRun')}</p>
       </div>
     )
   }

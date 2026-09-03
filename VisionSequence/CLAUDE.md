@@ -115,7 +115,8 @@
 - 工具箱：`FavoriteTools`（新增工具／新增註解／收藏，hover 可移除）＋`ToolPicker`（Modal 固定高、內部捲動）。畫布 ⇄ graph 的轉換在 `graphMapping.ts`；note 是裝飾節點（type=note，不接邊）。
 - 工具頁 `ToolPage`：參數改在草稿（`flowDraft.patchDraftNode`），儲存才寫回；`goBack` 只在 dirty 時比對快照；輸出值只列在下方參考資訊，不疊浮層擋圖。
 - 影像檢視器：`roiEditor.ts`（互動）與 `geometry.ts`（純函式，有單元測試）分離；ROI 形狀 switch 要 exhaustive。
-- 版面：一般頁面用 `Page` 容器（`AppShell.tsx`）取得一致內距；全高頁（編輯器、參數卡）自帶 header。
+- 版面：一般頁面用 `Page` 容器（`AppShell.tsx`）取得一致內距（底部 `pb-24` 留給右下角 AI 助手浮動鈕）；全高頁（編輯器、參數卡）自帶 header。
+- **視覺規範**：品牌標誌用 `components/ui/BrandMark`（取景框＋鏡頭，與 index.html favicon 同圖形；側欄、登入頁共用）；`PageHeader` 標題 `text-xl font-semibold tracking-tight`；表格動作欄一律放最右、刪除鈕 hover 才變紅並以分隔線與其他動作隔開；時間欄用 `lib/format.ts` 的 `formatDateTime`（單行 `2026/9/3 12:17`，完整值放 title）；數值不得中途斷行（`whitespace-nowrap`，`DetailRow` 用 `overflow-wrap:anywhere` 不用 `break-all`）；toast 置頂置中（右下角是浮動鈕與助手面板）；側欄焦點環用品牌色內縮。
 - **響應式**（`lib/useMediaQuery.ts`）：< 768px 側欄改抽屜（☰ 開、點項目／換頁自動關、`data-mobile`）、麵包屑只留最後兩層；表格次要欄位用 `max-lg:hidden`／`max-xl:hidden` 隱藏（Th／Td 都要標）；編輯器 < md 只留畫布與可橫向捲動的工具列、< lg 沒有右側面板（參數請走工具頁）；工具頁／參數卡／AI 助手頁的側欄 < md 全寬堆疊；`@media (pointer: coarse)` 把 `.btn-icon`／`.nav-item`／checkbox 放大到 40px。`PageHeader` 標題 `flex-1 basis-60`、`CardHeader` 標題 `truncate`，動作列 `flex-wrap`，避免標題被擠成一字一行。影像來源清單的設定／狀態用 `lib/sources.ts` 摘要，不再印 JSON。UI 稽核腳本（每頁 × 4 視角截圖＋自動檢查）在 scratchpad `shots/ui_audit.mjs`。
 
 ## 4. 踩過的坑

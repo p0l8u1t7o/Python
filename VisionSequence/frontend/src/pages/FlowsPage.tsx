@@ -12,6 +12,7 @@ import { Badge, Button, Card, ConfirmDialog, EmptyRow, ErrorState, IconButton, L
 import { downloadFile } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useFlowMutations, useFlows, useImportFlow, useRecipes, useSources } from '@/lib/queries'
+import { formatDateTime, formatDateTimeFull } from '@/lib/format'
 import type { Flow } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -180,7 +181,7 @@ export function FlowsPage() {
                         {flow.commissioned === false ? <span title={t('flows.notCommissionedHint')}><Badge tone="warning" className="font-normal">{t('flows.notCommissioned')}</Badge></span> : null}
                         <RowBound flow={flow} />
                       </p>
-                      {flow.description ? <p className="text-xs text-muted">{flow.description}</p> : null}
+                      {flow.description ? <p className="line-clamp-2 text-xs leading-snug text-muted" title={flow.description}>{flow.description}</p> : null}
                     </Td>
                     <Td className="max-xl:hidden">
                       {flow.owner_id === null ? (
@@ -204,7 +205,7 @@ export function FlowsPage() {
                       </div>
                     </Td>
                     <Td className="max-xl:hidden"><RecipeCell flow={flow} readOnly={readOnly(flow)} onOpen={() => setRecipeFlow(flow)} /></Td>
-                    <Td className="tnum max-xl:hidden text-xs text-muted">{new Date(flow.updated_at).toLocaleString()}</Td>
+                    <Td className="tnum max-xl:hidden whitespace-nowrap text-xs text-muted"><span title={formatDateTimeFull(flow.updated_at)}>{formatDateTime(flow.updated_at)}</span></Td>
                     <Td align="right">
                       <span className="inline-flex min-w-24 max-w-28 flex-wrap justify-end gap-0.5 sm:min-w-0 sm:max-w-none sm:flex-nowrap sm:gap-1" onClick={(e) => e.stopPropagation()}>
                         <Link to={`/flows/${flow.id}`} aria-label={t('flows.open')} title={t('flows.open')}><IconButton label={t('flows.open')}><Pencil size={15} /></IconButton></Link>
@@ -213,7 +214,8 @@ export function FlowsPage() {
                         <Link to={`/flows/${flow.id}/stats`} aria-label={t('stats.open')} title={t('stats.open')}><IconButton label={t('stats.open')}><BarChart3 size={15} /></IconButton></Link>
                         <IconButton label={t('flows.export')} title={t('flows.exportHint')} onClick={() => void onExport(flow)} data-testid="row-export"><Download size={15} /></IconButton>
                         <IconButton label={t('common.duplicate')} onClick={() => void onDuplicate(flow)}><Copy size={15} /></IconButton>
-                        <IconButton label={readOnly(flow) ? t('flows.readOnly') : t('common.delete')} disabled={readOnly(flow)} onClick={() => setPendingDelete(flow)}><Trash2 size={15} className="text-critical" /></IconButton>
+                        <span className="mx-0.5 hidden h-4 w-px bg-line sm:inline-block" aria-hidden />
+                        <IconButton label={readOnly(flow) ? t('flows.readOnly') : t('common.delete')} disabled={readOnly(flow)} onClick={() => setPendingDelete(flow)} className="hover:!bg-critical-soft hover:!text-critical"><Trash2 size={15} /></IconButton>
                       </span>
                     </Td>
                   </Tr>

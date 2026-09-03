@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate } from 'react-router-dom'
 import { KeyRound, Plus, Shield, Trash2, Users } from 'lucide-react'
+import { formatDateTime, formatDateTimeFull } from '@/lib/format'
 
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Switch, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
@@ -118,7 +119,7 @@ export function UsersPage() {
                       <Td align="center">
                         <Switch checked={user.is_active} disabled={self} label={t('common.enabled')} onChange={(v) => setPendingActive({ user, is_active: v })} />
                       </Td>
-                      <Td className="tnum max-md:hidden text-xs text-muted">{user.last_login ? new Date(user.last_login).toLocaleString() : '—'}</Td>
+                      <Td className="tnum max-md:hidden whitespace-nowrap text-xs text-muted"><span title={formatDateTimeFull(user.last_login)}>{formatDateTime(user.last_login)}</span></Td>
                       <Td align="right">
                         <span className="inline-flex max-w-32 flex-wrap justify-end gap-1 sm:max-w-none">
                           <IconButton label={t('users.resetPassword')} onClick={() => setResetTarget(user)}><KeyRound size={15} /></IconButton>

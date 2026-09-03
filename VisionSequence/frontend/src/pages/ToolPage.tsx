@@ -40,11 +40,11 @@ function StatsRows({ stats }: { stats: NonNullable<NodeAnalysis['input']>['stats
   const { t } = useTranslation()
   if (!stats) return null
   return (
-    <dl className="grid grid-cols-2 gap-x-3 font-mono text-[11px]">
-      <DetailRow label={t('tool.stats.size')}>{stats.width}×{stats.height}</DetailRow>
-      <DetailRow label={t('tool.stats.mean')}>{fmtNum(stats.mean)}</DetailRow>
-      <DetailRow label={t('tool.stats.std')}>{fmtNum(stats.std)}</DetailRow>
-      <DetailRow label={t('tool.stats.range')}>{stats.min}–{stats.max}</DetailRow>
+    <dl className="grid grid-cols-1 gap-x-6 font-mono text-[11px] sm:grid-cols-2">
+      <DetailRow label={t('tool.stats.size')}><span className="whitespace-nowrap">{stats.width}×{stats.height}</span></DetailRow>
+      <DetailRow label={t('tool.stats.range')}><span className="whitespace-nowrap">{stats.min}–{stats.max}</span></DetailRow>
+      <DetailRow label={t('tool.stats.mean')}><span className="whitespace-nowrap">{stats.mean.toFixed(1)}</span></DetailRow>
+      <DetailRow label={t('tool.stats.std')}><span className="whitespace-nowrap">{stats.std.toFixed(1)}</span></DetailRow>
     </dl>
   )
 }

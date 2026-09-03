@@ -13,7 +13,7 @@ export function Table({ children, className = '' }: { children: ReactNode; class
 
 export function THead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b-2 border-line bg-surface">
+    <thead className="border-b border-line bg-surface-muted/50">
       <tr>{children}</tr>
     </thead>
   )

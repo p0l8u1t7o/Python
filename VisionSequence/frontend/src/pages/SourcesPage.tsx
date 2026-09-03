@@ -217,13 +217,13 @@ export function SourcesPage() {
         ) : (
           <Table>
             <THead>
-              <Th>{t('common.actions')}</Th>
               <Th>{t('common.name')}</Th>
               <Th className="max-lg:hidden">{t('common.group')}</Th>
               <Th>{t('sources.kind')}</Th>
               <Th className="max-xl:hidden">{t('sources.config')}</Th>
               <Th>{t('sources.status')}</Th>
               <Th align="center">{t('common.enabled')}</Th>
+              <Th align="right">{t('common.actions')}</Th>
             </THead>
             <TBody>
               {sources.data.items.length === 0 ? (
@@ -231,8 +231,14 @@ export function SourcesPage() {
               ) : (
                 sources.data.items.filter((s) => matchGroup(s, groupFilter)).map((s) => (
                   <Tr key={s.id}>
-                    <Td>
-                      <span className="inline-flex gap-1">
+                    <Td className="min-w-40 font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
+                    <Td className="max-lg:hidden">{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
+                    <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
+                    <Td className="max-xl:hidden"><span className="block max-w-xs truncate text-xs text-muted" title={JSON.stringify(s.config)}>{summarizeSourceConfig(s.kind, s.config)}</span></Td>
+                    <Td><SourceStatusCell status={s.status} /></Td>
+                    <Td align="center"><Switch checked={s.is_enabled} label={t('common.enabled')} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
+                    <Td align="right">
+                      <span className="inline-flex items-center justify-end gap-1">
                         {s.kind === 'upload' ? (
                           <label className="btn-icon cursor-pointer" title={t('common.upload')}>
                             <Upload size={15} />
@@ -241,15 +247,10 @@ export function SourcesPage() {
                         ) : null}
                         <IconButton label={t('sources.preview')} onClick={() => setPreview({ source: s, url: sourcePreviewUrl(s.id) })}><Eye size={15} /></IconButton>
                         <IconButton label={t('common.edit')} onClick={() => setEditing({ id: s.id, body: { name: s.name, kind: s.kind, config: { ...s.config }, is_enabled: s.is_enabled, group: s.group } })}><Pencil size={15} /></IconButton>
-                        <IconButton label={t('common.delete')} onClick={() => setPendingDelete(s)}><Trash2 size={15} className="text-critical" /></IconButton>
+                        <span className="mx-0.5 h-4 w-px bg-line" aria-hidden />
+                        <IconButton label={t('common.delete')} onClick={() => setPendingDelete(s)} className="hover:!bg-critical-soft hover:!text-critical"><Trash2 size={15} /></IconButton>
                       </span>
                     </Td>
-                    <Td className="min-w-40 font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
-                    <Td className="max-lg:hidden">{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
-                    <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
-                    <Td className="max-xl:hidden"><span className="block max-w-xs truncate text-xs text-muted" title={JSON.stringify(s.config)}>{summarizeSourceConfig(s.kind, s.config)}</span></Td>
-                    <Td><SourceStatusCell status={s.status} /></Td>
-                    <Td align="center"><Switch checked={s.is_enabled} label={t('common.enabled')} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
                   </Tr>
                 ))
               )}

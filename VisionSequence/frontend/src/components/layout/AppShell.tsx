@@ -10,7 +10,7 @@ import { Activity, Brain, Camera, ChevronRight, FlaskConical, HelpCircle, Images
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
-import { LoadingState } from '@/components/ui'
+import { BrandMark, LoadingState } from '@/components/ui'
 import { LockBanner } from '@/components/auth/LockBanner'
 import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
@@ -220,8 +220,8 @@ export function AppShell() {
           : `flex shrink-0 flex-col bg-sidebar text-sidebar-text transition-[width] duration-150 ${narrow ? 'w-[60px]' : 'w-[220px]'}`}
         data-testid="sidebar" data-collapsed={narrow ? 'true' : 'false'} data-mobile={mobile ? 'true' : 'false'} aria-hidden={mobile && !mobileOpen ? true : undefined}>
         <div className="flex h-12 items-center gap-2.5 border-b border-[var(--sidebar-line)] px-3.5" title={t('app.name')}>
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-brand)] text-sm font-bold text-white">VS</span>
-          {!narrow ? <span className="truncate text-[15px] font-semibold text-white">{t('app.name')}</span> : null}
+          <BrandMark size={30} />
+          {!narrow ? <span className="truncate text-[15px] font-semibold tracking-tight text-white">{t('app.name')}</span> : null}
         </div>
         {!narrow ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
         {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
@@ -264,7 +264,7 @@ export function AppShell() {
 export function Page({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="h-full overflow-y-auto">
-      <div className={`mx-auto px-5 py-5 ${wide ? '' : 'max-w-6xl'}`}>{children}</div>
+      <div className={`mx-auto px-5 pt-5 pb-24 ${wide ? '' : 'max-w-6xl'}`}>{children}</div>
     </div>
   )
 }

@@ -29,6 +29,7 @@ const zhHans = {
     golden: 'Golden Set',
   },
   auth: {
+    tagline: '画布式机器视觉检测平台',
     loginTitle: '登录',
     setupTitle: '创建第一个管理员',
     setupHint: '系统尚未有任何用户；请先创建管理员帐号，之后用它登录并添加其他用户。',

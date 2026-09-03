@@ -1,3 +1,4 @@
+export { BrandMark } from './BrandMark'
 export { Button, IconButton } from './Button'
 export { Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, Tile } from './Card'
 export { Badge, STATUS_TONE, StatusBadge } from './Badge'

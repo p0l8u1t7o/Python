@@ -42,12 +42,13 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
   })
 
-  it('SourcesPage lists sources with actions column first', async () => {
+  it('SourcesPage lists sources with actions column last (same as flows)', async () => {
     const { SourcesPage } = await import('@/pages/SourcesPage')
     renderPage(<SourcesPage />, { route: '/sources' })
     expect(await screen.findByText('範例：圓孔量測')).toBeInTheDocument()
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
-    expect(headers[0]).toBe('操作')
+    expect(headers[0]).toBe('名稱')
+    expect(headers[headers.length - 1]).toBe('操作')
   })
 
   it('SettingsPage and LoginPage render', async () => {
