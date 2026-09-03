@@ -3,16 +3,18 @@
  * 例「ROI01 是好品、ROI02 是壞品」）→ 描述檢測需求 → 生成流程並在每張影像實跑（overlay 疊圖、
  * 縮圖列標 OK/NG）→ 口語回饋微調 → 存成流程。右上「AI 供應商」可設定自己的供應商與金鑰。
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Bot, HelpCircle, Loader2, Plus, Save, Settings2, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 
+import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Page } from '@/components/layout/AppShell'
 import { TemplateThumb } from '@/components/templates/TemplateGallery'
 import { Badge, Button, Card, Modal, PageHeader, Select, TextArea, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
+import { useAgentJob } from '@/lib/agentJob'
 import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import type { FlowGraph, Overlay, Region, RunReport } from '@/lib/types'
@@ -46,6 +48,8 @@ interface ClarifyResult {
   summary: string
   intent: string
   provider: string
+  /** 代理模式背景工作提出的問題（回答走 /jobs/{id}/answer） */
+  fromJob?: boolean
 }
 
 interface Candidate {
@@ -83,6 +87,7 @@ interface AgentInfo {
   llm: boolean
   has_key: boolean
   base_url?: string
+  mode?: string
   key_hint: string
   source: string
   reason: string
@@ -123,6 +128,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
+  const [mode, setMode] = useState('')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string } | null>(null)
@@ -161,7 +167,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   async function save(clearKey = false) {
     setSaving(true)
     try {
-      await api.patch('/vision/agent/settings', { provider: effProvider, model: model || undefined, api_key: apiKey || undefined, base_url: baseUrl || undefined, clear_key: clearKey })
+      await api.patch('/vision/agent/settings', { provider: effProvider, model: model || undefined, api_key: apiKey || undefined, base_url: baseUrl || undefined, mode: mode || undefined, clear_key: clearKey })
       await client.invalidateQueries({ queryKey: ['agent-info'] })
       await client.invalidateQueries({ queryKey: ['agent-settings'] })
       setApiKey('')
@@ -207,6 +213,11 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
                   ) : <p className="text-[11px] text-subtle">{t('agent.noModels')}</p>
                 ) : <p className="text-[11px] text-critical">{models.reason}</p>
               ) : null}
+            </div>
+            <div className="space-y-1">
+              <Select label={t('agent.mode')} value={mode || current?.mode || 'single'} onChange={(e) => setMode(e.target.value)}
+                options={[{ value: 'single', label: t('agent.modeSingle') }, { value: 'agentic', label: t('agent.modeAgentic') }]} data-testid="agent-mode" />
+              <p className="text-[11px] text-subtle">{t('agent.modeHint')}</p>
             </div>
             <div className="space-y-1">
               <TextInput label={t('agent.apiKey')} type="password" placeholder={current?.has_key ? t('agent.keySet', { hint: current.key_hint }) : 'sk-…'} value={apiKey} onChange={(e) => setApiKey(e.target.value)} data-testid="agent-key" />
@@ -280,6 +291,9 @@ export function AgentPage() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<AgentInfo>('/vision/agent/info') })
+  /** 代理模式：生成走背景工作＋步驟時間軸 */
+  const jobApi = useAgentJob<AgentResult>()
+  const agentic = Boolean(info.data?.llm && info.data?.mode === 'agentic')
 
   const image = images[active] ?? null
   const activeReport = result?.reports[active] ?? null
@@ -353,8 +367,38 @@ export function AgentPage() {
   }, [rois, drawing, images, prompt, active, labels])
 
   function abort() {
+    if (jobApi.running) {
+      void jobApi.cancel()
+      return
+    }
     abortRef.current?.abort()
   }
+
+  // 背景工作狀態變化 → 結果／提問／取消／失敗
+  const jobStatus = jobApi.job?.status
+  const jobId = jobApi.job?.id
+  useEffect(() => {
+    const j = jobApi.job
+    if (!j || j.status === 'running') return
+    if (j.status === 'done' || j.status === 'budget') {
+      if (j.result) {
+        setResult(j.result)
+        setActive((a) => Math.min(j.result?.main_image ?? a, Math.max(0, images.length - 1)))
+        setFeedback('')
+      }
+      setBusy(null)
+    } else if (j.status === 'needs_input') {
+      setClarify({ ready: false, questions: j.questions, summary: '', intent: '', provider: j.provider, fromJob: true })
+      setBusy(null)
+    } else if (j.status === 'cancelled') {
+      toast.success(t('agent.aborted'))
+      setBusy(null)
+    } else if (j.status === 'error') {
+      toast.error(j.error || t('agent.jobStatus.error'))
+      setBusy(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus, jobId])
 
   function newController(kind: BusyKind) {
     const controller = new AbortController()
@@ -395,6 +439,18 @@ export function AgentPage() {
     const filled = { ...answers }
     for (const q of clarify?.questions ?? []) if (!(q.id in filled)) filled[q.id] = ''
     setAnswers(filled)
+    if (clarify?.fromJob) {
+      const list = clarify.questions.map((q) => ({ id: q.id, answer: filled[q.id] ?? '' }))
+      setClarify(null)
+      setBusy('generate')
+      try {
+        await jobApi.answer(list)
+      } catch (error) {
+        toast.error(errorMessage(error))
+        setBusy(null)
+      }
+      return
+    }
     setClarify(null)
     const controller = newController('clarify')
     try {
@@ -412,6 +468,17 @@ export function AgentPage() {
 
   /** 第二階段：真的生成（帶問答）。 */
   async function runGenerate(list: { id: string; answer: string }[] = answerList) {
+    if (agentic) {
+      setBusy('generate')
+      setClarify(null)
+      try {
+        await jobApi.start({ ...payload, task: 'generate', answers: list })
+      } catch (error) {
+        toast.error(errorMessage(error))
+        setBusy(null)
+      }
+      return
+    }
     const controller = newController('generate')
     try {
       const r = await api.post<AgentResult>('/vision/agent/generate', { ...payload, answers: list }, undefined, controller.signal)
@@ -486,7 +553,7 @@ export function AgentPage() {
             <>
               {info.data ? (
                 <Badge tone={info.data.llm ? 'brand' : 'neutral'} >
-                  <Bot size={12} /> {info.data.llm ? t('agent.providerLlm', { model: info.data.model }) : t('agent.providerRules')}
+                  <Bot size={12} /> {info.data.llm ? t('agent.providerLlm', { model: info.data.model }) : t('agent.providerRules')}{agentic ? ` · ${t('agent.modeAgentic')}` : ''}
                 </Badge>
               ) : null}
               <Button size="sm" icon={<BookOpen size={14} />} onClick={() => setSkillsOpen(true)} data-testid="agent-skills">{t('agent.skills')}</Button>
@@ -562,7 +629,7 @@ export function AgentPage() {
               </div>
               {busy === 'clarify' || busy === 'generate' ? (
                 <div className="flex gap-2">
-                  <span className="flex flex-1 items-center gap-2 rounded-md border border-line px-3 text-xs text-muted"><Loader2 size={14} className="animate-spin" /> {busy === 'clarify' ? t('agent.clarifying') : t('agent.thinking')}</span>
+                  <span className="flex flex-1 items-center gap-2 rounded-md border border-line px-3 text-xs text-muted"><Loader2 size={14} className="animate-spin" /> {busy === 'clarify' ? t('agent.clarifying') : jobApi.running ? t('agent.jobRunning') : t('agent.thinking')}</span>
                   <Button variant="danger" icon={<Square size={14} />} onClick={abort} data-testid="agent-abort">{t('agent.abort')}</Button>
                 </div>
               ) : (
@@ -573,6 +640,12 @@ export function AgentPage() {
               )}
               {answerList.length && !clarify ? <p className="text-[11px] text-subtle">{t('agent.answersKept', { count: answerList.length })} <button type="button" className="underline" onClick={() => setAnswers({})}>{t('common.clear')}</button></p> : null}
             </Card>
+
+            {jobApi.job ? (
+              <Card className="space-y-2 p-3" data-testid="agent-job">
+                <AgentTimeline job={jobApi.job} steps={jobApi.steps} onCancel={abort} />
+              </Card>
+            ) : null}
 
             {clarify && !clarify.ready ? (
               <Card className="space-y-3 border-brand/40 p-3" data-testid="agent-clarify">
@@ -604,7 +677,7 @@ export function AgentPage() {
                 ))}
                 <div className="flex gap-2">
                   <Button variant="primary" className="flex-1 !justify-center" disabled={busy !== null} onClick={() => void continueClarify()} data-testid="agent-clarify-continue">{t('agent.continue')}</Button>
-                  <Button disabled={busy !== null} onClick={() => { setClarify(null); void generate(true) }} data-testid="agent-clarify-skip">{t('agent.skipQuestions')}</Button>
+                  <Button disabled={busy !== null} onClick={() => { if (clarify.fromJob) { setClarify(null); setBusy('generate'); void jobApi.answer([]) } else { setClarify(null); void generate(true) } }} data-testid="agent-clarify-skip">{t('agent.skipQuestions')}</Button>
                 </div>
               </Card>
             ) : null}

@@ -11,6 +11,8 @@ POST  /vision/agent/refine     {images, prompt, regions, graph, feedback} → �
 POST  /vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
 POST  /vision/agent/run        {images, graph, main?} → {graph, report, reports, main_image}（切換候選方案）
 POST  /vision/agent/autotune   {graph, runs:[{name, image_ref, status, expected}], max_evals?, deadline_s?} → 同 tune ＋ autotune 摘要
+POST  /vision/agent/jobs       代理模式背景工作 {task, images, prompt, regions, answers, labels, graph?, instruction?, runs?} → 202 {id, status, steps…}
+GET   /vision/agent/jobs[/{id}?step_from=]、POST /jobs/{id}/cancel、POST /jobs/{id}/answer {answers}
 POST  /vision/agent/tune       {graph, instruction, runs:[{name, image_ref, status, outputs}]} → 前後對比
 
 生成／微調都會在上傳影像上實跑一遍（report 內含各節點影像 ref，前端直接顯示）。
@@ -28,7 +30,7 @@ from ninja import File, Router, Schema, UploadedFile
 from apps.accounts.models import UserPref
 from apps.accounts.security import principal
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.agent import providers, service, skills
+from apps.vision.agent import jobs, loop, providers, service, skills
 from apps.vision.api import _decode_upload
 from apps.vision.images import store
 
@@ -101,7 +103,23 @@ class SettingsIn(Schema):
     api_key: str | None = None
     #: openai_compatible 的端點（例如 http://127.0.0.1:11434/v1）。
     base_url: str | None = None
+    #: single | agentic。
+    mode: str | None = None
     clear_key: bool = False
+
+
+class JobIn(GenerateIn):
+    task: str = "generate"
+    graph: dict[str, Any] | None = None
+    instruction: str = ""
+    runs: list["RunIn"] = []
+    max_turns: int = 12
+    max_trials: int = 8
+    deadline_s: float = 240.0
+
+
+class AnswerIn(Schema):
+    answers: list[dict[str, Any]] = []
 
 
 def _settings_for(request: HttpRequest) -> providers.AgentSettings:
@@ -138,6 +156,10 @@ def patch_agent_settings(request: HttpRequest, payload: SettingsIn):
         data["model"] = payload.model.strip()
     if payload.base_url is not None:
         data["base_url"] = payload.base_url.strip()
+    if payload.mode is not None:
+        if payload.mode not in providers.MODES:
+            raise ValidationError(f"未知的模式 '{payload.mode}'", code="bad_mode", details={"available": list(providers.MODES)})
+        data["mode"] = payload.mode
     if payload.clear_key:
         data["api_key"] = ""
     elif payload.api_key:
@@ -250,6 +272,49 @@ def agent_edit(request: HttpRequest, payload: EditIn):
         raise ValidationError("指令不能是空的", code="empty_instruction")
     image = store.get(payload.image_ref) if payload.image_ref else None
     return service.edit(payload.graph, payload.instruction, image, _settings_for(request))
+
+
+@router.post("/agent/jobs", response={202: dict})
+def start_agent_job(request: HttpRequest, payload: JobIn):
+    """代理模式背景工作：generate（影像＋ROI＋需求）、edit（graph＋指令＋影像 ref）、tune（graph＋指令＋批次列）。
+    沒有 LLM 時工作仍會建立並立即以規則引擎完成。"""
+    principal(request).can_execute()
+    settings = _settings_for(request)
+    images = _images(payload) if (payload.images or payload.ref) else []
+    if payload.task == "generate" and not images:
+        raise ValidationError("至少要一張影像", code="no_image")
+    if payload.task in ("edit", "tune") and (payload.graph is None or not payload.instruction.strip()):
+        raise ValidationError("edit／tune 需要 graph 與 instruction", code="bad_request")
+    runs = [r.dict() for r in payload.runs]
+    run_images = {r["image_ref"]: store.get(r["image_ref"]) for r in runs if r.get("image_ref")}
+    run_images = {k: v for k, v in run_images.items() if v is not None}
+    if payload.task == "tune" and not images:
+        images = list(run_images.values())[:4]
+    state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=payload.labels,
+                                graph=payload.graph, instruction=payload.instruction, runs=runs)
+    budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
+    return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images)
+
+
+@router.get("/agent/jobs")
+def list_agent_jobs(request: HttpRequest):
+    return {"items": jobs.list_jobs()}
+
+
+@router.get("/agent/jobs/{job_id}")
+def get_agent_job(request: HttpRequest, job_id: str, step_from: int = 0):
+    return jobs.get(job_id, step_from)
+
+
+@router.post("/agent/jobs/{job_id}/cancel")
+def cancel_agent_job(request: HttpRequest, job_id: str):
+    return {"cancelled": jobs.cancel(job_id)}
+
+
+@router.post("/agent/jobs/{job_id}/answer")
+def answer_agent_job(request: HttpRequest, job_id: str, payload: AnswerIn):
+    principal(request).can_execute()
+    return jobs.answer(job_id, payload.answers)
 
 
 @router.post("/agent/tune")

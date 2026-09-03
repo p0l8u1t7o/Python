@@ -152,6 +152,7 @@ VISION = {
     "AGENT_MODEL": _env("VISION_AGENT_MODEL", ""),  # 空＝各供應商預設（claude-opus-5 / gpt-4o / gemini-3.6-flash）
     "AGENT_BASE_URL": _env("VISION_AGENT_BASE_URL", ""),  # openai_compatible 本地端點，例如 http://127.0.0.1:11434/v1
     "AGENT_TIMEOUT_S": _env("VISION_AGENT_TIMEOUT_S", "120"),  # LLM 生成逾時（秒）；本地模型慢可拉長
+    "AGENT_MODE": _env("VISION_AGENT_MODE", "single"),  # single（一次生成）| agentic（代理迴圈：試跑→修→驗證，背景工作＋步驟時間軸）
 }
 VISION["ASSET_DIR"].mkdir(parents=True, exist_ok=True)
 

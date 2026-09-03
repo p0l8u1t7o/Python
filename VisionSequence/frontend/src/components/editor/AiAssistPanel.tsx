@@ -3,12 +3,14 @@
  * 送 POST /vision/agent/edit（帶目前畫布 graph 與最近一次影像 ref 供試跑），回來的 graph 由使用者按「套用」寫回畫布。
  * 沒接 LLM 時走離線指令解析（支援的句型見面板提示）。
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { Bot, Check, Loader2, Send, Square } from 'lucide-react'
 
+import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button, StatusBadge } from '@/components/ui'
+import { useAgentJob } from '@/lib/agentJob'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import type { FlowGraph, RunReport } from '@/lib/types'
@@ -41,15 +43,40 @@ export interface AiAssistPanelProps {
 export function AiAssistPanel({ graph, imageRef, onApply, execLocked }: AiAssistPanelProps) {
   const { t } = useTranslation()
   const toast = useToast()
-  const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<{ llm: boolean; provider: string; model: string }>('/vision/agent/info') })
+  const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<{ llm: boolean; provider: string; model: string; mode?: string }>('/vision/agent/info') })
+  const jobs = useAgentJob<EditResult>()
+  const agentic = Boolean(info.data?.llm && info.data?.mode === 'agentic')
   const [turns, setTurns] = useState<Turn[]>([])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   function abort() {
+    if (jobs.running) {
+      void jobs.cancel()
+      return
+    }
     abortRef.current?.abort()
   }
+
+  // 背景工作結束 → 助手回合
+  const jobStatus = jobs.job?.status
+  const jobId = jobs.job?.id
+  useEffect(() => {
+    const j = jobs.job
+    if (!j || j.status === 'running') return
+    if (j.status === 'done' || j.status === 'budget') {
+      if (j.result) setTurns((list) => [...list, { role: 'assistant', text: j.result!.rationale, result: j.result! }])
+    } else if (j.status === 'needs_input') {
+      setTurns((list) => [...list, { role: 'assistant', text: t('agent.jobAnswerHint', { text: j.questions.map((q) => q.text).join('；') }) }])
+    } else if (j.status === 'cancelled') {
+      setTurns((list) => [...list, { role: 'assistant', text: t('agent.aborted') }])
+    } else if (j.status === 'error') {
+      setTurns((list) => [...list, { role: 'assistant', text: j.error || t('agent.jobStatus.error') }])
+    }
+    setBusy(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus, jobId])
 
   async function send() {
     const instruction = text.trim()
@@ -57,6 +84,26 @@ export function AiAssistPanel({ graph, imageRef, onApply, execLocked }: AiAssist
     setTurns((list) => [...list, { role: 'user', text: instruction }])
     setText('')
     setBusy(true)
+    if (jobs.waiting && jobs.job) {
+      const qs = jobs.job.questions
+      try {
+        await jobs.answer(qs.map((q, i) => ({ id: q.id, answer: i === 0 ? instruction : '' })))
+      } catch (error) {
+        toast.error(errorMessage(error))
+        setBusy(false)
+      }
+      return
+    }
+    if (agentic) {
+      try {
+        await jobs.start({ task: 'edit', graph: graph(), instruction, images: imageRef ? [imageRef] : [] })
+      } catch (error) {
+        toast.error(errorMessage(error))
+        setTurns((list) => [...list, { role: 'assistant', text: errorMessage(error) }])
+        setBusy(false)
+      }
+      return
+    }
     const controller = new AbortController()
     abortRef.current = controller
     try {
@@ -107,7 +154,10 @@ export function AiAssistPanel({ graph, imageRef, onApply, execLocked }: AiAssist
             ) : null}
           </div>
         ))}
-        {busy ? (
+        {jobs.job && (jobs.running || jobs.waiting) ? (
+          <div className="rounded-lg border border-line p-2"><AgentTimeline job={jobs.job} steps={jobs.steps} onCancel={abort} /></div>
+        ) : null}
+        {busy && !jobs.running ? (
           <p className="flex items-center gap-2 text-subtle">
             <Loader2 size={12} className="animate-spin" /> {t('agent.thinking')}
             <button type="button" onClick={abort} className="inline-flex items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[11px] text-critical hover:bg-surface-muted" data-testid="ai-abort"><Square size={10} /> {t('agent.abort')}</button>

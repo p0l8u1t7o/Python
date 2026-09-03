@@ -80,6 +80,11 @@ def design_text() -> str:
 
 
 @lru_cache(maxsize=1)
+def agentic_text() -> str:
+    return (SKILL_DIR / "agentic.md").read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
 def curated_notes() -> dict[str, str]:
     """tools.md 的 `## <type>` 分段 → {type: 要領文字}。"""
     text = (SKILL_DIR / "tools.md").read_text(encoding="utf-8")
@@ -150,6 +155,7 @@ def list_skills() -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = [
         {"key": "platform", "label": "平台規則", "category": "guide", "curated": True},
         {"key": "design", "label": "流程設計原則", "category": "guide", "curated": True},
+        {"key": "agentic", "label": "代理工作方式", "category": "guide", "curated": True},
     ]
     for t in sorted(tools.all_types(), key=lambda x: (x.category, x.key)):
         items.append({"key": t.key, "label": t.label, "category": t.category, "curated": t.key in notes})
@@ -162,6 +168,8 @@ def skill_text(key: str) -> str:
         return platform_text()
     if key == "design":
         return design_text()
+    if key == "agentic":
+        return agentic_text()
     return tool_skill(key)
 
 
@@ -216,6 +224,17 @@ def build_system() -> str:
         "# 工具目錄（精簡；本次相關工具的完整參數與要領會附在使用者訊息裡）\n\n" + brief_catalogue(),
         "# 輸出\n\n只輸出一個 JSON 物件，不要任何其他文字或 markdown 圍欄：\n"
         '{"graph": {...}, "rationale": "繁體中文說明（生成理由／改了什麼）"}',
+    ])
+
+
+@lru_cache(maxsize=1)
+def build_system_agentic() -> str:
+    """代理模式的 system 段：平台規則＋設計原則＋代理工作方式＋精簡目錄（不含單次 JSON 輸出格式）。"""
+    return "\n\n".join([
+        platform_text().strip(),
+        design_text().strip(),
+        agentic_text().strip(),
+        "# 工具目錄（精簡；用 get_tool_skill 讀完整參數與要領）\n\n" + brief_catalogue(),
     ])
 
 

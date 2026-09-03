@@ -20,7 +20,7 @@ from django.conf import settings as dj_settings
 from apps.vision import engine
 from apps.vision.agent import analysis as analysis_mod
 from apps.vision.agent import clarify as clarify_mod
-from apps.vision.agent import autotune, intents, llm, providers, synth
+from apps.vision.agent import actions, autotune, intents, llm, providers, synth
 from apps.vision.graph import compile_graph, validate_graph
 from apps.vision.images import store
 from apps.vision.models import Asset
@@ -515,3 +515,27 @@ def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], im
     items = _rerun_items(new_graph, runs, images)
     return {"graph": new_graph, "rationale": rationale, "provider": provider, "changes": changes,
             "before": _tally([r.get("status", "") for r in runs]), "after": _tally([it["after"] for it in items]), "items": items, "applied": True}
+
+
+
+# ---------------------------------------------------------------------------
+# 代理模式：組工作階段狀態（給 jobs／loop）
+# ---------------------------------------------------------------------------
+def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str, *,
+                answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None,
+                graph: dict[str, Any] | None = None, instruction: str = "", runs: list[dict[str, Any]] | None = None) -> actions.AgentState:
+    """代理迴圈的初始狀態：分析、意圖、期望標記、make_asset；edit／tune 帶既有 graph 與指令。"""
+    text = effective_prompt(prompt, answers)
+    feats = analysis_mod.analyze(images, regions) if images else None
+    intent = intents.parse(text, regions, feats) if feats else intents.Intent()
+    state = actions.AgentState(
+        task=task, images=images, regions=regions, prompt=text, analysis=feats, intent=intent,
+        expected=expected_labels(regions, labels, len(images)), make_asset=_make_asset_factory(images) if images else None,
+        graph=validate_graph(graph) if graph else None, feedback=instruction, answers=list(answers or []),
+        batch_summary=_batch_summary(runs) if runs else "",
+    )
+    return state
+
+
+def agentic(settings: providers.AgentSettings) -> bool:
+    return settings.mode == "agentic" and providers.available(settings)

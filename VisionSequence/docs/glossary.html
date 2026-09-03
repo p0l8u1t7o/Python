@@ -138,6 +138,8 @@
 <tr><td>範本庫</td><td>Template library（FlowTemplate）</td><td>流程範本：內建（<code>builtin:&lt;key&gt;</code>）或自訂（存為範本）；來源 id 以 <code>{SOURCE}</code> 佔位，建立／載入時再選影像來源</td></tr>
 <tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名；範例樣板（<code>demo.BUILTIN_TEMPLATES</code>）都在這裡，配「範例：⋯」樣本來源即可執行</td></tr>
 <tr><td>註解</td><td>Note（畫布便利貼）</td><td>graph 的裝飾節點（type=note，不參與執行）；工具箱「新增註解」放到畫布中央，選中後在屬性面板改標題／內文、拖角落調大小</td></tr>
+<tr><td>代理模式</td><td>Agentic mode（<code>AgentSettings.mode</code>、<code>/agent/jobs</code>、AgentTimeline）</td><td>AI 助手以動作（試跑、修改、驗證、提問）逐步完成流程的背景工作，前端顯示步驟時間軸；相對於「單次生成」</td></tr>
+<tr><td>步驟時間軸</td><td>Step timeline（<code>AgentTimeline</code>、job.steps）</td><td>代理工作的每個動作／回覆／提問／完成記錄，含摘要與耗時；執行中可中斷</td></tr>
 <tr><td>候選方案</td><td>Candidate（<code>synth.candidates</code>、<code>candidates[]</code>）</td><td>AI 助手規則引擎對同一意圖產出的主要方案＋參數變體；全部試跑後依影像標記打分，勝者正式跑，可在助手頁切換</td></tr>
 <tr><td>影像標記</td><td>Image label（<code>GenerateIn.labels</code>、縮圖右下角 OK／NG）</td><td>每張上傳影像的期望判定；候選排名與自動調參的依據，ROI 提示「好品／壞品」亦自動成為標記</td></tr>
 <tr><td>自動調參</td><td>Autotune（<code>apps/vision/agent/autotune.py</code>、<code>/agent/autotune</code>、<code>/golden/autotune</code>）</td><td>資料驅動的座標下降：只動 teach 參數、嚴格變好才採納；入口為 AI 助手生成、批次測試「自動調參」、Golden Set「自動調參」</td></tr>

@@ -3,12 +3,15 @@
  * 顯示摘要（OK/NG/失敗、良率、平均／最大 ms）與結果表；可篩選、匯出 CSV、點某列在影像視窗檢視該次 run。
  * 影像 ref 受 KEEP_RUN_IMAGES=8 限制，被淘汰的顯示「影像已釋放」。
  */
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { Check, Download, Eye, FolderOpen, Gem, ImageOff, Play, Sparkles, Wand2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button, Checkbox, Modal, SegmentedControl, Select, StatusBadge, TextInput } from '@/components/ui'
+import { useAgentJob } from '@/lib/agentJob'
 import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useBatchFromSource, useBatchTest, useGoldenMutations, useSources } from '@/lib/queries'
@@ -94,6 +97,20 @@ export function BatchTestModal(p: BatchTestModalProps) {
   const tuneAbort = useRef<AbortController | null>(null)
   /** 每列的期望判定（run_id → ok/ng）：自動調參與「請 AI 調整」的依據 */
   const [expected, setExpected] = useState<Record<string, ExpectStatus | ''>>({})
+  /** 代理模式：請 AI 調整走背景工作 */
+  const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<{ llm: boolean; mode?: string }>('/vision/agent/info'), enabled: p.open })
+  const jobsApi = useAgentJob<TuneResult>()
+  const agentic = Boolean(info.data?.llm && info.data?.mode === 'agentic')
+  const jobStatus = jobsApi.job?.status
+  const jobId = jobsApi.job?.id
+  useEffect(() => {
+    const j = jobsApi.job
+    if (!j || j.status === 'running') return
+    if ((j.status === 'done' || j.status === 'budget') && j.result) setTuneResult(j.result)
+    else if (j.status === 'error') toast.error(j.error || t('agent.jobStatus.error'))
+    setTuning(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus, jobId])
 
   function runsPayload() {
     return (result?.items ?? []).map((it) => ({ name: it.name, image_ref: it.image_ref ?? '', status: it.status, outputs: it.outputs, expected: expected[it.run_id] ?? '' }))
@@ -116,7 +133,29 @@ export function BatchTestModal(p: BatchTestModalProps) {
 
   async function tune() {
     if (!result || !tuneText.trim()) return
-    await callTune('/vision/agent/tune', { graph: p.graph(), instruction: tuneText.trim(), runs: runsPayload() })
+    const instruction = tuneText.trim()
+    if (jobsApi.waiting && jobsApi.job) {
+      setTuning(true)
+      setTuneText('')
+      try {
+        await jobsApi.answer(jobsApi.job.questions.map((q, i) => ({ id: q.id, answer: i === 0 ? instruction : '' })))
+      } catch (error) {
+        toast.error(errorMessage(error))
+        setTuning(false)
+      }
+      return
+    }
+    if (agentic) {
+      setTuning(true)
+      try {
+        await jobsApi.start({ task: 'tune', graph: p.graph(), instruction, runs: runsPayload() })
+      } catch (error) {
+        toast.error(errorMessage(error))
+        setTuning(false)
+      }
+      return
+    }
+    await callTune('/vision/agent/tune', { graph: p.graph(), instruction, runs: runsPayload() })
   }
 
   /** 資料驅動自動調參：只用有填期望且影像仍在快取的列。 */
@@ -321,7 +360,7 @@ export function BatchTestModal(p: BatchTestModalProps) {
                 <input className="input flex-1 !py-1.5 text-xs" placeholder={t('agent.tunePlaceholder')} value={tuneText}
                   onChange={(e) => setTuneText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void tune() }} data-testid="batch-tune-input" />
                 {tuning ? (
-                  <Button size="sm" variant="danger" onClick={() => tuneAbort.current?.abort()} data-testid="batch-tune-abort">{t('agent.abort')}</Button>
+                  <Button size="sm" variant="danger" onClick={() => { if (jobsApi.running) void jobsApi.cancel(); else tuneAbort.current?.abort() }} data-testid="batch-tune-abort">{t('agent.abort')}</Button>
                 ) : (
                   <>
                     <Button size="sm" variant="primary" disabled={!tuneText.trim() || p.execLocked} onClick={() => void tune()} data-testid="batch-tune-run">{t('agent.tune')}</Button>
@@ -329,6 +368,8 @@ export function BatchTestModal(p: BatchTestModalProps) {
                   </>
                 )}
               </div>
+              {jobsApi.job && (jobsApi.running || jobsApi.waiting) ? <AgentTimeline job={jobsApi.job} steps={jobsApi.steps} onCancel={() => void jobsApi.cancel()} /> : null}
+              {jobsApi.waiting ? <p className="text-[11px] text-warning">{t('agent.jobAnswerHint', { text: jobsApi.job?.questions.map((q) => q.text).join('；') ?? '' })}</p> : null}
               {tuneResult ? (
                 <div className="space-y-1.5 text-xs">
                   <p className="text-muted">{tuneResult.rationale}</p>

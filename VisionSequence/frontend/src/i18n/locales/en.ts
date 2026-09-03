@@ -573,7 +573,12 @@ const en = {
     skillsGuide: 'Guide', skillsCurated: 'curated',
     labelHint: 'Click the tag at the bottom-right of a thumbnail to mark that image as expected OK or NG; the assistant ranks candidate flows by the marks and auto-tunes.', labelNone: 'Mark',
     candidates: 'Candidate flows (click to switch and re-run on the same images)', autotuned: 'Auto-tune: marks hit {{before}} → {{after}}/{{total}} ({{ms}} ms)',
-    autotune: 'Auto-tune', autotuneHint: 'Search the teach parameters using the OK/NG expectations filled per row (tolerances and expected counts untouched)', autotuneNoLabels: 'Fill an OK/NG expectation for at least one row first' },
+    autotune: 'Auto-tune', autotuneHint: 'Search the teach parameters using the OK/NG expectations filled per row (tolerances and expected counts untouched)', autotuneNoLabels: 'Fill an OK/NG expectation for at least one row first',
+    mode: 'Working mode', modeSingle: 'Single-shot', modeAgentic: 'Agentic (trial → patch → verify)',
+    modeHint: 'Agentic mode: the AI drafts, trial-runs, patches and verifies the flow step by step in the background, with a step timeline and cancel; requires an LLM provider.',
+    jobTitle: 'Agent steps', jobStatus: { running: 'running', done: 'done', needs_input: 'waiting for answer', budget: 'budget exhausted', cancelled: 'cancelled', error: 'failed' },
+    jobProgress: 'turn {{turns}}/{{maxTurns}} · trials {{trials}}/{{maxTrials}}', jobRunning: 'Agentic run in progress (cancel from the timeline)…', jobWaiting: 'Waiting for the model…',
+    jobAnswerHint: 'The assistant is waiting for your answer: {{text}}. Type the answer below and send.' },
   palette: {
     addTool: 'Add tool',
     pickerTitle: 'Pick a tool',

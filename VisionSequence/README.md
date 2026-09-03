@@ -91,6 +91,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 兩層供應器：離線規則引擎（15 種意圖封閉集合＋合成器＋特徵驅動參數）；可選 LLM（Claude／GPT／Gemini／OpenAI 相容本地端點，每位使用者自己的金鑰只存伺服器），失敗自動落回規則並在 warnings 說明原因。
 - **候選方案與自動調參**：規則引擎每次產主要方案＋參數變體，全部在上傳影像上試跑後依「影像標記」（縮圖 OK／NG 或 ROI 提示好品／壞品）打分擇優，可點選切換；有標記時再做小預算自動調參（只動現場調機參數，嚴格變好才採納）。
 - **定位補正**：ROI 提示填「定位」或提示詞說位置會變，流程前自動包「範本比對 → 定位補正 → ROI 跟隨」；新增印字有無、兩孔中心距、圖案有無三種意圖。
+- **代理模式**（工作模式選「代理模式」）：AI 以動作逐步起草、試跑、修改、驗證流程（背景工作＋步驟時間軸，可中斷、可回答提問後續跑），Claude／GPT／Gemini／本地相容端點皆可；預算用完以目前流程為結果，失敗自動退回單次生成與規則引擎。
 - 評測基準 `manage.py agent_bench`（21 個離線案例：意圖／判定／有效率），`tests/test_agent_bench.py` 守門檻。
 - 編輯器右側「AI」分頁可用一句話修改目前流程；批次測試後可請 AI 依結果調整；所有助手呼叫皆可中斷。
 - AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/agent.html`。
@@ -175,7 +176,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/vision/tools/builtin/*.py` | 內建工具依類別分檔（source／preprocess／locate／measure／detect／logic／output／dl／modbus） |
 | `apps/vision/sources/grabbers.py` | 影像來源：folder／file／usb／upload／synthetic／外掛 |
 | `apps/vision/dl/` | Trainer registry（`base.py`）、內建 trainer、訓練 job、裝置／provider、SAM、YOLO 互轉、ONNX 輸出 |
-| `apps/vision/agent/` | `analysis`／`intents`／`clarify`／`synth`（含候選方案、定位包裝）／`autotune`／`bench`／`llm`／`providers`／`skills`／`service`／`api`＋`skills/*.md` |
+| `apps/vision/agent/` | `analysis`／`intents`／`clarify`／`synth`（含候選方案、定位包裝）／`autotune`／`bench`／`llm`／`providers`（含工具呼叫 shim）／`actions`／`loop`／`jobs`（代理模式）／`skills`／`service`／`api`＋`skills/*.md` |
 | `apps/vision/demo.py`、`demo_images.py` | 範例樣板（`BUILTIN_TEMPLATES`）、合成樣本圖、`seed_demo` |
 | `apps/comm/` | 連線模型與 Writer（Modbus TCP／TCP 文字／模擬 DIO／外掛） |
 | `apps/golden/` | Golden 案例、基準、回歸 |
@@ -232,7 +233,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
-| AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/skills`；`/flows/{id}/golden/autotune` |
+| AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/skills`；`/flows/{id}/golden/autotune` |
 | 整合 | `/vision/integration/info`、`/integration/tcp`、`/vision/connections` |
 
 執行類端點（run／preview／continuous／agent）在引擎鎖定時回 423；修改類端點要求擁有者或管理員。
@@ -278,7 +279,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | `VISION_KEEP_RUN_IMAGES`、`VISION_IMAGE_CACHE_MB`、`VISION_PERSIST_RUNS`、`VISION_KEEP_RUN_ROWS` | 影像快取與執行紀錄 |
 | `VISION_PLUGIN_DIR`、`VISION_TOOL_PLUGINS`、`VISION_SOURCE_PLUGINS`、`VISION_COMM_PLUGINS` | 外掛 |
 | `VISION_API_KEY`、`VISION_STATION_ID`、`VISION_TCP_HOST/PORT` | 整合方金鑰、站台識別、TCP 介面 |
-| `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點） |
+| `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S`、`VISION_AGENT_MODE` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點；`MODE`＝single／agentic） |
 | `CORS_ALLOWED_ORIGINS` | 前端獨立部署時允許的來源 |
 
 前端：`VITE_API_BASE_URL`（build 時設定，獨立部署用）、`VITE_PROXY_TARGET`（dev 代理目標）。
@@ -328,7 +329,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/automation.html`、`docs/modbus.html` | HTTP／TCP／SSE 整合、引擎鎖定；Modbus 主動輸出 |
 | `docs/vision-capabilities.html` | ROI 種類、位深設計、檢測工具總覽 |
 | `docs/samples.html` | 範例樣板與合成樣本圖 |
-| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、編輯器 AI、批次調參、候選方案與自動調參、定位補正、評測基準、技能、架構 |
+| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、編輯器 AI、批次調參、候選方案與自動調參、定位補正、代理模式、評測基準、技能、架構 |
 | `docs/dl.html` | 深度學習教導 |
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
