@@ -1189,7 +1189,7 @@ const zhHant = {
   assistant: {
     title: 'AI 助手', clear: '清除對話', send: '送出', placeholder: '詢問平台使用方式，或在編輯器／批次頁下達修改指令…', thinking: '助手思考中…',
     empty: '此助手在任何頁面都可開啟：詢問平台使用問題會依文件回答並附參考連結；在流程編輯器可直接請助手修改目前流程；在批次測試頁可依資料諮詢或調整參數。',
-    sources: '參考文件', applyNeedsEditor: '請回到該流程的編輯器再套用此修改',
+    sources: '參考文件', applyNeedsEditor: '請回到該流程的編輯器再套用此修改', agentic: '代理',
     mode: { auto: '自動', help: '使用說明', edit: '修改流程', consult: '資料諮詢', tune: '依資料調整' },
     ctx: { flow_editor: '流程編輯器', tool: '工具頁', batch: '批次測試', golden: 'Golden Set', agent: 'AI 助手頁', dl: '深度學習', sources: '影像來源庫', assets: '資產庫', dashboard: '總覽', page: '平台' },
     hint: {

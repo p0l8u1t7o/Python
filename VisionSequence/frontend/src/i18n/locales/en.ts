@@ -590,7 +590,7 @@ const en = {
   assistant: {
     title: 'AI assistant', clear: 'Clear conversation', send: 'Send', placeholder: 'Ask how to use the platform, or give an edit instruction in the editor / batch page…', thinking: 'Thinking…',
     empty: 'This assistant is available on every page: platform questions are answered from the documentation with links; in the flow editor it edits the current flow; on the batch page it consults or tunes from the data.',
-    sources: 'References', applyNeedsEditor: 'Open that flow in the editor to apply this change',
+    sources: 'References', applyNeedsEditor: 'Open that flow in the editor to apply this change', agentic: 'agentic',
     mode: { auto: 'Auto', help: 'Help', edit: 'Edit flow', consult: 'Consult data', tune: 'Tune from data' },
     ctx: { flow_editor: 'Flow editor', tool: 'Tool page', batch: 'Batch test', golden: 'Golden Set', agent: 'AI assistant page', dl: 'Deep learning', sources: 'Image sources', assets: 'Assets', dashboard: 'Dashboard', page: 'Platform' },
     hint: {

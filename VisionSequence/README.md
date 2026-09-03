@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 61 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 296 項＋前端 28 項自動測試 |
+| 規模 | 61 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 308 項＋前端 39 項自動測試 |
 
 ---
 
@@ -185,7 +185,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/golden/` | Golden 案例、基準、回歸 |
 | `apps/vision/batch/` | 批次測試：`store`（檔案／序列化／淘汰）、`jobs`（背景執行）、`insights`（洞察與建議門檻）、`api` |
 | `apps/vision/management/commands/` | `serve`、`seed_demo`、`flow export|import|run`、`run_tcp_server`、`regress`、`create_admin` |
-| `tests/` | 19 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
+| `tests/` | 20 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
 
 ### 前端（`frontend/src/`，約 21.5k 行 TS/TSX）
 
@@ -295,7 +295,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 ## 驗證與測試
 
 ```bash
-# 後端：296 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
+# 後端：308 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
 .venv/Scripts/python.exe manage.py test --noinput
 .venv/Scripts/python.exe -m ruff check apps tests config
 

@@ -141,9 +141,15 @@ def apply_ops(graph: dict[str, Any], ops: list[dict[str, Any]]) -> tuple[dict[st
     done: list[str] = []
     for op in ops:
         kind = str(op.get("op", ""))
+        if kind == "set_param" and not any(op.get(k) for k in ("key", "param", "name", "field")) and isinstance(op.get("params"), dict):
+            kind = "set_params"  # 模型把 set_params 的寫法配上 set_param：照 params 處理
         if kind == "set_param":
             n = _node_or_raise(g, str(op.get("node", "")))
-            key = str(op.get("key", ""))
+            key = str(op.get("key") or op.get("param") or op.get("name") or op.get("field") or "")
+            if not key:
+                raise ValueError("set_param 需要 key（參數名）")
+            if "value" not in op:
+                raise ValueError(f"set_param {n['id']}.{key} 需要 value")
             n.setdefault("params", {})[key] = _coerce(op.get("value"))
             done.append(f"{n['id']}.{key} = {n['params'][key]!r}")
         elif kind == "set_params":

@@ -245,11 +245,14 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     if providers.available(settings):
         try:
             where = f"使用者目前在「{kind_label}」" + (f"（流程「{ctx.get('flow_name')}」）" if ctx.get("flow_name") else "") if kind_label else ""
-            recent = "\n".join(f"{'使用者' if h.get('role') == 'user' else '助理'}：{str(h.get('text', ''))[:300]}" for h in (history or [])[-6:])
+            turns = [h for h in (history or []) if isinstance(h, dict) and str(h.get("text") or "").strip()][-6:]
+            recent = "\n".join(f"{'使用者' if h.get('role') == 'user' else '助理'}：{str(h.get('text'))[:300]}" for h in turns)
             docs_text = "\n\n".join(f"《{s.title}》\n{s.text[:MAX_SECTION_CHARS]}" for s in sections[:TOP_K + 1])
-            text = "\n\n".join(x for x in [where, ("最近對話：\n" + recent) if recent else "", "文件片段：\n" + docs_text, f"問題：{question}"] if x)
+            text = "\n\n".join(x for x in [where, ("最近對話：\n" + recent) if recent else "", "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
             reply = providers.complete(settings, HELP_SYSTEM + "\n\n" + skills.platform_text()[:1500], [], text)
-            return {"answer": reply.strip() or offline_answer(question, hits), "provider": settings.provider, "sources": sources, "warnings": warnings}
+            if reply and reply.strip():
+                return {"answer": reply.strip(), "provider": settings.provider, "sources": sources, "warnings": warnings}
+            warnings.append(f"LLM（{settings.provider}）回了空白，已改用文件節錄")
         except Exception as exc:  # noqa: BLE001
             log.warning("說明問答 LLM 失敗：%s", exc)
             warnings.append(f"LLM（{settings.provider}）失敗，已改用文件節錄：{providers._explain(exc, providers.generate_timeout())}")

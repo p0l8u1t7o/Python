@@ -94,6 +94,9 @@ export function AssistantDock() {
   const [unread, setUnread] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  //: 回覆常在 await 之後才到，用 ref 讀「當下」是否開著，才能正確計未讀
+  const openRef = useRef(open)
+  openRef.current = open
   const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<{ llm: boolean; provider: string; model: string; mode?: string }>('/vision/agent/info') })
   const jobs = useAgentJob<EditResult | TuneResult>()
   const agentic = Boolean(info.data?.llm && info.data?.mode === 'agentic')
@@ -108,7 +111,7 @@ export function AssistantDock() {
 
   function push(msg: Omit<ChatMessage, 'id' | 'at'>) {
     setMessages((list) => [...list, { ...msg, id: uid(), at: Date.now() }].slice(-MAX_MESSAGES))
-    if (!open && msg.role === 'assistant') setUnread((n) => n + 1)
+    if (!openRef.current && msg.role === 'assistant') setUnread((n) => n + 1)
   }
 
   // 代理模式工作結束
@@ -207,8 +210,8 @@ export function AssistantDock() {
         <section className="fixed bottom-20 right-4 z-40 flex h-[min(72vh,720px)] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl" data-testid="assistant-dock" aria-label={t('assistant.title')}>
           <header className="flex items-center gap-2 border-b border-line px-3 py-2">
             <Sparkles size={14} className="text-brand" />
-            <span className="text-sm font-semibold">{t('assistant.title')}</span>
-            {info.data ? <Badge tone={info.data.llm ? 'brand' : 'neutral'}>{info.data.llm ? `${info.data.model}${agentic ? ` · ${t('agent.modeAgentic')}` : ''}` : t('agent.providerRules')}</Badge> : null}
+            <span className="shrink-0 whitespace-nowrap text-sm font-semibold">{t('assistant.title')}</span>
+            {info.data ? <Badge tone={info.data.llm ? 'brand' : 'neutral'} className="max-w-[55%] truncate">{info.data.llm ? `${info.data.model}${agentic ? ` · ${t('assistant.agentic')}` : ''}` : t('agent.providerRules')}</Badge> : null}
             <span className="ml-auto flex items-center gap-0.5">
               <button type="button" className="btn-icon" title={t('assistant.clear')} onClick={() => setMessages([])} data-testid="assistant-clear"><Trash2 size={14} /></button>
               <button type="button" className="btn-icon" title={t('common.close')} onClick={() => setOpen(false)}><X size={15} /></button>

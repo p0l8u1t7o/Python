@@ -27,6 +27,7 @@ POST  /vision/agent/tune       {graph, instruction, runs:[{name, image_ref, stat
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any
 
@@ -578,11 +579,14 @@ def agent_tune(request: HttpRequest, payload: TuneIn):
     return service.tune(payload.graph, payload.instruction, runs, _run_images(runs), _settings_for(request))
 
 
-_QUESTION_MARKERS = ("？", "?", "如何", "怎麼", "怎样", "怎么", "為什麼", "为什么", "什麼", "什么", "是否", "哪", "可以嗎", "介紹", "教我", "是什", "說明一下", "解釋", "how ", "what ", "why ", "which ", "can i")
-_EDIT_MARKERS = ("改成", "改為", "改为", "設為", "设为", "設成", "調成", "调成", "調到", "调到", "改到", "停用", "啟用", "启用", "刪除", "删除", "移除", "新增", "加上", "加一個", "加一个", "把", "換成", "换成",
-                 "降低", "提高", "放寬", "放宽", "收緊", "收紧", "調整", "调整", "調高", "調低", "誤判", "误判", "漏檢", "漏检", "期望數量", "公差", "自動調參", "自动调参",
-                 "set ", "disable", "enable", "delete", "remove", "add ", "change", "increase", "decrease", "tune")
-_DATA_MARKERS = ("張", "张", "ng", "ok", "命中", "門檻", "阈值", "為什麼", "为什么", "哪個參數", "哪个参数", "結果", "结果", "影像", "數值", "数值", "誤判", "误判", "漏檢", "漏检", "出錯", "出错", "耗時", "慢", "分佈", "分布", "上一次", "改善")
+_QUESTION_MARKERS = ("？", "?", "如何", "怎麼", "怎样", "怎么", "為什麼", "为什么", "什麼", "什么", "是否", "哪", "何", "可以嗎", "介紹", "教我", "是什", "說明一下", "解釋", "解释",
+                     "how ", "what ", "why ", "which ", "where ", "when ", "can i", "should i")
+_EDIT_MARKERS = ("改成", "改為", "改为", "設為", "设为", "設成", "調成", "调成", "調到", "调到", "改到", "改用", "停用", "啟用", "启用", "刪除", "删除", "移除", "新增", "加上", "加入", "加一個", "加一个",
+                 "後面加", "前面加", "接上", "把", "換成", "换成", "降低", "提高", "放寬", "放宽", "收緊", "收紧", "調整", "调整", "調高", "調低", "调高", "调低", "誤判", "误判", "漏檢", "漏检",
+                 "期望數量", "期望数量", "公差", "自動調參", "自动调参", "set ", "disable", "enable", "delete", "remove", "add ", "change", "increase", "decrease", "loosen", "tighten", "tune")
+_DATA_MARKERS = ("張", "张", "命中", "門檻", "门槛", "阈值", "為什麼", "为什么", "哪個參數", "哪个参数", "這次執行", "这次执行", "此次執行", "此次执行", "本次", "影像", "圖像", "图像", "數值", "数值",
+                 "誤判", "误判", "漏檢", "漏检", "出錯", "出错", "耗時", "耗时", "慢", "分佈", "分布", "上一次", "改善", "image", "threshold", "mismatch", "this run")
+_DATA_WORDS = re.compile(r"\b(ok|ng|failed)\b")
 
 
 def chat_intent(message: str, context: ChatContext, mode: str) -> str:
@@ -597,7 +601,7 @@ def chat_intent(message: str, context: ChatContext, mode: str) -> str:
     if context.kind == "batch" and context.batch_run_id is not None:
         if wants_edit:
             return "tune"
-        if any(m in low for m in _DATA_MARKERS):
+        if any(m in low for m in _DATA_MARKERS) or _DATA_WORDS.search(low):
             return "consult"
     return "help"
 
@@ -607,13 +611,14 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
     """全域 AI 助手：一個入口依頁面脈絡分流——平台使用問答（文件檢索）、流程編輯器修改（edit）、批次資料諮詢（consult）、依資料調整（tune）。
     代理模式下 edit／tune 回 {agentic: true} 讓前端改走背景工作。"""
     p = principal(request)
-    p.can_execute()
     message = payload.message.strip()
     if not message:
         raise ValidationError("訊息不能是空的", code="empty_message")
     settings = _settings_for(request)
     ctx = payload.context
     intent = chat_intent(message, ctx, payload.mode)
+    if intent != "help":
+        p.can_execute()  # 使用說明問答不動引擎，鎖定時仍可問；修改／諮詢／調整會試執行
     if intent == "edit":
         if not ctx.graph:
             raise ValidationError("修改流程需要目前的 graph", code="no_graph")

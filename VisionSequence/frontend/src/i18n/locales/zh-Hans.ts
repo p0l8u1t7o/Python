@@ -1189,7 +1189,7 @@ const zhHans = {
   assistant: {
     title: 'AI 助手', clear: '清除对话', send: '发送', placeholder: '询问平台使用方式，或在编辑器／批次页下达修改指令…', thinking: '助手思考中…',
     empty: '此助手在任何页面都可打开：询问平台使用问题会依文档回答并附参考链接；在流程编辑器可直接请助手修改当前流程；在批次测试页可依数据咨询或调整参数。',
-    sources: '参考文档', applyNeedsEditor: '请回到该流程的编辑器再应用此修改',
+    sources: '参考文档', applyNeedsEditor: '请回到该流程的编辑器再应用此修改', agentic: '代理',
     mode: { auto: '自动', help: '使用说明', edit: '修改流程', consult: '数据咨询', tune: '依数据调整' },
     ctx: { flow_editor: '流程编辑器', tool: '工具页', batch: '批次测试', golden: 'Golden Set', agent: 'AI 助手页', dl: '深度学习', sources: '图像来源库', assets: '资产库', dashboard: '总览', page: '平台' },
     hint: {
