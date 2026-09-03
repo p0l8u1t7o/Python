@@ -404,6 +404,180 @@ class Phase0Tests(TestCase):
         self.assertIn("120", providers._explain(RuntimeError("timed out"), 120.0))
 
 
+class Phase1Tests(TestCase):
+    """新意圖（印字／中心距／圖案）、定位三件套包裝、候選排名＋標記、自動調參與端點。"""
+
+    def test_new_intents_parse(self):
+        from apps.vision.agent import bench
+
+        feats = analysis.analyze([bench.text_image(True)], [{"region": {"shape": "rect", "x": 130, "y": 170, "w": 380, "h": 140}, "image": 0}])
+        self.assertEqual(intents.parse("標籤上有沒有印字", [{"region": {"shape": "rect", "x": 130, "y": 170, "w": 380, "h": 140}}], feats).kind, "text")
+        two = [{"region": {"shape": "circle", "cx": 200, "cy": 240, "r": 30}}, {"region": {"shape": "circle", "cx": 500, "cy": 240, "r": 30}}]
+        feats = analysis.analyze([bench.holes_pair_image()], [dict(r, image=0) for r in two])
+        it = intents.parse("兩孔中心距離 300±10", two, feats)
+        self.assertEqual((it.kind, it.nominal, it.tol), ("distance", 300.0, 10.0))
+        feats = analysis.analyze([bench.logo_image(True)], [{"region": {"shape": "rect", "x": 240, "y": 160, "w": 160, "h": 160}, "image": 0}])
+        it = intents.parse("有沒有這個圖案", [{"region": {"shape": "rect", "x": 240, "y": 160, "w": 160, "h": 160}}], feats)
+        self.assertEqual((it.kind, it.template_roi), ("template_presence", 0))
+        regions = [{"region": {"shape": "rect", "x": 190, "y": 150, "w": 140, "h": 140}, "hint": "定位", "image": 0},
+                   {"region": {"shape": "rotated_rect", "cx": 690, "cy": 480, "w": 300, "h": 60, "angle": 90}, "image": 0}]
+        from apps.vision import demo_images
+
+        feats = analysis.analyze([demo_images.marker_plate()[0]], regions)
+        it = intents.parse("量亮帶的寬度 160±10，工件位置會變", regions, feats)
+        self.assertEqual((it.kind, it.locate, it.locator_roi), ("width", True, 0))
+        # 定位 ROI 的提示不會被當成好品／壞品
+        self.assertIsNone(it.good_roi)
+
+    def test_text_distance_template_generate(self):
+        from apps.vision.agent import bench
+
+        r = service.generate([bench.text_image(True), bench.text_image(False)], [{"region": {"shape": "rect", "x": 130, "y": 170, "w": 380, "h": 140}, "image": 0}], "標籤上有沒有印字", use_llm=False)
+        self.assertEqual(r["intent"], "text")
+        self.assertEqual([x["status"] for x in r["reports"]], ["ok", "ng"])
+        two = [{"region": {"shape": "circle", "cx": 200, "cy": 240, "r": 30}, "image": 0}, {"region": {"shape": "circle", "cx": 500, "cy": 240, "r": 30}, "image": 0}]
+        r = service.generate([bench.holes_pair_image(300), bench.holes_pair_image(330)], two, "兩孔中心距離 300±10", use_llm=False)
+        self.assertEqual(r["intent"], "distance")
+        self.assertEqual([x["status"] for x in r["reports"]], ["ok", "ng"])
+        self.assertAlmostEqual(r["report"]["outputs"]["distance_px"], 300, delta=3)
+        r = service.generate([bench.logo_image(True), bench.logo_image(False)], [{"region": {"shape": "rect", "x": 240, "y": 160, "w": 160, "h": 160}, "image": 0}], "有沒有這個圖案", use_llm=False)
+        self.assertEqual(r["intent"], "template_presence")
+        self.assertEqual([x["status"] for x in r["reports"]], ["ok", "ng"])
+        tm = next(n for n in r["graph"]["nodes"] if n["type"] == "template_match")
+        self.assertTrue(Asset.objects.filter(pk=tm["params"]["template"]).exists())
+
+    def test_locate_wrap_structure_and_runs(self):
+        from apps.vision import demo_images
+
+        images = demo_images.marker_plate()
+        regions = [{"region": {"shape": "rect", "x": 190, "y": 150, "w": 140, "h": 140}, "hint": "定位", "image": 0},
+                   {"region": {"shape": "rotated_rect", "cx": 690, "cy": 480, "w": 300, "h": 60, "angle": 90}, "image": 0}]
+        r = service.generate(images, regions, "量亮帶的寬度 160±10，工件位置會變", use_llm=False)
+        types = [n["type"] for n in r["graph"]["nodes"]]
+        for t in ("template_match", "shape_align", "fixture_roi", "caliper"):
+            self.assertIn(t, types)
+        cal = next(n for n in r["graph"]["nodes"] if n["type"] == "caliper")
+        self.assertTrue(any(e["target"] == cal["id"] and e.get("target_handle") == "roi" and e["source"].startswith("fix_") for e in r["graph"]["edges"]))
+        self.assertEqual([x["status"] for x in r["reports"]], ["ok", "ok", "ok", "ng"])
+        self.assertIn("定位補正", r["rationale"])
+
+    def test_candidates_ranked_by_labels(self):
+        r = service.generate([part_image(5), part_image(4)], [], "應該有 5 個孔", use_llm=False, labels=["ok", "ng"])
+        self.assertGreaterEqual(len(r["candidates"]), 2)
+        self.assertEqual(sum(c["chosen"] for c in r["candidates"]), 1)
+        self.assertEqual(r["labels"], ["ok", "ng"])
+        for c in r["candidates"]:
+            validate_graph(c["graph"])
+            self.assertEqual(len(c["statuses"]), 2)
+        chosen = next(c for c in r["candidates"] if c["chosen"])
+        self.assertEqual(chosen["statuses"], ["ok", "ng"])
+        # 好品／壞品 ROI 提示也會變成標記
+        labels = service.expected_labels([{"region": {}, "hint": "好品", "image": 0}, {"region": {}, "hint": "壞品", "image": 1}], None, 3)
+        self.assertEqual(labels, ["ok", "ng", ""])
+
+    def test_run_graph_and_candidate_switch_api(self):
+        r = service.generate([part_image(5)], [], "應該有 5 個孔", use_llm=False)
+        other = r["candidates"][1]["graph"]
+        out = service.run_graph([part_image(5), part_image(4)], other, 1)
+        self.assertEqual(len(out["reports"]), 2)
+        self.assertEqual(out["main_image"], 1)
+        res = self.client.post("/api/vision/agent/run", data=json.dumps({"images": [_upload(self.client, part_image(5))], "graph": other}), content_type="application/json")
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertIn("report", res.json())
+
+    def test_autotune_search_space_and_improves(self):
+        from apps.vision.agent import autotune
+
+        r = service.generate([part_image(5)], [], "應該有 5 個孔", use_llm=False)
+        graph = r["graph"]
+        dims = autotune.search_space(graph)
+        keys = {(d.node_id, d.key) for d in dims}
+        self.assertIn(("blob", "min_area"), keys)
+        self.assertNotIn(("cmp", "threshold"), keys)  # 期望數量是規格，不搜
+        # 故意把最小面積調到抓不到孔 → 自動調參應把它縮回來
+        bad = json.loads(json.dumps(graph))
+        next(n for n in bad["nodes"] if n["id"] == "blob")["params"]["min_area"] = 20000
+        labeled = [autotune.Labeled(part_image(5), "ok"), autotune.Labeled(part_image(4), "ng")]
+        before = autotune.evaluate(bad, labeled, service._quiet_trial)
+        self.assertLess(before.matches, 2)
+        res = autotune.coordinate_search(bad, labeled, max_evals=40, deadline_s=20, trial=service._quiet_trial)
+        self.assertTrue(res["improved"])
+        self.assertEqual(res["after"]["match"], 2)
+        self.assertTrue(any(c["key"] == "min_area" for c in res["changes"]))
+        validate_graph(res["graph"])
+
+    def test_generate_with_labels_autotunes_when_needed(self):
+        r = service.generate([part_image(5), part_image(4)], [], "應該有 5 個孔", use_llm=False, labels=["ok", "ng"])
+        self.assertEqual([x["status"] for x in r["reports"]], ["ok", "ng"])  # 已命中就不需要（也不會）調參
+        self.assertNotIn("autotune", r)
+
+    def test_autotune_endpoint_and_tune_keyword(self):
+        r = service.generate([part_image(5)], [], "應該有 5 個孔", use_llm=False)
+        bad = json.loads(json.dumps(r["graph"]))
+        next(n for n in bad["nodes"] if n["id"] == "blob")["params"]["min_area"] = 20000
+        refs = [_upload(self.client, part_image(5)), _upload(self.client, part_image(4))]
+        runs = [{"name": "a", "image_ref": refs[0], "status": "ng", "expected": "ok"}, {"name": "b", "image_ref": refs[1], "status": "ng", "expected": "ng"}]
+        res = self.client.post("/api/vision/agent/autotune", data=json.dumps({"graph": bad, "runs": runs, "max_evals": 40}), content_type="application/json")
+        self.assertEqual(res.status_code, 200, res.content)
+        body = res.json()
+        self.assertTrue(body["applied"])
+        self.assertEqual(body["after"]["ok"], 1)
+        self.assertTrue(body["autotune"]["improved"])
+        # tune 指令含「自動調參」也走同一條路
+        res = self.client.post("/api/vision/agent/tune", data=json.dumps({"graph": bad, "instruction": "自動調參", "runs": runs}), content_type="application/json")
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()["provider"], "autotune")
+        # 沒有標記 → 不調、說明原因
+        res = self.client.post("/api/vision/agent/autotune", data=json.dumps({"graph": bad, "runs": [{"name": "a", "image_ref": refs[0], "status": "ng"}]}), content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.json()["applied"])
+
+    def test_golden_autotune_endpoint(self):
+        from apps.golden import regress
+        from apps.golden.models import GoldenCase
+        from apps.vision.models import Flow
+
+        r = service.generate([part_image(5)], [], "應該有 5 個孔", use_llm=False)
+        bad = json.loads(json.dumps(r["graph"]))
+        next(n for n in bad["nodes"] if n["id"] == "blob")["params"]["min_area"] = 20000
+        flow = Flow.objects.create(name="agent-golden", graph=bad)
+        GoldenCase.objects.create(flow=flow, name="five", image_path=regress.save_image(flow.id, part_image(5)), expect_status="ok")
+        GoldenCase.objects.create(flow=flow, name="four", image_path=regress.save_image(flow.id, part_image(4)), expect_status="ng")
+        res = self.client.post(f"/api/vision/flows/{flow.id}/golden/autotune", data=json.dumps({"max_evals": 40}), content_type="application/json")
+        self.assertEqual(res.status_code, 200, res.content)
+        body = res.json()
+        self.assertEqual(body["cases"], 2)
+        self.assertTrue(body["improved"])
+        self.assertEqual(body["after"]["match"], 2)
+        self.assertFalse(body["graph_override"])
+        validate_graph(body["graph"])
+        for c in GoldenCase.objects.filter(flow=flow):
+            regress.remove_image(c.image_path)
+
+    def test_clarify_asks_for_locator_and_second_hole(self):
+        from apps.vision.agent import bench, clarify
+
+        img = bench.holes_pair_image()
+        one = [{"region": {"shape": "circle", "cx": 200, "cy": 240, "r": 30}, "image": 0}]
+        feats = analysis.analyze([img], one)
+        out = clarify.clarify(intents.parse("兩孔中心距離", one, feats), one, feats, [])
+        self.assertFalse(out["ready"])
+        self.assertEqual(out["questions"][0]["kind"], "roi")
+        feats = analysis.analyze([img], [])
+        out = clarify.clarify(intents.parse("量孔的直徑，位置會變", [], feats), [], feats, [])
+        self.assertTrue(any(q["id"] == "locate_roi" for q in out["questions"]))
+
+
+def _upload(client, image: np.ndarray) -> str:
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    ok, buf = cv2.imencode(".png", image)
+    assert ok
+    res = client.post("/api/vision/agent/image", {"image": SimpleUploadedFile("img.png", buf.tobytes(), content_type="image/png")})
+    assert res.status_code == 201, res.content
+    return res.json()["ref"]
+
+
 class ProviderSettingsTests(TestCase):
     def test_server_default_is_offline_without_key(self):
         s = providers.server_settings()

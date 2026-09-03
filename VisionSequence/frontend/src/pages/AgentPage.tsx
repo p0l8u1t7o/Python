@@ -48,6 +48,16 @@ interface ClarifyResult {
   provider: string
 }
 
+interface Candidate {
+  key: string
+  label: string
+  rationale: string
+  statuses: string[]
+  score: number
+  graph: FlowGraph
+  chosen: boolean
+}
+
 interface AgentResult {
   graph: FlowGraph
   rationale: string
@@ -57,7 +67,15 @@ interface AgentResult {
   reports: RunReport[]
   main_image: number
   warnings?: string[]
+  /** 規則引擎的候選方案（含已選的）；LLM 生成時為空 */
+  candidates?: Candidate[]
+  labels?: string[]
+  autotune?: { before: { match: number; total: number }; after: { match: number; total: number }; change_text: string[]; evals: number; elapsed_ms: number }
 }
+
+type ImageLabel = 'ok' | 'ng'
+type BusyKind = 'clarify' | 'generate' | 'refine' | 'save' | 'switch'
+const LABEL_CYCLE: (ImageLabel | undefined)[] = [undefined, 'ok', 'ng']
 
 interface AgentInfo {
   provider: string
@@ -251,7 +269,9 @@ export function AgentPage() {
   const [result, setResult] = useState<AgentResult | null>(null)
   const [feedback, setFeedback] = useState('')
   const [flowName, setFlowName] = useState('')
-  const [busy, setBusy] = useState<'clarify' | 'generate' | 'refine' | 'save' | null>(null)
+  const [busy, setBusy] = useState<BusyKind | null>(null)
+  /** 每張影像的期望判定（OK／NG）：候選排名與自動調參的依據 */
+  const [labels, setLabels] = useState<Record<number, ImageLabel>>({})
   const abortRef = useRef<AbortController | null>(null)
   /** 詢問機制：助手提出的問題與使用者的回答（id → answer） */
   const [clarify, setClarify] = useState<ClarifyResult | null>(null)
@@ -294,8 +314,27 @@ export function AgentPage() {
     setResult(null)
   }
 
+  function cycleLabel(idx: number) {
+    setLabels((m) => {
+      const next = { ...m }
+      const cur = LABEL_CYCLE.indexOf(m[idx])
+      const val = LABEL_CYCLE[(cur + 1) % LABEL_CYCLE.length]
+      if (val) next[idx] = val
+      else delete next[idx]
+      return next
+    })
+  }
+
   function removeImage(idx: number) {
     setImages((list) => list.filter((_, i) => i !== idx))
+    setLabels((m) => {
+      const next: Record<number, ImageLabel> = {}
+      for (const [k, v] of Object.entries(m)) {
+        const i = Number(k)
+        if (i !== idx) next[i > idx ? i - 1 : i] = v
+      }
+      return next
+    })
     setRois((list) => list.filter((r) => r.image !== idx).map((r) => ({ ...r, image: r.image > idx ? r.image - 1 : r.image })))
     setActive((a) => Math.max(0, a >= idx ? a - 1 : a))
     setResult(null)
@@ -310,14 +349,14 @@ export function AgentPage() {
   const payload = useMemo(() => {
     const regions = rois.map((r) => ({ region: r.region as unknown as Record<string, unknown>, hint: r.hint, image: r.image }))
     if (drawing) regions.push({ region: drawing as unknown as Record<string, unknown>, hint: '', image: active })
-    return { images: images.map((im) => im.ref), prompt, regions }
-  }, [rois, drawing, images, prompt, active])
+    return { images: images.map((im) => im.ref), prompt, regions, labels: images.map((_, i) => labels[i] ?? '') }
+  }, [rois, drawing, images, prompt, active, labels])
 
   function abort() {
     abortRef.current?.abort()
   }
 
-  function newController(kind: 'clarify' | 'generate' | 'refine' | 'save') {
+  function newController(kind: BusyKind) {
     const controller = new AbortController()
     abortRef.current = controller
     setBusy(kind)
@@ -404,6 +443,21 @@ export function AgentPage() {
     }
   }
 
+  /** 切換候選方案：把該方案的 graph 在同一批影像重跑（overlay 與判定隨之更新）。 */
+  async function switchCandidate(c: Candidate) {
+    if (!result || c.chosen || !images.length) return
+    const controller = newController('switch')
+    try {
+      const r = await api.post<AgentResult>('/vision/agent/run', { images: images.map((im) => im.ref), graph: c.graph, main: active }, undefined, controller.signal)
+      setResult({ ...result, graph: c.graph, rationale: c.rationale, report: r.report, reports: r.reports, candidates: result.candidates?.map((x) => ({ ...x, chosen: x.key === c.key })) })
+    } catch (error) {
+      if (!controller.signal.aborted) toast.error(errorMessage(error))
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null
+      setBusy(null)
+    }
+  }
+
   async function saveFlow() {
     if (!result) return
     setBusy('save')
@@ -453,6 +507,7 @@ export function AgentPage() {
                 <div className="flex flex-wrap gap-1.5" data-testid="agent-images">
                   {images.map((im, i) => {
                     const st = result?.reports[i]?.status
+                    const lb = labels[i]
                     return (
                       <div key={im.ref} className={`group relative overflow-hidden rounded border ${i === active ? 'border-brand ring-2 ring-brand/30' : 'border-line'}`}>
                         <button type="button" onClick={() => { setActive(i); setDrawing(null) }} title={im.name} className="block">
@@ -461,11 +516,16 @@ export function AgentPage() {
                         <span className="pointer-events-none absolute left-0.5 top-0.5 rounded bg-black/60 px-1 text-[9px] text-white">{t('agent.imageN', { n: i + 1 })}</span>
                         {st ? <span className={`pointer-events-none absolute bottom-0.5 left-0.5 rounded px-1 text-[9px] font-semibold text-white ${st === 'ok' ? 'bg-ok' : st === 'ng' ? 'bg-critical' : 'bg-neutral-500'}`}>{st.toUpperCase()}</span> : null}
                         <button type="button" onClick={() => removeImage(i)} aria-label={t('common.delete')} className="absolute right-0.5 top-0.5 rounded bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100"><X size={10} /></button>
+                        <button type="button" onClick={() => cycleLabel(i)} title={t('agent.labelHint')} data-testid="agent-label"
+                          className={`absolute bottom-0.5 right-0.5 rounded px-1 text-[9px] font-semibold ${lb === 'ok' ? 'bg-ok text-white' : lb === 'ng' ? 'bg-critical text-white' : 'bg-black/50 text-white/80'}`}>
+                          {lb ? lb.toUpperCase() : t('agent.labelNone')}
+                        </button>
                       </div>
                     )
                   })}
                 </div>
               ) : <p className="text-xs text-subtle">{t('agent.uploadHint')}</p>}
+              {images.length ? <p className="text-[11px] text-subtle">{t('agent.labelHint')}</p> : null}
             </Card>
 
             <Card className="space-y-2 p-3">
@@ -561,6 +621,24 @@ export function AgentPage() {
                   <ul className="list-disc rounded bg-warning-soft px-2 py-1 pl-5 text-[11px] text-warning" data-testid="agent-warnings">
                     {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
                   </ul>
+                ) : null}
+                {result.candidates && result.candidates.length > 1 ? (
+                  <div className="space-y-1" data-testid="agent-candidates">
+                    <p className="text-[11px] font-semibold text-muted">{t('agent.candidates')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {result.candidates.map((c) => (
+                        <button key={c.key} type="button" disabled={busy !== null} title={c.rationale} onClick={() => void switchCandidate(c)}
+                          className={`rounded-full border px-2 py-0.5 text-[11px] ${c.chosen ? 'border-brand bg-brand-soft text-brand' : 'border-line text-muted hover:bg-surface-muted'}`}>
+                          {c.label} · {c.statuses.map((x) => x.toUpperCase()).join('/')}{c.score ? ` · ${c.score}` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {result.autotune ? (
+                  <p className="rounded bg-brand-soft px-2 py-1 text-[11px] text-brand" data-testid="agent-autotune">
+                    {t('agent.autotuned', { before: result.autotune.before.match, after: result.autotune.after.match, total: result.autotune.after.total, ms: result.autotune.elapsed_ms })}
+                  </p>
                 ) : null}
                 {activeReport && Object.keys(activeReport.outputs).length ? (
                   <table className="w-full text-xs">

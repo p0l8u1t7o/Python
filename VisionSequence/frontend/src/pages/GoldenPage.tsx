@@ -9,22 +9,36 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Eye, FlaskConical, Gem, ImageOff, Play, Trash2, TriangleAlert, Upload } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Eye, FlaskConical, Gem, ImageOff, Play, Trash2, TriangleAlert, Upload, Wand2 } from 'lucide-react'
 
 import { formatValue } from '@/components/editor/ResultsPanel'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, EmptyRow, ErrorState, LoadingState, Modal, PageHeader, SegmentedControl, Select, StatusBadge, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
-import { goldenImageUrl, imageUrl } from '@/lib/api'
+import { api, goldenImageUrl, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
-import { useFlowSession } from '@/lib/flowDraft'
+import { setDraft, useFlowSession } from '@/lib/flowDraft'
 import { previewFlow, useFlow, useGolden, useGoldenBaseline, useGoldenMutations } from '@/lib/queries'
-import type { ExpectStatus, GoldenCase, RegressCase, RegressChange, RegressResult, RunReport } from '@/lib/types'
+import type { ExpectStatus, FlowGraph, GoldenCase, RegressCase, RegressChange, RegressResult, RunReport } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { sourceRefOf } from './FlowEditorPage'
 
 const EXPECTS: ExpectStatus[] = ['ok', 'ng', 'any']
+
+/** POST /flows/{id}/golden/autotune 的回應 */
+interface GoldenAutotune {
+  graph: FlowGraph
+  before: { match: number; total: number }
+  after: { match: number; total: number }
+  change_text: string[]
+  evals: number
+  elapsed_ms: number
+  improved: boolean
+  budget_hit: boolean
+  cases: number
+  graph_override: boolean
+}
 
 function CaseThumb({ flowId, c }: { flowId: number; c: GoldenCase }) {
   const [gone, setGone] = useState(false)
@@ -44,6 +58,7 @@ function Kpi({ label, value, tone = '' }: { label: string; value: string | numbe
 function GoldenPageInner({ flowId }: { flowId: number }) {
   const { t } = useTranslation()
   const toast = useToast()
+  const navigate = useNavigate()
   const flow = useFlow(flowId)
   const golden = useGolden(flowId)
   const baseline = useGoldenBaseline(flowId)
@@ -60,6 +75,8 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
   const [filter, setFilter] = useState<'all' | 'mismatch' | 'changed'>('all')
   const [pendingDelete, setPendingDelete] = useState<GoldenCase | null>(null)
   const [viewing, setViewing] = useState<{ name: string; run: RunReport | null; loading: boolean } | null>(null)
+  const [tuning, setTuning] = useState(false)
+  const [tuned, setTuned] = useState<GoldenAutotune | null>(null)
 
   const draft = session.draft && flow.data && session.draft.baseVersion === flow.data.version && session.draft.dirty ? session.draft : null
   const canManage = golden.data?.can_manage ?? false
@@ -108,6 +125,27 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
     } catch (error) {
       toast.error(errorMessage(error))
     }
+  }
+
+  /** 用 Golden Set 期望值自動調參（只動現場調機參數）；結果可帶回編輯器草稿。 */
+  async function runAutotune() {
+    setTuning(true)
+    try {
+      const r = await api.post<GoldenAutotune>(`/vision/flows/${flowId}/golden/autotune`, { graph: useDraft && draft ? draft.graph : null, max_evals: 60 })
+      setTuned(r)
+      if (!r.improved) toast.success(t('golden.autotuneNoChange'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setTuning(false)
+    }
+  }
+
+  function applyTuned() {
+    if (!tuned || !flow.data) return
+    setDraft(flowId, { baseVersion: flow.data.version, graph: tuned.graph, name: flow.data.name, description: flow.data.description, dirty: true })
+    toast.success(t('golden.autotuneApplied'))
+    navigate(`/flows/${flowId}`)
   }
 
   /** 用案例影像再試跑一次，取得標記。 */
@@ -189,11 +227,28 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
               {regress.isPending ? t('golden.regressing', { count: total }) : t('golden.regress')}
             </Button>
           </span>
+          <Button icon={<Wand2 size={14} />} loading={tuning} disabled={total === 0} title={t('golden.autotuneHint')} onClick={() => void runAutotune()} data-testid="golden-autotune">
+            {t('golden.autotune')}
+          </Button>
           <span className="ml-auto text-xs text-muted" data-testid="golden-baseline">
             {baseline.data?.baseline ? t('golden.baselineVersion', { version: baseline.data.baseline.flow_version, time: new Date(baseline.data.baseline.created_at).toLocaleString() }) : t('golden.baselineNone')}
           </span>
         </CardBody>
       </Card>
+
+      {/* 自動調參結果 */}
+      {tuned ? (
+        <Card className="mb-4" data-testid="golden-autotune-result">
+          <CardHeader
+            title={<span className="flex items-center gap-2"><Wand2 size={16} className="text-brand" />{t('golden.autotuneResult')} <Badge tone={tuned.improved ? 'ok' : 'neutral'}>{t('golden.autotuneMatch', { before: tuned.before.match, after: tuned.after.match, total: tuned.after.total })}</Badge>{tuned.budget_hit ? <Badge tone="critical">{t('golden.autotuneBudget')}</Badge> : null}{tuned.graph_override ? <Badge>{t('golden.useDraft')}</Badge> : null}</span>}
+            description={t('golden.autotuneStats', { cases: tuned.cases, evals: tuned.evals, ms: tuned.elapsed_ms })}
+            actions={tuned.improved ? <Button size="sm" variant="primary" icon={<ArrowLeft size={14} />} onClick={applyTuned} data-testid="golden-autotune-apply">{t('golden.autotuneApply')}</Button> : null}
+          />
+          <CardBody>
+            {tuned.change_text.length ? <ul className="list-disc pl-5 text-xs text-muted">{tuned.change_text.map((c, i) => <li key={i}>{c}</li>)}</ul> : <p className="text-xs text-muted">{t('golden.autotuneNoChange')}</p>}
+          </CardBody>
+        </Card>
+      ) : null}
 
       {/* 回歸結果 */}
       {result ? (

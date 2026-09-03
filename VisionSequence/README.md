@@ -66,7 +66,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **試執行 vs 執行**：試執行用目前畫布（含未儲存）並保留中間影像；執行一次／連續執行用已儲存版本並寫入紀錄。暫存影像上傳只為試執行，不進來源庫。
 - **參數卡**（`/flows/:id/teach`）：只列 `teach=True` 的現場參數、改動即時試執行；標記「已教導」。
 - **配方**：同一流程多組參數覆寫（換線），HTTP／TCP 皆可指定。
-- **批次測試／Golden Set**：一次跑多張影像看良率；案例存成回歸基準，`manage.py regress` 可進 CI；結果下可「請 AI 依這批結果調整」。
+- **批次測試／Golden Set**：一次跑多張影像看良率；案例存成回歸基準，`manage.py regress` 可進 CI；結果下可「請 AI 依這批結果調整」，或為每列填 OK／NG 期望後「自動調參」（Golden Set 頁亦有，用案例期望值搜尋現場參數）。
 - **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG。
 
 ### 內建工具（61 個，8 類）
@@ -88,7 +88,10 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 
 ### AI 助手（`/agent`）
 - 上傳一張或多張影像 → 圈選 ROI（ROI01、ROI02…各配提示，可引用「ROI01 是好品，ROI02 是壞品」）→ 一句話描述需求 → **先確認再生成**（資訊不足時最多 3 個問題，可略過）→ 生成流程並在每張影像實跑、疊顯標記 → 口語回饋微調 → 存成流程。
-- 兩層供應器：離線規則引擎（意圖封閉集合＋合成器＋特徵驅動自動調參）；可選 LLM（Claude／GPT／Gemini，每位使用者自己的金鑰只存伺服器），失敗自動落回規則。
+- 兩層供應器：離線規則引擎（15 種意圖封閉集合＋合成器＋特徵驅動參數）；可選 LLM（Claude／GPT／Gemini／OpenAI 相容本地端點，每位使用者自己的金鑰只存伺服器），失敗自動落回規則並在 warnings 說明原因。
+- **候選方案與自動調參**：規則引擎每次產主要方案＋參數變體，全部在上傳影像上試跑後依「影像標記」（縮圖 OK／NG 或 ROI 提示好品／壞品）打分擇優，可點選切換；有標記時再做小預算自動調參（只動現場調機參數，嚴格變好才採納）。
+- **定位補正**：ROI 提示填「定位」或提示詞說位置會變，流程前自動包「範本比對 → 定位補正 → ROI 跟隨」；新增印字有無、兩孔中心距、圖案有無三種意圖。
+- 評測基準 `manage.py agent_bench`（21 個離線案例：意圖／判定／有效率），`tests/test_agent_bench.py` 守門檻。
 - 編輯器右側「AI」分頁可用一句話修改目前流程；批次測試後可請 AI 依結果調整；所有助手呼叫皆可中斷。
 - AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/agent.html`。
 
@@ -172,7 +175,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/vision/tools/builtin/*.py` | 內建工具依類別分檔（source／preprocess／locate／measure／detect／logic／output／dl／modbus） |
 | `apps/vision/sources/grabbers.py` | 影像來源：folder／file／usb／upload／synthetic／外掛 |
 | `apps/vision/dl/` | Trainer registry（`base.py`）、內建 trainer、訓練 job、裝置／provider、SAM、YOLO 互轉、ONNX 輸出 |
-| `apps/vision/agent/` | `analysis`／`intents`／`clarify`／`synth`／`llm`／`providers`／`skills`／`service`／`api`＋`skills/*.md` |
+| `apps/vision/agent/` | `analysis`／`intents`／`clarify`／`synth`（含候選方案、定位包裝）／`autotune`／`bench`／`llm`／`providers`／`skills`／`service`／`api`＋`skills/*.md` |
 | `apps/vision/demo.py`、`demo_images.py` | 範例樣板（`BUILTIN_TEMPLATES`）、合成樣本圖、`seed_demo` |
 | `apps/comm/` | 連線模型與 Writer（Modbus TCP／TCP 文字／模擬 DIO／外掛） |
 | `apps/golden/` | Golden 案例、基準、回歸 |
@@ -229,7 +232,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
-| AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/refine`、`/edit`、`/tune`、`/skills` |
+| AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/skills`；`/flows/{id}/golden/autotune` |
 | 整合 | `/vision/integration/info`、`/integration/tcp`、`/vision/connections` |
 
 執行類端點（run／preview／continuous／agent）在引擎鎖定時回 423；修改類端點要求擁有者或管理員。
@@ -325,7 +328,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/automation.html`、`docs/modbus.html` | HTTP／TCP／SSE 整合、引擎鎖定；Modbus 主動輸出 |
 | `docs/vision-capabilities.html` | ROI 種類、位深設計、檢測工具總覽 |
 | `docs/samples.html` | 範例樣板與合成樣本圖 |
-| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、編輯器 AI、批次調參、技能、架構 |
+| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、編輯器 AI、批次調參、候選方案與自動調參、定位補正、評測基準、技能、架構 |
 | `docs/dl.html` | 深度學習教導 |
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |

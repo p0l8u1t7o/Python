@@ -31,7 +31,7 @@
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
-- AI 助手：`manage.py agent_bench`（離線規則引擎跑 `agent/bench.py` 的案例，印意圖／判定準確率；`--llm` 用伺服器供應商比較）；`tests/test_agent_bench.py` 守門檻（意圖 ≥ 0.9、判定 ≥ 0.8、graph 全有效）。改規則引擎、合成器或特徵後一定跑，新意圖加案例。
+- AI 助手：`manage.py agent_bench`（離線規則引擎跑 `agent/bench.py` 的案例，印意圖／判定準確率；`--llm` 用伺服器供應商比較）；`tests/test_agent_bench.py` 守門檻（意圖 ≥ 0.9、判定 ≥ 0.8、graph 全有效）。改規則引擎、合成器、特徵或自動調參後一定跑，新意圖加案例（案例可帶 `labels`）。
 - 前端：`cd frontend && npm run -s typecheck && npm test && npm run build`。vitest 有：i18n 三語系 key／占位符對齊與**禁用口語詞**檢查、`graphMapping`／`geometry`／`flowDraft` 單元、9 個頁面在假後端下 render smoke。新頁面在 `src/test/pages.test.tsx` 加 case，新 API 路徑在 `src/test/apiMock.ts` 補假資料。
 - 改了頁面就開瀏覽器看一眼（影像檢視器與畫布的問題肉眼最快）；改了服務端要重啟後 curl 一次（api 401＝需登入是正常、front 200）。
 - 改動**優化過的函式**（blob 預濾、`_roi_hist`、`find_edges_rows`、`caliper_points`、`apply_mask`、`mask_for`、RANSAC 向量化、template_match 金字塔）必須重跑等價性檢查（`scripts/bench_tools.py`），不能只看測試綠。
@@ -83,6 +83,8 @@
 - AI 代理技能在 `agent/skills/`（platform.md 平台規則、design.md 設計原則含謹慎原則、tools.md 每工具要領 `## <type>` 分段）；`skills.py` 組裝：system＝規則＋原則＋精簡目錄（穩定可快取），相關工具完整技能（自動骨架＋要領）由 `select_tools` 挑進 user 訊息。**新增工具要在 tools.md 補一段要領**。
 - 供應商：`openai_compatible`（Ollama／vLLM／LM Studio；`base_url`、金鑰可空）與 OpenAI／Gemini 的 JSON 模式在 `providers.openai_body`／`_gemini`；OpenAI 推理模型（o 系列／gpt-5）自動用 `max_completion_tokens`；生成逾時 `providers.generate_timeout()`（`VISION_AGENT_TIMEOUT_S`）。LLM 失敗時 `service._try_llm` 回 `(None, reason)`，原因進回應 `warnings`。
 - 供應商設定存完會打 `providers.test_connection` 驗證並回原因；`list_models` 列金鑰可用模型。
+- **候選方案與自動調參**：`synth.candidates` 每意圖產主要方案＋參數變體（`VARIANTS` 表），`service._rank_candidates` 全部靜默試跑（`trial_run(keep_images=False)` → `store.drop_run`）依 `expected_labels`（`GenerateIn.labels` 或 ROI 提示好品／壞品）打分；回應 `candidates[]`，前端切換走 `POST /agent/run`。`autotune.coordinate_search` 只搜 `teach=True` 且不在 `SKIP` 的參數、嚴格變好才採納；入口：生成（`GENERATE_AUTOTUNE_EVALS`）、`POST /agent/autotune`／`tune` 指令含「自動調參」、`POST /flows/{id}/golden/autotune`（golden api）。改工具的 `teach` 標記會改變搜尋空間。
+- **定位包裝**：ROI 提示含「定位／標記／marker」→ `Intent.locator_roi`，該 ROI 不參與檢測（`synth._work_regions` 同步重編 ROI 索引），`wrap_with_locate` 在流程前包範本比對／定位補正／ROI 跟隨（ROI 輸入埠優先於參數）。新意圖 `text`／`distance`／`template_presence`（後者與 golden 一樣需要 `make_asset`）。
 - 特徵驅動參數：`analysis` 的 `mad`（穩健 σ）／`smooth_mad`（低通後 σ，紋理面缺陷門檻用）／`gradient`／`color_std`／`area`；`synth` 的 `_blob_min_area`、`_clip`；計數意圖 `round_target` 加圓形度下限排除線段。新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`clarify.build_questions` 缺口問題＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
 
 ### 深度學習教導（apps/vision/dl）

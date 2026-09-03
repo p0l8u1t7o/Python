@@ -7,10 +7,13 @@ image_source 不綁來源（mode=auto：試跑吃上傳影像，存成流程後�
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from typing import Any, Callable
 
 from apps.vision.agent.intents import Intent
-from apps.vision.demo import _edge, _node, _note
+from apps.vision.demo import GY, _edge, _node, _note
+from apps.vision.tools import base as tools
 
 #: 良品比對用：把某張影像的 ROI 裁成範本資產，回 asset id。(image_index, region, name) -> id
 MakeAsset = Callable[[int, dict[str, Any], str], str]
@@ -356,6 +359,119 @@ def synth_barcode(intent: Intent, regions: list, analysis: dict) -> tuple[dict, 
     return _finish(nodes, edges, col=4), "ROI 內讀一維碼／QR"
 
 
+def _annulus_for(region: dict[str, Any] | None) -> dict[str, Any] | None:
+    """圓形 ROI → 蓋住圓緣的環（找圓要的形狀）；其他形狀原樣。"""
+    if region and region.get("shape") == "circle":
+        r = float(region.get("r", 50))
+        return {"shape": "annulus", "cx": region["cx"], "cy": region["cy"], "r_inner": max(3.0, r * 0.6), "r_outer": r * 1.4}
+    return region
+
+
+def _expand_rect(b: dict[str, Any], factor: float, width: int, height: int) -> dict[str, Any]:
+    """把 bounds 各邊外擴 factor 倍自身尺寸並夾在影像內（範本比對的搜尋區）。"""
+    x0 = max(0, int(b["x"] - b["w"] * factor))
+    y0 = max(0, int(b["y"] - b["h"] * factor))
+    x1 = min(int(width), int(b["x"] + b["w"] * (1 + factor)))
+    y1 = min(int(height), int(b["y"] + b["h"] * (1 + factor)))
+    return {"shape": "rect", "x": x0, "y": y0, "w": max(1, x1 - x0), "h": max(1, y1 - y0)}
+
+
+def _image_size(analysis: dict[str, Any], image_idx: int) -> tuple[int, int]:
+    imgs = analysis.get("images") or []
+    if 0 <= image_idx < len(imgs):
+        return int(imgs[image_idx]["width"]), int(imgs[image_idx]["height"])
+    return int(analysis["width"]), int(analysis["height"])
+
+
+def synth_text(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
+    roi = _region_of(regions)
+    info = _roi_info(analysis)
+    dark = intent.polarity != "bright" if intent.polarity else float(info.get("dark_ratio", 0.5)) < 0.5  # 暗部佔比低＝亮底暗字
+    nodes, edges = _src_gray("由 AI 助手生成：印字有無（筆劃密度，不是 OCR）。字太細抓不到就把最小筆劃比例調低；整片污損會超過最大比例而判無。")
+    nodes += [
+        _node("txt", "text_presence", 2, 0, "印字有無", roi=roi, polarity="dark" if dark else "bright", min_ratio=0.02, max_ratio=0.7),
+        _node("ok", "judge", 3, 0, "OK：有印字", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG：沒有印字", verdict="ng", label="no_text"),
+        _node("out", "output", 3, 2, "輸出筆劃比例", name="ink_ratio"),
+    ]
+    edges += [
+        _edge("gray", "txt", "image", "image"),
+        _edge("txt", "ok", "present", "_flow"), _edge("txt", "ng", "absent", "_flow"),
+        _edge("txt", "out", "ratio", "value"),
+    ]
+    return _finish(nodes, edges, col=4), f"ROI 內以自適應門檻抓{'暗' if dark else '亮'}筆劃，筆劃比例 2%～70% 算有印字"
+
+
+def synth_distance(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
+    roi_a = _annulus_for(_region_of(regions, 0))
+    roi_b = _annulus_for(_region_of(regions, 1))
+    nodes, edges = _src_gray("由 AI 助手生成：兩孔中心距。兩個 ROI 各蓋住一個孔的邊緣。" + ("" if roi_b else "\n目前只圈了一個 ROI，請再圈第二個孔後重新生成。"))
+    nodes += [
+        _node("c1", "find_circle", 2, 0, "孔 1", roi=roi_a, polarity="any", edge_threshold=20, num_rays=72),
+        _node("c2", "find_circle", 2, 1, "孔 2", roi=roi_b or roi_a, polarity="any", edge_threshold=20, num_rays=72),
+        _node("dist", "distance", 3, 0, "中心距", mode="euclid"),
+        _node("nf", "judge", 3, 2, "NG：找不到孔", verdict="ng", label="not_found"),
+    ]
+    edges += [
+        _edge("gray", "c1", "image", "image"), _edge("gray", "c2", "image", "image"), _edge("gray", "dist", "image", "image"),
+        _edge("c1", "dist", "cx", "ax"), _edge("c1", "dist", "cy", "ay"), _edge("c2", "dist", "cx", "bx"), _edge("c2", "dist", "cy", "by"),
+        _edge("c1", "nf", "not_found", "_flow"), _edge("c2", "nf", "not_found", "_flow"),
+    ]
+    value_src, value_port, col, unit = "dist", "distance", 4, "px"
+    if intent.mm_per_px:
+        nodes.append(_node("cal", "calibration", col, 0, "像素校正", mode="pixel_size", pixel_size_mm=intent.mm_per_px))
+        edges.append(_edge("dist", "cal", "distance", "value"))
+        value_src, value_port, col, unit = "cal", "mm", col + 1, "mm"
+    if intent.nominal is not None:
+        tol = intent.tol if intent.tol is not None else round(intent.nominal * 0.02, 3)
+        nodes += [
+            _node("tol", "tolerance_judge", col, 0, "中心距公差", nominal=intent.nominal, upper_tol=tol, lower_tol=-tol, unit=unit, name="distance"),
+            _node("jd", "judge", col + 1, 0, "OK / NG", verdict="by_input", label="distance"),
+        ]
+        edges += [_edge(value_src, "tol", value_port, "value"), _edge("tol", "jd", "in_spec", "value")]
+    nodes.append(_node("out", "output", col, 1, "輸出中心距", name=f"distance_{unit}"))
+    edges.append(_edge(value_src, "out", value_port, "value"))
+    why = "兩個找圓的圓心量距離" + ("（缺第二個 ROI，記得補圈）" if not roi_b else "")
+    if intent.mm_per_px:
+        why += f"，以 {intent.mm_per_px:.4f} mm/px 換算"
+    if intent.nominal is not None:
+        why += f"，公差 {intent.nominal}±{intent.tol if intent.tol is not None else round(intent.nominal * 0.02, 3)}{unit}"
+    return _finish(nodes, edges), why
+
+
+def synth_template_presence(intent: Intent, regions: list, analysis: dict, make_asset: MakeAsset | None) -> tuple[dict, str]:
+    idx = intent.template_roi if intent.template_roi is not None else 0
+    tpl = regions[idx] if idx < len(regions) else None
+    rows = analysis.get("regions") or []
+    template_id = ""
+    search = None
+    if tpl is not None:
+        image_idx = int(tpl.get("image", 0) or 0)
+        if make_asset is not None:
+            template_id = make_asset(image_idx, tpl["region"], "AI 助手：圖案範本")
+        b = rows[idx].get("bounds") if idx < len(rows) and rows[idx].get("bounds") else None
+        if b:
+            w, h = _image_size(analysis, image_idx)
+            search = _expand_rect(b, 1.0, w, h)
+    nodes = [
+        _node("src", "image_source", 0, 0, "取像", mode="auto"),
+        _node("tm", "template_match", 1, 0, "找圖案", template=template_id, roi=search, threshold=0.7, max_matches=1, angle_range=0),
+        _node("ok", "judge", 2, 0, "OK：有圖案", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG：沒有圖案", verdict="ng", label="missing"),
+        _node("out", "output", 2, 2, "輸出比對分數", name="match_score"),
+        _note("hint", 0, 1, "AI 助手", "由 AI 助手生成：圖案有無。範本＝您圈的 ROI（已存成資產），在 ROI 周圍一圈範圍內搜尋；分數門檻 0.7，會旋轉的工件再加 angle_range。"),
+    ]
+    edges = [
+        _edge("src", "tm"),
+        _edge("tm", "ok", "found", "_flow"), _edge("tm", "ng", "not_found", "_flow"),
+        _edge("tm", "out", "best_score", "value"),
+    ]
+    why = "ROI 裁成範本資產，在其周圍搜尋，分數 ≥ 0.7 算有"
+    if not template_id:
+        why += "（範本尚未建立：請圈選圖案 ROI 後重新生成）"
+    return _finish(nodes, edges, col=3), why
+
+
 def synth_generic(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
     nodes, edges = _src_gray("由 AI 助手生成：資訊流程。提示詞不夠明確，先量統計／直方圖／邊緣密度給你看；\n請補充要檢測什麼（例：應該有 5 個孔、量直徑 17.5±0.4mm、有沒有刮痕）再重新生成。")
@@ -387,6 +503,8 @@ SYNTHESIZERS = {
     "brightness": synth_brightness,
     "barcode": synth_barcode,
     "generic": synth_generic,
+    "text": synth_text,
+    "distance": synth_distance,
 }
 
 
@@ -436,11 +554,186 @@ def synth_golden(intent: Intent, regions: list[dict[str, Any]], analysis: dict[s
     return _finish(nodes, edges, col=3), why
 
 
+def _has_roi_input(tool_type: str) -> bool:
+    return tools.has(tool_type) and any(p.key == "roi" for p in tools.get(tool_type).inputs)
+
+
+def wrap_with_locate(graph: dict[str, Any], regions: list[dict[str, Any]], analysis: dict[str, Any], locator_idx: int,
+                     make_asset: MakeAsset | None, *, threshold: float = 0.6) -> tuple[dict[str, Any], str]:
+    """在任何流程前面包「範本比對 → 定位補正 → ROI 跟隨」三件套：定位 ROI 裁成範本、參考位置＝其中心，
+    每個帶固定 ROI 的檢測節點各接一個 fixture_roi。沒有可跟隨的 ROI 就原樣回傳。"""
+    rows = analysis.get("regions") or []
+    if not (0 <= locator_idx < len(regions)) or locator_idx >= len(rows) or not rows[locator_idx].get("bounds"):
+        return graph, ""
+    loc = regions[locator_idx]
+    b = rows[locator_idx]["bounds"]
+    image_idx = int(loc.get("image", 0) or 0)
+    width, height = _image_size(analysis, image_idx)
+    template_id = make_asset(image_idx, loc["region"], "AI 助手：定位範本") if make_asset is not None else ""
+    search = _expand_rect(b, 1.5, width, height)
+    ref_x, ref_y = b["x"] + b["w"] / 2, b["y"] + b["h"] / 2
+    out = json.loads(json.dumps(graph))
+    src_id = next((n["id"] for n in out["nodes"] if n.get("type") == "image_source"), None)
+    if src_id is None:
+        return graph, ""
+    feed = next((n["id"] for n in out["nodes"] if n.get("type") == "grayscale"), src_id)
+    new_nodes = [
+        _node("loc_tm", "template_match", 1, 0, "找定位範本", template=template_id, roi=search, threshold=threshold, max_matches=1, angle_range=0),
+        _node("loc_align", "shape_align", 2, 0, "定位補正", ref_x=round(ref_x, 1), ref_y=round(ref_y, 1), ref_angle=0, use_angle=False),
+        _node("loc_nf", "judge", 3, 0, "NG：定位失敗", verdict="ng", label="locate_failed"),
+    ]
+    new_edges = [
+        _edge(feed, "loc_tm", "image", "image"),
+        _edge("loc_tm", "loc_align", "matches", "matches"),
+        _edge("loc_tm", "loc_nf", "not_found", "_flow"),
+    ]
+    col, followed = 4, 0
+    for n in out["nodes"]:
+        roi = (n.get("params") or {}).get("roi")
+        if n.get("type") in ("note", "image_source", "template_match") or not isinstance(roi, dict) or not roi.get("shape") or not _has_roi_input(n["type"]):
+            continue
+        fid = f"fix_{n['id']}"
+        new_nodes.append(_node(fid, "fixture_roi", col, 0, f"ROI 跟隨：{n.get('label') or n['id']}", roi=roi))
+        new_edges += [_edge(feed, fid, "image", "image"), _edge("loc_align", fid, "transform", "transform"), _edge(fid, n["id"], "region", "roi")]
+        col += 1
+        followed += 1
+    if followed == 0:
+        return graph, ""
+    for n in out["nodes"]:  # 既有節點整體往下移一列，定位鏈放最上排
+        pos = n.get("position") or {}
+        pos["y"] = float(pos.get("y", 0)) + GY
+        n["position"] = pos
+    out["nodes"] = new_nodes + out["nodes"]
+    out["edges"] = out["edges"] + new_edges
+    why = f"定位補正：ROI{locator_idx + 1:02d} 裁成定位範本（參考位置 {ref_x:.0f},{ref_y:.0f}），{followed} 個 ROI 跟隨位移"
+    if not template_id:
+        why += "（範本尚未建立）"
+    return out, why
+
+
+def _work_regions(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any]) -> tuple[Intent, list[dict[str, Any]], dict[str, Any]]:
+    """去掉定位 ROI 後的工作 ROI（analysis.regions 同步過濾、intent 內的 ROI 索引同步重編）。"""
+    if intent.locator_roi is None or not (0 <= intent.locator_roi < len(regions)):
+        return intent, regions, analysis
+    keep = [i for i in range(len(regions)) if i != intent.locator_roi]
+    remap = {old: new for new, old in enumerate(keep)}
+    rows = analysis.get("regions") or []
+    a = dict(analysis)
+    a["regions"] = [rows[i] for i in keep if i < len(rows)]
+    fixed = replace(intent, good_roi=remap.get(intent.good_roi), bad_roi=remap.get(intent.bad_roi), template_roi=remap.get(intent.template_roi))
+    return fixed, [regions[i] for i in keep], a
+
+
+def _synth_one(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any], make_asset: MakeAsset | None) -> tuple[dict[str, Any], str]:
+    if intent.kind == "golden":
+        return synth_golden(intent, regions, analysis, make_asset)
+    if intent.kind == "template_presence":
+        return synth_template_presence(intent, regions, analysis, make_asset)
+    return SYNTHESIZERS[intent.kind](intent, regions, analysis)
+
+
 def synthesize(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any], *,
                make_asset: MakeAsset | None = None) -> tuple[dict[str, Any], str]:
-    if intent.kind == "golden":
-        graph, why = synth_golden(intent, regions, analysis, make_asset)
-    else:
-        graph, why = SYNTHESIZERS[intent.kind](intent, regions, analysis)
-    rationale = "；".join([*intent.notes, why])
+    work_intent, work_regions, work_analysis = _work_regions(intent, regions, analysis)
+    graph, why = _synth_one(work_intent, work_regions, work_analysis, make_asset)
+    notes = list(intent.notes)
+    if intent.locate and intent.locator_roi is not None:
+        graph, loc_why = wrap_with_locate(graph, regions, analysis, intent.locator_roi, make_asset)
+        if loc_why:
+            notes.append(loc_why)
+    rationale = "；".join([*notes, why])
     return graph, rationale
+
+
+# ---------------------------------------------------------------------------
+# 候選方案：主要方案＋參數變體（同一意圖 2～3 種取法），由 service 在影像上試跑後依標記排名
+# ---------------------------------------------------------------------------
+def _scale(key: str, factor: float, floor: float = 0.0, ceil: float | None = None) -> Callable[[dict[str, Any]], Any]:
+    def fn(p: dict[str, Any]) -> Any:
+        v = p.get(key)
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            return None
+        out = max(floor, v * factor)
+        if ceil is not None:
+            out = min(ceil, out)
+        return type(v)(round(out, 4)) if isinstance(v, float) else int(round(out))
+    return fn
+
+
+def _shift_threshold(delta: float) -> Callable[[dict[str, Any]], Any]:
+    """固定門檻往「遠離平均」（delta>0）或「靠近平均」（delta<0）移；依 invert 決定方向。"""
+    def fn(p: dict[str, Any]) -> Any:
+        v = p.get("threshold")
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or p.get("method", "fixed") != "fixed":
+            return None
+        step = -delta if p.get("invert") else delta
+        return int(_clip(v + step, 0, 255))
+    return fn
+
+
+def _flip_polarity(p: dict[str, Any]) -> Any:
+    return "bright" if p.get("polarity", "dark") == "dark" else "dark"
+
+
+#: 意圖 → [(key, 顯示名, [(工具型別, {參數: 值或 fn(params)})], 說明)]
+VARIANTS: dict[str, list[tuple[str, str, list[tuple[str, dict[str, Any]]], str]]] = {
+    "count": [
+        ("adaptive", "自適應門檻", [("threshold", {"method": "adaptive_gaussian", "block": 51, "c": 5})], "背景不均時用區域門檻"),
+        ("strict", "嚴格粒子", [("blob", {"min_area": _scale("min_area", 2.0, 10)}), ("morphology", {"ksize": 7})], "最小面積加倍、開運算加大"),
+    ],
+    "defect": [
+        ("conservative", "保守", [("threshold", {"threshold": _shift_threshold(12)}), ("blob", {"min_area": _scale("min_area", 2.0, 20)})], "門檻外推、最小面積加倍"),
+        ("sensitive", "靈敏", [("threshold", {"threshold": _shift_threshold(-8)}), ("blob", {"min_area": _scale("min_area", 0.5, 20)})], "門檻內縮、最小面積減半"),
+    ],
+    "presence": [
+        ("loose", "寬鬆", [("blob", {"min_area": _scale("min_area", 0.5, 10)})], "最小面積減半"),
+        ("strict", "嚴格", [("blob", {"min_area": _scale("min_area", 2.0, 10)})], "最小面積加倍"),
+    ],
+    "diameter": [("soft_edges", "低邊緣門檻", [("find_circle", {"edge_threshold": 10, "num_rays": 120})], "對比低時用較低邊緣門檻、更多射線")],
+    "distance": [("soft_edges", "低邊緣門檻", [("find_circle", {"edge_threshold": 10, "num_rays": 120})], "對比低時用較低邊緣門檻、更多射線")],
+    "width": [
+        ("first_last", "首尾邊緣對", [("caliper", {"edge_pair": "first_last"})], "取掃描方向的第一與最後一條邊"),
+        ("strongest", "最強邊緣對", [("caliper", {"edge_pair": "strongest"})], "取對比最強的兩條邊"),
+    ],
+    "golden": [
+        ("conservative", "保守", [("defect_diff", {"threshold": _scale("threshold", 1.5, 1, 255), "min_area": _scale("min_area", 2.0, 10)})], "差異門檻與最小面積放大"),
+        ("ecc", "ECC 對齊", [("defect_diff", {"align": "ecc"})], "位移較大時用 ECC 對齊"),
+    ],
+    "color_presence": [("wide", "寬鬆色域", [("color_range", {"h_low": _scale("h_low", 1.0, 0), "s_low": _scale("s_low", 0.7, 0), "v_low": _scale("v_low", 0.7, 0)})], "S/V 下限放寬")],
+    "color_match": [("hsv", "HSV 空間", [("color_check", {"space": "hsv"})], "以色相為主比對，抗亮度變化")],
+    "text": [("flip", "反向筆劃", [("text_presence", {"polarity": _flip_polarity})], "字比背景亮時用")],
+    "template_presence": [("loose", "低分數門檻", [("template_match", {"threshold": 0.55, "angle_range": 10})], "分數門檻 0.55、允許 ±10° 旋轉")],
+}
+
+
+def _variant(base: dict[str, Any], key: str, label: str, patches: list[tuple[str, dict[str, Any]]], why: str) -> dict[str, Any] | None:
+    graph = json.loads(json.dumps(base["graph"]))
+    hit = False
+    for n in graph.get("nodes", []):
+        if str(n.get("id", "")).startswith(("loc_", "fix_")):
+            continue
+        for tool_type, changes in patches:
+            if n.get("type") != tool_type:
+                continue
+            params = n.setdefault("params", {})
+            for k, v in changes.items():
+                new = v(params) if callable(v) else v
+                if new is None or new == params.get(k):
+                    continue
+                params[k] = new
+                hit = True
+    if not hit:
+        return None
+    return {"key": key, "label": label, "graph": graph, "rationale": f"{base['rationale']}；候選方案「{label}」：{why}"}
+
+
+def candidates(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any], *,
+               make_asset: MakeAsset | None = None) -> list[dict[str, Any]]:
+    """主要方案在前，之後是同一意圖的參數變體（最多 2 個）；每筆 {key, label, graph, rationale}。"""
+    graph, rationale = synthesize(intent, regions, analysis, make_asset=make_asset)
+    out = [{"key": "primary", "label": "主要方案", "graph": graph, "rationale": rationale}]
+    for key, label, patches, why in VARIANTS.get(intent.kind, []):
+        v = _variant(out[0], key, label, patches, why)
+        if v is not None:
+            out.append(v)
+    return out

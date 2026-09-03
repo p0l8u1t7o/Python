@@ -9,6 +9,8 @@ POST  /vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, i
                                → {graph, rationale, provider, intent, report, reports, main_image}
 POST  /vision/agent/refine     {images, prompt, regions, graph, feedback} → 同上
 POST  /vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
+POST  /vision/agent/run        {images, graph, main?} → {graph, report, reports, main_image}（切換候選方案）
+POST  /vision/agent/autotune   {graph, runs:[{name, image_ref, status, expected}], max_evals?, deadline_s?} → 同 tune ＋ autotune 摘要
 POST  /vision/agent/tune       {graph, instruction, runs:[{name, image_ref, status, outputs}]} → 前後對比
 
 生成／微調都會在上傳影像上實跑一遍（report 內含各節點影像 ref，前端直接顯示）。
@@ -50,6 +52,22 @@ class GenerateIn(Schema):
     use_llm: bool | None = None
     #: 詢問機制的回答 [{id, answer}]；會併進提示詞。
     answers: list[dict[str, Any]] = []
+    #: 每張影像的期望判定（"ok"／"ng"／""，與 images 對齊）；用來排名候選方案與自動調參。
+    labels: list[str] = []
+
+
+class RunGraphIn(Schema):
+    images: list[str] = []
+    ref: str = ""
+    graph: dict[str, Any]
+    main: int = 0
+
+
+class AutotuneIn(Schema):
+    graph: dict[str, Any]
+    runs: list["RunIn"] = []
+    max_evals: int = 60
+    deadline_s: float = 25.0
 
 
 class RefineIn(GenerateIn):
@@ -193,7 +211,28 @@ def agent_clarify(request: HttpRequest, payload: GenerateIn):
 @router.post("/agent/generate")
 def agent_generate(request: HttpRequest, payload: GenerateIn):
     principal(request).can_execute()
-    return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm, answers=payload.answers)
+    return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm,
+                            answers=payload.answers, labels=payload.labels)
+
+
+@router.post("/agent/run")
+def agent_run(request: HttpRequest, payload: RunGraphIn):
+    """把一份 graph（例如切換的候選方案）在上傳影像上實跑，回與 generate 相同的 report／reports。"""
+    principal(request).can_execute()
+    refs = payload.images or ([payload.ref] if payload.ref else [])
+    if not refs:
+        raise ValidationError("至少要一張影像", code="no_image")
+    return service.run_graph([_image_or_404(r) for r in refs], payload.graph, payload.main)
+
+
+@router.post("/agent/autotune")
+def agent_autotune(request: HttpRequest, payload: AutotuneIn):
+    """批次測試的自動調參：runs[].expected（ok／ng）當標記，只動現場調機參數。"""
+    principal(request).can_execute()
+    runs = [r.dict() for r in payload.runs]
+    images = {r["image_ref"]: store.get(r["image_ref"]) for r in runs if r.get("image_ref")}
+    images = {k: v for k, v in images.items() if v is not None}
+    return service.autotune_runs(payload.graph, runs, images, max_evals=max(1, min(200, payload.max_evals)), deadline_s=max(1.0, min(120.0, payload.deadline_s)))
 
 
 @router.post("/agent/refine")

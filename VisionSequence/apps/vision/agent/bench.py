@@ -44,6 +44,35 @@ def print_image(stain: bool) -> np.ndarray:
     return img
 
 
+def text_image(present: bool) -> np.ndarray:
+    """標籤上有／沒有印字。"""
+    img = np.full((480, 640, 3), 235, np.uint8)
+    cv2.rectangle(img, (120, 160), (520, 320), (250, 250, 250), -1)
+    cv2.rectangle(img, (120, 160), (520, 320), (90, 90, 90), 2)
+    if present:
+        cv2.putText(img, "LOT A123", (150, 260), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (30, 30, 30), 4, cv2.LINE_AA)
+    return img
+
+
+def holes_pair_image(spacing: int = 300) -> np.ndarray:
+    """兩個暗孔，中心距 = spacing。"""
+    img = np.full((480, 640, 3), 205, np.uint8)
+    cv2.circle(img, (200, 240), 30, (40, 40, 40), -1)
+    cv2.circle(img, (200 + spacing, 240), 30, (40, 40, 40), -1)
+    return img
+
+
+def logo_image(present: bool, shift: int = 0) -> np.ndarray:
+    """有／沒有一個「圓內方」圖案（位置可小幅位移）。"""
+    img = np.full((480, 640, 3), 225, np.uint8)
+    cv2.rectangle(img, (60, 60), (580, 420), (200, 200, 205), 3)
+    if present:
+        cx, cy = 320 + shift, 240 - shift
+        cv2.circle(img, (cx, cy), 60, (40, 60, 160), -1)
+        cv2.rectangle(img, (cx - 25, cy - 25), (cx + 25, cy + 25), (240, 240, 240), -1)
+    return img
+
+
 def flat_image(value: int = 128) -> np.ndarray:
     img = np.full((300, 400, 3), value, np.uint8)
     rng = np.random.default_rng(1)
@@ -61,6 +90,8 @@ class BenchCase:
     expect_status: list[str]
     regions: list[dict[str, Any]] = field(default_factory=list)
     answers: list[dict[str, Any]] = field(default_factory=list)
+    #: 每張影像的期望標記（候選排名／自動調參用；空字串＝不標）。
+    labels: list[str] = field(default_factory=list)
     tags: tuple[str, ...] = ()
 
 
@@ -94,6 +125,19 @@ CASES: list[BenchCase] = [
     BenchCase("brightness_range", "亮度：指定範圍", lambda: [flat_image(128), flat_image(30)], "亮度是否正常 80~180", "brightness", ["ok", "ng"], tags=("brightness",)),
     BenchCase("barcode_label", "讀碼：標籤樣本", demo_images.label_qr, "讀取條碼", "barcode", ["any", "any", "any", "ng"], tags=("identify", "samples")),
     BenchCase("generic_vague", "不明確：只驗意圖", lambda: [flat_image()], "看一下這個", "generic", ["any"], tags=("clarify",)),
+    BenchCase("text_label", "印字有無：標籤", lambda: [text_image(True), text_image(False)], "標籤上有沒有印字", "text", ["ok", "ng"],
+              regions=[_rect(130, 170, 380, 140)], tags=("identify",)),
+    BenchCase("distance_holes", "兩孔中心距：合成件", lambda: [holes_pair_image(300), holes_pair_image(300), holes_pair_image(330)],
+              "兩孔中心距離 300±10", "distance", ["ok", "ok", "ng"],
+              regions=[{"region": {"shape": "circle", "cx": 200, "cy": 240, "r": 30}, "image": 0}, {"region": {"shape": "circle", "cx": 500, "cy": 240, "r": 30}, "image": 0}],
+              tags=("measure",)),
+    BenchCase("template_logo", "圖案有無：範本比對", lambda: [logo_image(True), logo_image(True, 5), logo_image(True, -4), logo_image(False)],
+              "有沒有這個圖案", "template_presence", ["ok", "ok", "ok", "ng"], regions=[_rect(240, 160, 160, 160)], tags=("presence",)),
+    BenchCase("locate_width", "定位＋卡尺：定位量測樣本", demo_images.marker_plate, "量亮帶的寬度 160±10，工件位置會變", "width", ["ok", "ok", "ok", "ng"],
+              regions=[_rect(190, 150, 140, 140, 0, "定位"), {"region": {"shape": "rotated_rect", "cx": 690, "cy": 480, "w": 300, "h": 60, "angle": 90}, "image": 0}],
+              tags=("measure", "locate", "samples")),
+    BenchCase("count_labels_pick", "計數＋標記：候選排名與自動調參", lambda: [part_image(5), part_image(4)], "數一下有幾個孔", "count", ["ok", "ng"],
+              answers=[{"id": "count", "answer": "5"}], labels=["ok", "ng"], tags=("count", "labels")),
 ]
 
 
@@ -104,7 +148,7 @@ def run_case(case: BenchCase, settings: Any = None, *, use_llm: bool | None = Fa
     t0 = time.perf_counter()
     row: dict[str, Any] = {"key": case.key, "title": case.title, "tags": list(case.tags)}
     try:
-        result = service.generate(images, case.regions, case.prompt, settings, use_llm=use_llm, answers=case.answers)
+        result = service.generate(images, case.regions, case.prompt, settings, use_llm=use_llm, answers=case.answers, labels=case.labels or None)
     except Exception as exc:  # noqa: BLE001 - 基準要能把炸掉的案例列出來，不能中斷整批
         row.update(intent="", intent_ok=False, valid=False, status_ok=False, statuses=[], expected=case.expect_status,
                    error=f"{exc.__class__.__name__}: {exc}", ms=round((time.perf_counter() - t0) * 1000))

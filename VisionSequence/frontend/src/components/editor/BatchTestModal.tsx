@@ -5,14 +5,14 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Download, Eye, FolderOpen, Gem, ImageOff, Play, Sparkles } from 'lucide-react'
+import { Check, Download, Eye, FolderOpen, Gem, ImageOff, Play, Sparkles, Wand2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Badge, Button, Checkbox, Modal, SegmentedControl, Select, StatusBadge, TextInput } from '@/components/ui'
 import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useBatchFromSource, useBatchTest, useGoldenMutations, useSources } from '@/lib/queries'
-import type { BatchItem, BatchResult, FlowGraph } from '@/lib/types'
+import type { BatchItem, BatchResult, ExpectStatus, FlowGraph } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { formatValue } from './ResultsPanel'
 
@@ -92,15 +92,19 @@ export function BatchTestModal(p: BatchTestModalProps) {
   const [tuning, setTuning] = useState(false)
   const [tuneResult, setTuneResult] = useState<TuneResult | null>(null)
   const tuneAbort = useRef<AbortController | null>(null)
+  /** 每列的期望判定（run_id → ok/ng）：自動調參與「請 AI 調整」的依據 */
+  const [expected, setExpected] = useState<Record<string, ExpectStatus | ''>>({})
 
-  async function tune() {
-    if (!result || !tuneText.trim()) return
+  function runsPayload() {
+    return (result?.items ?? []).map((it) => ({ name: it.name, image_ref: it.image_ref ?? '', status: it.status, outputs: it.outputs, expected: expected[it.run_id] ?? '' }))
+  }
+
+  async function callTune(path: string, body: Record<string, unknown>) {
     setTuning(true)
     const controller = new AbortController()
     tuneAbort.current = controller
     try {
-      const runs = result.items.map((it) => ({ name: it.name, image_ref: it.image_ref ?? '', status: it.status, outputs: it.outputs }))
-      const r = await api.post<TuneResult>('/vision/agent/tune', { graph: p.graph(), instruction: tuneText.trim(), runs }, undefined, controller.signal)
+      const r = await api.post<TuneResult>(path, body, undefined, controller.signal)
       setTuneResult(r)
     } catch (error) {
       if (!controller.signal.aborted) toast.error(errorMessage(error))
@@ -108,6 +112,22 @@ export function BatchTestModal(p: BatchTestModalProps) {
       if (tuneAbort.current === controller) tuneAbort.current = null
       setTuning(false)
     }
+  }
+
+  async function tune() {
+    if (!result || !tuneText.trim()) return
+    await callTune('/vision/agent/tune', { graph: p.graph(), instruction: tuneText.trim(), runs: runsPayload() })
+  }
+
+  /** 資料驅動自動調參：只用有填期望且影像仍在快取的列。 */
+  async function autotune() {
+    if (!result) return
+    const runs = runsPayload()
+    if (!runs.some((r) => r.expected && r.image_ref)) {
+      toast.warning(t('agent.autotuneNoLabels'))
+      return
+    }
+    await callTune('/vision/agent/autotune', { graph: p.graph(), runs, max_evals: 60 })
   }
 
   async function saveGolden() {
@@ -139,6 +159,7 @@ export function BatchTestModal(p: BatchTestModalProps) {
       setResult(res)
       setSelectedRun(null)
       setPicked(new Set())
+      setExpected({})
     } catch (error) {
       toast.error(errorMessage(error))
     }
@@ -151,6 +172,7 @@ export function BatchTestModal(p: BatchTestModalProps) {
       setResult(res)
       setSelectedRun(null)
       setPicked(new Set())
+      setExpected({})
     } catch (error) {
       toast.error(errorMessage(error))
     }
@@ -254,6 +276,7 @@ export function BatchTestModal(p: BatchTestModalProps) {
                     <th className="px-2 py-1 text-left font-medium">{t('batch.cols.thumb')}</th>
                     <th className="px-2 py-1 text-left font-medium">{t('batch.cols.name')}</th>
                     <th className="px-2 py-1 text-left font-medium">{t('batch.cols.status')}</th>
+                    <th className="px-2 py-1 text-left font-medium">{t('batch.cols.expected')}</th>
                     <th className="px-2 py-1 text-right font-medium">{t('batch.cols.ms')}</th>
                     <th className="px-2 py-1 text-left font-medium">{t('batch.cols.outputs')}</th>
                     <th className="px-2 py-1 text-left font-medium">{t('batch.cols.error')}</th>
@@ -269,6 +292,14 @@ export function BatchTestModal(p: BatchTestModalProps) {
                       <td className="px-2 py-1"><Thumb item={it} /></td>
                       <td className="max-w-[160px] truncate px-2 py-1" title={it.name}>{it.name}<span className="ml-1 tnum text-subtle">{it.width}×{it.height}</span></td>
                       <td className="px-2 py-1"><StatusBadge status={it.status} /></td>
+                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                        <select className="input !w-16 !py-0.5 text-[11px]" value={expected[it.run_id] ?? ''} disabled={!it.image_ref}
+                          onChange={(e) => setExpected((m) => ({ ...m, [it.run_id]: e.target.value as ExpectStatus | '' }))} data-testid="batch-expected">
+                          <option value="">—</option>
+                          <option value="ok">OK</option>
+                          <option value="ng">NG</option>
+                        </select>
+                      </td>
                       <td className="tnum px-2 py-1 text-right">{Math.round(it.duration_ms)}</td>
                       <td className="max-w-[260px] truncate px-2 py-1 font-mono text-[10px] text-muted" title={JSON.stringify(it.outputs)}>
                         {Object.entries(it.outputs ?? {}).slice(0, 4).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ') || '—'}
@@ -277,7 +308,7 @@ export function BatchTestModal(p: BatchTestModalProps) {
                       <td className="px-2 py-1 text-right"><Eye size={13} className="text-muted" aria-label={t('batch.viewRun')} /></td>
                     </tr>
                   ))}
-                  {shown.length === 0 ? <tr><td colSpan={8} className="px-2 py-4 text-center text-muted">—</td></tr> : null}
+                  {shown.length === 0 ? <tr><td colSpan={9} className="px-2 py-4 text-center text-muted">—</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -292,7 +323,10 @@ export function BatchTestModal(p: BatchTestModalProps) {
                 {tuning ? (
                   <Button size="sm" variant="danger" onClick={() => tuneAbort.current?.abort()} data-testid="batch-tune-abort">{t('agent.abort')}</Button>
                 ) : (
-                  <Button size="sm" variant="primary" disabled={!tuneText.trim() || p.execLocked} onClick={() => void tune()} data-testid="batch-tune-run">{t('agent.tune')}</Button>
+                  <>
+                    <Button size="sm" variant="primary" disabled={!tuneText.trim() || p.execLocked} onClick={() => void tune()} data-testid="batch-tune-run">{t('agent.tune')}</Button>
+                    <Button size="sm" icon={<Wand2 size={14} />} disabled={p.execLocked} title={t('agent.autotuneHint')} onClick={() => void autotune()} data-testid="batch-autotune">{t('agent.autotune')}</Button>
+                  </>
                 )}
               </div>
               {tuneResult ? (

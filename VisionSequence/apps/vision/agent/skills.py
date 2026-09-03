@@ -57,6 +57,9 @@ INTENT_TOOLS: dict[str, tuple[str, ...]] = {
     "brightness": ("intensity", "histogram"),
     "barcode": ("barcode", "warp_perspective", "text_presence"),
     "generic": ("intensity", "histogram", "edge_density"),
+    "text": ("text_presence",),
+    "distance": ("find_circle", "distance", "calibration", "tolerance_judge"),
+    "template_presence": ("template_match",),
 }
 
 _ROI_TOOLS = {

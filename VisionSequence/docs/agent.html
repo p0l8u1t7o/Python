@@ -213,8 +213,11 @@ GET   /api/vision/agent/settings   自己的供應商設定（金鑰只回尾碼
 PATCH /api/vision/agent/settings   {provider, model?, api_key?, clear_key?}
 POST  /api/vision/agent/image      multipart image → {ref, width, height}
 POST  /api/vision/agent/clarify    {images, prompt, regions, answers?} → {ready, questions[], summary, intent}
-POST  /api/vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?, answers?}
-                                   → {graph, rationale, provider, intent, report, reports, main_image}
+POST  /api/vision/agent/generate   {images:[ref], prompt, regions:[{region, hint?, image?}], use_llm?, answers?, labels?:["ok"|"ng"|""]}
+                                   → {graph, rationale, provider, intent, report, reports, main_image, candidates[], labels, warnings?, autotune?}
+POST  /api/vision/agent/run        {images, graph, main?} → {graph, report, reports, main_image}（切換候選方案）
+POST  /api/vision/agent/autotune   {graph, runs:[{name, image_ref, status, expected}], max_evals?, deadline_s?} → 同 tune ＋ autotune 摘要
+POST  /api/vision/flows/{id}/golden/autotune  {graph?, max_evals?, deadline_s?} → {graph, before, after, change_text[], improved, budget_hit, cases}
 POST  /api/vision/agent/refine     {images, prompt, regions, graph, feedback} → 同上
 POST  /api/vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
 POST  /api/vision/agent/tune       {graph, instruction, runs} → 前後對比（見上）</pre>
@@ -222,8 +225,22 @@ POST  /api/vision/agent/tune       {graph, instruction, runs} → 前後對比�
 regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulus / polygon / line，全圖像素座標）。
 執行類端點：引擎鎖定時 423；一般使用者可用。</p>
 
+<h2 id="candidates">候選方案、影像標記與自動調參</h2>
+<p>規則引擎不再只給一份流程：每種意圖產出「主要方案」＋ 1～2 個參數變體（例如計數的自適應門檻／嚴格粒子、缺陷的保守／靈敏、卡尺的首尾／最強邊緣對、良品比對的保守／ECC 對齊）。全部候選先在上傳的每張影像上靜默試跑（跑完立即釋放節點影像，不佔快取），依<strong>影像標記</strong>打分（命中 +10、有錯誤節點 −5、失敗 −3），勝者才正式跑並保留 overlay；回應 <code>candidates[]</code> 列出每個方案的判定與分數，AI 助手頁可點選切換（<code>POST /agent/run</code> 在同一批影像重跑）。</p>
+<p><strong>影像標記</strong>：AI 助手頁縮圖右下角可把每張影像標成應判 OK／NG（<code>GenerateIn.labels</code>）；ROI 提示寫「好品」「壞品」的影像也自動成為標記。有 2 張以上標記且勝者尚未全部命中時，生成會對勝者做<strong>小預算自動調參</strong>（24 次評估／10 秒），有改善才採用並在 rationale 註明。</p>
+<p><strong>自動調參</strong>（<code>apps/vision/agent/autotune.py</code>）：座標下降——走訪 graph 內 <code>teach=True</code> 的參數，候選值＝目前值的幾何階梯（由近到遠 ×0.7／×1.4／×0.5／×2／×0.25／×4／×0.1／×10，夾在 minimum／maximum 內；0～1 型 ±0.1／±0.2；select 全選項；boolean 翻轉），在有標記的影像上以（命中數、−錯誤、−失敗）比較，<strong>嚴格變好才採納</strong>（同分不換、小改動先試，抗過擬合），命中全部或預算用完即停。不動規格類參數：公差判定、範圍判斷、數值判斷的門檻（期望數量）、像素校正、讀碼、定位補正。三個入口：</p>
+<ul>
+<li>AI 助手生成（上述小預算）。</li>
+<li>批次測試：結果表每列可填「期望」OK／NG，按「自動調參」→ <code>POST /agent/autotune</code>（<code>runs[].expected</code>），回與「請 AI 調整」相同的前後對比可套用到畫布；「請 AI 調整」指令含「自動調參」也走此路，離線且有 2 列以上期望時亦自動改走。</li>
+<li>Golden Set 頁：「自動調參」→ <code>POST /flows/{id}/golden/autotune</code>（用案例的期望狀態與期望輸出），不寫回流程，結果可「帶回編輯器」成為草稿。</li>
+</ul>
+
+<h2 id="locate">定位補正與新意圖</h2>
+<p>提示詞提到「位置會變／定位／位移／跟隨」，或某個 ROI 的提示填「定位」（標記、marker、fiducial 亦可）：該 ROI 不參與檢測，而是裁成<strong>定位範本</strong>，流程前面自動包「範本比對 → 定位補正 → ROI 跟隨」三件套（<code>synth.wrap_with_locate</code>）：範本比對的搜尋區＝定位 ROI 外擴 1.5 倍、參考位置＝ROI 中心、每個帶固定 ROI 的檢測節點各接一個 <code>fixture_roi</code>（ROI 輸入埠優先於畫布參數），找不到範本走 NG（locate_failed）。沒有標「定位」的 ROI 時，詢問機制會先要求圈一個位置固定的標記。</p>
+<p>新增三種意圖：<code>text</code>（印字有無：<code>text_presence</code> 筆劃密度，關鍵詞「印字／文字／序號／text」）、<code>distance</code>（兩孔中心距：兩個找圓 → <code>distance</code> → 校正／公差，關鍵詞「距離／孔距／中心距」＋孔／圓或兩個圓形 ROI）、<code>template_presence</code>（圖案有無：ROI 裁成範本 → <code>template_match</code> found／not_found，關鍵詞「圖案／範本／樣板／logo／pattern」）。詢問機制各有對應缺口問題（印字區域、第二個孔、要找的圖案）。</p>
+
 <h2 id="bench">評測基準</h2>
-<p><code>manage.py agent_bench</code> 用 <code>apps/vision/agent/bench.py</code> 的案例（合成樣本圖＋ROI＋提示詞＋期望意圖與每張影像的期望判定）跑離線規則引擎，印出意圖準確率、判定準確率（案例／影像）、graph 有效率與耗時；<code>--llm</code> 改用伺服器供應商、<code>--keys</code> 只跑指定案例、<code>--json</code> 輸出完整結果。<code>tests/test_agent_bench.py</code> 以門檻守住回歸（目前意圖 ≥ 0.9、判定 ≥ 0.8、全部有效），之後每個能力提升都用同一把尺量。</p>
+<p><code>manage.py agent_bench</code> 用 <code>apps/vision/agent/bench.py</code> 的案例（合成樣本圖＋ROI＋提示詞＋期望意圖與每張影像的期望判定）跑離線規則引擎，印出意圖準確率、判定準確率（案例／影像）、graph 有效率與耗時；<code>--llm</code> 改用伺服器供應商、<code>--keys</code> 只跑指定案例、<code>--json</code> 輸出完整結果。<code>tests/test_agent_bench.py</code> 以門檻守住回歸（目前意圖 ≥ 0.9、判定 ≥ 0.8、全部有效），之後每個能力提升都用同一把尺量。案例可帶 <code>labels</code>（影像標記）以覆蓋候選排名與自動調參路徑；Phase 1 新增印字、中心距、圖案、定位＋卡尺、計數＋標記五個案例（共 21 個）。</p>
 
 <h2 id="design">設計取捨</h2>
 <ul>

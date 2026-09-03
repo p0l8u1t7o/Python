@@ -13,10 +13,14 @@ from typing import Any
 INTENT_KINDS = (
     "barcode", "count", "diameter", "width", "angle", "golden",
     "defect", "color_match", "color_presence", "presence", "brightness", "generic",
+    "text", "distance", "template_presence",
 )
 
 _GOOD_WORDS = ("好品", "良品", "ok 品", "ok品", "正常品", "正常", "合格", "golden", "good", "reference", "範本", "范本")
 _BAD_WORDS = ("壞品", "坏品", "不良", "ng 品", "ng品", "瑕疵品", "缺陷品", "異常", "异常", "不合格", "bad", "defective")
+
+#: 定位標記 ROI 的提示詞（這個 ROI 不參與檢測，只當定位範本）。
+_LOCATOR_WORDS = ("定位", "標記", "标记", "marker", "fiducial", "anchor", "locator")
 
 _CN_NUM = {"一": 1, "二": 2, "兩": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
@@ -45,6 +49,11 @@ class Intent:
     #: 良品比對：哪個 ROI 是好品（當範本）、哪個是壞品（示範缺陷）；索引以 0 起算。
     good_roi: int | None = None
     bad_roi: int | None = None
+    #: 工件位置會變：在流程前面包「範本比對 → 定位補正 → ROI 跟隨」；locator_roi 是當定位範本的 ROI（提示填「定位」）。
+    locate: bool = False
+    locator_roi: int | None = None
+    #: 圖案有無（範本比對）：哪個 ROI 裁成範本。
+    template_roi: int | None = None
     #: 解析過程的說明（rationale 的素材）。
     notes: list[str] = field(default_factory=list)
 
@@ -65,6 +74,8 @@ def _golden_roles(text: str, regions: list[dict[str, Any]]) -> tuple[int | None,
     good = bad = None
     for i, r in enumerate(regions):
         hint = str(r.get("hint") or "").lower()
+        if any(w in hint for w in _LOCATOR_WORDS):
+            continue
         if good is None and any(w in hint for w in _GOOD_WORDS):
             good = i
         elif bad is None and any(w in hint for w in _BAD_WORDS):
@@ -119,7 +130,7 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
         intent.tol = float(m.group(1))
         if m.group(2) in ("mm", "毫米", "公厘"):
             intent.unit = "mm"
-    nominal = _find_number(text, [r"(?:直徑|直径|孔徑|孔径|寬度|宽度|標稱|标称|應為|应为|夾角|夹角|角度|diameter|width|angle)\D{0,6}(\d+(?:\.\d+)?)"])
+    nominal = _find_number(text, [r"(?:直徑|直径|孔徑|孔径|寬度|宽度|標稱|标称|應為|应为|夾角|夹角|角度|距離|距离|孔距|中心距|diameter|width|angle|distance)\D{0,6}(\d+(?:\.\d+)?)"])
     if nominal is not None:
         intent.nominal = nominal
     m = re.search(r"(\d+(?:\.\d+)?)\s*(?:mm|毫米|公厘)\s*[/＝=]\s*(\d+(?:\.\d+)?)\s*(?:px|像素)", text)
@@ -133,6 +144,20 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
         intent.polarity = "dark"
     elif _has(low, "比背景亮", "亮色", "白色目標", "brighter", "bright target"):
         intent.polarity = "bright"
+
+    # 定位：提示詞說位置會變，或有 ROI 標成「定位」
+    for i, r in enumerate(regions):
+        if any(w in str(r.get("hint") or "").lower() for w in _LOCATOR_WORDS):
+            intent.locator_roi = i
+            intent.locate = True
+            break
+    if _has(low, "定位", "位置會變", "位置会变", "會移動", "会移动", "位移", "跟隨", "跟随", "位置不固定", "位置不一", "locate", "fixture", "alignment"):
+        intent.locate = True
+    work_regions = [r for i, r in enumerate(regions) if i != intent.locator_roi]
+    if intent.locator_roi is not None:
+        first = work_regions[0].get("region") if work_regions else None
+        shape = str(first.get("shape", "")) if first else ""
+        region_infos = [row for i, row in enumerate(region_infos) if i != intent.locator_roi]
 
     # --- 特異性排序的意圖判斷 ---
     good, bad = _golden_roles(text, regions)
@@ -148,6 +173,20 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
         m = re.search(r"(?:期望內容|期望内容|內容應為|内容应为|內容是|内容是|expected)\s*[:：]?\s*([^\s，,。；;]+)", text)
         if m:
             intent.expected_text = m.group(1)
+        return intent
+    if _has(low, "文字", "印字", "字有", "有字", "沒有字", "没有字", "序號", "序号", "字元", "字符", "刻字", "噴印", "喷印", "text", "print"):
+        intent.kind = "text"
+        intent.notes.append("印字有無（筆劃密度）")
+        return intent
+    circle_rois = [r for r in work_regions if str((r.get("region") or {}).get("shape", "")) in ("circle", "annulus")]
+    if _has(low, "距離", "距离", "孔距", "中心距", "distance", "pitch") and (len(circle_rois) >= 2 or _has(low, "孔", "圓", "圆", "圓心", "圆心", "hole", "circle", "center")):
+        intent.kind = "distance"
+        intent.notes.append("兩孔中心距：兩個 ROI 各找一個圓再量距離")
+        return intent
+    if _has(low, "範本", "范本", "樣板", "样板", "圖案", "图案", "圖樣", "图样", "標誌", "标志", "印記", "印记", "符號", "符号", "pattern", "template", "logo") and work_regions:
+        intent.kind = "template_presence"
+        intent.template_roi = next((i for i, r in enumerate(regions) if i != intent.locator_roi), None)
+        intent.notes.append("圖案有無：ROI 裁成範本做比對")
         return intent
     if _has(low, "角度", "夾角", "夹角", "angle"):
         intent.kind = "angle"

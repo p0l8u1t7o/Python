@@ -134,6 +134,9 @@
 <li>回歸的 run 以 <code>trigger="regress"</code> 進統計與 FlowRun（受 <code>PERSIST_RUNS</code> 控制）；preview 補跑不入庫。</li>
 </ul>
 
+<h3 id="autotune">自動調參</h3>
+<p>Golden Set 頁的「自動調參」（<code>POST /flows/{id}/golden/autotune</code>，body <code>{graph?, max_evals?, deadline_s?}</code>）用全部案例的期望狀態與期望輸出當標記，對流程（或未儲存的草稿 graph）做座標下降搜尋現場調機參數（<code>teach=True</code>；不動公差、範圍、期望數量），嚴格變好才採納；回 <code>{graph, before:{match,total}, after, change_text[], evals, elapsed_ms, improved, budget_hit, cases, skipped[]}</code>。不寫回流程：前端「帶回編輯器」把結果放進草稿，由使用者檢視後儲存。細節見 <a href="agent.html#candidates">AI 助手 › 自動調參</a>。</p>
+
 <h2 id="cli-regress">6. CLI：manage.py regress</h2>
 <pre>manage.py regress &lt;flow_id|name&gt; [--fail-under 0.98] [--json] [--save-baseline] [--graph file.flow.json --source &lt;id&gt;]</pre>
 <table>

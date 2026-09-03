@@ -17,10 +17,12 @@ QUESTION_KINDS = ("choice", "number", "text", "roi")
 GOAL_OPTIONS = [
     ("count", "計數（有幾個）"), ("diameter", "量測圓孔直徑"), ("width", "量測寬度／間距"), ("angle", "量測角度"),
     ("defect", "表面缺陷"), ("color", "顏色判斷"), ("presence", "有無檢測"), ("barcode", "讀取條碼"), ("brightness", "亮度／曝光守門"),
+    ("text", "印字有無"), ("distance", "兩孔中心距"), ("template", "圖案有無（範本比對）"),
 ]
 _GOAL_PHRASE = {
     "count": "請計數有幾個", "diameter": "請量測直徑", "width": "請量測寬度", "angle": "請量測角度",
     "defect": "請檢查表面缺陷刮痕", "color": "請檢查顏色是否正確", "presence": "請檢查有沒有", "barcode": "請讀取條碼", "brightness": "請檢查亮度",
+    "text": "請檢查有沒有印字", "distance": "請量測兩孔的中心距離", "template": "請用範本比對檢查圖案有沒有",
 }
 
 
@@ -76,6 +78,9 @@ def build_questions(intent: Intent, regions: list[dict[str, Any]], analysis: dic
     if intent.kind == "generic":
         ask(_q("goal", "這張影像要檢測什麼？", "choice", options=GOAL_OPTIONS, hint="提示詞不夠明確；選一項讓我用對的工具。"))
         return qs
+    if intent.locate and intent.locator_roi is None:
+        ask(_q("locate_roi", "請圈一個位置固定的定位標記，並在該 ROI 的提示填「定位」", "roi", hint="工件位置會變時，其他 ROI 會跟著定位標記移動；定位標記要在每張影像都看得到。"))
+    work = [r for i, r in enumerate(regions) if i != intent.locator_roi]
     if intent.kind == "count":
         if intent.expected_count is None:
             ask(_q("count", "期望的數量是多少？", "number", optional=True, hint="填了就會做 OK／NG 判定；留空只回報數量。"))
@@ -118,6 +123,19 @@ def build_questions(intent: Intent, regions: list[dict[str, Any]], analysis: dic
             ask(_q("roi_bad", "有壞品示範嗎？若有請圈選並在提示填「壞品」", "roi", optional=True))
     elif intent.kind == "presence" and not regions:
         ask(_q("roi_scope", "要檢查整張影像還是特定區域？", "choice", options=[("whole", "整張影像"), ("roi", "我先圈一個區域")], optional=True))
+    elif intent.kind == "text":
+        if not work:
+            ask(_q("roi", "請圈住印字所在的區域", "roi", hint="筆劃密度只在 ROI 內計算，框太大會把背景算進去。"))
+    elif intent.kind == "distance":
+        if len(work) < 2:
+            ask(_q("roi", "請為兩個孔各圈一個圓形 ROI（蓋住孔緣）", "roi", hint=f"目前 {len(work)} 個 ROI；中心距需要兩個找圓結果。"))
+        if intent.nominal is None:
+            ask(_q("nominal", "中心距的標稱值與公差？（例：300±10）", "text", optional=True, hint="留空只回報量測值不判定。"))
+        if intent.unit == "mm" and intent.mm_per_px is None:
+            ask(_q("mm_per_px", "每像素多少 mm？（例：0.05）", "number", hint="要換算成 mm 需要像素尺寸；不知道可先用 px。"))
+    elif intent.kind == "template_presence":
+        if not work:
+            ask(_q("roi", "請圈住要找的圖案（會裁成範本）", "roi", hint="範本取自您圈的區域；比對時在其附近搜尋。"))
     elif intent.kind == "barcode":
         if not intent.expected_text:
             ask(_q("expected", "條碼內容應該是什麼？", "text", optional=True, hint="填了會比對內容；留空只讀取不比對。"))
@@ -132,12 +150,15 @@ def summary_of(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str
     kind_label = {
         "count": "計數", "diameter": "圓孔直徑量測", "width": "寬度量測", "angle": "角度量測", "golden": "良品比對", "defect": "表面缺陷",
         "color_match": "顏色比對", "color_presence": "顏色有無", "presence": "有無檢測", "brightness": "亮度守門", "barcode": "讀碼", "generic": "尚不明確",
+        "text": "印字有無", "distance": "兩孔中心距", "template_presence": "圖案有無（範本比對）",
     }.get(intent.kind, intent.kind)
     bits = [f"判讀為「{kind_label}」", f"{len(regions)} 個 ROI", f"{analysis.get('image_count', 1)} 張影像"]
     if intent.expected_count is not None:
         bits.append(f"期望 {intent.expected_count} 個")
     if intent.nominal is not None:
         bits.append(f"標稱 {intent.nominal}{intent.unit}" + (f"±{intent.tol}" if intent.tol is not None else ""))
+    if intent.locate:
+        bits.append("含定位補正" if intent.locator_roi is not None else "位置會變（尚未指定定位標記）")
     return "；".join(bits)
 
 

@@ -155,6 +155,36 @@ def get_baseline(request: HttpRequest, flow_id: int):
 # ---------------------------------------------------------------------------
 # 單一 case
 # ---------------------------------------------------------------------------
+class GoldenAutotuneIn(Schema):
+    graph: dict[str, Any] | None = None
+    max_evals: int = 60
+    deadline_s: float = 25.0
+
+
+@router.post("/flows/{flow_id}/golden/autotune")
+def autotune_flow(request: HttpRequest, flow_id: int, payload: GoldenAutotuneIn):
+    """用 Golden Set 的期望值自動調參（只動現場調機參數）；不寫回流程，回調整後的 graph 讓前端帶回編輯器。"""
+    from apps.vision.agent import autotune, service
+    from apps.vision.graph import validate_graph
+
+    flow = _visible_flow(request, flow_id)
+    principal(request).can_execute()
+    labeled, skipped = [], []
+    for case in GoldenCase.objects.filter(flow=flow).order_by("id"):
+        image = regress.load_image(case.image_path)
+        if image is None:
+            skipped.append(case.name)
+            continue
+        labeled.append(autotune.Labeled(image, case.expect_status, case.expect_outputs or {}, case.name))
+    if not labeled:
+        raise ValidationError("Golden Set 沒有可讀取的案例影像", code="no_cases")
+    graph = validate_graph(payload.graph or flow.graph)
+    res = autotune.coordinate_search(graph, labeled, max_evals=max(1, min(200, payload.max_evals)), deadline_s=max(1.0, min(120.0, payload.deadline_s)),
+                                     trial=lambda g, im: service.trial_run(g, im, keep_images=False))
+    return {"flow_id": flow.id, "flow_version": flow.version, "graph_override": payload.graph is not None, "cases": len(labeled), "skipped": skipped,
+            **{k: res[k] for k in ("graph", "before", "after", "changes", "change_text", "evals", "elapsed_ms", "improved", "budget_hit")}}
+
+
 @router.get("/flows/{flow_id}/golden/{case_id}/image", auth=None)
 def case_image(request: HttpRequest, flow_id: int, case_id: int, max: int = 0, fmt: str = "jpeg", q: int = 85):
     # <img> 直接載入帶不了 header；authenticate() 接受 ?token= / ?api_key=。
