@@ -81,7 +81,7 @@
 <li>「影像集」分頁為每張影像標記期望 OK／NG（或全部 OK／NG）；「結果」分頁的期望欄也可改。命中率、混淆矩陣立即更新。</li>
 <li>「洞察」分頁：未命中影像、出錯節點、判定門檻建議、具名輸出分佈（依期望分兩色）、歷次執行趨勢；「套用建議並重新執行」直接產生新的一次執行。</li>
 <li>「調參」分頁：現場調機參數（teach）分組編輯 → 「重新執行」（新執行的 parent＝目前選取的執行）→ 「比較」分頁逐張對照。</li>
-<li>「AI 助手」分頁：提問（諮詢）、請 AI 調整、自動調參；結果都成為新的一次執行。</li>
+<li>右下角的全域 AI 助手（脈絡＝批次測試頁，選定已完成的執行後）：提問（諮詢）、依資料調整；調參面板的「自動調參」；結果都成為新的一次執行。</li>
 <li>滿意後「寫回流程」（擁有者／管理員）、「存為配方」（參數差異 → FlowRecipe）或「帶回編輯器」（成為草稿）。</li>
 </ol>
 
@@ -168,7 +168,7 @@ POST   /vision/agent/consult                          {batch_run_id, question, g
 <tr><td><code>apps/vision/batch/insights.py</code></td><td>洞察與建議門檻（純函式）</td></tr>
 <tr><td><code>apps/vision/batch/api.py</code></td><td>端點</td></tr>
 <tr><td><code>apps/vision/agent/consult.py</code></td><td>資料諮詢</td></tr>
-<tr><td><code>frontend/src/pages/BatchPage.tsx</code>、<code>components/batch/*</code>、<code>lib/batch.ts</code></td><td>頁面、影像集／執行清單、結果表、影像集標記、洞察、比較、調參、AI 面板、單張預覽</td></tr>
+<tr><td><code>frontend/src/pages/BatchPage.tsx</code>、<code>components/batch/*</code>、<code>lib/batch.ts</code></td><td>頁面、影像集／執行清單、結果表、影像集標記、洞察、比較、調參（AI 諮詢／調整已併入全域助手）、單張預覽</td></tr>
 <tr><td><code>tests/test_batch.py</code></td><td>影像集、執行、標記、洞察、比較、預覽、自動調參、配方／Golden、淘汰、刪除、權限、AI 諮詢與調整落地</td></tr>
 </table>
 </article>

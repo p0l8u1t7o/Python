@@ -61,7 +61,7 @@
 <li><a href="#clarify">詢問機制</a></li>
 <li><a href="#multi">多張影像與 ROI 編號</a></li>
 <li><a href="#providers">AI 代理來源與金鑰</a></li>
-<li><a href="#editor">流程頁面裡的 AI 助手</a></li>
+<li><a href="#editor">全域 AI 助手（任何頁面）</a></li>
 <li><a href="#tune">跑多筆影像後請 AI 調整</a></li>
 <li><a href="#skills">AI 代理技能</a></li>
 <li><a href="#arch">架構</a></li>
@@ -84,7 +84,7 @@
 <tr><td>顏色判斷沒圈 ROI</td><td>請圈要判斷的區域（目標色取自 ROI）</td></tr>
 </table>
 <p>回答以補充句併回提示詞（例：「期望 5 個」「目標比背景暗」「標稱 17.5±0.4mm」），規則引擎與 LLM 都讀同一份；LLM 模式下由模型依 <code>skills/design.md</code> 的「謹慎原則」自行決定要不要問、問什麼，格式不合就落回規則版問題。</p>
-<p><strong>中斷</strong>：助手確認或生成中，按鈕會變成「中斷」；編輯器 AI 分頁與批次測試的「請 AI 調整」也有同樣的中斷鍵（前端取消請求，伺服器端該次呼叫結束後不會套用任何結果）。</p>
+<p><strong>中斷</strong>：助手確認或生成中，按鈕會變成「中斷」；全域 AI 助手（編輯器修改、批次諮詢／調整）也有同樣的中斷鍵（前端取消請求，伺服器端該次呼叫結束後不會套用任何結果）。</p>
 
 <h2 id="multi">多張影像與 ROI 編號</h2>
 <p>可以一次上傳多張影像（縮圖列切換），在每張影像上各自圈 ROI；ROI 依加入順序編號
@@ -107,8 +107,18 @@
 <p>解析順序：使用者自己的設定（明確選 offline 也算）→ 伺服器 <code>.env</code>（<code>VISION_AGENT_PROVIDER</code>／<code>VISION_AGENT_API_KEY</code>／<code>VISION_AGENT_MODEL</code>／<code>VISION_AGENT_BASE_URL</code>／<code>VISION_AGENT_TIMEOUT_S</code>）→ offline。OpenAI／相容端點與 Gemini 要求 JSON 輸出模式；OpenAI 推理模型（o 系列／gpt-5）自動改用 <code>max_completion_tokens</code>。LLM 失敗改用規則引擎時，原因會列在結果的 warnings 裡。
 整合方（API 金鑰身分）沒有使用者，一律用伺服器設定。LLM 呼叫失敗（金鑰錯、逾時、輸出無效）自動落回規則引擎，功能不中斷。</p>
 
-<h2 id="editor">流程頁面裡的 AI 助手</h2>
-<p>編輯器右側多了「AI」分頁：用一句話請助手修改<strong>目前畫布</strong>（未儲存的也算），回覆附「改了什麼」與試執行結果（用最近一次執行的影像），按「套用到畫布」寫回（可復原）。</p>
+<h2 id="editor">全域 AI 助手（任何頁面）</h2>
+<p>右下角的 <strong>AI 助手</strong> 按鈕在每個頁面都在（<code>AssistantDock</code> 掛在 AppShell），開啟後是常駐的聊天視窗：切換頁面不會消失，對話存在瀏覽器（localStorage）。一個輸入框依<strong>目前頁面的脈絡</strong>分流，不必到各頁找 AI 功能：</p>
+<table>
+<tr><th>脈絡（頁面）</th><th>能力</th><th>後端</th></tr>
+<tr><td>任何頁面</td><td><strong>使用說明問答</strong>：回答平台怎麼用（回答附「參考文件」連結，開 <code>/docs/…</code> 對應章節）</td><td><code>POST /agent/chat</code> → <code>help.py</code></td></tr>
+<tr><td>流程編輯器／工具頁</td><td><strong>修改流程</strong>：修改語氣的句子直接改<strong>目前畫布</strong>（未儲存的也算），回覆附「改了什麼」，按「套用到畫布」寫回（可復原）；工具頁只提供該工具的參數要領</td><td><code>service.edit</code>（代理模式改走 <code>/agent/jobs</code> task=edit）</td></tr>
+<tr><td>批次測試頁（選定已完成的執行）</td><td><strong>資料諮詢</strong>（回答附可套用的參數建議）與<strong>依資料調整</strong>（結果成為新的一次執行並自動選中）</td><td><code>consult.consult</code>／<code>service.tune</code>＋<code>persist_tune</code></td></tr>
+</table>
+<p>模式晶片預設「自動」：問句（含「如何／為什麼／什麼／？」）一律走問答；有修改語氣（「改成」「停用」「放寬」「新增」…）且在編輯器就修改流程、在批次頁就依資料調整；批次頁提到「第 N 張／NG／門檻／結果」等資料字眼走諮詢。判斷不合意時可手動切「使用說明／修改流程／資料諮詢／依資料調整」。頁面用 <code>useRegisterAssistantContext</code> 登記脈絡（kind、目前 graph、套用回呼、批次執行 id），離開頁面自動清除。</p>
+<h3>使用說明問答的做法</h3>
+<p><code>agent/help.py</code> 在第一次查詢時把 <code>docs/*.html</code> 拆成章節（h2／h3 為單位、帶錨點）、加上每個工具的技能（<code>skills.base_skill_text</code>）建成索引；分詞＝英數整詞＋中文雙字詞，BM25 計分並對標題命中與使用者手冊／批次／AI 助手頁略加權；docs 檔案更新會自動重建。有 LLM 時把最相關的 5 段（工具頁再加上該工具技能）連同最近對話與問題交給供應商，系統提示要求<strong>只依片段回答、文件沒提到就直說、300 字內、結尾列參考章節</strong>；離線或 LLM 失敗時回文件節錄與連結（warnings 註明原因）。</p>
+<p>編輯器內離線可用的指令句型：</p>
 <table>
 <tr><th>離線指令句型</th><th>效果</th></tr>
 <tr><td>把 二值化 的 threshold 改成 80</td><td>依節點標題／id／工具名找節點，參數名可用 key 或中文標籤</td></tr>
@@ -119,7 +129,7 @@
 <p>接上 LLM 供應商後不限句型：可以「在找圓後面加公差判定 ±0.5」「把顏色比對換成顏色範圍＋像素計數」，LLM 收到目前 graph 與工具目錄，只動需要動的部分並保留節點 id。</p>
 
 <h2 id="tune">跑多筆影像後請 AI 調整（批次測試頁）</h2>
-<p><strong>批次測試頁</strong>（<a href="batch.html">batch.html</a>）的「AI 助手」分頁有三種能力，都以暫存的逐張資料為依據：<strong>諮詢</strong>（<code>POST /agent/consult</code>：規則洞察＋LLM 回答，附可套用的參數建議）、<strong>請 AI 調整</strong>（<code>/agent/tune</code> 或代理模式 <code>/agent/jobs</code> 帶 <code>batch_run_id</code>，結果落成新的一次執行）、<strong>自動調參</strong>（<code>POST /batch/sets/{id}/runs {mode:"autotune"}</code>）。以下是原本以影像快取 ref 為輸入的介面，仍可用。</p>
+<p><strong>批次測試頁</strong>（<a href="batch.html">batch.html</a>）在全域 AI 助手（右下角，脈絡＝批次測試頁）與調參面板提供三種能力，都以暫存的逐張資料為依據：<strong>諮詢</strong>（<code>POST /agent/consult</code>：規則洞察＋LLM 回答，附可套用的參數建議）、<strong>請 AI 調整</strong>（<code>/agent/tune</code> 或代理模式 <code>/agent/jobs</code> 帶 <code>batch_run_id</code>，結果落成新的一次執行）、<strong>自動調參</strong>（<code>POST /batch/sets/{id}/runs {mode:"autotune"}</code>）。以下是原本以影像快取 ref 為輸入的介面，仍可用。</p>
 <p>「批次測試」跑完一批影像後，結果表下方有「請 AI 依這批結果調整」：輸入提示詞（「NG 的那幾張其實是好品，太敏感了」「改成 4 個」），
 助手拿到每張的判定與輸出值（LLM 模式還會看到幾張縮圖），調整流程後<strong>在同一批影像重跑</strong>，回報「調整前 → 後」的 OK／NG／失敗數與逐張變化，滿意再「套用到畫布」。</p>
 <pre>POST /api/vision/agent/tune  {graph, instruction, runs:[{name, image_ref, status, outputs}]}
@@ -221,7 +231,10 @@ POST  /api/vision/agent/autotune   {graph, runs:[{name, image_ref, status, expec
 POST  /api/vision/flows/{id}/golden/autotune  {graph?, max_evals?, deadline_s?} → {graph, before, after, change_text[], improved, budget_hit, cases}
 POST  /api/vision/agent/refine     {images, prompt, regions, graph, feedback} → 同上
 POST  /api/vision/agent/edit       {graph, instruction, image_ref?} → {graph, rationale, changes, report?, applied}
-POST  /api/vision/agent/tune       {graph, instruction, runs} → 前後對比（見上）</pre>
+POST  /api/vision/agent/tune       {graph, instruction, runs} → 前後對比（見上）
+POST  /api/vision/agent/chat       全域助手 {message, mode?, context{kind, route, flow_id, flow_name, node_id, node_type, batch_run_id, image_ref, graph}, history[]}
+                                   → {kind: help|edit|consult|tune, answer, provider, sources[]?, result?, suggestions?, warnings?, batch_run_id?, agentic?}
+GET   /api/vision/agent/help/search?q=&k=  說明索引檢索 → {items[{title, page, heading, url, score, snippet}], sections, pages, tools}</pre>
 <p><code>report</code> 與 preview 端點同格式（各節點狀態／輸出／overlay／影像 ref）。
 regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulus / polygon / line，全圖像素座標）。
 執行類端點：引擎鎖定時 423；一般使用者可用。</p>
@@ -241,7 +254,7 @@ regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulu
 <p>新增三種意圖：<code>text</code>（印字有無：<code>text_presence</code> 筆劃密度，關鍵詞「印字／文字／序號／text」）、<code>distance</code>（兩孔中心距：兩個找圓 → <code>distance</code> → 校正／公差，關鍵詞「距離／孔距／中心距」＋孔／圓或兩個圓形 ROI）、<code>template_presence</code>（圖案有無：ROI 裁成範本 → <code>template_match</code> found／not_found，關鍵詞「圖案／範本／樣板／logo／pattern」）。詢問機制各有對應缺口問題（印字區域、第二個孔、要找的圖案）。</p>
 
 <h2 id="agentic">代理模式（agentic）：試跑→修改→驗證的迴圈</h2>
-<p>供應商設定的「工作模式」選「代理模式」（或 <code>VISION_AGENT_MODE=agentic</code>）後，AI 助手頁的生成、編輯器 AI 分頁、批次測試「請 AI 調整」都改走<strong>背景工作</strong>（<code>POST /agent/jobs</code>，202），前端每秒輪詢 <code>GET /agent/jobs/{id}?step_from=</code> 顯示<strong>步驟時間軸</strong>（回合／試跑計數、每個動作的摘要與耗時），可隨時取消；助手提問時工作進入「等待回答」，回答走 <code>POST /agent/jobs/{id}/answer</code> 後續跑。沒有 LLM 供應商時工作仍可建立，會立刻以規則引擎完成並在 warnings 說明；工作模式仍是「單次生成」時，背景工作也直接走單次路徑（不進代理迴圈）。</p>
+<p>供應商設定的「工作模式」選「代理模式」（或 <code>VISION_AGENT_MODE=agentic</code>）後，AI 助手頁的生成、全域 AI 助手的修改流程與依資料調整都改走<strong>背景工作</strong>（<code>POST /agent/jobs</code>，202），前端每秒輪詢 <code>GET /agent/jobs/{id}?step_from=</code> 顯示<strong>步驟時間軸</strong>（回合／試跑計數、每個動作的摘要與耗時），可隨時取消；助手提問時工作進入「等待回答」，回答走 <code>POST /agent/jobs/{id}/answer</code> 後續跑。沒有 LLM 供應商時工作仍可建立，會立刻以規則引擎完成並在 warnings 說明；工作模式仍是「單次生成」時，背景工作也直接走單次路徑（不進代理迴圈）。</p>
 <p><strong>動作層</strong>（<code>apps/vision/agent/actions.py</code>）：LLM 能呼叫的工具——<code>get_state</code>（需求／ROI／特徵／標記／目前流程）、<code>list_tools</code>／<code>get_tool_skill</code>、<code>analyze_region</code>、<code>draft_from_rules</code>（規則引擎草稿，通常是起點）、<code>use_candidate</code>、<code>replace_graph</code>、<code>patch_graph</code>（set_param／set_params／enable／disable／remove_node／add_node／add_edge／remove_edge／set_label，整批套用後驗證）、<code>run_trial</code>（每張影像的狀態、具名輸出、節點訊息與標記命中）、<code>inspect_node</code>、<code>crop_template</code>、<code>auto_tune</code>、<code>ask_user</code>（最多 3 題）、<code>finish</code>。所有 graph 變更都經 <code>validate_graph</code>，並拒絕 dl_*／write_modbus／save_image 與多個 image_source；試跑走 <code>trial_run(keep_images=False)</code> 不佔影像快取。</p>
 <p><strong>迴圈</strong>（<code>loop.py</code>）：預算 <code>Budget(max_turns=12, max_trials=8, max_tool_calls=30, deadline_s=240)</code>，每回合檢查取消；狀態 <code>done｜needs_input｜budget｜cancelled｜error</code>。預算用完仍有流程時以目前流程為結果（warnings 註明）。模型只回文字不呼叫動作：已有流程就當完成（文字＝說明），沒有流程提醒一次後才算失敗。</p>
 <p><strong>供應商 shim</strong>（<code>providers.complete_tools</code>）：中立歷史格式（user 文字＋影像／assistant 文字＋tool_calls／tool 結果）→ Claude tools（<code>tool_use</code>／<code>tool_result</code>，連續結果合併成一則 user）、OpenAI functions（<code>tool_calls</code>／<code>role=tool</code>）、Gemini <code>functionDeclarations</code>／<code>functionResponse</code>（schema 轉 OpenAPI 子集；Gemini 3 的 <code>functionCall</code> 帶 <code>thoughtSignature</code>，歷史裡保留原生 parts 原樣回傳，否則 400）；OpenAI 相容本地端點沿用 functions 格式，不支援時代理迴圈失敗 → 自動退回單次 JSON 生成 → 規則引擎。<code>tool_choice</code> 一律 auto。system＝平台規則＋設計原則＋<code>skills/agentic.md</code>（代理工作方式）＋精簡目錄（穩定可快取）；第一則訊息附最多 4 張影像與相關工具技能。</p>

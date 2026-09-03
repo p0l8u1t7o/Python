@@ -134,6 +134,10 @@ POST   /vision/flows/{id}/batch             （舊介面：即時批次、不暫
 POST   /vision/flows/{id}/batch-source      {source_id, count, graph?}（舊介面）
 GET    /vision/batch/sets?flow_id=          批次測試頁：影像集／執行／洞察／比較／預覽／存配方（完整列表見 batch.html）
 POST   /vision/agent/consult                {batch_run_id, question, graph?} → {answer, provider, insights, suggestions, warnings}
+POST   /vision/agent/chat                   全域 AI 助手 {message, mode?: auto|help|edit|consult|tune, context{kind, route, flow_id, flow_name, node_id, node_type, batch_run_id, image_ref, graph}, history[{role, text}]}
+                                            → {kind: help|edit|consult|tune, answer, provider, sources[]?, result?, suggestions?, warnings?, batch_run_id?, agentic?}
+GET    /vision/agent/help/search?q=&k=      說明索引檢索 → {items[{title, page, heading, url, score, snippet}], sections, pages, tools}
+GET    /docs/{page}.html                    文件頁（非 API、免登入；助手回答的參考連結指向這裡）
 GET    /vision/integration/info             {http_base, tcp_host, tcp_port, tcp_listening, api_key_required, commands[]}
 POST   /vision/integration/tcp              {command} → {response, via: tcp|direct, elapsed_ms}</pre>
 <h2 id="recipes">配方、站台、教導</h2>

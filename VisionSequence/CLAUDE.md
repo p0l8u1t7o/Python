@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：61 個內建工具（8 類）、161 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 289 項＋前端 23 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：61 個內建工具（8 類）、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 296 項＋前端 28 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -79,7 +79,8 @@
 - 上傳影像＋圈 ROI＋提示詞 → 生成標準 graph 並在該影像實跑（`service.generate/refine`、`/vision/agent/*`、前端 `/agent`）。
 - 兩層供應器：`intents.py`＋`synth.py` 離線規則引擎（意圖封閉集合，特異性排序；`Intent.polarity` 可由提示詞／問答覆寫極性）；`providers.py` 多供應商（claude 走 anthropic SDK 延後 import；openai／gemini 走 urllib REST 零依賴；`GENERATE_TIMEOUT` 120s／`TEST_TIMEOUT` 15s；`_explain` 把供應商例外翻成原因，404 會帶出供應商建議的替代模型名）＋`llm.py` 四種任務（generate／refine／edit／tune）＋`llm.clarify`。設定解析 `providers.resolve(user)`：使用者自己的 `UserPref.agent` → .env（`VISION_AGENT_PROVIDER/API_KEY/MODEL`）→ offline；LLM 失敗自動落回規則。兩邊產物都過 `validate_graph`＋`trial_run`（engine.execute 直跑、flow_id=0、不佔執行緒池、不落 DB；多張影像各跑一次回 `reports`）。
 - 詢問機制 `clarify.py`：生成前 `/agent/clarify` 依意圖找關鍵缺口提問（最多 3 題，choice／number／text／roi，可 optional；問過的不重問，全部問完即 ready）；answers 以補充句併回提示詞（`service.effective_prompt`），規則與 LLM 讀同一份；generate 回 `warnings`（未回答的缺口用了預設值）。前端所有助手呼叫帶 AbortController（中斷鍵）。
-- 多圖＋ROI 編號（ROI01…，regions[i].image 指影像索引；「ROI01 是好品、ROI02 是壞品」→ golden 意圖，好品 ROI 自動裁成資產）。編輯器右側「AI」分頁走 `/agent/edit`（離線句型見 `service.edit_rules`）；批次測試「請 AI 調整」走 `/agent/tune`（同批影像重跑回前後對比）。
+- **全域 AI 助手** `help.py`＋`POST /agent/chat`：前端 `AssistantDock`（掛在 AppShell，任何頁面右下角）送 `{message, mode, context{kind, flow_id, node_type, batch_run_id, image_ref, graph}, history}`；`api.chat_intent` 依脈絡分流——問句一律 help；修改語氣在 flow_editor／tool（帶 graph）→ `service.edit`、在 batch（帶 batch_run_id）→ `service.tune`＋`persist_tune`；batch 的資料字眼 → `consult.consult`；代理模式下 edit／tune 回 `{agentic: true}` 讓前端改走 `/agent/jobs`。`help.answer`：docs/*.html 拆 h2／h3 章節（帶錨點）＋每個工具技能 → BM25（中文雙字詞、標題與頁面加權；docs mtime 變了自動重建），LLM 只依片段回答並列參考章節，離線／失敗回 `offline_answer` 節錄；`sources[].url` 指向 `/docs/<page>#<anchor>`（`config/urls.py` 用 `serve` 提供 docs、vite 代理 `/docs`）。改了 docs 章節標題會影響檢索測試（`tests/test_agent_help.py`）。
+- 多圖＋ROI 編號（ROI01…，regions[i].image 指影像索引；「ROI01 是好品、ROI02 是壞品」→ golden 意圖，好品 ROI 自動裁成資產）。全域 AI 助手在編輯器走 `/agent/chat`→`service.edit`（`/agent/edit` 仍可直接呼叫）（離線句型見 `service.edit_rules`）；批次頁的依資料調整走 `/agent/chat`→`service.tune`（`/agent/tune` 仍可直接呼叫）（同批影像重跑回前後對比）。
 - AI 代理技能在 `agent/skills/`（platform.md 平台規則、design.md 設計原則含謹慎原則、agentic.md 代理工作方式、tools.md 每工具要領 `## <type>` 分段）；`skills.py` 組裝：system＝規則＋原則＋精簡目錄（穩定可快取），相關工具完整技能（自動骨架＋要領）由 `select_tools` 挑進 user 訊息。**新增工具要在 tools.md 補一段要領**。
 - 供應商：`openai_compatible`（Ollama／vLLM／LM Studio；`base_url`、金鑰可空）與 OpenAI／Gemini 的 JSON 模式在 `providers.openai_body`／`_gemini`；OpenAI 推理模型（o 系列／gpt-5）自動用 `max_completion_tokens`；生成逾時 `providers.generate_timeout()`（`VISION_AGENT_TIMEOUT_S`）。LLM 失敗時 `service._try_llm` 回 `(None, reason)`，原因進回應 `warnings`。
 - 供應商設定存完會打 `providers.test_connection` 驗證並回原因；`list_models` 列金鑰可用模型。
@@ -103,6 +104,7 @@
 - 資料集：樣本以解碼後像素 SHA256 去重；`DlSample.split`（train/val/test）；`DlDatasetVersion` 凍結成 zip 資產。SAM 智慧選取（`sam.py`）：`mobile_sam.pt` 經 `yolo.resolve_model` 自動下載，session 模組層快取＋鎖。樣本影像在 `ASSET_DIR/dl/<project_id>/`；訓練執行緒自己開 DB 連線、結束 `close_old_connections()`。詳見 docs/dl.html。
 
 ### 前端
+- 全域 AI 助手：`components/assistant/AssistantDock.tsx`（對話存 localStorage `vs.assistant.v1`、模式晶片、快速提示、參考連結、套用到畫布／套用建議／新執行、代理工作走 `useAgentJob`＋`AgentTimeline`）；頁面用 `lib/assistantContext.ts` 的 `useRegisterAssistantContext({kind, flowId, flowName, nodeType, batchRunId, imageRef, getGraph, applyGraph, applySuggestions, onNewRun}, deps)` 登記脈絡（編輯器、工具頁、批次頁已登記；未登記的頁面由路徑推 kind）。編輯器右側與批次頁的 AI 分頁已併入 dock（`AiAssistPanel`／`BatchAiPanel` 已刪），新頁面要讓助手能「動手」就登記回呼。
 - 工具箱：`FavoriteTools`（新增工具／新增註解／收藏，hover 可移除）＋`ToolPicker`（Modal 固定高、內部捲動）。畫布 ⇄ graph 的轉換在 `graphMapping.ts`；note 是裝飾節點（type=note，不接邊）。
 - 工具頁 `ToolPage`：參數改在草稿（`flowDraft.patchDraftNode`），儲存才寫回；`goBack` 只在 dirty 時比對快照；輸出值只列在下方參考資訊，不疊浮層擋圖。
 - 影像檢視器：`roiEditor.ts`（互動）與 `geometry.ts`（純函式，有單元測試）分離；ROI 形狀 switch 要 exhaustive。
@@ -120,4 +122,5 @@
 - 前端 `Card` 只認 `testId` 屬性，寫 `data-testid` 會被丟掉（TS 不會報錯）；要給測試或截圖腳本用的 Card 一律用 `testId=`。
 - `manage.py agent_bench --llm` 用伺服器供應商；要用某位使用者的金鑰跑就在 shell 裡 `bench.run_bench(providers.resolve(user), use_llm=True)`。LLM 單次生成實測（gemini-3.5-flash-lite）判定 76%、有效 81%，規則引擎 100%——LLM 產物一定要過試執行；全部失敗時 `service.generate` 已會退回規則。
 - **Gemini 3 function calling**：模型回的 `functionCall` part 帶 `thoughtSignature`，下一回合必須原樣回傳（`ToolReply.raw` → 歷史 `raw` → `gemini_contents` 直接用原生 parts），否則 400「missing a thought_signature」；實機用 gemini-3.5-flash-lite 驗過代理迴圈 4 回合 5.6 秒完成。
+- jsdom 沒有 `Element.scrollTo`：元件捲到底用 `el.scrollTop = el.scrollHeight`，不然 vitest 會炸。i18n 的陣列值（快速提示）三語系長度要一致（key 對齊測試把索引當 key）。
 - i18n：一次多檔替換若中途失敗要檢查已成功的檔案，避免重複插入（TS1117）；en 是單行物件格式，錨點與 zh 不同。

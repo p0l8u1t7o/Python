@@ -143,6 +143,9 @@
 <tr><td>資料洞察</td><td>Insights（<code>batch/insights.py</code>、洞察分頁）</td><td>命中率、混淆矩陣、未命中影像、出錯節點、建議門檻、輸出分佈、與上一次差異</td></tr>
 <tr><td>建議門檻</td><td>Threshold suggestion（<code>insights.judges[].suggestion</code>）</td><td>依期望 OK／NG 兩群的判定輸入值找出的較佳門檻，可一鍵套用到調參面板</td></tr>
 <tr><td>資料諮詢</td><td>Consult（<code>POST /agent/consult</code>）</td><td>針對一次批次執行的資料提問；規則洞察＋LLM 回答，附可套用的參數建議</td></tr>
+<tr><td>全域 AI 助手</td><td>Assistant dock（<code>AssistantDock</code>、<code>POST /agent/chat</code>）</td><td>右下角常駐的聊天視窗，切換頁面不消失（對話存瀏覽器）；依頁面脈絡分流：使用說明問答、修改流程、資料諮詢、依資料調整</td></tr>
+<tr><td>使用說明問答</td><td>Help answer（<code>agent/help.py</code>、模式「使用說明」）</td><td>把 docs 章節與工具技能建成檢索索引，依問題找相關段落；LLM 只依片段回答並引用章節，離線時回文件節錄與 <code>/docs/</code> 連結</td></tr>
+<tr><td>助手脈絡</td><td>Assistant context（<code>useRegisterAssistantContext</code>、<code>lib/assistantContext.ts</code>）</td><td>頁面登記給全域助手的資訊：kind（流程編輯器／工具頁／批次測試…）、目前 graph、套用回呼、批次執行 id；離開頁面自動清除</td></tr>
 <tr><td>工作階段</td><td>Agent session（<code>AgentSession</code>、<code>/agent/sessions</code>、AI 助手頁「歷史」）</td><td>一次 AI 助手生成的完整記錄（影像、ROI、需求、流程、判定、評分）；可還原、可當相似影像的參數先驗</td></tr>
 <tr><td>參數先驗</td><td>Prior（<code>memory.priors_from_sessions</code>、候選「沿用過去成功參數」）</td><td>相似成功案例的現場調機參數，套到新草稿、自動調參候選最前與 LLM 的過去案例段</td></tr>
 <tr><td>補充要領</td><td>Custom skill（<code>AgentSkill</code>、<code>/agent/skills/custom</code>）</td><td>站點（管理員）或個人對內建 AI 技能的 markdown 補充；站點進 system 段、個人進 user 訊息</td></tr>

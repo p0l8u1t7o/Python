@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 61 個內建工具、161 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 289 項＋前端 23 項自動測試 |
+| 規模 | 61 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 296 項＋前端 28 項自動測試 |
 
 ---
 
@@ -60,13 +60,13 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 ## 功能全貌
 
 ### 流程編輯與執行
-- **流程編輯器**（`/flows/:id`）：資料流畫布（型別化埠、控制分支 `_flow`、隱含直通埠 `_image`）、工具選擇視窗（分群／搜尋／收藏）、註解便利貼、復原／複製貼上／自動排列、右側屬性與結果面板、AI 分頁。
+- **流程編輯器**（`/flows/:id`）：資料流畫布（型別化埠、控制分支 `_flow`、隱含直通埠 `_image`）、工具選擇視窗（分群／搜尋／收藏）、註解便利貼、復原／複製貼上／自動排列、右側屬性與結果面板；右下角全域 AI 助手可用一句話修改目前畫布並套用。
 - **工具頁**（`/flows/:id/tools/:nodeId`）：單一步驟的專屬調參頁——左參數、中「執行前／執行後」影像、下參考資訊（直方圖／統計／輸出值）、右按鍵；ROI 進頁即顯示；參數暫存、儲存才寫回。
 - **影像檢視器**：縮放／平移／像素值／標記疊圖；ROI 形狀 rect / rotated_rect / circle / ellipse / annulus（可扇形）/ polygon / polyline / line / point。
 - **試執行 vs 執行**：試執行用目前畫布（含未儲存）並保留中間影像；執行一次／連續執行用已儲存版本並寫入紀錄。暫存影像上傳只為試執行，不進來源庫。
 - **參數卡**（`/flows/:id/teach`）：只列 `teach=True` 的現場參數、改動即時試執行；標記「已教導」。
 - **配方**：同一流程多組參數覆寫（換線），HTTP／TCP 皆可指定。
-- **批次測試頁／Golden Set**：獨立頁面選流程、建立影像集（上傳或來源擷取，≤200 張）批量執行並暫存每次逐張結果；標記期望 OK／NG 得命中率與混淆矩陣，洞察卡給建議門檻、輸出分佈與歷次趨勢；調參重跑同一影像集並逐張比較，滿意後寫回流程／存為配方／帶回編輯器；AI 助手可依資料諮詢、調整或自動調參（結果成為新執行）。案例可存入 Golden Set 作回歸基準，`manage.py regress` 可進 CI。
+- **批次測試頁／Golden Set**：獨立頁面選流程、建立影像集（上傳或來源擷取，≤200 張）批量執行並暫存每次逐張結果；標記期望 OK／NG 得命中率與混淆矩陣，洞察卡給建議門檻、輸出分佈與歷次趨勢；調參重跑同一影像集並逐張比較，滿意後寫回流程／存為配方／帶回編輯器；右下角的全域 AI 助手可依資料諮詢或調整、調參面板可自動調參（結果成為新執行）。案例可存入 Golden Set 作回歸基準，`manage.py regress` 可進 CI。
 - **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG。
 
 ### 內建工具（61 個，8 類）
@@ -87,6 +87,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 14 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 55/61 個工具。詳見 `docs/samples.html`。
 
 ### AI 助手（`/agent`）
+
+- **全域 AI 助手**：每個頁面右下角的聊天視窗，切換頁面不消失（對話存瀏覽器）。一個輸入框依頁面脈絡分流：任何頁面可問平台怎麼用（`agent/help.py` 把 docs 章節與工具技能建成 BM25 索引，LLM 只依片段回答並附 `/docs/` 參考連結，離線回文件節錄）；流程編輯器內直接修改目前畫布並套用（可復原）；批次測試頁選定執行後資料諮詢或依資料調整（結果成為新執行）。模式晶片可強制指定。
 - 上傳一張或多張影像 → 圈選 ROI（ROI01、ROI02…各配提示，可引用「ROI01 是好品，ROI02 是壞品」）→ 一句話描述需求 → **先確認再生成**（資訊不足時最多 3 個問題，可略過）→ 生成流程並在每張影像實跑、疊顯標記 → 口語回饋微調 → 存成流程。
 - 兩層供應器：離線規則引擎（15 種意圖封閉集合＋合成器＋特徵驅動參數）；可選 LLM（Claude／GPT／Gemini／OpenAI 相容本地端點，每位使用者自己的金鑰只存伺服器），失敗自動落回規則並在 warnings 說明原因。
 - **候選方案與自動調參**：規則引擎每次產主要方案＋參數變體，全部在上傳影像上試跑後依「影像標記」（縮圖 OK／NG 或 ROI 提示好品／壞品）打分擇優，可點選切換；有標記時再做小預算自動調參（只動現場調機參數，嚴格變好才採納）。
@@ -94,7 +96,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **代理模式**（工作模式選「代理模式」）：AI 以動作逐步起草、試跑、修改、驗證流程（背景工作＋步驟時間軸，可中斷、可回答提問後續跑），Claude／GPT／Gemini／本地相容端點皆可；預算用完以目前流程為結果，失敗自動退回單次生成與規則引擎。
 - **記憶與學習**：每次生成存成工作階段（可還原、可評分、存成流程自動關聯）；標記全中或按讚的案例成為相似影像的參數先驗（候選「沿用過去成功參數」、自動調參首選、LLM 過去案例段）；「AI 技能」視窗可寫站點／個人補充要領，AI 一併讀取。
 - 評測基準 `manage.py agent_bench`（21 個離線案例：意圖／判定／有效率），`tests/test_agent_bench.py` 守門檻。
-- 編輯器右側「AI」分頁可用一句話修改目前流程；批次測試後可請 AI 依結果調整；所有助手呼叫皆可中斷。
+- 全域 AI 助手在編輯器內可用一句話修改目前流程、在批次測試頁可依結果諮詢與調整；所有助手呼叫皆可中斷。
 - AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/agent.html`。
 
 ### 深度學習教導（`/dl`）
@@ -183,7 +185,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/golden/` | Golden 案例、基準、回歸 |
 | `apps/vision/batch/` | 批次測試：`store`（檔案／序列化／淘汰）、`jobs`（背景執行）、`insights`（洞察與建議門檻）、`api` |
 | `apps/vision/management/commands/` | `serve`、`seed_demo`、`flow export|import|run`、`run_tcp_server`、`regress`、`create_admin` |
-| `tests/` | 18 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
+| `tests/` | 19 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
 
 ### 前端（`frontend/src/`，約 21.5k 行 TS/TSX）
 
@@ -192,7 +194,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `App.tsx` | 路由（各頁 lazy chunk）、`RequireAuth` |
 | `components/layout/` | `AppShell`（側欄／頂列／`Page` 容器）、全域搜尋 |
 | `pages/` | Dashboard、Flows、FlowEditor、Tool、Teach、Stats、Golden、Batch、Sources、Assets、Dl、Agent、Integration、Users、Settings、Help、Login |
-| `components/editor/` | 畫布（`FlowCanvas`／`ToolNode`／`FlowEdge`）、工具箱與選擇視窗、屬性面板、結果面板、批次測試、AI 分頁、`graphMapping.ts`（graph ⇄ React Flow） |
+| `components/editor/` | 畫布（`FlowCanvas`／`ToolNode`／`FlowEdge`）、工具箱與選擇視窗、屬性面板、結果面板、`graphMapping.ts`（graph ⇄ React Flow） |
 | `components/viewer/` | `ImageViewer`、`roiEditor.ts`（ROI 互動）、`geometry.ts`（ROI 幾何純函式）、Toolbar |
 | `components/templates/`、`recipes/`、`dl/`、`auth/`、`ui/` | 範本畫廊、配方、DL 標記編輯器、登入／鎖定、共用 UI 元件 |
 | `lib/api.ts`、`queries.ts`、`flowStream.ts` | 唯一的後端接縫：HTTP client（`BASE_URL`）、TanStack Query hooks、SSE |
@@ -236,7 +238,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
-| AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |
+| AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |
 | 整合 | `/vision/integration/info`、`/integration/tcp`、`/vision/connections` |
 
 執行類端點（run／preview／continuous／agent）在引擎鎖定時回 423；修改類端點要求擁有者或管理員。
@@ -293,7 +295,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 ## 驗證與測試
 
 ```bash
-# 後端：237 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
+# 後端：296 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
 .venv/Scripts/python.exe manage.py test --noinput
 .venv/Scripts/python.exe -m ruff check apps tests config
 
@@ -333,7 +335,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/automation.html`、`docs/modbus.html` | HTTP／TCP／SSE 整合、引擎鎖定；Modbus 主動輸出 |
 | `docs/vision-capabilities.html` | ROI 種類、位深設計、檢測工具總覽 |
 | `docs/samples.html` | 範例樣板與合成樣本圖 |
-| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、編輯器 AI、批次調參、候選方案與自動調參、定位補正、代理模式、記憶與學習、評測基準、技能、架構 |
+| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、全域 AI 助手（使用說明問答、編輯器修改、批次諮詢）、批次調參、候選方案與自動調參、定位補正、代理模式、記憶與學習、評測基準、技能、架構 |
 | `docs/dl.html` | 深度學習教導 |
 | `docs/batch.html` | 批次測試：影像集、暫存結果、洞察與建議門檻、調參、AI 諮詢、API、保留策略 |
 | `docs/golden.html` | Golden Set 與流程匯出入 |
