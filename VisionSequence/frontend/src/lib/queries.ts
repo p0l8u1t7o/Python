@@ -872,8 +872,8 @@ export function useDlMutations() {
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
   const samPoint = useMutation({
-    mutationFn: ({ projectId, sampleId, points, model }: { projectId: number; sampleId: string; points: [number, number][]; model?: string }) =>
-      api.post<{ shapes: DlShape[] }>(`/vision/dl/projects/${projectId}/sam-point`, { sample_id: sampleId, points, model }),
+    mutationFn: ({ projectId, sampleId, points, boxes, labels, model }: { projectId: number; sampleId: string; points?: [number, number][]; boxes?: [number, number, number, number][]; labels?: number[]; model?: string }) =>
+      api.post<{ shapes: DlShape[]; model: string }>(`/vision/dl/projects/${projectId}/sam-point`, { sample_id: sampleId, points, boxes, labels, model }),
   })
   const bulkLabels = useMutation({
     mutationFn: ({ projectId, items }: { projectId: number; items: { id: string; label?: string; shapes?: DlShape[]; score?: number; by?: string }[] }) =>
@@ -881,8 +881,8 @@ export function useDlMutations() {
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
   const autoLabel = useMutation({
-    mutationFn: ({ projectId, params }: { projectId: number; params?: Record<string, unknown> }) =>
-      api.post<{ items: DlSuggestion[] }>(`/vision/dl/projects/${projectId}/auto-label`, { params }),
+    mutationFn: ({ projectId, params, method, maxSamples }: { projectId: number; params?: Record<string, unknown>; method?: 'model' | 'sam'; maxSamples?: number }) =>
+      api.post<{ items: DlSuggestion[]; remaining?: number; method?: string; model?: string }>(`/vision/dl/projects/${projectId}/auto-label`, { params, method, max_samples: maxSamples }),
   })
   const startTrain = useMutation({
     mutationFn: ({ projectId, params, device, asset_name }: { projectId: number; params: Record<string, unknown>; device: string; asset_name: string }) =>

@@ -3,12 +3,12 @@
  * 左：縮圖牆（直接畫上標記輪廓，快速巡檢）；右：ImageViewer 編輯器。
  * 重用 ImageViewer 的 ROI 編輯（頂點拖曳、雙擊邊線插點、Alt+點刪點、繪製模式）：
  * 選中的形狀當作 roi 編輯，其他形狀畫成 overlays。座標存 0~1 正規化，只在畫布上換算像素。
- * 快捷鍵：V 選取、N/P 多邊形、B 框、S 智慧選取（SAM 點擊出輪廓）、O 自動優化、Delete 刪形狀、
+ * 快捷鍵：V 選取、N/P 多邊形、B 框、S 智慧選取（SAM 點擊出輪廓）、X 智慧框選（拖曳框 → SAM 出輪廓）、O 自動優化、Delete 刪形狀、
  * Ctrl+Z 還原、Ctrl+S 儲存、←/→ 上下張、Esc 取消、0~9 指定類別。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronLeft, ChevronRight, Keyboard, MousePointer, Pentagon, Save, Sparkles, Square, Trash2, Undo2, Wand2 } from 'lucide-react'
+import { BoxSelect, Check, ChevronLeft, ChevronRight, Keyboard, MousePointer, Pentagon, Save, Sparkles, Square, Trash2, Undo2, Wand2 } from 'lucide-react'
 
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Thumb } from './Thumb'
@@ -21,7 +21,7 @@ import { buildGradientMap, optimizePolygon, type GradientMap } from './optimize'
 
 import { classColor as color } from '@/lib/colors'
 
-type Mode = 'select' | 'polygon' | 'bbox' | 'smart'
+type Mode = 'select' | 'polygon' | 'bbox' | 'smart' | 'smartbox'
 
 function isTyping(): boolean {
   const el = document.activeElement
@@ -64,7 +64,7 @@ function pointInShape(shape: DlShape, nx: number, ny: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion, onEditClasses, onSamPoint, onSetSplit, hotkeysDisabled = false }: {
+export function ShapeWorkspace({ project, samples, suggestions, onSave, onAcceptSuggestion, onEditClasses, onSamPoint, onSamBox, onSetSplit, hotkeysDisabled = false }: {
   project: DlProject
   samples: DlSample[]
   suggestions: Map<string, DlSuggestion>
@@ -73,6 +73,8 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
   onEditClasses?: () => void
   /** SAM 智慧選取：點一下物件 → 回傳 polygon 建議（0~1 座標；label 由這裡掛目前類別） */
   onSamPoint?: (sampleId: string, point: [number, number]) => Promise<DlShape[]>
+  /** SAM 智慧框選：拖曳一個框 → 回傳框內物件的 polygon（0~1 座標） */
+  onSamBox?: (sampleId: string, box: [number, number, number, number]) => Promise<DlShape[]>
   /** 點分割 chip 循環切換 train/val/test/未指定 */
   onSetSplit?: (sample: DlSample, split: DlSample['split']) => void
   /** 上層 Modal 開啟時停用快捷鍵，避免 Delete／←→ 打到背後的工作區 */
@@ -279,6 +281,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       else if ((key === 'n' || key === 'p') && classes.length) setMode('polygon')
       else if (key === 'b' && classes.length) setMode('bbox')
       else if (key === 's' && onSamPoint && classes.length) setMode('smart')
+      else if (key === 'x' && onSamBox && classes.length) setMode('smartbox')
       else if (key === 'o') void optimizeSelected()
       else if (key === 'delete') removeSelected()
       else if (key === 'escape') {
@@ -332,6 +335,30 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     return out
   }, [sample, shapes, selectedIndex, suggestion, classes, draft, hover, activeClass])
 
+  const [samBoxBusy, setSamBoxBusy] = useState(false)
+  const smartBox = useCallback(async (box: [number, number, number, number]) => {
+    if (!sample || !onSamBox || samBoxBusy) return
+    setSamBoxBusy(true)
+    try {
+      const label = activeClass || classes[0] || ''
+      const found = (await onSamBox(sample.id, box)).map((sh) => ({ ...sh, label }))
+      if (!found.length) {
+        toast.push(t('dl.smartNoResult'), 'info')
+        return
+      }
+      pushHistory()
+      setShapes((old) => {
+        setSelectedIndex(old.length + found.length - 1)
+        return [...old, ...found]
+      })
+      setDirty(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSamBoxBusy(false)
+    }
+  }, [sample, onSamBox, samBoxBusy, activeClass, classes, pushHistory, toast, t])
+
   const editingRegion = useMemo<Region | null>(() => {
     if (!sample || selectedIndex === null) return null
     const shape = shapes[selectedIndex]
@@ -354,6 +381,13 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       }
       return
     }
+    // 智慧框選：拖曳出的矩形交給 SAM，換成物件輪廓（留在此模式可繼續框下一個）
+    if (mode === 'smartbox') {
+      if (region.shape !== 'rect' || region.w < 4 || region.h < 4) return
+      const cl = (v: number) => Math.min(1, Math.max(0, v))
+      void smartBox([cl(region.x / sample.width), cl(region.y / sample.height), cl((region.x + region.w) / sample.width), cl((region.y + region.h) / sample.height)])
+      return
+    }
     // 繪製模式：第一筆拖曳建立新形狀
     const label = activeClass || classes[0] || ''
     const shape = regionToShape(region, label, sample.width, sample.height)
@@ -365,7 +399,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     })
     setDirty(true)
     setMode('select')
-  }, [sample, mode, selectedIndex, shapes, activeClass, classes, pushHistory])
+  }, [sample, mode, selectedIndex, shapes, activeClass, classes, pushHistory, smartBox])
 
   /** 繪製中的多邊形收尾：至少 3 點才成形，之後回到選取模式並選中新形狀。 */
   const finishDraft = useCallback((points: [number, number][]) => {
@@ -475,6 +509,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
     { key: 'polygon', icon: <Pentagon size={22} />, label: t('dl.modePolygon'), kbd: 'N', active: mode === 'polygon', disabled: !classes.length, onClick: () => setMode('polygon') },
     { key: 'bbox', icon: <Square size={22} />, label: t('dl.modeBbox'), kbd: 'B', active: mode === 'bbox', disabled: !classes.length, onClick: () => setMode('bbox') },
     ...(onSamPoint ? [{ key: 'smart', icon: <Wand2 size={22} />, label: t('dl.modeSmart'), kbd: 'S', active: mode === 'smart', disabled: !classes.length, onClick: () => setMode('smart') }] : []),
+    ...(onSamBox ? [{ key: 'smartbox', icon: <BoxSelect size={22} />, label: t('dl.modeSmartBox'), kbd: 'X', active: mode === 'smartbox', disabled: !classes.length, onClick: () => setMode('smartbox') }] : []),
     { key: 'sep1', icon: null, label: '', kbd: '', onClick: () => {} },
     { key: 'optimize', icon: <Sparkles size={22} />, label: t('dl.optimize'), kbd: 'O', disabled: selectedIndex === null, onClick: () => void optimizeSelected() },
     { key: 'delete', icon: <Trash2 size={22} />, label: t('dl.deleteShape'), kbd: 'Del', disabled: selectedIndex === null, onClick: removeSelected },
@@ -508,6 +543,9 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
           ) : null}
           {mode === 'smart' ? (
             <span className="text-xs font-medium text-brand">{samBusy ? t('dl.smartBusy') : t('dl.smartHint')}</span>
+          ) : null}
+          {mode === 'smartbox' ? (
+            <span className="text-xs font-medium text-brand">{samBoxBusy ? t('dl.smartBusy') : t('dl.smartBoxHint')}</span>
           ) : null}
           {dirty ? <span className="flex items-center gap-1 text-xs font-medium text-warning"><span className="size-1.5 rounded-full bg-warning" />{t('dl.unsaved')}</span> : null}
           <span className="ml-auto" />
@@ -572,11 +610,11 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
               roiShapes={
                 // 多邊形改走逐點繪製（onPick），不交給檢視器的拖曳繪製——拖曳只能產生固定四角形。
                 // 編輯中：把手工具列只開放該形狀自己的種類，避免 bbox↔polygon／circle 等互轉毀掉標記資料
-                mode === 'bbox' ? ['rect']
+                mode === 'bbox' || mode === 'smartbox' ? ['rect']
                   : mode === 'select' && selectedIndex !== null ? (shapes[selectedIndex]?.kind === 'bbox' ? ['rect'] : ['polygon'])
                     : undefined
               }
-              onRoiChange={mode === 'bbox' || (mode === 'select' && selectedIndex !== null) ? onRoiChange : undefined}
+              onRoiChange={mode === 'bbox' || mode === 'smartbox' || (mode === 'select' && selectedIndex !== null) ? onRoiChange : undefined}
               onPick={onPick}
               onHover={mode === 'polygon' && draft.length ? setHover : undefined}
               onDoublePick={mode === 'polygon' && draft.length ? doubleFinish : undefined}
@@ -590,7 +628,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
       <Modal open={showKeys} onClose={() => setShowKeys(false)} title={t('dl.shortcuts')} size="sm">
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           {([
-            ['V / N / B / S', t('dl.keyModes')],
+            ['V / N / B / S / X', t('dl.keyModes')],
             ['0～9', t('dl.keyClasses')],
             ['O', t('dl.keyOptimize')],
             ['Delete', t('dl.keyDelete')],

@@ -25,7 +25,7 @@ from ninja import File, Form, Router, UploadedFile
 
 from apps.accounts.security import authenticate, principal, require_admin
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.dl import base as dl_base, devices, jobs
+from apps.vision.dl import base as dl_base, devices, jobs, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
 from apps.vision.images import encode_image
 from apps.vision.models import Asset, DlDatasetVersion, DlProject, DlSample
@@ -589,9 +589,10 @@ def delete_version(request: HttpRequest, version_id: int):
 # ---------------------------------------------------------------------------
 @router.post("/dl/projects/{project_id}/sam-point")
 def sam_point(request: HttpRequest, project_id: int):
-    """{"sample_id", "points": [[x,y] 0~1], "labels"?: [1|0…], "model"?} → {"shapes": [...]}。
+    """{"sample_id", "points"?: [[x,y] 0~1], "labels"?: [1|0…], "boxes"?: [[x0,y0,x1,y1] 0~1], "model"?} → {"shapes": [...], "model"}。
 
-    label 由前端掛目前類別；第一次使用會自動下載 mobile_sam.pt（回應會比較久）。
+    點（同一物件的正／負點）或框（每框一物件）至少給一種；label 由前端掛目前類別。
+    第一次使用會自動下載 SAM 權重（預設 sam2.1_t.pt；VISION_SAM_MODEL 可改；回應會比較久）。
     """
     from apps.vision.dl import sam
 
@@ -600,21 +601,23 @@ def sam_point(request: HttpRequest, project_id: int):
     sample = project.samples.filter(pk=body.get("sample_id")).first()
     if sample is None:
         raise NotFound("樣本不存在", code="dl_sample_not_found")
-    points = body.get("points")
-    if not isinstance(points, list) or not points:
-        raise ValidationError("需要 points（0~1 正規化座標清單）", code="bad_points")
+    points = body.get("points") or []
+    boxes = body.get("boxes") or []
+    if not isinstance(points, list) or not isinstance(boxes, list) or not (points or boxes):
+        raise ValidationError("需要 points（0~1 正規化座標清單）或 boxes（[x0,y0,x1,y1] 0~1）", code="bad_points")
     image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         raise NotFound("樣本影像檔損毀或已遺失", code="dl_sample_not_found")
-    device = devices.train_device() if devices.train_device() in ("cuda",) else "cpu"
+    device = yolo_runtime.pick_device("auto")[0]  # SAM 走 GPU 就用（訓練裝置設定是另一回事；CPU 全圖提案一張要 20 秒以上）
     try:
         shapes = sam.suggest_shapes(
             image, [[float(p[0]), float(p[1])] for p in points],
             [int(v) for v in body.get("labels") or []] or None,
-            model_name=str(body.get("model") or ""), device=device)
-    except TrainError as exc:
+            model_name=str(body.get("model") or ""), device=device,
+            boxes_norm=[[float(v) for v in b[:4]] for b in boxes if isinstance(b, (list, tuple)) and len(b) >= 4])
+    except (TrainError, ValueError) as exc:
         raise ValidationError(str(exc), code="sam_failed") from None
-    return {"shapes": shapes}
+    return {"shapes": shapes, "model": os.path.basename(sam.loaded_model())}
 
 
 # ---------------------------------------------------------------------------
@@ -622,17 +625,45 @@ def sam_point(request: HttpRequest, project_id: int):
 # ---------------------------------------------------------------------------
 @router.post("/dl/projects/{project_id}/auto-label")
 def auto_label(request: HttpRequest, project_id: int):
-    """回傳未標記樣本的建議（不落地；前端確認後用 /labels 批次寫入）。"""
+    """回傳未標記樣本的建議（不落地；前端確認後用 /labels 批次寫入）。
+
+    body.method："model"（預設：trainer.suggest，用上次訓練的權重或官方底模）或 "sam"（shapes 專案：SAM2 全圖
+    自動分割提案，掛第一個類別；每次最多 max_samples 張，回 remaining 讓前端可以續跑）。"""
     project = _project(project_id)
     trainer = dl_base.get_trainer(project.trainer_kind)
     rows = list(project.samples.all())
+    body = _body(request)
+    if str(body.get("method") or "model") == "sam":
+        if trainer.label_mode != "shapes":
+            raise ValidationError("SAM 全圖提案只適用 shapes 標記的專案", code="sam_not_applicable")
+        classes = [str(c) for c in (project.classes or [])]
+        if not classes:
+            raise ValidationError("先在「編輯類別」新增至少一個類別", code="no_classes")
+        from apps.vision.dl import sam
+
+        pending = [r for r in rows if not r.shapes or r.labeled_by == "auto"]
+        limit = max(1, min(200, int(body.get("max_samples") or 20)))
+        device = yolo_runtime.pick_device("auto")[0]  # SAM 走 GPU 就用（訓練裝置設定是另一回事；CPU 全圖提案一張要 20 秒以上）
+        items = []
+        try:
+            for r in pending[:limit]:
+                image = cv2.imdecode(np.fromfile(r.path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if image is None:
+                    continue
+                shapes = sam.suggest_everything(image, model_name=str(body.get("model") or ""), device=device,
+                                                max_masks=int(body.get("max_masks") or 30))
+                if shapes:
+                    items.append({"id": str(r.id), "label": "", "score": 0.5, "shapes": [{**sh, "label": classes[0]} for sh in shapes]})
+        except TrainError as exc:
+            raise ValidationError(str(exc), code="auto_label_failed") from None
+        return {"items": items, "remaining": max(0, len(pending) - limit), "method": "sam", "model": os.path.basename(sam.loaded_model())}
     if trainer.label_mode == "shapes":
         labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path, shapes=list(r.shapes or [])) for r in rows if r.shapes and r.labeled_by == "human"]
         unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.shapes or r.labeled_by == "auto"]
     else:
         labeled = [SampleRef(id=str(r.id), label=r.label, path=r.path) for r in rows if r.label and r.labeled_by == "human"]
         unlabeled = [SampleRef(id=str(r.id), label="", path=r.path) for r in rows if not r.label or r.labeled_by == "auto"]
-    params = {**dict(project.params or {}), **(_body(request).get("params") or {})}
+    params = {**dict(project.params or {}), **(body.get("params") or {})}
     weights = (project.last_metrics or {}).get("weights_path")
     if weights and "weights" not in params:
         params["weights"] = weights  # yolo trainer 沿用上次訓練的 best.pt

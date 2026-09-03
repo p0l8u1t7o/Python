@@ -261,6 +261,8 @@ const zhHant = {
     elapsed: '已執行 {{s}} 秒',
     status: { running: '訓練中', done: '完成', failed: '失敗', cancelled: '已取消' },
     modeSmart: '智慧選取',
+    modeSmartBox: '智慧框選', smartBoxHint: '拖曳框住物件，SAM 自動框出輪廓（套用目前類別）',
+    autoLabelSam: 'SAM 全圖提案', autoLabelSamHint: '尚未訓練也能用：SAM2 對整張影像自動分割，提案掛到第一個類別，請確認後改類；每次最多 20 張', samRemaining: '尚有 {{count}} 張未提案，請再按一次',
     smartHint: '點選物件，SAM 自動框出輪廓（套用目前類別）',
     smartBusy: '智慧選取中…（第一次使用會先下載模型）',
     smartNoResult: '未找到輪廓，請改選其他位置',

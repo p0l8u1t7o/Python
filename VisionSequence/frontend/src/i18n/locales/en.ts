@@ -218,6 +218,8 @@ const en = {
     elapsed: '{{s}}s elapsed',
     status: { running: 'Training', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' },
     modeSmart: 'Smart select',
+    modeSmartBox: 'Smart box', smartBoxHint: 'Drag a box around an object; SAM outlines it (current class)',
+    autoLabelSam: 'SAM proposals', autoLabelSamHint: 'Works before training: SAM2 segments the whole image, proposals get the first class for you to confirm; up to 20 images per pass', samRemaining: '{{count}} more images pending, run again',
     smartHint: 'Click an object and SAM traces its outline (uses the current class)',
     smartBusy: 'Segmenting… (first use downloads the model)',
     smartNoResult: 'No outline found — try clicking another spot',

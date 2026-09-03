@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Archive, Brain, Camera, Check, Cpu, Database, Download, Image as ImageIcon, LayoutGrid, Play, Plus, Shuffle, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
+import { Archive, Brain, Camera, Check, Cpu, Database, Download, Image as ImageIcon, LayoutGrid, Play, Plus, Shuffle, Sparkles, Square, Trash2, Upload, X, Wand2 } from 'lucide-react'
 
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
 
@@ -622,12 +622,13 @@ export function DlPage() {
     await setLabel.mutateAsync({ id: sample.id, label: next, projectId })
   }
 
-  async function runAutoLabel() {
+  async function runAutoLabel(method: 'model' | 'sam' = 'model') {
     if (projectId === null) return
     try {
-      const r = await autoLabel.mutateAsync({ projectId })
+      const r = await autoLabel.mutateAsync({ projectId, method, maxSamples: method === 'sam' ? 20 : undefined })
       setSuggestions(new Map(r.items.map((s) => [s.id, s])))
       if (!r.items.length) toast.push(t('dl.noSuggestions'), 'info')
+      else if (r.remaining) toast.push(t('dl.samRemaining', { count: r.remaining }), 'info')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     }
@@ -719,6 +720,7 @@ export function DlPage() {
                     <Button size="sm" disabled={!!importing} onClick={() => fileInput.current?.click()}><Upload size={14} /> {t('dl.upload')}</Button>
                     <Button size="sm" disabled={!!importing} onClick={() => setFromSourceOpen(true)}><Camera size={14} /> {t('dl.fromSource')}</Button>
                     <Button size="sm" variant="primary" loading={autoLabel.isPending} onClick={() => void runAutoLabel()} data-testid="dl-auto"><Sparkles size={14} /> {t('dl.autoLabel')}</Button>
+                    <Button size="sm" loading={autoLabel.isPending} title={t('dl.autoLabelSamHint')} onClick={() => void runAutoLabel('sam')} data-testid="dl-auto-sam"><Wand2 size={14} /> {t('dl.autoLabelSam')}</Button>
                     {suggestions.size ? (
                       <>
                         <Button size="sm" variant="primary" onClick={() => void acceptSuggestions()}><Check size={14} /> {t('dl.acceptAll', { count: suggestions.size })}</Button>
@@ -739,6 +741,7 @@ export function DlPage() {
                 <ShapeWorkspace key={project.data.id} project={project.data} samples={samples.data ?? []} suggestions={suggestions}
                   onSave={saveShapes} onAcceptSuggestion={acceptOneSuggestion} onEditClasses={() => setEditingClasses(true)}
                   onSamPoint={projectId === null ? undefined : async (sampleId, point) => (await samPoint.mutateAsync({ projectId, sampleId, points: [point] })).shapes}
+                  onSamBox={projectId === null ? undefined : async (sampleId, box) => (await samPoint.mutateAsync({ projectId, sampleId, boxes: [box] })).shapes}
                   onSetSplit={(s, split) => { if (projectId !== null) void setSplit.mutateAsync({ id: s.id, split, projectId }) }}
                   hotkeysDisabled={editingClasses || creating || fromSourceOpen || deleting} />
               ) : (
