@@ -81,10 +81,11 @@ class ExportTests(SimpleTestCase):
             self.assertEqual(len(txt[0].split("\t")), 5)
             crows = [(f"id{i}", paths[i], "dark" if i % 2 else "bright", "") for i in range(4)]
             cstats = shapes.export_classify_dataset(crows, ["bright", "dark"], os.path.join(folder, "cls"), val_ratio=0.25)
-            self.assertEqual((cstats["train"], cstats["val"]), (3, 1))
+            self.assertEqual((cstats["train"], cstats["val"]), (2, 2))  # 分層：每類至少 1 張進 val（ultralytics 要求 val 每類都有）
             self.assertEqual(sorted(os.listdir(os.path.join(folder, "cls", "train"))), ["bright", "dark"])
             self.assertEqual(sorted(os.listdir(os.path.join(folder, "cls", "val"))), ["bright", "dark"])
             self.assertEqual(len(glob.glob(os.path.join(folder, "cls", "*", "*", "*.jpg"))), 4)
+            self.assertEqual({len(glob.glob(os.path.join(folder, "cls", "val", c, "*.jpg"))) for c in ("bright", "dark")}, {1})
             self.assertEqual(shapes._safe_name("a/b:c?"), "abc")
         finally:
             shutil.rmtree(folder, ignore_errors=True)

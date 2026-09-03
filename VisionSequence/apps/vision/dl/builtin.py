@@ -129,51 +129,11 @@ class MlpClassifierTrainer(Trainer):
                 yt = np.concatenate([yt, np.array(aug_y, dtype=np.int64)])
                 n_aug = len(aug_y)
 
-        d, c = x.shape[1], len(classes)
-        w1 = rng.normal(0, np.sqrt(2.0 / d), (d, hidden)).astype(np.float32)
-        b1 = np.zeros(hidden, dtype=np.float32)
-        w2 = rng.normal(0, np.sqrt(2.0 / hidden), (hidden, c)).astype(np.float32)
-        b2 = np.zeros(c, dtype=np.float32)
-
-        def forward(xb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-            h = np.maximum(xb @ w1 + b1, 0)
-            logits = h @ w2 + b2
-            return h, logits
-
-        def accuracy(xb: np.ndarray, yb: np.ndarray) -> float:
-            if not len(yb):
-                return 0.0
-            return float((forward(xb)[1].argmax(axis=1) == yb).mean())
-
-        n = len(yt)
-        metrics: dict[str, Any] = {}
-        for epoch in range(epochs):
-            h, logits = forward(xt)
-            logits -= logits.max(axis=1, keepdims=True)
-            e = np.exp(logits)
-            probs = e / e.sum(axis=1, keepdims=True)
-            loss = float(-np.log(np.clip(probs[np.arange(n), yt], 1e-9, 1)).mean())
-            grad = probs
-            grad[np.arange(n), yt] -= 1
-            grad /= n
-            gw2 = h.T @ grad
-            gb2 = grad.sum(axis=0)
-            gh = grad @ w2.T
-            gh[h <= 0] = 0
-            gw1 = xt.T @ gh
-            gb1 = gh.sum(axis=0)
-            w1 -= lr * gw1
-            b1 -= lr * gb1
-            w2 -= lr * gw2
-            b2 -= lr * gb2
-            if epoch % 20 == 0 or epoch == epochs - 1:
-                metrics = {
-                    "epoch": epoch + 1, "epochs": epochs, "loss": round(loss, 4),
-                    "train_accuracy": round(accuracy(xt, yt), 4),
-                    "val_accuracy": round(accuracy(xv, yv), 4) if len(yv) else None,
-                    "samples": int(len(y)), "val_samples": int(len(yv)), "classes": counts,
-                }
-                progress(0.05 + 0.9 * (epoch + 1) / epochs, f"訓練中（{epoch + 1}/{epochs}）", metrics)
+        # 與 patch_segment 共用同一個訓練迴圈（含學習率保護：lr 太大把 ReLU 打死時自動砍 lr 重來）
+        w1, b1, w2, b2, metrics = _train_softmax_mlp(xt, yt, xv, yv, hidden=hidden, classes=len(classes), epochs=epochs, lr=lr, seed=7, progress=progress)
+        metrics = {**metrics, "samples": int(len(y)), "val_samples": int(len(yv)), "classes": counts}
+        if metrics.get("val_accuracy") is None and not len(yv):
+            metrics["val_accuracy"] = None
 
         if n_aug:
             metrics["augmented"] = n_aug
@@ -256,6 +216,18 @@ def _train_softmax_mlp(xt, yt, xv, yv, *, hidden, classes, epochs, lr, seed, pro
     b2 = np.zeros(classes, dtype=np.float32)
     n = len(yt)
     metrics: dict[str, Any] = {}
+    # 學習率保護：全批次 GD 在原始像素（維度上萬）上，lr 太大會第一步就把隱藏層打死（ReLU 全 0 → 輸出常數、loss 卡在 ln(k)）。
+    # 訓練前 10% 若 loss 沒離開 ln(k)，就重新初始化並把 lr 砍成 1/4 重來（最多 3 次），trainer 預設值在各種資料上都能收斂。
+    chance = float(np.log(max(2, classes)))
+    probe_epoch = max(10, epochs // 10)
+    restarts = 0
+
+    def init():
+        nonlocal w1, b1, w2, b2
+        w1 = rng.normal(0, np.sqrt(2.0 / d), (d, hidden)).astype(np.float32)
+        b1 = np.zeros(hidden, dtype=np.float32)
+        w2 = rng.normal(0, np.sqrt(2.0 / hidden), (hidden, classes)).astype(np.float32)
+        b2 = np.zeros(classes, dtype=np.float32)
 
     def acc(xb, yb):
         if not len(yb):
@@ -263,13 +235,22 @@ def _train_softmax_mlp(xt, yt, xv, yv, *, hidden, classes, epochs, lr, seed, pro
         h = np.maximum(xb @ w1 + b1, 0)
         return round(float(((h @ w2 + b2).argmax(axis=1) == yb).mean()), 4)
 
-    for epoch in range(epochs):
+    epoch = 0
+    while epoch < epochs:
         h = np.maximum(xt @ w1 + b1, 0)
         logits = h @ w2 + b2
         logits -= logits.max(axis=1, keepdims=True)
         e = np.exp(logits)
         probs = e / e.sum(axis=1, keepdims=True)
         loss = float(-np.log(np.clip(probs[np.arange(n), yt], 1e-9, 1)).mean())
+        if epoch >= probe_epoch and epoch % 20 == 0 and restarts < 3 and loss > chance - 0.02 and (acc(xt, yt) or 0.0) <= 1.0 / classes + 0.05:
+            # 隱藏層死掉（輸出常數、loss 停在 ln(k)、正確率＝隨機）：砍 lr 重來
+            restarts += 1
+            lr *= 0.25
+            init()
+            epoch = 0
+            metrics["lr_restarts"] = restarts
+            continue
         grad = probs
         grad[np.arange(n), yt] -= 1
         grad /= n
@@ -280,10 +261,11 @@ def _train_softmax_mlp(xt, yt, xv, yv, *, hidden, classes, epochs, lr, seed, pro
         b1 -= lr * gh.sum(axis=0)
         w2 -= lr * gw2
         b2 -= lr * gb2
-        if epoch % 20 == 0 or epoch == epochs - 1:
-            metrics = {"epoch": epoch + 1, "epochs": epochs, "loss": round(loss, 4),
-                       "train_accuracy": acc(xt, yt), "val_accuracy": acc(xv, yv), "samples": int(n)}
-            progress(base_frac + span * (epoch + 1) / epochs, f"{stage}（{epoch + 1}/{epochs}）", metrics)
+        epoch += 1
+        if (epoch - 1) % 20 == 0 or epoch == epochs:
+            metrics = {"epoch": epoch, "epochs": epochs, "loss": round(loss, 4),
+                       "train_accuracy": acc(xt, yt), "val_accuracy": acc(xv, yv), "samples": int(n), **({"lr_restarts": restarts, "lr": lr} if restarts else {})}
+            progress(base_frac + span * epoch / epochs, f"{stage}（{epoch}/{epochs}）", metrics)
     return w1, b1, w2, b2, metrics
 
 

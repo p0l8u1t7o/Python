@@ -211,13 +211,17 @@ def export_classify_dataset(samples, classes: list[str], out_dir: str, *, val_ra
     rows = [(r[0], r[1], r[2], r[3] if len(r) > 3 and r[3] in ("train", "val", "test") else "") for r in samples if r[2] in classes]
     if not rows:
         raise ValidationError("沒有任何已標記的樣本可匯出", code="no_labeled_samples")
-    unassigned = [i for i, r in enumerate(rows) if not r[3]]
+    # 分層抽 val：每個類別各抽 val_ratio（有 2 張以上就至少 1 張），否則 ultralytics 會抱怨 val 缺類別
     explicit_val = any(r[3] == "val" for r in rows)
-    n_val = int(round(len(unassigned) * val_ratio)) if val_ratio > 0 else 0
-    if not explicit_val and val_ratio > 0 and len(rows) > 1 and unassigned:
-        n_val = max(1, n_val)
-    order = rng.permutation(len(unassigned))
-    val_set = {unassigned[int(i)] for i in order[:n_val]}
+    val_set: set[int] = set()
+    if val_ratio > 0 and not explicit_val:
+        for c in classes:
+            idx = [i for i, r in enumerate(rows) if not r[3] and r[2] == c]
+            n_val = int(round(len(idx) * val_ratio))
+            if len(idx) >= 2:
+                n_val = max(1, n_val)
+            order = rng.permutation(len(idx))
+            val_set |= {idx[int(k)] for k in order[:n_val]}
     counts = {"train": 0, "val": 0, "test": 0}
     for i, (sid, path, label, assigned) in enumerate(rows):
         split = assigned or ("val" if i in val_set else "train")
