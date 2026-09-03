@@ -81,6 +81,8 @@ class SettingsIn(Schema):
     provider: str
     model: str | None = None
     api_key: str | None = None
+    #: openai_compatible 的端點（例如 http://127.0.0.1:11434/v1）。
+    base_url: str | None = None
     clear_key: bool = False
 
 
@@ -116,6 +118,8 @@ def patch_agent_settings(request: HttpRequest, payload: SettingsIn):
     data["provider"] = payload.provider
     if payload.model is not None:
         data["model"] = payload.model.strip()
+    if payload.base_url is not None:
+        data["base_url"] = payload.base_url.strip()
     if payload.clear_key:
         data["api_key"] = ""
     elif payload.api_key:

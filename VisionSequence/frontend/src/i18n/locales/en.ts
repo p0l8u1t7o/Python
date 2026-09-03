@@ -567,6 +567,7 @@ const en = {
     answerPlaceholder: 'Type here…', roiQuestionHint: 'Draw the ROI on the image, click "Add this ROI", then Continue.', continue: 'Continue',
     skipQuestions: 'Skip questions and generate', answersKept: '{{count}} answer(s) kept', abort: 'Stop', aborted: 'Assistant stopped',
     testConnection: 'Test connection', testing: 'Testing (up to 15 s)…',
+    baseUrl: 'Endpoint URL (OpenAI-compatible)', baseUrlHint: 'Base URL of a local model server, e.g. Ollama http://127.0.0.1:11434/v1; the key may be empty.',
     listModels: 'List models', listModelsHint: 'Ask the provider which models this key can use; click one to fill it in', listModelsNeedKey: 'Save the provider and key first', noModels: 'No usable models found for this key', testOk: 'Configured: {{model}} responded ({{ms}} ms)', testFailed: 'Setup failed: {{reason}}', testOffline: 'Offline rule engine - no connection needed',
     skills: 'AI skills', skillsHint: 'This is exactly what the AI agent reads: platform rules, flow design principles and per-tool know-how. Edit the markdown under apps/vision/agent/skills/ to teach it your site.',
     skillsGuide: 'Guide', skillsCurated: 'curated' },

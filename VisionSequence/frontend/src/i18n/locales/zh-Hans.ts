@@ -1127,6 +1127,8 @@ const zhHans = {
     aborted: '已中断 AI 助手',
     testConnection: '测试连接',
     testing: '测试中（最多 15 秒）…',
+    baseUrl: '端点 URL（OpenAI 兼容）',
+    baseUrlHint: '本地模型服务的 base URL，例如 Ollama 的 http://127.0.0.1:11434/v1；密钥可留空。',
     listModels: '列出可用模型',
     listModelsHint: '用已保存的密钥向供应商查询可用的模型名，点选即带入',
     listModelsNeedKey: '先保存供应商与密钥再查询',

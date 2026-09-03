@@ -49,17 +49,42 @@ def _blob_probe(gray: np.ndarray, otsu: float) -> dict[str, Any]:
     return out
 
 
-def _circle_probe(gray: np.ndarray) -> dict[str, Any]:
-    """霍夫試探：ROI 裡有沒有明顯的圓（給「找圓 vs 找 blob」的判斷加權）。"""
+PROBE_MAX_SIDE = 480  # 霍夫試探先縮到這個邊長：只需要「有沒有圓」，不需要像素級半徑
+
+
+def _circle_probe(gray: np.ndarray, edge_ratio: float = 0.0) -> dict[str, Any]:
+    """霍夫試探：ROI 裡有沒有明顯的圓（給「找圓 vs 找 blob」的判斷加權）。
+
+    整張 1280×960 的規律紋理面直接跑霍夫要十幾秒且結果無意義，所以：邊緣密度過高直接略過，其餘先縮圖再試探。
+    """
+    if edge_ratio > 0.15:
+        return {"found": False, "count": 0, "radius": 0.0, "skipped": True}
     h, w = gray.shape[:2]
-    r_max = max(10, min(h, w) // 2)
-    blurred = cv2.medianBlur(gray, 5)
+    scale = min(1.0, PROBE_MAX_SIDE / float(max(h, w)))
+    small = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1.0 else gray
+    sh, sw = small.shape[:2]
+    r_max = max(10, min(sh, sw) // 2)
+    blurred = cv2.medianBlur(small, 5)
     circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.5, minDist=max(20, r_max // 2),
-                               param1=120, param2=30, minRadius=max(5, r_max // 8), maxRadius=r_max)
+                               param1=120, param2=30, minRadius=max(4, r_max // 8), maxRadius=r_max)
     if circles is None:
         return {"found": False, "count": 0, "radius": 0.0}
     circles = circles[0]
-    return {"found": True, "count": int(len(circles)), "radius": round(float(np.median(circles[:, 2])), 1)}
+    return {"found": True, "count": int(len(circles)), "radius": round(float(np.median(circles[:, 2])) / scale, 1)}
+
+
+def _outliers(gray: np.ndarray) -> dict[str, float]:
+    """偏離背景的像素佔比（暗／亮各一）：原圖用穩健 σ、低通後再算一次取大者，讓紋理面上的刮痕也算得出來。"""
+    g = gray.astype(np.float32)
+    med = float(np.median(g))
+    mad = float(np.median(np.abs(g - med))) * 1.4826
+    smooth = cv2.GaussianBlur(gray, (0, 0), 6).astype(np.float32)
+    smed = float(np.median(smooth))
+    smad = float(np.median(np.abs(smooth - smed))) * 1.4826
+    k_raw, k_smooth = max(30.0, 3 * mad), max(12.0, 3 * smad)
+    dark = max(float((g < med - k_raw).mean()), float((smooth < smed - k_smooth).mean()))
+    bright = max(float((g > med + k_raw).mean()), float((smooth > smed + k_smooth).mean()))
+    return {"dark": round(dark, 5), "bright": round(bright, 5)}
 
 
 def analyze_region(image: np.ndarray, region: dict[str, Any] | None) -> dict[str, Any]:
@@ -70,22 +95,42 @@ def analyze_region(image: np.ndarray, region: dict[str, Any] | None) -> dict[str
     gray = _to_gray(piece)
     otsu, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     edges = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 50, 150)
+    edge_ratio = float((edges > 0).mean())
     dark_ratio = float((gray < otsu).mean())
+    median = float(np.median(gray))
+    mad = float(np.median(np.abs(gray.astype(np.float32) - median))) * 1.4826  # 穩健 σ：不受缺陷本身拉高
+    h_, w_ = gray.shape[:2]
+    mean_all = max(1.0, float(gray.mean()))
+    gradient = (abs(float(gray[: h_ // 2].mean()) - float(gray[h_ // 2:].mean())) + abs(float(gray[:, : w_ // 2].mean()) - float(gray[:, w_ // 2:].mean()))) / 2 / mean_all
+    color_std = float(np.mean([piece[:, :, c].std() for c in range(3)])) if piece.ndim == 3 else float(gray.std())
+    smooth = cv2.GaussianBlur(gray, (0, 0), 6)  # 低通後的穩健 σ：規律紋理被平均掉，只剩大尺度起伏（紋理面缺陷門檻用）
+    smooth_mad = float(np.median(np.abs(smooth.astype(np.float32) - float(np.median(smooth))))) * 1.4826
     info: dict[str, Any] = {
-        "w": int(piece.shape[1]), "h": int(piece.shape[0]),
+        "w": int(piece.shape[1]), "h": int(piece.shape[0]), "area": int(piece.shape[0] * piece.shape[1]),
         "mean": round(float(gray.mean()), 1), "std": round(float(gray.std()), 1),
+        "mad": round(mad, 1), "smooth_mad": round(smooth_mad, 1), "gradient": round(gradient, 3), "color_std": round(color_std, 1),
         "otsu": round(float(otsu), 1),
         "dark_ratio": round(dark_ratio, 3),
-        "edge_ratio": round(float((edges > 0).mean()), 4),
+        "edge_ratio": round(edge_ratio, 4),
         "dominant": _dominant_hsv(piece),
         "blobs": _blob_probe(gray, otsu),
-        "circle": _circle_probe(gray),
+        "circle": _circle_probe(gray, edge_ratio),
+        "outliers": _outliers(gray),
     }
     if region:
         x, y, w, h = bounding_rect(region, int(image.shape[1]), int(image.shape[0]))
         info["bounds"] = {"x": int(x), "y": int(y), "w": int(w), "h": int(h)}
         info["shape"] = str(region.get("shape", ""))
     return info
+
+
+def _image_outliers(image: np.ndarray, regions: list[dict[str, Any]]) -> dict[str, float]:
+    """每張影像各算一次離群比例（套第一個 ROI，沒有就整張）：缺陷只出現在部分影像，跨影像取最大值才看得到極性。"""
+    region = regions[0].get("region") if regions else None
+    piece = crop(image, region, upright=True).image if region else image
+    if piece.size == 0:
+        return {"dark": 0.0, "bright": 0.0}
+    return _outliers(_to_gray(piece))
 
 
 def analyze(images: list[np.ndarray], regions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -104,7 +149,7 @@ def analyze(images: list[np.ndarray], regions: list[dict[str, Any]]) -> dict[str
         "height": int(first.shape[0]),
         "channels": int(first.shape[2]) if first.ndim == 3 else 1,
         "image_count": len(images),
-        "images": [{"index": i, "width": int(im.shape[1]), "height": int(im.shape[0])} for i, im in enumerate(images)],
+        "images": [{"index": i, "width": int(im.shape[1]), "height": int(im.shape[0]), "outliers": _image_outliers(im, regions)} for i, im in enumerate(images)],
         "full": analyze_region(first, None),
         "regions": rows,
     }
@@ -122,7 +167,7 @@ def summarize_for_llm(analysis: dict[str, Any]) -> str:
         hint = f"，使用者提示「{r['hint']}」" if r.get("hint") else ""
         lines.append(
             f"ROI{i:02d}（影像 {r.get('image', 0) + 1}，{r.get('shape', '?')} @ {b.get('x')},{b.get('y')} {b.get('w')}x{b.get('h')}{hint}）："
-            f"平均灰階 {r['mean']}±{r['std']}，Otsu {r['otsu']}，暗部佔比 {r['dark_ratio']}，"
+            f"平均灰階 {r['mean']}±{r['std']}（穩健 σ {r.get('mad', 0)}，背景不均 {r.get('gradient', 0)}），Otsu {r['otsu']}，暗部佔比 {r['dark_ratio']}，"
             f"邊緣密度 {r['edge_ratio']}，主色 {dom.get('hex')}（H{dom.get('h')} S{dom.get('s')} V{dom.get('v')}），"
             f"暗粒子 {r['blobs']['dark']['count']} 顆（中位面積 {r['blobs']['dark']['median_area']}px²）、"
             f"亮粒子 {r['blobs']['bright']['count']} 顆；"

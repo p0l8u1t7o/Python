@@ -45,6 +45,22 @@ def _roi_info(analysis: dict[str, Any], idx: int = 0) -> dict[str, Any]:
     return analysis.get("full") or {}
 
 
+def _clip(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def _blob_min_area(info: dict[str, Any], polarity_dark: bool | None = None, floor: int = 30) -> int:
+    """粒子最小面積：有粒子試探就取中位面積的 30%，否則取 ROI 面積的千分之一。"""
+    blobs = info.get("blobs", {})
+    dark, bright = blobs.get("dark", {}), blobs.get("bright", {})
+    if polarity_dark is None:
+        polarity_dark = dark.get("count", 0) >= bright.get("count", 0)
+    probe = dark if polarity_dark else bright
+    if probe.get("count"):
+        return max(floor, int(probe.get("median_area", 0) * 0.3))
+    return max(floor, int(info.get("area", info.get("w", 100) * info.get("h", 100)) * 0.001))
+
+
 def synth_count(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     info = _roi_info(analysis)
     roi = _region_of(regions)
@@ -60,7 +76,8 @@ def synth_count(intent: Intent, regions: list, analysis: dict) -> tuple[dict, st
         _node("blur", "blur", 2, 0, "去雜訊", method="median", ksize=5),
         _node("thr", "threshold", 3, 0, "二值化", method="otsu", invert=invert),
         _node("open", "morphology", 4, 0, "開運算去雜點", op="open", ksize=5),
-        _node("blob", "blob", 5, 0, "粒子計數", roi=roi, min_area=min_area, min_count=0, sort_by="area"),
+        _node("blob", "blob", 5, 0, "粒子計數", roi=roi, min_area=min_area, min_count=0, sort_by="area",
+              **({"min_circularity": 0.5} if intent.round_target else {})),
     ]
     edges += [_edge("gray", "blur"), _edge("blur", "thr"), _edge("thr", "open"), _edge("open", "blob")]
     if intent.expected_count is not None:
@@ -72,7 +89,7 @@ def synth_count(intent: Intent, regions: list, analysis: dict) -> tuple[dict, st
         edges += [_edge("blob", "cmp", "count", "value"), _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow")]
     nodes.append(_node("out", "output", 6, 1, "輸出數量", name="count"))
     edges.append(_edge("blob", "out", "count", "value"))
-    why = f"抓{'暗' if invert else '亮'}粒子（ROI 內{'暗' if invert else '亮'}粒子較多），最小面積 {min_area}px²"
+    why = f"抓{'暗' if invert else '亮'}粒子（ROI 內{'暗' if invert else '亮'}粒子較多），最小面積 {min_area}px²" + ("，圓形度 ≥ 0.5 排除線段" if intent.round_target else "")
     if intent.expected_count is not None:
         why += f"；期望 {intent.expected_count} 個，不符走 NG"
     return _finish(nodes, edges), why
@@ -124,17 +141,24 @@ def synth_width(intent: Intent, regions: list, analysis: dict) -> tuple[dict, st
     nodes, edges = _src_gray("由 AI 助手生成：卡尺量寬。ROI 長邊要橫跨要量的兩條邊緣。")
     nodes += [_node("cal", "caliper", 2, 0, "卡尺量寬", roi=roi, polarity="any", edge_pair="widest")]
     edges += [_edge("gray", "cal", "image", "image")]
-    col = 3
+    value_src, value_port, col, unit = "cal", "width", 3, "px"
+    if intent.mm_per_px:
+        nodes.append(_node("calib", "calibration", col, 0, "像素校正", mode="pixel_size", pixel_size_mm=intent.mm_per_px))
+        edges.append(_edge("cal", "calib", "width", "value"))
+        value_src, value_port, col, unit = "calib", "mm", col + 1, "mm"
     if intent.nominal is not None:
         tol = intent.tol if intent.tol is not None else round(intent.nominal * 0.05, 3)
         nodes += [
-            _node("tol", "tolerance_judge", col, 0, "寬度公差", nominal=intent.nominal, upper_tol=tol, lower_tol=-tol, unit=intent.unit, name="width"),
+            _node("tol", "tolerance_judge", col, 0, "寬度公差", nominal=intent.nominal, upper_tol=tol, lower_tol=-tol, unit=unit, name="width"),
             _node("jd", "judge", col + 1, 0, "OK / NG", verdict="by_input", label="width"),
         ]
-        edges += [_edge("cal", "tol", "width", "value"), _edge("tol", "jd", "in_spec", "value")]
-    nodes.append(_node("out", "output", col, 1, "輸出寬度", name="width_px"))
-    edges.append(_edge("cal", "out", "width", "value"))
-    return _finish(nodes, edges), "卡尺在 ROI 內找最寬的邊緣對量距離"
+        edges += [_edge(value_src, "tol", value_port, "value"), _edge("tol", "jd", "in_spec", "value")]
+    nodes.append(_node("out", "output", col, 1, "輸出寬度", name=f"width_{unit}"))
+    edges.append(_edge(value_src, "out", value_port, "value"))
+    why = "卡尺在 ROI 內找最寬的邊緣對量距離"
+    if intent.mm_per_px:
+        why += f"，以 {intent.mm_per_px:.4f} mm/px 換算"
+    return _finish(nodes, edges), why
 
 
 def synth_angle(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
@@ -165,42 +189,66 @@ def synth_angle(intent: Intent, regions: list, analysis: dict) -> tuple[dict, st
     return _finish(nodes, edges), "兩條找線量夾角" + ("（缺第二個 ROI，記得補圈）" if not roi_b else "")
 
 
+def _defect_polarity_dark(intent: Intent, info: dict[str, Any], analysis: dict[str, Any]) -> bool:
+    """缺陷極性：使用者說了算；否則看所有影像裡「偏離背景的像素」哪邊多（缺陷只在部分影像出現，所以跨影像取最大）；都沒證據才用粒子數。"""
+    if intent.polarity in ("dark", "bright"):
+        return intent.polarity == "dark"
+    dark_ev = bright_ev = 0.0
+    for row in analysis.get("images") or []:
+        o = row.get("outliers") or {}
+        dark_ev = max(dark_ev, float(o.get("dark", 0.0)))
+        bright_ev = max(bright_ev, float(o.get("bright", 0.0)))
+    if max(dark_ev, bright_ev) >= 1e-4 and dark_ev != bright_ev:
+        return dark_ev > bright_ev
+    blobs = info.get("blobs", {})
+    return blobs.get("dark", {}).get("count", 0) >= blobs.get("bright", {}).get("count", 0)
+
+
 def synth_defect(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
     info = _roi_info(analysis)
     mean = float(info.get("mean", 128))
-    std = float(info.get("std", 20))
-    dark_more = info.get("blobs", {}).get("dark", {}).get("count", 0) >= info.get("blobs", {}).get("bright", {}).get("count", 0)
-    if intent.polarity in ("dark", "bright"):
-        dark_more = intent.polarity == "dark"
-    offset = max(30.0, 3 * std)
+    textured = float(info.get("edge_ratio", 0)) > 0.08  # 規律紋理：先頻域低通把紋理濾掉再抓異常
+    sigma = float(info.get("smooth_mad" if textured else "mad", info.get("std", 20)) or info.get("std", 20))  # 穩健 σ：缺陷本身不會把門檻推遠；紋理面用低通後的 σ
+    dark_more = _defect_polarity_dark(intent, info, analysis)
+    offset = max(30.0, 3 * sigma)
     thr = max(5.0, mean - offset) if dark_more else min(250.0, mean + offset)
-    nodes, edges = _src_gray("由 AI 助手生成：表面缺陷。門檻＝ROI 平均灰階往" + ("暗" if dark_more else "亮") + "偏 3σ；誤抓就把門檻再往外調、最小面積調大。")
+    min_area = int(_clip(float(info.get("area", info.get("w", 100) * info.get("h", 100))) * 0.0005, 50, 2000))
+    nodes, edges = _src_gray("由 AI 助手生成：表面缺陷。門檻＝ROI 平均灰階往" + ("暗" if dark_more else "亮") + "偏 3σ（穩健）；誤抓就把門檻再往外調、最小面積調大。" + ("\n偵測到規律紋理：先以頻域低通濾掉紋理。" if textured else ""))
+    if textured:
+        nodes.append(_node("fft", "fft_filter", 2, 0, "頻域低通去紋理", mode="lowpass", cutoff=0.08))
+        edges.append(_edge("gray", "fft"))
+        pre = "fft"
+    else:
+        nodes.append(_node("blur", "blur", 2, 0, "去雜訊", method="gaussian", ksize=5))
+        edges.append(_edge("gray", "blur"))
+        pre = "blur"
     nodes += [
-        _node("blur", "blur", 2, 0, "去雜訊", method="gaussian", ksize=5),
         _node("thr", "threshold", 3, 0, "抓異常", method="fixed", threshold=int(thr), invert=dark_more),
         _node("open", "morphology", 4, 0, "開運算", op="open", ksize=5),
-        _node("blob", "blob", 5, 0, "缺陷 blob", roi=roi, threshold_method="fixed", threshold=128, polarity="bright", min_area=200, min_count=0),
+        _node("blob", "blob", 5, 0, "缺陷 blob", roi=roi, threshold_method="fixed", threshold=128, polarity="bright", min_area=min_area, min_count=0),
         _node("cmp", "if_number", 6, 0, "沒有缺陷？", operator="eq", threshold=0),
         _node("ok", "judge", 7, 0, "OK", verdict="ok"),
         _node("ng", "judge", 7, 1, "NG：表面缺陷", verdict="ng", label="defect"),
         _node("out", "output", 6, 1, "輸出缺陷數", name="defect_count"),
     ]
     edges += [
-        _edge("gray", "blur"), _edge("blur", "thr"), _edge("thr", "open"), _edge("open", "blob"),
+        _edge(pre, "thr"), _edge("thr", "open"), _edge("open", "blob"),
         _edge("blob", "cmp", "count", "value"), _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
         _edge("blob", "out", "count", "value"),
     ]
-    why = f"以固定門檻 {int(thr)} 抓{'暗' if dark_more else '亮'}異常（ROI 平均 {mean:.0f}±{std:.0f}）；有良品範本時建議改用「良品比對」工具更穩"
+    why = f"以固定門檻 {int(thr)} 抓{'暗' if dark_more else '亮'}異常（ROI 平均 {mean:.0f}、穩健 σ {sigma:.0f}，最小面積 {min_area}px²）" + ("，規律紋理先經頻域低通" if textured else "") + "；有良品範本時建議改用「良品比對」工具更穩"
     return _finish(nodes, edges), why
 
 
 def synth_color_match(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
-    color = intent.color_hex or _roi_info(analysis).get("dominant", {}).get("hex", "#808080")
+    info = _roi_info(analysis)
+    color = intent.color_hex or info.get("dominant", {}).get("hex", "#808080")
+    tolerance = int(_clip(3 * float(info.get("color_std", 20) or 20), 25, 90))  # 區域內色彩越不均勻，容差越寬
     nodes = [
         _node("src", "image_source", 0, 0, "取像", mode="auto"),
-        _node("chk", "color_check", 1, 0, "顏色比對", roi=roi, color=color, space="rgb", tolerance=60),
+        _node("chk", "color_check", 1, 0, "顏色比對", roi=roi, color=color, space="rgb", tolerance=tolerance),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
         _node("ng", "judge", 2, 1, "NG：顏色不符", verdict="ng", label="color"),
         _node("stat", "color_stats", 1, 1, "顏色統計", roi=roi),
@@ -212,7 +260,7 @@ def synth_color_match(intent: Intent, regions: list, analysis: dict) -> tuple[di
         _edge("chk", "ok", "match", "_flow"), _edge("chk", "ng", "mismatch", "_flow"),
         _edge("src", "stat", "image", "image"), _edge("stat", "out", "hex", "value"),
     ]
-    return _finish(nodes, edges, col=3), f"ROI 平均色與目標色 {color} 比距離"
+    return _finish(nodes, edges, col=3), f"ROI 平均色與目標色 {color} 比距離（容差 {tolerance}，依區域色彩離散度）"
 
 
 def synth_color_presence(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
@@ -246,9 +294,14 @@ def synth_color_presence(intent: Intent, regions: list, analysis: dict) -> tuple
 
 def synth_presence(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
+    info = _roi_info(analysis)
+    polarity_dark = intent.polarity == "dark" if intent.polarity else None
+    min_area = _blob_min_area(info, polarity_dark)
+    if polarity_dark is None:
+        polarity_dark = info.get("blobs", {}).get("dark", {}).get("count", 0) >= info.get("blobs", {}).get("bright", {}).get("count", 0)
     nodes, edges = _src_gray("由 AI 助手生成：有無檢測。ROI 內抓得到粒子＝有料。")
     nodes += [
-        _node("blob", "blob", 2, 0, "找料件", roi=roi, min_area=100, min_count=1),
+        _node("blob", "blob", 2, 0, "找料件", roi=roi, polarity="dark" if polarity_dark else "bright", min_area=min_area, min_count=1),
         _node("ok", "judge", 3, 0, "OK：有料", verdict="ok"),
         _node("ng", "judge", 3, 1, "NG：缺料", verdict="ng", label="missing"),
         _node("out", "output", 3, 2, "輸出數量", name="count"),
@@ -258,14 +311,17 @@ def synth_presence(intent: Intent, regions: list, analysis: dict) -> tuple[dict,
         _edge("blob", "ok", "found", "_flow"), _edge("blob", "ng", "not_found", "_flow"),
         _edge("blob", "out", "count", "value"),
     ]
-    return _finish(nodes, edges, col=4), "ROI 內以 Otsu 門檻找粒子，有→OK、無→NG"
+    return _finish(nodes, edges, col=4), f"ROI 內以 Otsu 門檻找{'暗' if polarity_dark else '亮'}粒子（最小面積 {min_area}px²），有→OK、無→NG"
 
 
 def synth_brightness(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
     info = _roi_info(analysis)
     mean = float(info.get("mean", 128))
-    low, high = max(0, int(mean * 0.7)), min(255, int(mean * 1.3 + 10))
+    if intent.range_low is not None and intent.range_high is not None:
+        low, high = int(min(intent.range_low, intent.range_high)), int(max(intent.range_low, intent.range_high))
+    else:
+        low, high = max(0, int(mean * 0.7)), min(255, int(mean * 1.3 + 10))
     nodes, edges = _src_gray("由 AI 助手生成：亮度守門。範圍以目前影像的平均亮度 ±30% 起跳。")
     nodes += [
         _node("inten", "intensity", 2, 0, "亮度統計", roi=roi),
@@ -287,7 +343,7 @@ def synth_barcode(intent: Intent, regions: list, analysis: dict) -> tuple[dict, 
     roi = _region_of(regions)
     nodes, edges = _src_gray("由 AI 助手生成：讀碼。標籤斜貼讀不到時，前面加「透視校正」工具拉正。")
     nodes += [
-        _node("bc", "barcode", 2, 0, "讀碼", roi=roi),
+        _node("bc", "barcode", 2, 0, "讀碼", roi=roi, **({"expected": intent.expected_text} if intent.expected_text else {})),
         _node("ok", "judge", 3, 0, "OK", verdict="ok"),
         _node("ng", "judge", 3, 1, "NG：讀不到碼", verdict="ng", label="no_code"),
         _node("out", "output", 3, 2, "輸出內容", name="code"),
@@ -357,9 +413,12 @@ def synth_golden(intent: Intent, regions: list[dict[str, Any]], analysis: dict[s
         roi = {"shape": "rect", **good_bounds}
     else:
         roi = good["region"] if good else None
+    ginfo = rows[good_idx] if good_idx < len(rows) and not rows[good_idx].get("empty") else (analysis.get("full") or {})
+    threshold = int(_clip(3 * float(ginfo.get("mad", 13) or 13), 25, 80))
+    min_area = int(_clip(float(ginfo.get("area", 100000)) * 0.001, 30, 500))
     nodes = [
         _node("src", "image_source", 0, 0, "取像", mode="auto"),
-        _node("diff", "defect_diff", 1, 0, "良品比對", template=template_id, roi=roi, align="phase", threshold=40, min_area=100),
+        _node("diff", "defect_diff", 1, 0, "良品比對", template=template_id, roi=roi, align="phase", threshold=threshold, min_area=min_area),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
         _node("ng", "judge", 2, 1, "NG：與良品有差異", verdict="ng", label="defect"),
         _node("out_n", "output", 2, 2, "輸出缺陷數", name="defect_count"),
@@ -371,7 +430,7 @@ def synth_golden(intent: Intent, regions: list[dict[str, Any]], analysis: dict[s
         _edge("diff", "ok", "ok", "_flow"), _edge("diff", "ng", "defect", "_flow"),
         _edge("diff", "out_n", "count", "value"), _edge("diff", "out_a", "total_area", "value"),
     ]
-    why = "好品 ROI 裁成範本資產，在檢測框內做差異比對"
+    why = f"好品 ROI 裁成範本資產，在檢測框內做差異比對（門檻 {threshold}、最小面積 {min_area}px²，依良品區域雜訊）"
     if not template_id:
         why += "（範本尚未建立：請在「良品比對」工具頁上傳或框選範本）"
     return _finish(nodes, edges, col=3), why

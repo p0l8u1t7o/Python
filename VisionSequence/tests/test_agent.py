@@ -329,6 +329,81 @@ class ClarifyTests(TestCase):
         self.assertEqual(r.json()["intent"], "count")
 
 
+class Phase0Tests(TestCase):
+    """Phase 0：缺陷修正、常數特徵化、供應商相容端點、兩層工具挑選。"""
+
+    def test_golden_reachable_without_tagged_roi(self):
+        roi = {"shape": "rect", "x": 100, "y": 80, "w": 440, "h": 320}
+        out = service.clarify([print_image(False)], [{"region": roi, "image": 0}], "用良品比對找差異")
+        self.assertEqual(out["intent"], "golden")
+        self.assertEqual(out["questions"][0]["id"], "roi")
+
+    def test_barcode_and_brightness_ask(self):
+        out = service.clarify([part_image(5)], [], "讀取條碼")
+        self.assertEqual([q["id"] for q in out["questions"]], ["expected"])
+        self.assertTrue(out["questions"][0]["optional"])
+        out = service.clarify([part_image(5)], [], "亮度是否正常")
+        self.assertEqual([q["id"] for q in out["questions"]], ["range"])
+        out = service.clarify([part_image(5)], [], "亮度是否正常 80~180")
+        self.assertTrue(out["ready"])
+        result = service.generate([part_image(5)], [], "亮度是否正常 80~180")
+        rng = next(n for n in result["graph"]["nodes"] if n["type"] == "in_range")
+        self.assertEqual((rng["params"]["low"], rng["params"]["high"]), (80, 180))
+        result = service.generate([part_image(5)], [], "讀取條碼", answers=[{"id": "expected", "answer": "ABC123"}])
+        bc = next(n for n in result["graph"]["nodes"] if n["type"] == "barcode")
+        self.assertEqual(bc["params"]["expected"], "ABC123")
+
+    def test_width_uses_calibration_when_mm_given(self):
+        roi = {"shape": "rect", "x": 50, "y": 200, "w": 540, "h": 80}
+        feats = analysis.analyze([part_image(5)], [{"region": roi, "image": 0}])
+        intent = intents.parse("量寬度 8±0.5mm，0.05mm=1px", [{"region": roi, "image": 0}], feats)
+        graph, _ = synth.synthesize(intent, [{"region": roi, "image": 0}], feats)
+        types = [n["type"] for n in graph["nodes"]]
+        self.assertIn("calibration", types)
+        self.assertEqual(next(n for n in graph["nodes"] if n["type"] == "output")["params"]["name"], "width_mm")
+        self.assertEqual(next(n for n in graph["nodes"] if n["type"] == "tolerance_judge")["params"]["unit"], "mm")
+
+    def test_analysis_robust_features(self):
+        feats = analysis.analyze([part_image(5)], [{"region": {"shape": "rect", "x": 0, "y": 0, "w": 640, "h": 480}, "image": 0}])
+        r = feats["regions"][0]
+        for key in ("mad", "area", "gradient", "color_std"):
+            self.assertIn(key, r)
+        self.assertEqual(r["area"], 640 * 480)
+
+    def test_defect_uses_fft_on_textured_surface(self):
+        from apps.vision import demo_images
+
+        img = demo_images.textile()[3]
+        result = service.generate([img], [], "表面有沒有刮痕")
+        types = [n["type"] for n in result["graph"]["nodes"]]
+        self.assertIn("fft_filter", types)
+        self.assertEqual(result["report"]["status"], "ng")
+
+    def test_select_tools_keeps_intent_tools_with_big_graph(self):
+        from apps.vision.agent import skills
+
+        graph = {"nodes": [{"id": f"n{i}", "type": t} for i, t in enumerate(["blur", "lut", "filter", "fft_filter", "crop", "resize", "color_convert", "color_range", "apply_mask", "arithmetic", "warp_perspective", "rotate_flip", "hough_lines", "line_profile", "histogram", "edge_density", "text_presence", "barcode"])]}
+        picked = skills.select_tools("量直徑", intent_kind="diameter", graph=graph)
+        self.assertIn("find_circle", picked)
+        self.assertIn("tolerance_judge", picked)
+        self.assertLessEqual(len(picked), 24)
+
+    def test_openai_compatible_and_reasoning_models(self):
+        body = providers.openai_body("o4-mini", [{"role": "user", "content": "x"}], json_mode=True)
+        self.assertIn("max_completion_tokens", body)
+        self.assertNotIn("max_tokens", body)
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+        body = providers.openai_body("gpt-4o", [{"role": "user", "content": "x"}])
+        self.assertIn("max_tokens", body)
+        self.assertNotIn("response_format", body)
+        s = providers.AgentSettings(provider="openai_compatible", base_url="http://127.0.0.1:11434/v1", model="llama3.2-vision", source="user")
+        self.assertTrue(s.uses_llm)
+        self.assertTrue(providers.available(s))
+        self.assertEqual(providers.missing_reason(providers.AgentSettings(provider="openai_compatible", source="user")), "未填 base URL（例如 http://127.0.0.1:11434/v1）")
+        self.assertEqual(providers.compat_url("http://h/v1/", "chat/completions"), "http://h/v1/chat/completions")
+        self.assertIn("120", providers._explain(RuntimeError("timed out"), 120.0))
+
+
 class ProviderSettingsTests(TestCase):
     def test_server_default_is_offline_without_key(self):
         s = providers.server_settings()

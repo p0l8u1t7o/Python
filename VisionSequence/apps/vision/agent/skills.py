@@ -179,27 +179,29 @@ def brief_catalogue() -> str:
 
 
 def select_tools(text: str, regions: list[dict[str, Any]] | None = None, *, intent_kind: str = "",
-                 graph: dict[str, Any] | None = None, limit: int = 18) -> list[str]:
-    """本次要附完整技能的工具：核心 ∪ 關鍵詞命中 ∪ 意圖對應 ∪ ROI 形狀 ∪ 既有 graph 用到的。"""
-    picked: list[str] = list(CORE_TOOLS)
+                 graph: dict[str, Any] | None = None, limit: int = 24) -> list[str]:
+    """本次要附完整技能的工具，兩層：必帶（核心 ∪ 關鍵詞命中 ∪ 意圖對應，永不截斷）＋可選（ROI 形狀 ∪ 既有 graph 用到的，補到 limit）。
+    這樣既有 graph 節點很多時，不會把使用者指令點名的工具擠掉。"""
+    must: list[str] = list(CORE_TOOLS)
+    optional: list[str] = []
 
-    def add(keys: tuple[str, ...] | list[str]) -> None:
+    def add(target: list[str], keys: tuple[str, ...] | list[str]) -> None:
         for k in keys:
-            if k not in picked and (k == "note" or tools.has(k)):
-                picked.append(k)
+            if k not in must and k not in optional and (k == "note" or tools.has(k)):
+                target.append(k)
 
-    if graph:
-        add([n.get("type", "") for n in graph.get("nodes", []) if n.get("type") != "note"])
     low = (text or "").lower()
     for pattern, keys in KEYWORD_TOOLS.items():
         if re.search(pattern, low):
-            add(keys)
+            add(must, keys)
     if intent_kind in INTENT_TOOLS:
-        add(INTENT_TOOLS[intent_kind])
+        add(must, INTENT_TOOLS[intent_kind])
     for r in regions or []:
         shape = str((r.get("region") or {}).get("shape", ""))
-        add(_ROI_TOOLS.get(shape, ()))
-    return picked[:limit]
+        add(optional, _ROI_TOOLS.get(shape, ()))
+    if graph:
+        add(optional, [n.get("type", "") for n in graph.get("nodes", []) if n.get("type") != "note"])
+    return must + optional[: max(0, limit - len(must))]
 
 
 @lru_cache(maxsize=1)

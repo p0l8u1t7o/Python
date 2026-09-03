@@ -54,6 +54,10 @@ def answers_to_text(answers: list[dict[str, Any]]) -> str:
             parts.append("有良品可比對，請用良品比對" if ans == "yes" else "沒有良品，直接找異常")
         elif qid == "roi_scope":
             parts.append("檢查整張影像" if ans == "whole" else "檢查圈選區域")
+        elif qid == "expected":
+            parts.append(f"期望內容 {ans}")
+        elif qid == "range":
+            parts.append(f"亮度範圍 {ans}")
         else:
             parts.append(ans)
     return "；".join(parts)
@@ -114,6 +118,13 @@ def build_questions(intent: Intent, regions: list[dict[str, Any]], analysis: dic
             ask(_q("roi_bad", "有壞品示範嗎？若有請圈選並在提示填「壞品」", "roi", optional=True))
     elif intent.kind == "presence" and not regions:
         ask(_q("roi_scope", "要檢查整張影像還是特定區域？", "choice", options=[("whole", "整張影像"), ("roi", "我先圈一個區域")], optional=True))
+    elif intent.kind == "barcode":
+        if not intent.expected_text:
+            ask(_q("expected", "條碼內容應該是什麼？", "text", optional=True, hint="填了會比對內容；留空只讀取不比對。"))
+    elif intent.kind == "brightness":
+        if intent.range_low is None:
+            info = rows[0] if rows and not rows[0].get("empty") else analysis.get("full") or {}
+            ask(_q("range", "可接受的平均亮度範圍？（例：80~180）", "text", optional=True, hint=f"目前 ROI 平均亮度 {float(info.get('mean', 0)):.0f}；留空以目前值 ±30% 為範圍。"))
     return qs
 
 

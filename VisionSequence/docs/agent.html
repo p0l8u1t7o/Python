@@ -102,8 +102,9 @@
 <tr><td>claude</td><td>官方 <code>anthropic</code> SDK（可選安裝、延後 import）</td><td>claude-opus-5</td></tr>
 <tr><td>openai</td><td>REST <code>/v1/chat/completions</code>（標準庫 urllib，零依賴）</td><td>gpt-4o</td></tr>
 <tr><td>gemini</td><td>REST <code>generateContent</code>（標準庫 urllib，零依賴）</td><td>gemini-3.6-flash（2.0／2.5 flash 已被 Google 下架；「-latest」別名高峰常 503）</td></tr>
+<tr><td>openai_compatible</td><td>任何 OpenAI 相容端點（Ollama／vLLM／LM Studio），設 base URL、金鑰可空；廠內無外網時用本地視覺模型</td><td>依端點（「列出可用模型」查詢）</td></tr>
 </table>
-<p>解析順序：使用者自己的設定（明確選 offline 也算）→ 伺服器 <code>.env</code>（<code>VISION_AGENT_PROVIDER</code>／<code>VISION_AGENT_API_KEY</code>／<code>VISION_AGENT_MODEL</code>）→ offline。
+<p>解析順序：使用者自己的設定（明確選 offline 也算）→ 伺服器 <code>.env</code>（<code>VISION_AGENT_PROVIDER</code>／<code>VISION_AGENT_API_KEY</code>／<code>VISION_AGENT_MODEL</code>／<code>VISION_AGENT_BASE_URL</code>／<code>VISION_AGENT_TIMEOUT_S</code>）→ offline。OpenAI／相容端點與 Gemini 要求 JSON 輸出模式；OpenAI 推理模型（o 系列／gpt-5）自動改用 <code>max_completion_tokens</code>。LLM 失敗改用規則引擎時，原因會列在結果的 warnings 裡。
 整合方（API 金鑰身分）沒有使用者，一律用伺服器設定。LLM 呼叫失敗（金鑰錯、逾時、輸出無效）自動落回規則引擎，功能不中斷。</p>
 
 <h2 id="editor">流程頁面裡的 AI 助手</h2>
@@ -220,6 +221,9 @@ POST  /api/vision/agent/tune       {graph, instruction, runs} → 前後對比�
 <p><code>report</code> 與 preview 端點同格式（各節點狀態／輸出／overlay／影像 ref）。
 regions 的 region 就是標準 ROI dict（rect / rotated_rect / circle / annulus / polygon / line，全圖像素座標）。
 執行類端點：引擎鎖定時 423；一般使用者可用。</p>
+
+<h2 id="bench">評測基準</h2>
+<p><code>manage.py agent_bench</code> 用 <code>apps/vision/agent/bench.py</code> 的案例（合成樣本圖＋ROI＋提示詞＋期望意圖與每張影像的期望判定）跑離線規則引擎，印出意圖準確率、判定準確率（案例／影像）、graph 有效率與耗時；<code>--llm</code> 改用伺服器供應商、<code>--keys</code> 只跑指定案例、<code>--json</code> 輸出完整結果。<code>tests/test_agent_bench.py</code> 以門檻守住回歸（目前意圖 ≥ 0.9、判定 ≥ 0.8、全部有效），之後每個能力提升都用同一把尺量。</p>
 
 <h2 id="design">設計取捨</h2>
 <ul>

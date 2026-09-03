@@ -64,6 +64,7 @@ interface AgentInfo {
   model: string
   llm: boolean
   has_key: boolean
+  base_url?: string
   key_hint: string
   source: string
   reason: string
@@ -103,6 +104,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string } | null>(null)
@@ -141,7 +143,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   async function save(clearKey = false) {
     setSaving(true)
     try {
-      await api.patch('/vision/agent/settings', { provider: effProvider, model: model || undefined, api_key: apiKey || undefined, clear_key: clearKey })
+      await api.patch('/vision/agent/settings', { provider: effProvider, model: model || undefined, api_key: apiKey || undefined, base_url: baseUrl || undefined, clear_key: clearKey })
       await client.invalidateQueries({ queryKey: ['agent-info'] })
       await client.invalidateQueries({ queryKey: ['agent-settings'] })
       setApiKey('')
@@ -168,10 +170,13 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
           options={(info?.providers ?? []).map((p) => ({ value: p.value, label: p.label }))} data-testid="agent-provider" />
         {effProvider !== 'offline' ? (
           <>
+            {effProvider === 'openai_compatible' ? (
+              <TextInput label={t('agent.baseUrl')} placeholder="http://127.0.0.1:11434/v1" value={baseUrl || (provider ? '' : current?.base_url ?? '')} onChange={(e) => setBaseUrl(e.target.value)} data-testid="agent-base-url" />
+            ) : null}
             <div className="space-y-1.5">
               <div className="flex items-end gap-2">
                 <TextInput label={t('agent.model')} placeholder={defaultModel} value={model || (provider ? '' : current?.model ?? '')} onChange={(e) => setModel(e.target.value)} data-testid="agent-model" />
-                <Button loading={listing} disabled={!current?.has_key} title={current?.has_key ? t('agent.listModelsHint') : t('agent.listModelsNeedKey')} onClick={() => void listModels()} data-testid="agent-list-models">{t('agent.listModels')}</Button>
+                <Button loading={listing} disabled={!(current?.has_key || current?.base_url)} title={current?.has_key || current?.base_url ? t('agent.listModelsHint') : t('agent.listModelsNeedKey')} onClick={() => void listModels()} data-testid="agent-list-models">{t('agent.listModels')}</Button>
               </div>
               {models ? (
                 models.ok ? (

@@ -36,6 +36,12 @@ class Intent:
     color_hex: str = ""
     #: 目標相對背景的極性（dark／bright）；None 交給特徵自動判斷。
     polarity: str | None = None
+    #: 計數目標是圓形（孔／圓）：blob 加圓形度下限，排除線段與雜訊。
+    round_target: bool = False
+    #: 讀碼期望內容（barcode.expected）；亮度可接受範圍（brightness）。
+    expected_text: str = ""
+    range_low: float | None = None
+    range_high: float | None = None
     #: 良品比對：哪個 ROI 是好品（當範本）、哪個是壞品（示範缺陷）；索引以 0 起算。
     good_roi: int | None = None
     bad_roi: int | None = None
@@ -113,7 +119,7 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
         intent.tol = float(m.group(1))
         if m.group(2) in ("mm", "毫米", "公厘"):
             intent.unit = "mm"
-    nominal = _find_number(text, [r"(?:直徑|直径|孔徑|孔径|寬度|宽度|標稱|标称|應為|应为|diameter|width)\D{0,6}(\d+(?:\.\d+)?)"])
+    nominal = _find_number(text, [r"(?:直徑|直径|孔徑|孔径|寬度|宽度|標稱|标称|應為|应为|夾角|夹角|角度|diameter|width|angle)\D{0,6}(\d+(?:\.\d+)?)"])
     if nominal is not None:
         intent.nominal = nominal
     m = re.search(r"(\d+(?:\.\d+)?)\s*(?:mm|毫米|公厘)\s*[/＝=]\s*(\d+(?:\.\d+)?)\s*(?:px|像素)", text)
@@ -130,14 +136,18 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
 
     # --- 特異性排序的意圖判斷 ---
     good, bad = _golden_roles(text, regions)
-    if good is not None and (bad is not None or _has(low, *_BAD_WORDS) or _has(low, "比對", "比对", "差異", "差异", "compare")):
+    wants_golden = _has(low, "良品比對", "良品比对", "用良品", "跟良品", "與良品", "与良品", "golden")
+    if wants_golden or (good is not None and (bad is not None or _has(low, *_BAD_WORDS) or _has(low, "比對", "比对", "差異", "差异", "compare"))):
         intent.kind = "golden"
         intent.good_roi, intent.bad_roi = good, bad
-        intent.notes.append(f"良品比對：ROI{good + 1:02d} 當好品範本" + (f"、ROI{bad + 1:02d} 是壞品示範" if bad is not None else ""))
+        intent.notes.append(("良品比對：" + (f"ROI{good + 1:02d} 當好品範本" if good is not None else "尚未指定好品 ROI")) + (f"、ROI{bad + 1:02d} 是壞品示範" if bad is not None else ""))
         return intent
     if _has(low, "條碼", "条码", "二維碼", "二维码", "qr", "barcode", "讀碼", "读码", "掃碼", "扫码"):
         intent.kind = "barcode"
         intent.notes.append("提示詞含讀碼關鍵詞")
+        m = re.search(r"(?:期望內容|期望内容|內容應為|内容应为|內容是|内容是|expected)\s*[:：]?\s*([^\s，,。；;]+)", text)
+        if m:
+            intent.expected_text = m.group(1)
         return intent
     if _has(low, "角度", "夾角", "夹角", "angle"):
         intent.kind = "angle"
@@ -156,11 +166,15 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
     if _has(low, "亮度", "曝光", "太暗", "太亮", "brightness", "exposure"):
         intent.kind = "brightness"
         intent.notes.append("亮度守門")
+        m = re.search(r"(\d+(?:\.\d+)?)\s*[~～－到至]\s*(\d+(?:\.\d+)?)", text) or re.search(r"(?:範圍|范围|range)\D{0,4}(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)", text)
+        if m:
+            intent.range_low, intent.range_high = float(m.group(1)), float(m.group(2))
         return intent
     count = _expected_count(text)
     if count is not None or _has(low, "幾個", "几个", "數量", "数量", "計數", "计数", "count", "數一", "数一"):
         intent.kind = "count"
         intent.expected_count = count
+        intent.round_target = _has(low, "孔", "圓", "圆", "hole", "circle", "圓形", "圆形")
         intent.notes.append(f"計數意圖（期望 {count} 個）" if count is not None else "計數意圖（只回報數量）")
         return intent
     if _has(low, "刮痕", "瑕疵", "缺陷", "髒污", "脏污", "污漬", "污渍", "破損", "破损", "異物", "异物", "defect", "scratch", "凹痕"):

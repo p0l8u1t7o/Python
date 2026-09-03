@@ -93,7 +93,7 @@ def clarify(settings: providers.AgentSettings, images: list[np.ndarray], regions
     if answers:
         text += "\n已回答的問題：" + json.dumps(answers, ensure_ascii=False)
     text += "\n\n" + _CLARIFY_INSTRUCTION
-    reply = providers.complete(settings, system_prompt(), encoded, text)
+    reply = providers.complete(settings, system_prompt(), encoded, text, json_mode=True)
     payload = parse_reply(reply)
     questions = []
     for q in list(payload.get("questions") or [])[:3]:
@@ -120,7 +120,7 @@ def generate(settings: providers.AgentSettings, images: list[np.ndarray], region
     history: list[dict[str, Any]] = []
     last_error = ""
     for attempt in range(2):
-        reply = providers.complete(settings, system_prompt(), encoded, text, history)
+        reply = providers.complete(settings, system_prompt(), encoded, text, history, json_mode=True)
         try:
             payload = parse_reply(reply)
             graph = validate_graph(payload["graph"])

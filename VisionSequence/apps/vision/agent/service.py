@@ -92,15 +92,16 @@ def _result(graph: dict[str, Any], rationale: str, provider: str, intent: str, r
     return {"graph": graph, "rationale": rationale, "provider": provider, "intent": intent, "report": report, "reports": reports, **extra}
 
 
-def _try_llm(settings: providers.AgentSettings, use_llm: bool | None, **kw: Any) -> tuple[dict[str, Any], str] | None:
+def _try_llm(settings: providers.AgentSettings, use_llm: bool | None, **kw: Any) -> tuple[tuple[dict[str, Any], str] | None, str]:
+    """回 ((graph, rationale) | None, 失敗原因)。沒設定 LLM 時原因為空字串；失敗原因會寫進回應讓使用者知道改用了規則引擎。"""
     want = providers.available(settings) if use_llm is None else (use_llm and providers.available(settings))
     if not want:
-        return None
+        return None, ""
     try:
-        return llm.generate(settings, **kw)
-    except Exception:  # noqa: BLE001 - LLM 掛掉一律落回規則引擎
+        return llm.generate(settings, **kw), ""
+    except Exception as exc:  # noqa: BLE001 - LLM 掛掉一律落回規則引擎
         log.exception("LLM（%s）生成失敗，落回規則引擎", settings.provider)
-        return None
+        return None, f"LLM（{settings.provider}）失敗，已改用規則引擎：{providers._explain(exc, providers.generate_timeout())}"
 
 
 def effective_prompt(prompt: str, answers: list[dict[str, Any]] | None) -> str:
@@ -134,7 +135,7 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
     prompt = effective_prompt(prompt, answers)
     feats = analysis_mod.analyze(images, regions)
     intent = intents.parse(prompt, regions, feats)  # 規則引擎的意圖也拿來幫 LLM 挑相關工具技能
-    got = _try_llm(settings, use_llm, images=images, regions=regions, prompt=prompt, analysis=feats, intent_kind=intent.kind)
+    got, llm_reason = _try_llm(settings, use_llm, images=images, regions=regions, prompt=prompt, analysis=feats, intent_kind=intent.kind)
     if got is not None:
         graph, rationale = got
         main = _main_image(regions, intent, len(images))
@@ -145,7 +146,7 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
     main = _main_image(regions, intent, len(images))
     report, reports = _run_all(graph, images, main)
     open_qs = clarify_mod.build_questions(intent, regions, feats, {str(a.get("id", "")) for a in (answers or [])})
-    warnings = [f"未提供「{q['text']}」，已用預設值" for q in open_qs]
+    warnings = ([llm_reason] if llm_reason else []) + [f"未提供「{q['text']}」，已用預設值" for q in open_qs]
     return _result(graph, rationale, "rules", intent.kind, report, reports, main_image=main, warnings=warnings)
 
 
@@ -214,8 +215,8 @@ def refine(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
     settings = settings or providers.server_settings()
     feats = analysis_mod.analyze(images, regions)
     main = _main_image(regions, None, len(images))
-    got = _try_llm(settings, None, images=images, regions=regions, prompt=prompt, analysis=feats,
-                   task="refine", previous_graph=graph, feedback=feedback)
+    got, llm_reason = _try_llm(settings, None, images=images, regions=regions, prompt=prompt, analysis=feats,
+                               task="refine", previous_graph=graph, feedback=feedback)
     if got is not None:
         new_graph, rationale = got
         report, reports = _run_all(new_graph, images, main)
@@ -225,10 +226,13 @@ def refine(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
         merged = f"{prompt}\n{feedback}".strip()
         result = generate(images, regions, merged, settings, use_llm=False)
         result["rationale"] = "回饋無法對應到參數，已併入需求重新生成：" + result["rationale"]
+        if llm_reason:
+            result.setdefault("warnings", []).insert(0, llm_reason)
         return result
     new_graph = validate_graph(new_graph)
     report, reports = _run_all(new_graph, images, main)
-    return _result(new_graph, "已調整：" + "、".join(changed), "rules", "", report, reports, main_image=main)
+    return _result(new_graph, "已調整：" + "、".join(changed), "rules", "", report, reports, main_image=main,
+                   warnings=[llm_reason] if llm_reason else [])
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +327,8 @@ def edit(graph: dict[str, Any], instruction: str, image: np.ndarray | None,
          settings: providers.AgentSettings | None = None) -> dict[str, Any]:
     """流程頁面的 AI 指令：LLM 可用時整份交給 LLM；否則離線指令解析。有影像就順便試跑。"""
     settings = settings or providers.server_settings()
-    got = _try_llm(settings, None, images=[image] if image is not None else [], regions=[], prompt="", analysis=None,
-                   task="edit", previous_graph=graph, feedback=instruction)
+    got, llm_reason = _try_llm(settings, None, images=[image] if image is not None else [], regions=[], prompt="", analysis=None,
+                               task="edit", previous_graph=graph, feedback=instruction)
     if got is not None:
         new_graph, rationale = got
         provider, changes = settings.provider, []
@@ -334,7 +338,7 @@ def edit(graph: dict[str, Any], instruction: str, image: np.ndarray | None,
             return {"graph": graph, "rationale": "看不懂這個指令。離線模式支援：「把 <節點> 的 <參數> 改成 <值>」、「停用／啟用 <節點>」、「刪除 <節點>」、「太敏感／漏抓／改成 N 個／±x」；接上 LLM 供應商可用自然語言增刪節點。",
                     "provider": "rules", "changes": [], "report": None, "applied": False}
         new_graph = validate_graph(new_graph)
-        provider, rationale = "rules", "已調整：" + "、".join(changes)
+        provider, rationale = "rules", (llm_reason + "\n" if llm_reason else "") + "已調整：" + "、".join(changes)
     report = trial_run(new_graph, image).to_dict(include_node_outputs=True) if image is not None else None
     return {"graph": new_graph, "rationale": rationale, "provider": provider, "changes": changes, "report": report, "applied": True}
 
@@ -360,8 +364,8 @@ def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], im
     """跑多筆影像後依提示詞調整：LLM 帶批次摘要；規則走回饋映射。調完在同一批影像重跑回報前後對比。"""
     settings = settings or providers.server_settings()
     sample = [images[r["image_ref"]] for r in runs if r.get("image_ref") in images][:4]
-    got = _try_llm(settings, None, images=sample, regions=[], prompt="", analysis=None,
-                   task="tune", previous_graph=graph, feedback=instruction, batch_summary=_batch_summary(runs))
+    got, llm_reason = _try_llm(settings, None, images=sample, regions=[], prompt="", analysis=None,
+                               task="tune", previous_graph=graph, feedback=instruction, batch_summary=_batch_summary(runs))
     if got is not None:
         new_graph, rationale = got
         provider, changes = settings.provider, []
@@ -371,7 +375,7 @@ def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], im
             return {"graph": graph, "rationale": "看不懂這個指令；離線模式支援「太敏感／漏抓／改成 N 個／±x」與「把 <節點> 的 <參數> 改成 <值>」。",
                     "provider": "rules", "changes": [], "before": _tally([r.get("status", "") for r in runs]), "after": None, "items": [], "applied": False}
         new_graph = validate_graph(new_graph)
-        provider, rationale = "rules", "已調整：" + "、".join(changes)
+        provider, rationale = "rules", (llm_reason + "\n" if llm_reason else "") + "已調整：" + "、".join(changes)
     items = []
     for r in runs:
         ref = r.get("image_ref")

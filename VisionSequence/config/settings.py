@@ -149,7 +149,9 @@ VISION = {
     # 沒設定時規則引擎完全離線可用。影像會縮圖後送到 LLM 供應商，內網環境請留空。
     "AGENT_PROVIDER": _env("VISION_AGENT_PROVIDER", ""),  # offline | claude | openai | gemini；空＝有金鑰就 claude
     "AGENT_API_KEY": _env("VISION_AGENT_API_KEY", ""),
-    "AGENT_MODEL": _env("VISION_AGENT_MODEL", ""),  # 空＝各供應商預設（claude-opus-5 / gpt-4o / gemini-2.0-flash）
+    "AGENT_MODEL": _env("VISION_AGENT_MODEL", ""),  # 空＝各供應商預設（claude-opus-5 / gpt-4o / gemini-3.6-flash）
+    "AGENT_BASE_URL": _env("VISION_AGENT_BASE_URL", ""),  # openai_compatible 本地端點，例如 http://127.0.0.1:11434/v1
+    "AGENT_TIMEOUT_S": _env("VISION_AGENT_TIMEOUT_S", "120"),  # LLM 生成逾時（秒）；本地模型慢可拉長
 }
 VISION["ASSET_DIR"].mkdir(parents=True, exist_ok=True)
 

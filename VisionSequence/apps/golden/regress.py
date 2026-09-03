@@ -92,17 +92,22 @@ def output_matches(expected: Any, actual: Any) -> bool:
     return expected == actual
 
 
-def evaluate(case: GoldenCase, status: str, outputs: dict[str, Any]) -> tuple[bool, list[str]]:
-    """回 (match, reasons)。"""
+def evaluate_expect(expect_status: str, expect_outputs: dict[str, Any] | None, status: str, outputs: dict[str, Any] | None) -> tuple[bool, list[str]]:
+    """純函式版期望比對：(match, reasons)。Golden 回歸、AI 助手評測基準與自動調參共用。"""
     reasons: list[str] = []
-    if case.expect_status in ("ok", "ng") and status != case.expect_status:
-        reasons.append(f"status {status} != {case.expect_status}")
-    for key, expected in (case.expect_outputs or {}).items():
+    if expect_status in ("ok", "ng") and status != expect_status:
+        reasons.append(f"status {status} != {expect_status}")
+    for key, expected in (expect_outputs or {}).items():
         if key not in (outputs or {}):
             reasons.append(f"缺少輸出 {key}")
         elif not output_matches(expected, outputs[key]):
             reasons.append(f"{key}={outputs[key]!r} 不符 {expected!r}")
     return (not reasons), reasons
+
+
+def evaluate(case: GoldenCase, status: str, outputs: dict[str, Any]) -> tuple[bool, list[str]]:
+    """回 (match, reasons)。"""
+    return evaluate_expect(case.expect_status, case.expect_outputs, status, outputs)
 
 
 def normalize_expect_status(value: Any) -> str:
