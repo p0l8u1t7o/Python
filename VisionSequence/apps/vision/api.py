@@ -41,7 +41,7 @@ from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import schemas
+from apps.vision import schemas, scripts
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
@@ -194,6 +194,7 @@ def list_flows(request: HttpRequest, q: str = "", limit: int = 100, offset: int 
 @router.post("/flows", response={201: dict})
 def create_flow(request: HttpRequest, payload: schemas.FlowIn):
     graph = validate_graph(payload.graph) if payload.graph else {"nodes": [], "edges": []}
+    scripts.check_graph_edit(principal(request), graph)  # Python 腳本：一般使用者只能用已核准的程式碼
     try:
         with transaction.atomic():
             flow = Flow.objects.create(
@@ -233,7 +234,9 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     if payload.commissioned is not None:
         flow.commissioned = payload.commissioned
     if payload.graph is not None:
-        flow.graph = validate_graph(payload.graph)
+        new_graph = validate_graph(payload.graph)
+        scripts.check_graph_edit(principal(request), new_graph, flow=flow)  # Python 腳本：一般使用者只能用已核准的程式碼
+        flow.graph = new_graph
         flow.version += 1
     try:
         with transaction.atomic():
@@ -314,7 +317,7 @@ def run_flow(
         recipe = request.POST.get("recipe") or recipe
         ctx = _parse_context(context)
     trigger = trigger if trigger in ("api", "manual", "tcp") else "api"
-    future = runner.submit(flow, trigger=trigger, input_image=input_image, context=ctx, recipe=recipe or None)
+    future = runner.submit(flow, trigger=trigger, input_image=input_image, context=scripts.client_context(ctx), recipe=recipe or None)
     if not wait:
         return HttpResponse(status=202, content=json.dumps({"queued": True, "flow_id": flow.id}), content_type="application/json")
     report = future.result(timeout=(timeout_s or float(settings.VISION["RUN_TIMEOUT_S"])) + 5)
@@ -398,6 +401,8 @@ def _validate_overrides(flow: Flow, overrides: dict[str, Any]) -> None:
         if node.get("type") in ("note",):
             continue
         declared = {p.key for p in tools.get(str(node["type"])).params}
+        if node.get("type") == scripts.SCRIPT_TOOL and "code" in patch:
+            raise ValidationError("配方不能覆寫 Python 腳本的程式碼（只有管理員能修改腳本）", code="bad_overrides", details={"node_id": node_id})
         unknown = [k for k in patch if k not in declared]
         if unknown:
             raise ValidationError(f"節點 '{node_id}' 沒有參數 {unknown}", code="bad_overrides", details={"node_id": node_id, "unknown": unknown})
@@ -427,7 +432,7 @@ def preview_flow(request: HttpRequest, flow_id: int, payload: schemas.PreviewReq
         preview=True,
         graph_override=payload.graph,
         input_image=input_image,
-        context=payload.context,
+        context=scripts.client_context(payload.context, admin=principal(request).is_admin),  # 管理員試執行可跑未核准的腳本
         until_node=payload.until_node,
         recipe=payload.recipe or None,
     )

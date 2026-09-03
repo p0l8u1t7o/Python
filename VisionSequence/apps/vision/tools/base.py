@@ -49,6 +49,7 @@ PARAM_KINDS = (
     "color",        # "#rrggbb"
     "json",         # 任意 JSON
     "expression",   # 公式字串（formula 工具）
+    "code",         # 程式碼（accept＝語言，目前 python）；前端等寬編輯器，只有管理員能儲存新內容（apps/vision/scripts.py）
     "output_key",   # 輸出欄位名稱
 )
 

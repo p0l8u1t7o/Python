@@ -320,6 +320,8 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const badge = report ? { text: `${t(`status.${status}`)} · ${Math.round(report.duration_ms)} ms`, tone: (status === 'ok' ? 'ok' : status === 'ng' || status === 'error' ? 'ng' : 'neutral') as 'ok' | 'ng' | 'neutral' } : null
   const series = Object.entries(analysis?.series ?? {})
 
+  // 有程式碼參數（Python 腳本）的工具：參數欄加寬給編輯器
+  const wideParams = Boolean(def?.params.some((p) => p.kind === 'code'))
   return (
     <div className="flex h-full flex-col" data-testid="tool-page">
       {dialog}
@@ -339,7 +341,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
       {/* 三欄（手機：參數／影像／操作直向堆疊，整頁捲動） */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* 左：參數 */}
-        <aside className="w-full shrink-0 border-b border-line bg-surface p-3 md:w-80 md:overflow-y-auto md:border-b-0 md:border-r" data-testid="tool-params">
+        <aside className={`w-full shrink-0 border-b border-line bg-surface p-3 ${wideParams ? 'md:w-[560px]' : 'md:w-80'} md:overflow-y-auto md:border-b-0 md:border-r`} data-testid="tool-params">
           <p className="mb-2 text-xs font-semibold text-muted">{t('editor.parameters')}</p>
           {def.description ? <p className="mb-3 text-xs leading-relaxed text-muted">{def.description}</p> : null}
           <ParamForm node={node} definition={def} edges={edges} actions={actions} onChange={onChange} />

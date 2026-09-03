@@ -16,6 +16,7 @@ from ninja import Router
 from apps.accounts.security import principal
 from apps.core.errors import NotFound, ValidationError
 from apps.vision import serialize
+from apps.vision import scripts
 from apps.vision.api import _flow_out, _visible_flows
 from apps.vision.models import ImageSource
 from apps.vision.runner import get_flow
@@ -78,5 +79,6 @@ def import_flow(request: HttpRequest):
     existing = serialize.find_flow(doc["name"])
     if existing is not None and not p.can_edit_flow(existing):
         raise NotFound("流程不存在或無權更新", code="flow_not_found")
+    scripts.check_graph_edit(p, doc.get("graph"), flow=existing)  # Python 腳本：一般使用者只能匯入已核准的程式碼
     flow, created = serialize.import_flow(doc, source_id=source_id, owner=p.user)
     return (201 if created else 200), {"flow": _flow_out(flow), "created": created}

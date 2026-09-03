@@ -15,6 +15,7 @@ export type ParamKind =
   | 'color'
   | 'json'
   | 'expression'
+  | 'code'
   | 'output_key'
 
 export type PortType =

@@ -44,6 +44,7 @@ from apps.vision.images import ImageStore, encode_image  # noqa: E402
 from apps.vision.sources.grabbers import SyntheticGrabber  # noqa: E402
 from apps.vision.tools import base, register_builtins  # noqa: E402
 from apps.vision.tools.base import Result, ToolContext  # noqa: E402
+from apps.vision.tools.builtin.script import TEMPLATE as SCRIPT_TEMPLATE  # noqa: E402
 from tests._helpers import _field_bytes, _field_str, _field_varint, _value_info, gap_classifier_onnx, identity_onnx, save_png, yolo_seg_onnx  # noqa: E402
 
 register_builtins()
@@ -254,6 +255,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("in_range", "in_range", None, {"low": 0, "high": 10}, {"value": 5}, {}),
         ("bool_logic", "bool_logic", None, {"mode": "and"}, {"values": [True, True, False]}, {}),
         ("formula", "formula", None, {"expression": "abs(a-b)/c*100"}, {"a": 3, "b": 1, "c": 4}, {}),
+        ("python_script", "python_script", gray, {"code": SCRIPT_TEMPLATE}, {}, {"_script_admin": True}),
         ("count_list", "count_list", None, {}, {"items": list(range(100))}, {}),
         # output
         ("judge", "judge", None, {"verdict": "by_input"}, {"value": True}, {}),

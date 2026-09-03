@@ -73,6 +73,7 @@
 <li><a href="#advanced">7. 進階：.env 手動掛載</a></li>
 </ul></nav>
 
+<p><strong>只想寫幾行 Python、不想寫外掛？</strong>內建工具「Python 腳本」（<code>python_script</code>）讓管理員直接在工具頁寫 <code>def run(ctx)</code>，同行程受限執行、輸出埠固定；需要自訂埠／參數、依賴外部套件或給整個團隊重複使用時，才寫本頁的外掛。</p>
 <h2 id="how">1. 掛載規則與外掛內變數</h2>
 <ul>
 <li>啟動時掃描 <code>plugins/</code> 下的<strong>單檔外掛</strong>（<code>x.py</code>）與<strong>資料夾型外掛</strong>（<code>x/__init__.py</code>，整個外掛專案丟進來）；照名稱排序，底線開頭（<code>_xxx.py</code>／<code>_xxx/</code>）跳過。資料夾位置可用 <code>VISION_PLUGIN_DIR</code> 覆寫（預設專案根目錄 <code>plugins/</code>）。</li>

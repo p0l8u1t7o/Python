@@ -573,6 +573,7 @@ const zhHans = {
       uploadAsset: '上传',
       rangeLow: '下限',
       rangeHigh: '上限',
+      codeAdminOnly: '只有管理员能编辑脚本；您可以查看并执行已核准的脚本',
       jsonInvalid: 'JSON 格式错误',
       connectionHint: '从清单选连接名称，或自行输入（也可填 id）',
       connectionNone: '尚无连接：到「连接」页创建',

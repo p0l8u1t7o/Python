@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：66 個內建工具（8 類）、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 364 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：67 個內建工具（8 類）、164 個 API 端點、22 個資料模型、18 個前端頁面、16 頁 docs、後端 367 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -56,6 +56,7 @@
 - **幾何慣例**：影像座標 y 向下、像素中心在整數座標；**角度正值＝畫面順時針**（ROI 旋轉矩形、找直線 atan2、範本比對 `best_angle`、定位補正 dθ、overlay angle 全部同向；cv2.getRotationMatrix2D 是逆時針為正，呼叫時取負）。圓擬合用 `locate.fit_circle_lsq`（Taubin＋幾何精修，部分弧無偏；`fit_circle_kasa` 只當起始值）、徑向掃描用 `locate.radial_edge_points`（支援扇形 a0/a1、遮罩）、Otsu 用 `tools/hist.py`；blob 的 `area` 是像素數。精度與慣例的量化稽核在 `tests/test_tools.py AlgorithmAccuracyTests`，見 docs/vision-capabilities.html §5。
 - 新增工具 checklist：`register()`（放進模組 `TOOLS`）→ `tests/test_tools.py` 至少一案例 → `scripts/bench_tools.py` 加一筆 → 現場調的參數標 `teach=True` → `agent/skills/tools.md` 補一段要領 → 需要的話加進範例樣板。前端不用改。
 - 新增 `Param.kind` 或 `Port.type`：後端封閉集合、前端 `ParamField` switch、`catalogue()`、`docs/contract.html`、`docs/glossary.html` 五處同步。新增 ROI 形狀＝`tools/roi.py` 各 helper＋前端 `types.ts Region`／`roiEditor.ts`／`geometry.ts` 的 switch 同步（typecheck 會抓漏），見 docs/vision-capabilities.html。
+- **Python 腳本工具**（`builtin/script.py`，`python_script`）：使用者程式碼 `def run(ctx)` 與引擎同行程受限執行——受限 builtins、import 白名單、AST 禁 dunder／exec／open、`sys.settrace` 看門狗只追蹤 `<python_script>` frame（`max_ms`）、輸入影像唯讀 view、模組命名空間依程式碼 hash 快取；固定輸出埠（value／result／text／data／image＋pass／fail）。**核准清單** `apps/vision/scripts.py`＋`ScriptApproval`（migration 0014）：只有管理員儲存（POST/PATCH /flows、匯入）時登記的 sha256 才會執行（內建 `TEMPLATE` 例外，插入工具即可試執行），一般使用者送新腳本 403；試執行由 `scripts.client_context(admin=)` 放 `_script_admin`（外部 context 的 `_` 鍵一律丟掉）；配方不能覆寫 `code`。`Param.kind="code"`（`accept`＝語言）前端 `CodeField`（非管理員唯讀），工具頁參數欄遇到 code 參數自動加寬。測試 `tests/test_script_tool.py`；bench／純度掃描用 context `_script_admin`。
 - 舊工具名（`edges`→`filter`、`hist_eq`→`lut`、`write_plc`→`write_modbus`）由 `graph.LEGACY_TOOL_TYPES` 在 validate／compile 時自動換，參數名刻意相容。
 
 ### 資料夾外掛（plugins/）

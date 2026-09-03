@@ -348,3 +348,19 @@ class BatchRun(models.Model):
 
     def __str__(self) -> str:
         return f"BatchRun {self.pk} ({self.status})"
+
+
+class ScriptApproval(models.Model):
+    """Python 腳本核准：管理員儲存流程時登記程式碼的 sha256，引擎只執行清單內的腳本（apps/vision/scripts.py）。"""
+
+    code_hash = models.CharField(max_length=64, unique=True)
+    code = models.TextField(blank=True, default="")
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="approved_scripts")
+    flow = models.ForeignKey(Flow, null=True, blank=True, on_delete=models.SET_NULL, related_name="script_approvals")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"ScriptApproval {self.code_hash[:8]}"

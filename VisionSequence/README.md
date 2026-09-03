@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 66 個內建工具、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 364 項＋前端 46 項自動測試 |
+| 規模 | 67 個內建工具、164 個 API 端點、22 個資料模型、18 個前端頁面、16 頁文件、後端 367 項＋前端 46 項自動測試 |
 
 ---
 
@@ -67,6 +67,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **試執行 vs 執行**：試執行用目前畫布（含未儲存）並保留中間影像；執行一次／連續執行用已儲存版本並寫入紀錄。暫存影像上傳只為試執行，不進來源庫。
 - **參數卡**（`/flows/:id/teach`）：只列 `teach=True` 的現場參數、改動即時試執行；標記「已教導」。
 - **配方**：同一流程多組參數覆寫（換線），HTTP／TCP 皆可指定。
+- **Python 腳本工具**：管理員可在工具頁直接寫 `def run(ctx)` 做自訂檢測（同行程受限執行：白名單匯入、逾時中止、輸入唯讀），輸出數值／布林／文字／資料／影像與通過／不良分支；一般使用者可執行已核准的腳本並調整現場參數。
 - **批次測試頁／Golden Set**：獨立頁面選流程、建立影像集（上傳或來源擷取，≤200 張）批量執行並暫存每次逐張結果；標記期望 OK／NG 得命中率與混淆矩陣，洞察卡給建議門檻、輸出分佈與歷次趨勢；調參重跑同一影像集並逐張比較，滿意後寫回流程／存為配方／帶回編輯器；右下角的全域 AI 助手可依資料諮詢或調整、調參面板可自動調參（結果成為新執行）。案例可存入 Golden Set 作回歸基準，`manage.py regress` 可進 CI。
 - **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG。
 
@@ -79,7 +80,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 量測（15） | caliper, wall_thickness, fit_arc, fit_ellipse, chamfer_angle, angle, distance, geometry, concentricity, calibration, intensity, histogram, line_profile, color_stats, edge_density |
 | 檢測／識別（8） | blob, defect_diff, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
 | 深度學習（9） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）；yolo_detect, yolo_segment, yolo_classify, yolo_pose, yolo_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
-| 邏輯（5） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list |
+| 邏輯（7） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, python_script（自寫 Python，管理員核准） |
 | 輸出（5） | judge, output, draw_result, save_image, write_modbus |
 
 影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。

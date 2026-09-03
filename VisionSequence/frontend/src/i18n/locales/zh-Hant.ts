@@ -573,6 +573,7 @@ const zhHant = {
       uploadAsset: '上傳',
       rangeLow: '下限',
       rangeHigh: '上限',
+      codeAdminOnly: '只有管理員能編輯腳本；您可以檢視並執行已核准的腳本',
       jsonInvalid: 'JSON 格式錯誤',
       connectionHint: '從清單選連線名稱，或自行輸入（也可填 id）',
       connectionNone: '尚無連線：到「連線」頁建立',

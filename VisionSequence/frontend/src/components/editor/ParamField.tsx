@@ -11,6 +11,8 @@ import { useAssetMutations, useAssets, useConnections, useSources } from '@/lib/
 import type { Region, ToolParam } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { errorMessage } from '@/lib/errors'
+import { useAuth } from '@/providers/AuthProvider'
+import { CodeField } from './CodeField'
 
 export interface InspectorActions {
   /** 正在於影像上編輯的 ROI 參數 key（null = 沒有） */
@@ -78,6 +80,7 @@ function JsonField({ label, hint, value, onChange, mono = false, rows = 3 }: { l
 export function ParamField({ param, value, onChange, actions }: { param: ToolParam; value: unknown; onChange: (value: unknown) => void; actions: InspectorActions }) {
   const { t } = useTranslation()
   const toast = useToast()
+  const auth = useAuth()
   const sources = useSources()
   const assets = useAssets(param.kind === 'asset' ? param.accept : '')
   const { uploadFile } = useAssetMutations()
@@ -152,6 +155,10 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
 
     case 'json':
       return <JsonField label={label} hint={help} value={value} onChange={onChange} mono />
+
+    case 'code':
+      // Python 腳本只有管理員能編輯；一般使用者看得到、能執行已核准的腳本
+      return <CodeField label={label} hint={help} value={text} onChange={onChange} readOnly={!auth.isAdmin} readOnlyHint={t('editor.params.codeAdminOnly')} language={param.accept || 'python'} />
 
     case 'expression':
     case 'multiline':

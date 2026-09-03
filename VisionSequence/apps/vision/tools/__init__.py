@@ -19,6 +19,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.dl",
     "apps.vision.tools.builtin.yolo",
     "apps.vision.tools.builtin.logic",
+    "apps.vision.tools.builtin.script",
     "apps.vision.tools.builtin.output",
     "apps.vision.tools.builtin.modbus",
 ]
