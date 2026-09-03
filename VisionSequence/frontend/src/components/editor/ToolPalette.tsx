@@ -91,9 +91,9 @@ export function FavoriteTools({ catalogue, favorites, onOpenPicker, onInsert, on
 }
 
 /**
- * 工具選擇視窗（三欄，各欄獨立捲動）：
- *   左＝功能分類｜中＝工具清單（名稱完整顯示、不截斷）｜右＝點選工具的完整詳細說明（說明、輸入／輸出埠、參數表）。
- * 點清單＝看詳細；「加入畫布」或雙擊＝插入並關閉。窄螢幕改為上下堆疊（分類變晶片列）。
+ * 工具選擇視窗（接近全螢幕的視窗、三欄各自捲動）：
+ *   左＝功能分類｜中＝工具格（3 欄 n 列的卡片：圖示＋名稱完整顯示＋key，不放敘述）｜右＝點選工具的完整詳細說明（說明全文、輸入／輸出埠、參數表）。
+ * 點卡片＝看詳細；「加入畫布」或雙擊＝插入並關閉。窄螢幕改為上下堆疊（分類變晶片列、格子變 2 欄）。
  */
 function PortList({ ports, side }: { ports: ToolPort[]; side: 'in' | 'out' }) {
   const { t } = useTranslation()
@@ -143,7 +143,7 @@ function ParamTable({ params }: { params: ToolParam[] }) {
               <tr>
                 <th scope="col" className="px-2 py-1 text-left font-semibold">{t('common.name')}</th>
                 <th scope="col" className="px-2 py-1 text-left font-semibold">{t('palette.paramKind')}</th>
-                <th scope="col" className="px-2 py-1 text-left font-semibold">{t('palette.paramDefault')}</th>
+                <th scope="col" className="whitespace-nowrap px-2 py-1 text-left font-semibold">{t('palette.paramDefault')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -162,7 +162,7 @@ function ParamTable({ params }: { params: ToolParam[] }) {
                     {range(param) ? <span className="tnum block text-[10px] text-subtle">{range(param)}</span> : null}
                     {param.options.length ? <span className="block text-[10px] text-subtle">{param.options.map((o) => o.label).join('／')}</span> : null}
                   </td>
-                  <td className="tnum px-2 py-1.5 font-mono text-[11px] text-muted [overflow-wrap:anywhere]">{fmt(param.default)}</td>
+                  <td className="tnum max-w-44 truncate whitespace-nowrap px-2 py-1.5 font-mono text-[11px] text-muted" title={fmt(param.default)}>{fmt(param.default)}</td>
                 </tr>
               ))}
             </tbody>
@@ -288,38 +288,37 @@ export function ToolPicker({ open, onClose, catalogue, favorites, onToggleFavori
   )
 
   const list = (
-    <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1" data-testid="picker-list">
+    <ul className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto p-2 md:grid-cols-3" data-testid="picker-list">
       {shown.map((def) => {
         const Icon = iconFor(def.icon)
         const active = def.key === selected
         const fav = favorites.includes(def.key)
         return (
-          <li key={def.key}>
+          <li key={def.key} className="min-w-0">
             <button type="button" onClick={() => setSelected(def.key)} onDoubleClick={() => onPick(def)} aria-pressed={active}
               title={t('palette.pickHint')}
-              className={`flex w-full items-start gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors
-                ${active ? 'border-brand bg-brand-soft/40' : 'border-transparent hover:bg-surface-muted'}`}
+              className={`flex h-full w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors
+                ${active ? 'border-brand bg-brand-soft/40 shadow-sm' : 'border-line bg-surface hover:border-brand/50 hover:bg-surface-muted'}`}
               data-testid={`picker-tool-${def.key}`}>
-              <span className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md ${active ? 'bg-brand text-on-brand' : 'bg-surface-muted text-brand'}`}>
-                <Icon size={15} aria-hidden />
+              <span className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-brand text-on-brand' : 'bg-brand-soft text-brand'}`}>
+                <Icon size={18} aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
-                {/* 工具名稱完整顯示：長名稱換行，不截斷 */}
+                {/* 工具名稱完整顯示：長名稱換行，不截斷；敘述只在右欄 */}
                 <span className="block text-sm font-medium leading-snug text-content [overflow-wrap:anywhere]">{def.label}</span>
-                <span className="mt-0.5 block font-mono text-[10px] text-subtle">{def.key}{def.heavy ? ` · ${t('editor.heavy')}` : ''}</span>
-                <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-muted">{def.description}</span>
+                <span className="mt-0.5 block font-mono text-[10px] text-subtle [overflow-wrap:anywhere]">{def.key}{def.heavy ? ` · ${t('editor.heavy')}` : ''}</span>
               </span>
               {fav ? <Star size={12} className="mt-1 shrink-0 text-warning" fill="currentColor" aria-hidden /> : null}
             </button>
           </li>
         )
       })}
-      {!shown.length ? <li className="py-6 text-center text-sm text-subtle">{t('palette.noResults')}</li> : null}
+      {!shown.length ? <li className="col-span-full py-6 text-center text-sm text-subtle">{t('palette.noResults')}</li> : null}
     </ul>
   )
 
   return (
-    <Modal open={open} onClose={onClose} title={t('palette.pickerTitle')} description={t('palette.pickerHint')} size="xl">
+    <Modal open={open} onClose={onClose} title={t('palette.pickerTitle')} description={t('palette.pickerHint')} size="full">
       {mobile ? (
         <div className="flex h-[68vh] min-h-0 flex-col gap-2" data-testid="tool-picker">
           <div className="flex gap-1.5 overflow-x-auto pb-1">{categories}</div>
@@ -339,10 +338,10 @@ export function ToolPicker({ open, onClose, catalogue, favorites, onToggleFavori
           )}
         </div>
       ) : (
-        <div className="grid h-[70vh] min-h-0 grid-cols-[164px_minmax(230px,300px)_minmax(0,1fr)] gap-3 overflow-hidden" data-testid="tool-picker">
+        <div className="grid h-[78vh] min-h-0 grid-cols-[160px_minmax(0,1fr)_minmax(360px,460px)] gap-3 overflow-hidden" data-testid="tool-picker">
           {/* 左：分類 */}
           <div className="min-h-0 space-y-1 overflow-y-auto pr-1">{categories}</div>
-          {/* 中：工具清單（名稱完整） */}
+          {/* 中：工具格（3 欄 n 列，名稱完整、不放敘述） */}
           <div className="flex min-h-0 flex-col gap-2">
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" aria-hidden />

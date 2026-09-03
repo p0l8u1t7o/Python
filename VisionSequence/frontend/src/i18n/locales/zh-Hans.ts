@@ -1322,7 +1322,7 @@ const zhHans = {
     keepHint: '每个流程保留最近 {{sets}} 个影像集、每个影像集保留最近 {{runs}} 次执行，超过自动清除', maxImages: '一个影像集最多 {{count}} 张',
   },
   palette: {
-    pickerHint: '左侧选分类、中间点选工具看完整说明，按「加入画布」或双击插入',
+    pickerHint: '左侧选分类、中间点选工具卡片，右侧显示完整说明；按「加入画布」或双击卡片插入',
     insertTool: '加入画布',
     detailHint: '点选左侧工具，这里显示完整说明、输入／输出端口与参数',
     backToList: '回工具清单',

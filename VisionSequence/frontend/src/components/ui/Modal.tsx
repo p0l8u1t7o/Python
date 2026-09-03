@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 
 import { Button, IconButton } from './Button'
 
-export function Modal({ open, onClose, title, description, children, footer, size = 'md', dirty = false }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl'; dirty?: boolean }) {
+export function Modal({ open, onClose, title, description, children, footer, size = 'md', dirty = false }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children: ReactNode; footer?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'; dirty?: boolean }) {
   const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement>(null)
   const [askDiscard, setAskDiscard] = useState(false)
@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 
   if (!open) return null
   const guardedClose = () => (dirtyRef.current ? setAskDiscard(true) : onCloseRef.current())
-  const width = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-6xl' }[size]
+  const width = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-6xl', full: 'max-w-[min(96vw,1680px)]' }[size]
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">

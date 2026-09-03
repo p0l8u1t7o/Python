@@ -1322,7 +1322,7 @@ const zhHant = {
     keepHint: '每個流程保留最近 {{sets}} 個影像集、每個影像集保留最近 {{runs}} 次執行，超過自動清除', maxImages: '一個影像集最多 {{count}} 張',
   },
   palette: {
-    pickerHint: '左側選分類、中間點選工具看完整說明，按「加入畫布」或雙擊插入',
+    pickerHint: '左側選分類、中間點選工具卡片，右側顯示完整說明；按「加入畫布」或雙擊卡片插入',
     insertTool: '加入畫布',
     detailHint: '點選左側工具，這裡顯示完整說明、輸入／輸出埠與參數',
     backToList: '回工具清單',

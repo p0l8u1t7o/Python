@@ -689,7 +689,7 @@ const en = {
     keepHint: 'Keeps the latest {{sets}} sets per flow and {{runs}} runs per set; older ones are removed automatically', maxImages: 'Up to {{count}} images per set',
   },
   palette: {
-    pickerHint: 'Pick a category on the left, select a tool to see its full details, then Add to canvas (or double-click)',
+    pickerHint: 'Pick a category on the left, select a tool card to see its full details on the right, then Add to canvas (or double-click the card)',
     insertTool: 'Add to canvas',
     detailHint: 'Select a tool to see its full description, ports and parameters',
     backToList: 'Back to list',
