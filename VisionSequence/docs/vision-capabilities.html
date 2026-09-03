@@ -103,12 +103,12 @@
 <tr><td>Light meter（point/line/rect）</td><td><code>intensity</code>（含 <strong>point ROI 新增</strong>）、<code>line_profile</code>（<strong>新增</strong>：折線剖面＋統計）</td><td>原有＋新增</td></tr>
 <tr><td>Color statistics</td><td><code>color_stats</code>（RGB/HSV 統計、主色相、平均色）</td><td><strong>本輪新增</strong></td></tr>
 <tr><td>Color comparison</td><td><code>color_check</code>／<code>color_range</code></td><td>原有</td></tr>
-<tr><td>Edge detection：find lines/circles（rake/spoke）</td><td><code>find_line</code>／<code>find_circle</code>（RANSAC）</td><td>原有</td></tr>
+<tr><td>Edge detection：find lines/circles（rake/spoke）</td><td><code>find_line</code>／<code>find_circle</code>（RANSAC、幾何擬合、扇形 ROI、重掃精修）</td><td>原有＋精度修正</td></tr>
 <tr><td>Edge points along contour（caliper）</td><td><code>caliper</code>／<code>wall_thickness</code>／<code>chamfer_angle</code></td><td>原有</td></tr>
-<tr><td>Pattern matching（NCC、金字塔、旋轉）</td><td><code>template_match</code></td><td>原有</td></tr>
+<tr><td>Pattern matching（NCC、金字塔、旋轉）</td><td><code>template_match</code>（次像素位置與角度精修）</td><td>原有＋精度修正</td></tr>
 <tr><td>Coordinate transformation（定位跟隨）</td><td><code>shape_align</code>／<code>fixture_roi</code></td><td>原有</td></tr>
 <tr><td>Analytic geometry</td><td><code>distance</code>／<code>angle</code>＋<code>geometry</code>（<strong>新增</strong>：兩線交點、點線垂距、中點、投影）</td><td>原有＋新增</td></tr>
-<tr><td>Fit line/circle/ellipse</td><td><code>find_line</code>／<code>fit_arc</code>／<code>fit_ellipse</code></td><td>原有</td></tr>
+<tr><td>Fit line/circle/ellipse</td><td><code>find_line</code>／<code>fit_arc</code>（Taubin＋幾何精修）／<code>fit_ellipse</code>（Direct 擬合）</td><td>原有＋精度修正</td></tr>
 <tr><td>Perspective calibration（攤平）</td><td><code>warp_perspective</code>（四點 → 矩形）；比例換算＝<code>calibration</code></td><td><strong>本輪新增</strong></td></tr>
 <tr><td>Golden template comparison</td><td><code>defect_diff</code>（含相位對齊）＋Golden Set 回歸頁</td><td>原有</td></tr>
 <tr><td>Barcode（1D／DataMatrix／PDF417）</td><td><code>barcode</code>（zbar／底層演算法庫 後端依安裝）</td><td>原有</td></tr>
@@ -127,5 +127,33 @@
 </ul>
 
 </article>
+<h2 id="accuracy">5. 量測精度與演算法慣例</h2>
+<p>以資深視覺工程師的角度用「已知真值」的合成影像稽核各工具後修正的項目，與所有工具共同遵守的慣例。稽核與鎖定用的測試在 <code>tests/test_tools.py AlgorithmAccuracyTests</code>。</p>
+<table>
+<tr><th>項目</th><th>問題</th><th>做法</th><th>效果（合成真值）</th></tr>
+<tr><td>圓／圓弧擬合</td><td>Kåsa 代數最小平方對部分圓弧有系統性偏差：60° 弧＋0.5px 噪點半徑少約 1px，30° 弧可差十幾 px；R 角、杯口圓角量測直接受害。</td><td><code>fit_circle_lsq</code> 改為 Taubin 代數解起始＋Gauss–Newton 最小化徑向距離（幾何擬合）；RANSAC 內點精修同樣走這條。原 Kåsa 保留為 <code>fit_circle_kasa</code>。</td><td>60° 弧平均偏差 −0.97 → +0.10px；90° 弧 −0.23 → −0.03px；整圈不變。</td></tr>
+<tr><td>扇形圓環 ROI</td><td><code>annulus</code> 的 <code>a0/a1</code> 起迄角只用在遮罩，徑向掃描仍掃整圈，只有一段弧的工件會撿到不該撿的邊緣。</td><td><code>radial_edge_points</code>／<code>sector_thetas</code>：掃描線只落在扇形內、含兩端；掃描線數＝扇形內的條數。</td><td>−30°～30° 扇形 90 條線全部在扇形內（原本 360° 分佈）。</td></tr>
+<tr><td>重掃精修（refine）</td><td>掃描線從 ROI 中心（多邊形則是頂點平均）發射；偏心時斜切邊緣、多邊形楔形的頂點平均常落在工件外（極性無從定義、甚至掃不到邊）。</td><td>擬合後若中心偏離掃描原點 &gt; 0.5px，從擬合中心再掃一次（掃描線與邊緣垂直）再擬合；多邊形第一次掃描不分極性，重掃才套用極性。<code>find_circle</code>／<code>fit_arc</code>／<code>fit_ellipse</code> 都有 <code>refine</code>（預設開）。</td><td>多邊形楔形 60° 弧：半徑誤差 +1.40 → −0.20px；部分弧橢圓從擬合失敗（0 點）到 a/b 誤差 &lt; 0.2px。</td></tr>
+<tr><td>範本比對次像素</td><td>位置取相關圖整數峰值、角度只到角度步進（5° 步進最差差 2.5°）。</td><td><code>subpixel</code>（預設開）：位置以 3×3 拋物線內插；有旋轉搜尋時以相鄰兩個角度的分數拋物線內插角度，再於精修角度重新比對。</td><td>位移 0.5px 誤差 0.50 → 0.04px；角度 7° 誤差 2.0 → 0.07°（步進 5°）。</td></tr>
+<tr><td><strong>角度慣例</strong></td><td><code>template_match</code> 的角度沿用 cv2.getRotationMatrix2D（畫面逆時針為正），與 ROI 旋轉矩形、找直線（atan2、畫面順時針為正）相反；經定位補正餵給 ROI 跟隨後旋轉方向相反，10° 時 80px 外的特徵偏 28px。</td><td>全平台統一：<strong>影像座標 y 向下，角度正值＝畫面順時針</strong>。範本旋轉改以 −angle 呼叫 getRotationMatrix2D，<code>best_angle</code>／<code>matches[].angle</code>／<code>shape_align.dtheta</code>／<code>fixture_roi</code>／overlay 的 angle 全部同向。</td><td>定位鏈跟隨誤差 27.8 → 0.0px（<code>test_locate_chain_direction</code>）。</td></tr>
+<tr><td>卡尺邊緣對</td><td>四種取邊緣對模式都以位置或強度挑，低對比的條旁邊有高對比雜訊邊時全部挑錯。</td><td>新增 <code>pair_polarity</code>（亮條＝先暗→亮再亮→暗、暗條相反）與 <code>expected_width</code>（挑寬度最接近期望值的一對，優先於模式）。</td><td>寬 20px 低對比亮條旁有 0/255 雜訊線：四種模式 72／72／2.9／2.9 → 期望寬度 20.0。</td></tr>
+<tr><td>Blob 面積</td><td><code>cv2.contourArea</code> 是輪廓多邊形幾何面積，小粒子少算約半個周長：1 像素粒子是 0、2×2 是 1、3×3 是 4；<code>min_area</code> 篩選連帶錯。</td><td>面積改為連通元件像素數（<code>connectedComponentsWithStats</code>），與粒子分析軟體一致；含孔洞（預設／填洞）時只對帶洞的 blob 填輪廓數像素。圓形度仍用輪廓幾何面積與周長（同一套定義才自洽）。</td><td>1／4／9／25／81 像素粒子從 0／1／4／16／64 變成正確值。</td></tr>
+<tr><td>非矩形 ROI 的 Otsu</td><td>圓／多邊形 ROI 的 Otsu 在外框矩形上算，落在 ROI 外的其他灰階（白邊、背板）會拉走門檻。</td><td>Otsu 改以遮罩內直方圖計算（<code>tools/hist.py</code>），再套固定門檻。</td><td>低對比物件旁有白邊：0 個 → 1 個 blob。</td></tr>
+<tr><td>分離黏連粒子</td><td>分水嶺種子用「距離轉換 ≥ 全圖最大值一半」：大小粒子混在一起時小粒子沒有種子，兩顆等大重疊的粒子頸部 &gt; 半徑一半時也切不開。</td><td>種子改為距離轉換的區域極大值（視窗依 <code>min_area</code> 推算的粒子半徑），先膨脹再取連通元件避免長條粒子沿中軸過度切割。</td><td>r=40 一顆＋r=10 兩顆黏連：2 → 3 個；只有兩顆小粒子：1 → 2 個；長條矩形仍是 1 個。</td></tr>
+<tr><td>FFT 高通</td><td>反轉換取絕對值，把負響應翻正：階梯邊緣兩側都變亮，看不出方向。</td><td>取實部；高通以中灰（u8 128／u16 32768）為零點，浮點保留帶號。</td><td>邊緣兩側 12…70｜70…12 → 115…57｜198…140。</td></tr>
+<tr><td>HSV 顏色距離</td><td>灰／低飽和色的色相是亂數，灰目標對灰區域距離仍有 15。</td><td>色相差以兩者較低的飽和度加權。</td><td>#808080 對 (130,128,126)：15.1 → 2.1；紅對綠仍不符。</td></tr>
+<tr><td>橢圓擬合</td><td><code>cv2.fitEllipse</code>（最小平方）對部分弧偏差大。</td><td>改用 <code>cv2.fitEllipseDirect</code>（Fitzgibbon），失敗才退回。</td><td>100° 弧：a/b 誤差 &lt; 0.2px。</td></tr>
+</table>
+<h3 id="accuracy-verified">已驗證無需修改</h3>
+<ul>
+<li>旋轉矩形 ROI 裁切與座標回映（<code>crop(upright=True)</code>／<code>to_full</code>）：找直線在 0°／30°／−20°／90° ROI 下法向偏移 ≤ 0.02px，沒有半像素偏差。</li>
+<li><code>find_circle</code> 置中時圓心誤差 &lt; 0.05px、半徑誤差 &lt; 0.03px（σ=3 噪聲）。</li>
+<li><code>defect_diff</code> 的相位相關對齊能吸收 0.5～1px 次像素位移（假缺陷 0 個），只有「不對齊」在 1px 位移時會產生邊緣假缺陷。</li>
+</ul>
+<h3 id="accuracy-synthetic">合成真值的注意事項</h3>
+<ul>
+<li><code>cv2.circle</code>／<code>cv2.ellipse</code> 實心繪製會多含 1px 外框，半徑比參數大約 0.5px；做精度測試要用解析式覆蓋率（<code>clip(r + 0.5 − dist)</code>）或 8× 超取樣後 <code>INTER_AREA</code> 縮小。</li>
+<li>像素中心在整數座標：繪圖、<code>cv2.remap</code> 取樣、次像素邊緣位置都用同一慣例，找直線在 x=200.35 的邊回傳 200.35。</li>
+</ul>
 </body>
 </html>

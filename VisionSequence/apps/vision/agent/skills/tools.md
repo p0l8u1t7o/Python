@@ -24,7 +24,7 @@
 銳化／邊緣：`sharpen` 補模糊；`canny`（low/high 約 1:2～1:3）取邊緣圖給 hough_lines／edge_density；`laplacian`／`sobel` 取梯度圖。
 
 ## fft_filter
-頻域濾波。規律紋理（織紋、網點、印刷網格）背景：`lowpass` cutoff 0.05～0.1 把紋理濾掉，殘留的大尺度暗痕就是缺陷；`highpass` 去掉光照漸層。輸出 `spectrum` 可看頻譜。
+頻域濾波。規律紋理（織紋、網點、印刷網格）背景：`lowpass` cutoff 0.05～0.1 把紋理濾掉，殘留的大尺度暗痕就是缺陷；`highpass` 去掉光照漸層，輸出以中灰 128 為零點（暗於 128＝負響應），接 threshold 時門檻要以 128 為中心。輸出 `spectrum` 可看頻譜。
 
 ## crop
 裁 ROI 成小圖加速，輸出 `offset_x/offset_y`。裁完的座標系變了：下游工具的 overlay 會在小圖座標，要回全圖記得加 offset。
@@ -54,7 +54,7 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 固定角度旋轉／翻轉（相機裝反）。`keep_size=true` 不改尺寸會裁角。
 
 ## template_match
-範本比對定位：`template` 是資產 id（使用者框選建立），`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。AI 生成時沒有資產可填就留空並在 note 提醒。
+範本比對定位：`template` 是資產 id（使用者框選建立），`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。AI 生成時沒有資產可填就留空並在 note 提醒。
 
 ## shape_align
 定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。
@@ -63,22 +63,22 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.transform，輸出 `region` 接量測工具的 `roi` 輸入埠。每個要跟著動的 ROI 一個 fixture_roi。
 
 ## find_circle
-射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
+射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）；只有一段弧時給 `a0/a1` 起迄角，掃描線只落在扇形內。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。ROI 沒對準圓心也沒關係：`refine`（預設開）會從擬合圓心重掃一次。擬合是幾何最小平方（部分弧無偏）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
 
 ## find_line
 卡尺式找直線：`roi` rect/rotated_rect，短邊方向掃描；輸出 `line`（接 angle／geometry 的 a/b）、`x1..y2`、`angle`。`direction` first/last/strongest 選邊。多用 RANSAC（預設開）抗雜點。
 
 ## caliper
-量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。輸出 `width`（px）。
+量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。量亮條／暗條寬度給 `pair_polarity`（bright＝暗→亮再亮→暗、dark 相反）；知道大約寬度就填 `expected_width`（挑最接近的一對，旁邊有高對比雜訊邊也不會挑錯）。輸出 `width`（px）。
 
 ## wall_thickness
 沿壁放多條卡尺量厚度：`roi` 用 **line 橫切壁**（最直觀）或矩形長邊沿壁。輸出 `thickness`（平均）、min/max。「沒有找到成對的邊緣」通常是掃描方向錯或 band 太窄。
 
 ## fit_arc
-只有一段弧（缺口、扇形）時用，`roi` 用 annulus 加 `a0/a1` 起迄角。輸出 radius、cx/cy、residual_rms。
+只有一段弧（缺口、扇形、R 角）時用，`roi` 用 annulus 加 `a0/a1` 起迄角（掃描線只落在扇形內），或多邊形楔形。擬合是 Taubin＋幾何精修（30°～90° 的短弧也無偏），`refine` 預設開會從擬合圓心重掃。輸出 radius、cx/cy、residual_rms、start_angle/end_angle。
 
 ## fit_ellipse
-橢圓擬合看圓度：`roundness` 越接近 1 越圓；也能量斜拍的圓。
+橢圓擬合看圓度：`roundness` 越接近 1 越圓；也能量斜拍的圓。Direct 擬合＋重掃，只看得到一段弧（杯口被遮一半）也能擬合。
 
 ## hough_circles
 一次抓很多圓（計數用，精度普通）：`min_radius/max_radius` 夾住目標半徑、`min_dist` ≥ 直徑、`param2` 15～30（越低越敏感）。輸出 `circles`（list）與 `count`。
@@ -132,7 +132,7 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 把所有 overlay 畫到影像上輸出（總覽／存檔用）；輸入接原圖。
 
 ## blob
-粒子分析：內建二值化（`threshold_method` otsu/fixed、`polarity` bright/dark）或接已二值化的影像（fixed+128+bright）。`min_area/max_area/min_circularity` 篩選；黏連粒子 `separate=true`（分水嶺）。輸出 `count`、`blobs`、`centers`、`mask`、`found/not_found`（`min_count` 決定）。
+粒子分析：內建二值化（`threshold_method` otsu/fixed、`polarity` bright/dark；非矩形 ROI 的 Otsu 只看遮罩內）或接已二值化的影像（fixed+128+bright）。`area` 是像素數（1 像素粒子就是 1），`min_area/max_area/min_circularity` 篩選；黏連粒子 `separate=true`（分水嶺，種子視窗依 min_area 推算的半徑，大小粒子混在一起也切得開）。輸出 `count`、`blobs`、`centers`、`mask`、`found/not_found`（`min_count` 決定）。
 
 ## pixel_count
 數 ≥ threshold 的像素：接 color_range／threshold 輸出，`min_count/max_count` 決定 ok/ng。
@@ -153,7 +153,7 @@ ROI 灰階統計（mean/std/min/max/median）。亮度守門、簡單有無。
 Canny 邊緣像素比例 > `max_ratio` → ng：畫面異常（髒污、雜訊、對焦跑掉）守門。
 
 ## color_check
-ROI 平均色與目標色（`color` 十六進位）距離 ≤ `tolerance` → match。`space` rgb/hsv；目標色用使用者 ROI 的主色最穩。
+ROI 平均色與目標色（`color` 十六進位）距離 ≤ `tolerance` → match。`space` rgb/hsv（hsv 的色相差依飽和度加權，灰／白／黑目標不會被色相亂數影響）；目標色用使用者 ROI 的主色最穩。
 
 ## color_stats
 ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_number。

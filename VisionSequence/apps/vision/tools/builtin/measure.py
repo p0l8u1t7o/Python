@@ -15,12 +15,12 @@ from apps.vision.tools.builtin.locate import (
     caliper_points,
     find_edges_1d,
     find_edges_rows,
-    fit_circle_lsq,
-    fit_circle_ransac,
+    fit_circle_points,
     fit_line_ransac,
-    pick_edge,
+    radial_edge_points,
     to_gray,
 )
+from apps.vision.tools.hist import otsu_from_hist as _otsu_from_hist
 from apps.vision.tools.roi import crop, region_center, region_overlay
 
 
@@ -62,6 +62,35 @@ def _line(value: Any) -> tuple[float, float, float, float] | None:
     return None
 
 
+def _pick_pair(edges: list[tuple[float, float]], mode: str, pair_polarity: str, expected: float) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """依模式挑一對邊緣。pair_polarity 限制兩個邊緣的梯度符號（亮條＝先正後負、暗條＝先負後正）；
+    expected > 0 時改挑寬度最接近期望值的一對（同寬時取較強者）。"""
+    if pair_polarity == "any":
+        cands = [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :]]
+    else:
+        first_pos = pair_polarity == "bright"
+        cands = [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :] if (a[1] > 0) == first_pos and (b[1] > 0) != first_pos]
+    if not cands:
+        return None
+    if expected > 0:
+        return min(cands, key=lambda p: (abs((p[1][0] - p[0][0]) - expected), -(abs(p[0][1]) + abs(p[1][1]))))
+    if pair_polarity == "any":
+        if mode == "narrowest":
+            return min(zip(edges[:-1], edges[1:]), key=lambda p: p[1][0] - p[0][0])
+        if mode == "strongest":
+            top = sorted(edges, key=lambda e: -abs(e[1]))[:2]
+            return tuple(sorted(top, key=lambda e: e[0]))  # type: ignore[return-value]
+        return edges[0], edges[-1]
+    if mode == "narrowest":
+        return min(cands, key=lambda p: p[1][0] - p[0][0])
+    if mode == "strongest":
+        return max(cands, key=lambda p: abs(p[0][1]) + abs(p[1][1]))
+    if mode == "widest":
+        return max(cands, key=lambda p: p[1][0] - p[0][0])
+    first = cands[0][0]
+    return first, max((b for a, b in cands if a is first), key=lambda e: e[0])
+
+
 class CaliperTool(Tool):
     key = "caliper"
     label = "卡尺"
@@ -78,6 +107,10 @@ class CaliperTool(Tool):
             {"value": "narrowest", "label": "最窄的一對（相鄰）"},
             {"value": "strongest", "label": "最強的兩個"},
         ]),
+        Param("pair_polarity", "邊緣對極性", kind="select", default="any", options=[
+            {"value": "any", "label": "不限"}, {"value": "bright", "label": "亮條（暗→亮、亮→暗）"}, {"value": "dark", "label": "暗條（亮→暗、暗→亮）"},
+        ], help_text="限制成對邊緣的極性順序：量亮條／暗條的寬度時不會配到旁邊的雜訊邊緣。"),
+        Param("expected_width", "期望寬度", kind="number", default=0, minimum=0, unit="px", help_text="大於 0 時改挑「寬度最接近此值」的邊緣對（優先於取邊緣對模式）。"),
         Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
     ]
     inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
@@ -109,16 +142,11 @@ class CaliperTool(Tool):
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
                           overlays=overlays, status="ng", message=f"邊緣不足兩個（{len(edges)}）")
-        mode = ctx.param("edge_pair", "first_last")
-        if mode == "widest":
-            pair = (edges[0], edges[-1])
-        elif mode == "narrowest":
-            pair = min(zip(edges[:-1], edges[1:]), key=lambda p: p[1][0] - p[0][0])
-        elif mode == "strongest":
-            top = sorted(edges, key=lambda e: -abs(e[1]))[:2]
-            pair = tuple(sorted(top, key=lambda e: e[0]))  # type: ignore[assignment]
-        else:
-            pair = (edges[0], edges[-1])
+        pair = _pick_pair(edges, ctx.param("edge_pair", "first_last"), ctx.param("pair_polarity", "any"), ctx.number("expected_width", 0))
+        if pair is None:
+            return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
+                                   "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
+                          overlays=overlays, status="ng", message="沒有符合極性的邊緣對")
         (p1, _), (p2, _) = pair
         mid = (h if horizontal else w) / 2
         if horizontal:
@@ -323,21 +351,6 @@ class CalibrationTool(Tool):
         return Result(outputs={"mm": mm, "scale": k, "points_mm": pts_mm}, message=(f"{mm:.4f} mm" if value is not None else f"k={k:.5f}"))
 
 
-def _otsu_from_hist(hist: np.ndarray) -> float:
-    """由直方圖算 Otsu 門檻（類間變異最大）。"""
-    total = hist.sum()
-    if total <= 0:
-        return 0.0
-    levels = np.arange(256, dtype=np.float64)
-    w0 = np.cumsum(hist)
-    w1 = total - w0
-    sum0 = np.cumsum(hist * levels)
-    mu0 = np.divide(sum0, w0, out=np.zeros(256), where=w0 > 0)
-    mu1 = np.divide(sum0[-1] - sum0, w1, out=np.zeros(256), where=w1 > 0)
-    between = w0 * w1 * (mu0 - mu1) ** 2
-    return float(int(between.argmax()))
-
-
 class HistogramTool(Tool):
     key = "histogram"
     label = "直方圖"
@@ -369,37 +382,12 @@ class HistogramTool(Tool):
 _EDGE_SELECT_OPTIONS = [{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}]
 
 
-def _radial_edge_points(image: np.ndarray, cx: float, cy: float, r_in: float, r_out: float, num_rays: int,
-                        polarity: str, threshold: float, select: str, smoothing: int,
-                        mask: np.ndarray | None = None, mask_offset: tuple[int, int] = (0, 0)) -> list[list[float]]:
-    """由 (cx, cy) 向外發射 num_rays 條徑向掃描線，每條取一個邊緣點（全圖座標）。
+def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, Any], origin: tuple[float, float] | None = None) -> np.ndarray:
+    """依 ROI 形狀取邊緣點：圓／圓環（含扇形 a0/a1）／多邊形走徑向掃描，矩形／旋轉矩形走卡尺。回傳 (N,2) 全圖座標。
 
-    與 find_circle 的掃描相同（cv2.remap 一次取樣所有剖面 → find_edges_rows），
-    mask 給定時只保留落在遮罩內的點（polygon ROI 用）。
+    origin 給定時（重掃精修）改從該點發射掃描線。多邊形 ROI 的第一次掃描以頂點平均為原點且不分極性
+    （原點可能落在工件外，極性無從定義），重掃時才套用使用者的極性。
     """
-    n_samples = int(math.ceil(r_out - r_in)) + 1
-    radii = np.linspace(r_in, r_out, n_samples, dtype=np.float32)
-    thetas = np.linspace(0, 2 * math.pi, num_rays, endpoint=False, dtype=np.float32)
-    map_x = (cx + np.cos(thetas)[:, None] * radii[None, :]).astype(np.float32)
-    map_y = (cy + np.sin(thetas)[:, None] * radii[None, :]).astype(np.float32)
-    profiles = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-    pts: list[list[float]] = []
-    for i, edges in enumerate(find_edges_rows(profiles, polarity, threshold, smoothing)):
-        e = pick_edge(edges, select)
-        if e is None:
-            continue
-        rr = r_in + e[0] * (r_out - r_in) / max(1, n_samples - 1)
-        x, y = cx + math.cos(thetas[i]) * rr, cy + math.sin(thetas[i]) * rr
-        if mask is not None:
-            mx, my = int(round(x)) - mask_offset[0], int(round(y)) - mask_offset[1]
-            if not (0 <= my < mask.shape[0] and 0 <= mx < mask.shape[1]) or mask[my, mx] == 0:
-                continue
-        pts.append([x, y])
-    return pts
-
-
-def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, Any]) -> np.ndarray:
-    """依 ROI 形狀取邊緣點：圓／圓環／多邊形走徑向掃描，矩形／旋轉矩形走卡尺。回傳 (N,2) 全圖座標。"""
     polarity = ctx.param("polarity", "any")
     thr = ctx.number("edge_threshold", 20)
     sel = ctx.param("edge_select", "strongest")
@@ -407,21 +395,25 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
     num = max(6, ctx.integer("num_rays", 36))
     shape = region.get("shape")
     if shape in ("circle", "annulus", "polygon"):
-        cx, cy = region_center(region)
+        cx, cy = origin if origin is not None else region_center(region)
+        a0 = a1 = None
+        mask, off = None, (0, 0)
         if shape == "circle":
             r_in, r_out = 0.0, float(region["r"])
-            mask, off = None, (0, 0)
         elif shape == "annulus":
             r_in, r_out = float(region["r_inner"]), float(region["r_outer"])
-            mask, off = None, (0, 0)
+            a0, a1 = region.get("a0"), region.get("a1")
         else:
             pts = np.asarray(region["points"], dtype=np.float64)
             r_in, r_out = 0.0, float(np.hypot(pts[:, 0] - cx, pts[:, 1] - cy).max())
             c = crop(image, region)
             mask, off = c.mask, (c.x0, c.y0)
+            if origin is None:
+                polarity = "any"
         if r_out - r_in < 3:
             raise ToolError("區域半徑太小")
-        return np.asarray(_radial_edge_points(image, cx, cy, r_in, r_out, num, polarity, thr, sel, smoothing, mask, off), dtype=np.float64).reshape(-1, 2)
+        pts_out = radial_edge_points(image, cx, cy, r_in, r_out, num, polarity, thr, sel, smoothing, mask=mask, mask_offset=off, a0=a0, a1=a1)
+        return np.asarray(pts_out, dtype=np.float64).reshape(-1, 2)
     if shape in ("rect", "rotated_rect"):
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
@@ -434,11 +426,25 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
     raise ToolError(f"不支援 {shape} 區域")
 
 
+_RADIAL_SHAPES = ("circle", "annulus", "polygon")
+
+
+def _refined_points(ctx: ToolContext, image: np.ndarray, region: dict[str, Any], center: tuple[float, float]) -> np.ndarray | None:
+    """重掃精修：擬合中心偏離掃描原點 0.5px 以上時，從擬合中心再掃一次（掃描線與邊緣垂直、多邊形套用極性）。"""
+    if not ctx.flag("refine", True) or region.get("shape") not in _RADIAL_SHAPES:
+        return None
+    ox, oy = region_center(region)
+    if math.hypot(center[0] - ox, center[1] - oy) <= 0.5:
+        return None
+    return _region_edge_points(ctx, image, region, origin=center)
+
+
 _EDGE_PARAMS = [
     Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
     Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
     Param("num_rays", "掃描線數", kind="number", default=36, minimum=6, maximum=720, help_text="圓／環／多邊形為徑向掃描線數，矩形為卡尺數。"),
     Param("edge_select", "取哪個邊緣", kind="select", default="strongest", options=_EDGE_SELECT_OPTIONS),
+    Param("refine", "重掃精修", kind="boolean", default=True, group="進階", help_text="擬合後以擬合中心重掃一次：ROI 偏心或多邊形 ROI 時精度明顯較好。"),
     Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
 ]
 
@@ -489,16 +495,17 @@ class FitArcTool(Tool):
         ng = {"radius": nan, "cx": nan, "cy": nan, "residual_rms": nan, "points": pts.round(2).tolist(), "start_angle": nan, "end_angle": nan}
         if len(pts) < 3:
             return Result(outputs=ng, overlays=overlays, status="ng", message=f"邊緣點不足（{len(pts)}）")
-        inliers = np.ones(len(pts), dtype=bool)
-        circle = None
-        if ctx.flag("ransac", True):
-            fitted = fit_circle_ransac(pts, tol=ctx.number("ransac_tol", 2))
-            if fitted is not None:
-                circle, inliers = fitted
-        if circle is None:
-            circle = fit_circle_lsq(pts)
+        use_ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
+        circle, inliers = fit_circle_points(pts, use_ransac, tol)
+        if circle is not None:
+            pts2 = _refined_points(ctx, image, region, (circle[0], circle[1]))
+            if pts2 is not None and len(pts2) >= 3:
+                circle2, inliers2 = fit_circle_points(pts2, use_ransac, tol)
+                if circle2 is not None and int(inliers2.sum()) >= max(3, int(0.5 * inliers.sum())):
+                    pts, circle, inliers = pts2, circle2, inliers2
         if circle is None:
             return Result(outputs=ng, overlays=overlays, status="ng", message="擬合失敗")
+        ng["points"] = pts.round(2).tolist()
         cx, cy, r = circle
         good = pts[inliers]
         resid = np.hypot(good[:, 0] - cx, good[:, 1] - cy) - r
@@ -517,10 +524,23 @@ class FitArcTool(Tool):
         )
 
 
+def _fit_ellipse(pts: np.ndarray) -> tuple[float, float, float, float, float] | None:
+    """橢圓擬合：Direct（Fitzgibbon）對部分弧的偏差遠小於 cv2.fitEllipse 的最小平方版；失敗才退回。回傳 (cx, cy, w, h, angle)。"""
+    arr = pts.astype(np.float32)
+    for fn in (cv2.fitEllipseDirect, cv2.fitEllipse):
+        try:
+            (cx, cy), (w, h), ang = fn(arr)
+        except cv2.error:
+            continue
+        if all(np.isfinite([cx, cy, w, h, ang])) and w > 0 and h > 0:
+            return float(cx), float(cy), float(w), float(h), float(ang)
+    return None
+
+
 class FitEllipseTool(Tool):
     key = "fit_ellipse"
     label = "橢圓擬合"
-    description = "在區域內找邊緣點並以 cv2.fitEllipse 擬合橢圓；roundness = 短軸／長軸（1 為正圓），用來量杯口橢圓度。"
+    description = "在區域內找邊緣點並以直接最小平方（Direct）擬合橢圓；roundness = 短軸／長軸（1 為正圓），用來量杯口橢圓度。"
     category = "measure"
     icon = "Egg"
     params = [
@@ -545,9 +565,17 @@ class FitEllipseTool(Tool):
         ng = {"cx": nan, "cy": nan, "a": nan, "b": nan, "angle": nan, "roundness": nan, "residual_rms": nan, "points": pts.round(2).tolist()}
         if len(pts) < 5:
             return Result(outputs=ng, overlays=overlays, status="ng", message=f"邊緣點不足（{len(pts)}，橢圓至少 5 點）")
-        (cx, cy), (w, h), ang = cv2.fitEllipse(pts.astype(np.float32))
-        if not all(np.isfinite([cx, cy, w, h, ang])) or w <= 0 or h <= 0:
+        fitted = _fit_ellipse(pts)
+        if fitted is not None:
+            pts2 = _refined_points(ctx, image, region, (fitted[0], fitted[1]))
+            if pts2 is not None and len(pts2) >= max(5, len(pts) // 2):
+                fitted2 = _fit_ellipse(pts2)
+                if fitted2 is not None:
+                    pts, fitted = pts2, fitted2
+        if fitted is None:
             return Result(outputs=ng, overlays=overlays, status="ng", message="擬合失敗")
+        ng["points"] = pts.round(2).tolist()
+        cx, cy, w, h, ang = fitted
         # fitEllipse 的 angle 是 w 軸方向；長半軸取兩者較大者，角度跟著調整。
         if w >= h:
             a, b, angle = w / 2, h / 2, float(ang)

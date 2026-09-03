@@ -106,7 +106,8 @@ class LocateTests(SimpleTestCase):
         self.assertEqual(r.branch, "found", r.message)
         self.assertAlmostEqual(r.outputs["best_x"], 180, delta=3)
         self.assertAlmostEqual(r.outputs["best_y"], 120, delta=3)
-        self.assertAlmostEqual(abs(r.outputs["best_angle"]), 10, delta=2.5)
+        # getRotationMatrix2D 的 +10 是畫面逆時針；平台角度以畫面順時針為正（與 ROI／找直線一致）→ −10
+        self.assertAlmostEqual(r.outputs["best_angle"], -10, delta=1.0)
 
     def test_template_match_not_found_is_ng(self):
         img = self._scene()
@@ -798,3 +799,184 @@ class RoiShapeTests(SimpleTestCase):
         r = run_tool("intensity", img, {"roi": {"shape": "point", "x": 9, "y": 7}})
         self.assertEqual(r.outputs["mean"], 137.0)
         self.assertEqual(r.outputs["pixels"], 1)
+
+class AlgorithmAccuracyTests(SimpleTestCase):
+    """演算法精度：以解析式反鋸齒的合成影像（已知真值）鎖住次像素精度、部分圓弧無偏與方向慣例。"""
+
+    @staticmethod
+    def _disk(h, w, cx, cy, r, bg=40, fg=200, blur=1.0, noise=3.0, seed=0):
+        # 覆蓋率 = clip(r + 0.5 − dist)；cv2.circle 實心會多含 1px 外框（半徑偏大 0.5），不能當真值
+        yy, xx = np.mgrid[0:h, 0:w]
+        cov = np.clip(r + 0.5 - np.hypot(xx - cx, yy - cy), 0, 1)
+        img = cv2.GaussianBlur((bg + (fg - bg) * cov).astype(np.uint8), (0, 0), blur)
+        rng = np.random.default_rng(seed)
+        return np.clip(img.astype(np.float32) + rng.normal(0, noise, img.shape), 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def _scene():
+        scene = np.full((400, 500), 60, np.uint8)
+        cv2.rectangle(scene, (200, 150), (300, 250), 200, -1)
+        cv2.circle(scene, (250, 200), 25, 40, -1)
+        cv2.putText(scene, "A7", (215, 215), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 255, 3)
+        cv2.line(scene, (210, 160), (290, 240), 120, 3)
+        cv2.circle(scene, (330, 200), 8, 255, -1)  # 範本外的特徵點，驗證 ROI 跟隨
+        return cv2.GaussianBlur(scene, (0, 0), 0.8)
+
+    def test_circle_fit_partial_arc_unbiased(self):
+        from apps.vision.tools.builtin.locate import fit_circle_kasa, fit_circle_lsq
+
+        rng = np.random.default_rng(1)
+        th = np.radians(np.linspace(0, 60, 30))
+        geo, kasa = [], []
+        for _ in range(300):
+            pts = np.column_stack([100 * np.cos(th), 100 * np.sin(th)]) + rng.normal(0, 0.5, (30, 2))
+            geo.append(fit_circle_lsq(pts)[2] - 100)
+            kasa.append(fit_circle_kasa(pts)[2] - 100)
+        # 60° 短弧的半徑估計本身變異大（單次 σ≈1.5px），看的是平均偏差：幾何擬合 < 0.4px，Kåsa 平均少約 1px
+        self.assertLess(abs(float(np.mean(geo))), 0.4)
+        self.assertLess(abs(float(np.mean(geo))), 0.5 * abs(float(np.mean(kasa))))
+        t = np.linspace(0, 2 * np.pi, 40, endpoint=False)
+        cx, cy, r = fit_circle_lsq(np.column_stack([10 + 50 * np.cos(t), 20 + 50 * np.sin(t)]))
+        self.assertAlmostEqual(r, 50, delta=1e-6)
+        self.assertAlmostEqual(cx, 10, delta=1e-6)
+        self.assertAlmostEqual(cy, 20, delta=1e-6)
+
+    def test_find_circle_sector_roi_and_refine(self):
+        img = self._disk(500, 600, 300.37, 250.61, 80.25)
+        r = run_tool("find_circle", img, {"roi": {"shape": "annulus", "cx": 300, "cy": 251, "r_inner": 40, "r_outer": 130, "a0": -30, "a1": 30}, "num_rays": 60, "polarity": "light_to_dark"})
+        self.assertEqual(r.branch, "found", r.message)
+        pts = np.asarray(r.outputs["points"])
+        ang = np.degrees(np.arctan2(pts[:, 1] - 250.61, pts[:, 0] - 300.37))
+        self.assertEqual(len(pts), 60)
+        self.assertTrue(np.all(np.abs(ang) <= 31), ang)
+        self.assertAlmostEqual(r.outputs["r"], 80.25, delta=0.2)
+        # ROI 偏心 30px：重掃後圓心誤差 < 0.1px
+        r2 = run_tool("find_circle", img, {"roi": {"shape": "circle", "cx": 330, "cy": 271, "r": 150}, "polarity": "light_to_dark"})
+        self.assertLess(math.hypot(r2.outputs["cx"] - 300.37, r2.outputs["cy"] - 250.61), 0.1)
+        self.assertAlmostEqual(r2.outputs["r"], 80.25, delta=0.15)
+
+    def test_fit_arc_polygon_wedge(self):
+        cx, cy = 300.37, 250.61
+        img = self._disk(500, 600, cx, cy, 80.25)
+        wedge = [[cx, cy]] + [[cx + 130 * math.cos(math.radians(a)), cy + 130 * math.sin(math.radians(a))] for a in np.linspace(-30, 30, 7)]
+        r = run_tool("fit_arc", img, {"roi": {"shape": "polygon", "points": wedge}, "num_rays": 90, "polarity": "light_to_dark"})
+        self.assertEqual(r.status, "ok", r.message)
+        self.assertAlmostEqual(r.outputs["radius"], 80.25, delta=0.4)
+        self.assertLess(math.hypot(r.outputs["cx"] - cx, r.outputs["cy"] - cy), 0.4)
+        # 不重掃：多邊形質心在工件外，掃描線斜切邊緣，誤差明顯
+        r0 = run_tool("fit_arc", img, {"roi": {"shape": "polygon", "points": wedge}, "num_rays": 90, "polarity": "any", "refine": False})
+        self.assertGreater(abs(r0.outputs["radius"] - 80.25), 0.8)
+
+    def test_fit_ellipse_partial_arc(self):
+        big = np.full((3200, 3200), 40, np.uint8)
+        cv2.ellipse(big, ((1600.0, 1600.0), (1440.0, 960.0), 20.0), 200, -1, lineType=cv2.LINE_AA)
+        img = cv2.GaussianBlur(cv2.resize(big, (400, 400), interpolation=cv2.INTER_AREA), (0, 0), 0.8)
+        wedge = [[200, 200]] + [[200 + 150 * math.cos(math.radians(t)), 200 + 150 * math.sin(math.radians(t))] for t in np.linspace(-30, 70, 9)]
+        r = run_tool("fit_ellipse", img, {"roi": {"shape": "polygon", "points": wedge}, "num_rays": 120, "polarity": "light_to_dark"})
+        self.assertEqual(r.status, "ok", r.message)
+        self.assertAlmostEqual(r.outputs["a"], 90, delta=1.0)
+        self.assertAlmostEqual(r.outputs["b"], 60, delta=1.0)
+        self.assertAlmostEqual(r.outputs["angle"], 20, delta=1.0)
+
+    def test_template_match_subpixel_position_and_angle(self):
+        scene = self._scene()
+        assets = {"t": save_png(scene[140:260, 190:310], temp_dir(), "tpl.png")}
+        for dx, dy, ang in ((0.3, -0.4, 0.0), (0.5, 0.5, 0.0), (0.25, 0.25, 7.0), (0.0, 0.0, -12.0)):
+            m = cv2.getRotationMatrix2D((250, 200), -ang, 1.0)  # 畫面順時針 ang
+            m[0, 2] += dx
+            m[1, 2] += dy
+            test = cv2.warpAffine(scene, m, (500, 400), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            for pyramid in (True, False):
+                r = run_tool("template_match", test, {"template": "t", "threshold": 0.5, "angle_range": 15 if ang else 0, "angle_step": 5, "pyramid": pyramid}, assets=assets)
+                self.assertEqual(r.branch, "found", r.message)
+                self.assertAlmostEqual(r.outputs["best_x"], 250 + dx, delta=0.12, msg=(dx, dy, ang, pyramid))
+                self.assertAlmostEqual(r.outputs["best_y"], 200 + dy, delta=0.12, msg=(dx, dy, ang, pyramid))
+                self.assertAlmostEqual(r.outputs["best_angle"], ang, delta=0.6, msg=(dx, dy, ang, pyramid))
+        shifted = cv2.warpAffine(scene, np.float32([[1, 0, 0.5], [0, 1, 0.5]]), (500, 400))
+        r = run_tool("template_match", shifted, {"template": "t", "threshold": 0.5, "subpixel": False}, assets=assets)
+        self.assertEqual(r.outputs["best_x"] % 1, 0)
+
+    def test_locate_chain_direction(self):
+        """範本比對角度（畫面順時針為正）→ 定位補正 → ROI 跟隨：跟隨 ROI 要落在旋轉後的特徵上。"""
+        scene = self._scene()
+        assets = {"t": save_png(scene[140:260, 190:310], temp_dir(), "tpl.png")}
+        for ang in (-10.0, 10.0):
+            m = cv2.getRotationMatrix2D((250, 200), ang, 1.0)  # OpenCV 正值＝畫面逆時針
+            m[0, 2] += 12
+            m[1, 2] += -7
+            test = cv2.warpAffine(scene, m, (500, 400), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            feat = m @ np.array([330.0, 200.0, 1.0])
+            r = run_tool("template_match", test, {"template": "t", "threshold": 0.5, "angle_range": 15, "angle_step": 5}, assets=assets)
+            self.assertAlmostEqual(r.outputs["best_angle"], -ang, delta=0.6)
+            t = run_tool("shape_align", None, {"ref_x": 250, "ref_y": 200, "ref_angle": 0}, inputs={"matches": r.outputs["matches"]}).outputs["transform"]
+            moved = run_tool("fixture_roi", None, {"roi": {"shape": "circle", "cx": 330, "cy": 200, "r": 15}}, inputs={"transform": t}).outputs["region"]
+            self.assertLess(math.hypot(moved["cx"] - feat[0], moved["cy"] - feat[1]), 0.5, (ang, moved, feat))
+
+    def test_caliper_pair_polarity_and_expected_width(self):
+        img = np.full((60, 220), 40, np.uint8)
+        img[:, 80:100] = 140  # 低對比亮條，寬 20
+        img[:, 150:152] = 255  # 高對比雜訊線
+        img[:, 152:154] = 0
+        img = cv2.GaussianBlur(img, (0, 0), 0.7)
+        roi = {"shape": "rect", "x": 40, "y": 10, "w": 160, "h": 40}
+        base = run_tool("caliper", img, {"roi": roi, "edge_pair": "strongest", "edge_threshold": 15})
+        self.assertGreater(abs(base.outputs["width"] - 20), 5)  # 被雜訊邊緣搶走
+        r = run_tool("caliper", img, {"roi": roi, "edge_threshold": 15, "expected_width": 20})
+        self.assertAlmostEqual(r.outputs["width"], 20, delta=0.6)
+        r2 = run_tool("caliper", img, {"roi": roi, "edge_threshold": 15, "pair_polarity": "bright", "edge_pair": "widest"})
+        self.assertLess(r2.outputs["edge1_x"], r2.outputs["edge2_x"])
+        r3 = run_tool("caliper", img, {"roi": roi, "edge_threshold": 15, "pair_polarity": "dark", "edge_pair": "narrowest"})
+        self.assertAlmostEqual(r3.outputs["width"], 49.5, delta=1.0)  # 兩條亮邊之間的暗段
+
+    def test_blob_pixel_area_small_particles(self):
+        m = np.zeros((120, 200), np.uint8)
+        for i, size in enumerate((1, 2, 3, 5, 9)):
+            m[20 : 20 + size, 20 + i * 35 : 20 + i * 35 + size] = 255
+        r = run_tool("blob", m, {"threshold_method": "none", "min_area": 0, "sort_by": "x"})
+        self.assertEqual([b["area"] for b in r.outputs["blobs"]], [1.0, 4.0, 9.0, 25.0, 81.0])
+        self.assertEqual(run_tool("blob", m, {"threshold_method": "none", "min_area": 4}).outputs["count"], 4)
+        ring = np.zeros((100, 100), np.uint8)
+        cv2.rectangle(ring, (20, 20), (79, 79), 255, -1)
+        cv2.rectangle(ring, (40, 40), (59, 59), 0, -1)
+        with_holes = run_tool("blob", ring, {"threshold_method": "none", "min_area": 0}).outputs["blobs"][0]["area"]
+        without = run_tool("blob", ring, {"threshold_method": "none", "min_area": 0, "external_only": False}).outputs["blobs"][0]["area"]
+        self.assertEqual((with_holes, without), (3600.0, 3200.0))
+
+    def test_blob_otsu_uses_roi_mask(self):
+        img = np.full((120, 120), 40, np.uint8)
+        cv2.circle(img, (60, 60), 20, 90, -1)  # 低對比物件
+        img[:12, :] = 255  # 白邊落在圓 ROI 外、但在外框內
+        img[-12:, :] = 255
+        r = run_tool("blob", img, {"roi": {"shape": "circle", "cx": 60, "cy": 60, "r": 50}, "threshold_method": "otsu", "polarity": "bright", "min_area": 50})
+        self.assertEqual(r.outputs["count"], 1, r.message)
+        self.assertAlmostEqual(r.outputs["blobs"][0]["area"], math.pi * 20 * 20, delta=80)
+
+    def test_blob_separate_mixed_sizes(self):
+        m = np.zeros((200, 300), np.uint8)
+        cv2.circle(m, (80, 100), 40, 255, -1)
+        cv2.circle(m, (200, 100), 10, 255, -1)
+        cv2.circle(m, (216, 100), 10, 255, -1)
+        r = run_tool("blob", m, {"threshold_method": "none", "min_area": 20, "separate": True})
+        self.assertEqual(r.outputs["count"], 3, [b["area"] for b in r.outputs["blobs"]])
+        bar = np.zeros((100, 200), np.uint8)
+        cv2.rectangle(bar, (20, 40), (180, 60), 255, -1)
+        self.assertEqual(run_tool("blob", bar, {"threshold_method": "none", "min_area": 20, "separate": True}).outputs["count"], 1)
+
+    def test_fft_highpass_is_bipolar(self):
+        step = np.full((64, 128), 50, np.uint8)
+        step[:, 64:] = 200
+        row = run_tool("fft_filter", step, {"mode": "highpass", "style": "truncate", "cutoff": 0.1}).outputs["image"][32].astype(int)
+        self.assertLess(row[60], 128)
+        self.assertGreater(row[66], 128)
+        low = run_tool("fft_filter", step, {"mode": "lowpass", "cutoff": 0.3}).outputs["image"]
+        self.assertLess(abs(int(low[32, 5]) - 50), 12)
+
+    def test_color_check_hsv_gray_target(self):
+        img = np.zeros((40, 40, 3), np.uint8)
+        img[:] = (126, 128, 130)
+        r = run_tool("color_check", img, {"color": "#808080", "space": "hsv", "tolerance": 10})
+        self.assertLess(r.outputs["distance"], 5)
+        self.assertTrue(r.outputs["is_match"])
+        red = np.zeros((40, 40, 3), np.uint8)
+        red[:] = (0, 0, 220)
+        self.assertFalse(run_tool("color_check", red, {"color": "#00ff00", "space": "hsv", "tolerance": 10}).outputs["is_match"])

@@ -184,11 +184,63 @@ def pick_edge(edges: list[tuple[float, float]], direction: str) -> tuple[float, 
     return edges[0]
 
 
+def sector_thetas(num_rays: int, a0: float | None = None, a1: float | None = None) -> np.ndarray:
+    """徑向掃描線的角度（弧度）：整圈等距不含終點；扇形 a0→a1（度，畫面順時針為正）時 num_rays 條全落在扇形內、含兩端。"""
+    if a0 is None or a1 is None:
+        return np.linspace(0, 2 * math.pi, num_rays, endpoint=False, dtype=np.float32)
+    start, end = float(a0), float(a1)
+    if end <= start:
+        end += 360.0
+    return np.radians(np.linspace(start, end, num_rays, endpoint=True)).astype(np.float32)
+
+
+def radial_edge_points(image: np.ndarray, cx: float, cy: float, r_in: float, r_out: float, num_rays: int,
+                       polarity: str, threshold: float, select: str, smoothing: int, *,
+                       mask: np.ndarray | None = None, mask_offset: tuple[int, int] = (0, 0),
+                       a0: float | None = None, a1: float | None = None) -> list[list[float]]:
+    """由 (cx, cy) 向外發射 num_rays 條徑向掃描線（可限扇形 a0→a1），每條取一個邊緣點（全圖座標）。
+
+    cv2.remap 一次取樣所有剖面 → find_edges_rows 向量化找邊；mask 給定時只保留落在遮罩內的點（polygon ROI 用）。
+    """
+    n_samples = int(math.ceil(r_out - r_in)) + 1
+    radii = np.linspace(r_in, r_out, n_samples, dtype=np.float32)
+    thetas = sector_thetas(num_rays, a0, a1)
+    map_x = (cx + np.cos(thetas)[:, None] * radii[None, :]).astype(np.float32)
+    map_y = (cy + np.sin(thetas)[:, None] * radii[None, :]).astype(np.float32)
+    profiles = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    pts: list[list[float]] = []
+    for i, edges in enumerate(find_edges_rows(profiles, polarity, threshold, smoothing)):
+        e = pick_edge(edges, select)
+        if e is None:
+            continue
+        rr = r_in + e[0] * (r_out - r_in) / max(1, n_samples - 1)
+        x, y = cx + math.cos(thetas[i]) * rr, cy + math.sin(thetas[i]) * rr
+        if mask is not None:
+            mx, my = int(round(x)) - mask_offset[0], int(round(y)) - mask_offset[1]
+            if not (0 <= my < mask.shape[0] and 0 <= mx < mask.shape[1]) or mask[my, mx] == 0:
+                continue
+        pts.append([x, y])
+    return pts
+
+
+def fit_circle_points(pts: np.ndarray, use_ransac: bool, tol: float) -> tuple[tuple[float, float, float] | None, np.ndarray]:
+    """依設定擬合圓：RANSAC（剔除離群後幾何精修）或直接幾何最小平方。回傳 (圓或 None, 內點遮罩)。"""
+    arr = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
+    inliers = np.ones(len(arr), dtype=bool)
+    if len(arr) < 3:
+        return None, inliers
+    if use_ransac:
+        fitted = fit_circle_ransac(arr, tol=tol)
+        if fitted is not None:
+            return fitted[0], fitted[1]
+    return fit_circle_lsq(arr), inliers
+
+
 # ---------------------------------------------------------------------------
 # 圓擬合
 # ---------------------------------------------------------------------------
-def fit_circle_lsq(pts: np.ndarray) -> tuple[float, float, float] | None:
-    """代數最小平方（Kåsa）擬合圓。"""
+def fit_circle_kasa(pts: np.ndarray) -> tuple[float, float, float] | None:
+    """代數最小平方（Kåsa）擬合圓：快，但部分圓弧有系統性偏差（60° 弧＋0.5px 噪點半徑約少 1px，30° 弧可差十幾 px）。"""
     pts = np.asarray(pts, dtype=np.float64)
     if len(pts) < 3:
         return None
@@ -204,6 +256,66 @@ def fit_circle_lsq(pts: np.ndarray) -> tuple[float, float, float] | None:
     if not np.isfinite(r2) or r2 <= 0:
         return None
     return float(cx), float(cy), float(math.sqrt(r2))
+
+
+def _fit_circle_taubin(pts: np.ndarray) -> tuple[float, float, float] | None:
+    """Taubin 代數擬合（Chernov 的 SVD 版）：對部分圓弧幾乎無偏，當幾何擬合的起始值。"""
+    x0, y0 = float(pts[:, 0].mean()), float(pts[:, 1].mean())
+    x, y = pts[:, 0] - x0, pts[:, 1] - y0
+    z = x * x + y * y
+    zm = float(z.mean())
+    if zm <= 1e-12:
+        return None
+    zs = 2.0 * math.sqrt(zm)
+    m = np.column_stack([(z - zm) / zs, x, y])
+    try:
+        _, _, vt = np.linalg.svd(m, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return None
+    a = vt[-1].copy()
+    a[0] /= zs
+    a4 = -zm * a[0]
+    if abs(a[0]) < 1e-12:
+        return None
+    cx = -a[1] / a[0] / 2 + x0
+    cy = -a[2] / a[0] / 2 + y0
+    r2 = a[1] * a[1] + a[2] * a[2] - 4 * a[0] * a4
+    if not np.isfinite(r2) or r2 <= 0:
+        return None
+    return float(cx), float(cy), float(math.sqrt(r2) / abs(a[0]) / 2)
+
+
+def fit_circle_lsq(pts: np.ndarray, iterations: int = 30) -> tuple[float, float, float] | None:
+    """幾何最小平方圓擬合：Taubin 起始 → Gauss–Newton 最小化各點到圓的徑向距離。
+
+    部分圓弧（R 角、杯口圓角）也無偏；整圈時與 Kåsa 幾乎相同。回傳 (cx, cy, r)。
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    if len(pts) < 3:
+        return None
+    init = _fit_circle_taubin(pts) or fit_circle_kasa(pts)
+    if init is None:
+        return None
+    cx, cy, r = init
+    x, y = pts[:, 0], pts[:, 1]
+    ones = np.ones(len(pts))
+    for _ in range(int(iterations)):
+        dx, dy = x - cx, y - cy
+        d = np.maximum(np.hypot(dx, dy), 1e-9)
+        resid = d - r
+        jac = np.column_stack([-dx / d, -dy / d, -ones])
+        try:
+            step, *_ = np.linalg.lstsq(jac, -resid, rcond=None)
+        except np.linalg.LinAlgError:
+            break
+        if not np.all(np.isfinite(step)):
+            break
+        cx, cy, r = cx + float(step[0]), cy + float(step[1]), r + float(step[2])
+        if r <= 0:
+            return init
+        if float(np.abs(step).max()) < 1e-7:
+            break
+    return float(cx), float(cy), float(r)
 
 
 def fit_circle_ransac(pts: np.ndarray, tol: float = 2.0, iterations: int = 200, seed: int = 0) -> tuple[tuple[float, float, float], np.ndarray] | None:
@@ -278,7 +390,11 @@ def fit_line_ransac(pts: np.ndarray, tol: float = 2.0, iterations: int = 200, se
 # 範本比對
 # ---------------------------------------------------------------------------
 def _rotate_template(tpl: np.ndarray, angle: float) -> tuple[np.ndarray, np.ndarray | None]:
-    """旋轉範本（外框放大以免裁掉角），回傳 (旋轉後影像, 遮罩)；angle=0 不做事。"""
+    """旋轉範本（外框放大以免裁掉角），回傳 (旋轉後影像, 遮罩)；angle=0 不做事。
+
+    角度慣例與 ROI／找直線相同：影像座標 y 向下，正值＝畫面順時針（cv2.getRotationMatrix2D 的正值是逆時針，所以取負）。
+    這樣 shape_align 的 dθ 才能直接餵給 fixture_roi（transform_region）。
+    """
     if abs(angle) < 1e-6:
         return tpl, None
     h, w = tpl.shape[:2]
@@ -286,7 +402,7 @@ def _rotate_template(tpl: np.ndarray, angle: float) -> tuple[np.ndarray, np.ndar
     cos, sin = abs(math.cos(rad)), abs(math.sin(rad))
     nw = int(math.ceil(w * cos + h * sin))
     nh = int(math.ceil(w * sin + h * cos))
-    m = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+    m = cv2.getRotationMatrix2D((w / 2, h / 2), -angle, 1.0)
     m[0, 2] += nw / 2 - w / 2
     m[1, 2] += nh / 2 - h / 2
     rotated = cv2.warpAffine(tpl, m, (nw, nh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
@@ -346,10 +462,61 @@ def _peaks(result: np.ndarray, threshold: float, max_n: int, tw: int, th: int) -
     return out
 
 
+def _subpixel_peak(res: np.ndarray, x: int, y: int) -> tuple[float, float]:
+    """相關圖峰值的 3×3 拋物線次像素內插（峰值在邊界時原樣回傳）。"""
+    h, w = res.shape[:2]
+    fx, fy = float(x), float(y)
+    if 0 < x < w - 1:
+        lo, c, hi = float(res[y, x - 1]), float(res[y, x]), float(res[y, x + 1])
+        d = lo - 2 * c + hi
+        if d < -1e-12:
+            fx += max(-0.5, min(0.5, 0.5 * (lo - hi) / d))
+    if 0 < y < h - 1:
+        lo, c, hi = float(res[y - 1, x]), float(res[y, x]), float(res[y + 1, x])
+        d = lo - 2 * c + hi
+        if d < -1e-12:
+            fy += max(-0.5, min(0.5, 0.5 * (lo - hi) / d))
+    return fx, fy
+
+
+def _window_match(search: np.ndarray, rt: np.ndarray, rm: np.ndarray | None, cx: float, cy: float, pad: int = 3) -> tuple[float, float, float] | None:
+    """以中心 (cx, cy) 為準在小視窗內比對旋轉範本，回傳 (次像素中心 x, y, 分數)。"""
+    rh, rw = rt.shape[:2]
+    left, top = int(round(cx - rw / 2)), int(round(cy - rh / 2))
+    x0, y0 = max(0, left - pad), max(0, top - pad)
+    x1, y1 = min(search.shape[1], left + rw + pad), min(search.shape[0], top + rh + pad)
+    res = _match(search[y0:y1, x0:x1], rt, rm)
+    if res is None:
+        return None
+    _, score, _, loc = cv2.minMaxLoc(res)
+    px, py = _subpixel_peak(res, int(loc[0]), int(loc[1]))
+    return x0 + px + rw / 2, y0 + py + rh / 2, float(score)
+
+
+def _refine_match(search: np.ndarray, tpl: np.ndarray, cx: float, cy: float, angle: float, score: float, step: float) -> tuple[float, float, float, float]:
+    """次像素精修：角度以 (angle−step, angle, angle+step) 三個分數做拋物線內插，再於精修角度下重新比對並做 3×3 位置內插。"""
+    best_angle = angle
+    if step > 0:
+        scores = []
+        for a in (angle - step, angle, angle + step):
+            rt, rm = _rotate_template(tpl, a)
+            hit = _window_match(search, rt, rm, cx, cy)
+            scores.append(hit[2] if hit is not None else -1.0)
+        lo, mid, hi = scores
+        d = lo - 2 * mid + hi
+        if d < -1e-9 and mid >= max(lo, hi):
+            best_angle = angle + step * max(-0.5, min(0.5, 0.5 * (lo - hi) / d))
+    rt, rm = _rotate_template(tpl, best_angle)
+    hit = _window_match(search, rt, rm, cx, cy)
+    if hit is None:
+        return cx, cy, score, angle
+    return hit[0], hit[1], hit[2], best_angle
+
+
 class TemplateMatchTool(Tool):
     key = "template_match"
     label = "範本比對"
-    description = "以正規化相關（NCC）在影像或搜尋範圍內找範本；支援旋轉搜尋與金字塔加速。"
+    description = "以正規化相關（NCC）在影像或搜尋範圍內找範本；支援旋轉搜尋、金字塔加速與次像素精修。角度以畫面順時針為正（與 ROI／找直線相同）。"
     category = "locate"
     icon = "ScanSearch"
     params = [
@@ -360,6 +527,7 @@ class TemplateMatchTool(Tool):
         Param("angle_range", "旋轉範圍 ±", kind="number", default=0, minimum=0, maximum=180, unit="°", help_text="0 表示不做旋轉搜尋。", group="旋轉", teach=True),
         Param("angle_step", "角度步進", kind="number", default=5, minimum=0.5, maximum=45, unit="°", group="旋轉"),
         Param("pyramid", "金字塔加速", kind="boolean", default=True, help_text="先在 1/4 縮圖粗找，再在候選附近細找。範本很小時自動關閉。", group="進階"),
+        Param("subpixel", "次像素精修", kind="boolean", default=True, help_text="位置以相關圖 3×3 拋物線內插；有旋轉搜尋時再以相鄰角度的分數內插角度（精度優於角度步進）。", group="進階"),
     ]
     inputs = [Port("image", "影像", "image"), Port("roi", "搜尋範圍（動態）", "region", required=False)]
     outputs = [
@@ -468,9 +636,14 @@ class TemplateMatchTool(Tool):
         overlays: list[dict[str, Any]] = []
         if region is not None:
             overlays.append(region_overlay(region, label="search"))
+        refine_step = angle_step if len(angles) > 1 else 0.0
+        do_subpixel = ctx.flag("subpixel", True)
         for x, y, s, angle, rw, rh in kept:
-            cx, cy = c.to_full(x + rw / 2, y + rh / 2)
-            fx, fy = c.to_full(x, y)
+            sx, sy = x + rw / 2, y + rh / 2
+            if do_subpixel:
+                sx, sy, s, angle = _refine_match(search, tpl, sx, sy, angle, s, refine_step)
+            cx, cy = c.to_full(sx, sy)
+            fx, fy = cx - tw / 2, cy - th / 2
             total_angle = angle + (float(region.get("angle", 0)) if region and region.get("shape") == "rotated_rect" else 0.0)
             matches.append({
                 "x": round(fx, 2), "y": round(fy, 2), "w": tw, "h": th,
@@ -597,13 +770,14 @@ class FindCircleTool(Tool):
     category = "locate"
     icon = "Circle"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["circle", "annulus", "rect"], help_text="圓／圓環：由中心往外掃到外半徑；矩形：掃到內切半徑。"),
+        Param("roi", "區域", kind="roi", required=True, shapes=["circle", "annulus", "rect"], help_text="圓／圓環：由中心往外掃到外半徑（圓環可設扇形起迄角，只掃該扇形）；矩形：掃到內切半徑。"),
         Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, help_text="沿掃描線由內往外的灰階變化方向。"),
         Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, help_text="灰階梯度低於此值不算邊緣。", teach=True),
         Param("num_rays", "掃描線數", kind="number", default=36, minimum=6, maximum=720),
         Param("edge_select", "取哪個邊緣", kind="select", default="strongest", options=[{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個（最靠內）"}, {"value": "last", "label": "最後一個（最靠外）"}]),
         Param("ransac", "RANSAC 剔除離群", kind="boolean", default=True),
         Param("ransac_tol", "RANSAC 容差", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="進階"),
+        Param("refine", "重掃精修", kind="boolean", default=True, group="進階", help_text="ROI 中心偏離圓心時，以擬合圓心重掃一次讓掃描線與邊緣垂直。"),
         Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
     ]
     inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
@@ -620,10 +794,12 @@ class FindCircleTool(Tool):
             raise ToolError("沒有設定區域")
         shape = region.get("shape")
         cx, cy = region_center(region)
+        a0 = a1 = None
         if shape == "circle":
             r_in, r_out = 0.0, float(region["r"])
         elif shape == "annulus":
             r_in, r_out = float(region["r_inner"]), float(region["r_outer"])
+            a0, a1 = region.get("a0"), region.get("a1")
         elif shape == "rect":
             r_in, r_out = 0.0, min(float(region["w"]), float(region["h"])) / 2
         else:
@@ -631,39 +807,31 @@ class FindCircleTool(Tool):
         if r_out - r_in < 3:
             raise ToolError("區域半徑太小")
         num_rays = max(6, ctx.integer("num_rays", 36))
-        n_samples = int(math.ceil(r_out - r_in)) + 1
-        radii = np.linspace(r_in, r_out, n_samples, dtype=np.float32)
-        thetas = np.linspace(0, 2 * math.pi, num_rays, endpoint=False, dtype=np.float32)
-        map_x = (cx + np.cos(thetas)[:, None] * radii[None, :]).astype(np.float32)
-        map_y = (cy + np.sin(thetas)[:, None] * radii[None, :]).astype(np.float32)
-        profiles = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
         polarity = ctx.param("polarity", "any")
         thr = ctx.number("edge_threshold", 20)
         sel = ctx.param("edge_select", "strongest")
         smoothing = ctx.integer("smoothing", 3)
-        pts: list[list[float]] = []
-        for i, edges in enumerate(find_edges_rows(profiles, polarity, thr, smoothing)):
-            e = pick_edge(edges, sel)
-            if e is None:
-                continue
-            rr = r_in + e[0] * (r_out - r_in) / max(1, n_samples - 1)
-            pts.append([cx + math.cos(thetas[i]) * rr, cy + math.sin(thetas[i]) * rr])
+        use_ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
+
+        def scan(ox: float, oy: float) -> np.ndarray:
+            return np.asarray(radial_edge_points(image, ox, oy, r_in, r_out, num_rays, polarity, thr, sel, smoothing, a0=a0, a1=a1), dtype=np.float64).reshape(-1, 2)
+
+        arr = scan(cx, cy)
         overlays = [region_overlay(region, label="roi")]
-        if len(pts) < 3:
-            return Result(outputs={"cx": float("nan"), "cy": float("nan"), "r": float("nan"), "points": pts, "score": 0.0},
-                          overlays=overlays, branch="not_found", status="ng", message=f"邊緣點不足（{len(pts)}）")
-        arr = np.asarray(pts, dtype=np.float64)
-        inliers = np.ones(len(arr), dtype=bool)
-        if ctx.flag("ransac", True):
-            fitted = fit_circle_ransac(arr, tol=ctx.number("ransac_tol", 2))
-            if fitted is None:
-                circle = fit_circle_lsq(arr)
-            else:
-                circle, inliers = fitted
-        else:
-            circle = fit_circle_lsq(arr)
+        nan = float("nan")
+        if len(arr) < 3:
+            return Result(outputs={"cx": nan, "cy": nan, "r": nan, "points": arr.round(2).tolist(), "score": 0.0},
+                          overlays=overlays, branch="not_found", status="ng", message=f"邊緣點不足（{len(arr)}）")
+        circle, inliers = fit_circle_points(arr, use_ransac, tol)
+        # 重掃精修：ROI 中心偏離圓心時掃描線斜切邊緣；改從擬合圓心再掃一次，掃描線與邊緣垂直。
+        if circle is not None and ctx.flag("refine", True) and math.hypot(circle[0] - cx, circle[1] - cy) > 0.5:
+            arr2 = scan(circle[0], circle[1])
+            if len(arr2) >= 3:
+                circle2, inliers2 = fit_circle_points(arr2, use_ransac, tol)
+                if circle2 is not None and int(inliers2.sum()) >= int(inliers.sum()):
+                    arr, circle, inliers = arr2, circle2, inliers2
         if circle is None:
-            return Result(outputs={"cx": float("nan"), "cy": float("nan"), "r": float("nan"), "points": pts, "score": 0.0},
+            return Result(outputs={"cx": nan, "cy": nan, "r": nan, "points": arr.round(2).tolist(), "score": 0.0},
                           overlays=overlays, branch="not_found", status="ng", message="擬合失敗")
         fcx, fcy, fr = circle
         resid = np.abs(np.hypot(arr[:, 0] - fcx, arr[:, 1] - fcy) - fr)
@@ -904,7 +1072,7 @@ class HoughLinesTool(Tool):
                       branch="found" if lines else "not_found", status="ok" if lines else "ng", message=f"{len(lines)} 條線段")
 
 
-__all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "fit_circle_lsq", "fit_circle_ransac", "fit_line_ransac", "POLARITY_OPTIONS"]
+__all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "sector_thetas", "radial_edge_points", "fit_circle_kasa", "fit_circle_lsq", "fit_circle_ransac", "fit_circle_points", "fit_line_ransac", "POLARITY_OPTIONS"]
 
 TOOLS = [
     TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(),

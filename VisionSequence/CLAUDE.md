@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：66 個內建工具（8 類）、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 351 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：66 個內建工具（8 類）、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 363 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -53,6 +53,7 @@
 - 繼承 `Tool`，宣告 `params`（kind 只能是 `PARAM_KINDS`）、`inputs`、`outputs`（type 只能是 `PORT_TYPES`），`execute(ctx) -> Result`。內建放進對應 builtin 模組的 `TOOLS`。
 - 找不到東西回 `status="ng"` 或分支，不要 `raise`；可預期失敗 `raise ToolError(...)`。overlays 座標一律是**該節點輸入影像**的全圖座標；ROI 用 `tools/roi.py` 的 `crop()` 與 `Crop.to_full()`。**overlays 不得畫進影像、不得就地修改輸入 ndarray**（`tests/test_tools.py ToolPurityTests` 全工具掃描鎖住）。
 - 影像位深：工具預設只吃 u8（其他自動正規化）；cv2 原生支援 u16/f32 的工具宣告 `accepts = ("u8","u16","f32")`（`imgfmt.py`）。
+- **幾何慣例**：影像座標 y 向下、像素中心在整數座標；**角度正值＝畫面順時針**（ROI 旋轉矩形、找直線 atan2、範本比對 `best_angle`、定位補正 dθ、overlay angle 全部同向；cv2.getRotationMatrix2D 是逆時針為正，呼叫時取負）。圓擬合用 `locate.fit_circle_lsq`（Taubin＋幾何精修，部分弧無偏；`fit_circle_kasa` 只當起始值）、徑向掃描用 `locate.radial_edge_points`（支援扇形 a0/a1、遮罩）、Otsu 用 `tools/hist.py`；blob 的 `area` 是像素數。精度與慣例的量化稽核在 `tests/test_tools.py AlgorithmAccuracyTests`，見 docs/vision-capabilities.html §5。
 - 新增工具 checklist：`register()`（放進模組 `TOOLS`）→ `tests/test_tools.py` 至少一案例 → `scripts/bench_tools.py` 加一筆 → 現場調的參數標 `teach=True` → `agent/skills/tools.md` 補一段要領 → 需要的話加進範例樣板。前端不用改。
 - 新增 `Param.kind` 或 `Port.type`：後端封閉集合、前端 `ParamField` switch、`catalogue()`、`docs/contract.html`、`docs/glossary.html` 五處同步。新增 ROI 形狀＝`tools/roi.py` 各 helper＋前端 `types.ts Region`／`roiEditor.ts`／`geometry.ts` 的 switch 同步（typecheck 會抓漏），見 docs/vision-capabilities.html。
 - 舊工具名（`edges`→`filter`、`hist_eq`→`lut`、`write_plc`→`write_modbus`）由 `graph.LEGACY_TOOL_TYPES` 在 validate／compile 時自動換，參數名刻意相容。
@@ -122,6 +123,7 @@
 - `threading.Thread` 子類別**不要用 `_started`／`_stop` 當屬性名**（會蓋掉 Thread 內部欄位）。
 - `IntegrityError` 要包在 `transaction.atomic()` 內再 catch，否則在測試交易裡會變 `TransactionManagementError`。`close_old_connections()` 只在「自己執行緒」結束時呼叫。
 - SSE 串流測試帶 `?max_seconds=0.2`，不然測試 client 會把 55 秒的串流讀完。
+- **合成真值**：`cv2.circle`／`cv2.ellipse` 實心繪製會多含 1px 外框（半徑偏大 0.5px），精度測試要用解析式覆蓋率 `clip(r + 0.5 − dist)` 或 8× 超取樣後 INTER_AREA 縮小；`cv2.contourArea` 是輪廓幾何面積，小粒子少算約半個周長（1 像素＝0）；Kåsa 圓擬合對 60° 以下的弧有 px 級偏差，不要拿來量 R 角。
 - Windows 中文路徑：讀圖用 `np.fromfile` + `cv2.imdecode`，寫圖用 `imencode` + `tofile`。console 輸出含特殊符號時設 `PYTHONIOENCODING=utf-8`。
 - **Git Bash heredoc 會吞反斜線**（`"\n"` 變真換行）且長內容會被截斷（unexpected EOF）：長內容、含反斜線或 TSX 的檔案一律用 Write 工具寫檔，再用 Bash 執行 patch 腳本。`.ps1` 保留 UTF-8 BOM。
 - Vite dev server 的 `/api` 代理與直打後端行為一致；LLM 供應商 hang 時不會拖垮平台（uvicorn 執行緒池），但要給短逾時。

@@ -543,7 +543,7 @@ class FftFilterTool(Tool):
     accepts = ("u8", "u16", "f32")
     params = [
         Param("mode", "濾波", kind="select", default="lowpass", options=[
-            {"value": "lowpass", "label": "低通（保留大結構）"}, {"value": "highpass", "label": "高通（保留邊緣／細紋）"},
+            {"value": "lowpass", "label": "低通（保留大結構）"}, {"value": "highpass", "label": "高通（保留邊緣／細紋，以中灰 128 為零點）"},
         ]),
         Param("style", "方式", kind="select", default="attenuate", options=[
             {"value": "truncate", "label": "截斷"}, {"value": "attenuate", "label": "高斯衰減"},
@@ -569,13 +569,13 @@ class FftFilterTool(Tool):
         if ctx.param("mode", "lowpass") == "highpass":
             mask = 1.0 - mask
         out_f = np.fft.ifft2(np.fft.ifftshift(f * mask))
-        out = np.abs(out_f)
+        # 取實部（取絕對值會把高通的負響應翻正，邊緣兩側都變亮）；高通以中灰為零點讓正負響應都看得到，浮點保留帶號。
+        out = out_f.real.astype(np.float32)
+        highpass = ctx.param("mode", "lowpass") == "highpass"
         if gray.dtype == np.uint8:
-            out = np.clip(out, 0, 255).astype(np.uint8)
+            out = np.clip(out + (128.0 if highpass else 0.0), 0, 255).astype(np.uint8)
         elif gray.dtype == np.uint16:
-            out = np.clip(out, 0, 65535).astype(np.uint16)
-        else:
-            out = out.astype(np.float32)
+            out = np.clip(out + (32768.0 if highpass else 0.0), 0, 65535).astype(np.uint16)
         spectrum = np.log1p(np.abs(f))
         spectrum = (spectrum / spectrum.max() * 255.0).astype(np.uint8) if spectrum.max() > 0 else np.zeros_like(gray, dtype=np.uint8)
         return Result(outputs={"image": out, "spectrum": spectrum}, message=f"{ctx.param('mode', 'lowpass')} r={cutoff:g}")

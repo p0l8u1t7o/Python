@@ -12,13 +12,17 @@ import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import read_asset_image, to_gray
+from apps.vision.tools.hist import masked_hist, otsu_from_hist
 from apps.vision.tools.roi import crop, region_overlay
 
 ROI_SHAPES = ["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon"]
 
 
-def _binarize(gray: np.ndarray, method: str, threshold: float, polarity: str) -> np.ndarray:
-    """灰階 → 0/255 前景遮罩；polarity=dark 時暗物件為前景。"""
+def _binarize(gray: np.ndarray, method: str, threshold: float, polarity: str, roi_mask: np.ndarray | None = None) -> np.ndarray:
+    """灰階 → 0/255 前景遮罩；polarity=dark 時暗物件為前景。
+
+    Otsu 在非矩形 ROI 時只用遮罩內像素算門檻（外框角落落在 ROI 外的其他灰階不會污染門檻）。
+    """
     if gray.dtype != np.uint8:
         gray = np.clip(gray, 0, 255).astype(np.uint8)
     flag = cv2.THRESH_BINARY_INV if polarity == "dark" else cv2.THRESH_BINARY
@@ -28,33 +32,38 @@ def _binarize(gray: np.ndarray, method: str, threshold: float, polarity: str) ->
         mask = (gray > 0).astype(np.uint8) * 255
         if polarity == "dark":
             mask = cv2.bitwise_not(mask)
+    elif roi_mask is not None:
+        _, mask = cv2.threshold(gray, otsu_from_hist(masked_hist(gray, roi_mask)), 255, flag)
     else:
         _, mask = cv2.threshold(gray, 0, 255, flag | cv2.THRESH_OTSU)
     return mask
 
 
-def _prefilter_small(mask: np.ndarray, min_area: float) -> np.ndarray:
+def _prefilter_small(mask: np.ndarray, min_area: float) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None]:
     """雜訊很多的遮罩先用連通元件把「外接框面積 < min_area」的元件清掉，再取輪廓。
 
     findContours 對幾萬個單像素雜訊要 40 ms（每個輪廓都是一個 Python 物件），
     connectedComponentsWithStats 只要 6 ms。外接框面積是 contourArea 的上界，
     所以被清掉的元件本來就會被 min_area 篩掉，結果與原本完全相同。
     乾淨的遮罩不該付這 2.5 ms：先抽樣列數水平方向的 0/255 轉換密度，只有雜訊密時才做。
+
+    回傳 (遮罩, labels, stats)：有算連通元件時一併回傳（濾掉的元件在 labels 仍是原標籤但遮罩已為 0，
+    保留的元件標籤不變），analyze_blobs 拿來算像素面積就不必再跑一次。
     """
     if min_area < 4 or mask.shape[0] < 16 or mask.shape[1] < 16:
-        return mask
+        return mask, None, None
     rows = np.ascontiguousarray(mask[::8])
     transitions = cv2.countNonZero(cv2.absdiff(rows[:, 1:], rows[:, :-1]))
     if transitions < 0.02 * rows.size:
-        return mask
+        return mask, None, None
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if n <= 1:
-        return mask
+        return mask, labels, stats
     bbox_area = stats[:, cv2.CC_STAT_WIDTH].astype(np.int64) * stats[:, cv2.CC_STAT_HEIGHT]
     keep = bbox_area >= min_area
     keep[0] = False
     if keep[1:].all():
-        return mask
+        return mask, labels, stats
     kept = np.nonzero(keep)[0]
     if len(kept) <= 64:
         out = np.zeros_like(mask)
@@ -62,31 +71,50 @@ def _prefilter_small(mask: np.ndarray, min_area: float) -> np.ndarray:
             x, y, w, h = (int(stats[i, k]) for k in (cv2.CC_STAT_LEFT, cv2.CC_STAT_TOP, cv2.CC_STAT_WIDTH, cv2.CC_STAT_HEIGHT))
             win = labels[y : y + h, x : x + w] == i
             out[y : y + h, x : x + w][win] = 255
-        return out
+        return out, labels, stats
     lut = np.where(keep, 255, 0).astype(np.uint8)
-    return lut[labels]
+    return lut[labels], labels, stats
 
 
 def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0, min_circularity: float = 0,
                   external_only: bool = True, fill_holes: bool = False) -> tuple[list[dict[str, Any]], list[np.ndarray]]:
-    """從二值遮罩取輪廓並計算幾何特徵；座標為遮罩座標。"""
-    mode = cv2.RETR_EXTERNAL if external_only or fill_holes else cv2.RETR_CCOMP
-    contours, hierarchy = cv2.findContours(_prefilter_small(mask, min_area), mode, cv2.CHAIN_APPROX_SIMPLE)
+    """從二值遮罩取輪廓並計算幾何特徵；座標為遮罩座標。
+
+    area 是**像素數**（連通元件統計），與粒子分析軟體一致；cv2.contourArea 是輪廓多邊形的幾何面積，
+    小粒子會少算約半個周長（1 像素粒子是 0、2×2 是 1）。external_only／fill_holes 時面積含孔洞，否則扣掉孔洞。
+    圓形度仍用輪廓幾何面積與周長（兩者同一套幾何定義才自洽）。
+    """
+    mask, labels, stats = _prefilter_small(mask, min_area)
+    contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     blobs: list[dict[str, Any]] = []
     kept: list[np.ndarray] = []
+    if not contours:
+        return blobs, kept
+    hier = hierarchy[0]
+    with_holes = external_only or fill_holes
+    # 像素面積的來源：預濾已算好連通元件就直接用；輪廓很多（雜訊）或要扣孔洞時跑一次連通元件；
+    # 乾淨遮罩、少量 blob 則逐個把外輪廓填進外接框數像素（免掉整張圖的 2～3 ms）。
+    if labels is None and (len(contours) > 64 or not with_holes):
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     for i, cnt in enumerate(contours):
-        if hierarchy is not None and mode == cv2.RETR_CCOMP and hierarchy[0][i][3] != -1:
+        if hier[i][3] != -1:
             continue  # 洞不算 blob
-        area = float(cv2.contourArea(cnt))
-        if not fill_holes and hierarchy is not None and mode == cv2.RETR_CCOMP:
-            child = hierarchy[0][i][2]
-            while child != -1:
-                area -= float(cv2.contourArea(contours[child]))
-                child = hierarchy[0][child][0]
+        if labels is not None:
+            px, py = int(cnt[0][0][0]), int(cnt[0][0][1])
+            area = float(stats[labels[py, px], cv2.CC_STAT_AREA])
+        else:
+            area = -1.0
+        if area < 0 or (with_holes and hier[i][2] != -1):
+            # 含孔洞的面積：把外輪廓填滿數像素（外接框大小的暫存）
+            x, y, w, h = cv2.boundingRect(cnt)
+            filled = np.zeros((h, w), dtype=np.uint8)
+            cv2.drawContours(filled, [cnt - np.array([x, y], dtype=cnt.dtype)], -1, 255, -1)
+            area = float(cv2.countNonZero(filled))
         if area < min_area or (max_area > 0 and area > max_area):
             continue
         perimeter = float(cv2.arcLength(cnt, True))
-        circularity = float(4 * math.pi * area / (perimeter**2)) if perimeter > 0 else 0.0
+        geo_area = float(cv2.contourArea(cnt))
+        circularity = float(4 * math.pi * geo_area / (perimeter**2)) if perimeter > 0 else 0.0
         circularity = min(circularity, 1.0)
         if circularity < min_circularity:
             continue
@@ -113,13 +141,21 @@ def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0,
     return blobs, kept
 
 
-def _watershed_split(mask: np.ndarray) -> np.ndarray:
-    """距離轉換＋分水嶺把黏連粒子切開。"""
-    dist = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+def _watershed_split(mask: np.ndarray, min_radius: float = 0.0) -> np.ndarray:
+    """距離轉換＋分水嶺把黏連粒子切開。
+
+    種子＝距離轉換的區域極大值（視窗約 2×最小粒子半徑），不是全圖最大值的一半：大小粒子混在一張圖時
+    小粒子也有自己的種子，兩顆等大且重疊的粒子頸部距離值高於半徑一半時也切得開。
+    極大值先膨脹一點再取連通元件，長條粒子沿中軸的多個極大值會合併成一顆種子。
+    """
+    dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
     if dist.max() <= 0:
         return mask
-    _, peaks = cv2.threshold(dist, 0.5 * float(dist.max()), 255, cv2.THRESH_BINARY)
-    peaks = peaks.astype(np.uint8)
+    k = max(3, int(2 * max(1.5, min_radius) + 1) | 1)
+    local_max = cv2.dilate(dist, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    peaks = ((dist >= local_max - 1e-6) & (dist >= max(1.0, 0.5 * min_radius))).astype(np.uint8) * 255
+    peaks = cv2.dilate(peaks, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k // 2 * 2 + 1, k // 2 * 2 + 1)))
+    peaks = cv2.bitwise_and(peaks, mask)
     n, markers = cv2.connectedComponents(peaks)
     if n <= 2:  # 只有一顆種子：切不開，原樣返回
         return mask
@@ -151,7 +187,7 @@ class BlobTool(Tool):
         Param("sort_by", "排序", kind="select", default="area", options=[
             {"value": "area", "label": "面積（大→小）"}, {"value": "x", "label": "X（左→右）"}, {"value": "y", "label": "Y（上→下）"}, {"value": "circularity", "label": "圓形度（高→低）"},
         ]),
-        Param("separate", "分離黏連粒子", kind="boolean", default=False, group="進階", help_text="距離轉換＋分水嶺把黏在一起的粒子切開再量測。"),
+        Param("separate", "分離黏連粒子", kind="boolean", default=False, group="進階", help_text="距離轉換＋分水嶺把黏在一起的粒子切開再量測；種子視窗依「最小面積」推算的粒子半徑。"),
         Param("fill_holes", "填滿孔洞", kind="boolean", default=False, group="進階"),
         Param("external_only", "只取最外層輪廓", kind="boolean", default=True, group="進階", help_text="關閉時面積會扣掉孔洞。"),
         Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定", help_text="找到的 blob 少於此值判 NG。"),
@@ -173,11 +209,11 @@ class BlobTool(Tool):
         if c.image.size == 0:
             raise ToolError("區域落在影像外")
         polarity = ctx.param("polarity", "bright")
-        mask = _binarize(np.ascontiguousarray(c.image), ctx.param("threshold_method", "otsu"), ctx.number("threshold", 128), polarity)
+        mask = _binarize(np.ascontiguousarray(c.image), ctx.param("threshold_method", "otsu"), ctx.number("threshold", 128), polarity, c.mask)
         if c.mask is not None:
             mask = cv2.bitwise_and(mask, c.mask)
         if ctx.flag("separate"):
-            mask = _watershed_split(mask)
+            mask = _watershed_split(mask, math.sqrt(max(0.0, ctx.number("min_area", 50)) / math.pi))
         blobs, contours = analyze_blobs(
             mask, min_area=ctx.number("min_area", 50), max_area=ctx.number("max_area", 0),
             min_circularity=ctx.number("min_circularity", 0), external_only=ctx.flag("external_only", True), fill_holes=ctx.flag("fill_holes"),
@@ -499,7 +535,7 @@ class ColorCheckTool(Tool):
         Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
         Param("color", "目標色", kind="color", required=True, default="#ff0000"),
         Param("space", "比較空間", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB 歐氏距離（0~441）"}, {"value": "hsv", "label": "HSV（色相為主）"}]),
-        Param("tolerance", "容差", kind="number", default=60, minimum=0, help_text="RGB：歐氏距離；HSV：色相差（0~180）加權距離。", teach=True),
+        Param("tolerance", "容差", kind="number", default=60, minimum=0, help_text="RGB：歐氏距離；HSV：色相差（0~180，依飽和度加權）＋飽和度／明度差÷4 的距離。", teach=True),
     ]
     inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
     outputs = [flow_out("match", "符合", "ok"), flow_out("mismatch", "不符", "critical"), Port("distance", "距離", "number"), Port("is_match", "符合", "bool"), Port("mean_hex", "平均色", "string"), Port("mean_bgr", "平均 BGR", "list"), Port("mean_hsv", "平均 HSV", "list")]
@@ -520,6 +556,8 @@ class ColorCheckTool(Tool):
             tgt_hsv = cv2.cvtColor(target.reshape(1, 1, 3).astype(np.uint8), cv2.COLOR_BGR2HSV).reshape(3).astype(float)
             dh = abs(mean_hsv[0] - tgt_hsv[0])
             dh = min(dh, 180 - dh)
+            # 灰／低飽和色的色相沒有意義：色相差以兩者較低的飽和度加權，灰目標對灰區域不會因色相亂數判不符
+            dh *= min(mean_hsv[1], tgt_hsv[1]) / 255.0
             distance = float(math.sqrt(dh**2 + ((mean_hsv[1] - tgt_hsv[1]) / 4) ** 2 + ((mean_hsv[2] - tgt_hsv[2]) / 4) ** 2))
         else:
             distance = float(np.linalg.norm(mean_bgr - target))
