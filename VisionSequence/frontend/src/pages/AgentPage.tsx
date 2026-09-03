@@ -749,7 +749,7 @@ export function AgentPage() {
         />
         <div className="flex min-h-0 flex-1 gap-4">
           {/* 左：步驟 */}
-          <div className="w-[380px] shrink-0 space-y-3 overflow-y-auto pb-4 pr-1">
+          <div className="w-full shrink-0 space-y-3 overflow-y-auto pb-4 pr-1 md:w-[380px]">
             <Card className="space-y-2 p-3">
               <p className="text-xs font-semibold text-muted">1 · {t('agent.stepImage')}</p>
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { void onUpload(e.target.files); e.target.value = '' }} />

@@ -14,6 +14,7 @@ import { LoadingState } from '@/components/ui'
 import { LockBanner } from '@/components/auth/LockBanner'
 import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
+import { MOBILE_QUERY, NARROW_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
 import { useCapacity, useFlow } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
 
@@ -166,6 +167,7 @@ function Breadcrumb() {
   const flowMatch = /^\/flows\/(\d+)(?:\/(teach|tools|stats|golden))?/.exec(pathname)
   const flowId = flowMatch ? Number(flowMatch[1]) : null
   const flow = useFlow(flowId)
+  const narrow = useMediaQuery(NARROW_QUERY)
   const crumbs: { label: string; to?: string }[] = [{ label: t('nav.dashboard'), to: '/' }]
   if (parts.length) {
     const nav = NAV.find((n) => n.to === `/${parts[0]}`)
@@ -176,12 +178,14 @@ function Breadcrumb() {
       if (sub) crumbs.push({ label: t(`breadcrumb.${sub}`) })
     }
   }
+  // 窄螢幕只留最後兩層（否則每層被擠成 1～6px 寬的省略號，點不到也看不懂）
+  const shown = narrow ? crumbs.slice(-2) : crumbs
   return (
     <nav className="flex min-w-0 items-center gap-1 text-[13px] text-muted" aria-label="breadcrumb" data-testid="breadcrumb">
-      {crumbs.map((c, i) => (
+      {shown.map((c, i) => (
         <span key={i} className="flex min-w-0 items-center gap-1">
           {i > 0 ? <ChevronRight size={13} className="shrink-0 text-subtle" aria-hidden /> : null}
-          {c.to ? <NavLink to={c.to} className="truncate hover:text-brand">{c.label}</NavLink> : <span className="truncate font-medium text-heading">{c.label}</span>}
+          {c.to ? <NavLink to={c.to} className="min-w-8 truncate py-1 hover:text-brand">{c.label}</NavLink> : <span className="truncate py-1 font-medium text-heading">{c.label}</span>}
         </span>
       ))}
     </nav>
@@ -192,6 +196,12 @@ export function AppShell() {
   const { t } = useTranslation()
   const auth = useAuth()
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  // 手機（< 768px）：側欄改成抽屜（預設收起、☰ 開啟、點選項目或換頁自動關），不再佔掉 220px 內容寬
+  const mobile = useMediaQuery(MOBILE_QUERY)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const { pathname } = useLocation()
+  useEffect(() => { setMobileOpen(false) }, [pathname])
+  const narrow = collapsed && !mobile
   // 鎖定事件：流程串流會濾掉沒有 flow_id 的事件，所以這裡另開一條只聽 lock 的全域串流。
   useLockEvents(auth.authenticated)
   useEffect(() => {
@@ -203,29 +213,34 @@ export function AppShell() {
   }, [collapsed])
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <nav className={`flex shrink-0 flex-col bg-sidebar text-sidebar-text transition-[width] duration-150 ${collapsed ? 'w-[60px]' : 'w-[220px]'}`} data-testid="sidebar" data-collapsed={collapsed ? 'true' : 'false'}>
+      {mobile && mobileOpen ? <div className="fixed inset-0 z-30 bg-black/50" onClick={() => setMobileOpen(false)} aria-hidden data-testid="sidebar-backdrop" /> : null}
+      <nav
+        className={mobile
+          ? `fixed inset-y-0 left-0 z-40 flex w-[220px] flex-col bg-sidebar text-sidebar-text shadow-2xl transition-transform duration-150 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`
+          : `flex shrink-0 flex-col bg-sidebar text-sidebar-text transition-[width] duration-150 ${narrow ? 'w-[60px]' : 'w-[220px]'}`}
+        data-testid="sidebar" data-collapsed={narrow ? 'true' : 'false'} data-mobile={mobile ? 'true' : 'false'} aria-hidden={mobile && !mobileOpen ? true : undefined}>
         <div className="flex h-12 items-center gap-2.5 border-b border-[var(--sidebar-line)] px-3.5" title={t('app.name')}>
           <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--sidebar-brand)] text-sm font-bold text-white">VS</span>
-          {!collapsed ? <span className="truncate text-[15px] font-semibold text-white">{t('app.name')}</span> : null}
+          {!narrow ? <span className="truncate text-[15px] font-semibold text-white">{t('app.name')}</span> : null}
         </div>
-        {!collapsed ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
+        {!narrow ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
         {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
-        <div className={`flex-1 ${collapsed ? 'overflow-visible' : 'overflow-y-auto'}`}>
+        <div className={`flex-1 ${narrow ? 'overflow-visible' : 'overflow-y-auto'}`}>
           {NAV.filter((item) => !item.admin || auth.isAdmin).map(({ to, key, icon: Icon, end }) => (
-            <NavLink key={key} to={to} end={end} title={collapsed ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${collapsed ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
+            <NavLink key={key} to={to} end={end} onClick={() => setMobileOpen(false)} title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
               <Icon size={17} aria-hidden className="shrink-0" />
-              {collapsed ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
+              {narrow ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
             </NavLink>
           ))}
         </div>
-        <button type="button" onClick={() => setCollapsed((v) => !v)} className={`flex h-11 items-center gap-3 border-t border-[var(--sidebar-line)] text-[12px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-text ${collapsed ? 'justify-center' : 'px-4'}`} title={collapsed ? t('nav.expand') : t('nav.collapse')} aria-label={collapsed ? t('nav.expand') : t('nav.collapse')} data-testid="sidebar-toggle">
+        <button type="button" onClick={() => setCollapsed((v) => !v)} className={`${mobile ? 'hidden' : 'flex'} h-11 items-center gap-3 border-t border-[var(--sidebar-line)] text-[12px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-text ${narrow ? 'justify-center' : 'px-4'}`} title={narrow ? t('nav.expand') : t('nav.collapse')} aria-label={narrow ? t('nav.expand') : t('nav.collapse')} data-testid="sidebar-toggle">
           <Menu size={16} aria-hidden />
-          {!collapsed ? <span className="whitespace-nowrap">{t('nav.collapse')}</span> : null}
+          {!narrow ? <span className="whitespace-nowrap">{t('nav.collapse')}</span> : null}
         </button>
       </nav>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface px-3" data-testid="topbar">
-          <button type="button" className="btn-icon" onClick={() => setCollapsed((v) => !v)} title={collapsed ? t('nav.expand') : t('nav.collapse')} aria-label={collapsed ? t('nav.expand') : t('nav.collapse')} data-testid="topbar-toggle">
+          <button type="button" className="btn-icon" onClick={() => (mobile ? setMobileOpen((v) => !v) : setCollapsed((v) => !v))} aria-expanded={mobile ? mobileOpen : !collapsed} title={mobile ? t('nav.menu') : collapsed ? t('nav.expand') : t('nav.collapse')} aria-label={mobile ? t('nav.menu') : collapsed ? t('nav.expand') : t('nav.collapse')} data-testid="topbar-toggle">
             <Menu size={18} />
           </button>
           <Breadcrumb />

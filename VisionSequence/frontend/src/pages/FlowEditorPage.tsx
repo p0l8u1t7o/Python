@@ -897,7 +897,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       {/* 三欄 */}
       <div className="flex min-h-0 flex-1">
         {/* 左：工具箱 + 步驟清單 */}
-        <aside className="flex shrink-0 flex-col border-r border-line bg-surface" style={{ width: layout.left }}>
+        <aside className="hidden shrink-0 flex-col border-r border-line bg-surface md:flex" style={{ width: layout.left }}>
           <div className="min-h-0 flex-[2]">
             <FavoriteTools catalogue={catalogue.data} favorites={favorites} onOpenPicker={() => setPickerOpen(true)} onInsert={insertAtCenter} onAddNote={insertNoteAtCenter} onToggleFavorite={toggleFavorite} />
           </div>
@@ -906,7 +906,7 @@ function EditorInner({ flowId }: { flowId: number }) {
             <NodeList nodes={graphNodes} defs={defs} selectedId={selectedId} statuses={nodeStatuses} onSelect={focusNode} />
           </div>
         </aside>
-        <div className="vs-resizer vs-resizer-x" onMouseDown={onLeftResize} />
+        <div className="vs-resizer vs-resizer-x hidden md:block" onMouseDown={onLeftResize} />
 
         {/* 中：影像視窗（上）＋ 畫布（下） */}
         <div ref={centerRef} className="flex min-w-0 flex-1 flex-col">
@@ -980,7 +980,7 @@ function EditorInner({ flowId }: { flowId: number }) {
             ) : null}
           </div>
           <div className="vs-resizer vs-resizer-y" onMouseDown={onCanvasResize} />
-          <div className="relative min-h-0" style={{ height: `${layout.canvas * 100}%` }}>
+          <div className="relative min-h-60" style={{ height: `${layout.canvas * 100}%` }}>
             <FlowCanvas
               interaction={interaction}
               onInteractionChange={(mode) => { setInteraction(mode); storeInteractionMode(mode) }}
@@ -1023,10 +1023,10 @@ function EditorInner({ flowId }: { flowId: number }) {
             />
           </div>
         </div>
-        <div className="vs-resizer vs-resizer-x" onMouseDown={onRightResize} />
+        <div className="vs-resizer vs-resizer-x hidden lg:block" onMouseDown={onRightResize} />
 
         {/* 右：側欄（設定 / 結果） */}
-        <aside className="flex shrink-0 flex-col border-l border-line bg-surface" style={{ width: layout.right }} data-testid="inspector-pane">
+        <aside className="hidden shrink-0 flex-col border-l border-line bg-surface lg:flex" style={{ width: layout.right }} data-testid="inspector-pane">
           <Tabs
             size="sm"
             value={rightTab}

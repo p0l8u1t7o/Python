@@ -139,7 +139,7 @@ export function StatsPage() {
             <CardHeader
               title={t('stats.history')}
               actions={
-                <Select className="!py-1 text-xs" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} placeholder={t('stats.statusAll')} options={['ok', 'ng', 'failed', 'cancelled'].map((s) => ({ value: s, label: t(`status.${s}`) }))} data-testid="stats-status-filter" />
+                <Select className="!py-1 text-xs" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} placeholder={t('stats.statusAll')} aria-label={t('stats.statusAll')} options={['ok', 'ng', 'failed', 'cancelled'].map((s) => ({ value: s, label: t(`status.${s}`) }))} data-testid="stats-status-filter" />
               }
             />
             {history.isPending ? (

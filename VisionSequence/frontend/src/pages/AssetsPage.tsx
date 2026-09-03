@@ -76,7 +76,7 @@ export function AssetsPage() {
         description={t('assets.subtitle')}
         actions={
           <>
-            <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} placeholder={t('common.none')} options={kindOptions} className="w-36" />
+            <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} placeholder={t('common.none')} aria-label={t('assets.kind')} options={kindOptions} className="w-36" />
             <Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button>
             <Button variant="primary" icon={<Upload size={15} />} onClick={() => setUploading(true)}>{t('assets.upload')}</Button>
           </>

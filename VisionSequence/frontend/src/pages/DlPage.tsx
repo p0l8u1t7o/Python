@@ -791,7 +791,7 @@ export function DlPage() {
                         { value: 'grid', label: <span className="flex items-center gap-1"><LayoutGrid size={13} />{t('dl.viewGrid')}</span>, title: t('dl.viewGrid') },
                         { value: 'viewer', label: <span className="flex items-center gap-1"><ImageIcon size={13} />{t('dl.viewLarge')}</span>, title: t('dl.viewLarge') },
                       ]} />
-                    <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="!h-8 !text-xs"
+                    <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t('dl.filterLabel')} className="!h-8 !text-xs"
                       options={[
                         { value: '__all__', label: t('dl.filterAll') },
                         { value: '__unlabeled__', label: `${t('dl.unlabeled')}（${counts?.unlabeled ?? 0}）` },

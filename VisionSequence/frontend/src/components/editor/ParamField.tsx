@@ -129,8 +129,8 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
             {param.required ? <span className="text-critical"> *</span> : null}
           </span>
           <div className="flex items-center gap-2">
-            <input type="range" min={min} max={max} step={step} value={current} onChange={(e) => onChange(Number(e.target.value))} className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--brand)]" />
-            <input type="number" min={min} max={max} step={step} value={text} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} className="input !w-24 tnum" />
+            <input type="range" min={min} max={max} step={step} value={current} onChange={(e) => onChange(Number(e.target.value))} className="h-1 min-w-0 flex-1 cursor-pointer accent-[var(--brand)]" aria-label={label} />
+            <input type="number" min={min} max={max} step={step} value={text} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} className="input !w-24 tnum" aria-label={label} />
             {param.unit ? <span className="text-xs text-subtle">{param.unit}</span> : null}
           </div>
           {help ? <p className="hint">{help}</p> : null}

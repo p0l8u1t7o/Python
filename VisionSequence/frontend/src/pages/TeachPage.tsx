@@ -380,9 +380,9 @@ function TeachPageInner({ flowId }: { flowId: number }) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* 左：步驟清單 */}
-        <aside className="w-60 shrink-0 overflow-y-auto border-r border-line bg-surface" data-testid="teach-steps">
+        <aside className="w-full md:w-60 shrink-0 md:overflow-y-auto border-b md:border-b-0 md:border-r border-line bg-surface" data-testid="teach-steps">
           <p className="border-b border-line px-3 py-2 text-xs font-semibold text-heading">{t('teach.step')} <span className="tnum font-normal text-muted">({groups.length})</span></p>
           {groups.length === 0 ? (
             <div className="m-3 rounded-md border border-dashed border-line p-3 text-xs text-muted">
@@ -418,7 +418,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
         </aside>
 
         {/* 中：聚焦步驟的教導參數 */}
-        <div className="w-[360px] shrink-0 overflow-y-auto border-r border-line bg-surface 2xl:w-[420px]" data-testid="teach-params">
+        <div className="w-full shrink-0 overflow-y-auto border-b border-line bg-surface md:w-[360px] md:border-b-0 md:border-r 2xl:w-[420px]" data-testid="teach-params">
           {focusGroup ? (
             <section data-node-id={focusGroup.node.id}>
               <div className="border-b border-line px-5 py-3">

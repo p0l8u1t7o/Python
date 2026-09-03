@@ -100,7 +100,7 @@ export function SettingsPage() {
       <PageHeader title={t('settings.title')} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title={t('settings.apiKey')} description={t('settings.apiKeyHint')} bodyClassName="flex items-end gap-2 p-4">
-            <TextInput className="font-mono" type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+            <TextInput className="font-mono" type="password" aria-label="API key" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
             <Button variant="primary" onClick={saveKey}>{t('common.save')}</Button>
         </Panel>
         <Panel title={t('settings.theme')} bodyClassName="space-y-4 p-4">

@@ -9,6 +9,7 @@ import { GroupManager } from '@/components/GroupManager'
 import { api, sourcePreviewUrl } from '@/lib/api'
 import { FsBrowser } from '@/components/FsBrowser'
 import { errorMessage } from '@/lib/errors'
+import { sourceStatus, summarizeSourceConfig } from '@/lib/sources'
 import { useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
 import type { ImageSource } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
@@ -90,6 +91,19 @@ function ConfigField({ kind, field, value, onChange, onBrowse, cameras, onScanCa
   }
   if (type === 'number') return <TextInput label={label} type="number" step={field === 'defect_rate' ? 0.05 : 1} value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
   return <TextInput label={label} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+}
+
+/** 狀態欄：徽章（已開啟／未開啟／錯誤）＋張數，完整 JSON 留在 title。 */
+function SourceStatusCell({ status }: { status: Record<string, unknown> | null | undefined }) {
+  const { t } = useTranslation()
+  const view = sourceStatus(status)
+  return (
+    <span className="inline-flex max-w-xs items-center gap-1.5" title={JSON.stringify(status ?? {})}>
+      <Badge tone={view.tone}>{t(`sources.${view.key}`)}</Badge>
+      {view.frames !== null ? <span className="tnum text-xs text-muted">{t('sources.statusFrames', { count: view.frames })}</span> : null}
+      {view.error ? <span className="truncate text-xs text-critical">{view.error}</span> : null}
+    </span>
+  )
 }
 
 export function SourcesPage() {
@@ -188,9 +202,9 @@ export function SourcesPage() {
             <THead>
               <Th>{t('common.actions')}</Th>
               <Th>{t('common.name')}</Th>
-              <Th>{t('common.group')}</Th>
+              <Th className="max-lg:hidden">{t('common.group')}</Th>
               <Th>{t('sources.kind')}</Th>
-              <Th>{t('sources.config')}</Th>
+              <Th className="max-xl:hidden">{t('sources.config')}</Th>
               <Th>{t('sources.status')}</Th>
               <Th align="center">{t('common.enabled')}</Th>
             </THead>
@@ -213,12 +227,12 @@ export function SourcesPage() {
                         <IconButton label={t('common.delete')} onClick={() => setPendingDelete(s)}><Trash2 size={15} className="text-critical" /></IconButton>
                       </span>
                     </Td>
-                    <Td className="font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
-                    <Td>{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
+                    <Td className="min-w-40 font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
+                    <Td className="max-lg:hidden">{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
                     <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
-                    <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.config)}>{JSON.stringify(s.config)}</code></Td>
-                    <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(s.status)}>{JSON.stringify(s.status)}</code></Td>
-                    <Td align="center"><Switch checked={s.is_enabled} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
+                    <Td className="max-xl:hidden"><span className="block max-w-xs truncate text-xs text-muted" title={JSON.stringify(s.config)}>{summarizeSourceConfig(s.kind, s.config)}</span></Td>
+                    <Td><SourceStatusCell status={s.status} /></Td>
+                    <Td align="center"><Switch checked={s.is_enabled} label={t('common.enabled')} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
                   </Tr>
                 ))
               )}

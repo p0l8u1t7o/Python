@@ -5,6 +5,7 @@ const zhHant = {
     tagline: '機器視覺流程平台',
   },
   nav: {
+    menu: '選單',
     batch: '批次測試',
     dashboard: '總覽',
     flows: '流程',
@@ -205,6 +206,7 @@ const zhHant = {
     labelingHint: '點選縮圖標記為「{{label}}」；再次點選取消標記；Alt＋點選刪除',
     clickToLabel: '標記為 {{label}}',
     progressCount: '已標記 {{labeled}} / {{total}}',
+    filterLabel: '篩選樣本',
     filterAll: '全部樣本',
     filterAuto: '自動標記（待確認）',
     autoLabel: '自動標記',
@@ -818,6 +820,7 @@ const zhHant = {
     toolsCount: '{{count}} 個工具',
   },
   sources: {
+    statusOpen: '已開啟', statusClosed: '未開啟', statusError: '錯誤', statusFrames: '{{count}} 張',
     scanCameras: '掃描相機',
     scanHint: '在伺服器上逐一開啟探測（會短暫佔用裝置）',
     cameraN: '相機 #{{n}}',

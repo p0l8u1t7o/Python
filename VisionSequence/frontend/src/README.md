@@ -77,3 +77,4 @@
 ## i18n
 
 `i18n/locales/zh-Hant.ts` 是預設與 fallback；`en.ts` 只翻一部分（後補的段落放在 `enExtra` 以深合併加入，避免物件重複 key）。UI 文案用 glossary 的中文名（步驟、工具箱、步驟清單、側欄、影像來源庫、資產庫、暫存影像、重置、範本庫、批次測試、統計、整合頁、收藏、參數卡、配方、綁定配方、儲存範圍 Check List、合理化檢查、Golden Set、回歸、基準、連線、匯出／匯入…）；`recipes.*`、`breadcrumb.*`、`nav.collapse`／`nav.expand` 是這一輪新增。影像視窗（`viewer.*`）與影像來源排序（`sources.sortOptions`）也走 i18n。
+| `lib/useMediaQuery.ts`、`lib/sources.ts` | 響應式與清單摘要 | `useMediaQuery`（手機抽屜側欄、精簡麵包屑）；`summarizeSourceConfig`／`sourceStatus`（影像來源清單的設定／狀態摘要，取代原本印 JSON） |

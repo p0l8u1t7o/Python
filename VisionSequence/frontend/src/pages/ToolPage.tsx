@@ -333,10 +333,10 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
         {dirty ? <span className="text-[11px] text-warning">{t('editor.unsaved')}</span> : null}
       </header>
 
-      {/* 三欄 */}
-      <div className="flex min-h-0 flex-1">
+      {/* 三欄（手機：參數／影像／操作直向堆疊，整頁捲動） */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* 左：參數 */}
-        <aside className="w-80 shrink-0 overflow-y-auto border-r border-line bg-surface p-3" data-testid="tool-params">
+        <aside className="w-full shrink-0 border-b border-line bg-surface p-3 md:w-80 md:overflow-y-auto md:border-b-0 md:border-r" data-testid="tool-params">
           <p className="mb-2 text-xs font-semibold text-muted">{t('editor.parameters')}</p>
           {def.description ? <p className="mb-3 text-xs leading-relaxed text-muted">{def.description}</p> : null}
           <ParamForm node={node} definition={def} edges={edges} actions={actions} onChange={onChange} />
@@ -344,7 +344,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
 
         {/* 中：前／後影像 */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative flex min-h-0 flex-1">
+          <div className="relative flex min-h-80 flex-1 md:min-h-0">
             <div className="relative min-w-0 flex-1" data-testid="tool-before">
               {/* 執行前一律乾淨（標記只出現在右邊「執行後」；ROI 框是參數顯示，不算標記） */}
               <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={[]} toolbar className="h-full w-full" badge={null} {...beforeRoi} />
@@ -452,7 +452,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
         </div>
 
         {/* 右：按鍵 */}
-        <aside className="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-l border-line bg-surface p-3" data-testid="tool-actions">
+        <aside className="flex w-full shrink-0 flex-col gap-3 border-t border-line bg-surface p-3 md:w-56 md:overflow-y-auto md:border-t-0 md:border-l" data-testid="tool-actions">
           <p className="text-xs font-semibold text-muted">{t('common.actions')}</p>
           <Button variant={dirty ? 'primary' : 'secondary'} icon={<Save size={14} />} loading={saving} disabled={readOnly} onClick={() => void save()} data-testid="tool-save">
             {dirty ? t('editor.save') : t('editor.savedState')}

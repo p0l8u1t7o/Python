@@ -12,12 +12,12 @@ export function Card({ className = '', children, testId }: { className?: string;
 export function CardHeader({ title, description, actions, className = '', collapsed, onToggle }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; className?: string; collapsed?: boolean; onToggle?: () => void }) {
   return (
     <header className={`panel-title ${className}`}>
-      <div className="min-w-0">
-        <h2>{title}</h2>
+      <div className="min-w-0 flex-1 basis-32">
+        <h2 className="truncate">{title}</h2>
         {description ? <p className="mt-0.5 text-xs text-muted">{description}</p> : null}
       </div>
       {actions || onToggle ? (
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {actions}
           {onToggle ? (
             <button type="button" className="btn-icon" onClick={onToggle} aria-expanded={!collapsed} aria-label={collapsed ? 'expand' : 'collapse'} data-testid="panel-toggle">
@@ -61,7 +61,8 @@ export function Tile({ label, value, unit, tone = '', className = '' }: { label:
 export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-line pb-3">
-      <div className="min-w-0">
+      {/* basis-60：標題至少 240px 才跟動作同列，否則動作換到下一列（避免標題被擠成一字一行） */}
+      <div className="min-w-0 flex-1 basis-60">
         <h1 className="text-[22px] font-normal leading-tight text-heading">{title}</h1>
         {description ? <p className="mt-1 text-[13px] text-muted">{description}</p> : null}
       </div>
@@ -74,7 +75,7 @@ export function DetailRow({ label, children, mono = false }: { label: ReactNode;
   return (
     <div className="flex items-baseline justify-between gap-4 py-1">
       <dt className="shrink-0 text-xs text-muted">{label}</dt>
-      <dd className={`min-w-0 truncate text-right text-sm text-content ${mono ? 'font-mono text-xs' : ''}`}>{children}</dd>
+      <dd className={`min-w-0 break-all text-right text-sm text-content ${mono ? 'font-mono text-xs' : ''}`}>{children}</dd>
     </div>
   )
 }

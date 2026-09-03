@@ -5,6 +5,7 @@ const zhHans = {
     tagline: '机器视觉流程平台',
   },
   nav: {
+    menu: '菜单',
     batch: '批次测试',
     dashboard: '总览',
     flows: '流程',
@@ -205,6 +206,7 @@ const zhHans = {
     labelingHint: '点选缩略图标记为「{{label}}」；再次点选取消标记；Alt＋点选删除',
     clickToLabel: '标记为 {{label}}',
     progressCount: '已标记 {{labeled}} / {{total}}',
+    filterLabel: '筛选样本',
     filterAll: '全部样本',
     filterAuto: '自动标记（待确认）',
     autoLabel: '自动标记',
@@ -818,6 +820,7 @@ const zhHans = {
     toolsCount: '{{count}} 个工具',
   },
   sources: {
+    statusOpen: '已打开', statusClosed: '未打开', statusError: '错误', statusFrames: '{{count}} 张',
     scanCameras: '扫描相机',
     scanHint: '在服务器上逐一打开探测（会短暂占用设备）',
     cameraN: '相机 #{{n}}',

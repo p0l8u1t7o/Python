@@ -162,6 +162,7 @@ const en = {
     labelingHint: 'Click a thumbnail to label it "{{label}}"; click again to unlabel; Alt+click deletes',
     clickToLabel: 'Label as {{label}}',
     progressCount: '{{labeled}} / {{total}} labeled',
+    filterLabel: 'Filter samples',
     filterAll: 'All samples',
     filterAuto: 'Auto-labeled (unconfirmed)',
     autoLabel: 'Auto label',
@@ -378,6 +379,7 @@ const en = {
     toolsCount: '{{count}} tools',
   },
   sources: {
+    statusOpen: 'Open', statusClosed: 'Closed', statusError: 'Error', statusFrames: '{{count}} frames',
     title: 'Source library', create: 'New source', empty: 'No sources yet',
     scanCameras: 'Scan cameras', scanHint: 'Probes devices on the server one by one (briefly occupies each)',
     cameraN: 'Camera #{{n}}', inUseBy: 'in use: {{name}}',

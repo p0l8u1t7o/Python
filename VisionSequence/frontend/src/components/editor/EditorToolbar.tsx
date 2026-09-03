@@ -114,7 +114,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
   return (
     <header className="flex flex-col gap-1 border-b border-line bg-surface px-3 py-1.5" data-testid="editor-toolbar">
       {/* 第一列：名稱、儲存、範本、配方、綁定 */}
-      <div className="flex flex-wrap items-center gap-1.5" data-testid="toolbar-row-1">
+      <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible" data-testid="toolbar-row-1">
         <input className="input !w-48 min-w-32 !py-1 font-medium" value={p.name} onChange={(e) => p.onNameChange(e.target.value)} placeholder={t('editor.untitled')} aria-label={t('common.name')} />
         {p.dirty ? <span className="whitespace-nowrap text-[11px] text-warning">{t('editor.unsaved')}</span> : null}
         <span title={p.readOnly ? t('flows.readOnlyHint') : t('editor.saveShortcut')}>
@@ -155,7 +155,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
             <SlidersHorizontal size={11} /> {t('flows.notCommissioned')}
           </Link>
         ) : null}
-        <span className="ml-auto flex flex-wrap items-center gap-1">
+        <span className="ml-auto flex flex-nowrap items-center gap-1 md:flex-wrap">
           <Badge tone={p.connected ? 'ok' : 'neutral'}>{p.connected ? t('dashboard.live') : t('dashboard.offline')}</Badge>
           <CapacityPill />
           <IconButton label={t('editor.undo')} onClick={p.onUndo} size="sm"><Undo2 size={15} /></IconButton>
@@ -168,7 +168,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
       </div>
 
       {/* 第二列：執行相關 */}
-      <div className="flex flex-wrap items-center gap-1.5" data-testid="toolbar-row-2">
+      <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:overflow-visible" data-testid="toolbar-row-2">
         <span title={p.lockHint ?? t('editor.previewHint')}>
           <Button size="sm" variant="primary" icon={<FlaskConical size={14} />} loading={p.previewing} disabled={p.execLocked} onClick={p.onPreview} data-testid="btn-preview">
             {t('editor.preview')}

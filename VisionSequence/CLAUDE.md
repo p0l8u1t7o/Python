@@ -113,6 +113,7 @@
 - 工具頁 `ToolPage`：參數改在草稿（`flowDraft.patchDraftNode`），儲存才寫回；`goBack` 只在 dirty 時比對快照；輸出值只列在下方參考資訊，不疊浮層擋圖。
 - 影像檢視器：`roiEditor.ts`（互動）與 `geometry.ts`（純函式，有單元測試）分離；ROI 形狀 switch 要 exhaustive。
 - 版面：一般頁面用 `Page` 容器（`AppShell.tsx`）取得一致內距；全高頁（編輯器、參數卡）自帶 header。
+- **響應式**（`lib/useMediaQuery.ts`）：< 768px 側欄改抽屜（☰ 開、點項目／換頁自動關、`data-mobile`）、麵包屑只留最後兩層；表格次要欄位用 `max-lg:hidden`／`max-xl:hidden` 隱藏（Th／Td 都要標）；編輯器 < md 只留畫布與可橫向捲動的工具列、< lg 沒有右側面板（參數請走工具頁）；工具頁／參數卡／AI 助手頁的側欄 < md 全寬堆疊；`@media (pointer: coarse)` 把 `.btn-icon`／`.nav-item`／checkbox 放大到 40px。`PageHeader` 標題 `flex-1 basis-60`、`CardHeader` 標題 `truncate`，動作列 `flex-wrap`，避免標題被擠成一字一行。影像來源清單的設定／狀態用 `lib/sources.ts` 摘要，不再印 JSON。UI 稽核腳本（每頁 × 4 視角截圖＋自動檢查）在 scratchpad `shots/ui_audit.mjs`。
 
 ## 4. 踩過的坑
 - Django `TestCase` 的交易會鎖住 SQLite，跨執行緒（執行緒池、背景持久化）會 `database table is locked`：測試 DB 是**檔案 + WAL**，跨執行緒寫入的測試用 `TransactionTestCase`；會啟動背景持久化的測試用 `override_settings(VISION={**VISION, "PERSIST_RUNS": False})`，否則 teardown 刪 DB 檔會 WinError 32。
@@ -126,6 +127,7 @@
 - 前端 `Card` 只認 `testId` 屬性，寫 `data-testid` 會被丟掉（TS 不會報錯）；要給測試或截圖腳本用的 Card 一律用 `testId=`。
 - `manage.py agent_bench --llm` 用伺服器供應商；要用某位使用者的金鑰跑就在 shell 裡 `bench.run_bench(providers.resolve(user), use_llm=True)`。LLM 單次生成實測（gemini-3.5-flash-lite）判定 76%、有效 81%，規則引擎 100%——LLM 產物一定要過試執行；全部失敗時 `service.generate` 已會退回規則。
 - **Gemini 3 function calling**：模型回的 `functionCall` part 帶 `thoughtSignature`，下一回合必須原樣回傳（`ToolReply.raw` → 歷史 `raw` → `gemini_contents` 直接用原生 parts），否則 400「missing a thought_signature」；實機用 gemini-3.5-flash-lite 驗過代理迴圈 4 回合 5.6 秒完成。
+- Tailwind 顯示工具類互蓋：`Td` 自帶 `table-cell`，再加 `hidden lg:table-cell` 會因產生順序而失效（Th 沒事、Td 照樣顯示）；要隱藏欄位一律用 `max-lg:hidden` 這類 max 變體（變體排在基底工具類之後才會贏）。主題存在伺服器偏好（`/auth/me` 帶回會蓋掉 localStorage），自動化截圖要改主題得 `PATCH /auth/prefs {theme}`。
 - jsdom 沒有 `Element.scrollTo`：元件捲到底用 `el.scrollTop = el.scrollHeight`，不然 vitest 會炸。i18n 的陣列值（快速提示）三語系長度要一致（key 對齊測試把索引當 key）。
 - i18n：一次多檔替換若中途失敗要檢查已成功的檔案，避免重複插入（TS1117）；en 是單行物件格式，錨點與 zh 不同。
 - **DL 依賴**：ultralytics 要在 torch（pytorch.org cu128 index）之後裝，否則拉 CPU 版；RTX 50（sm_120）只有 cu128+ 有 kernel；`onnxruntime-gpu` 1.23+ 預設 CUDA 13，配 torch cu128 要鎖 1.22.0，且建 CUDA session 前先 import torch／`preload_dlls()`（providers 列表有 CUDA 不代表 session 真的用到）；`onnxruntime` 與 `onnxruntime-gpu` 同名互蓋，只能裝一個；訓練 workers=0；`YOLO_OFFLINE=1`；分類資料集類別順序＝資料夾排序；ultralytics 8.4 對 `half=False` 也印棄用警告（只在需要時傳 True）。`manage.py dl_check --predict` 一次檢查完。

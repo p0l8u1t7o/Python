@@ -157,13 +157,13 @@ export function FlowsPage() {
           <Table>
             <THead>
               <Th>{t('common.name')}</Th>
-              <Th>{t('flows.owner')}</Th>
+              <Th className="max-xl:hidden">{t('flows.owner')}</Th>
               <Th align="center">{t('common.enabled')}</Th>
-              <Th align="right">{t('flows.nodes')}</Th>
-              <Th align="right">{t('flows.version')}</Th>
-              <Th>{t('flows.stats')}</Th>
-              <Th>{t('recipes.bound')}</Th>
-              <Th>{t('flows.updated')}</Th>
+              <Th align="right" className="max-xl:hidden">{t('flows.nodes')}</Th>
+              <Th align="right" className="max-lg:hidden">{t('flows.version')}</Th>
+              <Th className="max-sm:hidden">{t('flows.stats')}</Th>
+              <Th className="max-xl:hidden">{t('recipes.bound')}</Th>
+              <Th className="max-xl:hidden">{t('flows.updated')}</Th>
               <Th align="right">{t('common.actions')}</Th>
             </THead>
             <TBody>
@@ -172,7 +172,7 @@ export function FlowsPage() {
               ) : (
                 flows.data.items.map((flow) => (
                   <Tr key={flow.id} onClick={() => navigate(`/flows/${flow.id}`)}>
-                    <Td className="min-w-52">
+                    <Td className="sm:min-w-52">
                       {/* min-w：名稱旁有「未教導」「綁定：…」標籤時，表格自動配寬會把名稱擠成一字一行 */}
                       <p className="flex flex-wrap items-center gap-1.5 font-medium">
                         {readOnly(flow) ? <Lock size={13} className="shrink-0 text-muted" aria-label={t('flows.readOnly')} /> : null}
@@ -182,7 +182,7 @@ export function FlowsPage() {
                       </p>
                       {flow.description ? <p className="text-xs text-muted">{flow.description}</p> : null}
                     </Td>
-                    <Td>
+                    <Td className="max-xl:hidden">
                       {flow.owner_id === null ? (
                         <span className="inline-flex items-center gap-1 text-xs text-muted" title={readOnly(flow) ? t('flows.readOnly') : undefined}><Users size={12} /> {t('flows.shared')}</span>
                       ) : (
@@ -194,23 +194,23 @@ export function FlowsPage() {
                         <Switch checked={flow.is_enabled} disabled={readOnly(flow)} label={t('flows.enabledToggle')} onChange={(v) => patch.mutate({ id: flow.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} />
                       </span>
                     </Td>
-                    <Td align="right" className="tnum">{flow.node_count}</Td>
-                    <Td align="right" className="tnum">v{flow.version}</Td>
-                    <Td>
+                    <Td align="right" className="tnum max-xl:hidden">{flow.node_count}</Td>
+                    <Td align="right" className="tnum max-lg:hidden">v{flow.version}</Td>
+                    <Td className="max-sm:hidden">
                       <div className="flex items-center gap-2">
                         <StatusBadge status={flow.stats.last_status || null} />
-                        <span className="tnum text-xs text-muted">{flow.stats.runs} 次 · {Math.round(flow.stats.avg_ms)} ms</span>
+                        <span className="tnum whitespace-nowrap text-xs text-muted">{flow.stats.runs} 次 · {Math.round(flow.stats.avg_ms)} ms</span>
                         {flow.continuous ? <Badge tone="brand">{t('dashboard.continuous')}</Badge> : null}
                       </div>
                     </Td>
-                    <Td><RecipeCell flow={flow} readOnly={readOnly(flow)} onOpen={() => setRecipeFlow(flow)} /></Td>
-                    <Td className="tnum text-xs text-muted">{new Date(flow.updated_at).toLocaleString()}</Td>
+                    <Td className="max-xl:hidden"><RecipeCell flow={flow} readOnly={readOnly(flow)} onOpen={() => setRecipeFlow(flow)} /></Td>
+                    <Td className="tnum max-xl:hidden text-xs text-muted">{new Date(flow.updated_at).toLocaleString()}</Td>
                     <Td align="right">
-                      <span className="inline-flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Link to={`/flows/${flow.id}`}><IconButton label={t('flows.open')}><Pencil size={15} /></IconButton></Link>
-                        <Link to={`/flows/${flow.id}/teach`}><IconButton label={t('flows.teach')} data-testid="row-teach"><SlidersHorizontal size={15} /></IconButton></Link>
-                        <Link to={`/flows/${flow.id}/golden`}><IconButton label={t('flows.golden')} data-testid="row-golden"><Gem size={15} /></IconButton></Link>
-                        <Link to={`/flows/${flow.id}/stats`}><IconButton label={t('stats.open')}><BarChart3 size={15} /></IconButton></Link>
+                      <span className="inline-flex min-w-24 max-w-28 flex-wrap justify-end gap-0.5 sm:min-w-0 sm:max-w-none sm:flex-nowrap sm:gap-1" onClick={(e) => e.stopPropagation()}>
+                        <Link to={`/flows/${flow.id}`} aria-label={t('flows.open')} title={t('flows.open')}><IconButton label={t('flows.open')}><Pencil size={15} /></IconButton></Link>
+                        <Link to={`/flows/${flow.id}/teach`} aria-label={t('flows.teach')} title={t('flows.teach')}><IconButton label={t('flows.teach')} data-testid="row-teach"><SlidersHorizontal size={15} /></IconButton></Link>
+                        <Link to={`/flows/${flow.id}/golden`} aria-label={t('flows.golden')} title={t('flows.golden')}><IconButton label={t('flows.golden')} data-testid="row-golden"><Gem size={15} /></IconButton></Link>
+                        <Link to={`/flows/${flow.id}/stats`} aria-label={t('stats.open')} title={t('stats.open')}><IconButton label={t('stats.open')}><BarChart3 size={15} /></IconButton></Link>
                         <IconButton label={t('flows.export')} title={t('flows.exportHint')} onClick={() => void onExport(flow)} data-testid="row-export"><Download size={15} /></IconButton>
                         <IconButton label={t('common.duplicate')} onClick={() => void onDuplicate(flow)}><Copy size={15} /></IconButton>
                         <IconButton label={readOnly(flow) ? t('flows.readOnly') : t('common.delete')} disabled={readOnly(flow)} onClick={() => setPendingDelete(flow)}><Trash2 size={15} className="text-critical" /></IconButton>

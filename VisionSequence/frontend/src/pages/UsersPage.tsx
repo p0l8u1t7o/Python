@@ -93,10 +93,10 @@ export function UsersPage() {
           <Table>
             <THead>
               <Th>{t('auth.username')}</Th>
-              <Th>{t('auth.displayName')}</Th>
+              <Th className="max-sm:hidden">{t('auth.displayName')}</Th>
               <Th align="center">{t('users.admin')}</Th>
               <Th align="center">{t('common.enabled')}</Th>
-              <Th>{t('users.lastLogin')}</Th>
+              <Th className="max-md:hidden">{t('users.lastLogin')}</Th>
               <Th align="right">{t('common.actions')}</Th>
             </THead>
             <TBody>
@@ -111,16 +111,16 @@ export function UsersPage() {
                         <span className="font-medium">{user.username}</span>
                         {self ? <Badge tone="brand" className="ml-2">{t('users.you')}</Badge> : null}
                       </Td>
-                      <Td className="text-muted">{user.display_name || '—'}</Td>
+                      <Td className="max-sm:hidden text-muted">{user.display_name || '—'}</Td>
                       <Td align="center">
                         <Switch checked={user.is_staff} disabled={self} label={t('users.admin')} onChange={(v) => setPendingRole({ user, is_staff: v })} />
                       </Td>
                       <Td align="center">
                         <Switch checked={user.is_active} disabled={self} label={t('common.enabled')} onChange={(v) => setPendingActive({ user, is_active: v })} />
                       </Td>
-                      <Td className="tnum text-xs text-muted">{user.last_login ? new Date(user.last_login).toLocaleString() : '—'}</Td>
+                      <Td className="tnum max-md:hidden text-xs text-muted">{user.last_login ? new Date(user.last_login).toLocaleString() : '—'}</Td>
                       <Td align="right">
-                        <span className="inline-flex gap-1">
+                        <span className="inline-flex max-w-32 flex-wrap justify-end gap-1 sm:max-w-none">
                           <IconButton label={t('users.resetPassword')} onClick={() => setResetTarget(user)}><KeyRound size={15} /></IconButton>
                           <IconButton label={t('common.delete')} disabled={self} onClick={() => setPendingDelete(user)}><Trash2 size={15} className="text-critical" /></IconButton>
                         </span>
