@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 61 個內建工具、142 個 API 端點、19 個資料模型、17 個前端頁面、15 頁文件、後端 277 項＋前端 22 項自動測試 |
+| 規模 | 61 個內建工具、161 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 289 項＋前端 23 項自動測試 |
 
 ---
 
@@ -66,7 +66,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **試執行 vs 執行**：試執行用目前畫布（含未儲存）並保留中間影像；執行一次／連續執行用已儲存版本並寫入紀錄。暫存影像上傳只為試執行，不進來源庫。
 - **參數卡**（`/flows/:id/teach`）：只列 `teach=True` 的現場參數、改動即時試執行；標記「已教導」。
 - **配方**：同一流程多組參數覆寫（換線），HTTP／TCP 皆可指定。
-- **批次測試／Golden Set**：一次跑多張影像看良率；案例存成回歸基準，`manage.py regress` 可進 CI；結果下可「請 AI 依這批結果調整」，或為每列填 OK／NG 期望後「自動調參」（Golden Set 頁亦有，用案例期望值搜尋現場參數）。
+- **批次測試頁／Golden Set**：獨立頁面選流程、建立影像集（上傳或來源擷取，≤200 張）批量執行並暫存每次逐張結果；標記期望 OK／NG 得命中率與混淆矩陣，洞察卡給建議門檻、輸出分佈與歷次趨勢；調參重跑同一影像集並逐張比較，滿意後寫回流程／存為配方／帶回編輯器；AI 助手可依資料諮詢、調整或自動調參（結果成為新執行）。案例可存入 Golden Set 作回歸基準，`manage.py regress` 可進 CI。
 - **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG。
 
 ### 內建工具（61 個，8 類）
@@ -181,6 +181,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/vision/demo.py`、`demo_images.py` | 範例樣板（`BUILTIN_TEMPLATES`）、合成樣本圖、`seed_demo` |
 | `apps/comm/` | 連線模型與 Writer（Modbus TCP／TCP 文字／模擬 DIO／外掛） |
 | `apps/golden/` | Golden 案例、基準、回歸 |
+| `apps/vision/batch/` | 批次測試：`store`（檔案／序列化／淘汰）、`jobs`（背景執行）、`insights`（洞察與建議門檻）、`api` |
 | `apps/vision/management/commands/` | `serve`、`seed_demo`、`flow export|import|run`、`run_tcp_server`、`regress`、`create_admin` |
 | `tests/` | 18 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
 
@@ -190,7 +191,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 |---|---|
 | `App.tsx` | 路由（各頁 lazy chunk）、`RequireAuth` |
 | `components/layout/` | `AppShell`（側欄／頂列／`Page` 容器）、全域搜尋 |
-| `pages/` | Dashboard、Flows、FlowEditor、Tool、Teach、Stats、Golden、Sources、Assets、Dl、Agent、Integration、Users、Settings、Help、Login |
+| `pages/` | Dashboard、Flows、FlowEditor、Tool、Teach、Stats、Golden、Batch、Sources、Assets、Dl、Agent、Integration、Users、Settings、Help、Login |
 | `components/editor/` | 畫布（`FlowCanvas`／`ToolNode`／`FlowEdge`）、工具箱與選擇視窗、屬性面板、結果面板、批次測試、AI 分頁、`graphMapping.ts`（graph ⇄ React Flow） |
 | `components/viewer/` | `ImageViewer`、`roiEditor.ts`（ROI 互動）、`geometry.ts`（ROI 幾何純函式）、Toolbar |
 | `components/templates/`、`recipes/`、`dl/`、`auth/`、`ui/` | 範本畫廊、配方、DL 標記編輯器、登入／鎖定、共用 UI 元件 |
@@ -229,7 +230,8 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 |---|---|
 | 帳號與鎖定 | `/auth/setup`、`/auth/login`、`/auth/me`、`/auth/prefs`、`/users`、`/vision/lock` |
 | 流程 | `/vision/flows`（CRUD）、`/flows/{id}/run`、`/preview`、`/continuous`、`/recent`、`/runs`、`/stats`、`/events`（SSE）、`/scratch-image`、`/export`、`/flows/import` |
-| 配方／範本／批次 | `/flows/{id}/recipes`、`/vision/templates`（builtin＋custom、instantiate）、`/flows/{id}/batch`、`/batch-source` |
+| 配方／範本／批次 | `/flows/{id}/recipes`、`/vision/templates`（builtin＋custom、instantiate）、`/flows/{id}/batch`、`/batch-source`（舊介面） |
+| 批次測試頁 | `/vision/batch/sets`（＋`/from-source`、`/{id}`、`/images/{index}`、`/to-golden`、`/runs`）、`/vision/batch/runs/{id}`（＋`/cancel`、`/insights`、`/compare`、`/rows/{index}/preview`、`/to-recipe`）、`/vision/agent/consult` |
 | Golden | `/flows/{id}/golden`、`/baseline`、`/regress` |
 | 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
@@ -280,6 +282,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | `VISION_KEEP_RUN_IMAGES`、`VISION_IMAGE_CACHE_MB`、`VISION_PERSIST_RUNS`、`VISION_KEEP_RUN_ROWS` | 影像快取與執行紀錄 |
 | `VISION_PLUGIN_DIR`、`VISION_TOOL_PLUGINS`、`VISION_SOURCE_PLUGINS`、`VISION_COMM_PLUGINS` | 外掛 |
 | `VISION_API_KEY`、`VISION_STATION_ID`、`VISION_TCP_HOST/PORT` | 整合方金鑰、站台識別、TCP 介面 |
+| `VISION_BATCH_MAX_IMAGES`、`VISION_KEEP_BATCH_SETS`、`VISION_KEEP_BATCH_RUNS`、`VISION_BATCH_MAX_RUNNING` | 批次測試：影像集上限（200）、每流程保留影像集數（10）、每影像集保留執行次數（20）、同時執行數（2） |
 | `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S`、`VISION_AGENT_MODE` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點；`MODE`＝single／agentic） |
 | `CORS_ALLOWED_ORIGINS` | 前端獨立部署時允許的來源 |
 
@@ -332,6 +335,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/samples.html` | 範例樣板與合成樣本圖 |
 | `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、編輯器 AI、批次調參、候選方案與自動調參、定位補正、代理模式、記憶與學習、評測基準、技能、架構 |
 | `docs/dl.html` | 深度學習教導 |
+| `docs/batch.html` | 批次測試：影像集、暫存結果、洞察與建議門檻、調參、AI 諮詢、API、保留策略 |
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
 | `docs/glossary.html` | 名詞規範與文案用詞規範 |

@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html" aria-current="page">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html" aria-current="page">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>AI 助手：上傳影像＋圈選＋提示詞 → 自動生成檢測流程</h1>
@@ -118,7 +118,8 @@
 </table>
 <p>接上 LLM 供應商後不限句型：可以「在找圓後面加公差判定 ±0.5」「把顏色比對換成顏色範圍＋像素計數」，LLM 收到目前 graph 與工具目錄，只動需要動的部分並保留節點 id。</p>
 
-<h2 id="tune">跑多筆影像後請 AI 調整</h2>
+<h2 id="tune">跑多筆影像後請 AI 調整（批次測試頁）</h2>
+<p><strong>批次測試頁</strong>（<a href="batch.html">batch.html</a>）的「AI 助手」分頁有三種能力，都以暫存的逐張資料為依據：<strong>諮詢</strong>（<code>POST /agent/consult</code>：規則洞察＋LLM 回答，附可套用的參數建議）、<strong>請 AI 調整</strong>（<code>/agent/tune</code> 或代理模式 <code>/agent/jobs</code> 帶 <code>batch_run_id</code>，結果落成新的一次執行）、<strong>自動調參</strong>（<code>POST /batch/sets/{id}/runs {mode:"autotune"}</code>）。以下是原本以影像快取 ref 為輸入的介面，仍可用。</p>
 <p>「批次測試」跑完一批影像後，結果表下方有「請 AI 依這批結果調整」：輸入提示詞（「NG 的那幾張其實是好品，太敏感了」「改成 4 個」），
 助手拿到每張的判定與輸出值（LLM 模式還會看到幾張縮圖），調整流程後<strong>在同一批影像重跑</strong>，回報「調整前 → 後」的 OK／NG／失敗數與逐張變化，滿意再「套用到畫布」。</p>
 <pre>POST /api/vision/agent/tune  {graph, instruction, runs:[{name, image_ref, status, outputs}]}

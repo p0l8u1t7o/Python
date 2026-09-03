@@ -26,8 +26,8 @@
 
 | 檔案 | glossary 名稱 | 說明 |
 |---|---|---|
-| `EditorToolbar.tsx` | 頂列 EditorToolbar | 兩列：第一列流程名稱、儲存、範本下拉（載入／存為範本）、「配方」鈕（開 `RecipeDrawer`）、綁定配方下拉（`BoundRecipeSelect`，有配方才顯示）、「未教導」等標籤、參數卡／Golden Set／匯出／統計；第二列試跑、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、`flex-wrap` 換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角（`ScratchBadge`、`Dropdown`、`MenuItem` 也在這） |
-| `BatchTestModal.tsx` | 批次測試 BatchTestModal | 多張影像跑一輪：摘要、結果表（篩選 NG／失敗、勾選列「存為 Golden Set」）、CSV 匯出、點列檢視該 run |
+| `EditorToolbar.tsx` | 頂列 EditorToolbar | 兩列：第一列流程名稱、儲存、範本下拉（載入／存為範本）、「配方」鈕（開 `RecipeDrawer`）、綁定配方下拉（`BoundRecipeSelect`，有配方才顯示）、「未教導」等標籤、參數卡／Golden Set／匯出／統計；第二列試跑、用上次影像重跑、上傳暫存影像、批次測試（導向 /batch）、連續執行、重置、說明下拉。按鈕圖示＋短文字、`flex-wrap` 換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角（`ScratchBadge`、`Dropdown`、`MenuItem` 也在這） |
+| `pages/BatchPage.tsx`＋`components/batch/*` | 批次測試頁 | 影像集清單、執行紀錄（進度、比較勾選）、結果表（期望可改、CSV、存 Golden）、影像集標記網格、洞察（建議門檻、圖表）、比較、調參面板、AI 面板、單張預覽 Modal；資料層 `lib/batch.ts` |
 | `NodeContextMenu.tsx` | 步驟選單 NodeContextMenu | 右鍵：開啟工具頁、複製、停用、刪除、複製／貼上參數 |
 | `../templates/TemplateGallery.tsx` | 範本畫廊 TemplateGallery | `TemplateGallery`（create／load 兩種模式）、`SaveTemplateModal`、`TemplateThumb` 節點示意 SVG |
 | `ToolPalette.tsx` | 工具箱 ToolPalette | 可插入的工具（分類、搜尋）；一律拖曳到畫布新增（點擊無動作、title 顯示說明）；收藏（星號，`vs.favoriteTools`）。「最近使用」已移除 |

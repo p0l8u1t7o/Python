@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html" aria-current="page">使用者手冊</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html" aria-current="page">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>使用者手冊</h1>
@@ -111,12 +111,15 @@
 <p>總覽頁左側選擇流程，中央顯示最近一次執行的影像與標記、右側顯示判定與輸出值；無事件時顯示最後一次執行結果。</p>
 
 <h2 id="batch">6. 批次測試與 Golden Set</h2>
-<ul>
-<li>編輯器頂列「批次測試」：拖入多張影像或從來源擷取 N 張，一次執行並列出逐張判定、耗時與輸出；可匯出 CSV。</li>
-<li>勾選案例「存入 Golden Set」作為回歸基準；「Golden Set」頁可設定期望值並執行回歸，退步案例置頂。</li>
-<li>結果下方「請 AI 依這批結果調整」：輸入回饋語句，AI 助手調整參數後在同批影像重跑並顯示調整前後的對比，滿意再套用到畫布。</li>
-<li>結果表每列可填「期望」OK／NG，按「自動調參」：系統只調整現場調機參數（不動公差與期望數量），嚴格變好才採納，同樣顯示前後對比後套用。Golden Set 頁亦有「自動調參」，以案例期望值搜尋，結果可「帶回編輯器」成為草稿。</li>
-</ul>
+<ol>
+<li>側欄「批次測試」（或編輯器頂列「批次測試」）：選擇流程；編輯器有未儲存草稿時可勾「使用編輯器未儲存的草稿」。</li>
+<li>「新增影像集」：上傳影像或從影像來源擷取 N 張（一個影像集最多 200 張）。</li>
+<li>「執行此影像集」：背景批量執行、顯示進度、可中斷；每次執行的逐張結果都暫存，執行紀錄可回看。</li>
+<li>「影像集」分頁為每張影像標記期望 OK／NG，「結果」分頁即顯示命中率與逐張命中；「洞察」分頁列出未命中影像、出錯節點、判定門檻建議、輸出分佈與歷次趨勢，「套用並重新執行」直接產生新的一次執行。</li>
+<li>「調參」分頁修改現場調機參數後「重新執行」，「比較」分頁逐張對照兩次執行；滿意後「寫回流程」「存為配方」或「帶回編輯器」。</li>
+<li>「AI 助手」分頁：提問（例如「為什麼第 3 張 NG？」）、「請 AI 調整」、「自動調參」，結果都成為新的一次執行。</li>
+<li>勾選影像「存入 Golden Set」作為回歸基準；「Golden Set」頁可執行回歸與自動調參，退步案例置頂。詳見<a href="batch.html">批次測試</a>與<a href="golden.html">Golden Set 與匯出</a>。</li>
+</ol>
 
 <h2 id="templates">7. 範本畫廊</h2>
 <p>14 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測等）皆附合成樣本圖；建立時選擇對應的「範例：⋯」來源即可直接執行。自己的流程可「存為範本」供他人重用。詳見<a href="samples.html">範例樣板</a>。</p>

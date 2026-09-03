@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>前端名詞規範（溝通用）</h1>
@@ -91,7 +91,6 @@
 <tr><td>頂列</td><td>EditorToolbar</td><td>兩列：第一列流程名稱、儲存、範本下拉、「配方」鈕（開配方面板）、綁定配方下拉（有配方才顯示）、「未教導」標籤、參數卡／Golden Set／匯出／統計圖示；第二列試執行、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、寬度不足換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角</td></tr>
 <tr><td>工具箱</td><td>ToolPalette（FavoriteTools＋ToolPicker）</td><td>左欄上半＝「新增工具」按鈕＋收藏清單（點擊插入畫布中央、也可拖曳）；按鈕開「選擇工具」視窗：左側功能分群快速切換、右側大圖示卡片與完整說明、可搜尋、可收藏，點卡即插入畫布</td></tr>
 <tr><td>步驟選單</td><td>NodeContextMenu</td><td>右鍵點步驟：開啟工具頁、複製、停用／啟用、刪除、複製參數／貼上參數（同型別）</td></tr>
-<tr><td>批次測試</td><td>BatchTestModal</td><td>頂列「批次測試」開的 Modal：多張影像跑一輪、摘要、結果表（可勾選列「存為 Golden Set」）、CSV</td></tr>
 <tr><td>配方面板</td><td>RecipeDrawer（<code>components/recipes/</code>）</td><td>流程頁列上「配方」與參數卡頁「管理配方」開的側滑面板：綁定下拉、新增（可「以目前圖值作為覆寫（教導參數）」）／改名／複製／刪除／設綁定／匯出／全部匯出／匯入、展開編輯覆寫表；儲存與新增都先走「儲存範圍 Check List」</td></tr>
 <tr><td>儲存範圍 Check List</td><td>RecipeCheckList（<code>useSaveCheck</code>）</td><td>新增或儲存配方前呼叫 <code>POST /recipes/check</code>（<code>include_all: true</code>，流程所有宣告參數都列出，覆寫沒提到的以圖值列為 unchanged），逐項列出「步驟 › 參數：目前值 → 新值」＋狀態。分兩區：上方「教導參數」（teach=true；ok 預設勾、unchanged 不勾）、下方摺疊「其他參數（N）」（teach=false，預設收合、不勾，展開後可勾；ROI 值顯示摘要「rect 286×215 @ 373,277」）；version_changed 可勾、其餘紅色不可勾；勾選項目送出的值＝清單上的值（unchanged 就是圖值）。「以目前圖值作為覆寫（教導參數）」也走同一份清單</td></tr>
 <tr><td>匯入合理化檢查</td><td>RecipeImportModal</td><td>匯入配方前 <code>POST /recipes/import/check</code>：顯示流程名稱／指紋是否相同、每個配方的檢查清單，勾選後 <code>POST /recipes/import {doc, accept}</code>，結果顯示寫入／略過幾項</td></tr>
@@ -138,6 +137,12 @@
 <tr><td>範本庫</td><td>Template library（FlowTemplate）</td><td>流程範本：內建（<code>builtin:&lt;key&gt;</code>）或自訂（存為範本）；來源 id 以 <code>{SOURCE}</code> 佔位，建立／載入時再選影像來源</td></tr>
 <tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名；範例樣板（<code>demo.BUILTIN_TEMPLATES</code>）都在這裡，配「範例：⋯」樣本來源即可執行</td></tr>
 <tr><td>註解</td><td>Note（畫布便利貼）</td><td>graph 的裝飾節點（type=note，不參與執行）；工具箱「新增註解」放到畫布中央，選中後在屬性面板改標題／內文、拖角落調大小</td></tr>
+<tr><td>批次測試</td><td>Batch test（<code>/batch</code>、BatchPage、<code>apps/vision/batch</code>）</td><td>選流程用影像集批量執行並暫存每次逐張結果的調機工作台；含期望標記、洞察、調參重跑、比較、AI 諮詢與調整</td></tr>
+<tr><td>影像集</td><td>Batch set（<code>BatchSet</code>）</td><td>一組批量測試用的影像＋每張的期望標記（OK／NG）；檔案在 ASSET_DIR/batch/</td></tr>
+<tr><td>批次執行</td><td>Batch run（<code>BatchRun</code>、執行紀錄）</td><td>用某份 graph 快照跑影像集的一次執行；逐張結果與 summary 暫存，origin＝手動／草稿／自動調參／AI 調整，parent 串起調參前後</td></tr>
+<tr><td>資料洞察</td><td>Insights（<code>batch/insights.py</code>、洞察分頁）</td><td>命中率、混淆矩陣、未命中影像、出錯節點、建議門檻、輸出分佈、與上一次差異</td></tr>
+<tr><td>建議門檻</td><td>Threshold suggestion（<code>insights.judges[].suggestion</code>）</td><td>依期望 OK／NG 兩群的判定輸入值找出的較佳門檻，可一鍵套用到調參面板</td></tr>
+<tr><td>資料諮詢</td><td>Consult（<code>POST /agent/consult</code>）</td><td>針對一次批次執行的資料提問；規則洞察＋LLM 回答，附可套用的參數建議</td></tr>
 <tr><td>工作階段</td><td>Agent session（<code>AgentSession</code>、<code>/agent/sessions</code>、AI 助手頁「歷史」）</td><td>一次 AI 助手生成的完整記錄（影像、ROI、需求、流程、判定、評分）；可還原、可當相似影像的參數先驗</td></tr>
 <tr><td>參數先驗</td><td>Prior（<code>memory.priors_from_sessions</code>、候選「沿用過去成功參數」）</td><td>相似成功案例的現場調機參數，套到新草稿、自動調參候選最前與 LLM 的過去案例段</td></tr>
 <tr><td>補充要領</td><td>Custom skill（<code>AgentSkill</code>、<code>/agent/skills/custom</code>）</td><td>站點（管理員）或個人對內建 AI 技能的 markdown 補充；站點進 system 段、個人進 user 訊息</td></tr>

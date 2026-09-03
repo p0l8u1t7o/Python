@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 批次測試</title>
+<style>
+  :root {
+    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
+    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
+  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
+  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
+  article.doc.wide { max-width:1180px; }
+  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
+  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
+  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
+  p { margin:.7rem 0; }
+  a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
+  a:hover { text-decoration-color:var(--brand-ink); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
+  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafcff; }
+  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
+  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
+  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
+  nav ul li { margin:.15rem 0; }
+  ul, ol { padding-left:1.4rem; }
+  li { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
+  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
+  img { max-width:100%; }
+  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html" aria-current="page">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
+<article class="doc">
+<h1>批次測試：影像集、暫存的逐張結果、資料洞察與調參</h1>
+<p>「批次測試」頁（側欄 <code>/batch</code>）讓您<strong>選一條流程，用一組影像批量執行，每次執行的逐張結果都暫存下來</strong>：為影像標記期望 OK／NG 即得命中率與混淆矩陣，洞察卡會沿判定節點的輸入值算出<strong>建議門檻</strong>；在同一頁改參數重新執行同一影像集比較前後，滿意後寫回流程、存為配方或帶回編輯器；也可請 AI 助手依這批資料<strong>諮詢</strong>或<strong>調整</strong>，結果同樣成為新的一次執行。編輯器頂列的「批次測試」會開啟此頁並預選流程（有未儲存草稿時可勾「使用編輯器未儲存的草稿」）。</p>
+
+<nav><ul>
+<li><a href="#concept">1. 概念：影像集與執行</a></li>
+<li><a href="#flow">2. 操作流程</a></li>
+<li><a href="#models">3. 資料模型與檔案</a></li>
+<li><a href="#exec">4. 執行方式（背景、進度、中斷）</a></li>
+<li><a href="#insights">5. 資料洞察與建議門檻</a></li>
+<li><a href="#tune">6. 調參、寫回、配方、Golden Set</a></li>
+<li><a href="#ai">7. AI 諮詢與調整</a></li>
+<li><a href="#api">8. API</a></li>
+<li><a href="#retention">9. 保留策略與設定</a></li>
+<li><a href="#files">10. 檔案與測試</a></li>
+</ul></nav>
+
+<h2 id="concept">1. 概念：影像集與執行</h2>
+<ul>
+<li><strong>影像集（BatchSet）</strong>：一組批量測試用的影像（上傳或從影像來源擷取，一個影像集最多 <code>VISION_BATCH_MAX_IMAGES</code>＝200 張），檔案存在伺服器；<strong>期望標記（OK／NG）屬於影像</strong>，同一組影像重複執行時保留。</li>
+<li><strong>批次執行（BatchRun）</strong>：用某份 graph 快照把影像集跑一遍；逐張結果（狀態、耗時、具名輸出、各節點狀態與純量輸出、錯誤）與 summary 一起暫存。執行可標 <code>parent</code>（由哪一次調參而來），來源 <code>origin</code>＝manual／draft／autotune／ai_tune。</li>
+<li>與 Golden Set 的分工：Golden Set 是<strong>正式回歸基準</strong>（少量、期望值精確、進 CI）；批次測試是<strong>調機工作台</strong>（多量、可反覆重跑、資料會淘汰）。批次頁勾選影像可一鍵「存入 Golden Set」。</li>
+</ul>
+
+<h2 id="flow">2. 操作流程</h2>
+<ol>
+<li>頂列選擇流程（或從編輯器「批次測試」帶入）。</li>
+<li>「新增影像集」：上傳影像檔，或從影像來源擷取 N 張。</li>
+<li>「執行此影像集」：背景執行、執行紀錄顯示進度，可中斷。</li>
+<li>「影像集」分頁為每張影像標記期望 OK／NG（或全部 OK／NG）；「結果」分頁的期望欄也可改。命中率、混淆矩陣立即更新。</li>
+<li>「洞察」分頁：未命中影像、出錯節點、判定門檻建議、具名輸出分佈（依期望分兩色）、歷次執行趨勢；「套用建議並重新執行」直接產生新的一次執行。</li>
+<li>「調參」分頁：現場調機參數（teach）分組編輯 → 「重新執行」（新執行的 parent＝目前選取的執行）→ 「比較」分頁逐張對照。</li>
+<li>「AI 助手」分頁：提問（諮詢）、請 AI 調整、自動調參；結果都成為新的一次執行。</li>
+<li>滿意後「寫回流程」（擁有者／管理員）、「存為配方」（參數差異 → FlowRecipe）或「帶回編輯器」（成為草稿）。</li>
+</ol>
+
+<h2 id="models">3. 資料模型與檔案（apps/vision/models.py）</h2>
+<table>
+<tr><th>模型</th><th>欄位</th></tr>
+<tr><td><code>BatchSet</code></td><td><code>flow</code>、<code>owner</code>、<code>name</code>、<code>source</code>（upload／source:名稱）、<code>images</code> JSON <code>[{index, name, path, width, height, expected, expect_outputs, note}]</code>、<code>image_count</code>、<code>size_bytes</code>、時間戳。檔案在 <code>ASSET_DIR/batch/&lt;set_id&gt;/NNN.png</code>，刪除影像集即 <code>rmtree</code>。</td></tr>
+<tr><td><code>BatchRun</code></td><td><code>batch_set</code>、<code>parent</code>、<code>owner</code>、<code>flow_version</code>、<code>graph</code>（實際執行的快照，配方已疊上）、<code>recipe_name</code>、<code>label</code>／<code>note</code>、<code>origin</code>、<code>status</code>（queued／running／done／cancelled／failed）、<code>progress_done</code>／<code>progress_total</code>、<code>summary</code>、<code>items</code>（逐張：<code>status, duration_ms, outputs, error, error_node, nodes{id:{status, duration_ms, message, branch, outputs}}</code>，只存純量，NaN 轉 null）、<code>insights</code>（洞察快取）、<code>meta</code>（自動調參／AI 調整的說明）、<code>error</code>、時間戳。</td></tr>
+</table>
+<p>命中（match）不存在 items 裡：標記可事後修改，序列化時用 <code>apps/golden/regress.evaluate_expect</code> 現算；改標記後 <code>store.refresh_matches</code> 重算該影像集所有已完成執行的 summary 與洞察。</p>
+
+<h2 id="exec">4. 執行方式（apps/vision/batch/jobs.py）</h2>
+<ul>
+<li>背景執行緒（同時最多 <code>VISION_BATCH_MAX_RUNNING</code>＝2 個、同一影像集只能一個），<code>runner.compiled_for(flow, graph_override=graph)</code> 只編譯一次（來源／資產在呼叫者執行緒預先開好），每張直接 <code>engine.execute(...)</code>。</li>
+<li><strong>不走 runner 佇列</strong>：不累計流程統計、不發 SSE、不寫 FlowRun、不隱含套預設配方（配方改為建立執行時明確指定 <code>recipe_id</code>）；影像進獨立快取桶 <code>BATCH_FLOW_ID=-1</code> 並在每張跑完立即 <code>store.drop_run</code>，200 張批次不會把編輯器的試執行影像擠出快取。</li>
+<li>每 10 張或 2 秒把進度與已完成列 <code>update()</code> 回 DB；前端每秒輪詢；「中斷」設旗標，執行到目前那張為止，狀態 cancelled。</li>
+<li>伺服器重啟時殘留的 running 執行，讀取時自動標成 failed（「伺服器重新啟動，執行中斷」）。</li>
+<li><strong>autotune 模式</strong>：先用影像集的標記做座標下降（未命中的影像優先抽樣、最多 40 張；不動公差／期望數量／範圍這類規格），再用調好的 graph 全量重跑，<code>meta.autotune</code> 記錄前後命中與變更。</li>
+</ul>
+
+<h2 id="insights">5. 資料洞察與建議門檻（apps/vision/batch/insights.py）</h2>
+<ul>
+<li>命中率、混淆矩陣（期望 NG 為 positive：tp 抓到、fn 漏檢、fp 誤判、tn 正確）、未命中清單（≤20）、出錯節點次數與訊息、最慢影像與最耗時節點、具名數值輸出依期望／實際分組的統計。</li>
+<li><strong>建議門檻</strong>：走訪 <code>if_number</code>／<code>in_range</code>／<code>tolerance_judge</code> 節點，沿 <code>value</code> 輸入邊找上游 <code>(節點, 埠)</code>，從逐張的節點純量輸出取值，依期望分成 OK／NG 兩群：
+  <ul>
+  <li><code>if_number</code>（gt／ge／lt／le）：由分支接到的 judge 判定方向（true→OK 或 true→NG），在相鄰值中點掃描命中率最高的門檻，嚴格高於目前才建議。</li>
+  <li><code>in_range</code>：只移動有 NG 值的那一側邊界到 NG 與 OK 的中點；另一側維持現值。</li>
+  <li><code>tolerance_judge</code>：只列偏差分佈，不建議（公差是規格）。</li>
+  </ul></li>
+<li>有 parent 時另算與上一次的差異（判定改變、改善、退步、參數變動）。<code>text[]</code> 是繁中條列句，離線諮詢與 LLM 上下文共用；<code>GET /batch/runs/{id}/insights</code> 另回 <code>suggestions[]</code>（可直接套用的 <code>{node, key, value}</code>）。</li>
+</ul>
+
+<h2 id="tune">6. 調參、寫回、配方、Golden Set</h2>
+<ul>
+<li>調參面板的工作圖取自目前選取執行的 graph（或勾選的編輯器草稿）；只列 <code>teach=True</code> 的參數（與參數卡頁同一套 <code>teachGroupsOf</code>），有變更的參數左側有藍線。</li>
+<li>「重新執行」＝ <code>POST /batch/sets/{id}/runs {graph, parent_run_id}</code>；「寫回流程」＝ <code>PATCH /flows/{id}</code>（版本 +1）；「存為配方」＝ 工作圖與流程現圖的參數差 → <code>POST /flows/{id}/recipes</code>；伺服端另有 <code>POST /batch/runs/{id}/to-recipe</code> 直接由某次執行的 graph 建配方。</li>
+<li>「存入 Golden Set」直接複製影像檔建立案例（期望取自標記或指定執行的判定），不經影像快取，不會「影像已釋放」。</li>
+</ul>
+
+<h2 id="ai">7. AI 諮詢與調整（apps/vision/agent/consult.py）</h2>
+<ul>
+<li><strong>諮詢</strong> <code>POST /agent/consult {batch_run_id, question, graph?}</code>：一律先算規則洞察；LLM 可用時把流程 graph、洞察條列、逐張資料（未命中優先、≤50 列，含判定節點的輸入值）與最多 4 張未命中影像交給模型，回答尾端可附 <code>SUGGESTIONS: {"suggestions":[{node,key,value,reason}]}</code>，伺服器驗證節點／參數存在且流程仍有效才回前端；離線或失敗時以洞察條列組成回答（依問題關鍵詞挑段落），<code>suggestions</code> 來自建議門檻。</li>
+<li><strong>請 AI 調整</strong>：<code>POST /agent/tune</code>／代理模式 <code>POST /agent/jobs(task=tune)</code> 帶 <code>batch_run_id</code>：影像從磁碟載入、逐張資料與洞察併進批次摘要，調整後的流程在同一影像集重跑，結果直接落成新的一次執行（origin=ai_tune、parent=原執行），回應含 <code>batch_run_id</code>。離線時指令對不上規則而有標記 ≥2 張，改走資料驅動自動調參。</li>
+<li><strong>自動調參</strong>：批次頁用 <code>POST /batch/sets/{id}/runs {mode:"autotune"}</code>（背景、可中斷）；<code>POST /agent/autotune</code> 也接受 <code>batch_run_id</code>。</li>
+</ul>
+
+<h2 id="api">8. API（apps/vision/batch/api.py）</h2>
+<pre>GET    /vision/batch/sets?flow_id=                    {items[set…含 latest_run], total, max_images, keep_sets, keep_runs}
+POST   /vision/batch/sets                             multipart images[]＋flow_id＋name? → 201 set（含 images）
+POST   /vision/batch/sets/from-source                 {flow_id, source_id, count, name?} → 201
+GET    /vision/batch/sets/{id}                        set（含 images、latest_run、can_manage）
+PATCH  /vision/batch/sets/{id}                        {name?, labels:[{index, expected?, expect_outputs?, note?}], remove:[index]}
+DELETE /vision/batch/sets/{id}                        204（執行中 409）
+GET    /vision/batch/sets/{id}/images/{index}?max=    影像（?token= 可用於 &lt;img&gt;）
+POST   /vision/batch/sets/{id}/to-golden              {indexes?, expect_from: label|status, run_id?, note?} → 201 {created, ids}
+GET    /vision/batch/sets/{id}/runs                   {items[run 精簡], total}
+POST   /vision/batch/sets/{id}/runs                   {mode: run|autotune, graph?, recipe_id?, label?, note?, parent_run_id?, origin?, max_evals?, deadline_s?} → 202 run
+GET    /vision/batch/runs/{id}?items=1                run（items 含 name/expected/match/reasons/image_url、graph、progress）
+PATCH  /vision/batch/runs/{id}                        {label?, note?}
+POST   /vision/batch/runs/{id}/cancel                 {cancelled}
+DELETE /vision/batch/runs/{id}                        204
+GET    /vision/batch/runs/{id}/insights               洞察（ready=false 表示未完成）＋ suggestions[]
+GET    /vision/batch/runs/{id}/compare?other=         {a, b, rows[], summary{changed, improved, regressed, same, a_match, b_match}, param_diff}
+POST   /vision/batch/runs/{id}/rows/{index}/preview   {graph?} → RunReport（含 overlays，影像進快取供影像視窗）
+POST   /vision/batch/runs/{id}/to-recipe              {name, description?, is_default?} → 201 recipe
+POST   /vision/agent/consult                          {batch_run_id, question, graph?} → {answer, provider, insights, suggestions, warnings}</pre>
+<p>權限：看得到流程即可讀；建立影像集與執行需可執行（引擎鎖定時 423）；修改標記、刪除需影像集建立者、流程擁有者或管理員；存入 Golden Set／存為配方需流程擁有者或管理員。舊的 <code>POST /flows/{id}/batch</code>、<code>/batch-source</code>（即時批次、不暫存）仍保留給 API 整合方。</p>
+
+<h2 id="retention">9. 保留策略與設定（.env）</h2>
+<table>
+<tr><th>變數</th><th>預設</th><th>說明</th></tr>
+<tr><td><code>VISION_BATCH_MAX_IMAGES</code></td><td>200</td><td>一個影像集最多幾張</td></tr>
+<tr><td><code>VISION_KEEP_BATCH_SETS</code></td><td>10</td><td>每條流程保留最近幾個影像集（超過自動刪最舊，含檔案；有執行中的不刪）</td></tr>
+<tr><td><code>VISION_KEEP_BATCH_RUNS</code></td><td>20</td><td>每個影像集保留最近幾次已結束的執行</td></tr>
+<tr><td><code>VISION_BATCH_MAX_RUNNING</code></td><td>2</td><td>同時執行的批次數</td></tr>
+</table>
+<div class="note">磁碟：影像以 PNG 原樣保存（不縮圖，否則會改變檢測結果），200 張相機原圖可能達數百 MB；影像集卡片顯示大小，超過保留數會自動清除，也可手動刪除。</div>
+
+<h2 id="files">10. 檔案與測試</h2>
+<table>
+<tr><th>檔案</th><th>職責</th></tr>
+<tr><td><code>apps/vision/batch/store.py</code></td><td>檔案、序列化、summary／命中、完成寫入、淘汰、graph 參數差異、AI 結果落地</td></tr>
+<tr><td><code>apps/vision/batch/jobs.py</code></td><td>背景執行、進度、取消、autotune 模式</td></tr>
+<tr><td><code>apps/vision/batch/insights.py</code></td><td>洞察與建議門檻（純函式）</td></tr>
+<tr><td><code>apps/vision/batch/api.py</code></td><td>端點</td></tr>
+<tr><td><code>apps/vision/agent/consult.py</code></td><td>資料諮詢</td></tr>
+<tr><td><code>frontend/src/pages/BatchPage.tsx</code>、<code>components/batch/*</code>、<code>lib/batch.ts</code></td><td>頁面、影像集／執行清單、結果表、影像集標記、洞察、比較、調參、AI 面板、單張預覽</td></tr>
+<tr><td><code>tests/test_batch.py</code></td><td>影像集、執行、標記、洞察、比較、預覽、自動調參、配方／Golden、淘汰、刪除、權限、AI 諮詢與調整落地</td></tr>
+</table>
+</article>
+</body>
+</html>

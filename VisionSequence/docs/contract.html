@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
 <article class="doc">
 
 <h1>VisionSequence 前後端合約（給平行開發的子任務看）</h1>
@@ -130,8 +130,10 @@
 POST   /vision/templates                    {name, description, category, graph} → 存為範本（自動換成佔位符）
 DELETE /vision/templates/{id}               自訂範本（擁有者／管理員）
 POST   /vision/templates/{id}/instantiate   {source_id?, prefix?} → {graph, missing_source, name, description}
-POST   /vision/flows/{id}/batch             multipart images[]（≤50）＋可選 graph（JSON 字串）→ {items[{name, run_id, status, duration_ms, outputs, error, error_node, image_ref}], summary{total, ok, ng, failed, avg_ms, max_ms, wall_ms}}
-POST   /vision/flows/{id}/batch-source      {source_id, count, graph?}
+POST   /vision/flows/{id}/batch             （舊介面：即時批次、不暫存；UI 已改用 /vision/batch/…，見 batch.html）multipart images[]（≤50）＋可選 graph（JSON 字串）→ {items[{name, run_id, status, duration_ms, outputs, error, error_node, image_ref}], summary{total, ok, ng, failed, avg_ms, max_ms, wall_ms}}
+POST   /vision/flows/{id}/batch-source      {source_id, count, graph?}（舊介面）
+GET    /vision/batch/sets?flow_id=          批次測試頁：影像集／執行／洞察／比較／預覽／存配方（完整列表見 batch.html）
+POST   /vision/agent/consult                {batch_run_id, question, graph?} → {answer, provider, insights, suggestions, warnings}
 GET    /vision/integration/info             {http_base, tcp_host, tcp_port, tcp_listening, api_key_required, commands[]}
 POST   /vision/integration/tcp              {command} → {response, via: tcp|direct, elapsed_ms}</pre>
 <h2 id="recipes">配方、站台、教導</h2>
