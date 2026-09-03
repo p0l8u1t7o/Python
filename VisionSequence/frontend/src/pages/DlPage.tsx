@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Archive, Brain, Camera, Check, Cpu, Database, Download, Image as ImageIcon, LayoutGrid, Play, Plus, Shuffle, Sparkles, Square, Trash2, Upload, X, Wand2 } from 'lucide-react'
 
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from 'recharts'
@@ -16,7 +16,8 @@ import { ParamField, type InspectorActions } from '@/components/editor/ParamFiel
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Panel, SegmentedControl, Select, TextInput } from '@/components/ui'
 import { assetUrl, dlSampleUrl } from '@/lib/api'
-import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainStatus, useDlTrainers, useDlVersions, useSources } from '@/lib/queries'
+import { errorMessage } from '@/lib/errors'
+import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainers, useDlTrainStatus, useDlVersions, useFlowMutations, useSources } from '@/lib/queries'
 import type { DlDatasetVersion, DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { CURVE_COLORS, classColor, classColorAt } from '@/lib/colors'
@@ -159,6 +160,29 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   const [assetName, setAssetName] = useState('')
   const [device, setDevice] = useState('')
   const job = useDlTrainStatus(true)
+  const navigate = useNavigate()
+  const flowMut = useFlowMutations()
+  /** 訓練完一鍵建流程：取像（待選來源）→ 對應工具（已選好模型與建議參數）；編輯器橫幅會提醒選來源。 */
+  async function createFlowWithModel() {
+    const j = job.data
+    if (!j || j.status !== 'done' || !j.asset_id) return
+    const tool = j.tool_key || 'dl_classify'
+    const graph = {
+      nodes: [
+        { id: 'src', type: 'image_source', label: '', enabled: true, params: {}, position: { x: 40, y: 40 } },
+        { id: 'model', type: tool, label: '', enabled: true, params: { ...(j.tool_params ?? {}), model: j.asset_id }, position: { x: 320, y: 40 } },
+      ],
+      edges: [{ id: 'e-src-model', source: 'src', target: 'model', source_handle: 'image', target_handle: 'image' }],
+    }
+    const name = `${j.project_name} · ${j.asset_name}`.slice(0, 100)
+    try {
+      const flow = await flowMut.create.mutateAsync({ name, description: t('dl.createFlowDesc', { model: j.asset_name }), graph })
+      toast.success(t('dl.createFlowDone', { name: flow.name }))
+      navigate(`/flows/${flow.id}`)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
   const running = job.data?.status === 'running'
   const mine = job.data && job.data.project_id === project.id
 
@@ -211,10 +235,10 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         {/* 最近一次結果 */}
         {mine && job.data?.status === 'failed' ? <p className="rounded-md bg-critical-soft px-2.5 py-1.5 text-xs text-critical">{job.data.error}</p> : null}
         {mine && job.data?.status === 'done' ? (
-          <p className="rounded-md bg-ok-soft px-2.5 py-1.5 text-xs text-ok">
-            {t('dl.done', { name: job.data.asset_name })} <Link to="/assets" className="underline">{t('dl.toAssets')}</Link>
-            {' · '}{t('dl.useInTool', { tool: job.data.tool_key })}
-          </p>
+          <div className="space-y-1.5 rounded-md bg-ok-soft px-2.5 py-1.5 text-xs text-ok">
+            <p>{t('dl.done', { name: job.data.asset_name })} <Link to="/assets" className="underline">{t('dl.toAssets')}</Link>{' · '}{t('dl.useInTool', { tool: job.data.tool_key })}</p>
+            <Button size="xs" variant="primary" loading={flowMut.create.isPending} onClick={() => void createFlowWithModel()} data-testid="dl-create-flow">{t('dl.createFlow')}</Button>
+          </div>
         ) : null}
 
         {/* 指標：大數字磚 */}

@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useBlocker, useNavigate, useParams } from 'react-router-dom'
+import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom'
 import {
   ReactFlowProvider,
   addEdge,
@@ -39,7 +39,7 @@ import { DRAG_MIME, HISTORY_LIMIT, computeLayout, edgeProps, graphFrom, isTyping
 import { useResizer } from '@/components/editor/useResizer'
 import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
 import { SaveTemplateModal, TemplateGallery } from '@/components/templates/TemplateGallery'
-import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, StatusBadge, Tabs, TextInput } from '@/components/ui'
+import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
@@ -47,7 +47,7 @@ import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowD
 import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
-import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useToolTypes } from '@/lib/queries'
+import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes } from '@/lib/queries'
 import { isImageRef, type FlowGraph, type GraphEdge, type GraphNode, type NodeReport, type Overlay, type Region, type RunReport, type ToolTypeDef } from '@/lib/types'
 import { isLockHolder, useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -324,6 +324,9 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   const graphNodes = useMemo(() => nodes.map((n) => payloads.current.get(n.id)).filter((p): p is GraphNode => Boolean(p)), [nodes])
   const graphEdges = useMemo<GraphEdge[]>(() => edges.map((e) => ({ id: e.id, source: e.source, target: e.target, source_handle: e.sourceHandle ?? '', target_handle: e.targetHandle ?? '' })), [edges])
+  //: 沒選影像來源又沒暫存影像 → 試執行一定失敗；橫幅直接讓人選來源（不用先找到取像步驟再進工具頁）
+  const missingSourceNode = useMemo(() => graphNodes.find((n) => n.type === 'image_source' && !n.params?.source_id) ?? null, [graphNodes])
+  const sourceList = useSources()
   const nodeOrder = useMemo(() => topoOrder(graphNodes, graphEdges), [graphNodes, graphEdges])
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
 
@@ -893,6 +896,26 @@ function EditorInner({ flowId }: { flowId: number }) {
         notCommissioned={flow.data?.commissioned === false}
         onExport={() => void exportFlow()}
       />
+
+      {missingSourceNode && !scratch ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-warning/40 bg-warning-soft px-3 py-1.5 text-xs text-warning" role="status" data-testid="no-source-banner">
+          <span className="font-medium">{t('editor.noSourceBanner')}</span>
+          <Select className="!h-7 !w-56 !py-0 text-xs" value="" aria-label={t('editor.noSourcePick')} placeholder={t('editor.noSourcePick')}
+            options={(sourceList.data?.items ?? []).map((src) => ({ value: String(src.id), label: src.name }))}
+            onChange={(e) => {
+              const id = Number(e.target.value)
+              if (!id) return
+              pushHistory()
+              patchNode(missingSourceNode.id, { params: { ...(missingSourceNode.params ?? {}), source_id: id } })
+              toast.success(t('editor.sourcePicked'))
+            }} data-testid="no-source-select" />
+          <label className="cursor-pointer rounded-md border border-warning/40 px-2 py-0.5 hover:bg-warning/10">
+            {t('editor.scratchUpload')}
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadScratch(f); e.target.value = '' }} />
+          </label>
+          <Link to="/sources" className="underline">{t('editor.manageSources')}</Link>
+        </div>
+      ) : null}
 
       {/* 三欄 */}
       <div className="flex min-h-0 flex-1">

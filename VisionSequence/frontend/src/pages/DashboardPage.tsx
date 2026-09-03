@@ -4,15 +4,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, BarChart3, MonitorPlay, Pencil, Radio, Workflow } from 'lucide-react'
+import { Activity, BarChart3, MonitorPlay, Pencil, Play, Radio, Workflow } from 'lucide-react'
 
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '@/components/ui'
 import { TrendStrip } from '@/pages/StatsPage'
 import { api, imageUrl } from '@/lib/api'
+import { useToast } from '@/providers/ToastProvider'
+import { errorMessage } from '@/lib/errors'
 import { useFlowStream } from '@/lib/flowStream'
-import { useCapacity, useFlows, useRecentRuns } from '@/lib/queries'
+import { useCapacity, useFlows, useRecentRuns, useRunFlow } from '@/lib/queries'
 import type { Flow, RunReport } from '@/lib/types'
 
 function CapacityBar() {
@@ -137,8 +139,18 @@ function LiveInfo({ run }: { run: RunReport | null }) {
 function FlowCard({ flow, selected, onSelect }: { flow: Flow; selected: boolean; onSelect: () => void }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const toast = useToast()
+  const run = useRunFlow()
   const s = flow.stats
   const recent = useRecentRuns(flow.id)
+  async function runOnce() {
+    try {
+      const report = await run.mutateAsync({ flowId: flow.id, wait: true })
+      toast.success(t('dashboard.runOnceDone', { status: report.status.toUpperCase(), ms: Math.round(report.duration_ms) }))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
   const trend = [...(recent.data?.items ?? [])].reverse().map((r) => r.status)
   const okRate = s.runs ? Math.round((s.ok / s.runs) * 100) : null
   const last = s.last_status
@@ -152,6 +164,11 @@ function FlowCard({ flow, selected, onSelect }: { flow: Flow; selected: boolean;
           <p className="min-w-0 flex-1 truncate text-sm font-semibold">{flow.name}</p>
           {flow.continuous ? <Badge tone="brand"><Radio size={11} className="animate-pulse" aria-hidden />{t('dashboard.continuous')}</Badge> : null}
           {!flow.is_enabled ? <Badge>{t('common.disabled')}</Badge> : null}
+          <span role="button" tabIndex={0} className={`btn-icon !p-1 ${run.isPending ? 'animate-pulse' : ''}`} title={t('dashboard.runOnce')} aria-label={t('dashboard.runOnce')}
+            onClick={(e) => { e.stopPropagation(); if (!run.isPending) void runOnce() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); void runOnce() } }} data-testid="card-run">
+            <Play size={13} />
+          </span>
           <span role="button" tabIndex={0} className="btn-icon !p-1" title={t('dashboard.openEditor')} aria-label={t('dashboard.openEditor')}
             onClick={(e) => { e.stopPropagation(); navigate(`/flows/${flow.id}`) }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/flows/${flow.id}`) } }} data-testid="card-edit">

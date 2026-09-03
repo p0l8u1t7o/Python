@@ -174,6 +174,7 @@ const zhHans = {
     bad_json: 'JSON 格式错误',
   },
   dl: {
+    createFlow: '建立流程使用此模型', createFlowDesc: '由深度学习教导产生：模型「{{model}}」', createFlowDone: '已建立流程「{{name}}」，请在取像步骤选择图像来源',
     title: '深度学习教导',
     subtitle: '在平台上收集样本、标记、训练并导出模型到资产库；模型种类可用插件扩充',
     projects: '教导项目',
@@ -357,6 +358,7 @@ const zhHans = {
     none: '尚未运行',
   },
   dashboard: {
+    runOnce: '执行一次', runOnceDone: '已执行：{{status}}（{{ms}} ms）',
     watch: '观看检测画面',
     watchTitle: '{{name}}－实时检测',
     selectFlow: '点左侧流程卡选择要观看的流程',
@@ -426,6 +428,7 @@ const zhHans = {
     importNoFile: '请先选择 .flow.json 档',
   },
   editor: {
+    noSourceBanner: '此流程尚未选择图像来源，试执行会失败', noSourcePick: '选择图像来源…', sourcePicked: '已设置图像来源（记得保存流程）', manageSources: '管理图像来源',
     title: '流程编辑器',
     untitled: '未命名流程',
     save: '保存',
@@ -586,7 +589,7 @@ const zhHans = {
     discardConfirm: '此步骤有未保存的参数编辑，返回编辑器将放弃这些更改。确定返回？',
     back: '返回编辑器',
     previewUntil: '试执行到此步骤',
-    autoApply: '自动套用',
+    autoApply: '改参数即重跑',
     autoApplyHint: '参数改变后 250 ms 自动试执行到此步骤；关闭后改为手动点选「试执行到此步骤」',
     updating: '更新中…',
     reference: '参考信息',
@@ -1217,6 +1220,7 @@ const zhHans = {
     },
   },
   batchPage: {
+    createdAndRun: '已建立图像集并开始第一次执行',
     title: '批次测试',
     subtitle: '选择流程、建立影像集、批量执行并暂存每次结果；依数据调整参数，或请 AI 助手咨询与调整',
     flow: '流程',

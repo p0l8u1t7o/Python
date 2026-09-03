@@ -81,7 +81,7 @@ def info() -> dict[str, Any]:
     accel = [p for p in providers if p != "CPUExecutionProvider"]
     with _lock:
         preferred = list(_preferred)
-        train_device = _train_device
+    device = train_device()  # 未設定時回自動判斷的裝置（有 CUDA 就 cuda），前端預設值才不會顯示 CPU
     train_devices = ["cpu"] + (["cuda"] if (_torch_cuda_available() or any("CUDA" in p for p in providers)) else [])
     return {
         "onnxruntime": ort_version,
@@ -89,7 +89,7 @@ def info() -> dict[str, Any]:
         "accelerators": accel,
         "gpus": _gpus(),
         "preferred_providers": preferred,
-        "train_device": train_device,
+        "train_device": device,
         "train_devices": train_devices,
     }
 

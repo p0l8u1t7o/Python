@@ -177,7 +177,7 @@ export function FlowsPage() {
                       <p className="flex flex-wrap items-center gap-1.5 font-medium">
                         {readOnly(flow) ? <Lock size={13} className="shrink-0 text-muted" aria-label={t('flows.readOnly')} /> : null}
                         <span className="min-w-0 break-words">{flow.name}</span>
-                        {flow.commissioned === false ? <Badge tone="warning" className="font-normal">{t('flows.notCommissioned')}</Badge> : null}
+                        {flow.commissioned === false ? <span title={t('flows.notCommissionedHint')}><Badge tone="warning" className="font-normal">{t('flows.notCommissioned')}</Badge></span> : null}
                         <RowBound flow={flow} />
                       </p>
                       {flow.description ? <p className="text-xs text-muted">{flow.description}</p> : null}

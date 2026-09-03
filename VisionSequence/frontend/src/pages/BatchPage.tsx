@@ -126,10 +126,10 @@ export function BatchPage() {
     setParams({ flow: String(id) }, { replace: true })
   }, [setParams])
 
-  async function startRun(g: FlowGraph | null, opts: { origin?: 'manual' | 'draft'; label?: string; mode?: 'run' | 'autotune' } = {}) {
-    if (setId === null) return
+  async function startRun(g: FlowGraph | null, opts: { origin?: 'manual' | 'draft'; label?: string; mode?: 'run' | 'autotune' } = {}, targetSetId: number | null = setId) {
+    if (targetSetId === null) return
     try {
-      const r = await mut.startRun.mutateAsync({ setId, graph: g, origin: opts.origin ?? (useDraft && draft ? 'draft' : 'manual'), label: opts.label ?? '', parent_run_id: runId, mode: opts.mode ?? 'run', max_evals: 40, deadline_s: 60 })
+      const r = await mut.startRun.mutateAsync({ setId: targetSetId, graph: g, origin: opts.origin ?? (useDraft && draft ? 'draft' : 'manual'), label: opts.label ?? '', parent_run_id: runId, mode: opts.mode ?? 'run', max_evals: 40, deadline_s: 60 })
       setRunId(r.id)
       setTab('result')
       toast.success(t('batchPage.started', { id: r.id }))
@@ -260,7 +260,7 @@ export function BatchPage() {
           </Card>
         </div>
       )}
-      {flowId !== null ? <NewSetModal open={newOpen} onClose={() => setNewOpen(false)} flowId={flowId} maxImages={sets.data?.max_images ?? 200} onCreated={(s) => { setSetId(s.id); setRunId(null); setTab('images') }} /> : null}
+      {flowId !== null ? <NewSetModal open={newOpen} onClose={() => setNewOpen(false)} flowId={flowId} maxImages={sets.data?.max_images ?? 200} onCreated={(s) => { setSetId(s.id); setRunId(null); setTab('result'); toast.success(t('batchPage.createdAndRun')); void startRun(null, { label: t('batchPage.origin.manual') }, s.id) }} /> : null}
       <BatchRowPreviewModal run={previewIndex !== null ? currentRun : null} set={currentSet} index={previewIndex} graph={graph} onClose={() => setPreviewIndex(null)} />
       <ConfirmDialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)} onConfirm={() => void confirmDelete()}
         title={pendingDelete?.kind === 'set' ? t('batchPage.deleteSet') : t('batchPage.deleteRun')}

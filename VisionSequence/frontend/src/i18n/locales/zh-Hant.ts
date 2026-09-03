@@ -174,6 +174,7 @@ const zhHant = {
     bad_json: 'JSON 格式錯誤',
   },
   dl: {
+    createFlow: '建立流程使用此模型', createFlowDesc: '由深度學習教導產生：模型「{{model}}」', createFlowDone: '已建立流程「{{name}}」，請在取像步驟選擇影像來源',
     title: '深度學習教導',
     subtitle: '在平台上收集樣本、標記、訓練並匯出模型到資產庫；模型種類可用外掛擴充',
     projects: '教導專案',
@@ -357,6 +358,7 @@ const zhHant = {
     none: '尚未執行',
   },
   dashboard: {
+    runOnce: '執行一次', runOnceDone: '已執行：{{status}}（{{ms}} ms）',
     watch: '觀看檢測畫面',
     watchTitle: '{{name}}－即時檢測',
     selectFlow: '點左側流程卡選擇要觀看的流程',
@@ -426,6 +428,7 @@ const zhHant = {
     importNoFile: '請先選擇 .flow.json 檔',
   },
   editor: {
+    noSourceBanner: '此流程尚未選擇影像來源，試執行會失敗', noSourcePick: '選擇影像來源…', sourcePicked: '已設定影像來源（記得儲存流程）', manageSources: '管理影像來源',
     title: '流程編輯器',
     untitled: '未命名流程',
     save: '儲存',
@@ -586,7 +589,7 @@ const zhHant = {
     discardConfirm: '此步驟有未儲存的參數編輯，返回編輯器將放棄這些變更。確定返回？',
     back: '返回編輯器',
     previewUntil: '試執行至此步驟',
-    autoApply: '自動套用',
+    autoApply: '改參數即重跑',
     autoApplyHint: '參數改變後 250 ms 自動試執行至此步驟；關閉後改為手動點選「試執行至此步驟」',
     updating: '更新中…',
     reference: '參考資訊',
@@ -1217,6 +1220,7 @@ const zhHant = {
     },
   },
   batchPage: {
+    createdAndRun: '已建立影像集並開始第一次執行',
     title: '批次測試',
     subtitle: '選擇流程、建立影像集、批量執行並暫存每次結果；依資料調整參數，或請 AI 助手諮詢與調整',
     flow: '流程',

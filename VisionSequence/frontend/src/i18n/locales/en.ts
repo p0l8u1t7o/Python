@@ -130,6 +130,7 @@ const en = {
     not_owner: 'Only administrators can modify shared flows; duplicate it first',
   },
   dl: {
+    createFlow: 'Create a flow with this model', createFlowDesc: 'Created from deep-learning teaching: model "{{model}}"', createFlowDone: 'Flow "{{name}}" created; pick an image source in the capture step',
     title: 'DL teaching',
     subtitle: 'Collect, label and train on the platform, then export the model to Assets; trainer kinds are pluggable',
     projects: 'Teaching projects',
@@ -307,7 +308,7 @@ const en = {
     idle: 'Idle',
     none: 'Never ran',
   },
-  dashboard: { title: 'Dashboard', subtitle: 'Live status of every flow', empty: 'No flows yet' },
+  dashboard: { runOnce: 'Run once', runOnceDone: 'Ran: {{status}} ({{ms}} ms)', title: 'Dashboard', subtitle: 'Live status of every flow', empty: 'No flows yet' },
   flows: {
     title: 'Flows',
     subtitle: 'Create and manage inspection flows',
@@ -321,6 +322,7 @@ const en = {
     readOnlyHint: 'Only administrators can modify shared flows; duplicate it first',
   },
   editor: {
+    noSourceBanner: 'This flow has no image source yet; a trial run will fail', noSourcePick: 'Pick an image source…', sourcePicked: 'Image source set (remember to save the flow)', manageSources: 'Manage sources',
     title: 'Flow editor',
     save: 'Save',
     savedState: 'Saved',
@@ -358,7 +360,7 @@ const en = {
     discardConfirm: 'This step has unsaved parameter edits; going back will discard them. Continue?',
     back: 'Back to editor',
     previewUntil: 'Preview up to this step',
-    autoApply: 'Auto apply',
+    autoApply: 'Re-run on change',
     autoApplyHint: 'Preview up to this step 250 ms after a parameter changes',
     updating: 'Updating…',
     reference: 'Reference',
@@ -617,6 +619,7 @@ const en = {
     },
   },
   batchPage: {
+    createdAndRun: 'Image set created; first run started',
     title: 'Batch test', subtitle: 'Pick a flow, build image sets, run them in bulk and keep every result; tune parameters from the data or ask the AI assistant',
     flow: 'Flow', pickFlow: 'Pick a flow', noFlows: 'No flows yet: create one on the Flows page',
     useDraft: 'Use the unsaved editor draft', useDraftHint: 'Available when the editor holds an unsaved draft of this flow; runs use the draft graph',

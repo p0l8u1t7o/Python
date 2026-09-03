@@ -109,6 +109,7 @@
 
 ### 前端
 - 全域 AI 助手：`components/assistant/AssistantDock.tsx`（對話存 localStorage `vs.assistant.v1`、模式晶片、快速提示、參考連結、套用到畫布／套用建議／新執行、代理工作走 `useAgentJob`＋`AgentTimeline`）；頁面用 `lib/assistantContext.ts` 的 `useRegisterAssistantContext({kind, flowId, flowName, nodeType, batchRunId, imageRef, getGraph, applyGraph, applySuggestions, onNewRun}, deps)` 登記脈絡（編輯器、工具頁、批次頁已登記；未登記的頁面由路徑推 kind）。編輯器右側與批次頁的 AI 分頁已併入 dock（`AiAssistPanel`／`BatchAiPanel` 已刪），新頁面要讓助手能「動手」就登記回呼。
+- **第一次使用的引導**：編輯器有取像步驟沒選來源又沒暫存影像時顯示橫幅（`no-source-banner`：內嵌來源下拉直接 `patchNode` 寫 `source_id`、上傳暫存影像、管理來源連結）；總覽流程卡有「執行一次」（`useRunFlow` wait）；DL 訓練完成的「建立流程使用此模型」直接建 `取像→工具（model＝資產）` 流程並導到編輯器；批次頁建立影像集後自動跑第一次（`startRun(null, opts, setId)`）。`GET /dl/devices` 的 `train_device` 回解析後的裝置（未設定＝有 CUDA 就 cuda）。
 - 工具箱：`FavoriteTools`（新增工具／新增註解／收藏，hover 可移除）＋`ToolPicker`（Modal 固定高、內部捲動）。畫布 ⇄ graph 的轉換在 `graphMapping.ts`；note 是裝飾節點（type=note，不接邊）。
 - 工具頁 `ToolPage`：參數改在草稿（`flowDraft.patchDraftNode`），儲存才寫回；`goBack` 只在 dirty 時比對快照；輸出值只列在下方參考資訊，不疊浮層擋圖。
 - 影像檢視器：`roiEditor.ts`（互動）與 `geometry.ts`（純函式，有單元測試）分離；ROI 形狀 switch 要 exhaustive。
