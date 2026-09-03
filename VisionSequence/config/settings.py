@@ -138,6 +138,8 @@ VISION = {
     "ASSET_DIR": Path(_env("VISION_ASSET_DIR", str(DATA_DIR / "assets"))),
     # 選填 API 金鑰；設定後所有 /api 要帶 X-API-Key。
     "API_KEY": _env("VISION_API_KEY", ""),
+    # 深度學習教導：智慧選取／全圖提案用的 SAM 權重（ultralytics 官方名稱或 .pt 路徑；sam2.1_t 約 150MB、mobile_sam 約 40MB）
+    "SAM_MODEL": _env("VISION_SAM_MODEL", "sam2.1_t.pt"),
     # OpenCV 執行緒數；0 = 交給 OpenCV 自己決定。多流程並行時建議 1～2，避免互搶。
     "CV_THREADS": _env_int("VISION_CV_THREADS", 2),
     # 站台識別：寫進每筆 run、回傳與事件（多站匯總用）。

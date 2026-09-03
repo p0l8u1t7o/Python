@@ -22,8 +22,28 @@ except ImportError:  # pragma: no cover
 
 _SESSIONS: dict[str, Any] = {}
 _LOCK = threading.Lock()
+_PRELOADED = False
 
 ROI_SHAPES = ["rect", "rotated_rect"]
+
+
+def preload_gpu_dlls() -> None:
+    """onnxruntime-gpu 在 Windows 要自己找 CUDA 12／cuDNN 9 的 DLL：torch cu12x wheel 自帶（torch\\lib），
+    先 import torch 讓 DLL 進到行程，再 preload_dlls()（ORT ≥ 1.21 會去 nvidia-* pip 套件與 torch 目錄找）。
+    沒做這步 CUDA session 會靜默退回 CPU（provider 列表看起來有 CUDA，實際 session 只剩 CPU）。"""
+    global _PRELOADED
+    if _PRELOADED:
+        return
+    _PRELOADED = True
+    try:
+        import torch  # noqa: F401, PLC0415
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        if ort is not None and hasattr(ort, "preload_dlls"):
+            ort.preload_dlls()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def get_session(path: str) -> Any:
@@ -35,10 +55,13 @@ def get_session(path: str) -> Any:
             try:
                 from apps.vision.dl.devices import preferred_providers
 
+                providers = preferred_providers()
+                if any(p != "CPUExecutionProvider" for p in providers):
+                    preload_gpu_dlls()
                 opts = ort.SessionOptions()
                 opts.intra_op_num_threads = 2
                 # providers 依設定頁選擇（純記憶體查詢；變更設定會 clear_sessions 重建）。
-                sess = ort.InferenceSession(path, opts, providers=preferred_providers())
+                sess = ort.InferenceSession(path, opts, providers=providers)
             except Exception as exc:  # noqa: BLE001
                 raise ToolError(f"載入模型失敗：{str(exc)[:200]}") from None
             _SESSIONS[path] = sess

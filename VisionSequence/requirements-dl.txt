@@ -1,0 +1,28 @@
+# VisionSequence — 深度學習可選依賴（YOLO 訓練／推論工具 yolo_*、SAM2 智慧標記、ONNX GPU 推論）。
+# 不裝也能啟動平台（dl_* ONNX 工具用 CPU、yolo_* 與 SAM 會回「未安裝」提示）。
+#
+# 安裝：.\scripts\setup_dl.ps1（照下面的順序與 index 裝，並用 manage.py dl_check 驗證），或手動：
+#   .venv\Scripts\pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#   .venv\Scripts\pip install -r requirements-dl.txt
+#
+# 踩坑紀錄（每條都在本機重現過，細節見 docs/dl.html「安裝與踩坑」）：
+# 1. torch 一定要「先」用 pytorch.org 的 index 裝：直接 pip install ultralytics 會從 PyPI 拉 CPU 版 torch，
+#    之後訓練只剩 CPU（且 RTX 50 系列的 CPU torch 完全不會用到 GPU）。
+# 2. RTX 50 系列（Blackwell，sm_120）只有 cu128 以上的 wheel 有對應 kernel；cu118／cu121／cu124 會在第一次
+#    推論丟「no kernel image is available for execution on the device」。
+# 3. onnxruntime 與 onnxruntime-gpu 是同一個 import 名稱，兩個都裝會互相覆蓋、providers 亂跳：
+#    先 pip uninstall onnxruntime 再裝 onnxruntime-gpu。
+# 4. onnxruntime-gpu 在 Windows 要找得到 CUDA 12／cuDNN 9 的 DLL：torch cu128 wheel 自帶（torch\lib），
+#    所以「先 import torch 再建 CUDA session」或呼叫 onnxruntime.preload_dlls() 即可；程式已在
+#    apps/vision/tools/builtin/dl.py 處理，不用另裝 CUDA Toolkit。
+# 5. 訓練在背景執行緒跑：DataLoader workers 保持 0（Windows spawn 子行程會卡住）。
+# 6. 設 YOLO_OFFLINE=1 避免 ultralytics 自己連網檢查更新；底模由 yolo.resolve_model 下載到 ASSET_DIR/dl/weights。
+# 7. SAM2 不需要 facebook 的 sam2 套件，ultralytics 內建（sam2.1_t.pt 約 150MB，第一次使用自動下載）。
+# 8. pip 26 對 --index-url 的解析：同一條指令裡不要混 PyPI 套件（ultralytics 會在 pytorch index 找不到）。
+
+# ---- 訓練與推論（torch 由 setup_dl.ps1 先裝好；這裡不鎖 torch 版本，避免拉到 CPU 版） -------------
+ultralytics>=8.3.0             # YOLO 五任務訓練／推論（detect／segment／classify／pose／obb）＋ SAM2
+onnx>=1.16                     # 匯出 ONNX
+onnxslim>=0.1.34               # ultralytics 匯出時的圖簡化
+onnxruntime-gpu>=1.20          # dl_* ONNX 工具的 GPU 推論（取代 requirements.txt 的 onnxruntime）
+nvidia-ml-py>=12               # GET /dl/devices 顯示 GPU 名稱與記憶體
