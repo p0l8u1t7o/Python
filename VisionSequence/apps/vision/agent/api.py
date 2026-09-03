@@ -13,6 +13,8 @@ POST  /vision/agent/run        {images, graph, main?} → {graph, report, report
 POST  /vision/agent/autotune   {graph, runs:[{name, image_ref, status, expected}], max_evals?, deadline_s?} → 同 tune ＋ autotune 摘要
                                tune／autotune／jobs(task=tune) 可改帶 batch_run_id（持久化批次），結果落成新 BatchRun（回應 batch_run_id）
 POST  /vision/agent/consult    {batch_run_id, question, graph?} → {answer, provider, insights, suggestions[], warnings}
+POST  /vision/agent/chat       全域助手 {message, mode, context{kind, flow_id, node_type, batch_run_id, image_ref, graph}, history} → {kind: help|edit|consult|tune, answer, …}
+GET   /vision/agent/help/search?q=  說明索引檢索
 POST  /vision/agent/jobs       代理模式背景工作 {task, images, prompt, regions, answers, labels, graph?, instruction?, runs?} → 202 {id, status, steps…}
 GET   /vision/agent/jobs[/{id}?step_from=]、POST /jobs/{id}/cancel、POST /jobs/{id}/answer {answers}
 GET   /vision/agent/sessions[/{id}]、PATCH /sessions/{id} {rating, success, note, flow_id}、POST /sessions/{id}/restore、DELETE
@@ -35,6 +37,7 @@ from apps.accounts.models import UserPref
 from apps.accounts.security import principal
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.agent import consult as consult_mod
+from apps.vision.agent import help as help_mod
 from apps.vision.agent import jobs, loop, memory, providers, service, skills
 from apps.vision.models import AgentSession, AgentSkill, Flow
 from apps.vision.api import _decode_upload
@@ -84,6 +87,27 @@ class ConsultIn(Schema):
     batch_run_id: int
     question: str
     graph: dict[str, Any] | None = None
+
+
+class ChatContext(Schema):
+    #: page | flow_editor | tool | batch | golden | agent | dl | sources | assets | dashboard
+    kind: str = "page"
+    route: str = ""
+    flow_id: int | None = None
+    flow_name: str = ""
+    node_id: str = ""
+    node_type: str = ""
+    batch_run_id: int | None = None
+    image_ref: str = ""
+    graph: dict[str, Any] | None = None
+
+
+class ChatIn(Schema):
+    message: str
+    #: auto | help | edit | consult | tune
+    mode: str = "auto"
+    context: ChatContext = ChatContext()
+    history: list[dict[str, Any]] = []
 
 
 class RefineIn(GenerateIn):
@@ -552,6 +576,85 @@ def agent_tune(request: HttpRequest, payload: TuneIn):
         raise ValidationError("需要 graph 或 batch_run_id", code="bad_request")
     runs = [r.dict() for r in payload.runs]
     return service.tune(payload.graph, payload.instruction, runs, _run_images(runs), _settings_for(request))
+
+
+_QUESTION_MARKERS = ("？", "?", "如何", "怎麼", "怎样", "怎么", "為什麼", "为什么", "什麼", "什么", "是否", "哪", "可以嗎", "介紹", "教我", "是什", "說明一下", "解釋", "how ", "what ", "why ", "which ", "can i")
+_EDIT_MARKERS = ("改成", "改為", "改为", "設為", "设为", "設成", "調成", "调成", "調到", "调到", "改到", "停用", "啟用", "启用", "刪除", "删除", "移除", "新增", "加上", "加一個", "加一个", "把", "換成", "换成",
+                 "降低", "提高", "放寬", "放宽", "收緊", "收紧", "調整", "调整", "調高", "調低", "誤判", "误判", "漏檢", "漏检", "期望數量", "公差", "自動調參", "自动调参",
+                 "set ", "disable", "enable", "delete", "remove", "add ", "change", "increase", "decrease", "tune")
+_DATA_MARKERS = ("張", "张", "ng", "ok", "命中", "門檻", "阈值", "為什麼", "为什么", "哪個參數", "哪个参数", "結果", "结果", "影像", "數值", "数值", "誤判", "误判", "漏檢", "漏检", "出錯", "出错", "耗時", "慢", "分佈", "分布", "上一次", "改善")
+
+
+def chat_intent(message: str, context: ChatContext, mode: str) -> str:
+    """auto 模式下判斷意圖：問句一律問答；有修改語氣且在編輯器／工具頁→edit、批次頁→tune；批次頁的資料問題→consult。"""
+    if mode in ("help", "edit", "consult", "tune"):
+        return mode
+    low = message.lower()
+    is_question = any(m in low for m in _QUESTION_MARKERS)
+    wants_edit = any(m in low for m in _EDIT_MARKERS) and not is_question
+    if context.kind in ("flow_editor", "tool") and context.graph and wants_edit:
+        return "edit"
+    if context.kind == "batch" and context.batch_run_id is not None:
+        if wants_edit:
+            return "tune"
+        if any(m in low for m in _DATA_MARKERS):
+            return "consult"
+    return "help"
+
+
+@router.post("/agent/chat")
+def agent_chat(request: HttpRequest, payload: ChatIn):
+    """全域 AI 助手：一個入口依頁面脈絡分流——平台使用問答（文件檢索）、流程編輯器修改（edit）、批次資料諮詢（consult）、依資料調整（tune）。
+    代理模式下 edit／tune 回 {agentic: true} 讓前端改走背景工作。"""
+    p = principal(request)
+    p.can_execute()
+    message = payload.message.strip()
+    if not message:
+        raise ValidationError("訊息不能是空的", code="empty_message")
+    settings = _settings_for(request)
+    ctx = payload.context
+    intent = chat_intent(message, ctx, payload.mode)
+    if intent == "edit":
+        if not ctx.graph:
+            raise ValidationError("修改流程需要目前的 graph", code="no_graph")
+        if service.agentic(settings):
+            return {"kind": "edit", "agentic": True, "answer": "", "provider": settings.provider}
+        image = store.get(ctx.image_ref) if ctx.image_ref else None
+        result = service.edit(ctx.graph, message, image, settings)
+        return {"kind": "edit", "answer": result["rationale"], "provider": result["provider"], "result": result}
+    if intent in ("consult", "tune"):
+        if ctx.batch_run_id is None:
+            raise ValidationError("資料諮詢／調整需要 batch_run_id", code="no_batch_run")
+        if intent == "tune":
+            if service.agentic(settings):
+                return {"kind": "tune", "agentic": True, "answer": "", "provider": settings.provider}
+            run, bset, graph, runs, images, extra = _batch_context(request, ctx.batch_run_id, ctx.graph)
+            result = service.tune(graph, message, runs, images, settings, extra_summary=extra, detail=True)
+            new = None
+            if result.get("applied"):
+                from apps.vision.batch import store as bstore
+
+                origin = "autotune" if result.get("provider") == "autotune" else "ai_tune"
+                new = bstore.persist_tune(run.id, result["graph"], result["items"], origin=origin, label=message[:60], owner=p.user,
+                                          meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune")})
+            return {"kind": "tune", "answer": result["rationale"], "provider": result["provider"], "result": {**result, "batch_run_id": new.id if new else None}, "batch_run_id": new.id if new else None}
+        from apps.vision.batch.api import _run_or_404
+
+        run = _run_or_404(request, ctx.batch_run_id)
+        if run.status != "done":
+            raise ValidationError("這次執行尚未完成", code="run_not_done")
+        out = consult_mod.consult(run, run.batch_set, message, settings, graph=ctx.graph, user=p.user)
+        return {"kind": "consult", "answer": out["answer"], "provider": out["provider"], "suggestions": out["suggestions"], "warnings": out["warnings"]}
+    out = help_mod.answer(message, settings, context=ctx.dict(), history=payload.history, user=p.user)
+    return {"kind": "help", **out}
+
+
+@router.get("/agent/help/search")
+def agent_help_search(request: HttpRequest, q: str = "", k: int = 5):
+    """說明索引檢索（除錯與前端「相關文件」用）。"""
+    hits = help_mod.search(q, k=max(1, min(20, k))) if q.strip() else []
+    return {"items": [{"title": s.title, "page": s.page, "heading": s.heading, "url": s.url, "score": round(score, 3), "snippet": help_mod.snippet(s, q)} for s, score in hits],
+            **help_mod.index_stats()}
 
 
 @router.post("/agent/consult")
