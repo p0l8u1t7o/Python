@@ -24,6 +24,7 @@ GET    /vision/assets/{id}/file
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
@@ -36,7 +37,7 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
-from ninja import File, Form, Router, UploadedFile
+from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
@@ -45,7 +46,7 @@ from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
 from apps.vision.runner import get_flow, runner
-from apps.vision.sources import close_source, grab_by_id, kinds as source_kinds, open_source, source_info
+from apps.vision.sources import close_source, grab_by_id, kinds as source_kinds, open_source, source_info, try_grab
 from apps.vision.tools import base as tools
 
 router = Router(tags=["vision"])
@@ -782,6 +783,29 @@ def _get_source(source_id: int) -> ImageSource:
     if source is None:
         raise NotFound("影像來源不存在", code="source_not_found")
     return source
+
+
+class SourceTestIn(Schema):
+    kind: str
+    config: dict[str, Any] = {}
+
+
+# 固定路徑要註冊在 /sources/{source_id} 之前，否則被 {source_id} 吃掉回 405。
+@router.post("/sources/test")
+def test_source(request: HttpRequest, payload: SourceTestIn):
+    """儲存前試擷取：依 kind／config 建暫時 grabber 抓一張（不快取、不落地），回尺寸、耗時與縮圖 data URL；失敗 422 帶原因。"""
+    started = time.perf_counter()
+    try:
+        image = try_grab(payload.kind, dict(payload.config or {}))
+    except (ValidationError, NotFound):
+        raise
+    except Exception as exc:  # noqa: BLE001 — 來源的任何錯誤都翻成可讀原因回前端
+        raise ValidationError(f"擷取失敗：{exc}", code="source_test_failed") from exc
+    if image is None:
+        raise ValidationError("來源沒有回傳影像：請確認路徑、檔名樣式或裝置設定", code="no_frame")
+    ms = round((time.perf_counter() - started) * 1000, 1)
+    data = base64.b64encode(encode_image(image, max_side=480)).decode("ascii")
+    return {"width": int(image.shape[1]), "height": int(image.shape[0]), "ms": ms, "image": f"data:image/jpeg;base64,{data}"}
 
 
 @router.get("/sources/{source_id}")

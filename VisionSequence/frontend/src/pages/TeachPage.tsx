@@ -27,6 +27,7 @@ import { RecipeDrawer, compactOverrides, countOverrides, useSaveCheck, type Over
 import { Badge, Button, ErrorState, LoadingState, Modal, StatusBadge, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
+import { useConfirm } from '@/lib/useConfirm'
 import { errorMessage } from '@/lib/errors'
 import { getSession, patchDraftNode, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { applyOverrides, previewFlow, useFlow, useFlowMutations, useRecipeMutations, useRecipes, useScratchImage, useToolTypes } from '@/lib/queries'
@@ -101,9 +102,10 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   // ---- 配方（編輯對象） ----
   const recipeList = useMemo(() => recipes.data?.items ?? [], [recipes.data])
   const recipe = recipeId !== null ? recipeList.find((r) => r.id === recipeId) ?? null : null
+  const { confirm, dialog } = useConfirm()
   const selectRecipe = useCallback(
-    (id: number | null) => {
-      if (recipeDirty && !window.confirm(t('editor.leaveUnsaved'))) return
+    async (id: number | null) => {
+      if (recipeDirty && !(await confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }))) return
       setRecipeId(id)
       const r = id !== null ? recipeList.find((x) => x.id === id) : null
       setOverrides(r ? structuredClone(r.param_overrides ?? {}) : {})
@@ -262,9 +264,8 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   )
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    if (window.confirm(t('editor.leaveUnsaved'))) blocker.proceed()
-    else blocker.reset()
-  }, [blocker, t])
+    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then((ok) => (ok ? blocker.proceed() : blocker.reset()))
+  }, [blocker, t, confirm])
 
   // ---- 已教導 ----
   async function setCommissioned(value: boolean) {
@@ -325,6 +326,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
 
   return (
     <div className="flex h-full flex-col" data-testid="teach-page">
+      {dialog}
       <header className="border-b border-line bg-surface" data-testid="teach-header">
         {/* 第一排：動作 */}
         <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5">

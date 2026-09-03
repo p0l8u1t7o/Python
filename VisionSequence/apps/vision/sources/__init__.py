@@ -103,6 +103,19 @@ def grab_by_id(source_id: int | str) -> np.ndarray | None:
     return open_source(source).grab()
 
 
+def try_grab(kind: str, config: dict[str, Any] | None) -> np.ndarray | None:
+    """儲存前的「測試擷取」：依 kind／config 建一個暫時 grabber 抓一張就關，不快取、不落資料庫。"""
+    cls = _resolve_class(kind, config or {})
+    grabber = cls(dict(config or {}), source_id=0, name="test")
+    try:
+        return grabber.grab()
+    finally:
+        try:
+            grabber.close()
+        except Exception:  # noqa: BLE001
+            log.exception("關閉測試擷取的影像來源失敗")
+
+
 def close_source(source_id: int) -> None:
     with _lock:
         cached = _open.pop(source_id, None)

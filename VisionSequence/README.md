@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 66 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 350 項＋前端 39 項自動測試 |
+| 規模 | 66 個內建工具、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 351 項＋前端 46 項自動測試 |
 
 ---
 
@@ -99,7 +99,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 評測基準 `manage.py agent_bench`（21 個離線案例：意圖／判定／有效率），`tests/test_agent_bench.py` 守門檻。
 - 全域 AI 助手在編輯器內可用一句話修改目前流程、在批次測試頁可依結果諮詢與調整；所有助手呼叫皆可中斷。
 - **響應式**：手機寬度側欄改抽屜、麵包屑精簡、表格只留主要欄位、編輯器只留畫布（參數走工具頁）、觸控目標放大；桌面／平板／手機三種寬度與深淺主題都經 Playwright 稽核。
-- **上手引導**：流程還沒選影像來源時編輯器直接給下拉選；總覽卡一鍵「執行一次」；教導完成一鍵建立使用該模型的流程；批次影像集建立即跑第一次；工具頁「改參數即重跑」開關。
+- **上手引導**：流程還沒選影像來源時編輯器直接給下拉選；總覽卡一鍵「執行一次」；教導完成一鍵建立使用該模型的流程；批次影像集建立即跑第一次；工具頁「改參數即重跑」開關；取像步驟側欄直接選來源並看預覽縮圖；來源表單儲存前可「測試擷取」；離開未儲存的確認改為平台風格對話框。
 - AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/agent.html`。
 
 ### 深度學習教導（`/dl`）
@@ -242,7 +242,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 配方／範本／批次 | `/flows/{id}/recipes`、`/vision/templates`（builtin＋custom、instantiate）、`/flows/{id}/batch`、`/batch-source`（舊介面） |
 | 批次測試頁 | `/vision/batch/sets`（＋`/from-source`、`/{id}`、`/images/{index}`、`/to-golden`、`/runs`）、`/vision/batch/runs/{id}`（＋`/cancel`、`/insights`、`/compare`、`/rows/{index}/preview`、`/to-recipe`）、`/vision/agent/consult` |
 | Golden | `/flows/{id}/golden`、`/baseline`、`/regress` |
-| 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
+| 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/test` 儲存前測試擷取、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
 | AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |

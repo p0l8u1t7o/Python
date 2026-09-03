@@ -42,6 +42,7 @@ import { SaveTemplateModal, TemplateGallery } from '@/components/templates/Templ
 import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { downloadFile, imageUrl } from '@/lib/api'
+import { useConfirm } from '@/lib/useConfirm'
 import { errorMessage } from '@/lib/errors'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { useRegisterAssistantContext } from '@/lib/assistantContext'
@@ -361,6 +362,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   // ---- 離開攔截（到工具頁／參數卡不算離開：草稿會帶過去；其他路由如流程列表、別的流程都要問） ----
   const toolPagePrefix = `/flows/${flowId}/tools/`
   const teachPath = `/flows/${flowId}/teach`
+  const { confirm, dialog: confirmDialog } = useConfirm()
   const blocker = useBlocker(
     useCallback(
       ({ currentLocation, nextLocation }: { currentLocation: { pathname: string }; nextLocation: { pathname: string } }) =>
@@ -370,9 +372,8 @@ function EditorInner({ flowId }: { flowId: number }) {
   )
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    if (window.confirm(t('editor.leaveUnsaved'))) blocker.proceed()
-    else blocker.reset()
-  }, [blocker, t])
+    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then((ok) => (ok ? blocker.proceed() : blocker.reset()))
+  }, [blocker, t, confirm])
   useEffect(() => {
     if (!dirty) return
     const warn = (e: BeforeUnloadEvent) => {
@@ -685,7 +686,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   // ---- 範本：載入（取代畫布）／存為範本 ----
   const loadTemplate = useCallback(
     async ({ graph, name, missingSource }: { graph: FlowGraph; name: string; missingSource: boolean }) => {
-      if (dirty && !window.confirm(t('templates.loadConfirm'))) return false
+      if (dirty && !(await confirm(t('templates.loadConfirm'), { confirmLabel: t('templates.loadAnyway') }))) return false
       pushHistory()
       restoreGraph(graph)
       setGalleryOpen(false)
@@ -1134,6 +1135,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       >
         <TextInput label={t('editor.viewer.templateName')} autoFocus value={templateName} onChange={(e) => setTemplateName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void createTemplate()} />
       </Modal>
+      {confirmDialog}
       <ConfirmDialog open={askReset} onClose={() => setAskReset(false)} onConfirm={() => void doReset()} title={t('editor.reset')} message={t('editor.resetConfirm')} confirmLabel={t('editor.reset')} danger loading={clearRecent.isPending} />
       <ToolPicker open={pickerOpen} onClose={() => setPickerOpen(false)} catalogue={catalogue.data}
         favorites={favorites} onToggleFavorite={toggleFavorite} onPick={insertAtCenter} />

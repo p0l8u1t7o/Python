@@ -24,6 +24,7 @@ import { iconFor } from '@/components/editor/ToolNode'
 import { Button, DetailRow, ErrorState, LoadingState, Modal, StatusBadge, Switch, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { imageUrl } from '@/lib/api'
+import { useConfirm } from '@/lib/useConfirm'
 import { useRegisterAssistantContext } from '@/lib/assistantContext'
 import { errorMessage } from '@/lib/errors'
 import { getSession, patchDraftNode, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
@@ -173,13 +174,15 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
     if (roi) setRoiEditingKey(roi.key)
   }, [def, node, draft, flowId, nodeId])
 
+  const { confirm, dialog } = useConfirm()
+
   /** 返回編輯器：本頁改過參數且未儲存 → confirm 後還原此步驟到進頁狀態（放棄編輯）。 */
-  function goBack() {
+  async function goBack() {
     const snap = entryRef.current
     // 草稿不 dirty（剛儲存過／沒改過）就直接回去；dirty 才比對本頁是否動過此節點
     const changed = Boolean(draft?.dirty) && snap && node ? JSON.stringify(node) !== snap.json : false
     if (changed && snap) {
-      if (!window.confirm(t('tool.discardConfirm'))) return
+      if (!(await confirm(t('tool.discardConfirm'), { confirmLabel: t('tool.discardAndBack') }))) return
       patchDraftNode(flowId, nodeId, JSON.parse(snap.json) as Partial<GraphNode>)
       const cur = getSession(flowId).draft
       if (cur && !snap.dirty) setDraft(flowId, { ...cur, dirty: false })
@@ -252,9 +255,8 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   )
   useEffect(() => {
     if (blocker.state !== 'blocked') return
-    if (window.confirm(t('editor.leaveUnsaved'))) blocker.proceed()
-    else blocker.reset()
-  }, [blocker, t])
+    void confirm(t('editor.leaveUnsaved'), { title: t('editor.leaveTitle'), confirmLabel: t('editor.leaveAnyway') }).then((ok) => (ok ? blocker.proceed() : blocker.reset()))
+  }, [blocker, t, confirm])
 
   // ---- 暫存影像 ----
   async function uploadScratch(file: File) {
@@ -320,9 +322,10 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
 
   return (
     <div className="flex h-full flex-col" data-testid="tool-page">
+      {dialog}
       {/* 頂列 */}
       <header className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface px-3 py-1.5">
-        <button type="button" onClick={goBack} className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="btn-back">
+        <button type="button" onClick={() => void goBack()} className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="btn-back">
           <ArrowLeft size={14} /> {t('tool.back')}
         </button>
         <span className="flex items-center gap-1.5 text-sm font-semibold">

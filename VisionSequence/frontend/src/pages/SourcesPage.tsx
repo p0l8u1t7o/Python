@@ -1,5 +1,5 @@
 /** 影像來源 CRUD。config 欄位依 kind 的 fields 顯示（伺服器 /sources/kinds 給）。 */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, Eye, FolderOpen, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
 
@@ -148,6 +148,23 @@ export function SourcesPage() {
     return out
   }
 
+  // 儲存前測試擷取：依表單目前的 kind／config 抓一張，顯示尺寸、耗時與縮圖；換類型或重開表單即清除
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; width?: number; height?: number; ms?: number; image?: string; error?: string } | null>(null)
+  useEffect(() => { setTestResult(null) }, [editing?.id, editing?.body.kind])
+  async function testGrab() {
+    if (!body) return
+    setTesting(true)
+    try {
+      const r = await api.post<{ width: number; height: number; ms: number; image: string }>('/vision/sources/test', { kind: body.kind, config: body.config })
+      setTestResult({ ok: true, ...r })
+    } catch (error) {
+      setTestResult({ ok: false, error: errorMessage(error) })
+    } finally {
+      setTesting(false)
+    }
+  }
+
   async function onSave() {
     if (!editing) return
     if (!editing.body.name.trim()) return toast.error(t('flows.nameRequired'))
@@ -263,6 +280,19 @@ export function SourcesPage() {
                 onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })}
                 onBrowse={(mode) => setBrowsing(mode)} cameras={cameras} onScanCameras={() => void scanCameras()} scanning={scanning} />
             ))}
+            <div className="space-y-2 rounded-md border border-line bg-surface p-2" data-testid="source-test-box">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button loading={testing} disabled={body.kind === 'upload'} onClick={() => void testGrab()} data-testid="source-test">{t('sources.test')}</Button>
+                <span className={`text-xs ${testResult && !testResult.ok ? 'text-critical' : 'text-muted'}`} data-testid="source-test-status">
+                  {body.kind === 'upload'
+                    ? t('sources.testUpload')
+                    : testResult
+                      ? (testResult.ok ? t('sources.testOk', { w: testResult.width, h: testResult.height, ms: testResult.ms }) : t('sources.testFail', { error: testResult.error }))
+                      : t('sources.testHint')}
+                </span>
+              </div>
+              {testResult?.ok && testResult.image ? <img src={testResult.image} alt="" className="max-h-44 rounded border border-line" data-testid="source-test-image" /> : null}
+            </div>
             <Checkbox label={t('common.enabled')} checked={body.is_enabled} onChange={(v) => setEditing({ ...editing!, body: { ...body, is_enabled: v } })} />
           </div>
         ) : null}

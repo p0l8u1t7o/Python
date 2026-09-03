@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：66 個內建工具（8 類）、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 350 項＋前端 39 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：66 個內建工具（8 類）、164 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 351 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -109,7 +109,8 @@
 
 ### 前端
 - 全域 AI 助手：`components/assistant/AssistantDock.tsx`（對話存 localStorage `vs.assistant.v1`、模式晶片、快速提示、參考連結、套用到畫布／套用建議／新執行、代理工作走 `useAgentJob`＋`AgentTimeline`）；頁面用 `lib/assistantContext.ts` 的 `useRegisterAssistantContext({kind, flowId, flowName, nodeType, batchRunId, imageRef, getGraph, applyGraph, applySuggestions, onNewRun}, deps)` 登記脈絡（編輯器、工具頁、批次頁已登記；未登記的頁面由路徑推 kind）。編輯器右側與批次頁的 AI 分頁已併入 dock（`AiAssistPanel`／`BatchAiPanel` 已刪），新頁面要讓助手能「動手」就登記回呼。
-- **第一次使用的引導**：編輯器有取像步驟沒選來源又沒暫存影像時顯示橫幅（`no-source-banner`：內嵌來源下拉直接 `patchNode` 寫 `source_id`、上傳暫存影像、管理來源連結）；總覽流程卡有「執行一次」（`useRunFlow` wait）；DL 訓練完成的「建立流程使用此模型」直接建 `取像→工具（model＝資產）` 流程並導到編輯器；批次頁建立影像集後自動跑第一次（`startRun(null, opts, setId)`）。`GET /dl/devices` 的 `train_device` 回解析後的裝置（未設定＝有 CUDA 就 cuda）。
+- **第一次使用的引導**：編輯器有取像步驟沒選來源又沒暫存影像時顯示橫幅（`no-source-banner`：內嵌來源下拉直接 `patchNode` 寫 `source_id`、上傳暫存影像、管理來源連結）；總覽流程卡有「執行一次」（`useRunFlow` wait）；DL 訓練完成的「建立流程使用此模型」直接建 `取像→工具（model＝資產）` 流程並導到編輯器；批次頁建立影像集後自動跑第一次（`startRun(null, opts, setId)`）。`GET /dl/devices` 的 `train_device` 回解析後的裝置（未設定＝有 CUDA 就 cuda）。取像步驟在 `Inspector` 有 `SourceSection`（來源下拉＋`sourcePreviewUrl` 縮圖，直接改 `params.source_id`）；來源表單「測試擷取」打 `POST /sources/test {kind, config}`（`sources.try_grab` 建暫時 grabber 抓一張就關、不快取不落地，回尺寸／耗時／data URL 縮圖，失敗 422 帶原因）。
+- **離開未儲存的確認**一律用 `lib/useConfirm.tsx`（`const { confirm, dialog } = useConfirm()`，`await confirm(message, { title, confirmLabel })` 回布林、`{dialog}` 放進 JSX）取代 `window.confirm`（編輯器／工具頁／教導頁的 `useBlocker` 與範本載入、返回編輯器都已改）；`beforeunload` 仍是瀏覽器原生。
 - 工具箱：`FavoriteTools`（新增工具／新增註解／收藏，hover 可移除）＋`ToolPicker`（Modal 固定高、內部捲動）。畫布 ⇄ graph 的轉換在 `graphMapping.ts`；note 是裝飾節點（type=note，不接邊）。
 - 工具頁 `ToolPage`：參數改在草稿（`flowDraft.patchDraftNode`），儲存才寫回；`goBack` 只在 dirty 時比對快照；輸出值只列在下方參考資訊，不疊浮層擋圖。
 - 影像檢視器：`roiEditor.ts`（互動）與 `geometry.ts`（純函式，有單元測試）分離；ROI 形狀 switch 要 exhaustive。

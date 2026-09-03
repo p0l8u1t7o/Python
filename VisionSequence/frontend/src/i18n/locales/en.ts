@@ -91,6 +91,7 @@ const en = {
     released: 'Engine unlocked',
   },
   common: {
+    confirmTitle: 'Please confirm',
     group: 'Group',
     groupAll: 'All',
     ungrouped: 'Ungrouped',
@@ -322,6 +323,10 @@ const en = {
     readOnlyHint: 'Only administrators can modify shared flows; duplicate it first',
   },
   editor: {
+    sourceSection: 'Image source',
+    sourcePreviewHint: 'Preview of the current source; test runs use images from this source',
+    leaveTitle: 'Leave this page?',
+    leaveAnyway: 'Discard changes and leave',
     noSourceBanner: 'This flow has no image source yet; a trial run will fail', noSourcePick: 'Pick an image source…', sourcePicked: 'Image source set (remember to save the flow)', manageSources: 'Manage sources',
     title: 'Flow editor',
     save: 'Save',
@@ -357,6 +362,7 @@ const en = {
     toast: { scratchUploaded: 'Scratch image "{{name}}" uploaded ({{w}}×{{h}})', resetDone: 'Reset done' },
   },
   tool: {
+    discardAndBack: 'Discard and go back',
     discardConfirm: 'This step has unsaved parameter edits; going back will discard them. Continue?',
     back: 'Back to editor',
     previewUntil: 'Preview up to this step',
@@ -381,6 +387,11 @@ const en = {
     toolsCount: '{{count}} tools',
   },
   sources: {
+    test: 'Test grab',
+    testHint: 'Grab one frame before saving to confirm the path or device settings',
+    testOk: 'Grabbed {{w}}×{{h}} in {{ms}} ms',
+    testFail: 'Grab failed: {{error}}',
+    testUpload: 'Upload sources receive images from outside; nothing to test',
     statusOpen: 'Open', statusClosed: 'Closed', statusError: 'Error', statusFrames: '{{count}} frames',
     title: 'Source library', create: 'New source', empty: 'No sources yet',
     scanCameras: 'Scan cameras', scanHint: 'Probes devices on the server one by one (briefly occupies each)',
@@ -394,6 +405,7 @@ const en = {
     themeSaved: 'Signed in: your theme choice is saved to your account and follows you across devices.',
   },
   templates: {
+    loadAnyway: 'Load and replace',
     title: 'Template library',
     fromTemplate: 'From template',
     gallery: 'Template gallery',

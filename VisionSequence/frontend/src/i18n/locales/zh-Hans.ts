@@ -104,6 +104,7 @@ const zhHans = {
     released: '引擎已解锁',
   },
   common: {
+    confirmTitle: '请确认',
     group: '分组',
     groupAll: '全部',
     ungrouped: '未分组',
@@ -428,6 +429,10 @@ const zhHans = {
     importNoFile: '请先选择 .flow.json 档',
   },
   editor: {
+    sourceSection: '影像来源',
+    sourcePreviewHint: '当前来源的预览；试执行即以此来源的影像执行',
+    leaveTitle: '离开此页？',
+    leaveAnyway: '放弃变更并离开',
     noSourceBanner: '此流程尚未选择图像来源，试执行会失败', noSourcePick: '选择图像来源…', sourcePicked: '已设置图像来源（记得保存流程）', manageSources: '管理图像来源',
     title: '流程编辑器',
     untitled: '未命名流程',
@@ -586,6 +591,7 @@ const zhHans = {
     fps: '{{fps}} fps',
   },
   tool: {
+    discardAndBack: '放弃并返回',
     discardConfirm: '此步骤有未保存的参数编辑，返回编辑器将放弃这些更改。确定返回？',
     back: '返回编辑器',
     previewUntil: '试执行到此步骤',
@@ -823,6 +829,11 @@ const zhHans = {
     toolsCount: '{{count}} 个工具',
   },
   sources: {
+    test: '测试撷取',
+    testHint: '保存前先撷取一张，确认路径或设备设置正确',
+    testOk: '撷取成功：{{w}}×{{h}}，{{ms}} ms',
+    testFail: '撷取失败：{{error}}',
+    testUpload: '上传型来源由外部送图，无需测试',
     statusOpen: '已打开', statusClosed: '未打开', statusError: '错误', statusFrames: '{{count}} 张',
     scanCameras: '扫描相机',
     scanHint: '在服务器上逐一打开探测（会短暂占用设备）',
@@ -898,6 +909,7 @@ const zhHans = {
     saved: '设置已保存',
   },
   templates: {
+    loadAnyway: '载入并取代',
     title: '范本库',
     fromTemplate: '从范本创建',
     gallery: '范本画廊',

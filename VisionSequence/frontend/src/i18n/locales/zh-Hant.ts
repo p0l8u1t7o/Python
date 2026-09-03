@@ -104,6 +104,7 @@ const zhHant = {
     released: '引擎已解鎖',
   },
   common: {
+    confirmTitle: '請確認',
     group: '群組',
     groupAll: '全部',
     ungrouped: '未分組',
@@ -428,6 +429,10 @@ const zhHant = {
     importNoFile: '請先選擇 .flow.json 檔',
   },
   editor: {
+    sourceSection: '影像來源',
+    sourcePreviewHint: '目前來源的預覽；試執行即以此來源的影像執行',
+    leaveTitle: '離開此頁？',
+    leaveAnyway: '放棄變更並離開',
     noSourceBanner: '此流程尚未選擇影像來源，試執行會失敗', noSourcePick: '選擇影像來源…', sourcePicked: '已設定影像來源（記得儲存流程）', manageSources: '管理影像來源',
     title: '流程編輯器',
     untitled: '未命名流程',
@@ -586,6 +591,7 @@ const zhHant = {
     fps: '{{fps}} fps',
   },
   tool: {
+    discardAndBack: '放棄並返回',
     discardConfirm: '此步驟有未儲存的參數編輯，返回編輯器將放棄這些變更。確定返回？',
     back: '返回編輯器',
     previewUntil: '試執行至此步驟',
@@ -823,6 +829,11 @@ const zhHant = {
     toolsCount: '{{count}} 個工具',
   },
   sources: {
+    test: '測試擷取',
+    testHint: '儲存前先擷取一張，確認路徑或裝置設定正確',
+    testOk: '擷取成功：{{w}}×{{h}}，{{ms}} ms',
+    testFail: '擷取失敗：{{error}}',
+    testUpload: '上傳型來源由外部送圖，無需測試',
     statusOpen: '已開啟', statusClosed: '未開啟', statusError: '錯誤', statusFrames: '{{count}} 張',
     scanCameras: '掃描相機',
     scanHint: '在伺服器上逐一開啟探測（會短暫佔用裝置）',
@@ -898,6 +909,7 @@ const zhHant = {
     saved: '設定已儲存',
   },
   templates: {
+    loadAnyway: '載入並取代',
     title: '範本庫',
     fromTemplate: '從範本建立',
     gallery: '範本畫廊',

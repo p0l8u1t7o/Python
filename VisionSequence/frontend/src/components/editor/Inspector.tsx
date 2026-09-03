@@ -7,8 +7,10 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SlidersHorizontal } from 'lucide-react'
 
-import { Button, Checkbox, TextArea, TextInput } from '@/components/ui'
+import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
+import { sourcePreviewUrl } from '@/lib/api'
 import { nodeProblems } from '@/lib/graphValidation'
+import { useSources } from '@/lib/queries'
 import type { GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
 
 const NODE_COLORS = ['#0f766e', '#1d4ed8', '#7c3aed', '#b45309', '#be123c', '#0891b2', '#4d7c0f', '#334155']
@@ -56,6 +58,7 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
           </Button>
         </Link>
       )}
+      {node.type === 'image_source' ? <SourceSection node={node} onChange={onChange} /> : null}
       <TextInput label={t('editor.nodeName')} value={node.label ?? ''} placeholder={definition?.label} hint={isNote ? undefined : t('editor.nodeNameHint')} onChange={(e) => onChange({ label: e.target.value })} />
       <TextArea label={t('editor.nodeNote')} rows={isNote ? 5 : 2} value={node.description ?? ''} onChange={(e) => onChange({ description: e.target.value })} />
       <ColorField label={t('editor.nodeColor')} clearLabel={t('editor.nodeColorReset')} value={node.color ?? ''} onChange={(color) => onChange({ color })} />
@@ -88,6 +91,45 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
         <p className="mb-2 font-mono text-[11px] text-muted">id: {node.id}</p>
         <button type="button" onClick={onDelete} className="text-xs text-critical hover:underline">{t('editor.deleteNode')}</button>
       </div>
+    </div>
+  )
+}
+
+/** 取像步驟：直接在檢視器選來源並看預覽縮圖，不必進工具頁或來源頁。 */
+function SourceSection({ node, onChange }: { node: GraphNode; onChange: (patch: Partial<GraphNode>) => void }) {
+  const { t } = useTranslation()
+  const sources = useSources()
+  const items = sources.data?.items ?? []
+  const id = Number(node.params?.source_id ?? 0) || 0
+  const current = items.find((s) => s.id === id)
+  return (
+    <div className="space-y-2 rounded-md border border-line bg-surface p-2" data-testid="inspector-source">
+      <Select
+        label={t('editor.sourceSection')}
+        value={id ? String(id) : ''}
+        options={[{ value: '', label: t('editor.noSourcePick') }, ...items.map((s) => ({ value: String(s.id), label: s.name }))]}
+        onChange={(e) => {
+          const next = Number(e.target.value) || 0
+          const params = { ...(node.params ?? {}) }
+          if (next) params.source_id = next
+          else delete params.source_id
+          onChange({ params })
+        }}
+        data-testid="inspector-source-select"
+      />
+      {id ? (
+        <img
+          key={id}
+          src={sourcePreviewUrl(id, 480)}
+          alt={current?.name ?? ''}
+          className="max-h-40 w-full rounded border border-line object-contain"
+          data-testid="inspector-source-preview"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        />
+      ) : null}
+      <p className="text-[11px] text-muted">
+        {id ? t('editor.sourcePreviewHint') : t('editor.noSourceBanner')} · <Link to="/sources" className="underline">{t('editor.manageSources')}</Link>
+      </p>
     </div>
   )
 }

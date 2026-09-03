@@ -155,6 +155,19 @@ class ApiTests(TestCase):
         r = self.client.delete(f"/api/vision/sources/{sid}")
         self.assertEqual(r.status_code, 204)
 
+    def test_source_test_grab(self):
+        """儲存前測試擷取：合成來源回尺寸與縮圖；壞路徑／未知類型 422。"""
+        r = self.client.post("/api/vision/sources/test", data=json.dumps({"kind": "synthetic", "config": {"width": 64, "height": 48}}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual((body["width"], body["height"]), (64, 48))
+        self.assertTrue(body["image"].startswith("data:image/jpeg;base64,"))
+        self.assertGreaterEqual(body["ms"], 0)
+        r = self.client.post("/api/vision/sources/test", data=json.dumps({"kind": "folder", "config": {"path": "Z:/nope"}}), content_type="application/json")
+        self.assertEqual(r.status_code, 422, r.content)
+        r = self.client.post("/api/vision/sources/test", data=json.dumps({"kind": "nope", "config": {}}), content_type="application/json")
+        self.assertEqual(r.status_code, 422, r.content)
+
     def test_source_and_asset_groups(self):
         """群組分類管理：來源／資產帶 group 建立、可 PATCH 改群組。"""
         r = self.client.post("/api/vision/sources", data=json.dumps({"name": "g1", "kind": "synthetic", "config": {"width": 64, "height": 48}, "group": "站別A"}), content_type="application/json")
