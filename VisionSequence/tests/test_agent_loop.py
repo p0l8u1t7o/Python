@@ -9,7 +9,7 @@ from unittest import mock
 import cv2
 import numpy as np
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from apps.vision.agent import actions, loop, providers, service
 from apps.vision.graph import validate_graph
@@ -214,7 +214,7 @@ class ProviderFormatTests(TestCase):
         self.assertIn("properties", schema)
 
 
-class JobApiTests(TestCase):
+class JobApiTests(TransactionTestCase):
     def test_job_roundtrip_agentic(self):
         ref = _upload(self.client, part_image(5))
         script = scripted(reply(call("get_state")), reply(call("draft_from_rules")), reply(call("run_trial")), reply(call("finish", {"rationale": "代理完成"})))

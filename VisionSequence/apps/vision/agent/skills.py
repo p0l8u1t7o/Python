@@ -20,6 +20,44 @@ from typing import Any
 from apps.vision.tools import base as tools
 
 SKILL_DIR = Path(__file__).parent / "skills"
+GUIDE_KEYS = ("platform", "design", "agentic")
+GUIDE_LABELS = {"platform": "平台規則", "design": "流程設計原則", "agentic": "代理工作方式"}
+
+#: 自訂技能（AgentSkill）改變時 +1；build_system(epoch) 以它當快取鍵，system 段才會重組。
+_epoch = 0
+
+
+def epoch() -> int:
+    return _epoch
+
+
+def invalidate() -> None:
+    global _epoch
+    _epoch += 1
+
+
+def custom_texts(key: str, user: Any = None) -> tuple[str, str]:
+    """(站點補充, 個人補充) 的 markdown；沒有就空字串。DB 讀不到（尚未遷移）時回空。"""
+    try:
+        from apps.vision.models import AgentSkill
+
+        site = AgentSkill.objects.filter(key=key, scope="site").values_list("markdown", flat=True).first() or ""
+        mine = ""
+        if user is not None and getattr(user, "pk", None):
+            mine = AgentSkill.objects.filter(key=key, scope="user", owner=user).values_list("markdown", flat=True).first() or ""
+        return str(site), str(mine)
+    except Exception:  # noqa: BLE001 - 記憶功能不可用時退回內建技能
+        return "", ""
+
+
+def with_custom(base: str, key: str, user: Any = None, *, include_user: bool = True) -> str:
+    site, mine = custom_texts(key, user)
+    parts = [base.rstrip()]
+    if site:
+        parts.append("## 站點補充\n\n" + site.strip())
+    if include_user and mine:
+        parts.append("## 個人補充\n\n" + mine.strip())
+    return "\n\n".join(parts) + "\n"
 
 #: 永遠帶完整技能的核心工具。
 CORE_TOOLS = ("image_source", "grayscale", "threshold", "blob", "if_number", "in_range", "judge", "output", "draw_result", "note")
@@ -121,11 +159,12 @@ def _param_line(p: Any) -> str:
     return "- " + line
 
 
-def tool_skill(key: str) -> str:
-    """單一工具的完整技能（markdown）：自動骨架＋人工要領。note 不是工具，只有要領。"""
+def tool_skill(key: str, user: Any = None, *, custom: bool = True) -> str:
+    """單一工具的完整技能（markdown）：自動骨架＋人工要領（＋站點／個人補充）。note 不是工具，只有要領。"""
     notes = curated_notes()
     if key == "note":
-        return "# note（畫布便利貼）\n\n" + notes.get("note", "")
+        base = "# note（畫布便利貼）\n\n" + notes.get("note", "")
+        return with_custom(base, key, user) if custom else base
     if not tools.has(key):
         raise KeyError(key)
     t = tools.get(key)
@@ -147,7 +186,8 @@ def tool_skill(key: str) -> str:
         extras.append("可能耗時較久")
     if extras:
         lines += ["", "；".join(extras)]
-    return "\n".join(lines).rstrip() + "\n"
+    base = "\n".join(lines).rstrip() + "\n"
+    return with_custom(base, key, user) if custom else base
 
 
 def list_skills() -> list[dict[str, Any]]:
@@ -163,14 +203,22 @@ def list_skills() -> list[dict[str, Any]]:
     return items
 
 
-def skill_text(key: str) -> str:
+def base_skill_text(key: str) -> str:
+    """內建技能（不含自訂補充）。"""
     if key == "platform":
         return platform_text()
     if key == "design":
         return design_text()
     if key == "agentic":
         return agentic_text()
-    return tool_skill(key)
+    return tool_skill(key, custom=False)
+
+
+def skill_text(key: str, user: Any = None) -> str:
+    """技能全文（內建＋站點補充＋個人補充）。"""
+    if key in GUIDE_KEYS:
+        return with_custom(base_skill_text(key), key, user)
+    return tool_skill(key, user)
 
 
 def _generatable(t: Any) -> bool:
@@ -215,35 +263,41 @@ def select_tools(text: str, regions: list[dict[str, Any]] | None = None, *, inte
     return must + optional[: max(0, limit - len(must))]
 
 
-@lru_cache(maxsize=1)
-def build_system() -> str:
-    """穩定的 system 段（可快取）：平台規則＋設計原則＋精簡目錄＋輸出格式。"""
+@lru_cache(maxsize=4)
+def build_system(epoch_key: int = 0) -> str:
+    """穩定的 system 段（可快取；站點補充改變時 epoch 變、重組）：平台規則＋設計原則＋精簡目錄＋輸出格式。個人補充放 user 訊息（focus_text）。"""
     return "\n\n".join([
-        platform_text().strip(),
-        design_text().strip(),
+        with_custom(platform_text(), "platform", include_user=False).strip(),
+        with_custom(design_text(), "design", include_user=False).strip(),
         "# 工具目錄（精簡；本次相關工具的完整參數與要領會附在使用者訊息裡）\n\n" + brief_catalogue(),
         "# 輸出\n\n只輸出一個 JSON 物件，不要任何其他文字或 markdown 圍欄：\n"
         '{"graph": {...}, "rationale": "繁體中文說明（生成理由／改了什麼）"}',
     ])
 
 
-@lru_cache(maxsize=1)
-def build_system_agentic() -> str:
+@lru_cache(maxsize=4)
+def build_system_agentic(epoch_key: int = 0) -> str:
     """代理模式的 system 段：平台規則＋設計原則＋代理工作方式＋精簡目錄（不含單次 JSON 輸出格式）。"""
     return "\n\n".join([
-        platform_text().strip(),
-        design_text().strip(),
-        agentic_text().strip(),
+        with_custom(platform_text(), "platform", include_user=False).strip(),
+        with_custom(design_text(), "design", include_user=False).strip(),
+        with_custom(agentic_text(), "agentic", include_user=False).strip(),
         "# 工具目錄（精簡；用 get_tool_skill 讀完整參數與要領）\n\n" + brief_catalogue(),
     ])
 
 
-def focus_text(keys: list[str]) -> str:
-    """相關工具的完整技能（放進 user 訊息）。"""
+def focus_text(keys: list[str], user: Any = None) -> str:
+    """相關工具的完整技能（放進 user 訊息）＋使用者對指南的個人補充。"""
     parts = []
     for k in keys:
         try:
-            parts.append(skill_text(k))
+            parts.append(skill_text(k, user))
         except KeyError:
             continue
-    return "# 本次相關工具的完整技能\n\n" + "\n---\n".join(parts)
+    text = "# 本次相關工具的完整技能\n\n" + "\n---\n".join(parts)
+    if user is not None and getattr(user, "pk", None):
+        for g in GUIDE_KEYS:
+            _, mine = custom_texts(g, user)
+            if mine:
+                text += f"\n\n# 個人補充：{GUIDE_LABELS[g]}\n\n{mine.strip()}"
+    return text

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：61 個內建工具（8 類）、119 個 API 端點、17 個資料模型、17 個前端頁面、15 頁 docs、後端 237 項＋前端 22 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：61 個內建工具（8 類）、119 個 API 端點、19 個資料模型、17 個前端頁面、15 頁 docs、後端 237 項＋前端 22 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -85,6 +85,7 @@
 - 供應商設定存完會打 `providers.test_connection` 驗證並回原因；`list_models` 列金鑰可用模型。
 - **候選方案與自動調參**：`synth.candidates` 每意圖產主要方案＋參數變體（`VARIANTS` 表），`service._rank_candidates` 全部靜默試跑（`trial_run(keep_images=False)` → `store.drop_run`）依 `expected_labels`（`GenerateIn.labels` 或 ROI 提示好品／壞品）打分；回應 `candidates[]`，前端切換走 `POST /agent/run`。`autotune.coordinate_search` 只搜 `teach=True` 且不在 `SKIP` 的參數、嚴格變好才採納；入口：生成（`GENERATE_AUTOTUNE_EVALS`）、`POST /agent/autotune`／`tune` 指令含「自動調參」、`POST /flows/{id}/golden/autotune`（golden api）。改工具的 `teach` 標記會改變搜尋空間。
 - **代理模式**：`AgentSettings.mode`（`UserPref.agent.mode`／`VISION_AGENT_MODE`）＝agentic 時前端走 `POST /agent/jobs`（`jobs.py` 背景執行緒、單行程最多 3 個、`GET /jobs/{id}?step_from=` 輪詢、cancel／answer）。`actions.py`＝動作層（`ACTIONS` 表；改 graph 一律複本→`check_graph`；`dispatch` 把例外翻成 `{"error"}` 回模型並記 `state.steps`）、`loop.py`＝迴圈與 `Budget`、`providers.complete_tools`＝中立歷史→各供應商工具呼叫格式（純函式 `claude_messages`／`openai_messages`／`gemini_contents`＋`parse_*_reply` 有測試）。沒 LLM 或工具呼叫失敗 → `jobs._run_single` 退回單次路徑。新增動作＝`ACTIONS` 加一筆（schema 只用 type/properties/required/items/enum，Gemini 才吃）＋`skills/agentic.md` 補要領＋`tests/test_agent_loop.py` 案例；假供應商用 `mock.patch.object(providers, "complete_tools", side_effect=...)`。
+- **記憶**：`memory.remember` 在 `service.generate`／`jobs._finalize` 之後存 `AgentSession`（best-effort，失敗只記 log；影像在 `ASSET_DIR/agent/<id>/`，刪除走 `memory.forget`）；`service.recall(intent, feats)` → 相似成功案例（同意圖、`success` 或 `rating>0`、特徵距離 ≤ 0.35）→ `priors`（`synth.candidates(priors=)` 產候選「prior」排第一、`autotune.search_space(priors)` 先試）＋ `examples`（LLM／代理的 user 訊息）。跨執行緒寫 session 的測試用 `TransactionTestCase`（`JobApiTests`）。自訂技能 `AgentSkill`：`skills.with_custom`／`custom_texts`，站點補充進 `build_system(epoch)`（存檔後 `skills.invalidate()`），個人補充進 `focus_text(keys, user)`；`skill_text(key, user)` 回合併全文、`base_skill_text` 回內建。
 - **定位包裝**：ROI 提示含「定位／標記／marker」→ `Intent.locator_roi`，該 ROI 不參與檢測（`synth._work_regions` 同步重編 ROI 索引），`wrap_with_locate` 在流程前包範本比對／定位補正／ROI 跟隨（ROI 輸入埠優先於參數）。新意圖 `text`／`distance`／`template_presence`（後者與 golden 一樣需要 `make_asset`）。
 - 特徵驅動參數：`analysis` 的 `mad`（穩健 σ）／`smooth_mad`（低通後 σ，紋理面缺陷門檻用）／`gradient`／`color_std`／`area`；`synth` 的 `_blob_min_area`、`_clip`；計數意圖 `round_target` 加圓形度下限排除線段。新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`clarify.build_questions` 缺口問題＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
 

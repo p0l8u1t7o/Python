@@ -138,6 +138,9 @@
 <tr><td>範本庫</td><td>Template library（FlowTemplate）</td><td>流程範本：內建（<code>builtin:&lt;key&gt;</code>）或自訂（存為範本）；來源 id 以 <code>{SOURCE}</code> 佔位，建立／載入時再選影像來源</td></tr>
 <tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名；範例樣板（<code>demo.BUILTIN_TEMPLATES</code>）都在這裡，配「範例：⋯」樣本來源即可執行</td></tr>
 <tr><td>註解</td><td>Note（畫布便利貼）</td><td>graph 的裝飾節點（type=note，不參與執行）；工具箱「新增註解」放到畫布中央，選中後在屬性面板改標題／內文、拖角落調大小</td></tr>
+<tr><td>工作階段</td><td>Agent session（<code>AgentSession</code>、<code>/agent/sessions</code>、AI 助手頁「歷史」）</td><td>一次 AI 助手生成的完整記錄（影像、ROI、需求、流程、判定、評分）；可還原、可當相似影像的參數先驗</td></tr>
+<tr><td>參數先驗</td><td>Prior（<code>memory.priors_from_sessions</code>、候選「沿用過去成功參數」）</td><td>相似成功案例的現場調機參數，套到新草稿、自動調參候選最前與 LLM 的過去案例段</td></tr>
+<tr><td>補充要領</td><td>Custom skill（<code>AgentSkill</code>、<code>/agent/skills/custom</code>）</td><td>站點（管理員）或個人對內建 AI 技能的 markdown 補充；站點進 system 段、個人進 user 訊息</td></tr>
 <tr><td>代理模式</td><td>Agentic mode（<code>AgentSettings.mode</code>、<code>/agent/jobs</code>、AgentTimeline）</td><td>AI 助手以動作（試跑、修改、驗證、提問）逐步完成流程的背景工作，前端顯示步驟時間軸；相對於「單次生成」</td></tr>
 <tr><td>步驟時間軸</td><td>Step timeline（<code>AgentTimeline</code>、job.steps）</td><td>代理工作的每個動作／回覆／提問／完成記錄，含摘要與耗時；執行中可中斷</td></tr>
 <tr><td>候選方案</td><td>Candidate（<code>synth.candidates</code>、<code>candidates[]</code>）</td><td>AI 助手規則引擎對同一意圖產出的主要方案＋參數變體；全部試跑後依影像標記打分，勝者正式跑，可在助手頁切換</td></tr>

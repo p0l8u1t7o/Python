@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 
 from apps.core.errors import Conflict, NotFound, ValidationError
-from apps.vision.agent import actions, loop, providers
+from apps.vision.agent import actions, loop, memory, providers
 
 log = logging.getLogger("vision.agent")
 
@@ -181,7 +181,7 @@ def _run_single(job: AgentJob) -> None:
 
     st = job.state
     if job.task == "generate":
-        job.result = service.generate(st.images, st.regions, st.prompt, job.settings, answers=st.answers, labels=st.expected)
+        job.result = service.generate(st.images, st.regions, st.prompt, job.settings, answers=st.answers, labels=st.expected, owner=st.owner)
     elif job.task == "edit":
         job.result = service.edit(st.graph or {"nodes": [], "edges": []}, st.feedback, st.images[0] if st.images else None, job.settings)
     else:
@@ -209,6 +209,10 @@ def _finalize(job: AgentJob, status: str) -> None:
         report, reports = service._run_all(graph, st.images, main)
         job.result = service._result(graph, st.rationale, job.settings.provider, st.intent.kind, report, reports, main_image=main,
                                      warnings=warnings, candidates=[], labels=st.expected, agentic=True, turns=job.turns)
+        session = memory.remember(owner=st.owner, task="generate", prompt=st.prompt, intent_kind=st.intent.kind, images=st.images, regions=st.regions,
+                                  answers=st.answers, labels=st.expected, analysis=st.analysis, graph=graph, rationale=st.rationale, candidates=[],
+                                  statuses=[r.get("status", "") for r in reports], provider=job.settings.provider, mode="agentic", turns=job.turns)
+        job.result["session_id"] = session.id if session else None
     elif job.task == "edit":
         report = service.trial_run(graph, st.images[0]).to_dict(include_node_outputs=True) if st.images else None
         job.result = {"graph": graph, "rationale": st.rationale, "provider": job.settings.provider, "changes": [s["detail"] for s in st.steps if s["kind"] == "tool" and s["title"] == "patch_graph"],

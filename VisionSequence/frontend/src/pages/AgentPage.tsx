@@ -7,12 +7,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Bot, HelpCircle, Loader2, Plus, Save, Settings2, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { BookOpen, Bot, HelpCircle, History, Loader2, Plus, RotateCcw, Save, Settings2, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, Upload, Wand2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Page } from '@/components/layout/AppShell'
 import { TemplateThumb } from '@/components/templates/TemplateGallery'
-import { Badge, Button, Card, Modal, PageHeader, Select, TextArea, TextInput } from '@/components/ui'
+import { Badge, Button, Card, Modal, PageHeader, Select, StatusBadge, TextArea, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { useAgentJob } from '@/lib/agentJob'
 import { api, imageUrl } from '@/lib/api'
@@ -75,6 +75,33 @@ interface AgentResult {
   candidates?: Candidate[]
   labels?: string[]
   autotune?: { before: { match: number; total: number }; after: { match: number; total: number }; change_text: string[]; evals: number; elapsed_ms: number }
+  /** 記憶：這次生成存成的工作階段，與參考過的相似成功案例 */
+  session_id?: number | null
+  similar?: { id: number; prompt: string; distance: number }[]
+}
+
+interface SessionRow {
+  id: number
+  task: string
+  prompt: string
+  intent: string
+  provider: string
+  mode: string
+  image_count: number
+  statuses: string[]
+  labels: string[]
+  success: boolean | null
+  rating: number
+  flow_id: number | null
+  created_at: string
+}
+
+interface SessionFull extends SessionRow {
+  images: { ref: string; width: number; height: number; name: string }[]
+  regions: { region: Region; hint?: string; image?: number }[]
+  answers: { id: string; answer: string }[]
+  graph: FlowGraph
+  rationale: string
 }
 
 type ImageLabel = 'ok' | 'ng'
@@ -241,15 +268,59 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   )
 }
 
-/** AI 技能瀏覽：左列表（指南＋各工具）、右 markdown 原文——AI 代理讀的就是這份。 */
+interface SkillDoc {
+  key: string
+  markdown: string
+  custom?: { site: string; user: string }
+  can_site?: boolean
+}
+
+/** AI 技能瀏覽與補充：左列表（指南＋各工具）、右 markdown 原文——AI 代理讀的就是這份；下方可寫站點／個人補充。 */
 function SkillsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation()
+  const toast = useToast()
+  const client = useQueryClient()
   const [key, setKey] = useState('platform')
+  const [scope, setScope] = useState<'user' | 'site'>('user')
+  const [customText, setCustomText] = useState('')
+  const [saving, setSaving] = useState(false)
   const list = useQuery({ queryKey: ['agent-skills'], queryFn: () => api.get<{ items: { key: string; label: string; category: string; curated: boolean }[] }>('/vision/agent/skills'), enabled: open })
-  const doc = useQuery({ queryKey: ['agent-skill', key], queryFn: () => api.get<{ key: string; markdown: string }>(`/vision/agent/skills/${key}`), enabled: open })
+  const doc = useQuery({ queryKey: ['agent-skill', key], queryFn: () => api.get<SkillDoc>(`/vision/agent/skills/${key}`), enabled: open })
+  const existing = doc.data?.custom?.[scope] ?? ''
+  useEffect(() => {
+    setCustomText(existing)
+  }, [existing, key, scope])
+
+  async function saveCustom() {
+    setSaving(true)
+    try {
+      await api.put(`/vision/agent/skills/custom/${key}`, { markdown: customText, scope })
+      await client.invalidateQueries({ queryKey: ['agent-skill', key] })
+      toast.success(t('agent.skillsCustomSaved'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteCustom() {
+    setSaving(true)
+    try {
+      await api.delete(`/vision/agent/skills/custom/${key}?scope=${scope}`)
+      await client.invalidateQueries({ queryKey: ['agent-skill', key] })
+      setCustomText('')
+      toast.success(t('agent.skillsCustomDeleted'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose} size="xl" title={t('agent.skills')} description={t('agent.skillsHint')}>
-      <div className="grid h-[65vh] min-h-0 grid-cols-[220px_minmax(0,1fr)] gap-3 overflow-hidden">
+      <div className="grid h-[70vh] min-h-0 grid-cols-[220px_minmax(0,1fr)] gap-3 overflow-hidden">
         <div className="min-h-0 space-y-0.5 overflow-y-auto pr-1 text-xs" data-testid="skills-list">
           {(list.data?.items ?? []).map((it) => (
             <button key={it.key} type="button" onClick={() => setKey(it.key)}
@@ -259,9 +330,89 @@ function SkillsModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             </button>
           ))}
         </div>
-        <pre className="min-h-0 overflow-auto rounded-lg border border-line bg-surface-muted p-3 text-[11px] leading-relaxed whitespace-pre-wrap" data-testid="skills-doc">
-          {doc.data?.markdown ?? ''}
-        </pre>
+        <div className="flex min-h-0 flex-col gap-2">
+          <pre className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface-muted p-3 text-[11px] leading-relaxed whitespace-pre-wrap" data-testid="skills-doc">
+            {doc.data?.markdown ?? ''}
+          </pre>
+          <div className="space-y-1.5 rounded-lg border border-line p-2" data-testid="skills-custom">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold">{t('agent.skillsCustom')}</span>
+              {doc.data?.can_site ? (
+                <select className="input !w-auto !py-0.5 text-[11px]" value={scope} onChange={(e) => setScope(e.target.value as 'user' | 'site')} data-testid="skills-scope">
+                  <option value="user">{t('agent.skillsScopeUser')}</option>
+                  <option value="site">{t('agent.skillsScopeSite')}</option>
+                </select>
+              ) : null}
+              <span className="text-[11px] text-subtle">{t('agent.skillsCustomHint')}</span>
+            </div>
+            <textarea className="input h-20 w-full resize-y text-[11px]" value={customText} onChange={(e) => setCustomText(e.target.value)} placeholder={t('agent.skillsCustomPlaceholder')} data-testid="skills-custom-text" />
+            <div className="flex gap-2">
+              <Button size="xs" variant="primary" loading={saving} disabled={!customText.trim()} onClick={() => void saveCustom()} data-testid="skills-custom-save">{t('common.save')}</Button>
+              {existing ? <Button size="xs" loading={saving} onClick={() => void deleteCustom()} data-testid="skills-custom-delete">{t('common.delete')}</Button> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/** 歷史工作階段：列表、還原（影像重新進快取＋流程重跑）、刪除。 */
+function HistoryModal({ open, onClose, onRestore }: { open: boolean; onClose: () => void; onRestore: (s: SessionFull) => Promise<void> }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const client = useQueryClient()
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const sessions = useQuery({ queryKey: ['agent-sessions'], queryFn: () => api.get<{ items: SessionRow[]; total: number }>('/vision/agent/sessions'), enabled: open })
+
+  async function restore(id: number) {
+    setBusyId(id)
+    try {
+      const full = await api.post<SessionFull>(`/vision/agent/sessions/${id}/restore`)
+      await onRestore(full)
+      onClose()
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(id: number) {
+    setBusyId(id)
+    try {
+      await api.delete(`/vision/agent/sessions/${id}`)
+      await client.invalidateQueries({ queryKey: ['agent-sessions'] })
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const items = sessions.data?.items ?? []
+  return (
+    <Modal open={open} onClose={onClose} size="lg" title={t('agent.historyTitle')} description={t('agent.historyHint')}>
+      <div className="max-h-[60vh] space-y-1.5 overflow-y-auto pr-1" data-testid="agent-history">
+        {items.length === 0 ? <p className="text-xs text-muted">{t('agent.historyEmpty')}</p> : null}
+        {items.map((s) => (
+          <div key={s.id} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-xs" data-testid="agent-history-row">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium" title={s.prompt}>#{s.id} · {s.prompt || '—'}</p>
+              <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                <span>{new Date(s.created_at).toLocaleString()}</span>
+                <Badge>{s.intent || '?'}</Badge>
+                <span>{t('agent.imageN', { n: s.image_count })}</span>
+                {s.statuses.map((st, i) => <StatusBadge key={i} status={st} />)}
+                {s.success === true ? <span className="text-ok">✓</span> : s.success === false ? <span className="text-critical">✗</span> : null}
+                {s.rating === 1 ? <ThumbsUp size={11} className="text-ok" /> : s.rating === -1 ? <ThumbsDown size={11} className="text-critical" /> : null}
+                {s.mode === 'agentic' ? <Badge tone="brand">{t('agent.modeAgentic')}</Badge> : null}
+              </p>
+            </div>
+            <Button size="xs" icon={<RotateCcw size={12} />} loading={busyId === s.id} onClick={() => void restore(s.id)} data-testid="agent-history-restore">{t('agent.restore')}</Button>
+            <button type="button" className="btn-icon text-critical" aria-label={t('common.delete')} disabled={busyId === s.id} onClick={() => void remove(s.id)}><Trash2 size={14} /></button>
+          </div>
+        ))}
       </div>
     </Modal>
   )
@@ -290,6 +441,9 @@ export function AgentPage() {
   const [showOverlays, setShowOverlays] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  /** 這次結果的評分（session_id → 1／-1） */
+  const [rated, setRated] = useState<{ id: number; rating: number } | null>(null)
   const info = useQuery({ queryKey: ['agent-info'], queryFn: () => api.get<AgentInfo>('/vision/agent/info') })
   /** 代理模式：生成走背景工作＋步驟時間軸 */
   const jobApi = useAgentJob<AgentResult>()
@@ -525,12 +679,43 @@ export function AgentPage() {
     }
   }
 
+  async function rate(value: 1 | -1) {
+    if (!result?.session_id) return
+    try {
+      await api.patch(`/vision/agent/sessions/${result.session_id}`, { rating: value })
+      setRated({ id: result.session_id, rating: value })
+      toast.success(t('agent.rated'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  /** 還原歷史工作階段：影像、ROI、需求、標記帶回，流程在同批影像重跑。 */
+  async function restoreSession(s: SessionFull) {
+    const refs = s.images.map((im) => im.ref)
+    const run = await api.post<AgentResult>('/vision/agent/run', { images: refs, graph: s.graph, main: 0 })
+    setImages(s.images.map((im) => ({ ref: im.ref, width: im.width, height: im.height, name: im.name })))
+    setRois((s.regions ?? []).map((r) => ({ region: r.region, hint: r.hint ?? '', image: r.image ?? 0 })))
+    setPrompt(s.prompt)
+    setAnswers(Object.fromEntries((s.answers ?? []).map((a) => [a.id, a.answer])))
+    const nextLabels: Record<number, ImageLabel> = {}
+    ;(s.labels ?? []).forEach((lb, i) => { if (lb === 'ok' || lb === 'ng') nextLabels[i] = lb })
+    setLabels(nextLabels)
+    setDrawing(null)
+    setClarify(null)
+    setActive(0)
+    setResult({ graph: s.graph, rationale: s.rationale, provider: s.provider, intent: s.intent, report: run.report, reports: run.reports, main_image: 0, candidates: [], session_id: s.id })
+    setRated(s.rating ? { id: s.id, rating: s.rating } : null)
+    toast.success(t('agent.restored', { id: s.id }))
+  }
+
   async function saveFlow() {
     if (!result) return
     setBusy('save')
     try {
       const name = flowName.trim() || t('agent.defaultFlowName')
       const r = await api.post<{ id: number }>('/vision/flows', { name, description: result.rationale, graph: result.graph })
+      if (result.session_id) void api.patch(`/vision/agent/sessions/${result.session_id}`, { flow_id: r.id }).catch(() => undefined)
       toast.success(t('agent.saved'))
       navigate(`/flows/${r.id}`)
     } catch (error) {
@@ -556,6 +741,7 @@ export function AgentPage() {
                   <Bot size={12} /> {info.data.llm ? t('agent.providerLlm', { model: info.data.model }) : t('agent.providerRules')}{agentic ? ` · ${t('agent.modeAgentic')}` : ''}
                 </Badge>
               ) : null}
+              <Button size="sm" icon={<History size={14} />} onClick={() => setHistoryOpen(true)} data-testid="agent-history-open">{t('agent.history')}</Button>
               <Button size="sm" icon={<BookOpen size={14} />} onClick={() => setSkillsOpen(true)} data-testid="agent-skills">{t('agent.skills')}</Button>
               <Button size="sm" icon={<Settings2 size={14} />} onClick={() => setSettingsOpen(true)} data-testid="agent-settings">{t('agent.settings')}</Button>
             </>
@@ -690,6 +876,15 @@ export function AgentPage() {
                 </div>
                 <TemplateThumb graph={result.graph} className="h-20 w-full rounded bg-surface-muted" />
                 <p className="text-xs leading-relaxed text-muted">{result.rationale}</p>
+                {result.similar?.length ? <p className="text-[11px] text-subtle" data-testid="agent-similar">{t('agent.similarUsed', { count: result.similar.length, ids: result.similar.map((x) => `#${x.id}`).join('、') })}</p> : null}
+                {result.session_id ? (
+                  <div className="flex items-center gap-1 text-[11px] text-muted" data-testid="agent-rate">
+                    <span>{t('agent.rateHint')}</span>
+                    <button type="button" className={`btn-icon ${rated?.id === result.session_id && rated.rating === 1 ? 'text-ok' : ''}`} title={t('agent.rateGood')} onClick={() => void rate(1)} data-testid="agent-rate-good"><ThumbsUp size={13} /></button>
+                    <button type="button" className={`btn-icon ${rated?.id === result.session_id && rated.rating === -1 ? 'text-critical' : ''}`} title={t('agent.rateBad')} onClick={() => void rate(-1)} data-testid="agent-rate-bad"><ThumbsDown size={13} /></button>
+                    <span className="text-subtle">#{result.session_id}</span>
+                  </div>
+                ) : null}
                 {result.warnings?.length ? (
                   <ul className="list-disc rounded bg-warning-soft px-2 py-1 pl-5 text-[11px] text-warning" data-testid="agent-warnings">
                     {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
@@ -784,6 +979,7 @@ export function AgentPage() {
       </div>
       <ProviderSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} info={info.data} />
       <SkillsModal open={skillsOpen} onClose={() => setSkillsOpen(false)} />
+      <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} onRestore={restoreSession} />
     </Page>
   )
 }

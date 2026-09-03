@@ -148,7 +148,7 @@ def run_case(case: BenchCase, settings: Any = None, *, use_llm: bool | None = Fa
     t0 = time.perf_counter()
     row: dict[str, Any] = {"key": case.key, "title": case.title, "tags": list(case.tags)}
     try:
-        result = service.generate(images, case.regions, case.prompt, settings, use_llm=use_llm, answers=case.answers, labels=case.labels or None)
+        result = service.generate(images, case.regions, case.prompt, settings, use_llm=use_llm, answers=case.answers, labels=case.labels or None, remember=False)
     except Exception as exc:  # noqa: BLE001 - 基準要能把炸掉的案例列出來，不能中斷整批
         row.update(intent="", intent_ok=False, valid=False, status_ok=False, statuses=[], expected=case.expect_status,
                    error=f"{exc.__class__.__name__}: {exc}", ms=round((time.perf_counter() - t0) * 1000))

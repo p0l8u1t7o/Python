@@ -20,7 +20,7 @@ from django.conf import settings as dj_settings
 from apps.vision import engine
 from apps.vision.agent import analysis as analysis_mod
 from apps.vision.agent import clarify as clarify_mod
-from apps.vision.agent import actions, autotune, intents, llm, providers, synth
+from apps.vision.agent import actions, autotune, intents, llm, memory, providers, synth
 from apps.vision.graph import compile_graph, validate_graph
 from apps.vision.images import store
 from apps.vision.models import Asset
@@ -167,6 +167,12 @@ def _result(graph: dict[str, Any], rationale: str, provider: str, intent: str, r
     return {"graph": graph, "rationale": rationale, "provider": provider, "intent": intent, "report": report, "reports": reports, **extra}
 
 
+def recall(intent_kind: str, feats: dict[str, Any] | None) -> tuple[list[tuple[Any, float]], dict[tuple[str, str], Any], str]:
+    """相似成功案例 → (列表, 參數先驗, 給 LLM 的文字)。"""
+    similar = memory.find_similar(intent_kind, feats)
+    return similar, memory.priors_from_sessions(similar), memory.examples_text(similar)
+
+
 def _try_llm(settings: providers.AgentSettings, use_llm: bool | None, **kw: Any) -> tuple[tuple[dict[str, Any], str] | None, str]:
     """回 ((graph, rationale) | None, 失敗原因)。沒設定 LLM 時原因為空字串；失敗原因會寫進回應讓使用者知道改用了規則引擎。"""
     want = providers.available(settings) if use_llm is None else (use_llm and providers.available(settings))
@@ -204,41 +210,53 @@ def clarify(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str
 
 def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
              settings: providers.AgentSettings | None = None, *, use_llm: bool | None = None,
-             answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None) -> dict[str, Any]:
-    """上傳影像們＋ROI＋提示詞（＋每張影像的 OK/NG 標記）→ {graph, rationale, provider, intent, report, reports, candidates, labels}。
+             answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None, owner: Any = None,
+             remember: bool = True) -> dict[str, Any]:
+    """上傳影像們＋ROI＋提示詞（＋每張影像的 OK/NG 標記）→ {graph, rationale, provider, intent, report, reports, candidates, labels, session_id, similar}。
 
-    規則引擎會產 1～3 個候選方案，全部在影像上靜默試跑後依標記命中打分，勝者才正式跑（保留 overlay）；
-    有 2 張以上標記時再對勝者做小預算自動調參。"""
+    規則引擎會產 1～3 個候選方案（相似成功案例的參數先驗版排第一），全部在影像上靜默試跑後依標記命中打分，勝者才正式跑（保留 overlay）；
+    有 2 張以上標記時再對勝者做小預算自動調參。結束後存成工作階段（記憶）。"""
     settings = settings or providers.server_settings()
     prompt = effective_prompt(prompt, answers)
     feats = analysis_mod.analyze(images, regions)
     intent = intents.parse(prompt, regions, feats)  # 規則引擎的意圖也拿來幫 LLM 挑相關工具技能
     expected = expected_labels(regions, labels, len(images))
+    similar, priors, examples = recall(intent.kind, feats) if remember else ([], {}, "")  # remember=False：評測基準等不讀也不寫記憶
+    similar_out = [{"id": s.id, "prompt": s.prompt[:80], "distance": d} for s, d in similar]
     llm_prompt = f"{prompt}\n{_labels_text(expected)}".strip()
-    got, llm_reason = _try_llm(settings, use_llm, images=images, regions=regions, prompt=llm_prompt, analysis=feats, intent_kind=intent.kind)
+    got, llm_reason = _try_llm(settings, use_llm, images=images, regions=regions, prompt=llm_prompt, analysis=feats, intent_kind=intent.kind,
+                               examples=examples, user=owner)
     if got is not None:
         graph, rationale = got
         main = _main_image(regions, intent, len(images))
         report, reports = _run_all(graph, images, main)
-        return _result(graph, rationale, settings.provider, intent.kind, report, reports, main_image=main, candidates=[], labels=expected)
-    cands = synth.candidates(intent, regions, feats, make_asset=_make_asset_factory(images))
-    ranked, win = _rank_candidates(cands, images, expected)
-    graph, rationale = ranked[win]["graph"], ranked[win]["rationale"]
-    extra: dict[str, Any] = {}
-    labeled = [autotune.Labeled(im, e) for im, e in zip(images, expected) if e]
-    if len(labeled) >= 2 and not all(s == e for s, e in zip(ranked[win]["statuses"], expected) if e):
-        tuned = autotune.coordinate_search(graph, labeled, max_evals=GENERATE_AUTOTUNE_EVALS, deadline_s=GENERATE_AUTOTUNE_DEADLINE_S, trial=_quiet_trial)
-        if tuned["improved"]:
-            graph = tuned["graph"]
-            rationale += "；自動調參：" + "、".join(tuned["change_text"])
-            extra["autotune"] = {k: tuned[k] for k in ("before", "after", "changes", "change_text", "evals", "elapsed_ms", "budget_hit")}
-    main = _main_image(regions, intent, len(images))
-    report, reports = _run_all(graph, images, main)
-    open_qs = clarify_mod.build_questions(intent, regions, feats, {str(a.get("id", "")) for a in (answers or [])})
-    warnings = ([llm_reason] if llm_reason else []) + [f"未提供「{q['text']}」，已用預設值" for q in open_qs]
-    candidates = [{"key": c["key"], "label": c["label"], "rationale": c["rationale"], "statuses": c["statuses"], "score": c["score"],
-                   "graph": c["graph"], "chosen": i == win} for i, c in enumerate(ranked)]
-    return _result(graph, rationale, "rules", intent.kind, report, reports, main_image=main, warnings=warnings, candidates=candidates, labels=expected, **extra)
+        result = _result(graph, rationale, settings.provider, intent.kind, report, reports, main_image=main, candidates=[], labels=expected, similar=similar_out)
+    else:
+        cands = synth.candidates(intent, regions, feats, make_asset=_make_asset_factory(images), priors=priors)
+        ranked, win = _rank_candidates(cands, images, expected)
+        graph, rationale = ranked[win]["graph"], ranked[win]["rationale"]
+        extra: dict[str, Any] = {}
+        labeled = [autotune.Labeled(im, e) for im, e in zip(images, expected) if e]
+        if len(labeled) >= 2 and not all(s == e for s, e in zip(ranked[win]["statuses"], expected) if e):
+            tuned = autotune.coordinate_search(graph, labeled, max_evals=GENERATE_AUTOTUNE_EVALS, deadline_s=GENERATE_AUTOTUNE_DEADLINE_S, trial=_quiet_trial, priors=priors)
+            if tuned["improved"]:
+                graph = tuned["graph"]
+                rationale += "；自動調參：" + "、".join(tuned["change_text"])
+                extra["autotune"] = {k: tuned[k] for k in ("before", "after", "changes", "change_text", "evals", "elapsed_ms", "budget_hit")}
+        main = _main_image(regions, intent, len(images))
+        report, reports = _run_all(graph, images, main)
+        open_qs = clarify_mod.build_questions(intent, regions, feats, {str(a.get("id", "")) for a in (answers or [])})
+        warnings = ([llm_reason] if llm_reason else []) + [f"未提供「{q['text']}」，已用預設值" for q in open_qs]
+        candidates = [{"key": c["key"], "label": c["label"], "rationale": c["rationale"], "statuses": c["statuses"], "score": c["score"],
+                       "graph": c["graph"], "chosen": i == win} for i, c in enumerate(ranked)]
+        result = _result(graph, rationale, "rules", intent.kind, report, reports, main_image=main, warnings=warnings, candidates=candidates,
+                         labels=expected, similar=similar_out, **extra)
+    if remember:
+        session = memory.remember(owner=owner, task="generate", prompt=prompt, intent_kind=intent.kind, images=images, regions=regions, answers=list(answers or []),
+                                  labels=expected, analysis=feats, graph=result["graph"], rationale=result["rationale"], candidates=result.get("candidates") or [],
+                                  statuses=[r.get("status", "") for r in result["reports"]], provider=result["provider"], mode=settings.mode)
+        result["session_id"] = session.id if session else None
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -523,16 +541,18 @@ def tune(graph: dict[str, Any], instruction: str, runs: list[dict[str, Any]], im
 # ---------------------------------------------------------------------------
 def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str, *,
                 answers: list[dict[str, Any]] | None = None, labels: list[str] | None = None,
-                graph: dict[str, Any] | None = None, instruction: str = "", runs: list[dict[str, Any]] | None = None) -> actions.AgentState:
-    """代理迴圈的初始狀態：分析、意圖、期望標記、make_asset；edit／tune 帶既有 graph 與指令。"""
+                graph: dict[str, Any] | None = None, instruction: str = "", runs: list[dict[str, Any]] | None = None,
+                owner: Any = None) -> actions.AgentState:
+    """代理迴圈的初始狀態：分析、意圖、期望標記、make_asset、相似成功案例的先驗；edit／tune 帶既有 graph 與指令。"""
     text = effective_prompt(prompt, answers)
     feats = analysis_mod.analyze(images, regions) if images else None
     intent = intents.parse(text, regions, feats) if feats else intents.Intent()
+    _, priors, examples = recall(intent.kind, feats) if (feats and task == "generate") else ([], {}, "")
     state = actions.AgentState(
         task=task, images=images, regions=regions, prompt=text, analysis=feats, intent=intent,
         expected=expected_labels(regions, labels, len(images)), make_asset=_make_asset_factory(images) if images else None,
         graph=validate_graph(graph) if graph else None, feedback=instruction, answers=list(answers or []),
-        batch_summary=_batch_summary(runs) if runs else "",
+        batch_summary=_batch_summary(runs) if runs else "", owner=owner, priors=priors, examples=examples,
     )
     return state
 

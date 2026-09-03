@@ -47,6 +47,10 @@ class AgentState:
     questions: list[dict[str, Any]] | None = None
     finished: bool = False
     last_trial: list[dict[str, Any]] = field(default_factory=list)
+    #: 記憶：擁有者（個人技能補充）、相似成功案例的參數先驗與文字說明。
+    owner: Any = None
+    priors: dict[tuple[str, str], Any] = field(default_factory=dict)
+    examples: str = ""
 
     def step(self, kind: str, title: str, detail: str = "", **extra: Any) -> None:
         self.steps.append({"n": len(self.steps) + 1, "kind": kind, "title": title[:200], "detail": detail[:600], "at": time.time(), **extra})
@@ -246,7 +250,7 @@ def h_analyze_region(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
 def h_draft_from_rules(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
     if state.analysis is None:
         state.analysis = analysis_mod.analyze(state.images, state.regions)
-    cands = synth.candidates(state.intent, state.regions, state.analysis, make_asset=state.make_asset)
+    cands = synth.candidates(state.intent, state.regions, state.analysis, make_asset=state.make_asset, priors=state.priors)
     primary = check_graph(cands[0]["graph"])
     if state.graph is None or bool(args.get("replace")):
         state.graph = primary
@@ -359,7 +363,7 @@ def h_auto_tune(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
         return {"error": "沒有影像標記（expected），無法自動調參；可先請使用者標記或用 run_trial 自行判斷"}
     state.trials += 1
     res = autotune.coordinate_search(state.graph, labeled, max_evals=int(args.get("max_evals") or 30), deadline_s=float(args.get("deadline_s") or 15.0),
-                                     trial=lambda g, im: _trial_graph(g, im))
+                                     trial=lambda g, im: _trial_graph(g, im), priors=state.priors)
     if res["improved"]:
         state.graph = res["graph"]
     return {"improved": res["improved"], "before": res["before"], "after": res["after"], "changes": res["change_text"], "evals": res["evals"], "budget_hit": res["budget_hit"]}

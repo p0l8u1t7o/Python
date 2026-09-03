@@ -54,7 +54,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/groups?kind=source", "/api/vision/fs",
             "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info",
             "/api/vision/connections", "/api/vision/dl/projects", "/api/vision/dl/trainers", "/api/vision/dl/devices", "/api/vision/dl/train/status",
-            "/api/vision/agent/info", "/api/vision/agent/jobs", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",
+            "/api/vision/agent/info", "/api/vision/agent/jobs", "/api/vision/agent/sessions", "/api/vision/agent/skills/custom", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",
             f"/api/vision/flows/{fid}/events?max_seconds=0.2",
         ]
         bad = []

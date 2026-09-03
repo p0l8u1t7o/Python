@@ -26,7 +26,7 @@ _MAX_SIDE = 1024
 
 def system_prompt() -> str:
     """穩定的 system：平台規則＋設計原則＋精簡工具目錄（skills.py 組裝，可快取）。"""
-    return "你是工業機器視覺流程設計專家，在 VisionSequence 平台上依規則設計可執行的檢測流程。\n\n" + skills.build_system()
+    return "你是工業機器視覺流程設計專家，在 VisionSequence 平台上依規則設計可執行的檢測流程。\n\n" + skills.build_system(skills.epoch())
 
 
 def encode_image(image: np.ndarray) -> str:
@@ -52,9 +52,12 @@ def parse_reply(text: str) -> dict[str, Any]:
 
 
 def _user_text(task: str, prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any] | None,
-               previous_graph: dict[str, Any] | None, feedback: str, batch_summary: str, *, intent_kind: str = "") -> str:
+               previous_graph: dict[str, Any] | None, feedback: str, batch_summary: str, *, intent_kind: str = "",
+               examples: str = "", user: Any = None) -> str:
     focus = skills.select_tools(f"{prompt}\n{feedback}", regions, intent_kind=intent_kind, graph=previous_graph)
-    lines: list[str] = [skills.focus_text(focus), ""]
+    lines: list[str] = [skills.focus_text(focus, user), ""]
+    if examples:
+        lines += [examples, ""]
     if task == "generate":
         lines.append(f"檢測需求：{prompt or '（未填，請依 ROI 與影像判斷最合理的檢測）'}")
     elif task == "refine":
@@ -113,10 +116,10 @@ def clarify(settings: providers.AgentSettings, images: list[np.ndarray], regions
 
 def generate(settings: providers.AgentSettings, images: list[np.ndarray], regions: list[dict[str, Any]], prompt: str,
              analysis: dict[str, Any] | None, *, task: str = "generate", previous_graph: dict[str, Any] | None = None,
-             feedback: str = "", batch_summary: str = "", intent_kind: str = "") -> tuple[dict[str, Any], str]:
+             feedback: str = "", batch_summary: str = "", intent_kind: str = "", examples: str = "", user: Any = None) -> tuple[dict[str, Any], str]:
     """呼叫供應商產 graph；validate 失敗會把錯誤帶回去重試一次。回 (graph, rationale)。"""
     encoded = [encode_image(im) for im in images[:6]]
-    text = _user_text(task, prompt, regions, analysis, previous_graph, feedback, batch_summary, intent_kind=intent_kind)
+    text = _user_text(task, prompt, regions, analysis, previous_graph, feedback, batch_summary, intent_kind=intent_kind, examples=examples, user=user)
     history: list[dict[str, Any]] = []
     last_error = ""
     for attempt in range(2):

@@ -43,7 +43,7 @@ class LoopResult:
 
 
 def system_prompt() -> str:
-    return "你是工業機器視覺流程設計專家，在 VisionSequence 平台上用提供的動作逐步設計並驗證檢測流程。\n\n" + skills.build_system_agentic()
+    return "你是工業機器視覺流程設計專家，在 VisionSequence 平台上用提供的動作逐步設計並驗證檢測流程。\n\n" + skills.build_system_agentic(skills.epoch())
 
 
 def initial_text(state: actions.AgentState) -> str:
@@ -71,7 +71,9 @@ def initial_text(state: actions.AgentState) -> str:
     if state.batch_summary:
         lines.append("批次測試結果：\n" + state.batch_summary)
     focus = skills.select_tools(f"{state.prompt}\n{state.feedback}", state.regions, intent_kind=state.intent.kind, graph=state.graph, limit=12)
-    lines.append(skills.focus_text(focus))
+    lines.append(skills.focus_text(focus, state.owner))
+    if state.examples:
+        lines.append(state.examples)
     lines.append("請先呼叫 get_state 確認狀態，再依「代理工作方式」進行；完成時呼叫 finish。")
     return "\n".join(lines)
 

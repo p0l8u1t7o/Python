@@ -728,12 +728,19 @@ def _variant(base: dict[str, Any], key: str, label: str, patches: list[tuple[str
 
 
 def candidates(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str, Any], *,
-               make_asset: MakeAsset | None = None) -> list[dict[str, Any]]:
-    """主要方案在前，之後是同一意圖的參數變體（最多 2 個）；每筆 {key, label, graph, rationale}。"""
+               make_asset: MakeAsset | None = None, priors: dict[tuple[str, str], Any] | None = None) -> list[dict[str, Any]]:
+    """主要方案在前，之後是同一意圖的參數變體（最多 2 個）；每筆 {key, label, graph, rationale}。
+    priors（相似成功案例的 teach 參數）有改到東西時，「沿用過去成功參數」版排第一、原主要方案第二，讓標記排名可以否決先驗。"""
     graph, rationale = synthesize(intent, regions, analysis, make_asset=make_asset)
     out = [{"key": "primary", "label": "主要方案", "graph": graph, "rationale": rationale}]
+    if priors:
+        from apps.vision.agent import memory
+
+        prior_graph, changed = memory.apply_priors(graph, priors)
+        if changed:
+            out.insert(0, {"key": "prior", "label": "沿用過去成功參數", "graph": prior_graph, "rationale": rationale + "；沿用相似成功案例的參數：" + "、".join(changed)})
     for key, label, patches, why in VARIANTS.get(intent.kind, []):
-        v = _variant(out[0], key, label, patches, why)
+        v = _variant(out[-1] if len(out) == 1 else out[1], key, label, patches, why)
         if v is not None:
             out.append(v)
     return out

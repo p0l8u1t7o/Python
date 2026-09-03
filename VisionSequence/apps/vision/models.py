@@ -218,3 +218,57 @@ class DlSettings(models.Model):
     providers = models.JSONField(default=list)
     train_device = models.CharField(max_length=20, default="cpu")
     updated_at = models.DateTimeField(auto_now=True)
+
+
+# ---------------------------------------------------------------------------
+# AI 助手記憶（apps/vision/agent/memory.py）
+# ---------------------------------------------------------------------------
+class AgentSession(models.Model):
+    """一次 AI 助手生成：影像（檔案在 ASSET_DIR/agent/<id>/）、ROI、需求、特徵向量、產出的流程與結果；可評分、可還原、可當先驗。"""
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="agent_sessions")
+    task = models.CharField(max_length=20, default="generate")
+    prompt = models.TextField(blank=True, default="")
+    intent = models.CharField(max_length=40, blank=True, default="")
+    provider = models.CharField(max_length=40, blank=True, default="")
+    mode = models.CharField(max_length=20, default="single")
+    turns = models.PositiveIntegerField(default=0)
+    #: [{path, name, width, height}]
+    images = models.JSONField(default=list, blank=True)
+    regions = models.JSONField(default=list, blank=True)
+    answers = models.JSONField(default=list, blank=True)
+    labels = models.JSONField(default=list, blank=True)
+    #: {"vector": [...], "image_count": n}
+    features = models.JSONField(default=dict, blank=True)
+    graph = models.JSONField(default=dict)
+    rationale = models.TextField(blank=True, default="")
+    candidates = models.JSONField(default=list, blank=True)
+    statuses = models.JSONField(default=list, blank=True)
+    #: 標記全部命中＝True；沒有標記＝None。
+    success = models.BooleanField(null=True, blank=True)
+    #: 使用者評分：1 讚、-1 倒讚、0 未評。
+    rating = models.SmallIntegerField(default=0)
+    note = models.TextField(blank=True, default="")
+    flow = models.ForeignKey(Flow, null=True, blank=True, on_delete=models.SET_NULL, related_name="agent_sessions")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"AgentSession {self.pk} ({self.intent})"
+
+
+class AgentSkill(models.Model):
+    """站點／個人對 AI 代理技能的補充（markdown，附在內建技能之後）：key 是技能鍵（platform／design／agentic／工具型別）。"""
+
+    key = models.CharField(max_length=60)
+    scope = models.CharField(max_length=10, default="user")  # site | user
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name="agent_skills")
+    markdown = models.TextField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("key", "scope", "owner")]
+        ordering = ["key", "scope"]

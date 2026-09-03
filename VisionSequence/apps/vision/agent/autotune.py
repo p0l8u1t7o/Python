@@ -46,6 +46,7 @@ class Dim:
     key: str
     current: Any
     candidates: list[Any]
+    tool_type: str = ""
 
 
 @dataclass
@@ -124,8 +125,8 @@ def _ladder(p: Any, v: Any) -> list[Any]:
     return []
 
 
-def search_space(graph: dict[str, Any]) -> list[Dim]:
-    """走訪 graph，每個 teach=True 且可見的參數一個維度。"""
+def search_space(graph: dict[str, Any], priors: dict[tuple[str, str], Any] | None = None) -> list[Dim]:
+    """走訪 graph，每個 teach=True 且可見的參數一個維度；priors（相似成功案例的值）排在候選最前面先試。"""
     dims: list[Dim] = []
     for n in graph.get("nodes", []):
         t = str(n.get("type", ""))
@@ -138,8 +139,11 @@ def search_space(graph: dict[str, Any]) -> list[Dim]:
                 continue
             v = params.get(p.key, p.default)
             cands = _ladder(p, v)
+            prior = (priors or {}).get((t, p.key))
+            if prior is not None and prior != v:
+                cands = [prior] + [c for c in cands if c != prior]
             if cands:
-                dims.append(Dim(n["id"], str(n.get("label") or n["id"]), p.key, v, cands))
+                dims.append(Dim(n["id"], str(n.get("label") or n["id"]), p.key, v, cands, t))
     return dims
 
 
@@ -167,7 +171,7 @@ def describe(changes: list[dict[str, Any]]) -> list[str]:
 
 
 def coordinate_search(graph: dict[str, Any], labeled: list[Labeled], *, max_evals: int = 60, deadline_s: float = 25.0,
-                      trial: Trial | None = None, max_passes: int = 3) -> dict[str, Any]:
+                      trial: Trial | None = None, max_passes: int = 3, priors: dict[tuple[str, str], Any] | None = None) -> dict[str, Any]:
     """座標下降：每個維度依序試候選值，嚴格變好就採納並進下一個維度；一輪沒有任何改善或預算用完即停。"""
     trial = trial or _default_trial()
     t0 = time.perf_counter()
@@ -188,7 +192,7 @@ def coordinate_search(graph: dict[str, Any], labeled: list[Labeled], *, max_eval
         if best_score.perfect():
             break
         improved_pass = False
-        for dim in search_space(best):
+        for dim in search_space(best, priors):
             if budget_hit or best_score.perfect():
                 break
             for cand in dim.candidates:

@@ -13,6 +13,8 @@ POST  /vision/agent/run        {images, graph, main?} → {graph, report, report
 POST  /vision/agent/autotune   {graph, runs:[{name, image_ref, status, expected}], max_evals?, deadline_s?} → 同 tune ＋ autotune 摘要
 POST  /vision/agent/jobs       代理模式背景工作 {task, images, prompt, regions, answers, labels, graph?, instruction?, runs?} → 202 {id, status, steps…}
 GET   /vision/agent/jobs[/{id}?step_from=]、POST /jobs/{id}/cancel、POST /jobs/{id}/answer {answers}
+GET   /vision/agent/sessions[/{id}]、PATCH /sessions/{id} {rating, success, note, flow_id}、POST /sessions/{id}/restore、DELETE
+GET   /vision/agent/skills/custom、PUT /skills/custom/{key} {markdown, scope}、DELETE /skills/custom/{key}?scope=
 POST  /vision/agent/tune       {graph, instruction, runs:[{name, image_ref, status, outputs}]} → 前後對比
 
 生成／微調都會在上傳影像上實跑一遍（report 內含各節點影像 ref，前端直接顯示）。
@@ -30,7 +32,8 @@ from ninja import File, Router, Schema, UploadedFile
 from apps.accounts.models import UserPref
 from apps.accounts.security import principal
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.agent import jobs, loop, providers, service, skills
+from apps.vision.agent import jobs, loop, memory, providers, service, skills
+from apps.vision.models import AgentSession, AgentSkill, Flow
 from apps.vision.api import _decode_upload
 from apps.vision.images import store
 
@@ -122,6 +125,18 @@ class AnswerIn(Schema):
     answers: list[dict[str, Any]] = []
 
 
+class CustomSkillIn(Schema):
+    markdown: str
+    scope: str = "user"
+
+
+class SessionPatch(Schema):
+    rating: int | None = None
+    success: bool | None = None
+    note: str | None = None
+    flow_id: int | None = None
+
+
 def _settings_for(request: HttpRequest) -> providers.AgentSettings:
     return providers.resolve(principal(request).user)
 
@@ -176,12 +191,64 @@ def list_agent_skills(request: HttpRequest):
     return {"items": skills.list_skills()}
 
 
+def _skill_keys() -> set[str]:
+    return {it["key"] for it in skills.list_skills()}
+
+
+@router.get("/agent/skills/custom")
+def list_custom_skills(request: HttpRequest):
+    """站點補充＋我的個人補充。"""
+    p = principal(request)
+    rows = AgentSkill.objects.filter(scope="site")
+    if p.user is not None:
+        rows = rows | AgentSkill.objects.filter(scope="user", owner=p.user)
+    return {"items": [{"key": r.key, "scope": r.scope, "owner_id": r.owner_id, "chars": len(r.markdown), "updated_at": r.updated_at.isoformat()} for r in rows.order_by("key", "scope")]}
+
+
+@router.put("/agent/skills/custom/{key}")
+def put_custom_skill(request: HttpRequest, key: str, payload: CustomSkillIn):
+    """新增／更新技能補充：scope=user 存自己的；scope=site 需管理員。"""
+    p = principal(request)
+    if key not in _skill_keys():
+        raise NotFound(f"沒有 '{key}' 這個技能", code="skill_not_found")
+    if payload.scope not in ("site", "user"):
+        raise ValidationError("scope 必須是 site 或 user", code="bad_scope")
+    if payload.scope == "site" and not p.is_admin:
+        raise ValidationError("站點補充需要管理員", code="not_admin")
+    if payload.scope == "user" and p.user is None:
+        raise ValidationError("個人補充需要登入使用者", code="no_user")
+    text = payload.markdown.strip()
+    if len(text) > 20000:
+        raise ValidationError("補充內容過長（上限 20000 字）", code="too_long")
+    owner = p.user if payload.scope == "user" else None
+    row, _ = AgentSkill.objects.update_or_create(key=key, scope=payload.scope, owner=owner, defaults={"markdown": text})
+    skills.invalidate()
+    return {"key": key, "scope": row.scope, "chars": len(row.markdown), "updated_at": row.updated_at.isoformat(), "markdown": skills.skill_text(key, p.user)}
+
+
+@router.delete("/agent/skills/custom/{key}", response={204: None})
+def delete_custom_skill(request: HttpRequest, key: str, scope: str = "user"):
+    p = principal(request)
+    if scope == "site" and not p.is_admin:
+        raise ValidationError("站點補充需要管理員", code="not_admin")
+    qs = AgentSkill.objects.filter(key=key, scope=scope, owner=None if scope == "site" else p.user)
+    if not qs.exists():
+        raise NotFound("沒有這筆補充", code="custom_not_found")
+    qs.delete()
+    skills.invalidate()
+    return 204, None
+
+
 @router.get("/agent/skills/{key}")
 def get_agent_skill(request: HttpRequest, key: str):
+    """技能全文（含站點／個人補充）＋原始補充文字（供編輯）。"""
+    p = principal(request)
     try:
-        return {"key": key, "markdown": skills.skill_text(key)}
+        markdown = skills.skill_text(key, p.user)
     except KeyError:
         raise NotFound(f"沒有 '{key}' 這個技能", code="skill_not_found") from None
+    site, mine = skills.custom_texts(key, p.user)
+    return {"key": key, "markdown": markdown, "custom": {"site": site, "user": mine}, "can_site": p.is_admin}
 
 
 @router.post("/agent/settings/models")
@@ -234,7 +301,7 @@ def agent_clarify(request: HttpRequest, payload: GenerateIn):
 def agent_generate(request: HttpRequest, payload: GenerateIn):
     principal(request).can_execute()
     return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm,
-                            answers=payload.answers, labels=payload.labels)
+                            answers=payload.answers, labels=payload.labels, owner=principal(request).user)
 
 
 @router.post("/agent/run")
@@ -291,7 +358,7 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
     if payload.task == "tune" and not images:
         images = list(run_images.values())[:4]
     state = service.build_state(payload.task, images, _regions(payload.regions), payload.prompt, answers=payload.answers, labels=payload.labels,
-                                graph=payload.graph, instruction=payload.instruction, runs=runs)
+                                graph=payload.graph, instruction=payload.instruction, runs=runs, owner=principal(request).user)
     budget = loop.Budget(max_turns=max(1, min(40, payload.max_turns)), max_trials=max(1, min(30, payload.max_trials)), deadline_s=max(10.0, min(900.0, payload.deadline_s)))
     return 202, jobs.start(payload.task, settings, state, budget, runs=runs, run_images=run_images)
 
@@ -315,6 +382,86 @@ def cancel_agent_job(request: HttpRequest, job_id: str):
 def answer_agent_job(request: HttpRequest, job_id: str, payload: AnswerIn):
     principal(request).can_execute()
     return jobs.answer(job_id, payload.answers)
+
+
+# ---------------------------------------------------------------------------
+# 工作階段（記憶）
+# ---------------------------------------------------------------------------
+def _visible_sessions(request: HttpRequest):
+    p = principal(request)
+    qs = AgentSession.objects.all()
+    if p.is_admin:
+        return qs
+    return qs.filter(owner=p.user) if p.user is not None else qs.none()
+
+
+def _session_or_404(request: HttpRequest, session_id: int) -> AgentSession:
+    row = _visible_sessions(request).filter(pk=session_id).first()
+    if row is None:
+        raise NotFound(f"沒有工作階段 {session_id}", code="session_not_found")
+    return row
+
+
+@router.get("/agent/sessions")
+def list_sessions(request: HttpRequest, limit: int = 50, intent: str = ""):
+    qs = _visible_sessions(request)
+    if intent:
+        qs = qs.filter(intent=intent)
+    limit = max(1, min(200, limit))
+    return {"items": [memory.session_out(s) for s in qs[:limit]], "total": qs.count()}
+
+
+@router.get("/agent/sessions/{session_id}")
+def get_session(request: HttpRequest, session_id: int):
+    return memory.session_out(_session_or_404(request, session_id), full=True)
+
+
+@router.patch("/agent/sessions/{session_id}")
+def patch_session(request: HttpRequest, session_id: int, payload: SessionPatch):
+    """評分（1／-1／0）、成功與否、備註、關聯到存成的流程。"""
+    row = _session_or_404(request, session_id)
+    fields = []
+    if payload.rating is not None:
+        if payload.rating not in (-1, 0, 1):
+            raise ValidationError("rating 必須是 -1、0 或 1", code="bad_rating")
+        row.rating = payload.rating
+        fields.append("rating")
+    if payload.success is not None:
+        row.success = payload.success
+        fields.append("success")
+    if payload.note is not None:
+        row.note = payload.note[:2000]
+        fields.append("note")
+    if payload.flow_id is not None:
+        flow = Flow.objects.filter(pk=payload.flow_id).first()
+        if flow is None:
+            raise NotFound(f"流程 {payload.flow_id} 不存在", code="flow_not_found")
+        row.flow = flow
+        fields.append("flow")
+    if fields:
+        row.save(update_fields=[*fields, "updated_at"])
+    return memory.session_out(row)
+
+
+@router.post("/agent/sessions/{session_id}/restore")
+def restore_session(request: HttpRequest, session_id: int):
+    """把工作階段的影像重新放進快取（pinned），回前端還原所需的一切。"""
+    principal(request).can_execute()
+    row = _session_or_404(request, session_id)
+    images = []
+    for item, img in memory.load_images(row):
+        run_id = f"agent{uuid.uuid4().hex[:12]}"
+        info = store.put(f"{run_id}:upload:image", img, flow_id=service.AGENT_FLOW_ID, run_id=run_id, pinned=True)
+        images.append({**info, "name": item.get("name") or "影像"})
+    if not images:
+        raise NotFound("此工作階段的影像檔已不存在", code="images_gone")
+    return {**memory.session_out(row, full=True), "images": images}
+
+
+@router.delete("/agent/sessions/{session_id}", response={204: None})
+def delete_session(request: HttpRequest, session_id: int):
+    memory.forget(_session_or_404(request, session_id))
+    return 204, None
 
 
 @router.post("/agent/tune")
