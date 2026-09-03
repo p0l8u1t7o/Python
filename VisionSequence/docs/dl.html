@@ -65,6 +65,7 @@
 <li><a href="#extend">8. 擴充：新的模型種類（Trainer）</a></li>
 <li><a href="#api">9. API</a></li>
 <li><a href="#internals">10. 內部結構與設計取捨</a></li>
+<li><a href="#install">11. 安裝與踩坑（torch／ultralytics／onnxruntime-gpu）</a></li>
 </ul></nav>
 
 <h2 id="flow">1. 教導流程（使用者視角）</h2>
@@ -82,6 +83,9 @@
 <li>按「自動標記」→ 未標記的縮圖出現虛線框建議（<code>NG? 87%</code>）→「接受全部」批次寫入，或個別點掉重標。</li>
 <li>自動標記的樣本記為 <code>labeled_by=auto</code>（縮圖上有 <code>~87%</code> 標示、可用篩選「自動標記（待確認）」複查）；人工改標後轉為 <code>human</code>。</li>
 <li>只有 <code>human</code> 標記會拿來當 kNN 參考，避免自動標記自我增強。</li>
+<li><strong>YOLO trainer 的提案</strong>（yolo_seg／yolo_detect／yolo_obb／yolo_cls）：訓練過就用上次的 best.pt；還沒訓練過用官方底模（COCO／ImageNet）提案，名稱對不上的類別掛到第一個類別交給使用者改。</li>
+<li><strong>SAM 全圖提案</strong>（shapes 專案的「SAM 全圖提案」鈕，<code>POST /auto-label {"method": "sam"}</code>）：完全沒有模型也能用——SAM2 對整張影像自動分割（面積大到小最多 30 個、略過蓋滿整張的背景），提案掛到第一個類別，每次最多 20 張（回 <code>remaining</code> 可再按一次）。GPU 每張約 1.6 秒。</li>
+<li><strong>智慧選取／智慧框選</strong>（標記編輯器 S／X）：點一個物件或拖一個框，SAM2（<code>sam2.1_t.pt</code>，<code>VISION_SAM_MODEL</code> 可改成 sam2.1_s／b 或 mobile_sam）回傳該物件輪廓；點擊 GPU 約 60ms。權重第一次使用自動下載，下載失敗自動退回 mobile_sam.pt。</li>
 </ul>
 
 <h2 id="devices">3. 伺服端資源與裝置設定</h2>
@@ -103,6 +107,7 @@
 <li><strong>編輯</strong>：畫布左側是<strong>大圖示工具欄</strong>（選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵），上方是狀態列（上一張/下一張、樣本尺寸、標記數、繪製提示、未儲存指示、快捷鍵說明、儲存）與<strong>大顆類別按鈕</strong>（色點＋數字鍵標示＋計數）。</li>
 <li><strong>多邊形＝逐點繪製，點數不限</strong>：按 N（或工具欄）後每點選加一個頂點，畫面即時顯示折線與到游標的虛線；<strong>雙擊</strong>、<strong>點回第一點</strong>或按 <code>Enter</code> 閉合，<code>Backspace</code> 退一點、<code>Esc</code> 取消。完成後自動回到選取模式並選中新形狀，可再拖曳頂點、雙擊邊線插點、Alt+點刪點微調。方框（B）維持拖曳畫出。</li>
 <li><strong>智慧選取（SAM 點擊出輪廓）</strong>：按 S（魔杖）後<strong>點選物件</strong>，伺服端用 SAM 分割出輪廓、簡化成 polygon 掛上目前類別，可連續點下一個物件；Ctrl+Z 可還原。權重預設 <code>mobile_sam.pt</code>（約 40MB，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>）；需要 <code>pip install ultralytics onnx onnxslim</code>（與 yolo_seg 同一套可選依賴，缺件會提示指令）。</li>
+<li><strong>智慧框選（X）</strong>：拖曳一個框住物件的矩形，SAM2 回傳框內物件的輪廓（框比點更能指定「要哪一個」）；留在此模式可連續框選。</li>
 <li><strong>其他操作</strong>：Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）；快捷鍵 V/N(P)/B/S/O、←/→ 換張、0~9 指定類別。</li>
 <li><strong>自動優化（輪廓貼邊）</strong>：前端純 JS——在降到最長邊 1280 的灰階梯度圖上，沿各頂點法線搜尋最強邊緣（帶位移懲罰）、迭代 3 次並平滑、Douglas–Peucker 簡化到 ≤120 點。不自動儲存，Ctrl+Z 可還原。</li>
 <li><strong>縮圖牆巡檢</strong>：左側縮圖直接畫上標記輪廓，快速看出哪些張標壞了；有自動標記建議的顯示「?」。</li>
@@ -122,9 +127,13 @@
 <tr><th>kind</th><th>任務／標記</th><th>做法</th><th>推論工具</th><th>依賴</th></tr>
 <tr><td><code>mlp_classify</code></td><td>影像分類（classes）</td><td>MLP、numpy 訓練、手刻 ONNX；前處理與工具預設一致</td><td>dl_classify</td><td>無（內建）</td></tr>
 <tr><td><code>patch_segment</code></td><td>語意分割（shapes）</td><td>patch 分類器（背景＋各類別）numpy 訓練 → 匯出<strong>全卷積 ONNX</strong>（Conv k×k → Relu → Conv 1×1，任意輸入尺寸）；CPU 數秒。適合顏色／紋理類區域與瑕疵</td><td>dl_segment（labels 首項為 background）</td><td>無（內建）</td></tr>
-<tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集 → 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 匯出 ONNX；best.pt 保留供自動標記與續訓。<strong>官方底模自動下載</strong>：基底模型填 yolov8n-seg.pt 等官方名稱時，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>（訓練 log 會顯示）；<strong>第一次自動標記</strong>（還沒有 best.pt）直接用底模提案輪廓，名稱對不上的類別掛到第一個類別，交給使用者確認改類</td><td><strong>dl_instance</strong>（新工具：letterbox＋NMS＋mask 合成，輸出每個實例的輪廓／類別／分數）</td><td><strong>可選</strong>：<code>pip install ultralytics onnx onnxslim</code>（含 torch，約 2~3GB；GPU 版 torch 照 pytorch.org 指示，例如 <code>--index-url …/whl/cu128</code>；缺件時開始訓練會提示指令，平台其餘功能不受影響。注意 ultralytics 會順帶裝 opencv-python，與平台鎖定的 opencv-python-headless 重複時移除前者即可）</td></tr>
+<tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集（bbox 標記轉四角 polygon）→ 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 產物 <strong>best.pt＋ONNX 兩個資產</strong>（.pt 是主產物、專案 last_asset 指向它；ONNX 資產名加「（ONNX）」）；best.pt 另留一份供自動標記與續訓。官方底模（yolov8n-seg.pt、yolo11n-seg.pt…）第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code></td><td><strong>yolo_segment</strong>（.pt，GPU）／dl_instance（ONNX）</td><td rowspan="4"><strong>可選</strong>：<code>.\scripts\setup_dl.ps1</code>（requirements-dl.txt；torch cu128＋ultralytics＋onnxruntime-gpu，約 3GB；見 §11）</td></tr>
+<tr><td><code>yolo_detect</code></td><td>物件偵測（shapes）</td><td>bbox（polygon 取外接框）→ YOLO detect 訓練；底模 yolo11n.pt。最快、標記最省</td><td><strong>yolo_detect</strong>／dl_detect</td></tr>
+<tr><td><code>yolo_cls</code></td><td>影像分類（classes）</td><td>樣本依類別存成 ultralytics 分類資料集（<code>train/&lt;class&gt;/</code>，類別順序以資料夾排序為準、工具用 model.names）→ YOLO-cls 微調；底模 yolo11n-cls.pt（ImageNet）。比內建 MLP 準</td><td><strong>yolo_classify</strong>／dl_classify（ONNX 已含 softmax）</td></tr>
+<tr><td><code>yolo_obb</code></td><td>旋轉框（shapes）</td><td>polygon 取最小外接旋轉矩形、bbox 取四角 → YOLO-obb 訓練；底模 yolo11n-obb.pt</td><td><strong>yolo_obb</strong>（ONNX 只供外部使用）</td></tr>
 </table>
-<p><strong>資料增強</strong>（超參數的「增強」群組，預設關閉不影響既有行為）：mlp_classify 開啟後訓練集加入水平翻轉＋亮度 ±擾動副本（驗證集不動，指標回報 <code>augmented</code> 張數）；patch_segment 每張追加水平翻轉版本的取樣（標記同步翻轉）；yolo_seg 直接曝露 ultralytics 的 <code>degrees</code>／<code>fliplr</code>／<code>mosaic</code>。</p>
+<p><strong>資料增強</strong>（超參數的「增強」群組，預設關閉不影響既有行為）：mlp_classify 開啟後訓練集加入水平翻轉＋亮度 ±擾動副本（驗證集不動，指標回報 <code>augmented</code> 張數）；patch_segment 每張追加水平翻轉版本的取樣（標記同步翻轉）；四個 YOLO trainer 直接曝露 ultralytics 的 <code>degrees</code>／<code>fliplr</code>／<code>mosaic</code>（分類沒有 mosaic）。</p>
+<p><strong>推論工具</strong>：<code>yolo_detect</code>／<code>yolo_segment</code>／<code>yolo_classify</code>／<code>yolo_pose</code>／<code>yolo_obb</code> 用 ultralytics 原生推論（torch，GPU 自動使用；<code>device</code> auto／cuda／cpu、<code>half</code>），模型來源二選一：教導頁訓練出的 .pt 資產（或自行上傳的 .pt／.onnx）優先，沒選時用「底模名稱」（官方 yolo11n*.pt 第一次使用自動下載）。模型在行程內快取（<code>apps/vision/dl/yolo_runtime.py</code>，最多 6 個、同一模型推論序列化）。姿態（pose）目前只有推論工具，訓練需要關鍵點標記介面尚未提供。</p>
 <p>訓練面板會顯示 <strong>loss／mAP 曲線</strong>（分割任務優先 (M) mask 指標；fitness 可能 &gt; 1，座標軸自動縮放）與<strong>增量訓練 log</strong>（環形緩衝 400 行，<code>GET /dl/train/status?log_from=N</code>）。</p>
 
 <h2 id="interop">7. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</h2>
@@ -189,11 +198,11 @@ GET    /api/vision/dl/samples/{id}/file            縮圖（?max=；&lt;img&gt; 
 PATCH  /api/vision/dl/samples/{id}                 {"label"} 或 {"shapes"}（空 = 取消標記）或 {"split": "train|val|test|"}
 DELETE /api/vision/dl/samples/{id}
 POST   /api/vision/dl/projects/{id}/labels         批次標記 {"items": [{"id","label","score"?,"by"?}]}
-POST   /api/vision/dl/projects/{id}/auto-label     → 建議清單（不落地；接受才寫入）
+POST   /api/vision/dl/projects/{id}/auto-label     {"method"?: "model"|"sam", "max_samples"?, "max_masks"?} → 建議清單（不落地；接受才寫入）；sam 回 remaining
 POST   /api/vision/dl/projects/{id}/split          自動分割 {"val": 0.15, "test": 0.1, "seed"?}（分層）
 GET/POST /api/vision/dl/projects/{id}/versions     資料集版本清單／凍結 {"name"?, "note"?}（zip 存資產庫）
 DELETE /api/vision/dl/versions/{id}                刪版本（zip 資產一併刪）
-POST   /api/vision/dl/projects/{id}/sam-point      智慧選取 {"sample_id", "points": [[x,y] 0~1], "model"?} → shapes
+POST   /api/vision/dl/projects/{id}/sam-point      智慧選取 {"sample_id", "points"?: [[x,y] 0~1], "labels"?: [1|0], "boxes"?: [[x0,y0,x1,y1]], "model"?} → {shapes, model}
 POST   /api/vision/dl/projects/{id}/train          202 {"params", "device", "asset_name"}；訓練中回 409
 GET    /api/vision/dl/train/status?log_from=N      輪詢進度（progress／stage／metrics／history 曲線／增量 log）
 POST   /api/vision/dl/train/cancel</pre>
@@ -209,6 +218,26 @@ POST   /api/vision/dl/train/cancel</pre>
 <li><strong>不引入 torch</strong>：內建 trainer 用 numpy 訓練、手刻 ONNX 匯出，平台依賴不變；重框架留給外掛 trainer（自帶 requirements 或 sidecar）。</li>
 <li>測試 <code>tests/test_dl_teach.py</code>：ONNX 匯出＋dl_classify 端到端、樣本不足、自動標記正確率、API 標記流、背景訓練工作（TransactionTestCase）、split／augment 訓練行為、去重與 zip 匯入、自動分割、版本凍結、SAM 缺件提示。</li>
 </ul>
+<h2 id="install">11. 安裝與踩坑（torch／ultralytics／onnxruntime-gpu）</h2>
+<p>深度學習依賴是<strong>可選</strong>的：不裝也能啟動平台（dl_* ONNX 工具走 CPU；yolo_*／SAM 會回「未安裝」提示）。要用 GPU 訓練與推論：</p>
+<pre>.\scripts\setup_dl.ps1              # CUDA 12.8 wheel（RTX 50 系列必須）；-Cuda cu126 可改；-Cpu 無 GPU 機器
+.\.venv\Scripts\python.exe manage.py dl_check --predict   # 驗證：torch/CUDA、kernel 對應、ultralytics、ORT providers、實跑 yolo11n</pre>
+<p>順序是關鍵：<strong>先</strong>用 pytorch.org 的 index 裝 torch，<strong>再</strong>裝 <code>requirements-dl.txt</code>。以下每條都在本機重現過：</p>
+<table>
+<tr><th>症狀</th><th>原因</th><th>解法</th></tr>
+<tr><td>訓練只用 CPU、<code>torch.cuda.is_available()</code> False</td><td>直接 <code>pip install ultralytics</code> 會從 PyPI 拉 CPU 版 torch</td><td>先 <code>pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128</code>，再裝 ultralytics；<code>dl_check</code> 的 torch build 會標出 +cpu</td></tr>
+<tr><td>第一次推論丟 <code>no kernel image is available for execution on the device</code></td><td>RTX 50 系列（Blackwell，sm_120）只有 cu128 以上的 wheel 有 kernel</td><td><code>setup_dl.ps1 -Cuda cu128</code>；<code>dl_check</code> 會比對 <code>torch.cuda.get_arch_list()</code></td></tr>
+<tr><td>ORT providers 列表有 CUDA，但 session 實際只剩 CPU；或 <code>cublasLt64_13.dll is missing</code></td><td>onnxruntime-gpu 1.23+ 預設連結 <strong>CUDA 13</strong>，torch cu128 只帶 CUDA 12.8 的 DLL</td><td>鎖 <code>onnxruntime-gpu==1.22.0</code>（CUDA 12／cuDNN 9）；程式在建 CUDA session 前先 <code>import torch</code>＋<code>onnxruntime.preload_dlls()</code>（<code>tools/builtin/dl.py</code>）</td></tr>
+<tr><td>providers 亂跳、時有時無</td><td><code>onnxruntime</code> 與 <code>onnxruntime-gpu</code> 同一個 import 名稱，兩個都裝會互相覆蓋</td><td><code>pip uninstall -y onnxruntime</code> 後只留 onnxruntime-gpu；<code>dl_check</code> 會報「同時安裝」</td></tr>
+<tr><td>ultralytics 匯出 ONNX 時印「requirement onnxruntime not found, attempting AutoUpdate」</td><td>它檢查的是套件名 onnxruntime，裝的是 onnxruntime-gpu；<code>YOLO_OFFLINE=1</code> 下只是警告</td><td>可忽略；不要讓它 AutoUpdate（會拉 CPU 版）</td></tr>
+<tr><td>訓練卡住不動</td><td>Windows 的 DataLoader 子行程（spawn）在背景執行緒內啟動會卡</td><td>超參數 <code>workers</code> 保持 0（預設）</td></tr>
+<tr><td>無網路環境第一次訓練卡在下載</td><td>ultralytics 自己會連網檢查</td><td>程式設 <code>YOLO_OFFLINE=1</code>；底模由 <code>yolo.resolve_model</code> 從 GitHub assets 下載到 <code>ASSET_DIR/dl/weights/</code>（v8.4.0 → v8.3.0 依序），離線就手動放檔案到該目錄</td></tr>
+<tr><td>找不到 sam2 模組</td><td>不需要 facebook 的 sam2 套件</td><td>ultralytics 內建 SAM2（sam2.1_t/s/b/l.pt），<code>VISION_SAM_MODEL</code> 選擇</td></tr>
+<tr><td>分類訓練後類別對不上</td><td>ultralytics 分類資料集以<strong>資料夾名排序</strong>決定類別索引，不是專案的類別順序</td><td>trainer 用 <code>model.names</code> 回填 labels（metrics.classes）；自訂程式請照這個順序</td></tr>
+<tr><td>predict 印「'half' is deprecated」</td><td>ultralytics 8.4 對 <code>half=False</code> 也會警告</td><td>只在勾選半精度時才傳 half=True</td></tr>
+</table>
+<p>版本組合（2026-09 驗證）：Python 3.12、torch 2.11.0+cu128、torchvision 0.26、ultralytics 8.4.137、onnx 1.22、onnxslim 0.1.96、onnxruntime-gpu 1.22.0；RTX 5070 Ti：yolo11n 640 推論約 10ms（torch）／7.5ms（ORT CUDA），SAM2.1-t 點擊 60ms、全圖 1.6s，四個 trainer 各 1 epoch 合成資料集共約 40 秒（含匯出）。</p>
+
 </article>
 </body>
 </html>

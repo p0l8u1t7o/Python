@@ -184,6 +184,10 @@
 <tr><td>資料增強</td><td>Augment（超參數「增強」群組）</td><td>訓練時擴增樣本：內建模型為翻轉＋亮度擾動（只加訓練集）、yolo_seg 曝露 degrees／fliplr／mosaic；預設關閉</td></tr>
 <tr><td>重複偵測</td><td>Dedupe（<code>DlSample.sha256</code>）</td><td>上傳／匯入／連抓時以解碼後像素的 SHA256 在同專案內去重，回報 duplicates 張數</td></tr>
 <tr><td>DL 實例分割</td><td>dl_instance</td><td>DL 類工具：YOLO-seg 風格 ONNX 推論（letterbox、NMS、mask 合成），輸出每個實例的輪廓／類別／分數；可在深度學習頁教導</td></tr>
+<tr><td>YOLO 工具</td><td>yolo_detect／yolo_segment／yolo_classify／yolo_pose／yolo_obb</td><td>DL 類工具：ultralytics 原生推論（torch，GPU 自動使用），模型選教導頁訓練的 .pt 資產或填官方底模名稱；姿態回關鍵點、OBB 回旋轉矩形</td></tr>
+<tr><td>智慧框選</td><td>Smart box（標記編輯器 X、<code>sam-point boxes</code>）</td><td>拖曳一個框，SAM2 回傳框內物件輪廓；與智慧選取（點擊）並列</td></tr>
+<tr><td>SAM 全圖提案</td><td>SAM proposals（<code>auto-label method=sam</code>）</td><td>沒有模型也能自動標記：SAM2 對整張影像自動分割，提案掛第一個類別待確認</td></tr>
+<tr><td>DL 依賴</td><td><code>requirements-dl.txt</code>、<code>scripts/setup_dl.ps1</code>、<code>manage.py dl_check</code></td><td>可選的 torch／ultralytics／onnxruntime-gpu 安裝（順序：先 torch cu128）與驗證指令；踩坑見 dl.html §11</td></tr>
 <tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
 <tr><td>主題風格</td><td>Theme（<code>ThemeProvider</code>／<code>UserPref</code>）</td><td>light／dark／cyber（Temp/Style.md 的 Cyberpunk：霓虹綠、銳角、掃描線只鋪在頁面底與側欄——不覆疊影像區，全走 CSS 變數 tokens）／system；localStorage＋登入者回寫 /auth/prefs、/auth/me 帶回跨裝置套用</td></tr>
 <tr><td>影像位深</td><td>Depth（<code>tools/imgfmt.py</code>／<code>Tool.accepts</code>）</td><td>u8／u16／f32（NI 的 U8/I16/SGL/RGB U64 對照）；宣告外位深進工具時自動正規化 u8，顯式轉換用「位深轉換」工具；讀檔 IMREAD_UNCHANGED 保留 16-bit</td></tr>

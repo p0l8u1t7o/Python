@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 61 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 308 項＋前端 39 項自動測試 |
+| 規模 | 66 個內建工具、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁文件、後端 319 項＋前端 39 項自動測試 |
 
 ---
 
@@ -38,6 +38,7 @@ Windows（PowerShell）：
 
 ```powershell
 .\scripts\dev.ps1 -Setup     # 第一次：建 .venv、安裝、migrate、seed_demo、npm install
+.\scripts\setup_dl.ps1          # 可選：GPU 深度學習依賴（torch cu128＋ultralytics＋onnxruntime-gpu，約 3GB），最後跑 manage.py dl_check 驗證
 .\scripts\dev.ps1            # 之後：後端 HTTP 8000 + TCP 9000、前端 5173
 .\scripts\stop.ps1
 ```
@@ -77,7 +78,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 定位（7） | template_match, shape_align, fixture_roi, find_circle, find_line, hough_circles, hough_lines |
 | 量測（15） | caliper, wall_thickness, fit_arc, fit_ellipse, chamfer_angle, angle, distance, geometry, concentricity, calibration, intensity, histogram, line_profile, color_stats, edge_density |
 | 檢測／識別（8） | blob, defect_diff, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
-| 深度學習（4） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論） |
+| 深度學習（9） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）；yolo_detect, yolo_segment, yolo_classify, yolo_pose, yolo_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
 | 邏輯（5） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list |
 | 輸出（5） | judge, output, draw_result, save_image, write_modbus |
 
@@ -100,6 +101,10 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/agent.html`。
 
 ### 深度學習教導（`/dl`）
+
+- **YOLO 訓練（四種）**：物件偵測（bbox）、實例分割（polygon）、影像分類（classes）、旋轉框 OBB（polygon 取最小外接旋轉矩形）；ultralytics 訓練、進度／曲線／log 回報、可中止；產物 best.pt（主，給 yolo_* 工具）＋ONNX（副，給 dl_* 工具）兩個資產。
+- **SAM2 智慧標記**：點擊（正／負點）、拖曳框選、沒有模型時的「SAM 全圖提案」；權重 `VISION_SAM_MODEL`（預設 sam2.1_t.pt）自動下載，失敗退回 mobile_sam。
+- **依賴**：`requirements-dl.txt`＋`scripts/setup_dl.ps1`（先 torch cu128 再 ultralytics；onnxruntime-gpu 鎖 1.22 配 CUDA 12）＋`manage.py dl_check --predict` 驗證；踩坑清單見 docs/dl.html §11。
 教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/dl.html`。
 
 ### 影像來源與資產
@@ -286,6 +291,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | `VISION_API_KEY`、`VISION_STATION_ID`、`VISION_TCP_HOST/PORT` | 整合方金鑰、站台識別、TCP 介面 |
 | `VISION_BATCH_MAX_IMAGES`、`VISION_KEEP_BATCH_SETS`、`VISION_KEEP_BATCH_RUNS`、`VISION_BATCH_MAX_RUNNING` | 批次測試：影像集上限（200）、每流程保留影像集數（10）、每影像集保留執行次數（20）、同時執行數（2） |
 | `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S`、`VISION_AGENT_MODE` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點；`MODE`＝single／agentic） |
+| `VISION_SAM_MODEL` | 深度學習教導的 SAM 權重（智慧選取／框選／全圖提案；sam2.1_t.pt 預設，mobile_sam.pt 較小、sam2.1_s.pt 更準） |
 | `CORS_ALLOWED_ORIGINS` | 前端獨立部署時允許的來源 |
 
 前端：`VITE_API_BASE_URL`（build 時設定，獨立部署用）、`VITE_PROXY_TARGET`（dev 代理目標）。
@@ -295,7 +301,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 ## 驗證與測試
 
 ```bash
-# 後端：308 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
+# 後端：319 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
 .venv/Scripts/python.exe manage.py test --noinput
 .venv/Scripts/python.exe -m ruff check apps tests config
 

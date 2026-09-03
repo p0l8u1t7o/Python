@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：61 個內建工具（8 類）、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 308 項＋前端 39 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：66 個內建工具（8 類）、163 個 API 端點、21 個資料模型、18 個前端頁面、16 頁 docs、後端 319 項＋前端 39 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -26,11 +26,13 @@
 
 ### 啟動
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
+- 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
 - `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，14 個）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
+- 深度學習實機測試（GPU／網路）：`VISION_TEST_DL=1 manage.py test tests.test_dl_yolo`（yolo_* 五工具、SAM2 點／框／全圖、sam-point／auto-label API、四個 trainer 各 1 epoch 約 40 秒）；改了 yolo 工具、trainer、sam.py、yolo_runtime 一定跑。bench 的 yolo 案例也只在 VISION_TEST_DL=1 納入。
 - AI 助手：`manage.py agent_bench`（離線規則引擎跑 `agent/bench.py` 的案例，印意圖／判定準確率；`--llm` 用伺服器供應商比較）；`tests/test_agent_bench.py` 守門檻（意圖 ≥ 0.9、判定 ≥ 0.8、graph 全有效）。改規則引擎、合成器、特徵或自動調參後一定跑，新意圖加案例（案例可帶 `labels`）。
 - 前端：`cd frontend && npm run -s typecheck && npm test && npm run build`。vitest 有：i18n 三語系 key／占位符對齊與**禁用口語詞**檢查、`graphMapping`／`geometry`／`flowDraft` 單元、9 個頁面在假後端下 render smoke。新頁面在 `src/test/pages.test.tsx` 加 case，新 API 路徑在 `src/test/apiMock.ts` 補假資料。
 - 改了頁面就開瀏覽器看一眼（影像檢視器與畫布的問題肉眼最快）；改了服務端要重啟後 curl 一次（api 401＝需登入是正常、front 200）。
@@ -98,10 +100,11 @@
 - 淘汰：`KEEP_BATCH_SETS`／`KEEP_BATCH_RUNS`／`BATCH_MAX_IMAGES`／`BATCH_MAX_RUNNING`（.env）。新 GET 端點已進 smoke 清單（setUp 會建一個影像集並 `jobs.wait`）。
 
 ### 深度學習教導（apps/vision/dl）
-- `Trainer` registry（base.py）：kind／label_mode（封閉集合：classes｜shapes）／params（沿用 Param）／devices，實作 `train()`（回 ONNX bytes＋tool_params）與 `suggest()`（自動標記）。內建：`mlp_classify`、`patch_segment`（手刻 ONNX 給 dl_segment）、`yolo_seg`（torch/ultralytics **可選安裝、延後 import**，缺件時提示 pip 指令；產物給 `dl_instance`）。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動。
-- shapes 標記存 DlSample.shapes（0~1 正規化），`shapes.py` 與 YOLO txt 互轉；`dataset-export`／`dataset-import` 雙向互通。訓練跑背景執行緒（jobs.py，單一訓練槽、409 擋第二個），前端輪詢 `/dl/train/status`。產物存 kind=model 資產。
-- 推論 providers 是熱路徑設定：工具只讀 `devices.preferred_providers()`（記憶體）；`PATCH /dl/settings` 寫 DB＋更新快取＋`clear_sessions()`；裝置資訊 `GET /dl/devices`。
-- 資料集：樣本以解碼後像素 SHA256 去重；`DlSample.split`（train/val/test）；`DlDatasetVersion` 凍結成 zip 資產。SAM 智慧選取（`sam.py`）：`mobile_sam.pt` 經 `yolo.resolve_model` 自動下載，session 模組層快取＋鎖。樣本影像在 `ASSET_DIR/dl/<project_id>/`；訓練執行緒自己開 DB 連線、結束 `close_old_connections()`。詳見 docs/dl.html。
+- `Trainer` registry（base.py）：kind／label_mode（封閉集合：classes｜shapes）／params（沿用 Param）／devices，實作 `train()`（回 `TrainResult`：ONNX bytes＋tool_params，可另帶 `weights_bytes/weights_tool_key/weights_tool_params`＝原生權重）與 `suggest()`（自動標記）。內建：`mlp_classify`、`patch_segment`（手刻 ONNX 給 dl_segment）、YOLO 四種（`yolo.py` 的 `_YoloTrainer` 依 task：`yolo_seg`／`yolo_detect`／`yolo_cls`／`yolo_obb`；torch/ultralytics **可選安裝、延後 import**，缺件提示 setup_dl.ps1）。jobs.py `_train` 有 weights 時建兩個 model 資產（.pt 主產物、ONNX 名加「（ONNX）」、meta.format／onnx_asset_id），專案 last_asset 指向 .pt。外掛 trainer 丟 `plugins/` 即掛載，前端 UI 由 `/dl/trainers` 目錄驅動。
+- **yolo_* 工具**（`tools/builtin/yolo.py`：detect／segment／classify／pose／obb）：模型＝`model` 資產（.pt／.onnx）優先、否則 `model_name` 官方底模（`yolo.resolve_model` 下載，release v8.4.0→v8.3.0）；推論走 `dl/yolo_runtime.py`（行程內模型快取最多 6 個、同模型鎖序列化、`pick_device` auto→cuda）；座標用 crop／to_full 回全圖；任務不符回 ToolError。ONNX 資產交給 ultralytics 的 ORT 後端（會印 onnxruntime 套件名警告，可忽略）。
+- shapes 標記存 DlSample.shapes（0~1 正規化），`shapes.py` 與 YOLO txt 互轉；`shapes_to_yolo(task=)`：mixed（原樣，互通用）／segment（bbox→四角）／detect（polygon→外接框）／obb（polygon→minAreaRect）；`export_classify_dataset` 產 ultralytics 分類資料夾（**類別索引以資料夾排序為準**，trainer 用 model.names 回填）。`dataset-export`／`dataset-import` 雙向互通。訓練跑背景執行緒（jobs.py，單一訓練槽、409 擋第二個），前端輪詢 `/dl/train/status`。
+- 推論 providers 是熱路徑設定：工具只讀 `devices.preferred_providers()`（記憶體）；`PATCH /dl/settings` 寫 DB＋更新快取＋`clear_sessions()`；裝置資訊 `GET /dl/devices`。dl.py `get_session` 選到 GPU provider 前先 `preload_gpu_dlls()`（import torch＋`ort.preload_dlls()`），否則 CUDA session 靜默退回 CPU。
+- 資料集：樣本以解碼後像素 SHA256 去重；`DlSample.split`（train/val/test）；`DlDatasetVersion` 凍結成 zip 資產。SAM 智慧標記（`sam.py`）：權重 `VISION_SAM_MODEL`（預設 sam2.1_t.pt，下載失敗退回 mobile_sam.pt）、session 模組層快取＋鎖；`suggest_shapes(points／boxes)` 點擊與框選、`suggest_everything` 全圖提案（auto-label `method=sam`，每次 ≤ max_samples 張回 remaining）。樣本影像在 `ASSET_DIR/dl/<project_id>/`；訓練執行緒自己開 DB 連線、結束 `close_old_connections()`。詳見 docs/dl.html（§11 安裝與踩坑）。
 
 ### 前端
 - 全域 AI 助手：`components/assistant/AssistantDock.tsx`（對話存 localStorage `vs.assistant.v1`、模式晶片、快速提示、參考連結、套用到畫布／套用建議／新執行、代理工作走 `useAgentJob`＋`AgentTimeline`）；頁面用 `lib/assistantContext.ts` 的 `useRegisterAssistantContext({kind, flowId, flowName, nodeType, batchRunId, imageRef, getGraph, applyGraph, applySuggestions, onNewRun}, deps)` 登記脈絡（編輯器、工具頁、批次頁已登記；未登記的頁面由路徑推 kind）。編輯器右側與批次頁的 AI 分頁已併入 dock（`AiAssistPanel`／`BatchAiPanel` 已刪），新頁面要讓助手能「動手」就登記回呼。
@@ -124,3 +127,4 @@
 - **Gemini 3 function calling**：模型回的 `functionCall` part 帶 `thoughtSignature`，下一回合必須原樣回傳（`ToolReply.raw` → 歷史 `raw` → `gemini_contents` 直接用原生 parts），否則 400「missing a thought_signature」；實機用 gemini-3.5-flash-lite 驗過代理迴圈 4 回合 5.6 秒完成。
 - jsdom 沒有 `Element.scrollTo`：元件捲到底用 `el.scrollTop = el.scrollHeight`，不然 vitest 會炸。i18n 的陣列值（快速提示）三語系長度要一致（key 對齊測試把索引當 key）。
 - i18n：一次多檔替換若中途失敗要檢查已成功的檔案，避免重複插入（TS1117）；en 是單行物件格式，錨點與 zh 不同。
+- **DL 依賴**：ultralytics 要在 torch（pytorch.org cu128 index）之後裝，否則拉 CPU 版；RTX 50（sm_120）只有 cu128+ 有 kernel；`onnxruntime-gpu` 1.23+ 預設 CUDA 13，配 torch cu128 要鎖 1.22.0，且建 CUDA session 前先 import torch／`preload_dlls()`（providers 列表有 CUDA 不代表 session 真的用到）；`onnxruntime` 與 `onnxruntime-gpu` 同名互蓋，只能裝一個；訓練 workers=0；`YOLO_OFFLINE=1`；分類資料集類別順序＝資料夾排序；ultralytics 8.4 對 `half=False` 也印棄用警告（只在需要時傳 True）。`manage.py dl_check --predict` 一次檢查完。
