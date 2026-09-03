@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 61 個內建工具、119 個 API 端點、19 個資料模型、17 個前端頁面、15 頁文件、後端 237 項＋前端 22 項自動測試 |
+| 規模 | 61 個內建工具、142 個 API 端點、19 個資料模型、17 個前端頁面、15 頁文件、後端 277 項＋前端 22 項自動測試 |
 
 ---
 

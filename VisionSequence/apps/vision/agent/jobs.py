@@ -139,6 +139,9 @@ def _run(job: AgentJob) -> None:
             job.fallback_reason = "沒有可用的 LLM 供應商，改用規則引擎"
             job.state.step("info", "離線模式", job.fallback_reason)
             _run_single(job)
+        elif job.settings.mode != "agentic":
+            job.state.step("info", "單次模式", "工作模式為單次生成，直接以既有路徑完成")
+            _run_single(job)
         else:
             _run_agentic(job)
     except Exception as exc:  # noqa: BLE001 - 工作失敗不影響平台

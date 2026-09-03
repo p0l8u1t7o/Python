@@ -212,6 +212,14 @@ class ProviderFormatTests(TestCase):
         self.assertEqual((out.text, out.calls[0].name), ("ok", "run_trial"))
         schema = providers._gemini_schema({"type": "object", "properties": {}, "required": []})
         self.assertIn("properties", schema)
+        # Gemini 3：functionCall 帶 thoughtSignature，下一回合要原樣回傳
+        out = providers.parse_gemini_reply({"content": {"parts": [{"functionCall": {"name": "get_state", "args": {}}, "thoughtSignature": "sig-1"}]}})
+        self.assertEqual(out.raw[0]["thoughtSignature"], "sig-1")
+        history = [{"role": "user", "content": [{"type": "text", "text": "x"}]},
+                   {"role": "assistant", "content": "", "tool_calls": [{"id": "get_state_0", "name": "get_state", "args": {}}], "raw": out.raw},
+                   {"role": "tool", "tool_call_id": "get_state_0", "name": "get_state", "content": "{}"}]
+        contents = providers.gemini_contents(history)
+        self.assertEqual(contents[1]["parts"][0]["thoughtSignature"], "sig-1")
 
 
 class JobApiTests(TransactionTestCase):

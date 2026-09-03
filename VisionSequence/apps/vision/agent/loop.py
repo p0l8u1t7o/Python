@@ -106,7 +106,8 @@ def run_loop(settings: providers.AgentSettings, state: actions.AgentState, histo
             return LoopResult("budget", state.graph, state.rationale or "代理預算用完，以目前流程為結果", turns)
         turns += 1
         reply = providers.complete_tools(settings, system, history, specs, timeout=providers.generate_timeout())
-        history.append({"role": "assistant", "content": reply.text, "tool_calls": [{"id": c.id, "name": c.name, "args": c.args} for c in reply.calls]})
+        history.append({"role": "assistant", "content": reply.text, "tool_calls": [{"id": c.id, "name": c.name, "args": c.args} for c in reply.calls],
+                        **({"raw": reply.raw} if reply.raw else {})})
         if reply.text.strip():
             state.step("assistant", reply.text.strip()[:200], reply.text.strip()[:600], turn=turns)
         if not reply.calls:

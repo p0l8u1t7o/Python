@@ -343,6 +343,8 @@ class ToolCall:
 class ToolReply:
     text: str
     calls: list[ToolCall]
+    #: 供應商原生的回覆片段（Gemini 3 的 functionCall 帶 thoughtSignature，下一回合必須原樣回傳，否則 400）。
+    raw: Any = None
 
 
 def _parse_args(raw: Any) -> dict[str, Any]:
@@ -491,6 +493,10 @@ def gemini_contents(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     parts.append({"text": str(part.get("text", ""))})
             out.append({"role": "user", "parts": parts})
         elif role == "assistant":
+            raw = turn.get("raw")
+            if isinstance(raw, list) and raw:
+                out.append({"role": "model", "parts": raw})  # 原樣回傳（含 thoughtSignature）
+                continue
             parts = []
             if turn.get("content"):
                 parts.append({"text": str(turn["content"])})
@@ -514,13 +520,15 @@ def gemini_contents(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def parse_gemini_reply(candidate: dict[str, Any]) -> ToolReply:
     text, calls = [], []
-    for i, part in enumerate((candidate.get("content") or {}).get("parts") or []):
+    parts = list((candidate.get("content") or {}).get("parts") or [])
+    for i, part in enumerate(parts):
         if "functionCall" in part:
             fc = part["functionCall"] or {}
             calls.append(ToolCall(f"{fc.get('name', 'call')}_{i}", str(fc.get("name", "")), _parse_args(fc.get("args"))))
         elif part.get("text"):
             text.append(str(part["text"]))
-    return ToolReply("".join(text), calls)
+    keep = [p for p in parts if isinstance(p, dict) and ("functionCall" in p or p.get("text") or p.get("thoughtSignature"))]
+    return ToolReply("".join(text), calls, raw=keep or None)
 
 
 def _gemini_tools(s: AgentSettings, system: str, history: list[dict[str, Any]], tools: list[dict[str, Any]], timeout: float) -> ToolReply:
