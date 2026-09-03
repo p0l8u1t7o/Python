@@ -5,64 +5,94 @@
 <title>VisionSequence 前後端合約</title>
 <style>
   :root {
-    --bg:#f6f8fb; --paper:#ffffff; --ink:#243044; --head:#111c2e; --muted:#5c6b80;
-    --line:#e3e9f1; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
-    --code-bg:#f2f5f9; --code-ink:#334155; --pre-bg:#101826; --pre-ink:#dce6f2;
+    --bg:#f5f7fa; --paper:#ffffff; --ink:#26303f; --head:#0f1a2b; --muted:#5b6b80; --subtle:#8a97a8;
+    --line:#e2e8f0; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
+    --code-bg:#f1f5f9; --code-ink:#334155; --pre-bg:#0f172a; --pre-ink:#dce6f2;
+    --toc-w:250px; --top-h:52px;
   }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.75; font-size:15.5px; -webkit-font-smoothing:antialiased; }
-  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:.2rem; padding:.55rem 1.4rem; background:rgba(255,255,255,.93); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.85rem; }
-  nav.site::before { content:"VisionSequence"; margin-right:1rem; padding:.15rem .55rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.8rem; }
-  nav.site a { color:var(--muted); text-decoration:none; padding:.28rem .65rem; border-radius:999px; white-space:nowrap; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Segoe UI",system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif; line-height:1.8; font-size:16px; -webkit-font-smoothing:antialiased; }
+
+  /* 頂列：站內導覽 */
+  /* 單列、可橫向捲動：頂列高度固定，側欄 sticky 的位置才不會被第二列蓋住 */
+  nav.site { position:sticky; top:0; z-index:20; display:flex; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; align-items:center; gap:.15rem; min-height:var(--top-h); padding:.5rem 1.4rem; background:rgba(255,255,255,.94); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); font-size:.84rem; }
+  nav.site::-webkit-scrollbar { display:none; }
+  nav.site::before { content:"VisionSequence"; margin-right:.9rem; padding:.15rem .6rem; border-radius:6px; background:var(--brand); color:#fff; font-weight:700; letter-spacing:.03em; font-size:.78rem; }
+  nav.site a { color:var(--muted); text-decoration:none; padding:.26rem .62rem; border-radius:999px; white-space:nowrap; }
   nav.site a:hover { color:var(--brand-ink); background:var(--brand-soft); }
   nav.site a[aria-current="page"] { color:var(--brand-ink); background:var(--brand-soft); font-weight:600; }
-  article.doc { max-width:1000px; margin:0 auto; padding:2.2rem 1.6rem 5rem; }
-  article.doc.wide { max-width:1180px; }
-  h1 { font-size:1.85rem; line-height:1.3; color:var(--head); letter-spacing:-.015em; margin:.4rem 0 1rem; }
-  h1::after { content:""; display:block; width:56px; height:4px; margin-top:.55rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
-  h2 { font-size:1.28rem; color:var(--head); margin:2.8rem 0 .9rem; padding:.3rem .6rem .3rem .7rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 6px 6px 0; }
-  h3 { font-size:1.05rem; color:var(--head); margin:1.9rem 0 .6rem; }
-  p { margin:.7rem 0; }
+
+  /* 兩欄：左側本頁目錄（sticky）＋內文 */
+  .doc-layout { display:flex; align-items:flex-start; gap:3rem; max-width:1320px; margin:0 auto; padding:2.2rem 2rem 6rem; }
+  aside.toc { flex:0 0 var(--toc-w); position:sticky; top:calc(var(--top-h) + 1rem); max-height:calc(100vh - var(--top-h) - 2rem); overflow-y:auto; padding:.2rem 1rem .6rem 0; border-right:1px solid var(--line); font-size:.86rem; line-height:1.5; scrollbar-width:thin; }
+  aside.toc .toc-title { margin:0 0 .7rem; font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--subtle); }
+  aside.toc ul { list-style:none; margin:0; padding:0; }
+  aside.toc li { margin:0; }
+  aside.toc a { display:block; padding:.34rem .6rem .34rem .7rem; margin:.05rem 0; border-left:2px solid transparent; border-radius:0 6px 6px 0; color:var(--muted); text-decoration:none; overflow-wrap:anywhere; }
+  aside.toc a:hover { color:var(--brand-ink); background:var(--brand-soft); }
+  aside.toc a.active { color:var(--brand-ink); border-left-color:var(--brand); background:var(--brand-soft); font-weight:600; }
+  aside.toc ul ul a { padding-left:1.6rem; font-size:.82rem; color:var(--subtle); }
+  aside.toc ul ul a.active { color:var(--brand-ink); }
+
+  article.doc { flex:1 1 auto; min-width:0; max-width:880px; }
+  article.doc.wide { max-width:1040px; }
+
+  /* 字級階層：標題明顯大於內文，段落之間留白 */
+  h1 { font-size:2.1rem; line-height:1.28; color:var(--head); letter-spacing:-.02em; margin:.2rem 0 1.4rem; font-weight:700; }
+  h1::after { content:""; display:block; width:64px; height:4px; margin-top:.7rem; border-radius:2px; background:linear-gradient(90deg,var(--brand),#7c3aed); }
+  h2 { font-size:1.5rem; line-height:1.35; color:var(--head); font-weight:700; margin:3.4rem 0 1.1rem; padding:.35rem .8rem .35rem .85rem; border-left:4px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 70%); border-radius:0 8px 8px 0; scroll-margin-top:calc(var(--top-h) + 1rem); }
+  h2:first-of-type { margin-top:2.4rem; }
+  h3 { font-size:1.15rem; line-height:1.4; color:var(--head); font-weight:650; margin:2.3rem 0 .75rem; scroll-margin-top:calc(var(--top-h) + 1rem); }
+  h4 { font-size:1rem; color:var(--head); margin:1.6rem 0 .5rem; }
+  p { margin:.85rem 0; }
+  p.lead { font-size:1.05rem; color:var(--muted); }
   a { color:var(--brand-ink); text-decoration-color:#b6ccf5; text-underline-offset:2px; }
   a:hover { text-decoration-color:var(--brand-ink); }
-  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .35em; overflow-wrap:anywhere; }
-  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1rem 1.15rem; overflow-x:auto; line-height:1.6; font-size:.84em; }
+  strong { color:var(--head); }
+  code { font-family:ui-monospace,Consolas,"Cascadia Mono",monospace; font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:5px; padding:.08em .38em; overflow-wrap:anywhere; }
+  pre { background:var(--pre-bg); color:var(--pre-ink); border-radius:10px; padding:1.05rem 1.2rem; margin:1.1rem 0; overflow-x:auto; line-height:1.65; font-size:.84em; }
   pre code { background:none; border:none; color:inherit; padding:0; }
   td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
-  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.1rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-  th { background:#f4f7fb; color:var(--head); text-align:left; font-weight:600; padding:.55rem .75rem; border-bottom:1px solid var(--line); }
-  td { padding:.5rem .75rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.3rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th { background:#f3f6fa; color:var(--head); text-align:left; font-weight:600; padding:.6rem .8rem; border-bottom:1px solid var(--line); }
+  td { padding:.55rem .8rem; border-bottom:1px solid var(--line); vertical-align:top; }
   tr:last-child td { border-bottom:none; }
   tr:nth-child(even) td { background:#fafcff; }
-  article.doc > nav, article > nav { background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:.9rem 1.3rem; margin:1.3rem 0; }
-  article.doc > nav p, article > nav p { margin:.1rem 0 .4rem; color:var(--head); }
-  nav ul { columns:2; margin:.2rem 0; padding-left:1.2rem; }
-  nav ul li { margin:.15rem 0; }
-  ul, ol { padding-left:1.4rem; }
-  li { margin:.3rem 0; }
-  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.6rem .9rem; margin:1.1rem 0; }
-  blockquote { margin:1.2rem 0; padding:.7rem 1.1rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
-  hr { border:none; border-top:1px solid var(--line); margin:2.2rem 0; }
-  img { max-width:100%; }
-  @media (max-width:720px){ nav ul{columns:1} article.doc{padding:1.4rem 1rem 3rem} h1{font-size:1.5rem} }
+  ul, ol { padding-left:1.5rem; margin:.7rem 0; }
+  li { margin:.4rem 0; }
+  li > ul, li > ol { margin:.3rem 0; }
+  .note { background:#fff8e6; border:1px solid #f5d98f; border-left:4px solid #f59e0b; border-radius:8px; padding:.7rem 1rem; margin:1.3rem 0; }
+  blockquote { margin:1.3rem 0; padding:.8rem 1.15rem; background:var(--paper); border:1px solid var(--line); border-left:4px solid #94a3b8; border-radius:8px; color:#475569; }
+  hr { border:none; border-top:1px solid var(--line); margin:2.6rem 0; }
+  img { max-width:100%; border-radius:8px; }
+  .wrap { overflow-x:auto; }
+  .good { color:#15803d; font-weight:600; }
+  .bad { color:#b91c1c; }
+  .noise { color:#94a3b8; }
+  .num td:nth-child(n+2), .num th:nth-child(n+2) { text-align:right; font-variant-numeric:tabular-nums; }
+
+  @media (max-width:960px) {
+    .doc-layout { flex-direction:column; gap:1.4rem; padding:1.4rem 1rem 4rem; }
+    aside.toc { position:static; max-height:none; flex:none; width:100%; border-right:none; border-bottom:1px solid var(--line); padding:0 0 .8rem; }
+    aside.toc ul { columns:2; column-gap:1.5rem; }
+    aside.toc li { break-inside:avoid; }
+    aside.toc ul ul { columns:1; }
+    h1 { font-size:1.6rem; }
+    h2 { font-size:1.28rem; margin-top:2.4rem; }
+  }
+  @media print {
+    nav.site, aside.toc { display:none; }
+    .doc-layout { display:block; padding:0; }
+    body { background:#fff; }
+  }
 </style>
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
-<article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#backend">後端（已完成，勿改介面）</a><ul><li><a href="#graph">graph JSON</a></li><li><a href="#roi">ROI region dict（Param kind=roi 的值）</a></li><li><a href="#overlay">Overlay dict（Result.overlays；畫在該節點輸入影像座標）</a></li><li><a href="#runreport">RunReport（POST run / preview 回傳、SSE run_finished 的 run）</a></li><li><a href="#preview">試執行進階（工具頁用）</a></li><li><a href="#paramkind">Param.kind 補充</a></li></ul></li><li><a href="#frontend">前端骨架（已完成）</a></li><li><a href="#more">範本庫、批次測試、整合工具（apps/vision/api_more.py）</a></li><li><a href="#recipes">配方、站台、教導</a></li><li><a href="#recipe-io">配方匯出／匯入與合理化檢查（api_recipes.py）</a></li><li><a href="#deploy">前後端解耦部署</a></li></ul></aside><article class="doc">
 
 <h1>VisionSequence 前後端合約（給平行開發的子任務看）</h1>
-
-<nav><p><strong>本頁目錄</strong></p><ul>
-<li><a href="#backend">後端（已完成，勿改介面）</a></li>
-<li><a href="#graph">graph JSON</a></li>
-<li><a href="#roi">ROI region dict</a></li>
-<li><a href="#overlay">Overlay dict</a></li>
-<li><a href="#runreport">RunReport</a></li>
-<li><a href="#preview">試執行進階</a></li>
-<li><a href="#paramkind">Param.kind 補充</a></li>
-<li><a href="#frontend">前端骨架（已完成）</a></li>
-</ul></nav>
 
 <h2 id="backend">後端（已完成，勿改介面）</h2>
 <ul>
@@ -172,6 +202,33 @@ Tool.version（預設 1）進 catalogue；工具參數語意變更時 +1。</pre
 <li>回應格式與錯誤碼見本頁上方各節；新增端點時只要維持這些 schema，前端不需改動即可相容。</li>
 </ul>
 
-</article>
+</article></div><!-- /doc-layout -->
+<script>
+// 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）
+(function () {
+  var site = document.querySelector('nav.site');
+  if (site) document.documentElement.style.setProperty('--top-h', site.offsetHeight + 'px');
+  var links = Array.prototype.slice.call(document.querySelectorAll('aside.toc a[href^="#"]'));
+  if (!links.length || !('IntersectionObserver' in window)) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var current = null;
+  function activate(id) {
+    if (current === id) return;
+    current = id;
+    links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+    var a = byId[id];
+    if (a && a.scrollIntoView) { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+  }
+  var heads = Array.prototype.slice.call(document.querySelectorAll('article.doc h2[id], article.doc h3[id]')).filter(function (h) { return byId[h.id]; });
+  var observer = new IntersectionObserver(function () {
+    var top = window.scrollY + 90, best = heads[0];
+    for (var i = 0; i < heads.length; i++) { if (heads[i].offsetTop <= top) best = heads[i]; else break; }
+    if (best) activate(best.id);
+  }, { rootMargin: '-80px 0px -60% 0px', threshold: [0, 1] });
+  heads.forEach(function (h) { observer.observe(h); });
+  window.addEventListener('scroll', function () { var top = window.scrollY + 90, best = heads[0]; for (var i = 0; i < heads.length; i++) { if (heads[i].offsetTop <= top) best = heads[i]; else break; } if (best) activate(best.id); }, { passive: true });
+})();
+</script>
 </body>
 </html>

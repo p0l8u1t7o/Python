@@ -1,9 +1,24 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8">
-<title>VisionSequence 文件總覽</title>
-<style>
+"""docs/*.html 的版面產生器：統一內嵌 CSS、左側章節目錄（由 h2／h3 靜態產生）、章節與內文字級階層。
+
+用法：
+    .venv/Scripts/python.exe scripts/docs_style.py          # 重新套用到 docs/ 全部頁面（可重複執行）
+    .venv/Scripts/python.exe scripts/docs_style.py --check  # 只檢查是否已是最新版面（CI／驗證用）
+
+每頁仍是獨立 HTML、無外部依賴（CLAUDE.md 規範）：本腳本把同一段 CSS 寫進每頁的 <style>，
+並在 <article class="doc"> 外包 .doc-layout、前面插入 <aside class="toc">（本頁目錄）。
+h2 沒有 id 的會補 sec-N；頁內原本的 <nav>（舊的內文目錄）會移除，改由側欄提供。
+"""
+
+from __future__ import annotations
+
+import html
+import os
+import re
+import sys
+
+DOCS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+
+CSS = """
   :root {
     --bg:#f5f7fa; --paper:#ffffff; --ink:#26303f; --head:#0f1a2b; --muted:#5b6b80; --subtle:#8a97a8;
     --line:#e2e8f0; --brand:#2563eb; --brand-ink:#1d4ed8; --brand-soft:#eef4ff;
@@ -86,57 +101,9 @@
     .doc-layout { display:block; padding:0; }
     body { background:#fff; }
   }
-</style>
-</head>
-<body>
-<nav class="site"><a href="index.html" aria-current="page">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#sec-1">設計</a></li><li><a href="#sec-2">整合</a></li><li><a href="#sec-3">擴充</a></li><li><a href="#sec-4">合約與規範</a></li><li><a href="#sec-5">品質</a></li></ul></aside><article class="doc">
+"""
 
-<h1>VisionSequence 文件總覽</h1>
-<p><code>docs/</code> 下的文件一律是 HTML，每頁自帶樣式、無外部依賴，直接用瀏覽器開即可。新增文件請同樣用 HTML，並在此頁對應分類加上連結。開發須知、驗證清單與 Git 規則在專案根目錄 <code>CLAUDE.md</code>；快速開始在根目錄 <code>README.md</code>。</p>
-
-<h2 id="sec-1">設計</h2>
-<table>
-<tr><th>文件</th><th>說明</th></tr>
-<tr><td><a href="workflow-design.html">工作流程設計手冊</a></td><td>設計思想：為什麼是行程內的資料流 DAG、與控制流程引擎（ZQS Cloud）的取捨、封閉集合與安全邊界、熱路徑不碰資料庫、降級策略、三個擴充接縫。</td></tr>
-<tr><td><a href="architecture.html">設計手冊</a></td><td>平台內部結構：資料模型、工具框架、圖驗證與編譯、引擎、Runner 並行、影像快取、影像來源、API／SSE／TCP、前端、帳號與鎖定、設定值、測試與踩過的坑。</td></tr>
-</table>
-
-<h2 id="sec-2">整合</h2>
-<table>
-<tr><th>文件</th><th>說明</th></tr>
-<tr><td><a href="automation.html">自動化整合</a></td><td>被動接法（設備／上位機／MES 來呼叫）：HTTP 同步執行、TCP 一行指令、SSE 即時事件、送圖來源、效能建議、身分與引擎鎖定。</td></tr>
-<tr><td><a href="modbus.html">Modbus 輸出</a></td><td>主動接法（引擎寫給設備）：連線種類（modbus_tcp／tcp_client／dio_sim／外掛）與 config、位址格式、write_modbus 對映表、降級策略、連線 API、外掛 Writer。</td></tr>
-</table>
-
-<h2 id="sec-3">擴充</h2>
-<table>
-<tr><th>文件</th><th>說明</th></tr>
-<tr><td><a href="dl.html">深度學習教導</a></td><td>平台內標記與訓練：教導專案、樣本收集、自動標記、伺服端訓練（GPU／provider 設定）、模型匯出到資產；Trainer registry 可用外掛加新模型種類。；YOLO 五任務推論工具與四種 YOLO 訓練、SAM2 智慧選取／框選／全圖提案、GPU 依賴安裝與踩坑</td></tr>
-<tr><td><a href="plugins.html">擴充外掛</a></td><td>資料夾丟檔即掛載：繼承 Tool／Grabber／Writer 放進 <code>plugins/</code> 自動偵測；外掛內變數控制顯示名稱、說明、是否掛載；兩個出貨範例與撰寫規則。</td></tr>
-</table>
-
-<h2 id="sec-4">合約與規範</h2>
-<table>
-<tr><th>文件</th><th>說明</th></tr>
-<tr><td><a href="contract.html">前後端合約</a></td><td>graph JSON、ROI region、Overlay、RunReport、試執行進階端點與前端骨架，給平行開發的子任務看。</td></tr>
-<tr><td><a href="glossary.html">名詞規範</a></td><td>前端名詞與命名規範：頁面、編輯器區塊、核心名詞、埠型別顏色、狀態用語；UI 文案、程式識別字、文件三處一致。</td></tr>
-</table>
-
-<h2 id="sec-5">品質</h2>
-<table>
-<tr><th>文件</th><th>說明</th></tr>
-<tr><td><a href="batch.html">批次測試</a></td><td>批次測試頁：影像集與暫存的逐張結果、期望標記與命中率、資料洞察與建議門檻、調參重跑與比較、寫回流程／配方／Golden Set、AI 諮詢與調整、背景執行與保留策略。</td></tr>
-<tr><td><a href="golden.html">Golden Set 與匯出</a></td><td>Golden Set 回歸測試（期望值、基準、regressed 清單、混淆矩陣、<code>manage.py regress</code>）與流程匯出／匯入／CLI 執行（穩定序列化格式、<code>manage.py flow</code>、export／import API、進 CI）。</td></tr>
-<tr><td><a href="performance.html">效能報告</a></td><td>引擎與工具的效能量測結果與優化紀錄。</td></tr>
-<tr><td><a href="vision-capabilities.html">檢測功能設計</a></td><td>ROI 工具種類與實作、影像位深設計（8/16 位元、浮點）、檢測工具總覽與取捨。</td></tr>
-<tr><td><a href="samples.html">範例樣板</a></td><td>seed_demo 建立的 13 個開箱即跑樣板：合成樣本圖、涵蓋的工具、資產與重建方式。</td></tr>
-<tr><td><code>README.md</code>／<code>CLAUDE.md</code></td><td>專案全貌（功能、架構、程式碼地圖、資料模型、API、擴充點、設定、部署）與開發須知（慣例、驗證清單、模組要點、踩過的坑）；GitHub 上的入口。</td></tr>
-<tr><td><a href="user-guide.html">使用者手冊</a></td><td>依操作順序的完整說明：登入、來源與資產、流程編輯、工具頁與 ROI、執行、批次測試頁、範本、AI 助手、深度學習、整合、設定、常見問題。</td></tr>
-<tr><td><a href="agent.html">AI 助手</a></td><td>上傳影像＋圈選＋提示詞自動生成檢測流程：離線規則引擎與可選 LLM 生成的架構；全域 AI 助手（任何頁面的聊天視窗：使用說明問答、修改流程、資料諮詢與調整）。</td></tr>
-</table>
-</article></div><!-- /doc-layout -->
-<script>
+SCRIPT = """<script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）
 (function () {
   var site = document.querySelector('nav.site');
@@ -162,6 +129,127 @@
   heads.forEach(function (h) { observer.observe(h); });
   window.addEventListener('scroll', function () { var top = window.scrollY + 90, best = heads[0]; for (var i = 0; i < heads.length; i++) { if (heads[i].offsetTop <= top) best = heads[i]; else break; } if (best) activate(best.id); }, { passive: true });
 })();
-</script>
-</body>
-</html>
+</script>"""
+
+#: 個別頁面額外的規則（效能報告的數值表右對齊）；其餘頁面共用同一段 CSS。
+PAGE_EXTRA = {
+    "performance.html": "\n  td:nth-child(n+2), th:nth-child(n+2) { text-align:right; font-variant-numeric:tabular-nums; }\n  table { font-size:.85em; }\n",
+}
+
+H_RE = re.compile(r"<h([23])([^>]*)>(.*?)</h\1>", re.DOTALL | re.IGNORECASE)
+
+
+def _text(inner: str) -> str:
+    return html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
+
+
+def _ensure_ids(body: str) -> str:
+    """h2／h3 沒有 id 的補 sec-N（h3 用 sec-N-M）。"""
+    n2 = 0
+    n3 = 0
+
+    def fix(m: re.Match) -> str:
+        nonlocal n2, n3
+        level, attrs, inner = m.group(1), m.group(2), m.group(3)
+        if level == "2":
+            n2 += 1
+            n3 = 0
+        else:
+            n3 += 1
+        if re.search(r'\bid="', attrs):
+            return m.group(0)
+        sid = f"sec-{n2}" if level == "2" else f"sec-{n2}-{n3}"
+        return f'<h{level} id="{sid}"{attrs}>{inner}</h{level}>'
+
+    return H_RE.sub(fix, body)
+
+
+def _toc(body: str) -> str:
+    items: list[tuple[str, str, str]] = []
+    for m in H_RE.finditer(body):
+        level, attrs, inner = m.group(1), m.group(2), m.group(3)
+        mid = re.search(r'\bid="([^"]+)"', attrs)
+        if not mid:
+            continue
+        items.append((level, mid.group(1), _text(inner)))
+    if not items:
+        return ""
+    out = ['<aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul>']
+    open_sub = False
+    for level, sid, title in items:
+        if level == "2":
+            if open_sub:
+                out.append("</ul></li>")
+                open_sub = False
+            elif out[-1] != '<aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul>':
+                out.append("</li>")
+            out.append(f'<li><a href="#{sid}">{html.escape(title)}</a>')
+        else:
+            if not open_sub:
+                out.append("<ul>")
+                open_sub = True
+            out.append(f'<li><a href="#{sid}">{html.escape(title)}</a></li>')
+    if open_sub:
+        out.append("</ul></li>")
+    else:
+        out.append("</li>")
+    out.append("</ul></aside>")
+    return "".join(out)
+
+
+def render(src: str, name: str = "") -> str:
+    # 1. CSS（共用一段＋頁面額外規則）
+    if "<style>" not in src:
+        raise ValueError("沒有 <style>")
+    css = CSS + PAGE_EXTRA.get(name, "")
+    src = re.sub(r"<style>.*?</style>", lambda _m: "<style>" + css + "</style>", src, count=1, flags=re.DOTALL)
+    # 2. 拆出 article
+    m = re.search(r'<article class="doc[^"]*"[^>]*>', src)
+    if not m:
+        raise ValueError("沒有 <article class=\"doc\">")
+    open_tag = m.group(0)
+    start = m.end()
+    end = src.index("</article>", start)
+    body = src[start:end]
+    # 舊版包裝／側欄／內文目錄一律拆掉再重建（可重複執行）
+    body = re.sub(r'<aside class="toc".*?</aside>', "", body, count=1, flags=re.DOTALL)
+    body = re.sub(r"<nav>\s*<p><strong>[^<]*目錄</strong></p>.*?</nav>\s*", "", body, count=1, flags=re.DOTALL)
+    body = re.sub(r"<nav>\s*<ul>.*?</ul>\s*</nav>\s*", "", body, count=1, flags=re.DOTALL)
+    body = _ensure_ids(body)
+    toc = _toc(body)
+    before = src[: m.start()]
+    after = src[end + len("</article>"):]
+    # 重跑：把上一次產生的 .doc-layout 包裝、側欄與結尾標記清掉再重建
+    before = re.sub(r'<div class="doc-layout">\s*(<aside class="toc".*?</aside>)?\s*$', "", before, flags=re.DOTALL)
+    after = re.sub(r"^\s*</div><!-- /doc-layout -->", "", after, count=1)
+    src = before + '<div class="doc-layout">' + toc + open_tag + body + "</article></div><!-- /doc-layout -->" + after
+    # 3. 高亮腳本
+    src = re.sub(r"<script>\s*// 本頁目錄.*?</script>\s*", "", src, count=1, flags=re.DOTALL)
+    src = src.replace("</body>", SCRIPT + "\n</body>", 1)
+    return src
+
+
+def main() -> int:
+    check = "--check" in sys.argv
+    changed = []
+    for name in sorted(os.listdir(DOCS)):
+        if not name.endswith(".html"):
+            continue
+        path = os.path.join(DOCS, name)
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+        out = render(src, name)
+        if out != src:
+            changed.append(name)
+            if not check:
+                with open(path, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(out)
+    if check:
+        print("需要重新套用：" + ", ".join(changed) if changed else "docs 版面已是最新")
+        return 1 if changed else 0
+    print(f"已套用 {len(changed)} 頁：" + ", ".join(changed) if changed else "沒有變更")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

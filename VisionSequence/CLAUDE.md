@@ -44,6 +44,7 @@
 
 ### 文件與命名
 - **`docs/` 下只放 HTML**（每頁內嵌同一段 CSS、無外部依賴）；新文件也要 HTML，並在 `docs/index.html` 加連結、各頁 `nav.site` 同步。改了行為要同步更新對應的 docs 頁、`README.md` 與本檔。
+- **docs 版面由 `scripts/docs_style.py` 產生**：共用 CSS、左側 sticky「本頁目錄」（由 h2／h3 靜態產生、捲動高亮）、字級階層（h1 2.1rem／h2 1.5rem／h3 1.15rem／內文 16px）。**新增或改章節標題後重跑一次**（可重複執行；`--check` 回 1 表示有頁面沒套用）；不要手改各頁的 `<style>`、`<aside class="toc">` 與結尾 `<script>`，寫內文即可。h2 沒 id 會補 `sec-N`；`help.py` 只解析 `<article` 之後的內容，側欄不進索引。
 - UI 文案、元件名、i18n key 一律照 `docs/glossary.html`；新名詞先加表再用。**商用產品語氣**：「點選」不用「點一下」、「試執行」不用「試跑」、「尚無／無法／此」不用「還沒有／不能／這個」、稱呼使用者用「您」；範例提示詞除外。`src/test/i18n.test.ts` 有禁用詞清單會擋。
 - 語系：zh-Hant（完整、fallback）、zh-Hans（由 zh-Hant 轉出＋詞彙微調；改文案後同步）、en（部分）。三語系 key 必須對齊（測試會擋）。
 
