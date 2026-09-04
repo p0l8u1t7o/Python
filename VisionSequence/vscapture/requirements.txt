@@ -1,0 +1,14 @@
+# 擷取端（vscapture）依賴：請用獨立的 .venv-capture（scripts/build_capture_client.ps1 會建），
+# 因為 opencv-python（帶 GUI／DirectShow）與伺服端的 opencv-python-headless 同名互蓋。
+numpy==2.2.3
+opencv-python==4.11.0.86
+PySide6==6.8.3
+lz4==4.4.4
+pyinstaller==6.11.1
+
+# ---- 選配相機 SDK（沒裝時該種類顯示「SDK 尚未安裝」）----
+# pypylon>=4.0                 # Basler；客戶端 PC 建議一併安裝 pylon Runtime（GigE 過濾驅動、USB3 驅動）
+# ids_peak>=1.10               # IDS peak；客戶端 PC 必須安裝 IDS peak 執行期／驅動
+# ids_peak_ipl>=1.10
+# pyueye                       # IDS uEye 舊款（需 uEye 驅動）
+# pygrabber                    # 網路攝影機的 DirectShow 名稱列舉（沒裝就只列索引）
