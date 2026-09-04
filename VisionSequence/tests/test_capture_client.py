@@ -8,10 +8,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+import hashlib
 import tempfile
 import threading
 import time
+import zipfile
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 from django.test import SimpleTestCase
@@ -29,6 +32,7 @@ from vscapture.engine import CaptureEngine
 from vscapture.frames import BufferPool, Frame, FrameSlot, crop_roi, encode, frame_item, prepare
 from vscapture.protocol import Encoding
 from vscapture.transport.sender import item_bytes
+from vscapture import update
 from vscapture.shm import ShmRing, plan_slots
 from vscapture.transport.client import ConnState
 
@@ -56,6 +60,13 @@ class ConfigTests(SimpleTestCase):
         tmp.write_text(raw, encoding="utf-8")
         self.assertEqual(configmod.load(tmp).channels[0].roi, Roi(10, 20, 100, 80))
         self.assertEqual(configmod.load(tmp / "missing.json"), AppConfig())
+
+    def test_update_fields(self):
+        cfg = configmod.AppConfig.from_dict({"connection": {"auto_update": "auto", "shm_max_mb": 256}})
+        self.assertEqual((cfg.connection.auto_update, cfg.connection.shm_max_mb), ("auto", 256))
+        self.assertEqual(configmod.AppConfig().connection.auto_update, "notify")
+        with self.assertRaises(ConfigError):
+            configmod.AppConfig.from_dict({"connection": {"auto_update": "always"}})
 
     def test_invalid_values(self):
         with self.assertRaises(ConfigError) as cm:
@@ -385,6 +396,92 @@ class HeadlessCliTests(SimpleTestCase):
         out = buf.getvalue()
         self.assertIn("模擬相機", out)
         self.assertNotIn("OpenCV", out)
+
+
+class UpdateTests(SimpleTestCase):
+    """自動更新：版本比較、逐塊下載＋sha256 驗證、解壓、覆寫。"""
+
+    @staticmethod
+    def _zip(path, version="0.2.0", extra=b"x"):
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr(f"VisionSequenceCapture-{version}/VisionSequenceCapture.exe", b"MZ" + extra)
+            zf.writestr(f"VisionSequenceCapture-{version}/VisionSequenceCapture-console.exe", b"MZ" + extra)
+            zf.writestr(f"VisionSequenceCapture-{version}/_internal/data.bin", extra * 10)
+        return path.read_bytes()
+
+    def test_version_compare(self):
+        self.assertTrue(P.is_newer("0.2.0", "0.1.9"))
+        self.assertTrue(P.is_newer("1.0", "0.9.9"))
+        self.assertTrue(P.is_newer("0.1.10", "0.1.9"))
+        self.assertFalse(P.is_newer("0.1.0", "0.1.0"))
+        self.assertFalse(P.is_newer("0.1.0", "0.2.0"))
+        self.assertFalse(P.is_newer("", "0.1.0"))
+        self.assertEqual(P.version_tuple("0.2.0"), (0, 2, 0, 0))
+        self.assertEqual(P.version_tuple("1.2.3rc4"), (1, 2, 34, 0))
+
+    def test_download_verify_stage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            blob = self._zip(root / "src.zip")
+            digest = hashlib.sha256(blob).hexdigest()
+            info = update.UpdateInfo(available=True, version="0.2.0", filename="VisionSequenceCapture-0.2.0-win64.zip", size=len(blob), sha256=digest, chunk=64)
+            calls = []
+
+            def pull(offset, length):
+                calls.append((offset, length))
+                chunk = blob[offset : offset + length]
+                return chunk, offset + len(chunk) >= len(blob)
+
+            seen = []
+            zip_path = update.download(pull, info, dest=root / "dl", on_progress=lambda got, total: seen.append(got))
+            self.assertEqual(zip_path.read_bytes(), blob)
+            self.assertGreater(len(calls), 1)
+            self.assertEqual(seen[-1], len(blob))
+            self.assertEqual(list((root / "dl").glob("*.part")), [])
+            staged = update.stage(zip_path, "0.2.0", dest=root / "st")
+            self.assertTrue((staged / "VisionSequenceCapture.exe").is_file())
+            self.assertTrue((staged / "_internal" / "data.bin").is_file())
+            # sha256 不符要丟掉，不留半成品
+            bad = update.UpdateInfo(available=True, version="0.2.0", filename="bad.zip", size=len(blob), sha256="00" * 32, chunk=64)
+            with self.assertRaises(update.UpdateError):
+                update.download(pull, bad, dest=root / "dl2")
+            self.assertEqual(list((root / "dl2").glob("*")), [])
+            # 長度不符也要擋
+            short = update.UpdateInfo(available=True, version="0.2.0", filename="s.zip", size=len(blob) + 10, sha256="", chunk=64)
+            with self.assertRaises(update.UpdateError):
+                update.download(pull, short, dest=root / "dl3")
+
+    def test_stage_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evil = root / "evil.zip"
+            with zipfile.ZipFile(evil, "w") as zf:
+                zf.writestr("../outside.exe", b"MZ")
+            with self.assertRaises(update.UpdateError):
+                update.stage(evil, "0.2.0", dest=root / "st")
+
+    def test_updater_copies_over_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src, dst = root / "new", root / "app"
+            (src / "_internal").mkdir(parents=True)
+            (src / "VisionSequenceCapture.exe").write_bytes(b"NEW")
+            (src / "_internal" / "lib.dll").write_bytes(b"L2")
+            dst.mkdir()
+            (dst / "VisionSequenceCapture.exe").write_bytes(b"OLD")
+            (dst / "keep.json").write_text("{}", encoding="utf-8")
+            update._copy_tree(src, dst)  # noqa: SLF001
+            self.assertEqual((dst / "VisionSequenceCapture.exe").read_bytes(), b"NEW")
+            self.assertEqual((dst / "_internal" / "lib.dll").read_bytes(), b"L2")
+            self.assertTrue((dst / "keep.json").is_file())  # 不動使用者的檔案
+
+    def test_cleanup_keeps_current_staging(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(update, "updates_dir", return_value=Path(tmp)):
+            (Path(tmp) / "staging-0.1.0").mkdir()
+            (Path(tmp) / "staging-0.2.0").mkdir()
+            (Path(tmp) / "old.zip").write_bytes(b"x")
+            update.cleanup(keep_version="0.2.0")
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ["staging-0.2.0"])
 
 
 class PackagingTests(SimpleTestCase):

@@ -52,6 +52,9 @@ class MsgType(IntEnum):
     BYE = 0x0A
     TEST = 0x0B
     TEST_RESULT = 0x0C
+    UPDATE = 0x0D
+    UPDATE_PULL = 0x0E
+    UPDATE_DATA = 0x0F
     GRAB = 0x10
     FRAME = 0x11
     SLOT_FREE = 0x12
@@ -115,6 +118,26 @@ def unpack_envelope(buf: bytes | bytearray | memoryview) -> tuple[int, int, int,
 
 def pack_message(mtype: int, req_id: int = 0, header: bytes = b"", payload: bytes | bytearray | memoryview = b"") -> bytes:
     return pack_envelope(mtype, req_id, len(header), len(payload)) + bytes(header) + bytes(payload)
+
+
+#: 自動更新每次拉的區塊大小（走同一條已驗證的連線，不必另開埠）。
+UPDATE_CHUNK_BYTES = 1 << 20
+
+
+def version_tuple(value: str) -> tuple[int, ...]:
+    """"0.2.10" → (0, 2, 10)；非數字的部分當 0，長度補到 4。"""
+    parts: list[int] = []
+    for chunk in str(value or "").split(".")[:4]:
+        digits = "".join(c for c in chunk if c.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts + [0] * (4 - len(parts)))
+
+
+def is_newer(candidate: str, current: str) -> bool:
+    """candidate 比 current 新才回 True（版本讀不出來時視為不新，不要亂更新）。"""
+    if not str(candidate or "").strip():
+        return False
+    return version_tuple(candidate) > version_tuple(current)
 
 
 def pack_head(mtype: int, req_id: int, header: bytes, plen: int) -> bytes:

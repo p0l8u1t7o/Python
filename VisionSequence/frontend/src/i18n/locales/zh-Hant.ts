@@ -1033,6 +1033,7 @@ const zhHant = {
       preview: '預覽',
       previewTitle: '預覽：{{client}} / {{channel}}',
       agoMs: '{{ms}} ms 前', agoS: '{{s}} 秒前', never: '尚無影格',
+      recvMs: '伺服端每張接收 {{ms}} ms',
       frames: '{{count}} 張',
     },
     http: {

@@ -20,6 +20,7 @@ from vscapture.config import ConnectionConfig
 from vscapture.frames import encode, frame_item, prepare
 from vscapture.protocol import Encoding, FrameFlags, FrameHeader, GrabFlags, MsgType, ProtocolError
 from vscapture.shm import ShmRing, plan_slots
+from vscapture.update import UpdateInfo
 from vscapture.transport.sender import SendQueue, SenderThread
 from vscapture.transport.stream import StreamPusher
 
@@ -65,6 +66,8 @@ class TransportClient:
         self.state_detail = ""
         self.welcome: dict[str, Any] = {}
         self.local_mode = False
+        self.update: UpdateInfo = UpdateInfo()
+        self._pulls: dict[int, Future] = {}
         self.rings: dict[str, ShmRing] = {}  # cid → 共用的 ring（同一個物件）
         self._ring: ShmRing | None = None
         self._pending_ring: ShmRing | None = None
@@ -164,7 +167,7 @@ class TransportClient:
     def _run(self) -> None:
         while self._alive:
             self._wake.clear()
-            self._set_state(ConnState.CONNECTING if self.attempts == 0 else ConnState.RECONNECTING, f"第 {self.attempts + 1} 次" if self.attempts else "")
+            self._set_state(ConnState.CONNECTING if self.attempts == 0 else ConnState.RECONNECTING, f"attempt:{self.attempts + 1}" if self.attempts else "")
             try:
                 self._connect_once()
                 if not self._alive:
@@ -225,7 +228,8 @@ class TransportClient:
         self._sender.start()
         self._pool = ThreadPoolExecutor(max_workers=max(2, len(self.engine.channels)), thread_name_prefix="vsc-grab")
         self.local_mode = self._decide_local(sock, welcome)
-        self._set_state(ConnState.CONNECTED, "本機模式（共享記憶體）" if self.local_mode else "")
+        self._on_update(welcome.get("update") or {})
+        self._set_state(ConnState.CONNECTED, "local" if self.local_mode else "")
         log.info("已連上伺服端 %s:%s（%s）", self.cfg.host, self.cfg.port, "同機" if self.local_mode else "跨機")
         if self.local_mode:
             self._negotiate_shm()
@@ -293,6 +297,10 @@ class TransportClient:
                 self._on_shm_accept(req_id, P.loads_json(header))
             elif mtype == MsgType.TEST_RESULT:
                 self._on_test_result(req_id, P.loads_json(header))
+            elif mtype == MsgType.UPDATE:
+                self._on_update(P.loads_json(header))
+            elif mtype == MsgType.UPDATE_DATA:
+                self._on_update_data(req_id, P.loads_json(header), payload)
             elif mtype == MsgType.ERROR:
                 body = P.loads_json(header)
                 log.warning("伺服端回報錯誤 %s：%s", body.get("code"), body.get("message"))
@@ -402,6 +410,37 @@ class TransportClient:
             log.info("共享記憶體未被接受：%s", body.get("error"))
             ring.close()
 
+    # ---- 自動更新 ----
+    def _on_update(self, body: dict[str, Any]) -> None:
+        info = UpdateInfo.from_dict(body)
+        self.update = info
+        if info.available:
+            log.info("伺服端有新版擷取端 %s（%.1f MB）", info.version, info.size / 1e6)
+        self.engine.events.emit("update", {"info": info})
+
+    def _on_update_data(self, req_id: int, body: dict[str, Any], payload: bytes | bytearray) -> None:
+        fut = self._pulls.pop(req_id, None)
+        if fut is None or fut.cancelled():
+            return
+        error = str(body.get("error") or "")
+        if error:
+            fut.set_exception(RuntimeError(error))
+            return
+        fut.set_result((bytes(payload), bool(body.get("eof"))))
+
+    def pull_update(self, offset: int, length: int, timeout: float = 30.0) -> tuple[bytes, bool]:
+        """向伺服端要安裝檔的一段（走同一條已驗證的連線）；回 (資料, 是否到檔尾)。"""
+        if self.state != ConnState.CONNECTED:
+            raise RuntimeError("尚未連線")
+        req_id = self._next_req()
+        fut: Future = Future()
+        self._pulls[req_id] = fut
+        try:
+            self.queue.put_control(P.pack_json(MsgType.UPDATE_PULL, {"offset": int(offset), "length": int(length)}, req_id))
+            return fut.result(timeout)
+        finally:
+            self._pulls.pop(req_id, None)
+
     def _on_test_result(self, req_id: int, body: dict[str, Any]) -> None:
         entry = self._tests.pop(req_id, None)
         if entry is None:
@@ -445,6 +484,10 @@ class TransportClient:
             if not fut.done():
                 fut.set_exception(RuntimeError("連線已中斷"))
         self._tests.clear()
+        for pull in self._pulls.values():
+            if not pull.done():
+                pull.set_exception(RuntimeError("連線已中斷"))
+        self._pulls.clear()
         self.local_mode = False
         if self.state == ConnState.CONNECTED:
             self.connected_since = None

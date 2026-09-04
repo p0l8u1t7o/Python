@@ -18,6 +18,8 @@ ENCODINGS = ("raw", "lz4", "jpeg")
 MODES = ("on_demand", "stream")
 TRIGGER_MODES = ("freerun", "software", "hardware")
 LOCAL_MODES = ("auto", "force", "off")
+AUTO_UPDATE_MODES = ("off", "notify", "auto")  # 不檢查／通知我（預設）／自動下載並安裝
+AUTO_UPDATE_MODES = ("off", "notify", "auto")  # 不檢查／通知我（預設）／自動下載並安裝
 
 
 class ConfigError(ValueError):
@@ -59,6 +61,8 @@ class ConnectionConfig:
     api_key: str = ""
     auto_connect: bool = True
     local_mode: str = "auto"  # auto | force | off
+    auto_update: str = "notify"  # off | notify | auto
+    shm_max_mb: int = 512
     heartbeat_s: float = 2.0
     reconnect_max_s: float = 30.0
 
@@ -72,6 +76,8 @@ class ConnectionConfig:
             api_key=str(_pick(d, "api_key", "", path, str)),
             auto_connect=bool(_pick(d, "auto_connect", True, path, bool)),
             local_mode=_pick(d, "local_mode", "auto", path, str, LOCAL_MODES),
+            auto_update=_pick(d, "auto_update", "notify", path, str, AUTO_UPDATE_MODES),
+            shm_max_mb=max(16, int(_pick(d, "shm_max_mb", 512, path, int))),
             heartbeat_s=float(_pick(d, "heartbeat_s", 2.0, path, float)),
             reconnect_max_s=float(_pick(d, "reconnect_max_s", 30.0, path, float)),
         )

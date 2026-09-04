@@ -527,6 +527,7 @@ const en = {
       preview: 'Preview',
       previewTitle: 'Preview: {{client}} / {{channel}}',
       agoMs: '{{ms}} ms ago', agoS: '{{s}} s ago', never: 'No frame yet',
+      recvMs: 'Server receives each frame in {{ms}} ms',
       frames: '{{count}} frames',
     },
     http: {

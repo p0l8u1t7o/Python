@@ -302,6 +302,8 @@ export interface CaptureChannel {
   fps: number
   bytes_per_s: number
   frames: number
+  /** 伺服端每張影格的接收（複製）耗時 */
+  recv_ms?: number
 }
 export interface CaptureClient {
   name: string

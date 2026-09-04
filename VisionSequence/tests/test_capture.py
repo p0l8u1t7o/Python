@@ -43,13 +43,15 @@ class FakeCaptureClient(threading.Thread):
     """會說協定 v1 的假擷取端：HELLO → 回答 GRAB／STREAM／PING、可推串流、可走共享記憶體。"""
 
     def __init__(self, port, name="fake", channels=None, *, auth="", transport="tcp", encoding="raw", protocol=1, machine_id="m1",
-                 hostname=None, answer_grabs=True, answer_pings=True, slots=2, bad_canary=False, frame_factory=None):
+                 hostname=None, answer_grabs=True, answer_pings=True, slots=2, bad_canary=False, frame_factory=None, version="0.1.0"):
         super().__init__(daemon=True)
         self.port, self.client_name, self.auth, self.transport = port, name, auth, transport
         self.encoding, self.protocol, self.machine_id = encoding, protocol, machine_id
         self.hostname = socket.gethostname() if hostname is None else hostname
         self.answer_grabs, self.answer_pings, self.slots, self.bad_canary = answer_grabs, answer_pings, slots, bad_canary
         self.frame_factory = frame_factory
+        self.version = version
+        self.updates: list[dict] = []
         self.channels = [dict(c) for c in (channels or _default_channels())]
         self.sock = socket.create_connection(("127.0.0.1", port), timeout=5)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -59,6 +61,7 @@ class FakeCaptureClient(threading.Thread):
         self.received: list[tuple[int, int, bytes]] = []
         self.grabs: list[tuple] = []
         self.slot_free: list[tuple[int, int]] = []
+        self.chunks: list[tuple[dict, bytes]] = []
         self.shm: shared_memory.SharedMemory | None = None
         self.shm_accepted: bool | None = None
         self.free_slots: list[int] = []
@@ -118,6 +121,9 @@ class FakeCaptureClient(threading.Thread):
             code = Encoding.RAW
         self.send(mtype, req_id, self._header_for(chan, seq, img, code, flags).pack(), payload)
 
+    def pull_update(self, offset, length, req_id=77):
+        self.send(MsgType.UPDATE_PULL, req_id, P.dumps_json({"offset": offset, "length": length}))
+
     def push(self, cid="cam0", img=None):
         chan = [c["id"] for c in self.channels].index(cid)
         self.seq[cid] += 1
@@ -128,7 +134,7 @@ class FakeCaptureClient(threading.Thread):
     def run(self):
         try:
             self.send(MsgType.HELLO, 1, P.dumps_json({
-                "protocol": self.protocol, "name": self.client_name, "version": "0.1.0", "auth": self.auth, "hostname": self.hostname, "pid": 1,
+                "protocol": self.protocol, "name": self.client_name, "version": self.version, "auth": self.auth, "hostname": self.hostname, "pid": 1,
                 "machine_id": self.machine_id, "features": {"lz4": HAS_LZ4, "shm": True, "jpeg": True}, "channels": self.channels,
             }))
             mtype, req_id, header, _ = P.read_message(self.sock)
@@ -155,6 +161,10 @@ class FakeCaptureClient(threading.Thread):
                     self.free_slots.append(slot)
                 elif mtype == MsgType.SHM_ACCEPT:
                     self.shm_accepted = bool(P.loads_json(header).get("ok"))
+                elif mtype == MsgType.UPDATE:
+                    self.updates.append(P.loads_json(header))
+                elif mtype == MsgType.UPDATE_DATA:
+                    self.chunks.append((P.loads_json(header), bytes(payload)))
         except (ConnectionError, OSError, ProtocolError):
             pass
         finally:
@@ -626,6 +636,56 @@ class CaptureApiTests(TestCase):
         self.connect(name="slow", answer_grabs=False)
         _wait(lambda: hub.get("slow") is not None)
         self.assertEqual(self.client.get("/api/vision/capture/clients/slow/channels/cam0/preview").status_code, 503)
+
+    def test_update_announced_and_streamed_over_connection(self):
+        """WELCOME 帶新版資訊、重新建置會推播、安裝檔可從同一條連線拉下來（不必再開埠或給金鑰）。"""
+        import hashlib
+        import tempfile
+        from pathlib import Path
+
+        from apps.vision.capture import build
+
+        tmp = Path(tempfile.mkdtemp(prefix="vs-upd-"))
+        (tmp / "downloads").mkdir()
+        blob = bytes(range(256)) * 900  # 230 400 位元組，跨多個區塊
+        zip_path = tmp / "downloads" / "VisionSequenceCapture-0.2.0-win64.zip"
+        zip_path.write_bytes(blob)
+        manifest = {"version": "0.2.0", "filename": zip_path.name, "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest(), "built_at": "2026-09-04T00:00:00Z"}
+        (tmp / "downloads" / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        build.invalidate()
+        with override_settings(DATA_DIR=tmp), mock.patch.object(P, "UPDATE_CHUNK_BYTES", 64 * 1024):
+            old = self.connect(name="oldver", version="0.1.0")
+            self.assertTrue(_wait(lambda: old.welcome is not None))
+            info = old.welcome["update"]
+            self.assertTrue(info["available"])
+            self.assertEqual((info["version"], info["size"], info["sha256"]), ("0.2.0", len(blob), manifest["sha256"]))
+            # 已經是新版的擷取端不會被通知
+            newer = self.connect(name="newver", version="9.9.9")
+            self.assertTrue(_wait(lambda: newer.welcome is not None))
+            self.assertFalse(newer.welcome["update"]["available"])
+            # 逐塊拉完整份安裝檔
+            got = bytearray()
+            while True:
+                want = len(old.chunks) + 1
+                old.pull_update(len(got), 64 * 1024)
+                self.assertTrue(_wait(lambda w=want: len(old.chunks) >= w, 3.0), "沒有收到 UPDATE_DATA")
+                head, chunk = old.chunks[-1]
+                self.assertEqual(head["offset"], len(got))
+                got.extend(chunk)
+                if head["eof"]:
+                    break
+            self.assertEqual(bytes(got), blob)
+            self.assertEqual(hashlib.sha256(got).hexdigest(), manifest["sha256"])
+            # 重新建置 → 心跳時主動推播
+            with mock.patch.object(P, "HEARTBEAT_S", 0.2):
+                bumped = self.connect(name="watch", version="0.1.0")
+                self.assertTrue(_wait(lambda: bumped.welcome is not None))
+                zip2 = tmp / "downloads" / "VisionSequenceCapture-0.3.0-win64.zip"
+                zip2.write_bytes(blob)
+                (tmp / "downloads" / "manifest.json").write_text(json.dumps({**manifest, "version": "0.3.0", "filename": zip2.name}), encoding="utf-8")
+                build.invalidate()
+                self.assertTrue(_wait(lambda: any(u.get("version") == "0.3.0" for u in bumped.updates), 5.0))
+        build.invalidate()
 
     def test_download_info_and_file(self):
         import tempfile

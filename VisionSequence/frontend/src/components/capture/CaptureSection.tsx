@@ -64,7 +64,11 @@ function ChannelRows({ client, onPreview }: { client: CaptureClient; onPreview: 
           </Td>
           <Td className="whitespace-nowrap text-xs text-muted">{ch.width}×{ch.height} · {ch.pixel_format}{ch.roi && ch.full && (ch.roi.w !== ch.full.w || ch.roi.h !== ch.full.h) ? ` · ROI ${ch.roi.x},${ch.roi.y}` : ''}</Td>
           <Td className="whitespace-nowrap text-xs"><Badge tone={ch.mode === 'stream' ? 'info' : 'neutral'}>{t(`integration.capture.modes.${ch.mode}`, { defaultValue: ch.mode })}</Badge>{ch.shm ? <Badge className="ml-1">{t('integration.capture.local')}</Badge> : null}</Td>
-          <Td className="tnum whitespace-nowrap text-xs">{ch.fps ? `${ch.fps.toFixed(1)} fps` : '—'}{ch.bytes_per_s ? <span className="text-muted"> · {formatBytes(ch.bytes_per_s)}/s</span> : null}</Td>
+          <Td className="tnum whitespace-nowrap text-xs">
+            <span title={ch.recv_ms ? t('integration.capture.recvMs', { ms: ch.recv_ms.toFixed(1) }) : undefined}>
+              {ch.fps ? `${ch.fps.toFixed(1)} fps` : '—'}{ch.bytes_per_s ? <span className="text-muted"> · {formatBytes(ch.bytes_per_s)}/s</span> : null}
+            </span>
+          </Td>
           <Td className="tnum whitespace-nowrap text-xs">{ageText(t, ch.last_frame_age_ms)}{ch.frames ? <span className="text-muted"> · {t('integration.capture.frames', { count: ch.frames })}</span> : null}</Td>
           <Td className="max-lg:hidden text-xs text-muted">{ch.in_use_by.length ? ch.in_use_by.join('、') : '—'}</Td>
           <Td align="right">

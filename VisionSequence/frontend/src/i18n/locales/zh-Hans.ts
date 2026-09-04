@@ -1033,6 +1033,7 @@ const zhHans = {
       preview: '预览',
       previewTitle: '预览：{{client}} / {{channel}}',
       agoMs: '{{ms}} ms 前', agoS: '{{s}} 秒前', never: '尚无帧',
+      recvMs: '服务端每张接收 {{ms}} ms',
       frames: '{{count}} 张',
     },
     http: {

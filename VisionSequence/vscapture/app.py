@@ -28,6 +28,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--fake", type=int, default=0, metavar="N", help="加入 N 個模擬相機通道（示範／測試）")
     p.add_argument("--list-cameras", action="store_true", help="列出各種相機並結束")
     p.add_argument("--log-level", default=None)
+    p.add_argument("--apply-update", metavar="安裝資料夾", help="（更新程式用）等舊行程結束後把本資料夾的內容覆寫到目標並重啟")
+    p.add_argument("--wait-pid", type=int, default=0, help="（更新程式用）先等這個行程結束")
+    p.add_argument("--restart", action="store_true", help="（更新程式用）覆寫後重新啟動")
     p.add_argument("--version", action="version", version=f"VisionSequenceCapture {__version__}")
     return p.parse_args(argv)
 
@@ -99,8 +102,10 @@ def run_headless(engine) -> int:
     engine.start(connect=True)
     log.info("擷取端 headless 執行中（Ctrl+C 結束）；通道 %d 個", len(engine.channels))
     try:
-        while not stop["flag"]:
+        while not stop["flag"] and not engine.exit_requested.is_set():
             time.sleep(0.5)
+        if engine.exit_requested.is_set():
+            log.info("更新程式已接手，結束本行程")
     finally:
         engine.stop()
     return 0
@@ -114,11 +119,21 @@ def run_gui(engine, args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.apply_update:  # 由新版執行檔啟動：覆寫舊版並重啟，不會連線也不開相機
+        from pathlib import Path
+
+        from vscapture import update as updatemod
+
+        setup_logging("INFO", to_file=True)
+        return updatemod.run_updater(Path(args.apply_update), args.wait_pid, restart=args.restart)
     if args.list_cameras:
         setup_logging("WARNING", to_file=False)
         return list_cameras()
     engine = build_engine(args)
     setup_logging(engine.cfg.log_level, to_file=True)
+    from vscapture import update as updatemod
+
+    updatemod.cleanup()  # 清掉上次更新留下的暫存
     if getattr(engine, "config_error", ""):
         log.error("設定檔有誤，改用預設值：%s", engine.config_error)
     if args.headless:

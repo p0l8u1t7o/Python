@@ -7,10 +7,11 @@ import threading
 from pathlib import Path
 from typing import Any, Callable
 
-from vscapture import __version__, config as configmod
+from vscapture import __version__, config as configmod, update as updatemod
 from vscapture.channel import Channel
 from vscapture.config import AppConfig, ChannelConfig
 from vscapture.transport.client import TransportClient
+from vscapture.update import UpdateInfo
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +51,80 @@ class CaptureEngine:
         self._order: list[str] = []
         self.transport = TransportClient(self, cfg.connection, version=__version__)
         self._started = False
+        #: 自動更新：idle → downloading → staging → ready →（可套用時）applying／error
+        self.update_phase = "idle"
+        self.update_received = 0
+        self.update_total = 0
+        self.update_error = ""
+        self.update_staged: Path | None = None
+        self.exit_requested = threading.Event()  # 更新程式已接手，主程式該結束了
+        self._update_thread: threading.Thread | None = None
+        self._update_cancel = threading.Event()
+        self.events.subscribe(self._on_own_event)
+
+    # ---- 自動更新 ----
+    def _on_own_event(self, kind: str, data: dict[str, Any]) -> None:
+        """伺服端宣告有新版時，依設定決定要不要自己下載安裝。"""
+        if kind != "update" or "phase" in data:
+            return
+        info = data.get("info")
+        if isinstance(info, UpdateInfo) and info.available and self.cfg.connection.auto_update == "auto":
+            self.start_update(install=True)
+
+    @property
+    def update_info(self) -> UpdateInfo:
+        return self.transport.update
+
+    def update_status(self) -> dict[str, Any]:
+        info = self.update_info
+        return {
+            "phase": self.update_phase, "received": self.update_received, "total": self.update_total, "error": self.update_error,
+            "version": info.version, "available": info.available, "size": info.size, "built_at": info.built_at,
+            "can_install": updatemod.is_frozen(), "staged": str(self.update_staged or ""),
+        }
+
+    def _set_update(self, phase: str, *, error: str = "", received: int | None = None, total: int | None = None) -> None:
+        self.update_phase = phase
+        self.update_error = error
+        if received is not None:
+            self.update_received = received
+        if total is not None:
+            self.update_total = total
+        self.events.emit("update", {"phase": phase, "received": self.update_received, "total": self.update_total, "error": error, "version": self.update_info.version})
+
+    def start_update(self, *, install: bool = True) -> bool:
+        """背景下載並安裝新版；回 False 表示沒有可用的新版或已經在進行。"""
+        info = self.update_info
+        if not info.available or (self._update_thread is not None and self._update_thread.is_alive()):
+            return False
+        self._update_cancel.clear()
+        self._update_thread = threading.Thread(target=self._run_update, args=(info, install), name="vsc-update", daemon=True)
+        self._update_thread.start()
+        return True
+
+    def cancel_update(self) -> None:
+        self._update_cancel.set()
+
+    def _run_update(self, info: UpdateInfo, install: bool) -> None:
+        try:
+            self._set_update("downloading", received=0, total=info.size)
+            zip_path = updatemod.download(
+                self.transport.pull_update, info,
+                on_progress=lambda got, total: self._set_update("downloading", received=got, total=total),
+                cancel=self._update_cancel,
+            )
+            self._set_update("staging")
+            self.update_staged = updatemod.stage(zip_path, info.version)
+            if not install or not updatemod.is_frozen():
+                self._set_update("ready", error="" if install else "已下載，等待套用")
+                log.info("擷取端新版 %s 已就緒：%s", info.version, self.update_staged)
+                return
+            self._set_update("applying")
+            updatemod.apply(self.update_staged, restart=True)
+            self.exit_requested.set()
+        except Exception as exc:  # noqa: BLE001 — 更新失敗不能影響取像
+            log.warning("自動更新失敗：%s", exc)
+            self._set_update("error", error=str(exc))
 
     # ---- 生命週期 ----
     def start(self, *, connect: bool | None = None) -> None:
@@ -65,6 +140,7 @@ class CaptureEngine:
             self.connect()
 
     def stop(self) -> None:
+        self._update_cancel.set()
         self.transport.stop()
         for ch in list(self.channels.values()):
             try:

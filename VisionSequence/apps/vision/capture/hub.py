@@ -23,6 +23,7 @@ import numpy as np
 from django.conf import settings
 
 from vscapture import __version__ as CLIENT_PROTO_PKG_VERSION
+from apps.vision.capture import build
 from vscapture import protocol as P
 from vscapture.protocol import Encoding, FrameFlags, FrameHeader, GrabFlags, MsgType, ProtocolError
 
@@ -203,6 +204,7 @@ class ClientSession(threading.Thread):
         self.peer = peer
         self.name_ = ""
         self.version = ""
+        self._announced = ""  # 已通知過的安裝檔版本（避免每次心跳重推）
         self.hostname = ""
         self.machine_id = ""
         self.pid = 0
@@ -243,6 +245,7 @@ class ClientSession(threading.Thread):
                         reason = "heartbeat"
                         break
                     self._missed_pings += 1
+                    self._announce_update()
                     self.send(MsgType.PING)
                     continue
                 self._missed_pings = 0
@@ -307,6 +310,7 @@ class ClientSession(threading.Thread):
             "ok": True, "protocol": P.PROTOCOL_VERSION, "server": "VisionSequence", "server_version": CLIENT_PROTO_PKG_VERSION, "name": self.name_,
             "local": self.local, "prefer": {"encoding": P.ENCODING_NAMES[self.prefer_encoding], "shm": self.local},
             "max_frame_bytes": self.hub.max_frame_bytes(), "heartbeat_s": P.HEARTBEAT_S, "stream": wanted,
+            "update": self._update_payload(),
         }))
         self.sock.settimeout(P.HEARTBEAT_S)
         for cid, on in wanted.items():
@@ -409,6 +413,8 @@ class ClientSession(threading.Thread):
             if ch is not None:
                 with self._lock:
                     ch.streaming = bool(body.get("enabled")) and bool(body.get("ok", True))
+        elif mtype == MsgType.UPDATE_PULL:
+            self._on_update_pull(req_id, P.loads_json(header))
         elif mtype == MsgType.ERROR:
             body = P.loads_json(header)
             code = str(body.get("code") or "error")
@@ -416,11 +422,47 @@ class ClientSession(threading.Thread):
             self._resolve(req_id, error=CaptureError(f"擷取端回報：{message}", code=code))
             if req_id == 0:
                 log.warning("擷取端 %s 回報錯誤 %s：%s", self.name_, code, message)
-        elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.SLOT_FREE, MsgType.TEST_RESULT):
+        elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.SLOT_FREE, MsgType.TEST_RESULT, MsgType.UPDATE, MsgType.UPDATE_DATA):
             raise ProtocolError(f"擷取端不該送 {MsgType(mtype).name}")
         else:
             raise ProtocolError(f"未知的訊息型別 {mtype}")
         return True
+
+    # ---- 自動更新（安裝檔走同一條已驗證的連線送，不必另開埠或再驗一次金鑰）----
+    def _update_payload(self) -> dict[str, Any]:
+        data = build.info()
+        if not data.get("available"):
+            return {"available": False}
+        self._announced = str(data["version"])
+        return {
+            "available": P.is_newer(str(data["version"]), self.version), "version": data["version"], "filename": data["filename"],
+            "size": data["size"], "sha256": data["sha256"], "built_at": data["built_at"], "chunk": P.UPDATE_CHUNK_BYTES,
+        }
+
+    def _announce_update(self) -> None:
+        """伺服端重新建置了（manifest 版本變了）就主動通知已連線的擷取端。"""
+        data = build.info()
+        version = str(data.get("version") or "")
+        if not data.get("available") or version == self._announced:
+            return
+        self._announced = version
+        if not P.is_newer(version, self.version):
+            return
+        try:
+            self.send(MsgType.UPDATE, 0, P.dumps_json(self._update_payload()))
+            log.info("已通知擷取端 %s 有新版 %s（目前 %s）", self.name_, version, self.version or "?")
+        except CaptureError:
+            pass
+
+    def _on_update_pull(self, req_id: int, body: dict[str, Any]) -> None:
+        offset = int(body.get("offset") or 0)
+        length = min(int(body.get("length") or P.UPDATE_CHUNK_BYTES), P.UPDATE_CHUNK_BYTES)
+        try:
+            chunk, eof = build.read_chunk(offset, length)
+        except (OSError, ValueError) as exc:
+            self.send(MsgType.UPDATE_DATA, req_id, P.dumps_json({"offset": offset, "eof": True, "error": str(exc)}))
+            return
+        self.send(MsgType.UPDATE_DATA, req_id, P.dumps_json({"offset": offset, "eof": eof}), chunk)
 
     def _on_frame(self, mtype: int, req_id: int, hdr: FrameHeader, plen: int) -> None:
         started = time.perf_counter()
