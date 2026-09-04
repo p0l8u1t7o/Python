@@ -93,11 +93,7 @@ const zhHant = {
     deleteMessage: '確定要刪除「{{name}}」？其擁有的流程會改為共用流程。',
   },
   lock: {
-    title: '引擎鎖定',
     short: '引擎已鎖定',
-    locked: '已鎖定',
-    unlocked: '未鎖定',
-    holder: '持有者',
     integrator: '整合方',
     noReason: '未註明原因',
     bannerTitle: '引擎已由 {{holder}} 鎖定（{{reason}}）',
@@ -105,13 +101,6 @@ const zhHant = {
     expiresAt: '預計 {{time}} 自動解鎖',
     execDisabled: '引擎已由 {{holder}} 鎖定，目前無法執行',
     unlock: '解鎖',
-    lock: '鎖定引擎',
-    reason: '原因',
-    reasonPlaceholder: '例如：整合方校正相機',
-    ttl: '自動解鎖（秒）',
-    settingsHint: '鎖定後所有連續執行會停止，使用者只能編輯流程；整合方（API 金鑰）與持有者仍可執行',
-    adminOnly: '只有管理員或整合方能鎖定引擎',
-    acquired: '引擎已鎖定',
     released: '引擎已解鎖',
   },
   common: {
@@ -587,7 +576,7 @@ const zhHant = {
       codeAdminOnly: '只有管理員能編輯腳本；您可以檢視並執行已核准的腳本',
       jsonInvalid: 'JSON 格式錯誤',
       connectionHint: '從清單選連線名稱，或自行輸入（也可填 id）',
-      connectionNone: '尚無連線：到「連線」頁建立',
+      connectionNone: '尚無連線：到「外部整合」的 Modbus 或 TCP 頁建立',
     },
     toast: {
       saved: '流程已儲存',
@@ -765,7 +754,7 @@ const zhHant = {
   },
   connections: {
     title: '連線',
-    subtitle: 'Modbus 主站／從站、上位機 TCP 的連線（流程用「寫入 Modbus」「讀取 Modbus」以名稱引用）',
+    subtitle: '這種整合方式的主動輸出目的地；流程工具以名稱引用。',
     create: '新增連線',
     empty: '尚無連線',
     kind: '種類',
@@ -822,7 +811,6 @@ const zhHant = {
     },
     triggerModes: { rising: '邊緣觸發（0 變非零才跑一次）', nonzero: '持續觸發（只要非零就一直跑）' },
     wordOrders: { big: 'big（高字組在前）', little: 'little（低字組在前）' },
-    goIntegration: 'Modbus 頁說明位址格式與主站／從站的差別',
   },
   viewer: {
     noImage: '尚無影像',
@@ -942,9 +930,6 @@ const zhHant = {
     language: '語言',
     capacity: '執行緒池',
     capacityHint: '同時執行的流程上限（VISION_MAX_WORKERS）',
-    help: '自動化接口',
-    helpText:
-      'HTTP：POST /api/vision/flows/{id}/run（multipart 附 image 檔，或 JSON {"context": {...}}），wait=1 同步回傳 RunReport；wait=0 立即回 202。\nSSE：GET /api/vision/flows/{id}/stream 即時接收 run_finished 事件。\nTCP：由外掛工具或整合程式呼叫同一組 HTTP API；影像來源 kind=upload 可用 POST /api/vision/sources/{id}/push 送圖。',
     saved: '設定已儲存',
   },
   templates: {
@@ -1063,16 +1048,13 @@ const zhHant = {
   integration: {
     title: '外部整合',
     subtitle: '給外部整合方的接口說明與測試工具',
-    tabs: { http: 'HTTP API', tcp: 'TCP 指令', events: '事件監看', lock: '引擎鎖定', format: '回傳格式', modbus: 'Modbus', connections: '連線', capture: '擷取端' },
+    tabs: { http: 'HTTP API', tcp: 'TCP 指令', events: '事件監看', modbus: 'Modbus', capture: '擷取端' },
     desc: {
       http: '外部系統以 HTTP 觸發執行並取回結果；可在這裡直接試打並產生 curl／Python／C# 片段。',
       tcp: '設備最容易接的介面：一行指令、一行 JSON 回應。',
       events: '訂閱 SSE 事件串流，即時看到每一次執行的結果。',
       modbus: '位址格式與對映表：把判定與量測值寫進線圈與暫存器，或從暫存器讀回料號與觸發旗標。',
-      connections: '主動輸出的目的地：Modbus 主站／從站、上位機 TCP、模擬 DIO 與外掛。',
       capture: '在相機所在的電腦驅動相機並把影像送進來的擷取端程式。',
-      lock: '整合方鎖住硬體時，其他人只能編輯不能執行。',
-      format: 'RunReport 的欄位與錯誤碼對照。',
     },
     trace: {
       dir: { in: '收到（外部送進來）', out: '送出（平台送出去）' },
@@ -1163,17 +1145,9 @@ const zhHant = {
       cols: { time: '時間', type: '事件', flow: '流程', status: '狀態', ms: 'ms', detail: '內容' },
       empty: '尚無事件；請先執行流程一次',
     },
-    lockTab: {
-      current: '目前鎖定狀態',
-      hint: '整合方用 API 金鑰鎖定引擎後，使用者只能編輯無法執行；連續執行會全部停止。',
-      lockExample: '鎖定（curl）',
-      unlockExample: '解鎖（curl）',
-      statusExample: '查詢',
-      goSettings: '到設定頁鎖定／解鎖',
-    },
     modbus: {
       rolesTitle: '兩種角色',
-      rolesHint: '依 PLC 的接法選一種；兩種都在「連線」頁建立。',
+      rolesHint: '依 PLC 的接法選一種；兩種都在上方的連線清單建立。',
       clientTitle: '主站（modbus_tcp）：本平台連到 PLC',
       clientHint: '本平台當 client，主動連到設備的 IP 與埠去讀寫對方的線圈與暫存器。適合 PLC 已經是 Modbus 從站的場合。',
       serverTitle: '從站（modbus_server）：本平台開埠等 PLC 來',
@@ -1182,8 +1156,7 @@ const zhHant = {
       toolLines: ['寫入 Modbus（write_modbus）：把判定、具名輸出或輸入埠的值依對映表寫出去。', '讀取 Modbus（read_modbus）：從連線讀線圈與暫存器；主站模式是讀設備，從站模式是讀主站寫進來的值（料號、觸發旗標），可勾選同時放進具名輸出。'],
       readExample: '讀取表（read_modbus）',
       title: '主動輸出（Modbus TCP／上位機）',
-      intro: '「寫入 Modbus」（write_modbus）工具在流程內把判定、具名輸出或輸入埠的值寫到連線；連線在「連線」頁建立，工具的 connection 參數填連線名稱。寫入失敗預設只記警告（run 照常），可改為讓 run 失敗。',
-      goConnections: '到連線頁',
+      intro: '「寫入 Modbus」（write_modbus）工具在流程內把判定、具名輸出或輸入埠的值寫到連線；連線在上方的清單建立，工具的 connection 參數填連線名稱。寫入失敗預設只記警告（run 照常），可改為讓 run 失敗。',
       mappingTitle: 'mapping 格式',
       mappingHint: '陣列，每項一個寫入：src 是值來源，address 是位址；可加 dtype、scale、offset 或直接給常數 value。',
       srcTitle: 'src（值來源）',

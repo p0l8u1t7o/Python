@@ -165,7 +165,10 @@
 - **連線的自動啟動**：`Writer.listens=True`（從站）或有觸發設定的連線由 `writers.autostart()` 在 `manage.py serve` 啟動時開好、建立／修改時 `ensure_started()` 立刻開——以前要等有人按「測試」或流程跑過一次，伺服器重開後 PLC 就連不上。開不起來的原因存在 `_start_errors` 並出現在連線狀態的 `error`（埠被佔用最常見）。
 - **連線預先載入**：工具以 `Tool.connection_params` 宣告哪些參數是連線名稱，`prefetch_connections` 照這個掃（以前寫死 `write_modbus`，只讀不寫的流程拿不到連線會靜默降級）。新增會用連線的工具記得宣告。
 - **追蹤的噪音**：`Writer.read(..., quiet=True)` 成功不進追蹤（失敗照記）——觸發輪詢每秒幾十次，記下去會把真正的命令沖出 300 筆的環形緩衝。TraceLog 的箭頭：`←`＝direction in（外部送進來）、`→`＝out（平台送出去）。
-- **前端**：`/integration/<section>` 每種整合方式一個頁面（`pages/integration/*`＋`sections.ts` 的清單，側欄 AppShell 讀同一份清單畫樹狀選單，展開狀態存 `vs.navOpen`）；外框 `IntegrationLayout` 用 `<Outlet context={info}>` 把整合資訊傳下去，子頁面用 `shared.useSectionInfo()`（單獨 render 時自己查）。`components/integration/TraceLog.tsx` 每 1.5 秒輪詢一次。舊 `?tab=` 網址自動轉址。
+- **前端**：`/integration/<section>` 五個頁面（http／tcp／events／modbus／capture，`pages/integration/*`＋`sections.ts` 的清單，側欄 AppShell 讀同一份清單畫樹狀選單，展開狀態存 `vs.navOpen`）；外框 `IntegrationLayout` 用 `<Outlet context={info}>` 把整合資訊傳下去，子頁面用 `shared.useSectionInfo()`（單獨 render 時自己查）。`components/integration/TraceLog.tsx` 每 1.5 秒輪詢一次。舊 `?tab=` 與已移除的 `/integration/{connections,lock,format}`、`/connections` 都會轉址（整合子路由有 `path: '*'` 兜底）。
+- **連線由用到它的整合頁管理**（沒有獨立的連線頁）：`comm.writers.kinds()` 每個 kind 帶 `section`（modbus_tcp／modbus_server／dio_sim → modbus；tcp_client 與**沒宣告 section 的外掛** → tcp，`FALLBACK_SECTION`），前端 `components/integration/ConnectionsSection.tsx` 依 `section` 過濾清單與可建立的 kind；kind 完全不認得的舊連線落到 tcp 頁，才不會有刪不掉的孤兒。新增會用連線的外掛請宣告 `Writer.section`。
+- **引擎鎖定是整合指令**：HTTP `POST/DELETE /vision/lock` 與 TCP `LOCK [reason= ttl=]`／`UNLOCK`（`STATUS` 不帶流程時也回 lock）；兩邊共用 `EngineLock.acquire()`／`release()`（停掉所有連續執行＋發 SSE `lock` 事件）。網頁沒有鎖定頁與鎖定按鈕，只有 `LockBanner` 顯示持有者與原因，管理員或持有者可從橫幅解鎖。TCP 的稽核身分是 `tcp_server._TcpActor`（記成 integrator 而不是 system）。
+- **回傳格式**：RunReport 欄位、具名輸出範例與 HTTP 錯誤碼在 HTTP 頁（`HttpPage.FormatCards`），TCP 失敗碼在 TCP 頁（`TcpPage.TcpCodesCard`）；設備一律用 `code` 分支，訊息文字會隨版本潤飾。
 
 ### 批次測試（apps/vision/batch）
 - **影像集是測試資料、可測任一流程**：`BatchSet.flow` 只是建立歸屬（淘汰按它計），`BatchRun.flow`（migration 0013，null＝影像集的流程）記錄這次用哪個流程測；`store.run_flow(run)` 是唯一取用點（jobs 執行、preview、to-recipe 都走它）。`GET /batch/sets` 的 `flow_id` 選填（省略＝所有看得見的），所以前端影像集清單跨流程、頂列選單是「測試流程」；沒帶 graph 又換流程時不沿用 parent 的參數。前端 `useBatchSets()` 不分流程（快取鍵 `['batch-sets']`），清單重抓中不改選取（否則剛建立的影像集選取會被舊清單蓋掉），`startRun` 只在同一影像集內帶 `parent_run_id`。

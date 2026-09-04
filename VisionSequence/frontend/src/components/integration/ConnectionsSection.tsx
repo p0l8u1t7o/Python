@@ -1,13 +1,13 @@
 /**
- * 連線（ConnectionsSection）：Modbus TCP／上位機的主動輸出連線（apps/comm）。
- * 「外部整合 ▸ 連線」頁（/integration/connections）的內容；本檔只輸出區塊，外框與命令追蹤在 pages/integration/ConnectionsPage.tsx。
+ * 連線：主動輸出的目的地（apps/comm）。**由各自的整合頁管理**——`section` 決定這一頁收哪些
+ * kind（modbus：modbus_tcp／modbus_server／dio_sim；tcp：tcp_client 與所有沒宣告的外掛），
+ * 後端 `comm.writers.kinds()` 是唯一事實來源，所以不會有連線找不到頁面而刪不掉。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
  * modbus_tcp（主站，連到 PLC）／modbus_server（從站，本機開埠讓 PLC 來讀寫）: host/port/unit_id/timeout_s|size/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
  * dio_sim: channels；plugin: class。管理員才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
 import { Activity, Cable, Pencil, PenLine, Plug, Plus, Trash2 } from 'lucide-react'
 
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, Select, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
@@ -78,7 +78,7 @@ function ResultBox({ result }: { result: ConnectionOpResult | null }) {
   )
 }
 
-export function ConnectionsSection() {
+export function ConnectionsSection({ section }: { section: string }) {
   const { t } = useTranslation()
   const toast = useToast()
   const auth = useAuth()
@@ -91,7 +91,10 @@ export function ConnectionsSection() {
   const [stateView, setStateView] = useState<{ conn: Connection; addresses: string; result: ConnectionOpResult | null; loading: boolean } | null>(null)
   const isAdmin = auth.isAdmin
 
-  const kindList = kinds.data ?? []
+  // 這一頁只管自己的 kind；後端沒宣告 section 的（舊外掛）一律歸 tcp 那頁，才不會有孤兒連線。
+  const kindList = useMemo(() => (kinds.data ?? []).filter((k) => (k.section || 'tcp') === section), [kinds.data, section])
+  const ownKinds = useMemo(() => new Set(kindList.map((k) => k.kind)), [kindList])
+  const rows = useMemo(() => (connections.data?.items ?? []).filter((c) => ownKinds.has(c.kind) || (section === 'tcp' && !(kinds.data ?? []).some((k) => k.kind === c.kind))), [connections.data, ownKinds, kinds.data, section])
   const fieldsFor = useMemo(() => new Map(kindList.map((k) => [k.kind, k.fields])), [kindList])
 
   function defaultsFor(kind: string): Record<string, unknown> {
@@ -101,7 +104,7 @@ export function ConnectionsSection() {
     return out
   }
   function openCreate() {
-    const kind = kindList.find((k) => k.kind === 'dio_sim')?.kind ?? kindList[0]?.kind ?? 'dio_sim'
+    const kind = kindList[0]?.kind ?? 'dio_sim'
     setEditing({ id: null, body: { name: '', kind, config: defaultsFor(kind), is_enabled: true } })
   }
 
@@ -174,7 +177,7 @@ export function ConnectionsSection() {
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted">{t('connections.subtitle')} · <Link to="/integration/modbus" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></p>
+        <p className="text-sm text-muted">{t('connections.subtitle')}</p>
         <span title={isAdmin ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!isAdmin} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>
       </div>
       <Card className="overflow-hidden">
@@ -193,16 +196,16 @@ export function ConnectionsSection() {
               <Th align="right">{t('common.actions')}</Th>
             </THead>
             <TBody>
-              {connections.data.items.length === 0 ? (
+              {rows.length === 0 ? (
                 <EmptyRow colSpan={6} message={<span className="inline-flex flex-col items-center gap-1"><Cable className="size-5" />{t('connections.empty')}</span>} />
               ) : (
-                connections.data.items.map((c) => {
+                rows.map((c) => {
                   const st = c.status ?? {}
                   const connected = st.connected === true || st.open === true
                   return (
                     <Tr key={c.id}>
                       <Td className="font-medium">{c.name} <span className="text-xs text-muted">#{c.id}</span></Td>
-                      <Td><Badge tone="info">{kindList.find((k) => k.kind === c.kind)?.label ?? c.kind}</Badge></Td>
+                      <Td><Badge tone="info">{(kinds.data ?? []).find((k) => k.kind === c.kind)?.label ?? c.kind}</Badge></Td>
                       <Td><code className="block max-w-xs truncate font-mono text-xs text-muted" title={JSON.stringify(c.config)}>{JSON.stringify(c.config)}</code></Td>
                       <Td>
                         <span className="flex items-center gap-1.5">

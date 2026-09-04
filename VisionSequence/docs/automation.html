@@ -175,8 +175,10 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <tr><th>Command</th><th>Response</th></tr>
 <tr><td><code>RUN 1</code> / <code>RUN hole_count lot=A1</code></td><td><code>{"ok":true,"status":"ok","judge":"OK","outputs":{…},"duration_ms":12.3,"run_id":"…"}</code></td></tr>
 <tr><td><code>TRIGGER 1</code> / <code>TRIGGER 1 lot=A1</code></td><td><code>{"ok":true,"queued":true,"run_id":"…"}</code> — it does not wait; collect the result with <code>GET /api/vision/runs/{run_id}</code></td></tr>
-<tr><td><code>STATUS</code> / <code>STATUS 1</code></td><td>Capacity, or that flow's statistics</td></tr>
+<tr><td><code>STATUS</code> / <code>STATUS 1</code></td><td>Capacity and the engine lock, or that flow's statistics</td></tr>
 <tr><td><code>START 1</code> / <code>STOP 1</code></td><td>Continuous mode</td></tr>
+<tr><td><code>LOCK</code> / <code>LOCK reason="camera calibration" ttl=600</code></td><td><code>{"ok":true,"lock":{…}}</code> — hold the hardware: the web interface can edit but not run, and a banner says who holds it. <code>ttl</code> is an optional auto-release in seconds.</td></tr>
+<tr><td><code>UNLOCK</code></td><td>Release the lock</td></tr>
 <tr><td><code>LIST</code></td><td>Every flow</td></tr>
 <tr><td><code>PING</code></td><td><code>{"ok":true,"pong":true}</code></td></tr>
 </table>
@@ -232,10 +234,14 @@ GET /api/vision/events?since=&lt;seq&gt;                everything</pre>
 <p>Locking:</p>
 <pre>POST   /api/vision/lock   X-API-Key: ...   {"reason": "production run", "ttl_s": 28800}   → lock (ttl optional, auto-releases)
 GET    /api/vision/lock                                                                  → {"locked", "holder", "reason", "locked_at", "expires_at"}
-DELETE /api/vision/lock   X-API-Key: ...                                                 → unlock</pre>
+DELETE /api/vision/lock   X-API-Key: ...                                                 → unlock
+
+TCP:   LOCK reason="production run" ttl=28800     → {"ok": true, "lock": {...}}
+       UNLOCK                                     → {"ok": true, "lock": {...}}
+       STATUS                                     → capacity plus the current lock</pre>
 <ul>
 <li>While locked, any user — administrators included — calling run, preview or continuous gets <strong>423</strong> <code>{"error": {"code": "engine_locked", ...}}</code>, but can still sign in, edit and save flows. Locking also stops every continuous run in progress.</li>
-<li>An administrator can lock and unlock from the settings page as well, for maintenance. The holder can always execute.</li>
+<li>The lock is an <strong>integration command</strong>, over HTTP or TCP; the web interface does not take it. While it holds, a banner across the top of every page says who has it and why, and an administrator or the holder can release it from there. The holder can always execute.</li>
 <li>The recommended pattern: <code>POST lock</code> with a ttl at the start of the start-up or changeover program, and <code>DELETE lock</code> when the line stops.</li>
 </ul>
 
@@ -243,16 +249,13 @@ DELETE /api/vision/lock   X-API-Key: ...                                        
 <p>"Integration" in the web interface expands into a tree in the sidebar, and every method is its own page with its own URL, so you can bookmark or share it directly:</p>
 <table>
 <tr><th>Page</th><th>URL</th><th>Contents</th></tr>
-<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>Try <code>POST /flows/{id}/run</code> and generate curl, Python or C# snippets</td></tr>
-<tr><td>TCP commands</td><td><code>/integration/tcp</code></td><td>Send one line, see one JSON response, with the common commands and a history</td></tr>
+<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>Try <code>POST /flows/{id}/run</code>, generate curl, Python or C# snippets, and read the RunReport fields and error codes</td></tr>
+<tr><td>TCP commands</td><td><code>/integration/tcp</code></td><td>Send one line, see one JSON response, with the common commands, a history, the failure codes and the outgoing TCP connections</td></tr>
 <tr><td>Events</td><td><code>/integration/events</code></td><td>The SSE event stream</td></tr>
-<tr><td>Modbus</td><td><code>/integration/modbus</code></td><td>Client versus server, address format, the write and read mapping tables</td></tr>
-<tr><td>Connections</td><td><code>/integration/connections</code></td><td>Create and test outgoing connections (the old <code>/connections</code> redirects here)</td></tr>
+<tr><td>Modbus</td><td><code>/integration/modbus</code></td><td>The Modbus connections (client, server and simulated digital I/O), client versus server, address format, the write and read mapping tables</td></tr>
 <tr><td>Capture clients</td><td><code>/integration/capture</code></td><td>Download the capture client and see which ones are connected</td></tr>
-<tr><td>Engine lock</td><td><code>/integration/lock</code></td><td>Lock and unlock</td></tr>
-<tr><td>Result format</td><td><code>/integration/format</code></td><td>RunReport fields and error codes</td></tr>
 </table>
-<p>The old <code>/integration?tab=modbus</code> style URLs redirect to the new ones automatically.</p>
+<p><strong>Connections are managed by the integration that uses them</strong>: Modbus client, Modbus server and simulated digital I/O on the Modbus page; host TCP and plugin outputs on the TCP page. There is no separate connections page. Old URLs — <code>/connections</code>, <code>/integration/connections</code>, <code>/integration/lock</code>, <code>/integration/format</code> and the <code>/integration?tab=modbus</code> style — all redirect.</p>
 
 <h2 id="trace">5c. Commands and results (debugging)</h2>
 <p>Every integration page has <strong>Commands and results</strong> at the bottom. While the page is open, the commands and replies this interface handles are listed live — time, direction (→ came in from outside, ← went out from the platform), source, a summary and the duration, with failures highlighted. Click a row to expand the full JSON.</p>

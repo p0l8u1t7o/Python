@@ -633,6 +633,9 @@ export interface ConnectionKind {
   kind: string
   label: string
   fields: string[]
+  /** 由哪個整合頁管理（/integration/<section>）；後端 comm.writers.kinds() 決定。 */
+  section?: string
+  description?: string
 }
 
 export interface ConnectionOpResult {

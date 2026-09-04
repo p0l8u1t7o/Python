@@ -16,7 +16,6 @@ DELETE /vision/lock           整合方、管理員或持有者
 
 from __future__ import annotations
 
-from datetime import timedelta
 
 from django.contrib.auth import authenticate as dj_authenticate
 from django.contrib.auth.models import User
@@ -306,19 +305,7 @@ def acquire_lock(request: HttpRequest, payload: LockIn):
     holder = "integrator" if p.is_integrator else p.name
     if lock.locked and lock.holder != holder and not p.is_integrator:
         raise Conflict(f"The engine is locked by {lock.holder}", code="already_locked", details=lock.to_dict())
-    lock.locked = True
-    lock.holder = holder
-    lock.reason = payload.reason[:300]
-    lock.locked_at = timezone.now()
-    lock.expires_at = timezone.now() + timedelta(seconds=int(payload.ttl_s)) if payload.ttl_s else None
-    lock.save()
-    # 鎖定即停掉所有連續執行：硬體要留給整合方。
-    from apps.vision.runner import bus, runner
-
-    for fid in list(runner._runtimes):
-        if runner.is_continuous(fid):
-            runner.stop_continuous(fid)
-    bus.publish({"type": "lock", "lock": lock.to_dict()})
+    lock.acquire(holder, payload.reason, payload.ttl_s)
     audit.record(request, "lock.acquire", summary=lock.reason or holder, target_type="engine", target_name=holder)
     return lock.to_dict()
 
@@ -329,10 +316,6 @@ def release_lock(request: HttpRequest):
     lock = EngineLock.current()
     if lock.locked and not (p.is_admin or lock.holder == p.name):
         raise APIError("Only an integrator, an administrator or the lock holder can unlock", code="permission_denied", status_code=403)
-    lock.locked, lock.holder, lock.reason, lock.locked_at, lock.expires_at = False, "", "", None, None
-    lock.save()
-    from apps.vision.runner import bus
-
-    bus.publish({"type": "lock", "lock": lock.to_dict()})
+    lock.release()
     audit.record(request, "lock.release", target_type="engine")
     return lock.to_dict()

@@ -5,8 +5,10 @@
         {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
     TRIGGER <flow> [key=value ...]         只觸發不等結果；回 {"ok": true, "queued": true, "run_id": "..."}
                                            結果之後用 GET /api/vision/runs/{run_id} 取（排隊中回 status="queued"）
-    STATUS [flow]                          統計；不帶流程回容量（含 max_queue_per_flow）
+    STATUS [flow]                          統計；不帶流程回容量（含 max_queue_per_flow 與 lock）
     START <flow> / STOP <flow>             連續模式
+    LOCK [reason="..." ttl=秒]             鎖定引擎：網頁端只能編輯不能執行，整合方照常
+    UNLOCK                                 解鎖
     LIST                                   所有流程
     PING                                   {"ok": true, "pong": true}
 錯誤回 {"ok": false, "error": "...", "code": "..."}；code 是穩定的英數字串，設備請用它分支
@@ -35,12 +37,25 @@ from typing import Any
 import orjson
 from django.db import close_old_connections
 
+from apps.accounts.models import EngineLock
+from apps.accounts.security import Principal
+from apps.core import audit
 from apps.core.errors import APIError
 from apps.vision import trace
 from apps.vision.models import Flow
 from apps.vision.runner import runner
 
 log = logging.getLogger(__name__)
+
+
+class _TcpActor:
+    """稽核用的假 request：TCP 介面在受信任的產線網路上，身分一律記成整合方而不是 system。"""
+
+    auth = Principal(kind="integrator")
+    META: dict[str, str] = {}
+
+
+_ACTOR = _TcpActor()
 
 
 def _find_flow(ident: str) -> Flow | None:
@@ -89,11 +104,25 @@ def handle_command(line: str) -> dict[str, Any]:
     try:
         if cmd == "PING":
             return {"ok": True, "pong": True}
+        if cmd in ("LOCK", "UNLOCK"):
+            lock = EngineLock.current()
+            if cmd == "UNLOCK":
+                lock.release()
+                audit.record(_ACTOR, "lock.release", target_type="engine")
+                return {"ok": True, "lock": lock.to_dict()}
+            try:
+                args = _parse_kv(parts[1:])
+            except BadArgument as bad:
+                return {"ok": False, "error": f"The argument '{bad.token}' is not key=value; quote a value containing spaces", "code": "bad_argument"}
+            ttl = args.pop("ttl", None) or args.pop("ttl_s", None)
+            lock.acquire("integrator", str(args.pop("reason", "") or ""), int(ttl) if str(ttl or "").strip().isdigit() else None)
+            audit.record(_ACTOR, "lock.acquire", summary=lock.reason or "integrator", target_type="engine", target_name="integrator")
+            return {"ok": True, "lock": lock.to_dict()}
         if cmd == "LIST":
             return {"ok": True, "flows": [{"id": f.id, "name": f.name, "enabled": f.is_enabled} for f in Flow.objects.all()]}
         if cmd in ("RUN", "TRIGGER", "START", "STOP", "STATUS"):
             if cmd == "STATUS" and len(parts) == 1:
-                return {"ok": True, **runner.capacity()}
+                return {"ok": True, **runner.capacity(), "lock": EngineLock.current().to_dict()}
             if len(parts) < 2:
                 return {"ok": False, "error": f"{cmd} needs a flow id or name", "code": "missing_argument"}
             flow = _find_flow(parts[1])

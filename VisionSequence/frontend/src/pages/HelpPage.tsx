@@ -42,13 +42,13 @@ const GLOSSARY_PAGES: [string, string, string, string][] = [
   ['Image sources', '/sources', 'SourcesPage', 'Cameras, folders and synthetic sources'],
   ['Assets', '/assets', 'AssetsPage', 'Template images and model files'],
   ['Users', '/users', 'UsersPage', 'Account management (administrators)'],
-  ['Settings', '/settings', 'SettingsPage', 'Keys, theme, language, the engine lock, the password'],
+  ['Settings', '/settings', 'SettingsPage', 'Keys, theme, language, the account and the password'],
   ['Help', '/help', 'HelpPage', 'Definitions and how-to'],
   ['Statistics', '/flows/:id/stats', 'StatsPage', 'Run history, the yield trend, hourly OK/NG'],
   ['Teach page', '/flows/:id/teach', 'TeachPage', 'Every teaching parameter grouped by step with a live preview, the recipe dropdown, and "mark as commissioned"'],
   ['Golden Set', '/flows/:id/golden', 'GoldenPage', 'Image cases with expectations, and regression testing (regressed cases first)'],
   ['Batch test', '/batch', 'BatchPage', 'Run an image set through a flow; every run is stored, with expected labels, insights, tuning, comparison and AI consultation'],
-  ['Integration', '/integration', 'IntegrationLayout', 'HTTP and TCP testing, event monitoring, Modbus connections and outgoing output, the result format, the capture client download and the clients connected'],
+  ['Integration', '/integration', 'IntegrationLayout', 'HTTP testing with the result format, TCP commands with their failure codes, event monitoring, Modbus and TCP connections, and the capture client'],
   ['Audit log', '/audit', 'AuditPage', 'Who changed what and when (administrators)'],
   ['Sign in', '/login', 'LoginPage', 'Sign in, or create the first administrator'],
   ['Deep learning', '/dl', 'DlPage', 'Teaching projects: samples, labelling, datasets, training and model export'],
@@ -148,7 +148,7 @@ const AUTOMATION = [
   { title: 'Scratch image / reset', code: 'POST /api/vision/flows/{id}/scratch-image  (multipart image) -> {ref,width,height,name}\nDELETE /api/vision/flows/{id}/recent -> clears the in-memory run records and statistics (SSE sends cleared)' },
   { title: 'Event stream (SSE)', code: 'GET /api/vision/flows/{id}/stream?since=<seq>\nEvents: run_started / run_finished (with run) / stats / continuous / lock / cleared / ping (a 15 second heartbeat)' },
   { title: 'Capture client (the camera is on another PC)', code: 'Image sources -> "Download capture client" -> unzip and run VisionSequenceCapture.exe on the camera\'s PC\nConnection: the server address and port 9100 (VISION_CAPTURE_PORT), a client name, and the key when the server sets VISION_CAPTURE_AUTH or API_KEY\nChannel: choose the camera, open it, start acquiring; draw an ROI to send only that region\nWeb: add an image source of kind=capture {client, channel, mode: on_demand|stream, timeout_ms, fresh, encoding}\nHeadless: VisionSequenceCapture-console.exe --headless --connect  (for Task Scheduler or a service wrapper)' },
-  { title: 'TCP', code: 'One command per line (terminated with \\n, case-insensitive), one JSON reply per line:\nRUN <flow id or name> [key=value ...] -> {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}\nTRIGGER <flow>   -> trigger without waiting, {"ok": true, "queued": true}\nSTATUS [flow]    -> statistics\nSTART <flow> / STOP <flow> -> continuous mode\nLIST / PING\nImages are pushed into an image source of kind=upload with POST /api/vision/sources/{id}/push.' },
+  { title: 'TCP', code: 'One command per line (terminated with \\n, case-insensitive), one JSON reply per line:\nRUN <flow id or name> [key=value ...] -> {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}\nTRIGGER <flow>   -> trigger without waiting, {"ok": true, "queued": true}\nSTATUS [flow]    -> statistics; without a flow, the capacity and the engine lock\nSTART <flow> / STOP <flow> -> continuous mode\nLOCK [reason=\"...\" ttl=600] / UNLOCK -> hold the hardware: the interface can edit but not run\nLIST / PING\nImages are pushed into an image source of kind=upload with POST /api/vision/sources/{id}/push.' },
 ]
 
 const ACCOUNTS = [
@@ -156,7 +156,7 @@ const ACCOUNTS = [
   'Administrator: manages accounts, connections and system settings, and can lock or unlock the engine. Engineer (the default): creates and edits flows, sources, assets, deep-learning teaching, batch tests and Golden Sets. Operator: runs inspections, starts and stops continuous mode, changes over between recipes, and adjusts on-site parameters on the teach page.',
   'A flow belongs to the line, not to a person: every engineer can see and edit every flow, and the Owner column only records who created it.',
   'An integrator (an automation system) calls with an API key (X-API-Key) and can always execute a flow.',
-  'Engine lock: once an integrator or an administrator locks it on the Settings page, every continuous run stops and everyone else can edit but not preview or run (the toolbar says the engine is locked). A lock can carry a timeout after which it releases itself.',
+  'Engine lock: an integrator takes it over HTTP (POST /api/vision/lock) or TCP (LOCK), which stops every continuous run and leaves everyone else able to edit but not preview or run. A banner across the top of the interface says who holds it and why; an administrator or the holder can release it from there, and a lock can carry a timeout after which it releases itself.',
   'Change your password from the user menu at the bottom left; an administrator can reset someone else\'s password and disable an account on the Users page.',
 ]
 

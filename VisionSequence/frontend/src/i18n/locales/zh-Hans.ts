@@ -93,11 +93,7 @@ const zhHans = {
     deleteMessage: '确定要删除「{{name}}」？其拥有的流程会改为共用流程。',
   },
   lock: {
-    title: '引擎锁定',
     short: '引擎已锁定',
-    locked: '已锁定',
-    unlocked: '未锁定',
-    holder: '持有者',
     integrator: '集成方',
     noReason: '未注明原因',
     bannerTitle: '引擎已由 {{holder}} 锁定（{{reason}}）',
@@ -105,13 +101,6 @@ const zhHans = {
     expiresAt: '预计 {{time}} 自动解锁',
     execDisabled: '引擎已由 {{holder}} 锁定，目前无法运行',
     unlock: '解锁',
-    lock: '锁定引擎',
-    reason: '原因',
-    reasonPlaceholder: '例如：集成方校正相机',
-    ttl: '自动解锁（秒）',
-    settingsHint: '锁定后所有连续运行会停止，用户只能编辑流程；集成方（API 密钥）与持有者仍可运行',
-    adminOnly: '只有管理员或集成方能锁定引擎',
-    acquired: '引擎已锁定',
     released: '引擎已解锁',
   },
   common: {
@@ -587,7 +576,7 @@ const zhHans = {
       codeAdminOnly: '只有管理员能编辑脚本；您可以查看并执行已核准的脚本',
       jsonInvalid: 'JSON 格式错误',
       connectionHint: '从清单选连接名称，或自行输入（也可填 id）',
-      connectionNone: '尚无连接：到「连接」页创建',
+      connectionNone: '尚无连接：到「外部集成」的 Modbus 或 TCP 页创建',
     },
     toast: {
       saved: '流程已保存',
@@ -765,7 +754,7 @@ const zhHans = {
   },
   connections: {
     title: '连接',
-    subtitle: 'Modbus 主站／从站、上位机 TCP 的连接（流程用「写入 Modbus」「读取 Modbus」以名称引用）',
+    subtitle: '这种集成方式的主动输出目的地；流程工具以名称引用。',
     create: '添加连接',
     empty: '尚无连接',
     kind: '种类',
@@ -822,7 +811,6 @@ const zhHans = {
     },
     triggerModes: { rising: '边缘触发（0 变非零才跑一次）', nonzero: '持续触发（只要非零就一直跑）' },
     wordOrders: { big: 'big（高字组在前）', little: 'little（低字组在前）' },
-    goIntegration: 'Modbus 页说明地址格式与主站／从站的差别',
   },
   viewer: {
     noImage: '尚无影像',
@@ -942,9 +930,6 @@ const zhHans = {
     language: '语言',
     capacity: '线程池',
     capacityHint: '同时运行的流程上限（VISION_MAX_WORKERS）',
-    help: '自动化接口',
-    helpText:
-      'HTTP：POST /api/vision/flows/{id}/run（multipart 附 image 档，或 JSON {"context": {...}}），wait=1 同步回传 RunReport；wait=0 立即回 202。\nSSE：GET /api/vision/flows/{id}/stream 即时接收 run_finished 事件。\nTCP：由插件工具或集成程序调用同一组 HTTP API；影像来源 kind=upload 可用 POST /api/vision/sources/{id}/push 送图。',
     saved: '设置已保存',
   },
   templates: {
@@ -1063,16 +1048,13 @@ const zhHans = {
   integration: {
     title: '外部集成',
     subtitle: '给外部集成方的接口说明与测试工具',
-    tabs: { http: 'HTTP API', tcp: 'TCP 指令', events: '事件监看', lock: '引擎锁定', format: '回传格式', modbus: 'Modbus', connections: '连线', capture: '采集端' },
+    tabs: { http: 'HTTP API', tcp: 'TCP 指令', events: '事件监看', modbus: 'Modbus', capture: '采集端' },
     desc: {
       http: '外部系统以 HTTP 触发执行并取回结果；可在这里直接试打并生成 curl／Python／C# 片段。',
       tcp: '设备最容易接的接口：一行指令、一行 JSON 回应。',
       events: '订阅 SSE 事件流，实时看到每一次执行的结果。',
       modbus: '地址格式与映射表：把判定与测量值写进线圈与寄存器，或从寄存器读回料号与触发标志。',
-      connections: '主动输出的目的地：Modbus 主站／从站、上位机 TCP、模拟 DIO 与插件。',
       capture: '在相机所在的电脑驱动相机并把图像送进来的采集端程序。',
-      lock: '集成方锁住硬件时，其他人只能编辑不能执行。',
-      format: 'RunReport 的字段与错误码对照。',
     },
     trace: {
       dir: { in: '收到（外部送进来）', out: '送出（平台送出去）' },
@@ -1163,17 +1145,9 @@ const zhHans = {
       cols: { time: '时间', type: '事件', flow: '流程', status: '状态', ms: 'ms', detail: '内容' },
       empty: '尚无事件；运行一次流程试试',
     },
-    lockTab: {
-      current: '目前锁定状态',
-      hint: '集成方用 API 密钥锁定引擎后，用户只能编辑无法运行；连续运行会全部停止。',
-      lockExample: '锁定（curl）',
-      unlockExample: '解锁（curl）',
-      statusExample: '查找',
-      goSettings: '到设置页锁定／解锁',
-    },
     modbus: {
       rolesTitle: '两种角色',
-      rolesHint: '依 PLC 的接法选一种；两种都在「连线」页建立。',
+      rolesHint: '依 PLC 的接法选一种；两种都在上方的连接清单创建。',
       clientTitle: '主站（modbus_tcp）：本平台连到 PLC',
       clientHint: '本平台当 client，主动连到设备的 IP 与端口去读写对方的线圈与寄存器。适合 PLC 已经是 Modbus 从站的场合。',
       serverTitle: '从站（modbus_server）：本平台开端口等 PLC 来',
@@ -1182,8 +1156,7 @@ const zhHans = {
       toolLines: ['写入 Modbus（write_modbus）：把判定、具名输出或输入端口的值依映射表写出去。', '读取 Modbus（read_modbus）：从连接读线圈与寄存器；主站模式是读设备，从站模式是读主站写进来的值（料号、触发标志），可勾选同时放进具名输出。'],
       readExample: '读取表（read_modbus）',
       title: '主动输出（Modbus TCP／上位机）',
-      intro: '「写入 Modbus」（write_modbus）工具在流程内把判定、具名输出或输入端口的值写到连接；连接在「连接」页创建，工具的 connection 参数填连接名称。写入失败默认只记警告（run 照常），可改为让 run 失败。',
-      goConnections: '到连接页',
+      intro: '「写入 Modbus」（write_modbus）工具在流程内把判定、具名输出或输入端口的值写到连接；连接在上方的清单创建，工具的 connection 参数填连接名称。写入失败默认只记警告（run 照常），可改为让 run 失败。',
       mappingTitle: 'mapping 格式',
       mappingHint: '数组，每项一个写入：src 是值来源，address 是地址；可加 dtype、scale、offset 或直接给常数 value。',
       srcTitle: 'src（值来源）',

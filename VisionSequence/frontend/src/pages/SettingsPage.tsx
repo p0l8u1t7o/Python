@@ -1,82 +1,19 @@
-/** 設定：API 金鑰、主題、語言、引擎鎖定（管理員）、修改密碼、容量資訊、自動化接口說明。 */
+/** 設定：API 金鑰、主題、語言、帳號與修改密碼、容量資訊。
+ * 引擎鎖定由 HTTP／TCP 下指令，狀態顯示在上方橫幅；自動化接口說明在「外部整合」各頁。 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Lock, Unlock } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, TextInput } from '@/components/ui'
+import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
 import { apiKey, setApiKey } from '@/lib/api'
-import { errorMessage } from '@/lib/errors'
-import { useCapacity, useLockMutations } from '@/lib/queries'
-import { isLockHolder, useAuth } from '@/providers/AuthProvider'
+import { useCapacity } from '@/lib/queries'
+import { useAuth } from '@/providers/AuthProvider'
 import { useTheme, type ThemePreference } from '@/providers/ThemeProvider'
 import { useToast } from '@/providers/ToastProvider'
-
-/** 引擎鎖定卡片：狀態＋（管理員）鎖定／解鎖。 */
-function EngineLockCard() {
-  const { t } = useTranslation()
-  const toast = useToast()
-  const auth = useAuth()
-  const { acquire, release } = useLockMutations()
-  const [reason, setReason] = useState('')
-  const [ttl, setTtl] = useState('')
-  const lock = auth.lock
-  const canUnlock = auth.isAdmin || isLockHolder(auth.me, lock)
-  const holder = lock.holder === 'integrator' ? t('lock.integrator') : lock.holder
-
-  async function doLock() {
-    try {
-      await acquire.mutateAsync({ reason: reason.trim(), ttl_s: ttl.trim() ? Number(ttl) : null })
-      toast.success(t('lock.acquired'))
-      setReason('')
-      setTtl('')
-    } catch (error) {
-      toast.error(errorMessage(error))
-    }
-  }
-  async function doUnlock() {
-    try {
-      await release.mutateAsync()
-      toast.success(t('lock.released'))
-    } catch (error) {
-      toast.error(errorMessage(error))
-    }
-  }
-
-  return (
-    <Panel title={t('lock.title')} description={t('lock.settingsHint')} bodyClassName="space-y-3 p-4">
-        <div className="flex items-center gap-2 text-sm" data-testid="lock-status">
-          {lock.locked ? <Lock size={15} className="text-warning" /> : <Unlock size={15} className="text-ok" />}
-          <Badge tone={lock.locked ? 'warning' : 'ok'}>{lock.locked ? t('lock.locked') : t('lock.unlocked')}</Badge>
-          {lock.locked ? (
-            <span className="text-xs text-muted">
-              {t('lock.holder')}：{holder}
-              {lock.reason ? ` · ${lock.reason}` : ''}
-              {lock.expires_at ? ` · ${t('lock.expiresAt', { time: new Date(lock.expires_at).toLocaleString() })}` : ''}
-            </span>
-          ) : null}
-        </div>
-        {lock.locked ? (
-          canUnlock ? (
-            <Button variant="primary" icon={<Unlock size={14} />} loading={release.isPending} onClick={() => void doUnlock()}>{t('lock.unlock')}</Button>
-          ) : (
-            <p className="text-xs text-muted">{t('lock.bannerHint')}</p>
-          )
-        ) : auth.isAdmin ? (
-          <div className="flex flex-wrap items-end gap-2">
-            <TextInput label={t('lock.reason')} className="w-56" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('lock.reasonPlaceholder')} />
-            <TextInput label={t('lock.ttl')} type="number" min={0} className="w-28" value={ttl} onChange={(e) => setTtl(e.target.value)} placeholder="∞" />
-            <Button variant="primary" icon={<Lock size={14} />} loading={acquire.isPending} onClick={() => void doLock()} data-testid="btn-lock">{t('lock.lock')}</Button>
-          </div>
-        ) : (
-          <p className="text-xs text-muted">{t('lock.adminOnly')}</p>
-        )}
-    </Panel>
-  )
-}
 
 export function SettingsPage() {
   const { t } = useTranslation()
@@ -155,7 +92,6 @@ export function SettingsPage() {
               />
             </div>
         </Panel>
-        <EngineLockCard />
         <Card>
           <CardHeader title={t('auth.account')} />
           <CardBody className="space-y-3">
@@ -187,9 +123,6 @@ export function SettingsPage() {
               </dl>
             ) : null}
           </div>
-        </Panel>
-        <Panel title={t('settings.help')} bodyClassName="p-4" testId="panel-help">
-          <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted" data-testid="settings-help-text">{t('settings.helpText')}</pre>
         </Panel>
       </div>
     </Page>

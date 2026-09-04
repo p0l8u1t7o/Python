@@ -106,6 +106,8 @@ class Writer:
     enabled = True
     #: True = 這個連線自己開埠等對方連進來（從站／伺服器）；啟動時要自動開，不能等第一次寫入。
     listens = False
+    #: 這種連線由哪個整合頁管理（`/integration/<section>`）；外掛沒宣告就歸到 tcp（那頁收所有其他輸出）。
+    section = "tcp"
 
     def __init__(self, config: dict[str, Any], *, connection_id: int = 0, name: str = "") -> None:
         self.config = config
@@ -837,27 +839,32 @@ _MODBUS_MASTER_FIELDS = ["host", "port", "unit_id", "timeout_s", "word_order"]
 _MODBUS_SLAVE_FIELDS = ["host", "port", "unit_id", "size", "word_order"]
 
 
+#: 沒宣告 section 的外掛歸這一頁——連線一定要有頁面管得到，不然只能改資料庫才刪得掉。
+FALLBACK_SECTION = "tcp"
+
+
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "label": "Modbus/TCP client (connects to the PLC)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
+        {"kind": "modbus_tcp", "section": "modbus", "label": "Modbus/TCP client (connects to the PLC)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
          "description": "The platform is the client and connects to the PLC or device, reading and writing its coils and registers. It can also poll one address as a trigger source."},
-        {"kind": "modbus_server", "label": "Modbus/TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
+        {"kind": "modbus_server", "section": "modbus", "label": "Modbus/TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
          "description": "The platform is the server and listens on a port for the PLC or host system to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
-        {"kind": "tcp_client", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
-        {"kind": "dio_sim", "label": "Simulated digital I/O (state is only recorded)", "fields": ["channels"]},
+        {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
+        {"kind": "dio_sim", "section": "modbus", "label": "Simulated digital I/O (state is only recorded)", "fields": ["channels"]},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
             "kind": kind,
+            "section": str(getattr(cls, "section", "") or FALLBACK_SECTION),
             "label": getattr(cls, "label", "") or f"Plugin: {kind}",
             "fields": list(getattr(cls, "fields", []) or []),
             "description": getattr(cls, "description", ""),
         })
     for kind in plugins:
         if kind not in _PLUGIN_KINDS:
-            out.append({"kind": kind, "label": f"Plugin: {kind}", "fields": []})
-    out.append({"kind": "plugin", "label": "Plugin (a class path of your own)", "fields": ["class"]})
+            out.append({"kind": kind, "section": FALLBACK_SECTION, "label": f"Plugin: {kind}", "fields": []})
+    out.append({"kind": "plugin", "section": FALLBACK_SECTION, "label": "Plugin (a class path of your own)", "fields": ["class"]})
     return out
 
 

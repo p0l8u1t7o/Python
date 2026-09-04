@@ -1,9 +1,9 @@
-/** 整合 ▸ Modbus 輸出：位址格式、對映表與主站／從站說明。 */
+/** 整合 ▸ Modbus 輸出：連線管理（主站／從站／模擬 DIO）、位址格式、對映表與命令追蹤。 */
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
-import { Cable, Plug } from 'lucide-react'
+import { Cable } from 'lucide-react'
 
 import { CodeBlock } from './shared'
+import { ConnectionsSection } from '@/components/integration/ConnectionsSection'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Card, CardBody, CardHeader } from '@/components/ui'
 
@@ -25,7 +25,7 @@ function ModbusSection() {
   return (
     <div className="grid items-start gap-4 xl:grid-cols-2">
       <Card>
-        <CardHeader title={<span className="flex items-center gap-2"><Cable size={16} className="text-brand" />{t('integration.modbus.title')}</span>} actions={<Link to="/connections" className="btn-secondary !h-8 !px-2.5 !text-xs" data-testid="modbus-go-connections"><Plug size={13} /> {t('integration.modbus.goConnections')}</Link>} />
+        <CardHeader title={<span className="flex items-center gap-2"><Cable size={16} className="text-brand" />{t('integration.modbus.title')}</span>} />
         <CardBody className="space-y-3 text-sm leading-relaxed">
           <p>{t('integration.modbus.intro')}</p>
           <div>
@@ -76,6 +76,7 @@ function ModbusSection() {
 export function ModbusPage() {
   return (
     <div className="space-y-4">
+      <ConnectionsSection section="modbus" />
       <ModbusSection />
       <TraceLog channel="modbus" />
     </div>

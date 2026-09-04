@@ -357,7 +357,7 @@ def integration_info(request: HttpRequest):
         "max_workers": cfg["MAX_WORKERS"],
         "max_queue_per_flow": runner.max_queue_per_flow,
         "run_timeout_s": cfg["RUN_TIMEOUT_S"],
-        "commands": ["PING", "LIST", "RUN <flow> [k=v ...]", "TRIGGER <flow> [k=v ...]", "STATUS [flow]", "START <flow>", "STOP <flow>"],
+        "commands": ["PING", "LIST", "RUN <flow> [k=v ...]", "TRIGGER <flow> [k=v ...]", "STATUS [flow]", "START <flow>", "STOP <flow>", "LOCK [reason=\"...\" ttl=600]", "UNLOCK"],
     }
 
 

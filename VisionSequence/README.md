@@ -128,8 +128,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - SSE：即時事件串流；總覽頁可觀看任一流程的即時影像與結果。
 - Modbus TCP／TCP 文字／模擬 DIO 主動輸出（`write_modbus` 工具，失敗降級不停線）。
 - **Modbus 主站與從站**：`modbus_tcp` 平台連到 PLC 去讀寫；`modbus_server` 平台開埠（預設 5020）讓 PLC 當主站來讀寫平台的暫存器。流程工具 `write_modbus`（寫判定／量測值）與 `read_modbus`（讀料號／觸發旗標，可併進具名輸出）。
-- **整合頁**：每一種整合方式都是獨立頁面（`/integration/http|tcp|events|modbus|connections|capture|lock|format`），側欄可展開成樹狀；每個工具頁下方有**命令與結果**即時追蹤（時間、方向、耗時、完整內容），便於除錯。
-- 引擎鎖定：整合方以 API 金鑰鎖定，使用者只能編輯不能執行。詳見 `docs/automation.html`、`docs/modbus.html`。
+- **整合頁**：每一種整合方式都是獨立頁面（`/integration/http|tcp|events|modbus|capture`），側欄可展開成樹狀；**連線由用到它的整合頁自己管理**（Modbus 頁管 Modbus 主站／從站／模擬 DIO，TCP 頁管上位機 TCP 與外掛輸出），回傳格式與錯誤碼在 HTTP 頁、TCP 失敗碼在 TCP 頁；每頁下方有**命令與結果**即時追蹤（時間、方向、耗時、完整內容），便於除錯。
+- 引擎鎖定：整合方以 HTTP（`POST /vision/lock`）或 TCP（`LOCK`／`UNLOCK`）鎖定，使用者只能編輯不能執行；鎖定期間網頁上方橫幅顯示持有者與原因。詳見 `docs/automation.html`、`docs/modbus.html`。
 
 ### 帳號、介面與文件
 - 管理員／一般使用者／整合方（API 金鑰）三種身分；流程有擁有者；每人各自的介面偏好（主題：淺色／深色／Cyberpunk／跟隨系統；語系：繁中／簡中／英文）。

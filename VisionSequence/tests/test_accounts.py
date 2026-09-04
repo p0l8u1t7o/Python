@@ -262,6 +262,25 @@ class AccountsTests(TestCase):
         self.assertEqual(self.client.delete("/api/vision/lock", HTTP_X_API_KEY="integrator-key").status_code, 200)
         self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=alice).status_code, 200)
 
+    def test_tcp_lock_and_unlock(self):
+        """設備靠 TCP 下鎖定指令：網頁端只能編輯，整合方照常。"""
+        admin = self.setup_admin()
+        alice = self.make_user(admin, "alice")
+        fid = self.post("/api/vision/flows", {"name": "f", "graph": graph_for(self.source.id)}, token=alice).json()["id"]
+        res = handle_command('LOCK reason="camera calibration" ttl=600')
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(res["lock"]["locked"])
+        self.assertEqual(res["lock"]["holder"], "integrator")
+        self.assertEqual(res["lock"]["reason"], "camera calibration")
+        self.assertTrue(res["lock"]["expires_at"])
+        self.assertTrue(handle_command("STATUS")["lock"]["locked"])
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=alice).status_code, 423)
+        self.assertTrue(handle_command("RUN f")["ok"])  # 整合方不受鎖影響
+        self.assertTrue(handle_command("UNLOCK")["ok"])
+        self.assertFalse(self.get("/api/vision/lock", token=alice).json()["locked"])
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=alice).status_code, 200)
+        self.assertFalse(handle_command("LOCK ttl")["ok"])  # 不是 key=value
+
     def test_admin_lock_and_expiry(self):
         admin = self.setup_admin()
         alice = self.make_user(admin, "alice")

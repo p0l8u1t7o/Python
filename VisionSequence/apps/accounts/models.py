@@ -96,6 +96,30 @@ class EngineLock(models.Model):
             row.save()
         return row
 
+    def acquire(self, holder: str, reason: str = "", ttl_s: int | None = None) -> "EngineLock":
+        """上鎖並停掉所有連續執行（硬體要留給鎖的持有者）；HTTP 與 TCP 共用同一條路。"""
+        from apps.vision.runner import bus, runner
+
+        self.locked = True
+        self.holder = holder
+        self.reason = (reason or "")[:300]
+        self.locked_at = timezone.now()
+        self.expires_at = timezone.now() + timedelta(seconds=int(ttl_s)) if ttl_s else None
+        self.save()
+        for fid in list(runner._runtimes):  # noqa: SLF001
+            if runner.is_continuous(fid):
+                runner.stop_continuous(fid)
+        bus.publish({"type": "lock", "lock": self.to_dict()})
+        return self
+
+    def release(self) -> "EngineLock":
+        from apps.vision.runner import bus
+
+        self.locked, self.holder, self.reason, self.locked_at, self.expires_at = False, "", "", None, None
+        self.save()
+        bus.publish({"type": "lock", "lock": self.to_dict()})
+        return self
+
     def to_dict(self) -> dict:
         return {
             "locked": self.locked,

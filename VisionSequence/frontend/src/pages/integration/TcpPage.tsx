@@ -1,10 +1,11 @@
-/** 整合 ▸ TCP：送一行指令到 TCP 介面（POST /integration/tcp），含歷史紀錄。 */
+/** 整合 ▸ TCP：送一行指令到 TCP 介面（POST /integration/tcp）含歷史紀錄、失敗碼對照，以及送出結果用的 TCP 連線。 */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Send } from 'lucide-react'
 
 import { connectHost } from './shared'
 import { CodeBlock, CopyButton, useSectionInfo } from './shared'
+import { ConnectionsSection } from '@/components/integration/ConnectionsSection'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Badge, Button, Card, CardBody, CardHeader, LoadingState, TextInput } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
@@ -13,6 +14,35 @@ import { useToast } from '@/providers/ToastProvider'
 import type { IntegrationInfo, TcpResult } from '@/lib/types'
 
 const TCP_HISTORY_KEY = 'vs.tcpHistory'
+
+/** TCP 一行指令的失敗碼（設備請用 code 分支，說明文字會隨版本潤飾）。 */
+const TCP_CODES: [string, string][] = [
+  ['empty_command', 'A blank line'],
+  ['unknown_command', 'Unrecognised command'],
+  ['missing_argument', 'The command is missing a flow id or name'],
+  ['bad_argument', 'An argument is not key=value (quote values containing spaces)'],
+  ['flow_not_found', 'No such flow id or name'],
+  ['flow_disabled', 'The flow is disabled'],
+  ['flow_queue_full', 'That flow already has the maximum number of triggers waiting'],
+  ['recipe_not_found', 'The recipe named by recipe= does not exist'],
+  ['engine_locked', 'The engine is locked and this caller may not run (LOCK and UNLOCK change it)'],
+  ['internal_error', 'A server exception, recorded in the log'],
+]
+
+function TcpCodesCard() {
+  const { t } = useTranslation()
+  return (
+    <Card>
+      <CardHeader title={t('integration.format.tcpErrors')} description={t('integration.format.tcpErrorsHint')} />
+      <CardBody className="!p-0">
+        <table className="w-full text-sm">
+          <thead><tr><th className="table-header">{t('integration.format.cols.code')}</th><th className="table-header">{t('integration.format.cols.desc')}</th></tr></thead>
+          <tbody className="divide-y divide-line">{TCP_CODES.map(([c, d]) => <tr key={c}><td className="table-cell font-mono text-xs">{c}</td><td className="table-cell">{d}</td></tr>)}</tbody>
+        </table>
+      </CardBody>
+    </Card>
+  )
+}
 
 function readHistory(): string[] {
   try {
@@ -131,6 +161,8 @@ export function TcpPage() {
   return (
     <div className="space-y-4">
       <TcpSection info={info} />
+      <TcpCodesCard />
+      <ConnectionsSection section="tcp" />
       <TraceLog channel="tcp" />
     </div>
   )

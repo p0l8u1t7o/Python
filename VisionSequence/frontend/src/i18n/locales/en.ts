@@ -80,11 +80,7 @@ const en = {
     deleteMessage: 'Delete "{{name}}"? Their flows become shared flows.',
   },
   lock: {
-    title: 'Engine lock',
     short: 'Engine locked',
-    locked: 'Locked',
-    unlocked: 'Unlocked',
-    holder: 'Holder',
     integrator: 'integrator',
     noReason: 'no reason given',
     bannerTitle: 'Engine locked by {{holder}} ({{reason}})',
@@ -92,13 +88,6 @@ const en = {
     expiresAt: 'auto-release at {{time}}',
     execDisabled: 'Engine locked by {{holder}}; execution is disabled',
     unlock: 'Unlock',
-    lock: 'Lock engine',
-    reason: 'Reason',
-    reasonPlaceholder: 'e.g. camera calibration',
-    ttl: 'Auto-release (s)',
-    settingsHint: 'Locking stops every continuous run; users can only edit flows. The integrator (API key) and the holder can still execute.',
-    adminOnly: 'Only administrators or the integrator can lock the engine',
-    acquired: 'Engine locked',
     released: 'Engine unlocked',
   },
   common: {
@@ -545,16 +534,13 @@ const en = {
   integration: {
     title: 'Integration',
     subtitle: 'API reference and test tools for integrators',
-    tabs: { http: 'HTTP API', tcp: 'TCP commands', events: 'Event monitor', lock: 'Engine lock', format: 'Response format', modbus: 'Modbus', connections: 'Connections', capture: 'Capture client' },
+    tabs: { http: 'HTTP API', tcp: 'TCP commands', events: 'Event monitor', modbus: 'Modbus', capture: 'Capture client' },
     desc: {
       http: 'External systems trigger a run over HTTP and get the report back; try it here and copy a curl / Python / C# snippet.',
       tcp: 'The easiest interface for equipment: one line in, one JSON line back.',
       events: 'Subscribe to the SSE event stream and watch every run as it happens.',
       modbus: 'Address format and mapping: write judgements and measurements into coils and registers, or read a recipe id and trigger flag back.',
-      connections: 'Outbound destinations: Modbus client/server, host TCP, simulated DIO and plugins.',
       capture: 'The capture client that drives cameras on their own PC and sends images here.',
-      lock: 'While an integrator holds the lock, everyone else can edit but not run.',
-      format: 'RunReport fields and error codes.',
     },
     trace: {
       dir: { in: 'Received (from outside)', out: 'Sent (from the platform)' },
@@ -642,14 +628,6 @@ const en = {
       disconnected: 'Disconnected',
       cols: { time: 'Time', type: 'Event', flow: 'Flow', status: 'Status', ms: 'ms', detail: 'Detail' },
       empty: 'No events yet; run a flow',
-    },
-    lockTab: {
-      current: 'Current lock state',
-      hint: 'When the integrator locks the engine with the API key, users can edit but not execute; continuous runs stop.',
-      lockExample: 'Lock (curl)',
-      unlockExample: 'Unlock (curl)',
-      statusExample: 'Query',
-      goSettings: 'Lock / unlock in Settings',
     },
     format: {
       tcpErrors: 'TCP command error codes',
@@ -858,7 +836,7 @@ const enExtra = {
     teach: 'Teach page',
     golden: 'Golden Set',
     export: 'Export',
-    params: { connectionHint: 'Pick a connection name from the list or type one (id also works)', connectionNone: 'No connections yet: create one on the Connections page' },
+    params: { connectionHint: 'Pick a connection name from the list or type one (id also works)', connectionNone: 'No connections yet: create one under External integration (Modbus or TCP)' },
   },
   teach: {
     title: 'Teach page',
@@ -994,7 +972,7 @@ const enExtra = {
   },
   connections: {
     title: 'Connections',
-    subtitle: 'Outbound Modbus TCP / host connections (referenced by name from the write_modbus tool)',
+    subtitle: 'Outbound destinations for this integration; flow tools reference them by name.',
     create: 'New connection',
     empty: 'No connections yet',
     kind: 'Kind',
@@ -1051,7 +1029,6 @@ const enExtra = {
     },
     triggerModes: { rising: 'Rising edge (runs once when it goes non-zero)', nonzero: 'While non-zero (keeps running)' },
     wordOrders: { big: 'big (high word first)', little: 'little (low word first)' },
-    goIntegration: 'The Modbus page explains address format and the client/server roles',
   },
   viewer: {
     noImage: 'No image',
@@ -1082,7 +1059,7 @@ const enExtra = {
     http: { recipe: 'Recipe', recipeHint: 'Recipe name or id; blank = default recipe' },
     modbus: {
       rolesTitle: 'Two roles',
-      rolesHint: 'Pick the one that matches the PLC; both are created on the Connections page.',
+      rolesHint: 'Pick the one that matches the PLC; both are created in the connection list above.',
       clientTitle: 'Client (modbus_tcp): we connect to the PLC',
       clientHint: 'The platform acts as the master and connects to the device address to read and write its coils and registers.',
       serverTitle: 'Server (modbus_server): the PLC connects to us',
@@ -1091,8 +1068,7 @@ const enExtra = {
       toolLines: ['Write Modbus (write_modbus): map judgement, named outputs or input ports to addresses.', 'Read Modbus (read_modbus): read coils and registers from a connection — the device in client mode, or what the master wrote in server mode; optionally publish them as named outputs.'],
       readExample: 'Read list (read_modbus)',
       title: 'Outbound writes (Modbus TCP / host)',
-      intro: 'The "write_modbus" tool writes the judge, named outputs or input-port values to a connection from inside the flow; connections are created on the Connections page and referenced by name in the tool\'s connection parameter. Write failures only log a warning by default (the run continues) but can be set to fail the run.',
-      goConnections: 'Go to Connections',
+      intro: 'The "write_modbus" tool writes the judge, named outputs or input-port values to a connection from inside the flow; connections are created in the list above and referenced by name in the tool\'s connection parameter. Write failures only log a warning by default (the run continues) but can be set to fail the run.',
       mappingTitle: 'mapping format',
       mappingHint: 'Array; each entry is one write: src is the value source, address the target; optional dtype, scale, offset, or a constant value.',
       srcTitle: 'src (value source)',
@@ -1359,8 +1335,6 @@ const enExtra3 = {
     apiKeyHint: 'Only needed when the server sets VISION_API_KEY; stored in this browser',
     capacity: 'Worker pool',
     capacityHint: 'How many flows may run at once (VISION_MAX_WORKERS)',
-    help: 'Automation interfaces',
-    helpText: 'HTTP: POST /api/vision/flows/{id}/run (multipart with an image file, or JSON {"context": {...}}); wait=1 returns the RunReport, wait=0 returns 202 with a run_id.\nSSE: GET /api/vision/flows/{id}/stream for run_finished events as they happen.\nTCP: one line in, one JSON line back on port 9000. An upload source accepts POST /api/vision/sources/{id}/push.',
     saved: 'Settings saved',
   },
 }

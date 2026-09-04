@@ -21,10 +21,7 @@ const IntegrationIndex = lazy(() => import('@/pages/IntegrationPage').then((m) =
 const IntegrationHttpPage = lazy(() => import('@/pages/integration/HttpPage').then((m) => ({ default: m.HttpPage })))
 const IntegrationTcpPage = lazy(() => import('@/pages/integration/TcpPage').then((m) => ({ default: m.TcpPage })))
 const IntegrationEventsPage = lazy(() => import('@/pages/integration/EventsPage').then((m) => ({ default: m.EventsPage })))
-const IntegrationLockPage = lazy(() => import('@/pages/integration/LockPage').then((m) => ({ default: m.LockPage })))
-const IntegrationFormatPage = lazy(() => import('@/pages/integration/FormatPage').then((m) => ({ default: m.FormatPage })))
 const IntegrationModbusPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusPage })))
-const IntegrationConnectionsPage = lazy(() => import('@/pages/integration/ConnectionsPage').then((m) => ({ default: m.IntegrationConnectionsPage })))
 const IntegrationCapturePage = lazy(() => import('@/pages/integration/CapturePage').then((m) => ({ default: m.IntegrationCapturePage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
@@ -62,7 +59,7 @@ const router = createBrowserRouter([
           { path: 'batch', element: <BatchPage /> },
           { path: 'dl', element: <DlPage /> },
           { path: 'agent', element: <AgentPage /> },
-          { path: 'connections', element: <Navigate to="/integration/connections" replace /> },
+          { path: 'connections', element: <Navigate to="/integration/modbus" replace /> },
           {
             path: 'integration',
             element: <IntegrationLayout />,
@@ -72,10 +69,9 @@ const router = createBrowserRouter([
               { path: 'tcp', element: <IntegrationTcpPage /> },
               { path: 'events', element: <IntegrationEventsPage /> },
               { path: 'modbus', element: <IntegrationModbusPage /> },
-              { path: 'connections', element: <IntegrationConnectionsPage /> },
               { path: 'capture', element: <IntegrationCapturePage /> },
-              { path: 'lock', element: <IntegrationLockPage /> },
-              { path: 'format', element: <IntegrationFormatPage /> },
+              // 舊書籤（連線／引擎鎖定／回傳格式已併進各整合頁）不要落到 404
+              { path: '*', element: <Navigate to="/integration/http" replace /> },
             ],
           },
           { path: 'help', element: <HelpPage /> },
