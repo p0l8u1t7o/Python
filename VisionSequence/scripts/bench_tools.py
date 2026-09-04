@@ -260,12 +260,22 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         # output
         ("judge", "judge", None, {"verdict": "by_input"}, {"value": True}, {}),
         ("output", "output", None, {"name": "v"}, {"value": 1.23456}, {}),
+        ("write_modbus", "write_modbus", None, {"connection": "bench_sim", "mapping": [{"src": "judge", "address": "ok"}]}, {}, {"_judge": "OK"}),
+        ("read_modbus", "read_modbus", None, {"connection": "bench_sim", "mapping": [{"name": "ok", "address": "ok"}]}, {}, {}),
         ("save_image png", "save_image", gray, {"folder": os.path.join(s.folder, "saved"), "format": "png", "split_by_judge": False}, {}, {}),
         ("draw_result", "draw_result", big, {}, {"overlays": overlays}, {"_judge": "ok"}),
     ]
 
 
+def _bench_connection() -> None:
+    """整合工具（write_modbus／read_modbus）需要一條連線；用不碰硬體的模擬 DIO。"""
+    from apps.comm.writers import DioSimWriter, register_writer
+
+    register_writer("bench_sim", DioSimWriter({"channels": ["ok"]}, name="bench_sim"))
+
+
 def bench_tools(s: Scene, out: io.StringIO) -> dict[str, tuple[float, float]]:
+    _bench_connection()
     rows: dict[str, tuple[float, float]] = {}
     out.write(f"\n== 工具 @ {s.w}×{s.h}（median / p95 ms，{RUNS} 次，暖機 {WARMUP}）==\n")
     out.write(f"{'工具':<28}{'median':>10}{'p95':>10}   狀態 / 訊息\n")

@@ -1,8 +1,8 @@
 /**
  * 連線（ConnectionsSection）：Modbus TCP／上位機的主動輸出連線（apps/comm）。
- * 已併入「外部整合」頁（/integration?tab=connections）的分頁；本檔只輸出區塊內容。
+ * 「外部整合 ▸ 連線」頁（/integration/connections）的內容；本檔只輸出區塊，外框與命令追蹤在 pages/integration/ConnectionsPage.tsx。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
- * modbus_tcp: host/port/unit_id/timeout_s/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
+ * modbus_tcp（主站，連到 PLC）／modbus_server（從站，本機開埠讓 PLC 來讀寫）: host/port/unit_id/timeout_s|size/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
  * dio_sim: channels；plugin: class。管理員才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
  */
 import { useMemo, useState } from 'react'
@@ -23,6 +23,7 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'mul
   unit_id: 'number',
   timeout_s: 'number',
   word_order: 'select',
+  size: 'number',
   template: 'multiline',
   newline: 'text',
   wait_reply: 'boolean',
@@ -31,6 +32,7 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'mul
 }
 const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
   modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big' },
+  modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big' },
   tcp_client: { host: '127.0.0.1', port: 9000, timeout_s: 2, template: '', newline: '\n', wait_reply: false },
   dio_sim: { channels: ['DO0', 'DO1', 'OK', 'NG'] },
   plugin: { class: '' },
@@ -157,7 +159,7 @@ export function ConnectionsSection() {
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted">{t('connections.subtitle')} · <Link to="/integration?tab=modbus" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></p>
+        <p className="text-sm text-muted">{t('connections.subtitle')} · <Link to="/integration/modbus" className="text-brand hover:underline">{t('connections.goIntegration')}</Link></p>
         <span title={isAdmin ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!isAdmin} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>
       </div>
       <Card className="overflow-hidden">

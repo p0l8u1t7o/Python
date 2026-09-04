@@ -135,10 +135,19 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html" aria-current="page">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#kinds">1. 連線種類與 config</a></li><li><a href="#address">2. 位址格式（modbus_tcp）</a></li><li><a href="#tool">3. write_modbus 工具與 mapping</a></li><li><a href="#degrade">4. 降級策略</a></li><li><a href="#api">5. 連線 API</a></li><li><a href="#plugin">6. 外掛 Writer</a></li><li><a href="#internals">7. 內部結構</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. 兩種角色：主站與從站</a></li><li><a href="#kinds">1. 連線種類與 config</a></li><li><a href="#address">2. 位址格式（modbus_tcp）</a></li><li><a href="#tool">3. 流程工具：write_modbus 與 read_modbus</a><ul><li><a href="#read-tool">3-1. 讀取 Modbus（read_modbus）</a></li></ul></li><li><a href="#degrade">4. 降級策略</a></li><li><a href="#api">5. 連線 API</a></li><li><a href="#plugin">6. 外掛 Writer</a></li><li><a href="#trace">6b. 命令與結果（除錯）</a></li><li><a href="#internals">7. 內部結構</a></li></ul></aside><article class="doc">
 
 <h1>主動輸出（Modbus TCP ／ 上位機）</h1>
 <p><a href="automation.html">自動化整合</a>是<strong>被動</strong>的：設備或上位機呼叫我們拿結果。這一頁是<strong>主動</strong>的：流程跑完由引擎透過 Modbus TCP 把判定與量測值寫進設備的線圈／暫存器，或推一行文字給上位機。做法仿照影像來源：先在設定頁建「連線」（<code>Connection</code>），流程裡放一個 <strong>寫入 Modbus</strong>（<code>write_modbus</code>）工具指到該連線並填對映表。</p>
+
+<h2 id="roles">0. 兩種角色：主站與從站</h2>
+<p>Modbus/TCP 有主從之分，平台兩種都支援，在「外部整合 ▸ 連線」建立時選 kind：</p>
+<table>
+<tr><th>角色</th><th>kind</th><th>誰主動</th><th>什麼時候用</th></tr>
+<tr><td>主站（client）</td><td><code>modbus_tcp</code></td><td>平台連到設備的 IP／埠</td><td>PLC／設備本身是 Modbus 從站，平台去讀寫它的線圈與暫存器。</td></tr>
+<tr><td>從站（server）</td><td><code>modbus_server</code></td><td>平台開埠（預設 5020）等主站來連</td><td>PLC／上位機是主站，習慣自己來輪詢。流程把結果寫進平台的暫存器讓主站來取；主站也可以寫料號、觸發旗標進來，流程用「讀取 Modbus」取用。</td></tr>
+</table>
+<p>兩種角色的<strong>位址格式、對映表與工具完全相同</strong>，差別只在誰主動連線。從站的 <code>size</code> 是每一區（線圈／離散輸入／保持暫存器／輸入暫存器）的點數，預設 512。從站在連線建立時就開始監聽，停用或刪除連線就關閉。</p>
 
 <h2 id="kinds">1. 連線種類與 config</h2>
 <table>
@@ -167,7 +176,7 @@
 <p>偏移可寫十六進位（<code>holding:0x100</code>）。偏移是 <strong>0 起算的協定位址</strong>（設備文件若寫 40001 就是 <code>holding:0</code>）。</p>
 <p><code>tcp_client</code> 的「位址」是範本裡的欄位名（<code>{judge}</code> → <code>"judge"</code>）；<code>dio_sim</code> 是通道名。</p>
 
-<h2 id="tool">3. write_modbus 工具與 mapping</h2>
+<h2 id="tool">3. 流程工具：write_modbus 與 read_modbus</h2>
 <table>
 <tr><th>參數</th><th>說明</th></tr>
 <tr><td><code>connection</code>（text）</td><td>連線<strong>名稱</strong>（也接受數字 id）。</td></tr>
@@ -196,6 +205,25 @@
 <pre>template = "RESULT {judge} {width_px} {lot}"
 mapping  = [{"src": "judge"}, {"src": "width_px"}, {"src": "lot"}]
 → 送出 "RESULT 1 12.34 A123\n"</pre>
+
+<h3 id="read-tool">3-1. 讀取 Modbus（read_modbus）</h3>
+<p>把線圈與暫存器的值讀進流程：主站連線是去讀設備，從站連線是讀「主站寫進平台」的值（料號、觸發旗標、配方號）。參數：</p>
+<table>
+<tr><th>參數</th><th>說明</th></tr>
+<tr><td>connection</td><td>連線名稱（同 write_modbus）。</td></tr>
+<tr><td>mapping</td><td>陣列，每項 <code>{"name": 名稱, "address": 位址, "scale"?: 倍率, "offset"?: 加值}</code>；名稱空白時用位址當名稱。</td></tr>
+<tr><td>publish</td><td>開啟後讀到的值會併進 run 的 <code>outputs</code>（API／TCP 回傳看得到）。</td></tr>
+<tr><td>on_error</td><td>讀取失敗時降級（預設）或讓 run 失敗，與 write_modbus 一致。</td></tr>
+</table>
+<p>輸出埠：<code>values</code>（依 mapping 順序的清單）、<code>value</code>（第一個數值，接判定或分支很方便）、<code>ok</code>。範例：</p>
+<pre>
+[
+  {"name": "recipe", "address": "holding:0"},
+  {"name": "trigger", "address": "coil:1"},
+  {"name": "temperature", "address": "holding:10:float32", "scale": 0.1}
+]
+</pre>
+<p>典型用法：PLC 當主站，把料號寫進 <code>holding:0</code>、觸發旗標寫進 <code>coil:1</code>；流程開頭用 read_modbus 取回料號決定配方，結尾用 write_modbus 把判定寫回 <code>coil:10</code>。</p>
 
 <h2 id="degrade">4. 降級策略</h2>
 <div class="note">產線寧可漏傳一筆也不要停線：<strong>寫入失敗預設不讓 run failed</strong>。</div>
@@ -235,6 +263,9 @@ class OpcUaWriter(Writer):
     def _close(self): ...
     def info(self): return {**super().info(), "endpoint": ...}</pre>
 <p>只覆寫 <code>_open/_write/_read/_close</code>；lock、逾時、重連一次、計數都在基底的 <code>write()/read()</code>。類別內可用 <code>label</code>／<code>description</code>／<code>enabled</code> 變數控制顯示名稱、說明與是否掛載。也可建 kind=<code>plugin</code> 的連線並在 config 填 <code>"class": "mypkg.opcua:OpcUaWriter"</code> 直接指定類別路徑。</p>
+
+<h2 id="trace">6b. 命令與結果（除錯）</h2>
+<p>「外部整合 ▸ 連線」與「外部整合 ▸ Modbus」頁下方都有<strong>命令與結果</strong>：頁面開著時，每一次寫入／讀取（位址、值、耗時、成功與否）與從站收到的主站請求都會即時列出，點一列展開完整內容。頁面關閉後只保留錯誤，不影響產線效能。詳見 <a href="automation.html#trace">自動化整合 §7</a>。</p>
 
 <h2 id="internals">7. 內部結構</h2>
 <ul>

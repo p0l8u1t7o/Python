@@ -11,7 +11,10 @@ import threading
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
+from pymodbus.client import ModbusTcpClient
+
 from apps.comm import writers
+from apps.vision import trace
 from apps.comm.models import Connection
 from apps.comm.writers import CommError, DioSimWriter, ModbusTcpWriter, TcpClientWriter, parse_address
 from apps.vision.models import Flow, ImageSource
@@ -236,6 +239,153 @@ class ModbusTests(SimpleTestCase):
 # ---------------------------------------------------------------------------
 # 工具
 # ---------------------------------------------------------------------------
+class ModbusServerTests(SimpleTestCase):
+    """本平台當 Modbus 從站：主站讀得到我們寫的值，我們也讀得到主站寫進來的值。"""
+
+    def setUp(self):
+        self.port = free_port()
+        self.writer = writers.ModbusServerWriter({"host": "127.0.0.1", "port": self.port, "unit_id": 1, "size": 128}, name="slave")
+        self.addCleanup(self.writer.close)
+        self.client = ModbusTcpClient("127.0.0.1", port=self.port, timeout=2)
+        self.assertTrue(self.client.connect())
+        self.addCleanup(self.client.close)
+
+    def test_master_reads_what_the_flow_writes(self):
+        info = self.writer.info()
+        self.assertEqual((info["kind"], info["listening"], info["role"], info["port"]), ("modbus_server", True, "server", self.port))
+        self.writer.write({"coil:0": True, "holding:10": 1234, "holding:20:float32": 3.5, "holding:30:int32": -7})
+        self.assertTrue(self.client.read_coils(0, count=1, device_id=1).bits[0])
+        self.assertEqual(self.client.read_holding_registers(10, count=1, device_id=1).registers, [1234])
+        self.assertAlmostEqual(ModbusTcpClient.convert_from_registers(self.client.read_holding_registers(20, count=2, device_id=1).registers, ModbusTcpClient.DATATYPE.FLOAT32), 3.5, places=3)
+        self.assertEqual(ModbusTcpClient.convert_from_registers(self.client.read_holding_registers(30, count=2, device_id=1).registers, ModbusTcpClient.DATATYPE.INT32), -7)
+
+    def test_flow_reads_what_the_master_writes(self):
+        self.client.write_register(5, 42, device_id=1)
+        self.client.write_coil(6, True, device_id=1)
+        self.assertEqual(self.writer.read(["holding:5", "coil:6"]), {"holding:5": 42, "coil:6": True})
+
+    def test_word_order_little(self):
+        port = free_port()
+        w = writers.ModbusServerWriter({"host": "127.0.0.1", "port": port, "size": 32, "word_order": "little"}, name="le")
+        self.addCleanup(w.close)
+        w.write({"holding:0:int32": 70000})
+        self.assertEqual(w.read(["holding:0:int32"]), {"holding:0:int32": 70000})
+        c = ModbusTcpClient("127.0.0.1", port=port, timeout=2)
+        self.assertTrue(c.connect())
+        self.addCleanup(c.close)
+        regs = c.read_holding_registers(0, count=2, device_id=1).registers
+        self.assertEqual(ModbusTcpClient.convert_from_registers(regs, ModbusTcpClient.DATATYPE.INT32, word_order="little"), 70000)
+
+    def test_kind_is_listed_and_closes_cleanly(self):
+        kinds = {k["kind"]: k for k in writers.kinds()}
+        self.assertIn("modbus_server", kinds)
+        self.assertIn("size", kinds["modbus_server"]["fields"])
+        self.assertIn("從站", kinds["modbus_server"]["label"])
+        self.writer.close()
+        self.assertFalse(self.writer.info()["listening"])
+        with self.assertRaises(writers.CommError):
+            self.writer._read(["holding:0"])  # noqa: SLF001 — 關閉後直接讀應該明確失敗
+
+
+class ReadModbusToolTests(SimpleTestCase):
+    """讀取 Modbus 工具：把暫存器的值讀進流程，可選擇同時放進具名輸出。"""
+
+    def tearDown(self):
+        writers.close_all()
+
+    def test_reads_values_and_publishes(self):
+        port = free_port()
+        server = writers.ModbusServerWriter({"host": "127.0.0.1", "port": port, "size": 64}, name="plc")
+        self.addCleanup(server.close)
+        writers.register_writer("plc", server)
+        client = ModbusTcpClient("127.0.0.1", port=port, timeout=2)
+        self.assertTrue(client.connect())
+        self.addCleanup(client.close)
+        client.write_register(0, 42, device_id=1)
+        client.write_coil(1, True, device_id=1)
+        client.write_register(10, 250, device_id=1)
+
+        mapping = [{"name": "recipe", "address": "holding:0"}, {"name": "trigger", "address": "coil:1"}, {"name": "temp", "address": "holding:10", "scale": 0.1}]
+        r = run_tool("read_modbus", params={"connection": "plc", "mapping": mapping, "publish": True})
+        self.assertEqual(r.status, "ok", r.message)
+        self.assertEqual(r.outputs["values"], [42, True, 25.0])
+        self.assertEqual(r.outputs["value"], 42.0)
+        self.assertTrue(r.outputs["ok"])
+        self.assertEqual(r.context["_outputs"], {"recipe": 42, "trigger": True, "temp": 25.0})
+        self.assertEqual(r.detail["values"]["temp"], 25.0)
+        # 不勾 publish 就不進具名輸出
+        r2 = run_tool("read_modbus", params={"connection": "plc", "mapping": mapping})
+        self.assertIsNone(r2.context)
+
+    def test_unknown_connection_degrades_and_can_fail(self):
+        r = run_tool("read_modbus", params={"connection": "nope", "mapping": [{"name": "a", "address": "holding:0"}]})
+        self.assertEqual(r.status, "ok")
+        self.assertFalse(r.outputs["ok"])
+        self.assertIn("未開啟", r.detail["error"])
+        r2 = run_tool("read_modbus", params={"connection": "nope", "mapping": [{"name": "a", "address": "holding:0"}], "on_error": "fail"})
+        self.assertEqual(r2.status, "error")
+
+    def test_empty_mapping_is_ok(self):
+        r = run_tool("read_modbus", params={"connection": "whatever", "mapping": []})
+        self.assertEqual((r.status, r.outputs["values"]), ("ok", []))
+
+
+class TraceTests(SimpleTestCase):
+    """整合追蹤：命令與結果進環形緩衝，沒人在看時只留錯誤。"""
+
+    def setUp(self):
+        trace.clear()
+        self.addCleanup(trace.clear)
+
+    def test_records_only_when_watched_but_always_on_error(self):
+        trace._watch_until = 0.0  # noqa: SLF001 — 沒人在看
+        self.assertEqual(trace.record("tcp", "RUN 1"), 0)
+        self.assertEqual(trace.entries("tcp"), [])
+        self.assertGreater(trace.record("tcp", "RUN 9", ok=False), 0)  # 錯誤永遠記
+        trace._watch_until = 0.0  # noqa: SLF001
+        self.assertGreater(trace.record("tcp", "RUN 1", force=True), 0)
+        trace.watch()
+        self.assertGreater(trace.record("tcp", "RUN 2"), 0)
+        items = trace.entries("tcp")
+        self.assertEqual([e["summary"] for e in items], ["RUN 9", "RUN 1", "RUN 2"])
+        self.assertEqual([e["ok"] for e in items], [False, True, True])
+
+    def test_since_channels_and_ring(self):
+        trace.watch()
+        first = trace.record("http", "第一筆")
+        trace.record("modbus", "寫入")
+        self.assertEqual([e["summary"] for e in trace.entries("http")], ["第一筆"])
+        self.assertEqual([e["summary"] for e in trace.entries(since=first)], ["寫入"])
+        self.assertEqual(len(trace.entries()), 2)  # 不指定頻道＝全部
+        for i in range(trace.KEEP + 20):
+            trace.record("tcp", f"#{i}")
+        self.assertEqual(len(trace.entries("tcp", limit=trace.KEEP)), trace.KEEP)
+        self.assertEqual(trace.stats()["channels"]["tcp"], trace.KEEP)
+        trace.clear("tcp")
+        self.assertEqual(trace.entries("tcp"), [])
+        self.assertEqual(len(trace.entries("http")), 1)
+
+    def test_detail_is_clipped(self):
+        trace.watch()
+        trace.record("http", "大 detail", detail={"text": "x" * 5000, "items": list(range(200)), "obj": object()})
+        entry = trace.entries("http")[-1]
+        self.assertLessEqual(len(entry["detail"]["text"]), trace.MAX_DETAIL_CHARS + 1)
+        self.assertEqual(len(entry["detail"]["items"]), 40)
+        self.assertIsInstance(entry["detail"]["obj"], str)
+
+    def test_writer_records_command_and_result(self):
+        trace.watch()
+        sim = DioSimWriter({"channels": ["DO0"]}, name="sim")
+        sim.write({"DO0": True})
+        entry = trace.entries("modbus")[-1]
+        self.assertEqual((entry["name"], entry["ok"], entry["direction"]), ("sim", True, "out"))
+        self.assertIn("寫入", entry["summary"])
+        self.assertEqual(entry["detail"]["request"], {"DO0": True})
+        with self.assertRaises(writers.CommError):
+            sim.write({"NOPE": 1})
+        self.assertFalse(trace.entries("modbus")[-1]["ok"])
+
+
 class WriteModbusToolTests(SimpleTestCase):
     def tearDown(self):
         writers.close_all()

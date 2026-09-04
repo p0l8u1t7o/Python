@@ -149,4 +149,86 @@ class WriteModbusTool(Tool):
         return Result(outputs={"written": 0, "ok": False}, status="ok", message=f"寫入失敗（已降級）：{reason}"[:500], detail=detail)
 
 
-TOOLS = [WriteModbusTool()]
+class ReadModbusTool(Tool):
+    key = "read_modbus"
+    label = "讀取 Modbus"
+    description = (
+        "從通訊連線讀線圈與暫存器的值，供流程判斷或回傳。"
+        "主站連線（modbus_tcp）是去讀 PLC／設備；從站連線（modbus_server）是讀主站寫進本平台暫存器的值（例如料號、觸發旗標）。"
+    )
+    category = "logic"
+    icon = "Cable"
+    params = [
+        Param("connection", "連線", kind="text", required=True, help_text="填通訊連線的名稱（設定頁「外部整合 → 連線」建立）。"),
+        Param(
+            "mapping", "讀取表", kind="json", required=True, default=[{"name": "recipe", "address": "holding:0"}],
+            help_text='陣列，每項 {"name": 名稱, "address": 位址, "scale"?: 倍率, "offset"?: 加值}。'
+                      "位址：coil:10 / discrete:3 / holding:100 / holding:100:float32 / input:7；名稱空白時用位址當名稱。",
+        ),
+        Param("publish", "同時放進具名輸出", kind="boolean", default=False, help_text="開啟後讀到的值會出現在 run 的 outputs（API／TCP 回傳看得到）。"),
+        Param("on_error", "讀取失敗時", kind="select", default="warn", options=[
+            {"value": "warn", "label": "降級：記警告，run 照常"},
+            {"value": "fail", "label": "讓 run 失敗"},
+        ]),
+        Param("timeout_s", "逾時（秒）", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 = 用連線設定的逾時。", group="進階"),
+    ]
+    inputs: list[Port] = []
+    outputs = [Port("values", "值", "list"), Port("value", "第一個值", "number"), Port("ok", "成功", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        name = str(ctx.param("connection", "")).strip()
+        mapping = ctx.param("mapping", [])
+        if isinstance(mapping, dict):
+            mapping = [mapping]
+        if not isinstance(mapping, list):
+            mapping = []
+        on_error = str(ctx.param("on_error", "warn"))
+        items = [item for item in mapping if isinstance(item, dict) and str(item.get("address") or "").strip()]
+        addresses = [str(item["address"]).strip() for item in items]
+        detail: dict[str, Any] = {"connection": name, "addresses": addresses}
+        if not addresses:
+            return Result(outputs={"values": [], "value": 0.0, "ok": True}, message="讀取表沒有位址", detail=detail)
+
+        writer = get_writer(name)
+        if writer is None:
+            return self._read_failed(ctx, on_error, f"連線 '{name}' 未開啟（不存在、已停用或尚未預先載入）", detail)
+        try:
+            raw = writer.read(addresses)
+        except CommError as exc:
+            return self._read_failed(ctx, on_error, str(exc), detail)
+        except Exception as exc:  # noqa: BLE001 — 外掛 writer 的未預期例外也要走降級
+            return self._read_failed(ctx, on_error, f"{type(exc).__name__}: {exc}", detail)
+
+        values: list[Any] = []
+        named: dict[str, Any] = {}
+        for item in items:
+            address = str(item["address"]).strip()
+            value = _scalar(raw.get(address))
+            scale, offset = item.get("scale"), item.get("offset")
+            if (scale is not None or offset is not None) and isinstance(value, (bool, int, float)):
+                value = float(value) * float(scale if scale is not None else 1.0) + float(offset or 0.0)
+            values.append(value)
+            named[str(item.get("name") or address)] = value
+        detail["values"] = named
+        result_context = None
+        if ctx.flag("publish", False):
+            outputs = dict(ctx.context.get("_outputs") or {})
+            outputs.update(named)
+            result_context = {"_outputs": outputs}
+        first = next((v for v in values if isinstance(v, (int, float, bool))), 0)
+        return Result(
+            outputs={"values": values, "value": float(first), "ok": True},
+            message="、".join(f"{k}={v}" for k, v in named.items())[:200],
+            detail=detail, context=result_context,
+        )
+
+    @staticmethod
+    def _read_failed(ctx: ToolContext, on_error: str, reason: str, detail: dict[str, Any]) -> Result:
+        detail = {**detail, "error": reason}
+        if on_error == "fail":
+            return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="error", message=f"讀取失敗：{reason}"[:500], detail=detail)
+        ctx.log(f"整合讀取失敗（已降級）：{reason}", level="warning")
+        return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=f"讀取失敗（已降級）：{reason}"[:500], detail=detail)
+
+
+TOOLS = [WriteModbusTool(), ReadModbusTool()]

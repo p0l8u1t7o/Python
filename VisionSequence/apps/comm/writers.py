@@ -134,6 +134,7 @@ class Writer:
         """寫一批；第一次失敗會關閉、重開連線再試一次，第二次失敗才拋 CommError。"""
         if not values:
             return {"written": 0}
+        started = time.perf_counter()
         with self._lock:
             old = self.timeout
             if timeout:
@@ -157,28 +158,51 @@ class Writer:
                         raise CommError(f"{self.name or self.kind}：{self.last_error}") from exc2
                 self.writes += 1
                 self.last_write_at = time.time()
+                self._trace("寫入", values, out, started)
                 return out
+            except CommError as exc:
+                self._trace("寫入", values, {"error": str(exc)}, started, ok=False)
+                raise
             finally:
                 self.timeout = old
 
     def read(self, addresses: list[str]) -> dict[str, Any]:
+        started = time.perf_counter()
         with self._lock:
             try:
-                return self._read(addresses)
-            except CommError:
+                out = self._read(addresses)
+                self._trace("讀取", addresses, out, started)
+                return out
+            except CommError as exc:
+                self._trace("讀取", addresses, {"error": str(exc)}, started, ok=False)
                 raise
             except Exception as exc:  # noqa: BLE001
                 self.last_error = _msg(exc)
                 try:
                     self._close()
                     self._open()
-                    return self._read(addresses)
+                    out = self._read(addresses)
+                    self._trace("讀取", addresses, out, started)
+                    return out
                 except Exception as exc2:  # noqa: BLE001
+                    self._trace("讀取", addresses, {"error": _msg(exc2)}, started, ok=False)
                     raise CommError(f"{self.name or self.kind}：{_msg(exc2)}") from exc2
 
     def close(self) -> None:
         with self._lock:
             self._close()
+
+    def _trace(self, action: str, request: Any, result: Any, started: float, *, ok: bool = True) -> None:
+        """把命令與結果記進整合追蹤（整合頁的「命令與結果」）；失敗永遠記，成功只在有人看時記。"""
+        try:
+            from apps.vision import trace
+
+            items = request if isinstance(request, (list, dict)) else [request]
+            summary = f"{action} {len(items)} 筆：" + "、".join(f"{k}={v}" for k, v in list(items.items())[:4]) if isinstance(items, dict) else f"{action}：" + "、".join(str(x) for x in list(items)[:4])
+            trace.record("modbus", summary, direction="out", name=self.name or self.kind, detail={"request": request, "result": result},
+                         ok=ok, ms=(time.perf_counter() - started) * 1000)
+        except Exception:  # noqa: BLE001 — 追蹤不能影響通訊
+            pass
 
     def info(self) -> dict[str, Any]:
         return {
@@ -288,6 +312,176 @@ class ModbusTcpWriter(Writer):
 
     def info(self) -> dict[str, Any]:
         return {**super().info(), "host": self.host, "port": self.port, "unit_id": self.unit_id, "connected": bool(self.client is not None and self.client.connected)}
+
+
+#: Modbus 功能碼 → 位址區（pymodbus 的 datastore 以功能碼決定要動哪一區）
+_READ_FC = {"coil": 1, "discrete": 2, "holding": 3, "input": 4}
+_WRITE_FC = {"coil": 5, "discrete": 2, "holding": 16, "input": 4}
+
+
+class ModbusServerWriter(Writer):
+    """本平台當 **Modbus TCP 從站（server）**：PLC／上位機當主站來讀寫我們的暫存器。
+
+    config: host=0.0.0.0, port=5020, unit_id=1, size=512（每區的點數）, word_order=big|little
+    - `write()` 把值寫進 datastore（主站下次讀就拿得到）；`read()` 讀 datastore（看主站寫了什麼）。
+    - 伺服器跑在自己的執行緒與事件迴圈，跨執行緒存取一律走 `run_coroutine_threadsafe`。
+    - 不佔用引擎的執行緒池；一條連線一個埠。
+    """
+
+    kind = "modbus_server"
+    label = "Modbus/TCP 從站（本機當 server）"
+    fields = ["host", "port", "unit_id", "size", "word_order"]
+
+    def __init__(self, config, **kw) -> None:
+        super().__init__(config, **kw)
+        self.host = str(config.get("host") or "0.0.0.0")
+        self.port = int(config.get("port", 5020) or 5020)
+        self.unit_id = int(config.get("unit_id", 1) if config.get("unit_id") is not None else 1)
+        self.size = max(8, min(65536, int(config.get("size", 512) or 512)))
+        self.word_order = "little" if str(config.get("word_order", "big")).lower() == "little" else "big"
+        self.server = None
+        self.loop = None
+        self._thread: threading.Thread | None = None
+        self._ready = threading.Event()
+        self._error = ""
+        self.requests = 0
+        self.connections = 0
+        self._open()
+
+    # -- 伺服器生命週期 -----------------------------------------------------
+    def _open(self) -> None:
+        if self.server is not None:
+            return
+        self._ready.clear()
+        self._error = ""
+        self._thread = threading.Thread(target=self._serve, name=f"modbus-server-{self.port}", daemon=True)
+        self._thread.start()
+        if not self._ready.wait(5.0) or self.server is None:
+            raise CommError(self._error or f"Modbus 從站無法在 {self.host}:{self.port} 啟動")
+
+    def _serve(self) -> None:
+        import asyncio
+
+        async def main() -> None:
+            from pymodbus.server import ModbusTcpServer
+            from pymodbus.simulator import DataType, SimData, SimDevice
+
+            bits = [SimData(0, count=self.size, values=False, datatype=DataType.BITS)]
+            regs = [SimData(0, count=self.size, values=0, datatype=DataType.UINT16)]
+            device = SimDevice(self.unit_id, simdata=(bits, list(bits), regs, list(regs)))
+            self.loop = asyncio.get_running_loop()
+            self.server = ModbusTcpServer(device, address=(self.host, self.port), trace_pdu=self._trace_pdu, trace_connect=self._trace_connect)
+            await self.server.serve_forever(background=True)
+            self._ready.set()
+            await self.server.serving
+
+        try:
+            asyncio.run(main())
+        except Exception as exc:  # noqa: BLE001
+            self._error = _msg(exc)
+            self.server = None
+            log.warning("Modbus 從站 %s:%s 結束：%s", self.host, self.port, self._error)
+        finally:
+            self._ready.set()
+
+    def _trace_pdu(self, sending: bool, pdu):  # noqa: ANN001 — pymodbus 的回呼
+        """主站的每一則請求／我們的回應都記進整合追蹤（整合頁「命令與結果」看得到）。"""
+        try:
+            if not sending:
+                self.requests += 1
+            from apps.vision import trace
+
+            name = type(pdu).__name__.replace("Request", "").replace("Response", "")
+            detail = {"function_code": getattr(pdu, "function_code", None), "address": getattr(pdu, "address", None)}
+            for attr in ("count", "bits", "registers"):
+                value = getattr(pdu, attr, None)
+                if value not in (None, [], 0):
+                    detail[attr] = value if not isinstance(value, list) else value[:16]
+            trace.record("modbus", f"{'回應' if sending else '主站請求'} {name}", direction="out" if sending else "in", name=self.name or self.kind, detail=detail)
+        except Exception:  # noqa: BLE001 — 追蹤失敗不能影響通訊
+            pass
+        return pdu
+
+    def _trace_connect(self, connected: bool) -> None:  # noqa: FBT001
+        try:
+            self.connections += 1 if connected else 0
+            from apps.vision import trace
+
+            trace.record("modbus", "主站已連線" if connected else "主站已斷線", name=self.name or self.kind, detail={"port": self.port})
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _close(self) -> None:
+        import asyncio
+
+        server, loop = self.server, self.loop
+        self.server = None
+        if server is not None and loop is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(server.shutdown(), loop).result(5)
+            except Exception:  # noqa: BLE001
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            self._thread = None
+        self.loop = None
+
+    # -- datastore 存取（跨執行緒）------------------------------------------
+    def _require(self):
+        """伺服器已停（關閉或啟動失敗）時給明確錯誤，而不是 AttributeError。"""
+        if self.server is None or self.loop is None:
+            raise CommError(f"{self.name or self.kind}：Modbus 從站尚未啟動")
+        return self.server
+
+    def _call(self, coro):
+        import asyncio
+
+        if self.loop is None:
+            raise CommError("Modbus 從站尚未啟動")
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result(self.timeout or 2.0)
+
+    def _write(self, values: dict[str, Any]) -> dict[str, Any]:
+        from pymodbus.client import ModbusTcpClient
+
+        server = self._require()
+        written: dict[str, Any] = {}
+        for address, raw in values.items():
+            area, offset, dtype = parse_address(address)
+            if area in ("coil", "discrete"):
+                value = coerce(raw, "bool")
+                self._call(server.async_setValues(self.unit_id, _WRITE_FC[area], offset, [bool(value)]))
+            else:
+                value = coerce(raw, dtype)
+                if dtype == "uint16":
+                    regs = [max(0, min(0xFFFF, int(value)))]
+                else:
+                    regs = ModbusTcpClient.convert_to_registers(value, getattr(ModbusTcpClient.DATATYPE, dtype.upper()), word_order=self.word_order)
+                self._call(server.async_setValues(self.unit_id, _WRITE_FC[area], offset, [int(r) & 0xFFFF for r in regs]))
+            written[address] = value
+        return {"written": len(written), "values": written}
+
+    def _read(self, addresses: list[str]) -> dict[str, Any]:
+        from pymodbus.client import ModbusTcpClient
+
+        server = self._require()
+        out: dict[str, Any] = {}
+        for address in addresses:
+            area, offset, dtype = parse_address(address)
+            if area in ("coil", "discrete"):
+                got = self._call(server.async_getValues(self.unit_id, _READ_FC[area], offset, 1))
+                out[address] = bool(got[0])
+            else:
+                count = _DTYPE_WORDS[dtype]
+                got = self._call(server.async_getValues(self.unit_id, _READ_FC[area], offset, count))
+                regs = [int(v) & 0xFFFF for v in got]
+                out[address] = int(regs[0]) if dtype == "uint16" else ModbusTcpClient.convert_from_registers(regs, getattr(ModbusTcpClient.DATATYPE, dtype.upper()), word_order=self.word_order)
+        return out
+
+    def info(self) -> dict[str, Any]:
+        return {
+            **super().info(), "host": self.host, "port": self.port, "unit_id": self.unit_id, "size": self.size,
+            "listening": bool(self.server is not None), "requests": self.requests, "role": "server",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +606,7 @@ class DioSimWriter(Writer):
 # ---------------------------------------------------------------------------
 _BUILTIN: dict[str, type[Writer]] = {
     "modbus_tcp": ModbusTcpWriter,
+    "modbus_server": ModbusServerWriter,
     "tcp_client": TcpClientWriter,
     "dio_sim": DioSimWriter,
 }
@@ -561,7 +756,10 @@ def get_connection(connection_id: int):
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "label": "Modbus/TCP（線圈與暫存器）", "fields": ["host", "port", "unit_id", "timeout_s", "word_order"]},
+        {"kind": "modbus_tcp", "label": "Modbus/TCP 主站（連到 PLC）", "fields": ["host", "port", "unit_id", "timeout_s", "word_order"],
+         "description": "本平台當主站（client）連到 PLC／設備，主動讀寫對方的線圈與暫存器。"},
+        {"kind": "modbus_server", "label": "Modbus/TCP 從站（本機當 server）", "fields": ["host", "port", "unit_id", "size", "word_order"],
+         "description": "本平台當從站（server）開一個埠，PLC／上位機當主站來讀寫我們的暫存器；流程把結果寫進暫存器，主站自己來取。"},
         {"kind": "tcp_client", "label": "TCP 文字／JSON（上位機）", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
         {"kind": "dio_sim", "label": "模擬 DIO（只記錄狀態）", "fields": ["channels"]},
     ]
@@ -580,7 +778,7 @@ def kinds() -> list[dict[str, Any]]:
 
 
 __all__ = [
-    "CommError", "Writer", "ModbusTcpWriter", "TcpClientWriter", "DioSimWriter",
+    "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter", "DioSimWriter",
     "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer", "register_kind",
     "connection_info", "prefetch_connections", "get_connection", "kinds",
 ]
