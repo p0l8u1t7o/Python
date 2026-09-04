@@ -108,6 +108,38 @@ class FlowRun(models.Model):
         indexes = [models.Index(fields=["flow", "-started_at"]), models.Index(fields=["station_id", "-started_at"])]
 
 
+class FlowRunHourly(models.Model):
+    """每小時一列的良率彙總，**永久保留**。
+
+    明細（`FlowRun`）本來只留每流程最近 2000 筆——產線一秒一次就是 33 分鐘的歷史，品保隔天
+    要查早班紀錄時資料早就被自己刪掉了。改成明細留天數、彙總永久保留：一年 8760 列而已，
+    趨勢圖與報表查它，重開機或清明細都不會讓良率曲線消失。
+    """
+
+    flow = models.ForeignKey("Flow", on_delete=models.CASCADE, related_name="hourly")
+    #: 該小時的起點（UTC，分秒為 0）。
+    hour = models.DateTimeField(db_index=True)
+    station_id = models.CharField(max_length=40, default="ST01")
+    recipe = models.CharField(max_length=80, blank=True, default="")
+    ok = models.PositiveIntegerField(default=0)
+    ng = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    total_ms = models.FloatField(default=0.0)
+    max_ms = models.FloatField(default=0.0)
+
+    class Meta:
+        ordering = ["-hour"]
+        unique_together = [("flow", "hour", "station_id", "recipe")]
+        indexes = [models.Index(fields=["flow", "-hour"])]
+
+    @property
+    def total(self) -> int:
+        return self.ok + self.ng + self.failed
+
+    def __str__(self) -> str:
+        return f"{self.flow_id} {self.hour:%Y-%m-%d %H} {self.total}"
+
+
 SOURCE_KINDS = ("folder", "file", "usb", "synthetic", "upload", "plugin")
 
 

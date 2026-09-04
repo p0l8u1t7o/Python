@@ -45,7 +45,7 @@ from apps.core import audit
 from apps.vision import archive, graphdiff, schemas, scripts, teachguard, trace, versions
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
-from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
+from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource, ResourceGroup
 from apps.vision.runner import get_flow, runner
 from apps.vision.sources import close_source, grab_by_id, kinds as source_kinds, open_source, source_info, try_grab
 from apps.vision.tools import base as tools
@@ -677,26 +677,34 @@ def run_history(request: HttpRequest, flow_id: int, status: str = "", limit: int
 
 @router.get("/flows/{flow_id}/stats")
 def flow_stats(request: HttpRequest, flow_id: int, hours: int = 24):
-    """DB 內的統計：各狀態數量、平均耗時、最近 N 小時每小時的 OK/NG。"""
+    """良率統計，資料來自**每小時彙總**（`FlowRunHourly`）。
+
+    彙總永久保留，所以明細被保留期清掉、甚至伺服器重開之後，趨勢圖照樣完整——這正是把
+    「明細短期、彙總永久」分開的目的。
+    """
     get_flow(flow_id)
-    from django.db.models import Avg, Count, Max
-    from django.utils import timezone
     import datetime as dt
 
-    since = timezone.now() - dt.timedelta(hours=hours)
-    qs = FlowRun.objects.filter(flow_id=flow_id, started_at__gte=since)
-    by_status = {row["status"]: row["n"] for row in qs.values("status").annotate(n=Count("id"))}
-    agg = qs.aggregate(avg=Avg("duration_ms"), mx=Max("duration_ms"), n=Count("id"))
+    from django.db.models import Max, Sum
+    from django.utils import timezone
+
+    since = (timezone.now() - dt.timedelta(hours=hours)).replace(minute=0, second=0, microsecond=0)
+    qs = FlowRunHourly.objects.filter(flow_id=flow_id, hour__gte=since)
+    agg = qs.aggregate(ok=Sum("ok"), ng=Sum("ng"), failed=Sum("failed"), total_ms=Sum("total_ms"), mx=Max("max_ms"))
+    by_status = {k: int(agg[k] or 0) for k in ("ok", "ng", "failed") if agg[k]}
+    total = sum(int(agg[k] or 0) for k in ("ok", "ng", "failed"))
     buckets: dict[str, dict[str, int]] = {}
-    for started, status_ in qs.values_list("started_at", "status"):
-        key = started.astimezone(timezone.get_current_timezone()).strftime("%Y-%m-%d %H:00")
+    local = timezone.get_current_timezone()
+    for row in qs.values("hour", "ok", "ng", "failed"):
+        key = row["hour"].astimezone(local).strftime("%Y-%m-%d %H:00")
         b = buckets.setdefault(key, {"ok": 0, "ng": 0, "failed": 0})
-        b[status_ if status_ in b else "failed"] += 1
+        for k in ("ok", "ng", "failed"):
+            b[k] += row[k]
     return {
         "hours": hours,
-        "total": agg["n"] or 0,
+        "total": total,
         "by_status": by_status,
-        "avg_ms": round(agg["avg"] or 0, 2),
+        "avg_ms": round((agg["total_ms"] or 0) / total, 2) if total else 0.0,
         "max_ms": round(agg["mx"] or 0, 2),
         "hourly": [{"hour": k, **v} for k, v in sorted(buckets.items())],
         "live": runner.runtime(flow_id).stats.to_dict(),

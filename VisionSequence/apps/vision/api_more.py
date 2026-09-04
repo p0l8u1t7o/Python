@@ -27,7 +27,7 @@ from apps.accounts.security import authenticate, principal, require_admin, requi
 from apps.core import audit
 from apps.core.models import AuditLog
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import demo, trace
+from apps.vision import __version__, demo, trace
 from apps.vision.api import _decode_upload, _visible_flows
 from apps.vision.graph import validate_graph
 from apps.vision.models import FlowTemplate, ImageSource
@@ -341,6 +341,8 @@ def integration_info(request: HttpRequest):
         "capture_download_url": "/api/vision/capture/download",
         "events_url": "/api/vision/events",
         "flow_events_url": "/api/vision/flows/{flow_id}/stream",
+        "version": __version__,
+        "station_id": cfg.get("STATION_ID", ""),
         "api_key_required": bool(cfg.get("API_KEY")),
         "max_workers": cfg["MAX_WORKERS"],
         "max_queue_per_flow": runner.max_queue_per_flow,

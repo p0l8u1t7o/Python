@@ -20,18 +20,20 @@ import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import numpy as np
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections
+from django.db.models import F, Value
+from django.db.models.functions import Greatest
 
 from apps.core.errors import Conflict, NotFound, RateLimited
 from apps.vision import archive, engine
 from apps.vision.graph import CompiledGraph, compile_graph, restrict_to, validate_graph
 from apps.vision.images import store
-from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource
+from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource
 from apps.vision.sources import grab_by_id, open_source
 
 log = logging.getLogger(__name__)
@@ -119,6 +121,34 @@ class _Persister(threading.Thread):
             finally:
                 close_old_connections()
 
+    @staticmethod
+    def _rollup(rows: list[FlowRun]) -> None:
+        """把這一批累加進每小時彙總（永久保留；明細清掉後趨勢還在）。"""
+        buckets: dict[tuple[int, Any, str, str], dict[str, float]] = {}
+        for row in rows:
+            hour = row.started_at.replace(minute=0, second=0, microsecond=0)
+            key = (row.flow_id, hour, row.station_id, row.recipe)
+            b = buckets.setdefault(key, {"ok": 0, "ng": 0, "failed": 0, "total_ms": 0.0, "max_ms": 0.0})
+            b[row.status if row.status in ("ok", "ng") else "failed"] += 1
+            b["total_ms"] += row.duration_ms
+            b["max_ms"] = max(b["max_ms"], row.duration_ms)
+        for (flow_id, hour, station, recipe), b in buckets.items():
+            try:
+                updated = FlowRunHourly.objects.filter(flow_id=flow_id, hour=hour, station_id=station, recipe=recipe).update(
+                    ok=F("ok") + int(b["ok"]), ng=F("ng") + int(b["ng"]), failed=F("failed") + int(b["failed"]),
+                    total_ms=F("total_ms") + b["total_ms"], max_ms=Greatest(F("max_ms"), Value(b["max_ms"])),
+                )
+                if not updated:
+                    FlowRunHourly.objects.create(
+                        flow_id=flow_id, hour=hour, station_id=station, recipe=recipe,
+                        ok=int(b["ok"]), ng=int(b["ng"]), failed=int(b["failed"]), total_ms=b["total_ms"], max_ms=b["max_ms"],
+                    )
+            except IntegrityError:  # 同時兩批寫同一個小時：重試一次 update 就好
+                FlowRunHourly.objects.filter(flow_id=flow_id, hour=hour, station_id=station, recipe=recipe).update(
+                    ok=F("ok") + int(b["ok"]), ng=F("ng") + int(b["ng"]), failed=F("failed") + int(b["failed"]),
+                    total_ms=F("total_ms") + b["total_ms"], max_ms=Greatest(F("max_ms"), Value(b["max_ms"])),
+                )
+
     def _write(self, batch: list[engine.RunReport]) -> None:
         rows = [
             FlowRun(
@@ -148,9 +178,16 @@ class _Persister(threading.Thread):
                     row.save()
                 except IntegrityError:
                     pass
+        self._rollup(rows)
         self._prune_counter += len(rows)
         if self._prune_counter >= 500:
             self._prune_counter = 0
+            days = int(_cfg("KEEP_RUN_DAYS", 30))
+            if days > 0:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+                for run_id, images in FlowRun.objects.filter(started_at__lt=cutoff).values_list("id", "images")[:5000]:
+                    archive.drop_run(run_id.hex, images)
+                FlowRun.objects.filter(started_at__lt=cutoff).delete()
             keep = int(_cfg("KEEP_RUN_ROWS", 2000))
             for flow_id in {r.flow_id for r in batch}:
                 doomed = list(FlowRun.objects.filter(flow_id=flow_id).order_by("-started_at").values_list("id", "images")[keep : keep + 1000])

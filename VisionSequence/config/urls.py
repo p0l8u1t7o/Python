@@ -11,7 +11,10 @@ from config.api import api
 
 
 def healthz(request):
-    return JsonResponse({"status": "ok"})
+    """免認證的健康檢查：監控系統輪詢用，只回不敏感的東西。"""
+    from apps.vision import __version__
+
+    return JsonResponse({"status": "ok", "version": __version__, "station_id": settings.VISION.get("STATION_ID", "")})
 
 
 def _flow_stream(request, flow_id):

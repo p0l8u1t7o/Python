@@ -128,7 +128,9 @@ VISION = {
     # 是否把每次 run 寫進資料庫（背景執行緒批次寫）。高速產線可關閉只留統計。
     "PERSIST_RUNS": _env_bool("VISION_PERSIST_RUNS", True),
     # 資料庫保留的 run 記錄上限（每流程）。
-    "KEEP_RUN_ROWS": _env_int("VISION_KEEP_RUN_ROWS", 2000),
+    # 明細保留天數為主、筆數為輔；每小時彙總（FlowRunHourly）永久保留
+    "KEEP_RUN_DAYS": _env_int("VISION_KEEP_RUN_DAYS", 30),
+    "KEEP_RUN_ROWS": _env_int("VISION_KEEP_RUN_ROWS", 20000),
     "KEEP_VERSIONS": _env_int("VISION_KEEP_VERSIONS", 50),
     "AUDIT_DAYS": _env_int("VISION_AUDIT_DAYS", 730),
     # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。

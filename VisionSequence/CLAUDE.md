@@ -77,6 +77,12 @@
 ### 資料夾外掛（plugins/）
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 
+### 保留策略與維運（FlowRunHourly、backup／restore／purge／doctor）
+- **三層保留**：封存影像（`ARCHIVE_DAYS`／`ARCHIVE_MAX_GB`）→ 明細 `FlowRun`（`KEEP_RUN_DAYS` 預設 30 天，`KEEP_RUN_ROWS` 20000 是保險）→ **每小時彙總 `FlowRunHourly` 永久保留**。
+- `_Persister._rollup` 在寫明細的同一批累加彙總（`F()` 增量＋`Greatest`；依 flow／hour／station／recipe 一列）。**`GET /flows/{id}/stats` 已改查彙總**，明細清掉或重開機都不會讓良率曲線消失。改 stats 要記得它讀的是彙總不是明細。
+- 維運指令：`backup`（SQLite 線上備份 API，`--with-images` 才含封存）／`restore`（擋 zip slip、舊 DB 留一份）／`purge --dry-run`／`doctor`（有 FAIL 時離開碼 1，客服第一句就靠它）。
+- **版本號單一來源** `apps/vision/__init__.py` 的 `__version__`；`/healthz`、`integration/info`、前端側欄底部、`doctor` 都讀它。
+
 ### 稽核軌跡（apps/core/audit.py、core.AuditLog）
 - **只記變更不記執行**（執行有 FlowRun／統計／封存，記進來會把真正的編輯沖掉）。由端點**明確呼叫** `audit.record(request, action, target, summary=, detail=)`，不用 middleware。
 - 已掛：flow.create／update／settings／delete／restore／release、recipe.create／activate、source.delete、connection.create／update／delete、user.create／update／delete、lock.acquire／release。**新增會改變檢測行為或帳號的端點記得補一行。**

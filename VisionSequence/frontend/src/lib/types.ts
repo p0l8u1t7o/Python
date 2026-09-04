@@ -450,6 +450,9 @@ export interface ArchivePolicy {
 }
 
 export interface IntegrationInfo {
+  /** 產品版本（後端 apps/vision/__init__.py 是唯一來源） */
+  version?: string
+  station_id?: string
   http_base: string
   host: string
   http_port: number | string
