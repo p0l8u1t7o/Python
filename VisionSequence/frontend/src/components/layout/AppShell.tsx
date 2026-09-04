@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronRight, FlaskConical, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
@@ -16,9 +16,12 @@ import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
 import { MOBILE_QUERY, NARROW_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
 import { useCapacity, useFlow } from '@/lib/queries'
+import type { LucideIcon } from 'lucide-react'
+
+import { SECTIONS } from '@/pages/integration/sections'
 import { useAuth } from '@/providers/AuthProvider'
 
-const NAV = [
+const NAV: { to: string; key: string; icon: LucideIcon; end: boolean; admin: boolean; tree?: boolean }[] = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true, admin: false },
   { to: '/flows', key: 'flows', icon: Workflow, end: false, admin: false },
   { to: '/batch', key: 'batch', icon: FlaskConical, end: false, admin: false },
@@ -26,13 +29,22 @@ const NAV = [
   { to: '/assets', key: 'assets', icon: Images, end: false, admin: false },
   { to: '/dl', key: 'dl', icon: Brain, end: false, admin: false },
   { to: '/agent', key: 'agent', icon: Sparkles, end: false, admin: false },
-  { to: '/integration', key: 'integration', icon: Plug, end: false, admin: false },
+  { to: '/integration', key: 'integration', icon: Plug, end: false, admin: false, tree: true },
   { to: '/users', key: 'users', icon: Users, end: false, admin: true },
   { to: '/settings', key: 'settings', icon: Settings, end: false, admin: false },
   { to: '/help', key: 'help', icon: HelpCircle, end: false, admin: false },
-] as const
+]
 
 export const SIDEBAR_KEY = 'vs.sidebar'
+const NAV_OPEN_KEY = 'vs.navOpen'
+
+function readOpenGroups(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(NAV_OPEN_KEY) || '[]') as string[]
+  } catch {
+    return []
+  }
+}
 
 function readCollapsed(): boolean {
   try {
@@ -196,6 +208,17 @@ export function AppShell() {
   const { t } = useTranslation()
   const auth = useAuth()
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [openGroups, setOpenGroups] = useState<string[]>(readOpenGroups)
+  const toggleGroup = (key: string) =>
+    setOpenGroups((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      try {
+        localStorage.setItem(NAV_OPEN_KEY, JSON.stringify(next))
+      } catch {
+        /* 隱私模式沒有 localStorage 也要能用 */
+      }
+      return next
+    })
   // 手機（< 768px）：側欄改成抽屜（預設收起、☰ 開啟、點選項目或換頁自動關），不再佔掉 220px 內容寬
   const mobile = useMediaQuery(MOBILE_QUERY)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -226,11 +249,32 @@ export function AppShell() {
         {!narrow ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
         {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
         <div className={`flex-1 ${narrow ? 'overflow-visible' : 'overflow-y-auto'}`}>
-          {NAV.filter((item) => !item.admin || auth.isAdmin).map(({ to, key, icon: Icon, end }) => (
-            <NavLink key={key} to={to} end={end} onClick={() => setMobileOpen(false)} title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
-              <Icon size={17} aria-hidden className="shrink-0" />
-              {narrow ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
-            </NavLink>
+          {NAV.filter((item) => !item.admin || auth.isAdmin).map(({ to, key, icon: Icon, end, tree }) => (
+            <div key={key}>
+              <div className="relative flex items-center">
+                <NavLink to={to} end={end} onClick={() => setMobileOpen(false)} title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item flex-1 ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
+                  <Icon size={17} aria-hidden className="shrink-0" />
+                  {narrow ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
+                </NavLink>
+                {tree && !narrow ? (
+                  <button type="button" onClick={() => toggleGroup(key)} aria-expanded={openGroups.includes(key)} aria-label={t(openGroups.includes(key) ? 'nav.collapseGroup' : 'nav.expandGroup')}
+                    className="absolute right-1 flex size-6 items-center justify-center rounded text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-text" data-testid={`nav-${key}-toggle`}>
+                    {openGroups.includes(key) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                ) : null}
+              </div>
+              {tree && !narrow && openGroups.includes(key) ? (
+                <div className="mb-1" data-testid={`nav-${key}-children`}>
+                  {SECTIONS.map((section) => (
+                    <NavLink key={section.id} to={`/integration/${section.id}`} onClick={() => setMobileOpen(false)}
+                      className={({ isActive }) => `nav-item !py-1.5 !pl-9 text-[13px] ${isActive ? 'active' : ''}`} data-testid={`nav-integration-${section.id}`}>
+                      <section.icon size={14} aria-hidden className="shrink-0" />
+                      <span className="truncate">{t(`integration.tabs.${section.key}`)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
         <button type="button" onClick={() => setCollapsed((v) => !v)} className={`${mobile ? 'hidden' : 'flex'} h-11 items-center gap-3 border-t border-[var(--sidebar-line)] text-[12px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-text ${narrow ? 'justify-center' : 'px-4'}`} title={narrow ? t('nav.expand') : t('nav.collapse')} aria-label={narrow ? t('nav.expand') : t('nav.collapse')} data-testid="sidebar-toggle">

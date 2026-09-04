@@ -126,7 +126,7 @@ export function GlobalSearch() {
       out.push({ group: 'sources', label: s.name, sub: s.kind, to: '/sources', icon: Camera })
     }
     for (const c of (connections.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
-      out.push({ group: 'connections', label: c.name, sub: c.kind, to: '/integration?tab=connections', icon: Cable })
+      out.push({ group: 'connections', label: c.name, sub: c.kind, to: '/integration/connections', icon: Cable })
     }
     for (const a of (assets.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
       out.push({ group: 'assets', label: a.name, sub: a.kind, to: '/assets', icon: Images })

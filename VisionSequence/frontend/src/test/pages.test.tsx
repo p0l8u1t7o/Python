@@ -54,9 +54,20 @@ describe('pages render (smoke)', () => {
     expect(screen.getByTestId('capture-download')).toBeDisabled()
   })
 
+  it('integration sections are their own pages with a command trace', async () => {
+    const { TcpPage } = await import('@/pages/integration/TcpPage')
+    renderPage(<TcpPage />, { route: '/integration/tcp' })
+    expect(await screen.findByText('命令與結果', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
+    const { ModbusPage } = await import('@/pages/integration/ModbusPage')
+    renderPage(<ModbusPage />, { route: '/integration/modbus' })
+    expect(await screen.findByText('兩種角色')).toBeInTheDocument()
+    expect(screen.getAllByText(/從站/).length).toBeGreaterThan(0)
+  })
+
   it('IntegrationPage capture tab lists connected capture clients and channels', async () => {
-    const { IntegrationPage } = await import('@/pages/IntegrationPage')
-    renderPage(<IntegrationPage />, { route: '/integration?tab=capture' })
+    const { IntegrationCapturePage } = await import('@/pages/integration/CapturePage')
+    renderPage(<IntegrationCapturePage />, { route: '/integration/capture' })
     expect(await screen.findByText('已連線的擷取端')).toBeInTheDocument()
     expect(await screen.findByText('line-pc')).toBeInTheDocument()
     expect(screen.getByText('產線相機 1')).toBeInTheDocument()
@@ -79,8 +90,8 @@ describe('pages render (smoke)', () => {
     const { DlPage } = await import('@/pages/DlPage')
     renderPage(<DlPage />, { route: '/dl' })
     expect((await screen.findAllByText('深度學習教導')).length).toBeGreaterThan(0)
-    const { IntegrationPage } = await import('@/pages/IntegrationPage')
-    renderPage(<IntegrationPage />, { route: '/integration' })
+    const { IntegrationLayout } = await import('@/pages/IntegrationPage')
+    renderPage(<IntegrationLayout />, { route: '/integration/http' })
     expect((await screen.findAllByText(/外部整合|整合/)).length).toBeGreaterThan(0)
   })
 })

@@ -16,7 +16,16 @@ const FlowsPage = lazy(() => import('@/pages/FlowsPage').then((m) => ({ default:
 const GoldenPage = lazy(() => import('@/pages/GoldenPage').then((m) => ({ default: m.GoldenPage })))
 const BatchPage = lazy(() => import('@/pages/BatchPage').then((m) => ({ default: m.BatchPage })))
 const HelpPage = lazy(() => import('@/pages/HelpPage').then((m) => ({ default: m.HelpPage })))
-const IntegrationPage = lazy(() => import('@/pages/IntegrationPage').then((m) => ({ default: m.IntegrationPage })))
+const IntegrationLayout = lazy(() => import('@/pages/IntegrationPage').then((m) => ({ default: m.IntegrationLayout })))
+const IntegrationIndex = lazy(() => import('@/pages/IntegrationPage').then((m) => ({ default: m.IntegrationIndex })))
+const IntegrationHttpPage = lazy(() => import('@/pages/integration/HttpPage').then((m) => ({ default: m.HttpPage })))
+const IntegrationTcpPage = lazy(() => import('@/pages/integration/TcpPage').then((m) => ({ default: m.TcpPage })))
+const IntegrationEventsPage = lazy(() => import('@/pages/integration/EventsPage').then((m) => ({ default: m.EventsPage })))
+const IntegrationLockPage = lazy(() => import('@/pages/integration/LockPage').then((m) => ({ default: m.LockPage })))
+const IntegrationFormatPage = lazy(() => import('@/pages/integration/FormatPage').then((m) => ({ default: m.FormatPage })))
+const IntegrationModbusPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusPage })))
+const IntegrationConnectionsPage = lazy(() => import('@/pages/integration/ConnectionsPage').then((m) => ({ default: m.IntegrationConnectionsPage })))
+const IntegrationCapturePage = lazy(() => import('@/pages/integration/CapturePage').then((m) => ({ default: m.IntegrationCapturePage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
@@ -52,8 +61,22 @@ const router = createBrowserRouter([
           { path: 'batch', element: <BatchPage /> },
           { path: 'dl', element: <DlPage /> },
           { path: 'agent', element: <AgentPage /> },
-          { path: 'connections', element: <Navigate to="/integration?tab=connections" replace /> },
-          { path: 'integration', element: <IntegrationPage /> },
+          { path: 'connections', element: <Navigate to="/integration/connections" replace /> },
+          {
+            path: 'integration',
+            element: <IntegrationLayout />,
+            children: [
+              { index: true, element: <IntegrationIndex /> },
+              { path: 'http', element: <IntegrationHttpPage /> },
+              { path: 'tcp', element: <IntegrationTcpPage /> },
+              { path: 'events', element: <IntegrationEventsPage /> },
+              { path: 'modbus', element: <IntegrationModbusPage /> },
+              { path: 'connections', element: <IntegrationConnectionsPage /> },
+              { path: 'capture', element: <IntegrationCapturePage /> },
+              { path: 'lock', element: <IntegrationLockPage /> },
+              { path: 'format', element: <IntegrationFormatPage /> },
+            ],
+          },
           { path: 'help', element: <HelpPage /> },
           { path: 'sources', element: <SourcesPage /> },
           { path: 'assets', element: <AssetsPage /> },

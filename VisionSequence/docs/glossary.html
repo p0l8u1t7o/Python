@@ -154,11 +154,11 @@
 <tr><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>名詞定義與操作說明</td></tr>
 <tr><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>登入／建立第一個管理員</td></tr>
 <tr><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>單一流程的執行歷史、良率、每小時 OK／NG、耗時趨勢（總覽卡片與頂列都有入口）</td></tr>
-<tr><td>外部整合</td><td><code>/integration</code></td><td>IntegrationPage</td><td>給整合方：HTTP API 測試（含配方欄）、TCP 測試、事件監看、鎖定、回傳格式、Modbus 輸出、連線（原 /connections 併入為分頁）；左側選單名稱「外部整合」</td></tr>
+<tr><td>外部整合</td><td><code>/integration/*</code></td><td>IntegrationLayout ＋ pages/integration/*</td><td>每一種整合方式各自獨立頁面（http／tcp／events／modbus／connections／capture／lock／format），側欄可展開成樹狀；每個工具頁面下方有「命令與結果」即時追蹤。舊 <code>?tab=</code> 網址自動轉址</td></tr>
 <tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試執行到該步驟、標記為已教導</td></tr>
 <tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
 <tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集（zip 批次、去重）與標記、自動標記與智慧選取、資料集分割與版本、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
-<tr><td>連線</td><td><code>/integration?tab=connections</code>（舊 /connections 轉址）</td><td>ConnectionsSection（併入外部整合頁分頁）</td><td>Modbus TCP／上位機的主動輸出連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
+<tr><td>連線</td><td><code>/integration/connections</code>（舊 /connections 轉址）</td><td>ConnectionsSection</td><td>Modbus 主站／從站、上位機 TCP 的連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
 <tr><td>全域搜尋</td><td>—（頂部導覽列）</td><td>GlobalSearch</td><td>搜尋全平台內容：頁面、流程、工具、影像來源、連線、資產；預設收合成放大鏡 icon，點擊或 Ctrl+K 展開輸入框（清空離開自動收回）、↑↓ 選擇、Enter 前往</td></tr>
 <tr><td>頂列</td><td>—（AppShell topbar）</td><td>topbar</td><td>右側一律 icon 鈕（gap-1）：搜尋（點開輸入框）、容量 CapacityMenu（icon＋執行數角標，點開列出執行中流程與連續標記）、使用者（頭像，點開名稱／改密碼／登出）；深淺色切換鈕已移除（主題只在設定頁）</td></tr>
 </table>
@@ -241,7 +241,9 @@
 <tr><td>AI 助手</td><td>Agent（<code>/agent</code>、AgentPage、<code>apps/vision/agent</code>）</td><td>上傳影像＋圈 ROI＋提示詞 → 自動生成流程 graph 並實跑；離線規則引擎（意圖→合成器）＋可選 LLM 生成（<code>VISION_AGENT_API_KEY</code>）。見 docs/agent.html</td></tr>
 <tr><td>批次測試</td><td>Batch test</td><td>多張影像（檔案／來源抓 N 張，≤50）用目前的圖各跑一次試執行，看良率與每張判定；影像只保留最近 8 次（KEEP_RUN_IMAGES），被淘汰的顯示「影像已釋放」</td></tr>
 <tr><td>統計</td><td>Statistics（StatsPage）</td><td>資料庫歷史的 KPI、每小時 OK／NG／失敗、耗時趨勢與執行歷史表；「記憶體即時統計」是引擎內的 FlowStats</td></tr>
-<tr><td>整合頁</td><td>Integration page</td><td>外部整合方的接口說明與測試工具；「事件監看」連 <code>/api/vision/events</code></td></tr>
+<tr><td>整合頁</td><td>Integration page</td><td>外部整合方的接口說明與測試工具；每一種整合方式一個獨立頁面，側欄樹狀展開</td></tr>
+<tr><td>命令與結果</td><td>Trace（整合追蹤）</td><td>整合頁下方的即時紀錄：這個介面收到的命令與回覆（時間、方向、耗時、成功與否、完整內容）；行程內環形緩衝，關頁後只留錯誤</td></tr>
+<tr><td>Modbus 主站／從站</td><td>Modbus client / server</td><td>主站（<code>modbus_tcp</code>）＝平台連到 PLC 去讀寫；從站（<code>modbus_server</code>）＝平台開埠，PLC 當主站來讀寫平台的暫存器</td></tr>
 <tr><td>收藏</td><td>Favorites</td><td>工具箱裡按星號的工具（localStorage <code>vs.favoriteTools</code>）；「最近使用」已移除</td></tr>
 <tr><td>已教導 / 未教導</td><td>Commissioned（<code>Flow.commissioned</code>）</td><td>參數卡頁「標記為已教導」後為 true；false 時流程列表／總覽／頂列顯示「未教導」標籤，執行的 <code>RunReport.warnings</code> 帶「未完成現場教導」但不阻擋</td></tr>
 <tr><td>配方</td><td>Recipe（<code>FlowRecipe</code>）</td><td>同一流程的一組參數覆寫 <code>param_overrides = {node_id: {param: value}}</code>，多料號換線用；執行／試執行／TCP <code>recipe=</code> 可指定（名稱或 id），未指定用綁定配方（is_default）；參數卡頁「編輯對象」選了配方後改動寫進配方而非圖</td></tr>

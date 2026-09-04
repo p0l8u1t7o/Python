@@ -453,8 +453,9 @@ class IdleStopTests(SimpleTestCase):
     def test_pause_after_idle_and_resume_on_request(self):
         _engine, ch = self._engine(idle_stop_s=0.5)
         self.assertTrue(_wait_true(lambda: ch.state.value == "running"))
-        self.assertTrue(_wait_true(lambda: ch.idle_paused, 4.0), "閒置後應該暫停取像")
-        self.assertEqual(ch.state.value, "open")  # 相機仍開著，只是不取像
+        # 旗標先立起來、相機才停下來，兩個都要等到
+        self.assertTrue(_wait_true(lambda: ch.idle_paused and ch.state.value == "open", 4.0), "閒置後應該暫停取像")
+        self.assertTrue(ch.idle_paused)  # 相機仍開著，只是不取像
         self.assertIsNotNone(ch.camera)
         frame = ch.acquire(0, 2.0)  # 伺服端要影像 → 自動恢復
         self.assertIsNotNone(frame)

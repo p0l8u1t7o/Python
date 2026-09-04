@@ -127,6 +127,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - TCP：一行指令 `RUN <flow> [recipe=…]` 回一行 JSON（同行程）。
 - SSE：即時事件串流；總覽頁可觀看任一流程的即時影像與結果。
 - Modbus TCP／TCP 文字／模擬 DIO 主動輸出（`write_modbus` 工具，失敗降級不停線）。
+- **Modbus 主站與從站**：`modbus_tcp` 平台連到 PLC 去讀寫；`modbus_server` 平台開埠（預設 5020）讓 PLC 當主站來讀寫平台的暫存器。流程工具 `write_modbus`（寫判定／量測值）與 `read_modbus`（讀料號／觸發旗標，可併進具名輸出）。
+- **整合頁**：每一種整合方式都是獨立頁面（`/integration/http|tcp|events|modbus|connections|capture|lock|format`），側欄可展開成樹狀；每個工具頁下方有**命令與結果**即時追蹤（時間、方向、耗時、完整內容），便於除錯。
 - 引擎鎖定：整合方以 API 金鑰鎖定，使用者只能編輯不能執行。詳見 `docs/automation.html`、`docs/modbus.html`。
 
 ### 帳號、介面與文件
