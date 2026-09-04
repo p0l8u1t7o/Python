@@ -38,11 +38,11 @@ class DemoSeedTests(TransactionTestCase):
             seed_demo()
             seed_demo()  # idempotent：重跑不炸、不重複建資源
 
-            self.assertTrue(ResourceGroup.objects.filter(kind="source", name="範例").exists())
-            self.assertGreaterEqual(ImageSource.objects.filter(group="範例").count(), 11)
-            self.assertEqual(Asset.objects.filter(group="範例", kind="image").count(), 3)
+            self.assertTrue(ResourceGroup.objects.filter(kind="source", name="Examples").exists())
+            self.assertGreaterEqual(ImageSource.objects.filter(group="Examples").count(), 11)
+            self.assertEqual(Asset.objects.filter(group="Examples", kind="image").count(), 3)
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
-            self.assertEqual(sorted(Asset.objects.filter(group="範例", kind="model").values_list("name", flat=True)), ["範例：分割模型（刮痕）", "範例：分類模型（良品／缺孔）"])
+            self.assertEqual(sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True)), ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)"])
             self.assertEqual(len(BUILTIN_TEMPLATES), 18)
             import importlib.util
             import os

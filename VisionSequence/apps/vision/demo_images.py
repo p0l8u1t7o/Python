@@ -264,19 +264,19 @@ def dl_scratch_labeled(n: int = 10) -> list[tuple[np.ndarray, list[dict]]]:
 
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
-    "circle_part": ("圓孔量測", circle_part),
-    "l_bracket": ("邊線夾角", l_bracket),
-    "golden_print": ("印刷良品比對", golden_print),
-    "textile": ("織紋瑕疵", textile),
-    "gradient_chart": ("前處理教學圖", gradient_chart),
-    "multi_circles": ("多圓幾何", multi_circles),
-    "color_blocks": ("顏色檢驗", color_blocks),
-    "label_qr": ("條碼標籤", label_qr),
-    "cup": ("杯件量測", cup),
-    "marker_plate": ("定位量測", marker_plate),
-    "stop_signs": ("停止標誌", stop_signs),
-    "dl_parts": ("分類教導", dl_parts),
-    "dl_scratch": ("分割教導", dl_scratch),
+    "circle_part": ("circle gauge", circle_part),
+    "l_bracket": ("edge angle", l_bracket),
+    "golden_print": ("print compare", golden_print),
+    "textile": ("fabric defect", textile),
+    "gradient_chart": ("preprocessing lab", gradient_chart),
+    "multi_circles": ("circles and lines", multi_circles),
+    "color_blocks": ("colour blocks", color_blocks),
+    "label_qr": ("barcode label", label_qr),
+    "cup": ("cup gauge", cup),
+    "marker_plate": ("locate and gauge", marker_plate),
+    "stop_signs": ("stop sign", stop_signs),
+    "dl_parts": ("classification teaching", dl_parts),
+    "dl_scratch": ("segmentation teaching", dl_scratch),
 }
 
 

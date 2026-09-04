@@ -41,18 +41,18 @@ def _note(nid: str, col: int, row: int, label: str, text: str) -> dict[str, Any]
 def hole_count_flow(source_id: Any) -> dict[str, Any]:
     """零件孔數檢測：灰階 → 二值化（暗孔）→ blob → 孔數 = 5 → OK。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("blur", "blur", 2, 0, "去雜訊", method="median", ksize=5),
-        _node("thr", "threshold", 3, 0, "找暗孔", method="fixed", threshold=60, invert=True),
-        _node("open", "morphology", 4, 0, "開運算去雜點", op="open", ksize=5),
-        _node("blob", "blob", 5, 0, "孔 blob", min_area=300, max_area=60000, min_circularity=0.6, sort_by="area"),
-        _node("cmp", "if_number", 6, 0, "孔數 = 5？", operator="eq", threshold=5),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("blur", "blur", 2, 0, "Denoise", method="median", ksize=5),
+        _node("thr", "threshold", 3, 0, "Find dark holes", method="fixed", threshold=60, invert=True),
+        _node("open", "morphology", 4, 0, "Open to remove specks", op="open", ksize=5),
+        _node("blob", "blob", 5, 0, "Hole blobs", min_area=300, max_area=60000, min_circularity=0.6, sort_by="area"),
+        _node("cmp", "if_number", 6, 0, "5 holes?", operator="eq", threshold=5),
         _node("ok", "judge", 7, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 7, 1, "NG：孔數不對", verdict="ng", label="hole_count"),
-        _node("out", "output", 6, 1, "輸出孔數", name="hole_count"),
-        _node("draw", "draw_result", 6, 2, "結果影像"),
-        _note("n1", 0, 1, "說明", "合成影像每張隨機位移／旋轉，約 30% 會少一個孔或有刮痕。\n孔數不等於 5 走 NG 分支。"),
+        _node("ng", "judge", 7, 1, "NG: wrong hole count", verdict="ng", label="hole_count"),
+        _node("out", "output", 6, 1, "Output hole count", name="hole_count"),
+        _node("draw", "draw_result", 6, 2, "Result image"),
+        _note("n1", 0, 1, "About", "Each synthetic image is shifted and rotated at random, and about 30% are missing a hole or carry a scratch.\nAnything other than 5 holes takes the NG branch."),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "blur"), _edge("blur", "thr"), _edge("thr", "open"), _edge("open", "blob"),
@@ -65,21 +65,21 @@ def hole_count_flow(source_id: Any) -> dict[str, Any]:
         return {"nodes": nodes, "edges": edges}
     # blob 尚未提供時退化為像素計數示範。
     nodes = [n for n in nodes if n["id"] not in ("blob", "open")]
-    nodes.append(_node("cnt", "pixel_count" if tools.has("pixel_count") else "threshold", 4, 0, "計數"))
+    nodes.append(_node("cnt", "pixel_count" if tools.has("pixel_count") else "threshold", 4, 0, "Count"))
     return {"nodes": nodes, "edges": [e for e in edges if e["source"] not in ("blob", "open", "thr") and e["target"] not in ("blob", "open")] + [_edge("thr", "cnt")]}
 
 
 def brightness_gate_flow(source_id: Any) -> dict[str, Any]:
     """曝光檢查：平均亮度落在範圍內才 OK（純前處理＋邏輯，無 detect 依賴）。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("small", "resize", 2, 0, "縮小加速", scale=0.25),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("small", "resize", 2, 0, "Downscale for speed", scale=0.25),
         _node("thr", "threshold", 3, 0, "Otsu", method="otsu"),
-        _node("rng", "in_range", 4, 0, "門檻合理？", low=40, high=200),
+        _node("rng", "in_range", 4, 0, "Threshold in range?", low=40, high=200),
         _node("ok", "judge", 5, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 5, 1, "NG：曝光異常", verdict="ng", label="exposure"),
-        _node("out", "output", 4, 1, "輸出 Otsu 門檻", name="otsu"),
+        _node("ng", "judge", 5, 1, "NG: exposure out of range", verdict="ng", label="exposure"),
+        _node("out", "output", 4, 1, "Output Otsu threshold", name="otsu"),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "small"), _edge("small", "thr"),
@@ -95,18 +95,18 @@ def locate_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, A
 
     對齊合成圖「定位量測」：十字標記標稱 (260, 220)，中央亮帶高 160px（NG 張 200px）。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("tm", "template_match", 2, 0, "找定位範本", threshold=0.6, max_matches=1, template=template_asset),
-        _node("align", "shape_align", 3, 0, "定位補正", ref_x=260, ref_y=220, ref_angle=0),
-        _node("fix", "fixture_roi", 4, 0, "ROI 跟隨", roi={"shape": "rotated_rect", "cx": 690, "cy": 480, "w": 300, "h": 60, "angle": 90}),
-        _node("cal", "caliper", 5, 0, "卡尺量帶高", polarity="any", edge_pair="widest"),
-        _node("rng", "in_range", 6, 0, "帶高公差", low=140, high=180),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("tm", "template_match", 2, 0, "Find locator template", threshold=0.6, max_matches=1, template=template_asset),
+        _node("align", "shape_align", 3, 0, "Locate correction", ref_x=260, ref_y=220, ref_angle=0),
+        _node("fix", "fixture_roi", 4, 0, "ROI follow", roi={"shape": "rotated_rect", "cx": 690, "cy": 480, "w": 300, "h": 60, "angle": 90}),
+        _node("cal", "caliper", 5, 0, "Caliper band height", polarity="any", edge_pair="widest"),
+        _node("rng", "in_range", 6, 0, "Band height tolerance", low=140, high=180),
         _node("ok", "judge", 7, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 7, 1, "NG：寬度超差", verdict="ng", label="width"),
-        _node("out", "output", 6, 1, "輸出寬度", name="width_px"),
-        _node("nf", "judge", 3, 1, "NG：找不到範本", verdict="ng", label="not_found"),
-        _note("n1", 0, 1, "使用方式", "範本＝樣本圖左上的十字標記（seed 已自動建立）。\n工件位移時 ROI 跟著定位結果移動，卡尺永遠量在亮帶上。\n換自己的工件：範本重新框選、參考位置一鍵帶入、ROI 重畫即可。"),
+        _node("ng", "judge", 7, 1, "NG: width out of tolerance", verdict="ng", label="width"),
+        _node("out", "output", 6, 1, "Output width", name="width_px"),
+        _node("nf", "judge", 3, 1, "NG: template not found", verdict="ng", label="not_found"),
+        _note("n1", 0, 1, "How to use it", "The template is the cross marker at the top left of the sample image (created by seeding).\nWhen the part moves, the ROI follows the locate result, so the caliper always measures on the bright band.\nFor your own part: draw a new template, take the reference position in one click, and redraw the ROI."),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "tm"),
@@ -136,30 +136,30 @@ def cup_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]
     id_roi = {"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 220, "r_outer": 300}
     wall_roi = {"shape": "line", "x1": 870, "y1": 480, "x2": 1015, "y2": 480}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("tm", "template_match", 2, 0, "找定位範本", threshold=0.6, max_matches=1, angle_range=10, angle_step=2, template=template_asset),
-        _node("align", "shape_align", 3, 0, "定位補正", ref_x=200, ref_y=170, ref_angle=0),
-        _node("nf", "judge", 3, 1, "NG：找不到範本", verdict="ng", label="not_found"),
-        _node("fix_od", "fixture_roi", 4, 0, "外徑 ROI 跟隨", roi=od_roi),
-        _node("fix_id", "fixture_roi", 4, 1, "內徑 ROI 跟隨", roi=id_roi),
-        _node("fix_wall", "fixture_roi", 4, 2, "壁厚 ROI 跟隨", roi=wall_roi),
-        _node("od", "find_circle", 5, 0, "外徑找圓", polarity="any", edge_threshold=20, num_rays=72, edge_select="last"),
-        _node("idc", "find_circle", 5, 1, "內徑找圓", polarity="any", edge_threshold=20, num_rays=72, edge_select="first"),
-        _node("wall", "wall_thickness", 5, 2, "壁厚", polarity="any", edge_threshold=20, num_calipers=10, band=40),
-        _node("od_d", "formula", 6, 0, "外徑 = 2r", expression="a*2"),
-        _node("id_d", "formula", 6, 1, "內徑 = 2r", expression="a*2"),
-        _node("conc", "concentricity", 6, 3, "同心度", max_deviation=5),
-        _node("tol_od", "tolerance_judge", 7, 0, "外徑公差", nominal=700, upper_tol=5, lower_tol=-5, unit="px", spec_source="圖面 ⌀外徑", name="od"),
-        _node("tol_id", "tolerance_judge", 7, 1, "內徑公差", nominal=520, upper_tol=5, lower_tol=-5, unit="px", spec_source="圖面 ⌀內徑", name="id"),
-        _node("tol_wall", "tolerance_judge", 7, 2, "壁厚公差", nominal=90, upper_tol=5, lower_tol=-5, unit="px", spec_source="圖面 壁厚", name="wall"),
-        _node("out_od", "output", 8, 0, "輸出外徑", name="od_px"),
-        _node("out_id", "output", 8, 1, "輸出內徑", name="id_px"),
-        _node("out_wall", "output", 8, 2, "輸出壁厚", name="wall_px"),
-        _node("all_ok", "bool_logic", 8, 3, "全部合格？", mode="and"),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("tm", "template_match", 2, 0, "Find locator template", threshold=0.6, max_matches=1, angle_range=10, angle_step=2, template=template_asset),
+        _node("align", "shape_align", 3, 0, "Locate correction", ref_x=200, ref_y=170, ref_angle=0),
+        _node("nf", "judge", 3, 1, "NG: template not found", verdict="ng", label="not_found"),
+        _node("fix_od", "fixture_roi", 4, 0, "Outer ROI follow", roi=od_roi),
+        _node("fix_id", "fixture_roi", 4, 1, "Inner ROI follow", roi=id_roi),
+        _node("fix_wall", "fixture_roi", 4, 2, "Wall ROI follow", roi=wall_roi),
+        _node("od", "find_circle", 5, 0, "Outer circle", polarity="any", edge_threshold=20, num_rays=72, edge_select="last"),
+        _node("idc", "find_circle", 5, 1, "Inner circle", polarity="any", edge_threshold=20, num_rays=72, edge_select="first"),
+        _node("wall", "wall_thickness", 5, 2, "Wall thickness", polarity="any", edge_threshold=20, num_calipers=10, band=40),
+        _node("od_d", "formula", 6, 0, "Outer = 2r", expression="a*2"),
+        _node("id_d", "formula", 6, 1, "Inner = 2r", expression="a*2"),
+        _node("conc", "concentricity", 6, 3, "Concentricity", max_deviation=5),
+        _node("tol_od", "tolerance_judge", 7, 0, "Outer tolerance", nominal=700, upper_tol=5, lower_tol=-5, unit="px", spec_source="Drawing: outer dia", name="od"),
+        _node("tol_id", "tolerance_judge", 7, 1, "Inner tolerance", nominal=520, upper_tol=5, lower_tol=-5, unit="px", spec_source="Drawing: inner dia", name="id"),
+        _node("tol_wall", "tolerance_judge", 7, 2, "Wall tolerance", nominal=90, upper_tol=5, lower_tol=-5, unit="px", spec_source="Drawing: wall thickness", name="wall"),
+        _node("out_od", "output", 8, 0, "Output outer diameter", name="od_px"),
+        _node("out_id", "output", 8, 1, "Output inner diameter", name="id_px"),
+        _node("out_wall", "output", 8, 2, "Output wall thickness", name="wall_px"),
+        _node("all_ok", "bool_logic", 8, 3, "All in spec?", mode="and"),
         _node("judge", "judge", 9, 3, "OK / NG", verdict="by_input", label="cup"),
-        _node("draw", "draw_result", 9, 0, "結果影像"),
-        _note("n1", 0, 1, "教導步驟", "1. 找定位範本：框選杯口特徵建範本。\n2. 試跑後把定位補正的參考位置設成目前匹配。\n3. 三個 ROI 跟隨：外徑環、內徑環、壁厚線段（橫切杯壁）。\n4. 公差判定填圖面標稱值／上下偏差／出處；同心度填 max_deviation。"),
+        _node("draw", "draw_result", 9, 0, "Result image"),
+        _note("n1", 0, 1, "Teaching steps", "1. Locator template: draw a box around a feature of the cup rim.\n2. Preview once, then set the locate correction's reference position to the current match.\n3. Three ROIs follow it: the outer annulus, the inner annulus, and a line across the wall.\n4. Fill each tolerance judge with the nominal, the deviations and where on the drawing it comes from; concentricity takes max_deviation."),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "tm"),
@@ -186,13 +186,13 @@ def cup_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]
 def color_presence_flow(source_id: Any) -> dict[str, Any]:
     """顏色／有無：HSV 範圍遮罩 → 像素計數 → 門檻。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("mask", "color_range", 1, 0, "紅色遮罩", h_low=0, h_high=12, s_low=80, s_high=255, v_low=60, v_high=255),
-        _node("cnt", "pixel_count", 2, 0, "計數", min_count=50000),
-        _node("cmp", "if_number", 3, 0, "夠多嗎？", operator="ge", threshold=50000),
-        _node("ok", "judge", 4, 0, "OK：有料", verdict="ok"),
-        _node("ng", "judge", 4, 1, "NG：缺料", verdict="ng", label="missing"),
-        _node("out", "output", 3, 1, "輸出像素數", name="pixels"),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("mask", "color_range", 1, 0, "Red mask", h_low=0, h_high=12, s_low=80, s_high=255, v_low=60, v_high=255),
+        _node("cnt", "pixel_count", 2, 0, "Count", min_count=50000),
+        _node("cmp", "if_number", 3, 0, "Enough pixels?", operator="ge", threshold=50000),
+        _node("ok", "judge", 4, 0, "OK: present", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: missing", verdict="ng", label="missing"),
+        _node("out", "output", 3, 1, "Output pixel count", name="pixels"),
     ]
     edges = [
         _edge("src", "mask"), _edge("mask", "cnt"),
@@ -205,13 +205,13 @@ def color_presence_flow(source_id: Any) -> dict[str, Any]:
 
 def barcode_flow(source_id: Any) -> dict[str, Any]:
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("bc", "barcode", 2, 0, "讀碼"),
-        _node("cmp", "if_number", 3, 0, "讀到？", operator="ge", threshold=1),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("bc", "barcode", 2, 0, "Read code"),
+        _node("cmp", "if_number", 3, 0, "Anything read?", operator="ge", threshold=1),
         _node("ok", "judge", 4, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 4, 1, "NG：讀不到", verdict="ng", label="no_code"),
-        _node("out", "output", 3, 1, "輸出內容", name="code"),
+        _node("ng", "judge", 4, 1, "NG: nothing read", verdict="ng", label="no_code"),
+        _node("out", "output", 3, 1, "Output content", name="code"),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "bc"),
@@ -229,20 +229,20 @@ def circle_gauge_flow(source_id: Any) -> dict[str, Any]:
     roi = {"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 110, "r_outer": 260}
     arc_roi = {"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 110, "r_outer": 260, "a0": 200, "a1": 340}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("fc", "find_circle", 2, 0, "找孔", roi=roi, polarity="any", edge_threshold=20, num_rays=72),
-        _node("dia", "formula", 3, 0, "直徑 = 2r", expression="a*2"),
-        _node("cal", "calibration", 4, 0, "像素校正", mode="pixel_size", pixel_size_mm=0.05),
-        _node("tol", "tolerance_judge", 5, 0, "直徑公差", nominal=17.5, upper_tol=0.4, lower_tol=-0.4, unit="mm", spec_source="圖面 ⌀17.5±0.4", name="diameter"),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("fc", "find_circle", 2, 0, "Find hole", roi=roi, polarity="any", edge_threshold=20, num_rays=72),
+        _node("dia", "formula", 3, 0, "Diameter = 2r", expression="a*2"),
+        _node("cal", "calibration", 4, 0, "Pixel calibration", mode="pixel_size", pixel_size_mm=0.05),
+        _node("tol", "tolerance_judge", 5, 0, "Diameter tolerance", nominal=17.5, upper_tol=0.4, lower_tol=-0.4, unit="mm", spec_source="Drawing: dia 17.5 +/- 0.4", name="diameter"),
         _node("jd", "judge", 6, 0, "OK / NG", verdict="by_input", label="diameter"),
-        _node("out", "output", 5, 1, "輸出直徑 mm", name="diameter_mm"),
-        _node("arc", "fit_arc", 2, 1, "上弧擬合", roi=arc_roi, polarity="any", edge_threshold=20),
-        _node("ell", "fit_ellipse", 2, 2, "橢圓擬合看圓度", roi=roi, polarity="any", edge_threshold=20),
-        _node("out_r", "output", 3, 2, "輸出圓度", name="roundness"),
-        _node("nf", "judge", 3, 1, "NG：找不到孔", verdict="ng", label="not_found"),
-        _node("draw", "draw_result", 6, 1, "結果影像"),
-        _note("n1", 0, 1, "說明", "找圓的環形 ROI 蓋住孔緣；弧擬合示範「扇形」ROI（只取上半弧）。\n公差判定收 mm 值：像素校正把 350px 直徑 × 0.05 mm/px 換算成 17.5mm。"),
+        _node("out", "output", 5, 1, "Output diameter mm", name="diameter_mm"),
+        _node("arc", "fit_arc", 2, 1, "Upper arc fit", roi=arc_roi, polarity="any", edge_threshold=20),
+        _node("ell", "fit_ellipse", 2, 2, "Ellipse fit for roundness", roi=roi, polarity="any", edge_threshold=20),
+        _node("out_r", "output", 3, 2, "Output roundness", name="roundness"),
+        _node("nf", "judge", 3, 1, "NG: hole not found", verdict="ng", label="not_found"),
+        _node("draw", "draw_result", 6, 1, "Result image"),
+        _note("n1", 0, 1, "About", "The circle find's annulus covers the hole edge; the arc fit shows a sector ROI taking only the upper half.\nThe tolerance judge works in millimetres: pixel calibration turns a 350 px diameter at 0.05 mm/px into 17.5 mm."),
     ]
     edges = [
         _edge("src", "gray"),
@@ -268,21 +268,21 @@ def edge_angle_flow(source_id: Any) -> dict[str, Any]:
     roi_arm = {"shape": "rect", "x": 200, "y": 280, "w": 200, "h": 340}
     roi_cham = {"shape": "rect", "x": 940, "y": 540, "w": 160, "h": 200}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("l1", "find_line", 2, 0, "底邊", roi=roi_base, polarity="any", edge_threshold=20),
-        _node("l2", "find_line", 2, 1, "側邊", roi=roi_arm, polarity="any", edge_threshold=20),
-        _node("ang", "angle", 3, 0, "夾角", range="0_90"),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("l1", "find_line", 2, 0, "Bottom edge", roi=roi_base, polarity="any", edge_threshold=20),
+        _node("l2", "find_line", 2, 1, "Side edge", roi=roi_arm, polarity="any", edge_threshold=20),
+        _node("ang", "angle", 3, 0, "Angle", range="0_90"),
         _node("rng", "in_range", 4, 0, "89°～91°？", low=89, high=91),
         _node("ok", "judge", 5, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 5, 1, "NG：角度超差", verdict="ng", label="angle"),
-        _node("geo", "geometry", 3, 1, "兩線交點", mode="intersect"),
-        _node("out_a", "output", 4, 1, "輸出夾角", name="angle_deg"),
-        _node("out_x", "output", 4, 2, "輸出交點 X", name="corner_x"),
-        _node("cham", "chamfer_angle", 2, 2, "斜切角", roi=roi_cham, polarity="any", edge_threshold=20),
-        _node("out_c", "output", 3, 2, "輸出斜切角", name="chamfer_deg"),
-        _note("n1", 0, 1, "說明", "兩個找線各自框住一條邊，夾角工具直接吃兩條線。\n倒角量測框住右下斜切角（標稱 45°）。找不到線會走 not_found 分支。"),
-        _node("nf", "judge", 3, 2, "NG：找不到邊", verdict="ng", label="no_edge"),
+        _node("ng", "judge", 5, 1, "NG: angle out of tolerance", verdict="ng", label="angle"),
+        _node("geo", "geometry", 3, 1, "Line intersection", mode="intersect"),
+        _node("out_a", "output", 4, 1, "Output angle", name="angle_deg"),
+        _node("out_x", "output", 4, 2, "Output intersection X", name="corner_x"),
+        _node("cham", "chamfer_angle", 2, 2, "Chamfer angle", roi=roi_cham, polarity="any", edge_threshold=20),
+        _node("out_c", "output", 3, 2, "Output chamfer angle", name="chamfer_deg"),
+        _note("n1", 0, 1, "About", "Each line find boxes one edge, and the angle tool takes both lines directly.\nThe chamfer measurement boxes the bevel at the bottom right (nominally 45 degrees). A line that is not found takes the not_found branch."),
+        _node("nf", "judge", 3, 2, "NG: edge not found", verdict="ng", label="no_edge"),
     ]
     edges = [
         _edge("src", "gray"),
@@ -305,14 +305,14 @@ def golden_compare_flow(source_id: Any, template_asset: str = "") -> dict[str, A
 
     對齊合成圖「印刷良品比對」：第 1 張＝良品（seed 已存成資產），NG 張多一塊污漬。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("diff", "defect_diff", 1, 0, "良品比對", template=template_asset, align="phase", threshold=45, min_area=200),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("diff", "defect_diff", 1, 0, "Golden compare", template=template_asset, align="phase", threshold=45, min_area=200),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 2, 1, "NG：外觀缺陷", verdict="ng", label="defect"),
-        _node("out_n", "output", 2, 2, "輸出缺陷數", name="defect_count"),
-        _node("out_a", "output", 3, 2, "輸出缺陷面積", name="defect_area"),
-        _node("draw", "draw_result", 3, 0, "結果影像"),
-        _note("n1", 0, 1, "說明", "良品範本＝樣本圖第 1 張（seed 自動建立資產）。\n位移由相位對齊自動補正；差異門檻與最小面積決定靈敏度。"),
+        _node("ng", "judge", 2, 1, "NG: appearance defect", verdict="ng", label="defect"),
+        _node("out_n", "output", 2, 2, "Output defect count", name="defect_count"),
+        _node("out_a", "output", 3, 2, "Output defect area", name="defect_area"),
+        _node("draw", "draw_result", 3, 0, "Result image"),
+        _note("n1", 0, 1, "About", "The golden template is the first sample image (the asset is created by seeding).\nDisplacement is corrected automatically by phase alignment; the difference threshold and the minimum area set the sensitivity."),
     ]
     edges = [
         _edge("src", "diff"),
@@ -328,19 +328,19 @@ def fft_defect_flow(source_id: Any) -> dict[str, Any]:
 
     對齊合成圖「織紋瑕疵」：NG 張有一道斜向刮痕；正常織紋在頻域是高頻，會被低通吃掉。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("fft", "fft_filter", 2, 0, "頻域低通", mode="lowpass", cutoff=0.08),
-        _node("thr", "threshold", 3, 0, "抓暗痕", method="fixed", threshold=95, invert=True),
-        _node("mor", "morphology", 4, 0, "開運算去雜點", op="open", ksize=5),
-        _node("blob", "blob", 5, 0, "刮痕 blob", threshold_method="fixed", threshold=128, polarity="bright", min_area=800, min_count=0),
-        _node("cmp", "if_number", 6, 0, "沒有刮痕？", operator="eq", threshold=0),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("fft", "fft_filter", 2, 0, "Frequency low pass", mode="lowpass", cutoff=0.08),
+        _node("thr", "threshold", 3, 0, "Find dark marks", method="fixed", threshold=95, invert=True),
+        _node("mor", "morphology", 4, 0, "Open to remove specks", op="open", ksize=5),
+        _node("blob", "blob", 5, 0, "Scratch blobs", threshold_method="fixed", threshold=128, polarity="bright", min_area=800, min_count=0),
+        _node("cmp", "if_number", 6, 0, "No scratches?", operator="eq", threshold=0),
         _node("ok", "judge", 7, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 7, 1, "NG：表面刮痕", verdict="ng", label="scratch"),
-        _node("mask", "apply_mask", 5, 2, "只留缺陷區", fill=0),
-        _node("out", "output", 6, 1, "輸出刮痕數", name="scratch_count"),
-        _node("draw", "draw_result", 7, 2, "結果影像"),
-        _note("n1", 0, 1, "說明", "頻域濾波是紋理背景檢測的王牌：規律紋理＝固定頻率，低通一刀切掉，\n殘下來的大尺度暗痕就是缺陷。「只留缺陷區」示範遮罩套用。"),
+        _node("ng", "judge", 7, 1, "NG: surface scratch", verdict="ng", label="scratch"),
+        _node("mask", "apply_mask", 5, 2, "Defect area only", fill=0),
+        _node("out", "output", 6, 1, "Output scratch count", name="scratch_count"),
+        _node("draw", "draw_result", 7, 2, "Result image"),
+        _note("n1", 0, 1, "About", 'Frequency filtering is the strongest tool against a textured background: a regular weave is a fixed frequency, a low pass cuts it out,\nand the large dark mark left behind is the defect. "Defect area only" shows how a mask is applied.'),
     ]
     edges = [
         _edge("src", "gray"), _edge("gray", "fft"),
@@ -362,29 +362,29 @@ def preprocess_lab_flow(source_id: Any) -> dict[str, Any]:
     groove = {"shape": "line", "x1": 640, "y1": 520, "x2": 640, "y2": 720}
     center = {"shape": "rect", "x": 440, "y": 360, "w": 400, "h": 200}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("cd", "convert_depth", 1, 0, "位深轉 8bit", to="u8"),
-        _node("lut", "lut", 2, 0, "Gamma 校正", mode="gamma", gamma=0.8),
-        _node("fil", "filter", 3, 0, "銳化", method="sharpen", strength=1.0),
-        _node("flip", "rotate_flip", 4, 0, "水平翻轉", flip="horizontal"),
-        _node("prof", "line_profile", 2, 1, "暗溝剖面", roi=groove),
-        _node("out_g", "output", 3, 1, "輸出溝底灰階", name="groove_min"),
-        _node("inten", "intensity", 2, 2, "中央區統計", roi=center),
-        _node("out_m", "output", 3, 2, "輸出平均亮度", name="center_mean"),
-        _node("hist", "histogram", 2, 3, "直方圖"),
-        _node("out_o", "output", 3, 3, "輸出 Otsu 門檻", name="otsu"),
-        _node("diff", "arithmetic", 5, 0, "前後差異", op="absdiff"),
-        _node("din", "intensity", 6, 0, "差異均值"),
-        _node("out_d", "output", 7, 0, "輸出處理差異", name="diff_mean"),
-        _node("gray", "grayscale", 1, 2, "灰階"),
-        _node("crop", "crop", 1, 3, "裁切中央", roi=center),
-        _node("cc", "color_convert", 2, 4, "取飽和度面", mode="hsv_s"),
-        _node("ed", "edge_density", 5, 1, "邊緣密度守門", max_ratio=0.2),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("cd", "convert_depth", 1, 0, "Convert to 8-bit", to="u8"),
+        _node("lut", "lut", 2, 0, "Gamma correction", mode="gamma", gamma=0.8),
+        _node("fil", "filter", 3, 0, "Sharpen", method="sharpen", strength=1.0),
+        _node("flip", "rotate_flip", 4, 0, "Flip horizontally", flip="horizontal"),
+        _node("prof", "line_profile", 2, 1, "Groove profile", roi=groove),
+        _node("out_g", "output", 3, 1, "Output groove grey level", name="groove_min"),
+        _node("inten", "intensity", 2, 2, "Centre statistics", roi=center),
+        _node("out_m", "output", 3, 2, "Output mean brightness", name="center_mean"),
+        _node("hist", "histogram", 2, 3, "Histogram"),
+        _node("out_o", "output", 3, 3, "Output Otsu threshold", name="otsu"),
+        _node("diff", "arithmetic", 5, 0, "Before and after difference", op="absdiff"),
+        _node("din", "intensity", 6, 0, "Mean difference"),
+        _node("out_d", "output", 7, 0, "Output processing difference", name="diff_mean"),
+        _node("gray", "grayscale", 1, 2, "Grayscale"),
+        _node("crop", "crop", 1, 3, "Crop centre", roi=center),
+        _node("cc", "color_convert", 2, 4, "Saturation plane", mode="hsv_s"),
+        _node("ed", "edge_density", 5, 1, "Edge density gate", max_ratio=0.2),
         _node("ok", "judge", 6, 1, "OK", verdict="ok"),
-        _node("ng", "judge", 6, 2, "NG：畫面異常", verdict="ng", label="edge_density"),
-        _node("dark", "dark_ratio", 5, 3, "暗部比例", threshold=60, max_ratio=0.2),
-        _node("out_k", "output", 6, 3, "輸出暗部比例", name="dark_ratio"),
-        _note("n1", 0, 1, "說明", "上排是影像處理鏈：位深→Gamma→銳化→翻轉，差異工具量化處理前後變化。\n下排是量測工具課：線剖面量暗溝、區域統計、直方圖、邊緣密度、暗部比例。"),
+        _node("ng", "judge", 6, 2, "NG: image abnormal", verdict="ng", label="edge_density"),
+        _node("dark", "dark_ratio", 5, 3, "Dark ratio", threshold=60, max_ratio=0.2),
+        _node("out_k", "output", 6, 3, "Output dark ratio", name="dark_ratio"),
+        _note("n1", 0, 1, "About", "The top row is an image chain: bit depth, gamma, sharpen, flip, with the arithmetic tool quantifying the change.\nThe bottom row is a tour of the measurement tools: a line profile across the groove, region statistics, a histogram, edge density and the dark ratio."),
     ]
     edges = [
         _edge("src", "cd"), _edge("cd", "lut", "image", "image"), _edge("lut", "fil"), _edge("fil", "flip"),
@@ -409,21 +409,21 @@ def geometry_count_flow(source_id: Any) -> dict[str, Any]:
     roi_a = {"shape": "circle", "cx": 300, "cy": 300, "r": 110}
     roi_b = {"shape": "circle", "cx": 980, "cy": 320, "r": 120}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("gray", "grayscale", 1, 0, "灰階"),
-        _node("hc", "hough_circles", 2, 0, "霍夫找圓", min_radius=50, max_radius=110, min_dist=120, param2=20),
-        _node("cmp", "if_number", 3, 0, "孔數 = 5？", operator="eq", threshold=5),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("hc", "hough_circles", 2, 0, "Hough circles", min_radius=50, max_radius=110, min_dist=120, param2=20),
+        _node("cmp", "if_number", 3, 0, "5 holes?", operator="eq", threshold=5),
         _node("ok", "judge", 4, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 4, 1, "NG：孔數不對", verdict="ng", label="hole_count"),
-        _node("out_n", "output", 3, 1, "輸出孔數", name="circle_count"),
-        _node("hl", "hough_lines", 2, 1, "霍夫找線", threshold=80, min_length=300, max_gap=20),
-        _node("cl", "count_list", 3, 2, "線段計數"),
-        _node("out_l", "output", 4, 2, "輸出線段數", name="line_count"),
-        _node("fa", "find_circle", 2, 3, "左上孔", roi=roi_a, polarity="any", edge_threshold=20),
-        _node("fb", "find_circle", 2, 4, "右上孔", roi=roi_b, polarity="any", edge_threshold=20),
-        _node("dist", "distance", 3, 3, "兩孔圓心距"),
-        _node("out_d", "output", 4, 3, "輸出圓心距", name="pitch_px"),
-        _note("n1", 0, 1, "說明", "霍夫找圓適合「一次抓很多圓」，找圓（射線式）適合「精量測單一圓」。\n距離工具直接吃兩個找圓的圓心座標，量孔距。"),
+        _node("ng", "judge", 4, 1, "NG: wrong hole count", verdict="ng", label="hole_count"),
+        _node("out_n", "output", 3, 1, "Output hole count", name="circle_count"),
+        _node("hl", "hough_lines", 2, 1, "Hough lines", threshold=80, min_length=300, max_gap=20),
+        _node("cl", "count_list", 3, 2, "Line count"),
+        _node("out_l", "output", 4, 2, "Output line count", name="line_count"),
+        _node("fa", "find_circle", 2, 3, "Top-left hole", roi=roi_a, polarity="any", edge_threshold=20),
+        _node("fb", "find_circle", 2, 4, "Top-right hole", roi=roi_b, polarity="any", edge_threshold=20),
+        _node("dist", "distance", 3, 3, "Centre distance"),
+        _node("out_d", "output", 4, 3, "Output centre distance", name="pitch_px"),
+        _note("n1", 0, 1, "About", "Hough is for grabbing many circles at once; the radial circle find is for measuring one circle precisely.\nThe distance tool takes both circle centres directly and gives the hole spacing."),
     ]
     edges = [
         _edge("src", "gray"),
@@ -448,14 +448,14 @@ def color_verify_flow(source_id: Any) -> dict[str, Any]:
     對齊合成圖「顏色檢驗」：左側色塊標稱紅色（NG 張偏橘）。"""
     left = {"shape": "rect", "x": 150, "y": 330, "w": 240, "h": 300}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("chk", "color_check", 1, 0, "紅色比對", roi=left, color="#d22828", space="rgb", tolerance=60),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("chk", "color_check", 1, 0, "Red compare", roi=left, color="#d22828", space="rgb", tolerance=60),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 2, 1, "NG：顏色不符", verdict="ng", label="color"),
-        _node("stat", "color_stats", 1, 1, "顏色統計", roi=left),
-        _node("out_h", "output", 2, 2, "輸出色碼", name="hex"),
-        _node("out_d", "output", 3, 1, "輸出色差", name="color_distance"),
-        _note("n1", 0, 1, "說明", "顏色比對量「平均色與目標色的距離」，適合驗料／驗蓋色。\n顏色統計把 RGB／HSV 平均與色碼丟出去，供上位機記錄。"),
+        _node("ng", "judge", 2, 1, "NG: colour mismatch", verdict="ng", label="color"),
+        _node("stat", "color_stats", 1, 1, "Colour statistics", roi=left),
+        _node("out_h", "output", 2, 2, "Output hex code", name="hex"),
+        _node("out_d", "output", 3, 1, "Output colour distance", name="color_distance"),
+        _note("n1", 0, 1, "About", "Colour comparison measures the distance between the mean colour and a target, which suits verifying a material or a cap colour.\nColour statistics send the RGB and HSV means and a hex code out for the host system to record."),
     ]
     edges = [
         _edge("src", "chk"),
@@ -474,16 +474,16 @@ def label_flow(source_id: Any) -> dict[str, Any]:
     quad = {"shape": "polygon", "points": [[330, 240], [940, 300], [900, 720], [290, 660]]}
     sn_roi = {"shape": "rect", "x": 140, "y": 370, "w": 300, "h": 45}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("warp", "warp_perspective", 1, 0, "標籤拉正", roi=quad, width=560, height=420),
-        _node("gray", "grayscale", 2, 0, "灰階"),
-        _node("bc", "barcode", 3, 0, "讀碼"),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("warp", "warp_perspective", 1, 0, "Straighten label", roi=quad, width=560, height=420),
+        _node("gray", "grayscale", 2, 0, "Grayscale"),
+        _node("bc", "barcode", 3, 0, "Read code"),
         _node("ok", "judge", 4, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 4, 1, "NG：讀不到碼", verdict="ng", label="no_code"),
-        _node("out", "output", 4, 2, "輸出內容", name="code"),
-        _node("txt", "text_presence", 3, 2, "序號區有字？", roi=sn_roi, polarity="dark"),
-        _node("ng2", "judge", 4, 3, "NG：序號沒印", verdict="ng", label="no_sn"),
-        _note("n1", 0, 1, "說明", "標籤斜貼也能讀：先用四點透視校正拉正再讀碼。\n文字有無用筆畫密度判斷，沒印序號直接 NG。"),
+        _node("ng", "judge", 4, 1, "NG: code not read", verdict="ng", label="no_code"),
+        _node("out", "output", 4, 2, "Output content", name="code"),
+        _node("txt", "text_presence", 3, 2, "Serial area printed?", roi=sn_roi, polarity="dark"),
+        _node("ng2", "judge", 4, 3, "NG: serial not printed", verdict="ng", label="no_sn"),
+        _note("n1", 0, 1, "About", "A crooked label still reads: four-point perspective correction straightens it first.\nText presence is decided by stroke density, and a missing serial number is an immediate NG."),
     ]
     edges = [
         _edge("src", "warp"),
@@ -500,14 +500,14 @@ def label_flow(source_id: Any) -> dict[str, Any]:
 def yolo_count_flow(source_id: Any) -> dict[str, Any]:
     """YOLO 物件計數（官方底模）：yolo_detect 只留 stop sign → 數量 = 2 → OK；不用訓練，第一次執行自動下載 yolo11n.pt。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("det", "yolo_detect", 1, 0, "YOLO 找標誌", model_name="yolo11n.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
-        _node("cmp", "if_number", 2, 0, "標誌 = 2？", operator="eq", threshold=2),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("det", "yolo_detect", 1, 0, "YOLO find signs", model_name="yolo11n.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
+        _node("cmp", "if_number", 2, 0, "2 signs?", operator="eq", threshold=2),
         _node("ok", "judge", 3, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 3, 1, "NG：數量不對", verdict="ng", label="sign_count"),
-        _node("out", "output", 2, 1, "輸出數量", name="sign_count"),
-        _node("draw", "draw_result", 2, 2, "結果影像"),
-        _note("n1", 0, 1, "說明", "官方 COCO 底模（yolo11n.pt）直接辨識停止標誌，不需訓練；第一次執行會下載約 5MB 權重。\n要辨識自己的物件：到「深度學習」用「物件偵測（YOLO）」訓練，再把「模型資產」選成訓練產物。"),
+        _node("ng", "judge", 3, 1, "NG: wrong count", verdict="ng", label="sign_count"),
+        _node("out", "output", 2, 1, "Output count", name="sign_count"),
+        _node("draw", "draw_result", 2, 2, "Result image"),
+        _note("n1", 0, 1, "About", "The stock COCO model (yolo11n.pt) recognises stop signs directly, with no training; the first run downloads about 5 MB of weights.\nFor your own objects: train an object detection (YOLO) project on the Deep learning page and select the result as the model asset."),
     ]
     edges = [
         _edge("src", "det"), _edge("det", "cmp", "count", "value"),
@@ -520,14 +520,14 @@ def yolo_count_flow(source_id: Any) -> dict[str, Any]:
 def yolo_area_flow(source_id: Any) -> dict[str, Any]:
     """YOLO 實例分割（官方底模）：yolo_segment 的聯合遮罩 → 像素計數（面積）→ 門檻判定；輸出標誌面積。"""
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("seg", "yolo_segment", 1, 0, "YOLO 分割標誌", model_name="yolo11n-seg.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
-        _node("area", "pixel_count", 2, 0, "標誌面積", threshold=128, min_count=15000, max_count=45000),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("seg", "yolo_segment", 1, 0, "YOLO segment signs", model_name="yolo11n-seg.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
+        _node("area", "pixel_count", 2, 0, "Sign area", threshold=128, min_count=15000, max_count=45000),
         _node("ok", "judge", 3, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 3, 1, "NG：面積異常", verdict="ng", label="sign_area"),
-        _node("out", "output", 2, 1, "輸出面積", name="sign_area"),
-        _node("draw", "draw_result", 2, 2, "結果影像"),
-        _note("n1", 0, 1, "說明", "分割模型輸出每個實例的輪廓與聯合遮罩；遮罩接像素計數就是總面積（也可接 blob 逐個量測）。\n第 4 張只有 1 個標誌、第 5 張有 3 個，面積落在門檻外走 NG。"),
+        _node("ng", "judge", 3, 1, "NG: area out of range", verdict="ng", label="sign_area"),
+        _node("out", "output", 2, 1, "Output area", name="sign_area"),
+        _node("draw", "draw_result", 2, 2, "Result image"),
+        _note("n1", 0, 1, "About", "A segmentation model returns each instance's outline and a union mask; the mask into a pixel count is the total area (or into blob to measure them one by one).\nThe fourth image has one sign and the fifth has three, so the area falls outside the threshold and goes NG."),
     ]
     edges = [
         _edge("src", "seg"), _edge("seg", "area", "mask", "image"),
@@ -542,13 +542,13 @@ def dl_classify_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {}
     asset_id, tool_params = model
     params = {**tool_params, "model": asset_id, "threshold": 0.5, "pass_labels": "ok", "top_k": 2}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("cls", "dl_classify", 1, 0, "DL 分類：良品？", **params),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("cls", "dl_classify", 1, 0, "Classify: good?", **params),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 2, 1, "NG：缺孔", verdict="ng", label="missing_hole"),
-        _node("out", "output", 2, 2, "輸出分數", name="ok_score"),
-        _node("draw", "draw_result", 1, 2, "結果影像"),
-        _note("n1", 0, 1, "說明", "模型「範例：分類模型（良品／缺孔）」由 seed_demo 用 30 張合成樣本訓練（內建 MLP，CPU 數秒）。\n內建 MLP 看的是整張縮圖，適合整體外觀不同的類別；位置隨機的細小瑕疵請用語意分割或 YOLO。自己的零件：到「深度學習」建分類專案、標記幾張、按訓練，再把此節點的模型資產換成產物。"),
+        _node("ng", "judge", 2, 1, "NG: missing hole", verdict="ng", label="missing_hole"),
+        _node("out", "output", 2, 2, "Output score", name="ok_score"),
+        _node("draw", "draw_result", 1, 2, "Result image"),
+        _note("n1", 0, 1, "About", "The model \"Example: classifier (good / missing hole)\" is trained by seed_demo on 30 synthetic samples (the built-in MLP, seconds on CPU).\nThat MLP sees the whole downscaled image, which suits classes that differ in overall appearance; for small defects in random positions use semantic segmentation or YOLO. For your own part: create a classification project on the Deep learning page, label a few images, press train, and swap this node's model asset for the result."),
     ]
     edges = [
         _edge("src", "cls"), _edge("cls", "ok", "pass", "_flow"), _edge("cls", "ng", "fail", "_flow"),
@@ -562,13 +562,13 @@ def dl_segment_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})
     asset_id, tool_params = model
     params = {**tool_params, "model": asset_id, "target_class": 1, "min_area": 0, "max_area": 300}
     nodes = [
-        _node("src", "image_source", 0, 0, "取像", source_id=source_id),
-        _node("seg", "dl_segment", 1, 0, "DL 分割：刮痕", **params),
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("seg", "dl_segment", 1, 0, "Segment: scratch", **params),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 2, 1, "NG：刮痕面積過大", verdict="ng", label="scratch_area"),
-        _node("out", "output", 2, 2, "輸出面積", name="scratch_area"),
-        _node("draw", "draw_result", 1, 2, "結果影像"),
-        _note("n1", 0, 1, "說明", "模型「範例：分割模型（刮痕）」由 seed_demo 用 10 張合成樣本（polygon 標記）訓練，全卷積 ONNX、CPU 推論。\n遮罩輸出可再接 blob 逐條量刮痕長度；換成自己的瑕疵請到「深度學習」用「語意分割」專案訓練。"),
+        _node("ng", "judge", 2, 1, "NG: scratch area too large", verdict="ng", label="scratch_area"),
+        _node("out", "output", 2, 2, "Output area", name="scratch_area"),
+        _node("draw", "draw_result", 1, 2, "Result image"),
+        _note("n1", 0, 1, "About", 'The model "Example: segmenter (scratch)" is trained by seed_demo on 10 polygon-labelled synthetic samples: a fully convolutional ONNX running on CPU.\nThe mask output can feed blob to measure each scratch; for your own defects, train a semantic segmentation project on the Deep learning page.'),
     ]
     edges = [
         _edge("src", "seg"), _edge("seg", "ok", "ok", "_flow"), _edge("seg", "ng", "ng", "_flow"),
@@ -594,51 +594,51 @@ def _demo_asset(name: str) -> str:
 #: 範本畫廊的內建範本目錄：(key, 名稱, 說明, 分類, builder)。
 #: builder 在 request 時才呼叫（範例資產 id 由 _demo_asset 現查，seed 過就開箱即用）。
 BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
-    ("hole_count", "零件孔數檢測", "灰階→去雜訊→二值化→形態學→Blob 計數→數值判斷→OK/NG；含具名輸出與結果影像", "count", hole_count_flow),
-    ("exposure", "曝光檢查", "縮圖→Otsu 門檻→範圍判斷→OK/NG", "quality", brightness_gate_flow),
-    ("circle_gauge", "圓孔尺寸量測", "找圓→直徑→像素校正成 mm→公差判定；扇形 ROI 弧擬合與橢圓圓度", "measure", circle_gauge_flow),
-    ("edge_angle", "邊線夾角", "兩條找線→夾角公差；兩線交點座標與 45° 斜切角量測", "measure", edge_angle_flow),
-    ("golden_compare", "印刷良品比對", "與良品範本差異比對，抓多印／髒污／缺損；範本資產可由 seed 樣本自動建立", "quality",
-     lambda sid: golden_compare_flow(sid, _demo_asset("範例：印刷良品範本"))),
-    ("fft_defect", "織紋瑕疵檢測", "頻域低通濾掉週期織紋，殘留暗痕＝刮痕；含遮罩套用取缺陷區", "quality", fft_defect_flow),
-    ("preprocess_lab", "前處理與量測教學", "位深／查找表／濾波／翻轉影像鏈＋線剖面／統計／直方圖／邊緣密度等量測工具課", "tutorial", preprocess_lab_flow),
-    ("geometry_count", "多圓幾何計數", "霍夫找圓計數、霍夫找線清單計數、兩孔找圓→圓心距", "count", geometry_count_flow),
-    ("color_presence", "顏色／有無檢測", "色彩範圍遮罩→像素計數→門檻判定", "detect", color_presence_flow),
-    ("color_verify", "顏色比對", "區域平均色與目標色比距離→判定；顏色統計輸出色碼", "detect", color_verify_flow),
-    ("barcode_read", "條碼／QR 讀取", "讀碼→是否讀到→具名輸出", "identify", barcode_flow),
-    ("label_read", "條碼標籤讀取（透視校正）", "四點透視校正把斜貼標籤拉正→讀碼；序號區文字有無檢查", "identify", label_flow),
-    ("locate_measure", "定位＋卡尺量測", "範本比對→定位補正→ROI 跟隨→卡尺寬度→公差判定", "measure",
-     lambda sid: locate_measure_flow(sid, _demo_asset("範例：定位十字範本"))),
-    ("cup_measure", "深抽杯件量測", "範本比對→定位補正→ROI 跟隨×3→外徑／內徑找圓＋壁厚→同心度→公差判定×3→具名輸出→OK/NG", "measure",
-     lambda sid: cup_measure_flow(sid, _demo_asset("範例：杯件定位範本"))),
-    ("yolo_count", "YOLO 物件計數（官方底模）", "yolo_detect 用 COCO 底模找停止標誌→數量判定；不需訓練、GPU 自動使用（需安裝 DL 依賴）", "count", yolo_count_flow),
-    ("yolo_area", "YOLO 實例分割：標誌面積", "yolo_segment 聯合遮罩→像素計數→面積門檻；示範分割輸出接後續量測（需安裝 DL 依賴）", "detect", yolo_area_flow),
-    ("dl_classify_demo", "DL 分類：良品／缺孔（教導模型）", "seed 訓練的內建 MLP 分類模型→dl_classify pass/fail；示範教導產物如何進流程", "quality",
-     lambda sid: dl_classify_flow(sid, _demo_model("範例：分類模型（良品／缺孔）"))),
-    ("dl_segment_demo", "DL 語意分割：刮痕面積（教導模型）", "seed 訓練的 patch_segment 模型→dl_segment 刮痕面積門檻→OK/NG", "quality",
-     lambda sid: dl_segment_flow(sid, _demo_model("範例：分割模型（刮痕）"))),
+    ("hole_count", "Hole count", "Grayscale, denoise, threshold, morphology, blob count, number check, OK/NG — with a named output and a result image", "count", hole_count_flow),
+    ("exposure", "Exposure check", "Downscale, Otsu threshold, range check, OK/NG", "quality", brightness_gate_flow),
+    ("circle_gauge", "Circle gauge", "Find circle, diameter, pixel calibration to mm, tolerance judge — plus a sector ROI arc fit and ellipse roundness", "measure", circle_gauge_flow),
+    ("edge_angle", "Edge angle", "Two line finds into an angle tolerance, the intersection point, and a 45 degree chamfer measurement", "measure", edge_angle_flow),
+    ("golden_compare", "Print compare", "Difference against a golden template to catch overprinting, smudges and gaps; the template asset is created from the sample images", "quality",
+     lambda sid: golden_compare_flow(sid, _demo_asset("Example: print golden template"))),
+    ("fft_defect", "Fabric defect", "A frequency-domain low pass removes the periodic weave and what is left is the scratch; a mask pulls out the defect area", "quality", fft_defect_flow),
+    ("preprocess_lab", "Pre-processing and measurement lab", "An image chain of bit depth, look-up table, filtering and flipping, plus a tour of line profile, statistics, histogram and edge density", "tutorial", preprocess_lab_flow),
+    ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
+    ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
+    ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
+    ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
+    ("label_read", "Barcode label with perspective correction", "Four-point perspective correction straightens the tilted label before reading it, plus a text-presence check on the serial area", "identify", label_flow),
+    ("locate_measure", "Locate and gauge", "Template match, locate correction, ROI follow, caliper width, tolerance judge", "measure",
+     lambda sid: locate_measure_flow(sid, _demo_asset("Example: cross locator template"))),
+    ("cup_measure", "Deep-drawn cup gauge", "Template match, locate correction, three ROIs following, outer and inner circle finds plus wall thickness, concentricity, three tolerance judges, named outputs, OK/NG", "measure",
+     lambda sid: cup_measure_flow(sid, _demo_asset("Example: cup locator template"))),
+    ("yolo_count", "YOLO object count (stock model)", "yolo_detect finds stop signs with the COCO stock model and judges the count. No training needed and the GPU is used automatically (deep-learning dependencies required)", "count", yolo_count_flow),
+    ("yolo_area", "YOLO instance segmentation: sign area", "yolo_segment's union mask into a pixel count and an area threshold, showing segmentation feeding a measurement (deep-learning dependencies required)", "detect", yolo_area_flow),
+    ("dl_classify_demo", "Classification: good / missing hole (taught model)", "The built-in MLP classifier trained by seeding, into dl_classify pass/fail — how a taught model gets into a flow", "quality",
+     lambda sid: dl_classify_flow(sid, _demo_model("Example: classifier (good / missing hole)"))),
+    ("dl_segment_demo", "Semantic segmentation: scratch area (taught model)", "The patch_segment model trained by seeding, into a dl_segment scratch-area threshold and OK/NG", "quality",
+     lambda sid: dl_segment_flow(sid, _demo_model("Example: segmenter (scratch)"))),
 )
 
 #: builtin 範本 key → 對應的範例樣本來源名稱（測試與文件用；hole_count／exposure 用合成來源）。
 TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
-    "hole_count": "示範：合成零件",
-    "exposure": "示範：合成零件",
-    "circle_gauge": "範例：圓孔量測",
-    "edge_angle": "範例：邊線夾角",
-    "golden_compare": "範例：印刷良品比對",
-    "fft_defect": "範例：織紋瑕疵",
-    "preprocess_lab": "範例：前處理教學圖",
-    "geometry_count": "範例：多圓幾何",
-    "color_presence": "範例：顏色檢驗",
-    "color_verify": "範例：顏色檢驗",
-    "barcode_read": "範例：條碼標籤",
-    "label_read": "範例：條碼標籤",
-    "locate_measure": "範例：定位量測",
-    "cup_measure": "範例：杯件量測",
-    "yolo_count": "範例：停止標誌",
-    "yolo_area": "範例：停止標誌",
-    "dl_classify_demo": "範例：分類教導",
-    "dl_segment_demo": "範例：分割教導",
+    "hole_count": "Demo: synthetic parts",
+    "exposure": "Demo: synthetic parts",
+    "circle_gauge": "Example: circle gauge",
+    "edge_angle": "Example: edge angle",
+    "golden_compare": "Example: print compare",
+    "fft_defect": "Example: fabric defect",
+    "preprocess_lab": "Example: preprocessing lab",
+    "geometry_count": "Example: circles and lines",
+    "color_presence": "Example: colour blocks",
+    "color_verify": "Example: colour blocks",
+    "barcode_read": "Example: barcode label",
+    "label_read": "Example: barcode label",
+    "locate_measure": "Example: locate and gauge",
+    "cup_measure": "Example: cup gauge",
+    "yolo_count": "Example: stop sign",
+    "yolo_area": "Example: stop sign",
+    "dl_classify_demo": "Example: classification teaching",
+    "dl_segment_demo": "Example: segmentation teaching",
 }
 
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
@@ -661,8 +661,8 @@ def _seed_demo_models(created: list[str]) -> None:
 
     dl_base.register_builtins()
     specs = (
-        ("範例：分類模型（良品／缺孔）", "mlp_classify", demo_images.dl_parts_labeled, ["ok", "ng"], {"input_size": 64, "epochs": 300, "val_split": 0.2, "augment": True}),
-        ("範例：分割模型（刮痕）", "patch_segment", demo_images.dl_scratch_labeled, ["scratch"], {"input_size": 128, "epochs": 200, "samples_per_image": 2000}),
+        ("Example: classifier (good / missing hole)", "mlp_classify", demo_images.dl_parts_labeled, ["ok", "ng"], {"input_size": 64, "epochs": 300, "val_split": 0.2, "augment": True}),
+        ("Example: segmenter (scratch)", "patch_segment", demo_images.dl_scratch_labeled, ["scratch"], {"input_size": 128, "epochs": 200, "samples_per_image": 2000}),
     )
     for name, kind, maker, classes, params in specs:
         if Asset.objects.filter(name=name, kind="model").exists():
@@ -684,14 +684,15 @@ def _seed_demo_models(created: list[str]) -> None:
             with open(path, "wb") as f:
                 f.write(result.onnx_bytes)
             Asset.objects.create(
-                id=asset_id, name=name, kind="model", group="範例", path=path, size=len(result.onnx_bytes),
-                meta={"trainer": kind, "project": "範例", "tool_key": result.tool_key, "tool_params": result.tool_params, "metrics": result.metrics, "format": "onnx"},
+                id=asset_id, name=name, kind="model", group="Examples", path=path, size=len(result.onnx_bytes),
+                meta={"trainer": kind, "project": "Examples", "tool_key": result.tool_key, "tool_params": result.tool_params, "metrics": result.metrics, "format": "onnx"},
             )
             created.append(f"模型資產 {name}（新建，{kind}）")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
 #: 舊版 seed 建過、現改由範本畫廊提供的流程名稱（seed 時清掉，避免流程清單被塞滿）。
+#: 舊版 seed 建過的範例流程名稱（改由範本畫廊提供後要清掉）。舊安裝是中文名，必須原樣保留才刪得掉。
 _GALLERY_FLOW_NAMES = (
     "範例：圓孔尺寸量測", "範例：邊線夾角", "範例：印刷良品比對", "範例：織紋瑕疵檢測",
     "範例：前處理與量測教學", "範例：多圓幾何計數", "範例：顏色有無檢測", "範例：顏色比對",
@@ -699,19 +700,65 @@ _GALLERY_FLOW_NAMES = (
 )
 
 
+#: 舊安裝（中文示範資料）→ 現在的英文名稱；seed 前先改名，避免同一份資料出現兩筆。
+_LEGACY_RENAMES: dict[str, str] = {
+    "示範：合成零件": "Demo: synthetic parts",
+    "範例：圓孔量測": "Example: circle gauge",
+    "範例：邊線夾角": "Example: edge angle",
+    "範例：印刷良品比對": "Example: print compare",
+    "範例：織紋瑕疵": "Example: fabric defect",
+    "範例：前處理教學圖": "Example: preprocessing lab",
+    "範例：多圓幾何": "Example: circles and lines",
+    "範例：顏色檢驗": "Example: colour blocks",
+    "範例：條碼標籤": "Example: barcode label",
+    "範例：杯件量測": "Example: cup gauge",
+    "範例：定位量測": "Example: locate and gauge",
+    "範例：停止標誌": "Example: stop sign",
+    "範例：分類教導": "Example: classification teaching",
+    "範例：分割教導": "Example: segmentation teaching",
+    "範例：定位十字範本": "Example: cross locator template",
+    "範例：杯件定位範本": "Example: cup locator template",
+    "範例：印刷良品範本": "Example: print golden template",
+    "範例：分類模型（良品／缺孔）": "Example: classifier (good / missing hole)",
+    "範例：分割模型（刮痕）": "Example: segmenter (scratch)",
+    "示範：零件孔數檢測": "Demo: hole count",
+    "示範：曝光檢查": "Demo: exposure check",
+}
+
+
+def _rename_legacy(created: list[str]) -> None:
+    """把舊安裝的中文示範資料改成英文名（同名已存在就不動，交給後續 get_or_create）。"""
+    for model, kinds in ((ImageSource, None), (Asset, ("image", "model")), (Flow, None)):
+        qs = model.objects.filter(name__in=_LEGACY_RENAMES)
+        if kinds is not None:
+            qs = qs.filter(kind__in=kinds)
+        for row in qs:
+            new_name = _LEGACY_RENAMES[row.name]
+            if model.objects.filter(name=new_name).exists():
+                continue
+            old_name = row.name
+            row.name = new_name
+            row.save(update_fields=["name"])
+            created.append(f"更名 {old_name} → {new_name}")
+    ResourceGroup.objects.filter(name="範例").update(name="Examples")
+    for model in (ImageSource, Asset):
+        model.objects.filter(group="範例").update(group="Examples")
+
+
 def seed_demo() -> list[str]:
     from apps.vision import demo_images
 
     created: list[str] = []
+    _rename_legacy(created)
     for kind in ("source", "asset"):
-        ResourceGroup.objects.get_or_create(kind=kind, name="範例")
+        ResourceGroup.objects.get_or_create(kind=kind, name="Examples")
 
     source, made = ImageSource.objects.get_or_create(
-        name="示範：合成零件",
-        defaults={"kind": "synthetic", "group": "範例", "config": {"width": 1280, "height": 960, "pattern": "parts", "seed": 7, "defect_rate": 0.3}},
+        name="Demo: synthetic parts",
+        defaults={"kind": "synthetic", "group": "Examples", "config": {"width": 1280, "height": 960, "pattern": "parts", "seed": 7, "defect_rate": 0.3}},
     )
     if not made and not source.group:
-        source.group = "範例"
+        source.group = "Examples"
         source.save(update_fields=["group"])
     created.append(f"影像來源 {source.name}（{'新建' if made else '既有'}）")
 
@@ -719,8 +766,8 @@ def seed_demo() -> list[str]:
         folder = demo_images.write_set(key)
         label = demo_images.SAMPLE_SETS[key][0]
         src, made_src = ImageSource.objects.get_or_create(
-            name=f"範例：{label}",
-            defaults={"kind": "folder", "group": "範例", "config": {"path": folder, "loop": True, "sort": "name"}},
+            name=f"Example: {label}",
+            defaults={"kind": "folder", "group": "Examples", "config": {"path": folder, "loop": True, "sort": "name"}},
         )
         created.append(f"影像來源 {src.name}（{'新建' if made_src else '既有'}）")
         return src
@@ -748,7 +795,7 @@ def seed_demo() -> list[str]:
         ok, buf = cv2.imencode(".png", piece)
         buf.tofile(path)
         asset = Asset.objects.create(
-            id=asset_id, name=name, kind="image", group="範例", path=path, size=int(buf.size),
+            id=asset_id, name=name, kind="image", group="Examples", path=path, size=int(buf.size),
             meta={"width": int(piece.shape[1]), "height": int(piece.shape[0]), "channels": 3},
         )
         created.append(f"資產 {asset.name}（新建）")
@@ -757,9 +804,9 @@ def seed_demo() -> list[str]:
     # 每個範本畫廊樣板一組樣本來源；範例資產從樣本圖自動裁切（builtin 範本 instantiate 時現查）。
     for key in demo_images.SAMPLE_SETS:
         folder_source(key)
-    sample_asset("範例：定位十字範本", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
-    sample_asset("範例：杯件定位範本", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
-    sample_asset("範例：印刷良品範本", "golden_print", None)
+    sample_asset("Example: cross locator template", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
+    sample_asset("Example: cup locator template", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
+    sample_asset("Example: print golden template", "golden_print", None)
     _seed_demo_models(created)
 
     # 範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES），不佔流程清單；清掉舊版 seed 建過的流程。
@@ -770,8 +817,8 @@ def seed_demo() -> list[str]:
         created.append(f"移除 {removed} 個舊版範例流程（改由範本畫廊提供）")
 
     specs: list[tuple[str, str, Any, Any]] = [
-        ("示範：零件孔數檢測", "灰階→二值化→blob 計數→判定；示範分支與具名輸出", hole_count_flow, source),
-        ("示範：曝光檢查", "以 Otsu 門檻判斷曝光是否正常", brightness_gate_flow, source),
+        ("Demo: hole count", "Grayscale, threshold, blob count, judge — showing branching and named outputs", hole_count_flow, source),
+        ("Demo: exposure check", "Uses an Otsu threshold to tell whether the exposure is normal", brightness_gate_flow, source),
     ]
     for name, desc, builder, src in specs:
         graph = validate_graph(builder(src.id))
