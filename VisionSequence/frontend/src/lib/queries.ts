@@ -39,6 +39,7 @@ import type {
   RecipeImportCheck,
   RecipeImportResult,
   RegressResult,
+  Role,
   RunReport,
   ScratchImage,
   SourceKind,
@@ -481,6 +482,7 @@ export function useUsers(enabled = true) {
 
 export interface UserPatch {
   password?: string
+  role?: Role
   is_staff?: boolean
   is_active?: boolean
   display_name?: string
@@ -490,7 +492,7 @@ export function useUserMutations() {
   const client = useQueryClient()
   const invalidate = () => void client.invalidateQueries({ queryKey: keys.users })
   const create = useMutation({
-    mutationFn: (body: { username: string; password: string; is_staff: boolean; display_name: string }) => api.post<AuthUser>('/users', body),
+    mutationFn: (body: { username: string; password: string; role: Role; display_name: string }) => api.post<AuthUser>('/users', body),
     onSuccess: invalidate,
   })
   const patch = useMutation({

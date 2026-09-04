@@ -20,13 +20,22 @@ def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+#: 工廠角色。admin＝系統與帳號；engineer＝建流程、訓練模型、調任何參數；
+#: operator＝現場作業（執行、換線、只能動標了 teach 的參數）。
+ROLES = ("admin", "engineer", "operator")
+DEFAULT_ROLE = "engineer"
+
+
 class UserPref(models.Model):
-    """每個使用者的介面偏好（主題風格等）；OneToOne 掛在 auth.User 上，不動內建資料表。
+    """每個使用者的介面偏好（主題風格等）與角色；OneToOne 掛在 auth.User 上，不動內建資料表。
 
     ui 是小型 JSON（目前只有 theme）；前端登入後套用、切換時 PATCH /auth/prefs 回寫。
+    role 放在這裡而不是另開一張表：權限判定每個請求都要用，跟著 token 的 select_related 一起撈。
     """
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="pref")
+    #: admin 與 User.is_staff 保持同步（Django admin 與既有工具還在看 is_staff）。
+    role = models.CharField(max_length=16, default=DEFAULT_ROLE, choices=[(r, r) for r in ROLES])
     ui = models.JSONField(default=dict, blank=True)
     #: AI 助手供應商設定 {provider, model, api_key}；金鑰只在伺服器，API 只回尾碼提示，不進 /auth/me。
     agent = models.JSONField(default=dict, blank=True)
@@ -52,7 +61,7 @@ class AuthToken(models.Model):
     def resolve(cls, raw: str) -> User | None:
         if not raw:
             return None
-        row = cls.objects.select_related("user").filter(token_hash=hash_token(raw), expires_at__gt=timezone.now()).first()
+        row = cls.objects.select_related("user", "user__pref").filter(token_hash=hash_token(raw), expires_at__gt=timezone.now()).first()
         if row is None or not row.user.is_active:
             return None
         # 最後使用時間每 5 分鐘更新一次就好，不要每個請求都寫。

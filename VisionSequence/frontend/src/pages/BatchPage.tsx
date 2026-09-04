@@ -70,7 +70,7 @@ export function BatchPage() {
   const recipeMut = useRecipeMutations(flowId ?? 0)
   const session = useFlowSession(flowId ?? 0)
   const draft = session.draft && flow.data && session.draft.baseVersion === flow.data.version && session.draft.dirty ? session.draft : null
-  const canEditFlow = Boolean(flow.data && (auth.isAdmin || flow.data.owner_id === (auth.me?.user?.id ?? null)))
+  const canEditFlow = auth.isEngineer
   const canManage = set.data?.can_manage ?? true
   const setItems = useMemo(() => sets.data?.items ?? [], [sets.data])
   const runItems = useMemo(() => runs.data?.items ?? [], [runs.data])

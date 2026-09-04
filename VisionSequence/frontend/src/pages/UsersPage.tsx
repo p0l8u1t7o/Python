@@ -2,18 +2,19 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate } from 'react-router-dom'
-import { KeyRound, Plus, Shield, Trash2, Users } from 'lucide-react'
+import { KeyRound, Plus, Trash2, Users } from 'lucide-react'
 import { formatDateTime, formatDateTimeFull } from '@/lib/format'
 
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Switch, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
 import { useUserMutations, useUsers, type UserPatch } from '@/lib/queries'
-import type { AuthUser } from '@/lib/types'
+import type { AuthUser, Role } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
-const EMPTY_FORM = { username: '', password: '', display_name: '', is_staff: false }
+const EMPTY_FORM = { username: '', password: '', display_name: '', role: 'engineer' as Role }
+const ROLE_OPTIONS: Role[] = ['admin', 'engineer', 'operator']
 
 export function UsersPage() {
   const { t } = useTranslation()
@@ -26,7 +27,7 @@ export function UsersPage() {
   const [resetTarget, setResetTarget] = useState<AuthUser | null>(null)
   const [resetPassword, setResetPassword] = useState('')
   const [pendingDelete, setPendingDelete] = useState<AuthUser | null>(null)
-  const [pendingRole, setPendingRole] = useState<{ user: AuthUser; is_staff: boolean } | null>(null)
+  const [pendingRole, setPendingRole] = useState<{ user: AuthUser; role: Role } | null>(null)
   const [pendingActive, setPendingActive] = useState<{ user: AuthUser; is_active: boolean } | null>(null)
 
   if (!auth.isAdmin) return <Navigate to="/" replace />
@@ -95,7 +96,7 @@ export function UsersPage() {
             <THead>
               <Th>{t('auth.username')}</Th>
               <Th className="max-sm:hidden">{t('auth.displayName')}</Th>
-              <Th align="center">{t('users.admin')}</Th>
+              <Th align="center">{t('users.role')}</Th>
               <Th align="center">{t('common.enabled')}</Th>
               <Th className="max-md:hidden">{t('users.lastLogin')}</Th>
               <Th align="right">{t('common.actions')}</Th>
@@ -114,7 +115,7 @@ export function UsersPage() {
                       </Td>
                       <Td className="max-sm:hidden text-muted">{user.display_name || '—'}</Td>
                       <Td align="center">
-                        <Switch checked={user.is_staff} disabled={self} label={t('users.admin')} onChange={(v) => setPendingRole({ user, is_staff: v })} />
+                        <Select aria-label={t('users.role')} value={user.role ?? (user.is_staff ? 'admin' : 'engineer')} disabled={self} className="!w-36" onChange={(e) => setPendingRole({ user, role: e.target.value as Role })} options={ROLE_OPTIONS.map((r) => ({ value: r, label: t(`auth.roles.${r}`) }))} />
                       </Td>
                       <Td align="center">
                         <Switch checked={user.is_active} disabled={self} label={t('common.enabled')} onChange={(v) => setPendingActive({ user, is_active: v })} />
@@ -152,7 +153,7 @@ export function UsersPage() {
           <TextInput label={t('auth.username')} required autoFocus autoComplete="off" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
           <TextInput label={t('auth.password')} required type="password" autoComplete="new-password" hint={t('auth.passwordHint')} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <TextInput label={t('auth.displayName')} value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
-          <Checkbox label={<span className="inline-flex items-center gap-1"><Shield size={13} />{t('users.admin')}</span>} hint={t('users.adminHint')} checked={form.is_staff} onChange={(v) => setForm({ ...form, is_staff: v })} />
+          <Select label={t('users.role')} hint={t(`users.roleHint.${form.role}`)} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} options={ROLE_OPTIONS.map((r) => ({ value: r, label: t(`auth.roles.${r}`) }))} />
         </div>
       </Modal>
 
@@ -176,11 +177,11 @@ export function UsersPage() {
         onClose={() => setPendingRole(null)}
         onConfirm={() => {
           if (!pendingRole) return
-          void onPatch(pendingRole.user.id, { is_staff: pendingRole.is_staff }, t('users.updated'))
+          void onPatch(pendingRole.user.id, { role: pendingRole.role }, t('users.updated'))
           setPendingRole(null)
         }}
         title={t('users.roleTitle')}
-        message={t(pendingRole?.is_staff ? 'users.promoteMessage' : 'users.demoteMessage', { name: pendingRole?.user.username ?? '' })}
+        message={t('users.roleChangeMessage', { name: pendingRole?.user.username ?? '', role: pendingRole ? t(`auth.roles.${pendingRole.role}`) : '' })}
         confirmLabel={t('common.confirm')}
         loading={patch.isPending}
       />

@@ -1,5 +1,5 @@
 /**
- * 身分：啟動時查 /auth/status 與 /auth/me；提供 me、isAdmin、lock、login/logout/refresh。
+ * 身分：啟動時查 /auth/status 與 /auth/me；提供 me、role、isAdmin、isEngineer、lock、login/logout/refresh。
  * - 401（api.ts 的 onSessionExpired）→ me 清空，RequireAuth 會導到 /login。
  * - lock 狀態放在 query 快取 ['engine-lock']：me.lock 預填、SSE lock 事件與 30 秒輪詢更新。
  */
@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api, authToken, onSessionExpired, setAuthToken } from '@/lib/api'
 import { keys, useEngineLock } from '@/lib/queries'
 import { isThemePreference, useTheme } from '@/providers/ThemeProvider'
-import type { AuthUser, EngineLock, Me } from '@/lib/types'
+import type { AuthUser, EngineLock, Me, Role } from '@/lib/types'
 
 interface AuthContextValue {
   /** 尚未完成初始查詢 */
@@ -19,7 +19,10 @@ interface AuthContextValue {
   me: Me | null
   /** 已登入（使用者）或整合方金鑰有效 */
   authenticated: boolean
+  role: Role
   isAdmin: boolean
+  /** 能改流程圖、訓練模型、調任何參數（admin 或 engineer）。 */
+  isEngineer: boolean
   lock: EngineLock
   login: (username: string, password: string) => Promise<Me>
   setup: (username: string, password: string, displayName: string) => Promise<Me>
@@ -133,7 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lock = lockQuery.data ?? me?.lock ?? NO_LOCK
 
   const value = useMemo<AuthContextValue>(
-    () => ({ loading, setupRequired, me, authenticated, isAdmin: Boolean(me?.is_admin), lock, login, setup, logout, refresh }),
+    () => {
+      const role: Role = (me?.role as Role) ?? (me?.is_admin ? 'admin' : 'engineer')  // 舊版後端沒回 role 時比照後端預設
+      return { loading, setupRequired, me, authenticated, role, isAdmin: role === 'admin', isEngineer: role === 'admin' || role === 'engineer', lock, login, setup, logout, refresh }
+    },
     [loading, setupRequired, me, authenticated, lock, login, setup, logout, refresh],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

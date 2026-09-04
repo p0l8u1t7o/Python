@@ -267,8 +267,8 @@ class ChatSecurityTests(TestCase):
         # 有使用者後未登入 401；整合方金鑰可用
         self.assertEqual(self._chat({"message": "如何建立流程？"}).status_code, 401)
         self.assertEqual(self._chat({"message": "如何建立流程？"}, HTTP_X_API_KEY="integrator-key").status_code, 200)
-        # 別人的批次執行看不到（404），自己的可以
-        self.assertEqual(self._chat({"message": "為什麼第 3 張 NG？", "context": batch_ctx}, **worker_auth).status_code, 404)
+        # 批次執行屬於產線，工程師都諮詢得到；不存在的仍是 404
+        self.assertEqual(self._chat({"message": "為什麼第 3 張 NG？", "context": batch_ctx}, **worker_auth).status_code, 200)
         self.assertEqual(self._chat({"message": "為什麼第 3 張 NG？", "context": batch_ctx}, **admin).json()["kind"], "consult")
         self.assertEqual(self._chat({"message": "為什麼第 3 張 NG？", "context": {**batch_ctx, "batch_run_id": 999999}}, **admin).status_code, 404)
         # 引擎鎖定：問答照常，修改／諮詢／調整 423

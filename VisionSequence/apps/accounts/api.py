@@ -25,7 +25,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Schema
 
-from apps.accounts.models import AuthToken, EngineLock, UserPref, hash_token
+from apps.accounts.models import DEFAULT_ROLE, ROLES, AuthToken, EngineLock, UserPref, hash_token
 from apps.accounts.security import principal, require_admin
 from apps.core.errors import APIError, Conflict, NotFound, ValidationError
 
@@ -68,12 +68,15 @@ def _prefs(user: User | None) -> dict:
 class UserIn(Schema):
     username: str
     password: str
+    #: admin | engineer | operator；舊的 is_staff 仍可用（True＝admin），兩者都給時以 role 為準。
+    role: str | None = None
     is_staff: bool = False
     display_name: str = ""
 
 
 class UserPatch(Schema):
     password: str | None = None
+    role: str | None = None
     is_staff: bool | None = None
     is_active: bool | None = None
     display_name: str | None = None
@@ -84,11 +87,34 @@ class LockIn(Schema):
     ttl_s: int | None = None
 
 
+def role_of(user: User) -> str:
+    """使用者的角色；admin 以 User.is_staff 為準（Django admin 也看它）。"""
+    if user.is_staff:
+        return "admin"
+    pref = getattr(user, "pref", None)
+    role = getattr(pref, "role", "") or DEFAULT_ROLE
+    return role if role in ROLES else DEFAULT_ROLE
+
+
+def set_role(user: User, role: str) -> None:
+    """設定角色：admin 同步寫回 is_staff，其餘存在 UserPref。"""
+    if role not in ROLES:
+        raise ValidationError(f"role must be one of {', '.join(ROLES)}", code="bad_role")
+    if user.is_staff != (role == "admin"):
+        user.is_staff = role == "admin"
+        user.save(update_fields=["is_staff"])
+    pref, _ = UserPref.objects.get_or_create(user=user)
+    if pref.role != role:
+        pref.role = role
+        pref.save(update_fields=["role", "updated_at"])
+
+
 def user_out(user: User) -> dict:
     return {
         "id": user.id,
         "username": user.username,
         "display_name": user.first_name,
+        "role": role_of(user),
         "is_staff": user.is_staff,
         "is_active": user.is_active,
         "created_at": user.date_joined.isoformat(),
@@ -142,7 +168,7 @@ def logout(request: HttpRequest):
 @router.get("/me")
 def me(request: HttpRequest):
     p = principal(request)
-    return {"kind": p.kind, "is_admin": p.is_admin, "user": user_out(p.user) if p.user else None,
+    return {"kind": p.kind, "is_admin": p.is_admin, "role": p.role, "user": user_out(p.user) if p.user else None,
             "prefs": _prefs(p.user), "lock": EngineLock.current().to_dict()}
 
 
@@ -183,16 +209,20 @@ def change_password(request: HttpRequest, payload: PasswordIn):
 @users_router.get("")
 def list_users(request: HttpRequest):
     require_admin(request)
-    return {"items": [user_out(u) for u in User.objects.order_by("username")]}
+    return {"items": [user_out(u) for u in User.objects.select_related("pref").order_by("username")], "roles": list(ROLES)}
 
 
 @users_router.post("", response={201: dict})
 def create_user(request: HttpRequest, payload: UserIn):
     require_admin(request)
     _check_password(payload.password)
+    role = payload.role or ("admin" if payload.is_staff else DEFAULT_ROLE)
+    if role not in ROLES:
+        raise ValidationError(f"role must be one of {', '.join(ROLES)}", code="bad_role")
     try:
         with transaction.atomic():
-            user = User.objects.create_user(username=payload.username.strip(), password=payload.password, is_staff=payload.is_staff, first_name=payload.display_name)
+            user = User.objects.create_user(username=payload.username.strip(), password=payload.password, is_staff=role == "admin", first_name=payload.display_name)
+            UserPref.objects.create(user=user, role=role)
     except IntegrityError:
         raise Conflict("帳號已存在", code="username_taken") from None
     return 201, user_out(user)
@@ -213,10 +243,17 @@ def patch_user(request: HttpRequest, user_id: int, payload: UserPatch):
         _check_password(payload.password)
         user.set_password(payload.password)
         AuthToken.objects.filter(user=user).delete()
-    if payload.is_staff is not None:
-        if p.user and p.user.id == user.id and not payload.is_staff:
-            raise ValidationError("不能移除自己的管理員權限", code="self_demote")
-        user.is_staff = payload.is_staff
+    role = payload.role if payload.role is not None else ("admin" if payload.is_staff else DEFAULT_ROLE) if payload.is_staff is not None else None
+    if role is not None:
+        if role not in ROLES:
+            raise ValidationError(f"role must be one of {', '.join(ROLES)}", code="bad_role")
+        if p.user and p.user.id == user.id and role != "admin":
+            raise ValidationError("You cannot remove your own administrator role", code="self_demote")
+        user.is_staff = role == "admin"
+        pref, _ = UserPref.objects.get_or_create(user=user)
+        if pref.role != role:
+            pref.role = role
+            pref.save(update_fields=["role", "updated_at"])
     if payload.is_active is not None:
         if p.user and p.user.id == user.id and not payload.is_active:
             raise ValidationError("不能停用自己", code="self_disable")
@@ -237,7 +274,7 @@ def delete_user(request: HttpRequest, user_id: int):
         raise ValidationError("不能刪除自己", code="self_delete")
     from apps.vision.models import Flow
 
-    Flow.objects.filter(owner=user).update(owner=None)
+    Flow.objects.filter(owner=user).update(owner=None)  # owner 只是建立者；流程本身照樣能被工程師維護
     user.delete()
     return 204, None
 

@@ -104,7 +104,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const edges = graph?.edges ?? []
 
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)
-  const readOnly = Boolean(flow.data && !auth.isAdmin && flow.data.owner_id !== (auth.me?.user?.id ?? null))
+  const readOnly = !auth.isEngineer  // 工具頁會動到所有參數，不只現場參數
 
   // ---- 結果 ----
   const run = session.previewRun

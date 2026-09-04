@@ -13,7 +13,7 @@ from typing import Any
 from django.http import HttpRequest, HttpResponse
 from ninja import Router
 
-from apps.accounts.security import principal
+from apps.accounts.security import principal, require_engineer
 from apps.core.errors import NotFound, ValidationError
 from apps.vision import serialize
 from apps.vision import scripts
@@ -52,6 +52,7 @@ def _percent(s: str) -> str:
 def import_flow(request: HttpRequest):
     """JSON：整份流程檔當 body（可加 source_id 欄位），或 {"doc": {...}, "source_id": 3}。
     multipart：file 欄位 ＋ 可選 form 欄位 source_id。"""
+    require_engineer(request)
     p = principal(request)
     source_id: int | None = None
     doc: dict[str, Any]

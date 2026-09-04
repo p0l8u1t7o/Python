@@ -84,7 +84,10 @@
 - viewer 規則：執行前（mode='input'）一律不疊 overlays；無影像輸出的工具只在 output-fallback 時疊標記；`firstImageOutput`／`lastImage` 忽略 `_image`。
 
 ### API 與帳號（apps/accounts、apps/vision/api*）
-- 身分在 `security.py`：`Principal(kind=integrator|user|bootstrap)`；`request.auth` 就是它。執行類端點（run／preview／continuous／agent）都要 `principal(request).can_execute()`（鎖定時 423）；修改類端點用 `_editable_flow()`（擁有者或管理員）；讀取用 `_visible_flows()`。新增端點照這三個接縫。
+- 身分在 `security.py`：`Principal(kind=integrator|user|bootstrap)`；`request.auth` 就是它。執行類端點（run／preview／continuous／agent）都要 `principal(request).can_execute()`（鎖定時 423）。
+- **三個角色**（`accounts.models.ROLES`，存 `UserPref.role`；admin 與 `User.is_staff` 同步、權杖解析時 `select_related("user__pref")`）：`admin`（帳號、通訊連線、系統設定）／`engineer`（預設；流程、來源、資產、DL、批次、Golden）／`operator`（執行、啟停連續、換線、只能改 `teach=True` 參數）。守門函式：`require_admin`、`require_engineer`；**新增建立／修改類端點一定要掛其中一個**（以前只要登入就能做）。
+- **流程屬於產線不屬於個人**：`_visible_flows()` 對所有登入者回全部流程，`_editable_flow()` 只看角色（`can_edit_flow` 已不看 owner），`Flow.owner` 只是「建立者」（顯示與 `?mine=1`）。現場作業用 `_operable_flow()`（任何登入者，仍受引擎鎖管）。
+- **操作員的參數邊界**在 `apps/vision/teachguard.py`：`PATCH /flows/{id}` 對操作員只放行「圖以外欄位沒動、且只有 `Param.teach=True` 參數的值不同」，否則 403 `teach_only`。清單就是工具已標好的 teach 旗標（58 個），不另外維護。換線是 `POST /flows/{id}/recipes/{rid}/activate`（操作員可用），改配方內容仍需工程師。
 - 鎖是 `EngineLock` 單列（id=1）；鎖定時停掉所有連續執行並發 SSE `lock` 事件。測試裡預設沒有使用者 → bootstrap 放行；要測 401 先建一個 User；要以使用者身分測就 `POST /auth/setup` 拿 token 帶 `Authorization: Bearer`。
 - ninja 路由依註冊順序比對：固定路徑（`/flows/import`、`/assets/from-image`）要註冊在 `/{id}` 之前。`APIKeyHeader` 要實作 `authenticate(request, key)`；金鑰選填時覆寫 `__call__` 直接放行。
 - `UserPref`（OneToOne auth.User）：`ui`（主題等；`PATCH /auth/prefs`、`/auth/me` 帶回）、`agent`（AI 供應商設定，金鑰只在伺服器、API 只回尾 4 碼、不進 `/auth/me`）。主題是封閉集合（後端 `UI_THEMES`＝前端 `THEMES`＋index.html 開機腳本三處同步）；新主題＝index.css 加 `.theme-<id>` 變數覆蓋。

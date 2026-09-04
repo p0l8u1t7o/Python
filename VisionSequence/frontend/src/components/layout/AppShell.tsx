@@ -21,15 +21,15 @@ import type { LucideIcon } from 'lucide-react'
 import { SECTIONS } from '@/pages/integration/sections'
 import { useAuth } from '@/providers/AuthProvider'
 
-const NAV: { to: string; key: string; icon: LucideIcon; end: boolean; admin: boolean; tree?: boolean }[] = [
+const NAV: { to: string; key: string; icon: LucideIcon; end: boolean; admin: boolean; engineer?: boolean; tree?: boolean }[] = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true, admin: false },
   { to: '/flows', key: 'flows', icon: Workflow, end: false, admin: false },
-  { to: '/batch', key: 'batch', icon: FlaskConical, end: false, admin: false },
-  { to: '/sources', key: 'sources', icon: Camera, end: false, admin: false },
-  { to: '/assets', key: 'assets', icon: Images, end: false, admin: false },
-  { to: '/dl', key: 'dl', icon: Brain, end: false, admin: false },
-  { to: '/agent', key: 'agent', icon: Sparkles, end: false, admin: false },
-  { to: '/integration', key: 'integration', icon: Plug, end: false, admin: false, tree: true },
+  { to: '/batch', key: 'batch', icon: FlaskConical, end: false, admin: false, engineer: true },
+  { to: '/sources', key: 'sources', icon: Camera, end: false, admin: false, engineer: true },
+  { to: '/assets', key: 'assets', icon: Images, end: false, admin: false, engineer: true },
+  { to: '/dl', key: 'dl', icon: Brain, end: false, admin: false, engineer: true },
+  { to: '/agent', key: 'agent', icon: Sparkles, end: false, admin: false, engineer: true },
+  { to: '/integration', key: 'integration', icon: Plug, end: false, admin: false, engineer: true, tree: true },
   { to: '/users', key: 'users', icon: Users, end: false, admin: true },
   { to: '/settings', key: 'settings', icon: Settings, end: false, admin: false },
   { to: '/help', key: 'help', icon: HelpCircle, end: false, admin: false },
@@ -249,7 +249,7 @@ export function AppShell() {
         {!narrow ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
         {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
         <div className={`flex-1 ${narrow ? 'overflow-visible' : 'overflow-y-auto'}`}>
-          {NAV.filter((item) => !item.admin || auth.isAdmin).map(({ to, key, icon: Icon, end, tree }) => (
+          {NAV.filter((item) => (!item.admin || auth.isAdmin) && (!item.engineer || auth.isEngineer)).map(({ to, key, icon: Icon, end, tree }) => (
             <div key={key}>
               <div className="relative flex items-center">
                 <NavLink to={to} end={end} onClick={() => setMobileOpen(false)} title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item flex-1 ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>

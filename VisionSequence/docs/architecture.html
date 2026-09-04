@@ -277,7 +277,9 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <h2 id="accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</h2>
 <ul>
 <li><strong>身分</strong>（security.py）：<code>Principal(kind)</code>——<code>integrator</code>（X-API-Key＝VISION_API_KEY，機器身分）、<code>user</code>（Bearer 權杖，SHA-256 存 DB、預設 14 天）、<code>bootstrap</code>（系統尚無使用者時放行，讓 /auth/setup 能建第一個管理員）。影像／SSE 接受 <code>?token=</code>。</li>
-<li><strong>擁有者</strong>：<code>Flow.owner</code>；null＝共用（示範流程、被刪帳號留下的）。一般使用者看得到自己的＋共用的，只能改自己的；管理員全部。流程裡每個節點的參數本來就在 graph JSON，所以「各自的參數設定」隨流程歸屬。</li>
+<li><strong>角色</strong>（<code>UserPref.role</code>，封閉集合 <code>accounts.models.ROLES</code>）：<code>admin</code>（與 <code>User.is_staff</code> 同步）／<code>engineer</code>（預設）／<code>operator</code>。<code>Principal.role</code>／<code>is_engineer</code> 是判定入口；<code>require_admin</code>（帳號、連線、系統設定）與 <code>require_engineer</code>（建立與修改流程、來源、資產、DL、批次、Golden）是兩個守門函式。權杖解析時一併 <code>select_related("user__pref")</code>，權限判定不多一次查詢。</li>
+<li><strong>流程屬於產線不屬於個人</strong>：<code>_visible_flows</code> 對所有登入者回全部流程，<code>can_edit_flow</code> 只看角色；<code>Flow.owner</code> 退化成「建立者」，僅供顯示與 <code>?mine=1</code> 篩選。</li>
+<li><strong>操作員的參數邊界</strong>（<code>apps/vision/teachguard.py</code>）：<code>PATCH /flows/{id}</code> 對操作員只放行「圖以外欄位都沒動、且新舊圖之間只有 <code>Param.teach=True</code> 參數的值不同」的變更，否則 403 <code>teach_only</code>。現場可調參數的清單就是工具已經標好的 <code>teach</code> 旗標（目前 58 個），不另外維護。換線走 <code>POST /flows/{id}/recipes/{rid}/activate</code>（操作員可用），改配方內容仍需工程師。</li>
 <li><strong>引擎鎖</strong>：<code>EngineLock</code> 單列。整合方或管理員 POST /vision/lock（reason、ttl_s）；鎖定時 run／preview／continuous 回 423 <code>engine_locked</code>，編輯不受影響；上鎖即停掉所有連續執行並廣播 SSE <code>lock</code> 事件；整合方與持有者不受限；TCP 介面視為整合方。前端以橫幅顯示並停用執行按鈕。</li>
 </ul>
 

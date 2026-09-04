@@ -294,7 +294,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   /** 引擎被鎖：整合方與鎖的持有者仍可執行，其他人（含管理員）只能編輯。 */
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)
   /** 共用（或別人的）流程一般使用者不能改，只能複製。 */
-  const readOnly = Boolean(flow.data && !auth.isAdmin && flow.data.owner_id !== (auth.me?.user?.id ?? null))
+  const readOnly = !auth.isEngineer  // 流程屬於產線：工程師都能改，操作員只能在參數卡頁調現場參數
   const lockHint = execLocked ? t('lock.execDisabled', { holder: auth.lock.holder === 'integrator' ? t('lock.integrator') : auth.lock.holder }) : undefined
 
   // ---- SSE ----

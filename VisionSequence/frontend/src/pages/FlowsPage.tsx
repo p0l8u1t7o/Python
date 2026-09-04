@@ -47,7 +47,7 @@ export function FlowsPage() {
   const flows = useFlows(q, mine)
   const myId = auth.me?.user?.id ?? null
   /** 共用流程（或別人的）一般使用者只能看、複製，不能改 */
-  const readOnly = (flow: Flow) => !auth.isAdmin && flow.owner_id !== myId
+  const readOnly = (_flow: Flow) => !auth.isEngineer
   const { create, patch, remove, duplicate } = useFlowMutations()
   const [creating, setCreating] = useState(false)
   const [gallery, setGallery] = useState(false)

@@ -2,8 +2,20 @@
 
 Principal 附在 request.auth。規則：
 - X-API-Key（或 ?api_key=）等於 VISION_API_KEY → integrator（機器身分，可執行、可上鎖／解鎖，看得到所有流程）。
-- Authorization: Bearer <token>（或 ?token=）→ 使用者；is_staff 為管理員。
+- Authorization: Bearer <token>（或 ?token=）→ 使用者，角色來自 UserPref.role。
 - 兩者皆無 → 401。系統尚未建立任何使用者時（第一次啟動）放行為 bootstrap 管理員，讓 /auth/setup 能建帳號。
+
+三個工廠角色（`accounts.models.ROLES`）：
+
+===========  ========================================================================
+admin        帳號、系統設定、通訊連線；含 engineer 的一切。
+engineer     建立與修改流程、訓練模型、批次測試、調任何參數；含 operator 的一切。
+operator     現場作業：執行、啟停連續模式、換線（切換預設配方）、只能改標了
+             ``teach=True`` 的參數（`teach_only_change` 在伺服器端把關）。
+===========  ========================================================================
+
+流程的修改權**看角色不看擁有者**：工廠的心智模型是「這條線的檢測程式」，不是「某人的流程」，
+工程師離職也不該讓流程變成沒人能改的孤兒。`Flow.owner` 退化成「建立者」，只用於顯示。
 """
 
 from __future__ import annotations
@@ -15,7 +27,7 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest
 from ninja.security import HttpBearer
 
-from apps.accounts.models import AuthToken, EngineLock
+from apps.accounts.models import DEFAULT_ROLE, ROLES, AuthToken, EngineLock
 from apps.core.errors import APIError
 
 
@@ -30,8 +42,26 @@ class Principal:
         return self.kind == "integrator"
 
     @property
+    def role(self) -> str:
+        """機器身分與第一次啟動視為 admin；使用者看 UserPref.role（沒有 pref 時退回 is_staff）。"""
+        if self.kind in ("integrator", "bootstrap"):
+            return "admin"
+        if self.user is None:
+            return "operator"
+        if self.user.is_staff:
+            return "admin"
+        pref = getattr(self.user, "pref", None)
+        role = getattr(pref, "role", "") or DEFAULT_ROLE
+        return role if role in ROLES else DEFAULT_ROLE
+
+    @property
     def is_admin(self) -> bool:
-        return self.kind in ("integrator", "bootstrap") or bool(self.user and self.user.is_staff)
+        return self.role == "admin"
+
+    @property
+    def is_engineer(self) -> bool:
+        """能改流程圖、訓練模型、調任何參數。"""
+        return self.role in ("admin", "engineer")
 
     @property
     def name(self) -> str:
@@ -39,8 +69,8 @@ class Principal:
             return self.user.username
         return self.kind
 
-    def can_edit_flow(self, flow) -> bool:
-        return self.is_admin or (self.user is not None and flow.owner_id == self.user.id)
+    def can_edit_flow(self, flow=None) -> bool:  # noqa: ARG002 — flow 保留給日後的產線分組
+        return self.is_engineer
 
     def can_execute(self) -> None:
         """引擎鎖定時，只有整合方或鎖的持有者能執行。"""
@@ -116,5 +146,13 @@ def principal(request: HttpRequest) -> Principal:
 def require_admin(request: HttpRequest) -> Principal:
     p = principal(request)
     if not p.is_admin:
-        raise APIError("需要管理員權限", code="permission_denied", status_code=403)
+        raise APIError("Administrator role required", code="permission_denied", status_code=403)
+    return p
+
+
+def require_engineer(request: HttpRequest) -> Principal:
+    """建立／修改流程、訓練模型、批次測試——操作員做不了的事。"""
+    p = principal(request)
+    if not p.is_engineer:
+        raise APIError("Engineer role required to change this", code="permission_denied", status_code=403)
     return p

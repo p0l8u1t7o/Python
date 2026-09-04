@@ -371,6 +371,7 @@ export function isImageRef(value: unknown): value is ImageRef {
 
 // ---- 帳號與引擎鎖定 ----
 export interface AuthUser {
+  role?: Role
   id: number
   username: string
   display_name: string
@@ -389,6 +390,7 @@ export interface EngineLock {
 }
 
 export interface Me {
+  role?: Role
   kind: 'user' | 'integrator' | 'bootstrap'
   is_admin: boolean
   user: AuthUser | null
@@ -432,6 +434,9 @@ export interface FlowStatsDb {
 }
 
 // ---- 整合頁 ----
+/** 工廠角色：admin＝系統與帳號；engineer＝建流程、訓練、調任何參數；operator＝執行、換線、只能動現場參數。 */
+export type Role = 'admin' | 'engineer' | 'operator'
+
 export interface IntegrationInfo {
   http_base: string
   host: string

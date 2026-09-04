@@ -115,7 +115,10 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   )
 
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)
-  const readOnly = Boolean(flow.data && !auth.isAdmin && flow.data.owner_id !== (auth.me?.user?.id ?? null))
+  // 參數卡頁是現場微調的地方：操作員也能存（伺服器只放行標了 teach 的參數）；
+  // 「標記為已教導」是工程師的簽核動作，另外用 canCommission 控制。
+  const readOnly = false
+  const canCommission = auth.isEngineer
 
   // ---- 試跑 ----
   const scratch = session.scratch
@@ -355,12 +358,12 @@ function TeachPageInner({ flowId }: { flowId: number }) {
             {commissioned ? (
               <>
                 <Badge tone="ok"><CheckCircle2 size={11} /> {t('teach.commissioned')}</Badge>
-                <Button size="xs" variant="ghost" disabled={readOnly} loading={patch.isPending} title={t('teach.commissionedHint')} onClick={() => void setCommissioned(false)} data-testid="teach-unmark">{t('teach.unmarkCommissioned')}</Button>
+                <Button size="xs" variant="ghost" disabled={!canCommission} loading={patch.isPending} title={t('teach.commissionedHint')} onClick={() => void setCommissioned(false)} data-testid="teach-unmark">{t('teach.unmarkCommissioned')}</Button>
               </>
             ) : (
               <>
                 <Badge tone="warning"><CircleDashed size={11} /> {t('teach.notCommissioned')}</Badge>
-                <Button size="sm" variant="primary" icon={<CheckCircle2 size={14} />} disabled={readOnly} loading={patch.isPending} title={t('teach.notCommissionedHint')} onClick={() => void setCommissioned(true)} data-testid="teach-mark">{t('teach.markCommissioned')}</Button>
+                <Button size="sm" variant="primary" icon={<CheckCircle2 size={14} />} disabled={!canCommission} loading={patch.isPending} title={t('teach.notCommissionedHint')} onClick={() => void setCommissioned(true)} data-testid="teach-mark">{t('teach.markCommissioned')}</Button>
               </>
             )}
           </span>
@@ -377,7 +380,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
             </select>
           </label>
           {recipe ? <span className="tnum text-[11px] text-brand" data-testid="teach-override-count">{t('teach.overrideCount', { count: countOverrides(overrides) })}</span> : null}
-          <Button size="sm" icon={<BookmarkPlus size={14} />} disabled={readOnly} title={t('teach.recipeSaveAsHint')} onClick={() => setSaveAsOpen(true)} data-testid="teach-save-as">{t('teach.recipeSaveAs')}</Button>
+          <Button size="sm" icon={<BookmarkPlus size={14} />} disabled={!canCommission} title={t('teach.recipeSaveAsHint')} onClick={() => setSaveAsOpen(true)} data-testid="teach-save-as">{t('teach.recipeSaveAs')}</Button>
           <Button size="sm" icon={<BookOpen size={14} />} onClick={() => setManageOpen(true)} data-testid="teach-manage">{t('teach.recipeManage')}{recipeList.length ? ` (${recipeList.length})` : ''}</Button>
         </div>
       </header>
@@ -487,7 +490,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
         </div>
       </div>
 
-      <RecipeDrawer open={manageOpen} onClose={() => { setManageOpen(false); if (recipe) { const r = recipeList.find((x) => x.id === recipe.id); if (r && !recipeDirty) setOverrides(structuredClone(r.param_overrides ?? {})) } }} flowId={flowId} readOnly={readOnly} graphOverride={graph} />
+      <RecipeDrawer open={manageOpen} onClose={() => { setManageOpen(false); if (recipe) { const r = recipeList.find((x) => x.id === recipe.id); if (r && !recipeDirty) setOverrides(structuredClone(r.param_overrides ?? {})) } }} flowId={flowId} readOnly={!canCommission} graphOverride={graph} />
       {saveCheck.modal}
       <Modal
         open={saveAsOpen}

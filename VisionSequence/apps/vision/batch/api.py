@@ -17,7 +17,7 @@ from typing import Any
 from django.http import HttpRequest, HttpResponse
 from ninja import File, Router, Schema, UploadedFile
 
-from apps.accounts.security import authenticate, principal
+from apps.accounts.security import authenticate, principal, require_engineer
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
 from apps.golden import regress
 from apps.golden.models import GoldenCase
@@ -120,6 +120,7 @@ class FromSourceIn(Schema):
 
 @router.post("/batch/sets/from-source", response={201: dict})
 def create_set_from_source(request: HttpRequest, payload: FromSourceIn):
+    require_engineer(request)
     flow = _visible_flow(request, payload.flow_id)
     principal(request).can_execute()
     source = ImageSource.objects.filter(pk=payload.source_id).first()
@@ -140,6 +141,7 @@ def create_set_from_source(request: HttpRequest, payload: FromSourceIn):
 
 @router.post("/batch/sets", response={201: dict})
 def create_set(request: HttpRequest, images: list[UploadedFile] = File(...)):
+    require_engineer(request)
     try:
         flow_id = int(request.POST.get("flow_id") or 0)
     except ValueError:
@@ -180,6 +182,7 @@ class SetPatch(Schema):
 
 @router.patch("/batch/sets/{set_id}")
 def patch_set(request: HttpRequest, set_id: int, payload: SetPatch):
+    require_engineer(request)
     s = _set_or_404(request, set_id)
     _require_manage(request, s)
     fields = ["updated_at"]
@@ -223,6 +226,7 @@ def patch_set(request: HttpRequest, set_id: int, payload: SetPatch):
 
 @router.delete("/batch/sets/{set_id}", response={204: None})
 def delete_set(request: HttpRequest, set_id: int):
+    require_engineer(request)
     s = _set_or_404(request, set_id)
     _require_manage(request, s)
     if s.runs.filter(status__in=("queued", "running")).exists():
@@ -258,6 +262,7 @@ class ToGoldenIn(Schema):
 
 @router.post("/batch/sets/{set_id}/to-golden", response={201: dict})
 def set_to_golden(request: HttpRequest, set_id: int, payload: ToGoldenIn):
+    require_engineer(request)
     s = _set_or_404(request, set_id)
     p = principal(request)
     if not p.can_edit_flow(s.flow):
@@ -315,6 +320,7 @@ def list_runs(request: HttpRequest, set_id: int):
 
 @router.post("/batch/sets/{set_id}/runs", response={202: dict})
 def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
+    require_engineer(request)
     s = _set_or_404(request, set_id)
     p = principal(request)
     p.can_execute()
@@ -368,6 +374,7 @@ class RunPatch(Schema):
 
 @router.patch("/batch/runs/{run_id}")
 def patch_run(request: HttpRequest, run_id: int, payload: RunPatch):
+    require_engineer(request)
     r = _run_or_404(request, run_id)
     _require_manage(request, r.batch_set)
     fields = []
@@ -384,12 +391,14 @@ def patch_run(request: HttpRequest, run_id: int, payload: RunPatch):
 
 @router.post("/batch/runs/{run_id}/cancel")
 def cancel_run(request: HttpRequest, run_id: int):
+    require_engineer(request)
     r = _run_or_404(request, run_id)
     return {"cancelled": jobs.cancel(r.id)}
 
 
 @router.delete("/batch/runs/{run_id}", response={204: None})
 def delete_run(request: HttpRequest, run_id: int):
+    require_engineer(request)
     r = _run_or_404(request, run_id)
     _require_manage(request, r.batch_set)
     if r.status in ("queued", "running") and jobs.progress(r.id):
@@ -447,6 +456,7 @@ class PreviewIn(Schema):
 @router.post("/batch/runs/{run_id}/rows/{index}/preview")
 def preview_row(request: HttpRequest, run_id: int, index: int, payload: PreviewIn):
     """單張重跑取標記（影像進流程快取供影像視窗顯示）。"""
+    require_engineer(request)
     r = _run_or_404(request, run_id)
     principal(request).can_execute()
     item = store.image_by_index(r.batch_set, index)
@@ -467,6 +477,7 @@ class ToRecipeIn(Schema):
 @router.post("/batch/runs/{run_id}/to-recipe", response={201: dict})
 def run_to_recipe(request: HttpRequest, run_id: int, payload: ToRecipeIn):
     """把這次執行的參數與流程現圖的差異存成配方。"""
+    require_engineer(request)
     r = _run_or_404(request, run_id)
     flow = store.run_flow(r)
     if not principal(request).can_edit_flow(flow):

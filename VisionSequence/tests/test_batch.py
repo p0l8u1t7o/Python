@@ -16,7 +16,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TransactionTestCase, override_settings
 
-from apps.accounts.models import AuthToken
+from apps.accounts.models import AuthToken, UserPref
 from apps.golden.models import GoldenCase
 from apps.vision.batch import insights, jobs, store
 from apps.vision.models import BatchRun, BatchSet, Flow, FlowRecipe, ImageSource
@@ -313,8 +313,14 @@ class BatchApiTests(TransactionTestCase):
         set_id = r.json()["id"]
         worker = User.objects.create_user("worker", password="x")
         worker_auth = {"HTTP_AUTHORIZATION": f"Bearer {AuthToken.issue(worker)}"}
-        self.assertEqual(self.client.get(f"/api/vision/batch/sets?flow_id={flow_id}", **worker_auth).status_code, 404)
-        self.assertEqual(self.client.get(f"/api/vision/batch/sets/{set_id}", **worker_auth).status_code, 404)
+        # 流程與影像集屬於產線，工程師都看得到
+        self.assertEqual(self.client.get(f"/api/vision/batch/sets?flow_id={flow_id}", **worker_auth).status_code, 200)
+        self.assertEqual(self.client.get(f"/api/vision/batch/sets/{set_id}", **worker_auth).status_code, 200)
+        # 操作員不能做批次測試（那是工程師調參數的工具）
+        op = User.objects.create_user("op", password="x")
+        UserPref.objects.create(user=op, role="operator")
+        op_auth = {"HTTP_AUTHORIZATION": f"Bearer {AuthToken.issue(op)}"}
+        self.assertEqual(self.client.post("/api/vision/batch/sets", data={"images": [png(10)], "flow_id": flow_id}, **op_auth).status_code, 403)
         self.assertEqual(self.client.get(f"/api/vision/batch/sets/{set_id}", **admin_auth).status_code, 200)
         self.assertEqual(self.client.get(f"/api/vision/batch/sets?flow_id={flow_id}").status_code, 401)
         self.assertEqual(self.client.get(f"/api/vision/batch/sets/{set_id}/images/0?max=16&token={token}").status_code, 200)

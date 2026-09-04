@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import time
 
@@ -45,8 +46,11 @@ class AccountsTests(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
         return r.json()["token"]
 
-    def make_user(self, admin_token, name="alice", is_staff=False):
-        r = self.post("/api/users", {"username": name, "password": "pass123", "is_staff": is_staff}, token=admin_token)
+    def make_user(self, admin_token, name="alice", is_staff=False, role=None):
+        body = {"username": name, "password": "pass123", "is_staff": is_staff}
+        if role:
+            body["role"] = role
+        r = self.post("/api/users", body, token=admin_token)
         self.assertEqual(r.status_code, 201, r.content)
         r = self.post("/api/auth/login", {"username": name, "password": "pass123"})
         self.assertEqual(r.status_code, 200, r.content)
@@ -123,38 +127,103 @@ class AccountsTests(TestCase):
         self.assertEqual(self.post("/api/auth/login", {"username": "admin", "password": "newpass1"}).status_code, 200)
 
     # -- ownership ---------------------------------------------------------
-    def test_flows_are_per_user(self):
+    def test_flows_belong_to_the_line_not_to_a_person(self):
+        """工廠模型：流程是「這條線的檢測程式」，任何工程師都看得到、改得動。"""
         admin = self.setup_admin()
-        alice = self.make_user(admin, "alice")
+        alice = self.make_user(admin, "alice")  # 預設 engineer
         bob = self.make_user(admin, "bob")
         r = self.post("/api/vision/flows", {"name": "alice-flow", "graph": graph_for(self.source.id)}, token=alice)
         self.assertEqual(r.status_code, 201)
         fid = r.json()["id"]
-        self.assertEqual(r.json()["owner_name"], "alice")
-        shared = Flow.objects.create(name="shared", graph=graph_for(self.source.id))
-        # bob 看不到 alice 的，看得到共用的
-        r = self.get("/api/vision/flows", token=bob)
-        self.assertEqual(r.status_code, 200, r.content)
-        names = {f["name"] for f in r.json()["items"]}
-        self.assertEqual(names, {"shared"})
-        self.assertEqual(self.get(f"/api/vision/flows/{fid}", token=bob).status_code, 404)
-        self.assertEqual(self.client.patch(f"/api/vision/flows/{fid}", data=json.dumps({"description": "x"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {bob}").status_code, 403)
-        self.assertEqual(self.post(f"/api/vision/flows/{fid}/preview", {"graph": graph_for(self.source.id)}, token=bob).status_code, 404)
-        # 共用流程可試跑（看得到就能試），但不能改
-        self.assertEqual(self.post(f"/api/vision/flows/{shared.id}/preview", {"graph": graph_for(self.source.id)}, token=bob).status_code, 200)
-        # 共用流程一般使用者不能改，管理員可以
-        self.assertEqual(self.client.patch(f"/api/vision/flows/{shared.id}", data=json.dumps({"description": "x"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {bob}").status_code, 403)
-        self.assertEqual(self.client.patch(f"/api/vision/flows/{shared.id}", data=json.dumps({"description": "x"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {admin}").status_code, 200)
-        # 管理員看全部；?mine=1 只看自己的
+        self.assertEqual(r.json()["owner_name"], "alice")  # owner 仍記錄建立者
+        Flow.objects.create(name="shared", graph=graph_for(self.source.id))
+        # 另一位工程師看得到也改得動——工程師離職不會讓流程變成沒人能改的孤兒
+        self.assertEqual({f["name"] for f in self.get("/api/vision/flows", token=bob).json()["items"]}, {"alice-flow", "shared"})
+        self.assertEqual(self.get(f"/api/vision/flows/{fid}", token=bob).status_code, 200)
+        self.assertEqual(self.client.patch(f"/api/vision/flows/{fid}", data=json.dumps({"description": "x"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {bob}").status_code, 200)
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/preview", {"graph": graph_for(self.source.id)}, token=bob).status_code, 200)
         self.assertEqual(self.get("/api/vision/flows", token=admin).json()["total"], 2)
         self.assertEqual(self.get("/api/vision/flows?mine=true", token=alice).json()["total"], 1)
-        # alice 自己可執行、可複製（副本歸自己）
         self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=alice).status_code, 200)
-        self.assertEqual(self.post(f"/api/vision/flows/{fid}/duplicate", token=alice).json()["owner_name"], "alice")
-        # 刪除使用者 → 流程變共用
+        # 刪除建立者 → 流程還在，只是沒有建立者
         uid = User.objects.get(username="alice").id
         self.assertEqual(self.client.delete(f"/api/users/{uid}", HTTP_AUTHORIZATION=f"Bearer {admin}").status_code, 204)
         self.assertIsNone(Flow.objects.get(pk=fid).owner_id)
+        self.assertEqual(self.get(f"/api/vision/flows/{fid}", token=bob).status_code, 200)
+
+    def test_operator_can_run_and_change_over_but_not_edit(self):
+        """現場作業員：執行、啟停連續、換線、微調現場參數；不能改流程結構。"""
+        admin = self.setup_admin()
+        op = self.make_user(admin, "op1", role="operator")
+        graph = graph_for(self.source.id)
+        fid = self.post("/api/vision/flows", {"name": "line-a", "graph": graph}, token=admin).json()["id"]
+
+        # 看得到、跑得動、能啟停連續
+        self.assertEqual(self.get(f"/api/vision/flows/{fid}", token=op).status_code, 200)
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=op).status_code, 200)
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/continuous", {"running": True}, token=op).status_code, 200)
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/continuous", {"running": False}, token=op).status_code, 200)
+
+        # 換線：切換預設配方可以，改配方內容不行
+        rid = self.post(f"/api/vision/flows/{fid}/recipes", {"name": "partB", "param_overrides": {}}, token=admin).json()["id"]
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/recipes/{rid}/activate", {}, token=op).status_code, 200)
+        self.assertTrue(self.get(f"/api/vision/flows/{fid}/recipes", token=op).json()["items"][0]["is_default"])
+        self.assertEqual(self.post(f"/api/vision/flows/{fid}/recipes", {"name": "partC", "param_overrides": {}}, token=op).status_code, 403)
+
+        # 建立與刪除流程不行
+        self.assertEqual(self.post("/api/vision/flows", {"name": "nope", "graph": graph}, token=op).status_code, 403)
+        self.assertEqual(self.client.delete(f"/api/vision/flows/{fid}", HTTP_AUTHORIZATION=f"Bearer {op}").status_code, 403)
+        self.assertEqual(self.get("/api/users", token=op).status_code, 403)
+
+    def test_operator_may_only_change_teach_parameters(self):
+        """參數卡頁的現場微調：只有標了 teach 的參數能動，結構一律擋下。"""
+        admin = self.setup_admin()
+        op = self.make_user(admin, "op2", role="operator")
+        graph = {
+            "nodes": [
+                {"id": "src", "type": "image_source", "params": {"source_id": self.source.id}},
+                {"id": "thr", "type": "threshold", "params": {"method": "fixed", "threshold": 60}},
+            ],
+            "edges": [{"source": "src", "source_handle": "image", "target": "thr", "target_handle": "image"}],
+        }
+        fid = self.post("/api/vision/flows", {"name": "teachable", "graph": graph}, token=admin).json()["id"]
+
+        def send(g, token=op):
+            return self.client.patch(f"/api/vision/flows/{fid}", data=json.dumps({"graph": g}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        teach = copy.deepcopy(graph)
+        next(n for n in teach["nodes"] if n["id"] == "thr")["params"]["threshold"] = 99
+        self.assertEqual(send(teach).status_code, 200, "threshold 標了 teach，操作員應該可以調")
+
+        not_teach = copy.deepcopy(graph)
+        next(n for n in not_teach["nodes"] if n["id"] == "thr")["params"]["method"] = "otsu"
+        r = send(not_teach)
+        self.assertEqual((r.status_code, r.json()["error"]["code"]), (403, "teach_only"), "method 沒標 teach，不該讓操作員換演算法")
+
+        structure = copy.deepcopy(graph)
+        structure["nodes"] = structure["nodes"][:-1]
+        r = send(structure)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(r.json()["error"]["code"], "teach_only")
+
+        renamed = copy.deepcopy(graph)
+        r = self.client.patch(f"/api/vision/flows/{fid}", data=json.dumps({"graph": renamed, "name": "new"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {op}")
+        self.assertEqual(r.status_code, 403, "改名不是現場作業")
+
+    def test_role_round_trip(self):
+        admin = self.setup_admin()
+        self.make_user(admin, "eng")
+        users = {u["username"]: u for u in self.get("/api/users", token=admin).json()["items"]}
+        self.assertEqual((users["admin"]["role"], users["eng"]["role"]), ("admin", "engineer"))
+        uid = User.objects.get(username="eng").id
+        r = self.client.patch(f"/api/users/{uid}", data=json.dumps({"role": "operator"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {admin}")
+        self.assertEqual((r.status_code, r.json()["role"], r.json()["is_staff"]), (200, "operator", False))
+        r = self.client.patch(f"/api/users/{uid}", data=json.dumps({"role": "admin"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {admin}")
+        self.assertEqual((r.json()["role"], r.json()["is_staff"]), ("admin", True))  # admin 與 is_staff 同步
+        r = self.client.patch(f"/api/users/{uid}", data=json.dumps({"role": "wizard"}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {admin}")
+        self.assertEqual((r.status_code, r.json()["error"]["code"]), (422, "bad_role"))
+        me = self.get("/api/auth/me", token=admin).json()
+        self.assertEqual(me["role"], "admin")
 
     # -- lock --------------------------------------------------------------
     @override_settings(VISION={**settings.VISION, "API_KEY": "integrator-key"})

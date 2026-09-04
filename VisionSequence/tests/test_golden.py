@@ -14,7 +14,7 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-from apps.accounts.models import AuthToken
+from apps.accounts.models import AuthToken, UserPref
 from apps.golden import regress
 from apps.golden.models import GoldenBaseline, GoldenCase
 from apps.vision.models import Flow, ImageSource
@@ -246,22 +246,27 @@ class GoldenTests(TestCase):
         h_other = {"HTTP_AUTHORIZATION": f"Bearer {t_other}"}
         # 未登入
         self.assertEqual(self.client.get(self.url).status_code, 401)
-        # 非擁有者看不到（流程不可見）
-        self.assertEqual(self.client.get(self.url, **h_other).status_code, 404)
-        self.assertEqual(self.client.post(self.url, data={"images": [png(200)]}, **h_other).status_code, 403)
+        # 流程屬於產線：另一位工程師看得到，也能加案例（角色模型，不看擁有者）
+        self.assertEqual(self.client.get(self.url, **h_other).status_code, 200)
+        self.assertEqual(self.client.post(self.url, data={"images": [png(200)]}, **h_other).status_code, 201)
         # 擁有者可以
         r = self.client.post(self.url, data={"images": [png(200)], "expect_status": "ok"}, **h_owner)
         self.assertEqual(r.status_code, 201, r.content)
         cid = r.json()["items"][0]["id"]
         self.assertEqual(self.client.get(f"{self.url}/{cid}/image").status_code, 401)
         self.assertEqual(self.client.get(f"{self.url}/{cid}/image?token={t_owner}").status_code, 200)
-        self.assertEqual(self.client.get(f"{self.url}/{cid}/image?token={t_other}").status_code, 404)
-        # 共用流程（owner=None）：其他人可見可跑，但不能增刪、不能存基準
+        self.assertEqual(self.client.get(f"{self.url}/{cid}/image?token={t_other}").status_code, 200)
+        # 沒有建立者的流程（owner=None）照樣是工程師的責任範圍
         self.flow.owner = None
         self.flow.save()
-        self.assertEqual(self.client.get(self.url, **h_other).json()["can_manage"], False)
-        self.assertEqual(self.client.delete(f"{self.url}/{cid}", **h_other).status_code, 403)
+        self.assertEqual(self.client.get(self.url, **h_other).json()["can_manage"], True)
         r = self.client.post(f"/api/vision/flows/{self.flow.id}/regress", data=json.dumps({}), content_type="application/json", **h_other)
         self.assertEqual(r.status_code, 200, r.content)
-        r = self.client.post(f"/api/vision/flows/{self.flow.id}/regress", data=json.dumps({"save_baseline": True}), content_type="application/json", **h_other)
-        self.assertEqual(r.status_code, 422)
+        self.assertEqual(self.client.delete(f"{self.url}/{cid}", **h_other).status_code, 204)
+        # 操作員不能碰 Golden（回歸與基準是工程師的事）
+        op = User.objects.create_user("goldenop", password="x")
+        UserPref.objects.create(user=op, role="operator")
+        h_op = {"HTTP_AUTHORIZATION": f"Bearer {AuthToken.issue(op)}"}
+        self.assertEqual(self.client.get(self.url, **h_op).json()["can_manage"], False)
+        self.assertEqual(self.client.post(self.url, data={"images": [png(200)]}, **h_op).status_code, 403)
+        self.assertEqual(self.client.post(f"/api/vision/flows/{self.flow.id}/regress", data=json.dumps({}), content_type="application/json", **h_op).status_code, 403)

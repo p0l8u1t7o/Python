@@ -163,7 +163,7 @@ export function SettingsPage() {
               <dl>
                 <DetailRow label={t('auth.username')}>{auth.me.user.username}</DetailRow>
                 <DetailRow label={t('auth.displayName')}>{auth.me.user.display_name || '—'}</DetailRow>
-                <DetailRow label={t('auth.role')}>{auth.isAdmin ? t('auth.admin') : t('auth.user')}</DetailRow>
+                <DetailRow label={t('auth.role')}>{t(`auth.roles.${auth.role}`)}</DetailRow>
               </dl>
             ) : (
               <p className="text-xs text-muted">{t('auth.integrator')}</p>
