@@ -106,7 +106,7 @@ VISION = {
     # 所以這也是「同時忙碌的流程數」。可用 .env 擴充。
     "MAX_WORKERS": _env_int("VISION_MAX_WORKERS", 10),
     # 同一流程的 run 排隊上限；超過即拒絕（回 429），不無限堆積。
-    "MAX_QUEUE_PER_FLOW": _env_int("VISION_MAX_QUEUE_PER_FLOW", 4),
+    "MAX_QUEUE_PER_FLOW": _env_int("VISION_MAX_QUEUE_PER_FLOW", 16),
     # 單一 run 的牆鐘上限（秒）；超過標 failed。
     "RUN_TIMEOUT_S": float(_env("VISION_RUN_TIMEOUT_S", "30")),
     # 每個流程在記憶體保留幾次 run 的影像（供前端檢視）。

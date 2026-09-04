@@ -19,7 +19,8 @@ const RUN_REPORT_FIELDS: [string, string, string][] = [
 
 const ERROR_CODES: [string, string, string][] = [
   ['engine_locked', '423', '引擎被鎖定；details 是 lock 物件'],
-  ['flow_queue_full', '429', '該流程等待中的執行已達上限，稍後重送'],
+  ['flow_queue_full', '429', '該流程等待中的觸發已達 VISION_MAX_QUEUE_PER_FLOW（預設 16）；每個流程一次只跑一個 run'],
+  ['run_timeout', '504', '等結果超過 timeout_s；details.run_id 可事後取結果，執行本身不會被中止'],
   ['flow_disabled', '409', '流程已停用（外部觸發被拒）'],
   ['flow_not_found', '404', 'flow id 不存在或無權限'],
   ['run_not_found', '404', 'run 不在記憶體也不在資料庫'],
@@ -30,6 +31,19 @@ const ERROR_CODES: [string, string, string][] = [
   ['unauthenticated / unauthorized', '401', '缺少或錯誤的權杖／API 金鑰'],
   ['permission_denied / not_owner', '403', '沒有修改權限'],
   ['capacity', '503', '執行緒池已滿'],
+]
+
+/** TCP 一行指令的失敗碼（設備請用 code 分支，中文說明會隨版本潤飾）。 */
+const TCP_CODES: [string, string][] = [
+  ['empty_command', '空白行'],
+  ['unknown_command', '不認得的指令'],
+  ['missing_argument', '指令少了流程 id 或名稱'],
+  ['bad_argument', '引數不是 key=value（值含空白要加引號）'],
+  ['flow_not_found', '流程 id／名稱不存在'],
+  ['flow_disabled', '流程已停用'],
+  ['flow_queue_full', '該流程等待中的觸發已達上限'],
+  ['recipe_not_found', 'recipe= 指定的配方不存在'],
+  ['internal_error', '伺服器例外，記錄在日誌'],
 ]
 
 function FormatSection() {
@@ -52,6 +66,15 @@ function FormatSection() {
         <CardHeader title={t('integration.format.outputs')} description={t('integration.format.outputsHint')} />
         <CardBody>
           <CodeBlock code={`{\n  "status": "ng",\n  "outputs": {\n    "hole_count": 3,\n    "judge": "NG",\n    "result_image": {"ref": "run:abc:n5:image", "width": 640, "height": 480}\n  },\n  "duration_ms": 12.3\n}`} />
+        </CardBody>
+      </Card>
+      <Card>
+        <CardHeader title={t('integration.format.tcpErrors')} description={t('integration.format.tcpErrorsHint')} />
+        <CardBody className="!p-0">
+          <table className="w-full text-sm">
+            {head([t('integration.format.cols.field'), t('integration.format.cols.desc')])}
+            <tbody className="divide-y divide-line">{TCP_CODES.map(([c, d]) => <tr key={c}><td className="table-cell font-mono text-xs">{c}</td><td className="table-cell">{d}</td></tr>)}</tbody>
+          </table>
         </CardBody>
       </Card>
       <Card>

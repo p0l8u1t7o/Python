@@ -3,12 +3,18 @@
 指令（以 \\n 結尾，大小寫不拘）：
     RUN <flow_id 或 名稱> [key=value ...]   執行一次並等結果；回 JSON：
         {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
-    TRIGGER <flow>                         只觸發不等結果；回 {"ok": true, "queued": true}
-    STATUS [flow]                          統計
+    TRIGGER <flow> [key=value ...]         只觸發不等結果；回 {"ok": true, "queued": true, "run_id": "..."}
+                                           結果之後用 GET /api/vision/runs/{run_id} 取（排隊中回 status="queued"）
+    STATUS [flow]                          統計；不帶流程回容量（含 max_queue_per_flow）
     START <flow> / STOP <flow>             連續模式
     LIST                                   所有流程
     PING                                   {"ok": true, "pong": true}
-錯誤回 {"ok": false, "error": "..."}。
+錯誤回 {"ok": false, "error": "...", "code": "..."}；code 是穩定的英數字串，設備請用它分支
+（empty_command／unknown_command／missing_argument／bad_argument／flow_not_found／flow_queue_full…）。
+
+引數的型別：值預設是字串，只有「乾淨的十進位數字」（1、-3、2.5）才轉成數字，
+所以 lot=00123 保留前導零、sn=1_000 不會變成 1000。值含空白請用引號：
+RUN 1 barcode="ABC DEF"；流程名稱含空白同理 RUN "我的 流程"。
 
 每條連線一條執行緒；指令與執行交給 runner（同一執行緒池、同樣的並行上限）。
 與 HTTP API 同一個行程執行（manage.py runserver 或 uvicorn 帶 --tcp）才能共享引擎狀態，
@@ -18,6 +24,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import shlex
 import socket
 import socketserver
 import threading
@@ -41,23 +49,42 @@ def _find_flow(ident: str) -> Flow | None:
     return Flow.objects.filter(name=ident).first()
 
 
+class BadArgument(ValueError):
+    """引數不是 key=value（多半是值含空白又沒加引號）；靜默丟掉會讓料號憑空消失。"""
+
+    def __init__(self, token: str) -> None:
+        super().__init__(token)
+        self.token = token
+
+
+#: 只有這種形狀才當數字：前導零（00123）、底線（1_000）、指數（1e3）一律保留成字串，
+#: 否則料號、批號與條碼會被悄悄改掉。
+_NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
+
+
+def _split(line: str) -> list[str]:
+    """分詞：支援引號包住含空白的值（barcode="ABC DEF"）；引號不成對時退回空白切分。"""
+    try:
+        return shlex.split(line.strip())
+    except ValueError:
+        return line.strip().split()
+
+
 def _parse_kv(tokens: list[str]) -> dict[str, Any]:
+    """key=value → context。值預設是字串，只有乾淨的十進位數字才轉型。"""
     out: dict[str, Any] = {}
     for tok in tokens:
-        if "=" not in tok:
-            continue
-        k, v = tok.split("=", 1)
-        try:
-            out[k] = float(v) if "." in v else int(v)
-        except ValueError:
-            out[k] = v
+        k, sep, v = tok.partition("=")
+        if not sep or not k:
+            raise BadArgument(tok)
+        out[k] = (float(v) if "." in v else int(v)) if _NUMBER.match(v) else v
     return out
 
 
 def handle_command(line: str) -> dict[str, Any]:
-    parts = line.strip().split()
+    parts = _split(line)
     if not parts:
-        return {"ok": False, "error": "empty"}
+        return {"ok": False, "error": "空白指令", "code": "empty_command"}
     cmd = parts[0].upper()
     try:
         if cmd == "PING":
@@ -68,23 +95,28 @@ def handle_command(line: str) -> dict[str, Any]:
             if cmd == "STATUS" and len(parts) == 1:
                 return {"ok": True, **runner.capacity()}
             if len(parts) < 2:
-                return {"ok": False, "error": f"{cmd} 需要流程 id 或名稱"}
+                return {"ok": False, "error": f"{cmd} 需要流程 id 或名稱", "code": "missing_argument"}
             flow = _find_flow(parts[1])
             if flow is None:
-                return {"ok": False, "error": f"流程 '{parts[1]}' 不存在"}
+                return {"ok": False, "error": f"流程 '{parts[1]}' 不存在", "code": "flow_not_found"}
             if cmd == "STATUS":
-                return {"ok": True, "flow_id": flow.id, "stats": runner.runtime(flow.id).stats.to_dict(), "continuous": runner.is_continuous(flow.id)}
+                rt = runner.runtime(flow.id)
+                return {"ok": True, "flow_id": flow.id, "stats": rt.stats.to_dict(), "continuous": runner.is_continuous(flow.id),
+                        "queued": rt.queued, "running": rt.running, "max_queue_per_flow": runner.max_queue_per_flow}
             if cmd == "START":
                 runner.start_continuous(flow)
                 return {"ok": True, "continuous": True}
             if cmd == "STOP":
                 runner.stop_continuous(flow.id)
                 return {"ok": True, "continuous": False}
-            context = _parse_kv(parts[2:])
+            try:
+                context = _parse_kv(parts[2:])
+            except BadArgument as bad:
+                return {"ok": False, "error": f"引數 '{bad.token}' 不是 key=value；值含空白請用引號", "code": "bad_argument"}
             recipe = context.pop("recipe", None)
             if cmd == "TRIGGER":
-                runner.submit(flow, trigger="tcp", context=context or None, recipe=recipe)
-                return {"ok": True, "queued": True}
+                future = runner.submit(flow, trigger="tcp", context=context or None, recipe=recipe)
+                return {"ok": True, "queued": True, "run_id": getattr(future, "run_id", "")}
             report = runner.run_sync(flow, trigger="tcp", context=context or None, recipe=recipe)
             return {
                 "ok": True,
@@ -98,12 +130,12 @@ def handle_command(line: str) -> dict[str, Any]:
                 "run_id": report.id,
                 "error": report.error,
             }
-        return {"ok": False, "error": f"未知指令 {cmd}"}
+        return {"ok": False, "error": f"未知指令 {cmd}", "code": "unknown_command"}
     except APIError as exc:
         return {"ok": False, "error": exc.message, "code": exc.code}
     except Exception as exc:  # noqa: BLE001
         log.exception("TCP 指令失敗：%s", line)
-        return {"ok": False, "error": repr(exc)}
+        return {"ok": False, "error": repr(exc), "code": "internal_error"}
 
 
 class _Handler(socketserver.StreamRequestHandler):

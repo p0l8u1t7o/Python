@@ -222,6 +222,99 @@ class ApiTests(TestCase):
         self.assertFalse(handle_command("WHAT")["ok"])
         self.assertTrue(handle_command("STATUS tcpflow")["ok"])
 
+    def test_tcp_values_keep_their_shape(self):
+        """料號、批號、條碼不能被悄悄改掉：只有乾淨的十進位數字才轉型。"""
+        from apps.vision.tcp_server import BadArgument, _parse_kv, _split
+
+        self.assertEqual(_parse_kv(_split('lot=00123 sn=1_000 exp=1e3 zero=00')),
+                         {"lot": "00123", "sn": "1_000", "exp": "1e3", "zero": "00"})
+        self.assertEqual(_parse_kv(_split("n=-3 f=2.5 z=0 big=1000")), {"n": -3, "f": 2.5, "z": 0, "big": 1000})
+        # 值含空白要用引號，流程名稱也一樣
+        self.assertEqual(_parse_kv(_split('barcode="ABC DEF"')), {"barcode": "ABC DEF"})
+        self.assertEqual(_split('RUN "我的 流程" a=1'), ["RUN", "我的 流程", "a=1"])
+        self.assertEqual(_split('RUN "沒收尾的引號'), ["RUN", '"沒收尾的引號'])
+        # 沒加引號時寧可報錯，也不要靜默丟掉半個條碼
+        with self.assertRaises(BadArgument):
+            _parse_kv(["DEF"])
+        self.create_flow("kvflow")
+        res = handle_command("RUN kvflow barcode=ABC DEF")
+        self.assertEqual((res["ok"], res["code"]), (False, "bad_argument"))
+
+    def test_tcp_errors_carry_a_stable_code(self):
+        """設備要能用 code 分支，不是解析中文字串。"""
+        self.create_flow("codeflow")
+        cases = {"": "empty_command", "WHAT": "unknown_command", "RUN": "missing_argument", "RUN nope": "flow_not_found"}
+        for line, code in cases.items():
+            res = handle_command(line)
+            self.assertEqual((res["ok"], res.get("code")), (False, code), line)
+
+    def test_tcp_trigger_returns_a_run_id(self):
+        """非同步觸發要能事後對帳：TRIGGER 回 run_id，GET /runs/{id} 查得到。"""
+        flow = self.create_flow("trigflow")
+        res = handle_command("TRIGGER trigflow lot=007")
+        self.assertTrue(res["ok"])
+        self.assertTrue(res["run_id"], res)
+        for _ in range(50):
+            body = self.client.get(f"/api/vision/runs/{res['run_id']}").json()
+            if not body.get("pending"):
+                break
+            self.assertIn(body["status"], ("queued", "running"))
+            time.sleep(0.05)
+        self.assertEqual(body["id"], res["run_id"])
+        self.assertEqual(body["flow_id"], flow["id"])
+        self.assertEqual(body["status"], "ok")
+
+    def test_tcp_status_reports_the_queue_limit(self):
+        self.create_flow("capflow")
+        res = handle_command("STATUS capflow")
+        self.assertEqual((res["queued"], res["running"]), (0, False))
+        self.assertGreaterEqual(res["max_queue_per_flow"], 1)
+        self.assertEqual(handle_command("STATUS")["max_queue_per_flow"], res["max_queue_per_flow"])
+
+    def test_run_async_returns_a_run_id(self):
+        """POST run?wait=0 也要回 run_id（文件一直這樣寫，之前只回 queued）。"""
+        flow = self.create_flow("asyncflow")
+        r = self.client.post(f"/api/vision/flows/{flow['id']}/run?wait=0", data="{}", content_type="application/json")
+        self.assertEqual(r.status_code, 202)
+        run_id = r.json()["run_id"]
+        self.assertTrue(run_id)
+        for _ in range(50):
+            body = self.client.get(f"/api/vision/runs/{run_id}").json()
+            if not body.get("pending"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(body["id"], run_id)
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(self.client.get("/api/vision/runs/沒這個run").status_code, 404)
+
+    def test_run_wait_timeout_is_honoured(self):
+        """timeout_s 是「我最多等這麼久」；逾時回 504 並附 run_id，不再是 500。"""
+        from unittest import mock
+
+        from apps.vision.runner import runner
+
+        flow = self.create_flow("slowflow")
+
+        class _Never:
+            run_id = "deadbeef"
+
+            def result(self, timeout=None):
+                raise TimeoutError
+
+        with mock.patch.object(runner, "submit", return_value=_Never()):
+            r = self.client.post(f"/api/vision/flows/{flow['id']}/run?timeout_s=0.2", data="{}", content_type="application/json")
+        self.assertEqual(r.status_code, 504)
+        body = r.json()["error"]
+        self.assertEqual(body["code"], "run_timeout")
+        self.assertEqual(body["details"]["run_id"], "deadbeef")
+
+    def test_include_nodes_is_the_documented_name(self):
+        flow = self.create_flow("nodesflow")
+        plain = self.client.post(f"/api/vision/flows/{flow['id']}/run", data="{}", content_type="application/json").json()
+        rich = self.client.post(f"/api/vision/flows/{flow['id']}/run?include_nodes=1", data="{}", content_type="application/json").json()
+        self.assertFalse(any(n.get("outputs") for n in plain["nodes"].values()))
+        self.assertTrue(any(n.get("outputs") for n in rich["nodes"].values()))
+
     @override_settings(VISION={**__import__("django.conf").conf.settings.VISION, "API_KEY": "secret"})
     def test_api_key(self):
         from django.contrib.auth.models import User

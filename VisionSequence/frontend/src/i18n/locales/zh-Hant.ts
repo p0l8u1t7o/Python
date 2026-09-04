@@ -1152,6 +1152,8 @@ const zhHant = {
       docs: '完整說明見 docs/modbus.html',
     },
     format: {
+      tcpErrors: 'TCP 指令失敗碼',
+      tcpErrorsHint: '一行指令的回應以 code 分支；中文說明會隨版本潤飾，code 不會。',
       runReport: 'RunReport 欄位',
       outputs: 'outputs（具名輸出）',
       outputsHint: '「具名輸出」工具設定的鍵值；影像型輸出為 {ref,width,height}，用 GET /api/vision/images/{ref} 取檔。',

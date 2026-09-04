@@ -610,6 +610,8 @@ const en = {
       goSettings: 'Lock / unlock in Settings',
     },
     format: {
+      tcpErrors: 'TCP command error codes',
+      tcpErrorsHint: 'Branch on code, not on the message text — messages get reworded between versions, codes do not.',
       runReport: 'RunReport fields',
       outputs: 'outputs (named outputs)',
       outputsHint: 'Keys set by the Output tool; image outputs are {ref,width,height}, fetch with GET /api/vision/images/{ref}.',

@@ -302,7 +302,7 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 <table>
 <tr><th>環境變數</th><th>預設</th><th>意義</th></tr>
 <tr><td>VISION_MAX_WORKERS</td><td>10</td><td>執行緒池大小＝同時忙碌流程數</td></tr>
-<tr><td>VISION_MAX_QUEUE_PER_FLOW</td><td>4</td><td>同流程排隊上限，超過 429</td></tr>
+<tr><td>VISION_MAX_QUEUE_PER_FLOW</td><td>16</td><td>同一流程可同時等待的觸發數，超過 429</td></tr>
 <tr><td>VISION_RUN_TIMEOUT_S</td><td>30</td><td>單次 run 逾時</td></tr>
 <tr><td>VISION_KEEP_RUN_IMAGES</td><td>8</td><td>每流程記憶體保留的 run 數（含影像）</td></tr>
 <tr><td>VISION_IMAGE_CACHE_MB</td><td>1024</td><td>影像快取總量</td></tr>

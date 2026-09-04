@@ -273,7 +273,7 @@ def integration_info(request: HttpRequest):
         "api_key_required": bool(cfg.get("API_KEY")),
         "max_workers": cfg["MAX_WORKERS"],
         "run_timeout_s": cfg["RUN_TIMEOUT_S"],
-        "commands": ["PING", "LIST", "RUN <flow> [k=v ...]", "TRIGGER <flow>", "STATUS [flow]", "START <flow>", "STOP <flow>"],
+        "commands": ["PING", "LIST", "RUN <flow> [k=v ...]", "TRIGGER <flow> [k=v ...]", "STATUS [flow]", "START <flow>", "STOP <flow>"],
     }
 
 

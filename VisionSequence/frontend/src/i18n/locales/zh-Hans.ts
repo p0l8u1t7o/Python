@@ -1152,6 +1152,8 @@ const zhHans = {
       docs: '完整说明见 docs/modbus.html',
     },
     format: {
+      tcpErrors: 'TCP 指令失败码',
+      tcpErrorsHint: '一行指令的回应以 code 分支；中文说明会随版本润饰，code 不会。',
       runReport: 'RunReport 字段',
       outputs: 'outputs（具名输出）',
       outputsHint: '「具名输出」工具设置的键值；影像型输出为 {ref,width,height}，用 GET /api/vision/images/{ref} 取档。',

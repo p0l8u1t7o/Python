@@ -40,7 +40,7 @@ from django.http import HttpRequest, HttpResponse
 from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal
-from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
+from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
 from apps.vision import schemas, scripts, trace
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
@@ -290,6 +290,7 @@ def run_flow(
     wait: bool = True,
     timeout_s: float | None = None,
     include_images: bool = False,
+    include_nodes: bool | None = None,
     trigger: str = "api",
     recipe: str | None = None,
 ):
@@ -297,7 +298,12 @@ def run_flow(
 
     - multipart：`image` 檔案（可選）、`context` JSON 字串（可選）。
     - 或 JSON body：{"context": {...}}。
-    - wait=1（預設）等結果回 200；wait=0 立即回 202 + run_id。
+    - `wait=1`（預設）等結果回 200；`wait=0` 立即回 202 `{queued, flow_id, run_id}`，
+      之後以 `GET /runs/{run_id}` 取結果（還沒跑完回 `status="queued"|"running"`）。
+    - `timeout_s`：等結果的秒數上限；超過回 504 `run_timeout` 並附 run_id（執行本身不會被中止，
+      結果之後仍可用 run_id 取回）。未指定時用伺服器的 RUN_TIMEOUT_S 再加 5 秒緩衝。
+    - `include_nodes=1`（舊名 `include_images`）：回應加上每個步驟的輸出與標記。
+      **影像不會內嵌在 JSON 裡**：outputs／nodes 給的是影像 ref，畫面用 `GET /images/{ref}` 取。
     """
     flow = get_flow(flow_id)
     principal(request).can_execute()
@@ -311,17 +317,28 @@ def run_flow(
         ctx = body.get("context") if isinstance(body, dict) else None
         wait = bool(body.get("wait", wait)) if isinstance(body, dict) else wait
         timeout_s = body.get("timeout_s", timeout_s) if isinstance(body, dict) else timeout_s
-        include_images = bool(body.get("include_images", include_images)) if isinstance(body, dict) else include_images
+        include_images = bool(body.get("include_nodes", body.get("include_images", include_images))) if isinstance(body, dict) else include_images
         recipe = body.get("recipe", body.get("recipe_id", recipe)) if isinstance(body, dict) else recipe
     else:
         recipe = request.POST.get("recipe") or recipe
         ctx = _parse_context(context)
     trigger = trigger if trigger in ("api", "manual", "tcp") else "api"
+    if include_nodes is not None:
+        include_images = bool(include_nodes)
     future = runner.submit(flow, trigger=trigger, input_image=input_image, context=scripts.client_context(ctx), recipe=recipe or None)
+    run_id = getattr(future, "run_id", "")
     if not wait:
-        trace.record("http", f"POST /flows/{flow.id}/run（不等結果）", direction="in", name=trigger, detail={"flow": flow.name, "wait": False})
-        return HttpResponse(status=202, content=json.dumps({"queued": True, "flow_id": flow.id}), content_type="application/json")
-    report = future.result(timeout=(timeout_s or float(settings.VISION["RUN_TIMEOUT_S"])) + 5)
+        trace.record("http", f"POST /flows/{flow.id}/run（不等結果）", direction="in", name=trigger, detail={"flow": flow.name, "wait": False, "run_id": run_id})
+        return HttpResponse(status=202, content=json.dumps({"queued": True, "flow_id": flow.id, "run_id": run_id}), content_type="application/json")
+    # timeout_s 是「我最多等這麼久」；沒指定才用伺服器逾時再加緩衝，讓引擎自己的逾時先觸發並回完整報告。
+    wait_s = float(timeout_s) if timeout_s else float(settings.VISION["RUN_TIMEOUT_S"]) + 5
+    try:
+        report = future.result(timeout=wait_s)
+    except TimeoutError:
+        trace.record("http", f"POST /flows/{flow.id}/run → 等待逾時", direction="in", name=trigger,
+                     detail={"flow": flow.name, "run_id": run_id, "timeout_s": wait_s}, ok=False, ms=wait_s * 1000)
+        raise APIError(f"等待結果逾時（{wait_s:g} 秒）；執行仍在進行，可用 run_id 取回結果",
+                       code="run_timeout", status_code=504, details={"run_id": run_id, "flow_id": flow.id}) from None
     out = report.to_dict(include_node_outputs=include_images)
     trace.record(  # 整合頁「命令與結果」：外部系統這次要了什麼、拿到什麼
         "http", f"POST /flows/{flow.id}/run → {out.get('status')}", direction="in", name=trigger,
@@ -575,10 +592,15 @@ def flow_stats(request: HttpRequest, flow_id: int, hours: int = 24):
 
 @router.get("/runs/{run_id}")
 def get_run(request: HttpRequest, run_id: str):
+    """取一次執行的結果。非同步觸發（TCP TRIGGER、`run?wait=0`）還沒跑完時回 status=queued|running。"""
     for rt in list(runner._runtimes.values()):
         report = rt.report(run_id)
         if report:
             return {**report.to_dict(include_node_outputs=True), "persisted": False}
+    waiting = runner.pending_status(run_id)
+    if waiting:
+        flow_id, state = waiting
+        return {"id": run_id, "flow_id": flow_id, "status": state, "pending": True, "persisted": False}
     try:
         uid = uuid.UUID(run_id)
     except ValueError:

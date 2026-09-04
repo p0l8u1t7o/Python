@@ -200,6 +200,8 @@ class FlowRuntime:
     #: 最近的 run 報告（新在後），上限 KEEP_RUN_IMAGES。
     recent: list[engine.RunReport] = field(default_factory=list)
     continuous: "ContinuousLoop | None" = None
+    #: 已受理但還沒有結果的 run：run_id → "queued" | "running"（非同步觸發的外部系統靠它查進度）
+    pending: dict[str, str] = field(default_factory=dict)
 
     def report(self, run_id: str) -> engine.RunReport | None:
         for r in reversed(self.recent):
@@ -242,6 +244,7 @@ class Runner:
         with self._lock:
             recent, rt.recent = rt.recent, []
             rt.stats = FlowStats()
+            rt.pending.clear()
         for r in recent:
             store.drop_run(r.id)
         bus.publish({"type": "cleared", "flow_id": flow_id, "stats": rt.stats.to_dict()})
@@ -254,6 +257,11 @@ class Runner:
             for r in rt.recent:
                 store.drop_run(r.id)
 
+    @property
+    def max_queue_per_flow(self) -> int:
+        """同一流程可同時等待的觸發數（每個流程一次只跑一個 run，超過此數的觸發立刻回 429）。"""
+        return max(1, int(_cfg("MAX_QUEUE_PER_FLOW", 16)))
+
     def capacity(self) -> dict[str, Any]:
         with self._lock:
             busy = [
@@ -261,7 +269,16 @@ class Runner:
                 for fid, rt in self._runtimes.items()
                 if rt.running or rt.queued or (rt.continuous and rt.continuous.is_alive())
             ]
-        return {"max_workers": self.max_workers, "active": self._active, "flows": busy, "images": store.stats()}
+        return {"max_workers": self.max_workers, "max_queue_per_flow": self.max_queue_per_flow, "active": self._active, "flows": busy, "images": store.stats()}
+
+    def pending_status(self, run_id: str) -> tuple[int, str] | None:
+        """已受理但還沒有結果的 run → (flow_id, "queued"|"running")。"""
+        with self._lock:
+            for fid, rt in self._runtimes.items():
+                state = rt.pending.get(run_id)
+                if state:
+                    return fid, state
+        return None
 
     # -- 編譯 ---------------------------------------------------------------
     def compiled_for(self, flow: Flow, *, graph_override: dict | None = None, recipe: "FlowRecipe | None" = None) -> CompiledGraph:
@@ -340,13 +357,17 @@ class Runner:
         if until_node:
             compiled = restrict_to(compiled, until_node)
         rt = self.runtime(flow.id)
-        with self._lock:
-            if rt.queued >= int(_cfg("MAX_QUEUE_PER_FLOW", 4)):
-                raise RateLimited(f"流程 '{flow.name}' 排隊已滿（{rt.queued}）", code="flow_queue_full")
-            rt.queued += 1
+        limit = self.max_queue_per_flow
         run_id = uuid.uuid4().hex
+        with self._lock:
+            if rt.queued >= limit:
+                raise RateLimited(f"流程 '{flow.name}' 等待中的觸發已達上限（{rt.queued}/{limit}），請稍後重送", code="flow_queue_full")
+            rt.queued += 1
+            rt.pending[run_id] = "queued"
         bus.publish({"type": "run_queued", "flow_id": flow.id, "run_id": run_id, "trigger": trigger})
-        return self.pool().submit(self._execute, flow, compiled, rt, run_id, trigger, input_image, context, preview, recipe_obj.name if recipe_obj else "")
+        future = self.pool().submit(self._execute, flow, compiled, rt, run_id, trigger, input_image, context, preview, recipe_obj.name if recipe_obj else "")
+        future.run_id = run_id  # 非同步觸發（TCP TRIGGER、POST run?wait=0）要把 run_id 回給外部系統
+        return future
 
     def run_sync(self, flow: Flow, *, timeout: float | None = None, **kw: Any) -> engine.RunReport:
         future = self.submit(flow, **kw)
@@ -369,6 +390,8 @@ class Runner:
             # 否則執行緒池有空位時上限永遠不會生效。
             with self._lock:
                 rt.queued -= 1
+                if run_id in rt.pending:
+                    rt.pending[run_id] = "running"
             rt.running = True
             with self._active_lock:
                 self._active += 1
@@ -400,6 +423,8 @@ class Runner:
         report.recipe = recipe_name
         if not flow.commissioned and not preview:
             report.warnings.append("未完成現場教導（參數卡頁尚未確認）")
+        with self._lock:
+            rt.pending.pop(run_id, None)  # 結果已在 recent，查詢改走 report()
         self._record(rt, report)
         return report
 
