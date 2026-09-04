@@ -23,7 +23,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import File, Form, Router, UploadedFile
 
-from apps.accounts.security import authenticate, principal, require_admin, require_engineer
+from apps.accounts.security import authenticate, principal, require_admin, require_feature
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.dl import base as dl_base, devices, jobs, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
@@ -192,7 +192,7 @@ def list_projects(request: HttpRequest):
 
 @router.post("/dl/projects", response={201: dict})
 def create_project(request: HttpRequest):
-    require_engineer(request)
+    require_feature(request, "dl")
     body = _body(request)
     name = str(body.get("name") or "").strip()
     if not name:
@@ -213,7 +213,7 @@ def get_project(request: HttpRequest, project_id: int):
 
 @router.patch("/dl/projects/{project_id}")
 def patch_project(request: HttpRequest, project_id: int):
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     body = _body(request)
     if "name" in body:
@@ -251,7 +251,7 @@ def patch_project(request: HttpRequest, project_id: int):
 
 @router.delete("/dl/projects/{project_id}", response={204: None})
 def delete_project(request: HttpRequest, project_id: int):
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     folder = os.path.join(str(settings.VISION["ASSET_DIR"]), "dl", str(project.id))
     project.delete()
@@ -276,7 +276,7 @@ def list_samples(request: HttpRequest, project_id: int, label: str = "__all__", 
 @router.post("/dl/projects/{project_id}/samples", response={201: dict})
 def upload_samples(request: HttpRequest, project_id: int, files: list[UploadedFile] = File(...), label: str = Form("")):
     """上傳樣本影像（可混 zip 批次包）；解碼後以像素 SHA256 去重，重複的略過並回報 duplicates。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     if label and label not in (project.classes or []):
         raise ValidationError(f"'{label}' is not in the class list", code="bad_label")
@@ -299,7 +299,7 @@ def upload_samples(request: HttpRequest, project_id: int, files: list[UploadedFi
 @router.post("/dl/projects/{project_id}/samples/from-source", response={201: dict})
 def samples_from_source(request: HttpRequest, project_id: int):
     """從影像來源連抓 N 張進樣本集（現場快速收集）。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     body = _body(request)
     source_id = body.get("source_id")
@@ -342,7 +342,7 @@ def sample_file(request: HttpRequest, sample_id: uuid.UUID, max: int = 0):
 
 @router.patch("/dl/samples/{sample_id}")
 def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
-    require_engineer(request)
+    require_feature(request, "dl")
     sample = DlSample.objects.filter(pk=sample_id).select_related("project").first()
     if sample is None:
         raise NotFound("Sample not found", code="dl_sample_not_found")
@@ -376,7 +376,7 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
 
 @router.delete("/dl/samples/{sample_id}", response={204: None})
 def delete_sample(request: HttpRequest, sample_id: uuid.UUID):
-    require_engineer(request)
+    require_feature(request, "dl")
     sample = DlSample.objects.filter(pk=sample_id).first()
     if sample is None:
         raise NotFound("Sample not found", code="dl_sample_not_found")
@@ -391,7 +391,7 @@ def delete_sample(request: HttpRequest, sample_id: uuid.UUID):
 @router.post("/dl/projects/{project_id}/labels")
 def bulk_label(request: HttpRequest, project_id: int):
     """批次標記：{"items": [{"id", "label", "by"?}]}；接受自動標記建議時 by="auto"。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     body = _body(request)
     items = body.get("items")
@@ -425,7 +425,7 @@ def auto_split(request: HttpRequest, project_id: int):
     classes 模式依類別分層（每類比例一致）；shapes 模式依「有無標記」分層。
     整批重新指派（含之前手動指定的）；個別樣本事後可用 PATCH /dl/samples/{id} 改。
     """
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     body = _body(request)
     val = min(0.5, max(0.0, float(body.get("val") if body.get("val") is not None else 0.15)))
@@ -459,7 +459,7 @@ def auto_split(request: HttpRequest, project_id: int):
 @router.post("/dl/projects/{project_id}/dataset-export")
 def dataset_export(request: HttpRequest, project_id: int):
     """{"dir": 目的資料夾, "val_ratio"?: 0.2} → 寫出 images/labels/{train,val} + data.yaml。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     from apps.vision.dl.shapes import export_dataset
 
     project = _project(project_id)
@@ -474,7 +474,7 @@ def dataset_export(request: HttpRequest, project_id: int):
 @router.post("/dl/projects/{project_id}/dataset-import")
 def dataset_import(request: HttpRequest, project_id: int):
     """{"dir": YOLO 資料夾} → 把 images/labels 匯入成樣本（shapes）。類別依 data.yaml 對應，缺的自動補進專案。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     from apps.vision.dl.shapes import iter_dataset, read_yaml_classes, yolo_to_shapes
 
     project = _project(project_id)
@@ -552,7 +552,7 @@ def list_versions(request: HttpRequest, project_id: int):
 @router.post("/dl/projects/{project_id}/versions", response={201: dict})
 def create_version(request: HttpRequest, project_id: int):
     """凍結資料集版本：{"name"?: 顯示名, "note"?: 備註}。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     body = _body(request)
     name = str(body.get("name") or "").strip() or f"v{project.versions.count() + 1}"
@@ -582,7 +582,7 @@ def create_version(request: HttpRequest, project_id: int):
 
 @router.delete("/dl/versions/{version_id}", response={204: None})
 def delete_version(request: HttpRequest, version_id: int):
-    require_engineer(request)
+    require_feature(request, "dl")
     version = DlDatasetVersion.objects.filter(pk=version_id).first()
     if version is None:
         raise NotFound("Dataset version not found", code="dl_version_not_found")
@@ -607,7 +607,7 @@ def sam_point(request: HttpRequest, project_id: int):
     點（同一物件的正／負點）或框（每框一物件）至少給一種；label 由前端掛目前類別。
     第一次使用會自動下載 SAM 權重（預設 sam2.1_t.pt；VISION_SAM_MODEL 可改；回應會比較久）。
     """
-    require_engineer(request)
+    require_feature(request, "dl")
     from apps.vision.dl import sam
 
     project = _project(project_id)
@@ -643,7 +643,7 @@ def auto_label(request: HttpRequest, project_id: int):
 
     body.method："model"（預設：trainer.suggest，用上次訓練的權重或官方底模）或 "sam"（shapes 專案：SAM2 全圖
     自動分割提案，掛第一個類別；每次最多 max_samples 張，回 remaining 讓前端可以續跑）。"""
-    require_engineer(request)
+    require_feature(request, "dl")
     project = _project(project_id)
     trainer = dl_base.get_trainer(project.trainer_kind)
     rows = list(project.samples.all())
@@ -697,7 +697,7 @@ def auto_label(request: HttpRequest, project_id: int):
 
 @router.post("/dl/projects/{project_id}/train", response={202: dict})
 def start_training(request: HttpRequest, project_id: int):
-    require_engineer(request)
+    require_feature(request, "dl")
     principal(request).can_execute()
     project = _project(project_id)
     body = _body(request)
@@ -716,5 +716,5 @@ def train_status(request: HttpRequest, log_from: int = -1):
 
 @router.post("/dl/train/cancel")
 def train_cancel(request: HttpRequest):
-    require_engineer(request)
+    require_feature(request, "dl")
     return {"cancelled": jobs.cancel()}

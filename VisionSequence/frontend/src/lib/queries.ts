@@ -27,6 +27,7 @@ import type {
   DlTrainerDef,
   EngineLock,
   ExpectStatus,
+  Feature,
   Flow,
   FlowGraph,
   FlowRecipe,
@@ -44,6 +45,7 @@ import type {
   RecipeImportResult,
   RegressResult,
   Role,
+  RolePermissions,
   RunReport,
   ScratchImage,
   SourceKind,
@@ -65,6 +67,7 @@ export const keys = {
   assets: (kind: string) => ['assets', kind] as const,
   lock: ['engine-lock'] as const,
   users: ['users'] as const,
+  permissions: ['role-permissions'] as const,
   templates: ['templates'] as const,
   integration: ['integration-info'] as const,
   captureClients: ['capture-clients'] as const,
@@ -514,6 +517,24 @@ export function useUserMutations() {
     onSuccess: invalidate,
   })
   return { create, patch, remove }
+}
+
+// ---- 角色權限（管理員勾選工程師與操作員能用哪些功能） ----
+export function useRolePermissions(enabled = true) {
+  return useQuery({
+    queryKey: keys.permissions,
+    queryFn: () => api.get<RolePermissions>('/users/permissions'),
+    enabled,
+  })
+}
+
+export function useRolePermissionMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { role: string; features: Feature[] }) => api.patch<{ role: string; features: Feature[] }>('/users/permissions', body),
+    // 改到自己這個角色時側欄也要跟著變，所以呼叫端會再 auth.refresh() 一次
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.permissions }),
+  })
 }
 
 export function useChangePassword() {

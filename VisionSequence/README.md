@@ -272,7 +272,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 
 - **只能有一個 API 行程**：引擎狀態、影像快取、SSE bus 都在行程內。`manage.py serve` = uvicorn workers=1 + TCP；`runserver` 只用來開發且要 `--noreload`。
 - 執行緒池預設 10 個流程並行（`VISION_MAX_WORKERS`）；每流程一次一個 run，同一流程可同時等待的觸發數為 `VISION_MAX_QUEUE_PER_FLOW`（預設 16）。
-- **產線化**：三級角色（管理員／工程師／操作員）、不良影像封存、流程版本歷史與發行標記、稽核軌跡、每小時良率彙總（永久保留）與 `backup`／`restore`／`purge`／`doctor` 維運指令。
+- **產線化**：三級角色（管理員／工程師／操作員）＋**角色權限勾選**（管理員在使用者頁決定另外兩個角色能用哪些功能，伺服器端把關）、不良影像封存、流程版本歷史與發行標記、稽核軌跡、每小時良率彙總（永久保留）與 `backup`／`restore`／`purge`／`doctor` 維運指令。
 - 熱路徑不碰資料庫；連續模式每 2 秒回 DB 確認一次。
 - 影像快取：每流程保留最近 N 次 run（`VISION_KEEP_RUN_IMAGES`）；暫存上傳與 AI 助手影像 pinned 不佔名額；總量 LRU（`VISION_IMAGE_CACHE_MB`）；縮圖編碼另有 LRU。
 - 引擎固定開銷每節點約 6 µs；示範流程 1280×960 全程約 8 ms（`docs/performance.html`）。

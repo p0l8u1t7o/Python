@@ -22,7 +22,7 @@ from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from ninja import Router, Schema
 
-from apps.accounts.security import principal, require_admin
+from apps.accounts.security import principal, require_feature
 from apps.comm import writers
 from apps.comm.models import Connection
 from apps.core import audit
@@ -81,7 +81,7 @@ def list_connections(request: HttpRequest):
 
 @router.post("/connections", response={201: dict})
 def create_connection(request: HttpRequest, payload: ConnectionIn):
-    require_admin(request)
+    require_feature(request, "connections")
     name = payload.name.strip()
     if not name:
         raise ValidationError("A name is required", code="connection_name_required")
@@ -104,7 +104,7 @@ def get_connection(request: HttpRequest, connection_id: int):
 
 @router.patch("/connections/{connection_id}")
 def patch_connection(request: HttpRequest, connection_id: int, payload: ConnectionPatch):
-    require_admin(request)
+    require_feature(request, "connections")
     conn = writers.get_connection(connection_id)
     before = {"name": conn.name, "kind": conn.kind, "config": conn.config, "is_enabled": conn.is_enabled}
     if payload.name is not None:
@@ -130,7 +130,7 @@ def patch_connection(request: HttpRequest, connection_id: int, payload: Connecti
 
 @router.delete("/connections/{connection_id}", response={204: None})
 def delete_connection(request: HttpRequest, connection_id: int):
-    require_admin(request)
+    require_feature(request, "connections")
     conn = writers.get_connection(connection_id)
     writers.close_connection(conn.id)
     audit.record(request, "connection.delete", conn, summary=conn.kind)
@@ -140,7 +140,7 @@ def delete_connection(request: HttpRequest, connection_id: int):
 
 @router.post("/connections/{connection_id}/test")
 def test_connection(request: HttpRequest, connection_id: int):
-    require_admin(request)
+    require_feature(request, "connections")
     conn = writers.get_connection(connection_id)
     try:
         writer = writers.open_connection(conn, force=True)
@@ -151,7 +151,7 @@ def test_connection(request: HttpRequest, connection_id: int):
 
 @router.post("/connections/{connection_id}/write")
 def write_connection(request: HttpRequest, connection_id: int, payload: WriteIn):
-    require_admin(request)
+    require_feature(request, "connections")
     conn = writers.get_connection(connection_id)
     if not payload.values:
         raise ValidationError("values cannot be empty", code="values_required")

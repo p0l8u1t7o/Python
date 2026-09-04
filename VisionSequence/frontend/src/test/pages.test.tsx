@@ -20,6 +20,15 @@ describe('pages render (smoke)', () => {
     expect(screen.getByTestId('audit-action')).toBeInTheDocument()
   })
 
+  it('UsersPage shows the role permission matrix for an administrator', async () => {
+    const { UsersPage } = await import('@/pages/UsersPage')
+    renderPage(<UsersPage />, { route: '/users' })
+    expect(await screen.findByTestId('role-permissions')).toBeInTheDocument()
+    const row = await screen.findByTestId('permission-flows.edit')
+    // 管理員那一欄是固定打勾、不可點：可勾選的只有 engineer 與 operator 兩欄
+    expect(row.querySelectorAll('input[type="checkbox"]').length).toBe(2)
+  })
+
   it('HelpPage shows quickstart and tabs', async () => {
     const { HelpPage } = await import('@/pages/HelpPage')
     renderPage(<HelpPage />, { route: '/help' })

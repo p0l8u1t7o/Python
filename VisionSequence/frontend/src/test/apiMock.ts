@@ -5,6 +5,7 @@ export const ME = {
   // 與真實 /auth/me 一致：帶 is_admin 與 role，否則前端會把測試身分當成工程師
   kind: 'user', is_admin: true, role: 'admin',
   user: { id: 1, username: 'admin', display_name: '管理員', is_staff: true, is_active: true, role: 'admin' },
+  permissions: ['flows.run', 'flows.teach', 'flows.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration', 'audit'],
   prefs: {}, lock: { locked: false, holder: '', reason: '', expires_at: null },
 }
 
@@ -52,6 +53,12 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/integration/info')) return { http_base: 'http://127.0.0.1:8000/api', host: '127.0.0.1', http_port: 8000, tcp_host: '0.0.0.0', tcp_port: 9000, tcp_listening: true, api_key_required: false, max_workers: 4, run_timeout_s: 30, commands: ['RUN <flow> [k=v ...]', 'TRIGGER <flow>', 'STATUS [flow]', 'LIST', 'PING'], capture_host: '0.0.0.0', capture_port: 9100, capture_listening: true, capture_download_url: '/api/vision/capture/download' }
   if (path.startsWith('/vision/connections')) return { items: [] }
   if (path.startsWith('/vision/lock')) return { locked: false, holder: '', reason: '', expires_at: null }
+  if (path.startsWith('/users/permissions')) return {
+    features: [{ key: 'flows.run', default: { engineer: true, operator: true } }, { key: 'flows.edit', default: { engineer: true, operator: false } }, { key: 'dl', default: { engineer: true, operator: false } }],
+    matrix: { engineer: ['flows.run', 'flows.edit', 'dl'], operator: ['flows.run'] },
+    roles: ['engineer', 'operator'],
+  }
+  if (path.startsWith('/users')) return { items: [{ id: 1, username: 'admin', display_name: '管理員', is_staff: true, is_active: true, role: 'admin', last_login: '2026-01-01T00:00:00Z' }], roles: ['admin', 'engineer', 'operator'] }
   return {}
 }
 

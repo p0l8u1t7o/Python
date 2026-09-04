@@ -392,10 +392,23 @@ export interface EngineLock {
   expires_at: string | null
 }
 
+/** 功能鍵（accounts/permissions.py 的 FEATURES）：管理員勾選哪些角色能用。 */
+export type Feature =
+  | 'flows.run' | 'flows.teach' | 'flows.edit' | 'sources' | 'assets'
+  | 'batch' | 'golden' | 'dl' | 'agent' | 'integration' | 'connections' | 'audit'
+
+export interface RolePermissions {
+  features: { key: Feature; default: { engineer: boolean; operator: boolean } }[]
+  matrix: Record<string, Feature[]>
+  roles: string[]
+}
+
 export interface Me {
   role?: Role
   kind: 'user' | 'integrator' | 'bootstrap'
   is_admin: boolean
+  /** 這個身分能用的功能；舊版後端沒回時前端退回角色預設。 */
+  permissions?: Feature[]
   user: AuthUser | null
   /** 使用者介面偏好（theme 等；整合方/bootstrap 為空物件） */
   prefs: { theme?: string }

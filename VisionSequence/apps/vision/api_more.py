@@ -23,7 +23,7 @@ from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from ninja import File, Router, Schema, UploadedFile
 
-from apps.accounts.security import authenticate, principal, require_admin, require_engineer
+from apps.accounts.security import authenticate, principal, require_feature
 from apps.core import audit
 from apps.core.models import AuditLog
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
@@ -122,7 +122,7 @@ def list_templates(request: HttpRequest):
 
 @router.post("/templates", response={201: dict})
 def create_template(request: HttpRequest, payload: TemplateIn):
-    require_engineer(request)
+    require_feature(request, "flows.edit")
     p = principal(request)
     graph = templatize(validate_graph(payload.graph))
     try:
@@ -147,7 +147,7 @@ def _find_template(template_id: str) -> dict[str, Any]:
 
 @router.delete("/templates/{template_id}", response={204: None})
 def delete_template(request: HttpRequest, template_id: str):
-    require_engineer(request)
+    require_feature(request, "flows.edit")
     p = principal(request)
     t = _find_template(template_id)
     if t["source"] == "builtin":
@@ -161,7 +161,7 @@ def delete_template(request: HttpRequest, template_id: str):
 
 @router.post("/templates/{template_id}/instantiate")
 def instantiate_template(request: HttpRequest, template_id: str, payload: InstantiateIn):
-    require_engineer(request)
+    require_feature(request, "flows.edit")
     t = _find_template(template_id)
     source_id = payload.source_id
     if source_id is not None and not ImageSource.objects.filter(pk=source_id).exists():
@@ -214,7 +214,7 @@ def _batch_run(request: HttpRequest, flow_id: int, images: list[tuple[str, Any]]
 def batch_upload(request: HttpRequest, flow_id: int, images: list[UploadedFile] = File(...)):
     """批次測試：一次上傳多張影像（≤50），每張以試跑模式執行（影像留在快取供檢視）。
     可附 form 欄位 graph（JSON 字串）用未儲存的圖。"""
-    require_engineer(request)
+    require_feature(request, "batch")
     if len(images) > MAX_BATCH:
         raise ValidationError(f"{MAX_BATCH} images at a time is the limit", code="too_many_images")
     graph = None
@@ -244,7 +244,7 @@ class BatchSourceIn(Schema):
 
 @router.post("/flows/{flow_id}/batch-source")
 def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn):
-    require_engineer(request)
+    require_feature(request, "batch")
     from apps.vision.sources import grab_by_id
 
     n = max(1, min(MAX_BATCH, int(payload.count)))
@@ -276,7 +276,7 @@ def station_summary(request: HttpRequest, hours: int = 24):
 def audit_log(request: HttpRequest, action: str = "", target_type: str = "", target_id: str = "",
               actor: str = "", q: str = "", limit: int = 50, offset: int = 0):
     """Who changed what, newest first. Administrators only — it records people, not machines."""
-    require_admin(request)
+    require_feature(request, "audit")
     qs = AuditLog.objects.all()
     if action:
         qs = qs.filter(action__startswith=action)
@@ -406,7 +406,7 @@ def integration_trace_clear(request: HttpRequest, channel: str = ""):
 @router.post("/integration/tcp")
 def integration_tcp(request: HttpRequest, payload: TcpIn):
     """從前端測 TCP 介面：真的連本機 TCP 埠送一行指令；埠沒開時直接呼叫指令處理器並註明。"""
-    principal(request).can_execute()
+    require_feature(request, "integration").can_execute()
     command = payload.command.strip()
     if not command:
         raise ValidationError("The command is empty", code="empty_command")

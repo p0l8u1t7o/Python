@@ -24,7 +24,8 @@ from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Schema
 
-from apps.accounts.models import DEFAULT_ROLE, ROLES, AuthToken, EngineLock, UserPref, hash_token
+from apps.accounts import permissions
+from apps.accounts.models import DEFAULT_ROLE, ROLES, AuthToken, EngineLock, RolePermission, UserPref, hash_token
 from apps.accounts.security import principal, require_admin
 from apps.core import audit
 from apps.core.errors import APIError, Conflict, NotFound, ValidationError
@@ -169,6 +170,7 @@ def logout(request: HttpRequest):
 def me(request: HttpRequest):
     p = principal(request)
     return {"kind": p.kind, "is_admin": p.is_admin, "role": p.role, "user": user_out(p.user) if p.user else None,
+            "permissions": sorted(permissions.allowed(p.role), key=list(permissions.FEATURES).index),
             "prefs": _prefs(p.user), "lock": EngineLock.current().to_dict()}
 
 
@@ -227,6 +229,40 @@ def create_user(request: HttpRequest, payload: UserIn):
         raise Conflict("That username is taken", code="username_taken") from None
     audit.record(request, "user.create", user, summary=f"role {role}")
     return 201, user_out(user)
+
+
+# ---------------------------------------------------------------------------
+# 角色權限（管理員）
+# ---------------------------------------------------------------------------
+class RolePermissionIn(Schema):
+    role: str
+    features: list[str]
+
+
+@users_router.get("/permissions")
+def get_permissions(request: HttpRequest):
+    """勾選畫面要的三份資料：功能清單（含出廠值）、目前的勾選、可調整的角色。"""
+    require_admin(request)
+    return {"features": permissions.catalogue(), "matrix": permissions.matrix(), "roles": list(permissions.EDITABLE_ROLES)}
+
+
+@users_router.patch("/permissions")
+def patch_permissions(request: HttpRequest, payload: RolePermissionIn):
+    """改一個角色的功能。管理員不能被改（改了就沒人救得回來）。"""
+    require_admin(request)
+    if payload.role not in permissions.EDITABLE_ROLES:
+        raise ValidationError(f"role must be one of {', '.join(permissions.EDITABLE_ROLES)}", code="bad_role")
+    features = permissions.clean(payload.features)
+    before = sorted(permissions.allowed(payload.role))
+    row, _ = RolePermission.objects.get_or_create(role=payload.role)
+    row.features = features
+    row.save(update_fields=["features", "updated_at"])
+    added = [f for f in features if f not in before]
+    removed = [f for f in before if f not in features]
+    audit.record(request, "role.permissions", target_type="role", target_name=payload.role,
+                 summary=", ".join([f"+{f}" for f in added] + [f"-{f}" for f in removed]) or "no change",
+                 detail={"before": before, "after": features})
+    return {"role": payload.role, "features": features}
 
 
 def _get_user(user_id: int) -> User:

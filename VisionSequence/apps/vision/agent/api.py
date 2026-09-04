@@ -35,7 +35,7 @@ from django.http import HttpRequest
 from ninja import File, Router, Schema, UploadedFile
 
 from apps.accounts.models import UserPref
-from apps.accounts.security import principal
+from apps.accounts.security import principal, require_feature
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.agent import consult as consult_mod
 from apps.vision.agent import help as help_mod
@@ -340,7 +340,7 @@ def test_agent_settings(request: HttpRequest):
 
 @router.post("/agent/image", response={201: dict})
 def upload_agent_image(request: HttpRequest, image: UploadedFile = File(...)):
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     frame = _decode_upload(image)
     run_id = f"agent{uuid.uuid4().hex[:12]}"
     info = store.put(f"{run_id}:upload:image", frame, flow_id=service.AGENT_FLOW_ID, run_id=run_id, pinned=True)
@@ -368,13 +368,13 @@ def _regions(payload: list[RegionIn]) -> list[dict[str, Any]]:
 @router.post("/agent/clarify")
 def agent_clarify(request: HttpRequest, payload: GenerateIn):
     """生成前的確認：回 ready 或最多 3 個問題（規則或 LLM）。不執行流程。"""
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     return service.clarify(_images(payload), _regions(payload.regions), payload.prompt, payload.answers, _settings_for(request))
 
 
 @router.post("/agent/generate")
 def agent_generate(request: HttpRequest, payload: GenerateIn):
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     return service.generate(_images(payload), _regions(payload.regions), payload.prompt, _settings_for(request), use_llm=payload.use_llm,
                             answers=payload.answers, labels=payload.labels, owner=principal(request).user)
 
@@ -382,7 +382,7 @@ def agent_generate(request: HttpRequest, payload: GenerateIn):
 @router.post("/agent/run")
 def agent_run(request: HttpRequest, payload: RunGraphIn):
     """把一份 graph（例如切換的候選方案）在上傳影像上實跑，回與 generate 相同的 report／reports。"""
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     refs = payload.images or ([payload.ref] if payload.ref else [])
     if not refs:
         raise ValidationError("At least one image is needed", code="no_image")
@@ -392,7 +392,7 @@ def agent_run(request: HttpRequest, payload: RunGraphIn):
 @router.post("/agent/autotune")
 def agent_autotune(request: HttpRequest, payload: AutotuneIn):
     """批次測試的自動調參：runs[].expected（ok／ng）當標記，只動現場調機參數。"""
-    p = principal(request)
+    p = require_feature(request, "agent")
     p.can_execute()
     limits = {"max_evals": max(1, min(200, payload.max_evals)), "deadline_s": max(1.0, min(120.0, payload.deadline_s))}
     if payload.batch_run_id is not None:
@@ -413,7 +413,7 @@ def agent_autotune(request: HttpRequest, payload: AutotuneIn):
 
 @router.post("/agent/refine")
 def agent_refine(request: HttpRequest, payload: RefineIn):
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     if not payload.feedback.strip():
         raise ValidationError("The feedback cannot be empty", code="empty_feedback")
     return service.refine(_images(payload), _regions(payload.regions), payload.prompt, payload.graph, payload.feedback, _settings_for(request))
@@ -421,7 +421,7 @@ def agent_refine(request: HttpRequest, payload: RefineIn):
 
 @router.post("/agent/edit")
 def agent_edit(request: HttpRequest, payload: EditIn):
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     if not payload.instruction.strip():
         raise ValidationError("The instruction cannot be empty", code="empty_instruction")
     image = store.get(payload.image_ref) if payload.image_ref else None
@@ -432,7 +432,7 @@ def agent_edit(request: HttpRequest, payload: EditIn):
 def start_agent_job(request: HttpRequest, payload: JobIn):
     """代理模式背景工作：generate（影像＋ROI＋需求）、edit（graph＋指令＋影像 ref）、tune（graph＋指令＋批次列）。
     沒有 LLM 時工作仍會建立並立即以規則引擎完成。"""
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     settings = _settings_for(request)
     images = _images(payload) if (payload.images or payload.ref) else []
     if payload.task == "generate" and not images:
@@ -472,7 +472,7 @@ def cancel_agent_job(request: HttpRequest, job_id: str):
 
 @router.post("/agent/jobs/{job_id}/answer")
 def answer_agent_job(request: HttpRequest, job_id: str, payload: AnswerIn):
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     return jobs.answer(job_id, payload.answers)
 
 
@@ -538,7 +538,7 @@ def patch_session(request: HttpRequest, session_id: int, payload: SessionPatch):
 @router.post("/agent/sessions/{session_id}/restore")
 def restore_session(request: HttpRequest, session_id: int):
     """把工作階段的影像重新放進快取（pinned），回前端還原所需的一切。"""
-    principal(request).can_execute()
+    require_feature(request, "agent").can_execute()
     row = _session_or_404(request, session_id)
     images = []
     for item, img in memory.load_images(row):
@@ -558,7 +558,7 @@ def delete_session(request: HttpRequest, session_id: int):
 
 @router.post("/agent/tune")
 def agent_tune(request: HttpRequest, payload: TuneIn):
-    p = principal(request)
+    p = require_feature(request, "agent")
     p.can_execute()
     if not payload.instruction.strip():
         raise ValidationError("The instruction cannot be empty", code="empty_instruction")
@@ -618,7 +618,9 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
     ctx = payload.context
     intent = chat_intent(message, ctx, payload.mode)
     if intent != "help":
-        p.can_execute()  # 使用說明問答不動引擎，鎖定時仍可問；修改／諮詢／調整會試執行
+        # 使用說明問答不動引擎、也不需要助手權限；修改／諮詢／調整會試執行，要有 agent
+        p = require_feature(request, "agent")
+        p.can_execute()
     if intent == "edit":
         if not ctx.graph:
             raise ValidationError("Editing a flow needs its current graph", code="no_graph")
@@ -667,7 +669,7 @@ def agent_consult(request: HttpRequest, payload: ConsultIn):
     """資料諮詢：針對一次批次執行的資料回答問題，附規則洞察與可套用的參數建議。"""
     from apps.vision.batch.api import _run_or_404
 
-    p = principal(request)
+    p = require_feature(request, "agent")
     p.can_execute()
     if not payload.question.strip():
         raise ValidationError("The question cannot be empty", code="empty_question")

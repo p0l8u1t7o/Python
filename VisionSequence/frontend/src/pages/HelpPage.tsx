@@ -153,7 +153,8 @@ const AUTOMATION = [
 
 const ACCOUNTS = [
   'The first time you use it there are no accounts at all, and the sign-in page lets you create the first administrator.',
-  'Administrator: manages accounts, connections and system settings, and can lock or unlock the engine. Engineer (the default): creates and edits flows, sources, assets, deep-learning teaching, batch tests and Golden Sets. Operator: runs inspections, starts and stops continuous mode, changes over between recipes, and adjusts on-site parameters on the teach page.',
+  'Administrator: manages accounts, role permissions and system settings. Engineer (the default): creates and edits flows, sources, assets, deep-learning teaching, batch tests and Golden Sets. Operator: runs inspections, starts and stops continuous mode, changes over between recipes, and adjusts on-site parameters on the teach page.',
+  'Role permissions: that split is the factory setting, not a fixed rule. On the Users page an administrator ticks function by function what an engineer and an operator may use — deep learning, batch testing, the audit trail, the outgoing connections. Administrators always have everything, and the server checks every request, so an untick cannot be worked around by typing the address.',
   'A flow belongs to the line, not to a person: every engineer can see and edit every flow, and the Owner column only records who created it.',
   'An integrator (an automation system) calls with an API key (X-API-Key) and can always execute a flow.',
   'Engine lock: an integrator takes it over HTTP (POST /api/vision/lock) or TCP (LOCK), which stops every continuous run and leaves everyone else able to edit but not preview or run. A banner across the top of the interface says who holds it and why; an administrator or the holder can release it from there, and a lock can carry a timeout after which it releases itself.',

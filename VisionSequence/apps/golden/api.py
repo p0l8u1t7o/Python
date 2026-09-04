@@ -20,7 +20,7 @@ from typing import Any
 from django.http import HttpRequest, HttpResponse
 from ninja import Router, Schema
 
-from apps.accounts.security import authenticate, principal, require_engineer
+from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import NotFound, ValidationError
 from apps.golden import regress
 from apps.golden.models import GoldenBaseline, GoldenCase
@@ -86,7 +86,7 @@ def list_cases(request: HttpRequest, flow_id: int):
 
 @router.post("/flows/{flow_id}/golden", response={201: dict})
 def create_cases(request: HttpRequest, flow_id: int):
-    require_engineer(request)
+    require_feature(request, "golden")
     flow = _editable_flow(request, flow_id)
     created: list[GoldenCase] = []
     if request.content_type and request.content_type.startswith("application/json"):
@@ -165,7 +165,7 @@ class GoldenAutotuneIn(Schema):
 @router.post("/flows/{flow_id}/golden/autotune")
 def autotune_flow(request: HttpRequest, flow_id: int, payload: GoldenAutotuneIn):
     """用 Golden Set 的期望值自動調參（只動現場調機參數）；不寫回流程，回調整後的 graph 讓前端帶回編輯器。"""
-    require_engineer(request)
+    require_feature(request, "golden")
     from apps.vision.agent import autotune, service
     from apps.vision.graph import validate_graph
 
@@ -214,7 +214,7 @@ class CasePatch(Schema):
 
 @router.patch("/flows/{flow_id}/golden/{case_id}")
 def patch_case(request: HttpRequest, flow_id: int, case_id: int, payload: CasePatch):
-    require_engineer(request)
+    require_feature(request, "golden")
     flow = _editable_flow(request, flow_id)
     case = _get_case(flow, case_id)
     if payload.name is not None:
@@ -233,7 +233,7 @@ def patch_case(request: HttpRequest, flow_id: int, case_id: int, payload: CasePa
 
 @router.delete("/flows/{flow_id}/golden/{case_id}", response={204: None})
 def delete_case(request: HttpRequest, flow_id: int, case_id: int):
-    require_engineer(request)
+    require_feature(request, "golden")
     flow = _editable_flow(request, flow_id)
     case = _get_case(flow, case_id)
     regress.remove_image(case.image_path)
@@ -252,7 +252,7 @@ class RegressIn(Schema):
 
 @router.post("/flows/{flow_id}/regress")
 def regress_flow(request: HttpRequest, flow_id: int, payload: RegressIn):
-    require_engineer(request)
+    require_feature(request, "golden")
     flow = _visible_flow(request, flow_id)
     p = principal(request)
     p.can_execute()

@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 
+from apps.accounts import permissions
 from apps.accounts.models import EngineLock
 from apps.vision.models import Flow, ImageSource
 from apps.vision.runner import runner
@@ -296,3 +297,92 @@ class AccountsTests(TestCase):
         lock.save()
         self.assertFalse(self.get("/api/vision/lock", token=alice).json()["locked"])  # 自動過期
         self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=alice).status_code, 200)
+
+
+class RolePermissionTests(TestCase):
+    """管理員勾選工程師／操作員能用哪些功能。"""
+
+    def setUp(self):
+        self.source = ImageSource.objects.create(name="syn", kind="synthetic", config={"width": 160, "height": 120})
+
+    def post(self, path, body=None, token=None):
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"} if token else {}
+        return self.client.post(path, data=json.dumps(body or {}), content_type="application/json", **headers)
+
+    def patch(self, path, body, token=None):
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"} if token else {}
+        return self.client.patch(path, data=json.dumps(body), content_type="application/json", **headers)
+
+    def get(self, path, token=None):
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"} if token else {}
+        return self.client.get(path, **headers)
+
+    def setup_admin(self):
+        return self.post("/api/auth/setup", {"username": "admin", "password": "secret1"}).json()["token"]
+
+    def make_user(self, admin, name, role):
+        self.post("/api/users", {"username": name, "password": "pass123", "role": role}, token=admin)
+        return self.post("/api/auth/login", {"username": name, "password": "pass123"}).json()["token"]
+
+    def test_defaults_match_the_old_three_tiers(self):
+        """沒設定過權限時，行為要和以前的三層完全一樣。"""
+        admin = self.setup_admin()
+        eng = self.make_user(admin, "eng", "engineer")
+        op = self.make_user(admin, "op", "operator")
+        self.assertEqual(set(permissions.allowed("engineer")), set(permissions.defaults("engineer")))
+        self.assertIn("flows.edit", self.get("/api/auth/me", token=eng).json()["permissions"])
+        self.assertNotIn("flows.edit", self.get("/api/auth/me", token=op).json()["permissions"])
+        # 工程師建得了流程，操作員建不了
+        self.assertEqual(self.post("/api/vision/flows", {"name": "a", "graph": graph_for(self.source.id)}, token=eng).status_code, 201)
+        r = self.post("/api/vision/flows", {"name": "b", "graph": graph_for(self.source.id)}, token=op)
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.json()["error"]["code"], "permission_denied")
+
+    def test_admin_grants_and_revokes(self):
+        admin = self.setup_admin()
+        eng = self.make_user(admin, "eng", "engineer")
+        op = self.make_user(admin, "op", "operator")
+        # 拿掉工程師的深度學習
+        keep = [f for f in permissions.defaults("engineer") if f != "dl"]
+        r = self.patch("/api/users/permissions", {"role": "engineer", "features": keep}, token=admin)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertNotIn("dl", r.json()["features"])
+        self.assertEqual(self.post("/api/vision/dl/projects", {"name": "p"}, token=eng).status_code, 403)
+        # 給操作員批次測試
+        r = self.patch("/api/users/permissions", {"role": "operator", "features": [*permissions.defaults("operator"), "batch"]}, token=admin)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn("batch", self.get("/api/auth/me", token=op).json()["permissions"])
+        self.assertEqual(self.get("/api/vision/batch/sets", token=op).status_code, 200)
+        # 管理員不受影響
+        self.assertEqual(self.post("/api/vision/dl/projects", {"name": "p2", "trainer_kind": "mlp_classify"}, token=admin).status_code, 201)
+        # 稽核有記
+        actions = [row["action"] for row in self.get("/api/vision/audit", token=admin).json()["items"]]
+        self.assertIn("role.permissions", actions)
+
+    def test_admin_role_cannot_be_edited(self):
+        admin = self.setup_admin()
+        r = self.patch("/api/users/permissions", {"role": "admin", "features": []}, token=admin)
+        self.assertEqual(r.status_code, 422, r.content)
+        self.assertEqual(r.json()["error"]["code"], "bad_role")
+        # 亂填的功能鍵直接被丟掉，不會存進資料庫
+        r = self.patch("/api/users/permissions", {"role": "operator", "features": ["flows.run", "nonsense"]}, token=admin)
+        self.assertEqual(r.json()["features"], ["flows.run"])
+
+    def test_only_admin_sees_the_matrix(self):
+        admin = self.setup_admin()
+        eng = self.make_user(admin, "eng", "engineer")
+        self.assertEqual(self.get("/api/users/permissions", token=eng).status_code, 403)
+        body = self.get("/api/users/permissions", token=admin).json()
+        self.assertEqual([f["key"] for f in body["features"]], list(permissions.FEATURES))
+        self.assertEqual(body["roles"], ["engineer", "operator"])
+
+    def test_teaching_can_be_taken_away(self):
+        """操作員沒有 flows.teach 就連現場參數也不能改（換線同理）。"""
+        admin = self.setup_admin()
+        op = self.make_user(admin, "op", "operator")
+        fid = self.post("/api/vision/flows", {"name": "f", "graph": graph_for(self.source.id)}, token=admin).json()["id"]
+        self.patch("/api/users/permissions", {"role": "operator", "features": ["flows.run"]}, token=admin)
+        graph = copy.deepcopy(graph_for(self.source.id))
+        r = self.patch(f"/api/vision/flows/{fid}", {"graph": graph}, token=op)
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.json()["error"]["details"]["feature"], "flows.teach")

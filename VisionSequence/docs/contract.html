@@ -245,7 +245,11 @@ POST   /vision/integration/tcp               {command} → {response, via: tcp|d
 
 <h2 id="recipes">Recipes, stations and teaching</h2>
 <pre>GET/POST  /vision/flows/{id}/recipes            {name, description, param_overrides:{node_id:{param:value}}, is_default}
-PATCH/DELETE /vision/flows/{id}/recipes/{rid}   changing a recipe needs the engineer role
+GET    /users/permissions                      the function list, the current ticks and the editable roles (administrator)
+PATCH  /users/permissions                      {role, features[]} — tick what a role may use (administrator)
+GET    /auth/me                                also returns `permissions`: what this identity may use
+
+PATCH/DELETE /vision/flows/{id}/recipes/{rid}   changing a recipe needs flows.edit
 POST /vision/flows/{id}/recipes/{rid}/activate  change over: make it the default (operators may do this)
 POST /vision/flows/{id}/run        body or form may carry recipe (id or name); over TCP: RUN 1 recipe=partA
 POST /vision/flows/{id}/preview    body may carry recipe

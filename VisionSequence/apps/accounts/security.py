@@ -8,11 +8,14 @@ Principal 附在 request.auth。規則：
 三個工廠角色（`accounts.models.ROLES`）：
 
 ===========  ========================================================================
-admin        帳號、系統設定、通訊連線；含 engineer 的一切。
-engineer     建立與修改流程、訓練模型、批次測試、調任何參數；含 operator 的一切。
-operator     現場作業：執行、啟停連續模式、換線（切換預設配方）、只能改標了
-             ``teach=True`` 的參數（`teach_only_change` 在伺服器端把關）。
+admin        帳號、系統設定、角色權限；永遠全開，不可被勾掉。
+engineer     預設：建立與修改流程、來源、資產、深度學習、批次、Golden、外部整合。
+operator     預設：執行、啟停連續模式、換線、只能改標了 ``teach=True`` 的參數
+             （`teach_only_change` 在伺服器端把關）。
 ===========  ========================================================================
+
+**engineer 與 operator 能用哪些功能由管理員勾選**（`accounts.permissions`，出廠值就是上表），
+所以判斷要用 `p.can("<feature>")`／`require_feature(request, "<feature>")`，不要再看角色名稱。
 
 流程的修改權**看角色不看擁有者**：工廠的心智模型是「這條線的檢測程式」，不是「某人的流程」，
 工程師離職也不該讓流程變成沒人能改的孤兒。`Flow.owner` 退化成「建立者」，只用於顯示。
@@ -27,6 +30,7 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest
 from ninja.security import HttpBearer
 
+from apps.accounts import permissions
 from apps.accounts.models import DEFAULT_ROLE, ROLES, AuthToken, EngineLock
 from apps.core.errors import APIError
 
@@ -36,6 +40,8 @@ class Principal:
     kind: str  # integrator | user | bootstrap
     user: User | None = None
     token: str = ""
+    #: 這個角色能用的功能，第一次問的時候才查（見 can()）。
+    _features: frozenset[str] | None = None
 
     @property
     def is_integrator(self) -> bool:
@@ -60,8 +66,19 @@ class Principal:
 
     @property
     def is_engineer(self) -> bool:
-        """能改流程圖、訓練模型、調任何參數。"""
-        return self.role in ("admin", "engineer")
+        """能改流程圖——現在是「有 flows.edit 這個功能」而不是「角色叫 engineer」。"""
+        return self.can("flows.edit")
+
+    def can(self, feature: str) -> bool:
+        """這個身分能不能用某個功能（`permissions.FEATURES` 的鍵）。管理員與整合方全開。
+
+        一個請求可能問好幾次，所以查到的集合記在這個 Principal 上（`request.auth` 一個請求一個）。
+        """
+        if self.is_admin:
+            return True
+        if self._features is None:
+            self._features = permissions.allowed(self.role)
+        return feature in self._features
 
     @property
     def name(self) -> str:
@@ -70,7 +87,7 @@ class Principal:
         return self.kind
 
     def can_edit_flow(self, flow=None) -> bool:  # noqa: ARG002 — flow 保留給日後的產線分組
-        return self.is_engineer
+        return self.can("flows.edit")
 
     def can_execute(self) -> None:
         """引擎鎖定時，只有整合方或鎖的持有者能執行。"""
@@ -150,9 +167,10 @@ def require_admin(request: HttpRequest) -> Principal:
     return p
 
 
-def require_engineer(request: HttpRequest) -> Principal:
-    """建立／修改流程、訓練模型、批次測試——操作員做不了的事。"""
+def require_feature(request: HttpRequest, feature: str) -> Principal:
+    """這個身分要有某個功能才過（管理員永遠過）。功能鍵見 `accounts.permissions.FEATURES`。"""
     p = principal(request)
-    if not p.is_engineer:
-        raise APIError("Engineer role required to change this", code="permission_denied", status_code=403)
+    if not p.can(feature):
+        raise APIError(f"Your role is not allowed to use '{feature}'", code="permission_denied", status_code=403,
+                       details={"feature": feature, "role": p.role})
     return p

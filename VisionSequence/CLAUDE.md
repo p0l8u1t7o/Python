@@ -125,7 +125,9 @@
 
 ### API 與帳號（apps/accounts、apps/vision/api*）
 - 身分在 `security.py`：`Principal(kind=integrator|user|bootstrap)`；`request.auth` 就是它。執行類端點（run／preview／continuous／agent）都要 `principal(request).can_execute()`（鎖定時 423）。
-- **三個角色**（`accounts.models.ROLES`，存 `UserPref.role`；admin 與 `User.is_staff` 同步、權杖解析時 `select_related("user__pref")`）：`admin`（帳號、通訊連線、系統設定）／`engineer`（預設；流程、來源、資產、DL、批次、Golden）／`operator`（執行、啟停連續、換線、只能改 `teach=True` 參數）。守門函式：`require_admin`、`require_engineer`；**新增建立／修改類端點一定要掛其中一個**（以前只要登入就能做）。
+- **三個角色**（`accounts.models.ROLES`，存 `UserPref.role`；admin 與 `User.is_staff` 同步、權杖解析時 `select_related("user__pref")`）：`admin`／`engineer`（預設）／`operator`。
+- **角色能做什麼不是寫死的**（`apps/accounts/permissions.py`）：`FEATURES` 是封閉的功能清單（flows.run／flows.teach／flows.edit／sources／assets／batch／golden／dl／agent／integration／connections／audit），管理員在使用者頁勾選，存 `RolePermission`（一角色一列，沒有列＝出廠值，出廠值就是原本的三層）。守門函式是 `require_feature(request, "<key>")`；`require_admin` 只留給帳號、角色權限與系統設定（**不可授權出去**，否則工程師能把自己升成管理員）。**新增建立／修改類端點一定要掛一個功能鍵**；新增功能鍵＝`FEATURES` 加一筆＋三語系 `permissions.features.<key>`＋前端 `types.ts Feature`＋`AuthProvider FALLBACK`。
+- `Principal.can(feature)` 每個請求查一次 `RolePermission` 並記在自己身上（**故意不做行程層快取**：改完要立刻生效，也不能讓測試互相污染）。前端 `auth.can(feature)` 只決定側欄與按鈕，真正把關在伺服器。API：`GET/PATCH /users/permissions`（管理員）、`/auth/me` 帶回 `permissions`。
 - **流程屬於產線不屬於個人**：`_visible_flows()` 對所有登入者回全部流程，`_editable_flow()` 只看角色（`can_edit_flow` 已不看 owner），`Flow.owner` 只是「建立者」（顯示與 `?mine=1`）。現場作業用 `_operable_flow()`（任何登入者，仍受引擎鎖管）。
 - **操作員的參數邊界**在 `apps/vision/teachguard.py`：`PATCH /flows/{id}` 對操作員只放行「圖以外欄位沒動、且只有 `Param.teach=True` 參數的值不同」，否則 403 `teach_only`。清單就是工具已標好的 teach 旗標（58 個），不另外維護。換線是 `POST /flows/{id}/recipes/{rid}/activate`（操作員可用），改配方內容仍需工程師。
 - 鎖是 `EngineLock` 單列（id=1）；鎖定時停掉所有連續執行並發 SSE `lock` 事件。測試裡預設沒有使用者 → bootstrap 放行；要測 401 先建一個 User；要以使用者身分測就 `POST /auth/setup` 拿 token 帶 `Authorization: Bearer`。

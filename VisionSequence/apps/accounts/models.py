@@ -42,6 +42,21 @@ class UserPref(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class RolePermission(models.Model):
+    """一個角色能用哪些功能（`accounts.permissions.FEATURES` 的鍵）。
+
+    沒有這一列的角色用出廠值（`permissions.defaults`），所以升級後的行為與升級前一樣；
+    管理員永遠全開，不會有列。
+    """
+
+    role = models.CharField(max_length=16, unique=True)
+    features = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.role}: {len(self.features or [])}"
+
+
 class AuthToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="tokens")
     token_hash = models.CharField(max_length=64, unique=True)

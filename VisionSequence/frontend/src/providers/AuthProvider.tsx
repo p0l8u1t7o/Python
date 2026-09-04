@@ -1,5 +1,7 @@
 /**
- * 身分：啟動時查 /auth/status 與 /auth/me；提供 me、role、isAdmin、isEngineer、lock、login/logout/refresh。
+ * 身分：啟動時查 /auth/status 與 /auth/me；提供 me、role、isAdmin、can(功能)、lock、login/logout/refresh。
+ * - 功能權限由管理員在使用者頁面勾選（後端 accounts/permissions.py）；前端只用它決定顯示什麼，
+ *   真正的把關在伺服器端的 require_feature()。
  * - 401（api.ts 的 onSessionExpired）→ me 清空，RequireAuth 會導到 /login。
  * - lock 狀態放在 query 快取 ['engine-lock']：me.lock 預填、SSE lock 事件與 30 秒輪詢更新。
  */
@@ -9,7 +11,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api, authToken, onSessionExpired, setAuthToken } from '@/lib/api'
 import { keys, useEngineLock } from '@/lib/queries'
 import { isThemePreference, useTheme } from '@/providers/ThemeProvider'
-import type { AuthUser, EngineLock, Me, Role } from '@/lib/types'
+import type { AuthUser, EngineLock, Feature, Me, Role } from '@/lib/types'
 
 interface AuthContextValue {
   /** 尚未完成初始查詢 */
@@ -21,7 +23,9 @@ interface AuthContextValue {
   authenticated: boolean
   role: Role
   isAdmin: boolean
-  /** 能改流程圖、訓練模型、調任何參數（admin 或 engineer）。 */
+  /** 這個身分能不能用某個功能（管理員永遠可以）。 */
+  can: (feature: Feature) => boolean
+  /** `can('flows.edit')` 的簡寫：能改流程圖。 */
   isEngineer: boolean
   lock: EngineLock
   login: (username: string, password: string) => Promise<Me>
@@ -31,6 +35,12 @@ interface AuthContextValue {
 }
 
 const NO_LOCK: EngineLock = { locked: false, holder: '', reason: '', locked_at: null, expires_at: null }
+/** 後端沒回 permissions 時（舊版）用的出廠值，與 accounts/permissions.py 的預設一致。 */
+const FALLBACK: Record<Role, Feature[]> = {
+  admin: ['flows.run', 'flows.teach', 'flows.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration', 'connections', 'audit'],
+  engineer: ['flows.run', 'flows.teach', 'flows.edit', 'sources', 'assets', 'batch', 'golden', 'dl', 'agent', 'integration'],
+  operator: ['flows.run', 'flows.teach'],
+}
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -138,7 +148,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => {
       const role: Role = (me?.role as Role) ?? (me?.is_admin ? 'admin' : 'engineer')  // 舊版後端沒回 role 時比照後端預設
-      return { loading, setupRequired, me, authenticated, role, isAdmin: role === 'admin', isEngineer: role === 'admin' || role === 'engineer', lock, login, setup, logout, refresh }
+      const isAdmin = role === 'admin'
+      const features = new Set<Feature>(me?.permissions ?? FALLBACK[role] ?? [])
+      const can = (feature: Feature) => isAdmin || features.has(feature)
+      return { loading, setupRequired, me, authenticated, role, isAdmin, can, isEngineer: can('flows.edit'), lock, login, setup, logout, refresh }
     },
     [loading, setupRequired, me, authenticated, lock, login, setup, logout, refresh],
   )

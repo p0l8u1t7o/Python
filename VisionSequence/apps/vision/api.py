@@ -39,7 +39,7 @@ from django.db.models import Q
 from django.http import HttpRequest, HttpResponse
 from ninja import File, Form, Router, Schema, UploadedFile
 
-from apps.accounts.security import authenticate, principal, require_engineer
+from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
 from apps.core import audit
 from apps.vision import archive, graphdiff, schemas, scripts, teachguard, trace, versions
@@ -201,7 +201,7 @@ def list_flows(request: HttpRequest, q: str = "", limit: int = 100, offset: int 
 
 @router.post("/flows", response={201: dict})
 def create_flow(request: HttpRequest, payload: schemas.FlowIn):
-    require_engineer(request)
+    require_feature(request, "flows.edit")
     graph = validate_graph(payload.graph) if payload.graph else {"nodes": [], "edges": []}
     scripts.check_graph_edit(principal(request), graph)  # Python 腳本：一般使用者只能用已核准的程式碼
     try:
@@ -235,11 +235,12 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     flow = get_flow(flow_id)
     before_graph = flow.graph or {}
     before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned")}
-    if not p.is_engineer:
-        # 操作員只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
+    if not p.can("flows.edit"):
+        # 沒有 flows.edit 的人只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
+        require_feature(request, "flows.teach")
         touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned", "archive_policy") if getattr(payload, f) is not None]
         if touched or payload.graph is None:
-            raise PermissionDenied("Engineer role required to change this flow", code="permission_denied")
+            raise PermissionDenied("Your role may only change on-site teaching parameters on this flow", code="permission_denied")
         try:
             teachguard.assert_teach_only(flow.graph or {}, payload.graph or {})
         except teachguard.StructureChanged as exc:
@@ -309,7 +310,7 @@ def get_version(request: HttpRequest, flow_id: int, version: int):
 @router.post("/flows/{flow_id}/versions/{version}/restore")
 def restore_version(request: HttpRequest, flow_id: int, version: int):
     """把舊版拿回來——**產生新版本，不改寫歷史**。"""
-    p = require_engineer(request)
+    p = require_feature(request, "flows.edit")
     flow = _editable_flow(request, flow_id)
     row = versions.restore(flow, version, user=p.user)
     if row is None:
@@ -321,7 +322,7 @@ def restore_version(request: HttpRequest, flow_id: int, version: int):
 @router.post("/flows/{flow_id}/versions/{version}/release")
 def release_version(request: HttpRequest, flow_id: int, version: int):
     """標記／取消標記為發行版。只是標記，不擋任何執行。"""
-    require_engineer(request)
+    require_feature(request, "flows.edit")
     flow = _editable_flow(request, flow_id)
     row = flow.versions.filter(version=version).first()
     if row is None:
@@ -347,7 +348,7 @@ def delete_flow(request: HttpRequest, flow_id: int):
 
 @router.post("/flows/{flow_id}/duplicate", response={201: dict})
 def duplicate_flow(request: HttpRequest, flow_id: int):
-    require_engineer(request)
+    require_feature(request, "flows.edit")
     flow = get_flow(flow_id)
     name = f"{flow.name} (copy)"
     i = 2
@@ -398,7 +399,7 @@ def run_flow(
       **影像不會內嵌在 JSON 裡**：outputs／nodes 給的是影像 ref，畫面用 `GET /images/{ref}` 取。
     """
     flow = get_flow(flow_id)
-    principal(request).can_execute()
+    require_feature(request, "flows.run").can_execute()
     ctx: dict[str, Any] | None = None
     input_image = _decode_upload(image)
     if request.content_type and request.content_type.startswith("application/json") and request.body:
@@ -501,6 +502,7 @@ def activate_recipe(request: HttpRequest, flow_id: int, recipe_id: int):
 
     和 PATCH 分開是刻意的——換線是操作員每天做好幾次的現場作業，改配方內容則是工程師的事。
     """
+    require_feature(request, "flows.teach")
     flow = _operable_flow(request, flow_id)
     r = flow.recipes.filter(pk=recipe_id).first()
     if r is None:
@@ -556,7 +558,7 @@ def preview_flow(request: HttpRequest, flow_id: int, payload: schemas.PreviewReq
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
         raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
-    principal(request).can_execute()
+    require_feature(request, "flows.run").can_execute()
     input_image = None
     if payload.reuse_image_ref:
         input_image = store.get(payload.reuse_image_ref)
@@ -644,7 +646,7 @@ def upload_scratch_image(request: HttpRequest, flow_id: int, image: UploadedFile
 def set_continuous(request: HttpRequest, flow_id: int):
     """啟停連續模式：現場作業，操作員也要能做（產線開工就是按這個）。"""
     flow = _operable_flow(request, flow_id)
-    principal(request).can_execute()
+    require_feature(request, "flows.run").can_execute()
     try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
@@ -795,11 +797,16 @@ def list_groups(request: HttpRequest, kind: str):
     return {"items": [{"id": g.id, "name": g.name, "count": counts.get(g.name, 0)} for g in rows]}
 
 
+def _group_feature(kind: str) -> str:
+    """群組跟著它裝的東西：來源群組看 sources、資產群組看 assets。"""
+    return "sources" if kind == "source" else "assets"
+
+
 @router.post("/groups", response={201: dict})
 def create_group(request: HttpRequest):
-    require_engineer(request)
     body = _json_body(request)
     kind = _group_kind(str(body.get("kind") or ""))
+    require_feature(request, _group_feature(kind))
     name = str(body.get("name") or "").strip()[:60]
     if not name:
         raise ValidationError("A group name is required", code="bad_name")
@@ -814,10 +821,10 @@ def create_group(request: HttpRequest):
 @router.patch("/groups/{group_id}")
 def rename_group(request: HttpRequest, group_id: int):
     """改名：{"name"}；群組下項目的 group 字串一併更新。"""
-    require_engineer(request)
     row = ResourceGroup.objects.filter(pk=group_id).first()
     if row is None:
         raise NotFound("Group not found", code="group_not_found")
+    require_feature(request, _group_feature(row.kind))
     name = str(_json_body(request).get("name") or "").strip()[:60]
     if not name:
         raise ValidationError("A group name is required", code="bad_name")
@@ -835,10 +842,10 @@ def rename_group(request: HttpRequest, group_id: int):
 @router.delete("/groups/{group_id}", response={204: None})
 def delete_group(request: HttpRequest, group_id: int, delete_items: bool = False):
     """刪群組。delete_items=1 連同群組下的資源一併刪（資產含檔案）；否則所屬資源變為未分組。"""
-    require_engineer(request)
     row = ResourceGroup.objects.filter(pk=group_id).first()
     if row is None:
         raise NotFound("Group not found", code="group_not_found")
+    require_feature(request, _group_feature(row.kind))
     items = _group_items(row.kind).filter(group=row.name)
     if delete_items:
         if row.kind == "source":
@@ -912,7 +919,7 @@ def list_sources(request: HttpRequest):
 
 @router.post("/sources", response={201: dict})
 def create_source(request: HttpRequest, payload: schemas.SourceIn):
-    require_engineer(request)
+    require_feature(request, "sources")
     try:
         with transaction.atomic():
             source = ImageSource.objects.create(name=payload.name.strip(), kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled, group=payload.group.strip())
@@ -958,7 +965,7 @@ def get_source(request: HttpRequest, source_id: int):
 
 @router.patch("/sources/{source_id}")
 def patch_source(request: HttpRequest, source_id: int, payload: schemas.SourcePatch):
-    require_engineer(request)
+    require_feature(request, "sources")
     source = _get_source(source_id)
     if payload.name is not None:
         source.name = payload.name.strip()
@@ -981,7 +988,7 @@ def patch_source(request: HttpRequest, source_id: int, payload: schemas.SourcePa
 
 @router.delete("/sources/{source_id}", response={204: None})
 def delete_source(request: HttpRequest, source_id: int):
-    require_engineer(request)
+    require_feature(request, "sources")
     audit.record(request, "source.delete", _get_source(source_id))
     source = _get_source(source_id)
     close_source(source.id)
@@ -1003,7 +1010,7 @@ def preview_source(request: HttpRequest, source_id: int, max: int = 1280):
 
 @router.post("/sources/{source_id}/push")
 def push_source(request: HttpRequest, source_id: int, image: UploadedFile = File(...)):
-    require_engineer(request)
+    require_feature(request, "sources")
     source = _get_source(source_id)
     grabber = open_source(source)
     if not hasattr(grabber, "push"):
@@ -1026,7 +1033,7 @@ def list_assets(request: HttpRequest, kind: str = ""):
 
 @router.post("/assets", response={201: dict})
 def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str = Form("image"), name: str = Form(""), group: str = Form("")):
-    require_engineer(request)
+    require_feature(request, "assets")
     if kind not in ("image", "model", "file"):
         raise ValidationError("kind must be image, model or file", code="bad_kind")
     asset_id = uuid.uuid4()
@@ -1050,7 +1057,7 @@ def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str
 @router.post("/assets/from-image", response={201: dict})
 def asset_from_image(request: HttpRequest):
     """從快取影像裁一塊存成範本資產：{"ref": "...", "region": {...}, "name": "..."}"""
-    require_engineer(request)
+    require_feature(request, "assets")
     try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
@@ -1083,7 +1090,7 @@ def patch_asset(request: HttpRequest, asset_id: uuid.UUID):
 
     注意要註冊在 /assets/from-image 之後——ninja 依註冊順序比對，{asset_id} 會把靜態子路徑攔成 405。
     """
-    require_engineer(request)
+    require_feature(request, "assets")
     asset = Asset.objects.filter(pk=asset_id).first()
     if asset is None:
         raise NotFound("Asset not found", code="asset_not_found")
@@ -1119,7 +1126,7 @@ def asset_file(request: HttpRequest, asset_id: uuid.UUID, max: int = 0):
 
 @router.delete("/assets/{asset_id}", response={204: None})
 def delete_asset(request: HttpRequest, asset_id: uuid.UUID):
-    require_engineer(request)
+    require_feature(request, "assets")
     asset = Asset.objects.filter(pk=asset_id).first()
     if asset is None:
         raise NotFound("Asset not found", code="asset_not_found")

@@ -1,10 +1,11 @@
-/** 使用者管理（管理員）：列表、新增、改角色／啟用、重設密碼、刪除。 */
+/** 使用者管理（管理員）：列表、新增、改角色／啟用、重設密碼、刪除，以及角色權限勾選。 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate } from 'react-router-dom'
 import { KeyRound, Plus, Trash2, Users } from 'lucide-react'
 import { formatDateTime, formatDateTimeFull } from '@/lib/format'
 
+import { RolePermissionsCard } from '@/components/auth/RolePermissionsCard'
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
@@ -135,6 +136,8 @@ export function UsersPage() {
           </Table>
         )}
       </Card>
+
+      <RolePermissionsCard />
 
       <Modal
         open={creating}

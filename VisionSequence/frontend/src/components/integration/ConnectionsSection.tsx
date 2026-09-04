@@ -89,7 +89,8 @@ export function ConnectionsSection({ section }: { section: string }) {
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
   const [writing, setWriting] = useState<{ conn: Connection; values: string; result: ConnectionOpResult | null } | null>(null)
   const [stateView, setStateView] = useState<{ conn: Connection; addresses: string; result: ConnectionOpResult | null; loading: boolean } | null>(null)
-  const isAdmin = auth.isAdmin
+  // 「連線的增刪改」是一個可授權的功能（accounts/permissions.py 的 connections），預設只有管理員
+  const canManage = auth.can('connections')
 
   // 這一頁只管自己的 kind；後端沒宣告 section 的（舊外掛）一律歸 tcp 那頁，才不會有孤兒連線。
   const kindList = useMemo(() => (kinds.data ?? []).filter((k) => (k.section || 'tcp') === section), [kinds.data, section])
@@ -178,7 +179,7 @@ export function ConnectionsSection({ section }: { section: string }) {
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted">{t('connections.subtitle')}</p>
-        <span title={isAdmin ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!isAdmin} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>
+        <span title={canManage ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!canManage} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>
       </div>
       <Card className="overflow-hidden">
         {connections.isPending ? (
@@ -213,14 +214,14 @@ export function ConnectionsSection({ section }: { section: string }) {
                           <code className="block max-w-[200px] truncate font-mono text-[11px] text-muted" title={JSON.stringify(st)}>{JSON.stringify(st)}</code>
                         </span>
                       </Td>
-                      <Td align="center"><Switch checked={c.is_enabled} disabled={!isAdmin} onChange={(v) => patch.mutate({ id: c.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} /></Td>
+                      <Td align="center"><Switch checked={c.is_enabled} disabled={!canManage} onChange={(v) => patch.mutate({ id: c.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} /></Td>
                       <Td align="right">
                         <span className="inline-flex gap-1">
                           <IconButton label={t('connections.state')} onClick={() => void readState({ conn: c, addresses: '', result: null, loading: false })}><Activity size={15} /></IconButton>
-                          <IconButton label={t('connections.test')} disabled={!isAdmin} onClick={() => void onTest(c)} data-testid="conn-test"><Plug size={15} /></IconButton>
-                          <IconButton label={t('connections.write')} disabled={!isAdmin} onClick={() => setWriting({ conn: c, values: c.kind === 'dio_sim' ? JSON.stringify({ [(Array.isArray(c.config.channels) ? (c.config.channels as string[])[0] : 'DO0') ?? 'DO0']: 1 }) : '{"coil:0": 1}', result: null })} data-testid="conn-write"><PenLine size={15} /></IconButton>
-                          <IconButton label={t('common.edit')} disabled={!isAdmin} onClick={() => setEditing({ id: c.id, body: { name: c.name, kind: c.kind, config: { ...c.config }, is_enabled: c.is_enabled } })}><Pencil size={15} /></IconButton>
-                          <IconButton label={t('common.delete')} disabled={!isAdmin} onClick={() => setPendingDelete(c)}><Trash2 size={15} className="text-critical" /></IconButton>
+                          <IconButton label={t('connections.test')} disabled={!canManage} onClick={() => void onTest(c)} data-testid="conn-test"><Plug size={15} /></IconButton>
+                          <IconButton label={t('connections.write')} disabled={!canManage} onClick={() => setWriting({ conn: c, values: c.kind === 'dio_sim' ? JSON.stringify({ [(Array.isArray(c.config.channels) ? (c.config.channels as string[])[0] : 'DO0') ?? 'DO0']: 1 }) : '{"coil:0": 1}', result: null })} data-testid="conn-write"><PenLine size={15} /></IconButton>
+                          <IconButton label={t('common.edit')} disabled={!canManage} onClick={() => setEditing({ id: c.id, body: { name: c.name, kind: c.kind, config: { ...c.config }, is_enabled: c.is_enabled } })}><Pencil size={15} /></IconButton>
+                          <IconButton label={t('common.delete')} disabled={!canManage} onClick={() => setPendingDelete(c)}><Trash2 size={15} className="text-critical" /></IconButton>
                         </span>
                       </Td>
                     </Tr>
