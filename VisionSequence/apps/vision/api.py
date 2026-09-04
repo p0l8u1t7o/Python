@@ -41,7 +41,7 @@ from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import schemas, scripts
+from apps.vision import schemas, scripts, trace
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
@@ -319,9 +319,16 @@ def run_flow(
     trigger = trigger if trigger in ("api", "manual", "tcp") else "api"
     future = runner.submit(flow, trigger=trigger, input_image=input_image, context=scripts.client_context(ctx), recipe=recipe or None)
     if not wait:
+        trace.record("http", f"POST /flows/{flow.id}/run（不等結果）", direction="in", name=trigger, detail={"flow": flow.name, "wait": False})
         return HttpResponse(status=202, content=json.dumps({"queued": True, "flow_id": flow.id}), content_type="application/json")
     report = future.result(timeout=(timeout_s or float(settings.VISION["RUN_TIMEOUT_S"])) + 5)
-    return report.to_dict(include_node_outputs=include_images)
+    out = report.to_dict(include_node_outputs=include_images)
+    trace.record(  # 整合頁「命令與結果」：外部系統這次要了什麼、拿到什麼
+        "http", f"POST /flows/{flow.id}/run → {out.get('status')}", direction="in", name=trigger,
+        detail={"flow": flow.name, "recipe": recipe, "judge": out.get("judge"), "outputs": out.get("outputs"), "run_id": out.get("id"), "error": out.get("error")},
+        ok=out.get("status") != "failed", ms=out.get("duration_ms"),
+    )
+    return out
 
 
 # ---------------------------------------------------------------------------

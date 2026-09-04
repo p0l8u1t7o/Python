@@ -23,6 +23,7 @@ import numpy as np
 from django.conf import settings
 
 from vscapture import __version__ as CLIENT_PROTO_PKG_VERSION
+from apps.vision import trace
 from apps.vision.capture import build
 from vscapture import protocol as P
 from vscapture.protocol import Encoding, FrameFlags, FrameHeader, GrabFlags, MsgType, ProtocolError
@@ -317,6 +318,8 @@ class ClientSession(threading.Thread):
             if on:
                 self.set_stream(cid, True)
         log.info("擷取端 %s 已連線（%s:%s，%s，通道 %d）", self.name_, self.peer[0], self.peer[1], "同機" if self.local else "跨機", len(self.channels))
+        trace.record("capture", f"擷取端 {self.name_} 已連線（{'同機' if self.local else '跨機'}，通道 {len(self.channels)}）", name=self.name_,
+                     detail={"address": f"{self.peer[0]}:{self.peer[1]}", "version": self.version, "channels": [c.id for c in self.channels]}, force=True)
         return True
 
     def _reject(self, req_id: int, code: str, message: str) -> None:

@@ -24,7 +24,7 @@ from ninja import File, Router, Schema, UploadedFile
 
 from apps.accounts.security import principal
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import demo
+from apps.vision import demo, trace
 from apps.vision.api import _decode_upload, _visible_flows
 from apps.vision.graph import validate_graph
 from apps.vision.models import FlowTemplate, ImageSource
@@ -288,6 +288,19 @@ def _tcp_listening(port: int) -> bool:
 class TcpIn(Schema):
     command: str
     timeout_s: float = 10.0
+
+
+@router.get("/integration/trace")
+def integration_trace(request: HttpRequest, channel: str = "", since: int = 0, limit: int = 200):
+    """整合追蹤：各整合介面的「命令與結果」（除錯用）。查詢本身會讓後端開始記錄兩分鐘。"""
+    items = trace.entries(channel or None, since=since, limit=limit)
+    return {"items": items, "seq": items[-1]["seq"] if items else int(since or 0), "channels": list(trace.CHANNELS), **trace.stats()}
+
+
+@router.delete("/integration/trace")
+def integration_trace_clear(request: HttpRequest, channel: str = ""):
+    trace.clear(channel or None)
+    return {"ok": True}
 
 
 @router.post("/integration/tcp")

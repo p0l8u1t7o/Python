@@ -21,12 +21,14 @@ import logging
 import socket
 import socketserver
 import threading
+import time
 from typing import Any
 
 import orjson
 from django.db import close_old_connections
 
 from apps.core.errors import APIError
+from apps.vision import trace
 from apps.vision.models import Flow
 from apps.vision.runner import runner
 
@@ -115,10 +117,15 @@ class _Handler(socketserver.StreamRequestHandler):
             if not raw:
                 return
             line = raw.decode("utf-8", errors="replace")
+            started = time.perf_counter()
             try:
                 response = handle_command(line)
             finally:
                 close_old_connections()  # 每條連線一條執行緒，各自的連線各自收
+            trace.record(  # 整合頁「命令與結果」看得到（沒人在看時只記錯誤）
+                "tcp", line.strip()[:200] or "(空白)", direction="in", name=f"{self.client_address[0]}:{self.client_address[1]}",
+                detail=response, ok=bool(response.get("ok", True)), ms=(time.perf_counter() - started) * 1000,
+            )
             try:
                 self.wfile.write(orjson.dumps(response) + b"\n")
                 self.wfile.flush()

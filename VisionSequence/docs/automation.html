@@ -135,7 +135,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html" aria-current="page">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a><ul><li><a href="#upload-capture">4-1. 相機接在別台電腦：擷取端</a></li></ul></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP，引擎寫給你）</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a><ul><li><a href="#upload-capture">4-1. 相機接在別台電腦：擷取端</a></li></ul></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#pages">5b. 整合頁：每一種接法一個頁面</a></li><li><a href="#trace">5c. 命令與結果（除錯）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP／從站，引擎寫給你）</a></li></ul></aside><article class="doc">
 
 <h1>自動化整合（Modbus TCP / 上位機 / MES）</h1>
 <p>三種接法，回傳格式相同；金鑰（<code>VISION_API_KEY</code>）有設定時 HTTP 帶 <code>X-API-Key</code> 或 <code>?api_key=</code>。</p>
@@ -205,7 +205,32 @@ DELETE /api/vision/lock   X-API-Key: ...                                      �
 <li>建議整合方在開機／換線程式一開始就 <code>POST lock</code>（帶 ttl），停機時 <code>DELETE lock</code>。</li>
 </ul>
 
-<h2 id="push">6. 主動輸出（Modbus TCP，引擎寫給你）</h2>
+<h2 id="pages">5b. 整合頁：每一種接法一個頁面</h2>
+<p>網頁的「外部整合」在側欄可以展開成樹狀，每一種整合方式都是獨立頁面（網址也獨立，可直接加書籤或分享）：</p>
+<table>
+<tr><th>頁面</th><th>網址</th><th>內容</th></tr>
+<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>試打 <code>POST /flows/{id}/run</code>，產生 curl／Python／C# 片段</td></tr>
+<tr><td>TCP 指令</td><td><code>/integration/tcp</code></td><td>送一行指令、看一行 JSON 回應，含常用指令與歷史</td></tr>
+<tr><td>事件監看</td><td><code>/integration/events</code></td><td>SSE 事件串流</td></tr>
+<tr><td>Modbus</td><td><code>/integration/modbus</code></td><td>主站／從站的差別、位址格式、對映表與讀取表範例</td></tr>
+<tr><td>連線</td><td><code>/integration/connections</code></td><td>建立與測試主動輸出的連線（舊 <code>/connections</code> 會轉過來）</td></tr>
+<tr><td>擷取端</td><td><code>/integration/capture</code></td><td>擷取端程式下載與已連線的擷取端</td></tr>
+<tr><td>引擎鎖定</td><td><code>/integration/lock</code></td><td>鎖定與解鎖</td></tr>
+<tr><td>回傳格式</td><td><code>/integration/format</code></td><td>RunReport 欄位與錯誤碼</td></tr>
+</table>
+<p>舊網址 <code>/integration?tab=modbus</code> 會自動轉到新的獨立網址。</p>
+
+<h2 id="trace">5c. 命令與結果（除錯）</h2>
+<p>每個整合工具頁面下方都有<strong>命令與結果</strong>：頁面開著時，這個介面收到的命令與回覆會即時列出——時間、方向（→ 外部送進來／← 平台送出去）、來源、摘要、耗時，失敗的整列標紅；點一列展開完整內容（JSON）。</p>
+<ul>
+<li><strong>HTTP</strong>：每次 <code>POST /flows/{id}/run</code> 的觸發來源、判定、具名輸出與 run_id。</li>
+<li><strong>TCP</strong>：收到的整行指令與回傳的 JSON。</li>
+<li><strong>Modbus</strong>：每次寫入／讀取的位址與值；本平台當從站時，還會列出主站的每一則請求與我們的回應。</li>
+<li><strong>擷取端</strong>：擷取端連線與斷線。</li>
+</ul>
+<p>實作是行程內的環形緩衝（每個頻道 300 筆，<code>apps/vision/trace.py</code>），<strong>不落地、不進資料庫</strong>；沒有人開著整合頁時只記錄錯誤，所以產線長跑不會有額外負擔。API：<code>GET /api/vision/integration/trace?channel=http|tcp|modbus|capture&amp;since=&amp;limit=</code>、<code>DELETE</code> 清空。</p>
+
+<h2 id="push">6. 主動輸出（Modbus TCP／從站，引擎寫給你）</h2>
 <p>上面三種接法都是呼叫方來拿結果。如果設備只想等一個 DO 或暫存器變化，改用<strong>主動輸出</strong>：設定頁建一條連線（<code>modbus_tcp</code>／<code>tcp_client</code>／<code>dio_sim</code>），流程末端放「寫入 Modbus」（<code>write_modbus</code>）工具填對映表，例如 <code>judge → coil:0</code>、<code>width_px → holding:100:float32</code>。寫入失敗預設只記警告、run 照常（產線不停線）。細節、位址格式、連線 API 與外掛見 <a href="modbus.html">Modbus 輸出</a>。</p>
 </article></div><!-- /doc-layout -->
 <script>

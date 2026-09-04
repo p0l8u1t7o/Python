@@ -277,6 +277,22 @@ export interface ImageSource {
 }
 
 // ---- 擷取端（Capture client）：在相機所在的電腦驅動相機、主動連到伺服端擷取埠 ----
+// ---- 整合追蹤（命令與結果） ----
+export interface TraceEntry {
+  seq: number
+  /** epoch 秒（含小數） */
+  ts: number
+  channel: string
+  /** in＝外部送進來、out＝本平台送出去 */
+  direction: 'in' | 'out' | string
+  /** 來源／連線名稱 */
+  name: string
+  summary: string
+  ok: boolean
+  ms: number | null
+  detail: unknown
+}
+
 export interface CaptureRoi { x: number; y: number; w: number; h: number }
 export interface CaptureChannel {
   id: string
