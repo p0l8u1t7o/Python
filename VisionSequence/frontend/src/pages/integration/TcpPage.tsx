@@ -1,10 +1,10 @@
 /** 整合 ▸ TCP：送一行指令到 TCP 介面（POST /integration/tcp）含歷史紀錄、失敗碼對照，以及送出結果用的 TCP 連線。 */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Send } from 'lucide-react'
+import { Activity, ListChecks, Plug, Send } from 'lucide-react'
 
 import { connectHost } from './shared'
-import { CodeBlock, CopyButton, useSectionInfo } from './shared'
+import { CodeBlock, CopyButton, SectionTabs, useSectionInfo } from './shared'
 import { ConnectionsSection } from '@/components/integration/ConnectionsSection'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Badge, Button, Card, CardBody, CardHeader, LoadingState, TextInput } from '@/components/ui'
@@ -15,19 +15,8 @@ import type { IntegrationInfo, TcpResult } from '@/lib/types'
 
 const TCP_HISTORY_KEY = 'vs.tcpHistory'
 
-/** TCP 一行指令的失敗碼（設備請用 code 分支，說明文字會隨版本潤飾）。 */
-const TCP_CODES: [string, string][] = [
-  ['empty_command', 'A blank line'],
-  ['unknown_command', 'Unrecognised command'],
-  ['missing_argument', 'The command is missing a flow id or name'],
-  ['bad_argument', 'An argument is not key=value (quote values containing spaces)'],
-  ['flow_not_found', 'No such flow id or name'],
-  ['flow_disabled', 'The flow is disabled'],
-  ['flow_queue_full', 'That flow already has the maximum number of triggers waiting'],
-  ['recipe_not_found', 'The recipe named by recipe= does not exist'],
-  ['engine_locked', 'The engine is locked and this caller may not run (LOCK and UNLOCK change it)'],
-  ['internal_error', 'A server exception, recorded in the log'],
-]
+/** TCP 一行指令的失敗碼（設備請用 code 分支，說明文字會隨版本潤飾）；說明在 integration.format.tcpCodes.* */
+const TCP_CODES = ['empty_command', 'unknown_command', 'missing_argument', 'bad_argument', 'flow_not_found', 'flow_disabled', 'flow_queue_full', 'recipe_not_found', 'engine_locked', 'internal_error'] as const
 
 function TcpCodesCard() {
   const { t } = useTranslation()
@@ -37,7 +26,7 @@ function TcpCodesCard() {
       <CardBody className="!p-0">
         <table className="w-full text-sm">
           <thead><tr><th className="table-header">{t('integration.format.cols.code')}</th><th className="table-header">{t('integration.format.cols.desc')}</th></tr></thead>
-          <tbody className="divide-y divide-line">{TCP_CODES.map(([c, d]) => <tr key={c}><td className="table-cell font-mono text-xs">{c}</td><td className="table-cell">{d}</td></tr>)}</tbody>
+          <tbody className="divide-y divide-line">{TCP_CODES.map((c) => <tr key={c}><td className="table-cell font-mono text-xs">{c}</td><td className="table-cell">{t(`integration.format.tcpCodes.${c}`)}</td></tr>)}</tbody>
         </table>
       </CardBody>
     </Card>
@@ -156,14 +145,15 @@ function TcpSection({ info }: { info: IntegrationInfo }) {
 
 
 export function TcpPage() {
+  const { t } = useTranslation()
   const info = useSectionInfo()
   if (!info) return <LoadingState />
   return (
-    <div className="space-y-4">
-      <TcpSection info={info} />
-      <TcpCodesCard />
-      <ConnectionsSection section="tcp" />
-      <TraceLog channel="tcp" />
-    </div>
+    <SectionTabs section="tcp" tabs={[
+      { key: 'try', label: t('integration.sections.try'), icon: Send, content: <TcpSection info={info} /> },
+      { key: 'codes', label: t('integration.sections.codes'), icon: ListChecks, content: <TcpCodesCard /> },
+      { key: 'connections', label: t('integration.sections.connections'), icon: Plug, content: <ConnectionsSection section="tcp" /> },
+      { key: 'trace', label: t('integration.trace.title'), icon: Activity, content: <TraceLog channel="tcp" /> },
+    ]} />
   )
 }

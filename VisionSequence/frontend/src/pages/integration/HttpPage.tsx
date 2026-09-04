@@ -1,9 +1,9 @@
 /** 整合 ▸ HTTP API：試打 `POST /flows/{id}/run`、產生 curl／Python／C# 片段，並列出回傳格式與錯誤碼。 */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Send } from 'lucide-react'
+import { Activity, FileJson, Send } from 'lucide-react'
 
-import { CodeBlock, CopyButton, useSectionInfo } from './shared'
+import { CodeBlock, CopyButton, SectionTabs, useSectionInfo } from './shared'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, LoadingState, Select, Tabs, TextArea, TextInput } from '@/components/ui'
 import { BASE_URL, apiKey, authToken, imageUrl } from '@/lib/api'
@@ -12,33 +12,35 @@ import { useFlows } from '@/lib/queries'
 import { isImageRef, type IntegrationInfo } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
+/** RunReport 欄位：[顯示名稱, 型別, i18n 鍵]；說明文字在 integration.format.fields.* */
 const RUN_REPORT_FIELDS: [string, string, string][] = [
-  ['id', 'string', 'The run id (a uuid hex)'],
-  ['flow_id / flow_version', 'int', 'The flow, and its version at run time'],
-  ['trigger', 'string', 'ui / api / tcp / continuous / preview / integration…'],
-  ['status', '"ok" | "ng" | "failed" | "cancelled"', 'OK and NG are verdicts; failed means a tool error, a timeout or no image'],
-  ['started_at / finished_at', 'float', 'Unix seconds'],
-  ['duration_ms', 'float', 'Total duration'],
-  ['error', 'string', 'Why it failed (an empty string on success)'],
-  ['outputs', 'object', 'The named outputs (see below)'],
-  ['nodes', 'object', 'Per step: {status, duration_ms, message, branch, outputs, overlays, detail, logs}'],
-  ['persisted', 'bool', 'true means it came from the database history (GET /runs/{id})'],
+  ['id', 'string', 'id'],
+  ['flow_id / flow_version', 'int', 'flow'],
+  ['trigger', 'string', 'trigger'],
+  ['status', '"ok" | "ng" | "failed" | "cancelled"', 'status'],
+  ['started_at / finished_at', 'float', 'time'],
+  ['duration_ms', 'float', 'duration'],
+  ['error', 'string', 'error'],
+  ['outputs', 'object', 'outputs'],
+  ['nodes', 'object', 'nodes'],
+  ['persisted', 'bool', 'persisted'],
 ]
 
+/** 錯誤碼：[code, HTTP 狀態, i18n 鍵]；說明文字在 integration.format.errorCodes.* */
 const ERROR_CODES: [string, string, string][] = [
-  ['engine_locked', '423', 'The engine is locked; details is the lock object'],
-  ['flow_queue_full', '429', 'That flow already has VISION_MAX_QUEUE_PER_FLOW triggers waiting (16 by default); a flow runs one run at a time'],
-  ['run_timeout', '504', 'Waited longer than timeout_s; details.run_id collects the result afterwards, and the run itself is not aborted'],
-  ['flow_disabled', '409', 'The flow is disabled, so an external trigger is refused'],
-  ['flow_not_found', '404', 'No such flow id, or no permission'],
-  ['run_not_found', '404', 'The run is in neither memory nor the database'],
-  ['image_gone', '404', 'The image ref has been evicted from the cache (KEEP_RUN_IMAGES)'],
-  ['bad_image', '422', 'The image cannot be decoded'],
-  ['too_many_images', '422', 'A batch test over 50 images'],
-  ['validation_error', '422', 'An invalid parameter'],
-  ['unauthenticated / unauthorized', '401', 'A missing or invalid token or API key'],
-  ['permission_denied / not_owner', '403', 'No permission to modify'],
-  ['capacity', '503', 'The thread pool is full'],
+  ['engine_locked', '423', 'engine_locked'],
+  ['flow_queue_full', '429', 'flow_queue_full'],
+  ['run_timeout', '504', 'run_timeout'],
+  ['flow_disabled', '409', 'flow_disabled'],
+  ['flow_not_found', '404', 'flow_not_found'],
+  ['run_not_found', '404', 'run_not_found'],
+  ['image_gone', '404', 'image_gone'],
+  ['bad_image', '422', 'bad_image'],
+  ['too_many_images', '422', 'too_many_images'],
+  ['validation_error', '422', 'validation_error'],
+  ['unauthenticated / unauthorized', '401', 'unauthenticated'],
+  ['permission_denied / not_owner', '403', 'permission_denied'],
+  ['capacity', '503', 'capacity'],
 ]
 
 /** 回傳格式：RunReport 欄位、具名輸出範例與錯誤碼（設備請用 code 分支）。 */
@@ -51,7 +53,7 @@ function FormatCards() {
         <CardBody className="!p-0">
           <table className="w-full text-sm">
             <thead><tr><th className="table-header">{t('integration.format.cols.field')}</th><th className="table-header">{t('integration.format.cols.type')}</th><th className="table-header">{t('integration.format.cols.desc')}</th></tr></thead>
-            <tbody className="divide-y divide-line">{RUN_REPORT_FIELDS.map(([f, ty, d]) => <tr key={f}><td className="table-cell font-mono text-xs">{f}</td><td className="table-cell font-mono text-xs text-muted">{ty}</td><td className="table-cell">{d}</td></tr>)}</tbody>
+            <tbody className="divide-y divide-line">{RUN_REPORT_FIELDS.map(([f, ty, k]) => <tr key={f}><td className="table-cell font-mono text-xs">{f}</td><td className="table-cell font-mono text-xs text-muted">{ty}</td><td className="table-cell">{t(`integration.format.fields.${k}`)}</td></tr>)}</tbody>
           </table>
         </CardBody>
       </Card>
@@ -67,7 +69,7 @@ function FormatCards() {
           <CardBody className="!p-0">
             <table className="w-full text-sm">
               <thead><tr><th className="table-header">{t('integration.format.cols.code')}</th><th className="table-header">{t('integration.format.cols.http')}</th><th className="table-header">{t('integration.format.cols.when')}</th></tr></thead>
-              <tbody className="divide-y divide-line">{ERROR_CODES.map(([c, h, w]) => <tr key={c}><td className="table-cell font-mono text-xs">{c}</td><td className="table-cell tnum">{h}</td><td className="table-cell">{w}</td></tr>)}</tbody>
+              <tbody className="divide-y divide-line">{ERROR_CODES.map(([c, h, k]) => <tr key={c}><td className="table-cell font-mono text-xs">{c}</td><td className="table-cell tnum">{h}</td><td className="table-cell">{t(`integration.format.errorCodes.${k}`)}</td></tr>)}</tbody>
             </table>
             <p className="px-4 py-3 text-xs text-muted">{'{"error": {"code": "...", "message": "...", "details": ...}}'}</p>
           </CardBody>
@@ -234,13 +236,14 @@ function HttpSection({ info }: { info: IntegrationInfo }) {
 
 
 export function HttpPage() {
+  const { t } = useTranslation()
   const info = useSectionInfo()
   if (!info) return <LoadingState />
   return (
-    <div className="space-y-4">
-      <HttpSection info={info} />
-      <FormatCards />
-      <TraceLog channel="http" />
-    </div>
+    <SectionTabs section="http" tabs={[
+      { key: 'try', label: t('integration.sections.try'), icon: Send, content: <HttpSection info={info} /> },
+      { key: 'format', label: t('integration.sections.format'), icon: FileJson, content: <FormatCards /> },
+      { key: 'trace', label: t('integration.trace.title'), icon: Activity, content: <TraceLog channel="http" /> },
+    ]} />
   )
 }

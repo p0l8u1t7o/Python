@@ -43,7 +43,7 @@
 - **產品表面一律英文**：工具目錄、API 與工具的外露訊息（`APIError`／`ToolError`／`CommError` 的 message、`Result(message=)`）、網頁介面（預設語言與 fallback 都是 en）、`docs/`。
 - **開發溝通維持繁體中文**：對話、commit、CLAUDE.md、程式碼註解與 docstring、日誌訊息（`log.*`）、AI 助手的技能提示詞（`agent/skills/*.md`）。
 - 新增使用者看得到的字串一律先寫英文；中文由前端字典補（介面在 `i18n/locales/*`，工具目錄在 `tools.zh-Hant.ts`／`tools.zh-Hans.ts`，其餘後端目錄在 `catalogue.zh-Hant.ts`／`catalogue.zh-Hans.ts`）。
-- **後端目錄的中文對照**：影像來源種類、連線種類、深度學習訓練方式、內建範本走 `lib/catalogueLocale.ts`（在各自 query 的 `select` 疊上去，query key 帶語言）。翻譯**只換顯示的字，`kind`／`key` 存進資料庫的值一律保持英文**（`lib/catalogueLocale.test.ts` 鎖住）；沒有對照的（外掛、自建範本）維持後端英文。新增內建來源／連線／訓練方式／範本要補那兩份字典。
+- **後端目錄的中文對照**：影像來源種類、連線種類、深度學習訓練方式（含超參數的名稱／說明／選項與 `paramGroups` 分組名稱，四種 YOLO 共用 `yoloParams`）、內建範本走 `lib/catalogueLocale.ts`（在各自 query 的 `select` 疊上去，query key 帶語言）。工具目錄的**分類名稱與隱含埠**（`_image`／`_overlays`／`_flow`）在 `toolLocale.ts` 集中翻，外掛工具也翻得到。翻譯**只換顯示的字，`kind`／`key` 存進資料庫的值一律保持英文**（`lib/catalogueLocale.test.ts` 鎖住）；沒有對照的（外掛、自建範本）維持後端英文。新增內建來源／連線／訓練方式／範本要補那兩份字典。
 - **畫面上不得寫死全形標點**（`：、；（）～　`）：那種字不管切成哪一種語言都會出現，英文介面會看到「Inputs：」。`src/test/i18n.test.ts` 的 `source files` 會掃原始碼擋下來（註解、語系檔、測試檔不算）。
 - 測試斷言用英文（介面與訊息的預設就是英文）。
 
@@ -134,7 +134,7 @@
 - **操作員的參數邊界**在 `apps/vision/teachguard.py`：`PATCH /flows/{id}` 對操作員只放行「圖以外欄位沒動、且只有 `Param.teach=True` 參數的值不同」，否則 403 `teach_only`。清單就是工具已標好的 teach 旗標（58 個），不另外維護。換線是 `POST /flows/{id}/recipes/{rid}/activate`（操作員可用），改配方內容仍需工程師。
 - 鎖是 `EngineLock` 單列（id=1）；鎖定時停掉所有連續執行並發 SSE `lock` 事件。測試裡預設沒有使用者 → bootstrap 放行；要測 401 先建一個 User；要以使用者身分測就 `POST /auth/setup` 拿 token 帶 `Authorization: Bearer`。
 - ninja 路由依註冊順序比對：固定路徑（`/flows/import`、`/assets/from-image`）要註冊在 `/{id}` 之前。`APIKeyHeader` 要實作 `authenticate(request, key)`；金鑰選填時覆寫 `__call__` 直接放行。
-- `UserPref`（OneToOne auth.User）：`ui`（主題等；`PATCH /auth/prefs`、`/auth/me` 帶回）、`agent`（AI 供應商設定，金鑰只在伺服器、API 只回尾 4 碼、不進 `/auth/me`）。主題是封閉集合（後端 `UI_THEMES`＝前端 `THEMES`＋index.html 開機腳本三處同步）；新主題＝index.css 加 `.theme-<id>` 變數覆蓋。
+- 使用者改自己的顯示名稱走 `PATCH /auth/profile {display_name}`（設定頁帳號卡片；帳號名稱與角色仍是管理員在使用者頁改），有稽核。`UserPref`（OneToOne auth.User）：`ui`（主題等；`PATCH /auth/prefs`、`/auth/me` 帶回）、`agent`（AI 供應商設定，金鑰只在伺服器、API 只回尾 4 碼、不進 `/auth/me`）。主題是封閉集合（後端 `UI_THEMES`＝前端 `THEMES`＋index.html 開機腳本三處同步）；新主題＝index.css 加 `.theme-<id>` 變數覆蓋。
 - 資源群組 `ResourceGroup(kind=source|asset)`；範例來源／資產在群組「範例」。
 
 ### 範本與範例（demo.py、api_more.py）
@@ -172,7 +172,8 @@
 - **前端**：`/integration/<section>` 五個頁面（http／tcp／events／modbus／capture，`pages/integration/*`＋`sections.ts` 的清單，側欄 AppShell 讀同一份清單畫樹狀選單，展開狀態存 `vs.navOpen`）；外框 `IntegrationLayout` 用 `<Outlet context={info}>` 把整合資訊傳下去，子頁面用 `shared.useSectionInfo()`（單獨 render 時自己查）。`components/integration/TraceLog.tsx` 每 1.5 秒輪詢一次。舊 `?tab=` 與已移除的 `/integration/{connections,lock,format}`、`/connections` 都會轉址（整合子路由有 `path: '*'` 兜底）。
 - **連線由用到它的整合頁管理**（沒有獨立的連線頁）：`comm.writers.kinds()` 每個 kind 帶 `section`（modbus_tcp／modbus_server／dio_sim → modbus；tcp_client 與**沒宣告 section 的外掛** → tcp，`FALLBACK_SECTION`），前端 `components/integration/ConnectionsSection.tsx` 依 `section` 過濾清單與可建立的 kind；kind 完全不認得的舊連線落到 tcp 頁，才不會有刪不掉的孤兒。新增會用連線的外掛請宣告 `Writer.section`。
 - **引擎鎖定是整合指令**：HTTP `POST/DELETE /vision/lock` 與 TCP `LOCK [reason= ttl=]`／`UNLOCK`（`STATUS` 不帶流程時也回 lock）；兩邊共用 `EngineLock.acquire()`／`release()`（停掉所有連續執行＋發 SSE `lock` 事件）。網頁沒有鎖定頁與鎖定按鈕，只有 `LockBanner` 顯示持有者與原因，管理員或持有者可從橫幅解鎖。TCP 的稽核身分是 `tcp_server._TcpActor`（記成 integrator 而不是 system）。
-- **回傳格式**：RunReport 欄位、具名輸出範例與 HTTP 錯誤碼在 HTTP 頁（`HttpPage.FormatCards`），TCP 失敗碼在 TCP 頁（`TcpPage.TcpCodesCard`）；設備一律用 `code` 分支，訊息文字會隨版本潤飾。
+- **回傳格式**：RunReport 欄位、具名輸出範例與 HTTP 錯誤碼在 HTTP 頁（`HttpPage.FormatCards`），TCP 失敗碼在 TCP 頁（`TcpPage.TcpCodesCard`）；說明文字走 i18n（`integration.format.fields／errorCodes／tcpCodes`）；設備一律用 `code` 分支，訊息文字會隨版本潤飾。
+- **整合頁的區塊用分頁排**（`shared.SectionTabs`：試打／回傳格式或失敗碼／連線／命令與結果），一次只 render 一個分頁（命令追蹤的輪詢在別的分頁時會停），同一 session 記得上次看的分頁（`sessionStorage vs.integrationTab.<section>`）。頁面測試要先點分頁再找元素。
 
 ### 批次測試（apps/vision/batch）
 - **影像集是測試資料、可測任一流程**：`BatchSet.flow` 只是建立歸屬（淘汰按它計），`BatchRun.flow`（migration 0013，null＝影像集的流程）記錄這次用哪個流程測；`store.run_flow(run)` 是唯一取用點（jobs 執行、preview、to-recipe 都走它）。`GET /batch/sets` 的 `flow_id` 選填（省略＝所有看得見的），所以前端影像集清單跨流程、頂列選單是「測試流程」；沒帶 graph 又換流程時不沿用 parent 的參數。前端 `useBatchSets()` 不分流程（快取鍵 `['batch-sets']`），清單重抓中不改選取（否則剛建立的影像集選取會被舊清單蓋掉），`startRun` 只在同一影像集內帶 `parent_run_id`。

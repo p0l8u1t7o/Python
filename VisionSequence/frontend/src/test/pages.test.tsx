@@ -2,7 +2,7 @@
  * 頁面 smoke 測試：每頁在假後端下都要能 render 出標題／主要區塊，且不丟例外。
  * 抓的是「改了型別或 hook 卻沒開過那一頁」的回歸；互動細節另寫。
  */
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { installApiMock } from './apiMock'
@@ -70,13 +70,16 @@ describe('pages render (smoke)', () => {
     expect(screen.getByTestId('capture-download')).toBeDisabled()
   })
 
-  it('integration sections are their own pages with a command trace', async () => {
+  it('integration sections are their own pages, each block on its own tab', async () => {
     const { TcpPage } = await import('@/pages/integration/TcpPage')
     renderPage(<TcpPage />, { route: '/integration/tcp' })
-    expect(await screen.findByText('Commands and results', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(await screen.findByTestId('tcp-command')).toBeInTheDocument()  // 預設分頁：試打
+    fireEvent.click(await screen.findByRole('tab', { name: 'Commands and results' }))
     expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
     const { ModbusPage } = await import('@/pages/integration/ModbusPage')
     renderPage(<ModbusPage />, { route: '/integration/modbus' })
+    expect(await screen.findByTestId('conn-create')).toBeInTheDocument()  // 預設分頁：連線
+    fireEvent.click(screen.getByRole('tab', { name: 'Address format and mapping' }))
     expect(await screen.findByText('Two roles')).toBeInTheDocument()
     expect(screen.getAllByText(/slave|server/i).length).toBeGreaterThan(0)
   })

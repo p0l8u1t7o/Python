@@ -1,10 +1,11 @@
-/** 整合頁共用的小元件：複製按鈕、程式碼區塊、頂部資訊列。 */
-import { useState } from 'react'
+/** 整合頁共用的小元件：複製按鈕、程式碼區塊、頂部資訊列、區塊分頁。 */
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useOutletContext } from 'react-router-dom'
 import { Check, Copy } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
-import { Badge, Button, Card } from '@/components/ui'
+import { Badge, Button, Card, Tabs } from '@/components/ui'
 import { useIntegrationInfo } from '@/lib/queries'
 import { useToast } from '@/providers/ToastProvider'
 import type { IntegrationInfo } from '@/lib/types'
@@ -99,6 +100,49 @@ export function InfoBar({ info }: { info: IntegrationInfo }) {
 }
 
 
+
+export interface SectionTab {
+  key: string
+  label: string
+  icon?: LucideIcon
+  content: ReactNode
+}
+
+const TAB_KEY = 'vs.integrationTab'
+
+function readTab(section: string, fallback: string): string {
+  try {
+    return sessionStorage.getItem(`${TAB_KEY}.${section}`) || fallback
+  } catch {
+    return fallback
+  }
+}
+
+/**
+ * 每個整合頁的區塊用分頁排，一次只顯示一個，頁面就不用一直往下捲；
+ * 沒顯示的分頁不會 render（命令追蹤的輪詢也就跟著停）。同一個 session 內記得上次看的分頁。
+ */
+export function SectionTabs({ section, tabs }: { section: string; tabs: SectionTab[] }) {
+  const [active, setActive] = useState(() => {
+    const remembered = readTab(section, tabs[0]?.key ?? '')
+    return tabs.some((t) => t.key === remembered) ? remembered : tabs[0]?.key ?? ''
+  })
+  const current = tabs.find((t) => t.key === active) ?? tabs[0]
+  const select = (key: string) => {
+    setActive(key)
+    try {
+      sessionStorage.setItem(`${TAB_KEY}.${section}`, key)
+    } catch {
+      /* 隱私模式沒有 sessionStorage 也要能用 */
+    }
+  }
+  return (
+    <div className="space-y-4">
+      <Tabs value={current?.key ?? ''} onChange={select} tabs={tabs.map((t) => ({ value: t.key, label: t.label, icon: t.icon }))} />
+      <div role="tabpanel" data-testid={`section-tab-${current?.key ?? ''}`}>{current?.content}</div>
+    </div>
+  )
+}
 
 /** 整合資訊：在整合外框內由 Outlet 傳下來；單獨 render（測試、直接掛路由）時自己查一次。 */
 export function useSectionInfo(): IntegrationInfo | undefined {

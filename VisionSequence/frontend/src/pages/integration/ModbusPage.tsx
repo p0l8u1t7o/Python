@@ -1,8 +1,8 @@
 /** 整合 ▸ Modbus 輸出：連線管理（主站／從站／模擬 DIO）、位址格式、對映表與命令追蹤。 */
 import { useTranslation } from 'react-i18next'
-import { Cable } from 'lucide-react'
+import { Activity, BookOpen, Cable, Plug } from 'lucide-react'
 
-import { CodeBlock } from './shared'
+import { CodeBlock, SectionTabs } from './shared'
 import { ConnectionsSection } from '@/components/integration/ConnectionsSection'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Card, CardBody, CardHeader } from '@/components/ui'
@@ -74,11 +74,12 @@ function ModbusSection() {
 
 
 export function ModbusPage() {
+  const { t } = useTranslation()
   return (
-    <div className="space-y-4">
-      <ConnectionsSection section="modbus" />
-      <ModbusSection />
-      <TraceLog channel="modbus" />
-    </div>
+    <SectionTabs section="modbus" tabs={[
+      { key: 'connections', label: t('integration.sections.connections'), icon: Plug, content: <ConnectionsSection section="modbus" /> },
+      { key: 'guide', label: t('integration.sections.guide'), icon: BookOpen, content: <ModbusSection /> },
+      { key: 'trace', label: t('integration.trace.title'), icon: Activity, content: <TraceLog channel="modbus" /> },
+    ]} />
   )
 }
