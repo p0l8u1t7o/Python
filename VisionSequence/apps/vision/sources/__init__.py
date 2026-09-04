@@ -160,6 +160,11 @@ def source_info(source) -> dict[str, Any]:
     with _lock:
         cached = _open.get(source.id)
     if not cached:
+        if source.kind == "capture":
+            from apps.vision.capture.grabber import channel_status
+
+            cfg = source.config or {}
+            return {"open": False, "client": str(cfg.get("client") or ""), "channel": str(cfg.get("channel") or ""), **channel_status(str(cfg.get("client") or ""), str(cfg.get("channel") or ""))}
         return {"open": False}
     try:
         return {"open": True, **cached[1].info()}

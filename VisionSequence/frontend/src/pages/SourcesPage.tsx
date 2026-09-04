@@ -6,12 +6,13 @@ import { Camera, Eye, FolderOpen, Pencil, Plus, RefreshCw, Trash2, Upload } from
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupSelect, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, matchGroup } from '@/components/ui'
 import { GroupManager } from '@/components/GroupManager'
+import { CaptureDownloadButton } from '@/components/capture/CaptureSection'
 import { api, sourcePreviewUrl } from '@/lib/api'
 import { FsBrowser } from '@/components/FsBrowser'
 import { errorMessage } from '@/lib/errors'
 import { sourceStatus, summarizeSourceConfig } from '@/lib/sources'
-import { useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
-import type { ImageSource } from '@/lib/types'
+import { useCaptureClients, useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
+import type { CaptureClient, ImageSource } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
 /** 每個 config 欄位的輸入型態。 */
@@ -27,22 +28,88 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select'> = {
   seed: 'number',
   defect_rate: 'number',
   class: 'text',
+  timeout_ms: 'number',
+  fresh: 'boolean',
 }
-const FIELD_DEFAULT: Record<string, unknown> = { loop: true, sort: 'name', pattern: '*.png;*.jpg;*.bmp', index: 0, width: 640, height: 480, fps: 0, seed: 0, defect_rate: 0.3 }
+const FIELD_DEFAULT: Record<string, unknown> = { loop: true, sort: 'name', pattern: '*.png;*.jpg;*.bmp', index: 0, width: 640, height: 480, fps: 0, seed: 0, defect_rate: 0.3, mode: 'on_demand', timeout_ms: 1000, fresh: true, encoding: 'auto' }
+const CAPTURE_MODES = ['on_demand', 'stream'] as const
+const CAPTURE_ENCODINGS = ['auto', 'raw', 'lz4', 'jpeg'] as const
 
-function ConfigField({ kind, field, value, onChange, onBrowse, cameras, onScanCameras, scanning }: {
+function ConfigField({ kind, field, value, config, onChange, onBrowse, cameras, onScanCameras, scanning, captureClients, captureLoading, onRefreshCapture }: {
   kind: string
   field: string
   value: unknown
+  config?: Record<string, unknown>
   onChange: (v: unknown) => void
   onBrowse?: (mode: 'dir' | 'file') => void
   cameras?: { index: number; width: number; height: number; in_use_by: string }[] | null
   onScanCameras?: () => void
   scanning?: boolean
+  captureClients?: CaptureClient[] | null
+  captureLoading?: boolean
+  onRefreshCapture?: () => void
 }) {
   const { t } = useTranslation()
   const label = t(`sources.fields.${field}`, { defaultValue: field })
   const type = FIELD_TYPE[field] ?? 'text'
+  // 擷取端相機：擷取端／通道由 /capture/clients 即時列出（表單開著才輪詢）；離線的舊值保留顯示
+  if (kind === 'capture' && field === 'client') {
+    const list = captureClients ?? []
+    const current = String(value ?? '')
+    const options = [{ value: '', label: t('sources.capturePickClient') }, ...list.map((c) => ({ value: c.name, label: `${c.name}（${c.hostname}${c.local ? `・${t('sources.captureLocal')}` : ''}）` }))]
+    if (current && !list.some((c) => c.name === current)) options.push({ value: current, label: t('sources.captureClientOffline', { name: current }) })
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-end gap-2">
+          <Select label={label} value={current} onChange={(e) => onChange(e.target.value)} options={options} data-testid="cfg-capture-client" />
+          <Button loading={captureLoading} onClick={onRefreshCapture} title={t('sources.captureRefresh')} data-testid="cfg-capture-refresh"><RefreshCw size={14} /> {t('common.refresh')}</Button>
+        </div>
+        {captureClients && !list.length ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-subtle">
+            <span>{t('sources.captureNoClients')}</span>
+            <CaptureDownloadButton size="xs" />
+          </div>
+        ) : (
+          <p className="text-xs text-subtle">{t('sources.captureHint')}</p>
+        )}
+      </div>
+    )
+  }
+  if (kind === 'capture' && field === 'channel') {
+    const client = (captureClients ?? []).find((c) => c.name === String(config?.client ?? ''))
+    const channels = (client?.channels ?? []).filter((c) => c.enabled)
+    const current = String(value ?? '')
+    const options = [{ value: '', label: t('sources.capturePickChannel') }, ...channels.map((c) => ({ value: c.id, label: `${c.label} · ${c.width}×${c.height} ${c.pixel_format}${c.in_use_by.length ? ` · ${t('sources.inUseBy', { name: c.in_use_by.join('、') })}` : ''}` }))]
+    if (current && !channels.some((c) => c.id === current)) options.push({ value: current, label: current })
+    return (
+      <div className="space-y-1.5">
+        <Select label={label} value={current} onChange={(e) => onChange(e.target.value)} options={options} data-testid="cfg-capture-channel" />
+        {client && !channels.length ? <p className="text-xs text-subtle">{t('sources.captureNoChannels')}</p> : null}
+      </div>
+    )
+  }
+  if (kind === 'capture' && field === 'mode') {
+    return <Select label={label} value={String(value ?? 'on_demand')} onChange={(e) => onChange(e.target.value)} options={CAPTURE_MODES.map((m) => ({ value: m, label: t(`sources.captureModes.${m}`) }))} />
+  }
+  if (kind === 'capture' && field === 'encoding') {
+    return <Select label={label} value={String(value ?? 'auto')} onChange={(e) => onChange(e.target.value)} options={CAPTURE_ENCODINGS.map((m) => ({ value: m, label: t(`sources.captureEncodings.${m}`) }))} />
+  }
+  if (kind === 'capture' && field === 'timeout_ms') {
+    return (
+      <div className="space-y-1">
+        <TextInput label={label} type="number" step={100} value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
+        <p className="text-xs text-subtle">{t('sources.captureTimeoutHint')}</p>
+      </div>
+    )
+  }
+  if (kind === 'capture' && field === 'fresh') {
+    return (
+      <div className="space-y-1">
+        <Checkbox label={label} checked={value === undefined || value === null ? true : Boolean(value)} onChange={onChange} />
+        <p className="text-xs text-subtle">{t('sources.captureFreshHint')}</p>
+      </div>
+    )
+  }
   // folder/file 的 path：可開伺服器檔案瀏覽器選路徑
   if (field === 'path' && (kind === 'folder' || kind === 'file') && onBrowse) {
     return (
@@ -101,6 +168,9 @@ function SourceStatusCell({ status }: { status: Record<string, unknown> | null |
     <span className="inline-flex max-w-xs items-center gap-1.5" title={JSON.stringify(status ?? {})}>
       <Badge tone={view.tone}>{t(`sources.${view.key}`)}</Badge>
       {view.frames !== null ? <span className="tnum text-xs text-muted">{t('sources.statusFrames', { count: view.frames })}</span> : null}
+      {view.fps !== null ? <span className="tnum whitespace-nowrap text-xs text-muted">{t('sources.statusFps', { fps: view.fps })}</span> : null}
+      {view.ageMs !== null ? <span className="tnum whitespace-nowrap text-xs text-muted">{t('sources.statusAge', { ms: view.ageMs })}</span> : null}
+      {view.shm ? <Badge className="whitespace-nowrap">{t('sources.captureLocal')}</Badge> : null}
       {view.error ? <span className="truncate text-xs text-critical">{view.error}</span> : null}
     </span>
   )
@@ -109,7 +179,7 @@ function SourceStatusCell({ status }: { status: Record<string, unknown> | null |
 export function SourcesPage() {
   const { t } = useTranslation()
   const toast = useToast()
-  const sources = useSources()
+  const sources = useSources(true)
   const kinds = useSourceKinds()
   const { create, patch, remove, push } = useSourceMutations()
   const [editing, setEditing] = useState<{ id: number | null; body: SourceBody } | null>(null)
@@ -121,6 +191,8 @@ export function SourcesPage() {
   const [browsing, setBrowsing] = useState<'dir' | 'file' | null>(null)
   const [cameras, setCameras] = useState<{ index: number; width: number; height: number; in_use_by: string }[] | null>(null)
   const [scanning, setScanning] = useState(false)
+  // 擷取端清單只在「擷取端相機」表單開著時輪詢
+  const capture = useCaptureClients(editing !== null && editing.body.kind === 'capture')
 
   async function scanCameras() {
     setScanning(true)
@@ -207,7 +279,7 @@ export function SourcesPage() {
   const body = editing?.body
   return (
     <Page>
-      <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<><Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button><Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button></>} />
+      <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<><CaptureDownloadButton /><Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button><Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button></>} />
       <GroupChips items={sources.data?.items ?? []} value={groupFilter} onChange={setGroupFilter} />
       <Card className="overflow-hidden">
         {sources.isPending ? (
@@ -277,9 +349,10 @@ export function SourcesPage() {
               onChange={(v) => setEditing({ ...editing!, body: { ...body, group: v } })} />
             <Select label={t('sources.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} />
             {(fieldsFor.get(body.kind) ?? []).map((field) => (
-              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]}
-                onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })}
-                onBrowse={(mode) => setBrowsing(mode)} cameras={cameras} onScanCameras={() => void scanCameras()} scanning={scanning} />
+              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} config={body.config}
+                onChange={(v) => setEditing({ ...editing!, body: { ...body, config: field === 'client' ? { ...body.config, client: v, channel: '' } : { ...body.config, [field]: v } } })}
+                onBrowse={(mode) => setBrowsing(mode)} cameras={cameras} onScanCameras={() => void scanCameras()} scanning={scanning}
+                captureClients={capture.data?.items ?? null} captureLoading={capture.isFetching} onRefreshCapture={() => void capture.refetch()} />
             ))}
             <div className="space-y-2 rounded-md border border-line bg-surface p-2" data-testid="source-test-box">
               <div className="flex flex-wrap items-center gap-2">

@@ -558,6 +558,17 @@ class CaptureGrabberTests(_HubBase):
         kinds = {k["kind"]: k for k in sources.kinds()}
         self.assertEqual(kinds["capture"]["label"], "擷取端相機")
         self.assertIn("client", kinds["capture"]["fields"])
+        # 未開啟的來源也要能回連線狀態（清單／側欄顯示離線、fps、最近影格）
+        from apps.vision.capture.grabber import channel_status
+        from apps.vision.models import ImageSource
+
+        ghost = ImageSource(id=9901, name="ghost", kind="capture", config={"client": "ghost", "channel": "cam0"})
+        self.assertEqual((sources.source_info(ghost)["open"], sources.source_info(ghost)["connected"]), (False, False))
+        live = ImageSource(id=9902, name="live", kind="capture", config={"client": "live", "channel": "cam0"})
+        info = sources.source_info(live)
+        self.assertTrue(info["connected"])
+        self.assertEqual((info["open"], info["width"], info["height"]), (False, 64, 48))
+        self.assertTrue(channel_status("live", "nope")["last_error"].startswith("擷取端"))
 
 
 # ---------------------------------------------------------------------------

@@ -276,6 +276,47 @@ export interface ImageSource {
   updated_at: string
 }
 
+// ---- 擷取端（Capture client）：在相機所在的電腦驅動相機、主動連到伺服端擷取埠 ----
+export interface CaptureRoi { x: number; y: number; w: number; h: number }
+export interface CaptureChannel {
+  id: string
+  label: string
+  driver: string
+  index: number
+  width: number
+  height: number
+  channels: number
+  dtype: string
+  pixel_format: string
+  roi: CaptureRoi
+  full: { w: number; h: number }
+  mode: 'on_demand' | 'stream' | string
+  enabled: boolean
+  streaming: boolean
+  seq: number
+  last_frame_age_ms: number | null
+  encoding: string
+  shm: boolean
+  last_error: string
+  in_use_by: string[]
+  fps: number
+  bytes_per_s: number
+  frames: number
+}
+export interface CaptureClient {
+  name: string
+  address: string
+  version: string
+  hostname: string
+  connected_at: string
+  local: boolean
+  prefer_encoding: string
+  shm: boolean
+  channels: CaptureChannel[]
+}
+export interface CaptureClients { listening: boolean; host: string; port: number; items: CaptureClient[] }
+export interface CaptureDownloadInfo { available: boolean; version: string; filename: string; size: number; sha256: string; built_at: string | null; url: string }
+
 export interface SourceKind {
   kind: string
   label: string
@@ -384,6 +425,10 @@ export interface IntegrationInfo {
   max_workers: number
   run_timeout_s: number
   commands: string[]
+  capture_host?: string
+  capture_port?: number
+  capture_listening?: boolean
+  capture_download_url?: string
 }
 
 export interface TcpResult {

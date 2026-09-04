@@ -49,6 +49,18 @@ describe('pages render (smoke)', () => {
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
     expect(headers[0]).toBe('名稱')
     expect(headers[headers.length - 1]).toBe('操作')
+    // 擷取端相機來源：離線徽章；頁首「下載擷取端」在未建置時停用
+    expect(screen.getByText('擷取端離線')).toBeInTheDocument()
+    expect(screen.getByTestId('capture-download')).toBeDisabled()
+  })
+
+  it('IntegrationPage capture tab lists connected capture clients and channels', async () => {
+    const { IntegrationPage } = await import('@/pages/IntegrationPage')
+    renderPage(<IntegrationPage />, { route: '/integration?tab=capture' })
+    expect(await screen.findByText('已連線的擷取端')).toBeInTheDocument()
+    expect(await screen.findByText('line-pc')).toBeInTheDocument()
+    expect(screen.getByText('產線相機 1')).toBeInTheDocument()
+    expect(screen.getByText('設定步驟')).toBeInTheDocument()
   })
 
   it('SettingsPage and LoginPage render', async () => {

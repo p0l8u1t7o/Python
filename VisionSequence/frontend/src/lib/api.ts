@@ -131,6 +131,10 @@ export function sourcePreviewUrl(id: number, max = 1280): string {
   return withKey(`${BASE_URL}/vision/sources/${id}/preview?max=${max}&t=${Date.now()}`)
 }
 
+export function captureChannelPreviewUrl(client: string, channel: string, max = 960): string {
+  return withKey(`${BASE_URL}/vision/capture/clients/${encodeURIComponent(client)}/channels/${encodeURIComponent(channel)}/preview?max=${max}&t=${Date.now()}`)
+}
+
 export function streamUrl(flowId: number | null, since?: number, outputs = true): string {
   const params = new URLSearchParams()
   if (since) params.set('since', String(since))

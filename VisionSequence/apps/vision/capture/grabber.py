@@ -76,26 +76,37 @@ class CaptureGrabber(Grabber):
 
     def info(self) -> dict[str, Any]:
         base = super().info()
-        session = hub.get(self.client)
         out: dict[str, Any] = {
-            **base, "connected": session is not None, "client": self.client, "channel": self.channel, "mode": self.mode, "fresh": self.fresh,
-            "encoding": str(self.config.get("encoding") or "auto"), "shm": False, "seq": self.last_seq, "age_ms": None, "fps": 0.0, "latency_ms": None,
-            "width": None, "height": None, "roi": None, "full": None, "streaming": False,
+            **base, "client": self.client, "channel": self.channel, "mode": self.mode, "fresh": self.fresh, "seq": self.last_seq, "latency_ms": None,
+            **channel_status(self.client, self.channel, encoding=str(self.config.get("encoding") or "auto")),
         }
-        if session is not None:
-            try:
-                ch = session.channel(self.channel)
-            except CaptureError as exc:
-                out["last_error"] = out["last_error"] or str(exc)
-                return out
-            d = ch.to_dict()
-            out.update({
-                "shm": session.shm is not None, "seq": d["seq"], "age_ms": d["last_frame_age_ms"], "fps": d["fps"], "encoding": d["encoding"] or out["encoding"],
-                "width": d["width"], "height": d["height"], "roi": d["roi"], "full": d["full"], "streaming": d["streaming"], "local": session.local,
-            })
-            if not self.last_error and d["last_error"]:
-                out["last_error"] = d["last_error"]
+        if self.last_error:
+            out["last_error"] = self.last_error
+        if self.last_seq:
+            out["seq"] = max(int(out.get("seq") or 0), self.last_seq)
         if self.last_meta is not None:
             out["latency_ms"] = round(self.last_meta.latency_ms, 2)
             out["width"], out["height"] = self.last_meta.width, self.last_meta.height
         return out
+
+
+def channel_status(client: str, channel: str, *, encoding: str = "auto") -> dict[str, Any]:
+    """擷取端某通道目前的狀態（不需要開啟來源）：connected／shm／seq／age_ms／fps／尺寸／串流；離線時只有 connected=False。"""
+    session = hub.get(client)
+    out: dict[str, Any] = {
+        "connected": session is not None, "encoding": encoding, "shm": False, "seq": 0, "age_ms": None, "fps": 0.0,
+        "width": None, "height": None, "roi": None, "full": None, "streaming": False, "last_error": "",
+    }
+    if session is None:
+        return out
+    try:
+        ch = session.channel(channel)
+    except CaptureError as exc:
+        out["last_error"] = str(exc)
+        return out
+    d = ch.to_dict()
+    out.update({
+        "shm": session.shm is not None, "seq": d["seq"], "age_ms": d["last_frame_age_ms"], "fps": d["fps"], "encoding": d["encoding"] or encoding,
+        "width": d["width"], "height": d["height"], "roi": d["roi"], "full": d["full"], "streaming": d["streaming"], "local": session.local, "last_error": d["last_error"],
+    })
+    return out

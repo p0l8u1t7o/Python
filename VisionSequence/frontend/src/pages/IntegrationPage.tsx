@@ -10,6 +10,7 @@ import { Cable, Check, Copy, Pause, Play, Plug, Send, Trash2 } from 'lucide-reac
 
 import { Page } from '@/components/layout/AppShell'
 import { ConnectionsSection } from '@/pages/ConnectionsPage'
+import { CaptureSection } from '@/components/capture/CaptureSection'
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, DetailRow, PageHeader, Select, StatusBadge, TextArea, TextInput, Tabs } from '@/components/ui'
 import { BASE_URL, apiKey, authToken, imageUrl, streamUrl } from '@/lib/api'
 import { watchdog } from '@/lib/flowStream'
@@ -19,8 +20,8 @@ import { isImageRef, type IntegrationInfo, type TcpResult } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
-type IntegrationTab = 'http' | 'tcp' | 'events' | 'lock' | 'format' | 'modbus' | 'connections'
-const TABS: IntegrationTab[] = ['http', 'tcp', 'events', 'lock', 'format', 'modbus', 'connections']
+type IntegrationTab = 'http' | 'tcp' | 'events' | 'lock' | 'format' | 'modbus' | 'connections' | 'capture'
+const TABS: IntegrationTab[] = ['http', 'tcp', 'events', 'lock', 'format', 'modbus', 'connections', 'capture']
 const TCP_HISTORY_KEY = 'vs.tcpHistory'
 const MAX_EVENTS = 200
 
@@ -94,6 +95,12 @@ function InfoBar({ info }: { info: IntegrationInfo }) {
           <span className="text-muted">{t('integration.info.tcp')}：</span><code className="font-mono">{info.tcp_host}:{info.tcp_port}</code>
           <Badge tone={info.tcp_listening ? 'ok' : 'warning'}>{info.tcp_listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
         </span>
+        {info.capture_port ? (
+          <span className="flex items-center gap-1">
+            <span className="text-muted">{t('integration.info.capture')}：</span><code className="font-mono">{info.capture_host}:{info.capture_port}</code>
+            <Badge tone={info.capture_listening ? 'ok' : 'warning'}>{info.capture_listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
+          </span>
+        ) : null}
         <span><span className="text-muted">{t('integration.info.apiKey')}：</span>{info.api_key_required ? t('integration.info.required') : t('integration.info.optional')}</span>
         <span><span className="text-muted">{t('integration.info.workers')}：</span>{info.max_workers}</span>
         <span><span className="text-muted">{t('integration.info.timeout')}：</span>{info.run_timeout_s}</span>
@@ -668,6 +675,7 @@ export function IntegrationPage() {
         {tab === 'format' ? <FormatTab /> : null}
         {tab === 'modbus' ? <ModbusTab /> : null}
         {tab === 'connections' ? <ConnectionsSection /> : null}
+        {tab === 'capture' ? <CaptureSection /> : null}
       </div>
     </Page>
   )

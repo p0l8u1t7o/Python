@@ -20,7 +20,7 @@ const TABS: HelpTab[] = ['quickstart', 'glossary', 'ports', 'tools', 'shortcuts'
 
 const QUICKSTART: { title: string; body: string }[] = [
   { title: '建流程', body: '到「流程」頁按「新增流程」，或複製示範流程。每位使用者各自擁有流程；共用流程只有管理員能改。' },
-  { title: '取像', body: '從工具箱插入「影像來源」步驟：選影像來源庫裡的相機／資料夾／合成來源，或用頂列「上傳暫存影像」只為試執行放一張圖（不進來源庫）。' },
+  { title: '取像', body: '從工具箱插入「影像來源」步驟：選影像來源庫裡的相機／資料夾／合成來源，或用頂列「上傳暫存影像」只為試執行放一張圖（不進來源庫）。相機接在別台電腦或需要廠牌 SDK（Basler、IDS）時，在該電腦安裝「擷取端」程式（影像來源庫「下載擷取端」），連到伺服端後新增「擷取端相機」來源選擷取端與通道即可。' },
   { title: '加工具', body: '把工具箱的工具拖到畫布（或點選插到最右邊），把上一步的輸出埠拉線接到下一步的輸入埠；同色的埠才能相接。' },
   { title: 'ROI', body: '有「區域」參數的工具：在工具頁或側欄按「在影像上編輯」，直接在影像視窗拖曳畫出矩形／圓／多邊形等；座標是該步驟輸入影像的像素座標。' },
   { title: '試執行', body: '頂列「試執行」用目前畫布（未存檔）的圖執行一次，保留所有中間影像；「用上次影像重跑」可固定同一張影像調參。點步驟名稱旁的圖示開「工具頁」，改參數會自動重跑到該步驟並顯示前／後影像與直方圖。' },
@@ -48,7 +48,7 @@ const GLOSSARY_PAGES: [string, string, string, string][] = [
   ['參數卡', '/flows/:id/teach', 'TeachPage', '全流程教導參數依步驟分組、即時試執行；配方下拉；標記為已教導'],
   ['Golden Set', '/flows/:id/golden', 'GoldenPage', '有期望值的影像案例與回歸測試（退步清單置頂）'],
   ['批次測試', '/batch', 'BatchPage', '選擇流程建立影像集批量執行；每次結果暫存，可標記期望、看洞察、調參重跑、比較、AI 諮詢與調整'],
-  ['外部整合', '/integration', 'IntegrationPage', 'HTTP／TCP 測試、事件監看、Modbus 連線與主動輸出、回傳格式'],
+  ['外部整合', '/integration', 'IntegrationPage', 'HTTP／TCP 測試、事件監看、Modbus 連線與主動輸出、回傳格式、擷取端程式下載與已連線的擷取端'],
   ['登入', '/login', 'LoginPage', '登入／建立第一個管理員'],
   ['深度學習', '/dl', 'DlPage', '教導專案：樣本、標記、資料集、訓練與模型匯出'],
   ['AI 助手', '/agent', 'AgentPage', '上傳影像＋圈選＋描述需求 → 自動生成流程；AI 供應商設定、AI 技能'],
@@ -89,7 +89,9 @@ const GLOSSARY_CORE: [string, string, string][] = [
   ['執行一次', 'Run once', '用已儲存的圖執行一次；寫入歷史與統計'],
   ['連續執行', 'Continuous', '依間隔不停執行'],
   ['暫存影像', 'Scratch image', '只為試執行上傳的影像，不進影像來源庫'],
-  ['影像來源', 'Image source', '相機／資料夾／合成／API 送圖的定義'],
+  ['影像來源', 'Image source', '相機／資料夾／合成／API 送圖／擷取端相機的定義'],
+  ['擷取端', 'Capture client', '裝在相機所在電腦的桌面程式：驅動網路攝影機／Basler／IDS 相機，主動連到伺服端擷取埠（9100）；同一台電腦以共享記憶體、跨電腦以 TCP 無損傳影像'],
+  ['擷取端相機', 'Capture source (kind=capture)', '影像來源種類：指定擷取端名稱與通道；依需求取像（每次執行要一張新影格）或連續串流（取最新影格）'],
   ['資產', 'Asset', '範本影像、ONNX 模型等檔案'],
   ['判定', 'Judge', 'OK／NG 的結論（judge 工具）'],
   ['具名輸出', 'Output', '回傳給自動化系統的鍵值（output 工具）'],
@@ -142,6 +144,7 @@ const AUTOMATION = [
   { title: '試執行（工具頁同款）', code: 'POST /api/vision/flows/{id}/preview\n{"graph": {...}, "reuse_image_ref": "...", "until_node": "blob", "analysis": true}' },
   { title: '暫存影像 / 重置', code: 'POST /api/vision/flows/{id}/scratch-image（multipart image）→ {ref,width,height,name}\nDELETE /api/vision/flows/{id}/recent → 清除記憶體內執行紀錄與統計（SSE 收到 cleared）' },
   { title: '事件串流（SSE）', code: 'GET /api/vision/flows/{id}/stream?since=<seq>\n事件：run_started / run_finished（帶 run）/ stats / continuous / lock / cleared / ping（15 秒心跳）' },
+  { title: '擷取端（相機在別台電腦）', code: '影像來源庫 →「下載擷取端」→ 在相機電腦解壓執行 VisionSequenceCapture.exe\n連線：伺服端位址 + 埠 9100（VISION_CAPTURE_PORT）、擷取端名稱、金鑰（伺服端有設 VISION_CAPTURE_AUTH／API_KEY 時）\n通道：選相機、開啟、開始取像；ROI 圈選只傳 ROI\n網頁：新增影像來源 kind=capture {client, channel, mode: on_demand|stream, timeout_ms, fresh, encoding}\n無介面：VisionSequenceCapture-console.exe --headless --connect（Task Scheduler／NSSM 常駐）' },
   { title: 'TCP', code: '一行一個指令（\\n 結尾，大小寫不拘），一行 JSON 回應：\nRUN <flow_id 或 名稱> [key=value ...] → {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}\nTRIGGER <flow>   → 只觸發不等結果 {"ok": true, "queued": true}\nSTATUS [flow]    → 統計\nSTART <flow> / STOP <flow> → 連續執行\nLIST / PING\n影像由影像來源 kind=upload 以 POST /api/vision/sources/{id}/push 送入。' },
 ]
 

@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, api, request } from './api'
 import type {
+  CaptureClients,
+  CaptureDownloadInfo,
   Asset,
   AuthUser,
   Capacity,
@@ -60,6 +62,8 @@ export const keys = {
   users: ['users'] as const,
   templates: ['templates'] as const,
   integration: ['integration-info'] as const,
+  captureClients: ['capture-clients'] as const,
+  captureDownload: ['capture-download'] as const,
   run: (id: string) => ['run', id] as const,
   recipes: (flowId: number) => ['recipes', flowId] as const,
   golden: (flowId: number) => ['golden', flowId] as const,
@@ -284,10 +288,12 @@ export function useContinuous() {
 }
 
 // ---- 影像來源 ----
-export function useSources() {
+/** `live`：清單含擷取端相機時每 5 秒重抓（顯示 fps／最近影格／離線）。 */
+export function useSources(live = false) {
   return useQuery({
     queryKey: keys.sources,
     queryFn: () => api.get<{ items: ImageSource[] }>('/vision/sources'),
+    refetchInterval: (query) => (live && query.state.data?.items.some((s) => s.kind === 'capture') ? 5000 : false),
   })
 }
 
@@ -332,6 +338,34 @@ export function useSourceMutations() {
     },
   })
   return { create, patch, remove, push }
+}
+
+// ---- 擷取端（apps/vision/capture/api.py） ----
+export function useCaptureClients(enabled = true, intervalMs = 5000) {
+  return useQuery({
+    queryKey: keys.captureClients,
+    queryFn: () => api.get<CaptureClients>('/vision/capture/clients'),
+    enabled,
+    refetchInterval: enabled ? intervalMs : false,
+  })
+}
+
+export function useCaptureDownloadInfo() {
+  return useQuery({
+    queryKey: keys.captureDownload,
+    queryFn: () => api.get<CaptureDownloadInfo>('/vision/capture/download/info'),
+    staleTime: 60_000,
+  })
+}
+
+export function useCaptureMutations() {
+  const client = useQueryClient()
+  const stream = useMutation({
+    mutationFn: ({ client: name, channel, enabled, max_fps }: { client: string; channel: string; enabled: boolean; max_fps?: number }) =>
+      api.post<{ ok: boolean; streaming: boolean }>(`/vision/capture/clients/${encodeURIComponent(name)}/channels/${encodeURIComponent(channel)}/stream`, { enabled, max_fps }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.captureClients }),
+  })
+  return { stream }
 }
 
 // ---- 資源群組（影像來源庫／資產庫共用） ----

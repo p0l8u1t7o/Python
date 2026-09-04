@@ -127,6 +127,9 @@ function SourceSection({ node, onChange }: { node: GraphNode; onChange: (patch: 
           onError={(e) => { e.currentTarget.style.display = 'none' }}
         />
       ) : null}
+      {current?.kind === 'capture' && current.status?.connected === false ? (
+        <p className="text-[11px] text-warning" data-testid="inspector-capture-offline">{t('editor.captureOffline', { name: String(current.config?.client ?? '') })}</p>
+      ) : null}
       <p className="text-[11px] text-muted">
         {id ? t('editor.sourcePreviewHint') : t('editor.noSourceBanner')} · <Link to="/sources" className="underline">{t('editor.manageSources')}</Link>
       </p>

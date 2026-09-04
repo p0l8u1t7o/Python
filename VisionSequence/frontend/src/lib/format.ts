@@ -13,3 +13,16 @@ export function formatDateTimeFull(iso: string | null | undefined): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString()
 }
+
+/** 位元組 → `1.2 MB`（表格與下載鈕用）。 */
+export function formatBytes(n: number | null | undefined): string {
+  if (!n || n <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let v = n
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i += 1
+  }
+  return i === 0 ? `${Math.round(v)} B` : `${v.toFixed(1)} ${units[i]}`
+}

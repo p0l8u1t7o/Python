@@ -19,8 +19,11 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/agent/help/search')) return { items: [], sections: 0, pages: 0, tools: 0 }
   if (path.startsWith('/vision/flows')) return { items: [FLOW], total: 1, limit: 100, offset: 0 }
   if (path.startsWith('/vision/tool-types')) return { items: [{ key: 'grayscale', label: '灰階', description: '轉灰階', category: 'preprocess', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false }], categories: [{ key: 'preprocess', label: '影像前處理' }] }
-  if (path.startsWith('/vision/sources/kinds')) return { items: [{ kind: 'folder', label: '資料夾', fields: ['path'] }] }
-  if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: {}, is_enabled: true }] }
+  if (path.startsWith('/vision/capture/download/info')) return { available: false, version: '', filename: '', size: 0, sha256: '', built_at: null, url: '/api/vision/capture/download' }
+  if (path.startsWith('/vision/capture/clients')) return { listening: true, host: '0.0.0.0', port: 9100, items: [{ name: 'line-pc', address: '127.0.0.1:50000', version: '0.1.0', hostname: 'LINE-PC', connected_at: '2026-01-01T00:00:00', local: true, prefer_encoding: 'raw', shm: true, channels: [{ id: 'cam1', label: '產線相機 1', driver: 'basler', index: 0, width: 1280, height: 960, channels: 1, dtype: 'u8', pixel_format: 'Mono8', roi: { x: 0, y: 0, w: 1280, h: 960 }, full: { w: 1280, h: 960 }, mode: 'on_demand', enabled: true, streaming: false, seq: 12, last_frame_age_ms: 120, encoding: 'shm', shm: true, last_error: '', in_use_by: [], fps: 9.5, bytes_per_s: 0, frames: 12 }] }] }
+  if (path.startsWith('/vision/capture')) return {}
+  if (path.startsWith('/vision/sources/kinds')) return { items: [{ kind: 'folder', label: '資料夾', fields: ['path'] }, { kind: 'capture', label: '擷取端相機', fields: ['client', 'channel', 'mode', 'timeout_ms', 'fresh', 'encoding'] }] }
+  if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: {}, is_enabled: true }, { id: 2, name: '產線相機', kind: 'capture', group: '', config: { client: 'old-pc', channel: 'cam1', mode: 'on_demand' }, status: { open: false, connected: false, last_error: '' }, is_enabled: true }] }
   if (path.startsWith('/vision/assets')) return { items: [] }
   if (path.startsWith('/vision/groups')) return { items: [{ id: 1, kind: 'source', name: '範例' }] }
   if (path.startsWith('/vision/templates')) return { items: [], can_manage: true }
@@ -37,7 +40,7 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/dl/trainers')) return { items: [] }
   if (path.startsWith('/vision/dl/train/status')) return { running: false }
   if (path.startsWith('/vision/dl/devices')) return { available: ['cpu'], preferred: ['cpu'], train_device: 'cpu', accelerators: [], gpus: [], providers: ['CPUExecutionProvider'] }
-  if (path.startsWith('/vision/integration/info')) return { host: '127.0.0.1', port: 8000, tcp_port: 9000, api_key_set: false, examples: {} }
+  if (path.startsWith('/vision/integration/info')) return { host: '127.0.0.1', port: 8000, tcp_port: 9000, api_key_set: false, examples: {}, capture_host: '0.0.0.0', capture_port: 9100, capture_listening: true }
   if (path.startsWith('/vision/connections')) return { items: [] }
   if (path.startsWith('/vision/lock')) return { locked: false, holder: '', reason: '', expires_at: null }
   return {}
