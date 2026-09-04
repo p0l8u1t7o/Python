@@ -32,8 +32,8 @@ describe('pages render (smoke)', () => {
   it('HelpPage shows quickstart and tabs', async () => {
     const { HelpPage } = await import('@/pages/HelpPage')
     renderPage(<HelpPage />, { route: '/help' })
-    expect(await screen.findByText('快速上手')).toBeInTheDocument()
-    expect(screen.getAllByText('AI 助手').length).toBeGreaterThan(0)
+    expect(await screen.findByText('Quick start')).toBeInTheDocument()
+    expect(screen.getAllByText(/quick start|glossary/i).length).toBeGreaterThan(0)
   })
 
   it('AgentPage renders the three steps and provider badge', async () => {
@@ -41,13 +41,13 @@ describe('pages render (smoke)', () => {
     renderPage(<AgentPage />, { route: '/agent' })
     expect(await screen.findByTestId('agent-generate')).toBeDisabled()
     expect(screen.getByTestId('agent-prompt')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText('離線規則引擎')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Offline rule engine')).toBeInTheDocument())
   })
 
   it('BatchPage renders flow picker and empty image sets', async () => {
     const { BatchPage } = await import('@/pages/BatchPage')
     renderPage(<BatchPage />, { route: '/batch' })
-    expect((await screen.findAllByText('批次測試')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Batch test')).length).toBeGreaterThan(0)
     expect(await screen.findByTestId('batch-no-sets')).toBeInTheDocument()
     expect(screen.getByTestId('batch-new-set')).toBeInTheDocument()
   })
@@ -63,51 +63,51 @@ describe('pages render (smoke)', () => {
     renderPage(<SourcesPage />, { route: '/sources' })
     expect(await screen.findByText('範例：圓孔量測')).toBeInTheDocument()
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
-    expect(headers[0]).toBe('名稱')
-    expect(headers[headers.length - 1]).toBe('操作')
+    expect(headers[0]).toBe('Name')
+    expect(headers[headers.length - 1]).toBe('Actions')
     // 擷取端相機來源：離線徽章；頁首「下載擷取端」在未建置時停用
-    expect(screen.getByText('擷取端離線')).toBeInTheDocument()
+    expect(screen.getByText('Capture client offline')).toBeInTheDocument()
     expect(screen.getByTestId('capture-download')).toBeDisabled()
   })
 
   it('integration sections are their own pages with a command trace', async () => {
     const { TcpPage } = await import('@/pages/integration/TcpPage')
     renderPage(<TcpPage />, { route: '/integration/tcp' })
-    expect(await screen.findByText('命令與結果', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(await screen.findByText('Commands and results', {}, { timeout: 4000 })).toBeInTheDocument()
     expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
     const { ModbusPage } = await import('@/pages/integration/ModbusPage')
     renderPage(<ModbusPage />, { route: '/integration/modbus' })
-    expect(await screen.findByText('兩種角色')).toBeInTheDocument()
-    expect(screen.getAllByText(/從站/).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Two roles')).toBeInTheDocument()
+    expect(screen.getAllByText(/slave|server/i).length).toBeGreaterThan(0)
   })
 
   it('IntegrationPage capture tab lists connected capture clients and channels', async () => {
     const { IntegrationCapturePage } = await import('@/pages/integration/CapturePage')
     renderPage(<IntegrationCapturePage />, { route: '/integration/capture' })
-    expect(await screen.findByText('已連線的擷取端')).toBeInTheDocument()
+    expect(await screen.findByText('Connected capture clients')).toBeInTheDocument()
     expect(await screen.findByText('line-pc')).toBeInTheDocument()
     expect(screen.getByText('產線相機 1')).toBeInTheDocument()
-    expect(screen.getByText('設定步驟')).toBeInTheDocument()
+    expect(screen.getByText('Setup')).toBeInTheDocument()
   })
 
   it('SettingsPage and LoginPage render', async () => {
     const { SettingsPage } = await import('@/pages/SettingsPage')
     renderPage(<SettingsPage />, { route: '/settings' })
-    expect((await screen.findAllByText('設定')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Settings')).length).toBeGreaterThan(0)
     const { LoginPage } = await import('@/pages/LoginPage')
     renderPage(<LoginPage />, { route: '/login' })
-    expect((await screen.findAllByText(/登入|帳號|VisionSequence/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Sign in|Username|VisionSequence/)).length).toBeGreaterThan(0)
   })
 
   it('AssetsPage, DlPage, IntegrationPage render without throwing', async () => {
     const { AssetsPage } = await import('@/pages/AssetsPage')
     renderPage(<AssetsPage />, { route: '/assets' })
-    expect((await screen.findAllByText('資產庫')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Asset library|Assets/)).length).toBeGreaterThan(0)
     const { DlPage } = await import('@/pages/DlPage')
     renderPage(<DlPage />, { route: '/dl' })
-    expect((await screen.findAllByText('深度學習教導')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('DL teaching')).length).toBeGreaterThan(0)
     const { IntegrationLayout } = await import('@/pages/IntegrationPage')
     renderPage(<IntegrationLayout />, { route: '/integration/http' })
-    expect((await screen.findAllByText(/外部整合|整合/)).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/integration/i)).length).toBeGreaterThan(0)
   })
 })

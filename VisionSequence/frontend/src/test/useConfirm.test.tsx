@@ -33,7 +33,7 @@ describe('useConfirm', () => {
 
     fireEvent.click(screen.getByText('ask'))
     expect(await screen.findByText('要離開嗎？')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.getByTestId('log').textContent).toBe('yes,no'))
   })
 

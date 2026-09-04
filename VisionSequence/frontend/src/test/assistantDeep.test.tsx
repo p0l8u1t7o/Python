@@ -102,7 +102,7 @@ describe('AssistantDock deep', () => {
     await waitFor(() => expect(screen.getByTestId('assistant-abort')).toBeTruthy())
     fireEvent.click(screen.getByTestId('assistant-abort'))
     const msg = await screen.findByTestId('assistant-msg-assistant')
-    expect(msg.textContent).toContain('已中斷')
+    expect(msg.textContent).toContain('stopped')
     expect(screen.getByTestId('assistant-send')).toBeTruthy()
   })
 
@@ -127,7 +127,7 @@ describe('AssistantDock deep', () => {
     renderPage(<AssistantDock />, { route: '/flows/2' })
     fireEvent.click(screen.getByTestId('assistant-apply'))
     expect(applyGraph).not.toHaveBeenCalled()
-    expect(await screen.findByText('請回到該流程的編輯器再套用此修改')).toBeTruthy()
+    expect(await screen.findByText('Open that flow in the editor to apply this change')).toBeTruthy()
     expect(screen.getByTestId('assistant-apply')).toBeTruthy()
   })
 

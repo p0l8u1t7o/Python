@@ -1,4 +1,4 @@
-/** 三語系 key 對齊與文案規範：zh-Hans 必須與 zh-Hant 完全同構；所有語系不得留口語詞。 */
+/** 三語系 key 對齊與文案規範：**英文是正本**，中文兩份必須與它完全同構；中文不得留口語詞。 */
 import { describe, expect, it } from 'vitest'
 
 import en from '@/i18n/locales/en'
@@ -27,9 +27,21 @@ describe('i18n locales', () => {
     expect(extra, `extra in zh-Hans: ${extra.slice(0, 20).join(', ')}`).toEqual([])
   })
 
-  it('en keys all exist in zh-Hant (en is a partial overlay, fallback is zh-Hant)', () => {
-    const extra = [...eng.keys()].filter((k) => !hant.has(k))
-    expect(extra, `en has keys unknown to zh-Hant: ${extra.slice(0, 20).join(', ')}`).toEqual([])
+  it('en and zh-Hant have exactly the same keys (en is the source of truth)', () => {
+    const missing = [...eng.keys()].filter((k) => !hant.has(k))
+    const untranslated = [...hant.keys()].filter((k) => !eng.has(k))
+    expect(missing, `en has keys unknown to zh-Hant: ${missing.slice(0, 20).join(', ')}`).toEqual([])
+    expect(untranslated, `English is the default language, so nothing may be missing from en: ${untranslated.slice(0, 20).join(', ')}`).toEqual([])
+  })
+
+  it('placeholders match between en and zh-Hant', () => {
+    const bad: string[] = []
+    for (const [k, v] of eng) {
+      const a = [...v.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join(',')
+      const b = [...(hant.get(k) ?? '').matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort().join(',')
+      if (a !== b) bad.push(`${k}: ${a} vs ${b}`)
+    }
+    expect(bad).toEqual([])
   })
 
   it('interpolation placeholders match between zh-Hant and zh-Hans', () => {

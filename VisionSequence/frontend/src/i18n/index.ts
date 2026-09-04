@@ -1,6 +1,7 @@
 /**
- * i18n 初始化。zh-Hant 為預設且為 fallback：en 只翻了一部分，缺的 key 退回繁中，
- * 而不是顯示 key 字串。
+ * i18n 初始化。**英文是預設語言，也是 fallback**：產品以英文為主，中文是翻譯。
+ * 三個語系的 key 由 `src/test/i18n.test.ts` 把關對齊，所以任何語系缺鍵都會在測試被擋下，
+ * 不會在畫面上露出原始 key。
  */
 import i18next from 'i18next'
 import { initReactI18next } from 'react-i18next'
@@ -15,9 +16,13 @@ export type Language = 'zh-Hant' | 'zh-Hans' | 'en'
 export function storedLanguage(): Language {
   try {
     const value = localStorage.getItem(LANGUAGE_KEY)
-    return value === 'en' || value === 'zh-Hans' ? value : 'zh-Hant'
+    if (value === 'en' || value === 'zh-Hans' || value === 'zh-Hant') return value
+    // 沒選過語言時跟著瀏覽器：中文的使用者直接看到中文，其餘一律英文。
+    const browser = (navigator.language || '').toLowerCase()
+    if (browser.startsWith('zh')) return browser.includes('cn') || browser.includes('hans') ? 'zh-Hans' : 'zh-Hant'
+    return 'en'
   } catch {
-    return 'zh-Hant'
+    return 'en'
   }
 }
 
@@ -38,7 +43,7 @@ void i18next.use(initReactI18next).init({
     en: { translation: en },
   },
   lng: storedLanguage(),
-  fallbackLng: 'zh-Hant',
+  fallbackLng: 'en',
   interpolation: { escapeValue: false },
   returnNull: false,
 })

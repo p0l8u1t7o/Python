@@ -38,7 +38,7 @@ describe('AssistantDock', () => {
     renderPage(<AssistantDock />, { route: '/batch' })
     fireEvent.click(screen.getByTestId('assistant-toggle'))
     expect(screen.getByTestId('assistant-dock')).toBeTruthy()
-    expect(screen.getByTestId('assistant-dock').textContent).toContain('批次測試')
+    expect(screen.getByTestId('assistant-dock').textContent).toContain('Batch test')
     expect(screen.queryByTestId('assistant-mode-edit')).toBeNull()
     const input = screen.getByTestId('assistant-input') as HTMLInputElement
     fireEvent.change(input, { target: { value: '如何建立影像集？' } })
