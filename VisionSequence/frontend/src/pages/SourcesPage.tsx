@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, Eye, FolderOpen, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
-
 import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupSelect, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, matchGroup } from '@/components/ui'
 import { GroupManager } from '@/components/GroupManager'
@@ -14,37 +13,30 @@ import { sourceStatus, summarizeSourceConfig } from '@/lib/sources'
 import { useCaptureClients, useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
 import type { CaptureClient, ImageSource } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
-
 /** 每個 config 欄位的輸入型態。 */
 const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select'> = {
   path: 'text',
   loop: 'boolean',
   sort: 'select',
   pattern: 'text',
-  index: 'number',
   width: 'number',
   height: 'number',
-  fps: 'number',
   seed: 'number',
   defect_rate: 'number',
   class: 'text',
   timeout_ms: 'number',
   fresh: 'boolean',
 }
-const FIELD_DEFAULT: Record<string, unknown> = { loop: true, sort: 'name', pattern: '*.png;*.jpg;*.bmp', index: 0, width: 640, height: 480, fps: 0, seed: 0, defect_rate: 0.3, mode: 'on_demand', timeout_ms: 1000, fresh: true, encoding: 'auto' }
+const FIELD_DEFAULT: Record<string, unknown> = { loop: true, sort: 'name', pattern: '*.png;*.jpg;*.bmp', width: 1280, height: 960, seed: 0, defect_rate: 0.3, mode: 'on_demand', timeout_ms: 1000, fresh: true, encoding: 'auto' }
 const CAPTURE_MODES = ['on_demand', 'stream'] as const
 const CAPTURE_ENCODINGS = ['auto', 'raw', 'lz4', 'jpeg'] as const
-
-function ConfigField({ kind, field, value, config, onChange, onBrowse, cameras, onScanCameras, scanning, captureClients, captureLoading, onRefreshCapture }: {
+function ConfigField({ kind, field, value, config, onChange, onBrowse, captureClients, captureLoading, onRefreshCapture }: {
   kind: string
   field: string
   value: unknown
   config?: Record<string, unknown>
   onChange: (v: unknown) => void
   onBrowse?: (mode: 'dir' | 'file') => void
-  cameras?: { index: number; width: number; height: number; in_use_by: string }[] | null
-  onScanCameras?: () => void
-  scanning?: boolean
   captureClients?: CaptureClient[] | null
   captureLoading?: boolean
   onRefreshCapture?: () => void
@@ -121,34 +113,6 @@ function ConfigField({ kind, field, value, config, onChange, onBrowse, cameras, 
       </div>
     )
   }
-  // usb 的 index：掃描伺服器上的相機供選擇
-  if (field === 'index' && kind === 'usb' && onScanCameras) {
-    return (
-      <div className="space-y-1.5">
-        <div className="flex items-end gap-2">
-          <TextInput label={label} type="number" value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
-          <Button loading={scanning} onClick={onScanCameras} title={t('sources.scanHint')} data-testid="cfg-scan">
-            <RefreshCw size={14} /> {t('sources.scanCameras')}
-          </Button>
-        </div>
-        {cameras ? (
-          cameras.length ? (
-            <div className="flex flex-wrap gap-1.5">
-              {cameras.map((c) => (
-                <button key={c.index} type="button" onClick={() => onChange(c.index)} aria-pressed={Number(value) === c.index}
-                  className={`rounded-md border px-2.5 py-1.5 text-xs transition-colors ${Number(value) === c.index ? 'border-transparent bg-brand text-on-brand' : 'border-line hover:bg-surface-muted'}`}
-                  data-testid={`cfg-cam-${c.index}`}>
-                  {t('sources.cameraN', { n: c.index })}{c.width ? ` · ${c.width}×${c.height}` : ''}{c.in_use_by ? ` · ${t('sources.inUseBy', { name: c.in_use_by })}` : ''}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-subtle">{t('sources.noCameras')}</p>
-          )
-        ) : null}
-      </div>
-    )
-  }
   if (type === 'boolean') return <Checkbox label={label} checked={Boolean(value)} onChange={onChange} />
   if (type === 'select' && field === 'sort') {
     return <Select label={label} value={String(value ?? 'name')} onChange={(e) => onChange(e.target.value)} options={['name', 'mtime', 'random'].map((v) => ({ value: v, label: t(`sources.sortOptions.${v}`) }))} />
@@ -159,7 +123,6 @@ function ConfigField({ kind, field, value, config, onChange, onBrowse, cameras, 
   if (type === 'number') return <TextInput label={label} type="number" step={field === 'defect_rate' ? 0.05 : 1} value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
   return <TextInput label={label} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
 }
-
 /** 狀態欄：徽章（已開啟／未開啟／錯誤）＋張數，完整 JSON 留在 title。 */
 function SourceStatusCell({ status }: { status: Record<string, unknown> | null | undefined }) {
   const { t } = useTranslation()
@@ -175,7 +138,6 @@ function SourceStatusCell({ status }: { status: Record<string, unknown> | null |
     </span>
   )
 }
-
 export function SourcesPage() {
   const { t } = useTranslation()
   const toast = useToast()
@@ -189,26 +151,10 @@ export function SourcesPage() {
   const [pendingDelete, setPendingDelete] = useState<ImageSource | null>(null)
   const [preview, setPreview] = useState<{ source: ImageSource; url: string } | null>(null)
   const [browsing, setBrowsing] = useState<'dir' | 'file' | null>(null)
-  const [cameras, setCameras] = useState<{ index: number; width: number; height: number; in_use_by: string }[] | null>(null)
-  const [scanning, setScanning] = useState(false)
   // 擷取端清單只在「擷取端相機」表單開著時輪詢
   const capture = useCaptureClients(editing !== null && editing.body.kind === 'capture')
-
-  async function scanCameras() {
-    setScanning(true)
-    try {
-      const r = await api.get<{ items: { index: number; width: number; height: number; in_use_by: string }[] }>('/vision/sources/usb-scan')
-      setCameras(r.items)
-    } catch (error) {
-      toast.error(errorMessage(error))
-    } finally {
-      setScanning(false)
-    }
-  }
-
   const kindList = kinds.data ?? []
   const fieldsFor = useMemo(() => new Map(kindList.map((k) => [k.kind, k.fields])), [kindList])
-
   function openCreate() {
     const kind = kindList[0]?.kind ?? 'folder'
     setEditing({ id: null, body: { name: '', kind, config: defaultsFor(kind), is_enabled: true, group: groupFilter === GROUP_ALL || groupFilter === '__none__' ? '' : groupFilter } })
@@ -219,7 +165,6 @@ export function SourcesPage() {
     if (kind === 'synthetic') out.pattern = 'dots'
     return out
   }
-
   // 儲存前測試擷取：依表單目前的 kind／config 抓一張，顯示尺寸、耗時與縮圖；換類型或重開表單即清除
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; width?: number; height?: number; ms?: number; image?: string; error?: string } | null>(null)
@@ -236,7 +181,6 @@ export function SourcesPage() {
       setTesting(false)
     }
   }
-
   async function onSave() {
     if (!editing) return
     if (!editing.body.name.trim()) return toast.error(t('flows.nameRequired'))
@@ -253,7 +197,6 @@ export function SourcesPage() {
       toast.error(errorMessage(error))
     }
   }
-
   async function onDelete() {
     if (!pendingDelete) return
     try {
@@ -265,7 +208,6 @@ export function SourcesPage() {
       setPendingDelete(null)
     }
   }
-
   async function onPush(source: ImageSource, file: File | undefined) {
     if (!file) return
     try {
@@ -275,7 +217,6 @@ export function SourcesPage() {
       toast.error(errorMessage(error))
     }
   }
-
   const body = editing?.body
   return (
     <Page>
@@ -330,7 +271,6 @@ export function SourcesPage() {
           </Table>
         )}
       </Card>
-
       <Modal
         open={editing !== null}
         onClose={() => setEditing(null)}
@@ -351,7 +291,7 @@ export function SourcesPage() {
             {(fieldsFor.get(body.kind) ?? []).map((field) => (
               <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} config={body.config}
                 onChange={(v) => setEditing({ ...editing!, body: { ...body, config: field === 'client' ? { ...body.config, client: v, channel: '' } : { ...body.config, [field]: v } } })}
-                onBrowse={(mode) => setBrowsing(mode)} cameras={cameras} onScanCameras={() => void scanCameras()} scanning={scanning}
+                onBrowse={(mode) => setBrowsing(mode)}
                 captureClients={capture.data?.items ?? null} captureLoading={capture.isFetching} onRefreshCapture={() => void capture.refetch()} />
             ))}
             <div className="space-y-2 rounded-md border border-line bg-surface p-2" data-testid="source-test-box">
@@ -371,7 +311,6 @@ export function SourcesPage() {
           </div>
         ) : null}
       </Modal>
-
       <Modal open={preview !== null} onClose={() => setPreview(null)} title={t('sources.previewTitle', { name: preview?.source.name ?? '' })} size="lg" footer={<Button onClick={() => preview && setPreview({ ...preview, url: sourcePreviewUrl(preview.source.id) })}>{t('common.refresh')}</Button>}>
         {preview ? (
           <div className="flex min-h-64 items-center justify-center rounded-lg bg-viewer">
@@ -379,7 +318,6 @@ export function SourcesPage() {
           </div>
         ) : null}
       </Modal>
-
       <GroupManager kind="source" open={managingGroups} onClose={() => setManagingGroups(false)} />
       <FsBrowser open={browsing !== null} onClose={() => setBrowsing(null)} mode={browsing ?? 'dir'}
         initial={String(body?.config.path ?? '')}

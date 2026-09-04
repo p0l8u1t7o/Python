@@ -164,15 +164,13 @@ class FlowRunHourly(models.Model):
         return f"{self.flow_id} {self.hour:%Y-%m-%d %H} {self.total}"
 
 
-SOURCE_KINDS = ("folder", "file", "usb", "synthetic", "upload", "plugin")
-
 
 class ImageSource(models.Model):
     name = models.CharField(max_length=120, unique=True)
     kind = models.CharField(max_length=20)
     #: 使用者自訂群組（自由文字；"" = 未分組）。前端依群組篩選／分區顯示。
     group = models.CharField(max_length=60, blank=True, default="")
-    #: 依 kind 不同：folder {path, loop, sort}；file {path}；usb {index, width, height, fps}；
+    #: 依 kind 不同：folder {path, loop, sort}；file {path}；capture {client, channel, mode, ...}；
     #: synthetic {width, height, pattern}；plugin {class, ...}
     config = models.JSONField(default=dict)
     is_enabled = models.BooleanField(default=True)

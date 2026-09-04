@@ -135,48 +135,6 @@ class FileGrabber(Grabber):
         return None if self._image is None else self._image.copy()
 
 
-class UsbGrabber(Grabber):
-    kind = "usb"
-
-    def __init__(self, config, **kw) -> None:
-        super().__init__(config, **kw)
-        index = int(config.get("index", 0))
-        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
-        self.cap = cv2.VideoCapture(index, backend)
-        if not self.cap.isOpened():
-            raise ValidationError(f"Could not open camera index={index}", code="camera_open_failed")
-        if config.get("width"):
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(config["width"]))
-        if config.get("height"):
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(config["height"]))
-        if config.get("fps"):
-            self.cap.set(cv2.CAP_PROP_FPS, float(config["fps"]))
-        # 緩衝區設 1：自動化要的是「現在這一張」，不是排隊的舊畫面。
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-    def grab(self) -> np.ndarray | None:
-        with self._lock:
-            # 先丟掉緩衝的一張，再讀最新。
-            self.cap.grab()
-            ok, frame = self.cap.read()
-        if not ok:
-            self.last_error = "read() failed"
-            return None
-        self.frames += 1
-        return frame
-
-    def close(self) -> None:
-        self.cap.release()
-
-    def info(self) -> dict[str, Any]:
-        return {
-            **super().info(),
-            "width": int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            "height": int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-            "fps": float(self.cap.get(cv2.CAP_PROP_FPS)),
-        }
-
-
 class SyntheticGrabber(Grabber):
     """合成測試影像：零件輪廓、圓孔、條碼狀線條與雜訊，每張略有位移／旋轉，
     讓沒有相機的機器也能完整走一遍定位→量測→判定。"""

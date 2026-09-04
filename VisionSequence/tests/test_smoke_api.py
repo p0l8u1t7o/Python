@@ -60,7 +60,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             "/api/vision/flows", f"/api/vision/flows/{fid}", f"/api/vision/flows/{fid}/recent?limit=1", f"/api/vision/flows/{fid}/stats",
             f"/api/vision/flows/{fid}/runs?limit=5", f"/api/vision/flows/{fid}/recipes", f"/api/vision/flows/{fid}/golden", f"/api/vision/flows/{fid}/golden/baseline",
             f"/api/vision/flows/{fid}/export", f"/api/vision/runs/{self.run_id}",
-            "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}", "/api/vision/sources/usb-scan",
+            "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/groups?kind=source", "/api/vision/fs",
             "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info",
             "/api/vision/audit", "/api/vision/audit.csv", "/api/vision/summary", "/api/vision/stations", "/api/vision/fleet", f"/api/vision/flows/{fid}/versions", f"/api/vision/flows/{fid}/versions/1",

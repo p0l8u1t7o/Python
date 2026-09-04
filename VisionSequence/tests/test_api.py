@@ -501,7 +501,3 @@ class FsBrowseTests(ApiTests.__bases__[0]):
         r = self.client.get("/api/vision/fs")
         self.assertEqual(r.status_code, 200)  # 根：磁碟機清單／根目錄
 
-    def test_usb_scan_shape(self):
-        r = self.client.get("/api/vision/sources/usb-scan", {"max_index": 1})
-        self.assertEqual(r.status_code, 200, r.content)
-        self.assertIn("items", r.json())  # 無相機環境回空清單

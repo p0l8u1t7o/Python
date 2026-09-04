@@ -424,9 +424,6 @@ const en = {
     captureTimeoutHint: 'How long to wait for the capture client to return a frame; raise it for long exposures or slow networks',
     captureFreshHint: 'Checked: every run asks for a frame captured after the trigger; unchecked: the latest frame the client already has may be used (lower latency)',
     title: 'Source library', create: 'New source', empty: 'No sources yet',
-    scanCameras: 'Scan cameras', scanHint: 'Probes devices on the server one by one (briefly occupies each)',
-    cameraN: 'Camera #{{n}}', inUseBy: 'in use: {{name}}',
-    noCameras: 'No cameras detected. Make sure they are attached to the server host and not in use.',
     fields: {
       client: 'Capture client', channel: 'Channel', mode: 'Grab mode', timeout_ms: 'Timeout (ms)', fresh: 'Require a fresh frame', encoding: 'Transport encoding',
     },

@@ -900,27 +900,6 @@ def browse_fs(request: HttpRequest, path: str = ""):
     return {"path": path, "parent": parent if parent != path else None, "dirs": sorted(dirs, key=str.lower), "files": sorted(files, key=str.lower)}
 
 
-@router.get("/sources/usb-scan")
-def usb_scan(request: HttpRequest, max_index: int = 6):
-    """枚舉伺服器上的相機：逐一開啟探測（會短暫佔用裝置，掃描時暫停使用中的取像）。"""
-    max_index = max(1, min(10, max_index))
-    in_use = {int((s.config or {}).get("index", -1)): s.name for s in ImageSource.objects.filter(kind="usb")}
-    items = []
-    for i in range(max_index):
-        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW) if os.name == "nt" else cv2.VideoCapture(i)
-        try:
-            if cap.isOpened():
-                items.append({
-                    "index": i,
-                    "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 0,
-                    "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 0,
-                    "in_use_by": in_use.get(i, ""),
-                })
-        finally:
-            cap.release()
-    return {"items": items}
-
-
 @router.get("/sources/kinds")
 def list_source_kinds(request: HttpRequest):
     return {"items": source_kinds()}

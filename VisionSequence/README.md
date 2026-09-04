@@ -112,7 +112,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/dl.html`。
 
 ### 影像來源與資產
-相機（USB、GigE 外掛）、資料夾（循環）、單檔、上傳、合成影像、**擷取端相機**；folder／file 可用伺服器檔案瀏覽器選路徑，USB 可掃描相機。資產：範本影像、ONNX 模型、資料集 zip。兩者皆可群組分類。
+**擷取端相機**（webcam／Basler／IDS，由擷取端程式驅動）、資料夾（循環）、單檔、上傳、合成影像；folder／file 可用伺服器檔案瀏覽器選路徑。資產：範本影像、ONNX 模型、資料集 zip。兩者皆可群組分類。
 
 ### 擷取端（相機在別台電腦或需要廠牌 SDK）
 - 可從網頁下載的 Windows 桌面程式（`vscapture/`，PySide6，PyInstaller 打包）：在相機所在的電腦驅動網路攝影機／Basler（pypylon）／IDS（ids_peak）／uEye／模擬相機，**主動連到伺服端擷取埠 9100**登記名稱與通道；多通道、即時預覽、ROI 圈選只傳 ROI（支援硬體 ROI）、相機參數自動表單並可存檔、傳送設定（不壓縮／LZ4／JPEG、單色、縮小、依需求取像／連續串流、測試傳送）、記錄、系統匣、無介面常駐。
@@ -257,7 +257,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 配方／範本／批次 | `/flows/{id}/recipes`、`/vision/templates`（builtin＋custom、instantiate）、`/flows/{id}/batch`、`/batch-source`（舊介面） |
 | 批次測試頁 | `/vision/batch/sets`（＋`/from-source`、`/{id}`、`/images/{index}`、`/to-golden`、`/runs`）、`/vision/batch/runs/{id}`（＋`/cancel`、`/insights`、`/compare`、`/rows/{index}/preview`、`/to-recipe`）、`/vision/agent/consult` |
 | Golden | `/flows/{id}/golden`、`/baseline`、`/regress` |
-| 資源 | `/vision/sources`（含 `/kinds`、`/usb-scan`、`/test` 儲存前測試擷取、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
+| 資源 | `/vision/sources`（含 `/kinds`、`/test` 儲存前測試擷取、`/preview`）、`/vision/assets`（含 `/from-image`、`/file`）、`/vision/groups`、`/vision/fs`、`/vision/images/{ref}` |
 | 工具目錄與容量 | `/vision/tool-types`、`/vision/capacity` |
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
 | AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |

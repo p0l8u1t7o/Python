@@ -21,7 +21,7 @@ import numpy as np
 from django.conf import settings
 
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.sources.grabbers import FileGrabber, FolderGrabber, Grabber, SyntheticGrabber, UploadGrabber, UsbGrabber
+from apps.vision.sources.grabbers import FileGrabber, FolderGrabber, Grabber, SyntheticGrabber, UploadGrabber
 
 # 擷取端相機（apps/vision/capture）：grabber 模組只依賴 grabbers.py 與 hub，放在 grabbers import 之後不會循環。
 from apps.vision.capture.grabber import CaptureGrabber  # noqa: E402
@@ -31,7 +31,6 @@ log = logging.getLogger(__name__)
 _BUILTIN = {
     "folder": FolderGrabber,
     "file": FileGrabber,
-    "usb": UsbGrabber,
     "synthetic": SyntheticGrabber,
     "upload": UploadGrabber,
     "capture": CaptureGrabber,
@@ -177,7 +176,6 @@ def kinds() -> list[dict[str, Any]]:
     out = [
         {"kind": "folder", "label": "Folder (reads the image files in a loop)", "fields": ["path", "loop", "sort", "pattern"]},
         {"kind": "file", "label": "A single image file", "fields": ["path"]},
-        {"kind": "usb", "label": "USB or web camera", "fields": ["index", "width", "height", "fps"]},
         {"kind": "synthetic", "label": "Synthetic test image", "fields": ["width", "height", "pattern", "seed"]},
         {"kind": "upload", "label": "Pushed image (uploaded through the API)", "fields": []},
         {"kind": "capture", "label": CaptureGrabber.label, "fields": list(CaptureGrabber.fields), "description": CaptureGrabber.description},
