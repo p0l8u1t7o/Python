@@ -8,8 +8,8 @@
 
 from __future__ import annotations
 
-DISPLAY_NAME = "CSV 紀錄（範例外掛）"
-DESCRIPTION = "把每次寫入的值附加到 CSV 檔（time, address, value）。"
+DISPLAY_NAME = "CSV log (sample plugin)"
+DESCRIPTION = "Appends every written value to a CSV file (time, address, value)."
 ENABLED = True  # False = 這個檔案整個不掛載
 
 import csv  # noqa: E402
@@ -32,7 +32,7 @@ class CsvLogWriter(Writer):
         super().__init__(config, **kw)  # 取得 self.timeout、self._lock、計數器
         self.path = str(config.get("path") or "")
         if not self.path:
-            raise ValidationError("csv_log 需要 path（CSV 檔完整路徑）", code="comm_config")
+            raise ValidationError("csv_log requires a path (the full path to the CSV file)", code="comm_config")
 
     # 只需覆寫 _write／_read／_open／_close；lock、逾時、失敗重試一次都在基底 write()/read()。
     def _write(self, values: dict[str, Any]) -> dict[str, Any]:
@@ -50,7 +50,7 @@ class CsvLogWriter(Writer):
                 for address, value in values.items():
                     writer.writerow([stamp, address, value])
         except OSError as exc:
-            raise CommError(f"CSV 寫入失敗：{exc}") from exc
+            raise CommError(f"CSV write failed: {exc}") from exc
         return {"written": len(values), "path": self.path}
 
     def info(self) -> dict[str, Any]:

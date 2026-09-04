@@ -29,7 +29,7 @@ class DarkRatioTool(Tool):
         Param("max_ratio", "Allowed ratio", kind="number", default=0.1, minimum=0, maximum=1, step=0.01, teach=True),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
-    outputs = [Port("ratio", "Scale", "number"), flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical")]
+    outputs = [Port("ratio", "Ratio", "number"), flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -38,9 +38,9 @@ class DarkRatioTool(Tool):
         region = ctx.roi()
         c = crop(image, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("ROI 在影像外")
+            raise ToolError("The ROI falls outside the image")
         pixels = c.image[c.mask > 0] if c.mask is not None else c.image
         ratio = float((pixels < ctx.number("threshold", 80)).mean()) if pixels.size else 0.0
         ok = ratio <= ctx.number("max_ratio", 0.1)
         overlays = [region_overlay(region, label=f"dark {ratio * 100:.1f}%")] if region else []
-        return Result(outputs={"ratio": ratio}, branch="pass" if ok else "fail", status="ok" if ok else "ng", overlays=overlays, message=f"暗區 {ratio * 100:.1f}%")
+        return Result(outputs={"ratio": ratio}, branch="pass" if ok else "fail", status="ok" if ok else "ng", overlays=overlays, message=f"dark {ratio * 100:.1f}%")

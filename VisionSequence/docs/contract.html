@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 前後端合約</title>
+<title>VisionSequence front-end / back-end contract</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,130 +134,150 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html" aria-current="page">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#backend">後端（已完成，勿改介面）</a><ul><li><a href="#graph">graph JSON</a></li><li><a href="#roi">ROI region dict（Param kind=roi 的值）</a></li><li><a href="#overlay">Overlay dict（Result.overlays；畫在該節點輸入影像座標）</a></li><li><a href="#auth-shape">身分與錯誤形狀</a></li><li><a href="#runreport">RunReport（POST run / preview 回傳、SSE run_finished 的 run）</a></li><li><a href="#preview">試執行進階（工具頁用）</a></li><li><a href="#paramkind">Param.kind 補充</a></li></ul></li><li><a href="#frontend">前端骨架（已完成）</a></li><li><a href="#more">範本庫、批次測試、整合工具（apps/vision/api_more.py）</a></li><li><a href="#recipes">配方、站台、教導</a></li><li><a href="#recipe-io">配方匯出／匯入與合理化檢查（api_recipes.py）</a></li><li><a href="#deploy">前後端解耦部署</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html" aria-current="page">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#backend">Back end (settled — do not change these interfaces)</a><ul><li><a href="#graph">The graph JSON</a></li><li><a href="#roi">The ROI region (the value of a kind=roi parameter)</a></li><li><a href="#overlay">The overlay dict (Result.overlays, drawn in the step&#x27;s input image coordinates)</a></li><li><a href="#auth-shape">Identity and the shape of an error</a></li><li><a href="#runreport">The RunReport (returned by run and preview, and carried by the SSE run_finished event)</a></li><li><a href="#preview">Preview extras (used by the tool page)</a></li><li><a href="#paramkind">Notes on Param.kind</a></li></ul></li><li><a href="#frontend">Front-end skeleton (settled)</a></li><li><a href="#more">Templates, batch testing and integration tools (apps/vision/api_more.py)</a></li><li><a href="#recipes">Recipes, stations and teaching</a></li><li><a href="#recipe-io">Recipe export, import and the save-scope check (api_recipes.py)</a></li><li><a href="#deploy">Deploying the two halves separately</a></li></ul></aside><article class="doc">
 
-<h1>VisionSequence 前後端合約（給平行開發的子任務看）</h1>
+<h1>Front-end / back-end contract</h1>
+<p>What the two halves agree on, so they can be worked on in parallel.</p>
 
-<h2 id="backend">後端（已完成，勿改介面）</h2>
+<h2 id="backend">Back end (settled — do not change these interfaces)</h2>
 <ul>
-<li>Django 5.1 + django-ninja，根目錄 <code>manage.py</code>，設定 <code>config/settings.py</code>（<code>VISION</code> dict）。</li>
-<li>工具框架 <code>apps/vision/tools/base.py</code>：<code>Param</code>、<code>Port</code>、<code>flow_out()</code>、<code>ToolContext</code>、<code>Result</code>、<code>Tool</code>（基底）、<code>register()</code>、<code>catalogue()</code>。</li>
-<li>ROI helper <code>apps/vision/tools/roi.py</code>：<code>crop(image, region, upright=)</code> → <code>Crop(image, x0, y0, mask, inverse)</code>，<code>Crop.to_full(x,y)</code>、<code>points_to_full(pts)</code>、<code>region_overlay(region)</code>、<code>mask_for()</code>、<code>transform_region()</code>。</li>
-<li>內建工具模組 <code>apps/vision/tools/builtin/{source,preprocess,locate,measure,detect,dl,logic,output}.py</code>，每個模組 <code>TOOLS = [...]</code>。</li>
-<li>引擎 <code>apps/vision/engine.py</code>（資料流 DAG，拓樸順序，flow 分支 gating），Runner <code>apps/vision/runner.py</code>（ThreadPool、SSE bus）。</li>
-<li>API 見 <code>apps/vision/api.py</code> 頂端 docstring。SSE：<code>GET /api/vision/flows/{id}/stream?since=</code>、<code>GET /api/vision/events</code>。</li>
+<li>Django 5.1 with django-ninja. <code>manage.py</code> at the root, settings in <code>config/settings.py</code> (the <code>VISION</code> dict).</li>
+<li>Tool framework <code>apps/vision/tools/base.py</code>: <code>Param</code>, <code>Port</code>, <code>flow_out()</code>, <code>ToolContext</code>, <code>Result</code>, <code>Tool</code>, <code>register()</code>, <code>catalogue()</code>.</li>
+<li>ROI helpers <code>apps/vision/tools/roi.py</code>: <code>crop(image, region, upright=)</code> → <code>Crop(image, x0, y0, mask, inverse)</code>, plus <code>Crop.to_full(x, y)</code>, <code>points_to_full(pts)</code>, <code>region_overlay(region)</code>, <code>mask_for()</code> and <code>transform_region()</code>.</li>
+<li>Built-in tools live in <code>apps/vision/tools/builtin/{source,preprocess,locate,measure,detect,dl,logic,output}.py</code>; each module exposes <code>TOOLS = [...]</code>.</li>
+<li>The engine is <code>apps/vision/engine.py</code> (a dataflow DAG in topological order with branch gating); the Runner is <code>apps/vision/runner.py</code> (thread pool and the SSE bus).</li>
+<li>The API is documented in the docstring at the top of <code>apps/vision/api.py</code>. SSE: <code>GET /api/vision/flows/{id}/stream?since=</code> and <code>GET /api/vision/events</code>.</li>
 </ul>
 
-<h3 id="graph">graph JSON</h3>
+<h3 id="graph">The graph JSON</h3>
 <pre>{
-  "nodes": [{"id": "blob-1", "type": "blob", "label": "找孔", "description": "", "enabled": true,
+  "nodes": [{"id": "blob-1", "type": "blob", "label": "Find holes", "description": "", "enabled": true,
              "continue_on_error": false, "color": "", "params": {...}, "position": {"x": 0, "y": 0}}],
   "edges": [{"id": "e1", "source": "gray-1", "source_handle": "image", "target": "blob-1", "target_handle": "image"}]
 }</pre>
 <ul>
-<li><code>source_handle</code> = 來源節點輸出埠 key；<code>target_handle</code> = 目標輸入埠 key，或 <code>"_flow"</code>（控制輸入）。</li>
-<li>輸出埠 <code>type: "flow"</code> 的把手（例如 if_number 的 true/false）只能接到 <code>_flow</code>。</li>
-<li><code>type: "note"</code> 是註解，不執行，不能被連入。</li>
+<li><code>source_handle</code> is the output port key of the source step; <code>target_handle</code> is an input port key, or <code>"_flow"</code> for the control input.</li>
+<li>An output handle of <code>type: "flow"</code> (if_number's true and false, for instance) may only connect to <code>_flow</code>.</li>
+<li><code>type: "note"</code> is a comment: it never runs and nothing can connect into it.</li>
 </ul>
 
-<h3 id="roi">ROI region dict（Param kind=roi 的值）</h3>
+<h3 id="roi">The ROI region (the value of a <code>kind=roi</code> parameter)</h3>
 <pre>{"shape":"rect","x","y","w","h"} | {"shape":"rotated_rect","cx","cy","w","h","angle"} |
 {"shape":"circle","cx","cy","r"} | {"shape":"annulus","cx","cy","r_inner","r_outer"} |
 {"shape":"polygon","points":[[x,y],...]} | {"shape":"line","x1","y1","x2","y2"}</pre>
-<p>座標為<strong>該節點輸入影像</strong>的像素座標（原點左上）。</p>
+<p>Coordinates are pixels of <strong>that step's input image</strong>, origin top left.</p>
 
-<h3 id="overlay">Overlay dict（Result.overlays；畫在該節點輸入影像座標）</h3>
+<h3 id="overlay">The overlay dict (<code>Result.overlays</code>, drawn in the step's input image coordinates)</h3>
 <p>kind: rect(x,y,w,h,angle?) / circle(cx,cy,r) / annulus / polygon(points) / polyline(points) / line(x1,y1,x2,y2) / point(x,y) / points(points) / text(x,y,text) / contours(contours=[[[x,y],...]]).</p>
-<p>共同欄位：color "#rrggbb"、label、width、dash、fill。</p>
+<p>Shared fields: color as "#rrggbb", label, width, dash, fill.</p>
 
-<h3 id="auth-shape">身分與錯誤形狀</h3>
+<h3 id="auth-shape">Identity and the shape of an error</h3>
 <ul>
-<li>權杖：<code>Authorization: Bearer &lt;token&gt;</code>（<strong>所有端點</strong>，含事件串流與影像）；瀏覽器不能帶標頭的地方用 <code>?token=</code>。整合方金鑰：<code>X-API-Key</code> 或 <code>?api_key=</code>。</li>
-<li>錯誤一律是 <code>{"error": {"code": "…", "message": "…", "details": {…}}}</code>——包含 401（<code>unauthenticated</code>）。</li>
-<li>事件串流 <code>/api/vision/events</code>、<code>/api/vision/flows/{id}/stream</code> 是 <code>text/event-stream</code>，不在 OpenAPI schema 內；位址在 <code>GET /vision/integration/info</code>。</li>
+<li>User token: <code>Authorization: Bearer &lt;token&gt;</code> on <strong>every endpoint</strong>, event streams and images included. Where a browser cannot set a header, <code>?token=</code> works. Integrator key: <code>X-API-Key</code> or <code>?api_key=</code>.</li>
+<li>Every error is <code>{"error": {"code": "…", "message": "…", "details": {…}}}</code> — including 401 (<code>unauthenticated</code>). Branch on <code>code</code>; <code>message</code> gets reworded between versions.</li>
+<li>The event streams <code>/api/vision/events</code> and <code>/api/vision/flows/{id}/stream</code> are <code>text/event-stream</code> and are not in the OpenAPI schema; their addresses come from <code>GET /vision/integration/info</code>.</li>
 </ul>
 
-<h3 id="runreport">RunReport（POST run / preview 回傳、SSE <code>run_finished</code> 的 <code>run</code>）</h3>
+<h3 id="runreport">The RunReport (returned by run and preview, and carried by the SSE <code>run_finished</code> event)</h3>
 <pre>{id, flow_id, flow_version, trigger, status: ok|ng|failed, started_at, finished_at, duration_ms, error,
- outputs: {...具名輸出},
+ outputs: {...named outputs},
  nodes: {node_id: {status: ok|ng|error|skipped, duration_ms, message, branch, outputs: {port: value}, overlays: [...], overlay_on, detail, logs}}}</pre>
-<p>影像輸出的值為 <code>{"ref": "runid:node:port" | null, "width", "height", "channels"}</code>；<code>GET /api/vision/images/{ref}?max=1024&amp;fmt=jpeg|png</code>。</p>
-<p>preview 模式（<code>POST /flows/{id}/preview</code> body <code>{graph, context?, reuse_image_ref?}</code>）保留所有中間影像，且 <code>detail._input_ref</code> 指向該節點輸入影像的 ref。</p>
+<p>An image output is <code>{"ref": "runid:node:port" | null, "width", "height", "channels"}</code>; fetch it from <code>GET /api/vision/images/{ref}?max=1024&amp;fmt=jpeg|png</code>. When the run is no longer cached the endpoint falls back to the image archive, so an archived reject can still be opened days later.</p>
+<p>Preview mode (<code>POST /flows/{id}/preview</code> with <code>{graph, context?, reuse_image_ref?}</code>) keeps every intermediate image, and <code>detail._input_ref</code> points at each step's input image.</p>
 
-<h3 id="preview">試執行進階（工具頁用）</h3>
+<h3 id="preview">Preview extras (used by the tool page)</h3>
 <ul>
-<li><code>POST /flows/{id}/preview</code> body：<code>until_node</code>（只跑到該步驟與其祖先）、<code>analysis: true</code>（回 <code>analysis: {input:{ref,histogram,stats}, output:{port,ref,histogram,stats}, series:{"blobs.area":{count,min,max,mean,values}}}</code>）。</li>
-<li><code>POST /flows/{id}/scratch-image</code>（multipart image）→ <code>{ref,width,height,name}</code>：暫存影像，不進來源庫；之後 preview 帶 <code>reuse_image_ref</code>。</li>
-<li><code>DELETE /flows/{id}/recent</code>：重置記憶體內執行紀錄與統計；SSE 事件 <code>cleared</code>。</li>
+<li><code>POST /flows/{id}/preview</code> also takes <code>until_node</code> (run only that step and its ancestors) and <code>analysis: true</code> (adds <code>analysis: {input:{ref,histogram,stats}, output:{port,ref,histogram,stats}, series:{"blobs.area":{count,min,max,mean,values}}}</code>).</li>
+<li><code>POST /flows/{id}/scratch-image</code> (multipart image) → <code>{ref,width,height,name}</code>: a scratch image that never enters the source library; pass it back as <code>reuse_image_ref</code>.</li>
+<li><code>DELETE /flows/{id}/recent</code> clears the in-memory history and statistics and emits the SSE event <code>cleared</code>.</li>
 </ul>
 
-<h3 id="paramkind">Param.kind 補充</h3>
+<h3 id="paramkind">Notes on <code>Param.kind</code></h3>
 <ul>
-<li><code>range</code>：<strong>單一數值</strong>，以滑桿＋數字框呈現（用 minimum/maximum/step）；不是兩個數字。</li>
-<li><code>code</code>：程式碼字串（<code>accept</code>＝語言，目前只有 <code>python</code>，用於 <code>python_script</code> 工具）；前端以等寬、有行號的編輯器呈現，非管理員唯讀。<strong>只有管理員儲存過的程式碼會被核准執行</strong>（<code>apps/vision/scripts.py</code>；POST/PATCH /flows 與匯入時登記 sha256，一般使用者送未核准的腳本回 403 <code>script_not_approved</code>；配方不能覆寫 code；試執行的 context 由伺服器依身分加 <code>_script_admin</code>，外部送來的 <code>_</code> 開頭鍵一律丟棄）。</li>
-<li>每個工具的 outputs 目錄末尾有隱含埠 <code>{"key":"_overlays","type":"list","implicit":true}</code>（該節點的標記），可接 draw_result 的 overlays。</li>
-<li><strong>影像位深</strong>：image 埠可承載 uint8（預設）、uint16（16-bit 灰階／RGB U64）、float32（SGL 浮點）。工具以 <code>Tool.accepts</code> 宣告支援的位深；宣告外的位深由 <code>ToolContext.image()</code> 自動正規化成 u8（u16 右移 8、浮點 min-max；不動輸入陣列）。顯式轉換用 <code>convert_depth</code> 工具。詳見 <a href="vision-capabilities.html">檢測功能設計</a>。</li>
-<li>每個工具的 outputs 另有隱含影像直通埠 <code>{"key":"_image","type":"image","implicit":true}</code>：原影像原樣往下傳（標記只是 metadata、不畫進影像，下游檢測不受影響）；沒有任何 image 輸入的工具（邏輯類）inputs 也補 <code>_image</code> 直通輸入，影像可經過任何工具。停用的節點照樣直通。直通 ref 只在「被接走」時出現在 run report（它不是「執行後」結果；檢視器與工具頁分析一律忽略 <code>_image</code>）。</li>
+<li><code>range</code> is a <strong>single number</strong> shown as a slider plus a number box (using minimum, maximum and step) — not two numbers.</li>
+<li><code>code</code> is a code string (<code>accept</code> names the language; only <code>python</code> so far, for the <code>python_script</code> tool). The editor renders it monospaced with line numbers, read-only for anyone who is not an administrator. <strong>Only code an administrator has saved is approved to run</strong> (<code>apps/vision/scripts.py</code>: POST/PATCH /flows and import register the sha256; anyone else sending unapproved code gets 403 <code>script_not_approved</code>). A recipe cannot override <code>code</code>, and the server adds <code>_script_admin</code> to the preview context itself — any <code>_</code> key arriving from outside is dropped.</li>
+<li>Every tool's outputs end with the implicit port <code>{"key":"_overlays","type":"list","implicit":true}</code> carrying that step's marks, ready to wire into draw_result.</li>
+<li><strong>Bit depth</strong>: an image port carries uint8 (the norm), uint16 (16-bit grey or RGB) or float32. A tool declares what it accepts through <code>Tool.accepts</code>; anything outside that is normalised to 8-bit by <code>ToolContext.image()</code> (u16 shifted right by 8, floats min-max scaled) without touching the input array. Convert explicitly with the <code>convert_depth</code> tool. See <a href="vision-capabilities.html">Inspection capabilities</a>.</li>
+<li>Every tool also has the implicit pass-through port <code>{"key":"_image","type":"image","implicit":true}</code>: the image goes on untouched, because marks are metadata and are never drawn into it. Tools with no image input (the logic ones) get a matching <code>_image</code> input, so a picture can travel through any step — including a disabled one. The pass-through ref appears in the run report only when something is wired to it: it is not an "after" result, and the viewer and the tool page's analysis both ignore <code>_image</code>.</li>
 </ul>
 
-<h2 id="frontend">前端骨架（已完成）</h2>
+<h2 id="frontend">Front-end skeleton (settled)</h2>
 <ul>
-<li><code>frontend/</code> Vite + React 19 + TS + Tailwind v4 + @xyflow/react + TanStack Query + react-router + lucide-react + i18next。</li>
-<li><code>src/index.css</code> 語意色票（bg-surface / text-muted / bg-brand / text-critical …、<code>.btn-primary</code> <code>.btn-secondary</code> <code>.btn-ghost</code> <code>.btn-icon</code> <code>.input</code> <code>.card</code>）。</li>
-<li><code>src/lib/api.ts</code>：<code>api.get/post/postForm/patch/delete</code>、<code>imageUrl(ref, max)</code>、<code>assetUrl</code>、<code>sourcePreviewUrl</code>、<code>streamUrl(flowId, since)</code>。</li>
-<li><code>src/lib/types.ts</code>：所有型別（ToolTypeDef、Region、Overlay、GraphNode、Flow、RunReport …）。</li>
+<li><code>frontend/</code> is Vite with React 19, TypeScript, Tailwind v4, @xyflow/react, TanStack Query, react-router, lucide-react and i18next.</li>
+<li><code>src/index.css</code> holds the semantic palette (bg-surface, text-muted, bg-brand, text-critical and so on) and the component classes <code>.btn-primary</code>, <code>.btn-secondary</code>, <code>.btn-ghost</code>, <code>.btn-icon</code>, <code>.input</code>, <code>.card</code>.</li>
+<li><code>src/lib/api.ts</code>: <code>api.get/post/postForm/patch/delete</code>, <code>imageUrl(ref, max)</code>, <code>assetUrl</code>, <code>sourcePreviewUrl</code>, <code>streamUrl(flowId, since)</code>.</li>
+<li><code>src/lib/types.ts</code> holds every type (ToolTypeDef, Region, Overlay, GraphNode, Flow, RunReport and the rest).</li>
+<li>The tool catalogue arrives in English and is the source of truth. <code>src/lib/toolLocale.ts</code> overlays a Chinese dictionary in one place, so no screen needs to know about it.</li>
 </ul>
-<h2 id="more">範本庫、批次測試、整合工具（apps/vision/api_more.py）</h2>
-<pre>GET    /vision/templates                    內建 builtin:&lt;key&gt; ＋ 自訂；graph 內 image_source.source_id 為 {SOURCE} 佔位符
-POST   /vision/templates                    {name, description, category, graph} → 存為範本（自動換成佔位符）
-DELETE /vision/templates/{id}               自訂範本（擁有者／管理員）
+
+<h2 id="more">Templates, batch testing and integration tools (apps/vision/api_more.py)</h2>
+<pre>GET    /vision/templates                    built-in builtin:&lt;key&gt; plus custom ones; image_source.source_id is the {SOURCE} placeholder
+POST   /vision/templates                    {name, description, category, graph} → saved as a template (placeholder inserted for you)
+DELETE /vision/templates/{id}               custom templates only (owner or administrator)
 POST   /vision/templates/{id}/instantiate   {source_id?, prefix?} → {graph, missing_source, name, description}
-POST   /vision/flows/{id}/batch             （舊介面：即時批次、不暫存；UI 已改用 /vision/batch/…，見 batch.html）multipart images[]（≤50）＋可選 graph（JSON 字串）→ {items[{name, run_id, status, duration_ms, outputs, error, error_node, image_ref}], summary{total, ok, ng, failed, avg_ms, max_ms, wall_ms}}
-POST   /vision/flows/{id}/batch-source      {source_id, count, graph?}（舊介面）
-GET    /vision/batch/sets?flow_id=          批次測試頁：影像集／執行／洞察／比較／預覽／存配方（完整列表見 batch.html）
+POST   /vision/flows/{id}/batch             (older interface: runs at once, stores nothing; the UI now uses /vision/batch/… — see batch.html)
+                                            multipart images[] (≤50) plus an optional graph as a JSON string
+                                            → {items[{name, run_id, status, duration_ms, outputs, error, error_node, image_ref}], summary{total, ok, ng, failed, avg_ms, max_ms, wall_ms}}
+POST   /vision/flows/{id}/batch-source      {source_id, count, graph?} (older interface)
+GET    /vision/batch/sets?flow_id=          the batch page: image sets, runs, insights, comparison, preview, save as recipe (full list in batch.html)
 POST   /vision/agent/consult                {batch_run_id, question, graph?} → {answer, provider, insights, suggestions, warnings}
-POST   /vision/agent/chat                   全域 AI 助手 {message, mode?: auto|help|edit|consult|tune, context{kind, route, flow_id, flow_name, node_id, node_type, batch_run_id, image_ref, graph}, history[{role, text}]}
+POST   /vision/agent/chat                   the global assistant {message, mode?: auto|help|edit|consult|tune,
+                                            context{kind, route, flow_id, flow_name, node_id, node_type, batch_run_id, image_ref, graph}, history[{role, text}]}
                                             → {kind: help|edit|consult|tune, answer, provider, sources[]?, result?, suggestions?, warnings?, batch_run_id?, agentic?}
-GET    /vision/agent/help/search?q=&k=      說明索引檢索 → {items[{title, page, heading, url, score, snippet}], sections, pages, tools}
-GET    /docs/{page}.html                    文件頁（非 API、免登入；助手回答的參考連結指向這裡）
-GET    /vision/integration/info             {http_base, tcp_host, tcp_port, tcp_listening, api_key_required, commands[], capture_host, capture_port, capture_listening, capture_download_url}
-GET    /vision/capture/clients               {listening, host, port, items[{name, address, version, hostname, connected_at, local, shm, channels[{id, label, width, height, pixel_format, roi, full, mode, enabled, streaming, seq, last_frame_age_ms, fps, bytes_per_s, in_use_by[]}]}]}
-GET    /vision/capture/clients/{name}/channels/{cid}/preview?max=   JPEG（?token= 或 api_key=）
-POST   /vision/capture/clients/{name}/channels/{cid}/stream         {enabled, max_fps?} → {ok, streaming}（鎖定 423）
+GET    /vision/agent/help/search?q=&k=      documentation search → {items[{title, page, heading, url, score, snippet}], sections, pages, tools}
+GET    /docs/{page}.html                    the documentation itself (not an API, no sign-in; the assistant's references point here)
+GET    /vision/integration/info             {version, station_id, http_base, tcp_host, tcp_connect_host, tcp_port, tcp_listening,
+                                            api_key_required, max_workers, max_queue_per_flow, commands[], events_url, flow_events_url,
+                                            capture_host, capture_connect_host, capture_port, capture_listening, capture_download_url}
+GET    /vision/summary                      this station's yield summary (what a fleet board polls)
+GET    /vision/fleet                        every configured station, read only
+GET    /vision/audit, /vision/audit.csv     the audit trail (administrators)
+GET    /vision/flows/{id}/versions          snapshot history; /{v} compares with the current graph, /{v}/restore and /{v}/release act on it
+GET    /vision/capture/clients              {listening, host, port, items[{name, address, version, hostname, connected_at, local, shm,
+                                            channels[{id, label, width, height, pixel_format, roi, full, mode, enabled, streaming, seq,
+                                            last_frame_age_ms, fps, bytes_per_s, in_use_by[]}]}]}
+GET    /vision/capture/clients/{name}/channels/{cid}/preview?max=   JPEG (?token= or api_key=)
+POST   /vision/capture/clients/{name}/channels/{cid}/stream         {enabled, max_fps?} → {ok, streaming} (423 while locked)
 GET    /vision/capture/download/info         {available, version, filename, size, sha256, built_at, url}
-GET    /vision/capture/download              zip attachment（未建置 404 capture_download_missing）
-影像來源 kind=capture 的 config：{client, channel, mode: on_demand|stream, timeout_ms, fresh, encoding: auto|raw|lz4|jpeg}；status 加 connected／fps／age_ms／shm／streaming（capture-client.html）
-POST   /vision/integration/tcp              {command} → {response, via: tcp|direct, elapsed_ms}</pre>
-<h2 id="recipes">配方、站台、教導</h2>
-<pre>GET/POST  /vision/flows/{id}/recipes            {name, description, param_overrides:{node_id:{param:value}}, is_default}
-PATCH/DELETE /vision/flows/{id}/recipes/{rid}
-POST /vision/flows/{id}/run        body 或 form 加 recipe（id 或名稱）；TCP：RUN 1 recipe=partA
-POST /vision/flows/{id}/preview    body 加 recipe
-RunReport 新增：station_id、recipe、warnings[]（例如「未完成現場教導」）
-PATCH /vision/flows/{id} {commissioned: true}   參數卡頁確認後設定
-Param 新增 teach: bool（參數卡頁只列 teach=true 的參數）</pre>
-<h2 id="recipe-io">配方匯出／匯入與合理化檢查（api_recipes.py）</h2>
-<pre>POST /vision/flows/{id}/recipes/check          {param_overrides, include_all?} →（include_all 時把流程所有宣告參數以圖值列為 unchanged；每項帶 teach、kind） {items[{key:"node.param", node_id, node_label, param, param_label, value, current, status, message}], summary}
-GET  /vision/flows/{id}/recipes/{rid}/export    .recipe.json：{schema_version, kind:"recipe", flow_name, flow_version, flow_fingerprint, tool_versions{node:{type,version}}, recipe{name,description,param_overrides,is_default}}
-GET  /vision/flows/{id}/recipes/export-all      kind:"recipes"
-POST /vision/flows/{id}/recipes/import/check    multipart file 或 JSON doc → {same_flow_name, fingerprint_match, recipes[{name, exists, items, summary}]}
-POST /vision/flows/{id}/recipes/import          {doc, name?, accept?:[key], is_default?, description?} → 只寫入接受的項目
-status：ok | unchanged | version_changed（可勾選接受）| node_missing | type_changed | param_missing | value_invalid（不可匯入）
-Tool.version（預設 1）進 catalogue；工具參數語意變更時 +1。</pre>
+GET    /vision/capture/download              zip attachment (404 capture_download_missing when nothing is built)
+POST   /vision/integration/tcp               {command} → {response, via: tcp|direct, elapsed_ms}</pre>
+<p>A <code>kind=capture</code> image source has the config <code>{client, channel, mode: on_demand|stream, timeout_ms, fresh, encoding: auto|raw|lz4|jpeg}</code>, and its status carries connected, fps, age_ms, shm and streaming (see <a href="capture-client.html">Capture client</a>).</p>
 
-<h2 id="deploy">前後端解耦部署</h2>
-<p>前端是純靜態 SPA，只透過 <code>frontend/src/lib/api.ts</code>（HTTP）與 <code>lib/flowStream.ts</code>（SSE）和後端往來；所有路徑以 <code>BASE_URL</code> 為基底，頁面程式碼不直接呼叫 <code>fetch</code>。</p>
+<h2 id="recipes">Recipes, stations and teaching</h2>
+<pre>GET/POST  /vision/flows/{id}/recipes            {name, description, param_overrides:{node_id:{param:value}}, is_default}
+PATCH/DELETE /vision/flows/{id}/recipes/{rid}   changing a recipe needs the engineer role
+POST /vision/flows/{id}/recipes/{rid}/activate  change over: make it the default (operators may do this)
+POST /vision/flows/{id}/run        body or form may carry recipe (id or name); over TCP: RUN 1 recipe=partA
+POST /vision/flows/{id}/preview    body may carry recipe
+The RunReport carries station_id, recipe and warnings[] (for example "not commissioned yet").
+PATCH /vision/flows/{id} {commissioned: true}   set after the parameter card is confirmed
+Param has teach: bool — the parameter card lists only the teachable ones, and an operator may change only those.</pre>
+
+<h2 id="recipe-io">Recipe export, import and the save-scope check (api_recipes.py)</h2>
+<pre>POST /vision/flows/{id}/recipes/check          {param_overrides, include_all?} → with include_all every declared parameter is listed
+                                               as unchanged using the graph value; each item carries teach and kind
+                                               {items[{key:"node.param", node_id, node_label, param, param_label, value, current, status, message}], summary}
+GET  /vision/flows/{id}/recipes/{rid}/export    .recipe.json: {schema_version, kind:"recipe", flow_name, flow_version, flow_fingerprint,
+                                                tool_versions{node:{type,version}}, recipe{name,description,param_overrides,is_default}}
+GET  /vision/flows/{id}/recipes/export-all      kind:"recipes"
+POST /vision/flows/{id}/recipes/import/check    multipart file or a JSON doc → {same_flow_name, fingerprint_match, recipes[{name, exists, items, summary}]}
+POST /vision/flows/{id}/recipes/import          {doc, name?, accept?:[key], is_default?, description?} — only the accepted items are written
+status: ok | unchanged | version_changed (can be accepted deliberately) | node_missing | type_changed | param_missing | value_invalid (cannot import)
+Tool.version (1 by default) is in the catalogue; bump it when a parameter's meaning changes.</pre>
+
+<h2 id="deploy">Deploying the two halves separately</h2>
+<p>The front end is a static SPA that talks to the back end only through <code>frontend/src/lib/api.ts</code> (HTTP) and <code>lib/flowStream.ts</code> (SSE). Every path is built on <code>BASE_URL</code>; page code never calls <code>fetch</code> directly.</p>
 <table>
-<tr><th>部署方式</th><th>前端</th><th>後端</th></tr>
-<tr><td>同站（預設）</td><td><code>npm run build</code> 產物由 whitenoise 隨 API 行程服務，<code>BASE_URL=/api</code></td><td><code>manage.py serve</code></td></tr>
-<tr><td>開發</td><td>Vite dev server，<code>/api</code> 代理到 8000</td><td>同上</td></tr>
-<tr><td>獨立部署</td><td>build 時設 <code>VITE_API_BASE_URL=https://vision.example.com/api</code>，放任何靜態主機／CDN</td><td>.env 設 <code>CORS_ALLOWED_ORIGINS=https://console.example.com</code></td></tr>
+<tr><th>Arrangement</th><th>Front end</th><th>Back end</th></tr>
+<tr><td>Same origin (the default)</td><td><code>npm run build</code>, served by whitenoise from the API process, <code>BASE_URL=/api</code></td><td><code>manage.py serve</code></td></tr>
+<tr><td>Development</td><td>Vite dev server proxying <code>/api</code> to port 8000</td><td>as above</td></tr>
+<tr><td>Separate hosts</td><td>build with <code>VITE_API_BASE_URL=https://vision.example.com/api</code> and put it on any static host or CDN</td><td>set <code>CORS_ALLOWED_ORIGINS=https://console.example.com</code> in .env</td></tr>
 </table>
 <ul>
-<li>認證：登入 token 走 <code>Authorization: Bearer</code>；整合方 API 金鑰走 <code>X-API-Key</code>。影像／SSE 這類 <code>&lt;img&gt;</code>／EventSource 無法帶 header 的請求以 <code>?token=</code>／<code>?api_key=</code> 附帶（<code>withKey()</code>）。</li>
-<li>各頁面為獨立 lazy chunk（<code>App.tsx</code>），首屏只載入外框與當前頁；共用大套件（React、React Flow、圖表）另切 chunk 以利快取。</li>
-<li>回應格式與錯誤碼見本頁上方各節；新增端點時只要維持這些 schema，前端不需改動即可相容。</li>
+<li>Authentication: a user token goes in <code>Authorization: Bearer</code>, an integrator key in <code>X-API-Key</code>. Requests that cannot carry a header — <code>&lt;img&gt;</code> and EventSource — append <code>?token=</code> or <code>?api_key=</code> through <code>withKey()</code>.</li>
+<li>Each page is its own lazy chunk (<code>App.tsx</code>), so the first paint loads only the shell and the current page; the big shared libraries (React, React Flow, the charts) are split out so they cache.</li>
+<li>Response shapes and error codes are in the sections above. A new endpoint that keeps to these schemas needs no front-end change.</li>
 </ul>
 
 </article></div><!-- /doc-layout -->

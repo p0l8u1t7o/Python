@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 範例樣板</title>
+<title>VisionSequence example templates</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,59 +134,56 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html" aria-current="page">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#list">樣板一覽</a></li><li><a href="#files">樣本圖與資產放在哪</a></li><li><a href="#not-included">沒有進樣板的工具</a></li><li><a href="#test">品質保證</a></li></ul></aside><article class="doc wide">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html" aria-current="page">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#list">The templates</a></li><li><a href="#files">Where the images and assets live</a></li><li><a href="#not-included">Tools that no template uses</a></li><li><a href="#test">How this stays true</a></li></ul></aside><article class="doc wide">
 
-<h1>範例樣板與合成樣本圖</h1>
-<p>範例樣板放在<strong>範本畫廊</strong>（流程頁「從範本建立」、編輯器頂列「載入範本」，共 14 個內建範本），
-不佔流程清單。<code>manage.py seed_demo</code>（或 <code>dev.ps1 -Setup</code>）建立配套：2 個示範流程、
-每個樣板一組合成樣本圖（folder 影像來源、群組「範例」）、以及範本／良品資產。
-從範本建立流程時選對應的「範例：⋯」來源就<strong>開箱即跑</strong>；
-內建 61 個工具中有 55 個至少出現在一個樣板裡，開啟任一樣板就能看到該工具的實際接法與參數。</p>
+<h1>Example templates and their synthetic sample images</h1>
+<p>The example templates live in the <strong>template gallery</strong> — "Create from template" on the flows page, "Load template" in the editor toolbar, 18 built-in templates in all — so they do not clutter the flow list.
+<code>manage.py seed_demo</code> (or <code>dev.ps1 -Setup</code>) creates everything that goes with them: two demonstration flows, one set of synthetic sample images per template (a folder source in the "Examples" group), and the template and golden assets.
+Create a flow from a template, pick the matching "Example: …" source, and it <strong>runs as it is</strong>.
+58 of the 67 built-in tools appear in at least one template, so opening any of them shows you how that tool is actually wired up and what its parameters look like in practice.</p>
 
-<div class="note">每組樣本圖固定 4 張（教學圖 3 張）、其中最後一張刻意做成不良品；來源設為循環讀取，
-連續執行或連按「執行」就會看到 OK→OK→OK→NG 的節奏。座標與公差都對齊合成圖的標稱值，不需要調參就會動。</div>
+<div class="note">Each set has four images (three for the tutorial), and the last one is deliberately a reject. The source loops, so running continuously — or pressing Run repeatedly — gives you OK → OK → OK → NG. Coordinates and tolerances match the nominal values of the synthetic images, so nothing needs tuning before it works.</div>
 
-<h2 id="list">樣板一覽</h2>
+<h2 id="list">The templates</h2>
 <table>
-<tr><th>範本</th><th>樣本圖</th><th>它教你什麼</th><th>主要工具</th></tr>
-<tr><td>零件孔數檢測</td><td>合成零件（隨機位移／缺孔）</td><td>最基本的「二值化→blob→計數→分支判定」骨架</td><td><code>grayscale</code> <code>blur</code> <code>threshold</code> <code>morphology</code> <code>blob</code> <code>if_number</code> <code>judge</code> <code>output</code> <code>draw_result</code></td></tr>
-<tr><td>曝光檢查</td><td>同上</td><td>純前處理＋邏輯的守門流程（縮小加速、Otsu 門檻當曝光指標）</td><td><code>resize</code> <code>threshold</code> <code>in_range</code></td></tr>
-<tr><td>圓孔尺寸量測</td><td>亮板＋暗圓孔（孔徑第 4 張超差）</td><td>找圓→像素校正成 mm→公差判定；<strong>扇形 ROI</strong>（環形＋起迄角）弧擬合、橢圓擬合看圓度</td><td><code>find_circle</code> <code>formula</code> <code>calibration</code> <code>tolerance_judge</code> <code>fit_arc</code> <code>fit_ellipse</code></td></tr>
-<tr><td>邊線夾角</td><td>L 形工件（夾角第 4 張 84°；右下 45° 斜切角）</td><td>兩條找線量夾角與交點；倒角工具量斜切角</td><td><code>find_line</code> <code>angle</code> <code>geometry</code> <code>chamfer_angle</code> <code>in_range</code></td></tr>
-<tr><td>印刷良品比對</td><td>印刷圖案（第 4 張多一塊污漬）</td><td>與良品範本做差異比對，抓「不知道長怎樣」的缺陷；範本資產由 seed 自動建立</td><td><code>defect_diff</code></td></tr>
-<tr><td>織紋瑕疵檢測</td><td>週期織紋（第 4 張有刮痕）</td><td>頻域低通把規律紋理整片濾掉，殘下的暗痕＝缺陷；遮罩套用取出缺陷區</td><td><code>fft_filter</code> <code>threshold</code> <code>blob</code> <code>apply_mask</code></td></tr>
-<tr><td>前處理與量測教學</td><td>漸層＋灰階階梯＋暗溝</td><td>影像鏈（位深→Gamma→銳化→翻轉→前後差異）與量測課（線剖面、區域統計、直方圖、邊緣密度、暗部比例、裁切、色彩面）</td><td><code>convert_depth</code> <code>lut</code> <code>filter</code> <code>rotate_flip</code> <code>arithmetic</code> <code>line_profile</code> <code>intensity</code> <code>histogram</code> <code>edge_density</code> <code>dark_ratio</code> <code>crop</code> <code>color_convert</code></td></tr>
-<tr><td>多圓幾何計數</td><td>5 個圓孔＋2 條斜線（第 4 張少一孔）</td><td>霍夫「一次抓很多圓」vs 找圓「精量測一個圓」的分工；線段清單計數；兩孔圓心距</td><td><code>hough_circles</code> <code>hough_lines</code> <code>count_list</code> <code>find_circle</code> <code>distance</code></td></tr>
-<tr><td>顏色／有無檢測</td><td>三色塊（第 4 張紅色偏橘）</td><td>HSV 範圍遮罩→像素計數的「有料／缺料」判定</td><td><code>color_range</code> <code>pixel_count</code></td></tr>
-<tr><td>顏色比對</td><td>同上</td><td>區域平均色與目標色比距離（驗色）；顏色統計輸出色碼給上位機</td><td><code>color_check</code> <code>color_stats</code></td></tr>
-<tr><td>條碼標籤讀取（透視校正）</td><td>斜貼標籤＋QR（第 4 張沒印碼）</td><td>四點透視校正把斜標籤拉正再讀碼；序號區文字有無檢查</td><td><code>warp_perspective</code> <code>barcode</code> <code>text_presence</code></td></tr>
-<tr><td>定位＋卡尺量測</td><td>十字標記＋亮帶（第 4 張帶太寬）</td><td>範本定位→ROI 跟隨→卡尺量寬的定位補正三件套；範本資產由 seed 自動裁切</td><td><code>template_match</code> <code>shape_align</code> <code>fixture_roi</code> <code>caliper</code></td></tr>
-<tr><td>深抽杯件量測</td><td>同心圓杯口＋壁厚剖面（第 4 張外徑超差）</td><td>完整量測流程：定位、三個 ROI 跟隨、外徑／內徑找圓、<strong>線段 ROI</strong> 橫切量壁厚、同心度、多重公差彙總</td><td><code>find_circle</code> <code>wall_thickness</code> <code>concentricity</code> <code>tolerance_judge</code> <code>bool_logic</code></td></tr>
-<tr><td>YOLO 物件計數（官方底模）</td><td>停止標誌（第 4 張只有 1 個、第 5 張 3 個）</td><td>不用訓練的深度學習：COCO 底模 yolo11n.pt 直接辨識，數量判定；第一次執行自動下載權重（需 DL 依賴）</td><td><code>yolo_detect</code> <code>if_number</code></td></tr>
-<tr><td>YOLO 實例分割：標誌面積</td><td>同上</td><td>分割輸出的聯合遮罩接像素計數＝總面積，門檻判定；示範分割結果接後續量測</td><td><code>yolo_segment</code> <code>pixel_count</code></td></tr>
-<tr><td>DL 分類：良品／缺孔（教導模型）</td><td>暗底亮圓盤（第 5、6 張缺中央孔）</td><td>教導產物怎麼進流程：seed 用內建 MLP（資料增強）訓練 30 張合成樣本成「範例：分類模型」，dl_classify 判 pass／fail；整張縮圖的像素分類適合「整體外觀不同」的類別</td><td><code>dl_classify</code></td></tr>
-<tr><td>DL 語意分割：刮痕面積（教導模型）</td><td>紋理板（第 4、5 張有刮痕）</td><td>seed 用 patch_segment 訓練 10 張 polygon 標記成「範例：分割模型」，dl_segment 面積門檻判定</td><td><code>dl_segment</code></td></tr>
+<tr><th>Template</th><th>Sample images</th><th>What it teaches</th><th>Main tools</th></tr>
+<tr><td>Hole count</td><td>Synthetic parts, randomly shifted, sometimes missing a hole</td><td>The most basic skeleton there is: threshold → blob → count → branch on the number</td><td><code>grayscale</code> <code>blur</code> <code>threshold</code> <code>morphology</code> <code>blob</code> <code>if_number</code> <code>judge</code> <code>output</code> <code>draw_result</code></td></tr>
+<tr><td>Exposure check</td><td>The same</td><td>A gatekeeping flow of pure pre-processing and logic — downscale for speed, an Otsu threshold as the exposure indicator</td><td><code>resize</code> <code>threshold</code> <code>in_range</code></td></tr>
+<tr><td>Circle gauge</td><td>A bright plate with dark holes; the fourth is out of tolerance</td><td>Find the circle, convert pixels to millimetres, judge against a tolerance. Also a <strong>sector ROI</strong> (an annulus with start and end angles) for arc fitting, and ellipse fitting for roundness</td><td><code>find_circle</code> <code>formula</code> <code>calibration</code> <code>tolerance_judge</code> <code>fit_arc</code> <code>fit_ellipse</code></td></tr>
+<tr><td>Edge angle</td><td>An L-shaped part; the fourth image is at 84°, with a 45° chamfer bottom right</td><td>Two line finds giving an angle and an intersection; the chamfer tool measuring the bevel</td><td><code>find_line</code> <code>angle</code> <code>geometry</code> <code>chamfer_angle</code> <code>in_range</code></td></tr>
+<tr><td>Print compare</td><td>A printed pattern; the fourth has an extra smudge</td><td>Difference against a golden template, which catches defects you cannot describe in advance. The template asset is created by seeding</td><td><code>defect_diff</code></td></tr>
+<tr><td>Fabric defect</td><td>A periodic weave; the fourth has a scratch</td><td>A frequency-domain low pass wipes out the regular texture and leaves the dark mark behind — that is the defect. A mask pulls out the defect area</td><td><code>fft_filter</code> <code>threshold</code> <code>blob</code> <code>apply_mask</code></td></tr>
+<tr><td>Pre-processing and measurement lab</td><td>A gradient, a grey step wedge and a dark groove</td><td>An image chain (bit depth → gamma → sharpen → flip → before/after difference) and a measurement tour (line profile, region statistics, histogram, edge density, dark ratio, crop, colour planes)</td><td><code>convert_depth</code> <code>lut</code> <code>filter</code> <code>rotate_flip</code> <code>arithmetic</code> <code>line_profile</code> <code>intensity</code> <code>histogram</code> <code>edge_density</code> <code>dark_ratio</code> <code>crop</code> <code>color_convert</code></td></tr>
+<tr><td>Circles and lines</td><td>Five holes and two diagonal lines; the fourth is missing a hole</td><td>The division of labour between Hough ("grab many circles at once") and find-circle ("measure one circle precisely"); counting a list of line segments; the distance between two hole centres</td><td><code>hough_circles</code> <code>hough_lines</code> <code>count_list</code> <code>find_circle</code> <code>distance</code></td></tr>
+<tr><td>Colour presence</td><td>Three colour blocks; the fourth has an orange-shifted red</td><td>An HSV range mask into a pixel count — the classic present / missing judgement</td><td><code>color_range</code> <code>pixel_count</code></td></tr>
+<tr><td>Colour verification</td><td>The same</td><td>Mean colour of a region against a target colour by distance; colour statistics output a hex code for the host system</td><td><code>color_check</code> <code>color_stats</code></td></tr>
+<tr><td>Barcode / QR read</td><td>A tilted label with a QR code; the fourth has no code printed</td><td>The shortest possible identification flow: read the code, check whether anything was read, output it</td><td><code>barcode</code> <code>output</code></td></tr>
+<tr><td>Barcode label with perspective correction</td><td>The same</td><td>Four-point perspective correction straightens the tilted label before reading it; a text-presence check on the serial-number area</td><td><code>warp_perspective</code> <code>barcode</code> <code>text_presence</code></td></tr>
+<tr><td>Locate and gauge</td><td>A cross marker and a bright band; the fourth band is too wide</td><td>The three-part locate correction: template match → ROI follow → caliper width. The template asset is cropped automatically by seeding</td><td><code>template_match</code> <code>shape_align</code> <code>fixture_roi</code> <code>caliper</code></td></tr>
+<tr><td>Deep-drawn cup gauge</td><td>Concentric cup rims with a wall-thickness cross-section; the fourth is over on outer diameter</td><td>A complete measurement flow: locate, three ROIs following it, find-circle on the outer and inner diameters, a <strong>line ROI</strong> across the wall for thickness, concentricity, and several tolerances combined</td><td><code>find_circle</code> <code>wall_thickness</code> <code>concentricity</code> <code>tolerance_judge</code> <code>bool_logic</code></td></tr>
+<tr><td>YOLO object count (stock model)</td><td>Stop signs; the fourth has one, the fifth has three</td><td>Deep learning with no training at all: the COCO stock model yolo11n.pt recognises them directly and the count is judged. The weights download on first run (deep-learning dependencies required)</td><td><code>yolo_detect</code> <code>if_number</code></td></tr>
+<tr><td>YOLO instance segmentation: sign area</td><td>The same</td><td>The union mask from segmentation into a pixel count gives total area, judged against a threshold — segmentation feeding a downstream measurement</td><td><code>yolo_segment</code> <code>pixel_count</code></td></tr>
+<tr><td>Classification: good / missing hole (taught model)</td><td>Bright discs on a dark ground; the fifth and sixth are missing the centre hole</td><td>How a taught model gets into a flow: seeding trains the built-in MLP on 30 synthetic samples (with augmentation) into "Example: classifier (good / missing hole)", and <code>dl_classify</code> decides pass or fail. Classifying the whole downscaled image suits classes that differ in overall appearance</td><td><code>dl_classify</code></td></tr>
+<tr><td>Semantic segmentation: scratch area (taught model)</td><td>A textured panel; the fourth and fifth are scratched</td><td>Seeding trains patch_segment on 10 polygon-labelled images into "Example: segmenter (scratch)", and <code>dl_segment</code> judges the scratch area against a threshold</td><td><code>dl_segment</code></td></tr>
 </table>
 
-<h2 id="files">樣本圖與資產放在哪</h2>
+<h2 id="files">Where the images and assets live</h2>
 <ul>
-<li>樣本圖：<code>data/samples/&lt;樣板&gt;/01.png…</code>（<code>apps/vision/demo_images.py</code> 產生；資料夾已有 PNG 就沿用）。想重新生成：刪掉該資料夾再跑一次 <code>manage.py seed_demo</code>。</li>
-<li>影像來源：每組樣本一個 folder 來源，名稱「範例：⋯」、群組「範例」、循環讀取。</li>
-<li>資產：定位十字範本 ×2 與印刷良品範本，從樣本圖第 1 張自動裁切，群組「範例」。</li>
-<li><code>seed_demo</code> 可重複執行：來源與資產沿用既有的，流程 graph 會更新成最新版。</li>
+<li>Sample images: <code>data/samples/&lt;set&gt;/01.png…</code>, generated by <code>apps/vision/demo_images.py</code>. If the folder already holds PNGs they are reused. To regenerate, delete the folder and run <code>manage.py seed_demo</code> again.</li>
+<li>Image sources: one folder source per set, named "Example: …", in the "Examples" group, looping.</li>
+<li>Assets: two cross-marker templates and the golden print template, cropped automatically from the first sample image, in the "Examples" group.</li>
+<li><code>seed_demo</code> is safe to run repeatedly: existing sources and assets are reused, and flow graphs are updated to the current version.</li>
 </ul>
 
-<h2 id="not-included">沒有進樣板的工具</h2>
-<p>深度學習類：<code>yolo_pose</code>（需真人影像）、<code>yolo_obb</code>（需訓練或 DOTA 類影像）、<code>yolo_classify</code>／<code>dl_instance</code>／<code>dl_detect</code>（與已進樣板的同類工具接線相同）；<code>dl_classify</code>／<code>dl_detect</code>／<code>dl_segment</code>／<code>dl_instance</code> 需要先在「深度學習教導」訓練出模型資產；
-<code>write_modbus</code> 需要實際的 Modbus 連線；<code>save_image</code> 會在每次執行寫檔，不適合放在循環執行的範例裡。
-接法見各工具說明與<a href="dl.html">深度學習教導</a>、<a href="modbus.html">Modbus 輸出</a>。</p>
+<h2 id="not-included">Tools that no template uses</h2>
+<p>Deep learning: <code>yolo_pose</code> (needs images of people), <code>yolo_obb</code> (needs training or DOTA-style images), and <code>yolo_classify</code>, <code>dl_instance</code> and <code>dl_detect</code> (wired up exactly like their counterparts that are covered). <code>dl_classify</code>, <code>dl_detect</code>, <code>dl_segment</code> and <code>dl_instance</code> all need a model asset trained on the deep-learning teaching page first.
+<code>write_modbus</code> and <code>read_modbus</code> need a real Modbus connection, <code>python_script</code> holds code you write yourself, and <code>save_image</code> writes a file on every run, which does not belong in a looping example.
+See each tool's own description, plus <a href="dl.html">Deep-learning teaching</a> and <a href="modbus.html">Modbus</a>.</p>
 
-<h2 id="test">品質保證</h2>
-<p>DL 範本：<code>tests/test_demo.py</code> 對兩個教導模型範本實跑（seed 會訓練模型，CPU 數秒）；兩個 YOLO 範本需要 DL 依賴，只驗 graph，實跑在 <code>VISION_TEST_DL=1 manage.py test tests.test_dl_live</code>（五張樣本依序 OK、OK、OK、NG、NG）。</p>
-<p><code>tests/test_demo.py</code> 會在每次測試把整組範例 seed 進暫存環境，
-並把每個內建範本掛上對應的樣本來源實跑一輪，鎖住「每個樣板都能執行、沒有錯誤節點」這條線；
-樣板或工具改壞會直接紅。另外兩個簡化範本「零件孔數檢測（合成來源版）」與「條碼／QR 讀取」也在畫廊裡。</p>
+<h2 id="test">How this stays true</h2>
+<p>Deep-learning templates: <code>tests/test_demo.py</code> actually runs both taught-model templates (seeding trains them in a few seconds on CPU). The two YOLO templates need the deep-learning dependencies, so only their graphs are checked there; they are really run by <code>VISION_TEST_DL=1 manage.py test tests.test_dl_live</code>, where five samples come out OK, OK, OK, NG, NG.</p>
+<p><code>tests/test_demo.py</code> seeds the whole example set into a temporary environment on every test run and executes each built-in template against its matching sample source, which pins down the line "every template runs, with no node in error". Break a template or a tool and it goes red immediately.</p>
 
 </article></div><!-- /doc-layout -->
 <script>

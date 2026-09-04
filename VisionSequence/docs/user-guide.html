@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 使用者手冊</title>
+<title>VisionSequence user guide</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,131 +134,135 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html" aria-current="page">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#login">1. 登入與帳號</a></li><li><a href="#sources">2. 影像來源庫與資產庫</a><ul><li><a href="#sources-capture">2-3. 相機在別台電腦：擷取端相機</a></li></ul></li><li><a href="#flow">3. 建立與編輯流程</a></li><li><a href="#tool">4. 工具頁與 ROI</a></li><li><a href="#run">5. 試執行、執行與連續執行</a></li><li><a href="#batch">6. 批次測試與 Golden Set</a></li><li><a href="#templates">7. 範本畫廊</a></li><li><a href="#agent">8. AI 助手</a></li><li><a href="#dl">9. 深度學習教導</a></li><li><a href="#integration">10. 外部整合與引擎鎖定</a></li><li><a href="#settings">11. 設定與個人偏好</a></li><li><a href="#faq">12. 常見問題</a><ul><li><a href="#faq-capture">相機在另一台電腦，或需要 Basler／IDS 的 SDK，怎麼接？</a></li><li><a href="#faq-capture-timeout">擷取端相機執行時逾時？</a></li></ul></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html" aria-current="page">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#login">1. Signing in and accounts</a></li><li><a href="#sources">2. Image sources and assets</a><ul><li><a href="#sources-capture">2-3. When the camera is on another PC: the capture client</a></li></ul></li><li><a href="#flow">3. Building and editing a flow</a></li><li><a href="#tool">4. The tool page and ROIs</a></li><li><a href="#run">5. Preview, run and continuous</a></li><li><a href="#batch">6. Batch testing and the Golden Set</a></li><li><a href="#templates">7. The template gallery</a></li><li><a href="#agent">8. The AI assistant</a></li><li><a href="#dl">9. Deep-learning teaching</a></li><li><a href="#integration">10. Integration and the engine lock</a></li><li><a href="#settings">11. Settings and personal preferences</a></li><li><a href="#faq">12. Common questions</a><ul><li><a href="#faq-capture">The camera is on another PC, or needs a Basler or IDS SDK</a></li><li><a href="#faq-capture-timeout">A capture client camera times out during a run</a></li></ul></li></ul></aside><article class="doc">
 
-<h1>使用者手冊</h1>
-<p>本手冊依操作順序說明 VisionSequence 的各項功能：從登入、建立流程、調整工具參數，到批次測試、範本、AI 助手、深度學習教導與外部整合。介面內的「說明」頁提供同樣內容的精簡版與工具目錄。</p>
+<h1>User guide</h1>
+<p>This guide walks through VisionSequence in the order you would actually use it: signing in, building a flow, tuning a tool, then batch testing, templates, the AI assistant, deep-learning teaching and integration. The Help page inside the product carries a condensed version of the same material plus the tool catalogue.</p>
 
-<h2 id="login">1. 登入與帳號</h2>
+<h2 id="login">1. Signing in and accounts</h2>
 <ul>
-<li>系統尚無任何使用者時，登入頁會顯示「建立第一個管理員」；建立後即以該帳號登入。</li>
-<li>管理員可於「使用者」頁新增帳號、指定角色、停用或重設密碼。<strong>三種角色</strong>：
+<li>With no users yet, the sign-in page offers "Create the first administrator", and you are signed in as that account.</li>
+<li>An administrator adds accounts, assigns roles, disables them and resets passwords on the Users page. There are <strong>three roles</strong>:
 <table>
-<tr><th>角色</th><th>做得到</th><th>做不到</th></tr>
-<tr><td>管理員 admin</td><td>全部，含帳號、通訊連線與系統設定</td><td>—</td></tr>
-<tr><td>工程師 engineer</td><td>建立與修改流程、影像來源、資產、深度學習教導、批次測試、Golden 回歸、調整任何參數</td><td>帳號、通訊連線、系統設定</td></tr>
-<tr><td>操作員 operator</td><td>執行檢測、啟停連續模式、換線（切換預設配方）、在參數卡頁調整<strong>現場參數</strong>、看統計</td><td>改流程結構、訓練模型、批次測試、影像來源與連線設定</td></tr>
+<tr><th>Role</th><th>Can</th><th>Cannot</th></tr>
+<tr><td>Administrator</td><td>Everything, including accounts, connections and system settings</td><td>—</td></tr>
+<tr><td>Engineer</td><td>Create and edit flows, image sources and assets; deep-learning teaching, batch testing, Golden Set regression; change any parameter</td><td>Accounts, connections, system settings</td></tr>
+<tr><td>Operator</td><td>Run inspections, start and stop continuous mode, change over (switch the bound recipe), adjust <strong>on-site parameters</strong> on the teach page, view statistics</td><td>Change a flow's structure, train models, batch test, edit sources or connections</td></tr>
 </table>
-<strong>流程屬於產線而不是個人</strong>：任何工程師都看得到、改得動所有流程（流程列上的「擁有者」只記錄建立者），工程師離職不會讓流程變成沒人能維護的孤兒。</li>
-<li><strong>產線畫面</strong>（<code>/station</code>）：給現場作業員的全螢幕畫面——大字 OK／NG、今日產量與良率、最近幾件的縮圖、開始／停止、料號（配方）下拉。<strong>操作員登入後直接落在這裡</strong>，工程師可從側欄「產線畫面」進入。一台機器會記住自己負責的流程（換線只要換上方的料號下拉），右上角可切全螢幕當看板用。</li>
-<li><strong>影像封存</strong>：平台<strong>預設不保留</strong>執行時的影像（記憶體只留最近幾次，重開就沒了）。要能在客訴時拿出「當時看到什麼」，到流程的統計頁把「保留不良影像」打開——之後每次不良與失敗都會把來源影像與結果影像存到磁碟，統計頁的執行紀錄點一列就看得到，超過保留期或總容量上限會自動清掉（<code>VISION_ARCHIVE_DAYS</code>／<code>VISION_ARCHIVE_MAX_GB</code>；整廠的出貨預設用 <code>VISION_ARCHIVE_DEFAULT</code>）。</li>
-<li><strong>現場參數</strong>是工具作者標記為「現場教導」的參數（例如二值化的門檻、blob 的最小面積）；操作員在參數卡頁改這些會直接存回流程，改到其他參數或流程結構則會被伺服器擋下。哪些參數是現場參數，看工具頁參數表的「現場教導」欄。</li>
-<li>右上角使用者選單可修改密碼與登出。整合方以 API 金鑰存取，不需登入。</li>
+<strong>A flow belongs to the line, not to a person</strong>: every engineer can see and edit every flow (the Owner column only records who created it), so an engineer leaving never orphans a flow.</li>
+<li><strong>The station screen</strong> (<code>/station</code>) is the full-screen view for the line: a large OK/NG, today's count and yield, thumbnails of the last few parts, start and stop, and a part-number (recipe) dropdown. <strong>An operator lands here on sign-in</strong>, and an engineer can reach it from the sidebar. Each machine remembers the flow it is responsible for — a changeover is just the dropdown at the top — and the top-right corner switches to full screen for use as a display.</li>
+<li><strong>Image archive</strong>: the platform <strong>keeps no run images by default</strong> (memory holds the last few and a restart clears them). To be able to show what the camera saw when a customer complains, turn on "Keep reject images" on the flow's statistics page. From then on every reject and failure writes its source and result image to disk, reachable by clicking a row in the run history, and old ones are purged automatically once they exceed the retention period or the total size limit (<code>VISION_ARCHIVE_DAYS</code>, <code>VISION_ARCHIVE_MAX_GB</code>; ship a whole plant with it on using <code>VISION_ARCHIVE_DEFAULT</code>).</li>
+<li><strong>On-site parameters</strong> are the ones a tool's author marked as teaching parameters — a threshold, a blob's minimum area. An operator changing those on the teach page writes straight back to the flow; changing anything else, or the structure, is refused by the server. Which parameters those are is shown in the "On-site" column of the tool page's parameter table.</li>
+<li>The user menu in the top-right corner changes the password and signs out. An integrator uses an API key and never signs in.</li>
 </ul>
 
-<h2 id="sources">2. 影像來源庫與資產庫</h2>
+<h2 id="sources">2. Image sources and assets</h2>
 <ul>
-<li><strong>影像來源</strong>：相機（USB／GigE 外掛）、資料夾（循環讀取）、單一檔案、上傳、合成影像。folder／file 類型可按「瀏覽」開啟伺服器檔案瀏覽器選路徑；USB 類型可「掃描相機」列出可用裝置。表單下方的「測試擷取」會依目前設定擷取一張並顯示尺寸、耗時與縮圖，儲存前即可確認路徑或裝置正確。</li>
-<li><strong>資產</strong>：範本影像（定位、良品比對）、模型檔（ONNX）、資料集 zip。工具頁可「從目前影像框選建立範本」直接存成資產。</li>
-<li>兩者皆可建立<strong>群組</strong>分類（清單上方晶片篩選、「管理群組」改名或刪除）。範例來源與資產位於「範例」群組。</li>
+<li><strong>Image sources</strong>: a camera (USB, or GigE through a plugin), a folder (read in a loop), a single file, pushed uploads, or a synthetic generator. Folder and file types have a Browse button that opens a server-side file browser; a USB source can "Scan for cameras" to list what is available. "Test capture" below the form grabs one image with the current settings and shows its size, the time taken and a thumbnail, so you can confirm the path or the device before saving.</li>
+<li><strong>Assets</strong>: template images (for locating and golden comparison), model files (ONNX) and dataset archives. A tool page can create a template from a box drawn on the current image and save it as an asset directly.</li>
+<li>Both support <strong>groups</strong> (filter chips above the list; "Manage groups" to rename or delete). The example sources and assets are in the "Examples" group.</li>
 </ul>
 
-<h3 id="sources-capture">2-3. 相機在別台電腦：擷取端相機</h3>
-<p>相機接在產線另一台電腦，或需要 Basler／IDS 的廠牌 SDK 時，不用把相機接到伺服器：在影像來源庫頁首「下載擷取端」，到相機所在的電腦解壓執行 <code>VisionSequenceCapture.exe</code>，「連線」填伺服端位址（埠 9100）與擷取端名稱，「通道」新增相機、開啟並開始取像（可在預覽上圈選 ROI 只傳 ROI、調相機參數並儲存）。回到網頁新增來源選類型「擷取端相機」，下拉選擷取端與通道，取像模式選「依需求取像」（每次執行要一張新影格）或「連續串流」，儲存前「測試擷取」確認。清單狀態欄會顯示擷取端在線／離線、fps 與最近影格；「外部整合」→「擷取端」分頁可看所有已連線的擷取端、開串流與預覽。細節見 <a href="capture-client.html">擷取端</a>。</p>
-<h2 id="flow">3. 建立與編輯流程</h2>
-<p><strong>還沒選影像來源？</strong>編輯器上方會出現黃色橫幅，直接在橫幅的下拉選一個來源（或上傳一張暫存影像）就能試執行；總覽頁每張流程卡也有「執行一次」鈕，不用進編輯器。點選取像步驟時，右側檢視器會顯示目前來源的下拉與預覽縮圖，可直接切換來源。</p>
-<p><strong>自己寫 Python？</strong>工具箱「邏輯」類有「Python 腳本」：在工具頁的程式碼編輯器寫 <code>def run(ctx)</code>（可用 np、cv2、math），讀 <code>ctx.image</code>／上游值 <code>ctx.inputs</code>／現場參數 <code>ctx.params['p1'..'p3']</code>／區域 <code>ctx.roi()</code>，回傳數值、布林、文字、資料、新影像與標記並決定通過／不良分支；輸出埠固定（value、result、text、data、image）。腳本與引擎同行程受限執行（白名單匯入、逾時中止、輸入影像唯讀），<strong>只有管理員能編輯與儲存核准</strong>；一般使用者可檢視並執行已核准的腳本，也可在參數卡調整現場參數而不必改程式碼。</p>
+<h3 id="sources-capture">2-3. When the camera is on another PC: the capture client</h3>
+<p>If the camera is attached to another PC on the line, or needs a Basler or IDS SDK, you do not have to move it to the server. Use "Download capture client" at the top of the Image sources page, unzip and run <code>VisionSequenceCapture.exe</code> on the camera's PC, fill in the server address (port 9100) and a client name under Connection, then add the camera as a channel, open it and start acquiring (you can draw an ROI on the preview to send only that region, and adjust and save camera parameters). Back in the web interface, add a source of kind "capture client camera", pick the client and the channel, choose "on demand" (a fresh frame for every run) or "continuous stream", and press Test capture before saving. The status column shows whether the client is online, its fps and the age of the last frame; Integration ▸ Capture lists every connected client and lets you turn streaming on and preview. Details in <a href="capture-client.html">Capture client</a>.</p>
+
+<h2 id="flow">3. Building and editing a flow</h2>
+<p><strong>No image source chosen yet?</strong> A yellow banner appears at the top of the editor; pick a source from the dropdown in the banner (or upload a scratch image) and you can preview straight away. Every flow card on the dashboard also has a "Run once" button, so you need not open the editor at all. Selecting the acquire step shows the current source in a dropdown with a preview thumbnail in the panel on the right, where you can switch source directly.</p>
+<p><strong>Want to write a little Python?</strong> The Logic category has a "Python script" tool: write <code>def run(ctx)</code> in the code editor on the tool page (np, cv2 and math are available), read <code>ctx.image</code>, the upstream values in <code>ctx.inputs</code>, the on-site parameters <code>ctx.params['p1'..'p3']</code> and the region from <code>ctx.roi()</code>, and return a number, a bool, text, data, a new image and overlays, choosing the pass or fail branch. The output ports are fixed (value, result, text, data, image). The script runs in the engine process under restrictions — allow-listed imports, a timeout, a read-only input image — and <strong>only an administrator can edit and save it, which is what approves it</strong>. Everyone else can view and run an approved script, and adjust its on-site parameters on the teach page without touching the code.</p>
 <ol>
-<li>「流程」頁「新增流程」，或「從範本建立」。</li>
-<li>編輯器左欄「新增工具」開啟工具選擇視窗（依類別分群、可搜尋、可收藏），點選即加入畫布中央；「新增註解」放置便利貼。</li>
-<li>連線：由上一步的輸出埠拖曳至下一步的輸入埠；同色（同型別）的埠才能相接。判斷類工具的分支埠接到目標步驟的 <code>_flow</code> 埠即為條件執行。</li>
-<li>右側面板：選取步驟後可改標題、啟用狀態、顏色與參數；「開啟工具頁」進入專屬調參頁。</li>
-<li>Ctrl+S 儲存。未儲存的變更會保留為草稿，離開再回來仍在；「執行一次」與「連續執行」使用已儲存的版本。</li>
+<li>"New flow" on the Flows page, or "Create from template".</li>
+<li>"Add tool" in the editor's left column opens the tool picker (grouped by category, searchable, with favourites); a click drops it in the centre of the canvas. "Add note" places a sticky note.</li>
+<li>Connecting: drag from a step's output port to the next step's input port. Only ports of the same colour (the same type) connect. Wiring a judging tool's branch port to a step's <code>_flow</code> port makes that step conditional.</li>
+<li>The panel on the right: with a step selected you can change its title, whether it is enabled, its colour and its parameters. "Open tool page" goes to the dedicated tuning page.</li>
+<li>Ctrl+S saves. Unsaved changes are kept as a draft and survive leaving and coming back; "Run once" and "Continuous" use the saved version.</li>
 </ol>
 
-<h2 id="tool">4. 工具頁與 ROI</h2>
+<h2 id="tool">4. The tool page and ROIs</h2>
 <ul>
-<li>版面：左為參數、中為「執行前／執行後」影像、下為參考資訊（直方圖、統計、輸出值）、右為操作按鍵。</li>
-<li>參數變更後預設<strong>不會</strong>自動執行；按「試執行至此步驟」查看結果。開啟「自動套用」則變更後 250 ms 自動執行。</li>
-<li>參數修改為暫存狀態：按「儲存」寫回流程；未儲存直接返回編輯器會詢問是否放棄。</li>
-<li>ROI：有「區域」參數的工具進頁即顯示 ROI；在影像上拖曳繪製矩形／旋轉矩形／圓／橢圓／環（可設起迄角）／多邊形／折線／線段／點，座標為該步驟輸入影像的像素座標。</li>
-<li>「上傳暫存影像」只為試執行放一張影像（不進來源庫）；「用上次影像重跑」固定同一張影像調參。</li>
+<li>The layout: parameters on the left, the before and after images in the middle, reference information below (histogram, statistics, output values), and the buttons on the right.</li>
+<li>Changing a parameter <strong>does not</strong> run anything by default; press "Run to this step" to see the result. With "Auto apply" on, it runs 250 ms after each change.</li>
+<li>Parameter changes are held as a draft: "Save" writes them back to the flow, and leaving with unsaved changes asks whether to discard them.</li>
+<li>ROIs: a tool with a region parameter shows its ROI as soon as you open the page. Draw on the image — rectangle, rotated rectangle, circle, ellipse, annulus (optionally a sector), polygon, polyline, line or point. Coordinates are pixels in that step's input image.</li>
+<li>"Upload scratch image" provides one image for previews only (it does not join the source library); "Re-run with last image" pins the same image while you tune.</li>
 </ul>
 
-<h2 id="run">5. 試執行、執行與連續執行</h2>
+<h2 id="run">5. Preview, run and continuous</h2>
 <table>
-<tr><th>動作</th><th>使用的版本</th><th>說明</th></tr>
-<tr><td>試執行</td><td>目前畫布（含未儲存）</td><td>保留所有中間影像；不寫入執行紀錄。</td></tr>
-<tr><td>執行一次</td><td>已儲存</td><td>與外部觸發相同的正式執行；寫入執行紀錄與統計。</td></tr>
-<tr><td>連續執行</td><td>已儲存</td><td>依設定間隔反覆執行；總覽頁可觀看即時影像與結果。</td></tr>
+<tr><th>Action</th><th>Which version</th><th>What it does</th></tr>
+<tr><td>Preview</td><td>The current canvas, unsaved changes included</td><td>Keeps every intermediate image; nothing is written to the run history.</td></tr>
+<tr><td>Run once</td><td>The saved version</td><td>A real run, the same as an external trigger; written to the run history and the statistics.</td></tr>
+<tr><td>Continuous</td><td>The saved version</td><td>Runs repeatedly at the configured interval; the dashboard shows the live image and result.</td></tr>
 </table>
-<p>總覽頁左側選擇流程，中央顯示最近一次執行的影像與標記、右側顯示判定與輸出值；無事件時顯示最後一次執行結果。</p>
+<p>On the dashboard, choose a flow on the left, the middle shows the latest run's image with its overlays, and the right shows the verdict and the output values. With no events it shows the last run.</p>
 
-<h2 id="batch">6. 批次測試與 Golden Set</h2>
+<h2 id="batch">6. Batch testing and the Golden Set</h2>
 <ol>
-<li>側欄「批次測試」（或編輯器頂列「批次測試」）：「新增影像集」上傳影像或從影像來源擷取 N 張（一個影像集最多 200 張）。影像集清單跨流程，同一組影像可用任一流程測試。</li>
-<li>右上「測試流程」＝要用哪個流程測這組影像；選影像集時會自動帶成它建立時的流程，想比較另一個流程就換選單再執行。編輯器有未儲存草稿時可勾「使用編輯器未儲存的草稿」。</li>
-<li>按「以「<em>流程名稱</em>」執行」：背景批量執行、顯示進度、可中斷；每次執行的逐張結果都暫存，執行紀錄可回看（用別的流程測的執行會標出流程名稱）。</li>
-<li>「影像集」分頁為每張影像標記期望 OK／NG，「結果」分頁即顯示命中率與逐張命中；「洞察」分頁列出未命中影像、出錯節點、判定門檻建議、輸出分佈與歷次趨勢，「套用並重新執行」直接產生新的一次執行。</li>
-<li>「調參」分頁修改現場調機參數後「重新執行」，「比較」分頁逐張對照兩次執行；滿意後「寫回流程」「存為配方」或「帶回編輯器」。</li>
-<li>右下角的全域 AI 助手（選定已完成的執行後）：提問（例如「為什麼第 3 張 NG？」）或下達調整指令；調參面板的「自動調參」；結果都成為新的一次執行。</li>
-<li>勾選影像「存入 Golden Set」作為回歸基準；「Golden Set」頁可執行回歸與自動調參，退步案例置頂。詳見<a href="batch.html">批次測試</a>與<a href="golden.html">Golden Set 與匯出</a>。</li>
+<li>"Batch test" in the sidebar (or in the editor toolbar): "New image set" uploads images or grabs N from an image source (200 per set at most). The list of sets spans flows, so one set of images can test any flow.</li>
+<li>"Test flow" in the top right is the flow to test with. Selecting a set fills in the flow it was created under; to compare a different flow, change the dropdown and run again. With unsaved changes in the editor you can tick "use the editor's unsaved draft".</li>
+<li>Press "Run with <em>flow name</em>": it runs in the background with a progress bar and can be interrupted. Every run's per-image results are kept and can be revisited from the run list (a run against a different flow shows that flow's name).</li>
+<li>On the Images tab, label each image with its expected OK or NG; the Results tab shows the hit rate and which images matched. The Insights tab lists the missed images, failing nodes, threshold suggestions, output distributions and the trend across runs, and "Apply and re-run" produces a new run.</li>
+<li>The Tuning tab edits the on-site parameters and re-runs; the Compare tab puts two runs side by side, image by image. When you are happy: "Write back to flow", "Save as recipe" or "Send to editor".</li>
+<li>The global AI assistant in the bottom-right corner (once a finished run is selected) answers questions ("why was image 3 NG?") or takes tuning instructions; the Tuning panel has "Auto-tune". All of them land as new runs.</li>
+<li>Tick images and "Save to Golden Set" to make them a regression baseline. The Golden Set page runs regressions and auto-tuning, with regressed cases at the top. See <a href="batch.html">Batch testing</a> and <a href="golden.html">Golden Set and export</a>.</li>
 </ol>
 
-<h2 id="templates">7. 範本畫廊</h2>
-<p>18 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測等）皆附合成樣本圖；建立時選擇對應的「範例：⋯」來源即可直接執行。自己的流程可「存為範本」供他人重用。詳見<a href="samples.html">範例樣板</a>。</p>
+<h2 id="templates">7. The template gallery</h2>
+<p>Eighteen built-in templates (counting, exposure, circle gauging, edge angle, golden comparison, fabric defects, a pre-processing tutorial, circles and lines, colour presence, colour verification, barcode labels, locate and gauge, cup gauging and more), each with synthetic sample images. Pick the matching "Example: …" source when you create one and it runs immediately. Your own flow can be saved as a template for others to reuse. See <a href="samples.html">Example templates</a>.</p>
 
-<h2 id="agent">8. AI 助手</h2>
-<p><strong>全域 AI 助手</strong>：每個頁面右下角都有 AI 助手按鈕，開啟後是常駐的聊天視窗，切換頁面不會消失。直接輸入問題（例如「如何從資料夾建立影像來源？」）會依平台文件回答並附「參考文件」連結；在流程編輯器輸入修改語氣的句子（例如「把 blob 的最小面積改成 40」「停用去雜訊」）會直接修改目前畫布，按「套用到畫布」寫回（可復原）；在批次測試頁選定一次已完成的執行後，可提問資料（「為什麼第 3 張 NG？」）或下達調整指令，結果成為新的一次執行。視窗上方的模式晶片可強制指定「使用說明／修改流程／資料諮詢／依資料調整」。以下是 AI 助手頁（側欄「AI 助手」）從影像生成整條流程的步驟：</p>
+<h2 id="agent">8. The AI assistant</h2>
+<p><strong>The global assistant</strong>: every page has an assistant button in the bottom-right corner, opening a chat panel that stays with you between pages. Type a question ("how do I create an image source from a folder?") and it answers from the platform documentation with links to the sections it used. In the flow editor, type an instruction ("set the blob minimum area to 40", "disable the noise removal") and it edits the current canvas; "Apply to canvas" writes it back, and it can be undone. On the batch page, with a finished run selected, ask about the data ("why was image 3 NG?") or give a tuning instruction, and the result becomes a new run. The mode chips at the top of the panel force a particular mode: help, edit flow, consult data, or tune from data.</p>
+<p>The assistant page in the sidebar generates a whole flow from an image:</p>
 <ol>
-<li>上傳一張或多張影像；在影像上圈選檢測位置，每個 ROI 自動編號（ROI01、ROI02…）並可補充提示。</li>
-<li>以一句話描述需求，例如「應該有 5 個孔」「量直徑 17.5±0.4mm」「ROI01 是好品，ROI02 是壞品，找出差異」。</li>
-<li>（選填）點選縮圖右下角的標記，指定該影像應判 OK 或 NG；ROI 提示寫「好品」「壞品」的影像也會自動成為標記。ROI 提示填「定位」可指定位置固定的定位標記，工件位置會變時流程會自動加上定位補正。</li>
-<li>按「生成檢測流程」：助手先確認資訊是否足夠（必要時提問），再生成流程並在每張影像實跑，影像上疊顯檢測標記、縮圖標示 OK／NG。規則引擎會產生數個候選方案並依標記擇優，結果卡可點選切換；有兩張以上標記時會自動調參。</li>
-<li>以回饋語句微調（「誤判過多」「期望數量改為 4」「公差 ±0.2」），滿意後「存成流程」進入編輯器；結果卡的讚／倒讚會影響之後相似影像是否沿用此參數。</li>
+<li>Upload one or more images and draw the areas to inspect. Each ROI is numbered automatically (ROI01, ROI02…) and can carry a hint.</li>
+<li>Describe what you want in a sentence: "there should be 5 holes", "measure the diameter, 17.5 ± 0.4 mm", "ROI01 is good and ROI02 is bad, find the difference".</li>
+<li>Optionally mark each thumbnail with the verdict it should get. An image whose ROI hint says "good" or "bad" is labelled automatically. An ROI hinted as "locator" marks a fixed feature, and the flow then gets locate correction added in front when the part can move.</li>
+<li>Press "Generate": the assistant first checks it has enough information, asking questions if not, then generates the flow and actually runs it on every image, drawing the overlays and marking each thumbnail OK or NG. The rule engine produces several candidates and picks the best against your labels — the result card lets you switch between them — and with two or more labelled images it auto-tunes.</li>
+<li>Refine it in words ("too many false rejects", "expect 4 instead", "tolerance ±0.2"), then "Save as flow" to open it in the editor. The thumbs up or down on the result card influences whether these parameters are reused on similar images later.</li>
 </ol>
-<p>「歷史」可檢視過去的工作階段，「還原」會把影像、ROI、需求與標記帶回並在原影像重跑；「AI 技能」除了瀏覽，也可在每個技能下方寫個人（或站點）補充要領，AI 會一併讀取。供應商設定的「工作模式」選「代理模式」後，助手會以動作逐步起草、試執行、修改並驗證流程，畫面顯示步驟時間軸，可隨時中斷或回答助手的提問。</p>
-<p>右上「AI 供應商」可選擇離線規則引擎或 Claude／GPT／Gemini 並填入個人 API 金鑰（僅存於伺服器、綁定帳號）；儲存後自動測試連線並顯示結果，「列出可用模型」可查詢金鑰可用的模型名。「AI 技能」可瀏覽助手所遵循的平台規則與工具要領。詳見 <a href="agent.html">AI 助手</a>。</p>
+<p>History shows past sessions, and "Restore" brings back the images, ROIs, request and labels and re-runs them. The Skills page lets you read what the assistant follows, and add your own (or the site's) notes under each skill, which the assistant reads too. Setting the working mode to "agentic" in the provider settings makes the assistant draft, try, edit and verify step by step, showing a step timeline you can interrupt or answer questions in.</p>
+<p>"AI provider" in the top right chooses the offline rule engine or Claude, GPT or Gemini with your own API key (stored on the server only, tied to your account). Saving tests the connection and reports the result, and "List models" queries which models the key can use. See <a href="agent.html">AI assistant</a>.</p>
 
-<h2 id="dl">9. 深度學習教導</h2>
+<h2 id="dl">9. Deep-learning teaching</h2>
 <ol>
-<li>建立教導專案並選擇模型種類（分類、語意分割、實例分割）。</li>
-<li>收集樣本：上傳、zip 批次、從來源連續擷取或匯入資料集；重複影像自動略過。</li>
-<li>標記：分類以點選縮圖指定類別；分割以多邊形／矩形標記，可用「智慧選取」點選物件自動描邊；可先「自動標記」再確認。</li>
-<li>分割 train／val／test、凍結資料集版本，按「開始訓練」；完成後模型匯出至資產庫，於流程中以 DL 工具使用。</li>
+<li>Create a teaching project and choose the model kind (classification, semantic segmentation, instance segmentation, detection, pose, oriented boxes).</li>
+<li>Collect samples: upload, a zip, a burst from a source, or import a dataset. Duplicate images are skipped automatically.</li>
+<li>Label: for classification, click a thumbnail and choose the class; for segmentation, draw polygons or boxes, with "Smart select" clicking an object to trace it automatically. You can auto-label first and confirm afterwards.</li>
+<li>Split into train, val and test, freeze a dataset version, and press "Start training". The finished model is exported to the asset library and used in a flow through a DL tool.</li>
 </ol>
-<p>詳見 <a href="dl.html">深度學習教導</a>。</p>
+<p>See <a href="dl.html">Deep-learning teaching</a>.</p>
 
-<h2 id="integration">10. 外部整合與引擎鎖定</h2>
+<h2 id="integration">10. Integration and the engine lock</h2>
 <ul>
-<li>「外部整合」頁提供 HTTP／TCP 測試工具、即時事件監看、Modbus 連線與主動輸出設定、回傳格式說明。</li>
-<li>HTTP：<code>POST /api/vision/flows/{id}/run</code>（可附影像、指定配方）；TCP：<code>RUN &lt;id&gt;</code> 一行指令；事件：SSE 串流。</li>
-<li>整合方可以 API 金鑰鎖定引擎：鎖定期間使用者僅能編輯流程，所有連續執行停止。</li>
+<li>The Integration pages provide HTTP and TCP test tools, live event monitoring, Modbus connections and outgoing output settings, and the result format reference.</li>
+<li>HTTP: <code>POST /api/vision/flows/{id}/run</code> (optionally with an image and a recipe). TCP: <code>RUN &lt;id&gt;</code> on one line. Events: an SSE stream.</li>
+<li>An integrator can lock the engine with its API key: while locked, users can only edit flows, and every continuous run stops.</li>
 </ul>
-<p>詳見 <a href="automation.html">自動化整合</a>與 <a href="modbus.html">Modbus 輸出</a>。</p>
+<p>See <a href="automation.html">Automation</a> and <a href="modbus.html">Modbus</a>.</p>
+<p>The <strong>Capture</strong> page offers the capture client download (version, size, SHA-256), whether the server's capture port is listening, and the setup steps; below that, every connected client and channel (size, mode, fps, last frame, which source uses it) with streaming and preview controls. See <a href="capture-client.html">Capture client</a>.</p>
+<p>The <strong>Stations</strong> page registers the other stations that appear on the fleet board, which polls each of them read-only for today's numbers.</p>
 
-<p><strong>擷取端</strong>分頁：下載擷取端程式（版本、大小、SHA-256）、伺服端擷取埠是否監聽、設定步驟；已連線的擷取端與通道（尺寸、模式、fps、最近影格、使用中的來源），可直接開關串流與預覽。見 <a href="capture-client.html">擷取端</a>。</p>
-<h2 id="settings">11. 設定與個人偏好</h2>
+<h2 id="settings">11. Settings and personal preferences</h2>
 <ul>
-<li>介面語言（繁體中文／簡體中文／English）與主題風格（淺色／深色／Cyberpunk／跟隨系統）儲存於個人帳號，跨裝置一致。</li>
-<li>管理員可於設定頁管理 API 金鑰與引擎鎖定。</li>
+<li>The interface language (English, 繁體中文, 简体中文) and the theme (light, dark, Cyberpunk or follow the system) are stored with your account and follow you between devices.</li>
+<li>An administrator manages the API key and the engine lock on the settings page.</li>
 </ul>
 
-<h2 id="faq">12. 常見問題</h2>
+<h2 id="faq">12. Common questions</h2>
 <table>
-<tr><th>狀況</th><th>處理方式</th></tr>
-<tr><td>試執行顯示「影像已不在快取中」</td><td>重新上傳暫存影像或執行一次流程取得新影像。</td></tr>
-<tr><td>找圓／找線回報找不到</td><td>確認 ROI 蓋住邊緣（找圓用環形 ROI、卡尺 ROI 橫跨兩條邊），降低邊緣門檻或調整極性。</td></tr>
-<tr><td>AI 供應商測試連線失敗</td><td>依視窗顯示的原因處理：金鑰無效、模型已下架（依提示改名）、供應商過載（稍後再試或換模型）、逾時（檢查網路）。</td></tr>
-<tr><td>執行回報「引擎已鎖定」</td><td>整合方鎖定中；等待解鎖或由管理員解除。</td></tr>
-<tr><td>連續執行卡在「佇列已滿」</td><td>降低執行間隔或檢查流程耗時；可於效能報告了解各工具成本。</td></tr>
+<tr><th>Situation</th><th>What to do</th></tr>
+<tr><td>A preview says the image is no longer in the cache</td><td>Upload the scratch image again, or run the flow once to get a new image.</td></tr>
+<tr><td>find_circle or find_line reports nothing found</td><td>Check the ROI covers the edge (an annulus for a circle, a caliper ROI straddling both edges), lower the edge threshold, or change the polarity.</td></tr>
+<tr><td>Testing an AI provider fails</td><td>Follow the reason shown: an invalid key, a model that has been retired (rename it as suggested), the provider overloaded (retry later or switch model), or a timeout (check the network).</td></tr>
+<tr><td>A run reports the engine is locked</td><td>An integrator holds the lock; wait for it to be released, or ask an administrator to clear it.</td></tr>
+<tr><td>Continuous mode keeps reporting a full queue</td><td>Increase the interval, or check how long the flow takes; the performance report gives the cost of each tool.</td></tr>
 </table>
 
-<h3 id="faq-capture">相機在另一台電腦，或需要 Basler／IDS 的 SDK，怎麼接？</h3>
-<p>用擷取端：影像來源庫「下載擷取端」→ 在相機電腦執行並連到伺服端 → 網頁新增「擷取端相機」來源選擷取端與通道。同一台電腦會自動走共享記憶體，跨電腦走 TCP 無損傳送；清單顯示「擷取端離線」代表擷取端程式沒連上。詳見 <a href="capture-client.html">擷取端</a>。</p>
-<h3 id="faq-capture-timeout">擷取端相機執行時逾時？</h3>
-<p>先在擷取端確認通道狀態是「取像中」且預覽有畫面；觸發模式的相機要有觸發訊號；曝光時間長或跨網路時把來源的「逾時（毫秒）」放大；「要求新影格」取消可直接用擷取端手上的最新影格。</p>
+<h3 id="faq-capture">The camera is on another PC, or needs a Basler or IDS SDK</h3>
+<p>Use the capture client: "Download capture client" on the Image sources page, run it on the camera's PC and connect it to the server, then add a "capture client camera" source and pick the client and channel. On the same machine it uses shared memory automatically; across machines it is lossless over TCP. "Capture client offline" in the list means the program is not connected. See <a href="capture-client.html">Capture client</a>.</p>
+<h3 id="faq-capture-timeout">A capture client camera times out during a run</h3>
+<p>First check on the client that the channel says it is acquiring and the preview is live. A camera in trigger mode needs a trigger signal. With a long exposure, or across a network, increase the source's timeout in milliseconds. Turning off "require a fresh frame" lets it use whatever frame the client already has.</p>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

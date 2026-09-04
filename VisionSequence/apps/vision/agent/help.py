@@ -20,20 +20,78 @@ log = logging.getLogger("vision.agent")
 
 DOCS_DIR = Path(__file__).resolve().parents[3] / "docs"
 PAGE_TITLES = {
-    "index.html": "總覽", "workflow-design.html": "工作流程設計手冊", "architecture.html": "設計手冊", "automation.html": "自動化整合", "modbus.html": "Modbus 輸出",
-    "dl.html": "深度學習教導", "plugins.html": "擴充外掛", "contract.html": "前後端合約", "glossary.html": "名詞規範", "golden.html": "Golden Set 與匯出",
-    "batch.html": "批次測試", "performance.html": "效能報告", "vision-capabilities.html": "檢測功能設計", "samples.html": "範例樣板", "agent.html": "AI 助手", "user-guide.html": "使用者手冊", "capture-client.html": "擷取端", "deployment.html": "部署與維運",
+    "index.html": "Overview", "workflow-design.html": "Workflow design", "architecture.html": "Architecture", "automation.html": "Automation", "modbus.html": "Modbus",
+    "dl.html": "Deep learning", "plugins.html": "Plugins", "contract.html": "Contract", "glossary.html": "Glossary", "golden.html": "Golden Set",
+    "batch.html": "Batch testing", "performance.html": "Performance", "vision-capabilities.html": "Inspection capabilities", "samples.html": "Example templates",
+    "agent.html": "AI assistant", "user-guide.html": "User guide", "capture-client.html": "Capture client", "deployment.html": "Deployment",
 }
 #: 使用者手冊與 AI 助手／批次頁最貼近操作，檢索時略加權；合約／設計手冊偏工程。
 PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9}
 MAX_SECTION_CHARS = 1400
 TOP_K = 5
 
-HELP_SYSTEM = """你是 VisionSequence 機器視覺平台的使用說明助理。
-- 只依下面提供的文件片段回答；文件沒有涵蓋就直說「文件沒有提到」並建議可能相關的頁面，不要臆測功能。
-- 繁體中文、先給結論再給步驟、條列為主、不超過 300 字；提到操作時用介面上的按鈕與頁面名稱（例如「批次測試」頁的「新增影像集」）。
-- 回答最後另起一行「參考：」列出你用到的章節名稱（用《頁面 › 章節》格式）。
-- 使用者若問的是要改流程或參數，提醒可在流程編輯器或批次測試頁直接請助手修改。"""
+HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machine vision platform.
+- Answer only from the documentation excerpts below. If they do not cover it, say so plainly, suggest the page that might, and never invent a feature.
+- Reply in the same language the question was asked in (the documentation is English; translate what you quote when the question is not).
+- Conclusion first, then the steps; mostly bullets; under 300 words. Name the buttons and pages as the interface shows them ("New image set" on the Batch testing page).
+- End with a separate line starting "References:" listing the sections you used, as Page > Section.
+- If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page."""
+
+#: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/glossary.html 的對照表）。
+BILINGUAL = {
+    "影像來源": "image source camera", "來源": "source", "資料夾": "folder", "相機": "camera", "取像": "acquire grab image",
+    "擷取端": "capture client", "通道": "channel", "共享記憶體": "shared memory", "連續串流": "continuous stream",
+    "依需求取像": "on demand grab", "流程": "flow graph", "步驟": "node step", "工具": "tool", "連線": "edge connection",
+    "埠": "port", "參數": "parameter param", "教導參數": "teaching parameter teach", "參數卡": "teach page",
+    "區域": "region roi", "標記": "overlay label", "執行": "run execute", "試執行": "preview", "執行一次": "run once",
+    "連續執行": "continuous", "暫存影像": "scratch image", "資產": "asset", "判定": "judge verdict",
+    "具名輸出": "named output", "引擎鎖定": "engine lock locked 423", "鎖定": "lock locked", "整合方": "integrator api key",
+    "金鑰": "api key", "角色": "role", "管理員": "administrator admin", "工程師": "engineer", "操作員": "operator",
+    "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "範例樣板": "example template sample",
+    "註解": "note", "批次測試": "batch testing", "影像集": "image set", "批次執行": "batch run",
+    "資料洞察": "insights", "建議門檻": "threshold suggestion", "資料諮詢": "consult", "全域 AI 助手": "assistant dock",
+    "使用說明": "help documentation", "助手": "assistant", "工作階段": "agent session", "先驗": "prior",
+    "代理模式": "agentic mode", "步驟時間軸": "step timeline", "候選方案": "candidate", "影像標記": "image label",
+    "自動調參": "autotune auto-tune coordinate descent", "定位補正": "locate correction fixture", "定位": "locate template match",
+    "統計": "statistics stats yield", "每小時彙總": "hourly rollup", "影像封存": "image archive", "流程版本": "flow version",
+    "操作紀錄": "audit log", "站台": "station", "站台看板": "fleet board", "整合頁": "integration page",
+    "命令與結果": "trace commands results", "主站": "modbus client master", "從站": "modbus server slave",
+    "寫入": "write", "讀取": "read", "暫存器": "register holding", "線圈": "coil", "觸發": "trigger",
+    "配方": "recipe", "覆寫": "override", "回歸": "regression regress", "基準": "baseline", "案例": "golden case",
+    "退步": "regressed", "進步": "improved", "合格門檻": "fail_under threshold",
+    "教導專案": "teaching project", "自動標記": "auto label", "模型種類": "trainer", "標記編輯器": "labelling editor shapes",
+    "智慧選取": "smart select sam", "智慧框選": "smart box sam", "資料集": "dataset", "分割": "split segmentation",
+    "資料集版本": "dataset version", "資料增強": "augmentation augment", "重複偵測": "dedupe duplicate",
+    "訓練": "train training", "推論": "inference predict", "深度學習": "deep learning",
+    "外掛": "plugin", "主題": "theme", "位深": "bit depth", "手動寫入": "manual write", "匯出": "export", "匯入": "import",
+    "效能": "performance benchmark", "執行緒池": "thread pool worker", "快取": "cache", "影像快取": "image cache",
+    "事件": "event sse stream", "串流": "stream sse", "指令": "command", "錯誤碼": "error code",
+    "安裝": "install setup", "部署": "deploy deployment", "備份": "backup", "還原": "restore", "升級": "upgrade",
+    "監控": "monitor health", "卡尺": "caliper", "找圓": "find_circle circle", "找線": "find_line line",
+    "量測": "measure measurement", "公差": "tolerance", "寬度": "width", "直徑": "diameter", "角度": "angle",
+    "顏色": "colour color", "缺陷": "defect", "瑕疵": "defect scratch", "條碼": "barcode", "計數": "count blob",
+    "門檻": "threshold", "二值化": "threshold binarise", "面積": "area", "圓形度": "circularity",
+    "金字塔": "pyramid", "範本比對": "template_match template matching", "形狀": "shape", "多邊形": "polygon",
+    "矩形": "rect rectangle", "環形": "annulus", "橢圓": "ellipse", "折線": "polyline",
+    "使用者": "user account", "帳號": "account user", "登入": "sign in login", "密碼": "password",
+    "文案": "wording tone copy", "用詞": "wording terminology", "規範": "convention rule glossary",
+    "產線畫面": "station screen operator", "良率": "yield", "不良": "reject ng", "看板": "board dashboard",
+    "設定": "settings configuration", "語言": "language", "說明": "help",
+}
+
+
+def expand_query(query: str) -> str:
+    """中文提問補上英文同義詞（docs 是英文），英文提問原樣。
+
+    長詞優先：命中「執行緒池」就不再加「執行」的同義詞，避免短詞把檢索帶偏。
+    """
+    matched: list[str] = []
+    extra: list[str] = []
+    for zh in sorted(BILINGUAL, key=len, reverse=True):
+        if zh in query and not any(zh in seen for seen in matched):
+            matched.append(zh)
+            extra.append(BILINGUAL[zh])
+    return (query + " " + " ".join(extra)) if extra else query
 
 
 @dataclass
@@ -124,7 +182,7 @@ def _tool_sections() -> list[Section]:
             text = skills.base_skill_text(t.key)
         except KeyError:
             continue
-        out.append(Section("agent.html", "AI 技能", f"工具：{t.label}（{t.key}）", "skills", _strip(text)[:MAX_SECTION_CHARS * 2], kind="tool"))
+        out.append(Section("agent.html", "AI skills", f"Tool: {t.label} ({t.key})", "skills", _strip(text)[:MAX_SECTION_CHARS * 2], kind="tool"))
     return out
 
 
@@ -172,7 +230,7 @@ def build_index(force: bool = False) -> Index:
 def search(query: str, k: int = TOP_K, *, extra_terms: str = "") -> list[tuple[Section, float]]:
     """BM25（k1=1.5、b=0.75），標題命中加權、頁面加權。"""
     idx = build_index()
-    q = tokenize(f"{query} {extra_terms}")
+    q = tokenize(f"{expand_query(query)} {extra_terms}")
     if not q:
         return []
     n = len(idx.sections)
@@ -216,11 +274,11 @@ def _context_sections(context: dict[str, Any] | None) -> list[Section]:
     node_type = str((context or {}).get("node_type") or "")
     if node_type and tools.has(node_type):
         t = tools.get(node_type)
-        out.append(Section("agent.html", "AI 技能", f"工具：{t.label}（{t.key}）", "skills", _strip(skills.skill_text(node_type))[:MAX_SECTION_CHARS * 2], kind="tool"))
+        out.append(Section("agent.html", "AI skills", f"Tool: {t.label} ({t.key})", "skills", _strip(skills.skill_text(node_type))[:MAX_SECTION_CHARS * 2], kind="tool"))
     return out
 
 
-CONTEXT_LABELS = {"flow_editor": "流程編輯器", "tool": "工具頁", "batch": "批次測試頁", "golden": "Golden Set 頁", "agent": "AI 助手頁", "dl": "深度學習頁", "sources": "影像來源庫", "assets": "資產庫", "dashboard": "總覽", "page": ""}
+CONTEXT_LABELS = {"flow_editor": "flow editor", "tool": "tool page", "batch": "batch testing", "golden": "Golden Set", "agent": "AI assistant", "dl": "deep learning", "sources": "image sources", "assets": "assets", "dashboard": "dashboard", "page": ""}
 
 
 def offline_answer(question: str, hits: list[tuple[Section, float]]) -> str:

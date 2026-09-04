@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 設計手冊</title>
+<title>VisionSequence architecture</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,252 +134,264 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html" aria-current="page">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. 一頁總覽</a></li><li><a href="#models">1. 資料模型（apps/vision/models.py）</a><ul><li><a href="#sec-2-1">graph JSON</a></li></ul></li><li><a href="#tools">2. 工具框架（apps/vision/tools/base.py）</a><ul><li><a href="#sec-3-1">內建類別（52 個工具）</a></li></ul></li><li><a href="#graph">3. 圖驗證與編譯（graph.py）</a></li><li><a href="#engine">4. 引擎（engine.py）</a></li><li><a href="#runner">5. Runner 與並行（runner.py）</a></li><li><a href="#images">6. 影像快取（images.py）</a></li><li><a href="#fleet">5-0. 多站台看板（fleet.py、Station）</a></li><li><a href="#retention">5-1. 保留策略與每小時彙總</a></li><li><a href="#audit">5a. 稽核軌跡（apps/core/audit.py、core.AuditLog）</a></li><li><a href="#versions">5b. 版本歷史（versions.py、graphdiff.py）</a></li><li><a href="#archive">6b. 影像封存（archive.py）</a></li><li><a href="#sources">7. 影像來源（sources/）</a></li><li><a href="#api">8. API / SSE / TCP</a></li><li><a href="#frontend">9. 前端（frontend/src）</a></li><li><a href="#accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</a></li><li><a href="#more">9c. 範本庫、批次測試、整合工具（api_more.py）</a></li><li><a href="#plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</a></li><li><a href="#settings">10. 設定值（config/settings.py → VISION）</a></li><li><a href="#tests">11. 測試（tests/）</a></li><li><a href="#pitfalls">12. 踩過的坑</a></li></ul></aside><article class="doc wide">
-<h1>VisionSequence 設計手冊</h1>
-<p>給要維護或擴充這個平台的人看。與 <a href="workflow-design.html">workflow-design.html</a>（ZQS Cloud 的控制流程引擎）同一套思想，但引擎換成毫秒級的<strong>行程內資料流</strong>。</p>
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html" aria-current="page">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. The whole thing on one page</a></li><li><a href="#models">1. Data model (apps/vision/models.py)</a><ul><li><a href="#sec-2-1">The graph JSON</a></li></ul></li><li><a href="#tools">2. The tool framework (apps/vision/tools/base.py)</a><ul><li><a href="#sec-3-1">The built-in categories (67 tools)</a></li></ul></li><li><a href="#graph">3. Validation and compilation (graph.py)</a></li><li><a href="#engine">4. The engine (engine.py)</a></li><li><a href="#runner">5. Runner and concurrency (runner.py)</a></li><li><a href="#images">6. The image cache (images.py)</a></li><li><a href="#fleet">5-0. The fleet board (fleet.py, Station)</a></li><li><a href="#retention">5-1. Retention and the hourly roll-up</a></li><li><a href="#audit">5a. The audit log (apps/core/audit.py, core.AuditLog)</a></li><li><a href="#versions">5b. Version history (versions.py, graphdiff.py)</a></li><li><a href="#archive">6b. The image archive (archive.py)</a></li><li><a href="#sources">7. Image sources (sources/)</a></li><li><a href="#api">8. API, SSE and TCP</a></li><li><a href="#frontend">9. The front end (frontend/src)</a></li><li><a href="#accounts">9b. Accounts, ownership and the engine lock (apps/accounts)</a></li><li><a href="#more">9c. Templates, batch testing and the integration tools (api_more.py)</a></li><li><a href="#plan">9d. Teach page, recipes, stations, Golden Set and Modbus</a></li><li><a href="#settings">10. Settings (config/settings.py → VISION)</a></li><li><a href="#tests">11. Tests (tests/)</a></li><li><a href="#pitfalls">12. Traps we hit</a></li></ul></aside><article class="doc wide">
 
-<h2 id="overview">0. 一頁總覽</h2>
+<h1>Architecture</h1>
+<p>For anyone maintaining or extending the platform. It shares its thinking with <a href="workflow-design.html">Workflow design</a>, but the engine is an <strong>in-process dataflow</strong> measured in milliseconds.</p>
+
+<h2 id="overview">0. The whole thing on one page</h2>
 <pre>
-編輯                                   執行                                     觀看
+Editing                                Running                                  Watching
 GET /vision/tool-types ──▶ React Flow ──PATCH graph──▶ Flow.graph
-                                                         │ compile（依 version 快取）
+                                                         │ compiled, cached by version
 POST /flows/{id}/run ─┐                                  ▼
-TCP "RUN 1"          ─┼─▶ Runner.submit ─▶ ThreadPool(10) ─▶ engine.execute（拓樸順序）
-連續模式 loop        ─┘        │ 同流程一次一個 run          │ Tool.execute(ctx) → Result
+TCP "RUN 1"          ─┼─▶ Runner.submit ─▶ ThreadPool(10) ─▶ engine.execute (topological order)
+continuous loop      ─┘        │ one run at a time per flow │ Tool.execute(ctx) → Result
                                ▼                            ▼
-                        EventBus.publish ◀──── RunReport（節點狀態、輸出、overlays、影像 ref）
+                        EventBus.publish ◀──── RunReport (node status, outputs, overlays, image refs)
                                │                            │
-                               ├─▶ SSE /flows/{id}/stream   ├─▶ ImageStore（numpy，LRU）→ GET /images/{ref}
-                               └─▶ 背景 Persister → FlowRun（摘要）
+                               ├─▶ SSE /flows/{id}/stream   ├─▶ ImageStore (numpy, LRU) → GET /images/{ref}
+                               └─▶ background Persister → FlowRun (a summary)
 </pre>
-<p>四句話：</p>
+<p>Four sentences:</p>
 <ol>
-<li><strong>圖是一份 JSON</strong>，存在 <code>Flow.graph</code>，編輯器整份存、引擎整份讀。</li>
-<li><strong>執行在記憶體</strong>：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像是 numpy 陣列，不落地。</li>
-<li><strong>工具是 registry</strong>：引擎不認識任何工具；前端調色盤與參數表單從 <code>catalogue()</code> 產生，加工具不改前端。</li>
-<li><strong>觀看是推播</strong>：結果丟進行程內事件匯流排，SSE 直接送；影像只有被看時才編碼縮圖。</li>
+<li><strong>The graph is one JSON document</strong> in <code>Flow.graph</code>; the editor saves it whole and the engine reads it whole.</li>
+<li><strong>Execution happens in memory</strong>: a run walks the graph in topological order on one thread of the pool, with images as numpy arrays that never touch disk.</li>
+<li><strong>Tools are a registry</strong>: the engine knows no particular tool, and the palette and parameter forms come from <code>catalogue()</code>, so adding a tool needs no front-end change.</li>
+<li><strong>Watching is push</strong>: results go onto an in-process event bus and straight out over SSE, and an image is only encoded as a thumbnail when somebody looks at it.</li>
 </ol>
 
-<h2 id="models">1. 資料模型（apps/vision/models.py）</h2>
+<h2 id="models">1. Data model (apps/vision/models.py)</h2>
 <table>
-<tr><th>模型</th><th>欄位</th><th>理由</th></tr>
-<tr><td>Flow</td><td>name（唯一）、description、graph JSON、is_enabled、version、continuous_interval_ms</td><td>整份圖一個欄位；version 每次存圖 +1，Runner 據此重編譯。</td></tr>
-<tr><td>FlowRun</td><td>id(uuid)、flow、flow_version、status(ok/ng/failed)、trigger、duration_ms、nodes 摘要、outputs、error、started_at/finished_at</td><td>只存<strong>摘要</strong>，不存影像。背景執行緒批次 bulk_create，每流程保留 KEEP_RUN_ROWS 列。高速產線可 PERSIST_RUNS=0。</td></tr>
-<tr><td>ImageSource</td><td>name、kind、config JSON、is_enabled</td><td>kind 決定 Grabber 類別；updated_at 變了才重開設備。</td></tr>
-<tr><td>Asset</td><td>id(uuid)、name、kind(image/model/file)、path、size、meta</td><td>範本影像、ONNX 模型；檔案在 ASSET_DIR。</td></tr>
+<tr><th>Model</th><th>Fields</th><th>Why</th></tr>
+<tr><td>Flow</td><td>name (unique), description, graph JSON, is_enabled, version, continuous_interval_ms, commissioned, archive_policy, owner (the creator)</td><td>The whole graph in one column. version increments on every save, and the Runner recompiles from it.</td></tr>
+<tr><td>FlowRun</td><td>id (uuid), flow, flow_version, status (ok/ng/failed), trigger, duration_ms, a node summary, outputs, images, error, started_at/finished_at, station_id, recipe</td><td>A <strong>summary</strong> only, never images inline. A background thread bulk-creates them, and each flow keeps KEEP_RUN_DAYS of detail. A fast line can set PERSIST_RUNS=0.</td></tr>
+<tr><td>FlowRunHourly</td><td>flow, hour, station_id, recipe, ok/ng/failed counts, duration sums and maximum</td><td>Kept forever, so the yield trend survives detail purging.</td></tr>
+<tr><td>FlowVersion</td><td>flow, version, graph, saved_by, saved_at, note, is_released</td><td>A snapshot on every real change, restorable.</td></tr>
+<tr><td>ImageSource</td><td>name, kind, config JSON, is_enabled</td><td>kind picks the Grabber class; the device is only reopened when updated_at changes.</td></tr>
+<tr><td>Asset</td><td>id (uuid), name, kind (image/model/file/dataset), path, size, meta</td><td>Template images and ONNX models; the files live in ASSET_DIR.</td></tr>
+<tr><td>Station</td><td>name, base_url, api_key, is_enabled, note</td><td>How to reach another station, for the fleet board.</td></tr>
 </table>
 
-<h3 id="sec-2-1">graph JSON</h3>
-<pre>{"nodes": [{"id": "blob-1", "type": "blob", "label": "找孔", "description": "", "enabled": true,
+<h3 id="sec-2-1">The graph JSON</h3>
+<pre>{"nodes": [{"id": "blob-1", "type": "blob", "label": "Holes", "description": "", "enabled": true,
             "continue_on_error": false, "color": "", "params": {...}, "position": {"x": 0, "y": 0}}],
  "edges": [{"id": "e1", "source": "gray-1", "source_handle": "image", "target": "blob-1", "target_handle": "image"}]}</pre>
 <ul>
-<li><code>source_handle</code>／<code>target_handle</code> 是埠 key；空白時 <code>validate_graph</code> 補上第一個埠。</li>
-<li>隱含埠：每個可執行節點有輸入 <code>_flow</code>（控制分支）與輸出 <code>_overlays</code>（該節點標記，list）。</li>
-<li><code>type: "note"</code> 是註解：不執行、不能被連入；從註解連出的虛線引擎忽略。</li>
+<li><code>source_handle</code> and <code>target_handle</code> are port keys; left blank, <code>validate_graph</code> fills in the first port.</li>
+<li>Implicit ports: every executable node has an input <code>_flow</code> (control branching) and an output <code>_overlays</code> (that node's overlays, a list).</li>
+<li><code>type: "note"</code> is a sticky note: never executed, nothing can connect into it, and a dashed line drawn out of one is ignored by the engine.</li>
 </ul>
 
-<h2 id="tools">2. 工具框架（apps/vision/tools/base.py）</h2>
-<pre>Param(key, label, kind, required, default, help_text, options, unit, minimum, maximum, step, visible_when, shapes, accept, group)
-  kind ∈ text | multiline | number | boolean | select | range(滑桿) | roi | source | asset | color | json | expression | output_key
+<h2 id="tools">2. The tool framework (apps/vision/tools/base.py)</h2>
+<pre>Param(key, label, kind, required, default, help_text, options, unit, minimum, maximum, step, visible_when, shapes, accept, group, teach)
+  kind ∈ text | multiline | number | boolean | select | range (slider) | roi | source | asset | color | json | expression | output_key | code
 Port(key, label, type, required, multiple, tone)
   type ∈ image | region | number | bool | string | points | contours | matches | list | any | flow
-flow_out(key, label, tone)             # 控制分支輸出把手
+flow_out(key, label, tone)             # a control branch output handle
 ToolContext: run_id, flow_id, node, inputs, context, moment, log, asset_path(id), grab(source_id), preview
   .param/.number/.integer/.flag/.image/.require_image/.roi
 Result(outputs, overlays, branch, status=ok|ng|error, message, detail, context, overlay_on)
-class Tool: key label description category icon params inputs outputs heavy; execute(ctx) -> Result
+class Tool: key label description category icon params inputs outputs heavy accepts connection_params; execute(ctx) -> Result
 register(tool) / get(key) / catalogue()</pre>
-<p><strong>Param.kind 是封閉集合</strong>：前端 ParamField 的 switch 有一個 case，後端 <code>PARAM_KINDS</code> 才有一項；<code>register()</code> 會拒絕未知 kind。</p>
-<p><strong>overlays 座標</strong>一律是該節點<em>輸入影像</em>的全圖座標。工具在 ROI 上運算時用 <code>tools/roi.py</code> 的 <code>crop(image, region, upright=True)</code>，再用 <code>Crop.to_full()</code>／<code>points_to_full()</code> 換回。旋轉矩形擺正後的反矩陣就在 <code>Crop.inverse</code>。</p>
-<p><strong>失敗語意</strong>：找不到東西 → <code>status="ng"</code> 或走分支（<code>not_found</code>），不是錯誤；可預期的錯（ROI 在影像外、資產不見）→ <code>raise ToolError</code>；任何其他例外引擎會接住記為 error（附 repr，preview 時附 traceback）。</p>
-<p><strong>控制分支</strong>：工具回 <code>branch="true"</code>，引擎只讓連在 <code>true</code> 把手上的下游執行；沒被選中的節點標 skipped，其資料下游也 skipped。</p>
+<p><strong>Param.kind is a closed set</strong>: one case in the front end's ParamField switch, one entry in the backend's <code>PARAM_KINDS</code>, and <code>register()</code> rejects anything else.</p>
+<p><strong>Overlay coordinates</strong> are always the full-image coordinates of that node's <em>input image</em>. A tool working inside an ROI uses <code>crop(image, region, upright=True)</code> from <code>tools/roi.py</code> and maps back with <code>Crop.to_full()</code> or <code>points_to_full()</code>; the inverse matrix for a straightened rotated rectangle is in <code>Crop.inverse</code>.</p>
+<p><strong>What failure means</strong>: not finding something is <code>status="ng"</code> or a branch (<code>not_found</code>), not an error. An expected error — the ROI outside the image, a missing asset — is <code>raise ToolError</code>. Any other exception is caught by the engine and recorded as an error with its repr (and a traceback during preview).</p>
+<p><strong>Control branching</strong>: a tool returns <code>branch="true"</code> and the engine only executes downstream nodes wired to the <code>true</code> handle; nodes not selected are marked skipped, and so is everything downstream of them.</p>
 
-<h3 id="sec-3-1">內建類別（52 個工具）</h3>
+<h3 id="sec-3-1">The built-in categories (67 tools)</h3>
 <table>
-<tr><th>category</th><th>工具</th></tr>
-<tr><td>source</td><td>image_source（API 送圖優先／來源抓圖）</td></tr>
-<tr><td>preprocess</td><td>grayscale crop blur threshold morphology resize color_convert color_range hist_eq arithmetic apply_mask edges rotate_flip</td></tr>
-<tr><td>locate</td><td>template_match（NCC＋旋轉＋金字塔）shape_align fixture_roi find_circle find_line hough_circles hough_lines</td></tr>
-<tr><td>measure</td><td>caliper distance angle intensity calibration histogram；杯件量測：fit_arc（圓弧擬合：radius/cx/cy/residual_rms/start_angle/end_angle）fit_ellipse（cx/cy/a/b/angle/roundness=b/a）wall_thickness（成對邊緣：thickness/min/max/mean/profile/pairs）concentricity（兩圓：deviation/dx/dy/verdict，分支 ok/ng）chamfer_angle（RANSAC 兩段直線：angle_deg/length/line1/line2）tolerance_judge（nominal/upper_tol/lower_tol/spec_source → verdict/deviation/in_spec，分支 pass/fail，並寫進 run.outputs.tolerances）</td></tr>
-<tr><td>detect</td><td>blob defect_diff barcode text_presence color_check edge_density pixel_count</td></tr>
-<tr><td>dl</td><td>dl_classify dl_detect dl_segment（onnxruntime，session 依路徑快取）</td></tr>
-<tr><td>logic</td><td>if_number in_range bool_logic formula（AST 白名單）count_list</td></tr>
-<tr><td>output</td><td>judge output save_image draw_result</td></tr>
+<tr><th>category</th><th>Tools</th></tr>
+<tr><td>source</td><td>image_source (a pushed image takes priority over the configured source)</td></tr>
+<tr><td>preprocess</td><td>grayscale crop blur threshold morphology resize color_convert color_range lut arithmetic apply_mask filter rotate_flip convert_depth fft_filter warp_perspective</td></tr>
+<tr><td>locate</td><td>template_match (NCC with rotation and a pyramid) shape_align fixture_roi find_circle find_line hough_circles hough_lines</td></tr>
+<tr><td>measure</td><td>caliper distance angle intensity calibration histogram line_profile geometry; and for cup gauging: fit_arc (radius, cx, cy, residual_rms, start_angle, end_angle), fit_ellipse (cx, cy, a, b, angle, roundness = b/a), wall_thickness (paired edges: thickness, min, max, mean, profile, pairs), concentricity (two circles: deviation, dx, dy, verdict, branching ok/ng), chamfer_angle (RANSAC on two line segments: angle_deg, length, line1, line2), tolerance_judge (nominal, upper_tol, lower_tol, spec_source → verdict, deviation, in_spec, branching pass/fail, and written into run.outputs.tolerances)</td></tr>
+<tr><td>detect</td><td>blob defect_diff barcode text_presence color_check color_stats edge_density pixel_count</td></tr>
+<tr><td>dl</td><td>dl_classify dl_detect dl_segment dl_instance (onnxruntime, sessions cached by path); yolo_detect yolo_segment yolo_classify yolo_pose yolo_obb (native ultralytics)</td></tr>
+<tr><td>logic</td><td>if_number in_range bool_logic formula (an AST allow-list) count_list read_modbus python_script</td></tr>
+<tr><td>output</td><td>judge output save_image draw_result write_modbus</td></tr>
 </table>
-<p>定位補正的典型接法：<code>template_match.matches → shape_align.transform → fixture_roi.region → caliper.roi</code>；shape_align 的 ref_x/ref_y/ref_angle 是教導時的位置。</p>
-<p><strong>參數卡（teach）</strong>：<code>Param.teach=True</code> 標記「需要現場教導」的參數（門檻、極性、面積範圍、公差…），<code>catalogue()</code> 輸出 <code>teach</code> 欄位供參數卡頁只列這些。內建標記：threshold 的 threshold/low/high/block/c、template_match 的 threshold/angle_range、blob 的 min_area/max_area/min_circularity、caliper／find_circle／find_line／wall_thickness／chamfer_angle 的 edge_threshold（與 polarity）、defect_diff 的 threshold/min_area、color_range 六個上下限、color_check 的 tolerance、in_range 的 low/high、if_number 的 threshold、dl_classify 的 threshold、dl_detect 的 conf、pixel_count 的 min_count/max_count、edge_density 的 max_ratio、text_presence 的 min_ratio/max_ratio、tolerance_judge 的 nominal/upper_tol/lower_tol、concentricity 的 max_deviation。</p>
-<p><strong>杯件量測範本</strong>（<code>builtin:cup_measure</code>）：<code>template_match → shape_align → fixture_roi×3 →（find_circle 外徑、find_circle 內徑、wall_thickness）→ formula(2r) → concentricity → tolerance_judge×3 → output×3 → bool_logic → judge</code>；每個 tolerance_judge 把 {name, value, nominal, upper, lower, unit, spec_source, in_spec} 追加到 <code>run.outputs.tolerances</code>，FlowRun.outputs 因此保留圖面出處。</p>
+<p>The usual locate wiring: <code>template_match.matches → shape_align.transform → fixture_roi.region → caliper.roi</code>, where shape_align's ref_x, ref_y and ref_angle are the position at teaching time.</p>
+<p><strong>Teaching parameters</strong>: <code>Param.teach=True</code> marks a parameter that has to be adjusted on the line (thresholds, polarity, area ranges, tolerances). <code>catalogue()</code> exposes a <code>teach</code> field so the teach page can list only those. The built-in marks: threshold's threshold/low/high/block/c; template_match's threshold and angle_range; blob's min_area, max_area and min_circularity; the edge_threshold (and polarity) of caliper, find_circle, find_line, wall_thickness and chamfer_angle; defect_diff's threshold and min_area; the six colour_range bounds; color_check's tolerance; in_range's low and high; if_number's threshold; dl_classify's threshold; dl_detect's conf; pixel_count's min_count and max_count; edge_density's max_ratio; text_presence's min_ratio and max_ratio; tolerance_judge's nominal, upper_tol and lower_tol; and concentricity's max_deviation. 58 in all — and that list is exactly what an operator is permitted to change.</p>
+<p><strong>The cup gauging template</strong> (<code>builtin:cup_measure</code>): <code>template_match → shape_align → fixture_roi ×3 → (find_circle outer, find_circle inner, wall_thickness) → formula(2r) → concentricity → tolerance_judge ×3 → output ×3 → bool_logic → judge</code>. Each tolerance_judge appends {name, value, nominal, upper, lower, unit, spec_source, in_spec} to <code>run.outputs.tolerances</code>, so FlowRun.outputs keeps the drawing reference.</p>
 
-<h2 id="graph">3. 圖驗證與編譯（graph.py）</h2>
-<p><code>validate_graph()</code> 在存檔（PATCH）與 submit 時跑：節點數／邊數上限、id 唯一、type 在 registry（錯誤訊息列出可用 key）、邊兩端存在、埠存在、<strong>型別相容</strong>（<code>_compatible</code>：同型、any、number→string、bool→number、points/matches/contours→list；flow 只能接 <code>_flow</code>）、單線輸入埠不能接兩條、不能連進註解、<strong>必須是 DAG</strong>（Kahn 拓樸排序）。</p>
-<p><code>compile_graph()</code> 產出 <code>CompiledGraph(order, nodes{id: CompiledNode(tool, inputs{port: [(src, port)]}, flow_inputs, primary_image_port)}, consumed)</code>。<code>consumed</code> 是「有人用到的 (node, port)」集合——沒人用的輸出影像不進快取。</p>
+<h2 id="graph">3. Validation and compilation (graph.py)</h2>
+<p><code>validate_graph()</code> runs on save (PATCH) and on submit: node and edge count limits, unique ids, the type present in the registry (the error lists the available keys), both ends of an edge existing, the ports existing, <strong>type compatibility</strong> (<code>_compatible</code>: identical, any, number→string, bool→number, points/matches/contours→list; a flow port only connects to <code>_flow</code>), no two edges into a single-connection input, nothing connecting into a note, and <strong>the graph being acyclic</strong> (a Kahn topological sort).</p>
+<p><code>compile_graph()</code> produces <code>CompiledGraph(order, nodes{id: CompiledNode(tool, inputs{port: [(src, port)]}, flow_inputs, primary_image_port)}, consumed)</code>. <code>consumed</code> is the set of (node, port) pairs somebody uses — an image output nobody reads never enters the cache.</p>
 
-<h2 id="engine">4. 引擎（engine.py）</h2>
+<h2 id="engine">4. The engine (engine.py)</h2>
 <pre>for node in order:
-    逾時 → error, break
-    有 flow_inputs 且沒有任一 (src ok/ng 且 branch 相符) → skipped
-    收集輸入：上游 skipped/error 且該埠必填 → skipped；未連線的必填埠（非 allows_unconnected 工具）→ skipped
-    enabled=False → 有 image 進出就直通（訊息「已停用（直通）」），否則 skipped
-    result = tool.execute(ctx)   # ToolError → error；其他例外 → error + repr
-    登記 outputs（影像：consumed / preview / source|output 類別 才 store.put）、_overlays、context 合併
-    preview 時 detail._input_ref = 輸入影像 ref（讓檢視器顯示「這個節點看到的影像」）
-run.status: 任一 error 且未 continue_on_error → failed；任一 ng 或 _judge=ng → ng；否則 ok
-run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
-<p>沒有 token、沒有資料庫、沒有 sleep：一次 run 就是一個函式呼叫，這是毫秒級的來源。</p>
+    timed out → error, break
+    has flow_inputs but no (source ok/ng with a matching branch) → skipped
+    gather inputs: an upstream skipped or errored node on a required port → skipped;
+                   a required port left unconnected (unless the tool allows it) → skipped
+    enabled=False → pass an image straight through if one goes in and out ("disabled (pass-through)"), otherwise skipped
+    result = tool.execute(ctx)   # ToolError → error; any other exception → error plus its repr
+    register the outputs (an image only enters store.put when consumed, during preview, or for a source/output tool),
+    _overlays, and merge context
+    during preview, detail._input_ref is the input image ref, so the viewer can show "what this node saw"
+run.status: any error without continue_on_error → failed; any ng, or _judge=ng → ng; otherwise ok
+run.outputs = context["_outputs"], written by the judge and output tools</pre>
+<p>No tokens, no database, no sleeping: a run is a function call, and that is where the millisecond figures come from.</p>
 
-<h2 id="runner">5. Runner 與並行（runner.py）</h2>
+<h2 id="runner">5. Runner and concurrency (runner.py)</h2>
 <table>
-<tr><th>元件</th><th>做什麼</th></tr>
-<tr><td>ThreadPoolExecutor(MAX_WORKERS=10)</td><td>同時忙碌的流程數上限；<code>.env</code> 擴充。影像演算法在原生層執行、會釋放 GIL，多執行緒真的平行（實測 12 流程 40 ms）。</td></tr>
-<tr><td>FlowRuntime（每流程）</td><td>編譯快取（依 version）、<code>lock</code>（同流程一次一個 run：相機與狀態一致）、queued 計數（超過 MAX_QUEUE_PER_FLOW → 429）、stats、recent（最近 N 次 RunReport）、continuous loop。</td></tr>
-<tr><td><code>_prefetch()</code></td><td>在<strong>呼叫者執行緒</strong>把 source 參數的來源打開、asset 參數的路徑查好——執行緒池內的熱路徑不碰資料庫。</td></tr>
-<tr><td>EventBus</td><td>Condition + 環形緩衝（500 筆），SSE 用 <code>wait(since)</code> 取增量；重連帶 seq 不漏事件。</td></tr>
-<tr><td>Persister</td><td>daemon 執行緒、佇列 5000、每批 100 筆 bulk_create、每 500 筆修剪一次；FK 失敗（流程已刪）逐筆跳過。</td></tr>
-<tr><td>ContinuousLoop</td><td>每流程一條執行緒；Flow 物件帶入，每 2 秒才回 DB 確認停用／改設定；間隔 continuous_interval_ms。</td></tr>
+<tr><th>Component</th><th>What it does</th></tr>
+<tr><td>ThreadPoolExecutor(MAX_WORKERS=10)</td><td>The ceiling on flows busy at once; raise it in <code>.env</code>. The vision algorithms run in native code and release the GIL, so several threads really are parallel (12 flows measured at 40 ms).</td></tr>
+<tr><td>FlowRuntime (per flow)</td><td>The compile cache (keyed on version), a <code>lock</code> so one run happens at a time (the camera and the state must stay consistent), the queued count (over MAX_QUEUE_PER_FLOW → 429), the statistics, the recent RunReports, and the continuous loop.</td></tr>
+<tr><td><code>_prefetch()</code></td><td>On the <strong>caller's thread</strong>, opens the sources named by source parameters and resolves the paths of asset parameters — so the hot path inside the pool never touches the database.</td></tr>
+<tr><td>EventBus</td><td>A Condition plus a 500-entry ring buffer; SSE takes the increment with <code>wait(since)</code>, and a reconnection sends its seq so nothing is missed.</td></tr>
+<tr><td>Persister</td><td>A daemon thread with a 5000-deep queue, bulk-creating 100 at a time and trimming every 500. A foreign-key failure (the flow was deleted) skips that row.</td></tr>
+<tr><td>ContinuousLoop</td><td>One thread per flow, carrying the Flow object and only going back to the database every two seconds to check for a disable or a settings change, at continuous_interval_ms.</td></tr>
 </table>
-<div class="note">引擎狀態在行程內：<strong>只能有一個 API 行程</strong>（<code>manage.py serve</code> = uvicorn workers=1 + TCP）。要水平擴展要把引擎拆成獨立服務，這是刻意沒做的。</div>
+<div class="note">Engine state lives in the process: <strong>there can be only one API process</strong> (<code>manage.py serve</code> is uvicorn with workers=1 plus TCP). Scaling out would mean extracting the engine into its own service, which is deliberately not done.</div>
 
-<h2 id="images">6. 影像快取（images.py）</h2>
-<p>ref = <code>"{run_id}:{node_id}:{port}"</code>。每流程保留最近 KEEP_RUN_IMAGES 次 run 的影像；全域 IMAGE_CACHE_MB 以 bytes 計 LRU。<code>encode(ref, max_side, fmt, quality)</code> 延遲到有人要看才做，且依請求最長邊縮小（前端預設 1600）。浮點／16 位元影像正規化到 8 位元顯示。</p>
+<h2 id="images">6. The image cache (images.py)</h2>
+<p>A ref is <code>"{run_id}:{node_id}:{port}"</code>. Each flow keeps the images of the last KEEP_RUN_IMAGES runs, with a global LRU by bytes up to IMAGE_CACHE_MB. <code>encode(ref, max_side, fmt, quality)</code> is deferred until somebody asks and shrinks to the requested longest side (the front end defaults to 1600). Floating-point and 16-bit images are normalised to 8 bits for display.</p>
 
-<h2 id="fleet">5-0. 多站台看板（fleet.py、Station）</h2>
+<h2 id="fleet">5-0. The fleet board (fleet.py, Station)</h2>
 <ul>
-<li><strong>不動架構</strong>：站台仍各自獨立、各自一個引擎行程。看板只是<strong>唯讀輪詢</strong>——`Station(name, base_url, api_key)` 存「怎麼問到它」，輪詢對方的 <code>GET /vision/summary</code>；<strong>不下發流程、帳號或指令</strong>，所以站台不會因為看板掛了而受影響。</li>
-<li><code>summary_of_this_station()</code> 查每小時彙總，所以看板顯示的良率與各站自己的統計是同一份數字。</li>
-<li><strong>舊數字不能看起來像即時的</strong>：站台連不上時保留最後已知數字，但標記 <code>stale</code> 並回 <code>age_s</code>，前端顯示「最後更新於 N 分鐘前」。離線站台不計入全廠合計。</li>
-<li>輪詢執行緒在有人開看板時啟動、沒人看 3 分鐘後自己停（`watch()`／`watching()`）；`board()` 對「沒問過或已過期」的站台同步補問一次，背景執行緒萬一死了也不會一直顯示愈來愈舊的數字。一站慢不會拖累其他站（`ThreadPoolExecutor` 平行、每站 4 秒逾時）。</li>
-<li>API：<code>GET /vision/summary</code>（任何登入者）、<code>GET /vision/fleet</code>、<code>GET/POST/PATCH/DELETE /vision/stations</code>（管理員）、<code>POST /vision/stations/test</code>。金鑰只回尾 4 碼。前端 <code>/fleet</code> 與「外部整合 ▸ 站台」。</li>
+<li><strong>The architecture does not change</strong>: stations stay independent, each with its own engine process. The board is <strong>read-only polling</strong> — <code>Station(name, base_url, api_key)</code> stores how to ask, and it polls the other station's <code>GET /vision/summary</code>. It <strong>never pushes flows, accounts or commands</strong>, so a station is unaffected if the board goes down.</li>
+<li><code>summary_of_this_station()</code> reads the hourly roll-up, so the yield on the board is the same number the station's own statistics show.</li>
+<li><strong>An old number must not look live</strong>: when a station cannot be reached the last known numbers are kept but marked <code>stale</code> with an <code>age_s</code>, and the interface says "last updated N minutes ago". An offline station is excluded from the plant total.</li>
+<li>The polling thread starts when somebody opens the board and stops itself after three idle minutes (<code>watch()</code>, <code>watching()</code>). <code>board()</code> synchronously refreshes any station never asked or gone stale, so even if the background thread dies the board cannot keep showing ever-older numbers. One slow station does not hold up the others (a ThreadPoolExecutor, four seconds each).</li>
+<li>API: <code>GET /vision/summary</code> (any signed-in user), <code>GET /vision/fleet</code>, <code>GET/POST/PATCH/DELETE /vision/stations</code> (administrator) and <code>POST /vision/stations/test</code>. Keys come back as the last four characters only. In the interface: <code>/fleet</code> and Integration ▸ Stations.</li>
 </ul>
 
-<h2 id="retention">5-1. 保留策略與每小時彙總</h2>
+<h2 id="retention">5-1. Retention and the hourly roll-up</h2>
 <ul>
-<li><strong>三層</strong>：影像封存（<code>ARCHIVE_DAYS</code>／<code>ARCHIVE_MAX_GB</code>）→ 執行明細 <code>FlowRun</code>（<code>KEEP_RUN_DAYS</code> 預設 30 天，<code>KEEP_RUN_ROWS</code> 是保險）→ 每小時彙總 <code>FlowRunHourly</code>（<strong>永久保留</strong>，一年 8760 列）。</li>
-<li>以前只有「每流程 2000 筆」——產線一秒一次就是 33 分鐘的歷史，品保隔天什麼都查不到，而且保留多久完全取決於節拍。</li>
-<li><code>_Persister._rollup</code> 在寫明細的同一批累加彙總（<code>F()</code> 增量＋<code>Greatest</code> 取最大耗時，同一小時只有一列，依 flow／hour／station／recipe 分）。<code>GET /flows/{id}/stats</code> 已改查彙總，所以<strong>明細被清掉或伺服器重開之後良率曲線照樣完整</strong>。</li>
-<li>維運指令：<code>manage.py backup</code>（SQLite 線上備份＋資產＋manifest，<code>--with-images</code> 才含封存影像）、<code>restore</code>（擋 zip slip、舊 DB 留一份）、<code>purge --dry-run</code>、<code>doctor</code>（版本／磁碟／資料量／埠／連線／DL／帳號，有問題離開碼 1）。</li>
-<li><strong>版本號單一來源</strong>：<code>apps/vision/__init__.py</code> 的 <code>__version__</code>，由 <code>/healthz</code>、<code>/vision/integration/info</code>、前端側欄底部與 <code>doctor</code> 讀。</li>
+<li><strong>Three tiers</strong>: the image archive (<code>ARCHIVE_DAYS</code>, <code>ARCHIVE_MAX_GB</code>) → run detail in <code>FlowRun</code> (<code>KEEP_RUN_DAYS</code>, 30 by default, with <code>KEEP_RUN_ROWS</code> as a backstop) → the hourly roll-up <code>FlowRunHourly</code>, <strong>kept forever</strong> at 8760 rows a year.</li>
+<li>It used to be 2000 rows per flow and nothing else — at one run a second that is 33 minutes of history, quality assurance finds nothing the next day, and how far back you can look depends entirely on the cycle time.</li>
+<li><code>_Persister._rollup</code> accumulates the roll-up in the same batch that writes the detail (<code>F()</code> increments and <code>Greatest</code> for the maximum duration; one row per flow, hour, station and recipe). <code>GET /flows/{id}/stats</code> now reads the roll-up, so <strong>the yield curve stays complete after the detail is purged or the server restarts</strong>.</li>
+<li>Operations commands: <code>manage.py backup</code> (an online SQLite backup plus the assets and a manifest; <code>--with-images</code> includes the archive), <code>restore</code> (zip-slip protected, keeping a copy of the old database), <code>purge --dry-run</code> and <code>doctor</code> (version, disk, data volume, ports, connections, DL and accounts; exit code 1 when something is wrong).</li>
+<li><strong>One source of truth for the version</strong>: <code>__version__</code> in <code>apps/vision/__init__.py</code>, read by <code>/healthz</code>, <code>/vision/integration/info</code>, the bottom of the sidebar and <code>doctor</code>.</li>
 </ul>
 
-<h2 id="audit">5a. 稽核軌跡（apps/core/audit.py、core.AuditLog）</h2>
+<h2 id="audit">5a. The audit log (apps/core/audit.py, core.AuditLog)</h2>
 <ul>
-<li><strong>只記變更，不記執行</strong>：執行已經有 <code>FlowRun</code>、統計與影像封存；記進來只會把真正的編輯沖掉。</li>
-<li>由端點<strong>明確呼叫</strong> <code>audit.record(request, "flow.update", flow, summary=…, detail=…)</code>，不是 middleware——要記的是「有意義的動作」不是 HTTP 流量。目前掛在流程（建立／改圖／改設定／刪除／還原／發行）、配方（建立／換線）、來源刪除、通訊連線（建立／修改／刪除）、帳號（建立／修改／刪除）、引擎鎖（上鎖／解鎖）。</li>
-<li>流程的圖用 <code>graphdiff</code> 做<strong>參數層級</strong>的差異（「threshold 60 → 46」），其餘記錄用 <code>audit.fields_diff</code>；<code>detail</code> 會被 <code>_clip</code> 限制長度與筆數。</li>
-<li><strong>寫失敗不影響請求</strong>（`record` 永不拋例外）：軌跡壞掉很糟，但產線因為軌跡壞掉而停更糟。</li>
-<li>API：<code>GET /vision/audit</code>（管理員；可依動作／操作者／關鍵字篩選）與 <code>GET /vision/audit.csv</code>（UTF-8 BOM，Excel 直接開）。保留 <code>VISION_AUDIT_DAYS</code>（預設 730 天，0＝永久）。前端 <code>/audit</code>。</li>
-<li><strong>坑</strong>：<code>auth=None</code> 的端點 ninja 不會設 <code>request.auth</code>，身分要用 <code>authenticate()</code> 的回傳值，不能再呼叫 <code>principal(request)</code>（它讀 <code>request.auth</code>，會自己拋 401）。</li>
+<li><strong>Changes only, never runs</strong>: runs already have <code>FlowRun</code>, statistics and the image archive; putting them here would flush out the real edits.</li>
+<li>Endpoints call <code>audit.record(request, "flow.update", flow, summary=…, detail=…)</code> <strong>explicitly</strong> rather than going through middleware — what we want recorded is meaningful actions, not HTTP traffic. It is currently on flows (create, graph change, settings change, delete, restore, release), recipes (create, changeover), source deletion, connections (create, modify, delete), accounts (create, modify, delete) and the engine lock.</li>
+<li>A flow's graph is diffed at <strong>parameter level</strong> by <code>graphdiff</code> ("threshold 60 → 46"); everything else uses <code>audit.fields_diff</code>. <code>detail</code> is bounded in length and count by <code>_clip</code>.</li>
+<li><strong>A failed write never affects the request</strong> (<code>record</code> raises nothing): a broken audit trail is bad, but a line stopped by a broken audit trail is worse.</li>
+<li>API: <code>GET /vision/audit</code> (administrator; filterable by action, actor and keyword) and <code>GET /vision/audit.csv</code> (UTF-8 with a BOM, so Excel opens it). Retention is <code>VISION_AUDIT_DAYS</code> (730 by default, 0 for forever). In the interface: <code>/audit</code>.</li>
+<li><strong>The trap</strong>: on an <code>auth=None</code> endpoint ninja does not set <code>request.auth</code>, so the identity has to come from what <code>authenticate()</code> returned. Calling <code>principal(request)</code> there reads <code>request.auth</code> and raises 401 on its own.</li>
 </ul>
 
-<h2 id="versions">5b. 版本歷史（versions.py、graphdiff.py）</h2>
+<h2 id="versions">5b. Version history (versions.py, graphdiff.py)</h2>
 <ul>
-<li><code>FlowVersion(flow, version, graph, saved_by, saved_at, note, is_released)</code>：每次 graph 真的變了才 +1 並存快照（存同一張圖不產生新版本）。建立流程時記第一版 note="created"。</li>
-<li><strong>差異是講給人聽的</strong>（<code>graphdiff.diff</code>）：參數變更逐條列（節點、參數、前後值），結構只給數量（新增／刪除節點、連線增減），純畫布位移不算變更。<code>summarize()</code> 產生「threshold 60 → 46, +1 step」這種一行摘要給清單用。</li>
-<li><strong>還原產生新版本，不改寫歷史</strong>：<code>versions.restore</code> 先把目前這版存起來，再把舊圖寫成下一版（note="restored from vN"）。</li>
-<li><strong>發行版只是標記</strong>：<code>is_released</code> 供品質簽核用，<strong>不擋任何執行</strong>；淘汰（<code>KEEP_VERSIONS</code>，預設 50）永遠保留已發行的版本。</li>
-<li>API：<code>GET /flows/{id}/versions</code>、<code>GET /versions/{v}</code>（含與目前版的差異）、<code>POST /versions/{v}/restore</code>、<code>POST /versions/{v}/release</code>；前端在編輯器工具列的「版本」鈕（<code>components/flow/VersionPanel.tsx</code>）。</li>
+<li><code>FlowVersion(flow, version, graph, saved_by, saved_at, note, is_released)</code>: the version increments and a snapshot is stored only when the graph really changed (saving the same graph creates nothing). Creating a flow records version one with note="created".</li>
+<li><strong>The diff is written for a person</strong> (<code>graphdiff.diff</code>): parameter changes are listed one by one (node, parameter, before and after), structure is reduced to counts (nodes added or removed, edges changed), and a pure canvas move is not a change at all. <code>summarize()</code> produces a one-line "threshold 60 → 46, +1 step" for the list.</li>
+<li><strong>Restoring creates a new version rather than rewriting history</strong>: <code>versions.restore</code> saves the current version first, then writes the old graph as the next one (note="restored from vN").</li>
+<li><strong>Release is only a marker</strong>: <code>is_released</code> exists for quality sign-off and <strong>blocks nothing</strong>. Retention (<code>KEEP_VERSIONS</code>, 50 by default) always keeps released versions.</li>
+<li>API: <code>GET /flows/{id}/versions</code>, <code>GET /versions/{v}</code> (with the diff against the current version), <code>POST /versions/{v}/restore</code> and <code>POST /versions/{v}/release</code>. In the interface, the "Versions" button in the editor toolbar (<code>components/flow/VersionPanel.tsx</code>).</li>
 </ul>
 
-<h2 id="archive">6b. 影像封存（archive.py）</h2>
+<h2 id="archive">6b. The image archive (archive.py)</h2>
 <ul>
-<li><strong>為什麼</strong>：`images.ImageStore` 只留每流程最近 <code>KEEP_RUN_IMAGES</code> 次且隨行程消失，所以「那片不良品當時拍到什麼」以前沒有答案。</li>
-<li><strong>寫在哪</strong>：檔案在 <code>&lt;ASSET_DIR 的上層&gt;/archive/&lt;flow_id&gt;/&lt;YYYYMMDD&gt;/&lt;run_id&gt;-&lt;node&gt;-&lt;port&gt;.jpg</code>（<code>VISION_ARCHIVE_DIR</code> 可移到大容量磁碟），路徑記在 <code>FlowRun.images</code>。</li>
-<li><strong>不碰熱路徑</strong>：引擎執行緒只在 <code>_record</code> 取影像的參照（不複製不編碼），編碼與寫檔在既有的 <code>_Persister</code> 背景執行緒；持久化佇列深度超過 <code>QUEUE_LIMIT</code> 就跳過封存（產線優先，寧可少存也不能卡）。</li>
-<li><strong>策略</strong>：<code>Flow.archive_policy</code> 疊在 <code>VISION_ARCHIVE_DEFAULT</code> 之上，mode＝off／ng／all，pictures＝result（來源＋結果兩張）／all，另有 OK 取樣 <code>sample</code>、格式與品質。出貨預設 off。</li>
-<li><strong>讀回</strong>：<code>GET /vision/images/{ref}</code> 在記憶體找不到時自動回頭讀封存——<strong>前端不必知道影像在哪</strong>。</li>
-<li><strong>清理</strong>：<code>archive.purge()</code> 先照天數再照總容量（舊的先刪），由持久化執行緒每 500 筆順便跑一次；<code>FlowRun</code> 列被淘汰時一併刪掉它的檔案。</li>
+<li><strong>Why</strong>: <code>images.ImageStore</code> keeps only the last <code>KEEP_RUN_IMAGES</code> runs per flow and dies with the process, so "what did the camera see when that reject went through" had no answer.</li>
+<li><strong>Where</strong>: files go to <code>&lt;parent of ASSET_DIR&gt;/archive/&lt;flow_id&gt;/&lt;YYYYMMDD&gt;/&lt;run_id&gt;-&lt;node&gt;-&lt;port&gt;.jpg</code> (<code>VISION_ARCHIVE_DIR</code> moves it to a bigger disk), with the paths recorded in <code>FlowRun.images</code>.</li>
+<li><strong>It stays off the hot path</strong>: the engine thread only takes a reference to the image in <code>_record</code> — no copy, no encode — and the encoding and writing happen on the existing <code>_Persister</code> background thread. When the persistence queue is deeper than <code>QUEUE_LIMIT</code> archiving is skipped: the line comes first, and it is better to store less than to block.</li>
+<li><strong>Policy</strong>: <code>Flow.archive_policy</code> overlays <code>VISION_ARCHIVE_DEFAULT</code>, with mode off/ng/all, pictures result (the source and the result) or all, plus an OK <code>sample</code> rate, the format and the quality. The shipped default is off.</li>
+<li><strong>Reading back</strong>: <code>GET /vision/images/{ref}</code> falls back to the archive when the image is no longer in memory — <strong>the front end need not know where it lives</strong>.</li>
+<li><strong>Purging</strong>: <code>archive.purge()</code> goes by age first and then by total size (oldest first), run by the persistence thread every 500 rows; and when a <code>FlowRun</code> row ages out, its files go with it.</li>
 </ul>
 
-<h2 id="sources">7. 影像來源（sources/）</h2>
-<p><code>open_source(model)</code> 依 kind 建 Grabber 並快取（updated_at 變了才重開）。內建：folder（循環讀檔、排序、pattern）、file（mtime 變了重讀）、usb（BUFFERSIZE=1，先 grab 丟舊幀）、synthetic（合成零件：隨機位移／旋轉、30% 缺孔或刮痕，讓沒相機也能走完整流程）、upload（API push）。外掛：繼承 <code>Grabber</code> 的 .py 丟進 <code>plugins/</code> 自動掛載（或 <code>VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber</code>），見 plugins.html。Grabber 會被多執行緒同時呼叫，內部要加鎖。</p>
-<p><strong>擷取端（kind=capture，apps/vision/capture/）</strong>：<code>hub.py</code> 的 <code>CaptureHub</code> 在 <code>manage.py serve</code> 時監聽擷取埠（9100），每個連上的擷取端一條 <code>ClientSession</code> 執行緒（握手、驗證、通道表、共享記憶體附加、影格接收與 pending 喚醒；不碰 ORM）；<code>CaptureGrabber.grab()</code> 依模式向 session 要一張新影格或取 latest，回獨占的 ndarray；<code>channel_status()</code> 給來源清單顯示連線／fps。協定常數與擷取端共用 <code>vscapture/protocol.py</code>（伺服端只 import 這一個零依賴模組）。細節、協定表與效能見 <a href="capture-client.html">擷取端</a>。</p>
+<h2 id="sources">7. Image sources (sources/)</h2>
+<p><code>open_source(model)</code> builds a Grabber by kind and caches it (reopened only when updated_at changes). Built in: folder (looping through files, sorted, with a pattern), file (re-read when the mtime changes), usb (BUFFERSIZE=1, with a discarded grab to drop the stale frame), synthetic (a synthetic part with random offset and rotation and a 30% chance of a missing hole or a scratch, so a complete flow can be built with no camera) and upload (pushed through the API). Plugins: a .py subclassing <code>Grabber</code> dropped into <code>plugins/</code> loads automatically (or <code>VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber</code>); see <a href="plugins.html">Plugins</a>. A Grabber is called from several threads at once and must lock internally.</p>
+<p><strong>The capture client (kind=capture, apps/vision/capture/)</strong>: <code>hub.py</code>'s <code>CaptureHub</code> listens on the capture port (9100) when <code>manage.py serve</code> starts, giving each connected client a <code>ClientSession</code> thread (the handshake, authentication, the channel table, attaching shared memory, receiving frames and waking anything pending — and never touching the ORM). <code>CaptureGrabber.grab()</code> asks the session for a fresh frame or takes the latest depending on the mode, returning an ndarray it owns outright, and <code>channel_status()</code> gives the source list its connection state and fps. The protocol constants are shared with the client through <code>vscapture/protocol.py</code>, the one dependency-free module the server imports. The details, the protocol tables and the performance figures are in <a href="capture-client.html">Capture client</a>.</p>
 
-<h2 id="api">8. API / SSE / TCP</h2>
-<p>完整清單見 <code>apps/vision/api.py</code> 頂端 docstring；整合方式見 <a href="automation.html">automation.html</a>。重點：</p>
+<h2 id="api">8. API, SSE and TCP</h2>
+<p>The complete list is in the docstring at the top of <code>apps/vision/api.py</code>; how to integrate is in <a href="automation.html">Automation</a>. The highlights:</p>
 <ul>
-<li><code>POST /flows/{id}/run</code>：JSON 或 multipart 附 image；<code>wait</code>、<code>timeout_s</code>、<code>include_images</code>（預設不含節點輸出，產線回傳要小）。</li>
-<li><code>POST /flows/{id}/preview</code>：用未存檔的圖試執行，保留全部中間影像；<code>reuse_image_ref</code> 讓調參數時畫面固定。</li>
-<li><code>POST /flows/{id}/preview</code> 的 <code>until_node</code>／<code>analysis</code>：工具頁即時調參只跑到該步驟（<code>graph.restrict_to()</code> 取祖先子圖），並回傳直方圖與數值分布；<code>POST /flows/{id}/scratch-image</code> 暫存影像進快取不進來源庫；<code>DELETE /flows/{id}/recent</code> 重置。</li>
-<li><code>GET /images/{ref}?max=&amp;fmt=</code>、<code>GET /flows/{id}/recent</code>、<code>GET /flows/{id}/runs</code>（DB）、<code>GET /flows/{id}/stats</code>（每小時 OK/NG）。</li>
-<li>SSE 不經 ninja（config/urls.py 直接路由）：<code>hello / stats / run_queued / run_started / run_finished / continuous / ping / bye</code>；55 秒關閉、client 帶 since 重連；client 40 秒沒訊息（含 ping）就主動重連。</li>
-<li>TCP（tcp_server.py）：一行指令一行 JSON，<code>RUN&lt;flow&gt; k=v</code> 同步回結果；每連線一條執行緒，指令交給同一個 Runner。</li>
-<li>金鑰選填：<code>VISION_API_KEY</code>；<code>&lt;img&gt;</code>／EventSource 帶不了 header，所以影像與串流也接受 <code>?api_key=</code>。</li>
+<li><code>POST /flows/{id}/run</code>: JSON, or multipart with an image; <code>wait</code>, <code>timeout_s</code> and <code>include_nodes</code> (node outputs are excluded by default, so a production response stays small).</li>
+<li><code>POST /flows/{id}/preview</code>: runs an unsaved graph and keeps every intermediate image; <code>reuse_image_ref</code> pins the picture while tuning.</li>
+<li>Preview's <code>until_node</code> and <code>analysis</code>: the tool page runs only as far as that step (<code>graph.restrict_to()</code> takes the ancestor subgraph) and returns a histogram and value distribution. <code>POST /flows/{id}/scratch-image</code> puts an image in the cache without adding it to the source library, and <code>DELETE /flows/{id}/recent</code> resets.</li>
+<li><code>GET /images/{ref}?max=&amp;fmt=</code>, <code>GET /flows/{id}/recent</code>, <code>GET /flows/{id}/runs</code> (from the database) and <code>GET /flows/{id}/stats</code> (hourly OK/NG).</li>
+<li>SSE bypasses ninja (routed directly in config/urls.py): <code>hello, stats, run_queued, run_started, run_finished, continuous, ping, bye</code>. It closes after 55 seconds and the client reconnects with its <code>since</code>; a client that has heard nothing (ping included) for 40 seconds reconnects on its own.</li>
+<li>TCP (tcp_server.py): one command per line, one JSON per line. <code>RUN &lt;flow&gt; k=v</code> returns the result synchronously. One thread per connection, all going through the same Runner.</li>
+<li>The key is optional (<code>VISION_API_KEY</code>). An <code>&lt;img&gt;</code> tag and EventSource cannot send headers, so the image and stream endpoints also accept <code>?api_key=</code> or <code>?token=</code>.</li>
 </ul>
 
-<h2 id="frontend">9. 前端（frontend/src）</h2>
+<h2 id="frontend">9. The front end (frontend/src)</h2>
 <table>
-<tr><th>檔案</th><th>職責</th></tr>
-<tr><td>lib/api.ts、lib/types.ts、lib/queries.ts</td><td>API 客戶端、型別、TanStack hooks</td></tr>
-<tr><td>lib/flowStream.ts</td><td>SSE → query cache（recent runs、stats），斷線重連帶 seq</td></tr>
-<tr><td>lib/graphValidation.ts</td><td>必填參數、範圍、未連線必填埠、型別相容（onConnect 用）</td></tr>
-<tr><td>pages/FlowEditorPage.tsx + components/editor/*</td><td>三欄可拖曳：調色盤｜影像檢視器（上，最大）＋畫布（下）｜檢視面板／結果。試執行、執行、連續、復原、複製貼上、自動排列。</td></tr>
-<tr><td>components/viewer/ImageViewer.tsx</td><td>Canvas 檢視器：以游標為中心縮放、平移、fit/1:1、像素座標與灰階值、像素格線、overlays（線寬固定螢幕像素、Path2D 批次）、ROI 六種形狀的把手編輯與繪製模式。視角在 ref 裡、rAF 合併重繪，拖曳不觸發 React state。</td></tr>
-<tr><td>components/editor/ToolNode.tsx / FlowEdge.tsx</td><td>左輸入右輸出、埠依型別上色、flow 把手菱形、執行狀態（ok/ng/error/skipped/running）、耗時小字；邊依來源埠型別上色、有資料流過時動畫</td></tr>
-<tr><td>pages/Dashboard / Flows / Sources / Assets / Settings</td><td>總覽（全域 SSE）、列表、來源 CRUD＋預覽、資產上傳、金鑰／主題／語言</td></tr>
+<tr><th>File</th><th>Responsibility</th></tr>
+<tr><td>lib/api.ts, lib/types.ts, lib/queries.ts</td><td>The API client, the types and the TanStack hooks</td></tr>
+<tr><td>lib/flowStream.ts</td><td>SSE into the query cache (recent runs, statistics), reconnecting with its seq</td></tr>
+<tr><td>lib/graphValidation.ts</td><td>Required parameters, ranges, unconnected required ports and type compatibility (used by onConnect)</td></tr>
+<tr><td>pages/FlowEditorPage.tsx and components/editor/*</td><td>Three resizable columns: the palette | the image viewer (on top, the largest) with the canvas below | the inspector and results. Preview, run, continuous, undo, copy and paste, auto-layout.</td></tr>
+<tr><td>components/viewer/ImageViewer.tsx</td><td>The canvas viewer: zoom about the cursor, pan, fit and 1:1, pixel coordinates and grey values, a pixel grid, overlays (line widths fixed in screen pixels, batched through Path2D) and handle editing and drawing for every ROI shape. The viewport lives in a ref and redraws are coalesced with rAF, so dragging never touches React state.</td></tr>
+<tr><td>components/editor/ToolNode.tsx and FlowEdge.tsx</td><td>Inputs on the left and outputs on the right, ports coloured by type, flow handles as diamonds, the run state (ok/ng/error/skipped/running) and the duration in small type. Edges take their colour from the source port's type and animate while data flows.</td></tr>
+<tr><td>pages/Dashboard, Flows, Sources, Assets, Settings</td><td>The dashboard (on the global SSE), the lists, source CRUD with preview, asset upload, and the key, theme and language</td></tr>
 </table>
-<p>檢視器顯示規則：選取節點 → 顯示其 <code>overlay_on</code> 輸入影像（preview 的 <code>detail._input_ref</code>，否則上游輸出 ref）並疊該節點 overlays；可切「輸入／輸出」與「疊加全部節點」。</p>
-<p>沿用 ZQS 的前端規則（每條都對應一個坑）：isEdit 只認 resizing、只在 version 變時重載圖、document 鍵盤監聽用 ref、undo 放 ref、deleteKeyCode={null}、isTypingTarget、貼上重新命名並保留內部邊。</p>
+<p>What the viewer shows: with a node selected, its <code>overlay_on</code> input image (preview's <code>detail._input_ref</code>, otherwise the upstream output ref) with that node's overlays on top. You can switch between input and output, and overlay every node at once.</p>
+<p>The front-end rules carried over from the earlier product (each one corresponds to a bug): isEdit only recognises resizing; reload the graph only when the version changes; document key listeners go through a ref; undo lives in a ref; deleteKeyCode={null}; isTypingTarget; and pasting renames nodes while keeping the internal edges.</p>
 
-<h2 id="accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</h2>
+<h2 id="accounts">9b. Accounts, ownership and the engine lock (apps/accounts)</h2>
 <ul>
-<li><strong>身分</strong>（security.py）：<code>Principal(kind)</code>——<code>integrator</code>（X-API-Key＝VISION_API_KEY，機器身分）、<code>user</code>（Bearer 權杖，SHA-256 存 DB、預設 14 天）、<code>bootstrap</code>（系統尚無使用者時放行，讓 /auth/setup 能建第一個管理員）。影像／SSE 接受 <code>?token=</code>。</li>
-<li><strong>角色</strong>（<code>UserPref.role</code>，封閉集合 <code>accounts.models.ROLES</code>）：<code>admin</code>（與 <code>User.is_staff</code> 同步）／<code>engineer</code>（預設）／<code>operator</code>。<code>Principal.role</code>／<code>is_engineer</code> 是判定入口；<code>require_admin</code>（帳號、連線、系統設定）與 <code>require_engineer</code>（建立與修改流程、來源、資產、DL、批次、Golden）是兩個守門函式。權杖解析時一併 <code>select_related("user__pref")</code>，權限判定不多一次查詢。</li>
-<li><strong>流程屬於產線不屬於個人</strong>：<code>_visible_flows</code> 對所有登入者回全部流程，<code>can_edit_flow</code> 只看角色；<code>Flow.owner</code> 退化成「建立者」，僅供顯示與 <code>?mine=1</code> 篩選。</li>
-<li><strong>操作員的參數邊界</strong>（<code>apps/vision/teachguard.py</code>）：<code>PATCH /flows/{id}</code> 對操作員只放行「圖以外欄位都沒動、且新舊圖之間只有 <code>Param.teach=True</code> 參數的值不同」的變更，否則 403 <code>teach_only</code>。現場可調參數的清單就是工具已經標好的 <code>teach</code> 旗標（目前 58 個），不另外維護。換線走 <code>POST /flows/{id}/recipes/{rid}/activate</code>（操作員可用），改配方內容仍需工程師。</li>
-<li><strong>引擎鎖</strong>：<code>EngineLock</code> 單列。整合方或管理員 POST /vision/lock（reason、ttl_s）；鎖定時 run／preview／continuous 回 423 <code>engine_locked</code>，編輯不受影響；上鎖即停掉所有連續執行並廣播 SSE <code>lock</code> 事件；整合方與持有者不受限；TCP 介面視為整合方。前端以橫幅顯示並停用執行按鈕。</li>
+<li><strong>Identity</strong> (security.py): <code>Principal(kind)</code> — <code>integrator</code> (X-API-Key = VISION_API_KEY, a machine identity), <code>user</code> (a Bearer token, stored as SHA-256, 14 days by default) and <code>bootstrap</code> (allowed while there are no users, so /auth/setup can create the first administrator). The image and SSE endpoints accept <code>?token=</code>.</li>
+<li><strong>Roles</strong> (<code>UserPref.role</code>, the closed set <code>accounts.models.ROLES</code>): <code>admin</code> (kept in step with <code>User.is_staff</code>), <code>engineer</code> (the default) and <code>operator</code>. <code>Principal.role</code> and <code>is_engineer</code> are the entry points, and <code>require_admin</code> (accounts, connections, system settings) and <code>require_engineer</code> (creating and editing flows, sources, assets, DL, batch and Golden) are the two gatekeepers. Token resolution does <code>select_related("user__pref")</code>, so a permission check costs no extra query.</li>
+<li><strong>A flow belongs to the line, not to a person</strong>: <code>_visible_flows</code> returns every flow to any signed-in user and <code>can_edit_flow</code> looks only at the role. <code>Flow.owner</code> degrades to "who created it", used for display and the <code>?mine=1</code> filter.</li>
+<li><strong>The operator's parameter boundary</strong> (<code>apps/vision/teachguard.py</code>): for an operator, <code>PATCH /flows/{id}</code> only allows a change where no field outside the graph moved and the only difference between the old and new graphs is the value of <code>Param.teach=True</code> parameters; anything else is 403 <code>teach_only</code>. The list of adjustable parameters is exactly the <code>teach</code> flags the tools already carry (58 of them), maintained nowhere else. A changeover goes through <code>POST /flows/{id}/recipes/{rid}/activate</code>, which an operator may use; editing a recipe's contents still needs an engineer.</li>
+<li><strong>The engine lock</strong>: a single <code>EngineLock</code> row. An integrator or an administrator POSTs to /vision/lock (with a reason and a ttl_s). While locked, run, preview and continuous return 423 <code>engine_locked</code> and editing is unaffected; locking stops every continuous run and broadcasts an SSE <code>lock</code> event; the integrator and the holder are exempt; and the TCP interface counts as an integrator. The interface shows a banner and disables the run buttons.</li>
 </ul>
 
-<h2 id="more">9c. 範本庫、批次測試、整合工具（api_more.py）</h2>
+<h2 id="more">9c. Templates, batch testing and the integration tools (api_more.py)</h2>
 <ul>
-<li><strong>範本</strong>：內建範本由 <code>demo.py</code> 的建構器以 <code>{SOURCE}</code> 佔位符產生（孔數、曝光、定位＋卡尺、顏色有無、條碼），自訂範本存 <code>FlowTemplate</code>；<code>instantiate</code> 換回來源 id 並可加節點前綴避免撞名。範本不綁機器的來源 id，這是「點選就能用」的前提。</li>
-<li><strong>批次測試</strong>：每張影像以 preview 模式跑（影像留在快取），回每張的判定／輸出／錯誤節點與來源影像 ref；上限 50 張，記憶體受 KEEP_RUN_IMAGES 限制、舊的會被釋放。</li>
-<li><strong>整合工具</strong>：<code>integration/tcp</code> 真的連本機 TCP 埠送一行指令（埠沒開時直接呼叫 <code>handle_command</code> 並標 <code>via=direct</code>），讓整合方在瀏覽器裡就能驗證設備端要送的字串。</li>
+<li><strong>Templates</strong>: the built-in ones are produced by builders in <code>demo.py</code> with a <code>{SOURCE}</code> placeholder, and a saved one goes into <code>FlowTemplate</code>. <code>instantiate</code> substitutes the source id back and can prefix node ids to avoid collisions. A template is never tied to one machine's source id, which is what makes "click and it works" possible.</li>
+<li><strong>Batch testing</strong>: each image runs in preview mode (its images stay in the cache) and comes back with its verdict, outputs, failing node and source image ref. Up to 50 images, bounded by KEEP_RUN_IMAGES, with older ones released. (The stored, larger batch workbench is <a href="batch.html">Batch testing</a>.)</li>
+<li><strong>The integration tools</strong>: <code>integration/tcp</code> really connects to the local TCP port and sends a line (when the port is closed it calls <code>handle_command</code> directly and marks the result <code>via=direct</code>), so an integrator can verify the exact string their equipment will send, from a browser.</li>
 </ul>
 
-<h2 id="plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</h2>
+<h2 id="plan">9d. Teach page, recipes, stations, Golden Set and Modbus</h2>
 <ul>
-<li><strong>Param.teach</strong>：工具把需要現場教導的參數標 <code>teach=True</code>，參數卡頁（/flows/:id/teach）只列這些並即時試執行到該步驟；<code>Flow.commissioned</code> 未確認時 RunReport 帶 <code>warnings</code>，不阻擋。</li>
-<li><strong>配方 FlowRecipe</strong>：<code>param_overrides = {node_id: {param: value}}</code>，執行時 <code>apply_recipe()</code> 疊到圖上再編譯，快取鍵 <code>(version, recipe_id, updated_at)</code>；HTTP <code>recipe</code>、TCP <code>recipe=</code>、未指定用預設配方。覆寫只能指向存在的節點與宣告過的參數，疊完的圖要能過 validate_graph。</li>
-<li><strong>station_id</strong>：<code>VISION_STATION_ID</code> 寫進 FlowRun、RunReport、TCP 回應；索引 (station_id, -started_at)。</li>
-<li><strong>Golden Set</strong>（apps/golden）：案例＋期望值、回歸以非 preview 跑、只對 mismatch 取影像；基準比對列出 regressed；CLI <code>manage.py regress</code> 可進 CI。流程匯出入 <code>manage.py flow export|import|run</code>（穩定序列化：排序、整數座標、{SOURCE} 佔位符）。詳見 golden.html。</li>
-<li><strong>Modbus 主動輸出</strong>（apps/comm）：Connection（modbus_tcp／tcp_client／dio_sim／外掛）＋ <code>write_modbus</code> 工具，連線在 <code>Runner.prefetch_hooks</code> 於呼叫者執行緒開好，寫入失敗預設降級不讓 run failed。詳見 modbus.html。</li>
-<li>未做（依計畫排後）：標定子系統（§4.2）、GenICam 內建來源（§4.5）、C 級差異化。</li>
+<li><strong>Param.teach</strong>: a tool marks the parameters that need teaching on the line, the teach page (/flows/:id/teach) lists only those and previews up to that step live, and while <code>Flow.commissioned</code> is false a RunReport carries a warning without being blocked.</li>
+<li><strong>FlowRecipe</strong>: <code>param_overrides = {node_id: {param: value}}</code>, applied by <code>apply_recipe()</code> before compiling, with the cache keyed on <code>(version, recipe_id, updated_at)</code>. HTTP <code>recipe</code>, TCP <code>recipe=</code>, or the bound recipe when nothing is named. An override may only name an existing node and a declared parameter, and the resulting graph must pass validate_graph.</li>
+<li><strong>station_id</strong>: <code>VISION_STATION_ID</code> is written into FlowRun, the RunReport and the TCP response, indexed on (station_id, -started_at).</li>
+<li><strong>Golden Set</strong> (apps/golden): cases with expectations, regression run outside preview mode, images kept only for mismatches, the baseline comparison listing what regressed, and <code>manage.py regress</code> for CI. Flow export and import is <code>manage.py flow export|import|run</code> with a stable serialisation (sorted, integer coordinates, the {SOURCE} placeholder). See <a href="golden.html">Golden Set</a>.</li>
+<li><strong>Pushing to Modbus</strong> (apps/comm): a Connection (modbus_tcp, modbus_server, tcp_client, dio_sim or a plugin) plus the <code>write_modbus</code> tool, with connections opened by <code>Runner.prefetch_hooks</code> on the caller's thread, and a failed write degrading rather than failing the run. See <a href="modbus.html">Modbus</a>.</li>
+<li>Deliberately deferred: the calibration subsystem, a built-in GenICam source.</li>
 </ul>
 
-<h2 id="settings">10. 設定值（config/settings.py → VISION）</h2>
+<h2 id="settings">10. Settings (config/settings.py → VISION)</h2>
 <table>
-<tr><th>環境變數</th><th>預設</th><th>意義</th></tr>
-<tr><td>VISION_MAX_WORKERS</td><td>10</td><td>執行緒池大小＝同時忙碌流程數</td></tr>
-<tr><td>VISION_MAX_QUEUE_PER_FLOW</td><td>16</td><td>同一流程可同時等待的觸發數，超過 429</td></tr>
-<tr><td>VISION_RUN_TIMEOUT_S</td><td>30</td><td>單次 run 逾時</td></tr>
-<tr><td>VISION_KEEP_RUN_IMAGES</td><td>8</td><td>每流程記憶體保留的 run 數（含影像）</td></tr>
-<tr><td>VISION_IMAGE_CACHE_MB</td><td>1024</td><td>影像快取總量</td></tr>
-<tr><td>VISION_PERSIST_RUNS / KEEP_RUN_ROWS</td><td>1 / 2000</td><td>DB 記錄開關與每流程保留列數</td></tr>
-<tr><td>VISION_CV_THREADS</td><td>2</td><td>單一工具的演算法平行度；多流程並行建議 1～2</td></tr>
-<tr><td>VISION_PLUGIN_DIR</td><td>./plugins</td><td>資料夾外掛（自動偵測）</td></tr>
-<tr><td>VISION_TOOL_PLUGINS / SOURCE_PLUGINS / COMM_PLUGINS</td><td>空</td><td>模組路徑外掛（進階）</td></tr>
-<tr><td>VISION_API_KEY</td><td>空</td><td>選填金鑰</td></tr>
-<tr><td>VISION_TCP_HOST / PORT</td><td>0.0.0.0 / 9000</td><td>TCP 介面</td></tr>
+<tr><th>Environment variable</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>VISION_MAX_WORKERS</td><td>10</td><td>The thread pool size — flows busy at once</td></tr>
+<tr><td>VISION_MAX_QUEUE_PER_FLOW</td><td>16</td><td>Triggers that may wait on one flow before 429</td></tr>
+<tr><td>VISION_RUN_TIMEOUT_S</td><td>30</td><td>The timeout of a single run</td></tr>
+<tr><td>VISION_KEEP_RUN_IMAGES</td><td>8</td><td>Runs kept in memory per flow, images included</td></tr>
+<tr><td>VISION_IMAGE_CACHE_MB</td><td>1024</td><td>The total image cache size</td></tr>
+<tr><td>VISION_PERSIST_RUNS / KEEP_RUN_DAYS / KEEP_RUN_ROWS</td><td>1 / 30 / 2000</td><td>Whether to record runs, how many days of detail to keep, and the row backstop per flow</td></tr>
+<tr><td>VISION_ARCHIVE_DEFAULT / ARCHIVE_DAYS / ARCHIVE_MAX_GB / ARCHIVE_DIR</td><td>off / 30 / 20 / (beside the data directory)</td><td>The image archive: the default policy, the retention period, the size cap and where it lives</td></tr>
+<tr><td>VISION_AUDIT_DAYS</td><td>730</td><td>Audit log retention (0 for forever)</td></tr>
+<tr><td>VISION_KEEP_VERSIONS</td><td>50</td><td>Versions kept per flow (released ones are always kept)</td></tr>
+<tr><td>VISION_CV_THREADS</td><td>2</td><td>Algorithm parallelism inside one tool; 1–2 when flows run in parallel</td></tr>
+<tr><td>VISION_PLUGIN_DIR</td><td>./plugins</td><td>The plugin folder (auto-detected)</td></tr>
+<tr><td>VISION_TOOL_PLUGINS / SOURCE_PLUGINS / COMM_PLUGINS</td><td>empty</td><td>Module-path plugins (advanced)</td></tr>
+<tr><td>VISION_API_KEY</td><td>empty</td><td>The optional key</td></tr>
+<tr><td>VISION_TCP_HOST / PORT</td><td>0.0.0.0 / 9000</td><td>The TCP interface</td></tr>
+<tr><td>VISION_CAPTURE_HOST / PORT / CAPTURE_AUTH</td><td>0.0.0.0 / 9100 / (the API key)</td><td>The capture client port</td></tr>
+<tr><td>VISION_STATION_ID</td><td>empty</td><td>This station's identifier, carried by every run</td></tr>
 </table>
 
-<h2 id="tests">11. 測試（tests/）</h2>
-<p><code>test_graph</code>（驗證與編譯）、<code>test_runner</code>（引擎分支／直通／錯誤／快取、Runner 並行／排隊／事件／連續）、<code>test_api</code>（CRUD、run 三種形式、preview、影像端點、來源、資產、TCP、金鑰、SSE）、<code>test_tools</code>（52 個工具各至少一案例，含手刻 ONNX 模型真跑 onnxruntime）、<code>test_engine</code>（端到端 OK/NG 兩路徑）。測試 DB 是檔案＋WAL（見 12）。</p>
+<h2 id="tests">11. Tests (tests/)</h2>
+<p><code>test_graph</code> (validation and compilation), <code>test_runner</code> (engine branching, pass-through, errors and the cache; Runner concurrency, queueing, events and continuous mode), <code>test_api</code> (CRUD, the three forms of run, preview, the image endpoints, sources, assets, TCP, the key and SSE), <code>test_tools</code> (at least one case per tool, including hand-built ONNX models really run through onnxruntime) and <code>test_engine</code> (end to end on both the OK and NG paths). The test database is a file with WAL (see §12).</p>
 
-<h2 id="pitfalls">12. 踩過的坑</h2>
+<h2 id="pitfalls">12. Traps we hit</h2>
 <table>
-<tr><th>#</th><th>症狀</th><th>原因</th><th>修法</th></tr>
-<tr><td>1</td><td>執行緒池內 run 全部 failed：<code>database table is locked</code></td><td>Django TestCase 的交易＋記憶體共享 SQLite，其他連線讀不到</td><td>測試 DB 改檔案＋WAL；來源／資產在呼叫者執行緒 <code>_prefetch</code>；跨執行緒寫入的測試用 TransactionTestCase</td></tr>
-<tr><td>2</td><td><code>'bool' object has no attribute 'is_set'</code>／<code>'Event' object is not callable</code></td><td>Thread 子類別用了 <code>_started</code>／<code>_stop</code> 當屬性</td><td>改名 <code>_launched</code>／<code>_halt</code></td></tr>
-<tr><td>3</td><td>ninja 啟動就 TypeError abstract</td><td>APIKeyHeader 要實作 <code>authenticate</code></td><td>覆寫 <code>__call__</code> 放行無金鑰、實作 authenticate</td></tr>
-<tr><td>4</td><td>測試裡第二個查詢 TransactionManagementError</td><td>IntegrityError 沒包在 atomic 內</td><td>create/save 包 <code>transaction.atomic()</code> 再 catch</td></tr>
-<tr><td>5</td><td>測試後面全部「Cannot operate on a closed database」</td><td><code>handle_command</code> 在呼叫者執行緒 <code>close_old_connections()</code></td><td>只在 TCP handler 自己的執行緒收連線</td></tr>
-<tr><td>6</td><td>測試執行 55 秒</td><td>test client 把 SSE 串流讀完</td><td><code>?max_seconds=</code></td></tr>
-<tr><td>7</td><td>示範流程孔數老是 3</td><td>合成影像的條碼／文字與中心孔黏在一起，圓形度被拉低</td><td>版面避開孔位；示範 max_area 放寬。教訓：示範資料要先跑 40 次看分布</td></tr>
-<tr><td>8</td><td>demo helper <code>_node(label=…)</code> 與 judge 的 label 參數撞名</td><td>位置參數與 **params 同名</td><td>helper 改 title</td></tr>
-<tr><td>9</td><td>Windows 中文路徑讀圖回 None</td><td>預設讀圖 API 不吃非 ASCII</td><td><code>np.fromfile</code>＋<code>imdecode</code>、<code>imencode</code>＋<code>tofile</code></td></tr>
-<tr><td>10</td><td>結果影像接不到上游標記</td><td>overlays 在 Result 不在 outputs</td><td>隱含輸出埠 <code>_overlays</code>（graph/engine/catalogue 三處）</td></tr>
+<tr><th>#</th><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+<tr><td>1</td><td>Every run inside the thread pool fails with <code>database table is locked</code></td><td>Django TestCase's transaction plus a shared in-memory SQLite, which other connections cannot read</td><td>The test database became a file with WAL; sources and assets are opened by <code>_prefetch</code> on the caller's thread; tests that write across threads use TransactionTestCase</td></tr>
+<tr><td>2</td><td><code>'bool' object has no attribute 'is_set'</code> or <code>'Event' object is not callable</code></td><td>A Thread subclass used <code>_started</code> and <code>_stop</code> as attribute names</td><td>Renamed to <code>_launched</code> and <code>_halt</code></td></tr>
+<tr><td>3</td><td>ninja raises TypeError about an abstract class at start-up</td><td>APIKeyHeader must implement <code>authenticate</code></td><td>Override <code>__call__</code> to allow a missing key, and implement authenticate</td></tr>
+<tr><td>4</td><td>The next query in a test raises TransactionManagementError</td><td>An IntegrityError was not wrapped in atomic</td><td>Wrap the create/save in <code>transaction.atomic()</code> before catching</td></tr>
+<tr><td>5</td><td>Everything afterwards says "Cannot operate on a closed database"</td><td><code>handle_command</code> called <code>close_old_connections()</code> on the caller's thread</td><td>Only do it on the TCP handler's own thread</td></tr>
+<tr><td>6</td><td>A test takes 55 seconds</td><td>The test client reads the whole SSE stream</td><td><code>?max_seconds=</code></td></tr>
+<tr><td>7</td><td>The demo flow always counts three holes</td><td>The synthetic image's barcode and text touched the centre hole, dragging its circularity down</td><td>Keep them away from the holes in the layout, and loosen the demo's max_area. The lesson: run demo data 40 times and look at the distribution first</td></tr>
+<tr><td>8</td><td>The demo helper's <code>_node(label=…)</code> collided with judge's label parameter</td><td>A positional argument sharing a name with **params</td><td>The helper takes title instead</td></tr>
+<tr><td>9</td><td>Reading an image from a non-ASCII path on Windows returns None</td><td>The default image-reading API does not accept non-ASCII paths</td><td><code>np.fromfile</code> plus imdecode, and imencode plus <code>tofile</code></td></tr>
+<tr><td>10</td><td>The result image cannot receive upstream overlays</td><td>Overlays live on Result, not in outputs</td><td>The implicit output port <code>_overlays</code>, in graph, engine and catalogue</td></tr>
 </table>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

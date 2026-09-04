@@ -62,7 +62,7 @@ class HelpIndexTests(TestCase):
         self.assertEqual(out["provider"], "openai")
         self.assertEqual(out["sources"][0]["kind"], "tool")
         prompt = done.call_args.args[3]
-        self.assertIn("工具頁", prompt)
+        self.assertIn("tool page", prompt)
         self.assertIn("最近對話", prompt)
         self.assertIn("Blob", prompt)
         self.assertIn("問題：這個參數是做什麼的？", prompt)

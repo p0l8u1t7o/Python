@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 擷取端</title>
+<title>VisionSequence capture client</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,266 +134,271 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html" aria-current="page">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. 概念與架構</a></li><li><a href="#install">2. 安裝與連線</a><ul><li><a href="#install-download">2-1. 下載與啟動</a></li><li><a href="#install-files">2-2. 設定檔、記錄檔與無介面模式</a></li><li><a href="#install-ui">2-3. 介面：語言與外觀</a></li><li><a href="#install-server">2-4. 伺服端設定</a></li><li><a href="#install-update">2-5. 自動更新</a></li></ul></li><li><a href="#channels">3. 通道、預覽與 ROI</a><ul><li><a href="#idle">3-1. 閒置省電（自動停止取像）</a></li></ul></li><li><a href="#cameras">4. 相機支援</a></li><li><a href="#transport">5. 同一台電腦的共享記憶體與跨電腦的 TCP</a><ul><li><a href="#transport-shm">5-1. 共享記憶體（同一台電腦）</a></li><li><a href="#transport-tcp">5-2. TCP（跨電腦）</a></li></ul></li><li><a href="#web">6. 網頁端設定「擷取端相機」</a></li><li><a href="#perf">7. 效能與頻寬</a><ul><li><a href="#perf-result">7-1. 實測（開發機：Windows 11、DDR5、擷取端與伺服端各一個行程）</a></li><li><a href="#perf-how">7-2. 大影格的四個關鍵</a></li><li><a href="#perf-net">7-3. 跨電腦的物理上限</a></li><li><a href="#perf-engine">7-4. 伺服端下游</a></li></ul></li><li><a href="#trouble">8. 疑難排解</a></li><li><a href="#protocol">9. 協定摘要（v1，vscapture/protocol.py）</a></li><li><a href="#security">10. 安全性</a></li><li><a href="#acceptance">11. 實體相機驗收清單</a></li><li><a href="#files">12. 檔案、建置與測試</a></li></ul></aside><article class="doc">
-<h1>擷取端：在相機所在的電腦驅動相機，把影像送到伺服端</h1>
-<p>相機常接在產線另一台電腦，或雖在同一台電腦卻需要廠牌 SDK（Basler pylon、IDS peak）；伺服端維持「單一 API 行程、不塞相機 SDK」的原則。<strong>擷取端（Capture client）</strong>是可從網頁下載的 Windows 桌面程式：在相機所在的電腦直接驅動網路攝影機／Basler／IDS 相機，<strong>主動連到伺服端的擷取埠（預設 9100）</strong>登記名稱與相機通道；網頁新增影像來源種類「擷取端相機」選擷取端與通道即可執行。同一台電腦以<strong>共享記憶體＋控制訊息</strong>傳影像（單次 memcpy），跨電腦以<strong>單一持久 TCP 連線、二進位定長表頭、無損（raw／LZ4）</strong>傳影像；伺服端接收零解析成本，直接把 ndarray 交給引擎。實測 <strong>2000 萬畫素彩色（59.9 MB／張）在同一台電腦可達 117 fps</strong>（見 <a href="#perf">§7</a>）。伺服端重新建置後，已連線的擷取端會收到通知並可<strong>自動更新</strong>（見 <a href="#install-update">§2-5</a>）；介面支援繁中／简中／English 與深色／淺色。</p>
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html" aria-current="page">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. The idea and the architecture</a></li><li><a href="#install">2. Installing and connecting</a><ul><li><a href="#install-download">2-1. Download and start</a></li><li><a href="#install-files">2-2. Configuration, logs and headless mode</a></li><li><a href="#install-ui">2-3. The interface: language and appearance</a></li><li><a href="#install-server">2-4. Server settings</a></li><li><a href="#install-update">2-5. Automatic updates</a></li></ul></li><li><a href="#channels">3. Channels, preview and ROI</a><ul><li><a href="#idle">3-1. Idle power saving</a></li></ul></li><li><a href="#cameras">4. Camera support</a></li><li><a href="#transport">5. Shared memory on one machine, TCP across machines</a><ul><li><a href="#transport-shm">5-1. Shared memory (same machine)</a></li><li><a href="#transport-tcp">5-2. TCP (across machines)</a></li></ul></li><li><a href="#web">6. Setting up a capture client camera in the web interface</a></li><li><a href="#perf">7. Performance and bandwidth</a><ul><li><a href="#perf-result">7-1. Measured (development machine: Windows 11, DDR5, client and server as separate processes)</a></li><li><a href="#perf-how">7-2. Four things that matter for large frames</a></li><li><a href="#perf-net">7-3. The physical limit across machines</a></li><li><a href="#perf-engine">7-4. Downstream on the server</a></li></ul></li><li><a href="#trouble">8. Troubleshooting</a></li><li><a href="#protocol">9. The protocol (v1, vscapture/protocol.py)</a></li><li><a href="#security">10. Security</a></li><li><a href="#acceptance">11. Acceptance checklist with real cameras</a></li><li><a href="#files">12. Files, building and tests</a></li></ul></aside><article class="doc">
 
-<h2 id="concept">1. 概念與架構</h2>
-<pre>相機電腦（擷取端 VisionSequenceCapture.exe）              伺服端（單一 API 行程）
+<h1>Capture client: drive the camera where it is, send the images to the server</h1>
+<p>Cameras are often attached to another PC on the line, or need a vendor SDK (Basler pylon, IDS peak) even on the same machine, while the server keeps its rule of one API process with no camera SDKs in it. The <strong>capture client</strong> is a Windows desktop program you download from the web interface: it drives webcams, Basler and IDS cameras on the PC they are attached to and <strong>connects out to the server's capture port (9100 by default)</strong> to register its name and its camera channels. Add an image source of kind "capture client camera", pick the client and the channel, and flows run. On the same machine images travel through <strong>shared memory with a control message as the event</strong> (one memcpy); across machines through <strong>a single persistent TCP connection with a fixed binary header, losslessly (raw or LZ4)</strong>. The server parses nothing and hands the ndarray straight to the engine. Measured: <strong>20 megapixels in colour (59.9 MB a frame) at 117 fps on one machine</strong> (see <a href="#perf">§7</a>). After the server rebuilds the client, everyone already connected is told and can <strong>update themselves</strong> (see <a href="#install-update">§2-5</a>). The interface speaks English, 繁中 and 简中, in a dark or a light theme.</p>
+
+<h2 id="concept">1. The idea and the architecture</h2>
+<pre>the camera's PC (VisionSequenceCapture.exe)                 the server (one API process)
   cameras/  webcam | basler | ids | ueye | fake ──┐         apps/vision/capture/
-  channel   每通道一條擷取執行緒＋最新影格槽   ──┤  TCP:9100   hub.py     CaptureHub：監聽、每個擷取端一條 ClientSession 執行緒
-  transport 連線／重連／GRAB 回覆／串流推送   ──┼──────────▶ grabber.py CaptureGrabber(kind="capture") ← Runner._grab
-  shm       共享記憶體環（同一台電腦）        ──┘  ＋ SHM     api.py     /vision/capture/*（clients、preview、stream、download）
-  ui/       連線／通道／預覽 ROI／參數／傳送／記錄             協定共用：vscapture/protocol.py（伺服端也 import 同一份）</pre>
+  channel   one acquisition thread and a latest  ─┤ TCP:9100  hub.py     CaptureHub: listens, one ClientSession thread per client
+            frame slot per channel                │           grabber.py CaptureGrabber(kind="capture") ← Runner._grab
+  transport connect, reconnect, answer GRAB,     ─┼─────────▶ api.py     /vision/capture/* (clients, preview, stream, download)
+            push streams                          │ + SHM
+  shm       the shared-memory ring (same machine)─┘           shared protocol: vscapture/protocol.py (the server imports the same file)
+  ui/       connection, channels, preview and ROI, parameters, delivery, log</pre>
 <ul>
-<li><strong>三個角色</strong>：擷取端（驅動相機、送影像）、伺服端 hub（登錄表、每個擷取端一條讀取執行緒、把影格交給引擎）、網頁（設定來源、看狀態、開串流、下載擷取端）。</li>
-<li><strong>兩種取像模式</strong>（每個通道可選）：<em>依需求取像</em>——伺服端每次執行送 GRAB，擷取端回一張<strong>觸發之後</strong>取的新影格（延遲最低、頻寬最省，適合觸發式檢測）；<em>連續串流</em>——擷取端依 fps 上限持續推最新影格，伺服端執行時直接用手上最新的一張（適合看板、連續執行）。</li>
-<li><strong>為什麼擷取端主動連出</strong>：相機電腦常在 NAT／防火牆後、IP 會變；伺服端只開一個固定埠，擷取端重連、重新登記都由擷取端負責，網頁只要選名稱。</li>
-<li><strong>接縫不變</strong>：流程的「影像來源」步驟 → <code>ctx.grab()</code> → <code>grab_by_id</code> → <code>CaptureGrabber.grab()</code> 回 ndarray；交給引擎的陣列一律獨占（raw 接收緩衝即陣列、LZ4 解壓輸出、或從共享記憶體槽 copy 一次）。</li>
+<li><strong>Three parties</strong>: the capture client (drives the camera and sends images), the server hub (the registry, one reader thread per client, handing frames to the engine) and the web interface (configures the source, shows the state, turns streaming on, offers the download).</li>
+<li><strong>Two acquisition modes</strong>, per channel. <em>On demand</em>: the server sends a GRAB for each run and the client returns a frame taken <strong>after</strong> the request — the lowest latency and the least bandwidth, for triggered inspection. <em>Continuous stream</em>: the client pushes the latest frame up to an fps limit and a run uses whatever is current — for dashboards and continuous running.</li>
+<li><strong>Why the client connects outwards</strong>: the camera's PC is often behind NAT or a firewall and its address changes. The server opens one fixed port, the client owns reconnecting and re-registering, and the web interface only has to know a name.</li>
+<li><strong>The seam does not change</strong>: a flow's acquire step → <code>ctx.grab()</code> → <code>grab_by_id</code> → <code>CaptureGrabber.grab()</code> returns an ndarray, and the array handed to the engine is always exclusively owned (the raw receive buffer is the array, or the LZ4 output, or one copy out of a shared-memory slot).</li>
 </ul>
 
-<h2 id="install">2. 安裝與連線</h2>
-<h3 id="install-download">2-1. 下載與啟動</h3>
+<h2 id="install">2. Installing and connecting</h2>
+<h3 id="install-download">2-1. Download and start</h3>
 <ol>
-<li>網頁「影像來源」頁首的「下載擷取端」，或「外部整合」→「擷取端」分頁（顯示版本、大小、SHA-256、建置時間）。伺服端尚未建置時按鈕停用；建置方式見 <a href="#files">§12</a>。</li>
-<li>解壓縮到任意資料夾（避免過長路徑；不需要管理員權限），執行 <code>VisionSequenceCapture.exe</code>。第一次執行 Windows SmartScreen 可能提示「未知的發行者」，選「其他資訊」→「仍要執行」。</li>
-<li>「連線」面板：伺服端主機名稱或 IP、埠（預設 9100）、擷取端名稱（在網頁上顯示的名稱，同一台電腦重連會取代舊連線）、金鑰（伺服端有設定 <code>VISION_CAPTURE_AUTH</code> 或 <code>VISION_API_KEY</code> 時才需要）、本機模式（自動／強制共享記憶體／一律 TCP）、啟動時自動連線。</li>
-<li>點選「連線」。狀態列顯示已連線、往返延遲、已送影格、速率與傳送方式（共享記憶體或 TCP）。</li>
+<li>"Download capture client" at the top of the Image sources page, or Integration ▸ Capture (which shows the version, size, SHA-256 and build time). The button is disabled until the server has built it; how to build is in <a href="#files">§12</a>.</li>
+<li>Unzip it anywhere (avoid very long paths; no administrator rights needed) and run <code>VisionSequenceCapture.exe</code>. The first time, Windows SmartScreen may say the publisher is unknown: choose "More info" then "Run anyway".</li>
+<li>The Connection panel: the server's hostname or IP, the port (9100 by default), the client name (what the web interface shows; reconnecting from the same machine replaces the old connection), the key (only needed when the server has <code>VISION_CAPTURE_AUTH</code> or <code>VISION_API_KEY</code> set), local mode (automatic, force shared memory, or always TCP) and whether to connect at start-up.</li>
+<li>Press Connect. The status bar shows connected, the round-trip latency, frames sent, the rate and the transport in use (shared memory or TCP).</li>
 </ol>
-<h3 id="install-files">2-2. 設定檔、記錄檔與無介面模式</h3>
+<h3 id="install-files">2-2. Configuration, logs and headless mode</h3>
 <ul>
-<li>設定檔 <code>%APPDATA%\VisionSequenceCapture\config.json</code>（環境變數 <code>VSCAPTURE_CONFIG</code> 可覆寫）：連線（含 <code>auto_update</code>、<code>idle_stop_s</code>、<code>shm_max_mb</code>）、介面偏好（<code>ui.language</code>、<code>ui.theme</code>）、每個通道的相機參數／ROI／傳送設定。「檔案 → 儲存設定」寫入；結束時未儲存會詢問。缺鍵補預設、未知鍵忽略、非法值啟動時提示並改用預設。</li>
-<li>記錄檔 <code>%APPDATA%\VisionSequenceCapture\logs\capture.log</code>（輪替 2 MB × 3）；介面底部「記錄」可依等級過濾。</li>
-<li>無介面：<code>VisionSequenceCapture-console.exe --headless --connect</code>（Ctrl+C 結束），適合 Task Scheduler／NSSM 常駐；<code>--list-cameras</code> 列出各種相機；<code>--server host:port</code>、<code>--name</code>、<code>--api-key</code>、<code>--config</code>、<code>--log-level DEBUG</code> 覆寫設定；<code>--minimized</code> 啟動即縮到系統匣。</li>
-<li>關閉視窗會縮到系統匣（右鍵：顯示、連線、中斷、結束）。</li>
+<li>The configuration file is <code>%APPDATA%\VisionSequenceCapture\config.json</code> (<code>VSCAPTURE_CONFIG</code> overrides it): the connection (including <code>auto_update</code>, <code>idle_stop_s</code> and <code>shm_max_mb</code>), interface preferences (<code>ui.language</code>, <code>ui.theme</code>) and each channel's camera parameters, ROI and delivery settings. "File → Save settings" writes it, and closing with unsaved changes asks. Missing keys get defaults, unknown keys are ignored, and an invalid value is reported at start-up and replaced with the default.</li>
+<li>The log is <code>%APPDATA%\VisionSequenceCapture\logs\capture.log</code> (rotating, 2 MB × 3); the Log panel at the bottom filters by level.</li>
+<li>Headless: <code>VisionSequenceCapture-console.exe --headless --connect</code> (Ctrl+C to stop), suitable for Task Scheduler or a service wrapper. <code>--list-cameras</code> lists what is available; <code>--server host:port</code>, <code>--name</code>, <code>--api-key</code>, <code>--config</code> and <code>--log-level DEBUG</code> override the configuration; <code>--minimized</code> starts in the tray.</li>
+<li>Closing the window minimises to the system tray (right-click for show, connect, disconnect, exit).</li>
 </ul>
-<h3 id="install-ui">2-3. 介面：語言與外觀</h3>
-<p>視窗右上角可切換<strong>語言</strong>（繁體中文／简体中文／English，與網頁相同的三種）與<strong>外觀</strong>（深色／淺色），立即生效、不必重開程式，並隨設定一起儲存（<code>ui.language</code>、<code>ui.theme</code>）。相機參數的標準名稱（曝光時間、增益、影格率、像素格式、寬高位移、觸發模式）會跟著翻譯；廠牌自訂的參數維持 SDK 原名，通道名稱是您自己取的字串不翻譯。</p>
-<p>版面：左欄「連線」與「通道」、中央即時預覽與 ROI 工具列、右欄「相機參數」「傳送設定」分頁、底部「記錄」可收合；有新版時最上方出現更新橫幅。品牌色與網頁一致，深色是預設。</p>
-<p><strong>視窗可自由縮放，版面會跟著重排</strong>（每欄之間也可以拖曳分隔線自行調整）：</p>
+<h3 id="install-ui">2-3. The interface: language and appearance</h3>
+<p>The top right of the window switches the <strong>language</strong> (English, 繁體中文, 简体中文 — the same three as the web interface) and the <strong>appearance</strong> (dark or light). Both take effect immediately without restarting and are saved with the settings (<code>ui.language</code>, <code>ui.theme</code>). The standard camera parameter names (exposure time, gain, frame rate, pixel format, width, height, offsets, trigger mode) are translated; a vendor's own parameters keep their SDK names, and a channel name is your own text and is never translated.</p>
+<p>The layout: connection and channels on the left, the live preview and the ROI toolbar in the middle, camera parameters and delivery settings on tabs to the right, and a collapsible log at the bottom. When a new version exists, a banner appears at the top. The brand colour matches the web interface, and dark is the default.</p>
+<p><strong>The window resizes freely and the layout follows</strong> (the splitters between columns can be dragged too):</p>
 <table>
-<tr><th>視窗寬度</th><th>版面</th></tr>
-<tr><td>≥ 1180 px</td><td>三欄：連線與通道｜預覽與 ROI｜相機參數與傳送設定</td></tr>
-<tr><td>≥ 820 px</td><td>兩欄：連線與通道｜（上）預覽與 ROI／（下）相機參數與傳送設定</td></tr>
-<tr><td>&lt; 820 px</td><td>單欄堆疊：預覽在上，其餘往下排；左欄可捲動，頂列只留必要的控制項</td></tr>
+<tr><th>Window width</th><th>Layout</th></tr>
+<tr><td>≥ 1180 px</td><td>Three columns: connection and channels | preview and ROI | parameters and delivery</td></tr>
+<tr><td>≥ 820 px</td><td>Two columns: connection and channels | preview and ROI above, parameters and delivery below</td></tr>
+<tr><td>&lt; 820 px</td><td>One column: the preview on top and the rest below; the left column scrolls and the header keeps only the essential controls</td></tr>
 </table>
-<p>ROI 工具列在寬度不足時自動折成兩列（數值一列、動作一列），視窗最小可縮到約 640×480 仍可操作。</p>
-<h3 id="install-server">2-4. 伺服端設定</h3>
+<p>The ROI toolbar folds into two rows when there is no width for one (the numbers on one row, the actions on the other), and the window still works down to about 640×480.</p>
+<h3 id="install-server">2-4. Server settings</h3>
 <table>
-<tr><th>.env</th><th>預設</th><th>說明</th></tr>
-<tr><td><code>VISION_CAPTURE_HOST</code>／<code>PORT</code></td><td>0.0.0.0／9100</td><td>擷取埠；<code>manage.py serve --capture-port</code>、<code>--no-capture</code> 可覆寫。跨電腦請在伺服端防火牆放行此埠。</td></tr>
-<tr><td><code>VISION_CAPTURE_AUTH</code></td><td>空</td><td>擷取端登錄金鑰；空＝沿用 <code>VISION_API_KEY</code>；兩者皆空不驗證。</td></tr>
-<tr><td><code>VISION_CAPTURE_MAX_FRAME_MB</code></td><td>64</td><td>單張影像上限，超過即斷線（協定錯誤）。</td></tr>
-<tr><td><code>VISION_CAPTURE_TIMEOUT_MS</code></td><td>1000</td><td>來源未指定 <code>timeout_ms</code> 時的預設等待。</td></tr>
+<tr><th>.env</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>VISION_CAPTURE_HOST</code> / <code>PORT</code></td><td>0.0.0.0 / 9100</td><td>The capture port; <code>manage.py serve --capture-port</code> and <code>--no-capture</code> override it. Across machines, open this port on the server's firewall.</td></tr>
+<tr><td><code>VISION_CAPTURE_AUTH</code></td><td>empty</td><td>The registration key; empty falls back to <code>VISION_API_KEY</code>, and with both empty nothing is checked.</td></tr>
+<tr><td><code>VISION_CAPTURE_MAX_FRAME_MB</code></td><td>64</td><td>The size limit for one frame; beyond it the connection is dropped as a protocol error.</td></tr>
+<tr><td><code>VISION_CAPTURE_TIMEOUT_MS</code></td><td>1000</td><td>The default wait when a source does not set <code>timeout_ms</code>.</td></tr>
 </table>
 
-<h3 id="install-update">2-5. 自動更新</h3>
-<p>伺服端重新建置擷取端之後（<code>scripts/build_capture_client.ps1</code>），<strong>已連線的擷取端會自己知道</strong>——不必到現場逐台重裝：</p>
+<h3 id="install-update">2-5. Automatic updates</h3>
+<p>After the server rebuilds the client (<code>scripts/build_capture_client.ps1</code>), <strong>every connected client finds out by itself</strong> — nobody has to walk the line reinstalling:</p>
 <ol>
-<li>連線時的 WELCOME 就帶著伺服端手上的版本；連線後伺服端每次心跳都會比對 manifest，版本變了就推一則通知。只有比擷取端目前版本<strong>新</strong>的才會通知。</li>
-<li>安裝檔<strong>走同一條已驗證的擷取連線</strong>分塊拉下來（每塊 1 MiB），不必另外開埠、不必再給一次金鑰、也不受網頁登入影響；下載完比對 <strong>SHA-256</strong>，不符就整份丟棄。</li>
-<li>解壓到 <code>%APPDATA%\VisionSequenceCapture\updates\staging-&lt;版本&gt;\</code>，再由<strong>新版的主控台執行檔</strong>接手：等舊行程結束 → 覆寫安裝資料夾 → 重新啟動。更新程式跑在新版的資料夾裡，所以不會覆寫到自己；設定檔與記錄檔都在 <code>%APPDATA%</code>，不受覆寫影響。</li>
+<li>WELCOME already carries the version the server holds, and after that every heartbeat compares against the manifest, pushing a notice only when it changes. Only a version <strong>newer</strong> than the client's own is announced.</li>
+<li>The installer is pulled <strong>down the same authenticated capture connection</strong> in 1 MiB chunks — no second port, no second key, and nothing to do with being signed in to the web interface. The download is checked against its <strong>SHA-256</strong> and discarded entirely if it does not match.</li>
+<li>It is unpacked into <code>%APPDATA%\VisionSequenceCapture\updates\staging-&lt;version&gt;\</code>, and then <strong>the new version's console executable</strong> takes over: wait for the old process to exit, overwrite the installation folder, restart. The updater runs from the new folder, so it cannot overwrite itself, and the configuration and logs live in <code>%APPDATA%</code> and are untouched.</li>
 </ol>
-<p>「連線」面板的<strong>自動更新</strong>三選一：<code>off</code> 不檢查、<code>notify</code> 只在最上方顯示橫幅由您決定（預設）、<code>auto</code> 自動下載並安裝。橫幅會顯示版本、大小與下載進度，也可以取消。「說明 → 檢查更新」可隨時問一次。無介面模式只有 <code>auto</code> 會自己更新（其餘只寫進記錄）。以原始碼執行時不會就地覆寫，只會下載與解壓後提示。</p>
-<p>失敗都是安全的：下載中斷、SHA-256 不符、檔案被佔用都只是記錄一筆並保留舊版繼續取像；更新程式覆寫時會重試 30 秒（等防毒或檔案把手放開）。舊版擷取端（沒有自動更新功能的版本）連新伺服端不受影響，只是不會自己更新，請從網頁重新下載。</p>
+<p>The Connection panel's <strong>automatic update</strong> setting has three values: <code>off</code> never checks, <code>notify</code> shows a banner and leaves the decision to you (the default), and <code>auto</code> downloads and installs by itself. The banner shows the version, the size and the download progress, and can be cancelled. "Help → Check for updates" asks at any time. In headless mode only <code>auto</code> actually updates (the others just write to the log). Running from source never overwrites in place; it downloads, unpacks and tells you.</p>
+<p>Every failure is safe: an interrupted download, a SHA-256 mismatch or a locked file is logged, and the existing version carries on acquiring. The updater retries for 30 seconds while overwriting, in case an antivirus or a file handle is holding on. An older client (from before automatic updates existed) is unaffected by a newer server — it simply will not update itself, so download it again from the web interface.</p>
 
-<h2 id="channels">3. 通道、預覽與 ROI</h2>
+<h2 id="channels">3. Channels, preview and ROI</h2>
 <ul>
-<li><strong>通道</strong>＝一台相機：名稱、相機種類（SDK 未安裝的種類停用並提示原因）、裝置（「掃描」列舉；也可直接輸入識別，例如網路攝影機的索引 0）、啟用（伺服端可取像）、即時預覽。開啟／關閉／開始取像／停止四個鈕；狀態燈：已關閉、開啟中、已開啟、取像中、錯誤。連續 30 次取像失敗會自動重開相機。</li>
-<li><strong>預覽</strong>：依「preview_fps」（預設 15）取最新影格縮小顯示，HUD 顯示 seq、fps、尺寸與硬體 ROI 位移。</li>
-<li><strong>ROI 圈選</strong>：在預覽上拖曳建立、8 個把手縮放、拖移；數值欄 X／Y／寬／高雙向；「清除 ROI」回全幅。點選「套用 ROI」才生效。勾選「使用相機硬體 ROI」時，支援的相機（Basler、IDS、模擬）只讀出 ROI 範圍（影格率更高），座標依相機增量對齊後回填；不支援的相機以軟體裁切後傳送。ROI 一律以<strong>全感測器座標</strong>保存；伺服端影格 metadata 帶 <code>roi_x/roi_y/full_w/full_h</code>，流程座標仍是收到影像的座標。</li>
-<li><strong>拍攝一張</strong>：觸發模式為「軟體觸發」時顯示，觸發相機拍一張。</li>
-<li><strong>相機參數</strong>分頁：以<strong>樹狀圖</strong>分組呈現，展開後直接在右欄設定。標準參數（曝光、增益、影格率、像素格式、寬高位移、觸發模式）在「基本」，其餘在「進階」；工業相機（Basler／IDS）的參數會照 SDK 的類別分層（類別名稱以「/」分層時會展開成多層節點）。上方<strong>搜尋框</strong>可依名稱或 SDK 原名過濾（符合的群組自動展開），展開／收合狀態與搜尋字串在重新讀取後保留。改動 250 ms 後套用並回填實際值；需停止取像的參數（寬高位移、像素格式）先確認、套用後自動恢復；「儲存到設定檔」下次啟動自動套用。</li>
-<li><strong>傳送設定</strong>分頁：編碼（不壓縮／LZ4／JPEG）、JPEG 品質、轉單色、縮小 1/2、1/4、模式（依需求／連續串流）、串流 fps 上限；顯示送出尺寸與每張大小估算；「測試傳送」把目前影格送一次，顯示往返時間、位元組、編碼與伺服端解碼時間。改 ROI／單色／縮小會重新協商共享記憶體區段（期間自動改走 TCP）。</li>
+<li><strong>A channel is one camera</strong>: a name, a camera kind (kinds whose SDK is not installed are disabled with the reason), a device (found by "Scan", or typed in directly — a webcam index of 0, say), whether it is enabled (so the server may acquire from it) and whether to preview live. Four buttons — open, close, start, stop — and a status light: closed, opening, open, acquiring, error. Thirty consecutive failed grabs reopen the camera automatically.</li>
+<li><strong>Preview</strong>: the latest frame, downscaled, at the preview fps (15 by default), with a HUD showing the sequence number, fps, size and hardware ROI offset.</li>
+<li><strong>Drawing an ROI</strong>: drag on the preview to create it, eight handles to resize, drag to move, and X/Y/width/height fields that work both ways. "Clear ROI" returns to full frame, and nothing takes effect until "Apply ROI". With "use the camera's hardware ROI" ticked, cameras that support it (Basler, IDS, the simulator) read out only that region, giving a higher frame rate, and the coordinates are aligned to the camera's increment and written back; cameras that do not support it are cropped in software before sending. An ROI is always stored in <strong>full-sensor coordinates</strong>, and the frame's metadata carries <code>roi_x/roi_y/full_w/full_h</code>, while the flow still works in the coordinates of the image it received.</li>
+<li><strong>Snap one</strong>: shown when the trigger mode is software trigger, it fires the camera once.</li>
+<li><strong>The camera parameters tab</strong> presents everything as a <strong>tree</strong>, edited in place on the right. The standard parameters (exposure, gain, frame rate, pixel format, width, height, offsets, trigger mode) are under "Basic" and the rest under "Advanced"; an industrial camera's parameters follow the SDK's own categories (a category name containing "/" becomes several levels). The <strong>search box</strong> at the top filters by name or SDK name (matching groups expand automatically), and both the expansion state and the search text survive a reload. A change is applied 250 ms later and the actual value written back; a parameter that needs acquisition stopped (width, height, offsets, pixel format) asks first and resumes afterwards; "Save to settings" applies it again next start-up.</li>
+<li><strong>The delivery tab</strong>: the encoding (uncompressed, LZ4 or JPEG), the JPEG quality, convert to mono, downscale by 1/2 or 1/4, the mode (on demand or continuous stream) and the streaming fps limit, with the transmitted size and an estimate per frame. "Test send" transmits the current frame once and reports the round trip, the bytes, and the encode and server-side decode times. Changing the ROI, mono or downscale renegotiates the shared-memory segment (falling back to TCP meanwhile).</li>
 </ul>
 
-<h3 id="idle">3-1. 閒置省電（自動停止取像）</h3>
-<p>相機自由取像會一直吃 CPU（2000 萬畫素 30 fps 實測約佔一顆核心的 13%）。<strong>沒人要影像時就停止取像</strong>：</p>
+<h3 id="idle">3-1. Idle power saving</h3>
+<p>Free-running acquisition burns CPU continuously (20 megapixels at 30 fps measured at about 13% of one core). <strong>When nobody wants images, acquisition stops</strong>:</p>
 <ul>
-<li><strong>什麼時候算「有人要」</strong>：介面顯示中且該通道開著「即時預覽」、伺服端開了連續串流、或伺服端在設定的時間內要過影像（依需求取像）。</li>
-<li><strong>什麼時候停</strong>：視窗縮到工作列或系統匣（沒人在看預覽），而且伺服端超過<strong>閒置停止取像</strong>設定的秒數（「連線」面板，預設 60 秒，0＝不停止）沒有要求取像。停止的是取像，<strong>相機仍然開著</strong>，參數與 ROI 都保留。</li>
-<li><strong>怎麼恢復</strong>：伺服端下一次要影像時自動恢復（多花一次啟動取像的時間），或視窗回到前景時自動恢復。通道清單會標示「（省電暫停）」。</li>
-<li>伺服端開著<strong>連續串流</strong>的通道永遠不會被暫停——那表示伺服端一直要影像。使用者自己按「停止」不算省電暫停，不會被自動恢復。</li>
-<li>視窗縮到工作列時，預覽的畫面更新也會一併停掉（省下縮圖與轉檔的 CPU）。</li>
+<li><strong>What counts as wanting images</strong>: the interface being visible with live preview on for that channel, the server having a stream open, or the server having asked for a frame within the configured window.</li>
+<li><strong>When it stops</strong>: the window is minimised to the taskbar or the tray (nobody is watching the preview) and the server has not asked for a frame for longer than <strong>idle stop</strong> seconds (in the Connection panel, 60 by default; 0 disables it). Only acquisition stops — <strong>the camera stays open</strong>, with its parameters and ROI intact.</li>
+<li><strong>How it comes back</strong>: automatically when the server next asks for an image (costing one acquisition start-up), or when the window comes to the foreground. The channel list marks it "(idle)".</li>
+<li>A channel the server is <strong>streaming</strong> is never paused — that means the server wants images continuously. Pressing Stop yourself is not an idle pause and will not be undone automatically.</li>
+<li>Minimising also stops the preview repainting, saving the downscale and conversion work.</li>
 </ul>
-<p>實測（2000 萬畫素、30 fps、模擬相機）：取像中約 13% CPU（相對一顆核心），省電暫停後 0%。</p>
+<p>Measured (20 megapixels, 30 fps, the simulated camera): about 13% of one core while acquiring, 0% once paused.</p>
 
-<h2 id="cameras">4. 相機支援</h2>
+<h2 id="cameras">4. Camera support</h2>
 <table>
-<tr><th>種類</th><th>需要</th><th>硬體 ROI</th><th>觸發</th><th>要點</th></tr>
-<tr><td>網路攝影機／USB 相機</td><td>Windows 內建</td><td>否</td><td>否</td><td>DirectShow 逐一開啟探測（掃描會短暫佔用裝置）；高解析度先設 MJPG 再設尺寸與 fps；曝光以手動模式設定；連續讀取失敗自動重開。</td></tr>
-<tr><td>Basler（pylon）</td><td>pypylon（建置時 <code>-WithBasler</code>）＋客戶端 pylon Runtime（USB3／GigE 驅動）</td><td>是（依 <code>Width/Height/Offset</code> 增量對齊）</td><td>軟體／硬體（Line1）</td><td>Mono8／BGR8 轉換；設 <code>PYLON_CAMEMU=1</code> 可用模擬相機驗證。</td></tr>
-<tr><td>IDS peak</td><td>ids_peak／ids_peak_ipl（<code>-WithIds</code>）＋客戶端 IDS peak 執行期</td><td>是</td><td>軟體／硬體（Line0）</td><td>改像素格式會重配 buffer；建置機與客戶端的 IDS peak 主版本要一致。</td></tr>
-<tr><td>IDS uEye（舊款）</td><td>pyueye（<code>-WithUeye</code>）＋uEye 驅動</td><td>否</td><td>否</td><td>基本自由取像、曝光與增益。</td></tr>
-<tr><td>模擬相機</td><td>無</td><td>是（對齊 8）</td><td>軟體</td><td>合成移動方塊，示範與測試用（<code>--fake N</code> 一次加 N 個通道）。<code>fake:0</code>／<code>fake:1</code> 是 640×480，<code>fake:2</code>＝500 萬畫素、<code>fake:3</code>＝2000 萬畫素（5472×3648），用來驗證大影格的效能。</td></tr>
+<tr><th>Kind</th><th>Needs</th><th>Hardware ROI</th><th>Trigger</th><th>Notes</th></tr>
+<tr><td>Webcam / USB camera</td><td>Built into Windows</td><td>No</td><td>No</td><td>Probed one by one through DirectShow (scanning briefly takes over the device); at high resolutions set MJPG first, then the size and fps; exposure is set in manual mode; consecutive read failures reopen it.</td></tr>
+<tr><td>Basler (pylon)</td><td>pypylon (build with <code>-WithBasler</code>) plus the pylon runtime on the client PC (the USB3 and GigE drivers)</td><td>Yes (aligned to the <code>Width/Height/Offset</code> increment)</td><td>Software and hardware (Line1)</td><td>Mono8 and BGR8 conversion; <code>PYLON_CAMEMU=1</code> gives an emulated camera for testing.</td></tr>
+<tr><td>IDS peak</td><td>ids_peak and ids_peak_ipl (<code>-WithIds</code>) plus the IDS peak runtime on the client PC</td><td>Yes</td><td>Software and hardware (Line0)</td><td>Changing the pixel format reallocates the buffers; the build machine and the client need the same IDS peak major version.</td></tr>
+<tr><td>IDS uEye (older)</td><td>pyueye (<code>-WithUeye</code>) plus the uEye driver</td><td>No</td><td>No</td><td>Basic free-running acquisition, exposure and gain.</td></tr>
+<tr><td>Simulated camera</td><td>Nothing</td><td>Yes (aligned to 8)</td><td>Software</td><td>A synthetic moving square, for demonstrations and tests (<code>--fake N</code> adds N channels at once). <code>fake:0</code> and <code>fake:1</code> are 640×480, <code>fake:2</code> is 5 megapixels and <code>fake:3</code> is 20 megapixels (5472×3648) for testing large frames.</td></tr>
 </table>
-<p>擷取端只打包建置機有安裝的 SDK；zip 內 README.txt 會列出本版本內含的相機支援。SDK 物件只在該通道的擷取執行緒使用（命令佇列），多數相機 SDK 不是執行緒安全的。</p>
+<p>Only the SDKs installed on the build machine are packaged, and the README.txt inside the zip lists what this build supports. An SDK object is only ever used from that channel's own acquisition thread (through a command queue), because most camera SDKs are not thread-safe.</p>
 
-<h2 id="transport">5. 同一台電腦的共享記憶體與跨電腦的 TCP</h2>
-<h3 id="transport-shm">5-1. 共享記憶體（同一台電腦）</h3>
+<h2 id="transport">5. Shared memory on one machine, TCP across machines</h2>
+<h3 id="transport-shm">5-1. Shared memory (same machine)</h3>
 <ul>
-<li>判定：連線來自 loopback（或伺服端自身位址）且主機名稱相同，且擷取端「本機模式」為自動／強制。WELCOME 回 <code>local:true</code>。</li>
-<li>擷取端建立一個 <code>multiprocessing.shared_memory</code> 區段（名稱 <code>vs_cap_&lt;名稱&gt;_&lt;pid&gt;_&lt;隨機&gt;</code>）：64 B 表頭（magic、canary、槽數、槽大小）＋ K 個槽；<strong>一條連線一個區段</strong>，槽大小＝所有啟用通道中最大的影格（對齊 4096），K＝4＋2×通道數（最多 16）。SHM_OFFER → 伺服端附加並核對 canary → SHM_ACCEPT；拒絕就留在 TCP。</li>
-<li>事件機制＝控制連線上的 FRAME 訊息（slot ≥ 0、payload 為空）：loopback 約 50～100 µs，帶 seq 與 metadata。伺服端 <code>out = np.empty(...)；out.data.cast("B")[:] = buf[off:off+n]</code> copy 一次（1280×960×3 約 0.5～1 ms）後立刻回 SLOT_FREE。</li>
-<li>所有權：FRAME 送出後槽屬伺服端，SLOT_FREE 後歸還；擷取端只寫 FREE 的槽，依需求模式等不到槽即改走 TCP payload、串流模式直接丟幀；「最舊、seq 落後 ≥ 2K 且被持有超過 1 秒」的槽視為孤兒才覆寫（伺服端顯然沒回收）。重新協商期間丟掉尚未送出的影格（舊槽索引不能再送）。</li>
+<li>The test: the connection comes from loopback (or one of the server's own addresses), the hostnames match, and the client's local mode is automatic or forced. WELCOME then returns <code>local:true</code>.</li>
+<li>The client creates one <code>multiprocessing.shared_memory</code> segment (named <code>vs_cap_&lt;name&gt;_&lt;pid&gt;_&lt;random&gt;</code>): a 64-byte header (magic, canary, slot count, slot size) followed by K slots. <strong>One segment per connection</strong>, with the slot size the largest frame of any enabled channel (aligned to 4096) and K = 4 + 2 × the number of channels, capped at 16. SHM_OFFER → the server attaches and checks the canary → SHM_ACCEPT; a refusal simply stays on TCP.</li>
+<li>The event is a FRAME message on the control connection (slot ≥ 0, empty payload): about 50–100 µs over loopback, carrying the sequence number and the metadata. The server does <code>out = np.empty(...)</code> then <code>out.data.cast("B")[:] = buf[off:off+n]</code>, one copy (about 0.5–1 ms for 1280×960×3), and returns SLOT_FREE immediately.</li>
+<li>Ownership: once FRAME is sent the slot belongs to the server, and SLOT_FREE gives it back. The client only writes free slots; in on-demand mode, if no slot comes free it sends the payload over TCP instead, and in streaming mode it drops the frame. A slot is only overwritten as an orphan when it is the oldest, its sequence is at least 2K behind, and it has been held for over a second — at which point the server has clearly not returned it. Frames not yet sent are dropped during renegotiation, because the old slot indices can no longer be used.</li>
 </ul>
-<h3 id="transport-tcp">5-2. TCP（跨電腦）</h3>
+<h3 id="transport-tcp">5-2. TCP (across machines)</h3>
 <ul>
-<li>單一持久連線，控制與資料以 <code>req_id</code> 多工；<code>TCP_NODELAY</code>、4 MiB 收送緩衝；每通道同時最多一個在途 GRAB。</li>
-<li>接收：raw → <code>recv_into</code> 直接寫進 <code>np.empty</code>（接收緩衝即陣列）；lz4 → 會話級 bytearray 後 <code>lz4.block.decompress(uncompressed_size=raw_len)</code>；jpeg（明確選用才用，有損）→ 解碼後核對尺寸。</li>
-<li>編碼「自動」：同一台電腦 raw、跨電腦兩端皆有 LZ4 則 LZ4、否則 raw。頻寬手段依效益：轉單色（÷3）、ROI 裁切、LZ4（典型 1.5～3×）、串流 fps 上限、縮小。</li>
-<li>背壓：擷取端每通道只留最新影格、一次一張在途；伺服端每通道只留 latest。心跳：閒置 ≥ 2 秒送 PING，逾 3 倍心跳無回應斷線並以指數退避重連（最長 30 秒；驗證失敗固定 30 秒）；伺服端重啟後擷取端自動重連並重送串流設定。</li>
+<li>A single persistent connection, with control and data multiplexed by <code>req_id</code>; <code>TCP_NODELAY</code> and 4 MiB socket buffers; at most one GRAB in flight per channel.</li>
+<li>Receiving: raw goes through <code>recv_into</code> straight into an <code>np.empty</code> (the receive buffer is the array); lz4 goes into a session-level bytearray then <code>lz4.block.decompress(uncompressed_size=raw_len)</code>; jpeg (lossy, only when explicitly chosen) is decoded and its size checked.</li>
+<li>The "auto" encoding: raw on the same machine, LZ4 across machines when both ends have it, raw otherwise. Bandwidth measures in order of value: convert to mono (÷3), crop to an ROI, LZ4 (typically 1.5–3×), a streaming fps limit, and downscaling.</li>
+<li>Back pressure: the client keeps only the latest frame per channel with one in flight, and the server keeps only the latest per channel. The heartbeat: a PING after two idle seconds, and after three heartbeats with no reply the connection drops and reconnects with exponential backoff (up to 30 seconds; a fixed 30 after an authentication failure). After a server restart the client reconnects and re-sends its streaming settings.</li>
 </ul>
 
-<h2 id="web">6. 網頁端設定「擷取端相機」</h2>
+<h2 id="web">6. Setting up a capture client camera in the web interface</h2>
 <table>
-<tr><th>欄位</th><th>說明</th></tr>
-<tr><td><code>client</code> 擷取端</td><td>下拉列出目前連線的擷取端（表單開著時每 5 秒重抓；「重新整理」立即抓）；離線的舊值保留並標示「擷取端離線」。沒有任何擷取端時顯示提示與「下載擷取端」。</td></tr>
-<tr><td><code>channel</code> 通道</td><td>所選擷取端啟用中的通道（名稱、尺寸、像素格式、使用中的來源）。</td></tr>
-<tr><td><code>mode</code> 取像模式</td><td><code>on_demand</code> 依需求取像（每次執行要一張新影格）／<code>stream</code> 連續串流（取最新影格；來源開啟時自動向擷取端開串流、關閉時釋放）。</td></tr>
-<tr><td><code>timeout_ms</code></td><td>等待影格的時間（預設 <code>VISION_CAPTURE_TIMEOUT_MS</code>）；曝光長或跨網路時放大。</td></tr>
-<tr><td><code>fresh</code> 要求新影格</td><td>勾選：GRAB 帶 AFTER_REQUEST，只接受觸發之後取的影格；取消：可用擷取端手上的最新影格（延遲更低）。</td></tr>
-<tr><td><code>encoding</code></td><td><code>auto</code>／<code>raw</code>／<code>lz4</code>／<code>jpeg</code>；同一台電腦一律共享記憶體不壓縮。</td></tr>
+<tr><th>Field</th><th>What it is</th></tr>
+<tr><td><code>client</code></td><td>A dropdown of the currently connected clients (refetched every five seconds while the form is open; Refresh fetches immediately). An offline value is kept and marked "capture client offline". With no clients at all it shows a hint and the download button.</td></tr>
+<tr><td><code>channel</code></td><td>The enabled channels of the chosen client (name, size, pixel format, and which source already uses it).</td></tr>
+<tr><td><code>mode</code></td><td><code>on_demand</code> asks for a fresh frame on every run; <code>stream</code> takes the latest frame (streaming is turned on with the client when the source opens and released when it closes).</td></tr>
+<tr><td><code>timeout_ms</code></td><td>How long to wait for a frame (the default is <code>VISION_CAPTURE_TIMEOUT_MS</code>); raise it for a long exposure or across a network.</td></tr>
+<tr><td><code>fresh</code></td><td>Ticked, the GRAB carries AFTER_REQUEST and only a frame taken after the request is accepted. Unticked, whatever the client already holds is fine, which is faster.</td></tr>
+<tr><td><code>encoding</code></td><td><code>auto</code>, <code>raw</code>, <code>lz4</code> or <code>jpeg</code>. On one machine it is always uncompressed shared memory.</td></tr>
 </table>
 <ul>
-<li>儲存前「測試擷取」直接向擷取端要一張（顯示尺寸、耗時、縮圖）；失敗會帶擷取端回報的原因（未連線、沒有此通道、逾時、相機錯誤）。</li>
-<li>來源清單狀態欄：擷取端在線／已開啟／擷取端離線、fps、最近影格距今、「同一台電腦」徽章；含擷取端相機時每 5 秒更新。流程編輯器的「影像來源」側欄在所選擷取端離線時提示。</li>
-<li>「外部整合」→「擷取端」分頁：程式下載與資訊、伺服端擷取埠與監聽狀態、設定步驟；已連線的擷取端與通道（尺寸、模式、fps 與速率、最近影格、使用中的來源、串流開關、預覽）。</li>
+<li>"Test capture" before saving asks the client for one frame and shows the size, the time taken and a thumbnail; a failure carries the client's own reason (not connected, no such channel, timeout, camera error).</li>
+<li>The status column in the source list: client online, opened, or capture client offline, plus the fps, how long ago the last frame was, and a "same machine" badge; it refreshes every five seconds when a capture source is present. The editor's source panel says so when the chosen client is offline.</li>
+<li>Integration ▸ Capture: the download and its details, whether the server's capture port is listening, the setup steps, and the connected clients and their channels (size, mode, fps and rate, last frame, which source uses it, a streaming switch and a preview).</li>
 </ul>
 <pre>GET  /api/vision/capture/clients                                     {listening, host, port, items[{name, address, version, hostname, connected_at, local, shm, channels[…]}]}
-GET  /api/vision/capture/clients/{name}/channels/{cid}/preview?max=   JPEG（?token= 或 api_key=）
-POST /api/vision/capture/clients/{name}/channels/{cid}/stream         {enabled, max_fps?} → {ok, streaming}（鎖定時 423）
+GET  /api/vision/capture/clients/{name}/channels/{cid}/preview?max=   JPEG (?token= or api_key=)
+POST /api/vision/capture/clients/{name}/channels/{cid}/stream         {enabled, max_fps?} → {ok, streaming}  (423 while locked)
 GET  /api/vision/capture/download/info                                {available, version, filename, size, sha256, built_at, url}
-GET  /api/vision/capture/download                                     zip（attachment；未建置 404 capture_download_missing）
-GET  /api/vision/integration/info                                     加 capture_host／capture_port／capture_listening／capture_download_url</pre>
+GET  /api/vision/capture/download                                     the zip (as an attachment; 404 capture_download_missing if not built)
+GET  /api/vision/integration/info                                     adds capture_host, capture_port, capture_listening, capture_download_url</pre>
 
-<h2 id="perf">7. 效能與頻寬</h2>
-<p>目標：<strong>2000 萬畫素彩色（5472×3648×3＝59.9 MB／張）在伺服端達到 60 fps</strong>。60 fps 表示每張只有 16.7 ms，且要搬 3.59 GB/s——這個量級只有<strong>同一台電腦的共享記憶體</strong>做得到（見 §7-3 的網路上限）。</p>
+<h2 id="perf">7. Performance and bandwidth</h2>
+<p>The target: <strong>20 megapixels in colour (5472×3648×3 = 59.9 MB a frame) reaching the server at 60 fps</strong>. That is 16.7 ms a frame and 3.59 GB/s of movement — a rate only <strong>shared memory on one machine</strong> can reach (see §7-3 for the network limits).</p>
 
-<h3 id="perf-result">7-1. 實測（開發機：Windows 11、DDR5、擷取端與伺服端各一個行程）</h3>
+<h3 id="perf-result">7-1. Measured (development machine: Windows 11, DDR5, client and server as separate processes)</h3>
 <table>
-<tr><th>影格</th><th>傳輸</th><th>連續串流</th><th>依需求取像（含往返）</th><th>伺服端每張複製</th></tr>
-<tr><td rowspan="2">2000 萬畫素彩色<br>59.9 MB</td><td>共享記憶體</td><td><strong>116.8 fps</strong>（7.0 GB/s）</td><td><strong>117.6 fps</strong>／8.50 ms</td><td>2.7 ms</td></tr>
-<tr><td>TCP（loopback）</td><td>101.6 fps</td><td>31.8 fps／31.5 ms</td><td>23～30 ms</td></tr>
-<tr><td>2000 萬畫素單色<br>20.0 MB</td><td>共享記憶體</td><td>116.6 fps</td><td>116.6 fps／8.58 ms</td><td>1.0 ms</td></tr>
-<tr><td>500 萬畫素彩色<br>15.0 MB</td><td>共享記憶體</td><td>116.0 fps</td><td>116.1 fps／8.61 ms</td><td>0.7 ms</td></tr>
+<tr><th>Frame</th><th>Transport</th><th>Continuous stream</th><th>On demand (round trip included)</th><th>Server copy per frame</th></tr>
+<tr><td rowspan="2">20 MP colour<br>59.9 MB</td><td>Shared memory</td><td><strong>116.8 fps</strong> (7.0 GB/s)</td><td><strong>117.6 fps</strong> / 8.50 ms</td><td>2.7 ms</td></tr>
+<tr><td>TCP (loopback)</td><td>101.6 fps</td><td>31.8 fps / 31.5 ms</td><td>23–30 ms</td></tr>
+<tr><td>20 MP mono<br>20.0 MB</td><td>Shared memory</td><td>116.6 fps</td><td>116.6 fps / 8.58 ms</td><td>1.0 ms</td></tr>
+<tr><td>5 MP colour<br>15.0 MB</td><td>Shared memory</td><td>116.0 fps</td><td>116.1 fps / 8.61 ms</td><td>0.7 ms</td></tr>
 </table>
-<p>上表的 116～117 fps 是<strong>模擬相機的影格率上限（120 fps）</strong>，不是傳輸的極限；把模擬相機開到 240 fps 時，2000 萬畫素彩色的共享記憶體串流可達 <strong>191.7 fps（11.5 GB/s）</strong>。以真實的 60 fps 相機量測，伺服端穩定收到 58.8 fps（相機給多少就收多少），每張往返 17.0 ms。<strong>目標達成，且有約 2 倍餘裕。</strong></p>
-<p>指令（數字會隨機器記憶體頻寬變動）：</p>
+<p>The 116–117 fps above is <strong>the simulated camera's own 120 fps ceiling</strong>, not the transport's. Open the simulator at 240 fps and 20 MP colour over shared memory reaches <strong>191.7 fps (11.5 GB/s)</strong>. Measured against a real 60 fps camera, the server receives a steady 58.8 fps — as many as the camera gives — at 17.0 ms a frame. <strong>The target is met with roughly twice the headroom.</strong></p>
+<p>The commands (the numbers vary with the machine's memory bandwidth):</p>
 <pre>
-.venv/Scripts/python.exe scripts/bench_capture.py                      # 2000 萬畫素彩色，共享記憶體與 TCP 各一輪
-.venv/Scripts/python.exe scripts/bench_capture.py --fps 60             # 模擬 60 fps 相機的實機情境
-.venv/Scripts/python.exe scripts/bench_capture.py --model 2 --mono     # 500 萬畫素／單色
+.venv/Scripts/python.exe scripts/bench_capture.py                      # 20 MP colour, one round each of shared memory and TCP
+.venv/Scripts/python.exe scripts/bench_capture.py --fps 60             # simulating a real 60 fps camera
+.venv/Scripts/python.exe scripts/bench_capture.py --model 2 --mono     # 5 MP, mono
 .venv/Scripts/python.exe scripts/bench_capture.py --transport tcp --encoding lz4
 </pre>
 
-<h3 id="perf-how">7-2. 大影格的四個關鍵</h3>
+<h3 id="perf-how">7-2. Four things that matter for large frames</h3>
 <ol>
-<li><strong>接收緩衝要重用（影響最大）。</strong>60 MB 的 <code>np.empty</code> 每次都要向作業系統要新頁面，第一次寫入時觸發 page fault——實測配置＋寫滿要 <strong>17 ms</strong>，重用既有緩衝只要 <strong>2.4 ms</strong>（7 倍）。伺服端每個通道、擷取端每台相機都用緩衝池，<strong>只重用「池是唯一持有者」的緩衝</strong>（以參照計數判定），已交給引擎或還在發布中的影格永遠不會被覆寫。池至少要 3 張：已發布的最新影格、傳送中的、正在寫入的——少一張就會退回每張重新配置。此項讓依需求取像從 38.7 fps 變成 117.6 fps。</li>
-<li><strong>複製要放開 GIL。</strong><code>memoryview</code> 切片指派整段持有 GIL（背景 Python 執行緒只剩 39% 速度），<code>np.copyto</code> 會放開（99%）。伺服端是單一 API 行程，60 fps × 60 MB 若整段鎖住 GIL 會拖垮整台；因此從共享記憶體讀出改用「暫時的 ndarray view ＋ np.copyto」，複製完立刻丟掉 view（<strong>shm.buf 上絕不能留 view</strong>，否則 <code>close()</code> 會 BufferError）。</li>
-<li><strong>送出不壓縮的影格要零複製。</strong>原本 <code>tobytes()</code> 一次、把表頭和 payload 接起來又一次，各 17 ms。現在 RAW 直接送陣列的 <code>memoryview</code>（表頭與 payload 分兩次 <code>sendall</code>），完全不複製。</li>
-<li><strong>共享記憶體區段要夠大但有上限。</strong>槽大小＝最大通道的影格（2000 萬畫素彩色＝60 MB），槽數＝4＋2×通道數，並以總量上限（預設 512 MB）收斂——單通道 6 槽＝360 MB。第一輪寫入會把頁面帶進實體記憶體，之後每張只要 2.3 ms。</li>
+<li><strong>Reuse the receive buffer (the biggest single factor).</strong> A 60 MB <code>np.empty</code> asks the operating system for fresh pages every time and faults them in on first write — measured, allocating and filling costs <strong>17 ms</strong> while reusing an existing buffer costs <strong>2.4 ms</strong>, seven times better. The server pools per channel and the client per camera, and <strong>only a buffer the pool is the sole holder of is reused</strong> (decided by reference count), so a frame already handed to the engine or still being published can never be overwritten. The pool needs at least three: the published latest frame, the one being sent, and the one being written — with fewer it falls back to allocating every frame. This one change took on-demand capture from 38.7 to 117.6 fps.</li>
+<li><strong>Copy in a way that releases the GIL.</strong> Assigning through a <code>memoryview</code> slice holds the GIL for the whole copy (a background Python thread drops to 39% speed); <code>np.copyto</code> releases it (99%). The server is a single API process, and 60 fps × 60 MB holding the GIL would drag the whole machine down — so reading out of shared memory uses a temporary ndarray view plus np.copyto, and the view is discarded the moment the copy is done (<strong>never keep an ndarray view on shm.buf</strong>, or <code>close()</code> raises BufferError).</li>
+<li><strong>Send an uncompressed frame with no copies.</strong> It used to be <code>tobytes()</code> once and joining the header and payload once more, 17 ms each. RAW now sends the array's <code>memoryview</code> directly, with the header and payload as two <code>sendall</code> calls and no copying at all.</li>
+<li><strong>The shared-memory segment must be large enough, but bounded.</strong> The slot size is the largest channel's frame (60 MB for 20 MP colour) and the slot count is 4 + 2 × channels, converged with a total cap (512 MB by default) — one channel with six slots is 360 MB. The first pass of writes brings the pages into physical memory, and after that each frame costs 2.3 ms.</li>
 </ol>
 
-<h3 id="perf-net">7-3. 跨電腦的物理上限</h3>
-<p>影格大小 × fps 就是需要的頻寬，網路做不到就是做不到：</p>
+<h3 id="perf-net">7-3. The physical limit across machines</h3>
+<p>Frame size × fps is the bandwidth needed, and a network that cannot do it cannot do it:</p>
 <table>
-<tr><th>影格</th><th>60 fps 需要</th><th>1 GbE（110 MB/s）</th><th>10 GbE（1.1 GB/s）</th><th>共享記憶體</th></tr>
-<tr><td>2000 萬畫素彩色 59.9 MB</td><td>3.59 GB/s（29 Gbps）</td><td>1.8 fps</td><td>18 fps</td><td>✓ 117 fps</td></tr>
-<tr><td>2000 萬畫素單色 20.0 MB</td><td>1.20 GB/s</td><td>5.5 fps</td><td>55 fps</td><td>✓ 117 fps</td></tr>
-<tr><td>500 萬畫素彩色 15.0 MB</td><td>0.90 GB/s</td><td>7.3 fps</td><td>73 fps</td><td>✓ 116 fps</td></tr>
-<tr><td>500 萬畫素單色 5.0 MB</td><td>0.30 GB/s</td><td>22 fps</td><td>220 fps</td><td>✓</td></tr>
+<tr><th>Frame</th><th>Needed at 60 fps</th><th>1 GbE (110 MB/s)</th><th>10 GbE (1.1 GB/s)</th><th>Shared memory</th></tr>
+<tr><td>20 MP colour, 59.9 MB</td><td>3.59 GB/s (29 Gbps)</td><td>1.8 fps</td><td>18 fps</td><td>✓ 117 fps</td></tr>
+<tr><td>20 MP mono, 20.0 MB</td><td>1.20 GB/s</td><td>5.5 fps</td><td>55 fps</td><td>✓ 117 fps</td></tr>
+<tr><td>5 MP colour, 15.0 MB</td><td>0.90 GB/s</td><td>7.3 fps</td><td>73 fps</td><td>✓ 116 fps</td></tr>
+<tr><td>5 MP mono, 5.0 MB</td><td>0.30 GB/s</td><td>22 fps</td><td>220 fps</td><td>✓</td></tr>
 </table>
-<p><strong>結論：2000 萬畫素彩色 60 fps 必須把擷取端跑在伺服器本機</strong>（相機接伺服器、SDK 裝在伺服器那台）。要跨電腦又要高影格率，依效益順序：轉單色（÷3）、先圈 ROI 只傳需要的範圍、縮小 1/2（÷4）、LZ4 無損（典型 1.5～3×，工業影像的平坦背景壓得更好）、JPEG（有損，只在頻寬真的不夠時用）、降低 fps 上限。舉例：2000 萬畫素單色＋ROI 取一半＋LZ4，在 10 GbE 上可到 60 fps 以上。</p>
+<p><strong>So 20 MP colour at 60 fps means running the capture client on the server machine</strong> — the camera on the server, the SDK installed there. To go across machines and still keep the frame rate, in order of value: convert to mono (÷3), crop to an ROI and send only what is needed, downscale by 1/2 (÷4), LZ4 losslessly (typically 1.5–3×, and better on the flat backgrounds of industrial images), JPEG (lossy, only when the bandwidth genuinely is not there), and lower the fps limit. For example, 20 MP mono with an ROI taking half of it plus LZ4 exceeds 60 fps on 10 GbE.</p>
 
-<h3 id="perf-engine">7-4. 伺服端下游</h3>
-<p>擷取端把影像交給引擎之後就是流程本身的成本：60 fps 表示每張檢測要在 16.7 ms 內跑完（見 <a href="performance.html">效能報告</a>；2000 萬畫素的工具耗時大約是 1280×960 的 16 倍，通常要先縮小或只在 ROI 上運算）。另外影像快取預設 1024 MB（<code>VISION_IMAGE_CACHE_MB</code>）、每流程保留最近 8 次 run 的影像（<code>VISION_KEEP_RUN_IMAGES</code>）——2000 萬畫素一張就 60 MB，高影格率時請把兩者調小，或只在 NG 時保存。</p>
+<h3 id="perf-engine">7-4. Downstream on the server</h3>
+<p>Once the client hands the image over, the cost is the flow itself: 60 fps means the inspection must finish inside 16.7 ms (see the <a href="performance.html">performance report</a>; a tool costs roughly 16 times as much at 20 MP as at 1280×960, so downscale first or work only inside an ROI). The image cache also defaults to 1024 MB (<code>VISION_IMAGE_CACHE_MB</code>) and keeps the last eight runs' images per flow (<code>VISION_KEEP_RUN_IMAGES</code>) — one 20 MP frame is 60 MB, so at high frame rates lower both, or keep images only for rejects.</p>
 
-<h2 id="trouble">8. 疑難排解</h2>
+<h2 id="trouble">8. Troubleshooting</h2>
 <ul>
-<li><strong>連不上</strong>：伺服端是否以 <code>manage.py serve</code> 啟動（<code>runserver</code> 不開擷取埠）、防火牆是否放行 9100、位址是否為伺服端可達的 IP；「外部整合」的資訊列顯示擷取埠是否監聽中。</li>
-<li><strong>驗證失敗（auth_failed）</strong>：伺服端設了 <code>VISION_CAPTURE_AUTH</code>／<code>VISION_API_KEY</code>，擷取端「金鑰」要填同一組；失敗會固定 30 秒後重試。</li>
-<li><strong>名稱重複（name_taken）</strong>：另一台電腦已用同名連線；同一台電腦重連會自動取代舊連線。</li>
-<li><strong>版本不符（protocol_unsupported）</strong>：重新從網頁下載與伺服端相同版本的擷取端。</li>
-<li><strong>網頁顯示「擷取端離線」</strong>：擷取端程式關閉或斷線中；重連後 5 秒內恢復。流程執行時會失敗並回「擷取端「名稱」未連線」。</li>
-<li><strong>逾時</strong>：相機未開始取像、觸發模式下沒有觸發、曝光超過 <code>timeout_ms</code>；先在擷取端確認狀態為「取像中」、預覽有畫面。</li>
-<li><strong>影像超過上限（too_large）</strong>：調高 <code>VISION_CAPTURE_MAX_FRAME_MB</code> 或在擷取端縮小／圈 ROI。</li>
-<li><strong>共享記憶體未被接受</strong>：記錄會寫原因，程式自動留在 TCP；「本機模式」設為「一律走 TCP」可強制。</li>
-<li><strong>掃描不到網路攝影機</strong>：被其他程式佔用（關掉會議軟體）、USB 供電不足；可直接輸入索引 0、1。</li>
-<li><strong>影格率突然變慢或第一張比較久</strong>：可能是閒置省電暫停後的第一次取像（要重新啟動取像）。產線上若不希望有這個延遲，把「閒置停止取像」設成 0，或改用連續串流。</li>
-<li><strong>更新沒有出現</strong>：伺服端要先建置（<code>build_capture_client.ps1</code>），且新版號要比擷取端目前的版本大；「自動更新」設成「不檢查」時不會通知。舊版（0.1.0）沒有自動更新功能，請從網頁重新下載。</li>
-<li><strong>更新失敗</strong>：記錄會寫原因（下載中斷、SHA-256 不符、檔案被佔用）。舊版會繼續正常取像；可從網頁下載 zip 手動覆寫。防毒軟體鎖住執行檔時，更新程式會重試 30 秒。</li>
-<li><strong>SDK 尚未安裝</strong>：擷取端只打包建置時安裝的 SDK；請在伺服端以 <code>-WithBasler</code>／<code>-WithIds</code> 重新建置，客戶端另裝廠牌執行期／驅動。</li>
+<li><strong>It will not connect</strong>: check the server was started with <code>manage.py serve</code> (<code>runserver</code> does not open the capture port), that the firewall allows 9100, and that the address is one the client can reach. The Integration information bar says whether the capture port is listening.</li>
+<li><strong>auth_failed</strong>: the server has <code>VISION_CAPTURE_AUTH</code> or <code>VISION_API_KEY</code> set and the client's key must match. A failure waits a fixed 30 seconds before retrying.</li>
+<li><strong>name_taken</strong>: another machine is already connected under that name. Reconnecting from the same machine replaces the old connection automatically.</li>
+<li><strong>protocol_unsupported</strong>: download the client again from the web interface so it matches the server.</li>
+<li><strong>The web interface says "capture client offline"</strong>: the program is closed or disconnected; it comes back within five seconds of reconnecting. A run meanwhile fails with "capture client &lt;name&gt; is not connected".</li>
+<li><strong>Timeouts</strong>: the camera is not acquiring, there is no trigger in trigger mode, or the exposure exceeds <code>timeout_ms</code>. Check on the client that the state is "acquiring" and the preview is live.</li>
+<li><strong>too_large</strong>: raise <code>VISION_CAPTURE_MAX_FRAME_MB</code>, or downscale or crop on the client.</li>
+<li><strong>Shared memory was not accepted</strong>: the log gives the reason and the program stays on TCP. Setting local mode to "always TCP" forces it.</li>
+<li><strong>A webcam is not found by scanning</strong>: another program has it (close the conferencing software), or the USB port cannot power it. Typing the index 0 or 1 directly also works.</li>
+<li><strong>The frame rate suddenly drops, or the first frame is slow</strong>: this may be the first acquisition after an idle pause, which has to start the camera again. On a line where that delay is unwelcome, set idle stop to 0 or use continuous streaming.</li>
+<li><strong>No update appears</strong>: the server has to have built one (<code>build_capture_client.ps1</code>) and its version must be higher than the client's. Nothing is announced when automatic update is set to off. Version 0.1.0 has no update mechanism at all — download it again.</li>
+<li><strong>An update failed</strong>: the log gives the reason (an interrupted download, a SHA-256 mismatch, a locked file). The existing version keeps acquiring, and you can always download the zip and overwrite by hand. When antivirus software holds the executable, the updater retries for 30 seconds.</li>
+<li><strong>An SDK is missing</strong>: only the SDKs present at build time are packaged. Rebuild on the server with <code>-WithBasler</code> or <code>-WithIds</code>, and install the vendor's runtime or driver on the client PC.</li>
 </ul>
 
-<h2 id="protocol">9. 協定摘要（v1，<code>vscapture/protocol.py</code>）</h2>
-<p>小端序。每則訊息＝<code>ENVELOPE(16 B) | header(hlen) | payload(plen)</code>，<code>ENVELOPE = "&lt;HBBIII"</code>：magic <code>0x5643</code>、ver 1、type、req_id（0＝非請求）、hlen、plen。控制訊息 header 是 JSON，熱路徑訊息是定長 struct。上限：hlen ≤ 1 MiB、plen ≤ MAX_FRAME、通道 ≤ 32、名稱 <code>[A-Za-z0-9_\-.]{1,64}</code>。</p>
+<h2 id="protocol">9. The protocol (v1, <code>vscapture/protocol.py</code>)</h2>
+<p>Little endian. Every message is <code>ENVELOPE(16 B) | header(hlen) | payload(plen)</code>, where <code>ENVELOPE = "&lt;HBBIII"</code>: magic <code>0x5643</code>, version 1, type, req_id (0 means it is not a request), hlen, plen. Control messages use a JSON header; hot-path messages use a fixed struct. Limits: hlen ≤ 1 MiB, plen ≤ MAX_FRAME, at most 32 channels, and names matching <code>[A-Za-z0-9_\-.]{1,64}</code>.</p>
 <table>
-<tr><th>type</th><th>名稱</th><th>方向</th><th>header</th><th>用途</th></tr>
-<tr><td>0x01／0x02</td><td>HELLO／WELCOME</td><td>C→S／S→C</td><td>JSON</td><td>連線後 5 秒內登記（protocol、name、version、auth、hostname、machine_id、features、channels[]）；回 ok、local、prefer{encoding, shm}、max_frame_bytes、heartbeat_s、stream{}；拒絕碼 auth_failed／name_taken／protocol_unsupported／bad_hello</td></tr>
-<tr><td>0x03／0x04</td><td>PING／PONG</td><td>雙向</td><td>無</td><td>心跳</td></tr>
-<tr><td>0x05</td><td>CHANNELS</td><td>C→S</td><td>JSON</td><td>通道清單整份替換；索引＝位置且只增不減（移除的通道留 enabled:false 墓碑，在途 GRAB 不錯位）</td></tr>
-<tr><td>0x06／0x07</td><td>SHM_OFFER／SHM_ACCEPT</td><td>C→S／S→C</td><td>JSON</td><td>共享記憶體協商（name、slots、slot_bytes、canary）</td></tr>
-<tr><td>0x08</td><td>STREAM</td><td>S→C，C 回音</td><td>JSON</td><td>{channel, enabled, max_fps}</td></tr>
-<tr><td>0x09</td><td>ERROR</td><td>雙向</td><td>JSON</td><td>{code, message}：timeout／no_channel／channel_disabled／camera_error／busy／unsupported_encoding／too_large／malformed…</td></tr>
-<tr><td>0x0A</td><td>BYE</td><td>C→S</td><td>無</td><td>正常關閉</td></tr>
-<tr><td>0x0B／0x0C</td><td>TEST／TEST_RESULT</td><td>C→S／S→C</td><td>FRAME_HDR＋payload／JSON</td><td>「測試傳送」：回 decode_ms</td></tr>
-<tr><td>0x0D</td><td>UPDATE</td><td>S→C</td><td>JSON</td><td>{available, version, filename, size, sha256, built_at, chunk}；WELCOME 內也帶一份，之後 manifest 版本變了才推</td></tr>
-<tr><td>0x0E／0x0F</td><td>UPDATE_PULL／UPDATE_DATA</td><td>C→S／S→C</td><td>JSON／JSON＋payload</td><td>{offset, length} → {offset, eof, error?}＋該段位元組；安裝檔走同一條已驗證的連線</td></tr>
-<tr><td>0x10</td><td>GRAB</td><td>S→C</td><td><code>"&lt;HIQBB"</code>（chan, timeout_ms, min_seq, encoding 255=auto/0 raw/1 lz4/2 jpeg, flags bit0 AFTER_REQUEST）</td><td>每次執行一則</td></tr>
-<tr><td>0x11</td><td>FRAME</td><td>C→S</td><td><code>"&lt;HBBBBQQIIIIIIIIi6x"</code> 64 B（chan, encoding, dtype 0 u8/1 u16/2 f32, channels 1/3/4, flags bit0 FRESH bit1 CROPPED, seq, ts_ns, width, height, stride, roi_x, roi_y, full_w, full_h, raw_len, slot）</td><td>slot −1 像素在 payload；slot ≥ 0 在共享記憶體槽；req_id &gt; 0 回應 GRAB，req_id 0 串流推送</td></tr>
-<tr><td>0x12</td><td>SLOT_FREE</td><td>S→C</td><td><code>"&lt;HiQ2x"</code>（chan, slot, seq）</td><td>伺服端 copy 完畢，槽歸還</td></tr>
+<tr><th>type</th><th>Name</th><th>Direction</th><th>header</th><th>Purpose</th></tr>
+<tr><td>0x01 / 0x02</td><td>HELLO / WELCOME</td><td>C→S / S→C</td><td>JSON</td><td>Registration within five seconds of connecting (protocol, name, version, auth, hostname, machine_id, features, channels[]); the reply carries ok, local, prefer{encoding, shm}, max_frame_bytes, heartbeat_s and stream{}. Refusal codes: auth_failed, name_taken, protocol_unsupported, bad_hello</td></tr>
+<tr><td>0x03 / 0x04</td><td>PING / PONG</td><td>Both</td><td>none</td><td>The heartbeat</td></tr>
+<tr><td>0x05</td><td>CHANNELS</td><td>C→S</td><td>JSON</td><td>Replaces the whole channel list. The index is the position and only ever grows (a removed channel leaves an enabled:false tombstone) so a GRAB in flight cannot be misaddressed</td></tr>
+<tr><td>0x06 / 0x07</td><td>SHM_OFFER / SHM_ACCEPT</td><td>C→S / S→C</td><td>JSON</td><td>Shared-memory negotiation (name, slots, slot_bytes, canary)</td></tr>
+<tr><td>0x08</td><td>STREAM</td><td>S→C, echoed by C</td><td>JSON</td><td>{channel, enabled, max_fps}</td></tr>
+<tr><td>0x09</td><td>ERROR</td><td>Both</td><td>JSON</td><td>{code, message}: timeout, no_channel, channel_disabled, camera_error, busy, unsupported_encoding, too_large, malformed…</td></tr>
+<tr><td>0x0A</td><td>BYE</td><td>C→S</td><td>none</td><td>A clean close</td></tr>
+<tr><td>0x0B / 0x0C</td><td>TEST / TEST_RESULT</td><td>C→S / S→C</td><td>FRAME_HDR plus payload / JSON</td><td>"Test send"; the reply carries decode_ms</td></tr>
+<tr><td>0x0D</td><td>UPDATE</td><td>S→C</td><td>JSON</td><td>{available, version, filename, size, sha256, built_at, chunk}; also included in WELCOME, and pushed afterwards only when the manifest version changes</td></tr>
+<tr><td>0x0E / 0x0F</td><td>UPDATE_PULL / UPDATE_DATA</td><td>C→S / S→C</td><td>JSON / JSON plus payload</td><td>{offset, length} → {offset, eof, error?} plus those bytes; the installer travels down the same authenticated connection</td></tr>
+<tr><td>0x10</td><td>GRAB</td><td>S→C</td><td><code>"&lt;HIQBB"</code> (chan, timeout_ms, min_seq, encoding 255=auto/0 raw/1 lz4/2 jpeg, flags bit0 AFTER_REQUEST)</td><td>One per run</td></tr>
+<tr><td>0x11</td><td>FRAME</td><td>C→S</td><td><code>"&lt;HBBBBQQIIIIIIIIi6x"</code>, 64 B (chan, encoding, dtype 0 u8/1 u16/2 f32, channels 1/3/4, flags bit0 FRESH bit1 CROPPED, seq, ts_ns, width, height, stride, roi_x, roi_y, full_w, full_h, raw_len, slot)</td><td>slot −1 means the pixels are in the payload; slot ≥ 0 means a shared-memory slot. req_id &gt; 0 answers a GRAB, req_id 0 is a stream push</td></tr>
+<tr><td>0x12</td><td>SLOT_FREE</td><td>S→C</td><td><code>"&lt;HiQ2x"</code> (chan, slot, seq)</td><td>The server has finished copying; the slot is returned</td></tr>
 </table>
-<p>伺服端驗證 FRAME：chan 範圍、dtype／channels 合法、<code>stride == width×channels×itemsize</code>、<code>raw_len == stride×height ≤ 上限</code>、raw ⇒ plen == raw_len、shm ⇒ slot &lt; slots 且 raw_len ≤ slot_bytes；不合即 ERROR(malformed) 並斷線（部分讀取的串流無法安全重同步）。改協定要同時改 <code>vscapture/protocol.py</code>、<code>apps/vision/capture/hub.py</code> 與本節。</p>
+<p>The server validates a FRAME: the channel is in range, the dtype and channel count are legal, <code>stride == width × channels × itemsize</code>, <code>raw_len == stride × height ≤ the limit</code>, raw implies plen == raw_len, and shm implies slot &lt; slots with raw_len ≤ slot_bytes. Anything else is ERROR(malformed) and the connection drops — a partially read stream cannot be resynchronised safely. Changing the protocol means changing <code>vscapture/protocol.py</code>, <code>apps/vision/capture/hub.py</code> and this section together.</p>
 
-<h2 id="security">10. 安全性</h2>
+<h2 id="security">10. Security</h2>
 <ul>
-<li>登錄金鑰以 <code>hmac.compare_digest</code> 比對；驗證失敗延遲 0.5 秒再回覆以節流。空金鑰＝不驗證，只建議在隔離的產線網段使用。</li>
-<li>HELLO 之前不處理任何訊息；每則訊息有大小上限；名稱與通道欄位白名單驗證；超大或格式錯誤立即斷線。</li>
-<li>共享記憶體只在 loopback 且主機名稱相同時協商，區段名稱含隨機字串並核對 canary。</li>
-<li>網頁端的預覽／串流／下載端點沿用平台身分（登入 token 或 API 金鑰；鎖定時串流開關回 423）。</li>
+<li>The registration key is compared with <code>hmac.compare_digest</code>, and a failed attempt waits half a second before replying, as a throttle. An empty key means no check at all, which is only advisable on an isolated production network.</li>
+<li>Nothing is processed before HELLO; every message has a size limit; names and channel fields are validated against an allow-list; and anything oversized or malformed drops the connection immediately.</li>
+<li>Shared memory is only negotiated over loopback with matching hostnames, and the segment name contains a random component with a canary that is checked.</li>
+<li>The web-facing preview, stream and download endpoints use the platform's own identity (a sign-in token or an API key), and the streaming switch returns 423 while the engine is locked.</li>
 </ul>
 
-<h2 id="acceptance">11. 實體相機驗收清單</h2>
+<h2 id="acceptance">11. Acceptance checklist with real cameras</h2>
 <ol>
-<li>網路攝影機 1080p MJPG ≥ 25 fps；曝光手動／自動切換生效；拔插後自動重開。</li>
-<li>Basler USB3／GigE：Mono8／BGR8 轉換正確；硬體 ROI 依增量對齊且座標回填；軟體觸發延遲；Line1 硬體觸發；<code>PYLON_CAMEMU=1</code> 模擬相機。</li>
-<li>IDS peak：改 PixelFormat 後仍能取像（重配 buffer）；Line0 觸發；硬體 ROI。</li>
-<li>乾淨 PC：有／無各 SDK 執行期時，相機種類的停用提示正確；zip 內 README 列出的支援與實際一致。</li>
-<li>同一台電腦：共享記憶體與「一律走 TCP」的 CPU 與延遲對比；<code>status.shm === true</code>。</li>
-<li>區網：兩通道各 10 fps 串流＋並行依需求取像；LZ4 與 raw 的頻寬對比。</li>
-<li>伺服端重啟、拔網路線 30 秒後自動重連，串流設定自動恢復。</li>
-<li>Task Scheduler／NSSM 以主控台版常駐；系統匣連線／中斷／結束。</li>
-<li>執行中改設定檔後「重新載入設定」重建通道並重連。</li>
-<li>自動更新：伺服端重新建置後橫幅出現、下載進度、覆寫並重啟成新版；「自動下載並安裝」在無介面模式也會更新；下載途中斷線與 SHA-256 不符都只記錄不影響取像。</li>
-<li>介面：三種語言切換即時生效（含相機標準參數名稱）、深色／淺色切換、重開程式後語言與外觀保持。</li>
-<li>參數樹狀圖：實體相機（Basler／IDS）的類別層級正確、搜尋可過濾、展開狀態保留、改參數仍能套用與回填。</li>
-<li>省電：縮到工作列後（伺服端沒在取像）通道顯示「省電暫停」且 CPU 掉下來；伺服端要影像時自動恢復並取得正確影格；串流中的通道不會被暫停。</li>
-<li>視窗縮放：三種寬度的版面切換、ROI 工具列折行、最小尺寸仍可操作。</li>
-<li>參數樹狀圖：實體相機（Basler／IDS）的類別層級正確、搜尋可過濾、展開狀態保留、改參數仍能套用與回填。</li>
+<li>A webcam at 1080p MJPG reaching 25 fps or better; manual and automatic exposure both taking effect; reopening after being unplugged and replugged.</li>
+<li>Basler USB3 and GigE: Mono8 and BGR8 conversion correct; the hardware ROI aligned to the increment with the coordinates written back; software trigger latency; hardware trigger on Line1; the <code>PYLON_CAMEMU=1</code> emulated camera.</li>
+<li>IDS peak: acquisition still works after changing the pixel format (the buffers are reallocated); Line0 trigger; the hardware ROI.</li>
+<li>A clean PC: with and without each vendor runtime, the disabled camera kinds give the right reason, and the support listed in the zip's README matches reality.</li>
+<li>Same machine: the CPU and latency of shared memory versus "always TCP"; <code>status.shm === true</code>.</li>
+<li>On a LAN: two channels streaming at 10 fps each plus concurrent on-demand grabs; the bandwidth of LZ4 against raw.</li>
+<li>Reconnecting automatically after a server restart and after 30 seconds with the network cable out, with the streaming settings restored.</li>
+<li>Running the console build permanently under Task Scheduler or a service wrapper; connect, disconnect and exit from the tray.</li>
+<li>"Reload settings" after editing the configuration file while running rebuilds the channels and reconnects.</li>
+<li>Automatic update: the banner appears after the server rebuilds, the download shows progress, and it overwrites and restarts into the new version; "download and install automatically" also updates in headless mode; an interrupted download and a SHA-256 mismatch are both logged without disturbing acquisition.</li>
+<li>The interface: all three languages switch instantly (the standard camera parameter names included), dark and light both switch, and both survive a restart.</li>
+<li>The parameter tree: the category levels are right for a real camera (Basler, IDS), search filters, the expansion state is kept, and changing a parameter still applies and writes back.</li>
+<li>Power saving: minimised to the taskbar with the server idle, the channel shows "(idle)" and the CPU drops; the next server request resumes it and returns a correct frame; a streaming channel is never paused.</li>
+<li>Window resizing: all three layouts, the ROI toolbar folding, and the minimum size still usable.</li>
 </ol>
 
-<h2 id="files">12. 檔案、建置與測試</h2>
-<pre>vscapture/              擷取端（不 import Django；伺服端只 import protocol.py）
-  protocol.py           線上協定 v1（雙方共用）
+<h2 id="files">12. Files, building and tests</h2>
+<pre>vscapture/              the capture client (it never imports Django; the server imports only protocol.py)
+  protocol.py           the wire protocol, v1 (shared by both sides)
   config.py frames.py channel.py engine.py shm.py logs.py app.py __main__.py
-  i18n.py               介面文案（繁中／简中／English，與網頁同三種語言）
-  params.py             相機參數的樹狀分組、命名與搜尋（不含 Qt，可單獨測試）
-  update.py             自動更新：下載、驗證、解壓、交棒給新版覆寫並重啟
-  cameras/              base.py（Camera 介面）webcam.py basler.py ids.py ueye.py fake.py
-  transport/            client.py（連線／重連／GRAB／串流／TEST）sender.py stream.py
-  ui/                   PySide6：theme（深／淺色票與樣式表）、bridge、main_window、connection_panel、channels_panel、live_view（ROI）、params_panel、delivery_panel、log_panel、update_banner、tray
-  requirements.txt      獨立 .venv-capture（opencv-python 與伺服端的 headless 版同名互蓋）
-apps/vision/capture/    hub.py（CaptureHub／ClientSession）grabber.py（CaptureGrabber、channel_status）api.py build.py（安裝檔 manifest／分塊讀取）
-scripts/build_capture_client.ps1   建 .venv-capture → PyInstaller（scripts/capture_client.spec）→ zip 到 data/downloads/
-scripts/package_capture_client.py  zip＋README.txt＋manifest.json（版本、大小、sha256、建置時間、內含 SDK）</pre>
+  i18n.py               interface text (English, 繁中, 简中 — the same three as the web interface)
+  params.py             grouping, naming and searching the camera parameter tree (no Qt, so it is testable on its own)
+  update.py             automatic update: download, verify, unpack, hand over to the new version to overwrite and restart
+  cameras/              base.py (the Camera interface), webcam.py, basler.py, ids.py, ueye.py, fake.py
+  transport/            client.py (connect, reconnect, GRAB, streaming, TEST), sender.py, stream.py
+  ui/                   PySide6: theme (the dark and light palettes and stylesheet), bridge, main_window, connection_panel,
+                        channels_panel, live_view (the ROI), params_panel, delivery_panel, log_panel, update_banner, tray
+  requirements.txt      a separate .venv-capture (opencv-python and the server's headless build share a name and shadow each other)
+apps/vision/capture/    hub.py (CaptureHub, ClientSession), grabber.py (CaptureGrabber, channel_status), api.py,
+                        build.py (the installer manifest and chunked reads)
+scripts/build_capture_client.ps1   builds .venv-capture → PyInstaller (scripts/capture_client.spec) → a zip in data/downloads/
+scripts/package_capture_client.py  the zip plus README.txt and manifest.json (version, size, sha256, build time, bundled SDKs)</pre>
 <ul>
-<li>建置：<code>.\scripts\build_capture_client.ps1</code>（第一次會建 <code>.venv-capture</code> 並安裝依賴；<code>-WithBasler</code>／<code>-WithIds</code>／<code>-WithUeye</code> 一併打包 SDK；<code>-SkipInstall</code> 只重新打包；<code>-Clean</code> 全部重來）。產物 <code>data/downloads/VisionSequenceCapture-&lt;版本&gt;-win64.zip</code> 與 <code>manifest.json</code>；網頁「下載擷取端」立即可用，不必重啟伺服端。</li>
-<li>測試：<code>manage.py test tests.test_capture</code>（協定、hub、Grabber、API、整條執行）與 <code>tests.test_capture_client</code>（設定、影格、模擬相機、通道、共享記憶體槽規則、對真 hub 的 loopback 取像／串流／重連、headless CLI、打包）；<code>ruff check apps tests config vscapture</code>。</li>
-<li>效能：<code>.venv/Scripts/python.exe scripts/bench_capture.py</code>（見 <a href="#perf">§7</a>）。改了傳輸熱路徑（緩衝池、共享記憶體、送出路徑、接收路徑）一定要重跑。</li>
-<li>原始碼直接跑：<code>.venv-capture\Scripts\python.exe -m vscapture --fake 2 --server 127.0.0.1:9100</code>（介面）或加 <code>--headless --connect</code>。模擬相機 <code>fake:2</code>／<code>fake:3</code> 是 500 萬／2000 萬畫素，可在沒有工業相機時驗證大影格。</li>
+<li>Building: <code>.\scripts\build_capture_client.ps1</code> (the first run creates <code>.venv-capture</code> and installs the dependencies; <code>-WithBasler</code>, <code>-WithIds</code> and <code>-WithUeye</code> bundle those SDKs; <code>-SkipInstall</code> only repackages; <code>-Clean</code> starts over). The output is <code>data/downloads/VisionSequenceCapture-&lt;version&gt;-win64.zip</code> with a <code>manifest.json</code>, and "Download capture client" picks it up without restarting the server.</li>
+<li>Tests: <code>manage.py test tests.test_capture</code> (the protocol, the hub, the Grabber, the API and a full run) and <code>tests.test_capture_client</code> (configuration, frames, the simulated camera, channels, the shared-memory slot rules, loopback acquisition, streaming and reconnection against a real hub, the headless CLI and packaging); plus <code>ruff check apps tests config vscapture</code>.</li>
+<li>Performance: <code>.venv/Scripts/python.exe scripts/bench_capture.py</code> (see <a href="#perf">§7</a>). Re-run it whenever the transport hot path changes — the buffer pool, shared memory, the send path or the receive path.</li>
+<li>Running from source: <code>.venv-capture\Scripts\python.exe -m vscapture --fake 2 --server 127.0.0.1:9100</code> for the interface, or add <code>--headless --connect</code>. The simulated cameras <code>fake:2</code> and <code>fake:3</code> are 5 and 20 megapixels, for testing large frames with no industrial camera to hand.</li>
 </ul>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

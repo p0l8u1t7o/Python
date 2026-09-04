@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 批次測試</title>
+<title>VisionSequence batch testing</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,117 +134,120 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html" aria-current="page">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. 概念：影像集與執行</a></li><li><a href="#flow">2. 操作流程</a></li><li><a href="#models">3. 資料模型與檔案（apps/vision/models.py）</a></li><li><a href="#exec">4. 執行方式（apps/vision/batch/jobs.py）</a></li><li><a href="#insights">5. 資料洞察與建議門檻（apps/vision/batch/insights.py）</a></li><li><a href="#tune">6. 調參、寫回、配方、Golden Set</a></li><li><a href="#ai">7. AI 諮詢與調整（apps/vision/agent/consult.py）</a></li><li><a href="#api">8. API（apps/vision/batch/api.py）</a></li><li><a href="#retention">9. 保留策略與設定（.env）</a></li><li><a href="#files">10. 檔案與測試</a></li></ul></aside><article class="doc">
-<h1>批次測試：影像集、暫存的逐張結果、資料洞察與調參</h1>
-<p>「批次測試」頁（側欄 <code>/batch</code>）讓您<strong>選一條流程，用一組影像批量執行，每次執行的逐張結果都暫存下來</strong>：為影像標記期望 OK／NG 即得命中率與混淆矩陣，洞察卡會沿判定節點的輸入值算出<strong>建議門檻</strong>；在同一頁改參數重新執行同一影像集比較前後，滿意後寫回流程、存為配方或帶回編輯器；也可請 AI 助手依這批資料<strong>諮詢</strong>或<strong>調整</strong>，結果同樣成為新的一次執行。編輯器頂列的「批次測試」會開啟此頁並預選流程（有未儲存草稿時可勾「使用編輯器未儲存的草稿」）。</p>
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html" aria-current="page">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. The idea: image sets and runs</a></li><li><a href="#flow">2. Working through it</a></li><li><a href="#models">3. Data model and files (apps/vision/models.py)</a></li><li><a href="#exec">4. How runs execute (apps/vision/batch/jobs.py)</a></li><li><a href="#insights">5. Insights and threshold suggestions (apps/vision/batch/insights.py)</a></li><li><a href="#tune">6. Tuning, writing back, recipes and the Golden Set</a></li><li><a href="#ai">7. AI consultation and tuning (apps/vision/agent/consult.py)</a></li><li><a href="#api">8. API (apps/vision/batch/api.py)</a></li><li><a href="#retention">9. Retention settings (.env)</a></li><li><a href="#files">10. Files and tests</a></li></ul></aside><article class="doc">
 
-<h2 id="concept">1. 概念：影像集與執行</h2>
+<h1>Batch testing: image sets, stored per-image results, insights and tuning</h1>
+<p>The batch page (<code>/batch</code> in the sidebar) lets you <strong>pick a flow, run a set of images through it, and keep every image's result from every run</strong>. Label the images with their expected OK or NG and you get a hit rate and a confusion matrix; the insights card traces the value feeding each judging node and works out a <strong>suggested threshold</strong>. Change parameters on the same page, run the same image set again, compare before and after, and when you are happy write the result back to the flow, save it as a recipe or send it to the editor. You can also ask the AI assistant to <strong>consult</strong> on the data or <strong>tune</strong> from it, and its result becomes another run. "Batch test" in the editor toolbar opens this page with the flow pre-selected, and offers a "use the editor's unsaved draft" tick box when there is one.</p>
+
+<h2 id="concept">1. The idea: image sets and runs</h2>
 <ul>
-<li><strong>影像集（BatchSet）</strong>：一組批量測試用的影像（上傳或從影像來源擷取，一個影像集最多 <code>VISION_BATCH_MAX_IMAGES</code>＝200 張），檔案存在伺服器；<strong>期望標記（OK／NG）屬於影像</strong>，同一組影像重複執行時保留。<code>flow</code> 只是<strong>建立時的歸屬</strong>（淘汰也按它計）——影像集是測試資料，<strong>可以拿去測任何看得見的流程</strong>。</li>
-<li><strong>批次執行（BatchRun）</strong>：用某份 graph 快照把影像集跑一遍；逐張結果（狀態、耗時、具名輸出、各節點狀態與純量輸出、錯誤）與 summary 一起暫存。執行可標 <code>parent</code>（由哪一次調參而來），來源 <code>origin</code>＝manual／draft／autotune／ai_tune。<code>flow</code> 記錄<strong>這次用哪個流程測</strong>（與影像集的流程不同時前端標出流程名稱），空＝影像集的流程。</li>
-<li>與 Golden Set 的分工：Golden Set 是<strong>正式回歸基準</strong>（少量、期望值精確、進 CI）；批次測試是<strong>調機工作台</strong>（多量、可反覆重跑、資料會淘汰）。批次頁勾選影像可一鍵「存入 Golden Set」。</li>
+<li><strong>Image set (BatchSet)</strong>: a group of test images, uploaded or grabbed from an image source, up to <code>VISION_BATCH_MAX_IMAGES</code> (200) per set, stored on the server. <strong>The expected label belongs to the image</strong>, so it survives repeated runs. <code>flow</code> only records <strong>which flow it was created under</strong> (retention counts by it) — an image set is test data and <strong>can be run against any flow you can see</strong>.</li>
+<li><strong>Batch run (BatchRun)</strong>: one pass of the image set against a graph snapshot. Per-image results (status, duration, named outputs, each node's status and scalar outputs, errors) are stored alongside a summary. A run can name a <code>parent</code> (the run it was tuned from), and <code>origin</code> is manual, draft, autotune or ai_tune. <code>flow</code> records <strong>which flow was used this time</strong> — the interface shows the flow name when it differs from the image set's — and empty means the image set's own flow.</li>
+<li>Against the Golden Set: a Golden Set is the <strong>formal regression baseline</strong> (few images, exact expectations, runs in CI); batch testing is the <strong>tuning workbench</strong> (many images, run repeatedly, data ages out). Tick images on the batch page and "Save to Golden Set" moves them across.</li>
 </ul>
 
-<h2 id="flow">2. 操作流程</h2>
+<h2 id="flow">2. Working through it</h2>
 <ol>
-<li>「新增影像集」：上傳影像檔，或從影像來源擷取 N 張（影像集清單跨流程，目前測試流程的排前面）。</li>
-<li>頂列「測試流程」＝要用哪個流程測（從編輯器「批次測試」帶入，或選影像集時自動帶成它建立時的流程）。同一組影像可以換流程再測一次，兩次執行都掛在同一個影像集，能直接比較。</li>
-<li>「以「<em>流程名稱</em>」執行」：背景執行、執行紀錄顯示進度，可中斷；用別的流程測的執行會標出流程名稱。</li>
-<li>「影像集」分頁為每張影像標記期望 OK／NG（或全部 OK／NG）；「結果」分頁的期望欄也可改。命中率、混淆矩陣立即更新。</li>
-<li>「洞察」分頁：未命中影像、出錯節點、判定門檻建議、具名輸出分佈（依期望分兩色）、歷次執行趨勢；「套用建議並重新執行」直接產生新的一次執行。</li>
-<li>「調參」分頁：現場調機參數（teach）分組編輯 → 「重新執行」（新執行的 parent＝目前選取的執行）→ 「比較」分頁逐張對照。</li>
-<li>右下角的全域 AI 助手（脈絡＝批次測試頁，選定已完成的執行後）：提問（諮詢）、依資料調整；調參面板的「自動調參」；結果都成為新的一次執行。</li>
-<li>滿意後「寫回流程」（擁有者／管理員）、「存為配方」（參數差異 → FlowRecipe）或「帶回編輯器」（成為草稿）。</li>
+<li>"New image set": upload files, or grab N images from an image source. The list spans flows, with the current test flow's sets first.</li>
+<li>"Test flow" in the header is the flow to run. It arrives pre-selected from the editor, or is set to the image set's own flow when you select one. Run the same images against a different flow and both runs hang off the same image set, so you can compare them directly.</li>
+<li>"Run with <em>flow name</em>": it runs in the background, the run list shows progress, and you can interrupt it. A run against a different flow is labelled with that flow's name.</li>
+<li>On the Images tab, label each image OK or NG (or all OK / all NG); the Expected column on the Results tab works too. The hit rate and confusion matrix update immediately.</li>
+<li>The Insights tab: missed images, failing nodes, threshold suggestions, named output distributions coloured by expectation, and the trend across runs. "Apply suggestions and re-run" produces a new run directly.</li>
+<li>The Tuning tab: the on-site teaching parameters grouped for editing → "Run again" (the new run's parent is the selected one) → the Compare tab, image by image.</li>
+<li>The global AI assistant in the bottom-right corner (context = batch page, once a finished run is selected): ask a question (consult) or tune from the data. The Tuning panel also has "Auto-tune". All of them produce a new run.</li>
+<li>When it looks right: "Write back to flow" (engineer or administrator), "Save as recipe" (the parameter differences become a FlowRecipe) or "Send to editor" (it becomes the draft).</li>
 </ol>
 
-<h2 id="models">3. 資料模型與檔案（apps/vision/models.py）</h2>
+<h2 id="models">3. Data model and files (apps/vision/models.py)</h2>
 <table>
-<tr><th>模型</th><th>欄位</th></tr>
-<tr><td><code>BatchSet</code></td><td><code>flow</code>、<code>owner</code>、<code>name</code>、<code>source</code>（upload／source:名稱）、<code>images</code> JSON <code>[{index, name, path, width, height, expected, expect_outputs, note}]</code>、<code>image_count</code>、<code>size_bytes</code>、時間戳。檔案在 <code>ASSET_DIR/batch/&lt;set_id&gt;/NNN.png</code>，刪除影像集即 <code>rmtree</code>。</td></tr>
-<tr><td><code>BatchRun</code></td><td><code>batch_set</code>、<code>flow</code>（這次用哪個流程測，空＝影像集的流程；流程被刪除時 SET_NULL 退回）、<code>parent</code>、<code>owner</code>、<code>flow_version</code>、<code>graph</code>（實際執行的快照，配方已疊上）、<code>recipe_name</code>、<code>label</code>／<code>note</code>、<code>origin</code>、<code>status</code>（queued／running／done／cancelled／failed）、<code>progress_done</code>／<code>progress_total</code>、<code>summary</code>、<code>items</code>（逐張：<code>status, duration_ms, outputs, error, error_node, nodes{id:{status, duration_ms, message, branch, outputs}}</code>，只存純量，NaN 轉 null）、<code>insights</code>（洞察快取）、<code>meta</code>（自動調參／AI 調整的說明）、<code>error</code>、時間戳。</td></tr>
+<tr><th>Model</th><th>Fields</th></tr>
+<tr><td><code>BatchSet</code></td><td><code>flow</code>, <code>owner</code>, <code>name</code>, <code>source</code> (upload or source:name), <code>images</code> JSON <code>[{index, name, path, width, height, expected, expect_outputs, note}]</code>, <code>image_count</code>, <code>size_bytes</code> and timestamps. Files live in <code>ASSET_DIR/batch/&lt;set_id&gt;/NNN.png</code>; deleting the set removes the directory.</td></tr>
+<tr><td><code>BatchRun</code></td><td><code>batch_set</code>, <code>flow</code> (which flow was used; empty means the image set's own, and SET_NULL if that flow is deleted), <code>parent</code>, <code>owner</code>, <code>flow_version</code>, <code>graph</code> (the snapshot actually executed, with the recipe already applied), <code>recipe_name</code>, <code>label</code> and <code>note</code>, <code>origin</code>, <code>status</code> (queued, running, done, cancelled, failed), <code>progress_done</code> and <code>progress_total</code>, <code>summary</code>, <code>items</code> (per image: <code>status, duration_ms, outputs, error, error_node, nodes{id:{status, duration_ms, message, branch, outputs}}</code> — scalars only, NaN stored as null), <code>insights</code> (a cache), <code>meta</code> (notes from auto-tuning or AI tuning), <code>error</code> and timestamps.</td></tr>
 </table>
-<p>命中（match）不存在 items 裡：標記可事後修改，序列化時用 <code>apps/golden/regress.evaluate_expect</code> 現算；改標記後 <code>store.refresh_matches</code> 重算該影像集所有已完成執行的 summary 與洞察。</p>
+<p>Whether an image matched is not stored in items: labels can be edited afterwards, so it is computed on serialisation with <code>apps/golden/regress.evaluate_expect</code>. After a label change, <code>store.refresh_matches</code> recomputes the summary and insights of every finished run in that image set.</p>
 
-<h2 id="exec">4. 執行方式（apps/vision/batch/jobs.py）</h2>
+<h2 id="exec">4. How runs execute (apps/vision/batch/jobs.py)</h2>
 <ul>
-<li>背景執行緒（同時最多 <code>VISION_BATCH_MAX_RUNNING</code>＝2 個、同一影像集只能一個），<code>runner.compiled_for(flow, graph_override=graph)</code> 只編譯一次（來源／資產在呼叫者執行緒預先開好），每張直接 <code>engine.execute(...)</code>。</li>
-<li><strong>不走 runner 佇列</strong>：不累計流程統計、不發 SSE、不寫 FlowRun、不隱含套預設配方（配方改為建立執行時明確指定 <code>recipe_id</code>）；影像進獨立快取桶 <code>BATCH_FLOW_ID=-1</code> 並在每張跑完立即 <code>store.drop_run</code>，200 張批次不會把編輯器的試執行影像擠出快取。</li>
-<li>每 10 張或 2 秒把進度與已完成列 <code>update()</code> 回 DB；前端每秒輪詢；「中斷」設旗標，執行到目前那張為止，狀態 cancelled。</li>
-<li>伺服器重啟時殘留的 running 執行，讀取時自動標成 failed（「伺服器重新啟動，執行中斷」）。</li>
-<li><strong>autotune 模式</strong>：先用影像集的標記做座標下降（未命中的影像優先抽樣、最多 40 張；不動公差／期望數量／範圍這類規格），再用調好的 graph 全量重跑，<code>meta.autotune</code> 記錄前後命中與變更。</li>
+<li>A background thread — at most <code>VISION_BATCH_MAX_RUNNING</code> (2) at once, and only one per image set. <code>runner.compiled_for(flow, graph_override=graph)</code> compiles once (sources and assets are opened in advance on the caller's thread) and each image goes straight through <code>engine.execute(...)</code>.</li>
+<li><strong>It does not go through the runner queue</strong>: no flow statistics, no SSE, no FlowRun row, and no implicit default recipe (a recipe is named explicitly with <code>recipe_id</code> when the run is created). Images go into their own cache bucket, <code>BATCH_FLOW_ID=-1</code>, and each is dropped with <code>store.drop_run</code> as soon as it finishes, so a 200-image batch cannot evict the editor's preview images.</li>
+<li>Progress and finished rows are written back with <code>update()</code> every 10 images or 2 seconds; the interface polls once a second. "Interrupt" sets a flag, the current image finishes, and the status becomes cancelled.</li>
+<li>A run left in "running" by a server restart is marked failed when it is next read ("the server restarted and the run was interrupted").</li>
+<li><strong>Auto-tune mode</strong>: coordinate descent against the image set's labels first (sampling missed images preferentially, at most 40, and never touching specifications such as tolerances, expected counts or ranges), then a full re-run with the tuned graph. <code>meta.autotune</code> records the hit rate before and after and what changed.</li>
 </ul>
 
-<h2 id="insights">5. 資料洞察與建議門檻（apps/vision/batch/insights.py）</h2>
+<h2 id="insights">5. Insights and threshold suggestions (apps/vision/batch/insights.py)</h2>
 <ul>
-<li>命中率、混淆矩陣（期望 NG 為 positive：tp 抓到、fn 漏檢、fp 誤判、tn 正確）、未命中清單（≤20）、出錯節點次數與訊息、最慢影像與最耗時節點、具名數值輸出依期望／實際分組的統計。</li>
-<li><strong>建議門檻</strong>：走訪 <code>if_number</code>／<code>in_range</code>／<code>tolerance_judge</code> 節點，沿 <code>value</code> 輸入邊找上游 <code>(節點, 埠)</code>，從逐張的節點純量輸出取值，依期望分成 OK／NG 兩群：
+<li>Hit rate; the confusion matrix (expected NG is the positive class: tp caught, fn escaped, fp false reject, tn correct); the missed list (up to 20); which nodes errored, how often and with what message; the slowest images and the most expensive nodes; and statistics for named numeric outputs grouped by expectation and by actual result.</li>
+<li><strong>Threshold suggestions</strong>: walk the <code>if_number</code>, <code>in_range</code> and <code>tolerance_judge</code> nodes, follow the <code>value</code> input edge back to the upstream (node, port), take that value from each image's stored node outputs, and split into an OK group and an NG group by expectation:
   <ul>
-  <li><code>if_number</code>（gt／ge／lt／le）：由分支接到的 judge 判定方向（true→OK 或 true→NG），在相鄰值中點掃描命中率最高的門檻，嚴格高於目前才建議。</li>
-  <li><code>in_range</code>：只移動有 NG 值的那一側邊界到 NG 與 OK 的中點；另一側維持現值。</li>
-  <li><code>tolerance_judge</code>：只列偏差分佈，不建議（公差是規格）。</li>
+  <li><code>if_number</code> (gt, ge, lt, le): the direction comes from the judge the branch feeds (true → OK or true → NG). It scans the midpoints between adjacent values for the highest hit rate and only suggests one that is strictly better than the current value.</li>
+  <li><code>in_range</code>: only the boundary with NG values on its side moves, to the midpoint between the NG and OK values; the other side stays.</li>
+  <li><code>tolerance_judge</code>: the deviation distribution is shown but nothing is suggested — a tolerance is a specification.</li>
   </ul></li>
-<li>有 parent 時另算與上一次的差異（判定改變、改善、退步、參數變動）。<code>text[]</code> 是繁中條列句，離線諮詢與 LLM 上下文共用；<code>GET /batch/runs/{id}/insights</code> 另回 <code>suggestions[]</code>（可直接套用的 <code>{node, key, value}</code>）。</li>
+<li>With a parent, the difference from the previous run is also computed (verdicts changed, improved, regressed, parameters altered). <code>text[]</code> is a list of readable sentences shared by offline consultation and the LLM context. <code>GET /batch/runs/{id}/insights</code> additionally returns <code>suggestions[]</code>, ready-to-apply <code>{node, key, value}</code> entries.</li>
 </ul>
 
-<h2 id="tune">6. 調參、寫回、配方、Golden Set</h2>
+<h2 id="tune">6. Tuning, writing back, recipes and the Golden Set</h2>
 <ul>
-<li>調參面板的工作圖取自目前選取執行的 graph（或勾選的編輯器草稿）；只列 <code>teach=True</code> 的參數（與參數卡頁同一套 <code>teachGroupsOf</code>），有變更的參數左側有藍線。</li>
-<li>「重新執行」＝ <code>POST /batch/sets/{id}/runs {graph, parent_run_id}</code>；「寫回流程」＝ <code>PATCH /flows/{id}</code>（版本 +1）；「存為配方」＝ 工作圖與流程現圖的參數差 → <code>POST /flows/{id}/recipes</code>；伺服端另有 <code>POST /batch/runs/{id}/to-recipe</code> 直接由某次執行的 graph 建配方。</li>
-<li>「存入 Golden Set」直接複製影像檔建立案例（期望取自標記或指定執行的判定），不經影像快取，不會「影像已釋放」。</li>
+<li>The tuning panel's working graph comes from the selected run's graph, or from the editor draft if that box is ticked. It lists only <code>teach=True</code> parameters, using the same <code>teachGroupsOf</code> as the teach page, and marks changed parameters with a blue bar.</li>
+<li>"Run again" is <code>POST /batch/sets/{id}/runs {graph, parent_run_id}</code>. "Write back to flow" is <code>PATCH /flows/{id}</code> (version + 1). "Save as recipe" diffs the working graph against the flow's current graph into <code>POST /flows/{id}/recipes</code>; the server also has <code>POST /batch/runs/{id}/to-recipe</code> to build a recipe straight from a run's graph.</li>
+<li>"Save to Golden Set" copies the image files and creates cases directly (the expectation comes from the label or from a chosen run's verdict), bypassing the image cache — so nothing can turn into "image released".</li>
 </ul>
 
-<h2 id="ai">7. AI 諮詢與調整（apps/vision/agent/consult.py）</h2>
+<h2 id="ai">7. AI consultation and tuning (apps/vision/agent/consult.py)</h2>
 <ul>
-<li><strong>諮詢</strong> <code>POST /agent/consult {batch_run_id, question, graph?}</code>：一律先算規則洞察；LLM 可用時把流程 graph、洞察條列、逐張資料（未命中優先、≤50 列，含判定節點的輸入值）與最多 4 張未命中影像交給模型，回答尾端可附 <code>SUGGESTIONS: {"suggestions":[{node,key,value,reason}]}</code>，伺服器驗證節點／參數存在且流程仍有效才回前端；離線或失敗時以洞察條列組成回答（依問題關鍵詞挑段落），<code>suggestions</code> 來自建議門檻。</li>
-<li><strong>請 AI 調整</strong>：<code>POST /agent/tune</code>／代理模式 <code>POST /agent/jobs(task=tune)</code> 帶 <code>batch_run_id</code>：影像從磁碟載入、逐張資料與洞察併進批次摘要，調整後的流程在同一影像集重跑，結果直接落成新的一次執行（origin=ai_tune、parent=原執行），回應含 <code>batch_run_id</code>。離線時指令對不上規則而有標記 ≥2 張，改走資料驅動自動調參。</li>
-<li><strong>自動調參</strong>：批次頁用 <code>POST /batch/sets/{id}/runs {mode:"autotune"}</code>（背景、可中斷）；<code>POST /agent/autotune</code> 也接受 <code>batch_run_id</code>。</li>
+<li><strong>Consult</strong>, <code>POST /agent/consult {batch_run_id, question, graph?}</code>: the rule-based insights are always computed first. When an LLM is available it receives the flow graph, the insight sentences, the per-image data (missed images first, up to 50 rows, including the values feeding the judging nodes) and up to four missed images. Its answer may end with <code>SUGGESTIONS: {"suggestions":[{node,key,value,reason}]}</code>, which the server only passes on after checking that the nodes and parameters exist and the flow is still valid. Offline, or on failure, the answer is assembled from the insight sentences by matching keywords in the question, and <code>suggestions</code> comes from the threshold suggestions.</li>
+<li><strong>Tune from data</strong>: <code>POST /agent/tune</code>, or <code>POST /agent/jobs(task=tune)</code> in agentic mode, with a <code>batch_run_id</code>. Images are loaded from disk, the per-image data and insights are folded into the batch summary, and the tuned flow is re-run against the same image set, landing as a new run (origin=ai_tune, parent = the original). The response carries the new <code>batch_run_id</code>. Offline, an instruction that matches no rule falls back to data-driven auto-tuning as long as at least two images are labelled.</li>
+<li><strong>Auto-tune</strong>: from the batch page it is <code>POST /batch/sets/{id}/runs {mode:"autotune"}</code> (background, interruptible), and <code>POST /agent/autotune</code> also accepts a <code>batch_run_id</code>.</li>
 </ul>
 
-<h2 id="api">8. API（apps/vision/batch/api.py）</h2>
-<pre>GET    /vision/batch/sets[?flow_id=]                  {items[set…含 flow_name、latest_run], total, max_images, keep_sets, keep_runs}
-                                                      flow_id 省略＝所有看得見的影像集（影像集可測任一流程）
-POST   /vision/batch/sets                             multipart images[]＋flow_id＋name? → 201 set（含 images）
+<h2 id="api">8. API (apps/vision/batch/api.py)</h2>
+<pre>GET    /vision/batch/sets[?flow_id=]                  {items[set… with flow_name and latest_run], total, max_images, keep_sets, keep_runs}
+                                                      omit flow_id for every visible set (a set can test any flow)
+POST   /vision/batch/sets                             multipart images[] + flow_id + name? → 201 set (with images)
 POST   /vision/batch/sets/from-source                 {flow_id, source_id, count, name?} → 201
-GET    /vision/batch/sets/{id}                        set（含 images、latest_run、can_manage）
+GET    /vision/batch/sets/{id}                        set (with images, latest_run, can_manage)
 PATCH  /vision/batch/sets/{id}                        {name?, labels:[{index, expected?, expect_outputs?, note?}], remove:[index]}
-DELETE /vision/batch/sets/{id}                        204（執行中 409）
-GET    /vision/batch/sets/{id}/images/{index}?max=    影像（?token= 可用於 &lt;img&gt;）
+DELETE /vision/batch/sets/{id}                        204 (409 while a run is in progress)
+GET    /vision/batch/sets/{id}/images/{index}?max=    the image (?token= works, for &lt;img&gt;)
 POST   /vision/batch/sets/{id}/to-golden              {indexes?, expect_from: label|status, run_id?, note?} → 201 {created, ids}
-GET    /vision/batch/sets/{id}/runs                   {items[run 精簡…含 flow_id／flow_name／set_flow_id], total}
-POST   /vision/batch/sets/{id}/runs                   {flow_id?（用哪個流程測，省略＝影像集的流程）, mode: run|autotune, graph?, recipe_id?, label?, note?, parent_run_id?, origin?, max_evals?, deadline_s?} → 202 run
-GET    /vision/batch/runs/{id}?items=1                run（items 含 name/expected/match/reasons/image_url、graph、progress）
+GET    /vision/batch/sets/{id}/runs                   {items[run summary… with flow_id, flow_name, set_flow_id], total}
+POST   /vision/batch/sets/{id}/runs                   {flow_id? (which flow to test; omitted = the image set's), mode: run|autotune, graph?,
+                                                       recipe_id?, label?, note?, parent_run_id?, origin?, max_evals?, deadline_s?} → 202 run
+GET    /vision/batch/runs/{id}?items=1                run (items carry name, expected, match, reasons, image_url; plus graph and progress)
 PATCH  /vision/batch/runs/{id}                        {label?, note?}
 POST   /vision/batch/runs/{id}/cancel                 {cancelled}
 DELETE /vision/batch/runs/{id}                        204
-GET    /vision/batch/runs/{id}/insights               洞察（ready=false 表示未完成）＋ suggestions[]
+GET    /vision/batch/runs/{id}/insights               the insights (ready=false while unfinished) plus suggestions[]
 GET    /vision/batch/runs/{id}/compare?other=         {a, b, rows[], summary{changed, improved, regressed, same, a_match, b_match}, param_diff}
-POST   /vision/batch/runs/{id}/rows/{index}/preview   {graph?} → RunReport（含 overlays，影像進快取供影像視窗）
+POST   /vision/batch/runs/{id}/rows/{index}/preview   {graph?} → a RunReport with overlays; the images go into the cache for the viewer
 POST   /vision/batch/runs/{id}/to-recipe              {name, description?, is_default?} → 201 recipe
 POST   /vision/agent/consult                          {batch_run_id, question, graph?} → {answer, provider, insights, suggestions, warnings}</pre>
-<p>權限：看得到流程即可讀；建立影像集與執行需可執行（引擎鎖定時 423）；修改標記、刪除需影像集建立者、流程擁有者或管理員；存入 Golden Set／存為配方需流程擁有者或管理員。舊的 <code>POST /flows/{id}/batch</code>、<code>/batch-source</code>（即時批次、不暫存）仍保留給 API 整合方。</p>
+<p>Permissions: seeing the flow is enough to read. Creating an image set or a run needs execute permission (423 while the engine is locked). Editing labels and deleting need to be the set's creator, an engineer or an administrator; saving to a Golden Set or as a recipe needs an engineer or an administrator. The older <code>POST /flows/{id}/batch</code> and <code>/batch-source</code> (immediate batches, nothing stored) remain for API integrators.</p>
 
-<h2 id="retention">9. 保留策略與設定（.env）</h2>
+<h2 id="retention">9. Retention settings (.env)</h2>
 <table>
-<tr><th>變數</th><th>預設</th><th>說明</th></tr>
-<tr><td><code>VISION_BATCH_MAX_IMAGES</code></td><td>200</td><td>一個影像集最多幾張</td></tr>
-<tr><td><code>VISION_KEEP_BATCH_SETS</code></td><td>10</td><td>每條流程保留最近幾個影像集（超過自動刪最舊，含檔案；有執行中的不刪）</td></tr>
-<tr><td><code>VISION_KEEP_BATCH_RUNS</code></td><td>20</td><td>每個影像集保留最近幾次已結束的執行</td></tr>
-<tr><td><code>VISION_BATCH_MAX_RUNNING</code></td><td>2</td><td>同時執行的批次數</td></tr>
+<tr><th>Variable</th><th>Default</th><th>What it controls</th></tr>
+<tr><td><code>VISION_BATCH_MAX_IMAGES</code></td><td>200</td><td>Images per set</td></tr>
+<tr><td><code>VISION_KEEP_BATCH_SETS</code></td><td>10</td><td>Sets kept per flow; the oldest are deleted with their files, unless a run is in progress</td></tr>
+<tr><td><code>VISION_KEEP_BATCH_RUNS</code></td><td>20</td><td>Finished runs kept per image set</td></tr>
+<tr><td><code>VISION_BATCH_MAX_RUNNING</code></td><td>2</td><td>Batches running at once</td></tr>
 </table>
-<div class="note">磁碟：影像以 PNG 原樣保存（不縮圖，否則會改變檢測結果），200 張相機原圖可能達數百 MB；影像集卡片顯示大小，超過保留數會自動清除，也可手動刪除。</div>
+<div class="note">Disk: images are stored as PNG exactly as they came in — downscaling them would change the inspection result — so 200 full-resolution camera images can run to several hundred megabytes. Each set's card shows its size, sets beyond the retention count are removed automatically, and you can delete them by hand.</div>
 
-<h2 id="files">10. 檔案與測試</h2>
+<h2 id="files">10. Files and tests</h2>
 <table>
-<tr><th>檔案</th><th>職責</th></tr>
-<tr><td><code>apps/vision/batch/store.py</code></td><td>檔案、序列化、summary／命中、完成寫入、淘汰、graph 參數差異、AI 結果落地</td></tr>
-<tr><td><code>apps/vision/batch/jobs.py</code></td><td>背景執行、進度、取消、autotune 模式</td></tr>
-<tr><td><code>apps/vision/batch/insights.py</code></td><td>洞察與建議門檻（純函式）</td></tr>
-<tr><td><code>apps/vision/batch/api.py</code></td><td>端點</td></tr>
-<tr><td><code>apps/vision/agent/consult.py</code></td><td>資料諮詢</td></tr>
-<tr><td><code>frontend/src/pages/BatchPage.tsx</code>、<code>components/batch/*</code>、<code>lib/batch.ts</code></td><td>頁面、影像集／執行清單、結果表、影像集標記、洞察、比較、調參（AI 諮詢／調整已併入全域助手）、單張預覽</td></tr>
-<tr><td><code>tests/test_batch.py</code></td><td>影像集、執行、標記、洞察、比較、預覽、自動調參、配方／Golden、淘汰、刪除、權限、AI 諮詢與調整落地</td></tr>
+<tr><th>File</th><th>Responsibility</th></tr>
+<tr><td><code>apps/vision/batch/store.py</code></td><td>Files, serialisation, the summary and match calculation, completion, retention, graph parameter diffs, landing AI results</td></tr>
+<tr><td><code>apps/vision/batch/jobs.py</code></td><td>Background execution, progress, cancellation, auto-tune mode</td></tr>
+<tr><td><code>apps/vision/batch/insights.py</code></td><td>Insights and threshold suggestions (pure functions)</td></tr>
+<tr><td><code>apps/vision/batch/api.py</code></td><td>The endpoints</td></tr>
+<tr><td><code>apps/vision/agent/consult.py</code></td><td>Data consultation</td></tr>
+<tr><td><code>frontend/src/pages/BatchPage.tsx</code>, <code>components/batch/*</code>, <code>lib/batch.ts</code></td><td>The page: image set and run lists, the results table, labelling, insights, comparison, tuning and single-image preview (AI consultation and tuning now live in the global assistant)</td></tr>
+<tr><td><code>tests/test_batch.py</code></td><td>Image sets, runs, labels, insights, comparison, preview, auto-tuning, recipes and Golden Set, retention, deletion, permissions, and AI consultation and tuning landing as runs</td></tr>
 </table>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

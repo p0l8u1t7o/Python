@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 擴充外掛</title>
+<title>VisionSequence plugins</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,49 +134,50 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html" aria-current="page">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#how">1. 掛載規則與外掛內變數</a></li><li><a href="#tools">2. 自訂工具（範例一：plugins/example_dark_ratio.py）</a></li><li><a href="#writers">3. 自訂整合輸出（範例二：plugins/example_csv_writer.py）</a></li><li><a href="#sources">4. 自訂影像來源（例如 GigE / 廠牌 SDK）</a></li><li><a href="#rules">5. 工具撰寫規則</a></li><li><a href="#integration">6. 整合考量：依賴、獨立專案、Python 版本</a><ul><li><a href="#q-deps">6-1. 外掛有自己的依賴（requirements）怎麼整合？</a></li><li><a href="#q-project">6-2. 外掛是一個獨立專案（自己的 repo）怎麼整合？</a></li><li><a href="#q-python">6-3. 外掛的 Python 版本與平台不一致怎麼辦？</a></li></ul></li><li><a href="#advanced">7. 進階：.env 手動掛載</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html" aria-current="page">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#how">1. Loading rules and the module variables</a></li><li><a href="#tools">2. A custom tool (example one: plugins/example_dark_ratio.py)</a></li><li><a href="#writers">3. A custom outgoing connection (example two: plugins/example_csv_writer.py)</a></li><li><a href="#sources">4. A custom image source (GigE, a vendor SDK, …)</a></li><li><a href="#rules">5. Rules for writing a tool</a></li><li><a href="#integration">6. Integration: dependencies, separate projects, Python versions</a><ul><li><a href="#q-deps">6-1. The plugin has its own dependencies</a></li><li><a href="#q-project">6-2. The plugin is a separate project with its own repository</a></li><li><a href="#q-python">6-3. The plugin needs a different Python version</a></li></ul></li><li><a href="#advanced">7. Advanced: loading from .env</a></li></ul></aside><article class="doc">
 
-<h1>擴充外掛：資料夾丟檔即掛載</h1>
+<h1>Plugins: drop a file in a folder and it loads</h1>
 
-<p>四種擴充點都走同一套<strong>物件繼承</strong>：繼承對應的基底類別，把 <code>.py</code> 檔丟進專案根目錄的 <code>plugins/</code> 資料夾，<strong>重啟後端就會自動偵測掛載，不用改 <code>.env</code>、不用改前端</strong>。</p>
+<p>All four extension points work the same way — <strong>subclass a base class</strong>, put the <code>.py</code> file in the <code>plugins/</code> folder at the project root, and <strong>the backend detects and loads it on the next restart, with no <code>.env</code> change and no front-end work</strong>.</p>
 
 <table>
-<tr><th>擴充什麼</th><th>繼承</th><th>掛載後出現在</th><th>出貨範例</th></tr>
-<tr><td>工具（畫布節點）</td><td><code>apps.vision.tools.base.Tool</code></td><td>編輯器調色盤（分類依 <code>category</code>）</td><td><code>plugins/example_dark_ratio.py</code></td></tr>
-<tr><td>影像來源</td><td><code>apps.vision.sources.grabbers.Grabber</code></td><td>「影像來源」頁 kind 下拉</td><td>本頁 <a href="#sources">§4</a>（GigE）</td></tr>
-<tr><td>整合輸出（連線）</td><td><code>apps.comm.writers.Writer</code></td><td>「連線」頁 kind 下拉</td><td><code>plugins/example_csv_writer.py</code></td></tr>
-<tr><td>深度學習模型種類</td><td><code>apps.vision.dl.base.Trainer</code></td><td>「深度學習」頁的模型種類下拉（教導 UI 共用）</td><td>寫法見<a href="dl.html#extend">深度學習教導 §5</a></td></tr>
+<tr><th>To extend</th><th>Subclass</th><th>It appears in</th><th>Shipped example</th></tr>
+<tr><td>A tool (a canvas node)</td><td><code>apps.vision.tools.base.Tool</code></td><td>The editor palette, in its <code>category</code></td><td><code>plugins/example_dark_ratio.py</code></td></tr>
+<tr><td>An image source</td><td><code>apps.vision.sources.grabbers.Grabber</code></td><td>The kind dropdown on the Image sources page</td><td><a href="#sources">§4</a> below (GigE)</td></tr>
+<tr><td>An outgoing connection</td><td><code>apps.comm.writers.Writer</code></td><td>The kind dropdown on the Connections page</td><td><code>plugins/example_csv_writer.py</code></td></tr>
+<tr><td>A deep-learning model kind</td><td><code>apps.vision.dl.base.Trainer</code></td><td>The model kind dropdown on the Deep learning page (it shares the teaching interface)</td><td>See <a href="dl.html#extend">Deep-learning teaching §5</a></td></tr>
 </table>
 
-<p><strong>只想寫幾行 Python、不想寫外掛？</strong>內建工具「Python 腳本」（<code>python_script</code>）讓管理員直接在工具頁寫 <code>def run(ctx)</code>，同行程受限執行、輸出埠固定；需要自訂埠／參數、依賴外部套件或給整個團隊重複使用時，才寫本頁的外掛。</p>
-<h2 id="how">1. 掛載規則與外掛內變數</h2>
+<p><strong>Only want a few lines of Python rather than a plugin?</strong> The built-in "Python script" tool (<code>python_script</code>) lets an administrator write <code>def run(ctx)</code> directly on the tool page — restricted execution in the engine process, with fixed output ports. Write a plugin when you need your own ports and parameters, an external dependency, or something a whole team will reuse.</p>
+
+<h2 id="how">1. Loading rules and the module variables</h2>
 <ul>
-<li>啟動時掃描 <code>plugins/</code> 下的<strong>單檔外掛</strong>（<code>x.py</code>）與<strong>資料夾型外掛</strong>（<code>x/__init__.py</code>，整個外掛專案丟進來）；照名稱排序，底線開頭（<code>_xxx.py</code>／<code>_xxx/</code>）跳過。資料夾位置可用 <code>VISION_PLUGIN_DIR</code> 覆寫（預設專案根目錄 <code>plugins/</code>）。</li>
-<li>每個檔案 import 後，<strong>自動偵測該檔案自己定義的</strong> <code>Tool</code>／<code>Grabber</code>／<code>Writer</code>／<code>Trainer</code> 子類別並註冊；一個檔案可放多個類別、三類混放。</li>
-<li>key／kind 與內建或先載入的外掛重複時<strong>不覆蓋</strong>，記 log 略過；單一檔案載入失敗只記 log，不影響其他外掛與平台啟動。</li>
-<li>載入器在 <code>apps/core/plugins.py</code>；掛載結果看後端啟動 log（「外掛 xxx.py 掛載：tool:dark_ratio…」）。</li>
+<li>At start-up the platform scans <code>plugins/</code> for <strong>single-file plugins</strong> (<code>x.py</code>) and <strong>folder plugins</strong> (<code>x/__init__.py</code> — drop a whole plugin project in), in name order, skipping anything starting with an underscore (<code>_xxx.py</code>, <code>_xxx/</code>). <code>VISION_PLUGIN_DIR</code> overrides the folder location (the default is <code>plugins/</code> at the project root).</li>
+<li>After importing a file, the loader <strong>finds the <code>Tool</code>, <code>Grabber</code>, <code>Writer</code> and <code>Trainer</code> subclasses that file defines itself</strong> and registers them. One file may hold several classes of different kinds.</li>
+<li>A key or kind that clashes with a built-in, or with a plugin loaded earlier, <strong>does not override it</strong>: the loader logs and skips. A file that fails to load is logged and skipped too, without affecting other plugins or start-up.</li>
+<li>The loader is <code>apps/core/plugins.py</code>; what loaded is in the backend start-up log ("plugin xxx.py loaded: tool:dark_ratio…").</li>
 </ul>
-<p>外掛檔內可用<strong>變數</strong>控制顯示與掛載（慣例放檔案最上面，現場要改名／停用不必動邏輯）：</p>
-<pre>DISPLAY_NAME = "暗區比例"       # 顯示名稱（label）
-DESCRIPTION  = "說明文字…"      # 說明（description）
-ENABLED      = True             # False = 整個檔案不掛載
+<p>Module-level <strong>variables</strong> control the display and whether it loads — by convention at the top of the file, so renaming or disabling on site does not mean touching the logic:</p>
+<pre>DISPLAY_NAME = "Dark ratio"      # the label
+DESCRIPTION  = "Description…"    # the description
+ENABLED      = True              # False = the whole file does not load
 
 class MyTool(Tool):
     label = DISPLAY_NAME
     description = DESCRIPTION
-    enabled = ENABLED           # 類別層開關：False 只停用這個類別，同檔其他類別照常</pre>
+    enabled = ENABLED            # per class: False disables only this one, the rest still load</pre>
 <table>
-<tr><th>變數</th><th>層級</th><th>作用</th></tr>
-<tr><td><code>ENABLED = False</code></td><td>模組（檔案最上層）</td><td>整個檔案不掛載</td></tr>
-<tr><td><code>enabled = False</code></td><td>類別屬性</td><td>只停用該類別</td></tr>
-<tr><td><code>label</code>／<code>description</code></td><td>類別屬性</td><td>顯示名稱與說明（工具顯示在調色盤；Grabber／Writer 顯示在 kind 下拉）</td></tr>
-<tr><td><code>fields</code></td><td>類別屬性（Grabber／Writer）</td><td>config 欄位名稱提示，設定頁顯示用，例如 <code>["path"]</code></td></tr>
+<tr><th>Variable</th><th>Level</th><th>Effect</th></tr>
+<tr><td><code>ENABLED = False</code></td><td>Module (top of the file)</td><td>The whole file is skipped</td></tr>
+<tr><td><code>enabled = False</code></td><td>Class attribute</td><td>Only that class is skipped</td></tr>
+<tr><td><code>label</code> / <code>description</code></td><td>Class attribute</td><td>The display name and description (a tool shows in the palette; a Grabber or Writer in the kind dropdown)</td></tr>
+<tr><td><code>fields</code></td><td>Class attribute (Grabber, Writer)</td><td>A hint at the config field names for the settings page, e.g. <code>["path"]</code></td></tr>
 </table>
 
-<h2 id="tools">2. 自訂工具（範例一：<code>plugins/example_dark_ratio.py</code>）</h2>
-<pre>DISPLAY_NAME = "暗區比例（範例外掛）"
-DESCRIPTION = "ROI 內灰階低於門檻的像素比例，超過允許比例走「不良」分支。"
+<h2 id="tools">2. A custom tool (example one: <code>plugins/example_dark_ratio.py</code>)</h2>
+<pre>DISPLAY_NAME = "Dark ratio (sample plugin)"
+DESCRIPTION = "The ratio of pixels darker than the threshold inside the ROI; above the allowed ratio it takes the fail branch."
 ENABLED = True
 
 import cv2
@@ -184,19 +185,19 @@ from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolE
 from apps.vision.tools.roi import crop, region_overlay
 
 class DarkRatioTool(Tool):
-    key = "dark_ratio"                 # 全域唯一；圖 JSON 記這個
+    key = "dark_ratio"                 # globally unique; this is what the graph JSON records
     label = DISPLAY_NAME
     description = DESCRIPTION
     enabled = ENABLED
     category = "detect"                # source|preprocess|locate|measure|detect|dl|logic|output
-    icon = "Moon"                      # lucide-react 圖示名
+    icon = "Moon"                      # a lucide-react icon name
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "polygon"]),
-        Param("threshold", "門檻", kind="number", default=80, minimum=0, maximum=255, teach=True),
-        Param("max_ratio", "允許比例", kind="number", default=0.1, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "polygon"]),
+        Param("threshold", "Threshold", kind="number", default=80, minimum=0, maximum=255, teach=True),
+        Param("max_ratio", "Allowed ratio", kind="number", default=0.1, minimum=0, maximum=1, step=0.01, teach=True),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [Port("ratio", "比例", "number"), flow_out("pass", "通過", "ok"), flow_out("fail", "不良", "critical")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [Port("ratio", "Ratio", "number"), flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical")]
 
     def execute(self, ctx: ToolContext) -&gt; Result:
         image = ctx.require_image()
@@ -205,19 +206,19 @@ class DarkRatioTool(Tool):
         region = ctx.roi()
         c = crop(image, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("ROI 在影像外")
+            raise ToolError("The ROI falls outside the image")
         pixels = c.image[c.mask &gt; 0] if c.mask is not None else c.image
         ratio = float((pixels &lt; ctx.number("threshold", 80)).mean()) if pixels.size else 0.0
         ok = ratio &lt;= ctx.number("max_ratio", 0.1)
         overlays = [region_overlay(region, label=f"dark {ratio*100:.1f}%")] if region else []
         return Result(outputs={"ratio": ratio}, branch="pass" if ok else "fail",
-                      status="ok" if ok else "ng", overlays=overlays, message=f"暗區 {ratio*100:.1f}%")</pre>
-<p>不用寫任何 <code>register()</code>——放進資料夾就好。重啟後端，前端調色盤「檢測／識別」分類會出現「暗區比例（範例外掛）」。</p>
+                      status="ok" if ok else "ng", overlays=overlays, message=f"dark {ratio*100:.1f}%")</pre>
+<p>There is no <code>register()</code> to write — putting the file in the folder is enough. Restart the backend and "Dark ratio (sample plugin)" appears under Detect in the palette.</p>
 
-<h2 id="writers">3. 自訂整合輸出（範例二：<code>plugins/example_csv_writer.py</code>）</h2>
-<p>整合輸出（<a href="modbus.html">Modbus 輸出</a>的「連線」）同樣用繼承擴充：繼承 <code>Writer</code>，只覆寫 <code>_open</code>／<code>_write</code>／<code>_read</code>／<code>_close</code>；lock、逾時、失敗重連一次、計數統計都在基底的 <code>write()</code>／<code>read()</code>。出貨範例把寫入值附加到 CSV 檔，沒有任何硬體也能驗完整條「流程 → 寫入 Modbus 工具 → 連線」路徑：</p>
-<pre>DISPLAY_NAME = "CSV 紀錄（範例外掛）"
-DESCRIPTION = "把每次寫入的值附加到 CSV 檔（time, address, value）。"
+<h2 id="writers">3. A custom outgoing connection (example two: <code>plugins/example_csv_writer.py</code>)</h2>
+<p>Outgoing connections (the "connections" of <a href="modbus.html">Modbus</a>) extend the same way: subclass <code>Writer</code> and override only <code>_open</code>, <code>_write</code>, <code>_read</code> and <code>_close</code> — the lock, the timeout, the single reconnect on failure and the counters all live in the base class's <code>write()</code> and <code>read()</code>. The shipped example appends written values to a CSV file, which exercises the whole "flow → write Modbus tool → connection" path with no hardware at all:</p>
+<pre>DISPLAY_NAME = "CSV log (sample plugin)"
+DESCRIPTION = "Appends every written value to a CSV file (time, address, value)."
 ENABLED = True
 
 import csv, os, time
@@ -225,27 +226,27 @@ from apps.comm.writers import CommError, Writer
 from apps.core.errors import ValidationError
 
 class CsvLogWriter(Writer):
-    kind = "csv_log"                   # Connection.kind 記這個
+    kind = "csv_log"                   # this is what Connection.kind records
     label = DISPLAY_NAME
     description = DESCRIPTION
     enabled = ENABLED
-    fields = ["path"]                  # 設定頁 config 欄位提示
+    fields = ["path"]                  # a config field hint for the settings page
 
     def __init__(self, config, **kw):
         super().__init__(config, **kw)
         self.path = str(config.get("path") or "")
         if not self.path:
-            raise ValidationError("csv_log 需要 path", code="comm_config")
+            raise ValidationError("csv_log requires a path", code="comm_config")
 
     def _write(self, values):          # {address: value} → {"written": n}
-        ...                            # 完整實作見 plugins/example_csv_writer.py
+        ...                            # the full implementation is in plugins/example_csv_writer.py
 </pre>
-<p>掛載後「連線」頁 kind 下拉出現「CSV 紀錄（範例外掛）」；建一條連線（config 填 <code>{"path": "D:/logs/results.csv"}</code>），流程末端放「寫入 Modbus」工具、connection 填連線名稱即可。OPC UA、廠牌 SDK 等照同樣模式：連不上 <code>raise CommError</code>，工具層會依 <code>on_error</code> 降級（預設不讓 run 失敗）。</p>
+<p>Once loaded, "CSV log (sample plugin)" appears in the kind dropdown on the Connections page. Create a connection with <code>{"path": "D:/logs/results.csv"}</code> as its config, put a "write Modbus" tool at the end of the flow, and give it the connection name. OPC UA, a vendor SDK and anything else follow the same pattern: <code>raise CommError</code> when you cannot connect, and the tool layer degrades according to <code>on_error</code> (which by default does not fail the run).</p>
 
-<h2 id="sources">4. 自訂影像來源（例如 GigE / 廠牌 SDK）</h2>
-<p><strong>先看</strong>：相機在別台電腦、或需要 Basler／IDS 這類廠牌 SDK 時，內建的<a href="capture-client.html">擷取端</a>已經處理（SDK 裝在相機電腦、伺服端不用裝），通常不必寫外掛；外掛 Grabber 適合伺服器本機能直接開的裝置或特殊來源（GigE Vision 函式庫、串流伺服器、資料庫取圖）。</p>
-<pre># plugins/gige.py — 丟進 plugins/ 即掛載
-DISPLAY_NAME = "GigE 相機"
+<h2 id="sources">4. A custom image source (GigE, a vendor SDK, …)</h2>
+<p><strong>Read this first</strong>: when the camera is on another PC, or needs a vendor SDK such as Basler or IDS, the built-in <a href="capture-client.html">capture client</a> already covers it — the SDK is installed on the camera's PC and the server needs nothing — so a plugin is usually unnecessary. A Grabber plugin suits devices the server itself can open, or unusual sources: a GigE Vision library, a streaming server, images out of a database.</p>
+<pre># plugins/gige.py — drop it in plugins/ and it loads
+DISPLAY_NAME = "GigE camera"
 ENABLED = True
 
 import numpy as np
@@ -254,72 +255,73 @@ from apps.vision.sources.grabbers import Grabber
 class GigEGrabber(Grabber):
     kind = "gige"
     label = DISPLAY_NAME
-    description = "廠牌 SDK 封裝；config: serial, exposure_us"
+    description = "A vendor SDK wrapper; config: serial, exposure_us"
     fields = ["serial", "exposure_us"]
     enabled = ENABLED
 
     def __init__(self, config, **kw):
         super().__init__(config, **kw)
-        self.cam = open_camera(config.get("serial"))   # 廠牌 SDK
+        self.cam = open_camera(config.get("serial"))   # the vendor SDK
         self.cam.set_exposure(float(config.get("exposure_us", 5000)))
     def grab(self) -&gt; np.ndarray | None:
         frame = self.cam.snap(timeout_ms=1000)
         if frame is None:
             self.last_error = "timeout"; return None
         self.frames += 1
-        return frame                      # BGR 或灰階 uint8
+        return frame                      # BGR or grayscale uint8
     def close(self): self.cam.close()
     def info(self): return {**super().info(), "serial": self.config.get("serial")}</pre>
-<p>掛載後「影像來源」頁 kind 下拉出現該來源，config 以 JSON 填。同一個來源物件會被快取重用（設定變更才重開）；<code>grab()</code> 可能被多個流程的執行緒同時呼叫，內部要自己加鎖（<code>self._lock</code>）。</p>
+<p>Once loaded, the source appears in the kind dropdown on the Image sources page and its config is entered as JSON. The source object is cached and reused (it only reopens when the settings change), and <code>grab()</code> may be called from several flows' threads at once, so lock inside it yourself (<code>self._lock</code>).</p>
 
-<h2 id="rules">5. 工具撰寫規則</h2>
+<h2 id="rules">5. Rules for writing a tool</h2>
 <ul>
-<li><code>Param.kind</code> 只能用 <code>PARAM_KINDS</code>；<code>Port.type</code> 只能用 <code>PORT_TYPES</code>（<code>apps/vision/tools/base.py</code>）。</li>
-<li>可預期失敗 <code>raise ToolError("…")</code>（節點 error、run failed）；「沒找到」回 <code>status="ng"</code> 或走分支，不要 raise。</li>
-<li>overlays 座標一律是該節點<strong>輸入影像</strong>的全圖座標；旋轉 ROI 用 <code>crop(upright=True)</code> 後以 <code>Crop.to_full()</code> 換回。</li>
-<li>不要在工具內 sleep 或碰資料庫；需要檔案用 <code>ctx.asset_path(id)</code>；需要相機用 <code>ctx.grab(source_id)</code>。</li>
-<li>重工具（DL 推論）把 session 快取在模組層並加鎖；<code>heavy = True</code> 讓前端提示。</li>
-<li>現場要調的參數標 <code>teach=True</code>（參數卡頁只列這些）。</li>
+<li><code>Param.kind</code> must come from <code>PARAM_KINDS</code> and <code>Port.type</code> from <code>PORT_TYPES</code> (<code>apps/vision/tools/base.py</code>).</li>
+<li>For an expected failure, <code>raise ToolError("…")</code> (the node errors and the run fails). For "not found", return <code>status="ng"</code> or take a branch — do not raise.</li>
+<li>Overlay coordinates are always in the full-image coordinates of <strong>this node's input image</strong>. For a rotated ROI, use <code>crop(upright=True)</code> and map back with <code>Crop.to_full()</code>.</li>
+<li>Never sleep or touch the database inside a tool. Use <code>ctx.asset_path(id)</code> for files and <code>ctx.grab(source_id)</code> for a camera.</li>
+<li>For a heavy tool (deep-learning inference), cache the session at module level with a lock, and set <code>heavy = True</code> so the interface can say so.</li>
+<li>Mark parameters that get adjusted on the line with <code>teach=True</code> — the teach page lists only those.</li>
 </ul>
 
-<h2 id="integration">6. 整合考量：依賴、獨立專案、Python 版本</h2>
-<p>外掛與平台<strong>同行程</strong>載入（這是影像能用 numpy 零複製傳遞、單節點 0.1 ms 等級的前提），因此整合的邊界很清楚：<strong>能 import 進平台 .venv 的就同行程掛載；不能的就跑成 sidecar 行程，經既有整合點接</strong>。三個常見情境：</p>
+<h2 id="integration">6. Integration: dependencies, separate projects, Python versions</h2>
+<p>A plugin loads <strong>into the platform process</strong> — that is what lets images travel as numpy arrays with no copying and a node cost around 0.1 ms — so the boundary is clear: <strong>if it can be imported into the platform's .venv it loads in process; if it cannot, run it as a sidecar process and connect through an existing integration point.</strong> Three common situations:</p>
 
-<h3 id="q-deps">6-1. 外掛有自己的依賴（requirements）怎麼整合？</h3>
+<h3 id="q-deps">6-1. The plugin has its own dependencies</h3>
 <ul>
-<li>依賴必須裝進<strong>平台的 .venv</strong>（同行程沒有第二套 site-packages）。慣例：資料夾型外掛附 <code>plugins/&lt;name&gt;/requirements.txt</code>、單檔外掛附 <code>plugins/&lt;name&gt;.requirements.txt</code>；<code>.\scripts\dev.ps1 -Setup</code> 會自動全部安裝，手動則 <code>.venv\Scripts\pip install -r plugins\&lt;name&gt;\requirements.txt</code>。</li>
-<li>缺依賴時平台<strong>不會炸</strong>：該外掛載入失敗、記 log 並直接提示安裝指令，其他外掛與平台照常啟動。</li>
-<li>寫法上比照內建（pymodbus、onnxruntime）：重依賴放<strong>方法內 lazy import</strong>，讓「裝了才用得到」而不是「沒裝就掛」。</li>
-<li>版本衝突：requirements 用範圍（<code>&gt;=</code>）不要釘死；與平台 <code>requirements.txt</code> 衝突時以平台鎖定的版本為準（numpy／opencv 由平台決定，外掛不要另釘）。</li>
+<li>They must be installed into <strong>the platform's .venv</strong> — there is no second site-packages in one process. By convention a folder plugin ships <code>plugins/&lt;name&gt;/requirements.txt</code> and a single-file plugin <code>plugins/&lt;name&gt;.requirements.txt</code>; <code>.\scripts\dev.ps1 -Setup</code> installs them all, or do it by hand with <code>.venv\Scripts\pip install -r plugins\&lt;name&gt;\requirements.txt</code>.</li>
+<li>A missing dependency <strong>does not break anything</strong>: that plugin fails to load, the log says so and prints the install command, and everything else starts normally.</li>
+<li>Follow the built-in pattern (pymodbus, onnxruntime): <strong>import heavy dependencies lazily inside the method</strong>, so "installed means usable" rather than "not installed means broken".</li>
+<li>Version conflicts: write requirements as ranges (<code>&gt;=</code>) rather than pinning. Where they conflict with the platform's own <code>requirements.txt</code>, the platform's pin wins — numpy and the vision library are the platform's call, so do not pin them separately.</li>
 </ul>
 
-<h3 id="q-project">6-2. 外掛是一個獨立專案（自己的 repo）怎麼整合？</h3>
-<p>三種方式，由簡到正式：</p>
+<h3 id="q-project">6-2. The plugin is a separate project with its own repository</h3>
+<p>Three ways, from simplest to most formal:</p>
 <table>
-<tr><th>方式</th><th>做法</th><th>適合</th></tr>
-<tr><td>(a) 整包資料夾丟進來</td><td>把專案（或其中的套件目錄）放到 <code>plugins/&lt;name&gt;/</code>，在 <code>__init__.py</code> import／定義要掛載的類別（子模組定義、<code>__init__</code> re-export 也認得），附 <code>requirements.txt</code>。</td><td>現場部署：複製資料夾＋重啟就完成</td></tr>
-<tr><td>(b) pip install＋薄轉接檔</td><td>外掛專案做成正常 Python 套件，<code>.venv\Scripts\pip install -e D:\path\to\proj</code> 裝進平台 venv；<code>plugins/</code> 放一支只有幾行的轉接檔：<code>from myproj.vision import MyTool, MyWriter</code>（re-import 即掛載）。</td><td>外掛獨立開發、有自己的測試與版本管理</td></tr>
-<tr><td>(c) .env 模組路徑</td><td>裝進 venv 後 <code>VISION_TOOL_PLUGINS=myproj.vision</code>（模組內自行 <code>register()</code>）。</td><td>不想動 plugins/ 資料夾的部署</td></tr>
+<tr><th>Approach</th><th>How</th><th>Suits</th></tr>
+<tr><td>(a) Drop the whole folder in</td><td>Put the project (or its package directory) at <code>plugins/&lt;name&gt;/</code> and import or define the classes to load in <code>__init__.py</code> — definitions in submodules re-exported from <code>__init__</code> are recognised too — with a <code>requirements.txt</code> alongside.</td><td>Deployment on site: copy the folder, restart, done</td></tr>
+<tr><td>(b) pip install plus a thin adapter</td><td>Make the plugin project a normal Python package and install it into the platform venv with <code>.venv\Scripts\pip install -e D:\path\to\proj</code>. Then put a few-line adapter in <code>plugins/</code>: <code>from myproj.vision import MyTool, MyWriter</code> — re-importing is enough to register it.</td><td>A plugin developed independently, with its own tests and versioning</td></tr>
+<tr><td>(c) A module path in .env</td><td>After installing into the venv, set <code>VISION_TOOL_PLUGINS=myproj.vision</code> (the module calls <code>register()</code> itself).</td><td>Deployments that would rather not touch the plugins/ folder</td></tr>
 </table>
-<p>共同原則：<strong>外掛專案 import 平台、平台不 import 外掛專案</strong>（依賴方向單向），外掛只依賴四個穩定介面——<code>Tool</code>／<code>Grabber</code>／<code>Writer</code> 基底與 <code>tools/roi.py</code>；平台升級不保證其他內部模組的相容性。</p>
+<p>The principle in all three: <strong>the plugin project imports the platform, never the other way round</strong>, and it depends only on the four stable interfaces — the <code>Tool</code>, <code>Grabber</code>, <code>Writer</code> and <code>Trainer</code> base classes plus <code>tools/roi.py</code>. Compatibility of any other internal module is not guaranteed across upgrades.</p>
 
-<h3 id="q-python">6-3. 外掛的 Python 版本與平台不一致怎麼辦？</h3>
-<p>同一個行程只有一個直譯器，版本不一致（或依賴衝突到無法共存，例如各釘一個 numpy 大版）就<strong>不能同行程載入</strong>。解法是把外掛跑成 <strong>sidecar 行程</strong>（它自己的 Python、自己的 venv，由外掛作者維運），經平台既有的整合點接，平台核心不引入多直譯器／微服務（紅線）：</p>
+<h3 id="q-python">6-3. The plugin needs a different Python version</h3>
+<p>One process has one interpreter. If the version differs — or dependencies genuinely cannot coexist, say two different major versions of numpy — it <strong>cannot load in process</strong>. Run it as a <strong>sidecar process</strong> instead, with its own Python and its own venv, maintained by the plugin's author, and connect it through an existing integration point. The platform core will not gain multiple interpreters or microservices:</p>
 <table>
-<tr><th>外掛角色</th><th>sidecar 接法</th></tr>
-<tr><td>影像來源（取像端）</td><td>sidecar 自己取像後呼叫平台 HTTP：<code>POST /flows/{id}/run</code> 附影像，或先 <code>POST /sources/{id}/push</code>（upload 來源）再觸發；也可寫一支薄 <code>Grabber</code>（無依賴、平台版 Python）向 sidecar 的 HTTP/TCP 要一張圖。</td></tr>
-<tr><td>工具（推論／演算法）</td><td>寫一支薄 <code>Tool</code>：把影像 encode 後經 HTTP/TCP 丟給 sidecar、等結果回來填 <code>Result</code>。逾時要短、失敗回 <code>status="ng"</code> 或降級，不要讓 sidecar 掛掉拖垮 run。</td></tr>
-<tr><td>整合輸出（結果端）</td><td>寫一支薄 <code>Writer</code>（繼承後只做轉發）把 values 丟給 sidecar；或 sidecar 自己訂 SSE <code>/events</code>／輪詢 run API 拉結果，平台側零程式。</td></tr>
+<tr><th>What the plugin does</th><th>How the sidecar connects</th></tr>
+<tr><td>Image source</td><td>The sidecar grabs the image itself and calls the platform over HTTP: <code>POST /flows/{id}/run</code> with the image, or <code>POST /sources/{id}/push</code> to an upload source and then a trigger. Alternatively write a thin <code>Grabber</code> (no dependencies, the platform's Python) that asks the sidecar for a frame over HTTP or TCP.</td></tr>
+<tr><td>Tool (inference or an algorithm)</td><td>Write a thin <code>Tool</code> that encodes the image, sends it to the sidecar over HTTP or TCP and fills in a <code>Result</code> from the reply. Keep the timeout short and degrade — <code>status="ng"</code> or a warning — so a dead sidecar cannot drag the run down.</td></tr>
+<tr><td>Outgoing connection</td><td>Write a thin <code>Writer</code> that just forwards the values, or have the sidecar subscribe to SSE <code>/events</code> or poll the run API itself, which needs no platform code at all.</td></tr>
 </table>
-<p>選擇順序：<strong>先試 6-1（把依賴裝進平台 venv）→ 不行再 6-2(b)（套件化）→ 真的版本不相容才 6-3（sidecar）</strong>。sidecar 多一跳網路與序列化（影像來回約毫秒級），只留給非用不可的情境。</p>
+<p>Try them in order: <strong>6-1 (install into the platform venv) → 6-2(b) (package it) → 6-3 (a sidecar) only when the versions really cannot coexist</strong>. A sidecar adds a network hop and serialisation (milliseconds for an image round trip), so keep it for cases that need it.</p>
 
-<h2 id="advanced">7. 進階：.env 手動掛載</h2>
-<p>不放 <code>plugins/</code> 資料夾（例如外掛裝成獨立套件）時，仍可用 .env 指定模組路徑：</p>
-<pre>VISION_PLUGIN_DIR=D:/site-plugins                     # 換掉資料夾位置（仍是自動偵測）
-VISION_TOOL_PLUGINS=mypkg.my_tools                    # import 該模組；模組內自行呼叫 register()
+<h2 id="advanced">7. Advanced: loading from .env</h2>
+<p>When you would rather not use the <code>plugins/</code> folder — because the plugin is installed as a package, say — you can name module paths in .env:</p>
+<pre>VISION_PLUGIN_DIR=D:/site-plugins                     # a different folder (still auto-detected)
+VISION_TOOL_PLUGINS=mypkg.my_tools                    # import this module; it calls register() itself
 VISION_SOURCE_PLUGINS=gige=mypkg.gige:GigEGrabber     # kind=module:Class
 VISION_COMM_PLUGINS=opcua=mypkg.opcua:OpcUaWriter     # kind=module:Class</pre>
-<p>另外「影像來源」與「連線」都保留 kind=<code>plugin</code>：建立時在 config 填 <code>"class": "mypkg.mod:Class"</code> 直接指定類別路徑。</p>
+<p>Image sources and connections also keep the kind <code>plugin</code>: create one and name the class path directly in its config with <code>"class": "mypkg.mod:Class"</code>.</p>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

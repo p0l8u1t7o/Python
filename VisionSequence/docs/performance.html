@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 效能報告</title>
+<title>VisionSequence performance report</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -137,44 +137,43 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html" aria-current="page">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#env">1. 測試機與方法</a></li><li><a href="#summary">2. 一頁摘要</a></li><li><a href="#table">3. 每工具前後對照</a></li><li><a href="#engine">4. 引擎與影像快取</a><ul><li><a href="#sec-4-1">4.1 示範流程「零件孔數檢測」各節點（1280×960，preview=False，after）</a></li><li><a href="#sec-4-2">4.2 引擎固定開銷</a></li><li><a href="#sec-4-3">4.3 ImageStore.encode（1280×960 BGR，JPEG 85）</a></li></ul></li><li><a href="#changes">5. 每個優化的做法與理由</a><ul><li><a href="#sec-5-1">5.1 blob：雜訊遮罩先用連通元件濾掉（detect._prefilter_small）</a></li><li><a href="#sec-5-2">5.2 intensity／histogram：一次 calcHist 推出全部統計（measure._roi_hist／_hist_stats）</a></li><li><a href="#sec-5-3">5.3 find_circle／find_line／caliper：邊緣偵測批次化、RANSAC 向量化</a></li><li><a href="#sec-5-4">5.4 template_match：金字塔粗找不用遮罩、細找剪枝</a></li><li><a href="#sec-5-5">5.5 資產影像解碼快取（locate.read_asset_image）</a></li><li><a href="#sec-5-6">5.6 defect_diff：Hanning 視窗與範本前處理快取</a></li><li><a href="#sec-5-7">5.7 其他小項</a></li><li><a href="#sec-5-8">5.8 看過但沒改的</a></li></ul></li><li><a href="#advice">6. 給使用者的效能建議</a></li><li><a href="#capture">6b. 擷取端傳輸（大影格）</a></li><li><a href="#rerun">7. 怎麼重跑</a></li></ul></aside><article class="doc wide">
-<h1>VisionSequence 效能報告</h1>
-<p>對每個內建工具與引擎做基準量測，針對慢的工具做不改介面的優化，並記錄前後對照與給使用者的效能建議。原始數據在 <code>docs/bench-before.txt</code>、<code>docs/bench-after.txt</code>，量測腳本是 <code>scripts/bench_tools.py</code>。</p>
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html" aria-current="page">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#env">1. The machine and the method</a></li><li><a href="#summary">2. The summary</a></li><li><a href="#table">3. Every tool, before and after</a></li><li><a href="#engine">4. The engine and the image cache</a><ul><li><a href="#sec-4-1">4.1 The &quot;hole count&quot; demo flow, node by node (1280×960, preview=False, after)</a></li><li><a href="#sec-4-2">4.2 The engine&#x27;s fixed overhead</a></li><li><a href="#sec-4-3">4.3 ImageStore.encode (1280×960 BGR, JPEG 85)</a></li></ul></li><li><a href="#changes">5. What each optimisation did, and why</a><ul><li><a href="#sec-5-1">5.1 blob: filter the noise mask with connected components first (detect._prefilter_small)</a></li><li><a href="#sec-5-2">5.2 intensity and histogram: every statistic from one histogram pass (measure._roi_hist, _hist_stats)</a></li><li><a href="#sec-5-3">5.3 find_circle, find_line and caliper: batched edge detection, vectorised RANSAC</a></li><li><a href="#sec-5-4">5.4 template_match: an unmasked coarse pass, a pruned fine pass</a></li><li><a href="#sec-5-5">5.5 Caching decoded asset images (locate.read_asset_image)</a></li><li><a href="#sec-5-6">5.6 defect_diff: caching the Hanning window and the template pre-processing</a></li><li><a href="#sec-5-7">5.7 Smaller items</a></li><li><a href="#sec-5-8">5.8 Looked at and left alone</a></li></ul></li><li><a href="#advice">6. Advice</a></li><li><a href="#capture">6b. Capture client transfer (large frames)</a></li><li><a href="#rerun">7. Re-running the benchmarks</a></li></ul></aside><article class="doc wide">
 
-<h2 id="env">1. 測試機與方法</h2>
+<h1>Performance report</h1>
+<p>Every built-in tool and the engine were benchmarked, the slow ones optimised without changing any interface, and the before-and-after recorded here along with the advice that follows from it. The raw numbers are in <code>docs/bench-before.txt</code> and <code>docs/bench-after.txt</code>; the measurement script is <code>scripts/bench_tools.py</code>.</p>
+
+<h2 id="env">1. The machine and the method</h2>
 <table>
-<tr><th>項目</th><th style="text-align:left">內容</th></tr>
-<tr><td>CPU</td><td style="text-align:left">Intel Core Ultra 9 275HX（8 P-core + 16 E-core，筆電）；32 GB RAM；Windows 11 Home 26200</td></tr>
-<tr><td>軟體</td><td style="text-align:left">Python 3.12.10、影像演算法庫 4.11、numpy 2.2.3、onnxruntime（CPU）；<code>VISION_CV_THREADS=2</code>（專案預設）</td></tr>
-<tr><td>影像</td><td style="text-align:left"><code>SyntheticGrabber</code>（pattern=parts，seed=7，defect_rate=0）：1280×960 與 640×480 各一張 BGR。板子、5 個孔、條碼狀線條與高斯雜訊（σ=6）。</td></tr>
-<tr><td>工具參數</td><td style="text-align:left">每個工具用「合理」參數：ROI 落在板子／中心孔上；template_match 的範本是從同一張影像裁出的中心孔區域（PNG）；defect_diff 的良品範本是整張灰階圖；dl_* 用 <code>tests/_helpers.py</code> 的手刻 ONNX（GlobalAveragePool／Identity／Flatten）。同一工具有多種代表性設定就列多筆（例如 blob 的整圖與 ROI）。</td></tr>
-<tr><td>量測</td><td style="text-align:left">直接建 <code>ToolContext</code> 呼叫 <code>tool.execute()</code>（不經引擎）；每筆先暖機 3 次再跑 30 次，取 median 與 p95。引擎另外量示範流程「零件孔數檢測」整個 <code>engine.execute()</code> 與各節點分佈。after 以 <code>--pin</code> 綁 P-core＋高優先權。</td></tr>
-<tr><td>雜訊</td><td style="text-align:left">混合大小核筆電上，<strong>0.5 ms 以下的項目單輪雜訊約 ±0.1～0.15 ms</strong>（記憶體配置器狀態、時脈變動），因此對照表把「差異 &lt; 0.15 ms 或 &lt; 8%」標成 ≈（雜訊內），只有明顯改善才算數。沒有改動程式碼的工具（grayscale、blur、canny、hough、barcode…）本來就應該落在 ≈。</td></tr>
+<tr><th>Item</th><th style="text-align:left">Detail</th></tr>
+<tr><td>CPU</td><td style="text-align:left">Intel Core Ultra 9 275HX (8 P-cores + 16 E-cores, a laptop), 32 GB RAM, Windows 11 Home 26200</td></tr>
+<tr><td>Software</td><td style="text-align:left">Python 3.12.10, the vision library 4.11, numpy 2.2.3, onnxruntime (CPU), with <code>VISION_CV_THREADS=2</code> (the project default)</td></tr>
+<tr><td>Images</td><td style="text-align:left"><code>SyntheticGrabber</code> (pattern=parts, seed=7, defect_rate=0): one 1280×960 and one 640×480 BGR image — a plate, five holes, barcode-like lines and Gaussian noise (σ=6)</td></tr>
+<tr><td>Tool settings</td><td style="text-align:left">Every tool gets sensible parameters: the ROI sits on the plate or the centre hole; template_match's template is the centre-hole region cropped out of the same image (PNG); defect_diff's golden template is the whole grayscale image; the dl_* tools use the hand-built ONNX from <code>tests/_helpers.py</code> (GlobalAveragePool, Identity, Flatten). A tool with several representative settings gets several rows — blob whole-image versus blob in an ROI, for instance.</td></tr>
+<tr><td>Measurement</td><td style="text-align:left">A <code>ToolContext</code> is built and <code>tool.execute()</code> called directly, bypassing the engine. Each row warms up three times then runs 30 times, reporting the median and p95. The engine is measured separately on the "hole count" demo flow: the whole <code>engine.execute()</code> and the distribution across nodes. The "after" numbers use <code>--pin</code> for P-core affinity and high priority.</td></tr>
+<tr><td>Noise</td><td style="text-align:left">On a laptop with mixed core types, <strong>anything under 0.5 ms carries about ±0.1–0.15 ms of single-run noise</strong> (allocator state, clock changes). So a difference below 0.15 ms or 8% is marked ≈ (within noise) and only a clear improvement counts. Tools whose code did not change (grayscale, blur, canny, hough, barcode…) should land on ≈ by construction.</td></tr>
 </table>
 
-<h2 id="summary">2. 一頁摘要</h2>
+<h2 id="summary">2. The summary</h2>
 <table>
-<tr><th style="text-align:left">工具（1280×960）</th><th>before ms</th><th>after ms</th><th>改善</th><th style="text-align:left">主因</th></tr>
-<tr><td>blob（整圖、有雜訊）</td><td>53.5</td><td>9.0</td><td class="good">−83%</td><td style="text-align:left">幾萬個雜訊輪廓改用 connectedComponentsWithStats 先濾掉</td></tr>
-<tr><td>intensity（整圖）</td><td>10.6</td><td>0.96</td><td class="good">−91%</td><td style="text-align:left">calcHist 帶遮罩一次算完平均／標準差／極值／中位數</td></tr>
-<tr><td>histogram（整圖）</td><td>5.4</td><td>0.99</td><td class="good">−82%</td><td style="text-align:left">np.bincount → 直方圖原生實作</td></tr>
-<tr><td>find_circle（36／180 線）</td><td>5.3 / 8.3</td><td>0.63 / 1.01</td><td class="good">−88%</td><td style="text-align:left">RANSAC 向量化、所有掃描線一次找邊緣</td></tr>
-<tr><td>find_line（20／100 卡尺）</td><td>1.06 / 2.87</td><td>0.65 / 0.77</td><td class="good">−39% / −73%</td><td style="text-align:left">卡尺剖面用累積和一次算、RANSAC 向量化</td></tr>
-<tr><td>template_match（旋轉 ±10°）</td><td>24.8</td><td>12.0</td><td class="good">−52%</td><td style="text-align:left">金字塔粗找不用遮罩比對、細找剪枝</td></tr>
-<tr><td>defect_diff（不對齊、ROI）</td><td>6.6</td><td>0.84</td><td class="good">−87%</td><td style="text-align:left">資產影像解碼快取（每次 5 ms 的 PNG 解碼不見了）</td></tr>
-<tr><td>defect_diff（相位對齊、整圖）</td><td>35.6</td><td>25.0</td><td class="good">−30%</td><td style="text-align:left">同上＋Hanning 視窗與範本前處理快取；剩下的是 phaseCorrelate 本身</td></tr>
-<tr><td>apply_mask</td><td>2.03</td><td>1.15</td><td class="good">−44%</td><td style="text-align:left">bitwise_and(mask=) → copyTo</td></tr>
-<tr><td>pixel_count（圓形 ROI）</td><td>0.14</td><td>0.04</td><td class="good">−71%</td><td style="text-align:left">遮罩只畫 ROI 外框大小，不再配置整張</td></tr>
-<tr><td>影像縮圖編碼（同 ref 第二次）</td><td>1.9～3.5</td><td>≈0</td><td class="good">快取</td><td style="text-align:left">ImageStore.encode LRU 64 筆；INTER_AREA 只在縮小 ≥ 2 倍時用</td></tr>
+<tr><th style="text-align:left">Tool (1280×960)</th><th>before ms</th><th>after ms</th><th>Change</th><th style="text-align:left">Why</th></tr>
+<tr><td>blob (whole image, noisy)</td><td>53.5</td><td>9.0</td><td class="good">−83%</td><td style="text-align:left">Tens of thousands of noise contours are filtered out first with connectedComponentsWithStats</td></tr>
+<tr><td>find_circle (36 and 180 rays)</td><td>5.3 / 8.3</td><td>0.63 / 1.01</td><td class="good">−88%</td><td style="text-align:left">Edge detection batched across profiles; RANSAC vectorised</td></tr>
+<tr><td>intensity (whole image)</td><td>10.6</td><td>0.96</td><td class="good">−91%</td><td style="text-align:left">All statistics derived from one histogram pass instead of sorting 1.2M pixels</td></tr>
+<tr><td>histogram (whole image)</td><td>5.4</td><td>0.99</td><td class="good">−82%</td><td style="text-align:left">The same histogram path</td></tr>
+<tr><td>defect_diff (no alignment, ROI)</td><td>6.6</td><td>0.84</td><td class="good">−87%</td><td style="text-align:left">The decoded template image is cached, and the template pre-processing with it</td></tr>
+<tr><td>template_match (rotation ±10°/5°)</td><td>24.8</td><td>12.0</td><td class="good">−52%</td><td style="text-align:left">The pyramid's coarse pass drops the mask; the fine pass prunes candidates</td></tr>
+<tr><td>apply_mask</td><td>2.0</td><td>1.1</td><td class="good">−44%</td><td style="text-align:left">A masked copy instead of a bitwise AND</td></tr>
+<tr><td>Thumbnail encoding (same ref, second time)</td><td>1.9–3.5</td><td>≈0</td><td class="good">cached</td><td style="text-align:left">A 64-entry LRU in ImageStore.encode; INTER_AREA only when shrinking by 2× or more</td></tr>
 </table>
-<p>示範流程「零件孔數檢測」整體（1280×960）：<strong>8.7 → 7.7 ms</strong>（blob 3.0 → 2.5 ms，其餘節點是 median blur 2.7 ms 與 draw_result 0.9 ms，都是底層演算法本身）。引擎固定開銷每節點約 6 µs（純邏輯節點串接量得），影像流程約 40～60 µs/節點，其中大半是釋放上一批影像的記憶體與 <code>_jsonable</code>，不是引擎迴圈本身。</p>
+<p>The "hole count" demo flow end to end at 1280×960: <strong>8.7 → 7.7 ms</strong> (blob 3.0 → 2.5 ms; the rest is a 2.7 ms median blur and 0.9 ms of draw_result, both the underlying algorithms). The engine's fixed overhead is about 6 µs per node (measured on a chain of pure-logic nodes), and 40–60 µs per node on an image flow — most of that being the release of the previous run's image memory and <code>_jsonable</code>, not the engine loop.</p>
 
-<h2 id="table">3. 每工具前後對照</h2>
-<p>單位 ms；before／after 皆為 median，最後兩欄是 after 的 p95。改善欄：<span class="good">綠</span> ≥ 25%、<span class="noise">≈</span> 在雜訊內、<span class="bad">紅</span> 變慢（本次沒有超出雜訊的變慢項）。</p>
+<h2 id="table">3. Every tool, before and after</h2>
+<p>Milliseconds; before and after are both medians, and the last two columns are the after p95. In the Change column, <span class="good">green</span> is 25% or better, <span class="noise">≈</span> is within noise, and <span class="bad">red</span> would be slower (nothing regressed beyond noise this round).</p>
+
 <div class="wrap">
 <table>
-<thead><tr><th style="text-align:left">工具 / 設定</th><th>1280 before</th><th>1280 after</th><th>改善</th><th>640 before</th><th>640 after</th><th>改善</th><th>p95 1280</th><th>p95 640</th></tr></thead>
+<thead><tr><th style="text-align:left">Tool / setting</th><th>1280 before</th><th>1280 after</th><th>Change</th><th>640 before</th><th>640 after</th><th>Change</th><th>p95 1280</th><th>p95 640</th></tr></thead>
 <tbody>
 <tr><td>image_source</td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.002</td><td>0.002</td><td><span class="noise">≈</span></td><td>0.003</td><td>0.002</td></tr>
 <tr><td>grayscale</td><td>0.284</td><td>0.250</td><td><span class="noise">≈</span></td><td>0.035</td><td>0.072</td><td><span class="noise">≈</span></td><td>0.284</td><td>0.074</td></tr>
@@ -239,112 +238,114 @@
 </tbody>
 </table>
 </div>
-<p>沒有改動而仍慢的工具（都是底層演算法／第三方本身的成本）：<code>template_match</code> 不開金字塔（整張 NCC 23 ms）、<code>barcode</code>（QR 偵測 10 ms）、<code>hough_lines</code>（7 ms）、<code>threshold adaptive</code>（4.5 ms）、<code>edges canny</code>（3.7 ms）、<code>save_image png</code>（PNG 壓縮 6.4 ms）、<code>defect_diff phase</code> 剩下的 <code>phaseCorrelate</code>（19 ms，1280×960 三次 FFT）。這些靠 ROI／縮圖處理（見第 6 節）。</p>
 
-<h2 id="engine">4. 引擎與影像快取</h2>
-<h3 id="sec-4-1">4.1 示範流程「零件孔數檢測」各節點（1280×960，preview=False，after）</h3>
+<p>Tools that were not changed and are still slow — all of them the cost of the underlying algorithm or a third-party library: <code>template_match</code> without the pyramid (a full-image NCC at 23 ms), <code>barcode</code> (QR detection, 10 ms), <code>hough_lines</code> (7 ms), <code>threshold adaptive</code> (4.5 ms), <code>edges canny</code> (3.7 ms), <code>save_image png</code> (PNG compression, 6.4 ms) and what remains of <code>defect_diff phase</code>, which is <code>phaseCorrelate</code> (19 ms — three FFTs at 1280×960). The answer for these is an ROI or a smaller image; see §6.</p>
+
+<h2 id="engine">4. The engine and the image cache</h2>
+<h3 id="sec-4-1">4.1 The "hole count" demo flow, node by node (1280×960, preview=False, after)</h3>
 <pre>
 src      0.005 ms   image_source
 gray     0.406 ms   grayscale
-draw     0.901 ms   draw_result（copy 3.6 MB + 畫標記）
+draw     0.901 ms   draw_result (copies 3.6 MB and draws the overlays)
 blur     2.661 ms   median 5×5
 thr      0.175 ms   fixed threshold
 open     0.400 ms   morphology open 5
-blob     2.542 ms   blob（乾淨遮罩，5 個孔）
+blob     2.542 ms   blob (a clean mask, five holes)
 cmp/out/ok  &lt; 0.01 ms
-合計 7.10 ms；整個 run 7.74 ms → 引擎固定開銷 0.44 ms（11 節點）
+7.10 ms of nodes; 7.74 ms for the whole run → 0.44 ms of engine overhead across 11 nodes
 </pre>
-<p>640×480 同流程 2.25 ms（節點 1.86，開銷 0.07 ms = 6 µs/節點）。</p>
-<h3 id="sec-4-2">4.2 引擎固定開銷</h3>
+<p>The same flow at 640×480 takes 2.25 ms (1.86 ms of nodes, 0.07 ms of overhead — 6 µs per node).</p>
+<h3 id="sec-4-2">4.2 The engine's fixed overhead</h3>
 <ul>
-<li>40 個 formula 節點串接：整體 0.23 ms，<strong>5.7 µs/節點</strong>，其中工具本身 4.2 µs，引擎迴圈（ToolContext 建立、輸入收集、輸出登記）約 1.5 µs/節點，遠低於 0.05 ms 的門檻，沒有必要再精簡。</li>
-<li>影像流程量到的 40～60 µs/節點，用 cProfile 看，六成是 <code>ImageStore._drop_run_locked</code>：淘汰 8 次 run 之前的影像時釋放幾 MB 的 numpy 陣列（OS 回收頁面），這是「保留最近 N 次 run 影像」的固定成本；其餘是 <code>_jsonable</code>（blob 的 dict 列表）。</li>
-<li>仍做的兩個小修：<code>ToolContext.params</code> 每次 <code>dict()</code> 複製 → 一個 ctx 只複製一次（工具每個 <code>param()</code> 都會呼叫）；<code>_jsonable</code> 對純量清單（直方圖、剖面、點座標）不再逐項遞迴，先用 <code>type(v) in (float, int, str, bool, None)</code> 掃一遍直接回傳。<code>store.put</code> 原本就不複製影像。</li>
+<li>Forty formula nodes chained together: 0.23 ms in total, <strong>5.7 µs per node</strong>, of which the tool itself is 4.2 µs and the engine loop (building the ToolContext, gathering inputs, registering outputs) about 1.5 µs. Far below the 0.05 ms that would be worth optimising.</li>
+<li>The 40–60 µs per node measured on image flows is, under cProfile, 60% <code>ImageStore._drop_run_locked</code>: releasing several megabytes of numpy arrays when the images of a run eight runs ago age out, and the OS reclaiming the pages. That is the fixed cost of "keep the last N runs' images". The rest is <code>_jsonable</code> over blob's list of dicts.</li>
+<li>Two small fixes were still worth making. <code>ToolContext.params</code> used to <code>dict()</code>-copy on every access; it now copies once per context (a tool calls <code>param()</code> repeatedly). And <code>_jsonable</code> no longer recurses element by element through lists of scalars (histograms, profiles, point coordinates): a single <code>type(v) in (float, int, str, bool, None)</code> scan returns them directly. <code>store.put</code> never copied the image in the first place.</li>
 </ul>
-<h3 id="sec-4-3">4.3 ImageStore.encode（1280×960 BGR，JPEG 85）</h3>
+<h3 id="sec-4-3">4.3 ImageStore.encode (1280×960 BGR, JPEG 85)</h3>
 <table>
-<tr><th style="text-align:left">max_side</th><th>before（每次編碼）</th><th>after cold</th><th>after cached</th><th>大小</th></tr>
-<tr><td>None（原圖）</td><td>1.88</td><td>1.85</td><td>≈0.000</td><td>191 KB</td></tr>
-<tr><td>1600（編輯器檢視器）</td><td>1.87</td><td>1.84</td><td>≈0.000</td><td>191 KB</td></tr>
-<tr><td>1024（工具頁）</td><td>3.54</td><td>1.94</td><td>≈0.000</td><td>91 KB</td></tr>
-<tr><td>320（縮圖）</td><td>0.90</td><td>0.90</td><td>≈0.000</td><td>6 KB</td></tr>
+<tr><th style="text-align:left">max_side</th><th>before (every encode)</th><th>after, cold</th><th>after, cached</th><th>Size</th></tr>
+<tr><td>None (full size)</td><td>1.88</td><td>1.85</td><td>≈0.000</td><td>191 KB</td></tr>
+<tr><td>1600 (the editor viewer)</td><td>1.87</td><td>1.84</td><td>≈0.000</td><td>191 KB</td></tr>
+<tr><td>1024 (the tool page)</td><td>3.54</td><td>1.94</td><td>≈0.000</td><td>91 KB</td></tr>
+<tr><td>320 (thumbnail)</td><td>0.90</td><td>0.90</td><td>≈0.000</td><td>6 KB</td></tr>
 <tr><td>1024 PNG</td><td>25.2</td><td>23.7</td><td>≈0.000</td><td>606 KB</td></tr>
 </table>
-<p>結論：JPEG 編碼本身 1～2 ms 不是瓶頸；瓶頸是 (1) <code>INTER_AREA</code> 在「縮小不到一半」時走一般路徑（1280→1024 光縮放就 2.3 ms，比編碼還貴），改成縮小比例 ≤ 0.5 才用 INTER_AREA、否則 INTER_LINEAR；(2) 前端一次試執行會對同一張影像抓多次（節點卡片、檢視器、輸出頁），現在同 ref、同 max_side、同格式的結果快取 64 筆（LRU），ref 被覆寫／淘汰時一併清掉。PNG 仍然貴（23 ms），只有需要無損時才用 <code>fmt=png</code>。</p>
+<p>The conclusion: JPEG encoding at 1–2 ms was never the bottleneck. The bottlenecks were (1) <code>INTER_AREA</code> taking its general path when shrinking by less than half — 1280 → 1024 costs 2.3 ms in the resize alone, more than the encode — so INTER_AREA is now used only at a scale of 0.5 or below and INTER_LINEAR otherwise; and (2) the front end fetching the same image several times during one preview (the node card, the viewer, the outputs tab), so results are now cached by ref, max_side and format, 64 entries LRU, cleared when the ref is overwritten or evicted. PNG is still expensive at 23 ms — use <code>fmt=png</code> only when you need it lossless.</p>
 
-<h2 id="changes">5. 每個優化的做法與理由</h2>
-<p>原則：工具的 key／params／ports／輸出格式與數值不變；能證明「結果完全相同」的才直接換算法，只有 template_match 的金字塔粗找（本來就是啟發式）改了候選產生方式。</p>
+<h2 id="changes">5. What each optimisation did, and why</h2>
+<p>The rule: a tool's key, params, ports, output shape and output values do not change. An algorithm was only swapped where the results are provably identical. The one exception is template_match's coarse pyramid pass, which was heuristic to begin with, and where the candidate generation changed.</p>
 
-<h3 id="sec-5-1">5.1 blob：雜訊遮罩先用連通元件濾掉（<code>detect._prefilter_small</code>）</h3>
-<p>整圖固定門檻二值化後，背景雜訊會產生幾萬個 1～2 像素的白點；<code>findContours</code> 對 38k 個輪廓要 41 ms（每個輪廓都是一個 Python numpy 物件），再逐一 <code>contourArea</code> 又 9 ms。改為：先抽樣（每 8 列）數水平 0/255 轉換密度，超過 2% 才做 <code>connectedComponentsWithStats</code>（6.5 ms），把「外接框面積 &lt; min_area」的元件從遮罩清掉，再 <code>findContours</code>（0.7 ms）。外接框面積是 <code>contourArea</code> 的上界（即使有洞也成立），所以被清掉的元件本來就會被 min_area 篩掉——輪廓、面積、中心、bbox 全部與原本相同（等價測試對雜訊遮罩、乾淨遮罩、反相遮罩 × 5 種參數逐項比對過）。乾淨的遮罩（示範流程經 median＋open 後）不會觸發，不付 2.5 ms 的 CCWS 成本。輸出 mask 仍與原始遮罩做 AND，保留原行為。</p>
+<h3 id="sec-5-1">5.1 blob: filter the noise mask with connected components first (<code>detect._prefilter_small</code>)</h3>
+<p>After a fixed threshold over the whole image, background noise produces tens of thousands of one- and two-pixel white specks. <code>findContours</code> takes 41 ms over 38k contours (each one a Python numpy object) and another 9 ms to call <code>contourArea</code> on each. Now: sample every eighth row to count the density of horizontal 0/255 transitions, and above 2% run <code>connectedComponentsWithStats</code> (6.5 ms) to clear components whose bounding-box area is below min_area out of the mask, then <code>findContours</code> (0.7 ms). Bounding-box area is an upper bound on <code>contourArea</code> even with holes, so anything cleared would have been filtered by min_area anyway — contours, areas, centres and bounding boxes all come out identical (the equivalence test compares them item by item on a noisy mask, a clean mask and an inverted mask across five parameter sets). A clean mask — the demo flow's, after median and open — never triggers it, so it never pays the 2.5 ms. The output mask is still ANDed with the original, preserving the previous behaviour.</p>
 
-<h3 id="sec-5-2">5.2 intensity／histogram：一次 calcHist 推出全部統計（<code>measure._roi_hist</code>／<code>_hist_stats</code>）</h3>
-<p>原本把 ROI 像素抽成一維（非矩形要布林索引），再 <code>mean/std/min/max/np.median</code>——1.2M 像素的 <code>np.median</code> 要排序 5 ms、bincount 4.6 ms。改成原生直方圖計算（帶 ROI 遮罩，0.5 ms）得到 256 階計數，平均＝Σh·v/n、標準差用二次通過（Σh·(v−mean)²/n，與 numpy 的定義一致）、極值取非零 bin、中位數用累積計數找第 (n−1)//2 與 n//2 個元素取平均（偶數時與 <code>np.median</code> 一樣取中間兩個的平均）。等價測試：整圖／圓／小矩形／多邊形的六個統計值差 &lt; 1e-9，直方圖逐 bin 相等，偶數奇數像素數的中位數相等。</p>
+<h3 id="sec-5-2">5.2 intensity and histogram: every statistic from one histogram pass (<code>measure._roi_hist</code>, <code>_hist_stats</code>)</h3>
+<p>These used to flatten the ROI pixels into one dimension (boolean indexing for non-rectangular shapes) and then call <code>mean/std/min/max/np.median</code> — where <code>np.median</code> over 1.2M pixels sorts for 5 ms and bincount takes 4.6 ms. Now a native histogram computation with the ROI as a mask (0.5 ms) gives 256 bin counts, from which the mean is Σh·v/n, the standard deviation comes from a second pass (Σh·(v−mean)²/n, matching numpy's definition), the extremes are the non-zero bins, and the median is found by cumulative count, taking elements (n−1)//2 and n//2 and averaging them — which is what <code>np.median</code> does for an even count. The equivalence test: all six statistics agree to within 1e-9 over the whole image, a circle, a small rectangle and a polygon; every histogram bin is equal; and the median matches for both odd and even pixel counts.</p>
 
-<h3 id="sec-5-3">5.3 find_circle／find_line／caliper：邊緣偵測批次化、RANSAC 向量化</h3>
+<h3 id="sec-5-3">5.3 find_circle, find_line and caliper: batched edge detection, vectorised RANSAC</h3>
 <ul>
-<li><code>locate.find_edges_rows()</code>：R 條剖面（找圓的 remap 結果本來就是 R×L 矩陣）一次做 GaussianBlur((k,1))、<code>np.gradient(axis=1)</code>、非極大抑制與拋物線次像素——每一步都是逐列獨立的運算，結果與逐列呼叫 <code>find_edges_1d</code> 完全相同（等價測試對 60 條真實與隨機剖面 × 3 種極性 × 3 種平滑逐一比對，含長度 1～5 的邊界情況）。單條剖面（caliper）保留純量版本，因為向量化的固定開銷反而多 0.1 ms。</li>
-<li><code>caliper_points()</code>：每條卡尺的帶內平均改用長邊方向的 <code>cumsum</code>（float64 整數和精確）一次算完所有帶，再交給 <code>find_edges_rows</code>；點座標與強度與舊版逐帶 <code>mean()</code> 完全相同。</li>
-<li><code>fit_circle_ransac</code>／<code>fit_line_ransac</code>：原本 200 次迭代各做一次 <code>rng.choice</code>＋<code>np.linalg.lstsq</code>（3.9 ms）。改成一次抽 200 組索引、三點圓閉式解（2×2 線性系統）與 200×n 距離矩陣，再對最佳內點集做一次 lstsq 重擬合。取樣序列與舊版不同（改用 <code>rng.integers</code> 並剔除重複索引），但最終結果由內點集決定，基準場景的內點數與殘差與舊版一字不差；測試容差 1 px 內全過。</li>
-<li>caliper 工具的剖面改用原生的逐行平均（CV_64F 精度），與 numpy mean 對 uint8 結果相同（測試比對到小數一位）。</li>
+<li><code>locate.find_edges_rows()</code>: R profiles (find_circle's remap already produces an R×L matrix) get one GaussianBlur((k,1)), one <code>np.gradient(axis=1)</code>, non-maximum suppression and parabolic sub-pixel refinement in a single pass. Every step is independent per row, so the results are identical to calling <code>find_edges_1d</code> row by row (the equivalence test compares 60 real and random profiles across three polarities and three smoothing settings, including lengths 1 to 5). A single profile — a caliper — keeps the scalar version, because vectorisation costs 0.1 ms more in fixed overhead than it saves.</li>
+<li><code>caliper_points()</code>: the in-band average of each caliper now comes from a <code>cumsum</code> along the long axis (float64 integer sums are exact) computed once for every band, then handed to <code>find_edges_rows</code>. Point coordinates and intensities are identical to the old per-band <code>mean()</code>.</li>
+<li><code>fit_circle_ransac</code> and <code>fit_line_ransac</code>: 200 iterations each doing an <code>rng.choice</code> and an <code>np.linalg.lstsq</code> (3.9 ms) became one draw of 200 index sets, a closed-form three-point circle (a 2×2 linear system) and a 200×n distance matrix, with a single lstsq refit over the best inlier set. The sampling sequence differs from before (it uses <code>rng.integers</code> and rejects duplicate indices), but the final result is determined by the inlier set: in the benchmark scenes the inlier counts and residuals are identical, and the tests pass within 1 px.</li>
+<li>The caliper tool's profile now uses the native per-row mean at CV_64F precision, which matches numpy's mean over uint8 (the tests compare to one decimal place).</li>
 </ul>
 
-<h3 id="sec-5-4">5.4 template_match：金字塔粗找不用遮罩、細找剪枝</h3>
-<p>帶遮罩的 <code>matchTemplate(TM_CCOEFF_NORMED, mask=)</code> 比不帶遮罩慢 4 倍（1/4 縮圖 2.8 vs 0.65 ms；細找視窗 2.6 vs 0.36 ms）。旋轉搜尋時每個角度的範本外框放大後必須帶遮罩。改法：</p>
+<h3 id="sec-5-4">5.4 template_match: an unmasked coarse pass, a pruned fine pass</h3>
+<p>A masked <code>matchTemplate(TM_CCOEFF_NORMED, mask=)</code> is four times slower than an unmasked one (2.8 versus 0.65 ms on the quarter-size image; 2.6 versus 0.36 ms in the fine window). When searching rotations, each angle's enlarged template bounding box needs a mask. The fix:</p>
 <ul>
-<li>粗找：所有角度共用「最大角度下仍完全落在有效像素內的置中軸對齊矩形」（<code>_inscribed_half</code>），每個角度只比這塊中央區域、不帶遮罩。同一塊區域讓各角度的分數可以互相比較（若各自用不同大小的裁切，小裁切會偏高，會把 0° 的正確候選擠掉——實作時踩到並修掉）。候選座標扣回裁切偏移，仍對應完整旋轉範本的左上角。</li>
-<li>剪枝：粗找候選依分數排序後，同一位置（中心距離 &lt; 縮圖範本半尺寸）最多細找 3 個角度，總數上限維持 <code>max_matches×4</code>。原本 5 個角度會在同一目標上各細找一次。</li>
-<li>細找與不開金字塔的路徑不變（完整範本＋遮罩，分數精確）。驗證：測試場景旋轉 +10／−7／0° 與大範本 +12／−6／0／+3°，金字塔開關兩種模式回傳相同的位置、角度與分數。</li>
+<li>The coarse pass shares one centred, axis-aligned rectangle that still falls entirely inside the valid pixels at the largest angle (<code>_inscribed_half</code>), and every angle matches only that central region, without a mask. Sharing one region is what makes the scores comparable between angles — with per-angle crops of different sizes, a smaller crop scores higher and can push the correct 0° candidate out, which happened during implementation and was fixed. Candidate coordinates have the crop offset added back, so they still refer to the top-left of the full rotated template.</li>
+<li>Pruning: candidates are sorted by score and at most three angles are refined per position (positions within half the downscaled template size count as the same one), with the total still capped at <code>max_matches×4</code>. Previously five angles each got a refinement pass on the same target.</li>
+<li>The fine pass, and the no-pyramid path, are unchanged (the full template with its mask, exact scores). Verified: with rotations of +10°, −7° and 0°, and a large template at +12°, −6°, 0° and +3°, both pyramid modes return the same positions, angles and scores.</li>
 </ul>
 
-<h3 id="sec-5-5">5.5 資產影像解碼快取（<code>locate.read_asset_image</code>）</h3>
-<p>每次 run 都 <code>np.fromfile</code>＋<code>imdecode</code> 範本：1280×960 的 PNG 要 5.5 ms，比大多數工具本身還慢。改為以 (path, gray) 為鍵快取解碼結果 32 筆（LRU），用檔案 mtime＋size 判斷失效（<code>os.stat</code> 約 10 µs）。回傳的陣列是共用的，工具不可原地修改（現有工具都只做 resize／crop／blur 產生新陣列）。這一項讓 template_match 的每次固定成本少 0.2 ms、defect_diff 少 5.5 ms。</p>
+<h3 id="sec-5-5">5.5 Caching decoded asset images (<code>locate.read_asset_image</code>)</h3>
+<p>Every run used to <code>np.fromfile</code> and <code>imdecode</code> the template: 5.5 ms for a 1280×960 PNG, slower than most tools. Decoded results are now cached by (path, gray), 32 entries LRU, invalidated on file mtime and size (an <code>os.stat</code> costs about 10 µs). The returned array is shared, so tools must not modify it in place — the existing ones only resize, crop or blur into a new array. This alone takes 0.2 ms off every template_match and 5.5 ms off every defect_diff.</p>
 
-<h3 id="sec-5-6">5.6 defect_diff：Hanning 視窗與範本前處理快取</h3>
-<p><code>createHanningWindow</code> 1.5 ms、範本的縮放／裁切／模糊／轉 float32 約 1.7 ms，在同一組參數下每次相同。以 (範本尺寸, 裁切位置, 子圖尺寸, 模糊核, 對齊法) 為鍵快取 16 組，並抓著原範本陣列以身分比對（範本檔更新解碼出新陣列時自動失效）。剩下的 19 ms 是 <code>phaseCorrelate</code> 對 1280×960 做三次 FFT，屬演算法本身；要快請縮 ROI（ROI 640×384 的版本只要 0.8 ms）。</p>
+<h3 id="sec-5-6">5.6 defect_diff: caching the Hanning window and the template pre-processing</h3>
+<p><code>createHanningWindow</code> costs 1.5 ms and scaling, cropping, blurring and converting the template to float32 about 1.7 ms — identical every time for the same parameters. They are cached against (template size, crop position, sub-image size, blur kernel, alignment method), 16 entries, holding the original template array and comparing it by identity so that a new decode of an updated file invalidates automatically. The remaining 19 ms is <code>phaseCorrelate</code> doing three FFTs at 1280×960, which is the algorithm itself; to make it fast, shrink the ROI (the 640×384 ROI version takes 0.8 ms).</p>
 
-<h3 id="sec-5-7">5.7 其他小項</h3>
+<h3 id="sec-5-7">5.7 Smaller items</h3>
 <ul>
-<li><code>apply_mask</code>：逐位元 AND（1.9 ms）改為帶遮罩複製（1.1 ms；新配置的目的地會先清零）；要填值時以填值為底再複製，結果逐像素相同。</li>
-<li><code>roi.mask_for(offset=)</code>／<code>crop()</code>：非矩形 ROI 的遮罩只畫外框大小的視窗，不再配置整張影像大小再切片（pixel_count 圓形 ROI 0.14 → 0.04 ms；4K 影像差更多）。</li>
-<li><code>ImageStore.encode</code> 快取與縮圖插值（見 4.3）。</li>
-<li>引擎：<code>ToolContext.params</code> 快取、<code>_jsonable</code> 純量清單快速路徑（見 4.2）。</li>
+<li><code>apply_mask</code>: a bitwise AND (1.9 ms) became a masked copy (1.1 ms; a freshly allocated destination is zeroed first). When a fill value is set, the destination starts filled and is then copied into — pixel for pixel identical.</li>
+<li><code>roi.mask_for(offset=)</code> and <code>crop()</code>: a non-rectangular ROI's mask is now drawn into a window the size of the bounding box, rather than allocating a full-image mask and slicing it (pixel_count on a circular ROI went from 0.14 to 0.04 ms, and the gap is far larger on 4K images).</li>
+<li><code>ImageStore.encode</code> caching and thumbnail interpolation (see 4.3).</li>
+<li>Engine: the <code>ToolContext.params</code> cache and the <code>_jsonable</code> scalar-list fast path (see 4.2).</li>
 </ul>
 
-<h3 id="sec-5-8">5.8 看過但沒改的</h3>
+<h3 id="sec-5-8">5.8 Looked at and left alone</h3>
 <ul>
-<li><code>color_range</code> 已經直接對三通道 HSV 做 <code>inRange</code>；成本在 <code>cvtColor(BGR2HSV)</code>。</li>
-<li><code>draw_result</code> 只在灰階輸入時做一次 cvtColor，彩色輸入 <code>copy()</code>（必須，不能改到上游影像）。</li>
-<li><code>findContours</code> 已用 <code>RETR_EXTERNAL</code>＋<code>CHAIN_APPROX_SIMPLE</code>（關掉 external_only 才用 CCOMP）。</li>
-<li><code>crop</code> 工具的 <code>np.ascontiguousarray</code> 保留：輸出會進影像快取，若留著 view 會把整張原圖鎖在記憶體裡。</li>
-<li><code>save_image</code> 的 PNG 壓縮等級維持預設（改壓縮等級會改檔案內容）。</li>
+<li><code>color_range</code> already runs <code>inRange</code> over all three HSV channels; the cost is in <code>cvtColor(BGR2HSV)</code>.</li>
+<li><code>draw_result</code> converts colour space only for a grayscale input; for a colour input it must <code>copy()</code>, since it cannot write into the upstream image.</li>
+<li><code>findContours</code> already uses <code>RETR_EXTERNAL</code> with <code>CHAIN_APPROX_SIMPLE</code> (CCOMP only when external_only is off).</li>
+<li>The <code>np.ascontiguousarray</code> in the <code>crop</code> tool stays: its output goes into the image cache, and keeping a view would pin the entire original image in memory.</li>
+<li><code>save_image</code> keeps the default PNG compression level — changing it would change the file contents.</li>
 </ul>
 
-<h2 id="advice">6. 給使用者的效能建議</h2>
+<h2 id="advice">6. Advice</h2>
 <ol>
-<li><strong>先裁 ROI 再算。</strong>幾乎每個工具的成本都與像素數成正比：blob 整圖 9 ms、ROI 內 0.2 ms；defect_diff 整圖 25 ms、ROI 0.8 ms；intensity 整圖 1 ms、ROI 0.1 ms。用工具自己的「區域」參數，或前面放一個 <code>crop</code> 節點讓整條下游都在小圖上跑（定位後用 <code>fixture_roi</code> 跟隨）。</li>
-<li><strong>大圖先 <code>resize</code>。</strong>1280×960 → 640×480 幾乎所有工具快 4 倍；定位／計數類工具在半解析度上通常夠準，量測類再回原圖用 ROI 做。</li>
-<li><strong>二值化後先去雜訊再 blob。</strong>示範流程的 median 5 + open 5 讓 blob 只花 2.5 ms；直接對有雜訊的門檻結果做 blob，即使有新的預濾也要 9 ms。或把 <code>min_area</code> 設在合理值（預濾只在 min_area ≥ 4 時作用）。</li>
-<li><strong>template_match 開金字塔、範本 ≥ 32 px、旋轉範圍與步進別太細。</strong>不開金字塔整張 NCC 要 23 ms；旋轉角度數 × 每角度成本，±10°/5° 為 5 個角度 12 ms。給搜尋範圍 ROI 再減半。</li>
-<li><strong><code>VISION_CV_THREADS</code>。</strong>預設 2：單一工具的演算法平行度。產線一次只跑一條流程時可以設成 4（1280×960 的 blur／canny／cvtColor 約再快 1.5～2 倍）；多條流程並行（執行緒池 10 條）時維持 2 或 1，避免演算法執行緒彼此搶核心。改完重啟 <code>manage.py serve</code>。</li>
-<li><strong>觀看才編碼。</strong>影像快取延後到有人看才編 JPEG；連續模式全速跑時不要一直開著編輯器的大檢視器（每張 1600 邊 1.9 ms，現在同一張第二次以後免費）。需要無損才用 PNG（23 ms）。</li>
-<li><strong>關掉不需要的持久化與影像保留。</strong><code>VISION_KEEP_RUN_IMAGES</code>（預設 8）決定每條流程保留幾次 run 的所有節點影像，1280×960 的流程每次 run 約 6～10 MB；產線不用回看時設 1～2，減少記憶體與釋放成本（引擎開銷裡最大的一項）。<code>VISION_KEEP_RUN_ROWS</code>／背景 Persister 只寫摘要，成本低，但 SQLite 在慢磁碟上仍建議調大保留門檻或關閉。</li>
-<li><strong>defect_diff 的對齊方式。</strong>相位相關對整張 1280×960 要 19 ms；固定治具、位移很小時選「不對齊」（0.8 ms），或只在 ROI 內對齊。</li>
-<li><strong>條碼只掃需要的區域與類型。</strong>QR 偵測整張 10 ms；給 ROI 並把類型限制在 QR 或一維。</li>
-<li><strong>save_image 用 JPEG／BMP。</strong>PNG 壓縮 1280×960 要 6.4 ms（BMP 幾乎免費，JPEG 2 ms）；只存 NG（<code>only_ng</code>）。</li>
+<li><strong>Crop to an ROI before computing.</strong> Almost every tool's cost is proportional to pixel count: blob is 9 ms over the whole image and 0.2 ms in an ROI; defect_diff 25 ms versus 0.8 ms; intensity 1 ms versus 0.1 ms. Use the tool's own region parameter, or put a <code>crop</code> node in front so everything downstream works on the small image (with <code>fixture_roi</code> following after a locate step).</li>
+<li><strong>Resize large images first.</strong> 1280×960 → 640×480 makes almost everything four times faster. Locating and counting are usually accurate enough at half resolution; do the measuring back on the full image inside an ROI.</li>
+<li><strong>Clean up after thresholding, before blob.</strong> The demo flow's median 5 plus open 5 leaves blob at 2.5 ms; running blob straight on a noisy threshold result still costs 9 ms even with the new pre-filter. Alternatively set a realistic <code>min_area</code> — the pre-filter only engages at min_area ≥ 4.</li>
+<li><strong>For template_match, keep the pyramid on, keep the template ≥ 32 px, and do not make the rotation range or step too fine.</strong> Without the pyramid a full-image NCC is 23 ms. The cost is the number of angles times the per-angle cost: ±10° in 5° steps is five angles at 12 ms. An ROI on the search area halves it again.</li>
+<li><strong><code>VISION_CV_THREADS</code>.</strong> The default of 2 is the parallelism inside a single tool's algorithm. When the line runs one flow at a time, 4 is worth it (blur, canny and cvtColor at 1280×960 get another 1.5–2× faster). With several flows in parallel (a pool of 10), keep it at 2 or 1 so the algorithm threads do not fight over cores. Restart <code>manage.py serve</code> after changing it.</li>
+<li><strong>Encoding only happens when somebody looks.</strong> The image cache defers JPEG encoding until a request arrives, so while continuous mode runs flat out, do not leave the editor's large viewer open (1.9 ms per image at 1600 px — though the second request for the same image is now free). Use PNG only when you need it lossless (23 ms).</li>
+<li><strong>Turn off persistence and image retention you do not need.</strong> <code>VISION_KEEP_RUN_IMAGES</code> (8 by default) is how many runs' node images each flow keeps, and a 1280×960 flow produces 6–10 MB per run; set it to 1 or 2 when nobody is reviewing on the line, which cuts both memory and the release cost that dominates the engine's overhead. <code>VISION_KEEP_RUN_ROWS</code> and the background persister only write summaries and cost little, but on a slow disk SQLite still prefers a larger threshold or persistence turned off.</li>
+<li><strong>Choose defect_diff's alignment.</strong> Phase correlation over a full 1280×960 image is 19 ms; with a fixed fixture and little movement, choose "no alignment" (0.8 ms), or align only inside an ROI.</li>
+<li><strong>Scan only the area and the symbologies you need.</strong> QR detection over a whole image is 10 ms; give it an ROI and restrict the type to QR or to 1D.</li>
+<li><strong>Save as JPEG or BMP.</strong> PNG compression at 1280×960 costs 6.4 ms (BMP is almost free, JPEG about 2 ms), and <code>only_ng</code> saves only the rejects.</li>
 </ol>
 
-<h2 id="capture">6b. 擷取端傳輸（大影格）</h2>
-<p>相機影像從擷取端進到伺服端的成本另外量：<code>scripts/bench_capture.py</code>。重點結論——2000 萬畫素彩色（59.9 MB／張）在同一台電腦以共享記憶體可達 <strong>117 fps</strong>（伺服端每張複製 2.7 ms），跨電腦則受網路頻寬決定（10 GbE 約 18 fps）。關鍵是<strong>重用接收緩衝</strong>（60 MB 重新配置要 17 ms、重用只要 2.4 ms）與<strong>用 np.copyto 放開 GIL</strong>。完整表格、頻寬對照與調校手段見 <a href="capture-client.html#perf">擷取端 §7</a>。</p>
+<h2 id="capture">6b. Capture client transfer (large frames)</h2>
+<p>Getting a camera image from a capture client into the server is measured separately by <code>scripts/bench_capture.py</code>. The headline: a 20-megapixel colour frame (59.9 MB) reaches <strong>117 fps</strong> through shared memory on the same machine (2.7 ms per frame to copy on the server side), while across machines the network decides — about 18 fps on 10 GbE. The two things that matter are <strong>reusing the receive buffer</strong> (reallocating 60 MB costs 17 ms, reusing it 2.4 ms) and <strong>using np.copyto so the GIL is released</strong>. The full tables, the bandwidth comparison and the tuning options are in <a href="capture-client.html#perf">Capture client §7</a>.</p>
 
-<h2 id="rerun">7. 怎麼重跑</h2>
+<h2 id="rerun">7. Re-running the benchmarks</h2>
 <pre>
-.venv/Scripts/python.exe scripts/bench_tools.py                       # 印到 stdout
-.venv/Scripts/python.exe scripts/bench_tools.py -o docs/bench-after.txt --pin   # 綁 P-core＋高優先權（Windows）
-.venv/Scripts/python.exe scripts/bench_tools.py --repeat 3            # 每筆跑 3 輪取最小 median（更穩，但更久、筆電會熱）
-.venv/Scripts/python.exe scripts/bench_capture.py                     # 擷取端傳輸（2000 萬畫素彩色，共享記憶體與 TCP）
+.venv/Scripts/python.exe scripts/bench_tools.py                       # to stdout
+.venv/Scripts/python.exe scripts/bench_tools.py -o docs/bench-after.txt --pin   # P-core affinity and high priority (Windows)
+.venv/Scripts/python.exe scripts/bench_tools.py --repeat 3            # three rounds per row, taking the smallest median (steadier, slower, and a laptop gets hot)
+.venv/Scripts/python.exe scripts/bench_capture.py                     # capture transfer (20 MP colour, shared memory and TCP)
 </pre>
-<p>驗證：<code>.venv/Scripts/python.exe manage.py test --noinput</code>（82 tests）與 <code>.venv/Scripts/python.exe -m ruff check apps tests scripts config</code> 在優化前後皆全綠；工具輸出格式與數值由 <code>tests/test_tools.py</code> 把關，另有一份新舊實作逐項比對的等價檢查（blob／intensity／histogram／find_edges／caliper_points／apply_mask／mask_for）在開發時全部相等。</p>
+<p>Verification: <code>.venv/Scripts/python.exe manage.py test --noinput</code> and <code>.venv/Scripts/python.exe -m ruff check apps tests scripts config</code> were green before and after. The tools' output shapes and values are held by <code>tests/test_tools.py</code>, and a separate equivalence check comparing the old and new implementations item by item (blob, intensity, histogram, find_edges, caliper_points, apply_mask, mask_for) matched exactly during development.</p>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

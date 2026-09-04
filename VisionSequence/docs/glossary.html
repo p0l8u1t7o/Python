@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 名詞規範</title>
+<title>VisionSequence glossary</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,193 +134,200 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#pages">頁面（左側導覽，路由）</a></li><li><a href="#editor">流程編輯器的區塊</a></li><li><a href="#terms">核心名詞</a></li><li><a href="#port-colors">埠型別顏色（固定，不重複）</a></li><li><a href="#status">狀態用語</a></li><li><a href="#tone">文案用詞規範（商用產品語氣）</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html" aria-current="page">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#pages">Pages (sidebar and routes)</a></li><li><a href="#editor">Parts of the flow editor</a></li><li><a href="#terms">Core terms</a></li><li><a href="#port-colors">Port type colours (fixed, never reused)</a></li><li><a href="#status">Status wording</a></li><li><a href="#tone">Tone of voice</a></li></ul></aside><article class="doc">
 
-<h1>前端名詞規範（溝通用）</h1>
-<p>原則：一個東西只有一個名字；UI 文案、程式識別字、文件三處一致。新名詞先加進這張表再用。</p>
+<h1>Glossary and naming rules</h1>
+<p>One thing, one name — identical in the interface, in the code and in these documents. Add a new term to this table before you use it. The Chinese column is the wording used by the zh-Hant locale, which the translations must follow.</p>
 
-<h2 id="pages">頁面（左側導覽，路由）</h2>
+<h2 id="pages">Pages (sidebar and routes)</h2>
 <table>
-<tr><th>中文</th><th>路由</th><th>程式名</th><th>說明</th></tr>
-<tr><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>左欄＝流程卡垂直清單（點卡＝選擇觀看；編輯器／統計為小圖示鈕），中央＝選中流程的即時影像、右欄＝即時檢測資訊；沒有事件時預設顯示最後一次執行結果（<code>GET /flows/{id}/recent</code>，網頁試執行也算）；訂該流程 SSE 即時更新；一般用戶可看見的流程都能觀看</td></tr>
-<tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
-<tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
-<tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁。版面：左＝參數、中＝執行前/後影像＋下方參考資訊（直方圖/統計/series 橫向排列）、右＝按鍵（儲存/執行到此步驟/自動套用/重用影像/暫存影像）。預設按「執行到此步驟」才跑（可開自動套用）；有 ROI 參數且有值時進頁直接顯示可拖曳；參數只寫共享草稿、「儲存」才寫回後台，「返回」只在真的有未儲存變更時 confirm（儲存後＝新基準）並放棄本頁編輯</td></tr>
-<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal、chips 篩選、下拉選群組）；folder/file 的路徑可開伺服器檔案瀏覽器（GET /vision/fs）選取、usb 可「掃描相機」枚舉伺服器上的裝置（GET /sources/usb-scan）；「下載擷取端」與類型「擷取端相機」（選擷取端與通道，GET /capture/clients）</td></tr>
-<tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（同來源庫：管理群組 Modal、chips 篩選、上傳/編輯下拉選群組 <code>PATCH /assets/{id}</code>）</td></tr>
-<tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>
-<tr><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>金鑰、主題風格（淺色／深色／Cyberpunk／跟隨系統；預覽卡選擇＝唯一切換入口（頂列切換鈕已移除），登入者存進使用者設定 <code>PATCH /auth/prefs</code>）、語言（繁中／簡中／English）、引擎鎖定、密碼</td></tr>
-<tr><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>名詞定義與操作說明</td></tr>
-<tr><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>登入／建立第一個管理員</td></tr>
-<tr><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>單一流程的執行歷史、良率、每小時 OK／NG、耗時趨勢（總覽卡片與頂列都有入口）</td></tr>
-<tr><td>外部整合</td><td><code>/integration/*</code></td><td>IntegrationLayout ＋ pages/integration/*</td><td>每一種整合方式各自獨立頁面（http／tcp／events／modbus／connections／capture／lock／format），側欄可展開成樹狀；每個工具頁面下方有「命令與結果」即時追蹤。舊 <code>?tab=</code> 網址自動轉址</td></tr>
-<tr><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>三欄：左＝步驟清單（點選聚焦、狀態點）、中＝聚焦步驟的教導參數（<code>teach=true</code>，一次一個步驟）、右＝影像視窗＋結果摘要；頂列兩排（動作／配方：綁定標籤、編輯對象、存為新配方、管理配方）；改動即時試執行到該步驟、標記為已教導</td></tr>
-<tr><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>案例表（縮圖、期望、備註、上次結果）、上傳影像新增、執行回歸（可用草稿、存為基準、合格門檻）；結果：KPI、混淆矩陣、退步清單置頂、進步、全部案例</td></tr>
-<tr><td>深度學習</td><td><code>/dl</code></td><td>DlPage</td><td>平台內教導：教導專案、樣本收集（zip 批次、去重）與標記、自動標記與智慧選取、資料集分割與版本、伺服端訓練與裝置選擇、模型匯出到資產庫</td></tr>
-<tr><td>連線</td><td><code>/integration/connections</code>（舊 /connections 轉址）</td><td>ConnectionsSection</td><td>Modbus 主站／從站、上位機 TCP 的連線：種類、依種類的設定表單、狀態、測試連線、手動寫入、狀態檢視（管理員可改）</td></tr>
-<tr><td>全域搜尋</td><td>—（頂部導覽列）</td><td>GlobalSearch</td><td>搜尋全平台內容：頁面、流程、工具、影像來源、連線、資產；預設收合成放大鏡 icon，點擊或 Ctrl+K 展開輸入框（清空離開自動收回）、↑↓ 選擇、Enter 前往</td></tr>
-<tr><td>頂列</td><td>—（AppShell topbar）</td><td>topbar</td><td>右側一律 icon 鈕（gap-1）：搜尋（點開輸入框）、容量 CapacityMenu（icon＋執行數角標，點開列出執行中流程與連續標記）、使用者（頭像，點開名稱／改密碼／登出）；深淺色切換鈕已移除（主題只在設定頁）</td></tr>
+<tr><th>Name</th><th>Chinese</th><th>Route</th><th>Component</th><th>What it is</th></tr>
+<tr><td>Dashboard</td><td>總覽</td><td><code>/</code></td><td>DashboardPage</td><td>Left: a vertical list of flow cards (click to watch; editor and statistics are small icon buttons). Middle: the live image of the selected flow. Right: live inspection detail. With no events it shows the last run (<code>GET /flows/{id}/recent</code>, which includes preview runs from the web interface) and subscribes to that flow's SSE for updates. Any flow the user can see can be watched.</td></tr>
+<tr><td>Flows</td><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>The flow list</td></tr>
+<tr><td>Flow editor</td><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>Canvas, image viewer and inspector</td></tr>
+<tr><td>Tool page</td><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>A page dedicated to tuning one step. Left: parameters. Middle: the image before and after, with reference information below (histogram, statistics and series side by side). Right: the buttons (save, run to this step, auto apply, reuse image, scratch image). By default nothing runs until you press "Run to this step"; auto apply can be turned on. If the step has an ROI parameter with a value, it appears draggable as soon as you open the page. Parameters go into the shared draft; only Save writes them back, and Back only asks for confirmation when there really are unsaved changes (saving becomes the new baseline).</td></tr>
+<tr><td>Image sources</td><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>Cameras, folders and synthetic sources, with user-defined groups (ResourceGroup: a manage-groups dialog, filter chips, a group dropdown). Folder and file paths can be picked with the server file browser (GET /vision/fs); USB sources can scan for cameras on the server (GET /sources/usb-scan). Also "Download capture client" and the "capture client camera" kind (pick a client and a channel, GET /capture/clients).</td></tr>
+<tr><td>Assets</td><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>Template images, model files and dataset archives, with the same user-defined groups as sources (<code>PATCH /assets/{id}</code>)</td></tr>
+<tr><td>Users</td><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>Account management (administrators)</td></tr>
+<tr><td>Settings</td><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>Keys, theme (light, dark, Cyberpunk or follow the system — the preview cards are the only place to switch, and a signed-in user's choice is stored with <code>PATCH /auth/prefs</code>), language (English, 繁中, 简中), the engine lock and the password</td></tr>
+<tr><td>Help</td><td>說明</td><td><code>/help</code></td><td>HelpPage</td><td>Definitions and how-to</td></tr>
+<tr><td>Sign in</td><td>登入</td><td><code>/login</code></td><td>LoginPage</td><td>Sign in, or create the first administrator</td></tr>
+<tr><td>Statistics</td><td>統計</td><td><code>/flows/:id/stats</code></td><td>StatsPage</td><td>One flow's run history, yield, hourly OK/NG and duration trend (reachable from the dashboard card and the editor toolbar)</td></tr>
+<tr><td>Batch test</td><td>批次測試</td><td><code>/batch</code></td><td>BatchPage</td><td>Image sets, batch runs, insights, tuning and comparison</td></tr>
+<tr><td>Deep-learning teaching</td><td>深度學習教導</td><td><code>/dl</code></td><td>DlPage</td><td>Teaching projects, samples, labelling, training and export</td></tr>
+<tr><td>AI assistant</td><td>AI 助手</td><td><code>/agent</code></td><td>AgentPage</td><td>Image plus ROIs plus a prompt, in and a runnable flow out</td></tr>
+<tr><td>Golden Set</td><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>Cases, expectations, regression and baselines</td></tr>
+<tr><td>Teach page</td><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>Every teaching parameter in the flow, grouped by step</td></tr>
+<tr><td>Integration</td><td>外部整合</td><td><code>/integration/*</code></td><td>IntegrationLayout</td><td>One page per integration method, expanding into a tree in the sidebar</td></tr>
+<tr><td>Fleet board</td><td>站台看板</td><td><code>/fleet</code></td><td>FleetPage</td><td>A read-only roll-up of the other stations registered here: online state, today's yield and the age of each number</td></tr>
 </table>
 
-<h2 id="editor">流程編輯器的區塊</h2>
+<h2 id="editor">Parts of the flow editor</h2>
 <table>
-<tr><th>中文</th><th>程式名</th><th>說明</th></tr>
-<tr><td>頂列</td><td>EditorToolbar</td><td>兩列：第一列流程名稱、儲存、範本下拉、「配方」鈕（開配方面板）、綁定配方下拉（有配方才顯示）、「未教導」標籤、參數卡／Golden Set／匯出／統計圖示；第二列試執行、用上次影像重跑、上傳暫存影像、批次測試、連續執行、重置、說明下拉。按鈕圖示＋短文字、寬度不足換行；「執行一次」「上傳影像執行」已移除（整合方走 API）；選取／平移切換在畫布右上角</td></tr>
-<tr><td>工具箱</td><td>ToolPalette（FavoriteTools＋ToolPicker）</td><td>左欄上半＝「新增工具」按鈕＋收藏清單（點擊插入畫布中央、也可拖曳）；按鈕開「選擇工具」視窗：左側功能分群快速切換、右側大圖示卡片與完整說明、可搜尋、可收藏，點卡即插入畫布</td></tr>
-<tr><td>步驟選單</td><td>NodeContextMenu</td><td>右鍵點步驟：開啟工具頁、複製、停用／啟用、刪除、複製參數／貼上參數（同型別）</td></tr>
-<tr><td>配方面板</td><td>RecipeDrawer（<code>components/recipes/</code>）</td><td>流程頁列上「配方」與參數卡頁「管理配方」開的側滑面板：綁定下拉、新增（可「以目前圖值作為覆寫（教導參數）」）／改名／複製／刪除／設綁定／匯出／全部匯出／匯入、展開編輯覆寫表；儲存與新增都先走「儲存範圍 Check List」</td></tr>
-<tr><td>儲存範圍 Check List</td><td>RecipeCheckList（<code>useSaveCheck</code>）</td><td>新增或儲存配方前呼叫 <code>POST /recipes/check</code>（<code>include_all: true</code>，流程所有宣告參數都列出，覆寫沒提到的以圖值列為 unchanged），逐項列出「步驟 › 參數：目前值 → 新值」＋狀態。分兩區：上方「教導參數」（teach=true；ok 預設勾、unchanged 不勾）、下方摺疊「其他參數（N）」（teach=false，預設收合、不勾，展開後可勾；ROI 值顯示摘要「rect 286×215 @ 373,277」）；version_changed 可勾、其餘紅色不可勾；勾選項目送出的值＝清單上的值（unchanged 就是圖值）。「以目前圖值作為覆寫（教導參數）」也走同一份清單</td></tr>
-<tr><td>匯入合理化檢查</td><td>RecipeImportModal</td><td>匯入配方前 <code>POST /recipes/import/check</code>：顯示流程名稱／指紋是否相同、每個配方的檢查清單，勾選後 <code>POST /recipes/import {doc, accept}</code>，結果顯示寫入／略過幾項</td></tr>
-<tr><td>綁定配方</td><td>BoundRecipeSelect／BoundBadge</td><td>「目前綁定執行的配方」= <code>is_default</code>；流程頁每列、編輯器頂列、配方面板都能選；「不用配方（圖值）」= 把目前預設的 is_default 設 false；執行一次／連續／外部觸發未指定 recipe 都用綁定；UI 顯示「綁定：partA」</td></tr>
-<tr><td>側欄摺疊</td><td>AppShell（localStorage <code>vs.sidebar</code>）</td><td>左側主選單可切換「只顯示圖示」／「圖示＋文字」，文字不換行；摺疊時 hover 顯示 tooltip；頂部導覽列與側欄底部都有摺疊鈕</td></tr>
-<tr><td>面板</td><td>Panel／Card（Gentelella x_panel）</td><td>內容以白底、細邊框、頂部標題列＋右側動作圖示、可摺疊的面板呈現；統計 KPI 用 Tile（tile_count：大數字＋小標）</td></tr>
-<tr><td>範本畫廊</td><td>TemplateGallery</td><td>範本卡片（節點示意縮圖）＋選來源＋流程名稱；流程頁「從範本建立」與頂列「載入範本」共用</td></tr>
-<tr><td>步驟清單</td><td>NodeList</td><td>左欄下半：本流程所有步驟；點選畫布聚焦到該步驟</td></tr>
-<tr><td>影像視窗</td><td>ImageViewer</td><td>中欄上方：顯示影像、標記、ROI 編輯</td></tr>
-<tr><td>畫布</td><td>FlowCanvas</td><td>中欄下方：React Flow 畫布；右上角「選取／平移」切換（<code>CanvasModePanel</code>，與縮放滑桿同風格）</td></tr>
-<tr><td>側欄</td><td>Inspector</td><td>右欄：流程共用設定／選取步驟的基本設定與「開啟工具頁」</td></tr>
-<tr><td>結果分頁</td><td>ResultsPanel</td><td>側欄的「結果」分頁：最近執行（有配方時多一欄）、輸出值、錯誤、警告（<code>RunWarnings</code>：run.warnings 的黃色提示）</td></tr>
-<tr><td>鎖定橫幅</td><td>LockBanner</td><td>引擎鎖定時的黃色橫幅</td></tr>
+<tr><th>Name</th><th>Chinese</th><th>Component</th><th>What it is</th></tr>
+<tr><td>Toolbar</td><td>頂列</td><td>EditorToolbar</td><td>Two rows. First: the flow name, Save, the template dropdown, Recipes (opens the drawer), the bound-recipe dropdown (only when recipes exist), the "not commissioned" tag, and icons for the teach page, Golden Set, export and statistics. Second: preview, re-run with the last image, upload a scratch image, batch test, continuous, reset and the help dropdown. Buttons are an icon plus short text and wrap when there is no room. Select/pan is in the top-right corner of the canvas.</td></tr>
+<tr><td>Tool palette</td><td>工具箱</td><td>ToolPalette (FavoriteTools + ToolPicker)</td><td>Top of the left column: an "Add tool" button plus the favourites list (click to insert at the centre of the canvas, or drag). The button opens the "Choose a tool" dialog: categories on the left, a grid of tool cards in the middle, and the full description of the selected tool on the right, searchable and favouritable; a click inserts it.</td></tr>
+<tr><td>Step menu</td><td>步驟選單</td><td>NodeContextMenu</td><td>Right-click a step: open the tool page, duplicate, disable/enable, delete, copy or paste parameters (same type only)</td></tr>
+<tr><td>Recipe drawer</td><td>配方面板</td><td>RecipeDrawer (<code>components/recipes/</code>)</td><td>Opened from "Recipes" on the flow list and "Manage recipes" on the teach page: the binding dropdown, add (optionally "use the current graph values as overrides (teaching parameters)"), rename, duplicate, delete, set as bound, export, export all, import, and an expandable override table. Saving and adding both go through the save-scope checklist.</td></tr>
+<tr><td>Save-scope checklist</td><td>儲存範圍 Check List</td><td>RecipeCheckList (<code>useSaveCheck</code>)</td><td>Before adding or saving a recipe it calls <code>POST /recipes/check</code> with <code>include_all: true</code>, so every declared parameter in the flow is listed — anything the overrides do not mention appears as unchanged at its graph value — as "step › parameter: current → new" with a status. Two sections: teaching parameters on top (teach=true; ok is ticked by default, unchanged is not) and a collapsed "Other parameters (N)" below (teach=false, collapsed and unticked, tickable once expanded; an ROI value is summarised as "rect 286×215 @ 373,277"). version_changed can be ticked; anything else in red cannot. The value sent for a ticked row is the value shown, so unchanged means the graph value. "Use the current graph values as overrides" runs through the same list.</td></tr>
+<tr><td>Import check</td><td>匯入合理化檢查</td><td>RecipeImportModal</td><td>Before importing recipes, <code>POST /recipes/import/check</code> shows whether the flow name and fingerprint match and a checklist per recipe. Tick and send <code>POST /recipes/import {doc, accept}</code>; the result says how many were written and how many skipped.</td></tr>
+<tr><td>Bound recipe</td><td>綁定配方</td><td>BoundRecipeSelect / BoundBadge</td><td>"The recipe currently bound for execution" = <code>is_default</code>. Selectable on each flow row, in the editor toolbar and in the recipe drawer. "No recipe (graph values)" clears is_default. Run once, continuous and external triggers without a <code>recipe</code> all use the bound one. Shown as "Bound: partA".</td></tr>
+<tr><td>Sidebar collapse</td><td>側欄摺疊</td><td>AppShell (localStorage <code>vs.sidebar</code>)</td><td>The main menu switches between icons only and icons with labels; labels never wrap. Collapsed, hovering shows a tooltip. There is a collapse button in the top bar and at the bottom of the sidebar.</td></tr>
+<tr><td>Panel</td><td>面板</td><td>Panel / Card</td><td>Content sits on a white panel with a thin border, a title bar with action icons on the right, and optional collapsing. Statistics KPIs use a Tile: a big number with a small label.</td></tr>
+<tr><td>Template gallery</td><td>範本畫廊</td><td>TemplateGallery</td><td>Template cards with a node thumbnail, a source picker and a flow name; shared by "Create from template" on the flows page and "Load template" in the toolbar</td></tr>
+<tr><td>Step list</td><td>步驟清單</td><td>NodeList</td><td>Bottom of the left column: every step in the flow; clicking focuses the canvas on it</td></tr>
+<tr><td>Image viewer</td><td>影像視窗</td><td>ImageViewer</td><td>Top of the middle column: the image, the overlays and ROI editing</td></tr>
+<tr><td>Canvas</td><td>畫布</td><td>FlowCanvas</td><td>Bottom of the middle column: the React Flow canvas, with select/pan in the top-right corner (<code>CanvasModePanel</code>, styled like the zoom slider)</td></tr>
+<tr><td>Inspector</td><td>側欄</td><td>Inspector</td><td>Right column: the flow's shared settings, or the selected step's basics and "Open tool page"</td></tr>
+<tr><td>Results panel</td><td>結果分頁</td><td>ResultsPanel</td><td>The Results tab in the inspector: recent runs (with an extra column when recipes exist), output values, errors and warnings (<code>RunWarnings</code>, the yellow notices from run.warnings)</td></tr>
+<tr><td>Lock banner</td><td>鎖定橫幅</td><td>LockBanner</td><td>The yellow banner shown while the engine is locked</td></tr>
 </table>
 
-<h2 id="terms">核心名詞</h2>
+<h2 id="terms">Core terms</h2>
 <table>
-<tr><th>中文</th><th>英文／程式</th><th>定義</th></tr>
-<tr><td>流程</td><td>Flow</td><td>一張檢測圖（節點＋連線）；每位使用者各自擁有</td></tr>
-<tr><td>步驟</td><td>Node</td><td>畫布上的一個方塊；一個步驟就是一個工具的實例</td></tr>
-<tr><td>工具</td><td>Tool（ToolTypeDef）</td><td>工具箱裡的種類（灰階、Blob…）；<code>key</code> 是唯一識別字</td></tr>
-<tr><td>連線</td><td>Edge</td><td>步驟之間的線：來源輸出埠 → 目標輸入埠</td></tr>
-<tr><td>埠</td><td>Port</td><td>步驟左側為輸入埠、右側為輸出埠；有型別</td></tr>
-<tr><td>分支把手</td><td>Flow handle</td><td>型別為 <code>flow</code> 的輸出埠（true／false 等），只能接到步驟的「控制輸入」（菱形）</td></tr>
-<tr><td>參數</td><td>Param</td><td>步驟的設定值；種類是封閉集合（number、select、roi…）</td></tr>
-<tr><td>教導參數 / 參數卡</td><td>Teach param（<code>Param.teach</code>）／ Teach page</td><td>需要現場調機的參數（門檻、極性、公差…），工具定義以 <code>teach=True</code> 標記；「參數卡」頁只列全流程的教導參數，依步驟分組，換線調機不必開畫布</td></tr>
-<tr><td>公差判定</td><td>Tolerance judge（<code>tolerance_judge</code>）</td><td>量測值與「標稱值＋上偏差／＋下偏差」比較，走 pass／fail 分支；判定連同 nominal／upper／lower／unit／spec_source（圖面出處）寫進 <code>run.outputs.tolerances</code>，供 Cpk 與追溯</td></tr>
-<tr><td>同心度</td><td>Concentricity（<code>concentricity</code>）</td><td>兩圓圓心偏移量（deviation）；GD&amp;T 同心度 = 2×偏移，超過 max_deviation 走 ng 分支</td></tr>
-<tr><td>壁厚</td><td>Wall thickness（<code>wall_thickness</code>）</td><td>沿剖面找「外緣→內緣」成對邊緣的距離；多條卡尺取 min／max／mean</td></tr>
-<tr><td>區域 / ROI</td><td>Region</td><td>在影像上畫的檢測範圍（矩形、旋轉矩形、圓、環、多邊形、線）</td></tr>
-<tr><td>標記</td><td>Overlay</td><td>工具畫在影像上的結果圖形（框、圓、點、文字…）</td></tr>
-<tr><td>執行</td><td>Run</td><td>一次完整（或到某步驟為止）的流程執行；結果為 OK／NG／失敗</td></tr>
-<tr><td>試執行</td><td>Preview</td><td>用未儲存的圖執行、保留所有中間影像；不寫入歷史</td></tr>
-<tr><td>執行一次</td><td>Run once</td><td>用已儲存的圖執行一次；寫入歷史與統計。UI 已無此按鈕（整合方走 <code>POST /flows/{id}/run</code>、TCP 或整合頁）</td></tr>
-<tr><td>連續執行</td><td>Continuous</td><td>依間隔不停執行</td></tr>
-<tr><td>暫存影像</td><td>Scratch image</td><td>只為試執行上傳的影像，不進影像來源庫</td></tr>
-<tr><td>影像來源</td><td>Image source</td><td>相機／資料夾／合成／API 送圖／擷取端相機的定義</td></tr>
-<tr><td>擷取端</td><td>Capture client（vscapture）</td><td>裝在相機所在電腦的桌面程式：驅動網路攝影機／Basler／IDS，主動連到伺服端擷取埠（9100）；同一台電腦以共享記憶體、跨電腦以 TCP 無損傳影像</td></tr>
-<tr><td>通道</td><td>Channel</td><td>擷取端裡的一台相機（名稱、種類、裝置、ROI、參數、傳送設定）；網頁來源以「擷取端＋通道」指定</td></tr>
-<tr><td>擷取端相機</td><td>Capture source（kind=capture）</td><td>影像來源種類：client／channel／mode／timeout_ms／fresh／encoding</td></tr>
-<tr><td>依需求取像 / 連續串流</td><td>On demand / Stream</td><td>每次執行向擷取端要一張觸發之後的新影格；或擷取端依 fps 上限持續推最新影格、執行時直接取用</td></tr>
-<tr><td>共享記憶體</td><td>Shared memory（shm）</td><td>擷取端與伺服端在同一台電腦時的影像通道：擷取端建立區段與槽、FRAME 訊息通知、伺服端 copy 一次後 SLOT_FREE 歸還</td></tr>
-<tr><td>資產</td><td>Asset</td><td>範本影像、ONNX 模型等檔案</td></tr>
-<tr><td>判定</td><td>Judge</td><td>OK／NG 的結論（judge 工具）</td></tr>
-<tr><td>具名輸出</td><td>Output</td><td>回傳給自動化系統的鍵值（output 工具）</td></tr>
-<tr><td>引擎鎖定</td><td>Engine lock</td><td>整合方鎖住硬體：其他人只能編輯不能執行</td></tr>
-<tr><td>整合方</td><td>Integrator</td><td>以 API 金鑰呼叫的自動化系統</td></tr>
-<tr><td>重置</td><td>Reset</td><td>清除該流程在記憶體內的執行紀錄與統計</td></tr>
-<tr><td>範本庫</td><td>Template library（FlowTemplate）</td><td>流程範本：內建（<code>builtin:&lt;key&gt;</code>）或自訂（存為範本）；來源 id 以 <code>{SOURCE}</code> 佔位，建立／載入時再選影像來源</td></tr>
-<tr><td>範本</td><td>Template</td><td>範本庫裡的一筆；「載入範本」以 <code>t{n}_</code> 前綴改節點 id 避免撞名；範例樣板（<code>demo.BUILTIN_TEMPLATES</code>）都在這裡，配「範例：⋯」樣本來源即可執行</td></tr>
-<tr><td>註解</td><td>Note（畫布便利貼）</td><td>graph 的裝飾節點（type=note，不參與執行）；工具箱「新增註解」放到畫布中央，選中後在屬性面板改標題／內文、拖角落調大小</td></tr>
-<tr><td>批次測試</td><td>Batch test（<code>/batch</code>、BatchPage、<code>apps/vision/batch</code>）</td><td>選流程用影像集批量執行並暫存每次逐張結果的調機工作台；含期望標記、洞察、調參重跑、比較、AI 諮詢與調整</td></tr>
-<tr><td>影像集</td><td>Batch set（<code>BatchSet</code>）</td><td>一組批量測試用的影像＋每張的期望標記（OK／NG）；檔案在 ASSET_DIR/batch/</td></tr>
-<tr><td>批次執行</td><td>Batch run（<code>BatchRun</code>、執行紀錄）</td><td>用某份 graph 快照跑影像集的一次執行；逐張結果與 summary 暫存，origin＝手動／草稿／自動調參／AI 調整，parent 串起調參前後</td></tr>
-<tr><td>資料洞察</td><td>Insights（<code>batch/insights.py</code>、洞察分頁）</td><td>命中率、混淆矩陣、未命中影像、出錯節點、建議門檻、輸出分佈、與上一次差異</td></tr>
-<tr><td>建議門檻</td><td>Threshold suggestion（<code>insights.judges[].suggestion</code>）</td><td>依期望 OK／NG 兩群的判定輸入值找出的較佳門檻，可一鍵套用到調參面板</td></tr>
-<tr><td>資料諮詢</td><td>Consult（<code>POST /agent/consult</code>）</td><td>針對一次批次執行的資料提問；規則洞察＋LLM 回答，附可套用的參數建議</td></tr>
-<tr><td>全域 AI 助手</td><td>Assistant dock（<code>AssistantDock</code>、<code>POST /agent/chat</code>）</td><td>右下角常駐的聊天視窗，切換頁面不消失（對話存瀏覽器）；依頁面脈絡分流：使用說明問答、修改流程、資料諮詢、依資料調整</td></tr>
-<tr><td>使用說明問答</td><td>Help answer（<code>agent/help.py</code>、模式「使用說明」）</td><td>把 docs 章節與工具技能建成檢索索引，依問題找相關段落；LLM 只依片段回答並引用章節，離線時回文件節錄與 <code>/docs/</code> 連結</td></tr>
-<tr><td>助手脈絡</td><td>Assistant context（<code>useRegisterAssistantContext</code>、<code>lib/assistantContext.ts</code>）</td><td>頁面登記給全域助手的資訊：kind（流程編輯器／工具頁／批次測試…）、目前 graph、套用回呼、批次執行 id；離開頁面自動清除</td></tr>
-<tr><td>工作階段</td><td>Agent session（<code>AgentSession</code>、<code>/agent/sessions</code>、AI 助手頁「歷史」）</td><td>一次 AI 助手生成的完整記錄（影像、ROI、需求、流程、判定、評分）；可還原、可當相似影像的參數先驗</td></tr>
-<tr><td>參數先驗</td><td>Prior（<code>memory.priors_from_sessions</code>、候選「沿用過去成功參數」）</td><td>相似成功案例的現場調機參數，套到新草稿、自動調參候選最前與 LLM 的過去案例段</td></tr>
-<tr><td>補充要領</td><td>Custom skill（<code>AgentSkill</code>、<code>/agent/skills/custom</code>）</td><td>站點（管理員）或個人對內建 AI 技能的 markdown 補充；站點進 system 段、個人進 user 訊息</td></tr>
-<tr><td>代理模式</td><td>Agentic mode（<code>AgentSettings.mode</code>、<code>/agent/jobs</code>、AgentTimeline）</td><td>AI 助手以動作（試跑、修改、驗證、提問）逐步完成流程的背景工作，前端顯示步驟時間軸；相對於「單次生成」</td></tr>
-<tr><td>步驟時間軸</td><td>Step timeline（<code>AgentTimeline</code>、job.steps）</td><td>代理工作的每個動作／回覆／提問／完成記錄，含摘要與耗時；執行中可中斷</td></tr>
-<tr><td>候選方案</td><td>Candidate（<code>synth.candidates</code>、<code>candidates[]</code>）</td><td>AI 助手規則引擎對同一意圖產出的主要方案＋參數變體；全部試跑後依影像標記打分，勝者正式跑，可在助手頁切換</td></tr>
-<tr><td>影像標記</td><td>Image label（<code>GenerateIn.labels</code>、縮圖右下角 OK／NG）</td><td>每張上傳影像的期望判定；候選排名與自動調參的依據，ROI 提示「好品／壞品」亦自動成為標記</td></tr>
-<tr><td>自動調參</td><td>Autotune（<code>apps/vision/agent/autotune.py</code>、<code>/agent/autotune</code>、<code>/golden/autotune</code>）</td><td>資料驅動的座標下降：只動 teach 參數、嚴格變好才採納；入口為 AI 助手生成、批次測試「自動調參」、Golden Set「自動調參」</td></tr>
-<tr><td>定位補正三件套</td><td>Locate wrap（<code>synth.wrap_with_locate</code>；ROI 提示「定位」）</td><td>範本比對 → 定位補正 → ROI 跟隨；AI 助手在工件位置會變時自動包在流程前面</td></tr>
-<tr><td>AI 助手</td><td>Agent（<code>/agent</code>、AgentPage、<code>apps/vision/agent</code>）</td><td>上傳影像＋圈 ROI＋提示詞 → 自動生成流程 graph 並實跑；離線規則引擎（意圖→合成器）＋可選 LLM 生成（<code>VISION_AGENT_API_KEY</code>）。見 docs/agent.html</td></tr>
-<tr><td>批次測試</td><td>Batch test</td><td>多張影像（檔案／來源抓 N 張，≤50）用目前的圖各跑一次試執行，看良率與每張判定；影像只保留最近 8 次（KEEP_RUN_IMAGES），被淘汰的顯示「影像已釋放」</td></tr>
-<tr><td>統計</td><td>Statistics（StatsPage）</td><td>資料庫歷史的 KPI、每小時 OK／NG／失敗、耗時趨勢與執行歷史表；「記憶體即時統計」是引擎內的 FlowStats</td></tr>
-<tr><td>整合頁</td><td>Integration page</td><td>外部整合方的接口說明與測試工具；每一種整合方式一個獨立頁面，側欄樹狀展開</td></tr>
-<tr><td>命令與結果</td><td>Trace（整合追蹤）</td><td>整合頁下方的即時紀錄：這個介面收到的命令與回覆（時間、方向、耗時、成功與否、完整內容）；行程內環形緩衝，關頁後只留錯誤</td></tr>
-<tr><td>Modbus 主站／從站</td><td>Modbus client / server</td><td>主站（<code>modbus_tcp</code>）＝平台連到 PLC 去讀寫；從站（<code>modbus_server</code>）＝平台開埠，PLC 當主站來讀寫平台的暫存器</td></tr>
-<tr><td>收藏</td><td>Favorites</td><td>工具箱裡按星號的工具（localStorage <code>vs.favoriteTools</code>）；「最近使用」已移除</td></tr>
-<tr><td>已教導 / 未教導</td><td>Commissioned（<code>Flow.commissioned</code>）</td><td>參數卡頁「標記為已教導」後為 true；false 時流程列表／總覽／頂列顯示「未教導」標籤，執行的 <code>RunReport.warnings</code> 帶「未完成現場教導」但不阻擋</td></tr>
-<tr><td>配方</td><td>Recipe（<code>FlowRecipe</code>）</td><td>同一流程的一組參數覆寫 <code>param_overrides = {node_id: {param: value}}</code>，多料號換線用；執行／試執行／TCP <code>recipe=</code> 可指定（名稱或 id），未指定用綁定配方（is_default）；參數卡頁「編輯對象」選了配方後改動寫進配方而非圖</td></tr>
-<tr><td>覆寫</td><td>Override</td><td>配方裡的一筆「步驟.參數＝值」；執行時疊到圖上再編譯</td></tr>
-<tr><td>Golden Set</td><td>Golden Set（<code>GoldenCase</code>）</td><td>有期望值（OK／NG／不限）的影像案例集，存在伺服器（不進影像快取）；來自上傳或批次測試結果</td></tr>
-<tr><td>案例</td><td>Golden case</td><td>Golden Set 裡的一張影像＋期望狀態＋（可選）期望輸出＋備註</td></tr>
-<tr><td>回歸</td><td>Regression（<code>POST /regress</code>）</td><td>以正式模式執行全部案例，與期望值和基準比對：total／match／mismatch／match_rate、混淆矩陣、退步（regressed）／進步（improved）清單；只對 mismatch 的案例保留影像</td></tr>
-<tr><td>基準</td><td>Baseline（<code>GoldenBaseline</code>）</td><td>某次回歸「存為基準」後每個案例的結果；下次回歸以它算退步／進步與「與基準不同」</td></tr>
-<tr><td>退步 / 進步</td><td>Regressed / Improved</td><td>基準符合、這次不符 = 退步（was → now）；反之 = 進步。改參數後最該看的清單</td></tr>
-<tr><td>合格門檻</td><td>fail_under</td><td>回歸的 match_rate 低於此值判定為未通過（CLI 退出碼非 0）</td></tr>
-<tr><td>站台</td><td>Station（<code>station_id</code>）</td><td>每筆 run 帶的站台代號（<code>VISION_STATION_ID</code>）；總覽卡片、統計頁顯示</td></tr>
-<tr><td>連線</td><td>Connection（<code>apps/comm</code>）</td><td>主動輸出到 Modbus TCP／上位機的連線定義：kind ∈ modbus_tcp／tcp_client／dio_sim／plugin；write_modbus 工具以連線名稱引用（畫布上的「連線」Edge 是另一回事）</td></tr>
-<tr><td>寫入 Modbus</td><td>write_modbus</td><td>輸出類工具：依對映表（mapping：src → address，含 dtype／scale／offset／value）把判定、具名輸出或輸入埠的值寫到連線；失敗預設降級記警告</td></tr>
-<tr><td>教導專案</td><td>DlProject（<code>apps/vision/dl</code>）</td><td>一種模型（trainer kind）＋類別清單＋樣本集；訓練產物匯出成 kind=model 的資產</td></tr>
-<tr><td>自動標記</td><td>Auto label（<code>Trainer.suggest</code>）</td><td>對未標記樣本提出建議類別與信心分數（虛線框顯示、批次接受）；接受後記為 auto、人工確認轉 human</td></tr>
-<tr><td>模型種類</td><td>Trainer（<code>apps/vision/dl/base.py</code>）</td><td>可訓練的模型類型 registry；宣告超參數（Param）、標記模式、支援裝置，實作 train／suggest；外掛可新增</td></tr>
-<tr><td>標記編輯器</td><td>ShapeWorkspace（<code>components/dl</code>）</td><td>shapes 模式（分割／偵測）的標記工作區：縮圖牆巡檢、polygon/bbox 編輯、自動優化（輪廓貼邊）、快捷鍵；座標 0~1 正規化</td></tr>
-<tr><td>大圖檢視</td><td>ClassifyWorkspace（<code>components/dl</code>）</td><td>分類教導的大圖工作區：縮圖牆＋原圖檢視器（縮放／1:1）＋類別按鈕標記；與網格檢視切換、共用篩選</td></tr>
-<tr><td>工具欄</td><td>ToolRail（標記編輯器內）</td><td>標記編輯器畫布左側的大圖示垂直工具欄：選取／多邊形／框／智慧選取／自動優化／刪除／還原，各鈕標示快捷鍵</td></tr>
-<tr><td>智慧選取</td><td>Smart select（<code>apps/vision/dl/sam.py</code>）</td><td>標記編輯器的 SAM 點擊標記：點選物件 → 伺服端分割出輪廓 → polygon 掛目前類別；權重預設 mobile_sam.pt 自動下載，需可選安裝 ultralytics</td></tr>
-<tr><td>資料集分割</td><td>Split（<code>DlSample.split</code>）</td><td>train／val／test／未指定；「自動分割」分層隨機指派，狀態列分割 chip 可單張切換；val 當驗證集、test 不進訓練</td></tr>
-<tr><td>資料集版本</td><td>Dataset version（<code>DlDatasetVersion</code>）</td><td>凍結當下樣本＋標記＋分割成 zip 存進資產庫（kind=dataset）；shapes=YOLO 樹、classes=類別資料夾＋manifest；可下載、刪除</td></tr>
-<tr><td>資料增強</td><td>Augment（超參數「增強」群組）</td><td>訓練時擴增樣本：內建模型為翻轉＋亮度擾動（只加訓練集）、yolo_seg 曝露 degrees／fliplr／mosaic；預設關閉</td></tr>
-<tr><td>重複偵測</td><td>Dedupe（<code>DlSample.sha256</code>）</td><td>上傳／匯入／連抓時以解碼後像素的 SHA256 在同專案內去重，回報 duplicates 張數</td></tr>
-<tr><td>DL 實例分割</td><td>dl_instance</td><td>DL 類工具：YOLO-seg 風格 ONNX 推論（letterbox、NMS、mask 合成），輸出每個實例的輪廓／類別／分數；可在深度學習頁教導</td></tr>
-<tr><td>YOLO 工具</td><td>yolo_detect／yolo_segment／yolo_classify／yolo_pose／yolo_obb</td><td>DL 類工具：ultralytics 原生推論（torch，GPU 自動使用），模型選教導頁訓練的 .pt 資產或填官方底模名稱；姿態回關鍵點、OBB 回旋轉矩形</td></tr>
-<tr><td>智慧框選</td><td>Smart box（標記編輯器 X、<code>sam-point boxes</code>）</td><td>拖曳一個框，SAM2 回傳框內物件輪廓；與智慧選取（點擊）並列</td></tr>
-<tr><td>SAM 全圖提案</td><td>SAM proposals（<code>auto-label method=sam</code>）</td><td>沒有模型也能自動標記：SAM2 對整張影像自動分割，提案掛第一個類別待確認</td></tr>
-<tr><td>DL 依賴</td><td><code>requirements-dl.txt</code>、<code>scripts/setup_dl.ps1</code>、<code>manage.py dl_check</code></td><td>可選的 torch／ultralytics／onnxruntime-gpu 安裝（順序：先 torch cu128）與驗證指令；踩坑見 dl.html §11</td></tr>
-<tr><td>外掛</td><td>Plugin（<code>plugins/</code>、<code>apps/core/plugins.py</code>）</td><td>繼承 Tool／Grabber／Writer 的 .py 丟進 <code>plugins/</code> 資料夾即自動掛載；外掛內以 ENABLED／label／description 變數控制掛載與顯示（見 plugins.html）</td></tr>
-<tr><td>主題風格</td><td>Theme（<code>ThemeProvider</code>／<code>UserPref</code>）</td><td>light／dark／cyber（Temp/Style.md 的 Cyberpunk：霓虹綠、銳角、掃描線只鋪在頁面底與側欄——不覆疊影像區，全走 CSS 變數 tokens）／system；localStorage＋登入者回寫 /auth/prefs、/auth/me 帶回跨裝置套用</td></tr>
-<tr><td>影像位深</td><td>Depth（<code>tools/imgfmt.py</code>／<code>Tool.accepts</code>）</td><td>u8／u16／f32（NI 的 U8/I16/SGL/RGB U64 對照）；宣告外位深進工具時自動正規化 u8，顯式轉換用「位深轉換」工具；讀檔 IMREAD_UNCHANGED 保留 16-bit</td></tr>
-<tr><td>檢測功能設計</td><td>docs/vision-capabilities.html</td><td>ROI 工具種類（含 ellipse/point/polyline/annulus 扇形）、位深設計、檢測工具總覽（lut/filter/fft_filter/convert_depth/warp_perspective/line_profile/color_stats/geometry 等）與取捨</td></tr>
-<tr><td>手動寫入</td><td>Manual write</td><td>連線頁對某條連線送一筆 values（JSON）測試；dio_sim 可在「狀態檢視」看到通道值</td></tr>
-<tr><td>匯出 / 匯入</td><td>Export / Import（<code>.flow.json</code>）</td><td>匯出：穩定序列化的流程檔（可進 git）；匯入：依檔內名稱 upsert，取像步驟的 <code>{SOURCE}</code> 佔位以選的來源取代；沒選來源時更新既有流程沿用原來源、新建流程留空</td></tr>
+<tr><th>Term</th><th>Chinese</th><th>Definition</th></tr>
+<tr><td>Flow</td><td>流程</td><td>One inspection graph of nodes and edges. A flow belongs to the line, not to a person: anyone signed in can see it, and an engineer or administrator can edit it.</td></tr>
+<tr><td>Node / step</td><td>步驟</td><td>One box on the canvas — an instance of a tool</td></tr>
+<tr><td>Tool</td><td>工具</td><td>A kind in the palette (grayscale, blob, …); <code>key</code> is its unique identifier</td></tr>
+<tr><td>Edge</td><td>連線</td><td>A line between steps: an output port to an input port</td></tr>
+<tr><td>Port</td><td>埠</td><td>Inputs on the left of a step, outputs on the right; each has a type</td></tr>
+<tr><td>Flow handle</td><td>分支把手</td><td>An output port of type <code>flow</code> (true, false and so on); it can only connect to a step's diamond-shaped control input</td></tr>
+<tr><td>Parameter</td><td>參數</td><td>A step's setting; the kinds are a closed set (number, select, roi, …)</td></tr>
+<tr><td>Teaching parameter / teach page</td><td>教導參數／參數卡</td><td>A parameter that has to be adjusted on the line (a threshold, a polarity, a tolerance), marked <code>teach=True</code> in the tool definition. The teach page lists only these, grouped by step, so a changeover needs no canvas.</td></tr>
+<tr><td>Tolerance judge</td><td>公差判定</td><td>Compares a measurement against a nominal with upper and lower deviations and branches pass or fail. The verdict, nominal, upper, lower, unit and spec_source (where on the drawing it comes from) are written into <code>run.outputs.tolerances</code> for Cpk and traceability.</td></tr>
+<tr><td>Concentricity</td><td>同心度</td><td>The centre offset between two circles. GD&amp;T concentricity is twice the offset; over max_deviation takes the ng branch.</td></tr>
+<tr><td>Wall thickness</td><td>壁厚</td><td>The distance between paired outer and inner edges along a section, with min, max or mean over several calipers</td></tr>
+<tr><td>Region / ROI</td><td>區域／ROI</td><td>The area drawn on the image to inspect (rectangle, rotated rectangle, ellipse, annulus, polygon, polyline, line, point)</td></tr>
+<tr><td>Overlay</td><td>標記</td><td>The result graphics a tool draws on the image (boxes, circles, points, text). Metadata only — never burned into the image.</td></tr>
+<tr><td>Run</td><td>執行</td><td>One execution of the flow, complete or up to a step; the result is OK, NG or failed</td></tr>
+<tr><td>Preview</td><td>試執行</td><td>Runs the unsaved graph and keeps every intermediate image; not written to history</td></tr>
+<tr><td>Run once</td><td>執行一次</td><td>Runs the saved graph once and does write history and statistics. There is no button for it in the editor any more — integrators call <code>POST /flows/{id}/run</code>, TCP or the integration page.</td></tr>
+<tr><td>Continuous</td><td>連續執行</td><td>Runs repeatedly at an interval</td></tr>
+<tr><td>Scratch image</td><td>暫存影像</td><td>An image uploaded only for a preview; it does not join the source library</td></tr>
+<tr><td>Image source</td><td>影像來源</td><td>The definition of a camera, folder, synthetic generator, pushed image or capture client camera</td></tr>
+<tr><td>Capture client</td><td>擷取端</td><td>The desktop program (vscapture) installed on the PC the camera is attached to: it drives webcams, Basler and IDS cameras and connects out to the server's capture port 9100. Shared memory on the same machine, lossless TCP across machines.</td></tr>
+<tr><td>Channel</td><td>通道</td><td>One camera inside a capture client (name, kind, device, ROI, parameters, delivery settings). A web source names a client plus a channel.</td></tr>
+<tr><td>Capture source</td><td>擷取端相機</td><td>The <code>kind=capture</code> image source: client, channel, mode, timeout_ms, fresh, encoding</td></tr>
+<tr><td>On demand / stream</td><td>依需求取像／連續串流</td><td>Ask the capture client for a frame taken after the request; or have it push the latest frame up to an fps limit and take whatever is current</td></tr>
+<tr><td>Shared memory</td><td>共享記憶體</td><td>The image path when the capture client and the server are on one machine: the client creates a segment with slots, a FRAME message announces one, and the server copies it once and returns it with SLOT_FREE</td></tr>
+<tr><td>Asset</td><td>資產</td><td>A file: a template image, an ONNX model, a dataset archive</td></tr>
+<tr><td>Judge</td><td>判定</td><td>The OK/NG conclusion, from the judge tool</td></tr>
+<tr><td>Named output</td><td>具名輸出</td><td>A key and value returned to the automation system, from the output tool</td></tr>
+<tr><td>Engine lock</td><td>引擎鎖定</td><td>An integrator holding the hardware: everyone else can edit but not execute</td></tr>
+<tr><td>Integrator</td><td>整合方</td><td>An automation system calling with an API key</td></tr>
+<tr><td>Role</td><td>角色</td><td>administrator, engineer or operator (<code>UserPref.role</code>). An administrator manages accounts, connections and settings; an engineer edits flows; an operator may only change teaching parameters, and the server enforces it.</td></tr>
+<tr><td>Reset</td><td>重置</td><td>Clears that flow's in-memory run records and statistics</td></tr>
+<tr><td>Template library</td><td>範本庫</td><td>Flow templates, built in (<code>builtin:&lt;key&gt;</code>) or your own ("save as template"). The source id is the placeholder <code>{SOURCE}</code>, chosen when you create or load.</td></tr>
+<tr><td>Template</td><td>範本</td><td>One entry in the library. "Load template" prefixes node ids with <code>t{n}_</code> to avoid collisions. The example templates (<code>demo.BUILTIN_TEMPLATES</code>) live here and run as they are with the matching "Example: …" source.</td></tr>
+<tr><td>Note</td><td>註解</td><td>A decorative node in the graph (type=note, never executed). "Add note" drops one in the centre of the canvas; edit its title and body in the inspector and drag the corner to resize.</td></tr>
+<tr><td>Batch test</td><td>批次測試</td><td>The tuning workbench at <code>/batch</code>: run an image set through a flow and keep every image's result, with expected labels, insights, re-running after tuning, comparison and AI consultation</td></tr>
+<tr><td>Image set</td><td>影像集</td><td>A set of test images plus the expected label (OK/NG) of each; the files live in ASSET_DIR/batch/</td></tr>
+<tr><td>Batch run</td><td>批次執行</td><td>One execution of an image set against a graph snapshot. Per-image results and a summary are kept; origin is manual, draft, autotune or ai_tune, and parent links a tuning before to its after.</td></tr>
+<tr><td>Insights</td><td>資料洞察</td><td>Hit rate, confusion matrix, missed images, failing nodes, suggested thresholds, output distributions and the difference from last time</td></tr>
+<tr><td>Threshold suggestion</td><td>建議門檻</td><td>A better threshold derived from the judging input values of the expected-OK and expected-NG groups, applicable in one click</td></tr>
+<tr><td>Consult</td><td>資料諮詢</td><td>Ask a question about one batch run's data: rule-based insights plus an LLM answer, with parameter suggestions you can apply</td></tr>
+<tr><td>Assistant dock</td><td>全域 AI 助手</td><td>The chat panel pinned to the bottom-right corner that survives page changes (the conversation lives in the browser). It routes on page context: help answers, editing a flow, consulting on data, tuning from data.</td></tr>
+<tr><td>Help answer</td><td>使用說明問答</td><td>The documentation sections and tool skills are indexed for retrieval; the question finds the relevant passages, the LLM answers only from them and cites the sections, and offline it returns an extract with a <code>/docs/</code> link</td></tr>
+<tr><td>Assistant context</td><td>助手脈絡</td><td>What a page registers with the global assistant: kind (editor, tool page, batch test, …), the current graph, apply callbacks, the batch run id. Cleared when you leave the page.</td></tr>
+<tr><td>Agent session</td><td>工作階段</td><td>The complete record of one AI assistant generation (image, ROIs, request, flow, verdicts, rating). It can be restored, and used as a prior for similar images.</td></tr>
+<tr><td>Prior</td><td>參數先驗</td><td>The on-site teaching parameters of a similar successful case, applied to a new draft, put first among the auto-tuning candidates and included as a past example for the LLM</td></tr>
+<tr><td>Custom skill</td><td>補充要領</td><td>A site-wide (administrator) or personal markdown supplement to the built-in AI skills. Site text goes into the system prompt, personal text into the user message.</td></tr>
+<tr><td>Agentic mode</td><td>代理模式</td><td>The assistant working towards a flow step by step through actions (try, edit, verify, ask) as a background job, with a step timeline in the interface — as opposed to a single generation</td></tr>
+<tr><td>Step timeline</td><td>步驟時間軸</td><td>Every action, reply, question and completion of an agent job, with a summary and a duration; it can be interrupted while running</td></tr>
+<tr><td>Candidate</td><td>候選方案</td><td>The main solution plus parameter variants the rule engine produces for one intent. All are run silently and scored against the image labels; the winner runs for real, and you can switch between them on the assistant page.</td></tr>
+<tr><td>Image label</td><td>影像標記</td><td>The expected verdict of each uploaded image — the basis for ranking candidates and for auto-tuning. An ROI hint of "good" or "bad" becomes a label automatically.</td></tr>
+<tr><td>Autotune</td><td>自動調參</td><td>Data-driven coordinate descent: only teaching parameters move, and only a strict improvement is kept. Entry points: assistant generation, "Auto-tune" on the batch page, and "Auto-tune" on the Golden Set page.</td></tr>
+<tr><td>Locate wrap</td><td>定位補正三件套</td><td>Template match → locate correction → ROI follow, which the assistant wraps around a flow automatically when the part can move (an ROI hinted as "locator")</td></tr>
+<tr><td>AI assistant</td><td>AI 助手</td><td>Upload an image, mark ROIs, write a prompt, and get a generated flow that is actually run. An offline rule engine (intent → synthesiser) plus an optional LLM (<code>VISION_AGENT_API_KEY</code>). See <a href="agent.html">AI assistant</a>.</td></tr>
+<tr><td>Statistics</td><td>統計</td><td>KPIs from the database history, hourly OK/NG/failed, the duration trend and the run history table. "Live statistics" means the engine's in-memory FlowStats.</td></tr>
+<tr><td>Hourly roll-up</td><td>每小時彙總</td><td><code>FlowRunHourly</code>: one row per flow per hour, kept forever, so the yield trend survives detail purging and restarts</td></tr>
+<tr><td>Image archive</td><td>影像封存</td><td>Optionally writing run images to disk (off by default, enabled per flow), so a defect from last week can still be looked at. Purged by age and then by total size.</td></tr>
+<tr><td>Flow version</td><td>流程版本</td><td><code>FlowVersion</code>: a snapshot of the graph on every save, with who saved it and a parameter-level diff, restorable</td></tr>
+<tr><td>Audit log</td><td>操作紀錄</td><td><code>AuditLog</code>: who changed what and when — flows, recipes, connections, accounts, the lock</td></tr>
+<tr><td>Station</td><td>站台</td><td>The station identifier carried by every run (<code>VISION_STATION_ID</code>), shown on the dashboard cards and the statistics page</td></tr>
+<tr><td>Fleet board</td><td>站台看板</td><td>A read-only roll-up of the stations registered here, polling each one's <code>GET /vision/summary</code>. Numbers that could not be refreshed are marked with their age.</td></tr>
+<tr><td>Integration page</td><td>整合頁</td><td>The interface reference and test tools for integrators; one page per method, expanding into a tree in the sidebar</td></tr>
+<tr><td>Trace</td><td>命令與結果</td><td>The live log at the bottom of an integration page: the commands and replies this interface handled (time, direction, duration, success, full detail). An in-process ring buffer; with the page closed, only errors are kept.</td></tr>
+<tr><td>Modbus client / server</td><td>Modbus 主站／從站</td><td>Client (<code>modbus_tcp</code>) means the platform connects to the PLC to read and write. Server (<code>modbus_server</code>) means the platform listens and the PLC, as master, reads and writes the platform's registers.</td></tr>
+<tr><td>Connection</td><td>連線（外部）</td><td>The definition of an outgoing connection to Modbus TCP or a host system: kind ∈ modbus_tcp, modbus_server, tcp_client, dio_sim, plugin. The write_modbus tool refers to it by name. (An edge on the canvas is a different thing.)</td></tr>
+<tr><td>write_modbus</td><td>寫入 Modbus</td><td>An output tool: following a mapping table (src → address, with dtype, scale, offset and value) it writes the verdict, a named output or an input port's value to a connection. A failure degrades to a warning by default.</td></tr>
+<tr><td>Favourites</td><td>收藏</td><td>Tools starred in the palette (localStorage <code>vs.favoriteTools</code>)</td></tr>
+<tr><td>Commissioned</td><td>已教導／未教導</td><td><code>Flow.commissioned</code>, set by "Mark as commissioned" on the teach page. While false the flow list, dashboard and toolbar show a "not commissioned" tag and every run carries a warning in <code>RunReport.warnings</code>, without being blocked.</td></tr>
+<tr><td>Recipe</td><td>配方</td><td>A set of parameter overrides for one flow, <code>param_overrides = {node_id: {param: value}}</code>, for changeovers between part numbers. Run, preview and TCP can name one with <code>recipe=</code> (by name or id); without one the bound recipe (is_default) applies. On the teach page, choosing a recipe as the edit target writes changes into the recipe instead of the graph.</td></tr>
+<tr><td>Override</td><td>覆寫</td><td>One "step.parameter = value" inside a recipe, applied over the graph before compiling</td></tr>
+<tr><td>Golden Set</td><td>Golden Set</td><td>A set of image cases with expectations (OK, NG or any) stored on the server, outside the image cache; created by upload or from batch test results</td></tr>
+<tr><td>Golden case</td><td>案例</td><td>One image in a Golden Set plus an expected status, optional expected outputs and a note</td></tr>
+<tr><td>Regression</td><td>回歸</td><td>Running every case in production mode and comparing against expectations and the baseline: total, match, mismatch, match_rate, the confusion matrix and the regressed and improved lists. Images are kept only for mismatches.</td></tr>
+<tr><td>Baseline</td><td>基準</td><td>Every case's result at the moment a regression was saved as the baseline; the next regression uses it for regressed, improved and "differs from baseline"</td></tr>
+<tr><td>Regressed / improved</td><td>退步／進步</td><td>Matched the baseline expectation but does not now = regressed (was → now); the reverse = improved. The first list to look at after changing a parameter.</td></tr>
+<tr><td>fail_under</td><td>合格門檻</td><td>A regression whose match_rate falls below this is a failure (a non-zero CLI exit code)</td></tr>
+<tr><td>DL project</td><td>教導專案</td><td>One model kind (a trainer) plus a class list plus a sample set. The trained result is exported as a <code>kind=model</code> asset.</td></tr>
+<tr><td>Auto label</td><td>自動標記</td><td><code>Trainer.suggest</code> proposes a class and a confidence for unlabelled samples (shown as dashed outlines, acceptable in bulk). Accepted proposals are recorded as auto, and become human once confirmed.</td></tr>
+<tr><td>Trainer</td><td>模型種類</td><td>The registry of trainable model kinds. A trainer declares hyper-parameters (Param), a label mode and supported devices, and implements train and suggest. Plugins can add more.</td></tr>
+<tr><td>Shape workspace</td><td>標記編輯器</td><td>The labelling workspace for shapes mode (segmentation and detection): a thumbnail wall, polygon and box editing, snap-to-contour refinement and shortcuts. Coordinates are normalised 0–1.</td></tr>
+<tr><td>Classify workspace</td><td>大圖檢視</td><td>The classification workspace: a thumbnail wall, a full-image viewer (zoom, 1:1) and class buttons; switchable with the grid view, sharing the same filters</td></tr>
+<tr><td>Tool rail</td><td>工具欄</td><td>The vertical rail of large icons on the left of the labelling canvas: select, polygon, box, smart select, refine, delete, undo — each showing its shortcut</td></tr>
+<tr><td>Smart select</td><td>智慧選取</td><td>SAM-assisted labelling: click an object, the server segments it, and the outline becomes a polygon with the current class. The default weights (mobile_sam.pt) download on demand and need the optional ultralytics install.</td></tr>
+<tr><td>Smart box</td><td>智慧框選</td><td>Drag a box and SAM2 returns the outline of the object inside it — the counterpart to smart select</td></tr>
+<tr><td>SAM proposals</td><td>SAM 全圖提案</td><td>Automatic labelling with no model at all: SAM2 segments the whole image and every proposal is attached to the first class for confirmation</td></tr>
+<tr><td>Split</td><td>資料集分割</td><td><code>DlSample.split</code>: train, val, test or unset. "Auto split" assigns stratified at random and the status-bar chip switches a single sample. val validates; test never enters training.</td></tr>
+<tr><td>Dataset version</td><td>資料集版本</td><td><code>DlDatasetVersion</code> freezes the current samples, labels and splits into a zip in the asset library (kind=dataset): a YOLO tree for shapes, class folders plus a manifest for classes. Downloadable and deletable.</td></tr>
+<tr><td>Augmentation</td><td>資料增強</td><td>Expanding the samples during training: flips and brightness jitter for the built-in models (training set only), and degrees, fliplr and mosaic exposed for yolo_seg. Off by default.</td></tr>
+<tr><td>Dedupe</td><td>重複偵測</td><td>Uploads, imports and burst grabs are de-duplicated within a project on the SHA256 of the decoded pixels, and the number of duplicates is reported</td></tr>
+<tr><td>dl_instance</td><td>DL 實例分割</td><td>A DL tool: YOLO-seg style ONNX inference (letterbox, NMS, mask assembly) returning each instance's outline, class and score; trainable on the teaching page</td></tr>
+<tr><td>YOLO tools</td><td>YOLO 工具</td><td>yolo_detect, yolo_segment, yolo_classify, yolo_pose and yolo_obb: native ultralytics inference (torch, GPU used automatically). The model is either a .pt asset trained on the teaching page or the name of a stock model. Pose returns keypoints, OBB returns rotated boxes.</td></tr>
+<tr><td>DL dependencies</td><td>DL 依賴</td><td><code>requirements-dl.txt</code>, <code>scripts/setup_dl.ps1</code> and <code>manage.py dl_check</code>: the optional torch, ultralytics and onnxruntime-gpu install (torch cu128 first) and how to verify it. Pitfalls in <a href="dl.html">Deep learning §11</a>.</td></tr>
+<tr><td>Python script tool</td><td>Python 腳本</td><td><code>python_script</code>: your own <code>def run(ctx)</code> on the tool page, executed in the engine process under restrictions, with fixed output ports. Only an administrator saving the flow approves the code.</td></tr>
+<tr><td>Plugin</td><td>外掛</td><td>A .py file subclassing Tool, Grabber, Writer or Trainer dropped into <code>plugins/</code> and loaded automatically; module variables ENABLED, label and description control loading and display (see <a href="plugins.html">Plugins</a>)</td></tr>
+<tr><td>Theme</td><td>主題風格</td><td>light, dark, cyber (neon green, hard angles, scan lines on the page ground and the sidebar only — never over the image area, all through CSS variable tokens) or system. Stored in localStorage and, for a signed-in user, written back to /auth/prefs and returned by /auth/me so it follows them between devices.</td></tr>
+<tr><td>Bit depth</td><td>影像位深</td><td>u8, u16 or f32 (<code>tools/imgfmt.py</code>, <code>Tool.accepts</code>). A depth a tool does not declare is normalised to u8 automatically; use the bit-depth conversion tool to control it explicitly. Reading a file with IMREAD_UNCHANGED keeps 16-bit data.</td></tr>
+<tr><td>Manual write</td><td>手動寫入</td><td>Sending one set of values (as JSON) to a connection from the connections page to test it. For dio_sim the channel values show up under "state".</td></tr>
+<tr><td>Export / import</td><td>匯出／匯入</td><td>Export writes a stably serialised flow file that can live in git; import upserts on the name in the file and replaces the <code>{SOURCE}</code> placeholder on the acquire step with the source you choose. Without one, updating an existing flow keeps its current source and a new flow is left empty.</td></tr>
 </table>
 
-<h2 id="port-colors">埠型別顏色（固定，不重複）</h2>
+<h2 id="port-colors">Port type colours (fixed, never reused)</h2>
 <table>
-<tr><th>型別</th><th>顏色</th><th>用途</th></tr>
-<tr><td>image</td><td>藍 <code>#3b82f6</code></td><td>影像</td></tr>
-<tr><td>region</td><td>紫 <code>#a855f7</code></td><td>ROI</td></tr>
-<tr><td>number</td><td>綠 <code>#22c55e</code></td><td>數值</td></tr>
-<tr><td>bool</td><td>橘 <code>#f97316</code></td><td>布林</td></tr>
-<tr><td>string</td><td>黃 <code>#eab308</code></td><td>字串</td></tr>
-<tr><td>points</td><td>青 <code>#06b6d4</code></td><td>點集合</td></tr>
-<tr><td>contours</td><td>靛 <code>#6366f1</code></td><td>輪廓</td></tr>
-<tr><td>matches</td><td>粉 <code>#ec4899</code></td><td>比對／偵測結果</td></tr>
-<tr><td>list</td><td>藍綠 <code>#14b8a6</code></td><td>一般清單（含標記）</td></tr>
-<tr><td>any</td><td>灰白 <code>#cbd5e1</code></td><td>任意</td></tr>
-<tr><td>flow</td><td>灰 <code>#94a3b8</code>（菱形）</td><td>分支</td></tr>
+<tr><th>Type</th><th>Colour</th><th>Carries</th></tr>
+<tr><td>image</td><td>blue <code>#3b82f6</code></td><td>Images</td></tr>
+<tr><td>region</td><td>purple <code>#a855f7</code></td><td>ROIs</td></tr>
+<tr><td>number</td><td>green <code>#22c55e</code></td><td>Numbers</td></tr>
+<tr><td>bool</td><td>orange <code>#f97316</code></td><td>Booleans</td></tr>
+<tr><td>string</td><td>yellow <code>#eab308</code></td><td>Strings</td></tr>
+<tr><td>points</td><td>cyan <code>#06b6d4</code></td><td>Point sets</td></tr>
+<tr><td>contours</td><td>indigo <code>#6366f1</code></td><td>Contours</td></tr>
+<tr><td>matches</td><td>pink <code>#ec4899</code></td><td>Match and detection results</td></tr>
+<tr><td>list</td><td>teal <code>#14b8a6</code></td><td>General lists, including overlays</td></tr>
+<tr><td>any</td><td>grey-white <code>#cbd5e1</code></td><td>Anything</td></tr>
+<tr><td>flow</td><td>grey <code>#94a3b8</code> (diamond)</td><td>Branching</td></tr>
 </table>
 
-<h2 id="status">狀態用語</h2>
+<h2 id="status">Status wording</h2>
 <table>
-<tr><th>狀態</th><th>顏色</th><th>說明</th></tr>
-<tr><td>OK</td><td>綠</td><td>判定合格</td></tr>
-<tr><td>NG</td><td>紅</td><td>判定不良</td></tr>
-<tr><td>失敗</td><td>深紅框</td><td>工具錯誤／逾時／沒有影像；畫布上該步驟顯示錯誤訊息</td></tr>
-<tr><td>略過</td><td>灰淡</td><td>分支未選中或上游失敗</td></tr>
-<tr><td>執行中</td><td>脈動邊框</td><td>正在跑</td></tr>
+<tr><th>Status</th><th>Colour</th><th>Meaning</th></tr>
+<tr><td>OK</td><td>green</td><td>Judged good</td></tr>
+<tr><td>NG</td><td>red</td><td>Judged a reject</td></tr>
+<tr><td>Failed</td><td>dark red border</td><td>A tool error, a timeout or no image; the step shows the error message on the canvas</td></tr>
+<tr><td>Skipped</td><td>faded grey</td><td>A branch not taken, or an upstream failure</td></tr>
+<tr><td>Running</td><td>pulsing border</td><td>In progress</td></tr>
 </table>
 
-<h2 id="tone">文案用詞規範（商用產品語氣）</h2>
+<h2 id="tone">Tone of voice</h2>
+<p>This is industrial equipment, so the interface reads plainly and never chattily. In English: sentence case for labels and buttons, no exclamation marks, an imperative verb for an action ("Run to this step", not "Let's run it"), and a message that says what happened and what to do about it. Prefer "cannot" to "can't", and say what is missing rather than blaming the user. Avoid naming the underlying computer-vision libraries anywhere a user can see (the code examples on the plugins page are the one exception).</p>
+<p>The zh-Hant locale follows this table, and the zh-Hans translation is derived from it. <code>frontend/src/test/i18n.test.ts</code> checks the banned words automatically.</p>
 <table>
-<tr><th>避免</th><th>使用</th><th>說明</th></tr>
-<tr><td>點一下、按一下</td><td>點選</td><td>操作動詞統一</td></tr>
-<tr><td>試跑、跑一次</td><td>試執行、執行一次</td><td>「試執行」＝用目前畫布（含未儲存）執行並保留中間影像</td></tr>
-<tr><td>還沒有、沒有</td><td>尚無、尚未、無</td><td>空狀態文案</td></tr>
-<tr><td>不能</td><td>無法、不得</td><td>限制與驗證訊息（範圍限制用「不得」）</td></tr>
+<tr><th>Avoid</th><th>Use</th><th>Why</th></tr>
+<tr><td>點一下、按一下</td><td>點選</td><td>One verb for the action</td></tr>
+<tr><td>試跑、跑一次</td><td>試執行、執行一次</td><td>"試執行" means running the current canvas, unsaved changes included, and keeping the intermediate images</td></tr>
+<tr><td>還沒有、沒有</td><td>尚無、尚未、無</td><td>Empty states</td></tr>
+<tr><td>不能</td><td>無法、不得</td><td>Limits and validation messages ("不得" for a hard limit)</td></tr>
 <tr><td>這個、這次</td><td>此、此次</td><td></td></tr>
-<tr><td>抓、抓取</td><td>擷取、偵測</td><td>取像用「擷取」，偵測用「偵測」</td></tr>
-<tr><td>你</td><td>您</td><td>稱呼使用者</td></tr>
-<tr><td>太敏感、漏抓</td><td>誤判過多、漏檢</td><td>檢測結果描述（AI 助手回饋辨識仍接受口語同義詞）</td></tr>
+<tr><td>抓、抓取</td><td>擷取、偵測</td><td>"擷取" for acquiring an image, "偵測" for detecting</td></tr>
+<tr><td>你</td><td>您</td><td>Addressing the user</td></tr>
+<tr><td>太敏感、漏抓</td><td>誤判過多、漏檢</td><td>Describing inspection results (the assistant still understands the colloquial forms as input)</td></tr>
 <tr><td>接上、拉正、掛</td><td>連接、校正、套用</td><td></td></tr>
 </table>
-<p>範例提示詞（給 AI 助手的自然語言範例）可保留口語；其餘 UI 文案、說明頁、文件一律依此表。<code>frontend/src/test/i18n.test.ts</code> 以禁用詞清單自動檢查。</p>
+<p>Example prompts written for the AI assistant may stay colloquial; everything else in the interface, the help page and these documents follows the table.</p>
 
 </article></div><!-- /doc-layout -->
 <script>

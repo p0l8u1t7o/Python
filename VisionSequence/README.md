@@ -1,6 +1,6 @@
 # VisionSequence — 工業機器視覺流程平台
 
-> **English summary** — VisionSequence is a browser-based industrial machine-vision platform (Django + django-ninja + OpenCV backend, React 19 + React Flow frontend). Engineers drag tool nodes onto a dataflow canvas, draw ROIs on images, tune parameters with live results, and expose the resulting flow to PLC/MES systems over HTTP, TCP and Modbus. It ships 61 built-in vision tools, a template gallery with synthetic sample images, in-platform deep-learning teaching (labeling → training → ONNX), and an AI assistant that turns "upload image + draw ROI + one sentence" into a runnable inspection flow (offline rule engine or Claude/GPT/Gemini). Single-process runtime, no Node.js services, no microservices. Docs are in `docs/` (HTML, Traditional Chinese); contributor rules live in `CLAUDE.md`.
+> **English summary** — VisionSequence is a browser-based industrial machine-vision platform (Django + django-ninja + OpenCV backend, React 19 + React Flow frontend). Engineers drag tool nodes onto a dataflow canvas, draw ROIs on images, tune parameters with live results, and expose the resulting flow to PLC/MES systems over HTTP, TCP and Modbus. It ships 67 built-in vision tools, a template gallery with synthetic sample images, in-platform deep-learning teaching (labeling → training → ONNX), and an AI assistant that turns "upload image + draw ROI + one sentence" into a runnable inspection flow (offline rule engine or Claude/GPT/Gemini). Single-process runtime, no Node.js services, no microservices. Docs are in `docs/` (18 HTML pages, English); contributor rules live in `CLAUDE.md` (Traditional Chinese).
 
 類 Hikrobot VisionMaster 的畫布式機器視覺平台：自動化人員在瀏覽器裡拉工具節點、在影像上畫 ROI、
 調參數即時看結果，再以 HTTP／TCP 讓 PLC、上位機或 MES 觸發檢測並取回 OK/NG 與量測值。
@@ -86,7 +86,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。
 
 ### 範本畫廊與範例樣板
-18 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 55/61 個工具。詳見 `docs/samples.html`。
+18 個內建範本（計數、曝光、圓孔量測、邊線夾角、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。
 
 ### AI 助手（`/agent`）
 
@@ -357,6 +357,8 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 
 ## 文件地圖
 
+> `docs/` 下 18 頁 **全部是英文**（`docs_style.py` 統一版面）。中文讀者請用瀏覽器的翻譯功能閱讀；之後也只維護英文版。
+
 | 文件 | 內容 |
 |---|---|
 | `docs/index.html` | 總覽與索引 |
@@ -373,7 +375,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
 | `docs/capture-client.html` | 擷取端：安裝與連線、通道與 ROI、相機支援、共享記憶體與 TCP、網頁設定、效能、疑難排解、協定 v1、驗收清單 |
-| `docs/deployment.html` | 部署與維運（英文）：安裝、開機自動啟動、埠與防火牆、反向代理、帳號與金鑰、備份還原、升級與回滾、監控、多站台看板、災難復原、資安 |
+| `docs/deployment.html` | 部署與維運：安裝、開機自動啟動、埠與防火牆、反向代理、帳號與金鑰、備份還原、升級與回滾、監控、多站台看板、災難復原、資安 |
 | `docs/glossary.html` | 名詞規範與文案用詞規範 |
 | `docs/performance.html` | 效能報告 |
 | `CLAUDE.md` | 給 AI 協作者與開發者的專案須知：架構、慣例、驗證清單、踩過的坑、各模組要點 |

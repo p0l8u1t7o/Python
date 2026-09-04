@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence Modbus 輸出</title>
+<title>VisionSequence Modbus</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,80 +134,81 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html" aria-current="page">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. 兩種角色：主站與從站</a></li><li><a href="#kinds">1. 連線種類與 config</a></li><li><a href="#trigger">1-1. 觸發：PLC 寫旗標，平台就檢測</a></li><li><a href="#address">2. 位址格式（modbus_tcp）</a></li><li><a href="#tool">3. 流程工具：write_modbus 與 read_modbus</a><ul><li><a href="#read-tool">3-1. 讀取 Modbus（read_modbus）</a></li></ul></li><li><a href="#degrade">4. 降級策略</a></li><li><a href="#api">5. 連線 API</a></li><li><a href="#plugin">6. 外掛 Writer</a></li><li><a href="#trace">6b. 命令與結果（除錯）</a></li><li><a href="#internals">7. 內部結構</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html" aria-current="page">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Triggering: the PLC writes a flag and the platform inspects</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus and read_modbus</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
 
-<h1>主動輸出（Modbus TCP ／ 上位機）</h1>
-<p><a href="automation.html">自動化整合</a>是<strong>被動</strong>的：設備或上位機呼叫我們拿結果。這一頁是<strong>主動</strong>的：流程跑完由引擎透過 Modbus TCP 把判定與量測值寫進設備的線圈／暫存器，或推一行文字給上位機。做法仿照影像來源：先在設定頁建「連線」（<code>Connection</code>），流程裡放一個 <strong>寫入 Modbus</strong>（<code>write_modbus</code>）工具指到該連線並填對映表。</p>
+<h1>Pushing results out (Modbus TCP and host systems)</h1>
+<p><a href="automation.html">Automation</a> is <strong>passive</strong>: equipment or a host system calls us and collects the result. This page is <strong>active</strong>: when a flow finishes, the engine writes the judgement and the measurements into the equipment's coils and registers over Modbus TCP, or pushes a line of text to a host system. It works like image sources — create a <strong>connection</strong> on the settings page, then put a <strong>write Modbus</strong> (<code>write_modbus</code>) tool in the flow, point it at that connection and fill in the mapping table.</p>
 
-<h2 id="roles">0. 兩種角色：主站與從站</h2>
-<p>Modbus/TCP 有主從之分，平台兩種都支援，在「外部整合 ▸ 連線」建立時選 kind：</p>
+<h2 id="roles">0. Two roles: client and server</h2>
+<p>Modbus/TCP has a master and a slave. The platform can be either; choose the kind when you create the connection under Integration ▸ Connections:</p>
 <table>
-<tr><th>角色</th><th>kind</th><th>誰主動</th><th>什麼時候用</th></tr>
-<tr><td>主站（client）</td><td><code>modbus_tcp</code></td><td>平台連到設備的 IP／埠</td><td>PLC／設備本身是 Modbus 從站，平台去讀寫它的線圈與暫存器。</td></tr>
-<tr><td>從站（server）</td><td><code>modbus_server</code></td><td>平台開埠（預設 5020）等主站來連</td><td>PLC／上位機是主站，習慣自己來輪詢。流程把結果寫進平台的暫存器讓主站來取；主站也可以寫料號、觸發旗標進來，流程用「讀取 Modbus」取用。</td></tr>
+<tr><th>Role</th><th>kind</th><th>Who initiates</th><th>When to use it</th></tr>
+<tr><td>Client (master)</td><td><code>modbus_tcp</code></td><td>The platform connects to the device's IP and port</td><td>The PLC or device is itself a Modbus slave and the platform reads and writes its coils and registers.</td></tr>
+<tr><td>Server (slave)</td><td><code>modbus_server</code></td><td>The platform listens on a port (5020 by default) and waits for a master</td><td>The PLC or host system is the master and prefers to poll. The flow writes results into the platform's registers for the master to collect; the master can also write a part number or a trigger flag in, which the flow picks up with "read Modbus".</td></tr>
 </table>
-<p>兩種角色的<strong>位址格式、對映表與工具完全相同</strong>，差別只在誰主動連線。從站的 <code>size</code> 是每一區（線圈／離散輸入／保持暫存器／輸入暫存器）的點數，預設 512。</p>
-<p><strong>從站會自己開埠</strong>：連線建立或修改時立刻監聽，<strong>伺服器啟動時也會自動開</strong>（<code>manage.py serve</code> 呼叫 <code>writers.autostart()</code>；<code>--no-comm</code> 可關掉）。PLC 不必等有人到網頁按「測試」。埠被其他程式佔用時連線狀態會直接寫出原因。停用或刪除連線就關閉。</p>
+<p><strong>The address format, the mapping table and the tools are identical for both roles</strong> — the only difference is who initiates the connection. In server mode <code>size</code> is the number of points in each area (coils, discrete inputs, holding registers, input registers) and defaults to 512.</p>
+<p><strong>A server opens its port by itself</strong>: it starts listening as soon as the connection is created or changed, and <strong>again when the server starts</strong> (<code>manage.py serve</code> calls <code>writers.autostart()</code>; <code>--no-comm</code> turns that off). The PLC does not have to wait for somebody to press Test in the web interface. If another program is already using the port, the reason appears directly in the connection status. Disabling or deleting the connection closes it.</p>
 
-<h2 id="kinds">1. 連線種類與 config</h2>
+<h2 id="kinds">1. Connection kinds and their config</h2>
 <table>
-<tr><th>kind</th><th>用途</th><th>config</th></tr>
-<tr><td><code>modbus_tcp</code></td><td>Modbus TCP：線圈（DO）與保持暫存器（數值）。用 <code>pymodbus</code>。</td>
+<tr><th>kind</th><th>What it is for</th><th>config</th></tr>
+<tr><td><code>modbus_tcp</code></td><td>Modbus TCP: coils (digital outputs) and holding registers (values), using <code>pymodbus</code>.</td>
 <td><pre>{"host": "192.168.1.10", "port": 502, "unit_id": 1,
- "timeout_s": 2, "word_order": "big"}</pre><code>word_order</code>：32/64 位元值的高低字組順序（多數設備是 big；有些是 little）。</td></tr>
-<tr><td><code>tcp_client</code></td><td>長連線把結果送到上位機：一行文字（範本）或整包 JSON 一行。</td>
+ "timeout_s": 2, "word_order": "big"}</pre><code>word_order</code> is the word order of 32- and 64-bit values. Most devices are big; some are little.</td></tr>
+<tr><td><code>tcp_client</code></td><td>A long-lived connection that sends the result to a host system: one line of text from a template, or the whole thing as one line of JSON.</td>
 <td><pre>{"host": "192.168.1.20", "port": 5000, "timeout_s": 2,
  "template": "RESULT {judge} {width_px}",
- "newline": "\n", "encoding": "utf-8", "wait_reply": false}</pre>沒有 <code>template</code> 就送 <code>{"judge": 1, "width_px": 12.3}\n</code>。範本缺欄位補空字串，不會炸。<code>wait_reply=true</code> 會等對方回一行，放進結果 <code>reply</code>。</td></tr>
-<tr><td><code>dio_sim</code></td><td>模擬 DIO：只把寫入值留在記憶體，供沒有設備的機器測流程；<code>GET /state</code> 讀回。</td>
-<td><pre>{"channels": ["ok", "ng", "done"]}   或   {"channels": 8}</pre>有列 channels 時寫到未宣告的通道算失敗（方便測降級）；不列則任何名稱都收。</td></tr>
-<tr><td><code>plugin</code> / 外掛 kind</td><td>自訂 Writer（OPC UA、廠牌 SDK…）</td><td>繼承 <code>Writer</code> 的 .py 丟進 <code>plugins/</code> 自動掛載（出貨範例：CSV 紀錄），見 <a href="#plugin">6</a> 與<a href="plugins.html">擴充外掛</a>。</td></tr>
+ "newline": "\n", "encoding": "utf-8", "wait_reply": false}</pre>Without a <code>template</code> it sends <code>{"judge": 1, "width_px": 12.3}\n</code>. A field missing from the template becomes an empty string rather than an error. <code>wait_reply=true</code> waits for one line back and puts it in the result as <code>reply</code>.</td></tr>
+<tr><td><code>dio_sim</code></td><td>Simulated digital I/O: written values stay in memory so you can test a flow on a machine with no hardware. Read them back with <code>GET /state</code>.</td>
+<td><pre>{"channels": ["ok", "ng", "done"]}   or   {"channels": 8}</pre>With a channel list, writing to an undeclared channel fails — handy for testing degradation. Without one, any name is accepted.</td></tr>
+<tr><td><code>plugin</code> or a plugin's own kind</td><td>A Writer of your own (OPC UA, a vendor SDK, …)</td><td>Drop a .py file subclassing <code>Writer</code> into <code>plugins/</code> and it loads automatically. A CSV logger ships as an example; see <a href="#plugin">§6</a> and <a href="plugins.html">Plugins</a>.</td></tr>
 </table>
-<p>共用欄位：<code>timeout_s</code>（每次寫入的逾時，預設 2 秒）。連線設定改了（PATCH）會關閉舊連線，下次執行重開。</p>
+<p>Common field: <code>timeout_s</code>, the timeout of a single write, two seconds by default. Changing a connection's settings (PATCH) closes the old connection, and the next run reopens it.</p>
 
-<h2 id="trigger">1-1. 觸發：PLC 寫旗標，平台就檢測</h2>
-<p>從站模式下 PLC 是主站——它只會寫暫存器，不會呼叫平台的 HTTP／TCP。<strong>沒有這一層的話，PLC 把觸發旗標寫進來不會有任何事發生</strong>，整條線只能改用連續模式輪詢（每一輪都取像，白白吃掉相機頻寬與 CPU）。所以兩種 Modbus 連線都可以設定一個觸發位址：</p>
+<h2 id="trigger">1-1. Triggering: the PLC writes a flag and the platform inspects</h2>
+<p>In server mode the PLC is the master — it writes registers, it does not call the platform's HTTP or TCP interfaces. <strong>Without this layer, a trigger flag written by the PLC does nothing at all</strong> and the line has to fall back to continuous mode, grabbing an image on every cycle and wasting camera bandwidth and CPU. So both kinds of Modbus connection can be given a trigger address:</p>
 <pre>{"host": "0.0.0.0", "port": 5020, "unit_id": 1, "size": 512,
- "trigger_address": "coil:0",        ← 主站寫成非零就檢測一次
- "trigger_flow": "外觀檢測",          ← 流程名稱或 id（停用的流程不會被觸發）
- "trigger_interval_ms": 50,           ← 輪詢間隔，最小 10
- "trigger_mode": "rising",            ← rising＝0 變非零才跑一次；nonzero＝只要非零就一直跑
- "trigger_clear": true,               ← 跑之前把旗標清成 0（跑很久也不會重複觸發）
- "trigger_done_address": "coil:1",    ← 跑完寫 1（選填）
- "trigger_recipe": ""}                ← 指定配方（選填）</pre>
-<p>一次完整的握手：</p>
-<pre>PLC ：trigger := 1
-平台：看到 → 清 trigger → 跑流程 → 流程用「寫入 Modbus」把判定與量測值寫進暫存器 → done := 1
-PLC ：看到 done → 讀結果 → done := 0</pre>
+ "trigger_address": "coil:0",        ← the master writes non-zero and one inspection runs
+ "trigger_flow": "appearance",        ← a flow name or id (a disabled flow is never triggered)
+ "trigger_interval_ms": 50,           ← polling interval, minimum 10
+ "trigger_mode": "rising",            ← rising: runs once on 0 → non-zero; nonzero: runs while it stays non-zero
+ "trigger_clear": true,               ← clear the flag before running, so a long run cannot re-trigger
+ "trigger_done_address": "coil:1",    ← write 1 when finished (optional)
+ "trigger_recipe": ""}                ← use a specific recipe (optional)</pre>
+<p>A complete handshake:</p>
+<pre>PLC     : trigger := 1
+Platform: sees it → clears trigger → runs the flow → the flow's "write Modbus" step puts the
+          judgement and measurements into the registers → done := 1
+PLC     : sees done → reads the results → done := 0</pre>
 <ul>
-<li><strong>結果由流程自己寫</strong>：在流程尾端放「寫入 Modbus」節點，對映表想寫幾個值都可以。觸發設定只負責清旗標與設定完成位址。</li>
-<li>一條連線一條輪詢執行緒，只做「讀一個位址」；流程本身照樣走 Runner，統計、事件與歷史與其他觸發來源完全一致（<code>trigger</code> 記成 <code>modbus</code>）。</li>
-<li>PLC 斷線時輪詢會指數退避（最多 5 秒）並持續重試，連線回來就自動繼續；失敗次數與最後原因在連線狀態的 <code>trigger</code> 欄位。</li>
-<li>主站模式（<code>modbus_tcp</code>）同樣可用：輪詢 PLC 自己的暫存器當觸發源。</li>
-<li>觸發與流程的執行都會進「命令與結果」（見 <a href="#trace">6b</a>），除錯時看得到每一次觸發跑了多久、判定是什麼。</li>
+<li><strong>The flow writes its own results</strong>: put a "write Modbus" node at the end and map as many values as you like. The trigger settings only clear the flag and set the done address.</li>
+<li>One connection gets one polling thread, which does nothing but read a single address. The flow itself still goes through the Runner, so statistics, events and history are identical to any other trigger source (the trigger is recorded as <code>modbus</code>).</li>
+<li>If the PLC drops off, polling backs off exponentially to a maximum of five seconds and keeps retrying, resuming automatically when the connection returns. The failure count and the last reason are in the connection status under <code>trigger</code>.</li>
+<li>Client mode (<code>modbus_tcp</code>) can do this too: poll a register on the PLC as the trigger source.</li>
+<li>Both the trigger and the run it starts appear under Commands and results (see <a href="#trace">§6b</a>), so while debugging you can see how long each trigger took and what it judged.</li>
 </ul>
 
-<h2 id="address">2. 位址格式（modbus_tcp）</h2>
+<h2 id="address">2. Address format (modbus_tcp)</h2>
 <table>
-<tr><th>位址</th><th>意義</th></tr>
-<tr><td><code>coil:10</code></td><td>線圈 10（bool）。別名 <code>co:</code>、<code>c:</code>。</td></tr>
-<tr><td><code>holding:100</code></td><td>保持暫存器 100，uint16（浮點會四捨五入、超出 0～65535 會夾住）。別名 <code>hr:</code>、<code>register:</code>。</td></tr>
-<tr><td><code>holding:100:int16</code> / <code>uint16</code> / <code>int32</code> / <code>uint32</code> / <code>int64</code> / <code>uint64</code> / <code>float32</code> / <code>float64</code></td><td>指定型別；32 位元佔 2 個暫存器、64 位元佔 4 個，字組順序依連線的 <code>word_order</code>。</td></tr>
-<tr><td><code>discrete:3</code>、<code>input:7</code></td><td>離散輸入／輸入暫存器，唯讀（只有 <code>read</code> 與 <code>/state</code> 用得到；寫入會回錯）。</td></tr>
+<tr><th>Address</th><th>Meaning</th></tr>
+<tr><td><code>coil:10</code></td><td>Coil 10, a bool. Aliases: <code>co:</code>, <code>c:</code>.</td></tr>
+<tr><td><code>holding:100</code></td><td>Holding register 100 as uint16 (a float is rounded, and anything outside 0–65535 is clamped). Aliases: <code>hr:</code>, <code>register:</code>.</td></tr>
+<tr><td><code>holding:100:int16</code> / <code>uint16</code> / <code>int32</code> / <code>uint32</code> / <code>int64</code> / <code>uint64</code> / <code>float32</code> / <code>float64</code></td><td>An explicit type. 32-bit values take two registers and 64-bit values four, in the connection's <code>word_order</code>.</td></tr>
+<tr><td><code>discrete:3</code>, <code>input:7</code></td><td>Discrete inputs and input registers, read-only — usable from <code>read</code> and <code>/state</code>; writing returns an error.</td></tr>
 </table>
-<p>偏移可寫十六進位（<code>holding:0x100</code>）。偏移是 <strong>0 起算的協定位址</strong>（設備文件若寫 40001 就是 <code>holding:0</code>）。</p>
-<p><code>tcp_client</code> 的「位址」是範本裡的欄位名（<code>{judge}</code> → <code>"judge"</code>）；<code>dio_sim</code> 是通道名。</p>
+<p>The offset may be hexadecimal (<code>holding:0x100</code>). It is the <strong>zero-based protocol address</strong>: where the device's manual says 40001, write <code>holding:0</code>.</p>
+<p>For <code>tcp_client</code> the "address" is a field name in the template (<code>{judge}</code> → <code>"judge"</code>); for <code>dio_sim</code> it is a channel name.</p>
 
-<h2 id="tool">3. 流程工具：write_modbus 與 read_modbus</h2>
+<h2 id="tool">3. The flow tools: write_modbus and read_modbus</h2>
 <table>
-<tr><th>參數</th><th>說明</th></tr>
-<tr><td><code>connection</code>（text）</td><td>連線<strong>名稱</strong>（也接受數字 id）。</td></tr>
-<tr><td><code>mapping</code>（json）</td><td>陣列，每項一個位址，見下。</td></tr>
-<tr><td><code>on_error</code>（select）</td><td><code>warn</code>（預設）：寫入失敗只記警告、run 照常；<code>fail</code>：讓 run failed。</td></tr>
-<tr><td><code>timeout_s</code>（number）</td><td>0 = 用連線設定；否則覆寫這一次寫入的逾時。</td></tr>
+<tr><th>Parameter</th><th>What it does</th></tr>
+<tr><td><code>connection</code> (text)</td><td>The connection's <strong>name</strong> (a numeric id is also accepted).</td></tr>
+<tr><td><code>mapping</code> (json)</td><td>An array, one entry per address — see below.</td></tr>
+<tr><td><code>on_error</code> (select)</td><td><code>warn</code> (the default): a failed write only logs a warning and the run continues. <code>fail</code>: the run fails.</td></tr>
+<tr><td><code>timeout_s</code> (number)</td><td>0 uses the connection's setting; anything else overrides the timeout for this write.</td></tr>
 </table>
-<p>輸入埠 <code>values</code>（any，可多條）；輸出埠 <code>written</code>（寫入筆數）、<code>ok</code>（bool）。</p>
+<p>Input port <code>values</code> (any, multiple edges allowed); output ports <code>written</code> (how many were written) and <code>ok</code> (bool).</p>
 <pre>[
   {"src": "judge",    "address": "coil:0",              "dtype": "bool"},
   {"src": "width_px", "address": "holding:100:float32", "scale": 1.0},
@@ -216,29 +217,29 @@ PLC ：看到 done → 讀結果 → done := 0</pre>
   {"address": "coil:1", "value": 1}
 ]</pre>
 <table>
-<tr><th>欄位</th><th>說明</th></tr>
-<tr><td><code>src</code></td><td>值的來源：<code>judge</code>（run 判定，OK→1／NG→0）、<strong>具名輸出</strong>的名稱（<code>output</code> 工具寫進 <code>_outputs</code> 的鍵）、或本節點輸入埠 <code>values</code> 的第 N 條 <code>v0</code>、<code>v1</code>…（依連線順序）。</td></tr>
-<tr><td><code>address</code></td><td>目的地位址（省略時等於 <code>src</code>，tcp_client 常這樣用）。</td></tr>
-<tr><td><code>dtype</code></td><td><code>bool</code>／<code>int</code>／<code>float</code>：寫入前的型別轉換。modbus 位址本身帶型別時，writer 會再依位址轉一次。</td></tr>
-<tr><td><code>scale</code>、<code>offset</code></td><td><code>值 × scale + offset</code>（例如 mm 換成 µm 的整數：<code>scale: 1000, dtype: int</code>）。</td></tr>
-<tr><td><code>value</code></td><td>常數（例如「處理完成」握手位），有 <code>value</code> 就不看 <code>src</code>。</td></tr>
+<tr><th>Field</th><th>What it means</th></tr>
+<tr><td><code>src</code></td><td>Where the value comes from: <code>judge</code> (the run's verdict, OK → 1, NG → 0), the name of a <strong>named output</strong> (a key the <code>output</code> tool wrote into <code>_outputs</code>), or <code>v0</code>, <code>v1</code>… for the Nth edge into this node's <code>values</code> port, in connection order.</td></tr>
+<tr><td><code>address</code></td><td>Where it goes. Omitted, it equals <code>src</code> — which is how tcp_client is usually written.</td></tr>
+<tr><td><code>dtype</code></td><td><code>bool</code>, <code>int</code> or <code>float</code>: the conversion applied before writing. When the Modbus address carries its own type, the writer converts again to match it.</td></tr>
+<tr><td><code>scale</code>, <code>offset</code></td><td><code>value × scale + offset</code> — for example millimetres as integer micrometres: <code>scale: 1000, dtype: int</code>.</td></tr>
+<tr><td><code>value</code></td><td>A constant, such as a "processing complete" handshake bit. With <code>value</code> set, <code>src</code> is ignored.</td></tr>
 </table>
-<p>找不到來源的項目<strong>略過</strong>並記在 <code>detail.missing</code>，其他項照寫；整張表都沒東西可寫時回「沒有可寫的值」（run 仍 ok）。</p>
-<p>節點順序：<code>write_modbus</code> 沒有必填輸入，建議把 <code>judge.verdict</code>（或最後一個工具的輸出）接到 <code>values</code>，確保它在判定之後才執行。tcp_client 範例：</p>
+<p>An entry whose source cannot be found is <strong>skipped</strong> and recorded in <code>detail.missing</code>; the others are still written. When nothing in the whole table can be written you get "nothing to write" and the run is still ok.</p>
+<p>Node ordering: <code>write_modbus</code> has no required input, so connect <code>judge.verdict</code> (or the last tool's output) to <code>values</code> to make sure it runs after the judgement. A tcp_client example:</p>
 <pre>template = "RESULT {judge} {width_px} {lot}"
 mapping  = [{"src": "judge"}, {"src": "width_px"}, {"src": "lot"}]
-→ 送出 "RESULT 1 12.34 A123\n"</pre>
+→ sends "RESULT 1 12.34 A123\n"</pre>
 
-<h3 id="read-tool">3-1. 讀取 Modbus（read_modbus）</h3>
-<p>把線圈與暫存器的值讀進流程：主站連線是去讀設備，從站連線是讀「主站寫進平台」的值（料號、觸發旗標、配方號）。參數：</p>
+<h3 id="read-tool">3-1. Reading Modbus (read_modbus)</h3>
+<p>Bring coil and register values into the flow. On a client connection that reads the device; on a server connection it reads what the master wrote into the platform — a part number, a trigger flag, a recipe number. Parameters:</p>
 <table>
-<tr><th>參數</th><th>說明</th></tr>
-<tr><td>connection</td><td>連線名稱（同 write_modbus）。</td></tr>
-<tr><td>mapping</td><td>陣列，每項 <code>{"name": 名稱, "address": 位址, "scale"?: 倍率, "offset"?: 加值}</code>；名稱空白時用位址當名稱。</td></tr>
-<tr><td>publish</td><td>開啟後讀到的值會併進 run 的 <code>outputs</code>（API／TCP 回傳看得到）。</td></tr>
-<tr><td>on_error</td><td>讀取失敗時降級（預設）或讓 run 失敗，與 write_modbus 一致。</td></tr>
+<tr><th>Parameter</th><th>What it does</th></tr>
+<tr><td>connection</td><td>The connection name, as in write_modbus.</td></tr>
+<tr><td>mapping</td><td>An array of <code>{"name": …, "address": …, "scale"?: …, "offset"?: …}</code>. With no name, the address is used as the name.</td></tr>
+<tr><td>publish</td><td>When on, the values read are merged into the run's <code>outputs</code>, so they come back over the API and TCP.</td></tr>
+<tr><td>on_error</td><td>Degrade on a failed read (the default) or fail the run — the same as write_modbus.</td></tr>
 </table>
-<p>輸出埠：<code>values</code>（依 mapping 順序的清單）、<code>value</code>（第一個數值，接判定或分支很方便）、<code>ok</code>。範例：</p>
+<p>Output ports: <code>values</code> (a list in mapping order), <code>value</code> (the first number, convenient for feeding a judgement or a branch) and <code>ok</code>. For example:</p>
 <pre>
 [
   {"name": "recipe", "address": "holding:0"},
@@ -246,59 +247,60 @@ mapping  = [{"src": "judge"}, {"src": "width_px"}, {"src": "lot"}]
   {"name": "temperature", "address": "holding:10:float32", "scale": 0.1}
 ]
 </pre>
-<p>典型用法：PLC 當主站，把料號寫進 <code>holding:0</code>、觸發旗標寫進 <code>coil:1</code>；流程開頭用 read_modbus 取回料號決定配方，結尾用 write_modbus 把判定寫回 <code>coil:10</code>。</p>
+<p>The typical arrangement: the PLC is the master and writes the part number into <code>holding:0</code> and the trigger flag into <code>coil:1</code>; the flow starts with read_modbus to pick up the part number and choose a recipe, and ends with write_modbus putting the judgement back into <code>coil:10</code>.</p>
 
-<h2 id="degrade">4. 降級策略</h2>
-<div class="note">產線寧可漏傳一筆也不要停線：<strong>寫入失敗預設不讓 run failed</strong>。</div>
+<h2 id="degrade">4. Degradation</h2>
+<div class="note">A production line would rather lose one record than stop: <strong>a failed write does not fail the run by default</strong>.</div>
 <ul>
-<li>Writer 內部：每次寫入有逾時；失敗會關閉並<strong>重連一次</strong>再寫，第二次才算失敗（<code>CommError</code>）。</li>
-<li>工具：<code>on_error=warn</code>（預設）→ 節點 <code>status=ok</code>、message「寫入失敗（已降級）：…」、輸出 <code>ok=false</code>、節點 log 一筆 <code>warning</code>；run 的判定不受影響。<code>on_error=fail</code> → 節點 error，run failed。</li>
-<li>連線不存在／已停用／預先開啟失敗 → 同樣走降級（message 說明原因）。</li>
-<li>連線的 <code>info()</code> 累計 <code>writes</code>／<code>errors</code>／<code>reconnects</code>／<code>last_error</code>，設定頁與 <code>GET /connections</code> 看得到。</li>
+<li>Inside the Writer: every write has a timeout, and a failure closes the connection, <strong>reconnects once</strong> and writes again. Only the second failure counts (<code>CommError</code>).</li>
+<li>In the tool: <code>on_error=warn</code> (the default) leaves the node at <code>status=ok</code> with the message "write failed (degraded): …", sets the <code>ok</code> output to false and logs one warning on the node. The run's verdict is unaffected. <code>on_error=fail</code> puts the node in error and fails the run.</li>
+<li>A connection that does not exist, is disabled, or could not be opened in advance degrades the same way, with the reason in the message.</li>
+<li>A connection's <code>info()</code> accumulates <code>writes</code>, <code>errors</code>, <code>reconnects</code> and <code>last_error</code>, visible on the settings page and from <code>GET /connections</code>.</li>
 </ul>
 
-<h2 id="api">5. 連線 API</h2>
+<h2 id="api">5. Connection API</h2>
 <pre>GET    /api/vision/connections/kinds
-GET    /api/vision/connections                 任何登入者
-POST   /api/vision/connections                 管理員   {"name", "kind", "config", "is_enabled"}
+GET    /api/vision/connections                 any signed-in user
+POST   /api/vision/connections                 administrator   {"name", "kind", "config", "is_enabled"}
 GET    /api/vision/connections/{id}
-PATCH  /api/vision/connections/{id}            管理員（設定變更會重開連線）
-DELETE /api/vision/connections/{id}            管理員
-POST   /api/vision/connections/{id}/test       管理員：重新連線 → {"ok": true, "info": {...}} 或 {"ok": false, "error": "…"}
-POST   /api/vision/connections/{id}/write      管理員：手動寫一筆 {"values": {"coil:0": 1, "holding:100:float32": 1.5}}
-GET    /api/vision/connections/{id}/state      讀回 ?addresses=coil:0,holding:100（dio_sim 不帶參數回全部通道）</pre>
-<p>整合方（API 金鑰）視為管理員。<code>test</code>／<code>write</code> 失敗以 200 + <code>ok=false</code> 回，方便整合頁顯示原因。</p>
+PATCH  /api/vision/connections/{id}            administrator (a config change reopens the connection)
+DELETE /api/vision/connections/{id}            administrator
+POST   /api/vision/connections/{id}/test       administrator: reconnect → {"ok": true, "info": {...}} or {"ok": false, "error": "…"}
+POST   /api/vision/connections/{id}/write      administrator: write once by hand, {"values": {"coil:0": 1, "holding:100:float32": 1.5}}
+GET    /api/vision/connections/{id}/state      read back, ?addresses=coil:0,holding:100 (dio_sim returns all channels with no parameter)</pre>
+<p>An integrator (API key) counts as an administrator. <code>test</code> and <code>write</code> report failures as 200 with <code>ok=false</code>, so the integration page can show the reason.</p>
 
-<h2 id="plugin">6. 外掛 Writer</h2>
-<p>繼承 <code>Writer</code> 的 .py 檔丟進專案根目錄 <code>plugins/</code> 即自動掛載（不用改 .env；規則與變數見<a href="plugins.html">擴充外掛</a>；出貨範例 <code>plugins/example_csv_writer.py</code>）：</p>
-<pre># plugins/opcua.py — 丟進 plugins/ 即掛載
+<h2 id="plugin">6. Writing your own Writer</h2>
+<p>Drop a .py file subclassing <code>Writer</code> into <code>plugins/</code> at the project root and it loads automatically — no .env change needed. The rules and the module variables are in <a href="plugins.html">Plugins</a>, and <code>plugins/example_csv_writer.py</code> ships as a working example:</p>
+<pre># plugins/opcua.py — drop it in plugins/ and it loads
 from apps.comm.writers import Writer, CommError
 
 class OpcUaWriter(Writer):
     kind = "opcua"
     def __init__(self, config, **kw):
-        super().__init__(config, **kw)      # 取得 self.timeout、self._lock、計數器
+        super().__init__(config, **kw)      # gives you self.timeout, self._lock and the counters
         self._open()
-    def _open(self):  ...                    # 連不上就 raise CommError
+    def _open(self):  ...                    # raise CommError if it cannot connect
     def _write(self, values):                # {address: value} → {"written": n}
         ...
-    def _read(self, addresses): ...          # 選填
+    def _read(self, addresses): ...          # optional
     def _close(self): ...
     def info(self): return {**super().info(), "endpoint": ...}</pre>
-<p>只覆寫 <code>_open/_write/_read/_close</code>；lock、逾時、重連一次、計數都在基底的 <code>write()/read()</code>。類別內可用 <code>label</code>／<code>description</code>／<code>enabled</code> 變數控制顯示名稱、說明與是否掛載。也可建 kind=<code>plugin</code> 的連線並在 config 填 <code>"class": "mypkg.opcua:OpcUaWriter"</code> 直接指定類別路徑。</p>
+<p>You only override <code>_open</code>, <code>_write</code>, <code>_read</code> and <code>_close</code>; the lock, the timeout, the single reconnect and the counters all live in the base class's <code>write()</code> and <code>read()</code>. Module-level <code>label</code>, <code>description</code> and <code>enabled</code> control the display name, the description and whether it loads at all. You can also create a connection of kind <code>plugin</code> and name the class directly in its config with <code>"class": "mypkg.opcua:OpcUaWriter"</code>.</p>
 
-<h2 id="trace">6b. 命令與結果（除錯）</h2>
-<p>「外部整合 ▸ 連線」與「外部整合 ▸ Modbus」頁下方都有<strong>命令與結果</strong>：頁面開著時，每一次寫入／讀取（位址、值、耗時、成功與否）與從站收到的主站請求都會即時列出，點一列展開完整內容。頁面關閉後只保留錯誤，不影響產線效能。<strong>觸發輪詢本身不會進追蹤</strong>（每秒幾十次的讀取會把真正的命令沖出緩衝），只有觸發成功、清旗標、設定完成位址與讀取失敗才列出——一次觸發看起來就是完整的握手：<code>寫入 coil:0=1</code>（主站）→ <code>寫入 coil:0=0</code>（清）→ <code>寫入 coil:1=1</code>（完成）→ <code>觸發 coil:0 → 流程名：ok</code>。箭頭 <code>←</code>＝外部送進來、<code>→</code>＝平台送出去。詳見 <a href="automation.html#trace">自動化整合 §7</a>。</p>
+<h2 id="trace">6b. Commands and results (debugging)</h2>
+<p>Integration ▸ Connections and Integration ▸ Modbus both have <strong>Commands and results</strong> at the bottom. While the page is open, every write and read (address, value, duration, success) and every master request the server receives is listed live; click a row for the full detail. Once the page is closed only errors are kept, so there is no cost on the line. <strong>Trigger polling itself is not traced</strong> — reads happening dozens of times a second would flush the real commands out of the buffer — so only a successful trigger, the flag clear, the done write and read failures appear. One trigger therefore reads as a complete handshake: <code>write coil:0=1</code> (the master) → <code>write coil:0=0</code> (cleared) → <code>write coil:1=1</code> (done) → <code>trigger coil:0 → flow name: ok</code>. The arrows: <code>←</code> came in from outside, <code>→</code> went out from the platform. More in <a href="automation.html#trace">Automation §5c</a>.</p>
 
-<h2 id="internals">7. 內部結構</h2>
+<h2 id="internals">7. How it is put together</h2>
 <ul>
-<li><code>apps/comm/models.py</code>：<code>Connection(name unique, kind, config JSON, is_enabled, created_at, updated_at)</code>。</li>
-<li><code>apps/comm/writers.py</code>：<code>Writer</code> 基底、三個內建 writer、<code>open_connection(model)</code> 快取（<code>updated_at</code> 變才重開）、<code>close_connection</code>、<code>get_writer(name)</code>（純記憶體）、<code>prefetch_connections(compiled)</code>。</li>
-<li><strong>熱路徑不碰資料庫</strong>：<code>apps/comm/apps.py</code> 在 <code>ready()</code> 把 <code>prefetch_connections</code> 掛進 <code>Runner.prefetch_hooks</code>；Runner 編譯流程時（呼叫者執行緒）掃出 <code>write_modbus</code> 節點的 <code>connection</code>，查 DB 並開好連線放進「名稱 → writer」快取。執行緒池內的工具只呼叫 <code>get_writer(name)</code>。</li>
-<li><code>apps/vision/tools/builtin/modbus.py</code>：<code>write_modbus</code> 工具。</li>
-<li><code>apps/comm/api.py</code>：連線 API，掛在 <code>/api/vision</code>。</li>
-<li>測試 <code>tests/test_comm.py</code>：dio_sim、tcp_client（本機臨時 socket server）、modbus_tcp（pymodbus 的 TCP server 跑在執行緒）、工具降級、Runner prefetch、API。</li>
+<li><code>apps/comm/models.py</code>: <code>Connection(name unique, kind, config JSON, is_enabled, created_at, updated_at)</code>.</li>
+<li><code>apps/comm/writers.py</code>: the <code>Writer</code> base class, the built-in writers, <code>open_connection(model)</code> with a cache keyed on <code>updated_at</code>, <code>close_connection</code>, <code>get_writer(name)</code> (memory only) and <code>prefetch_connections(compiled)</code>.</li>
+<li><strong>The hot path never touches the database</strong>: <code>apps/comm/apps.py</code> hooks <code>prefetch_connections</code> into <code>Runner.prefetch_hooks</code> in <code>ready()</code>. When the Runner compiles a flow — on the caller's thread — it collects the <code>connection</code> parameter of every tool that declares one, looks them up and opens them into a name → writer cache. Tools running on the thread pool only call <code>get_writer(name)</code>.</li>
+<li><code>apps/vision/tools/builtin/modbus.py</code>: the <code>write_modbus</code> and <code>read_modbus</code> tools.</li>
+<li><code>apps/comm/api.py</code>: the connection API, mounted under <code>/api/vision</code>.</li>
+<li><code>tests/test_comm.py</code>: dio_sim, tcp_client (against a temporary local socket server), modbus_tcp (pymodbus's TCP server on a thread), tool degradation, Runner prefetch and the API.</li>
 </ul>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

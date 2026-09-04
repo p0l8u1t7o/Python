@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 工作流程設計手冊</title>
+<title>VisionSequence workflow design</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,135 +134,138 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html" aria-current="page">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. 一頁總覽</a></li><li><a href="#dataflow">1. 為什麼是資料流，不是控制流程</a></li><li><a href="#graph">2. 圖：一份 JSON、封閉集合、隱含埠</a></li><li><a href="#registry">3. 工具是 registry，安全邊界在框架</a></li><li><a href="#run">4. 執行：一條執行緒跑完一次 run</a></li><li><a href="#hotpath">5. 熱路徑不碰資料庫</a></li><li><a href="#degrade">6. 降級策略：產線不停線</a></li><li><a href="#recipe">7. 配方與站台</a></li><li><a href="#extend">8. 四個擴充接縫（外掛）</a></li><li><a href="#lock">9. 帳號與引擎鎖定</a></li><li><a href="#rules">10. 要守住的原則（紅線）</a></li><li><a href="#terms">11. 名詞對照（ZQS ↔ VisionSequence）</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html" aria-current="page">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. The whole thing on one page</a></li><li><a href="#dataflow">1. Why dataflow rather than control flow</a></li><li><a href="#graph">2. The graph: one JSON document, closed sets, implicit ports</a></li><li><a href="#registry">3. Tools are a registry; the safety boundary is in the framework</a></li><li><a href="#run">4. Running: one thread per run</a></li><li><a href="#hotpath">5. The hot path never touches the database</a></li><li><a href="#degrade">6. Degradation: the line does not stop</a></li><li><a href="#recipe">7. Recipes and stations</a></li><li><a href="#extend">8. Four extension seams (plugins)</a></li><li><a href="#lock">9. Accounts and the engine lock</a></li><li><a href="#rules">10. The principles that hold</a></li><li><a href="#terms">11. Term mapping (control flow ↔ dataflow)</a></li></ul></aside><article class="doc">
 
-<h1>工作流程設計手冊</h1>
+<h1>Workflow design</h1>
 <blockquote>
-<p>本頁講<strong>設計思想</strong>：VisionSequence 的引擎為什麼長這樣、每個取捨的理由、以及要守住的原則。內部結構逐模組的說明在<a href="architecture.html">設計手冊</a>；本頁對應程式：後端 <code>apps/vision/</code>（<code>models.py</code>、<code>graph.py</code>、<code>engine.py</code>、<code>runner.py</code>、<code>tools/</code>、<code>sources/</code>）、<code>apps/comm/</code>、<code>apps/accounts/</code>、<code>plugins/</code>；前端 <code>frontend/src/pages/FlowEditorPage.tsx</code> 與 <code>components/editor/*</code>。</p>
+<p>This page is about the <strong>thinking</strong>: why the VisionSequence engine looks the way it does, what each trade-off bought, and which principles hold. The module-by-module description of the internals is in the <a href="architecture.html">Architecture</a> page. The code this page talks about: <code>apps/vision/</code> (<code>models.py</code>, <code>graph.py</code>, <code>engine.py</code>, <code>runner.py</code>, <code>tools/</code>, <code>sources/</code>), <code>apps/comm/</code>, <code>apps/accounts/</code>, <code>plugins/</code>, and on the front end <code>frontend/src/pages/FlowEditorPage.tsx</code> with <code>components/editor/*</code>.</p>
 </blockquote>
 
-<h2 id="overview">0. 一頁總覽</h2>
-<pre>編輯                          執行                                   觀看
+<h2 id="overview">0. The whole thing on one page</h2>
+<pre>Editing                       Running                                Watching
 ────────────────────────      ─────────────────────────────────      ──────────────────
-GET /flows/catalogue          POST /flows/{id}/run（或 TCP RUN）      SSE /events
-  └→ React Flow 編輯器          └→ Runner：排進 ThreadPoolExecutor      └→ run 事件、鎖定事件
-       │PATCH graph JSON            │（prefetch：來源、資產、連線
-       ▼                            │  在呼叫者執行緒先開好）
-  (Flow.graph)  ──編譯快取──▶  engine.run_graph()：一條執行緒內
-   apply_recipe() 疊參數        以拓樸順序執行整張圖，影像用
-                                numpy 在記憶體傳，結束產出 RunReport
+GET /flows/catalogue          POST /flows/{id}/run (or TCP RUN)      SSE /events
+  └→ the React Flow editor      └→ Runner: queued on the pool          └→ run events, lock events
+       │PATCH graph JSON            │(prefetch: sources, assets and
+       ▼                            │ connections opened on the
+  (Flow.graph)  ──compile cache──▶  │ caller's thread)
+   apply_recipe() overlays     engine.run_graph(): one thread walks
+   the parameters              the whole graph in topological order,
+                               images passed as numpy in memory,
+                               producing a RunReport
                                     │
-                                    ├→ 影像快取（前端檢視器取圖）
-                                    ├→ write_modbus → Connection（主動輸出）
-                                    └→ FlowRun（背景執行緒批次寫 DB）</pre>
-<p>核心思想四句：</p>
+                                    ├→ the image cache (the viewer fetches from it)
+                                    ├→ write_modbus → Connection (pushing out)
+                                    └→ FlowRun (batched to the database on a background thread)</pre>
+<p>Four sentences:</p>
 <ol>
-<li><strong>圖是一份 JSON</strong>：存在 <code>Flow.graph</code> 一個欄位，編輯器整份存、引擎整份讀。</li>
-<li><strong>執行是一次函式呼叫</strong>：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，中間狀態全在記憶體，跑完才落地。</li>
-<li><strong>工具是 registry</strong>：引擎不認識任何工具；前端調色盤與參數表單從 <code>catalogue()</code> 產生，加工具不用改引擎、不用改前端。</li>
-<li><strong>整合是兩條路</strong>：被動（HTTP／TCP／SSE 來拿結果）與主動（<code>write_modbus</code> 寫進 Modbus TCP 設備／上位機），主動路一律可降級。</li>
+<li><strong>The graph is one JSON document</strong>, in a single <code>Flow.graph</code> column. The editor saves it whole and the engine reads it whole.</li>
+<li><strong>A run is one function call.</strong> It executes in topological order on one thread of the pool; everything intermediate stays in memory and only the result is persisted.</li>
+<li><strong>Tools are a registry.</strong> The engine knows nothing about any particular tool; the palette and the parameter forms are generated from <code>catalogue()</code>, so adding a tool touches neither the engine nor the front end.</li>
+<li><strong>Integration goes two ways</strong>: passive (HTTP, TCP and SSE come and collect) and active (<code>write_modbus</code> writes into a Modbus device or a host system), and the active path always degrades rather than stopping the line.</li>
 </ol>
 
-<h2 id="dataflow">1. 為什麼是資料流，不是控制流程</h2>
-<p>本平台的引擎脫胎於 ZQS Cloud 的控制流程引擎（畫布、registry、封閉集合、SSE 這些設計都沿用），但執行模型整個換掉。理由是兩者要解的問題不同：</p>
+<h2 id="dataflow">1. Why dataflow rather than control flow</h2>
+<p>The engine grew out of a control-flow workflow engine — the canvas, the registry, the closed sets and SSE all carry over — but the execution model was replaced entirely, because the two solve different problems:</p>
 <table>
-<tr><th></th><th>控制流程（ZQS Cloud）</th><th>資料流（VisionSequence）</th></tr>
-<tr><td>問的問題</td><td>「下一步走到哪個節點？」</td><td>「這個節點的輸入資料是什麼？」</td></tr>
-<tr><td>執行單位</td><td>DB 裡的 token，stepper 每 tick 推一步；一次執行可以活數小時、跨行程重啟</td><td>一次函式呼叫；一次 run 幾十毫秒～幾秒，在一條執行緒內跑完</td></tr>
-<tr><td>節點間傳什麼</td><td>控制權（token 位置）＋變數表</td><td>資料本身：影像（numpy）、數值、點集、輪廓，沿邊在記憶體傳</td></tr>
-<tr><td>並行</td><td>token 數＝並行分支數</td><td>執行緒池大小＝同時忙碌的流程數；單一 run 內不並行（工具內部演算法已多核）</td></tr>
-<tr><td>持久化</td><td>每步寫 DB（token、log），重啟續跑</td><td>跑完才寫一列 FlowRun（背景批次）；當機丟的是「這一張」，下一張照跑</td></tr>
+<tr><th></th><th>Control flow</th><th>Dataflow (VisionSequence)</th></tr>
+<tr><td>The question it asks</td><td>"Which node do we go to next?"</td><td>"What is this node's input?"</td></tr>
+<tr><td>Unit of execution</td><td>A token in the database, advanced one step per tick; a single execution can live for hours and survive restarts</td><td>One function call; a run takes tens of milliseconds to a few seconds, on one thread</td></tr>
+<tr><td>What travels between nodes</td><td>Control (where the token is) plus a variable table</td><td>The data itself: images (numpy), numbers, point sets, contours — along the edges, in memory</td></tr>
+<tr><td>Concurrency</td><td>The number of tokens equals the number of parallel branches</td><td>The thread pool size equals the number of flows busy at once; a single run is not parallelised internally (the algorithms inside the tools already use several cores)</td></tr>
+<tr><td>Persistence</td><td>Every step writes to the database (tokens, logs) and resumes after a restart</td><td>One FlowRun row after the run, written in the background; a crash loses the current image and the next one still runs</td></tr>
 </table>
-<p>機器視覺的一次檢測是「取像 → 前處理 → 定位 → 量測 → 判定」的短生命週期資料管線，讓它走 DB token stepper 會把毫秒級的事拉成秒級、還把影像逼到落地。反過來，產線排程那種「等訊號、跨小時、要斷點續跑」的長流程也不該塞進資料流引擎。<strong>兩個引擎，各管各的問題。</strong></p>
-<p>控制分支在資料流裡退化成一種特例：工具可宣告 <code>kind="flow"</code> 的輸出把手（例如 if 的 true／false、判定的 pass／fail），帶 flow 邊連入的節點只有在至少一條連入分支被選中時才執行，被跳過的節點其下游（資料邊）也一併跳過（除非該輸入是選填）。這樣一張圖同時是資料管線與淺層決策樹，而引擎仍然只是「照拓樸順序走一遍」。</p>
+<p>One inspection is a short-lived pipeline — acquire, pre-process, locate, measure, judge. Pushing that through a database token stepper turns a millisecond job into a second-long one and forces images onto disk. The converse holds too: a line-scheduling workflow that waits for signals, spans hours and must resume from a breakpoint does not belong in a dataflow engine. <strong>Two engines, each for its own problem.</strong></p>
+<p>Branching survives as a special case: a tool can declare an output handle of <code>kind="flow"</code> (true/false on an if, pass/fail on a judgement), and a node with incoming flow edges executes only when at least one of them was selected. A skipped node takes its downstream data edges with it, unless that input is optional. So one graph is both a data pipeline and a shallow decision tree, while the engine still just walks it once in topological order.</p>
 
-<h2 id="graph">2. 圖：一份 JSON、封閉集合、隱含埠</h2>
+<h2 id="graph">2. The graph: one JSON document, closed sets, implicit ports</h2>
 <ul>
-<li><strong>一份 JSON</strong>：<code>{"nodes": [...], "edges": [...]}</code>，節點記 <code>type</code>（工具 key）與 <code>params</code>；存檔時 <code>validate_graph()</code> 驗（埠型別相容、必填、單線埠、DAG），執行時 <code>compile_graph()</code> 編譯並依 flow version 快取。改名過的工具 key 走 <code>LEGACY_TOOL_TYPES</code> 自動換新（DB 另有資料轉移）。</li>
-<li><strong>封閉集合</strong>：<code>Param.kind</code> 與 <code>Port.type</code> 都是列舉死的集合，不是 JSON Schema。前端 <code>ParamField</code> 一個 switch 就能畫出任何工具的參數表單；埠顏色、連線相容性都能窮舉。要加一種 kind，後端集合、前端 switch、<code>catalogue()</code>、contract、glossary 五處同步——刻意讓它有成本，避免參數表單長成第二個表單引擎。</li>
-<li><strong>隱含埠</strong>：每個可執行節點有隱含控制輸入 <code>_flow</code>（分支語意）與隱含輸出 <code>_overlays</code>（該節點的標記，接給 draw_result 疊圖）。它們不在工具宣告裡，由框架統一處理，工具作者不用管。</li>
-<li><strong>overlays 座標約定</strong>：一律是該節點<strong>輸入影像</strong>的全圖座標。這是前端影像檢視器能把任何工具的標記畫對的唯一原因；ROI 裁切後用 <code>Crop.to_full()</code> 換回。</li>
+<li><strong>One document</strong>: <code>{"nodes": [...], "edges": [...]}</code>, where a node records its <code>type</code> (a tool key) and its <code>params</code>. Saving runs <code>validate_graph()</code> (port type compatibility, required inputs, single-connection ports, acyclicity) and running compiles it with <code>compile_graph()</code>, cached by flow version. Renamed tool keys are mapped through <code>LEGACY_TOOL_TYPES</code> automatically, with a data migration alongside.</li>
+<li><strong>Closed sets</strong>: <code>Param.kind</code> and <code>Port.type</code> are enumerated sets, not JSON Schema. One switch in the front end's <code>ParamField</code> can then render any tool's parameter form, and port colours and connection compatibility can be enumerated exhaustively. Adding a kind means changing five places in step — the backend set, the front-end switch, <code>catalogue()</code>, the contract page and the glossary — deliberately, so the parameter form never grows into a second form engine.</li>
+<li><strong>Implicit ports</strong>: every executable node has an implicit control input <code>_flow</code> (the branching semantics) and an implicit output <code>_overlays</code> (that node's overlays, for draw_result to compose). They are not in the tool's declaration; the framework handles them, so tool authors never think about them.</li>
+<li><strong>The overlay coordinate convention</strong>: always the full-image coordinates of that node's <strong>input image</strong>. That single rule is why the image viewer can draw any tool's overlays correctly; after cropping to an ROI, map back with <code>Crop.to_full()</code>.</li>
 </ul>
 
-<h2 id="registry">3. 工具是 registry，安全邊界在框架</h2>
-<p>工具繼承 <code>Tool</code>，宣告 <code>params</code>／<code>inputs</code>／<code>outputs</code>，實作 <code>execute(ctx) -&gt; Result</code>。引擎只做三件事：查 registry、餵輸入、收 <code>Result</code>。所有防呆都在框架層，不散在工具裡：</p>
+<h2 id="registry">3. Tools are a registry; the safety boundary is in the framework</h2>
+<p>A tool subclasses <code>Tool</code>, declares <code>params</code>, <code>inputs</code> and <code>outputs</code>, and implements <code>execute(ctx) -&gt; Result</code>. The engine does three things: look up the registry, feed the inputs, take the <code>Result</code>. Every safeguard is in the framework rather than scattered through the tools:</p>
 <ul>
-<li>註冊時就驗 kind／type 在封閉集合內、key 全域唯一；查無 key 回 <code>UnknownToolType</code> 附可用清單。</li>
-<li>工具「找不到東西」回 <code>status="ng"</code> 或走分支；「可預期的失敗」<code>raise ToolError</code>（節點 error）；其他例外框架接住附 repr，<strong>平台不會因為一個工具當掉</strong>。</li>
-<li>工具能看到的世界只有 <code>ToolContext</code>：參數、輸入、run 層級共享變數、<code>asset_path()</code>、<code>grab()</code>、log。不給 ORM、不給 request。</li>
+<li>Registration checks that kinds and types are inside the closed sets and that the key is globally unique. An unknown key returns <code>UnknownToolType</code> with the list of what is available.</li>
+<li>"Not found" is <code>status="ng"</code> or a branch. An expected failure is <code>raise ToolError</code> (the node errors). Anything else is caught by the framework with its repr attached, so <strong>one misbehaving tool cannot take the platform down</strong>.</li>
+<li>The only world a tool can see is <code>ToolContext</code>: its parameters, its inputs, run-level shared variables, <code>asset_path()</code>, <code>grab()</code> and logging. No ORM, no request.</li>
 </ul>
 
-<h2 id="run">4. 執行：一條執行緒跑完一次 run</h2>
+<h2 id="run">4. Running: one thread per run</h2>
 <ul>
-<li><strong>Runner</strong> 是生命週期管理者：每個 Flow 一個 runtime（編譯快取、一次只跑一個 run 的鎖、最近結果、統計）；全域 <code>ThreadPoolExecutor(VISION_MAX_WORKERS)</code>；同一流程排隊上限 <code>MAX_QUEUE_PER_FLOW</code>，超過回 429——<strong>寧可拒絕也不無限堆積</strong>。</li>
-<li><strong>engine</strong> 是純函式風格：拿編譯好的圖與輸入，照拓樸順序執行，回 <code>RunReport</code>。停用的節點若是「單輸入單輸出同型別」會把輸入直通（關掉一個濾鏡不該讓下游斷線）。</li>
-<li><strong>影像快取</strong>：影像輸出只有「有人連線用到」或編輯器試執行才登記；每流程保留最近 N 次、全域上限 MB，超過淘汰最舊。前端拿 <code>{ref,width,height}</code> 再去 <code>GET /images/{ref}</code> 取檔。</li>
-<li><strong>連續模式</strong>：每個流程一條 loop 執行緒，間隔 <code>continuous_interval_ms</code>，每 2 秒才回 DB 確認一次設定還在。</li>
-<li><strong>單一 API 行程</strong>：引擎狀態、影像快取、SSE bus 都在行程內（<code>manage.py serve</code> = uvicorn workers=1 + TCP）。水平擴展要把引擎拆成獨立服務，不是加 worker。</li>
+<li><strong>Runner</strong> manages lifecycle: one runtime per flow (the compile cache, a lock so only one run at a time, the recent results, the statistics), a global <code>ThreadPoolExecutor(VISION_MAX_WORKERS)</code>, and a per-flow queue limit of <code>MAX_QUEUE_PER_FLOW</code> beyond which it returns 429 — <strong>better to refuse than to pile up without bound</strong>.</li>
+<li><strong>engine</strong> is written in a pure-function style: given a compiled graph and the inputs, walk it in topological order and return a <code>RunReport</code>. A disabled node that is single-input, single-output and same-type passes its input straight through — turning off one filter should not disconnect everything downstream.</li>
+<li><strong>The image cache</strong>: an image output is registered only when something is connected to it, or during an editor preview. Each flow keeps the last N runs, with a global size cap in megabytes and the oldest evicted. The front end receives <code>{ref, width, height}</code> and fetches the picture from <code>GET /images/{ref}</code>.</li>
+<li><strong>Continuous mode</strong>: one loop thread per flow at <code>continuous_interval_ms</code>, checking the database that the settings still hold only every two seconds.</li>
+<li><strong>One API process</strong>: engine state, the image cache and the SSE bus all live in it (<code>manage.py serve</code> is uvicorn with workers=1 plus TCP). Scaling out means extracting the engine into its own service, not adding workers.</li>
 </ul>
 
-<h2 id="hotpath">5. 熱路徑不碰資料庫</h2>
-<p>執行緒池內的程式碼<strong>不查 DB</strong>。所有需要 DB 的資源在 <code>Runner._prefetch()</code>（呼叫者執行緒）先開好：影像來源、資產路徑、通訊連線（<code>Runner.prefetch_hooks</code>，apps.comm 掛 <code>prefetch_connections</code> 掃出 <code>write_modbus</code> 用到的連線）。工具在熱路徑只做純記憶體查詢（<code>get_writer(name)</code>）。FlowRun 落地由背景執行緒批次寫。這條規則換來的是：SQLite 也扛得住、執行緒池不會被 I/O 卡死、單次 run 的耗時可預測。</p>
+<h2 id="hotpath">5. The hot path never touches the database</h2>
+<p>Code running on the thread pool <strong>issues no queries</strong>. Everything that needs the database is opened in <code>Runner._prefetch()</code> on the caller's thread: image sources, asset paths and communication connections (via <code>Runner.prefetch_hooks</code> — apps.comm registers <code>prefetch_connections</code>, which collects the connections any tool declares). On the hot path a tool only does an in-memory lookup (<code>get_writer(name)</code>). FlowRun rows are batched out by a background thread. What this rule buys: SQLite copes, the thread pool never blocks on I/O, and the duration of a run is predictable.</p>
 
-<h2 id="degrade">6. 降級策略：產線不停線</h2>
-<div class="note">寧可漏傳一筆，也不要停線。所有「往外寫」的路都有降級。</div>
+<h2 id="degrade">6. Degradation: the line does not stop</h2>
+<div class="note">Better to lose one record than to stop the line. Every outward path degrades.</div>
 <ul>
-<li>Writer 內部：逾時＋失敗自動重連一次，第二次才算失敗（<code>CommError</code>）。</li>
-<li><code>write_modbus</code> 預設 <code>on_error=warn</code>：寫入失敗記警告、run 照常，判定不受影響；要嚴格可改 <code>fail</code>。</li>
-<li>來源抓不到圖、模型資產不見：該節點 error、run failed，但平台照常服務下一張。</li>
-<li>未 <code>commissioned</code>（現場教導沒做完）的流程只加 warnings，不阻擋執行。</li>
+<li>Inside a Writer: a timeout, then one automatic reconnect and retry; only the second failure counts (<code>CommError</code>).</li>
+<li><code>write_modbus</code> defaults to <code>on_error=warn</code>: a failed write logs a warning, the run continues and the verdict is unaffected. Set <code>fail</code> if you want it strict.</li>
+<li>A source with no image, or a missing model asset: that node errors and the run fails, but the platform serves the next image normally.</li>
+<li>A flow that is not yet <code>commissioned</code> only adds warnings; it is never blocked from running.</li>
 </ul>
 
-<h2 id="recipe">7. 配方與站台</h2>
+<h2 id="recipe">7. Recipes and stations</h2>
 <ul>
-<li><strong>配方（FlowRecipe）</strong>：同一張圖、不同料號的參數集。執行時 <code>apply_recipe()</code> 把配方參數疊在圖上再編譯，編譯快取鍵 <code>(version, recipe_id, updated_at)</code>；<code>run</code>／<code>preview</code>／TCP <code>recipe=</code> 都可指定，未指定用預設配方。圖與參數分離，換料號不改圖。</li>
-<li><strong>站台（station_id）</strong>：每筆 run 帶 <code>VISION_STATION_ID</code>，報表與上位機據此分流；多站台就是多個行程各帶自己的 id。</li>
-<li><strong>現場教導（teach）</strong>：參數標 <code>teach=True</code> 的才出現在參數卡頁——現場人員只看得到該調的，其他鎖在工程師的編輯器裡。</li>
+<li><strong>Recipe (FlowRecipe)</strong>: one graph, different parameter sets for different part numbers. At run time <code>apply_recipe()</code> overlays them before compiling, and the compile cache is keyed on <code>(version, recipe_id, updated_at)</code>. <code>run</code>, <code>preview</code> and TCP <code>recipe=</code> can all name one; without one the bound recipe applies. Graph and parameters stay separate, so a changeover never edits the graph.</li>
+<li><strong>Station (station_id)</strong>: every run carries <code>VISION_STATION_ID</code>, which reports and host systems use to separate them. Several stations means several processes, each with its own id.</li>
+<li><strong>Teaching parameters</strong>: only parameters marked <code>teach=True</code> appear on the teach page, so a line operator sees exactly what they are meant to adjust and nothing else. The server enforces it for the operator role.</li>
 </ul>
 
-<h2 id="extend">8. 四個擴充接縫（外掛）</h2>
-<p>平台刻意只留四個擴充點，全部走<strong>物件繼承 + 資料夾自動偵測</strong>（繼承基底類別、丟進 <code>plugins/</code>、重啟即掛載；外掛檔內用 <code>ENABLED</code>／<code>label</code>／<code>description</code> 變數控制掛載與顯示，詳見<a href="plugins.html">擴充外掛</a>）：</p>
+<h2 id="extend">8. Four extension seams (plugins)</h2>
+<p>The platform deliberately offers only four extension points, all working the same way — <strong>subclass a base class, drop the file in <code>plugins/</code>, restart</strong>. Module-level <code>ENABLED</code>, <code>label</code> and <code>description</code> control loading and display; see <a href="plugins.html">Plugins</a>.</p>
 <table>
-<tr><th>接縫</th><th>基底</th><th>解決什麼</th></tr>
-<tr><td>工具</td><td><code>Tool</code></td><td>新的檢測／量測／邏輯節點；前端零改動出現在調色盤</td></tr>
-<tr><td>影像來源</td><td><code>Grabber</code></td><td>GigE、廠牌 SDK 等取像方式；設定頁 kind 下拉自動出現</td></tr>
-<tr><td>整合輸出</td><td><code>Writer</code></td><td>Modbus TCP 之外的目的地（OPC UA、MES、檔案…）；沿用降級與重連框架</td></tr>
-<tr><td>深度學習模型</td><td><code>Trainer</code></td><td>新的可訓練模型種類；教導 UI 由目錄資料驅動、共用，產物一律是 ONNX 資產</td></tr>
+<tr><th>Seam</th><th>Base class</th><th>What it solves</th></tr>
+<tr><td>Tool</td><td><code>Tool</code></td><td>A new inspection, measurement or logic node; it appears in the palette with no front-end change</td></tr>
+<tr><td>Image source</td><td><code>Grabber</code></td><td>Another way to acquire images — GigE, a vendor SDK — appearing in the kind dropdown automatically</td></tr>
+<tr><td>Outgoing connection</td><td><code>Writer</code></td><td>Destinations beyond Modbus TCP (OPC UA, MES, a file), reusing the degradation and reconnect framework</td></tr>
+<tr><td>Deep-learning model</td><td><code>Trainer</code></td><td>A new trainable model kind; the teaching interface is driven by the catalogue and shared, and the result is always an asset</td></tr>
 </table>
-<p>三個接縫共用同一套哲學：<strong>基底類別把並發、逾時、重試、統計都做完</strong>，子類只填「怎麼抓一張圖」「怎麼寫一批值」「怎麼算這個節點」。擴充者寫的程式碼越少，現場出事的面積越小。</p>
+<p>All four share a philosophy: <strong>the base class has already dealt with concurrency, timeouts, retries and statistics</strong>, and the subclass only fills in "how do I grab one image", "how do I write a batch of values", "how do I compute this node". The less code an extender writes, the smaller the surface that can fail on the line.</p>
 
-<h2 id="lock">9. 帳號與引擎鎖定</h2>
+<h2 id="lock">9. Accounts and the engine lock</h2>
 <ul>
-<li>身分收斂成一個 <code>Principal(kind=integrator|user|bootstrap)</code>：整合方（API 金鑰）永遠可執行；沒有任何使用者時放行 bootstrap 讓 <code>/auth/setup</code> 能建帳號。</li>
-<li>端點只有三種接縫：執行類看 <code>can_execute()</code>（鎖定時 423）、修改類看 <code>_editable_flow()</code>（擁有者或管理員）、讀取看 <code>_visible_flows()</code>。新增端點照這三個模子套，不發明第四種。</li>
-<li>鎖是 <code>EngineLock</code> 單列（id=1）：鎖定時停掉所有連續執行並發 SSE <code>lock</code> 事件，整台機器一個開關，語意簡單到不會出錯。</li>
+<li>Identity collapses into one <code>Principal(kind=integrator|user|bootstrap)</code> with a role. An integrator (an API key) can always execute; with no users at all, bootstrap lets <code>/auth/setup</code> create the first account.</li>
+<li>Endpoints have three seams and no more: executing checks <code>can_execute()</code> (423 while locked), modifying checks <code>_editable_flow()</code> (an engineer or an administrator; a flow belongs to the line, not to a person), and reading checks <code>_visible_flows()</code>. New endpoints follow one of the three rather than inventing a fourth.</li>
+<li>The lock is a single <code>EngineLock</code> row (id=1). Locking stops every continuous run and emits an SSE <code>lock</code> event — one switch for the whole machine, with semantics simple enough to be hard to get wrong.</li>
 </ul>
 
-<h2 id="rules">10. 要守住的原則（紅線）</h2>
+<h2 id="rules">10. The principles that hold</h2>
 <ol>
-<li>不重寫引擎、不改 graph JSON 格式、不把 <code>Flow.graph</code> 搬出資料庫、不引入 Node.js／微服務。</li>
-<li>執行緒池內不碰資料庫；資源一律 prefetch。</li>
-<li>只有一個 API 行程；<code>runserver</code> 開發要加 <code>--noreload</code>。</li>
-<li>封閉集合不擴散：新增 <code>Param.kind</code>／<code>Port.type</code> 必須五處同步（後端集合、前端 <code>ParamField</code>、<code>catalogue()</code>、contract.html、glossary.html）。</li>
-<li>工具不 raise 表達「沒找到」；overlays 一律輸入影像全圖座標。</li>
-<li>改動優化過的函式（blob 預濾、<code>_roi_hist</code>、<code>find_edges_rows</code>、<code>caliper_points</code>、<code>apply_mask</code>、<code>mask_for</code>、RANSAC 向量化、template_match 金字塔）必須重跑等價性檢查，不能只看測試綠。</li>
-<li>往外寫的路（Modbus、上位機）預設降級不停線。</li>
+<li>Do not rewrite the engine, change the graph JSON format, move <code>Flow.graph</code> out of the database, or introduce Node.js or microservices.</li>
+<li>No database access inside the thread pool; every resource is prefetched.</li>
+<li>One API process only; development with <code>runserver</code> needs <code>--noreload</code>.</li>
+<li>Closed sets stay closed: a new <code>Param.kind</code> or <code>Port.type</code> means five places changed together (the backend set, the front-end <code>ParamField</code>, <code>catalogue()</code>, contract.html and glossary.html).</li>
+<li>A tool never raises to mean "not found", and overlays are always in the input image's full coordinates.</li>
+<li>Changing an optimised function (the blob pre-filter, <code>_roi_hist</code>, <code>find_edges_rows</code>, <code>caliper_points</code>, <code>apply_mask</code>, <code>mask_for</code>, the vectorised RANSAC, the template_match pyramid) requires re-running the equivalence check, not just a green test suite.</li>
+<li>Outward paths (Modbus, host systems) degrade by default rather than stopping the line.</li>
 </ol>
 
-<h2 id="terms">11. 名詞對照（ZQS ↔ VisionSequence）</h2>
+<h2 id="terms">11. Term mapping (control flow ↔ dataflow)</h2>
 <table>
-<tr><th>ZQS Cloud（控制流程）</th><th>VisionSequence（資料流）</th><th>差異</th></tr>
-<tr><td><code>Workflow</code></td><td><code>Flow</code></td><td>都是「圖的定義」，一份 JSON</td></tr>
-<tr><td><code>WorkflowRun</code>＋<code>WorkflowToken</code></td><td><code>FlowRun</code>（RunReport 落地）</td><td>token 消失了：一次 run 就是一次函式呼叫，沒有「停在半路」的狀態</td></tr>
-<tr><td><code>WorkflowLog</code>（每步一列）</td><td><code>FlowRun.nodes</code>（各節點摘要）＋節點 log</td><td>跑完一次寫一列，不逐步落地</td></tr>
-<tr><td><code>NodeType</code>／<code>nodes/base.py</code></td><td><code>Tool</code>／<code>tools/base.py</code></td><td>多了輸入／輸出埠宣告（資料流）；Param 封閉集合相同</td></tr>
-<tr><td>把手（Handle）</td><td>輸出埠；<code>kind="flow"</code> 的把手＝分支</td><td>把手從「控制去向」變成「資料出口」，flow 埠保留分支語意</td></tr>
-<tr><td>stepper <code>advance()</code> 每 tick 推一步</td><td><code>engine.run_graph()</code> 一次跑完</td><td>沒有 tick、沒有 step budget、沒有防 runaway（DAG 天生會停）</td></tr>
-<tr><td><code>run_workflows</code> 常駐行程</td><td><code>Runner</code> 執行緒池（同一行程）</td><td>並行單位從 token 變成流程</td></tr>
-<tr><td><code>dispatch_command</code>（設備命令）</td><td><code>write_modbus</code>＋<code>Connection</code>（apps.comm）</td><td>主動輸出獨立成連線子系統，帶降級與重連</td></tr>
-<tr><td>SSE run stream</td><td>SSE <code>/events</code>（run／lock 事件）</td><td>相同思想：行程內真推播，不輪詢 DB</td></tr>
+<tr><th>Control-flow engine</th><th>VisionSequence (dataflow)</th><th>The difference</th></tr>
+<tr><td><code>Workflow</code></td><td><code>Flow</code></td><td>Both are "the definition of a graph", one JSON document</td></tr>
+<tr><td><code>WorkflowRun</code> + <code>WorkflowToken</code></td><td><code>FlowRun</code> (a persisted RunReport)</td><td>The token is gone: a run is a function call, with no state that can sit half-finished</td></tr>
+<tr><td><code>WorkflowLog</code> (one row per step)</td><td><code>FlowRun.nodes</code> (a summary per node) plus node logs</td><td>One row after the run, rather than persisting step by step</td></tr>
+<tr><td><code>NodeType</code> / <code>nodes/base.py</code></td><td><code>Tool</code> / <code>tools/base.py</code></td><td>Input and output port declarations are new (that is the dataflow part); the closed Param set is the same</td></tr>
+<tr><td>Handle</td><td>An output port; a <code>kind="flow"</code> handle is a branch</td><td>A handle went from "where control goes" to "where data leaves", with flow ports keeping the branching meaning</td></tr>
+<tr><td>A stepper's <code>advance()</code> per tick</td><td><code>engine.run_graph()</code> in one pass</td><td>No ticks, no step budget, no runaway protection — a DAG terminates by construction</td></tr>
+<tr><td>A resident <code>run_workflows</code> process</td><td>The <code>Runner</code> thread pool, in the same process</td><td>The unit of concurrency went from a token to a flow</td></tr>
+<tr><td><code>dispatch_command</code> (device commands)</td><td><code>write_modbus</code> plus <code>Connection</code> (apps.comm)</td><td>Pushing out became its own connection subsystem, with degradation and reconnection</td></tr>
+<tr><td>An SSE run stream</td><td>SSE <code>/events</code> (run and lock events)</td><td>The same idea: real in-process push, never polling the database</td></tr>
 </table>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

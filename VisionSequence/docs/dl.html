@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 深度學習教導</title>
+<title>VisionSequence deep-learning teaching</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,183 +134,185 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html" aria-current="page">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#flow">1. 教導流程（使用者視角）</a></li><li><a href="#auto">2. 自動標記</a></li><li><a href="#devices">3. 伺服端資源與裝置設定</a></li><li><a href="#shapes">4. shapes 標記編輯器（分割／偵測）</a></li><li><a href="#dataset">5. 資料集管理（去重、分割、版本）</a></li><li><a href="#builtin">6. 內建模型與資料增強</a></li><li><a href="#interop">7. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</a></li><li><a href="#extend">8. 擴充：新的模型種類（Trainer）</a></li><li><a href="#api">9. API</a></li><li><a href="#internals">10. 內部結構與設計取捨</a></li><li><a href="#install">11. 安裝與踩坑（torch／ultralytics／onnxruntime-gpu）</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html" aria-current="page">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#flow">1. Teaching, from the user&#x27;s side</a></li><li><a href="#auto">2. Automatic labelling</a></li><li><a href="#devices">3. Server resources and device settings</a></li><li><a href="#shapes">4. The shapes labelling editor (segmentation and detection)</a></li><li><a href="#dataset">5. Dataset management (de-duplication, splits, versions)</a></li><li><a href="#builtin">6. Built-in models and augmentation</a></li><li><a href="#interop">7. YOLO dataset export and import</a><ul><li><a href="#mlp">The built-in classifier in detail</a></li></ul></li><li><a href="#extend">8. Extending: a new model kind (Trainer)</a></li><li><a href="#api">9. API</a></li><li><a href="#internals">10. Internals and the trade-offs</a></li><li><a href="#install">11. Installing, and the traps (torch, ultralytics, onnxruntime-gpu)</a></li></ul></aside><article class="doc">
 
-<h1>深度學習教導：平台內標記、訓練、匯出</h1>
-<p>「深度學習」頁（<code>/dl</code>）讓使用者<strong>不出平台</strong>完成一輪教導：建立教導專案 → 收集樣本（上傳或從影像來源連抓）→ 標記（含<strong>自動標記</strong>加速）→ 在<strong>伺服端</strong>訓練（可看 GPU／加速器資訊並選擇裝置）→ 模型自動匯出成<strong>資產</strong>，在流程的「DL 分類」等工具直接選用。模型種類（trainer）是 registry，之後導入其他深度學習模型<strong>共用同一套 UI</strong>，前端不用改。</p>
+<h1>Deep-learning teaching: label, train and export inside the platform</h1>
+<p>The Deep learning page (<code>/dl</code>) takes you through a full round of teaching <strong>without leaving the platform</strong>: create a teaching project → collect samples (upload, or grab a burst from an image source) → label them (with <strong>automatic labelling</strong> to speed it up) → train <strong>on the server</strong> (with the GPU and accelerator information in front of you and the device your choice) → and the model is exported as an <strong>asset</strong>, ready to select in a DL tool in any flow. Model kinds (trainers) are a registry, so a new one <strong>reuses the same interface</strong> with no front-end work.</p>
 
-<h2 id="flow">1. 教導流程（使用者視角）</h2>
+<h2 id="flow">1. Teaching, from the user's side</h2>
 <ol>
-<li><strong>建立教導專案</strong>：取名、選模型種類、定義類別（例如 <code>OK, NG</code>；之後可隨時增減）。</li>
-<li><strong>收集樣本</strong>：「上傳影像」（多選，<strong>也接受 zip 批次包</strong>）或「從來源取像」（選影像來源連抓 N 張，可預先標記）。上傳一律以<strong>像素 SHA256 去重</strong>——同一張圖重傳（或 zip 裡重複）自動略過並回報張數。</li>
-<li><strong>標記</strong>（分類）：兩種檢視——<strong>網格</strong>（點一個類別按鈕，再點縮圖即標記，適合大量快速標記；hover 縮圖有放大與刪除鈕）與<strong>大圖</strong>（左縮圖牆＋右原圖檢視器，可縮放／1:1 看細節，下方類別按鈕或 0~9 標記、←/→ 換張）。兩種檢視共用篩選條件。</li>
-<li><strong>訓練</strong>：右側面板調超參數（表單由 trainer 的宣告產生）、選裝置、給模型資產名稱 → 開始。進度條與指標（訓練／驗證正確率）即時更新；訓練跑在背景，不占用檢測執行緒池。</li>
-<li><strong>使用</strong>：完成後模型出現在資產庫（kind=model），流程裡加「DL 分類」工具、選這個模型、labels 貼上類別清單即可（trainer 會回報建議參數，內建分類器與工具預設前處理完全一致，其餘參數用預設值就對）。</li>
+<li><strong>Create a teaching project</strong>: a name, a model kind, and the classes (<code>OK, NG</code>, say — you can add and remove them later).</li>
+<li><strong>Collect samples</strong>: "Upload images" (multi-select, and <strong>a zip is accepted too</strong>) or "Grab from source" (pick an image source and take N frames, optionally pre-labelled). Every upload is <strong>de-duplicated on the SHA256 of the decoded pixels</strong> — re-uploading the same image, or a duplicate inside a zip, is skipped and reported.</li>
+<li><strong>Label</strong> (classification): two views. <strong>Grid</strong> — click a class button, then click thumbnails, which is the fast way through a lot of images (hovering a thumbnail gives you enlarge and delete). <strong>Large</strong> — a thumbnail wall on the left and a full-image viewer on the right, with zoom and 1:1 for detail, class buttons or the 0–9 keys to label, and ←/→ to move. Both share the same filters.</li>
+<li><strong>Train</strong>: the panel on the right holds the hyper-parameters (the form is generated from the trainer's declaration), the device and the name for the model asset. Progress and metrics (training and validation accuracy) update live, and training runs in the background without using the inspection thread pool.</li>
+<li><strong>Use it</strong>: the finished model appears in the asset library (kind=model). Add a DL tool to a flow, select that model, and paste the class list into labels — the trainer reports the parameters it suggests, and the built-in classifier's pre-processing matches the tool's defaults exactly, so the rest can stay at their defaults.</li>
 </ol>
 
-<p><strong>範例畫廊裡的 DL 範本</strong>：「YOLO 物件計數（官方底模）」「YOLO 實例分割：標誌面積」用 COCO 底模不需訓練；「DL 分類：良品／缺孔」「DL 語意分割：刮痕面積」用 seed_demo 以內建 trainer 訓練的示範模型（資產「範例：分類模型（良品／缺孔）」「範例：分割模型（刮痕）」），示範教導產物如何進流程；見 <a href="samples.html">範例樣板</a>。</p>
+<p><strong>The deep-learning templates in the gallery</strong>: "YOLO object count (stock model)" and "YOLO instance segmentation: sign area" need no training at all, using the COCO stock models. "Classification: good / missing hole" and "Semantic segmentation: scratch area" use the demonstration models that <code>seed_demo</code> trains with the built-in trainers (the assets "Example: classifier (good / missing hole)" and "Example: segmenter (scratch)"), showing how a taught model gets into a flow. See <a href="samples.html">Example templates</a>.</p>
 
-<h2 id="auto">2. 自動標記</h2>
-<p>標記是導入最花時間的一步，所以每個 trainer 可實作 <code>suggest()</code>：對未標記樣本提出「建議類別＋信心分數」。內建分類器用<strong>特徵空間的 cosine kNN（k=3）</strong>——只要每類標了幾張就開始有用，秒回、不用等訓練。</p>
+<h2 id="auto">2. Automatic labelling</h2>
+<p>Labelling is the slowest part of getting started, so every trainer can implement <code>suggest()</code>: a proposed class and a confidence for each unlabelled sample. The built-in classifier uses <strong>cosine kNN (k=3) in feature space</strong>, which becomes useful after a handful of images per class, answers instantly and needs no training first.</p>
 <ul>
-<li>按「自動標記」→ 未標記的縮圖出現虛線框建議（<code>NG? 87%</code>）→「接受全部」批次寫入，或個別點掉重標。</li>
-<li>自動標記的樣本記為 <code>labeled_by=auto</code>（縮圖上有 <code>~87%</code> 標示、可用篩選「自動標記（待確認）」複查）；人工改標後轉為 <code>human</code>。</li>
-<li>只有 <code>human</code> 標記會拿來當 kNN 參考，避免自動標記自我增強。</li>
-<li><strong>YOLO trainer 的提案</strong>（yolo_seg／yolo_detect／yolo_obb／yolo_cls）：訓練過就用上次的 best.pt；還沒訓練過用官方底模（COCO／ImageNet）提案，名稱對不上的類別掛到第一個類別交給使用者改。</li>
-<li><strong>SAM 全圖提案</strong>（shapes 專案的「SAM 全圖提案」鈕，<code>POST /auto-label {"method": "sam"}</code>）：完全沒有模型也能用——SAM2 對整張影像自動分割（面積大到小最多 30 個、略過蓋滿整張的背景），提案掛到第一個類別，每次最多 20 張（回 <code>remaining</code> 可再按一次）。GPU 每張約 1.6 秒。</li>
-<li><strong>智慧選取／智慧框選</strong>（標記編輯器 S／X）：點一個物件或拖一個框，SAM2（<code>sam2.1_t.pt</code>，<code>VISION_SAM_MODEL</code> 可改成 sam2.1_s／b 或 mobile_sam）回傳該物件輪廓；點擊 GPU 約 60ms。權重第一次使用自動下載，下載失敗自動退回 mobile_sam.pt。</li>
+<li>Press "Auto label" and the unlabelled thumbnails get a dashed proposal (<code>NG? 87%</code>). "Accept all" writes them in bulk, or click individual ones to relabel.</li>
+<li>Automatically labelled samples are recorded as <code>labeled_by=auto</code> (the thumbnail shows <code>~87%</code>, and the "auto-labelled (unconfirmed)" filter finds them for review); relabelling by hand makes them <code>human</code>.</li>
+<li>Only <code>human</code> labels are used as kNN references, so automatic labels cannot reinforce themselves.</li>
+<li><strong>YOLO trainer proposals</strong> (yolo_seg, yolo_detect, yolo_obb, yolo_cls): once trained, the last best.pt is used; before that, the stock model (COCO or ImageNet) proposes, and any class whose name does not match is attached to the first class for you to correct.</li>
+<li><strong>SAM whole-image proposals</strong> (the "SAM proposals" button on a shapes project, <code>POST /auto-label {"method": "sam"}</code>): this works with no model at all — SAM2 segments the whole image (up to 30 regions, largest first, skipping anything covering the entire frame) and every proposal is attached to the first class, 20 images at a time (<code>remaining</code> in the response says whether to press again). About 1.6 seconds per image on a GPU.</li>
+<li><strong>Smart select and smart box</strong> (S and X in the labelling editor): click an object or drag a box and SAM2 (<code>sam2.1_t.pt</code>; <code>VISION_SAM_MODEL</code> can select sam2.1_s, b or mobile_sam) returns its outline — about 60 ms per click on a GPU. The weights download on first use, falling back to mobile_sam.pt if that fails.</li>
 </ul>
 
-<h2 id="devices">3. 伺服端資源與裝置設定</h2>
-<p>訓練與推論都用<strong>伺服器</strong>的資源。頁面頂端顯示偵測到的加速器與 GPU（<code>GET /dl/devices</code>）：</p>
+<h2 id="devices">3. Server resources and device settings</h2>
+<p>Both training and inference use the <strong>server's</strong> resources. The top of the page shows the accelerators and GPUs detected (<code>GET /dl/devices</code>):</p>
 <table>
-<tr><th>欄位</th><th>內容</th></tr>
-<tr><td><code>providers</code></td><td>此伺服器的 onnxruntime execution providers（CPU／CUDA／DirectML／TensorRT…，依安裝的 onnxruntime 套件而定）。</td></tr>
-<tr><td><code>gpus</code></td><td>NVIDIA GPU 名稱、記憶體用量、使用率（有 <code>nvidia-smi</code> 才有；查不到就空）。</td></tr>
-<tr><td><code>preferred_providers</code>／<code>train_device</code></td><td>使用者目前的選擇（<code>PATCH /dl/settings</code>，管理員）。</td></tr>
+<tr><th>Field</th><th>Contents</th></tr>
+<tr><td><code>providers</code></td><td>This server's onnxruntime execution providers (CPU, CUDA, DirectML, TensorRT and so on, depending on which onnxruntime package is installed).</td></tr>
+<tr><td><code>gpus</code></td><td>NVIDIA GPU names, memory usage and utilisation (only where <code>nvidia-smi</code> is available; empty otherwise).</td></tr>
+<tr><td><code>preferred_providers</code> / <code>train_device</code></td><td>The current choice (<code>PATCH /dl/settings</code>, administrator only).</td></tr>
 </table>
 <ul>
-<li><strong>推論</strong>：<code>preferred_providers</code> 決定 dl_* 工具建 ort session 的 providers（自動過濾不可用者、CPU 墊底）；改設定會清掉 session 快取立即生效。要用 GPU 推論，把 <code>onnxruntime</code> 換成 <code>onnxruntime-gpu</code>（或 <code>onnxruntime-directml</code>）後在此選擇。</li>
-<li><strong>訓練</strong>：裝置下拉列出伺服器可用且該 trainer 支援的裝置（trainer 宣告 <code>devices</code>；內建 MLP 為 CPU，數秒內完成）。</li>
+<li><strong>Inference</strong>: <code>preferred_providers</code> decides the providers a dl_* tool builds its ORT session with (unavailable ones are filtered out and CPU is always last). Changing it clears the session cache and takes effect immediately. For GPU inference, replace <code>onnxruntime</code> with <code>onnxruntime-gpu</code> (or <code>onnxruntime-directml</code>) and select it here.</li>
+<li><strong>Training</strong>: the device dropdown lists what the server has and the trainer supports (a trainer declares its <code>devices</code>; the built-in MLP is CPU and finishes in seconds).</li>
 </ul>
 
-<h2 id="shapes">4. shapes 標記編輯器（分割／偵測）</h2>
-<p>label_mode=<code>shapes</code> 的模型（語意分割、實例分割）用<strong>標記編輯器</strong>：一張影像多個 polygon／bbox 實例，各有類別。座標一律 <strong>0~1 正規化</strong>儲存（與 YOLO txt 一致），只在畫布上換算像素。</p>
+<h2 id="shapes">4. The shapes labelling editor (segmentation and detection)</h2>
+<p>Models with label_mode=<code>shapes</code> — semantic and instance segmentation — use the <strong>labelling editor</strong>: several polygon or bounding-box instances per image, each with a class. Coordinates are always stored <strong>normalised 0–1</strong> (matching YOLO txt) and converted to pixels only for the canvas.</p>
 <ul>
-<li><strong>編輯</strong>：畫布左側是<strong>大圖示工具欄</strong>（選取／多邊形／框／自動優化／刪除／還原，各鈕標示快捷鍵），上方是狀態列（上一張/下一張、樣本尺寸、標記數、繪製提示、未儲存指示、快捷鍵說明、儲存）與<strong>大顆類別按鈕</strong>（色點＋數字鍵標示＋計數）。</li>
-<li><strong>多邊形＝逐點繪製，點數不限</strong>：按 N（或工具欄）後每點選加一個頂點，畫面即時顯示折線與到游標的虛線；<strong>雙擊</strong>、<strong>點回第一點</strong>或按 <code>Enter</code> 閉合，<code>Backspace</code> 退一點、<code>Esc</code> 取消。完成後自動回到選取模式並選中新形狀，可再拖曳頂點、雙擊邊線插點、Alt+點刪點微調。方框（B）維持拖曳畫出。</li>
-<li><strong>智慧選取（SAM 點擊出輪廓）</strong>：按 S（魔杖）後<strong>點選物件</strong>，伺服端用 SAM 分割出輪廓、簡化成 polygon 掛上目前類別，可連續點下一個物件；Ctrl+Z 可還原。權重預設 <code>mobile_sam.pt</code>（約 40MB，第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code>）；需要 <code>pip install ultralytics onnx onnxslim</code>（與 yolo_seg 同一套可選依賴，缺件會提示指令）。</li>
-<li><strong>智慧框選（X）</strong>：拖曳一個框住物件的矩形，SAM2 回傳框內物件的輪廓（框比點更能指定「要哪一個」）；留在此模式可連續框選。</li>
-<li><strong>其他操作</strong>：Delete 刪形狀、Ctrl+Z 還原、Ctrl+S 儲存（切換影像會攔未儲存變更）；快捷鍵 V/N(P)/B/S/O、←/→ 換張、0~9 指定類別。</li>
-<li><strong>自動優化（輪廓貼邊）</strong>：前端純 JS——在降到最長邊 1280 的灰階梯度圖上，沿各頂點法線搜尋最強邊緣（帶位移懲罰）、迭代 3 次並平滑、Douglas–Peucker 簡化到 ≤120 點。不自動儲存，Ctrl+Z 可還原。</li>
-<li><strong>縮圖牆巡檢</strong>：左側縮圖直接畫上標記輪廓，快速看出哪些張標壞了；有自動標記建議的顯示「?」。</li>
-<li><strong>自動標記</strong>：shapes 模式的建議是整張圖的形狀集合（半透明畫在編輯器與縮圖上），可單張「接受建議」或整批接受；接受後記為 auto 待人工複查。</li>
+<li><strong>Editing</strong>: a <strong>rail of large icons</strong> on the left of the canvas (select, polygon, box, refine, delete, undo, each showing its shortcut), a status bar above it (previous and next image, sample size, label count, drawing hints, an unsaved indicator, the shortcut list, save) and <strong>large class buttons</strong> (a colour dot, the number key and a count).</li>
+<li><strong>A polygon is drawn point by point, with no limit</strong>: press N (or use the rail) and each click adds a vertex, with the polyline and a dashed line to the cursor drawn live. <strong>Double-click</strong>, <strong>click the first point</strong> or press <code>Enter</code> to close it; <code>Backspace</code> removes the last point and <code>Esc</code> cancels. When it closes you return to select mode with the new shape selected, so you can drag vertices, double-click an edge to insert a point, or Alt-click to delete one. A box (B) is still dragged out.</li>
+<li><strong>Smart select (SAM traces the outline)</strong>: press S (the wand) and <strong>click an object</strong>; the server segments it, simplifies the outline into a polygon and attaches the current class, and you can go straight on to the next object. Ctrl+Z undoes. The default weights are <code>mobile_sam.pt</code> (about 40 MB, downloaded to <code>ASSET_DIR/dl/weights/</code> on first use) and it needs <code>pip install ultralytics onnx onnxslim</code> — the same optional dependencies as yolo_seg, with the command shown if they are missing.</li>
+<li><strong>Smart box (X)</strong>: drag a rectangle around an object and SAM2 returns the outline of what is inside it — a box says "which one" more precisely than a click. Stay in the mode to keep boxing.</li>
+<li><strong>Other keys</strong>: Delete removes a shape, Ctrl+Z undoes, Ctrl+S saves (switching image intercepts unsaved changes); V/N(P)/B/S/O for the tools, ←/→ to change image, 0–9 to set the class.</li>
+<li><strong>Refine (snap to edges)</strong>: pure front-end JavaScript — on a grayscale gradient image scaled to a longest side of 1280, search along each vertex's normal for the strongest edge (with a displacement penalty), iterate three times, smooth, and simplify with Douglas–Peucker to at most 120 points. It does not save automatically, and Ctrl+Z undoes it.</li>
+<li><strong>Reviewing from the thumbnail wall</strong>: the thumbnails on the left draw the label outlines, so you can see at a glance which images were labelled badly. Ones with an automatic proposal show a "?".</li>
+<li><strong>Automatic labelling</strong>: in shapes mode a proposal is a whole set of shapes for the image, drawn semi-transparent in the editor and on the thumbnail. Accept one image at a time or all of them; accepted proposals are marked auto, awaiting review.</li>
 </ul>
 
-<h2 id="dataset">5. 資料集管理（去重、分割、版本）</h2>
+<h2 id="dataset">5. Dataset management (de-duplication, splits, versions)</h2>
 <ul>
-<li><strong>重複偵測</strong>：每張樣本存「解碼後像素的 SHA256」（<code>DlSample.sha256</code>），上傳／zip 匯入／從來源連抓／資料夾匯入都在同專案內去重，回報 <code>duplicates</code> 數；靜態畫面連抓 N 張只會留一份。</li>
-<li><strong>train/val/test 分割</strong>：右欄「資料集」面板顯示各分割張數；「自動分割」輸入驗證與測試比例後<strong>分層</strong>隨機指派（classes 依類別、shapes 依有無標記；會重新指派全部樣本）。個別樣本可在標記工作區狀態列點<strong>分割 chip</strong> 循環切換（訓練→驗證→測試→未指定），縮圖網格也有角標、篩選下拉可只看某個分割。</li>
-<li><strong>訓練如何用分割</strong>：指定 <code>val</code> 的樣本當驗證集（沒指定就按 val 比例隨機）；指定 <code>test</code> 的樣本<strong>不進訓練</strong>（保留給訓練後的盲測，指標會回報 <code>test_holdout</code>）。yolo_seg 匯出暫存資料集時同樣尊重指定（未指定者隨機補 val）。</li>
-<li><strong>版本凍結</strong>：「凍結」把當下的樣本＋標記＋分割匯出成 zip 存進<strong>資產庫（kind=dataset）</strong>並記錄統計（總數／各類張數／分割數）——shapes 專案是 YOLO 樹（images/labels/{train,val,test}+data.yaml）、classes 專案是類別資料夾＋manifest.json。版本清單可下載 zip 或刪除（zip 一併刪）。</li>
+<li><strong>Duplicate detection</strong>: every sample stores the SHA256 of its decoded pixels (<code>DlSample.sha256</code>), and uploads, zip imports, source bursts and folder imports are all de-duplicated within the project, reporting a <code>duplicates</code> count. Grabbing N frames of a static scene keeps one.</li>
+<li><strong>train/val/test splits</strong>: the Dataset panel on the right shows the count in each. "Auto split" takes validation and test ratios and assigns <strong>stratified</strong> at random (by class for classes projects, by whether anything is labelled for shapes projects), reassigning every sample. An individual sample's <strong>split chip</strong> in the workspace status bar cycles through train → val → test → unset, the thumbnail grid shows a corner badge, and the filter dropdown can show one split at a time.</li>
+<li><strong>How training uses them</strong>: samples marked <code>val</code> become the validation set (without any, a random fraction is taken by ratio), and samples marked <code>test</code> <strong>never enter training</strong> — they are held back for a blind check afterwards, reported as <code>test_holdout</code>. The temporary dataset yolo_seg exports respects the same assignment (unassigned samples fill val at random).</li>
+<li><strong>Freezing a version</strong>: "Freeze" exports the current samples, labels and splits as a zip into the <strong>asset library (kind=dataset)</strong> along with statistics (total, per class, per split) — a YOLO tree for shapes projects (images/labels/{train,val,test} plus data.yaml) and class folders with a manifest.json for classes projects. Versions can be downloaded or deleted (which deletes the zip too).</li>
 </ul>
 
-<h2 id="builtin">6. 內建模型與資料增強</h2>
+<h2 id="builtin">6. Built-in models and augmentation</h2>
 <table>
-<tr><th>kind</th><th>任務／標記</th><th>做法</th><th>推論工具</th><th>依賴</th></tr>
-<tr><td><code>mlp_classify</code></td><td>影像分類（classes）</td><td>MLP、numpy 訓練、手刻 ONNX；前處理與工具預設一致。全批次梯度下降有<strong>學習率保護</strong>：前 10% 若 loss 停在 ln(k)、正確率＝隨機（隱藏層被大 lr 打死），自動砍 lr 為 1/4 重來（最多 3 次，metrics.lr_restarts）。看的是整張縮圖像素，適合整體外觀不同的類別；位置隨機的細小瑕疵請用 patch_segment／YOLO</td><td>dl_classify</td><td>無（內建）</td></tr>
-<tr><td><code>patch_segment</code></td><td>語意分割（shapes）</td><td>patch 分類器（背景＋各類別）numpy 訓練 → 匯出<strong>全卷積 ONNX</strong>（Conv k×k → Relu → Conv 1×1，任意輸入尺寸）；CPU 數秒。適合顏色／紋理類區域與瑕疵</td><td>dl_segment（labels 首項為 background）</td><td>無（內建）</td></tr>
-<tr><td><code>yolo_seg</code></td><td>實例分割（shapes）</td><td>ultralytics YOLO-seg：DB 樣本自動暫存成 YOLO 資料集（bbox 標記轉四角 polygon）→ 訓練（callbacks 回報進度／loss／mAP 曲線與 log、可中止且已訓練的照常存檔匯出）→ 產物 <strong>best.pt＋ONNX 兩個資產</strong>（.pt 是主產物、專案 last_asset 指向它；ONNX 資產名加「（ONNX）」）；best.pt 另留一份供自動標記與續訓。官方底模（yolov8n-seg.pt、yolo11n-seg.pt…）第一次使用自動下載到 <code>ASSET_DIR/dl/weights/</code></td><td><strong>yolo_segment</strong>（.pt，GPU）／dl_instance（ONNX）</td><td rowspan="4"><strong>可選</strong>：<code>.\scripts\setup_dl.ps1</code>（requirements-dl.txt；torch cu128＋ultralytics＋onnxruntime-gpu，約 3GB；見 §11）</td></tr>
-<tr><td><code>yolo_detect</code></td><td>物件偵測（shapes）</td><td>bbox（polygon 取外接框）→ YOLO detect 訓練；底模 yolo11n.pt。最快、標記最省</td><td><strong>yolo_detect</strong>／dl_detect</td></tr>
-<tr><td><code>yolo_cls</code></td><td>影像分類（classes）</td><td>樣本依類別存成 ultralytics 分類資料集（<code>train/&lt;class&gt;/</code>，類別順序以資料夾排序為準、工具用 model.names）→ YOLO-cls 微調；底模 yolo11n-cls.pt（ImageNet）。比內建 MLP 準</td><td><strong>yolo_classify</strong>／dl_classify（ONNX 已含 softmax）</td></tr>
-<tr><td><code>yolo_obb</code></td><td>旋轉框（shapes）</td><td>polygon 取最小外接旋轉矩形、bbox 取四角 → YOLO-obb 訓練；底模 yolo11n-obb.pt</td><td><strong>yolo_obb</strong>（ONNX 只供外部使用）</td></tr>
+<tr><th>kind</th><th>Task / labels</th><th>How</th><th>Inference tool</th><th>Dependencies</th></tr>
+<tr><td><code>mlp_classify</code></td><td>Image classification (classes)</td><td>An MLP trained in numpy, exported as hand-built ONNX, with pre-processing identical to the tool's defaults. Full-batch gradient descent with <strong>learning-rate protection</strong>: if in the first 10% the loss sits at ln(k) and accuracy is chance (a large learning rate has killed the hidden layer), the rate is cut to a quarter and it restarts, up to three times (metrics.lr_restarts). It sees the whole downscaled image, which suits classes that differ in overall appearance; for small defects in random positions use patch_segment or YOLO</td><td>dl_classify</td><td>None (built in)</td></tr>
+<tr><td><code>patch_segment</code></td><td>Semantic segmentation (shapes)</td><td>A patch classifier (background plus each class) trained in numpy, exported as a <strong>fully convolutional ONNX</strong> (Conv k×k → Relu → Conv 1×1, accepting any input size). Seconds on CPU. Suits colour- and texture-defined regions and defects</td><td>dl_segment (labels start with background)</td><td>None (built in)</td></tr>
+<tr><td><code>yolo_seg</code></td><td>Instance segmentation (shapes)</td><td>ultralytics YOLO-seg: samples from the database are staged into a YOLO dataset (box labels become four-corner polygons), trained with callbacks reporting progress, loss, the mAP curves and the log (interruptible, and what has trained is still saved and exported), producing <strong>two assets, best.pt and ONNX</strong> — the .pt is the main product and the project's last_asset, and the ONNX asset's name gets "(ONNX)". A copy of best.pt is kept for automatic labelling and further training. Stock models (yolov8n-seg.pt, yolo11n-seg.pt…) download to <code>ASSET_DIR/dl/weights/</code> on first use</td><td><strong>yolo_segment</strong> (.pt, GPU) or dl_instance (ONNX)</td><td rowspan="4"><strong>Optional</strong>: <code>.\scripts\setup_dl.ps1</code> (requirements-dl.txt; torch cu128, ultralytics and onnxruntime-gpu, about 3 GB — see §11)</td></tr>
+<tr><td><code>yolo_detect</code></td><td>Object detection (shapes)</td><td>Bounding boxes (a polygon becomes its bounding box) trained with YOLO detect; stock model yolo11n.pt. The fastest, and the cheapest to label</td><td><strong>yolo_detect</strong> or dl_detect</td></tr>
+<tr><td><code>yolo_cls</code></td><td>Image classification (classes)</td><td>Samples are written into an ultralytics classification dataset (<code>train/&lt;class&gt;/</code>; <strong>the class index follows folder order</strong>, and the tool reads model.names), then YOLO-cls is fine-tuned from yolo11n-cls.pt (ImageNet). More accurate than the built-in MLP</td><td><strong>yolo_classify</strong> or dl_classify (the ONNX already includes softmax)</td></tr>
+<tr><td><code>yolo_obb</code></td><td>Oriented boxes (shapes)</td><td>A polygon becomes its minimum-area rotated rectangle and a box its four corners, trained with YOLO-obb from yolo11n-obb.pt</td><td><strong>yolo_obb</strong> (the ONNX is for external use only)</td></tr>
 </table>
-<p><strong>資料增強</strong>（超參數的「增強」群組，預設關閉不影響既有行為）：mlp_classify 開啟後訓練集加入水平翻轉＋亮度 ±擾動副本（驗證集不動，指標回報 <code>augmented</code> 張數）；patch_segment 每張追加水平翻轉版本的取樣（標記同步翻轉）；四個 YOLO trainer 直接曝露 ultralytics 的 <code>degrees</code>／<code>fliplr</code>／<code>mosaic</code>（分類沒有 mosaic）。</p>
-<p><strong>推論工具</strong>：<code>yolo_detect</code>／<code>yolo_segment</code>／<code>yolo_classify</code>／<code>yolo_pose</code>／<code>yolo_obb</code> 用 ultralytics 原生推論（torch，GPU 自動使用；<code>device</code> auto／cuda／cpu、<code>half</code>），模型來源二選一：教導頁訓練出的 .pt 資產（或自行上傳的 .pt／.onnx）優先，沒選時用「底模名稱」（官方 yolo11n*.pt 第一次使用自動下載）。模型在行程內快取（<code>apps/vision/dl/yolo_runtime.py</code>，最多 6 個、同一模型推論序列化）。姿態（pose）目前只有推論工具，訓練需要關鍵點標記介面尚未提供。</p>
-<p>訓練面板會顯示 <strong>loss／mAP 曲線</strong>（分割任務優先 (M) mask 指標；fitness 可能 &gt; 1，座標軸自動縮放）與<strong>增量訓練 log</strong>（環形緩衝 400 行，<code>GET /dl/train/status?log_from=N</code>）。</p>
+<p><strong>Augmentation</strong> (the "Augment" group of hyper-parameters, off by default so nothing existing changes): mlp_classify adds horizontally flipped and brightness-jittered copies to the training set only, reporting the <code>augmented</code> count; patch_segment additionally samples from a flipped version of each image, with the labels flipped to match; and the four YOLO trainers expose ultralytics' <code>degrees</code>, <code>fliplr</code> and <code>mosaic</code> directly (classification has no mosaic).</p>
+<p><strong>The inference tools</strong> <code>yolo_detect</code>, <code>yolo_segment</code>, <code>yolo_classify</code>, <code>yolo_pose</code> and <code>yolo_obb</code> use native ultralytics inference (torch, using the GPU automatically; <code>device</code> auto/cuda/cpu and <code>half</code>). The model is either a .pt asset trained on the teaching page (or a .pt/.onnx you uploaded), which takes priority, or a stock model named in the parameter (the official yolo11n* weights download on first use). Models are cached in process (<code>apps/vision/dl/yolo_runtime.py</code>, six at most, with inference on one model serialised). Pose currently has only the inference tool — training it needs a keypoint labelling interface that does not exist yet.</p>
+<p>The training panel shows the <strong>loss and mAP curves</strong> (mask metrics first for segmentation; fitness can exceed 1, and the axis scales itself) and an <strong>incremental training log</strong> (a 400-line ring buffer, <code>GET /dl/train/status?log_from=N</code>).</p>
 
-<h2 id="interop">7. YOLO 資料集匯出／匯入（與 VisionStereo 互通）</h2>
-<p>標記存 DB，但可與 YOLO txt 資料集雙向互通（格式相容 VisionStereo 的網頁標註工具：<strong>TAB 分隔、LF 換行、utf-8-sig 讀、6 位小數</strong>；5 欄=bbox、≥7 欄偶數座標=polygon）：</p>
+<h2 id="interop">7. YOLO dataset export and import</h2>
+<p>Labels live in the database, but they move both ways with YOLO txt datasets, in a format compatible with the labelling tool used elsewhere in the family (<strong>tab separated, LF line endings, read as utf-8-sig, six decimal places</strong>; five columns is a box, an even number of coordinates from seven up is a polygon):</p>
 <pre>POST /api/vision/dl/projects/{id}/dataset-export   {"dir": "D:/TrainingImage/NEW", "val_ratio": 0.2}
 POST /api/vision/dl/projects/{id}/dataset-import   {"dir": "D:/TrainingImage/ATD3"}</pre>
 <ul>
-<li>匯出：images/labels/{train,val}＋data.yaml（已存在的 data.yaml 不覆寫）；寫完自動清 <code>labels/*.cache</code>（ultralytics 的快取坑）。</li>
-<li>匯入：接受 <code>root/</code> 或 <code>root/dataset/</code> 佈局、任何 split 子資料夾；data.yaml 的類別若專案沒有會自動補進類別清單，重複影像（像素雜湊）會略過。</li>
-<li><strong>前端入口</strong>：右欄「資料集」面板的「匯出 YOLO／匯入 YOLO」（shapes 專案；填伺服器主機上的資料夾路徑）。</li>
+<li>Export writes images/labels/{train,val} plus data.yaml (an existing data.yaml is left alone) and clears <code>labels/*.cache</code> afterwards — an ultralytics trap.</li>
+<li>Import accepts either a <code>root/</code> or a <code>root/dataset/</code> layout and any split subfolder. Classes in data.yaml that the project does not have are added, and duplicate images (by pixel hash) are skipped.</li>
+<li><strong>In the interface</strong>: "Export YOLO" and "Import YOLO" in the Dataset panel on the right (shapes projects; give a folder path on the server's own machine).</li>
 </ul>
 
+<h3 id="mlp">The built-in classifier in detail</h3>
 <table>
-<tr><th>項目</th><th>內容</th></tr>
-<tr><td>kind</td><td><code>mlp_classify</code>（標記模式 <code>classes</code>；訓練產物給 <code>dl_classify</code> 用）</td></tr>
-<tr><td>做法</td><td>樣本 resize 到輸入尺寸（32～128）→ RGB、ImageNet mean/std（與工具預設一致）→ 單隱藏層全連接網路，numpy 全批次梯度下降，分層切驗證集</td></tr>
-<tr><td>匯出</td><td>手刻 ONNX（<code>Flatten→MatMul→Add→Relu→MatMul→Add</code>，權重進 initializer；<code>apps/vision/dl/onnx_io.py</code>，不引入 onnx／torch 依賴）</td></tr>
-<tr><td>超參數</td><td>輸入尺寸、隱藏層寬度、訓練回合、學習率、驗證比例（都有合理預設）</td></tr>
-<tr><td>適用</td><td>外觀類別區分（正反面、型號、明顯瑕疵有無）。特徵是原始像素，光照位移變化大的場景請靠 ROI 裁切與較大的輸入尺寸。</td></tr>
+<tr><th>Item</th><th>Detail</th></tr>
+<tr><td>kind</td><td><code>mlp_classify</code> (label mode <code>classes</code>; the result is used by <code>dl_classify</code>)</td></tr>
+<tr><td>How</td><td>Samples are resized to the input size (32–128), converted to RGB and normalised with the ImageNet mean and standard deviation (matching the tool's defaults), then fed to a single-hidden-layer fully connected network trained by full-batch gradient descent in numpy, with a stratified validation split</td></tr>
+<tr><td>Export</td><td>Hand-built ONNX (<code>Flatten→MatMul→Add→Relu→MatMul→Add</code>, weights as initializers; <code>apps/vision/dl/onnx_io.py</code>, so neither onnx nor torch becomes a dependency)</td></tr>
+<tr><td>Hyper-parameters</td><td>Input size, hidden width, epochs, learning rate, validation ratio — all with sensible defaults</td></tr>
+<tr><td>Suits</td><td>Telling appearances apart: front versus back, model variants, an obvious defect being present or not. The features are raw pixels, so where lighting or position varies a lot, crop to an ROI and use a larger input size.</td></tr>
 </table>
 
-<h2 id="extend">8. 擴充：新的模型種類（Trainer）</h2>
-<p>與工具／來源／連線同一套模式：繼承 <code>apps.vision.dl.base.Trainer</code>，丟進 <code>plugins/</code> 即掛載（見<a href="plugins.html">擴充外掛</a>）。前端的專案建立、標記、超參數表單、訓練面板全部由 <code>GET /dl/trainers</code> 目錄驅動——<strong>加新模型不用改前端</strong>。</p>
-<pre># plugins/my_trainer.py — 丟進 plugins/ 即掛載
+<h2 id="extend">8. Extending: a new model kind (Trainer)</h2>
+<p>The same pattern as tools, sources and connections: subclass <code>apps.vision.dl.base.Trainer</code> and drop it in <code>plugins/</code> (see <a href="plugins.html">Plugins</a>). Project creation, labelling, the hyper-parameter form and the training panel are all driven by the <code>GET /dl/trainers</code> catalogue — <strong>a new model needs no front-end change</strong>.</p>
+<pre># plugins/my_trainer.py — drop it in plugins/ and it loads
 from apps.vision.dl.base import SampleRef, Suggestion, Trainer, TrainError, TrainResult
 from apps.vision.tools.base import Param
 
 class MyTrainer(Trainer):
     kind = "my_model"
-    label = "我的模型"
+    label = "My model"
     description = "…"
-    label_mode = "classes"        # 封閉集合：classes（整張一類）| shapes（多個 polygon/bbox 實例）
-    tool_key = "dl_classify"      # 訓練產物給哪個工具用
-    devices = ("cpu", "cuda")     # 支援的訓練裝置（會與伺服器實際資源取交集）
-    params = [Param("epochs", "訓練回合", kind="number", default=100)]
+    label_mode = "classes"        # a closed set: classes (one class per image) | shapes (polygon/box instances)
+    tool_key = "dl_classify"      # which tool consumes the result
+    devices = ("cpu", "cuda")     # training devices supported (intersected with what the server has)
+    params = [Param("epochs", "Epochs", kind="number", default=100)]
 
     def train(self, samples, classes, params, device, progress):
-        # progress(0~1, "階段", metrics)：定期呼叫；取消時它會拋 TrainCancelled
+        # progress(0..1, "stage", metrics): call it regularly; it raises TrainCancelled on cancellation
         ...
         return TrainResult(onnx_bytes=..., metrics={...}, tool_key="dl_classify",
                            tool_params={"labels": "\n".join(classes), ...})
 
-    def suggest(self, labeled, unlabeled, classes, params):  # 自動標記（選配）
+    def suggest(self, labeled, unlabeled, classes, params):  # automatic labelling (optional)
         return [Suggestion(sample_id=s.id, label="OK", score=0.9) for s in unlabeled]</pre>
 <ul>
-<li>訓練用 torch 等重依賴時附 requirements.txt（<a href="plugins.html#integration">整合考量</a>）；在 <code>train()</code> 內 lazy import，缺件時拋 <code>TrainError</code> 附安裝提示。</li>
-<li>產物必須是 <strong>ONNX bytes</strong>——這是「訓練」與「推論」的唯一合約：推論端永遠走 onnxruntime，trainer 想用什麼框架訓練都行。</li>
-<li><code>label_mode</code> 是封閉集合：要加 <code>boxes</code>（物件偵測標記）時，後端集合與前端標記介面同步擴充，其他 UI 照舊共用。</li>
+<li>Ship a requirements.txt for heavy dependencies such as torch (see <a href="plugins.html#integration">Integration considerations</a>), import them lazily inside <code>train()</code>, and raise <code>TrainError</code> with the install command when they are missing.</li>
+<li>The product must be <strong>ONNX bytes</strong> — that is the only contract between training and inference. Inference always goes through onnxruntime, so a trainer may use whatever framework it likes.</li>
+<li><code>label_mode</code> is a closed set: adding one means extending the backend set and the labelling interface together, while the rest of the interface carries on unchanged.</li>
 </ul>
 
 <h2 id="api">9. API</h2>
-<pre>GET    /api/vision/dl/trainers                     模型種類目錄（前端表單由此產生）
-GET    /api/vision/dl/devices                      providers／GPU 資訊＋目前設定
-PATCH  /api/vision/dl/settings                     管理員 {"providers": [...], "train_device": "cpu"}
-GET    /api/vision/dl/projects                     專案清單（含 counts）
+<pre>GET    /api/vision/dl/trainers                     the trainer catalogue (the front-end forms come from this)
+GET    /api/vision/dl/devices                      providers, GPU information and the current settings
+PATCH  /api/vision/dl/settings                     administrator, {"providers": [...], "train_device": "cpu"}
+GET    /api/vision/dl/projects                     the project list, with counts
 POST   /api/vision/dl/projects                     {"name", "trainer_kind", "classes": [...]}
-GET/PATCH/DELETE /api/vision/dl/projects/{id}      classes 移除類別會把該類樣本改回未標記
-GET    /api/vision/dl/projects/{id}/samples        ?label=、?split= 篩選
-POST   /api/vision/dl/projects/{id}/samples        multipart files[]（可帶 label；接受 zip；像素去重回報 duplicates）
+GET/PATCH/DELETE /api/vision/dl/projects/{id}      removing a class returns its samples to unlabelled
+GET    /api/vision/dl/projects/{id}/samples        filter with ?label= and ?split=
+POST   /api/vision/dl/projects/{id}/samples        multipart files[] (an optional label; a zip is accepted; duplicates are reported)
 POST   /api/vision/dl/projects/{id}/samples/from-source   {"source_id", "count", "label"?}
-GET    /api/vision/dl/samples/{id}/file            縮圖（?max=；&lt;img&gt; 用，token 走 query）
-PATCH  /api/vision/dl/samples/{id}                 {"label"} 或 {"shapes"}（空 = 取消標記）或 {"split": "train|val|test|"}
+GET    /api/vision/dl/samples/{id}/file            a thumbnail (?max=; for &lt;img&gt;, so the token goes in the query)
+PATCH  /api/vision/dl/samples/{id}                 {"label"} or {"shapes"} (empty clears it) or {"split": "train|val|test|"}
 DELETE /api/vision/dl/samples/{id}
-POST   /api/vision/dl/projects/{id}/labels         批次標記 {"items": [{"id","label","score"?,"by"?}]}
-POST   /api/vision/dl/projects/{id}/auto-label     {"method"?: "model"|"sam", "max_samples"?, "max_masks"?} → 建議清單（不落地；接受才寫入）；sam 回 remaining
-POST   /api/vision/dl/projects/{id}/split          自動分割 {"val": 0.15, "test": 0.1, "seed"?}（分層）
-GET/POST /api/vision/dl/projects/{id}/versions     資料集版本清單／凍結 {"name"?, "note"?}（zip 存資產庫）
-DELETE /api/vision/dl/versions/{id}                刪版本（zip 資產一併刪）
-POST   /api/vision/dl/projects/{id}/sam-point      智慧選取 {"sample_id", "points"?: [[x,y] 0~1], "labels"?: [1|0], "boxes"?: [[x0,y0,x1,y1]], "model"?} → {shapes, model}
-POST   /api/vision/dl/projects/{id}/train          202 {"params", "device", "asset_name"}；訓練中回 409
-GET    /api/vision/dl/train/status?log_from=N      輪詢進度（progress／stage／metrics／history 曲線／增量 log）
+POST   /api/vision/dl/projects/{id}/labels         bulk labelling, {"items": [{"id","label","score"?,"by"?}]}
+POST   /api/vision/dl/projects/{id}/auto-label     {"method"?: "model"|"sam", "max_samples"?, "max_masks"?} → proposals (not stored until accepted); sam returns remaining
+POST   /api/vision/dl/projects/{id}/split          auto split, {"val": 0.15, "test": 0.1, "seed"?}, stratified
+GET/POST /api/vision/dl/projects/{id}/versions     list versions / freeze one, {"name"?, "note"?} (the zip goes to the asset library)
+DELETE /api/vision/dl/versions/{id}                delete a version (and its zip asset)
+POST   /api/vision/dl/projects/{id}/sam-point      smart select, {"sample_id", "points"?: [[x,y] 0..1], "labels"?: [1|0], "boxes"?: [[x0,y0,x1,y1]], "model"?} → {shapes, model}
+POST   /api/vision/dl/projects/{id}/train          202 {"params", "device", "asset_name"}; 409 while one is running
+GET    /api/vision/dl/train/status?log_from=N      poll progress (progress, stage, metrics, the history curves, the incremental log)
 POST   /api/vision/dl/train/cancel</pre>
-<p>權限：讀取／標記／訓練 = 任何登入者（整合方金鑰亦可）；訓練另過 <code>can_execute()</code>（引擎鎖定時 423）；裝置設定 = 管理員。</p>
+<p>Permissions: reading, labelling and training are open to any signed-in user (and to an integrator key); training additionally passes <code>can_execute()</code> (423 while the engine is locked); device settings are administrator only.</p>
 
-<h2 id="internals">10. 內部結構與設計取捨</h2>
+<h2 id="internals">10. Internals and the trade-offs</h2>
 <ul>
-<li><code>apps/vision/dl/</code>：<code>base.py</code>（Trainer registry）、<code>builtin.py</code>（MLP 分類＋輕量語意分割）、<code>yolo.py</code>（YOLO-seg，延後 import）、<code>shapes.py</code>（shapes 驗證／YOLO txt 互轉／rasterize／資料集匯出入）、<code>onnx_io.py</code>（手刻 ONNX，含 Conv 與 initializer）、<code>sam.py</code>（SAM 點擊智慧標記，延後 import、session 快取）、<code>devices.py</code>、<code>jobs.py</code>（訓練工作＋history＋log 環形緩衝）、<code>api.py</code>。前端 <code>DlPage.tsx</code>＋<code>components/dl/ShapeWorkspace.tsx</code>（重用 ImageViewer 的 ROI 編輯）＋<code>components/dl/optimize.ts</code>（輪廓貼邊）。</li>
-<li>資料模型：<code>DlProject</code>／<code>DlSample</code>（影像檔在 <code>ASSET_DIR/dl/&lt;project_id&gt;/</code>，中文路徑用 imencode+tofile；<code>sha256</code> 去重、<code>split</code> 分割）／<code>DlDatasetVersion</code>（版本統計＋asset_id）／<code>DlSettings</code>（單列）。</li>
-<li><strong>對照 Roboflow 式規格（Temp/gemini-code）的取捨</strong>：功能照做（去重、分割、版本、增強、SAM 點擊標記、訓練指標），但架構落在既有紅線內——Celery+Redis → <strong>單一訓練槽背景執行緒</strong>（教導期行為不需要佇列與新基礎設施）；React-Konva → 既有<strong>自製雙層 canvas ImageViewer</strong>；DRF → 既有 django-ninja；SQLite WAL 與 0~1 正規化 JSON 座標本來就是平台慣例。Grounding DINO 文字提示與 TorchScript 匯出不做（auto-label 已由各 trainer 的 suggest() 涵蓋；ONNX 是訓練↔推論唯一合約），需要時走外掛 trainer。</li>
-<li><strong>單一訓練槽</strong>：一次一個訓練（背景執行緒，不進檢測執行緒池），第二個回 409。訓練是教導期行為，不需要佇列；進度用輪詢（700ms），不進 SSE bus。</li>
-<li><strong>providers 是熱路徑設定</strong>：dl 工具建 session 只讀記憶體快取（<code>devices.preferred_providers()</code>）；DB 只在啟動與設定端點碰，改設定會 <code>clear_sessions()</code> 重建。</li>
-<li><strong>不引入 torch</strong>：內建 trainer 用 numpy 訓練、手刻 ONNX 匯出，平台依賴不變；重框架留給外掛 trainer（自帶 requirements 或 sidecar）。</li>
-<li>測試 <code>tests/test_dl_teach.py</code>：ONNX 匯出＋dl_classify 端到端、樣本不足、自動標記正確率、API 標記流、背景訓練工作（TransactionTestCase）、split／augment 訓練行為、去重與 zip 匯入、自動分割、版本凍結、SAM 缺件提示。</li>
+<li><code>apps/vision/dl/</code>: <code>base.py</code> (the trainer registry), <code>builtin.py</code> (the MLP classifier and the lightweight segmenter), <code>yolo.py</code> (the YOLO trainers, imported lazily), <code>shapes.py</code> (shape validation, YOLO txt conversion, rasterisation, dataset export and import), <code>onnx_io.py</code> (hand-built ONNX, including Conv and initializers), <code>sam.py</code> (SAM-assisted labelling, imported lazily with a cached session), <code>devices.py</code>, <code>jobs.py</code> (the training job with its history and log ring buffer) and <code>api.py</code>. On the front end, <code>DlPage.tsx</code>, <code>components/dl/ShapeWorkspace.tsx</code> (reusing the ImageViewer's ROI editing) and <code>components/dl/optimize.ts</code> (the edge snapping).</li>
+<li>Data model: <code>DlProject</code>, <code>DlSample</code> (image files in <code>ASSET_DIR/dl/&lt;project_id&gt;/</code>, written with imencode + tofile so non-ASCII paths work; <code>sha256</code> for de-duplication and <code>split</code> for the split), <code>DlDatasetVersion</code> (statistics plus the asset id) and <code>DlSettings</code> (a single row).</li>
+<li><strong>The trade-offs against a Roboflow-style specification</strong>: the features are all here — de-duplication, splits, versions, augmentation, SAM-assisted labelling, training metrics — but the architecture stays inside the platform's constraints. Celery and Redis became <strong>a single training slot on a background thread</strong> (teaching does not need a queue or new infrastructure); React-Konva became the existing <strong>two-layer canvas ImageViewer</strong>; DRF stayed django-ninja; and SQLite with WAL and 0–1 normalised JSON coordinates were platform conventions already. Text-prompted grounding models and TorchScript export are not included (auto-labelling is covered by each trainer's suggest(), and ONNX is the one contract between training and inference); a plugin trainer can add them.</li>
+<li><strong>One training slot</strong>: one training at a time, on a background thread outside the inspection pool, with a second request returning 409. Training is a teaching-time activity and does not need a queue; progress is polled every 700 ms rather than going through the SSE bus.</li>
+<li><strong>Providers are a hot-path setting</strong>: a DL tool building a session reads only the in-memory cache (<code>devices.preferred_providers()</code>). The database is touched at start-up and by the settings endpoint, which calls <code>clear_sessions()</code> so sessions are rebuilt.</li>
+<li><strong>torch is not a dependency</strong>: the built-in trainers train in numpy and export hand-built ONNX, so the platform's dependencies do not change. Heavy frameworks belong to plugin trainers, with their own requirements or a sidecar.</li>
+<li>Tests in <code>tests/test_dl_teach.py</code>: ONNX export end to end through dl_classify, too few samples, automatic labelling accuracy, the labelling API flow, the background training job (a TransactionTestCase), split and augmentation behaviour, de-duplication and zip import, auto split, version freezing, and the message when SAM's dependencies are missing.</li>
 </ul>
-<h2 id="install">11. 安裝與踩坑（torch／ultralytics／onnxruntime-gpu）</h2>
-<p>深度學習依賴是<strong>可選</strong>的：不裝也能啟動平台（dl_* ONNX 工具走 CPU；yolo_*／SAM 會回「未安裝」提示）。要用 GPU 訓練與推論：</p>
-<pre>.\scripts\setup_dl.ps1              # CUDA 12.8 wheel（RTX 50 系列必須）；-Cuda cu126 可改；-Cpu 無 GPU 機器
-.\.venv\Scripts\python.exe manage.py dl_check --predict   # 驗證：torch/CUDA、kernel 對應、ultralytics、ORT providers、實跑 yolo11n</pre>
-<p>順序是關鍵：<strong>先</strong>用 pytorch.org 的 index 裝 torch，<strong>再</strong>裝 <code>requirements-dl.txt</code>。以下每條都在本機重現過：</p>
+
+<h2 id="install">11. Installing, and the traps (torch, ultralytics, onnxruntime-gpu)</h2>
+<p>The deep-learning dependencies are <strong>optional</strong>: the platform starts without them (the ONNX dl_* tools run on CPU; the yolo_* tools and SAM report that they are not installed). For GPU training and inference:</p>
+<pre>.\scripts\setup_dl.ps1              # CUDA 12.8 wheels (required for RTX 50); -Cuda cu126 for others; -Cpu for a machine with no GPU
+.\.venv\Scripts\python.exe manage.py dl_check --predict   # verifies torch/CUDA, the kernel architectures, ultralytics, the ORT providers, and runs yolo11n</pre>
+<p>The order matters: install torch from the pytorch.org index <strong>first</strong>, then <code>requirements-dl.txt</code>. Every row below has been reproduced on this machine:</p>
 <table>
-<tr><th>症狀</th><th>原因</th><th>解法</th></tr>
-<tr><td>訓練只用 CPU、<code>torch.cuda.is_available()</code> False</td><td>直接 <code>pip install ultralytics</code> 會從 PyPI 拉 CPU 版 torch</td><td>先 <code>pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128</code>，再裝 ultralytics；<code>dl_check</code> 的 torch build 會標出 +cpu</td></tr>
-<tr><td>第一次推論丟 <code>no kernel image is available for execution on the device</code></td><td>RTX 50 系列（Blackwell，sm_120）只有 cu128 以上的 wheel 有 kernel</td><td><code>setup_dl.ps1 -Cuda cu128</code>；<code>dl_check</code> 會比對 <code>torch.cuda.get_arch_list()</code></td></tr>
-<tr><td>ORT providers 列表有 CUDA，但 session 實際只剩 CPU；或 <code>cublasLt64_13.dll is missing</code></td><td>onnxruntime-gpu 1.23+ 預設連結 <strong>CUDA 13</strong>，torch cu128 只帶 CUDA 12.8 的 DLL</td><td>鎖 <code>onnxruntime-gpu==1.22.0</code>（CUDA 12／cuDNN 9）；程式在建 CUDA session 前先 <code>import torch</code>＋<code>onnxruntime.preload_dlls()</code>（<code>tools/builtin/dl.py</code>）</td></tr>
-<tr><td>providers 亂跳、時有時無</td><td><code>onnxruntime</code> 與 <code>onnxruntime-gpu</code> 同一個 import 名稱，兩個都裝會互相覆蓋</td><td><code>pip uninstall -y onnxruntime</code> 後只留 onnxruntime-gpu；<code>dl_check</code> 會報「同時安裝」</td></tr>
-<tr><td>ultralytics 匯出 ONNX 時印「requirement onnxruntime not found, attempting AutoUpdate」</td><td>它檢查的是套件名 onnxruntime，裝的是 onnxruntime-gpu；<code>YOLO_OFFLINE=1</code> 下只是警告</td><td>可忽略；不要讓它 AutoUpdate（會拉 CPU 版）</td></tr>
-<tr><td>訓練卡住不動</td><td>Windows 的 DataLoader 子行程（spawn）在背景執行緒內啟動會卡</td><td>超參數 <code>workers</code> 保持 0（預設）</td></tr>
-<tr><td>無網路環境第一次訓練卡在下載</td><td>ultralytics 自己會連網檢查</td><td>程式設 <code>YOLO_OFFLINE=1</code>；底模由 <code>yolo.resolve_model</code> 從 GitHub assets 下載到 <code>ASSET_DIR/dl/weights/</code>（v8.4.0 → v8.3.0 依序），離線就手動放檔案到該目錄</td></tr>
-<tr><td>找不到 sam2 模組</td><td>不需要 facebook 的 sam2 套件</td><td>ultralytics 內建 SAM2（sam2.1_t/s/b/l.pt），<code>VISION_SAM_MODEL</code> 選擇</td></tr>
-<tr><td>分類訓練後類別對不上</td><td>ultralytics 分類資料集以<strong>資料夾名排序</strong>決定類別索引，不是專案的類別順序</td><td>trainer 用 <code>model.names</code> 回填 labels（metrics.classes）；自訂程式請照這個順序</td></tr>
-<tr><td>predict 印「'half' is deprecated」</td><td>ultralytics 8.4 對 <code>half=False</code> 也會警告</td><td>只在勾選半精度時才傳 half=True</td></tr>
+<tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+<tr><td>Training only uses the CPU; <code>torch.cuda.is_available()</code> is False</td><td>A plain <code>pip install ultralytics</code> pulls the CPU build of torch from PyPI</td><td><code>pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128</code> first, then ultralytics. <code>dl_check</code> flags a torch build ending in +cpu</td></tr>
+<tr><td>The first inference throws <code>no kernel image is available for execution on the device</code></td><td>RTX 50 (Blackwell, sm_120) has kernels only in cu128 wheels and later</td><td><code>setup_dl.ps1 -Cuda cu128</code>; <code>dl_check</code> compares against <code>torch.cuda.get_arch_list()</code></td></tr>
+<tr><td>CUDA is in the providers list but the session ends up on CPU, or <code>cublasLt64_13.dll is missing</code></td><td>onnxruntime-gpu 1.23 and later link against <strong>CUDA 13</strong>, while torch cu128 ships CUDA 12.8 DLLs</td><td>Pin <code>onnxruntime-gpu==1.22.0</code> (CUDA 12, cuDNN 9). The code also does <code>import torch</code> and <code>onnxruntime.preload_dlls()</code> before building a CUDA session (<code>tools/builtin/dl.py</code>)</td></tr>
+<tr><td>The providers list changes from run to run</td><td><code>onnxruntime</code> and <code>onnxruntime-gpu</code> share an import name, and installing both shadows one with the other</td><td><code>pip uninstall -y onnxruntime</code> and keep only onnxruntime-gpu; <code>dl_check</code> reports when both are installed</td></tr>
+<tr><td>Exporting ONNX prints "requirement onnxruntime not found, attempting AutoUpdate"</td><td>ultralytics checks for the package name onnxruntime while onnxruntime-gpu is what is installed; with <code>YOLO_OFFLINE=1</code> it is only a warning</td><td>Ignore it — and do not let it AutoUpdate, which would pull the CPU build</td></tr>
+<tr><td>Training hangs</td><td>On Windows, DataLoader worker processes (spawn) started from inside a background thread deadlock</td><td>Leave the <code>workers</code> hyper-parameter at 0 (the default)</td></tr>
+<tr><td>The first training on an offline machine hangs downloading</td><td>ultralytics checks the network itself</td><td>The code sets <code>YOLO_OFFLINE=1</code>; stock models are downloaded by <code>yolo.resolve_model</code> from GitHub assets into <code>ASSET_DIR/dl/weights/</code> (trying v8.4.0 then v8.3.0). Offline, put the files there by hand</td></tr>
+<tr><td>"sam2 module not found"</td><td>Facebook's sam2 package is not needed</td><td>ultralytics has SAM2 built in (sam2.1_t/s/b/l.pt), selected with <code>VISION_SAM_MODEL</code></td></tr>
+<tr><td>Classes come out wrong after classification training</td><td>An ultralytics classification dataset takes its class indices from <strong>folder order</strong>, not the project's class order</td><td>The trainer writes the labels back from <code>model.names</code> (metrics.classes); follow the same order in your own code</td></tr>
+<tr><td>predict prints "'half' is deprecated"</td><td>ultralytics 8.4 warns even for <code>half=False</code></td><td>Only pass half=True when half precision is actually requested</td></tr>
 </table>
-<p>版本組合（2026-09 驗證）：Python 3.12、torch 2.11.0+cu128、torchvision 0.26、ultralytics 8.4.137、onnx 1.22、onnxslim 0.1.96、onnxruntime-gpu 1.22.0；RTX 5070 Ti：yolo11n 640 推論約 10ms（torch）／7.5ms（ORT CUDA），SAM2.1-t 點擊 60ms、全圖 1.6s，四個 trainer 各 1 epoch 合成資料集共約 40 秒（含匯出）。</p>
+<p>The combination verified in September 2026: Python 3.12, torch 2.11.0+cu128, torchvision 0.26, ultralytics 8.4.137, onnx 1.22, onnxslim 0.1.96, onnxruntime-gpu 1.22.0. On an RTX 5070 Ti: yolo11n at 640 takes about 10 ms (torch) or 7.5 ms (ORT CUDA), SAM2.1-t is 60 ms per click and 1.6 s for a whole image, and one epoch of each of the four trainers on a synthetic dataset takes about 40 seconds in total, export included.</p>
 
 </article></div><!-- /doc-layout -->
 <script>

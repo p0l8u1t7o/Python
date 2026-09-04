@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 自動化整合</title>
+<title>VisionSequence automation</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,136 +134,140 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html" aria-current="page">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. 身分（每一個端點都一樣）</a></li><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a><ul><li><a href="#tcp-values">2-1. 引數的型別（料號與條碼不會被改掉）</a></li><li><a href="#tcp-codes">2-2. 錯誤碼（設備請用 code 分支）</a></li></ul></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a><ul><li><a href="#upload-capture">4-1. 相機接在別台電腦：擷取端</a></li></ul></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#pages">5b. 整合頁：每一種接法一個頁面</a></li><li><a href="#trace">5c. 命令與結果（除錯）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP／從站，引擎寫給你）</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html" aria-current="page">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. Identity (the same on every endpoint)</a></li><li><a href="#http">1. HTTP synchronous run (the common case)</a></li><li><a href="#tcp">2. One-line TCP commands (easiest for equipment)</a><ul><li><a href="#tcp-values">2-1. Argument types (part numbers and barcodes survive intact)</a></li><li><a href="#tcp-codes">2-2. Error codes (branch on code, not on the text)</a></li></ul></li><li><a href="#sse">3. Live SSE events (HMI and dashboards)</a></li><li><a href="#upload">4. When the camera is not on this machine: push an image</a><ul><li><a href="#upload-capture">4-1. The camera is on another PC: the capture client</a></li></ul></li><li><a href="#perf">Performance advice</a></li><li><a href="#lock">5. Identity and the engine lock (the hardware belongs to the line)</a></li><li><a href="#pages">5b. Integration pages: one page per method</a></li><li><a href="#trace">5c. Commands and results (debugging)</a></li><li><a href="#push">6. Pushing results out (Modbus client or slave)</a></li></ul></aside><article class="doc">
 
-<h1>自動化整合（Modbus TCP / 上位機 / MES）</h1>
-<p>三種接法，回傳格式相同。</p>
-<h2 id="auth">0. 身分（每一個端點都一樣）</h2>
+<h1>Automation (Modbus TCP, host systems, MES)</h1>
+<p>Three ways in, all returning the same shape.</p>
+
+<h2 id="auth">0. Identity (the same on every endpoint)</h2>
 <ul>
-<li><strong>整合方</strong>：金鑰（<code>VISION_API_KEY</code>）有設定時帶 <code>X-API-Key: &lt;金鑰&gt;</code> 或 <code>?api_key=</code>。整合方永遠可以執行（引擎鎖定時也是）。</li>
-<li><strong>使用者權杖</strong>：<code>Authorization: Bearer &lt;token&gt;</code>。<strong>事件串流與影像端點一樣吃這個標頭</strong>；<code>?token=</code> 只是給瀏覽器的 EventSource 與 <code>&lt;img&gt;</code> 用的（它們沒辦法帶標頭）。</li>
-<li>沒帶或無效一律回 <strong>401 <code>{"error": {"code": "unauthenticated", …}}</code></strong>，和其他錯誤同一個形狀。</li>
+<li><strong>Integrator</strong>: when a key is configured (<code>VISION_API_KEY</code>), send <code>X-API-Key: &lt;key&gt;</code> or <code>?api_key=</code>. An integrator can always execute, even while the engine is locked.</li>
+<li><strong>User token</strong>: <code>Authorization: Bearer &lt;token&gt;</code>. <strong>The event stream and the image endpoints take the same header</strong>; <code>?token=</code> exists only for the browser's EventSource and <code>&lt;img&gt;</code> tags, which cannot send headers.</li>
+<li>Missing or invalid credentials always return <strong>401 <code>{"error": {"code": "unauthenticated", …}}</code></strong>, in the same shape as every other error.</li>
 </ul>
 
-<h2 id="http">1. HTTP 同步執行（最常用）</h2>
+<h2 id="http">1. HTTP synchronous run (the common case)</h2>
 <pre>POST /api/vision/flows/{flow_id}/run</pre>
 <ul>
-<li>JSON：<code>{"context": {"lot": "A123"}, "wait": true, "timeout_s": 5, "include_nodes": false}</code></li>
-<li>或 multipart：<code>image</code>（檔案，常見影像格式：PNG／JPG／BMP／TIFF 等）、<code>context</code>（JSON 字串）。附影像時 <code>image_source</code> 節點（mode=auto）直接用送來的影像，不抓相機。</li>
-<li><code>?wait=false</code> → 202 立即回 <code>{"queued":true,"flow_id":1,"run_id":"…"}</code>；用那個 <code>run_id</code> 打 <code>GET /api/vision/runs/{run_id}</code> 取結果，還沒跑完會回 <code>{"status":"queued|running","pending":true}</code>（也可以改訂 SSE）。</li>
-<li><code>timeout_s</code> 是「我最多等這麼久」。逾時回 <strong>504 <code>run_timeout</code></strong>，<code>details.run_id</code> 給你事後取結果——<strong>執行不會被中止</strong>，那是引擎自己的 <code>VISION_RUN_TIMEOUT_S</code> 在管。沒指定時等 <code>RUN_TIMEOUT_S + 5</code> 秒，讓引擎的逾時先觸發並回一份完整報告。</li>
-<li><code>include_nodes=1</code>（舊名 <code>include_images</code>，仍可用）：回應加上每個步驟的輸出與標記。<strong>影像不會內嵌在 JSON 裡</strong>，拿到的是影像 ref，畫面用 <code>GET /api/vision/images/{ref}</code> 取。</li>
+<li>JSON: <code>{"context": {"lot": "A123"}, "wait": true, "timeout_s": 5, "include_nodes": false}</code></li>
+<li>Or multipart: <code>image</code> (a file — PNG, JPG, BMP, TIFF and the other usual formats) plus <code>context</code> as a JSON string. With an image attached, the <code>image_source</code> node (mode=auto) uses it directly instead of grabbing from the camera.</li>
+<li><code>?wait=false</code> returns 202 immediately with <code>{"queued":true,"flow_id":1,"run_id":"…"}</code>. Fetch the result later with <code>GET /api/vision/runs/{run_id}</code>; while it is still going you get <code>{"status":"queued|running","pending":true}</code>. Subscribing to SSE works too.</li>
+<li><code>timeout_s</code> is "how long I am willing to wait". On expiry you get <strong>504 <code>run_timeout</code></strong> with <code>details.run_id</code> so you can collect the result afterwards — <strong>the run itself is not aborted</strong>; that is the engine's own <code>VISION_RUN_TIMEOUT_S</code>. Leave it out and the wait is <code>RUN_TIMEOUT_S + 5</code> seconds, so the engine's timeout fires first and returns a complete report.</li>
+<li><code>include_nodes=1</code> (the old name <code>include_images</code> still works) adds each step's outputs and overlays to the response. <strong>Images are never embedded in the JSON</strong>; you get an image ref and fetch the picture with <code>GET /api/vision/images/{ref}</code>.</li>
 </ul>
-<p>回應（200）：</p>
+<p>The 200 response:</p>
 <pre>{"id": "…", "status": "ok|ng|failed", "duration_ms": 12.3,
  "outputs": {"judge": "OK", "hole_count": 5, "width_mm": 12.34},
- "nodes": {"blob-1": {"status": "ok", "duration_ms": 0.9, "message": "5 個 blob"}}, "error": ""}</pre>
+ "nodes": {"blob-1": {"status": "ok", "duration_ms": 0.9, "message": "5 blobs"}}, "error": ""}</pre>
 <ul>
-<li><code>outputs</code> 由流程中的 <strong>具名輸出（output）</strong> 與 <strong>OK/NG 判定（judge）</strong> 工具決定，鍵名自己取。</li>
-<li><code>status</code>：<code>ok</code>／<code>ng</code>（判定不良）／<code>failed</code>（工具錯誤、逾時、來源沒影像）。</li>
-<li>429 <code>flow_queue_full</code> = 該流程等待中的觸發已達 <code>VISION_MAX_QUEUE_PER_FLOW</code>（預設 16）。<strong>每個流程一次只跑一個 run</strong>（相機與硬體狀態要一致），多站共用同一流程時請求會排隊；上限與目前排隊數可從 <code>GET /api/vision/capacity</code> 或 TCP <code>STATUS &lt;flow&gt;</code> 看。409 = 流程停用。</li>
+<li><code>outputs</code> comes from the <strong>named output</strong> and <strong>OK/NG judge</strong> tools in the flow; you choose the key names.</li>
+<li><code>status</code>: <code>ok</code>, <code>ng</code> (judged a reject) or <code>failed</code> (a tool error, a timeout, or no image from the source).</li>
+<li>429 <code>flow_queue_full</code> means this flow already has <code>VISION_MAX_QUEUE_PER_FLOW</code> triggers waiting (16 by default). <strong>A flow runs one run at a time</strong> — the camera and the hardware have to stay consistent — so when several stations share a flow, requests queue. The limit and the current depth are visible from <code>GET /api/vision/capacity</code> or the TCP command <code>STATUS &lt;flow&gt;</code>. 409 means the flow is disabled.</li>
 </ul>
-<p>curl 範例：</p>
+<p>With curl:</p>
 <pre>curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -H "Content-Type: application/json" -d "{}"
 curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F context='{"lot":"A1"}'</pre>
 
-<h2 id="tcp">2. TCP 一行指令（設備最容易接）</h2>
-<p>連 <code>VISION_TCP_PORT</code>（預設 9000），每行一個指令、每行一個 JSON 回應（<code>\n</code> 結尾）：</p>
+<h2 id="tcp">2. One-line TCP commands (easiest for equipment)</h2>
+<p>Connect to <code>VISION_TCP_PORT</code> (9000 by default). One command per line, one JSON response per line, terminated with <code>\n</code>:</p>
 <table>
-<tr><th>指令</th><th>回應</th></tr>
-<tr><td><code>RUN 1</code> / <code>RUN 零件孔數檢測 lot=A1</code></td><td><code>{"ok":true,"status":"ok","judge":"OK","outputs":{…},"duration_ms":12.3,"run_id":"…"}</code></td></tr>
-<tr><td><code>TRIGGER 1</code> / <code>TRIGGER 1 lot=A1</code></td><td><code>{"ok":true,"queued":true,"run_id":"…"}</code>（不等結果；用 run_id 打 <code>GET /api/vision/runs/{run_id}</code> 取結果）</td></tr>
-<tr><td><code>STATUS</code> / <code>STATUS 1</code></td><td>容量／該流程統計</td></tr>
-<tr><td><code>START 1</code> / <code>STOP 1</code></td><td>連續模式</td></tr>
-<tr><td><code>LIST</code></td><td>所有流程</td></tr>
+<tr><th>Command</th><th>Response</th></tr>
+<tr><td><code>RUN 1</code> / <code>RUN hole_count lot=A1</code></td><td><code>{"ok":true,"status":"ok","judge":"OK","outputs":{…},"duration_ms":12.3,"run_id":"…"}</code></td></tr>
+<tr><td><code>TRIGGER 1</code> / <code>TRIGGER 1 lot=A1</code></td><td><code>{"ok":true,"queued":true,"run_id":"…"}</code> — it does not wait; collect the result with <code>GET /api/vision/runs/{run_id}</code></td></tr>
+<tr><td><code>STATUS</code> / <code>STATUS 1</code></td><td>Capacity, or that flow's statistics</td></tr>
+<tr><td><code>START 1</code> / <code>STOP 1</code></td><td>Continuous mode</td></tr>
+<tr><td><code>LIST</code></td><td>Every flow</td></tr>
 <tr><td><code>PING</code></td><td><code>{"ok":true,"pong":true}</code></td></tr>
 </table>
-<p><code>key=value</code> 會放進 <code>context</code>，流程內公式或輸出可引用。連線可長期保持，NODELAY 已開。</p>
+<p><code>key=value</code> pairs go into <code>context</code>, where formulas and outputs in the flow can read them. The connection can be held open indefinitely; NODELAY is already on.</p>
 
-<h3 id="tcp-values">2-1. 引數的型別（料號與條碼不會被改掉）</h3>
+<h3 id="tcp-values">2-1. Argument types (part numbers and barcodes survive intact)</h3>
 <ul>
-<li>值<strong>預設是字串</strong>，只有「乾淨的十進位數字」（<code>1</code>、<code>-3</code>、<code>2.5</code>）才轉成數字。所以 <code>lot=00123</code> 保留前導零、<code>sn=1_000</code> 不會變成 1000、<code>exp=1e3</code> 原樣送達。</li>
-<li>值含空白請用引號：<code>RUN 1 barcode="ABC DEF"</code>。流程名稱含空白同理：<code>RUN "我的 流程"</code>。</li>
-<li>不是 <code>key=value</code> 形狀的引數會回 <code>bad_argument</code>（而不是靜默丟掉半個條碼）。</li>
+<li>Values are <strong>strings by default</strong>. Only a clean decimal number (<code>1</code>, <code>-3</code>, <code>2.5</code>) becomes a number. So <code>lot=00123</code> keeps its leading zeros, <code>sn=1_000</code> does not turn into 1000, and <code>exp=1e3</code> arrives as written.</li>
+<li>Quote a value that contains a space: <code>RUN 1 barcode="ABC DEF"</code>. The same goes for a flow name with a space: <code>RUN "my flow"</code>.</li>
+<li>An argument that is not in <code>key=value</code> shape returns <code>bad_argument</code>, rather than silently dropping half a barcode.</li>
 </ul>
 
-<h3 id="tcp-codes">2-2. 錯誤碼（設備請用 <code>code</code> 分支）</h3>
-<p>失敗一律回 <code>{"ok": false, "error": "中文說明", "code": "…"}</code>。<code>error</code> 會隨版本潤飾，<code>code</code> 不會。</p>
+<h3 id="tcp-codes">2-2. Error codes (branch on <code>code</code>, not on the text)</h3>
+<p>A failure always returns <code>{"ok": false, "error": "a readable explanation", "code": "…"}</code>. The wording of <code>error</code> may be polished between releases; <code>code</code> will not.</p>
 <table>
-<tr><th>code</th><th>意思</th></tr>
-<tr><td><code>empty_command</code></td><td>空白行</td></tr>
-<tr><td><code>unknown_command</code></td><td>不認得的指令</td></tr>
-<tr><td><code>missing_argument</code></td><td>指令少了流程 id 或名稱</td></tr>
-<tr><td><code>bad_argument</code></td><td>引數不是 <code>key=value</code>（值含空白要加引號）</td></tr>
-<tr><td><code>flow_not_found</code></td><td>流程 id／名稱不存在</td></tr>
-<tr><td><code>flow_disabled</code></td><td>流程已停用</td></tr>
-<tr><td><code>flow_queue_full</code></td><td>該流程等待中的觸發已達上限，稍後重送</td></tr>
-<tr><td><code>recipe_not_found</code></td><td><code>recipe=</code> 指定的配方不存在</td></tr>
-<tr><td><code>engine_locked</code></td><td>引擎被鎖定（見 §5）</td></tr>
-<tr><td><code>internal_error</code></td><td>伺服器例外，記錄在日誌</td></tr>
+<tr><th>code</th><th>Meaning</th></tr>
+<tr><td><code>empty_command</code></td><td>A blank line</td></tr>
+<tr><td><code>unknown_command</code></td><td>Unrecognised command</td></tr>
+<tr><td><code>missing_argument</code></td><td>The command is missing a flow id or name</td></tr>
+<tr><td><code>bad_argument</code></td><td>An argument is not <code>key=value</code> (quote values containing spaces)</td></tr>
+<tr><td><code>flow_not_found</code></td><td>No such flow id or name</td></tr>
+<tr><td><code>flow_disabled</code></td><td>The flow is disabled</td></tr>
+<tr><td><code>flow_queue_full</code></td><td>That flow already has the maximum number of triggers waiting; retry shortly</td></tr>
+<tr><td><code>recipe_not_found</code></td><td>The recipe named by <code>recipe=</code> does not exist</td></tr>
+<tr><td><code>engine_locked</code></td><td>The engine is locked (see §5)</td></tr>
+<tr><td><code>internal_error</code></td><td>A server exception, recorded in the log</td></tr>
 </table>
 
-<h2 id="sse">3. SSE 即時事件（HMI / 看板）</h2>
-<pre>GET /api/vision/flows/{id}/stream?since=&lt;seq&gt;     單一流程
-GET /api/vision/events?since=&lt;seq&gt;                全部</pre>
-<p>認證與其他端點相同（<code>Authorization: Bearer</code>、<code>X-API-Key</code>，或瀏覽器用 <code>?token=</code>）。這兩個端點是串流，不在 <code>/api/openapi.json</code> 裡；路徑也可以從 <code>GET /api/vision/integration/info</code> 的 <code>events_url</code>／<code>flow_events_url</code> 取得。</p>
-<p>事件：<code>run_queued</code>、<code>run_started</code>、<code>run_finished</code>（<code>run</code> = 完整結果、<code>stats</code> = 累計統計）、<code>continuous</code>、<code>stats</code>、<code>ping</code>（每 15 秒心跳；前端 40 秒沒收到任何訊息就當斷線重連，因為經 proxy 時後端死掉客戶端連線不一定會被關）、<code>bye</code>（55 秒後重連，帶回 <code>seq</code> 不漏事件）。<code>?outputs=0</code> 只送節點狀態不送輸出（省頻寬）。</p>
+<h2 id="sse">3. Live SSE events (HMI and dashboards)</h2>
+<pre>GET /api/vision/flows/{id}/stream?since=&lt;seq&gt;     one flow
+GET /api/vision/events?since=&lt;seq&gt;                everything</pre>
+<p>Authentication is the same as everywhere else (<code>Authorization: Bearer</code>, <code>X-API-Key</code>, or <code>?token=</code> from a browser). These two are streams, so they are not in <code>/api/openapi.json</code>; their paths are also available from <code>GET /api/vision/integration/info</code> as <code>events_url</code> and <code>flow_events_url</code>.</p>
+<p>Events: <code>run_queued</code>, <code>run_started</code>, <code>run_finished</code> (<code>run</code> is the full result, <code>stats</code> the running totals), <code>continuous</code>, <code>stats</code>, <code>ping</code> (a heartbeat every 15 seconds — the web interface treats 40 seconds of silence as a dropped connection and reconnects, because behind a proxy a dead backend does not necessarily close the client socket) and <code>bye</code> (reconnect after 55 seconds, sending <code>seq</code> back so nothing is missed). <code>?outputs=0</code> sends node status without outputs, to save bandwidth.</p>
 
-<h2 id="upload">4. 相機不在本機時：送圖來源</h2>
-<p>建立 kind=<code>upload</code> 的影像來源，<code>POST /api/vision/sources/{id}/push</code>（multipart <code>image</code>）後，流程裡選它即可；<code>config.max_age_s</code> 可讓過期影像不被使用。</p>
+<h2 id="upload">4. When the camera is not on this machine: push an image</h2>
+<p>Create an image source of kind <code>upload</code>, push to <code>POST /api/vision/sources/{id}/push</code> (multipart <code>image</code>), and select it in the flow. <code>config.max_age_s</code> stops a stale image from being used.</p>
 
-<h3 id="upload-capture">4-1. 相機接在別台電腦：擷取端</h3>
-<p>不想自己寫送圖程式時，用<a href="capture-client.html">擷取端</a>：可下載的桌面程式在相機電腦驅動網路攝影機／Basler／IDS，主動連到伺服端擷取埠 9100；網頁新增「擷取端相機」來源即可讓 HTTP／TCP 觸發的執行直接向該相機要一張新影格（依需求取像）或取最新影格（連續串流）。同一台電腦走共享記憶體、跨電腦走單一 TCP 連線無損傳送。</p>
-<h2 id="perf">效能建議</h2>
+<h3 id="upload-capture">4-1. The camera is on another PC: the capture client</h3>
+<p>Rather than writing your own push program, use the <a href="capture-client.html">capture client</a>: a downloadable desktop program drives webcams, Basler and IDS cameras where they are and connects out to the server's capture port 9100. Add a "capture client camera" source in the web interface and an HTTP- or TCP-triggered run can ask that camera for a fresh frame (on demand) or take the latest one (continuous streaming). On the same machine it goes through shared memory; across machines it is a single TCP connection with lossless transfer.</p>
+
+<h2 id="perf">Performance advice</h2>
 <ul>
-<li>大圖先 <code>resize</code>／<code>crop</code> 再做重工具；<code>VISION_CV_THREADS=1~2</code> 讓多流程並行不互搶。</li>
-<li><code>VISION_PERSIST_RUNS=0</code> 關掉資料庫記錄只留記憶體統計（每分鐘上千次時）。</li>
-<li>流程間彼此獨立，同一流程同時只有一個 run（相機與狀態一致），不同流程並行到 <code>VISION_MAX_WORKERS</code>。</li>
+<li>On large images, <code>resize</code> or <code>crop</code> before the heavy tools. Set <code>VISION_CV_THREADS=1~2</code> so parallel flows do not fight over cores.</li>
+<li><code>VISION_PERSIST_RUNS=0</code> turns off database records and keeps only in-memory statistics — worth it at thousands of runs a minute.</li>
+<li>Flows are independent of each other; one flow runs a single run at a time (for camera and state consistency), and different flows run in parallel up to <code>VISION_MAX_WORKERS</code>.</li>
 </ul>
 
-<h2 id="lock">5. 身分與引擎鎖定（硬體留給產線）</h2>
+<h2 id="lock">5. Identity and the engine lock (the hardware belongs to the line)</h2>
 <ul>
-<li>整合方以 <code>X-API-Key: &lt;VISION_API_KEY&gt;</code>（或 <code>?api_key=</code>）呼叫，是「機器身分」：永遠可執行，不受鎖定影響；TCP 介面同樣視為整合方。</li>
-<li>瀏覽器使用者以帳號登入（<code>POST /api/auth/login</code> → Bearer token）；每個使用者只看得到自己的流程與共用流程。</li>
+<li>An integrator calls with <code>X-API-Key: &lt;VISION_API_KEY&gt;</code> (or <code>?api_key=</code>) and is a machine identity: always able to execute, unaffected by the lock. The TCP interface counts as an integrator too.</li>
+<li>Browser users sign in with an account (<code>POST /api/auth/login</code> → a Bearer token).</li>
 </ul>
-<p>鎖定流程：</p>
-<pre>POST   /api/vision/lock   X-API-Key: ...   {"reason": "量產中", "ttl_s": 28800}   → 鎖定（ttl 選填，逾時自動釋放）
-GET    /api/vision/lock                                                       → {"locked", "holder", "reason", "locked_at", "expires_at"}
-DELETE /api/vision/lock   X-API-Key: ...                                      → 解鎖</pre>
+<p>Locking:</p>
+<pre>POST   /api/vision/lock   X-API-Key: ...   {"reason": "production run", "ttl_s": 28800}   → lock (ttl optional, auto-releases)
+GET    /api/vision/lock                                                                  → {"locked", "holder", "reason", "locked_at", "expires_at"}
+DELETE /api/vision/lock   X-API-Key: ...                                                 → unlock</pre>
 <ul>
-<li>鎖定期間：使用者（含管理員）呼叫 run／preview／continuous 一律回 <strong>423</strong> <code>{"error": {"code": "engine_locked", ...}}</code>，但仍可登入、編輯、儲存流程；鎖定當下所有連續執行會被停止。</li>
-<li>管理員也能在設定頁鎖定／解鎖（例如維護時）；持有者自己可執行。</li>
-<li>建議整合方在開機／換線程式一開始就 <code>POST lock</code>（帶 ttl），停機時 <code>DELETE lock</code>。</li>
+<li>While locked, any user — administrators included — calling run, preview or continuous gets <strong>423</strong> <code>{"error": {"code": "engine_locked", ...}}</code>, but can still sign in, edit and save flows. Locking also stops every continuous run in progress.</li>
+<li>An administrator can lock and unlock from the settings page as well, for maintenance. The holder can always execute.</li>
+<li>The recommended pattern: <code>POST lock</code> with a ttl at the start of the start-up or changeover program, and <code>DELETE lock</code> when the line stops.</li>
 </ul>
 
-<h2 id="pages">5b. 整合頁：每一種接法一個頁面</h2>
-<p>網頁的「外部整合」在側欄可以展開成樹狀，每一種整合方式都是獨立頁面（網址也獨立，可直接加書籤或分享）：</p>
+<h2 id="pages">5b. Integration pages: one page per method</h2>
+<p>"Integration" in the web interface expands into a tree in the sidebar, and every method is its own page with its own URL, so you can bookmark or share it directly:</p>
 <table>
-<tr><th>頁面</th><th>網址</th><th>內容</th></tr>
-<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>試打 <code>POST /flows/{id}/run</code>，產生 curl／Python／C# 片段</td></tr>
-<tr><td>TCP 指令</td><td><code>/integration/tcp</code></td><td>送一行指令、看一行 JSON 回應，含常用指令與歷史</td></tr>
-<tr><td>事件監看</td><td><code>/integration/events</code></td><td>SSE 事件串流</td></tr>
-<tr><td>Modbus</td><td><code>/integration/modbus</code></td><td>主站／從站的差別、位址格式、對映表與讀取表範例</td></tr>
-<tr><td>連線</td><td><code>/integration/connections</code></td><td>建立與測試主動輸出的連線（舊 <code>/connections</code> 會轉過來）</td></tr>
-<tr><td>擷取端</td><td><code>/integration/capture</code></td><td>擷取端程式下載與已連線的擷取端</td></tr>
-<tr><td>引擎鎖定</td><td><code>/integration/lock</code></td><td>鎖定與解鎖</td></tr>
-<tr><td>回傳格式</td><td><code>/integration/format</code></td><td>RunReport 欄位與錯誤碼</td></tr>
+<tr><th>Page</th><th>URL</th><th>Contents</th></tr>
+<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>Try <code>POST /flows/{id}/run</code> and generate curl, Python or C# snippets</td></tr>
+<tr><td>TCP commands</td><td><code>/integration/tcp</code></td><td>Send one line, see one JSON response, with the common commands and a history</td></tr>
+<tr><td>Events</td><td><code>/integration/events</code></td><td>The SSE event stream</td></tr>
+<tr><td>Modbus</td><td><code>/integration/modbus</code></td><td>Client versus server, address format, the write and read mapping tables</td></tr>
+<tr><td>Connections</td><td><code>/integration/connections</code></td><td>Create and test outgoing connections (the old <code>/connections</code> redirects here)</td></tr>
+<tr><td>Capture clients</td><td><code>/integration/capture</code></td><td>Download the capture client and see which ones are connected</td></tr>
+<tr><td>Stations</td><td><code>/integration/stations</code></td><td>Register the other stations that appear on the fleet board</td></tr>
+<tr><td>Engine lock</td><td><code>/integration/lock</code></td><td>Lock and unlock</td></tr>
+<tr><td>Result format</td><td><code>/integration/format</code></td><td>RunReport fields and error codes</td></tr>
 </table>
-<p>舊網址 <code>/integration?tab=modbus</code> 會自動轉到新的獨立網址。</p>
+<p>The old <code>/integration?tab=modbus</code> style URLs redirect to the new ones automatically.</p>
 
-<h2 id="trace">5c. 命令與結果（除錯）</h2>
-<p>每個整合工具頁面下方都有<strong>命令與結果</strong>：頁面開著時，這個介面收到的命令與回覆會即時列出——時間、方向（→ 外部送進來／← 平台送出去）、來源、摘要、耗時，失敗的整列標紅；點一列展開完整內容（JSON）。</p>
+<h2 id="trace">5c. Commands and results (debugging)</h2>
+<p>Every integration page has <strong>Commands and results</strong> at the bottom. While the page is open, the commands and replies this interface handles are listed live — time, direction (→ came in from outside, ← went out from the platform), source, a summary and the duration, with failures highlighted. Click a row to expand the full JSON.</p>
 <ul>
-<li><strong>HTTP</strong>：每次 <code>POST /flows/{id}/run</code> 的觸發來源、判定、具名輸出與 run_id。</li>
-<li><strong>TCP</strong>：收到的整行指令與回傳的 JSON。</li>
-<li><strong>Modbus</strong>：每次寫入／讀取的位址與值；本平台當從站時，還會列出主站的每一則請求與我們的回應。</li>
-<li><strong>擷取端</strong>：擷取端連線與斷線。</li>
+<li><strong>HTTP</strong>: the trigger source, judgement, named outputs and run_id of each <code>POST /flows/{id}/run</code>.</li>
+<li><strong>TCP</strong>: the whole command line received and the JSON returned.</li>
+<li><strong>Modbus</strong>: the address and value of every write and read. When the platform acts as a slave it also lists every request from the master and our reply.</li>
+<li><strong>Capture</strong>: capture clients connecting and disconnecting.</li>
 </ul>
-<p>實作是行程內的環形緩衝（每個頻道 300 筆，<code>apps/vision/trace.py</code>），<strong>不落地、不進資料庫</strong>；沒有人開著整合頁時只記錄錯誤，所以產線長跑不會有額外負擔。API：<code>GET /api/vision/integration/trace?channel=http|tcp|modbus|capture&amp;since=&amp;limit=</code>、<code>DELETE</code> 清空。</p>
+<p>It is an in-process ring buffer (300 entries per channel, <code>apps/vision/trace.py</code>) — <strong>nothing is written to disk or to the database</strong> — and while nobody has an integration page open only errors are recorded, so a long production run carries no extra cost. API: <code>GET /api/vision/integration/trace?channel=http|tcp|modbus|capture&amp;since=&amp;limit=</code>, and <code>DELETE</code> to clear.</p>
 
-<h2 id="push">6. 主動輸出（Modbus TCP／從站，引擎寫給你）</h2>
-<p>上面三種接法都是呼叫方來拿結果。如果設備只想等一個 DO 或暫存器變化，改用<strong>主動輸出</strong>：設定頁建一條連線（<code>modbus_tcp</code>／<code>tcp_client</code>／<code>dio_sim</code>），流程末端放「寫入 Modbus」（<code>write_modbus</code>）工具填對映表，例如 <code>judge → coil:0</code>、<code>width_px → holding:100:float32</code>。寫入失敗預設只記警告、run 照常（產線不停線）。細節、位址格式、連線 API 與外掛見 <a href="modbus.html">Modbus 輸出</a>。</p>
+<h2 id="push">6. Pushing results out (Modbus client or slave)</h2>
+<p>All three methods above have the caller come and collect the result. If the equipment would rather wait for a coil or a register to change, use an <strong>outgoing connection</strong> instead: create one on the settings page (<code>modbus_tcp</code>, <code>modbus_server</code>, <code>tcp_client</code> or <code>dio_sim</code>) and put a "write Modbus" (<code>write_modbus</code>) tool at the end of the flow with a mapping table — for example <code>judge → coil:0</code> and <code>width_px → holding:100:float32</code>. A failed write only logs a warning by default and the run continues, so the line does not stop. Address format, the connection API and writing your own Writer are in <a href="modbus.html">Modbus</a>.</p>
+
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

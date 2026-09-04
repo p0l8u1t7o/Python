@@ -36,7 +36,7 @@ class ExamplePluginTests(SimpleTestCase):
     def test_csv_writer_mounted_and_writes(self):
         kinds = {k["kind"]: k for k in writers.kinds()}
         self.assertIn("csv_log", kinds)
-        self.assertIn("範例外掛", kinds["csv_log"]["label"])
+        self.assertIn("sample plugin", kinds["csv_log"]["label"])
         self.assertEqual(kinds["csv_log"]["fields"], ["path"])
 
         folder = temp_dir()

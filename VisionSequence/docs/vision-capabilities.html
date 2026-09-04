@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence 檢測功能設計</title>
+<title>VisionSequence inspection capabilities</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -134,76 +134,76 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html" aria-current="page">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html">部署與維運</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roi">1. ROI 工具種類與實作</a></li><li><a href="#depth">2. 影像格式（位深）設計</a></li><li><a href="#tools">3. 檢測工具對照表</a></li><li><a href="#skip">4. 刻意不做／外掛路徑</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html" aria-current="page">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roi">1. ROI shapes and how they work</a></li><li><a href="#depth">2. Image formats and bit depth</a></li><li><a href="#tools">3. What each capability maps to</a></li><li><a href="#skip">4. Deliberately left out, or left to a plugin</a></li></ul></aside><article class="doc">
 
-<h1>檢測功能設計：ROI、影像格式、檢測工具</h1>
-<p>本頁以業界標準機器視覺軟體的功能面為基準，記錄平台的 ROI 工具種類與實作方式、多位深影像格式的處理設計，以及各類檢測功能在平台上的對應（含新增與刻意不做的項目）。</p>
+<h1>Inspection capabilities: ROIs, image formats, tools</h1>
+<p>Measured against what a mainstream machine-vision package offers: which ROI shapes the platform has and how they are implemented, how multiple bit depths are handled, and how each class of inspection maps onto a tool here — including what was added recently and what is deliberately left out.</p>
 
-<h2 id="roi">1. ROI 工具種類與實作</h2>
-<p>ROI 工具面板（業界慣例的完整形狀集合）。region 是自由 dict（<code>tools/roi.py</code> 檔頭是唯一格式定義），所有工具走同一組 helper：<code>bounding_rect / mask_for / crop / region_overlay / region_center / transform_region</code>；前端 ImageViewer 的 <code>roiEditor.ts</code>／<code>geometry.ts</code> 提供繪製、把手編輯、命中判定。</p>
+<h2 id="roi">1. ROI shapes and how they work</h2>
+<p>The ROI palette covers the shapes the industry expects. A region is a free-form dict — the header of <code>tools/roi.py</code> is the only definition of the format — and every tool goes through the same helpers: <code>bounding_rect</code>, <code>mask_for</code>, <code>crop</code>, <code>region_overlay</code>, <code>region_center</code> and <code>transform_region</code>. On the front end, <code>roiEditor.ts</code> and <code>geometry.ts</code> handle drawing, handle editing and hit testing.</p>
 <table>
-<tr><th>形狀</th><th>平台 shape</th><th>狀態</th><th>實作重點</th></tr>
-<tr><td>Rectangle</td><td><code>rect</code></td><td>原有</td><td>8 向把手</td></tr>
-<tr><td>Rotated Rectangle</td><td><code>rotated_rect</code></td><td>原有</td><td>旋轉把手＋量測工具 <code>crop(upright=True)</code> 擺正</td></tr>
-<tr><td>Oval</td><td><code>ellipse</code>（cx, cy, rx, ry, angle）</td><td><strong>本輪新增</strong></td><td>兩軸半徑把手＋旋轉把手；遮罩用橢圓填色、overlay 以 36 邊形近似</td></tr>
-<tr><td>Point</td><td><code>point</code>（x, y）</td><td><strong>本輪新增</strong></td><td>單像素遮罩；灰階統計工具的單點量測</td></tr>
-<tr><td>Line</td><td><code>line</code></td><td>原有</td><td>端點把手、Shift 15° 吸附</td></tr>
-<tr><td>Broken Line</td><td><code>polyline</code>（points）</td><td><strong>本輪新增</strong></td><td>不閉合折線：頂點拖曳／雙擊邊插點／右鍵刪點（沿用 polygon 編輯路徑）；線剖面工具用</td></tr>
-<tr><td>Polygon</td><td><code>polygon</code></td><td>原有</td><td>頂點編輯；標記編輯器另有逐點繪製</td></tr>
-<tr><td>Annulus（含起迄角）</td><td><code>annulus</code>（＋選填 <code>a0</code>/<code>a1</code>）</td><td>扇形角度<strong>本輪新增</strong></td><td>內外半徑把手＋（有 a0/a1 時）兩顆角度把手；遮罩＝外圓扇形填滿再挖內圓</td></tr>
-<tr><td>Freehand Region / Freehand Line</td><td>—</td><td>不做</td><td>polygon／polyline 逐點已覆蓋用途；自由手繪對產線 ROI 重現性差</td></tr>
+<tr><th>Shape</th><th>Platform shape</th><th>Status</th><th>How it works</th></tr>
+<tr><td>Rectangle</td><td><code>rect</code></td><td>original</td><td>Eight handles</td></tr>
+<tr><td>Rotated rectangle</td><td><code>rotated_rect</code></td><td>original</td><td>A rotation handle; measurement tools straighten it with <code>crop(upright=True)</code></td></tr>
+<tr><td>Oval</td><td><code>ellipse</code> (cx, cy, rx, ry, angle)</td><td><strong>added</strong></td><td>Two radius handles plus a rotation handle; the mask is a filled ellipse, the overlay a 36-sided approximation</td></tr>
+<tr><td>Point</td><td><code>point</code> (x, y)</td><td><strong>added</strong></td><td>A single-pixel mask, for spot readings with the grayscale statistics tool</td></tr>
+<tr><td>Line</td><td><code>line</code></td><td>original</td><td>Endpoint handles, Shift snaps to 15°</td></tr>
+<tr><td>Broken line</td><td><code>polyline</code> (points)</td><td><strong>added</strong></td><td>An open polyline: drag a vertex, double-click an edge to insert, right-click to remove (the same editing path as polygon). Used by the line profile tool</td></tr>
+<tr><td>Polygon</td><td><code>polygon</code></td><td>original</td><td>Vertex editing; the labelling editor also draws point by point</td></tr>
+<tr><td>Annulus, optionally a sector</td><td><code>annulus</code> plus optional <code>a0</code>/<code>a1</code></td><td>sector angles <strong>added</strong></td><td>Inner and outer radius handles, plus two angle handles when a0/a1 are set. The mask fills the outer sector then punches out the inner circle</td></tr>
+<tr><td>Freehand region or line</td><td>—</td><td>not done</td><td>Polygon and polyline already cover the use; freehand ROIs repeat badly on a production line</td></tr>
 </table>
-<p>ROI 一律可經 <code>region</code> 輸入埠動態傳入（定位工具的跟隨 ROI），<code>transform_region()</code> 支援所有形狀的平移／旋轉。</p>
+<p>Any ROI can also arrive through the <code>region</code> input port — that is how ROI follow works after a locate step — and <code>transform_region()</code> translates and rotates every shape.</p>
 
-<h2 id="depth">2. 影像格式（位深）設計</h2>
-<p>常見的機器視覺影像型別：Grayscale U8／I16／SGL（浮點）、Complex、RGB U32、HSL U32、RGB U64。平台以 numpy dtype 對應（<code>tools/imgfmt.py</code>）：</p>
+<h2 id="depth">2. Image formats and bit depth</h2>
+<p>The image types a machine-vision package deals with are grayscale U8, I16 and float, complex, RGB U32, HSL U32 and RGB U64. The platform maps them onto numpy dtypes (<code>tools/imgfmt.py</code>):</p>
 <table>
-<tr><th>常見型別</th><th>平台表示</th><th>說明</th></tr>
-<tr><td>Grayscale U8／RGB U32</td><td><code>uint8</code>（HxW 或 HxWx3 BGR）</td><td>預設；所有工具都支援</td></tr>
-<tr><td>Grayscale I16</td><td><code>uint16</code></td><td>16-bit PNG/TIFF 讀檔（原樣讀取）原樣保留；16-bit 有號語意上偏移為無號</td></tr>
-<tr><td>RGB U64</td><td><code>uint16</code> ×3（BGR）</td><td>每通道 16-bit</td></tr>
-<tr><td>Grayscale SGL</td><td><code>float32</code></td><td>浮點 TIFF／FFT 與校正中間結果</td></tr>
-<tr><td>HSL U32</td><td>—（編碼方式）</td><td>不需原生儲存：<code>color_convert</code> 取 H/S/L/V 通道處理、<code>color_stats</code> 輸出 HSV 統計</td></tr>
-<tr><td>Complex</td><td>—（工具內部）</td><td><code>fft_filter</code> 內部使用，不進資料流</td></tr>
+<tr><th>Common type</th><th>Here</th><th>Notes</th></tr>
+<tr><td>Grayscale U8 / RGB U32</td><td><code>uint8</code> (HxW or HxWx3 BGR)</td><td>The default; every tool supports it</td></tr>
+<tr><td>Grayscale I16</td><td><code>uint16</code></td><td>16-bit PNG and TIFF are read and kept as they are; signed 16-bit is treated as unsigned with an offset</td></tr>
+<tr><td>RGB U64</td><td><code>uint16</code> ×3 (BGR)</td><td>16 bits per channel</td></tr>
+<tr><td>Grayscale float</td><td><code>float32</code></td><td>Floating-point TIFF, FFT and calibration intermediates</td></tr>
+<tr><td>HSL U32</td><td>— (an encoding)</td><td>No native storage needed: <code>color_convert</code> pulls out H, S, L or V, and <code>color_stats</code> reports HSV statistics</td></tr>
+<tr><td>Complex</td><td>— (inside a tool)</td><td>Used inside <code>fft_filter</code> only; it never travels along the graph</td></tr>
 </table>
-<p><strong>中央接縫</strong>：工具以 <code>Tool.accepts = ("u8",…)</code> 宣告可吃的位深；<code>ToolContext.image()</code> 對宣告外的位深自動 <code>normalize_u8</code>（u16 右移 8＝線性可預期、浮點 min-max；產生新陣列不動輸入）——<strong>任何工具丟任何位深都不會炸</strong>。底層演算法原生支援多位深的工具（crop／resize／blur／morphology／arithmetic／apply_mask／grayscale／rotate_flip／save_image／convert_depth／fft_filter／line_profile／warp_perspective）宣告放寬、原樣進出。顯示端 <code>encode_image</code> 本來就會把非 u8 正規化後編碼。要顯式控制轉換用「位深轉換」工具。</p>
+<p><strong>The seam that makes this safe</strong>: a tool declares what it can take with <code>Tool.accepts = ("u8", …)</code>, and <code>ToolContext.image()</code> normalises anything else with <code>normalize_u8</code> — u16 shifted right by 8 (linear and predictable), floats min-max scaled — into a new array, never touching the input. <strong>So no tool blows up on an unexpected depth.</strong> Tools whose underlying algorithm handles more depths natively (crop, resize, blur, morphology, arithmetic, apply_mask, grayscale, rotate_flip, save_image, convert_depth, fft_filter, line_profile, warp_perspective) declare the wider set and pass the data through untouched. On the display side <code>encode_image</code> has always normalised before encoding. Use the bit-depth conversion tool when you want to control the conversion yourself.</p>
 
-<h2 id="tools">3. 檢測工具對照表</h2>
+<h2 id="tools">3. What each capability maps to</h2>
 <table>
-<tr><th>功能</th><th>平台工具</th><th>狀態</th></tr>
-<tr><td>Lookup Table（linear/log/exp/power/sqrt/square、BCG）</td><td><code>lut</code> 查表轉換（含直方圖等化／CLAHE；原「對比增強」工具已併入。舊流程的節點自動映射、參數照舊）</td><td><strong>本輪新增</strong></td></tr>
-<tr><td>Convolution／Nth-order 濾波</td><td><code>filter</code>（sharpen/canny/laplacian/sobel/prewitt/highpass/emboss/自訂 3×3；原「邊緣」工具已併入）；平滑＝<code>blur</code></td><td><strong>本輪新增</strong></td></tr>
-<tr><td>FFT 頻域濾波（truncate/attenuate）</td><td><code>fft_filter</code>（含頻譜輸出）</td><td><strong>本輪新增</strong></td></tr>
-<tr><td>Grayscale morphology</td><td><code>morphology</code>（erode/dilate/open/close…；多位深）</td><td>原有</td></tr>
-<tr><td>Thresholding（global auto／local adaptive）</td><td><code>threshold</code>：fixed/Otsu/<strong>Triangle（新）</strong>/adaptive mean/gaussian/range</td><td>原有＋新增</td></tr>
-<tr><td>Particle analysis（量測、filter）</td><td><code>blob</code>：面積/圓形度/bbox＋<strong>新增</strong> perimeter/orientation/elongation</td><td>原有＋新增</td></tr>
-<tr><td>Separate touching particles（watershed）</td><td><code>blob</code> 的「分離黏連粒子」參數（距離轉換＋分水嶺）</td><td><strong>本輪新增</strong></td></tr>
-<tr><td>Light meter（point/line/rect）</td><td><code>intensity</code>（含 <strong>point ROI 新增</strong>）、<code>line_profile</code>（<strong>新增</strong>：折線剖面＋統計）</td><td>原有＋新增</td></tr>
-<tr><td>Color statistics</td><td><code>color_stats</code>（RGB/HSV 統計、主色相、平均色）</td><td><strong>本輪新增</strong></td></tr>
-<tr><td>Color comparison</td><td><code>color_check</code>／<code>color_range</code></td><td>原有</td></tr>
-<tr><td>Edge detection：find lines/circles（rake/spoke）</td><td><code>find_line</code>／<code>find_circle</code>（RANSAC、幾何擬合、扇形 ROI、重掃精修）</td><td>原有＋精度修正</td></tr>
-<tr><td>Edge points along contour（caliper）</td><td><code>caliper</code>／<code>wall_thickness</code>／<code>chamfer_angle</code></td><td>原有</td></tr>
-<tr><td>Pattern matching（NCC、金字塔、旋轉）</td><td><code>template_match</code>（次像素位置與角度精修）</td><td>原有＋精度修正</td></tr>
-<tr><td>Coordinate transformation（定位跟隨）</td><td><code>shape_align</code>／<code>fixture_roi</code></td><td>原有</td></tr>
-<tr><td>Analytic geometry</td><td><code>distance</code>／<code>angle</code>＋<code>geometry</code>（<strong>新增</strong>：兩線交點、點線垂距、中點、投影）</td><td>原有＋新增</td></tr>
-<tr><td>Fit line/circle/ellipse</td><td><code>find_line</code>／<code>fit_arc</code>（Taubin＋幾何精修）／<code>fit_ellipse</code>（Direct 擬合）</td><td>原有＋精度修正</td></tr>
-<tr><td>Perspective calibration（攤平）</td><td><code>warp_perspective</code>（四點 → 矩形）；比例換算＝<code>calibration</code></td><td><strong>本輪新增</strong></td></tr>
-<tr><td>Golden template comparison</td><td><code>defect_diff</code>（含相位對齊）＋Golden Set 回歸頁</td><td>原有</td></tr>
-<tr><td>Barcode（1D／DataMatrix／PDF417）</td><td><code>barcode</code>（zbar／底層演算法庫 後端依安裝）</td><td>原有</td></tr>
-<tr><td>Classification</td><td><code>dl_classify</code>（平台內教導）</td><td>原有</td></tr>
-<tr><td>Object detection／Instance segmentation／Pose／OBB（YOLO）</td><td><code>yolo_detect</code>／<code>yolo_segment</code>／<code>yolo_pose</code>／<code>yolo_obb</code>／<code>yolo_classify</code>（ultralytics 原生推論；偵測／分割／分類／旋轉框可在平台內教導訓練）</td><td>新增</td></tr>
-<tr><td>Watershed／binary morphology 進階</td><td>blob separate＋<code>morphology</code></td><td>原有＋新增</td></tr>
-<tr><td>Custom script（自訂演算法，不寫外掛）</td><td><code>python_script</code>：工具頁內寫 <code>def run(ctx)</code>，同行程受限執行（白名單匯入、AST 禁 dunder／exec、看門狗逾時、輸入唯讀），固定輸出埠；只有管理員能儲存核准（<code>apps/vision/scripts.py</code>）</td><td><strong>本輪新增</strong></td></tr>
+<tr><th>Capability</th><th>Tool</th><th>Status</th></tr>
+<tr><td>Look-up table (linear, log, exp, power, sqrt, square, brightness/contrast/gamma)</td><td><code>lut</code>, including histogram equalisation and CLAHE. The former contrast tool folded into it; old flows are mapped automatically and keep their parameters</td><td><strong>added</strong></td></tr>
+<tr><td>Convolution and nth-order filters</td><td><code>filter</code> (sharpen, Canny, Laplacian, Sobel, Prewitt, high pass, emboss, custom 3×3; the former edge tool folded into it). Smoothing is <code>blur</code></td><td><strong>added</strong></td></tr>
+<tr><td>FFT frequency filtering (truncate / attenuate)</td><td><code>fft_filter</code>, with a spectrum output</td><td><strong>added</strong></td></tr>
+<tr><td>Grayscale morphology</td><td><code>morphology</code> (erode, dilate, open, close and the rest; multiple depths)</td><td>original</td></tr>
+<tr><td>Thresholding, global automatic and local adaptive</td><td><code>threshold</code>: fixed, Otsu, <strong>Triangle (new)</strong>, adaptive mean, adaptive Gaussian, range</td><td>original plus new</td></tr>
+<tr><td>Particle analysis and filtering</td><td><code>blob</code>: area, circularity, bounding box, plus <strong>new</strong> perimeter, orientation and elongation</td><td>original plus new</td></tr>
+<tr><td>Separating touching particles (watershed)</td><td>The "split touching particles" option on <code>blob</code> (distance transform plus watershed)</td><td><strong>added</strong></td></tr>
+<tr><td>Light meter (point, line, rectangle)</td><td><code>intensity</code>, now including a <strong>point ROI</strong>, and <code>line_profile</code> (<strong>new</strong>: profile along a polyline with statistics)</td><td>original plus new</td></tr>
+<tr><td>Colour statistics</td><td><code>color_stats</code> (RGB and HSV statistics, dominant hue, mean colour)</td><td><strong>added</strong></td></tr>
+<tr><td>Colour comparison</td><td><code>color_check</code> and <code>color_range</code></td><td>original</td></tr>
+<tr><td>Edge detection: find lines and circles (rake and spoke)</td><td><code>find_line</code> and <code>find_circle</code> (RANSAC, geometric fitting, sector ROIs, rescan refinement)</td><td>original, accuracy improved</td></tr>
+<tr><td>Edge points along a contour (caliper)</td><td><code>caliper</code>, <code>wall_thickness</code>, <code>chamfer_angle</code></td><td>original</td></tr>
+<tr><td>Pattern matching (NCC, pyramid, rotation)</td><td><code>template_match</code> with sub-pixel position and angle refinement</td><td>original, accuracy improved</td></tr>
+<tr><td>Coordinate transformation (ROI follow)</td><td><code>shape_align</code> and <code>fixture_roi</code></td><td>original</td></tr>
+<tr><td>Analytic geometry</td><td><code>distance</code>, <code>angle</code> and <code>geometry</code> (<strong>new</strong>: line intersection, point-to-line distance, midpoint, projection)</td><td>original plus new</td></tr>
+<tr><td>Fitting a line, circle or ellipse</td><td><code>find_line</code>, <code>fit_arc</code> (Taubin plus geometric refinement), <code>fit_ellipse</code> (direct fit)</td><td>original, accuracy improved</td></tr>
+<tr><td>Perspective calibration (flattening)</td><td><code>warp_perspective</code> (four points to a rectangle); scale conversion is <code>calibration</code></td><td><strong>added</strong></td></tr>
+<tr><td>Golden template comparison</td><td><code>defect_diff</code> with phase alignment, plus the Golden Set regression page</td><td>original</td></tr>
+<tr><td>Barcodes (1D, DataMatrix, PDF417)</td><td><code>barcode</code>, using whichever decoder backend is installed</td><td>original</td></tr>
+<tr><td>Classification</td><td><code>dl_classify</code>, trained inside the platform</td><td>original</td></tr>
+<tr><td>Object detection, instance segmentation, pose, oriented boxes (YOLO)</td><td><code>yolo_detect</code>, <code>yolo_segment</code>, <code>yolo_pose</code>, <code>yolo_obb</code>, <code>yolo_classify</code> — native ultralytics inference; detection, segmentation, classification and OBB can all be trained inside the platform</td><td>added</td></tr>
+<tr><td>Watershed and advanced binary morphology</td><td>blob's split option plus <code>morphology</code></td><td>original plus new</td></tr>
+<tr><td>A custom algorithm without writing a plugin</td><td><code>python_script</code>: write <code>def run(ctx)</code> on the tool page. It runs in the engine process but restricted — allow-listed imports, AST rules against dunders and exec, a watchdog timeout, a read-only input image — with fixed output ports. Only an administrator can save and thereby approve it (<code>apps/vision/scripts.py</code>)</td><td><strong>added</strong></td></tr>
 </table>
 
-<h2 id="skip">4. 刻意不做／外掛路徑</h2>
+<h2 id="skip">4. Deliberately left out, or left to a plugin</h2>
 <ul>
-<li><strong>Geometric matching／Color pattern matching／Color location</strong>：演算法量體大且 <code>template_match</code>＋DL 工具（dl_detect/dl_instance）已覆蓋多數場景；需要時以外掛工具導入（<a href="plugins.html">擴充外掛</a>）。</li>
-<li><strong>OCR／字元驗證、Instrument readers（meter/LCD）</strong>：現代做法是 DL——用深度學習頁教導或掛 OCR 外掛；<code>text_presence</code> 提供「有沒有字」的輕量檢查。</li>
-<li><strong>非線性鏡頭畸變標定（error map／correction table）</strong>：需要標定板工作流；先以 <code>warp_perspective</code>（透視）＋<code>calibration</code>（比例）覆蓋，畸變標定留待外掛或後續版本。</li>
-<li><strong>Freehand ROI</strong>：見 §1。</li>
-<li><strong>Complex 影像型別</strong>：只在 <code>fft_filter</code> 內部存在，不作為埠型別（避免資料流複雜化）。</li>
+<li><strong>Geometric matching, colour pattern matching, colour location</strong>: large algorithms, and <code>template_match</code> together with the deep-learning tools already covers most of what they are used for. Bring one in as a plugin tool when you need it (<a href="plugins.html">Plugins</a>).</li>
+<li><strong>OCR and character verification, instrument readers (meters, LCDs)</strong>: the modern answer is deep learning — train one on the teaching page, or plug in an OCR engine. <code>text_presence</code> covers the lightweight "is anything printed here" check.</li>
+<li><strong>Non-linear lens distortion calibration (error maps, correction tables)</strong>: this needs a calibration-target workflow. For now <code>warp_perspective</code> handles perspective and <code>calibration</code> handles scale; distortion calibration is left to a plugin or a later release.</li>
+<li><strong>Freehand ROIs</strong>: see §1.</li>
+<li><strong>The complex image type</strong>: it exists only inside <code>fft_filter</code> and is not a port type, which keeps the dataflow simple.</li>
 </ul>
 
 </article></div><!-- /doc-layout -->
