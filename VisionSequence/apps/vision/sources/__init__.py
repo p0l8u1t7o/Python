@@ -23,6 +23,9 @@ from django.conf import settings
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.sources.grabbers import FileGrabber, FolderGrabber, Grabber, SyntheticGrabber, UploadGrabber, UsbGrabber
 
+# 擷取端相機（apps/vision/capture）：grabber 模組只依賴 grabbers.py 與 hub，放在 grabbers import 之後不會循環。
+from apps.vision.capture.grabber import CaptureGrabber  # noqa: E402
+
 log = logging.getLogger(__name__)
 
 _BUILTIN = {
@@ -31,6 +34,7 @@ _BUILTIN = {
     "usb": UsbGrabber,
     "synthetic": SyntheticGrabber,
     "upload": UploadGrabber,
+    "capture": CaptureGrabber,
 }
 
 #: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
@@ -106,14 +110,29 @@ def grab_by_id(source_id: int | str) -> np.ndarray | None:
 def try_grab(kind: str, config: dict[str, Any] | None) -> np.ndarray | None:
     """儲存前的「測試擷取」：依 kind／config 建一個暫時 grabber 抓一張就關，不快取、不落資料庫。"""
     cls = _resolve_class(kind, config or {})
-    grabber = cls(dict(config or {}), source_id=0, name="test")
+    grabber = cls(dict(config or {}), source_id=0, name="")
     try:
-        return grabber.grab()
+        image = grabber.grab()
+        if image is None and grabber.last_error:
+            # 把來源自己知道的原因帶給「測試擷取」（例如擷取端未連線），不要只回泛用的沒影像
+            raise ValidationError(grabber.last_error, code="no_frame")
+        return image
     finally:
         try:
             grabber.close()
         except Exception:  # noqa: BLE001
             log.exception("關閉測試擷取的影像來源失敗")
+
+
+def last_error_of(source_id: int | str) -> str:
+    """快取中 grabber 的 last_error（不碰 DB；引擎在來源沒回影像時拿來組錯誤訊息）。"""
+    try:
+        sid = int(source_id)
+    except (TypeError, ValueError):
+        return ""
+    with _lock:
+        cached = _open.get(sid)
+    return str(getattr(cached[1], "last_error", "") or "") if cached else ""
 
 
 def close_source(source_id: int) -> None:
@@ -156,6 +175,7 @@ def kinds() -> list[dict[str, Any]]:
         {"kind": "usb", "label": "USB / 網路攝影機（OpenCV）", "fields": ["index", "width", "height", "fps"]},
         {"kind": "synthetic", "label": "合成測試影像", "fields": ["width", "height", "pattern", "seed"]},
         {"kind": "upload", "label": "手動上傳（API 送圖）", "fields": []},
+        {"kind": "capture", "label": CaptureGrabber.label, "fields": list(CaptureGrabber.fields), "description": CaptureGrabber.description},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({

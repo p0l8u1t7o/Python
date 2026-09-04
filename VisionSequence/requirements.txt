@@ -32,6 +32,7 @@ onnxruntime==1.20.1            # dl_classify / dl_detect 工具；未安裝時�
 # anthropic>=1.0
 
 # ---- 執行環境 ---------------------------------------------------------------
+lz4==4.4.4                     # 擷取端跨機傳輸的無損壓縮（可選：缺少時只用 raw）
 uvicorn[standard]==0.34.0      # ASGI（SSE 即時串流）；正式環境單 worker（引擎狀態在行程內）
 whitenoise==6.8.2              # 靜態檔（前端 build 產物）
 

@@ -47,7 +47,10 @@ class ImageSourceTool(Tool):
             image = ctx.grab(str(source_id))
             used = f"source:{source_id}"
             if image is None:
-                raise ToolError(f"影像來源 {source_id} 沒有回傳影像")
+                from apps.vision.sources import last_error_of  # 來源自己知道的原因（例如擷取端未連線、資料夾讀完）
+
+                reason = last_error_of(source_id)
+                raise ToolError(f"影像來源 {source_id} 沒有回傳影像" + (f"：{reason}" if reason else ""))
         if image is None:
             raise ToolError("沒有暫存影像：請先在頂列「上傳暫存影像」或由 API 送圖")
         convert = ctx.param("convert", "keep")

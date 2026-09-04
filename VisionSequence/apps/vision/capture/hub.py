@@ -1,0 +1,811 @@
+"""擷取端 hub：接受擷取端（vscapture 桌面程式）連入，登記名稱與相機通道，依需求向它要影像或接收串流。
+
+執行緒：`vision-capture`（accept）＋每連線一條 `vision-capture-<name>`（讀取）；全部 daemon、不碰 ORM。
+Runner 的工作執行緒經 `CaptureGrabber` 呼叫 `request_frame()`／`wait_for_seq()` 並在 Event／Condition 上等待（不持鎖）。
+交給引擎的 ndarray 一律獨占：raw 的接收緩衝就是 ndarray、LZ4 解壓輸出、或從共享記憶體槽 copy 一次。
+"""
+
+from __future__ import annotations
+
+import hmac
+import itertools
+import logging
+import os
+import socket
+import threading
+import time
+from dataclasses import dataclass
+from multiprocessing import shared_memory
+from typing import Any
+
+import numpy as np
+from django.conf import settings
+
+from vscapture import __version__ as CLIENT_PROTO_PKG_VERSION
+from vscapture import protocol as P
+from vscapture.protocol import Encoding, FrameFlags, FrameHeader, GrabFlags, MsgType, ProtocolError
+
+try:
+    import lz4.block as lz4_block
+except ImportError:  # 可選依賴：缺少時只接受 raw／jpeg
+    lz4_block = None
+
+log = logging.getLogger(__name__)
+
+RCVBUF = 4 << 20
+
+
+def _cfg(key: str, default: Any) -> Any:
+    return getattr(settings, "VISION", {}).get(key, default)
+
+
+class CaptureError(Exception):
+    """向擷取端要影像失敗；code：client_offline／no_channel／channel_disabled／timeout／disconnected／camera_error／unsupported_encoding／busy。"""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(slots=True)
+class FrameMeta:
+    seq: int
+    ts_ns: int
+    width: int
+    height: int
+    channels: int
+    dtype: str
+    encoding: str
+    roi_x: int
+    roi_y: int
+    full_w: int
+    full_h: int
+    fresh: bool
+    shm: bool
+    wire_bytes: int
+    received_at: float
+    latency_ms: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "seq": self.seq, "ts_ns": self.ts_ns, "width": self.width, "height": self.height, "channels": self.channels, "dtype": self.dtype,
+            "encoding": self.encoding, "roi": {"x": self.roi_x, "y": self.roi_y, "w": self.width, "h": self.height}, "full": {"w": self.full_w, "h": self.full_h},
+            "fresh": self.fresh, "shm": self.shm, "wire_bytes": self.wire_bytes, "latency_ms": round(self.latency_ms, 2),
+        }
+
+
+@dataclass(slots=True)
+class Frame:
+    image: np.ndarray
+    meta: FrameMeta
+
+
+class _Rate:
+    """EWMA 的 fps 與 bytes/s；超過 2 秒沒影格則回 0。"""
+
+    def __init__(self) -> None:
+        self.frames = 0
+        self.bytes = 0
+        self.fps = 0.0
+        self.bps = 0.0
+        self._last: float | None = None
+
+    def tick(self, nbytes: int) -> None:
+        now = time.perf_counter()
+        if self._last is not None:
+            dt = now - self._last
+            if dt > 0:
+                inst_fps = 1.0 / dt
+                inst_bps = nbytes / dt
+                self.fps = inst_fps if self.fps == 0 else 0.8 * self.fps + 0.2 * inst_fps
+                self.bps = inst_bps if self.bps == 0 else 0.8 * self.bps + 0.2 * inst_bps
+        self._last = now
+        self.frames += 1
+        self.bytes += int(nbytes)
+
+    def snapshot(self) -> dict[str, Any]:
+        stale = self._last is None or time.perf_counter() - self._last > 2.0
+        return {"fps": 0.0 if stale else round(self.fps, 2), "bytes_per_s": 0 if stale else int(self.bps), "frames": self.frames}
+
+
+class ChannelState:
+    def __init__(self, index: int, spec: dict[str, Any], lock: threading.Lock) -> None:
+        self.index = index
+        self.spec = spec
+        self.latest: Frame | None = None
+        self.last_seq = 0
+        self.streaming = False
+        self.last_error = ""
+        self.rate = _Rate()
+        self.cond = threading.Condition(lock)
+
+    @property
+    def id(self) -> str:
+        return self.spec["id"]
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.spec.get("enabled", True))
+
+    def to_dict(self, in_use_by: list[str] | None = None) -> dict[str, Any]:
+        latest = self.latest
+        age = None if latest is None else round((time.perf_counter() - latest.meta.received_at) * 1000, 1)
+        out = {
+            "id": self.id, "label": self.spec["label"], "driver": self.spec["driver"], "index": self.index,
+            "width": self.spec["width"], "height": self.spec["height"], "channels": self.spec["channels"], "dtype": self.spec["dtype"],
+            "pixel_format": self.spec["pixel_format"], "roi": self.spec["roi"], "full": self.spec["full"],
+            "mode": "stream" if self.streaming else self.spec["mode"], "enabled": self.enabled, "streaming": self.streaming,
+            "seq": self.last_seq, "last_frame_age_ms": age, "encoding": latest.meta.encoding if latest else "", "shm": bool(latest and latest.meta.shm),
+            "last_error": self.last_error, "in_use_by": list(in_use_by or []), **self.rate.snapshot(),
+        }
+        return out
+
+
+class _Pending:
+    __slots__ = ("event", "frame", "error", "sent_at")
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.frame: Frame | None = None
+        self.error: CaptureError | None = None
+        self.sent_at = time.perf_counter()
+
+
+class ClientSession(threading.Thread):
+    """一條擷取端連線：握手、讀取迴圈、影格接收；對外提供 request_frame／latest／wait_for_seq／set_stream。"""
+
+    def __init__(self, hub: CaptureHub, sock: socket.socket, peer: tuple[str, int]) -> None:
+        super().__init__(name="vision-capture-session", daemon=True)
+        self.hub = hub
+        self.sock = sock
+        self.peer = peer
+        self.name_ = ""
+        self.version = ""
+        self.hostname = ""
+        self.machine_id = ""
+        self.pid = 0
+        self.features: dict[str, Any] = {}
+        self.local = False
+        self.connected_at = time.time()
+        self.alive = True
+        self.registered = False
+        self.close_reason = ""
+        self.channels: list[ChannelState] = []
+        self.by_id: dict[str, ChannelState] = {}
+        self.prefer_encoding = int(Encoding.RAW)
+        self.shm: shared_memory.SharedMemory | None = None
+        self.shm_slots = 0
+        self.shm_slot_bytes = 0
+        self._lock = threading.Lock()
+        self._send_lock = threading.Lock()
+        self._pending: dict[int, _Pending] = {}
+        self._req_counter = itertools.count(1)
+        self._env_buf = bytearray(P.ENVELOPE.size)
+        self._hdr_buf = bytearray(P.FRAME_HDR.size)
+        self._payload_buf = bytearray(0)
+        self._missed_pings = 0
+        self._closed = threading.Event()
+
+    # ---- 執行緒主體 ----
+    def run(self) -> None:
+        reason = "eof"
+        try:
+            if not self._handshake():
+                return
+            self.name = f"vision-capture-{self.name_}"
+            while self.alive:
+                try:
+                    self._recv_exactly(memoryview(self._env_buf))
+                except socket.timeout:
+                    if self._missed_pings >= 2:
+                        reason = "heartbeat"
+                        break
+                    self._missed_pings += 1
+                    self.send(MsgType.PING)
+                    continue
+                self._missed_pings = 0
+                mtype, req_id, hlen, plen = P.unpack_envelope(self._env_buf)
+                if not self._dispatch(mtype, req_id, hlen, plen):
+                    reason = "bye"
+                    break
+        except ProtocolError as exc:
+            reason = f"protocol:{exc.code}"
+            log.warning("擷取端 %s（%s）協定錯誤：%s", self.name_ or "?", self.peer, exc)
+            self._try_send_error(0, exc.code, str(exc))
+        except (ConnectionError, OSError, socket.timeout) as exc:
+            reason = self.close_reason or f"socket:{exc.__class__.__name__}"
+        except Exception:  # noqa: BLE001
+            reason = "internal"
+            log.exception("擷取端 %s 讀取迴圈失敗", self.name_ or self.peer)
+        finally:
+            self.close(reason)
+            if self.registered:
+                self.hub.unregister(self)
+
+    # ---- 握手 ----
+    def _handshake(self) -> bool:
+        self.sock.settimeout(P.HELLO_TIMEOUT_S)
+        self._recv_exactly(memoryview(self._env_buf))
+        mtype, req_id, hlen, plen = P.unpack_envelope(self._env_buf)
+        if mtype != MsgType.HELLO or hlen > P.MAX_CONTROL_BYTES or plen != 0:
+            raise ProtocolError("第一則訊息必須是 HELLO", code="bad_hello")
+        body = P.loads_json(self._recv_bytes(hlen))
+        if int(body.get("protocol", 0)) != P.PROTOCOL_VERSION:
+            self._reject(req_id, "protocol_unsupported", f"協定版本不支援：{body.get('protocol')}（伺服端 {P.PROTOCOL_VERSION}）")
+            return False
+        secret = self.hub.auth_secret()
+        if secret and not hmac.compare_digest(str(body.get("auth") or ""), secret):
+            time.sleep(0.5)  # 節流暴力嘗試
+            self._reject(req_id, "auth_failed", "擷取端金鑰驗證失敗")
+            return False
+        try:
+            self.name_ = P.validate_name(body.get("name"))
+            channels = [P.validate_channel_dict(c) for c in (body.get("channels") or [])]
+        except ProtocolError as exc:
+            self._reject(req_id, exc.code, str(exc))
+            return False
+        if len(channels) > P.MAX_CHANNELS:
+            self._reject(req_id, "too_many_channels", f"通道數超過 {P.MAX_CHANNELS}")
+            return False
+        self.version = str(body.get("version") or "")[:32]
+        self.hostname = str(body.get("hostname") or "")[:128]
+        self.machine_id = str(body.get("machine_id") or "")[:64]
+        self.pid = int(body.get("pid") or 0)
+        self.features = body.get("features") if isinstance(body.get("features"), dict) else {}
+        self._install_channels(channels)
+        self.local = self._detect_local()
+        lz4_both = bool(self.features.get("lz4")) and lz4_block is not None
+        self.prefer_encoding = int(Encoding.RAW) if self.local or not lz4_both else int(Encoding.LZ4)
+        rejection = self.hub.register(self)
+        if rejection is not None:
+            self._reject(req_id, rejection, "擷取端名稱已被使用" if rejection == "name_taken" else rejection)
+            return False
+        wanted = {c.id: self.hub.stream_wanted(self.name_, c.id) for c in self.channels}
+        self.send(MsgType.WELCOME, req_id, P.dumps_json({
+            "ok": True, "protocol": P.PROTOCOL_VERSION, "server": "VisionSequence", "server_version": CLIENT_PROTO_PKG_VERSION, "name": self.name_,
+            "local": self.local, "prefer": {"encoding": P.ENCODING_NAMES[self.prefer_encoding], "shm": self.local},
+            "max_frame_bytes": self.hub.max_frame_bytes(), "heartbeat_s": P.HEARTBEAT_S, "stream": wanted,
+        }))
+        self.sock.settimeout(P.HEARTBEAT_S)
+        for cid, on in wanted.items():
+            if on:
+                self.set_stream(cid, True)
+        log.info("擷取端 %s 已連線（%s:%s，%s，通道 %d）", self.name_, self.peer[0], self.peer[1], "同機" if self.local else "跨機", len(self.channels))
+        return True
+
+    def _reject(self, req_id: int, code: str, message: str) -> None:
+        self.close_reason = code
+        try:
+            self.send(MsgType.WELCOME, req_id, P.dumps_json({"ok": False, "code": code, "message": message, "protocol": P.PROTOCOL_VERSION}))
+        except OSError:
+            pass
+
+    def _detect_local(self) -> bool:
+        if not P.is_loopback(self.peer[0]):
+            try:
+                local_ips = {info[4][0] for info in socket.getaddrinfo(socket.gethostname(), None)}
+            except OSError:
+                local_ips = set()
+            if self.peer[0] not in local_ips:
+                return False
+        return bool(self.hostname) and self.hostname.lower() == socket.gethostname().lower()
+
+    def _install_channels(self, specs: list[dict[str, Any]]) -> None:
+        with self._lock:
+            new: list[ChannelState] = []
+            for i, spec in enumerate(specs):
+                old = self.channels[i] if i < len(self.channels) and self.channels[i].id == spec["id"] else None
+                if old is not None:
+                    old.spec = spec
+                    new.append(old)
+                else:
+                    new.append(ChannelState(i, spec, self._lock))
+            self.channels = new
+            self.by_id = {c.id: c for c in new}
+
+    # ---- 讀取 ----
+    def _recv_exactly(self, view: memoryview) -> None:
+        got, total = 0, len(view)
+        while got < total:
+            n = self.sock.recv_into(view[got:], total - got)
+            if n <= 0:
+                raise ConnectionError("擷取端關閉連線")
+            got += n
+
+    def _recv_bytes(self, n: int) -> bytearray:
+        buf = bytearray(n)
+        if n:
+            self._recv_exactly(memoryview(buf))
+        return buf
+
+    def _payload(self, n: int) -> memoryview:
+        if len(self._payload_buf) < n:
+            self._payload_buf = bytearray(n)
+        view = memoryview(self._payload_buf)[:n]
+        self._recv_exactly(view)
+        return view
+
+    def _drain(self, n: int) -> None:
+        while n > 0:
+            chunk = min(n, 1 << 20)
+            self._payload(chunk)
+            n -= chunk
+
+    def _dispatch(self, mtype: int, req_id: int, hlen: int, plen: int) -> bool:
+        """處理一則訊息；回 False 表示對方要求關閉（BYE）。"""
+        if mtype in (MsgType.FRAME, MsgType.TEST):
+            if hlen != P.FRAME_HDR.size:
+                raise ProtocolError("FRAME 表頭長度錯誤")
+            if plen > self.hub.max_frame_bytes():
+                raise ProtocolError(f"影格 {plen} 位元組超過上限", code="too_large")
+            self._recv_exactly(memoryview(self._hdr_buf))
+            self._on_frame(mtype, req_id, FrameHeader.unpack(self._hdr_buf), plen)
+            return True
+        if hlen > P.MAX_CONTROL_BYTES or plen > self.hub.max_frame_bytes():
+            raise ProtocolError("訊息過大", code="too_large")
+        header = self._recv_bytes(hlen) if hlen else bytearray()
+        if plen:
+            self._drain(plen)
+        if mtype == MsgType.PING:
+            self.send(MsgType.PONG, req_id)
+        elif mtype == MsgType.PONG:
+            pass
+        elif mtype == MsgType.BYE:
+            self.close_reason = "bye"
+            return False
+        elif mtype == MsgType.CHANNELS:
+            body = P.loads_json(header)
+            specs = [P.validate_channel_dict(c) for c in (body.get("channels") or [])]
+            if len(specs) > P.MAX_CHANNELS:
+                raise ProtocolError(f"通道數超過 {P.MAX_CHANNELS}", code="too_many_channels")
+            self._install_channels(specs)
+        elif mtype == MsgType.SHM_OFFER:
+            self._on_shm_offer(req_id, P.loads_json(header))
+        elif mtype == MsgType.STREAM:
+            body = P.loads_json(header)
+            ch = self.by_id.get(str(body.get("channel") or ""))
+            if ch is not None:
+                with self._lock:
+                    ch.streaming = bool(body.get("enabled")) and bool(body.get("ok", True))
+        elif mtype == MsgType.ERROR:
+            body = P.loads_json(header)
+            code = str(body.get("code") or "error")
+            message = str(body.get("message") or code)
+            self._resolve(req_id, error=CaptureError(f"擷取端回報：{message}", code=code))
+            if req_id == 0:
+                log.warning("擷取端 %s 回報錯誤 %s：%s", self.name_, code, message)
+        elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.SLOT_FREE, MsgType.TEST_RESULT):
+            raise ProtocolError(f"擷取端不該送 {MsgType(mtype).name}")
+        else:
+            raise ProtocolError(f"未知的訊息型別 {mtype}")
+        return True
+
+    def _on_frame(self, mtype: int, req_id: int, hdr: FrameHeader, plen: int) -> None:
+        started = time.perf_counter()
+        n_channels = len(self.channels)
+        try:
+            hdr.validate(n_channels, self.hub.max_frame_bytes(), plen, shm_slots=self.shm_slots, slot_bytes=self.shm_slot_bytes)
+        except ProtocolError as exc:
+            if exc.code == "too_large":
+                raise
+            if plen:
+                self._drain(plen)
+            if exc.code == "no_channel":
+                self._resolve(req_id, error=CaptureError(str(exc), code="no_channel"))
+                return
+            raise
+        if hdr.encoding == Encoding.LZ4 and lz4_block is None:
+            self._drain(plen)
+            self._resolve(req_id, error=CaptureError("伺服端沒有安裝 LZ4，請改用 raw", code="unsupported_encoding"))
+            self._try_send_error(req_id, "unsupported_encoding", "伺服端沒有安裝 LZ4")
+            return
+        image = self._read_pixels(hdr, plen)
+        wire = plen if hdr.slot < 0 else 0
+        if hdr.slot >= 0:
+            self.send(MsgType.SLOT_FREE, 0, P.pack_slot_free(hdr.chan, hdr.slot, hdr.seq))
+        if mtype == MsgType.TEST:
+            self.send(MsgType.TEST_RESULT, req_id, P.dumps_json({"bytes": wire, "decode_ms": round((time.perf_counter() - started) * 1000, 2), "shape": list(image.shape)}))
+            return
+        meta = FrameMeta(
+            seq=hdr.seq, ts_ns=hdr.ts_ns, width=hdr.width, height=hdr.height, channels=hdr.channels, dtype=P.DTYPE_NAMES[hdr.dtype],
+            encoding=P.ENCODING_NAMES[hdr.encoding] if hdr.slot < 0 else "shm", roi_x=hdr.roi_x, roi_y=hdr.roi_y, full_w=hdr.full_w, full_h=hdr.full_h,
+            fresh=bool(hdr.flags & FrameFlags.FRESH), shm=hdr.slot >= 0, wire_bytes=wire, received_at=time.perf_counter(),
+        )
+        frame = Frame(image, meta)
+        with self._lock:
+            ch = self.channels[hdr.chan]
+            ch.latest = frame
+            ch.last_seq = max(ch.last_seq, hdr.seq)
+            ch.last_error = ""
+            ch.rate.tick(wire or hdr.raw_len)
+            pending = self._pending.pop(req_id, None) if req_id else None
+            if pending is not None:
+                meta.latency_ms = (time.perf_counter() - pending.sent_at) * 1000
+                pending.frame = frame
+                pending.event.set()
+            ch.cond.notify_all()
+
+    def _read_pixels(self, hdr: FrameHeader, plen: int) -> np.ndarray:
+        shape, dtype = hdr.shape(), hdr.numpy_dtype
+        if hdr.slot >= 0:
+            shm = self.shm
+            if shm is None:
+                raise ProtocolError("尚未接受共享記憶體卻收到槽影格")
+            out = np.empty(shape, dtype)
+            off = P.slot_offset(hdr.slot, self.shm_slot_bytes)
+            with shm.buf[off : off + hdr.raw_len] as src:
+                out.data.cast("B")[:] = src
+            return out
+        if hdr.encoding == Encoding.RAW:
+            out = np.empty(shape, dtype)
+            self._recv_exactly(out.data.cast("B"))
+            return out
+        buf = self._payload(plen)
+        if hdr.encoding == Encoding.LZ4:
+            raw = lz4_block.decompress(buf, uncompressed_size=hdr.raw_len, return_bytearray=True)
+            return np.frombuffer(raw, dtype=dtype).reshape(shape)
+        import cv2
+
+        flag = cv2.IMREAD_GRAYSCALE if hdr.channels == 1 else cv2.IMREAD_UNCHANGED if hdr.channels == 4 else cv2.IMREAD_COLOR
+        image = cv2.imdecode(np.frombuffer(buf, np.uint8), flag)
+        if image is None or image.shape[:2] != (hdr.height, hdr.width):
+            raise ProtocolError("JPEG 影格解碼失敗或尺寸不符")
+        return np.ascontiguousarray(image)
+
+    # ---- 共享記憶體 ----
+    def _on_shm_offer(self, req_id: int, body: dict[str, Any]) -> None:
+        name = str(body.get("name") or "")
+        try:
+            slots, slot_bytes, canary = int(body.get("slots") or 0), int(body.get("slot_bytes") or 0), int(body.get("canary") or 0)
+        except (TypeError, ValueError):
+            slots = slot_bytes = canary = 0
+        error = ""
+        if not self.local:
+            error = "不是同一台電腦，改走 TCP"
+        elif slots < 2 or slot_bytes <= 0 or slot_bytes > self.hub.max_frame_bytes() or not name:
+            error = "共享記憶體參數無效"
+        else:
+            try:
+                shm = shared_memory.SharedMemory(name=name, create=False)
+                if os.name != "nt":
+                    try:
+                        from multiprocessing import resource_tracker
+
+                        resource_tracker.unregister(shm._name, "shared_memory")  # noqa: SLF001
+                    except Exception:  # noqa: BLE001
+                        pass
+                try:
+                    got_canary, got_slots, got_bytes = P.unpack_seg_header(shm.buf[: P.SEG_HDR.size])
+                    if got_canary != canary or got_slots != slots or got_bytes != slot_bytes or shm.size < P.segment_size(slots, slot_bytes):
+                        error = "共享記憶體表頭不符"
+                except ProtocolError as exc:
+                    error = str(exc)
+                if error:
+                    shm.close()
+                else:
+                    old = self.shm
+                    self.shm, self.shm_slots, self.shm_slot_bytes = shm, slots, slot_bytes
+                    if old is not None:
+                        old.close()
+            except (FileNotFoundError, OSError, ValueError) as exc:
+                error = f"無法附加共享記憶體：{exc}"
+        self.send(MsgType.SHM_ACCEPT, req_id, P.dumps_json({"ok": not error, "error": error} if error else {"ok": True}))
+        if error:
+            log.info("擷取端 %s 的共享記憶體未採用：%s", self.name_, error)
+
+    # ---- 送出 ----
+    def send(self, mtype: int, req_id: int = 0, header: bytes = b"", payload: bytes = b"") -> None:
+        data = P.pack_envelope(mtype, req_id, len(header), len(payload)) + header + payload
+        try:
+            with self._send_lock:
+                self.sock.sendall(data)
+        except OSError as exc:
+            self.close_reason = self.close_reason or "send_failed"
+            self.close("send_failed")
+            raise CaptureError("擷取端已斷線", code="disconnected") from exc
+
+    def _try_send_error(self, req_id: int, code: str, message: str) -> None:
+        try:
+            self.send(MsgType.ERROR, req_id, P.dumps_json({"code": code, "message": message}))
+        except (CaptureError, OSError):
+            pass
+
+    def next_req_id(self) -> int:
+        return next(self._req_counter)
+
+    def _resolve(self, req_id: int, *, error: CaptureError | None = None, frame: Frame | None = None) -> None:
+        if not req_id:
+            return
+        with self._lock:
+            pending = self._pending.pop(req_id, None)
+            if pending is None:
+                return
+            pending.error, pending.frame = error, frame
+            pending.event.set()
+
+    # ---- 給 hub／grabber 用 ----
+    def channel(self, channel: str) -> ChannelState:
+        ch = self.by_id.get(channel)
+        if ch is None:
+            raise CaptureError(f"擷取端「{self.name_}」沒有通道「{channel}」", code="no_channel")
+        if not ch.enabled:
+            raise CaptureError(f"通道「{channel}」已停用", code="channel_disabled")
+        return ch
+
+    def request_frame(self, channel: str, *, timeout: float, min_seq: int = 0, after_request: bool = True, encoding: int = Encoding.AUTO) -> Frame:
+        ch = self.channel(channel)
+        if not self.alive:
+            raise CaptureError("擷取端已斷線", code="disconnected")
+        req_id = self.next_req_id()
+        pending = _Pending()
+        with self._lock:
+            self._pending[req_id] = pending
+        flags = GrabFlags.AFTER_REQUEST if after_request else GrabFlags.NONE
+        try:
+            self.send(MsgType.GRAB, req_id, P.pack_grab(ch.index, min_seq, int(timeout * 1000), encoding, flags))
+        except CaptureError:
+            with self._lock:
+                self._pending.pop(req_id, None)
+            raise
+        if not pending.event.wait(timeout + 0.25):
+            with self._lock:
+                self._pending.pop(req_id, None)
+            with self._lock:
+                ch.last_error = "擷取端逾時"
+            raise CaptureError(f"擷取端「{self.name_}」逾時未回傳影像", code="timeout")
+        if pending.error is not None:
+            with self._lock:
+                ch.last_error = str(pending.error)
+            raise pending.error
+        assert pending.frame is not None
+        return pending.frame
+
+    def latest(self, channel: str) -> Frame | None:
+        ch = self.channel(channel)
+        with self._lock:
+            return ch.latest
+
+    def wait_for_seq(self, channel: str, min_seq: int, timeout: float) -> Frame:
+        ch = self.channel(channel)
+        with self._lock:
+            ok = ch.cond.wait_for(lambda: not self.alive or (ch.latest is not None and ch.latest.meta.seq > min_seq), timeout)
+            if not self.alive:
+                raise CaptureError("擷取端已斷線", code="disconnected")
+            if not ok or ch.latest is None:
+                raise CaptureError(f"擷取端「{self.name_}」的串流逾時沒有新影格", code="timeout")
+            return ch.latest
+
+    def set_stream(self, channel: str, enabled: bool, max_fps: float = 0) -> None:
+        ch = self.channel(channel)
+        self.send(MsgType.STREAM, self.next_req_id(), P.dumps_json({"channel": ch.id, "enabled": bool(enabled), "max_fps": float(max_fps or 0)}))
+
+    def close(self, reason: str = "closed") -> None:
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        self.alive = False
+        self.close_reason = self.close_reason or reason
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+        with self._lock:
+            pendings = list(self._pending.values())
+            self._pending.clear()
+            for ch in self.channels:
+                ch.streaming = False
+                ch.cond.notify_all()
+        for p in pendings:
+            p.error = CaptureError("擷取端已斷線", code="disconnected")
+            p.event.set()
+        if self.shm is not None:
+            try:
+                self.shm.close()
+            except (BufferError, OSError):
+                pass
+            self.shm = None
+        if self.registered:
+            log.info("擷取端 %s 斷線（%s）", self.name_, self.close_reason)
+
+    def to_dict(self) -> dict[str, Any]:
+        with self._lock:
+            channels = [c.to_dict(self.hub.users_of(self.name_, c.id)) for c in self.channels]
+        return {
+            "name": self.name_, "address": f"{self.peer[0]}:{self.peer[1]}", "version": self.version, "hostname": self.hostname,
+            "connected_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(self.connected_at)), "local": self.local,
+            "prefer_encoding": P.ENCODING_NAMES[self.prefer_encoding], "shm": self.shm is not None, "channels": channels,
+        }
+
+
+class CaptureHub:
+    """擷取端登錄表與監聽埠（模組單例 `hub`）。"""
+
+    def __init__(self) -> None:
+        self._sessions: dict[str, ClientSession] = {}
+        self._lock = threading.Lock()
+        self._stream_refs: dict[tuple[str, str], int] = {}
+        self._stream_wanted: dict[tuple[str, str], bool] = {}
+        self._users: dict[tuple[str, str], set[str]] = {}
+        self._listener: socket.socket | None = None
+        self._thread: threading.Thread | None = None
+        self.host = ""
+        self.port = 0
+
+    # ---- 生命週期 ----
+    @property
+    def listening(self) -> bool:
+        return self._listener is not None
+
+    def start(self, host: str, port: int) -> None:
+        if self._listener is not None:
+            return
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind((host, int(port)))
+        listener.listen(16)
+        listener.settimeout(0.5)
+        self._listener = listener
+        self.host, self.port = host, int(listener.getsockname()[1])
+        self._thread = threading.Thread(target=self._accept_loop, name="vision-capture", daemon=True)
+        self._thread.start()
+        log.info("擷取端連入埠監聽 %s:%s", host, self.port)
+
+    def stop(self) -> None:
+        listener, self._listener = self._listener, None
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        with self._lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for s in sessions:
+            s.close("shutdown")
+        for s in sessions:
+            s.join(timeout=2.0)
+
+    def _accept_loop(self) -> None:
+        while True:
+            listener = self._listener
+            if listener is None:
+                return
+            try:
+                sock, peer = listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, RCVBUF)
+            except OSError:
+                pass
+            ClientSession(self, sock, (peer[0], peer[1])).start()
+
+    # ---- 登錄表 ----
+    def register(self, session: ClientSession) -> str | None:
+        with self._lock:
+            old = self._sessions.get(session.name_)
+            if old is not None and old.alive and not (session.machine_id and old.machine_id == session.machine_id):
+                return "name_taken"
+            self._sessions[session.name_] = session
+            session.registered = True
+        if old is not None and old is not session:
+            old.registered = False
+            old.close("replaced")
+        return None
+
+    def unregister(self, session: ClientSession) -> None:
+        with self._lock:
+            if self._sessions.get(session.name_) is session:
+                del self._sessions[session.name_]
+
+    def get(self, name: str) -> ClientSession | None:
+        with self._lock:
+            s = self._sessions.get(name)
+        return s if s is not None and s.alive else None
+
+    def clients(self) -> list[dict[str, Any]]:
+        with self._lock:
+            sessions = list(self._sessions.values())
+        return [s.to_dict() for s in sessions if s.alive]
+
+    def _require(self, client: str) -> ClientSession:
+        session = self.get(client)
+        if session is None:
+            raise CaptureError(f"擷取端「{client}」未連線", code="client_offline")
+        return session
+
+    # ---- 影格 ----
+    def request_frame(self, client: str, channel: str, *, timeout: float, min_seq: int = 0, after_request: bool = True, encoding: int = Encoding.AUTO) -> Frame:
+        return self._require(client).request_frame(channel, timeout=timeout, min_seq=min_seq, after_request=after_request, encoding=encoding)
+
+    def latest(self, client: str, channel: str) -> Frame | None:
+        return self._require(client).latest(channel)
+
+    def wait_for_seq(self, client: str, channel: str, min_seq: int, timeout: float) -> Frame:
+        return self._require(client).wait_for_seq(channel, min_seq, timeout)
+
+    # ---- 串流 ----
+    def stream_wanted(self, client: str, channel: str) -> bool:
+        key = (client, channel)
+        with self._lock:
+            return bool(self._stream_wanted.get(key)) or self._stream_refs.get(key, 0) > 0
+
+    def acquire_stream(self, client: str, channel: str, source_name: str = "") -> None:
+        key = (client, channel)
+        with self._lock:
+            self._stream_refs[key] = self._stream_refs.get(key, 0) + 1
+            first = self._stream_refs[key] == 1
+            if source_name:
+                self._users.setdefault(key, set()).add(source_name)
+        session = self.get(client)
+        if session is not None and first:
+            try:
+                session.set_stream(channel, True)
+            except CaptureError:
+                pass
+
+    def release_stream(self, client: str, channel: str, source_name: str = "") -> None:
+        key = (client, channel)
+        with self._lock:
+            n = max(0, self._stream_refs.get(key, 0) - 1)
+            self._stream_refs[key] = n
+            if source_name:
+                self._users.get(key, set()).discard(source_name)
+            last = n == 0 and not self._stream_wanted.get(key)
+        session = self.get(client)
+        if session is not None and last:
+            try:
+                session.set_stream(channel, False)
+            except CaptureError:
+                pass
+
+    def set_stream(self, client: str, channel: str, enabled: bool, max_fps: float = 0) -> None:
+        with self._lock:
+            self._stream_wanted[(client, channel)] = bool(enabled)
+            refs = self._stream_refs.get((client, channel), 0)
+        session = self._require(client)
+        session.set_stream(channel, enabled or refs > 0, max_fps)
+
+    def note_user(self, client: str, channel: str, source_name: str, present: bool) -> None:
+        key = (client, channel)
+        with self._lock:
+            users = self._users.setdefault(key, set())
+            (users.add if present else users.discard)(source_name)
+
+    def users_of(self, client: str, channel: str) -> list[str]:
+        with self._lock:
+            return sorted(self._users.get((client, channel), set()))
+
+    # ---- 設定 ----
+    def auth_secret(self) -> str:
+        return str(_cfg("CAPTURE_AUTH", "") or _cfg("API_KEY", "") or "")
+
+    def max_frame_bytes(self) -> int:
+        return int(_cfg("CAPTURE_MAX_FRAME_MB", 64)) << 20
+
+    def stats(self) -> dict[str, Any]:
+        with self._lock:
+            n = len(self._sessions)
+        return {"listening": self.listening, "host": self.host, "port": self.port, "clients": n}
+
+
+hub = CaptureHub()
+
+
+def start_in_background(host: str, port: int) -> CaptureHub:
+    hub.start(host, port)
+    return hub
+
+
+def stop() -> None:
+    hub.stop()

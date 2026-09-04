@@ -147,6 +147,15 @@ VISION = {
     # TCP 自動化介面（manage.py run_tcp_server）。
     "TCP_HOST": _env("VISION_TCP_HOST", "0.0.0.0"),
     "TCP_PORT": _env_int("VISION_TCP_PORT", 9000),
+    # 擷取端（相機電腦上的擷取程式，vscapture）連入的監聽位址／埠；同機走共享記憶體、跨機走 TCP（manage.py serve 隨 TCP 介面一起啟動）。
+    "CAPTURE_HOST": _env("VISION_CAPTURE_HOST", "0.0.0.0"),
+    "CAPTURE_PORT": _env_int("VISION_CAPTURE_PORT", 9100),
+    # 擷取端單張影像上限（MB）；超過即斷線。
+    "CAPTURE_MAX_FRAME_MB": _env_int("VISION_CAPTURE_MAX_FRAME_MB", 64),
+    # 擷取端登錄金鑰；空＝沿用 VISION_API_KEY（兩者皆空則不驗證）。
+    "CAPTURE_AUTH": _env("VISION_CAPTURE_AUTH", ""),
+    # 「擷取端相機」來源依需求取像的預設逾時（毫秒）。
+    "CAPTURE_TIMEOUT_MS": _env_int("VISION_CAPTURE_TIMEOUT_MS", 1000),
     # AI 助手（apps/vision/agent）：設定金鑰＋安裝 anthropic 才啟用 LLM 生成；
     # 沒設定時規則引擎完全離線可用。影像會縮圖後送到 LLM 供應商，內網環境請留空。
     "AGENT_PROVIDER": _env("VISION_AGENT_PROVIDER", ""),  # offline | claude | openai | gemini；空＝有金鑰就 claude

@@ -52,6 +52,7 @@ from apps.golden.api import router as golden_router  # noqa: E402
 from apps.vision.batch.api import router as batch_router  # noqa: E402
 from apps.vision.dl.api import router as dl_router  # noqa: E402
 from apps.vision.agent.api import router as agent_router  # noqa: E402
+from apps.vision.capture.api import router as capture_router  # noqa: E402
 
 api.add_router("/auth", auth_router)
 api.add_router("/users", users_router)
@@ -66,3 +67,4 @@ api.add_router("/vision", more_router)
 api.add_router("/vision", comm_router)
 api.add_router("/vision", dl_router)
 api.add_router("/vision", agent_router)
+api.add_router("/vision", capture_router)
