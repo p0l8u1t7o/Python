@@ -37,7 +37,7 @@ MAX_UPLOAD = 200
 def _visible_flow(request: HttpRequest, flow_id: int) -> Flow:
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     return flow
 
 
@@ -52,7 +52,7 @@ def _case_out(c: GoldenCase) -> dict[str, Any]:
 def _get_case(flow: Flow, case_id: int) -> GoldenCase:
     case = GoldenCase.objects.filter(flow=flow, pk=case_id).first()
     if case is None:
-        raise NotFound("Golden case 不存在", code="golden_case_not_found")
+        raise NotFound("Golden case not found", code="golden_case_not_found")
     return case
 
 
@@ -60,10 +60,10 @@ def _validate_expect_outputs(value: Any) -> dict[str, Any]:
     if value in (None, ""):
         return {}
     if not isinstance(value, dict):
-        raise ValidationError("expect_outputs 必須是物件", code="bad_expect_outputs")
+        raise ValidationError("expect_outputs must be an object", code="bad_expect_outputs")
     for k, v in value.items():
         if isinstance(v, dict) and "value" in v and "tol" in v and regress._num(v["tol"]) is None:
-            raise ValidationError(f"expect_outputs.{k}.tol 必須是數值", code="bad_expect_outputs")
+            raise ValidationError(f"expect_outputs.{k}.tol must be a number", code="bad_expect_outputs")
     return value
 
 
@@ -93,24 +93,24 @@ def create_cases(request: HttpRequest, flow_id: int):
         try:
             body = json.loads(request.body or b"{}")
         except json.JSONDecodeError:
-            raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+            raise ValidationError("Malformed JSON", code="bad_json") from None
         items = body.get("from_batch") if isinstance(body, dict) else None
         if not isinstance(items, list) or not items:
-            raise ValidationError("需要 from_batch 陣列", code="bad_request")
+            raise ValidationError("A from_batch array is required", code="bad_request")
         if len(items) > MAX_UPLOAD:
-            raise ValidationError(f"一次最多 {MAX_UPLOAD} 張", code="too_many_images")
+            raise ValidationError(f"{MAX_UPLOAD} images at a time is the limit", code="too_many_images")
         gone = []
         prepared = []
         for i, item in enumerate(items):
             if not isinstance(item, dict) or not item.get("image_ref"):
-                raise ValidationError(f"from_batch[{i}] 缺少 image_ref", code="bad_request")
+                raise ValidationError(f"from_batch[{i}] has no image_ref", code="bad_request")
             image = store.get(str(item["image_ref"]))
             if image is None:
                 gone.append(item["image_ref"])
                 continue
             prepared.append((item, image))
         if gone:
-            raise NotFound(f"影像已不在快取中：{', '.join(map(str, gone[:5]))}", code="image_gone")
+            raise NotFound(f"No longer cached: {', '.join(map(str, gone[:5]))}", code="image_gone")
         for item, image in prepared:
             path = regress.save_image(flow.id, image)
             created.append(GoldenCase.objects.create(
@@ -121,22 +121,22 @@ def create_cases(request: HttpRequest, flow_id: int):
     else:
         uploads = request.FILES.getlist("images") or request.FILES.getlist("images[]")
         if not uploads:
-            raise ValidationError("需要 images[] 檔案", code="bad_request")
+            raise ValidationError("images[] files are required", code="bad_request")
         if len(uploads) > MAX_UPLOAD:
-            raise ValidationError(f"一次最多 {MAX_UPLOAD} 張", code="too_many_images")
+            raise ValidationError(f"{MAX_UPLOAD} images at a time is the limit", code="too_many_images")
         expect_status = regress.normalize_expect_status(request.POST.get("expect_status"))
         note = request.POST.get("note") or ""
         raw_outputs = request.POST.get("expect_outputs")
         try:
             expect_outputs = _validate_expect_outputs(json.loads(raw_outputs)) if raw_outputs else {}
         except json.JSONDecodeError:
-            raise ValidationError("expect_outputs 不是合法 JSON", code="bad_expect_outputs") from None
+            raise ValidationError("expect_outputs is not valid JSON", code="bad_expect_outputs") from None
         decoded = []
         for up in uploads:
             try:
                 decoded.append((up.name or "image", _decode_upload(up)))
             except ValidationError:
-                raise ValidationError(f"無法解碼：{up.name}", code="bad_image") from None
+                raise ValidationError(f"Could not decode {up.name}", code="bad_image") from None
         for name, image in decoded:
             path = regress.save_image(flow.id, image)
             created.append(GoldenCase.objects.create(flow=flow, name=name[:200], image_path=path, expect_status=expect_status, expect_outputs=expect_outputs, note=note))
@@ -179,7 +179,7 @@ def autotune_flow(request: HttpRequest, flow_id: int, payload: GoldenAutotuneIn)
             continue
         labeled.append(autotune.Labeled(image, case.expect_status, case.expect_outputs or {}, case.name))
     if not labeled:
-        raise ValidationError("Golden Set 沒有可讀取的案例影像", code="no_cases")
+        raise ValidationError("The Golden Set has no readable case images", code="no_cases")
     graph = validate_graph(payload.graph or flow.graph)
     res = autotune.coordinate_search(graph, labeled, max_evals=max(1, min(200, payload.max_evals)), deadline_s=max(1.0, min(120.0, payload.deadline_s)),
                                      trial=lambda g, im: service.trial_run(g, im, keep_images=False))
@@ -198,7 +198,7 @@ def case_image(request: HttpRequest, flow_id: int, case_id: int, max: int = 0, f
     case = _get_case(flow, case_id)
     image = regress.load_image(case.image_path)
     if image is None:
-        raise NotFound("影像檔不存在", code="image_gone")
+        raise NotFound("The image file does not exist", code="image_gone")
     data = encode_image(image, max_side=max or None, fmt="png" if fmt == "png" else "jpeg", quality=q)
     response = HttpResponse(data, content_type="image/png" if fmt == "png" else "image/jpeg")
     response["Cache-Control"] = "private, max-age=3600"
@@ -221,7 +221,7 @@ def patch_case(request: HttpRequest, flow_id: int, case_id: int, payload: CasePa
         case.name = payload.name.strip()[:200] or case.name
     if payload.expect_status is not None:
         if payload.expect_status not in ("ok", "ng", "any"):
-            raise ValidationError("expect_status 只能是 ok / ng / any", code="bad_expect_status")
+            raise ValidationError("expect_status must be ok, ng or any", code="bad_expect_status")
         case.expect_status = payload.expect_status
     if payload.expect_outputs is not None:
         case.expect_outputs = _validate_expect_outputs(payload.expect_outputs)
@@ -257,8 +257,8 @@ def regress_flow(request: HttpRequest, flow_id: int, payload: RegressIn):
     p = principal(request)
     p.can_execute()
     if payload.save_baseline and not p.can_edit_flow(flow):
-        raise ValidationError("只有擁有者或管理員能儲存基準", code="not_owner")
+        raise ValidationError("Only the owner or an administrator can save a baseline", code="not_owner")
     fail_under = payload.fail_under
     if fail_under is not None and not (0.0 <= fail_under <= 1.0):
-        raise ValidationError("fail_under 必須介於 0 與 1", code="bad_fail_under")
+        raise ValidationError("fail_under must be between 0 and 1", code="bad_fail_under")
     return regress.run_regression(flow, graph=payload.graph, save_baseline=payload.save_baseline, fail_under=fail_under)

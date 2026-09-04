@@ -148,7 +148,7 @@ def save_settings(providers: list[str] | None, device: str | None) -> dict[str, 
         if bad:
             from apps.core.errors import ValidationError
 
-            raise ValidationError(f"此伺服器沒有這些 provider：{', '.join(bad)}", code="bad_provider", details={"available": sorted(avail)})
+            raise ValidationError(f"This server has no such providers: {', '.join(bad)}", code="bad_provider", details={"available": sorted(avail)})
         row.providers = list(providers)
     if device is not None:
         row.train_device = str(device)

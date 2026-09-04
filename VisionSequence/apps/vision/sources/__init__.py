@@ -67,7 +67,7 @@ def _resolve_class(kind: str, config: dict[str, Any]):
     plugins = getattr(settings, "VISION", {}).get("SOURCE_PLUGINS", {})
     path = config.get("class") if kind == "plugin" else plugins.get(kind)
     if not path or ":" not in path:
-        raise ValidationError(f"未知的影像來源類型 '{kind}'", code="unknown_source_kind")
+        raise ValidationError(f"Unknown image source kind '{kind}'", code="unknown_source_kind")
     module, cls = path.split(":", 1)
     return getattr(importlib.import_module(module), cls)
 
@@ -96,14 +96,14 @@ def grab_by_id(source_id: int | str) -> np.ndarray | None:
     try:
         sid = int(source_id)
     except (TypeError, ValueError):
-        raise NotFound(f"影像來源 '{source_id}' 不存在", code="source_not_found") from None
+        raise NotFound(f"Image source '{source_id}' not found", code="source_not_found") from None
     with _lock:
         cached = _open.get(sid)
     if cached:
         return cached[1].grab()
     source = ImageSource.objects.filter(pk=sid).first()
     if source is None:
-        raise NotFound(f"影像來源 {sid} 不存在", code="source_not_found")
+        raise NotFound(f"Image source {sid} not found", code="source_not_found")
     return open_source(source).grab()
 
 

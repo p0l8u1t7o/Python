@@ -227,7 +227,7 @@ def agent_info(request: HttpRequest):
 def get_agent_settings(request: HttpRequest):
     p = principal(request)
     if p.user is None:
-        raise ValidationError("整合方金鑰沒有使用者設定", code="no_user")
+        raise ValidationError("An API key has no user settings", code="no_user")
     mine = providers.user_settings(p.user)
     return {"configured": mine is not None, **(mine or providers.AgentSettings()).public(), "server": providers.server_settings().public()}
 
@@ -236,9 +236,9 @@ def get_agent_settings(request: HttpRequest):
 def patch_agent_settings(request: HttpRequest, payload: SettingsIn):
     p = principal(request)
     if p.user is None:
-        raise ValidationError("整合方金鑰沒有使用者設定", code="no_user")
+        raise ValidationError("An API key has no user settings", code="no_user")
     if payload.provider not in providers.PROVIDERS:
-        raise ValidationError(f"未知的供應商 '{payload.provider}'", code="bad_provider", details={"available": list(providers.PROVIDERS)})
+        raise ValidationError(f"Unknown provider '{payload.provider}'", code="bad_provider", details={"available": list(providers.PROVIDERS)})
     row, _ = UserPref.objects.get_or_create(user=p.user)
     data = dict(row.agent or {})
     data["provider"] = payload.provider
@@ -248,7 +248,7 @@ def patch_agent_settings(request: HttpRequest, payload: SettingsIn):
         data["base_url"] = payload.base_url.strip()
     if payload.mode is not None:
         if payload.mode not in providers.MODES:
-            raise ValidationError(f"未知的模式 '{payload.mode}'", code="bad_mode", details={"available": list(providers.MODES)})
+            raise ValidationError(f"Unknown mode '{payload.mode}'", code="bad_mode", details={"available": list(providers.MODES)})
         data["mode"] = payload.mode
     if payload.clear_key:
         data["api_key"] = ""
@@ -285,16 +285,16 @@ def put_custom_skill(request: HttpRequest, key: str, payload: CustomSkillIn):
     """新增／更新技能補充：scope=user 存自己的；scope=site 需管理員。"""
     p = principal(request)
     if key not in _skill_keys():
-        raise NotFound(f"沒有 '{key}' 這個技能", code="skill_not_found")
+        raise NotFound(f"There is no skill '{key}'", code="skill_not_found")
     if payload.scope not in ("site", "user"):
-        raise ValidationError("scope 必須是 site 或 user", code="bad_scope")
+        raise ValidationError("scope must be site or user", code="bad_scope")
     if payload.scope == "site" and not p.is_admin:
-        raise ValidationError("站點補充需要管理員", code="not_admin")
+        raise ValidationError("Site-wide notes need an administrator", code="not_admin")
     if payload.scope == "user" and p.user is None:
-        raise ValidationError("個人補充需要登入使用者", code="no_user")
+        raise ValidationError("A personal note needs a signed-in user", code="no_user")
     text = payload.markdown.strip()
     if len(text) > 20000:
-        raise ValidationError("補充內容過長（上限 20000 字）", code="too_long")
+        raise ValidationError("The note is too long (20000 characters maximum)", code="too_long")
     owner = p.user if payload.scope == "user" else None
     row, _ = AgentSkill.objects.update_or_create(key=key, scope=payload.scope, owner=owner, defaults={"markdown": text})
     skills.invalidate()
@@ -305,10 +305,10 @@ def put_custom_skill(request: HttpRequest, key: str, payload: CustomSkillIn):
 def delete_custom_skill(request: HttpRequest, key: str, scope: str = "user"):
     p = principal(request)
     if scope == "site" and not p.is_admin:
-        raise ValidationError("站點補充需要管理員", code="not_admin")
+        raise ValidationError("Site-wide notes need an administrator", code="not_admin")
     qs = AgentSkill.objects.filter(key=key, scope=scope, owner=None if scope == "site" else p.user)
     if not qs.exists():
-        raise NotFound("沒有這筆補充", code="custom_not_found")
+        raise NotFound("No such note", code="custom_not_found")
     qs.delete()
     skills.invalidate()
     return 204, None
@@ -321,7 +321,7 @@ def get_agent_skill(request: HttpRequest, key: str):
     try:
         markdown = skills.skill_text(key, p.user)
     except KeyError:
-        raise NotFound(f"沒有 '{key}' 這個技能", code="skill_not_found") from None
+        raise NotFound(f"There is no skill '{key}'", code="skill_not_found") from None
     site, mine = skills.custom_texts(key, p.user)
     return {"key": key, "markdown": markdown, "custom": {"site": site, "user": mine}, "can_site": p.is_admin}
 
@@ -350,14 +350,14 @@ def upload_agent_image(request: HttpRequest, image: UploadedFile = File(...)):
 def _image_or_404(ref: str):
     frame = store.get(ref)
     if frame is None:
-        raise NotFound("影像已不在快取中，請重新上傳", code="image_gone")
+        raise NotFound("That image is no longer cached; upload it again", code="image_gone")
     return frame
 
 
 def _images(payload: GenerateIn):
     refs = payload.images or ([payload.ref] if payload.ref else [])
     if not refs:
-        raise ValidationError("至少要一張影像", code="no_image")
+        raise ValidationError("At least one image is needed", code="no_image")
     return [_image_or_404(r) for r in refs]
 
 
@@ -385,7 +385,7 @@ def agent_run(request: HttpRequest, payload: RunGraphIn):
     principal(request).can_execute()
     refs = payload.images or ([payload.ref] if payload.ref else [])
     if not refs:
-        raise ValidationError("至少要一張影像", code="no_image")
+        raise ValidationError("At least one image is needed", code="no_image")
     return service.run_graph([_image_or_404(r) for r in refs], payload.graph, payload.main)
 
 
@@ -406,7 +406,7 @@ def agent_autotune(request: HttpRequest, payload: AutotuneIn):
                                       meta={"rationale": result["rationale"], "changes": result["changes"], "autotune": result.get("autotune")})
         return {**result, "batch_run_id": new.id if new else None}
     if payload.graph is None:
-        raise ValidationError("需要 graph 或 batch_run_id", code="bad_request")
+        raise ValidationError("graph or batch_run_id is required", code="bad_request")
     runs = [r.dict() for r in payload.runs]
     return service.autotune_runs(payload.graph, runs, _run_images(runs), **limits)
 
@@ -415,7 +415,7 @@ def agent_autotune(request: HttpRequest, payload: AutotuneIn):
 def agent_refine(request: HttpRequest, payload: RefineIn):
     principal(request).can_execute()
     if not payload.feedback.strip():
-        raise ValidationError("回饋不能是空的", code="empty_feedback")
+        raise ValidationError("The feedback cannot be empty", code="empty_feedback")
     return service.refine(_images(payload), _regions(payload.regions), payload.prompt, payload.graph, payload.feedback, _settings_for(request))
 
 
@@ -423,7 +423,7 @@ def agent_refine(request: HttpRequest, payload: RefineIn):
 def agent_edit(request: HttpRequest, payload: EditIn):
     principal(request).can_execute()
     if not payload.instruction.strip():
-        raise ValidationError("指令不能是空的", code="empty_instruction")
+        raise ValidationError("The instruction cannot be empty", code="empty_instruction")
     image = store.get(payload.image_ref) if payload.image_ref else None
     return service.edit(payload.graph, payload.instruction, image, _settings_for(request))
 
@@ -436,7 +436,7 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
     settings = _settings_for(request)
     images = _images(payload) if (payload.images or payload.ref) else []
     if payload.task == "generate" and not images:
-        raise ValidationError("至少要一張影像", code="no_image")
+        raise ValidationError("At least one image is needed", code="no_image")
     graph, extra_summary, batch_run_id = payload.graph, "", None
     if payload.task == "tune" and payload.batch_run_id is not None:
         run, _bset, graph, runs, run_images, extra_summary = _batch_context(request, payload.batch_run_id, payload.graph)
@@ -445,7 +445,7 @@ def start_agent_job(request: HttpRequest, payload: JobIn):
         runs = [r.dict() for r in payload.runs]
         run_images = _run_images(runs)
     if payload.task in ("edit", "tune") and (graph is None or not payload.instruction.strip()):
-        raise ValidationError("edit／tune 需要 graph 與 instruction", code="bad_request")
+        raise ValidationError("edit and tune need a graph and an instruction", code="bad_request")
     if payload.task == "tune" and not images:
         images = [run_images[r["image_ref"]] for r in runs if r.get("image_ref") in run_images][:4]  # 持久化批次已把未命中排前面
     labels = payload.labels or ([r.get("expected", "") for r in runs][:4] if payload.task == "tune" and batch_run_id else [])
@@ -490,7 +490,7 @@ def _visible_sessions(request: HttpRequest):
 def _session_or_404(request: HttpRequest, session_id: int) -> AgentSession:
     row = _visible_sessions(request).filter(pk=session_id).first()
     if row is None:
-        raise NotFound(f"沒有工作階段 {session_id}", code="session_not_found")
+        raise NotFound(f"No session {session_id}", code="session_not_found")
     return row
 
 
@@ -515,7 +515,7 @@ def patch_session(request: HttpRequest, session_id: int, payload: SessionPatch):
     fields = []
     if payload.rating is not None:
         if payload.rating not in (-1, 0, 1):
-            raise ValidationError("rating 必須是 -1、0 或 1", code="bad_rating")
+            raise ValidationError("rating must be -1, 0 or 1", code="bad_rating")
         row.rating = payload.rating
         fields.append("rating")
     if payload.success is not None:
@@ -527,7 +527,7 @@ def patch_session(request: HttpRequest, session_id: int, payload: SessionPatch):
     if payload.flow_id is not None:
         flow = Flow.objects.filter(pk=payload.flow_id).first()
         if flow is None:
-            raise NotFound(f"流程 {payload.flow_id} 不存在", code="flow_not_found")
+            raise NotFound(f"Flow {payload.flow_id} not found", code="flow_not_found")
         row.flow = flow
         fields.append("flow")
     if fields:
@@ -546,7 +546,7 @@ def restore_session(request: HttpRequest, session_id: int):
         info = store.put(f"{run_id}:upload:image", img, flow_id=service.AGENT_FLOW_ID, run_id=run_id, pinned=True)
         images.append({**info, "name": item.get("name") or "影像"})
     if not images:
-        raise NotFound("此工作階段的影像檔已不存在", code="images_gone")
+        raise NotFound("The images of this session no longer exist", code="images_gone")
     return {**memory.session_out(row, full=True), "images": images}
 
 
@@ -561,7 +561,7 @@ def agent_tune(request: HttpRequest, payload: TuneIn):
     p = principal(request)
     p.can_execute()
     if not payload.instruction.strip():
-        raise ValidationError("指令不能是空的", code="empty_instruction")
+        raise ValidationError("The instruction cannot be empty", code="empty_instruction")
     if payload.batch_run_id is not None:
         run, bset, graph, runs, images, extra = _batch_context(request, payload.batch_run_id, payload.graph)
         result = service.tune(graph, payload.instruction, runs, images, _settings_for(request), extra_summary=extra, detail=True)
@@ -574,7 +574,7 @@ def agent_tune(request: HttpRequest, payload: TuneIn):
                                       meta={"rationale": result["rationale"], "changes": result["changes"], "provider": result.get("provider"), "autotune": result.get("autotune")})
         return {**result, "batch_run_id": new.id if new else None}
     if payload.graph is None:
-        raise ValidationError("需要 graph 或 batch_run_id", code="bad_request")
+        raise ValidationError("graph or batch_run_id is required", code="bad_request")
     runs = [r.dict() for r in payload.runs]
     return service.tune(payload.graph, payload.instruction, runs, _run_images(runs), _settings_for(request))
 
@@ -613,7 +613,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
     p = principal(request)
     message = payload.message.strip()
     if not message:
-        raise ValidationError("訊息不能是空的", code="empty_message")
+        raise ValidationError("The message cannot be empty", code="empty_message")
     settings = _settings_for(request)
     ctx = payload.context
     intent = chat_intent(message, ctx, payload.mode)
@@ -621,7 +621,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         p.can_execute()  # 使用說明問答不動引擎，鎖定時仍可問；修改／諮詢／調整會試執行
     if intent == "edit":
         if not ctx.graph:
-            raise ValidationError("修改流程需要目前的 graph", code="no_graph")
+            raise ValidationError("Editing a flow needs its current graph", code="no_graph")
         if service.agentic(settings):
             return {"kind": "edit", "agentic": True, "answer": "", "provider": settings.provider}
         image = store.get(ctx.image_ref) if ctx.image_ref else None
@@ -629,7 +629,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         return {"kind": "edit", "answer": result["rationale"], "provider": result["provider"], "result": result}
     if intent in ("consult", "tune"):
         if ctx.batch_run_id is None:
-            raise ValidationError("資料諮詢／調整需要 batch_run_id", code="no_batch_run")
+            raise ValidationError("Consulting or tuning on data needs a batch_run_id", code="no_batch_run")
         if intent == "tune":
             if service.agentic(settings):
                 return {"kind": "tune", "agentic": True, "answer": "", "provider": settings.provider}
@@ -647,7 +647,7 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
 
         run = _run_or_404(request, ctx.batch_run_id)
         if run.status != "done":
-            raise ValidationError("這次執行尚未完成", code="run_not_done")
+            raise ValidationError("That run has not finished", code="run_not_done")
         out = consult_mod.consult(run, run.batch_set, message, settings, graph=ctx.graph, user=p.user)
         return {"kind": "consult", "answer": out["answer"], "provider": out["provider"], "suggestions": out["suggestions"], "warnings": out["warnings"]}
     out = help_mod.answer(message, settings, context=ctx.dict(), history=payload.history, user=p.user)
@@ -670,8 +670,8 @@ def agent_consult(request: HttpRequest, payload: ConsultIn):
     p = principal(request)
     p.can_execute()
     if not payload.question.strip():
-        raise ValidationError("問題不能是空的", code="empty_question")
+        raise ValidationError("The question cannot be empty", code="empty_question")
     run = _run_or_404(request, payload.batch_run_id)
     if run.status != "done":
-        raise ValidationError("這次執行尚未完成", code="run_not_done")
+        raise ValidationError("That run has not finished", code="run_not_done")
     return consult_mod.consult(run, run.batch_set, payload.question.strip(), _settings_for(request), graph=payload.graph, user=p.user)

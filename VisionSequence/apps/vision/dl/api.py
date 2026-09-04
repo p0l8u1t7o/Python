@@ -38,16 +38,16 @@ def _body(request: HttpRequest) -> dict[str, Any]:
     try:
         data = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+        raise ValidationError("Malformed JSON", code="bad_json") from None
     if not isinstance(data, dict):
-        raise ValidationError("需要 JSON 物件", code="bad_json")
+        raise ValidationError("A JSON object is required", code="bad_json")
     return data
 
 
 def _project(project_id: int) -> DlProject:
     project = DlProject.objects.filter(pk=project_id).first()
     if project is None:
-        raise NotFound("教導專案不存在", code="dl_project_not_found")
+        raise NotFound("Teaching project not found", code="dl_project_not_found")
     return project
 
 
@@ -120,7 +120,7 @@ def _save_sample(project: DlProject, image: np.ndarray, label: str = "", sha: st
     path = os.path.join(_sample_dir(project), f"{sample_id.hex}.png")
     ok, buf = cv2.imencode(".png", image)
     if not ok:
-        raise ValidationError("影像編碼失敗", code="encode_failed")
+        raise ValidationError("Could not encode the image", code="encode_failed")
     buf.tofile(path)
     return DlSample.objects.create(
         id=sample_id, project=project, label=label, labeled_by="human" if label else "",
@@ -177,7 +177,7 @@ def patch_settings(request: HttpRequest):
     body = _body(request)
     providers = body.get("providers")
     if providers is not None and not (isinstance(providers, list) and all(isinstance(p, str) for p in providers)):
-        raise ValidationError("providers 必須是字串清單", code="bad_providers")
+        raise ValidationError("providers must be a list of strings", code="bad_providers")
     device = body.get("train_device")
     return devices.save_settings(providers, str(device) if device is not None else None)
 
@@ -196,12 +196,12 @@ def create_project(request: HttpRequest):
     body = _body(request)
     name = str(body.get("name") or "").strip()
     if not name:
-        raise ValidationError("需要名稱", code="bad_name")
+        raise ValidationError("A name is required", code="bad_name")
     kind = str(body.get("trainer_kind") or "")
     dl_base.get_trainer(kind)  # 驗證存在
     classes = [str(c).strip() for c in (body.get("classes") or []) if str(c).strip()]
     if DlProject.objects.filter(name=name).exists():
-        raise ValidationError(f"名稱「{name}」已存在", code="duplicate_name")
+        raise ValidationError(f'The name "{name}" is taken', code="duplicate_name")
     project = DlProject.objects.create(name=name, description=str(body.get("description") or ""), trainer_kind=kind, classes=classes, params=dict(body.get("params") or {}))
     return 201, _project_out(project)
 
@@ -219,9 +219,9 @@ def patch_project(request: HttpRequest, project_id: int):
     if "name" in body:
         name = str(body["name"] or "").strip()
         if not name:
-            raise ValidationError("需要名稱", code="bad_name")
+            raise ValidationError("A name is required", code="bad_name")
         if DlProject.objects.exclude(pk=project.id).filter(name=name).exists():
-            raise ValidationError(f"名稱「{name}」已存在", code="duplicate_name")
+            raise ValidationError(f'The name "{name}" is taken', code="duplicate_name")
         project.name = name
     if "description" in body:
         project.description = str(body["description"] or "")
@@ -279,7 +279,7 @@ def upload_samples(request: HttpRequest, project_id: int, files: list[UploadedFi
     require_engineer(request)
     project = _project(project_id)
     if label and label not in (project.classes or []):
-        raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
+        raise ValidationError(f"'{label}' is not in the class list", code="bad_label")
     created, skipped, duplicates = [], 0, 0
     seen = _existing_shas(project)  # 既有＋同批內（zip 裡同圖兩份）都擋；一次查回不逐張打 DB
     for file in files:
@@ -306,7 +306,7 @@ def samples_from_source(request: HttpRequest, project_id: int):
     count = max(1, min(50, int(body.get("count") or 1)))
     label = str(body.get("label") or "")
     if label and label not in (project.classes or []):
-        raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
+        raise ValidationError(f"'{label}' is not in the class list", code="bad_label")
     created, duplicates = [], 0
     seen = _existing_shas(project)
     for _ in range(count):
@@ -320,7 +320,7 @@ def samples_from_source(request: HttpRequest, project_id: int):
         seen.add(sha)
         created.append(_sample_out(_save_sample(project, image, label, sha=sha)))
     if not created and not duplicates:
-        raise ValidationError("來源沒有取到任何影像", code="grab_failed")
+        raise ValidationError("The source produced no images", code="grab_failed")
     return 201, {"items": created, "duplicates": duplicates}
 
 
@@ -330,10 +330,10 @@ def sample_file(request: HttpRequest, sample_id: uuid.UUID, max: int = 0):
         return HttpResponse(status=401)
     sample = DlSample.objects.filter(pk=sample_id).first()
     if sample is None or not os.path.isfile(sample.path):
-        raise NotFound("樣本不存在", code="dl_sample_not_found")
+        raise NotFound("Sample not found", code="dl_sample_not_found")
     image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
-        raise NotFound("樣本影像檔損毀或已遺失", code="dl_sample_not_found")
+        raise NotFound("The sample image is missing or damaged", code="dl_sample_not_found")
     response = HttpResponse(encode_image(image, max_side=max or None, fmt="jpeg"), content_type="image/jpeg")
     # 樣本影像不可變（同 id 內容不會改）：讓瀏覽器快取，儲存標記後縮圖牆不用整批重抓。
     response["Cache-Control"] = "private, max-age=31536000, immutable"
@@ -345,13 +345,13 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
     require_engineer(request)
     sample = DlSample.objects.filter(pk=sample_id).select_related("project").first()
     if sample is None:
-        raise NotFound("樣本不存在", code="dl_sample_not_found")
+        raise NotFound("Sample not found", code="dl_sample_not_found")
     body = _body(request)
     fields = []
     if "label" in body:
         label = str(body["label"] or "")
         if label and label not in (sample.project.classes or []):
-            raise ValidationError(f"'{label}' 不在類別清單內", code="bad_label")
+            raise ValidationError(f"'{label}' is not in the class list", code="bad_label")
         sample.label = label
         sample.labeled_by = "human" if label else ""
         sample.score = 0
@@ -366,7 +366,7 @@ def patch_sample(request: HttpRequest, sample_id: uuid.UUID):
     if "split" in body:
         split = str(body["split"] or "")
         if split not in ("", "train", "val", "test"):
-            raise ValidationError("split 只能是 train／val／test 或空字串", code="bad_split")
+            raise ValidationError("split must be train, val, test or empty", code="bad_split")
         sample.split = split
         fields += ["split"]
     if fields:
@@ -379,7 +379,7 @@ def delete_sample(request: HttpRequest, sample_id: uuid.UUID):
     require_engineer(request)
     sample = DlSample.objects.filter(pk=sample_id).first()
     if sample is None:
-        raise NotFound("樣本不存在", code="dl_sample_not_found")
+        raise NotFound("Sample not found", code="dl_sample_not_found")
     try:
         os.remove(sample.path)
     except OSError:
@@ -396,7 +396,7 @@ def bulk_label(request: HttpRequest, project_id: int):
     body = _body(request)
     items = body.get("items")
     if not isinstance(items, list):
-        raise ValidationError("需要 items 清單", code="bad_items")
+        raise ValidationError("An items list is required", code="bad_items")
     from apps.vision.dl.shapes import validate_shapes
 
     classes = set(project.classes or [])
@@ -431,10 +431,10 @@ def auto_split(request: HttpRequest, project_id: int):
     val = min(0.5, max(0.0, float(body.get("val") if body.get("val") is not None else 0.15)))
     test = min(0.5, max(0.0, float(body.get("test") or 0.0)))
     if val + test >= 1.0:
-        raise ValidationError("val + test 比例必須小於 1", code="bad_ratio")
+        raise ValidationError("val + test must be less than 1", code="bad_ratio")
     rows = list(project.samples.values_list("id", "label", "shapes"))
     if not rows:
-        raise ValidationError("沒有任何樣本可分割", code="no_samples")
+        raise ValidationError("There are no samples to split", code="no_samples")
     rng = np.random.default_rng(int(body["seed"]) if body.get("seed") is not None else None)
     groups: dict[str, list] = {}
     for sid, label, shp in rows:
@@ -466,7 +466,7 @@ def dataset_export(request: HttpRequest, project_id: int):
     body = _body(request)
     out_dir = str(body.get("dir") or "").strip()
     if not out_dir:
-        raise ValidationError("需要 dir（伺服器上的目的資料夾）", code="bad_dir")
+        raise ValidationError("dir is required (the destination folder on the server)", code="bad_dir")
     rows = [(r.id.hex, r.path, list(r.shapes or [])) for r in project.samples.all()]
     return export_dataset(rows, list(project.classes or []), out_dir, val_ratio=float(body.get("val_ratio") or 0.2))
 
@@ -481,7 +481,7 @@ def dataset_import(request: HttpRequest, project_id: int):
     body = _body(request)
     root = str(body.get("dir") or "").strip()
     if not root or not os.path.isdir(root):
-        raise ValidationError("需要 dir（伺服器上既有的 YOLO 資料夾）", code="bad_dir")
+        raise ValidationError("dir is required (an existing YOLO folder on the server)", code="bad_dir")
     classes = read_yaml_classes(root) or list(project.classes or [])
     missing = [c for c in classes if c not in (project.classes or [])]
     if missing:
@@ -538,7 +538,7 @@ def _freeze_zip(project: DlProject, work: str) -> None:
             continue
         items.append({"file": f"{folder}/{r.id.hex}.png", "label": r.label, "split": r.split})
     if not items:
-        raise ValidationError("沒有任何樣本可凍結", code="no_samples")
+        raise ValidationError("There are no samples to freeze", code="no_samples")
     with open(os.path.join(work, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump({"classes": list(project.classes or []), "items": items}, f, ensure_ascii=False, indent=1)
 
@@ -585,7 +585,7 @@ def delete_version(request: HttpRequest, version_id: int):
     require_engineer(request)
     version = DlDatasetVersion.objects.filter(pk=version_id).first()
     if version is None:
-        raise NotFound("資料集版本不存在", code="dl_version_not_found")
+        raise NotFound("Dataset version not found", code="dl_version_not_found")
     asset = Asset.objects.filter(pk=version.asset_id).first() if version.asset_id else None
     if asset is not None:
         try:
@@ -614,14 +614,14 @@ def sam_point(request: HttpRequest, project_id: int):
     body = _body(request)
     sample = project.samples.filter(pk=body.get("sample_id")).first()
     if sample is None:
-        raise NotFound("樣本不存在", code="dl_sample_not_found")
+        raise NotFound("Sample not found", code="dl_sample_not_found")
     points = body.get("points") or []
     boxes = body.get("boxes") or []
     if not isinstance(points, list) or not isinstance(boxes, list) or not (points or boxes):
-        raise ValidationError("需要 points（0~1 正規化座標清單）或 boxes（[x0,y0,x1,y1] 0~1）", code="bad_points")
+        raise ValidationError("points (normalised 0-1 coordinates) or boxes ([x0,y0,x1,y1] in 0-1) are required", code="bad_points")
     image = cv2.imdecode(np.fromfile(sample.path, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
-        raise NotFound("樣本影像檔損毀或已遺失", code="dl_sample_not_found")
+        raise NotFound("The sample image is missing or damaged", code="dl_sample_not_found")
     device = yolo_runtime.pick_device("auto")[0]  # SAM 走 GPU 就用（訓練裝置設定是另一回事；CPU 全圖提案一張要 20 秒以上）
     try:
         shapes = sam.suggest_shapes(
@@ -650,10 +650,10 @@ def auto_label(request: HttpRequest, project_id: int):
     body = _body(request)
     if str(body.get("method") or "model") == "sam":
         if trainer.label_mode != "shapes":
-            raise ValidationError("SAM 全圖提案只適用 shapes 標記的專案", code="sam_not_applicable")
+            raise ValidationError("Whole-image SAM proposals only work on shape-labelled projects", code="sam_not_applicable")
         classes = [str(c) for c in (project.classes or [])]
         if not classes:
-            raise ValidationError("先在「編輯類別」新增至少一個類別", code="no_classes")
+            raise ValidationError("Add at least one class under Edit classes first", code="no_classes")
         from apps.vision.dl import sam
 
         pending = [r for r in rows if not r.shapes or r.labeled_by == "auto"]

@@ -65,7 +65,7 @@ class FolderGrabber(Grabber):
         super().__init__(config, **kw)
         self.path = str(config.get("path") or "")
         if not self.path or not os.path.isdir(self.path):
-            raise ValidationError(f"資料夾不存在：{self.path}", code="source_path_missing")
+            raise ValidationError(f"No such folder: {self.path}", code="source_path_missing")
         self.loop = bool(config.get("loop", True))
         self.pattern = str(config.get("pattern") or "")
         self.index = 0
@@ -118,7 +118,7 @@ class FileGrabber(Grabber):
         super().__init__(config, **kw)
         self.path = str(config.get("path") or "")
         if not os.path.isfile(self.path):
-            raise ValidationError(f"檔案不存在：{self.path}", code="source_path_missing")
+            raise ValidationError(f"No such file: {self.path}", code="source_path_missing")
         self._image = _read(self.path)
         self._mtime = os.path.getmtime(self.path)
 
@@ -144,7 +144,7 @@ class UsbGrabber(Grabber):
         backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
         self.cap = cv2.VideoCapture(index, backend)
         if not self.cap.isOpened():
-            raise ValidationError(f"無法開啟相機 index={index}", code="camera_open_failed")
+            raise ValidationError(f"Could not open camera index={index}", code="camera_open_failed")
         if config.get("width"):
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(config["width"]))
         if config.get("height"):

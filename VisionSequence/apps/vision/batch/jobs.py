@@ -98,9 +98,9 @@ def start(run: BatchRun, *, mode: str = "run", autotune: dict[str, Any] | None =
     with _lock:
         _prune_locked()
         if sum(1 for j in _jobs.values() if j.status == "running") >= int(_cfg("BATCH_MAX_RUNNING", 2)):
-            raise Conflict("同時執行的批次已達上限，請稍後再試", code="batch_busy")
+            raise Conflict("Too many batch runs at once; try again shortly", code="batch_busy")
         if any(j.status == "running" and j.set_id == run.batch_set_id for j in _jobs.values()):
-            raise Conflict("此影像集已有執行中的批次", code="set_busy")
+            raise Conflict("This image set already has a run in progress", code="set_busy")
         job = BatchJob(run_id=run.id, set_id=run.batch_set_id, mode=mode, total=int(run.progress_total or 0), autotune=dict(autotune or {}))
         _jobs[run.id] = job
     BatchRun.objects.filter(pk=run.id).update(status="running")

@@ -37,14 +37,14 @@ def read_asset_image(ctx: ToolContext, key: str, *, gray: bool = True) -> np.nda
     """
     asset_id = ctx.param(key)
     if not asset_id:
-        raise ToolError(f"沒有設定資產 '{key}'")
+        raise ToolError(f"No asset is set for '{key}'")
     path = ctx.asset_path(str(asset_id))
     if not path:
-        raise ToolError(f"找不到資產 {asset_id}")
+        raise ToolError(f"Asset {asset_id} not found")
     try:
         st = os.stat(path)
     except OSError as exc:
-        raise ToolError(f"讀取資產失敗：{exc}") from None
+        raise ToolError(f"Could not read the asset: {exc}") from None
     cache_key = (path, gray)
     with _ASSET_LOCK:
         hit = _ASSET_CACHE.get(cache_key)
@@ -54,10 +54,10 @@ def read_asset_image(ctx: ToolContext, key: str, *, gray: bool = True) -> np.nda
     try:
         buf = np.fromfile(path, dtype=np.uint8)
     except OSError as exc:
-        raise ToolError(f"讀取資產失敗：{exc}") from None
+        raise ToolError(f"Could not read the asset: {exc}") from None
     image = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE if gray else cv2.IMREAD_COLOR)
     if image is None or image.size == 0:
-        raise ToolError(f"資產 {asset_id} 不是可解碼的影像")
+        raise ToolError(f"Asset {asset_id} is not a decodable image")
     with _ASSET_LOCK:
         _ASSET_CACHE[cache_key] = (st.st_mtime, st.st_size, image)
         _ASSET_CACHE.move_to_end(cache_key)
@@ -545,10 +545,10 @@ class TemplateMatchTool(Tool):
         c = crop(image, region, upright=True)
         search = np.ascontiguousarray(c.image)
         if search.size == 0:
-            raise ToolError("搜尋範圍落在影像外")
+            raise ToolError("The search region falls outside the image")
         th, tw = tpl.shape[:2]
         if search.shape[0] < th or search.shape[1] < tw:
-            raise ToolError(f"搜尋範圍 {search.shape[1]}×{search.shape[0]} 小於範本 {tw}×{th}")
+            raise ToolError(f"The search region {search.shape[1]}×{search.shape[0]} is smaller than the template {tw}×{th}")
 
         threshold = float(np.clip(ctx.number("threshold", 0.7), 0, 1))
         max_n = max(1, ctx.integer("max_matches", 1))
@@ -661,7 +661,7 @@ class TemplateMatchTool(Tool):
             overlays=overlays,
             branch="found" if matches else "not_found",
             status="ok" if matches else "ng",
-            message=f"{len(matches)} 個匹配" + (f"，最佳 {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else ""),
+            message=f"{len(matches)} matches" + (f"，最佳 {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else ""),
         )
 
 
@@ -679,11 +679,11 @@ def _current_pose(ctx: ToolContext) -> tuple[float, float, float]:
                 return float(x), float(y), float(m.get("angle", 0) or 0)
     a, b, cc = ctx.inputs.get("a"), ctx.inputs.get("b"), ctx.inputs.get("c")
     if a is None or b is None:
-        raise ToolError("沒有目前位置：請連 matches 或 a/b（X/Y）")
+        raise ToolError("No current position: wire matches, or a/b as X/Y")
     try:
         return float(a), float(b), float(cc or 0)
     except (TypeError, ValueError):
-        raise ToolError("a/b/c 必須是數值") from None
+        raise ToolError("a, b and c must be numbers") from None
 
 
 class ShapeAlignTool(Tool):
@@ -711,7 +711,7 @@ class ShapeAlignTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         x, y, angle = _current_pose(ctx)
         if not all(np.isfinite([x, y])):
-            raise ToolError("目前位置不是有效數值（可能沒找到目標）")
+            raise ToolError("The current position is not a valid number (the target may not have been found)")
         rx, ry, ra = ctx.number("ref_x"), ctx.number("ref_y"), ctx.number("ref_angle")
         dx, dy = x - rx, y - ry
         dtheta = (angle - ra) if ctx.flag("use_angle", True) else 0.0
@@ -741,14 +741,14 @@ class FixtureRoiTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         region = ctx.params.get("roi")
         if not isinstance(region, dict) or not region.get("shape"):
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         t = ctx.inputs.get("transform")
         if not isinstance(t, dict):
-            raise ToolError("變換輸入必須是定位補正輸出的 transform")
+            raise ToolError("The transform input must come from a locate-offset step")
         try:
             dx, dy, dtheta = float(t.get("dx", 0)), float(t.get("dy", 0)), float(t.get("dtheta", 0))
         except (TypeError, ValueError):
-            raise ToolError("transform 內容不是數值") from None
+            raise ToolError("The transform values are not numbers") from None
         pivot = t.get("pivot")
         pivot_t = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else region_center(region)
         moved = transform_region(region, dx, dy, dtheta, pivot=pivot_t)
@@ -791,7 +791,7 @@ class FindCircleTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         shape = region.get("shape")
         cx, cy = region_center(region)
         a0 = a1 = None
@@ -803,9 +803,9 @@ class FindCircleTool(Tool):
         elif shape == "rect":
             r_in, r_out = 0.0, min(float(region["w"]), float(region["h"])) / 2
         else:
-            raise ToolError(f"找圓不支援 {shape} 區域")
+            raise ToolError(f"Find circle does not support a {shape} region")
         if r_out - r_in < 3:
-            raise ToolError("區域半徑太小")
+            raise ToolError("The region radius is too small")
         num_rays = max(6, ctx.integer("num_rays", 36))
         polarity = ctx.param("polarity", "any")
         thr = ctx.number("edge_threshold", 20)
@@ -821,7 +821,7 @@ class FindCircleTool(Tool):
         nan = float("nan")
         if len(arr) < 3:
             return Result(outputs={"cx": nan, "cy": nan, "r": nan, "points": arr.round(2).tolist(), "score": 0.0},
-                          overlays=overlays, branch="not_found", status="ng", message=f"邊緣點不足（{len(arr)}）")
+                          overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(arr)})")
         circle, inliers = fit_circle_points(arr, use_ransac, tol)
         # 重掃精修：ROI 中心偏離圓心時掃描線斜切邊緣；改從擬合圓心再掃一次，掃描線與邊緣垂直。
         if circle is not None and ctx.flag("refine", True) and math.hypot(circle[0] - cx, circle[1] - cy) > 0.5:
@@ -832,7 +832,7 @@ class FindCircleTool(Tool):
                     arr, circle, inliers = arr2, circle2, inliers2
         if circle is None:
             return Result(outputs={"cx": nan, "cy": nan, "r": nan, "points": arr.round(2).tolist(), "score": 0.0},
-                          overlays=overlays, branch="not_found", status="ng", message="擬合失敗")
+                          overlays=overlays, branch="not_found", status="ng", message="Fit failed")
         fcx, fcy, fr = circle
         resid = np.abs(np.hypot(arr[:, 0] - fcx, arr[:, 1] - fcy) - fr)
         score = float(inliers.sum() / num_rays)
@@ -846,7 +846,7 @@ class FindCircleTool(Tool):
         return Result(
             outputs={"cx": fcx, "cy": fcy, "r": fr, "points": arr.round(2).tolist(), "score": score},
             overlays=overlays, branch="found",
-            message=f"圓心 ({fcx:.1f}, {fcy:.1f}) r={fr:.1f}，{int(inliers.sum())}/{num_rays} 點，殘差 {float(resid[inliers].mean()):.2f}px",
+            message=f"Centre ({fcx:.1f}, {fcy:.1f}) r={fr:.1f}, {int(inliers.sum())}/{num_rays} points, residual {float(resid[inliers].mean()):.2f}px",
             detail={"rms": float(np.sqrt((resid[inliers] ** 2).mean()))},
         )
 
@@ -859,7 +859,7 @@ def _as_rotated_rect(region: dict[str, Any]) -> dict[str, Any]:
         return {"shape": "rotated_rect", "cx": region["x"] + region["w"] / 2, "cy": region["y"] + region["h"] / 2, "w": region["w"], "h": region["h"], "angle": 0.0}
     if region.get("shape") == "rotated_rect":
         return region
-    raise ToolError(f"此工具需要矩形／旋轉矩形區域，收到 {region.get('shape')}")
+    raise ToolError(f"This tool needs a rectangle or rotated rectangle, got {region.get('shape')}")
 
 
 def caliper_points(crop_img: np.ndarray, num: int, polarity: str, threshold: float, direction: str, smoothing: int) -> tuple[list[tuple[float, float, float]], bool]:
@@ -925,11 +925,11 @@ class FindLineTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("區域太小或落在影像外")
+            raise ToolError("The region is too small or falls outside the image")
         pts_local, horizontal = caliper_points(
             c.image, ctx.integer("num_calipers", 20), ctx.param("polarity", "any"),
             ctx.number("edge_threshold", 20), ctx.param("direction", "strongest"), ctx.integer("smoothing", 3),
@@ -937,7 +937,7 @@ class FindLineTool(Tool):
         overlays = [region_overlay(region, label="roi")]
         nan_out = {k: float("nan") for k in ("x1", "y1", "x2", "y2", "angle", "rho", "theta")}
         if len(pts_local) < 2:
-            return Result(outputs={**nan_out, "line": None, "points": []}, overlays=overlays, branch="not_found", status="ng", message=f"邊緣點不足（{len(pts_local)}）")
+            return Result(outputs={**nan_out, "line": None, "points": []}, overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(pts_local)})")
         full = c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local]))
         inliers = np.ones(len(full), dtype=bool)
         if ctx.flag("ransac", True) and len(full) >= 3:
@@ -977,7 +977,7 @@ class FindLineTool(Tool):
         return Result(
             outputs={"x1": x1, "y1": y1, "x2": x2, "y2": y2, "angle": angle, "rho": rho, "theta": theta, "line": line, "points": full.round(2).tolist()},
             overlays=overlays, branch="found",
-            message=f"角度 {angle:.2f}°，{int(inliers.sum())}/{len(full)} 點，殘差 {float(dist[inliers].mean()):.2f}px",
+            message=f"Angle {angle:.2f}°, {int(inliers.sum())}/{len(full)} points, residual {float(dist[inliers].mean()):.2f}px",
         )
 
 
@@ -1008,7 +1008,7 @@ class HoughCirclesTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         k = ctx.integer("blur", 5)
         if k >= 3:
@@ -1025,7 +1025,7 @@ class HoughCirclesTool(Tool):
                 circles.append({"cx": round(fx, 2), "cy": round(fy, 2), "r": round(float(r), 2)})
                 overlays.append({"kind": "circle", "cx": fx, "cy": fy, "r": float(r), "color": "#22c55e", "width": 2})
         return Result(outputs={"circles": circles, "count": len(circles)}, overlays=overlays,
-                      branch="found" if circles else "not_found", status="ok" if circles else "ng", message=f"{len(circles)} 個圓")
+                      branch="found" if circles else "not_found", status="ok" if circles else "ng", message=f"{len(circles)} circles")
 
 
 class HoughLinesTool(Tool):
@@ -1051,7 +1051,7 @@ class HoughLinesTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         edges = cv2.Canny(np.ascontiguousarray(c.image), ctx.number("canny_low", 50), ctx.number("canny_high", 150))
         if c.mask is not None:
             edges = cv2.bitwise_and(edges, c.mask)
@@ -1069,7 +1069,7 @@ class HoughLinesTool(Tool):
                 lines.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "length": round(float(lengths[i]), 2), "angle": round(ang, 2)})
                 overlays.append({"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2})
         return Result(outputs={"lines": lines, "count": len(lines)}, overlays=overlays,
-                      branch="found" if lines else "not_found", status="ok" if lines else "ng", message=f"{len(lines)} 條線段")
+                      branch="found" if lines else "not_found", status="ok" if lines else "ng", message=f"{len(lines)} segments")
 
 
 __all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "sector_thetas", "radial_edge_points", "fit_circle_kasa", "fit_circle_lsq", "fit_circle_ransac", "fit_circle_points", "fit_line_ransac", "POLARITY_OPTIONS"]

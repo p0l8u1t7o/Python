@@ -48,7 +48,7 @@ def preload_gpu_dlls() -> None:
 
 def get_session(path: str) -> Any:
     if ort is None:
-        raise ToolError("未安裝 onnxruntime，無法執行深度學習工具")
+        raise ToolError("onnxruntime is not installed, so deep-learning tools cannot run")
     with _LOCK:
         sess = _SESSIONS.get(path)
         if sess is None:
@@ -63,7 +63,7 @@ def get_session(path: str) -> Any:
                 # providers 依設定頁選擇（純記憶體查詢；變更設定會 clear_sessions 重建）。
                 sess = ort.InferenceSession(path, opts, providers=providers)
             except Exception as exc:  # noqa: BLE001
-                raise ToolError(f"載入模型失敗：{str(exc)[:200]}") from None
+                raise ToolError(f"Could not load the model: {str(exc)[:200]}") from None
             _SESSIONS[path] = sess
         return sess
 
@@ -76,10 +76,10 @@ def clear_sessions() -> None:
 def _model_path(ctx: ToolContext) -> str:
     asset_id = ctx.param("model")
     if not asset_id:
-        raise ToolError("沒有設定模型")
+        raise ToolError("No model is set")
     path = ctx.asset_path(str(asset_id))
     if not path:
-        raise ToolError(f"找不到模型資產 {asset_id}")
+        raise ToolError(f"Model asset {asset_id} not found")
     return path
 
 
@@ -94,11 +94,11 @@ def _triplet(value: Any, default: tuple[float, float, float]) -> np.ndarray:
     try:
         parts = [float(v) for v in str(value).replace(";", ",").split(",") if v.strip()]
     except ValueError:
-        raise ToolError(f"mean/std 格式錯誤：{value!r}") from None
+        raise ToolError(f"Malformed mean/std: {value!r}") from None
     if len(parts) == 1:
         parts = parts * 3
     if len(parts) != 3:
-        raise ToolError(f"mean/std 需要 3 個數值：{value!r}")
+        raise ToolError(f"mean/std needs three numbers: {value!r}")
     return np.array(parts, dtype=np.float32)
 
 
@@ -152,7 +152,7 @@ def _run(sess: Any, tensor: np.ndarray) -> list[np.ndarray]:
     try:
         return sess.run(None, {name: tensor})
     except Exception as exc:  # noqa: BLE001
-        raise ToolError(f"推論失敗：{str(exc)[:200]}") from None
+        raise ToolError(f"Inference failed: {str(exc)[:200]}") from None
 
 
 def _common_params(size_default: int) -> list[Param]:
@@ -189,7 +189,7 @@ class DlClassifyTool(Tool):
         region = ctx.roi()
         c = crop(image, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         size = _input_hw(sess, ctx.integer("input_size", 224))
         tensor, _ = preprocess(np.ascontiguousarray(c.image), size, _triplet(ctx.param("mean"), (0.485, 0.456, 0.406)), _triplet(ctx.param("std"), (0.229, 0.224, 0.225)), ctx.param("color_order", "rgb"))
         out = np.asarray(_run(sess, tensor)[0], dtype=np.float32).reshape(-1)
@@ -214,13 +214,13 @@ def parse_yolo(out: np.ndarray, num_labels: int) -> tuple[np.ndarray, np.ndarray
     if arr.ndim == 3:
         arr = arr[0]
     if arr.ndim != 2:
-        raise ToolError(f"不支援的偵測輸出形狀 {list(np.asarray(out).shape)}")
+        raise ToolError(f"Unsupported detection output shape {list(np.asarray(out).shape)}")
     # 判斷方向：通道數（4+nc 或 5+nc）通常遠小於候選框數
     if arr.shape[0] < arr.shape[1] and arr.shape[0] < 512:
         arr = arr.T
     cols = arr.shape[1]
     if cols < 5:
-        raise ToolError(f"偵測輸出欄位不足：{cols}")
+        raise ToolError(f"The detection output has too few columns: {cols}")
     if num_labels > 0 and cols == num_labels + 4:
         has_obj = False  # v8：x,y,w,h,cls...
     else:
@@ -265,7 +265,7 @@ class DlDetectTool(Tool):
         region = ctx.roi()
         c = crop(image, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         size = _input_hw(sess, ctx.integer("input_size", 640))
         tensor, info = preprocess(sub, size, _triplet(ctx.param("mean"), (0, 0, 0)), _triplet(ctx.param("std"), (1, 1, 1)), ctx.param("color_order", "rgb"), letterbox=True)
@@ -308,7 +308,7 @@ class DlDetectTool(Tool):
         count = len(detections)
         ok = count >= ctx.integer("min_count", 1)
         return Result(outputs={"detections": detections, "count": count, "matches": detections, "labels": [d["label"] for d in detections]}, overlays=overlays,
-                      branch="found" if count else "not_found", status="ok" if ok else "ng", message=f"{count} 個物件")
+                      branch="found" if count else "not_found", status="ok" if ok else "ng", message=f"{count} objects")
 
 
 class DlSegmentTool(Tool):
@@ -332,7 +332,7 @@ class DlSegmentTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         size = _input_hw(sess, ctx.integer("input_size", 512))
         tensor, _ = preprocess(sub, size, _triplet(ctx.param("mean"), (0.485, 0.456, 0.406)), _triplet(ctx.param("std"), (0.229, 0.224, 0.225)), ctx.param("color_order", "rgb"))
@@ -347,7 +347,7 @@ class DlSegmentTool(Tool):
         elif out.ndim == 2:
             cls = out
         else:
-            raise ToolError(f"不支援的分割輸出形狀 {list(out.shape)}")
+            raise ToolError(f"Unsupported segmentation output shape {list(out.shape)}")
         cls = np.asarray(cls).astype(np.uint8)
         cls = cv2.resize(cls, (sub.shape[1], sub.shape[0]), interpolation=cv2.INTER_NEAREST)
         if c.mask is not None:
@@ -370,7 +370,7 @@ class DlSegmentTool(Tool):
             contours, _ = cv2.findContours(full_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             overlays.append({"kind": "contours", "contours": [cnt.reshape(-1, 2).tolist() for cnt in contours], "color": "#22c55e" if ok else "#ef4444", "width": 1, "label": f"area={area}"})
         return Result(outputs={"mask": full_mask, "class_map": full_cls, "area": area, "classes": classes}, overlays=overlays,
-                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"目標類別面積 {area}px²")
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"Target class area {area}px²")
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
@@ -396,7 +396,7 @@ def parse_yolo_seg(det: np.ndarray, protos: np.ndarray, *, conf: float, iou: flo
     ch = d.shape[1]
     nc = ch - 4 - nm
     if nc < 1:
-        raise ToolError(f"不是 YOLO-seg 輸出（欄位 {ch}、protos {nm}）")
+        raise ToolError(f"Not a YOLO-seg output ({ch} columns, {nm} protos)")
     boxes_cxcywh = d[:, :4]
     cls_scores = d[:, 4 : 4 + nc]
     coefs = d[:, 4 + nc :]
@@ -454,7 +454,7 @@ class DlInstanceTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         size = _input_hw(sess, ctx.integer("input_size", 640))
         tensor, info = preprocess(sub, size, _triplet(ctx.param("mean"), (0.0, 0.0, 0.0)), _triplet(ctx.param("std"), (1.0, 1.0, 1.0)), ctx.param("color_order", "rgb"), letterbox=True)
@@ -462,7 +462,7 @@ class DlInstanceTool(Tool):
         protos = next((o for o in outputs if np.asarray(o).ndim == 4), None)
         det = next((o for o in outputs if np.asarray(o) is not protos), None)
         if protos is None or det is None:
-            raise ToolError("模型輸出不含 protos（不是 YOLO-seg 模型？）")
+            raise ToolError("The model output has no protos (is it a YOLO-seg model?)")
         instances = parse_yolo_seg(det, protos, conf=ctx.number("conf", 0.25), iou=ctx.number("iou", 0.45), max_count=ctx.integer("max_count", 100), size=size)
 
         labels = _labels(ctx)
@@ -500,7 +500,7 @@ class DlInstanceTool(Tool):
         lo, hi = ctx.integer("min_count", 1), ctx.integer("max_count_ok", 0)
         ok = count >= lo and (hi <= 0 or count <= hi)
         return Result(outputs={"count": count, "matches": matches, "mask": union, "contours": [np.array(p).reshape(-1, 1, 2) for p in contour_list]},
-                      overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng", message=f"{count} 個實例")
+                      overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng", message=f"{count} instances")
 
 
 TOOLS = [DlClassifyTool(), DlDetectTool(), DlSegmentTool(), DlInstanceTool()]

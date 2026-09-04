@@ -534,7 +534,7 @@ class ReadModbusToolTests(SimpleTestCase):
         r = run_tool("read_modbus", params={"connection": "nope", "mapping": [{"name": "a", "address": "holding:0"}]})
         self.assertEqual(r.status, "ok")
         self.assertFalse(r.outputs["ok"])
-        self.assertIn("未開啟", r.detail["error"])
+        self.assertIn("is not open", r.detail["error"])
         r2 = run_tool("read_modbus", params={"connection": "nope", "mapping": [{"name": "a", "address": "holding:0"}], "on_error": "fail"})
         self.assertEqual(r2.status, "error")
 
@@ -632,7 +632,7 @@ class WriteModbusToolTests(SimpleTestCase):
         writers.register_writer("sim", DioSimWriter({"channels": ["a"]}, name="sim"))
         r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
-        self.assertIn("降級", r.message)
+        self.assertIn("degraded", r.message)
         self.assertEqual(r.outputs, {"written": 0, "ok": False})
         self.assertIn("zzz", r.detail["error"])
 
@@ -640,12 +640,12 @@ class WriteModbusToolTests(SimpleTestCase):
         writers.register_writer("sim", DioSimWriter({"channels": ["a"]}, name="sim"))
         r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}], "on_error": "fail"}, context={"_judge": "ok"})
         self.assertEqual(r.status, "error")
-        self.assertNotIn("降級", r.message)
+        self.assertNotIn("degraded", r.message)
 
     def test_unknown_connection_degrades(self):
         r = run_tool("write_modbus", params={"connection": "nope", "mapping": [{"src": "judge", "address": "a"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
-        self.assertIn("降級", r.message)
+        self.assertIn("degraded", r.message)
         r = run_tool("write_modbus", params={"connection": "nope", "mapping": [{"src": "judge", "address": "a"}], "on_error": "fail"}, context={"_judge": "ok"})
         self.assertEqual(r.status, "error")
 
@@ -660,7 +660,7 @@ class WriteModbusToolTests(SimpleTestCase):
         writers.register_writer("mb", w)
         r = run_tool("write_modbus", params={"connection": "mb", "mapping": [{"src": "judge", "address": "coil:0"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
-        self.assertIn("降級", r.message)
+        self.assertIn("degraded", r.message)
         self.assertGreaterEqual(w.info()["reconnects"], 1)
 
 
@@ -693,7 +693,7 @@ class RunnerIntegrationTests(TestCase):
         flow = Flow.objects.create(name="f", graph=self.graph([{"src": "judge", "address": "ok"}, {"address": "done", "value": 1}]))
         report = runner.run_sync(flow)
         self.assertEqual(report.status, "ok", report.error)
-        self.assertIn("已寫入 2 筆", report.nodes["mb"].message)
+        self.assertIn("Wrote 2 values", report.nodes["mb"].message)
         w = writers.get_writer("sim")
         self.assertIsNotNone(w)
         self.assertEqual(w.state, {"done": 1, "ok": 1})
@@ -706,7 +706,7 @@ class RunnerIntegrationTests(TestCase):
         flow = Flow.objects.create(name="f", graph=self.graph([{"src": "judge", "address": "nope"}]))
         report = runner.run_sync(flow)
         self.assertEqual(report.status, "ok")
-        self.assertIn("降級", report.nodes["mb"].message)
+        self.assertIn("degraded", report.nodes["mb"].message)
         self.assertEqual(report.nodes["mb"].logs[0]["level"], "warning")
         flow2 = Flow.objects.create(name="f2", graph=self.graph([{"src": "judge", "address": "nope"}], on_error="fail"))
         report = runner.run_sync(flow2)
@@ -718,7 +718,7 @@ class RunnerIntegrationTests(TestCase):
         flow = Flow.objects.create(name="f", graph=self.graph([{"src": "judge", "address": "ok"}]))
         report = runner.run_sync(flow)
         self.assertEqual(report.status, "ok")
-        self.assertIn("降級", report.nodes["mb"].message)
+        self.assertIn("degraded", report.nodes["mb"].message)
         self.assertIsNone(writers.get_writer("sim"))
 
 
@@ -780,7 +780,7 @@ class ConnectionApiTests(TestCase):
         r = self.post(f"/api/vision/connections/{cid}/test")
         self.assertEqual(r.status_code, 200)
         self.assertFalse(r.json()["ok"])
-        self.assertIn("連不上", r.json()["error"])
+        self.assertIn("Cannot reach", r.json()["error"])
 
     def test_non_admin_can_read_not_write(self):
         admin = self.post("/api/auth/setup", {"username": "admin", "password": "secret1"}).json()["token"]

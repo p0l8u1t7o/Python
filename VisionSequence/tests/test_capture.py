@@ -553,7 +553,7 @@ class CaptureGrabberTests(_HubBase):
         self.assertIsNotNone(img)
         self.assertEqual(g.last_seq, 1)
         self.assertIsNone(g.grab())  # 沒有新影格 → 逾時
-        self.assertIn("逾時", g.last_error)
+        self.assertIn("timed out", g.last_error)
         self.assertTrue(g.info()["streaming"])
         g.close()
         self.assertTrue(_wait(lambda: not session.by_id["cam0"].streaming))
@@ -583,7 +583,7 @@ class CaptureGrabberTests(_HubBase):
         info = sources.source_info(live)
         self.assertTrue(info["connected"])
         self.assertEqual((info["open"], info["width"], info["height"]), (False, 64, 48))
-        self.assertTrue(channel_status("live", "nope")["last_error"].startswith("擷取端"))
+        self.assertTrue(channel_status("live", "nope")["last_error"].startswith("Capture client"))
 
 
 # ---------------------------------------------------------------------------

@@ -125,10 +125,10 @@ class WriteModbusTool(Tool):
 
         writer = get_writer(name)
         if writer is None:
-            return self._failed(ctx, on_error, f"連線 '{name}' 未開啟（不存在、已停用或尚未預先載入）", detail)
+            return self._failed(ctx, on_error, f"Connection '{name}' is not open (missing, disabled, or not pre-loaded)", detail)
         if not payload:
             ctx.log("對映表沒有任何可寫的值", level="warning", missing=missing)
-            return Result(outputs={"written": 0, "ok": True}, message="沒有可寫的值", detail=detail)
+            return Result(outputs={"written": 0, "ok": True}, message="Nothing to write", detail=detail)
         try:
             result = writer.write(payload, timeout=timeout)
         except CommError as exc:
@@ -139,15 +139,15 @@ class WriteModbusTool(Tool):
         detail["result"] = {k: v for k, v in result.items() if k != "values"}
         if missing:
             ctx.log(f"{len(missing)} 個來源找不到，已略過", level="warning", missing=missing)
-        return Result(outputs={"written": written, "ok": True}, message=f"已寫入 {written} 筆到 {name}", detail=detail)
+        return Result(outputs={"written": written, "ok": True}, message=f"Wrote {written} values to {name}", detail=detail)
 
     @staticmethod
     def _failed(ctx: ToolContext, on_error: str, reason: str, detail: dict[str, Any]) -> Result:
         detail = {**detail, "error": reason}
         if on_error == "fail":
-            return Result(outputs={"written": 0, "ok": False}, status="error", message=f"寫入失敗：{reason}"[:500], detail=detail)
+            return Result(outputs={"written": 0, "ok": False}, status="error", message=f"Write failed: {reason}"[:500], detail=detail)
         ctx.log(f"整合寫入失敗（已降級）：{reason}", level="warning")
-        return Result(outputs={"written": 0, "ok": False}, status="ok", message=f"寫入失敗（已降級）：{reason}"[:500], detail=detail)
+        return Result(outputs={"written": 0, "ok": False}, status="ok", message=f"Write failed (degraded): {reason}"[:500], detail=detail)
 
 
 class ReadModbusTool(Tool):
@@ -190,11 +190,11 @@ class ReadModbusTool(Tool):
         addresses = [str(item["address"]).strip() for item in items]
         detail: dict[str, Any] = {"connection": name, "addresses": addresses}
         if not addresses:
-            return Result(outputs={"values": [], "value": 0.0, "ok": True}, message="讀取表沒有位址", detail=detail)
+            return Result(outputs={"values": [], "value": 0.0, "ok": True}, message="The read mapping has no addresses", detail=detail)
 
         writer = get_writer(name)
         if writer is None:
-            return self._read_failed(ctx, on_error, f"連線 '{name}' 未開啟（不存在、已停用或尚未預先載入）", detail)
+            return self._read_failed(ctx, on_error, f"Connection '{name}' is not open (missing, disabled, or not pre-loaded)", detail)
         try:
             raw = writer.read(addresses)
         except CommError as exc:
@@ -229,9 +229,9 @@ class ReadModbusTool(Tool):
     def _read_failed(ctx: ToolContext, on_error: str, reason: str, detail: dict[str, Any]) -> Result:
         detail = {**detail, "error": reason}
         if on_error == "fail":
-            return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="error", message=f"讀取失敗：{reason}"[:500], detail=detail)
+            return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="error", message=f"Read failed: {reason}"[:500], detail=detail)
         ctx.log(f"整合讀取失敗（已降級）：{reason}", level="warning")
-        return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=f"讀取失敗（已降級）：{reason}"[:500], detail=detail)
+        return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=f"Read failed (degraded): {reason}"[:500], detail=detail)
 
 
 TOOLS = [WriteModbusTool(), ReadModbusTool()]

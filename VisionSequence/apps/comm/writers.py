@@ -61,21 +61,21 @@ def parse_address(address: str) -> tuple[str, int, str]:
     """'holding:100:float32' → ('holding', 100, 'float32')。coil 的 dtype 固定 bool。"""
     parts = [p.strip().lower() for p in str(address or "").split(":")]
     if len(parts) < 2 or not parts[0] or not parts[1]:
-        raise CommError(f"位址格式錯誤：'{address}'（應為 area:offset[:dtype]）")
+        raise CommError(f"Malformed address '{address}' (expected area:offset[:dtype])")
     area = _AREA_ALIASES.get(parts[0])
     if area is None:
-        raise CommError(f"未知的位址區 '{parts[0]}'（coil / holding / discrete / input）")
+        raise CommError(f"Unknown address area '{parts[0]}' (coil, holding, discrete or input)")
     try:
         offset = int(parts[1], 0)
     except ValueError:
-        raise CommError(f"位址偏移不是整數：'{parts[1]}'") from None
+        raise CommError(f"The address offset is not an integer: '{parts[1]}'") from None
     if offset < 0 or offset > 0xFFFF:
-        raise CommError(f"位址偏移超出範圍：{offset}")
+        raise CommError(f"Address offset out of range: {offset}")
     if area in ("coil", "discrete"):
         return area, offset, "bool"
     dtype = parts[2] if len(parts) > 2 and parts[2] else "uint16"
     if dtype not in _DTYPE_WORDS:
-        raise CommError(f"未知的資料型別 '{dtype}'（{', '.join(_DTYPE_WORDS)}）")
+        raise CommError(f"Unknown data type '{dtype}' ({', '.join(_DTYPE_WORDS)})")
     return area, offset, dtype
 
 
@@ -127,7 +127,7 @@ class Writer:
         raise NotImplementedError
 
     def _read(self, addresses: list[str]) -> dict[str, Any]:
-        raise CommError(f"{self.kind} 不支援讀回")
+        raise CommError(f"{self.kind} cannot read back")
 
     def _close(self) -> None:
         pass
@@ -158,7 +158,7 @@ class Writer:
                         out = self._write(values)
                     except Exception as exc2:  # noqa: BLE001
                         self.last_error = _msg(exc2)
-                        raise CommError(f"{self.name or self.kind}：{self.last_error}") from exc2
+                        raise CommError(f"{self.name or self.kind}: {self.last_error}") from exc2
                 self.writes += 1
                 self.last_write_at = time.time()
                 self._trace("寫入", values, out, started)
@@ -193,7 +193,7 @@ class Writer:
                     return out
                 except Exception as exc2:  # noqa: BLE001
                     self._trace("讀取", addresses, {"error": _msg(exc2)}, started, ok=False)
-                    raise CommError(f"{self.name or self.kind}：{_msg(exc2)}") from exc2
+                    raise CommError(f"{self.name or self.kind}: {_msg(exc2)}") from exc2
 
     def close(self) -> None:
         with self._lock:
@@ -236,7 +236,7 @@ class ModbusTcpWriter(Writer):
         super().__init__(config, **kw)
         self.host = str(config.get("host") or "")
         if not self.host:
-            raise ValidationError("modbus_tcp 需要 host", code="comm_config")
+            raise ValidationError("modbus_tcp needs a host", code="comm_config")
         self.port = int(config.get("port", 502) or 502)
         self.unit_id = int(config.get("unit_id", 1) if config.get("unit_id") is not None else 1)
         self.word_order = "little" if str(config.get("word_order", "big")).lower() == "little" else "big"
@@ -250,7 +250,7 @@ class ModbusTcpWriter(Writer):
         if not self.client.connect():
             self.client.close()
             self.client = None
-            raise CommError(f"連不上 {self.host}:{self.port}")
+            raise CommError(f"Cannot reach {self.host}:{self.port}")
 
     def _close(self) -> None:
         if self.client is not None:
@@ -268,7 +268,7 @@ class ModbusTcpWriter(Writer):
     @staticmethod
     def _check(rr, what: str) -> None:
         if rr is None or rr.isError():
-            raise CommError(f"{what} 失敗：{rr}")
+            raise CommError(f"{what} failed: {rr}")
 
     def _write(self, values: dict[str, Any]) -> dict[str, Any]:
         from pymodbus.client import ModbusTcpClient
@@ -291,7 +291,7 @@ class ModbusTcpWriter(Writer):
                 else:
                     self._check(client.write_registers(offset, regs, device_id=self.unit_id), f"write_registers {address}")
             else:
-                raise CommError(f"位址 '{address}' 是唯讀區，不能寫")
+                raise CommError(f"Address '{address}' is in a read-only area")
             written[address] = value
         return {"written": len(written), "values": written}
 
@@ -367,7 +367,7 @@ class ModbusServerWriter(Writer):
         self._thread.start()
         if not self._ready.wait(5.0) or self.server is None:
             reason = self._error or "逾時"
-            raise CommError(f"Modbus 從站無法在 {self.host}:{self.port} 啟動（{reason}）；請確認這個埠沒有被其他程式佔用")
+            raise CommError(f"The Modbus server could not start on {self.host}:{self.port} ({reason}); check that no other program holds that port")
 
     def _serve(self) -> None:
         import asyncio
@@ -440,14 +440,14 @@ class ModbusServerWriter(Writer):
     def _require(self):
         """伺服器已停（關閉或啟動失敗）時給明確錯誤，而不是 AttributeError。"""
         if self.server is None or self.loop is None:
-            raise CommError(f"{self.name or self.kind}：Modbus 從站尚未啟動")
+            raise CommError(f"{self.name or self.kind}: the Modbus server is not running")
         return self.server
 
     def _call(self, coro):
         import asyncio
 
         if self.loop is None:
-            raise CommError("Modbus 從站尚未啟動")
+            raise CommError("The Modbus server is not running")
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result(self.timeout or 2.0)
 
     def _write(self, values: dict[str, Any]) -> dict[str, Any]:
@@ -517,7 +517,7 @@ class TcpClientWriter(Writer):
         self.host = str(config.get("host") or "")
         self.port = int(config.get("port", 0) or 0)
         if not self.host or not self.port:
-            raise ValidationError("tcp_client 需要 host 與 port", code="comm_config")
+            raise ValidationError("tcp_client needs a host and a port", code="comm_config")
         self.template = str(config.get("template") or "")
         self.newline = str(config.get("newline", "\n") if config.get("newline") is not None else "\n")
         self.encoding = str(config.get("encoding") or "utf-8")
@@ -530,7 +530,7 @@ class TcpClientWriter(Writer):
         try:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         except OSError as exc:
-            raise CommError(f"連不上 {self.host}:{self.port}：{exc}") from exc
+            raise CommError(f"Cannot reach {self.host}:{self.port}: {exc}") from exc
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock = sock
 
@@ -563,13 +563,13 @@ class TcpClientWriter(Writer):
             while not buf.endswith(b"\n"):
                 chunk = self.sock.recv(4096)
                 if not chunk:
-                    raise CommError("對方在回覆前關閉連線")
+                    raise CommError("The other side closed the connection before replying")
                 buf += chunk
             out["reply"] = buf.decode(self.encoding, errors="replace").strip()
         return out
 
     def _read(self, addresses: list[str]) -> dict[str, Any]:
-        raise CommError("tcp_client 不支援讀回")
+        raise CommError("tcp_client cannot read back")
 
     def info(self) -> dict[str, Any]:
         return {**super().info(), "host": self.host, "port": self.port, "connected": self.sock is not None, "template": self.template, "last_payload": self.last_payload}
@@ -596,7 +596,7 @@ class DioSimWriter(Writer):
         if self.channels:
             unknown = [a for a in values if a not in self.channels]
             if unknown:
-                raise CommError(f"未宣告的通道：{', '.join(unknown)}")
+                raise CommError(f"Undeclared channels: {', '.join(unknown)}")
         for address, value in values.items():
             self.state[address] = value
         self.history.append({"at": time.time(), "values": dict(values)})
@@ -653,7 +653,7 @@ def _resolve_class(kind: str, config: dict[str, Any]) -> type[Writer]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     path = config.get("class") if kind == "plugin" else plugins.get(kind)
     if not path or ":" not in path:
-        raise ValidationError(f"未知的連線類型 '{kind}'", code="unknown_connection_kind")
+        raise ValidationError(f"Unknown connection kind '{kind}'", code="unknown_connection_kind")
     module, cls = path.split(":", 1)
     return getattr(importlib.import_module(module), cls)
 
@@ -827,7 +827,7 @@ def get_connection(connection_id: int):
 
     conn = Connection.objects.filter(pk=connection_id).first()
     if conn is None:
-        raise NotFound("連線不存在", code="connection_not_found")
+        raise NotFound("Connection not found", code="connection_not_found")
     return conn
 
 
@@ -850,13 +850,13 @@ def kinds() -> list[dict[str, Any]]:
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
             "kind": kind,
-            "label": getattr(cls, "label", "") or f"外掛：{kind}",
+            "label": getattr(cls, "label", "") or f"Plugin: {kind}",
             "fields": list(getattr(cls, "fields", []) or []),
             "description": getattr(cls, "description", ""),
         })
     for kind in plugins:
         if kind not in _PLUGIN_KINDS:
-            out.append({"kind": kind, "label": f"外掛：{kind}", "fields": []})
+            out.append({"kind": kind, "label": f"Plugin: {kind}", "fields": []})
     out.append({"kind": "plugin", "label": "外掛（自訂類別路徑）", "fields": ["class"]})
     return out
 

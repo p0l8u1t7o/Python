@@ -41,21 +41,21 @@ ORIGINS = ("manual", "draft")
 def _visible_flow(request: HttpRequest, flow_id: int) -> Flow:
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     return flow
 
 
 def _set_or_404(request: HttpRequest, set_id: int) -> BatchSet:
     s = BatchSet.objects.select_related("flow").filter(pk=set_id).first()  # noqa: F841 - 可見性以流程為準
     if s is None or not _visible_flows(request).filter(pk=s.flow_id).exists():
-        raise NotFound(f"影像集 {set_id} 不存在", code="set_not_found")
+        raise NotFound(f"Image set {set_id} not found", code="set_not_found")
     return s
 
 
 def _run_or_404(request: HttpRequest, run_id: int) -> BatchRun:
     r = BatchRun.objects.select_related("batch_set__flow", "flow").filter(pk=run_id).first()
     if r is None or not _visible_flows(request).filter(pk=r.batch_set.flow_id).exists():
-        raise NotFound(f"批次執行 {run_id} 不存在", code="run_not_found")
+        raise NotFound(f"Batch run {run_id} not found", code="run_not_found")
     return store.reconcile(r)
 
 
@@ -66,7 +66,7 @@ def _can_manage(request: HttpRequest, s: BatchSet) -> bool:
 
 def _require_manage(request: HttpRequest, s: BatchSet) -> None:
     if not _can_manage(request, s):
-        raise PermissionDenied("只有影像集建立者、流程擁有者或管理員能修改", code="not_owner")
+        raise PermissionDenied("Only the image set's creator, the flow owner or an administrator can change it", code="not_owner")
 
 
 def _max_images() -> int:
@@ -75,9 +75,9 @@ def _max_images() -> int:
 
 def _create_set(request: HttpRequest, flow: Flow, name: str, source: str, frames: list[tuple[str, Any]]) -> BatchSet:
     if not frames:
-        raise ValidationError("至少要一張影像", code="no_image")
+        raise ValidationError("At least one image is needed", code="no_image")
     if len(frames) > _max_images():
-        raise ValidationError(f"一個影像集最多 {_max_images()} 張", code="too_many_images")
+        raise ValidationError(f"An image set holds at most {_max_images()} images", code="too_many_images")
     p = principal(request)
     s = BatchSet.objects.create(flow=flow, owner=p.user, name=(name or f"{flow.name} {time.strftime('%m/%d %H:%M')}")[:120], source=source[:120])
     store.save_images(s, frames)
@@ -125,7 +125,7 @@ def create_set_from_source(request: HttpRequest, payload: FromSourceIn):
     principal(request).can_execute()
     source = ImageSource.objects.filter(pk=payload.source_id).first()
     if source is None:
-        raise NotFound(f"影像來源 {payload.source_id} 不存在", code="source_not_found")
+        raise NotFound(f"Image source {payload.source_id} not found", code="source_not_found")
     n = max(1, min(_max_images(), int(payload.count)))
     frames = []
     for i in range(n):
@@ -134,7 +134,7 @@ def create_set_from_source(request: HttpRequest, payload: FromSourceIn):
             break
         frames.append((f"{source.name}-{i + 1}", img))
     if not frames:
-        raise ValidationError("影像來源取不到影像", code="no_image")
+        raise ValidationError("The image source returned no image", code="no_image")
     s = _create_set(request, flow, payload.name, f"source:{source.name}", frames)
     return 201, store.set_out(s, full=True)
 
@@ -145,17 +145,17 @@ def create_set(request: HttpRequest, images: list[UploadedFile] = File(...)):
     try:
         flow_id = int(request.POST.get("flow_id") or 0)
     except ValueError:
-        raise ValidationError("flow_id 必須是整數", code="bad_request") from None
+        raise ValidationError("flow_id must be an integer", code="bad_request") from None
     flow = _visible_flow(request, flow_id)
     principal(request).can_execute()
     if len(images) > _max_images():
-        raise ValidationError(f"一個影像集最多 {_max_images()} 張", code="too_many_images")
+        raise ValidationError(f"An image set holds at most {_max_images()} images", code="too_many_images")
     frames = []
     for up in images:
         try:
             frames.append((up.name or "image", _decode_upload(up)))
         except ValidationError:
-            raise ValidationError(f"無法解碼：{up.name}", code="bad_image") from None
+            raise ValidationError(f"Could not decode {up.name}", code="bad_image") from None
     s = _create_set(request, flow, str(request.POST.get("name") or ""), "upload", frames)
     return 201, store.set_out(s, full=True)
 
@@ -195,10 +195,10 @@ def patch_set(request: HttpRequest, set_id: int, payload: SetPatch):
         for lb in payload.labels:
             im = by_index.get(lb.index)
             if im is None:
-                raise NotFound(f"影像 {lb.index} 不存在", code="image_not_found")
+                raise NotFound(f"Image {lb.index} not found", code="image_not_found")
             if lb.expected is not None:
                 if lb.expected not in store.EXPECTED_VALUES:
-                    raise ValidationError("expected 必須是 ok、ng 或空字串", code="bad_expected")
+                    raise ValidationError("expected must be ok, ng or an empty string", code="bad_expected")
                 im["expected"] = lb.expected
             if lb.expect_outputs is not None:
                 im["expect_outputs"] = dict(lb.expect_outputs)
@@ -207,7 +207,7 @@ def patch_set(request: HttpRequest, set_id: int, payload: SetPatch):
         fields.append("images")
     if payload.remove:
         if s.runs.filter(status__in=("queued", "running")).exists():
-            raise Conflict("執行中無法移除影像", code="set_busy")
+            raise Conflict("Images cannot be removed while a run is in progress", code="set_busy")
         drop = set(int(i) for i in payload.remove)
         for im in images:
             if int(im["index"]) in drop:
@@ -230,7 +230,7 @@ def delete_set(request: HttpRequest, set_id: int):
     s = _set_or_404(request, set_id)
     _require_manage(request, s)
     if s.runs.filter(status__in=("queued", "running")).exists():
-        raise Conflict("執行中無法刪除影像集", code="set_busy")
+        raise Conflict("An image set cannot be deleted while a run is in progress", code="set_busy")
     store.delete_set(s)
     return 204, None
 
@@ -245,7 +245,7 @@ def set_image(request: HttpRequest, set_id: int, index: int, max: int = 0, fmt: 
     item = store.image_by_index(s, index)
     image = store.load_image(item)
     if image is None:
-        raise NotFound("影像檔不存在", code="image_gone")
+        raise NotFound("The image file does not exist", code="image_gone")
     data = encode_image(image, max_side=max or None, fmt="png" if fmt == "png" else "jpeg", quality=q)
     response = HttpResponse(data, content_type="image/png" if fmt == "png" else "image/jpeg")
     response["Cache-Control"] = "private, max-age=3600"
@@ -266,11 +266,11 @@ def set_to_golden(request: HttpRequest, set_id: int, payload: ToGoldenIn):
     s = _set_or_404(request, set_id)
     p = principal(request)
     if not p.can_edit_flow(s.flow):
-        raise PermissionDenied("只有流程擁有者或管理員能建立 Golden Set 案例", code="not_owner")
+        raise PermissionDenied("Only the flow owner or an administrator can create Golden Set cases", code="not_owner")
     statuses: dict[int, str] = {}
     if payload.expect_from == "status":
         if payload.run_id is None:
-            raise ValidationError("expect_from=status 需要 run_id", code="bad_request")
+            raise ValidationError("expect_from=status needs a run_id", code="bad_request")
         run = _run_or_404(request, payload.run_id)
         statuses = {int(it.get("index", -1)): str(it.get("status", "")) for it in run.items or []}
     wanted = set(payload.indexes) if payload.indexes else None
@@ -326,14 +326,14 @@ def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
     p.can_execute()
     flow = _visible_flow(request, payload.flow_id) if payload.flow_id is not None else s.flow
     if payload.mode not in ("run", "autotune"):
-        raise ValidationError("mode 必須是 run 或 autotune", code="bad_mode")
+        raise ValidationError("mode must be run or autotune", code="bad_mode")
     if not s.images:
-        raise ValidationError("影像集沒有影像", code="no_image")
+        raise ValidationError("The image set has no images", code="no_image")
     parent = None
     if payload.parent_run_id is not None:
         parent = _run_or_404(request, payload.parent_run_id)
         if parent.batch_set_id != s.id:
-            raise ValidationError("parent_run_id 必須屬於同一個影像集", code="bad_parent")
+            raise ValidationError("parent_run_id must belong to the same image set", code="bad_parent")
     # 沒帶 graph：同流程接續上一次的參數，換流程則用該流程的現圖（別把別的流程的參數帶過來）
     inherit = parent.graph if (parent is not None and store.run_flow(parent).id == flow.id) else None
     graph = payload.graph or inherit or flow.graph
@@ -344,7 +344,7 @@ def create_run(request: HttpRequest, set_id: int, payload: RunCreate):
         recipe_name = recipe.name if recipe else ""
     graph = validate_graph(graph)
     if payload.mode == "autotune" and not any(im.get("expected") in ("ok", "ng") for im in s.images):
-        raise ValidationError("自動調參需要先為影像標記期望 OK／NG", code="no_labels")
+        raise ValidationError("Auto-tuning needs the images labelled as expected OK or NG first", code="no_labels")
     origin = "autotune" if payload.mode == "autotune" else (payload.origin if payload.origin in ORIGINS else "manual")
     run = BatchRun.objects.create(
         batch_set=s, flow=None if flow.id == s.flow_id else flow, parent=parent, owner=p.user, flow_version=flow.version, graph=graph, recipe_name=recipe_name,
@@ -402,7 +402,7 @@ def delete_run(request: HttpRequest, run_id: int):
     r = _run_or_404(request, run_id)
     _require_manage(request, r.batch_set)
     if r.status in ("queued", "running") and jobs.progress(r.id):
-        raise Conflict("執行中無法刪除", code="run_busy")
+        raise Conflict("It cannot be deleted while it is running", code="run_busy")
     r.delete()
     return 204, None
 
@@ -425,7 +425,7 @@ def compare_runs(request: HttpRequest, run_id: int, other: int):
     a = _run_or_404(request, run_id)
     b = _run_or_404(request, other)
     if a.batch_set_id != b.batch_set_id:
-        raise ValidationError("只能比較同一個影像集的兩次執行", code="bad_compare")
+        raise ValidationError("Only two runs of the same image set can be compared", code="bad_compare")
     images = {int(im["index"]): im for im in (a.batch_set.images or [])}
     rows_a = {int(it["index"]): it for it in a.items or []}
     rows_b = {int(it["index"]): it for it in b.items or []}
@@ -462,7 +462,7 @@ def preview_row(request: HttpRequest, run_id: int, index: int, payload: PreviewI
     item = store.image_by_index(r.batch_set, index)
     image = store.load_image(item)
     if image is None:
-        raise NotFound("影像檔不存在", code="image_gone")
+        raise NotFound("The image file does not exist", code="image_gone")
     graph = validate_graph(payload.graph) if payload.graph else r.graph
     report = runner.run_sync(store.run_flow(r), trigger="preview", preview=True, graph_override=graph, input_image=image)
     return report.to_dict(include_node_outputs=True)
@@ -481,16 +481,16 @@ def run_to_recipe(request: HttpRequest, run_id: int, payload: ToRecipeIn):
     r = _run_or_404(request, run_id)
     flow = store.run_flow(r)
     if not principal(request).can_edit_flow(flow):
-        raise PermissionDenied("只有流程擁有者或管理員能建立配方", code="not_owner")
+        raise PermissionDenied("Only the flow owner or an administrator can create a recipe", code="not_owner")
     overrides = store.to_overrides(store.graph_param_diff(flow.graph, r.graph))
     if not overrides:
-        raise ValidationError("此次執行的參數與流程相同，沒有可存的差異", code="no_diff")
+        raise ValidationError("This run used the same parameters as the flow; there is nothing to save", code="no_diff")
     _validate_overrides(flow, overrides)
     name = payload.name.strip()[:80]
     if not name:
-        raise ValidationError("配方名稱不能是空的", code="bad_name")
+        raise ValidationError("A recipe name is required", code="bad_name")
     if FlowRecipe.objects.filter(flow=flow, name=name).exists():
-        raise Conflict(f"配方「{name}」已存在", code="recipe_exists")
+        raise Conflict(f'The recipe "{name}" already exists', code="recipe_exists")
     if payload.is_default:
         FlowRecipe.objects.filter(flow=flow, is_default=True).update(is_default=False)
     recipe = FlowRecipe.objects.create(flow=flow, name=name, description=payload.description[:500], param_overrides=overrides, is_default=payload.is_default)

@@ -34,11 +34,11 @@ class CompareNumberTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         value = ctx.inputs.get("value")
         if value is None:
-            raise ToolError("沒有輸入數值")
+            raise ToolError("No value on the input")
         try:
             v = float(value)
         except (TypeError, ValueError):
-            raise ToolError(f"輸入不是數值：{value!r}") from None
+            raise ToolError(f"The input is not a number: {value!r}") from None
         op = ctx.param("operator", "gt")
         threshold = ctx.number("threshold")
         tol = ctx.number("tolerance")
@@ -73,7 +73,7 @@ class CompareRangeTool(Tool):
         try:
             v = float(value)
         except (TypeError, ValueError):
-            raise ToolError(f"輸入不是數值：{value!r}") from None
+            raise ToolError(f"The input is not a number: {value!r}") from None
         low, high = ctx.number("low"), ctx.number("high")
         ok = low <= v <= high
         return Result(outputs={"result": ok}, branch="inside" if ok else "outside",
@@ -100,7 +100,7 @@ class BoolLogicTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         values = [bool(v) for v in (ctx.inputs.get("values") or []) if v is not None]
         if not values:
-            raise ToolError("沒有任何布林輸入")
+            raise ToolError("No boolean input is connected")
         mode = ctx.param("mode", "and")
         base = all(values) if mode in ("and", "nand") else any(values)
         ok = (not base) if mode in ("nand", "nor") else base
@@ -134,7 +134,7 @@ def safe_eval(expr: str, names: dict[str, Any]) -> Any:
                 return names[node.id]
             if node.id in _FUNCS:
                 return _FUNCS[node.id]
-            raise ToolError(f"公式裡未知的名稱 '{node.id}'")
+            raise ToolError(f"Unknown name '{node.id}' in the expression")
         if isinstance(node, ast.BinOp) and type(node.op) in _ALLOWED_BIN:
             return _ALLOWED_BIN[type(node.op)](ev(node.left), ev(node.right))
         if isinstance(node, ast.UnaryOp):
@@ -163,7 +163,7 @@ def safe_eval(expr: str, names: dict[str, Any]) -> Any:
             return ev(node.value)[ev(node.slice)]
         if isinstance(node, (ast.List, ast.Tuple)):
             return [ev(e) for e in node.elts]
-        raise ToolError(f"公式不支援的語法：{type(node).__name__}")
+        raise ToolError(f"Unsupported syntax in the expression: {type(node).__name__}")
 
     return ev(tree)
 
@@ -186,14 +186,14 @@ class FormulaTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         expr = str(ctx.param("expression", "")).strip()
         if not expr:
-            raise ToolError("公式為空")
+            raise ToolError("The expression is empty")
         names = {k: ctx.inputs.get(k) for k in ("a", "b", "c", "d")}
         try:
             value = safe_eval(expr, names)
         except ToolError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise ToolError(f"公式錯誤：{exc}") from None
+            raise ToolError(f"Expression error: {exc}") from None
         number = float(value) if isinstance(value, (int, float, bool)) else float("nan")
         return Result(outputs={"value": number, "result": bool(value)}, message=f"{expr} = {value!r}"[:200])
 
@@ -213,7 +213,7 @@ class CounterTool(Tool):
             n = len(items)  # type: ignore[arg-type]
         except TypeError:
             n = 0 if items is None else 1
-        return Result(outputs={"count": n}, message=f"{n} 項")
+        return Result(outputs={"count": n}, message=f"{n} items")
 
 
 TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool()]

@@ -42,7 +42,7 @@ def capture_download_info(request: HttpRequest):
 def capture_download(request: HttpRequest):
     info = build.info(fresh=True)
     if not info["available"]:
-        raise NotFound("尚未建置擷取端程式：請於伺服端執行 scripts/build_capture_client.ps1，產物放在 data/downloads/", code="capture_download_missing")
+        raise NotFound("The capture client has not been built: run scripts/build_capture_client.ps1 on the server; the result goes in data/downloads/", code="capture_download_missing")
     response = FileResponse(open(info["path"], "rb"), as_attachment=True, filename=info["filename"])
     response["Cache-Control"] = "no-store"
     return response
@@ -52,9 +52,9 @@ def capture_download(request: HttpRequest):
 def channel_preview(request: HttpRequest, name: str, cid: str, max: int = 1280):
     """通道預覽（<img> 用；?token=／?api_key= 驗證，同 /sources/{id}/preview）。"""
     if authenticate(request) is None:
-        raise APIError("未登入", code="unauthenticated", status_code=401)
+        raise APIError("Not signed in", code="unauthenticated", status_code=401)
     if hub.get(name) is None:
-        raise NotFound(f"擷取端「{name}」未連線", code="capture_client_not_found")
+        raise NotFound(f'Capture client "{name}" is not connected', code="capture_client_not_found")
     try:
         frame = hub.request_frame(name, cid, timeout=2.0, min_seq=0, after_request=False)
     except CaptureError as exc:

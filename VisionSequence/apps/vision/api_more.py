@@ -129,7 +129,7 @@ def create_template(request: HttpRequest, payload: TemplateIn):
         with transaction.atomic():
             t = FlowTemplate.objects.create(name=payload.name.strip(), description=payload.description, category=payload.category or "custom", graph=graph, owner=p.user)
     except IntegrityError:
-        raise Conflict("已有同名範本", code="template_name_taken") from None
+        raise Conflict("A template with that name already exists", code="template_name_taken") from None
     return 201, _template_out(t)
 
 
@@ -138,10 +138,10 @@ def _find_template(template_id: str) -> dict[str, Any]:
         for t in _builtin_templates():
             if t["id"] == template_id:
                 return t
-        raise NotFound("範本不存在", code="template_not_found")
+        raise NotFound("Template not found", code="template_not_found")
     row = FlowTemplate.objects.filter(pk=template_id).first()
     if row is None:
-        raise NotFound("範本不存在", code="template_not_found")
+        raise NotFound("Template not found", code="template_not_found")
     return {**_template_out(row), "_row": row}
 
 
@@ -151,10 +151,10 @@ def delete_template(request: HttpRequest, template_id: str):
     p = principal(request)
     t = _find_template(template_id)
     if t["source"] == "builtin":
-        raise ValidationError("內建範本不能刪除", code="builtin_template")
+        raise ValidationError("Built-in templates cannot be deleted", code="builtin_template")
     row = t["_row"]
     if not (p.is_admin or (p.user and row.owner_id == p.user.id)):
-        raise PermissionDenied("這不是你的範本", code="not_owner")
+        raise PermissionDenied("That template is not yours", code="not_owner")
     row.delete()
     return 204, None
 
@@ -165,7 +165,7 @@ def instantiate_template(request: HttpRequest, template_id: str, payload: Instan
     t = _find_template(template_id)
     source_id = payload.source_id
     if source_id is not None and not ImageSource.objects.filter(pk=source_id).exists():
-        raise NotFound("影像來源不存在", code="source_not_found")
+        raise NotFound("Image source not found", code="source_not_found")
     graph = instantiate(t["graph"], source_id=source_id, prefix=payload.prefix)
     missing = source_id is None and any(n.get("type") == "image_source" for n in graph["nodes"])
     return {"graph": validate_graph(graph), "missing_source": missing, "name": t["name"], "description": t["description"]}
@@ -177,7 +177,7 @@ def instantiate_template(request: HttpRequest, template_id: str, payload: Instan
 def _batch_run(request: HttpRequest, flow_id: int, images: list[tuple[str, Any]], graph: dict | None) -> dict[str, Any]:
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     principal(request).can_execute()
     rows = []
     t0 = time.perf_counter()
@@ -216,14 +216,14 @@ def batch_upload(request: HttpRequest, flow_id: int, images: list[UploadedFile] 
     可附 form 欄位 graph（JSON 字串）用未儲存的圖。"""
     require_engineer(request)
     if len(images) > MAX_BATCH:
-        raise ValidationError(f"一次最多 {MAX_BATCH} 張", code="too_many_images")
+        raise ValidationError(f"{MAX_BATCH} images at a time is the limit", code="too_many_images")
     graph = None
     raw = request.POST.get("graph")
     if raw:
         try:
             graph = json.loads(raw)
         except json.JSONDecodeError:
-            raise ValidationError("graph 不是合法 JSON", code="bad_graph") from None
+            raise ValidationError("graph is not valid JSON", code="bad_graph") from None
     decoded = []
     for up in images:
         try:
@@ -232,7 +232,7 @@ def batch_upload(request: HttpRequest, flow_id: int, images: list[UploadedFile] 
             decoded.append((up.name or "image", None))
     bad = [n for n, im in decoded if im is None]
     if bad:
-        raise ValidationError(f"無法解碼：{', '.join(bad[:5])}", code="bad_image")
+        raise ValidationError(f"Could not decode: {', '.join(bad[:5])}", code="bad_image")
     return _batch_run(request, flow_id, decoded, graph)
 
 
@@ -255,7 +255,7 @@ def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn
             break
         images.append((f"frame-{i + 1}", frame))
     if not images:
-        raise ValidationError("來源沒有回傳影像", code="no_frame")
+        raise ValidationError("The source returned no image", code="no_frame")
     return _batch_run(request, flow_id, images, payload.graph)
 
 
@@ -510,7 +510,7 @@ def integration_tcp(request: HttpRequest, payload: TcpIn):
     principal(request).can_execute()
     command = payload.command.strip()
     if not command:
-        raise ValidationError("指令為空", code="empty_command")
+        raise ValidationError("The command is empty", code="empty_command")
     port = int(settings.VISION["TCP_PORT"])
     t0 = time.perf_counter()
     try:

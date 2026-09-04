@@ -89,7 +89,7 @@ def check_graph_edit(p: Any, new_graph: dict[str, Any] | None, *, flow: Any = No
         if code_hash(code) in approved:
             continue
         if not getattr(p, "is_admin", False):
-            raise PermissionDenied("Python 腳本只有管理員能新增或修改；請管理員儲存此流程後再使用", code="script_not_approved")
+            raise PermissionDenied("Only administrators may add or change Python scripts; ask one to save this flow first", code="script_not_approved")
         approve(code, user=getattr(p, "user", None), flow=flow)
 
 

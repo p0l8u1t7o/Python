@@ -95,17 +95,17 @@ def check_overrides(flow: Flow, overrides: dict[str, Any], *, versions: dict[str
         for pkey, value in patch.items():
             item = {"key": f"{node_id}.{pkey}", "node_id": node_id, "node_label": label, "param": pkey, "value": value, "status": "ok", "message": "", "teach": False}
             if node is None:
-                item.update(status="node_missing", message="流程裡沒有這個步驟")
+                item.update(status="node_missing", message="That step is not in the flow")
                 items.append(item)
                 continue
             ntype = str(node.get("type"))
             recorded = (versions or {}).get(str(node_id)) or {}
             if recorded.get("type") and recorded["type"] != ntype:
-                item.update(status="type_changed", message=f"工具已從 {recorded['type']} 改為 {ntype}")
+                item.update(status="type_changed", message=f"The tool changed from {recorded['type']} to {ntype}")
                 items.append(item)
                 continue
             if ntype == "note" or not tools.has(ntype):
-                item.update(status="type_changed", message="這個步驟不是可執行工具")
+                item.update(status="type_changed", message="That step is not a runnable tool")
                 items.append(item)
                 continue
             tool = tools.get(ntype)
@@ -116,7 +116,7 @@ def check_overrides(flow: Flow, overrides: dict[str, Any], *, versions: dict[str
             item["teach"] = bool(param.teach) if param else False
             item["current"] = (node.get("params") or {}).get(pkey)
             if param is None:
-                item.update(status="param_missing", message=f"工具 {tool.label} 沒有參數 '{pkey}'")
+                item.update(status="param_missing", message=f"Tool {tool.label} has no parameter '{pkey}'")
                 items.append(item)
                 continue
             bad = _check_value(param, value)
@@ -126,11 +126,11 @@ def check_overrides(flow: Flow, overrides: dict[str, Any], *, versions: dict[str
                 continue
             cur_v = current_versions.get(str(node_id), {}).get("version", 1)
             if recorded.get("version") is not None and int(recorded["version"]) != cur_v:
-                item.update(status="version_changed", message=f"工具版本 {recorded['version']} → {cur_v}，參數語意可能不同，請確認")
+                item.update(status="version_changed", message=f"Tool version {recorded['version']} → {cur_v}; the parameters may mean something different, please check")
                 items.append(item)
                 continue
             if item["current"] == value:
-                item.update(status="unchanged", message="與目前圖上的值相同")
+                item.update(status="unchanged", message="Same as the value already in the graph")
             items.append(item)
     return items
 
@@ -199,7 +199,7 @@ def _download(doc: dict[str, Any], filename: str) -> HttpResponse:
 def _visible(request: HttpRequest, flow_id: int) -> Flow:
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     return flow
 
 
@@ -232,7 +232,7 @@ def export_recipe(request: HttpRequest, flow_id: int, recipe_id: int):
     flow = _visible(request, flow_id)
     r = flow.recipes.filter(pk=recipe_id).first()
     if r is None:
-        raise NotFound("配方不存在", code="recipe_not_found")
+        raise NotFound("Recipe not found", code="recipe_not_found")
     return _download(_recipe_doc(flow, r), f"{flow.name}.{r.name}.recipe.json")
 
 
@@ -244,11 +244,11 @@ def _parse_doc(request: HttpRequest, file: UploadedFile | None) -> dict[str, Any
     try:
         doc = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
-        raise ValidationError("不是合法的 JSON 檔", code="bad_recipe_file") from None
+        raise ValidationError("Not a valid JSON file", code="bad_recipe_file") from None
     if isinstance(doc, dict) and "doc" in doc and isinstance(doc["doc"], dict):
         doc = doc["doc"]
     if not isinstance(doc, dict) or doc.get("kind") not in ("recipe", "recipes"):
-        raise ValidationError("不是配方檔（kind 必須是 recipe 或 recipes）", code="bad_recipe_file")
+        raise ValidationError("Not a recipe file (kind must be recipe or recipes)", code="bad_recipe_file")
     return doc
 
 
@@ -281,10 +281,10 @@ def import_recipe(request: HttpRequest, flow_id: int, payload: ImportIn):
     flow = _editable_flow(request, flow_id)
     doc = payload.doc
     if doc.get("kind") not in ("recipe", "recipes"):
-        raise ValidationError("不是配方檔", code="bad_recipe_file")
+        raise ValidationError("Not a recipe file", code="bad_recipe_file")
     recipes = _doc_recipes(doc)
     if not recipes:
-        raise ValidationError("檔案裡沒有配方", code="bad_recipe_file")
+        raise ValidationError("The file contains no recipes", code="bad_recipe_file")
     if doc.get("kind") == "recipe" and len(recipes) == 1 and payload.name:
         recipes[0] = {**recipes[0], "name": payload.name}
     created = []
@@ -307,6 +307,6 @@ def import_recipe(request: HttpRequest, flow_id: int, payload: ImportIn):
                     flow.recipes.update(is_default=False)
                 row, made = FlowRecipe.objects.update_or_create(flow=flow, name=name, defaults={"description": description, "param_overrides": overrides, "is_default": is_default})
         except IntegrityError:
-            raise Conflict("配方名稱衝突", code="recipe_name_taken") from None
+            raise Conflict("That recipe name is taken", code="recipe_name_taken") from None
         created.append({**_recipe_out(row), "created": made, "accepted": sum(len(v) for v in overrides.values())})
     return 201, {"items": created, "skipped": skipped}

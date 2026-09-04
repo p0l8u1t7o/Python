@@ -150,7 +150,7 @@ def get_trainer(kind: str) -> Trainer:
 
     trainer = _TRAINERS.get(kind)
     if trainer is None:
-        raise ValidationError(f"未知的模型種類 '{kind}'", code="unknown_trainer", details={"available": sorted(_TRAINERS)})
+        raise ValidationError(f"Unknown model kind '{kind}'", code="unknown_trainer", details={"available": sorted(_TRAINERS)})
     return trainer
 
 

@@ -35,7 +35,7 @@ class JudgeTool(Tool):
         if mode == "by_input":
             value = ctx.inputs.get("value")
             if value is None:
-                raise ToolError("沒有布林輸入；請連線或改用固定判定")
+                raise ToolError("No boolean input; connect one or use a fixed verdict")
             verdict = "ok" if bool(value) else "ng"
         else:
             verdict = mode
@@ -50,7 +50,7 @@ class JudgeTool(Tool):
         return Result(
             outputs={"verdict": verdict.upper()},
             status="ng" if verdict == "ng" else "ok",
-            message=f"判定 {verdict.upper()}" + (f"（{label}）" if label else ""),
+            message=f"{verdict.upper()}" + (f"（{label}）" if label else ""),
             context={"_judge": merged, "_outputs": outputs},
         )
 
@@ -107,7 +107,7 @@ class SaveImageTool(Tool):
         image = ctx.require_image()
         judge = str(ctx.context.get("_judge") or "ok")
         if ctx.flag("only_ng") and judge != "ng":
-            return Result(outputs={"path": ""}, message="判定 OK，未存檔")
+            return Result(outputs={"path": ""}, message="OK, not saved")
         folder = str(ctx.param("folder") or os.path.join(str(settings.DATA_DIR), "saved", str(ctx.flow_id)))
         if ctx.flag("split_by_judge", True):
             folder = os.path.join(folder, judge.upper())
@@ -117,9 +117,9 @@ class SaveImageTool(Tool):
         path = os.path.join(folder, name)
         ok, buf = cv2.imencode("." + str(ctx.param("format", "png")), image)
         if not ok:
-            raise ToolError("影像編碼失敗")
+            raise ToolError("Could not encode the image")
         buf.tofile(path)
-        return Result(outputs={"path": path}, message=f"已存 {path}")
+        return Result(outputs={"path": path}, message=f"Saved {path}")
 
 
 class DrawResultTool(Tool):

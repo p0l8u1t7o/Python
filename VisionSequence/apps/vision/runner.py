@@ -392,7 +392,7 @@ class Runner:
         recipe: "FlowRecipe | str | int | None" = None,
     ) -> Future:
         if not flow.is_enabled and not preview:
-            raise Conflict("流程已停用", code="flow_disabled")
+            raise Conflict("The flow is disabled", code="flow_disabled")
         recipe_obj = resolve_recipe(flow, recipe)
         compiled = self.compiled_for(flow, graph_override=graph_override, recipe=recipe_obj)
         if until_node:
@@ -402,7 +402,7 @@ class Runner:
         run_id = uuid.uuid4().hex
         with self._lock:
             if rt.queued >= limit:
-                raise RateLimited(f"流程 '{flow.name}' 等待中的觸發已達上限（{rt.queued}/{limit}），請稍後重送", code="flow_queue_full")
+                raise RateLimited(f"Flow '{flow.name}' already has {rt.queued}/{limit} triggers waiting; try again shortly", code="flow_queue_full")
             rt.queued += 1
             rt.pending[run_id] = "queued"
         bus.publish({"type": "run_queued", "flow_id": flow.id, "run_id": run_id, "trigger": trigger})
@@ -529,7 +529,7 @@ class Runner:
         if rt.continuous and rt.continuous.is_alive():
             return
         if not flow.is_enabled:
-            raise Conflict("流程已停用", code="flow_disabled")
+            raise Conflict("The flow is disabled", code="flow_disabled")
         self.compiled_for(flow)
         rt.continuous = ContinuousLoop(self, flow)
         rt.continuous.start()
@@ -628,14 +628,14 @@ def resolve_recipe(flow: Flow, recipe: "FlowRecipe | str | int | None") -> "Flow
     qs = FlowRecipe.objects.filter(flow=flow)
     row = qs.filter(pk=int(recipe)).first() if str(recipe).isdigit() else qs.filter(name=str(recipe)).first()
     if row is None:
-        raise NotFound(f"配方 '{recipe}' 不存在", code="recipe_not_found")
+        raise NotFound(f"Recipe '{recipe}' not found", code="recipe_not_found")
     return row
 
 
 def get_flow(flow_id: int) -> Flow:
     flow = Flow.objects.filter(pk=flow_id).first()
     if flow is None:
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     return flow
 
 

@@ -124,17 +124,17 @@ def parse(text: str | bytes) -> dict[str, Any]:
     try:
         doc = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ValidationError(f"不是合法 JSON：{exc}", code="bad_json") from None
+        raise ValidationError(f"Not valid JSON: {exc}", code="bad_json") from None
     if not isinstance(doc, dict):
-        raise ValidationError("流程檔必須是物件", code="bad_flow_file")
+        raise ValidationError("A flow file must be an object", code="bad_flow_file")
     version = doc.get("schema_version")
     if version != SCHEMA_VERSION:
-        raise ValidationError(f"不支援的 schema_version：{version!r}（目前為 {SCHEMA_VERSION}）", code="bad_schema_version")
+        raise ValidationError(f"Unsupported schema_version {version!r} (this build uses {SCHEMA_VERSION})", code="bad_schema_version")
     name = str(doc.get("name") or "").strip()
     if not name:
-        raise ValidationError("流程檔缺少 name", code="bad_flow_file")
+        raise ValidationError("The flow file has no name", code="bad_flow_file")
     if not isinstance(doc.get("graph"), dict):
-        raise ValidationError("流程檔缺少 graph", code="bad_flow_file")
+        raise ValidationError("The flow file has no graph", code="bad_flow_file")
     return doc
 
 
@@ -181,7 +181,7 @@ def import_flow(doc: dict[str, Any], *, source_id: int | None = None, owner=None
             flow.save()
             return flow, False
     except IntegrityError:
-        raise Conflict("已有同名流程", code="flow_name_taken") from None
+        raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
 
 
 def find_flow(ref: str) -> Flow | None:

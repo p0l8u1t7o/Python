@@ -269,7 +269,7 @@ def execute(
         try:
             result = cn.tool.execute(ctx)
             if not isinstance(result, Result):
-                raise ToolError(f"工具 '{cn.type}' 沒有回傳 Result")
+                raise ToolError(f"Tool '{cn.type}' returned no Result")
         except ToolError as exc:
             result = Result(status="error", message=str(exc)[:500])
         except Exception as exc:  # noqa: BLE001
@@ -334,7 +334,7 @@ def execute(
     # 未執行到的節點（逾時中斷）標 skipped。
     for node_id in compiled.order:
         if node_id not in report.nodes:
-            report.nodes[node_id] = NodeReport(status="skipped", message="未執行")
+            report.nodes[node_id] = NodeReport(status="skipped", message="Not run")
 
     report.context = {k: _jsonable(v) for k, v in context.items() if not k.startswith("_")}
     report.outputs = _jsonable(context.get("_outputs", {}))

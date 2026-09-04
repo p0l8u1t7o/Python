@@ -125,11 +125,11 @@ class CaliperTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 2:
-            raise ToolError("區域太小或落在影像外")
+            raise ToolError("The region is too small or falls outside the image")
         h, w = c.image.shape[:2]
         horizontal = w >= h
         # cv2.reduce 以 double 累加再除，與 numpy mean 對 uint8 結果相同。
@@ -141,12 +141,12 @@ class CaliperTool(Tool):
         if len(edges) < 2:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
-                          overlays=overlays, status="ng", message=f"邊緣不足兩個（{len(edges)}）")
+                          overlays=overlays, status="ng", message=f"Fewer than two edges ({len(edges)})")
         pair = _pick_pair(edges, ctx.param("edge_pair", "first_last"), ctx.param("pair_polarity", "any"), ctx.number("expected_width", 0))
         if pair is None:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
-                          overlays=overlays, status="ng", message="沒有符合極性的邊緣對")
+                          overlays=overlays, status="ng", message="No edge pair matches the polarity")
         (p1, _), (p2, _) = pair
         mid = (h if horizontal else w) / 2
         if horizontal:
@@ -166,7 +166,7 @@ class CaliperTool(Tool):
         return Result(
             outputs={"width": width, "edge1_x": e1[0], "edge1_y": e1[1], "edge2_x": e2[0], "edge2_y": e2[1],
                      "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
-            overlays=overlays, message=f"寬度 {width:.2f}px（{len(edges)} 個邊緣）",
+            overlays=overlays, message=f"Width {width:.2f}px ({len(edges)} edges)",
         )
 
 
@@ -193,9 +193,9 @@ class DistanceTool(Tool):
         a = _point(ctx.inputs.get("a"), (ctx.inputs.get("ax"), ctx.inputs.get("ay")))
         b = _point(ctx.inputs.get("b"), (ctx.inputs.get("bx"), ctx.inputs.get("by")))
         if a is None or b is None:
-            raise ToolError("需要兩個點：接 a/b 或 ax,ay,bx,by")
+            raise ToolError("Two points are needed: wire a/b, or ax, ay, bx, by")
         if not all(np.isfinite([*a, *b])):
-            return Result(outputs={"distance": float("nan"), "dx": float("nan"), "dy": float("nan")}, status="ng", message="輸入點無效（上游可能沒找到）")
+            return Result(outputs={"distance": float("nan"), "dx": float("nan"), "dy": float("nan")}, status="ng", message="The input point is not valid (the upstream step may have found nothing)")
         dx, dy = b[0] - a[0], b[1] - a[1]
         mode = ctx.param("mode", "euclid")
         d = abs(dx) if mode == "dx" else abs(dy) if mode == "dy" else math.hypot(dx, dy)
@@ -233,9 +233,9 @@ class AngleTool(Tool):
         la = _line(i.get("a")) or _line([i.get("ax1"), i.get("ay1"), i.get("ax2"), i.get("ay2")])
         lb = _line(i.get("b")) or _line([i.get("bx1"), i.get("by1"), i.get("bx2"), i.get("by2")])
         if la is None or lb is None:
-            raise ToolError("需要兩條直線：接 a/b 或八個端點數值")
+            raise ToolError("Two lines are needed: wire a/b, or eight endpoint numbers")
         if not all(np.isfinite([*la, *lb])):
-            return Result(outputs={"angle_deg": float("nan"), "angle_a": float("nan"), "angle_b": float("nan")}, status="ng", message="輸入直線無效")
+            return Result(outputs={"angle_deg": float("nan"), "angle_a": float("nan"), "angle_b": float("nan")}, status="ng", message="The input line is not valid")
         aa = math.degrees(math.atan2(la[3] - la[1], la[2] - la[0]))
         ab = math.degrees(math.atan2(lb[3] - lb[1], lb[2] - lb[0]))
         diff = (ab - aa + 180) % 360 - 180
@@ -264,12 +264,12 @@ def _roi_hist(ctx: ToolContext) -> tuple[np.ndarray, dict[str, Any] | None]:
     region = ctx.roi()
     c = crop(image, region)
     if c.image.size == 0:
-        raise ToolError("區域落在影像外")
+        raise ToolError("The region falls outside the image")
     sub = c.image if c.image.dtype == np.uint8 else np.clip(c.image, 0, 255).astype(np.uint8)
     mask = c.mask if c.mask is None else np.ascontiguousarray(c.mask)
     hist = cv2.calcHist([np.ascontiguousarray(sub)], [0], mask, [256], [0, 256]).reshape(-1).astype(np.float64)
     if hist.sum() <= 0:
-        raise ToolError("區域內沒有像素")
+        raise ToolError("The region has no pixels")
     return hist, region
 
 
@@ -302,7 +302,7 @@ class IntensityTool(Tool):
         outputs = _hist_stats(hist)
         mean, std = outputs["mean"], outputs["std"]
         overlays = [region_overlay(region, label=f"mean {mean:.1f}")] if region else []
-        return Result(outputs=outputs, overlays=overlays, message=f"平均 {mean:.1f} ± {std:.1f}")
+        return Result(outputs=outputs, overlays=overlays, message=f"Mean {mean:.1f} ± {std:.1f}")
 
 
 class CalibrationTool(Tool):
@@ -327,12 +327,12 @@ class CalibrationTool(Tool):
         if ctx.param("mode", "pixel_size") == "known_distance":
             px = ctx.number("px_distance", 0)
             if px <= 0:
-                raise ToolError("像素距離必須大於 0")
+                raise ToolError("The pixel distance must be greater than 0")
             k = ctx.number("real_mm", 0) / px
         else:
             k = ctx.number("pixel_size_mm", 0)
         if k <= 0:
-            raise ToolError("比例必須大於 0")
+            raise ToolError("The scale must be greater than 0")
         power = 2 if str(ctx.param("power", "1")) == "2" else 1
         value = ctx.inputs.get("value")
         mm = float("nan")
@@ -340,14 +340,14 @@ class CalibrationTool(Tool):
             try:
                 mm = float(value) * (k**power)
             except (TypeError, ValueError):
-                raise ToolError(f"輸入不是數值：{value!r}") from None
+                raise ToolError(f"The input is not a number: {value!r}") from None
         pts = ctx.inputs.get("points")
         pts_mm: list[list[float]] = []
         if pts is not None:
             arr = np.asarray(pts, dtype=np.float64).reshape(-1, 2) * k
             pts_mm = arr.tolist()
         if value is None and pts is None:
-            raise ToolError("沒有輸入：接 value 或 points")
+            raise ToolError("No input: wire value or points")
         return Result(outputs={"mm": mm, "scale": k, "points_mm": pts_mm}, message=(f"{mm:.4f} mm" if value is not None else f"k={k:.5f}"))
 
 
@@ -372,7 +372,7 @@ class HistogramTool(Tool):
         if ctx.flag("normalize"):
             hist = hist / max(1.0, hist.sum())
         overlays = [region_overlay(region, label=f"peak {peak}")] if region else []
-        return Result(outputs={"histogram": hist.tolist(), "peak": peak, "peak_count": peak_count, "otsu": float(otsu)}, overlays=overlays, message=f"峰值 {peak}，Otsu {otsu:g}")
+        return Result(outputs={"histogram": hist.tolist(), "peak": peak, "peak_count": peak_count, "otsu": float(otsu)}, overlays=overlays, message=f"Peak {peak}, Otsu {otsu:g}")
 
 
 
@@ -411,19 +411,19 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
             if origin is None:
                 polarity = "any"
         if r_out - r_in < 3:
-            raise ToolError("區域半徑太小")
+            raise ToolError("The region radius is too small")
         pts_out = radial_edge_points(image, cx, cy, r_in, r_out, num, polarity, thr, sel, smoothing, mask=mask, mask_offset=off, a0=a0, a1=a1)
         return np.asarray(pts_out, dtype=np.float64).reshape(-1, 2)
     if shape in ("rect", "rotated_rect"):
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("區域太小或落在影像外")
+            raise ToolError("The region is too small or falls outside the image")
         pts_local, _ = caliper_points(c.image, num, polarity, thr, sel, smoothing)
         if not pts_local:
             return np.zeros((0, 2), dtype=np.float64)
         return c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local]))
-    raise ToolError(f"不支援 {shape} 區域")
+    raise ToolError(f"A {shape} region is not supported")
 
 
 _RADIAL_SHAPES = ("circle", "annulus", "polygon")
@@ -488,13 +488,13 @@ class FitArcTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         pts = _region_edge_points(ctx, image, region)
         overlays = [region_overlay(region, label="arc roi")]
         nan = float("nan")
         ng = {"radius": nan, "cx": nan, "cy": nan, "residual_rms": nan, "points": pts.round(2).tolist(), "start_angle": nan, "end_angle": nan}
         if len(pts) < 3:
-            return Result(outputs=ng, overlays=overlays, status="ng", message=f"邊緣點不足（{len(pts)}）")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)})")
         use_ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
         circle, inliers = fit_circle_points(pts, use_ransac, tol)
         if circle is not None:
@@ -504,7 +504,7 @@ class FitArcTool(Tool):
                 if circle2 is not None and int(inliers2.sum()) >= max(3, int(0.5 * inliers.sum())):
                     pts, circle, inliers = pts2, circle2, inliers2
         if circle is None:
-            return Result(outputs=ng, overlays=overlays, status="ng", message="擬合失敗")
+            return Result(outputs=ng, overlays=overlays, status="ng", message="Fit failed")
         ng["points"] = pts.round(2).tolist()
         cx, cy, r = circle
         good = pts[inliers]
@@ -520,7 +520,7 @@ class FitArcTool(Tool):
         ]
         return Result(
             outputs={"radius": r, "cx": cx, "cy": cy, "residual_rms": rms, "points": pts.round(2).tolist(), "start_angle": start, "end_angle": end},
-            overlays=overlays, message=f"R={r:.2f}px 圓心 ({cx:.1f}, {cy:.1f})，{int(inliers.sum())}/{len(pts)} 點，RMS {rms:.2f}px，{start:.0f}°→{end:.0f}°",
+            overlays=overlays, message=f"R={r:.2f}px centre ({cx:.1f}, {cy:.1f}), {int(inliers.sum())}/{len(pts)} points, RMS {rms:.2f}px, {start:.0f}°→{end:.0f}°",
         )
 
 
@@ -558,13 +558,13 @@ class FitEllipseTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         pts = _region_edge_points(ctx, image, region)
         overlays = [region_overlay(region, label="ellipse roi")]
         nan = float("nan")
         ng = {"cx": nan, "cy": nan, "a": nan, "b": nan, "angle": nan, "roundness": nan, "residual_rms": nan, "points": pts.round(2).tolist()}
         if len(pts) < 5:
-            return Result(outputs=ng, overlays=overlays, status="ng", message=f"邊緣點不足（{len(pts)}，橢圓至少 5 點）")
+            return Result(outputs=ng, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)}; an ellipse needs at least 5)")
         fitted = _fit_ellipse(pts)
         if fitted is not None:
             pts2 = _refined_points(ctx, image, region, (fitted[0], fitted[1]))
@@ -573,7 +573,7 @@ class FitEllipseTool(Tool):
                 if fitted2 is not None:
                     pts, fitted = pts2, fitted2
         if fitted is None:
-            return Result(outputs=ng, overlays=overlays, status="ng", message="擬合失敗")
+            return Result(outputs=ng, overlays=overlays, status="ng", message="Fit failed")
         ng["points"] = pts.round(2).tolist()
         cx, cy, w, h, ang = fitted
         # fitEllipse 的 angle 是 w 軸方向；長半軸取兩者較大者，角度跟著調整。
@@ -600,7 +600,7 @@ class FitEllipseTool(Tool):
         ]
         return Result(
             outputs={"cx": float(cx), "cy": float(cy), "a": float(a), "b": float(b), "angle": angle, "roundness": roundness, "residual_rms": rms, "points": pts.round(2).tolist()},
-            overlays=overlays, message=f"a={a:.2f} b={b:.2f} 圓度 {roundness:.3f}，{len(pts)} 點，RMS {rms:.2f}px",
+            overlays=overlays, message=f"a={a:.2f} b={b:.2f} roundness {roundness:.3f}, {len(pts)} points, RMS {rms:.2f}px",
         )
 
 
@@ -631,7 +631,7 @@ def _as_wall_rect(region: dict[str, Any], band: float) -> dict[str, Any]:
         x1, y1, x2, y2 = float(region["x1"]), float(region["y1"]), float(region["x2"]), float(region["y2"])
         length = math.hypot(x2 - x1, y2 - y1)
         if length < 3:
-            raise ToolError("線段太短")
+            raise ToolError("The segment is too short")
         return {"shape": "rotated_rect", "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2, "w": length, "h": max(3.0, band), "angle": math.degrees(math.atan2(y2 - y1, x2 - x1))}
     return _as_rotated_rect(region)
 
@@ -662,11 +662,11 @@ class WallThicknessTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         rr = _as_wall_rect(region, ctx.number("band", 10))
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("區域太小或落在影像外")
+            raise ToolError("The region is too small or falls outside the image")
         profiles, centers, horizontal = _band_profiles(c.image, ctx.integer("num_calipers", 10), along_long=region.get("shape") == "line")
         polarity = ctx.param("polarity", "any")
         thr = ctx.number("edge_threshold", 20)
@@ -696,7 +696,7 @@ class WallThicknessTool(Tool):
         nan = float("nan")
         if not thick:
             return Result(outputs={"thickness": nan, "min": nan, "max": nan, "mean": nan, "std": nan, "count": 0, "profile": [], "pairs": []},
-                          overlays=overlays, status="ng", message="沒有找到成對的邊緣")
+                          overlays=overlays, status="ng", message="No edge pair was found")
         arr = np.asarray(thick)
         for (x1, y1), (x2, y2) in pairs:
             overlays.append({"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2})
@@ -707,7 +707,7 @@ class WallThicknessTool(Tool):
         return Result(
             outputs={"thickness": mean, "min": float(arr.min()), "max": float(arr.max()), "mean": mean, "std": float(arr.std()), "count": len(thick),
                      "profile": [round(t, 2) for t in thick], "pairs": pairs},
-            overlays=overlays, message=f"壁厚 {mean:.2f}px（min {arr.min():.2f} / max {arr.max():.2f}，{len(thick)}/{len(centers)} 條卡尺）",
+            overlays=overlays, message=f"Wall thickness {mean:.2f}px (min {arr.min():.2f} / max {arr.max():.2f}, {len(thick)}/{len(centers)} calipers)",
         )
 
 
@@ -757,11 +757,11 @@ class ConcentricityTool(Tool):
         a = _circle(i.get("a"), (i.get("ax"), i.get("ay"), i.get("ar")))
         b = _circle(i.get("b"), (i.get("bx"), i.get("by"), i.get("br")))
         if a is None or b is None:
-            raise ToolError("需要兩個圓：接 a/b 或 ax,ay,(ar),bx,by,(br)")
+            raise ToolError("Two circles are needed: wire a/b, or ax, ay, (ar), bx, by, (br)")
         nan = float("nan")
         if not all(np.isfinite([a[0], a[1], b[0], b[1]])):
             return Result(outputs={"deviation": nan, "dx": nan, "dy": nan, "concentricity": nan, "verdict": "ng", "in_spec": False},
-                          branch="ng", status="ng", message="輸入圓無效（上游可能沒找到）")
+                          branch="ng", status="ng", message="The input circle is not valid (the upstream step may have found nothing)")
         dx, dy = b[0] - a[0], b[1] - a[1]
         dev = math.hypot(dx, dy)
         max_dev = ctx.number("max_deviation", 5)
@@ -777,7 +777,7 @@ class ConcentricityTool(Tool):
         return Result(
             outputs={"deviation": dev, "dx": dx, "dy": dy, "concentricity": 2 * dev, "verdict": "ok" if ok else "ng", "in_spec": ok},
             overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng",
-            message=f"圓心偏移 {dev:.2f}px（dx {dx:.2f}, dy {dy:.2f}）{'≤' if ok else '>'} {max_dev:g}",
+            message=f"Centre offset {dev:.2f}px (dx {dx:.2f}, dy {dy:.2f}) {'≤' if ok else '>'} {max_dev:g}",
         )
 
 
@@ -816,11 +816,11 @@ class ChamferAngleTool(Tool):
         image = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         rr = _as_rotated_rect(region)
         c = crop(image, rr, upright=True)
         if c.image.size == 0 or min(c.image.shape[:2]) < 3:
-            raise ToolError("區域太小或落在影像外")
+            raise ToolError("The region is too small or falls outside the image")
         pts_local, _ = caliper_points(c.image, ctx.integer("num_calipers", 40), ctx.param("polarity", "any"),
                                       ctx.number("edge_threshold", 20), ctx.param("direction", "first"), ctx.integer("smoothing", 3))
         overlays = [region_overlay(region, label="chamfer")]
@@ -829,21 +829,21 @@ class ChamferAngleTool(Tool):
         pts = c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local])) if pts_local else np.zeros((0, 2))
         min_pts = max(2, ctx.integer("min_points", 3))
         if len(pts) < 2 + min_pts:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"邊緣點不足（{len(pts)}）")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)})")
         tol = ctx.number("ransac_tol", 1.5)
         first = fit_line_ransac(pts, tol=tol, iterations=300)
         if first is None:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message="第一段擬合失敗")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message="Fitting the first line failed")
         (vx1, vy1, x01, y01), inl1 = first
         rest = pts[~inl1]
         if len(rest) < min_pts:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"排除主邊後剩 {len(rest)} 點，找不到倒角段")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"{len(rest)} points remain after removing the main edge; no chamfer was found")
         second = fit_line_ransac(rest, tol=tol, iterations=300, seed=1)
         if second is None:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message="第二段擬合失敗")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message="Fitting the second line failed")
         (vx2, vy2, x02, y02), inl2 = second
         if int(inl2.sum()) < min_pts:
-            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"倒角段內點不足（{int(inl2.sum())}）")
+            return Result(outputs={**ng_out, "points": pts.round(2).tolist()}, overlays=overlays, status="ng", message=f"Too few inliers on the chamfer ({int(inl2.sum())})")
         line1 = _line_from_fit(vx1, vy1, x01, y01, pts[inl1])
         line2 = _line_from_fit(vx2, vy2, x02, y02, rest[inl2])
         diff = abs((line2["angle"] - line1["angle"] + 180) % 360 - 180) % 180
@@ -866,7 +866,7 @@ class ChamferAngleTool(Tool):
             overlays.append({"kind": "point", "x": ix, "y": iy, "color": "#f59e0b"})
         return Result(
             outputs={"angle_deg": angle, "length": line2["length"], "line1": line1, "line2": line2, "ix": ix, "iy": iy, "points": pts.round(2).tolist()},
-            overlays=overlays, message=f"倒角 {angle:.2f}°，長 {line2['length']:.1f}px（主邊 {int(inl1.sum())} 點／倒角 {int(inl2.sum())} 點）",
+            overlays=overlays, message=f"Chamfer {angle:.2f}°, length {line2['length']:.1f}px ({int(inl1.sum())} points on the main edge, {int(inl2.sum())} on the chamfer)",
         )
 
 
@@ -896,7 +896,7 @@ class ToleranceJudgeTool(Tool):
         try:
             v = float(raw)
         except (TypeError, ValueError):
-            raise ToolError(f"輸入不是數值：{raw!r}") from None
+            raise ToolError(f"The input is not a number: {raw!r}") from None
         nominal = ctx.number("nominal", 0)
         upper = nominal + ctx.number("upper_tol", 0.1)
         lower = nominal + ctx.number("lower_tol", -0.1)
@@ -944,20 +944,20 @@ class LineProfileTool(Tool):
         gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         region = ctx.roi()
         if not region:
-            raise ToolError("需要線（line／polyline）ROI")
+            raise ToolError("A line or polyline ROI is required")
         if region.get("shape") == "line":
             pts = [[float(region["x1"]), float(region["y1"])], [float(region["x2"]), float(region["y2"])]]
         elif region.get("shape") in ("polyline", "polygon"):
             pts = [[float(x), float(y)] for x, y in (region.get("points") or [])]
         else:
-            raise ToolError(f"線剖面不支援 '{region.get('shape')}' ROI")
+            raise ToolError(f"Line profile does not support a '{region.get('shape')}' ROI")
         if len(pts) < 2:
-            raise ToolError("至少要兩個點")
+            raise ToolError("At least two points are needed")
         seg = np.diff(np.asarray(pts, dtype=np.float64), axis=0)
         seg_len = np.hypot(seg[:, 0], seg[:, 1])
         total = float(seg_len.sum())
         if total < 1:
-            raise ToolError("線長度為 0")
+            raise ToolError("The line has zero length")
         n = ctx.integer("samples", 0) or int(round(total))
         n = max(2, min(10000, n))
         # 沿折線等距取樣（雙線性）
@@ -976,7 +976,7 @@ class LineProfileTool(Tool):
             "length": round(total, 2),
         }
         overlays = [region_overlay(region, label=f"profile n={n}")]
-        return Result(outputs=stats, overlays=overlays, message=f"{n} 點，mean {stats['mean']:.1f}")
+        return Result(outputs=stats, overlays=overlays, message=f"{n} points, mean {stats['mean']:.1f}")
 
 
 class ColorStatsTool(Tool):
@@ -1000,11 +1000,11 @@ class ColorStatsTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         mask = c.mask if c.mask is not None else np.full(c.image.shape[:2], 255, np.uint8)
         sel = c.image[mask > 0]
         if not len(sel):
-            raise ToolError("區域內沒有像素")
+            raise ToolError("The region has no pixels")
         mean_bgr = sel.reshape(-1, 3).mean(axis=0)
         hsv = cv2.cvtColor(c.image, cv2.COLOR_BGR2HSV)
         hsel = hsv[mask > 0].reshape(-1, 3).astype(np.float32)
@@ -1059,12 +1059,12 @@ class GeometryTool(Tool):
         if mode == "intersect":
             la, lb = _as_line(a), _as_line(b)
             if not la or not lb:
-                raise ToolError("兩線交點需要兩條線 {x1,y1,x2,y2}")
+                raise ToolError("An intersection needs two lines {x1,y1,x2,y2}")
             x1, y1, x2, y2 = la
             x3, y3, x4, y4 = lb
             denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
             if abs(denom) < 1e-9:
-                return Result(status="ng", message="兩線平行，沒有交點", outputs={"x": 0.0, "y": 0.0, "distance": 0.0})
+                return Result(status="ng", message="The lines are parallel and never meet", outputs={"x": 0.0, "y": 0.0, "distance": 0.0})
             px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom
             py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
             overlays = [{"kind": "point", "x": px, "y": py, "label": "交點"}]
@@ -1072,7 +1072,7 @@ class GeometryTool(Tool):
         if mode == "midpoint":
             pa, pb = _as_point(a), _as_point(b)
             if not pa or not pb:
-                raise ToolError("中點需要兩個點")
+                raise ToolError("A midpoint needs two points")
             mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
             d = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
             return Result(outputs={"x": round(mx, 2), "y": round(my, 2), "distance": round(d, 2)},
@@ -1082,18 +1082,18 @@ class GeometryTool(Tool):
         if not pa and _as_point(b) and _as_line(a):  # 接反了也行
             pa, lb = _as_point(b), _as_line(a)
         if not pa or not lb:
-            raise ToolError("需要一個點與一條線")
+            raise ToolError("A point and a line are needed")
         x1, y1, x2, y2 = lb
         dx, dy = x2 - x1, y2 - y1
         norm = dx * dx + dy * dy
         if norm < 1e-9:
-            raise ToolError("線的兩端點重合")
+            raise ToolError("The line's two ends are the same point")
         t = ((pa[0] - x1) * dx + (pa[1] - y1) * dy) / norm
         px, py = x1 + t * dx, y1 + t * dy
         d = math.hypot(pa[0] - px, pa[1] - py)
         overlays = [{"kind": "line", "x1": pa[0], "y1": pa[1], "x2": px, "y2": py, "label": f"{d:.1f}px"}]
         return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": round(d, 2)}, overlays=overlays,
-                      message=f"垂距 {d:.2f}px" if mode == "point_line" else f"投影 ({px:.1f}, {py:.1f})")
+                      message=f"Perpendicular distance {d:.2f}px" if mode == "point_line" else f"投影 ({px:.1f}, {py:.1f})")
 
 
 TOOLS = [

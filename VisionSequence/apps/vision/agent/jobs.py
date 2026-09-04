@@ -80,7 +80,7 @@ def get(job_id: str, step_from: int = 0) -> dict[str, Any]:
     with _lock:
         job = _jobs.get(job_id)
     if job is None:
-        raise NotFound(f"沒有工作 {job_id}", code="job_not_found")
+        raise NotFound(f"No job {job_id}", code="job_not_found")
     return job.to_dict(step_from)
 
 
@@ -88,7 +88,7 @@ def cancel(job_id: str) -> bool:
     with _lock:
         job = _jobs.get(job_id)
         if job is None:
-            raise NotFound(f"沒有工作 {job_id}", code="job_not_found")
+            raise NotFound(f"No job {job_id}", code="job_not_found")
         if job.status in ("running", "needs_input"):
             job.cancel_flag = True
             if job.status == "needs_input":
@@ -100,13 +100,13 @@ def cancel(job_id: str) -> bool:
 def start(task: str, settings: providers.AgentSettings, state: actions.AgentState, budget: loop.Budget | None = None, *,
           runs: list[dict[str, Any]] | None = None, run_images: dict[str, np.ndarray] | None = None, batch_run_id: int | None = None) -> dict[str, Any]:
     if task not in TASKS:
-        raise ValidationError(f"未知的工作類型 '{task}'", code="bad_task")
+        raise ValidationError(f"Unknown job type '{task}'", code="bad_task")
     job = AgentJob(id=uuid.uuid4().hex[:12], task=task, settings=settings, state=state, budget=budget or loop.Budget(),
                    runs=list(runs or []), run_images=dict(run_images or {}), batch_run_id=batch_run_id)
     with _lock:
         _prune_locked()
         if sum(1 for j in _jobs.values() if j.status == "running") >= MAX_RUNNING:
-            raise Conflict(f"同時最多 {MAX_RUNNING} 個 AI 助手工作", code="agent_busy")
+            raise Conflict(f"At most {MAX_RUNNING} assistant jobs may run at once", code="agent_busy")
         _jobs[job.id] = job
     _spawn(job)
     return job.to_dict()
@@ -116,9 +116,9 @@ def answer(job_id: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
     with _lock:
         job = _jobs.get(job_id)
         if job is None:
-            raise NotFound(f"沒有工作 {job_id}", code="job_not_found")
+            raise NotFound(f"No job {job_id}", code="job_not_found")
         if job.status != "needs_input":
-            raise Conflict("此工作沒有在等待回答", code="not_waiting")
+            raise Conflict("This job is not waiting for an answer", code="not_waiting")
         job.status = "running"
         job.questions = []
         job.state.questions = None

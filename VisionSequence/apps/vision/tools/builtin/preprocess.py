@@ -38,10 +38,10 @@ class CropTool(Tool):
         image = ctx.require_image()
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         c = crop(image, region, upright=True)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         return Result(
             outputs={"image": np.ascontiguousarray(c.image), "offset_x": c.x0, "offset_y": c.y0},
             overlays=[region_overlay(region, label="crop")],
@@ -253,7 +253,7 @@ class ColorRangeTool(Tool):
         else:
             mask = cv2.inRange(hsv, (hl, lo[1], lo[2]), (179, hi[1], hi[2])) | cv2.inRange(hsv, (0, lo[1], lo[2]), (hh, hi[1], hi[2]))
         ratio = float(cv2.countNonZero(mask)) / mask.size
-        return Result(outputs={"image": mask, "ratio": ratio}, message=f"覆蓋 {ratio*100:.2f}%")
+        return Result(outputs={"image": mask, "ratio": ratio}, message=f"Coverage {ratio*100:.2f}%")
 
 
 class ArithmeticTool(Tool):
@@ -282,7 +282,7 @@ class ArithmeticTool(Tool):
         if op == "gain":
             return Result(outputs={"image": cv2.convertScaleAbs(a, alpha=ctx.number("gain", 1.0), beta=ctx.number("bias", 0))})
         if b is None:
-            raise ToolError("此運算需要第二張影像 B")
+            raise ToolError("This operation needs a second image B")
         if a.shape != b.shape:
             if a.ndim != b.ndim:
                 b = to_gray(b) if a.ndim == 2 else cv2.cvtColor(b, cv2.COLOR_GRAY2BGR)
@@ -528,7 +528,7 @@ class FilterTool(Tool):
                 if kernel.shape != (3, 3):
                     raise ValueError
             except (TypeError, ValueError):
-                raise ToolError("自訂 kernel 必須是 3×3 數字陣列") from None
+                raise ToolError("A custom kernel must be a 3×3 array of numbers") from None
             out = cv2.filter2D(image, -1, kernel)
         return Result(outputs={"image": out}, message=method)
 
@@ -601,7 +601,7 @@ class WarpPerspectiveTool(Tool):
         region = ctx.roi()
         pts = (region or {}).get("points") or []
         if len(pts) < 4:
-            raise ToolError("透視校正需要 4 個點的多邊形 ROI")
+            raise ToolError("Perspective correction needs a four-point polygon ROI")
         src = np.array(pts[:4], dtype=np.float32)
         # 依「左上、右上、右下、左下」排序（點可依任意順序畫）
         c = src.mean(axis=0)

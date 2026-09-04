@@ -277,7 +277,7 @@ class ClientSession(threading.Thread):
             raise ProtocolError("第一則訊息必須是 HELLO", code="bad_hello")
         body = P.loads_json(self._recv_bytes(hlen))
         if int(body.get("protocol", 0)) != P.PROTOCOL_VERSION:
-            self._reject(req_id, "protocol_unsupported", f"協定版本不支援：{body.get('protocol')}（伺服端 {P.PROTOCOL_VERSION}）")
+            self._reject(req_id, "protocol_unsupported", f"Unsupported protocol version {body.get('protocol')} (this server speaks {P.PROTOCOL_VERSION})")
             return False
         secret = self.hub.auth_secret()
         if secret and not hmac.compare_digest(str(body.get("auth") or ""), secret):
@@ -422,7 +422,7 @@ class ClientSession(threading.Thread):
             body = P.loads_json(header)
             code = str(body.get("code") or "error")
             message = str(body.get("message") or code)
-            self._resolve(req_id, error=CaptureError(f"擷取端回報：{message}", code=code))
+            self._resolve(req_id, error=CaptureError(f"The capture client reported: {message}", code=code))
             if req_id == 0:
                 log.warning("擷取端 %s 回報錯誤 %s：%s", self.name_, code, message)
         elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.SLOT_FREE, MsgType.TEST_RESULT, MsgType.UPDATE, MsgType.UPDATE_DATA):
@@ -483,7 +483,7 @@ class ClientSession(threading.Thread):
             raise
         if hdr.encoding == Encoding.LZ4 and lz4_block is None:
             self._drain(plen)
-            self._resolve(req_id, error=CaptureError("伺服端沒有安裝 LZ4，請改用 raw", code="unsupported_encoding"))
+            self._resolve(req_id, error=CaptureError("The server has no LZ4; use raw instead", code="unsupported_encoding"))
             self._try_send_error(req_id, "unsupported_encoding", "伺服端沒有安裝 LZ4")
             return
         with self._lock:
@@ -583,7 +583,7 @@ class ClientSession(threading.Thread):
                     if old is not None:
                         old.close()
             except (FileNotFoundError, OSError, ValueError) as exc:
-                error = f"無法附加共享記憶體：{exc}"
+                error = f"Could not attach the shared memory segment: {exc}"
         self.send(MsgType.SHM_ACCEPT, req_id, P.dumps_json({"ok": not error, "error": error} if error else {"ok": True}))
         if error:
             log.info("擷取端 %s 的共享記憶體未採用：%s", self.name_, error)
@@ -597,7 +597,7 @@ class ClientSession(threading.Thread):
         except OSError as exc:
             self.close_reason = self.close_reason or "send_failed"
             self.close("send_failed")
-            raise CaptureError("擷取端已斷線", code="disconnected") from exc
+            raise CaptureError("The capture client disconnected", code="disconnected") from exc
 
     def _try_send_error(self, req_id: int, code: str, message: str) -> None:
         try:
@@ -622,15 +622,15 @@ class ClientSession(threading.Thread):
     def channel(self, channel: str) -> ChannelState:
         ch = self.by_id.get(channel)
         if ch is None:
-            raise CaptureError(f"擷取端「{self.name_}」沒有通道「{channel}」", code="no_channel")
+            raise CaptureError(f'Capture client "{self.name_}" has no channel "{channel}"', code="no_channel")
         if not ch.enabled:
-            raise CaptureError(f"通道「{channel}」已停用", code="channel_disabled")
+            raise CaptureError(f'Channel "{channel}" is disabled', code="channel_disabled")
         return ch
 
     def request_frame(self, channel: str, *, timeout: float, min_seq: int = 0, after_request: bool = True, encoding: int = Encoding.AUTO) -> Frame:
         ch = self.channel(channel)
         if not self.alive:
-            raise CaptureError("擷取端已斷線", code="disconnected")
+            raise CaptureError("The capture client disconnected", code="disconnected")
         req_id = self.next_req_id()
         pending = _Pending()
         with self._lock:
@@ -647,7 +647,7 @@ class ClientSession(threading.Thread):
                 self._pending.pop(req_id, None)
             with self._lock:
                 ch.last_error = "擷取端逾時"
-            raise CaptureError(f"擷取端「{self.name_}」逾時未回傳影像", code="timeout")
+            raise CaptureError(f'Capture client "{self.name_}" timed out without returning an image', code="timeout")
         if pending.error is not None:
             with self._lock:
                 ch.last_error = str(pending.error)
@@ -665,9 +665,9 @@ class ClientSession(threading.Thread):
         with self._lock:
             ok = ch.cond.wait_for(lambda: not self.alive or (ch.latest is not None and ch.latest.meta.seq > min_seq), timeout)
             if not self.alive:
-                raise CaptureError("擷取端已斷線", code="disconnected")
+                raise CaptureError("The capture client disconnected", code="disconnected")
             if not ok or ch.latest is None:
-                raise CaptureError(f"擷取端「{self.name_}」的串流逾時沒有新影格", code="timeout")
+                raise CaptureError(f'The stream from capture client "{self.name_}" timed out with no new frame', code="timeout")
             return ch.latest
 
     def set_stream(self, channel: str, enabled: bool, max_fps: float = 0) -> None:
@@ -695,7 +695,7 @@ class ClientSession(threading.Thread):
                 ch.streaming = False
                 ch.cond.notify_all()
         for p in pendings:
-            p.error = CaptureError("擷取端已斷線", code="disconnected")
+            p.error = CaptureError("The capture client disconnected", code="disconnected")
             p.event.set()
         if self.shm is not None:
             try:
@@ -816,7 +816,7 @@ class CaptureHub:
     def _require(self, client: str) -> ClientSession:
         session = self.get(client)
         if session is None:
-            raise CaptureError(f"擷取端「{client}」未連線", code="client_offline")
+            raise CaptureError(f'Capture client "{client}" is not connected', code="client_offline")
         return session
 
     # ---- 影格 ----

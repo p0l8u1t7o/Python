@@ -133,7 +133,7 @@ def start(project, params: dict[str, Any], device: str, asset_name: str) -> dict
         device = trainer.devices[0]
     with _lock:
         if _job and _job.status == "running":
-            raise Conflict(f"已有訓練在進行中（{_job.project_name}）", code="training_busy")
+            raise Conflict(f"Training is already running ({_job.project_name})", code="training_busy")
         job = TrainJob(
             id=uuid.uuid4().hex[:12], project_id=project.id, project_name=project.name,
             trainer_kind=project.trainer_kind, device=device,

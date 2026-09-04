@@ -125,7 +125,7 @@ def user_out(user: User) -> dict:
 
 def _check_password(pw: str) -> None:
     if len(pw) < 6:
-        raise ValidationError("密碼至少 6 個字元", code="weak_password")
+        raise ValidationError("A password needs at least 6 characters", code="weak_password")
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ def _check_password(pw: str) -> None:
 @router.post("/setup", auth=None, response={201: dict})
 def setup(request: HttpRequest, payload: SetupIn):
     if User.objects.exists():
-        raise Conflict("系統已有使用者", code="already_setup")
+        raise Conflict("The system already has users", code="already_setup")
     _check_password(payload.password)
     user = User.objects.create_user(username=payload.username.strip(), password=payload.password, is_staff=True, is_superuser=True, first_name=payload.display_name)
     token = AuthToken.issue(user, user_agent=request.META.get("HTTP_USER_AGENT", ""))
@@ -151,7 +151,7 @@ def status(request: HttpRequest):
 def login(request: HttpRequest, payload: LoginIn):
     user = dj_authenticate(request, username=payload.username.strip(), password=payload.password)
     if user is None or not user.is_active:
-        raise APIError("帳號或密碼錯誤", code="bad_credentials", status_code=401)
+        raise APIError("Wrong username or password", code="bad_credentials", status_code=401)
     user.last_login = timezone.now()
     user.save(update_fields=["last_login"])
     token = AuthToken.issue(user, user_agent=request.META.get("HTTP_USER_AGENT", ""))
@@ -178,9 +178,9 @@ def patch_prefs(request: HttpRequest, payload: PrefsIn):
     """更新自己的介面偏好（主題風格等）；整合方金鑰沒有使用者，不適用。"""
     p = principal(request)
     if p.user is None:
-        raise ValidationError("整合方金鑰沒有使用者偏好可以儲存", code="no_user")
+        raise ValidationError("An API key has no user preferences to save", code="no_user")
     if payload.theme is not None and payload.theme not in UI_THEMES:
-        raise ValidationError(f"未知的主題 '{payload.theme}'", code="bad_theme", details={"available": list(UI_THEMES)})
+        raise ValidationError(f"Unknown theme '{payload.theme}'", code="bad_theme", details={"available": list(UI_THEMES)})
     row, _ = UserPref.objects.get_or_create(user=p.user)
     ui = dict(row.ui or {})
     if payload.theme is not None:
@@ -194,9 +194,9 @@ def patch_prefs(request: HttpRequest, payload: PrefsIn):
 def change_password(request: HttpRequest, payload: PasswordIn):
     p = principal(request)
     if p.user is None:
-        raise APIError("此身分沒有密碼", code="not_a_user", status_code=400)
+        raise APIError("This identity has no password", code="not_a_user", status_code=400)
     if not p.user.check_password(payload.old_password):
-        raise APIError("舊密碼錯誤", code="bad_credentials", status_code=400)
+        raise APIError("The current password is wrong", code="bad_credentials", status_code=400)
     _check_password(payload.new_password)
     p.user.set_password(payload.new_password)
     p.user.save()
@@ -225,7 +225,7 @@ def create_user(request: HttpRequest, payload: UserIn):
             user = User.objects.create_user(username=payload.username.strip(), password=payload.password, is_staff=role == "admin", first_name=payload.display_name)
             UserPref.objects.create(user=user, role=role)
     except IntegrityError:
-        raise Conflict("帳號已存在", code="username_taken") from None
+        raise Conflict("That username is taken", code="username_taken") from None
     audit.record(request, "user.create", user, summary=f"role {role}")
     return 201, user_out(user)
 
@@ -233,7 +233,7 @@ def create_user(request: HttpRequest, payload: UserIn):
 def _get_user(user_id: int) -> User:
     user = User.objects.filter(pk=user_id).first()
     if user is None:
-        raise NotFound("使用者不存在", code="user_not_found")
+        raise NotFound("User not found", code="user_not_found")
     return user
 
 
@@ -260,7 +260,7 @@ def patch_user(request: HttpRequest, user_id: int, payload: UserPatch):
         user.pref = pref  # 反向 OneToOne 會被快取，不更新的話 user_out 會回舊角色
     if payload.is_active is not None:
         if p.user and p.user.id == user.id and not payload.is_active:
-            raise ValidationError("不能停用自己", code="self_disable")
+            raise ValidationError("You cannot disable your own account", code="self_disable")
         user.is_active = payload.is_active
         if not user.is_active:
             AuthToken.objects.filter(user=user).delete()
@@ -280,7 +280,7 @@ def delete_user(request: HttpRequest, user_id: int):
     p = require_admin(request)
     user = _get_user(user_id)
     if p.user and p.user.id == user.id:
-        raise ValidationError("不能刪除自己", code="self_delete")
+        raise ValidationError("You cannot delete your own account", code="self_delete")
     from apps.vision.models import Flow
 
     Flow.objects.filter(owner=user).update(owner=None)  # owner 只是建立者；流程本身照樣能被工程師維護
@@ -301,11 +301,11 @@ def get_lock(request: HttpRequest):
 def acquire_lock(request: HttpRequest, payload: LockIn):
     p = principal(request)
     if not p.is_admin:
-        raise APIError("只有整合方（API 金鑰）或管理員能鎖定引擎", code="permission_denied", status_code=403)
+        raise APIError("Only an integrator (API key) or an administrator can lock the engine", code="permission_denied", status_code=403)
     lock = EngineLock.current()
     holder = "integrator" if p.is_integrator else p.name
     if lock.locked and lock.holder != holder and not p.is_integrator:
-        raise Conflict(f"引擎已由 {lock.holder} 鎖定", code="already_locked", details=lock.to_dict())
+        raise Conflict(f"The engine is locked by {lock.holder}", code="already_locked", details=lock.to_dict())
     lock.locked = True
     lock.holder = holder
     lock.reason = payload.reason[:300]
@@ -328,7 +328,7 @@ def release_lock(request: HttpRequest):
     p = principal(request)
     lock = EngineLock.current()
     if lock.locked and not (p.is_admin or lock.holder == p.name):
-        raise APIError("只有整合方、管理員或鎖的持有者能解鎖", code="permission_denied", status_code=403)
+        raise APIError("Only an integrator, an administrator or the lock holder can unlock", code="permission_denied", status_code=403)
     lock.locked, lock.holder, lock.reason, lock.locked_at, lock.expires_at = False, "", "", None, None
     lock.save()
     from apps.vision.runner import bus

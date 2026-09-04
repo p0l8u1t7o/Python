@@ -404,7 +404,7 @@ class PersistedRunTests(TransactionTestCase):
         g2["nodes"][0]["params"] = {"mode": "input"}
         body = self.client.post(f"/api/vision/flows/{flow['id']}/preview", data=json.dumps({"graph": g2}), content_type="application/json").json()
         self.assertEqual(body["status"], "failed")
-        self.assertIn("暫存影像", body["nodes"]["src"]["message"])
+        self.assertIn("scratch image", body["nodes"]["src"]["message"])
         # 重置
         self.assertGreater(self.client.get(f"/api/vision/flows/{flow['id']}/recent").json()["stats"]["runs"], 0)
         self.assertEqual(self.client.delete(f"/api/vision/flows/{flow['id']}/recent").status_code, 204)

@@ -84,13 +84,13 @@ def create_connection(request: HttpRequest, payload: ConnectionIn):
     require_admin(request)
     name = payload.name.strip()
     if not name:
-        raise ValidationError("名稱不能空白", code="connection_name_required")
+        raise ValidationError("A name is required", code="connection_name_required")
     _check_kind(payload.kind, payload.config)
     try:
         with transaction.atomic():
             conn = Connection.objects.create(name=name, kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled)
     except IntegrityError:
-        raise Conflict("已有同名連線", code="connection_name_taken") from None
+        raise Conflict("A connection with that name already exists", code="connection_name_taken") from None
     writers.ensure_started(conn)  # 從站與觸發輪詢不必等到有人按「測試」
     audit.record(request, "connection.create", conn, summary=conn.kind, detail={"config": conn.config})
     return 201, _out(conn)
@@ -120,7 +120,7 @@ def patch_connection(request: HttpRequest, connection_id: int, payload: Connecti
         with transaction.atomic():
             conn.save()
     except IntegrityError:
-        raise Conflict("已有同名連線", code="connection_name_taken") from None
+        raise Conflict("A connection with that name already exists", code="connection_name_taken") from None
     writers.close_connection(conn.id)
     writers.ensure_started(conn)
     changed = audit.fields_diff(before, {"name": conn.name, "kind": conn.kind, "config": conn.config, "is_enabled": conn.is_enabled}, ("name", "kind", "config", "is_enabled"))
@@ -154,7 +154,7 @@ def write_connection(request: HttpRequest, connection_id: int, payload: WriteIn)
     require_admin(request)
     conn = writers.get_connection(connection_id)
     if not payload.values:
-        raise ValidationError("values 不能空白", code="values_required")
+        raise ValidationError("values cannot be empty", code="values_required")
     try:
         writer = writers.open_connection(conn)
         result = writer.write(payload.values, timeout=payload.timeout_s)

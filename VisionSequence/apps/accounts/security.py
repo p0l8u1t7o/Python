@@ -139,7 +139,7 @@ auth = BearerOrApiKey()
 def principal(request: HttpRequest) -> Principal:
     p = getattr(request, "auth", None)
     if not isinstance(p, Principal):
-        raise APIError("未登入", code="unauthenticated", status_code=401)
+        raise APIError("Not signed in", code="unauthenticated", status_code=401)
     return p
 
 

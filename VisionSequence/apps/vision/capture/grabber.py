@@ -25,7 +25,7 @@ class CaptureGrabber(Grabber):
         self.client = str(config.get("client") or "").strip()
         self.channel = str(config.get("channel") or "").strip()
         if not self.client or not self.channel:
-            raise ValidationError("請選擇擷取端與相機通道", code="capture_config")
+            raise ValidationError("Choose a capture client and a camera channel", code="capture_config")
         self.mode = "stream" if str(config.get("mode") or "") == "stream" else "on_demand"
         from django.conf import settings
 

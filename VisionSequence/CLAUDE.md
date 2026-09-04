@@ -39,6 +39,12 @@
 - 改了頁面就開瀏覽器看一眼（影像檢視器與畫布的問題肉眼最快）；改了服務端要重啟後 curl 一次（api 401＝需登入是正常、front 200）。
 - 改動**優化過的函式**（blob 預濾、`_roi_hist`、`find_edges_rows`、`caliper_points`、`apply_mask`、`mask_for`、RANSAC 向量化、template_match 金字塔）必須重跑等價性檢查（`scripts/bench_tools.py`），不能只看測試綠。
 
+### 產品語言（英文為主）
+- **產品表面一律英文**：工具目錄、API 與工具的外露訊息（`APIError`／`ToolError`／`CommError` 的 message、`Result(message=)`）、網頁介面（預設語言與 fallback 都是 en）、`docs/`。
+- **開發溝通維持繁體中文**：對話、commit、CLAUDE.md、程式碼註解與 docstring、日誌訊息（`log.*`）、AI 助手的技能提示詞（`agent/skills/*.md`）。
+- 新增使用者看得到的字串一律先寫英文；中文由前端字典補（介面在 `i18n/locales/*`，工具目錄在 `tools.zh-Hant.ts`／`tools.zh-Hans.ts`）。
+- 測試斷言用英文（介面與訊息的預設就是英文）。
+
 ### 紅線
 - 不重寫引擎、不改 graph JSON 格式、不把 `Flow.graph` 搬出資料庫、不引入 Node.js 服務／微服務、不開第二個 API 行程。
 - 使用者可見文案不得出現技術來源字樣（NI Vision／OpenCV／cv2）；`plugins.html` 程式碼範例的 import 是例外。

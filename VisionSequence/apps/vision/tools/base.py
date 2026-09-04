@@ -199,7 +199,7 @@ class ToolContext:
     def require_image(self, key: str = "image") -> np.ndarray:
         image = self.image(key)
         if image is None:
-            raise ToolError(f"輸入埠 '{key}' 沒有影像")
+            raise ToolError(f"Input port '{key}' has no image")
         return image
 
     def roi(self, key: str = "roi") -> dict[str, Any] | None:

@@ -87,18 +87,18 @@ def check_ast(tree: ast.AST) -> None:
     """靜態檢查：dunder、危險內建、非白名單 import。"""
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id.startswith("__"):
-            raise ToolError(f"腳本不允許使用 '{node.id}'")
+            raise ToolError(f"The script may not use '{node.id}'")
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-            raise ToolError(f"腳本不允許存取 '{node.attr}'")
+            raise ToolError(f"The script may not access '{node.attr}'")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in FORBIDDEN_CALLS:
-            raise ToolError(f"腳本不允許呼叫 {node.func.id}()")
+            raise ToolError(f"The script may not call {node.func.id}()")
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.split(".")[0] not in ALLOWED_MODULES:
-                    raise ToolError(f"腳本不允許匯入 '{alias.name}'（可用：{', '.join(sorted(ALLOWED_MODULES))}）")
+                    raise ToolError(f"The script may not import '{alias.name}' (allowed: {', '.join(sorted(ALLOWED_MODULES))})")
         if isinstance(node, ast.ImportFrom):
             if node.level or not node.module or node.module.split(".")[0] not in ALLOWED_MODULES:
-                raise ToolError(f"腳本不允許匯入 '{node.module or '.'}'（可用：{', '.join(sorted(ALLOWED_MODULES))}）")
+                raise ToolError(f"The script may not import '{node.module or '.'}' (allowed: {', '.join(sorted(ALLOWED_MODULES))})")
 
 
 #: 編譯＋執行過的模組命名空間快取：hash → namespace（含 run）。最多 64 段。
@@ -117,7 +117,7 @@ def _namespace(code: str) -> dict[str, Any]:
     try:
         tree = ast.parse(source, filename=SCRIPT_FILENAME, mode="exec")
     except SyntaxError as exc:
-        raise ToolError(f"腳本語法錯誤（第 {exc.lineno or '?'} 行）：{exc.msg}") from None
+        raise ToolError(f"Script syntax error on line {exc.lineno or '?'}: {exc.msg}") from None
     check_ast(tree)
     compiled = compile(tree, SCRIPT_FILENAME, "exec")
     ns: dict[str, Any] = {"__builtins__": _safe_builtins(), "__name__": "python_script", "np": np, "cv2": cv2, "math": math}
@@ -126,7 +126,7 @@ def _namespace(code: str) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         raise ToolError(_describe(exc, "載入腳本時")) from None
     if not callable(ns.get("run")):
-        raise ToolError("腳本必須定義 def run(ctx)")
+        raise ToolError("The script must define def run(ctx)")
     with _NS_LOCK:
         _NAMESPACES[h] = ns
         while len(_NAMESPACES) > 64:
@@ -140,7 +140,7 @@ def _describe(exc: BaseException, prefix: str = "") -> str:
     for frame in traceback.extract_tb(exc.__traceback__):
         if frame.filename == SCRIPT_FILENAME:
             lineno = frame.lineno
-    where = f"第 {lineno} 行" if lineno else prefix or "腳本"
+    where = f"line {lineno}" if lineno else prefix or "script"
     return f"{where}：{exc.__class__.__name__}: {str(exc)[:200]}"
 
 
@@ -209,7 +209,7 @@ def _normalize_result(value: Any) -> dict[str, Any]:
         return {"value": value}
     if isinstance(value, str):
         return {"text": value}
-    raise ToolError(f"run() 回傳了不支援的型別 {type(value).__name__}：請回傳 dict（value／result／text／data／image…）")
+    raise ToolError(f"run() returned an unsupported type {type(value).__name__}: return a dict (value, result, text, data, image…)")
 
 
 class PythonScriptTool(Tool):
@@ -240,10 +240,10 @@ class PythonScriptTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         code = str(ctx.param("code", TEMPLATE) or "")
         if not code.strip():
-            raise ToolError("腳本是空的：請定義 def run(ctx)")
+            raise ToolError("The script is empty: define def run(ctx)")
         # 內建範本視為已核准（插入工具就能試執行）；其餘先看管理員試執行旗標（不碰 DB），再查核准清單（記憶體集合）
         if approval.code_hash(code) != TEMPLATE_HASH and not ctx.context.get(approval.ADMIN_CONTEXT_KEY) and not approval.is_approved(code):
-            raise ToolError("此腳本尚未由管理員核准：請管理員在編輯器儲存此流程後再執行")
+            raise ToolError("This script has not been approved: an administrator must save the flow in the editor before it can run")
         ns = _namespace(code)
         image = ctx.image()
         region = ctx.roi()
@@ -257,7 +257,7 @@ class PythonScriptTool(Tool):
         try:
             raw = ns["run"](sctx)
         except ScriptTimeout:
-            raise ToolError(f"腳本執行超過 {ctx.number('max_ms', 5000):g} ms 已中止（純 Python 迴圈太久？）") from None
+            raise ToolError(f"The script was aborted after {ctx.number('max_ms', 5000):g} ms (a pure-Python loop taking too long?)") from None
         except ToolError:
             raise
         except Exception as exc:  # noqa: BLE001 - 使用者程式碼的任何錯誤都翻成節點錯誤
@@ -273,7 +273,7 @@ class PythonScriptTool(Tool):
             try:
                 outputs["value"] = float(out["value"])
             except (TypeError, ValueError):
-                raise ToolError(f"value 必須是數值，收到 {type(out['value']).__name__}") from None
+                raise ToolError(f"value must be a number, got {type(out['value']).__name__}") from None
         if "result" in out:
             outputs["result"] = bool(out["result"])
         if "text" in out and out["text"] is not None:
@@ -283,7 +283,7 @@ class PythonScriptTool(Tool):
         if out.get("image") is not None:
             img = out["image"]
             if not isinstance(img, np.ndarray) or img.ndim not in (2, 3):
-                raise ToolError("image 必須是 2 維（灰階）或 3 維（BGR）的 numpy 陣列")
+                raise ToolError("image must be a 2-D (grayscale) or 3-D (BGR) numpy array")
             if img.dtype != np.uint8:
                 img = np.clip(img, 0, 255).astype(np.uint8)
             if image is not None and np.shares_memory(img, image):
@@ -291,15 +291,15 @@ class PythonScriptTool(Tool):
             outputs["image"] = np.ascontiguousarray(img)
         status = str(out.get("status") or ("ok" if outputs["result"] or "result" not in out else "ng"))
         if status not in ("ok", "ng"):
-            raise ToolError(f"status 只能是 ok 或 ng，收到 {status!r}")
+            raise ToolError(f"status must be ok or ng, got {status!r}")
         branch = str(out.get("branch") or ("pass" if status == "ok" else "fail"))
         if branch not in ("pass", "fail"):
-            raise ToolError(f"branch 只能是 pass 或 fail，收到 {branch!r}")
+            raise ToolError(f"branch must be pass or fail, got {branch!r}")
         overlays: list[dict[str, Any]] = [region_overlay(region, label="script")] if region else []
         extra = out.get("overlays")
         if extra is not None:
             if not isinstance(extra, (list, tuple)) or not all(isinstance(o, dict) and o.get("kind") for o in extra):
-                raise ToolError("overlays 必須是 [{kind: rect|circle|line|point|points|polygon|polyline|text|contours, …}, …]")
+                raise ToolError("overlays must be [{kind: rect|circle|line|point|points|polygon|polyline|text|contours, …}, …]")
             overlays += [dict(o) for o in extra]
         message = str(out.get("message") or "")[:200]
         if not message:

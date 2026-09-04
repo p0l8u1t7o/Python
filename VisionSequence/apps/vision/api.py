@@ -110,13 +110,13 @@ def _decode_upload(upload: UploadedFile | None) -> np.ndarray | None:
         return None
     data = np.frombuffer(upload.read(), dtype=np.uint8)
     if data.size == 0:
-        raise ValidationError("影像檔是空的", code="bad_image")
+        raise ValidationError("The image file is empty", code="bad_image")
     try:
         image = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
     except cv2.error:
         image = None
     if image is None:
-        raise ValidationError("無法解碼影像", code="bad_image")
+        raise ValidationError("Could not decode the image", code="bad_image")
     if image.ndim == 3 and image.shape[2] == 4:
         image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
     return image
@@ -215,7 +215,7 @@ def create_flow(request: HttpRequest, payload: schemas.FlowIn):
                 continuous_interval_ms=payload.continuous_interval_ms,
             )
     except IntegrityError:
-        raise Conflict("已有同名流程", code="flow_name_taken") from None
+        raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
     versions.snapshot(flow, user=principal(request).user, note="created")
     audit.record(request, "flow.create", flow, summary=f"{len((flow.graph or {}).get('nodes') or [])} steps")
     return 201, _flow_out(flow)
@@ -225,7 +225,7 @@ def create_flow(request: HttpRequest, payload: schemas.FlowIn):
 def get_flow_api(request: HttpRequest, flow_id: int):
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     return _flow_out(flow)
 
 
@@ -272,7 +272,7 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         with transaction.atomic():
             flow.save()
     except IntegrityError:
-        raise Conflict("已有同名流程", code="flow_name_taken") from None
+        raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
     if graph_changed:
         versions.snapshot(flow, user=p.user)
         changes = graphdiff.diff(before_graph, flow.graph)
@@ -367,9 +367,9 @@ def _parse_context(raw: str | None) -> dict[str, Any] | None:
     try:
         value = json.loads(raw)
     except json.JSONDecodeError:
-        raise ValidationError("context 不是合法 JSON", code="bad_context") from None
+        raise ValidationError("context is not valid JSON", code="bad_context") from None
     if not isinstance(value, dict):
-        raise ValidationError("context 必須是物件", code="bad_context")
+        raise ValidationError("context must be an object", code="bad_context")
     return value
 
 
@@ -405,7 +405,7 @@ def run_flow(
         try:
             body = json.loads(request.body)
         except json.JSONDecodeError:
-            raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+            raise ValidationError("Malformed JSON", code="bad_json") from None
         ctx = body.get("context") if isinstance(body, dict) else None
         wait = bool(body.get("wait", wait)) if isinstance(body, dict) else wait
         timeout_s = body.get("timeout_s", timeout_s) if isinstance(body, dict) else timeout_s
@@ -429,7 +429,7 @@ def run_flow(
     except TimeoutError:
         trace.record("http", f"POST /flows/{flow.id}/run → 等待逾時", direction="in", name=trigger,
                      detail={"flow": flow.name, "run_id": run_id, "timeout_s": wait_s}, ok=False, ms=wait_s * 1000)
-        raise APIError(f"等待結果逾時（{wait_s:g} 秒）；執行仍在進行，可用 run_id 取回結果",
+        raise APIError(f"Timed out after {wait_s:g}s waiting for the result; the run continues and can be fetched by run_id",
                        code="run_timeout", status_code=504, details={"run_id": run_id, "flow_id": flow.id}) from None
     out = report.to_dict(include_node_outputs=include_images)
     trace.record(  # 整合頁「命令與結果」：外部系統這次要了什麼、拿到什麼
@@ -451,7 +451,7 @@ def _recipe_out(r: FlowRecipe) -> dict[str, Any]:
 def list_recipes(request: HttpRequest, flow_id: int):
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     return {"items": [_recipe_out(r) for r in flow.recipes.all()]}
 
 
@@ -465,7 +465,7 @@ def create_recipe(request: HttpRequest, flow_id: int, payload: schemas.RecipeIn)
                 flow.recipes.update(is_default=False)
             r = FlowRecipe.objects.create(flow=flow, name=payload.name.strip(), description=payload.description, param_overrides=payload.param_overrides, is_default=payload.is_default)
     except IntegrityError:
-        raise Conflict("已有同名配方", code="recipe_name_taken") from None
+        raise Conflict("A recipe with that name already exists", code="recipe_name_taken") from None
     audit.record(request, "recipe.create", flow, summary=f"recipe '{r.name}'", detail={"overrides": r.param_overrides})
     return 201, _recipe_out(r)
 
@@ -475,7 +475,7 @@ def patch_recipe(request: HttpRequest, flow_id: int, recipe_id: int, payload: sc
     flow = _editable_flow(request, flow_id)
     r = flow.recipes.filter(pk=recipe_id).first()
     if r is None:
-        raise NotFound("配方不存在", code="recipe_not_found")
+        raise NotFound("Recipe not found", code="recipe_not_found")
     if payload.name is not None:
         r.name = payload.name.strip()
     if payload.description is not None:
@@ -491,7 +491,7 @@ def patch_recipe(request: HttpRequest, flow_id: int, recipe_id: int, payload: sc
         with transaction.atomic():
             r.save()
     except IntegrityError:
-        raise Conflict("已有同名配方", code="recipe_name_taken") from None
+        raise Conflict("A recipe with that name already exists", code="recipe_name_taken") from None
     return _recipe_out(r)
 
 
@@ -519,29 +519,29 @@ def delete_recipe(request: HttpRequest, flow_id: int, recipe_id: int):
     flow = _editable_flow(request, flow_id)
     deleted, _ = flow.recipes.filter(pk=recipe_id).delete()
     if not deleted:
-        raise NotFound("配方不存在", code="recipe_not_found")
+        raise NotFound("Recipe not found", code="recipe_not_found")
     return 204, None
 
 
 def _validate_overrides(flow: Flow, overrides: dict[str, Any]) -> None:
     """覆寫只能指向圖裡存在的節點與該工具宣告的參數；疊上去後的圖也要能通過驗證。"""
     if not isinstance(overrides, dict):
-        raise ValidationError("param_overrides 必須是物件", code="bad_overrides")
+        raise ValidationError("param_overrides must be an object", code="bad_overrides")
     nodes = {str(n.get("id")): n for n in (flow.graph or {}).get("nodes") or []}
     for node_id, patch in overrides.items():
         node = nodes.get(str(node_id))
         if node is None:
-            raise ValidationError(f"節點 '{node_id}' 不在流程裡", code="bad_overrides", details={"node_id": node_id})
+            raise ValidationError(f"Step '{node_id}' is not in the flow", code="bad_overrides", details={"node_id": node_id})
         if not isinstance(patch, dict):
-            raise ValidationError(f"節點 '{node_id}' 的覆寫必須是物件", code="bad_overrides")
+            raise ValidationError(f"The overrides for step '{node_id}' must be an object", code="bad_overrides")
         if node.get("type") in ("note",):
             continue
         declared = {p.key for p in tools.get(str(node["type"])).params}
         if node.get("type") == scripts.SCRIPT_TOOL and "code" in patch:
-            raise ValidationError("配方不能覆寫 Python 腳本的程式碼（只有管理員能修改腳本）", code="bad_overrides", details={"node_id": node_id})
+            raise ValidationError("A recipe cannot override script code (only administrators may change scripts)", code="bad_overrides", details={"node_id": node_id})
         unknown = [k for k in patch if k not in declared]
         if unknown:
-            raise ValidationError(f"節點 '{node_id}' 沒有參數 {unknown}", code="bad_overrides", details={"node_id": node_id, "unknown": unknown})
+            raise ValidationError(f"Step '{node_id}' has no parameter {unknown}", code="bad_overrides", details={"node_id": node_id, "unknown": unknown})
     from apps.vision.runner import apply_recipe
 
     class _R:
@@ -555,13 +555,13 @@ def preview_flow(request: HttpRequest, flow_id: int, payload: schemas.PreviewReq
     """編輯器試跑：用送來的圖（未存檔），保留所有中間影像供檢視。"""
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     principal(request).can_execute()
     input_image = None
     if payload.reuse_image_ref:
         input_image = store.get(payload.reuse_image_ref)
         if input_image is None:
-            raise NotFound("指定的影像已不在快取中", code="image_gone")
+            raise NotFound("That image is no longer cached", code="image_gone")
     report = runner.run_sync(
         flow,
         trigger="preview",
@@ -633,7 +633,7 @@ def upload_scratch_image(request: HttpRequest, flow_id: int, image: UploadedFile
     """暫存影像：只放進影像快取供試跑（reuse_image_ref），不進影像來源庫。"""
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     frame = _decode_upload(image)
     run_id = f"scratch{uuid.uuid4().hex[:12]}"
     info = store.put(f"{run_id}:upload:image", frame, flow_id=flow.id, run_id=run_id, pinned=True)
@@ -648,7 +648,7 @@ def set_continuous(request: HttpRequest, flow_id: int):
     try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+        raise ValidationError("Malformed JSON", code="bad_json") from None
     running = bool(body.get("running", True))
     if running:
         runner.start_continuous(flow)
@@ -725,10 +725,10 @@ def get_run(request: HttpRequest, run_id: str):
     try:
         uid = uuid.UUID(run_id)
     except ValueError:
-        raise NotFound("run 不存在", code="run_not_found") from None
+        raise NotFound("Run not found", code="run_not_found") from None
     row = FlowRun.objects.filter(pk=uid).first()
     if row is None:
-        raise NotFound("run 不存在", code="run_not_found")
+        raise NotFound("Run not found", code="run_not_found")
     return _run_row_out(row)
 
 
@@ -762,13 +762,13 @@ def _json_body(request: HttpRequest) -> dict:
     try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+        raise ValidationError("Malformed JSON", code="bad_json") from None
     return body if isinstance(body, dict) else {}
 
 
 def _group_kind(kind: str) -> str:
     if kind not in ("source", "asset"):
-        raise ValidationError("kind 必須是 source 或 asset", code="bad_kind")
+        raise ValidationError("kind must be source or asset", code="bad_kind")
     return kind
 
 
@@ -802,12 +802,12 @@ def create_group(request: HttpRequest):
     kind = _group_kind(str(body.get("kind") or ""))
     name = str(body.get("name") or "").strip()[:60]
     if not name:
-        raise ValidationError("需要群組名稱", code="bad_name")
+        raise ValidationError("A group name is required", code="bad_name")
     try:
         with transaction.atomic():
             row = ResourceGroup.objects.create(kind=kind, name=name)
     except IntegrityError:
-        raise Conflict("已有同名群組", code="group_name_taken") from None
+        raise Conflict("A group with that name already exists", code="group_name_taken") from None
     return 201, {"id": row.id, "name": row.name, "count": _group_counts(kind).get(name, 0)}
 
 
@@ -817,10 +817,10 @@ def rename_group(request: HttpRequest, group_id: int):
     require_engineer(request)
     row = ResourceGroup.objects.filter(pk=group_id).first()
     if row is None:
-        raise NotFound("群組不存在", code="group_not_found")
+        raise NotFound("Group not found", code="group_not_found")
     name = str(_json_body(request).get("name") or "").strip()[:60]
     if not name:
-        raise ValidationError("需要群組名稱", code="bad_name")
+        raise ValidationError("A group name is required", code="bad_name")
     old_name = row.name
     try:
         with transaction.atomic():
@@ -828,7 +828,7 @@ def rename_group(request: HttpRequest, group_id: int):
             row.save(update_fields=["name"])
             _group_items(row.kind).filter(group=old_name).update(group=name)
     except IntegrityError:
-        raise Conflict("已有同名群組", code="group_name_taken") from None
+        raise Conflict("A group with that name already exists", code="group_name_taken") from None
     return {"id": row.id, "name": row.name, "count": _group_counts(row.kind).get(name, 0)}
 
 
@@ -838,7 +838,7 @@ def delete_group(request: HttpRequest, group_id: int, delete_items: bool = False
     require_engineer(request)
     row = ResourceGroup.objects.filter(pk=group_id).first()
     if row is None:
-        raise NotFound("群組不存在", code="group_not_found")
+        raise NotFound("Group not found", code="group_not_found")
     items = _group_items(row.kind).filter(group=row.name)
     if delete_items:
         if row.kind == "source":
@@ -878,7 +878,7 @@ def browse_fs(request: HttpRequest, path: str = ""):
         path = "/"
     path = os.path.abspath(path)
     if not os.path.isdir(path):
-        raise NotFound("資料夾不存在", code="dir_not_found")
+        raise NotFound("The folder does not exist", code="dir_not_found")
     dirs, files = [], []
     try:
         with os.scandir(path) as it:
@@ -893,7 +893,7 @@ def browse_fs(request: HttpRequest, path: str = ""):
                 except OSError:
                     continue
     except PermissionError:
-        raise ValidationError("沒有權限讀取此資料夾", code="permission_denied") from None
+        raise ValidationError("No permission to read that folder", code="permission_denied") from None
     parent = os.path.dirname(path.rstrip("\\/"))
     if os.name == "nt" and len(path) <= 3:
         parent = ""  # 磁碟機根 → 回磁碟機清單
@@ -938,14 +938,14 @@ def create_source(request: HttpRequest, payload: schemas.SourceIn):
         with transaction.atomic():
             source = ImageSource.objects.create(name=payload.name.strip(), kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled, group=payload.group.strip())
     except IntegrityError:
-        raise Conflict("已有同名來源", code="source_name_taken") from None
+        raise Conflict("An image source with that name already exists", code="source_name_taken") from None
     return 201, _source_out(source)
 
 
 def _get_source(source_id: int) -> ImageSource:
     source = ImageSource.objects.filter(pk=source_id).first()
     if source is None:
-        raise NotFound("影像來源不存在", code="source_not_found")
+        raise NotFound("Image source not found", code="source_not_found")
     return source
 
 
@@ -964,9 +964,9 @@ def test_source(request: HttpRequest, payload: SourceTestIn):
     except (ValidationError, NotFound):
         raise
     except Exception as exc:  # noqa: BLE001 — 來源的任何錯誤都翻成可讀原因回前端
-        raise ValidationError(f"擷取失敗：{exc}", code="source_test_failed") from exc
+        raise ValidationError(f"Capture failed: {exc}", code="source_test_failed") from exc
     if image is None:
-        raise ValidationError("來源沒有回傳影像：請確認路徑、檔名樣式或裝置設定", code="no_frame")
+        raise ValidationError("The source returned no image: check the path, the file pattern or the device settings", code="no_frame")
     ms = round((time.perf_counter() - started) * 1000, 1)
     data = base64.b64encode(encode_image(image, max_side=480)).decode("ascii")
     return {"width": int(image.shape[1]), "height": int(image.shape[0]), "ms": ms, "image": f"data:image/jpeg;base64,{data}"}
@@ -995,7 +995,7 @@ def patch_source(request: HttpRequest, source_id: int, payload: schemas.SourcePa
         with transaction.atomic():
             source.save()
     except IntegrityError:
-        raise Conflict("已有同名來源", code="source_name_taken") from None
+        raise Conflict("An image source with that name already exists", code="source_name_taken") from None
     close_source(source.id)
     return _source_out(source)
 
@@ -1016,7 +1016,7 @@ def preview_source(request: HttpRequest, source_id: int, max: int = 1280):
         return HttpResponse(status=401)
     image = grab_by_id(source_id)
     if image is None:
-        raise NotFound("來源沒有回傳影像", code="no_frame")
+        raise NotFound("The source returned no image", code="no_frame")
     response = HttpResponse(encode_image(image, max_side=max or None), content_type="image/jpeg")
     response["Cache-Control"] = "no-store"
     return response
@@ -1028,7 +1028,7 @@ def push_source(request: HttpRequest, source_id: int, image: UploadedFile = File
     source = _get_source(source_id)
     grabber = open_source(source)
     if not hasattr(grabber, "push"):
-        raise ValidationError("此來源不接受送圖", code="source_not_pushable")
+        raise ValidationError("This source does not accept pushed images", code="source_not_pushable")
     frame = _decode_upload(image)
     grabber.push(frame)  # type: ignore[attr-defined]
     return {"ok": True, "width": int(frame.shape[1]), "height": int(frame.shape[0])}
@@ -1049,7 +1049,7 @@ def list_assets(request: HttpRequest, kind: str = ""):
 def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str = Form("image"), name: str = Form(""), group: str = Form("")):
     require_engineer(request)
     if kind not in ("image", "model", "file"):
-        raise ValidationError("kind 必須是 image / model / file", code="bad_kind")
+        raise ValidationError("kind must be image, model or file", code="bad_kind")
     asset_id = uuid.uuid4()
     ext = os.path.splitext(file.name or "")[1].lower() or ""
     folder = settings.VISION["ASSET_DIR"]
@@ -1059,7 +1059,7 @@ def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str
     if kind == "image":
         image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
         if image is None:
-            raise ValidationError("無法解碼影像", code="bad_image")
+            raise ValidationError("Could not decode the image", code="bad_image")
         meta = {"width": int(image.shape[1]), "height": int(image.shape[0]), "channels": int(image.shape[2]) if image.ndim == 3 else 1}
     with open(path, "wb") as fh:
         fh.write(data)
@@ -1075,21 +1075,21 @@ def asset_from_image(request: HttpRequest):
     try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+        raise ValidationError("Malformed JSON", code="bad_json") from None
     from apps.vision.tools.roi import crop
 
     image = store.get(str(body.get("ref") or ""))
     if image is None:
-        raise NotFound("影像已不在快取中", code="image_gone")
+        raise NotFound("That image is no longer cached", code="image_gone")
     region = body.get("region")
     piece = crop(image, region, upright=True).image if region else image
     if piece.size == 0:
-        raise ValidationError("區域為空", code="empty_region")
+        raise ValidationError("The region is empty", code="empty_region")
     asset_id = uuid.uuid4()
     path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.png")
     ok, buf = cv2.imencode(".png", piece)
     if not ok:
-        raise ValidationError("編碼失敗", code="encode_failed")
+        raise ValidationError("Encoding failed", code="encode_failed")
     buf.tofile(path)
     asset = Asset.objects.create(
         id=asset_id, name=str(body.get("name") or f"template-{time.strftime('%H%M%S')}"), kind="image", path=path,
@@ -1107,11 +1107,11 @@ def patch_asset(request: HttpRequest, asset_id: uuid.UUID):
     require_engineer(request)
     asset = Asset.objects.filter(pk=asset_id).first()
     if asset is None:
-        raise NotFound("資產不存在", code="asset_not_found")
+        raise NotFound("Asset not found", code="asset_not_found")
     try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
-        raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+        raise ValidationError("Malformed JSON", code="bad_json") from None
     fields = []
     if "name" in body and str(body["name"]).strip():
         asset.name = str(body["name"]).strip()[:200]
@@ -1130,7 +1130,7 @@ def asset_file(request: HttpRequest, asset_id: uuid.UUID, max: int = 0):
         return HttpResponse(status=401)
     asset = Asset.objects.filter(pk=asset_id).first()
     if asset is None or not os.path.isfile(asset.path):
-        raise NotFound("資產不存在", code="asset_not_found")
+        raise NotFound("Asset not found", code="asset_not_found")
     if asset.kind == "image":
         image = cv2.imdecode(np.fromfile(asset.path, dtype=np.uint8), cv2.IMREAD_COLOR)
         return HttpResponse(encode_image(image, max_side=max or None, fmt="png"), content_type="image/png")
@@ -1143,7 +1143,7 @@ def delete_asset(request: HttpRequest, asset_id: uuid.UUID):
     require_engineer(request)
     asset = Asset.objects.filter(pk=asset_id).first()
     if asset is None:
-        raise NotFound("資產不存在", code="asset_not_found")
+        raise NotFound("Asset not found", code="asset_not_found")
     try:
         os.remove(asset.path)
     except OSError:

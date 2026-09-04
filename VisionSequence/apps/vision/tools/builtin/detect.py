@@ -207,7 +207,7 @@ class BlobTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         polarity = ctx.param("polarity", "bright")
         mask = _binarize(np.ascontiguousarray(c.image), ctx.param("threshold_method", "otsu"), ctx.number("threshold", 128), polarity, c.mask)
         if c.mask is not None:
@@ -260,7 +260,7 @@ class BlobTool(Tool):
                 "first_cx": blobs[0]["cx"] if blobs else float("nan"), "first_cy": blobs[0]["cy"] if blobs else float("nan"),
             },
             overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng",
-            message=f"{count} 個 blob" + (f"，最大 {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
+            message=f"{count} blobs" + (f"，最大 {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
         )
 
 
@@ -312,7 +312,7 @@ def _align(image: np.ndarray, template: np.ndarray, method: str, template_f32: n
         try:
             _, warp = cv2.findTransformECC(image, template, warp, cv2.MOTION_EUCLIDEAN, criteria, None, 5)
         except cv2.error as exc:
-            raise ToolError(f"ECC 對齊失敗：{str(exc).splitlines()[-1][:120]}") from None
+            raise ToolError(f"ECC alignment failed: {str(exc).splitlines()[-1][:120]}") from None
         aligned = cv2.warpAffine(template, warp, (image.shape[1], image.shape[0]), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP, borderMode=cv2.BORDER_REPLICATE)
         return aligned, {"dx": float(warp[0, 2]), "dy": float(warp[1, 2]), "dtheta": float(math.degrees(math.atan2(warp[1, 0], warp[0, 0])))}
     return template, {}
@@ -351,7 +351,7 @@ class DefectDiffTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         k = ctx.integer("blur", 3)
         if k >= 3:
@@ -405,7 +405,7 @@ class DefectDiffTool(Tool):
         return Result(
             outputs={"defects": defects, "count": count, "total_area": float(sum(d["area"] for d in defects)), "defect_mask": full_mask, "diff": full_diff},
             overlays=overlays, branch="defect" if count else "ok", status="ng" if count else "ok",
-            message=f"{count} 個缺陷" + (f"，對齊 dx={info.get('dx', 0):.1f} dy={info.get('dy', 0):.1f}" if info else ""),
+            message=f"{count} defects" + (f"，對齊 dx={info.get('dx', 0):.1f} dy={info.get('dy', 0):.1f}" if info else ""),
             detail=info,
         )
 
@@ -432,7 +432,7 @@ class BarcodeTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         types = ctx.param("types", "all")
         codes: list[dict[str, Any]] = []
@@ -494,10 +494,10 @@ class TextPresenceTool(Tool):
         gray = to_gray(ctx.require_image())
         region = ctx.roi()
         if region is None:
-            raise ToolError("沒有設定區域")
+            raise ToolError("No region is set")
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         b = max(3, ctx.integer("block", 31)) | 1
         flag = cv2.THRESH_BINARY_INV if ctx.param("polarity", "dark") == "dark" else cv2.THRESH_BINARY
         mask = cv2.adaptiveThreshold(np.ascontiguousarray(c.image), 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, flag, b, ctx.number("c", 10))
@@ -511,17 +511,17 @@ class TextPresenceTool(Tool):
         full[c.y0 : c.y0 + mask.shape[0], c.x0 : c.x0 + mask.shape[1]] = mask
         return Result(outputs={"ratio": ratio, "is_present": present, "mask": full},
                       overlays=[region_overlay(region, color="#22c55e" if present else "#ef4444", label=f"{ratio * 100:.1f}%")],
-                      branch="present" if present else "absent", status="ok" if present else "ng", message=f"筆劃比例 {ratio * 100:.1f}% → {'有' if present else '無'}")
+                      branch="present" if present else "absent", status="ok" if present else "ng", message=f"Stroke ratio {ratio * 100:.1f}% → {'present' if present else 'absent'}")
 
 
 def _hex_to_bgr(value: str) -> tuple[int, int, int]:
     s = str(value or "").strip().lstrip("#")
     if len(s) != 6:
-        raise ToolError(f"顏色格式錯誤：{value!r}")
+        raise ToolError(f"Malformed colour: {value!r}")
     try:
         r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
     except ValueError:
-        raise ToolError(f"顏色格式錯誤：{value!r}") from None
+        raise ToolError(f"Malformed colour: {value!r}") from None
     return b, g, r
 
 
@@ -547,7 +547,7 @@ class ColorCheckTool(Tool):
         region = ctx.roi()
         c = crop(image, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         mean = cv2.mean(np.ascontiguousarray(c.image), mask=c.mask)[:3]
         mean_bgr = np.array(mean, dtype=np.float32)
         target = np.array(_hex_to_bgr(ctx.param("color", "#ff0000")), dtype=np.float32)
@@ -566,7 +566,7 @@ class ColorCheckTool(Tool):
         overlays = [region_overlay(region, color="#22c55e" if match else "#ef4444", label=f"{mean_hex} d={distance:.1f}")] if region else []
         return Result(
             outputs={"distance": distance, "is_match": match, "mean_hex": mean_hex, "mean_bgr": [round(float(v), 1) for v in mean], "mean_hsv": [round(float(v), 1) for v in mean_hsv]},
-            overlays=overlays, branch="match" if match else "mismatch", status="ok" if match else "ng", message=f"平均 {mean_hex}，距離 {distance:.1f} → {'符合' if match else '不符'}",
+            overlays=overlays, branch="match" if match else "mismatch", status="ok" if match else "ng", message=f"Mean {mean_hex}, distance {distance:.1f} → {'match' if match else 'no match'}",
         )
 
 
@@ -591,7 +591,7 @@ class EdgeDensityTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         k = ctx.integer("blur", 3)
         if k >= 3:
@@ -608,7 +608,7 @@ class EdgeDensityTool(Tool):
         full[c.y0 : c.y0 + edges.shape[0], c.x0 : c.x0 + edges.shape[1]] = edges
         overlays = [region_overlay(region, color="#22c55e" if ok else "#ef4444", label=f"{ratio * 100:.2f}%")] if region else []
         return Result(outputs={"ratio": ratio, "edge_pixels": n, "edges": full}, overlays=overlays,
-                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"邊緣比例 {ratio * 100:.2f}%")
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"Edge ratio {ratio * 100:.2f}%")
 
 
 class PixelCountTool(Tool):
@@ -631,7 +631,7 @@ class PixelCountTool(Tool):
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:
-            raise ToolError("區域落在影像外")
+            raise ToolError("The region falls outside the image")
         fg = c.image >= ctx.number("threshold", 128)
         total = c.image.size
         if c.mask is not None:

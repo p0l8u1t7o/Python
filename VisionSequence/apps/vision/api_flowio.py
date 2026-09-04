@@ -33,7 +33,7 @@ def _safe_filename(name: str) -> str:
 def export_flow(request: HttpRequest, flow_id: int, download: bool = True):
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
-        raise NotFound(f"流程 {flow_id} 不存在", code="flow_not_found")
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
     data = serialize.to_bytes(serialize.export_flow(flow))
     response = HttpResponse(data, content_type="application/json; charset=utf-8")
     if download:
@@ -65,9 +65,9 @@ def import_flow(request: HttpRequest):
         try:
             body = json.loads(request.body or b"{}")
         except json.JSONDecodeError:
-            raise ValidationError("JSON 格式錯誤", code="bad_json") from None
+            raise ValidationError("Malformed JSON", code="bad_json") from None
         if not isinstance(body, dict):
-            raise ValidationError("body 必須是物件", code="bad_json")
+            raise ValidationError("The body must be an object", code="bad_json")
         if isinstance(body.get("doc"), dict):
             doc = serialize.parse(json.dumps(body["doc"]))
             sid = body.get("source_id")
@@ -76,10 +76,10 @@ def import_flow(request: HttpRequest):
             doc = serialize.parse(json.dumps(body))
         source_id = int(sid) if sid not in (None, "") else None
     if source_id is not None and not ImageSource.objects.filter(pk=source_id).exists():
-        raise NotFound("影像來源不存在", code="source_not_found")
+        raise NotFound("Image source not found", code="source_not_found")
     existing = serialize.find_flow(doc["name"])
     if existing is not None and not p.can_edit_flow(existing):
-        raise NotFound("流程不存在或無權更新", code="flow_not_found")
+        raise NotFound("The flow does not exist or cannot be updated", code="flow_not_found")
     scripts.check_graph_edit(p, doc.get("graph"), flow=existing)  # Python 腳本：一般使用者只能匯入已核准的程式碼
     flow, created = serialize.import_flow(doc, source_id=source_id, owner=p.user)
     return (201 if created else 200), {"flow": _flow_out(flow), "created": created}

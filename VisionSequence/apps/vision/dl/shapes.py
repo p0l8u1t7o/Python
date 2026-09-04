@@ -24,26 +24,26 @@ def validate_shapes(raw: Any, classes: list[str]) -> list[dict[str, Any]]:
     if raw in (None, ""):
         return []
     if not isinstance(raw, list):
-        raise ValidationError("shapes 必須是清單", code="bad_shapes")
+        raise ValidationError("shapes must be a list", code="bad_shapes")
     out: list[dict[str, Any]] = []
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise ValidationError(f"shapes[{i}] 不是物件", code="bad_shapes")
+            raise ValidationError(f"shapes[{i}] is not an object", code="bad_shapes")
         label = str(item.get("label") or "")
         if label not in classes:
-            raise ValidationError(f"shapes[{i}] 的類別 '{label}' 不在類別清單內", code="bad_shapes")
+            raise ValidationError(f"The class '{label}' of shapes[{i}] is not in the class list", code="bad_shapes")
         kind = str(item.get("kind") or "polygon")
         if kind not in SHAPE_KINDS:
-            raise ValidationError(f"shapes[{i}] 的 kind '{kind}' 不合法（polygon / bbox）", code="bad_shapes")
+            raise ValidationError(f"shapes[{i}] has an invalid kind '{kind}' (polygon or bbox)", code="bad_shapes")
         points = item.get("points")
         if not isinstance(points, list) or len(points) < (3 if kind == "polygon" else 2):
-            raise ValidationError(f"shapes[{i}] 的點數不足", code="bad_shapes")
+            raise ValidationError(f"shapes[{i}] has too few points", code="bad_shapes")
         clean = []
         for pt in points:
             try:
                 x, y = float(pt[0]), float(pt[1])
             except (TypeError, ValueError, IndexError):
-                raise ValidationError(f"shapes[{i}] 的座標格式錯誤", code="bad_shapes") from None
+                raise ValidationError(f"shapes[{i}] has malformed coordinates", code="bad_shapes") from None
             clean.append([min(1.0, max(0.0, x)), min(1.0, max(0.0, y))])
         if kind == "bbox":
             xs, ys = [p[0] for p in clean], [p[1] for p in clean]
@@ -89,7 +89,7 @@ def _row_values(shape: dict[str, Any], task: str) -> list[float] | None:
 def shapes_to_yolo(shapes: list[dict[str, Any]], classes: list[str], task: str = "mixed") -> str:
     """→ YOLO txt 內容（TAB 分隔、LF、6 位小數）。不在類別清單的形狀略過；依 task 轉換形狀（見 EXPORT_TASKS）。"""
     if task not in EXPORT_TASKS:
-        raise ValidationError(f"未知的匯出任務 '{task}'", code="bad_task")
+        raise ValidationError(f"Unknown export task '{task}'", code="bad_task")
     lines = []
     for shape in shapes or []:
         if shape.get("label") not in classes:
@@ -161,7 +161,7 @@ def export_dataset(samples, classes: list[str], out_dir: str, *, val_ratio: floa
     rng = np.random.default_rng(seed)
     rows = [(r[0], r[1], r[2], r[3] if len(r) > 3 and r[3] in ("train", "val", "test") else "") for r in samples if r[2]]
     if not rows:
-        raise ValidationError("沒有任何已標記（shapes）的樣本可匯出", code="no_labeled_samples")
+        raise ValidationError("There are no shape-labelled samples to export", code="no_labeled_samples")
     # 未指定 split 的樣本隨機補 val；已有人工指定 val 時不強迫至少 1 張（尊重指定）
     unassigned = [i for i, r in enumerate(rows) if not r[3]]
     explicit_val = any(r[3] == "val" for r in rows)
@@ -210,7 +210,7 @@ def export_classify_dataset(samples, classes: list[str], out_dir: str, *, val_ra
     rng = np.random.default_rng(seed)
     rows = [(r[0], r[1], r[2], r[3] if len(r) > 3 and r[3] in ("train", "val", "test") else "") for r in samples if r[2] in classes]
     if not rows:
-        raise ValidationError("沒有任何已標記的樣本可匯出", code="no_labeled_samples")
+        raise ValidationError("There are no labelled samples to export", code="no_labeled_samples")
     # 分層抽 val：每個類別各抽 val_ratio（有 2 張以上就至少 1 張），否則 ultralytics 會抱怨 val 缺類別
     explicit_val = any(r[3] == "val" for r in rows)
     val_set: set[int] = set()
@@ -254,7 +254,7 @@ def iter_dataset(root: str) -> list[tuple[str, str]]:
         base = os.path.join(base, "dataset")
     images_root = os.path.join(base, "images")
     if not os.path.isdir(images_root):
-        raise ValidationError(f"找不到 YOLO 資料集（{root} 底下沒有 images/）", code="bad_dataset")
+        raise ValidationError(f"No YOLO dataset found (no images/ under {root})", code="bad_dataset")
     out: list[tuple[str, str]] = []
     for split in sorted(os.listdir(images_root)):
         folder = os.path.join(images_root, split)

@@ -64,19 +64,19 @@ class ScriptToolTests(SimpleTestCase):
 
         img = blank()
         cases = [
-            ("import os\ndef run(ctx):\n    return 1\n", "不允許匯入"),
-            ("from subprocess import run as r\ndef run(ctx):\n    return 1\n", "不允許匯入"),
-            ("def run(ctx):\n    return ().__class__\n", "不允許存取"),
-            ("def run(ctx):\n    return __builtins__\n", "不允許使用"),
-            ("def run(ctx):\n    return open('x')\n", "不允許呼叫"),
-            ("def run(ctx):\n    return eval('1')\n", "不允許呼叫"),
-            ("def run(ctx)\n    return 1\n", "語法錯誤"),
-            ("def go(ctx):\n    return 1\n", "必須定義"),
-            ("def run(ctx):\n    x = 1 / 0\n    return x\n", "第 2 行"),
-            ("def run(ctx):\n    ctx.image[0, 0] = 9\n    return 1\n", "第 2 行"),
-            ("def run(ctx):\n    return {1, 2}\n", "不支援的型別"),
-            ("def run(ctx):\n    return {'status': 'maybe'}\n", "status 只能是"),
-            ("def run(ctx):\n    return {'overlays': [1]}\n", "overlays 必須是"),
+            ("import os\ndef run(ctx):\n    return 1\n", "may not import"),
+            ("from subprocess import run as r\ndef run(ctx):\n    return 1\n", "may not import"),
+            ("def run(ctx):\n    return ().__class__\n", "may not access"),
+            ("def run(ctx):\n    return __builtins__\n", "may not use"),
+            ("def run(ctx):\n    return open('x')\n", "may not call"),
+            ("def run(ctx):\n    return eval('1')\n", "may not call"),
+            ("def run(ctx)\n    return 1\n", "syntax error"),
+            ("def go(ctx):\n    return 1\n", "must define"),
+            ("def run(ctx):\n    x = 1 / 0\n    return x\n", "line 2"),
+            ("def run(ctx):\n    ctx.image[0, 0] = 9\n    return 1\n", "line 2"),
+            ("def run(ctx):\n    return {1, 2}\n", "unsupported type"),
+            ("def run(ctx):\n    return {'status': 'maybe'}\n", "status must be"),
+            ("def run(ctx):\n    return {'overlays': [1]}\n", "overlays must be"),
         ]
         for code, needle in cases:
             with self.assertRaises(ToolError, msg=code) as cm:
@@ -88,11 +88,11 @@ class ScriptToolTests(SimpleTestCase):
         # 看門狗：純 Python 無窮迴圈在 max_ms 內中止
         with self.assertRaises(ToolError) as cm:
             run_tool("python_script", img, {"code": "def run(ctx):\n    while True:\n        pass\n", "max_ms": 200}, context=dict(ADMIN))
-        self.assertIn("已中止", str(cm.exception))
+        self.assertIn("was aborted", str(cm.exception))
         # 未核准且沒有管理員旗標 → 拒絕執行；內建範本例外（插入工具就能試執行）；沒填 code 就用範本
         with self.assertRaises(ToolError) as cm:
             run_tool("python_script", img, {"code": TEMPLATE + "\n# mine\n"})
-        self.assertIn("尚未由管理員核准", str(cm.exception))
+        self.assertIn("has not been approved", str(cm.exception))
         self.assertEqual(run_tool("python_script", img, {"code": TEMPLATE}).status, "ok")
         self.assertEqual(run_tool("python_script", img, {}).status, "ok")
         with self.assertRaises(ToolError):
@@ -170,7 +170,7 @@ class ScriptApprovalApiTests(TransactionTestCase):
         self.assertEqual(r.status_code, 200, r.content)
         node = r.json()["nodes"]["py"]
         self.assertEqual(node["status"], "error")
-        self.assertIn("核准", node["message"])
+        self.assertIn("approved", node["message"])
         # 已核准的腳本一般使用者照常跑
         r = self._json("post", f"/api/vision/flows/{fid}/preview", {"graph": self._graph(code)}, **wauth)
         self.assertEqual(r.json()["nodes"]["py"]["status"], "ok", r.json()["nodes"]["py"])
