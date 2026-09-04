@@ -72,8 +72,13 @@ class Channel:
         self._alive = False
         self._commands.put(None)
         if join:
-            self._thread.join(timeout=5.0)
-        self._thread = None
+            self.join_thread()
+
+    def join_thread(self, timeout: float = 5.0) -> None:
+        """等擷取執行緒收工；`stop_thread(join=False)` 之後由呼叫者統一等（逾時才會累加）。"""
+        thread, self._thread = self._thread, None
+        if thread is not None:
+            thread.join(timeout=timeout)
 
     def call(self, fn: Callable[..., Any], *args: Any, timeout: float | None = 10.0, **kw: Any) -> Any:
         """在擷取執行緒執行 fn(*args, **kw) 並等結果；已在擷取執行緒則直接呼叫。"""

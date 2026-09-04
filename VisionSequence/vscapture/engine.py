@@ -188,11 +188,16 @@ class CaptureEngine:
             self._idle_thread = None
         self._update_cancel.set()
         self.transport.stop()
-        for ch in list(self.channels.values()):
+        # 先叫所有通道停，再一起等：逐條 stop_thread(join=True) 會讓每條的 5 秒逾時累加，
+        # 四個通道最糟要 20 秒才關得掉（使用者看到的就是「視窗不見了，行程還在」）。
+        channels = list(self.channels.values())
+        for ch in channels:
             try:
-                ch.stop_thread()
+                ch.stop_thread(join=False)
             except Exception:  # noqa: BLE001
                 log.exception("停止通道 %s 失敗", ch.id)
+        for ch in channels:
+            ch.join_thread(timeout=5.0)
         self._started = False
 
     def connect(self) -> None:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -183,6 +185,10 @@ class MainWindow(QMainWindow):
         self.channels.refresh_list()
 
         self.resizeDocks([self.log_dock], [150], Qt.Orientation.Vertical)
+        # 上面把設定填進各面板時，元件的 changed 訊號會誤觸「有未儲存的變更」；
+        # 剛開起來的視窗一定是乾淨的，否則每次關閉都會多問一次要不要存。
+        self._dirty = False
+        self.setWindowTitle(tr("app.title"))
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_stats)
         self._timer.start(1000)
@@ -500,6 +506,24 @@ class MainWindow(QMainWindow):
         if self.tray is not None:
             self.tray.hide()
         event.accept()
+        # 視窗關閉不會自己結束程式：setQuitOnLastWindowClosed(False) 是為了「關視窗＝縮到系統匣」，
+        # 所以真的要離開時必須自己叫 quit()，否則事件迴圈會繼續空轉，行程留在工作管理員裡。
+        QApplication.quit()
+
+
+def _exit_now(code: int) -> None:
+    """離開前確認沒有卡住的非 daemon 執行緒；有的話直接結束行程。
+
+    相機 SDK 與 concurrent.futures 的工作執行緒都是非 daemon，直譯器結束時會 join 它們；
+    只要有一條卡在 SDK 呼叫裡，使用者看到的就是「關掉視窗但行程還在」。清理都做完了，
+    這時候硬結束不會遺失任何東西。
+    """
+    stuck = [th for th in threading.enumerate() if th is not threading.main_thread() and not th.daemon and th.is_alive()]
+    if not stuck:
+        return
+    log.warning("結束時仍有 %d 條執行緒未收：%s；直接結束行程", len(stuck), ", ".join(th.name for th in stuck))
+    logging.shutdown()
+    os._exit(code)  # noqa: SLF001 — 這裡就是要跳過 join
 
 
 def run_app(engine: CaptureEngine, *, minimized: bool = False, connect: bool = False) -> int:
@@ -521,4 +545,6 @@ def run_app(engine: CaptureEngine, *, minimized: bool = False, connect: bool = F
     # 相機開啟可能要幾秒，不擋住視窗
     bridge.run_async(engine.start, connect=connect or None, on_done=lambda _r: win.channels.refresh_list(), on_error=lambda m: log.error("啟動失敗：%s", m))
     app.aboutToQuit.connect(lambda: (engine.stop(), bridge.close()))
-    return int(app.exec())
+    code = int(app.exec())
+    _exit_now(code)
+    return code
