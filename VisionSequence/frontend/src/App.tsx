@@ -27,6 +27,8 @@ const IntegrationFormatPage = lazy(() => import('@/pages/integration/FormatPage'
 const IntegrationModbusPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusPage })))
 const IntegrationConnectionsPage = lazy(() => import('@/pages/integration/ConnectionsPage').then((m) => ({ default: m.IntegrationConnectionsPage })))
 const IntegrationCapturePage = lazy(() => import('@/pages/integration/CapturePage').then((m) => ({ default: m.IntegrationCapturePage })))
+const IntegrationStationsPage = lazy(() => import('@/pages/integration/StationsPage').then((m) => ({ default: m.StationsPage })))
+const FleetPage = lazy(() => import('@/pages/FleetPage').then((m) => ({ default: m.FleetPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
@@ -84,6 +86,7 @@ const router = createBrowserRouter([
               { path: 'modbus', element: <IntegrationModbusPage /> },
               { path: 'connections', element: <IntegrationConnectionsPage /> },
               { path: 'capture', element: <IntegrationCapturePage /> },
+              { path: 'stations', element: <IntegrationStationsPage /> },
               { path: 'lock', element: <IntegrationLockPage /> },
               { path: 'format', element: <IntegrationFormatPage /> },
             ],
@@ -93,6 +96,7 @@ const router = createBrowserRouter([
           { path: 'assets', element: <AssetsPage /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'audit', element: <AuditPage /> },
+          { path: 'fleet', element: <FleetPage /> },
           { path: 'settings', element: <SettingsPage /> },
         ],
       },

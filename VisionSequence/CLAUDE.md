@@ -83,6 +83,13 @@
 - **落地頁依角色**：`App.tsx` 的 `Landing` 讓 operator 導到 `/station`，其餘看總覽。
 - run 的影像挑選抽到 `lib/runImages.ts`（`lastImage`／`firstImageOutput`，忽略 `_image` 直通埠），總覽頁與產線畫面共用。
 
+### 多站台看板（apps/vision/fleet.py、models.Station）
+- **唯讀輪詢，不動單行程紅線**：`Station(name, base_url, api_key)` 只存「怎麼問到它」，輪詢對方 `GET /vision/summary`；**不下發任何東西**。
+- `summary_of_this_station()` 查每小時彙總，看板與各站自己的統計是同一份數字。
+- **舊數字不能看起來像即時的**：離線時保留最後已知數字但標 `stale` 並回 `age_s`；離線站台不計入全廠合計。
+- 輪詢執行緒有人看才跑、3 分鐘沒人看自己停；`board()` 會對「沒問過或超過 2×INTERVAL_S」的站台同步補問（背景執行緒死掉也不會顯示愈來愈舊的數字）。
+- 站台的 API 金鑰只回尾 4 碼；`POST /stations/test` 把失敗原因原樣回給設定頁。前端 `/fleet` 與「外部整合 ▸ 站台」。
+
 ### 保留策略與維運（FlowRunHourly、backup／restore／purge／doctor）
 - **三層保留**：封存影像（`ARCHIVE_DAYS`／`ARCHIVE_MAX_GB`）→ 明細 `FlowRun`（`KEEP_RUN_DAYS` 預設 30 天，`KEEP_RUN_ROWS` 20000 是保險）→ **每小時彙總 `FlowRunHourly` 永久保留**。
 - `_Persister._rollup` 在寫明細的同一批累加彙總（`F()` 增量＋`Greatest`；依 flow／hour／station／recipe 一列）。**`GET /flows/{id}/stats` 已改查彙總**，明細清掉或重開機都不會讓良率曲線消失。改 stats 要記得它讀的是彙總不是明細。

@@ -27,10 +27,10 @@ from apps.accounts.security import authenticate, principal, require_admin, requi
 from apps.core import audit
 from apps.core.models import AuditLog
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import __version__, demo, trace
+from apps.vision import __version__, demo, fleet, trace
 from apps.vision.api import _decode_upload, _visible_flows
 from apps.vision.graph import validate_graph
-from apps.vision.models import FlowTemplate, ImageSource
+from apps.vision.models import FlowTemplate, ImageSource, Station
 from apps.vision.runner import get_flow, runner
 
 router = Router(tags=["more"])
@@ -257,6 +257,117 @@ def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn
     if not images:
         raise ValidationError("來源沒有回傳影像", code="no_frame")
     return _batch_run(request, flow_id, images, payload.graph)
+
+
+# ---------------------------------------------------------------------------
+# 站台與看板（apps/vision/fleet.py）
+# ---------------------------------------------------------------------------
+class StationIn(Schema):
+    name: str
+    base_url: str
+    api_key: str = ""
+    is_enabled: bool = True
+    note: str = ""
+
+
+class StationPatch(Schema):
+    name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    is_enabled: bool | None = None
+    note: str | None = None
+
+
+def _station_out(row: Station) -> dict[str, Any]:
+    """金鑰只回尾 4 碼——看板設定頁不需要看到完整金鑰。"""
+    return {
+        "id": row.id, "name": row.name, "base_url": row.base_url, "is_enabled": row.is_enabled, "note": row.note,
+        "api_key_hint": f"…{row.api_key[-4:]}" if row.api_key else "",
+        "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat(),
+    }
+
+
+@router.get("/summary")
+def station_summary(request: HttpRequest, hours: int = 24):
+    """這一站的良率摘要。看板輪詢它；本站的總覽也用同一份。"""
+    principal(request)
+    return fleet.summary_of_this_station(hours)
+
+
+@router.get("/stations")
+def list_stations(request: HttpRequest):
+    principal(request)
+    return {"items": [_station_out(s) for s in Station.objects.all()]}
+
+
+@router.post("/stations", response={201: dict})
+def create_station(request: HttpRequest, payload: StationIn):
+    require_admin(request)
+    if not payload.name.strip() or not payload.base_url.strip():
+        raise ValidationError("A station needs a name and a base URL", code="station_incomplete")
+    try:
+        with transaction.atomic():
+            row = Station.objects.create(name=payload.name.strip(), base_url=payload.base_url.strip(),
+                                         api_key=payload.api_key.strip(), is_enabled=payload.is_enabled, note=payload.note)
+    except IntegrityError:
+        raise Conflict("A station with that name already exists", code="station_name_taken") from None
+    audit.record(request, "station.create", row, summary=row.base_url)
+    return 201, _station_out(row)
+
+
+@router.post("/stations/test")
+def test_station(request: HttpRequest, payload: StationIn):
+    """設定頁的「測試」：現在就去問一次，把失敗原因原樣回來。"""
+    require_admin(request)
+    try:
+        summary = fleet.fetch(payload.base_url.strip(), payload.api_key.strip(), timeout=6.0)
+    except Exception as exc:  # noqa: BLE001 — 測試端點要把原因給使用者看
+        return {"ok": False, "error": fleet._reason(exc)}  # noqa: SLF001
+    return {"ok": True, "station_id": summary.get("station_id", ""), "version": summary.get("version", ""),
+            "flows": len(summary.get("flows") or []), "totals": summary.get("totals") or {}}
+
+
+@router.patch("/stations/{station_id}")
+def patch_station(request: HttpRequest, station_id: int, payload: StationPatch):
+    require_admin(request)
+    row = Station.objects.filter(pk=station_id).first()
+    if row is None:
+        raise NotFound("Station not found", code="station_not_found")
+    before = {"name": row.name, "base_url": row.base_url, "is_enabled": row.is_enabled, "note": row.note}
+    for field in ("name", "base_url", "note"):
+        value = getattr(payload, field)
+        if value is not None:
+            setattr(row, field, value.strip())
+    if payload.api_key is not None:
+        row.api_key = payload.api_key.strip()
+    if payload.is_enabled is not None:
+        row.is_enabled = payload.is_enabled
+    try:
+        with transaction.atomic():
+            row.save()
+    except IntegrityError:
+        raise Conflict("A station with that name already exists", code="station_name_taken") from None
+    changed = audit.fields_diff(before, {"name": row.name, "base_url": row.base_url, "is_enabled": row.is_enabled, "note": row.note}, tuple(before))
+    audit.record(request, "station.update", row, summary=audit.summarize_fields(changed), detail=changed)
+    return _station_out(row)
+
+
+@router.delete("/stations/{station_id}", response={204: None})
+def delete_station(request: HttpRequest, station_id: int):
+    require_admin(request)
+    row = Station.objects.filter(pk=station_id).first()
+    if row is None:
+        raise NotFound("Station not found", code="station_not_found")
+    audit.record(request, "station.delete", row)
+    row.delete()
+    return 204, None
+
+
+@router.get("/fleet")
+def fleet_board(request: HttpRequest):
+    """所有站台的唯讀彙總。離線的站台保留最後已知數字，但會標記多舊。"""
+    principal(request)
+    return fleet.board(Station.objects.filter(is_enabled=True))
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
  * 整合方式的清單：路由、圖示、i18n key 與追蹤頻道。
  * 側欄的樹狀選單（AppShell）與整合頁的版面都讀這一份，加一種整合方式只要改這裡與路由。
  */
-import { Cable, FileJson, Lock, Monitor, Plug, Radio, Send, Terminal } from 'lucide-react'
+import { Cable, FileJson, Lock, Monitor, Network, Plug, Radio, Send, Terminal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface IntegrationSection {
@@ -22,6 +22,7 @@ export const SECTIONS: IntegrationSection[] = [
   { id: 'modbus', icon: Cable, key: 'modbus', channel: 'modbus' },
   { id: 'connections', icon: Plug, key: 'connections', channel: 'modbus' },
   { id: 'capture', icon: Monitor, key: 'capture', channel: 'capture' },
+  { id: 'stations', icon: Network, key: 'stations' },
   { id: 'lock', icon: Lock, key: 'lock' },
   { id: 'format', icon: FileJson, key: 'format' },
 ]
