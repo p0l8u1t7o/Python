@@ -373,6 +373,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
 | `docs/capture-client.html` | 擷取端：安裝與連線、通道與 ROI、相機支援、共享記憶體與 TCP、網頁設定、效能、疑難排解、協定 v1、驗收清單 |
+| `docs/deployment.html` | 部署與維運（英文）：安裝、開機自動啟動、埠與防火牆、反向代理、帳號與金鑰、備份還原、升級與回滾、監控、多站台看板、災難復原、資安 |
 | `docs/glossary.html` | 名詞規範與文案用詞規範 |
 | `docs/performance.html` | 效能報告 |
 | `CLAUDE.md` | 給 AI 協作者與開發者的專案須知：架構、慣例、驗證清單、踩過的坑、各模組要點 |

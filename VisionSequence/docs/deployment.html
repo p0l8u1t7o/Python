@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence Deployment</title>
+<style>
+  /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
+  :root {
+    --bg:#0a0a0f; --paper:#12121a; --panel:#0e0e16; --ink:#d6dae3; --head:#f0f0f5; --muted:#8b93a7; --subtle:#6b7280;
+    --line:#2a2a3a; --line-strong:#3a3a52;
+    --brand:#00ff88; --brand-dim:#00cc6e; --brand-soft:rgba(0,255,136,.08); --brand-glow:rgba(0,255,136,.35);
+    --cyan:#00d4ff; --cyan-soft:rgba(0,212,255,.10); --magenta:#ff3366; --amber:#ffb020;
+    --code-bg:#161622; --code-ink:#9ef0c5; --pre-bg:#07070c; --pre-ink:#cfe9dc;
+    --rail-w:212px; --toc-w:232px; --top-h:0px;
+    --mono:'Cascadia Code',Consolas,'JetBrains Mono','Fira Code','Noto Sans TC',ui-monospace,monospace;
+    --sans:'Noto Sans TC','Segoe UI',system-ui,'Microsoft JhengHei',sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; color-scheme:dark; }
+  body {
+    margin:0; min-height:100vh; display:flex; align-items:flex-start;
+    background:var(--bg) linear-gradient(rgba(0,255,136,.028) 1px, transparent 1px) 0 0 / 44px 44px, linear-gradient(90deg, rgba(0,255,136,.028) 1px, transparent 1px) 0 0 / 44px 44px;
+    color:var(--ink); font-family:var(--sans); line-height:1.85; font-size:16px; -webkit-font-smoothing:antialiased;
+  }
+  ::selection { background:var(--brand); color:#0a0a0f; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:2px; border:2px solid var(--bg); }
+  ::-webkit-scrollbar-track { background:transparent; }
+  :focus-visible { outline:2px solid var(--brand); outline-offset:2px; box-shadow:0 0 8px var(--brand-glow); }
+
+  /* 最左：站內總目錄（直式導覽欄，sticky 滿高，掃描線只鋪在這裡） */
+  nav.site {
+    position:sticky; top:0; z-index:20; flex:0 0 var(--rail-w); height:100vh; overflow-y:auto; scrollbar-width:thin;
+    display:flex; flex-direction:column; gap:.1rem; padding:1.1rem .7rem 1.4rem;
+    background:var(--bg) repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,.22) 3px, rgba(0,0,0,.22) 4px);
+    border-right:1px solid rgba(0,255,136,.14); font-family:var(--mono); font-size:.8rem;
+  }
+  nav.site::before {
+    content:"VisionSequence\A DOCS // 總目錄"; white-space:pre; display:block; margin:0 .4rem 1rem; padding:.55rem .7rem;
+    border:1px solid rgba(0,255,136,.35); border-radius:3px; color:var(--brand); font-weight:700; letter-spacing:.06em; line-height:1.45;
+    text-shadow:0 0 10px var(--brand-glow); background:var(--brand-soft);
+  }
+  nav.site a { display:block; padding:.42rem .7rem .42rem .8rem; border-left:2px solid transparent; border-radius:0 3px 3px 0; color:var(--muted); text-decoration:none; white-space:normal; line-height:1.4; overflow-wrap:anywhere; }
+  nav.site a::before { content:"› "; color:var(--subtle); }
+  nav.site a:hover { color:var(--brand); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand); border-left-color:var(--brand); background:var(--brand-soft); font-weight:700; text-shadow:0 0 8px var(--brand-glow); }
+  nav.site a[aria-current="page"]::before { content:"▸ "; color:var(--brand); }
+
+  /* 中：本頁目錄（sticky）＋ 右：內文 */
+  .doc-layout { flex:1 1 auto; min-width:0; display:flex; align-items:flex-start; gap:2.6rem; max-width:1240px; padding:2.4rem 2.4rem 6rem 2.2rem; }
+  aside.toc { flex:0 0 var(--toc-w); position:sticky; top:calc(var(--top-h) + 1.4rem); max-height:calc(100vh - var(--top-h) - 2.8rem); overflow-y:auto; scrollbar-width:thin; padding:.2rem 1rem .6rem 0; border-right:1px solid var(--line); font-family:var(--mono); font-size:.8rem; line-height:1.5; }
+  aside.toc .toc-title { margin:0 0 .7rem; font-size:.68rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--cyan); }
+  aside.toc .toc-title::before { content:"// "; color:var(--subtle); }
+  aside.toc ul { list-style:none; margin:0; padding:0; }
+  aside.toc li { margin:0; }
+  aside.toc a { display:block; padding:.34rem .6rem .34rem .7rem; margin:.05rem 0; border-left:2px solid transparent; border-radius:0 3px 3px 0; color:var(--muted); text-decoration:none; overflow-wrap:anywhere; }
+  aside.toc a:hover { color:var(--cyan); background:var(--cyan-soft); }
+  aside.toc a.active { color:var(--brand); border-left-color:var(--brand); background:var(--brand-soft); font-weight:700; text-shadow:0 0 8px var(--brand-glow); }
+  aside.toc ul ul a { padding-left:1.6rem; font-size:.76rem; color:var(--subtle); }
+  aside.toc ul ul a.active { color:var(--brand); }
+
+  article.doc { flex:1 1 auto; min-width:0; max-width:880px; }
+  article.doc.wide { max-width:1060px; }
+
+  /* 字級階層：標題等寬字＋霓虹，明顯大於內文；段落留白 */
+  h1 { font-family:var(--mono); font-size:2rem; line-height:1.3; color:var(--head); letter-spacing:-.01em; margin:.2rem 0 1.5rem; font-weight:700; text-shadow:0 0 14px rgba(0,255,136,.22); }
+  h1::after { content:""; display:block; width:72px; height:3px; margin-top:.8rem; background:linear-gradient(90deg,var(--brand),var(--cyan)); box-shadow:0 0 10px var(--brand-glow); }
+  h2 { font-family:var(--mono); font-size:1.45rem; line-height:1.35; color:var(--brand); font-weight:700; margin:3.4rem 0 1.1rem; padding:.4rem .9rem .4rem .95rem; border-left:3px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 3px 3px 0; text-shadow:0 0 10px rgba(0,255,136,.25); scroll-margin-top:calc(var(--top-h) + 1.2rem); }
+  h2::before { content:"// "; color:var(--subtle); font-weight:400; }
+  h2:first-of-type { margin-top:2.2rem; }
+  h3 { font-family:var(--mono); font-size:1.12rem; line-height:1.4; color:var(--cyan); font-weight:700; margin:2.3rem 0 .75rem; scroll-margin-top:calc(var(--top-h) + 1.2rem); }
+  h3::before { content:"› "; color:var(--subtle); }
+  h4 { font-family:var(--mono); font-size:1rem; color:var(--head); margin:1.6rem 0 .5rem; }
+  p { margin:.9rem 0; }
+  p.lead { font-size:1.05rem; color:var(--muted); }
+  a { color:var(--cyan); text-decoration:underline; text-decoration-color:rgba(0,212,255,.35); text-underline-offset:3px; }
+  a:hover { color:var(--brand); text-decoration-color:var(--brand); }
+  strong { color:var(--head); }
+  em { color:var(--amber); font-style:normal; }
+  code { font-family:var(--mono); font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:3px; padding:.08em .4em; overflow-wrap:anywhere; }
+  pre { position:relative; background:var(--pre-bg); color:var(--pre-ink); border:1px solid var(--line); border-radius:3px; padding:1.1rem 1.25rem; margin:1.2rem 0; overflow-x:auto; line-height:1.65; font-size:.84em; box-shadow:0 0 0 1px rgba(0,255,136,.04), 0 0 16px rgba(0,255,136,.05); }
+  pre::before, pre::after { content:""; position:absolute; width:12px; height:12px; border:2px solid var(--brand); pointer-events:none; }
+  pre::before { top:3px; left:3px; border-right:0; border-bottom:0; }
+  pre::after { bottom:3px; right:3px; border-left:0; border-top:0; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.3rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-top:2px solid var(--brand); border-radius:3px; overflow:hidden; }
+  th { background:#161622; color:var(--brand); font-family:var(--mono); font-size:.78em; letter-spacing:.06em; text-align:left; font-weight:700; padding:.65rem .85rem; border-bottom:1px solid var(--line-strong); }
+  td { padding:.6rem .85rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#141420; }
+  ul, ol { padding-left:1.5rem; margin:.75rem 0; }
+  li { margin:.45rem 0; }
+  li::marker { color:var(--brand-dim); }
+  li > ul, li > ol { margin:.3rem 0; }
+  .note, blockquote { position:relative; margin:1.4rem 0; padding:.85rem 1.15rem; background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:3px; color:var(--ink); }
+  .note::after, blockquote::after { content:""; position:absolute; right:3px; bottom:3px; width:10px; height:10px; border-right:2px solid var(--amber); border-bottom:2px solid var(--amber); pointer-events:none; }
+  blockquote { border-left-color:var(--cyan); color:var(--muted); }
+  blockquote::after { border-color:var(--cyan); }
+  hr { border:none; border-top:1px solid var(--line); margin:2.8rem 0; }
+  img { max-width:100%; border:1px solid var(--line); border-radius:3px; }
+  .wrap { overflow-x:auto; }
+  .good { color:var(--brand); font-weight:600; }
+  .bad { color:var(--magenta); }
+  .noise { color:var(--subtle); }
+  .num td:nth-child(n+2), .num th:nth-child(n+2) { text-align:right; font-variant-numeric:tabular-nums; }
+
+  @media (max-width:1180px) {
+    .doc-layout { flex-direction:column; gap:1.4rem; padding:1.8rem 1.6rem 4rem; }
+    aside.toc { position:static; max-height:none; flex:none; width:100%; border-right:none; border-bottom:1px solid var(--line); padding:0 0 .8rem; }
+    aside.toc ul { columns:2; column-gap:1.5rem; }
+    aside.toc li { break-inside:avoid; }
+    aside.toc ul ul { columns:1; }
+  }
+  @media (max-width:900px) {
+    body { display:block; }
+    nav.site { position:sticky; height:auto; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; gap:.15rem; padding:.5rem .8rem; border-right:none; border-bottom:1px solid rgba(0,255,136,.14); }
+    nav.site::before { content:"VS"; white-space:nowrap; margin:0 .6rem 0 0; padding:.2rem .5rem; }
+    nav.site a { white-space:nowrap; border-left:none; border-bottom:2px solid transparent; border-radius:3px 3px 0 0; padding:.3rem .55rem; }
+    nav.site a::before { content:""; }
+    nav.site a[aria-current="page"] { border-bottom-color:var(--brand); }
+    .doc-layout { padding:1.4rem 1rem 4rem; }
+    h1 { font-size:1.55rem; }
+    h2 { font-size:1.25rem; margin-top:2.4rem; }
+  }
+  @media print {
+    body { display:block; background:#fff; color:#111; }
+    nav.site, aside.toc { display:none; }
+    .doc-layout { display:block; padding:0; max-width:none; }
+    h1, h2, h3 { color:#111; text-shadow:none; }
+    a { color:#1d4ed8; }
+    code, pre, table { background:#f5f5f5; color:#111; }
+  }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a><a href="deployment.html" aria-current="page">部署與維運</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#shape">1. What you are installing</a></li><li><a href="#requirements">2. Requirements</a></li><li><a href="#install">3. First install</a></li><li><a href="#service">4. Starting at boot</a></li><li><a href="#network">5. Ports, firewall and reverse proxy</a></li><li><a href="#accounts">6. Accounts and keys</a></li><li><a href="#backup">7. Backup and restore</a></li><li><a href="#upgrade">8. Upgrading and rolling back</a></li><li><a href="#monitor">9. Monitoring</a></li><li><a href="#fleet">10. More than one station</a></li><li><a href="#recovery">11. Disaster recovery</a></li><li><a href="#security">12. Security notes</a></li></ul></aside><article class="doc">
+
+<h1>Deployment and operations</h1>
+<p>How to put VisionSequence on a factory PC and keep it running: install, start at boot, back up, upgrade, monitor, recover. Everything here assumes Windows, which is what the machines on a line normally run; the platform itself is plain Python and Django and runs on Linux with the same steps minus the scheduled task.</p>
+
+<h2 id="shape">1. What you are installing</h2>
+<p><strong>One machine, one API process, one station.</strong> Engine state, the image cache and the event bus all live inside that process, so a station is a single server with a single copy of <code>manage.py serve</code>. That one command serves the web interface, the HTTP API, the TCP command port and the capture-client port.</p>
+<table>
+<tr><th>Piece</th><th>What it is</th><th>Where it lives</th></tr>
+<tr><td>API process</td><td>Web UI, HTTP API, SSE, TCP commands, capture hub, Modbus connections</td><td><code>manage.py serve</code> (uvicorn, one worker)</td></tr>
+<tr><td>Database</td><td>Flows, recipes, run history, users, audit trail</td><td><code>data\vision.sqlite3</code> (SQLite, WAL)</td></tr>
+<tr><td>Assets</td><td>Template images, models, dataset versions, batch images</td><td><code>data\assets\</code></td></tr>
+<tr><td>Image archive</td><td>Kept inspection images (off by default)</td><td><code>data\archive\</code> or <code>VISION_ARCHIVE_DIR</code></td></tr>
+<tr><td>Capture client</td><td>Optional desktop program on the camera PC</td><td>Its own machine; connects out to port 9100</td></tr>
+</table>
+<div class="note">Several stations do not share one server. Each station runs its own copy; a read-only <strong>fleet board</strong> can poll them all for a single yield overview (see <a href="#fleet">§10</a>).</div>
+
+<h2 id="requirements">2. Requirements</h2>
+<ul>
+<li><strong>Windows 10/11 or Windows Server 2019+</strong>, 64-bit. Linux works too; only the scheduled task in §4 is Windows-specific.</li>
+<li><strong>Python 3.12</strong> (the version the virtual environment is built with).</li>
+<li><strong>Node.js 20+</strong> only if you intend to rebuild the web interface; a shipped build does not need it.</li>
+<li><strong>Disk</strong>: 2 GB for the program, plus whatever you allow the image archive (default cap 20 GB) and the run history (a run row is roughly 1.5 KB).</li>
+<li><strong>Memory</strong>: 4 GB is enough for classic inspection. The image cache holds the last few runs per flow in RAM; a 20 MP colour frame is 60 MB, so a station running large frames wants 16 GB.</li>
+<li><strong>GPU</strong>: optional, only for deep-learning tools. NVIDIA with CUDA 12.8 drivers; see the deep-learning page for the install order, which matters.</li>
+</ul>
+
+<h2 id="install">3. First install</h2>
+<pre>git clone &lt;your copy&gt; C:\VisionSequence
+cd C:\VisionSequence
+.\scripts\dev.ps1 -Setup          # creates .venv, installs requirements, migrates, seeds demo data</pre>
+<p>Then create the first administrator and the settings file:</p>
+<pre>.venv\Scripts\python.exe manage.py create_admin --username admin
+copy .env.example .env            # edit it: see the table below</pre>
+<p>The settings that matter on a new station:</p>
+<table>
+<tr><th>Setting</th><th>Default</th><th>Why you would change it</th></tr>
+<tr><td><code>VISION_STATION_ID</code></td><td><code>ST01</code></td><td>Stamped on every run; make it the real station name so reports and the fleet board are readable.</td></tr>
+<tr><td><code>SECRET_KEY</code></td><td>dev value</td><td><strong>Always change it.</strong> Session and token signing depend on it.</td></tr>
+<tr><td><code>DEBUG</code></td><td><code>1</code></td><td>Set to <code>0</code> in production: no stack traces to the browser.</td></tr>
+<tr><td><code>ALLOWED_HOSTS</code></td><td><code>*</code></td><td>Narrow it to the station's own name and IP.</td></tr>
+<tr><td><code>VISION_API_KEY</code></td><td>empty</td><td>Set it so integrators authenticate with <code>X-API-Key</code>. Empty means the HTTP API accepts any logged-in user only.</td></tr>
+<tr><td><code>VISION_ARCHIVE_DEFAULT</code></td><td><code>off</code></td><td>Set to <code>ng</code> to keep reject images for every new flow on this station.</td></tr>
+<tr><td><code>VISION_KEEP_RUN_DAYS</code></td><td><code>30</code></td><td>How long run detail is kept. The hourly yield rollup is kept forever regardless.</td></tr>
+<tr><td><code>DATA_DIR</code></td><td><code>data\</code></td><td>Move the database, assets and archive to a data disk.</td></tr>
+</table>
+<p>Check the result before going further:</p>
+<pre>.venv\Scripts\python.exe manage.py doctor</pre>
+
+<h2 id="service">4. Starting at boot</h2>
+<p><code>scripts\dev.ps1</code> is for development — it opens windows and dies with your session. On a station, register the scheduled task instead. Run PowerShell <strong>as administrator</strong>:</p>
+<pre>.\scripts\install_service.ps1                       # runs as SYSTEM on port 8000
+.\scripts\install_service.ps1 -User "PLANT\vision" -Password "…" -Port 8000
+.\scripts\install_service.ps1 -Uninstall</pre>
+<p>The task starts at boot with no login, restarts the process a minute after any exit, never runs two copies, and rotates <code>data\logs\service.log</code> at 20 MB keeping the last ten. Inspect or stop it from Task Scheduler like any other task.</p>
+<div class="note">A camera opened by the capture client on another PC is unaffected by this account choice. A camera plugged into <em>this</em> PC through a vendor SDK may need a real user session — if the camera cannot be opened under SYSTEM, install the task under a dedicated user account instead.</div>
+
+<h2 id="network">5. Ports, firewall and reverse proxy</h2>
+<table>
+<tr><th>Port</th><th>Who connects</th><th>Setting</th></tr>
+<tr><td>8000</td><td>Browsers and HTTP integrators</td><td><code>--port</code></td></tr>
+<tr><td>9000</td><td>Equipment sending one-line TCP commands</td><td><code>VISION_TCP_PORT</code></td></tr>
+<tr><td>9100</td><td>Capture clients connecting <strong>out</strong> from camera PCs</td><td><code>VISION_CAPTURE_PORT</code></td></tr>
+<tr><td>5020…</td><td>PLC masters, when the platform acts as a Modbus slave</td><td>Per connection</td></tr>
+</table>
+<p>Open only what you use, and only to the line's subnet:</p>
+<pre>New-NetFirewallRule -DisplayName "VisionSequence API" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow -RemoteAddress 192.168.1.0/24</pre>
+<p>For HTTPS, put IIS or nginx in front and proxy to <code>127.0.0.1:8000</code>. Two things must be right or the live view breaks: <strong>do not buffer</strong> the event stream, and allow long-lived connections.</p>
+<pre># nginx
+location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_buffering off;              # SSE: results must arrive as they happen
+    proxy_read_timeout 300s;
+}</pre>
+
+<h2 id="accounts">6. Accounts and keys</h2>
+<ul>
+<li><strong>People</strong> log in with a user account. Three roles: administrator (accounts, connections, system settings), engineer (flows, sources, models, tuning), operator (run, change over, on-site parameters). Give the line an operator account, not a shared administrator one.</li>
+<li><strong>Machines</strong> use <code>VISION_API_KEY</code> and send <code>X-API-Key</code>. An integrator can always run, even while the engine is locked, so treat the key as a production credential and rotate it when staff change.</li>
+<li>Every change is recorded in the audit trail (Audit trail page, administrators only), and can be exported as CSV. Executions are not recorded there — they are in each flow's statistics.</li>
+</ul>
+
+<h2 id="backup">7. Backup and restore</h2>
+<pre>.venv\Scripts\python.exe manage.py backup                       # data\backups\visionsequence-&lt;stamp&gt;.zip
+.venv\Scripts\python.exe manage.py backup --out D:\bak\vs.zip --with-images</pre>
+<p>The database is copied through SQLite's own backup API, so <strong>a backup taken while the line is running is consistent</strong>. Assets are included; archived inspection images are not unless you ask, because they are the bulky part.</p>
+<p>Restoring overwrites the database and assets, so stop the station first:</p>
+<pre>Stop-ScheduledTask -TaskName VisionSequence
+.venv\Scripts\python.exe manage.py restore D:\bak\vs.zip --yes
+.venv\Scripts\python.exe manage.py migrate
+Start-ScheduledTask -TaskName VisionSequence</pre>
+<p>The database that was there is kept beside the new one as <code>vision.sqlite3.before-restore-&lt;stamp&gt;</code>.</p>
+<p>A sensible schedule is a nightly backup to a network share, keeping fourteen:</p>
+<pre>$t = New-ScheduledTaskTrigger -Daily -At 2am
+$a = New-ScheduledTaskAction -Execute "C:\VisionSequence\.venv\Scripts\python.exe" `
+     -Argument "manage.py backup --out \\nas\vs\$(hostname)-$(Get-Date -f yyyyMMdd).zip" `
+     -WorkingDirectory "C:\VisionSequence"
+Register-ScheduledTask -TaskName "VisionSequence backup" -Trigger $t -Action $a -User SYSTEM -RunLevel Highest</pre>
+
+<h2 id="upgrade">8. Upgrading and rolling back</h2>
+<ol>
+<li><strong>Back up first</strong> — <code>manage.py backup</code>. This is the rollback.</li>
+<li>Stop the task: <code>Stop-ScheduledTask -TaskName VisionSequence</code>.</li>
+<li>Update the code (<code>git pull</code>, or replace the folder keeping <code>data\</code> and <code>.env</code>).</li>
+<li><code>.venv\Scripts\pip.exe install -r requirements.txt</code> then <code>manage.py migrate</code>. Migrations only add; no release so far removes data.</li>
+<li>Start the task, then <code>manage.py doctor</code> and open the web interface once.</li>
+<li>Check the version in the sidebar footer matches what you installed.</li>
+</ol>
+<p><strong>Rolling back</strong>: put the old code back and restore the backup taken in step 1. Restoring an old database under new code is fine; new code under an old database is not, because the migrations will be missing.</p>
+<p>Capture clients update themselves over their existing connection when a newer build is published on the server — see the capture-client page. Clients older than 0.2.0 predate that feature and must be downloaded again.</p>
+
+<h2 id="monitor">9. Monitoring</h2>
+<table>
+<tr><th>Signal</th><th>How</th><th>What to alert on</th></tr>
+<tr><td>Alive</td><td><code>GET /healthz</code> — no authentication, returns status, version and station id</td><td>Anything but HTTP 200</td></tr>
+<tr><td>Healthy</td><td><code>manage.py doctor --json</code>, exit code 1 when something needs attention</td><td>Non-zero exit</td></tr>
+<tr><td>Yield</td><td><code>GET /api/vision/flows/{id}/stats</code>, or the fleet board</td><td>Reject rate above the line's limit</td></tr>
+<tr><td>Throughput</td><td>Same endpoint: <code>total</code> per hour</td><td>Zero during a production shift</td></tr>
+<tr><td>Logs</td><td><code>data\logs\service.log</code>, rotated at 20 MB</td><td><code>ERROR</code> lines</td></tr>
+</table>
+<p>An integration engineer debugging equipment should use the <strong>commands and results</strong> panel on the integration pages instead of the log: while that page is open every command and reply on the interface is listed live.</p>
+
+<h2 id="fleet">10. More than one station</h2>
+<p>Each station is independent, which is what keeps the engine simple and the failure of one line from taking out another. To see them together, pick any instance (a station, or a spare PC in the office) and add the others under <strong>External integration ▸ Stations</strong>: give each a name, its base URL and an API key. That instance polls the others every few seconds and shows a read-only board of today's yield, throughput and errors, with a link into each station's own interface.</p>
+<p>The board never pushes flows or accounts to a station — nothing is shared but numbers. If a station is unreachable the board says so and keeps the last known figures with their timestamp, so a stale number is never mistaken for a live one.</p>
+
+<h2 id="recovery">11. Disaster recovery</h2>
+<table>
+<tr><th>What happened</th><th>What to do</th></tr>
+<tr><td>Process keeps restarting</td><td><code>data\logs\service.log</code> has the traceback. Common causes: a port already taken (the connection status names it), a missing <code>.env</code>, a database from a newer version.</td></tr>
+<tr><td>Disk full</td><td><code>manage.py purge --dry-run</code> to see what would go, then run it. Lower <code>VISION_ARCHIVE_MAX_GB</code> and <code>VISION_KEEP_RUN_DAYS</code>.</td></tr>
+<tr><td>Database corrupt</td><td>Restore the last backup. SQLite in WAL mode survives a power cut, but not a failing disk.</td></tr>
+<tr><td>Whole PC dead</td><td>Install on new hardware (§3), restore the backup (§7), reconnect the cameras. The station id in <code>.env</code> keeps the history continuous.</td></tr>
+<tr><td>Forgotten administrator password</td><td><code>manage.py create_admin --username admin --password …</code> resets it from the console.</td></tr>
+<tr><td>PLC cannot connect to a Modbus slave</td><td>The connection status names the reason; a port taken by another program is the usual one. <code>manage.py doctor</code> lists connections with errors.</td></tr>
+</table>
+
+<h2 id="security">12. Security notes</h2>
+<ul>
+<li>The API binds <code>0.0.0.0</code> so the line can reach it. On a plant network that is normally right; on anything routable, put it behind a proxy and a firewall rule.</li>
+<li><code>SECRET_KEY</code> and <code>VISION_API_KEY</code> belong in <code>.env</code>, which is not in version control. Rotate the API key when integrators change.</li>
+<li>User tokens are stored as SHA-256 hashes and expire after fourteen days.</li>
+<li><strong>Python script tools run in the engine process.</strong> Only code an administrator has saved is approved to run, and imports are allow-listed with a watchdog — but treat the ability to save scripts as equivalent to shell access on the station, and keep the administrator role to the people who should have it.</li>
+<li>The image archive holds pictures of your product. It is a folder on disk with no separate access control: put it on a volume with the file permissions you want, and remember it when you decommission a machine.</li>
+</ul>
+
+</article></div><!-- /doc-layout -->
+<script>
+// 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用
+(function () {
+  var site = document.querySelector('nav.site');
+  function measure() {
+    if (!site) return;
+    var horizontal = getComputedStyle(site).flexDirection !== 'column';
+    document.documentElement.style.setProperty('--top-h', (horizontal ? site.offsetHeight : 0) + 'px');
+  }
+  measure();
+  window.addEventListener('resize', measure);
+  var links = Array.prototype.slice.call(document.querySelectorAll('aside.toc a[href^="#"]'));
+  if (!links.length) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var heads = Array.prototype.slice.call(document.querySelectorAll('article.doc h2[id], article.doc h3[id]')).filter(function (h) { return byId[h.id]; });
+  var current = null;
+  function activate(id) {
+    if (current === id) return;
+    current = id;
+    links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+    var a = byId[id];
+    if (a && a.scrollIntoView) { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+  }
+  function update() {
+    var top = window.scrollY + 100, best = heads[0];
+    for (var i = 0; i < heads.length; i++) { if (heads[i].offsetTop <= top) best = heads[i]; else break; }
+    if (best) activate(best.id);
+  }
+  update();
+  window.addEventListener('scroll', update, { passive: true });
+})();
+</script>
+</body>
+</html>
