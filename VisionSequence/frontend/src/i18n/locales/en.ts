@@ -396,7 +396,7 @@ const en = {
     subtitle: 'Glossary and how-to',
     tabs: { quickstart: 'Quick start', glossary: 'Glossary', ports: 'Port types & colours', tools: 'Tool catalogue', shortcuts: 'Shortcuts', automation: 'Automation API', accounts: 'Accounts & lock' },
     glossary: { pages: 'Pages (navigation, routes)', editor: 'Flow editor areas', core: 'Core terms', status: 'Status terms' },
-    cols: { zh: 'Chinese', en: 'English / code', route: 'Route', code: 'Component', desc: 'Description', def: 'Definition', status: 'Status', color: 'Colour', type: 'Type', usage: 'Usage', key: 'Key', action: 'Action' },
+    cols: { zh: 'Name', en: 'Code', route: 'Route', code: 'Component', desc: 'Description', def: 'Definition', status: 'Status', color: 'Colour', type: 'Type', usage: 'Usage', key: 'Key', action: 'Action' },
     portsHint: 'One colour per type; only matching (or compatible) ports connect.',
     toolsCount: '{{count}} tools',
   },

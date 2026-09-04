@@ -5,45 +5,45 @@ import { CodeBlock } from './shared'
 import { Card, CardBody, CardHeader } from '@/components/ui'
 
 const RUN_REPORT_FIELDS: [string, string, string][] = [
-  ['id', 'string', 'run id（uuid hex）'],
-  ['flow_id / flow_version', 'int', '流程與執行時的版本'],
+  ['id', 'string', 'The run id (a uuid hex)'],
+  ['flow_id / flow_version', 'int', 'The flow, and its version at run time'],
   ['trigger', 'string', 'ui / api / tcp / continuous / preview / integration…'],
-  ['status', '"ok" | "ng" | "failed" | "cancelled"', 'OK／NG 為判定結果；failed 為工具錯誤、逾時或沒有影像'],
-  ['started_at / finished_at', 'float', 'Unix 秒'],
-  ['duration_ms', 'float', '總耗時'],
-  ['error', 'string', '失敗原因（成功為空字串）'],
-  ['outputs', 'object', '具名輸出（見下表）'],
-  ['nodes', 'object', '每個步驟的 {status, duration_ms, message, branch, outputs, overlays, detail, logs}'],
-  ['persisted', 'bool', 'true = 來自資料庫歷史（GET /runs/{id}）'],
+  ['status', '"ok" | "ng" | "failed" | "cancelled"', 'OK and NG are verdicts; failed means a tool error, a timeout or no image'],
+  ['started_at / finished_at', 'float', 'Unix seconds'],
+  ['duration_ms', 'float', 'Total duration'],
+  ['error', 'string', 'Why it failed (an empty string on success)'],
+  ['outputs', 'object', 'The named outputs (see below)'],
+  ['nodes', 'object', 'Per step: {status, duration_ms, message, branch, outputs, overlays, detail, logs}'],
+  ['persisted', 'bool', 'true means it came from the database history (GET /runs/{id})'],
 ]
 
 const ERROR_CODES: [string, string, string][] = [
-  ['engine_locked', '423', '引擎被鎖定；details 是 lock 物件'],
-  ['flow_queue_full', '429', '該流程等待中的觸發已達 VISION_MAX_QUEUE_PER_FLOW（預設 16）；每個流程一次只跑一個 run'],
-  ['run_timeout', '504', '等結果超過 timeout_s；details.run_id 可事後取結果，執行本身不會被中止'],
-  ['flow_disabled', '409', '流程已停用（外部觸發被拒）'],
-  ['flow_not_found', '404', 'flow id 不存在或無權限'],
-  ['run_not_found', '404', 'run 不在記憶體也不在資料庫'],
-  ['image_gone', '404', '影像 ref 已被快取淘汰（KEEP_RUN_IMAGES）'],
-  ['bad_image', '422', '無法解碼影像'],
-  ['too_many_images', '422', '批次測試超過 50 張'],
-  ['validation_error', '422', '參數不合法'],
-  ['unauthenticated / unauthorized', '401', '缺少或錯誤的權杖／API 金鑰'],
-  ['permission_denied / not_owner', '403', '沒有修改權限'],
-  ['capacity', '503', '執行緒池已滿'],
+  ['engine_locked', '423', 'The engine is locked; details is the lock object'],
+  ['flow_queue_full', '429', 'That flow already has VISION_MAX_QUEUE_PER_FLOW triggers waiting (16 by default); a flow runs one run at a time'],
+  ['run_timeout', '504', 'Waited longer than timeout_s; details.run_id collects the result afterwards, and the run itself is not aborted'],
+  ['flow_disabled', '409', 'The flow is disabled, so an external trigger is refused'],
+  ['flow_not_found', '404', 'No such flow id, or no permission'],
+  ['run_not_found', '404', 'The run is in neither memory nor the database'],
+  ['image_gone', '404', 'The image ref has been evicted from the cache (KEEP_RUN_IMAGES)'],
+  ['bad_image', '422', 'The image cannot be decoded'],
+  ['too_many_images', '422', 'A batch test over 50 images'],
+  ['validation_error', '422', 'An invalid parameter'],
+  ['unauthenticated / unauthorized', '401', 'A missing or invalid token or API key'],
+  ['permission_denied / not_owner', '403', 'No permission to modify'],
+  ['capacity', '503', 'The thread pool is full'],
 ]
 
-/** TCP 一行指令的失敗碼（設備請用 code 分支，中文說明會隨版本潤飾）。 */
+/** TCP 一行指令的失敗碼（設備請用 code 分支，說明文字會隨版本潤飾）。 */
 const TCP_CODES: [string, string][] = [
-  ['empty_command', '空白行'],
-  ['unknown_command', '不認得的指令'],
-  ['missing_argument', '指令少了流程 id 或名稱'],
-  ['bad_argument', '引數不是 key=value（值含空白要加引號）'],
-  ['flow_not_found', '流程 id／名稱不存在'],
-  ['flow_disabled', '流程已停用'],
-  ['flow_queue_full', '該流程等待中的觸發已達上限'],
-  ['recipe_not_found', 'recipe= 指定的配方不存在'],
-  ['internal_error', '伺服器例外，記錄在日誌'],
+  ['empty_command', 'A blank line'],
+  ['unknown_command', 'Unrecognised command'],
+  ['missing_argument', 'The command is missing a flow id or name'],
+  ['bad_argument', 'An argument is not key=value (quote values containing spaces)'],
+  ['flow_not_found', 'No such flow id or name'],
+  ['flow_disabled', 'The flow is disabled'],
+  ['flow_queue_full', 'That flow already has the maximum number of triggers waiting'],
+  ['recipe_not_found', 'The recipe named by recipe= does not exist'],
+  ['internal_error', 'A server exception, recorded in the log'],
 ]
 
 function FormatSection() {

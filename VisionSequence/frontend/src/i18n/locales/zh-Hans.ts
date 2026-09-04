@@ -853,7 +853,7 @@ const zhHans = {
       accounts: '帐号与锁定',
     },
     glossary: { pages: '页面（左侧导览，路由）', editor: '流程编辑器的区块', core: '内核名词', status: '状态用语' },
-    cols: { zh: '中文', en: '英文／程序', route: '路由', code: '程序名', desc: '说明', def: '定义', status: '状态', color: '颜色', type: '类型', usage: '用途', key: '按键', action: '动作' },
+    cols: { zh: '名称', en: '程序名', route: '路由', code: '程序名', desc: '说明', def: '定义', status: '状态', color: '颜色', type: '类型', usage: '用途', key: '按键', action: '动作' },
     portsHint: '每种类型一个颜色，不重复；同色（或兼容）的端口才能相接。any 可接任何类型；points／contours／matches 可接到 list。',
     toolsCount: '{{count}} 个工具',
   },

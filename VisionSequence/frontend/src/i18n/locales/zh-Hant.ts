@@ -853,7 +853,7 @@ const zhHant = {
       accounts: '帳號與鎖定',
     },
     glossary: { pages: '頁面（左側導覽，路由）', editor: '流程編輯器的區塊', core: '核心名詞', status: '狀態用語' },
-    cols: { zh: '中文', en: '英文／程式', route: '路由', code: '程式名', desc: '說明', def: '定義', status: '狀態', color: '顏色', type: '型別', usage: '用途', key: '按鍵', action: '動作' },
+    cols: { zh: '名稱', en: '程式名', route: '路由', code: '程式名', desc: '說明', def: '定義', status: '狀態', color: '顏色', type: '型別', usage: '用途', key: '按鍵', action: '動作' },
     portsHint: '每種型別一個顏色，不重複；同色（或相容）的埠才能相接。any 可接任何型別；points／contours／matches 可接到 list。',
     toolsCount: '{{count}} 個工具',
   },
