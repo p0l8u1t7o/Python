@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, History, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
@@ -31,6 +31,7 @@ const NAV: { to: string; key: string; icon: LucideIcon; end: boolean; admin: boo
   { to: '/agent', key: 'agent', icon: Sparkles, end: false, admin: false, engineer: true },
   { to: '/integration', key: 'integration', icon: Plug, end: false, admin: false, engineer: true, tree: true },
   { to: '/users', key: 'users', icon: Users, end: false, admin: true },
+  { to: '/audit', key: 'audit', icon: History, end: false, admin: true },
   { to: '/settings', key: 'settings', icon: Settings, end: false, admin: false },
   { to: '/help', key: 'help', icon: HelpCircle, end: false, admin: false },
 ]

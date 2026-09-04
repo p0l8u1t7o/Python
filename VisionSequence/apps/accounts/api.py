@@ -27,6 +27,7 @@ from ninja import Router, Schema
 
 from apps.accounts.models import DEFAULT_ROLE, ROLES, AuthToken, EngineLock, UserPref, hash_token
 from apps.accounts.security import principal, require_admin
+from apps.core import audit
 from apps.core.errors import APIError, Conflict, NotFound, ValidationError
 
 router = Router(tags=["auth"])
@@ -225,6 +226,7 @@ def create_user(request: HttpRequest, payload: UserIn):
             UserPref.objects.create(user=user, role=role)
     except IntegrityError:
         raise Conflict("帳號已存在", code="username_taken") from None
+    audit.record(request, "user.create", user, summary=f"role {role}")
     return 201, user_out(user)
 
 
@@ -239,6 +241,7 @@ def _get_user(user_id: int) -> User:
 def patch_user(request: HttpRequest, user_id: int, payload: UserPatch):
     p = require_admin(request)
     user = _get_user(user_id)
+    before = {"role": role_of(user), "is_active": user.is_active, "display_name": user.first_name}
     if payload.password is not None:
         _check_password(payload.password)
         user.set_password(payload.password)
@@ -254,6 +257,7 @@ def patch_user(request: HttpRequest, user_id: int, payload: UserPatch):
         if pref.role != role:
             pref.role = role
             pref.save(update_fields=["role", "updated_at"])
+        user.pref = pref  # 反向 OneToOne 會被快取，不更新的話 user_out 會回舊角色
     if payload.is_active is not None:
         if p.user and p.user.id == user.id and not payload.is_active:
             raise ValidationError("不能停用自己", code="self_disable")
@@ -263,6 +267,11 @@ def patch_user(request: HttpRequest, user_id: int, payload: UserPatch):
     if payload.display_name is not None:
         user.first_name = payload.display_name
     user.save()
+    after_role = role if role is not None else before["role"]
+    changed = audit.fields_diff(before, {"role": after_role, "is_active": user.is_active, "display_name": user.first_name}, ("role", "is_active", "display_name"))
+    if payload.password is not None:
+        changed["password"] = {"before": "", "after": "reset"}
+    audit.record(request, "user.update", user, summary=audit.summarize_fields(changed), detail=changed)
     return user_out(user)
 
 
@@ -275,6 +284,7 @@ def delete_user(request: HttpRequest, user_id: int):
     from apps.vision.models import Flow
 
     Flow.objects.filter(owner=user).update(owner=None)  # owner 只是建立者；流程本身照樣能被工程師維護
+    audit.record(request, "user.delete", user, summary=role_of(user))
     user.delete()
     return 204, None
 
@@ -309,6 +319,7 @@ def acquire_lock(request: HttpRequest, payload: LockIn):
         if runner.is_continuous(fid):
             runner.stop_continuous(fid)
     bus.publish({"type": "lock", "lock": lock.to_dict()})
+    audit.record(request, "lock.acquire", summary=lock.reason or holder, target_type="engine", target_name=holder)
     return lock.to_dict()
 
 
@@ -323,4 +334,5 @@ def release_lock(request: HttpRequest):
     from apps.vision.runner import bus
 
     bus.publish({"type": "lock", "lock": lock.to_dict()})
+    audit.record(request, "lock.release", target_type="engine")
     return lock.to_dict()

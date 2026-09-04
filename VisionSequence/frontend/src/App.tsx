@@ -33,6 +33,7 @@ const TeachPage = lazy(() => import('@/pages/TeachPage').then((m) => ({ default:
 const DlPage = lazy(() => import('@/pages/DlPage').then((m) => ({ default: m.DlPage })))
 const ToolPage = lazy(() => import('@/pages/ToolPage').then((m) => ({ default: m.ToolPage })))
 const UsersPage = lazy(() => import('@/pages/UsersPage').then((m) => ({ default: m.UsersPage })))
+const AuditPage = lazy(() => import('@/pages/AuditPage').then((m) => ({ default: m.AuditPage })))
 
 function RequireAuth() {
   const auth = useAuth()
@@ -81,6 +82,7 @@ const router = createBrowserRouter([
           { path: 'sources', element: <SourcesPage /> },
           { path: 'assets', element: <AssetsPage /> },
           { path: 'users', element: <UsersPage /> },
+          { path: 'audit', element: <AuditPage /> },
           { path: 'settings', element: <SettingsPage /> },
         ],
       },

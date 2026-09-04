@@ -18,11 +18,14 @@ import time
 from typing import Any
 
 from django.conf import settings
+from django.db.models import Q
 from django.db import IntegrityError, transaction
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from ninja import File, Router, Schema, UploadedFile
 
-from apps.accounts.security import principal, require_engineer
+from apps.accounts.security import authenticate, principal, require_admin, require_engineer
+from apps.core import audit
+from apps.core.models import AuditLog
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
 from apps.vision import demo, trace
 from apps.vision.api import _decode_upload, _visible_flows
@@ -254,6 +257,64 @@ def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn
     if not images:
         raise ValidationError("來源沒有回傳影像", code="no_frame")
     return _batch_run(request, flow_id, images, payload.graph)
+
+
+# ---------------------------------------------------------------------------
+# 稽核軌跡（apps/core/audit.py）
+# ---------------------------------------------------------------------------
+@router.get("/audit")
+def audit_log(request: HttpRequest, action: str = "", target_type: str = "", target_id: str = "",
+              actor: str = "", q: str = "", limit: int = 50, offset: int = 0):
+    """Who changed what, newest first. Administrators only — it records people, not machines."""
+    require_admin(request)
+    qs = AuditLog.objects.all()
+    if action:
+        qs = qs.filter(action__startswith=action)
+    if target_type:
+        qs = qs.filter(target_type=target_type)
+    if target_id:
+        qs = qs.filter(target_id=str(target_id))
+    if actor:
+        qs = qs.filter(actor_name=actor)
+    if q:
+        qs = qs.filter(Q(summary__icontains=q) | Q(target_name__icontains=q))
+    total = qs.count()
+    limit = max(1, min(500, int(limit)))
+    rows = list(qs.select_related("actor")[offset : offset + limit])
+    return {
+        "items": [audit.out(r) for r in rows], "total": total, "limit": limit, "offset": offset,
+        "actions": sorted(AuditLog.objects.values_list("action", flat=True).distinct()),
+        "actors": sorted(a for a in AuditLog.objects.values_list("actor_name", flat=True).distinct() if a),
+    }
+
+
+@router.get("/audit.csv", auth=None)
+def audit_csv(request: HttpRequest, action: str = "", target_type: str = "", actor: str = ""):
+    """Same rows as CSV so quality can keep them outside the machine (UTF-8 BOM for Excel)."""
+    # auth=None 的端點 ninja 不會設 request.auth，所以身分要用 authenticate() 的回傳值，
+    # 不能再呼叫 principal(request)（它讀 request.auth，會自己拋 401）。
+    who = authenticate(request)
+    if who is None:
+        return HttpResponse(status=401)
+    if not who.is_admin:
+        raise PermissionDenied("Administrator role required", code="permission_denied")
+    qs = AuditLog.objects.all()
+    if action:
+        qs = qs.filter(action__startswith=action)
+    if target_type:
+        qs = qs.filter(target_type=target_type)
+    if actor:
+        qs = qs.filter(actor_name=actor)
+
+    def rows():
+        yield "\ufeff" + ",".join(("at", "actor", "actor_kind", "action", "target_type", "target_id", "target_name", "summary", "ip")) + "\r\n"
+        for r in qs.iterator(chunk_size=500):
+            cells = [r.at.isoformat(), r.actor_name, r.actor_kind, r.action, r.target_type, r.target_id, r.target_name, r.summary, r.ip or ""]
+            yield ",".join('"' + str(c).replace('"', '""') + '"' for c in cells) + "\r\n"
+
+    response = StreamingHttpResponse(rows(), content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="audit.csv"'
+    return response
 
 
 # ---------------------------------------------------------------------------

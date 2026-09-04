@@ -135,7 +135,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html" aria-current="page">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. 一頁總覽</a></li><li><a href="#models">1. 資料模型（apps/vision/models.py）</a><ul><li><a href="#sec-2-1">graph JSON</a></li></ul></li><li><a href="#tools">2. 工具框架（apps/vision/tools/base.py）</a><ul><li><a href="#sec-3-1">內建類別（52 個工具）</a></li></ul></li><li><a href="#graph">3. 圖驗證與編譯（graph.py）</a></li><li><a href="#engine">4. 引擎（engine.py）</a></li><li><a href="#runner">5. Runner 與並行（runner.py）</a></li><li><a href="#images">6. 影像快取（images.py）</a></li><li><a href="#versions">5b. 版本歷史（versions.py、graphdiff.py）</a></li><li><a href="#archive">6b. 影像封存（archive.py）</a></li><li><a href="#sources">7. 影像來源（sources/）</a></li><li><a href="#api">8. API / SSE / TCP</a></li><li><a href="#frontend">9. 前端（frontend/src）</a></li><li><a href="#accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</a></li><li><a href="#more">9c. 範本庫、批次測試、整合工具（api_more.py）</a></li><li><a href="#plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</a></li><li><a href="#settings">10. 設定值（config/settings.py → VISION）</a></li><li><a href="#tests">11. 測試（tests/）</a></li><li><a href="#pitfalls">12. 踩過的坑</a></li></ul></aside><article class="doc wide">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. 一頁總覽</a></li><li><a href="#models">1. 資料模型（apps/vision/models.py）</a><ul><li><a href="#sec-2-1">graph JSON</a></li></ul></li><li><a href="#tools">2. 工具框架（apps/vision/tools/base.py）</a><ul><li><a href="#sec-3-1">內建類別（52 個工具）</a></li></ul></li><li><a href="#graph">3. 圖驗證與編譯（graph.py）</a></li><li><a href="#engine">4. 引擎（engine.py）</a></li><li><a href="#runner">5. Runner 與並行（runner.py）</a></li><li><a href="#images">6. 影像快取（images.py）</a></li><li><a href="#audit">5a. 稽核軌跡（apps/core/audit.py、core.AuditLog）</a></li><li><a href="#versions">5b. 版本歷史（versions.py、graphdiff.py）</a></li><li><a href="#archive">6b. 影像封存（archive.py）</a></li><li><a href="#sources">7. 影像來源（sources/）</a></li><li><a href="#api">8. API / SSE / TCP</a></li><li><a href="#frontend">9. 前端（frontend/src）</a></li><li><a href="#accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</a></li><li><a href="#more">9c. 範本庫、批次測試、整合工具（api_more.py）</a></li><li><a href="#plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</a></li><li><a href="#settings">10. 設定值（config/settings.py → VISION）</a></li><li><a href="#tests">11. 測試（tests/）</a></li><li><a href="#pitfalls">12. 踩過的坑</a></li></ul></aside><article class="doc wide">
 <h1>VisionSequence 設計手冊</h1>
 <p>給要維護或擴充這個平台的人看。與 <a href="workflow-design.html">workflow-design.html</a>（ZQS Cloud 的控制流程引擎）同一套思想，但引擎換成毫秒級的<strong>行程內資料流</strong>。</p>
 
@@ -243,6 +243,16 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 
 <h2 id="images">6. 影像快取（images.py）</h2>
 <p>ref = <code>"{run_id}:{node_id}:{port}"</code>。每流程保留最近 KEEP_RUN_IMAGES 次 run 的影像；全域 IMAGE_CACHE_MB 以 bytes 計 LRU。<code>encode(ref, max_side, fmt, quality)</code> 延遲到有人要看才做，且依請求最長邊縮小（前端預設 1600）。浮點／16 位元影像正規化到 8 位元顯示。</p>
+
+<h2 id="audit">5a. 稽核軌跡（apps/core/audit.py、core.AuditLog）</h2>
+<ul>
+<li><strong>只記變更，不記執行</strong>：執行已經有 <code>FlowRun</code>、統計與影像封存；記進來只會把真正的編輯沖掉。</li>
+<li>由端點<strong>明確呼叫</strong> <code>audit.record(request, "flow.update", flow, summary=…, detail=…)</code>，不是 middleware——要記的是「有意義的動作」不是 HTTP 流量。目前掛在流程（建立／改圖／改設定／刪除／還原／發行）、配方（建立／換線）、來源刪除、通訊連線（建立／修改／刪除）、帳號（建立／修改／刪除）、引擎鎖（上鎖／解鎖）。</li>
+<li>流程的圖用 <code>graphdiff</code> 做<strong>參數層級</strong>的差異（「threshold 60 → 46」），其餘記錄用 <code>audit.fields_diff</code>；<code>detail</code> 會被 <code>_clip</code> 限制長度與筆數。</li>
+<li><strong>寫失敗不影響請求</strong>（`record` 永不拋例外）：軌跡壞掉很糟，但產線因為軌跡壞掉而停更糟。</li>
+<li>API：<code>GET /vision/audit</code>（管理員；可依動作／操作者／關鍵字篩選）與 <code>GET /vision/audit.csv</code>（UTF-8 BOM，Excel 直接開）。保留 <code>VISION_AUDIT_DAYS</code>（預設 730 天，0＝永久）。前端 <code>/audit</code>。</li>
+<li><strong>坑</strong>：<code>auth=None</code> 的端點 ninja 不會設 <code>request.auth</code>，身分要用 <code>authenticate()</code> 的回傳值，不能再呼叫 <code>principal(request)</code>（它讀 <code>request.auth</code>，會自己拋 401）。</li>
+</ul>
 
 <h2 id="versions">5b. 版本歷史（versions.py、graphdiff.py）</h2>
 <ul>

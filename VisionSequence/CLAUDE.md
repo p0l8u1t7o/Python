@@ -77,6 +77,13 @@
 ### 資料夾外掛（plugins/）
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 
+### 稽核軌跡（apps/core/audit.py、core.AuditLog）
+- **只記變更不記執行**（執行有 FlowRun／統計／封存，記進來會把真正的編輯沖掉）。由端點**明確呼叫** `audit.record(request, action, target, summary=, detail=)`，不用 middleware。
+- 已掛：flow.create／update／settings／delete／restore／release、recipe.create／activate、source.delete、connection.create／update／delete、user.create／update／delete、lock.acquire／release。**新增會改變檢測行為或帳號的端點記得補一行。**
+- 圖的差異用 `graphdiff`（參數層級），其餘用 `audit.fields_diff`；`record()` 永不拋例外（軌跡壞掉不能讓產線停）。
+- API `GET /vision/audit`（管理員）與 `/vision/audit.csv`（UTF-8 BOM）；保留 `AUDIT_DAYS`（730，0＝永久）。前端 `/audit`。
+- **坑**：`auth=None` 的端點 ninja 不會設 `request.auth`，身分用 `authenticate()` 的回傳值，不能再呼叫 `principal(request)`（會自己拋 401）。
+
 ### 版本歷史（apps/vision/versions.py、graphdiff.py）
 - `FlowVersion(flow, version, graph, saved_by, saved_at, note, is_released)`；**graph 真的變了才 +1 並存快照**（存同一張圖不產生新版本，`Flow.version` 語意從「存了幾次」變成「圖變了幾次」）。建立流程記第一版。
 - `graphdiff.diff` 是共用的差異器（版本比較與稽核都用）：參數逐條列、結構只給數量、純位移不算變更；`summarize()` 產生「threshold 60 → 46, +1 step」的一行摘要。

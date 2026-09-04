@@ -41,7 +41,8 @@ from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal, require_engineer
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import archive, schemas, scripts, teachguard, trace, versions
+from apps.core import audit
+from apps.vision import archive, graphdiff, schemas, scripts, teachguard, trace, versions
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
@@ -216,6 +217,7 @@ def create_flow(request: HttpRequest, payload: schemas.FlowIn):
     except IntegrityError:
         raise Conflict("已有同名流程", code="flow_name_taken") from None
     versions.snapshot(flow, user=principal(request).user, note="created")
+    audit.record(request, "flow.create", flow, summary=f"{len((flow.graph or {}).get('nodes') or [])} steps")
     return 201, _flow_out(flow)
 
 
@@ -231,6 +233,8 @@ def get_flow_api(request: HttpRequest, flow_id: int):
 def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     p = principal(request)
     flow = get_flow(flow_id)
+    before_graph = flow.graph or {}
+    before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned")}
     if not p.is_engineer:
         # 操作員只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
         touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned", "archive_policy") if getattr(payload, f) is not None]
@@ -254,6 +258,7 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         flow.commissioned = payload.commissioned
     if payload.archive_policy is not None:
         flow.archive_policy = archive.sanitize(payload.archive_policy)
+    field_changes = {}
     graph_changed = False
     if payload.graph is not None:
         new_graph = validate_graph(payload.graph)
@@ -262,6 +267,7 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         flow.graph = new_graph
         if graph_changed:
             flow.version += 1
+    field_changes = audit.fields_diff(before_fields, {f: getattr(flow, f) for f in before_fields}, tuple(before_fields))
     try:
         with transaction.atomic():
             flow.save()
@@ -269,6 +275,10 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         raise Conflict("已有同名流程", code="flow_name_taken") from None
     if graph_changed:
         versions.snapshot(flow, user=p.user)
+        changes = graphdiff.diff(before_graph, flow.graph)
+        audit.record(request, "flow.update", flow, summary=f"v{flow.version}: {graphdiff.summarize(changes)}", detail=changes)
+    if field_changes:
+        audit.record(request, "flow.settings", flow, summary=audit.summarize_fields(field_changes), detail=field_changes)
     return _flow_out(flow)
 
 
@@ -304,6 +314,7 @@ def restore_version(request: HttpRequest, flow_id: int, version: int):
     row = versions.restore(flow, version, user=p.user)
     if row is None:
         raise NotFound(f"Version {version} not found", code="version_not_found")
+    audit.record(request, "flow.restore", flow, summary=f"restored v{version} as v{flow.version}")
     return {"restored_from": version, **_flow_out(flow)}  # 版本號變了，編譯快取自然失效
 
 
@@ -321,12 +332,14 @@ def release_version(request: HttpRequest, flow_id: int, version: int):
     if isinstance(note, str):
         row.note = note[:200]
     row.save(update_fields=["is_released", "note"])
+    audit.record(request, "flow.release", flow, summary=f"v{version} {'released' if row.is_released else 'unreleased'}")
     return versions.out(row)
 
 
 @router.delete("/flows/{flow_id}", response={204: None})
 def delete_flow(request: HttpRequest, flow_id: int):
     flow = _editable_flow(request, flow_id)
+    audit.record(request, "flow.delete", flow, summary=f"v{flow.version}")
     runner.forget(flow.id)
     flow.delete()
     return 204, None
@@ -453,6 +466,7 @@ def create_recipe(request: HttpRequest, flow_id: int, payload: schemas.RecipeIn)
             r = FlowRecipe.objects.create(flow=flow, name=payload.name.strip(), description=payload.description, param_overrides=payload.param_overrides, is_default=payload.is_default)
     except IntegrityError:
         raise Conflict("已有同名配方", code="recipe_name_taken") from None
+    audit.record(request, "recipe.create", flow, summary=f"recipe '{r.name}'", detail={"overrides": r.param_overrides})
     return 201, _recipe_out(r)
 
 
@@ -496,6 +510,7 @@ def activate_recipe(request: HttpRequest, flow_id: int, recipe_id: int):
         if not r.is_default:
             r.is_default = True
             r.save(update_fields=["is_default", "updated_at"])
+    audit.record(request, "recipe.activate", flow, summary=f"changed over to '{r.name}'")
     return {"flow_id": flow.id, "recipe": _recipe_out(r)}
 
 
@@ -980,6 +995,7 @@ def patch_source(request: HttpRequest, source_id: int, payload: schemas.SourcePa
 @router.delete("/sources/{source_id}", response={204: None})
 def delete_source(request: HttpRequest, source_id: int):
     require_engineer(request)
+    audit.record(request, "source.delete", _get_source(source_id))
     source = _get_source(source_id)
     close_source(source.id)
     source.delete()

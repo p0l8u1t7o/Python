@@ -25,6 +25,7 @@ from ninja import Router, Schema
 from apps.accounts.security import principal, require_admin
 from apps.comm import writers
 from apps.comm.models import Connection
+from apps.core import audit
 from apps.core.errors import Conflict, ValidationError
 
 router = Router(tags=["comm"])
@@ -91,6 +92,7 @@ def create_connection(request: HttpRequest, payload: ConnectionIn):
     except IntegrityError:
         raise Conflict("已有同名連線", code="connection_name_taken") from None
     writers.ensure_started(conn)  # 從站與觸發輪詢不必等到有人按「測試」
+    audit.record(request, "connection.create", conn, summary=conn.kind, detail={"config": conn.config})
     return 201, _out(conn)
 
 
@@ -104,6 +106,7 @@ def get_connection(request: HttpRequest, connection_id: int):
 def patch_connection(request: HttpRequest, connection_id: int, payload: ConnectionPatch):
     require_admin(request)
     conn = writers.get_connection(connection_id)
+    before = {"name": conn.name, "kind": conn.kind, "config": conn.config, "is_enabled": conn.is_enabled}
     if payload.name is not None:
         conn.name = payload.name.strip()
     if payload.kind is not None:
@@ -120,6 +123,8 @@ def patch_connection(request: HttpRequest, connection_id: int, payload: Connecti
         raise Conflict("已有同名連線", code="connection_name_taken") from None
     writers.close_connection(conn.id)
     writers.ensure_started(conn)
+    changed = audit.fields_diff(before, {"name": conn.name, "kind": conn.kind, "config": conn.config, "is_enabled": conn.is_enabled}, ("name", "kind", "config", "is_enabled"))
+    audit.record(request, "connection.update", conn, summary=audit.summarize_fields(changed), detail=changed)
     return _out(conn)
 
 
@@ -128,6 +133,7 @@ def delete_connection(request: HttpRequest, connection_id: int):
     require_admin(request)
     conn = writers.get_connection(connection_id)
     writers.close_connection(conn.id)
+    audit.record(request, "connection.delete", conn, summary=conn.kind)
     conn.delete()
     return 204, None
 
