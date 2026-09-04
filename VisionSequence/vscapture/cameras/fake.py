@@ -164,7 +164,7 @@ class FakeCamera(Camera):
             "offset_x": ParamSpec("offset_x", "int", self._roi.x, 0, sw - 8, 8, standard=True, label="X 位移"),
             "offset_y": ParamSpec("offset_y", "int", self._roi.y, 0, sh - 8, 8, standard=True, label="Y 位移"),
             "trigger_mode": ParamSpec("trigger_mode", "enum", self._trigger, choices=["freerun", "software"], standard=True, label="觸發模式"),
-            "Pattern": ParamSpec("Pattern", "enum", "moving_square", choices=["moving_square"], group="進階", label="圖案"),
+            "Pattern": ParamSpec("Pattern", "enum", "moving_square", choices=["moving_square"], label="Pattern"),
         }
 
     def set_params(self, values: dict[str, Any]) -> dict[str, Any]:

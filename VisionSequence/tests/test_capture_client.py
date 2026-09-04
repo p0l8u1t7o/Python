@@ -24,15 +24,15 @@ from tests.test_comm import free_port
 from vscapture import app as appmod
 from vscapture import config as configmod
 from vscapture import protocol as P
-from vscapture.cameras.base import CameraError, CameraParamError
+from vscapture.cameras.base import CameraError, CameraParamError, ParamSpec
 from vscapture.cameras.fake import FAKE_MODELS, FakeCamera
 from vscapture.channel import Channel, ChannelState
-from vscapture.config import AppConfig, ChannelConfig, ConfigError, ConnectionConfig, DeliveryConfig, Roi
 from vscapture.engine import CaptureEngine
+from vscapture.config import AppConfig, ChannelConfig, ConfigError, ConnectionConfig, DeliveryConfig, Roi
 from vscapture.frames import BufferPool, Frame, FrameSlot, crop_roi, encode, frame_item, prepare
 from vscapture.protocol import Encoding
 from vscapture.transport.sender import item_bytes
-from vscapture import i18n, update
+from vscapture import i18n, params, update
 from vscapture.shm import ShmRing, plan_slots
 from vscapture.transport.client import ConnState
 
@@ -44,6 +44,15 @@ def _wait(pred, timeout=3.0, step=0.02):
             return True
         time.sleep(step)
     return pred()
+
+
+def _wait_true(fn, timeout=3.0):
+    end = time.perf_counter() + timeout
+    while time.perf_counter() < end:
+        if fn():
+            return True
+        time.sleep(0.02)
+    return False
 
 
 class ConfigTests(SimpleTestCase):
@@ -399,6 +408,34 @@ class HeadlessCliTests(SimpleTestCase):
         out = buf.getvalue()
         self.assertIn("模擬相機", out)
         self.assertNotIn("OpenCV", out)
+
+
+class ParamTreeTests(SimpleTestCase):
+    """相機參數的樹狀分組與搜尋（介面用的純邏輯，不需要 Qt）。"""
+
+    def test_group_path_sort_and_search(self):
+        exposure = ParamSpec("exposure_us", "float", 5000.0, standard=True, label="曝光時間")
+        pattern = ParamSpec("Pattern", "enum", "a", label="Pattern")
+        delay = ParamSpec("TriggerDelay", "float", 0.0, group="Acquisition/Trigger", label="Trigger Delay")
+        deep = ParamSpec("X", "int", 0, group=" Root / Sub / Leaf ")
+        self.assertEqual(params.group_path(exposure), ("基本",))  # 標準參數沒給 group → 基本
+        self.assertEqual(params.group_path(pattern), ("進階",))
+        self.assertEqual(params.group_path(delay), ("Acquisition", "Trigger"))  # 以「/」分層
+        self.assertEqual(params.group_path(deep), ("Root", "Sub", "Leaf"))
+        self.assertEqual([s.name for s in sorted([pattern, delay, exposure], key=params.sort_key)], ["exposure_us", "TriggerDelay", "Pattern"])
+        self.assertEqual(params.param_label(exposure), "曝光時間")  # 標準參數走 i18n
+        self.assertEqual(params.param_label(delay), "Trigger Delay")  # 廠牌參數保持 SDK 名稱
+        self.assertTrue(params.matches(delay, "trig") and params.matches(delay, "TRIGGER"))
+        self.assertTrue(params.matches(exposure, "曝光") and params.matches(exposure, "exposure"))
+        self.assertFalse(params.matches(pattern, "trig"))
+        self.assertTrue(params.matches(pattern, "  "))  # 空搜尋＝全部顯示
+        self.assertIn("pixel_format", params.NEEDS_STOP)
+        try:
+            i18n.set_language("en")
+            self.assertEqual(params.group_path(exposure), ("Basic",))
+            self.assertEqual(params.param_label(exposure), "Exposure")
+        finally:
+            i18n.set_language("zh-Hant")
 
 
 class I18nTests(SimpleTestCase):

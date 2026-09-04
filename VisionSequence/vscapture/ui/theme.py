@@ -64,6 +64,11 @@ QListWidget {{ background: {c["input"]}; border: 1px solid {c["line"]}; border-r
 QListWidget::item {{ padding: 5px 7px; border-radius: 4px; }}
 QListWidget::item:selected {{ background: {c["brandSoft"]}; color: {c["ink"]}; }}
 QListWidget::item:hover {{ background: {c["hover"]}; }}
+QTreeWidget {{ background: {c["input"]}; border: 1px solid {c["line"]}; border-radius: 6px; outline: none; alternate-background-color: {c["panel2"]}; }}
+QTreeWidget::item {{ padding: 3px 2px; min-height: 26px; border-radius: 4px; }}
+QTreeWidget::item:hover {{ background: {c["hover"]}; }}
+QTreeWidget::branch {{ background: transparent; }}
+QHeaderView::section {{ background: {c["panel2"]}; color: {c["muted"]}; border: none; border-bottom: 1px solid {c["line"]}; padding: 5px 8px; font-size: 9pt; font-weight: 600; }}
 QTabWidget::pane {{ border: 1px solid {c["line"]}; border-radius: 8px; background: {c["panel"]}; top: -1px; }}
 QTabBar::tab {{ background: transparent; color: {c["muted"]}; padding: 7px 16px; border: 1px solid transparent; border-bottom: 2px solid transparent; }}
 QTabBar::tab:selected {{ color: {c["brand"]}; border-bottom-color: {c["brand"]}; font-weight: 700; }}

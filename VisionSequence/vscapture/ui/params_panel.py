@@ -1,4 +1,8 @@
-"""「相機參數」分頁：依相機回報的 ParamSpec 自動組表單，改動 250 ms 去抖動後套用並回填實際值。"""
+"""「相機參數」分頁：以樹狀圖分組展開後設定；改動 250 ms 去抖動後套用並回填實際值。
+
+工業相機（Basler／IDS）的參數動輒上百項且分屬多層類別，所以用樹狀圖：`ParamSpec.group` 以「/」分層，
+沒有 group 的標準參數歸「基本」、其餘歸「進階」。展開狀態與搜尋字串在重新讀取後保留。
+"""
 
 from __future__ import annotations
 
@@ -6,23 +10,30 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from vscapture.cameras.base import ParamSpec
 from vscapture.channel import Channel, ChannelState
 from vscapture.engine import CaptureEngine
 from vscapture.i18n import tr
+from vscapture.params import NEEDS_STOP, group_path, matches, param_label, sort_key
 from vscapture.ui.bridge import EngineBridge
 from vscapture.ui.widgets import TRIGGERS, confirm, muted
 
 log = logging.getLogger(__name__)
-NEEDS_STOP = {"width", "height", "offset_x", "offset_y", "pixel_format"}
-#: 標準參數的名稱由介面翻譯（相機後端回的 label 是繁中）；其餘廠牌參數保持 SDK 原名
-STANDARD_PARAMS = ("exposure_us", "gain_db", "fps", "pixel_format", "width", "height", "offset_x", "offset_y", "trigger_mode")
-
-
-def param_label(spec: ParamSpec) -> str:
-    return tr(f"param.{spec.name}") if spec.name in STANDARD_PARAMS else (spec.label or spec.name)
 
 
 class ParamsPanel(QWidget):
@@ -36,36 +47,50 @@ class ParamsPanel(QWidget):
         self.channel: Channel | None = None
         self._widgets: dict[str, QWidget] = {}
         self._specs: dict[str, ParamSpec] = {}
+        self._items: dict[str, QTreeWidgetItem] = {}
         self._pending: dict[str, Any] = {}
+        self._collapsed: set[str] = set()  # 使用者收起來的群組（重新讀取後保持）
         self._loading = False
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(250)
         self._timer.timeout.connect(self._flush)
 
-        bar = QHBoxLayout()
         self.reload_btn = QPushButton()
         self.reload_btn.clicked.connect(self.reload)
         self.save_btn = QPushButton()
         self.save_btn.clicked.connect(self.save_requested.emit)
+        bar = QHBoxLayout()
+        bar.setSpacing(6)
         bar.addWidget(self.reload_btn)
         bar.addWidget(self.save_btn)
         bar.addStretch(1)
 
-        self.body = QWidget()
-        self.body_layout = QVBoxLayout(self.body)
-        self.body_layout.setContentsMargins(0, 0, 0, 0)
-        self.body_layout.addStretch(1)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.body)
-        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.search = QLineEdit()
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(self._apply_filter)
+
+        self.tree = QTreeWidget()
+        self.tree.setColumnCount(2)
+        self.tree.setRootIsDecorated(True)
+        self.tree.setUniformRowHeights(False)
+        self.tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
+        self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tree.setVerticalScrollMode(QTreeWidget.ScrollMode.ScrollPerPixel)
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.tree.header().setStretchLastSection(False)
+        self.tree.setColumnWidth(1, 170)
+        self.tree.setMinimumHeight(120)
+        self.tree.itemExpanded.connect(self._remember_expanded)
+        self.tree.itemCollapsed.connect(self._remember_expanded)
         self.status = muted("")
 
         lay = QVBoxLayout(self)
         lay.setSpacing(8)
         lay.addLayout(bar)
-        lay.addWidget(scroll, 1)
+        lay.addWidget(self.search)
+        lay.addWidget(self.tree, 1)
         lay.addWidget(self.status)
         self.retranslate()
 
@@ -73,6 +98,8 @@ class ParamsPanel(QWidget):
         self.reload_btn.setText(tr("params.reload"))
         self.save_btn.setText(tr("params.save"))
         self.save_btn.setToolTip(tr("params.saveTip"))
+        self.search.setPlaceholderText(tr("params.search"))
+        self.tree.setHeaderLabels([tr("params.colName"), tr("params.colValue")])
         if self.channel is None:
             self.status.setText(tr("params.pickChannel"))
         elif self.channel.camera is None:
@@ -114,37 +141,77 @@ class ParamsPanel(QWidget):
     def _clear(self) -> None:
         self._widgets.clear()
         self._specs.clear()
-        while self.body_layout.count() > 1:
-            item = self.body_layout.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
+        self._items.clear()
+        self.tree.clear()
+
+    # ---- 樹狀圖 ----
+    def _remember_expanded(self, item: QTreeWidgetItem) -> None:
+        if self._loading:
+            return
+        key = str(item.data(0, Qt.ItemDataRole.UserRole) or "")
+        if not key:
+            return
+        if item.isExpanded():
+            self._collapsed.discard(key)
+        else:
+            self._collapsed.add(key)
+
+    def _group_item(self, path: tuple[str, ...], cache: dict[tuple[str, ...], QTreeWidgetItem]) -> QTreeWidgetItem:
+        if path in cache:
+            return cache[path]
+        parent = self._group_item(path[:-1], cache) if len(path) > 1 else None
+        item = QTreeWidgetItem(parent or self.tree, [path[-1], ""])
+        item.setData(0, Qt.ItemDataRole.UserRole, "/".join(path))
+        item.setFirstColumnSpanned(True)
+        font = item.font(0)
+        font.setBold(True)
+        item.setFont(0, font)
+        item.setExpanded("/".join(path) not in self._collapsed)
+        cache[path] = item
+        return item
 
     def _build(self, ch: Channel, specs: dict[str, ParamSpec]) -> None:
         if ch is not self.channel:
             return
         self._clear()
         self._specs = dict(specs)
-        groups: dict[str, list[ParamSpec]] = {}
-        for spec in specs.values():
-            groups.setdefault(spec.group or (tr("params.groupBasic") if spec.standard else tr("params.groupAdvanced")), []).append(spec)
-        order = sorted(groups, key=lambda g: (g != tr("params.groupBasic"), g))
         self._loading = True
-        for gname in order:
-            box = QGroupBox(gname)
-            form = QFormLayout(box)
-            for spec in groups[gname]:
-                w = self._make_widget(spec)
-                self._widgets[spec.name] = w
-                label = param_label(spec)
-                if spec.unit and not isinstance(w, (QSpinBox, QDoubleSpinBox)):
-                    label = f"{label}（{spec.unit}）"
-                lab = QLabel(label)
-                lab.setToolTip(spec.name)
-                form.addRow(lab, w)
-            self.body_layout.insertWidget(self.body_layout.count() - 1, box)
+        cache: dict[tuple[str, ...], QTreeWidgetItem] = {}
+        for spec in sorted(specs.values(), key=sort_key):  # 「基本」排最前面
+            parent = self._group_item(group_path(spec), cache)
+            item = QTreeWidgetItem(parent, [param_label(spec), ""])
+            item.setToolTip(0, spec.name + (f"  {tr('params.range', min=spec.min, max=spec.max)}" if spec.min is not None or spec.max is not None else ""))
+            widget = self._make_widget(spec)
+            self._widgets[spec.name] = widget
+            self._items[spec.name] = item
+            self.tree.setItemWidget(item, 1, widget)
         self._loading = False
+        self._apply_filter(self.search.text())
         self.status.setText(tr("params.count", n=len(specs)) if specs else tr("params.none"))
+
+    def _apply_filter(self, text: str) -> None:
+        """搜尋：比對顯示名稱與 SDK 原名；沒有符合項目的群組整組隱藏。"""
+        needle = (text or "").strip()
+        for name, item in self._items.items():
+            spec = self._specs.get(name)
+            item.setHidden(spec is not None and not matches(spec, needle))
+        for i in range(self.tree.topLevelItemCount()):
+            self._filter_group(self.tree.topLevelItem(i), bool(needle))
+
+    def _filter_group(self, item: QTreeWidgetItem, searching: bool) -> bool:
+        visible = False
+        for i in range(item.childCount()):
+            child = item.child(i)
+            if child.data(0, Qt.ItemDataRole.UserRole):
+                visible = self._filter_group(child, searching) or visible
+            elif not child.isHidden():
+                visible = True
+        item.setHidden(searching and not visible)
+        if searching:
+            item.setExpanded(visible)
+        else:
+            item.setExpanded(str(item.data(0, Qt.ItemDataRole.UserRole) or "") not in self._collapsed)
+        return visible
 
     def _make_widget(self, spec: ParamSpec) -> QWidget:
         key = spec.name
@@ -180,8 +247,7 @@ class ParamsPanel(QWidget):
             combo = QComboBox()
             for choice in spec.choices or ([str(spec.value)] if spec.value is not None else []):
                 combo.addItem(tr(f"trigger.{choice}") if key == "trigger_mode" and choice in TRIGGERS else str(choice), choice)
-            idx = combo.findData(spec.value)
-            combo.setCurrentIndex(max(0, idx))
+            combo.setCurrentIndex(max(0, combo.findData(spec.value)))
             combo.currentIndexChanged.connect(lambda i, k=key, c=combo: self._queue(k, c.itemData(i)))
             w = combo
         elif spec.kind == "command":
@@ -193,10 +259,6 @@ class ParamsPanel(QWidget):
             le.editingFinished.connect(lambda k=key, e=le: self._queue(k, e.text()))
             w = le
         w.setEnabled(bool(spec.writable))
-        tip = spec.name
-        if spec.min is not None or spec.max is not None:
-            tip += "  " + tr("params.range", min=spec.min, max=spec.max)
-        w.setToolTip(tip)
         return w
 
     # ---- 套用 ----
@@ -267,4 +329,3 @@ class ParamsPanel(QWidget):
                 w.blockSignals(False)
         finally:
             self._loading = False
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
