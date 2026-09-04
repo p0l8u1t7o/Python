@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>VisionSequence 擷取端</title>
+<style>
+  /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
+  :root {
+    --bg:#0a0a0f; --paper:#12121a; --panel:#0e0e16; --ink:#d6dae3; --head:#f0f0f5; --muted:#8b93a7; --subtle:#6b7280;
+    --line:#2a2a3a; --line-strong:#3a3a52;
+    --brand:#00ff88; --brand-dim:#00cc6e; --brand-soft:rgba(0,255,136,.08); --brand-glow:rgba(0,255,136,.35);
+    --cyan:#00d4ff; --cyan-soft:rgba(0,212,255,.10); --magenta:#ff3366; --amber:#ffb020;
+    --code-bg:#161622; --code-ink:#9ef0c5; --pre-bg:#07070c; --pre-ink:#cfe9dc;
+    --rail-w:212px; --toc-w:232px; --top-h:0px;
+    --mono:'Cascadia Code',Consolas,'JetBrains Mono','Fira Code','Noto Sans TC',ui-monospace,monospace;
+    --sans:'Noto Sans TC','Segoe UI',system-ui,'Microsoft JhengHei',sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; color-scheme:dark; }
+  body {
+    margin:0; min-height:100vh; display:flex; align-items:flex-start;
+    background:var(--bg) linear-gradient(rgba(0,255,136,.028) 1px, transparent 1px) 0 0 / 44px 44px, linear-gradient(90deg, rgba(0,255,136,.028) 1px, transparent 1px) 0 0 / 44px 44px;
+    color:var(--ink); font-family:var(--sans); line-height:1.85; font-size:16px; -webkit-font-smoothing:antialiased;
+  }
+  ::selection { background:var(--brand); color:#0a0a0f; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:2px; border:2px solid var(--bg); }
+  ::-webkit-scrollbar-track { background:transparent; }
+  :focus-visible { outline:2px solid var(--brand); outline-offset:2px; box-shadow:0 0 8px var(--brand-glow); }
+
+  /* 最左：站內總目錄（直式導覽欄，sticky 滿高，掃描線只鋪在這裡） */
+  nav.site {
+    position:sticky; top:0; z-index:20; flex:0 0 var(--rail-w); height:100vh; overflow-y:auto; scrollbar-width:thin;
+    display:flex; flex-direction:column; gap:.1rem; padding:1.1rem .7rem 1.4rem;
+    background:var(--bg) repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,.22) 3px, rgba(0,0,0,.22) 4px);
+    border-right:1px solid rgba(0,255,136,.14); font-family:var(--mono); font-size:.8rem;
+  }
+  nav.site::before {
+    content:"VisionSequence\A DOCS // 總目錄"; white-space:pre; display:block; margin:0 .4rem 1rem; padding:.55rem .7rem;
+    border:1px solid rgba(0,255,136,.35); border-radius:3px; color:var(--brand); font-weight:700; letter-spacing:.06em; line-height:1.45;
+    text-shadow:0 0 10px var(--brand-glow); background:var(--brand-soft);
+  }
+  nav.site a { display:block; padding:.42rem .7rem .42rem .8rem; border-left:2px solid transparent; border-radius:0 3px 3px 0; color:var(--muted); text-decoration:none; white-space:normal; line-height:1.4; overflow-wrap:anywhere; }
+  nav.site a::before { content:"› "; color:var(--subtle); }
+  nav.site a:hover { color:var(--brand); background:var(--brand-soft); }
+  nav.site a[aria-current="page"] { color:var(--brand); border-left-color:var(--brand); background:var(--brand-soft); font-weight:700; text-shadow:0 0 8px var(--brand-glow); }
+  nav.site a[aria-current="page"]::before { content:"▸ "; color:var(--brand); }
+
+  /* 中：本頁目錄（sticky）＋ 右：內文 */
+  .doc-layout { flex:1 1 auto; min-width:0; display:flex; align-items:flex-start; gap:2.6rem; max-width:1240px; padding:2.4rem 2.4rem 6rem 2.2rem; }
+  aside.toc { flex:0 0 var(--toc-w); position:sticky; top:calc(var(--top-h) + 1.4rem); max-height:calc(100vh - var(--top-h) - 2.8rem); overflow-y:auto; scrollbar-width:thin; padding:.2rem 1rem .6rem 0; border-right:1px solid var(--line); font-family:var(--mono); font-size:.8rem; line-height:1.5; }
+  aside.toc .toc-title { margin:0 0 .7rem; font-size:.68rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--cyan); }
+  aside.toc .toc-title::before { content:"// "; color:var(--subtle); }
+  aside.toc ul { list-style:none; margin:0; padding:0; }
+  aside.toc li { margin:0; }
+  aside.toc a { display:block; padding:.34rem .6rem .34rem .7rem; margin:.05rem 0; border-left:2px solid transparent; border-radius:0 3px 3px 0; color:var(--muted); text-decoration:none; overflow-wrap:anywhere; }
+  aside.toc a:hover { color:var(--cyan); background:var(--cyan-soft); }
+  aside.toc a.active { color:var(--brand); border-left-color:var(--brand); background:var(--brand-soft); font-weight:700; text-shadow:0 0 8px var(--brand-glow); }
+  aside.toc ul ul a { padding-left:1.6rem; font-size:.76rem; color:var(--subtle); }
+  aside.toc ul ul a.active { color:var(--brand); }
+
+  article.doc { flex:1 1 auto; min-width:0; max-width:880px; }
+  article.doc.wide { max-width:1060px; }
+
+  /* 字級階層：標題等寬字＋霓虹，明顯大於內文；段落留白 */
+  h1 { font-family:var(--mono); font-size:2rem; line-height:1.3; color:var(--head); letter-spacing:-.01em; margin:.2rem 0 1.5rem; font-weight:700; text-shadow:0 0 14px rgba(0,255,136,.22); }
+  h1::after { content:""; display:block; width:72px; height:3px; margin-top:.8rem; background:linear-gradient(90deg,var(--brand),var(--cyan)); box-shadow:0 0 10px var(--brand-glow); }
+  h2 { font-family:var(--mono); font-size:1.45rem; line-height:1.35; color:var(--brand); font-weight:700; margin:3.4rem 0 1.1rem; padding:.4rem .9rem .4rem .95rem; border-left:3px solid var(--brand); background:linear-gradient(90deg,var(--brand-soft),transparent 72%); border-radius:0 3px 3px 0; text-shadow:0 0 10px rgba(0,255,136,.25); scroll-margin-top:calc(var(--top-h) + 1.2rem); }
+  h2::before { content:"// "; color:var(--subtle); font-weight:400; }
+  h2:first-of-type { margin-top:2.2rem; }
+  h3 { font-family:var(--mono); font-size:1.12rem; line-height:1.4; color:var(--cyan); font-weight:700; margin:2.3rem 0 .75rem; scroll-margin-top:calc(var(--top-h) + 1.2rem); }
+  h3::before { content:"› "; color:var(--subtle); }
+  h4 { font-family:var(--mono); font-size:1rem; color:var(--head); margin:1.6rem 0 .5rem; }
+  p { margin:.9rem 0; }
+  p.lead { font-size:1.05rem; color:var(--muted); }
+  a { color:var(--cyan); text-decoration:underline; text-decoration-color:rgba(0,212,255,.35); text-underline-offset:3px; }
+  a:hover { color:var(--brand); text-decoration-color:var(--brand); }
+  strong { color:var(--head); }
+  em { color:var(--amber); font-style:normal; }
+  code { font-family:var(--mono); font-size:.86em; background:var(--code-bg); color:var(--code-ink); border:1px solid var(--line); border-radius:3px; padding:.08em .4em; overflow-wrap:anywhere; }
+  pre { position:relative; background:var(--pre-bg); color:var(--pre-ink); border:1px solid var(--line); border-radius:3px; padding:1.1rem 1.25rem; margin:1.2rem 0; overflow-x:auto; line-height:1.65; font-size:.84em; box-shadow:0 0 0 1px rgba(0,255,136,.04), 0 0 16px rgba(0,255,136,.05); }
+  pre::before, pre::after { content:""; position:absolute; width:12px; height:12px; border:2px solid var(--brand); pointer-events:none; }
+  pre::before { top:3px; left:3px; border-right:0; border-bottom:0; }
+  pre::after { bottom:3px; right:3px; border-left:0; border-top:0; }
+  pre code { background:none; border:none; color:inherit; padding:0; }
+  td pre { margin:.35rem 0; padding:.5rem .7rem; font-size:.82em; }
+  table { width:100%; border-collapse:separate; border-spacing:0; margin:1.3rem 0; font-size:.92em; background:var(--paper); border:1px solid var(--line); border-top:2px solid var(--brand); border-radius:3px; overflow:hidden; }
+  th { background:#161622; color:var(--brand); font-family:var(--mono); font-size:.78em; letter-spacing:.06em; text-align:left; font-weight:700; padding:.65rem .85rem; border-bottom:1px solid var(--line-strong); }
+  td { padding:.6rem .85rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#141420; }
+  ul, ol { padding-left:1.5rem; margin:.75rem 0; }
+  li { margin:.45rem 0; }
+  li::marker { color:var(--brand-dim); }
+  li > ul, li > ol { margin:.3rem 0; }
+  .note, blockquote { position:relative; margin:1.4rem 0; padding:.85rem 1.15rem; background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:3px; color:var(--ink); }
+  .note::after, blockquote::after { content:""; position:absolute; right:3px; bottom:3px; width:10px; height:10px; border-right:2px solid var(--amber); border-bottom:2px solid var(--amber); pointer-events:none; }
+  blockquote { border-left-color:var(--cyan); color:var(--muted); }
+  blockquote::after { border-color:var(--cyan); }
+  hr { border:none; border-top:1px solid var(--line); margin:2.8rem 0; }
+  img { max-width:100%; border:1px solid var(--line); border-radius:3px; }
+  .wrap { overflow-x:auto; }
+  .good { color:var(--brand); font-weight:600; }
+  .bad { color:var(--magenta); }
+  .noise { color:var(--subtle); }
+  .num td:nth-child(n+2), .num th:nth-child(n+2) { text-align:right; font-variant-numeric:tabular-nums; }
+
+  @media (max-width:1180px) {
+    .doc-layout { flex-direction:column; gap:1.4rem; padding:1.8rem 1.6rem 4rem; }
+    aside.toc { position:static; max-height:none; flex:none; width:100%; border-right:none; border-bottom:1px solid var(--line); padding:0 0 .8rem; }
+    aside.toc ul { columns:2; column-gap:1.5rem; }
+    aside.toc li { break-inside:avoid; }
+    aside.toc ul ul { columns:1; }
+  }
+  @media (max-width:900px) {
+    body { display:block; }
+    nav.site { position:sticky; height:auto; flex-direction:row; flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; gap:.15rem; padding:.5rem .8rem; border-right:none; border-bottom:1px solid rgba(0,255,136,.14); }
+    nav.site::before { content:"VS"; white-space:nowrap; margin:0 .6rem 0 0; padding:.2rem .5rem; }
+    nav.site a { white-space:nowrap; border-left:none; border-bottom:2px solid transparent; border-radius:3px 3px 0 0; padding:.3rem .55rem; }
+    nav.site a::before { content:""; }
+    nav.site a[aria-current="page"] { border-bottom-color:var(--brand); }
+    .doc-layout { padding:1.4rem 1rem 4rem; }
+    h1 { font-size:1.55rem; }
+    h2 { font-size:1.25rem; margin-top:2.4rem; }
+  }
+  @media print {
+    body { display:block; background:#fff; color:#111; }
+    nav.site, aside.toc { display:none; }
+    .doc-layout { display:block; padding:0; max-width:none; }
+    h1, h2, h3 { color:#111; text-shadow:none; }
+    a { color:#1d4ed8; }
+    code, pre, table { background:#f5f5f5; color:#111; }
+  }
+</style>
+</head>
+<body>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html" aria-current="page">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. 概念與架構</a></li><li><a href="#install">2. 安裝與連線</a><ul><li><a href="#install-download">2-1. 下載與啟動</a></li><li><a href="#install-files">2-2. 設定檔、記錄檔與無介面模式</a></li><li><a href="#install-server">2-3. 伺服端設定</a></li></ul></li><li><a href="#channels">3. 通道、預覽與 ROI</a></li><li><a href="#cameras">4. 相機支援</a></li><li><a href="#transport">5. 同一台電腦的共享記憶體與跨電腦的 TCP</a><ul><li><a href="#transport-shm">5-1. 共享記憶體（同一台電腦）</a></li><li><a href="#transport-tcp">5-2. TCP（跨電腦）</a></li></ul></li><li><a href="#web">6. 網頁端設定「擷取端相機」</a></li><li><a href="#perf">7. 效能與頻寬</a></li><li><a href="#trouble">8. 疑難排解</a></li><li><a href="#protocol">9. 協定摘要（v1，vscapture/protocol.py）</a></li><li><a href="#security">10. 安全性</a></li><li><a href="#acceptance">11. 實體相機驗收清單</a></li><li><a href="#files">12. 檔案、建置與測試</a></li></ul></aside><article class="doc">
+<h1>擷取端：在相機所在的電腦驅動相機，把影像送到伺服端</h1>
+<p>相機常接在產線另一台電腦，或雖在同一台電腦卻需要廠牌 SDK（Basler pylon、IDS peak）；伺服端維持「單一 API 行程、不塞相機 SDK」的原則。<strong>擷取端（Capture client）</strong>是可從網頁下載的 Windows 桌面程式：在相機所在的電腦直接驅動網路攝影機／Basler／IDS 相機，<strong>主動連到伺服端的擷取埠（預設 9100）</strong>登記名稱與相機通道；網頁新增影像來源種類「擷取端相機」選擷取端與通道即可執行。同一台電腦以<strong>共享記憶體＋控制訊息</strong>傳影像（單次 memcpy），跨電腦以<strong>單一持久 TCP 連線、二進位定長表頭、無損（raw／LZ4）</strong>傳影像；伺服端接收零解析成本，直接把 ndarray 交給引擎。</p>
+
+<h2 id="concept">1. 概念與架構</h2>
+<pre>相機電腦（擷取端 VisionSequenceCapture.exe）              伺服端（單一 API 行程）
+  cameras/  webcam | basler | ids | ueye | fake ──┐         apps/vision/capture/
+  channel   每通道一條擷取執行緒＋最新影格槽   ──┤  TCP:9100   hub.py     CaptureHub：監聽、每個擷取端一條 ClientSession 執行緒
+  transport 連線／重連／GRAB 回覆／串流推送   ──┼──────────▶ grabber.py CaptureGrabber(kind="capture") ← Runner._grab
+  shm       共享記憶體環（同一台電腦）        ──┘  ＋ SHM     api.py     /vision/capture/*（clients、preview、stream、download）
+  ui/       連線／通道／預覽 ROI／參數／傳送／記錄             協定共用：vscapture/protocol.py（伺服端也 import 同一份）</pre>
+<ul>
+<li><strong>三個角色</strong>：擷取端（驅動相機、送影像）、伺服端 hub（登錄表、每個擷取端一條讀取執行緒、把影格交給引擎）、網頁（設定來源、看狀態、開串流、下載擷取端）。</li>
+<li><strong>兩種取像模式</strong>（每個通道可選）：<em>依需求取像</em>——伺服端每次執行送 GRAB，擷取端回一張<strong>觸發之後</strong>取的新影格（延遲最低、頻寬最省，適合觸發式檢測）；<em>連續串流</em>——擷取端依 fps 上限持續推最新影格，伺服端執行時直接用手上最新的一張（適合看板、連續執行）。</li>
+<li><strong>為什麼擷取端主動連出</strong>：相機電腦常在 NAT／防火牆後、IP 會變；伺服端只開一個固定埠，擷取端重連、重新登記都由擷取端負責，網頁只要選名稱。</li>
+<li><strong>接縫不變</strong>：流程的「影像來源」步驟 → <code>ctx.grab()</code> → <code>grab_by_id</code> → <code>CaptureGrabber.grab()</code> 回 ndarray；交給引擎的陣列一律獨占（raw 接收緩衝即陣列、LZ4 解壓輸出、或從共享記憶體槽 copy 一次）。</li>
+</ul>
+
+<h2 id="install">2. 安裝與連線</h2>
+<h3 id="install-download">2-1. 下載與啟動</h3>
+<ol>
+<li>網頁「影像來源」頁首的「下載擷取端」，或「外部整合」→「擷取端」分頁（顯示版本、大小、SHA-256、建置時間）。伺服端尚未建置時按鈕停用；建置方式見 <a href="#files">§12</a>。</li>
+<li>解壓縮到任意資料夾（避免過長路徑；不需要管理員權限），執行 <code>VisionSequenceCapture.exe</code>。第一次執行 Windows SmartScreen 可能提示「未知的發行者」，選「其他資訊」→「仍要執行」。</li>
+<li>「連線」面板：伺服端主機名稱或 IP、埠（預設 9100）、擷取端名稱（在網頁上顯示的名稱，同一台電腦重連會取代舊連線）、金鑰（伺服端有設定 <code>VISION_CAPTURE_AUTH</code> 或 <code>VISION_API_KEY</code> 時才需要）、本機模式（自動／強制共享記憶體／一律 TCP）、啟動時自動連線。</li>
+<li>點選「連線」。狀態列顯示已連線、往返延遲、已送影格、速率與傳送方式（共享記憶體或 TCP）。</li>
+</ol>
+<h3 id="install-files">2-2. 設定檔、記錄檔與無介面模式</h3>
+<ul>
+<li>設定檔 <code>%APPDATA%\VisionSequenceCapture\config.json</code>（環境變數 <code>VSCAPTURE_CONFIG</code> 可覆寫）：連線、介面偏好、每個通道的相機參數／ROI／傳送設定。「檔案 → 儲存設定」寫入；結束時未儲存會詢問。缺鍵補預設、未知鍵忽略、非法值啟動時提示並改用預設。</li>
+<li>記錄檔 <code>%APPDATA%\VisionSequenceCapture\logs\capture.log</code>（輪替 2 MB × 3）；介面底部「記錄」可依等級過濾。</li>
+<li>無介面：<code>VisionSequenceCapture-console.exe --headless --connect</code>（Ctrl+C 結束），適合 Task Scheduler／NSSM 常駐；<code>--list-cameras</code> 列出各種相機；<code>--server host:port</code>、<code>--name</code>、<code>--api-key</code>、<code>--config</code>、<code>--log-level DEBUG</code> 覆寫設定；<code>--minimized</code> 啟動即縮到系統匣。</li>
+<li>關閉視窗會縮到系統匣（右鍵：顯示、連線、中斷、結束）。</li>
+</ul>
+<h3 id="install-server">2-3. 伺服端設定</h3>
+<table>
+<tr><th>.env</th><th>預設</th><th>說明</th></tr>
+<tr><td><code>VISION_CAPTURE_HOST</code>／<code>PORT</code></td><td>0.0.0.0／9100</td><td>擷取埠；<code>manage.py serve --capture-port</code>、<code>--no-capture</code> 可覆寫。跨電腦請在伺服端防火牆放行此埠。</td></tr>
+<tr><td><code>VISION_CAPTURE_AUTH</code></td><td>空</td><td>擷取端登錄金鑰；空＝沿用 <code>VISION_API_KEY</code>；兩者皆空不驗證。</td></tr>
+<tr><td><code>VISION_CAPTURE_MAX_FRAME_MB</code></td><td>64</td><td>單張影像上限，超過即斷線（協定錯誤）。</td></tr>
+<tr><td><code>VISION_CAPTURE_TIMEOUT_MS</code></td><td>1000</td><td>來源未指定 <code>timeout_ms</code> 時的預設等待。</td></tr>
+</table>
+
+<h2 id="channels">3. 通道、預覽與 ROI</h2>
+<ul>
+<li><strong>通道</strong>＝一台相機：名稱、相機種類（SDK 未安裝的種類停用並提示原因）、裝置（「掃描」列舉；也可直接輸入識別，例如網路攝影機的索引 0）、啟用（伺服端可取像）、即時預覽。開啟／關閉／開始取像／停止四個鈕；狀態燈：已關閉、開啟中、已開啟、取像中、錯誤。連續 30 次取像失敗會自動重開相機。</li>
+<li><strong>預覽</strong>：依「preview_fps」（預設 15）取最新影格縮小顯示，HUD 顯示 seq、fps、尺寸與硬體 ROI 位移。</li>
+<li><strong>ROI 圈選</strong>：在預覽上拖曳建立、8 個把手縮放、拖移；數值欄 X／Y／寬／高雙向；「清除 ROI」回全幅。點選「套用 ROI」才生效。勾選「使用相機硬體 ROI」時，支援的相機（Basler、IDS、模擬）只讀出 ROI 範圍（影格率更高），座標依相機增量對齊後回填；不支援的相機以軟體裁切後傳送。ROI 一律以<strong>全感測器座標</strong>保存；伺服端影格 metadata 帶 <code>roi_x/roi_y/full_w/full_h</code>，流程座標仍是收到影像的座標。</li>
+<li><strong>拍攝一張</strong>：觸發模式為「軟體觸發」時顯示，觸發相機拍一張。</li>
+<li><strong>相機參數</strong>分頁：依相機回報的參數自動組表單（曝光、增益、影格率、像素格式、寬高位移、觸發模式、進階項），改動 250 ms 後套用並回填實際值；需停止取像的參數（寬高位移、像素格式）先確認、套用後自動恢復；「儲存到設定檔」下次啟動自動套用。</li>
+<li><strong>傳送設定</strong>分頁：編碼（不壓縮／LZ4／JPEG）、JPEG 品質、轉單色、縮小 1/2、1/4、模式（依需求／連續串流）、串流 fps 上限；顯示送出尺寸與每張大小估算；「測試傳送」把目前影格送一次，顯示往返時間、位元組、編碼與伺服端解碼時間。改 ROI／單色／縮小會重新協商共享記憶體區段（期間自動改走 TCP）。</li>
+</ul>
+
+<h2 id="cameras">4. 相機支援</h2>
+<table>
+<tr><th>種類</th><th>需要</th><th>硬體 ROI</th><th>觸發</th><th>要點</th></tr>
+<tr><td>網路攝影機／USB 相機</td><td>Windows 內建</td><td>否</td><td>否</td><td>DirectShow 逐一開啟探測（掃描會短暫佔用裝置）；高解析度先設 MJPG 再設尺寸與 fps；曝光以手動模式設定；連續讀取失敗自動重開。</td></tr>
+<tr><td>Basler（pylon）</td><td>pypylon（建置時 <code>-WithBasler</code>）＋客戶端 pylon Runtime（USB3／GigE 驅動）</td><td>是（依 <code>Width/Height/Offset</code> 增量對齊）</td><td>軟體／硬體（Line1）</td><td>Mono8／BGR8 轉換；設 <code>PYLON_CAMEMU=1</code> 可用模擬相機驗證。</td></tr>
+<tr><td>IDS peak</td><td>ids_peak／ids_peak_ipl（<code>-WithIds</code>）＋客戶端 IDS peak 執行期</td><td>是</td><td>軟體／硬體（Line0）</td><td>改像素格式會重配 buffer；建置機與客戶端的 IDS peak 主版本要一致。</td></tr>
+<tr><td>IDS uEye（舊款）</td><td>pyueye（<code>-WithUeye</code>）＋uEye 驅動</td><td>否</td><td>否</td><td>基本自由取像、曝光與增益。</td></tr>
+<tr><td>模擬相機</td><td>無</td><td>是（對齊 8）</td><td>軟體</td><td>合成移動方塊，示範與測試用（<code>--fake N</code> 一次加 N 個通道）。</td></tr>
+</table>
+<p>擷取端只打包建置機有安裝的 SDK；zip 內 README.txt 會列出本版本內含的相機支援。SDK 物件只在該通道的擷取執行緒使用（命令佇列），多數相機 SDK 不是執行緒安全的。</p>
+
+<h2 id="transport">5. 同一台電腦的共享記憶體與跨電腦的 TCP</h2>
+<h3 id="transport-shm">5-1. 共享記憶體（同一台電腦）</h3>
+<ul>
+<li>判定：連線來自 loopback（或伺服端自身位址）且主機名稱相同，且擷取端「本機模式」為自動／強制。WELCOME 回 <code>local:true</code>。</li>
+<li>擷取端建立一個 <code>multiprocessing.shared_memory</code> 區段（名稱 <code>vs_cap_&lt;名稱&gt;_&lt;pid&gt;_&lt;隨機&gt;</code>）：64 B 表頭（magic、canary、槽數、槽大小）＋ K 個槽；<strong>一條連線一個區段</strong>，槽大小＝所有啟用通道中最大的影格（對齊 4096），K＝4＋2×通道數（最多 16）。SHM_OFFER → 伺服端附加並核對 canary → SHM_ACCEPT；拒絕就留在 TCP。</li>
+<li>事件機制＝控制連線上的 FRAME 訊息（slot ≥ 0、payload 為空）：loopback 約 50～100 µs，帶 seq 與 metadata。伺服端 <code>out = np.empty(...)；out.data.cast("B")[:] = buf[off:off+n]</code> copy 一次（1280×960×3 約 0.5～1 ms）後立刻回 SLOT_FREE。</li>
+<li>所有權：FRAME 送出後槽屬伺服端，SLOT_FREE 後歸還；擷取端只寫 FREE 的槽，依需求模式等不到槽即改走 TCP payload、串流模式直接丟幀；「最舊、seq 落後 ≥ 2K 且被持有超過 1 秒」的槽視為孤兒才覆寫（伺服端顯然沒回收）。重新協商期間丟掉尚未送出的影格（舊槽索引不能再送）。</li>
+</ul>
+<h3 id="transport-tcp">5-2. TCP（跨電腦）</h3>
+<ul>
+<li>單一持久連線，控制與資料以 <code>req_id</code> 多工；<code>TCP_NODELAY</code>、4 MiB 收送緩衝；每通道同時最多一個在途 GRAB。</li>
+<li>接收：raw → <code>recv_into</code> 直接寫進 <code>np.empty</code>（接收緩衝即陣列）；lz4 → 會話級 bytearray 後 <code>lz4.block.decompress(uncompressed_size=raw_len)</code>；jpeg（明確選用才用，有損）→ 解碼後核對尺寸。</li>
+<li>編碼「自動」：同一台電腦 raw、跨電腦兩端皆有 LZ4 則 LZ4、否則 raw。頻寬手段依效益：轉單色（÷3）、ROI 裁切、LZ4（典型 1.5～3×）、串流 fps 上限、縮小。</li>
+<li>背壓：擷取端每通道只留最新影格、一次一張在途；伺服端每通道只留 latest。心跳：閒置 ≥ 2 秒送 PING，逾 3 倍心跳無回應斷線並以指數退避重連（最長 30 秒；驗證失敗固定 30 秒）；伺服端重啟後擷取端自動重連並重送串流設定。</li>
+</ul>
+
+<h2 id="web">6. 網頁端設定「擷取端相機」</h2>
+<table>
+<tr><th>欄位</th><th>說明</th></tr>
+<tr><td><code>client</code> 擷取端</td><td>下拉列出目前連線的擷取端（表單開著時每 5 秒重抓；「重新整理」立即抓）；離線的舊值保留並標示「擷取端離線」。沒有任何擷取端時顯示提示與「下載擷取端」。</td></tr>
+<tr><td><code>channel</code> 通道</td><td>所選擷取端啟用中的通道（名稱、尺寸、像素格式、使用中的來源）。</td></tr>
+<tr><td><code>mode</code> 取像模式</td><td><code>on_demand</code> 依需求取像（每次執行要一張新影格）／<code>stream</code> 連續串流（取最新影格；來源開啟時自動向擷取端開串流、關閉時釋放）。</td></tr>
+<tr><td><code>timeout_ms</code></td><td>等待影格的時間（預設 <code>VISION_CAPTURE_TIMEOUT_MS</code>）；曝光長或跨網路時放大。</td></tr>
+<tr><td><code>fresh</code> 要求新影格</td><td>勾選：GRAB 帶 AFTER_REQUEST，只接受觸發之後取的影格；取消：可用擷取端手上的最新影格（延遲更低）。</td></tr>
+<tr><td><code>encoding</code></td><td><code>auto</code>／<code>raw</code>／<code>lz4</code>／<code>jpeg</code>；同一台電腦一律共享記憶體不壓縮。</td></tr>
+</table>
+<ul>
+<li>儲存前「測試擷取」直接向擷取端要一張（顯示尺寸、耗時、縮圖）；失敗會帶擷取端回報的原因（未連線、沒有此通道、逾時、相機錯誤）。</li>
+<li>來源清單狀態欄：擷取端在線／已開啟／擷取端離線、fps、最近影格距今、「同一台電腦」徽章；含擷取端相機時每 5 秒更新。流程編輯器的「影像來源」側欄在所選擷取端離線時提示。</li>
+<li>「外部整合」→「擷取端」分頁：程式下載與資訊、伺服端擷取埠與監聽狀態、設定步驟；已連線的擷取端與通道（尺寸、模式、fps 與速率、最近影格、使用中的來源、串流開關、預覽）。</li>
+</ul>
+<pre>GET  /api/vision/capture/clients                                     {listening, host, port, items[{name, address, version, hostname, connected_at, local, shm, channels[…]}]}
+GET  /api/vision/capture/clients/{name}/channels/{cid}/preview?max=   JPEG（?token= 或 api_key=）
+POST /api/vision/capture/clients/{name}/channels/{cid}/stream         {enabled, max_fps?} → {ok, streaming}（鎖定時 423）
+GET  /api/vision/capture/download/info                                {available, version, filename, size, sha256, built_at, url}
+GET  /api/vision/capture/download                                     zip（attachment；未建置 404 capture_download_missing）
+GET  /api/vision/integration/info                                     加 capture_host／capture_port／capture_listening／capture_download_url</pre>
+
+<h2 id="perf">7. 效能與頻寬</h2>
+<table>
+<tr><th>路徑（1280×960）</th><th>單色 raw</th><th>單色 LZ4</th><th>BGR raw</th><th>BGR LZ4</th></tr>
+<tr><td>同一台電腦（共享記憶體）</td><td>≈0.5 ms</td><td>—</td><td>≈1 ms</td><td>—</td></tr>
+<tr><td>1 GbE（約 110 MB/s）</td><td>≈11 ms</td><td>≈6.5 ms</td><td>≈34 ms</td><td>≈19 ms</td></tr>
+</table>
+<p>以上不含相機曝光與讀出。實測（本機、模擬相機 640×480 BGR、共享記憶體）：依需求取像含 JPEG 縮圖 18～33 ms、「測試傳送」往返 0.7 ms、串流 10 fps 上限實得 9.1 fps。建議：檢測只需要灰階就在擷取端轉單色；先圈 ROI 再傳；跨電腦用 LZ4；串流只在需要看即時畫面時開，fps 上限依檢測節拍設定。</p>
+
+<h2 id="trouble">8. 疑難排解</h2>
+<ul>
+<li><strong>連不上</strong>：伺服端是否以 <code>manage.py serve</code> 啟動（<code>runserver</code> 不開擷取埠）、防火牆是否放行 9100、位址是否為伺服端可達的 IP；「外部整合」的資訊列顯示擷取埠是否監聽中。</li>
+<li><strong>驗證失敗（auth_failed）</strong>：伺服端設了 <code>VISION_CAPTURE_AUTH</code>／<code>VISION_API_KEY</code>，擷取端「金鑰」要填同一組；失敗會固定 30 秒後重試。</li>
+<li><strong>名稱重複（name_taken）</strong>：另一台電腦已用同名連線；同一台電腦重連會自動取代舊連線。</li>
+<li><strong>版本不符（protocol_unsupported）</strong>：重新從網頁下載與伺服端相同版本的擷取端。</li>
+<li><strong>網頁顯示「擷取端離線」</strong>：擷取端程式關閉或斷線中；重連後 5 秒內恢復。流程執行時會失敗並回「擷取端「名稱」未連線」。</li>
+<li><strong>逾時</strong>：相機未開始取像、觸發模式下沒有觸發、曝光超過 <code>timeout_ms</code>；先在擷取端確認狀態為「取像中」、預覽有畫面。</li>
+<li><strong>影像超過上限（too_large）</strong>：調高 <code>VISION_CAPTURE_MAX_FRAME_MB</code> 或在擷取端縮小／圈 ROI。</li>
+<li><strong>共享記憶體未被接受</strong>：記錄會寫原因，程式自動留在 TCP；「本機模式」設為「一律走 TCP」可強制。</li>
+<li><strong>掃描不到網路攝影機</strong>：被其他程式佔用（關掉會議軟體）、USB 供電不足；可直接輸入索引 0、1。</li>
+<li><strong>SDK 尚未安裝</strong>：擷取端只打包建置時安裝的 SDK；請在伺服端以 <code>-WithBasler</code>／<code>-WithIds</code> 重新建置，客戶端另裝廠牌執行期／驅動。</li>
+</ul>
+
+<h2 id="protocol">9. 協定摘要（v1，<code>vscapture/protocol.py</code>）</h2>
+<p>小端序。每則訊息＝<code>ENVELOPE(16 B) | header(hlen) | payload(plen)</code>，<code>ENVELOPE = "&lt;HBBIII"</code>：magic <code>0x5643</code>、ver 1、type、req_id（0＝非請求）、hlen、plen。控制訊息 header 是 JSON，熱路徑訊息是定長 struct。上限：hlen ≤ 1 MiB、plen ≤ MAX_FRAME、通道 ≤ 32、名稱 <code>[A-Za-z0-9_\-.]{1,64}</code>。</p>
+<table>
+<tr><th>type</th><th>名稱</th><th>方向</th><th>header</th><th>用途</th></tr>
+<tr><td>0x01／0x02</td><td>HELLO／WELCOME</td><td>C→S／S→C</td><td>JSON</td><td>連線後 5 秒內登記（protocol、name、version、auth、hostname、machine_id、features、channels[]）；回 ok、local、prefer{encoding, shm}、max_frame_bytes、heartbeat_s、stream{}；拒絕碼 auth_failed／name_taken／protocol_unsupported／bad_hello</td></tr>
+<tr><td>0x03／0x04</td><td>PING／PONG</td><td>雙向</td><td>無</td><td>心跳</td></tr>
+<tr><td>0x05</td><td>CHANNELS</td><td>C→S</td><td>JSON</td><td>通道清單整份替換；索引＝位置且只增不減（移除的通道留 enabled:false 墓碑，在途 GRAB 不錯位）</td></tr>
+<tr><td>0x06／0x07</td><td>SHM_OFFER／SHM_ACCEPT</td><td>C→S／S→C</td><td>JSON</td><td>共享記憶體協商（name、slots、slot_bytes、canary）</td></tr>
+<tr><td>0x08</td><td>STREAM</td><td>S→C，C 回音</td><td>JSON</td><td>{channel, enabled, max_fps}</td></tr>
+<tr><td>0x09</td><td>ERROR</td><td>雙向</td><td>JSON</td><td>{code, message}：timeout／no_channel／channel_disabled／camera_error／busy／unsupported_encoding／too_large／malformed…</td></tr>
+<tr><td>0x0A</td><td>BYE</td><td>C→S</td><td>無</td><td>正常關閉</td></tr>
+<tr><td>0x0B／0x0C</td><td>TEST／TEST_RESULT</td><td>C→S／S→C</td><td>FRAME_HDR＋payload／JSON</td><td>「測試傳送」：回 decode_ms</td></tr>
+<tr><td>0x10</td><td>GRAB</td><td>S→C</td><td><code>"&lt;HIQBB"</code>（chan, timeout_ms, min_seq, encoding 255=auto/0 raw/1 lz4/2 jpeg, flags bit0 AFTER_REQUEST）</td><td>每次執行一則</td></tr>
+<tr><td>0x11</td><td>FRAME</td><td>C→S</td><td><code>"&lt;HBBBBQQIIIIIIIIi6x"</code> 64 B（chan, encoding, dtype 0 u8/1 u16/2 f32, channels 1/3/4, flags bit0 FRESH bit1 CROPPED, seq, ts_ns, width, height, stride, roi_x, roi_y, full_w, full_h, raw_len, slot）</td><td>slot −1 像素在 payload；slot ≥ 0 在共享記憶體槽；req_id &gt; 0 回應 GRAB，req_id 0 串流推送</td></tr>
+<tr><td>0x12</td><td>SLOT_FREE</td><td>S→C</td><td><code>"&lt;HiQ2x"</code>（chan, slot, seq）</td><td>伺服端 copy 完畢，槽歸還</td></tr>
+</table>
+<p>伺服端驗證 FRAME：chan 範圍、dtype／channels 合法、<code>stride == width×channels×itemsize</code>、<code>raw_len == stride×height ≤ 上限</code>、raw ⇒ plen == raw_len、shm ⇒ slot &lt; slots 且 raw_len ≤ slot_bytes；不合即 ERROR(malformed) 並斷線（部分讀取的串流無法安全重同步）。改協定要同時改 <code>vscapture/protocol.py</code>、<code>apps/vision/capture/hub.py</code> 與本節。</p>
+
+<h2 id="security">10. 安全性</h2>
+<ul>
+<li>登錄金鑰以 <code>hmac.compare_digest</code> 比對；驗證失敗延遲 0.5 秒再回覆以節流。空金鑰＝不驗證，只建議在隔離的產線網段使用。</li>
+<li>HELLO 之前不處理任何訊息；每則訊息有大小上限；名稱與通道欄位白名單驗證；超大或格式錯誤立即斷線。</li>
+<li>共享記憶體只在 loopback 且主機名稱相同時協商，區段名稱含隨機字串並核對 canary。</li>
+<li>網頁端的預覽／串流／下載端點沿用平台身分（登入 token 或 API 金鑰；鎖定時串流開關回 423）。</li>
+</ul>
+
+<h2 id="acceptance">11. 實體相機驗收清單</h2>
+<ol>
+<li>網路攝影機 1080p MJPG ≥ 25 fps；曝光手動／自動切換生效；拔插後自動重開。</li>
+<li>Basler USB3／GigE：Mono8／BGR8 轉換正確；硬體 ROI 依增量對齊且座標回填；軟體觸發延遲；Line1 硬體觸發；<code>PYLON_CAMEMU=1</code> 模擬相機。</li>
+<li>IDS peak：改 PixelFormat 後仍能取像（重配 buffer）；Line0 觸發；硬體 ROI。</li>
+<li>乾淨 PC：有／無各 SDK 執行期時，相機種類的停用提示正確；zip 內 README 列出的支援與實際一致。</li>
+<li>同一台電腦：共享記憶體與「一律走 TCP」的 CPU 與延遲對比；<code>status.shm === true</code>。</li>
+<li>區網：兩通道各 10 fps 串流＋並行依需求取像；LZ4 與 raw 的頻寬對比。</li>
+<li>伺服端重啟、拔網路線 30 秒後自動重連，串流設定自動恢復。</li>
+<li>Task Scheduler／NSSM 以主控台版常駐；系統匣連線／中斷／結束。</li>
+<li>執行中改設定檔後「重新載入設定」重建通道並重連。</li>
+</ol>
+
+<h2 id="files">12. 檔案、建置與測試</h2>
+<pre>vscapture/              擷取端（不 import Django；伺服端只 import protocol.py）
+  protocol.py           線上協定 v1（雙方共用）
+  config.py frames.py channel.py engine.py shm.py logs.py app.py __main__.py
+  cameras/              base.py（Camera 介面）webcam.py basler.py ids.py ueye.py fake.py
+  transport/            client.py（連線／重連／GRAB／串流／TEST）sender.py stream.py
+  ui/                   PySide6：bridge、main_window、connection_panel、channels_panel、live_view（ROI）、params_panel、delivery_panel、log_panel、tray
+  requirements.txt      獨立 .venv-capture（opencv-python 與伺服端的 headless 版同名互蓋）
+apps/vision/capture/    hub.py（CaptureHub／ClientSession）grabber.py（CaptureGrabber、channel_status）api.py
+scripts/build_capture_client.ps1   建 .venv-capture → PyInstaller（scripts/capture_client.spec）→ zip 到 data/downloads/
+scripts/package_capture_client.py  zip＋README.txt＋manifest.json（版本、大小、sha256、建置時間、內含 SDK）</pre>
+<ul>
+<li>建置：<code>.\scripts\build_capture_client.ps1</code>（第一次會建 <code>.venv-capture</code> 並安裝依賴；<code>-WithBasler</code>／<code>-WithIds</code>／<code>-WithUeye</code> 一併打包 SDK；<code>-SkipInstall</code> 只重新打包；<code>-Clean</code> 全部重來）。產物 <code>data/downloads/VisionSequenceCapture-&lt;版本&gt;-win64.zip</code> 與 <code>manifest.json</code>；網頁「下載擷取端」立即可用，不必重啟伺服端。</li>
+<li>測試：<code>manage.py test tests.test_capture</code>（協定、hub、Grabber、API、整條執行）與 <code>tests.test_capture_client</code>（設定、影格、模擬相機、通道、共享記憶體槽規則、對真 hub 的 loopback 取像／串流／重連、headless CLI、打包）；<code>ruff check apps tests config vscapture</code>。</li>
+<li>原始碼直接跑：<code>.venv-capture\Scripts\python.exe -m vscapture --fake 2 --server 127.0.0.1:9100</code>（介面）或加 <code>--headless --connect</code>。</li>
+</ul>
+</article></div><!-- /doc-layout -->
+<script>
+// 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用
+(function () {
+  var site = document.querySelector('nav.site');
+  function measure() {
+    if (!site) return;
+    var horizontal = getComputedStyle(site).flexDirection !== 'column';
+    document.documentElement.style.setProperty('--top-h', (horizontal ? site.offsetHeight : 0) + 'px');
+  }
+  measure();
+  window.addEventListener('resize', measure);
+  var links = Array.prototype.slice.call(document.querySelectorAll('aside.toc a[href^="#"]'));
+  if (!links.length) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+  var heads = Array.prototype.slice.call(document.querySelectorAll('article.doc h2[id], article.doc h3[id]')).filter(function (h) { return byId[h.id]; });
+  var current = null;
+  function activate(id) {
+    if (current === id) return;
+    current = id;
+    links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + id); });
+    var a = byId[id];
+    if (a && a.scrollIntoView) { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+  }
+  function update() {
+    var top = window.scrollY + 100, best = heads[0];
+    for (var i = 0; i < heads.length; i++) { if (heads[i].offsetTop <= top) best = heads[i]; else break; }
+    if (best) activate(best.id);
+  }
+  update();
+  window.addEventListener('scroll', update, { passive: true });
+})();
+</script>
+</body>
+</html>

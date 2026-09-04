@@ -134,8 +134,8 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html" aria-current="page">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP，引擎寫給你）</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html" aria-current="page">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a><ul><li><a href="#upload-capture">4-1. 相機接在別台電腦：擷取端</a></li></ul></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP，引擎寫給你）</a></li></ul></aside><article class="doc">
 
 <h1>自動化整合（Modbus TCP / 上位機 / MES）</h1>
 <p>三種接法，回傳格式相同；金鑰（<code>VISION_API_KEY</code>）有設定時 HTTP 帶 <code>X-API-Key</code> 或 <code>?api_key=</code>。</p>
@@ -181,6 +181,8 @@ GET /api/vision/events?since=&lt;seq&gt;                全部</pre>
 <h2 id="upload">4. 相機不在本機時：送圖來源</h2>
 <p>建立 kind=<code>upload</code> 的影像來源，<code>POST /api/vision/sources/{id}/push</code>（multipart <code>image</code>）後，流程裡選它即可；<code>config.max_age_s</code> 可讓過期影像不被使用。</p>
 
+<h3 id="upload-capture">4-1. 相機接在別台電腦：擷取端</h3>
+<p>不想自己寫送圖程式時，用<a href="capture-client.html">擷取端</a>：可下載的桌面程式在相機電腦驅動網路攝影機／Basler／IDS，主動連到伺服端擷取埠 9100；網頁新增「擷取端相機」來源即可讓 HTTP／TCP 觸發的執行直接向該相機要一張新影格（依需求取像）或取最新影格（連續串流）。同一台電腦走共享記憶體、跨電腦走單一 TCP 連線無損傳送。</p>
 <h2 id="perf">效能建議</h2>
 <ul>
 <li>大圖先 <code>resize</code>／<code>crop</code> 再做重工具；<code>VISION_CV_THREADS=1~2</code> 讓多流程並行不互搶。</li>

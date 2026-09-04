@@ -134,7 +134,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html" aria-current="page">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html" aria-current="page">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
 <div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#how">1. 掛載規則與外掛內變數</a></li><li><a href="#tools">2. 自訂工具（範例一：plugins/example_dark_ratio.py）</a></li><li><a href="#writers">3. 自訂整合輸出（範例二：plugins/example_csv_writer.py）</a></li><li><a href="#sources">4. 自訂影像來源（例如 GigE / 廠牌 SDK）</a></li><li><a href="#rules">5. 工具撰寫規則</a></li><li><a href="#integration">6. 整合考量：依賴、獨立專案、Python 版本</a><ul><li><a href="#q-deps">6-1. 外掛有自己的依賴（requirements）怎麼整合？</a></li><li><a href="#q-project">6-2. 外掛是一個獨立專案（自己的 repo）怎麼整合？</a></li><li><a href="#q-python">6-3. 外掛的 Python 版本與平台不一致怎麼辦？</a></li></ul></li><li><a href="#advanced">7. 進階：.env 手動掛載</a></li></ul></aside><article class="doc">
 
 <h1>擴充外掛：資料夾丟檔即掛載</h1>
@@ -243,6 +243,7 @@ class CsvLogWriter(Writer):
 <p>掛載後「連線」頁 kind 下拉出現「CSV 紀錄（範例外掛）」；建一條連線（config 填 <code>{"path": "D:/logs/results.csv"}</code>），流程末端放「寫入 Modbus」工具、connection 填連線名稱即可。OPC UA、廠牌 SDK 等照同樣模式：連不上 <code>raise CommError</code>，工具層會依 <code>on_error</code> 降級（預設不讓 run 失敗）。</p>
 
 <h2 id="sources">4. 自訂影像來源（例如 GigE / 廠牌 SDK）</h2>
+<p><strong>先看</strong>：相機在別台電腦、或需要 Basler／IDS 這類廠牌 SDK 時，內建的<a href="capture-client.html">擷取端</a>已經處理（SDK 裝在相機電腦、伺服端不用裝），通常不必寫外掛；外掛 Grabber 適合伺服器本機能直接開的裝置或特殊來源（GigE Vision 函式庫、串流伺服器、資料庫取圖）。</p>
 <pre># plugins/gige.py — 丟進 plugins/ 即掛載
 DISPLAY_NAME = "GigE 相機"
 ENABLED = True

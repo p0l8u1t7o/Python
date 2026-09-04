@@ -81,6 +81,7 @@ INTENT_CORPUS = [
 #: (問題, 可接受的頁面集合；"tool" 代表工具技能段)
 SEARCH_BENCH = [
     ("如何從資料夾建立影像來源？", {"user-guide.html", "plugins.html", "automation.html"}),
+    ("相機接在另一台電腦要怎麼取像", {"capture-client.html", "user-guide.html", "automation.html"}),
     ("批次測試與 Golden Set 有何不同", {"batch.html", "golden.html", "user-guide.html"}),
     ("如何用 PLC 觸發執行並取回結果", {"automation.html", "user-guide.html", "modbus.html"}),
     ("Modbus 寫暫存器", {"modbus.html"}),

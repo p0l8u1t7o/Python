@@ -6,13 +6,13 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：67 個內建工具（8 類）、164 個 API 端點、22 個資料模型、18 個前端頁面、16 頁 docs、後端 367 項＋前端 46 項測試；Python 約 17.6k 行、TS 約 21.5k 行。
+- **規模**：67 個內建工具（8 類）、169 個 API 端點、22 個資料模型、18 個前端頁面、17 頁 docs、後端 405 項＋前端 47 項測試；Python 約 17.6k 行（另 vscapture 擷取端約 5k 行）、TS 約 22k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
   - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP；`runserver` 只用來開發且加 `--noreload`。
   - 三種身分：使用者（登入 token）、整合方（API 金鑰、永遠可執行、可鎖引擎）、bootstrap（沒有任何使用者時放行 `/auth/setup`）。
-- **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py）。
+- **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`apps/vision/capture`（擷取端 hub／Grabber／API）、`vscapture/`（擷取端桌面程式，不 import Django）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py／build_capture_client.ps1）。
 - **一次執行的路徑**：觸發 → `Runner.compiled_for`（validate → apply_recipe → compile，快取鍵 `(version, recipe_id, updated_at)`）→ `_prefetch` 在呼叫者執行緒開來源／資產 → 執行緒池 `engine.execute`（`ToolContext.image()` 依 `accepts` 做位深 coerce）→ 影像進 `images.store`、`RunReport` → SSE／統計／背景批次寫 `FlowRun`。
 - **前端接縫**：頁面只透過 `lib/api.ts`（`BASE_URL`＝`VITE_API_BASE_URL` 或 `/api`）、`lib/queries.ts`、`lib/flowStream.ts` 與後端往來，不直接 fetch；各頁 lazy chunk；跨頁草稿在 `lib/flowDraft.ts`。
 - **文件**：`README.md`（全貌）、`docs/*.html`（使用者手冊、設計手冊、合約、自動化、Modbus、檢測功能、範例樣板、AI 助手、DL、Golden、外掛、名詞規範、效能）。
@@ -31,9 +31,10 @@
 - `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，18 個：含 4 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
-- 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
+- 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
 - 深度學習實機測試（GPU／網路）：`VISION_TEST_DL=1 manage.py test tests.test_dl_yolo`（yolo_* 五工具、SAM2 點／框／全圖、sam-point／auto-label API、四個 trainer 各 1 epoch 約 40 秒）；改了 yolo 工具、trainer、sam.py、yolo_runtime 一定跑。bench 的 yolo 案例也只在 VISION_TEST_DL=1 納入。
 - AI 助手：`manage.py agent_bench`（離線規則引擎跑 `agent/bench.py` 的案例，印意圖／判定準確率；`--llm` 用伺服器供應商比較）；`tests/test_agent_bench.py` 守門檻（意圖 ≥ 0.9、判定 ≥ 0.8、graph 全有效）。改規則引擎、合成器、特徵或自動調參後一定跑，新意圖加案例（案例可帶 `labels`）。
+- 擷取端：`manage.py test tests.test_capture tests.test_capture_client`；改了 `vscapture/protocol.py` 或 hub 一定跑。改了擷取端程式碼要重新打包（`scripts/build_capture_client.ps1 -SkipInstall`，約 2 分鐘）並用打包後的 `VisionSequenceCapture-console.exe --list-cameras` 與 `--headless --connect --fake 1` 連本機伺服端各跑一次；介面改動用 `.venv-capture\Scripts\python.exe -m vscapture --fake 2 --server 127.0.0.1:9100` 開視窗看。
 - 前端：`cd frontend && npm run -s typecheck && npm test && npm run build`。vitest 有：i18n 三語系 key／占位符對齊與**禁用口語詞**檢查、`graphMapping`／`geometry`／`flowDraft` 單元、9 個頁面在假後端下 render smoke。新頁面在 `src/test/pages.test.tsx` 加 case，新 API 路徑在 `src/test/apiMock.ts` 補假資料。
 - 改了頁面就開瀏覽器看一眼（影像檢視器與畫布的問題肉眼最快）；改了服務端要重啟後 curl 一次（api 401＝需登入是正常、front 200）。
 - 改動**優化過的函式**（blob 預濾、`_roi_hist`、`find_edges_rows`、`caliper_points`、`apply_mask`、`mask_for`、RANSAC 向量化、template_match 金字塔）必須重跑等價性檢查（`scripts/bench_tools.py`），不能只看測試綠。
@@ -59,6 +60,13 @@
 - 新增 `Param.kind` 或 `Port.type`：後端封閉集合、前端 `ParamField` switch、`catalogue()`、`docs/contract.html`、`docs/glossary.html` 五處同步。新增 ROI 形狀＝`tools/roi.py` 各 helper＋前端 `types.ts Region`／`roiEditor.ts`／`geometry.ts` 的 switch 同步（typecheck 會抓漏），見 docs/vision-capabilities.html。
 - **Python 腳本工具**（`builtin/script.py`，`python_script`）：使用者程式碼 `def run(ctx)` 與引擎同行程受限執行——受限 builtins、import 白名單、AST 禁 dunder／exec／open、`sys.settrace` 看門狗只追蹤 `<python_script>` frame（`max_ms`）、輸入影像唯讀 view、模組命名空間依程式碼 hash 快取；固定輸出埠（value／result／text／data／image＋pass／fail）。**核准清單** `apps/vision/scripts.py`＋`ScriptApproval`（migration 0014）：只有管理員儲存（POST/PATCH /flows、匯入）時登記的 sha256 才會執行（內建 `TEMPLATE` 例外，插入工具即可試執行），一般使用者送新腳本 403；試執行由 `scripts.client_context(admin=)` 放 `_script_admin`（外部 context 的 `_` 鍵一律丟掉）；配方不能覆寫 `code`。`Param.kind="code"`（`accept`＝語言）前端 `CodeField`（非管理員唯讀），工具頁參數欄遇到 code 參數自動加寬。測試 `tests/test_script_tool.py`；bench／純度掃描用 context `_script_admin`。
 - 舊工具名（`edges`→`filter`、`hist_eq`→`lut`、`write_plc`→`write_modbus`）由 `graph.LEGACY_TOOL_TYPES` 在 validate／compile 時自動換，參數名刻意相容。
+
+### 擷取端（apps/vision/capture、vscapture/）
+- **擷取端主動連出**到伺服端擷取埠（`CAPTURE_HOST/PORT`，預設 9100；`manage.py serve` 啟動 hub，`--no-capture` 關）；`hub.CaptureHub` 每個擷取端一條 `ClientSession` 執行緒（握手 5 秒內 HELLO、`auth_secret()`＝`CAPTURE_AUTH or API_KEY`、同 machine_id 重連取代、通道索引只增不減），**不碰 ORM**；`request_frame`／`latest`／`wait_for_seq`／`acquire_stream`。協定 v1 在 `vscapture/protocol.py`（伺服端只 import 這個零依賴模組）：ENVELOPE 16 B、GRAB／FRAME／SLOT_FREE 定長 struct，其餘 JSON；改協定要同步 hub、擷取端與 docs/capture-client.html §9。
+- **同一台電腦走共享記憶體**：擷取端一條連線一個區段（槽大小＝最大通道影格、K＝4+2n），FRAME(slot) 當事件；伺服端 `out.data.cast("B")[:] = shm.buf[...]` copy 一次後回 SLOT_FREE，**絕不對 shm.buf 建 ndarray view**；擷取端只寫 FREE 槽，孤兒槽要 seq 落後 ≥ 2K 且持有超過 1 秒才覆寫；重新協商期間 `SendQueue.clear_frames()` 丟掉未送出的影格。跨電腦單一 TCP 連線、req_id 多工、raw `recv_into` 進 `np.empty`、LZ4 選配（`lz4_available()`）。
+- `CaptureGrabber(kind="capture")` 欄位 client／channel／mode（on_demand＝`request_frame(after_request=fresh)`；stream＝`__init__` acquire、`close()` release）／timeout_ms／fresh／encoding；`channel_status(client, channel)` 給 `sources.source_info` 讓**未開啟**的來源也回 connected／fps／age_ms／shm（清單顯示離線與 fps 靠它）。API `apps/vision/capture/api.py`：`/capture/clients`、`/clients/{name}/channels/{cid}/preview`（`auth=None`＋`authenticate`，要 `?token=`）、`/stream`（`can_execute`，鎖定 423）、`/download/info`＋`/download`（讀 `DATA_DIR/downloads/manifest.json`）。
+- 擷取端程式 `vscapture/`：`Channel` 執行緒擁有 SDK 物件（`call()` 命令佇列）、`FrameSlot` 最新影格、`frames.prepare()` ROI／單色／縮小；`TransportClient`（vsc-net 讀取、`SenderThread` 控制優先、`StreamPusher` 每通道 fps 上限、指數退避重連、auth 失敗 30 秒）；`CaptureEngine`＋`EventBus`（UI 用 `ui/bridge.py` 轉 Qt signal、`run_async` 進 QThreadPool）；設定 `%APPDATA%/VisionSequenceCapture/config.json`（`VSCAPTURE_CONFIG` 覆寫）。相機後端 `cameras/`（webcam DSHOW、basler pypylon、ids ids_peak、ueye、fake）SDK 延後 import；新後端＝繼承 `Camera`＋登錄 `BACKEND_MODULES`／`BACKEND_LABELS`＋spec 的 collect＋docs §4 表。ROI 一律全感測器座標；硬體 ROI 生效時影像帶 `origin`。
+- 打包：`scripts/build_capture_client.ps1`（獨立 `.venv-capture`：opencv-python 與伺服端 headless 同名互蓋）→ `scripts/capture_client.spec`（一次 Analysis 出視窗版與主控台版、SDK 有裝才 collect、排除 torch 與不用的 Qt 模組、icon 進 datas）→ `scripts/package_capture_client.py`（zip＋README.txt＋manifest.json）。PowerShell 會吃掉空字串引數，傳 `--sdks=` 形式。前端 `components/capture/CaptureSection.tsx`（下載鈕、整合頁分頁）、來源頁 `ConfigField` capture 分支（表單開著才輪詢 `useCaptureClients`）、`useSources(live)`、`lib/sources.ts sourceStatus`（connected false → 離線優先於舊錯誤、connected true → 在線）。
 
 ### 資料夾外掛（plugins/）
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
@@ -129,6 +137,7 @@
 - SSE 串流測試帶 `?max_seconds=0.2`，不然測試 client 會把 55 秒的串流讀完。
 - **合成真值**：`cv2.circle`／`cv2.ellipse` 實心繪製會多含 1px 外框（半徑偏大 0.5px），精度測試要用解析式覆蓋率 `clip(r + 0.5 − dist)` 或 8× 超取樣後 INTER_AREA 縮小；`cv2.contourArea` 是輪廓幾何面積，小粒子少算約半個周長（1 像素＝0）；Kåsa 圓擬合對 60° 以下的弧有 px 級偏差，不要拿來量 R 角。
 - Windows 中文路徑：讀圖用 `np.fromfile` + `cv2.imdecode`，寫圖用 `imencode` + `tofile`。console 輸出含特殊符號時設 `PYTHONIOENCODING=utf-8`。
+- **擷取端**：`time.monotonic()` 在 Windows 只有約 15 ms 解析度，量延遲一律 `time.perf_counter()`；共享記憶體 `shm.buf` 上不能留 ndarray view（`close()` 會 BufferError）；伺服端每個 session 只掛一個區段，擷取端不能一個通道一個 ring；Pillow `ImageDraw.arc(width=)` 從外框往內畫，畫圓角要把半徑加半個線寬；PyInstaller 視窗版 `sys.stderr` 為 None 時不能掛 StreamHandler；Git Bash 的 `taskkill /IM` 會被路徑轉換吃掉，用 `powershell Stop-Process -Name`。
 - **Git Bash heredoc 會吞反斜線**（`"\n"` 變真換行）且長內容會被截斷（unexpected EOF）：長內容、含反斜線或 TSX 的檔案一律用 Write 工具寫檔，再用 Bash 執行 patch 腳本。`.ps1` 保留 UTF-8 BOM。
 - Vite dev server 的 `/api` 代理與直打後端行為一致；LLM 供應商 hang 時不會拖垮平台（uvicorn 執行緒池），但要給短逾時。
 - 前端 `max-h` 擋不住 CSS grid 內容溢出：Modal 內部要捲動就用固定高 `h-[..]` + `min-h-0` + `overflow-hidden`，捲動容器留內距免得 hover 邊框被裁。

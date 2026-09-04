@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 67 個內建工具、164 個 API 端點、22 個資料模型、18 個前端頁面、16 頁文件、後端 367 項＋前端 46 項自動測試 |
+| 規模 | 67 個內建工具、169 個 API 端點、22 個資料模型、18 個前端頁面、17 頁文件、後端 405 項＋前端 47 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -112,7 +112,12 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/dl.html`。
 
 ### 影像來源與資產
-相機（USB、GigE 外掛）、資料夾（循環）、單檔、上傳、合成影像；folder／file 可用伺服器檔案瀏覽器選路徑，USB 可掃描相機。資產：範本影像、ONNX 模型、資料集 zip。兩者皆可群組分類。
+相機（USB、GigE 外掛）、資料夾（循環）、單檔、上傳、合成影像、**擷取端相機**；folder／file 可用伺服器檔案瀏覽器選路徑，USB 可掃描相機。資產：範本影像、ONNX 模型、資料集 zip。兩者皆可群組分類。
+
+### 擷取端（相機在別台電腦或需要廠牌 SDK）
+- 可從網頁下載的 Windows 桌面程式（`vscapture/`，PySide6，PyInstaller 打包）：在相機所在的電腦驅動網路攝影機／Basler（pypylon）／IDS（ids_peak）／uEye／模擬相機，**主動連到伺服端擷取埠 9100**登記名稱與通道；多通道、即時預覽、ROI 圈選只傳 ROI（支援硬體 ROI）、相機參數自動表單並可存檔、傳送設定（不壓縮／LZ4／JPEG、單色、縮小、依需求取像／連續串流、測試傳送）、記錄、系統匣、無介面常駐。
+- 同一台電腦走**共享記憶體**（一條連線一個區段、FRAME 訊息通知、伺服端 copy 一次後歸還槽），跨電腦走**單一持久 TCP**（定長二進位表頭、req_id 多工、raw 直接 `recv_into` 進 ndarray、LZ4 無損）。
+- 網頁：影像來源類型「擷取端相機」（下拉選擷取端與通道、模式、逾時、要求新影格、編碼；狀態欄顯示在線／離線／fps／最近影格），「外部整合」→「擷取端」分頁（下載、已連線的擷取端、串流開關、預覽）。建置：`scripts/build_capture_client.ps1`（`-WithBasler`／`-WithIds`）。詳見 `docs/capture-client.html`。
 
 ### 自動化整合
 - HTTP：`POST /api/vision/flows/{id}/run`（可附影像、指定配方、同步／非同步）。
@@ -147,6 +152,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 │                    agent/（AI 助手：分析→意圖→合成→試跑；LLM 供應器）      │
 │  apps/comm      ── Modbus／TCP 主動輸出（Writer）                         │
 │  apps/golden    ── Golden Set 回歸                                        │
+│  apps/vision/capture ── 擷取端 hub（:9100，每個擷取端一條執行緒）＋ CaptureGrabber │
 │  plugins/       ── 資料夾外掛（Tool／Grabber／Writer／Trainer 自動掛載）   │
 └────────────────────────────────────────────────────────────────────────┘
         │ SQLite（預設；DATABASES 可換）    │ data/assets、data/samples（檔案）
@@ -187,6 +193,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/vision/tools/roi.py`、`imgfmt.py` | ROI 全形狀 helper（crop／mask／overlay／transform）、位深轉換 |
 | `apps/vision/tools/builtin/*.py` | 內建工具依類別分檔（source／preprocess／locate／measure／detect／logic／output／dl／modbus） |
 | `apps/vision/sources/grabbers.py` | 影像來源：folder／file／usb／upload／synthetic／外掛 |
+| `apps/vision/capture/` | 擷取端伺服端：`hub.py`（CaptureHub／ClientSession、共享記憶體附加）、`grabber.py`（`CaptureGrabber`、`channel_status`）、`api.py`（clients／preview／stream／download） |
+| `vscapture/` | 擷取端桌面程式（不 import Django）：`protocol.py`（雙方共用）、`config`／`frames`／`channel`／`engine`／`shm`／`app`、`cameras/`（webcam／basler／ids／ueye／fake）、`transport/`、`ui/`（PySide6）；打包 `scripts/capture_client.spec`＋`build_capture_client.ps1`＋`package_capture_client.py` |
 | `apps/vision/dl/` | Trainer registry（`base.py`）、內建 trainer、訓練 job、裝置／provider、SAM、YOLO 互轉、ONNX 輸出 |
 | `apps/vision/agent/` | `analysis`／`intents`／`clarify`／`synth`（含候選方案、定位包裝）／`autotune`／`bench`／`llm`／`providers`（含工具呼叫 shim）／`actions`／`loop`／`jobs`（代理模式）／`memory`（工作階段、先驗）／`skills`（含自訂補充）／`service`／`api`＋`skills/*.md` |
 | `apps/vision/demo.py`、`demo_images.py` | 範例樣板（`BUILTIN_TEMPLATES`）、合成樣本圖、`seed_demo` |
@@ -194,7 +202,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/golden/` | Golden 案例、基準、回歸 |
 | `apps/vision/batch/` | 批次測試：`store`（檔案／序列化／淘汰）、`jobs`（背景執行）、`insights`（洞察與建議門檻）、`api` |
 | `apps/vision/management/commands/` | `serve`、`seed_demo`、`flow export|import|run`、`run_tcp_server`、`regress`、`create_admin` |
-| `tests/` | 22 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊…） |
+| `tests/` | 24 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊、擷取端…） |
 
 ### 前端（`frontend/src/`，約 21.5k 行 TS/TSX）
 
@@ -249,6 +257,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | 深度學習 | `/vision/dl/projects`、`/samples`、`/split`、`/dataset-export|import`、`/versions`、`/train`、`/train/status`、`/devices`、`/settings`、`/trainers`、`/sam` |
 | AI 助手 | `/vision/agent/info`、`/settings`（＋`/test`、`/models`）、`/image`、`/clarify`、`/generate`、`/run`、`/refine`、`/edit`、`/tune`、`/autotune`、`/chat`、`/help/search`、`/jobs`（＋`/{id}`、`/cancel`、`/answer`）、`/sessions`（＋`/{id}`、`/restore`）、`/skills`、`/skills/custom/{key}`；`/flows/{id}/golden/autotune` |
 | 整合 | `/vision/integration/info`、`/integration/tcp`、`/vision/connections` |
+| 擷取端 | `/vision/capture/clients`（＋`/{name}/channels/{cid}/preview`、`/stream`）、`/vision/capture/download`（＋`/info`） |
 
 執行類端點（run／preview／continuous／agent）在引擎鎖定時回 423；修改類端點要求擁有者或管理員。
 
@@ -293,6 +302,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | `VISION_KEEP_RUN_IMAGES`、`VISION_IMAGE_CACHE_MB`、`VISION_PERSIST_RUNS`、`VISION_KEEP_RUN_ROWS` | 影像快取與執行紀錄 |
 | `VISION_PLUGIN_DIR`、`VISION_TOOL_PLUGINS`、`VISION_SOURCE_PLUGINS`、`VISION_COMM_PLUGINS` | 外掛 |
 | `VISION_API_KEY`、`VISION_STATION_ID`、`VISION_TCP_HOST/PORT` | 整合方金鑰、站台識別、TCP 介面 |
+| `VISION_CAPTURE_HOST/PORT`、`VISION_CAPTURE_AUTH`、`VISION_CAPTURE_MAX_FRAME_MB`、`VISION_CAPTURE_TIMEOUT_MS` | 擷取端擷取埠（預設 9100）、登錄金鑰（空＝沿用 API_KEY）、單張上限、預設逾時 |
 | `VISION_BATCH_MAX_IMAGES`、`VISION_KEEP_BATCH_SETS`、`VISION_KEEP_BATCH_RUNS`、`VISION_BATCH_MAX_RUNNING` | 批次測試：影像集上限（200）、每流程保留影像集數（10）、每影像集保留執行次數（20）、同時執行數（2） |
 | `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S`、`VISION_AGENT_MODE` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點；`MODE`＝single／agentic） |
 | `VISION_SAM_MODEL` | 深度學習教導的 SAM 權重（智慧選取／框選／全圖提案；sam2.1_t.pt 預設，mobile_sam.pt 較小、sam2.1_s.pt 更準） |
@@ -305,9 +315,12 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 ## 驗證與測試
 
 ```bash
-# 後端：350 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊）
+# 後端：405 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊、擷取端 hub 與擷取端程式）
 .venv/Scripts/python.exe manage.py test --noinput
-.venv/Scripts/python.exe -m ruff check apps tests config
+.venv/Scripts/python.exe -m ruff check apps tests config vscapture
+
+# 擷取端：打包成 zip 供網頁下載（第一次會建 .venv-capture）；-WithBasler／-WithIds 一併打包 SDK
+.\scripts\build_capture_client.ps1
 
 # 前端：型別、vitest（i18n 三語系對齊與用詞規範、純函式單元、9 頁 render smoke）、build
 cd frontend && npm run -s typecheck && npm test && npm run build
@@ -350,6 +363,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/batch.html` | 批次測試：影像集、暫存結果、洞察與建議門檻、調參、AI 諮詢、API、保留策略 |
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
+| `docs/capture-client.html` | 擷取端：安裝與連線、通道與 ROI、相機支援、共享記憶體與 TCP、網頁設定、效能、疑難排解、協定 v1、驗收清單 |
 | `docs/glossary.html` | 名詞規範與文案用詞規範 |
 | `docs/performance.html` | 效能報告 |
 | `CLAUDE.md` | 給 AI 協作者與開發者的專案須知：架構、慣例、驗證清單、踩過的坑、各模組要點 |

@@ -22,10 +22,10 @@ DOCS_DIR = Path(__file__).resolve().parents[3] / "docs"
 PAGE_TITLES = {
     "index.html": "總覽", "workflow-design.html": "工作流程設計手冊", "architecture.html": "設計手冊", "automation.html": "自動化整合", "modbus.html": "Modbus 輸出",
     "dl.html": "深度學習教導", "plugins.html": "擴充外掛", "contract.html": "前後端合約", "glossary.html": "名詞規範", "golden.html": "Golden Set 與匯出",
-    "batch.html": "批次測試", "performance.html": "效能報告", "vision-capabilities.html": "檢測功能設計", "samples.html": "範例樣板", "agent.html": "AI 助手", "user-guide.html": "使用者手冊",
+    "batch.html": "批次測試", "performance.html": "效能報告", "vision-capabilities.html": "檢測功能設計", "samples.html": "範例樣板", "agent.html": "AI 助手", "user-guide.html": "使用者手冊", "capture-client.html": "擷取端",
 }
 #: 使用者手冊與 AI 助手／批次頁最貼近操作，檢索時略加權；合約／設計手冊偏工程。
-PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7}
+PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7}
 MAX_SECTION_CHARS = 1400
 TOP_K = 5
 

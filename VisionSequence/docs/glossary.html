@@ -134,7 +134,7 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html">使用者手冊</a></nav>
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html" aria-current="page">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
 <div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#pages">頁面（左側導覽，路由）</a></li><li><a href="#editor">流程編輯器的區塊</a></li><li><a href="#terms">核心名詞</a></li><li><a href="#port-colors">埠型別顏色（固定，不重複）</a></li><li><a href="#status">狀態用語</a></li><li><a href="#tone">文案用詞規範（商用產品語氣）</a></li></ul></aside><article class="doc">
 
 <h1>前端名詞規範（溝通用）</h1>
@@ -147,7 +147,7 @@
 <tr><td>流程</td><td><code>/flows</code></td><td>FlowsPage</td><td>流程清單</td></tr>
 <tr><td>流程編輯器</td><td><code>/flows/:id</code></td><td>FlowEditorPage</td><td>畫布＋影像視窗＋側欄</td></tr>
 <tr><td>工具頁</td><td><code>/flows/:id/tools/:nodeId</code></td><td>ToolPage</td><td>單一步驟的專屬調參頁。版面：左＝參數、中＝執行前/後影像＋下方參考資訊（直方圖/統計/series 橫向排列）、右＝按鍵（儲存/執行到此步驟/自動套用/重用影像/暫存影像）。預設按「執行到此步驟」才跑（可開自動套用）；有 ROI 參數且有值時進頁直接顯示可拖曳；參數只寫共享草稿、「儲存」才寫回後台，「返回」只在真的有未儲存變更時 confirm（儲存後＝新基準）並放棄本頁編輯</td></tr>
-<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal、chips 篩選、下拉選群組）；folder/file 的路徑可開伺服器檔案瀏覽器（GET /vision/fs）選取、usb 可「掃描相機」枚舉伺服器上的裝置（GET /sources/usb-scan）</td></tr>
+<tr><td>影像來源庫</td><td><code>/sources</code></td><td>SourcesPage</td><td>相機／資料夾／合成來源的清單；使用者自訂群組（ResourceGroup：管理群組 Modal、chips 篩選、下拉選群組）；folder/file 的路徑可開伺服器檔案瀏覽器（GET /vision/fs）選取、usb 可「掃描相機」枚舉伺服器上的裝置（GET /sources/usb-scan）；「下載擷取端」與類型「擷取端相機」（選擷取端與通道，GET /capture/clients）</td></tr>
 <tr><td>資產庫</td><td><code>/assets</code></td><td>AssetsPage</td><td>範本影像、模型檔、資料集 zip；使用者自訂群組（同來源庫：管理群組 Modal、chips 篩選、上傳/編輯下拉選群組 <code>PATCH /assets/{id}</code>）</td></tr>
 <tr><td>使用者</td><td><code>/users</code></td><td>UsersPage</td><td>帳號管理（管理員）</td></tr>
 <tr><td>設定</td><td><code>/settings</code></td><td>SettingsPage</td><td>金鑰、主題風格（淺色／深色／Cyberpunk／跟隨系統；預覽卡選擇＝唯一切換入口（頂列切換鈕已移除），登入者存進使用者設定 <code>PATCH /auth/prefs</code>）、語言（繁中／簡中／English）、引擎鎖定、密碼</td></tr>
@@ -205,7 +205,12 @@
 <tr><td>執行一次</td><td>Run once</td><td>用已儲存的圖執行一次；寫入歷史與統計。UI 已無此按鈕（整合方走 <code>POST /flows/{id}/run</code>、TCP 或整合頁）</td></tr>
 <tr><td>連續執行</td><td>Continuous</td><td>依間隔不停執行</td></tr>
 <tr><td>暫存影像</td><td>Scratch image</td><td>只為試執行上傳的影像，不進影像來源庫</td></tr>
-<tr><td>影像來源</td><td>Image source</td><td>相機／資料夾／合成／API 送圖的定義</td></tr>
+<tr><td>影像來源</td><td>Image source</td><td>相機／資料夾／合成／API 送圖／擷取端相機的定義</td></tr>
+<tr><td>擷取端</td><td>Capture client（vscapture）</td><td>裝在相機所在電腦的桌面程式：驅動網路攝影機／Basler／IDS，主動連到伺服端擷取埠（9100）；同一台電腦以共享記憶體、跨電腦以 TCP 無損傳影像</td></tr>
+<tr><td>通道</td><td>Channel</td><td>擷取端裡的一台相機（名稱、種類、裝置、ROI、參數、傳送設定）；網頁來源以「擷取端＋通道」指定</td></tr>
+<tr><td>擷取端相機</td><td>Capture source（kind=capture）</td><td>影像來源種類：client／channel／mode／timeout_ms／fresh／encoding</td></tr>
+<tr><td>依需求取像 / 連續串流</td><td>On demand / Stream</td><td>每次執行向擷取端要一張觸發之後的新影格；或擷取端依 fps 上限持續推最新影格、執行時直接取用</td></tr>
+<tr><td>共享記憶體</td><td>Shared memory（shm）</td><td>擷取端與伺服端在同一台電腦時的影像通道：擷取端建立區段與槽、FRAME 訊息通知、伺服端 copy 一次後 SLOT_FREE 歸還</td></tr>
 <tr><td>資產</td><td>Asset</td><td>範本影像、ONNX 模型等檔案</td></tr>
 <tr><td>判定</td><td>Judge</td><td>OK／NG 的結論（judge 工具）</td></tr>
 <tr><td>具名輸出</td><td>Output</td><td>回傳給自動化系統的鍵值（output 工具）</td></tr>

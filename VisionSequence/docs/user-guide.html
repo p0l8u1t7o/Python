@@ -134,8 +134,8 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="user-guide.html" aria-current="page">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#login">1. 登入與帳號</a></li><li><a href="#sources">2. 影像來源庫與資產庫</a></li><li><a href="#flow">3. 建立與編輯流程</a></li><li><a href="#tool">4. 工具頁與 ROI</a></li><li><a href="#run">5. 試執行、執行與連續執行</a></li><li><a href="#batch">6. 批次測試與 Golden Set</a></li><li><a href="#templates">7. 範本畫廊</a></li><li><a href="#agent">8. AI 助手</a></li><li><a href="#dl">9. 深度學習教導</a></li><li><a href="#integration">10. 外部整合與引擎鎖定</a></li><li><a href="#settings">11. 設定與個人偏好</a></li><li><a href="#faq">12. 常見問題</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html" aria-current="page">使用者手冊</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#login">1. 登入與帳號</a></li><li><a href="#sources">2. 影像來源庫與資產庫</a><ul><li><a href="#sources-capture">2-3. 相機在別台電腦：擷取端相機</a></li></ul></li><li><a href="#flow">3. 建立與編輯流程</a></li><li><a href="#tool">4. 工具頁與 ROI</a></li><li><a href="#run">5. 試執行、執行與連續執行</a></li><li><a href="#batch">6. 批次測試與 Golden Set</a></li><li><a href="#templates">7. 範本畫廊</a></li><li><a href="#agent">8. AI 助手</a></li><li><a href="#dl">9. 深度學習教導</a></li><li><a href="#integration">10. 外部整合與引擎鎖定</a></li><li><a href="#settings">11. 設定與個人偏好</a></li><li><a href="#faq">12. 常見問題</a><ul><li><a href="#faq-capture">相機在另一台電腦，或需要 Basler／IDS 的 SDK，怎麼接？</a></li><li><a href="#faq-capture-timeout">擷取端相機執行時逾時？</a></li></ul></li></ul></aside><article class="doc">
 
 <h1>使用者手冊</h1>
 <p>本手冊依操作順序說明 VisionSequence 的各項功能：從登入、建立流程、調整工具參數，到批次測試、範本、AI 助手、深度學習教導與外部整合。介面內的「說明」頁提供同樣內容的精簡版與工具目錄。</p>
@@ -154,6 +154,8 @@
 <li>兩者皆可建立<strong>群組</strong>分類（清單上方晶片篩選、「管理群組」改名或刪除）。範例來源與資產位於「範例」群組。</li>
 </ul>
 
+<h3 id="sources-capture">2-3. 相機在別台電腦：擷取端相機</h3>
+<p>相機接在產線另一台電腦，或需要 Basler／IDS 的廠牌 SDK 時，不用把相機接到伺服器：在影像來源庫頁首「下載擷取端」，到相機所在的電腦解壓執行 <code>VisionSequenceCapture.exe</code>，「連線」填伺服端位址（埠 9100）與擷取端名稱，「通道」新增相機、開啟並開始取像（可在預覽上圈選 ROI 只傳 ROI、調相機參數並儲存）。回到網頁新增來源選類型「擷取端相機」，下拉選擷取端與通道，取像模式選「依需求取像」（每次執行要一張新影格）或「連續串流」，儲存前「測試擷取」確認。清單狀態欄會顯示擷取端在線／離線、fps 與最近影格；「外部整合」→「擷取端」分頁可看所有已連線的擷取端、開串流與預覽。細節見 <a href="capture-client.html">擷取端</a>。</p>
 <h2 id="flow">3. 建立與編輯流程</h2>
 <p><strong>還沒選影像來源？</strong>編輯器上方會出現黃色橫幅，直接在橫幅的下拉選一個來源（或上傳一張暫存影像）就能試執行；總覽頁每張流程卡也有「執行一次」鈕，不用進編輯器。點選取像步驟時，右側檢視器會顯示目前來源的下拉與預覽縮圖，可直接切換來源。</p>
 <p><strong>自己寫 Python？</strong>工具箱「邏輯」類有「Python 腳本」：在工具頁的程式碼編輯器寫 <code>def run(ctx)</code>（可用 np、cv2、math），讀 <code>ctx.image</code>／上游值 <code>ctx.inputs</code>／現場參數 <code>ctx.params['p1'..'p3']</code>／區域 <code>ctx.roi()</code>，回傳數值、布林、文字、資料、新影像與標記並決定通過／不良分支；輸出埠固定（value、result、text、data、image）。腳本與引擎同行程受限執行（白名單匯入、逾時中止、輸入影像唯讀），<strong>只有管理員能編輯與儲存核准</strong>；一般使用者可檢視並執行已核准的腳本，也可在參數卡調整現場參數而不必改程式碼。</p>
@@ -226,6 +228,7 @@
 </ul>
 <p>詳見 <a href="automation.html">自動化整合</a>與 <a href="modbus.html">Modbus 輸出</a>。</p>
 
+<p><strong>擷取端</strong>分頁：下載擷取端程式（版本、大小、SHA-256）、伺服端擷取埠是否監聽、設定步驟；已連線的擷取端與通道（尺寸、模式、fps、最近影格、使用中的來源），可直接開關串流與預覽。見 <a href="capture-client.html">擷取端</a>。</p>
 <h2 id="settings">11. 設定與個人偏好</h2>
 <ul>
 <li>介面語言（繁體中文／簡體中文／English）與主題風格（淺色／深色／Cyberpunk／跟隨系統）儲存於個人帳號，跨裝置一致。</li>
@@ -242,6 +245,10 @@
 <tr><td>連續執行卡在「佇列已滿」</td><td>降低執行間隔或檢查流程耗時；可於效能報告了解各工具成本。</td></tr>
 </table>
 
+<h3 id="faq-capture">相機在另一台電腦，或需要 Basler／IDS 的 SDK，怎麼接？</h3>
+<p>用擷取端：影像來源庫「下載擷取端」→ 在相機電腦執行並連到伺服端 → 網頁新增「擷取端相機」來源選擷取端與通道。同一台電腦會自動走共享記憶體，跨電腦走 TCP 無損傳送；清單顯示「擷取端離線」代表擷取端程式沒連上。詳見 <a href="capture-client.html">擷取端</a>。</p>
+<h3 id="faq-capture-timeout">擷取端相機執行時逾時？</h3>
+<p>先在擷取端確認通道狀態是「取像中」且預覽有畫面；觸發模式的相機要有觸發訊號；曝光時間長或跨網路時把來源的「逾時（毫秒）」放大；「要求新影格」取消可直接用擷取端手上的最新影格。</p>
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用
