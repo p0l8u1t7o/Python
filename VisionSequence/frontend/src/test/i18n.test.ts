@@ -76,7 +76,7 @@ describe('i18n locales', () => {
 describe('source files', () => {
   const FULLWIDTH = /[：、；（）～　]/
   /** 只掃會進畫面的檔案；語系檔、開發示範頁與測試假資料的中文是資料本身。 */
-  const SKIP = ['/i18n/locales/', '/components/viewer/ImageViewerDemo.tsx', '/test/', '.test.']
+  const SKIP = ['/i18n/locales/', '/lib/toolLocale.ts', '/components/viewer/ImageViewerDemo.tsx', '/test/', '.test.']
 
   function walk(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {

@@ -30,14 +30,52 @@ export default {
     dio_sim: { label: '模拟数字 I/O（只记录状态）' },
     plugin: { label: '插件（自行指定类路径）' },
   },
+  /** Advanced／Augment 这些分组名称每个训练方式共用。 */
+  paramGroups: {
+    Advanced: '进阶',
+    Augment: '数据增强',
+  },
+  /** 四种 YOLO 训练方式的超参数几乎相同，共用这一份。 */
+  yoloParams: {
+    model: { label: '底模', help: 'ultralytics 的模型名称（第一次使用时下载）或 .pt 文件路径；填上一次训练的 best.pt 就会接着它继续训练。' },
+    epochs: { label: '训练轮数' },
+    imgsz: { label: '图像尺寸', options: { 224: '224（建议）', 320: '320', 480: '480', 640: '640（建议）', 960: '960' } },
+    batch: { label: '批次大小' },
+    patience: { label: '早停耐心值' },
+    lr0: { label: '初始学习率' },
+    val_ratio: { label: '验证集比例' },
+    workers: { label: 'DataLoader 线程', help: 'Windows 建议填 0；在后台线程训练时最稳。' },
+    suggest_conf: { label: '自动标记的置信度阈值', help: '还没训练前用官方底模提出建议（名称对不上的会挂在第一个类别，您再修正）；训练过后改用 best.pt。' },
+    degrees: { label: '旋转角度（±）', help: '随机旋转的最大角度；产线上目标方向固定时建议填 0。' },
+    fliplr: { label: '水平翻转概率' },
+    mosaic: { label: 'Mosaic 增强', help: '把四张样本拼成一张训练图像；样本少的时候调低。' },
+  },
   trainers: {
     mlp_classify: {
       label: '图像分类（MLP）',
       description: '把整张样本图像（或其裁切）分到您定义的类别。轻量全连接网络，CPU 几秒就能训好；产物给「深度学习分类」工具使用。',
+      params: {
+        input_size: { label: '输入尺寸', options: { 32: '32x32（最快）', 64: '64x64（建议）', 96: '96×96', 128: '128x128（细节较多）' } },
+        hidden: { label: '隐藏层宽度' },
+        epochs: { label: '训练轮数' },
+        learning_rate: { label: '学习率' },
+        val_split: { label: '验证集比例', help: '填 0 代表全部拿来训练，适用于样本非常少的时候；手动指定为 val 的样本优先。' },
+        augment: { label: '启用数据增强', help: '只在训练集加入水平翻转与亮度抖动的副本；样本少时有助于泛化。' },
+        augment_brightness: { label: '亮度抖动' },
+      },
     },
     patch_segment: {
       label: '语义分割（轻量）',
       description: '从多边形标记学会逐像素分类（背景加上您的类别）。区块特征加轻量网络，CPU 几秒完成，导出成全卷积 ONNX 给「深度学习语义分割」工具。适合由颜色与纹理界定的区域与缺陷。',
+      params: {
+        input_size: { label: '工作尺寸', help: '训练用的尺寸，也是建议的推理尺寸。模型是全卷积的，推理时可以用别的尺寸。', options: { 128: '128（最快）', 192: '192（建议）', 256: '256（细节较多）' } },
+        kernel: { label: '感受野', options: { 5: '5×5', 7: '7×7', 9: '9×9' } },
+        hidden: { label: '隐藏层宽度' },
+        epochs: { label: '训练轮数' },
+        learning_rate: { label: '学习率' },
+        samples_per_image: { label: '每张采样的像素数' },
+        augment: { label: '启用数据增强', help: '每张图像另外采样一份水平翻转的版本，标记一并翻转。' },
+      },
     },
     yolo_cls: {
       label: '图像分类（YOLO-cls）',

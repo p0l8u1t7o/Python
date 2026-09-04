@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { ApiError, api, request } from './api'
-import { localiseList } from './catalogueLocale'
+import { localiseList, localiseTrainers } from './catalogueLocale'
 import { localiseCatalogue } from './toolLocale'
 import type { Language } from '@/i18n'
 import type {
@@ -541,6 +541,13 @@ export function useRolePermissionMutation() {
   })
 }
 
+/** 改自己的顯示名稱（帳號名稱與角色是管理員的事）；呼叫端成功後 auth.refresh() 讓側欄與選單跟著變。 */
+export function useUpdateProfile() {
+  return useMutation({
+    mutationFn: (body: { display_name: string }) => api.patch<AuthUser>('/auth/profile', body),
+  })
+}
+
 export function useChangePassword() {
   return useMutation({
     mutationFn: (body: { old_password: string; new_password: string }) => api.post<{ ok: boolean }>('/auth/password', body),
@@ -815,7 +822,7 @@ export function useDlTrainers() {
   return useQuery({
     queryKey: ['dl', 'trainers', language],
     queryFn: () => api.get<{ items: DlTrainerDef[] }>('/vision/dl/trainers'),
-    select: (data) => localiseList('trainers', data.items, (t) => t.kind, language),
+    select: (data) => localiseTrainers(data.items, language),
     staleTime: 5 * 60_000,
   })
 }

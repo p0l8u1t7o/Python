@@ -10,6 +10,7 @@
 import zhHans from '@/i18n/locales/catalogue.zh-Hans'
 import zhHant from '@/i18n/locales/catalogue.zh-Hant'
 import type { Language } from '@/i18n'
+import type { DlTrainerDef, ToolParam } from '@/lib/types'
 
 interface Entry {
   label?: string
@@ -17,10 +18,25 @@ interface Entry {
   description?: string
 }
 
+/** 訓練方式的超參數：與工具參數同一種字典形狀（label／help／options）。 */
+interface ParamText {
+  label?: string
+  help?: string
+  options?: Record<string, string>
+}
+
+interface TrainerEntry extends Entry {
+  params?: Record<string, ParamText>
+}
+
 interface CatalogueDict {
   sourceKinds?: Record<string, Entry>
   connectionKinds?: Record<string, Entry>
-  trainers?: Record<string, Entry>
+  trainers?: Record<string, TrainerEntry>
+  /** 四種 YOLO 訓練方式共用的超參數（trainer 自己的 params 優先）。 */
+  yoloParams?: Record<string, ParamText>
+  /** Param.group 的名稱（Advanced／Augment），所有訓練方式共用。 */
+  paramGroups?: Record<string, string>
   templates?: Record<string, Entry>
 }
 
@@ -48,7 +64,7 @@ export function localiseEntry<T extends { label?: string; name?: string; descrip
   }
 }
 
-/** 一整份目錄；`keyOf` 說明哪個欄位是識別碼（來源與連線是 kind、訓練方式是 kind、範本是 key）。 */
+/** 一整份目錄；`keyOf` 說明哪個欄位是識別碼（來源與連線是 kind、範本是 key）。 */
 export function localiseList<T extends { label?: string; name?: string; description?: string }>(
   section: Section,
   items: T[],
@@ -57,4 +73,33 @@ export function localiseList<T extends { label?: string; name?: string; descript
 ): T[] {
   if (!DICTS[language]) return items
   return items.map((item) => localiseEntry(section, keyOf(item), item, language))
+}
+
+function localiseParam(param: ToolParam, text: ParamText | undefined, groups: Record<string, string>): ToolParam {
+  const group = param.group ? groups[param.group] ?? param.group : param.group
+  if (!text) return group === param.group ? param : { ...param, group }
+  return {
+    ...param,
+    group,
+    label: text.label ?? param.label,
+    help_text: text.help ?? param.help_text,
+    options: (param.options ?? []).map((o) => ({ ...o, label: text.options?.[String(o.value)] ?? o.label })),
+  }
+}
+
+/** 訓練方式：名稱、說明，加上超參數的名稱／說明／選項與分組名稱。YOLO 四種共用一份參數字典。 */
+export function localiseTrainers(items: DlTrainerDef[], language: Language): DlTrainerDef[] {
+  const dict = DICTS[language]
+  if (!dict) return items
+  const groups = dict.paramGroups ?? {}
+  return items.map((trainer) => {
+    const text = dict.trainers?.[trainer.kind]
+    const shared = trainer.kind.startsWith('yolo_') ? dict.yoloParams ?? {} : {}
+    return {
+      ...trainer,
+      label: text?.label ?? trainer.label,
+      description: text?.description ?? trainer.description,
+      params: (trainer.params ?? []).map((p) => localiseParam(p, text?.params?.[p.key] ?? shared[p.key], groups)),
+    }
+  })
 }
