@@ -3,14 +3,15 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQueryClient } from '@tanstack/react-query'
-import { KeyRound } from 'lucide-react'
+import { Check, KeyRound } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
 import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
 import { apiKey, setApiKey } from '@/lib/api'
-import { useCapacity } from '@/lib/queries'
+import { errorMessage } from '@/lib/errors'
+import { useCapacity, useUpdateProfile } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
 import { useTheme, type ThemePreference } from '@/providers/ThemeProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -25,6 +26,19 @@ export function SettingsPage() {
   const [key, setKey] = useState(apiKey())
   const [language, setLang] = useState<Language>(storedLanguage())
   const [changing, setChanging] = useState(false)
+  const profile = useUpdateProfile()
+  const [displayName, setDisplayName] = useState(auth.me?.user?.display_name ?? '')
+  const nameDirty = auth.me?.user ? displayName.trim() !== (auth.me.user.display_name ?? '') : false
+
+  async function saveDisplayName() {
+    try {
+      await profile.mutateAsync({ display_name: displayName.trim() })
+      await auth.refresh()
+      toast.success(t('settings.displayNameSaved'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
 
   function saveKey() {
     setApiKey(key.trim())
@@ -98,9 +112,16 @@ export function SettingsPage() {
             {auth.me?.user ? (
               <dl>
                 <DetailRow label={t('auth.username')}>{auth.me.user.username}</DetailRow>
-                <DetailRow label={t('auth.displayName')}>{auth.me.user.display_name || '—'}</DetailRow>
                 <DetailRow label={t('auth.role')}>{t(`auth.roles.${auth.role}`)}</DetailRow>
               </dl>
+            ) : null}
+            {auth.me?.user ? (
+              // 顯示名稱是自己的事，直接在這裡改；帳號名稱與角色仍由管理員在使用者頁管理
+              <div className="flex flex-wrap items-end gap-2">
+                <TextInput label={t('auth.displayName')} className="w-56" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && nameDirty && void saveDisplayName()} placeholder={auth.me.user.username} data-testid="profile-display-name" />
+                <Button variant="primary" icon={<Check size={14} />} disabled={!nameDirty} loading={profile.isPending} onClick={() => void saveDisplayName()} data-testid="profile-save">{t('common.save')}</Button>
+              </div>
             ) : (
               <p className="text-xs text-muted">{t('auth.integrator')}</p>
             )}

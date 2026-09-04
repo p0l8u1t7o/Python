@@ -245,6 +245,7 @@ POST   /vision/integration/tcp               {command} → {response, via: tcp|d
 
 <h2 id="recipes">Recipes, stations and teaching</h2>
 <pre>GET/POST  /vision/flows/{id}/recipes            {name, description, param_overrides:{node_id:{param:value}}, is_default}
+PATCH  /auth/profile                           {display_name} — change your own display name
 GET    /users/permissions                      the function list, the current ticks and the editable roles (administrator)
 PATCH  /users/permissions                      {role, features[]} — tick what a role may use (administrator)
 GET    /auth/me                                also returns `permissions`: what this identity may use

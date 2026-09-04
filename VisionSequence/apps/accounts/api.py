@@ -10,6 +10,7 @@ POST   /users                 管理員 {username, password, is_staff, display_n
 PATCH  /users/{id}            管理員 {password?, is_staff?, is_active?, display_name?}
 DELETE /users/{id}            管理員（不能刪自己）；其流程改為共用（owner=null）
 GET    /vision/lock           鎖定狀態（所有人）
+PATCH  /auth/profile          自己的顯示名稱 {display_name}
 POST   /vision/lock           整合方或管理員 {reason?, ttl_s?}
 DELETE /vision/lock           整合方、管理員或持有者
 """
@@ -57,6 +58,10 @@ UI_THEMES = ("light", "dark", "system", "cyber")
 
 class PrefsIn(Schema):
     theme: str | None = None
+
+
+class ProfileIn(Schema):
+    display_name: str
 
 
 def _prefs(user: User | None) -> dict:
@@ -189,6 +194,22 @@ def patch_prefs(request: HttpRequest, payload: PrefsIn):
     row.ui = ui
     row.save(update_fields=["ui", "updated_at"])
     return {"prefs": ui}
+
+
+@router.patch("/profile")
+def patch_profile(request: HttpRequest, payload: ProfileIn):
+    """改自己的顯示名稱。帳號名稱與角色不在這裡——那是管理員在使用者頁做的事。"""
+    p = principal(request)
+    if p.user is None:
+        raise APIError("An API key has no profile to change", code="not_a_user", status_code=400)
+    name = payload.display_name.strip()[:150]
+    before = p.user.first_name
+    if name != before:
+        p.user.first_name = name
+        p.user.save(update_fields=["first_name"])
+        audit.record(request, "user.update", p.user, summary=f"display_name: {before or '—'} → {name or '—'}",
+                     detail={"display_name": {"before": before, "after": name}})
+    return user_out(p.user)
 
 
 @router.post("/password")

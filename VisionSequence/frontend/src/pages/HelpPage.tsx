@@ -158,7 +158,7 @@ const ACCOUNTS = [
   'A flow belongs to the line, not to a person: every engineer can see and edit every flow, and the Owner column only records who created it.',
   'An integrator (an automation system) calls with an API key (X-API-Key) and can always execute a flow.',
   'Engine lock: an integrator takes it over HTTP (POST /api/vision/lock) or TCP (LOCK), which stops every continuous run and leaves everyone else able to edit but not preview or run. A banner across the top of the interface says who holds it and why; an administrator or the holder can release it from there, and a lock can carry a timeout after which it releases itself.',
-  'Change your password from the user menu at the bottom left; an administrator can reset someone else\'s password and disable an account on the Users page.',
+  'Change your own display name and password on the Settings page; an administrator can reset someone else\'s password, change roles and disable an account on the Users page.',
 ]
 
 function Table({ head, rows }: { head: string[]; rows: (string | React.ReactNode)[][] }) {

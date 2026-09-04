@@ -282,6 +282,22 @@ class AccountsTests(TestCase):
         self.assertEqual(self.post(f"/api/vision/flows/{fid}/run", {}, token=alice).status_code, 200)
         self.assertFalse(handle_command("LOCK ttl")["ok"])  # 不是 key=value
 
+    def test_user_changes_own_display_name(self):
+        """一般使用者能改自己的顯示名稱；整合方沒有使用者可改。"""
+        admin = self.setup_admin()
+        alice = self.make_user(admin, "alice")
+        r = self.client.patch("/api/auth/profile", data=json.dumps({"display_name": "  Alice Chen  "}), content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {alice}")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["display_name"], "Alice Chen")
+        self.assertEqual(self.get("/api/auth/me", token=alice).json()["user"]["display_name"], "Alice Chen")
+        # 稽核有記，而且是自己改的
+        rows = self.get("/api/vision/audit", token=admin).json()["items"]
+        self.assertTrue(any(row["action"] == "user.update" and row["actor"] == "alice" for row in rows), rows[:3])
+        # 整合方（API 金鑰）沒有使用者
+        with override_settings(VISION={**settings.VISION, "API_KEY": "integrator-key"}):
+            r = self.client.patch("/api/auth/profile", data=json.dumps({"display_name": "x"}), content_type="application/json", HTTP_X_API_KEY="integrator-key")
+        self.assertEqual(r.status_code, 400)
+
     def test_admin_lock_and_expiry(self):
         admin = self.setup_admin()
         alice = self.make_user(admin, "alice")
