@@ -49,7 +49,6 @@ const GLOSSARY_PAGES: [string, string, string, string][] = [
   ['Golden Set', '/flows/:id/golden', 'GoldenPage', 'Image cases with expectations, and regression testing (regressed cases first)'],
   ['Batch test', '/batch', 'BatchPage', 'Run an image set through a flow; every run is stored, with expected labels, insights, tuning, comparison and AI consultation'],
   ['Integration', '/integration', 'IntegrationLayout', 'HTTP and TCP testing, event monitoring, Modbus connections and outgoing output, the result format, the capture client download and the clients connected'],
-  ['Fleet board', '/fleet', 'FleetPage', 'A read-only roll-up of the other stations registered here'],
   ['Audit log', '/audit', 'AuditPage', 'Who changed what and when (administrators)'],
   ['Sign in', '/login', 'LoginPage', 'Sign in, or create the first administrator'],
   ['Deep learning', '/dl', 'DlPage', 'Teaching projects: samples, labelling, datasets, training and model export'],

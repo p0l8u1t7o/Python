@@ -13,15 +13,6 @@ installApiMock()
 vi.mock('@/lib/flowStream', () => ({ useLockEvents: () => {}, useFlowEvents: () => {}, useFlowStream: () => ({ events: [], seq: 0 }) }))
 
 describe('pages render (smoke)', () => {
-  it('StationPage shows the verdict, today’s yield and the run controls', async () => {
-    const { StationPage } = await import('@/pages/StationPage')
-    renderPage(<StationPage />, { route: '/station' })
-    expect(await screen.findByTestId('station-verdict')).toBeInTheDocument()
-    expect(screen.getByTestId('station-run')).toBeInTheDocument()
-    expect(screen.getByTestId('station-flow')).toBeInTheDocument()
-    expect(screen.getByTestId('station-total')).toBeInTheDocument()
-  })
-
   it('AuditPage lists changes for an administrator', async () => {
     const { AuditPage } = await import('@/pages/AuditPage')
     renderPage(<AuditPage />, { route: '/audit' })

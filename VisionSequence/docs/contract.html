@@ -230,8 +230,7 @@ GET    /docs/{page}.html                    the documentation itself (not an API
 GET    /vision/integration/info             {version, station_id, http_base, tcp_host, tcp_connect_host, tcp_port, tcp_listening,
                                             api_key_required, max_workers, max_queue_per_flow, commands[], events_url, flow_events_url,
                                             capture_host, capture_connect_host, capture_port, capture_listening, capture_download_url}
-GET    /vision/summary                      this station's yield summary (what a fleet board polls)
-GET    /vision/fleet                        every configured station, read only
+GET    /vision/summary                      this station's yield summary (poll it to roll several stations up)
 GET    /vision/audit, /vision/audit.csv     the audit trail (administrators)
 GET    /vision/flows/{id}/versions          snapshot history; /{v} compares with the current graph, /{v}/restore and /{v}/release act on it
 GET    /vision/capture/clients              {listening, host, port, items[{name, address, version, hostname, connected_at, local, shm,

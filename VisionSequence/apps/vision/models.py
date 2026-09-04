@@ -108,30 +108,6 @@ class FlowRun(models.Model):
         indexes = [models.Index(fields=["flow", "-started_at"]), models.Index(fields=["station_id", "-started_at"])]
 
 
-class Station(models.Model):
-    """看板要輪詢的其他站台。
-
-    只存「怎麼問到它」——名稱、位址、金鑰。**不下發任何東西**：流程、帳號、指令都不會從看板推
-    過去，所以站台不會因為看板掛了而受影響，看板也不需要站台配合什麼。
-    """
-
-    name = models.CharField(max_length=80, unique=True)
-    #: 站台的網址，例如 http://192.168.1.31:8000（有沒有 /api 都可以）。
-    base_url = models.CharField(max_length=200)
-    #: 該站台的 VISION_API_KEY；空字串代表那台沒設金鑰。
-    api_key = models.CharField(max_length=200, blank=True, default="")
-    is_enabled = models.BooleanField(default=True)
-    note = models.CharField(max_length=200, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class FlowRunHourly(models.Model):
     """每小時一列的良率彙總，**永久保留**。
 

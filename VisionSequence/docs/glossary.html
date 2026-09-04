@@ -160,7 +160,6 @@
 <tr><td>Golden Set</td><td>Golden Set</td><td><code>/flows/:id/golden</code></td><td>GoldenPage</td><td>Cases, expectations, regression and baselines</td></tr>
 <tr><td>Teach page</td><td>參數卡</td><td><code>/flows/:id/teach</code></td><td>TeachPage</td><td>Every teaching parameter in the flow, grouped by step</td></tr>
 <tr><td>Integration</td><td>外部整合</td><td><code>/integration/*</code></td><td>IntegrationLayout</td><td>One page per integration method, expanding into a tree in the sidebar</td></tr>
-<tr><td>Fleet board</td><td>站台看板</td><td><code>/fleet</code></td><td>FleetPage</td><td>A read-only roll-up of the other stations registered here: online state, today's yield and the age of each number</td></tr>
 </table>
 
 <h2 id="editor">Parts of the flow editor</h2>
@@ -246,7 +245,6 @@
 <tr><td>Flow version</td><td>流程版本</td><td><code>FlowVersion</code>: a snapshot of the graph on every save, with who saved it and a parameter-level diff, restorable</td></tr>
 <tr><td>Audit log</td><td>操作紀錄</td><td><code>AuditLog</code>: who changed what and when — flows, recipes, connections, accounts, the lock</td></tr>
 <tr><td>Station</td><td>站台</td><td>The station identifier carried by every run (<code>VISION_STATION_ID</code>), shown on the dashboard cards and the statistics page</td></tr>
-<tr><td>Fleet board</td><td>站台看板</td><td>A read-only roll-up of the stations registered here, polling each one's <code>GET /vision/summary</code>. Numbers that could not be refreshed are marked with their age.</td></tr>
 <tr><td>Integration page</td><td>整合頁</td><td>The interface reference and test tools for integrators; one page per method, expanding into a tree in the sidebar</td></tr>
 <tr><td>Trace</td><td>命令與結果</td><td>The live log at the bottom of an integration page: the commands and replies this interface handled (time, direction, duration, success, full detail). An in-process ring buffer; with the page closed, only errors are kept.</td></tr>
 <tr><td>Modbus client / server</td><td>Modbus 主站／從站</td><td>Client (<code>modbus_tcp</code>) means the platform connects to the PLC to read and write. Server (<code>modbus_server</code>) means the platform listens and the PLC, as master, reads and writes the platform's registers.</td></tr>

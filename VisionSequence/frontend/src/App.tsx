@@ -8,7 +8,6 @@ import { AuthProvider, useAuth } from '@/providers/AuthProvider'
 
 // 路由層級 code-splitting：每頁獨立 chunk，首屏只載 AppShell＋當前頁（主 bundle 由 1.6MB 降到數百 KB）。
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
-const StationPage = lazy(() => import('@/pages/StationPage').then((m) => ({ default: m.StationPage })))
 const AgentPage = lazy(() => import('@/pages/AgentPage').then((m) => ({ default: m.AgentPage })))
 const AssetsPage = lazy(() => import('@/pages/AssetsPage').then((m) => ({ default: m.AssetsPage })))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
@@ -27,8 +26,6 @@ const IntegrationFormatPage = lazy(() => import('@/pages/integration/FormatPage'
 const IntegrationModbusPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusPage })))
 const IntegrationConnectionsPage = lazy(() => import('@/pages/integration/ConnectionsPage').then((m) => ({ default: m.IntegrationConnectionsPage })))
 const IntegrationCapturePage = lazy(() => import('@/pages/integration/CapturePage').then((m) => ({ default: m.IntegrationCapturePage })))
-const IntegrationStationsPage = lazy(() => import('@/pages/integration/StationsPage').then((m) => ({ default: m.StationsPage })))
-const FleetPage = lazy(() => import('@/pages/FleetPage').then((m) => ({ default: m.FleetPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
@@ -37,13 +34,6 @@ const DlPage = lazy(() => import('@/pages/DlPage').then((m) => ({ default: m.DlP
 const ToolPage = lazy(() => import('@/pages/ToolPage').then((m) => ({ default: m.ToolPage })))
 const UsersPage = lazy(() => import('@/pages/UsersPage').then((m) => ({ default: m.UsersPage })))
 const AuditPage = lazy(() => import('@/pages/AuditPage').then((m) => ({ default: m.AuditPage })))
-
-/** 落地頁依角色：操作員直接進產線畫面，工程師與管理員看總覽。 */
-function Landing() {
-  const auth = useAuth()
-  if (auth.role === 'operator') return <Navigate to="/station" replace />
-  return <DashboardPage />
-}
 
 function RequireAuth() {
   const auth = useAuth()
@@ -58,13 +48,11 @@ const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
-      // 產線畫面在 AppShell 之外：操作員要的是全螢幕的判定，不是工程師的側欄
-      { path: '/station', element: <StationPage /> },
       {
         path: '/',
         element: <AppShell />,
         children: [
-          { index: true, element: <Landing /> },
+          { index: true, element: <DashboardPage /> },
           { path: 'flows', element: <FlowsPage /> },
           { path: 'flows/:flowId', element: <FlowEditorPage /> },
           { path: 'flows/:flowId/tools/:nodeId', element: <ToolPage /> },
@@ -86,7 +74,6 @@ const router = createBrowserRouter([
               { path: 'modbus', element: <IntegrationModbusPage /> },
               { path: 'connections', element: <IntegrationConnectionsPage /> },
               { path: 'capture', element: <IntegrationCapturePage /> },
-              { path: 'stations', element: <IntegrationStationsPage /> },
               { path: 'lock', element: <IntegrationLockPage /> },
               { path: 'format', element: <IntegrationFormatPage /> },
             ],
@@ -96,7 +83,6 @@ const router = createBrowserRouter([
           { path: 'assets', element: <AssetsPage /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'audit', element: <AuditPage /> },
-          { path: 'fleet', element: <FleetPage /> },
           { path: 'settings', element: <SettingsPage /> },
         ],
       },

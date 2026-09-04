@@ -19,8 +19,6 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/agent/consult')) return { answer: '', provider: 'rules', suggestions: [], warnings: [] }
   if (path.startsWith('/vision/agent/chat')) return { kind: 'help', answer: '依平台文件：到「批次測試」頁按「新增影像集」。', provider: 'rules', sources: [{ title: '使用者手冊 › 批次測試頁', page: 'user-guide.html', heading: '批次測試頁', url: '/docs/user-guide.html#batch', snippet: '選擇流程後按「新增影像集」', kind: 'doc' }], warnings: [] }
   if (path.startsWith('/vision/agent/help/search')) return { items: [], sections: 0, pages: 0, tools: 0 }
-  if (path.startsWith('/vision/fleet')) return { items: [], totals: { total: 0, ok: 0, ng: 0, failed: 0, stations: 0, online: 0, yield: null }, interval_s: 10, polling: true }
-  if (path.startsWith('/vision/stations')) return { items: [] }
   if (path.startsWith('/vision/summary')) return { station_id: 'ST01', version: '1.0.0', hours: 24, locked: false, totals: { total: 0, ok: 0, ng: 0, failed: 0, yield: null }, flows: [] }
   if (path.startsWith('/vision/audit')) return { items: [{ id: 1, at: '2026-01-01T00:00:00Z', actor: 'admin', actor_kind: 'user', action: 'flow.update', target_type: 'flow', target_id: '1', target_name: '示範流程', summary: 'threshold 60 → 46', detail: {}, ip: '127.0.0.1' }], total: 1, limit: 50, offset: 0, actions: ['flow.update'], actors: ['admin'] }
   if (/\/vision\/flows\/\d+\/versions/.test(path)) return { items: [], current: 1, keep: 50 }

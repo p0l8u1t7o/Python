@@ -150,7 +150,7 @@
 <tr><td>Image archive</td><td>Kept inspection images (off by default)</td><td><code>data\archive\</code> or <code>VISION_ARCHIVE_DIR</code></td></tr>
 <tr><td>Capture client</td><td>Optional desktop program on the camera PC</td><td>Its own machine; connects out to port 9100</td></tr>
 </table>
-<div class="note">Several stations do not share one server. Each station runs its own copy; a read-only <strong>fleet board</strong> can poll them all for a single yield overview (see <a href="#fleet">§10</a>).</div>
+<div class="note">Several stations do not share one server. Each station runs its own copy, and an external system can poll them all for a single yield overview (see <a href="#fleet">§10</a>).</div>
 
 <h2 id="requirements">2. Requirements</h2>
 <ul>
@@ -172,7 +172,7 @@ copy .env.example .env            # edit it: see the table below</pre>
 <p>The settings that matter on a new station:</p>
 <table>
 <tr><th>Setting</th><th>Default</th><th>Why you would change it</th></tr>
-<tr><td><code>VISION_STATION_ID</code></td><td><code>ST01</code></td><td>Stamped on every run; make it the real station name so reports and the fleet board are readable.</td></tr>
+<tr><td><code>VISION_STATION_ID</code></td><td><code>ST01</code></td><td>Stamped on every run; make it the real station name so reports and roll-ups are readable.</td></tr>
 <tr><td><code>SECRET_KEY</code></td><td>dev value</td><td><strong>Always change it.</strong> Session and token signing depend on it.</td></tr>
 <tr><td><code>DEBUG</code></td><td><code>1</code></td><td>Set to <code>0</code> in production: no stack traces to the browser.</td></tr>
 <tr><td><code>ALLOWED_HOSTS</code></td><td><code>*</code></td><td>Narrow it to the station's own name and IP.</td></tr>
@@ -253,15 +253,15 @@ Register-ScheduledTask -TaskName "VisionSequence backup" -Trigger $t -Action $a 
 <tr><th>Signal</th><th>How</th><th>What to alert on</th></tr>
 <tr><td>Alive</td><td><code>GET /healthz</code> — no authentication, returns status, version and station id</td><td>Anything but HTTP 200</td></tr>
 <tr><td>Healthy</td><td><code>manage.py doctor --json</code>, exit code 1 when something needs attention</td><td>Non-zero exit</td></tr>
-<tr><td>Yield</td><td><code>GET /api/vision/flows/{id}/stats</code>, or the fleet board</td><td>Reject rate above the line's limit</td></tr>
+<tr><td>Yield</td><td><code>GET /api/vision/flows/{id}/stats</code> or <code>GET /api/vision/summary</code></td><td>Reject rate above the line's limit</td></tr>
 <tr><td>Throughput</td><td>Same endpoint: <code>total</code> per hour</td><td>Zero during a production shift</td></tr>
 <tr><td>Logs</td><td><code>data\logs\service.log</code>, rotated at 20 MB</td><td><code>ERROR</code> lines</td></tr>
 </table>
 <p>An integration engineer debugging equipment should use the <strong>commands and results</strong> panel on the integration pages instead of the log: while that page is open every command and reply on the interface is listed live.</p>
 
 <h2 id="fleet">10. More than one station</h2>
-<p>Each station is independent, which is what keeps the engine simple and the failure of one line from taking out another. To see them together, pick any instance (a station, or a spare PC in the office) and add the others under <strong>External integration ▸ Stations</strong>: give each a name, its base URL and an API key. That instance polls the others every few seconds and shows a read-only board of today's yield, throughput and errors, with a link into each station's own interface.</p>
-<p>The board never pushes flows or accounts to a station — nothing is shared but numbers. If a station is unreachable the board says so and keeps the last known figures with their timestamp, so a stale number is never mistaken for a live one.</p>
+<p>Each station is independent, which is what keeps the engine simple and the failure of one line from taking out another. Give every station its own <code>VISION_STATION_ID</code> so its runs and its hourly roll-up are identifiable.</p>
+<p>To see several stations together, poll <code>GET /api/vision/summary</code> on each of them from your own dashboard or MES: it answers with that station's id, version, lock state and today's totals per flow, straight from the hourly roll-up, so the numbers match what the station itself shows. Nothing is ever pushed to a station, so a roll-up cannot affect production; do mark how old each number is, because a stale figure that looks live is worse than no figure.</p>
 
 <h2 id="recovery">11. Disaster recovery</h2>
 <table>
