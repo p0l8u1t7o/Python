@@ -274,7 +274,7 @@ class ClientSession(threading.Thread):
         self._recv_exactly(memoryview(self._env_buf))
         mtype, req_id, hlen, plen = P.unpack_envelope(self._env_buf)
         if mtype != MsgType.HELLO or hlen > P.MAX_CONTROL_BYTES or plen != 0:
-            raise ProtocolError("第一則訊息必須是 HELLO", code="bad_hello")
+            raise ProtocolError("The first message must be HELLO", code="bad_hello")
         body = P.loads_json(self._recv_bytes(hlen))
         if int(body.get("protocol", 0)) != P.PROTOCOL_VERSION:
             self._reject(req_id, "protocol_unsupported", f"Unsupported protocol version {body.get('protocol')} (this server speaks {P.PROTOCOL_VERSION})")
@@ -282,7 +282,7 @@ class ClientSession(threading.Thread):
         secret = self.hub.auth_secret()
         if secret and not hmac.compare_digest(str(body.get("auth") or ""), secret):
             time.sleep(0.5)  # 節流暴力嘗試
-            self._reject(req_id, "auth_failed", "擷取端金鑰驗證失敗")
+            self._reject(req_id, "auth_failed", "The capture client key was rejected")
             return False
         try:
             self.name_ = P.validate_name(body.get("name"))
@@ -291,7 +291,7 @@ class ClientSession(threading.Thread):
             self._reject(req_id, exc.code, str(exc))
             return False
         if len(channels) > P.MAX_CHANNELS:
-            self._reject(req_id, "too_many_channels", f"通道數超過 {P.MAX_CHANNELS}")
+            self._reject(req_id, "too_many_channels", f"Too many channels, the limit is {P.MAX_CHANNELS}")
             return False
         self.version = str(body.get("version") or "")[:32]
         self.hostname = str(body.get("hostname") or "")[:128]
@@ -304,7 +304,7 @@ class ClientSession(threading.Thread):
         self.prefer_encoding = int(Encoding.RAW) if self.local or not lz4_both else int(Encoding.LZ4)
         rejection = self.hub.register(self)
         if rejection is not None:
-            self._reject(req_id, rejection, "擷取端名稱已被使用" if rejection == "name_taken" else rejection)
+            self._reject(req_id, rejection, "That capture client name is already in use" if rejection == "name_taken" else rejection)
             return False
         wanted = {c.id: self.hub.stream_wanted(self.name_, c.id) for c in self.channels}
         self.send(MsgType.WELCOME, req_id, P.dumps_json({
@@ -318,7 +318,7 @@ class ClientSession(threading.Thread):
             if on:
                 self.set_stream(cid, True)
         log.info("擷取端 %s 已連線（%s:%s，%s，通道 %d）", self.name_, self.peer[0], self.peer[1], "同機" if self.local else "跨機", len(self.channels))
-        trace.record("capture", f"擷取端 {self.name_} 已連線（{'同機' if self.local else '跨機'}，通道 {len(self.channels)}）", name=self.name_,
+        trace.record("capture", f"Capture client {self.name_} connected ({"same machine" if self.local else "across machines"}, channels {len(self.channels)}）", name=self.name_,
                      detail={"address": f"{self.peer[0]}:{self.peer[1]}", "version": self.version, "channels": [c.id for c in self.channels]}, force=True)
         return True
 
@@ -358,7 +358,7 @@ class ClientSession(threading.Thread):
         while got < total:
             n = self.sock.recv_into(view[got:], total - got)
             if n <= 0:
-                raise ConnectionError("擷取端關閉連線")
+                raise ConnectionError("The capture client closed the connection")
             got += n
 
     def _recv_bytes(self, n: int) -> bytearray:
@@ -384,14 +384,14 @@ class ClientSession(threading.Thread):
         """處理一則訊息；回 False 表示對方要求關閉（BYE）。"""
         if mtype in (MsgType.FRAME, MsgType.TEST):
             if hlen != P.FRAME_HDR.size:
-                raise ProtocolError("FRAME 表頭長度錯誤")
+                raise ProtocolError("The FRAME header length is wrong")
             if plen > self.hub.max_frame_bytes():
-                raise ProtocolError(f"影格 {plen} 位元組超過上限", code="too_large")
+                raise ProtocolError(f"The frame is {plen} bytes, over the limit", code="too_large")
             self._recv_exactly(memoryview(self._hdr_buf))
             self._on_frame(mtype, req_id, FrameHeader.unpack(self._hdr_buf), plen)
             return True
         if hlen > P.MAX_CONTROL_BYTES or plen > self.hub.max_frame_bytes():
-            raise ProtocolError("訊息過大", code="too_large")
+            raise ProtocolError("The message is too large", code="too_large")
         header = self._recv_bytes(hlen) if hlen else bytearray()
         if plen:
             self._drain(plen)
@@ -406,7 +406,7 @@ class ClientSession(threading.Thread):
             body = P.loads_json(header)
             specs = [P.validate_channel_dict(c) for c in (body.get("channels") or [])]
             if len(specs) > P.MAX_CHANNELS:
-                raise ProtocolError(f"通道數超過 {P.MAX_CHANNELS}", code="too_many_channels")
+                raise ProtocolError(f"Too many channels, the limit is {P.MAX_CHANNELS}", code="too_many_channels")
             self._install_channels(specs)
         elif mtype == MsgType.SHM_OFFER:
             self._on_shm_offer(req_id, P.loads_json(header))
@@ -426,9 +426,9 @@ class ClientSession(threading.Thread):
             if req_id == 0:
                 log.warning("擷取端 %s 回報錯誤 %s：%s", self.name_, code, message)
         elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.SLOT_FREE, MsgType.TEST_RESULT, MsgType.UPDATE, MsgType.UPDATE_DATA):
-            raise ProtocolError(f"擷取端不該送 {MsgType(mtype).name}")
+            raise ProtocolError(f"A capture client must not send {MsgType(mtype).name}")
         else:
-            raise ProtocolError(f"未知的訊息型別 {mtype}")
+            raise ProtocolError(f"Unknown message type {mtype}")
         return True
 
     # ---- 自動更新（安裝檔走同一條已驗證的連線送，不必另開埠或再驗一次金鑰）----
@@ -484,7 +484,7 @@ class ClientSession(threading.Thread):
         if hdr.encoding == Encoding.LZ4 and lz4_block is None:
             self._drain(plen)
             self._resolve(req_id, error=CaptureError("The server has no LZ4; use raw instead", code="unsupported_encoding"))
-            self._try_send_error(req_id, "unsupported_encoding", "伺服端沒有安裝 LZ4")
+            self._try_send_error(req_id, "unsupported_encoding", "LZ4 is not installed on the server")
             return
         with self._lock:
             pool = self.channels[hdr.chan].pool
@@ -520,7 +520,7 @@ class ClientSession(threading.Thread):
         if hdr.slot >= 0:
             shm = self.shm
             if shm is None:
-                raise ProtocolError("尚未接受共享記憶體卻收到槽影格")
+                raise ProtocolError("A slot frame arrived before shared memory was accepted")
             out = pool.take(shape, dtype)
             off = P.slot_offset(hdr.slot, self.shm_slot_bytes)
             # 暫時的 ndarray view：np.copyto 會放開 GIL（memoryview 指派不會），複製完立刻丟掉
@@ -544,7 +544,7 @@ class ClientSession(threading.Thread):
         flag = cv2.IMREAD_GRAYSCALE if hdr.channels == 1 else cv2.IMREAD_UNCHANGED if hdr.channels == 4 else cv2.IMREAD_COLOR
         image = cv2.imdecode(np.frombuffer(buf, np.uint8), flag)
         if image is None or image.shape[:2] != (hdr.height, hdr.width):
-            raise ProtocolError("JPEG 影格解碼失敗或尺寸不符")
+            raise ProtocolError("The JPEG frame failed to decode, or its size does not match")
         return np.ascontiguousarray(image)
 
     # ---- 共享記憶體 ----
@@ -556,9 +556,9 @@ class ClientSession(threading.Thread):
             slots = slot_bytes = canary = 0
         error = ""
         if not self.local:
-            error = "不是同一台電腦，改走 TCP"
+            error = "Not the same machine, staying on TCP"
         elif slots < 2 or slot_bytes <= 0 or slot_bytes > self.hub.max_frame_bytes() or not name:
-            error = "共享記憶體參數無效"
+            error = "Invalid shared-memory parameters"
         else:
             try:
                 shm = shared_memory.SharedMemory(name=name, create=False)
@@ -572,7 +572,7 @@ class ClientSession(threading.Thread):
                 try:
                     got_canary, got_slots, got_bytes = P.unpack_seg_header(shm.buf[: P.SEG_HDR.size])
                     if got_canary != canary or got_slots != slots or got_bytes != slot_bytes or shm.size < P.segment_size(slots, slot_bytes):
-                        error = "共享記憶體表頭不符"
+                        error = "The shared-memory header does not match"
                 except ProtocolError as exc:
                     error = str(exc)
                 if error:
@@ -646,7 +646,7 @@ class ClientSession(threading.Thread):
             with self._lock:
                 self._pending.pop(req_id, None)
             with self._lock:
-                ch.last_error = "擷取端逾時"
+                ch.last_error = "The capture client timed out"
             raise CaptureError(f'Capture client "{self.name_}" timed out without returning an image', code="timeout")
         if pending.error is not None:
             with self._lock:

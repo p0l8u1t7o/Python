@@ -185,7 +185,7 @@ class YoloTrainerTests(SimpleTestCase):
                 with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("no net")):
                     with self.assertRaises(TrainError) as ctx:
                         resolve_model("yolo11n-seg.pt")
-                    self.assertIn("下載失敗", str(ctx.exception))
+                    self.assertIn("could not be downloaded", str(ctx.exception))
                 self.assertFalse([n for n in os.listdir(folder) if n.endswith(".part")])
         finally:
             shutil.rmtree(folder, ignore_errors=True)

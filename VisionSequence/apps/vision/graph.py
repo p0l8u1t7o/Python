@@ -50,26 +50,26 @@ def _compatible(source_type: str, target_type: str) -> bool:
 
 def validate_graph(graph: Any) -> dict:
     if not isinstance(graph, dict):
-        raise GraphError("圖必須是含 nodes 與 edges 的物件")
+        raise GraphError("The graph must be an object with nodes and edges")
     raw_nodes = graph.get("nodes")
     raw_edges = graph.get("edges") or []
     if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
-        raise GraphError("nodes 與 edges 都必須是 list")
+        raise GraphError("Both nodes and edges must be lists")
     max_nodes, max_edges = _limits()
     if len(raw_nodes) > max_nodes:
-        raise GraphError(f"節點數上限 {max_nodes}", node_count=len(raw_nodes))
+        raise GraphError(f"The node limit is {max_nodes}", node_count=len(raw_nodes))
     if len(raw_edges) > max_edges:
-        raise GraphError(f"邊數上限 {max_edges}", edge_count=len(raw_edges))
+        raise GraphError(f"The edge limit is {max_edges}", edge_count=len(raw_edges))
 
     seen: dict[str, dict] = {}
     for node in raw_nodes:
         if not isinstance(node, dict):
-            raise GraphError("每個節點必須是物件")
+            raise GraphError("Every node must be an object")
         node_id = str(node.get("id") or "")
         if not node_id:
-            raise GraphError("節點缺少 id")
+            raise GraphError("A node has no id")
         if node_id in seen:
-            raise GraphError(f"節點 id '{node_id}' 重複", node_id=node_id)
+            raise GraphError(f"Node id '{node_id}' is duplicated", node_id=node_id)
         node_type = str(node.get("type") or "")
         if node_type in LEGACY_TOOL_TYPES:
             node_type = node["type"] = LEGACY_TOOL_TYPES[node_type]
@@ -80,7 +80,7 @@ def validate_graph(graph: Any) -> dict:
     def port_type(node_id: str, key: str, direction: str) -> str:
         node = seen[node_id]
         if node["type"] in DECORATION_TYPES:
-            raise GraphError("註解不能參與資料流", node_id=node_id)
+            raise GraphError("A note cannot take part in the dataflow", node_id=node_id)
         tool = tools.get(str(node["type"]))
         if direction == "in" and key == FLOW_IN:
             return "flow"
@@ -93,7 +93,7 @@ def validate_graph(graph: Any) -> dict:
             if port.key == key:
                 return port.type
         raise GraphError(
-            f"節點 '{node_id}'（{tool.label}）沒有{'輸入' if direction == 'in' else '輸出'}埠 '{key}'",
+            f"Node '{node_id}' ({tool.label}) has no {'input' if direction == 'in' else 'output'} port '{key}'",
             node_id=node_id,
             port=key,
         )
@@ -101,17 +101,17 @@ def validate_graph(graph: Any) -> dict:
     connected_inputs: dict[tuple[str, str], int] = {}
     for edge in raw_edges:
         if not isinstance(edge, dict):
-            raise GraphError("每條邊必須是物件")
+            raise GraphError("Every edge must be an object")
         source = str(edge.get("source") or "")
         target = str(edge.get("target") or "")
         if source not in seen:
-            raise GraphError(f"邊的來源節點 '{source}' 不存在", node_id=source)
+            raise GraphError(f"The edge's source node '{source}' does not exist", node_id=source)
         if target not in seen:
-            raise GraphError(f"邊的目標節點 '{target}' 不存在", node_id=target)
+            raise GraphError(f"The edge's target node '{target}' does not exist", node_id=target)
         if source == target:
-            raise GraphError("節點不能連到自己", node_id=source)
+            raise GraphError("A node cannot connect to itself", node_id=source)
         if seen[target]["type"] in DECORATION_TYPES:
-            raise GraphError("不能連進註解", node_id=target)
+            raise GraphError("Nothing can connect into a note", node_id=target)
         if seen[source]["type"] in DECORATION_TYPES:
             # 註解指出去的虛線是註解，不是資料流；引擎不理它。
             continue
@@ -127,7 +127,7 @@ def validate_graph(graph: Any) -> dict:
         tt = port_type(target, t_handle, "in")
         if not _compatible(st, tt):
             raise GraphError(
-                f"'{source}.{s_handle}'（{st}）不能連到 '{target}.{t_handle}'（{tt}）",
+                f"'{source}.{s_handle}'（{st}) cannot connect to '{target}.{t_handle}'（{tt}）",
                 node_id=target,
                 port=t_handle,
             )
@@ -138,7 +138,7 @@ def validate_graph(graph: Any) -> dict:
             connected_inputs[(target, t_handle)] = count
             if count > 1 and not multiple:
                 raise GraphError(
-                    f"節點 '{target}' 的輸入埠 '{t_handle}' 只能接一條線",
+                    f"Node '{target}' input port '{t_handle}' accepts only one connection",
                     node_id=target,
                     port=t_handle,
                 )
@@ -149,7 +149,7 @@ def validate_graph(graph: Any) -> dict:
     order = topological_order(raw_nodes, raw_edges)
     executable = [n for n in raw_nodes if n["type"] not in DECORATION_TYPES]
     if len(order) != len(executable):
-        raise GraphError("圖裡有迴圈；檢測流程必須是有向無環圖")
+        raise GraphError("The graph contains a cycle; an inspection flow must be acyclic")
     return {"nodes": raw_nodes, "edges": raw_edges}
 
 
@@ -201,7 +201,7 @@ class CompiledGraph:
 def restrict_to(compiled: CompiledGraph, node_id: str) -> CompiledGraph:
     """只保留 node_id 與其祖先（資料邊與控制邊）：工具專屬頁調參數時不必跑整張圖。"""
     if node_id not in compiled.nodes:
-        raise GraphError(f"節點 '{node_id}' 不存在", node_id=node_id)
+        raise GraphError(f"Node '{node_id}' does not exist", node_id=node_id)
     keep: set[str] = set()
     stack = [node_id]
     while stack:

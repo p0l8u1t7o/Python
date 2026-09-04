@@ -44,7 +44,7 @@ class ImageStore:
         """pinned=True（暫存上傳、AI 助手影像）：不佔該流程「最近 N 次 run」的名額、不被 run 輪替淘汰，
         只受總容量 LRU 管理——否則工具頁每試跑一次就多一個 run，第 N+1 次就把暫存影像擠掉。"""
         if not isinstance(image, np.ndarray) or image.ndim not in (2, 3):
-            raise ValueError("只接受 2D/3D ndarray")
+            raise ValueError("Only a 2D or 3D ndarray is accepted")
         with self._lock:
             old = self._images.pop(ref, None)
             if old is not None:
@@ -151,7 +151,7 @@ def encode_image(img: np.ndarray, *, max_side: int | None = None, fmt: str = "jp
     else:
         ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
     if not ok:
-        raise RuntimeError("影像編碼失敗")
+        raise RuntimeError("Encoding the image failed")
     return buf.tobytes()
 
 

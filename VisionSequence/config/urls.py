@@ -34,7 +34,7 @@ def _spa(request, path=""):
     dist = Path(settings.FRONTEND_DIST)
     index = dist / "index.html"
     if not index.exists():
-        raise Http404("前端尚未 build：在 frontend/ 執行 npm run build")
+        raise Http404("The front end has not been built: run npm run build in frontend/")
     candidate = dist / path
     if path and candidate.is_file():
         return serve(request, path, document_root=dist)

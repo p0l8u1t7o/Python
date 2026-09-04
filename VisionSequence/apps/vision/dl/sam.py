@@ -46,7 +46,7 @@ def _import_sam():
 
         return SAM
     except ImportError:
-        raise TrainError(f"未安裝 ultralytics／torch，無法使用智慧選取。{_INSTALL_HINT}") from None
+        raise TrainError(f"ultralytics and torch are not installed, so smart select is unavailable.{_INSTALL_HINT}") from None
 
 
 def _session(model_name: str, log_fn=None):
@@ -59,7 +59,7 @@ def _session(model_name: str, log_fn=None):
             raise
         log.warning("SAM 權重 %s 無法取得（%s），退回 %s", name, exc, FALLBACK_MODEL)
         if log_fn:
-            log_fn(f"{name} 無法取得，改用 {FALLBACK_MODEL}")
+            log_fn(f"{name} is unavailable, falling back to {FALLBACK_MODEL}")
         path = resolve_model(FALLBACK_MODEL, log_fn)
     with _lock:
         model = _sessions.get(path)
@@ -113,7 +113,7 @@ def suggest_shapes(image: np.ndarray, points_norm: list[list[float]] | None = No
     boxes = [[*_to_px([[b[0], b[1]]], w, h)[0], *_to_px([[b[2], b[3]]], w, h)[0]] for b in (boxes_norm or []) if len(b) >= 4]
     boxes = [b for b in boxes if b[2] > b[0] + 1 and b[3] > b[1] + 1]
     if not pts and not boxes:
-        raise TrainError("至少要一個點擊座標或一個框")
+        raise TrainError("At least one click point or one box is needed")
     model = _session(model_name, log_fn)
     kw: dict[str, Any] = {"device": device, "verbose": False}
     if boxes:

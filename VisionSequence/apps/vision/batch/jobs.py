@@ -122,7 +122,7 @@ def execute_rows(flow: Flow, graph: dict[str, Any], images: list[dict[str, Any]]
         index = int(item.get("index", len(rows)))
         img = store.load_image(item)
         if img is None:
-            row = store.failed_row(index, "影像檔無法讀取")
+            row = store.failed_row(index, "The image file could not be read")
         else:
             report = engine.execute(
                 compiled, flow_id=store.BATCH_FLOW_ID, flow_version=flow.version, trigger="batch",
@@ -154,8 +154,8 @@ def _autotune_graph(job: BatchJob, run: BatchRun, batch_set: BatchSet, images: l
         if img is not None:
             labeled.append(autotune.Labeled(img, str(im["expected"]), im.get("expect_outputs") or {}, str(im.get("name", ""))))
     if not labeled:
-        return run.graph, {"autotune": {"improved": False, "reason": "沒有可讀的標記影像"}}
-    job.stage = f"自動調參：{len(labeled)} 張標記影像、最多 {int(job.autotune.get('max_evals', 40))} 次評估"
+        return run.graph, {"autotune": {"improved": False, "reason": "There is no readable labelled image"}}
+    job.stage = f"Auto-tuning: {len(labeled)} labelled images, at most {int(job.autotune.get('max_evals', 40))} evaluations"
     res = autotune.coordinate_search(
         run.graph, labeled, max_evals=int(job.autotune.get("max_evals", 40)), deadline_s=float(job.autotune.get("deadline_s", 60.0)),
         trial=lambda g, im: service.trial_run(g, im, keep_images=False),

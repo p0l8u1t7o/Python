@@ -51,7 +51,7 @@ def save_images(batch_set: BatchSet, images: list[tuple[str, np.ndarray]]) -> li
         path = os.path.join(folder, f"{index + 1:03d}.png")
         buf.tofile(path)
         rows.append({
-            "index": index, "name": str(name or f"影像 {index + 1}")[:200], "path": path,
+            "index": index, "name": str(name or f"Image {index + 1}")[:200], "path": path,
             "width": int(img.shape[1]), "height": int(img.shape[0]), "expected": "", "expect_outputs": {}, "note": "",
         })
         total += int(buf.size)
@@ -332,6 +332,6 @@ def reconcile(run: BatchRun) -> BatchRun:
         from django.utils import timezone
 
         if jobs.progress(run.id) is None:
-            run.status, run.error, run.finished_at = "failed", "伺服器重新啟動，執行中斷", timezone.now()
+            run.status, run.error, run.finished_at = "failed", "The server restarted and the run was interrupted", timezone.now()
             run.save(update_fields=["status", "error", "finished_at"])
     return run

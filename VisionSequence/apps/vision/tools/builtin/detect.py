@@ -176,16 +176,16 @@ class BlobTool(Tool):
     params = [
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
         Param("threshold_method", "Threshold", kind="select", default="otsu", options=[
-            {"value": "otsu", "label": "Otsu 自動"}, {"value": "fixed", "label": "固定門檻"}, {"value": "none", "label": "輸入已是遮罩（非 0 即前景）"},
+            {"value": "otsu", "label": "Otsu (automatic)"}, {"value": "fixed", "label": "Fixed"}, {"value": "none", "label": "The input is already a mask (anything non-zero is foreground)"},
         ]),
         Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "threshold_method", "in": ["fixed"]}),
-        Param("polarity", "Foreground", kind="select", default="bright", options=[{"value": "bright", "label": "亮物件"}, {"value": "dark", "label": "暗物件"}]),
+        Param("polarity", "Foreground", kind="select", default="bright", options=[{"value": "bright", "label": "Bright objects"}, {"value": "dark", "label": "Dark objects"}]),
         Param("min_area", "Min area", kind="number", default=50, minimum=0, unit="px²", teach=True),
         Param("max_area", "Max area", kind="number", default=0, minimum=0, unit="px²", help_text="0 means no limit.", teach=True),
         Param("min_circularity", "Min circularity", kind="range", default=0, minimum=0, maximum=1, step=0.01, help_text="4πA/P², 1 for a perfect circle.", teach=True),
         Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=5000),
         Param("sort_by", "Sort by", kind="select", default="area", options=[
-            {"value": "area", "label": "面積（大→小）"}, {"value": "x", "label": "X（左→右）"}, {"value": "y", "label": "Y（上→下）"}, {"value": "circularity", "label": "圓形度（高→低）"},
+            {"value": "area", "label": "Area (large to small)"}, {"value": "x", "label": "X (left to right)"}, {"value": "y", "label": "Y (top to bottom)"}, {"value": "circularity", "label": "Circularity (high to low)"},
         ]),
         Param("separate", "Split touching particles", kind="boolean", default=False, group="Advanced", help_text="A distance transform plus watershed splits touching particles before measuring; the seed window comes from the particle radius implied by the minimum area."),
         Param("fill_holes", "Fill holes", kind="boolean", default=False, group="Advanced"),
@@ -260,7 +260,7 @@ class BlobTool(Tool):
                 "first_cx": blobs[0]["cx"] if blobs else float("nan"), "first_cy": blobs[0]["cy"] if blobs else float("nan"),
             },
             overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng",
-            message=f"{count} blobs" + (f"，最大 {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
+            message=f"{count} blobs" + (f", max {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
         )
 
 
@@ -328,7 +328,7 @@ class DefectDiffTool(Tool):
         Param("template", "Golden template", kind="asset", accept="image", required=True),
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Blank uses the whole image. The template must be the same size as the image, or it is scaled to match."),
         Param("align", "Aligned", kind="select", default="phase", options=[
-            {"value": "none", "label": "不對齊"}, {"value": "phase", "label": "相位相關（平移）"}, {"value": "ecc", "label": "ECC（平移＋旋轉）"},
+            {"value": "none", "label": "No alignment"}, {"value": "phase", "label": "Phase correlation (translation)"}, {"value": "ecc", "label": "ECC (translation and rotation)"},
         ]),
         Param("blur", "Pre-blur kernel", kind="number", default=3, minimum=0, maximum=31, group="Advanced"),
         Param("threshold", "Difference threshold", kind="number", default=40, minimum=1, maximum=255, teach=True),
@@ -405,7 +405,7 @@ class DefectDiffTool(Tool):
         return Result(
             outputs={"defects": defects, "count": count, "total_area": float(sum(d["area"] for d in defects)), "defect_mask": full_mask, "diff": full_diff},
             overlays=overlays, branch="defect" if count else "ok", status="ng" if count else "ok",
-            message=f"{count} defects" + (f"，對齊 dx={info.get('dx', 0):.1f} dy={info.get('dy', 0):.1f}" if info else ""),
+            message=f"{count} defects" + (f", aligned dx={info.get('dx', 0):.1f} dy={info.get('dy', 0):.1f}" if info else ""),
             detail=info,
         )
 
@@ -418,7 +418,7 @@ class BarcodeTool(Tool):
     icon = "QrCode"
     params = [
         Param("roi", "Region", kind="roi", shapes=["rect"], help_text="Leave blank for the whole image."),
-        Param("types", "Type", kind="select", default="all", options=[{"value": "all", "label": "QR + 一維條碼"}, {"value": "qr", "label": "只 QR"}, {"value": "1d", "label": "只一維條碼"}]),
+        Param("types", "Type", kind="select", default="all", options=[{"value": "all", "label": "QR and 1D barcodes"}, {"value": "qr", "label": "QR only"}, {"value": "1d", "label": "1D barcodes only"}]),
         Param("expected", "Expected content", kind="text", default="", help_text="When set, the content must match exactly to take the match branch."),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
@@ -452,7 +452,7 @@ class BarcodeTool(Tool):
             except (AttributeError, cv2.error):
                 result = None
                 if types == "1d":
-                    ctx.log("此環境沒有條碼解碼模組", level="warn")
+                    ctx.log("No barcode decoder is available in this environment", level="warn")
             if result:
                 ok, infos, kinds, pts = (result + (None,))[:4] if len(result) == 3 else result
                 if ok and pts is not None:
@@ -469,7 +469,7 @@ class BarcodeTool(Tool):
         return Result(
             outputs={"texts": texts, "count": len(texts), "first": texts[0] if texts else "", "codes": codes},
             overlays=overlays, branch="found" if matched else "not_found", status="ok" if matched else "ng",
-            message=(f"{len(texts)} 個：{', '.join(t[:30] for t in texts)}" if texts else "沒有解出條碼") + ("" if matched or not texts else f"（期望 {expected}）"),
+            message=(f"{len(texts)}: {', '.join(t[:30] for t in texts)}" if texts else "No code decoded") + ("" if matched or not texts else f" (expected {expected}）"),
         )
 
 
@@ -481,7 +481,7 @@ class TextPresenceTool(Tool):
     icon = "Type"
     params = [
         Param("roi", "Region", kind="roi", required=True, shapes=ROI_SHAPES),
-        Param("polarity", "Text colour", kind="select", default="dark", options=[{"value": "dark", "label": "深色字"}, {"value": "bright", "label": "淺色字"}]),
+        Param("polarity", "Text colour", kind="select", default="dark", options=[{"value": "dark", "label": "Dark text"}, {"value": "bright", "label": "Light text"}]),
         Param("block", "Adaptive block (odd)", kind="number", default=31, minimum=3, maximum=255, step=2, group="Advanced"),
         Param("c", "Adaptive constant C", kind="number", default=10, minimum=-100, maximum=100, group="Advanced"),
         Param("min_ratio", "Min stroke ratio", kind="range", default=0.03, minimum=0, maximum=1, step=0.005, teach=True),
@@ -534,7 +534,7 @@ class ColorCheckTool(Tool):
     params = [
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
         Param("color", "Target colour", kind="color", required=True, default="#ff0000"),
-        Param("space", "Colour space", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB 歐氏距離（0~441）"}, {"value": "hsv", "label": "HSV（色相為主）"}]),
+        Param("space", "Colour space", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB Euclidean distance (0-441)"}, {"value": "hsv", "label": "HSV (mostly hue)"}]),
         Param("tolerance", "Tolerance", kind="number", default=60, minimum=0, help_text="RGB uses Euclidean distance. HSV uses hue difference (0–180, weighted by saturation) plus saturation and value differences divided by four.", teach=True),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]

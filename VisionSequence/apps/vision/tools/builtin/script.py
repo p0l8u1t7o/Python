@@ -66,7 +66,7 @@ class ScriptTimeout(Exception):
 def _guarded_import(name: str, globals_: Any = None, locals_: Any = None, fromlist: Any = (), level: int = 0) -> Any:
     root = str(name).split(".")[0]
     if level or root not in ALLOWED_MODULES:
-        raise ImportError(f"腳本不允許匯入 '{name}'（可用：{', '.join(sorted(ALLOWED_MODULES))}）")
+        raise ImportError(f"The script may not import '{name}' (allowed: {', '.join(sorted(ALLOWED_MODULES))}）")
     return builtins.__import__(name, globals_, locals_, fromlist, 0)
 
 
@@ -124,7 +124,7 @@ def _namespace(code: str) -> dict[str, Any]:
     try:
         exec(compiled, ns)  # noqa: S102 - 受限命名空間，只定義 run 與模組層級輔助
     except Exception as exc:  # noqa: BLE001
-        raise ToolError(_describe(exc, "載入腳本時")) from None
+        raise ToolError(_describe(exc, "while loading the script")) from None
     if not callable(ns.get("run")):
         raise ToolError("The script must define def run(ctx)")
     with _NS_LOCK:
@@ -183,13 +183,13 @@ class ScriptContext:
     def crop(self, region: dict[str, Any] | None = None, image: np.ndarray | None = None, upright: bool = False) -> Crop:
         img = self.image if image is None else image
         if img is None:
-            raise ValueError("沒有影像可裁切")
+            raise ValueError("There is no image to crop")
         return crop(img, region if region is not None else self._region, upright=upright)
 
     def gray(self, image: np.ndarray | None = None) -> np.ndarray:
         img = self.image if image is None else image
         if img is None:
-            raise ValueError("沒有輸入影像")
+            raise ValueError("There is no input image")
         return img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     def log(self, *args: Any) -> None:

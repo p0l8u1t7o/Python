@@ -40,8 +40,8 @@ class WriteModbusTool(Tool):
                       "Modbus addresses look like coil:10, holding:100, holding:100:float32 or holding:100:int32; tcp_client uses template field names and dio_sim uses channel names.",
         ),
         Param("on_error", "On write failure", kind="select", default="warn", options=[
-            {"value": "warn", "label": "降級：記警告，run 照常"},
-            {"value": "fail", "label": "讓 run 失敗"},
+            {"value": "warn", "label": "Degrade: log a warning and carry on"},
+            {"value": "fail", "label": "Fail the run"},
         ]),
         Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 uses the connection's own timeout.", group="Advanced"),
     ]
@@ -72,22 +72,22 @@ class WriteModbusTool(Tool):
         missing: list[str] = []
         for i, item in enumerate(mapping):
             if not isinstance(item, dict):
-                missing.append(f"#{i}: 不是物件")
+                missing.append(f"#{i}: not an object")
                 continue
             src = str(item.get("src") or "")
             address = str(item.get("address") or src)
             if not address:
-                missing.append(f"#{i}: 沒有 address")
+                missing.append(f"#{i}: no address")
                 continue
             if "value" in item:
                 value = item["value"]
             else:
                 if not src:
-                    missing.append(f"{address}: 沒有 src")
+                    missing.append(f"{address}: no src")
                     continue
                 value = self._lookup(ctx, src, values)
                 if value is _MISSING:
-                    missing.append(f"{address}: 找不到來源 '{src}'")
+                    missing.append(f"{address}: source not found '{src}'")
                     continue
             value = _scalar(value)
             dtype = str(item.get("dtype") or "")
@@ -101,7 +101,7 @@ class WriteModbusTool(Tool):
                 try:
                     value = coerce(value, dtype)
                 except (TypeError, ValueError):
-                    missing.append(f"{address}: 值 {value!r} 無法轉成 {dtype}")
+                    missing.append(f"{address}: the value {value!r} cannot be converted to {dtype}")
                     continue
             payload[address] = value
         return payload, missing
@@ -127,7 +127,7 @@ class WriteModbusTool(Tool):
         if writer is None:
             return self._failed(ctx, on_error, f"Connection '{name}' is not open (missing, disabled, or not pre-loaded)", detail)
         if not payload:
-            ctx.log("對映表沒有任何可寫的值", level="warning", missing=missing)
+            ctx.log("Nothing in the mapping table can be written", level="warning", missing=missing)
             return Result(outputs={"written": 0, "ok": True}, message="Nothing to write", detail=detail)
         try:
             result = writer.write(payload, timeout=timeout)
@@ -138,7 +138,7 @@ class WriteModbusTool(Tool):
         written = int(result.get("written", len(payload)))
         detail["result"] = {k: v for k, v in result.items() if k != "values"}
         if missing:
-            ctx.log(f"{len(missing)} 個來源找不到，已略過", level="warning", missing=missing)
+            ctx.log(f"{len(missing)} sources were not found and were skipped", level="warning", missing=missing)
         return Result(outputs={"written": written, "ok": True}, message=f"Wrote {written} values to {name}", detail=detail)
 
     @staticmethod
@@ -146,7 +146,7 @@ class WriteModbusTool(Tool):
         detail = {**detail, "error": reason}
         if on_error == "fail":
             return Result(outputs={"written": 0, "ok": False}, status="error", message=f"Write failed: {reason}"[:500], detail=detail)
-        ctx.log(f"整合寫入失敗（已降級）：{reason}", level="warning")
+        ctx.log(f"Write failed (degraded): {reason}", level="warning")
         return Result(outputs={"written": 0, "ok": False}, status="ok", message=f"Write failed (degraded): {reason}"[:500], detail=detail)
 
 
@@ -170,8 +170,8 @@ class ReadModbusTool(Tool):
         ),
         Param("publish", "Also publish as named outputs", kind="boolean", default=False, help_text="With this on, the values read appear in the run outputs, where the HTTP and TCP replies show them."),
         Param("on_error", "On read failure", kind="select", default="warn", options=[
-            {"value": "warn", "label": "降級：記警告，run 照常"},
-            {"value": "fail", "label": "讓 run 失敗"},
+            {"value": "warn", "label": "Degrade: log a warning and carry on"},
+            {"value": "fail", "label": "Fail the run"},
         ]),
         Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 uses the connection's own timeout.", group="Advanced"),
     ]
@@ -230,7 +230,7 @@ class ReadModbusTool(Tool):
         detail = {**detail, "error": reason}
         if on_error == "fail":
             return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="error", message=f"Read failed: {reason}"[:500], detail=detail)
-        ctx.log(f"整合讀取失敗（已降級）：{reason}", level="warning")
+        ctx.log(f"Read failed (degraded): {reason}", level="warning")
         return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=f"Read failed (degraded): {reason}"[:500], detail=detail)
 
 

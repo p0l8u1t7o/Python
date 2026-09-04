@@ -112,7 +112,7 @@ class Trainer:
 
     def suggest(self, labeled: list[SampleRef], unlabeled: list[SampleRef], classes: list[str], params: dict[str, Any]) -> list[Suggestion]:
         """自動標記：預設不支援（子類覆寫）。"""
-        raise TrainError(f"{self.kind} 不支援自動標記")
+        raise TrainError(f"{self.kind} does not support automatic labelling")
 
 
 # ---------------------------------------------------------------------------

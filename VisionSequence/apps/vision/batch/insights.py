@@ -235,30 +235,34 @@ def compute(graph: dict[str, Any], items: list[dict[str, Any]], images: list[dic
     vs_parent = _vs_parent(items, parent_items, by_index, graph, parent_graph)
     total = len(items)
     counts = Counter(str(it.get("status")) for it in items)
-    text: list[str] = [f"共 {total} 張：OK {counts.get('ok', 0)}、NG {counts.get('ng', 0)}、失敗 {total - counts.get('ok', 0) - counts.get('ng', 0)}。"]
+    failed = total - counts.get("ok", 0) - counts.get("ng", 0)
+    text: list[str] = [f"{total} images: OK {counts.get('ok', 0)}, NG {counts.get('ng', 0)}, failed {failed}."]
     if labeled:
-        text.append(f"有期望標記 {labeled} 張，命中 {match} 張（{match / labeled:.0%}）；期望 NG 抓到 {tp}、漏檢 {fn}、期望 OK 誤判 {fp}。")
+        text.append(f"{match} of {labeled} labelled images matched ({match / labeled:.0%}); of the expected NG, {tp} caught and {fn} escaped; "
+                    f"of the expected OK, {fp} falsely rejected.")
         if mismatches:
-            text.append("未命中：" + "、".join(f"#{m['index'] + 1} {m['name']}（期望 {m['expected'].upper()} 實際 {m['status'].upper()}）" for m in mismatches[:8]) + ("…" if len(mismatches) > 8 else ""))
+            text.append("Missed: " + ", ".join(f"#{m['index'] + 1} {m['name']} (expected {m['expected'].upper()}, got {m['status'].upper()})" for m in mismatches[:8]) + ("…" if len(mismatches) > 8 else ""))
     else:
-        text.append("尚未標記任何影像的期望判定；標記後才能計算命中率與建議門檻。")
+        text.append("No image has an expected verdict yet; label them to get a hit rate and threshold suggestions.")
     for e in error_nodes:
-        text.append(f"節點「{e['label']}」出錯 {e['count']} 次：{e['message']}")
+        text.append(f"The node '{e['label']}' errored {e['count']} times: {e['message']}")
     for j in judges:
         vo, vn = j["values"]["expected_ok"], j["values"]["expected_ng"]
         if vo.get("n") and vn.get("n"):
-            text.append(f"判定「{j['label']}」的輸入值（{j['value_from']['label']}.{j['value_from']['port']}）：期望 OK 落在 {vo['min']}～{vo['max']}、期望 NG 落在 {vn['min']}～{vn['max']}"
-                        + ("（可完全分開）" if j.get("separable") else "（有重疊）") + "。")
+            text.append(f"The judging node '{j['label']}' takes its value from {j['value_from']['label']}.{j['value_from']['port']}: "
+                        f"the expected OK fall in {vo['min']}-{vo['max']} and the expected NG in {vn['min']}-{vn['max']}"
+                        + (" (they separate completely)." if j.get("separable") else " (they overlap)."))
         if j.get("suggestion"):
-            sug = "、".join(f"{k}={v}" for k, v in j["suggestion"].items())
-            cur = "、".join(f"{k}={v}" for k, v in (j.get("current") or {}).items() if k in j["suggestion"])
-            text.append(f"建議把「{j['label']}」的 {cur} 改為 {sug}：命中率 {j['acc_now']:.0%} → {j['acc_suggested']:.0%}。")
+            sug = ", ".join(f"{k}={v}" for k, v in j["suggestion"].items())
+            cur = ", ".join(f"{k}={v}" for k, v in (j.get("current") or {}).items() if k in j["suggestion"])
+            text.append(f"Consider changing '{j['label']}' from {cur} to {sug}: the hit rate goes {j['acc_now']:.0%} -> {j['acc_suggested']:.0%}.")
     if vs_parent:
-        text.append(f"與上一次執行相比：{len(vs_parent['changed'])} 張判定改變，改善 {len(vs_parent['improved'])} 張、退步 {len(vs_parent['regressed'])} 張。")
+        text.append(f"Against the previous run: {len(vs_parent['changed'])} verdicts changed, {len(vs_parent['improved'])} improved and {len(vs_parent['regressed'])} regressed.")
         if vs_parent.get("param_diff") and vs_parent["param_diff"]["rows"]:
-            text.append("參數變動：" + "、".join(f"{r['label']}.{r['key']} {r['from']} → {r['to']}" for r in vs_parent["param_diff"]["rows"][:8]))
+            text.append("Parameters changed: " + ", ".join(f"{r['label']}.{r['key']} {r['from']} -> {r['to']}" for r in vs_parent["param_diff"]["rows"][:8]))
     if slowest:
-        text.append(f"最慢的影像 #{slowest[0]['index'] + 1} {slowest[0]['name']} 花 {slowest[0]['duration_ms']:.0f} ms" + (f"；最耗時節點「{node_avg[0]['label']}」平均 {node_avg[0]['avg_ms']:.0f} ms" if node_avg else "") + "。")
+        text.append(f"The slowest image, #{slowest[0]['index'] + 1} {slowest[0]['name']}, took {slowest[0]['duration_ms']:.0f} ms"
+                    + (f"; the most expensive node, '{node_avg[0]['label']}', averages {node_avg[0]['avg_ms']:.0f} ms" if node_avg else "") + ".")
     return {
         "labeled": labeled, "match": match, "match_rate": round(match / labeled, 4) if labeled else None,
         "confusion": {"tp": tp, "fp": fp, "tn": tn, "fn": fn}, "mismatches": mismatches, "error_nodes": error_nodes,

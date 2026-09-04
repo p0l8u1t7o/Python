@@ -74,7 +74,7 @@ class ApiTests(TestCase):
         self.assertEqual(r.json()["error"]["code"], "unknown_tool_type")
         r = self.client.post(f"/api/vision/flows/{flow['id']}/duplicate")
         self.assertEqual(r.status_code, 201)
-        self.assertIn("副本", r.json()["name"])
+        self.assertIn("(copy", r.json()["name"])
         r = self.client.delete(f"/api/vision/flows/{flow['id']}")
         self.assertEqual(r.status_code, 204)
         self.assertFalse(Flow.objects.filter(pk=flow["id"]).exists())

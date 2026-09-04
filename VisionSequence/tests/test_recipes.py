@@ -74,7 +74,7 @@ class RecipeTests(TestCase):
     def test_station_id_and_commissioned_warning(self):
         body = self.post(f"/api/vision/flows/{self.flow.id}/run", {}).json()
         self.assertEqual(body["station_id"], "LINE2")
-        self.assertTrue(any("教導" in w for w in body["warnings"]))
+        self.assertTrue(any("teaching" in w for w in body["warnings"]))
         self.assertEqual(body["status"], "ok")  # 不阻擋
         res = handle_command("RUN rf")
         self.assertEqual(res["station_id"], "LINE2")

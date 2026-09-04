@@ -45,7 +45,7 @@ class ValidateGraphTests(SimpleTestCase):
     def test_cycle_rejected(self):
         with self.assertRaises(ValidationError) as ctx:
             validate_graph({"nodes": [n("a", "grayscale"), n("b", "grayscale")], "edges": [e("a", "b"), e("b", "a")]})
-        self.assertIn("迴圈", ctx.exception.message)
+        self.assertIn("cycle", ctx.exception.message)
 
     def test_note_cannot_be_target(self):
         with self.assertRaises(ValidationError):

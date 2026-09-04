@@ -89,11 +89,11 @@ class FolderGrabber(Grabber):
             if not self.files:
                 self.files = self._scan()
                 if not self.files:
-                    self.last_error = "資料夾內沒有影像"
+                    self.last_error = "The folder holds no images"
                     return None
             if self.index >= len(self.files):
                 if not self.loop:
-                    self.last_error = "已讀到資料夾結尾"
+                    self.last_error = "Reached the end of the folder"
                     return None
                 self.index = 0
                 self.files = self._scan()
@@ -101,7 +101,7 @@ class FolderGrabber(Grabber):
             self.index += 1
             image = _read(path)
             if image is None:
-                self.last_error = f"讀取失敗：{path}"
+                self.last_error = f"Read failed: {path}"
                 return None
             self.frames += 1
             self.last_path = path
@@ -126,7 +126,7 @@ class FileGrabber(Grabber):
         try:
             mtime = os.path.getmtime(self.path)
         except OSError:
-            self.last_error = "檔案已消失"
+            self.last_error = "The file has gone"
             return None
         if mtime != self._mtime:
             self._image = _read(self.path)
@@ -160,7 +160,7 @@ class UsbGrabber(Grabber):
             self.cap.grab()
             ok, frame = self.cap.read()
         if not ok:
-            self.last_error = "read() 失敗"
+            self.last_error = "read() failed"
             return None
         self.frames += 1
         return frame
@@ -263,10 +263,10 @@ class UploadGrabber(Grabber):
     def grab(self) -> np.ndarray | None:
         with self._lock:
             if self._image is None:
-                self.last_error = "尚未收到影像"
+                self.last_error = "No image received yet"
                 return None
             if self.max_age and time.time() - self._ts > self.max_age:
-                self.last_error = "最近一張影像已過期"
+                self.last_error = "The most recent image has expired"
                 return None
             self.frames += 1
             return self._image

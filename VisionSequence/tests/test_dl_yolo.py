@@ -150,7 +150,7 @@ class WeightsAssetTests(TransactionTestCase):
             pt = next(a for a in assets if a.path.endswith(".pt"))
             onnx = next(a for a in assets if a.path.endswith(".onnx"))
             self.assertEqual((pt.name, pt.meta["tool_key"], pt.meta["format"], pt.meta["onnx_asset_id"]), ("模型 A", "yolo_detect", "pt", onnx.id.hex))
-            self.assertEqual((onnx.name, onnx.meta["tool_key"], onnx.meta["format"]), ("模型 A（ONNX）", "dl_detect", "onnx"))
+            self.assertEqual((onnx.name, onnx.meta["tool_key"], onnx.meta["format"]), ("模型 A (ONNX)", "dl_detect", "onnx"))
             project.refresh_from_db()
             self.assertEqual(project.last_asset_id, pt.id.hex)
             self.assertEqual(project.last_metrics["onnx_asset_id"], onnx.id.hex)

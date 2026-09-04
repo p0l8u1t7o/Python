@@ -38,7 +38,7 @@ def golden_dir(flow_id: int) -> str:
 def save_image(flow_id: int, image: np.ndarray) -> str:
     ok, buf = cv2.imencode(".png", image)
     if not ok:
-        raise ValueError("影像無法編碼為 PNG")
+        raise ValueError("The image could not be encoded as PNG")
     path = os.path.join(golden_dir(flow_id), f"{uuid.uuid4().hex}.png")
     buf.tofile(path)
     return path
@@ -99,9 +99,9 @@ def evaluate_expect(expect_status: str, expect_outputs: dict[str, Any] | None, s
         reasons.append(f"status {status} != {expect_status}")
     for key, expected in (expect_outputs or {}).items():
         if key not in (outputs or {}):
-            reasons.append(f"缺少輸出 {key}")
+            reasons.append(f"Missing output {key}")
         elif not output_matches(expected, outputs[key]):
-            reasons.append(f"{key}={outputs[key]!r} 不符 {expected!r}")
+            reasons.append(f"{key}={outputs[key]!r} does not match {expected!r}")
     return (not reasons), reasons
 
 
@@ -147,7 +147,7 @@ def run_regression(flow: Flow, *, graph: dict | None = None, save_baseline: bool
     for case in cases:
         image = load_image(case.image_path)
         if image is None:
-            status, outputs, duration, error, node = "failed", {}, 0.0, "影像檔無法讀取", None
+            status, outputs, duration, error, node = "failed", {}, 0.0, "The image file could not be read", None
         else:
             report = runner.run_sync(flow, trigger="regress", input_image=image, graph_override=graph)
             reports[case.id] = report

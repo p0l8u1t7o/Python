@@ -84,7 +84,7 @@ def _parse_kv(tokens: list[str]) -> dict[str, Any]:
 def handle_command(line: str) -> dict[str, Any]:
     parts = _split(line)
     if not parts:
-        return {"ok": False, "error": "空白指令", "code": "empty_command"}
+        return {"ok": False, "error": "Empty command", "code": "empty_command"}
     cmd = parts[0].upper()
     try:
         if cmd == "PING":
@@ -95,10 +95,10 @@ def handle_command(line: str) -> dict[str, Any]:
             if cmd == "STATUS" and len(parts) == 1:
                 return {"ok": True, **runner.capacity()}
             if len(parts) < 2:
-                return {"ok": False, "error": f"{cmd} 需要流程 id 或名稱", "code": "missing_argument"}
+                return {"ok": False, "error": f"{cmd} needs a flow id or name", "code": "missing_argument"}
             flow = _find_flow(parts[1])
             if flow is None:
-                return {"ok": False, "error": f"流程 '{parts[1]}' 不存在", "code": "flow_not_found"}
+                return {"ok": False, "error": f"Flow '{parts[1]}' does not exist", "code": "flow_not_found"}
             if cmd == "STATUS":
                 rt = runner.runtime(flow.id)
                 return {"ok": True, "flow_id": flow.id, "stats": rt.stats.to_dict(), "continuous": runner.is_continuous(flow.id),
@@ -112,7 +112,7 @@ def handle_command(line: str) -> dict[str, Any]:
             try:
                 context = _parse_kv(parts[2:])
             except BadArgument as bad:
-                return {"ok": False, "error": f"引數 '{bad.token}' 不是 key=value；值含空白請用引號", "code": "bad_argument"}
+                return {"ok": False, "error": f"The argument '{bad.token}' is not key=value; quote a value containing spaces", "code": "bad_argument"}
             recipe = context.pop("recipe", None)
             if cmd == "TRIGGER":
                 future = runner.submit(flow, trigger="tcp", context=context or None, recipe=recipe)
@@ -130,7 +130,7 @@ def handle_command(line: str) -> dict[str, Any]:
                 "run_id": report.id,
                 "error": report.error,
             }
-        return {"ok": False, "error": f"未知指令 {cmd}", "code": "unknown_command"}
+        return {"ok": False, "error": f"Unknown command {cmd}", "code": "unknown_command"}
     except APIError as exc:
         return {"ok": False, "error": exc.message, "code": exc.code}
     except Exception as exc:  # noqa: BLE001
@@ -155,7 +155,7 @@ class _Handler(socketserver.StreamRequestHandler):
             finally:
                 close_old_connections()  # 每條連線一條執行緒，各自的連線各自收
             trace.record(  # 整合頁「命令與結果」看得到（沒人在看時只記錯誤）
-                "tcp", line.strip()[:200] or "(空白)", direction="in", name=f"{self.client_address[0]}:{self.client_address[1]}",
+                "tcp", line.strip()[:200] or "(blank)", direction="in", name=f"{self.client_address[0]}:{self.client_address[1]}",
                 detail=response, ok=bool(response.get("ok", True)), ms=(time.perf_counter() - started) * 1000,
             )
             try:

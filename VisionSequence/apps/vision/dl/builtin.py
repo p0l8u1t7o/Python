@@ -56,20 +56,20 @@ def _augmented(image: np.ndarray, jitter: float):
 
 class MlpClassifierTrainer(Trainer):
     kind = "mlp_classify"
-    label = "影像分類（MLP）"
-    description = "把整張（或裁切後的）樣本影像分到你定義的類別；輕量全連接網路，CPU 幾秒內可完成教導，匯出後用「DL 分類」工具推論。"
+    label = "Image classification (MLP)"
+    description = "Sorts the whole sample image (or a crop of it) into the classes you define. A lightweight fully connected network that trains in seconds on CPU; the result is used by the DL classification tool."
     label_mode = "classes"
     tool_key = "dl_classify"
     devices = ("cpu",)
     min_per_class = 2
     params = [
-        Param("input_size", "輸入尺寸", kind="select", default=64, options=[{"value": 32, "label": "32×32（最快）"}, {"value": 64, "label": "64×64（建議）"}, {"value": 96, "label": "96×96"}, {"value": 128, "label": "128×128（細節多）"}]),
-        Param("hidden", "隱藏層寬度", kind="number", default=64, minimum=8, maximum=512, group="進階"),
-        Param("epochs", "訓練回合", kind="number", default=300, minimum=10, maximum=5000, group="進階"),
-        Param("learning_rate", "學習率", kind="number", default=0.05, minimum=0.0001, maximum=1, step=0.001, group="進階"),
-        Param("val_split", "驗證比例", kind="number", default=0.2, minimum=0, maximum=0.5, step=0.05, group="進階", help_text="0 = 全部拿去訓練（樣本很少時）。樣本有人工指定 val 分割時以指定為準。"),
-        Param("augment", "啟用資料增強", kind="boolean", default=False, group="增強", help_text="訓練集加入水平翻轉與亮度擾動副本（驗證集不動）；樣本少時可提升泛化。"),
-        Param("augment_brightness", "亮度擾動幅度", kind="range", default=0.2, minimum=0.0, maximum=0.5, step=0.05, group="增強"),
+        Param("input_size", "Input size", kind="select", default=64, options=[{"value": 32, "label": "32x32 (fastest)"}, {"value": 64, "label": "64x64 (recommended)"}, {"value": 96, "label": "96×96"}, {"value": 128, "label": "128x128 (more detail)"}]),
+        Param("hidden", "Hidden layer width", kind="number", default=64, minimum=8, maximum=512, group="Advanced"),
+        Param("epochs", "Epochs", kind="number", default=300, minimum=10, maximum=5000, group="Advanced"),
+        Param("learning_rate", "Learning rate", kind="number", default=0.05, minimum=0.0001, maximum=1, step=0.001, group="Advanced"),
+        Param("val_split", "Validation ratio", kind="number", default=0.2, minimum=0, maximum=0.5, step=0.05, group="Advanced", help_text="0 uses everything for training, for when there are very few samples. Samples assigned to val by hand take priority."),
+        Param("augment", "Enable augmentation", kind="boolean", default=False, group="Augment", help_text="Adds horizontally flipped and brightness-jittered copies to the training set only; it helps generalisation when samples are few."),
+        Param("augment_brightness", "Brightness jitter", kind="range", default=0.2, minimum=0.0, maximum=0.5, step=0.05, group="Augment"),
     ]
 
     def train(self, samples: list[SampleRef], classes: list[str], params: dict[str, Any], device: str, progress: ProgressFn) -> TrainResult:
@@ -85,14 +85,14 @@ class MlpClassifierTrainer(Trainer):
         counts = {c: sum(1 for s in labeled if s.label == c) for c in classes}
         lacking = [f"{c}×{n}" for c, n in counts.items() if n < self.min_per_class]
         if len(classes) < 2:
-            raise TrainError("至少要定義 2 個類別")
+            raise TrainError("At least two classes must be defined")
         if lacking:
-            raise TrainError(f"每類至少 {self.min_per_class} 張已標記樣本，不足：{', '.join(lacking)}")
+            raise TrainError(f"Each class needs at least {self.min_per_class} labelled samples; short of that: {', '.join(lacking)}")
 
-        progress(0.02, "讀取樣本與抽取特徵", None)
+        progress(0.02, "Reading samples and extracting features", None)
         x, kept = _load_features(labeled, size)
         if not len(kept):
-            raise TrainError("樣本影像讀取失敗")
+            raise TrainError("The sample image could not be read")
         y = np.array([classes.index(s.label) for s in kept], dtype=np.int64)
 
         rng = np.random.default_rng(7)
@@ -108,14 +108,14 @@ class MlpClassifierTrainer(Trainer):
                     val_idx += list(idx[:take])
             val_mask[val_idx] = True
         if val_mask.all():
-            raise TrainError("所有樣本都被指定為驗證（val），沒有訓練樣本")
+            raise TrainError("Every sample is assigned to validation, leaving nothing to train on")
         xt, yt, xv, yv = x[~val_mask], y[~val_mask], x[val_mask], y[val_mask]
 
         # 資料增強：只加在訓練集（重載原圖做翻轉／亮度擾動，特徵接在後面）
         n_aug = 0
         if bool(params.get("augment")):
             jitter = float(params.get("augment_brightness") if params.get("augment_brightness") is not None else 0.2)
-            progress(0.04, "產生增強樣本", None)
+            progress(0.04, "Generating augmented samples", None)
             aug_feats, aug_y = [], []
             for i in np.flatnonzero(~val_mask):
                 image = kept[int(i)].load()
@@ -139,7 +139,7 @@ class MlpClassifierTrainer(Trainer):
             metrics["augmented"] = n_aug
         if n_test:
             metrics["test_holdout"] = n_test
-        progress(0.97, "匯出 ONNX", metrics)
+        progress(0.97, "Exporting ONNX", metrics)
         onnx = build_mlp(w1, b1, w2, b2, channels=3, size=size)
         return TrainResult(
             onnx_bytes=onnx,
@@ -157,7 +157,7 @@ class MlpClassifierTrainer(Trainer):
         size = int(params.get("input_size") or 64)
         pool = [s for s in labeled if s.label in classes]
         if not pool:
-            raise TrainError("先標記幾張樣本，才能自動標記其餘的")
+            raise TrainError("Label a few samples first, then the rest can be labelled automatically")
         if not unlabeled:
             return []
         xl, kl = _load_features(pool, size)
@@ -206,7 +206,7 @@ def _patches_at(chw: np.ndarray, ys: np.ndarray, xs: np.ndarray, k: int) -> np.n
     return out
 
 
-def _train_softmax_mlp(xt, yt, xv, yv, *, hidden, classes, epochs, lr, seed, progress, base_frac=0.05, span=0.9, stage="訓練中"):
+def _train_softmax_mlp(xt, yt, xv, yv, *, hidden, classes, epochs, lr, seed, progress, base_frac=0.05, span=0.9, stage="Training"):
     """單隱藏層 softmax MLP 的全批次梯度下降。回 (w1, b1, w2, b2, metrics)。"""
     rng = np.random.default_rng(seed)
     d = xt.shape[1]
@@ -271,20 +271,20 @@ def _train_softmax_mlp(xt, yt, xv, yv, *, hidden, classes, epochs, lr, seed, pro
 
 class PatchSegmentTrainer(Trainer):
     kind = "patch_segment"
-    label = "語意分割（輕量）"
-    description = "用 polygon 標記教每像素分類（背景＋你的類別）；patch 特徵＋輕量網路，CPU 數秒完成，匯出全卷積 ONNX 給「DL 語意分割」工具。適合顏色／紋理類的區域與瑕疵。"
+    label = "Semantic segmentation (lightweight)"
+    description = "Teaches per-pixel classification from polygon labels (background plus your classes). Patch features and a lightweight network, seconds on CPU, exported as a fully convolutional ONNX for the DL semantic segmentation tool. Suits colour- and texture-defined regions and defects."
     label_mode = "shapes"
     tool_key = "dl_segment"
     devices = ("cpu",)
     min_per_class = 1
     params = [
-        Param("input_size", "工作尺寸", kind="select", default=192, options=[{"value": 128, "label": "128（最快）"}, {"value": 192, "label": "192（建議）"}, {"value": 256, "label": "256（細節多）"}], help_text="訓練與建議的推論尺寸；模型是全卷積，推論可用其他尺寸。"),
-        Param("kernel", "感受野", kind="select", default=7, options=[{"value": 5, "label": "5×5"}, {"value": 7, "label": "7×7"}, {"value": 9, "label": "9×9"}], group="進階"),
-        Param("hidden", "隱藏層寬度", kind="number", default=32, minimum=8, maximum=256, group="進階"),
-        Param("epochs", "訓練回合", kind="number", default=400, minimum=10, maximum=5000, group="進階"),
-        Param("learning_rate", "學習率", kind="number", default=0.1, minimum=0.0001, maximum=1, step=0.001, group="進階"),
-        Param("samples_per_image", "每張取樣像素數", kind="number", default=4000, minimum=500, maximum=20000, group="進階"),
-        Param("augment", "啟用資料增強", kind="boolean", default=False, group="增強", help_text="每張樣本追加水平翻轉版本的取樣（標記同步翻轉）。"),
+        Param("input_size", "Working size", kind="select", default=192, options=[{"value": 128, "label": "128 (fastest)"}, {"value": 192, "label": "192 (recommended)"}, {"value": 256, "label": "256 (more detail)"}], help_text="The training size, and the suggested inference size. The model is fully convolutional, so inference may use another size."),
+        Param("kernel", "Receptive field", kind="select", default=7, options=[{"value": 5, "label": "5×5"}, {"value": 7, "label": "7×7"}, {"value": 9, "label": "9×9"}], group="Advanced"),
+        Param("hidden", "Hidden layer width", kind="number", default=32, minimum=8, maximum=256, group="Advanced"),
+        Param("epochs", "Epochs", kind="number", default=400, minimum=10, maximum=5000, group="Advanced"),
+        Param("learning_rate", "Learning rate", kind="number", default=0.1, minimum=0.0001, maximum=1, step=0.001, group="Advanced"),
+        Param("samples_per_image", "Pixels sampled per image", kind="number", default=4000, minimum=500, maximum=20000, group="Advanced"),
+        Param("augment", "Enable augmentation", kind="boolean", default=False, group="Augment", help_text="Also samples a horizontally flipped version of each image, with the labels flipped to match."),
     ]
 
     def _dataset(self, samples, classes, params):
@@ -326,21 +326,21 @@ class PatchSegmentTrainer(Trainer):
             if augment:
                 take_from(np.ascontiguousarray(chw[:, :, ::-1]), np.ascontiguousarray(mask[:, ::-1]))
         if not xs_list:
-            raise TrainError("沒有任何帶 shapes 標記的樣本（先在標記編輯器畫出區域）")
+            raise TrainError("No sample carries a shape label; draw the regions in the labelling editor first")
         return np.concatenate(xs_list), np.concatenate(ys_list), size, k
 
     def train(self, samples: list[SampleRef], classes: list[str], params: dict[str, Any], device: str, progress: ProgressFn) -> TrainResult:
         if not classes:
-            raise TrainError("至少要定義 1 個類別")
+            raise TrainError("At least one class must be defined")
         hidden = int(params.get("hidden") or 32)
         epochs = int(params.get("epochs") or 400)
         lr = float(params.get("learning_rate") or 0.1)
-        progress(0.02, "讀取樣本、rasterize 標記與取樣 patch", None)
+        progress(0.02, "Reading samples, rasterising labels and sampling patches", None)
         x, y, size, k = self._dataset(samples, classes, params)
         present = set(np.unique(y).tolist())
         missing = [c for i, c in enumerate(classes) if (i + 1) not in present]
         if missing:
-            raise TrainError(f"這些類別沒有任何標記像素：{', '.join(missing)}")
+            raise TrainError(f"These classes have no labelled pixels: {', '.join(missing)}")
         rng = np.random.default_rng(3)
         order = rng.permutation(len(y))
         n_val = max(1, len(y) // 5)
@@ -349,7 +349,7 @@ class PatchSegmentTrainer(Trainer):
             x[ti], y[ti], x[vi], y[vi], hidden=hidden, classes=len(classes) + 1,
             epochs=epochs, lr=lr, seed=11, progress=progress)
         metrics["pixel_metric"] = True
-        progress(0.97, "匯出 ONNX（全卷積）", metrics)
+        progress(0.97, "Exporting ONNX (fully convolutional)", metrics)
         from apps.vision.dl.onnx_io import build_patch_segmenter
 
         k1 = np.ascontiguousarray(w1.T.reshape(hidden, 3, k, k))
@@ -370,7 +370,7 @@ class PatchSegmentTrainer(Trainer):
 
         pool = [s for s in labeled if s.shapes]
         if not pool:
-            raise TrainError("先用標記編輯器標幾張，才能自動標記其餘的")
+            raise TrainError("Label a few images in the editor first, then the rest can be labelled automatically")
         if not unlabeled:
             return []
         quick = {**params, "epochs": min(int(params.get("epochs") or 400), 150), "samples_per_image": 2000}

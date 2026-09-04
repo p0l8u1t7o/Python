@@ -78,8 +78,8 @@ def _requirements_hint(path: Path) -> str:
     """外掛附 requirements.txt 時，在缺依賴的錯誤旁提示安裝指令。"""
     req = (path / "requirements.txt") if path.is_dir() else path.with_suffix(".requirements.txt")
     if req.exists():
-        return f"請先安裝外掛依賴：.venv\\Scripts\\pip install -r \"{req}\""
-    return "外掛依賴必須裝進平台的 .venv（同行程載入），見 docs/plugins.html「整合考量」。"
+        return f'Install the plugin dependencies first: .venv\\Scripts\\pip install -r "{req}"'
+    return "A plugin's dependencies must be installed into the platform's .venv, because it loads in the same process; see the integration section of the plugins documentation."
 
 
 def _import(path: Path) -> ModuleType:
@@ -93,7 +93,7 @@ def _import(path: Path) -> ModuleType:
     locations = [str(path)] if path.is_dir() else None
     spec = importlib.util.spec_from_file_location(name, target, submodule_search_locations=locations)
     if spec is None or spec.loader is None:
-        raise ImportError(f"無法載入 {path}")
+        raise ImportError(f"Could not load {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)

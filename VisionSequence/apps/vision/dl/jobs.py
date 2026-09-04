@@ -32,7 +32,7 @@ class TrainJob:
     device: str
     status: str = "running"  # running | done | failed | cancelled
     progress: float = 0.0
-    stage: str = "準備中"
+    stage: str = "Preparing"
     metrics: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     asset_id: str = ""
@@ -151,7 +151,7 @@ def _run(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     try:
         _train(job, project_id, params)
     except TrainCancelled:
-        job.status, job.stage = "cancelled", "已取消"
+        job.status, job.stage = "cancelled", "Cancelled"
     except TrainError as exc:
         job.status, job.error = "failed", str(exc)
     except Exception as exc:  # noqa: BLE001 — 訓練失敗不影響平台
@@ -176,7 +176,7 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
 
     has_weights = bool(result.weights_bytes and result.weights_tool_key)
     onnx_id = uuid.uuid4()
-    onnx_name = f"{job.asset_name}（ONNX）" if has_weights else job.asset_name
+    onnx_name = f"{job.asset_name} (ONNX)" if has_weights else job.asset_name
     path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{onnx_id.hex}.onnx")
     with open(path, "wb") as f:
         f.write(result.onnx_bytes)
@@ -206,4 +206,4 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     job.asset_id = primary_id.hex
     job.tool_key = tool_key
     job.tool_params = tool_params
-    job.progress, job.stage, job.status = 1.0, "完成", "done"
+    job.progress, job.stage, job.status = 1.0, "Finished", "done"

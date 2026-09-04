@@ -16,8 +16,8 @@ MODES = ("on_demand", "stream")
 
 class CaptureGrabber(Grabber):
     kind = "capture"
-    label = "擷取端相機"
-    description = "由安裝在相機電腦上的「擷取端」程式取像並送到平台；同機自動走共享記憶體。"
+    label = "Capture client camera"
+    description = "The capture client program on the camera's PC acquires the image and sends it to the platform; on the same machine it uses shared memory automatically."
     fields = ["client", "channel", "mode", "timeout_ms", "fresh", "encoding"]
 
     def __init__(self, config: dict[str, Any], **kw: Any) -> None:
@@ -48,7 +48,7 @@ class CaptureGrabber(Grabber):
     def grab(self) -> np.ndarray | None:
         session = hub.get(self.client)
         if session is None:
-            self.last_error = f"擷取端「{self.client}」未連線"
+            self.last_error = f"The capture client '{self.client}' is not connected"
             return None
         try:
             if self.mode == "stream":

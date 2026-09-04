@@ -72,9 +72,9 @@ def clear_asset_cache() -> None:
 
 
 POLARITY_OPTIONS = [
-    {"value": "any", "label": "任意"},
-    {"value": "dark_to_light", "label": "暗 → 亮"},
-    {"value": "light_to_dark", "label": "亮 → 暗"},
+    {"value": "any", "label": "Any"},
+    {"value": "dark_to_light", "label": "Dark to light"},
+    {"value": "light_to_dark", "label": "Light to dark"},
 ]
 
 
@@ -661,7 +661,7 @@ class TemplateMatchTool(Tool):
             overlays=overlays,
             branch="found" if matches else "not_found",
             status="ok" if matches else "ng",
-            message=f"{len(matches)} matches" + (f"，最佳 {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else ""),
+            message=f"{len(matches)} matches" + (f", best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else ""),
         )
 
 
@@ -752,8 +752,8 @@ class FixtureRoiTool(Tool):
         pivot = t.get("pivot")
         pivot_t = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else region_center(region)
         moved = transform_region(region, dx, dy, dtheta, pivot=pivot_t)
-        overlays = [region_overlay(region, color="#94a3b8", label="原 ROI")]
-        moved_ov = region_overlay(moved, color="#22c55e", label="跟隨")
+        overlays = [region_overlay(region, color="#94a3b8", label="Original ROI")]
+        moved_ov = region_overlay(moved, color="#22c55e", label="Following")
         moved_ov["dash"] = False
         moved_ov["width"] = 2
         overlays.append(moved_ov)
@@ -774,7 +774,7 @@ class FindCircleTool(Tool):
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, help_text="How the grey level changes along the scan line, inside out."),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, help_text="A grey gradient below this is not an edge.", teach=True),
         Param("num_rays", "Scan lines", kind="number", default=36, minimum=6, maximum=720),
-        Param("edge_select", "Which edge", kind="select", default="strongest", options=[{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個（最靠內）"}, {"value": "last", "label": "最後一個（最靠外）"}]),
+        Param("edge_select", "Which edge", kind="select", default="strongest", options=[{"value": "strongest", "label": "Strongest"}, {"value": "first", "label": "First (innermost)"}, {"value": "last", "label": "Last (outermost)"}]),
         Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
         Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
         Param("refine", "Rescan refine", kind="boolean", default=True, group="Advanced", help_text="When the ROI centre is off the circle, rescan from the fitted centre so the scan lines meet the edge square on."),
@@ -908,7 +908,7 @@ class FindLineTool(Tool):
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, help_text="How the grey level changes across the short side (top to bottom / left to right)."),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
         Param("num_calipers", "Calipers", kind="number", default=20, minimum=2, maximum=500),
-        Param("direction", "Which edge", kind="select", default="strongest", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
+        Param("direction", "Which edge", kind="select", default="strongest", options=[{"value": "first", "label": "First"}, {"value": "last", "label": "Last"}, {"value": "strongest", "label": "Strongest"}]),
         Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
         Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
         Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),

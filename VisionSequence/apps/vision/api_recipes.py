@@ -57,27 +57,27 @@ def _check_value(param: tools.Param, value: Any) -> str | None:
     kind = param.kind
     if kind in ("number", "range"):
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return "不是數值"
+            return "not a number"
         if param.minimum is not None and value < param.minimum:
-            return f"小於下限 {param.minimum}"
+            return f"below the minimum {param.minimum}"
         if param.maximum is not None and value > param.maximum:
-            return f"大於上限 {param.maximum}"
+            return f"above the maximum {param.maximum}"
     elif kind == "boolean":
         if not isinstance(value, bool):
-            return "不是布林"
+            return "not a boolean"
     elif kind == "select":
         allowed = {str(o.get("value")) for o in param.options}
         if allowed and str(value) not in allowed:
-            return f"不在選項內（{', '.join(sorted(allowed))}）"
+            return f"not one of the options ({', '.join(sorted(allowed))}）"
     elif kind == "roi":
         if not isinstance(value, dict) or not value.get("shape"):
-            return "不是 ROI 物件"
+            return "not an ROI object"
     elif kind == "json":
         if isinstance(value, str):
             try:
                 json.loads(value)
             except json.JSONDecodeError:
-                return "不是合法 JSON"
+                return "not valid JSON"
     return None
 
 
@@ -90,7 +90,7 @@ def check_overrides(flow: Flow, overrides: dict[str, Any], *, versions: dict[str
         node = nodes.get(str(node_id))
         label = (node or {}).get("label") or node_id
         if not isinstance(patch, dict):
-            items.append({"key": f"{node_id}", "node_id": node_id, "node_label": label, "param": "", "status": "value_invalid", "message": "覆寫必須是物件"})
+            items.append({"key": f"{node_id}", "node_id": node_id, "node_label": label, "param": "", "status": "value_invalid", "message": "An override must be an object"})
             continue
         for pkey, value in patch.items():
             item = {"key": f"{node_id}.{pkey}", "node_id": node_id, "node_label": label, "param": pkey, "value": value, "status": "ok", "message": "", "teach": False}
@@ -163,7 +163,7 @@ def all_param_items(flow: Flow, overrides: dict[str, Any]) -> list[dict[str, Any
             items.append({
                 "key": f"{node_id}.{p.key}", "node_id": node_id, "node_label": n.get("label") or node_id, "param": p.key,
                 "param_label": p.label, "tool": ntype, "tool_label": tool.label, "kind": p.kind,
-                "value": value, "current": value, "status": "unchanged", "message": "與目前圖上的值相同", "teach": bool(p.teach),
+                "value": value, "current": value, "status": "unchanged", "message": "the same as the value on the graph", "teach": bool(p.teach),
             })
     return items
 

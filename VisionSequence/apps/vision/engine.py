@@ -117,7 +117,7 @@ def _jsonable(value: Any) -> Any:
         return {str(k): _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         if len(value) > 2000:
-            return [_jsonable(v) for v in value[:2000]] + [f"... ({len(value)} 項)"]
+            return [_jsonable(v) for v in value[:2000]] + [f"... ({len(value)} items)"]
         # 純量清單（直方圖、剖面、點座標）直接回傳，不逐項遞迴。
         if all(type(v) in _PLAIN_TYPES for v in value):
             return value if isinstance(value, list) else list(value)
@@ -176,11 +176,11 @@ def execute(
 
         if deadline is not None and time.perf_counter() > deadline:
             node_report.status = "error"
-            node_report.message = "run 逾時"
+            node_report.message = "the run timed out"
             report.nodes[node_id] = node_report
             status_of[node_id] = "error"
             any_error = True
-            report.error = "run 逾時"
+            report.error = "the run timed out"
             break
 
         # -- 控制分支 ---------------------------------------------------
@@ -191,7 +191,7 @@ def execute(
             )
             if not taken:
                 node_report.status = "skipped"
-                node_report.message = "分支未選中"
+                node_report.message = "branch not selected"
                 report.nodes[node_id] = node_report
                 status_of[node_id] = "skipped"
                 continue
@@ -207,7 +207,7 @@ def execute(
                 if st in ("ok", "ng"):
                     values.append(outputs.get((src, sport)))
                 elif port.required:
-                    blocked = f"上游 '{src}' {st or '未執行'}"
+                    blocked = f"upstream '{src}' {st or "not executed"}"
             if port.multiple:
                 inputs[port.key] = values
             else:
@@ -215,7 +215,7 @@ def execute(
             if port.required and not sources and port.type != "flow":
                 # 未連線的必填輸入：來源工具可以自己抓（例如 image_source），其他標錯。
                 if not getattr(cn.tool, "allows_unconnected", False):
-                    blocked = blocked or f"輸入埠 '{port.key}' 未連線"
+                    blocked = blocked or f"input port '{port.key}' is not connected"
         # 隱含影像直通輸入（_image）：不進工具邏輯，只作為本節點直通輸出的來源
         for src, sport in cn.inputs.get("_image", []):
             if status_of.get(src) in ("ok", "ng"):
@@ -237,11 +237,11 @@ def execute(
                 for k, v in passthrough.items():
                     outputs[(node_id, k)] = v
                 node_report.status = "ok"
-                node_report.message = "已停用（直通）"
+                node_report.message = "disabled (pass-through)"
                 status_of[node_id] = "ok"
             else:
                 node_report.status = "skipped"
-                node_report.message = "已停用"
+                node_report.message = "disabled"
                 status_of[node_id] = "skipped"
             report.nodes[node_id] = node_report
             continue

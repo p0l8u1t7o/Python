@@ -204,7 +204,7 @@ class DlApiTests(TransactionTestCase):
                 break
             time.sleep(0.1)
         self.assertEqual(job["status"], "failed")
-        self.assertIn("樣本", job["error"])
+        self.assertIn("samples", job["error"])
 
 
 class DlDatasetApiTests(TransactionTestCase):

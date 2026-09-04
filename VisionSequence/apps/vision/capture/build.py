@@ -73,7 +73,7 @@ def read_chunk(offset: int, length: int) -> tuple[bytes, bool]:
     data = info()
     path = Path(str(data.get("path") or ""))
     if not data.get("available") or not path.is_file():
-        raise FileNotFoundError("尚未建置擷取端安裝檔")
+        raise FileNotFoundError("The capture client installer has not been built yet")
     size = int(data["size"])
     offset = max(0, int(offset))
     length = max(0, min(int(length), size - offset))

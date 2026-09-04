@@ -349,10 +349,10 @@ def delete_flow(request: HttpRequest, flow_id: int):
 def duplicate_flow(request: HttpRequest, flow_id: int):
     require_engineer(request)
     flow = get_flow(flow_id)
-    name = f"{flow.name} (副本)"
+    name = f"{flow.name} (copy)"
     i = 2
     while Flow.objects.filter(name=name).exists():
-        name = f"{flow.name} (副本 {i})"
+        name = f"{flow.name} (copy {i})"
         i += 1
     copy = Flow.objects.create(name=name, description=flow.description, graph=flow.graph, owner=principal(request).user, is_enabled=False, continuous_interval_ms=flow.continuous_interval_ms)
     return 201, _flow_out(copy)
@@ -420,14 +420,14 @@ def run_flow(
     future = runner.submit(flow, trigger=trigger, input_image=input_image, context=scripts.client_context(ctx), recipe=recipe or None)
     run_id = getattr(future, "run_id", "")
     if not wait:
-        trace.record("http", f"POST /flows/{flow.id}/run（不等結果）", direction="in", name=trigger, detail={"flow": flow.name, "wait": False, "run_id": run_id})
+        trace.record("http", f"POST /flows/{flow.id}/run (without waiting)", direction="in", name=trigger, detail={"flow": flow.name, "wait": False, "run_id": run_id})
         return HttpResponse(status=202, content=json.dumps({"queued": True, "flow_id": flow.id, "run_id": run_id}), content_type="application/json")
     # timeout_s 是「我最多等這麼久」；沒指定才用伺服器逾時再加緩衝，讓引擎自己的逾時先觸發並回完整報告。
     wait_s = float(timeout_s) if timeout_s else float(settings.VISION["RUN_TIMEOUT_S"]) + 5
     try:
         report = future.result(timeout=wait_s)
     except TimeoutError:
-        trace.record("http", f"POST /flows/{flow.id}/run → 等待逾時", direction="in", name=trigger,
+        trace.record("http", f"POST /flows/{flow.id}/run - the wait timed out", direction="in", name=trigger,
                      detail={"flow": flow.name, "run_id": run_id, "timeout_s": wait_s}, ok=False, ms=wait_s * 1000)
         raise APIError(f"Timed out after {wait_s:g}s waiting for the result; the run continues and can be fetched by run_id",
                        code="run_timeout", status_code=504, details={"run_id": run_id, "flow_id": flow.id}) from None

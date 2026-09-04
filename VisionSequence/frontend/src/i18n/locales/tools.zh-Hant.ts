@@ -14,6 +14,10 @@ export default {
     params: {
       range: {
         label: "角度範圍",
+        options: {
+          "0_90": "0 ~ 90（不分方向）",
+          signed: "-180 ~ 180（帶號）",
+        },
       },
     },
     ports: {
@@ -44,6 +48,10 @@ export default {
     params: {
       op: {
         label: "運算",
+        options: {
+          absdiff: "絕對差 |A-B|",
+          invert: "反相 A",
+        },
       },
     },
     ports: {
@@ -60,6 +68,11 @@ export default {
       },
       types: {
         label: "類型",
+        options: {
+          all: "QR + 一維條碼",
+          qr: "只 QR",
+          "1d": "只一維條碼",
+        },
       },
       expected: {
         label: "期望內容",
@@ -87,12 +100,21 @@ export default {
       },
       threshold_method: {
         label: "門檻",
+        options: {
+          otsu: "Otsu 自動",
+          fixed: "固定門檻",
+          none: "輸入已是遮罩（非 0 即前景）",
+        },
       },
       threshold: {
         label: "門檻",
       },
       polarity: {
         label: "前景",
+        options: {
+          bright: "亮物件",
+          dark: "暗物件",
+        },
       },
       min_area: {
         label: "最小面積",
@@ -110,6 +132,12 @@ export default {
       },
       sort_by: {
         label: "排序",
+        options: {
+          area: "面積（大→小）",
+          x: "X（左→右）",
+          y: "Y（上→下）",
+          circularity: "圓形度（高→低）",
+        },
       },
       separate: {
         label: "分離黏連粒子",
@@ -153,6 +181,12 @@ export default {
     params: {
       method: {
         label: "方法",
+        options: {
+          gaussian: "高斯",
+          median: "中值",
+          bilateral: "雙邊（保邊）",
+          box: "均值",
+        },
       },
       ksize: {
         label: "核大小（奇數）",
@@ -172,6 +206,10 @@ export default {
     params: {
       mode: {
         label: "運算",
+        options: {
+          and: "AND（全部為真）",
+          or: "OR（任一為真）",
+        },
       },
     },
     ports: {
@@ -185,6 +223,9 @@ export default {
     params: {
       mode: {
         label: "校正方式",
+        options: {
+          known_distance: "已知距離",
+        },
       },
       pixel_size_mm: {
         label: "每像素 mm",
@@ -198,6 +239,10 @@ export default {
       power: {
         label: "次方",
         help: "面積量測請選 k²。",
+        options: {
+          "1": "長度（×k）",
+          "2": "面積（×k²）",
+        },
       },
     },
     ports: {
@@ -218,16 +263,32 @@ export default {
       },
       polarity: {
         label: "邊緣極性",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
       },
       edge_pair: {
         label: "取邊緣對",
+        options: {
+          first_last: "第一個與最後一個",
+          widest: "最寬的一對",
+          narrowest: "最窄的一對（相鄰）",
+          strongest: "最強的兩個",
+        },
       },
       pair_polarity: {
         label: "邊緣對極性",
         help: "限制成對邊緣的極性順序：量亮條／暗條的寬度時不會配到旁邊的雜訊邊緣。",
+        options: {
+          any: "不限",
+          bright: "亮條（暗→亮、亮→暗）",
+          dark: "暗條（亮→暗、暗→亮）",
+        },
       },
       expected_width: {
         label: "期望寬度",
@@ -260,6 +321,11 @@ export default {
       },
       polarity: {
         label: "邊緣極性",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
@@ -269,6 +335,11 @@ export default {
       },
       direction: {
         label: "取哪個邊緣",
+        options: {
+          first: "第一個",
+          last: "最後一個",
+          strongest: "最強",
+        },
       },
       ransac_tol: {
         label: "RANSAC 容差",
@@ -308,6 +379,10 @@ export default {
       },
       space: {
         label: "比較空間",
+        options: {
+          rgb: "RGB 歐氏距離（0~441）",
+          hsv: "HSV（色相為主）",
+        },
       },
       tolerance: {
         label: "容差",
@@ -332,6 +407,12 @@ export default {
     params: {
       mode: {
         label: "輸出",
+        options: {
+          bgr_b: "B 通道",
+          bgr_g: "G 通道",
+          bgr_r: "R 通道",
+          hsv: "整張 HSV（3 通道）",
+        },
       },
     },
     ports: {
@@ -421,9 +502,19 @@ export default {
     params: {
       to: {
         label: "目標位深",
+        options: {
+          u8: "8 位元（U8）",
+          u16: "16 位元（U16）",
+          f32: "浮點（SGL）",
+        },
       },
       scale: {
         label: "轉 8 位元方式",
+        options: {
+          shift: "等比例（16-bit 右移 8）",
+          minmax: "min-max 拉伸",
+          clip: "直接裁切",
+        },
       },
     },
     ports: {
@@ -489,6 +580,11 @@ export default {
       },
       align: {
         label: "對齊",
+        options: {
+          none: "不對齊",
+          phase: "相位相關（平移）",
+          ecc: "ECC（平移＋旋轉）",
+        },
       },
       blur: {
         label: "前置高斯核",
@@ -531,6 +627,11 @@ export default {
     params: {
       mode: {
         label: "量測",
+        options: {
+          euclid: "直線距離",
+          dx: "X 方向距離",
+          dy: "Y 方向距離",
+        },
       },
     },
     ports: {
@@ -838,9 +939,17 @@ export default {
     params: {
       mode: {
         label: "濾波",
+        options: {
+          lowpass: "低通（保留大結構）",
+          highpass: "高通（保留邊緣／細紋，以中灰 128 為零點）",
+        },
       },
       style: {
         label: "方式",
+        options: {
+          truncate: "截斷",
+          attenuate: "高斯衰減",
+        },
       },
       cutoff: {
         label: "截止（半徑比例）",
@@ -857,6 +966,15 @@ export default {
     params: {
       method: {
         label: "方法",
+        options: {
+          sharpen: "銳利化",
+          canny: "Canny 邊緣（二值）",
+          gradient: "梯度強度（Sobel）",
+          prewitt: "Prewitt 梯度",
+          highpass: "高通",
+          emboss: "浮雕",
+          custom: "自訂 3×3",
+        },
       },
       strength: {
         label: "強度",
@@ -890,6 +1008,11 @@ export default {
       polarity: {
         label: "邊緣極性",
         help: "沿掃描線由內往外的灰階變化方向。",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
@@ -900,6 +1023,11 @@ export default {
       },
       edge_select: {
         label: "取哪個邊緣",
+        options: {
+          strongest: "最強",
+          first: "第一個（最靠內）",
+          last: "最後一個（最靠外）",
+        },
       },
       ransac: {
         label: "RANSAC 剔除離群",
@@ -941,6 +1069,11 @@ export default {
       polarity: {
         label: "邊緣極性",
         help: "沿短邊（由上到下／由左到右）的灰階變化。",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
@@ -950,6 +1083,11 @@ export default {
       },
       direction: {
         label: "取哪個邊緣",
+        options: {
+          first: "第一個",
+          last: "最後一個",
+          strongest: "最強",
+        },
       },
       ransac: {
         label: "RANSAC 剔除離群",
@@ -983,6 +1121,11 @@ export default {
       },
       polarity: {
         label: "邊緣極性",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
@@ -993,6 +1136,11 @@ export default {
       },
       edge_select: {
         label: "取哪個邊緣",
+        options: {
+          strongest: "最強",
+          first: "第一個",
+          last: "最後一個",
+        },
       },
       refine: {
         label: "重掃精修",
@@ -1032,6 +1180,11 @@ export default {
       },
       polarity: {
         label: "邊緣極性",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
@@ -1042,6 +1195,11 @@ export default {
       },
       edge_select: {
         label: "取哪個邊緣",
+        options: {
+          strongest: "最強",
+          first: "第一個",
+          last: "最後一個",
+        },
       },
       refine: {
         label: "重掃精修",
@@ -1100,6 +1258,12 @@ export default {
     params: {
       mode: {
         label: "計算",
+        options: {
+          intersect: "兩線交點",
+          point_line: "點到線垂距",
+          midpoint: "兩點中點",
+          project: "點投影到線",
+        },
       },
     },
     ports: {
@@ -1244,9 +1408,19 @@ export default {
       },
       mode: {
         label: "取像模式",
+        options: {
+          auto: "暫存／API 送圖優先，否則從來源庫抓",
+          source: "一律從來源抓",
+          input: "只用暫存影像（試跑上傳或 API 送圖；沒有就報錯）",
+        },
       },
       convert: {
         label: "色彩",
+        options: {
+          keep: "維持原樣",
+          gray: "轉灰階",
+          bgr: "轉彩色（BGR）",
+        },
       },
     },
     ports: {
@@ -1299,6 +1473,11 @@ export default {
     params: {
       verdict: {
         label: "判定",
+        options: {
+          by_input: "依布林輸入（真=OK，假=NG）",
+          ok: "固定 OK",
+          ng: "固定 NG",
+        },
       },
       label: {
         label: "結果標籤",
@@ -1339,6 +1518,17 @@ export default {
     params: {
       mode: {
         label: "轉換",
+        options: {
+          linear: "線性（亮度／對比）",
+          power: "Gamma（次方）",
+          log: "對數（暗部展開）",
+          exp: "指數（亮部展開）",
+          sqrt: "開根號",
+          square: "平方",
+          invert: "反相",
+          equalize: "直方圖等化",
+          clahe: "CLAHE（區域對比）",
+        },
       },
       clip: {
         label: "CLAHE clip",
@@ -1363,9 +1553,23 @@ export default {
     params: {
       op: {
         label: "運算",
+        options: {
+          erode: "侵蝕",
+          dilate: "膨脹",
+          open: "開運算",
+          close: "閉運算",
+          gradient: "梯度",
+          tophat: "頂帽",
+          blackhat: "黑帽",
+        },
       },
       shape: {
         label: "核形狀",
+        options: {
+          rect: "矩形",
+          ellipse: "橢圓",
+          cross: "十字",
+        },
       },
       ksize: {
         label: "核大小",
@@ -1483,6 +1687,10 @@ export default {
       },
       on_error: {
         label: "讀取失敗時",
+        options: {
+          warn: "降級：記警告，run 照常",
+          fail: "讓 run 失敗",
+        },
       },
       timeout_s: {
         label: "逾時（秒）",
@@ -1511,6 +1719,12 @@ export default {
       },
       interpolation: {
         label: "插值",
+        options: {
+          area: "區域（縮小）",
+          linear: "線性",
+          nearest: "最近",
+          cubic: "三次",
+        },
       },
     },
     ports: {
@@ -1528,6 +1742,12 @@ export default {
       },
       flip: {
         label: "翻轉",
+        options: {
+          none: "不翻",
+          h: "水平",
+          v: "垂直",
+          hv: "水平＋垂直",
+        },
       },
       keep_size: {
         label: "維持尺寸",
@@ -1652,6 +1872,10 @@ export default {
       },
       polarity: {
         label: "字色",
+        options: {
+          dark: "深色字",
+          bright: "淺色字",
+        },
       },
       block: {
         label: "自適應區塊（奇數）",
@@ -1685,6 +1909,14 @@ export default {
     params: {
       method: {
         label: "方法",
+        options: {
+          fixed: "固定門檻",
+          otsu: "Otsu 自動",
+          triangle: "Triangle 自動",
+          adaptive_mean: "自適應（均值）",
+          adaptive_gaussian: "自適應（高斯）",
+          range: "灰階範圍",
+        },
       },
       threshold: {
         label: "門檻",
@@ -1761,6 +1993,11 @@ export default {
       polarity: {
         label: "外緣極性",
         help: "沿掃描方向遇到外緣時的灰階變化；內緣自動取相反極性。",
+        options: {
+          any: "不限",
+          dark_to_light: "暗 → 亮",
+          light_to_dark: "亮 → 暗",
+        },
       },
       edge_threshold: {
         label: "邊緣門檻",
@@ -1829,6 +2066,10 @@ export default {
       },
       on_error: {
         label: "寫入失敗時",
+        options: {
+          warn: "降級：記警告，run 照常",
+          fail: "讓 run 失敗",
+        },
       },
       timeout_s: {
         label: "逾時（秒）",
@@ -1857,10 +2098,16 @@ export default {
       imgsz: {
         label: "推論尺寸",
         help: "與訓練時一致最準。",
+        options: {
+          "224": "224（建議）",
+        },
       },
       device: {
         label: "裝置",
         group: "進階",
+        options: {
+          auto: "自動（有 GPU 就用）",
+        },
       },
       half: {
         label: "半精度（FP16）",
@@ -1904,10 +2151,16 @@ export default {
       imgsz: {
         label: "推論尺寸",
         help: "與訓練時一致最準。",
+        options: {
+          "640": "640（建議）",
+        },
       },
       device: {
         label: "裝置",
         group: "進階",
+        options: {
+          auto: "自動（有 GPU 就用）",
+        },
       },
       half: {
         label: "半精度（FP16）",
@@ -1969,10 +2222,16 @@ export default {
       imgsz: {
         label: "推論尺寸",
         help: "與訓練時一致最準。",
+        options: {
+          "640": "640（建議）",
+        },
       },
       device: {
         label: "裝置",
         group: "進階",
+        options: {
+          auto: "自動（有 GPU 就用）",
+        },
       },
       half: {
         label: "半精度（FP16）",
@@ -2034,10 +2293,16 @@ export default {
       imgsz: {
         label: "推論尺寸",
         help: "與訓練時一致最準。",
+        options: {
+          "640": "640（建議）",
+        },
       },
       device: {
         label: "裝置",
         group: "進階",
+        options: {
+          auto: "自動（有 GPU 就用）",
+        },
       },
       half: {
         label: "半精度（FP16）",
@@ -2103,10 +2368,16 @@ export default {
       imgsz: {
         label: "推論尺寸",
         help: "與訓練時一致最準。",
+        options: {
+          "640": "640（建議）",
+        },
       },
       device: {
         label: "裝置",
         group: "進階",
+        options: {
+          auto: "自動（有 GPU 就用）",
+        },
       },
       half: {
         label: "半精度（FP16）",

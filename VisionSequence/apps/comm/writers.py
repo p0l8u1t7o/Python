@@ -161,10 +161,10 @@ class Writer:
                         raise CommError(f"{self.name or self.kind}: {self.last_error}") from exc2
                 self.writes += 1
                 self.last_write_at = time.time()
-                self._trace("寫入", values, out, started)
+                self._trace("write", values, out, started)
                 return out
             except CommError as exc:
-                self._trace("寫入", values, {"error": str(exc)}, started, ok=False)
+                self._trace("write", values, {"error": str(exc)}, started, ok=False)
                 raise
             finally:
                 self.timeout = old
@@ -177,10 +177,10 @@ class Writer:
             try:
                 out = self._read(addresses)
                 if not quiet:
-                    self._trace("讀取", addresses, out, started)
+                    self._trace("read", addresses, out, started)
                 return out
             except CommError as exc:
-                self._trace("讀取", addresses, {"error": str(exc)}, started, ok=False)
+                self._trace("read", addresses, {"error": str(exc)}, started, ok=False)
                 raise
             except Exception as exc:  # noqa: BLE001
                 self.last_error = _msg(exc)
@@ -189,10 +189,10 @@ class Writer:
                     self._open()
                     out = self._read(addresses)
                     if not quiet:
-                        self._trace("讀取", addresses, out, started)
+                        self._trace("read", addresses, out, started)
                     return out
                 except Exception as exc2:  # noqa: BLE001
-                    self._trace("讀取", addresses, {"error": _msg(exc2)}, started, ok=False)
+                    self._trace("read", addresses, {"error": _msg(exc2)}, started, ok=False)
                     raise CommError(f"{self.name or self.kind}: {_msg(exc2)}") from exc2
 
     def close(self) -> None:
@@ -205,7 +205,7 @@ class Writer:
             from apps.vision import trace
 
             items = request if isinstance(request, (list, dict)) else [request]
-            summary = f"{action} {len(items)} 筆：" + "、".join(f"{k}={v}" for k, v in list(items.items())[:4]) if isinstance(items, dict) else f"{action}：" + "、".join(str(x) for x in list(items)[:4])
+            summary = f"{action} {len(items)} entries: " + "、".join(f"{k}={v}" for k, v in list(items.items())[:4]) if isinstance(items, dict) else f"{action}：" + "、".join(str(x) for x in list(items)[:4])
             trace.record("modbus", summary, direction="out", name=self.name or self.kind, detail={"request": request, "result": result},
                          ok=ok, ms=(time.perf_counter() - started) * 1000)
         except Exception:  # noqa: BLE001 — 追蹤不能影響通訊
@@ -230,7 +230,7 @@ class ModbusTcpWriter(Writer):
     """config: host, port=502, unit_id=1, timeout_s=2, word_order=big|little"""
 
     kind = "modbus_tcp"
-    label = "Modbus/TCP 主站（連到 PLC）"
+    label = "Modbus/TCP client (connects to the PLC)"
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -337,7 +337,7 @@ class ModbusServerWriter(Writer):
     """
 
     kind = "modbus_server"
-    label = "Modbus/TCP 從站（本機當 server）"
+    label = "Modbus/TCP server (this machine listens)"
     listens = True
     fields = ["host", "port", "unit_id", "size", "word_order", "trigger_address", "trigger_flow", "trigger_interval_ms", "trigger_mode", "trigger_clear", "trigger_done_address"]
 
@@ -366,7 +366,7 @@ class ModbusServerWriter(Writer):
         self._thread = threading.Thread(target=self._serve, name=f"modbus-server-{self.port}", daemon=True)
         self._thread.start()
         if not self._ready.wait(5.0) or self.server is None:
-            reason = self._error or "逾時"
+            reason = self._error or "timeout"
             raise CommError(f"The Modbus server could not start on {self.host}:{self.port} ({reason}); check that no other program holds that port")
 
     def _serve(self) -> None:
@@ -407,7 +407,7 @@ class ModbusServerWriter(Writer):
                 value = getattr(pdu, attr, None)
                 if value not in (None, [], 0):
                     detail[attr] = value if not isinstance(value, list) else value[:16]
-            trace.record("modbus", f"{'回應' if sending else '主站請求'} {name}", direction="out" if sending else "in", name=self.name or self.kind, detail=detail)
+            trace.record("modbus", f"{"reply" if sending else "master request"} {name}", direction="out" if sending else "in", name=self.name or self.kind, detail=detail)
         except Exception:  # noqa: BLE001 — 追蹤失敗不能影響通訊
             pass
         return pdu
@@ -417,7 +417,7 @@ class ModbusServerWriter(Writer):
             self.connections += 1 if connected else 0
             from apps.vision import trace
 
-            trace.record("modbus", "主站已連線" if connected else "主站已斷線", name=self.name or self.kind, detail={"port": self.port})
+            trace.record("modbus", "master connected" if connected else "master disconnected", name=self.name or self.kind, detail={"port": self.port})
         except Exception:  # noqa: BLE001
             pass
 
@@ -840,12 +840,12 @@ _MODBUS_SLAVE_FIELDS = ["host", "port", "unit_id", "size", "word_order"]
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "label": "Modbus/TCP 主站（連到 PLC）", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
-         "description": "本平台當主站（client）連到 PLC／設備，主動讀寫對方的線圈與暫存器。也可以輪詢對方的一個位址當觸發源。"},
-        {"kind": "modbus_server", "label": "Modbus/TCP 從站（本機當 server）", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
-         "description": "本平台當從站（server）開一個埠，PLC／上位機當主站來讀寫我們的暫存器；流程把結果寫進暫存器，主站自己來取。設定觸發位址後，主站把旗標寫進來就會跑一次流程。伺服器啟動時自動開埠。"},
-        {"kind": "tcp_client", "label": "TCP 文字／JSON（上位機）", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
-        {"kind": "dio_sim", "label": "模擬 DIO（只記錄狀態）", "fields": ["channels"]},
+        {"kind": "modbus_tcp", "label": "Modbus/TCP client (connects to the PLC)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
+         "description": "The platform is the client and connects to the PLC or device, reading and writing its coils and registers. It can also poll one address as a trigger source."},
+        {"kind": "modbus_server", "label": "Modbus/TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
+         "description": "The platform is the server and listens on a port for the PLC or host system to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
+        {"kind": "tcp_client", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
+        {"kind": "dio_sim", "label": "Simulated digital I/O (state is only recorded)", "fields": ["channels"]},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
@@ -857,7 +857,7 @@ def kinds() -> list[dict[str, Any]]:
     for kind in plugins:
         if kind not in _PLUGIN_KINDS:
             out.append({"kind": kind, "label": f"Plugin: {kind}", "fields": []})
-    out.append({"kind": "plugin", "label": "外掛（自訂類別路徑）", "fields": ["class"]})
+    out.append({"kind": "plugin", "label": "Plugin (a class path of your own)", "fields": ["class"]})
     return out
 
 

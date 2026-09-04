@@ -114,14 +114,14 @@ class TriggerLoop(threading.Thread):
                 self.writer.write({settings["address"]: 0})
             flow = self._resolve_flow()
             if flow is None:
-                raise LookupError(f"流程 '{settings['flow']}' 不存在或已停用")
+                raise LookupError(f"Flow '{settings['flow']}' does not exist or is disabled")
             report = self._run(flow)
             self.fired += 1
             self.last_fired_at = time.time()
             if settings["done"]:
                 self.writer.write({settings["done"]: 1})
             trace.record(
-                "modbus", f"觸發 {settings['address']} → {flow.name}：{report.status}", direction="in",
+                "modbus", f"Trigger {settings['address']} -> {flow.name}: {report.status}", direction="in",
                 name=self.writer.name or self.writer.kind, ok=report.status != "failed",
                 ms=(time.perf_counter() - started) * 1000,
                 detail={"flow": flow.name, "run_id": report.id, "status": report.status, "outputs": report.outputs, "error": report.error},
@@ -130,7 +130,7 @@ class TriggerLoop(threading.Thread):
             self.errors += 1
             self.last_error = str(exc)[:200]
             log.warning("Modbus 觸發失敗（%s）：%s", self.writer.name, self.last_error)
-            trace.record("modbus", f"觸發 {settings['address']} 失敗", direction="in", name=self.writer.name or self.writer.kind,
+            trace.record("modbus", f"Trigger {settings['address']} failed", direction="in", name=self.writer.name or self.writer.kind,
                          ok=False, ms=(time.perf_counter() - started) * 1000, detail={"error": self.last_error})
 
     def _resolve_flow(self):

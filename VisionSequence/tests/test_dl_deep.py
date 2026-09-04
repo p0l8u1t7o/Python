@@ -589,7 +589,7 @@ class YoloRuntimeTests(SimpleTestCase):
             with mock.patch("urllib.request.urlopen", side_effect=lambda url, timeout=0: (_ for _ in ()).throw(urllib.error.HTTPError(url, 404, "nf", {}, None))):
                 with self.assertRaises(TrainError) as ctx:
                     yolo.resolve_model("yolo99z.pt")
-            self.assertIn("不存在", str(ctx.exception))
+            self.assertIn("does not exist", str(ctx.exception))
             for name in ("yolo26n-seg.pt", "yolo11x-pose.pt", "sam2.1_b.pt", "mobile_sam.pt", "yolov8n-cls.pt"):
                 self.assertTrue(yolo._ASSET_NAME.match(name), name)
             self.assertFalse(yolo._ASSET_NAME.match("best.pt"))

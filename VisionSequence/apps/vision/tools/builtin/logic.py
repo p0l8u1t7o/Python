@@ -88,8 +88,8 @@ class BoolLogicTool(Tool):
     icon = "Binary"
     params = [
         Param("mode", "Operation", kind="select", default="and", options=[
-            {"value": "and", "label": "AND（全部為真）"},
-            {"value": "or", "label": "OR（任一為真）"},
+            {"value": "and", "label": "AND (all true)"},
+            {"value": "or", "label": "OR (any true)"},
             {"value": "nand", "label": "NOT AND"},
             {"value": "nor", "label": "NOT OR"},
         ]),

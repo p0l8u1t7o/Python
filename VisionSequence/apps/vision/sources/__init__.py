@@ -175,22 +175,22 @@ def source_info(source) -> dict[str, Any]:
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("SOURCE_PLUGINS", {})
     out = [
-        {"kind": "folder", "label": "資料夾（循環讀取影像檔）", "fields": ["path", "loop", "sort", "pattern"]},
-        {"kind": "file", "label": "單一影像檔", "fields": ["path"]},
-        {"kind": "usb", "label": "USB / 網路攝影機（OpenCV）", "fields": ["index", "width", "height", "fps"]},
-        {"kind": "synthetic", "label": "合成測試影像", "fields": ["width", "height", "pattern", "seed"]},
-        {"kind": "upload", "label": "手動上傳（API 送圖）", "fields": []},
+        {"kind": "folder", "label": "Folder (reads the image files in a loop)", "fields": ["path", "loop", "sort", "pattern"]},
+        {"kind": "file", "label": "A single image file", "fields": ["path"]},
+        {"kind": "usb", "label": "USB or web camera", "fields": ["index", "width", "height", "fps"]},
+        {"kind": "synthetic", "label": "Synthetic test image", "fields": ["width", "height", "pattern", "seed"]},
+        {"kind": "upload", "label": "Pushed image (uploaded through the API)", "fields": []},
         {"kind": "capture", "label": CaptureGrabber.label, "fields": list(CaptureGrabber.fields), "description": CaptureGrabber.description},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
             "kind": kind,
-            "label": getattr(cls, "label", "") or f"外掛：{kind}",
+            "label": getattr(cls, "label", "") or f"Plugin: {kind}",
             "fields": list(getattr(cls, "fields", []) or []),
             "description": getattr(cls, "description", ""),
         })
     for kind in plugins:
         if kind not in _PLUGIN_KINDS:
-            out.append({"kind": kind, "label": f"外掛：{kind}", "fields": []})
-    out.append({"kind": "plugin", "label": "外掛（自訂類別路徑）", "fields": ["class"]})
+            out.append({"kind": kind, "label": f"Plugin: {kind}", "fields": []})
+    out.append({"kind": "plugin", "label": "Plugin (a class path of your own)", "fields": ["class"]})
     return out

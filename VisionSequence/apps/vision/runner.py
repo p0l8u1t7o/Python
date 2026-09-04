@@ -467,7 +467,7 @@ class Runner:
         report.recipe = recipe_name
         report.archive_policy = archive_policy
         if not flow.commissioned and not preview:
-            report.warnings.append("未完成現場教導（參數卡頁尚未確認）")
+            report.warnings.append("On-site teaching is not finished (not yet confirmed on the teach page)")
         with self._lock:
             rt.pending.pop(run_id, None)  # 結果已在 recent，查詢改走 report()
         self._record(rt, report)

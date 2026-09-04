@@ -25,7 +25,7 @@ MAX_ROWS = 50
 MAX_IMAGES = 4
 
 CONSULT_INSTRUCTION = """你現在是現場調機顧問。只依下面提供的批次資料、洞察與流程回答使用者的問題：
-- 繁體中文，先給結論再給理由，條列為主，不超過 250 字；引用資料時寫出影像編號與數值。
+- 用提問的語言回答（資料與流程是英文）；先給結論再給理由，條列為主，不超過 250 字；引用資料時寫出影像編號與數值。
 - 不得更改規格（公差、期望數量、亮度範圍）；可調的是門檻、最小面積、邊緣門檻這類現場參數。
 - 若有具體參數建議，在回答最後另起一行輸出：SUGGESTIONS: {"suggestions":[{"node":"節點id","key":"參數","value":數值或字串,"reason":"一句話"}]}；沒有建議就輸出 SUGGESTIONS: {"suggestions":[]}。"""
 
@@ -42,21 +42,21 @@ def _rows_text(run_items: list[dict[str, Any]], images: list[dict[str, Any]], in
         outs = {k: v for k, v in (it.get("outputs") or {}).items() if isinstance(v, (int, float, str)) and not isinstance(v, bool)}
         judge_vals = {label: ((it.get("nodes") or {}).get(node) or {}).get("outputs", {}).get(port) for (node, port), label in judge_src.items()}
         judge_vals = {k: v for k, v in judge_vals.items() if v is not None}
-        bits = [f"#{idx + 1} {im.get('name', '')}：{str(it.get('status', '')).upper()}"]
+        bits = [f"#{idx + 1} {im.get('name', '')}: {str(it.get('status', '')).upper()}"]
         if im.get("expected"):
-            bits.append(f"期望 {str(im['expected']).upper()}" + ("（未命中）" if m is False else ""))
+            bits.append(f"expected {str(im['expected']).upper()}" + (" (missed)" if m is False else ""))
         if outs:
-            bits.append("輸出 " + json.dumps(outs, ensure_ascii=False))
+            bits.append("outputs " + json.dumps(outs, ensure_ascii=False))
         if judge_vals:
-            bits.append("判定輸入 " + json.dumps(judge_vals, ensure_ascii=False))
+            bits.append("judging input " + json.dumps(judge_vals, ensure_ascii=False))
         if it.get("error"):
-            bits.append(f"錯誤 {it['error'][:80]}")
-        return "- " + "，".join(bits)
+            bits.append(f"error {it['error'][:80]}")
+        return "- " + ", ".join(bits)
 
     ordered = sorted(run_items, key=lambda it: 0 if store.row_match(it, by_index.get(int(it.get("index", -1)), {}))[0] is False else 1)
     lines = [row_line(it) for it in ordered[:MAX_ROWS]]
     if len(run_items) > MAX_ROWS:
-        lines.append(f"…（其餘 {len(run_items) - MAX_ROWS} 張略）")
+        lines.append(f"… ({len(run_items) - MAX_ROWS} more images not listed)")
     return "\n".join(lines)
 
 
@@ -83,23 +83,23 @@ def _validate_suggestions(graph: dict[str, Any], raw: Any) -> tuple[list[dict[st
         node, key = str(s.get("node", "")), str(s.get("key", ""))
         n = by_id.get(node)
         if n is None or not tools.has(str(n.get("type", ""))):
-            warnings.append(f"建議略過：節點 {node} 不存在")
+            warnings.append(f"Suggestion skipped: node {node} does not exist")
             continue
         param = next((p for p in tools.get(str(n["type"])).params if p.key == key), None)
         if param is None:
-            warnings.append(f"建議略過：{node} 沒有參數 {key}")
+            warnings.append(f"Suggestion skipped: {node} has no parameter {key}")
             continue
         value = s.get("value")
         if param.kind in ("number", "range") and isinstance(value, str):
             try:
                 value = float(value)
             except ValueError:
-                warnings.append(f"建議略過：{node}.{key} 的值不是數字")
+                warnings.append(f"Suggestion skipped: the value of {node}.{key} is not a number")
                 continue
         try:
             validate_graph(insights_mod.apply_suggestions(graph, [{"node": node, "key": key, "value": value}]))
         except Exception as exc:  # noqa: BLE001
-            warnings.append(f"建議略過：{node}.{key}={value!r} 讓流程驗證失敗（{str(exc)[:80]}）")
+            warnings.append(f"Suggestion skipped: {node}.{key}={value!r} fails validation ({str(exc)[:80]})")
             continue
         good.append({"node": node, "label": n.get("label") or node, "key": key, "value": value, "reason": str(s.get("reason") or "")[:200]})
     return good, warnings
@@ -123,22 +123,23 @@ def offline_answer(question: str, ins: dict[str, Any]) -> str:
     text = list(ins.get("text") or [])
     q = (question or "").lower()
     picked: list[str] = []
-    if any(w in q for w in ("門檻", "threshold", "參數", "調", "建議")):
-        picked += [t for t in text if "建議" in t or "判定" in t]
-    if any(w in q for w in ("為什麼", "为什么", "哪些", "未命中", "ng", "錯")):
-        picked += [t for t in text if "未命中" in t or "出錯" in t or "命中" in t]
-    if any(w in q for w in ("慢", "耗時", "時間", "ms")):
+    # 洞察句子已是英文；提問可能是中文或英文，兩邊關鍵詞都比對
+    if any(w in q for w in ("門檻", "threshold", "參數", "param", "調", "tune", "建議", "suggest")):
+        picked += [t for t in text if "Consider changing" in t or "judging node" in t]
+    if any(w in q for w in ("為什麼", "为什么", "why", "哪些", "which", "未命中", "miss", "ng", "錯", "error", "fail")):
+        picked += [t for t in text if "Missed:" in t or "errored" in t or "matched" in t]
+    if any(w in q for w in ("慢", "slow", "耗時", "時間", "time", "ms")):
         picked += [t for t in text if "ms" in t]
-    if any(w in q for w in ("上一次", "比較", "差異", "改善")):
-        picked += [t for t in text if "上一次" in t or "參數變動" in t]
+    if any(w in q for w in ("上一次", "previous", "比較", "compare", "差異", "diff", "改善", "improve")):
+        picked += [t for t in text if "previous run" in t or "Parameters changed" in t]
     lines = picked or text
     seen: list[str] = []
     for line in lines:
         if line not in seen:
             seen.append(line)
-    if not any("建議" in line for line in seen) and ins.get("labeled"):
-        seen.append("目前資料看不出更好的門檻；可先確認未命中影像的標記是否正確，或增加更多 OK／NG 影像。")
-    return "（離線規則分析）\n" + "\n".join(f"- {line}" for line in seen)
+    if not any("Consider changing" in line for line in seen) and ins.get("labeled"):
+        seen.append("The data does not point to a better threshold yet. Check that the missed images are labelled correctly, or add more OK and NG images.")
+    return "(offline rule analysis)\n" + "\n".join(f"- {line}" for line in seen)
 
 
 def consult(run: Any, batch_set: Any, question: str, settings: providers.AgentSettings, *, graph: dict[str, Any] | None = None, user: Any = None) -> dict[str, Any]:
@@ -157,10 +158,10 @@ def consult(run: Any, batch_set: Any, question: str, settings: providers.AgentSe
         try:
             focus = skills.select_tools(question, graph=graph, limit=8)
             text = "\n".join([
-                f"使用者問題：{question}", "",
-                "目前的流程 graph：\n" + json.dumps(graph, ensure_ascii=False),
-                "資料洞察（規則引擎）：\n" + "\n".join(f"- {t}" for t in ins.get("text") or []),
-                "逐張資料：\n" + _rows_text(items, images, ins),
+                f"Question: {question}", "",
+                "The current flow graph:\n" + json.dumps(graph, ensure_ascii=False),
+                "Insights from the rule engine:\n" + "\n".join(f"- {t}" for t in ins.get("text") or []),
+                "Per-image data:\n" + _rows_text(items, images, ins),
                 skills.focus_text(focus, user), "", CONSULT_INSTRUCTION,
             ])
             reply = providers.complete(settings, llm.system_prompt(), [llm.encode_image(im) for im in _pick_images(items, images)], text)
@@ -169,7 +170,7 @@ def consult(run: Any, batch_set: Any, question: str, settings: providers.AgentSe
             warnings += sug_warnings
             if not suggestions:
                 suggestions = rule_suggestions
-            return {"answer": answer or "（模型沒有回覆內容）", "provider": settings.provider, "insights": ins, "suggestions": suggestions, "warnings": warnings}
+            return {"answer": answer or "(the model returned nothing)", "provider": settings.provider, "insights": ins, "suggestions": suggestions, "warnings": warnings}
         except Exception as exc:  # noqa: BLE001 - LLM 失敗落回離線模板
             log.warning("諮詢 LLM 失敗：%s", exc)
             warnings.append(f"LLM（{settings.provider}）失敗，已改用規則分析：{providers._explain(exc, providers.generate_timeout())}")

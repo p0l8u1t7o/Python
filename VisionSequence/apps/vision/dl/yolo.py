@@ -31,7 +31,7 @@ from apps.vision.tools.base import Param
 
 log = logging.getLogger(__name__)
 
-_INSTALL_HINT = "需要安裝訓練依賴：.\\scripts\\setup_dl.ps1（先裝 cu128 的 torch 再裝 ultralytics／onnx／onnxslim／onnxruntime-gpu；細節見 requirements-dl.txt 與 docs/dl.html「安裝與踩坑」）"
+_INSTALL_HINT = "The training dependencies are needed: run .\\scripts\\setup_dl.ps1 (torch cu128 first, then ultralytics, onnx, onnxslim and onnxruntime-gpu; see requirements-dl.txt and the installation section of the deep-learning documentation)"
 
 
 def _import_ultralytics():
@@ -41,7 +41,7 @@ def _import_ultralytics():
 
         return YOLO
     except ImportError:
-        raise TrainError(f"未安裝 ultralytics／torch。{_INSTALL_HINT}") from None
+        raise TrainError(f"ultralytics and torch are not installed.{_INSTALL_HINT}") from None
 
 
 #: ultralytics 官方資產的下載位置：新模型（yolo26…）在 v8.4.0，舊的（yolov8／yolo11／SAM）在 v8.3.0；依序嘗試。
@@ -81,7 +81,7 @@ def resolve_model(name: str, log_fn=None) -> str:
             return target
         _download(base, target, log_fn)
     if log_fn:
-        log_fn(f"底模 {base} 已下載到 {target}")
+        log_fn(f"The stock model {base} has been downloaded to {target}")
     return target
 
 
@@ -94,7 +94,7 @@ def _download(base: str, target: str, log_fn=None) -> None:
     for release in _ASSET_RELEASES:
         url = _ASSET_URL.format(release=release, name=base)
         if log_fn:
-            log_fn(f"下載底模 {base}（第一次使用；{url}）…")
+            log_fn(f"Downloading the stock model {base} (first use; {url}）…")
         log.info("下載 YOLO 底模 %s ← %s", base, url)
         fd, tmp = tempfile.mkstemp(dir=_weights_dir(), suffix=".part")
         try:
@@ -106,13 +106,13 @@ def _download(base: str, target: str, log_fn=None) -> None:
         except urllib.error.HTTPError as exc:
             _cleanup(tmp)
             if exc.code == 404:
-                last_error = f"HTTP 404（{url}）"
+                last_error = f"HTTP 404 ({url})"
                 continue  # 下一個 release
-            raise TrainError(f"底模 {base} 下載失敗（HTTP {exc.code}）。{url}") from None
+            raise TrainError(f"The stock model {base} could not be downloaded (HTTP {exc.code}). {url}") from None
         except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
             _cleanup(tmp)
-            raise TrainError(f"底模 {base} 下載失敗（{exc}）。請確認伺服器可連網，或手動下載後把路徑填進「基底模型」參數：{url}") from None
-    raise TrainError(f"模型名稱 {base} 不存在（官方資產沒有這個檔；{last_error}）。請確認名稱，例如 yolo11n.pt、yolo11n-seg.pt、yolo11n-cls.pt、yolo11n-obb.pt。")
+            raise TrainError(f"The stock model {base} could not be downloaded ({exc}). Check that the server has network access, or download it by hand and put the path in the base model parameter: {url}") from None
+    raise TrainError(f"The model name {base} does not exist (there is no such file in the official assets; {last_error}). Check the name, for example yolo11n.pt, yolo11n-seg.pt, yolo11n-cls.pt or yolo11n-obb.pt.")
 
 
 _download_lock = threading.Lock()
@@ -147,24 +147,24 @@ def _clean_metrics(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _params(base_model: str, task: str) -> list[Param]:
-    imgsz = ([{"value": 224, "label": "224（建議）"}, {"value": 320, "label": "320"}] if task == "classify"
-             else [{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640（建議）"}, {"value": 960, "label": "960"}])
+    imgsz = ([{"value": 224, "label": "224 (recommended)"}, {"value": 320, "label": "320"}] if task == "classify"
+             else [{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640 (recommended)"}, {"value": 960, "label": "960"}])
     out = [
-        Param("model", "基底模型", kind="text", default=base_model, help_text="ultralytics 模型名稱（第一次使用自動下載）或 .pt 路徑；也可填上次訓練的 best.pt 續訓。"),
-        Param("epochs", "訓練回合", kind="number", default=100, minimum=1, maximum=2000),
-        Param("imgsz", "影像尺寸", kind="select", default=224 if task == "classify" else 640, options=imgsz),
-        Param("batch", "Batch", kind="number", default=8, minimum=1, maximum=128, group="進階"),
-        Param("patience", "Early stop 耐心值", kind="number", default=50, minimum=0, maximum=500, group="進階"),
-        Param("lr0", "初始學習率", kind="number", default=0.001, minimum=0.00001, maximum=0.1, step=0.0001, group="進階"),
-        Param("val_ratio", "驗證比例", kind="number", default=0.2, minimum=0.05, maximum=0.5, step=0.05, group="進階"),
-        Param("workers", "DataLoader workers", kind="number", default=0, minimum=0, maximum=16, group="進階", help_text="Windows 建議 0（在背景執行緒跑訓練時最穩）。"),
-        Param("suggest_conf", "自動標記信心門檻", kind="range", default=0.4, minimum=0.05, maximum=0.95, step=0.05, group="進階",
-              help_text="還沒訓練過時用官方底模提案（名稱對不上的掛第一個類別，請確認後改類）；訓練過後自動改用 best.pt。"),
-        Param("degrees", "旋轉角度（±）", kind="number", default=0, minimum=0, maximum=180, group="增強", help_text="隨機旋轉的最大角度；物件方向固定的產線建議 0。"),
-        Param("fliplr", "水平翻轉機率", kind="range", default=0.5, minimum=0, maximum=1, step=0.1, group="增強"),
+        Param("model", "Base model", kind="text", default=base_model, help_text="An ultralytics model name (downloaded on first use) or a path to a .pt file; the best.pt of a previous run continues training from it."),
+        Param("epochs", "Epochs", kind="number", default=100, minimum=1, maximum=2000),
+        Param("imgsz", "Image size", kind="select", default=224 if task == "classify" else 640, options=imgsz),
+        Param("batch", "Batch", kind="number", default=8, minimum=1, maximum=128, group="Advanced"),
+        Param("patience", "Early stop patience", kind="number", default=50, minimum=0, maximum=500, group="Advanced"),
+        Param("lr0", "Initial learning rate", kind="number", default=0.001, minimum=0.00001, maximum=0.1, step=0.0001, group="Advanced"),
+        Param("val_ratio", "Validation ratio", kind="number", default=0.2, minimum=0.05, maximum=0.5, step=0.05, group="Advanced"),
+        Param("workers", "DataLoader workers", kind="number", default=0, minimum=0, maximum=16, group="Advanced", help_text="0 is recommended on Windows, which is the most reliable when training on a background thread."),
+        Param("suggest_conf", "Automatic labelling confidence threshold", kind="range", default=0.4, minimum=0.05, maximum=0.95, step=0.05, group="Advanced",
+              help_text="Before any training the stock model proposes (anything whose name does not match is attached to the first class, for you to correct); afterwards best.pt is used."),
+        Param("degrees", "Rotation angle (+/-)", kind="number", default=0, minimum=0, maximum=180, group="Augment", help_text="The maximum random rotation; 0 is recommended on a line where the object's orientation is fixed."),
+        Param("fliplr", "Horizontal flip probability", kind="range", default=0.5, minimum=0, maximum=1, step=0.1, group="Augment"),
     ]
     if task != "classify":
-        out.append(Param("mosaic", "馬賽克增強", kind="range", default=1.0, minimum=0, maximum=1, step=0.1, group="增強", help_text="把 4 張樣本拼成一張訓練；樣本很少時建議調低。"))
+        out.append(Param("mosaic", "Mosaic augmentation", kind="range", default=1.0, minimum=0, maximum=1, step=0.1, group="Augment", help_text="Tiles four samples into one training image; lower it when there are few samples."))
     return out
 
 
@@ -183,17 +183,17 @@ class _YoloTrainer(Trainer):
         from apps.vision.dl.shapes import export_classify_dataset, export_dataset
 
         if not classes:
-            raise TrainError("至少要定義 1 個類別")
+            raise TrainError("At least one class must be defined")
         if self.task == "classify" and len(classes) < 2:
-            raise TrainError("分類至少要 2 個類別")
+            raise TrainError("Classification needs at least two classes")
         YOLO = _import_ultralytics()
         import torch
 
         if device == "cuda" and not torch.cuda.is_available():
-            _plog(progress, "[WARN] 找不到 CUDA，退回 CPU 訓練（會很慢）")
+            _plog(progress, "[WARN] CUDA was not found; falling back to CPU training, which is slow")
             device = "cpu"
 
-        progress(0.01, "整理 YOLO 資料集", None)
+        progress(0.01, "Staging the YOLO dataset", None)
         work = tempfile.mkdtemp(prefix="vs-yolo-")
         stopping = False
 
@@ -212,14 +212,14 @@ class _YoloTrainer(Trainer):
             else:
                 stats = export_dataset(((s.id, s.path, s.shapes, s.split) for s in samples), classes, work, val_ratio=val_ratio, task=self.task)
                 data = os.path.join(work, "data.yaml")
-            _plog(progress, f"資料集（{self.task}）：train {stats['train']}、val {stats['val']}"
-                  + (f"、test {stats['test']}" if stats.get("test") else "") + f"（{work}）")
+            _plog(progress, f"Dataset ({self.task}): train {stats['train']}, val {stats['val']}"
+                  + (f", test {stats['test']}" if stats.get("test") else "") + f" ({work})")
             if stats["train"] < 1 or stats["val"] < 1:
-                raise TrainError("已標記樣本太少：train 與 val 至少各要 1 張（建議每類 10 張以上）")
+                raise TrainError("Too few labelled samples: train and val need at least one each (ten or more per class is recommended)")
 
             model = YOLO(resolve_model(str(params.get("model") or self.base_model), lambda m: _plog(progress, m)))
             if str(getattr(model, "task", "") or self.task) != self.task:
-                raise TrainError(f"基底模型任務是 {model.task}，此 trainer 需要 {self.task} 的底模（例如 {self.base_model}）")
+                raise TrainError(f"The base model's task is {model.task}, while this trainer needs {self.task} (for example {self.base_model}）")
             epochs = int(params.get("epochs") or 100)
             imgsz = int(params.get("imgsz") or (224 if self.task == "classify" else 640))
             state: dict[str, Any] = {"epochs": epochs, "batches": 1, "batch": 0, "epoch": 0, "last_started": -1}
@@ -227,7 +227,7 @@ class _YoloTrainer(Trainer):
 
             def on_train_start(t):
                 state["epochs"] = int(getattr(t, "epochs", epochs))
-                _plog(progress, f"開始訓練：{state['epochs']} epochs、imgsz {imgsz}、device {device}")
+                _plog(progress, f"Training started: {state['epochs']} epochs, imgsz {imgsz}, device {device}")
 
             def on_train_epoch_start(t):
                 state["epoch"] = int(t.epoch)
@@ -243,7 +243,7 @@ class _YoloTrainer(Trainer):
                     loss = round(float(t.loss.item()), 4)
                 except Exception:  # noqa: BLE001
                     pass
-                report(0.05 + 0.85 * frac, f"訓練中（epoch {state['epoch'] + 1}/{state['epochs']}）",
+                report(0.05 + 0.85 * frac, f"Training (epoch {state['epoch'] + 1}/{state['epochs']}）",
                        {"epoch": state["epoch"] + 1, "epochs": state["epochs"], "loss": loss})
                 if stopping:
                     t.stop = True  # ultralytics 會在本 batch 後跳出，照常驗證與存檔
@@ -278,7 +278,7 @@ class _YoloTrainer(Trainer):
             if not (best and os.path.isfile(best)):
                 last = str(getattr(trainer, "last", "") or "")
                 best = last if last and os.path.isfile(last) else ""
-            report(0.93, "匯出 ONNX", None)
+            report(0.93, "Exporting ONNX", None)
             export_model = YOLO(best) if best else model
             onnx_path = export_model.export(format="onnx", imgsz=imgsz, dynamic=False, verbose=False)
             with open(str(onnx_path), "rb") as f:
@@ -328,15 +328,15 @@ class _YoloTrainer(Trainer):
         if not unlabeled:
             return []
         if not classes:
-            raise TrainError("先在「編輯類別」新增至少一個類別")
+            raise TrainError("Add at least one class under Edit classes first")
         weights = str(params.get("weights") or "")
         using_base = False
         if weights and not os.path.isfile(weights):
-            raise TrainError(f"上次訓練的權重已遺失（{weights}）。重新訓練一次，或清掉專案參數 weights。")
+            raise TrainError(f"The weights from the last training run have gone ({weights}). Train again, or clear the project's weights parameter.")
         if not weights:
             weights = resolve_model(str(params.get("model") or self.base_model))
             if not os.path.isfile(weights):
-                raise TrainError(f"找不到模型檔 {weights}。填官方底模名稱（會自動下載）或既有 .pt 路徑。")
+                raise TrainError(f"Model file not found: {weights}. Give a stock model name (which downloads automatically) or the path to an existing .pt file.")
             using_base = True
         YOLO = _import_ultralytics()
         model = YOLO(weights)
@@ -432,8 +432,8 @@ class _YoloTrainer(Trainer):
 
 class YoloSegTrainer(_YoloTrainer):
     kind = "yolo_seg"
-    label = "實例分割（YOLO-seg）"
-    description = "用 polygon 標記訓練 YOLO segmentation 模型（找出每個物件的輪廓與類別）；需要 ultralytics（torch），建議有 NVIDIA GPU。官方底模第一次使用會自動下載；還沒訓練過也能自動標記（用底模提案輪廓、掛到第一個類別）。產物：best.pt 給「YOLO 實例分割」工具、ONNX 給「DL 實例分割」工具。"
+    label = "Instance segmentation (YOLO-seg)"
+    description = "Trains a YOLO segmentation model from polygon labels, finding each object's outline and class. It needs ultralytics (torch) and an NVIDIA GPU is recommended. The stock model downloads on first use, and automatic labelling works even before training (the stock model proposes outlines, attached to the first class). Products: best.pt for the YOLO instance segmentation tool and ONNX for the DL instance segmentation tool."
     task = "segment"
     base_model = "yolov8n-seg.pt"
     tool_key = "yolo_segment"
@@ -443,8 +443,8 @@ class YoloSegTrainer(_YoloTrainer):
 
 class YoloDetectTrainer(_YoloTrainer):
     kind = "yolo_detect"
-    label = "物件偵測（YOLO）"
-    description = "用 bbox（或 polygon，會取外接框）標記訓練 YOLO 偵測模型：找出每個物件的框與類別。速度最快、標記最省；產物：best.pt 給「YOLO 物件偵測」工具、ONNX 給「DL 物件偵測」工具。"
+    label = "Object detection (YOLO)"
+    description = "Trains a YOLO detection model from bounding boxes (a polygon becomes its bounding box), finding each object's box and class. The fastest to train and the cheapest to label. Products: best.pt for the YOLO object detection tool and ONNX for the DL object detection tool."
     task = "detect"
     base_model = "yolo11n.pt"
     tool_key = "yolo_detect"
@@ -454,8 +454,8 @@ class YoloDetectTrainer(_YoloTrainer):
 
 class YoloClassifyTrainer(_YoloTrainer):
     kind = "yolo_cls"
-    label = "影像分類（YOLO-cls）"
-    description = "整張影像一個類別，訓練 YOLO 分類模型（ImageNet 預訓練底模微調）；比內建 MLP 分類器準、需要 ultralytics（torch）。產物：best.pt 給「YOLO 分類」工具、ONNX 給「DL 分類」工具。"
+    label = "Image classification (YOLO-cls)"
+    description = "One class per image, fine-tuning a YOLO classification model from an ImageNet-pretrained base. More accurate than the built-in MLP classifier, and it needs ultralytics (torch). Products: best.pt for the YOLO classification tool and ONNX for the DL classification tool."
     task = "classify"
     base_model = "yolo11n-cls.pt"
     label_mode = "classes"
@@ -467,8 +467,8 @@ class YoloClassifyTrainer(_YoloTrainer):
 
 class YoloObbTrainer(_YoloTrainer):
     kind = "yolo_obb"
-    label = "旋轉框偵測（YOLO-obb）"
-    description = "用 polygon（取最小外接旋轉矩形）或 bbox 標記訓練 YOLO OBB 模型：回每個物件的旋轉矩形（中心、寬高、角度），適合傾斜擺放的工件。產物：best.pt 給「YOLO 旋轉框」工具（ONNX 僅供外部使用）。"
+    label = "Oriented box detection (YOLO-obb)"
+    description = "Trains a YOLO OBB model from polygons (reduced to their minimum-area rotated rectangle) or boxes, returning each object's rotated rectangle (centre, size and angle), which suits parts that sit at an angle. Product: best.pt for the YOLO oriented box tool (the ONNX is for external use only)."
     task = "obb"
     base_model = "yolo11n-obb.pt"
     tool_key = "yolo_obb"

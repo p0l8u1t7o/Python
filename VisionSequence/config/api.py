@@ -39,7 +39,7 @@ def _unauthenticated(request, exc: AuthenticationError):  # noqa: ARG001
     # 整合方得寫兩套解析。統一成同一個形狀。
     return api.create_response(
         request,
-        {"error": {"code": "unauthenticated", "message": "缺少或無效的權杖／API 金鑰"}},
+        {"error": {"code": "unauthenticated", "message": "Missing or invalid token or API key"}},
         status=401,
     )
 
@@ -48,7 +48,7 @@ def _unauthenticated(request, exc: AuthenticationError):  # noqa: ARG001
 def _ninja_validation(request, exc: NinjaValidationError):
     return api.create_response(
         request,
-        {"error": {"code": "validation_error", "message": "請求格式錯誤", "details": exc.errors}},
+        {"error": {"code": "validation_error", "message": "The request is malformed", "details": exc.errors}},
         status=422,
     )
 

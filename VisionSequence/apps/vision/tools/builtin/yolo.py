@@ -22,15 +22,15 @@ ROI_SHAPES = ["rect", "rotated_rect"]
 GREEN = "#22c55e"
 #: COCO 17 關鍵點的骨架連線（姿態模型輸出 17 點時畫）。
 COCO_SKELETON = [(15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6), (5, 7), (6, 8), (7, 9), (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 6)]
-IMGSZ_OPTIONS = [{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640（建議）"}, {"value": 960, "label": "960"}, {"value": 1280, "label": "1280"}]
-DEVICE_OPTIONS = [{"value": "auto", "label": "自動（有 GPU 就用）"}, {"value": "cuda", "label": "GPU（CUDA）"}, {"value": "cpu", "label": "CPU"}]
+IMGSZ_OPTIONS = [{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640 (recommended)"}, {"value": 960, "label": "960"}, {"value": 1280, "label": "1280"}]
+DEVICE_OPTIONS = [{"value": "auto", "label": "Automatic (use the GPU when there is one)"}, {"value": "cuda", "label": "GPU (CUDA)"}, {"value": "cpu", "label": "CPU"}]
 
 
 def _common_params(task: str, default_weights: str, imgsz: int = 640) -> list[Param]:
     return [
         Param("model", "Model asset", kind="asset", accept="model", required=False, help_text="A model trained on the teaching page (.pt or .onnx) or one you uploaded; blank falls back to the base model below."),
         Param("model_name", "Base model", kind="text", default=default_weights, help_text="An official model name (downloaded on first use) or a local .pt path; used only when no model asset is chosen."),
-        Param("imgsz", "Inference size", kind="select", default=imgsz, options=IMGSZ_OPTIONS if task != "classify" else [{"value": 224, "label": "224（建議）"}, {"value": 320, "label": "320"}], help_text="Most accurate when it matches training."),
+        Param("imgsz", "Inference size", kind="select", default=imgsz, options=IMGSZ_OPTIONS if task != "classify" else [{"value": 224, "label": "224 (recommended)"}, {"value": 320, "label": "320"}], help_text="Most accurate when it matches training."),
         Param("device", "Device", kind="select", default="auto", options=DEVICE_OPTIONS, group="Advanced"),
         Param("half", "Half precision (FP16)", kind="boolean", default=False, group="Advanced", help_text="GPU only: faster and lighter on memory."),
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),

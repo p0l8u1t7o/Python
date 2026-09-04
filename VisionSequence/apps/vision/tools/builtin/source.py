@@ -18,14 +18,14 @@ class ImageSourceTool(Tool):
     params = [
         Param("source_id", "Image source", kind="source", required=False, help_text="Leave blank to accept only images sent through the API."),
         Param("mode", "Capture mode", kind="select", default="auto", options=[
-            {"value": "auto", "label": "暫存／API 送圖優先，否則從來源庫抓"},
-            {"value": "source", "label": "一律從來源抓"},
-            {"value": "input", "label": "只用暫存影像（試跑上傳或 API 送圖；沒有就報錯）"},
+            {"value": "auto", "label": "A scratch or pushed image first, otherwise grab from the source"},
+            {"value": "source", "label": "Always grab from the source"},
+            {"value": "input", "label": "Only a scratch image (uploaded for a preview or pushed through the API); an error if there is none"},
         ]),
         Param("convert", "Colour", kind="select", default="keep", options=[
-            {"value": "keep", "label": "維持原樣"},
-            {"value": "gray", "label": "轉灰階"},
-            {"value": "bgr", "label": "轉彩色（BGR）"},
+            {"value": "keep", "label": "Leave as it is"},
+            {"value": "gray", "label": "Convert to grayscale"},
+            {"value": "bgr", "label": "Convert to colour (BGR)"},
         ]),
     ]
     inputs: list[Port] = []

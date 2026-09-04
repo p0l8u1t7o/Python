@@ -57,7 +57,7 @@ PARAM_KINDS = (
 class UnknownToolType(ValidationError):
     def __init__(self, key: str, available: list[str] | None = None) -> None:
         super().__init__(
-            f"未知的工具型別 '{key}'",
+            f"Unknown tool type '{key}'",
             code="unknown_tool_type",
             details={"tool_type": key, "available": sorted(available or [])},
         )
@@ -293,15 +293,15 @@ _REGISTRY: dict[str, ToolType] = {}
 
 def register(tool: ToolType) -> ToolType:
     if not tool.key:
-        raise RuntimeError(f"{tool!r} 沒有 key")
+        raise RuntimeError(f"{tool!r} has no key")
     if tool.key in _REGISTRY:
-        raise RuntimeError(f"工具 '{tool.key}' 已註冊")
+        raise RuntimeError(f"The tool '{tool.key}' is already registered")
     for p in tool.params:
         if p.kind not in PARAM_KINDS:
-            raise RuntimeError(f"工具 '{tool.key}' 參數 '{p.key}' 的 kind '{p.kind}' 不在封閉集合內")
+            raise RuntimeError(f"The tool '{tool.key}' parameter '{p.key}' has a kind '{p.kind}' that is not in the allowed set")
     for port in list(tool.inputs) + list(tool.outputs):
         if port.type not in PORT_TYPES:
-            raise RuntimeError(f"工具 '{tool.key}' 埠 '{port.key}' 的 type '{port.type}' 不合法")
+            raise RuntimeError(f"The tool '{tool.key}' port '{port.key}' has a type '{port.type}' that is not valid")
     _REGISTRY[tool.key] = tool
     return tool
 
@@ -351,11 +351,11 @@ CATEGORY_LABELS = {
 
 
 #: 每個工具都有的隱含輸出：本節點的標記（overlays），接給 draw_result 疊圖。
-IMPLICIT_OVERLAYS_PORT = {"key": "_overlays", "label": "標記", "type": "list", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
+IMPLICIT_OVERLAYS_PORT = {"key": "_overlays", "label": "Overlays", "type": "list", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
 #: 影像直通（每個工具預設可把影像傳進、傳出）：輸出＝原影像原樣往下傳（標記只是 metadata 不畫進影像）；
 #: 沒有任何 image 輸入的工具（邏輯類）另補直通輸入。引擎在 execute 後負責發值（工具本身不讀不寫）。
-IMPLICIT_IMAGE_OUT = {"key": "_image", "label": "影像（直通）", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
-IMPLICIT_IMAGE_IN = {"key": "_image", "label": "影像（直通）", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
+IMPLICIT_IMAGE_OUT = {"key": "_image", "label": "Image (pass-through)", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
+IMPLICIT_IMAGE_IN = {"key": "_image", "label": "Image (pass-through)", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
 
 
 def catalogue() -> list[dict[str, Any]]:

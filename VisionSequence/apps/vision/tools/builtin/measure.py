@@ -102,13 +102,13 @@ class CaliperTool(Tool):
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
         Param("edge_pair", "Pick edge pair", kind="select", default="first_last", options=[
-            {"value": "first_last", "label": "第一個與最後一個"},
-            {"value": "widest", "label": "最寬的一對"},
-            {"value": "narrowest", "label": "最窄的一對（相鄰）"},
-            {"value": "strongest", "label": "最強的兩個"},
+            {"value": "first_last", "label": "First and last"},
+            {"value": "widest", "label": "Widest pair"},
+            {"value": "narrowest", "label": "Narrowest adjacent pair"},
+            {"value": "strongest", "label": "Two strongest"},
         ]),
         Param("pair_polarity", "Edge pair polarity", kind="select", default="any", options=[
-            {"value": "any", "label": "不限"}, {"value": "bright", "label": "亮條（暗→亮、亮→暗）"}, {"value": "dark", "label": "暗條（亮→暗、暗→亮）"},
+            {"value": "any", "label": "Any"}, {"value": "bright", "label": "Bright band (dark to light, then light to dark)"}, {"value": "dark", "label": "Dark band (light to dark, then dark to light)"},
         ], help_text="Constrains the polarity order of a pair, so measuring a bright or dark bar does not latch onto a neighbouring noise edge."),
         Param("expected_width", "Expected width", kind="number", default=0, minimum=0, unit="px", help_text="Above 0, picks the edge pair whose width is closest to this instead of following the pair mode."),
         Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
@@ -178,7 +178,7 @@ class DistanceTool(Tool):
     icon = "MoveHorizontal"
     params = [
         Param("mode", "Measure", kind="select", default="euclid", options=[
-            {"value": "euclid", "label": "直線距離"}, {"value": "dx", "label": "X 方向距離"}, {"value": "dy", "label": "Y 方向距離"},
+            {"value": "euclid", "label": "Straight-line distance"}, {"value": "dx", "label": "Distance in X"}, {"value": "dy", "label": "Distance in Y"},
         ]),
     ]
     inputs = [
@@ -215,7 +215,7 @@ class AngleTool(Tool):
     icon = "TriangleRight"
     params = [
         Param("range", "Angle range", kind="select", default="0_90", options=[
-            {"value": "0_90", "label": "0 ~ 90（不分方向）"}, {"value": "0_180", "label": "0 ~ 180"}, {"value": "signed", "label": "-180 ~ 180（帶號）"},
+            {"value": "0_90", "label": "0 to 90 (undirected)"}, {"value": "0_180", "label": "0 ~ 180"}, {"value": "signed", "label": "-180 to 180 (signed)"},
         ]),
     ]
     inputs = [
@@ -313,12 +313,12 @@ class CalibrationTool(Tool):
     icon = "Scale"
     params = [
         Param("mode", "Calibration mode", kind="select", default="pixel_size", options=[
-            {"value": "pixel_size", "label": "mm per pixel"}, {"value": "known_distance", "label": "已知距離"},
+            {"value": "pixel_size", "label": "mm per pixel"}, {"value": "known_distance", "label": "Known distance"},
         ]),
         Param("pixel_size_mm", "mm per pixel", kind="number", default=0.01, minimum=0, step=0.0001, unit="mm/px", visible_when={"param": "mode", "in": ["pixel_size"]}),
         Param("px_distance", "Pixel distance", kind="number", default=100, minimum=0, unit="px", visible_when={"param": "mode", "in": ["known_distance"]}),
         Param("real_mm", "Real distance", kind="number", default=1, minimum=0, unit="mm", visible_when={"param": "mode", "in": ["known_distance"]}),
-        Param("power", "Power", kind="select", default="1", options=[{"value": "1", "label": "長度（×k）"}, {"value": "2", "label": "面積（×k²）"}], help_text="Choose k² for area measurements."),
+        Param("power", "Power", kind="select", default="1", options=[{"value": "1", "label": "Length (x k)"}, {"value": "2", "label": "Area (x k squared)"}], help_text="Choose k² for area measurements."),
     ]
     inputs = [Port("value", "Pixel values", "number", required=False), Port("points", "Points", "points", required=False)]
     outputs = [Port("mm", "Millimetres", "number"), Port("scale", "Scale", "number"), Port("points_mm", "Points (mm)", "points")]
@@ -379,7 +379,7 @@ class HistogramTool(Tool):
 # ---------------------------------------------------------------------------
 # 杯件量測：圓弧／橢圓擬合、壁厚、同心度、倒角、公差判定
 # ---------------------------------------------------------------------------
-_EDGE_SELECT_OPTIONS = [{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}]
+_EDGE_SELECT_OPTIONS = [{"value": "strongest", "label": "Strongest"}, {"value": "first", "label": "First"}, {"value": "last", "label": "Last"}]
 
 
 def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, Any], origin: tuple[float, float] | None = None) -> np.ndarray:
@@ -800,7 +800,7 @@ class ChamferAngleTool(Tool):
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
         Param("num_calipers", "Calipers", kind="number", default=40, minimum=4, maximum=500),
-        Param("direction", "Which edge", kind="select", default="first", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
+        Param("direction", "Which edge", kind="select", default="first", options=[{"value": "first", "label": "First"}, {"value": "last", "label": "Last"}, {"value": "strongest", "label": "Strongest"}]),
         Param("ransac_tol", "RANSAC tolerance", kind="number", default=1.5, minimum=0.3, maximum=50, unit="px", group="Advanced"),
         Param("min_points", "Min points for the second line", kind="number", default=3, minimum=2, maximum=100, group="Advanced"),
         Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
@@ -913,7 +913,7 @@ class ToleranceJudgeTool(Tool):
         tolerances = [t for t in (outputs.get("tolerances") or []) if isinstance(t, dict) and t.get("name") != name]
         outputs["tolerances"] = tolerances + [entry]
         verdict = "pass" if ok else "fail"
-        msg = (f"{v:.4g}{unit} 偏差 {deviation:+.4g}（{lower:.4g} ~ {upper:.4g}）→ {verdict.upper()}" if valid else f"量測值無效（{raw!r}）→ FAIL")
+        msg = (f"{v:.4g}{unit} deviation {deviation:+.4g} ({lower:.4g} to {upper:.4g}) -> {verdict.upper()}" if valid else f"The measurement is invalid ({raw!r}) -> FAIL")
         return Result(
             outputs={"verdict": verdict, "deviation": deviation, "in_spec": ok, "nominal": nominal, "upper": upper, "lower": lower, "spec_source": source},
             branch=verdict, status="ok" if ok else "ng", message=msg, context={"_outputs": outputs},
@@ -1046,8 +1046,8 @@ class GeometryTool(Tool):
     icon = "Ruler"
     params = [
         Param("mode", "Compute", kind="select", default="intersect", options=[
-            {"value": "intersect", "label": "兩線交點"}, {"value": "point_line", "label": "點到線垂距"},
-            {"value": "midpoint", "label": "兩點中點"}, {"value": "project", "label": "點投影到線"},
+            {"value": "intersect", "label": "Intersection of two lines"}, {"value": "point_line", "label": "Perpendicular distance from a point to a line"},
+            {"value": "midpoint", "label": "Midpoint of two points"}, {"value": "project", "label": "Projection of a point onto a line"},
         ]),
     ]
     inputs = [Port("a", "A (line / point)", "any"), Port("b", "B (line / point)", "any")]
@@ -1067,7 +1067,7 @@ class GeometryTool(Tool):
                 return Result(status="ng", message="The lines are parallel and never meet", outputs={"x": 0.0, "y": 0.0, "distance": 0.0})
             px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom
             py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
-            overlays = [{"kind": "point", "x": px, "y": py, "label": "交點"}]
+            overlays = [{"kind": "point", "x": px, "y": py, "label": "Intersection"}]
             return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": 0.0}, overlays=overlays, message=f"({px:.1f}, {py:.1f})")
         if mode == "midpoint":
             pa, pb = _as_point(a), _as_point(b)
@@ -1076,7 +1076,7 @@ class GeometryTool(Tool):
             mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
             d = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
             return Result(outputs={"x": round(mx, 2), "y": round(my, 2), "distance": round(d, 2)},
-                          overlays=[{"kind": "point", "x": mx, "y": my, "label": "中點"}], message=f"({mx:.1f}, {my:.1f})")
+                          overlays=[{"kind": "point", "x": mx, "y": my, "label": "midpoint"}], message=f"({mx:.1f}, {my:.1f})")
         # point_line / project：a=點、b=線
         pa, lb = _as_point(a), _as_line(b)
         if not pa and _as_point(b) and _as_line(a):  # 接反了也行
@@ -1093,7 +1093,7 @@ class GeometryTool(Tool):
         d = math.hypot(pa[0] - px, pa[1] - py)
         overlays = [{"kind": "line", "x1": pa[0], "y1": pa[1], "x2": px, "y2": py, "label": f"{d:.1f}px"}]
         return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": round(d, 2)}, overlays=overlays,
-                      message=f"Perpendicular distance {d:.2f}px" if mode == "point_line" else f"投影 ({px:.1f}, {py:.1f})")
+                      message=f"Perpendicular distance {d:.2f}px" if mode == "point_line" else f"projection ({px:.1f}, {py:.1f})")
 
 
 TOOLS = [

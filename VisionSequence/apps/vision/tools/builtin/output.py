@@ -21,9 +21,9 @@ class JudgeTool(Tool):
     icon = "CheckCircle2"
     params = [
         Param("verdict", "Verdict", kind="select", default="by_input", options=[
-            {"value": "by_input", "label": "依布林輸入（真=OK，假=NG）"},
-            {"value": "ok", "label": "固定 OK"},
-            {"value": "ng", "label": "固定 NG"},
+            {"value": "by_input", "label": "From the boolean input (true is OK, false is NG)"},
+            {"value": "ok", "label": "Always OK"},
+            {"value": "ng", "label": "Always NG"},
         ]),
         Param("label", "Result label", kind="text", default="", help_text="Written into run.outputs.judge_label so an automation system can tell which check fired."),
     ]

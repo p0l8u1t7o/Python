@@ -283,7 +283,7 @@ class ModbusServerTests(SimpleTestCase):
         kinds = {k["kind"]: k for k in writers.kinds()}
         self.assertIn("modbus_server", kinds)
         self.assertIn("size", kinds["modbus_server"]["fields"])
-        self.assertIn("從站", kinds["modbus_server"]["label"])
+        self.assertIn("server", kinds["modbus_server"]["label"])
         self.writer.close()
         self.assertFalse(self.writer.info()["listening"])
         with self.assertRaises(writers.CommError):
@@ -389,7 +389,7 @@ class TriggerLoopTests(SimpleTestCase):
         self.addCleanup(loop.stop)
         loop.start()
         self.assertTrue(self._wait(lambda: loop.errors >= 1))
-        self.assertIn("不存在", loop.last_error)
+        self.assertIn("does not exist", loop.last_error)
         self.assertEqual(loop.fired, 0)
 
     def test_polling_does_not_flood_the_trace(self):
@@ -406,7 +406,7 @@ class TriggerLoopTests(SimpleTestCase):
         w.values["coil:0"] = 1
         self.assertTrue(self._wait(lambda: loop.fired >= 1))
         summaries = [e["summary"] for e in trace.entries("modbus")]
-        self.assertTrue(any("觸發" in s for s in summaries), summaries)
+        self.assertTrue(any("Trigger" in s for s in summaries), summaries)
         self.assertFalse(any(s.startswith("讀取") for s in summaries), summaries)
 
     def test_status_and_registry(self):
@@ -592,7 +592,7 @@ class TraceTests(SimpleTestCase):
         sim.write({"DO0": True})
         entry = trace.entries("modbus")[-1]
         self.assertEqual((entry["name"], entry["ok"], entry["direction"]), ("sim", True, "out"))
-        self.assertIn("寫入", entry["summary"])
+        self.assertIn("write", entry["summary"])
         self.assertEqual(entry["detail"]["request"], {"DO0": True})
         with self.assertRaises(writers.CommError):
             sim.write({"NOPE": 1})

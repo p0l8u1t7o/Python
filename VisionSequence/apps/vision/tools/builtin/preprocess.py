@@ -57,8 +57,8 @@ class BlurTool(Tool):
     icon = "Droplets"
     params = [
         Param("method", "Method", kind="select", default="gaussian", options=[
-            {"value": "gaussian", "label": "高斯"}, {"value": "median", "label": "中值"},
-            {"value": "bilateral", "label": "雙邊（保邊）"}, {"value": "box", "label": "均值"},
+            {"value": "gaussian", "label": "Gaussian"}, {"value": "median", "label": "Median"},
+            {"value": "bilateral", "label": "Bilateral (edge preserving)"}, {"value": "box", "label": "Mean"},
         ]),
         Param("ksize", "Kernel size (odd)", kind="number", default=5, minimum=1, maximum=99, step=2),
         Param("sigma", "Sigma (Gaussian / bilateral)", kind="number", default=0, minimum=0, maximum=200, group="Advanced"),
@@ -89,10 +89,10 @@ class ThresholdTool(Tool):
     icon = "SlidersHorizontal"
     params = [
         Param("method", "Method", kind="select", default="otsu", options=[
-            {"value": "fixed", "label": "固定門檻"}, {"value": "otsu", "label": "Otsu 自動"},
-            {"value": "triangle", "label": "Triangle 自動"},
-            {"value": "adaptive_mean", "label": "自適應（均值）"}, {"value": "adaptive_gaussian", "label": "自適應（高斯）"},
-            {"value": "range", "label": "灰階範圍"},
+            {"value": "fixed", "label": "Fixed"}, {"value": "otsu", "label": "Otsu (automatic)"},
+            {"value": "triangle", "label": "Triangle (automatic)"},
+            {"value": "adaptive_mean", "label": "Adaptive (mean)"}, {"value": "adaptive_gaussian", "label": "Adaptive (Gaussian)"},
+            {"value": "range", "label": "Grey range"},
         ]),
         Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["fixed"]}, teach=True),
         Param("low", "Lower", kind="number", default=0, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
@@ -135,10 +135,10 @@ class MorphologyTool(Tool):
     icon = "Shapes"
     params = [
         Param("op", "Operation", kind="select", default="open", options=[
-            {"value": "erode", "label": "侵蝕"}, {"value": "dilate", "label": "膨脹"}, {"value": "open", "label": "開運算"},
-            {"value": "close", "label": "閉運算"}, {"value": "gradient", "label": "梯度"}, {"value": "tophat", "label": "頂帽"}, {"value": "blackhat", "label": "黑帽"},
+            {"value": "erode", "label": "Erode"}, {"value": "dilate", "label": "Dilate"}, {"value": "open", "label": "Open"},
+            {"value": "close", "label": "Close"}, {"value": "gradient", "label": "Gradient"}, {"value": "tophat", "label": "Top hat"}, {"value": "blackhat", "label": "Black hat"},
         ]),
-        Param("shape", "Kernel shape", kind="select", default="rect", options=[{"value": "rect", "label": "矩形"}, {"value": "ellipse", "label": "橢圓"}, {"value": "cross", "label": "十字"}]),
+        Param("shape", "Kernel shape", kind="select", default="rect", options=[{"value": "rect", "label": "Rectangle"}, {"value": "ellipse", "label": "Ellipse"}, {"value": "cross", "label": "Cross"}]),
         Param("ksize", "Kernel size", kind="number", default=3, minimum=1, maximum=99),
         Param("iterations", "Iterations", kind="number", default=1, minimum=1, maximum=20),
     ]
@@ -171,7 +171,7 @@ class ResizeTool(Tool):
         Param("width", "Width (0 = use scale)", kind="number", default=0, minimum=0),
         Param("height", "Height (0 = use scale)", kind="number", default=0, minimum=0),
         Param("interpolation", "Interpolation", kind="select", default="area", options=[
-            {"value": "area", "label": "區域（縮小）"}, {"value": "linear", "label": "線性"}, {"value": "nearest", "label": "最近"}, {"value": "cubic", "label": "三次"},
+            {"value": "area", "label": "Area (shrinking)"}, {"value": "linear", "label": "Linear"}, {"value": "nearest", "label": "Nearest"}, {"value": "cubic", "label": "Cubic"},
         ]),
     ]
     outputs = [Port("image", "Image", "image"), Port("scale_x", "Scale X", "number"), Port("scale_y", "Scale Y", "number")]
@@ -200,10 +200,10 @@ class ColorConvertTool(Tool):
     icon = "Palette"
     params = [
         Param("mode", "Output", kind="select", default="hsv_s", options=[
-            {"value": "bgr_b", "label": "B 通道"}, {"value": "bgr_g", "label": "G 通道"}, {"value": "bgr_r", "label": "R 通道"},
-            {"value": "hsv_h", "label": "HSV：H"}, {"value": "hsv_s", "label": "HSV：S"}, {"value": "hsv_v", "label": "HSV：V"},
-            {"value": "lab_l", "label": "Lab：L"}, {"value": "lab_a", "label": "Lab：a"}, {"value": "lab_b", "label": "Lab：b"},
-            {"value": "hsv", "label": "整張 HSV（3 通道）"},
+            {"value": "bgr_b", "label": "B channel"}, {"value": "bgr_g", "label": "G channel"}, {"value": "bgr_r", "label": "R channel"},
+            {"value": "hsv_h", "label": "HSV: H"}, {"value": "hsv_s", "label": "HSV: S"}, {"value": "hsv_v", "label": "HSV: V"},
+            {"value": "lab_l", "label": "Lab: L"}, {"value": "lab_a", "label": "Lab: a"}, {"value": "lab_b", "label": "Lab: b"},
+            {"value": "hsv", "label": "Whole HSV (3 channels)"},
         ]),
     ]
 
@@ -264,9 +264,9 @@ class ArithmeticTool(Tool):
     icon = "Calculator"
     params = [
         Param("op", "Operation", kind="select", default="absdiff", options=[
-            {"value": "absdiff", "label": "絕對差 |A-B|"}, {"value": "add", "label": "A+B"}, {"value": "subtract", "label": "A-B"},
+            {"value": "absdiff", "label": "Absolute difference |A-B|"}, {"value": "add", "label": "A+B"}, {"value": "subtract", "label": "A-B"},
             {"value": "and", "label": "A AND B"}, {"value": "or", "label": "A OR B"}, {"value": "xor", "label": "A XOR B"},
-            {"value": "invert", "label": "反相 A"}, {"value": "gain", "label": "A×gain + bias"},
+            {"value": "invert", "label": "Invert A"}, {"value": "gain", "label": "A×gain + bias"},
         ]),
         Param("gain", "gain", kind="number", default=1.0, step=0.1, visible_when={"param": "op", "in": ["gain"]}),
         Param("bias", "bias", kind="number", default=0, visible_when={"param": "op", "in": ["gain"]}),
@@ -324,7 +324,7 @@ class RotateFlipTool(Tool):
     icon = "RotateCw"
     params = [
         Param("angle", "Angle (clockwise)", kind="number", default=0, minimum=-360, maximum=360),
-        Param("flip", "Flip", kind="select", default="none", options=[{"value": "none", "label": "不翻"}, {"value": "h", "label": "水平"}, {"value": "v", "label": "垂直"}, {"value": "hv", "label": "水平＋垂直"}]),
+        Param("flip", "Flip", kind="select", default="none", options=[{"value": "none", "label": "None"}, {"value": "h", "label": "Horizontal"}, {"value": "v", "label": "Vertical"}, {"value": "hv", "label": "Horizontal and vertical"}]),
         Param("keep_size", "Keep size", kind="boolean", default=True),
     ]
 
@@ -367,10 +367,10 @@ class ConvertDepthTool(Tool):
     accepts = ("u8", "u16", "f32")
     params = [
         Param("to", "Target depth", kind="select", default="u8", options=[
-            {"value": "u8", "label": "8 位元（U8）"}, {"value": "u16", "label": "16 位元（U16）"}, {"value": "f32", "label": "浮點（SGL）"},
+            {"value": "u8", "label": "8-bit (U8)"}, {"value": "u16", "label": "16-bit (U16)"}, {"value": "f32", "label": "Float (SGL)"},
         ]),
         Param("scale", "To 8-bit", kind="select", default="shift", options=[
-            {"value": "shift", "label": "等比例（16-bit 右移 8）"}, {"value": "minmax", "label": "min-max 拉伸"}, {"value": "clip", "label": "直接裁切"},
+            {"value": "shift", "label": "Proportional (16-bit shifted right by 8)"}, {"value": "minmax", "label": "min-max stretch"}, {"value": "clip", "label": "Clip"},
         ], visible_when={"param": "to", "in": ["u8"]}),
     ]
     inputs = [Port("image", "Image", "image")]
@@ -415,10 +415,10 @@ class LutTool(Tool):
     icon = "Spline"
     params = [
         Param("mode", "Convert", kind="select", default="linear", options=[
-            {"value": "linear", "label": "線性（亮度／對比）"}, {"value": "power", "label": "Gamma（次方）"},
-            {"value": "log", "label": "對數（暗部展開）"}, {"value": "exp", "label": "指數（亮部展開）"},
-            {"value": "sqrt", "label": "開根號"}, {"value": "square", "label": "平方"}, {"value": "invert", "label": "反相"},
-            {"value": "equalize", "label": "直方圖等化"}, {"value": "clahe", "label": "CLAHE（區域對比）"},
+            {"value": "linear", "label": "Linear (brightness / contrast)"}, {"value": "power", "label": "Gamma (power)"},
+            {"value": "log", "label": "Log (opens up the shadows)"}, {"value": "exp", "label": "Exponential (opens up the highlights)"},
+            {"value": "sqrt", "label": "Square root"}, {"value": "square", "label": "Square"}, {"value": "invert", "label": "Invert"},
+            {"value": "equalize", "label": "Histogram equalisation"}, {"value": "clahe", "label": "CLAHE (local contrast)"},
         ]),
         Param("clip", "CLAHE clip", kind="number", default=2.0, minimum=0.1, maximum=40, step=0.1, visible_when={"param": "mode", "in": ["clahe"]}),
         Param("tile", "CLAHE tiles", kind="number", default=8, minimum=1, maximum=64, visible_when={"param": "mode", "in": ["clahe"]}),
@@ -468,10 +468,10 @@ class FilterTool(Tool):
     icon = "Grid3x3"
     params = [
         Param("method", "Method", kind="select", default="sharpen", options=[
-            {"value": "sharpen", "label": "銳利化"}, {"value": "canny", "label": "Canny 邊緣（二值）"}, {"value": "laplacian", "label": "Laplacian"},
-            {"value": "gradient", "label": "梯度強度（Sobel）"}, {"value": "sobel_x", "label": "Sobel X"}, {"value": "sobel_y", "label": "Sobel Y"},
-            {"value": "prewitt", "label": "Prewitt 梯度"}, {"value": "highpass", "label": "高通"}, {"value": "emboss", "label": "浮雕"},
-            {"value": "custom", "label": "自訂 3×3"},
+            {"value": "sharpen", "label": "Sharpen"}, {"value": "canny", "label": "Canny edges (binary)"}, {"value": "laplacian", "label": "Laplacian"},
+            {"value": "gradient", "label": "Gradient magnitude (Sobel)"}, {"value": "sobel_x", "label": "Sobel X"}, {"value": "sobel_y", "label": "Sobel Y"},
+            {"value": "prewitt", "label": "Prewitt gradient"}, {"value": "highpass", "label": "High pass"}, {"value": "emboss", "label": "Emboss"},
+            {"value": "custom", "label": "Custom 3x3"},
         ]),
         Param("strength", "Strength", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.1, visible_when={"param": "method", "in": ["sharpen"]}, teach=True),
         Param("low", "Canny low", kind="number", default=50, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
@@ -543,10 +543,10 @@ class FftFilterTool(Tool):
     accepts = ("u8", "u16", "f32")
     params = [
         Param("mode", "Filter", kind="select", default="lowpass", options=[
-            {"value": "lowpass", "label": "低通（保留大結構）"}, {"value": "highpass", "label": "高通（保留邊緣／細紋，以中灰 128 為零點）"},
+            {"value": "lowpass", "label": "Low pass (keeps the large structures)"}, {"value": "highpass", "label": "High pass (keeps edges and fine texture, with mid grey 128 as zero)"},
         ]),
         Param("style", "Mode", kind="select", default="attenuate", options=[
-            {"value": "truncate", "label": "截斷"}, {"value": "attenuate", "label": "高斯衰減"},
+            {"value": "truncate", "label": "Truncate"}, {"value": "attenuate", "label": "Gaussian attenuation"},
         ]),
         Param("cutoff", "Cut-off (radius ratio)", kind="range", default=0.1, minimum=0.01, maximum=1.0, step=0.01, teach=True),
     ]

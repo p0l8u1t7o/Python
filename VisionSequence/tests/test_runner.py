@@ -105,7 +105,7 @@ class EngineTests(TestCase):
     def test_disabled_node_passes_through(self):
         g = {"nodes": [n("src", "image_source", source_id="1"), {"id": "b", "type": "blur", "enabled": False, "params": {}}, n("t", "threshold")], "edges": [e("src", "b"), e("b", "t")]}
         r = run_graph(g)
-        self.assertEqual(r.nodes["b"].message, "已停用（直通）")
+        self.assertEqual(r.nodes["b"].message, "disabled (pass-through)")
         self.assertEqual(r.nodes["t"].status, "ok")
 
     def test_exception_marks_failed_and_downstream_skipped(self):

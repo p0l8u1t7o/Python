@@ -84,7 +84,7 @@ def build_mlp(w1: np.ndarray, b1: np.ndarray, w2: np.ndarray, b2: np.ndarray, *,
     """x[1,C,S,S] → Flatten → xW1+b1 → Relu → hW2+b2 → y[1,classes]。權重形狀：w1[D,H]、w2[H,C_out]。"""
     d = channels * size * size
     if w1.shape[0] != d:
-        raise ValueError(f"w1 第一維應為 {d}，得到 {w1.shape}")
+        raise ValueError(f"The first dimension of w1 should be {d}, got {w1.shape}")
     return build_model(
         nodes=[
             ("Flatten", ["x"], ["flat"]),

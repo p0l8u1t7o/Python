@@ -154,7 +154,7 @@ class BatchApiTests(TransactionTestCase):
         self.assertTrue(150 < judge["suggestion"]["low"] < 200, judge)
         self.assertEqual(judge["acc_suggested"], 1.0)
         self.assertEqual(ins["suggestions"][0]["node"], "rng")
-        self.assertTrue(any("建議" in line for line in ins["text"]))
+        self.assertTrue(any("Consider changing" in line for line in ins["text"]))
         self.assertEqual(ins["mismatches"][0]["index"], 2)
         # 套用建議重跑（parent＝第一次）
         graph2 = insights.apply_suggestions(run["graph"], ins["suggestions"])
@@ -267,7 +267,7 @@ class BatchApiTests(TransactionTestCase):
         stale = BatchRun.objects.create(batch_set_id=s2["id"], flow_version=1, graph=self.flow.graph, status="running", progress_total=1)
         out = self._json("get", f"/api/vision/batch/runs/{stale.id}").json()
         self.assertEqual(out["status"], "failed")
-        self.assertIn("重新啟動", out["error"])
+        self.assertIn("restarted", out["error"])
 
     def test_autotune_mode_to_recipe_and_to_golden(self):
         flow = Flow.objects.create(name="count", graph=count_graph(self.source.id, min_area=5000))
@@ -382,7 +382,7 @@ class BatchAgentTests(TransactionTestCase):
         self.assertEqual(r.status_code, 200, r.content)
         body = r.json()
         self.assertEqual(body["provider"], "rules")
-        self.assertIn("建議", body["answer"])
+        self.assertIn("Consider changing", body["answer"])
         self.assertEqual(body["insights"]["labeled"], 3)
         self.assertEqual(body["suggestions"][0]["node"], "rng")
         self.assertEqual(body["suggestions"][0]["key"], "low")
@@ -401,7 +401,7 @@ class BatchAgentTests(TransactionTestCase):
         self.assertEqual(body["answer"], "第 3 張偏暗但門檻太低。")
         self.assertEqual(body["suggestions"], [{"node": "rng", "label": "rng", "key": "low", "value": 170, "reason": "介於兩群之間"}])
         self.assertTrue(any("nope" in w for w in body["warnings"]))
-        self.assertIn("逐張資料", done.call_args.args[3])
+        self.assertIn("Per-image data", done.call_args.args[3])
         self.assertEqual(self._json("post", "/api/vision/agent/consult", {"batch_run_id": run.id, "question": " "}).status_code, 422)
         self.assertEqual(self._json("post", "/api/vision/agent/consult", {"batch_run_id": 9999, "question": "x"}).status_code, 404)
 

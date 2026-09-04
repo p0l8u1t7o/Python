@@ -51,7 +51,7 @@ def pick_device(pref: str) -> tuple[str, str]:
     if pref in ("auto", "", "gpu"):
         return ("cuda" if cuda_available() else "cpu"), ""
     if pref.startswith("cuda") and not cuda_available():
-        return "cpu", "找不到 CUDA，已退回 CPU"
+        return "cpu", "CUDA was not found; using the CPU instead"
     return pref, ""
 
 
@@ -62,7 +62,7 @@ def _import_yolo():
 
         return YOLO
     except ImportError:
-        raise ModelUnavailable(f"未安裝 ultralytics／torch，無法執行 YOLO 工具。{_INSTALL_HINT}") from None
+        raise ModelUnavailable(f"ultralytics and torch are not installed, so the YOLO tools cannot run.{_INSTALL_HINT}") from None
 
 
 def load(path_or_name: str, *, task: str = "", log_fn=None) -> Any:
@@ -70,13 +70,13 @@ def load(path_or_name: str, *, task: str = "", log_fn=None) -> Any:
     YOLO = _import_yolo()
     name = str(path_or_name or "").strip()
     if not name:
-        raise ModelUnavailable("沒有設定模型：選擇模型資產，或填官方底模名稱（例如 yolo11n.pt）")
+        raise ModelUnavailable("No model is configured: choose a model asset, or give a stock model name such as yolo11n.pt")
     try:
         path = resolve_model(name, log_fn)
     except Exception as exc:  # noqa: BLE001  TrainError（下載失敗等）
         raise ModelUnavailable(str(exc)) from None
     if not os.path.isfile(path):
-        raise ModelUnavailable(f"找不到模型檔 {path}")
+        raise ModelUnavailable(f"Model file not found: {path}")
     key = os.path.abspath(path)
     with _guard:
         model = _models.get(key)
@@ -87,7 +87,7 @@ def load(path_or_name: str, *, task: str = "", log_fn=None) -> Any:
         kwargs = {"task": task} if task and key.lower().endswith((".onnx", ".engine")) else {}
         model = YOLO(key, **kwargs)
     except Exception as exc:  # noqa: BLE001
-        raise ModelUnavailable(f"載入模型失敗：{str(exc)[:200]}") from None
+        raise ModelUnavailable(f"Loading the model failed: {str(exc)[:200]}") from None
     with _guard:
         _models[key] = model
         _locks.setdefault(key, threading.Lock())
@@ -118,7 +118,7 @@ def predict(model: Any, image: np.ndarray, **kw: Any) -> Any:
         try:
             results = model.predict(image, verbose=False, **kw)
         except Exception as exc:  # noqa: BLE001
-            raise ModelUnavailable(f"推論失敗：{str(exc)[:200]}") from None
+            raise ModelUnavailable(f"Inference failed: {str(exc)[:200]}") from None
     return results[0] if results else None
 
 

@@ -76,7 +76,7 @@ def bounding_rect(region: dict[str, Any], w: int, h: int) -> tuple[int, int, int
         ys = [region["y1"], region["y2"]]
         x, y, rw, rh = min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
     else:
-        raise ValueError(f"未知的 ROI 形狀 {shape!r}")
+        raise ValueError(f"Unknown ROI shape {shape!r}")
     x0 = max(0, int(np.floor(x)))
     y0 = max(0, int(np.floor(y)))
     x1 = min(w, int(np.ceil(x + rw)))
