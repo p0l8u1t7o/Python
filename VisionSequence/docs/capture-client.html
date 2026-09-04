@@ -163,7 +163,7 @@
 </ol>
 <h3 id="install-files">2-2. 設定檔、記錄檔與無介面模式</h3>
 <ul>
-<li>設定檔 <code>%APPDATA%\VisionSequenceCapture\config.json</code>（環境變數 <code>VSCAPTURE_CONFIG</code> 可覆寫）：連線（含 <code>auto_update</code>、<code>shm_max_mb</code>）、介面偏好（<code>ui.language</code>、<code>ui.theme</code>）、每個通道的相機參數／ROI／傳送設定。「檔案 → 儲存設定」寫入；結束時未儲存會詢問。缺鍵補預設、未知鍵忽略、非法值啟動時提示並改用預設。</li>
+<li>設定檔 <code>%APPDATA%\VisionSequenceCapture\config.json</code>（環境變數 <code>VSCAPTURE_CONFIG</code> 可覆寫）：連線（含 <code>auto_update</code>、<code>idle_stop_s</code>、<code>shm_max_mb</code>）、介面偏好（<code>ui.language</code>、<code>ui.theme</code>）、每個通道的相機參數／ROI／傳送設定。「檔案 → 儲存設定」寫入；結束時未儲存會詢問。缺鍵補預設、未知鍵忽略、非法值啟動時提示並改用預設。</li>
 <li>記錄檔 <code>%APPDATA%\VisionSequenceCapture\logs\capture.log</code>（輪替 2 MB × 3）；介面底部「記錄」可依等級過濾。</li>
 <li>無介面：<code>VisionSequenceCapture-console.exe --headless --connect</code>（Ctrl+C 結束），適合 Task Scheduler／NSSM 常駐；<code>--list-cameras</code> 列出各種相機；<code>--server host:port</code>、<code>--name</code>、<code>--api-key</code>、<code>--config</code>、<code>--log-level DEBUG</code> 覆寫設定；<code>--minimized</code> 啟動即縮到系統匣。</li>
 <li>關閉視窗會縮到系統匣（右鍵：顯示、連線、中斷、結束）。</li>
@@ -171,6 +171,14 @@
 <h3 id="install-ui">2-3. 介面：語言與外觀</h3>
 <p>視窗右上角可切換<strong>語言</strong>（繁體中文／简体中文／English，與網頁相同的三種）與<strong>外觀</strong>（深色／淺色），立即生效、不必重開程式，並隨設定一起儲存（<code>ui.language</code>、<code>ui.theme</code>）。相機參數的標準名稱（曝光時間、增益、影格率、像素格式、寬高位移、觸發模式）會跟著翻譯；廠牌自訂的參數維持 SDK 原名，通道名稱是您自己取的字串不翻譯。</p>
 <p>版面：左欄「連線」與「通道」、中央即時預覽與 ROI 工具列、右欄「相機參數」「傳送設定」分頁、底部「記錄」可收合；有新版時最上方出現更新橫幅。品牌色與網頁一致，深色是預設。</p>
+<p><strong>視窗可自由縮放，版面會跟著重排</strong>（每欄之間也可以拖曳分隔線自行調整）：</p>
+<table>
+<tr><th>視窗寬度</th><th>版面</th></tr>
+<tr><td>≥ 1180 px</td><td>三欄：連線與通道｜預覽與 ROI｜相機參數與傳送設定</td></tr>
+<tr><td>≥ 820 px</td><td>兩欄：連線與通道｜（上）預覽與 ROI／（下）相機參數與傳送設定</td></tr>
+<tr><td>&lt; 820 px</td><td>單欄堆疊：預覽在上，其餘往下排；左欄可捲動，頂列只留必要的控制項</td></tr>
+</table>
+<p>ROI 工具列在寬度不足時自動折成兩列（數值一列、動作一列），視窗最小可縮到約 640×480 仍可操作。</p>
 <h3 id="install-server">2-4. 伺服端設定</h3>
 <table>
 <tr><th>.env</th><th>預設</th><th>說明</th></tr>
@@ -199,6 +207,17 @@
 <li><strong>相機參數</strong>分頁：以<strong>樹狀圖</strong>分組呈現，展開後直接在右欄設定。標準參數（曝光、增益、影格率、像素格式、寬高位移、觸發模式）在「基本」，其餘在「進階」；工業相機（Basler／IDS）的參數會照 SDK 的類別分層（類別名稱以「/」分層時會展開成多層節點）。上方<strong>搜尋框</strong>可依名稱或 SDK 原名過濾（符合的群組自動展開），展開／收合狀態與搜尋字串在重新讀取後保留。改動 250 ms 後套用並回填實際值；需停止取像的參數（寬高位移、像素格式）先確認、套用後自動恢復；「儲存到設定檔」下次啟動自動套用。</li>
 <li><strong>傳送設定</strong>分頁：編碼（不壓縮／LZ4／JPEG）、JPEG 品質、轉單色、縮小 1/2、1/4、模式（依需求／連續串流）、串流 fps 上限；顯示送出尺寸與每張大小估算；「測試傳送」把目前影格送一次，顯示往返時間、位元組、編碼與伺服端解碼時間。改 ROI／單色／縮小會重新協商共享記憶體區段（期間自動改走 TCP）。</li>
 </ul>
+
+<h3 id="idle">3-1. 閒置省電（自動停止取像）</h3>
+<p>相機自由取像會一直吃 CPU（2000 萬畫素 30 fps 實測約佔一顆核心的 13%）。<strong>沒人要影像時就停止取像</strong>：</p>
+<ul>
+<li><strong>什麼時候算「有人要」</strong>：介面顯示中且該通道開著「即時預覽」、伺服端開了連續串流、或伺服端在設定的時間內要過影像（依需求取像）。</li>
+<li><strong>什麼時候停</strong>：視窗縮到工作列或系統匣（沒人在看預覽），而且伺服端超過<strong>閒置停止取像</strong>設定的秒數（「連線」面板，預設 60 秒，0＝不停止）沒有要求取像。停止的是取像，<strong>相機仍然開著</strong>，參數與 ROI 都保留。</li>
+<li><strong>怎麼恢復</strong>：伺服端下一次要影像時自動恢復（多花一次啟動取像的時間），或視窗回到前景時自動恢復。通道清單會標示「（省電暫停）」。</li>
+<li>伺服端開著<strong>連續串流</strong>的通道永遠不會被暫停——那表示伺服端一直要影像。使用者自己按「停止」不算省電暫停，不會被自動恢復。</li>
+<li>視窗縮到工作列時，預覽的畫面更新也會一併停掉（省下縮圖與轉檔的 CPU）。</li>
+</ul>
+<p>實測（2000 萬畫素、30 fps、模擬相機）：取像中約 13% CPU（相對一顆核心），省電暫停後 0%。</p>
 
 <h2 id="cameras">4. 相機支援</h2>
 <table>
@@ -302,6 +321,7 @@ GET  /api/vision/integration/info                                     加 captur
 <li><strong>影像超過上限（too_large）</strong>：調高 <code>VISION_CAPTURE_MAX_FRAME_MB</code> 或在擷取端縮小／圈 ROI。</li>
 <li><strong>共享記憶體未被接受</strong>：記錄會寫原因，程式自動留在 TCP；「本機模式」設為「一律走 TCP」可強制。</li>
 <li><strong>掃描不到網路攝影機</strong>：被其他程式佔用（關掉會議軟體）、USB 供電不足；可直接輸入索引 0、1。</li>
+<li><strong>影格率突然變慢或第一張比較久</strong>：可能是閒置省電暫停後的第一次取像（要重新啟動取像）。產線上若不希望有這個延遲，把「閒置停止取像」設成 0，或改用連續串流。</li>
 <li><strong>更新沒有出現</strong>：伺服端要先建置（<code>build_capture_client.ps1</code>），且新版號要比擷取端目前的版本大；「自動更新」設成「不檢查」時不會通知。舊版（0.1.0）沒有自動更新功能，請從網頁重新下載。</li>
 <li><strong>更新失敗</strong>：記錄會寫原因（下載中斷、SHA-256 不符、檔案被佔用）。舊版會繼續正常取像；可從網頁下載 zip 手動覆寫。防毒軟體鎖住執行檔時，更新程式會重試 30 秒。</li>
 <li><strong>SDK 尚未安裝</strong>：擷取端只打包建置時安裝的 SDK；請在伺服端以 <code>-WithBasler</code>／<code>-WithIds</code> 重新建置，客戶端另裝廠牌執行期／驅動。</li>
@@ -348,6 +368,9 @@ GET  /api/vision/integration/info                                     加 captur
 <li>執行中改設定檔後「重新載入設定」重建通道並重連。</li>
 <li>自動更新：伺服端重新建置後橫幅出現、下載進度、覆寫並重啟成新版；「自動下載並安裝」在無介面模式也會更新；下載途中斷線與 SHA-256 不符都只記錄不影響取像。</li>
 <li>介面：三種語言切換即時生效（含相機標準參數名稱）、深色／淺色切換、重開程式後語言與外觀保持。</li>
+<li>參數樹狀圖：實體相機（Basler／IDS）的類別層級正確、搜尋可過濾、展開狀態保留、改參數仍能套用與回填。</li>
+<li>省電：縮到工作列後（伺服端沒在取像）通道顯示「省電暫停」且 CPU 掉下來；伺服端要影像時自動恢復並取得正確影格；串流中的通道不會被暫停。</li>
+<li>視窗縮放：三種寬度的版面切換、ROI 工具列折行、最小尺寸仍可操作。</li>
 <li>參數樹狀圖：實體相機（Basler／IDS）的類別層級正確、搜尋可過濾、展開狀態保留、改參數仍能套用與回填。</li>
 </ol>
 

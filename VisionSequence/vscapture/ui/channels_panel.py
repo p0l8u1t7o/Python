@@ -14,7 +14,7 @@ from vscapture.config import ChannelConfig, new_channel_id
 from vscapture.engine import CaptureEngine
 from vscapture.i18n import tr
 from vscapture.ui.bridge import EngineBridge
-from vscapture.ui.widgets import channel_state_label, confirm, dot_icon, hline, muted, state_color
+from vscapture.ui.widgets import channel_state_label, confirm, dot_icon, hline, muted, shrinkable, state_color
 
 
 class ChannelsPanel(QGroupBox):
@@ -44,9 +44,9 @@ class ChannelsPanel(QGroupBox):
 
         self.name = QLineEdit()
         self.name.editingFinished.connect(self._on_name)
-        self.backend = QComboBox()
+        self.backend = shrinkable(QComboBox())
         self.backend.currentIndexChanged.connect(self._on_backend)
-        self.device = QComboBox()
+        self.device = shrinkable(QComboBox(), 10)
         self.device.setEditable(True)
         self.device.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.device.activated.connect(self._on_device_picked)
@@ -173,6 +173,8 @@ class ChannelsPanel(QGroupBox):
     @staticmethod
     def _item_text(cfg: ChannelConfig, ch: Channel | None) -> str:
         state = channel_state_label(ch.state.value) if ch else ""
+        if ch is not None and ch.idle_paused:
+            state += tr("channels.idlePaused")
         suffix = "" if cfg.enabled else tr("channels.disabledSuffix")
         return f"{cfg.name or cfg.id}{suffix} · {state}"
 
@@ -224,8 +226,10 @@ class ChannelsPanel(QGroupBox):
 
     def _update_state(self, ch: Channel) -> None:
         state = ch.state.value
-        self.state_label.setText(tr("channels.state", state=channel_state_label(state)))
-        self.state_label.setStyleSheet(f"font-weight:700; color:{state_color(self._theme, state)};")
+        label = channel_state_label(state) + (tr("channels.idlePaused") if ch.idle_paused else "")
+        self.state_label.setText(tr("channels.state", state=label))
+        self.state_label.setToolTip(tr("channels.idleHint") if ch.idle_paused else "")
+        self.state_label.setStyleSheet(f"font-weight:700; color:{state_color(self._theme, 'opening' if ch.idle_paused else state)};")
         self.error_label.setText(ch.last_error)
         is_open = state in ("open", "running")
         self.open_btn.setEnabled(not is_open and bool(ch.cfg.device_id))

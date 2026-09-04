@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QMessageBox, QWidget
+from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QMessageBox, QSizePolicy, QWidget
 
 from vscapture.i18n import tr
 from vscapture.ui.theme import palette
@@ -62,6 +62,14 @@ class StatusDot(QLabel):
 
     def set_color(self, color: str) -> None:
         self.setStyleSheet(f"background:{color}; border-radius:5px;")
+
+
+def shrinkable(combo: QComboBox, chars: int = 8) -> QComboBox:
+    """下拉預設會被最長的選項撐開，導致視窗縮不小；改成依最小內容長度計算並允許省略。"""
+    combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(chars)
+    combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+    return combo
 
 
 def hline() -> QFrame:

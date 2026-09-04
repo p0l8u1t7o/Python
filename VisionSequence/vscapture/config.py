@@ -66,6 +66,7 @@ class ConnectionConfig:
     auto_connect: bool = True
     local_mode: str = "auto"  # auto | force | off
     auto_update: str = "notify"  # off | notify | auto
+    idle_stop_s: float = 60.0  # 沒人要影像超過這麼久就停止取像（0＝一直取）
     shm_max_mb: int = 512
     heartbeat_s: float = 2.0
     reconnect_max_s: float = 30.0
@@ -81,6 +82,7 @@ class ConnectionConfig:
             auto_connect=bool(_pick(d, "auto_connect", True, path, bool)),
             local_mode=_pick(d, "local_mode", "auto", path, str, LOCAL_MODES),
             auto_update=_pick(d, "auto_update", "notify", path, str, AUTO_UPDATE_MODES),
+            idle_stop_s=max(0.0, float(_pick(d, "idle_stop_s", 60.0, path, float))),
             shm_max_mb=max(16, int(_pick(d, "shm_max_mb", 512, path, int))),
             heartbeat_s=float(_pick(d, "heartbeat_s", 2.0, path, float)),
             reconnect_max_s=float(_pick(d, "reconnect_max_s", 30.0, path, float)),

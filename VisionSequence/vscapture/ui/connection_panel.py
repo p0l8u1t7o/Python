@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBo
 
 from vscapture.config import AUTO_UPDATE_MODES, LOCAL_MODES, ConnectionConfig
 from vscapture.i18n import tr
-from vscapture.ui.widgets import StatusDot, conn_state_label, detail_text, fmt_bytes, fmt_ms, hline, muted, state_color
+from vscapture.ui.widgets import StatusDot, conn_state_label, detail_text, fmt_bytes, fmt_ms, hline, muted, shrinkable, state_color
 
 
 class ConnectionPanel(QGroupBox):
@@ -28,6 +28,7 @@ class ConnectionPanel(QGroupBox):
         self._last_t = time.perf_counter()
         self._rate = 0.0
 
+        self.setMinimumWidth(0)
         self.host = QLineEdit()
         self.port = QSpinBox()
         self.port.setRange(1, 65535)
@@ -36,8 +37,12 @@ class ConnectionPanel(QGroupBox):
         self.api_key = QLineEdit()
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.auto_connect = QCheckBox()
-        self.local_mode = QComboBox()
-        self.auto_update = QComboBox()
+        self.local_mode = shrinkable(QComboBox())
+        self.auto_update = shrinkable(QComboBox())
+        self.idle_stop = QSpinBox()
+        self.idle_stop.setRange(0, 3600)
+        self.idle_stop.setSpecialValueText("—")
+        self.idle_stop.setKeyboardTracking(False)
         for _ in LOCAL_MODES:
             self.local_mode.addItem("")
         for _ in AUTO_UPDATE_MODES:
@@ -48,7 +53,7 @@ class ConnectionPanel(QGroupBox):
         self.form.setSpacing(7)
         self.form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.field_labels: list[QLabel] = []
-        for widget in (self.host, self.port, self.name, self.api_key, self.local_mode, self.auto_update):
+        for widget in (self.host, self.port, self.name, self.api_key, self.local_mode, self.auto_update, self.idle_stop):
             lab = QLabel()
             lab.setProperty("role", "muted")
             self.field_labels.append(lab)
@@ -98,13 +103,17 @@ class ConnectionPanel(QGroupBox):
         self.auto_connect.toggled.connect(lambda _v: self.changed.emit())
         self.local_mode.currentIndexChanged.connect(lambda _i: self.changed.emit())
         self.auto_update.currentIndexChanged.connect(lambda _i: self.changed.emit())
+        self.idle_stop.valueChanged.connect(lambda _v: self.changed.emit())
         self.retranslate()
 
     # ---- 語言／主題 ----
     def retranslate(self) -> None:
         self.setTitle(tr("connection.title"))
-        for lab, key in zip(self.field_labels, ("connection.server", "connection.port", "connection.name", "connection.key", "connection.localMode", "update.auto")):
+        for lab, key in zip(self.field_labels, ("connection.server", "connection.port", "connection.name", "connection.key", "connection.localMode", "update.auto", "connection.idleStop")):
             lab.setText(tr(key))
+        self.idle_stop.setSuffix(tr("connection.idleSuffix"))
+        self.idle_stop.setToolTip(tr("connection.idleStopHint"))
+        self.field_labels[-1].setToolTip(tr("connection.idleStopHint"))
         self.host.setPlaceholderText(tr("connection.serverHint"))
         self.name.setPlaceholderText(tr("connection.nameHint"))
         self.api_key.setPlaceholderText(tr("connection.keyHint"))
@@ -134,6 +143,7 @@ class ConnectionPanel(QGroupBox):
         self.auto_connect.setChecked(cfg.auto_connect)
         self.local_mode.setCurrentIndex(max(0, self.local_mode.findData(cfg.local_mode)))
         self.auto_update.setCurrentIndex(max(0, self.auto_update.findData(cfg.auto_update)))
+        self.idle_stop.setValue(int(cfg.idle_stop_s))
 
     def apply_to(self, cfg: ConnectionConfig) -> None:
         cfg.host = self.host.text().strip() or "127.0.0.1"
@@ -143,6 +153,7 @@ class ConnectionPanel(QGroupBox):
         cfg.auto_connect = self.auto_connect.isChecked()
         cfg.local_mode = str(self.local_mode.currentData() or "auto")
         cfg.auto_update = str(self.auto_update.currentData() or "notify")
+        cfg.idle_stop_s = float(self.idle_stop.value())
 
     # ---- 狀態 ----
     def _on_button(self) -> None:

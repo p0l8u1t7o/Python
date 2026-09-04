@@ -127,6 +127,11 @@ class TransportClient:
             "rings": {cid: r.stats() for cid, r in self.rings.items()}, "streams": {cid: {"sent": p.sent, "dropped": p.dropped} for cid, p in self._pushers.items()},
         }
 
+    def is_streaming(self, cid: str) -> bool:
+        """伺服端是否要這個通道連續推影格（串流中就不能省電暫停）。"""
+        pusher = self._pushers.get(cid)
+        return pusher is not None and pusher.is_alive()
+
     def send_channels(self) -> None:
         """通道設定變了：送 CHANNELS，並在本機模式重建受影響的共享記憶體環。"""
         if self.state != ConnState.CONNECTED:

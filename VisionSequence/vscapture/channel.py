@@ -51,6 +51,8 @@ class Channel:
         self._fps_last = 0.0
         self._fps_count = 0
         self.dropped = 0
+        self.idle_paused = False  # 省電暫停中（相機仍開著，下次要影像時自動恢復）
+        self.last_request = time.perf_counter()  # 最後一次有人要影像（伺服端 GRAB／串流／拍攝一張）
 
     @property
     def id(self) -> str:
@@ -207,13 +209,19 @@ class Channel:
         self.call(self._do_close)
 
     def start(self) -> None:
+        self.idle_paused = False
+        self.last_request = time.perf_counter()
         self.call(self._do_start)
 
     def stop(self) -> None:
+        self.idle_paused = False
         self.call(self._do_stop)
 
     def acquire(self, min_seq: int, timeout: float, *, after_request: bool = True) -> Frame | None:
-        """取影格：自由取像／硬體觸發＝等 slot 的 seq ≥ min_seq；軟體觸發＝觸發一張。"""
+        """取影格：自由取像／硬體觸發＝等 slot 的 seq ≥ min_seq；軟體觸發＝觸發一張。省電暫停中會先恢復取像。"""
+        self.last_request = time.perf_counter()
+        if self.idle_paused:
+            self.resume_idle()
         cam = self.camera
         if cam is None or self.state != ChannelState.RUNNING:
             return None
@@ -257,10 +265,35 @@ class Channel:
         self.cfg.roi, self.cfg.hw_roi = (effective if is_hw else roi), hardware
         return is_hw, effective
 
+    def pause_idle(self) -> bool:
+        """省電暫停：停止取像但不關相機（參數與 ROI 都保留），下次 `acquire()` 會自動恢復。"""
+        if self.state != ChannelState.RUNNING:
+            return False
+        self.idle_paused = True
+        try:
+            self.call(self._do_stop, timeout=5.0)
+        except Exception:  # noqa: BLE001
+            self.idle_paused = False
+            return False
+        log.info("通道 %s 閒置，暫停取像以節省 CPU", self.cfg.id)
+        return True
+
+    def resume_idle(self) -> bool:
+        if not self.idle_paused:
+            return False
+        self.idle_paused = False
+        try:
+            self.call(self._do_start, timeout=10.0)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("通道 %s 恢復取像失敗：%s", self.cfg.id, exc)
+            return False
+        return True
+
     def stats(self) -> dict[str, Any]:
         latest = self.slot.latest()
         return {
             "id": self.cfg.id, "name": self.cfg.name, "state": self.state.value, "error": self.last_error, "seq": self.slot.seq, "fps": round(self._fps, 1),
+            "idle_paused": self.idle_paused, "idle_s": round(time.perf_counter() - self.last_request, 1),
             "width": int(latest.image.shape[1]) if latest is not None else None, "height": int(latest.image.shape[0]) if latest is not None else None,
             "hw_roi": self.hw_roi_active, "dropped": self.dropped,
         }

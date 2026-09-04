@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QByteArray, Qt, QTimer, Slot
+from PySide6.QtCore import QByteArray, QEvent, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence, QPixmap
-from PySide6.QtWidgets import QApplication, QComboBox, QDockWidget, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QDockWidget, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea, QSplitter, QTabWidget, QVBoxLayout, QWidget
 
 from vscapture import __version__, config as configmod
 from vscapture.engine import CaptureEngine
@@ -100,7 +100,7 @@ class MainWindow(QMainWindow):
         ll.addWidget(self.connection)
         ll.addWidget(self.channels)
         ll.addStretch(1)
-        left.setMinimumWidth(340)
+        left.setMinimumWidth(260)
 
         self.live = LivePanel(engine, bridge)
         self.params = ParamsPanel(engine, bridge)
@@ -108,15 +108,20 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(self.params, "")
         self.tabs.addTab(self.delivery, "")
-        self.tabs.setMinimumWidth(340)
+        self.tabs.setMinimumWidth(260)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left)
-        splitter.addWidget(self.live)
-        splitter.addWidget(self.tabs)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([360, 640, 380])
-        splitter.setChildrenCollapsible(False)
+        # 版面隨視窗寬度重排：寬＝三欄、中＝左欄＋（預覽上／設定下）、窄＝單欄堆疊
+        self.left = left
+        self.left_scroll = QScrollArea()
+        self.left_scroll.setWidgetResizable(True)
+        self.left_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.left_scroll.setWidget(left)
+        self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.outer = QSplitter(Qt.Orientation.Horizontal)
+        self.outer.setChildrenCollapsible(False)
+        self.inner = QSplitter(Qt.Orientation.Vertical)
+        self.inner.setChildrenCollapsible(False)
+        self._layout_mode = ""
 
         central = QWidget()
         cl = QVBoxLayout(central)
@@ -127,11 +132,12 @@ class MainWindow(QMainWindow):
         wrap.setContentsMargins(12, 0, 12, 12)
         wrap.setSpacing(8)
         wrap.addWidget(self.banner)
-        wrap.addWidget(splitter, 1)
+        wrap.addWidget(self.outer, 1)
         cl.addLayout(wrap, 1)
         self.setCentralWidget(central)
 
         self.log_panel = LogPanel()
+        self.log_panel.setMinimumSize(160, 80)
         self.log_dock = QDockWidget("", self)
         self.log_dock.setObjectName("logDock")
         self.log_dock.setWidget(self.log_panel)
@@ -170,14 +176,82 @@ class MainWindow(QMainWindow):
 
         self.connection.load_from(engine.cfg.connection)
         self.live.set_preview_fps(engine.cfg.ui.preview_fps)
+        self._apply_layout(force=True)
         self.apply_theme(self.theme)
         self.retranslate()
         self._restore_geometry()
         self.channels.refresh_list()
 
+        self.resizeDocks([self.log_dock], [150], Qt.Orientation.Vertical)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_stats)
         self._timer.start(1000)
+
+    # ---- 版面（隨視窗大小） ----
+    def _apply_layout(self, *, force: bool = False) -> None:
+        """依視窗寬度換版面：≥1180 三欄、≥820 兩欄（預覽上／設定下）、其餘單欄堆疊。"""
+        width = self.width()
+        mode = "wide" if width >= 1180 else "medium" if width >= 820 else "narrow"
+        if mode == self._layout_mode and not force:
+            return
+        self._layout_mode = mode
+        for w in (self.left_scroll, self.live, self.tabs, self.inner):
+            w.setParent(None)
+        if mode == "wide":
+            self.outer.setOrientation(Qt.Orientation.Horizontal)
+            for w in (self.left_scroll, self.live, self.tabs):
+                self.outer.addWidget(w)
+            self.outer.setStretchFactor(1, 1)
+            self.outer.setSizes([360, max(400, width - 760), 380])
+        elif mode == "medium":
+            self.outer.setOrientation(Qt.Orientation.Horizontal)
+            self.inner.setOrientation(Qt.Orientation.Vertical)
+            self.inner.addWidget(self.live)
+            self.inner.addWidget(self.tabs)
+            self.inner.setStretchFactor(0, 1)
+            self.inner.setSizes([max(240, self.height() - 380), 320])
+            self.outer.addWidget(self.left_scroll)
+            self.outer.addWidget(self.inner)
+            self.outer.setStretchFactor(1, 1)
+            self.outer.setSizes([340, max(320, width - 360)])
+        else:
+            self.outer.setOrientation(Qt.Orientation.Vertical)
+            for w in (self.live, self.left_scroll, self.tabs):
+                self.outer.addWidget(w)
+            for i in range(3):
+                self.outer.setStretchFactor(i, 1)
+            self.outer.setSizes([max(240, self.height() // 3), 380, 380])
+        narrow = mode == "narrow"
+        self.left.setMinimumWidth(0 if narrow else 260)
+        self.tabs.setMinimumWidth(0 if narrow else 260)
+        self.version_label.setVisible(not narrow)
+        self.language_label.setVisible(not narrow)
+        self.theme_label.setVisible(not narrow)
+        self.brand.setVisible(width >= 640)
+        for w in (self.left_scroll, self.live, self.tabs):
+            w.setVisible(True)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._apply_layout()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        """縮到工作列時暫停預覽並讓引擎知道（沒人在看就不必一直取像）。"""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._set_ui_visible(not self.isMinimized())
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._set_ui_visible(True)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        super().hideEvent(event)
+        self._set_ui_visible(False)
+
+    def _set_ui_visible(self, visible: bool) -> None:
+        self.live.set_active(visible)
+        self.engine.set_ui_visible(visible)
 
     # ---- 語言與外觀 ----
     def retranslate(self) -> None:
@@ -397,7 +471,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         if self.tray is not None and not self._quitting:
             event.ignore()
-            self.hide()
+            self.hide()  # hideEvent 會把引擎切成「沒人在看」
             if not self._tray_hint_shown:
                 self._tray_hint_shown = True
                 self.tray.showMessage(tr("app.title"), tr("tray.tip"), self.windowIcon(), 3000)

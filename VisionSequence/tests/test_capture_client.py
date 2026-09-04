@@ -71,8 +71,9 @@ class ConfigTests(SimpleTestCase):
         self.assertEqual(configmod.load(tmp / "missing.json"), AppConfig())
 
     def test_ui_and_update_fields(self):
-        cfg = configmod.AppConfig.from_dict({"connection": {"auto_update": "auto", "shm_max_mb": 256}, "ui": {"language": "en", "theme": "light"}})
-        self.assertEqual((cfg.connection.auto_update, cfg.connection.shm_max_mb), ("auto", 256))
+        cfg = configmod.AppConfig.from_dict({"connection": {"auto_update": "auto", "shm_max_mb": 256, "idle_stop_s": 30}, "ui": {"language": "en", "theme": "light"}})
+        self.assertEqual((cfg.connection.auto_update, cfg.connection.shm_max_mb, cfg.connection.idle_stop_s), ("auto", 256, 30.0))
+        self.assertEqual(configmod.AppConfig().connection.idle_stop_s, 60.0)
         self.assertEqual((cfg.ui.language, cfg.ui.theme), ("en", "light"))
         blank = configmod.AppConfig()
         self.assertEqual((blank.connection.auto_update, blank.ui.language, blank.ui.theme), ("notify", "zh-Hant", "dark"))
@@ -436,6 +437,60 @@ class ParamTreeTests(SimpleTestCase):
             self.assertEqual(params.param_label(exposure), "Exposure")
         finally:
             i18n.set_language("zh-Hant")
+
+
+class IdleStopTests(SimpleTestCase):
+    """省電：沒人要影像就停止取像，下次要影像自動恢復。"""
+
+    def _engine(self, **conn):
+        cfg = configmod.AppConfig(connection=configmod.ConnectionConfig(auto_connect=False, **conn))
+        cfg.channels.append(configmod.ChannelConfig(id="cam1", name="t", backend="fake", device_id="fake:0", preview=False))
+        engine = CaptureEngine(cfg)
+        self.addCleanup(engine.stop)
+        engine.start(connect=False)
+        return engine, engine.channels["cam1"]
+
+    def test_pause_after_idle_and_resume_on_request(self):
+        _engine, ch = self._engine(idle_stop_s=0.5)
+        self.assertTrue(_wait_true(lambda: ch.state.value == "running"))
+        self.assertTrue(_wait_true(lambda: ch.idle_paused, 4.0), "閒置後應該暫停取像")
+        self.assertEqual(ch.state.value, "open")  # 相機仍開著，只是不取像
+        self.assertIsNotNone(ch.camera)
+        frame = ch.acquire(0, 2.0)  # 伺服端要影像 → 自動恢復
+        self.assertIsNotNone(frame)
+        self.assertFalse(ch.idle_paused)
+        self.assertEqual(ch.state.value, "running")
+        st = ch.stats()
+        self.assertEqual(st["idle_paused"], False)
+        self.assertLess(st["idle_s"], 1.0)
+
+    def test_preview_and_ui_visibility(self):
+        engine, ch = self._engine(idle_stop_s=0.5)
+        ch.cfg.preview = True  # 介面在看預覽 → 不停
+        self.assertTrue(_wait_true(lambda: ch.state.value == "running"))
+        time.sleep(1.2)
+        self.assertFalse(ch.idle_paused)
+        engine.set_ui_visible(False)  # 縮到系統匣 → 沒人看預覽了
+        self.assertTrue(_wait_true(lambda: ch.idle_paused, 4.0))
+        engine.set_ui_visible(True)  # 回到前景 → 預覽要有畫面
+        self.assertTrue(_wait_true(lambda: not ch.idle_paused and ch.state.value == "running", 4.0))
+
+    def test_disabled_by_zero_and_manual_stop(self):
+        _engine, ch = self._engine(idle_stop_s=0)  # 0＝一直取像
+        self.assertTrue(_wait_true(lambda: ch.state.value == "running"))
+        time.sleep(1.5)
+        self.assertFalse(ch.idle_paused)
+        ch.stop()  # 使用者自己按停止：不是省電暫停，也不該被自動恢復
+        self.assertFalse(ch.idle_paused)
+        self.assertIsNone(ch.acquire(0, 0.3))
+        self.assertEqual(ch.state.value, "open")
+
+    def test_streaming_channel_is_never_paused(self):
+        engine, ch = self._engine(idle_stop_s=0.5)
+        self.assertTrue(_wait_true(lambda: ch.state.value == "running"))
+        engine.transport.is_streaming = lambda cid: True  # 伺服端開了串流
+        time.sleep(1.5)
+        self.assertFalse(ch.idle_paused, "串流中不能暫停")
 
 
 class I18nTests(SimpleTestCase):

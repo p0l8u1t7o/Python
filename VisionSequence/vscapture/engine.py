@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -60,7 +61,44 @@ class CaptureEngine:
         self.exit_requested = threading.Event()  # 更新程式已接手，主程式該結束了
         self._update_thread: threading.Thread | None = None
         self._update_cancel = threading.Event()
+        #: 介面是否顯示中（縮到系統匣或最小化時為 False：沒人在看預覽，就不必一直取像）
+        self.ui_visible = True
+        self._idle_thread: threading.Thread | None = None
+        self._idle_stop = threading.Event()
         self.events.subscribe(self._on_own_event)
+
+    # ---- 省電：閒置時停止取像 ----
+    def set_ui_visible(self, visible: bool) -> None:
+        """介面顯示／縮到系統匣。看不到預覽時，只有伺服端還在要影像才需要繼續取像。"""
+        if visible == self.ui_visible:
+            return
+        self.ui_visible = visible
+        for ch in self.channels.values():
+            ch.last_request = max(ch.last_request, time.perf_counter() if visible else ch.last_request)
+        if visible:  # 回到前景：預覽要有畫面，馬上恢復
+            for ch in self.channels.values():
+                if ch.idle_paused and ch.cfg.preview and ch.cfg.enabled:
+                    ch.resume_idle()
+
+    def _wants_frames(self, ch: Channel) -> bool:
+        """有人要這個通道的影像嗎：介面在看預覽、伺服端開了串流，或剛剛才要過。"""
+        if self.ui_visible and ch.cfg.preview:
+            return True
+        if self.transport.is_streaming(ch.id):
+            return True
+        idle_s = float(self.cfg.connection.idle_stop_s or 0)
+        return idle_s <= 0 or (time.perf_counter() - ch.last_request) < idle_s
+
+    def _idle_loop(self) -> None:
+        while not self._idle_stop.wait(1.0):
+            if float(self.cfg.connection.idle_stop_s or 0) <= 0 and self.ui_visible:
+                continue
+            for ch in list(self.channels.values()):
+                try:
+                    if ch.state.value == "running" and not self._wants_frames(ch):
+                        ch.pause_idle()
+                except Exception:  # noqa: BLE001 — 看門狗不能把程式弄掛
+                    log.exception("閒置檢查失敗：%s", ch.id)
 
     # ---- 自動更新 ----
     def _on_own_event(self, kind: str, data: dict[str, Any]) -> None:
@@ -136,10 +174,18 @@ class CaptureEngine:
         for ch in self.channels.values():
             if ch.cfg.enabled:
                 self._open_and_start(ch)
+        if self._idle_thread is None:
+            self._idle_stop.clear()
+            self._idle_thread = threading.Thread(target=self._idle_loop, name="vsc-idle", daemon=True)
+            self._idle_thread.start()
         if connect if connect is not None else self.cfg.connection.auto_connect:
             self.connect()
 
     def stop(self) -> None:
+        self._idle_stop.set()
+        if self._idle_thread is not None:
+            self._idle_thread.join(timeout=3.0)
+            self._idle_thread = None
         self._update_cancel.set()
         self.transport.stop()
         for ch in list(self.channels.values()):

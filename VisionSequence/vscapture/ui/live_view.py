@@ -7,7 +7,7 @@ from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QMouseEvent, QPainter, QPen
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget
 
 from vscapture.channel import Channel, ChannelState
 from vscapture.config import Roi
@@ -32,7 +32,7 @@ class LiveView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(320, 240)
+        self.setMinimumSize(200, 150)
         self.setMouseTracking(True)
         self.setProperty("role", "viewer")
         self.channel: Channel | None = None
@@ -51,10 +51,22 @@ class LiveView(QWidget):
         self.theme = "dark"
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
+        self._active = True
+        self._interval = 66
         self.set_preview_fps(15)
 
     def set_preview_fps(self, fps: int) -> None:
-        self.timer.start(max(16, int(1000 / max(1, fps))))
+        self._interval = max(16, int(1000 / max(1, fps)))
+        if self._active:
+            self.timer.start(self._interval)
+
+    def set_active(self, active: bool) -> None:
+        """視窗看不到時停掉預覽計時器（縮小、收到系統匣）——省下縮圖與轉檔的 CPU。"""
+        self._active = active
+        if active:
+            self.timer.start(self._interval)
+        else:
+            self.timer.stop()
 
     def set_channel(self, ch: Channel | None) -> None:
         self.channel = ch
@@ -262,23 +274,21 @@ class LivePanel(QWidget):
         self.bridge = bridge
         self.channel: Channel | None = None
         self._loading = False
+        self._snap_visible = False
         self.view = LiveView()
         self.view.roi_changed.connect(self._on_view_roi)
         self.view.roi_dragging.connect(self._show_roi)
 
         self.spins: dict[str, QSpinBox] = {}
         self.roi_label = QLabel()
-        row = QHBoxLayout()
-        row.setSpacing(6)
-        row.addWidget(self.roi_label)
         for key in ("x", "y", "w", "h"):
             sp = QSpinBox()
             sp.setRange(0, 100000)
             sp.setKeyboardTracking(False)
             sp.setMaximumWidth(120)
+            sp.setMinimumWidth(56)
             sp.valueChanged.connect(self._on_spin)
             self.spins[key] = sp
-            row.addWidget(sp)
         self.clear_btn = QPushButton()
         self.clear_btn.clicked.connect(self.clear_roi)
         self.hw_check = QCheckBox()
@@ -287,18 +297,20 @@ class LivePanel(QWidget):
         self.apply_btn.clicked.connect(self.apply_roi)
         self.snap_btn = QPushButton()
         self.snap_btn.clicked.connect(self.snap)
-        row.addWidget(self.clear_btn)
-        row.addWidget(self.hw_check)
-        row.addWidget(self.apply_btn)
-        row.addStretch(1)
-        row.addWidget(self.snap_btn)
+        # ROI 工具列：寬的時候一列，窄的時候拆成兩列（數值一列、動作一列）
+        self.tools = QWidget()
+        self.tools_grid = QGridLayout(self.tools)
+        self.tools_grid.setContentsMargins(0, 0, 0, 0)
+        self.tools_grid.setSpacing(6)
+        self._tool_rows = -1
+        self._reflow_tools(1)
         self.status = muted("")
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
         lay.addWidget(self.view, 1)
-        lay.addLayout(row)
+        lay.addWidget(self.tools)
         lay.addWidget(self.status)
         self.retranslate()
         self.set_channel(None)
@@ -324,6 +336,39 @@ class LivePanel(QWidget):
     def set_preview_fps(self, fps: int) -> None:
         self.view.set_preview_fps(fps)
 
+    def set_active(self, active: bool) -> None:
+        self.view.set_active(active)
+
+    def _reflow_tools(self, rows: int) -> None:
+        """ROI 工具列排成 1 或 2 列。"""
+        if rows == self._tool_rows:
+            return
+        self._tool_rows = rows
+        while self.tools_grid.count():
+            item = self.tools_grid.takeAt(0)
+            if item.widget() is not None:
+                item.widget().setParent(None)
+        values = [self.roi_label, *self.spins.values()]
+        actions = [self.clear_btn, self.hw_check, self.apply_btn, self.snap_btn]
+        if rows == 1:
+            for i, w in enumerate(values):
+                self.tools_grid.addWidget(w, 0, i)
+            for i, w in enumerate(actions):
+                self.tools_grid.addWidget(w, 0, len(values) + i)
+            self.tools_grid.setColumnStretch(len(values) + len(actions) - 1, 0)
+        else:
+            for i, w in enumerate(values):
+                self.tools_grid.addWidget(w, 0, i)
+            for i, w in enumerate(actions):
+                self.tools_grid.addWidget(w, 1, i)
+        for w in (*values, *actions):
+            w.setVisible(True)
+        self.snap_btn.setVisible(self._snap_visible)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._reflow_tools(1 if self.width() >= 700 else 2)
+
     def set_channel(self, ch: Channel | None) -> None:
         self.channel = ch
         self.view.set_channel(ch)
@@ -338,8 +383,8 @@ class LivePanel(QWidget):
 
     def refresh_buttons(self) -> None:
         ch = self.channel
-        software = bool(ch and ch.camera is not None and ch.camera.trigger_mode == "software" and ch.state == ChannelState.RUNNING)
-        self.snap_btn.setVisible(software)
+        self._snap_visible = bool(ch and ch.camera is not None and ch.camera.trigger_mode == "software" and ch.state == ChannelState.RUNNING)
+        self.snap_btn.setVisible(self._snap_visible)
 
     def _show_roi(self, roi: Roi) -> None:
         self._loading = True

@@ -13,7 +13,7 @@ from vscapture.config import ENCODINGS, MODES
 from vscapture.engine import CaptureEngine
 from vscapture.i18n import tr
 from vscapture.ui.bridge import EngineBridge
-from vscapture.ui.widgets import fmt_bytes, muted
+from vscapture.ui.widgets import fmt_bytes, muted, shrinkable
 
 DOWNSCALES = (1, 2, 4)
 
@@ -28,17 +28,17 @@ class DeliveryPanel(QWidget):
         self.channel: Channel | None = None
         self._loading = False
 
-        self.encoding = QComboBox()
+        self.encoding = shrinkable(QComboBox())
         for key in ENCODINGS:
             self.encoding.addItem("", key)
         self.jpeg_quality = QSpinBox()
         self.jpeg_quality.setRange(1, 100)
         self.jpeg_quality.setKeyboardTracking(False)
         self.mono = QCheckBox()
-        self.downscale = QComboBox()
+        self.downscale = shrinkable(QComboBox(), 6)
         for d in DOWNSCALES:
             self.downscale.addItem("", d)
-        self.mode = QComboBox()
+        self.mode = shrinkable(QComboBox())
         for key in MODES:
             self.mode.addItem("", key)
         self.stream_fps = QDoubleSpinBox()
