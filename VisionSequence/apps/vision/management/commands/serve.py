@@ -22,6 +22,7 @@ class Command(BaseCommand):
         parser.add_argument("--no-tcp", action="store_true")
         parser.add_argument("--capture-port", type=int, default=settings.VISION["CAPTURE_PORT"], help="擷取端連入埠（相機電腦上的擷取程式）")
         parser.add_argument("--no-capture", action="store_true")
+        parser.add_argument("--no-comm", action="store_true", help="不自動開啟 Modbus 從站與觸發輪詢")
         parser.add_argument("--reload", action="store_true", help="開發用自動重載（狀態會遺失）")
 
     def handle(self, *args, **options):
@@ -35,6 +36,12 @@ class Command(BaseCommand):
             from apps.vision.capture import hub as capture_hub
 
             capture_hub.start_in_background(settings.VISION["CAPTURE_HOST"], options["capture_port"])
+        if not options["no_comm"]:
+            from apps.comm import writers
+
+            # 從站要一直在聽（PLC 隨時會連），設了觸發位址的連線要開始輪詢；
+            # 以前得等有人按「測試」或流程跑過一次才開埠，伺服器重開後 PLC 就連不上。
+            writers.autostart()
         uvicorn.run(
             "config.asgi:application",
             host=options["host"],

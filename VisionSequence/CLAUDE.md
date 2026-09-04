@@ -114,6 +114,13 @@
 - **連線 kind**：`modbus_tcp`（主站，連到 PLC）、`modbus_server`（**從站**，本平台開埠讓 PLC 來讀寫）、`tcp_client`、`dio_sim`、外掛。從站是 `ModbusServerWriter`：pymodbus 3.15 的 `SimData/SimDevice`＋`ModbusTcpServer` 跑在自己的執行緒與事件迴圈，跨執行緒存取一律 `asyncio.run_coroutine_threadsafe(server.async_getValues/async_setValues(...), loop)`（功能碼決定區域：coil 1/5、discrete 2、holding 3/16、input 4；位址就是主站看到的 0 起算位址）。`_require()` 讓關閉後的讀寫回 CommError 而不是 AttributeError。
 - **流程工具**：`write_modbus`（寫）與 `read_modbus`（讀，`category="logic"`；輸出 `values`／`value`／`ok`，`publish=True` 才併進具名輸出）。兩者都用 `get_writer(name)` 拿記憶體中的連線，失敗預設降級。
 - **整合追蹤**（命令與結果）：`apps/vision/trace.py` 行程內環形緩衝（頻道 http／tcp／modbus／capture，各 300 筆）。**沒人在看時只記錯誤**（`trace.watch()` 由整合頁查詢時續期 2 分鐘），熱路徑只做一次 append。掛勾在 `tcp_server`（指令與回應）、`comm.writers.Writer._trace`（寫入／讀取）、`ModbusServerWriter._trace_pdu`（主站的每一則請求，pymodbus 的 `trace_pdu` 回呼）、`api.run_flow`（HTTP 觸發）、`capture/hub`（連線）。API：`GET/DELETE /vision/integration/trace?channel=`。
+- **TCP 一行指令**（`tcp_server.py`）：`_split` 用 shlex 分詞（值含空白要引號）、`_parse_kv` 只把**乾淨的十進位數字**轉型（`lot=00123`／`1_000`／`1e3` 一律留字串——料號與條碼不能被改掉）、不是 `key=value` 的引數回 `bad_argument`。失敗一律帶 `code`（設備靠它分支，中文訊息會潤飾）。`TRIGGER` 與 `POST run?wait=0` 都回 `run_id`。
+- **非同步結果**：`runner.submit` 把 run_id 掛在回傳的 Future 上（`future.run_id`）並登記進 `FlowRuntime.pending`；`GET /runs/{id}` 對還沒跑完的 run 回 `status=queued|running`（不是 404）。結果進 `recent` 後 pending 就移除。
+- **排隊上限**：`MAX_QUEUE_PER_FLOW`（預設 16）是「同一流程可同時等待的觸發數」——每個流程一次只跑一個 run（`rt.lock`），多站共用同一流程時請求會排隊。上限與現況在 `capacity()` 與 TCP `STATUS <flow>`。
+- **`timeout_s`** 是外部呼叫者的等待上限（逾時 504 `run_timeout` 並附 run_id，執行不中止）；沒指定才用 `RUN_TIMEOUT_S + 5` 讓引擎自己的逾時先觸發。`include_images` 已更名 `include_nodes`（舊名保留），影像永遠走 `GET /images/{ref}`。
+- **Modbus 觸發**（`apps/comm/triggers.py`）：連線設定 `trigger_address`／`trigger_flow`／`trigger_interval_ms`／`trigger_mode`（rising｜nonzero）／`trigger_clear`／`trigger_done_address`／`trigger_recipe`；一條連線一條輪詢執行緒，讀到非零就 `runner.run_sync(trigger="modbus")`，跑前清旗標、跑後設完成位址，PLC 斷線指數退避。**從站模式沒有這一層的話，PLC 寫旗標不會有任何事發生。** 狀態在 `connection_info` 的 `trigger` 欄。
+- **連線的自動啟動**：`Writer.listens=True`（從站）或有觸發設定的連線由 `writers.autostart()` 在 `manage.py serve` 啟動時開好、建立／修改時 `ensure_started()` 立刻開——以前要等有人按「測試」或流程跑過一次，伺服器重開後 PLC 就連不上。開不起來的原因存在 `_start_errors` 並出現在連線狀態的 `error`（埠被佔用最常見）。
+- **連線預先載入**：工具以 `Tool.connection_params` 宣告哪些參數是連線名稱，`prefetch_connections` 照這個掃（以前寫死 `write_modbus`，只讀不寫的流程拿不到連線會靜默降級）。新增會用連線的工具記得宣告。
 - **前端**：`/integration/<section>` 每種整合方式一個頁面（`pages/integration/*`＋`sections.ts` 的清單，側欄 AppShell 讀同一份清單畫樹狀選單，展開狀態存 `vs.navOpen`）；外框 `IntegrationLayout` 用 `<Outlet context={info}>` 把整合資訊傳下去，子頁面用 `shared.useSectionInfo()`（單獨 render 時自己查）。`components/integration/TraceLog.tsx` 每 1.5 秒輪詢一次。舊 `?tab=` 網址自動轉址。
 
 ### 批次測試（apps/vision/batch）

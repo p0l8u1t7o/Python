@@ -29,10 +29,19 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'mul
   wait_reply: 'boolean',
   channels: 'list',
   class: 'text',
+  trigger_address: 'text',
+  trigger_flow: 'text',
+  trigger_interval_ms: 'number',
+  trigger_mode: 'select',
+  trigger_clear: 'boolean',
+  trigger_done_address: 'text',
+  trigger_recipe: 'text',
 }
+/** 觸發設定在表單裡自成一段（前面的欄位是連線本身，後面的是「誰來觸發檢測」）。 */
+const TRIGGER_FIELDS = new Set(['trigger_address', 'trigger_flow', 'trigger_interval_ms', 'trigger_mode', 'trigger_clear', 'trigger_done_address', 'trigger_recipe'])
 const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
-  modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big' },
-  modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big' },
+  modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
+  modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
   tcp_client: { host: '127.0.0.1', port: 9000, timeout_s: 2, template: '', newline: '\n', wait_reply: false },
   dio_sim: { channels: ['DO0', 'DO1', 'OK', 'NG'] },
   plugin: { class: '' },
@@ -45,6 +54,12 @@ function ConfigField({ field, value, onChange }: { field: string; value: unknown
   if (type === 'boolean') return <Checkbox label={label} checked={Boolean(value)} onChange={onChange} />
   if (type === 'select' && field === 'word_order') {
     return <Select label={label} value={String(value ?? 'big')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'big', label: t('connections.wordOrders.big') }, { value: 'little', label: t('connections.wordOrders.little') }]} />
+  }
+  if (type === 'select' && field === 'trigger_mode') {
+    return <Select label={label} value={String(value ?? 'rising')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'rising', label: t('connections.triggerModes.rising') }, { value: 'nonzero', label: t('connections.triggerModes.nonzero') }]} />
+  }
+  if (field === 'trigger_address' || field === 'trigger_flow') {
+    return <TextInput label={label} hint={t(`connections.fields.${field}Hint`)} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
   }
   if (type === 'multiline') return <TextArea label={label} hint={t('connections.fields.templateHint')} rows={2} className="font-mono text-xs" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
   if (type === 'list') {
@@ -229,9 +244,20 @@ export function ConnectionsSection() {
           <div className="space-y-3">
             <TextInput label={t('common.name')} required autoFocus value={body.name} onChange={(e) => setEditing({ ...editing!, body: { ...body, name: e.target.value } })} data-testid="conn-name-input" />
             <Select label={t('connections.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} data-testid="conn-kind" />
-            {(fieldsFor.get(body.kind) ?? []).map((field) => (
+            {(fieldsFor.get(body.kind) ?? []).filter((f) => !TRIGGER_FIELDS.has(f)).map((field) => (
               <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
             ))}
+            {(fieldsFor.get(body.kind) ?? []).some((f) => TRIGGER_FIELDS.has(f)) ? (
+              <details className="rounded border border-line" open={Boolean(body.config.trigger_address)} data-testid="conn-trigger">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-medium">{t('connections.trigger.title')}</summary>
+                <div className="space-y-3 border-t border-line p-3">
+                  <p className="text-xs text-muted">{t('connections.trigger.hint')}</p>
+                  {(fieldsFor.get(body.kind) ?? []).filter((f) => TRIGGER_FIELDS.has(f)).map((field) => (
+                    <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
+                  ))}
+                </div>
+              </details>
+            ) : null}
             <Checkbox label={t('common.enabled')} checked={body.is_enabled} onChange={(v) => setEditing({ ...editing!, body: { ...body, is_enabled: v } })} />
           </div>
         ) : null}

@@ -9,6 +9,9 @@ DELETE /vision/connections/{id}             管理員
 POST   /vision/connections/{id}/test        管理員：重新連線並回 info（失敗回 ok=false 與錯誤）
 POST   /vision/connections/{id}/write       管理員：手動寫一筆 {"values": {"coil:0": 1}}
 GET    /vision/connections/{id}/state       讀回 ?addresses=a,b（dio_sim 不帶參數回全部狀態）
+
+從站（`modbus_server`）與設了 `trigger_address` 的連線在建立／修改後會立刻開起來，
+伺服器啟動時也會自動開（`writers.autostart()`，由 `manage.py serve` 呼叫）。
 """
 
 from __future__ import annotations
@@ -87,6 +90,7 @@ def create_connection(request: HttpRequest, payload: ConnectionIn):
             conn = Connection.objects.create(name=name, kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled)
     except IntegrityError:
         raise Conflict("已有同名連線", code="connection_name_taken") from None
+    writers.ensure_started(conn)  # 從站與觸發輪詢不必等到有人按「測試」
     return 201, _out(conn)
 
 
@@ -115,6 +119,7 @@ def patch_connection(request: HttpRequest, connection_id: int, payload: Connecti
     except IntegrityError:
         raise Conflict("已有同名連線", code="connection_name_taken") from None
     writers.close_connection(conn.id)
+    writers.ensure_started(conn)
     return _out(conn)
 
 

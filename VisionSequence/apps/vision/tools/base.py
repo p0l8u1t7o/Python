@@ -276,6 +276,9 @@ class Tool:
     version = 1
     #: False = 資料夾外掛掃描（apps.core.plugins）時不掛載這個類別。
     enabled = True
+    #: 哪些參數填的是「通訊連線名稱」。Runner 的 prefetch 會照這個把連線在呼叫者執行緒
+    #: 先開好（執行緒池內的熱路徑不碰資料庫）；沒宣告的話工具在執行時只會拿到 None。
+    connection_params: tuple[str, ...] = ()
 
     #: 可吃的影像位深（imgfmt.DEPTHS 子集合）。預設只吃 u8：其他位深進來會被自動
     #: 正規化（工具永遠不炸）；能原生處理 16-bit／浮點的工具自行宣告放寬。

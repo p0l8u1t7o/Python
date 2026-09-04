@@ -30,6 +30,7 @@ class WriteModbusTool(Tool):
     description = "依對映表把判定、具名輸出或輸入埠的值寫到 Modbus TCP／上位機連線。寫入失敗預設只記警告不讓 run 失敗。"
     category = "output"
     icon = "Cable"
+    connection_params = ("connection",)
     params = [
         Param("connection", "連線", kind="text", required=True, help_text="填通訊連線的名稱（設定頁「連線」建立；也可填 id）。"),
         Param(
@@ -158,6 +159,7 @@ class ReadModbusTool(Tool):
     )
     category = "logic"
     icon = "Cable"
+    connection_params = ("connection",)
     params = [
         Param("connection", "連線", kind="text", required=True, help_text="填通訊連線的名稱（設定頁「外部整合 → 連線」建立）。"),
         Param(

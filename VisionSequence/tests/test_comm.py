@@ -7,13 +7,16 @@ import json
 import logging
 import socket
 import threading
+import time
+from types import SimpleNamespace
+from unittest import mock
 
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from pymodbus.client import ModbusTcpClient
 
-from apps.comm import writers
+from apps.comm import triggers, writers
 from apps.vision import trace
 from apps.comm.models import Connection
 from apps.comm.writers import CommError, DioSimWriter, ModbusTcpWriter, TcpClientWriter, parse_address
@@ -285,6 +288,199 @@ class ModbusServerTests(SimpleTestCase):
         self.assertFalse(self.writer.info()["listening"])
         with self.assertRaises(writers.CommError):
             self.writer._read(["holding:0"])  # noqa: SLF001 — 關閉後直接讀應該明確失敗
+
+
+class TriggerConfigTests(SimpleTestCase):
+    """觸發設定的解析（純函式，不起執行緒）。"""
+
+    def test_off_unless_both_address_and_flow(self):
+        self.assertIsNone(triggers.config_of({}))
+        self.assertIsNone(triggers.config_of({"trigger_address": "coil:0"}))
+        self.assertIsNone(triggers.config_of({"trigger_flow": "檢測"}))
+
+    def test_defaults_and_clamps(self):
+        cfg = triggers.config_of({"trigger_address": " coil:0 ", "trigger_flow": " 檢測 "})
+        self.assertEqual((cfg["address"], cfg["flow"]), ("coil:0", "檢測"))
+        self.assertEqual((cfg["mode"], cfg["clear"], cfg["done"]), ("rising", True, ""))
+        self.assertEqual(cfg["interval_ms"], triggers.DEFAULT_INTERVAL_MS)
+        fast = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_interval_ms": 1})
+        self.assertEqual(fast["interval_ms"], triggers.MIN_INTERVAL_MS)
+        bad = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_interval_ms": "很快"})
+        self.assertEqual(bad["interval_ms"], triggers.DEFAULT_INTERVAL_MS)
+        nz = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_mode": "NONZERO", "trigger_clear": False})
+        self.assertEqual((nz["mode"], nz["clear"]), ("nonzero", False))
+
+
+class TriggerLoopTests(SimpleTestCase):
+    """PLC 寫旗標 → 平台跑流程。用假 writer 驗迴圈的握手，不碰真的 Modbus。"""
+
+    class FakeWriter:
+        kind = "fake"
+        name = "fake"
+
+        def __init__(self, values=None):
+            self.values = dict(values or {})
+            self.written = []
+            self.fail_reads = 0
+            self.lock = threading.Lock()
+
+        def read(self, addresses):
+            with self.lock:
+                if self.fail_reads > 0:
+                    self.fail_reads -= 1
+                    raise writers.CommError("PLC 沒回應")
+                return {a: self.values.get(a, 0) for a in addresses}
+
+        def write(self, values, timeout=None):
+            with self.lock:
+                self.values.update(values)
+                self.written.append(dict(values))
+            return {"written": len(values)}
+
+    def _loop(self, writer, **cfg):
+        settings = triggers.config_of({"trigger_address": "coil:0", "trigger_flow": "x", "trigger_interval_ms": 10, **cfg})
+        loop = triggers.TriggerLoop(writer, settings)
+        loop._run = lambda flow: SimpleNamespace(id="run1", status="ok", outputs={"judge": "OK"}, error="")  # noqa: SLF001
+        loop._resolve_flow = lambda: SimpleNamespace(name="x")  # noqa: SLF001
+        self.addCleanup(loop.stop)
+        return loop
+
+    def _wait(self, cond, timeout=3.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            if cond():
+                return True
+            time.sleep(0.02)
+        return False
+
+    def test_rising_edge_fires_once_and_does_the_handshake(self):
+        w = self.FakeWriter({"coil:0": 1})
+        loop = self._loop(w, trigger_done_address="coil:1")
+        loop.start()
+        self.assertTrue(self._wait(lambda: loop.fired >= 1), "旗標寫進來卻沒有觸發")
+        self.assertEqual(w.values["coil:0"], 0)  # 先清旗標
+        self.assertEqual(w.values["coil:1"], 1)  # 跑完設完成
+        time.sleep(0.1)
+        self.assertEqual(loop.fired, 1)  # 旗標已清，不會重複觸發
+        w.values["coil:0"] = 1
+        self.assertTrue(self._wait(lambda: loop.fired >= 2), "PLC 再寫一次應該再觸發")
+
+    def test_nonzero_mode_keeps_firing(self):
+        w = self.FakeWriter({"coil:0": 1})
+        loop = self._loop(w, trigger_mode="nonzero", trigger_clear=False)
+        loop.start()
+        self.assertTrue(self._wait(lambda: loop.fired >= 3), "nonzero 模式應該持續觸發")
+        self.assertEqual(w.written, [])  # 沒有 clear、沒有 done 就不該寫任何東西
+
+    def test_read_failure_backs_off_and_recovers(self):
+        w = self.FakeWriter({"coil:0": 1})
+        w.fail_reads = 3
+        loop = self._loop(w)
+        loop.start()
+        self.assertTrue(self._wait(lambda: loop.errors >= 3), "讀取失敗要記下來")
+        self.assertIn("沒回應", loop.last_error)
+        self.assertTrue(self._wait(lambda: loop.fired >= 1), "PLC 回來之後要繼續工作")
+
+    def test_missing_flow_is_recorded_not_raised(self):
+        w = self.FakeWriter({"coil:0": 1})
+        settings = triggers.config_of({"trigger_address": "coil:0", "trigger_flow": "沒這個流程", "trigger_interval_ms": 10})
+        loop = triggers.TriggerLoop(w, settings)
+        loop._resolve_flow = lambda: None  # noqa: SLF001
+        self.addCleanup(loop.stop)
+        loop.start()
+        self.assertTrue(self._wait(lambda: loop.errors >= 1))
+        self.assertIn("不存在", loop.last_error)
+        self.assertEqual(loop.fired, 0)
+
+    def test_status_and_registry(self):
+        w = self.FakeWriter()
+        self.addCleanup(triggers.stop_all)
+        loop = triggers.sync(4242, w, {"trigger_address": "coil:9", "trigger_flow": "f", "trigger_interval_ms": 50})
+        self.assertIsNotNone(loop)
+        self.assertEqual(triggers.sync(4242, w, {"trigger_address": "coil:9", "trigger_flow": "f", "trigger_interval_ms": 50}), loop)  # 設定沒變就沿用
+        st = triggers.status(4242)
+        self.assertEqual((st["address"], st["flow"], st["running"]), ("coil:9", "f", True))
+        self.assertIsNone(triggers.sync(4242, w, {}))  # 拿掉設定就停掉
+        self.assertIsNone(triggers.status(4242))
+        self.assertFalse(loop.is_alive() and not loop._halt.is_set())  # noqa: SLF001
+
+
+class AutostartTests(TestCase):
+    """從站要在啟動時就開埠，不能等有人按「測試」。"""
+
+    def test_listener_opens_on_create_and_autostart(self):
+        from apps.comm.models import Connection
+
+        port = free_port()
+        conn = Connection.objects.create(name="自動從站", kind="modbus_server", config={"host": "127.0.0.1", "port": port, "size": 32})
+        self.addCleanup(writers.close_all)
+        writers.ensure_started(conn)
+        client = ModbusTcpClient("127.0.0.1", port=port, timeout=2)
+        self.assertTrue(client.connect(), "建立連線後 PLC 就該連得上")
+        client.close()
+        writers.close_all()  # 模擬伺服器重開
+        self.assertEqual(writers.autostart(), ["自動從站"])
+        client = ModbusTcpClient("127.0.0.1", port=port, timeout=2)
+        self.assertTrue(client.connect(), "重開後要自己回來聽")
+        client.close()
+
+    def test_start_failure_shows_the_reason(self):
+        """埠被別的程式佔走時，狀態要說得出原因（不然只看到「未開啟」，PLC 連不上卻查不到）。"""
+        from apps.comm.models import Connection
+
+        port = free_port()
+        conn = Connection.objects.create(name="被佔用", kind="modbus_server", config={"host": "127.0.0.1", "port": port, "size": 32})
+        self.addCleanup(writers.close_all)
+        boom = writers.CommError(f"Modbus 從站無法在 127.0.0.1:{port} 啟動（埠已被使用）；請確認這個埠沒有被其他程式佔用")
+        with mock.patch.object(writers.ModbusServerWriter, "_open", side_effect=boom):
+            writers.ensure_started(conn)  # 不該拋，但要留下原因
+        status = writers.connection_info(conn)
+        self.assertFalse(status["open"])
+        self.assertIn("無法在", status["error"])
+        self.assertIn(str(port), status["error"])
+        r = self.client.post(f"/api/vision/connections/{conn.id}/test")  # 「測試」也要回同一個原因
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])  # 佔用解除後就開得起來
+        self.assertEqual(writers.connection_info(conn)["open"], True)
+
+    def test_plain_client_connection_is_not_autostarted(self):
+        from apps.comm.models import Connection
+
+        conn = Connection.objects.create(name="純主站", kind="modbus_tcp", config={"host": "127.0.0.1", "port": 502})
+        self.assertFalse(writers.should_autostart(conn))
+        conn.config = {**conn.config, "trigger_address": "coil:0", "trigger_flow": "f"}
+        self.assertTrue(writers.should_autostart(conn), "設了觸發位址的主站也要自己活起來")
+        conn.is_enabled = False
+        self.assertFalse(writers.should_autostart(conn))
+
+
+class PrefetchTests(SimpleTestCase):
+    """只讀不寫的流程也要拿得到連線（以前只掃 write_modbus，read_modbus 靜默降級）。"""
+
+    def test_scans_every_tool_that_declares_a_connection_param(self):
+        from apps.vision.tools import base as tools_base
+
+        for key in ("write_modbus", "read_modbus"):
+            self.assertEqual(tools_base.get(key).connection_params, ("connection",), key)
+
+    def test_prefetch_collects_names_from_both_tools(self):
+        from apps.vision.graph import compile_graph, validate_graph
+
+        graph = {
+            "nodes": [
+                {"id": "r", "type": "read_modbus", "params": {"connection": "讀取用", "mapping": []}},
+                {"id": "w", "type": "write_modbus", "params": {"connection": "寫入用", "mapping": []}},
+            ],
+            "edges": [],
+        }
+        compiled = compile_graph(validate_graph(graph))
+        seen = []
+        with mock.patch.object(writers, "open_connection", side_effect=lambda conn: seen.append(conn.name)), \
+             mock.patch("apps.comm.models.Connection.objects") as objects:
+            objects.filter.return_value = []
+            writers.prefetch_connections(compiled)
+            names = set(objects.filter.call_args.args[0].children[0][1])
+        self.assertEqual(names, {"讀取用", "寫入用"})
 
 
 class ReadModbusToolTests(SimpleTestCase):

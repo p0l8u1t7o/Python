@@ -34,6 +34,7 @@ from typing import Any
 
 from django.conf import settings
 
+from apps.comm import triggers
 from apps.core.errors import NotFound, ValidationError
 
 log = logging.getLogger(__name__)
@@ -103,6 +104,8 @@ class Writer:
     fields: list[str] = []
     #: False = 這個類別不掛載（apps.core.plugins 掃描時略過）。
     enabled = True
+    #: True = 這個連線自己開埠等對方連進來（從站／伺服器）；啟動時要自動開，不能等第一次寫入。
+    listens = False
 
     def __init__(self, config: dict[str, Any], *, connection_id: int = 0, name: str = "") -> None:
         self.config = config
@@ -223,6 +226,7 @@ class ModbusTcpWriter(Writer):
     """config: host, port=502, unit_id=1, timeout_s=2, word_order=big|little"""
 
     kind = "modbus_tcp"
+    label = "Modbus/TCP 主站（連到 PLC）"
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -330,7 +334,8 @@ class ModbusServerWriter(Writer):
 
     kind = "modbus_server"
     label = "Modbus/TCP 從站（本機當 server）"
-    fields = ["host", "port", "unit_id", "size", "word_order"]
+    listens = True
+    fields = ["host", "port", "unit_id", "size", "word_order", "trigger_address", "trigger_flow", "trigger_interval_ms", "trigger_mode", "trigger_clear", "trigger_done_address"]
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -357,7 +362,8 @@ class ModbusServerWriter(Writer):
         self._thread = threading.Thread(target=self._serve, name=f"modbus-server-{self.port}", daemon=True)
         self._thread.start()
         if not self._ready.wait(5.0) or self.server is None:
-            raise CommError(self._error or f"Modbus 從站無法在 {self.host}:{self.port} 啟動")
+            reason = self._error or "逾時"
+            raise CommError(f"Modbus 從站無法在 {self.host}:{self.port} 啟動（{reason}）；請確認這個埠沒有被其他程式佔用")
 
     def _serve(self) -> None:
         import asyncio
@@ -662,10 +668,12 @@ def open_connection(conn, *, force: bool = False) -> Writer:
         writer = cls(dict(conn.config or {}), connection_id=conn.id, name=conn.name)
         _open[conn.id] = (stamp, writer)
         _by_name[conn.name] = writer
-        return writer
+    triggers.sync(conn.id, writer, conn.config or {})  # 有設觸發位址就開始輪詢（鎖外，迴圈會用到 writer）
+    return writer
 
 
 def _drop_locked(connection_id: int) -> None:
+    triggers.stop(connection_id)
     cached = _open.pop(connection_id, None)
     if not cached:
         return
@@ -684,6 +692,7 @@ def close_connection(connection_id: int) -> None:
 
 
 def close_all() -> None:
+    triggers.stop_all()
     with _lock:
         for cid in list(_open):
             _drop_locked(cid)
@@ -712,23 +721,88 @@ def register_writer(name: str, writer: Writer) -> None:
 def connection_info(conn) -> dict[str, Any]:
     with _lock:
         cached = _open.get(conn.id)
+    trigger = triggers.status(conn.id)
     if not cached:
-        return {"open": False}
+        # 從站開不起來（埠被別的程式佔走是最常見的）時，狀態要說得出原因——
+        # 不然管理員只看到「未開啟」，PLC 連不上卻找不到頭緒。
+        out = {"open": False}
+        if _start_errors.get(conn.id):
+            out["error"] = _start_errors[conn.id]
+        if trigger:
+            out["trigger"] = trigger
+        return out
     try:
-        return {"open": True, **cached[1].info()}
+        info = {"open": True, **cached[1].info()}
     except Exception as exc:  # noqa: BLE001
-        return {"open": True, "error": str(exc)}
+        info = {"open": True, "error": str(exc)}
+    if trigger:
+        info["trigger"] = trigger
+    return info
+
+
+#: 自動啟動失敗的原因（連線 id → 訊息）；連線狀態會帶出來。
+_start_errors: dict[int, str] = {}
+
+
+def should_autostart(conn) -> bool:
+    """從站要一直在聽、設了觸發位址的要開始輪詢——這種連線不能等第一次寫入才開。"""
+    try:
+        cls = _resolve_class(conn.kind, conn.config or {})
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(conn.is_enabled and (getattr(cls, "listens", False) or triggers.config_of(conn.config or {})))
+
+
+def ensure_started(conn) -> None:
+    """建立／修改連線後呼叫：需要的話立刻開起來，失敗不擋 API（原因會出現在連線狀態）。"""
+    if not should_autostart(conn):
+        _start_errors.pop(conn.id, None)
+        return
+    try:
+        open_connection(conn)
+        _start_errors.pop(conn.id, None)
+    except Exception as exc:  # noqa: BLE001 — 開不起來（埠被佔用最常見）不擋 API，但要說得出原因
+        _start_errors[conn.id] = _msg(exc)
+        log.warning("連線 %s 啟動失敗：%s", conn.name, exc)
+
+
+def autostart() -> list[str]:
+    """啟動時要自己活起來的連線：從站得一直在聽（PLC 隨時會連），有觸發設定的要開始輪詢。
+
+    `manage.py serve` 在 TCP／擷取端之後呼叫。以前從站要等到有人在網頁按「測試」或流程跑過
+    一次才開埠——伺服器重開後 PLC 就連不上，是從站模式最容易踩的坑。
+    """
+    from apps.comm.models import Connection
+
+    started: list[str] = []
+    for conn in Connection.objects.filter(is_enabled=True):
+        if not should_autostart(conn):
+            continue
+        try:
+            open_connection(conn)
+            _start_errors.pop(conn.id, None)
+            started.append(conn.name)
+        except Exception as exc:  # noqa: BLE001 — 開不起來只記錄，其他連線照常
+            _start_errors[conn.id] = _msg(exc)
+            log.warning("連線 %s 自動啟動失敗：%s", conn.name, exc)
+    if started:
+        log.info("已自動啟動 %s 個連線：%s", len(started), "、".join(started))
+    return started
 
 
 def prefetch_connections(compiled) -> None:
-    """Runner prefetch hook：找出圖裡 write_modbus 用到的連線名稱，在呼叫者執行緒先開好。"""
+    """Runner prefetch hook：找出圖裡用到的連線名稱，在呼叫者執行緒先開好。
+
+    工具以 `Tool.connection_params` 宣告哪些參數是連線名稱（不再寫死工具 key——寫死的時候
+    只有 write_modbus 被掃到，只讀不寫的流程會拿不到連線而靜默降級）。
+    """
     names: set[str] = set()
     for cn in compiled.nodes.values():
-        if getattr(cn.tool, "key", "") != "write_modbus":
-            continue
-        value = (cn.node.get("params") or {}).get("connection")
-        if value not in (None, ""):
-            names.add(str(value).strip())
+        params = cn.node.get("params") or {}
+        for key in getattr(cn.tool, "connection_params", ()):
+            value = params.get(key)
+            if value not in (None, ""):
+                names.add(str(value).strip())
     if not names:
         return
     from django.db.models import Q
@@ -753,13 +827,19 @@ def get_connection(connection_id: int):
     return conn
 
 
+#: 兩種 Modbus 連線共用的觸發設定（見 apps/comm/triggers.py）。
+TRIGGER_FIELDS = ["trigger_address", "trigger_flow", "trigger_interval_ms", "trigger_mode", "trigger_clear", "trigger_done_address", "trigger_recipe"]
+_MODBUS_MASTER_FIELDS = ["host", "port", "unit_id", "timeout_s", "word_order"]
+_MODBUS_SLAVE_FIELDS = ["host", "port", "unit_id", "size", "word_order"]
+
+
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "label": "Modbus/TCP 主站（連到 PLC）", "fields": ["host", "port", "unit_id", "timeout_s", "word_order"],
-         "description": "本平台當主站（client）連到 PLC／設備，主動讀寫對方的線圈與暫存器。"},
-        {"kind": "modbus_server", "label": "Modbus/TCP 從站（本機當 server）", "fields": ["host", "port", "unit_id", "size", "word_order"],
-         "description": "本平台當從站（server）開一個埠，PLC／上位機當主站來讀寫我們的暫存器；流程把結果寫進暫存器，主站自己來取。"},
+        {"kind": "modbus_tcp", "label": "Modbus/TCP 主站（連到 PLC）", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
+         "description": "本平台當主站（client）連到 PLC／設備，主動讀寫對方的線圈與暫存器。也可以輪詢對方的一個位址當觸發源。"},
+        {"kind": "modbus_server", "label": "Modbus/TCP 從站（本機當 server）", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
+         "description": "本平台當從站（server）開一個埠，PLC／上位機當主站來讀寫我們的暫存器；流程把結果寫進暫存器，主站自己來取。設定觸發位址後，主站把旗標寫進來就會跑一次流程。伺服器啟動時自動開埠。"},
         {"kind": "tcp_client", "label": "TCP 文字／JSON（上位機）", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
         {"kind": "dio_sim", "label": "模擬 DIO（只記錄狀態）", "fields": ["channels"]},
     ]
