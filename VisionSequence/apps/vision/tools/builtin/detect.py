@@ -169,36 +169,36 @@ def _watershed_split(mask: np.ndarray, min_radius: float = 0.0) -> np.ndarray:
 
 class BlobTool(Tool):
     key = "blob"
-    label = "Blob 分析"
-    description = "連通區域／輪廓分析：面積、中心、外接矩形、圓形度；可依面積與圓形度篩選並排序。灰階輸入會自動二值化。"
+    label = "Blob analysis"
+    description = "Connected component and contour analysis: area, centre, bounding box and circularity, with filtering and sorting by area and circularity. A grayscale input is thresholded automatically."
     category = "detect"
     icon = "Shapes"
     params = [
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
-        Param("threshold_method", "二值化", kind="select", default="otsu", options=[
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
+        Param("threshold_method", "Threshold", kind="select", default="otsu", options=[
             {"value": "otsu", "label": "Otsu 自動"}, {"value": "fixed", "label": "固定門檻"}, {"value": "none", "label": "輸入已是遮罩（非 0 即前景）"},
         ]),
-        Param("threshold", "門檻", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "threshold_method", "in": ["fixed"]}),
-        Param("polarity", "前景", kind="select", default="bright", options=[{"value": "bright", "label": "亮物件"}, {"value": "dark", "label": "暗物件"}]),
-        Param("min_area", "最小面積", kind="number", default=50, minimum=0, unit="px²", teach=True),
-        Param("max_area", "最大面積", kind="number", default=0, minimum=0, unit="px²", help_text="0 表示不限。", teach=True),
-        Param("min_circularity", "最小圓形度", kind="range", default=0, minimum=0, maximum=1, step=0.01, help_text="4πA/P²，正圓為 1。", teach=True),
-        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=5000),
-        Param("sort_by", "排序", kind="select", default="area", options=[
+        Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "threshold_method", "in": ["fixed"]}),
+        Param("polarity", "Foreground", kind="select", default="bright", options=[{"value": "bright", "label": "亮物件"}, {"value": "dark", "label": "暗物件"}]),
+        Param("min_area", "Min area", kind="number", default=50, minimum=0, unit="px²", teach=True),
+        Param("max_area", "Max area", kind="number", default=0, minimum=0, unit="px²", help_text="0 means no limit.", teach=True),
+        Param("min_circularity", "Min circularity", kind="range", default=0, minimum=0, maximum=1, step=0.01, help_text="4πA/P², 1 for a perfect circle.", teach=True),
+        Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=5000),
+        Param("sort_by", "Sort by", kind="select", default="area", options=[
             {"value": "area", "label": "面積（大→小）"}, {"value": "x", "label": "X（左→右）"}, {"value": "y", "label": "Y（上→下）"}, {"value": "circularity", "label": "圓形度（高→低）"},
         ]),
-        Param("separate", "分離黏連粒子", kind="boolean", default=False, group="進階", help_text="距離轉換＋分水嶺把黏在一起的粒子切開再量測；種子視窗依「最小面積」推算的粒子半徑。"),
-        Param("fill_holes", "填滿孔洞", kind="boolean", default=False, group="進階"),
-        Param("external_only", "只取最外層輪廓", kind="boolean", default=True, group="進階", help_text="關閉時面積會扣掉孔洞。"),
-        Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定", help_text="找到的 blob 少於此值判 NG。"),
+        Param("separate", "Split touching particles", kind="boolean", default=False, group="Advanced", help_text="A distance transform plus watershed splits touching particles before measuring; the seed window comes from the particle radius implied by the minimum area."),
+        Param("fill_holes", "Fill holes", kind="boolean", default=False, group="Advanced"),
+        Param("external_only", "Outer contours only", kind="boolean", default=True, group="Advanced", help_text="Turn off and holes are subtracted from the area."),
+        Param("min_count", "Min passing count", kind="number", default=1, minimum=0, group="Verdict", help_text="Fewer blobs than this is an NG."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
-        Port("blobs", "Blob 列表", "matches"), Port("count", "數量", "number"),
-        Port("largest_area", "最大面積", "number"), Port("total_area", "總面積", "number"),
-        Port("contours", "輪廓", "contours"), Port("centers", "中心點", "points"), Port("mask", "遮罩", "image"),
-        Port("first_cx", "第一個中心 X", "number"), Port("first_cy", "第一個中心 Y", "number"),
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("blobs", "Blobs", "matches"), Port("count", "Count", "number"),
+        Port("largest_area", "Max area", "number"), Port("total_area", "Total area", "number"),
+        Port("contours", "Contour", "contours"), Port("centers", "Centres", "points"), Port("mask", "Mask", "image"),
+        Port("first_cx", "First centre X", "number"), Port("first_cy", "First centre Y", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -320,28 +320,28 @@ def _align(image: np.ndarray, template: np.ndarray, method: str, template_f32: n
 
 class DefectDiffTool(Tool):
     key = "defect_diff"
-    label = "差異缺陷"
-    description = "與良品範本對齊後做灰階差異（absdiff → 門檻 → 形態學），差異區域即缺陷。"
+    label = "Difference defects"
+    description = "Aligns to a golden template then takes the grey difference (absdiff, threshold, morphology); what differs is the defect."
     category = "detect"
     icon = "Diff"
     params = [
-        Param("template", "良品範本", kind="asset", accept="image", required=True),
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。範本需與影像同尺寸（或會被縮放到相同尺寸）。"),
-        Param("align", "對齊", kind="select", default="phase", options=[
+        Param("template", "Golden template", kind="asset", accept="image", required=True),
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Blank uses the whole image. The template must be the same size as the image, or it is scaled to match."),
+        Param("align", "Aligned", kind="select", default="phase", options=[
             {"value": "none", "label": "不對齊"}, {"value": "phase", "label": "相位相關（平移）"}, {"value": "ecc", "label": "ECC（平移＋旋轉）"},
         ]),
-        Param("blur", "前置高斯模糊核", kind="number", default=3, minimum=0, maximum=31, group="進階"),
-        Param("threshold", "差異門檻", kind="number", default=40, minimum=1, maximum=255, teach=True),
-        Param("morph", "形態學開運算核", kind="number", default=3, minimum=0, maximum=31, group="進階"),
-        Param("min_area", "最小缺陷面積", kind="number", default=30, minimum=0, unit="px²", teach=True),
-        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=5000),
-        Param("border", "忽略邊界", kind="number", default=4, minimum=0, unit="px", group="進階", help_text="對齊後邊界會有假差異，忽略此寬度。"),
+        Param("blur", "Pre-blur kernel", kind="number", default=3, minimum=0, maximum=31, group="Advanced"),
+        Param("threshold", "Difference threshold", kind="number", default=40, minimum=1, maximum=255, teach=True),
+        Param("morph", "Opening kernel", kind="number", default=3, minimum=0, maximum=31, group="Advanced"),
+        Param("min_area", "Min defect area", kind="number", default=30, minimum=0, unit="px²", teach=True),
+        Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=5000),
+        Param("border", "Ignore border", kind="number", default=4, minimum=0, unit="px", group="Advanced", help_text="Alignment leaves false differences at the border; ignore this many pixels."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        flow_out("ok", "無缺陷", "ok"), flow_out("defect", "有缺陷", "critical"),
-        Port("defects", "缺陷列表", "matches"), Port("count", "數量", "number"), Port("total_area", "總面積", "number"),
-        Port("defect_mask", "缺陷遮罩", "image"), Port("diff", "差異影像", "image"),
+        flow_out("ok", "Clean", "ok"), flow_out("defect", "Defective", "critical"),
+        Port("defects", "Defects", "matches"), Port("count", "Count", "number"), Port("total_area", "Total area", "number"),
+        Port("defect_mask", "Defect mask", "image"), Port("diff", "Difference image", "image"),
     ]
     heavy = True
 
@@ -412,19 +412,19 @@ class DefectDiffTool(Tool):
 
 class BarcodeTool(Tool):
     key = "barcode"
-    label = "條碼 / QR"
-    description = "解碼 QR code 與一維條碼（EAN/UPC/Code128 等）。"
+    label = "Barcode / QR"
+    description = "Decodes QR codes and 1D barcodes (EAN, UPC, Code128 and friends)."
     category = "detect"
     icon = "QrCode"
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect"], help_text="留空則整張影像。"),
-        Param("types", "類型", kind="select", default="all", options=[{"value": "all", "label": "QR + 一維條碼"}, {"value": "qr", "label": "只 QR"}, {"value": "1d", "label": "只一維條碼"}]),
-        Param("expected", "期望內容", kind="text", default="", help_text="不為空時，內容需完全相同才走「符合」分支。"),
+        Param("roi", "Region", kind="roi", shapes=["rect"], help_text="Leave blank for the whole image."),
+        Param("types", "Type", kind="select", default="all", options=[{"value": "all", "label": "QR + 一維條碼"}, {"value": "qr", "label": "只 QR"}, {"value": "1d", "label": "只一維條碼"}]),
+        Param("expected", "Expected content", kind="text", default="", help_text="When set, the content must match exactly to take the match branch."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        flow_out("found", "找到／符合", "ok"), flow_out("not_found", "沒找到／不符", "critical"),
-        Port("texts", "內容列表", "list"), Port("count", "數量", "number"), Port("first", "第一個內容", "string"), Port("codes", "詳細", "matches"),
+        flow_out("found", "Found / matched", "ok"), flow_out("not_found", "Not found / no match", "critical"),
+        Port("texts", "Contents", "list"), Port("count", "Count", "number"), Port("first", "First content", "string"), Port("codes", "Detail", "matches"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -475,20 +475,20 @@ class BarcodeTool(Tool):
 
 class TextPresenceTool(Tool):
     key = "text_presence"
-    label = "有無印字"
-    description = "區域內筆劃像素比例（自適應二值化後的前景比例）是否達門檻，用來判斷有無印字／標籤。"
+    label = "Print presence"
+    description = "Whether the stroke ratio in the region (foreground after adaptive thresholding) reaches the threshold — the way to tell whether printing or a label is there."
     category = "detect"
     icon = "Type"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=ROI_SHAPES),
-        Param("polarity", "字色", kind="select", default="dark", options=[{"value": "dark", "label": "深色字"}, {"value": "bright", "label": "淺色字"}]),
-        Param("block", "自適應區塊（奇數）", kind="number", default=31, minimum=3, maximum=255, step=2, group="進階"),
-        Param("c", "自適應常數 C", kind="number", default=10, minimum=-100, maximum=100, group="進階"),
-        Param("min_ratio", "最小筆劃比例", kind="range", default=0.03, minimum=0, maximum=1, step=0.005, teach=True),
-        Param("max_ratio", "最大筆劃比例", kind="range", default=0.6, minimum=0, maximum=1, step=0.005, help_text="超過視為污損或整片色塊。", teach=True),
+        Param("roi", "Region", kind="roi", required=True, shapes=ROI_SHAPES),
+        Param("polarity", "Text colour", kind="select", default="dark", options=[{"value": "dark", "label": "深色字"}, {"value": "bright", "label": "淺色字"}]),
+        Param("block", "Adaptive block (odd)", kind="number", default=31, minimum=3, maximum=255, step=2, group="Advanced"),
+        Param("c", "Adaptive constant C", kind="number", default=10, minimum=-100, maximum=100, group="Advanced"),
+        Param("min_ratio", "Min stroke ratio", kind="range", default=0.03, minimum=0, maximum=1, step=0.005, teach=True),
+        Param("max_ratio", "Max stroke ratio", kind="range", default=0.6, minimum=0, maximum=1, step=0.005, help_text="Above this it is treated as smearing or a solid block.", teach=True),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("present", "有", "ok"), flow_out("absent", "無", "critical"), Port("ratio", "筆劃比例", "number"), Port("is_present", "有印字", "bool"), Port("mask", "筆劃遮罩", "image")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("present", "Yes", "ok"), flow_out("absent", "No", "critical"), Port("ratio", "Stroke ratio", "number"), Port("is_present", "Printed", "bool"), Port("mask", "Stroke mask", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())
@@ -527,18 +527,18 @@ def _hex_to_bgr(value: str) -> tuple[int, int, int]:
 
 class ColorCheckTool(Tool):
     key = "color_check"
-    label = "顏色檢查"
-    description = "區域內平均顏色與目標色的距離（RGB 或 HSV 空間）是否在容差內。"
+    label = "Colour check"
+    description = "Whether the distance between the region's mean colour and the target colour, in RGB or HSV, is within tolerance."
     category = "detect"
     icon = "Palette"
     params = [
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
-        Param("color", "目標色", kind="color", required=True, default="#ff0000"),
-        Param("space", "比較空間", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB 歐氏距離（0~441）"}, {"value": "hsv", "label": "HSV（色相為主）"}]),
-        Param("tolerance", "容差", kind="number", default=60, minimum=0, help_text="RGB：歐氏距離；HSV：色相差（0~180，依飽和度加權）＋飽和度／明度差÷4 的距離。", teach=True),
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
+        Param("color", "Target colour", kind="color", required=True, default="#ff0000"),
+        Param("space", "Colour space", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB 歐氏距離（0~441）"}, {"value": "hsv", "label": "HSV（色相為主）"}]),
+        Param("tolerance", "Tolerance", kind="number", default=60, minimum=0, help_text="RGB uses Euclidean distance. HSV uses hue difference (0–180, weighted by saturation) plus saturation and value differences divided by four.", teach=True),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("match", "符合", "ok"), flow_out("mismatch", "不符", "critical"), Port("distance", "距離", "number"), Port("is_match", "符合", "bool"), Port("mean_hex", "平均色", "string"), Port("mean_bgr", "平均 BGR", "list"), Port("mean_hsv", "平均 HSV", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("match", "Match", "ok"), flow_out("mismatch", "No match", "critical"), Port("distance", "Distance", "number"), Port("is_match", "Match", "bool"), Port("mean_hex", "Mean colour", "string"), Port("mean_bgr", "Mean BGR", "list"), Port("mean_hsv", "Mean HSV", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -572,19 +572,19 @@ class ColorCheckTool(Tool):
 
 class EdgeDensityTool(Tool):
     key = "edge_density"
-    label = "邊緣密度"
-    description = "區域內 Canny 邊緣像素比例；平滑表面出現刮痕、髒污時比例會升高。"
+    label = "Edge density"
+    description = "The ratio of Canny edge pixels in the region. A scratch or smear on a smooth surface pushes it up."
     category = "detect"
     icon = "Activity"
     params = [
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
-        Param("canny_low", "Canny 低門檻", kind="number", default=50, minimum=0, maximum=500),
-        Param("canny_high", "Canny 高門檻", kind="number", default=150, minimum=0, maximum=500),
-        Param("blur", "前置高斯核", kind="number", default=3, minimum=0, maximum=31, group="進階"),
-        Param("max_ratio", "合格最大比例", kind="range", default=0.05, minimum=0, maximum=1, step=0.001, teach=True),
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
+        Param("canny_low", "Canny low", kind="number", default=50, minimum=0, maximum=500),
+        Param("canny_high", "Canny high", kind="number", default=150, minimum=0, maximum=500),
+        Param("blur", "Pre-blur kernel", kind="number", default=3, minimum=0, maximum=31, group="Advanced"),
+        Param("max_ratio", "Max passing ratio", kind="range", default=0.05, minimum=0, maximum=1, step=0.001, teach=True),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("ok", "合格", "ok"), flow_out("ng", "超標", "critical"), Port("ratio", "邊緣比例", "number"), Port("edge_pixels", "邊緣像素數", "number"), Port("edges", "邊緣影像", "image")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("ok", "Pass", "ok"), flow_out("ng", "Over limit", "critical"), Port("ratio", "Edge ratio", "number"), Port("edge_pixels", "Edge pixels", "number"), Port("edges", "Edge image", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())
@@ -613,18 +613,18 @@ class EdgeDensityTool(Tool):
 
 class PixelCountTool(Tool):
     key = "pixel_count"
-    label = "像素計數"
-    description = "遮罩（或灰階以門檻二值化後）在區域內的前景像素數與比例。"
+    label = "Pixel count"
+    description = "Foreground pixel count and ratio inside the region, from a mask or from grayscale thresholded at the given level."
     category = "detect"
     icon = "Grid3x3"
     params = [
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
-        Param("threshold", "門檻", kind="number", default=128, minimum=0, maximum=255, help_text="大於等於此灰階算前景；輸入已是 0/255 遮罩時維持預設即可。"),
-        Param("min_count", "合格最少像素", kind="number", default=0, minimum=0, teach=True),
-        Param("max_count", "合格最多像素", kind="number", default=0, minimum=0, help_text="0 表示不限。", teach=True),
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
+        Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, help_text="Pixels at or above this grey level are foreground; leave the default when the input is already a 0/255 mask."),
+        Param("min_count", "Min passing pixels", kind="number", default=0, minimum=0, teach=True),
+        Param("max_count", "Max passing pixels", kind="number", default=0, minimum=0, help_text="0 means no limit.", teach=True),
     ]
-    inputs = [Port("image", "遮罩／影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("ok", "合格", "ok"), flow_out("ng", "不合格", "critical"), Port("count", "像素數", "number"), Port("ratio", "比例", "number"), Port("total", "區域像素數", "number")]
+    inputs = [Port("image", "Mask / image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("ok", "Pass", "ok"), flow_out("ng", "Fail", "critical"), Port("count", "Pixel count", "number"), Port("ratio", "Scale", "number"), Port("total", "Region pixels", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())

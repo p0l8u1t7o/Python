@@ -268,8 +268,8 @@ class Tool:
     category = "preprocess"
     icon = "Box"
     params: list[Param] = []
-    inputs: list[Port] = [Port("image", "影像", "image")]
-    outputs: list[Port] = [Port("image", "影像", "image")]
+    inputs: list[Port] = [Port("image", "Image", "image")]
+    outputs: list[Port] = [Port("image", "Image", "image")]
     #: 是否可能耗時很久（前端顯示提示）。
     heavy = False
     #: 參數語意變更時 +1：配方匯入會比對版本，提醒使用者確認。
@@ -338,15 +338,15 @@ CATEGORY_ORDER = {
 }
 
 CATEGORY_LABELS = {
-    "source": "影像來源",
-    "preprocess": "影像前處理",
-    "locate": "定位",
-    "measure": "量測",
-    "detect": "檢測 / 識別",
-    "dl": "深度學習",
-    "logic": "邏輯",
-    "output": "輸出",
-    "decoration": "註解",
+    "source": "Image source",
+    "preprocess": "Pre-processing",
+    "locate": "Locate",
+    "measure": "Measure",
+    "detect": "Detect / identify",
+    "dl": "Deep learning",
+    "logic": "Logic",
+    "output": "Output",
+    "decoration": "Note",
 }
 
 

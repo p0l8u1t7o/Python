@@ -93,32 +93,32 @@ def _pick_pair(edges: list[tuple[float, float]], mode: str, pair_polarity: str, 
 
 class CaliperTool(Tool):
     key = "caliper"
-    label = "卡尺"
-    description = "在矩形區域內沿長邊投影灰階剖面，找一對邊緣並量測寬度（像素）。"
+    label = "Caliper"
+    description = "Projects a grey profile along the long side of a rectangle, finds a pair of edges and measures the width in pixels."
     category = "measure"
     icon = "Ruler"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="沿長邊方向掃描，短邊方向取平均以抗雜訊。"),
-        Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
-        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
-        Param("edge_pair", "取邊緣對", kind="select", default="first_last", options=[
+        Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="Scans along the long side, averaging across the short side to beat noise."),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("edge_pair", "Pick edge pair", kind="select", default="first_last", options=[
             {"value": "first_last", "label": "第一個與最後一個"},
             {"value": "widest", "label": "最寬的一對"},
             {"value": "narrowest", "label": "最窄的一對（相鄰）"},
             {"value": "strongest", "label": "最強的兩個"},
         ]),
-        Param("pair_polarity", "邊緣對極性", kind="select", default="any", options=[
+        Param("pair_polarity", "Edge pair polarity", kind="select", default="any", options=[
             {"value": "any", "label": "不限"}, {"value": "bright", "label": "亮條（暗→亮、亮→暗）"}, {"value": "dark", "label": "暗條（亮→暗、暗→亮）"},
-        ], help_text="限制成對邊緣的極性順序：量亮條／暗條的寬度時不會配到旁邊的雜訊邊緣。"),
-        Param("expected_width", "期望寬度", kind="number", default=0, minimum=0, unit="px", help_text="大於 0 時改挑「寬度最接近此值」的邊緣對（優先於取邊緣對模式）。"),
-        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+        ], help_text="Constrains the polarity order of a pair, so measuring a bright or dark bar does not latch onto a neighbouring noise edge."),
+        Param("expected_width", "Expected width", kind="number", default=0, minimum=0, unit="px", help_text="Above 0, picks the edge pair whose width is closest to this instead of following the pair mode."),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        Port("width", "寬度", "number"),
-        Port("edge1_x", "邊緣1 X", "number"), Port("edge1_y", "邊緣1 Y", "number"),
-        Port("edge2_x", "邊緣2 X", "number"), Port("edge2_y", "邊緣2 Y", "number"),
-        Port("edges", "所有邊緣位置", "list"), Port("profile", "剖面", "list"),
+        Port("width", "Width", "number"),
+        Port("edge1_x", "Edge 1 X", "number"), Port("edge1_y", "Edge 1 Y", "number"),
+        Port("edge2_x", "Edge 2 X", "number"), Port("edge2_y", "Edge 2 Y", "number"),
+        Port("edges", "All edge positions", "list"), Port("profile", "Profile", "list"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -172,22 +172,22 @@ class CaliperTool(Tool):
 
 class DistanceTool(Tool):
     key = "distance"
-    label = "距離"
-    description = "兩點距離（像素）。點可為 {x,y} / [x,y]，或分別接 ax, ay, bx, by 四個數值。"
+    label = "Distance"
+    description = "The distance between two points, in pixels. A point may be {x,y} or [x,y], or four separate numbers ax, ay, bx, by."
     category = "measure"
     icon = "MoveHorizontal"
     params = [
-        Param("mode", "量測", kind="select", default="euclid", options=[
+        Param("mode", "Measure", kind="select", default="euclid", options=[
             {"value": "euclid", "label": "直線距離"}, {"value": "dx", "label": "X 方向距離"}, {"value": "dy", "label": "Y 方向距離"},
         ]),
     ]
     inputs = [
-        Port("image", "影像", "image", required=False),
-        Port("a", "點 A", "any", required=False), Port("b", "點 B", "any", required=False),
+        Port("image", "Image", "image", required=False),
+        Port("a", "Point A", "any", required=False), Port("b", "Point B", "any", required=False),
         Port("ax", "A.x", "number", required=False), Port("ay", "A.y", "number", required=False),
         Port("bx", "B.x", "number", required=False), Port("by", "B.y", "number", required=False),
     ]
-    outputs = [Port("distance", "距離", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number")]
+    outputs = [Port("distance", "Distance", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         a = _point(ctx.inputs.get("a"), (ctx.inputs.get("ax"), ctx.inputs.get("ay")))
@@ -209,24 +209,24 @@ class DistanceTool(Tool):
 
 class AngleTool(Tool):
     key = "angle"
-    label = "夾角"
-    description = "兩條直線的夾角（度）。直線可為 {x1,y1,x2,y2} 或分別接八個數值。"
+    label = "Angle"
+    description = "The angle between two lines, in degrees. A line may be {x1,y1,x2,y2} or eight separate numbers."
     category = "measure"
     icon = "TriangleRight"
     params = [
-        Param("range", "角度範圍", kind="select", default="0_90", options=[
+        Param("range", "Angle range", kind="select", default="0_90", options=[
             {"value": "0_90", "label": "0 ~ 90（不分方向）"}, {"value": "0_180", "label": "0 ~ 180"}, {"value": "signed", "label": "-180 ~ 180（帶號）"},
         ]),
     ]
     inputs = [
-        Port("image", "影像", "image", required=False),
-        Port("a", "直線 A", "any", required=False), Port("b", "直線 B", "any", required=False),
+        Port("image", "Image", "image", required=False),
+        Port("a", "Line A", "any", required=False), Port("b", "Line B", "any", required=False),
         Port("ax1", "A.x1", "number", required=False), Port("ay1", "A.y1", "number", required=False),
         Port("ax2", "A.x2", "number", required=False), Port("ay2", "A.y2", "number", required=False),
         Port("bx1", "B.x1", "number", required=False), Port("by1", "B.y1", "number", required=False),
         Port("bx2", "B.x2", "number", required=False), Port("by2", "B.y2", "number", required=False),
     ]
-    outputs = [Port("angle_deg", "夾角", "number"), Port("angle_a", "A 角度", "number"), Port("angle_b", "B 角度", "number")]
+    outputs = [Port("angle_deg", "Angle", "number"), Port("angle_a", "A angle", "number"), Port("angle_b", "B angle", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         i = ctx.inputs
@@ -289,13 +289,13 @@ def _hist_stats(hist: np.ndarray) -> dict[str, float | int]:
 
 class IntensityTool(Tool):
     key = "intensity"
-    label = "灰階統計"
-    description = "區域內的灰階平均、標準差、最小、最大、中位數。"
+    label = "Grayscale statistics"
+    description = "Mean, standard deviation, minimum, maximum and median grey level in the region."
     category = "measure"
     icon = "Sun"
-    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "point"], help_text="留空則整張影像；點＝單一像素。")]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [Port("mean", "平均", "number"), Port("std", "標準差", "number"), Port("min", "最小", "number"), Port("max", "最大", "number"), Port("median", "中位數", "number"), Port("pixels", "像素數", "number")]
+    params = [Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "point"], help_text="Blank uses the whole image; a point means a single pixel.")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [Port("mean", "Mean", "number"), Port("std", "Std dev", "number"), Port("min", "Min", "number"), Port("max", "Max", "number"), Port("median", "Median", "number"), Port("pixels", "Pixel count", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         hist, region = _roi_hist(ctx)
@@ -307,21 +307,21 @@ class IntensityTool(Tool):
 
 class CalibrationTool(Tool):
     key = "calibration"
-    label = "像素校正"
-    description = "把像素量測值換算成毫米：直接給每像素 mm，或用「已知距離」（像素數 ↔ 實際 mm）算比例。也可縮放點列表。"
+    label = "Pixel calibration"
+    description = "Converts pixel measurements to millimetres, either from a direct mm-per-pixel figure or from a known distance (pixels against real millimetres). It can scale a list of points too."
     category = "measure"
     icon = "Scale"
     params = [
-        Param("mode", "校正方式", kind="select", default="pixel_size", options=[
-            {"value": "pixel_size", "label": "每像素 mm"}, {"value": "known_distance", "label": "已知距離"},
+        Param("mode", "Calibration mode", kind="select", default="pixel_size", options=[
+            {"value": "pixel_size", "label": "mm per pixel"}, {"value": "known_distance", "label": "已知距離"},
         ]),
-        Param("pixel_size_mm", "每像素 mm", kind="number", default=0.01, minimum=0, step=0.0001, unit="mm/px", visible_when={"param": "mode", "in": ["pixel_size"]}),
-        Param("px_distance", "像素距離", kind="number", default=100, minimum=0, unit="px", visible_when={"param": "mode", "in": ["known_distance"]}),
-        Param("real_mm", "實際距離", kind="number", default=1, minimum=0, unit="mm", visible_when={"param": "mode", "in": ["known_distance"]}),
-        Param("power", "次方", kind="select", default="1", options=[{"value": "1", "label": "長度（×k）"}, {"value": "2", "label": "面積（×k²）"}], help_text="面積量測請選 k²。"),
+        Param("pixel_size_mm", "mm per pixel", kind="number", default=0.01, minimum=0, step=0.0001, unit="mm/px", visible_when={"param": "mode", "in": ["pixel_size"]}),
+        Param("px_distance", "Pixel distance", kind="number", default=100, minimum=0, unit="px", visible_when={"param": "mode", "in": ["known_distance"]}),
+        Param("real_mm", "Real distance", kind="number", default=1, minimum=0, unit="mm", visible_when={"param": "mode", "in": ["known_distance"]}),
+        Param("power", "Power", kind="select", default="1", options=[{"value": "1", "label": "長度（×k）"}, {"value": "2", "label": "面積（×k²）"}], help_text="Choose k² for area measurements."),
     ]
-    inputs = [Port("value", "像素值", "number", required=False), Port("points", "點列表", "points", required=False)]
-    outputs = [Port("mm", "毫米", "number"), Port("scale", "比例", "number"), Port("points_mm", "點列表（mm）", "points")]
+    inputs = [Port("value", "Pixel values", "number", required=False), Port("points", "Points", "points", required=False)]
+    outputs = [Port("mm", "Millimetres", "number"), Port("scale", "Scale", "number"), Port("points_mm", "Points (mm)", "points")]
 
     def execute(self, ctx: ToolContext) -> Result:
         if ctx.param("mode", "pixel_size") == "known_distance":
@@ -353,16 +353,16 @@ class CalibrationTool(Tool):
 
 class HistogramTool(Tool):
     key = "histogram"
-    label = "直方圖"
-    description = "區域內 256 階灰階直方圖與峰值。"
+    label = "Histogram"
+    description = "A 256-bin grey histogram of the region, with its peak."
     category = "measure"
     icon = "BarChart3"
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon"], help_text="留空則整張影像。"),
-        Param("normalize", "正規化（比例）", kind="boolean", default=False),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon"], help_text="Leave blank for the whole image."),
+        Param("normalize", "Normalised (ratio)", kind="boolean", default=False),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [Port("histogram", "直方圖", "list"), Port("peak", "峰值灰階", "number"), Port("peak_count", "峰值數量", "number"), Port("otsu", "Otsu 門檻", "number")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [Port("histogram", "Histogram", "list"), Port("peak", "Peak grey level", "number"), Port("peak_count", "Peak count", "number"), Port("otsu", "Otsu threshold", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         hist, region = _roi_hist(ctx)
@@ -440,12 +440,12 @@ def _refined_points(ctx: ToolContext, image: np.ndarray, region: dict[str, Any],
 
 
 _EDGE_PARAMS = [
-    Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
-    Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
-    Param("num_rays", "掃描線數", kind="number", default=36, minimum=6, maximum=720, help_text="圓／環／多邊形為徑向掃描線數，矩形為卡尺數。"),
-    Param("edge_select", "取哪個邊緣", kind="select", default="strongest", options=_EDGE_SELECT_OPTIONS),
-    Param("refine", "重掃精修", kind="boolean", default=True, group="進階", help_text="擬合後以擬合中心重掃一次：ROI 偏心或多邊形 ROI 時精度明顯較好。"),
-    Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+    Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
+    Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+    Param("num_rays", "Scan lines", kind="number", default=36, minimum=6, maximum=720, help_text="Radial scan lines for a circle, ring or polygon; calipers for a rectangle."),
+    Param("edge_select", "Which edge", kind="select", default="strongest", options=_EDGE_SELECT_OPTIONS),
+    Param("refine", "Rescan refine", kind="boolean", default=True, group="Advanced", help_text="Rescan from the fitted centre after fitting: noticeably more accurate for an off-centre or polygon ROI."),
+    Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
 ]
 
 
@@ -467,21 +467,21 @@ def _arc_span(angles: np.ndarray) -> tuple[float, float]:
 
 class FitArcTool(Tool):
     key = "fit_arc"
-    label = "圓弧擬合"
-    description = "在區域內找邊緣點並以最小平方（可 RANSAC）擬合圓弧：R 角、杯口圓角的半徑與圓心。"
+    label = "Fit arc"
+    description = "Finds edge points in the region and fits an arc by least squares, optionally with RANSAC: the radius and centre of a fillet or a rim."
     category = "measure"
     icon = "Spline"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["annulus", "polygon", "rotated_rect", "circle", "rect"], help_text="圓／環／多邊形：由中心往外徑向掃描；矩形：沿長邊放卡尺。"),
+        Param("roi", "Region", kind="roi", required=True, shapes=["annulus", "polygon", "rotated_rect", "circle", "rect"], help_text="Circle, ring or polygon: scan radially outwards from the centre. Rectangle: place calipers along the long side."),
         *_EDGE_PARAMS,
-        Param("ransac", "RANSAC 剔除離群", kind="boolean", default=True),
-        Param("ransac_tol", "RANSAC 容差", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="進階"),
+        Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
+        Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        Port("radius", "半徑", "number"), Port("cx", "圓心 X", "number"), Port("cy", "圓心 Y", "number"),
-        Port("residual_rms", "殘差 RMS", "number"), Port("points", "邊緣點", "points"),
-        Port("start_angle", "起角", "number"), Port("end_angle", "終角", "number"),
+        Port("radius", "Radius", "number"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
+        Port("residual_rms", "Residual RMS", "number"), Port("points", "Edge points", "points"),
+        Port("start_angle", "Start angle", "number"), Port("end_angle", "End angle", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -539,19 +539,19 @@ def _fit_ellipse(pts: np.ndarray) -> tuple[float, float, float, float, float] | 
 
 class FitEllipseTool(Tool):
     key = "fit_ellipse"
-    label = "橢圓擬合"
-    description = "在區域內找邊緣點並以直接最小平方（Direct）擬合橢圓；roundness = 短軸／長軸（1 為正圓），用來量杯口橢圓度。"
+    label = "Fit ellipse"
+    description = "Finds edge points in the region and fits an ellipse by direct least squares. Roundness is the minor axis over the major one (1 is a perfect circle) — the way to measure how oval a rim is."
     category = "measure"
     icon = "Egg"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["annulus", "circle", "polygon", "rotated_rect", "rect"]),
+        Param("roi", "Region", kind="roi", required=True, shapes=["annulus", "circle", "polygon", "rotated_rect", "rect"]),
         *_EDGE_PARAMS,
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        Port("cx", "中心 X", "number"), Port("cy", "中心 Y", "number"),
-        Port("a", "長半軸", "number"), Port("b", "短半軸", "number"), Port("angle", "長軸角度", "number"),
-        Port("roundness", "圓度 b/a", "number"), Port("residual_rms", "殘差 RMS", "number"), Port("points", "邊緣點", "points"),
+        Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
+        Port("a", "Semi-major axis", "number"), Port("b", "Semi-minor axis", "number"), Port("angle", "Major axis angle", "number"),
+        Port("roundness", "Roundness b/a", "number"), Port("residual_rms", "Residual RMS", "number"), Port("points", "Edge points", "points"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -638,24 +638,24 @@ def _as_wall_rect(region: dict[str, Any], band: float) -> dict[str, Any]:
 
 class WallThicknessTool(Tool):
     key = "wall_thickness"
-    label = "壁厚"
-    description = "沿矩形／線段區域放多條卡尺，每條找「外緣→內緣」成對邊緣，量壁厚（像素）並給最小／最大／平均。"
+    label = "Wall thickness"
+    description = "Places calipers along a rectangle or line, each finding an outer-to-inner edge pair, and measures wall thickness in pixels with its minimum, maximum and mean."
     category = "measure"
     icon = "Layers"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["rotated_rect", "rect", "line"], help_text="長邊沿著壁的走向；卡尺沿短邊由「外」向「內」掃描（矩形上→下／左→右）。線段 ROI 以線為長邊。"),
-        Param("polarity", "外緣極性", kind="select", default="any", options=POLARITY_OPTIONS, teach=True, help_text="沿掃描方向遇到外緣時的灰階變化；內緣自動取相反極性。"),
-        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
-        Param("num_calipers", "卡尺數", kind="number", default=10, minimum=1, maximum=500),
-        Param("max_thickness", "最大壁厚", kind="number", default=0, minimum=0, unit="px", help_text="0 表示不限；配對時內緣距外緣不得超過此值。"),
-        Param("band", "線段掃描寬", kind="number", default=10, minimum=3, unit="px", group="進階", help_text="ROI 為線段時，取線兩側共此寬度做平均。"),
-        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+        Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect", "line"], help_text="The long side follows the wall; calipers scan across the short side from outside in (top to bottom or left to right for a rectangle). A line ROI uses the line as the long side."),
+        Param("polarity", "Outer edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True, help_text="How the grey level changes at the outer edge along the scan; the inner edge takes the opposite polarity automatically."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("num_calipers", "Calipers", kind="number", default=10, minimum=1, maximum=500),
+        Param("max_thickness", "Max wall thickness", kind="number", default=0, minimum=0, unit="px", help_text="0 means no limit; when pairing, the inner edge may not be further than this from the outer one."),
+        Param("band", "Scan band width", kind="number", default=10, minimum=3, unit="px", group="Advanced", help_text="For a line ROI, average this total width across the line."),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        Port("thickness", "壁厚（平均）", "number"), Port("min", "最小", "number"), Port("max", "最大", "number"),
-        Port("mean", "平均", "number"), Port("std", "標準差", "number"), Port("count", "有效卡尺數", "number"),
-        Port("profile", "各卡尺壁厚", "list"), Port("pairs", "邊緣對", "list"),
+        Port("thickness", "Wall thickness (mean)", "number"), Port("min", "Min", "number"), Port("max", "Max", "number"),
+        Port("mean", "Mean", "number"), Port("std", "Std dev", "number"), Port("count", "Valid calipers", "number"),
+        Port("profile", "Thickness per caliper", "list"), Port("pairs", "Edge pair", "list"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -733,23 +733,23 @@ def _circle(value: Any, fallback: tuple[Any, Any, Any]) -> tuple[float, float, f
 
 class ConcentricityTool(Tool):
     key = "concentricity"
-    label = "同心度"
-    description = "兩個圓（例如外徑與內徑）圓心的偏移量；GD&T 同心度 = 2×偏移。接 find_circle 的 cx/cy/r 或 {cx,cy,r}。"
+    label = "Concentricity"
+    description = "The offset between the centres of two circles, such as an outer and an inner diameter. GD&T concentricity is twice the offset. Wire it to find_circle's cx/cy/r, or pass {cx,cy,r}."
     category = "measure"
     icon = "Target"
     params = [
-        Param("max_deviation", "最大偏移", kind="number", default=5, minimum=0, unit="px", teach=True, help_text="圓心距離超過此值走 ng 分支。"),
+        Param("max_deviation", "Max offset", kind="number", default=5, minimum=0, unit="px", teach=True, help_text="A centre distance above this takes the NG branch."),
     ]
     inputs = [
-        Port("image", "影像", "image", required=False),
-        Port("a", "圓 A", "any", required=False), Port("b", "圓 B", "any", required=False),
-        Port("ax", "A 圓心 X", "number", required=False), Port("ay", "A 圓心 Y", "number", required=False), Port("ar", "A 半徑", "number", required=False),
-        Port("bx", "B 圓心 X", "number", required=False), Port("by", "B 圓心 Y", "number", required=False), Port("br", "B 半徑", "number", required=False),
+        Port("image", "Image", "image", required=False),
+        Port("a", "Circle A", "any", required=False), Port("b", "Circle B", "any", required=False),
+        Port("ax", "A centre X", "number", required=False), Port("ay", "A centre Y", "number", required=False), Port("ar", "A radius", "number", required=False),
+        Port("bx", "B centre X", "number", required=False), Port("by", "B centre Y", "number", required=False), Port("br", "B radius", "number", required=False),
     ]
     outputs = [
-        flow_out("ok", "合格", "ok"), flow_out("ng", "超差", "critical"),
-        Port("deviation", "偏移量", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number"),
-        Port("concentricity", "同心度（2×偏移）", "number"), Port("verdict", "判定", "string"), Port("in_spec", "合格", "bool"),
+        flow_out("ok", "Pass", "ok"), flow_out("ng", "Out of tolerance", "critical"),
+        Port("deviation", "Offset", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number"),
+        Port("concentricity", "Concentricity (2 × offset)", "number"), Port("verdict", "Verdict", "string"), Port("in_spec", "Pass", "bool"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -791,25 +791,25 @@ def _line_from_fit(vx: float, vy: float, x0: float, y0: float, pts: np.ndarray) 
 
 class ChamferAngleTool(Tool):
     key = "chamfer_angle"
-    label = "倒角"
-    description = "在旋轉矩形區域內以卡尺找輪廓邊緣點，RANSAC 擬合第一條直線後排除其內點再擬合第二條；輸出兩線夾角與倒角段長度。"
+    label = "Chamfer"
+    description = "Finds contour edge points with calipers inside a rotated rectangle, fits the first line with RANSAC, removes its inliers and fits the second; outputs the angle between them and the chamfer length."
     category = "measure"
     icon = "CornerDownRight"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="長邊沿著輪廓走向、要同時包住主邊與倒角段；卡尺沿短邊掃描。"),
-        Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
-        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
-        Param("num_calipers", "卡尺數", kind="number", default=40, minimum=4, maximum=500),
-        Param("direction", "取哪個邊緣", kind="select", default="first", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
-        Param("ransac_tol", "RANSAC 容差", kind="number", default=1.5, minimum=0.3, maximum=50, unit="px", group="進階"),
-        Param("min_points", "第二段最少點數", kind="number", default=3, minimum=2, maximum=100, group="進階"),
-        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+        Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="The long side follows the contour and must cover both the main edge and the chamfer; calipers scan across the short side."),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("num_calipers", "Calipers", kind="number", default=40, minimum=4, maximum=500),
+        Param("direction", "Which edge", kind="select", default="first", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
+        Param("ransac_tol", "RANSAC tolerance", kind="number", default=1.5, minimum=0.3, maximum=50, unit="px", group="Advanced"),
+        Param("min_points", "Min points for the second line", kind="number", default=3, minimum=2, maximum=100, group="Advanced"),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        Port("angle_deg", "夾角", "number"), Port("length", "倒角長度", "number"),
-        Port("line1", "主邊", "any"), Port("line2", "倒角邊", "any"),
-        Port("ix", "交點 X", "number"), Port("iy", "交點 Y", "number"), Port("points", "邊緣點", "points"),
+        Port("angle_deg", "Angle", "number"), Port("length", "Chamfer length", "number"),
+        Port("line1", "Main edge", "any"), Port("line2", "Chamfer edge", "any"),
+        Port("ix", "Intersection X", "number"), Port("iy", "Intersection Y", "number"), Port("points", "Edge points", "points"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -859,7 +859,7 @@ class ChamferAngleTool(Tool):
             {"kind": "points", "points": pts[inl1].round(2).tolist(), "color": "#38bdf8"},
             {"kind": "points", "points": rest[inl2].round(2).tolist(), "color": "#22c55e"},
             {"kind": "points", "points": rest[~inl2].round(2).tolist(), "color": "#ef4444"},
-            {"kind": "line", "x1": line1["x1"], "y1": line1["y1"], "x2": line1["x2"], "y2": line1["y2"], "color": "#38bdf8", "width": 2, "label": "主邊"},
+            {"kind": "line", "x1": line1["x1"], "y1": line1["y1"], "x2": line1["x2"], "y2": line1["y2"], "color": "#38bdf8", "width": 2, "label": "Main edge"},
             {"kind": "line", "x1": line2["x1"], "y1": line2["y1"], "x2": line2["x2"], "y2": line2["y2"], "color": "#22c55e", "width": 2, "label": f"{angle:.1f}° L={line2['length']:.1f}"},
         ]
         if np.isfinite(ix):
@@ -872,23 +872,23 @@ class ChamferAngleTool(Tool):
 
 class ToleranceJudgeTool(Tool):
     key = "tolerance_judge"
-    label = "公差判定"
-    description = "量測值是否在「標稱 ＋上偏差／＋下偏差」內；判定連同標稱值、上下限、圖面出處一起寫進 run.outputs.tolerances，供 Cpk 與追溯。"
+    label = "Tolerance check"
+    description = "Whether a measurement lies within nominal plus the upper and lower deviations. The verdict is written into run.outputs.tolerances together with the nominal, the limits and the drawing reference, ready for Cpk and traceability."
     category = "measure"
     icon = "ClipboardCheck"
     params = [
-        Param("nominal", "標稱值", kind="number", required=True, default=0, teach=True),
-        Param("upper_tol", "上偏差", kind="number", default=0.1, teach=True, help_text="帶號；上限 = 標稱 + 上偏差。"),
-        Param("lower_tol", "下偏差", kind="number", default=-0.1, teach=True, help_text="帶號（通常為負）；下限 = 標稱 + 下偏差。"),
-        Param("unit", "單位", kind="text", default="mm"),
-        Param("spec_source", "圖面出處", kind="text", default="", help_text="例如「圖號 A-102 尺寸 ⌀12」。"),
-        Param("name", "尺寸名稱", kind="text", default="", help_text="寫進 outputs.tolerances 的 name；留空用節點標籤。"),
+        Param("nominal", "Nominal", kind="number", required=True, default=0, teach=True),
+        Param("upper_tol", "Upper deviation", kind="number", default=0.1, teach=True, help_text="Signed; the upper limit is nominal + this."),
+        Param("lower_tol", "Lower deviation", kind="number", default=-0.1, teach=True, help_text="Signed, normally negative; the lower limit is nominal + this."),
+        Param("unit", "Unit", kind="text", default="mm"),
+        Param("spec_source", "Drawing reference", kind="text", default="", help_text="For example: drawing A-102, dimension ⌀ 12."),
+        Param("name", "Dimension name", kind="text", default="", help_text="The name written into outputs.tolerances; blank uses the step's label."),
     ]
-    inputs = [Port("value", "量測值", "number")]
+    inputs = [Port("value", "Measured", "number")]
     outputs = [
-        flow_out("pass", "合格", "ok"), flow_out("fail", "超差", "critical"),
-        Port("verdict", "判定", "string"), Port("deviation", "偏差（值−標稱）", "number"), Port("in_spec", "合格", "bool"),
-        Port("nominal", "標稱", "number"), Port("upper", "上限", "number"), Port("lower", "下限", "number"), Port("spec_source", "圖面出處", "string"),
+        flow_out("pass", "Pass", "ok"), flow_out("fail", "Out of tolerance", "critical"),
+        Port("verdict", "Verdict", "string"), Port("deviation", "Deviation (value − nominal)", "number"), Port("in_spec", "Pass", "bool"),
+        Port("nominal", "Nominal", "number"), Port("upper", "Upper", "number"), Port("lower", "Lower", "number"), Port("spec_source", "Drawing reference", "string"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -924,19 +924,19 @@ class ToleranceJudgeTool(Tool):
 
 class LineProfileTool(Tool):
     key = "line_profile"
-    label = "線剖面"
-    description = "沿著線（或折線）取灰階值，輸出剖面序列與統計；抓斷差、亮暗帶、掃描線缺陷。"
+    label = "Line profile"
+    description = "Samples grey levels along a line or polyline and outputs the profile and its statistics: steps, bright and dark bands, scan-line defects."
     category = "measure"
     icon = "Activity"
     accepts = ("u8", "u16", "f32")
     params = [
-        Param("roi", "線", kind="roi", shapes=["line", "polyline"], required=True, teach=True),
-        Param("samples", "取樣點數", kind="number", default=0, minimum=0, maximum=10000, help_text="0 = 每像素一點。"),
+        Param("roi", "Line", kind="roi", shapes=["line", "polyline"], required=True, teach=True),
+        Param("samples", "Sample points", kind="number", default=0, minimum=0, maximum=10000, help_text="0 = one sample per pixel."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "線（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Line (dynamic)", "region", required=False)]
     outputs = [
-        Port("values", "剖面值", "list"), Port("mean", "平均", "number"), Port("std", "標準差", "number"),
-        Port("min", "最小", "number"), Port("max", "最大", "number"), Port("length", "長度", "number"),
+        Port("values", "Profile values", "list"), Port("mean", "Mean", "number"), Port("std", "Std dev", "number"),
+        Port("min", "Min", "number"), Port("max", "Max", "number"), Port("length", "Length", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -981,16 +981,16 @@ class LineProfileTool(Tool):
 
 class ColorStatsTool(Tool):
     key = "color_stats"
-    label = "色彩統計"
-    description = "區域內 RGB 與 HSV 的平均／標準差、主色相與平均色；供顏色驗證與上下游邏輯判斷。"
+    label = "Colour statistics"
+    description = "Mean and standard deviation of RGB and HSV in the region, plus the dominant hue and mean colour, for colour verification and downstream logic."
     category = "measure"
     icon = "Palette"
-    params = [Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "ellipse"], help_text="留空則整張影像。")]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    params = [Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "ellipse"], help_text="Leave blank for the whole image.")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        Port("mean_r", "R 平均", "number"), Port("mean_g", "G 平均", "number"), Port("mean_b", "B 平均", "number"),
-        Port("mean_h", "色相平均", "number"), Port("mean_s", "飽和度平均", "number"), Port("mean_v", "明度平均", "number"),
-        Port("std_v", "明度標準差", "number"), Port("hex", "平均色", "string"),
+        Port("mean_r", "R mean", "number"), Port("mean_g", "G mean", "number"), Port("mean_b", "B mean", "number"),
+        Port("mean_h", "H mean", "number"), Port("mean_s", "S mean", "number"), Port("mean_v", "V mean", "number"),
+        Port("std_v", "V std dev", "number"), Port("hex", "Mean colour", "string"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -1040,18 +1040,18 @@ def _as_point(value: Any) -> tuple[float, float] | None:
 
 class GeometryTool(Tool):
     key = "geometry"
-    label = "幾何計算"
-    description = "解析幾何：兩線交點、點到線垂距、兩點中點、點在線上的投影。線＝{x1,y1,x2,y2}、點＝[x,y] 或 {x,y}（接找線／找圓等工具的輸出）。"
+    label = "Geometry"
+    description = "Analytic geometry: the intersection of two lines, the perpendicular distance from a point to a line, the midpoint of two points, and the projection of a point onto a line. A line is {x1,y1,x2,y2}; a point is [x,y] or {x,y} — wire them from find-line or find-circle."
     category = "measure"
     icon = "Ruler"
     params = [
-        Param("mode", "計算", kind="select", default="intersect", options=[
+        Param("mode", "Compute", kind="select", default="intersect", options=[
             {"value": "intersect", "label": "兩線交點"}, {"value": "point_line", "label": "點到線垂距"},
             {"value": "midpoint", "label": "兩點中點"}, {"value": "project", "label": "點投影到線"},
         ]),
     ]
-    inputs = [Port("a", "A（線／點）", "any"), Port("b", "B（線／點）", "any")]
-    outputs = [Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "距離", "number")]
+    inputs = [Port("a", "A (line / point)", "any"), Port("b", "B (line / point)", "any")]
+    outputs = [Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "Distance", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         mode = ctx.param("mode", "intersect")

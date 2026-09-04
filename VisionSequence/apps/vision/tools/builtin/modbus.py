@@ -26,27 +26,27 @@ def _scalar(value: Any) -> Any:
 
 class WriteModbusTool(Tool):
     key = "write_modbus"
-    label = "寫入 Modbus"
-    description = "依對映表把判定、具名輸出或輸入埠的值寫到 Modbus TCP／上位機連線。寫入失敗預設只記警告不讓 run 失敗。"
+    label = "Write Modbus"
+    description = "Writes the verdict, named outputs or input values to a Modbus TCP or host connection through a mapping table. By default a failed write only logs a warning and does not fail the run."
     category = "output"
     icon = "Cable"
     connection_params = ("connection",)
     params = [
-        Param("connection", "連線", kind="text", required=True, help_text="填通訊連線的名稱（設定頁「連線」建立；也可填 id）。"),
+        Param("connection", "Connection", kind="text", required=True, help_text="The name of a communication connection (create one on the Connections page; an id also works)."),
         Param(
-            "mapping", "對映表", kind="json", required=True, default=[{"src": "judge", "address": "coil:0", "dtype": "bool"}],
-            help_text='陣列，每項 {"src": 來源, "address": 位址, "dtype"?: bool|int|float, "scale"?: 倍率, "offset"?: 加值, "value"?: 常數}。'
-                      "src：judge（OK→1 / NG→0）、具名輸出名稱、或本節點輸入埠的 v0、v1…。"
-                      "位址：modbus 用 coil:10 / holding:100 / holding:100:float32 / holding:100:int32；tcp_client 用範本欄位名；dio_sim 用通道名。",
+            "mapping", "Mapping", kind="json", required=True, default=[{"src": "judge", "address": "coil:0", "dtype": "bool"}],
+            help_text='An array of {"src": source, "address": address, "dtype"?: bool|int|float, "scale"?: factor, "offset"?: offset, "value"?: constant}. '
+                      "The source may be judge (OK becomes 1, NG becomes 0), a named output, or this step's inputs v0, v1 and so on. "
+                      "Modbus addresses look like coil:10, holding:100, holding:100:float32 or holding:100:int32; tcp_client uses template field names and dio_sim uses channel names.",
         ),
-        Param("on_error", "寫入失敗時", kind="select", default="warn", options=[
+        Param("on_error", "On write failure", kind="select", default="warn", options=[
             {"value": "warn", "label": "降級：記警告，run 照常"},
             {"value": "fail", "label": "讓 run 失敗"},
         ]),
-        Param("timeout_s", "逾時（秒）", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 = 用連線設定的逾時。", group="進階"),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 uses the connection's own timeout.", group="Advanced"),
     ]
-    inputs = [Port("values", "值", "any", required=False, multiple=True)]
-    outputs = [Port("written", "寫入筆數", "number"), Port("ok", "成功", "bool")]
+    inputs = [Port("values", "Value", "any", required=False, multiple=True)]
+    outputs = [Port("written", "Values written", "number"), Port("ok", "Succeeded", "bool")]
 
     # -- 值來源 -------------------------------------------------------------
     def _lookup(self, ctx: ToolContext, src: str, values: list[Any]) -> Any:
@@ -152,30 +152,31 @@ class WriteModbusTool(Tool):
 
 class ReadModbusTool(Tool):
     key = "read_modbus"
-    label = "讀取 Modbus"
+    label = "Read Modbus"
     description = (
-        "從通訊連線讀線圈與暫存器的值，供流程判斷或回傳。"
-        "主站連線（modbus_tcp）是去讀 PLC／設備；從站連線（modbus_server）是讀主站寫進本平台暫存器的值（例如料號、觸發旗標）。"
+        "Reads coils and registers from a communication connection for the flow to act on or return. "
+        "A client connection (modbus_tcp) reads the PLC or device; a server connection (modbus_server) reads what the "
+        "master wrote into this platform's registers, such as a part number or a trigger flag."
     )
     category = "logic"
     icon = "Cable"
     connection_params = ("connection",)
     params = [
-        Param("connection", "連線", kind="text", required=True, help_text="填通訊連線的名稱（設定頁「外部整合 → 連線」建立）。"),
+        Param("connection", "Connection", kind="text", required=True, help_text="The name of a communication connection (create one under External integration ▸ Connections)."),
         Param(
-            "mapping", "讀取表", kind="json", required=True, default=[{"name": "recipe", "address": "holding:0"}],
-            help_text='陣列，每項 {"name": 名稱, "address": 位址, "scale"?: 倍率, "offset"?: 加值}。'
-                      "位址：coil:10 / discrete:3 / holding:100 / holding:100:float32 / input:7；名稱空白時用位址當名稱。",
+            "mapping", "Read mapping", kind="json", required=True, default=[{"name": "recipe", "address": "holding:0"}],
+            help_text='An array of {"name": name, "address": address, "scale"?: factor, "offset"?: offset}. '
+                      "Addresses look like coil:10, discrete:3, holding:100, holding:100:float32 or input:7; a blank name falls back to the address.",
         ),
-        Param("publish", "同時放進具名輸出", kind="boolean", default=False, help_text="開啟後讀到的值會出現在 run 的 outputs（API／TCP 回傳看得到）。"),
-        Param("on_error", "讀取失敗時", kind="select", default="warn", options=[
+        Param("publish", "Also publish as named outputs", kind="boolean", default=False, help_text="With this on, the values read appear in the run outputs, where the HTTP and TCP replies show them."),
+        Param("on_error", "On read failure", kind="select", default="warn", options=[
             {"value": "warn", "label": "降級：記警告，run 照常"},
             {"value": "fail", "label": "讓 run 失敗"},
         ]),
-        Param("timeout_s", "逾時（秒）", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 = 用連線設定的逾時。", group="進階"),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 uses the connection's own timeout.", group="Advanced"),
     ]
     inputs: list[Port] = []
-    outputs = [Port("values", "值", "list"), Port("value", "第一個值", "number"), Port("ok", "成功", "bool")]
+    outputs = [Port("values", "Value", "list"), Port("value", "First value", "number"), Port("ok", "Succeeded", "bool")]
 
     def execute(self, ctx: ToolContext) -> Result:
         name = str(ctx.param("connection", "")).strip()

@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-DISPLAY_NAME = "暗區比例（範例外掛）"
-DESCRIPTION = "ROI 內灰階低於門檻的像素比例，超過允許比例走「不良」分支。"
+DISPLAY_NAME = "Dark ratio (sample plugin)"
+DESCRIPTION = "The ratio of pixels darker than the threshold inside the ROI; above the allowed ratio it takes the fail branch."
 ENABLED = True  # False = 這個檔案整個不掛載
 
 import cv2  # noqa: E402
@@ -24,12 +24,12 @@ class DarkRatioTool(Tool):
     category = "detect"         # source|preprocess|locate|measure|detect|dl|logic|output
     icon = "Moon"               # lucide-react 圖示名
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "polygon"]),
-        Param("threshold", "門檻", kind="number", default=80, minimum=0, maximum=255, teach=True),
-        Param("max_ratio", "允許比例", kind="number", default=0.1, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "polygon"]),
+        Param("threshold", "Threshold", kind="number", default=80, minimum=0, maximum=255, teach=True),
+        Param("max_ratio", "Allowed ratio", kind="number", default=0.1, minimum=0, maximum=1, step=0.01, teach=True),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [Port("ratio", "比例", "number"), flow_out("pass", "通過", "ok"), flow_out("fail", "不良", "critical")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [Port("ratio", "Scale", "number"), flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()

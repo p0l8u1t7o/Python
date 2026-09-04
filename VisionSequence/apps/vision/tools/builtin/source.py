@@ -10,26 +10,26 @@ from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolE
 
 class ImageSourceTool(Tool):
     key = "image_source"
-    label = "影像來源"
-    description = "從設定的影像來源抓一張影像；API 直接送圖時（POST run 附影像）優先使用送來的影像。"
+    label = "Image source"
+    description = "Grabs one frame from the configured image source. An image attached to POST run takes priority over the source."
     category = "source"
     icon = "Camera"
     allows_unconnected = True
     params = [
-        Param("source_id", "影像來源", kind="source", required=False, help_text="留空則只接受 API 送來的影像。"),
-        Param("mode", "取像模式", kind="select", default="auto", options=[
+        Param("source_id", "Image source", kind="source", required=False, help_text="Leave blank to accept only images sent through the API."),
+        Param("mode", "Capture mode", kind="select", default="auto", options=[
             {"value": "auto", "label": "暫存／API 送圖優先，否則從來源庫抓"},
             {"value": "source", "label": "一律從來源抓"},
             {"value": "input", "label": "只用暫存影像（試跑上傳或 API 送圖；沒有就報錯）"},
         ]),
-        Param("convert", "色彩", kind="select", default="keep", options=[
+        Param("convert", "Colour", kind="select", default="keep", options=[
             {"value": "keep", "label": "維持原樣"},
             {"value": "gray", "label": "轉灰階"},
             {"value": "bgr", "label": "轉彩色（BGR）"},
         ]),
     ]
     inputs: list[Port] = []
-    outputs = [Port("image", "影像", "image"), Port("width", "寬", "number"), Port("height", "高", "number")]
+    outputs = [Port("image", "Image", "image"), Port("width", "Width", "number"), Port("height", "Height", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         mode = ctx.param("mode", "auto")

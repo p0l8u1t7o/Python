@@ -157,31 +157,31 @@ def _run(sess: Any, tensor: np.ndarray) -> list[np.ndarray]:
 
 def _common_params(size_default: int) -> list[Param]:
     return [
-        Param("model", "ONNX 模型", kind="asset", accept="model", required=True),
-        Param("labels", "類別名稱", kind="multiline", default="", help_text="每行一個類別，順序與模型輸出一致；留空則用索引。"),
-        Param("input_size", "輸入尺寸", kind="number", default=size_default, minimum=8, maximum=4096, help_text="模型輸入為固定尺寸時以模型為準。"),
-        Param("mean", "Mean", kind="text", default="0.485,0.456,0.406", group="前處理", help_text="以 0~1 為單位；YOLO 通常填 0。"),
-        Param("std", "Std", kind="text", default="0.229,0.224,0.225", group="前處理", help_text="YOLO 通常填 1。"),
-        Param("color_order", "色彩順序", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB"}, {"value": "bgr", "label": "BGR"}], group="前處理"),
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
+        Param("model", "ONNX model", kind="asset", accept="model", required=True),
+        Param("labels", "Class names", kind="multiline", default="", help_text="One class per line, in the model's output order; blank falls back to indices."),
+        Param("input_size", "Input size", kind="number", default=size_default, minimum=8, maximum=4096, help_text="A model with a fixed input size wins over this setting."),
+        Param("mean", "Mean", kind="text", default="0.485,0.456,0.406", group="Pre-processing", help_text="In 0–1 units; YOLO models normally want 0."),
+        Param("std", "Std", kind="text", default="0.229,0.224,0.225", group="Pre-processing", help_text="YOLO models normally want 1."),
+        Param("color_order", "Channel order", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB"}, {"value": "bgr", "label": "BGR"}], group="Pre-processing"),
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
     ]
 
 
 class DlClassifyTool(Tool):
     key = "dl_classify"
-    label = "DL 分類"
-    description = "以 ONNX 分類模型判斷區域屬於哪一類；最高分類別分數達門檻走 pass。"
+    label = "DL classification"
+    description = "Classifies the region with an ONNX model; it passes when the top class scores above the threshold."
     category = "dl"
     icon = "Brain"
     heavy = True
     params = _common_params(224) + [
         Param("top_k", "Top-K", kind="number", default=3, minimum=1, maximum=50),
-        Param("threshold", "分數門檻", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
-        Param("pass_labels", "合格類別", kind="text", default="", help_text="逗號分隔；不為空時，最高分類別需在此清單內才 pass。"),
-        Param("apply_softmax", "輸出套用 softmax", kind="boolean", default=True, group="前處理", help_text="模型已輸出機率時可關閉。"),
+        Param("threshold", "Score threshold", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("pass_labels", "Passing classes", kind="text", default="", help_text="Comma separated; when set, the top class must be in this list to pass."),
+        Param("apply_softmax", "Apply softmax to the output", kind="boolean", default=True, group="Pre-processing", help_text="Turn off when the model already outputs probabilities."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical"), Port("label", "類別", "string"), Port("score", "分數", "number"), Port("index", "索引", "number"), Port("top", "Top-K", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical"), Port("label", "Class", "string"), Port("score", "Score", "number"), Port("index", "Index", "number"), Port("top", "Top-K", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -243,21 +243,21 @@ def parse_yolo(out: np.ndarray, num_labels: int) -> tuple[np.ndarray, np.ndarray
 
 class DlDetectTool(Tool):
     key = "dl_detect"
-    label = "DL 物件偵測"
-    description = "以 ONNX 偵測模型（YOLOv5/v8 風格輸出）找物件；含 letterbox 前處理與 NMS。"
+    label = "DL object detection"
+    description = "Finds objects with an ONNX detection model (YOLOv5 or v8 style output), including letterbox pre-processing and NMS."
     category = "dl"
     icon = "ScanFace"
     heavy = True
-    params = [p if p.key not in ("mean", "std") else Param(p.key, p.label, kind="text", default="0" if p.key == "mean" else "1", group="前處理", help_text=p.help_text) for p in _common_params(640)] + [
-        Param("conf", "信心門檻", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
+    params = [p if p.key not in ("mean", "std") else Param(p.key, p.label, kind="text", default="0" if p.key == "mean" else "1", group="Pre-processing", help_text=p.help_text) for p in _common_params(640)] + [
+        Param("conf", "Confidence threshold", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
         Param("iou", "NMS IoU", kind="range", default=0.45, minimum=0, maximum=1, step=0.01),
-        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=1000),
-        Param("filter_labels", "只保留類別", kind="text", default="", help_text="逗號分隔；留空全部保留。"),
-        Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定"),
-        Param("normalized", "輸出座標為 0~1", kind="boolean", default=False, group="前處理", help_text="模型輸出框為正規化座標時開啟。"),
+        Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=1000),
+        Param("filter_labels", "Keep classes only", kind="text", default="", help_text="Comma separated; blank keeps everything."),
+        Param("min_count", "Min passing count", kind="number", default=1, minimum=0, group="Verdict"),
+        Param("normalized", "Output coordinates are 0–1", kind="boolean", default=False, group="Pre-processing", help_text="Turn on when the model outputs normalised boxes."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("detections", "偵測結果", "matches"), Port("count", "數量", "number"), Port("matches", "匹配（含 cx, cy）", "matches"), Port("labels", "類別列表", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("detections", "Detections", "matches"), Port("count", "Count", "number"), Port("matches", "Matches (with cx, cy)", "matches"), Port("labels", "Class list", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -313,18 +313,18 @@ class DlDetectTool(Tool):
 
 class DlSegmentTool(Tool):
     key = "dl_segment"
-    label = "DL 語意分割"
-    description = "以 ONNX 分割模型輸出每像素類別（argmax），回傳類別遮罩與各類面積。"
+    label = "DL semantic segmentation"
+    description = "Runs an ONNX segmentation model to label every pixel (argmax) and returns the class mask and the area of each class."
     category = "dl"
     icon = "Layers"
     heavy = True
     params = _common_params(512) + [
-        Param("target_class", "目標類別索引", kind="number", default=1, minimum=0, help_text="mask 輸出為此類別的 0/255 遮罩；class_map 為全部類別索引。"),
-        Param("min_area", "合格最小面積", kind="number", default=0, minimum=0, unit="px²", group="判定"),
-        Param("max_area", "合格最大面積", kind="number", default=0, minimum=0, unit="px²", group="判定", help_text="0 表示不限。"),
+        Param("target_class", "Target class index", kind="number", default=1, minimum=0, help_text="The mask output is a 0/255 mask of this class; class_map holds every class index."),
+        Param("min_area", "Min passing area", kind="number", default=0, minimum=0, unit="px²", group="Verdict"),
+        Param("max_area", "Max passing area", kind="number", default=0, minimum=0, unit="px²", group="Verdict", help_text="0 means no limit."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("ok", "合格", "ok"), flow_out("ng", "不合格", "critical"), Port("mask", "目標遮罩", "image"), Port("class_map", "類別圖", "image"), Port("area", "目標面積", "number"), Port("classes", "各類面積", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("ok", "Pass", "ok"), flow_out("ng", "Fail", "critical"), Port("mask", "Target mask", "image"), Port("class_map", "Class map", "image"), Port("area", "Target area", "number"), Port("classes", "Area per class", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -432,21 +432,21 @@ def parse_yolo_seg(det: np.ndarray, protos: np.ndarray, *, conf: float, iou: flo
 
 class DlInstanceTool(Tool):
     key = "dl_instance"
-    label = "DL 實例分割"
-    description = "以 YOLO-seg 風格的 ONNX 模型找出每個物件的輪廓與類別（含 letterbox 前處理、NMS 與 mask 合成）。可在平台的深度學習頁教導。"
+    label = "DL instance segmentation"
+    description = "Finds each object's contour and class with a YOLO-seg style ONNX model, including letterbox pre-processing, NMS and mask assembly. You can train one on the platform's deep-learning page."
     category = "dl"
     icon = "Shapes"
     heavy = True
-    params = [p if p.key not in ("mean", "std") else Param(p.key, p.label, kind="text", default="0" if p.key == "mean" else "1", group="前處理", help_text=p.help_text) for p in _common_params(640)] + [
-        Param("conf", "信心門檻", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
+    params = [p if p.key not in ("mean", "std") else Param(p.key, p.label, kind="text", default="0" if p.key == "mean" else "1", group="Pre-processing", help_text=p.help_text) for p in _common_params(640)] + [
+        Param("conf", "Confidence threshold", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
         Param("iou", "NMS IoU", kind="range", default=0.45, minimum=0, maximum=1, step=0.01),
-        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=1000),
-        Param("filter_labels", "只保留類別", kind="text", default="", help_text="逗號分隔；留空全部保留。"),
-        Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定"),
-        Param("max_count_ok", "合格最多數量", kind="number", default=0, minimum=0, group="判定", help_text="0 表示不限。"),
+        Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=1000),
+        Param("filter_labels", "Keep classes only", kind="text", default="", help_text="Comma separated; blank keeps everything."),
+        Param("min_count", "Min passing count", kind="number", default=1, minimum=0, group="Verdict"),
+        Param("max_count_ok", "Max passing count", kind="number", default=0, minimum=0, group="Verdict", help_text="0 means no limit."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("count", "數量", "number"), Port("matches", "實例", "matches"), Port("mask", "聯合遮罩", "image"), Port("contours", "輪廓", "contours")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("count", "Count", "number"), Port("matches", "Instances", "matches"), Port("mask", "Union mask", "image"), Port("contours", "Contour", "contours")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()

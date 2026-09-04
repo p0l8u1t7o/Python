@@ -15,20 +15,20 @@ from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolE
 
 class JudgeTool(Tool):
     key = "judge"
-    label = "OK / NG 判定"
-    description = "決定整個 run 的判定結果。連到分支把手時，被選中即判定；或用布林輸入決定。"
+    label = "OK / NG verdict"
+    description = "Decides the verdict of the whole run. Wired to a branch handle it fires when that branch is taken; otherwise a boolean input decides."
     category = "output"
     icon = "CheckCircle2"
     params = [
-        Param("verdict", "判定", kind="select", default="by_input", options=[
+        Param("verdict", "Verdict", kind="select", default="by_input", options=[
             {"value": "by_input", "label": "依布林輸入（真=OK，假=NG）"},
             {"value": "ok", "label": "固定 OK"},
             {"value": "ng", "label": "固定 NG"},
         ]),
-        Param("label", "結果標籤", kind="text", default="", help_text="寫進 run.outputs.judge_label，方便自動化辨認是哪一條判定。"),
+        Param("label", "Result label", kind="text", default="", help_text="Written into run.outputs.judge_label so an automation system can tell which check fired."),
     ]
-    inputs = [Port("value", "布林", "bool", required=False)]
-    outputs = [Port("verdict", "判定", "string")]
+    inputs = [Port("value", "Boolean", "bool", required=False)]
+    outputs = [Port("verdict", "Verdict", "string")]
 
     def execute(self, ctx: ToolContext) -> Result:
         mode = ctx.param("verdict", "by_input")
@@ -57,15 +57,15 @@ class JudgeTool(Tool):
 
 class OutputValueTool(Tool):
     key = "output"
-    label = "具名輸出"
-    description = "把一個值以指定名稱放進 run 的 outputs，供 API / TCP 回傳給自動化系統。"
+    label = "Named output"
+    description = "Puts a value into the run outputs under a name of your choosing, for the HTTP and TCP replies to carry to the automation system."
     category = "output"
     icon = "Upload"
     params = [
-        Param("name", "名稱", kind="output_key", required=True, default="value"),
-        Param("decimals", "小數位數", kind="number", default=3, minimum=0, maximum=10),
+        Param("name", "Name", kind="output_key", required=True, default="value"),
+        Param("decimals", "Decimals", kind="number", default=3, minimum=0, maximum=10),
     ]
-    inputs = [Port("value", "值", "any")]
+    inputs = [Port("value", "Value", "any")]
     outputs: list[Port] = []
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -89,19 +89,19 @@ class OutputValueTool(Tool):
 class SaveImageTool(Tool):
     key = "save_image"
     accepts = ("u8", "u16", "f32")  # 16-bit PNG/TIFF 原樣存檔
-    label = "存檔"
-    description = "把影像存到資料夾（依判定 OK/NG 分子資料夾可選）。檔名含時間戳與 run id。"
+    label = "Save"
+    description = "Saves the image into a folder, optionally in an OK or NG sub-folder. The filename carries the timestamp and the run id."
     category = "output"
     icon = "Save"
     params = [
-        Param("folder", "資料夾", kind="text", required=True, help_text="留空則存到 DATA_DIR/saved/<flow_id>。"),
-        Param("format", "格式", kind="select", default="png", options=[{"value": "png", "label": "PNG"}, {"value": "jpg", "label": "JPEG"}, {"value": "bmp", "label": "BMP"}]),
-        Param("split_by_judge", "依判定分資料夾", kind="boolean", default=True),
-        Param("only_ng", "只存 NG", kind="boolean", default=False),
-        Param("prefix", "檔名前綴", kind="text", default=""),
+        Param("folder", "Folder", kind="text", required=True, help_text="Blank saves to DATA_DIR/saved/<flow_id>."),
+        Param("format", "Format", kind="select", default="png", options=[{"value": "png", "label": "PNG"}, {"value": "jpg", "label": "JPEG"}, {"value": "bmp", "label": "BMP"}]),
+        Param("split_by_judge", "Sub-folder per verdict", kind="boolean", default=True),
+        Param("only_ng", "Rejects only", kind="boolean", default=False),
+        Param("prefix", "Filename prefix", kind="text", default=""),
     ]
-    inputs = [Port("image", "影像", "image")]
-    outputs = [Port("path", "路徑", "string")]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("path", "Path", "string")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -124,16 +124,16 @@ class SaveImageTool(Tool):
 
 class DrawResultTool(Tool):
     key = "draw_result"
-    label = "結果影像"
-    description = "把上游工具的標記畫進影像，產生可存檔／可顯示的結果圖（OK 綠、NG 紅）。"
+    label = "Result image"
+    description = "Draws the marks from upstream tools into the image, producing a result frame to save or show (green for OK, red for NG)."
     category = "output"
     icon = "Image"
     params = [
-        Param("thickness", "線寬", kind="number", default=2, minimum=1, maximum=10),
-        Param("banner", "顯示判定橫幅", kind="boolean", default=True),
+        Param("thickness", "Line width", kind="number", default=2, minimum=1, maximum=10),
+        Param("banner", "Show verdict banner", kind="boolean", default=True),
     ]
-    inputs = [Port("image", "影像", "image"), Port("overlays", "標記", "list", required=False, multiple=True)]
-    outputs = [Port("image", "影像", "image")]
+    inputs = [Port("image", "Image", "image"), Port("overlays", "Marks", "list", required=False, multiple=True)]
+    outputs = [Port("image", "Image", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()

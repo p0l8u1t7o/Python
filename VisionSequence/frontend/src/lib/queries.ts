@@ -2,8 +2,11 @@
  * TanStack Query hooks。query key 集中在 `keys`，SSE（flowStream.ts）直接寫同一組 key 的快取。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 
 import { ApiError, api, request } from './api'
+import { localiseCatalogue } from './toolLocale'
+import type { Language } from '@/i18n'
 import type {
   CaptureClients,
   CaptureDownloadInfo,
@@ -82,9 +85,13 @@ export interface RecentRuns {
 
 // ---- 工具目錄 / 容量 ----
 export function useToolTypes() {
+  // 後端目錄是英文（唯一事實來源）；中文介面在這裡疊字典，其他頁面不必知道有這回事。
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
   return useQuery({
-    queryKey: keys.toolTypes,
+    queryKey: [...keys.toolTypes, language],
     queryFn: () => api.get<ToolCatalogue>('/vision/tool-types'),
+    select: (data) => localiseCatalogue(data, language),
     staleTime: 5 * 60_000,
   })
 }

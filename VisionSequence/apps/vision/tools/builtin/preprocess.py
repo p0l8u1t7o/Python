@@ -16,8 +16,8 @@ def to_gray(image: np.ndarray) -> np.ndarray:
 class GrayscaleTool(Tool):
     key = "grayscale"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "灰階"
-    description = "彩色轉灰階；已是灰階則直通。"
+    label = "Grayscale"
+    description = "Colour to grayscale; already-grey images pass through."
     icon = "Contrast"
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -27,12 +27,12 @@ class GrayscaleTool(Tool):
 class CropTool(Tool):
     key = "crop"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "裁切 ROI"
-    description = "裁出區域成為新影像（旋轉矩形會擺正）。下游工具在小圖上跑會快很多。"
+    label = "Crop ROI"
+    description = "Crops the region into a new image, straightening a rotated rectangle. Downstream tools are far faster on the smaller frame."
     icon = "Crop"
-    params = [Param("roi", "區域", kind="roi", required=True, shapes=["rect", "rotated_rect"])]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [Port("image", "影像", "image"), Port("offset_x", "偏移 X", "number"), Port("offset_y", "偏移 Y", "number")]
+    params = [Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect"])]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [Port("image", "Image", "image"), Port("offset_x", "Offset X", "number"), Port("offset_y", "Offset Y", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -52,16 +52,16 @@ class CropTool(Tool):
 class BlurTool(Tool):
     key = "blur"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "平滑 / 去雜訊"
-    description = "高斯、中值、雙邊或均值濾波。"
+    label = "Blur / denoise"
+    description = "Gaussian, median, bilateral or box filter."
     icon = "Droplets"
     params = [
-        Param("method", "方法", kind="select", default="gaussian", options=[
+        Param("method", "Method", kind="select", default="gaussian", options=[
             {"value": "gaussian", "label": "高斯"}, {"value": "median", "label": "中值"},
             {"value": "bilateral", "label": "雙邊（保邊）"}, {"value": "box", "label": "均值"},
         ]),
-        Param("ksize", "核大小（奇數）", kind="number", default=5, minimum=1, maximum=99, step=2),
-        Param("sigma", "Sigma（高斯／雙邊）", kind="number", default=0, minimum=0, maximum=200, group="進階"),
+        Param("ksize", "Kernel size (odd)", kind="number", default=5, minimum=1, maximum=99, step=2),
+        Param("sigma", "Sigma (Gaussian / bilateral)", kind="number", default=0, minimum=0, maximum=200, group="Advanced"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -84,24 +84,24 @@ class BlurTool(Tool):
 
 class ThresholdTool(Tool):
     key = "threshold"
-    label = "二值化"
-    description = "固定門檻、Otsu 自動、或自適應（區域）二值化；輸出 0/255 遮罩。"
+    label = "Threshold"
+    description = "Fixed, automatic (Otsu) or adaptive (local) thresholding; outputs a 0/255 mask."
     icon = "SlidersHorizontal"
     params = [
-        Param("method", "方法", kind="select", default="otsu", options=[
+        Param("method", "Method", kind="select", default="otsu", options=[
             {"value": "fixed", "label": "固定門檻"}, {"value": "otsu", "label": "Otsu 自動"},
             {"value": "triangle", "label": "Triangle 自動"},
             {"value": "adaptive_mean", "label": "自適應（均值）"}, {"value": "adaptive_gaussian", "label": "自適應（高斯）"},
             {"value": "range", "label": "灰階範圍"},
         ]),
-        Param("threshold", "門檻", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["fixed"]}, teach=True),
-        Param("low", "下限", kind="number", default=0, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
-        Param("high", "上限", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
-        Param("block", "區塊大小（奇數）", kind="number", default=31, minimum=3, maximum=255, step=2, visible_when={"param": "method", "in": ["adaptive_mean", "adaptive_gaussian"]}, teach=True),
-        Param("c", "常數 C", kind="number", default=5, minimum=-100, maximum=100, visible_when={"param": "method", "in": ["adaptive_mean", "adaptive_gaussian"]}, teach=True),
-        Param("invert", "反相（暗物件為前景）", kind="boolean", default=False),
+        Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["fixed"]}, teach=True),
+        Param("low", "Lower", kind="number", default=0, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
+        Param("high", "Upper", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
+        Param("block", "Block size (odd)", kind="number", default=31, minimum=3, maximum=255, step=2, visible_when={"param": "method", "in": ["adaptive_mean", "adaptive_gaussian"]}, teach=True),
+        Param("c", "Constant C", kind="number", default=5, minimum=-100, maximum=100, visible_when={"param": "method", "in": ["adaptive_mean", "adaptive_gaussian"]}, teach=True),
+        Param("invert", "Invert (dark objects are foreground)", kind="boolean", default=False),
     ]
-    outputs = [Port("image", "遮罩", "image"), Port("threshold_used", "實際門檻", "number")]
+    outputs = [Port("image", "Mask", "image"), Port("threshold_used", "Threshold used", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())
@@ -130,17 +130,17 @@ class ThresholdTool(Tool):
 class MorphologyTool(Tool):
     key = "morphology"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "形態學"
-    description = "侵蝕、膨脹、開、閉、梯度、頂帽、黑帽。"
+    label = "Morphology"
+    description = "Erode, dilate, open, close, gradient, top hat, black hat."
     icon = "Shapes"
     params = [
-        Param("op", "運算", kind="select", default="open", options=[
+        Param("op", "Operation", kind="select", default="open", options=[
             {"value": "erode", "label": "侵蝕"}, {"value": "dilate", "label": "膨脹"}, {"value": "open", "label": "開運算"},
             {"value": "close", "label": "閉運算"}, {"value": "gradient", "label": "梯度"}, {"value": "tophat", "label": "頂帽"}, {"value": "blackhat", "label": "黑帽"},
         ]),
-        Param("shape", "核形狀", kind="select", default="rect", options=[{"value": "rect", "label": "矩形"}, {"value": "ellipse", "label": "橢圓"}, {"value": "cross", "label": "十字"}]),
-        Param("ksize", "核大小", kind="number", default=3, minimum=1, maximum=99),
-        Param("iterations", "次數", kind="number", default=1, minimum=1, maximum=20),
+        Param("shape", "Kernel shape", kind="select", default="rect", options=[{"value": "rect", "label": "矩形"}, {"value": "ellipse", "label": "橢圓"}, {"value": "cross", "label": "十字"}]),
+        Param("ksize", "Kernel size", kind="number", default=3, minimum=1, maximum=99),
+        Param("iterations", "Iterations", kind="number", default=1, minimum=1, maximum=20),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -163,18 +163,18 @@ class MorphologyTool(Tool):
 class ResizeTool(Tool):
     key = "resize"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "縮放"
-    description = "依比例或指定尺寸縮放；大圖先縮小再處理是最有效的加速。"
+    label = "Scale"
+    description = "Scale by ratio or to a given size. Shrinking a large frame before processing is the single most effective speed-up."
     icon = "Scaling"
     params = [
-        Param("scale", "比例", kind="number", default=0.5, minimum=0.01, maximum=8, step=0.05),
-        Param("width", "寬（0 = 用比例）", kind="number", default=0, minimum=0),
-        Param("height", "高（0 = 用比例）", kind="number", default=0, minimum=0),
-        Param("interpolation", "插值", kind="select", default="area", options=[
+        Param("scale", "Scale", kind="number", default=0.5, minimum=0.01, maximum=8, step=0.05),
+        Param("width", "Width (0 = use scale)", kind="number", default=0, minimum=0),
+        Param("height", "Height (0 = use scale)", kind="number", default=0, minimum=0),
+        Param("interpolation", "Interpolation", kind="select", default="area", options=[
             {"value": "area", "label": "區域（縮小）"}, {"value": "linear", "label": "線性"}, {"value": "nearest", "label": "最近"}, {"value": "cubic", "label": "三次"},
         ]),
     ]
-    outputs = [Port("image", "影像", "image"), Port("scale_x", "比例 X", "number"), Port("scale_y", "比例 Y", "number")]
+    outputs = [Port("image", "Image", "image"), Port("scale_x", "Scale X", "number"), Port("scale_y", "Scale Y", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -195,11 +195,11 @@ class ResizeTool(Tool):
 
 class ColorConvertTool(Tool):
     key = "color_convert"
-    label = "色彩空間 / 通道"
-    description = "轉 HSV/Lab 或抽出單一通道，作為色彩檢測的前處理。"
+    label = "Colour space / channel"
+    description = "Convert to HSV or Lab, or pull out a single channel, as preparation for a colour check."
     icon = "Palette"
     params = [
-        Param("mode", "輸出", kind="select", default="hsv_s", options=[
+        Param("mode", "Output", kind="select", default="hsv_s", options=[
             {"value": "bgr_b", "label": "B 通道"}, {"value": "bgr_g", "label": "G 通道"}, {"value": "bgr_r", "label": "R 通道"},
             {"value": "hsv_h", "label": "HSV：H"}, {"value": "hsv_s", "label": "HSV：S"}, {"value": "hsv_v", "label": "HSV：V"},
             {"value": "lab_l", "label": "Lab：L"}, {"value": "lab_a", "label": "Lab：a"}, {"value": "lab_b", "label": "Lab：b"},
@@ -227,18 +227,18 @@ class ColorConvertTool(Tool):
 
 class ColorRangeTool(Tool):
     key = "color_range"
-    label = "色彩範圍遮罩"
-    description = "HSV 範圍內的像素為 255（支援 H 跨 0 的紅色）。"
+    label = "Colour range mask"
+    description = "Pixels inside the HSV range become 255 (a hue range wrapping through 0, as red does, is supported)."
     icon = "Pipette"
     params = [
-        Param("h_low", "H 下限", kind="number", default=0, minimum=0, maximum=179, teach=True),
-        Param("h_high", "H 上限", kind="number", default=179, minimum=0, maximum=179, teach=True),
-        Param("s_low", "S 下限", kind="number", default=0, minimum=0, maximum=255, teach=True),
-        Param("s_high", "S 上限", kind="number", default=255, minimum=0, maximum=255, teach=True),
-        Param("v_low", "V 下限", kind="number", default=0, minimum=0, maximum=255, teach=True),
-        Param("v_high", "V 上限", kind="number", default=255, minimum=0, maximum=255, teach=True),
+        Param("h_low", "H min", kind="number", default=0, minimum=0, maximum=179, teach=True),
+        Param("h_high", "H max", kind="number", default=179, minimum=0, maximum=179, teach=True),
+        Param("s_low", "S min", kind="number", default=0, minimum=0, maximum=255, teach=True),
+        Param("s_high", "S max", kind="number", default=255, minimum=0, maximum=255, teach=True),
+        Param("v_low", "V min", kind="number", default=0, minimum=0, maximum=255, teach=True),
+        Param("v_high", "V max", kind="number", default=255, minimum=0, maximum=255, teach=True),
     ]
-    outputs = [Port("image", "遮罩", "image"), Port("ratio", "覆蓋比例", "number")]
+    outputs = [Port("image", "Mask", "image"), Port("ratio", "Coverage", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -259,11 +259,11 @@ class ColorRangeTool(Tool):
 class ArithmeticTool(Tool):
     key = "arithmetic"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "影像運算"
-    description = "兩張影像相加／相減／差異／AND／OR，或單張的反相、亮度對比調整。"
+    label = "Image maths"
+    description = "Add, subtract, difference, AND or OR two images, or invert and adjust brightness and contrast on one."
     icon = "Calculator"
     params = [
-        Param("op", "運算", kind="select", default="absdiff", options=[
+        Param("op", "Operation", kind="select", default="absdiff", options=[
             {"value": "absdiff", "label": "絕對差 |A-B|"}, {"value": "add", "label": "A+B"}, {"value": "subtract", "label": "A-B"},
             {"value": "and", "label": "A AND B"}, {"value": "or", "label": "A OR B"}, {"value": "xor", "label": "A XOR B"},
             {"value": "invert", "label": "反相 A"}, {"value": "gain", "label": "A×gain + bias"},
@@ -295,11 +295,11 @@ class ArithmeticTool(Tool):
 class MaskApplyTool(Tool):
     key = "apply_mask"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "套用遮罩"
-    description = "只保留遮罩為 255 的像素（其餘設為指定灰階）。"
+    label = "Apply mask"
+    description = "Keep only the pixels where the mask is 255; the rest become the fill grey level."
     icon = "Layers"
-    params = [Param("fill", "遮罩外填值", kind="number", default=0, minimum=0, maximum=255)]
-    inputs = [Port("image", "影像", "image"), Port("mask", "遮罩", "image")]
+    params = [Param("fill", "Fill outside mask", kind="number", default=0, minimum=0, maximum=255)]
+    inputs = [Port("image", "Image", "image"), Port("mask", "Mask", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -319,13 +319,13 @@ class MaskApplyTool(Tool):
 class RotateFlipTool(Tool):
     key = "rotate_flip"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
-    label = "旋轉 / 翻轉"
-    description = "90 度倍數旋轉、任意角度旋轉、水平／垂直翻轉。"
+    label = "Rotate / flip"
+    description = "Rotate by a multiple of 90°, rotate by any angle, or flip horizontally or vertically."
     icon = "RotateCw"
     params = [
-        Param("angle", "角度（順時針）", kind="number", default=0, minimum=-360, maximum=360),
-        Param("flip", "翻轉", kind="select", default="none", options=[{"value": "none", "label": "不翻"}, {"value": "h", "label": "水平"}, {"value": "v", "label": "垂直"}, {"value": "hv", "label": "水平＋垂直"}]),
-        Param("keep_size", "維持尺寸", kind="boolean", default=True),
+        Param("angle", "Angle (clockwise)", kind="number", default=0, minimum=-360, maximum=360),
+        Param("flip", "Flip", kind="select", default="none", options=[{"value": "none", "label": "不翻"}, {"value": "h", "label": "水平"}, {"value": "v", "label": "垂直"}, {"value": "hv", "label": "水平＋垂直"}]),
+        Param("keep_size", "Keep size", kind="boolean", default=True),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -360,21 +360,21 @@ class RotateFlipTool(Tool):
 
 class ConvertDepthTool(Tool):
     key = "convert_depth"
-    label = "位深轉換"
-    description = "8 位元／16 位元／浮點影像互轉。轉 8 位元可選右移（線性、可預期）或 min-max 拉伸（吃滿動態範圍）。"
+    label = "Convert bit depth"
+    description = "Converts between 8-bit, 16-bit and floating-point images. Going to 8-bit you may right-shift (linear and predictable) or min-max stretch (using the full range)."
     category = "preprocess"
     icon = "Binary"
     accepts = ("u8", "u16", "f32")
     params = [
-        Param("to", "目標位深", kind="select", default="u8", options=[
+        Param("to", "Target depth", kind="select", default="u8", options=[
             {"value": "u8", "label": "8 位元（U8）"}, {"value": "u16", "label": "16 位元（U16）"}, {"value": "f32", "label": "浮點（SGL）"},
         ]),
-        Param("scale", "轉 8 位元方式", kind="select", default="shift", options=[
+        Param("scale", "To 8-bit", kind="select", default="shift", options=[
             {"value": "shift", "label": "等比例（16-bit 右移 8）"}, {"value": "minmax", "label": "min-max 拉伸"}, {"value": "clip", "label": "直接裁切"},
         ], visible_when={"param": "to", "in": ["u8"]}),
     ]
-    inputs = [Port("image", "影像", "image")]
-    outputs = [Port("image", "影像", "image"), Port("depth", "位深", "string")]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image"), Port("depth", "Bit depth", "string")]
 
     def execute(self, ctx: ToolContext) -> Result:
         from apps.vision.tools import imgfmt
@@ -409,25 +409,25 @@ class ConvertDepthTool(Tool):
 
 class LutTool(Tool):
     key = "lut"
-    label = "查表轉換（LUT）"
-    description = "灰階轉換與對比增強：線性（亮度／對比）、Gamma、對數、指數、平方、開根號、反相、直方圖等化、CLAHE；查表類彩色逐通道套用。"
+    label = "Look-up table (LUT)"
+    description = "Grey mapping and contrast enhancement: linear (brightness and contrast), gamma, log, exponential, square, square root, invert, histogram equalisation and CLAHE. Look-up mappings are applied per channel on colour images."
     category = "preprocess"
     icon = "Spline"
     params = [
-        Param("mode", "轉換", kind="select", default="linear", options=[
+        Param("mode", "Convert", kind="select", default="linear", options=[
             {"value": "linear", "label": "線性（亮度／對比）"}, {"value": "power", "label": "Gamma（次方）"},
             {"value": "log", "label": "對數（暗部展開）"}, {"value": "exp", "label": "指數（亮部展開）"},
             {"value": "sqrt", "label": "開根號"}, {"value": "square", "label": "平方"}, {"value": "invert", "label": "反相"},
             {"value": "equalize", "label": "直方圖等化"}, {"value": "clahe", "label": "CLAHE（區域對比）"},
         ]),
         Param("clip", "CLAHE clip", kind="number", default=2.0, minimum=0.1, maximum=40, step=0.1, visible_when={"param": "mode", "in": ["clahe"]}),
-        Param("tile", "CLAHE 格數", kind="number", default=8, minimum=1, maximum=64, visible_when={"param": "mode", "in": ["clahe"]}),
-        Param("brightness", "亮度", kind="range", default=0, minimum=-100, maximum=100, step=1, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
-        Param("contrast", "對比", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.05, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
+        Param("tile", "CLAHE tiles", kind="number", default=8, minimum=1, maximum=64, visible_when={"param": "mode", "in": ["clahe"]}),
+        Param("brightness", "Brightness", kind="range", default=0, minimum=-100, maximum=100, step=1, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
+        Param("contrast", "Contrast", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.05, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
         Param("gamma", "Gamma", kind="range", default=1.0, minimum=0.1, maximum=5.0, step=0.05, visible_when={"param": "mode", "in": ["power"]}, teach=True),
     ]
-    inputs = [Port("image", "影像", "image")]
-    outputs = [Port("image", "影像", "image")]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -462,25 +462,25 @@ class LutTool(Tool):
 
 class FilterTool(Tool):
     key = "filter"
-    label = "卷積濾波"
-    description = "卷積與邊緣濾波：銳利化、Canny 邊緣、Laplacian、Sobel／Prewitt 梯度、高通、浮雕，或自訂 3×3 kernel（JSON）。平滑用「模糊」工具。"
+    label = "Convolution filter"
+    description = "Convolution and edge filters: sharpen, Canny edges, Laplacian, Sobel and Prewitt gradients, high pass, emboss, or a custom 3×3 kernel as JSON. Use the blur tool for smoothing."
     category = "preprocess"
     icon = "Grid3x3"
     params = [
-        Param("method", "方法", kind="select", default="sharpen", options=[
+        Param("method", "Method", kind="select", default="sharpen", options=[
             {"value": "sharpen", "label": "銳利化"}, {"value": "canny", "label": "Canny 邊緣（二值）"}, {"value": "laplacian", "label": "Laplacian"},
             {"value": "gradient", "label": "梯度強度（Sobel）"}, {"value": "sobel_x", "label": "Sobel X"}, {"value": "sobel_y", "label": "Sobel Y"},
             {"value": "prewitt", "label": "Prewitt 梯度"}, {"value": "highpass", "label": "高通"}, {"value": "emboss", "label": "浮雕"},
             {"value": "custom", "label": "自訂 3×3"},
         ]),
-        Param("strength", "強度", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.1, visible_when={"param": "method", "in": ["sharpen"]}, teach=True),
-        Param("low", "Canny 低門檻", kind="number", default=50, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
-        Param("high", "Canny 高門檻", kind="number", default=150, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
-        Param("ksize", "核大小", kind="number", default=3, minimum=1, maximum=7, step=2, visible_when={"param": "method", "in": ["canny", "laplacian", "gradient", "sobel_x", "sobel_y"]}),
-        Param("kernel", "自訂 kernel", kind="json", default=[[0, -1, 0], [-1, 5, -1], [0, -1, 0]], visible_when={"param": "method", "in": ["custom"]}, help_text="3×3 數字陣列。"),
+        Param("strength", "Strength", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.1, visible_when={"param": "method", "in": ["sharpen"]}, teach=True),
+        Param("low", "Canny low", kind="number", default=50, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
+        Param("high", "Canny high", kind="number", default=150, minimum=0, maximum=1000, visible_when={"param": "method", "in": ["canny"]}, teach=True),
+        Param("ksize", "Kernel size", kind="number", default=3, minimum=1, maximum=7, step=2, visible_when={"param": "method", "in": ["canny", "laplacian", "gradient", "sobel_x", "sobel_y"]}),
+        Param("kernel", "Custom kernel", kind="json", default=[[0, -1, 0], [-1, 5, -1], [0, -1, 0]], visible_when={"param": "method", "in": ["custom"]}, help_text="A 3×3 array of numbers."),
     ]
-    inputs = [Port("image", "影像", "image")]
-    outputs = [Port("image", "影像", "image")]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -535,23 +535,23 @@ class FilterTool(Tool):
 
 class FftFilterTool(Tool):
     key = "fft_filter"
-    label = "頻域濾波（FFT）"
-    description = "頻域濾波：低通去週期性紋理／雜訊、高通留邊緣，截斷（truncate）或高斯衰減（attenuate）。另輸出頻譜圖供檢視。"
+    label = "Frequency filter (FFT)"
+    description = "Frequency-domain filtering: low pass to remove periodic texture and noise, high pass to keep edges, either truncated or Gaussian-attenuated. It also outputs the spectrum for inspection."
     category = "preprocess"
     icon = "AudioWaveform"
     heavy = True
     accepts = ("u8", "u16", "f32")
     params = [
-        Param("mode", "濾波", kind="select", default="lowpass", options=[
+        Param("mode", "Filter", kind="select", default="lowpass", options=[
             {"value": "lowpass", "label": "低通（保留大結構）"}, {"value": "highpass", "label": "高通（保留邊緣／細紋，以中灰 128 為零點）"},
         ]),
-        Param("style", "方式", kind="select", default="attenuate", options=[
+        Param("style", "Mode", kind="select", default="attenuate", options=[
             {"value": "truncate", "label": "截斷"}, {"value": "attenuate", "label": "高斯衰減"},
         ]),
-        Param("cutoff", "截止（半徑比例）", kind="range", default=0.1, minimum=0.01, maximum=1.0, step=0.01, teach=True),
+        Param("cutoff", "Cut-off (radius ratio)", kind="range", default=0.1, minimum=0.01, maximum=1.0, step=0.01, teach=True),
     ]
-    inputs = [Port("image", "影像", "image")]
-    outputs = [Port("image", "影像", "image"), Port("spectrum", "頻譜", "image")]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image"), Port("spectrum", "Spectrum", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
@@ -583,18 +583,18 @@ class FftFilterTool(Tool):
 
 class WarpPerspectiveTool(Tool):
     key = "warp_perspective"
-    label = "透視校正"
-    description = "把畫面上的四邊形區域攤平成矩形：斜拍的板面／標籤校正後再量測。"
+    label = "Perspective correction"
+    description = "Flattens a quadrilateral into a rectangle: straighten a panel or label shot at an angle before measuring it."
     category = "preprocess"
     icon = "Frame"
     accepts = ("u8", "u16", "f32")
     params = [
-        Param("roi", "來源四邊形", kind="roi", shapes=["polygon"], required=True, teach=True, help_text="畫 4 個點（多於 4 點取前 4 點）。"),
-        Param("width", "輸出寬", kind="number", default=0, minimum=0, help_text="0 = 依邊長自動。"),
-        Param("height", "輸出高", kind="number", default=0, minimum=0),
+        Param("roi", "Source quadrilateral", kind="roi", shapes=["polygon"], required=True, teach=True, help_text="Draw four points (only the first four are used)."),
+        Param("width", "Output width", kind="number", default=0, minimum=0, help_text="0 = derived from the edge length."),
+        Param("height", "Output height", kind="number", default=0, minimum=0),
     ]
-    inputs = [Port("image", "影像", "image")]
-    outputs = [Port("image", "影像", "image")]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()

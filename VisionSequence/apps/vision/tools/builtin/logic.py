@@ -18,18 +18,18 @@ _OP_LABEL = {"gt": ">", "ge": "≥", "lt": "<", "le": "≤", "eq": "=", "ne": "�
 
 class CompareNumberTool(Tool):
     key = "if_number"
-    label = "數值判斷"
-    description = "把輸入數值與門檻比較，走 true / false 分支；下游連到分支把手的節點只在該分支被選中時執行。"
+    label = "Compare number"
+    description = "Compares a value against a threshold and takes the true or false branch. Steps wired to a branch handle run only when that branch is taken."
     category = "logic"
     icon = "GitBranch"
     params = [
-        Param("operator", "比較", kind="select", default="gt", required=True,
+        Param("operator", "Compare", kind="select", default="gt", required=True,
               options=[{"value": k, "label": v} for k, v in _OP_LABEL.items()]),
-        Param("threshold", "門檻", kind="number", required=True, default=0, teach=True),
-        Param("tolerance", "容差（= / ≠ 用）", kind="number", default=0, minimum=0),
+        Param("threshold", "Threshold", kind="number", required=True, default=0, teach=True),
+        Param("tolerance", "Tolerance (for = and ≠)", kind="number", default=0, minimum=0),
     ]
-    inputs = [Port("value", "數值", "number")]
-    outputs = [flow_out("true", "True", "ok"), flow_out("false", "False", "critical"), Port("result", "結果", "bool")]
+    inputs = [Port("value", "Value", "number")]
+    outputs = [flow_out("true", "True", "ok"), flow_out("false", "False", "critical"), Port("result", "Result", "bool")]
 
     def execute(self, ctx: ToolContext) -> Result:
         value = ctx.inputs.get("value")
@@ -57,16 +57,16 @@ class CompareNumberTool(Tool):
 
 class CompareRangeTool(Tool):
     key = "in_range"
-    label = "範圍判斷"
-    description = "數值是否落在 [下限, 上限]；常用於量測值公差判定。"
+    label = "In range"
+    description = "Whether a value falls inside [lower, upper]; the usual way to check a measurement against limits."
     category = "logic"
     icon = "Ruler"
     params = [
-        Param("low", "下限", kind="number", required=True, default=0, teach=True),
-        Param("high", "上限", kind="number", required=True, default=100, teach=True),
+        Param("low", "Lower", kind="number", required=True, default=0, teach=True),
+        Param("high", "Upper", kind="number", required=True, default=100, teach=True),
     ]
-    inputs = [Port("value", "數值", "number")]
-    outputs = [flow_out("inside", "在範圍內", "ok"), flow_out("outside", "超出範圍", "critical"), Port("result", "結果", "bool")]
+    inputs = [Port("value", "Value", "number")]
+    outputs = [flow_out("inside", "In range", "ok"), flow_out("outside", "Out of range", "critical"), Port("result", "Result", "bool")]
 
     def execute(self, ctx: ToolContext) -> Result:
         value = ctx.inputs.get("value")
@@ -82,20 +82,20 @@ class CompareRangeTool(Tool):
 
 class BoolLogicTool(Tool):
     key = "bool_logic"
-    label = "布林組合"
-    description = "把多個布林輸入以 AND / OR / NOT 組合，走 true / false 分支。"
+    label = "Boolean logic"
+    description = "Combines boolean inputs with AND, OR or NOT and takes the true or false branch."
     category = "logic"
     icon = "Binary"
     params = [
-        Param("mode", "運算", kind="select", default="and", options=[
+        Param("mode", "Operation", kind="select", default="and", options=[
             {"value": "and", "label": "AND（全部為真）"},
             {"value": "or", "label": "OR（任一為真）"},
             {"value": "nand", "label": "NOT AND"},
             {"value": "nor", "label": "NOT OR"},
         ]),
     ]
-    inputs = [Port("values", "布林值", "bool", multiple=True, required=True)]
-    outputs = [flow_out("true", "True", "ok"), flow_out("false", "False", "critical"), Port("result", "結果", "bool")]
+    inputs = [Port("values", "Boolean", "bool", multiple=True, required=True)]
+    outputs = [flow_out("true", "True", "ok"), flow_out("false", "False", "critical"), Port("result", "Result", "bool")]
 
     def execute(self, ctx: ToolContext) -> Result:
         values = [bool(v) for v in (ctx.inputs.get("values") or []) if v is not None]
@@ -170,18 +170,18 @@ def safe_eval(expr: str, names: dict[str, Any]) -> Any:
 
 class FormulaTool(Tool):
     key = "formula"
-    label = "公式"
-    description = "以 a、b、c、d 代表輸入，寫一段算式（例如 abs(a-b)/c*100）。支援 +-*/、比較、and/or、abs/min/max/sqrt/…。"
+    label = "Expression"
+    description = "Write an expression over the inputs a, b, c and d, for example abs(a-b)/c*100. Arithmetic, comparisons, and/or, and abs, min, max, sqrt and friends are supported."
     category = "logic"
     icon = "Sigma"
     params = [
-        Param("expression", "公式", kind="expression", required=True, default="a", help_text="變數 a b c d 對應四個輸入；結果可為數值或布林。"),
+        Param("expression", "Expression", kind="expression", required=True, default="a", help_text="The variables a, b, c and d are the four inputs; the result may be a number or a boolean."),
     ]
     inputs = [
         Port("a", "a", "any", required=False), Port("b", "b", "any", required=False),
         Port("c", "c", "any", required=False), Port("d", "d", "any", required=False),
     ]
-    outputs = [Port("value", "數值", "number"), Port("result", "布林", "bool")]
+    outputs = [Port("value", "Value", "number"), Port("result", "Boolean", "bool")]
 
     def execute(self, ctx: ToolContext) -> Result:
         expr = str(ctx.param("expression", "")).strip()
@@ -200,12 +200,12 @@ class FormulaTool(Tool):
 
 class CounterTool(Tool):
     key = "count_list"
-    label = "計數"
-    description = "輸出 list／points／matches 的元素數量。"
+    label = "Count"
+    description = "The number of elements in the list, points or matches output."
     category = "logic"
     icon = "Hash"
-    inputs = [Port("items", "清單", "list")]
-    outputs = [Port("count", "數量", "number")]
+    inputs = [Port("items", "List", "list")]
+    outputs = [Port("count", "Count", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         items = ctx.inputs.get("items")

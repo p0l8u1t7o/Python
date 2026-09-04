@@ -28,23 +28,23 @@ DEVICE_OPTIONS = [{"value": "auto", "label": "自動（有 GPU 就用）"}, {"va
 
 def _common_params(task: str, default_weights: str, imgsz: int = 640) -> list[Param]:
     return [
-        Param("model", "模型資產", kind="asset", accept="model", required=False, help_text="教導頁訓練出的模型（.pt／.onnx）或自行上傳的 .pt；留空則用下方底模名稱。"),
-        Param("model_name", "底模名稱", kind="text", default=default_weights, help_text="官方名稱（第一次使用自動下載）或本機 .pt 路徑；只在沒選模型資產時使用。"),
-        Param("imgsz", "推論尺寸", kind="select", default=imgsz, options=IMGSZ_OPTIONS if task != "classify" else [{"value": 224, "label": "224（建議）"}, {"value": 320, "label": "320"}], help_text="與訓練時一致最準。"),
-        Param("device", "裝置", kind="select", default="auto", options=DEVICE_OPTIONS, group="進階"),
-        Param("half", "半精度（FP16）", kind="boolean", default=False, group="進階", help_text="只在 GPU 生效，更快、記憶體更省。"),
-        Param("roi", "區域", kind="roi", shapes=ROI_SHAPES, help_text="留空則整張影像。"),
+        Param("model", "Model asset", kind="asset", accept="model", required=False, help_text="A model trained on the teaching page (.pt or .onnx) or one you uploaded; blank falls back to the base model below."),
+        Param("model_name", "Base model", kind="text", default=default_weights, help_text="An official model name (downloaded on first use) or a local .pt path; used only when no model asset is chosen."),
+        Param("imgsz", "Inference size", kind="select", default=imgsz, options=IMGSZ_OPTIONS if task != "classify" else [{"value": 224, "label": "224（建議）"}, {"value": 320, "label": "320"}], help_text="Most accurate when it matches training."),
+        Param("device", "Device", kind="select", default="auto", options=DEVICE_OPTIONS, group="Advanced"),
+        Param("half", "Half precision (FP16)", kind="boolean", default=False, group="Advanced", help_text="GPU only: faster and lighter on memory."),
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
     ]
 
 
 def _detect_params() -> list[Param]:
     return [
-        Param("conf", "信心門檻", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
-        Param("iou", "NMS IoU", kind="range", default=0.45, minimum=0, maximum=1, step=0.01, group="進階"),
-        Param("max_count", "最多輸出", kind="number", default=100, minimum=1, maximum=1000, group="進階"),
-        Param("filter_labels", "只保留類別", kind="text", default="", help_text="逗號分隔；留空全部保留。"),
-        Param("min_count", "合格最少數量", kind="number", default=1, minimum=0, group="判定"),
-        Param("max_count_ok", "合格最多數量", kind="number", default=0, minimum=0, group="判定", help_text="0 表示不限。"),
+        Param("conf", "Confidence threshold", kind="range", default=0.25, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("iou", "NMS IoU", kind="range", default=0.45, minimum=0, maximum=1, step=0.01, group="Advanced"),
+        Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=1000, group="Advanced"),
+        Param("filter_labels", "Keep classes only", kind="text", default="", help_text="Comma separated; blank keeps everything."),
+        Param("min_count", "Min passing count", kind="number", default=1, minimum=0, group="Verdict"),
+        Param("max_count_ok", "Max passing count", kind="number", default=0, minimum=0, group="Verdict", help_text="0 means no limit."),
     ]
 
 
@@ -143,14 +143,14 @@ def _region_angle(region: dict[str, Any] | None) -> float:
 
 class YoloDetectTool(_YoloTool):
     key = "yolo_detect"
-    label = "YOLO 物件偵測"
-    description = "以 ultralytics YOLO 模型（官方底模或教導頁訓練的 .pt）找物件並回框、類別與分數；GPU 自動使用。"
+    label = "YOLO object detection"
+    description = "Finds objects with an ultralytics YOLO model — an official base model or a .pt trained on the teaching page — returning boxes, classes and scores. A GPU is used automatically when present."
     task = "detect"
     accepted_tasks = ("detect", "segment", "pose", "obb")
     params = _common_params("detect", "yolo11n.pt") + _detect_params()
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("detections", "偵測結果", "matches"), Port("count", "數量", "number"),
-               Port("matches", "匹配（含 cx, cy）", "matches"), Port("labels", "類別列表", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("detections", "Detections", "matches"), Port("count", "Count", "number"),
+               Port("matches", "Matches (with cx, cy)", "matches"), Port("labels", "Class list", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         from apps.vision.dl import yolo_runtime
@@ -173,14 +173,14 @@ class YoloDetectTool(_YoloTool):
 
 class YoloSegmentTool(_YoloTool):
     key = "yolo_segment"
-    label = "YOLO 實例分割"
-    description = "以 ultralytics YOLO-seg 模型找出每個物件的輪廓、類別與面積；輸出聯合遮罩與輪廓給後續量測。"
+    label = "YOLO instance segmentation"
+    description = "Uses an ultralytics YOLO-seg model to find each object's contour, class and area, and outputs a union mask and contours for later measurement."
     task = "segment"
     icon = "Brain"
-    params = _common_params("segment", "yolo11n-seg.pt") + _detect_params() + [Param("min_area", "最小面積", kind="number", default=0, minimum=0, unit="px²", group="判定", help_text="小於此面積的實例略過。")]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("count", "數量", "number"), Port("matches", "實例", "matches"),
-               Port("mask", "聯合遮罩", "image"), Port("contours", "輪廓", "contours"), Port("labels", "類別列表", "list")]
+    params = _common_params("segment", "yolo11n-seg.pt") + _detect_params() + [Param("min_area", "Min area", kind="number", default=0, minimum=0, unit="px²", group="Verdict", help_text="Instances smaller than this are skipped.")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("count", "Count", "number"), Port("matches", "Instances", "matches"),
+               Port("mask", "Union mask", "image"), Port("contours", "Contour", "contours"), Port("labels", "Class list", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         from apps.vision.dl import yolo_runtime
@@ -233,17 +233,17 @@ class YoloSegmentTool(_YoloTool):
 
 class YoloClassifyTool(_YoloTool):
     key = "yolo_classify"
-    label = "YOLO 分類"
-    description = "以 ultralytics YOLO-cls 模型判斷區域屬於哪一類；最高分類別分數達門檻（且在合格類別內）走 pass。"
+    label = "YOLO classification"
+    description = "Classifies the region with an ultralytics YOLO-cls model; it passes when the top class scores above the threshold and is in the passing list."
     task = "classify"
     icon = "Brain"
     params = _common_params("classify", "yolo11n-cls.pt", imgsz=224) + [
-        Param("threshold", "分數門檻", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("threshold", "Score threshold", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
         Param("top_k", "Top-K", kind="number", default=3, minimum=1, maximum=50),
-        Param("pass_labels", "合格類別", kind="text", default="", help_text="逗號分隔；不為空時，最高分類別需在此清單內才 pass。"),
+        Param("pass_labels", "Passing classes", kind="text", default="", help_text="Comma separated; when set, the top class must be in this list to pass."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical"), Port("label", "類別", "string"), Port("score", "分數", "number"), Port("index", "索引", "number"), Port("top", "Top-K", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical"), Port("label", "Class", "string"), Port("score", "Score", "number"), Port("index", "Index", "number"), Port("top", "Top-K", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         from apps.vision.dl import yolo_runtime
@@ -272,16 +272,16 @@ class YoloClassifyTool(_YoloTool):
 
 class YoloPoseTool(_YoloTool):
     key = "yolo_pose"
-    label = "YOLO 姿態（關鍵點）"
-    description = "以 ultralytics YOLO-pose 模型找物件並回每個物件的關鍵點座標與信心（COCO 人體 17 點或自訂關鍵點）；可做位置／姿勢檢查。"
+    label = "YOLO pose (keypoints)"
+    description = "Finds objects with an ultralytics YOLO-pose model and returns each object's keypoint coordinates and confidence (the 17 COCO body points or your own), for position and pose checks."
     task = "pose"
     icon = "PersonStanding"
     params = _common_params("pose", "yolo11n-pose.pt") + _detect_params() + [
-        Param("kpt_conf", "關鍵點信心門檻", kind="range", default=0.3, minimum=0, maximum=1, step=0.05, help_text="低於門檻的關鍵點不畫、座標仍輸出（conf 附在每點）。"),
+        Param("kpt_conf", "Keypoint confidence", kind="range", default=0.3, minimum=0, maximum=1, step=0.05, help_text="Keypoints below the threshold are not drawn but are still output, each with its confidence."),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("count", "數量", "number"), Port("matches", "物件框", "matches"),
-               Port("keypoints", "關鍵點", "list"), Port("labels", "類別列表", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("count", "Count", "number"), Port("matches", "Boxes", "matches"),
+               Port("keypoints", "Keypoints", "list"), Port("labels", "Class list", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         from apps.vision.dl import yolo_runtime
@@ -323,14 +323,14 @@ class YoloPoseTool(_YoloTool):
 
 class YoloObbTool(_YoloTool):
     key = "yolo_obb"
-    label = "YOLO 旋轉框（OBB）"
-    description = "以 ultralytics YOLO-obb 模型找物件並回旋轉矩形（中心、寬高、角度）與四角座標；適合傾斜擺放的工件。"
+    label = "YOLO oriented boxes (OBB)"
+    description = "Finds objects with an ultralytics YOLO-obb model and returns oriented boxes (centre, size, angle) and their four corners — the right choice for parts that sit at an angle."
     task = "obb"
     icon = "RotateCw"
     params = _common_params("obb", "yolo11n-obb.pt") + _detect_params()
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("count", "數量", "number"), Port("matches", "旋轉框（cx, cy, w, h, angle）", "matches"),
-               Port("contours", "四角輪廓", "contours"), Port("labels", "類別列表", "list")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("count", "Count", "number"), Port("matches", "Oriented boxes (cx, cy, w, h, angle)", "matches"),
+               Port("contours", "Corner contours", "contours"), Port("labels", "Class list", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
         from apps.vision.dl import yolo_runtime

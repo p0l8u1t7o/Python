@@ -214,27 +214,27 @@ def _normalize_result(value: Any) -> dict[str, Any]:
 
 class PythonScriptTool(Tool):
     key = "python_script"
-    label = "Python 腳本"
-    description = "自己寫一段 Python（def run(ctx)）做檢測：讀影像／上游值／現場參數，回傳數值、布林、文字、資料、新影像與標記，並決定通過／不良分支。只有管理員能編輯腳本；受限執行（白名單匯入、逾時中止）。"
+    label = "Python script"
+    description = "Write your own inspection in Python (def run(ctx)): read the image, upstream values and on-site parameters, return a number, boolean, text, data, a new image and marks, and decide the pass or fail branch. Only administrators may edit scripts, and they run restricted (allow-listed imports, aborted on timeout)."
     category = "logic"
     icon = "Code"
     params = [
-        Param("code", "程式碼", kind="code", required=True, default=TEMPLATE, accept="python",
-              help_text="定義 def run(ctx)；可用 np、cv2、math 與白名單模組。回傳 dict 或單一值（數值／布林／文字／影像）。"),
-        Param("p1", "現場參數 1", kind="number", default=0, teach=True, group="現場參數", help_text="腳本以 ctx.params['p1'] 讀取；技術員可在參數卡調整，不必改程式碼。"),
-        Param("p2", "現場參數 2", kind="number", default=0, teach=True, group="現場參數"),
-        Param("p3", "現場參數 3", kind="number", default=0, teach=True, group="現場參數"),
-        Param("roi", "區域", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "line", "point"], help_text="腳本以 ctx.roi()／ctx.crop() 取用；留空則整張影像。"),
-        Param("max_ms", "逾時（毫秒）", kind="number", default=5000, minimum=100, maximum=60000, unit="ms", group="進階", help_text="純 Python 迴圈超過此時間即中止（numpy／cv2 呼叫不計）。"),
+        Param("code", "Code", kind="code", required=True, default=TEMPLATE, accept="python",
+              help_text="Define def run(ctx). numpy, OpenCV, math and the allow-listed modules are available. Return a dict, or a single number, boolean, string or image."),
+        Param("p1", "On-site parameter 1", kind="number", default=0, teach=True, group="On-site parameters", help_text="The script reads it as ctx.params['p1']; a technician can tune it on the parameter card without touching code."),
+        Param("p2", "On-site parameter 2", kind="number", default=0, teach=True, group="On-site parameters"),
+        Param("p3", "On-site parameter 3", kind="number", default=0, teach=True, group="On-site parameters"),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "line", "point"], help_text="The script reads it through ctx.roi() and ctx.crop(); blank means the whole image."),
+        Param("max_ms", "Timeout (ms)", kind="number", default=5000, minimum=100, maximum=60000, unit="ms", group="Advanced", help_text="Aborts a pure-Python loop that runs longer than this; time inside numpy and OpenCV calls does not count."),
     ]
     inputs = [
-        Port("image", "影像", "image", required=False), Port("roi", "區域（動態）", "region", required=False),
+        Port("image", "Image", "image", required=False), Port("roi", "Region (dynamic)", "region", required=False),
         Port("a", "a", "any", required=False), Port("b", "b", "any", required=False), Port("c", "c", "any", required=False), Port("d", "d", "any", required=False),
     ]
     outputs = [
-        flow_out("pass", "通過", "ok"), flow_out("fail", "不良", "critical"),
-        Port("image", "影像", "image"), Port("value", "數值", "number"), Port("result", "布林", "bool"),
-        Port("text", "文字", "string"), Port("data", "資料", "any"),
+        flow_out("pass", "Pass", "ok"), flow_out("fail", "Fail", "critical"),
+        Port("image", "Image", "image"), Port("value", "Value", "number"), Port("result", "Boolean", "bool"),
+        Port("text", "Text", "string"), Port("data", "Data", "any"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:

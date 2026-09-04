@@ -515,26 +515,26 @@ def _refine_match(search: np.ndarray, tpl: np.ndarray, cx: float, cy: float, ang
 
 class TemplateMatchTool(Tool):
     key = "template_match"
-    label = "範本比對"
-    description = "以正規化相關（NCC）在影像或搜尋範圍內找範本；支援旋轉搜尋、金字塔加速與次像素精修。角度以畫面順時針為正（與 ROI／找直線相同）。"
+    label = "Template match"
+    description = "Finds a template by normalised cross-correlation, in the whole image or a search region, with optional rotation search, pyramid speed-up and sub-pixel refinement. Angles are positive clockwise on screen, as everywhere else in the platform."
     category = "locate"
     icon = "ScanSearch"
     params = [
-        Param("template", "範本影像", kind="asset", accept="image", required=True, help_text="上傳的範本影像（灰階比對）。"),
-        Param("roi", "搜尋範圍", kind="roi", shapes=["rect", "rotated_rect"], help_text="留空則搜尋整張影像。"),
-        Param("threshold", "分數門檻", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, help_text="NCC 分數 0~1，低於此值不算匹配。", teach=True),
-        Param("max_matches", "最多匹配數", kind="number", default=1, minimum=1, maximum=500),
-        Param("angle_range", "旋轉範圍 ±", kind="number", default=0, minimum=0, maximum=180, unit="°", help_text="0 表示不做旋轉搜尋。", group="旋轉", teach=True),
-        Param("angle_step", "角度步進", kind="number", default=5, minimum=0.5, maximum=45, unit="°", group="旋轉"),
-        Param("pyramid", "金字塔加速", kind="boolean", default=True, help_text="先在 1/4 縮圖粗找，再在候選附近細找。範本很小時自動關閉。", group="進階"),
-        Param("subpixel", "次像素精修", kind="boolean", default=True, help_text="位置以相關圖 3×3 拋物線內插；有旋轉搜尋時再以相鄰角度的分數內插角度（精度優於角度步進）。", group="進階"),
+        Param("template", "Template image", kind="asset", accept="image", required=True, help_text="The uploaded template image (matched in grayscale)."),
+        Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect"], help_text="Leave blank to search the whole image."),
+        Param("threshold", "Score threshold", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, help_text="NCC score 0–1; below this is not a match.", teach=True),
+        Param("max_matches", "Max matches", kind="number", default=1, minimum=1, maximum=500),
+        Param("angle_range", "Rotation range ±", kind="number", default=0, minimum=0, maximum=180, unit="°", help_text="0 disables the rotation search.", group="Rotation", teach=True),
+        Param("angle_step", "Angle step", kind="number", default=5, minimum=0.5, maximum=45, unit="°", group="Rotation"),
+        Param("pyramid", "Pyramid speed-up", kind="boolean", default=True, help_text="Search a quarter-size image first, then refine around the candidates. Turns itself off for very small templates.", group="Advanced"),
+        Param("subpixel", "Sub-pixel refine", kind="boolean", default=True, help_text="Position comes from a 3×3 parabolic interpolation of the correlation map; with a rotation search the angle is interpolated from neighbouring scores, beating the angle step.", group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "搜尋範圍（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Search region (dynamic)", "region", required=False)]
     outputs = [
-        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
-        Port("matches", "匹配", "matches"), Port("count", "數量", "number"),
-        Port("best_x", "最佳 X", "number"), Port("best_y", "最佳 Y", "number"),
-        Port("best_score", "最佳分數", "number"), Port("best_angle", "最佳角度", "number"),
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("matches", "Matches", "matches"), Port("count", "Count", "number"),
+        Port("best_x", "Best X", "number"), Port("best_y", "Best Y", "number"),
+        Port("best_score", "Best score", "number"), Port("best_angle", "Best angle", "number"),
     ]
     heavy = True
 
@@ -688,24 +688,24 @@ def _current_pose(ctx: ToolContext) -> tuple[float, float, float]:
 
 class ShapeAlignTool(Tool):
     key = "shape_align"
-    label = "定位補正"
-    description = "比較目前定位結果與教導時的參考位置，算出平移／旋轉量（dx, dy, dθ），供 ROI 跟隨使用。"
+    label = "Locate offset"
+    description = "Compares the current locate result with the reference position from teaching and produces the translation and rotation (dx, dy, dθ) that ROI follow needs."
     category = "locate"
     icon = "Move"
     params = [
-        Param("ref_x", "參考 X", kind="number", required=True, default=0, help_text="教導時最佳匹配的中心 X（前端可一鍵帶入目前值）。"),
-        Param("ref_y", "參考 Y", kind="number", required=True, default=0),
-        Param("ref_angle", "參考角度", kind="number", default=0, unit="°"),
-        Param("use_angle", "套用旋轉", kind="boolean", default=True, help_text="關閉則 dθ 固定為 0，只做平移補正。"),
+        Param("ref_x", "Reference X", kind="number", required=True, default=0, help_text="The best match centre X at teach time (the editor can fill in the current value)."),
+        Param("ref_y", "Reference Y", kind="number", required=True, default=0),
+        Param("ref_angle", "Reference angle", kind="number", default=0, unit="°"),
+        Param("use_angle", "Apply rotation", kind="boolean", default=True, help_text="Off pins dθ to 0 and corrects translation only."),
     ]
     inputs = [
-        Port("image", "影像", "image", required=False),
-        Port("matches", "匹配", "matches", required=False),
-        Port("a", "目前 X", "number", required=False), Port("b", "目前 Y", "number", required=False), Port("c", "目前角度", "number", required=False),
+        Port("image", "Image", "image", required=False),
+        Port("matches", "Matches", "matches", required=False),
+        Port("a", "Current X", "number", required=False), Port("b", "Current Y", "number", required=False), Port("c", "Current angle", "number", required=False),
     ]
     outputs = [
         Port("dx", "dx", "number"), Port("dy", "dy", "number"), Port("dtheta", "dθ", "number"),
-        Port("transform", "變換", "any"),
+        Port("transform", "Transform", "any"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -728,15 +728,15 @@ class ShapeAlignTool(Tool):
 
 class FixtureRoiTool(Tool):
     key = "fixture_roi"
-    label = "ROI 跟隨"
-    description = "把畫好的 ROI 依定位補正的 dx/dy/dθ 移動，輸出動態區域給下游工具的 ROI 輸入埠。"
+    label = "ROI follow"
+    description = "Moves a drawn ROI by the dx, dy and dθ from the locate step and feeds the resulting dynamic region into a downstream tool's region input."
     category = "locate"
     icon = "Locate"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "line"]),
+        Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect", "circle", "annulus", "polygon", "line"]),
     ]
-    inputs = [Port("image", "影像", "image", required=False), Port("transform", "變換", "any")]
-    outputs = [Port("region", "區域", "region")]
+    inputs = [Port("image", "Image", "image", required=False), Port("transform", "Transform", "any")]
+    outputs = [Port("region", "Region", "region")]
 
     def execute(self, ctx: ToolContext) -> Result:
         region = ctx.params.get("roi")
@@ -765,26 +765,26 @@ class FixtureRoiTool(Tool):
 # ---------------------------------------------------------------------------
 class FindCircleTool(Tool):
     key = "find_circle"
-    label = "找圓"
-    description = "從 ROI 中心向外發射徑向掃描線找邊緣點，再以最小平方或 RANSAC 擬合圓。"
+    label = "Find circles"
+    description = "Fires radial scan lines out from the ROI centre to find edge points, then fits a circle by least squares or RANSAC."
     category = "locate"
     icon = "Circle"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["circle", "annulus", "rect"], help_text="圓／圓環：由中心往外掃到外半徑（圓環可設扇形起迄角，只掃該扇形）；矩形：掃到內切半徑。"),
-        Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, help_text="沿掃描線由內往外的灰階變化方向。"),
-        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, help_text="灰階梯度低於此值不算邊緣。", teach=True),
-        Param("num_rays", "掃描線數", kind="number", default=36, minimum=6, maximum=720),
-        Param("edge_select", "取哪個邊緣", kind="select", default="strongest", options=[{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個（最靠內）"}, {"value": "last", "label": "最後一個（最靠外）"}]),
-        Param("ransac", "RANSAC 剔除離群", kind="boolean", default=True),
-        Param("ransac_tol", "RANSAC 容差", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="進階"),
-        Param("refine", "重掃精修", kind="boolean", default=True, group="進階", help_text="ROI 中心偏離圓心時，以擬合圓心重掃一次讓掃描線與邊緣垂直。"),
-        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+        Param("roi", "Region", kind="roi", required=True, shapes=["circle", "annulus", "rect"], help_text="Circle or ring: scan outwards to the outer radius (a ring may set start and end angles to scan only that sector). Rectangle: scan to the inscribed radius."),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, help_text="How the grey level changes along the scan line, inside out."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, help_text="A grey gradient below this is not an edge.", teach=True),
+        Param("num_rays", "Scan lines", kind="number", default=36, minimum=6, maximum=720),
+        Param("edge_select", "Which edge", kind="select", default="strongest", options=[{"value": "strongest", "label": "最強"}, {"value": "first", "label": "第一個（最靠內）"}, {"value": "last", "label": "最後一個（最靠外）"}]),
+        Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
+        Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
+        Param("refine", "Rescan refine", kind="boolean", default=True, group="Advanced", help_text="When the ROI centre is off the circle, rescan from the fitted centre so the scan lines meet the edge square on."),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
-        Port("cx", "圓心 X", "number"), Port("cy", "圓心 Y", "number"), Port("r", "半徑", "number"),
-        Port("points", "邊緣點", "points"), Port("score", "分數", "number"),
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"), Port("r", "Radius", "number"),
+        Port("points", "Edge points", "points"), Port("score", "Score", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -899,26 +899,26 @@ def caliper_points(crop_img: np.ndarray, num: int, polarity: str, threshold: flo
 
 class FindLineTool(Tool):
     key = "find_line"
-    label = "找直線"
-    description = "在矩形區域內放多條垂直於長邊的卡尺掃描線找邊緣點，再擬合直線（可 RANSAC）。"
+    label = "Find lines"
+    description = "Places caliper scan lines across the long side of a rectangle to find edge points, then fits a line, optionally with RANSAC."
     category = "locate"
     icon = "Slash"
     params = [
-        Param("roi", "區域", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="長邊方向為直線方向，卡尺沿短邊掃描。"),
-        Param("polarity", "邊緣極性", kind="select", default="any", options=POLARITY_OPTIONS, help_text="沿短邊（由上到下／由左到右）的灰階變化。"),
-        Param("edge_threshold", "邊緣門檻", kind="number", default=20, minimum=1, maximum=255, teach=True),
-        Param("num_calipers", "卡尺數", kind="number", default=20, minimum=2, maximum=500),
-        Param("direction", "取哪個邊緣", kind="select", default="strongest", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
-        Param("ransac", "RANSAC 剔除離群", kind="boolean", default=True),
-        Param("ransac_tol", "RANSAC 容差", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="進階"),
-        Param("smoothing", "剖面平滑", kind="number", default=3, minimum=1, maximum=31, group="進階"),
+        Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="The long side is the line direction; calipers scan across the short side."),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, help_text="How the grey level changes across the short side (top to bottom / left to right)."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("num_calipers", "Calipers", kind="number", default=20, minimum=2, maximum=500),
+        Param("direction", "Which edge", kind="select", default="strongest", options=[{"value": "first", "label": "第一個"}, {"value": "last", "label": "最後一個"}, {"value": "strongest", "label": "最強"}]),
+        Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
+        Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
-        flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"),
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("x1", "X1", "number"), Port("y1", "Y1", "number"), Port("x2", "X2", "number"), Port("y2", "Y2", "number"),
-        Port("angle", "角度", "number"), Port("rho", "ρ", "number"), Port("theta", "θ", "number"),
-        Port("line", "直線", "any"), Port("points", "邊緣點", "points"),
+        Port("angle", "Angle", "number"), Port("rho", "ρ", "number"), Port("theta", "θ", "number"),
+        Port("line", "Line", "any"), Port("points", "Edge points", "points"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -986,22 +986,22 @@ class FindLineTool(Tool):
 # ---------------------------------------------------------------------------
 class HoughCirclesTool(Tool):
     key = "hough_circles"
-    label = "Hough 找圓"
-    description = "cv2.HoughCircles（梯度法）在區域內找多個圓。"
+    label = "Hough circles"
+    description = "Finds several circles in the region with the Hough gradient method."
     category = "locate"
     icon = "CircleDot"
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect"], help_text="留空則整張影像。"),
-        Param("min_radius", "最小半徑", kind="number", default=10, minimum=1, unit="px"),
-        Param("max_radius", "最大半徑", kind="number", default=100, minimum=1, unit="px"),
-        Param("min_dist", "圓心最小間距", kind="number", default=20, minimum=1, unit="px"),
-        Param("param1", "Canny 高門檻", kind="number", default=100, minimum=1, maximum=500, group="進階"),
-        Param("param2", "累積門檻", kind="number", default=30, minimum=1, maximum=300, group="進階", help_text="越小找到越多（含誤判）。"),
-        Param("blur", "前置中值濾波核", kind="number", default=5, minimum=0, maximum=31, group="進階"),
-        Param("max_count", "最多輸出", kind="number", default=50, minimum=1, maximum=1000),
+        Param("roi", "Region", kind="roi", shapes=["rect"], help_text="Leave blank for the whole image."),
+        Param("min_radius", "Min radius", kind="number", default=10, minimum=1, unit="px"),
+        Param("max_radius", "Max radius", kind="number", default=100, minimum=1, unit="px"),
+        Param("min_dist", "Min centre spacing", kind="number", default=20, minimum=1, unit="px"),
+        Param("param1", "Canny high", kind="number", default=100, minimum=1, maximum=500, group="Advanced"),
+        Param("param2", "Accumulator threshold", kind="number", default=30, minimum=1, maximum=300, group="Advanced", help_text="Lower finds more, false positives included."),
+        Param("blur", "Pre-median kernel", kind="number", default=5, minimum=0, maximum=31, group="Advanced"),
+        Param("max_count", "Max results", kind="number", default=50, minimum=1, maximum=1000),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("circles", "圓", "list"), Port("count", "數量", "number")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("circles", "Circle", "list"), Port("count", "Count", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = to_gray(ctx.require_image())
@@ -1030,21 +1030,21 @@ class HoughCirclesTool(Tool):
 
 class HoughLinesTool(Tool):
     key = "hough_lines"
-    label = "Hough 找線段"
-    description = "Canny 邊緣後以機率 Hough（HoughLinesP）找線段。"
+    label = "Hough segments"
+    description = "Canny edges followed by the probabilistic Hough transform to find line segments."
     category = "locate"
     icon = "Spline"
     params = [
-        Param("roi", "區域", kind="roi", shapes=["rect"], help_text="留空則整張影像。"),
-        Param("canny_low", "Canny 低門檻", kind="number", default=50, minimum=0, maximum=500),
-        Param("canny_high", "Canny 高門檻", kind="number", default=150, minimum=0, maximum=500),
-        Param("threshold", "累積門檻", kind="number", default=80, minimum=1, maximum=1000),
-        Param("min_length", "最短線段", kind="number", default=30, minimum=1, unit="px"),
-        Param("max_gap", "最大斷點間隙", kind="number", default=10, minimum=0, unit="px"),
-        Param("max_count", "最多輸出", kind="number", default=50, minimum=1, maximum=1000),
+        Param("roi", "Region", kind="roi", shapes=["rect"], help_text="Leave blank for the whole image."),
+        Param("canny_low", "Canny low", kind="number", default=50, minimum=0, maximum=500),
+        Param("canny_high", "Canny high", kind="number", default=150, minimum=0, maximum=500),
+        Param("threshold", "Accumulator threshold", kind="number", default=80, minimum=1, maximum=1000),
+        Param("min_length", "Min segment length", kind="number", default=30, minimum=1, unit="px"),
+        Param("max_gap", "Max gap", kind="number", default=10, minimum=0, unit="px"),
+        Param("max_count", "Max results", kind="number", default=50, minimum=1, maximum=1000),
     ]
-    inputs = [Port("image", "影像", "image"), Port("roi", "區域（動態）", "region", required=False)]
-    outputs = [flow_out("found", "找到", "ok"), flow_out("not_found", "沒找到", "critical"), Port("lines", "線段", "list"), Port("count", "數量", "number")]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("lines", "Segments", "list"), Port("count", "Count", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         image = to_gray(ctx.require_image())
