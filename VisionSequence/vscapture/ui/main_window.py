@@ -432,7 +432,7 @@ def run_app(engine: CaptureEngine, *, minimized: bool = False, connect: bool = F
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("VisionSequenceCapture")
     set_language(engine.cfg.ui.language)
-    app.setApplicationDisplayName(tr("app.title"))
+    # 不設 ApplicationDisplayName：Qt 會把它接在每個視窗標題後面，變成重複的名稱
     app.setWindowIcon(app_icon())
     app.setQuitOnLastWindowClosed(False)
     bridge = EngineBridge(engine)
