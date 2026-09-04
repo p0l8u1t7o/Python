@@ -32,7 +32,7 @@ from vscapture.engine import CaptureEngine
 from vscapture.frames import BufferPool, Frame, FrameSlot, crop_roi, encode, frame_item, prepare
 from vscapture.protocol import Encoding
 from vscapture.transport.sender import item_bytes
-from vscapture import update
+from vscapture import i18n, update
 from vscapture.shm import ShmRing, plan_slots
 from vscapture.transport.client import ConnState
 
@@ -61,12 +61,15 @@ class ConfigTests(SimpleTestCase):
         self.assertEqual(configmod.load(tmp).channels[0].roi, Roi(10, 20, 100, 80))
         self.assertEqual(configmod.load(tmp / "missing.json"), AppConfig())
 
-    def test_update_fields(self):
-        cfg = configmod.AppConfig.from_dict({"connection": {"auto_update": "auto", "shm_max_mb": 256}})
+    def test_ui_and_update_fields(self):
+        cfg = configmod.AppConfig.from_dict({"connection": {"auto_update": "auto", "shm_max_mb": 256}, "ui": {"language": "en", "theme": "light"}})
         self.assertEqual((cfg.connection.auto_update, cfg.connection.shm_max_mb), ("auto", 256))
-        self.assertEqual(configmod.AppConfig().connection.auto_update, "notify")
-        with self.assertRaises(ConfigError):
-            configmod.AppConfig.from_dict({"connection": {"auto_update": "always"}})
+        self.assertEqual((cfg.ui.language, cfg.ui.theme), ("en", "light"))
+        blank = configmod.AppConfig()
+        self.assertEqual((blank.connection.auto_update, blank.ui.language, blank.ui.theme), ("notify", "zh-Hant", "dark"))
+        for bad in ({"connection": {"auto_update": "always"}}, {"ui": {"language": "fr"}}, {"ui": {"theme": "neon"}}):
+            with self.assertRaises(ConfigError):
+                configmod.AppConfig.from_dict(bad)
 
     def test_invalid_values(self):
         with self.assertRaises(ConfigError) as cm:
@@ -396,6 +399,58 @@ class HeadlessCliTests(SimpleTestCase):
         out = buf.getvalue()
         self.assertIn("模擬相機", out)
         self.assertNotIn("OpenCV", out)
+
+
+class I18nTests(SimpleTestCase):
+    """介面文案：三語系 key 與占位符要對齊，且遵守網頁同一套用詞規範。"""
+
+    def test_all_languages_and_placeholders_align(self):
+        import re
+
+        self.assertEqual(i18n.LANGUAGE_CODES, ("zh-Hant", "zh-Hans", "en"))  # 與網頁相同的三種語言
+        missing = [(key, code) for key, entry in i18n.TEXTS.items() for code in i18n.LANGUAGE_CODES if code not in entry]
+        self.assertEqual(missing, [])
+        bad = []
+        for key, entry in i18n.TEXTS.items():
+            base = set(re.findall(r"\{(\w+)\}", entry["zh-Hant"]))
+            for code in i18n.LANGUAGE_CODES:
+                if set(re.findall(r"\{(\w+)\}", entry[code])) != base:
+                    bad.append(f"{key}/{code}")
+        self.assertEqual(bad, [], f"占位符不一致：{bad}")
+
+    def test_banned_words_and_lookup(self):
+        banned = ["點一下", "試跑", "還沒有", "這個", "看看", "試試", "太敏感", "漏抓", "幫我", "搞", "丟掉", "一堆"]
+        hits = [f"{k} ⟶ {w}" for k, entry in i18n.TEXTS.items() for w in banned if w in entry["zh-Hant"]]
+        self.assertEqual(hits, [], f"用詞不符規範：{hits}")
+        try:
+            self.assertEqual(i18n.set_language("en"), "en")
+            self.assertEqual(i18n.tr("connection.title"), "Connection")
+            self.assertIn("0.2.0", i18n.tr("update.found", version="0.2.0", size="97 MB"))
+            self.assertEqual(i18n.set_language("fr"), "zh-Hant")  # 不認得的語言退回繁中
+            self.assertEqual(i18n.tr("connection.title"), "連線")
+            self.assertEqual(i18n.tr("no.such.key"), "no.such.key")
+            self.assertEqual(i18n.tr("connection.title", bogus=1), "連線")  # 多餘的參數不會炸
+        finally:
+            i18n.set_language("zh-Hant")
+
+    def test_ui_strings_come_from_the_table(self):
+        """介面模組不應該再有寫死的中文（改語言時會漏掉）。"""
+        import re
+        from pathlib import Path
+
+        allow = {"live_view.py"}  # 畫布上的 HUD 只有數字與符號
+        offenders = []
+        for path in sorted((Path(__file__).resolve().parent.parent / "vscapture" / "ui").glob("*.py")):
+            if path.name in allow:
+                continue
+            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                code = line.split("#")[0]
+                if '"""' in line or line.strip().startswith("#") or "log." in code:  # 記錄訊息維持繁中（與後端一致）
+                    continue
+                for lit in re.findall(r'"([^"]*)"', code):
+                    if re.search(r"[一-鿿]", lit):
+                        offenders.append(f"{path.name}:{i} {lit}")
+        self.assertEqual(offenders, [], f"介面有寫死的中文：{offenders[:5]}")
 
 
 class UpdateTests(SimpleTestCase):

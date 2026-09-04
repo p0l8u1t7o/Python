@@ -1,4 +1,4 @@
-"""主視窗：左「連線」「通道」、中央預覽與 ROI、右「相機參數」「傳送設定」分頁、底部「記錄」；系統匣。"""
+"""主視窗：頂列（品牌、語言、外觀）＋更新橫幅、左「連線」「通道」、中央預覽與 ROI、右「相機參數」「傳送設定」、底部「記錄」；系統匣。"""
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QByteArray, Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
-from PySide6.QtWidgets import QApplication, QDockWidget, QMainWindow, QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence, QPixmap
+from PySide6.QtWidgets import QApplication, QComboBox, QDockWidget, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QSplitter, QTabWidget, QVBoxLayout, QWidget
 
 from vscapture import __version__, config as configmod
 from vscapture.engine import CaptureEngine
+from vscapture.i18n import LANGUAGES, set_language, tr
 from vscapture.logs import log_dir
 from vscapture.ui.bridge import EngineBridge
 from vscapture.ui.channels_panel import ChannelsPanel
@@ -22,15 +23,20 @@ from vscapture.ui.delivery_panel import DeliveryPanel
 from vscapture.ui.live_view import LivePanel
 from vscapture.ui.log_panel import LogPanel
 from vscapture.ui.params_panel import ParamsPanel
+from vscapture.ui.theme import THEMES, apply_theme, palette
 from vscapture.ui.tray import Tray
-from vscapture.ui.widgets import CONN_STATE_LABELS, confirm
+from vscapture.ui.update_banner import UpdateBanner
+from vscapture.ui.widgets import conn_state_label, confirm, detail_text
 
 log = logging.getLogger(__name__)
-TITLE = "VisionSequence 擷取端"
+
+
+def resources_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "resources"
 
 
 def app_icon() -> QIcon:
-    path = Path(__file__).resolve().parent.parent / "resources" / "icon.ico"
+    path = resources_dir() / "icon.ico"
     return QIcon(str(path)) if path.is_file() else QIcon()
 
 
@@ -39,54 +45,102 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.engine = engine
         self.bridge = bridge
+        self.theme = engine.cfg.ui.theme
         self._dirty = False
         self._quitting = False
         self._tray_hint_shown = False
-        self.setWindowTitle(TITLE)
         self.setWindowIcon(app_icon())
-        self.resize(1280, 800)
+        self.resize(1320, 840)
+
+        # 頂列：品牌 ＋ 語言／外觀
+        self.brand = QLabel()
+        self.brand.setProperty("role", "heading")
+        icon_path = resources_dir() / "icon.ico"
+        self.logo = QLabel()
+        if icon_path.is_file():
+            self.logo.setPixmap(QPixmap(str(icon_path)).scaled(22, 22, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        self.version_label = QLabel(f"v{__version__}")
+        self.version_label.setProperty("role", "subtle")
+        self.language_label = QLabel()
+        self.language_label.setProperty("role", "muted")
+        self.language = QComboBox()
+        for code, name in LANGUAGES:
+            self.language.addItem(name, code)
+        self.language.setCurrentIndex(max(0, self.language.findData(engine.cfg.ui.language)))
+        self.language.currentIndexChanged.connect(self._on_language)
+        self.theme_label = QLabel()
+        self.theme_label.setProperty("role", "muted")
+        self.theme_box = QComboBox()
+        for key in THEMES:
+            self.theme_box.addItem("", key)
+        self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(self.theme)))
+        self.theme_box.currentIndexChanged.connect(self._on_theme)
+        top = QHBoxLayout()
+        top.setContentsMargins(12, 8, 12, 0)
+        top.setSpacing(8)
+        top.addWidget(self.logo)
+        top.addWidget(self.brand)
+        top.addWidget(self.version_label)
+        top.addStretch(1)
+        top.addWidget(self.language_label)
+        top.addWidget(self.language)
+        top.addSpacing(8)
+        top.addWidget(self.theme_label)
+        top.addWidget(self.theme_box)
+
+        self.banner = UpdateBanner(engine)
+        self.banner.install_requested.connect(self.start_update)
 
         self.connection = ConnectionPanel()
         self.channels = ChannelsPanel(engine, bridge)
         left = QWidget()
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(6, 6, 6, 6)
+        ll.setContentsMargins(0, 0, 0, 0)
+        ll.setSpacing(10)
         ll.addWidget(self.connection)
         ll.addWidget(self.channels)
         ll.addStretch(1)
-        left.setMinimumWidth(300)
+        left.setMinimumWidth(340)
 
         self.live = LivePanel(engine, bridge)
         self.params = ParamsPanel(engine, bridge)
         self.delivery = DeliveryPanel(engine, bridge)
-        tabs = QTabWidget()
-        tabs.addTab(self.params, "相機參數")
-        tabs.addTab(self.delivery, "傳送設定")
-        tabs.setMinimumWidth(320)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.params, "")
+        self.tabs.addTab(self.delivery, "")
+        self.tabs.setMinimumWidth(340)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left)
         splitter.addWidget(self.live)
-        splitter.addWidget(tabs)
-        splitter.setStretchFactor(0, 0)
+        splitter.addWidget(self.tabs)
         splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
-        splitter.setSizes([340, 640, 360])
-        self.setCentralWidget(splitter)
+        splitter.setSizes([360, 640, 380])
+        splitter.setChildrenCollapsible(False)
+
+        central = QWidget()
+        cl = QVBoxLayout(central)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(8)
+        cl.addLayout(top)
+        wrap = QVBoxLayout()
+        wrap.setContentsMargins(12, 0, 12, 12)
+        wrap.setSpacing(8)
+        wrap.addWidget(self.banner)
+        wrap.addWidget(splitter, 1)
+        cl.addLayout(wrap, 1)
+        self.setCentralWidget(central)
 
         self.log_panel = LogPanel()
-        dock = QDockWidget("記錄", self)
-        dock.setObjectName("logDock")
-        dock.setWidget(self.log_panel)
-        dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
-        self.log_dock = dock
+        self.log_dock = QDockWidget("", self)
+        self.log_dock.setObjectName("logDock")
+        self.log_dock.setWidget(self.log_panel)
+        self.log_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
 
         self._build_menu()
-        self.status_conn = self.statusBar()
-        self.status_conn.showMessage("未連線")
+        self.status_bar = self.statusBar()
 
-        # 系統匣
         self.tray: Tray | None = None
         if Tray.isSystemTrayAvailable():
             self.tray = Tray(self.windowIcon(), self)
@@ -96,12 +150,12 @@ class MainWindow(QMainWindow):
             self.tray.quit_requested.connect(self.quit)
             self.tray.show()
 
-        # 訊號
         bridge.connection.connect(self._on_connection)
         bridge.channel.connect(self.channels.on_channel_event)
         bridge.channel.connect(self.params.on_channel_event)
         bridge.channel.connect(lambda _d: self.live.refresh_buttons())
         bridge.stream.connect(self._on_stream)
+        bridge.update.connect(self._on_update)
         bridge.log.connect(self.log_panel.append)
         self.connection.connect_clicked.connect(self.connect_now)
         self.connection.disconnect_clicked.connect(self.disconnect_now)
@@ -116,6 +170,8 @@ class MainWindow(QMainWindow):
 
         self.connection.load_from(engine.cfg.connection)
         self.live.set_preview_fps(engine.cfg.ui.preview_fps)
+        self.apply_theme(self.theme)
+        self.retranslate()
         self._restore_geometry()
         self.channels.refresh_list()
 
@@ -123,35 +179,88 @@ class MainWindow(QMainWindow):
         self._timer.timeout.connect(self._refresh_stats)
         self._timer.start(1000)
 
+    # ---- 語言與外觀 ----
+    def retranslate(self) -> None:
+        self.setWindowTitle(tr("app.title") + (" *" if self._dirty else ""))
+        self.brand.setText(tr("app.title"))
+        self.language_label.setText(tr("common.language"))
+        self.theme_label.setText(tr("common.theme"))
+        for i, key in enumerate(THEMES):
+            self.theme_box.setItemText(i, tr("common.themeDark") if key == "dark" else tr("common.themeLight"))
+        self.tabs.setTabText(0, tr("params.tab"))
+        self.tabs.setTabText(1, tr("delivery.tab"))
+        self.log_dock.setWindowTitle(tr("log.title"))
+        self.file_menu.setTitle(tr("menu.file"))
+        self.view_menu.setTitle(tr("menu.view"))
+        self.help_menu.setTitle(tr("menu.help"))
+        self.save_action.setText(tr("menu.save"))
+        self.reload_action.setText(tr("menu.reload"))
+        self.open_dir_action.setText(tr("menu.openFolder"))
+        self.quit_action.setText(tr("menu.quit"))
+        self.log_action.setText(tr("menu.log"))
+        self.update_action.setText(tr("menu.checkUpdate"))
+        self.about_action.setText(tr("menu.about"))
+        for panel in (self.connection, self.channels, self.live, self.params, self.delivery, self.log_panel, self.banner):
+            panel.retranslate()
+        if self.tray is not None:
+            self.tray.retranslate()
+        self._on_connection({"state": self.engine.transport.state.value, "detail": self.engine.transport.state_detail})
+
+    def apply_theme(self, theme: str) -> None:
+        app = QApplication.instance()
+        self.theme = apply_theme(app, theme) if app is not None else theme
+        self.engine.cfg.ui.theme = self.theme
+        for panel in (self.connection, self.channels, self.live, self.log_panel):
+            panel.set_theme(self.theme)
+        c = palette(self.theme)
+        self.version_label.setStyleSheet(f"color:{c['subtle']};")
+
+    def _on_language(self, index: int) -> None:
+        code = str(self.language.itemData(index) or "zh-Hant")
+        if code == self.engine.cfg.ui.language:
+            return
+        self.engine.cfg.ui.language = set_language(code)
+        self.retranslate()
+        self.mark_dirty()
+
+    def _on_theme(self, index: int) -> None:
+        theme = str(self.theme_box.itemData(index) or "dark")
+        if theme == self.theme:
+            return
+        self.apply_theme(theme)
+        self.mark_dirty()
+
     # ---- 選單 ----
     def _build_menu(self) -> None:
         bar = self.menuBar()
-        file_menu = bar.addMenu("檔案")
-        save = QAction("儲存設定", self)
-        save.setShortcut(QKeySequence.StandardKey.Save)
-        save.triggered.connect(self.save_config)
-        reload = QAction("重新載入設定", self)
-        reload.triggered.connect(self.reload_config)
-        open_dir = QAction("開啟設定資料夾", self)
-        open_dir.triggered.connect(self.open_app_dir)
-        quit_action = QAction("結束", self)
-        quit_action.setShortcut(QKeySequence.StandardKey.Quit)
-        quit_action.triggered.connect(self.quit)
-        file_menu.addAction(save)
-        file_menu.addAction(reload)
-        file_menu.addAction(open_dir)
-        file_menu.addSeparator()
-        file_menu.addAction(quit_action)
-        view_menu = bar.addMenu("檢視")
-        self.log_action = QAction("記錄", self)
+        self.file_menu = bar.addMenu("")
+        self.save_action = QAction("", self)
+        self.save_action.setShortcut(QKeySequence.StandardKey.Save)
+        self.save_action.triggered.connect(self.save_config)
+        self.reload_action = QAction("", self)
+        self.reload_action.triggered.connect(self.reload_config)
+        self.open_dir_action = QAction("", self)
+        self.open_dir_action.triggered.connect(self.open_app_dir)
+        self.quit_action = QAction("", self)
+        self.quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+        self.quit_action.triggered.connect(self.quit)
+        for action in (self.save_action, self.reload_action, self.open_dir_action):
+            self.file_menu.addAction(action)
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self.quit_action)
+        self.view_menu = bar.addMenu("")
+        self.log_action = QAction("", self)
         self.log_action.setCheckable(True)
         self.log_action.setChecked(True)
         self.log_action.toggled.connect(lambda on: self.log_dock.setVisible(on))
-        view_menu.addAction(self.log_action)
-        help_menu = bar.addMenu("說明")
-        about = QAction("關於", self)
-        about.triggered.connect(self.about)
-        help_menu.addAction(about)
+        self.view_menu.addAction(self.log_action)
+        self.help_menu = bar.addMenu("")
+        self.update_action = QAction("", self)
+        self.update_action.triggered.connect(self.check_update)
+        self.about_action = QAction("", self)
+        self.about_action.triggered.connect(self.about)
+        self.help_menu.addAction(self.update_action)
+        self.help_menu.addAction(self.about_action)
 
     # ---- 動作 ----
     @Slot()
@@ -172,7 +281,23 @@ class MainWindow(QMainWindow):
     @Slot()
     def mark_dirty(self) -> None:
         self._dirty = True
-        self.setWindowTitle(f"{TITLE} *")
+        self.setWindowTitle(tr("app.title") + " *")
+
+    @Slot()
+    def start_update(self) -> None:
+        if not self.engine.start_update(install=True):
+            self.banner.refresh()
+
+    @Slot()
+    def check_update(self) -> None:
+        info = self.engine.update_info
+        if self.engine.transport.state.value != "connected":
+            self.status_bar.showMessage(tr("update.noServer"), 4000)
+        elif info.available:
+            self.banner.refresh()
+            self.banner.show()
+        else:
+            self.status_bar.showMessage(tr("update.upToDate", version=__version__), 4000)
 
     @Slot()
     def save_config(self) -> None:
@@ -181,31 +306,33 @@ class MainWindow(QMainWindow):
         try:
             path = self.engine.save_config()
         except OSError as exc:
-            QMessageBox.warning(self, "儲存設定", f"無法寫入設定檔：{exc}")
+            QMessageBox.warning(self, tr("dialog.saveTitle"), tr("dialog.saveFailed", error=exc))
             return
         self._dirty = False
-        self.setWindowTitle(TITLE)
-        self.status_conn.showMessage(f"設定已儲存：{path}", 4000)
+        self.setWindowTitle(tr("app.title"))
+        self.status_bar.showMessage(tr("dialog.saved", path=path), 4000)
 
     @Slot()
     def reload_config(self) -> None:
-        if not confirm(self, "重新載入設定", "會關閉所有相機並依設定檔重新建立通道與連線。要繼續嗎？", ok="重新載入"):
+        if not confirm(self, tr("dialog.reloadTitle"), tr("dialog.reloadBody"), ok=tr("dialog.reload")):
             return
         try:
             cfg = configmod.load(self.engine.config_path)
         except configmod.ConfigError as exc:
-            QMessageBox.warning(self, "重新載入設定", f"設定檔有誤：{exc}")
+            QMessageBox.warning(self, tr("dialog.reloadTitle"), tr("dialog.badConfig", error=exc))
             return
         self._on_channel_selected("")
 
         def done(_r: Any) -> None:
             self.connection.load_from(self.engine.cfg.connection)
+            self.language.setCurrentIndex(max(0, self.language.findData(self.engine.cfg.ui.language)))
+            self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(self.engine.cfg.ui.theme)))
             self.channels.refresh_list()
             self._dirty = False
-            self.setWindowTitle(TITLE)
-            self.status_conn.showMessage("設定已重新載入", 4000)
+            self.setWindowTitle(tr("app.title"))
+            self.status_bar.showMessage(tr("dialog.reloaded"), 4000)
 
-        self.bridge.run_async(self.engine.reload, cfg, on_done=done, on_error=lambda m: QMessageBox.warning(self, "重新載入設定", m))
+        self.bridge.run_async(self.engine.reload, cfg, on_done=done, on_error=lambda m: QMessageBox.warning(self, tr("dialog.reloadTitle"), m))
 
     @Slot()
     def open_app_dir(self) -> None:
@@ -219,7 +346,7 @@ class MainWindow(QMainWindow):
     @Slot()
     def about(self) -> None:
         path = self.engine.config_path or configmod.default_config_path()
-        QMessageBox.about(self, "關於", f"<b>{TITLE}</b> {__version__}<br>在相機所在的電腦直接驅動相機，把影像送到 VisionSequence 伺服端。<br><br>設定檔：{path}<br>記錄檔：{log_dir()}<br>Python {sys.version.split()[0]}")
+        QMessageBox.about(self, tr("menu.about"), f"<b>{tr('app.title')}</b> {__version__}<br>{tr('about.body')}<br><br>{tr('about.config')}：{path}<br>{tr('about.logs')}：{log_dir()}<br>Python {sys.version.split()[0]}")
 
     @Slot()
     def quit(self) -> None:
@@ -231,15 +358,22 @@ class MainWindow(QMainWindow):
     def _on_connection(self, data: dict[str, Any]) -> None:
         self.connection.on_connection(data)
         state = str(data.get("state") or "disconnected")
-        label = CONN_STATE_LABELS.get(state, state)
-        detail = str(data.get("detail") or "")
-        self.status_conn.showMessage(f"{label}" + (f" — {detail}" if detail else ""))
+        label = conn_state_label(state)
+        detail = detail_text(str(data.get("detail") or ""))
+        self.status_bar.showMessage(f"{label} — {detail}" if detail else label)
         if self.tray:
             self.tray.set_state(label, connected=state == "connected")
 
     @Slot(object)
     def _on_stream(self, data: dict[str, Any]) -> None:
-        self.status_conn.showMessage(f"通道 {data.get('id')} 串流{'開啟' if data.get('enabled') else '關閉'}", 3000)
+        key = "status.streamOn" if data.get("enabled") else "status.streamOff"
+        self.status_bar.showMessage(tr(key, id=data.get("id")), 3000)
+
+    @Slot(object)
+    def _on_update(self, _data: dict[str, Any]) -> None:
+        self.banner.refresh()
+        if self.engine.exit_requested.is_set():
+            QTimer.singleShot(400, self.quit)
 
     @Slot(str)
     def _on_channel_selected(self, cid: str) -> None:
@@ -266,16 +400,16 @@ class MainWindow(QMainWindow):
             self.hide()
             if not self._tray_hint_shown:
                 self._tray_hint_shown = True
-                self.tray.showMessage(TITLE, "程式仍在系統匣執行；右鍵可連線、中斷或結束。", self.windowIcon(), 3000)
+                self.tray.showMessage(tr("app.title"), tr("tray.tip"), self.windowIcon(), 3000)
             return
         if self._dirty:
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Question)
-            box.setWindowTitle("結束")
-            box.setText("設定尚未儲存，要儲存嗎？")
-            save_btn = box.addButton("儲存並結束", QMessageBox.ButtonRole.AcceptRole)
-            box.addButton("不儲存", QMessageBox.ButtonRole.DestructiveRole)
-            cancel = box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+            box.setWindowTitle(tr("dialog.quitTitle"))
+            box.setText(tr("dialog.quitBody"))
+            save_btn = box.addButton(tr("dialog.saveQuit"), QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(tr("dialog.discardQuit"), QMessageBox.ButtonRole.DestructiveRole)
+            cancel = box.addButton(tr("common.cancel"), QMessageBox.ButtonRole.RejectRole)
             box.exec()
             if box.clickedButton() is cancel:
                 self._quitting = False
@@ -297,7 +431,8 @@ class MainWindow(QMainWindow):
 def run_app(engine: CaptureEngine, *, minimized: bool = False, connect: bool = False) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("VisionSequenceCapture")
-    app.setApplicationDisplayName(TITLE)
+    set_language(engine.cfg.ui.language)
+    app.setApplicationDisplayName(tr("app.title"))
     app.setWindowIcon(app_icon())
     app.setQuitOnLastWindowClosed(False)
     bridge = EngineBridge(engine)
@@ -308,9 +443,8 @@ def run_app(engine: CaptureEngine, *, minimized: bool = False, connect: bool = F
         win.show()
     error = getattr(engine, "config_error", "")
     if error:
-        QTimer.singleShot(0, lambda: QMessageBox.warning(win, "設定檔有誤", f"{error}\n\n已改用預設值；儲存設定會覆寫原檔。"))
+        QTimer.singleShot(0, lambda: QMessageBox.warning(win, tr("dialog.badConfigTitle"), tr("dialog.badConfigBody", error=error)))
     # 相機開啟可能要幾秒，不擋住視窗
     bridge.run_async(engine.start, connect=connect or None, on_done=lambda _r: win.channels.refresh_list(), on_error=lambda m: log.error("啟動失敗：%s", m))
     app.aboutToQuit.connect(lambda: (engine.stop(), bridge.close()))
-    rc = app.exec()
-    return int(rc)
+    return int(app.exec())

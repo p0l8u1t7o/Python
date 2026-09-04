@@ -1,4 +1,4 @@
-"""共用小元件與文案：狀態燈、確認對話框、數量格式。"""
+"""共用小元件與文案對照：狀態燈、卡片標題、確認對話框、數量格式。文字一律走 `i18n.tr`。"""
 
 from __future__ import annotations
 
@@ -6,14 +6,40 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QMessageBox, QWidget
 
-CHANNEL_STATE_LABELS = {"closed": "已關閉", "opening": "開啟中", "open": "已開啟", "running": "取像中", "error": "錯誤"}
-CHANNEL_STATE_COLORS = {"closed": "#9ca3af", "opening": "#f59e0b", "open": "#3b82f6", "running": "#22c55e", "error": "#ef4444"}
-CONN_STATE_LABELS = {"disconnected": "未連線", "connecting": "連線中", "connected": "已連線", "reconnecting": "重新連線中", "auth_failed": "驗證失敗"}
-CONN_STATE_COLORS = {"disconnected": "#9ca3af", "connecting": "#f59e0b", "connected": "#22c55e", "reconnecting": "#f59e0b", "auth_failed": "#ef4444"}
-ENCODING_LABELS = {"raw": "不壓縮（raw）", "lz4": "無損壓縮（LZ4）", "jpeg": "有損壓縮（JPEG）"}
-MODE_LABELS = {"on_demand": "依需求取像", "stream": "連續串流"}
-LOCAL_MODE_LABELS = {"auto": "自動（同一台電腦用共享記憶體）", "force": "強制共享記憶體", "off": "一律走 TCP"}
-TRIGGER_LABELS = {"freerun": "自由取像", "software": "軟體觸發", "hardware": "硬體觸發"}
+from vscapture.i18n import tr
+from vscapture.ui.theme import palette
+
+CHANNEL_STATES = ("closed", "opening", "open", "running", "error")
+CONN_STATES = ("disconnected", "connecting", "connected", "reconnecting", "auth_failed")
+ENCODINGS = ("raw", "lz4", "jpeg")
+MODES = ("on_demand", "stream")
+LOCAL_MODES = ("auto", "force", "off")
+TRIGGERS = ("freerun", "software", "hardware")
+
+
+def channel_state_label(state: str) -> str:
+    return tr(f"chstate.{state}") if state in CHANNEL_STATES else state
+
+
+def conn_state_label(state: str) -> str:
+    return tr(f"state.{state}") if state in CONN_STATES else state
+
+
+def detail_text(detail: str) -> str:
+    """連線狀態細節：`local`／`attempt:N` 是代碼（要翻譯），其餘是例外訊息，原樣顯示。"""
+    if detail == "local":
+        return tr("detail.local")
+    if detail.startswith("attempt:"):
+        return tr("detail.attempt", n=detail.split(":", 1)[1])
+    return detail
+
+
+def state_color(theme: str, state: str) -> str:
+    c = palette(theme)
+    return {
+        "closed": c["subtle"], "opening": c["warn"], "open": c["accent"], "running": c["ok"], "error": c["bad"],
+        "disconnected": c["subtle"], "connecting": c["warn"], "connected": c["ok"], "reconnecting": c["warn"], "auth_failed": c["bad"],
+    }.get(state, c["subtle"])
 
 
 def dot_icon(color: str, size: int = 10) -> QIcon:
@@ -31,34 +57,40 @@ def dot_icon(color: str, size: int = 10) -> QIcon:
 class StatusDot(QLabel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedSize(12, 12)
-        self.set_color("#9ca3af")
+        self.setFixedSize(10, 10)
+        self.set_color("#6b7280")
 
     def set_color(self, color: str) -> None:
-        self.setStyleSheet(f"background:{color}; border-radius:6px;")
+        self.setStyleSheet(f"background:{color}; border-radius:5px;")
 
 
 def hline() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setFrameShadow(QFrame.Shadow.Sunken)
+    f.setProperty("role", "sep")
+    f.setFixedHeight(1)
     return f
 
 
-def muted(text: str = "") -> QLabel:
+def label(text: str = "", role: str = "") -> QLabel:
     lab = QLabel(text)
-    lab.setStyleSheet("color:#6b7280;")
+    if role:
+        lab.setProperty("role", role)
     lab.setWordWrap(True)
     return lab
 
 
-def confirm(parent: QWidget | None, title: str, text: str, *, ok: str = "確定", cancel: str = "取消") -> bool:
+def muted(text: str = "") -> QLabel:
+    return label(text, "muted")
+
+
+def confirm(parent: QWidget | None, title: str, text: str, *, ok: str = "", cancel: str = "") -> bool:
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
     box.setWindowTitle(title)
     box.setText(text)
-    yes = box.addButton(ok, QMessageBox.ButtonRole.AcceptRole)
-    box.addButton(cancel, QMessageBox.ButtonRole.RejectRole)
+    yes = box.addButton(ok or tr("common.ok"), QMessageBox.ButtonRole.AcceptRole)
+    box.addButton(cancel or tr("common.cancel"), QMessageBox.ButtonRole.RejectRole)
     box.exec()
     return box.clickedButton() is yes
 
@@ -79,4 +111,4 @@ def fmt_bytes(n: float | int | None) -> str:
 
 
 def fmt_ms(v: float | None) -> str:
-    return "—" if v is None else f"{v:.1f} ms"
+    return tr("common.none") if v is None else f"{v:.1f} ms"

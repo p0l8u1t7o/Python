@@ -14,6 +14,8 @@ from vscapture.config import Roi
 from vscapture.engine import CaptureEngine
 from vscapture.frames import to_display
 from vscapture.ui.bridge import EngineBridge
+from vscapture.i18n import tr
+from vscapture.ui.theme import palette
 from vscapture.ui.widgets import muted
 
 log = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ class LiveView(QWidget):
         super().__init__(parent)
         self.setMinimumSize(320, 240)
         self.setMouseTracking(True)
-        self.setStyleSheet("background:#0b0f14;")
+        self.setProperty("role", "viewer")
         self.channel: Channel | None = None
         self.roi = Roi()
         self.hw_roi_active = False
@@ -45,7 +47,8 @@ class LiveView(QWidget):
         self._scale = 1.0
         self._off = (0.0, 0.0)
         self._drag: dict[str, Any] | None = None
-        self.message = "請選擇通道"
+        self.message = tr("live.pickChannel")
+        self.theme = "dark"
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.set_preview_fps(15)
@@ -59,7 +62,7 @@ class LiveView(QWidget):
         self._seq = -1
         self.roi = Roi(ch.cfg.roi.x, ch.cfg.roi.y, ch.cfg.roi.w, ch.cfg.roi.h) if ch else Roi()
         self.hw_roi_active = bool(ch.hw_roi_active) if ch else False
-        self.message = "請選擇通道" if ch is None else "尚無影像"
+        self.message = tr("live.pickChannel") if ch is None else tr("live.noImage")
         self.update()
 
     def set_roi(self, roi: Roi) -> None:
@@ -72,15 +75,15 @@ class LiveView(QWidget):
         if ch is None:
             return
         if not ch.cfg.preview:
-            if self._img is not None or self.message != "預覽已關閉":
-                self._img, self.message = None, "預覽已關閉"
+            if self._img is not None or self.message != tr("live.previewOff"):
+                self._img, self.message = None, tr("live.previewOff")
                 self.update()
             return
         latest = ch.slot.latest()
         if latest is None:
             if self._img is not None:
                 self._img = None
-                self.message = "尚無影像（相機尚未開始取像）" if ch.state != ChannelState.RUNNING else "等待影格…"
+                self.message = tr("live.notRunning") if ch.state != ChannelState.RUNNING else tr("live.waiting")
                 self.update()
             return
         if latest.seq == self._seq:
@@ -152,9 +155,10 @@ class LiveView(QWidget):
     # ---- 繪製 ----
     def paintEvent(self, _event) -> None:  # noqa: N802
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor("#0b0f14"))
+        c = palette(self.theme)
+        p.fillRect(self.rect(), QColor(c["viewer"]))
         if self._img is None:
-            p.setPen(QColor("#6b7280"))
+            p.setPen(QColor(c["muted"]))
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.message)
             p.end()
             return
@@ -164,15 +168,15 @@ class LiveView(QWidget):
         r = self._roi_rect_disp()
         if r is not None:
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            p.setPen(QPen(QColor("#22d3ee"), 2))
-            p.setBrush(QColor(34, 211, 238, 30))
+            p.setPen(QPen(QColor(c["accent"]), 2))
+            p.setBrush(QColor(c["accent"] + "22" if len(c["accent"]) == 7 else c["accent"]))
             p.drawRect(r)
-            p.setBrush(QColor("#22d3ee"))
-            p.setPen(QPen(QColor("#0b0f14"), 1))
+            p.setBrush(QColor(c["accent"]))
+            p.setPen(QPen(QColor(c["viewer"]), 1))
             for hp in self._handles(r):
                 p.drawRect(QRectF(hp.x() - HANDLE / 2, hp.y() - HANDLE / 2, HANDLE, HANDLE))
-            p.setPen(QColor("#22d3ee"))
-            p.drawText(QPointF(r.left() + 4, max(r.top() - 6, 14)), f"ROI {self.roi.x},{self.roi.y}  {self.roi.w}×{self.roi.h}")
+            p.setPen(QColor(c["accent"]))
+            p.drawText(QPointF(r.left() + 4, max(r.top() - 6, 14)), f"{tr('live.roi')} {self.roi.x},{self.roi.y}  {self.roi.w}×{self.roi.h}")
         # HUD
         font = QFont("Consolas")
         font.setPointSize(9)
@@ -180,11 +184,11 @@ class LiveView(QWidget):
         w, h = self._img_size
         parts = [f"#{self._seq}", f"{self._fps:.1f} fps", f"{w}×{h}"]
         if self.hw_roi_active:
-            parts.append(f"硬體 ROI @ {self.origin[0]},{self.origin[1]}")
+            parts.append(tr("live.hwRoiBadge", x=self.origin[0], y=self.origin[1]))
         text = "  ·  ".join(parts)
         p.setPen(QColor(0, 0, 0, 160))
         p.drawText(QPointF(target.left() + 9, target.top() + 17), text)
-        p.setPen(QColor("#e5e7eb"))
+        p.setPen(QColor("#e6e9ef"))
         p.drawText(QPointF(target.left() + 8, target.top() + 16), text)
         p.end()
 
@@ -263,39 +267,59 @@ class LivePanel(QWidget):
         self.view.roi_dragging.connect(self._show_roi)
 
         self.spins: dict[str, QSpinBox] = {}
+        self.roi_label = QLabel()
         row = QHBoxLayout()
-        row.addWidget(QLabel("ROI"))
-        for key, label in (("x", "X"), ("y", "Y"), ("w", "寬"), ("h", "高")):
+        row.setSpacing(6)
+        row.addWidget(self.roi_label)
+        for key in ("x", "y", "w", "h"):
             sp = QSpinBox()
             sp.setRange(0, 100000)
             sp.setKeyboardTracking(False)
-            sp.setPrefix(f"{label} ")
+            sp.setMaximumWidth(120)
             sp.valueChanged.connect(self._on_spin)
             self.spins[key] = sp
             row.addWidget(sp)
-        self.clear_btn = QPushButton("清除 ROI")
+        self.clear_btn = QPushButton()
         self.clear_btn.clicked.connect(self.clear_roi)
-        self.hw_check = QCheckBox("使用相機硬體 ROI")
-        self.hw_check.setToolTip("相機支援時只讀出 ROI 範圍（更高的影格率）；不支援時以軟體裁切後傳送。")
-        self.apply_btn = QPushButton("套用 ROI")
+        self.hw_check = QCheckBox()
+        self.apply_btn = QPushButton()
         self.apply_btn.setDefault(True)
         self.apply_btn.clicked.connect(self.apply_roi)
-        self.snap_btn = QPushButton("拍攝一張")
-        self.snap_btn.setToolTip("軟體觸發模式：觸發相機拍一張")
+        self.snap_btn = QPushButton()
         self.snap_btn.clicked.connect(self.snap)
         row.addWidget(self.clear_btn)
         row.addWidget(self.hw_check)
         row.addWidget(self.apply_btn)
         row.addStretch(1)
         row.addWidget(self.snap_btn)
-        self.status = muted("在影像上拖曳圈選 ROI；只有 ROI 範圍會傳給伺服端。")
+        self.status = muted("")
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
         lay.addWidget(self.view, 1)
         lay.addLayout(row)
         lay.addWidget(self.status)
+        self.retranslate()
         self.set_channel(None)
+
+    def retranslate(self) -> None:
+        self.roi_label.setText(tr("live.roi"))
+        for key in ("x", "y", "w", "h"):
+            self.spins[key].setPrefix(tr(f"live.roi{key.upper()}") + " ")
+        self.clear_btn.setText(tr("live.clearRoi"))
+        self.hw_check.setText(tr("live.hwRoi"))
+        self.hw_check.setToolTip(tr("live.hwRoiTip"))
+        self.apply_btn.setText(tr("live.applyRoi"))
+        self.snap_btn.setText(tr("live.snap"))
+        self.snap_btn.setToolTip(tr("live.snapTip"))
+        self.status.setText(tr("live.hint"))
+        self.view.message = tr("live.pickChannel") if self.channel is None else self.view.message
+        self.view.update()
+
+    def set_theme(self, theme: str) -> None:
+        self.view.theme = theme
+        self.view.update()
 
     def set_preview_fps(self, fps: int) -> None:
         self.view.set_preview_fps(fps)
@@ -325,14 +349,14 @@ class LivePanel(QWidget):
 
     def _on_view_roi(self, roi: Roi) -> None:
         self._show_roi(roi)
-        self.status.setText("ROI 已更新，點選「套用 ROI」才會生效。" if not roi.is_full() else "ROI 已清除（全幅），點選「套用 ROI」生效。")
+        self.status.setText(tr("live.roiChanged") if not roi.is_full() else tr("live.roiCleared"))
 
     def _on_spin(self, _v: int) -> None:
         if self._loading:
             return
         roi = Roi(*(self.spins[k].value() for k in ("x", "y", "w", "h")))
         self.view.set_roi(roi)
-        self.status.setText("ROI 已更新，點選「套用 ROI」才會生效。")
+        self.status.setText(tr("live.roiChanged"))
 
     def clear_roi(self) -> None:
         self.view.set_roi(Roi())
@@ -346,7 +370,7 @@ class LivePanel(QWidget):
         roi = Roi(*(self.spins[k].value() for k in ("x", "y", "w", "h")))
         hardware = self.hw_check.isChecked()
         self.apply_btn.setEnabled(False)
-        self.status.setText("套用中…")
+        self.status.setText(tr("live.applying"))
 
         def done(result: tuple[bool, Roi]) -> None:
             self.apply_btn.setEnabled(True)
@@ -357,15 +381,15 @@ class LivePanel(QWidget):
             self.engine.transport.send_channels()
             self.dirty.emit()
             if roi.is_full():
-                self.status.setText("已恢復全幅。")
+                self.status.setText(tr("live.fullRestored"))
             elif is_hw:
-                self.status.setText(f"硬體 ROI 已生效：{effective.w}×{effective.h} @ {effective.x},{effective.y}（依相機對齊）。預覽即 ROI 範圍。")
+                self.status.setText(tr("live.hwApplied", w=effective.w, h=effective.h, x=effective.x, y=effective.y))
             else:
-                self.status.setText(f"ROI 已套用（軟體裁切）：{roi.w}×{roi.h} @ {roi.x},{roi.y}。" + ("此相機不支援硬體 ROI。" if hardware else ""))
+                self.status.setText(tr("live.swApplied", w=roi.w, h=roi.h, x=roi.x, y=roi.y) + (tr("live.noHwRoi") if hardware else ""))
 
         def failed(message: str) -> None:
             self.apply_btn.setEnabled(True)
-            self.status.setText(f"套用失敗：{message}")
+            self.status.setText(tr("live.applyFailed", error=message))
 
         self.bridge.run_async(ch.apply_roi, roi, hardware, on_done=done, on_error=failed)
 
@@ -374,5 +398,5 @@ class LivePanel(QWidget):
         if ch is None:
             return
         self.snap_btn.setEnabled(False)
-        self.bridge.run_async(ch.acquire, 0, 2.0, after_request=True, on_done=lambda f: (self.snap_btn.setEnabled(True), self.status.setText("已拍攝一張。" if f is not None else "拍攝逾時。")),
-                              on_error=lambda m: (self.snap_btn.setEnabled(True), self.status.setText(f"拍攝失敗：{m}")))
+        self.bridge.run_async(ch.acquire, 0, 2.0, after_request=True, on_done=lambda f: (self.snap_btn.setEnabled(True), self.status.setText(tr("live.snapped") if f is not None else tr("live.snapTimeout"))),
+                              on_error=lambda m: (self.snap_btn.setEnabled(True), self.status.setText(tr("live.snapFailed", error=m))))

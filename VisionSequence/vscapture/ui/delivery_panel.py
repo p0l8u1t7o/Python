@@ -11,8 +11,11 @@ from vscapture import protocol as P
 from vscapture.channel import Channel
 from vscapture.config import ENCODINGS, MODES
 from vscapture.engine import CaptureEngine
+from vscapture.i18n import tr
 from vscapture.ui.bridge import EngineBridge
-from vscapture.ui.widgets import ENCODING_LABELS, MODE_LABELS, fmt_bytes, muted
+from vscapture.ui.widgets import fmt_bytes, muted
+
+DOWNSCALES = (1, 2, 4)
 
 
 class DeliveryPanel(QWidget):
@@ -27,56 +30,55 @@ class DeliveryPanel(QWidget):
 
         self.encoding = QComboBox()
         for key in ENCODINGS:
-            self.encoding.addItem(ENCODING_LABELS[key], key)
-        if not P.lz4_available():
-            idx = self.encoding.findData("lz4")
-            self.encoding.setItemText(idx, ENCODING_LABELS["lz4"] + "（此版本未內含）")
-            self.encoding.model().item(idx).setEnabled(False)
-        self.encoding.setToolTip("同一台電腦一律走共享記憶體（不壓縮）；跨電腦建議 LZ4（無損、約 1.5～3 倍）；JPEG 有損，只在頻寬很緊時使用。")
+            self.encoding.addItem("", key)
         self.jpeg_quality = QSpinBox()
         self.jpeg_quality.setRange(1, 100)
         self.jpeg_quality.setKeyboardTracking(False)
-        self.mono = QCheckBox("轉成單色後傳送（頻寬 ÷3）")
+        self.mono = QCheckBox()
         self.downscale = QComboBox()
-        for d in (1, 2, 4):
-            self.downscale.addItem("不縮小" if d == 1 else f"1/{d}", d)
+        for d in DOWNSCALES:
+            self.downscale.addItem("", d)
         self.mode = QComboBox()
         for key in MODES:
-            self.mode.addItem(MODE_LABELS[key], key)
-        self.mode.setToolTip("依需求取像：伺服端每次執行才向相機要一張新影格（延遲最低、頻寬最省）。連續串流：持續把最新影格推給伺服端，執行時直接取用。")
+            self.mode.addItem("", key)
         self.stream_fps = QDoubleSpinBox()
         self.stream_fps.setRange(0.5, 240.0)
         self.stream_fps.setDecimals(1)
         self.stream_fps.setSuffix(" fps")
         self.stream_fps.setKeyboardTracking(False)
 
-        form = QFormLayout()
-        form.addRow("編碼", self.encoding)
-        form.addRow("JPEG 品質", self.jpeg_quality)
-        form.addRow("", self.mono)
-        form.addRow("縮小", self.downscale)
-        form.addRow("模式", self.mode)
-        form.addRow("串流上限", self.stream_fps)
-        box = QGroupBox("傳送")
-        box.setLayout(form)
+        self.form = QFormLayout()
+        self.form.setSpacing(7)
+        self.field_labels = [QLabel() for _ in range(5)]
+        for lab in self.field_labels:
+            lab.setProperty("role", "muted")
+        self.form.addRow(self.field_labels[0], self.encoding)
+        self.form.addRow(self.field_labels[1], self.jpeg_quality)
+        self.form.addRow("", self.mono)
+        self.form.addRow(self.field_labels[2], self.downscale)
+        self.form.addRow(self.field_labels[3], self.mode)
+        self.form.addRow(self.field_labels[4], self.stream_fps)
+        self.box = QGroupBox()
+        self.box.setLayout(self.form)
 
         self.estimate = muted("")
-        self.test_btn = QPushButton("測試傳送")
-        self.test_btn.setToolTip("把目前影格依上述設定送到伺服端一次，量往返時間與大小")
+        self.test_btn = QPushButton()
         self.test_btn.clicked.connect(self.test_send)
         self.test_result = QLabel("—")
+        self.test_result.setProperty("role", "muted")
         self.test_result.setWordWrap(True)
         test_row = QHBoxLayout()
+        test_row.setSpacing(8)
         test_row.addWidget(self.test_btn)
         test_row.addWidget(self.test_result, 1)
-        test_box = QGroupBox("測試")
-        tl = QVBoxLayout(test_box)
-        tl.addLayout(test_row)
+        self.test_box = QGroupBox()
+        QVBoxLayout(self.test_box).addLayout(test_row)
 
         lay = QVBoxLayout(self)
-        lay.addWidget(box)
+        lay.setSpacing(9)
+        lay.addWidget(self.box)
         lay.addWidget(self.estimate)
-        lay.addWidget(test_box)
+        lay.addWidget(self.test_box)
         lay.addStretch(1)
 
         self.encoding.currentIndexChanged.connect(lambda _i: self._changed())
@@ -85,13 +87,43 @@ class DeliveryPanel(QWidget):
         self.downscale.currentIndexChanged.connect(lambda _i: self._changed())
         self.mode.currentIndexChanged.connect(lambda _i: self._changed())
         self.stream_fps.valueChanged.connect(lambda _v: self._changed())
+        self.retranslate()
         self.set_channel(None)
+
+    def retranslate(self) -> None:
+        self.box.setTitle(tr("delivery.group"))
+        self.test_box.setTitle(tr("delivery.testGroup"))
+        for lab, key in zip(self.field_labels, ("delivery.encoding", "delivery.jpegQuality", "delivery.downscale", "delivery.mode", "delivery.streamFps")):
+            lab.setText(tr(key))
+        self.encoding.setToolTip(tr("delivery.encodingTip"))
+        self.mode.setToolTip(tr("delivery.modeTip"))
+        self.mono.setText(tr("delivery.mono"))
+        self.test_btn.setText(tr("delivery.test"))
+        self.test_btn.setToolTip(tr("delivery.testTip"))
+        self._loading = True
+        for i, key in enumerate(ENCODINGS):
+            missing = key == "lz4" and not P.lz4_available()
+            self.encoding.setItemText(i, tr(f"encoding.{key}") + (tr("encoding.lz4Missing") if missing else ""))
+            self.encoding.setItemData(i, key)
+            if missing:
+                model = self.encoding.model()
+                item = model.item(i) if hasattr(model, "item") else None
+                if item is not None:
+                    item.setEnabled(False)
+        for i, d in enumerate(DOWNSCALES):
+            self.downscale.setItemText(i, tr("delivery.noDownscale") if d == 1 else f"1/{d}")
+            self.downscale.setItemData(i, d)
+        for i, key in enumerate(MODES):
+            self.mode.setItemText(i, tr(f"mode.{key}"))
+            self.mode.setItemData(i, key)
+        self._loading = False
+        self._refresh_estimate()
 
     def set_channel(self, ch: Channel | None) -> None:
         self.channel = ch
         self.setEnabled(ch is not None)
         if ch is None:
-            self.estimate.setText("請選擇通道")
+            self.estimate.setText(tr("params.pickChannel"))
             return
         d = ch.cfg.delivery
         self._loading = True
@@ -116,8 +148,6 @@ class DeliveryPanel(QWidget):
         d.downscale = int(self.downscale.currentData() or 1)
         d.mode = str(self.mode.currentData() or "on_demand")
         d.stream_fps = float(self.stream_fps.value())
-        self.jpeg_quality.setEnabled(d.encoding == "jpeg")
-        self.stream_fps.setEnabled(d.mode == "stream")
         self.engine.update_channel(ch.id, ch.cfg)
         self._refresh_estimate()
         self.dirty.emit()
@@ -132,31 +162,32 @@ class DeliveryPanel(QWidget):
         self.jpeg_quality.setEnabled(d.encoding == "jpeg")
         self.stream_fps.setEnabled(d.mode == "stream")
         if d.encoding == "jpeg":
-            note = f"JPEG 約 {fmt_bytes(raw / 10)}～{fmt_bytes(raw / 4)}（有損）"
+            note = tr("delivery.noteJpeg", lo=fmt_bytes(raw / 10), hi=fmt_bytes(raw / 4))
         elif d.encoding == "lz4":
-            note = f"LZ4 典型 {fmt_bytes(raw / 3)}～{fmt_bytes(raw / 1.5)}（無損；同一台電腦走共享記憶體時不壓縮）"
+            note = tr("delivery.noteLz4", lo=fmt_bytes(raw / 3), hi=fmt_bytes(raw / 1.5))
         else:
-            note = "不壓縮"
-        per_s = f"；連續串流 {d.stream_fps:g} fps 最多 {fmt_bytes(raw * d.stream_fps)}/s（未壓縮）" if d.mode == "stream" else ""
-        self.estimate.setText(f"送出尺寸 {spec['width']}×{spec['height']}×{spec['channels']}，每張 {fmt_bytes(raw)}；{note}{per_s}")
+            note = tr("delivery.noteRaw")
+        per = tr("delivery.perSecond", fps=f"{d.stream_fps:g}", rate=fmt_bytes(raw * d.stream_fps)) if d.mode == "stream" else ""
+        self.estimate.setText(tr("delivery.estimate", w=spec["width"], h=spec["height"], c=spec["channels"], size=fmt_bytes(raw), note=note, per=per))
 
     def test_send(self) -> None:
         ch = self.channel
         if ch is None:
             return
         self.test_btn.setEnabled(False)
-        self.test_result.setText("傳送中…")
+        self.test_result.setText(tr("delivery.testing"))
 
         def run() -> dict[str, Any]:
             return self.engine.transport.test_send(ch.id).result(5.0)
 
         def done(r: dict[str, Any]) -> None:
             self.test_btn.setEnabled(True)
+            text = tr("delivery.testResult", rtt=f"{r['rtt_ms']:.1f}", bytes=fmt_bytes(r["bytes"]), encode=f"{r['encode_ms']:.1f}")
             decode = r.get("decode_ms")
-            self.test_result.setText(f"往返 {r['rtt_ms']:.1f} ms · {fmt_bytes(r['bytes'])} · 編碼 {r['encode_ms']:.1f} ms · 伺服端解碼 {decode:.1f} ms" if decode is not None else f"往返 {r['rtt_ms']:.1f} ms · {fmt_bytes(r['bytes'])} · 編碼 {r['encode_ms']:.1f} ms")
+            self.test_result.setText(text + (tr("delivery.testDecode", decode=f"{decode:.1f}") if decode is not None else ""))
 
         def failed(message: str) -> None:
             self.test_btn.setEnabled(True)
-            self.test_result.setText(f"失敗：{message or '逾時'}")
+            self.test_result.setText(tr("delivery.testFailed", error=message or "timeout"))
 
         self.bridge.run_async(run, on_done=done, on_error=failed)

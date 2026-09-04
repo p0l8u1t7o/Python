@@ -19,7 +19,11 @@ MODES = ("on_demand", "stream")
 TRIGGER_MODES = ("freerun", "software", "hardware")
 LOCAL_MODES = ("auto", "force", "off")
 AUTO_UPDATE_MODES = ("off", "notify", "auto")  # 不檢查／通知我（預設）／自動下載並安裝
+LANGUAGES = ("zh-Hant", "zh-Hans", "en")  # 與網頁相同
+THEMES = ("dark", "light")
 AUTO_UPDATE_MODES = ("off", "notify", "auto")  # 不檢查／通知我（預設）／自動下載並安裝
+LANGUAGES = ("zh-Hant", "zh-Hans", "en")  # 與網頁相同
+THEMES = ("dark", "light")
 
 
 class ConfigError(ValueError):
@@ -206,10 +210,18 @@ class UiConfig:
     start_minimized: bool = False
     preview_fps: int = 15
     window_geometry: str = ""
+    language: str = "zh-Hant"  # 與網頁相同的三種語言
+    theme: str = "dark"  # dark | light
 
     @classmethod
     def from_dict(cls, d: dict[str, Any], path: str = "ui") -> UiConfig:
-        return cls(bool(_pick(d, "start_minimized", False, path, bool)), max(1, min(60, int(_pick(d, "preview_fps", 15, path, int)))), str(d.get("window_geometry") or ""))
+        return cls(
+            bool(_pick(d, "start_minimized", False, path, bool)),
+            max(1, min(60, int(_pick(d, "preview_fps", 15, path, int)))),
+            str(d.get("window_geometry") or ""),
+            _pick(d, "language", "zh-Hant", path, str, LANGUAGES),
+            _pick(d, "theme", "dark", path, str, THEMES),
+        )
 
 
 @dataclass

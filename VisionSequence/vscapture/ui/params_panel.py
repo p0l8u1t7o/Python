@@ -11,11 +11,18 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout,
 from vscapture.cameras.base import ParamSpec
 from vscapture.channel import Channel, ChannelState
 from vscapture.engine import CaptureEngine
+from vscapture.i18n import tr
 from vscapture.ui.bridge import EngineBridge
-from vscapture.ui.widgets import TRIGGER_LABELS, confirm, muted
+from vscapture.ui.widgets import TRIGGERS, confirm, muted
 
 log = logging.getLogger(__name__)
 NEEDS_STOP = {"width", "height", "offset_x", "offset_y", "pixel_format"}
+#: 標準參數的名稱由介面翻譯（相機後端回的 label 是繁中）；其餘廠牌參數保持 SDK 原名
+STANDARD_PARAMS = ("exposure_us", "gain_db", "fps", "pixel_format", "width", "height", "offset_x", "offset_y", "trigger_mode")
+
+
+def param_label(spec: ParamSpec) -> str:
+    return tr(f"param.{spec.name}") if spec.name in STANDARD_PARAMS else (spec.label or spec.name)
 
 
 class ParamsPanel(QWidget):
@@ -37,10 +44,9 @@ class ParamsPanel(QWidget):
         self._timer.timeout.connect(self._flush)
 
         bar = QHBoxLayout()
-        self.reload_btn = QPushButton("重新讀取")
+        self.reload_btn = QPushButton()
         self.reload_btn.clicked.connect(self.reload)
-        self.save_btn = QPushButton("儲存到設定檔")
-        self.save_btn.setToolTip("把目前的相機參數、ROI 與傳送設定寫進設定檔，下次啟動自動套用")
+        self.save_btn = QPushButton()
         self.save_btn.clicked.connect(self.save_requested.emit)
         bar.addWidget(self.reload_btn)
         bar.addWidget(self.save_btn)
@@ -54,12 +60,25 @@ class ParamsPanel(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.body)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.status = muted("請選擇通道")
+        self.status = muted("")
 
         lay = QVBoxLayout(self)
+        lay.setSpacing(8)
         lay.addLayout(bar)
         lay.addWidget(scroll, 1)
         lay.addWidget(self.status)
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        self.reload_btn.setText(tr("params.reload"))
+        self.save_btn.setText(tr("params.save"))
+        self.save_btn.setToolTip(tr("params.saveTip"))
+        if self.channel is None:
+            self.status.setText(tr("params.pickChannel"))
+        elif self.channel.camera is None:
+            self.status.setText(tr("params.notOpen"))
+        else:
+            self.reload()
 
     # ---- 通道 ----
     def set_channel(self, ch: Channel | None) -> None:
@@ -67,9 +86,9 @@ class ParamsPanel(QWidget):
         self._pending.clear()
         self._clear()
         if ch is None:
-            self.status.setText("請選擇通道")
+            self.status.setText(tr("params.pickChannel"))
         elif ch.camera is None:
-            self.status.setText("相機尚未開啟（先在「通道」開啟相機）")
+            self.status.setText(tr("params.notOpen"))
         else:
             self.reload()
 
@@ -83,14 +102,14 @@ class ParamsPanel(QWidget):
             self.reload()
         elif state in ("closed", "error", "opening") and self._widgets:
             self._clear()
-            self.status.setText("相機已關閉" if state == "closed" else data.get("error") or "相機錯誤")
+            self.status.setText(tr("params.closed") if state == "closed" else data.get("error") or tr("chstate.error"))
 
     def reload(self) -> None:
         ch = self.channel
         if ch is None or ch.camera is None:
             return
-        self.status.setText("讀取中…")
-        self.bridge.run_async(ch.params, on_done=lambda specs: self._build(ch, specs), on_error=lambda m: self.status.setText(f"讀取失敗：{m}"))
+        self.status.setText(tr("params.loading"))
+        self.bridge.run_async(ch.params, on_done=lambda specs: self._build(ch, specs), on_error=lambda m: self.status.setText(tr("params.loadFailed", error=m)))
 
     def _clear(self) -> None:
         self._widgets.clear()
@@ -108,8 +127,8 @@ class ParamsPanel(QWidget):
         self._specs = dict(specs)
         groups: dict[str, list[ParamSpec]] = {}
         for spec in specs.values():
-            groups.setdefault(spec.group or ("基本" if spec.standard else "進階"), []).append(spec)
-        order = sorted(groups, key=lambda g: (g != "基本", g))
+            groups.setdefault(spec.group or (tr("params.groupBasic") if spec.standard else tr("params.groupAdvanced")), []).append(spec)
+        order = sorted(groups, key=lambda g: (g != tr("params.groupBasic"), g))
         self._loading = True
         for gname in order:
             box = QGroupBox(gname)
@@ -117,7 +136,7 @@ class ParamsPanel(QWidget):
             for spec in groups[gname]:
                 w = self._make_widget(spec)
                 self._widgets[spec.name] = w
-                label = spec.label or spec.name
+                label = param_label(spec)
                 if spec.unit and not isinstance(w, (QSpinBox, QDoubleSpinBox)):
                     label = f"{label}（{spec.unit}）"
                 lab = QLabel(label)
@@ -125,7 +144,7 @@ class ParamsPanel(QWidget):
                 form.addRow(lab, w)
             self.body_layout.insertWidget(self.body_layout.count() - 1, box)
         self._loading = False
-        self.status.setText(f"{len(specs)} 個參數；改動後自動套用" if specs else "此相機沒有可設定的參數")
+        self.status.setText(tr("params.count", n=len(specs)) if specs else tr("params.none"))
 
     def _make_widget(self, spec: ParamSpec) -> QWidget:
         key = spec.name
@@ -160,13 +179,13 @@ class ParamsPanel(QWidget):
         elif spec.kind == "enum":
             combo = QComboBox()
             for choice in spec.choices or ([str(spec.value)] if spec.value is not None else []):
-                combo.addItem(TRIGGER_LABELS.get(choice, choice) if key == "trigger_mode" else str(choice), choice)
+                combo.addItem(tr(f"trigger.{choice}") if key == "trigger_mode" and choice in TRIGGERS else str(choice), choice)
             idx = combo.findData(spec.value)
             combo.setCurrentIndex(max(0, idx))
             combo.currentIndexChanged.connect(lambda i, k=key, c=combo: self._queue(k, c.itemData(i)))
             w = combo
         elif spec.kind == "command":
-            btn = QPushButton(spec.label or "執行")
+            btn = QPushButton(spec.label or spec.name)
             btn.clicked.connect(lambda _c=False, k=key: self._queue(k, True))
             w = btn
         else:
@@ -176,7 +195,7 @@ class ParamsPanel(QWidget):
         w.setEnabled(bool(spec.writable))
         tip = spec.name
         if spec.min is not None or spec.max is not None:
-            tip += f"  範圍 {spec.min}～{spec.max}"
+            tip += "  " + tr("params.range", min=spec.min, max=spec.max)
         w.setToolTip(tip)
         return w
 
@@ -193,10 +212,10 @@ class ParamsPanel(QWidget):
         if ch is None or ch.camera is None or not pending:
             return
         restart = bool(NEEDS_STOP & set(pending)) and ch.state == ChannelState.RUNNING
-        if restart and not confirm(self, "套用參數", "此參數需要暫停取像才能套用，套用後會自動恢復取像。要繼續嗎？", ok="套用"):
+        if restart and not confirm(self, tr("params.restartTitle"), tr("params.restartBody"), ok=tr("params.apply")):
             self._set_values({k: self._specs[k].value for k in pending if k in self._specs})
             return
-        self.status.setText("套用中…")
+        self.status.setText(tr("params.applying"))
 
         def apply() -> dict[str, Any]:
             if restart:
@@ -212,13 +231,13 @@ class ParamsPanel(QWidget):
             for k, v in applied.items():
                 if k in self._specs:
                     self._specs[k].value = v
-            self.status.setText("已套用：" + "、".join(f"{self._specs[k].label or k}={v}" for k, v in applied.items()) if applied else "沒有變更")
+            self.status.setText(tr("params.applied", items="、".join(f"{param_label(self._specs[k])}={v}" for k, v in applied.items() if k in self._specs)) if applied else tr("params.noChange"))
             self.dirty.emit()
             if "trigger_mode" in applied or restart:
                 self.reload()
 
         def failed(message: str) -> None:
-            self.status.setText(f"套用失敗：{message}")
+            self.status.setText(tr("params.applyFailed", error=message))
             self.reload()
 
         self.bridge.run_async(apply, on_done=done, on_error=failed)

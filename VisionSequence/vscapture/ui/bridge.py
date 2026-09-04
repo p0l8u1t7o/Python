@@ -47,6 +47,7 @@ class EngineBridge(QObject):
     connection = Signal(object)  # {"state", "detail"}
     channel = Signal(object)  # {"id", "state", "error"}
     stream = Signal(object)  # {"id", "enabled"}
+    update = Signal(object)  # {"phase", "received", "total", ...} 或 {"info": UpdateInfo}
     log = Signal(int, str)  # (levelno, 已格式化文字)
     _job_done = Signal(int, object)
     _job_failed = Signal(int, str)
@@ -73,7 +74,7 @@ class EngineBridge(QObject):
 
     # 任何執行緒
     def _on_engine_event(self, kind: str, data: dict[str, Any]) -> None:
-        sig = {"connection": self.connection, "channel": self.channel, "stream": self.stream}.get(kind)
+        sig = {"connection": self.connection, "channel": self.channel, "stream": self.stream, "update": self.update}.get(kind)
         if sig is not None:
             sig.emit(dict(data))
 

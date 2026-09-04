@@ -6,14 +6,15 @@ from typing import Any
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QStandardItemModel
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
 
 from vscapture import cameras
 from vscapture.channel import Channel
 from vscapture.config import ChannelConfig, new_channel_id
 from vscapture.engine import CaptureEngine
+from vscapture.i18n import tr
 from vscapture.ui.bridge import EngineBridge
-from vscapture.ui.widgets import CHANNEL_STATE_COLORS, CHANNEL_STATE_LABELS, confirm, dot_icon, hline, muted
+from vscapture.ui.widgets import channel_state_label, confirm, dot_icon, hline, muted, state_color
 
 
 class ChannelsPanel(QGroupBox):
@@ -21,20 +22,22 @@ class ChannelsPanel(QGroupBox):
     dirty = Signal()
 
     def __init__(self, engine: CaptureEngine, bridge: EngineBridge, parent: QWidget | None = None) -> None:
-        super().__init__("通道", parent)
+        super().__init__(parent)
         self.engine = engine
         self.bridge = bridge
         self._loading = False
+        self._theme = "dark"
         self._backends: list[dict[str, Any]] = []
 
         self.list = QListWidget()
-        self.list.setMaximumHeight(140)
+        self.list.setMaximumHeight(132)
         self.list.currentItemChanged.connect(self._on_current_changed)
-        self.add_btn = QPushButton("新增")
-        self.remove_btn = QPushButton("移除")
+        self.add_btn = QPushButton()
+        self.remove_btn = QPushButton()
         self.add_btn.clicked.connect(self.add_channel)
         self.remove_btn.clicked.connect(self.remove_channel)
         btns = QHBoxLayout()
+        btns.setSpacing(6)
         btns.addWidget(self.add_btn)
         btns.addWidget(self.remove_btn)
         btns.addStretch(1)
@@ -48,66 +51,98 @@ class ChannelsPanel(QGroupBox):
         self.device.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.device.activated.connect(self._on_device_picked)
         self.device.lineEdit().editingFinished.connect(self._on_device_edited)
-        self.scan_btn = QPushButton("掃描")
+        self.scan_btn = QPushButton()
         self.scan_btn.clicked.connect(self.scan_devices)
         dev_row = QHBoxLayout()
+        dev_row.setSpacing(6)
         dev_row.addWidget(self.device, 1)
         dev_row.addWidget(self.scan_btn)
-        self.enabled = QCheckBox("啟用（伺服端可取像）")
+        self.enabled = QCheckBox()
         self.enabled.toggled.connect(self._on_enabled)
-        self.preview = QCheckBox("即時預覽")
+        self.preview = QCheckBox()
         self.preview.toggled.connect(self._on_preview)
 
-        form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.addRow("名稱", self.name)
-        form.addRow("相機種類", self.backend)
-        form.addRow("裝置", dev_row)
-        form.addRow("", self.enabled)
-        form.addRow("", self.preview)
+        self.form = QFormLayout()
+        self.form.setContentsMargins(0, 0, 0, 0)
+        self.form.setSpacing(7)
+        self.form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.field_labels = [QLabel(), QLabel(), QLabel()]
+        for lab in self.field_labels:
+            lab.setProperty("role", "muted")
+        self.form.addRow(self.field_labels[0], self.name)
+        self.form.addRow(self.field_labels[1], self.backend)
+        self.form.addRow(self.field_labels[2], dev_row)
+        self.form.addRow("", self.enabled)
+        self.form.addRow("", self.preview)
 
-        self.open_btn = QPushButton("開啟")
-        self.close_btn = QPushButton("關閉")
-        self.start_btn = QPushButton("開始取像")
-        self.stop_btn = QPushButton("停止")
+        self.open_btn = QPushButton()
+        self.close_btn = QPushButton()
+        self.start_btn = QPushButton()
+        self.stop_btn = QPushButton()
         self.open_btn.clicked.connect(lambda: self._camera_op("open"))
         self.close_btn.clicked.connect(lambda: self._camera_op("close"))
         self.start_btn.clicked.connect(lambda: self._camera_op("start"))
         self.stop_btn.clicked.connect(lambda: self._camera_op("stop"))
-        ops = QHBoxLayout()
-        for b in (self.open_btn, self.close_btn, self.start_btn, self.stop_btn):
-            ops.addWidget(b)
+        ops = QGridLayout()
+        ops.setSpacing(6)
+        for i, b in enumerate((self.open_btn, self.close_btn, self.start_btn, self.stop_btn)):
+            ops.addWidget(b, i // 2, i % 2)
         self.state_label = QLabel("—")
-        self.state_label.setStyleSheet("font-weight:600;")
+        self.state_label.setProperty("role", "strong")
         self.error_label = muted("")
-        self.error_label.setStyleSheet("color:#ef4444;")
+        self.error_label.setProperty("role", "error")
 
         lay = QVBoxLayout(self)
+        lay.setSpacing(9)
         lay.addWidget(self.list)
         lay.addLayout(btns)
         lay.addWidget(hline())
-        lay.addLayout(form)
+        lay.addLayout(self.form)
         lay.addLayout(ops)
         lay.addWidget(self.state_label)
         lay.addWidget(self.error_label)
         self._set_form_enabled(False)
+        self.retranslate()
         self.bridge.run_async(cameras.describe_backends, on_done=self.set_backends)
+
+    # ---- 語言／主題 ----
+    def retranslate(self) -> None:
+        self.setTitle(tr("channels.title"))
+        self.add_btn.setText(tr("channels.add"))
+        self.remove_btn.setText(tr("channels.remove"))
+        self.scan_btn.setText(tr("channels.scan"))
+        self.enabled.setText(tr("channels.enabled"))
+        self.preview.setText(tr("channels.preview"))
+        for lab, key in zip(self.field_labels, ("channels.name", "channels.backend", "channels.device")):
+            lab.setText(tr(key))
+        self.open_btn.setText(tr("channels.open"))
+        self.close_btn.setText(tr("channels.closeCam"))
+        self.start_btn.setText(tr("channels.start"))
+        self.stop_btn.setText(tr("channels.stop"))
+        self.set_backends(self._backends)
+        self.refresh_list()
+
+    def set_theme(self, theme: str) -> None:
+        self._theme = theme
+        self.refresh_list()
+        ch = self.current_channel()
+        if ch is not None:
+            self._update_state(ch)
 
     # ---- 相機種類 ----
     def set_backends(self, items: list[dict[str, Any]]) -> None:
-        self._backends = items
-        current = self.current_cfg().backend if self.current_cfg() else None
+        self._backends = items or []
+        cfg = self.current_cfg()
+        current = cfg.backend if cfg else None
         self._loading = True
         self.backend.clear()
         model = self.backend.model()
-        for i, info in enumerate(items):
-            self.backend.addItem(info["label"], info["backend"])
-            if not info["available"]:
-                assert isinstance(model, QStandardItemModel)
+        for i, info in enumerate(self._backends):
+            self.backend.addItem(info["label"] + ("" if info["available"] else tr("channels.sdkMissing")), info["backend"])
+            if not info["available"] and isinstance(model, QStandardItemModel):
                 item = model.item(i)
                 item.setEnabled(False)
-                item.setToolTip(f"SDK 尚未安裝：{info['reason']}")
-                self.backend.setItemText(i, f"{info['label']}（SDK 尚未安裝）")
+                item.setToolTip(tr("channels.sdkTip", reason=info["reason"]))
         if current is not None:
             self.backend.setCurrentIndex(max(0, self.backend.findData(current)))
         self._loading = False
@@ -121,7 +156,7 @@ class ChannelsPanel(QGroupBox):
             ch = self.engine.channels.get(cfg.id)
             item = QListWidgetItem(self._item_text(cfg, ch))
             item.setData(Qt.ItemDataRole.UserRole, cfg.id)
-            item.setIcon(dot_icon(CHANNEL_STATE_COLORS.get(ch.state.value if ch else "closed", "#9ca3af")))
+            item.setIcon(dot_icon(state_color(self._theme, ch.state.value if ch else "closed")))
             self.list.addItem(item)
             if cfg.id == current:
                 self.list.setCurrentItem(item)
@@ -137,8 +172,8 @@ class ChannelsPanel(QGroupBox):
 
     @staticmethod
     def _item_text(cfg: ChannelConfig, ch: Channel | None) -> str:
-        state = CHANNEL_STATE_LABELS.get(ch.state.value, "") if ch else ""
-        suffix = "" if cfg.enabled else "（停用）"
+        state = channel_state_label(ch.state.value) if ch else ""
+        suffix = "" if cfg.enabled else tr("channels.disabledSuffix")
         return f"{cfg.name or cfg.id}{suffix} · {state}"
 
     def current_id(self) -> str:
@@ -189,8 +224,8 @@ class ChannelsPanel(QGroupBox):
 
     def _update_state(self, ch: Channel) -> None:
         state = ch.state.value
-        self.state_label.setText(f"狀態：{CHANNEL_STATE_LABELS.get(state, state)}")
-        self.state_label.setStyleSheet(f"font-weight:600; color:{CHANNEL_STATE_COLORS.get(state, '#111')};")
+        self.state_label.setText(tr("channels.state", state=channel_state_label(state)))
+        self.state_label.setStyleSheet(f"font-weight:700; color:{state_color(self._theme, state)};")
         self.error_label.setText(ch.last_error)
         is_open = state in ("open", "running")
         self.open_btn.setEnabled(not is_open and bool(ch.cfg.device_id))
@@ -208,7 +243,7 @@ class ChannelsPanel(QGroupBox):
             item = self.list.item(i)
             if item.data(Qt.ItemDataRole.UserRole) == cid:
                 item.setText(self._item_text(ch.cfg, ch))
-                item.setIcon(dot_icon(CHANNEL_STATE_COLORS.get(ch.state.value, "#9ca3af")))
+                item.setIcon(dot_icon(state_color(self._theme, ch.state.value)))
         if cid == self.current_id():
             self._update_state(ch)
 
@@ -217,7 +252,7 @@ class ChannelsPanel(QGroupBox):
         cid = new_channel_id(c.id for c in self.engine.cfg.channels)
         n = len(self.engine.cfg.channels) + 1
         backend = next((b["backend"] for b in self._backends if b["available"] and b["backend"] != "fake"), "webcam")
-        cfg = ChannelConfig(id=cid, name=f"相機 {n}", backend=backend, enabled=True)
+        cfg = ChannelConfig(id=cid, name=tr("channels.newName", n=n), backend=backend, enabled=True)
         self.engine.add_channel(cfg)
         self.refresh_list(select=cid)
         self.dirty.emit()
@@ -227,7 +262,7 @@ class ChannelsPanel(QGroupBox):
         ch = self.current_channel()
         if ch is None:
             return
-        if not confirm(self, "移除通道", f"要移除通道「{ch.cfg.name or ch.id}」嗎？使用此通道的網頁影像來源將無法取像。", ok="移除"):
+        if not confirm(self, tr("channels.removeTitle"), tr("channels.removeBody", name=ch.cfg.name or ch.id), ok=tr("channels.remove")):
             return
         self.engine.remove_channel(ch.id)
         self.refresh_list()
@@ -266,11 +301,11 @@ class ChannelsPanel(QGroupBox):
             return
         backend = ch.cfg.backend
         self.scan_btn.setEnabled(False)
-        self.scan_btn.setText("掃描中…")
+        self.scan_btn.setText(tr("channels.scanning"))
 
         def done(devices: list) -> None:
             self.scan_btn.setEnabled(True)
-            self.scan_btn.setText("掃描")
+            self.scan_btn.setText(tr("channels.scan"))
             if self.current_channel() is not ch:
                 return
             self._loading = True
@@ -284,12 +319,12 @@ class ChannelsPanel(QGroupBox):
                 self.device.setCurrentText(ch.cfg.device_id)
             self._loading = False
             if not devices:
-                self.error_label.setText("沒有找到裝置；可直接輸入裝置識別（例如網路攝影機的索引 0）。")
+                self.error_label.setText(tr("channels.noDevices"))
 
         def failed(message: str) -> None:
             self.scan_btn.setEnabled(True)
-            self.scan_btn.setText("掃描")
-            self.error_label.setText(f"掃描失敗：{message}")
+            self.scan_btn.setText(tr("channels.scan"))
+            self.error_label.setText(tr("channels.scanFailed", error=message))
 
         self.bridge.run_async(lambda: cameras.backend_class(backend).enumerate() if cameras.backend_class(backend).available()[0] else [], on_done=done, on_error=failed)
 

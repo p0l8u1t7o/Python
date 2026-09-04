@@ -135,9 +135,9 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html" aria-current="page">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. 概念與架構</a></li><li><a href="#install">2. 安裝與連線</a><ul><li><a href="#install-download">2-1. 下載與啟動</a></li><li><a href="#install-files">2-2. 設定檔、記錄檔與無介面模式</a></li><li><a href="#install-server">2-3. 伺服端設定</a></li></ul></li><li><a href="#channels">3. 通道、預覽與 ROI</a></li><li><a href="#cameras">4. 相機支援</a></li><li><a href="#transport">5. 同一台電腦的共享記憶體與跨電腦的 TCP</a><ul><li><a href="#transport-shm">5-1. 共享記憶體（同一台電腦）</a></li><li><a href="#transport-tcp">5-2. TCP（跨電腦）</a></li></ul></li><li><a href="#web">6. 網頁端設定「擷取端相機」</a></li><li><a href="#perf">7. 效能與頻寬</a><ul><li><a href="#perf-result">7-1. 實測（開發機：Windows 11、DDR5、擷取端與伺服端各一個行程）</a></li><li><a href="#perf-how">7-2. 大影格的四個關鍵</a></li><li><a href="#perf-net">7-3. 跨電腦的物理上限</a></li><li><a href="#perf-engine">7-4. 伺服端下游</a></li></ul></li><li><a href="#trouble">8. 疑難排解</a></li><li><a href="#protocol">9. 協定摘要（v1，vscapture/protocol.py）</a></li><li><a href="#security">10. 安全性</a></li><li><a href="#acceptance">11. 實體相機驗收清單</a></li><li><a href="#files">12. 檔案、建置與測試</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#concept">1. 概念與架構</a></li><li><a href="#install">2. 安裝與連線</a><ul><li><a href="#install-download">2-1. 下載與啟動</a></li><li><a href="#install-files">2-2. 設定檔、記錄檔與無介面模式</a></li><li><a href="#install-ui">2-3. 介面：語言與外觀</a></li><li><a href="#install-server">2-4. 伺服端設定</a></li><li><a href="#install-update">2-5. 自動更新</a></li></ul></li><li><a href="#channels">3. 通道、預覽與 ROI</a></li><li><a href="#cameras">4. 相機支援</a></li><li><a href="#transport">5. 同一台電腦的共享記憶體與跨電腦的 TCP</a><ul><li><a href="#transport-shm">5-1. 共享記憶體（同一台電腦）</a></li><li><a href="#transport-tcp">5-2. TCP（跨電腦）</a></li></ul></li><li><a href="#web">6. 網頁端設定「擷取端相機」</a></li><li><a href="#perf">7. 效能與頻寬</a><ul><li><a href="#perf-result">7-1. 實測（開發機：Windows 11、DDR5、擷取端與伺服端各一個行程）</a></li><li><a href="#perf-how">7-2. 大影格的四個關鍵</a></li><li><a href="#perf-net">7-3. 跨電腦的物理上限</a></li><li><a href="#perf-engine">7-4. 伺服端下游</a></li></ul></li><li><a href="#trouble">8. 疑難排解</a></li><li><a href="#protocol">9. 協定摘要（v1，vscapture/protocol.py）</a></li><li><a href="#security">10. 安全性</a></li><li><a href="#acceptance">11. 實體相機驗收清單</a></li><li><a href="#files">12. 檔案、建置與測試</a></li></ul></aside><article class="doc">
 <h1>擷取端：在相機所在的電腦驅動相機，把影像送到伺服端</h1>
-<p>相機常接在產線另一台電腦，或雖在同一台電腦卻需要廠牌 SDK（Basler pylon、IDS peak）；伺服端維持「單一 API 行程、不塞相機 SDK」的原則。<strong>擷取端（Capture client）</strong>是可從網頁下載的 Windows 桌面程式：在相機所在的電腦直接驅動網路攝影機／Basler／IDS 相機，<strong>主動連到伺服端的擷取埠（預設 9100）</strong>登記名稱與相機通道；網頁新增影像來源種類「擷取端相機」選擷取端與通道即可執行。同一台電腦以<strong>共享記憶體＋控制訊息</strong>傳影像（單次 memcpy），跨電腦以<strong>單一持久 TCP 連線、二進位定長表頭、無損（raw／LZ4）</strong>傳影像；伺服端接收零解析成本，直接把 ndarray 交給引擎。實測 <strong>2000 萬畫素彩色（59.9 MB／張）在同一台電腦可達 117 fps</strong>（見 <a href="#perf">§7</a>）。</p>
+<p>相機常接在產線另一台電腦，或雖在同一台電腦卻需要廠牌 SDK（Basler pylon、IDS peak）；伺服端維持「單一 API 行程、不塞相機 SDK」的原則。<strong>擷取端（Capture client）</strong>是可從網頁下載的 Windows 桌面程式：在相機所在的電腦直接驅動網路攝影機／Basler／IDS 相機，<strong>主動連到伺服端的擷取埠（預設 9100）</strong>登記名稱與相機通道；網頁新增影像來源種類「擷取端相機」選擷取端與通道即可執行。同一台電腦以<strong>共享記憶體＋控制訊息</strong>傳影像（單次 memcpy），跨電腦以<strong>單一持久 TCP 連線、二進位定長表頭、無損（raw／LZ4）</strong>傳影像；伺服端接收零解析成本，直接把 ndarray 交給引擎。實測 <strong>2000 萬畫素彩色（59.9 MB／張）在同一台電腦可達 117 fps</strong>（見 <a href="#perf">§7</a>）。伺服端重新建置後，已連線的擷取端會收到通知並可<strong>自動更新</strong>（見 <a href="#install-update">§2-5</a>）；介面支援繁中／简中／English 與深色／淺色。</p>
 
 <h2 id="concept">1. 概念與架構</h2>
 <pre>相機電腦（擷取端 VisionSequenceCapture.exe）              伺服端（單一 API 行程）
@@ -163,12 +163,16 @@
 </ol>
 <h3 id="install-files">2-2. 設定檔、記錄檔與無介面模式</h3>
 <ul>
-<li>設定檔 <code>%APPDATA%\VisionSequenceCapture\config.json</code>（環境變數 <code>VSCAPTURE_CONFIG</code> 可覆寫）：連線、介面偏好、每個通道的相機參數／ROI／傳送設定。「檔案 → 儲存設定」寫入；結束時未儲存會詢問。缺鍵補預設、未知鍵忽略、非法值啟動時提示並改用預設。</li>
+<li>設定檔 <code>%APPDATA%\VisionSequenceCapture\config.json</code>（環境變數 <code>VSCAPTURE_CONFIG</code> 可覆寫）：連線（含 <code>auto_update</code>、<code>shm_max_mb</code>）、介面偏好（<code>ui.language</code>、<code>ui.theme</code>）、每個通道的相機參數／ROI／傳送設定。「檔案 → 儲存設定」寫入；結束時未儲存會詢問。缺鍵補預設、未知鍵忽略、非法值啟動時提示並改用預設。</li>
 <li>記錄檔 <code>%APPDATA%\VisionSequenceCapture\logs\capture.log</code>（輪替 2 MB × 3）；介面底部「記錄」可依等級過濾。</li>
 <li>無介面：<code>VisionSequenceCapture-console.exe --headless --connect</code>（Ctrl+C 結束），適合 Task Scheduler／NSSM 常駐；<code>--list-cameras</code> 列出各種相機；<code>--server host:port</code>、<code>--name</code>、<code>--api-key</code>、<code>--config</code>、<code>--log-level DEBUG</code> 覆寫設定；<code>--minimized</code> 啟動即縮到系統匣。</li>
 <li>關閉視窗會縮到系統匣（右鍵：顯示、連線、中斷、結束）。</li>
 </ul>
-<h3 id="install-server">2-3. 伺服端設定</h3>
+<h3 id="install-ui">2-3. 介面：語言與外觀</h3>
+<p>視窗右上角可切換<strong>語言</strong>（繁體中文／简体中文／English，與網頁相同的三種）與<strong>外觀</strong>（深色／淺色），立即生效、不必重開程式，並隨設定一起儲存（<code>ui.language</code>、<code>ui.theme</code>）。相機參數的標準名稱（曝光時間、增益、影格率、像素格式、寬高位移、觸發模式）會跟著翻譯；廠牌自訂的參數維持 SDK 原名，通道名稱是您自己取的字串不翻譯。</p>
+<p>版面：左欄「連線」與「通道」、中央即時預覽與 ROI 工具列、右欄「相機參數」「傳送設定」分頁、底部「記錄」可收合；有新版時最上方出現更新橫幅。品牌色與網頁一致，深色是預設。</p>
+
+<h3 id="install-server">2-4. 伺服端設定</h3>
 <table>
 <tr><th>.env</th><th>預設</th><th>說明</th></tr>
 <tr><td><code>VISION_CAPTURE_HOST</code>／<code>PORT</code></td><td>0.0.0.0／9100</td><td>擷取埠；<code>manage.py serve --capture-port</code>、<code>--no-capture</code> 可覆寫。跨電腦請在伺服端防火牆放行此埠。</td></tr>
@@ -176,6 +180,16 @@
 <tr><td><code>VISION_CAPTURE_MAX_FRAME_MB</code></td><td>64</td><td>單張影像上限，超過即斷線（協定錯誤）。</td></tr>
 <tr><td><code>VISION_CAPTURE_TIMEOUT_MS</code></td><td>1000</td><td>來源未指定 <code>timeout_ms</code> 時的預設等待。</td></tr>
 </table>
+
+<h3 id="install-update">2-5. 自動更新</h3>
+<p>伺服端重新建置擷取端之後（<code>scripts/build_capture_client.ps1</code>），<strong>已連線的擷取端會自己知道</strong>——不必到現場逐台重裝：</p>
+<ol>
+<li>連線時的 WELCOME 就帶著伺服端手上的版本；連線後伺服端每次心跳都會比對 manifest，版本變了就推一則通知。只有比擷取端目前版本<strong>新</strong>的才會通知。</li>
+<li>安裝檔<strong>走同一條已驗證的擷取連線</strong>分塊拉下來（每塊 1 MiB），不必另外開埠、不必再給一次金鑰、也不受網頁登入影響；下載完比對 <strong>SHA-256</strong>，不符就整份丟棄。</li>
+<li>解壓到 <code>%APPDATA%\VisionSequenceCapture\updates\staging-&lt;版本&gt;\</code>，再由<strong>新版的主控台執行檔</strong>接手：等舊行程結束 → 覆寫安裝資料夾 → 重新啟動。更新程式跑在新版的資料夾裡，所以不會覆寫到自己；設定檔與記錄檔都在 <code>%APPDATA%</code>，不受覆寫影響。</li>
+</ol>
+<p>「連線」面板的<strong>自動更新</strong>三選一：<code>off</code> 不檢查、<code>notify</code> 只在最上方顯示橫幅由您決定（預設）、<code>auto</code> 自動下載並安裝。橫幅會顯示版本、大小與下載進度，也可以取消。「說明 → 檢查更新」可隨時問一次。無介面模式只有 <code>auto</code> 會自己更新（其餘只寫進記錄）。以原始碼執行時不會就地覆寫，只會下載與解壓後提示。</p>
+<p>失敗都是安全的：下載中斷、SHA-256 不符、檔案被佔用都只是記錄一筆並保留舊版繼續取像；更新程式覆寫時會重試 30 秒（等防毒或檔案把手放開）。舊版擷取端（沒有自動更新功能的版本）連新伺服端不受影響，只是不會自己更新，請從網頁重新下載。</p>
 
 <h2 id="channels">3. 通道、預覽與 ROI</h2>
 <ul>
@@ -289,6 +303,8 @@ GET  /api/vision/integration/info                                     加 captur
 <li><strong>影像超過上限（too_large）</strong>：調高 <code>VISION_CAPTURE_MAX_FRAME_MB</code> 或在擷取端縮小／圈 ROI。</li>
 <li><strong>共享記憶體未被接受</strong>：記錄會寫原因，程式自動留在 TCP；「本機模式」設為「一律走 TCP」可強制。</li>
 <li><strong>掃描不到網路攝影機</strong>：被其他程式佔用（關掉會議軟體）、USB 供電不足；可直接輸入索引 0、1。</li>
+<li><strong>更新沒有出現</strong>：伺服端要先建置（<code>build_capture_client.ps1</code>），且新版號要比擷取端目前的版本大；「自動更新」設成「不檢查」時不會通知。舊版（0.1.0）沒有自動更新功能，請從網頁重新下載。</li>
+<li><strong>更新失敗</strong>：記錄會寫原因（下載中斷、SHA-256 不符、檔案被佔用）。舊版會繼續正常取像；可從網頁下載 zip 手動覆寫。防毒軟體鎖住執行檔時，更新程式會重試 30 秒。</li>
 <li><strong>SDK 尚未安裝</strong>：擷取端只打包建置時安裝的 SDK；請在伺服端以 <code>-WithBasler</code>／<code>-WithIds</code> 重新建置，客戶端另裝廠牌執行期／驅動。</li>
 </ul>
 
@@ -304,6 +320,8 @@ GET  /api/vision/integration/info                                     加 captur
 <tr><td>0x09</td><td>ERROR</td><td>雙向</td><td>JSON</td><td>{code, message}：timeout／no_channel／channel_disabled／camera_error／busy／unsupported_encoding／too_large／malformed…</td></tr>
 <tr><td>0x0A</td><td>BYE</td><td>C→S</td><td>無</td><td>正常關閉</td></tr>
 <tr><td>0x0B／0x0C</td><td>TEST／TEST_RESULT</td><td>C→S／S→C</td><td>FRAME_HDR＋payload／JSON</td><td>「測試傳送」：回 decode_ms</td></tr>
+<tr><td>0x0D</td><td>UPDATE</td><td>S→C</td><td>JSON</td><td>{available, version, filename, size, sha256, built_at, chunk}；WELCOME 內也帶一份，之後 manifest 版本變了才推</td></tr>
+<tr><td>0x0E／0x0F</td><td>UPDATE_PULL／UPDATE_DATA</td><td>C→S／S→C</td><td>JSON／JSON＋payload</td><td>{offset, length} → {offset, eof, error?}＋該段位元組；安裝檔走同一條已驗證的連線</td></tr>
 <tr><td>0x10</td><td>GRAB</td><td>S→C</td><td><code>"&lt;HIQBB"</code>（chan, timeout_ms, min_seq, encoding 255=auto/0 raw/1 lz4/2 jpeg, flags bit0 AFTER_REQUEST）</td><td>每次執行一則</td></tr>
 <tr><td>0x11</td><td>FRAME</td><td>C→S</td><td><code>"&lt;HBBBBQQIIIIIIIIi6x"</code> 64 B（chan, encoding, dtype 0 u8/1 u16/2 f32, channels 1/3/4, flags bit0 FRESH bit1 CROPPED, seq, ts_ns, width, height, stride, roi_x, roi_y, full_w, full_h, raw_len, slot）</td><td>slot −1 像素在 payload；slot ≥ 0 在共享記憶體槽；req_id &gt; 0 回應 GRAB，req_id 0 串流推送</td></tr>
 <tr><td>0x12</td><td>SLOT_FREE</td><td>S→C</td><td><code>"&lt;HiQ2x"</code>（chan, slot, seq）</td><td>伺服端 copy 完畢，槽歸還</td></tr>
@@ -329,17 +347,21 @@ GET  /api/vision/integration/info                                     加 captur
 <li>伺服端重啟、拔網路線 30 秒後自動重連，串流設定自動恢復。</li>
 <li>Task Scheduler／NSSM 以主控台版常駐；系統匣連線／中斷／結束。</li>
 <li>執行中改設定檔後「重新載入設定」重建通道並重連。</li>
+<li>自動更新：伺服端重新建置後橫幅出現、下載進度、覆寫並重啟成新版；「自動下載並安裝」在無介面模式也會更新；下載途中斷線與 SHA-256 不符都只記錄不影響取像。</li>
+<li>介面：三種語言切換即時生效（含相機標準參數名稱）、深色／淺色切換、重開程式後語言與外觀保持。</li>
 </ol>
 
 <h2 id="files">12. 檔案、建置與測試</h2>
 <pre>vscapture/              擷取端（不 import Django；伺服端只 import protocol.py）
   protocol.py           線上協定 v1（雙方共用）
   config.py frames.py channel.py engine.py shm.py logs.py app.py __main__.py
+  i18n.py               介面文案（繁中／简中／English，與網頁同三種語言）
+  update.py             自動更新：下載、驗證、解壓、交棒給新版覆寫並重啟
   cameras/              base.py（Camera 介面）webcam.py basler.py ids.py ueye.py fake.py
   transport/            client.py（連線／重連／GRAB／串流／TEST）sender.py stream.py
-  ui/                   PySide6：bridge、main_window、connection_panel、channels_panel、live_view（ROI）、params_panel、delivery_panel、log_panel、tray
+  ui/                   PySide6：theme（深／淺色票與樣式表）、bridge、main_window、connection_panel、channels_panel、live_view（ROI）、params_panel、delivery_panel、log_panel、update_banner、tray
   requirements.txt      獨立 .venv-capture（opencv-python 與伺服端的 headless 版同名互蓋）
-apps/vision/capture/    hub.py（CaptureHub／ClientSession）grabber.py（CaptureGrabber、channel_status）api.py
+apps/vision/capture/    hub.py（CaptureHub／ClientSession）grabber.py（CaptureGrabber、channel_status）api.py build.py（安裝檔 manifest／分塊讀取）
 scripts/build_capture_client.ps1   建 .venv-capture → PyInstaller（scripts/capture_client.spec）→ zip 到 data/downloads/
 scripts/package_capture_client.py  zip＋README.txt＋manifest.json（版本、大小、sha256、建置時間、內含 SDK）</pre>
 <ul>
