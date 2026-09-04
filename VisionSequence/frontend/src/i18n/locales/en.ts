@@ -489,6 +489,13 @@ const en = {
     noResults: 'Not run yet',
     useDraft: 'Use the current canvas (unsaved graph)',
   },
+  archive: {
+    hint: 'This flow has produced {{count}} rejects but keeps no pictures of them — you will not be able to show a customer what was seen.',
+    enable: 'Keep reject images',
+    enabled: 'Reject images will be kept from now on',
+    hasImages: '{{count}} archived images — click the row to view',
+    viewTitle: 'Archived image',
+  },
   stats: {
     title: 'Statistics',
     subtitle: 'Run history and yield trend',
@@ -507,7 +514,7 @@ const en = {
     noData: 'No runs in this period',
     live: 'In-memory live stats',
     trend: 'Recent trend',
-    cols: { time: 'Time', status: 'Status', trigger: 'Trigger', ms: 'ms', outputs: 'Outputs', error: 'Error' },
+    cols: { time: 'Time', status: 'Status', trigger: 'Trigger', ms: 'ms', outputs: 'Outputs', error: 'Error', images: 'Images' },
     statusAll: 'All statuses',
     backToEditor: 'Back to editor',
   },

@@ -28,7 +28,7 @@ from django.conf import settings
 from django.db import IntegrityError, close_old_connections
 
 from apps.core.errors import Conflict, NotFound, RateLimited
-from apps.vision import engine
+from apps.vision import archive, engine
 from apps.vision.graph import CompiledGraph, compile_graph, restrict_to, validate_graph
 from apps.vision.images import store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource
@@ -132,6 +132,7 @@ class _Persister(threading.Thread):
                 duration_ms=r.duration_ms,
                 nodes={nid: {"status": n.status, "duration_ms": round(n.duration_ms, 2), "message": n.message[:200]} for nid, n in r.nodes.items()},
                 outputs=r.outputs,
+                images=archive.save(r, getattr(r, "archive_images", None) or {}),
                 error=r.error[:2000],
                 started_at=datetime.fromtimestamp(r.started_at, tz=timezone.utc),
                 finished_at=datetime.fromtimestamp(r.finished_at, tz=timezone.utc),
@@ -152,9 +153,12 @@ class _Persister(threading.Thread):
             self._prune_counter = 0
             keep = int(_cfg("KEEP_RUN_ROWS", 2000))
             for flow_id in {r.flow_id for r in batch}:
-                ids = list(FlowRun.objects.filter(flow_id=flow_id).order_by("-started_at").values_list("id", flat=True)[keep : keep + 1000])
-                if ids:
-                    FlowRun.objects.filter(id__in=ids).delete()
+                doomed = list(FlowRun.objects.filter(flow_id=flow_id).order_by("-started_at").values_list("id", "images")[keep : keep + 1000])
+                if doomed:
+                    for run_id, images in doomed:
+                        archive.drop_run(run_id.hex, images)
+                    FlowRun.objects.filter(id__in=[d[0] for d in doomed]).delete()
+            archive.purge()  # 順便照天數與容量上限清封存
 
 
 persister = _Persister()
@@ -365,7 +369,9 @@ class Runner:
             rt.queued += 1
             rt.pending[run_id] = "queued"
         bus.publish({"type": "run_queued", "flow_id": flow.id, "run_id": run_id, "trigger": trigger})
-        future = self.pool().submit(self._execute, flow, compiled, rt, run_id, trigger, input_image, context, preview, recipe_obj.name if recipe_obj else "")
+        # 封存策略在呼叫者執行緒解析（熱路徑不碰 DB），跟著這次 run 走。
+        future = self.pool().submit(self._execute, flow, compiled, rt, run_id, trigger, input_image, context, preview,
+                                    recipe_obj.name if recipe_obj else "", archive.policy_for(flow))
         future.run_id = run_id  # 非同步觸發（TCP TRIGGER、POST run?wait=0）要把 run_id 回給外部系統
         return future
 
@@ -384,6 +390,7 @@ class Runner:
         context: dict[str, Any] | None,
         preview: bool,
         recipe_name: str = "",
+        archive_policy: dict[str, Any] | None = None,
     ) -> engine.RunReport:
         with rt.lock:  # 同一流程一次一個 run
             # 排隊數在「真的輪到自己」時才扣：等鎖的 run 也算在排隊上限內，
@@ -421,6 +428,7 @@ class Runner:
                 close_old_connections()
         report.station_id = str(_cfg("STATION_ID", "ST01"))
         report.recipe = recipe_name
+        report.archive_policy = archive_policy
         if not flow.commissioned and not preview:
             report.warnings.append("未完成現場教導（參數卡頁尚未確認）")
         with self._lock:
@@ -450,6 +458,10 @@ class Runner:
                 old = rt.recent.pop(0)
                 store.drop_run(old.id)
         if report.trigger != "preview":
+            # 封存的影像在這裡只取參照（不複製、不編碼）；編碼與寫檔在持久化執行緒做。
+            policy = getattr(report, "archive_policy", None)
+            if policy and archive.wanted(policy, report.status, s.runs):
+                report.archive_images = archive.capture(report, store, queue_depth=persister.q.qsize())
             persister.submit(report)
         bus.publish({"type": "run_finished", "flow_id": rt.flow_id, "run": report.to_dict(include_node_outputs=True), "stats": s.to_dict()})
 

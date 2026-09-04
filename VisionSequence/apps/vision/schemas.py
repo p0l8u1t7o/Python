@@ -20,6 +20,7 @@ class FlowPatch(Schema):
     is_enabled: bool | None = None
     continuous_interval_ms: int | None = None
     commissioned: bool | None = None
+    archive_policy: dict | None = None
 
 
 class RecipeIn(Schema):

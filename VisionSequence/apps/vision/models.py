@@ -27,6 +27,8 @@ class Flow(models.Model):
     continuous_interval_ms = models.PositiveIntegerField(default=0)
     #: 現場教導完成（參數卡頁確認）；False 時 run 仍可執行，只在 RunReport 加 warnings。
     commissioned = models.BooleanField(default=False)
+    #: 影像封存策略（見 apps/vision/archive.py）；空 dict＝用 .env 的出貨預設。
+    archive_policy = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -69,6 +71,8 @@ class FlowRun(models.Model):
     nodes = models.JSONField(default=dict)
     #: output 工具收集的具名輸出。
     outputs = models.JSONField(default=dict)
+    #: 已封存的影像 {ref: 相對於封存根目錄的路徑}；空＝這次沒有封存。
+    images = models.JSONField(default=dict, blank=True)
     error = models.TextField(blank=True, default="")
     started_at = models.DateTimeField()
     finished_at = models.DateTimeField(null=True, blank=True)

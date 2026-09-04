@@ -25,6 +25,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(_env(name, str(default)))
+    except ValueError:
+        return default
+
+
 def _env_bool(name: str, default: bool) -> bool:
     return _env(name, "1" if default else "0").strip().lower() in ("1", "true", "yes", "on")
 
@@ -111,6 +118,11 @@ VISION = {
     "RUN_TIMEOUT_S": float(_env("VISION_RUN_TIMEOUT_S", "30")),
     # 每個流程在記憶體保留幾次 run 的影像（供前端檢視）。
     "KEEP_RUN_IMAGES": _env_int("VISION_KEEP_RUN_IMAGES", 8),
+    # 影像封存（出貨預設不存；各流程自己開，見 apps/vision/archive.py）
+    "ARCHIVE_DEFAULT": _env("VISION_ARCHIVE_DEFAULT", "off"),   # off | ng | all
+    "ARCHIVE_DAYS": _env_int("VISION_ARCHIVE_DAYS", 90),
+    "ARCHIVE_MAX_GB": _env_float("VISION_ARCHIVE_MAX_GB", 20.0),
+    "ARCHIVE_DIR": _env("VISION_ARCHIVE_DIR", ""),
     # 影像快取總量上限（MB）。
     "IMAGE_CACHE_MB": _env_int("VISION_IMAGE_CACHE_MB", 1024),
     # 是否把每次 run 寫進資料庫（背景執行緒批次寫）。高速產線可關閉只留統計。

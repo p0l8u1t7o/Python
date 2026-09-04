@@ -77,6 +77,13 @@
 ### 資料夾外掛（plugins/）
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 
+### 影像封存（apps/vision/archive.py）
+- **出貨預設不存**（`VISION_ARCHIVE_DEFAULT=off`）；`Flow.archive_policy` 疊在站點預設上（mode off／ng／all、pictures result／all、OK 取樣 sample、format、quality）。統計頁在「有 NG 但沒開封存」時顯示提示與一鍵開啟。
+- **不碰熱路徑**：引擎執行緒在 `_record` 只取影像參照（不複製不編碼），編碼與寫檔在既有的 `_Persister` 背景執行緒（`runner._write` 呼叫 `archive.save`）；持久化佇列深度 > `QUEUE_LIMIT` 就跳過封存（產線優先）。
+- 檔案在 `<ASSET_DIR 上層>/archive/<flow_id>/<YYYYMMDD>/<run_id>-<node>-<port>.jpg`（`VISION_ARCHIVE_DIR` 可改），路徑記在 `FlowRun.images`。
+- **`GET /images/{ref}` 記憶體找不到時自動回頭讀封存**——前端完全不必知道影像在哪，這是刻意的接縫。
+- 清理 `archive.purge()` 先天數（`ARCHIVE_DAYS`）再總容量（`ARCHIVE_MAX_GB`），**0＝不限**；持久化執行緒每 500 筆順便跑，`FlowRun` 列被淘汰時 `archive.drop_run` 一併刪檔。
+
 ### 引擎、Runner、影像快取
 - 執行緒池內的熱路徑**不碰資料庫**：來源與資產在 `Runner._prefetch()`（呼叫者執行緒）先開好；連續模式每 2 秒才回 DB 確認一次。
 - 配方（`FlowRecipe`）：執行時 `apply_recipe()` 疊參數再編譯；`run`／`preview`／TCP `recipe=` 都可指定，未指定用預設配方。每筆 run 帶 `station_id`（`VISION_STATION_ID`）；未 `commissioned` 的流程只加 warnings 不阻擋。

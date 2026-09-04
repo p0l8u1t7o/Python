@@ -41,7 +41,7 @@ from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal, require_engineer
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import schemas, scripts, teachguard, trace
+from apps.vision import archive, schemas, scripts, teachguard, trace
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
@@ -68,6 +68,7 @@ def _flow_out(flow: Flow) -> dict[str, Any]:
         "version": flow.version,
         "continuous_interval_ms": flow.continuous_interval_ms,
         "commissioned": flow.commissioned,
+        "archive_policy": archive.policy_for(flow),
         "recipe_count": flow.recipes.count(),
         "node_count": len((flow.graph or {}).get("nodes") or []),
         "created_at": flow.created_at.isoformat(),
@@ -132,6 +133,7 @@ def _run_row_out(run: FlowRun) -> dict[str, Any]:
         "duration_ms": run.duration_ms,
         "nodes": run.nodes,
         "outputs": run.outputs,
+        "images": run.images or {},
         "error": run.error,
         "started_at": run.started_at.timestamp(),
         "finished_at": run.finished_at.timestamp() if run.finished_at else None,
@@ -230,7 +232,7 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     flow = get_flow(flow_id)
     if not p.is_engineer:
         # 操作員只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
-        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned") if getattr(payload, f) is not None]
+        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned", "archive_policy") if getattr(payload, f) is not None]
         if touched or payload.graph is None:
             raise PermissionDenied("Engineer role required to change this flow", code="permission_denied")
         try:
@@ -249,6 +251,8 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         flow.continuous_interval_ms = max(0, payload.continuous_interval_ms)
     if payload.commissioned is not None:
         flow.commissioned = payload.commissioned
+    if payload.archive_policy is not None:
+        flow.archive_policy = archive.sanitize(payload.archive_policy)
     if payload.graph is not None:
         new_graph = validate_graph(payload.graph)
         scripts.check_graph_edit(principal(request), new_graph, flow=flow)  # Python 腳本：一般使用者只能用已核准的程式碼
@@ -656,9 +660,14 @@ def get_image(request: HttpRequest, ref: str, max: int = 0, fmt: str = "jpeg", q
     if authenticate(request) is None:
         return HttpResponse(status=401)
     max_side = max or None
-    data = store.encode(ref, max_side=max_side, fmt="png" if fmt == "png" else "jpeg", quality=q)
+    out_fmt = "png" if fmt == "png" else "jpeg"
+    data = store.encode(ref, max_side=max_side, fmt=out_fmt, quality=q)
     if data is None:
-        raise NotFound("影像已不在快取中", code="image_gone")
+        # 快取淘汰後回頭找封存：三天前那片不良品的影像就是這樣拿回來的。
+        img = archive.read(ref.split(":", 1)[0], ref)
+        data = encode_image(img, max_side=max_side, fmt=out_fmt, quality=q) if img is not None else None
+    if data is None:
+        raise NotFound("Image is no longer available (not in cache and not archived)", code="image_gone")
     response = HttpResponse(data, content_type="image/png" if fmt == "png" else "image/jpeg")
     response["Cache-Control"] = "private, max-age=3600"
     return response

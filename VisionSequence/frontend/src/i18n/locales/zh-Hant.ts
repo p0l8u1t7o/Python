@@ -1007,6 +1007,13 @@ const zhHant = {
     useDraft: '使用目前畫布（未儲存的圖）',
     cols2: { pick: '勾選' },
   },
+  archive: {
+    hint: '此流程已有 {{count}} 次不良，但沒有保留當時的影像——發生客訴時無法向客戶說明看到了什麼。',
+    enable: '保留不良影像',
+    enabled: '之後的不良影像會被保留',
+    hasImages: '已封存 {{count}} 張影像，點選此列檢視',
+    viewTitle: '封存影像',
+  },
   stats: {
     title: '統計',
     subtitle: '執行歷史與良率趨勢',
@@ -1025,7 +1032,7 @@ const zhHant = {
     noData: '此期間沒有執行紀錄',
     live: '記憶體即時統計',
     trend: '最近趨勢',
-    cols: { time: '時間', status: '狀態', trigger: '觸發', ms: 'ms', outputs: '輸出摘要', error: '錯誤', recipe: '配方', station: '站台' },
+    cols: { time: '時間', status: '狀態', trigger: '觸發', ms: 'ms', outputs: '輸出摘要', error: '錯誤', recipe: '配方', station: '站台', images: '影像' },
     statusAll: '全部狀態',
     backToEditor: '回編輯器',
     station: '站台',

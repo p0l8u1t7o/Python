@@ -7,6 +7,7 @@ import { ApiError, api, request } from './api'
 import type {
   CaptureClients,
   CaptureDownloadInfo,
+  ArchivePolicy,
   Asset,
   AuthUser,
   Capacity,
@@ -120,6 +121,8 @@ export interface FlowPatch {
   continuous_interval_ms?: number
   /** 參數卡頁「標記為已教導」 */
   commissioned?: boolean
+  /** 影像封存策略（工程師才能改） */
+  archive_policy?: Partial<ArchivePolicy>
 }
 
 export function useFlowMutations() {

@@ -158,6 +158,7 @@ export interface FlowStats {
 }
 
 export interface Flow {
+  archive_policy?: ArchivePolicy
   id: number
   name: string
   description: string
@@ -201,6 +202,8 @@ export interface NodeReport {
 }
 
 export interface RunReport {
+  /** 已封存的影像 {ref: 相對路徑}；空＝這次沒有封存，只能看記憶體快取還在不在 */
+  images?: Record<string, string>
   id: string
   flow_id: number
   flow_version: number
@@ -436,6 +439,15 @@ export interface FlowStatsDb {
 // ---- 整合頁 ----
 /** 工廠角色：admin＝系統與帳號；engineer＝建流程、訓練、調任何參數；operator＝執行、換線、只能動現場參數。 */
 export type Role = 'admin' | 'engineer' | 'operator'
+
+/** Which runs keep their pictures on disk (see apps/vision/archive.py). */
+export interface ArchivePolicy {
+  mode: 'off' | 'ng' | 'all'
+  pictures: 'result' | 'all'
+  sample: number
+  format: 'jpeg' | 'png'
+  quality: number
+}
 
 export interface IntegrationInfo {
   http_base: string

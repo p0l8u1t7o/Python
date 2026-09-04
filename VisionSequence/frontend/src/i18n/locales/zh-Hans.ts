@@ -1007,6 +1007,13 @@ const zhHans = {
     useDraft: '使用目前画布（未保存的图）',
     cols2: { pick: '勾选' },
   },
+  archive: {
+    hint: '此流程已有 {{count}} 次不良，但没有保留当时的图像——发生客诉时无法向客户说明看到了什么。',
+    enable: '保留不良图像',
+    enabled: '之后的不良图像会被保留',
+    hasImages: '已封存 {{count}} 张图像，点选此行查看',
+    viewTitle: '封存图像',
+  },
   stats: {
     title: '统计',
     subtitle: '运行历史与良率趋势',
@@ -1025,7 +1032,7 @@ const zhHans = {
     noData: '此期间没有运行纪录',
     live: '内存即时统计',
     trend: '最近趋势',
-    cols: { time: '时间', status: '状态', trigger: '触发', ms: 'ms', outputs: '输出摘要', error: '错误', recipe: '配方', station: '站台' },
+    cols: { time: '时间', status: '状态', trigger: '触发', ms: 'ms', outputs: '输出摘要', error: '错误', recipe: '配方', station: '站台', images: '图像' },
     statusAll: '全部状态',
     backToEditor: '回编辑器',
     station: '站台',

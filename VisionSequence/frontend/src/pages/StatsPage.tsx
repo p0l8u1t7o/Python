@@ -8,6 +8,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, BarChart3 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
+import { ArchiveHint, ArchivedImages } from '@/components/flow/ArchiveHint'
 import { outputsSummary } from '@/components/editor/ResultsPanel'
 import { Page } from '@/components/layout/AppShell'
 import { Button, Card, CardBody, CardHeader, EmptyRow, ErrorState, LoadingState, PageHeader, SegmentedControl, Select, StatusBadge, TBody, THead, Table, Td, Th, Tr, Tile } from '@/components/ui'
@@ -47,6 +48,7 @@ export function StatsPage() {
   const stats = useFlowStats(Number.isNaN(id) ? null : id, Number(period))
   const history = useRunHistory(Number.isNaN(id) ? null : id, { status, limit: PAGE_SIZE, offset })
   const series = useRunHistory(Number.isNaN(id) ? null : id, { limit: 100, offset: 0 })
+  const [openRun, setOpenRun] = useState<string | null>(null)
 
   const durationData = useMemo(
     () => [...(series.data?.items ?? [])].reverse().map((r, i) => ({ i: i + 1, ms: Math.round(r.duration_ms * 10) / 10, status: r.status, time: new Date(r.started_at * 1000).toLocaleTimeString() })),
@@ -142,6 +144,7 @@ export function StatsPage() {
                 <Select className="!py-1 text-xs" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} placeholder={t('stats.statusAll')} aria-label={t('stats.statusAll')} options={['ok', 'ng', 'failed', 'cancelled'].map((s) => ({ value: s, label: t(`status.${s}`) }))} data-testid="stats-status-filter" />
               }
             />
+            <ArchiveHint flow={flow.data} ngCount={(stats.data?.by_status?.ng ?? 0) + (stats.data?.by_status?.failed ?? 0)} />
             {history.isPending ? (
               <LoadingState compact />
             ) : history.isError ? (
@@ -158,13 +161,15 @@ export function StatsPage() {
                     <Th align="right">{t('stats.cols.ms')}</Th>
                     <Th>{t('stats.cols.outputs')}</Th>
                     <Th>{t('stats.cols.error')}</Th>
+                    <Th align="right">{t('stats.cols.images')}</Th>
                   </THead>
                   <TBody>
                     {history.data.items.length === 0 ? (
-                      <EmptyRow colSpan={8} message={t('stats.noData')} />
+                      <EmptyRow colSpan={9} message={t('stats.noData')} />
                     ) : (
                       history.data.items.map((run) => (
-                        <Tr key={run.id}>
+                        <Tr key={run.id} onClick={Object.keys(run.images ?? {}).length ? () => setOpenRun(openRun === run.id ? null : run.id) : undefined}
+                          className={Object.keys(run.images ?? {}).length ? 'cursor-pointer' : ''} data-testid={`history-row-${run.id}`}>
                           <Td className="tnum whitespace-nowrap text-xs">{new Date(run.started_at * 1000).toLocaleString()}</Td>
                           <Td><StatusBadge status={run.status} /></Td>
                           <Td className="text-xs text-muted">{run.trigger}</Td>
@@ -173,6 +178,7 @@ export function StatsPage() {
                           <Td align="right" className="tnum">{Math.round(run.duration_ms)}</Td>
                           <Td className="max-w-[320px] truncate font-mono text-[11px] text-muted"><span title={JSON.stringify(run.outputs)}>{outputsSummary(run.outputs)}</span></Td>
                           <Td className="max-w-[240px] truncate text-xs text-critical"><span title={run.error}>{run.error}</span></Td>
+                          <Td align="right">{Object.keys(run.images ?? {}).length ? <ArchivedImages run={run} open={openRun === run.id} /> : null}</Td>
                         </Tr>
                       ))
                     )}
