@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 67 個內建工具、169 個 API 端點、22 個資料模型、18 個前端頁面、17 頁文件、後端 405 項＋前端 47 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 67 個內建工具、180 個 API 端點、26 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁文件、後端 515 項＋前端 57 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -321,7 +321,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 ## 驗證與測試
 
 ```bash
-# 後端：405 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、外掛、通訊、擷取端 hub 與擷取端程式）
+# 後端：515 項（引擎、工具純度／位深、API、GET 端點 smoke、範例樣板實跑、AI 助手、DL、配方、Golden、角色權限、外掛、通訊、擷取端 hub 與擷取端程式）
 .venv/Scripts/python.exe manage.py test --noinput
 .venv/Scripts/python.exe -m ruff check apps tests config vscapture
 
@@ -331,7 +331,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 # 擷取端傳輸效能（2000 萬畫素彩色，共享記憶體與 TCP）
 .venv/Scripts/python.exe scripts/bench_capture.py
 
-# 前端：型別、vitest（i18n 三語系對齊與用詞規範、純函式單元、9 頁 render smoke）、build
+# 前端：型別、vitest（i18n 三語系對齊與用詞規範、原始碼不得寫死全形標點、純函式單元、頁面 render smoke）、build
 cd frontend && npm run -s typecheck && npm test && npm run build
 
 # 效能與等價性

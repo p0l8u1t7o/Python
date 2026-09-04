@@ -126,7 +126,8 @@ export function GlobalSearch() {
       out.push({ group: 'sources', label: s.name, sub: s.kind, to: '/sources', icon: Camera })
     }
     for (const c of (connections.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
-      out.push({ group: 'connections', label: c.name, sub: c.kind, to: '/integration/connections', icon: Cable })
+      // 連線由用到它的整合頁管理：Modbus 系的到 Modbus 頁，其餘（上位機 TCP、外掛）到 TCP 頁
+      out.push({ group: 'connections', label: c.name, sub: c.kind, to: c.kind.startsWith('modbus') || c.kind === 'dio_sim' ? '/integration/modbus' : '/integration/tcp', icon: Cable })
     }
     for (const a of (assets.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
       out.push({ group: 'assets', label: a.name, sub: a.kind, to: '/assets', icon: Images })

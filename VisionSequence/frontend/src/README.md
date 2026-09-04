@@ -17,10 +17,11 @@
 | `HelpPage.tsx` | 說明 HelpPage | `/help` |
 | `LoginPage.tsx` | 登入 LoginPage | `/login` |
 | `StatsPage.tsx` | 統計 StatsPage（`TrendStrip` 迷你趨勢也在這） | `/flows/:id/stats` |
-| `IntegrationPage.tsx` | 整合頁 IntegrationPage（HTTP／TCP 測試、事件監看、鎖定、回傳格式、PLC 輸出） | `/integration` |
+| `IntegrationPage.tsx`＋`pages/integration/*` | 整合頁 IntegrationPage（外框＋五個子頁：HTTP 測試與回傳格式、TCP 指令與失敗碼、事件監看、Modbus、擷取端；連線由用到它的頁面自己管） | `/integration/<section>` |
 | `TeachPage.tsx` | 參數卡 TeachPage（三欄：步驟清單／聚焦步驟的教導參數／影像視窗＋結果摘要；頂列兩排；編輯對象下拉、存為新配方（走 Check List）、管理配方（`RecipeDrawer`）、綁定標籤、標記為已教導） | `/flows/:id/teach` |
 | `GoldenPage.tsx` | Golden Set GoldenPage（案例表、上傳、回歸：KPI／混淆矩陣／退步清單／全部案例、影像視窗） | `/flows/:id/golden` |
-| `ConnectionsPage.tsx` | 連線 ConnectionsPage（PLC／上位機連線 CRUD、測試連線、手動寫入、狀態檢視） | `/connections` |
+| `components/integration/ConnectionsSection.tsx` | 連線（PLC／上位機連線 CRUD、測試連線、手動寫入、狀態檢視）；`section` 決定這一頁收哪些 kind | 內嵌在 Modbus／TCP 兩個整合頁 |
+| `components/auth/RolePermissionsCard.tsx` | 角色權限勾選表（管理員決定工程師與操作員能用哪些功能） | 內嵌在 `/users` |
 
 ## 流程編輯器的區塊 `components/editor/`
 
