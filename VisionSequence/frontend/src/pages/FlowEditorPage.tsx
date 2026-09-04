@@ -858,6 +858,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     <div className="flex h-full flex-col">
       <EditorToolbar
         flowId={flowId}
+        onVersionRestored={() => { setDraft(flowId, null); void flow.refetch() }}
         name={meta.name}
         onNameChange={(name) => {
           setMeta({ ...meta, name })

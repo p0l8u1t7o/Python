@@ -77,6 +77,12 @@
 ### 資料夾外掛（plugins/）
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 
+### 版本歷史（apps/vision/versions.py、graphdiff.py）
+- `FlowVersion(flow, version, graph, saved_by, saved_at, note, is_released)`；**graph 真的變了才 +1 並存快照**（存同一張圖不產生新版本，`Flow.version` 語意從「存了幾次」變成「圖變了幾次」）。建立流程記第一版。
+- `graphdiff.diff` 是共用的差異器（版本比較與稽核都用）：參數逐條列、結構只給數量、純位移不算變更；`summarize()` 產生「threshold 60 → 46, +1 step」的一行摘要。
+- **還原產生新版本、不改寫歷史**（先存目前這版再寫舊圖）；**發行版 `is_released` 只是標記不擋執行**，淘汰（`KEEP_VERSIONS` 預設 50）永遠保留已發行版。
+- 前端在編輯器工具列的「版本」鈕（`components/flow/VersionPanel.tsx`），還原後 `setDraft(flowId, null)` 再 refetch。
+
 ### 影像封存（apps/vision/archive.py）
 - **出貨預設不存**（`VISION_ARCHIVE_DEFAULT=off`）；`Flow.archive_policy` 疊在站點預設上（mode off／ng／all、pictures result／all、OK 取樣 sample、format、quality）。統計頁在「有 NG 但沒開封存」時顯示提示與一鍵開啟。
 - **不碰熱路徑**：引擎執行緒在 `_record` 只取影像參照（不複製不編碼），編碼與寫檔在既有的 `_Persister` 背景執行緒（`runner._write` 呼叫 `archive.save`）；持久化佇列深度 > `QUEUE_LIMIT` 就跳過封存（產線優先）。

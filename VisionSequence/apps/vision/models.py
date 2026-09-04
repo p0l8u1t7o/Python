@@ -39,6 +39,32 @@ class Flow(models.Model):
         return self.name
 
 
+class FlowVersion(models.Model):
+    """流程每一次存檔的快照。
+
+    `Flow.version` 本來只是一個累加的整數——良品基準寫著「流程 v40」，可是 v40 的圖早就不存在，
+    既不能比較也回不去。這張表把每次存檔的 graph 留下來，並允許把某一版標記為「發行版」
+    （只是標記，不擋執行；量產跑的仍是流程當前的圖）。
+    """
+
+    flow = models.ForeignKey("Flow", on_delete=models.CASCADE, related_name="versions")
+    version = models.PositiveIntegerField()
+    graph = models.JSONField(default=dict)
+    saved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    saved_at = models.DateTimeField(auto_now_add=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    #: 工程師簽核過的版本；淘汰時永遠保留。
+    is_released = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-version"]
+        unique_together = [("flow", "version")]
+        indexes = [models.Index(fields=["flow", "-version"])]
+
+    def __str__(self) -> str:
+        return f"{self.flow_id} v{self.version}"
+
+
 class FlowRecipe(models.Model):
     """配方：同一流程的一組參數覆寫（多料號換線用）。param_overrides = {node_id: {param: value}}。"""
 

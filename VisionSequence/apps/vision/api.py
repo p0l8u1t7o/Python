@@ -41,7 +41,7 @@ from ninja import File, Form, Router, Schema, UploadedFile
 
 from apps.accounts.security import authenticate, principal, require_engineer
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import archive, schemas, scripts, teachguard, trace
+from apps.vision import archive, schemas, scripts, teachguard, trace, versions
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, ImageSource, ResourceGroup
@@ -215,6 +215,7 @@ def create_flow(request: HttpRequest, payload: schemas.FlowIn):
             )
     except IntegrityError:
         raise Conflict("已有同名流程", code="flow_name_taken") from None
+    versions.snapshot(flow, user=principal(request).user, note="created")
     return 201, _flow_out(flow)
 
 
@@ -253,17 +254,74 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         flow.commissioned = payload.commissioned
     if payload.archive_policy is not None:
         flow.archive_policy = archive.sanitize(payload.archive_policy)
+    graph_changed = False
     if payload.graph is not None:
         new_graph = validate_graph(payload.graph)
         scripts.check_graph_edit(principal(request), new_graph, flow=flow)  # Python 腳本：一般使用者只能用已核准的程式碼
+        graph_changed = new_graph != (flow.graph or {})
         flow.graph = new_graph
-        flow.version += 1
+        if graph_changed:
+            flow.version += 1
     try:
         with transaction.atomic():
             flow.save()
     except IntegrityError:
         raise Conflict("已有同名流程", code="flow_name_taken") from None
+    if graph_changed:
+        versions.snapshot(flow, user=p.user)
     return _flow_out(flow)
+
+
+# ---------------------------------------------------------------------------
+# 版本歷史（apps/vision/versions.py）
+# ---------------------------------------------------------------------------
+@router.get("/flows/{flow_id}/versions")
+def list_versions(request: HttpRequest, flow_id: int):
+    """每次存檔的快照，新的在前；`summary` 是與前一版之間的差異。"""
+    flow = get_flow(flow_id)
+    if not _visible_flows(request).filter(pk=flow.pk).exists():
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
+    return {"items": versions.listing(flow), "current": flow.version, "keep": int(settings.VISION.get("KEEP_VERSIONS", 50))}
+
+
+@router.get("/flows/{flow_id}/versions/{version}")
+def get_version(request: HttpRequest, flow_id: int, version: int):
+    """那一版的圖，外加它與目前這版之間的差異（參數逐條列出，結構只給數量）。"""
+    flow = get_flow(flow_id)
+    if not _visible_flows(request).filter(pk=flow.pk).exists():
+        raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
+    data = versions.compare(flow, version)
+    if not data:
+        raise NotFound(f"Version {version} not found", code="version_not_found")
+    return data
+
+
+@router.post("/flows/{flow_id}/versions/{version}/restore")
+def restore_version(request: HttpRequest, flow_id: int, version: int):
+    """把舊版拿回來——**產生新版本，不改寫歷史**。"""
+    p = require_engineer(request)
+    flow = _editable_flow(request, flow_id)
+    row = versions.restore(flow, version, user=p.user)
+    if row is None:
+        raise NotFound(f"Version {version} not found", code="version_not_found")
+    return {"restored_from": version, **_flow_out(flow)}  # 版本號變了，編譯快取自然失效
+
+
+@router.post("/flows/{flow_id}/versions/{version}/release")
+def release_version(request: HttpRequest, flow_id: int, version: int):
+    """標記／取消標記為發行版。只是標記，不擋任何執行。"""
+    require_engineer(request)
+    flow = _editable_flow(request, flow_id)
+    row = flow.versions.filter(version=version).first()
+    if row is None:
+        raise NotFound(f"Version {version} not found", code="version_not_found")
+    body = _json_body(request)
+    row.is_released = bool(body.get("released", True))
+    note = body.get("note")
+    if isinstance(note, str):
+        row.note = note[:200]
+    row.save(update_fields=["is_released", "note"])
+    return versions.out(row)
 
 
 @router.delete("/flows/{flow_id}", response={204: None})

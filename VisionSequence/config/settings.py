@@ -129,6 +129,7 @@ VISION = {
     "PERSIST_RUNS": _env_bool("VISION_PERSIST_RUNS", True),
     # 資料庫保留的 run 記錄上限（每流程）。
     "KEEP_RUN_ROWS": _env_int("VISION_KEEP_RUN_ROWS", 2000),
+    "KEEP_VERSIONS": _env_int("VISION_KEEP_VERSIONS", 50),
     # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。
     "PLUGIN_DIR": Path(_env("VISION_PLUGIN_DIR", str(BASE_DIR / "plugins"))),
     # 外掛工具模組（逗號分隔的 python 模組路徑），啟動時 import；模組內呼叫 register()。

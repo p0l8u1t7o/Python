@@ -135,7 +135,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html" aria-current="page">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. 一頁總覽</a></li><li><a href="#models">1. 資料模型（apps/vision/models.py）</a><ul><li><a href="#sec-2-1">graph JSON</a></li></ul></li><li><a href="#tools">2. 工具框架（apps/vision/tools/base.py）</a><ul><li><a href="#sec-3-1">內建類別（52 個工具）</a></li></ul></li><li><a href="#graph">3. 圖驗證與編譯（graph.py）</a></li><li><a href="#engine">4. 引擎（engine.py）</a></li><li><a href="#runner">5. Runner 與並行（runner.py）</a></li><li><a href="#images">6. 影像快取（images.py）</a></li><li><a href="#archive">6b. 影像封存（archive.py）</a></li><li><a href="#sources">7. 影像來源（sources/）</a></li><li><a href="#api">8. API / SSE / TCP</a></li><li><a href="#frontend">9. 前端（frontend/src）</a></li><li><a href="#accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</a></li><li><a href="#more">9c. 範本庫、批次測試、整合工具（api_more.py）</a></li><li><a href="#plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</a></li><li><a href="#settings">10. 設定值（config/settings.py → VISION）</a></li><li><a href="#tests">11. 測試（tests/）</a></li><li><a href="#pitfalls">12. 踩過的坑</a></li></ul></aside><article class="doc wide">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#overview">0. 一頁總覽</a></li><li><a href="#models">1. 資料模型（apps/vision/models.py）</a><ul><li><a href="#sec-2-1">graph JSON</a></li></ul></li><li><a href="#tools">2. 工具框架（apps/vision/tools/base.py）</a><ul><li><a href="#sec-3-1">內建類別（52 個工具）</a></li></ul></li><li><a href="#graph">3. 圖驗證與編譯（graph.py）</a></li><li><a href="#engine">4. 引擎（engine.py）</a></li><li><a href="#runner">5. Runner 與並行（runner.py）</a></li><li><a href="#images">6. 影像快取（images.py）</a></li><li><a href="#versions">5b. 版本歷史（versions.py、graphdiff.py）</a></li><li><a href="#archive">6b. 影像封存（archive.py）</a></li><li><a href="#sources">7. 影像來源（sources/）</a></li><li><a href="#api">8. API / SSE / TCP</a></li><li><a href="#frontend">9. 前端（frontend/src）</a></li><li><a href="#accounts">9b. 帳號、擁有者與引擎鎖定（apps/accounts）</a></li><li><a href="#more">9c. 範本庫、批次測試、整合工具（api_more.py）</a></li><li><a href="#plan">9d. 開發計畫 v0.2 落地：參數卡、配方、站台、Golden Set、Modbus 輸出</a></li><li><a href="#settings">10. 設定值（config/settings.py → VISION）</a></li><li><a href="#tests">11. 測試（tests/）</a></li><li><a href="#pitfalls">12. 踩過的坑</a></li></ul></aside><article class="doc wide">
 <h1>VisionSequence 設計手冊</h1>
 <p>給要維護或擴充這個平台的人看。與 <a href="workflow-design.html">workflow-design.html</a>（ZQS Cloud 的控制流程引擎）同一套思想，但引擎換成毫秒級的<strong>行程內資料流</strong>。</p>
 
@@ -243,6 +243,15 @@ run.outputs = context["_outputs"]（judge / output 工具寫入）</pre>
 
 <h2 id="images">6. 影像快取（images.py）</h2>
 <p>ref = <code>"{run_id}:{node_id}:{port}"</code>。每流程保留最近 KEEP_RUN_IMAGES 次 run 的影像；全域 IMAGE_CACHE_MB 以 bytes 計 LRU。<code>encode(ref, max_side, fmt, quality)</code> 延遲到有人要看才做，且依請求最長邊縮小（前端預設 1600）。浮點／16 位元影像正規化到 8 位元顯示。</p>
+
+<h2 id="versions">5b. 版本歷史（versions.py、graphdiff.py）</h2>
+<ul>
+<li><code>FlowVersion(flow, version, graph, saved_by, saved_at, note, is_released)</code>：每次 graph 真的變了才 +1 並存快照（存同一張圖不產生新版本）。建立流程時記第一版 note="created"。</li>
+<li><strong>差異是講給人聽的</strong>（<code>graphdiff.diff</code>）：參數變更逐條列（節點、參數、前後值），結構只給數量（新增／刪除節點、連線增減），純畫布位移不算變更。<code>summarize()</code> 產生「threshold 60 → 46, +1 step」這種一行摘要給清單用。</li>
+<li><strong>還原產生新版本，不改寫歷史</strong>：<code>versions.restore</code> 先把目前這版存起來，再把舊圖寫成下一版（note="restored from vN"）。</li>
+<li><strong>發行版只是標記</strong>：<code>is_released</code> 供品質簽核用，<strong>不擋任何執行</strong>；淘汰（<code>KEEP_VERSIONS</code>，預設 50）永遠保留已發行的版本。</li>
+<li>API：<code>GET /flows/{id}/versions</code>、<code>GET /versions/{v}</code>（含與目前版的差異）、<code>POST /versions/{v}/restore</code>、<code>POST /versions/{v}/release</code>；前端在編輯器工具列的「版本」鈕（<code>components/flow/VersionPanel.tsx</code>）。</li>
+</ul>
 
 <h2 id="archive">6b. 影像封存（archive.py）</h2>
 <ul>

@@ -57,7 +57,12 @@ class ApiTests(TestCase):
     def test_flow_crud_and_version(self):
         flow = self.create_flow()
         self.assertEqual(flow["version"], 1)
+        # 存了同一張圖不會產生新版本（版本＝圖真的變了幾次，不是存了幾次）
         r = self.client.patch(f"/api/vision/flows/{flow['id']}", data=json.dumps({"graph": self.graph, "description": "d"}), content_type="application/json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["version"], 1)
+        changed = {**self.graph, "nodes": [{**n, "params": {**(n.get("params") or {}), "note": "x"}} if n["id"] == self.graph["nodes"][0]["id"] else n for n in self.graph["nodes"]]}
+        r = self.client.patch(f"/api/vision/flows/{flow['id']}", data=json.dumps({"graph": changed}), content_type="application/json")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["version"], 2)
         # 同名衝突

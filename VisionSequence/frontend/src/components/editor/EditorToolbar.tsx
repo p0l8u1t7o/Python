@@ -12,12 +12,15 @@ import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, 
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
+import { VersionButton } from '@/components/flow/VersionPanel'
 import { BoundRecipeSelect } from '@/components/recipes/BoundRecipeSelect'
 import { Badge, Button, IconButton } from '@/components/ui'
 import type { FlowRecipe, ScratchImage } from '@/lib/types'
 
 export interface EditorToolbarProps {
   flowId: number
+  /** 還原舊版之後要重新載入畫布 */
+  onVersionRestored?: () => void
   name: string
   onNameChange: (name: string) => void
   dirty: boolean
@@ -129,6 +132,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
         {p.onManageRecipes ? (
           <Button size="sm" icon={<BookOpen size={14} />} onClick={p.onManageRecipes} title={t('recipes.manage')} data-testid="btn-recipes">{t('recipes.drawerTitle')}</Button>
         ) : null}
+        <VersionButton flowId={p.flowId} onRestored={p.onVersionRestored} />
         {p.recipes && p.recipes.length > 0 ? <BoundRecipeSelect flowId={p.flowId} recipes={p.recipes} disabled={p.readOnly} testId="editor-recipe" /> : null}
         {p.readOnly ? (
           <span className="flex items-center gap-1 whitespace-nowrap text-[11px] text-muted" title={t('flows.readOnlyHint')} data-testid="readonly-badge">
