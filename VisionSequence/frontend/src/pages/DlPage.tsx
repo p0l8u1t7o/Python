@@ -137,7 +137,7 @@ function FromSourceModal({ open, onClose, project, showLabel }: { open: boolean;
       footer={<><Button onClick={onClose}>{t('common.cancel')}</Button><Button variant="primary" loading={fromSource.isPending} disabled={!sourceId} onClick={() => void submit()}>{t('dl.grab')}</Button></>}>
       <div className="space-y-3">
         <Select label={t('dl.source')} value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder={t('dl.pickSource')}
-          options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name}（${s.kind}）` }))} />
+          options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})` }))} />
         <TextInput label={t('dl.grabCount')} type="number" min={1} max={50} value={count} onChange={(e) => setCount(e.target.value)} />
         {showLabel ? (
           <Select label={t('dl.presetLabel')} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('dl.unlabeled')}
@@ -222,7 +222,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
               <div className="h-full rounded-full bg-gradient-to-r from-brand to-info transition-[width] duration-300" style={{ width: `${percent}%` }} />
             </div>
             <div className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="min-w-0 truncate text-muted">{job.data?.stage}{mine ? '' : `（${job.data?.project_name}）`}</span>
+              <span className="min-w-0 truncate text-muted">{job.data?.stage}{mine ? '' : ` (${job.data?.project_name})`}</span>
               <span className="tnum shrink-0 font-medium text-content">{percent}%</span>
             </div>
             <div className="flex items-center gap-2 pt-0.5">
@@ -260,12 +260,12 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         {/* 設定 */}
         {mainParams.map(field)}
         <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
-          hint={devices.data?.gpus?.length ? devices.data.gpus.map((g) => g.name).join('、') : t('dl.noGpu')}
+          hint={devices.data?.gpus?.length ? devices.data.gpus.map((g) => g.name).join(', ') : t('dl.noGpu')}
           options={(devices.data?.train_devices ?? ['cpu']).filter((d) => trainer.devices.includes(d) || d === 'cpu').map((d) => ({ value: d, label: d.toUpperCase() }))} />
         <TextInput label={t('dl.assetName')} placeholder={`${project.name}-model`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
         {Object.entries(groups).map(([name, list]) => (
           <details key={name} className="rounded-md border border-line px-2.5 py-1.5">
-            <summary className="cursor-pointer select-none text-xs font-medium text-muted">{name}（{list.length}）</summary>
+            <summary className="cursor-pointer select-none text-xs font-medium text-muted">{name} ({list.length})</summary>
             <div className="space-y-3 pt-2">{list.map(field)}</div>
           </details>
         ))}
@@ -492,7 +492,7 @@ function ImportProgress({ state }: { state: { done: number; total: number; faile
       </div>
       <p className="text-xs text-muted">
         {t('dl.importing', { done: state.done, total: state.total })}
-        {state.failed ? <span className="text-critical">（{t('dl.importFailedCount', { failed: state.failed })}）</span> : null}
+        {state.failed ? <span className="text-critical"> ({t('dl.importFailedCount', { failed: state.failed })})</span> : null}
       </p>
     </div>
   )
@@ -710,7 +710,7 @@ export function DlPage() {
         actions={
           <span className="flex items-center gap-2 text-xs text-muted" title={(devices.data?.providers ?? []).join('\n')}>
             <Cpu size={14} />
-            {devices.data ? (accel.length ? t('dl.accelOn', { list: accel.map((p) => p.replace('ExecutionProvider', '')).join('、') }) : t('dl.cpuOnly')) : '…'}
+            {devices.data ? (accel.length ? t('dl.accelOn', { list: accel.map((p) => p.replace('ExecutionProvider', '')).join(', ') }) : t('dl.cpuOnly')) : '…'}
             {devices.data?.gpus?.length ? <Badge tone="ok">{devices.data.gpus[0].name}</Badge> : null}
           </span>
         }
@@ -818,11 +818,11 @@ export function DlPage() {
                     <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t('dl.filterLabel')} className="!h-8 !text-xs"
                       options={[
                         { value: '__all__', label: t('dl.filterAll') },
-                        { value: '__unlabeled__', label: `${t('dl.unlabeled')}（${counts?.unlabeled ?? 0}）` },
+                        { value: '__unlabeled__', label: `${t('dl.unlabeled')} (${counts?.unlabeled ?? 0})` },
                         { value: '__auto__', label: t('dl.filterAuto') },
-                        { value: '__train__', label: `${t('dl.split.train')}（train）` },
-                        { value: '__val__', label: `${t('dl.split.val')}（val）` },
-                        { value: '__test__', label: `${t('dl.split.test')}（test）` },
+                        { value: '__train__', label: `${t('dl.split.train')} (train)` },
+                        { value: '__val__', label: `${t('dl.split.val')} (val)` },
+                        { value: '__test__', label: `${t('dl.split.test')} (test)` },
                         ...project.data.classes.map((c) => ({ value: c, label: c })),
                       ]} />
                     <Button size="sm" variant="ghost" title={t('dl.deleteProject')} onClick={() => setDeleting(true)}><Trash2 size={14} /></Button>

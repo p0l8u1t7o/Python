@@ -265,7 +265,7 @@ export function FlowsPage() {
               <span className="text-xs text-muted">{importFile?.name ?? '—'}</span>
             </div>
           </div>
-          <Select label={t('flows.importSource')} value={importSource} placeholder={t('flows.importSourceNone')} onChange={(e) => setImportSource(e.target.value)} options={(sources.data?.items ?? []).map((src) => ({ value: String(src.id), label: `${src.name}（${src.kind}）` }))} data-testid="import-source" />
+          <Select label={t('flows.importSource')} value={importSource} placeholder={t('flows.importSourceNone')} onChange={(e) => setImportSource(e.target.value)} options={(sources.data?.items ?? []).map((src) => ({ value: String(src.id), label: `${src.name} (${src.kind})` }))} data-testid="import-source" />
         </div>
       </Modal>
 

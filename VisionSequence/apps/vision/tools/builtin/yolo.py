@@ -267,7 +267,7 @@ class YoloClassifyTool(_YoloTool):
         overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
         overlays.append({"kind": "text", "x": float(ax) + 4, "y": float(ay) + 18, "text": f"{best['label']} {best['score']:.2f}", "color": GREEN if ok else "#ef4444"})
         return Result(outputs={"label": best["label"], "score": best["score"], "index": best["index"], "top": top}, overlays=overlays,
-                      branch="pass" if ok else "fail", status="ok" if ok else "ng", message=f"{best['label']} {best['score']:.2f}（{device}{'，' + note if note else ''}）")
+                      branch="pass" if ok else "fail", status="ok" if ok else "ng", message=f"{best['label']} {best['score']:.2f} ({device}{', ' + note if note else ''})")
 
 
 class YoloPoseTool(_YoloTool):

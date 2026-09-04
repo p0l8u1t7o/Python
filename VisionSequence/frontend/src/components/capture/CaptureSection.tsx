@@ -70,7 +70,7 @@ function ChannelRows({ client, onPreview }: { client: CaptureClient; onPreview: 
             </span>
           </Td>
           <Td className="tnum whitespace-nowrap text-xs">{ageText(t, ch.last_frame_age_ms)}{ch.frames ? <span className="text-muted"> · {t('integration.capture.frames', { count: ch.frames })}</span> : null}</Td>
-          <Td className="max-lg:hidden text-xs text-muted">{ch.in_use_by.length ? ch.in_use_by.join('、') : '—'}</Td>
+          <Td className="max-lg:hidden text-xs text-muted">{ch.in_use_by.length ? ch.in_use_by.join(', ') : '—'}</Td>
           <Td align="right">
             <span className="inline-flex items-center justify-end gap-2">
               <Switch checked={ch.streaming} label={t('integration.capture.stream')} onChange={(v) => stream.mutate({ client: client.name, channel: ch.id, enabled: v }, { onError: (e) => toast.error(errorMessage(e)) })} />
@@ -111,7 +111,7 @@ export function CaptureSection() {
             </div>
           ) : null}
           <div className="rounded-md border border-line bg-surface px-3 py-2 text-sm">
-            <span className="text-muted">{t('integration.capture.serverAddress')}：</span><code className="font-mono">{host}:{port}</code>{' '}
+            <span className="text-muted">{t('integration.capture.serverAddress')}: </span><code className="font-mono">{host}:{port}</code>{' '}
             <Badge tone={listening ? 'ok' : 'warning'}>{listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
           </div>
           <div>

@@ -221,7 +221,7 @@ class ReadModbusTool(Tool):
         first = next((v for v in values if isinstance(v, (int, float, bool))), 0)
         return Result(
             outputs={"values": values, "value": float(first), "ok": True},
-            message="、".join(f"{k}={v}" for k, v in named.items())[:200],
+            message=", ".join(f"{k}={v}" for k, v in named.items())[:200],
             detail=detail, context=result_context,
         )
 

@@ -50,7 +50,7 @@ class ImageSourceTool(Tool):
                 from apps.vision.sources import last_error_of  # 來源自己知道的原因（例如擷取端未連線、資料夾讀完）
 
                 reason = last_error_of(source_id)
-                raise ToolError(f"Image source {source_id} returned no image" + (f"：{reason}" if reason else ""))
+                raise ToolError(f"Image source {source_id} returned no image" + (f": {reason}" if reason else ""))
         if image is None:
             raise ToolError("No scratch image: upload one from the toolbar, or push an image through the API")
         convert = ctx.param("convert", "keep")

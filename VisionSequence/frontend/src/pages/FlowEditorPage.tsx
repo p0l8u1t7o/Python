@@ -621,7 +621,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   //: 全域 AI 助手：在編輯器內可直接請助手修改目前畫布（套用走復原堆疊）
   useRegisterAssistantContext({
     kind: 'flow_editor', flowId, flowName: meta.name, imageRef: lastSourceRef, execLocked, getGraph: currentGraph,
-    applyGraph: (g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}：${why}` : t('agent.applied')) },
+    applyGraph: (g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}: ${why}` : t('agent.applied')) },
   }, [flowId, meta.name, lastSourceRef, execLocked])
   /** 固定的來源影像：暫存影像優先，其次「用上次影像重跑」。 */
   const pinnedRef = scratch?.ref ?? (reuseImage ? lastSourceRef : null)

@@ -79,20 +79,20 @@ export function InfoBar({ info }: { info: IntegrationInfo }) {
   return (
     <Card className="mb-4 px-4 py-2">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs" data-testid="integration-info">
-        <span><span className="text-muted">{t('integration.info.httpBase')}：</span><code className="font-mono">{info.http_base}</code></span>
+        <span><span className="text-muted">{t('integration.info.httpBase')}: </span><code className="font-mono">{info.http_base}</code></span>
         <span className="flex items-center gap-1">
-          <span className="text-muted">{t('integration.info.tcp')}：</span><code className="font-mono" title={t('integration.info.bound', { host: info.tcp_host })}>{connectHost(info.tcp_connect_host, info.tcp_host, info.host)}:{info.tcp_port}</code>
+          <span className="text-muted">{t('integration.info.tcp')}: </span><code className="font-mono" title={t('integration.info.bound', { host: info.tcp_host })}>{connectHost(info.tcp_connect_host, info.tcp_host, info.host)}:{info.tcp_port}</code>
           <Badge tone={info.tcp_listening ? 'ok' : 'warning'}>{info.tcp_listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
         </span>
         {info.capture_port ? (
           <span className="flex items-center gap-1">
-            <span className="text-muted">{t('integration.info.capture')}：</span><code className="font-mono" title={t('integration.info.bound', { host: info.capture_host ?? '' })}>{connectHost(info.capture_connect_host, info.capture_host, info.host)}:{info.capture_port}</code>
+            <span className="text-muted">{t('integration.info.capture')}: </span><code className="font-mono" title={t('integration.info.bound', { host: info.capture_host ?? '' })}>{connectHost(info.capture_connect_host, info.capture_host, info.host)}:{info.capture_port}</code>
             <Badge tone={info.capture_listening ? 'ok' : 'warning'}>{info.capture_listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
           </span>
         ) : null}
-        <span><span className="text-muted">{t('integration.info.apiKey')}：</span>{info.api_key_required ? t('integration.info.required') : t('integration.info.optional')}</span>
-        <span><span className="text-muted">{t('integration.info.workers')}：</span>{info.max_workers}</span>
-        <span><span className="text-muted">{t('integration.info.timeout')}：</span>{info.run_timeout_s}</span>
+        <span><span className="text-muted">{t('integration.info.apiKey')}: </span>{info.api_key_required ? t('integration.info.required') : t('integration.info.optional')}</span>
+        <span><span className="text-muted">{t('integration.info.workers')}: </span>{info.max_workers}</span>
+        <span><span className="text-muted">{t('integration.info.timeout')}: </span>{info.run_timeout_s}</span>
       </div>
     </Card>
   )

@@ -138,7 +138,7 @@ function UserMenu() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="btn-icon"
-        title={`${name}${auth.isAdmin ? `（${t('auth.admin')}）` : ''}`}
+        title={`${name}${auth.isAdmin ? ` (${t('auth.admin')})` : ''}`}
         aria-label={t('auth.currentUser')}
         data-testid="user-menu"
       >

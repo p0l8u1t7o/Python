@@ -797,7 +797,7 @@ export function AgentPage() {
               ))}
               {drawing ? (
                 <Button size="sm" className="w-full !justify-center" icon={<Plus size={13} />} onClick={addRoi} data-testid="agent-add-roi">
-                  {t('agent.addRoi')}（{roiTag(rois.length)} · {drawing.shape}）
+                  {t('agent.addRoi')} ({roiTag(rois.length)} · {drawing.shape})
                 </Button>
               ) : null}
             </Card>
@@ -839,7 +839,7 @@ export function AgentPage() {
                   <HelpCircle size={14} className="text-brand" />
                   <p className="text-xs font-semibold">{t('agent.clarifyTitle')}</p>
                 </div>
-                {clarify.summary ? <p className="text-[11px] text-muted">{t('agent.clarifySummary')}：{clarify.summary}</p> : null}
+                {clarify.summary ? <p className="text-[11px] text-muted">{t('agent.clarifySummary')}: {clarify.summary}</p> : null}
                 {clarify.questions.map((q, i) => (
                   <div key={q.id} className="space-y-1.5" data-testid={`agent-question-${q.id}`}>
                     <p className="text-xs">{i + 1}. {q.text}{q.optional ? <span className="ml-1 text-subtle">{t('agent.optional')}</span> : null}</p>
@@ -876,7 +876,7 @@ export function AgentPage() {
                 </div>
                 <TemplateThumb graph={result.graph} className="h-20 w-full rounded bg-surface-muted" />
                 <p className="text-xs leading-relaxed text-muted">{result.rationale}</p>
-                {result.similar?.length ? <p className="text-[11px] text-subtle" data-testid="agent-similar">{t('agent.similarUsed', { count: result.similar.length, ids: result.similar.map((x) => `#${x.id}`).join('、') })}</p> : null}
+                {result.similar?.length ? <p className="text-[11px] text-subtle" data-testid="agent-similar">{t('agent.similarUsed', { count: result.similar.length, ids: result.similar.map((x) => `#${x.id}`).join(', ') })}</p> : null}
                 {result.session_id ? (
                   <div className="flex items-center gap-1 text-[11px] text-muted" data-testid="agent-rate">
                     <span>{t('agent.rateHint')}</span>

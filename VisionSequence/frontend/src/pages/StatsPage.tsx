@@ -92,7 +92,7 @@ export function StatsPage() {
           </div>
           {live ? (
             <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted">
-              <span>{t('stats.live')}：{live.runs} · OK {live.ok} · NG {live.ng} · {t('status.failed')} {live.failed} · {Math.round(live.avg_ms)} ms</span>
+              <span>{t('stats.live')}: {live.runs} · OK {live.ok} · NG {live.ng} · {t('status.failed')} {live.failed} · {Math.round(live.avg_ms)} ms</span>
               {trend.length ? <span className="flex items-center gap-2">{t('stats.trend')} <TrendStrip statuses={trend} className="w-40" /></span> : null}
             </div>
           ) : null}

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { ApiError, api, request } from './api'
+import { localiseList } from './catalogueLocale'
 import { localiseCatalogue } from './toolLocale'
 import type { Language } from '@/i18n'
 import type {
@@ -312,10 +313,13 @@ export function useSources(live = false) {
 }
 
 export function useSourceKinds() {
+  // 後端目錄是英文（唯一事實來源）；中文介面疊字典，存進資料庫的 kind 仍是英文。
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
   return useQuery({
-    queryKey: keys.sourceKinds,
+    queryKey: [...keys.sourceKinds, language],
     queryFn: () => api.get<{ items: SourceKind[] } | SourceKind[]>('/vision/sources/kinds'),
-    select: (data) => (Array.isArray(data) ? data : data.items),
+    select: (data) => localiseList('sourceKinds', Array.isArray(data) ? data : data.items, (k) => k.kind, language),
     staleTime: Infinity,
   })
 }
@@ -545,9 +549,13 @@ export function useChangePassword() {
 
 // ---- 範本庫 ----
 export function useTemplates(enabled = true) {
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
   return useQuery({
-    queryKey: keys.templates,
+    queryKey: [...keys.templates, language],
     queryFn: () => api.get<{ items: FlowTemplate[]; can_manage: boolean }>('/vision/templates'),
+    // 內建範本才有對照；自建範本是使用者自己取的名字，原樣顯示（id 是 builtin:<key>）
+    select: (data) => ({ ...data, items: localiseList('templates', data.items, (t) => t.id.replace(/^builtin:/, ''), language) }),
     enabled,
   })
 }
@@ -752,10 +760,12 @@ export function useConnections(enabled = true) {
 }
 
 export function useConnectionKinds() {
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
   return useQuery({
-    queryKey: keys.connectionKinds,
+    queryKey: [...keys.connectionKinds, language],
     queryFn: () => api.get<{ items: ConnectionKind[] }>('/vision/connections/kinds'),
-    select: (data) => data.items,
+    select: (data) => localiseList('connectionKinds', data.items, (k) => k.kind, language),
     staleTime: Infinity,
   })
 }
@@ -800,10 +810,12 @@ export function fetchConnectionState(id: number, addresses = ''): Promise<Connec
 
 // ---- 深度學習教導（/vision/dl） ----
 export function useDlTrainers() {
+  const { i18n } = useTranslation()
+  const language = i18n.language as Language
   return useQuery({
-    queryKey: ['dl', 'trainers'],
+    queryKey: ['dl', 'trainers', language],
     queryFn: () => api.get<{ items: DlTrainerDef[] }>('/vision/dl/trainers'),
-    select: (data) => data.items,
+    select: (data) => localiseList('trainers', data.items, (t) => t.kind, language),
     staleTime: 5 * 60_000,
   })
 }

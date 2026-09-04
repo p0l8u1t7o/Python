@@ -469,7 +469,7 @@ class BarcodeTool(Tool):
         return Result(
             outputs={"texts": texts, "count": len(texts), "first": texts[0] if texts else "", "codes": codes},
             overlays=overlays, branch="found" if matched else "not_found", status="ok" if matched else "ng",
-            message=(f"{len(texts)}: {', '.join(t[:30] for t in texts)}" if texts else "No code decoded") + ("" if matched or not texts else f" (expected {expected}）"),
+            message=(f"{len(texts)}: {', '.join(t[:30] for t in texts)}" if texts else "No code decoded") + ("" if matched or not texts else f" (expected {expected})"),
         )
 
 
@@ -643,7 +643,7 @@ class PixelCountTool(Tool):
         ok = n >= lo and (hi <= 0 or n <= hi)
         overlays = [region_overlay(region, color="#22c55e" if ok else "#ef4444", label=f"{n}px")] if region else []
         return Result(outputs={"count": n, "ratio": ratio, "total": total}, overlays=overlays,
-                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{n} px（{ratio * 100:.2f}%）")
+                      branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{n} px ({ratio * 100:.2f}%)")
 
 
 TOOLS = [BlobTool(), DefectDiffTool(), BarcodeTool(), TextPresenceTool(), ColorCheckTool(), EdgeDensityTool(), PixelCountTool()]

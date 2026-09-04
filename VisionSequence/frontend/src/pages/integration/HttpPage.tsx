@@ -180,7 +180,7 @@ function HttpSection({ info }: { info: IntegrationInfo }) {
       <Card>
         <CardHeader title={t('integration.tabs.http')} />
         <CardBody className="space-y-3">
-          <Select label={t('integration.http.flow')} value={flowId} onChange={(e) => setFlowId(e.target.value)} options={(flows.data?.items ?? []).map((f) => ({ value: String(f.id), label: `#${f.id} ${f.name}${f.is_enabled ? '' : `（${t('common.disabled')}）`}` }))} data-testid="http-flow" />
+          <Select label={t('integration.http.flow')} value={flowId} onChange={(e) => setFlowId(e.target.value)} options={(flows.data?.items ?? []).map((f) => ({ value: String(f.id), label: `#${f.id} ${f.name}${f.is_enabled ? '' : ` (${t('common.disabled')})`}` }))} data-testid="http-flow" />
           <Select label={t('integration.http.mode')} value={mode} onChange={(e) => setMode(e.target.value as 'json' | 'file')} options={[{ value: 'json', label: t('integration.http.modeJson') }, { value: 'file', label: t('integration.http.modeFile') }]} />
           {mode === 'file' ? (
             <div className="flex items-center gap-2 text-xs">
@@ -199,8 +199,8 @@ function HttpSection({ info }: { info: IntegrationInfo }) {
           {result ? (
             <div className="space-y-2" data-testid="http-result">
               <div className="flex flex-wrap items-center gap-3 text-xs">
-                <span>{t('integration.http.status')}：<Badge tone={result.status < 300 ? 'ok' : result.status < 500 ? 'warning' : 'critical'}>{result.status}</Badge></span>
-                <span className="tnum">{t('integration.http.elapsed')}：{result.ms} ms</span>
+                <span>{t('integration.http.status')}: <Badge tone={result.status < 300 ? 'ok' : result.status < 500 ? 'warning' : 'critical'}>{result.status}</Badge></span>
+                <span className="tnum">{t('integration.http.elapsed')}: {result.ms} ms</span>
                 <button type="button" className="text-muted hover:underline" onClick={() => setCollapsed((v) => !v)}>{collapsed ? '▸' : '▾'} {t('integration.http.response')}</button>
                 <CopyButton text={JSON.stringify(result.body, null, 2)} />
               </div>

@@ -15,7 +15,7 @@ export function BatchComparePanel({ compare, onPreview }: { compare: Compare | n
   const s = compare.summary
   return (
     <div className="space-y-3" data-testid="batch-compare">
-      <p className="text-xs text-muted">{t('batchPage.compare.a')}：<b>{runTitle(compare.a)}</b>　{t('batchPage.compare.b')}：<b>{runTitle(compare.b)}</b></p>
+      <p className="text-xs text-muted">{t('batchPage.compare.a')}: <b>{runTitle(compare.a)}</b> {t('batchPage.compare.b')}: <b>{runTitle(compare.b)}</b></p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Tile label={t('batchPage.compare.changed')} value={s.changed} />
         <Tile label={t('batchPage.compare.improved')} value={s.improved} tone="text-ok" />
@@ -25,8 +25,8 @@ export function BatchComparePanel({ compare, onPreview }: { compare: Compare | n
       </div>
       {compare.param_diff.rows.length || compare.param_diff.added.length || compare.param_diff.removed.length ? (
         <p className="rounded-lg border border-line px-2 py-1.5 font-mono text-[11px] text-muted">
-          {t('batchPage.insights.paramDiff')}：{compare.param_diff.rows.map((r) => `${r.label}.${r.key} ${String(r.from)} → ${String(r.to)}`).join('；') || '—'}
-          {compare.param_diff.added.length ? `　+${compare.param_diff.added.join(', ')}` : ''}{compare.param_diff.removed.length ? `　−${compare.param_diff.removed.join(', ')}` : ''}
+          {t('batchPage.insights.paramDiff')}: {compare.param_diff.rows.map((r) => `${r.label}.${r.key} ${String(r.from)} → ${String(r.to)}`).join('; ') || '—'}
+          {compare.param_diff.added.length ? ` +${compare.param_diff.added.join(', ')}` : ''}{compare.param_diff.removed.length ? ` −${compare.param_diff.removed.join(', ')}` : ''}
         </p>
       ) : <p className="text-[11px] text-subtle">{t('batchPage.compare.sameParams')}</p>}
       <Checkbox label={t('batchPage.compare.onlyChanged')} checked={onlyChanged} onChange={setOnlyChanged} />

@@ -36,16 +36,25 @@ export function setLanguage(language: Language) {
   document.documentElement.lang = language
 }
 
+const initial = storedLanguage()
+
 void i18next.use(initReactI18next).init({
   resources: {
     'zh-Hant': { translation: zhHant },
     'zh-Hans': { translation: zhHans },
     en: { translation: en },
   },
-  lng: storedLanguage(),
+  lng: initial,
   fallbackLng: 'en',
   interpolation: { escapeValue: false },
   returnNull: false,
 })
+
+// 開機時就把 <html lang> 設對：瀏覽器的翻譯功能與螢幕閱讀器都看它，不能只在切換時才設。
+try {
+  document.documentElement.lang = initial
+} catch {
+  /* 非瀏覽器環境（測試） */
+}
 
 export default i18next

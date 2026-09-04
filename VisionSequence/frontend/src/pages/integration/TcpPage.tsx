@@ -106,7 +106,7 @@ function TcpSection({ info }: { info: IntegrationInfo }) {
             <Button variant="primary" icon={<Send size={14} />} loading={tcp.isPending} onClick={() => void send()} data-testid="tcp-send">{t('integration.tcp.send')}</Button>
           </div>
           <div className="flex flex-wrap gap-1">
-            <span className="mr-1 text-xs text-muted">{t('integration.tcp.common')}：</span>
+            <span className="mr-1 text-xs text-muted">{t('integration.tcp.common')}: </span>
             {common.map((c) => (
               <button key={c} type="button" className="rounded border border-line bg-surface-muted px-1.5 py-0.5 font-mono text-[11px] hover:border-brand" onClick={() => setCommand(c)}>{c}</button>
             ))}
@@ -116,7 +116,7 @@ function TcpSection({ info }: { info: IntegrationInfo }) {
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <code className="font-mono">{latest.command}</code>
                 <span className="tnum">{latest.elapsed_ms} ms</span>
-                <Badge tone={latest.via === 'tcp' ? 'ok' : 'warning'}>{t('integration.tcp.via')}：{latest.via}</Badge>
+                <Badge tone={latest.via === 'tcp' ? 'ok' : 'warning'}>{t('integration.tcp.via')}: {latest.via}</Badge>
                 <CopyButton text={JSON.stringify(latest.response, null, 2)} />
               </div>
               {latest.via === 'direct' ? <p className="rounded bg-warning-soft px-2 py-1 text-xs text-warning">{t('integration.tcp.viaDirect')}</p> : <p className="text-[11px] text-muted">{t('integration.tcp.viaTcp', { port: latest.tcp_port })}</p>}

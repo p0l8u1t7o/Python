@@ -50,7 +50,7 @@ class JudgeTool(Tool):
         return Result(
             outputs={"verdict": verdict.upper()},
             status="ng" if verdict == "ng" else "ok",
-            message=f"{verdict.upper()}" + (f"（{label}）" if label else ""),
+            message=f"{verdict.upper()}" + (f" ({label})" if label else ""),
             context={"_judge": merged, "_outputs": outputs},
         )
 

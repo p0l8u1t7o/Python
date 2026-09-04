@@ -197,7 +197,7 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
             <StatusBadge status={item.was ?? null} /> → <StatusBadge status={item.now} />
             {item.node ? <span className="font-mono text-muted">@{item.node}</span> : null}
           </p>
-          {item.reasons?.length ? <p className="text-muted">{item.reasons.join('；')}</p> : null}
+          {item.reasons?.length ? <p className="text-muted">{item.reasons.join('; ')}</p> : null}
           {item.error ? <p className="truncate text-critical" title={item.error}>{item.error}</p> : null}
         </div>
         <Button size="xs" icon={<Eye size={12} />} onClick={() => void view(item.name, c?.image_ref ?? null)}>{t('golden.viewImage')}</Button>
@@ -317,7 +317,7 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
                         <td className="px-2 py-1 text-center">{c.match ? <span className="text-ok">✓</span> : <span className="font-semibold text-critical">✗</span>}</td>
                         <td className="tnum px-2 py-1 text-right">{Math.round(c.duration_ms)}</td>
                         <td className="max-w-[220px] truncate px-2 py-1 font-mono text-[10px] text-muted" title={JSON.stringify(c.outputs)}>{Object.entries(c.outputs ?? {}).slice(0, 4).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ') || '—'}</td>
-                        <td className="max-w-[220px] truncate px-2 py-1 text-critical" title={[...(c.reasons ?? []), c.error].filter(Boolean).join('\n')}>{[...(c.reasons ?? []), c.error].filter(Boolean).join('；')}</td>
+                        <td className="max-w-[220px] truncate px-2 py-1 text-critical" title={[...(c.reasons ?? []), c.error].filter(Boolean).join('\n')}>{[...(c.reasons ?? []), c.error].filter(Boolean).join('; ')}</td>
                       </tr>
                     ))}
                     {shownCases.length === 0 ? <tr><td colSpan={9} className="px-2 py-4 text-center text-muted">—</td></tr> : null}

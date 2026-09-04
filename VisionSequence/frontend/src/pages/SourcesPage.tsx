@@ -48,7 +48,7 @@ function ConfigField({ kind, field, value, config, onChange, onBrowse, captureCl
   if (kind === 'capture' && field === 'client') {
     const list = captureClients ?? []
     const current = String(value ?? '')
-    const options = [{ value: '', label: t('sources.capturePickClient') }, ...list.map((c) => ({ value: c.name, label: `${c.name}（${c.hostname}${c.local ? `・${t('sources.captureLocal')}` : ''}）` }))]
+    const options = [{ value: '', label: t('sources.capturePickClient') }, ...list.map((c) => ({ value: c.name, label: `${c.name} (${c.hostname}${c.local ? `・${t('sources.captureLocal')}` : ''})` }))]
     if (current && !list.some((c) => c.name === current)) options.push({ value: current, label: t('sources.captureClientOffline', { name: current }) })
     return (
       <div className="space-y-1.5">
@@ -71,7 +71,7 @@ function ConfigField({ kind, field, value, config, onChange, onBrowse, captureCl
     const client = (captureClients ?? []).find((c) => c.name === String(config?.client ?? ''))
     const channels = (client?.channels ?? []).filter((c) => c.enabled)
     const current = String(value ?? '')
-    const options = [{ value: '', label: t('sources.capturePickChannel') }, ...channels.map((c) => ({ value: c.id, label: `${c.label} · ${c.width}×${c.height} ${c.pixel_format}${c.in_use_by.length ? ` · ${t('sources.inUseBy', { name: c.in_use_by.join('、') })}` : ''}` }))]
+    const options = [{ value: '', label: t('sources.capturePickChannel') }, ...channels.map((c) => ({ value: c.id, label: `${c.label} · ${c.width}×${c.height} ${c.pixel_format}${c.in_use_by.length ? ` · ${t('sources.inUseBy', { name: c.in_use_by.join(', ') })}` : ''}` }))]
     if (current && !channels.some((c) => c.id === current)) options.push({ value: current, label: current })
     return (
       <div className="space-y-1.5">

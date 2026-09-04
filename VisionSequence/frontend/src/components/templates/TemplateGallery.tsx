@@ -182,7 +182,7 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
               value={sourceId}
               onChange={(e) => setSourceId(e.target.value)}
               placeholder={t('templates.sourceNone')}
-              options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name}（${s.kind}）` }))}
+              options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})` }))}
               data-testid="template-source"
             />
             {mode === 'create' ? (

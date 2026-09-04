@@ -131,7 +131,7 @@ export function AssistantDock() {
         push({ role: 'assistant', text: er.rationale, kind: 'edit', provider: er.provider, edit: { graph: er.graph, changes: er.changes, flowId: ctx.flowId ?? null }, contextKind: ctx.kind })
       }
     } else if (j.status === 'needs_input') {
-      push({ role: 'assistant', text: t('agent.jobAnswerHint', { text: j.questions.map((q) => q.text).join('；') }) })
+      push({ role: 'assistant', text: t('agent.jobAnswerHint', { text: j.questions.map((q) => q.text).join('; ') }) })
     } else if (j.status === 'cancelled') push({ role: 'assistant', text: t('agent.aborted') })
     else if (j.status === 'error') push({ role: 'assistant', text: j.error || t('agent.jobStatus.error') })
     setBusy(false)

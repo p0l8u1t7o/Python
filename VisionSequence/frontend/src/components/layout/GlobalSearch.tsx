@@ -163,7 +163,7 @@ export function GlobalSearch() {
   if (!expanded) {
     return (
       <button type="button" className="btn-icon hidden sm:block" onClick={() => setExpanded(true)}
-        title={`${t('search.placeholder')}（Ctrl K）`} aria-label={t('search.placeholder')} data-testid="global-search">
+        title={`${t('search.placeholder')} (Ctrl K)`} aria-label={t('search.placeholder')} data-testid="global-search">
         <Search size={16} />
       </button>
     )

@@ -406,7 +406,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
           ) : null}
           {analysis?.output?.histogram ? (
             <div className="mb-3 space-y-1">
-              <Histogram bins={analysis.output.histogram} title={`${t('tool.outputHistogram')}（${analysis.output.port}）`} color="var(--ok)" labels={['0', '255']} />
+              <Histogram bins={analysis.output.histogram} title={`${t('tool.outputHistogram')} (${analysis.output.port})`} color="var(--ok)" labels={['0', '255']} />
               <StatsRows stats={analysis.output.stats} />
             </div>
           ) : null}

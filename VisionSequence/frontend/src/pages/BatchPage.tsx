@@ -254,7 +254,7 @@ export function BatchPage() {
                   onDelete={(r) => setPendingDelete({ kind: 'run', id: r.id, name: r.label || `#${r.id}`, setId: r.set_id })} />
                 <div className="mt-2">
                   <button type="button" className="btn-secondary w-full text-xs" disabled={!currentSet?.image_count || mut.startRun.isPending} onClick={() => void startRun(useDraft && draft ? draft.graph : null, { label: '' })} data-testid="batch-run-start">
-                    ▶ {t('batchPage.runWith', { flow: flow.data?.name ?? '' })}{useDraft && draft ? `（${t('batchPage.origin.draft')}）` : ''}
+                    ▶ {t('batchPage.runWith', { flow: flow.data?.name ?? '' })}{useDraft && draft ? ` (${t('batchPage.origin.draft')})` : ''}
                   </button>
                   {currentSet && currentSet.flow_id !== flowId ? (
                     <p className="mt-1 text-[11px] text-info" data-testid="batch-cross-flow">{t('batchPage.crossFlow', { set: currentSet.flow_name, flow: flow.data?.name ?? '' })}</p>

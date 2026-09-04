@@ -1,4 +1,9 @@
-/** 三語系 key 對齊與文案規範：**英文是正本**，中文兩份必須與它完全同構；中文不得留口語詞。 */
+/**
+ * 三語系 key 對齊與文案規範：**英文是正本**，中文兩份必須與它完全同構；中文不得留口語詞。
+ * 另外把關「畫面上不得寫死全形標點」——那種字不管切成哪一種語言都會出現。
+ */
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import en from '@/i18n/locales/en'
@@ -64,5 +69,52 @@ describe('i18n locales', () => {
   it('no empty strings', () => {
     const empty = [...hant].filter(([, v]) => v.trim() === '').map(([k]) => k)
     expect(empty).toEqual([])
+  })
+})
+
+/** 語系檔以外的原始碼：全形標點寫在 JSX 或樣板字串裡，英文介面就會看到「Inputs：」。 */
+describe('source files', () => {
+  const FULLWIDTH = /[：、；（）～　]/
+  /** 只掃會進畫面的檔案；語系檔、開發示範頁與測試假資料的中文是資料本身。 */
+  const SKIP = ['/i18n/locales/', '/components/viewer/ImageViewerDemo.tsx', '/test/', '.test.']
+
+  function walk(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name)
+      if (statSync(path).isDirectory()) return walk(path)
+      return /\.tsx?$/.test(name) ? [path] : []
+    })
+  }
+
+  function codeOf(line: string): string {
+    // 只看程式碼：行首註解整行跳過，行內註解取 // 之前，JSX 的 {/* … */} 整段挖掉
+    const trimmed = line.trimStart()
+    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return ''
+    const without = line.replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '')  // {/* … */} 與行內 /** … */ 都是註解
+    const at = without.indexOf('//')
+    return at >= 0 ? without.slice(0, at) : without
+  }
+
+  it('contains no hard-coded full-width punctuation', () => {
+    const hits: string[] = []
+    let block = false
+    for (const path of walk('src')) {
+      const normalised = path.replace(/\\/g, '/')
+      if (SKIP.some((s) => normalised.includes(s))) continue
+      block = false
+      readFileSync(path, 'utf8').split('\n').forEach((line, i) => {
+        const trimmed = line.trimStart()
+        if (block) {
+          if (line.includes('*/')) block = false
+          return
+        }
+        if (trimmed.startsWith('/*') || trimmed.startsWith('{/*')) {
+          block = !line.includes('*/')
+          return
+        }
+        if (FULLWIDTH.test(codeOf(line))) hits.push(`${normalised}:${i + 1}`)
+      })
+    }
+    expect(hits, `全形標點會在英文介面露出來，請改半形：\n${hits.join('\n')}`).toEqual([])
   })
 })

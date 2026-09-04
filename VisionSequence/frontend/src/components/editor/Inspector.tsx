@@ -75,12 +75,12 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
           {definition ? (
             <div className="border-t border-line pt-3 text-[11px] text-muted">
               <p>
-                <span className="font-medium">{t('editor.inputs')}：</span>
-                {definition.inputs.map((p) => `${p.label}(${p.type}${p.required ? '' : '?'})`).join('、') || '—'}
+                <span className="font-medium">{t('editor.inputs')}: </span>
+                {definition.inputs.map((p) => `${p.label}(${p.type}${p.required ? '' : '?'})`).join(', ') || '—'}
               </p>
               <p className="mt-0.5">
-                <span className="font-medium">{t('editor.outputs')}：</span>
-                {definition.outputs.map((p) => `${p.label}(${p.type})`).join('、') || '—'}
+                <span className="font-medium">{t('editor.outputs')}: </span>
+                {definition.outputs.map((p) => `${p.label}(${p.type})`).join(', ') || '—'}
               </p>
             </div>
           ) : null}

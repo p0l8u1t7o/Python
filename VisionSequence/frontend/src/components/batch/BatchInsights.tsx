@@ -60,13 +60,13 @@ export function BatchInsightsPanel({ insights, runs, set, run, onApply, onPrevie
               <p className="flex flex-wrap items-center gap-1.5"><b>{j.label}</b><Badge>{j.type}</Badge><span className="text-muted">{t('batchPage.insights.valueFrom')} {j.value_from.label}.{j.value_from.port}</span>
                 {j.separable === true ? <Badge tone="ok">{t('batchPage.insights.separable')}</Badge> : j.separable === false ? <Badge tone="warning">{t('batchPage.insights.overlap')}</Badge> : null}</p>
               <p className="mt-1 text-muted">
-                {t('batchPage.insights.okRange')}：{j.values.expected_ok.n ? `${fmtNum(j.values.expected_ok.min ?? 0)}～${fmtNum(j.values.expected_ok.max ?? 0)}（${j.values.expected_ok.n}）` : '—'}
-                {'　'}{t('batchPage.insights.ngRange')}：{j.values.expected_ng.n ? `${fmtNum(j.values.expected_ng.min ?? 0)}～${fmtNum(j.values.expected_ng.max ?? 0)}（${j.values.expected_ng.n}）` : '—'}
+                {t('batchPage.insights.okRange')}: {j.values.expected_ok.n ? `${fmtNum(j.values.expected_ok.min ?? 0)}-${fmtNum(j.values.expected_ok.max ?? 0)} (${j.values.expected_ok.n})` : '—'}
+                {' '}{t('batchPage.insights.ngRange')}: {j.values.expected_ng.n ? `${fmtNum(j.values.expected_ng.min ?? 0)}-${fmtNum(j.values.expected_ng.max ?? 0)} (${j.values.expected_ng.n})` : '—'}
               </p>
               <p className="mt-1 font-mono text-[11px] text-muted">{Object.entries(j.current).map(([k, v]) => `${k}=${String(v)}`).join('  ')}</p>
               {j.suggestion ? (
-                <p className="mt-1 text-brand">{t('batchPage.insights.suggestion')}：{Object.entries(j.suggestion).map(([k, v]) => `${k}=${v}`).join('、')}　{t('batchPage.insights.accNow')} {fmtPct(j.acc_now)} → {t('batchPage.insights.accSuggested')} {fmtPct(j.acc_suggested)}</p>
-              ) : j.acc_now !== null ? <p className="mt-1 text-subtle">{t('batchPage.insights.noSuggestion')}（{t('batchPage.insights.accNow')} {fmtPct(j.acc_now)}）</p> : null}
+                <p className="mt-1 text-brand">{t('batchPage.insights.suggestion')}: {Object.entries(j.suggestion).map(([k, v]) => `${k}=${v}`).join(', ')} {t('batchPage.insights.accNow')} {fmtPct(j.acc_now)} → {t('batchPage.insights.accSuggested')} {fmtPct(j.acc_suggested)}</p>
+              ) : j.acc_now !== null ? <p className="mt-1 text-subtle">{t('batchPage.insights.noSuggestion')} ({t('batchPage.insights.accNow')} {fmtPct(j.acc_now)})</p> : null}
             </div>
           ))}
         </CardBody>
@@ -77,7 +77,7 @@ export function BatchInsightsPanel({ insights, runs, set, run, onApply, onPrevie
           <CardHeader title={`${t('batchPage.insights.mismatches')} (${insights.mismatches.length})`} />
           <CardBody className="flex flex-wrap gap-2">
             {insights.mismatches.map((m) => (
-              <button key={m.index} type="button" className="w-24 text-left" onClick={() => onPreview(m.index)} title={m.reasons.join('；')}>
+              <button key={m.index} type="button" className="w-24 text-left" onClick={() => onPreview(m.index)} title={m.reasons.join('; ')}>
                 <img src={batchImageUrl(set.id, m.index, 160)} alt={m.name} className="h-16 w-24 rounded bg-surface-muted object-contain" loading="lazy" />
                 <p className="truncate text-[10px]"><span className="text-subtle">#{m.index + 1}</span> {m.name}</p>
                 <p className="text-[10px] text-critical">{m.expected.toUpperCase()} → {m.status.toUpperCase()}</p>
@@ -89,14 +89,14 @@ export function BatchInsightsPanel({ insights, runs, set, run, onApply, onPrevie
 
       {insights.error_nodes.length ? (
         <Card><CardHeader title={t('batchPage.insights.errorNodes')} /><CardBody className="text-xs">
-          <ul className="list-disc pl-4 text-critical">{insights.error_nodes.map((e) => <li key={e.node}><b>{e.label}</b> ×{e.count}：<span className="text-muted">{e.message}</span></li>)}</ul>
+          <ul className="list-disc pl-4 text-critical">{insights.error_nodes.map((e) => <li key={e.node}><b>{e.label}</b> ×{e.count}: <span className="text-muted">{e.message}</span></li>)}</ul>
         </CardBody></Card>
       ) : null}
 
       {insights.vs_parent ? (
         <Card><CardHeader title={t('batchPage.insights.vsParent')} /><CardBody className="space-y-1 text-xs">
           <p><Badge tone="ok">{t('batchPage.insights.improved', { count: insights.vs_parent.improved.length })}</Badge> <Badge tone={insights.vs_parent.regressed.length ? 'critical' : 'neutral'}>{t('batchPage.insights.regressed', { count: insights.vs_parent.regressed.length })}</Badge> <Badge>{t('batchPage.insights.changed', { count: insights.vs_parent.changed.length })}</Badge></p>
-          {insights.vs_parent.param_diff?.rows.length ? <p className="font-mono text-[11px] text-muted">{t('batchPage.insights.paramDiff')}：{insights.vs_parent.param_diff.rows.map((r) => `${r.label}.${r.key} ${String(r.from)} → ${String(r.to)}`).join('；')}</p> : null}
+          {insights.vs_parent.param_diff?.rows.length ? <p className="font-mono text-[11px] text-muted">{t('batchPage.insights.paramDiff')}: {insights.vs_parent.param_diff.rows.map((r) => `${r.label}.${r.key} ${String(r.from)} → ${String(r.to)}`).join('; ')}</p> : null}
         </CardBody></Card>
       ) : null}
 
@@ -158,7 +158,7 @@ export function BatchInsightsPanel({ insights, runs, set, run, onApply, onPrevie
       ) : null}
 
       {insights.slowest.length ? (
-        <p className="text-[11px] text-muted">{t('batchPage.insights.slowest')}：{insights.slowest.map((s) => `#${s.index + 1} ${Math.round(s.duration_ms)} ms`).join('、')}{insights.node_time.length ? `　${t('batchPage.insights.nodeTime')}：${insights.node_time.map((n) => `${n.label} ${Math.round(n.avg_ms)} ms`).join('、')}` : ''}</p>
+        <p className="text-[11px] text-muted">{t('batchPage.insights.slowest')}: {insights.slowest.map((s) => `#${s.index + 1} ${Math.round(s.duration_ms)} ms`).join(', ')}{insights.node_time.length ? ` ${t('batchPage.insights.nodeTime')}: ${insights.node_time.map((n) => `${n.label} ${Math.round(n.avg_ms)} ms`).join(', ')}` : ''}</p>
       ) : null}
     </div>
   )

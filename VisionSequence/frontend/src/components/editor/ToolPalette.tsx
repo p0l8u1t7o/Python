@@ -158,7 +158,7 @@ function ParamTable({ params }: { params: ToolParam[] }) {
                   </td>
                   <td className="px-2 py-1.5 text-muted">
                     <span className="font-mono text-[11px]">{param.kind}</span>
-                    {param.unit ? <span className="ml-1 text-[11px]">（{param.unit}）</span> : null}
+                    {param.unit ? <span className="ml-1 text-[11px]"> ({param.unit})</span> : null}
                     {range(param) ? <span className="tnum block text-[10px] text-subtle">{range(param)}</span> : null}
                     {param.options.length ? <span className="block text-[10px] text-subtle">{param.options.map((o) => o.label).join('／')}</span> : null}
                   </td>

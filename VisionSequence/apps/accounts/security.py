@@ -103,7 +103,7 @@ class EngineLocked(APIError):
 
     def __init__(self, lock: EngineLock) -> None:
         super().__init__(
-            f"The engine is locked by {lock.holder or "an integrator"}, so editing is possible but running is not" + (f"：{lock.reason}" if lock.reason else ""),
+            f"The engine is locked by {lock.holder or "an integrator"}, so editing is possible but running is not" + (f": {lock.reason}" if lock.reason else ""),
             details=lock.to_dict(),
         )
 

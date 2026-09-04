@@ -209,7 +209,7 @@ function ToolsCatalogue() {
                   {def.description ? <p className="mt-0.5 text-xs text-muted">{def.description}</p> : null}
                   <div className="mt-1.5 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
                     <p>
-                      <span className="font-medium text-muted">{t('editor.inputs')}：</span>
+                      <span className="font-medium text-muted">{t('editor.inputs')}: </span>
                       {def.inputs.length ? def.inputs.map((p, i) => (
                         <span key={`${p.key}-${i}`} className="mr-2 inline-flex items-center gap-1">
                           <span className="inline-block size-2 rounded-full" style={{ background: PORT_HEX[p.type] }} />{p.label}<span className="text-subtle">({p.type}{p.required ? '' : '?'})</span>
@@ -217,7 +217,7 @@ function ToolsCatalogue() {
                       )) : '—'}
                     </p>
                     <p>
-                      <span className="font-medium text-muted">{t('editor.outputs')}：</span>
+                      <span className="font-medium text-muted">{t('editor.outputs')}: </span>
                       {def.outputs.filter((p) => !p.implicit).map((p, i) => (
                         <span key={`${p.key}-${i}`} className="mr-2 inline-flex items-center gap-1">
                           <span className={`inline-block size-2 ${p.type === 'flow' ? 'rotate-45' : 'rounded-full'}`} style={{ background: PORT_HEX[p.type] }} />{p.label}<span className="text-subtle">({p.type})</span>
@@ -227,8 +227,8 @@ function ToolsCatalogue() {
                   </div>
                   {def.params.length ? (
                     <p className="mt-1 text-xs">
-                      <span className="font-medium text-muted">{t('editor.parameters')}：</span>
-                      {def.params.map((p) => `${p.label}（${p.kind}${p.unit ? `, ${p.unit}` : ''}）`).join('、')}
+                      <span className="font-medium text-muted">{t('editor.parameters')}: </span>
+                      {def.params.map((p) => `${p.label} (${p.kind}${p.unit ? `, ${p.unit}` : ''})`).join(', ')}
                     </p>
                   ) : null}
                 </div>

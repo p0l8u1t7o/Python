@@ -35,7 +35,7 @@ export function ParamForm({ node, definition, edges, onChange, actions }: { node
         <div>
           <button type="button" className="flex items-center gap-1 text-xs font-medium text-muted hover:text-content" onClick={() => setShowAdvanced((v) => !v)}>
             {showAdvanced ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            {t('common.advanced')}（{advanced.length}）
+            {t('common.advanced')} ({advanced.length})
           </button>
           {showAdvanced ? <div className="mt-2.5 space-y-4 border-l-2 border-line pl-3">{advanced.map(renderParam)}</div> : null}
         </div>

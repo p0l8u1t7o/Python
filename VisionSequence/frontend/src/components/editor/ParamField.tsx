@@ -166,7 +166,7 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
 
     case 'source':
       return (
-        <Select label={label} required={param.required} hint={help} value={text} placeholder={t('editor.params.pickSource')} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name}（${s.kind}）`, disabled: !s.is_enabled }))} />
+        <Select label={label} required={param.required} hint={help} value={text} placeholder={t('editor.params.pickSource')} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})`, disabled: !s.is_enabled }))} />
       )
 
     case 'asset': {
@@ -232,7 +232,7 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
             ) : null}
           </div>
           {editing ? <p className="hint text-brand">{t('editor.viewer.roiEditing')}</p> : null}
-          {param.shapes.length ? <p className="hint">{t('editor.params.roiShape')}：{param.shapes.join(', ')}</p> : null}
+          {param.shapes.length ? <p className="hint">{t('editor.params.roiShape')}: {param.shapes.join(', ')}</p> : null}
           {help ? <p className="hint">{help}</p> : null}
         </div>
       )

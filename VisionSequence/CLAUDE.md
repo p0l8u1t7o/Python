@@ -42,7 +42,9 @@
 ### 產品語言（英文為主）
 - **產品表面一律英文**：工具目錄、API 與工具的外露訊息（`APIError`／`ToolError`／`CommError` 的 message、`Result(message=)`）、網頁介面（預設語言與 fallback 都是 en）、`docs/`。
 - **開發溝通維持繁體中文**：對話、commit、CLAUDE.md、程式碼註解與 docstring、日誌訊息（`log.*`）、AI 助手的技能提示詞（`agent/skills/*.md`）。
-- 新增使用者看得到的字串一律先寫英文；中文由前端字典補（介面在 `i18n/locales/*`，工具目錄在 `tools.zh-Hant.ts`／`tools.zh-Hans.ts`）。
+- 新增使用者看得到的字串一律先寫英文；中文由前端字典補（介面在 `i18n/locales/*`，工具目錄在 `tools.zh-Hant.ts`／`tools.zh-Hans.ts`，其餘後端目錄在 `catalogue.zh-Hant.ts`／`catalogue.zh-Hans.ts`）。
+- **後端目錄的中文對照**：影像來源種類、連線種類、深度學習訓練方式、內建範本走 `lib/catalogueLocale.ts`（在各自 query 的 `select` 疊上去，query key 帶語言）。翻譯**只換顯示的字，`kind`／`key` 存進資料庫的值一律保持英文**（`lib/catalogueLocale.test.ts` 鎖住）；沒有對照的（外掛、自建範本）維持後端英文。新增內建來源／連線／訓練方式／範本要補那兩份字典。
+- **畫面上不得寫死全形標點**（`：、；（）～　`）：那種字不管切成哪一種語言都會出現，英文介面會看到「Inputs：」。`src/test/i18n.test.ts` 的 `source files` 會掃原始碼擋下來（註解、語系檔、測試檔不算）。
 - 測試斷言用英文（介面與訊息的預設就是英文）。
 
 ### 紅線

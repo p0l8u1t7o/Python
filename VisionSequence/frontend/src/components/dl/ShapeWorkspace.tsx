@@ -589,7 +589,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
                 <span key={tool.key} className="my-1 h-px w-8 shrink-0 bg-line" />
               ) : (
                 <button key={tool.key} type="button" onClick={tool.onClick} disabled={tool.disabled}
-                  title={`${tool.label}（${tool.kbd}）`} aria-label={tool.label} aria-pressed={tool.active}
+                  title={`${tool.label} (${tool.kbd})`} aria-label={tool.label} aria-pressed={tool.active}
                   className={`flex size-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40
                     ${tool.active ? 'bg-brand-soft text-brand ring-1 ring-brand' : 'text-muted hover:bg-surface-muted hover:text-content'}`}
                   data-testid={`dl-tool-${tool.key}`}>
@@ -629,7 +629,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
         <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
           {([
             ['V / N / B / S / X', t('dl.keyModes')],
-            ['0～9', t('dl.keyClasses')],
+            ['0-9', t('dl.keyClasses')],
             ['O', t('dl.keyOptimize')],
             ['Delete', t('dl.keyDelete')],
             [t('dl.kbdAltVertex'), t('dl.keyDeleteVertex')],

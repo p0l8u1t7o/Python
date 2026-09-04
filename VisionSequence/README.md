@@ -221,8 +221,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `components/templates/`、`recipes/`、`dl/`、`auth/`、`ui/` | 範本畫廊、配方、DL 標記編輯器、登入／鎖定、共用 UI 元件 |
 | `lib/api.ts`、`queries.ts`、`flowStream.ts` | 唯一的後端接縫：HTTP client（`BASE_URL`）、TanStack Query hooks、SSE |
 | `lib/types.ts`、`ports.ts`、`graphValidation.ts`、`flowDraft.ts` | 型別（含 `Region` union）、埠顏色、連線檢查、跨頁草稿 store |
-| `i18n/locales/` | zh-Hant（完整、fallback）、zh-Hans、en |
-| `src/test/` | vitest：i18n 對齊與用詞規範、頁面 render smoke、假後端 |
+| `i18n/locales/` | en（正本與 fallback）、zh-Hant、zh-Hans；另有 `tools.zh-*.ts`（工具目錄）與 `catalogue.zh-*.ts`（來源／連線／訓練方式／範本）的對照字典 |
+| `src/test/` | vitest：i18n 三語系對齊與用詞規範、原始碼不得寫死全形標點、頁面 render smoke、假後端 |
 
 ---
 
