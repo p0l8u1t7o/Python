@@ -12,6 +12,7 @@ import itertools
 import logging
 import os
 import socket
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -88,7 +89,11 @@ class _Rate:
         self.bytes = 0
         self.fps = 0.0
         self.bps = 0.0
+        self.recv_ms = 0.0
         self._last: float | None = None
+
+    def took(self, ms: float) -> None:
+        self.recv_ms = ms if self.recv_ms == 0 else 0.8 * self.recv_ms + 0.2 * ms
 
     def tick(self, nbytes: int) -> None:
         now = time.perf_counter()
@@ -105,7 +110,43 @@ class _Rate:
 
     def snapshot(self) -> dict[str, Any]:
         stale = self._last is None or time.perf_counter() - self._last > 2.0
-        return {"fps": 0.0 if stale else round(self.fps, 2), "bytes_per_s": 0 if stale else int(self.bps), "frames": self.frames}
+        return {"fps": 0.0 if stale else round(self.fps, 2), "bytes_per_s": 0 if stale else int(self.bps), "frames": self.frames, "recv_ms": round(self.recv_ms, 2)}
+
+
+class _BufferPool:
+    """接收緩衝池：2000 萬畫素彩色一張約 60 MB，每次 `np.empty` 都要重新 page fault
+    （實測配置＋寫滿 17 ms、重用只要 2.4 ms —— 60 fps 的預算是 16.7 ms）。
+    只重用「池是唯一持有者」的緩衝：交給引擎、還留在 latest 或 images.store 的永遠不會被覆寫。
+    """
+
+    def __init__(self, max_buffers: int = 3, max_bytes: int = 512 << 20) -> None:
+        self.max_buffers = max(1, int(max_buffers))
+        self.max_bytes = int(max_bytes)
+        self._bufs: list[np.ndarray] = []
+        self.hits = 0
+        self.misses = 0
+
+    def take(self, shape: tuple[int, ...], dtype: Any) -> np.ndarray:
+        shape = tuple(int(v) for v in shape)
+        dtype = np.dtype(dtype)
+        for buf in self._bufs:
+            # 參照數：池的 list、迴圈變數 buf、getrefcount 的引數 → 只有池持有時剛好 3
+            if buf.shape == shape and buf.dtype == dtype and sys.getrefcount(buf) <= 3:
+                self.hits += 1
+                return buf
+        self.misses += 1
+        buf = np.empty(shape, dtype)
+        keep = [b for b in self._bufs if b.shape == shape and b.dtype == dtype][: self.max_buffers - 1]
+        if buf.nbytes * (len(keep) + 1) <= self.max_bytes:
+            keep.append(buf)
+        self._bufs = keep
+        return buf
+
+    def stats(self) -> dict[str, Any]:
+        return {"buffers": len(self._bufs), "hits": self.hits, "misses": self.misses, "bytes": sum(int(b.nbytes) for b in self._bufs)}
+
+    def clear(self) -> None:
+        self._bufs = []
 
 
 class ChannelState:
@@ -117,6 +158,7 @@ class ChannelState:
         self.streaming = False
         self.last_error = ""
         self.rate = _Rate()
+        self.pool = _BufferPool()
         self.cond = threading.Condition(lock)
 
     @property
@@ -399,7 +441,9 @@ class ClientSession(threading.Thread):
             self._resolve(req_id, error=CaptureError("伺服端沒有安裝 LZ4，請改用 raw", code="unsupported_encoding"))
             self._try_send_error(req_id, "unsupported_encoding", "伺服端沒有安裝 LZ4")
             return
-        image = self._read_pixels(hdr, plen)
+        with self._lock:
+            pool = self.channels[hdr.chan].pool
+        image = self._read_pixels(hdr, plen, pool)
         wire = plen if hdr.slot < 0 else 0
         if hdr.slot >= 0:
             self.send(MsgType.SLOT_FREE, 0, P.pack_slot_free(hdr.chan, hdr.slot, hdr.seq))
@@ -418,6 +462,7 @@ class ClientSession(threading.Thread):
             ch.last_seq = max(ch.last_seq, hdr.seq)
             ch.last_error = ""
             ch.rate.tick(wire or hdr.raw_len)
+            ch.rate.took((time.perf_counter() - started) * 1000)
             pending = self._pending.pop(req_id, None) if req_id else None
             if pending is not None:
                 meta.latency_ms = (time.perf_counter() - pending.sent_at) * 1000
@@ -425,19 +470,24 @@ class ClientSession(threading.Thread):
                 pending.event.set()
             ch.cond.notify_all()
 
-    def _read_pixels(self, hdr: FrameHeader, plen: int) -> np.ndarray:
+    def _read_pixels(self, hdr: FrameHeader, plen: int, pool: _BufferPool) -> np.ndarray:
         shape, dtype = hdr.shape(), hdr.numpy_dtype
         if hdr.slot >= 0:
             shm = self.shm
             if shm is None:
                 raise ProtocolError("尚未接受共享記憶體卻收到槽影格")
-            out = np.empty(shape, dtype)
+            out = pool.take(shape, dtype)
             off = P.slot_offset(hdr.slot, self.shm_slot_bytes)
-            with shm.buf[off : off + hdr.raw_len] as src:
-                out.data.cast("B")[:] = src
+            # 暫時的 ndarray view：np.copyto 會放開 GIL（memoryview 指派不會），複製完立刻丟掉
+            # ——shm.buf 上絕不能留著 view，否則 close() 會 BufferError。
+            src = np.ndarray(shape, dtype, buffer=shm.buf, offset=off)
+            try:
+                np.copyto(out, src)
+            finally:
+                del src
             return out
         if hdr.encoding == Encoding.RAW:
-            out = np.empty(shape, dtype)
+            out = pool.take(shape, dtype)
             self._recv_exactly(out.data.cast("B"))
             return out
         buf = self._payload(plen)

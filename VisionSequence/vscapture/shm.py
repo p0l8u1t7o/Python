@@ -18,6 +18,16 @@ import numpy as np
 from vscapture import protocol as P
 
 
+#: 一條連線的共享記憶體區段總量上限（20MP 彩色一槽約 60 MB，預設最多約 8 槽）。
+MAX_SEGMENT_BYTES = 512 << 20
+
+
+def plan_slots(want: int, slot_bytes: int, *, max_bytes: int = MAX_SEGMENT_BYTES) -> int:
+    """在總量上限內決定槽數：至少 2 槽（一邊寫一邊給伺服端讀），最多 want 個。"""
+    aligned = P.align_slot_bytes(max(1, int(slot_bytes)))
+    return max(2, min(int(want), max(2, int(max_bytes) // aligned)))
+
+
 class ShmRing:
     def __init__(self, name: str, slots: int, slot_bytes: int, canary: int, shm: shared_memory.SharedMemory) -> None:
         self.name, self.slots, self.slot_bytes, self.canary, self.shm = name, slots, slot_bytes, canary, shm

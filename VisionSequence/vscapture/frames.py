@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -14,6 +15,43 @@ import numpy as np
 
 from vscapture.config import DeliveryConfig, Roi
 from vscapture.protocol import DTYPE_CODES, Encoding, FrameFlags
+
+
+class BufferPool:
+    """大影格用的緩衝池：2000 萬畫素彩色一張約 60 MB，每次 `np.empty` 都要重新 page fault
+    （實測配置＋寫滿 17 ms、重用只要 2.4 ms）。只有「池是唯一持有者」的緩衝會被重用，
+    已交給別人的（發布中的影格、伺服端引擎持有的）永遠不會被覆寫。
+    """
+
+    def __init__(self, max_buffers: int = 3, max_bytes: int = 512 << 20) -> None:
+        self.max_buffers = max(1, int(max_buffers))
+        self.max_bytes = int(max_bytes)
+        self._bufs: list[np.ndarray] = []
+        self.hits = 0
+        self.misses = 0
+
+    def take(self, shape: tuple[int, ...], dtype: Any) -> np.ndarray:
+        """借一個 shape/dtype 相符且沒人使用的緩衝（內容是舊資料，呼叫者要整張覆寫）。"""
+        shape = tuple(int(v) for v in shape)
+        dtype = np.dtype(dtype)
+        for buf in self._bufs:
+            # 參照數：池的 list、迴圈變數 buf、getrefcount 的引數 → 只有池持有時剛好 3
+            if buf.shape == shape and buf.dtype == dtype and sys.getrefcount(buf) <= 3:
+                self.hits += 1
+                return buf
+        self.misses += 1
+        buf = np.empty(shape, dtype)
+        keep = [b for b in self._bufs if b.shape == shape and b.dtype == dtype][: self.max_buffers - 1]
+        if buf.nbytes * (len(keep) + 1) <= self.max_bytes:
+            keep.append(buf)
+        self._bufs = keep
+        return buf
+
+    def stats(self) -> dict[str, Any]:
+        return {"buffers": len(self._bufs), "hits": self.hits, "misses": self.misses, "bytes": sum(b.nbytes for b in self._bufs)}
+
+    def clear(self) -> None:
+        self._bufs = []
 
 
 @dataclass(frozen=True)
@@ -128,6 +166,18 @@ def encode(image: np.ndarray, encoding: int, jpeg_quality: int = 90) -> bytes:
             raise ValueError("JPEG 編碼失敗")
         return buf.tobytes()
     return image.tobytes()
+
+
+def frame_item(mtype: int, req_id: int, hdr: Any, arr: np.ndarray, encoding: int, jpeg_quality: int = 90) -> tuple[Any, int]:
+    """組出 SendQueue 項目與 payload 位元組數。RAW 直接送陣列的 memoryview（零複製），其餘先編碼。"""
+    from vscapture import protocol as P
+
+    head = hdr.pack()
+    if encoding == Encoding.RAW:
+        view = memoryview(np.ascontiguousarray(arr)).cast("B")
+        return (P.pack_head(mtype, req_id, head, view.nbytes), view), view.nbytes
+    payload = encode(arr, encoding, jpeg_quality)
+    return P.pack_message(mtype, req_id, head, payload), len(payload)
 
 
 def to_display(image: np.ndarray, max_w: int, max_h: int) -> np.ndarray:

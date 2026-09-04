@@ -454,6 +454,11 @@ class HubTests(_HubBase):
         item = next(x for x in hub.clients() if x["name"] == "shm1")
         self.assertTrue(item["shm"])
         self.assertTrue(item["channels"][0]["shm"])
+        self.assertIn("recv_ms", item["channels"][0])
+        # 接收緩衝要重用：8 張只配置少數幾個（20MP 時每次重配要多花 15 ms）
+        pool = session.channels[0].pool
+        self.assertGreaterEqual(pool.hits, 4)
+        self.assertLessEqual(pool.stats()["buffers"], 3)
 
     def test_shared_memory_rejected_falls_back(self):
         c = self.connect(name="shm2", transport="shm", bad_canary=True)

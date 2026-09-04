@@ -12,26 +12,34 @@ from typing import Callable
 log = logging.getLogger(__name__)
 
 
+#: 佇列項目：整包 bytes，或 (表頭, payload memoryview) —— 後者讓大影格零複製送出（memoryview 會保住來源陣列）。
+Item = bytes | tuple[bytes, memoryview]
+
+
+def item_bytes(item: Item) -> int:
+    return len(item) if isinstance(item, bytes) else len(item[0]) + item[1].nbytes
+
+
 class SendQueue:
     def __init__(self) -> None:
         self._cond = threading.Condition()
-        self._control: deque[bytes] = deque()
-        self._replies: deque[bytes] = deque()
-        self._stream: dict[str, bytes] = {}
+        self._control: deque[Item] = deque()
+        self._replies: deque[Item] = deque()
+        self._stream: dict[str, Item] = {}
         self._stream_order: deque[str] = deque()
         self.closed = False
 
-    def put_control(self, data: bytes) -> None:
+    def put_control(self, data: Item) -> None:
         with self._cond:
             self._control.append(data)
             self._cond.notify()
 
-    def put_reply(self, data: bytes) -> None:
+    def put_reply(self, data: Item) -> None:
         with self._cond:
             self._replies.append(data)
             self._cond.notify()
 
-    def put_stream(self, cid: str, data: bytes) -> bool:
+    def put_stream(self, cid: str, data: Item) -> bool:
         """同通道只留最新一張；回 True 表示取代了尚未送出的舊影格。"""
         with self._cond:
             replaced = cid in self._stream
@@ -41,7 +49,7 @@ class SendQueue:
             self._cond.notify()
             return replaced
 
-    def get(self, timeout: float) -> bytes | None:
+    def get(self, timeout: float) -> Item | None:
         with self._cond:
             if not self._cond.wait_for(lambda: self.closed or self._control or self._replies or self._stream, timeout):
                 return None
@@ -99,8 +107,13 @@ class SenderThread(threading.Thread):
                             self.sock.sendall(ping)
                             self._last_send = time.perf_counter()
                     continue
-                self.sock.sendall(data)
-                self.bytes_sent += len(data)
+                if isinstance(data, tuple):
+                    head, payload = data
+                    self.sock.sendall(head)
+                    self.sock.sendall(payload)
+                else:
+                    self.sock.sendall(data)
+                self.bytes_sent += item_bytes(data)
                 self._last_send = time.perf_counter()
         except (OSError, ValueError) as exc:
             if not self.queue.closed:

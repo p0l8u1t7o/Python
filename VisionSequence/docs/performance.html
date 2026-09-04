@@ -138,7 +138,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html" aria-current="page">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#env">1. 測試機與方法</a></li><li><a href="#summary">2. 一頁摘要</a></li><li><a href="#table">3. 每工具前後對照</a></li><li><a href="#engine">4. 引擎與影像快取</a><ul><li><a href="#sec-4-1">4.1 示範流程「零件孔數檢測」各節點（1280×960，preview=False，after）</a></li><li><a href="#sec-4-2">4.2 引擎固定開銷</a></li><li><a href="#sec-4-3">4.3 ImageStore.encode（1280×960 BGR，JPEG 85）</a></li></ul></li><li><a href="#changes">5. 每個優化的做法與理由</a><ul><li><a href="#sec-5-1">5.1 blob：雜訊遮罩先用連通元件濾掉（detect._prefilter_small）</a></li><li><a href="#sec-5-2">5.2 intensity／histogram：一次 calcHist 推出全部統計（measure._roi_hist／_hist_stats）</a></li><li><a href="#sec-5-3">5.3 find_circle／find_line／caliper：邊緣偵測批次化、RANSAC 向量化</a></li><li><a href="#sec-5-4">5.4 template_match：金字塔粗找不用遮罩、細找剪枝</a></li><li><a href="#sec-5-5">5.5 資產影像解碼快取（locate.read_asset_image）</a></li><li><a href="#sec-5-6">5.6 defect_diff：Hanning 視窗與範本前處理快取</a></li><li><a href="#sec-5-7">5.7 其他小項</a></li><li><a href="#sec-5-8">5.8 看過但沒改的</a></li></ul></li><li><a href="#advice">6. 給使用者的效能建議</a></li><li><a href="#rerun">7. 怎麼重跑</a></li></ul></aside><article class="doc wide">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#env">1. 測試機與方法</a></li><li><a href="#summary">2. 一頁摘要</a></li><li><a href="#table">3. 每工具前後對照</a></li><li><a href="#engine">4. 引擎與影像快取</a><ul><li><a href="#sec-4-1">4.1 示範流程「零件孔數檢測」各節點（1280×960，preview=False，after）</a></li><li><a href="#sec-4-2">4.2 引擎固定開銷</a></li><li><a href="#sec-4-3">4.3 ImageStore.encode（1280×960 BGR，JPEG 85）</a></li></ul></li><li><a href="#changes">5. 每個優化的做法與理由</a><ul><li><a href="#sec-5-1">5.1 blob：雜訊遮罩先用連通元件濾掉（detect._prefilter_small）</a></li><li><a href="#sec-5-2">5.2 intensity／histogram：一次 calcHist 推出全部統計（measure._roi_hist／_hist_stats）</a></li><li><a href="#sec-5-3">5.3 find_circle／find_line／caliper：邊緣偵測批次化、RANSAC 向量化</a></li><li><a href="#sec-5-4">5.4 template_match：金字塔粗找不用遮罩、細找剪枝</a></li><li><a href="#sec-5-5">5.5 資產影像解碼快取（locate.read_asset_image）</a></li><li><a href="#sec-5-6">5.6 defect_diff：Hanning 視窗與範本前處理快取</a></li><li><a href="#sec-5-7">5.7 其他小項</a></li><li><a href="#sec-5-8">5.8 看過但沒改的</a></li></ul></li><li><a href="#advice">6. 給使用者的效能建議</a></li><li><a href="#capture">6b. 擷取端傳輸（大影格）</a></li><li><a href="#rerun">7. 怎麼重跑</a></li></ul></aside><article class="doc wide">
 <h1>VisionSequence 效能報告</h1>
 <p>對每個內建工具與引擎做基準量測，針對慢的工具做不改介面的優化，並記錄前後對照與給使用者的效能建議。原始數據在 <code>docs/bench-before.txt</code>、<code>docs/bench-after.txt</code>，量測腳本是 <code>scripts/bench_tools.py</code>。</p>
 
@@ -334,11 +334,15 @@ cmp/out/ok  &lt; 0.01 ms
 <li><strong>save_image 用 JPEG／BMP。</strong>PNG 壓縮 1280×960 要 6.4 ms（BMP 幾乎免費，JPEG 2 ms）；只存 NG（<code>only_ng</code>）。</li>
 </ol>
 
+<h2 id="capture">6b. 擷取端傳輸（大影格）</h2>
+<p>相機影像從擷取端進到伺服端的成本另外量：<code>scripts/bench_capture.py</code>。重點結論——2000 萬畫素彩色（59.9 MB／張）在同一台電腦以共享記憶體可達 <strong>117 fps</strong>（伺服端每張複製 2.7 ms），跨電腦則受網路頻寬決定（10 GbE 約 18 fps）。關鍵是<strong>重用接收緩衝</strong>（60 MB 重新配置要 17 ms、重用只要 2.4 ms）與<strong>用 np.copyto 放開 GIL</strong>。完整表格、頻寬對照與調校手段見 <a href="capture-client.html#perf">擷取端 §7</a>。</p>
+
 <h2 id="rerun">7. 怎麼重跑</h2>
 <pre>
 .venv/Scripts/python.exe scripts/bench_tools.py                       # 印到 stdout
 .venv/Scripts/python.exe scripts/bench_tools.py -o docs/bench-after.txt --pin   # 綁 P-core＋高優先權（Windows）
 .venv/Scripts/python.exe scripts/bench_tools.py --repeat 3            # 每筆跑 3 輪取最小 median（更穩，但更久、筆電會熱）
+.venv/Scripts/python.exe scripts/bench_capture.py                     # 擷取端傳輸（2000 萬畫素彩色，共享記憶體與 TCP）
 </pre>
 <p>驗證：<code>.venv/Scripts/python.exe manage.py test --noinput</code>（82 tests）與 <code>.venv/Scripts/python.exe -m ruff check apps tests scripts config</code> 在優化前後皆全綠；工具輸出格式與數值由 <code>tests/test_tools.py</code> 把關，另有一份新舊實作逐項比對的等價檢查（blob／intensity／histogram／find_edges／caliper_points／apply_mask／mask_for）在開發時全部相等。</p>
 </article></div><!-- /doc-layout -->

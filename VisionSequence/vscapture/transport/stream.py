@@ -8,7 +8,7 @@ import time
 from typing import TYPE_CHECKING
 
 from vscapture import protocol as P
-from vscapture.frames import encode, prepare
+from vscapture.frames import frame_item, prepare
 from vscapture.protocol import FrameHeader, MsgType
 
 if TYPE_CHECKING:
@@ -60,10 +60,10 @@ class StreamPusher(threading.Thread):
                                                 roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"], flags=fields["flags"], slot=slot)
                     self.client.queue.put_control(P.pack_message(MsgType.FRAME, 0, hdr.pack()))
                 else:
-                    payload = encode(arr, fields["encoding"], ch.cfg.delivery.jpeg_quality)
                     hdr = FrameHeader.for_image(self.chan_index, frame.seq, frame.ts_ns, fields["width"], fields["height"], fields["channels"], fields["dtype"],
                                                 roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"], encoding=fields["encoding"], flags=fields["flags"])
-                    if self.client.queue.put_stream(ch.id, P.pack_message(MsgType.FRAME, 0, hdr.pack(), payload)):
+                    item, _ = frame_item(MsgType.FRAME, 0, hdr, arr, fields["encoding"], ch.cfg.delivery.jpeg_quality)
+                    if self.client.queue.put_stream(ch.id, item):
                         self.dropped += 1
                 self.sent += 1
                 last_sent = now

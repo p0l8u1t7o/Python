@@ -117,6 +117,11 @@ def pack_message(mtype: int, req_id: int = 0, header: bytes = b"", payload: byte
     return pack_envelope(mtype, req_id, len(header), len(payload)) + bytes(header) + bytes(payload)
 
 
+def pack_head(mtype: int, req_id: int, header: bytes, plen: int) -> bytes:
+    """只包 envelope＋header；payload 另外送（大影格零複製：直接送 ndarray 的 memoryview）。"""
+    return pack_envelope(mtype, req_id, len(header), int(plen)) + bytes(header)
+
+
 def dumps_json(body: dict[str, Any]) -> bytes:
     return json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 

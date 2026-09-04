@@ -116,7 +116,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 
 ### 擷取端（相機在別台電腦或需要廠牌 SDK）
 - 可從網頁下載的 Windows 桌面程式（`vscapture/`，PySide6，PyInstaller 打包）：在相機所在的電腦驅動網路攝影機／Basler（pypylon）／IDS（ids_peak）／uEye／模擬相機，**主動連到伺服端擷取埠 9100**登記名稱與通道；多通道、即時預覽、ROI 圈選只傳 ROI（支援硬體 ROI）、相機參數自動表單並可存檔、傳送設定（不壓縮／LZ4／JPEG、單色、縮小、依需求取像／連續串流、測試傳送）、記錄、系統匣、無介面常駐。
-- 同一台電腦走**共享記憶體**（一條連線一個區段、FRAME 訊息通知、伺服端 copy 一次後歸還槽），跨電腦走**單一持久 TCP**（定長二進位表頭、req_id 多工、raw 直接 `recv_into` 進 ndarray、LZ4 無損）。
+- 同一台電腦走**共享記憶體**（一條連線一個區段、FRAME 訊息通知、伺服端 copy 一次後歸還槽），跨電腦走**單一持久 TCP**（定長二進位表頭、req_id 多工、raw 直接 `recv_into` 進 ndarray、LZ4 無損）。**2000 萬畫素彩色（59.9 MB／張）實測 117 fps**（緩衝池重用、`np.copyto` 放開 GIL、RAW 零複製送出）；跨電腦受網路頻寬限制，見 `docs/capture-client.html` §7、`scripts/bench_capture.py`。
 - 網頁：影像來源類型「擷取端相機」（下拉選擷取端與通道、模式、逾時、要求新影格、編碼；狀態欄顯示在線／離線／fps／最近影格），「外部整合」→「擷取端」分頁（下載、已連線的擷取端、串流開關、預覽）。建置：`scripts/build_capture_client.ps1`（`-WithBasler`／`-WithIds`）。詳見 `docs/capture-client.html`。
 
 ### 自動化整合
@@ -321,6 +321,9 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 
 # 擷取端：打包成 zip 供網頁下載（第一次會建 .venv-capture）；-WithBasler／-WithIds 一併打包 SDK
 .\scripts\build_capture_client.ps1
+
+# 擷取端傳輸效能（2000 萬畫素彩色，共享記憶體與 TCP）
+.venv/Scripts/python.exe scripts/bench_capture.py
 
 # 前端：型別、vitest（i18n 三語系對齊與用詞規範、純函式單元、9 頁 render smoke）、build
 cd frontend && npm run -s typecheck && npm test && npm run build

@@ -151,7 +151,7 @@ VISION = {
     "CAPTURE_HOST": _env("VISION_CAPTURE_HOST", "0.0.0.0"),
     "CAPTURE_PORT": _env_int("VISION_CAPTURE_PORT", 9100),
     # 擷取端單張影像上限（MB）；超過即斷線。
-    "CAPTURE_MAX_FRAME_MB": _env_int("VISION_CAPTURE_MAX_FRAME_MB", 64),
+    "CAPTURE_MAX_FRAME_MB": _env_int("VISION_CAPTURE_MAX_FRAME_MB", 128),
     # 擷取端登錄金鑰；空＝沿用 VISION_API_KEY（兩者皆空則不驗證）。
     "CAPTURE_AUTH": _env("VISION_CAPTURE_AUTH", ""),
     # 「擷取端相機」來源依需求取像的預設逾時（毫秒）。

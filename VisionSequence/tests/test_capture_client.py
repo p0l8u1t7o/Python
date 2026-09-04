@@ -21,14 +21,15 @@ from tests.test_comm import free_port
 from vscapture import app as appmod
 from vscapture import config as configmod
 from vscapture import protocol as P
-from vscapture.cameras.base import CameraParamError
-from vscapture.cameras.fake import FakeCamera
+from vscapture.cameras.base import CameraError, CameraParamError
+from vscapture.cameras.fake import FAKE_MODELS, FakeCamera
 from vscapture.channel import Channel, ChannelState
 from vscapture.config import AppConfig, ChannelConfig, ConfigError, ConnectionConfig, DeliveryConfig, Roi
 from vscapture.engine import CaptureEngine
-from vscapture.frames import Frame, FrameSlot, crop_roi, encode, prepare
+from vscapture.frames import BufferPool, Frame, FrameSlot, crop_roi, encode, frame_item, prepare
 from vscapture.protocol import Encoding
-from vscapture.shm import ShmRing
+from vscapture.transport.sender import item_bytes
+from vscapture.shm import ShmRing, plan_slots
 from vscapture.transport.client import ConnState
 
 
@@ -107,7 +108,80 @@ class FramesTests(SimpleTestCase):
             np.testing.assert_array_equal(np.frombuffer(P.decompress_lz4(encode(arr, Encoding.LZ4), arr.nbytes), np.uint8).reshape(arr.shape), arr)
 
 
+class BufferPoolTests(SimpleTestCase):
+    """大影格重用緩衝是 60 fps 的關鍵（20MP 一張 60 MB，重新配置要 17 ms、重用 2.4 ms）。"""
+
+    def test_reuses_only_when_nobody_holds_it(self):
+        pool = BufferPool(max_buffers=3)
+        a = pool.take((4, 4), np.uint8)
+        b = pool.take((4, 4), np.uint8)  # a 仍被本地變數持有 → 不會拿到同一張
+        self.assertIsNot(a, b)
+        del a
+        c = pool.take((4, 4), np.uint8)  # a 已釋放 → 重用
+        self.assertIsNot(c, b)
+        self.assertEqual(pool.stats()["buffers"], 2)
+        self.assertEqual((pool.hits, pool.misses), (1, 2))
+        del b, c
+        for _ in range(20):  # 沒人持有 → 之後全部命中，不再配置
+            pool.take((4, 4), np.uint8)
+        self.assertEqual(pool.misses, 2)
+        # 尺寸／型別不同要換新的，舊的不留
+        big = pool.take((8, 8), np.uint16)
+        self.assertEqual((big.shape, big.dtype), ((8, 8), np.dtype(np.uint16)))
+        self.assertEqual(pool.stats()["buffers"], 1)
+        pool.clear()
+        self.assertEqual(pool.stats()["buffers"], 0)
+
+    def test_bytes_cap_and_shm_slot_plan(self):
+        pool = BufferPool(max_buffers=4, max_bytes=100)
+        held = [pool.take((60,), np.uint8) for _ in range(3)]
+        self.assertEqual(len(held), 3)
+        self.assertLessEqual(pool.stats()["bytes"], 100)
+        # 一條連線的共享記憶體總量有上限：20MP 彩色一槽 60 MB
+        self.assertEqual(plan_slots(6, 1 << 20), 6)
+        self.assertEqual(plan_slots(6, 60 << 20, max_bytes=512 << 20), 6)
+        self.assertEqual(plan_slots(16, 60 << 20, max_bytes=512 << 20), 8)
+        self.assertEqual(plan_slots(16, 300 << 20, max_bytes=512 << 20), 2)  # 至少 2 槽
+
+
+class FrameItemTests(SimpleTestCase):
+    def test_raw_is_zero_copy_and_encoded_is_packed(self):
+        arr = np.arange(24, dtype=np.uint8).reshape(2, 4, 3)
+        hdr = P.FrameHeader.for_image(0, 7, 1, 4, 2, 3, 0)
+        item, n = frame_item(P.MsgType.FRAME, 5, hdr, arr, P.Encoding.RAW)
+        self.assertIsInstance(item, tuple)
+        head, payload = item
+        self.assertEqual(n, arr.nbytes)
+        self.assertEqual(payload.nbytes, arr.nbytes)
+        self.assertEqual(bytes(payload), arr.tobytes())
+        mtype, req_id, hlen, plen = P.unpack_envelope(head)
+        self.assertEqual((mtype, req_id, hlen, plen), (P.MsgType.FRAME, 5, P.FRAME_HDR.size, arr.nbytes))
+        self.assertEqual(len(head), P.ENVELOPE.size + P.FRAME_HDR.size)
+        self.assertEqual(item_bytes(item), len(head) + arr.nbytes)
+        item2, n2 = frame_item(P.MsgType.FRAME, 0, hdr, arr, P.Encoding.JPEG, 80)
+        self.assertIsInstance(item2, bytes)
+        self.assertEqual(item_bytes(item2), len(item2))
+        self.assertGreater(n2, 0)
+
+
 class FakeCameraTests(SimpleTestCase):
+    def test_models_cover_large_sensors(self):
+        devices = FakeCamera.enumerate()
+        self.assertEqual([d.device_id for d in devices], [f"fake:{i}" for i in range(len(FAKE_MODELS))])
+        self.assertIn("2000 萬畫素", devices[3].label)
+        cam = FakeCamera()
+        desc = cam.open("fake:3")
+        self.assertEqual((desc.sensor_w, desc.sensor_h), (5472, 3648))
+        cam.start()
+        img, _ = cam.grab_one(1.0)
+        self.assertEqual((img.shape, img.dtype), ((3648, 5472, 3), np.dtype(np.uint8)))
+        second, _ = cam.grab_one(1.0)
+        self.assertFalse(np.array_equal(img, second))  # 每張的方塊位置不同
+        cam.close()
+        for bad in ("fake:9", "fake:x", "usb:0"):
+            with self.assertRaises(CameraError):
+                FakeCamera().open(bad)
+
     def test_lifecycle_params_and_roi(self):
         self.assertTrue(FakeCamera.available()[0])
         devices = FakeCamera.enumerate()

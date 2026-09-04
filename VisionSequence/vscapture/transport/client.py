@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING, Any
 
 from vscapture import protocol as P
 from vscapture.config import ConnectionConfig
-from vscapture.frames import encode, prepare
+from vscapture.frames import encode, frame_item, prepare
 from vscapture.protocol import Encoding, FrameFlags, FrameHeader, GrabFlags, MsgType, ProtocolError
-from vscapture.shm import ShmRing
+from vscapture.shm import ShmRing, plan_slots
 from vscapture.transport.sender import SendQueue, SenderThread
 from vscapture.transport.stream import StreamPusher
 
@@ -244,7 +244,7 @@ class TransportClient:
         if not enabled:
             return
         need = max(int(ch.hello_dict()["max_bytes"]) for ch in enabled)
-        slots = min(16, 4 + 2 * len(enabled))
+        slots = plan_slots(min(16, 4 + 2 * len(enabled)), need)
         ring = self._ring
         if ring is not None and ring.slot_bytes >= P.align_slot_bytes(need) and ring.slots >= slots:
             self.rings = {ch.id: ring for ch in enabled}
@@ -358,12 +358,12 @@ class TransportClient:
                     fields["encoding"] = int(Encoding.RAW)
                 if encoding == Encoding.JPEG and arr.dtype.name != "uint8":
                     fields["encoding"] = int(Encoding.RAW)
-            payload = encode(arr, fields["encoding"], ch.cfg.delivery.jpeg_quality)
             hdr = FrameHeader.for_image(chan, frame.seq, frame.ts_ns, fields["width"], fields["height"], fields["channels"], fields["dtype"],
                                         roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"], encoding=fields["encoding"], flags=fields["flags"] | fresh)
-            self.queue.put_reply(P.pack_message(MsgType.FRAME, req_id, hdr.pack(), payload))
+            item, nbytes = frame_item(MsgType.FRAME, req_id, hdr, arr, fields["encoding"], ch.cfg.delivery.jpeg_quality)
+            self.queue.put_reply(item)
             self.frames_sent += 1
-            self.bytes_sent += len(payload)
+            self.bytes_sent += nbytes
         except Exception as exc:  # noqa: BLE001
             log.exception("回覆 GRAB 失敗")
             self._error(req_id, "camera_error", str(exc))
