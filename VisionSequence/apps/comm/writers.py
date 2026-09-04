@@ -169,12 +169,15 @@ class Writer:
             finally:
                 self.timeout = old
 
-    def read(self, addresses: list[str]) -> dict[str, Any]:
+    def read(self, addresses: list[str], *, quiet: bool = False) -> dict[str, Any]:
+        """讀一批。`quiet=True`：成功不進整合追蹤——觸發輪詢每秒幾十次，
+        記下去只會把真正的命令沖出環形緩衝；失敗照樣記。"""
         started = time.perf_counter()
         with self._lock:
             try:
                 out = self._read(addresses)
-                self._trace("讀取", addresses, out, started)
+                if not quiet:
+                    self._trace("讀取", addresses, out, started)
                 return out
             except CommError as exc:
                 self._trace("讀取", addresses, {"error": str(exc)}, started, ok=False)
@@ -185,7 +188,8 @@ class Writer:
                     self._close()
                     self._open()
                     out = self._read(addresses)
-                    self._trace("讀取", addresses, out, started)
+                    if not quiet:
+                        self._trace("讀取", addresses, out, started)
                     return out
                 except Exception as exc2:  # noqa: BLE001
                     self._trace("讀取", addresses, {"error": _msg(exc2)}, started, ok=False)

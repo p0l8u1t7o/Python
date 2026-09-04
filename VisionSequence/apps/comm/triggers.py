@@ -92,7 +92,7 @@ class TriggerLoop(threading.Thread):
         backoff = 0.0
         while not self._halt.wait(backoff or interval):
             try:
-                value = bool(self.writer.read([address]).get(address))
+                value = bool(self.writer.read([address], quiet=True).get(address))
                 backoff = 0.0
             except Exception as exc:  # noqa: BLE001 — PLC 斷線是常態，退避後繼續試
                 self.errors += 1

@@ -288,7 +288,7 @@ class OpcUaWriter(Writer):
 <p>只覆寫 <code>_open/_write/_read/_close</code>；lock、逾時、重連一次、計數都在基底的 <code>write()/read()</code>。類別內可用 <code>label</code>／<code>description</code>／<code>enabled</code> 變數控制顯示名稱、說明與是否掛載。也可建 kind=<code>plugin</code> 的連線並在 config 填 <code>"class": "mypkg.opcua:OpcUaWriter"</code> 直接指定類別路徑。</p>
 
 <h2 id="trace">6b. 命令與結果（除錯）</h2>
-<p>「外部整合 ▸ 連線」與「外部整合 ▸ Modbus」頁下方都有<strong>命令與結果</strong>：頁面開著時，每一次寫入／讀取（位址、值、耗時、成功與否）與從站收到的主站請求都會即時列出，點一列展開完整內容。頁面關閉後只保留錯誤，不影響產線效能。詳見 <a href="automation.html#trace">自動化整合 §7</a>。</p>
+<p>「外部整合 ▸ 連線」與「外部整合 ▸ Modbus」頁下方都有<strong>命令與結果</strong>：頁面開著時，每一次寫入／讀取（位址、值、耗時、成功與否）與從站收到的主站請求都會即時列出，點一列展開完整內容。頁面關閉後只保留錯誤，不影響產線效能。<strong>觸發輪詢本身不會進追蹤</strong>（每秒幾十次的讀取會把真正的命令沖出緩衝），只有觸發成功、清旗標、設定完成位址與讀取失敗才列出——一次觸發看起來就是完整的握手：<code>寫入 coil:0=1</code>（主站）→ <code>寫入 coil:0=0</code>（清）→ <code>寫入 coil:1=1</code>（完成）→ <code>觸發 coil:0 → 流程名：ok</code>。箭頭 <code>←</code>＝外部送進來、<code>→</code>＝平台送出去。詳見 <a href="automation.html#trace">自動化整合 §7</a>。</p>
 
 <h2 id="internals">7. 內部結構</h2>
 <ul>

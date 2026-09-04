@@ -121,6 +121,7 @@
 - **Modbus 觸發**（`apps/comm/triggers.py`）：連線設定 `trigger_address`／`trigger_flow`／`trigger_interval_ms`／`trigger_mode`（rising｜nonzero）／`trigger_clear`／`trigger_done_address`／`trigger_recipe`；一條連線一條輪詢執行緒，讀到非零就 `runner.run_sync(trigger="modbus")`，跑前清旗標、跑後設完成位址，PLC 斷線指數退避。**從站模式沒有這一層的話，PLC 寫旗標不會有任何事發生。** 狀態在 `connection_info` 的 `trigger` 欄。
 - **連線的自動啟動**：`Writer.listens=True`（從站）或有觸發設定的連線由 `writers.autostart()` 在 `manage.py serve` 啟動時開好、建立／修改時 `ensure_started()` 立刻開——以前要等有人按「測試」或流程跑過一次，伺服器重開後 PLC 就連不上。開不起來的原因存在 `_start_errors` 並出現在連線狀態的 `error`（埠被佔用最常見）。
 - **連線預先載入**：工具以 `Tool.connection_params` 宣告哪些參數是連線名稱，`prefetch_connections` 照這個掃（以前寫死 `write_modbus`，只讀不寫的流程拿不到連線會靜默降級）。新增會用連線的工具記得宣告。
+- **追蹤的噪音**：`Writer.read(..., quiet=True)` 成功不進追蹤（失敗照記）——觸發輪詢每秒幾十次，記下去會把真正的命令沖出 300 筆的環形緩衝。TraceLog 的箭頭：`←`＝direction in（外部送進來）、`→`＝out（平台送出去）。
 - **前端**：`/integration/<section>` 每種整合方式一個頁面（`pages/integration/*`＋`sections.ts` 的清單，側欄 AppShell 讀同一份清單畫樹狀選單，展開狀態存 `vs.navOpen`）；外框 `IntegrationLayout` 用 `<Outlet context={info}>` 把整合資訊傳下去，子頁面用 `shared.useSectionInfo()`（單獨 render 時自己查）。`components/integration/TraceLog.tsx` 每 1.5 秒輪詢一次。舊 `?tab=` 網址自動轉址。
 
 ### 批次測試（apps/vision/batch）

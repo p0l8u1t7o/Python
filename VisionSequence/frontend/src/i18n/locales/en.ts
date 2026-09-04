@@ -518,6 +518,7 @@ const en = {
       format: 'RunReport fields and error codes.',
     },
     trace: {
+      dir: { in: 'Received (from outside)', out: 'Sent (from the platform)' },
       title: 'Commands and results',
       hint: 'While this page is open, commands and replies on this interface appear here live (click a row for the full payload); only failures are kept afterwards.',
       empty: 'Nothing yet — send a command from outside and it shows up here.',

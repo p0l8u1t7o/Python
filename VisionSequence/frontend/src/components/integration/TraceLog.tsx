@@ -29,7 +29,7 @@ function Row({ entry }: { entry: TraceEntry }) {
         className={`flex w-full items-start gap-2 px-3 py-1.5 text-left font-mono text-[11px] leading-relaxed ${detail ? 'hover:bg-surface-muted' : 'cursor-default'}`}>
         <span className="w-4 shrink-0 pt-0.5 text-subtle">{detail ? (open ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : null}</span>
         <span className="tnum shrink-0 text-subtle">{time(entry.ts)}</span>
-        <span className={`shrink-0 ${entry.direction === 'out' ? 'text-brand' : 'text-info'}`}>{entry.direction === 'out' ? '←' : '→'}</span>
+        <span className={`shrink-0 ${entry.direction === 'out' ? 'text-brand' : 'text-info'}`} title={t(`integration.trace.dir.${entry.direction === 'out' ? 'out' : 'in'}`)}>{entry.direction === 'out' ? '→' : '←'}</span>
         {entry.name ? <span className="shrink-0 max-w-[9rem] truncate text-muted">{entry.name}</span> : null}
         <span className={`min-w-0 flex-1 break-all ${entry.ok ? '' : 'text-critical'}`}>{entry.summary}</span>
         {entry.ms !== null && entry.ms !== undefined ? <span className="tnum shrink-0 text-subtle">{entry.ms} ms</span> : null}

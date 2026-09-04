@@ -324,7 +324,7 @@ class TriggerLoopTests(SimpleTestCase):
             self.fail_reads = 0
             self.lock = threading.Lock()
 
-        def read(self, addresses):
+        def read(self, addresses, quiet=False):
             with self.lock:
                 if self.fail_reads > 0:
                     self.fail_reads -= 1
@@ -391,6 +391,23 @@ class TriggerLoopTests(SimpleTestCase):
         self.assertTrue(self._wait(lambda: loop.errors >= 1))
         self.assertIn("不存在", loop.last_error)
         self.assertEqual(loop.fired, 0)
+
+    def test_polling_does_not_flood_the_trace(self):
+        """輪詢每秒幾十次，記進追蹤只會把真正的命令沖掉；失敗仍要記。"""
+        trace.clear()
+        self.addCleanup(trace.clear)
+        trace.watch()
+        w = self.FakeWriter({"coil:0": 0})
+        loop = self._loop(w)
+        loop.start()
+        self.assertTrue(self._wait(lambda: loop.settings and time.time() > 0))
+        time.sleep(0.2)  # 至少輪詢十幾次
+        self.assertEqual(trace.entries("modbus"), [])
+        w.values["coil:0"] = 1
+        self.assertTrue(self._wait(lambda: loop.fired >= 1))
+        summaries = [e["summary"] for e in trace.entries("modbus")]
+        self.assertTrue(any("觸發" in s for s in summaries), summaries)
+        self.assertFalse(any(s.startswith("讀取") for s in summaries), summaries)
 
     def test_status_and_registry(self):
         w = self.FakeWriter()
