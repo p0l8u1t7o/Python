@@ -437,16 +437,22 @@ export interface IntegrationInfo {
   host: string
   http_port: number | string
   tcp_host: string
+  /** 外部真的連得到的位址（tcp_host 是 0.0.0.0 這種綁定位址時，這裡給可用的） */
+  tcp_connect_host?: string
   tcp_port: number
   tcp_listening: boolean
   api_key_required: boolean
   max_workers: number
+  max_queue_per_flow?: number
   run_timeout_s: number
   commands: string[]
   capture_host?: string
+  capture_connect_host?: string
   capture_port?: number
   capture_listening?: boolean
   capture_download_url?: string
+  events_url?: string
+  flow_events_url?: string
 }
 
 export interface TcpResult {

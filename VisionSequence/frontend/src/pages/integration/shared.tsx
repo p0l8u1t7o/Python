@@ -68,6 +68,12 @@ export function CodeBlock({ code, title }: { code: string; title?: string }) {
   )
 }
 
+/** 綁定位址（0.0.0.0＝所有介面）不是外部該填的東西；優先用伺服器算出來的可連位址。 */
+export function connectHost(connect: string | undefined, bind: string | undefined, fallback: string): string {
+  if (connect) return connect
+  return bind && bind !== '0.0.0.0' && bind !== '::' ? bind : fallback
+}
+
 export function InfoBar({ info }: { info: IntegrationInfo }) {
   const { t } = useTranslation()
   return (
@@ -75,12 +81,12 @@ export function InfoBar({ info }: { info: IntegrationInfo }) {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs" data-testid="integration-info">
         <span><span className="text-muted">{t('integration.info.httpBase')}：</span><code className="font-mono">{info.http_base}</code></span>
         <span className="flex items-center gap-1">
-          <span className="text-muted">{t('integration.info.tcp')}：</span><code className="font-mono">{info.tcp_host}:{info.tcp_port}</code>
+          <span className="text-muted">{t('integration.info.tcp')}：</span><code className="font-mono" title={t('integration.info.bound', { host: info.tcp_host })}>{connectHost(info.tcp_connect_host, info.tcp_host, info.host)}:{info.tcp_port}</code>
           <Badge tone={info.tcp_listening ? 'ok' : 'warning'}>{info.tcp_listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
         </span>
         {info.capture_port ? (
           <span className="flex items-center gap-1">
-            <span className="text-muted">{t('integration.info.capture')}：</span><code className="font-mono">{info.capture_host}:{info.capture_port}</code>
+            <span className="text-muted">{t('integration.info.capture')}：</span><code className="font-mono" title={t('integration.info.bound', { host: info.capture_host ?? '' })}>{connectHost(info.capture_connect_host, info.capture_host, info.host)}:{info.capture_port}</code>
             <Badge tone={info.capture_listening ? 'ok' : 'warning'}>{info.capture_listening ? t('integration.info.listening') : t('integration.info.notListening')}</Badge>
           </span>
         ) : null}

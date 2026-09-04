@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ninja import NinjaAPI
-from ninja.errors import ValidationError as NinjaValidationError
+from ninja.errors import AuthenticationError, ValidationError as NinjaValidationError
 from ninja.renderers import BaseRenderer
 
 import orjson
@@ -31,6 +31,17 @@ api = NinjaAPI(
 @api.exception_handler(APIError)
 def _api_error(request, exc: APIError):
     return api.create_response(request, exc.to_dict(), status=exc.status_code)
+
+
+@api.exception_handler(AuthenticationError)
+def _unauthenticated(request, exc: AuthenticationError):  # noqa: ARG001
+    # ninja 預設回 {"detail": "Unauthorized"}，和其他端點的 {"error": {code, message}} 不一樣，
+    # 整合方得寫兩套解析。統一成同一個形狀。
+    return api.create_response(
+        request,
+        {"error": {"code": "unauthenticated", "message": "缺少或無效的權杖／API 金鑰"}},
+        status=401,
+    )
 
 
 @api.exception_handler(NinjaValidationError)

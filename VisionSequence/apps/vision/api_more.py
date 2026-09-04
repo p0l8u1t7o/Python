@@ -264,17 +264,39 @@ def integration_info(request: HttpRequest):
         "host": host,
         "http_port": int(port) if str(port).isdigit() else port,
         "tcp_host": cfg["TCP_HOST"],
+        # 綁定位址是 0.0.0.0 時，那不是 PLC 該填的東西——給一個真的連得到的位址。
+        "tcp_connect_host": _reachable_host(cfg["TCP_HOST"], host),
         "tcp_port": cfg["TCP_PORT"],
         "tcp_listening": _tcp_listening(cfg["TCP_PORT"]),
         "capture_host": cfg["CAPTURE_HOST"],
+        "capture_connect_host": _reachable_host(cfg["CAPTURE_HOST"], host),
         "capture_port": cfg["CAPTURE_PORT"],
         "capture_listening": _tcp_listening(cfg["CAPTURE_PORT"]),
         "capture_download_url": "/api/vision/capture/download",
+        "events_url": "/api/vision/events",
+        "flow_events_url": "/api/vision/flows/{flow_id}/stream",
         "api_key_required": bool(cfg.get("API_KEY")),
         "max_workers": cfg["MAX_WORKERS"],
+        "max_queue_per_flow": runner.max_queue_per_flow,
         "run_timeout_s": cfg["RUN_TIMEOUT_S"],
         "commands": ["PING", "LIST", "RUN <flow> [k=v ...]", "TRIGGER <flow> [k=v ...]", "STATUS [flow]", "START <flow>", "STOP <flow>"],
     }
+
+
+def _reachable_host(bind: str, request_host: str) -> str:
+    """把綁定位址換成「外部真的連得到」的位址。
+
+    `0.0.0.0`／`::` 是「所有介面」，填給 PLC 是連不上的。優先用這次請求的主機名／IP
+    （管理員就是從那個位址進來的，同一張網路卡最可能通），拿不到才退回本機 IP。
+    """
+    if str(bind) not in ("0.0.0.0", "::", ""):
+        return str(bind)
+    if request_host and request_host not in ("0.0.0.0", "::"):
+        return request_host
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except OSError:
+        return "127.0.0.1"
 
 
 def _tcp_listening(port: int) -> bool:

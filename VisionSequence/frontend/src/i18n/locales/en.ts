@@ -527,7 +527,8 @@ const en = {
       failedOnly: 'Failures only',
       failed: 'failed',
     },
-    info: { httpBase: 'HTTP base', tcp: 'TCP', listening: 'listening', notListening: 'not running', apiKey: 'API key', required: 'required', optional: 'not required', workers: 'Workers', timeout: 'Timeout (s)', capture: 'Capture port' },
+    info: {
+      bound: 'Bound to {{host}}', httpBase: 'HTTP base', tcp: 'TCP', listening: 'listening', notListening: 'not running', apiKey: 'API key', required: 'required', optional: 'not required', workers: 'Workers', timeout: 'Timeout (s)', capture: 'Capture port' },
     capture: {
       title: 'Capture client',
       intro: 'Drives cameras on the PC they are attached to (webcams / USB cameras, Basler, IDS) and connects to this server; frames travel over shared memory on the same PC and losslessly over TCP across PCs.',

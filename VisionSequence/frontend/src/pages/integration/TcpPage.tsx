@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Send } from 'lucide-react'
 
+import { connectHost } from './shared'
 import { CodeBlock, CopyButton, useSectionInfo } from './shared'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Badge, Button, Card, CardBody, CardHeader, LoadingState, TextInput } from '@/components/ui'
@@ -61,7 +62,8 @@ function TcpSection({ info }: { info: IntegrationInfo }) {
   }
 
   const latest = results[0]
-  const howto = t('integration.tcp.howtoLines', { returnObjects: true, host: info.tcp_host === '0.0.0.0' ? info.host : info.tcp_host, port: info.tcp_port }) as unknown as string[]
+  const tcpHost = connectHost(info.tcp_connect_host, info.tcp_host, info.host)
+  const howto = t('integration.tcp.howtoLines', { returnObjects: true, host: tcpHost, port: info.tcp_port }) as unknown as string[]
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -115,7 +117,7 @@ function TcpSection({ info }: { info: IntegrationInfo }) {
           <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed">
             {(Array.isArray(howto) ? howto : []).map((line, i) => <li key={i} className="break-words">{line}</li>)}
           </ol>
-          <CodeBlock title="Python socket" code={`import socket, json\n\ns = socket.create_connection(("${info.tcp_host === '0.0.0.0' ? info.host : info.tcp_host}", ${info.tcp_port}), timeout=30)\ns.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)\ns.sendall(b"RUN 1\\n")\nline = b""\nwhile not line.endswith(b"\\n"):\n    line += s.recv(65536)\nprint(json.loads(line))`} />
+          <CodeBlock title="Python socket" code={`import socket, json\n\ns = socket.create_connection(("${tcpHost}", ${info.tcp_port}), timeout=30)\ns.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)\ns.sendall(b"RUN 1\\n")\nline = b""\nwhile not line.endswith(b"\\n"):\n    line += s.recv(65536)\nprint(json.loads(line))`} />
         </CardBody>
       </Card>
     </div>

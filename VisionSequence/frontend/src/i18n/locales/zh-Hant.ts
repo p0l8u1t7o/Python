@@ -1047,7 +1047,8 @@ const zhHant = {
       failedOnly: '只看失敗',
       failed: '失敗',
     },
-    info: { httpBase: 'HTTP 位址', tcp: 'TCP', listening: '監聽中', notListening: '未啟動', apiKey: 'API 金鑰', required: '必要', optional: '不需要', workers: '執行緒', timeout: '逾時（秒）', capture: '擷取埠' },
+    info: {
+      bound: '綁定位址 {{host}}', httpBase: 'HTTP 位址', tcp: 'TCP', listening: '監聽中', notListening: '未啟動', apiKey: 'API 金鑰', required: '必要', optional: '不需要', workers: '執行緒', timeout: '逾時（秒）', capture: '擷取埠' },
     capture: {
       title: '擷取端程式',
       intro: '在相機所在的電腦驅動相機（網路攝影機／USB 相機、Basler、IDS），主動連到本伺服端；同一台電腦以共享記憶體、跨電腦以 TCP 無損傳送影像。',

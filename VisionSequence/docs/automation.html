@@ -135,10 +135,16 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">總覽</a><a href="workflow-design.html">工作流程設計手冊</a><a href="architecture.html">設計手冊</a><a href="automation.html" aria-current="page">自動化整合</a><a href="modbus.html">Modbus 輸出</a><a href="dl.html">深度學習教導</a><a href="plugins.html">擴充外掛</a><a href="contract.html">前後端合約</a><a href="glossary.html">名詞規範</a><a href="golden.html">Golden Set 與匯出</a><a href="batch.html">批次測試</a><a href="performance.html">效能報告</a><a href="vision-capabilities.html">檢測功能設計</a><a href="samples.html">範例樣板</a><a href="agent.html">AI 助手</a><a href="capture-client.html">擷取端</a><a href="user-guide.html">使用者手冊</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a><ul><li><a href="#tcp-values">2-1. 引數的型別（料號與條碼不會被改掉）</a></li><li><a href="#tcp-codes">2-2. 錯誤碼（設備請用 code 分支）</a></li></ul></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a><ul><li><a href="#upload-capture">4-1. 相機接在別台電腦：擷取端</a></li></ul></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#pages">5b. 整合頁：每一種接法一個頁面</a></li><li><a href="#trace">5c. 命令與結果（除錯）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP／從站，引擎寫給你）</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. 身分（每一個端點都一樣）</a></li><li><a href="#http">1. HTTP 同步執行（最常用）</a></li><li><a href="#tcp">2. TCP 一行指令（設備最容易接）</a><ul><li><a href="#tcp-values">2-1. 引數的型別（料號與條碼不會被改掉）</a></li><li><a href="#tcp-codes">2-2. 錯誤碼（設備請用 code 分支）</a></li></ul></li><li><a href="#sse">3. SSE 即時事件（HMI / 看板）</a></li><li><a href="#upload">4. 相機不在本機時：送圖來源</a><ul><li><a href="#upload-capture">4-1. 相機接在別台電腦：擷取端</a></li></ul></li><li><a href="#perf">效能建議</a></li><li><a href="#lock">5. 身分與引擎鎖定（硬體留給產線）</a></li><li><a href="#pages">5b. 整合頁：每一種接法一個頁面</a></li><li><a href="#trace">5c. 命令與結果（除錯）</a></li><li><a href="#push">6. 主動輸出（Modbus TCP／從站，引擎寫給你）</a></li></ul></aside><article class="doc">
 
 <h1>自動化整合（Modbus TCP / 上位機 / MES）</h1>
-<p>三種接法，回傳格式相同；金鑰（<code>VISION_API_KEY</code>）有設定時 HTTP 帶 <code>X-API-Key</code> 或 <code>?api_key=</code>。</p>
+<p>三種接法，回傳格式相同。</p>
+<h2 id="auth">0. 身分（每一個端點都一樣）</h2>
+<ul>
+<li><strong>整合方</strong>：金鑰（<code>VISION_API_KEY</code>）有設定時帶 <code>X-API-Key: &lt;金鑰&gt;</code> 或 <code>?api_key=</code>。整合方永遠可以執行（引擎鎖定時也是）。</li>
+<li><strong>使用者權杖</strong>：<code>Authorization: Bearer &lt;token&gt;</code>。<strong>事件串流與影像端點一樣吃這個標頭</strong>；<code>?token=</code> 只是給瀏覽器的 EventSource 與 <code>&lt;img&gt;</code> 用的（它們沒辦法帶標頭）。</li>
+<li>沒帶或無效一律回 <strong>401 <code>{"error": {"code": "unauthenticated", …}}</code></strong>，和其他錯誤同一個形狀。</li>
+</ul>
 
 <h2 id="http">1. HTTP 同步執行（最常用）</h2>
 <pre>POST /api/vision/flows/{flow_id}/run</pre>
@@ -201,6 +207,7 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <h2 id="sse">3. SSE 即時事件（HMI / 看板）</h2>
 <pre>GET /api/vision/flows/{id}/stream?since=&lt;seq&gt;     單一流程
 GET /api/vision/events?since=&lt;seq&gt;                全部</pre>
+<p>認證與其他端點相同（<code>Authorization: Bearer</code>、<code>X-API-Key</code>，或瀏覽器用 <code>?token=</code>）。這兩個端點是串流，不在 <code>/api/openapi.json</code> 裡；路徑也可以從 <code>GET /api/vision/integration/info</code> 的 <code>events_url</code>／<code>flow_events_url</code> 取得。</p>
 <p>事件：<code>run_queued</code>、<code>run_started</code>、<code>run_finished</code>（<code>run</code> = 完整結果、<code>stats</code> = 累計統計）、<code>continuous</code>、<code>stats</code>、<code>ping</code>（每 15 秒心跳；前端 40 秒沒收到任何訊息就當斷線重連，因為經 proxy 時後端死掉客戶端連線不一定會被關）、<code>bye</code>（55 秒後重連，帶回 <code>seq</code> 不漏事件）。<code>?outputs=0</code> 只送節點狀態不送輸出（省頻寬）。</p>
 
 <h2 id="upload">4. 相機不在本機時：送圖來源</h2>

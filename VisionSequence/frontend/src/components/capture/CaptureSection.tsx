@@ -90,7 +90,7 @@ export function CaptureSection() {
   const clients = useCaptureClients(true)
   const [preview, setPreview] = useState<{ client: CaptureClient; channel: CaptureChannel; url: string } | null>(null)
   const steps = t('integration.capture.stepLines', { returnObjects: true }) as unknown as string[]
-  const host = info.data?.capture_host && info.data.capture_host !== '0.0.0.0' ? info.data.capture_host : info.data?.host ?? ''
+  const host = info.data?.capture_connect_host || (info.data?.capture_host && info.data.capture_host !== '0.0.0.0' ? info.data.capture_host : info.data?.host ?? '')
   const port = info.data?.capture_port ?? clients.data?.port ?? 9100
   const listening = clients.data?.listening ?? info.data?.capture_listening ?? false
   const items = clients.data?.items ?? []

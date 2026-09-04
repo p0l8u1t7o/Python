@@ -308,6 +308,40 @@ class ApiTests(TestCase):
         self.assertEqual(body["code"], "run_timeout")
         self.assertEqual(body["details"]["run_id"], "deadbeef")
 
+    def test_event_stream_accepts_the_bearer_header(self):
+        """事件串流與影像端點以前只吃 ?token=；非瀏覽器的整合方一律送標頭。"""
+        from django.contrib.auth.models import User
+
+        User.objects.create_user("someone", password="x")  # 有使用者後 bootstrap 不再放行
+        token = self.client.post("/api/auth/login", data=json.dumps({"username": "someone", "password": "x"}), content_type="application/json").json()["token"]
+        self.assertEqual(self.client.get("/api/vision/events?max_seconds=0.2").status_code, 401)
+        self.assertEqual(self.client.get(f"/api/vision/events?max_seconds=0.2&token={token}").status_code, 200)
+        self.assertEqual(self.client.get("/api/vision/events?max_seconds=0.2", HTTP_AUTHORIZATION=f"Bearer {token}").status_code, 200)
+        # 影像端點同理（瀏覽器用 ?token=，程式用標頭）
+        self.assertEqual(self.client.get(f"/api/vision/sources/{self.source.id}/preview?max=50").status_code, 401)
+        self.assertEqual(self.client.get(f"/api/vision/sources/{self.source.id}/preview?max=50", HTTP_AUTHORIZATION=f"Bearer {token}").status_code, 200)
+
+    def test_unauthenticated_uses_the_standard_error_shape(self):
+        """401 以前回 {"detail": "Unauthorized"}，整合方得寫兩套解析。"""
+        from django.contrib.auth.models import User
+
+        User.objects.create_user("someone", password="x")
+        r = self.client.get("/api/vision/capacity")
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(r.json()["error"]["code"], "unauthenticated")
+
+    def test_integration_info_gives_a_reachable_host(self):
+        """tcp_host 是綁定位址（0.0.0.0），那不是 PLC 該填的東西。"""
+        from apps.vision import api_more
+
+        info = self.client.get("/api/vision/integration/info").json()
+        self.assertNotIn(info["tcp_connect_host"], ("0.0.0.0", "::", ""))
+        self.assertEqual(info["events_url"], "/api/vision/events")
+        self.assertGreaterEqual(info["max_queue_per_flow"], 1)
+        self.assertEqual(api_more._reachable_host("192.168.1.5", "10.0.0.1"), "192.168.1.5")  # 有明確綁定就照用
+        self.assertEqual(api_more._reachable_host("0.0.0.0", "10.0.0.1"), "10.0.0.1")  # 綁全部就用請求進來的位址
+        self.assertTrue(api_more._reachable_host("0.0.0.0", ""))  # 連請求主機都沒有也要給得出東西
+
     def test_include_nodes_is_the_documented_name(self):
         flow = self.create_flow("nodesflow")
         plain = self.client.post(f"/api/vision/flows/{flow['id']}/run", data="{}", content_type="application/json").json()

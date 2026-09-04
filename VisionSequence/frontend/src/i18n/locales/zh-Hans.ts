@@ -1047,7 +1047,8 @@ const zhHans = {
       failedOnly: '只看失败',
       failed: '失败',
     },
-    info: { httpBase: 'HTTP 地址', tcp: 'TCP', listening: '监听中', notListening: '未启动', apiKey: 'API 密钥', required: '必要', optional: '不需要', workers: '线程', timeout: '逾时（秒）', capture: '采集端口' },
+    info: {
+      bound: '绑定地址 {{host}}', httpBase: 'HTTP 地址', tcp: 'TCP', listening: '监听中', notListening: '未启动', apiKey: 'API 密钥', required: '必要', optional: '不需要', workers: '线程', timeout: '逾时（秒）', capture: '采集端口' },
     capture: {
       title: '采集端程序',
       intro: '在相机所在的电脑驱动相机（网络摄像头／USB 相机、Basler、IDS），主动连到本服务端；同一台电脑以共享内存、跨电脑以 TCP 无损传送图像。',

@@ -69,10 +69,22 @@ def _api_key_ok(request: HttpRequest) -> bool:
     return key == expected
 
 
+def bearer_token(request: HttpRequest) -> str:
+    """`Authorization: Bearer <token>` 的權杖（沒有就空字串）。"""
+    header = request.headers.get("Authorization") or ""
+    return header[7:].strip() if header.lower().startswith("bearer ") else ""
+
+
 def authenticate(request: HttpRequest, token: str | None = None) -> Principal | None:
+    """任何進入點的身分判定。
+
+    `?token=` 是給瀏覽器 EventSource／img 標籤用的（它們沒辦法帶標頭），但**標頭一樣要通**——
+    非瀏覽器的整合方（Python／C#／Node）一律送 `Authorization: Bearer`，只認 query 參數的話
+    事件串流與影像會莫名其妙 401。
+    """
     if _api_key_ok(request):
         return Principal(kind="integrator")
-    raw = token or request.GET.get("token") or ""
+    raw = token or bearer_token(request) or request.GET.get("token") or ""
     if raw:
         user = AuthToken.resolve(raw)
         if user:
@@ -85,9 +97,7 @@ def authenticate(request: HttpRequest, token: str | None = None) -> Principal | 
 
 class BearerOrApiKey(HttpBearer):
     def __call__(self, request: HttpRequest):
-        header = request.headers.get("Authorization") or ""
-        token = header[7:].strip() if header.lower().startswith("bearer ") else None
-        return authenticate(request, token)
+        return authenticate(request, bearer_token(request) or None)
 
     def authenticate(self, request: HttpRequest, token: str):  # pragma: no cover - __call__ 已涵蓋
         return authenticate(request, token)
