@@ -11,6 +11,7 @@ import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '@/components/ui'
 import { TrendStrip } from '@/pages/StatsPage'
 import { api, imageUrl } from '@/lib/api'
+import { lastImage } from '@/lib/runImages'
 import { useToast } from '@/providers/ToastProvider'
 import { errorMessage } from '@/lib/errors'
 import { useFlowStream } from '@/lib/flowStream'
@@ -38,23 +39,6 @@ function CapacityBar() {
       </div>
     </Card>
   )
-}
-
-/** run 裡最後一個影像輸出（節點依執行順序寫入 report，倒著找即可）。 */
-function lastImage(run: RunReport): { ref: string; width: number; height: number } | null {
-  const reports = Object.values(run.nodes)
-  for (const skipThru of [true, false]) {
-    for (let i = reports.length - 1; i >= 0; i -= 1) {
-      for (const [key, v] of Object.entries(reports[i].outputs)) {
-        if (skipThru && key === '_image') continue // 優先真正的輸出；只剩直通才用
-        if (v && typeof v === 'object' && 'ref' in v && 'width' in v) {
-          const r = v as { ref: string | null; width: number; height: number }
-          if (r.ref) return { ref: r.ref, width: r.width, height: r.height }
-        }
-      }
-    }
-  }
-  return null
 }
 
 /** 中央即時影像：訂該流程的 SSE（含輸出），每筆完成的 run 立刻換上最新影像；資訊交給左欄。 */

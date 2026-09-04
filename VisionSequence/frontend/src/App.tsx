@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '@/providers/AuthProvider'
 
 // 路由層級 code-splitting：每頁獨立 chunk，首屏只載 AppShell＋當前頁（主 bundle 由 1.6MB 降到數百 KB）。
 const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
+const StationPage = lazy(() => import('@/pages/StationPage').then((m) => ({ default: m.StationPage })))
 const AgentPage = lazy(() => import('@/pages/AgentPage').then((m) => ({ default: m.AgentPage })))
 const AssetsPage = lazy(() => import('@/pages/AssetsPage').then((m) => ({ default: m.AssetsPage })))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
@@ -35,6 +36,13 @@ const ToolPage = lazy(() => import('@/pages/ToolPage').then((m) => ({ default: m
 const UsersPage = lazy(() => import('@/pages/UsersPage').then((m) => ({ default: m.UsersPage })))
 const AuditPage = lazy(() => import('@/pages/AuditPage').then((m) => ({ default: m.AuditPage })))
 
+/** 落地頁依角色：操作員直接進產線畫面，工程師與管理員看總覽。 */
+function Landing() {
+  const auth = useAuth()
+  if (auth.role === 'operator') return <Navigate to="/station" replace />
+  return <DashboardPage />
+}
+
 function RequireAuth() {
   const auth = useAuth()
   const location = useLocation()
@@ -48,11 +56,13 @@ const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
+      // 產線畫面在 AppShell 之外：操作員要的是全螢幕的判定，不是工程師的側欄
+      { path: '/station', element: <StationPage /> },
       {
         path: '/',
         element: <AppShell />,
         children: [
-          { index: true, element: <DashboardPage /> },
+          { index: true, element: <Landing /> },
           { path: 'flows', element: <FlowsPage /> },
           { path: 'flows/:flowId', element: <FlowEditorPage /> },
           { path: 'flows/:flowId/tools/:nodeId', element: <ToolPage /> },
