@@ -1,5 +1,5 @@
-# VisionSequence — Python 相依清單（執行、開發、可選後端都在這一份）。
-# 每一行都寫「為什麼在這裡」。
+# VisionSequence — Python 執行期相依清單（發行版的 site-packages 就是這一份）。
+# 每一行都寫「為什麼在這裡」。開發工具在 requirements-dev.txt、深度學習在 requirements-dl.txt。
 
 # ---- 核心框架 ---------------------------------------------------------------
 Django==5.1.6

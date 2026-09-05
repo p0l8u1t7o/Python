@@ -16,6 +16,7 @@ if ($Setup) {
     if (-not (Test-Path ".venv")) { py -3.12 -m venv .venv }
     & ".venv\Scripts\python.exe" -m pip install --upgrade pip
     & ".venv\Scripts\python.exe" -m pip install -r requirements.txt
+    & ".venv\Scripts\python.exe" -m pip install -r requirements-dev.txt
     # 外掛依賴：資料夾型外掛（plugins/<name>/requirements.txt）與單檔外掛（plugins/<name>.requirements.txt）
     Get-ChildItem "plugins" -Recurse -Depth 1 -Filter "*requirements.txt" -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Host "安裝外掛依賴：$($_.FullName)"
