@@ -1,0 +1,5 @@
+﻿id,parent,level,thr,x,y,w,h,area,fill,contrast,primary,n_sites,n_two_level,n_used,shift_dx,shift_dy,shift_n_in,shift_ratio,shift_se,shift_rot_deg,shift_grade,corr_dx,corr_dy,corr_dx_min,corr_dx_max,corr_dy_min,corr_dy_max,sys_dx,sys_dy,total_unc,kind,mean_dx,mean_dy,mean_mag,coherence,t_stat,rot_deg,scale,tx,ty,rms_before,rms_after,elong_amp,elong_coherence,elong_axis_deg,level_verdict,verdict
+1,2,0,154.385,1386,67,1319,934,1026847,0.834,22.646,0,240,3,215,0.106,-0.070,213,0.991,0.028,-0.001,高,-0.106,0.070,-0.106,0.042,-0.000,0.149,0.074,0.074,0.109,single,-0.043,0.128,0.135,0.197,1.953,,,,,,,0.476,0.658,63.570,n/a,無法判定(單一斜坡)
+2,0,1,196.892,1019,0,1749,1281,2060474,0.920,31.898,1,318,5,275,0.110,-0.066,273,0.993,0.025,-0.002,高,-0.110,0.066,-0.110,0.124,-0.000,0.410,0.117,0.205,0.237,single,0.023,0.135,0.137,0.201,2.241,,,,,,,0.446,0.663,64.352,n/a,無法判定(單一斜坡)
+3,0,1,196.892,47,35,767,361,252091,0.910,24.345,0,5,3,4,,,,,,,,,,,,,,,,,two-level,-3.941,-4.296,5.830,0.990,11.780,,,,,,,0.102,1.000,-29.664,n/a,樣本不足
+4,0,1,196.892,2146,1482,564,638,318602,0.885,21.692,0,0,0,0,,,,,,,,,,,,,,,,,single,,,,,,,,,,,,,,,n/a,無位點

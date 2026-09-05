@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flip-Chip X 光標註工具</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Flip-Chip X-Ray</div>
+  <div class="sub">晶片 / 金屬凸塊 / 基板焊點 量測與人工分類</div>
+  <div class="spacer"></div>
+  <span id="status" class="status">尚未載入影像</span>
+</header>
+
+<div class="layout">
+  <!-- ================= 左側：匯入與工具 ================= -->
+  <aside class="panel left">
+    <section>
+      <h2>1. 匯入影像</h2>
+      <form id="upload-form">
+        <input type="file" id="file-input" accept=".tif,.tiff,.png,.jpg,.jpeg,.bmp">
+        <div class="row">
+          <label>尺寸倍率 <input type="number" id="scale-input" value="1.0" step="0.1" min="0.3" max="5"></label>
+          <label>偏移門檻 px <input type="number" id="limit-input" value="5" step="0.5" min="0"></label>
+          <label>µm/px <input type="number" id="pxum-input" value="" step="0.01" min="0" placeholder="選填"></label>
+        </div>
+        <button type="submit" id="analyze-btn" class="primary">分析並疊圖</button>
+      </form>
+      <details>
+        <summary>之前分析過的影像</summary>
+        <ul id="history" class="history"></ul>
+      </details>
+    </section>
+
+    <section>
+      <h2>2. 圈選與分類</h2>
+      <div class="tools">
+        <button data-tool="select" class="tool active" title="V：拖拉矩形框選 / 點選；Shift 加選">框選 (V)</button>
+        <button data-tool="lasso" class="tool" title="L：逐點點出多邊形，雙擊或 Enter 結束">套索 (L)</button>
+        <button data-tool="add" class="tool" title="A：依目前類別拖拉新增物件 (晶片=矩形，其餘=圓)">新增 (A)</button>
+        <button data-tool="pan" class="tool" title="H：拖拉平移 (或按住空白鍵 / 中鍵)">平移 (H)</button>
+        <button data-tool="roi" class="tool" title="R：拖拉畫出 ROI 矩形，之後按「分析 ROI」只算這個區域">ROI (R)</button>
+      </div>
+      <div class="row">
+        <button id="roi-run-btn" class="primary" disabled>分析 ROI</button>
+        <button id="roi-full-btn" disabled>分析整張</button>
+        <button id="roi-clear-btn" disabled>清除 ROI</button>
+        <span id="roi-info" class="muted">尚未畫 ROI</span>
+      </div>
+      <div class="classes">
+        <button data-class="die" class="cls die">晶片 (1)</button>
+        <button data-class="bump" class="cls bump">金屬凸塊 (2)</button>
+        <button data-class="pad" class="cls pad">基板焊點 (3)</button>
+        <button data-class="ignore" class="cls ignore">忽略 (0)</button>
+      </div>
+      <div class="row">
+        <button id="delete-btn" title="Delete">刪除選取</button>
+        <button id="undo-btn" title="Ctrl+Z">復原</button>
+        <button id="clear-sel-btn" title="Esc">取消選取</button>
+      </div>
+      <p class="hint">選好物件後按類別鍵即重新分類；「新增」模式下先選類別再拖拉。滾輪縮放、雙擊置中。</p>
+      <div id="selection-info" class="selinfo">未選取</div>
+    </section>
+
+    <section>
+      <h2>顯示</h2>
+      <label><input type="checkbox" id="show-die" checked> 晶片矩形</label>
+      <label><input type="checkbox" id="show-pad" checked> 基板焊點圓</label>
+      <label><input type="checkbox" id="show-bump" checked> 金屬凸塊圓</label>
+      <label><input type="checkbox" id="show-offset" checked> 偏移向量與數值</label>
+      <label><input type="checkbox" id="show-ids"> 物件編號</label>
+      <label><input type="checkbox" id="show-rejected" checked> 篩除位點 (淡灰)</label>
+      <label><input type="checkbox" id="show-arrow" checked> 晶片需位移箭頭</label>
+      <label><input type="checkbox" id="show-raw"> 顯示原圖 (未去噪)</label>
+      <label>線寬 <input type="range" id="line-width" min="1" max="4" value="2"></label>
+    </section>
+  </aside>
+
+  <!-- ================= 中間：畫布 ================= -->
+  <main class="canvas-wrap" id="canvas-wrap">
+    <canvas id="view"></canvas>
+    <div id="drop-hint" class="drop-hint">拖放影像到這裡，或用左側「匯入影像」</div>
+  </main>
+
+  <!-- ================= 右側：結果與匯出 ================= -->
+  <aside class="panel right">
+    <section>
+      <h2>整體位移估計</h2>
+      <div id="die-shift" class="dieshift">—</div>
+    </section>
+    <section>
+      <h2>演算法摘要</h2>
+      <pre id="summary" class="summary">—</pre>
+    </section>
+    <section>
+      <h2>晶片矩形</h2>
+      <div id="regions" class="table-wrap"></div>
+    </section>
+    <section>
+      <h2>圓尺寸表 (px)</h2>
+      <div id="size-summary" class="table-wrap"></div>
+      <div class="row">
+        <select id="size-filter">
+          <option value="all">全部圓</option>
+          <option value="pad">只看基板焊點</option>
+          <option value="bump">只看金屬凸塊</option>
+          <option value="used">只看採用的位點</option>
+          <option value="rejected">只看篩除的位點</option>
+        </select>
+        <input type="text" id="size-search" placeholder="搜尋 P12 / B12 / 矩形 D3">
+        <button id="download-circles-btn" disabled>下載 circles.csv</button>
+      </div>
+      <div id="circles" class="table-wrap tall"></div>
+    </section>
+    <section>
+      <h2>人工分類統計</h2>
+      <div id="label-stats" class="table-wrap"></div>
+      <label>備註 (會一起匯出)<textarea id="notes" rows="3" placeholder="例如：右側陣列的焊點圓偏大…"></textarea></label>
+      <div class="row">
+        <button id="save-btn" class="primary">儲存標註</button>
+        <span id="save-status" class="muted"></span>
+      </div>
+    </section>
+    <section>
+      <h2>3. 匯出給語言模型</h2>
+      <div class="row">
+        <button id="export-btn" class="primary">產生匯出內容</button>
+        <button id="download-md-btn" disabled>下載 .md</button>
+        <button id="download-json-btn" disabled>下載 .json</button>
+        <button id="copy-md-btn" disabled>複製 Markdown</button>
+      </div>
+      <textarea id="export-text" rows="14" readonly placeholder="按「產生匯出內容」後，這裡會出現可直接貼給語言模型的 Markdown。"></textarea>
+    </section>
+  </aside>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
