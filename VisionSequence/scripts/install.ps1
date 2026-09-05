@@ -32,6 +32,7 @@ param(
     [string]$AdminUser = 'admin',
     [string]$AdminPassword = '',
     [string]$AdminPasswordEnv = '',
+    [string]$AdminPasswordFile = '',
     [switch]$NoTcpAuth,
     [switch]$NoFirewall,
     [switch]$NoService,
@@ -64,6 +65,17 @@ $os = [Environment]::OSVersion.Version
 if ($os.Major -lt 10) { Fail "Windows 10 / Server 2016 or newer is required." }
 if (-not [Environment]::Is64BitOperatingSystem) { Fail "64-bit Windows is required." }
 Write-VsOk "VisionSequence $version, Windows $($os.Major).$($os.Build), 64-bit"
+if (-not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\msvcp140.dll'))) {
+    $redist = Join-Path $source 'tools\vc_redist.x64.exe'
+    if ((Test-Path -LiteralPath $redist) -and (Test-VsAdmin)) {
+        Write-VsStep "Installing the Microsoft Visual C++ runtime (needed by the image libraries)"
+        $p = Start-Process -FilePath $redist -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+        if ($p.ExitCode -notin @(0, 1638, 3010)) { Fail "vc_redist.x64.exe failed (exit $($p.ExitCode))." }
+        Write-VsOk "VC++ runtime installed"
+    } else {
+        Write-VsWarn "msvcp140.dll not found: install the Microsoft Visual C++ 2015-2022 x64 runtime (tools\vc_redist.x64.exe) or the platform will not start."
+    }
+}
 
 # ---- 1. 目錄 ---------------------------------------------------------------------------------
 Write-VsStep "Creating $Root"
@@ -74,6 +86,14 @@ foreach ($d in @($Root, $appDir, (Join-Path $Root 'data'), (Join-Path $Root 'dat
 }
 
 # ---- 2. 版本樹 ---------------------------------------------------------------------------------
+$link = Join-Path $Root 'current'
+$item = Get-Item -LiteralPath $link -ErrorAction SilentlyContinue
+if ($item -and $item.Target -and (([string]$item.Target).TrimEnd('\') -ine $target) -and (Test-Path -LiteralPath (Join-Path $Root '.env')) -and -not $Force) {
+    Write-VsStep "Existing station found (current -> $($item.Target)): handing over to vsctl update"
+    $env:VS_HOME = $Root
+    & (Join-Path $source 'scripts\vsctl.ps1') update $source
+    exit $LASTEXITCODE
+}
 if ($source -ieq $target) {
     Write-VsOk "Tree already in place: $target"
 } else {
@@ -81,12 +101,12 @@ if ($source -ieq $target) {
         Fail "$target already exists. For an upgrade use: vsctl update <zip>; to overwrite the same version pass -Force."
     }
     Write-VsStep "Copying the tree to $target"
-    & robocopy $source $target /E /NFL /NDL /NJH /NJS /NP /R:2 /W:2 /XD 'data' 'plugins' | Out-Null
+    # /XD 用完整路徑：只寫名稱會把 examples\plugins 也排除掉
+    & robocopy $source $target /E /NFL /NDL /NJH /NJS /NP /R:2 /W:2 /XD (Join-Path $source 'data') (Join-Path $source 'plugins') | Out-Null
     if ($LASTEXITCODE -ge 8) { Fail "robocopy failed (exit $LASTEXITCODE)." }
     Write-VsOk "Copied"
 }
 $python = Join-Path $target 'python\python.exe'
-$link = Join-Path $Root 'current'
 $item = Get-Item -LiteralPath $link -ErrorAction SilentlyContinue
 if ($item -and $item.Target -and (([string]$item.Target).TrimEnd('\') -ine $target)) {
     if (-not $Force) { Fail "current already points at $($item.Target). Use vsctl update for upgrades, or -Force to repoint." }
@@ -106,7 +126,7 @@ $cmd = @(
 
 # ---- 3. .env（只在不存在時產生） -----------------------------------------------------------------
 $envFile = Join-Path $Root '.env'
-$hosts = @($HostNames | Where-Object { $_ } | ForEach-Object { $_.Trim().ToLower() })
+$hosts = @($HostNames | Where-Object { $_ } | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
 foreach ($h in @('localhost', '127.0.0.1', $env:COMPUTERNAME.ToLower())) { if ($hosts -notcontains $h) { $hosts += $h } }
 $generated = $false
 if (Test-Path -LiteralPath $envFile) {
@@ -172,6 +192,11 @@ try {
         Write-VsStep "Creating the first administrator '$AdminUser' (closes the no-account bootstrap window)"
         $pw = $AdminPassword
         if (-not $pw -and $AdminPasswordEnv) { $pw = [Environment]::GetEnvironmentVariable($AdminPasswordEnv) }
+        if (-not $pw -and $AdminPasswordFile -and (Test-Path -LiteralPath $AdminPasswordFile)) {
+            # 安裝精靈把密碼放在暫存檔（不進命令列），讀完就刪
+            $pw = (Get-Content -LiteralPath $AdminPasswordFile -Raw).Trim()
+            Remove-Item -LiteralPath $AdminPasswordFile -Force -ErrorAction SilentlyContinue
+        }
         if (-not $pw) {
             if ($Unattended) { $pw = New-VsSecret 12; $adminPrinted = $pw }
             else {

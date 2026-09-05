@@ -123,7 +123,7 @@ function Find-VsTool($Layout, [string]$Name, [string]$Override = '') {
 }
 
 function Invoke-VsManage($Layout, [string[]]$Arguments, [switch]$PassThru) {
-    # 在版本樹裡跑 manage.py（VS_HOME 固定指向安裝根，PYTHONIOENCODING 讓中文日誌不炸）。回傳離開碼；-PassThru 回輸出文字。
+    # 在版本樹裡跑 manage.py（VS_HOME 固定指向安裝根，PYTHONIOENCODING 讓中文日誌不炸）。輸出直接流過、離開碼放 $VsLastExit；-PassThru 改回輸出文字。
     if (-not $Layout.Python) { throw "No Python found under $($Layout.Current) (python\python.exe or .venv\Scripts\python.exe)." }
     $env:VS_HOME = $Layout.Home
     $env:PYTHONIOENCODING = 'utf-8'
@@ -142,7 +142,7 @@ function Invoke-VsManage($Layout, [string[]]$Arguments, [switch]$PassThru) {
         }
         & $Layout.Python 'manage.py' @Arguments
         $script:VsLastExit = $LASTEXITCODE
-        return $LASTEXITCODE
+        return
     } finally {
         Pop-Location
         $ErrorActionPreference = $prevEap

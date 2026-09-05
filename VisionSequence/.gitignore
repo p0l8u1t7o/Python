@@ -12,3 +12,4 @@ Image/
 .venv-capture/
 build/
 dist/
+release/

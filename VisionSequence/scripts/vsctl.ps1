@@ -6,7 +6,7 @@
     Run from the install root as "vsctl <command>" (vsctl.cmd forwards here) or from a checkout as scripts\vsctl.ps1.
 
     Service        start | stop | restart | status | run (foreground, for debugging) | logs [-Tail N] [-Follow] [-Proxy]
-    Operations     doctor [-Json] | backup [--out x.zip --with-images] | restore <zip> | purge [--dry-run] | manage <manage.py args>
+    Operations     doctor [-Json] | backup [-Out x.zip] [--with-images] | restore <zip> | purge [--dry-run] | manage <manage.py args>
     Versions       update <release.zip> [-Keep N] | rollback [<version>] [-RestoreDb] | versions [prune] [-Keep N] | version
     Plugins        plugins list | install <zip|folder> [-Online] | deps [<name>] [-Online] | rescan
     Deep learning  dl check [-Predict] | dl install <pack.zip> [-Predict]
@@ -85,19 +85,19 @@ function Service-Running {
 }
 
 function Invoke-Service([string]$Action, [hashtable]$Extra = @{}) {
-    $args = @{}
-    foreach ($k in @('Mode', 'User', 'Password', 'Interactive', 'Port', 'DryRun')) { if ($script:boundKeys -contains $k) { $args[$k] = (Get-Variable $k).Value } }
-    foreach ($k in $Extra.Keys) { $args[$k] = $Extra[$k] }
-    & $serviceScript $Action @args
+    $splat = @{}
+    foreach ($k in @('Mode', 'User', 'Password', 'Interactive', 'Port', 'DryRun')) { if ($script:boundKeys -contains $k) { $splat[$k] = (Get-Variable $k).Value } }
+    foreach ($k in $Extra.Keys) { $splat[$k] = $Extra[$k] }
+    & $serviceScript $Action @splat
     return $LASTEXITCODE
 }
 
 function Invoke-Proxy([string]$Action) {
-    $args = @{}
+    $splat = @{}
     foreach ($k in @('Https', 'HostNames', 'Port', 'Cert', 'Key', 'Out', 'File', 'DryRun')) {
-        if (($script:boundKeys -contains $k)) { $args[$k] = (Get-Variable $k).Value }
+        if (($script:boundKeys -contains $k)) { $splat[$k] = (Get-Variable $k).Value }
     }
-    & $proxyScript $Action @args
+    & $proxyScript $Action @splat
     return $LASTEXITCODE
 }
 
@@ -249,11 +249,19 @@ function Read-ReleaseInfo([string]$Zip) {
     }
 }
 
+function Read-ReleaseInfoTree([string]$Tree) {
+    $f = Join-Path $Tree 'release.json'
+    if (-not (Test-Path -LiteralPath $f)) { Fail "Not a VisionSequence release tree (no release.json): $Tree" }
+    $info = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json
+    return @{ Version = [string]$info.version; Top = (Split-Path -Leaf $Tree); Info = $info }
+}
+
 function Do-Update([string]$Zip) {
     if (-not $layout.Release) { Fail "update only applies to an installed station (<VS_HOME>\app\<ver> layout). In a checkout use git." }
     if (-not (Test-VsAdmin) -and -not $DryRun) { Fail "Run vsctl update from an elevated PowerShell (it restarts the service)." }
     if (-not (Test-Path -LiteralPath $Zip)) { Fail "Not found: $Zip" }
-    $rel = Read-ReleaseInfo $Zip
+    $isTree = Test-Path -LiteralPath $Zip -PathType Container
+    if ($isTree) { $rel = Read-ReleaseInfoTree $Zip } else { $rel = Read-ReleaseInfo $Zip }
     $newVer = $rel.Version
     $oldVer = $layout.Version
     $oldTree = Current-Target
@@ -263,7 +271,7 @@ function Do-Update([string]$Zip) {
     if ($newVer -eq $oldVer -and -not $Force) { Fail "Version $newVer is already installed and current (use -Force to reinstall)." }
     if ($rel.Info.sha256 -and $rel.Info.sha256_of) { }  # 保留：release.json 可帶內容清單
     $sumsFile = Join-Path (Split-Path -Parent $Zip) 'SHA256SUMS.txt'
-    if (Test-Path -LiteralPath $sumsFile) {
+    if (-not $isTree -and (Test-Path -LiteralPath $sumsFile)) {
         $expected = (Get-Content -LiteralPath $sumsFile | Where-Object { $_ -match [regex]::Escape((Split-Path -Leaf $Zip)) } | Select-Object -First 1)
         if ($expected) {
             $actual = (Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLower()
@@ -278,23 +286,33 @@ function Do-Update([string]$Zip) {
     New-Item -ItemType Directory -Force -Path (Join-Path $layout.DataDir 'backups') | Out-Null
     $backup = Join-Path $layout.DataDir ("backups\pre-update-$oldVer-to-$newVer.zip")
     Write-VsStep "Backup -> $backup"
-    if ((Invoke-VsManage $layout @('backup', '--out', $backup)) -ne 0) { Fail "Backup failed; update aborted." }
+    Invoke-VsManage $layout @('backup', '--out', $backup)
+    if ($VsLastExit -ne 0) { Fail "Backup failed; update aborted." }
     $migBefore = Migration-Count $oldPython $layout.Current
 
-    # 2. 解壓到 app\<ver>.partial 再改名（半途失敗不會留下看似完整的版本）
-    $partial = "$newTree.partial"
-    if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Recurse -Force }
-    if (Test-Path -LiteralPath $newTree) {
-        if ($newTree -eq $oldTree) { Fail "Cannot replace the running version in place." }
-        Remove-Item -LiteralPath $newTree -Recurse -Force
+    # 2. 解壓到 app\<ver>.partial 再改名（半途失敗不會留下看似完整的版本）；已解壓的樹就搬到 app\<ver>
+    if ($isTree) {
+        $src = (Resolve-Path -LiteralPath $Zip).Path.TrimEnd('\')
+        if ($src -ine $newTree) {
+            if (Test-Path -LiteralPath $newTree) { Remove-Item -LiteralPath $newTree -Recurse -Force }
+            Move-Item -LiteralPath $src -Destination $newTree
+        }
+    } else {
+        $partial = "$newTree.partial"
+        if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Recurse -Force }
+        if (Test-Path -LiteralPath $newTree) {
+            if ($newTree -eq $oldTree) { Fail "Cannot replace the running version in place." }
+            Remove-Item -LiteralPath $newTree -Recurse -Force
+        }
+        Write-VsStep "Extracting $(Split-Path -Leaf $Zip)"
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [IO.Compression.ZipFile]::ExtractToDirectory($Zip, $partial)
+        $inner = Join-Path $partial $rel.Top
+        if (-not (Test-Path -LiteralPath (Join-Path $inner 'python\python.exe'))) { Remove-Item -LiteralPath $partial -Recurse -Force; Fail "The release zip has no python\python.exe." }
+        Move-Item -LiteralPath $inner -Destination $newTree
+        Remove-Item -LiteralPath $partial -Recurse -Force -ErrorAction SilentlyContinue
     }
-    Write-VsStep "Extracting $(Split-Path -Leaf $Zip)"
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::ExtractToDirectory($Zip, $partial)
-    $inner = Join-Path $partial $rel.Top
-    if (-not (Test-Path -LiteralPath (Join-Path $inner 'python\python.exe'))) { Remove-Item -LiteralPath $partial -Recurse -Force; Fail "The release zip has no python\python.exe." }
-    Move-Item -LiteralPath $inner -Destination $newTree
-    Remove-Item -LiteralPath $partial -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath (Join-Path $newTree 'python\python.exe'))) { Fail "$newTree has no python\python.exe." }
     $newPython = Join-Path $newTree 'python\python.exe'
 
     # 3. 舊版還在跑：先用新 python 裝外掛依賴與 DL 包（每個版本各自的 site-packages）
@@ -338,7 +356,7 @@ function Do-Update([string]$Zip) {
         if (Wait-Healthy $httpPort $newVer) { Write-VsOk "healthz answered with $newVer" } else { Write-VsWarn "healthz did not answer within 60 s; check vsctl logs" }
     }
     $script:layout = Get-VsLayout
-    Invoke-VsManage $script:layout @('doctor') | Out-Null
+    Invoke-VsManage $script:layout @('doctor')
     Prune-Versions $Keep
     if ($depFailed.Count) { Write-VsWarn "Plugin dependencies still missing for: $($depFailed -join ', ')" }
     Write-VsOk "Update finished: $oldVer -> $newVer (rollback: vsctl rollback $oldVer)"
@@ -474,12 +492,12 @@ function Create-Admin([string]$Name) {
     if (-not $Name) { Fail "Usage: vsctl admin create <username> [-PasswordEnv NAME]" }
     Require-Python
     if ($PasswordEnv) {
-        Invoke-VsManage $layout @('create_admin', $Name, '--password-env', $PasswordEnv) | Out-Null
+        Invoke-VsManage $layout @('create_admin', $Name, '--password-env', $PasswordEnv)
     } else {
         $secure = Read-Host -Prompt "Password for $Name" -AsSecureString
         $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
         $env:VS_ADMIN_PASSWORD = $plain
-        try { Invoke-VsManage $layout @('create_admin', $Name, '--password-env', 'VS_ADMIN_PASSWORD') | Out-Null } finally { Remove-Item Env:VS_ADMIN_PASSWORD -ErrorAction SilentlyContinue }
+        try { Invoke-VsManage $layout @('create_admin', $Name, '--password-env', 'VS_ADMIN_PASSWORD') } finally { Remove-Item Env:VS_ADMIN_PASSWORD -ErrorAction SilentlyContinue }
     }
     exit $script:VsLastExit
 }
@@ -504,9 +522,9 @@ function Set-Firewall {
     $rules['capture clients'] = [int](Get-VsSetting $layout 'VISION_CAPTURE_PORT' '9100')
     foreach ($p in ($Ports -split '[,\s]+' | Where-Object { $_ })) { $rules["port $p"] = [int]$p }
     foreach ($name in $rules.Keys) {
-        $args = @{ DisplayName = "VisionSequence $name"; Direction = 'Inbound'; Protocol = 'TCP'; LocalPort = $rules[$name]; Action = 'Allow'; Profile = 'Any' }
-        if ($Subnet) { $args['RemoteAddress'] = ($Subnet -split '[,\s]+' | Where-Object { $_ }) }
-        New-NetFirewallRule @args | Out-Null
+        $splat = @{ DisplayName = "VisionSequence $name"; Direction = 'Inbound'; Protocol = 'TCP'; LocalPort = $rules[$name]; Action = 'Allow'; Profile = 'Any' }
+        if ($Subnet) { $splat['RemoteAddress'] = ($Subnet -split '[,\s]+' | Where-Object { $_ }) }
+        New-NetFirewallRule @splat | Out-Null
         Write-VsOk ("{0,-22} port {1}{2}" -f $name, $rules[$name], $(if ($Subnet) { " from $Subnet" } else { '' }))
     }
 }
@@ -531,24 +549,30 @@ switch ($Command.ToLower()) {
         $bind = '0.0.0.0'
         if ((Get-VsSetting $layout 'BEHIND_HTTPS_PROXY' '0') -match '^(1|true|yes)$') { $bind = '127.0.0.1' }
         if (Service-Running) { Fail "The service is running; stop it first (vsctl stop) or the ports are taken." }
-        exit (Invoke-VsManage $layout (@('serve', '--host', $bind) + $Rest))
+        $pidFile = Join-Path $layout.DataDir 'run\serve.pid'
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $pidFile) | Out-Null
+        Invoke-VsManage $layout (@('serve', '--host', $bind, '--pid-file', $pidFile) + $Rest); exit $VsLastExit
     }
     'logs' { Show-Logs }
-    'doctor' { Require-Python; $a = @('doctor'); if ($Json) { $a += '--json' }; exit (Invoke-VsManage $layout ($a + $Rest)) }
-    'backup' { Require-Python; $a = @('backup'); if ($Sub) { $a += $Sub }; exit (Invoke-VsManage $layout ($a + $Rest)) }
-    'purge' { Require-Python; $a = @('purge'); if ($Sub) { $a += $Sub }; exit (Invoke-VsManage $layout ($a + $Rest)) }
+    'doctor' { Require-Python; $a = @('doctor'); if ($Json) { $a += '--json' }; Invoke-VsManage $layout ($a + $Rest); exit $VsLastExit }
+    'backup' {
+        # PowerShell 會把 --out 當成自己的 -Out 參數（與 -OutVariable 撞名），所以目標路徑走 -Out；其餘 --with-images 等原樣透傳
+        Require-Python; $a = @('backup'); if ($Out) { $a += @('--out', $Out) }; if ($Sub) { $a += $Sub }; Invoke-VsManage $layout ($a + $Rest); exit $VsLastExit
+    }
+    'purge' { Require-Python; $a = @('purge'); if ($Sub) { $a += $Sub }; Invoke-VsManage $layout ($a + $Rest); exit $VsLastExit }
     'restore' {
         if (-not $Sub) { Fail "Usage: vsctl restore <backup.zip>" }
         Require-Python
         if (-not (Test-VsAdmin)) { Fail "Run vsctl restore from an elevated PowerShell (it stops the service)." }
         $wasRunning = Service-Running
         if (Service-Installed) { Invoke-Service 'stop' | Out-Null }
-        $rc = Invoke-VsManage $layout @('restore', (Resolve-Path -LiteralPath $Sub).Path, '--yes')
-        if ($rc -eq 0) { $rc = Invoke-VsManage $layout @('migrate', '--noinput') }
+        Invoke-VsManage $layout @('restore', (Resolve-Path -LiteralPath $Sub).Path, '--yes')
+        $rc = $VsLastExit
+        if ($rc -eq 0) { Invoke-VsManage $layout @('migrate', '--noinput'); $rc = $VsLastExit }
         if ($wasRunning) { Invoke-Service 'start' | Out-Null }
         exit $rc
     }
-    'manage' { Require-Python; $a = @(); if ($Sub) { $a += $Sub }; exit (Invoke-VsManage $layout ($a + $Rest)) }
+    'manage' { Require-Python; $a = @(); if ($Sub) { $a += $Sub }; Invoke-VsManage $layout ($a + $Rest); exit $VsLastExit }
     'update' { if (-not $Sub) { Fail "Usage: vsctl update <VisionSequence-<ver>-win64.zip> [-Keep N] [-Online]" }; Do-Update (Resolve-Path -LiteralPath $Sub).Path }
     'rollback' { Do-Rollback $Sub }
     'versions' {
@@ -566,7 +590,7 @@ switch ($Command.ToLower()) {
     }
     'plugins' {
         switch ($Sub.ToLower()) {
-            'list' { Require-Python; $a = @('plugins', '--list'); if ($Json) { $a += '--json' }; exit (Invoke-VsManage $layout $a) }
+            'list' { Require-Python; $a = @('plugins', '--list'); if ($Json) { $a += '--json' }; Invoke-VsManage $layout $a; exit $VsLastExit }
             'install' { if ($Rest.Count -lt 1) { Fail "Usage: vsctl plugins install <zip|folder|file.py> [-Online] [-Force]" }; Install-Plugin (Resolve-Path -LiteralPath $Rest[0]).Path }
             'deps' { Require-Python; $only = ''; if ($Rest.Count) { $only = $Rest[0] }; $f = Install-PluginDeps $layout.Python $only -AllowOnline:$Online; if ($f.Count) { exit 2 } }
             'rescan' {
@@ -583,7 +607,7 @@ switch ($Command.ToLower()) {
     'dl' {
         Require-Python
         switch ($Sub.ToLower()) {
-            'check' { $a = @('dl_check'); if ($Predict) { $a += '--predict' }; $env:YOLO_OFFLINE = '1'; exit (Invoke-VsManage $layout $a) }
+            'check' { $a = @('dl_check'); if ($Predict) { $a += '--predict' }; $env:YOLO_OFFLINE = '1'; Invoke-VsManage $layout $a; exit $VsLastExit }
             'install' {
                 if ($Rest.Count -lt 1) { Fail "Usage: vsctl dl install <VisionSequence-DL-<variant>-<ver>.zip> [-Predict]" }
                 Install-DlPack (Resolve-Path -LiteralPath $Rest[0]).Path $layout.Current $layout.Python

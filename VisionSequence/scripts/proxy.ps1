@@ -57,7 +57,7 @@ function Write-Caddyfile {
         Write-VsOk "HTTPS off: no Caddyfile. The API serves plain HTTP on port $Upstream (set BEHIND_HTTPS_PROXY=0 and bind 0.0.0.0)."
         return
     }
-    $names = @($HostNames | Where-Object { $_ } | ForEach-Object { $_.Trim() })
+    $names = @($HostNames | Where-Object { $_ } | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     if ($names.Count -eq 0) { $names = Get-DefaultHostNames }
     $addresses = $names | ForEach-Object { if ($Port -eq 443) { $_ } else { "${_}:$Port" } }
     if ($Https -eq 'custom') {

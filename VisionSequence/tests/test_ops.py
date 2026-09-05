@@ -144,9 +144,20 @@ class BackupRestoreTests(TestCase):
         (plugins / "solo.py").write_text("ENABLED = False\n", encoding="utf-8")
         downloads = Path(settings.DATA_DIR) / "downloads"
         downloads.mkdir(parents=True, exist_ok=True)
-        (downloads / "manifest.json").write_text('{"version": "9.9.9", "filename": "VisionSequenceCapture-9.9.9-win64.zip"}', encoding="utf-8")
+        # 假 manifest 蓋在真的 data/downloads 上：結束後把原本的放回去（否則會把打包好的擷取端 manifest 刪掉）
+        real_manifest = downloads / "manifest.json"
+        saved_manifest = real_manifest.read_bytes() if real_manifest.exists() else None
+
+        def _restore_downloads():
+            (downloads / "VisionSequenceCapture-9.9.9-win64.zip").unlink(missing_ok=True)
+            if saved_manifest is None:
+                real_manifest.unlink(missing_ok=True)
+            else:
+                real_manifest.write_bytes(saved_manifest)
+
+        self.addCleanup(_restore_downloads)
+        real_manifest.write_text('{"version": "9.9.9", "filename": "VisionSequenceCapture-9.9.9-win64.zip"}', encoding="utf-8")
         (downloads / "VisionSequenceCapture-9.9.9-win64.zip").write_bytes(b"zip")
-        self.addCleanup(lambda: [p.unlink(missing_ok=True) for p in (downloads / "manifest.json", downloads / "VisionSequenceCapture-9.9.9-win64.zip")])
         out = Path(settings.DATA_DIR) / "backups" / "test-env-backup.zip"
         with override_settings(VS_HOME=home, VISION={**settings.VISION, "PLUGIN_DIR": plugins}):
             call_command("backup", "--out", str(out), stdout=io.StringIO())
