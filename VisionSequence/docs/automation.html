@@ -249,8 +249,8 @@ TCP:   LOCK reason="production run" ttl=28800     → {"ok": true, "lock": {...}
 <p>"Integration" in the web interface expands into a tree in the sidebar, and every method is its own page with its own URL, so you can bookmark or share it directly:</p>
 <table>
 <tr><th>Page</th><th>URL</th><th>Contents</th></tr>
-<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>Try <code>POST /flows/{id}/run</code>, generate curl, Python or C# snippets, and read the RunReport fields and error codes</td></tr>
-<tr><td>TCP commands</td><td><code>/integration/tcp</code></td><td>Send one line, see one JSON response, with the common commands, a history, the failure codes and the outgoing TCP connections</td></tr>
+<tr><td>HTTP API</td><td><code>/integration/http</code></td><td>A Swagger-style explorer of every endpoint, generated from the server's OpenAPI description: expand one, try it out with your sign-in, copy the curl; the integration essentials come first with plain-language notes. Plus the RunReport fields and error codes</td></tr>
+<tr><td>TCP commands</td><td><code>/integration/tcp</code></td><td>The same style for the one-line commands: each command with its syntax, arguments, example response and a try-it-out line; a free command box with history; the failure codes and the outgoing TCP connections</td></tr>
 <tr><td>Events</td><td><code>/integration/events</code></td><td>The SSE event stream</td></tr>
 <tr><td>Modbus server</td><td><code>/integration/modbus-server</code></td><td>The platform listens and a Modbus TCP master reads and writes its registers: the server connections, the trigger flag, address format and mapping tables</td></tr>
 <tr><td>Modbus client</td><td><code>/integration/modbus-client</code></td><td>The platform connects out to a Modbus TCP device: the client connections, address format and mapping tables</td></tr>

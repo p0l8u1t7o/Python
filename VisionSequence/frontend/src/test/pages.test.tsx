@@ -74,6 +74,10 @@ describe('pages render (smoke)', () => {
     const { TcpPage } = await import('@/pages/integration/TcpPage')
     renderPage(<TcpPage />, { route: '/integration/tcp' })
     expect(await screen.findByTestId('tcp-command')).toBeInTheDocument()  // 預設分頁：試打
+    // Swagger 風格的指令列：展開 RUN 看得到引數表與 Try it out
+    fireEvent.click(screen.getByTestId('tcp-cmd-RUN').querySelector('button')!)
+    expect(screen.getByTestId('tcp-try')).toBeInTheDocument()
+    expect(screen.getByText('RUN <flow> [key=value ...]')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('tab', { name: 'Commands and results' }))
     expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
     const { ModbusServerPage } = await import('@/pages/integration/ModbusPage')
@@ -82,6 +86,18 @@ describe('pages render (smoke)', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Address format and mapping' }))
     expect(await screen.findByText('Server (modbus_server): the master connects to us')).toBeInTheDocument()
     expect(screen.getAllByText(/master|server/i).length).toBeGreaterThan(0)
+  })
+
+  it('HttpPage is a Swagger-style explorer built from the OpenAPI description', async () => {
+    const { HttpPage } = await import('@/pages/integration/HttpPage')
+    renderPage(<HttpPage />, { route: '/integration/http' })
+    // 整合必用的端點排最前面（run 在裡面），其餘依 tag 分組
+    const run = await screen.findByTestId('op-post-/api/vision/flows/{flow_id}/run')
+    expect(screen.getByTestId('tag-lock')).toBeInTheDocument()
+    fireEvent.click(run.querySelector('button')!)
+    fireEvent.click(screen.getByTestId('op-try'))
+    expect(screen.getByTestId('op-execute')).toBeInTheDocument()
+    expect(screen.getAllByText(/curl -X POST/).length).toBeGreaterThan(0)
   })
 
   it('PluginsPage lists what loaded from plugins/ with the error of a broken one', async () => {

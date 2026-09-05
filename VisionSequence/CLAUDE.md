@@ -174,6 +174,7 @@
 - **連線由用到它的整合頁管理**（沒有獨立的連線頁）：`comm.writers.kinds()` 每個 kind 帶 `section`（modbus_server → modbus-server、modbus_tcp → modbus-client，**各自一頁、建立時不用選種類**（`ConnectionsSection kind=`）；tcp_client → tcp；**外掛沒宣告 `Writer.section` 就歸外掛頁** `plugins`，`FALLBACK_SECTION`，kind 完全不認得的舊連線也落到那裡），前端 `components/integration/ConnectionsSection.tsx` 依 `section` 過濾清單與可建立的 kind；kind 完全不認得的舊連線落到 tcp 頁，才不會有刪不掉的孤兒。新增會用連線的外掛請宣告 `Writer.section`。
 - **引擎鎖定是整合指令**：HTTP `POST/DELETE /vision/lock` 與 TCP `LOCK [reason= ttl=]`／`UNLOCK`（`STATUS` 不帶流程時也回 lock）；兩邊共用 `EngineLock.acquire()`／`release()`（停掉所有連續執行＋發 SSE `lock` 事件）。網頁沒有鎖定頁與鎖定按鈕，只有 `LockBanner` 顯示持有者與原因，管理員或持有者可從橫幅解鎖。TCP 的稽核身分是 `tcp_server._TcpActor`（記成 integrator 而不是 system）。
 - **回傳格式**：RunReport 欄位、具名輸出範例與 HTTP 錯誤碼在 HTTP 頁（`HttpPage.FormatCards`），TCP 失敗碼在 TCP 頁（`TcpPage.TcpCodesCard`）；說明文字走 i18n（`integration.format.fields／errorCodes／tcpCodes`）；設備一律用 `code` 分支，訊息文字會隨版本潤飾。
+- **HTTP 頁是 Swagger 風格的 API 總覽**：`useOpenApi()` 讀 `/api/openapi.json`（ninja 自動產生），`pages/integration/openapi.ts` 的純函式分組／生成範例／組 curl（有單元測試）；`ESSENTIALS` 列整合必用的端點排最前面並用 `integration.http.ops.<key>` 的白話說明（**OpenAPI 的 description 是中文 docstring，不顯示**）。TCP 頁同一套版式：`TcpPage.COMMANDS` 指令目錄（與 `tcp_server.py` 同步，新增指令要補一列與 `integration.tcp.cmd.<NAME>`）。
 - **整合頁的區塊用分頁排**（`shared.SectionTabs`：試打／回傳格式或失敗碼／連線／命令與結果），一次只 render 一個分頁（命令追蹤的輪詢在別的分頁時會停），同一 session 記得上次看的分頁（`sessionStorage vs.integrationTab.<section>`）。頁面測試要先點分頁再找元素。
 
 ### 批次測試（apps/vision/batch）

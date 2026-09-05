@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ApiError, api, request } from './api'
 import { localiseList, localiseTrainers } from './catalogueLocale'
+import type { OpenApiDocument } from '@/pages/integration/openapi'
 import { localiseCatalogue } from './toolLocale'
 import type { Language } from '@/i18n'
 import type {
@@ -814,6 +815,15 @@ export function useConnectionMutations() {
 
 export function fetchConnectionState(id: number, addresses = ''): Promise<ConnectionOpResult> {
   return api.get<ConnectionOpResult>(`/vision/connections/${id}/state`, { addresses })
+}
+
+// ---- OpenAPI 描述（Swagger 風格的 API 總覽讀它） ----
+export function useOpenApi() {
+  return useQuery({
+    queryKey: ['openapi'],
+    queryFn: () => api.get<OpenApiDocument>('/openapi.json'),
+    staleTime: 10 * 60_000,
+  })
 }
 
 // ---- 資料夾外掛（/vision/plugins） ----
