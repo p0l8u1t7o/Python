@@ -48,7 +48,7 @@ const GLOSSARY_PAGES: [string, string, string, string][] = [
   ['Teach page', '/flows/:id/teach', 'TeachPage', 'Every teaching parameter grouped by step with a live preview, the recipe dropdown, and "mark as commissioned"'],
   ['Golden Set', '/flows/:id/golden', 'GoldenPage', 'Image cases with expectations, and regression testing (regressed cases first)'],
   ['Batch test', '/batch', 'BatchPage', 'Run an image set through a flow; every run is stored, with expected labels, insights, tuning, comparison and AI consultation'],
-  ['Integration', '/integration', 'IntegrationLayout', 'HTTP testing with the result format, TCP commands with their failure codes, event monitoring, Modbus and TCP connections, and the capture client'],
+  ['Integration', '/integration', 'IntegrationLayout', 'HTTP testing with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder'],
   ['Audit log', '/audit', 'AuditPage', 'Who changed what and when (administrators)'],
   ['Sign in', '/login', 'LoginPage', 'Sign in, or create the first administrator'],
   ['Deep learning', '/dl', 'DlPage', 'Teaching projects: samples, labelling, datasets, training and model export'],

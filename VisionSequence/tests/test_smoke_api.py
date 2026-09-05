@@ -62,7 +62,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             f"/api/vision/flows/{fid}/export", f"/api/vision/runs/{self.run_id}",
             "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/groups?kind=source", "/api/vision/fs",
-            "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info",
+            "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info", "/api/vision/plugins",
             "/api/vision/audit", "/api/vision/audit.csv", "/api/vision/summary", f"/api/vision/flows/{fid}/versions", f"/api/vision/flows/{fid}/versions/1",
     "/api/vision/integration/trace",
             "/api/vision/capture/clients", "/api/vision/capture/download/info", "/api/vision/capture/download", "/api/vision/capture/clients/nope/channels/x/preview",

@@ -23,8 +23,9 @@ from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from ninja import File, Router, Schema, UploadedFile
 
-from apps.accounts.security import authenticate, principal, require_feature
+from apps.accounts.security import authenticate, principal, require_admin, require_feature
 from apps.core import audit
+from apps.core import plugins as folder_plugins
 from apps.core.models import AuditLog
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
 from apps.vision import __version__, demo, summary, trace
@@ -257,6 +258,33 @@ def batch_from_source(request: HttpRequest, flow_id: int, payload: BatchSourceIn
     if not images:
         raise ValidationError("The source returned no image", code="no_frame")
     return _batch_run(request, flow_id, images, payload.graph)
+
+
+# ---------------------------------------------------------------------------
+# 資料夾外掛（apps/core/plugins.py）
+# ---------------------------------------------------------------------------
+def _plugins_out() -> dict[str, Any]:
+    return {
+        "dir": str(folder_plugins.plugin_dir()),
+        "items": folder_plugins.inventory(),
+        "docs_url": "/docs/plugins.html",
+    }
+
+
+@router.get("/plugins")
+def list_plugins(request: HttpRequest):
+    """外掛頁：plugins/ 底下每個檔案的載入結果（掛了什麼、停用、錯在哪）。"""
+    require_feature(request, "integration")
+    return _plugins_out()
+
+
+@router.post("/plugins/rescan")
+def rescan_plugins(request: HttpRequest):
+    """掛載新放進來的外掛、重試上次失敗的；已載入的檔案改了仍要重啟。"""
+    require_admin(request)
+    mounted = folder_plugins.rescan()
+    audit.record(request, "plugin.rescan", summary=", ".join(mounted) or "nothing new", target_type="plugins")
+    return {**_plugins_out(), "mounted": mounted}
 
 
 # ---------------------------------------------------------------------------

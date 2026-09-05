@@ -27,9 +27,10 @@ export function TBody({ children }: { children: ReactNode }) {
   return <tbody className="divide-y divide-line">{children}</tbody>
 }
 
-export function Tr({ children, onClick, className = '', selected = false }: { children: ReactNode; onClick?: () => void; className?: string; selected?: boolean }) {
+/** `testId` 才會變成 data-testid（與 Card 相同：直接寫 data-testid 會被丟掉）。 */
+export function Tr({ children, onClick, className = '', selected = false, testId }: { children: ReactNode; onClick?: () => void; className?: string; selected?: boolean; testId?: string }) {
   return (
-    <tr onClick={onClick} className={`${onClick ? 'cursor-pointer hover:bg-surface-muted/70' : ''} ${selected ? 'bg-brand-soft/50' : ''} ${className}`}>
+    <tr onClick={onClick} data-testid={testId} className={`${onClick ? 'cursor-pointer hover:bg-surface-muted/70' : ''} ${selected ? 'bg-brand-soft/50' : ''} ${className}`}>
       {children}
     </tr>
   )

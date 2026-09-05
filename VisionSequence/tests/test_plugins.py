@@ -7,10 +7,10 @@ import shutil
 import textwrap
 
 import numpy as np
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.comm import writers
-from apps.core.plugins import load_folder_plugins
+from apps.core.plugins import inventory, load_folder_plugins
 from apps.vision import sources
 from apps.vision.tools import base
 from tests._helpers import blank, run_tool, temp_dir
@@ -178,3 +178,93 @@ class FolderLoaderTests(SimpleTestCase):
         joined = "\n".join(captured.output)
         self.assertIn("not_a_real_package_xyz", joined)
         self.assertIn("requirements.txt", joined)
+
+
+class InventoryTests(SimpleTestCase):
+    """外掛頁讀的清單：掛了什麼、停用、錯在哪，都要看得到；重新掃描只碰新檔與失敗的。"""
+
+    def setUp(self):
+        self.folder = temp_dir()
+
+    def tearDown(self):
+        shutil.rmtree(self.folder, ignore_errors=True)
+
+    def _write(self, name: str, body: str) -> None:
+        with open(os.path.join(self.folder, name), "w", encoding="utf-8") as f:
+            f.write(textwrap.dedent(body))
+
+    def test_records_ok_disabled_and_error(self):
+        self._write("inv_good.py", """
+            from apps.vision.tools.base import Param, Result, Tool
+
+            class InvGood(Tool):
+                key = "inv_good_tool"
+                label = "Inventory good"
+                category = "logic"
+                params = [Param("x", "x", kind="number", default=1)]
+                def execute(self, ctx):
+                    return Result(status="ok")
+        """)
+        self._write("inv_off.py", "ENABLED = False\n")
+        self._write("inv_broken.py", "import definitely_not_a_package_xyz\n")
+        self._write("inv_broken.requirements.txt", "definitely-not-a-package-xyz\n")
+        load_folder_plugins(self.folder, force=True)
+        rows = {r["name"]: r for r in inventory()}
+        self.assertEqual(rows["inv_good.py"]["status"], "ok")
+        self.assertEqual(rows["inv_good.py"]["mounted"], ["tool:inv_good_tool"])
+        self.assertEqual(rows["inv_off.py"]["status"], "disabled")
+        self.assertEqual(rows["inv_broken.py"]["status"], "error")
+        self.assertIn("definitely_not_a_package_xyz", rows["inv_broken.py"]["error"])
+        self.assertTrue(rows["inv_broken.py"]["requirements"])
+        self.assertIn("pip install", rows["inv_broken.py"]["error"])
+        self.assertEqual(rows["inv_good.py"]["kind"], "file")
+
+    def test_rescan_only_touches_new_and_failed(self):
+        self._write("inv_first.py", """
+            from apps.comm.writers import Writer
+
+            class InvFirst(Writer):
+                kind = "inv_first_kind"
+                def _write(self, values):
+                    return {"written": len(values)}
+                def _read(self, addresses):
+                    return {}
+        """)
+        load_folder_plugins(self.folder, force=True)
+        self.assertIn("inv_first_kind", {k["kind"] for k in writers.kinds()})
+        self._write("inv_second.py", """
+            from apps.comm.writers import Writer
+
+            class InvSecond(Writer):
+                kind = "inv_second_kind"
+                def _write(self, values):
+                    return {"written": len(values)}
+                def _read(self, addresses):
+                    return {}
+        """)
+        # 第二次掃：只掛新檔，舊檔不重載（沒有重複註冊的警告、清單維持 ok）
+        mounted = load_folder_plugins(self.folder, force=True)
+        self.assertEqual(mounted, ["comm:inv_second_kind"])
+        rows = {r["name"]: r for r in inventory()}
+        self.assertEqual(rows["inv_first.py"]["status"], "ok")
+        self.assertEqual(rows["inv_second.py"]["mounted"], ["comm:inv_second_kind"])
+        # 外掛沒宣告 section 就歸外掛頁
+        self.assertEqual({k["kind"]: k["section"] for k in writers.kinds()}["inv_second_kind"], "plugins")
+
+
+class PluginApiTests(TestCase):
+    """外掛頁的 API：清單任何有整合功能的人可讀，重新掃描只有管理員。"""
+
+    def test_list_and_rescan(self):
+        r = self.client.get("/api/vision/plugins")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertIn("items", body)
+        self.assertTrue(body["dir"])
+        self.assertEqual(body["docs_url"], "/docs/plugins.html")
+        names = {row["name"] for row in body["items"]}
+        self.assertIn("example_dark_ratio.py", names)
+        r = self.client.post("/api/vision/plugins/rescan")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn("mounted", r.json())
+        self.assertEqual(r.json()["mounted"], [])  # 沒有新檔

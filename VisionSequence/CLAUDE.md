@@ -86,6 +86,7 @@
 - 打包：`scripts/build_capture_client.ps1`（獨立 `.venv-capture`：opencv-python 與伺服端 headless 同名互蓋）→ `scripts/capture_client.spec`（一次 Analysis 出視窗版與主控台版、SDK 有裝才 collect、排除 torch 與不用的 Qt 模組、icon 進 datas）→ `scripts/package_capture_client.py`（zip＋README.txt＋manifest.json）。PowerShell 會吃掉空字串引數，傳 `--sdks=` 形式。前端 `components/capture/CaptureSection.tsx`（下載鈕、整合頁分頁）、來源頁 `ConfigField` capture 分支（表單開著才輪詢 `useCaptureClients`）、`useSources(live)`、`lib/sources.ts sourceStatus`（connected false → 離線優先於舊錯誤、connected true → 在線）。
 
 ### 資料夾外掛（plugins/）
+- **外掛頁** `/integration/plugins`：`apps/core/plugins.py` 每個檔案的載入結果記在 `_inventory`（status ok／disabled／error／empty、mounted、error 含 pip 提示），`GET /vision/plugins`（integration 功能）讀清單、`POST /vision/plugins/rescan`（管理員）只掛新檔與重試失敗的——**已載入的檔案改了要重啟**（Python 模組不能安全熱重載）。前端 `pages/integration/PluginsPage.tsx`；外掛提供的連線種類在該頁的「連線」分頁。
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
 
 ### 這一站的摘要（apps/vision/summary.py）
@@ -170,7 +171,7 @@
 - **連線預先載入**：工具以 `Tool.connection_params` 宣告哪些參數是連線名稱，`prefetch_connections` 照這個掃（以前寫死 `write_modbus`，只讀不寫的流程拿不到連線會靜默降級）。新增會用連線的工具記得宣告。
 - **追蹤的噪音**：`Writer.read(..., quiet=True)` 成功不進追蹤（失敗照記）——觸發輪詢每秒幾十次，記下去會把真正的命令沖出 300 筆的環形緩衝。TraceLog 的箭頭：`←`＝direction in（外部送進來）、`→`＝out（平台送出去）。
 - **前端**：`/integration/<section>` 五個頁面（http／tcp／events／modbus／capture，`pages/integration/*`＋`sections.ts` 的清單，側欄 AppShell 讀同一份清單畫樹狀選單，展開狀態存 `vs.navOpen`）；外框 `IntegrationLayout` 用 `<Outlet context={info}>` 把整合資訊傳下去，子頁面用 `shared.useSectionInfo()`（單獨 render 時自己查）。`components/integration/TraceLog.tsx` 每 1.5 秒輪詢一次。舊 `?tab=` 與已移除的 `/integration/{connections,lock,format}`、`/connections` 都會轉址（整合子路由有 `path: '*'` 兜底）。
-- **連線由用到它的整合頁管理**（沒有獨立的連線頁）：`comm.writers.kinds()` 每個 kind 帶 `section`（modbus_server → modbus-server、modbus_tcp → modbus-client，**各自一頁、建立時不用選種類**（`ConnectionsSection kind=`）；tcp_client 與**沒宣告 section 的外掛** → tcp，`FALLBACK_SECTION`），前端 `components/integration/ConnectionsSection.tsx` 依 `section` 過濾清單與可建立的 kind；kind 完全不認得的舊連線落到 tcp 頁，才不會有刪不掉的孤兒。新增會用連線的外掛請宣告 `Writer.section`。
+- **連線由用到它的整合頁管理**（沒有獨立的連線頁）：`comm.writers.kinds()` 每個 kind 帶 `section`（modbus_server → modbus-server、modbus_tcp → modbus-client，**各自一頁、建立時不用選種類**（`ConnectionsSection kind=`）；tcp_client → tcp；**外掛沒宣告 `Writer.section` 就歸外掛頁** `plugins`，`FALLBACK_SECTION`，kind 完全不認得的舊連線也落到那裡），前端 `components/integration/ConnectionsSection.tsx` 依 `section` 過濾清單與可建立的 kind；kind 完全不認得的舊連線落到 tcp 頁，才不會有刪不掉的孤兒。新增會用連線的外掛請宣告 `Writer.section`。
 - **引擎鎖定是整合指令**：HTTP `POST/DELETE /vision/lock` 與 TCP `LOCK [reason= ttl=]`／`UNLOCK`（`STATUS` 不帶流程時也回 lock）；兩邊共用 `EngineLock.acquire()`／`release()`（停掉所有連續執行＋發 SSE `lock` 事件）。網頁沒有鎖定頁與鎖定按鈕，只有 `LockBanner` 顯示持有者與原因，管理員或持有者可從橫幅解鎖。TCP 的稽核身分是 `tcp_server._TcpActor`（記成 integrator 而不是 system）。
 - **回傳格式**：RunReport 欄位、具名輸出範例與 HTTP 錯誤碼在 HTTP 頁（`HttpPage.FormatCards`），TCP 失敗碼在 TCP 頁（`TcpPage.TcpCodesCard`）；說明文字走 i18n（`integration.format.fields／errorCodes／tcpCodes`）；設備一律用 `code` 分支，訊息文字會隨版本潤飾。
 - **整合頁的區塊用分頁排**（`shared.SectionTabs`：試打／回傳格式或失敗碼／連線／命令與結果），一次只 render 一個分頁（命令追蹤的輪詢在別的分頁時會停），同一 session 記得上次看的分頁（`sessionStorage vs.integrationTab.<section>`）。頁面測試要先點分頁再找元素。
@@ -212,7 +213,7 @@
 - **Git Bash heredoc 會吞反斜線**（`"\n"` 變真換行）且長內容會被截斷（unexpected EOF）：長內容、含反斜線或 TSX 的檔案一律用 Write 工具寫檔，再用 Bash 執行 patch 腳本。`.ps1` 保留 UTF-8 BOM。
 - Vite dev server 的 `/api` 代理與直打後端行為一致；LLM 供應商 hang 時不會拖垮平台（uvicorn 執行緒池），但要給短逾時。
 - 前端 `max-h` 擋不住 CSS grid 內容溢出：Modal 內部要捲動就用固定高 `h-[..]` + `min-h-0` + `overflow-hidden`，捲動容器留內距免得 hover 邊框被裁。
-- 前端 `Card` 只認 `testId` 屬性，寫 `data-testid` 會被丟掉（TS 不會報錯）；要給測試或截圖腳本用的 Card 一律用 `testId=`。
+- 前端 `Card` 與 `Tr` 只認 `testId` 屬性，寫 `data-testid` 會被丟掉（TS 不會報錯）；要給測試或截圖腳本用的一律用 `testId=`。
 - `manage.py agent_bench --llm` 用伺服器供應商；要用某位使用者的金鑰跑就在 shell 裡 `bench.run_bench(providers.resolve(user), use_llm=True)`。LLM 單次生成實測（gemini-3.5-flash-lite）判定 76%、有效 81%，規則引擎 100%——LLM 產物一定要過試執行；全部失敗時 `service.generate` 已會退回規則。
 - **Gemini 3 function calling**：模型回的 `functionCall` part 帶 `thoughtSignature`，下一回合必須原樣回傳（`ToolReply.raw` → 歷史 `raw` → `gemini_contents` 直接用原生 parts），否則 400「missing a thought_signature」；實機用 gemini-3.5-flash-lite 驗過代理迴圈 4 回合 5.6 秒完成。
 - Tailwind 顯示工具類互蓋：`Td` 自帶 `table-cell`，再加 `hidden lg:table-cell` 會因產生順序而失效（Th 沒事、Td 照樣顯示）；要隱藏欄位一律用 `max-lg:hidden` 這類 max 變體（變體排在基底工具類之後才會贏）。主題存在伺服器偏好（`/auth/me` 帶回會蓋掉 localStorage），自動化截圖要改主題得 `PATCH /auth/prefs {theme}`。

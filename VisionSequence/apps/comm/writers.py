@@ -106,8 +106,8 @@ class Writer:
     enabled = True
     #: True = 這個連線自己開埠等對方連進來（從站／伺服器）；啟動時要自動開，不能等第一次寫入。
     listens = False
-    #: 這種連線由哪個整合頁管理（`/integration/<section>`）；外掛沒宣告就歸到 tcp（那頁收所有其他輸出）。
-    section = "tcp"
+    #: 這種連線由哪個整合頁管理（`/integration/<section>`）；外掛沒宣告就歸到外掛頁。
+    section = "plugins"
 
     def __init__(self, config: dict[str, Any], *, connection_id: int = 0, name: str = "") -> None:
         self.config = config
@@ -802,8 +802,8 @@ _MODBUS_MASTER_FIELDS = ["host", "port", "unit_id", "timeout_s", "word_order"]
 _MODBUS_SLAVE_FIELDS = ["host", "port", "unit_id", "size", "word_order"]
 
 
-#: 沒宣告 section 的外掛歸這一頁——連線一定要有頁面管得到，不然只能改資料庫才刪得掉。
-FALLBACK_SECTION = "tcp"
+#: 沒宣告 section 的外掛歸外掛頁——連線一定要有頁面管得到，不然只能改資料庫才刪得掉。
+FALLBACK_SECTION = "plugins"
 
 
 def kinds() -> list[dict[str, Any]]:

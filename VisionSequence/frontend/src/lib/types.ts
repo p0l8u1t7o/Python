@@ -642,6 +642,26 @@ export interface Connection {
   updated_at: string
 }
 
+/** plugins/ 底下一個檔案的載入結果（GET /vision/plugins）。 */
+export interface PluginInfo {
+  name: string
+  path: string
+  kind: 'file' | 'package'
+  status: 'ok' | 'disabled' | 'error' | 'empty'
+  error: string
+  /** "tool:key" / "source:kind" / "comm:kind" / "dl:kind" */
+  mounted: string[]
+  requirements: boolean
+  loaded_at: number
+}
+
+export interface PluginInventory {
+  dir: string
+  items: PluginInfo[]
+  docs_url: string
+  mounted?: string[]
+}
+
 export interface ConnectionKind {
   kind: string
   label: string

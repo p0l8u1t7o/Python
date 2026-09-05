@@ -51,6 +51,10 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/dl/devices')) return { available: ['cpu'], preferred: ['cpu'], train_device: 'cpu', accelerators: [], gpus: [], providers: ['CPUExecutionProvider'] }
   if (path.startsWith('/vision/integration/trace')) return { items: [{ seq: 1, ts: 1788500000, channel: 'tcp', direction: 'in', name: '127.0.0.1:5000', summary: 'RUN 1', ok: true, ms: 3.2, detail: { ok: true } }], seq: 1, channels: { http: 0, tcp: 1, modbus: 0, capture: 0 }, keep: 300, watching: true }
   if (path.startsWith('/vision/integration/info')) return { http_base: 'http://127.0.0.1:8000/api', host: '127.0.0.1', http_port: 8000, tcp_host: '0.0.0.0', tcp_port: 9000, tcp_listening: true, api_key_required: false, max_workers: 4, run_timeout_s: 30, commands: ['RUN <flow> [k=v ...]', 'TRIGGER <flow>', 'STATUS [flow]', 'LIST', 'PING'], capture_host: '0.0.0.0', capture_port: 9100, capture_listening: true, capture_download_url: '/api/vision/capture/download' }
+  if (path.startsWith('/vision/plugins')) return { dir: 'D:/vs/plugins', docs_url: '/docs/plugins.html', mounted: [], items: [
+    { name: 'example_dark_ratio.py', path: 'D:/vs/plugins/example_dark_ratio.py', kind: 'file', status: 'ok', error: '', mounted: ['tool:dark_ratio'], requirements: false, loaded_at: 1 },
+    { name: 'broken.py', path: 'D:/vs/plugins/broken.py', kind: 'file', status: 'error', error: "Missing package 'foo'", mounted: [], requirements: true, loaded_at: 1 },
+  ] }
   if (path.startsWith('/vision/connections')) return { items: [] }
   if (path.startsWith('/vision/lock')) return { locked: false, holder: '', reason: '', expires_at: null }
   if (path.startsWith('/users/permissions')) return {

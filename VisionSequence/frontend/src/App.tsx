@@ -24,6 +24,7 @@ const IntegrationEventsPage = lazy(() => import('@/pages/integration/EventsPage'
 const IntegrationModbusServerPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusServerPage })))
 const IntegrationModbusClientPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusClientPage })))
 const IntegrationCapturePage = lazy(() => import('@/pages/integration/CapturePage').then((m) => ({ default: m.IntegrationCapturePage })))
+const IntegrationPluginsPage = lazy(() => import('@/pages/integration/PluginsPage').then((m) => ({ default: m.PluginsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
@@ -73,6 +74,7 @@ const router = createBrowserRouter([
               { path: 'modbus-client', element: <IntegrationModbusClientPage /> },
               { path: 'modbus', element: <Navigate to="/integration/modbus-server" replace /> },
               { path: 'capture', element: <IntegrationCapturePage /> },
+              { path: 'plugins', element: <IntegrationPluginsPage /> },
               // 舊書籤（連線／引擎鎖定／回傳格式已併進各整合頁）不要落到 404
               { path: '*', element: <Navigate to="/integration/http" replace /> },
             ],

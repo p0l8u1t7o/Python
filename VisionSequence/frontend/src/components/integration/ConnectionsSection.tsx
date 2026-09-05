@@ -1,6 +1,6 @@
 /**
  * 連線：主動輸出的目的地（apps/comm）。**由各自的整合頁管理**——`kind` 固定這一頁只管一種
- * （Modbus 從站／主站頁，建立時不必選種類）；沒給 `kind` 時由 `section` 決定收哪些 kind（tcp 頁），
+ * （Modbus 從站／主站頁，建立時不必選種類）；沒給 `kind` 時由 `section` 決定收哪些 kind（tcp／plugins 頁），
  * 後端 `comm.writers.kinds()` 是唯一事實來源，所以不會有連線找不到頁面而刪不掉。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
  * modbus_tcp（主站，連到 PLC）／modbus_server（從站，本機開埠讓 PLC 來讀寫）: host/port/unit_id/timeout_s|size/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
@@ -91,10 +91,10 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
   // 「連線的增刪改」是一個可授權的功能（accounts/permissions.py 的 connections），預設只有管理員
   const canManage = auth.can('connections')
 
-  // 這一頁只管自己的 kind；後端沒宣告 section 的（舊外掛）一律歸 tcp 那頁，才不會有孤兒連線。
-  const kindList = useMemo(() => (kinds.data ?? []).filter((k) => (kind ? k.kind === kind : (k.section || 'tcp') === section)), [kinds.data, section, kind])
+  // 這一頁只管自己的 kind；後端沒宣告 section 的外掛歸外掛頁，kind 完全不認得的舊連線也落到那裡，才不會有孤兒連線。
+  const kindList = useMemo(() => (kinds.data ?? []).filter((k) => (kind ? k.kind === kind : (k.section || 'plugins') === section)), [kinds.data, section, kind])
   const ownKinds = useMemo(() => new Set(kindList.map((k) => k.kind)), [kindList])
-  const rows = useMemo(() => (connections.data?.items ?? []).filter((c) => (kind ? c.kind === kind : ownKinds.has(c.kind) || (section === 'tcp' && !(kinds.data ?? []).some((k) => k.kind === c.kind)))), [connections.data, ownKinds, kinds.data, section, kind])
+  const rows = useMemo(() => (connections.data?.items ?? []).filter((c) => (kind ? c.kind === kind : ownKinds.has(c.kind) || (section === 'plugins' && !(kinds.data ?? []).some((k) => k.kind === c.kind)))), [connections.data, ownKinds, kinds.data, section, kind])
   const fieldsFor = useMemo(() => new Map(kindList.map((k) => [k.kind, k.fields])), [kindList])
 
   function defaultsFor(kind: string): Record<string, unknown> {

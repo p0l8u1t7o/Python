@@ -84,6 +84,14 @@ describe('pages render (smoke)', () => {
     expect(screen.getAllByText(/master|server/i).length).toBeGreaterThan(0)
   })
 
+  it('PluginsPage lists what loaded from plugins/ with the error of a broken one', async () => {
+    const { PluginsPage } = await import('@/pages/integration/PluginsPage')
+    renderPage(<PluginsPage />, { route: '/integration/plugins' })
+    expect(await screen.findByTestId('plugin-example_dark_ratio.py')).toHaveTextContent('tool:dark_ratio')
+    expect(screen.getByTestId('plugin-broken.py')).toHaveTextContent("Missing package 'foo'")
+    expect(screen.getByTestId('plugins-rescan')).toBeInTheDocument()
+  })
+
   it('IntegrationPage capture tab lists connected capture clients and channels', async () => {
     const { IntegrationCapturePage } = await import('@/pages/integration/CapturePage')
     renderPage(<IntegrationCapturePage />, { route: '/integration/capture' })

@@ -26,8 +26,11 @@ import importlib.util
 import inspect
 import logging
 import sys
+import threading
+import time
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 from django.conf import settings
 
@@ -35,6 +38,11 @@ log = logging.getLogger(__name__)
 
 #: 已掃描過的資料夾（resolve 後的路徑），避免 ready() 被呼叫多次時重複 import。
 _loaded_dirs: set[str] = set()
+
+#: 外掛清單：檔名 → 這一次載入的結果（狀態、掛了什麼、錯在哪）。外掛頁讀它；
+#: 以前錯誤只進日誌，現場沒有人會去翻日誌。
+_inventory: dict[str, dict[str, Any]] = {}
+_inventory_lock = threading.Lock()
 
 
 def plugin_dir() -> Path:
@@ -50,28 +58,70 @@ def load_folder_plugins(directory: str | Path | None = None, *, force: bool = Fa
     _loaded_dirs.add(resolved)
     if not folder.is_dir():
         return []
-    # 單檔外掛（x.py）＋資料夾型外掛（x/__init__.py，整個外掛專案丟進來）。
-    entries = [p for p in folder.glob("*.py")] + [p for p in folder.iterdir() if p.is_dir() and (p / "__init__.py").exists()]
     mounted: list[str] = []
-    for path in sorted(entries, key=lambda p: p.name):
-        if path.name.startswith("_"):
+    for path in _entries(folder):
+        # 重新掃描（force）只碰還沒載入過或上次失敗的檔案：Python 模組不能安全地熱重載，
+        # 已載入的檔案改了要重啟伺服器（外掛頁會這樣提示）。
+        previous = _inventory.get(path.name)
+        if force and previous and previous["status"] != "error":
             continue
-        try:
-            module = _import(path)
-        except ModuleNotFoundError as exc:
-            log.error("外掛 %s 載入失敗：缺少套件 %s。%s", path.name, exc.name, _requirements_hint(path))
-            continue
-        except Exception:  # noqa: BLE001 — 單一外掛壞掉不影響其他外掛
-            log.exception("外掛 %s 載入失敗，略過", path.name)
-            continue
+        mounted += _load_entry(path)
+    return mounted
+
+
+def _entries(folder: Path) -> list[Path]:
+    """單檔外掛（x.py）＋資料夾型外掛（x/__init__.py，整個外掛專案丟進來）；底線開頭的跳過。"""
+    entries = [p for p in folder.glob("*.py")] + [p for p in folder.iterdir() if p.is_dir() and (p / "__init__.py").exists()]
+    return [p for p in sorted(entries, key=lambda p: p.name) if not p.name.startswith("_")]
+
+
+def _load_entry(path: Path) -> list[str]:
+    """載入一個外掛檔並把結果記進清單；回傳掛載清單。"""
+    record: dict[str, Any] = {
+        "name": path.name, "path": str(path), "kind": "package" if path.is_dir() else "file",
+        "status": "ok", "error": "", "mounted": [], "requirements": _requirements_path(path) is not None,
+        "loaded_at": time.time(),
+    }
+    found: list[str] = []
+    try:
+        module = _import(path)
+    except ModuleNotFoundError as exc:
+        hint = _requirements_hint(path)
+        log.error("外掛 %s 載入失敗：缺少套件 %s。%s", path.name, exc.name, hint)
+        record.update(status="error", error=f"Missing package '{exc.name}'. {hint}".strip())
+    except Exception as exc:  # noqa: BLE001 — 單一外掛壞掉不影響其他外掛
+        log.exception("外掛 %s 載入失敗，略過", path.name)
+        record.update(status="error", error=f"{type(exc).__name__}: {str(exc)[:300]}")
+    else:
         if not getattr(module, "ENABLED", True):
             log.info("外掛 %s 已停用（ENABLED = False），略過", path.name)
-            continue
-        found = _register_module(module)
-        if found:
-            log.info("外掛 %s 掛載：%s", path.name, ", ".join(found))
-        mounted += found
-    return mounted
+            record["status"] = "disabled"
+        else:
+            found = _register_module(module)
+            record["mounted"] = list(found)
+            if found:
+                log.info("外掛 %s 掛載：%s", path.name, ", ".join(found))
+            else:
+                record["status"] = "empty"
+    with _inventory_lock:
+        _inventory[path.name] = record
+    return found
+
+
+def inventory() -> list[dict[str, Any]]:
+    """外掛頁要的清單（照檔名排）。"""
+    with _inventory_lock:
+        return [dict(_inventory[name]) for name in sorted(_inventory)]
+
+
+def rescan() -> list[str]:
+    """掛載新放進 plugins/ 的檔案、重試上次失敗的；已載入的不重載。回傳這次新掛的。"""
+    return load_folder_plugins(force=True)
+
+
+def _requirements_path(path: Path) -> Path | None:
+    req = (path / "requirements.txt") if path.is_dir() else path.with_suffix(".requirements.txt")
+    return req if req.exists() else None
 
 
 def _requirements_hint(path: Path) -> str:

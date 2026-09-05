@@ -40,6 +40,7 @@ import type {
   ImageSource,
   IntegrationInfo,
   Page,
+  PluginInventory,
   PreviewReport,
   RecipeCheckResult,
   RecipeImportCheck,
@@ -813,6 +814,30 @@ export function useConnectionMutations() {
 
 export function fetchConnectionState(id: number, addresses = ''): Promise<ConnectionOpResult> {
   return api.get<ConnectionOpResult>(`/vision/connections/${id}/state`, { addresses })
+}
+
+// ---- 資料夾外掛（/vision/plugins） ----
+export function usePlugins(enabled = true) {
+  return useQuery({
+    queryKey: ['plugins'],
+    queryFn: () => api.get<PluginInventory>('/vision/plugins'),
+    enabled,
+  })
+}
+
+export function useRescanPlugins() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<PluginInventory>('/vision/plugins/rescan', {}),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['plugins'] })
+      // 新掛的工具／來源／連線種類要立刻出現在各自的目錄
+      void client.invalidateQueries({ queryKey: keys.toolTypes })
+      void client.invalidateQueries({ queryKey: keys.sourceKinds })
+      void client.invalidateQueries({ queryKey: keys.connectionKinds })
+      void client.invalidateQueries({ queryKey: ['dl', 'trainers'] })
+    },
+  })
 }
 
 // ---- 深度學習教導（/vision/dl） ----

@@ -127,7 +127,7 @@ export function GlobalSearch() {
     }
     for (const c of (connections.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
       // 連線由用到它的整合頁管理：Modbus 系的到 Modbus 頁，其餘（上位機 TCP、外掛）到 TCP 頁
-      out.push({ group: 'connections', label: c.name, sub: c.kind, to: c.kind === 'modbus_server' ? '/integration/modbus-server' : c.kind === 'modbus_tcp' ? '/integration/modbus-client' : '/integration/tcp', icon: Cable })
+      out.push({ group: 'connections', label: c.name, sub: c.kind, to: c.kind === 'modbus_server' ? '/integration/modbus-server' : c.kind === 'modbus_tcp' ? '/integration/modbus-client' : c.kind.startsWith('tcp_') ? '/integration/tcp' : '/integration/plugins', icon: Cable })
     }
     for (const a of (assets.data?.items ?? []).filter((x) => matches(query, x.name, x.kind)).slice(0, PER_GROUP)) {
       out.push({ group: 'assets', label: a.name, sub: a.kind, to: '/assets', icon: Images })
