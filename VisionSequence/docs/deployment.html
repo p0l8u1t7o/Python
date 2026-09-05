@@ -144,154 +144,249 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html" aria-current="page">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#shape">1. What you are installing</a></li><li><a href="#requirements">2. Requirements</a></li><li><a href="#install">3. First install</a></li><li><a href="#service">4. Starting at boot</a></li><li><a href="#network">5. Ports, firewall and reverse proxy</a></li><li><a href="#accounts">6. Accounts and keys</a></li><li><a href="#backup">7. Backup and restore</a></li><li><a href="#upgrade">8. Upgrading and rolling back</a></li><li><a href="#monitor">9. Monitoring</a></li><li><a href="#fleet">10. More than one station</a></li><li><a href="#recovery">11. Disaster recovery</a></li><li><a href="#security">12. Security notes</a></li></ul></aside><article class="doc">
-
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#shape">1. What you are installing</a></li><li><a href="#requirements">2. Requirements</a></li><li><a href="#install">3. First install</a><ul><li><a href="#wizard">3-1. The setup wizard</a></li><li><a href="#manual">3-2. From the zip, by hand</a></li></ul></li><li><a href="#service">4. Services and the station command line</a></li><li><a href="#network">5. Ports and firewall</a></li><li><a href="#https">6. HTTPS</a></li><li><a href="#clients">7. Client PCs and browsers</a></li><li><a href="#accounts">8. Accounts and keys</a></li><li><a href="#backup">9. Backup and restore</a></li><li><a href="#upgrade">10. Upgrading and rolling back</a></li><li><a href="#plugins">11. Plugins on site</a></li><li><a href="#dl">12. The deep-learning add-on pack</a></li><li><a href="#monitor">13. Monitoring</a></li><li><a href="#fleet">14. More than one station</a></li><li><a href="#recovery">15. Disaster recovery</a></li><li><a href="#security">16. Security notes</a></li><li><a href="#build">17. Building a release (vendor side)</a></li></ul></aside><article class="doc">
 <h1>Deployment and operations</h1>
-<p>How to put VisionSequence on a factory PC and keep it running: install, start at boot, back up, upgrade, monitor, recover. Everything here assumes Windows, which is what the machines on a line normally run; the platform itself is plain Python and Django and runs on Linux with the same steps minus the scheduled task.</p>
+<p>How to put VisionSequence on a customer's PC and keep it running: the setup wizard, the folder layout, HTTPS, the client PCs that only run a browser, plugins and the deep-learning add-on on site, backup, upgrade and rollback. Everything is Windows, which is what the machines on a line run. The station needs <strong>no internet connection</strong>: the release carries its own Python and every package, and plugins and the deep-learning pack install from files.</p>
 
 <h2 id="shape">1. What you are installing</h2>
-<p><strong>One machine, one API process, one station.</strong> Engine state, the image cache and the event bus all live inside that process, so a station is a single server with a single copy of <code>manage.py serve</code>. That one command serves the web interface, the HTTP API, the TCP command port and the capture-client port.</p>
+<p><strong>One machine, one API process, one station.</strong> Engine state, the image cache and the event bus live inside that process, so a station is one PC running one copy of the platform. Browsers on other PCs, equipment and camera PCs all talk to that one process.</p>
+<pre>C:\VisionSequence\                 (the install root)
+├─ app\1.0.0\      the release tree: python\, apps\, config\, frontend\dist\, docs\, scripts\, tools\ (never edited)
+├─ current  →  app\1.0.0            junction; the services point here, an update just moves it
+├─ data\           database, assets, image archive, logs, backups, downloads (the capture client), run\serve.pid
+├─ plugins\        your plugins (with wheels\ for offline dependencies); plugins\_wheels\ shared wheels
+├─ packs\          deep-learning add-on packs, reinstalled automatically on update
+├─ certs\          root.crt for client PCs, or your own certificate
+├─ .env            station configuration and keys      Caddyfile   HTTPS proxy configuration
+└─ vsctl.cmd       the station command line (§4)</pre>
 <table>
-<tr><th>Piece</th><th>What it is</th><th>Where it lives</th></tr>
-<tr><td>API process</td><td>Web UI, HTTP API, SSE, TCP commands, capture hub, Modbus connections</td><td><code>manage.py serve</code> (uvicorn, one worker)</td></tr>
+<tr><th>Piece</th><th>What it is</th><th>Where it runs</th></tr>
+<tr><td>Service <code>VisionSequence</code></td><td>Web interface, HTTP API, SSE, TCP commands (9000), capture hub (9100), Modbus connections</td><td><code>current\python\python.exe manage.py serve</code> under NSSM, bound to 127.0.0.1:8000 behind the proxy</td></tr>
+<tr><td>Service <code>VisionSequenceProxy</code></td><td>HTTPS on 443 (Caddy) in front of the API; not installed with <code>-Https none</code></td><td><code>current\tools\caddy.exe</code></td></tr>
 <tr><td>Database</td><td>Flows, recipes, run history, users, audit trail</td><td><code>data\vision.sqlite3</code> (SQLite, WAL)</td></tr>
-<tr><td>Assets</td><td>Template images, models, dataset versions, batch images</td><td><code>data\assets\</code></td></tr>
-<tr><td>Image archive</td><td>Kept inspection images (off by default)</td><td><code>data\archive\</code> or <code>VISION_ARCHIVE_DIR</code></td></tr>
-<tr><td>Capture client</td><td>Optional desktop program on the camera PC</td><td>Its own machine; connects out to port 9100</td></tr>
+<tr><td>Capture client</td><td>Optional program on the camera PC, downloaded from the Integration › Capture page</td><td>Its own machine; connects <em>out</em> to port 9100</td></tr>
 </table>
-<div class="note">Several stations do not share one server. Each station runs its own copy, and an external system can poll them all for a single yield overview (see <a href="#fleet">§10</a>).</div>
+<div class="note">Several stations do not share one server. Each station is its own install; an MES or dashboard polls them all for one yield overview (<a href="#fleet">§14</a>).</div>
 
 <h2 id="requirements">2. Requirements</h2>
 <ul>
-<li><strong>Windows 10/11 or Windows Server 2019+</strong>, 64-bit. Linux works too; only the scheduled task in §4 is Windows-specific.</li>
-<li><strong>Python 3.12</strong> (the version the virtual environment is built with).</li>
-<li><strong>Node.js 20+</strong> only if you intend to rebuild the web interface; a shipped build does not need it.</li>
-<li><strong>Disk</strong>: 2 GB for the program, plus whatever you allow the image archive (default cap 20 GB) and the run history (a run row is roughly 1.5 KB).</li>
-<li><strong>Memory</strong>: 4 GB is enough for classic inspection. The image cache holds the last few runs per flow in RAM; a 20 MP colour frame is 60 MB, so a station running large frames wants 16 GB.</li>
-<li><strong>GPU</strong>: optional, only for deep-learning tools. NVIDIA with CUDA 12.8 drivers; see the deep-learning page for the install order, which matters.</li>
+<li><strong>Server PC</strong>: Windows 10/11 or Windows Server 2016+, 64-bit. Nothing else to install — the release brings Python 3.12 and, if missing, the Microsoft Visual C++ runtime. 2 GB of disk for the program, plus the image archive (capped by <code>VISION_ARCHIVE_MAX_GB</code>) and run history; 4 GB of memory for classic inspection, 16 GB when frames are 20 MP.</li>
+<li><strong>GPU</strong> (optional, deep-learning tools only): NVIDIA with a driver that supports CUDA 12.8; the add-on pack (<a href="#dl">§12</a>) brings everything else.</li>
+<li><strong>Client PCs</strong>: only a browser — Chrome or Edge 111+, Firefox 128+, Safari 16.4+. Older browsers see a plain notice instead of a blank page (<a href="#clients">§7</a>).</li>
+<li><strong>Network</strong>: the station's ports reachable from the line's subnet (<a href="#network">§5</a>). No internet is required at any point; with internet available, <code>vsctl plugins deps -Online</code> can fetch plugin dependencies from PyPI.</li>
+<li><strong>Camera PCs</strong>: whatever the camera vendor's SDK needs, plus the capture client (<a href="capture-client.html">its own page</a>).</li>
 </ul>
 
 <h2 id="install">3. First install</h2>
-<pre>git clone &lt;your copy&gt; C:\VisionSequence
-cd C:\VisionSequence
-.\scripts\dev.ps1 -Setup          # creates .venv, installs requirements, migrates, seeds demo data</pre>
-<p>Then create the first administrator and the settings file:</p>
-<pre>.venv\Scripts\python.exe manage.py create_admin --username admin
-copy .env.example .env            # edit it: see the table below</pre>
-<p>The settings that matter on a new station:</p>
+<h3 id="wizard">3-1. The setup wizard</h3>
+<p>Run <code>VisionSequence-Setup-&lt;version&gt;.exe</code> as an administrator. It asks for:</p>
 <table>
-<tr><th>Setting</th><th>Default</th><th>Why you would change it</th></tr>
-<tr><td><code>VISION_STATION_ID</code></td><td><code>ST01</code></td><td>Stamped on every run; make it the real station name so reports and roll-ups are readable.</td></tr>
-<tr><td><code>SECRET_KEY</code></td><td>dev value</td><td><strong>Always change it.</strong> Session and token signing depend on it.</td></tr>
-<tr><td><code>DEBUG</code></td><td><code>1</code></td><td>Set to <code>0</code> in production: no stack traces to the browser.</td></tr>
-<tr><td><code>ALLOWED_HOSTS</code></td><td><code>*</code></td><td>Narrow it to the station's own name and IP.</td></tr>
-<tr><td><code>VISION_API_KEY</code></td><td>empty</td><td>Set it so integrators authenticate with <code>X-API-Key</code>. Empty means the HTTP API accepts any logged-in user only.</td></tr>
-<tr><td><code>VISION_ARCHIVE_DEFAULT</code></td><td><code>off</code></td><td>Set to <code>ng</code> to keep reject images for every new flow on this station.</td></tr>
-<tr><td><code>VISION_KEEP_RUN_DAYS</code></td><td><code>30</code></td><td>How long run detail is kept. The hourly yield rollup is kept forever regardless.</td></tr>
-<tr><td><code>DATA_DIR</code></td><td><code>data\</code></td><td>Move the database, assets and archive to a data disk.</td></tr>
+<tr><th>Page</th><th>What to enter</th><th>Ends up in</th></tr>
+<tr><td>Folder</td><td>The install root, default <code>C:\VisionSequence</code></td><td>Layout above</td></tr>
+<tr><td>Station</td><td>Station id; the host names and IP addresses client PCs will type; the subnet allowed through the firewall</td><td><code>VISION_STATION_ID</code>, <code>ALLOWED_HOSTS</code>, the certificate, the firewall rules</td></tr>
+<tr><td>HTTPS</td><td>Built-in certificate authority (recommended), your own certificate, or no HTTPS</td><td><code>Caddyfile</code>, <code>BEHIND_HTTPS_PROXY</code></td></tr>
+<tr><td>Administrator</td><td>The first account — created <strong>before any port opens</strong>, which closes the "no accounts yet" bootstrap window</td><td>Users table</td></tr>
 </table>
-<p>Check the result before going further:</p>
-<pre>.venv\Scripts\python.exe manage.py doctor</pre>
+<p>The last page shows the web address, and the summary in the log (<code>data\logs\</code> is not there yet; see the console the installer opens) names the keys. Unattended installs for many stations:</p>
+<pre>VisionSequence-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /DIR=C:\VisionSequence /STATIONID=ST01 ^
+    /HOSTNAMES=vision-st01,192.168.1.10 /SUBNET=192.168.1.0/24 /HTTPS=internal /ADMINUSER=admin /ADMINPASSWORD=********
+    (other switches: /HTTPS=custom /CERT=x.pem /KEY=y.key | /HTTPS=none | /NOTCPAUTH=1 | /HTTPPORT=8000 | /HTTPSPORT=443)</pre>
+<p>The installer is not code-signed, so SmartScreen shows "Windows protected your PC" the first time: choose <em>More info › Run anyway</em>. Running a newer setup on an installed station is an upgrade (<a href="#upgrade">§10</a>); running the same version again repairs the files and keeps the data.</p>
+<h3 id="manual">3-2. From the zip, by hand</h3>
+<p>Unpack <code>VisionSequence-&lt;version&gt;-win64.zip</code> anywhere and run, from an elevated PowerShell inside the folder:</p>
+<pre>Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install.ps1 -Root C:\VisionSequence -StationId ST01 -HostNames vision-st01,192.168.1.10 -Subnet 192.168.1.0/24 -Https internal</pre>
+<table>
+<tr><th>Parameter</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>-Root</code></td><td><code>C:\VisionSequence</code></td><td>Install root; the tree is copied to <code>app\&lt;version&gt;</code> under it</td></tr>
+<tr><td><code>-StationId</code></td><td>the PC name</td><td>Stamped on every run</td></tr>
+<tr><td><code>-HostNames</code></td><td>the PC name</td><td>Comma separated; every name or IP a browser will use. <code>localhost</code> and <code>127.0.0.1</code> are always added</td></tr>
+<tr><td><code>-Subnet</code></td><td>any</td><td>Firewall rules only accept this subnet (<code>192.168.1.0/24</code>)</td></tr>
+<tr><td><code>-Https</code></td><td><code>internal</code></td><td><code>internal</code> built-in CA, <code>custom</code> with <code>-Cert</code>/<code>-Key</code>, <code>none</code> plain HTTP on 8000</td></tr>
+<tr><td><code>-HttpPort</code>, <code>-HttpsPort</code></td><td>8000, 443</td><td>API port (loopback only behind the proxy) and the public HTTPS port</td></tr>
+<tr><td><code>-Mode</code>, <code>-User</code>, <code>-Password</code>, <code>-Interactive</code></td><td>service, LocalSystem</td><td>See <a href="#service">§4</a>; cameras attached to the server PC through an SDK need a signed-in user session</td></tr>
+<tr><td><code>-AdminUser</code>, <code>-AdminPassword</code>, <code>-AdminPasswordEnv</code>, <code>-AdminPasswordFile</code></td><td>admin, prompt</td><td>First administrator; unattended runs without a password get a random one printed once</td></tr>
+<tr><td><code>-NoTcpAuth</code></td><td>off</td><td>Leave the TCP command port without <code>AUTH</code> for equipment that cannot send it</td></tr>
+<tr><td><code>-NoFirewall</code>, <code>-NoService</code>, <code>-Unattended</code>, <code>-Force</code></td><td>off</td><td>Skip steps (a user-level trial runs with both <code>-NoFirewall -NoService</code> and <code>vsctl run</code>), never prompt, repoint an existing <code>current</code></td></tr>
+</table>
+<p>What the script does, in order: checks the tree and the VC++ runtime → creates the folders → writes <code>.env</code> <strong>only if it does not exist</strong> (<code>DEBUG=0</code>, a random <code>SECRET_KEY</code>, random API, capture and TCP keys, absolute <code>DATA_DIR</code> and <code>VISION_PLUGIN_DIR</code>) → puts the tree at <code>app\&lt;version&gt;</code> and points <code>current</code> at it → <code>migrate</code> → creates the administrator if there are no accounts → publishes the capture client into <code>data\downloads</code> → writes the <code>Caddyfile</code> → firewall rules → installs and starts the services → waits for <code>/healthz</code> → <code>doctor</code> → prints the summary. Re-running is safe.</p>
 
-<h2 id="service">4. Starting at boot</h2>
-<p><code>scripts\dev.ps1</code> is for development — it opens windows and dies with your session. On a station, register the scheduled task instead. Run PowerShell <strong>as administrator</strong>:</p>
-<pre>.\scripts\install_service.ps1                       # runs as SYSTEM on port 8000
-.\scripts\install_service.ps1 -User "PLANT\vision" -Password "…" -Port 8000
-.\scripts\install_service.ps1 -Uninstall</pre>
-<p>The task starts at boot with no login, restarts the process a minute after any exit, never runs two copies, and rotates <code>data\logs\service.log</code> at 20 MB keeping the last ten. Inspect or stop it from Task Scheduler like any other task.</p>
-<div class="note">A camera opened by the capture client on another PC is unaffected by this account choice. A camera plugged into <em>this</em> PC through a vendor SDK may need a real user session — if the camera cannot be opened under SYSTEM, install the task under a dedicated user account instead.</div>
+<h2 id="service">4. Services and the station command line</h2>
+<p>Everything on site goes through <code>C:\VisionSequence\vsctl.cmd</code> (it always runs the version <code>current</code> points at):</p>
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>vsctl status</code></td><td>Version, service states, PID, <code>/healthz</code>, which ports are listening, proxy status</td></tr>
+<tr><td><code>vsctl start | stop | restart</code></td><td>The API service; the proxy follows it (it depends on it)</td></tr>
+<tr><td><code>vsctl logs [-Tail 200] [-Follow] [-Proxy]</code></td><td><code>data\logs\service.log</code> or <code>proxy.log</code></td></tr>
+<tr><td><code>vsctl run</code></td><td>Runs the platform in the foreground for debugging (stop the service first)</td></tr>
+<tr><td><code>vsctl doctor [-Json]</code>, <code>backup</code>, <code>restore &lt;zip&gt;</code>, <code>purge --dry-run</code></td><td>Health check, backup, restore (stops, restores, migrates, starts), retention</td></tr>
+<tr><td><code>vsctl update &lt;zip&gt;</code>, <code>rollback [&lt;ver&gt;]</code>, <code>versions</code></td><td><a href="#upgrade">§10</a></td></tr>
+<tr><td><code>vsctl plugins list | install &lt;zip&gt; | deps | rescan</code></td><td><a href="#plugins">§11</a></td></tr>
+<tr><td><code>vsctl dl install &lt;pack.zip&gt; | dl check -Predict</code></td><td><a href="#dl">§12</a></td></tr>
+<tr><td><code>vsctl env list | get KEY | set KEY=VALUE</code></td><td>Reads and edits <code>.env</code> in place (keys are masked in the listing); <code>restart</code> to apply</td></tr>
+<tr><td><code>vsctl admin create &lt;user&gt;</code></td><td>Creates or resets an administrator; the password is prompted, never typed on the command line</td></tr>
+<tr><td><code>vsctl service install|uninstall</code>, <code>proxy …</code>, <code>firewall</code>, <code>certs export|import</code></td><td>The pieces the installer runs, individually</td></tr>
+<tr><td><code>vsctl manage &lt;args&gt;</code></td><td>Any <code>manage.py</code> command with the right Python and <code>VS_HOME</code></td></tr>
+</table>
+<p>The API runs as the Windows service <strong>VisionSequence</strong> through NSSM (shipped in <code>tools\</code>): delayed automatic start, restart five seconds after any exit, <code>service.log</code> rotated at 20 MB, and a <strong>Ctrl-C stop</strong> with a fifteen-second grace period so uvicorn shuts down cleanly — the Modbus slave closes its port, the database checkpoints, event streams end. Use the Services console or <code>vsctl</code> interchangeably.</p>
+<div class="note"><strong>A camera on the server PC itself.</strong> A vendor SDK usually needs a signed-in desktop session, which a service does not have. Install with <code>-Mode task -Interactive -User PLANT\vision -Password …</code>: a scheduled task that starts when that user signs in, with the platform in their session. Keep the PC signed in (automatic sign-in) or the platform is not running after a reboot. Cameras on other PCs, through the capture client, are unaffected by this choice.</div>
 
-<h2 id="network">5. Ports, firewall and reverse proxy</h2>
+<h2 id="network">5. Ports and firewall</h2>
 <table>
 <tr><th>Port</th><th>Who connects</th><th>Setting</th></tr>
-<tr><td>8000</td><td>Browsers and HTTP integrators</td><td><code>--port</code></td></tr>
-<tr><td>9000</td><td>Equipment sending one-line TCP commands</td><td><code>VISION_TCP_PORT</code></td></tr>
-<tr><td>9100</td><td>Capture clients connecting <strong>out</strong> from camera PCs</td><td><code>VISION_CAPTURE_PORT</code></td></tr>
-<tr><td>5020…</td><td>PLC masters, when the platform acts as a Modbus slave</td><td>Per connection</td></tr>
+<tr><td>443 (and 80 → 443)</td><td>Browsers and HTTP integrators, through the proxy</td><td><code>-HttpsPort</code>; 80 only redirects</td></tr>
+<tr><td>8000</td><td>The proxy, on loopback only. Public only with <code>-Https none</code></td><td><code>VISION_HTTP_PORT</code></td></tr>
+<tr><td>9000</td><td>Equipment sending one-line TCP commands; first line <code>AUTH &lt;key&gt;</code> unless installed with <code>-NoTcpAuth</code></td><td><code>VISION_TCP_PORT</code>, <code>VISION_TCP_AUTH</code></td></tr>
+<tr><td>9100</td><td>Capture clients connecting <strong>out</strong> from camera PCs, with <code>VISION_CAPTURE_AUTH</code></td><td><code>VISION_CAPTURE_PORT</code></td></tr>
+<tr><td>5020…</td><td>Modbus masters, when the platform acts as a Modbus slave</td><td>Per connection; open with <code>vsctl firewall -Ports 5020</code></td></tr>
 </table>
-<p>Open only what you use, and only to the line's subnet:</p>
-<pre>New-NetFirewallRule -DisplayName "VisionSequence API" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow -RemoteAddress 192.168.1.0/24</pre>
-<p>For HTTPS, put IIS or nginx in front and proxy to <code>127.0.0.1:8000</code>. Two things must be right or the live view breaks: <strong>do not buffer</strong> the event stream, and allow long-lived connections.</p>
-<pre># nginx
+<p>The installer creates inbound rules named <em>VisionSequence …</em> for the ports in use, limited to <code>-Subnet</code> when given. Change them later with <code>vsctl firewall -Subnet 192.168.1.0/24 -Ports 5020,5021</code> (rules are recreated) or remove them with <code>vsctl firewall -Remove</code>.</p>
+
+<h2 id="https">6. HTTPS</h2>
+<p>Browsers on other PCs should reach the station over HTTPS: a plant LAN is rarely a trusted network, and company policy usually says so anyway. The proxy is Caddy, shipped in <code>tools\</code> and run as the service <strong>VisionSequenceProxy</strong>. Three modes:</p>
+<table>
+<tr><th>Mode</th><th>Certificate</th><th>On each client PC</th></tr>
+<tr><td><code>internal</code> (default)</td><td>Caddy runs its own certificate authority and issues a certificate for every host name and IP you listed; leaf certificates renew themselves</td><td>Import the CA root once: <code>C:\VisionSequence\certs\root.crt</code>, exported by the installer (<code>vsctl certs export</code> refreshes it). Copy it to the client PC and either double-click it › <em>Install certificate › Local Machine › Trusted Root Certification Authorities</em>, or run <code>certutil -addstore -f Root root.crt</code> from an elevated prompt (<code>vsctl certs import -File root.crt</code> does the same from the station's own scripts). Firefox needs <em>Settings › Privacy › Certificates › Import</em> or the enterprise-roots policy.</td></tr>
+<tr><td><code>custom</code></td><td>A certificate from your IT department for those host names (<code>-Cert fullchain.pem -Key private.key</code>; copied to <code>certs\</code>)</td><td>Nothing, if the issuer is already trusted in the company</td></tr>
+<tr><td><code>none</code></td><td>No proxy; the API listens on 0.0.0.0:8000 in plain HTTP</td><td>Nothing — acceptable only on an isolated line network</td></tr>
+</table>
+<p>The generated <code>Caddyfile</code> is short, and you may edit it (<code>vsctl proxy restart</code> applies it; <code>vsctl proxy configure</code> regenerates it):</p>
+<pre>vision-st01, 192.168.1.10, localhost, 127.0.0.1 {
+    tls internal                     # or: tls "certs\server.crt" "certs\server.key"
+    request_body { max_size 256MB }  # image uploads, dataset imports
+    reverse_proxy 127.0.0.1:8000 { flush_interval -1 }   # SSE: results arrive as they happen
+}</pre>
+<p>With HTTPS on, the API binds <code>127.0.0.1</code> and <code>.env</code> has <code>BEHIND_HTTPS_PROXY=1</code>, so the platform trusts the proxy's <code>X-Forwarded-Proto</code> and <code>X-Forwarded-Host</code> headers. HTTP/2 through the proxy also removes the browser's six-connections-per-host limit, which matters with several dashboards open.</p>
+<div class="note"><strong>Only at the root.</strong> The web interface, <code>/api</code>, <code>/assets</code> and <code>/docs</code> are absolute paths: a station can be <code>https://vision-st01/</code> or <code>https://plant.example.com:8443/</code>, never <code>https://plant.example.com/st01/</code>. Distinguish stations by host name or port. If you front the station with your own nginx or IIS instead of Caddy, keep the same three rules: do not buffer responses (SSE), allow large bodies, forward <code>X-Forwarded-Proto</code>, and install with <code>-Https none</code> then set <code>BEHIND_HTTPS_PROXY=1</code> and bind the service to loopback (<code>vsctl service install</code> does that when a Caddyfile exists; otherwise pass <code>-BindHost 127.0.0.1</code> to <code>scripts\service.ps1</code>).</div>
+<pre># nginx equivalent
 location / {
     proxy_pass http://127.0.0.1:8000;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
-    proxy_buffering off;              # SSE: results must arrive as they happen
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
     proxy_read_timeout 300s;
+    client_max_body_size 256m;
 }</pre>
 
-<h2 id="accounts">6. Accounts and keys</h2>
+<h2 id="clients">7. Client PCs and browsers</h2>
+<p>Anyone on the line uses the station from a browser; nothing is installed on their PC. What to know when several people and several PCs use one station:</p>
 <ul>
-<li><strong>People</strong> log in with a user account. Three roles: administrator (accounts, connections, system settings), engineer (flows, sources, models, tuning), operator (run, change over, on-site parameters). Give the line an operator account, not a shared administrator one.</li>
-<li><strong>Machines</strong> use <code>VISION_API_KEY</code> and send <code>X-API-Key</code>. An integrator can always run, even while the engine is locked, so treat the key as a production credential and rotate it when staff change.</li>
-<li>Every change is recorded in the audit trail (Audit trail page, administrators only), and can be exported as CSV. Executions are not recorded there — they are in each flow's statistics.</li>
+<li><strong>Address</strong>: any host name or IP given at install (<code>-HostNames</code>) works, and the certificate covers all of them. A name typed that is not in the list is refused by the platform (<code>ALLOWED_HOSTS</code>) — add it with <code>vsctl env set ALLOWED_HOSTS=…</code> and <code>vsctl proxy configure -HostNames …</code>, then <code>vsctl restart</code>.</li>
+<li><strong>Browsers</strong>: Chrome or Edge 111+, Firefox 128+, Safari 16.4+ (the interface relies on modern CSS). An older browser gets a plain-text notice naming those versions instead of an empty page; the fix is to update the browser on that PC, not the station.</li>
+<li><strong>How many tabs a station serves</strong>: every open dashboard, flow editor or integration page holds one live event stream; the station allows <code>VISION_SSE_MAX_STREAMS</code> of them (64) and answers "too many streams" beyond that, at which point a page falls back to polling. A tab in the background releases its stream after fifteen seconds and reconnects when it is shown again, so the practical limit is the number of pages people are looking at, not the number they have open.</li>
+<li><strong>Language and theme follow the account</strong>: what a user picks in Settings is stored with their account and applied on every PC they sign in from. Before sign-in the browser's language decides.</li>
+<li><strong>Shared PCs</strong>: signing out (or a session expiring) clears the assistant conversation, the TCP command history and any API key from that browser; the theme and layout preferences stay with the PC. Sessions expire after <code>AUTH_TOKEN_TTL_HOURS</code> (default 336, two weeks) — set it short on a shared operator station.</li>
+<li><strong>Operator stations / kiosks</strong>: give the line an <em>operator</em> account (it can run, change over and touch on-site parameters but not edit flows), open the dashboard with <code>msedge.exe --kiosk https://vision-st01/ --edge-kiosk-type=fullscreen</code> if the PC should show nothing else, and on a touch screen the interface enlarges buttons and inputs automatically.</li>
+<li><strong>Two engineers editing the same flow</strong>: the last save wins and the other editor sees the flow list refresh. Agree on who owns a flow while it is being tuned, or use recipes for the parameter differences.</li>
+<li><strong>Camera PCs</strong> are not browsers: they run the capture client from the Integration › Capture page and connect to port 9100 with <code>VISION_CAPTURE_AUTH</code>; see <a href="capture-client.html">the capture-client page</a>.</li>
 </ul>
 
-<h2 id="backup">7. Backup and restore</h2>
-<pre>.venv\Scripts\python.exe manage.py backup                       # data\backups\visionsequence-&lt;stamp&gt;.zip
-.venv\Scripts\python.exe manage.py backup --out D:\bak\vs.zip --with-images</pre>
-<p>The database is copied through SQLite's own backup API, so <strong>a backup taken while the line is running is consistent</strong>. Assets are included; archived inspection images are not unless you ask, because they are the bulky part.</p>
-<p>Restoring overwrites the database and assets, so stop the station first:</p>
-<pre>Stop-ScheduledTask -TaskName VisionSequence
-.venv\Scripts\python.exe manage.py restore D:\bak\vs.zip --yes
-.venv\Scripts\python.exe manage.py migrate
-Start-ScheduledTask -TaskName VisionSequence</pre>
-<p>The database that was there is kept beside the new one as <code>vision.sqlite3.before-restore-&lt;stamp&gt;</code>.</p>
-<p>A sensible schedule is a nightly backup to a network share, keeping fourteen:</p>
-<pre>$t = New-ScheduledTaskTrigger -Daily -At 2am
-$a = New-ScheduledTaskAction -Execute "C:\VisionSequence\.venv\Scripts\python.exe" `
-     -Argument "manage.py backup --out \\nas\vs\$(hostname)-$(Get-Date -f yyyyMMdd).zip" `
-     -WorkingDirectory "C:\VisionSequence"
-Register-ScheduledTask -TaskName "VisionSequence backup" -Trigger $t -Action $a -User SYSTEM -RunLevel Highest</pre>
+<h2 id="accounts">8. Accounts and keys</h2>
+<ul>
+<li><strong>People</strong> sign in with a user account. Three roles: administrator (accounts, permissions, system settings), engineer (flows, sources, models, tuning), operator (run, change over, on-site parameters). What each role may do is adjustable on the Users page. The first administrator is created by the installer; give the line an operator account, not a shared administrator one.</li>
+<li><strong>Integrators</strong> (MES, HMI, PLC gateways) send <code>X-API-Key</code>; the key is <code>vsctl env get VISION_API_KEY</code>. An integrator can always run, even while the engine is locked, so treat the key as a production credential and rotate it (<code>vsctl env set VISION_API_KEY=…</code>, <code>vsctl restart</code>) when contractors change.</li>
+<li><strong>Equipment on the TCP port</strong> sends <code>AUTH &lt;key&gt;</code> first (<code>VISION_TCP_AUTH</code>); an empty value disables the check. <strong>Camera PCs</strong> use <code>VISION_CAPTURE_AUTH</code>.</li>
+<li>Every change is recorded in the audit trail (administrators; CSV export). Executions are in each flow's statistics, not the audit trail.</li>
+<li>Forgotten administrator password: <code>vsctl admin create admin</code> resets it from the console.</li>
+</ul>
 
-<h2 id="upgrade">8. Upgrading and rolling back</h2>
+<h2 id="backup">9. Backup and restore</h2>
+<pre>vsctl backup                                  # data\backups\visionsequence-&lt;stamp&gt;.zip
+vsctl backup -Out \\nas\vs\st01.zip --with-images --with-wheels --with-client</pre>
+<p>A backup contains the database (copied through SQLite's backup API, so <strong>a backup taken while the line runs is consistent</strong>), assets, <strong><code>.env</code></strong> (the keys — <code>--no-env</code> to leave it out of a shared location), <strong>the plugins folder</strong> (without its <code>wheels\</code> unless <code>--with-wheels</code>) and the capture-client manifest (<code>--with-client</code> adds the zip). Archived inspection images are the bulky part and come only with <code>--with-images</code>.</p>
+<pre>vsctl restore \\nas\vs\st01.zip               # stops the service, restores, migrates, starts</pre>
+<p>Restoring overwrites the database, assets and plugins. The previous database is kept beside the new one as <code>vision.sqlite3.before-restore-&lt;stamp&gt;</code>; a restored <code>.env</code> is written as <code>.env.from-backup</code> for you to merge, never over the live one. A nightly backup to a share, keeping fourteen:</p>
+<pre>$a = New-ScheduledTaskAction -Execute "C:\VisionSequence\vsctl.cmd" -Argument "backup -Out \\nas\vs\$(hostname)-$(Get-Date -f yyyyMMdd).zip"
+Register-ScheduledTask -TaskName "VisionSequence backup" -Trigger (New-ScheduledTaskTrigger -Daily -At 2am) -Action $a -User SYSTEM -RunLevel Highest</pre>
+
+<h2 id="upgrade">10. Upgrading and rolling back</h2>
+<pre>vsctl update VisionSequence-1.1.0-win64.zip   # or run VisionSequence-Setup-1.1.0.exe on the station</pre>
+<p>What happens, in order — and what stops it:</p>
 <ol>
-<li><strong>Back up first</strong> — <code>manage.py backup</code>. This is the rollback.</li>
-<li>Stop the task: <code>Stop-ScheduledTask -TaskName VisionSequence</code>.</li>
-<li>Update the code (<code>git pull</code>, or replace the folder keeping <code>data\</code> and <code>.env</code>).</li>
-<li><code>.venv\Scripts\pip.exe install -r requirements.txt</code> then <code>manage.py migrate</code>. Migrations only add; no release so far removes data.</li>
-<li>Start the task, then <code>manage.py doctor</code> and open the web interface once.</li>
-<li>Check the version in the sidebar footer matches what you installed.</li>
+<li>The zip is checked against <code>SHA256SUMS.txt</code> if that file sits beside it.</li>
+<li>A backup is taken: <code>data\backups\pre-update-1.0.0-to-1.1.0.zip</code>. This is the rollback point.</li>
+<li>The new tree is unpacked to <code>app\1.1.0.partial</code> and renamed to <code>app\1.1.0</code> only when complete.</li>
+<li><strong>While the old version is still running</strong>, the new Python installs the plugins' dependencies (from their <code>wheels\</code>, <code>plugins\_wheels\</code>, or PyPI with <code>-Online</code>) and reinstalls the deep-learning pack recorded in <code>DL-PACK.json</code> from <code>packs\</code>. Every version has its own <code>site-packages</code>, so the old tree is untouched.</li>
+<li>The service stops, the new version runs <code>migrate</code>. If that fails the new tree is renamed <code>.failed</code>, the old version starts again and the command exits 1 — nothing has changed for production.</li>
+<li>A newer capture client shipped in the release is published to <code>data\downloads</code> (camera PCs update themselves over their existing connection).</li>
+<li><code>current</code> is switched, the service starts, <code>/healthz</code> must answer with the new version, <code>doctor</code> runs, a line goes into <code>updates.log</code>, and versions older than the previous one are removed (<code>-Keep</code>).</li>
 </ol>
-<p><strong>Rolling back</strong>: put the old code back and restore the backup taken in step 1. Restoring an old database under new code is fine; new code under an old database is not, because the migrations will be missing.</p>
-<p>Capture clients update themselves over their existing connection when a newer build is published on the server — see the capture-client page. Clients older than 0.2.0 predate that feature and must be downloaded again.</p>
+<pre>vsctl versions                                # installed trees, which is current, which is the rollback target
+vsctl rollback                                # back to the previous version (the tree is still there)
+vsctl rollback 1.0.0 -RestoreDb               # also restore the pre-update backup when the database was migrated since</pre>
+<p>A rollback only switches the junction and restarts; the old version's packages, plugins and deep-learning pack are exactly as they were. It warns when the database was migrated after that version (the update log records the migration count) — then use <code>-RestoreDb</code>, which restores the pre-update backup first. Migrations only add columns and tables, so running an older version on a newer database usually works but is not guaranteed.</p>
 
-<h2 id="monitor">9. Monitoring</h2>
+<h2 id="plugins">11. Plugins on site</h2>
+<p>Plugins live in <code>C:\VisionSequence\plugins\</code>, outside the version trees, and are loaded as the package <code>plugins</code> whichever version is current. To hand a plugin to a customer, ship a zip laid out like the folder it lands in:</p>
+<pre>my_plugin.zip
+└─ my_plugin\                 (or: my_plugin.py + my_plugin.requirements.txt for a single-file plugin)
+   ├─ __init__.py
+   ├─ requirements.txt
+   └─ wheels\                 every dependency as a wheel for Python 3.12 / win_amd64
+      ├─ somepkg-1.2-py3-none-any.whl
+      └─ other-3.4-cp312-cp312-win_amd64.whl</pre>
+<p>The author produces <code>wheels\</code> on any PC with internet: <code>pip download -r requirements.txt -d wheels --platform win_amd64 --python-version 3.12 --only-binary=:all:</code>. Wheels shared by several plugins can go to <code>plugins\_wheels\</code> instead. Then on the station:</p>
+<pre>vsctl plugins install my_plugin.zip           # copies it in, installs dependencies offline, restarts the service
+vsctl plugins install my_plugin.zip -Online   # allow PyPI when wheels\ is incomplete and the station has internet
+vsctl plugins list                            # every file in plugins\ and whether it loaded (the same as the Plugins page)
+vsctl plugins deps [my_plugin] [-Online]      # (re)install dependencies, e.g. after copying a folder by hand
+vsctl plugins rescan                          # mount new files without a restart (changed files still need vsctl restart)</pre>
+<p>The Python version is fixed at 3.12: wheels must be <code>cp312</code> or <code>py3-none-any</code>. A plugin that needs another Python, or dependencies that conflict with the platform's, runs as a sidecar as described on the <a href="plugins.html#integration">plugins page</a>. <code>vsctl doctor</code> lists plugins that failed to load, with the reason.</p>
+
+<h2 id="dl">12. The deep-learning add-on pack</h2>
+<p>Deep-learning tools (YOLO training and inference, SAM labelling, GPU ONNX inference) need torch, ultralytics and onnxruntime-gpu — about 3 GB that most stations do not need and that must match the GPU driver. They ship separately as <code>VisionSequence-DL-cu128-&lt;version&gt;.zip</code> (NVIDIA, CUDA 12.8 — required for RTX 50, fine for older cards) or <code>-cpu-</code> (no GPU), with the YOLO11n and SAM2 weights included so nothing is downloaded on site:</p>
+<pre>vsctl dl install VisionSequence-DL-cu128-1.0.0.zip -Predict   # installs into the current version, copies the weights, runs one inference
+vsctl dl check -Predict                                       # later: torch/CUDA, kernel architectures, ORT providers</pre>
+<p>The pack is kept in <code>packs\</code> and recorded in the version tree's <code>DL-PACK.json</code>, so <code>vsctl update</code> reinstalls it into the new version automatically. The GPU driver is the customer's: <code>nvidia-smi</code> must show a driver that supports CUDA 12.8 or the pack falls back to CPU. Details and the traps are on the <a href="dl.html#install">deep-learning page</a>.</p>
+
+<h2 id="monitor">13. Monitoring</h2>
 <table>
 <tr><th>Signal</th><th>How</th><th>What to alert on</th></tr>
 <tr><td>Alive</td><td><code>GET /healthz</code> — no authentication, returns status, version and station id</td><td>Anything but HTTP 200</td></tr>
-<tr><td>Healthy</td><td><code>manage.py doctor --json</code>, exit code 1 when something needs attention</td><td>Non-zero exit</td></tr>
+<tr><td>Healthy</td><td><code>vsctl doctor -Json</code>, exit code 1 when something needs attention (DEBUG on, default keys, ports not listening, plugins that failed, missing web build…)</td><td>Non-zero exit</td></tr>
+<tr><td>Services</td><td><code>vsctl status</code>, or the Services console (VisionSequence, VisionSequenceProxy)</td><td>Not running</td></tr>
 <tr><td>Yield</td><td><code>GET /api/vision/flows/{id}/stats</code> or <code>GET /api/vision/summary</code></td><td>Reject rate above the line's limit</td></tr>
 <tr><td>Throughput</td><td>Same endpoint: <code>total</code> per hour</td><td>Zero during a production shift</td></tr>
-<tr><td>Logs</td><td><code>data\logs\service.log</code>, rotated at 20 MB</td><td><code>ERROR</code> lines</td></tr>
+<tr><td>Logs</td><td><code>vsctl logs -Follow</code> (<code>data\logs\service.log</code>, rotated at 20 MB; <code>-Proxy</code> for Caddy)</td><td><code>ERROR</code> lines</td></tr>
 </table>
-<p>An integration engineer debugging equipment should use the <strong>commands and results</strong> panel on the integration pages instead of the log: while that page is open every command and reply on the interface is listed live.</p>
+<p>An integration engineer debugging equipment should use the <strong>commands and results</strong> panel on the integration pages rather than the log: while that page is open every command and reply on the interface is listed live.</p>
 
-<h2 id="fleet">10. More than one station</h2>
-<p>Each station is independent, which is what keeps the engine simple and the failure of one line from taking out another. Give every station its own <code>VISION_STATION_ID</code> so its runs and its hourly roll-up are identifiable.</p>
-<p>To see several stations together, poll <code>GET /api/vision/summary</code> on each of them from your own dashboard or MES: it answers with that station's id, version, lock state and today's totals per flow, straight from the hourly roll-up, so the numbers match what the station itself shows. Nothing is ever pushed to a station, so a roll-up cannot affect production; do mark how old each number is, because a stale figure that looks live is worse than no figure.</p>
+<h2 id="fleet">14. More than one station</h2>
+<p>Each station is independent, which keeps the engine simple and the failure of one line from taking out another. Give every station its own <code>VISION_STATION_ID</code> (the installer's station page; the silent switches make a mass rollout a one-line script per station). To see several stations together, poll <code>GET /api/vision/summary</code> on each from your own dashboard or MES: it answers with the station id, version, lock state and today's totals per flow, straight from the hourly roll-up. Nothing is pushed to a station; mark how old each number is.</p>
 
-<h2 id="recovery">11. Disaster recovery</h2>
+<h2 id="recovery">15. Disaster recovery</h2>
 <table>
 <tr><th>What happened</th><th>What to do</th></tr>
-<tr><td>Process keeps restarting</td><td><code>data\logs\service.log</code> has the traceback. Common causes: a port already taken (the connection status names it), a missing <code>.env</code>, a database from a newer version.</td></tr>
-<tr><td>Disk full</td><td><code>manage.py purge --dry-run</code> to see what would go, then run it. Lower <code>VISION_ARCHIVE_MAX_GB</code> and <code>VISION_KEEP_RUN_DAYS</code>.</td></tr>
-<tr><td>Database corrupt</td><td>Restore the last backup. SQLite in WAL mode survives a power cut, but not a failing disk.</td></tr>
-<tr><td>Whole PC dead</td><td>Install on new hardware (§3), restore the backup (§7), reconnect the cameras. The station id in <code>.env</code> keeps the history continuous.</td></tr>
-<tr><td>Forgotten administrator password</td><td><code>manage.py create_admin --username admin --password …</code> resets it from the console.</td></tr>
-<tr><td>PLC cannot connect to a Modbus slave</td><td>The connection status names the reason; a port taken by another program is the usual one. <code>manage.py doctor</code> lists connections with errors.</td></tr>
+<tr><td>Service keeps restarting</td><td><code>vsctl logs</code> has the traceback. Common causes: a port already taken (the connection status names it), a database from a newer version (rollback with <code>-RestoreDb</code>), a broken <code>.env</code> edit (<code>vsctl env list</code>).</td></tr>
+<tr><td>Browsers show a certificate warning</td><td>The client PC has not imported <code>certs\root.crt</code>, or the address typed is not among the host names: <code>vsctl proxy configure -HostNames …</code> then <code>vsctl proxy restart</code>.</td></tr>
+<tr><td>Disk full</td><td><code>vsctl purge --dry-run</code> to see what would go, then run it; lower <code>VISION_ARCHIVE_MAX_GB</code> and <code>VISION_KEEP_RUN_DAYS</code>; <code>vsctl versions prune</code> removes old trees.</td></tr>
+<tr><td>Database corrupt</td><td><code>vsctl restore</code> the last backup. SQLite in WAL mode survives a power cut, not a failing disk.</td></tr>
+<tr><td>Whole PC dead</td><td>Install the same version on new hardware (§3), <code>vsctl restore</code> the backup (§9) — it brings <code>.env</code>, plugins and keys — reinstall the DL pack, reconnect the cameras. The station id keeps the history continuous.</td></tr>
+<tr><td>Forgotten administrator password</td><td><code>vsctl admin create admin</code></td></tr>
+<tr><td>A PLC cannot connect to a Modbus slave</td><td>The connection status names the reason; a port taken by another program is the usual one, and the firewall rule for that port may be missing (<code>vsctl firewall -Ports 5020</code>).</td></tr>
+<tr><td>An upgrade went wrong</td><td><code>vsctl rollback</code>; the pre-update backup is in <code>data\backups</code>.</td></tr>
 </table>
 
-<h2 id="security">12. Security notes</h2>
+<h2 id="security">16. Security notes</h2>
 <ul>
-<li>The API binds <code>0.0.0.0</code> so the line can reach it. On a plant network that is normally right; on anything routable, put it behind a proxy and a firewall rule.</li>
-<li><code>SECRET_KEY</code> and <code>VISION_API_KEY</code> belong in <code>.env</code>, which is not in version control. Rotate the API key when integrators change.</li>
-<li>User tokens are stored as SHA-256 hashes and expire after fourteen days.</li>
-<li><strong>Python script tools run in the engine process.</strong> Only code an administrator has saved is approved to run, and imports are allow-listed with a watchdog — but treat the ability to save scripts as equivalent to shell access on the station, and keep the administrator role to the people who should have it.</li>
-<li>The image archive holds pictures of your product. It is a folder on disk with no separate access control: put it on a volume with the file permissions you want, and remember it when you decommission a machine.</li>
+<li>The installer writes <code>DEBUG=0</code>, a random <code>SECRET_KEY</code>, random API, capture and TCP keys and a narrow <code>ALLOWED_HOSTS</code>; <code>vsctl doctor</code> fails when any of these is back at an insecure value.</li>
+<li>Behind the proxy the API is loopback only; the public surface is 443, 9000 and 9100, each authenticated, and the firewall rules limit them to the line's subnet.</li>
+<li>User tokens are stored as SHA-256 hashes and expire (<code>AUTH_TOKEN_TTL_HOURS</code>); tokens and API keys are masked in the access log.</li>
+<li>Responses carry <code>X-Content-Type-Options: nosniff</code>, a same-origin referrer policy and <code>X-Frame-Options: SAMEORIGIN</code>; HSTS is deliberately not set so a station can fall back to HTTP when a certificate expires.</li>
+<li><strong>Python script tools run in the engine process.</strong> Only code an administrator has saved is approved to run, imports are allow-listed and a watchdog applies, but treat the ability to save scripts as shell access on the station.</li>
+<li>The image archive holds pictures of your product with no separate access control: put <code>data\</code> on a volume with the permissions you want, and remember it when you decommission a machine.</li>
 </ul>
 
+<h2 id="build">17. Building a release (vendor side)</h2>
+<p>Three scripts produce everything a customer receives; they run on a development PC with internet the first time, and from <code>build\cache</code> afterwards:</p>
+<table>
+<tr><th>Script</th><th>Produces</th><th>Notes</th></tr>
+<tr><td><code>scripts\build_release.ps1</code></td><td><code>build\release\VisionSequence-&lt;ver&gt;-win64.zip</code>, <code>VisionSequence-Setup-&lt;ver&gt;.exe</code>, <code>SHA256SUMS.txt</code></td><td>Builds the web interface, downloads the embeddable Python 3.12, NSSM, Caddy and the VC++ runtime (SHA-256 recorded on first download and verified afterwards), fills a wheelhouse with <code>pip download … --platform win_amd64 --python-version 3.12</code>, installs it into the embedded Python, copies the tree, then self-checks with <strong>that</strong> Python (imports, <code>manage.py check</code>, <code>migrate</code>, <code>doctor</code>, <code>tests.test_release</code>) before zipping. The setup wizard needs <a href="https://jrsoftware.org/isinfo.php">Inno Setup 6</a> (<code>-SkipInstaller</code> without it; the zip is complete on its own). <code>-Offline</code> forbids downloads.</td></tr>
+<tr><td><code>scripts\build_dl_pack.ps1 -Cuda cu128</code> / <code>-Cpu</code></td><td><code>VisionSequence-DL-&lt;variant&gt;-&lt;ver&gt;.zip</code></td><td>torch and torchvision from the PyTorch index, the rest of <code>requirements-dl.txt</code> from PyPI, frozen into <code>requirements-dl.lock.txt</code>; YOLO11n and SAM2 weights with checksums; <code>dl-pack.json</code> names the variant and Python version that <code>vsctl dl install</code> checks.</td></tr>
+<tr><td><code>scripts\build_capture_client.ps1</code></td><td><code>data\downloads\VisionSequenceCapture-&lt;ver&gt;-win64.zip</code> + manifest</td><td>The camera-PC program; <code>build_release.ps1</code> picks it up into <code>capture-client\</code> so a fresh station offers it for download and pushes updates to camera PCs.</td></tr>
+</table>
+<p>The release tree contains no tests, sources, source maps or the development <code>plugins\</code> folder (the examples move to <code>examples\plugins\</code>); <code>python\python312._pth</code> pins <code>sys.path</code> to the tree so another Python on the customer's PC cannot interfere. <code>VS_HOME</code> is found from the tree's position (<code>app\&lt;ver&gt;</code> → two levels up) or from the <code>VS_HOME</code> environment variable, which is how <code>vsctl</code> and the services address the install root. Sign the setup executable with your code-signing certificate when you have one (<code>signtool sign /fd SHA256 …</code>); until then the README tells customers about the SmartScreen prompt.</p>
 </article></div><!-- /doc-layout -->
 <script>
 // 本頁目錄：捲動時標出目前章節（無 JS 也能用，只是沒有高亮）；窄螢幕時頂列導覽的高度給 sticky／scroll-margin 用

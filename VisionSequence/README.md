@@ -52,7 +52,8 @@ Windows（PowerShell）：
 cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 ```
 
-- 第一次開啟前端會要求建立管理員（或 `manage.py create_admin`）。
+- 第一次開啟前端會要求建立管理員（或 `manage.py create_admin <user> --password-env NAME`）。
+- 交付客戶：`.\scripts\build_release.ps1` 產出自帶 Python 的發行樹／zip／安裝程式，客戶端 `vsctl.cmd` 管服務、升級、外掛與 DL 加購包，見 [部署](#部署)。
 - API 文件（OpenAPI）：http://127.0.0.1:8000/api/docs
 - 使用者手冊：`docs/user-guide.html`；介面內「說明」頁有精簡版與工具目錄。
 
@@ -307,7 +308,9 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 
 | 變數 | 說明 |
 |---|---|
-| `SECRET_KEY`、`DEBUG`、`ALLOWED_HOSTS`、`DATA_DIR` | Django 基本設定；資料（SQLite、資產、樣本）在 `DATA_DIR` |
+| `SECRET_KEY`、`DEBUG`、`ALLOWED_HOSTS`、`DATA_DIR`、`DB_PATH`、`BEHIND_HTTPS_PROXY`、`AUTH_TOKEN_TTL_HOURS` | Django 基本設定；資料（SQLite、資產、樣本）在 `DATA_DIR`（預設 `VS_HOME/data`）；反向代理後面設 `BEHIND_HTTPS_PROXY=1`；登入權杖壽命 |
+| `VS_HOME`（環境變數） | 安裝根：發行版由樹的位置推得（`app/<ver>` 上兩層），開發＝專案根；`.env`、`data/`、`plugins/` 都在這裡 |
+| `VISION_HTTP_PORT`、`VISION_TCP_AUTH`、`VISION_SSE_MAX_STREAMS` | serve 預設埠（doctor 也探它）、TCP 指令埠的 `AUTH <key>`（空＝不驗）、同時開的 SSE 串流上限（64；超過回 503） |
 | `VISION_MAX_WORKERS`、`VISION_MAX_QUEUE_PER_FLOW`、`VISION_RUN_TIMEOUT_S` | 引擎並行與逾時 |
 | `VISION_KEEP_RUN_IMAGES`、`VISION_IMAGE_CACHE_MB`、`VISION_PERSIST_RUNS`、`VISION_KEEP_RUN_ROWS` | 影像快取與執行紀錄 |
 | `VISION_PLUGIN_DIR`、`VISION_TOOL_PLUGINS`、`VISION_SOURCE_PLUGINS`、`VISION_COMM_PLUGINS` | 外掛 |
@@ -348,14 +351,25 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 
 ## 部署
 
+客戶電腦拿到的是**自帶 Python 的發行樹**（不需要裝 Python、不需要上網），細節在 `docs/deployment.html`：
+
+| 產物 | 由誰產生 | 內容 |
+|---|---|---|
+| `VisionSequence-Setup-<ver>.exe`／`VisionSequence-<ver>-win64.zip` | `scripts/build_release.ps1`（Inno Setup 6 有裝才出 exe） | 內嵌 CPython 3.12＋全部 wheel、`apps/`、`config/`、`frontend/dist`（無 .map、預壓縮）、`docs/`、`scripts/{vsctl,install,service,proxy}.ps1`、`tools/{nssm,caddy,vc_redist}`、`examples/plugins/`、`capture-client/`、`release.json` |
+| `VisionSequence-DL-cu128-<ver>.zip`／`-cpu-` | `scripts/build_dl_pack.ps1 -Cuda cu128`／`-Cpu` | torch、ultralytics、onnxruntime-gpu 的 wheel＋lock、YOLO11n／SAM2 權重、`dl-pack.json` |
+| 擷取端 zip | `scripts/build_capture_client.ps1` | 相機電腦的桌面程式，隨發行樹發佈到 `data/downloads` |
+
+客戶機的配置是三層：`<VS_HOME>\app\<ver>\`（不可變版本樹）＋ `current` junction ＋ `<VS_HOME>\{data,plugins,packs,certs,.env}`（升級不動）。安裝程式（或 `scripts\install.ps1`）產生 `.env`（`DEBUG=0`、隨機金鑰、絕對路徑）、先建管理員再開埠、NSSM 服務 `VisionSequence`（Ctrl-C 正常關閉、日誌輪替）＋ Caddy HTTPS 服務 `VisionSequenceProxy`（內建 CA 自簽／客戶憑證／無）、防火牆限子網。之後一律 `vsctl.cmd`：`status|logs|doctor|backup|restore|update <zip>|rollback|plugins install <zip>|dl install <pack>|env|admin create|firewall|certs`。
+
 | 方式 | 前端 | 後端 |
 |---|---|---|
-| 同站（預設） | `npm run build` 產物由 whitenoise 隨 API 行程服務（`BASE_URL=/api`） | `manage.py serve` |
-| 開發 | Vite dev server，`/api` 代理到 8000 | 同上 |
+| 客戶站台（發行版） | whitenoise 隨 API 行程服務（immutable `/assets`、`index.html` no-cache、預壓縮） | NSSM 服務 → uvicorn 127.0.0.1:8000，Caddy 443 在前 |
+| 開發 | Vite dev server，`/api` 代理到 8000 | `scripts/dev.ps1` |
 | 前端獨立部署 | build 時設 `VITE_API_BASE_URL=https://host/api`，放任何靜態主機 | `.env` 設 `CORS_ALLOWED_ORIGINS` |
 
-- 單一行程是設計前提：不要開多個 worker 或多副本共用同一資料庫的引擎狀態。
-- 可選依賴：`onnxruntime`（DL 推論）、`ultralytics`＋`torch`（YOLO-seg 訓練、SAM）、`anthropic`（Claude 供應器；GPT／Gemini 走標準庫 REST 零依賴）。缺件時對應功能提示安裝指令，其餘正常。
+- 單一行程是設計前提：不要開多個 worker 或多副本共用同一資料庫的引擎狀態；反向代理只能掛在 `/`（用主機名或埠分站台）。
+- 其他客戶端電腦只要瀏覽器（Chrome/Edge 111+、Firefox 128+、Safari 16.4+）；語言與主題跟帳號、登出清掉使用者層的本機狀態、每站同時 64 條 SSE 串流、HTTPS 內建 CA 的 `certs\root.crt` 匯入一次。
+- 可選依賴：`onnxruntime`（DL 推論）、`ultralytics`＋`torch`（YOLO 訓練、SAM）、`anthropic`（Claude 供應器；GPT／Gemini 走標準庫 REST 零依賴）。缺件時對應功能提示安裝指令，其餘正常；客戶站台用 DL 加購包離線安裝。
 
 ---
 
@@ -379,7 +393,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
 | `docs/capture-client.html` | 擷取端：安裝與連線、通道與 ROI、相機支援、共享記憶體與 TCP、網頁設定、效能、疑難排解、協定 v1、驗收清單 |
-| `docs/deployment.html` | 部署與維運：安裝、開機自動啟動、埠與防火牆、反向代理、帳號與金鑰、備份還原、升級與回滾、監控、多站台、災難復原、資安 |
+| `docs/deployment.html` | 部署與維運：安裝程式與三層配置、`vsctl`、NSSM 服務、埠與防火牆、HTTPS 與客戶端電腦、帳號與金鑰、備份還原、升級與回滾、現場外掛與 DL 加購包、監控、多站台、災難復原、資安、發行建置 |
 | `docs/glossary.html` | 名詞規範與文案用詞規範 |
 | `docs/performance.html` | 效能報告 |
 | `CLAUDE.md` | 給 AI 協作者與開發者的專案須知：架構、慣例、驗證清單、踩過的坑、各模組要點 |
