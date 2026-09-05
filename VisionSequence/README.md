@@ -366,14 +366,14 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 | 文件 | 內容 |
 |---|---|
 | `docs/index.html` | 總覽與索引 |
-| `docs/user-guide.html` | 使用者手冊（登入→來源資產→流程→工具頁 ROI→執行→批次／Golden→範本→AI 助手→DL→整合→設定→FAQ） |
+| `docs/user-guide.html` | 使用者手冊（圖文版）：依側欄順序逐頁說明，每節先放帶編號標記的截圖（`docs/img/`），標記對應下方清單指出按鈕與面板的位置——外框與導覽、帳號與權限、流程與範本、編輯器與工具選擇、工具頁與 ROI、參數卡與配方、執行與統計、批次測試、Golden Set、來源與擷取端、資產、深度學習、AI 助手頁與全域助手、整合頁、引擎鎖定、稽核／設定／說明、常見問題 |
 | `docs/workflow-design.html` | 工作流程設計手冊 |
 | `docs/architecture.html` | 設計手冊（資料模型、工具框架、引擎、Runner、API、前端、踩過的坑） |
 | `docs/contract.html` | 前後端資料合約、graph JSON、錯誤碼、解耦部署 |
 | `docs/automation.html`、`docs/modbus.html` | HTTP／TCP／SSE 整合、引擎鎖定；Modbus 主動輸出 |
 | `docs/vision-capabilities.html` | ROI 種類、位深設計、檢測工具總覽 |
 | `docs/samples.html` | 範例樣板與合成樣本圖 |
-| `docs/agent.html` | AI 助手：詢問機制、多圖 ROI、供應商與金鑰、全域 AI 助手（使用說明問答、編輯器修改、批次諮詢）、批次調參、候選方案與自動調參、定位補正、代理模式、記憶與學習、評測基準、技能、架構 |
+| `docs/agent.html` | AI 助手，分三部：全域助手（文件問答、看得到的現況、唯讀查詢與捷徑、主動提示、截圖、長期記憶、依批次資料調整）；在助手頁生成流程（詢問機制、多圖 ROI、候選與自動調參、定位補正、微調、代理模式、工作階段與先驗、供應商）；內部（架構、規則引擎、LLM、技能、API、基準、取捨） |
 | `docs/dl.html` | 深度學習教導 |
 | `docs/batch.html` | 批次測試：影像集、暫存結果、洞察與建議門檻、調參、AI 諮詢、API、保留策略 |
 | `docs/golden.html` | Golden Set 與流程匯出入 |

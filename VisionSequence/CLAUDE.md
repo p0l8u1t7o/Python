@@ -53,7 +53,8 @@
 - 使用者可見文案不得出現技術來源字樣（NI Vision／OpenCV／cv2）；`plugins.html` 程式碼範例的 import 是例外。
 
 ### 文件與命名
-- **`docs/` 下只放 HTML，內文一律英文**（每頁內嵌同一段 CSS、無外部依賴；`<html lang="en">`、`<title>`、`nav.site` 標籤都是英文）；新文件也要 HTML，並在 `docs/index.html` 加連結、各頁 `nav.site` 同步（改 nav 用 scratchpad 的 `nav_en.py` 之類的跨檔替換，`docs_style.py` 不處理 nav）。改了行為要同步更新對應的 docs 頁、`README.md` 與本檔。中文讀者用瀏覽器翻譯閱讀，不再維護中文版。`glossary.html` 例外：核心名詞表保留「Chinese」欄，是 zh-Hant 語系與 `help.py BILINGUAL` 的對照來源。
+- **`docs/` 下只放 HTML（截圖放 `docs/img/*.jpg`，`config/urls.py` 一併提供），內文一律英文**（每頁內嵌同一段 CSS、無外部依賴；`<html lang="en">`、`<title>`、`nav.site` 標籤都是英文）；新文件也要 HTML，並在 `docs/index.html` 加連結、各頁 `nav.site` 同步（改 nav 用 scratchpad 的 `nav_en.py` 之類的跨檔替換，`docs_style.py` 不處理 nav）。改了行為要同步更新對應的 docs 頁、`README.md` 與本檔。中文讀者用瀏覽器翻譯閱讀，不再維護中文版。`glossary.html` 例外：核心名詞表保留「Chinese」欄，是 zh-Hant 語系與 `help.py BILINGUAL` 的對照來源。
+- **使用者手冊是圖文版**：`docs/user-guide.html` 依側欄順序逐頁，每節 `<figure class="shot">` 放 `docs/img/<name>.jpg`（1440×900、JPEG q82、畫面上疊編號標記）＋ `<ol class="callouts">`（`data-n` 對應標記）。截圖由 `scripts/docs_shots.mjs`（Playwright，需伺服端在跑與管理員 token，見檔頭）產生，每張的標記順序記在 `scripts/docs_shots_callouts.txt`；**改了頁面版面或按鈕就重跑一次並核對 figcaption**。
 - **docs 版面由 `scripts/docs_style.py` 產生**（Cyberpunk 風：深空黑、霓虹綠／青、等寬標題、電路格線、HUD 角括號，與前端 `.theme-cyber` 同一套色票）：最左是 `nav.site` 變成的直式「總目錄」導覽欄（sticky 滿高，各頁共同的站內連結，別改它的 class）、其右 sticky「本頁目錄」（由 h2／h3 靜態產生、捲動高亮）、內文在右；字級階層 h1 2rem／h2 1.45rem／h3 1.12rem／內文 16px；< 1180px 本頁目錄改到內文上方兩欄、< 900px 導覽欄改頂列橫向捲動。**新增或改章節標題後重跑一次**（可重複執行；`--check` 回 1 表示有頁面沒套用）；不要手改各頁的 `<style>`、`<aside class="toc">` 與結尾 `<script>`，寫內文即可。h2 沒 id 會補 `sec-N`；`help.py` 只解析 `<article` 之後的內容，側欄不進索引。
 - UI 文案、元件名、i18n key 一律照 `docs/glossary.html`；新名詞先加表再用。**商用產品語氣**：「點選」不用「點一下」、「試執行」不用「試跑」、「尚無／無法／此」不用「還沒有／不能／這個」、稱呼使用者用「您」；範例提示詞除外。`src/test/i18n.test.ts` 有禁用詞清單會擋。
 - **語系：en 是正本與預設**（`fallbackLng: 'en'`；沒選過語言時跟瀏覽器，中文瀏覽器才給中文），zh-Hant 與 zh-Hans 是翻譯。**三語系 key 必須完全對齊**、占位符一致（`src/test/i18n.test.ts` 會擋，en 缺鍵也算失敗）。新文案先寫英文再補兩份中文。

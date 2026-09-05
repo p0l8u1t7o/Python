@@ -48,6 +48,6 @@ urlpatterns = [
     path("api/vision/events", _events_stream, name="events-stream"),
     path("api/", api.urls),
     # 文件（docs/*.html）由 Django 直接提供：全域 AI 助手回答附的參考連結、說明頁連結都指向這裡。
-    re_path(r"^docs/(?P<path>[\w\-]+\.html)$", serve, {"document_root": settings.BASE_DIR / "docs"}, name="docs"),
+    re_path(r"^docs/(?P<path>(?:img/)?[\w\-]+\.(?:html|png|jpg|jpeg|webp))$", serve, {"document_root": settings.BASE_DIR / "docs"}, name="docs"),
     re_path(r"^(?!api/)(?P<path>.*)$", _spa, name="spa"),
 ]

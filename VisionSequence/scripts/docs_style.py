@@ -116,6 +116,15 @@ CSS = """
   blockquote::after { border-color:var(--cyan); }
   hr { border:none; border-top:1px solid var(--line); margin:2.8rem 0; }
   img { max-width:100%; border:1px solid var(--line); border-radius:3px; }
+  figure.shot { margin:1.4rem 0 1.8rem; padding:.6rem; background:var(--panel); border:1px solid var(--line); border-radius:3px; position:relative; }
+  figure.shot::before { content:""; position:absolute; top:3px; left:3px; width:12px; height:12px; border-top:2px solid var(--cyan); border-left:2px solid var(--cyan); pointer-events:none; }
+  figure.shot img { display:block; width:100%; height:auto; border:1px solid var(--line-strong); }
+  figure.shot figcaption { margin:.7rem .2rem 0; font-size:.9em; color:var(--muted); line-height:1.6; }
+  figure.shot figcaption b { color:var(--head); font-family:var(--mono); font-size:.9em; letter-spacing:.04em; }
+  figure.shot ol.callouts { margin:.4rem 0 0; padding-left:0; list-style:none; columns:2; column-gap:1.6rem; }
+  figure.shot ol.callouts li { break-inside:avoid; margin:.25rem 0; padding-left:1.9rem; position:relative; }
+  figure.shot ol.callouts li::before { content:attr(data-n); position:absolute; left:0; top:.05em; width:1.35rem; height:1.35rem; border-radius:50%; background:var(--brand); color:#0a0a12; font-family:var(--mono); font-weight:700; font-size:.76em; display:inline-flex; align-items:center; justify-content:center; }
+  @media (max-width:700px) { figure.shot ol.callouts { columns:1; } }
   .wrap { overflow-x:auto; }
   .good { color:var(--brand); font-weight:600; }
   .bad { color:var(--magenta); }

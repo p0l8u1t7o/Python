@@ -99,6 +99,15 @@
   blockquote::after { border-color:var(--cyan); }
   hr { border:none; border-top:1px solid var(--line); margin:2.8rem 0; }
   img { max-width:100%; border:1px solid var(--line); border-radius:3px; }
+  figure.shot { margin:1.4rem 0 1.8rem; padding:.6rem; background:var(--panel); border:1px solid var(--line); border-radius:3px; position:relative; }
+  figure.shot::before { content:""; position:absolute; top:3px; left:3px; width:12px; height:12px; border-top:2px solid var(--cyan); border-left:2px solid var(--cyan); pointer-events:none; }
+  figure.shot img { display:block; width:100%; height:auto; border:1px solid var(--line-strong); }
+  figure.shot figcaption { margin:.7rem .2rem 0; font-size:.9em; color:var(--muted); line-height:1.6; }
+  figure.shot figcaption b { color:var(--head); font-family:var(--mono); font-size:.9em; letter-spacing:.04em; }
+  figure.shot ol.callouts { margin:.4rem 0 0; padding-left:0; list-style:none; columns:2; column-gap:1.6rem; }
+  figure.shot ol.callouts li { break-inside:avoid; margin:.25rem 0; padding-left:1.9rem; position:relative; }
+  figure.shot ol.callouts li::before { content:attr(data-n); position:absolute; left:0; top:.05em; width:1.35rem; height:1.35rem; border-radius:50%; background:var(--brand); color:#0a0a12; font-family:var(--mono); font-weight:700; font-size:.76em; display:inline-flex; align-items:center; justify-content:center; }
+  @media (max-width:700px) { figure.shot ol.callouts { columns:1; } }
   .wrap { overflow-x:auto; }
   .good { color:var(--brand); font-weight:600; }
   .bad { color:var(--magenta); }
@@ -135,133 +144,325 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html" aria-current="page">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#login">1. Signing in and accounts</a></li><li><a href="#sources">2. Image sources and assets</a><ul><li><a href="#sources-capture">2-3. When the camera is on another PC: the capture client</a></li></ul></li><li><a href="#flow">3. Building and editing a flow</a></li><li><a href="#tool">4. The tool page and ROIs</a></li><li><a href="#run">5. Preview, run and continuous</a></li><li><a href="#batch">6. Batch testing and the Golden Set</a></li><li><a href="#templates">7. The template gallery</a></li><li><a href="#agent">8. The AI assistant</a></li><li><a href="#dl">9. Deep-learning teaching</a></li><li><a href="#integration">10. Integration and the engine lock</a></li><li><a href="#settings">11. Settings and personal preferences</a></li><li><a href="#faq">12. Common questions</a><ul><li><a href="#faq-capture">The camera is on another PC, or needs a Basler or IDS SDK</a></li><li><a href="#faq-capture-timeout">A capture client camera times out during a run</a></li></ul></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#shell">1. Getting around</a></li><li><a href="#login">2. Signing in, roles and permissions</a></li><li><a href="#flows">3. The Flows page and templates</a></li><li><a href="#editor">4. The flow editor</a></li><li><a href="#tool">5. The tool page and ROIs</a></li><li><a href="#teach">6. The teach page, on-site parameters and recipes</a></li><li><a href="#run">7. Preview, run, continuous and statistics</a></li><li><a href="#batch">8. Batch testing</a></li><li><a href="#golden">9. The Golden Set</a></li><li><a href="#sources">10. Image sources</a><ul><li><a href="#sources-capture">When the camera is on another PC, or needs a Basler or IDS SDK</a></li></ul></li><li><a href="#assets">11. Assets</a></li><li><a href="#dl">12. Deep-learning teaching</a></li><li><a href="#agent">13. The AI assistant page: a flow from an image</a></li><li><a href="#assistant">14. The global assistant (on every page)</a></li><li><a href="#integration">15. Integration</a></li><li><a href="#lock">16. The engine lock</a></li><li><a href="#admin">17. Audit trail, settings and help</a></li><li><a href="#faq">18. Common questions</a></li></ul></aside><article class="doc">
 
 <h1>User guide</h1>
-<p>This guide walks through VisionSequence in the order you would actually use it: signing in, building a flow, tuning a tool, then batch testing, templates, the AI assistant, deep-learning teaching and integration. The Help page inside the product carries a condensed version of the same material plus the tool catalogue.</p>
+<p>This guide follows the sidebar from top to bottom: where each page is, what is on it, and what to press. Every section opens with a screenshot; the numbered markers on the picture match the numbered list under it. The screenshots show the English interface; the Chinese interfaces have the same layout with translated labels. The Help page inside the product carries a condensed version of the same material plus the tool catalogue.</p>
 
-<h2 id="login">1. Signing in and accounts</h2>
+<h2 id="shell">1. Getting around</h2>
+<figure class="shot"><img src="img/shell.jpg" alt="The application shell on the Dashboard"><figcaption><b>Dashboard</b> (sidebar › Dashboard, route <code>/</code>)
+<ol class="callouts">
+<li data-n="1">The <strong>sidebar</strong>: every page in the order used in this guide. "External integration" expands into its sub-pages; items your role cannot use are hidden. "Collapse sidebar" at the bottom shrinks it to icons; on a phone it becomes a drawer behind the ☰ button.</li>
+<li data-n="2">The <strong>breadcrumb</strong> shows where you are (Dashboard › Flows › flow name) and each part is a link back.</li>
+<li data-n="3">The <strong>capacity</strong> indicator: how many of the engine's workers are busy and how many images are cached; click for details.</li>
+<li data-n="4">The <strong>user menu</strong>: who is signed in, change password, sign out. A green dot means the engine is free; when an integrator locks it a banner appears under the top bar (see <a href="#lock">15. The engine lock</a>).</li>
+<li data-n="5">The <strong>AI assistant</strong> button, available on every page (see <a href="#assistant">14. The global assistant</a>).</li>
+<li data-n="6">The <strong>flow list</strong>: one card per flow with its last result and run count. Select a card to see its live image in the middle and the verdict and output values on the right.</li>
+<li data-n="7"><strong>Run once</strong> on a card runs the saved flow immediately, no editor needed.</li>
+<li data-n="8">The <strong>statistics</strong> shortcut opens the flow's run history, yield trend and image archive.</li>
+</ol></figcaption></figure>
+<p>With no run yet the middle shows "Waiting for the next inspection"; as soon as an external trigger, continuous mode or "Run once" produces a run, the image with its overlays and the result appear there live.</p>
+
+<h2 id="login">2. Signing in, roles and permissions</h2>
+<figure class="shot"><img src="img/users.jpg" alt="The Users page"><figcaption><b>Users</b> (sidebar › Users, administrators only)
+<ol class="callouts">
+<li data-n="1"><strong>New user</strong>: username, display name, role and password.</li>
+<li data-n="2">The account table: change a role, disable an account, reset a password.</li>
+<li data-n="3"><strong>Role permissions</strong>: tick, function by function, what an engineer and an operator may use.</li>
+</ol></figcaption></figure>
 <ul>
-<li>With no users yet, the sign-in page offers "Create the first administrator", and you are signed in as that account.</li>
-<li>An administrator adds accounts, assigns roles, disables them and resets passwords on the Users page. There are <strong>three roles</strong>:
+<li>With no users yet, the sign-in page offers "Create the first administrator", and you are signed in as that account. An integrator uses an API key and never signs in.</li>
+<li>There are <strong>three roles</strong>; the table is the factory setting, and the Role permissions card adjusts it:
 <table>
 <tr><th>Role</th><th>Can</th><th>Cannot</th></tr>
 <tr><td>Administrator</td><td>Everything, including accounts, connections and system settings</td><td>—</td></tr>
 <tr><td>Engineer</td><td>Create and edit flows, image sources and assets; deep-learning teaching, batch testing, Golden Set regression; change any parameter</td><td>Accounts, outgoing connections, system settings</td></tr>
 <tr><td>Operator</td><td>Run inspections, start and stop continuous mode, change over (switch the bound recipe), adjust <strong>on-site parameters</strong> on the teach page, view statistics</td><td>Change a flow's structure, train models, batch test, edit sources or connections</td></tr>
-</table>
-<strong>A flow belongs to the line, not to a person</strong>: every engineer can see and edit every flow (the Owner column only records who created it), so an engineer leaving never orphans a flow.</li>
-<li><strong>Image archive</strong>: the platform <strong>keeps no run images by default</strong> (memory holds the last few and a restart clears them). To be able to show what the camera saw when a customer complains, turn on "Keep reject images" on the flow's statistics page. From then on every reject and failure writes its source and result image to disk, reachable by clicking a row in the run history, and old ones are purged automatically once they exceed the retention period or the total size limit (<code>VISION_ARCHIVE_DAYS</code>, <code>VISION_ARCHIVE_MAX_GB</code>; ship a whole plant with it on using <code>VISION_ARCHIVE_DEFAULT</code>).</li>
-<li><strong>Role permissions</strong>: the table above is the factory setting, not a fixed rule. On the <strong>Users</strong> page an administrator ticks, function by function, what an engineer and an operator may use — take deep-learning teaching away from engineers, hand batch testing or the audit trail to operators, delegate the outgoing connections. Administrators always have everything and cannot be ticked off, so nobody can lock themselves out. The server checks every request, so a function that is not ticked cannot be reached by typing its address either.</li>
+</table></li>
+<li><strong>Role permissions</strong>: take deep-learning teaching away from engineers, hand batch testing or the audit trail to operators, delegate the outgoing connections. Administrators always have everything and cannot be ticked off, so nobody can lock themselves out. The server checks every request, so a function that is not ticked cannot be reached by typing its address either; the sidebar and the buttons simply disappear.</li>
+<li><strong>A flow belongs to the line, not to a person</strong>: every engineer can see and edit every flow (the Owner column only records who created it), so an engineer leaving never orphans a flow.</li>
 <li><strong>On-site parameters</strong> are the ones a tool's author marked as teaching parameters — a threshold, a blob's minimum area. An operator changing those on the teach page writes straight back to the flow; changing anything else, or the structure, is refused by the server. Which parameters those are is shown in the "On-site" column of the tool page's parameter table.</li>
-<li>The user menu in the top-right corner changes the password and signs out. An integrator uses an API key and never signs in.</li>
 </ul>
 
-<h2 id="sources">2. Image sources and assets</h2>
-<ul>
-<li><strong>Image sources</strong>: a capture client camera (webcams, Basler and IDS cameras, driven by the downloadable <a href="capture-client.html">capture client</a> on the PC they are attached to), a folder (read in a loop), a single file, pushed uploads, or a synthetic generator. Folder and file types have a Browse button that opens a server-side file browser. "Test capture" below the form grabs one image with the current settings and shows its size, the time taken and a thumbnail, so you can confirm the path or the device before saving.</li>
-<li><strong>Assets</strong>: template images (for locating and golden comparison), model files (ONNX) and dataset archives. A tool page can create a template from a box drawn on the current image and save it as an asset directly.</li>
-<li>Both support <strong>groups</strong> (filter chips above the list; "Manage groups" to rename or delete). The example sources and assets are in the "Examples" group.</li>
-</ul>
+<h2 id="flows">3. The Flows page and templates</h2>
+<figure class="shot"><img src="img/flows.jpg" alt="The Flows page"><figcaption><b>Flows</b> (sidebar › Flows)
+<ol class="callouts">
+<li data-n="1"><strong>New flow</strong> creates an empty flow and opens the editor.</li>
+<li data-n="2"><strong>Create from template</strong> opens the template gallery.</li>
+<li data-n="3"><strong>Import</strong> loads a flow exported as JSON (from another station or from version control).</li>
+<li data-n="4">Per flow: the <strong>teach page</strong> (on-site parameters and recipes).</li>
+<li data-n="5">The <strong>Golden Set</strong> of that flow.</li>
+<li data-n="6"><strong>Export</strong> the flow as JSON.</li>
+<li data-n="7"><strong>Recipes</strong>: the parameter sets for changeover.</li>
+</ol></figcaption></figure>
+<p><strong>The template gallery</strong> holds eighteen built-in templates (counting, exposure, circle gauging, edge angle, golden comparison, fabric defects, a pre-processing tutorial, circles and lines, colour presence, colour verification, barcode labels, locate and gauge, cup gauging and more), each with synthetic sample images. Pick the matching "Example: …" source when you create one and it runs immediately. Your own flow can be saved as a template for others to reuse. Details in <a href="samples.html">Example templates</a>.</p>
+<p>Export and import use a stable JSON format, so flows can be kept in version control and moved between stations; the page asks which image source to bind on import. See <a href="golden.html">Golden Set and export</a>.</p>
 
-<h3 id="sources-capture">2-3. When the camera is on another PC: the capture client</h3>
-<p>If the camera is attached to another PC on the line, or needs a Basler or IDS SDK, you do not have to move it to the server. Use "Download capture client" at the top of the Image sources page, unzip and run <code>VisionSequenceCapture.exe</code> on the camera's PC, fill in the server address (port 9100) and a client name under Connection, then add the camera as a channel, open it and start acquiring (you can draw an ROI on the preview to send only that region, and adjust and save camera parameters). Back in the web interface, add a source of kind "capture client camera", pick the client and the channel, choose "on demand" (a fresh frame for every run) or "continuous stream", and press Test capture before saving. The status column shows whether the client is online, its fps and the age of the last frame; Integration ▸ Capture lists every connected client and lets you turn streaming on and preview. Details in <a href="capture-client.html">Capture client</a>.</p>
-
-<h2 id="flow">3. Building and editing a flow</h2>
-<p><strong>No image source chosen yet?</strong> A yellow banner appears at the top of the editor; pick a source from the dropdown in the banner (or upload a scratch image) and you can preview straight away. Every flow card on the dashboard also has a "Run once" button, so you need not open the editor at all. Selecting the acquire step shows the current source in a dropdown with a preview thumbnail in the panel on the right, where you can switch source directly.</p>
-<p><strong>Want to write a little Python?</strong> The Logic category has a "Python script" tool: write <code>def run(ctx)</code> in the code editor on the tool page (np, cv2 and math are available), read <code>ctx.image</code>, the upstream values in <code>ctx.inputs</code>, the on-site parameters <code>ctx.params['p1'..'p3']</code> and the region from <code>ctx.roi()</code>, and return a number, a bool, text, data, a new image and overlays, choosing the pass or fail branch. The output ports are fixed (value, result, text, data, image). The script runs in the engine process under restrictions — allow-listed imports, a timeout, a read-only input image — and <strong>only an administrator can edit and save it, which is what approves it</strong>. Everyone else can view and run an approved script, and adjust its on-site parameters on the teach page without touching the code.</p>
+<h2 id="editor">4. The flow editor</h2>
+<figure class="shot"><img src="img/editor.jpg" alt="The flow editor with a step selected"><figcaption><b>Flow editor</b> (Flows › a flow, route <code>/flows/:id</code>)
+<ol class="callouts">
+<li data-n="1">Toolbar row 1: the flow name, <strong>Save</strong>, <strong>Templates</strong>, <strong>Recipes</strong>, <strong>Versions</strong> (history and restore) and the "Not taught" badge that links to the teach page.</li>
+<li data-n="2">Toolbar row 2: <strong>Preview</strong>, "Rerun with last image", <strong>Upload scratch image</strong>, <strong>Batch test</strong>, <strong>Continuous</strong> and <strong>Reset</strong>.</li>
+<li data-n="3"><strong>Add tool</strong> opens the tool picker (next figure); "Add note" drops a sticky note. Favourites you star in the picker appear underneath, and the step list at the bottom of the column jumps to a step.</li>
+<li data-n="4">The <strong>canvas</strong>: steps and their typed ports. Drag from an output port to the next step's input port; only ports of the same colour connect.</li>
+<li data-n="5">The <strong>image viewer</strong>: before and after images of the selected step with its overlays; the strip below switches input, output, before/after and "Overlay every step's marks".</li>
+<li data-n="6">The <strong>inspector</strong> on the right: title, enabled, colour, "Continue on error" and the parameters of the selected step; its Results tab shows the last preview.</li>
+<li data-n="7"><strong>Open tool page</strong> goes to the dedicated tuning page for that step.</li>
+<li data-n="8"><strong>Preview</strong> runs the current canvas, unsaved changes included.</li>
+<li data-n="9">The <strong>teach page</strong> shortcut.</li>
+<li data-n="10">The <strong>statistics</strong> shortcut; the icons next to it are undo, auto-layout, versions, export and Golden Set.</li>
+</ol></figcaption></figure>
 <ol>
-<li>"New flow" on the Flows page, or "Create from template".</li>
-<li>"Add tool" in the editor's left column opens the tool picker (grouped by category, searchable, with favourites); a click drops it in the centre of the canvas. "Add note" places a sticky note.</li>
-<li>Connecting: drag from a step's output port to the next step's input port. Only ports of the same colour (the same type) connect. Wiring a judging tool's branch port to a step's <code>_flow</code> port makes that step conditional.</li>
-<li>The panel on the right: with a step selected you can change its title, whether it is enabled, its colour and its parameters. "Open tool page" goes to the dedicated tuning page.</li>
-<li>Ctrl+S saves. Unsaved changes are kept as a draft and survive leaving and coming back; "Run once" and "Continuous" use the saved version.</li>
+<li>Wiring a judging tool's branch port to a step's <code>_flow</code> port makes that step conditional; every step also passes its image straight through on the <code>_image</code> port, so a tool that only produces numbers can still sit in the middle of an image chain.</li>
+<li>Ctrl+S saves. Unsaved changes are kept as a draft and survive leaving and coming back; "Run once" and "Continuous" use the saved version, "Preview" uses the draft.</li>
+<li><strong>No image source chosen yet?</strong> A yellow banner appears at the top of the editor; pick a source from the dropdown in the banner (or upload a scratch image) and you can preview straight away. Selecting the acquire step shows the current source in a dropdown with a preview thumbnail in the inspector, where you can switch source directly.</li>
+<li><strong>Want to write a little Python?</strong> The Logic category has a "Python script" tool: write <code>def run(ctx)</code> in the code editor on the tool page (np, cv2 and math are available), read <code>ctx.image</code>, the upstream values in <code>ctx.inputs</code>, the on-site parameters <code>ctx.params['p1'..'p3']</code> and the region from <code>ctx.roi()</code>, and return a number, a bool, text, data, a new image and overlays, choosing the pass or fail branch. The output ports are fixed (value, result, text, data, image). The script runs in the engine process under restrictions — allow-listed imports, a timeout, a read-only input image — and <strong>only an administrator can edit and save it, which is what approves it</strong>. Everyone else can view and run an approved script, and adjust its on-site parameters on the teach page without touching the code.</li>
 </ol>
+<figure class="shot"><img src="img/tool-picker.jpg" alt="The tool picker"><figcaption><b>Tool picker</b> (editor › Add tool)
+<ol class="callouts">
+<li data-n="1"><strong>Search</strong> by name or key.</li>
+<li data-n="2"><strong>Categories</strong>: acquisition, pre-processing, locating, measurement, inspection, deep learning, logic, output.</li>
+<li data-n="3">The <strong>tool cards</strong> of the category (icon, name, key).</li>
+<li data-n="4">The <strong>details</strong> of the selected tool: description, input and output ports with their type colours, and the parameter table with defaults, ranges and the on-site flag. The star marks it as a favourite.</li>
+<li data-n="5"><strong>Add to canvas</strong> (or double-click a card) inserts the step in the centre of the canvas.</li>
+</ol></figcaption></figure>
 
-<h2 id="tool">4. The tool page and ROIs</h2>
+<h2 id="tool">5. The tool page and ROIs</h2>
+<figure class="shot"><img src="img/tool.jpg" alt="The tool page"><figcaption><b>Tool page</b> (editor › inspector › Open tool page, route <code>/flows/:id/tools/:step</code>)
+<ol class="callouts">
+<li data-n="1">The <strong>parameters</strong> of this step, grouped, with help text; a region parameter is drawn on the image instead.</li>
+<li data-n="2">The <strong>input image</strong> (what the step receives), where ROIs are drawn.</li>
+<li data-n="3">The <strong>output image</strong> with the step's overlays.</li>
+<li data-n="4"><strong>Reference information</strong>: histogram, statistics and the step's output values.</li>
+<li data-n="5"><strong>Run to this step</strong> previews the flow up to here.</li>
+<li data-n="6"><strong>Save</strong> writes the parameter draft back to the flow.</li>
+<li data-n="7"><strong>Upload scratch image</strong> gives the previews an image without touching the source library.</li>
+<li data-n="8"><strong>Back</strong> to the editor (asks before discarding unsaved parameters).</li>
+</ol></figcaption></figure>
 <ul>
-<li>The layout: parameters on the left, the before and after images in the middle, reference information below (histogram, statistics, output values), and the buttons on the right.</li>
 <li>Changing a parameter <strong>does not</strong> run anything by default; press "Run to this step" to see the result. With "Auto apply" on, it runs 250 ms after each change.</li>
 <li>Parameter changes are held as a draft: "Save" writes them back to the flow, and leaving with unsaved changes asks whether to discard them.</li>
-<li>ROIs: a tool with a region parameter shows its ROI as soon as you open the page. Draw on the image — rectangle, rotated rectangle, circle, ellipse, annulus (optionally a sector), polygon, polyline, line or point. Coordinates are pixels in that step's input image.</li>
-<li>"Upload scratch image" provides one image for previews only (it does not join the source library); "Re-run with last image" pins the same image while you tune.</li>
+<li>ROIs: a tool with a region parameter shows its ROI as soon as you open the page. Draw on the input image — rectangle, rotated rectangle, circle, ellipse, annulus (optionally a sector), polygon, polyline, line or point. Coordinates are pixels in that step's input image; a positive angle is clockwise on screen.</li>
+<li>"Re-run with last image" pins the same image while you tune; a template for locating or golden comparison can be created from a box drawn on the current image and saved as an asset directly.</li>
 </ul>
 
-<h2 id="run">5. Preview, run and continuous</h2>
+<h2 id="teach">6. The teach page, on-site parameters and recipes</h2>
+<figure class="shot"><img src="img/teach.jpg" alt="The teach page"><figcaption><b>Teach page</b> (Flows › teach icon, or the editor's "Not taught" badge, route <code>/flows/:id/teach</code>)
+<ol class="callouts">
+<li data-n="1">The <strong>steps</strong> that have on-site parameters; pick one.</li>
+<li data-n="2">The <strong>on-site parameters</strong> of that step: only the ones the tool's author marked as teachable.</li>
+<li data-n="3">A <strong>live preview</strong> that re-runs as you change values.</li>
+<li data-n="4">The <strong>recipe</strong> row: which parameter set is being edited (the graph itself or a named recipe), and the recipe manager.</li>
+<li data-n="5"><strong>Save</strong> writes the values to the graph or the recipe (Ctrl+S).</li>
+<li data-n="6"><strong>Mark as commissioned</strong>: the engineer's sign-off that the flow is tuned; an uncommissioned flow still runs, its runs just carry a warning.</li>
+<li data-n="7">The step's <strong>output values</strong> for the current image.</li>
+</ol></figcaption></figure>
+<ul>
+<li><strong>Recipes</strong> are named parameter overrides for the same flow (product A, product B). "Save as recipe" stores the current values; the flow's default recipe is applied when nothing else is asked for, and an external trigger can name the recipe to use.</li>
+<li><strong>Changeover</strong> is switching the active recipe on this page or through the API; an operator may do it, while changing a recipe's contents needs an engineer.</li>
+<li>An operator sees this page read-only when the role lacks "On-site parameters and changeover"; the header says why.</li>
+</ul>
+
+<h2 id="run">7. Preview, run, continuous and statistics</h2>
 <table>
 <tr><th>Action</th><th>Which version</th><th>What it does</th></tr>
 <tr><td>Preview</td><td>The current canvas, unsaved changes included</td><td>Keeps every intermediate image; nothing is written to the run history.</td></tr>
 <tr><td>Run once</td><td>The saved version</td><td>A real run, the same as an external trigger; written to the run history and the statistics.</td></tr>
 <tr><td>Continuous</td><td>The saved version</td><td>Runs repeatedly at the configured interval; the dashboard shows the live image and result.</td></tr>
 </table>
-<p>On the dashboard, choose a flow on the left, the middle shows the latest run's image with its overlays, and the right shows the verdict and the output values. With no events it shows the last run.</p>
+<figure class="shot"><img src="img/stats.jpg" alt="The statistics page"><figcaption><b>Statistics</b> (dashboard card › statistics icon, or the editor toolbar, route <code>/flows/:id/stats</code>)
+<ol class="callouts">
+<li data-n="1">The <strong>KPI</strong> strip: runs, OK, NG, failed, yield and timing, from the hourly totals that survive restarts and clean-ups.</li>
+<li data-n="2">The <strong>status filter</strong> for the run history below; clicking a row opens the run's images when they were archived.</li>
+</ol></figcaption></figure>
+<p><strong>Image archive</strong>: the platform <strong>keeps no run images by default</strong> (memory holds the last few and a restart clears them). To be able to show what the camera saw when a customer complains, turn on the image archive on this page (rejects only, or every run, with a sample rate for OK runs). From then on every reject and failure writes its source and result image to disk, reachable by clicking a row in the run history, and old ones are purged automatically once they exceed the retention period or the total size limit (<code>VISION_ARCHIVE_DAYS</code>, <code>VISION_ARCHIVE_MAX_GB</code>; ship a whole plant with it on using <code>VISION_ARCHIVE_DEFAULT</code>). The page reminds you when there are rejects but the archive is off.</p>
 
-<h2 id="batch">6. Batch testing and the Golden Set</h2>
+<h2 id="batch">8. Batch testing</h2>
+<figure class="shot"><img src="img/batch.jpg" alt="The batch test page"><figcaption><b>Batch test</b> (sidebar › Batch test, or the editor toolbar, route <code>/batch</code>)
+<ol class="callouts">
+<li data-n="1"><strong>Test flow</strong>: the flow the images will run through; any set can test any flow.</li>
+<li data-n="2"><strong>New image set</strong>: upload images or grab N from an image source (200 per set at most).</li>
+<li data-n="3"><strong>Run</strong> the selected set with the test flow; it runs in the background with a progress bar and can be interrupted.</li>
+<li data-n="4">The <strong>Results</strong> tab: per-image status, expected label, hit and outputs.</li>
+<li data-n="5">The <strong>Insights</strong> tab: missed images, failing steps, threshold suggestions, output distributions and the trend across runs.</li>
+<li data-n="6">The <strong>Tune</strong> tab: change on-site parameters and re-run, then write back to the flow, save as a recipe or send to the editor; the Images tab labels expectations and the Compare tab puts two runs side by side.</li>
+<li data-n="7">The <strong>assistant</strong>: with a finished run selected it consults on the data or tunes from it.</li>
+</ol></figcaption></figure>
 <ol>
-<li>"Batch test" in the sidebar (or in the editor toolbar): "New image set" uploads images or grabs N from an image source (200 per set at most). The list of sets spans flows, so one set of images can test any flow.</li>
-<li>"Test flow" in the top right is the flow to test with. Selecting a set fills in the flow it was created under; to compare a different flow, change the dropdown and run again. With unsaved changes in the editor you can tick "use the editor's unsaved draft".</li>
-<li>Press "Run with <em>flow name</em>": it runs in the background with a progress bar and can be interrupted. Every run's per-image results are kept and can be revisited from the run list (a run against a different flow shows that flow's name).</li>
-<li>On the Images tab, label each image with its expected OK or NG; the Results tab shows the hit rate and which images matched. The Insights tab lists the missed images, failing nodes, threshold suggestions, output distributions and the trend across runs, and "Apply and re-run" produces a new run.</li>
-<li>The Tuning tab edits the on-site parameters and re-runs; the Compare tab puts two runs side by side, image by image. When you are happy: "Write back to flow", "Save as recipe" or "Send to editor".</li>
-<li>The global AI assistant in the bottom-right corner (once a finished run is selected) answers questions ("why was image 3 NG?") or takes tuning instructions; the Tuning panel has "Auto-tune". All of them land as new runs.</li>
-<li>Tick images and "Save to Golden Set" to make them a regression baseline. The Golden Set page runs regressions and auto-tuning, with regressed cases at the top. See <a href="batch.html">Batch testing</a> and <a href="golden.html">Golden Set and export</a>.</li>
+<li>Selecting a set fills in the flow it was created under; to compare a different flow, change the dropdown and run again. With unsaved changes in the editor you can tick "use the editor's unsaved draft".</li>
+<li>Every run's per-image results are kept and can be revisited from the run list (a run against a different flow shows that flow's name).</li>
+<li>On the Images tab, label each image with its expected OK or NG; the Results tab then shows the hit rate and which images matched, and Insights can suggest thresholds. "Apply and re-run" produces a new run.</li>
+<li>Ask the assistant "why was image 3 NG?" or give a tuning instruction; the Tune tab also has "Auto-tune". All of them land as new runs, so nothing is lost.</li>
+<li>Tick images and "Save to Golden Set" to make them a regression baseline. See <a href="batch.html">Batch testing</a>.</li>
 </ol>
 
-<h2 id="templates">7. The template gallery</h2>
-<p>Eighteen built-in templates (counting, exposure, circle gauging, edge angle, golden comparison, fabric defects, a pre-processing tutorial, circles and lines, colour presence, colour verification, barcode labels, locate and gauge, cup gauging and more), each with synthetic sample images. Pick the matching "Example: …" source when you create one and it runs immediately. Your own flow can be saved as a template for others to reuse. See <a href="samples.html">Example templates</a>.</p>
+<h2 id="golden">9. The Golden Set</h2>
+<figure class="shot"><img src="img/golden.jpg" alt="The Golden Set page"><figcaption><b>Golden Set</b> (Flows › Golden Set icon, route <code>/flows/:id/golden</code>)
+<ol class="callouts">
+<li data-n="1"><strong>Upload images</strong> as cases, each with its expected OK or NG (or send them from a batch run).</li>
+<li data-n="2"><strong>Run regression</strong>: every case runs and is compared with its expectation and the baseline; regressed cases come first.</li>
+<li data-n="3"><strong>Auto-tune</strong> searches the on-site parameters for a better hit rate and lets you apply the result.</li>
+<li data-n="4"><strong>Baseline</strong>: freeze the current results as the reference for the next regression.</li>
+</ol></figcaption></figure>
+<p>The Golden Set is the safety net after tuning: it tells you exactly which images flipped between OK and NG. It also runs from the command line (<code>manage.py regress</code>) so it can gate a CI pipeline. See <a href="golden.html">Golden Set and export</a>.</p>
 
-<h2 id="agent">8. The AI assistant</h2>
-<p><strong>The global assistant</strong>: every page has an assistant button in the bottom-right corner, opening a chat panel that stays with you between pages. Type a question ("how do I create an image source from a folder?") and it answers from the platform documentation with links to the sections it used. In the flow editor, type an instruction ("set the blob minimum area to 40", "disable the noise removal") and it edits the current canvas; "Apply to canvas" writes it back, and it can be undone. On the batch page, with a finished run selected, ask about the data ("why was image 3 NG?") or give a tuning instruction, and the result becomes a new run. The mode chips at the top of the panel force a particular mode: help, edit flow, consult data, or tune from data.</p>
-<p>The assistant page in the sidebar generates a whole flow from an image:</p>
+<h2 id="sources">10. Image sources</h2>
+<figure class="shot"><img src="img/sources.jpg" alt="The Source library"><figcaption><b>Source library</b> (sidebar › Source library, route <code>/sources</code>)
+<ol class="callouts">
+<li data-n="1"><strong>New source</strong> opens the form (next figure).</li>
+<li data-n="2"><strong>Download capture client</strong>: the desktop program for cameras on another PC or behind a vendor SDK.</li>
+<li data-n="3"><strong>Manage groups</strong>: rename or delete the groups shown as filter chips above the list.</li>
+<li data-n="4">The list: name, group, kind, settings summary and live status (connected, fps, last frame); the switch enables or disables a source and the eye previews it.</li>
+</ol></figcaption></figure>
+<figure class="shot"><img src="img/source-form.jpg" alt="The new source form"><figcaption><b>New source</b>
+<ol class="callouts">
+<li data-n="1">The <strong>kind</strong>: capture client camera, folder (read in a loop), a single file, pushed uploads, a synthetic generator, or a plugin kind.</li>
+<li data-n="2"><strong>Browse</strong> opens a server-side file browser for folder and file kinds.</li>
+<li data-n="3"><strong>Test grab</strong> grabs one image with the current settings before saving.</li>
+<li data-n="4">The result: size, time taken and a thumbnail, or the reason it failed.</li>
+</ol></figcaption></figure>
+<h3 id="sources-capture">When the camera is on another PC, or needs a Basler or IDS SDK</h3>
+<p>You do not have to move the camera to the server. Use "Download capture client", unzip and run <code>VisionSequenceCapture.exe</code> on the camera's PC, fill in the server address (port 9100) and a client name under Connection, then add the camera as a channel, open it and start acquiring (you can draw an ROI on the preview to send only that region, and adjust and save camera parameters). Back in the web interface, add a source of kind "capture client camera", pick the client and the channel, choose "on demand" (a fresh frame for every run) or "continuous stream", and press Test grab before saving. The status column shows whether the client is online, its fps and the age of the last frame; Integration › Capture client lists every connected client and lets you turn streaming on and preview. On the same machine it uses shared memory automatically; across machines it is lossless over TCP. "Capture client offline" in the list means the program is not connected. Details in <a href="capture-client.html">Capture client</a>.</p>
+<p><strong>A capture client camera times out during a run</strong>: first check on the client that the channel says it is acquiring and the preview is live. A camera in trigger mode needs a trigger signal. With a long exposure, or across a network, increase the source's timeout in milliseconds. Turning off "require a fresh frame" lets it use whatever frame the client already has.</p>
+
+<h2 id="assets">11. Assets</h2>
+<figure class="shot"><img src="img/assets.jpg" alt="The Asset library"><figcaption><b>Asset library</b> (sidebar › Asset library, route <code>/assets</code>)
+<ol class="callouts">
+<li data-n="1"><strong>Upload asset</strong>: a template image, a model file (ONNX or a trained weight) or a dataset archive.</li>
+<li data-n="2"><strong>Manage groups</strong>, the same way as sources.</li>
+<li data-n="3">The asset cards; a tool page can also create a template from a box drawn on the current image and save it here directly.</li>
+</ol></figcaption></figure>
+<p>Templates are used by locating and golden-comparison tools, models by the deep-learning tools, and dataset archives by the teaching page. The example sources and assets are in the "Examples" group.</p>
+
+<h2 id="dl">12. Deep-learning teaching</h2>
+<figure class="shot"><img src="img/dl.jpg" alt="The DL teaching page"><figcaption><b>DL teaching</b> (sidebar › DL teaching, route <code>/dl</code>)
+<ol class="callouts">
+<li data-n="1"><strong>New teaching project</strong>: choose the model kind (classification, semantic segmentation, instance segmentation, detection, pose, oriented boxes).</li>
+<li data-n="2">The <strong>sample grid</strong>: upload, a zip, a burst from a source, or import a dataset; duplicates are skipped automatically. Click a thumbnail to label it.</li>
+<li data-n="3"><strong>Auto-label</strong>: let the current model, or the smart-select model, propose labels that you confirm.</li>
+<li data-n="4"><strong>Train</strong>: split into train, val and test, freeze a dataset version and start training on the server; the finished model lands in the asset library.</li>
+</ol></figcaption></figure>
 <ol>
-<li>Upload one or more images and draw the areas to inspect. Each ROI is numbered automatically (ROI01, ROI02…) and can carry a hint.</li>
-<li>Describe what you want in a sentence: "there should be 5 holes", "measure the diameter, 17.5 ± 0.4 mm", "ROI01 is good and ROI02 is bad, find the difference".</li>
-<li>Optionally mark each thumbnail with the verdict it should get. An image whose ROI hint says "good" or "bad" is labelled automatically. An ROI hinted as "locator" marks a fixed feature, and the flow then gets locate correction added in front when the part can move.</li>
-<li>Press "Generate": the assistant first checks it has enough information, asking questions if not, then generates the flow and actually runs it on every image, drawing the overlays and marking each thumbnail OK or NG. The rule engine produces several candidates and picks the best against your labels — the result card lets you switch between them — and with two or more labelled images it auto-tunes.</li>
-<li>Refine it in words ("too many false rejects", "expect 4 instead", "tolerance ±0.2"), then "Save as flow" to open it in the editor. The thumbs up or down on the result card influences whether these parameters are reused on similar images later.</li>
+<li>Label: for classification, click a thumbnail and choose the class; for segmentation and detection, draw polygons or boxes, with "Smart select" clicking an object to trace it automatically.</li>
+<li>"Create a flow with this model" after training builds an acquire → inference flow and opens it in the editor.</li>
 </ol>
-<p>History shows past sessions, and "Restore" brings back the images, ROIs, request and labels and re-runs them. The Skills page lets you read what the assistant follows, and add your own (or the site's) notes under each skill, which the assistant reads too. Setting the working mode to "agentic" in the provider settings makes the assistant draft, try, edit and verify step by step, showing a step timeline you can interrupt or answer questions in.</p>
-<p>"AI provider" in the top right chooses the offline rule engine or Claude, GPT or Gemini with your own API key (stored on the server only, tied to your account). Saving tests the connection and reports the result, and "List models" queries which models the key can use. See <a href="agent.html">AI assistant</a>.</p>
+<p>See <a href="dl.html">Deep-learning teaching</a> for trainers, GPU setup and export formats.</p>
 
-<h2 id="dl">9. Deep-learning teaching</h2>
+<h2 id="agent">13. The AI assistant page: a flow from an image</h2>
+<figure class="shot"><img src="img/agent.jpg" alt="The AI assistant page"><figcaption><b>AI assistant</b> (sidebar › AI assistant, route <code>/agent</code>)
+<ol class="callouts">
+<li data-n="1"><strong>Upload image</strong>: one or more images; draw the areas to inspect on them. Each ROI is numbered (ROI01, ROI02…) and can carry a hint such as "good", "bad" or "locator".</li>
+<li data-n="2">The <strong>request</strong>: one sentence — "there should be 5 holes", "measure the diameter, 17.5 ± 0.4 mm", "ROI01 is good and ROI02 is bad, find the difference".</li>
+<li data-n="3"><strong>Generate</strong>: the assistant asks for anything it still needs, generates the flow and runs it on every image, marking each thumbnail OK or NG.</li>
+<li data-n="4"><strong>AI provider</strong>: the offline rule engine or Claude, GPT or Gemini with your own key (stored on the server, tied to your account); saving tests the connection, "List models" shows what the key can use, and the working mode chooses single or agentic.</li>
+<li data-n="5"><strong>Skills</strong>: what the assistant follows, with your own or the site's notes added under each skill.</li>
+</ol></figcaption></figure>
 <ol>
-<li>Create a teaching project and choose the model kind (classification, semantic segmentation, instance segmentation, detection, pose, oriented boxes).</li>
-<li>Collect samples: upload, a zip, a burst from a source, or import a dataset. Duplicate images are skipped automatically.</li>
-<li>Label: for classification, click a thumbnail and choose the class; for segmentation, draw polygons or boxes, with "Smart select" clicking an object to trace it automatically. You can auto-label first and confirm afterwards.</li>
-<li>Split into train, val and test, freeze a dataset version, and press "Start training". The finished model is exported to the asset library and used in a flow through a DL tool.</li>
+<li>Optionally mark each thumbnail with the verdict it should get; an image whose ROI hint says "good" or "bad" is labelled automatically. An ROI hinted as "locator" marks a fixed feature, and the flow then gets locate correction added in front when the part can move.</li>
+<li>The rule engine produces several candidates and picks the best against your labels — the result card lets you switch between them — and with two or more labelled images it auto-tunes.</li>
+<li>Refine it in words ("too many false rejects", "expect 4 instead", "tolerance ±0.2"), then "Save as flow" to open it in the editor. Thumbs up or down on the result card influences whether these parameters are reused on similar images later.</li>
+<li>History shows past sessions, and "Restore" brings back the images, ROIs, request and labels and re-runs them. In agentic mode the assistant drafts, tries, edits and verifies step by step, showing a timeline you can interrupt or answer questions in.</li>
 </ol>
-<p>See <a href="dl.html">Deep-learning teaching</a>.</p>
+<p>See <a href="agent.html">AI assistant</a>.</p>
 
-<h2 id="integration">10. Integration and the engine lock</h2>
+<h2 id="assistant">14. The global assistant (on every page)</h2>
+<figure class="shot"><img src="img/assistant.jpg" alt="The assistant panel open on the Source library"><figcaption><b>AI assistant panel</b> (the button in the bottom-right corner of every page)
+<ol class="callouts">
+<li data-n="1">The <strong>button</strong> opens and closes the panel; a badge counts unread hints.</li>
+<li data-n="2">The <strong>mode</strong> chips: Auto routes by itself; Help, Edit flow, Consult data and Tune from data force a mode.</li>
+<li data-n="3"><strong>Memory</strong>: the facts you asked it to remember and your rated answers.</li>
+<li data-n="4"><strong>Screenshot</strong>: attach a picture of this page to the next question (needs an LLM provider that reads images).</li>
+<li data-n="5"><strong>Screen text</strong>: attach a text summary of what is on screen to the following questions.</li>
+<li data-n="6"><strong>Sharing</strong>: whether the page snapshot and your recent actions travel with each question; off means it only knows which page you are on.</li>
+<li data-n="7"><strong>Quick prompts</strong> for the current page.</li>
+<li data-n="8">The <strong>input</strong>: a question, an instruction, or "remember: …" to store a fact.</li>
+</ol></figcaption></figure>
 <ul>
-<li>The Integration pages provide HTTP and TCP test tools, live event monitoring, Modbus connections and outgoing output settings, and the result format reference.</li>
-<li>HTTP: <code>POST /api/vision/flows/{id}/run</code> (optionally with an image and a recipe). TCP: <code>RUN &lt;id&gt;</code> on one line. Events: an SSE stream.</li>
-<li>An integrator can lock the engine with its API key: while locked, users can only edit flows, and every continuous run stops.</li>
+<li>Type a question ("how do I create an image source from a folder?") and it answers from the platform documentation, in the interface language, naming the page, tab and button, with links to the sections it used and a "go there" chip when the answer is a place.</li>
+<li>In the flow editor, type an instruction ("set the blob minimum area to 40", "disable the noise removal") and it edits the current canvas; "Apply to canvas" writes it back, and it can be undone. On the batch page, with a finished run selected, ask about the data or give a tuning instruction, and the result becomes a new run.</li>
+<li>It sees your situation: the page, what is selected, the last run, recent errors, your role and the engine lock. When something recognisable fails — a locked engine, a role that is not allowed, a receiver that is not listening, a step without a source — a hint card appears with a one-line explanation and "Ask the assistant".</li>
+<li>With an LLM provider it can also read the live state (flows, sources, connections, a run report, the lock, plugins) before answering, always within your own permissions; the reply lists what it checked.</li>
+<li>Rate answers with thumbs up or down: good ones are reused for similar questions. Nothing from the trail is stored on the server; the memory is yours alone.</li>
 </ul>
-<p>See <a href="automation.html">Automation</a> and <a href="modbus.html">Modbus</a>.</p>
-<p>The <strong>Capture</strong> page offers the capture client download (version, size, SHA-256), whether the server's capture port is listening, and the setup steps; below that, every connected client and channel (size, mode, fps, last frame, which source uses it) with streaming and preview controls. See <a href="capture-client.html">Capture client</a>.</p>
 
-<h2 id="settings">11. Settings and personal preferences</h2>
+<h2 id="integration">15. Integration</h2>
+<figure class="shot"><img src="img/integration-http.jpg" alt="Integration › HTTP API"><figcaption><b>Integration › HTTP API</b> (sidebar › External integration › HTTP API, route <code>/integration/http</code>)
+<ol class="callouts">
+<li data-n="1">The <strong>sub-pages</strong>: HTTP API, TCP commands, Event monitor, Modbus server, Modbus client, Capture client, Plugins.</li>
+<li data-n="2">The <strong>info bar</strong>: HTTP base, TCP port, capture port, whether an API key is required, workers and timeout.</li>
+<li data-n="3">The <strong>tabs</strong> of the page: Try it, Response format, Commands and results.</li>
+<li data-n="4"><strong>Search</strong> the API.</li>
+<li data-n="5">The <strong>endpoints</strong>, the essential ones first with a plain-language description; open one to fill in parameters, execute it and copy a curl, Python or C# snippet.</li>
+</ol></figcaption></figure>
 <ul>
-<li><strong>Account</strong>: your own display name can be changed right on the Settings page (an administrator still manages usernames, roles and other people's passwords on the Users page), and the password from the same card.</li>
-<li>The interface language (English, 繁體中文, 简体中文) and the theme (light, dark, Cyberpunk or follow the system) are stored with your account and follow you between devices.</li>
-<li>An administrator manages the API key and the engine lock on the settings page.</li>
+<li>HTTP: <code>POST /api/vision/flows/{id}/run</code> (optionally with an image and a recipe) returns the verdict, the named outputs and the run id. TCP: <code>RUN &lt;id&gt;</code> on one line; the TCP page lists every command with its failure codes and has a console to try them. Events: an SSE stream that the Event monitor page shows live.</li>
+<li>The <strong>Commands and results</strong> tab on each page shows what came in and what went out on that channel in the last minutes — the first place to look when a device "did nothing".</li>
 </ul>
+<figure class="shot"><img src="img/integration-modbus.jpg" alt="Integration › Modbus server"><figcaption><b>Integration › Modbus server</b> (route <code>/integration/modbus-server</code>; Modbus client and TCP commands manage their connections the same way)
+<ol class="callouts">
+<li data-n="1"><strong>Connections</strong>: the connections of this kind; the platform listens here and any Modbus TCP master reads results and writes triggers.</li>
+<li data-n="2"><strong>Address format and mapping</strong>: how registers and coils map to flow outputs and triggers.</li>
+<li data-n="3"><strong>Commands and results</strong>: every request the master sent.</li>
+<li data-n="4"><strong>New connection</strong> (no kind to choose; the page decides it).</li>
+<li data-n="5">The connection list with live status; the icons test a connection, write values by hand, edit and delete.</li>
+</ol></figcaption></figure>
+<figure class="shot"><img src="img/integration-capture.jpg" alt="Integration › Capture client"><figcaption><b>Integration › Capture client</b>
+<ol class="callouts">
+<li data-n="1"><strong>Download capture client</strong> (version, size, SHA-256) with the setup steps and whether the capture port is listening.</li>
+<li data-n="2">Every connected client and channel (size, mode, fps, last frame, which source uses it) with streaming and preview controls.</li>
+</ol></figcaption></figure>
+<figure class="shot"><img src="img/integration-plugins.jpg" alt="Integration › Plugins"><figcaption><b>Integration › Plugins</b>
+<ol class="callouts">
+<li data-n="1"><strong>Rescan</strong> mounts files newly dropped into <code>plugins/</code> and retries failed ones (a changed file that was already loaded needs a restart).</li>
+<li data-n="2">What each plugin file mounted (tools, sources, writers, trainers), disabled ones and load errors with the pip hint.</li>
+<li data-n="3">Connections whose kind comes from a plugin.</li>
+</ol></figcaption></figure>
+<p>See <a href="automation.html">Automation</a>, <a href="modbus.html">Modbus</a>, <a href="capture-client.html">Capture client</a> and <a href="plugins.html">Plugins</a>.</p>
 
-<h2 id="faq">12. Common questions</h2>
+<h2 id="lock">16. The engine lock</h2>
+<figure class="shot"><img src="img/lock-banner.jpg" alt="The lock banner on the Dashboard"><figcaption><b>Locked engine</b>
+<ol class="callouts">
+<li data-n="1">The <strong>banner</strong> under the top bar: who holds the lock and why; an administrator or the holder can release it from here.</li>
+<li data-n="2">Everything that runs the engine — Run once, Preview, Continuous — is refused with error 423 while locked; editing and saving still work.</li>
+</ol></figcaption></figure>
+<p>An integrator or an administrator locks the engine from the outside — HTTP <code>POST /api/vision/lock</code> or the TCP command <code>LOCK</code> — to keep the hardware for a machine cycle or a maintenance window; <code>UNLOCK</code> or <code>DELETE</code> releases it, and a lock can carry a time-to-live so a forgotten one expires. Every continuous run stops when the lock is taken. The integrator's own triggers are not affected.</p>
+
+<h2 id="admin">17. Audit trail, settings and help</h2>
+<figure class="shot"><img src="img/audit.jpg" alt="The Audit trail"><figcaption><b>Audit trail</b> (sidebar › Audit trail; administrators, or a role given the audit function)
+<ol class="callouts">
+<li data-n="1">Filter by <strong>action</strong> (flow.update, recipe.activate, user.create, lock.acquire…) or by actor.</li>
+<li data-n="2"><strong>Search</strong> the summaries and target names.</li>
+<li data-n="3"><strong>Export CSV</strong>.</li>
+</ol></figcaption></figure>
+<p>The trail records changes, not runs: who changed which flow, parameter, recipe, source, connection, account or lock, when and from where, with a parameter-level diff for flows. Runs are in the statistics and the image archive instead.</p>
+<figure class="shot"><img src="img/settings.jpg" alt="The Settings page"><figcaption><b>Settings</b> (sidebar › Settings)
+<ol class="callouts">
+<li data-n="1">Your own <strong>display name</strong> (an administrator still manages usernames, roles and other people's passwords on the Users page).</li>
+<li data-n="2"><strong>Change password</strong>.</li>
+<li data-n="3">The interface <strong>language</strong> (English, 繁體中文, 简体中文).</li>
+<li data-n="4">The <strong>theme</strong> (light, dark, Cyberpunk or follow the system). Language and theme are stored with your account and follow you between devices.</li>
+</ol></figcaption></figure>
+<figure class="shot"><img src="img/help.jpg" alt="The Help page"><figcaption><b>Help</b> (sidebar › Help)
+<ol class="callouts">
+<li data-n="1"><strong>Quick start</strong>: the condensed walkthrough.</li>
+<li data-n="2"><strong>Glossary</strong>: pages, editor areas, core terms and status wording.</li>
+<li data-n="3">The <strong>tool catalogue</strong>: every tool with its parameters and ports, in the interface language; the other tabs cover port colours, shortcuts, the automation API and accounts.</li>
+<li data-n="4">The content of the selected tab.</li>
+</ol></figcaption></figure>
+
+<h2 id="faq">18. Common questions</h2>
 <table>
 <tr><th>Situation</th><th>What to do</th></tr>
 <tr><td>A preview says the image is no longer in the cache</td><td>Upload the scratch image again, or run the flow once to get a new image.</td></tr>
 <tr><td>find_circle or find_line reports nothing found</td><td>Check the ROI covers the edge (an annulus for a circle, a caliper ROI straddling both edges), lower the edge threshold, or change the polarity.</td></tr>
 <tr><td>Testing an AI provider fails</td><td>Follow the reason shown: an invalid key, a model that has been retired (rename it as suggested), the provider overloaded (retry later or switch model), or a timeout (check the network).</td></tr>
-<tr><td>A run reports the engine is locked</td><td>An integrator holds the lock; wait for it to be released, or ask an administrator to clear it.</td></tr>
+<tr><td>A run reports the engine is locked</td><td>An integrator holds the lock; wait for it to be released, or ask an administrator to clear it from the banner (<a href="#lock">16</a>).</td></tr>
 <tr><td>Continuous mode keeps reporting a full queue</td><td>Increase the interval, or check how long the flow takes; the performance report gives the cost of each tool.</td></tr>
+<tr><td>A connection test says nothing is listening</td><td>The platform connects out to the host program: start the receiver first, then test again. The receiver example is in <a href="modbus.html">Modbus</a>.</td></tr>
+<tr><td>The camera is on another PC, or needs a Basler or IDS SDK</td><td>Use the capture client (<a href="#sources-capture">10</a>).</td></tr>
+<tr><td>An operator cannot change a parameter</td><td>Only on-site parameters are editable by operators, and only when the role has "On-site parameters and changeover"; an administrator grants it on the Users page (<a href="#login">2</a>).</td></tr>
+<tr><td>Where is …?</td><td>Ask the assistant in the bottom-right corner: it names the page and tab and offers a "go there" chip.</td></tr>
 </table>
-
-<h3 id="faq-capture">The camera is on another PC, or needs a Basler or IDS SDK</h3>
-<p>Use the capture client: "Download capture client" on the Image sources page, run it on the camera's PC and connect it to the server, then add a "capture client camera" source and pick the client and channel. On the same machine it uses shared memory automatically; across machines it is lossless over TCP. "Capture client offline" in the list means the program is not connected. See <a href="capture-client.html">Capture client</a>.</p>
-<h3 id="faq-capture-timeout">A capture client camera times out during a run</h3>
-<p>First check on the client that the channel says it is acquiring and the preview is live. A camera in trigger mode needs a trigger signal. With a long exposure, or across a network, increase the source's timeout in milliseconds. Turning off "require a fresh frame" lets it use whatever frame the client already has.</p>
 
 </article></div><!-- /doc-layout -->
 <script>

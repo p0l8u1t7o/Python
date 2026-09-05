@@ -99,6 +99,15 @@
   blockquote::after { border-color:var(--cyan); }
   hr { border:none; border-top:1px solid var(--line); margin:2.8rem 0; }
   img { max-width:100%; border:1px solid var(--line); border-radius:3px; }
+  figure.shot { margin:1.4rem 0 1.8rem; padding:.6rem; background:var(--panel); border:1px solid var(--line); border-radius:3px; position:relative; }
+  figure.shot::before { content:""; position:absolute; top:3px; left:3px; width:12px; height:12px; border-top:2px solid var(--cyan); border-left:2px solid var(--cyan); pointer-events:none; }
+  figure.shot img { display:block; width:100%; height:auto; border:1px solid var(--line-strong); }
+  figure.shot figcaption { margin:.7rem .2rem 0; font-size:.9em; color:var(--muted); line-height:1.6; }
+  figure.shot figcaption b { color:var(--head); font-family:var(--mono); font-size:.9em; letter-spacing:.04em; }
+  figure.shot ol.callouts { margin:.4rem 0 0; padding-left:0; list-style:none; columns:2; column-gap:1.6rem; }
+  figure.shot ol.callouts li { break-inside:avoid; margin:.25rem 0; padding-left:1.9rem; position:relative; }
+  figure.shot ol.callouts li::before { content:attr(data-n); position:absolute; left:0; top:.05em; width:1.35rem; height:1.35rem; border-radius:50%; background:var(--brand); color:#0a0a12; font-family:var(--mono); font-weight:700; font-size:.76em; display:inline-flex; align-items:center; justify-content:center; }
+  @media (max-width:700px) { figure.shot ol.callouts { columns:1; } }
   .wrap { overflow-x:auto; }
   .good { color:var(--brand); font-weight:600; }
   .bad { color:var(--magenta); }
@@ -135,52 +144,52 @@
 </head>
 <body>
 <nav class="site"><a href="index.html" aria-current="page">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#sec-1">Design</a></li><li><a href="#sec-2">Integration</a></li><li><a href="#sec-3">Extending</a></li><li><a href="#sec-4">Contracts and conventions</a></li><li><a href="#sec-5">Quality</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#start">Start here</a></li><li><a href="#using">Using the platform</a></li><li><a href="#integrating">Integrating and operating</a></li><li><a href="#extending">Extending</a></li><li><a href="#internals">Design and internals</a></li></ul></aside><article class="doc">
 
 <h1>VisionSequence documentation</h1>
-<p>Everything under <code>docs/</code> is plain HTML: each page carries its own styling, depends on nothing external, and opens straight in a browser. New documents follow the same pattern and get a link on this page. Development conventions, the verification checklist and the Git rules live in <code>CLAUDE.md</code> at the project root; <code>README.md</code> is the quick start.</p>
+<p>Everything under <code>docs/</code> is plain HTML with its screenshots in <code>docs/img/</code>: each page carries its own styling, depends on nothing external, and opens straight in a browser or from the product at <code>/docs/&lt;page&gt;.html</code>. The global AI assistant answers from these pages and links to the section it used. Development conventions, the verification checklist and the Git rules live in <code>CLAUDE.md</code> at the project root; <code>README.md</code> is the quick start.</p>
 
-<h2 id="sec-1">Design</h2>
+<h2 id="start">Start here</h2>
 <table>
 <tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="workflow-design.html">Workflow design</a></td><td>The thinking behind the platform: why an in-process dataflow DAG rather than a control-flow engine, closed sets and safety boundaries, keeping the database off the hot path, degradation strategy, and the three extension seams.</td></tr>
-<tr><td><a href="architecture.html">Architecture</a></td><td>How the platform is built: data model, tool framework, graph validation and compilation, the engine, Runner concurrency, image cache, image sources, HTTP/SSE/TCP, the front end, accounts and the engine lock, settings, tests and the pitfalls we hit.</td></tr>
-</table>
-
-<h2 id="sec-2">Integration</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="automation.html">Automation</a></td><td>Being called: HTTP synchronous runs, one-line TCP commands, live SSE events, pushing images, performance advice, identity and the engine lock.</td></tr>
-<tr><td><a href="modbus.html">Modbus</a></td><td>Calling out: connection kinds (modbus_tcp client, modbus_server slave, tcp_client, plugins) and their config, address format, the write and read mapping tables, triggering a flow from a PLC flag, degradation, the connection API and writing your own Writer.</td></tr>
-<tr><td><a href="deployment.html">Deployment and operations</a></td><td>Putting the platform on a factory PC and keeping it running: install, start at boot, ports and firewall, reverse proxy, accounts and keys, backup and restore, upgrading and rolling back, monitoring, running several stations, disaster recovery and security notes.</td></tr>
-</table>
-
-<h2 id="sec-3">Extending</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="dl.html">Deep-learning teaching</a></td><td>Labelling and training inside the platform: teaching projects, sample collection, automatic labelling, server-side training with GPU and provider settings, exporting a model to the asset library. The trainer registry takes plugins, so new model kinds drop in. Also the five YOLO inference tools, the four YOLO trainers, SAM2 click, box and whole-image proposals, and the GPU dependency order that matters.</td></tr>
-<tr><td><a href="capture-client.html">Capture client</a></td><td>When the camera is on another PC or needs a vendor SDK: a downloadable desktop program drives webcams, Basler and IDS cameras where they are and connects out to the server's capture port. Shared memory on the same machine, lossless TCP across machines; channels, ROI, parameters, on-demand grabs and continuous streaming; the "capture client camera" source in the web interface, protocol v1 and the acceptance checklist.</td></tr>
-<tr><td><a href="plugins.html">Plugins</a></td><td>Drop a file in a folder and it loads: subclass Tool, Grabber or Writer, put it in <code>plugins/</code> and it is detected automatically. Module-level variables control the display name, description and whether it loads at all; two shipped examples and the rules for writing your own.</td></tr>
-</table>
-
-<h2 id="sec-4">Contracts and conventions</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="contract.html">Front-end / back-end contract</a></td><td>The graph JSON, ROI regions, overlays, the RunReport, the advanced preview endpoints and the front-end skeleton — what a parallel work stream needs to agree on.</td></tr>
+<tr><td><a href="user-guide.html">User guide</a></td><td>The illustrated walkthrough, page by page in sidebar order: every section opens with an annotated screenshot whose numbered markers say exactly where each button and panel is — getting around, accounts and permissions, flows and templates, the editor and the tool picker, the tool page and ROIs, the teach page and recipes, running and statistics, batch testing, the Golden Set, sources and the capture client, assets, deep-learning teaching, the AI assistant page and the global assistant, the integration pages, the engine lock, audit, settings, help, and the FAQ.</td></tr>
+<tr><td><a href="samples.html">Example templates</a></td><td>The ready-to-run templates <code>seed_demo</code> creates: the synthetic sample images, the tools each one covers, the assets involved and how to rebuild them.</td></tr>
 <tr><td><a href="glossary.html">Glossary</a></td><td>The naming authority: pages, editor areas, core terms, port types and their colours, status wording — kept identical across the interface, the code and these documents, with the Chinese equivalents.</td></tr>
 </table>
 
-<h2 id="sec-5">Quality</h2>
+<h2 id="using">Using the platform</h2>
 <table>
 <tr><th>Document</th><th>What it covers</th></tr>
+<tr><td><a href="vision-capabilities.html">Inspection capabilities</a></td><td>The ROI shapes and how they are implemented, image bit depth (8-bit, 16-bit, floating point), and an overview of the inspection tools with their trade-offs and accuracy.</td></tr>
 <tr><td><a href="batch.html">Batch testing</a></td><td>The batch page: image sets and the stored per-image results, expected labels and hit rate, data insights and suggested thresholds, re-running after tuning and comparing, writing the result back to the flow, a recipe or a Golden Set, AI consultation and tuning, background execution and retention.</td></tr>
 <tr><td><a href="golden.html">Golden Set and export</a></td><td>Golden Set regression testing (expected results, baselines, the regressed list, the confusion matrix, <code>manage.py regress</code>) and flow export and import (a stable serialisation format, <code>manage.py flow</code>, the export and import API, running it in CI).</td></tr>
+<tr><td><a href="dl.html">Deep-learning teaching</a></td><td>Labelling and training inside the platform: teaching projects, sample collection, automatic labelling, server-side training with GPU and provider settings, exporting a model to the asset library. The trainer registry takes plugins, so new model kinds drop in. Also the five YOLO inference tools, the four YOLO trainers, SAM2 click, box and whole-image proposals, and the GPU dependency order that matters.</td></tr>
+<tr><td><a href="agent.html">AI assistant</a></td><td>In three parts: the global assistant on every page (documentation answers, what it knows about your screen, live lookups and shortcuts, hints, screenshots, long-term memory, tuning from batch data); generating a flow on the assistant page (clarifying questions, several images and ROIs, candidates and auto-tuning, locate correction, refinement, agentic mode, sessions and priors, providers); and under the hood (architecture, the rule engine, the LLM path, skills, API, benchmark, trade-offs).</td></tr>
+</table>
+
+<h2 id="integrating">Integrating and operating</h2>
+<table>
+<tr><th>Document</th><th>What it covers</th></tr>
+<tr><td><a href="automation.html">Automation</a></td><td>Being called: HTTP synchronous runs, one-line TCP commands, live SSE events, pushing images, performance advice, identity and the engine lock, the integration pages.</td></tr>
+<tr><td><a href="modbus.html">Modbus</a></td><td>Calling out and being polled: connection kinds (Modbus TCP client, Modbus server, TCP client, TCP image push, plugins) and their config, address format, the write and read mapping tables, triggering a flow from a device flag, degradation, the connection API and writing your own Writer.</td></tr>
+<tr><td><a href="capture-client.html">Capture client</a></td><td>When the camera is on another PC or needs a vendor SDK: a downloadable desktop program drives webcams, Basler and IDS cameras where they are and connects out to the server's capture port. Shared memory on the same machine, lossless TCP across machines; channels, ROI, parameters, on-demand grabs and continuous streaming; the "capture client camera" source, protocol v1 and the acceptance checklist.</td></tr>
+<tr><td><a href="deployment.html">Deployment and operations</a></td><td>Putting the platform on a factory PC and keeping it running: install, start at boot, ports and firewall, reverse proxy, accounts and keys, backup and restore, upgrading and rolling back, monitoring, running several stations, disaster recovery and security notes.</td></tr>
+</table>
+
+<h2 id="extending">Extending</h2>
+<table>
+<tr><th>Document</th><th>What it covers</th></tr>
+<tr><td><a href="plugins.html">Plugins</a></td><td>Drop a file in a folder and it loads: subclass Tool, Grabber, Writer or Trainer, put it in <code>plugins/</code> and it is detected automatically. Module-level variables control the display name, description and whether it loads at all; the Plugins page shows what mounted and why something failed; two shipped examples and the rules for writing your own.</td></tr>
+<tr><td><a href="contract.html">Front-end / back-end contract</a></td><td>The graph JSON, ROI regions, overlays, the RunReport, the advanced preview endpoints and the front-end skeleton — what a parallel work stream needs to agree on.</td></tr>
+</table>
+
+<h2 id="internals">Design and internals</h2>
+<table>
+<tr><th>Document</th><th>What it covers</th></tr>
+<tr><td><a href="workflow-design.html">Workflow design</a></td><td>The thinking behind the platform: why an in-process dataflow DAG rather than a control-flow engine, closed sets and safety boundaries, keeping the database off the hot path, degradation strategy, and the extension seams.</td></tr>
+<tr><td><a href="architecture.html">Architecture</a></td><td>How the platform is built: data model, tool framework, graph validation and compilation, the engine, Runner concurrency, image cache, image sources, HTTP/SSE/TCP, the front end, accounts and the engine lock, settings, tests and the pitfalls we hit.</td></tr>
 <tr><td><a href="performance.html">Performance</a></td><td>Measured figures for the engine and the tools, and the record of what each optimisation bought.</td></tr>
-<tr><td><a href="vision-capabilities.html">Inspection capabilities</a></td><td>The ROI shapes and how they are implemented, image bit depth (8-bit, 16-bit, floating point), and an overview of the inspection tools with their trade-offs.</td></tr>
-<tr><td><a href="samples.html">Sample templates</a></td><td>The ready-to-run templates <code>seed_demo</code> creates: the synthetic sample images, the tools each one covers, the assets involved and how to rebuild them.</td></tr>
 <tr><td><code>README.md</code> / <code>CLAUDE.md</code></td><td>The whole picture (features, architecture, code map, data model, API, extension points, settings, deployment) and the development conventions (checklists, module notes, pitfalls) — the entry point on GitHub.</td></tr>
-<tr><td><a href="user-guide.html">User guide</a></td><td>The complete walkthrough in the order you would actually do things: signing in, sources and assets, editing a flow, the tool page and ROIs, running, the batch page, templates, the AI assistant, deep learning, integration, settings and the FAQ.</td></tr>
-<tr><td><a href="agent.html">AI assistant</a></td><td>Upload an image, mark the areas, describe the goal, and get a runnable flow: the offline rule engine and the optional LLM path. Also the global assistant — the chat panel on every page that answers questions from the documentation, edits the flow you are looking at, and consults on batch data.</td></tr>
 </table>
 
 </article></div><!-- /doc-layout -->

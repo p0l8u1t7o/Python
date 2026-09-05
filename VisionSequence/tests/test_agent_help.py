@@ -161,6 +161,10 @@ class ChatApiTests(TestCase):
         r = self.client.get("/docs/batch.html")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.client.get("/docs/nope.html").status_code, 404)
+        # 使用者手冊的截圖（docs/img）同一條路提供（其他副檔名落到前端的 SPA 路由）
+        self.assertEqual(self.client.get("/docs/img/shell.jpg").status_code, 200)
+        self.assertEqual(self.client.get("/docs/img/shell.jpg")["Content-Type"], "image/jpeg")
+        self.assertEqual(self.client.get("/docs/img/nope.jpg").status_code, 404)
 
 
 class SituationTests(TestCase):
