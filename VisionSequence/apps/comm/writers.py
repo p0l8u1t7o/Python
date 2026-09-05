@@ -535,7 +535,8 @@ class TcpClientWriter(Writer):
         try:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         except OSError as exc:
-            raise CommError(f"Cannot reach {self.host}:{self.port}: {exc}") from exc
+            # 這是主動連出去的連線：對方（上位機的接收程式）要先開著在聽，平台才連得上。
+            raise CommError(f"Nothing is listening at {self.host}:{self.port} ({exc}). The platform connects out to the host program, so start the receiver first") from exc
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock = sock
 
@@ -626,7 +627,8 @@ class TcpImageWriter(Writer):
         try:
             sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         except OSError as exc:
-            raise CommError(f"Cannot reach {self.host}:{self.port}: {exc}") from exc
+            # 這是主動連出去的連線：對方（上位機的接收程式）要先開著在聽，平台才連得上。
+            raise CommError(f"Nothing is listening at {self.host}:{self.port} ({exc}). The platform connects out to the host program, so start the receiver first") from exc
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.sock = sock
 

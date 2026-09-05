@@ -941,7 +941,7 @@ class ConnectionApiTests(TestCase):
         r = self.post(f"/api/vision/connections/{cid}/test")
         self.assertEqual(r.status_code, 200)
         self.assertFalse(r.json()["ok"])
-        self.assertIn("Cannot reach", r.json()["error"])
+        self.assertTrue(r.json()["error"])  # 原因照實回給整合頁（Modbus 與 TCP 的措辭不同）
 
     def test_non_admin_can_read_not_write(self):
         admin = self.post("/api/auth/setup", {"username": "admin", "password": "secret1"}).json()["token"]
