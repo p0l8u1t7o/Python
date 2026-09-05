@@ -402,3 +402,28 @@ class RolePermissionTests(TestCase):
         r = self.patch(f"/api/vision/flows/{fid}", {"graph": graph}, token=op)
         self.assertEqual(r.status_code, 403, r.content)
         self.assertEqual(r.json()["error"]["details"]["feature"], "flows.teach")
+
+
+class CreateAdminCommandTests(TestCase):
+    """create_admin：密碼可來自參數、環境變數或 stdin（安裝腳本用，不進命令列）；重跑＝重設密碼並升管理員。"""
+
+    def test_create_admin_password_sources(self):
+        import io as _io
+        import os
+        from unittest import mock
+
+        from django.core.management import CommandError, call_command
+
+        call_command("create_admin", "boss", "--password", "first1", stdout=_io.StringIO())
+        with mock.patch.dict(os.environ, {"VS_ADMIN_PASSWORD": "second2"}):
+            call_command("create_admin", "boss", "--password-env", "VS_ADMIN_PASSWORD", stdout=_io.StringIO())
+        u = User.objects.get(username="boss")
+        self.assertTrue(u.is_staff and u.is_superuser and u.is_active)
+        self.assertTrue(u.check_password("second2"))
+        with mock.patch("sys.stdin", _io.StringIO("third3\n")):
+            call_command("create_admin", "boss", "--password-stdin", stdout=_io.StringIO())
+        self.assertTrue(User.objects.get(username="boss").check_password("third3"))
+        with mock.patch.dict(os.environ, {"VS_ADMIN_PASSWORD": ""}), self.assertRaises(CommandError):
+            call_command("create_admin", "boss", "--password-env", "VS_ADMIN_PASSWORD", stdout=_io.StringIO())
+        with self.assertRaises(CommandError):
+            call_command("create_admin", "boss", "--password", "ab", stdout=_io.StringIO())
