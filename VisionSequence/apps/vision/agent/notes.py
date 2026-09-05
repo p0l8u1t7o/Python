@@ -13,6 +13,7 @@ from typing import Any
 
 from django.utils import timezone
 
+from apps.vision.agent.situation import norm_lang
 from apps.vision.models import AssistantMemory
 
 MAX_FACTS = 50
@@ -157,8 +158,8 @@ def examples_text(rows: list[tuple[AssistantMemory, float]]) -> str:
 
 def confirmation(kind: str, text: str, deleted: int, lang: str) -> str:
     """「記住／忘記」指令的回覆（依介面語言）。"""
-    zh_hant = lang.startswith("zh-Hant") or lang == "zh-TW"
-    zh_hans = lang.startswith("zh-Hans") or lang == "zh-CN" or (lang.startswith("zh") and not zh_hant)
+    norm = norm_lang(lang)
+    zh_hant, zh_hans = norm == "zh-Hant", norm == "zh-Hans"
     if kind == "remember":
         if zh_hant:
             return f"已記住：{text}\n之後的回答會把它列入考慮；在助手視窗的「記憶」可查看或刪除。"

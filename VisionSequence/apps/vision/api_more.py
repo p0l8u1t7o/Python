@@ -321,8 +321,9 @@ def audit_log(request: HttpRequest, action: str = "", target_type: str = "", tar
     rows = list(qs.select_related("actor")[offset : offset + limit])
     return {
         "items": [audit.out(r) for r in rows], "total": total, "limit": limit, "offset": offset,
-        "actions": sorted(AuditLog.objects.values_list("action", flat=True).distinct()),
-        "actors": sorted(a for a in AuditLog.objects.values_list("actor_name", flat=True).distinct() if a),
+        # 模型預設依 at 排序，values_list().distinct() 會把 at 帶進 DISTINCT 而重複（前端下拉出現重複的 key）——用 set 去重
+        "actions": sorted(set(AuditLog.objects.values_list("action", flat=True))),
+        "actors": sorted({a for a in AuditLog.objects.values_list("actor_name", flat=True) if a}),
     }
 
 

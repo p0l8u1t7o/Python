@@ -13,6 +13,17 @@ MAX_ACTIVITY = 20
 MAX_ACTIVITY_CHARS = 2400
 MAX_SCREEN_CHARS = 3000
 
+def norm_lang(lang: Any) -> str:
+    """介面語言 → en / zh-Hant / zh-Hans（zh-TW、zh-HK 算繁中；其他 zh 算簡中；其餘英文）。"""
+    s = str(lang or "").strip()
+    low = s.lower()
+    if low.startswith(("zh-hant", "zh-tw", "zh-hk", "zh-mo")):
+        return "zh-Hant"
+    if low.startswith("zh"):
+        return "zh-Hans"
+    return "en"
+
+
 KIND_LABELS = {"flow_editor": "flow editor", "tool": "tool page", "batch": "batch testing", "golden": "Golden Set", "agent": "AI assistant page",
                "dl": "deep learning", "sources": "image sources", "assets": "assets", "dashboard": "dashboard", "page": ""}
 

@@ -133,7 +133,7 @@ class HelpMemoryAndScreenshotTests(TestCase):
         self.assertEqual(out["provider"], "memory")
         self.assertEqual(out["answer"], "到來源庫，新增來源選資料夾。")
         self.assertTrue(out["sources"])
-        self.assertTrue(any("看不到截圖" in w for w in out["warnings"]))
+        self.assertTrue(any("cannot see screenshots" in w for w in out["warnings"]), out["warnings"])
         out = help_mod.answer("YOLO 訓練需要安裝什麼", OFFLINE, context={"kind": "page"}, user=self.u)
         self.assertEqual(out["provider"], "rules")
         self.assertEqual(out["warnings"], [])

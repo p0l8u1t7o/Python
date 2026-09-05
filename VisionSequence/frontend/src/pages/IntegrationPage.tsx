@@ -12,7 +12,7 @@ import { Page } from '@/components/layout/AppShell'
 import { PageHeader } from '@/components/ui'
 import { useIntegrationInfo } from '@/lib/queries'
 import { InfoBar } from '@/pages/integration/shared'
-import { DEFAULT_SECTION, SECTION_IDS, sectionOf } from '@/pages/integration/sections'
+import { DEFAULT_SECTION, SECTIONS, SECTION_IDS, sectionOf } from '@/pages/integration/sections'
 
 export function IntegrationLayout() {
   const { t } = useTranslation()
@@ -21,6 +21,8 @@ export function IntegrationLayout() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const section = sectionOf(location.pathname)
+  //: 標題的 i18n key 是 sections.ts 的 key（modbusServer），不是路由片段（modbus-server）
+  const sectionKey = SECTIONS.find((x) => x.id === section)?.key ?? section
 
   // 舊網址相容：/integration?tab=modbus → /integration/modbus
   useEffect(() => {
@@ -31,7 +33,7 @@ export function IntegrationLayout() {
   return (
     <Page wide>
       <PageHeader
-        title={<span className="flex items-center gap-2"><Plug size={20} className="text-brand" />{t('integration.title')} · {t(`integration.tabs.${section}`)}</span>}
+        title={<span className="flex items-center gap-2"><Plug size={20} className="text-brand" />{t('integration.title')} · {t(`integration.tabs.${sectionKey}`)}</span>}
         description={t(`integration.desc.${section}`, { defaultValue: t('integration.subtitle') })}
       />
       {info.data ? <InfoBar info={info.data} /> : null}

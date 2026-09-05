@@ -170,3 +170,19 @@ class AuditTrailTests(TestCase):
         self.assertGreater(audit.purge(days=730), 0)
         self.assertEqual(AuditLog.objects.count(), 0)
         _ = Flow
+
+
+class AuditFilterListTests(TestCase):
+    """稽核頁的篩選清單：同一個 action／actor 有多筆時只出現一次（模型預設排序會讓 distinct 失效，前端下拉曾出現重複 key）。"""
+
+    def test_actions_and_actors_are_unique(self):
+        token = self.client.post("/api/auth/setup", data=json.dumps({"username": "admin", "password": "secret1"}), content_type="application/json").json()["token"]
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+        for i in range(3):
+            AuditLog.objects.create(action="flow.update", actor_kind="user", actor_name="admin", target_type="flow", target_id=str(i), summary=f"edit {i}")
+            AuditLog.objects.create(action="lock.acquire", actor_kind="integrator", actor_name="integrator", target_type="lock", target_id="1", summary="lock")
+        body = self.client.get("/api/vision/audit", **auth).json()
+        self.assertEqual(len(body["actions"]), len(set(body["actions"])), body["actions"])
+        self.assertEqual(len(body["actors"]), len(set(body["actors"])), body["actors"])
+        self.assertIn("flow.update", body["actions"])
+        self.assertIn("integrator", body["actors"])

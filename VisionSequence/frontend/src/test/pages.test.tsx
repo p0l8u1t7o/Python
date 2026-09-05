@@ -70,6 +70,13 @@ describe('pages render (smoke)', () => {
     expect(screen.getByTestId('capture-download')).toBeDisabled()
   })
 
+  it('integration layout titles the section with its own dictionary key (modbus-server -> Modbus server)', async () => {
+    const { IntegrationLayout } = await import('@/pages/IntegrationPage')
+    renderPage(<IntegrationLayout />, { route: '/integration/modbus-server' })
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Modbus server'))
+    expect(screen.getByRole('heading', { level: 1 }).textContent).not.toContain('integration.tabs')
+  })
+
   it('integration sections are their own pages, each block on its own tab', async () => {
     const { TcpPage } = await import('@/pages/integration/TcpPage')
     renderPage(<TcpPage />, { route: '/integration/tcp' })

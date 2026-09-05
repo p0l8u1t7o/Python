@@ -210,8 +210,8 @@ class HelpRobustnessTests(TestCase):
         with mock.patch.object(providers, "complete", return_value="   "):
             out = help_mod.answer("如何建立流程？", LLM)
         self.assertEqual(out["provider"], "rules")
-        self.assertIn("依平台文件", out["answer"])
-        self.assertTrue(any("空白" in w for w in out["warnings"]))
+        self.assertIn("From the platform documentation:", out["answer"])
+        self.assertTrue(any("returned nothing" in w for w in out["warnings"]), out["warnings"])
 
     def test_index_rebuilds_when_docs_change(self):
         tmp = Path(tempfile.mkdtemp())

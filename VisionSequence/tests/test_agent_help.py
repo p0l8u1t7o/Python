@@ -49,12 +49,12 @@ class HelpIndexTests(TestCase):
     def test_offline_answer_and_snippet(self):
         out = help_mod.answer("如何把批次結果存入 Golden Set？", providers.AgentSettings())
         self.assertEqual(out["provider"], "rules")
-        self.assertIn("依平台文件", out["answer"])
+        self.assertIn("From the platform documentation:", out["answer"])
         self.assertTrue(out["sources"])
         self.assertTrue(all(src["url"].startswith("/docs/") or src["kind"] == "ui" for src in out["sources"]))
         self.assertLessEqual(len(help_mod.snippet(out and help_mod.search("Golden")[0][0], "Golden", 120)), 130)
         out = help_mod.answer("zzqqxx", providers.AgentSettings())
-        self.assertIn("找不到", out["answer"])
+        self.assertIn("no section that directly matches", out["answer"])
 
     def test_context_adds_tool_skill_and_llm_prompt(self):
         with mock.patch.object(providers, "complete", return_value="結論：blob 的最小面積擋雜訊。\n參考：《AI 技能 › 工具：Blob 分析》") as done:
@@ -92,7 +92,12 @@ class ChatApiTests(TestCase):
                                                           "activity": [{"ago_s": 4, "kind": "error", "text": "POST /vision/sources/test -> 422 no_frame", "detail": "Nothing is listening", "route": "/sources"}], "screen": "x"}})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertTrue(r.json()["answer"].startswith("最近一次錯誤（4 秒前）"))
-        self.assertTrue(any(s["kind"] == "ui" and s["url"] == "/sources" for s in r.json()["sources"]), r.json()["sources"])
+        self.assertFalse(any(s["kind"] == "ui" and s["url"] == "/sources" for s in r.json()["sources"]))  # 目前頁的介面段不是檢索命中，不進參考
+        # 問「在哪裡」：介面段進參考、離線規則給「前往」
+        r = self._chat({"message": "Modbus 從站在哪個頁面設定？", "context": {"kind": "page", "route": "/", "lang": "zh-Hant"}})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(any(s["kind"] == "ui" and s["url"] == "/integration/modbus-server" for s in r.json()["sources"]), r.json()["sources"])
+        self.assertEqual(r.json()["actions"], [{"kind": "navigate", "to": "/integration/modbus-server", "label": "Modbus 從站"}])
         self.assertEqual(self._chat({"message": "  "}).status_code, 422)
         r = self.client.get("/api/vision/agent/help/search?q=範本畫廊")
         self.assertEqual(r.status_code, 200)
@@ -198,14 +203,21 @@ class SituationTests(TestCase):
         self.assertIn("integrator", situation.describe({}, principal=Principal(kind="integrator")))
 
     def test_offline_answer_mentions_recent_error_and_searches_it(self):
-        ctx = {"kind": "sources", "route": "/sources", "activity": [{"ago_s": 3, "kind": "error", "text": "POST /vision/sources/test -> 422 no_frame", "detail": "Nothing is listening at 127.0.0.1:9001"}]}
+        ctx = {"kind": "sources", "route": "/sources", "lang": "zh-Hant", "activity": [{"ago_s": 3, "kind": "error", "text": "POST /vision/sources/test -> 422 no_frame", "detail": "Nothing is listening at 127.0.0.1:9001"}]}
         out = help_mod.answer("為什麼測試失敗？", providers.AgentSettings(provider="offline"), context=ctx)
         self.assertEqual(out["provider"], "rules")
-        self.assertTrue(out["answer"].startswith("最近一次錯誤（3 秒前）：POST /vision/sources/test -> 422 no_frame——Nothing is listening"))
+        self.assertTrue(out["answer"].startswith("最近一次錯誤（3 秒前）：POST /vision/sources/test -> 422 no_frame — Nothing is listening"), out["answer"])
+        self.assertIn("依平台文件：", out["answer"])
+        # 介面語言決定規則文字：英文預設、簡中
+        out = help_mod.answer("為什麼測試失敗？", providers.AgentSettings(provider="offline"), context={**ctx, "lang": "en"})
+        self.assertTrue(out["answer"].startswith("Most recent error (3s ago): POST /vision/sources/test -> 422 no_frame — Nothing is listening"), out["answer"])
+        self.assertIn("From the platform documentation:", out["answer"])
+        out = help_mod.answer("為什麼測試失敗？", providers.AgentSettings(provider="offline"), context={**ctx, "lang": "zh-CN"})
+        self.assertTrue(out["answer"].startswith("最近一次错误（3 秒前）"), out["answer"])
         self.assertTrue(out["sources"])
         # 沒有錯誤時不會多出那一行
         out = help_mod.answer("為什麼測試失敗？", providers.AgentSettings(provider="offline"), context={"kind": "sources"})
-        self.assertFalse(out["answer"].startswith("最近一次錯誤"))
+        self.assertFalse(out["answer"].startswith(("最近一次錯誤", "Most recent error")))
 
     def test_llm_prompt_carries_situation_and_ui_map(self):
         from django.contrib.auth.models import User
@@ -224,11 +236,13 @@ class SituationTests(TestCase):
         self.assertIn('"min_area": 10', prompt)
         self.assertIn("2s ago [run] preview flow 1: ng", prompt)
         self.assertIn("Caller: eng, role admin", prompt)
+        self.assertTrue(prompt.rstrip().endswith("Answer language: English."), prompt[-120:])
         self.assertNotIn("Engine lock", prompt)
         self.assertIn("# Interface map", system)
         self.assertIn("Source library (/sources) [sources]", system)
-        # 目前頁面的介面地圖段也在參考裡（工具頁）
-        self.assertTrue(any(s["kind"] == "ui" and s["url"] == "/flows/:flowId/tools/:nodeId" for s in out["sources"]), out["sources"])
+        # 目前頁面的介面地圖段進提示詞（讓模型知道使用者在哪），但不列進參考清單（不是檢索命中的）
+        self.assertIn("Route: /flows/:flowId/tools/:nodeId", prompt)
+        self.assertFalse(any(s["kind"] == "ui" and s["url"] == "/flows/:flowId/tools/:nodeId" for s in out["sources"]), out["sources"])
 
 
 class UiMapIndexTests(TestCase):
@@ -256,6 +270,13 @@ class UiMapIndexTests(TestCase):
         self.assertIn("- Plugins (/integration/plugins) [integration]:", brief)
         self.assertIn("tabs: inventory (Loaded plugins), connections (Connections)", brief)
         self.assertIn("- Users (/users) [admin]:", brief)
+        # 中文介面：名稱給「英文 / 中文」，模型才會用介面上的字
+        zh = help_mod.ui_brief("zh-Hant")
+        self.assertIn("- Plugins / 外掛 (/integration/plugins) [integration]:", zh)
+        self.assertIn("connections (Connections / 連線)", zh)
+        self.assertIn("buttons: Rescan / 重新掃描", zh)
+        self.assertIn("names are English / interface language", zh)
+        self.assertIn("- Users / 用户 (/users) [admin]:", help_mod.ui_brief("zh-CN"))
 
     def test_missing_map_degrades(self):
         with mock.patch.object(help_mod, "UI_MAP_PATH", Path(TMP) / "nope.json"):

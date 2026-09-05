@@ -175,7 +175,7 @@ class HelpLookupLoopTests(TestCase):
         with mock.patch.object(providers, "complete_tools", side_effect=RuntimeError("tools down")), mock.patch.object(providers, "complete", return_value="純文件回答"):
             out = help_mod.answer("狀態？", LLM, context={"kind": "page"}, principal=Principal(kind="user", user=self.admin))
         self.assertEqual(out["answer"], "純文件回答")
-        self.assertTrue(any("即時查詢失敗" in w for w in out["warnings"]))
+        self.assertTrue(any("Live lookups failed" in w for w in out["warnings"]), out["warnings"])
         self.assertEqual(out["lookups"], [])
         # 關掉即時查詢 → 直接單次
         with mock.patch.object(providers, "_cfg", return_value="0"), mock.patch.object(providers, "complete_tools") as tools, mock.patch.object(providers, "complete", return_value="ok"):
@@ -210,6 +210,20 @@ class HelpLookupLoopTests(TestCase):
         with mock.patch.object(providers, "complete_tools", return_value=_reply("用新增流程。")):
             out = help_mod.answer("如何建立流程？", LLM, context={"kind": "page"}, principal=Principal(kind="user", user=self.admin))
         self.assertEqual(out["actions"], [])
+
+    def test_where_question_ignores_unrelated_recent_error(self):
+        # 剛剛有 423，但問的是「在哪裡」：錯誤字不併進檢索、仍給「前往」
+        ctx = {"kind": "flow_editor", "route": "/flows/3", "flow_id": 3, "lang": "en",
+               "activity": [{"ago_s": 5, "kind": "error", "text": "POST /vision/flows/3/preview -> 423 engine_locked", "detail": "The engine is locked by audit_admin"}]}
+        self.assertEqual(help_mod._error_terms(ctx, "Where do I set up the Modbus server?"), "")
+        self.assertIn("423", help_mod._error_terms(ctx, "Why did the preview fail?"))
+        self.assertIn("423", help_mod._error_terms(ctx))  # 沒給問題＝舊行為（一律併）
+        out = help_mod.answer("Where do I set up the Modbus server?", providers.AgentSettings(provider="offline"), context=ctx)
+        self.assertEqual(out["actions"], [{"kind": "navigate", "to": "/integration/modbus-server", "label": "Modbus server"}])
+        self.assertFalse(out["answer"].startswith("Most recent error"))
+        with mock.patch.object(providers, "complete_tools", return_value=_reply("Go to External integration.")):
+            out = help_mod.answer("Modbus 從站在哪個頁面設定？", LLM, context={**ctx, "lang": "zh-Hant"}, principal=Principal(kind="user", user=self.admin))
+        self.assertEqual(out["actions"][0]["to"], "/integration/modbus-server")
 
     def test_rule_actions_offline(self):
         out = help_mod.answer("Modbus 從站在哪個頁面設定？", providers.AgentSettings(provider="offline"), context={"kind": "page", "lang": "zh-Hant"})

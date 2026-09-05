@@ -36,6 +36,47 @@ TOP_K = 5
 _WHERE = re.compile(r"哪裡|哪里|哪個頁面|哪个页面|在哪|哪一頁|哪一页|哪頁|哪页|怎麼去|怎么去|\bwhere\b|which (page|tab|menu)|how do i (get|go) to|navigate", re.IGNORECASE)
 UI_WEIGHT_WHERE = 1.3
 UI_WEIGHT_OTHER = 0.35
+#: 問題本身在問錯誤／失敗時，最近的錯誤文字才併進檢索（否則一個 423 會把「在哪裡」帶到鎖定章節）
+_ABOUT_ERROR = re.compile(r"為什麼|为什么|失敗|失败|錯誤|错误|出錯|出错|不行|無法|无法|沒有反應|没有反应|\bwhy\b|\bfail|\berror|\bwrong|\bnot work|\bcannot\b|\bcan't\b|\bbroken", re.IGNORECASE)
+#: 使用者看得到的規則／警告文字（依介面語言；LLM 的回答本來就跟提問語言）
+MESSAGES: dict[str, dict[str, str]] = {
+    "en": {
+        "recent_error": "Most recent error ({ago}s ago): {text}",
+        "no_hits": "The documentation has no section that directly matches this question. Try other keywords (a feature or page name), or open the Help page for the quick start and the glossary.",
+        "by_docs": "From the platform documentation:",
+        "footer": "(The full text is behind the reference links below; the offline rule mode only quotes the documentation, an LLM provider gives an organised answer.)",
+        "lookup_failed": "Live lookups failed, answered from the documentation only: {reason}",
+        "empty_reply": "The LLM ({provider}) returned nothing; fell back to documentation excerpts",
+        "llm_failed": "The LLM ({provider}) failed; fell back to documentation excerpts: {reason}",
+        "no_screenshot": "The offline rule mode cannot see screenshots; answered from text only",
+    },
+    "zh-Hant": {
+        "recent_error": "最近一次錯誤（{ago} 秒前）：{text}",
+        "no_hits": "文件裡找不到與問題直接相關的段落。可試著換個關鍵詞（例如功能名稱或頁面名稱），或到「說明」頁瀏覽快速上手與名詞定義。",
+        "by_docs": "依平台文件：",
+        "footer": "（完整內容請見下方參考連結；離線規則模式只能節錄文件，接上 LLM 供應商可得到整理過的回答。）",
+        "lookup_failed": "即時查詢失敗，已改用純文件回答：{reason}",
+        "empty_reply": "LLM（{provider}）回了空白，已改用文件節錄",
+        "llm_failed": "LLM（{provider}）失敗，已改用文件節錄：{reason}",
+        "no_screenshot": "離線規則模式看不到截圖，只依文字回答",
+    },
+    "zh-Hans": {
+        "recent_error": "最近一次错误（{ago} 秒前）：{text}",
+        "no_hits": "文档里找不到与问题直接相关的段落。可尝试换个关键词（例如功能名称或页面名称），或到「帮助」页浏览快速上手与名词定义。",
+        "by_docs": "依平台文档：",
+        "footer": "（完整内容请见下方参考链接；离线规则模式只能节录文档，接上 LLM 供应商可得到整理过的回答。）",
+        "lookup_failed": "即时查询失败，已改用纯文档回答：{reason}",
+        "empty_reply": "LLM（{provider}）回了空白，已改用文档节录",
+        "llm_failed": "LLM（{provider}）失败，已改用文档节录：{reason}",
+        "no_screenshot": "离线规则模式看不到截图，只依文字回答",
+    },
+}
+
+
+def msg(lang: Any, key: str, **kw: Any) -> str:
+    return MESSAGES[situation.norm_lang(lang)][key].format(**kw)
+
+
 #: 問答路徑最多幾回合工具呼叫（每回合可查多個），之後要求直接回答
 MAX_LOOKUP_TURNS = 4
 ACTION_KINDS = ("navigate", "focus_node", "open_tool")
@@ -43,8 +84,8 @@ _ACTIONS_LINE = re.compile(r"^\s*ACTIONS:\s*(\[.*\])\s*$", re.MULTILINE | re.DOT
 
 HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machine vision platform.
 - Answer only from the documentation excerpts below. If they do not cover it, say so plainly, suggest the page that might, and never invent a feature.
-- Reply in the same language the question was asked in (the documentation is English; translate what you quote when the question is not).
-- Conclusion first, then the steps; mostly bullets; under 300 words. Name the buttons and pages as the interface shows them ("New image set" on the Batch testing page).
+- Reply in the interface language given in the situation ("UI language": en = English, zh-Hant = Traditional Chinese, zh-Hans = Simplified Chinese; never mix the two Chinese scripts); without it, use the language of the question. The documentation is English: translate what you quote.
+- Conclusion first, then the steps; mostly bullets; under 300 words. Name pages, tabs and buttons exactly as the interface shows them in that language; the interface map lists each name as "English / interface-language" when they differ, use the second form for Chinese users.
 - End with a separate line starting "References:" listing the sections you used, as Page > Section.
 - If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page.
 - You are also given the user's current situation: the page they are on, what it shows, their recent actions and errors, their role and the engine lock. Use it: if a recent error explains the question, explain that error first and how to fix it; point to the exact page, tab and button (the interface map lists them in the user's languages); never tell the user to do something their role cannot do, say which role can.
@@ -248,19 +289,29 @@ def ui_page_for(route: str) -> dict[str, Any] | None:
     return best
 
 
-def ui_brief() -> str:
-    """給 system 提示的一頁地圖（英文一行一頁），讓 LLM 用介面上真正的名稱指路。"""
+def _bi(names: dict[str, Any] | None, lang: str) -> str:
+    """'English / 介面語言名稱'（兩者相同或英文介面時只給英文）。"""
+    names = names or {}
+    en = str(names.get("en") or "")
+    other = str(names.get(lang) or "") if lang != "en" else ""
+    return f"{en} / {other}" if other and other != en else en
+
+
+def ui_brief(lang: str = "en") -> str:
+    """給 system 提示的一頁地圖（一行一頁），讓 LLM 用介面上真正的名稱指路；中文介面時名稱給「英文 / 中文」。"""
+    lang = situation.norm_lang(lang)
     rows = []
     for p in load_ui_map().get("pages", []):
         names = p.get("names") or {}
         extras = []
         if p.get("tabs"):
-            extras.append("tabs: " + ", ".join(f"{t.get('key')} ({(t.get('names') or {}).get('en') or t.get('key')})" for t in p["tabs"]))
+            extras.append("tabs: " + ", ".join(f"{t.get('key')} ({_bi(t.get('names'), lang) or t.get('key')})" for t in p["tabs"]))
         if p.get("actions"):
-            extras.append("buttons: " + ", ".join(str(a.get("en") or "") for a in p["actions"]))
+            extras.append("buttons: " + ", ".join(_bi(a, lang) for a in p["actions"]))
         access = " [admin]" if p.get("admin") else (f" [{p['feature']}]" if p.get("feature") else "")
-        rows.append(f"- {names.get('en') or p.get('id')} ({p.get('route')}){access}: {(p.get('summary') or {}).get('en', '')}" + (f"; {'; '.join(extras)}" if extras else ""))
-    return "# Interface map (page (route) [required feature]: purpose; tabs; buttons)\n" + "\n".join(rows)
+        rows.append(f"- {_bi(names, lang) or p.get('id')} ({p.get('route')}){access}: {(p.get('summary') or {}).get('en', '')}" + (f"; {'; '.join(extras)}" if extras else ""))
+    head = "# Interface map (page (route) [required feature]: purpose; tabs; buttons)" + ("; names are English / interface language" if lang != "en" else "")
+    return head + "\n" + "\n".join(rows)
 
 
 def _finish(sections: list[Section]) -> Index:
@@ -363,8 +414,10 @@ def _context_sections(context: dict[str, Any] | None) -> list[Section]:
     return out
 
 
-def _error_terms(context: dict[str, Any] | None) -> str:
-    """最近的錯誤文字也拿去檢索（失敗碼與訊息常直接對到文件的一段）。"""
+def _error_terms(context: dict[str, Any] | None, question: str = "") -> str:
+    """問錯誤時，最近的錯誤文字也拿去檢索（失敗碼與訊息常直接對到文件的一段）；問別的事不併，免得被帶偏。"""
+    if question and not _ABOUT_ERROR.search(question):
+        return ""
     errs = situation.recent_errors(situation.clean_activity((context or {}).get("activity")))
     if not errs:
         return ""
@@ -376,18 +429,21 @@ CONTEXT_LABELS = {"flow_editor": "flow editor", "tool": "tool page", "batch": "b
 
 
 def offline_answer(question: str, hits: list[tuple[Section, float]], *, context: dict[str, Any] | None = None) -> str:
+    """離線規則回答：最近一次錯誤（有的話）＋文件節錄；文字依介面語言（context.lang，預設英文）。"""
+    lang = (context or {}).get("lang")
     lines: list[str] = []
-    errs = situation.recent_errors(situation.clean_activity((context or {}).get("activity")))
+    # 問錯誤才先講最近一次錯誤（問「在哪裡」時那行是噪音）
+    errs = situation.recent_errors(situation.clean_activity((context or {}).get("activity"))) if _ABOUT_ERROR.search(question) else []
     if errs:
         e = errs[0]
-        lines.append(f"最近一次錯誤（{e['ago_s']} 秒前）：{e['text']}" + (f"——{e['detail']}" if e.get("detail") else ""))
+        lines.append(msg(lang, "recent_error", ago=e["ago_s"], text=e["text"] + (f" — {e['detail']}" if e.get("detail") else "")))
     if not hits:
-        lines.append("文件裡找不到與問題直接相關的段落。可試著換個關鍵詞（例如功能名稱或頁面名稱），或到「說明」頁瀏覽快速上手與名詞定義。")
+        lines.append(msg(lang, "no_hits"))
         return "\n".join(lines)
-    lines.append("依平台文件：")
+    lines.append(msg(lang, "by_docs"))
     for i, (s, _) in enumerate(hits[:3], start=1):
-        lines.append(f"{i}. 《{s.title}》：{snippet(s, question)}")
-    lines.append("（完整內容請見下方參考連結；離線規則模式只能節錄文件，接上 LLM 供應商可得到整理過的回答。）")
+        lines.append(f"{i}. {s.title}: {snippet(s, question)}")
+    lines.append(msg(lang, "footer"))
     return "\n".join(lines)
 
 
@@ -439,12 +495,15 @@ def validate_actions(raw: list[dict[str, Any]], context: dict[str, Any] | None =
 
 
 def rule_actions(question: str, hits: list[tuple[Section, float]], context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """離線規則：問「在哪裡」而第一名是介面地圖段時，給一個「前往」動作（路由不含參數才給得出來）。"""
-    if not hits or not _WHERE.search(question):
+    """離線規則：問「在哪裡」時，用問題本身檢索前 20 名，第一個介面地圖段給一個「前往」動作（路由不含參數才給得出來）。"""
+    if not _WHERE.search(question):
         return []
-    s = hits[0][0]
-    if s.kind != "ui" or ":" in s.anchor:
+    pool = [s for s, _ in hits[:TOP_K] if s.kind == "ui" and ":" not in s.anchor]
+    if not pool:
+        pool = [s for s, _ in search(question, k=20) if s.kind == "ui" and ":" not in s.anchor]
+    if not pool:
         return []
+    s = pool[0]
     page = ui_page_for(s.anchor) or {}
     lang = str((context or {}).get("lang") or "en")
     names = page.get("names") or {}
@@ -485,13 +544,16 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     長期記憶（notes）：使用者要它記住的事實整段進現況、評過好的相似舊問答當範例；離線時相似度夠高直接用舊回答。"""
     ctx = context or {}
     kind_label = CONTEXT_LABELS.get(str(ctx.get("kind") or ""), "")
-    hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx)}")
+    hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx, question)}")
     facts = notes.facts_text(user)
     remembered = notes.recall(user, question)
     sections = _context_sections(ctx) + [s for s, _ in hits]
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     sections = [s for s in sections if not ((s.page, s.anchor, s.heading) in seen or seen.add((s.page, s.anchor, s.heading)))]  # type: ignore[func-returns-value]
-    sources = [{"title": s.title, "page": s.page, "heading": s.heading, "url": s.url, "snippet": snippet(s, question), "kind": s.kind} for s in sections[:TOP_K + 1]]
+    # 目前頁面的介面段只給模型當脈絡；除非檢索本來就命中，否則不列進參考（免得每次都出現「Interface › 目前頁」）
+    hit_keys = {(s.page, s.anchor) for s, _ in hits}
+    listed = [s for s in sections if not (s.kind == "ui" and (s.page, s.anchor) not in hit_keys)]
+    sources = [{"title": s.title, "page": s.page, "heading": s.heading, "url": s.url, "snippet": snippet(s, question), "kind": s.kind} for s in listed[:TOP_K + 1]]
     warnings: list[str] = []
     if providers.available(settings):
         try:
@@ -503,9 +565,10 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
             turns = [h for h in (history or []) if isinstance(h, dict) and str(h.get("text") or "").strip()][-6:]
             recent = "\n".join(f"{'使用者' if h.get('role') == 'user' else '助理'}：{str(h.get('text'))[:300]}" for h in turns)
             docs_text = "\n\n".join(f"《{s.title}》\n{s.text[:MAX_SECTION_CHARS]}" for s in sections[:TOP_K + 1])
+            lang_name = {"en": "English", "zh-Hant": "Traditional Chinese (繁體中文)", "zh-Hans": "Simplified Chinese (简体中文)"}[situation.norm_lang(ctx.get("lang"))]
             text = "\n\n".join(x for x in [("Current situation:\n" + where) if where else "", ("最近對話：\n" + recent) if recent else "", notes.examples_text(remembered),
-                                           "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
-            system = HELP_SYSTEM + "\n\n" + skills.with_custom(skills.platform_text(), "platform", user)[:2500] + "\n\n" + ui_brief()
+                                           "文件片段：\n" + docs_text, f"問題：{question[:4000]}", f"Answer language: {lang_name}."] if x)
+            system = HELP_SYSTEM + "\n\n" + skills.with_custom(skills.platform_text(), "platform", user)[:2500] + "\n\n" + ui_brief(str(ctx.get("lang") or "en"))
             images = [screenshot] if screenshot else []
             steps: list[dict[str, Any]] = []
             reply = ""
@@ -514,7 +577,7 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
                     reply, steps = _answer_with_lookups(settings, system, text, principal, images)
                 except Exception as exc:  # noqa: BLE001 - 工具呼叫失敗就退回一般問答
                     log.warning("說明問答工具呼叫失敗，退回單次問答：%s", exc)
-                    warnings.append(f"即時查詢失敗，已改用純文件回答：{providers._explain(exc, providers.generate_timeout())}")
+                    warnings.append(msg(ctx.get("lang"), "lookup_failed", reason=providers._explain(exc, providers.generate_timeout())))
                     steps = []
             if not (reply and reply.strip()):
                 reply = providers.complete(settings, system, images, text)
@@ -523,12 +586,12 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
                 # 模型沒給 ACTIONS 時，問「在哪裡」仍由規則補一個「前往」（實測 Gemini 常略過選填的那一行）
                 return {"answer": cleaned, "provider": settings.provider, "sources": sources, "warnings": warnings,
                         "actions": validate_actions(raw_actions, ctx) or rule_actions(question, hits, ctx), "lookups": steps}
-            warnings.append(f"LLM（{settings.provider}）回了空白，已改用文件節錄")
+            warnings.append(msg(ctx.get("lang"), "empty_reply", provider=settings.provider))
         except Exception as exc:  # noqa: BLE001
             log.warning("說明問答 LLM 失敗：%s", exc)
-            warnings.append(f"LLM（{settings.provider}）失敗，已改用文件節錄：{providers._explain(exc, providers.generate_timeout())}")
+            warnings.append(msg(ctx.get("lang"), "llm_failed", provider=settings.provider, reason=providers._explain(exc, providers.generate_timeout())))
     if screenshot:
-        warnings.append("離線規則模式看不到截圖，只依文字回答")
+        warnings.append(msg(ctx.get("lang"), "no_screenshot"))
     if remembered and remembered[0][1] >= notes.DIRECT_MIN:
         # 這位使用者評過好的、幾乎同一個問題：直接用舊回答（仍附這次檢索到的參考）
         return {"answer": remembered[0][0].answer, "provider": "memory", "sources": sources, "warnings": warnings, "actions": rule_actions(question, hits, ctx), "lookups": []}
