@@ -11,7 +11,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / ".env")
+# 發行版的三層配置：<VS_HOME>\app\<ver>\config\settings.py → 客戶資料（.env、data\、plugins\）在 <VS_HOME>，
+# 升級只換 app\<ver>。開發時（專案根不叫 app）VS_HOME 就是專案根；環境變數 VS_HOME 可強制指定。
+_vs_home = os.environ.get("VS_HOME", "").strip()
+VS_HOME = Path(_vs_home).resolve() if _vs_home else (BASE_DIR.parent.parent if BASE_DIR.parent.name == "app" else BASE_DIR)
+load_dotenv(VS_HOME / ".env")
 
 
 def _env(name: str, default: str = "") -> str:
@@ -71,7 +75,7 @@ TEMPLATES = [
     }
 ]
 
-DATA_DIR = Path(_env("DATA_DIR", str(BASE_DIR / "data")))
+DATA_DIR = Path(_env("DATA_DIR", str(VS_HOME / "data")))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASES = {
@@ -105,6 +109,12 @@ STORAGES = {
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = [o for o in _env("CORS_ALLOWED_ORIGINS", "").split(",") if o]
 
+# 前面有 HTTPS 反向代理（Caddy／nginx）時：相信代理的 X-Forwarded-Proto／Host，request.scheme 才會是 https。
+BEHIND_HTTPS_PROXY = _env_bool("BEHIND_HTTPS_PROXY", False)
+if BEHIND_HTTPS_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+
 # ---------------------------------------------------------------------------
 # 視覺引擎
 # ---------------------------------------------------------------------------
@@ -115,7 +125,7 @@ VISION = {
     # 同一流程的 run 排隊上限；超過即拒絕（回 429），不無限堆積。
     "MAX_QUEUE_PER_FLOW": _env_int("VISION_MAX_QUEUE_PER_FLOW", 16),
     # 單一 run 的牆鐘上限（秒）；超過標 failed。
-    "RUN_TIMEOUT_S": float(_env("VISION_RUN_TIMEOUT_S", "30")),
+    "RUN_TIMEOUT_S": _env_float("VISION_RUN_TIMEOUT_S", 30.0),
     # 每個流程在記憶體保留幾次 run 的影像（供前端檢視）。
     "KEEP_RUN_IMAGES": _env_int("VISION_KEEP_RUN_IMAGES", 8),
     # 影像封存（出貨預設不存；各流程自己開，見 apps/vision/archive.py）
@@ -134,7 +144,7 @@ VISION = {
     "KEEP_VERSIONS": _env_int("VISION_KEEP_VERSIONS", 50),
     "AUDIT_DAYS": _env_int("VISION_AUDIT_DAYS", 730),
     # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。
-    "PLUGIN_DIR": Path(_env("VISION_PLUGIN_DIR", str(BASE_DIR / "plugins"))),
+    "PLUGIN_DIR": Path(_env("VISION_PLUGIN_DIR", str(VS_HOME / "plugins"))),
     # 外掛工具模組（逗號分隔的 python 模組路徑），啟動時 import；模組內呼叫 register()。
     "TOOL_PLUGINS": [m.strip() for m in _env("VISION_TOOL_PLUGINS", "").split(",") if m.strip()],
     # 影像來源外掛（kind -> "module:Class"），例如 GigE SDK 的封裝。
@@ -160,9 +170,15 @@ VISION = {
     "CV_THREADS": _env_int("VISION_CV_THREADS", 2),
     # 站台識別：寫進每筆 run、回傳與事件（多站匯總用）。
     "STATION_ID": _env("VISION_STATION_ID", "ST01"),
-    # TCP 自動化介面（manage.py run_tcp_server）。
+    # HTTP 埠（manage.py serve 的預設；doctor 也探這個埠）。
+    "HTTP_PORT": _env_int("VISION_HTTP_PORT", 8000),
+    # TCP 自動化介面（manage.py serve 一起啟動）。
     "TCP_HOST": _env("VISION_TCP_HOST", "0.0.0.0"),
     "TCP_PORT": _env_int("VISION_TCP_PORT", 9000),
+    # TCP 介面金鑰：非空時連線要先送 AUTH <key>（PING 除外）；空＝不驗證（相容舊設備，靠防火牆）。
+    "TCP_AUTH": _env("VISION_TCP_AUTH", ""),
+    # SSE 事件串流同時連線上限（每個開著的瀏覽器分頁一條）；超過回 503 讓瀏覽器稍後重試。
+    "SSE_MAX_STREAMS": _env_int("VISION_SSE_MAX_STREAMS", 64),
     # 擷取端（相機電腦上的擷取程式，vscapture）連入的監聽位址／埠；同機走共享記憶體、跨機走 TCP（manage.py serve 隨 TCP 介面一起啟動）。
     "CAPTURE_HOST": _env("VISION_CAPTURE_HOST", "0.0.0.0"),
     "CAPTURE_PORT": _env_int("VISION_CAPTURE_PORT", 9100),
@@ -179,13 +195,13 @@ VISION = {
     "AGENT_MODEL": _env("VISION_AGENT_MODEL", ""),  # 空＝各供應商預設（claude-opus-5 / gpt-4o / gemini-3.6-flash）
     "AGENT_BASE_URL": _env("VISION_AGENT_BASE_URL", ""),  # openai_compatible 本地端點，例如 http://127.0.0.1:11434/v1
     "AGENT_TIMEOUT_S": _env("VISION_AGENT_TIMEOUT_S", "120"),  # LLM 生成逾時（秒）；本地模型慢可拉長
-    "AGENT_MODE": _env("VISION_AGENT_MODE", "single"),
+    "AGENT_MODE": _env("VISION_AGENT_MODE", "single"),  # single（一次生成）| agentic（代理迴圈：試跑→修→驗證，背景工作＋步驟時間軸）
     "AGENT_HELP_LOOKUPS": _env("VISION_AGENT_HELP_LOOKUPS", "1"),  # 問答路徑的唯讀即時查詢（0＝關）
     # 批次測試：一個影像集最多幾張、每流程保留幾個影像集、每影像集保留幾次執行、同時執行的批次數
     "BATCH_MAX_IMAGES": _env_int("VISION_BATCH_MAX_IMAGES", 200),
     "KEEP_BATCH_SETS": _env_int("VISION_KEEP_BATCH_SETS", 10),
     "KEEP_BATCH_RUNS": _env_int("VISION_KEEP_BATCH_RUNS", 20),
-    "BATCH_MAX_RUNNING": _env_int("VISION_BATCH_MAX_RUNNING", 2),  # single（一次生成）| agentic（代理迴圈：試跑→修→驗證，背景工作＋步驟時間軸）
+    "BATCH_MAX_RUNNING": _env_int("VISION_BATCH_MAX_RUNNING", 2),
 }
 VISION["ASSET_DIR"].mkdir(parents=True, exist_ok=True)
 
