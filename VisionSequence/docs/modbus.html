@@ -135,7 +135,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html" aria-current="page">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Triggering: the PLC writes a flag and the platform inspects</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus and read_modbus</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Triggering: the master writes a flag and the platform inspects</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus and read_modbus</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
 
 <h1>Pushing results out (Modbus TCP and host systems)</h1>
 <p><a href="automation.html">Automation</a> is <strong>passive</strong>: equipment or a host system calls us and collects the result. This page is <strong>active</strong>: when a flow finishes, the engine writes the judgement and the measurements into the equipment's coils and registers over Modbus TCP, or pushes a line of text to a host system. It works like image sources — create a <strong>connection</strong> on the settings page, then put a <strong>write Modbus</strong> (<code>write_modbus</code>) tool in the flow, point it at that connection and fill in the mapping table.</p>
@@ -144,11 +144,11 @@
 <p>Modbus/TCP has a master and a slave. The platform can be either; choose the kind when you create the connection under Integration ▸ Connections:</p>
 <table>
 <tr><th>Role</th><th>kind</th><th>Who initiates</th><th>When to use it</th></tr>
-<tr><td>Client (master)</td><td><code>modbus_tcp</code></td><td>The platform connects to the device's IP and port</td><td>The PLC or device is itself a Modbus slave and the platform reads and writes its coils and registers.</td></tr>
-<tr><td>Server (slave)</td><td><code>modbus_server</code></td><td>The platform listens on a port (5020 by default) and waits for a master</td><td>The PLC or host system is the master and prefers to poll. The flow writes results into the platform's registers for the master to collect; the master can also write a part number or a trigger flag in, which the flow picks up with "read Modbus".</td></tr>
+<tr><td>Client (master)</td><td><code>modbus_tcp</code></td><td>The platform connects to the device's IP and port</td><td>The device — a controller, a drive, an I/O module, a host program, anything that speaks Modbus TCP — is itself a Modbus server (slave) and the platform reads and writes its coils and registers.</td></tr>
+<tr><td>Server (slave)</td><td><code>modbus_server</code></td><td>The platform listens on a port (5020 by default) and waits for a master</td><td>The other side is the master and prefers to poll. The flow writes results into the platform's registers for the master to collect; the master can also write a part number or a trigger flag in, which the flow picks up with "read Modbus".</td></tr>
 </table>
 <p><strong>The address format, the mapping table and the tools are identical for both roles</strong> — the only difference is who initiates the connection. In server mode <code>size</code> is the number of points in each area (coils, discrete inputs, holding registers, input registers) and defaults to 512.</p>
-<p><strong>A server opens its port by itself</strong>: it starts listening as soon as the connection is created or changed, and <strong>again when the server starts</strong> (<code>manage.py serve</code> calls <code>writers.autostart()</code>; <code>--no-comm</code> turns that off). The PLC does not have to wait for somebody to press Test in the web interface. If another program is already using the port, the reason appears directly in the connection status. Disabling or deleting the connection closes it.</p>
+<p><strong>A server opens its port by itself</strong>: it starts listening as soon as the connection is created or changed, and <strong>again when the server starts</strong> (<code>manage.py serve</code> calls <code>writers.autostart()</code>; <code>--no-comm</code> turns that off). The master does not have to wait for somebody to press Test in the web interface. If another program is already using the port, the reason appears directly in the connection status. Disabling or deleting the connection closes it.</p>
 
 <h2 id="kinds">1. Connection kinds and their config</h2>
 <table>
@@ -160,14 +160,12 @@
 <td><pre>{"host": "192.168.1.20", "port": 5000, "timeout_s": 2,
  "template": "RESULT {judge} {width_px}",
  "newline": "\n", "encoding": "utf-8", "wait_reply": false}</pre>Without a <code>template</code> it sends <code>{"judge": 1, "width_px": 12.3}\n</code>. A field missing from the template becomes an empty string rather than an error. <code>wait_reply=true</code> waits for one line back and puts it in the result as <code>reply</code>.</td></tr>
-<tr><td><code>dio_sim</code></td><td>Simulated digital I/O: written values stay in memory so you can test a flow on a machine with no hardware. Read them back with <code>GET /state</code>.</td>
-<td><pre>{"channels": ["ok", "ng", "done"]}   or   {"channels": 8}</pre>With a channel list, writing to an undeclared channel fails — handy for testing degradation. Without one, any name is accepted.</td></tr>
 <tr><td><code>plugin</code> or a plugin's own kind</td><td>A Writer of your own (OPC UA, a vendor SDK, …)</td><td>Drop a .py file subclassing <code>Writer</code> into <code>plugins/</code> and it loads automatically. A CSV logger ships as an example; see <a href="#plugin">§6</a> and <a href="plugins.html">Plugins</a>.</td></tr>
 </table>
 <p>Common field: <code>timeout_s</code>, the timeout of a single write, two seconds by default. Changing a connection's settings (PATCH) closes the old connection, and the next run reopens it.</p>
 
-<h2 id="trigger">1-1. Triggering: the PLC writes a flag and the platform inspects</h2>
-<p>In server mode the PLC is the master — it writes registers, it does not call the platform's HTTP or TCP interfaces. <strong>Without this layer, a trigger flag written by the PLC does nothing at all</strong> and the line has to fall back to continuous mode, grabbing an image on every cycle and wasting camera bandwidth and CPU. So both kinds of Modbus connection can be given a trigger address:</p>
+<h2 id="trigger">1-1. Triggering: the master writes a flag and the platform inspects</h2>
+<p>In server mode the other side is the master — it writes registers, it does not call the platform's HTTP or TCP interfaces. <strong>Without this layer, a trigger flag written by the master does nothing at all</strong> and the line has to fall back to continuous mode, grabbing an image on every cycle and wasting camera bandwidth and CPU. So both kinds of Modbus connection can be given a trigger address:</p>
 <pre>{"host": "0.0.0.0", "port": 5020, "unit_id": 1, "size": 512,
  "trigger_address": "coil:0",        ← the master writes non-zero and one inspection runs
  "trigger_flow": "appearance",        ← a flow name or id (a disabled flow is never triggered)
@@ -177,15 +175,15 @@
  "trigger_done_address": "coil:1",    ← write 1 when finished (optional)
  "trigger_recipe": ""}                ← use a specific recipe (optional)</pre>
 <p>A complete handshake:</p>
-<pre>PLC     : trigger := 1
+<pre>Master  : trigger := 1
 Platform: sees it → clears trigger → runs the flow → the flow's "write Modbus" step puts the
           judgement and measurements into the registers → done := 1
-PLC     : sees done → reads the results → done := 0</pre>
+Master  : sees done → reads the results → done := 0</pre>
 <ul>
 <li><strong>The flow writes its own results</strong>: put a "write Modbus" node at the end and map as many values as you like. The trigger settings only clear the flag and set the done address.</li>
 <li>One connection gets one polling thread, which does nothing but read a single address. The flow itself still goes through the Runner, so statistics, events and history are identical to any other trigger source (the trigger is recorded as <code>modbus</code>).</li>
-<li>If the PLC drops off, polling backs off exponentially to a maximum of five seconds and keeps retrying, resuming automatically when the connection returns. The failure count and the last reason are in the connection status under <code>trigger</code>.</li>
-<li>Client mode (<code>modbus_tcp</code>) can do this too: poll a register on the PLC as the trigger source.</li>
+<li>If the device drops off, polling backs off exponentially to a maximum of five seconds and keeps retrying, resuming automatically when the connection returns. The failure count and the last reason are in the connection status under <code>trigger</code>.</li>
+<li>Client mode (<code>modbus_tcp</code>) can do this too: poll a register on the device as the trigger source.</li>
 <li>Both the trigger and the run it starts appear under Commands and results (see <a href="#trace">§6b</a>), so while debugging you can see how long each trigger took and what it judged.</li>
 </ul>
 
@@ -198,7 +196,7 @@ PLC     : sees done → reads the results → done := 0</pre>
 <tr><td><code>discrete:3</code>, <code>input:7</code></td><td>Discrete inputs and input registers, read-only — usable from <code>read</code> and <code>/state</code>; writing returns an error.</td></tr>
 </table>
 <p>The offset may be hexadecimal (<code>holding:0x100</code>). It is the <strong>zero-based protocol address</strong>: where the device's manual says 40001, write <code>holding:0</code>.</p>
-<p>For <code>tcp_client</code> the "address" is a field name in the template (<code>{judge}</code> → <code>"judge"</code>); for <code>dio_sim</code> it is a channel name.</p>
+<p>For <code>tcp_client</code> the "address" is a field name in the template (<code>{judge}</code> → <code>"judge"</code>).</p>
 
 <h2 id="tool">3. The flow tools: write_modbus and read_modbus</h2>
 <table>
@@ -247,7 +245,7 @@ mapping  = [{"src": "judge"}, {"src": "width_px"}, {"src": "lot"}]
   {"name": "temperature", "address": "holding:10:float32", "scale": 0.1}
 ]
 </pre>
-<p>The typical arrangement: the PLC is the master and writes the part number into <code>holding:0</code> and the trigger flag into <code>coil:1</code>; the flow starts with read_modbus to pick up the part number and choose a recipe, and ends with write_modbus putting the judgement back into <code>coil:10</code>.</p>
+<p>The typical arrangement: the master writes the part number into <code>holding:0</code> and the trigger flag into <code>coil:1</code>; the flow starts with read_modbus to pick up the part number and choose a recipe, and ends with write_modbus putting the judgement back into <code>coil:10</code>.</p>
 
 <h2 id="degrade">4. Degradation</h2>
 <div class="note">A production line would rather lose one record than stop: <strong>a failed write does not fail the run by default</strong>.</div>
@@ -267,7 +265,7 @@ PATCH  /api/vision/connections/{id}            administrator (a config change re
 DELETE /api/vision/connections/{id}            administrator
 POST   /api/vision/connections/{id}/test       administrator: reconnect → {"ok": true, "info": {...}} or {"ok": false, "error": "…"}
 POST   /api/vision/connections/{id}/write      administrator: write once by hand, {"values": {"coil:0": 1, "holding:100:float32": 1.5}}
-GET    /api/vision/connections/{id}/state      read back, ?addresses=coil:0,holding:100 (dio_sim returns all channels with no parameter)</pre>
+GET    /api/vision/connections/{id}/state      read back, ?addresses=coil:0,holding:100</pre>
 <p>An integrator (API key) counts as an administrator. <code>test</code> and <code>write</code> report failures as 200 with <code>ok=false</code>, so the integration page can show the reason.</p>
 
 <h2 id="plugin">6. Writing your own Writer</h2>
@@ -298,7 +296,7 @@ class OpcUaWriter(Writer):
 <li><strong>The hot path never touches the database</strong>: <code>apps/comm/apps.py</code> hooks <code>prefetch_connections</code> into <code>Runner.prefetch_hooks</code> in <code>ready()</code>. When the Runner compiles a flow — on the caller's thread — it collects the <code>connection</code> parameter of every tool that declares one, looks them up and opens them into a name → writer cache. Tools running on the thread pool only call <code>get_writer(name)</code>.</li>
 <li><code>apps/vision/tools/builtin/modbus.py</code>: the <code>write_modbus</code> and <code>read_modbus</code> tools.</li>
 <li><code>apps/comm/api.py</code>: the connection API, mounted under <code>/api/vision</code>.</li>
-<li><code>tests/test_comm.py</code>: dio_sim, tcp_client (against a temporary local socket server), modbus_tcp (pymodbus's TCP server on a thread), tool degradation, Runner prefetch and the API.</li>
+<li><code>tests/test_comm.py</code>: an in-memory fake writer (<code>tests/fakes.py</code>), tcp_client (against a temporary local socket server), modbus_tcp (pymodbus's TCP server on a thread), tool degradation, Runner prefetch and the API.</li>
 </ul>
 
 </article></div><!-- /doc-layout -->

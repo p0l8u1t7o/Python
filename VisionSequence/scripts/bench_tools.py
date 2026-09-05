@@ -268,10 +268,24 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
 
 
 def _bench_connection() -> None:
-    """整合工具（write_modbus／read_modbus）需要一條連線；用不碰硬體的模擬 DIO。"""
-    from apps.comm.writers import DioSimWriter, register_writer
+    """整合工具（write_modbus／read_modbus）需要一條連線；用只記在記憶體的假連線，不碰硬體。"""
+    from apps.comm.writers import Writer, register_writer
 
-    register_writer("bench_sim", DioSimWriter({"channels": ["ok"]}, name="bench_sim"))
+    class _MemoryWriter(Writer):
+        kind = "bench_memory"
+
+        def __init__(self, config, **kw):
+            super().__init__(config, **kw)
+            self.state = {}
+
+        def _write(self, values):
+            self.state.update(values)
+            return {"written": len(values)}
+
+        def _read(self, addresses):
+            return {a: self.state.get(a) for a in addresses}
+
+    register_writer("bench_sim", _MemoryWriter({}, name="bench_sim"))
 
 
 def bench_tools(s: Scene, out: io.StringIO) -> dict[str, tuple[float, float]]:

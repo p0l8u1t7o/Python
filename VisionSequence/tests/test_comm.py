@@ -1,4 +1,6 @@
-"""主動輸出（Modbus TCP）：writers（dio_sim / tcp_client / modbus_tcp）、write_modbus 工具降級、連線 API。"""
+"""主動輸出（Modbus TCP）：writers（tcp_client / modbus_tcp / modbus_server）、write_modbus 工具降級、連線 API。
+
+沒有硬體的部分用 tests/fakes.MemoryWriter 當假設備（kind="memory_sim"，模組載入時就註冊）。"""
 
 from __future__ import annotations
 
@@ -19,10 +21,13 @@ from pymodbus.client import ModbusTcpClient
 from apps.comm import triggers, writers
 from apps.vision import trace
 from apps.comm.models import Connection
-from apps.comm.writers import CommError, DioSimWriter, ModbusTcpWriter, TcpClientWriter, parse_address
+from apps.comm.writers import CommError, ModbusTcpWriter, TcpClientWriter, parse_address
 from apps.vision.models import Flow, ImageSource
 from apps.vision.runner import runner
 from tests._helpers import run_tool
+from tests.fakes import MEMORY_KIND, MemoryWriter, register_memory_kind
+
+register_memory_kind()
 
 logging.getLogger("pymodbus.logging").setLevel(logging.WARNING)
 
@@ -127,23 +132,23 @@ class AddressTests(SimpleTestCase):
                 parse_address(bad)
 
 
-class DioSimTests(SimpleTestCase):
+class MemoryWriterTests(SimpleTestCase):
     def test_write_and_read(self):
-        w = DioSimWriter({"channels": ["ok", "ng"]}, name="sim")
+        w = MemoryWriter({"channels": ["ok", "ng"]}, name="sim")
         self.assertEqual(w.write({"ok": 1, "ng": 0})["written"], 2)
         self.assertEqual(w.read(["ok", "ng"]), {"ok": 1, "ng": 0})
         self.assertEqual(w.info()["state"], {"ok": 1, "ng": 0})
         self.assertEqual(w.info()["writes"], 1)
 
     def test_unknown_channel_fails(self):
-        w = DioSimWriter({"channels": ["ok"]}, name="sim")
+        w = MemoryWriter({"channels": ["ok"]}, name="sim")
         with self.assertRaises(CommError) as cm:
             w.write({"nope": 1})
         self.assertIn("nope", str(cm.exception))
         self.assertEqual(w.info()["errors"], 1)
 
     def test_channels_by_count(self):
-        w = DioSimWriter({"channels": 4}, name="sim")
+        w = MemoryWriter({"channels": 4}, name="sim")
         self.assertEqual(w.channels, ["DO0", "DO1", "DO2", "DO3"])
         w.write({"DO3": True})
         self.assertTrue(w.read(["DO3"])["DO3"])
@@ -588,7 +593,7 @@ class TraceTests(SimpleTestCase):
 
     def test_writer_records_command_and_result(self):
         trace.watch()
-        sim = DioSimWriter({"channels": ["DO0"]}, name="sim")
+        sim = MemoryWriter({"channels": ["DO0"]}, name="sim")
         sim.write({"DO0": True})
         entry = trace.entries("modbus")[-1]
         self.assertEqual((entry["name"], entry["ok"], entry["direction"]), ("sim", True, "out"))
@@ -604,7 +609,7 @@ class WriteModbusToolTests(SimpleTestCase):
         writers.close_all()
 
     def test_mapping_sources_and_scale(self):
-        sim = DioSimWriter({}, name="sim")
+        sim = MemoryWriter({}, name="sim")
         writers.register_writer("sim", sim)
         mapping = [
             {"src": "judge", "address": "ok_bit", "dtype": "bool"},
@@ -622,14 +627,14 @@ class WriteModbusToolTests(SimpleTestCase):
         self.assertEqual(len(r.detail["missing"]), 1)
 
     def test_judge_ok_is_one(self):
-        sim = DioSimWriter({}, name="sim")
+        sim = MemoryWriter({}, name="sim")
         writers.register_writer("sim", sim)
         r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "ok"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
         self.assertEqual(sim.state["ok"], 1)
 
     def test_failure_degrades_by_default(self):
-        writers.register_writer("sim", DioSimWriter({"channels": ["a"]}, name="sim"))
+        writers.register_writer("sim", MemoryWriter({"channels": ["a"]}, name="sim"))
         r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}]}, context={"_judge": "ok"})
         self.assertEqual(r.status, "ok")
         self.assertIn("degraded", r.message)
@@ -637,7 +642,7 @@ class WriteModbusToolTests(SimpleTestCase):
         self.assertIn("zzz", r.detail["error"])
 
     def test_failure_with_on_error_fail(self):
-        writers.register_writer("sim", DioSimWriter({"channels": ["a"]}, name="sim"))
+        writers.register_writer("sim", MemoryWriter({"channels": ["a"]}, name="sim"))
         r = run_tool("write_modbus", params={"connection": "sim", "mapping": [{"src": "judge", "address": "zzz"}], "on_error": "fail"}, context={"_judge": "ok"})
         self.assertEqual(r.status, "error")
         self.assertNotIn("degraded", r.message)
@@ -674,7 +679,7 @@ class RunnerIntegrationTests(TestCase):
             runner.forget(fid)
         writers.close_all()
         self.source = ImageSource.objects.create(name="syn", kind="synthetic", config={"width": 160, "height": 120})
-        self.conn = Connection.objects.create(name="sim", kind="dio_sim", config={"channels": ["done", "ok"]})
+        self.conn = Connection.objects.create(name="sim", kind=MEMORY_KIND, config={"channels": ["done", "ok"]})
 
     def tearDown(self):
         writers.close_all()
@@ -736,24 +741,25 @@ class ConnectionApiTests(TestCase):
     def test_kinds(self):
         r = self.client.get("/api/vision/connections/kinds")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual({k["kind"] for k in r.json()["items"]} >= {"modbus_tcp", "tcp_client", "dio_sim", "plugin"}, True)
+        self.assertEqual({k["kind"] for k in r.json()["items"]} >= {"modbus_tcp", "modbus_server", "tcp_client", "plugin"}, True)
+        self.assertNotIn("dio_sim", {k["kind"] for k in r.json()["items"]})  # 模擬數位 I/O 已移除
 
     def test_crud_test_write_state(self):
-        r = self.post("/api/vision/connections", {"name": "sim", "kind": "dio_sim", "config": {"channels": ["a", "b"]}})
+        r = self.post("/api/vision/connections", {"name": "sim", "kind": MEMORY_KIND, "config": {"channels": ["a", "b"]}})
         self.assertEqual(r.status_code, 201, r.content)
         cid = r.json()["id"]
         self.assertFalse(r.json()["status"]["open"])
-        self.assertEqual(self.post("/api/vision/connections", {"name": "sim", "kind": "dio_sim"}).status_code, 409)
+        self.assertEqual(self.post("/api/vision/connections", {"name": "sim", "kind": MEMORY_KIND}).status_code, 409)
         self.assertEqual(self.post("/api/vision/connections", {"name": "x", "kind": "what"}).status_code, 422)
 
         r = self.post(f"/api/vision/connections/{cid}/test")
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.json()["ok"], r.content)
-        self.assertEqual(r.json()["info"]["kind"], "dio_sim")
+        self.assertEqual(r.json()["info"]["kind"], MEMORY_KIND)
 
         r = self.post(f"/api/vision/connections/{cid}/write", {"values": {"a": 1, "b": 0}})
         self.assertTrue(r.json()["ok"], r.content)
-        r = self.client.get(f"/api/vision/connections/{cid}/state")
+        r = self.client.get(f"/api/vision/connections/{cid}/state?addresses=a,b")
         self.assertEqual(r.json()["values"], {"a": 1, "b": 0})
         r = self.client.get(f"/api/vision/connections/{cid}/state?addresses=a")
         self.assertEqual(r.json()["values"], {"a": 1})
@@ -768,7 +774,7 @@ class ConnectionApiTests(TestCase):
         r = self.client.patch(f"/api/vision/connections/{cid}", data=json.dumps({"config": {"channels": ["c"]}}), content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertFalse(r.json()["status"]["open"])
-        r = self.client.get(f"/api/vision/connections/{cid}/state")
+        r = self.client.get(f"/api/vision/connections/{cid}/state?addresses=c")
         self.assertEqual(r.json()["values"], {"c": 0})
 
         self.assertEqual(self.client.delete(f"/api/vision/connections/{cid}").status_code, 204)
@@ -786,9 +792,9 @@ class ConnectionApiTests(TestCase):
         admin = self.post("/api/auth/setup", {"username": "admin", "password": "secret1"}).json()["token"]
         self.post("/api/users", {"username": "bob", "password": "pass123", "is_staff": False}, token=admin)
         bob = self.post("/api/auth/login", {"username": "bob", "password": "pass123"}).json()["token"]
-        r = self.post("/api/vision/connections", {"name": "sim", "kind": "dio_sim"}, token=bob)
+        r = self.post("/api/vision/connections", {"name": "sim", "kind": MEMORY_KIND}, token=bob)
         self.assertEqual(r.status_code, 403)
-        r = self.post("/api/vision/connections", {"name": "sim", "kind": "dio_sim"}, token=admin)
+        r = self.post("/api/vision/connections", {"name": "sim", "kind": MEMORY_KIND}, token=admin)
         self.assertEqual(r.status_code, 201)
         cid = r.json()["id"]
         self.assertEqual(self.client.get("/api/vision/connections", HTTP_AUTHORIZATION=f"Bearer {bob}").status_code, 200)

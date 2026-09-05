@@ -1,13 +1,18 @@
-/** 整合 ▸ Modbus 輸出：連線管理（主站／從站／模擬 DIO）、位址格式、對映表與命令追蹤。 */
+/**
+ * 整合 ▸ Modbus 從站／主站：各自一頁，各管自己那一種連線（建立時不必選種類），共用位址格式與對映表的說明。
+ * 從站＝本平台開埠、對方主站來讀寫；主站＝本平台連出去讀寫任何 Modbus TCP 設備。
+ */
 import { useTranslation } from 'react-i18next'
-import { Activity, BookOpen, Cable, Plug } from 'lucide-react'
+import { Activity, BookOpen, Cable, Plug, Server } from 'lucide-react'
 
 import { CodeBlock, SectionTabs } from './shared'
 import { ConnectionsSection } from '@/components/integration/ConnectionsSection'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Card, CardBody, CardHeader } from '@/components/ui'
 
-function ModbusSection() {
+type Role = 'server' | 'client'
+
+function ModbusGuide({ role }: { role: Role }) {
   const { t } = useTranslation()
   const lines = (key: string) => t(key, { returnObjects: true }) as unknown as string[]
   const example = `[
@@ -22,19 +27,20 @@ function ModbusSection() {
   {"name": "trigger", "address": "coil:1"},
   {"name": "temperature", "address": "holding:10:float32", "scale": 0.1}
 ]`
+  const RoleIcon = role === 'server' ? Server : Cable
   return (
     <div className="grid items-start gap-4 xl:grid-cols-2">
       <Card>
-        <CardHeader title={<span className="flex items-center gap-2"><Cable size={16} className="text-brand" />{t('integration.modbus.title')}</span>} />
+        <CardHeader title={<span className="flex items-center gap-2"><RoleIcon size={16} className="text-brand" />{t(role === 'server' ? 'integration.modbus.serverTitle' : 'integration.modbus.clientTitle')}</span>} />
         <CardBody className="space-y-3 text-sm leading-relaxed">
+          <p>{t(role === 'server' ? 'integration.modbus.serverHint' : 'integration.modbus.clientHint')}</p>
+          <p className="text-xs text-muted">{t('integration.modbus.rolesHint')}</p>
           <p>{t('integration.modbus.intro')}</p>
           <div>
-            <p className="label">{t('integration.modbus.srcTitle')}</p>
-            <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.modbus.srcLines')) ? lines('integration.modbus.srcLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
-          </div>
-          <div>
-            <p className="label">{t('integration.modbus.addressTitle')}</p>
-            <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.modbus.addressLines')) ? lines('integration.modbus.addressLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
+            <p className="label">{t('integration.modbus.toolsTitle')}</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs">
+              {(Array.isArray(lines('integration.modbus.toolLines')) ? lines('integration.modbus.toolLines') : []).map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
           </div>
           <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t('integration.modbus.degrade')}</p>
           <p className="text-xs text-muted">{t('integration.modbus.docs')}</p>
@@ -42,21 +48,15 @@ function ModbusSection() {
       </Card>
       <div className="space-y-4">
         <Card>
-          <CardHeader title={t('integration.modbus.rolesTitle')} description={t('integration.modbus.rolesHint')} />
+          <CardHeader title={t('integration.modbus.addressTitle')} />
           <CardBody className="space-y-3 text-sm leading-relaxed">
-            <div className="rounded-lg border border-line p-3">
-              <p className="mb-1 font-medium">{t('integration.modbus.clientTitle')}</p>
-              <p className="text-xs text-muted">{t('integration.modbus.clientHint')}</p>
-            </div>
-            <div className="rounded-lg border border-line p-3">
-              <p className="mb-1 font-medium">{t('integration.modbus.serverTitle')}</p>
-              <p className="text-xs text-muted">{t('integration.modbus.serverHint')}</p>
+            <div>
+              <p className="label">{t('integration.modbus.srcTitle')}</p>
+              <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.modbus.srcLines')) ? lines('integration.modbus.srcLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
             </div>
             <div>
-              <p className="label">{t('integration.modbus.toolsTitle')}</p>
-              <ul className="list-disc space-y-1 pl-5 text-xs">
-                {(Array.isArray(lines('integration.modbus.toolLines')) ? lines('integration.modbus.toolLines') : []).map((l, i) => <li key={i}>{l}</li>)}
-              </ul>
+              <p className="label">{t('integration.modbus.addressTitle')}</p>
+              <ul className="list-disc space-y-1 pl-5 text-xs">{(Array.isArray(lines('integration.modbus.addressLines')) ? lines('integration.modbus.addressLines') : []).map((l, i) => <li key={i}>{l}</li>)}</ul>
             </div>
           </CardBody>
         </Card>
@@ -72,14 +72,23 @@ function ModbusSection() {
   )
 }
 
-
-export function ModbusPage() {
+function ModbusRolePage({ role, kind, section }: { role: Role; kind: string; section: string }) {
   const { t } = useTranslation()
   return (
-    <SectionTabs section="modbus" tabs={[
-      { key: 'connections', label: t('integration.sections.connections'), icon: Plug, content: <ConnectionsSection section="modbus" /> },
-      { key: 'guide', label: t('integration.sections.guide'), icon: BookOpen, content: <ModbusSection /> },
+    <SectionTabs section={section} tabs={[
+      { key: 'connections', label: t('integration.sections.connections'), icon: Plug, content: <ConnectionsSection section={section} kind={kind} /> },
+      { key: 'guide', label: t('integration.sections.guide'), icon: BookOpen, content: <ModbusGuide role={role} /> },
       { key: 'trace', label: t('integration.trace.title'), icon: Activity, content: <TraceLog channel="modbus" /> },
     ]} />
   )
+}
+
+/** 從站：本平台開埠，對方（任何 Modbus TCP 主站）來讀寫。 */
+export function ModbusServerPage() {
+  return <ModbusRolePage role="server" kind="modbus_server" section="modbus-server" />
+}
+
+/** 主站：本平台連出去讀寫任何 Modbus TCP 設備。 */
+export function ModbusClientPage() {
+  return <ModbusRolePage role="client" kind="modbus_tcp" section="modbus-client" />
 }

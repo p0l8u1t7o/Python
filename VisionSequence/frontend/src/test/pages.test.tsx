@@ -76,12 +76,12 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByTestId('tcp-command')).toBeInTheDocument()  // 預設分頁：試打
     fireEvent.click(await screen.findByRole('tab', { name: 'Commands and results' }))
     expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
-    const { ModbusPage } = await import('@/pages/integration/ModbusPage')
-    renderPage(<ModbusPage />, { route: '/integration/modbus' })
+    const { ModbusServerPage } = await import('@/pages/integration/ModbusPage')
+    renderPage(<ModbusServerPage />, { route: '/integration/modbus-server' })
     expect(await screen.findByTestId('conn-create')).toBeInTheDocument()  // 預設分頁：連線
     fireEvent.click(screen.getByRole('tab', { name: 'Address format and mapping' }))
-    expect(await screen.findByText('Two roles')).toBeInTheDocument()
-    expect(screen.getAllByText(/slave|server/i).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Server (modbus_server): the master connects to us')).toBeInTheDocument()
+    expect(screen.getAllByText(/master|server/i).length).toBeGreaterThan(0)
   })
 
   it('IntegrationPage capture tab lists connected capture clients and channels', async () => {

@@ -76,7 +76,7 @@ const GLOSSARY_CORE: [string, string, string][] = [
   ['Golden case', 'GoldenCase', 'An image with an expectation (OK, NG or any), from an upload or a batch result'],
   ['Regression / baseline', 'Regression / Baseline', 'Run every case against its expectation and the baseline; regressed means the baseline matched and this run does not'],
   ['Station', 'station_id', 'The station identifier carried by every run (VISION_STATION_ID)'],
-  ['Connection', 'Connection', 'An outgoing connection to Modbus TCP or a host system (modbus_tcp, modbus_server, tcp_client, dio_sim, plugin); write_modbus refers to it by name'],
+  ['Connection', 'Connection', 'An outgoing connection to Modbus TCP or a host system (modbus_tcp, modbus_server, tcp_client, plugin); write_modbus refers to it by name'],
   ['Export / import', '.flow.json', 'A stably serialised flow file; import upserts on the name and the {SOURCE} placeholder is replaced by the source you choose'],
   ['Node / step', 'Node', 'One box on the canvas — an instance of a tool'],
   ['Tool', 'ToolTypeDef', 'A kind in the palette (grayscale, blob…); the key is its unique identifier'],

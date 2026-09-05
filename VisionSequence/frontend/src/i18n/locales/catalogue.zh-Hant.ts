@@ -19,15 +19,14 @@ export default {
   },
   connectionKinds: {
     modbus_tcp: {
-      label: 'Modbus/TCP 主站（連到 PLC）',
-      description: '平台當客戶端連到 PLC 或設備，讀寫它的線圈與暫存器；也可以輪詢一個位址當觸發來源。',
+      label: 'Modbus TCP 主站（連到設備）',
+      description: '平台當客戶端連到任何 Modbus TCP 設備——控制器、驅動器、I/O 模組、上位程式——讀寫它的線圈與暫存器；也可以輪詢一個位址當觸發來源。',
     },
     modbus_server: {
-      label: 'Modbus/TCP 從站（本機開埠等待連入）',
-      description: '平台當伺服器開埠，讓 PLC 或上位機來讀寫我們的暫存器；流程把結果寫進去給主站取用。設定觸發位址後，主站寫入旗標就會執行一次流程。伺服器啟動時會自動開埠。',
+      label: 'Modbus TCP 從站（本機開埠等待連入）',
+      description: '平台當伺服器開埠，讓任何 Modbus TCP 主站來讀寫我們的暫存器；流程把結果寫進去給主站取用。設定觸發位址後，主站寫入旗標就會執行一次流程。伺服器啟動時會自動開埠。',
     },
     tcp_client: { label: 'TCP 文字或 JSON（上位機）' },
-    dio_sim: { label: '模擬數位 I/O（只記錄狀態）' },
     plugin: { label: '外掛（自行指定類別路徑）' },
   },
   /** Advanced／Augment 這些分組名稱每個訓練方式共用。 */

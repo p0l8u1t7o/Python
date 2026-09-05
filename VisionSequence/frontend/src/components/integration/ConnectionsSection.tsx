@@ -1,10 +1,10 @@
 /**
- * 連線：主動輸出的目的地（apps/comm）。**由各自的整合頁管理**——`section` 決定這一頁收哪些
- * kind（modbus：modbus_tcp／modbus_server／dio_sim；tcp：tcp_client 與所有沒宣告的外掛），
+ * 連線：主動輸出的目的地（apps/comm）。**由各自的整合頁管理**——`kind` 固定這一頁只管一種
+ * （Modbus 從站／主站頁，建立時不必選種類）；沒給 `kind` 時由 `section` 決定收哪些 kind（tcp 頁），
  * 後端 `comm.writers.kinds()` 是唯一事實來源，所以不會有連線找不到頁面而刪不掉。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
  * modbus_tcp（主站，連到 PLC）／modbus_server（從站，本機開埠讓 PLC 來讀寫）: host/port/unit_id/timeout_s|size/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
- * dio_sim: channels；plugin: class。管理員才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
+ * plugin: class。有 connections 功能的人才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -43,7 +43,6 @@ const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
   modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
   modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
   tcp_client: { host: '127.0.0.1', port: 9000, timeout_s: 2, template: '', newline: '\n', wait_reply: false },
-  dio_sim: { channels: ['DO0', 'DO1', 'OK', 'NG'] },
   plugin: { class: '' },
 }
 
@@ -78,7 +77,7 @@ function ResultBox({ result }: { result: ConnectionOpResult | null }) {
   )
 }
 
-export function ConnectionsSection({ section }: { section: string }) {
+export function ConnectionsSection({ section, kind }: { section: string; kind?: string }) {
   const { t } = useTranslation()
   const toast = useToast()
   const auth = useAuth()
@@ -93,9 +92,9 @@ export function ConnectionsSection({ section }: { section: string }) {
   const canManage = auth.can('connections')
 
   // 這一頁只管自己的 kind；後端沒宣告 section 的（舊外掛）一律歸 tcp 那頁，才不會有孤兒連線。
-  const kindList = useMemo(() => (kinds.data ?? []).filter((k) => (k.section || 'tcp') === section), [kinds.data, section])
+  const kindList = useMemo(() => (kinds.data ?? []).filter((k) => (kind ? k.kind === kind : (k.section || 'tcp') === section)), [kinds.data, section, kind])
   const ownKinds = useMemo(() => new Set(kindList.map((k) => k.kind)), [kindList])
-  const rows = useMemo(() => (connections.data?.items ?? []).filter((c) => ownKinds.has(c.kind) || (section === 'tcp' && !(kinds.data ?? []).some((k) => k.kind === c.kind))), [connections.data, ownKinds, kinds.data, section])
+  const rows = useMemo(() => (connections.data?.items ?? []).filter((c) => (kind ? c.kind === kind : ownKinds.has(c.kind) || (section === 'tcp' && !(kinds.data ?? []).some((k) => k.kind === c.kind)))), [connections.data, ownKinds, kinds.data, section, kind])
   const fieldsFor = useMemo(() => new Map(kindList.map((k) => [k.kind, k.fields])), [kindList])
 
   function defaultsFor(kind: string): Record<string, unknown> {
@@ -105,8 +104,8 @@ export function ConnectionsSection({ section }: { section: string }) {
     return out
   }
   function openCreate() {
-    const kind = kindList[0]?.kind ?? 'dio_sim'
-    setEditing({ id: null, body: { name: '', kind, config: defaultsFor(kind), is_enabled: true } })
+    const first = kind ?? kindList[0]?.kind ?? ''
+    setEditing({ id: null, body: { name: '', kind: first, config: defaultsFor(first), is_enabled: true } })
   }
 
   async function onSave() {
@@ -219,7 +218,7 @@ export function ConnectionsSection({ section }: { section: string }) {
                         <span className="inline-flex gap-1">
                           <IconButton label={t('connections.state')} onClick={() => void readState({ conn: c, addresses: '', result: null, loading: false })}><Activity size={15} /></IconButton>
                           <IconButton label={t('connections.test')} disabled={!canManage} onClick={() => void onTest(c)} data-testid="conn-test"><Plug size={15} /></IconButton>
-                          <IconButton label={t('connections.write')} disabled={!canManage} onClick={() => setWriting({ conn: c, values: c.kind === 'dio_sim' ? JSON.stringify({ [(Array.isArray(c.config.channels) ? (c.config.channels as string[])[0] : 'DO0') ?? 'DO0']: 1 }) : '{"coil:0": 1}', result: null })} data-testid="conn-write"><PenLine size={15} /></IconButton>
+                          <IconButton label={t('connections.write')} disabled={!canManage} onClick={() => setWriting({ conn: c, values: c.kind.startsWith('modbus') ? '{"coil:0": 1}' : '{"judge": "OK"}', result: null })} data-testid="conn-write"><PenLine size={15} /></IconButton>
                           <IconButton label={t('common.edit')} disabled={!canManage} onClick={() => setEditing({ id: c.id, body: { name: c.name, kind: c.kind, config: { ...c.config }, is_enabled: c.is_enabled } })}><Pencil size={15} /></IconButton>
                           <IconButton label={t('common.delete')} disabled={!canManage} onClick={() => setPendingDelete(c)}><Trash2 size={15} className="text-critical" /></IconButton>
                         </span>
@@ -247,7 +246,7 @@ export function ConnectionsSection({ section }: { section: string }) {
         {body ? (
           <div className="space-y-3">
             <TextInput label={t('common.name')} required autoFocus value={body.name} onChange={(e) => setEditing({ ...editing!, body: { ...body, name: e.target.value } })} data-testid="conn-name-input" />
-            <Select label={t('connections.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} data-testid="conn-kind" />
+            {kind ? null : <Select label={t('connections.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} data-testid="conn-kind" />}
             {(fieldsFor.get(body.kind) ?? []).filter((f) => !TRIGGER_FIELDS.has(f)).map((field) => (
               <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
             ))}
@@ -290,14 +289,10 @@ export function ConnectionsSection({ section }: { section: string }) {
         {stateView ? (
           <div className="space-y-3">
             <p className="text-xs text-muted">{t('connections.stateHint')}</p>
-            {stateView.conn.kind !== 'dio_sim' ? (
-              <div className="flex items-end gap-2">
-                <TextInput label={t('connections.stateAddresses')} className="font-mono" value={stateView.addresses} onChange={(e) => setStateView({ ...stateView, addresses: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && void readState(stateView)} />
-                <Button size="sm" loading={stateView.loading} onClick={() => void readState(stateView)}>{t('connections.read')}</Button>
-              </div>
-            ) : (
-              <Button size="sm" loading={stateView.loading} onClick={() => void readState(stateView)}>{t('common.refresh')}</Button>
-            )}
+            <div className="flex items-end gap-2">
+              <TextInput label={t('connections.stateAddresses')} className="font-mono" value={stateView.addresses} onChange={(e) => setStateView({ ...stateView, addresses: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && void readState(stateView)} />
+              <Button size="sm" loading={stateView.loading} onClick={() => void readState(stateView)}>{t('connections.read')}</Button>
+            </div>
             {stateView.result?.ok && stateView.result.values && Object.keys(stateView.result.values).length ? (
               <table className="w-full text-xs" data-testid="conn-state-table">
                 <tbody className="divide-y divide-line">

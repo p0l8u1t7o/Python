@@ -8,7 +8,7 @@ PATCH  /vision/connections/{id}             管理員；設定變更會重開連
 DELETE /vision/connections/{id}             管理員
 POST   /vision/connections/{id}/test        管理員：重新連線並回 info（失敗回 ok=false 與錯誤）
 POST   /vision/connections/{id}/write       管理員：手動寫一筆 {"values": {"coil:0": 1}}
-GET    /vision/connections/{id}/state       讀回 ?addresses=a,b（dio_sim 不帶參數回全部狀態）
+GET    /vision/connections/{id}/state       讀回 ?addresses=a,b
 
 從站（`modbus_server`）與設了 `trigger_address` 的連線在建立／修改後會立刻開起來，
 伺服器啟動時也會自動開（`writers.autostart()`，由 `manage.py serve` 呼叫）。
@@ -170,8 +170,6 @@ def connection_state(request: HttpRequest, connection_id: int, addresses: str = 
     try:
         writer = writers.open_connection(conn)
         wanted = [a.strip() for a in addresses.split(",") if a.strip()]
-        if not wanted and isinstance(writer, writers.DioSimWriter):
-            return {"ok": True, "values": dict(writer.state), "info": writer.info()}
         return {"ok": True, "values": writer.read(wanted) if wanted else {}, "info": writer.info()}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)[:500]}

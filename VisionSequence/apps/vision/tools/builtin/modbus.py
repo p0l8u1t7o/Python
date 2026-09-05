@@ -27,7 +27,7 @@ def _scalar(value: Any) -> Any:
 class WriteModbusTool(Tool):
     key = "write_modbus"
     label = "Write Modbus"
-    description = "Writes the verdict, named outputs or input values to a Modbus TCP or host connection through a mapping table. By default a failed write only logs a warning and does not fail the run."
+    description = "Writes the verdict, named outputs or input values to a Modbus TCP device or host connection through a mapping table. By default a failed write only logs a warning and does not fail the run."
     category = "output"
     icon = "Cable"
     connection_params = ("connection",)
@@ -37,7 +37,7 @@ class WriteModbusTool(Tool):
             "mapping", "Mapping", kind="json", required=True, default=[{"src": "judge", "address": "coil:0", "dtype": "bool"}],
             help_text='An array of {"src": source, "address": address, "dtype"?: bool|int|float, "scale"?: factor, "offset"?: offset, "value"?: constant}. '
                       "The source may be judge (OK becomes 1, NG becomes 0), a named output, or this step's inputs v0, v1 and so on. "
-                      "Modbus addresses look like coil:10, holding:100, holding:100:float32 or holding:100:int32; tcp_client uses template field names and dio_sim uses channel names.",
+                      "Modbus addresses look like coil:10, holding:100, holding:100:float32 or holding:100:int32; tcp_client uses template field names.",
         ),
         Param("on_error", "On write failure", kind="select", default="warn", options=[
             {"value": "warn", "label": "Degrade: log a warning and carry on"},

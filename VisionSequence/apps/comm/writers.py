@@ -232,7 +232,7 @@ class ModbusTcpWriter(Writer):
     """config: host, port=502, unit_id=1, timeout_s=2, word_order=big|little"""
 
     kind = "modbus_tcp"
-    label = "Modbus/TCP client (connects to the PLC)"
+    label = "Modbus TCP client (connects to a device)"
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -330,7 +330,7 @@ _WRITE_FC = {"coil": 5, "discrete": 2, "holding": 16, "input": 4}
 
 
 class ModbusServerWriter(Writer):
-    """本平台當 **Modbus TCP 從站（server）**：PLC／上位機當主站來讀寫我們的暫存器。
+    """本平台當 **Modbus TCP 從站（server）**：對方（任何 Modbus TCP 主站）來讀寫我們的暫存器。
 
     config: host=0.0.0.0, port=5020, unit_id=1, size=512（每區的點數）, word_order=big|little
     - `write()` 把值寫進 datastore（主站下次讀就拿得到）；`read()` 讀 datastore（看主站寫了什麼）。
@@ -578,49 +578,12 @@ class TcpClientWriter(Writer):
 
 
 # ---------------------------------------------------------------------------
-# 模擬 DIO
-# ---------------------------------------------------------------------------
-class DioSimWriter(Writer):
-    """只記錄狀態，供沒有設備的機器測流程。config.channels 有列時，寫到未宣告的通道算失敗。"""
-
-    kind = "dio_sim"
-
-    def __init__(self, config, **kw) -> None:
-        super().__init__(config, **kw)
-        channels = config.get("channels") or []
-        if isinstance(channels, int):
-            channels = [f"DO{i}" for i in range(channels)]
-        self.channels = [str(c) for c in channels]
-        self.state: dict[str, Any] = {c: 0 for c in self.channels}
-        self.history: list[dict[str, Any]] = []
-
-    def _write(self, values: dict[str, Any]) -> dict[str, Any]:
-        if self.channels:
-            unknown = [a for a in values if a not in self.channels]
-            if unknown:
-                raise CommError(f"Undeclared channels: {', '.join(unknown)}")
-        for address, value in values.items():
-            self.state[address] = value
-        self.history.append({"at": time.time(), "values": dict(values)})
-        if len(self.history) > 100:
-            self.history = self.history[-100:]
-        return {"written": len(values), "values": dict(values)}
-
-    def _read(self, addresses: list[str]) -> dict[str, Any]:
-        return {a: self.state.get(a) for a in addresses}
-
-    def info(self) -> dict[str, Any]:
-        return {**super().info(), "channels": self.channels, "state": dict(self.state)}
-
-
-# ---------------------------------------------------------------------------
 # registry / 快取
 # ---------------------------------------------------------------------------
 _BUILTIN: dict[str, type[Writer]] = {
     "modbus_tcp": ModbusTcpWriter,
     "modbus_server": ModbusServerWriter,
     "tcp_client": TcpClientWriter,
-    "dio_sim": DioSimWriter,
 }
 
 #: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
@@ -846,12 +809,11 @@ FALLBACK_SECTION = "tcp"
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "section": "modbus", "label": "Modbus/TCP client (connects to the PLC)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
-         "description": "The platform is the client and connects to the PLC or device, reading and writing its coils and registers. It can also poll one address as a trigger source."},
-        {"kind": "modbus_server", "section": "modbus", "label": "Modbus/TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
-         "description": "The platform is the server and listens on a port for the PLC or host system to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
+        {"kind": "modbus_tcp", "section": "modbus-client", "label": "Modbus TCP client (connects to a device)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
+         "description": "The platform is the client and connects to any Modbus TCP device — a controller, a drive, an I/O module, a host program — reading and writing its coils and registers. It can also poll one address as a trigger source."},
+        {"kind": "modbus_server", "section": "modbus-server", "label": "Modbus TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
+         "description": "The platform is the server and listens on a port for any Modbus TCP master to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
         {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
-        {"kind": "dio_sim", "section": "modbus", "label": "Simulated digital I/O (state is only recorded)", "fields": ["channels"]},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
@@ -869,7 +831,7 @@ def kinds() -> list[dict[str, Any]]:
 
 
 __all__ = [
-    "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter", "DioSimWriter",
+    "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter",
     "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer", "register_kind",
     "connection_info", "prefetch_connections", "get_connection", "kinds",
 ]

@@ -8,12 +8,15 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 
+from tests.fakes import MEMORY_KIND, register_memory_kind
 from apps.accounts.models import AuthToken, UserPref
 from apps.core import audit
 from apps.core.models import AuditLog
 from apps.vision.models import Flow, ImageSource
 
 VISION = settings.VISION
+
+register_memory_kind()
 
 
 def graph(threshold: int = 60) -> dict:
@@ -114,7 +117,7 @@ class AuditTrailTests(TestCase):
         self.assertIn("role", AuditLog.objects.get(action="user.update").detail)
 
     def test_connection_changes_are_recorded(self):
-        r = self.client.post("/api/vision/connections", data=json.dumps({"name": "plc", "kind": "dio_sim", "config": {"channels": ["DO0"]}}),
+        r = self.client.post("/api/vision/connections", data=json.dumps({"name": "plc", "kind": MEMORY_KIND, "config": {"channels": ["DO0"]}}),
                              content_type="application/json", **self.auth)
         self.assertEqual(r.status_code, 201, r.content)
         cid = r.json()["id"]

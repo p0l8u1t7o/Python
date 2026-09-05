@@ -171,9 +171,9 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 每次執行寫檔；AI 不生成，需要時提醒使用者手動加。
 
 ## write_modbus / read_modbus
-整合用（AI 不主動生成，使用者要求「把結果寫給 PLC」「從 PLC 讀料號」時才加）：write_modbus 依對映表把判定或具名輸出寫到連線；
-read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連線讀 PLC 主站寫進平台的值），輸出 values／value／ok，publish=true 才進具名輸出。
-兩者都要先在「外部整合 ▸ 連線」建立連線，以名稱引用；失敗預設降級不讓 run 失敗。
+整合用（AI 不主動生成，使用者要求「把結果寫給設備」「從 Modbus 讀料號」時才加）：write_modbus 依對映表把判定或具名輸出寫到連線；
+read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連線讀對方主站寫進平台的值），輸出 values／value／ok，publish=true 才進具名輸出。
+兩者都要先在「外部整合 ▸ Modbus 主站／從站」頁建立連線，以名稱引用；失敗預設降級不讓 run 失敗。
 
 ## note
 不是工具：畫布便利貼（type=note、不接邊），寫流程說明或調機備註。

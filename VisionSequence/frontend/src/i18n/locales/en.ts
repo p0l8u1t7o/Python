@@ -1,8 +1,7 @@
 /** English. Partial: anything missing falls back to zh-Hant. */
 const en = {
   app: { name: 'VisionSequence', tagline: 'Machine vision flow platform' },
-  nav: {
-    expandGroup: 'Expand', collapseGroup: 'Collapse',
+  nav: { 
     batch: 'Batch test',
     dashboard: 'Dashboard',
     flows: 'Flows',
@@ -556,12 +555,13 @@ const en = {
   integration: {
     title: 'Integration',
     subtitle: 'API reference and test tools for integrators',
-    tabs: { http: 'HTTP API', tcp: 'TCP commands', events: 'Event monitor', modbus: 'Modbus', capture: 'Capture client' },
+    tabs: { http: 'HTTP API', tcp: 'TCP commands', events: 'Event monitor', modbusServer: 'Modbus server', modbusClient: 'Modbus client', capture: 'Capture client' },
     desc: {
       http: 'External systems trigger a run over HTTP and get the report back; try it here and copy a curl / Python / C# snippet.',
       tcp: 'The easiest interface for equipment: one line in, one JSON line back.',
       events: 'Subscribe to the SSE event stream and watch every run as it happens.',
-      modbus: 'Address format and mapping: write judgements and measurements into coils and registers, or read a recipe id and trigger flag back.',
+      modbusServer: 'The platform listens and any Modbus TCP master reads and writes its registers: server connections, the trigger flag, address format and mapping.',
+      modbusClient: 'The platform connects out to any Modbus TCP device: client connections, address format and mapping.',
       capture: 'The capture client that drives cameras on their own PC and sends images here.',
     },
     sections: { try: 'Try it', format: 'Response format', codes: 'Failure codes', connections: 'Connections', guide: 'Address format and mapping', clients: 'Capture clients' },
@@ -775,8 +775,8 @@ const en = {
       dl: ['How do I build a training dataset?', 'How is a trained model used in a flow?', 'Which trainers are supported?'],
       sources: ['How do I create an image source from a folder?', 'Which camera protocols are supported?', 'What is a synthetic source?'],
       assets: ['What asset types exist?', 'How do I create a template asset from an image?', 'Where do model assets come from?'],
-      dashboard: ['How do I create my first flow?', 'How does a PLC trigger a run and read results?', 'Batch test versus Golden Set?'],
-      page: ['How do I create my first flow?', 'How does a PLC trigger a run and read results?', 'Batch test versus Golden Set?'],
+      dashboard: ['How do I create my first flow?', 'How does a Modbus device trigger a run and read results?', 'Batch test versus Golden Set?'],
+      page: ['How do I create my first flow?', 'How does a Modbus device trigger a run and read results?', 'Batch test versus Golden Set?'],
     },
   },
   batchPage: {
@@ -1046,13 +1046,13 @@ const enExtra = {
     write: 'Manual write',
     writeTitle: 'Manual write: {{name}}',
     writeValues: 'values (JSON object)',
-    writeValuesHint: 'modbus: {"coil:0": 1, "holding:100": 123}; tcp_client: template field names; dio_sim: channel names',
+    writeValuesHint: 'modbus: {"coil:0": 1, "holding:100": 123}; tcp_client: template field names',
     writeInvalid: 'values must be a JSON object',
     writeOk: 'Wrote {{count}} values',
     writeFailed: 'Write failed: {{error}}',
     state: 'State',
     stateTitle: 'State: {{name}}',
-    stateHint: 'dio_sim shows all channels; other kinds read back the given addresses (comma separated)',
+    stateHint: 'Reads the given addresses back (comma separated), e.g. coil:0,holding:100',
     stateAddresses: 'Addresses',
     read: 'Read',
     deleteTitle: 'Delete connection',
@@ -1086,7 +1086,7 @@ const enExtra = {
       class: 'Class path (module:Class)',
     },
     trigger: {
-      title: 'Trigger: run when the PLC sets a flag',
+      title: 'Trigger: run when the master sets a flag',
       hint: 'When the master writes a non-zero value to the trigger address, the platform runs the chosen flow once; it can clear the flag and set a done address afterwards. Leave blank to disable.',
     },
     triggerModes: { rising: 'Rising edge (runs once when it goes non-zero)', nonzero: 'While non-zero (keeps running)' },
@@ -1117,15 +1117,14 @@ const enExtra = {
   },
   stats: { cols: { recipe: 'Recipe', station: 'Station' }, station: 'Station', recipe: 'Recipe' },
   integration: {
-    tabs: { modbus: 'Modbus output' },
     http: { recipe: 'Recipe', recipeHint: 'Recipe name or id; blank = default recipe' },
     modbus: {
       rolesTitle: 'Two roles',
-      rolesHint: 'Pick the one that matches the PLC; both are created in the connection list above.',
-      clientTitle: 'Client (modbus_tcp): we connect to the PLC',
+      rolesHint: 'Pick the side that matches your device: a device that is itself a Modbus server (a slave) needs the client page; a master that polls needs the server page. Any device that speaks Modbus TCP can be integrated.',
+      clientTitle: 'Client (modbus_tcp): we connect to the device',
       clientHint: 'The platform acts as the master and connects to the device address to read and write its coils and registers.',
-      serverTitle: 'Server (modbus_server): the PLC connects to us',
-      serverHint: 'The platform listens (port 5020 by default) and the PLC acts as master, reading and writing our registers. Flows write results into registers for the master to poll, and the master can write a recipe id or trigger flag that a flow reads back.',
+      serverTitle: 'Server (modbus_server): the master connects to us',
+      serverHint: 'The platform listens (port 5020 by default) and the other side acts as master, reading and writing our registers. Flows write results into registers for the master to poll, and the master can write a recipe id or trigger flag that a flow reads back.',
       toolsTitle: 'Flow tools',
       toolLines: ['Write Modbus (write_modbus): map judgement, named outputs or input ports to addresses.', 'Read Modbus (read_modbus): read coils and registers from a connection — the device in client mode, or what the master wrote in server mode; optionally publish them as named outputs.'],
       readExample: 'Read list (read_modbus)',
@@ -1139,7 +1138,6 @@ const enExtra = {
       addressLines: [
         'modbus_tcp: coil:10 (coil), holding:100 (16-bit register), holding:100:int32, holding:100:float32 (two words, word_order per connection)',
         'tcp_client: template {field} name; without a template the whole JSON is sent',
-        'dio_sim: channel name (restricted to declared channels when the connection lists them)',
       ],
       example: 'Example',
       degrade: 'Degrade: when the connection is missing, times out or the write fails, on_error=warn (default) appends to run.warnings and continues; on_error=fail fails the run.',
