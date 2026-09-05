@@ -1,4 +1,4 @@
-"""主動輸出（Modbus TCP）：writers（tcp_client / modbus_tcp / modbus_server）、write_modbus 工具降級、連線 API。
+"""主動輸出（Modbus TCP）：writers（tcp_client / tcp_image / modbus_tcp / modbus_server）、write_modbus／send_image 工具降級、連線 API。
 
 沒有硬體的部分用 tests/fakes.MemoryWriter 當假設備（kind="memory_sim"，模組載入時就註冊）。"""
 
@@ -13,6 +13,7 @@ import time
 from types import SimpleNamespace
 from unittest import mock
 
+import numpy as np
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
@@ -604,6 +605,160 @@ class TraceTests(SimpleTestCase):
         self.assertFalse(trace.entries("modbus")[-1]["ok"])
 
 
+class FrameServer(threading.Thread):
+    """收 tcp_image 影格的假上位機：照 IMAGE_HEAD 拆包，把 (表頭, 影像 bytes) 收進 frames。"""
+
+    def __init__(self) -> None:
+        super().__init__(daemon=True)
+        self.port = free_port()
+        self.frames: list[tuple[dict, bytes]] = []
+        self.got = threading.Event()
+        self.sock = socket.socket()
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(("127.0.0.1", self.port))
+        self.sock.listen(2)
+        self.sock.settimeout(5)
+
+    @staticmethod
+    def _exact(conn: socket.socket, n: int) -> bytes:
+        buf = b""
+        while len(buf) < n:
+            chunk = conn.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("closed")
+            buf += chunk
+        return buf
+
+    def run(self) -> None:
+        try:
+            while True:
+                conn, _ = self.sock.accept()
+                conn.settimeout(5)
+                try:
+                    while True:
+                        magic, version, hlen, plen = writers.IMAGE_HEAD.unpack(self._exact(conn, writers.IMAGE_HEAD.size))
+                        assert magic == writers.IMAGE_MAGIC and version == 1, (magic, version)
+                        header = json.loads(self._exact(conn, hlen))
+                        payload = self._exact(conn, plen) if plen else b""
+                        self.frames.append((header, payload))
+                        self.got.set()
+                except (ConnectionError, OSError):
+                    continue
+        except OSError:
+            return
+
+    def wait_frames(self, n: int, timeout: float = 3.0) -> None:
+        deadline = time.time() + timeout
+        while len(self.frames) < n and time.time() < deadline:
+            time.sleep(0.02)
+
+
+class TcpImageTests(SimpleTestCase):
+    """tcp_image 連線：影格格式、三種編碼、只有表頭的 write()、斷線重連。"""
+
+    def _image(self):
+        img = np.zeros((48, 64, 3), dtype=np.uint8)
+        img[10:30, 20:50] = (0, 255, 0)
+        return img
+
+    def test_jpeg_png_raw_frames(self):
+        srv = FrameServer()
+        srv.start()
+        try:
+            w = writers.TcpImageWriter({"host": "127.0.0.1", "port": srv.port, "encoding": "jpeg", "quality": 90}, name="img")
+            out = w.send_image(self._image(), {"run_id": "r1", "values": {"judge": "OK"}})
+            self.assertEqual((out["encoding"], out["width"], out["height"]), ("jpeg", 64, 48))
+            w.send_image(self._image(), encoding="png")
+            w.send_image(self._image(), encoding="raw")
+            srv.wait_frames(3)
+            self.assertEqual(len(srv.frames), 3)
+            head, payload = srv.frames[0]
+            self.assertEqual((head["name"], head["run_id"], head["values"]["judge"], head["encoding"]), ("img", "r1", "OK", "jpeg"))
+            self.assertTrue(payload.startswith(b"\xff\xd8"))  # JPEG SOI
+            self.assertTrue(srv.frames[1][1].startswith(b"\x89PNG"))
+            head, payload = srv.frames[2]
+            self.assertEqual(len(payload), 48 * 64 * 3)
+            self.assertEqual((head["dtype"], head["channels"]), ("uint8", 3))
+            self.assertEqual(np.frombuffer(payload, dtype=np.uint8).reshape(48, 64, 3)[20, 30].tolist(), [0, 255, 0])
+            self.assertEqual(w.info()["frames"], 3)
+            self.assertGreater(w.info()["bytes_sent"], 48 * 64 * 3)
+        finally:
+            w.close()
+            srv.sock.close()
+
+    def test_write_sends_header_only_frame(self):
+        srv = FrameServer()
+        srv.start()
+        try:
+            w = writers.TcpImageWriter({"host": "127.0.0.1", "port": srv.port}, name="img")
+            self.assertEqual(w.write({"judge": 1, "width": 12.5})["written"], 2)
+            srv.wait_frames(1)
+            head, payload = srv.frames[0]
+            self.assertEqual(head["values"], {"judge": 1, "width": 12.5})
+            self.assertEqual(payload, b"")
+            with self.assertRaises(CommError):
+                w.read(["x"])
+        finally:
+            w.close()
+            srv.sock.close()
+
+    def test_bad_config(self):
+        with self.assertRaises(Exception):
+            writers.TcpImageWriter({"host": "127.0.0.1"}, name="img")
+        srv = FrameServer()
+        srv.start()
+        try:
+            with self.assertRaises(Exception):
+                writers.TcpImageWriter({"host": "127.0.0.1", "port": srv.port, "encoding": "gif"}, name="img")
+        finally:
+            srv.sock.close()
+
+    def test_unreachable_host_raises_comm_error(self):
+        with self.assertRaises(CommError):
+            writers.TcpImageWriter({"host": "127.0.0.1", "port": free_port(), "timeout_s": 0.3}, name="img")
+
+
+class SendImageToolTests(SimpleTestCase):
+    def tearDown(self):
+        writers.close_all()
+
+    def test_sends_with_verdict_and_outputs(self):
+        srv = FrameServer()
+        srv.start()
+        try:
+            w = writers.TcpImageWriter({"host": "127.0.0.1", "port": srv.port}, name="img")
+            writers.register_writer("img", w)
+            img = np.full((32, 40), 128, dtype=np.uint8)
+            r = run_tool("send_image", image=img, params={"connection": "img", "encoding": "png"},
+                         context={"_judge": "ng", "_outputs": {"count": 3, "judge": "NG", "big": np.zeros((2, 2))}})
+            self.assertEqual(r.status, "ok", r.message)
+            self.assertTrue(r.outputs["sent"])
+            self.assertGreater(r.outputs["bytes"], 0)
+            self.assertIn("png 40x32", r.message)
+            srv.wait_frames(1)
+            head, payload = srv.frames[0]
+            self.assertEqual(head["values"], {"count": 3, "judge": "ng"})  # ndarray 不進表頭
+            self.assertEqual(head["node"], "send_image")
+            self.assertTrue(payload.startswith(b"\x89PNG"))
+        finally:
+            srv.sock.close()
+
+    def test_only_ng_and_degrade(self):
+        img = np.zeros((8, 8), dtype=np.uint8)
+        r = run_tool("send_image", image=img, params={"connection": "nope"}, context={"_judge": "ok"})
+        self.assertEqual(r.status, "ok")
+        self.assertIn("degraded", r.message)
+        self.assertFalse(r.outputs["sent"])
+        r = run_tool("send_image", image=img, params={"connection": "nope", "on_error": "fail"}, context={"_judge": "ok"})
+        self.assertEqual(r.status, "error")
+        # 連線種類不是 tcp_image：一樣降級並說明
+        writers.register_writer("mem", MemoryWriter({}, name="mem"))
+        r = run_tool("send_image", image=img, params={"connection": "mem"}, context={"_judge": "ok"})
+        self.assertIn("cannot carry images", r.message)
+        r = run_tool("send_image", image=img, params={"connection": "mem", "only_ng": True}, context={"_judge": "ok"})
+        self.assertEqual(r.message, "OK, not sent")
+
+
 class WriteModbusToolTests(SimpleTestCase):
     def tearDown(self):
         writers.close_all()
@@ -741,7 +896,7 @@ class ConnectionApiTests(TestCase):
     def test_kinds(self):
         r = self.client.get("/api/vision/connections/kinds")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual({k["kind"] for k in r.json()["items"]} >= {"modbus_tcp", "modbus_server", "tcp_client", "plugin"}, True)
+        self.assertEqual({k["kind"] for k in r.json()["items"]} >= {"modbus_tcp", "modbus_server", "tcp_client", "tcp_image", "plugin"}, True)
         self.assertNotIn("dio_sim", {k["kind"] for k in r.json()["items"]})  # 模擬數位 I/O 已移除
 
     def test_crud_test_write_state(self):

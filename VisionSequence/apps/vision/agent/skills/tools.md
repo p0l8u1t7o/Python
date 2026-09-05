@@ -170,6 +170,10 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 ## save_image
 每次執行寫檔；AI 不生成，需要時提醒使用者手動加。
 
+## send_image
+整合用（使用者要求「把影像傳給上位機」「NG 圖送到 MES」時才加）：把該步驟的影像推給 tcp_image 連線（JPEG／PNG／raw），
+表頭帶 run_id、判定與具名輸出；only_ng=true 只送 NG；失敗預設降級不讓 run 失敗。放在流程尾端、判定之後，影像接想送的那一步的輸出。
+
 ## write_modbus / read_modbus
 整合用（AI 不主動生成，使用者要求「把結果寫給設備」「從 Modbus 讀料號」時才加）：write_modbus 依對映表把判定或具名輸出寫到連線；
 read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連線讀對方主站寫進平台的值），輸出 values／value／ok，publish=true 才進具名輸出。

@@ -27,6 +27,10 @@ export default {
       description: '平台当服务器开端口，让任何 Modbus TCP 主站来读写我们的寄存器；流程把结果写进去给主站取用。设置触发地址后，主站写入标志就会执行一次流程。服务器启动时会自动开端口。',
     },
     tcp_client: { label: 'TCP 文本或 JSON（上位机）' },
+    tcp_image: {
+      label: 'TCP 传图（上位机）',
+      description: '把流程某一步的图像经一条长连接推给上位程序：13 字节定长前缀、JSON 表头（尺寸、编码、run id、判定与具名输出）、图像 bytes（JPEG／PNG／原始像素）。',
+    },
     plugin: { label: '插件（自行指定类路径）' },
   },
   /** Advanced／Augment 这些分组名称每个训练方式共用。 */

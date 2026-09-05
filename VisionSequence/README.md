@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 67 個內建工具、180 個 API 端點、26 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁文件、後端 515 項＋前端 57 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 68 個內建工具、180 個 API 端點、26 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁文件、後端 515 項＋前端 57 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -81,7 +81,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 檢測／識別（8） | blob, defect_diff, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
 | 深度學習（9） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）；yolo_detect, yolo_segment, yolo_classify, yolo_pose, yolo_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
 | 邏輯（7） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, python_script（自寫 Python，管理員核准） |
-| 輸出（5） | judge, output, draw_result, save_image, write_modbus |
+| 輸出（6） | judge, output, draw_result, save_image, write_modbus, send_image（TCP 傳圖） |
 
 影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。
 

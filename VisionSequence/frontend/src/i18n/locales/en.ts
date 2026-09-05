@@ -558,7 +558,7 @@ const en = {
     tabs: { http: 'HTTP API', tcp: 'TCP commands', events: 'Event monitor', modbusServer: 'Modbus server', modbusClient: 'Modbus client', capture: 'Capture client', plugins: 'Plugins' },
     desc: {
       http: 'External systems trigger a run over HTTP and get the report back; try it here and copy a curl / Python / C# snippet.',
-      tcp: 'The easiest interface for equipment: one line in, one JSON line back.',
+      tcp: 'The easiest interface for equipment: one line in, one JSON line back. Outbound, the platform can push a line of text or JSON, or a whole image, to a host program.',
       events: 'Subscribe to the SSE event stream and watch every run as it happens.',
       modbusServer: 'The platform listens and any Modbus TCP master reads and writes its registers: server connections, the trigger flag, address format and mapping.',
       modbusClient: 'The platform connects out to any Modbus TCP device: client connections, address format and mapping.',
@@ -1084,6 +1084,8 @@ const enExtra = {
     deleted: 'Connection deleted',
     adminOnly: 'Only admins can create or edit connections',
     fields: {
+      encoding: 'Image encoding',
+      quality: 'JPEG quality',
       host: 'Host',
       port: 'Port',
       unit_id: 'Unit ID',
@@ -1113,6 +1115,7 @@ const enExtra = {
     },
     triggerModes: { rising: 'Rising edge (runs once when it goes non-zero)', nonzero: 'While non-zero (keeps running)' },
     wordOrders: { big: 'big (high word first)', little: 'little (low word first)' },
+    encodings: { jpeg: 'JPEG (small, lossy)', png: 'PNG (lossless)', raw: 'Raw pixels (no encoding)' },
   },
   viewer: {
     noImage: 'No image',

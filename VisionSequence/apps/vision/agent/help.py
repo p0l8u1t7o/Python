@@ -54,7 +54,7 @@ BILINGUAL = {
     "代理模式": "agentic mode", "步驟時間軸": "step timeline", "候選方案": "candidate", "影像標記": "image label",
     "自動調參": "autotune auto-tune coordinate descent", "定位補正": "locate correction fixture", "定位": "locate template match",
     "統計": "statistics stats yield", "每小時彙總": "hourly rollup", "影像封存": "image archive", "流程版本": "flow version",
-    "操作紀錄": "audit log", "站台": "station", "整合頁": "integration page",
+    "操作紀錄": "audit log", "站台": "station", "整合頁": "integration page", "傳圖": "send image tcp_image push", "上位機": "host program",
     "命令與結果": "trace commands results", "主站": "modbus client master", "從站": "modbus server slave",
     "寫入": "write", "讀取": "read", "暫存器": "register holding", "線圈": "coil", "觸發": "trigger",
     "配方": "recipe", "覆寫": "override", "回歸": "regression regress", "基準": "baseline", "案例": "golden case",

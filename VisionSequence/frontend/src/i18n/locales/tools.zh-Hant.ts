@@ -1757,6 +1757,21 @@ export default {
       image: "影像",
     },
   },
+  send_image: {
+    label: "傳送影像",
+    description: "把這一步的影像經 TCP 傳圖連線（種類 tcp_image）推給上位程式，表頭帶 run id、判定與具名輸出。預設失敗只記警告、不讓 run 失敗。",
+    params: {
+      connection: { label: "連線", help: "TCP 傳圖連線的名稱（在「外部整合 ▸ TCP」建立；填 id 也可以）。" },
+      encoding: { label: "編碼", options: { "": "依連線設定", jpeg: "JPEG", png: "PNG（無損）", raw: "原始像素" } },
+      quality: { label: "JPEG 品質", group: "進階" },
+      name: { label: "影格名稱", help: "放進表頭的 name；留空用連線名稱。", group: "進階" },
+      include_values: { label: "附上判定與輸出", help: "把 judge 與到目前為止的具名輸出放進表頭的 values。", group: "進階" },
+      only_ng: { label: "只送 NG" },
+      on_error: { label: "傳送失敗時", options: { warn: "降級：記警告、繼續", fail: "讓 run 失敗" } },
+      timeout_s: { label: "逾時（秒）", help: "0 用連線自己的逾時。", group: "進階" },
+    },
+    ports: { image: "影像", sent: "已送出", bytes: "位元組數" },
+  },
   save_image: {
     label: "存檔",
     description: "把影像存到資料夾（依判定 OK/NG 分子資料夾可選）。檔名含時間戳與 run id。",

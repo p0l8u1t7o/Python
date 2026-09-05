@@ -135,7 +135,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html" aria-current="page">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Triggering: the master writes a flag and the platform inspects</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus and read_modbus</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Triggering: the master writes a flag and the platform inspects</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
 
 <h1>Pushing results out (Modbus TCP and host systems)</h1>
 <p><a href="automation.html">Automation</a> is <strong>passive</strong>: equipment or a host system calls us and collects the result. This page is <strong>active</strong>: when a flow finishes, the engine writes the judgement and the measurements into the equipment's coils and registers over Modbus TCP, or pushes a line of text to a host system. It works like image sources — create a <strong>connection</strong> on the settings page, then put a <strong>write Modbus</strong> (<code>write_modbus</code>) tool in the flow, point it at that connection and fill in the mapping table.</p>
@@ -160,6 +160,9 @@
 <td><pre>{"host": "192.168.1.20", "port": 5000, "timeout_s": 2,
  "template": "RESULT {judge} {width_px}",
  "newline": "\n", "encoding": "utf-8", "wait_reply": false}</pre>Without a <code>template</code> it sends <code>{"judge": 1, "width_px": 12.3}\n</code>. A field missing from the template becomes an empty string rather than an error. <code>wait_reply=true</code> waits for one line back and puts it in the result as <code>reply</code>.</td></tr>
+<tr><td><code>tcp_image</code></td><td>Pushes the image of a flow step to a host program over one long-lived connection, with the send_image tool. One frame = a fixed 13-byte prefix (<code>VSIM</code>, version 1, header length, payload length; big-endian) + a JSON header (name, run_id, flow_id, node, width, height, channels, dtype, encoding, values) + the image bytes. <code>write()</code> on this kind sends a header-only frame carrying the values, so a mapping table can use it too.</td>
+<td><pre>{"host": "192.168.1.20", "port": 9001, "timeout_s": 2,
+ "encoding": "jpeg", "quality": 85}</pre><code>encoding</code> is jpeg (small, lossy), png (lossless) or raw (row-major pixels; the header carries the shape and dtype). The first failed send reconnects once before giving up.</td></tr>
 <tr><td><code>plugin</code> or a plugin's own kind</td><td>A Writer of your own (OPC UA, a vendor SDK, …)</td><td>Drop a .py file subclassing <code>Writer</code> into <code>plugins/</code> and it loads automatically. A CSV logger ships as an example; see <a href="#plugin">§6</a> and <a href="plugins.html">Plugins</a>.</td></tr>
 </table>
 <p>Common field: <code>timeout_s</code>, the timeout of a single write, two seconds by default. Changing a connection's settings (PATCH) closes the old connection, and the next run reopens it.</p>
@@ -198,7 +201,21 @@ Master  : sees done → reads the results → done := 0</pre>
 <p>The offset may be hexadecimal (<code>holding:0x100</code>). It is the <strong>zero-based protocol address</strong>: where the device's manual says 40001, write <code>holding:0</code>.</p>
 <p>For <code>tcp_client</code> the "address" is a field name in the template (<code>{judge}</code> → <code>"judge"</code>).</p>
 
-<h2 id="tool">3. The flow tools: write_modbus and read_modbus</h2>
+<h2 id="tool">3. The flow tools: write_modbus, read_modbus and send_image</h2>
+<p><strong>send_image</strong> pushes the image on its input port to a <code>tcp_image</code> connection: choose the connection, optionally override the encoding and JPEG quality, tick "rejects only" to send NG images alone, and the header carries the run id, the verdict and the named outputs so far (<code>include_values</code>). Like write_modbus it degrades by default — a failed send logs a warning and the run goes on — unless "fail the run" is chosen. A minimal receiver in Python:</p>
+<pre>import json, socket, struct
+HEAD = struct.Struct("&gt;4sBII")
+srv = socket.socket(); srv.bind(("0.0.0.0", 9001)); srv.listen(1)
+conn, _ = srv.accept()
+def exact(n):
+    buf = b""
+    while len(buf) &lt; n:
+        chunk = conn.recv(n - len(buf)); assert chunk; buf += chunk
+    return buf
+while True:
+    magic, version, hlen, plen = HEAD.unpack(exact(HEAD.size))
+    header = json.loads(exact(hlen)); image = exact(plen)
+    print(header["run_id"], header.get("values"), len(image), "bytes")</pre>
 <table>
 <tr><th>Parameter</th><th>What it does</th></tr>
 <tr><td><code>connection</code> (text)</td><td>The connection's <strong>name</strong> (a numeric id is also accepted).</td></tr>

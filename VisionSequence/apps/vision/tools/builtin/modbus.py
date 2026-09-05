@@ -1,4 +1,4 @@
-"""主動輸出（Modbus TCP／上位機）：把 run 的結果依對映表寫到通訊連線（apps.comm）。
+"""主動輸出（Modbus TCP／上位機）：把 run 的結果依對映表寫到通訊連線（apps.comm），或把影像推給上位機。
 
 熱路徑不碰資料庫：連線由 apps.comm 的 prefetch hook 在呼叫者執行緒開好，
 這裡只用 get_writer(name) 從記憶體拿；寫入失敗預設降級（run 仍 ok、記 warning）。
@@ -234,4 +234,68 @@ class ReadModbusTool(Tool):
         return Result(outputs={"values": [], "value": 0.0, "ok": False}, status="ok", message=f"Read failed (degraded): {reason}"[:500], detail=detail)
 
 
-TOOLS = [WriteModbusTool(), ReadModbusTool()]
+
+class SendImageTool(Tool):
+    key = "send_image"
+    accepts = ("u8", "u16", "f32")
+    label = "Send image"
+    description = "Pushes this step's image to a host program through a TCP image connection (kind tcp_image), with the run id, verdict and named outputs in the frame header. By default a failed send only logs a warning and does not fail the run."
+    category = "output"
+    icon = "Send"
+    connection_params = ("connection",)
+    params = [
+        Param("connection", "Connection", kind="text", required=True, help_text="The name of a TCP image connection (create one under External integration ▸ TCP; an id also works)."),
+        Param("encoding", "Encoding", kind="select", default="", options=[
+            {"value": "", "label": "As the connection is set"},
+            {"value": "jpeg", "label": "JPEG"},
+            {"value": "png", "label": "PNG (lossless)"},
+            {"value": "raw", "label": "Raw pixels"},
+        ]),
+        Param("quality", "JPEG quality", kind="number", default=85, minimum=1, maximum=100, step=1, group="Advanced"),
+        Param("name", "Frame name", kind="text", default="", help_text="Goes into the header as name; blank uses the connection name.", group="Advanced"),
+        Param("include_values", "Include verdict and outputs", kind="boolean", default=True, help_text="Puts judge and the named outputs so far into the header as values.", group="Advanced"),
+        Param("only_ng", "Rejects only", kind="boolean", default=False),
+        Param("on_error", "On send failure", kind="select", default="warn", options=[
+            {"value": "warn", "label": "Degrade: log a warning and carry on"},
+            {"value": "fail", "label": "Fail the run"},
+        ]),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, help_text="0 uses the connection's own timeout.", group="Advanced"),
+    ]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("sent", "Sent", "bool"), Port("bytes", "Bytes", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        judge = ctx.context.get("_judge")
+        if ctx.flag("only_ng") and str(judge or "ok").lower() != "ng":
+            return Result(outputs={"sent": False, "bytes": 0}, message="OK, not sent")
+        name = str(ctx.param("connection") or "")
+        writer = get_writer(name)
+        on_error = str(ctx.param("on_error") or "warn")
+
+        def degrade(reason: str) -> Result:
+            if on_error == "fail":
+                return Result(status="error", outputs={"sent": False, "bytes": 0}, message=reason, detail={"error": reason})
+            return Result(outputs={"sent": False, "bytes": 0}, message=f"Send skipped (degraded): {reason}", detail={"error": reason})
+
+        if writer is None:
+            return degrade(f"Connection '{name}' is not open or does not exist")
+        send = getattr(writer, "send_image", None)
+        if send is None:
+            return degrade(f"Connection '{name}' ({writer.kind}) cannot carry images; use a TCP image connection")
+        header: dict[str, Any] = {"run_id": ctx.run_id, "flow_id": ctx.flow_id, "node": ctx.node.get("id", "")}
+        if ctx.param("name"):
+            header["name"] = str(ctx.param("name"))
+        if ctx.flag("include_values", True):
+            values = {k: _scalar(v) for k, v in (ctx.context.get("_outputs") or {}).items() if not isinstance(v, np.ndarray)}
+            if judge is not None:
+                values["judge"] = judge
+            header["values"] = values
+        timeout = float(ctx.param("timeout_s") or 0) or None
+        try:
+            out = send(image, header, encoding=str(ctx.param("encoding") or "") or None, quality=int(ctx.param("quality") or 85), timeout=timeout)
+        except CommError as exc:
+            return degrade(str(exc))
+        return Result(outputs={"sent": True, "bytes": out["bytes"]}, message=f"Sent {out['bytes'] / 1024:.1f} KB ({out['encoding']} {out['width']}x{out['height']})", detail=out)
+
+TOOLS = [WriteModbusTool(), ReadModbusTool(), SendImageTool()]

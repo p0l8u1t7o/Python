@@ -262,6 +262,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("output", "output", None, {"name": "v"}, {"value": 1.23456}, {}),
         ("write_modbus", "write_modbus", None, {"connection": "bench_sim", "mapping": [{"src": "judge", "address": "ok"}]}, {}, {"_judge": "OK"}),
         ("read_modbus", "read_modbus", None, {"connection": "bench_sim", "mapping": [{"name": "ok", "address": "ok"}]}, {}, {}),
+        ("send_image (degraded)", "send_image", gray, {"connection": "bench_sim"}, {}, {"_judge": "OK"}),
         ("save_image png", "save_image", gray, {"folder": os.path.join(s.folder, "saved"), "format": "png", "split_by_judge": False}, {}, {}),
         ("draw_result", "draw_result", big, {}, {"overlays": overlays}, {"_judge": "ok"}),
     ]

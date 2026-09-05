@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：67 個內建工具（8 類）、180 個 API 端點、26 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁 docs、後端 515 項＋前端 57 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：68 個內建工具（8 類）、180 個 API 端點、26 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁 docs、後端 515 項＋前端 57 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -159,7 +159,7 @@
 - 特徵驅動參數：`analysis` 的 `mad`（穩健 σ）／`smooth_mad`（低通後 σ，紋理面缺陷門檻用）／`gradient`／`color_std`／`area`；`synth` 的 `_blob_min_area`、`_clip`；計數意圖 `round_target` 加圓形度下限排除線段。新增意圖＝`INTENT_KINDS`＋`intents.parse` 規則＋`synth.SYNTHESIZERS` 合成器＋`clarify.build_questions` 缺口問題＋`tests/test_agent.py` 案例。規則式微調映射在 `service.refine_rules`。詳見 docs/agent.html。
 
 ### 外部整合（apps/comm、apps/vision/trace.py、前端 pages/integration）
-- **連線 kind**：`modbus_tcp`（主站，連到任何 Modbus TCP 設備）、`modbus_server`（**從站**，本平台開埠讓對方主站來讀寫）、`tcp_client`、外掛。**沒有模擬數位 I/O**（對使用者沒有實質功能，已移除）；測試要假設備用 `tests/fakes.MemoryWriter`（kind `memory_sim`）。產品文案不寫「PLC」——任何支援 Modbus TCP 的裝置都能整合，用「設備／主站」。從站是 `ModbusServerWriter`：pymodbus 3.15 的 `SimData/SimDevice`＋`ModbusTcpServer` 跑在自己的執行緒與事件迴圈，跨執行緒存取一律 `asyncio.run_coroutine_threadsafe(server.async_getValues/async_setValues(...), loop)`（功能碼決定區域：coil 1/5、discrete 2、holding 3/16、input 4；位址就是主站看到的 0 起算位址）。`_require()` 讓關閉後的讀寫回 CommError 而不是 AttributeError。
+- **連線 kind**：`modbus_tcp`（主站，連到任何 Modbus TCP 設備）、`modbus_server`（**從站**，本平台開埠讓對方主站來讀寫）、`tcp_client`、`tcp_image`（**TCP 傳圖**：`IMAGE_HEAD` 13 位元組前綴＋JSON 表頭＋影像 bytes，`send_image` 工具用它推影像；`write()` 送只有表頭的影格）、外掛。**沒有模擬數位 I/O**（對使用者沒有實質功能，已移除）；測試要假設備用 `tests/fakes.MemoryWriter`（kind `memory_sim`）。產品文案不寫「PLC」——任何支援 Modbus TCP 的裝置都能整合，用「設備／主站」。從站是 `ModbusServerWriter`：pymodbus 3.15 的 `SimData/SimDevice`＋`ModbusTcpServer` 跑在自己的執行緒與事件迴圈，跨執行緒存取一律 `asyncio.run_coroutine_threadsafe(server.async_getValues/async_setValues(...), loop)`（功能碼決定區域：coil 1/5、discrete 2、holding 3/16、input 4；位址就是主站看到的 0 起算位址）。`_require()` 讓關閉後的讀寫回 CommError 而不是 AttributeError。
 - **流程工具**：`write_modbus`（寫）與 `read_modbus`（讀，`category="logic"`；輸出 `values`／`value`／`ok`，`publish=True` 才併進具名輸出）。兩者都用 `get_writer(name)` 拿記憶體中的連線，失敗預設降級。
 - **整合追蹤**（命令與結果）：`apps/vision/trace.py` 行程內環形緩衝（頻道 http／tcp／modbus／capture，各 300 筆）。**沒人在看時只記錯誤**（`trace.watch()` 由整合頁查詢時續期 2 分鐘），熱路徑只做一次 append。掛勾在 `tcp_server`（指令與回應）、`comm.writers.Writer._trace`（寫入／讀取）、`ModbusServerWriter._trace_pdu`（主站的每一則請求，pymodbus 的 `trace_pdu` 回呼）、`api.run_flow`（HTTP 觸發）、`capture/hub`（連線）。API：`GET/DELETE /vision/integration/trace?channel=`。
 - **TCP 一行指令**（`tcp_server.py`）：`_split` 用 shlex 分詞（值含空白要引號）、`_parse_kv` 只把**乾淨的十進位數字**轉型（`lot=00123`／`1_000`／`1e3` 一律留字串——料號與條碼不能被改掉）、不是 `key=value` 的引數回 `bad_argument`。失敗一律帶 `code`（設備靠它分支，中文訊息會潤飾）。`TRIGGER` 與 `POST run?wait=0` 都回 `run_id`。

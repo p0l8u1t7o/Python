@@ -1757,6 +1757,21 @@ export default {
       image: "影像",
     },
   },
+  send_image: {
+    label: "传送图像",
+    description: "把这一步的图像经 TCP 传图连接（种类 tcp_image）推给上位程序，表头带 run id、判定与具名输出。默认失败只记警告、不让 run 失败。",
+    params: {
+      connection: { label: "连接", help: "TCP 传图连接的名称（在「外部集成 ▸ TCP」创建；填 id 也可以）。" },
+      encoding: { label: "编码", options: { "": "依连接设置", jpeg: "JPEG", png: "PNG（无损）", raw: "原始像素" } },
+      quality: { label: "JPEG 质量", group: "进阶" },
+      name: { label: "帧名称", help: "放进表头的 name；留空用连接名称。", group: "进阶" },
+      include_values: { label: "附上判定与输出", help: "把 judge 与到目前为止的具名输出放进表头的 values。", group: "进阶" },
+      only_ng: { label: "只送 NG" },
+      on_error: { label: "传送失败时", options: { warn: "降级：记警告、继续", fail: "让 run 失败" } },
+      timeout_s: { label: "超时（秒）", help: "0 用连接自己的超时。", group: "进阶" },
+    },
+    ports: { image: "图像", sent: "已送出", bytes: "字节数" },
+  },
   save_image: {
     label: "存档",
     description: "把影像存到资料夹（依判定 OK/NG 分子资料夹可选）。档名含时间戳与 run id。",

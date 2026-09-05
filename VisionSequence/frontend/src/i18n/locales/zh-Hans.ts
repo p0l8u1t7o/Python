@@ -781,6 +781,8 @@ const zhHans = {
     deleted: '已删除连接',
     adminOnly: '只有管理员能添加／修改连接',
     fields: {
+      encoding: '图像编码',
+      quality: 'JPEG 质量',
       host: '主机',
       port: '端口',
       unit_id: 'Unit ID',
@@ -810,6 +812,7 @@ const zhHans = {
     },
     triggerModes: { rising: '边缘触发（0 变非零才跑一次）', nonzero: '持续触发（只要非零就一直跑）' },
     wordOrders: { big: 'big（高字组在前）', little: 'little（低字组在前）' },
+    encodings: { jpeg: 'JPEG（文件小、有损）', png: 'PNG（无损）', raw: '原始像素（不编码）' },
   },
   viewer: {
     noImage: '尚无影像',
@@ -1073,7 +1076,7 @@ const zhHans = {
     tabs: { http: 'HTTP API', tcp: 'TCP 指令', events: '事件监看', modbusServer: 'Modbus 从站', modbusClient: 'Modbus 主站', capture: '采集端', plugins: '插件' },
     desc: {
       http: '外部系统以 HTTP 触发执行并取回结果；可在这里直接试打并生成 curl／Python／C# 片段。',
-      tcp: '设备最容易接的接口：一行指令、一行 JSON 回应。',
+      tcp: '设备最容易接的接口：送一行指令、回一行 JSON。主动输出可把一行文本／JSON 或整张图像推给上位机。',
       events: '订阅 SSE 事件流，实时看到每一次执行的结果。',
       modbusServer: '本平台开端口，任何 Modbus TCP 主站来读写我们的寄存器：从站连接、触发标志、地址格式与映射。',
       modbusClient: '本平台连出去读写任何 Modbus TCP 设备：主站连接、地址格式与映射。',

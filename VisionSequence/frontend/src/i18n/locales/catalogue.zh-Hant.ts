@@ -27,6 +27,10 @@ export default {
       description: '平台當伺服器開埠，讓任何 Modbus TCP 主站來讀寫我們的暫存器；流程把結果寫進去給主站取用。設定觸發位址後，主站寫入旗標就會執行一次流程。伺服器啟動時會自動開埠。',
     },
     tcp_client: { label: 'TCP 文字或 JSON（上位機）' },
+    tcp_image: {
+      label: 'TCP 傳圖（上位機）',
+      description: '把流程某一步的影像經一條長連線推給上位程式：13 位元組定長前綴、JSON 表頭（尺寸、編碼、run id、判定與具名輸出）、影像 bytes（JPEG／PNG／原始像素）。',
+    },
     plugin: { label: '外掛（自行指定類別路徑）' },
   },
   /** Advanced／Augment 這些分組名稱每個訓練方式共用。 */

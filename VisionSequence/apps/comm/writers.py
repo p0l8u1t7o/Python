@@ -28,10 +28,13 @@ import importlib
 import json
 import logging
 import socket
+import struct
 import threading
 import time
 from typing import Any
 
+import cv2
+import numpy as np
 from django.conf import settings
 
 from apps.comm import triggers
@@ -578,12 +581,153 @@ class TcpClientWriter(Writer):
 
 
 # ---------------------------------------------------------------------------
+# TCP 傳圖：把影像推給上位機
+# ---------------------------------------------------------------------------
+#: 影格：MAGIC(4) + 版本(1) + 表頭長度(4, big-endian) + 影像長度(4, big-endian) + 表頭 JSON + 影像 bytes。
+#: 表頭 JSON 帶 name／run_id／flow_id／node／width／height／channels／dtype／encoding／values；
+#: 影像用 jpeg／png（標準檔案 bytes）或 raw（row-major、表頭有 shape 與 dtype）。
+IMAGE_MAGIC = b"VSIM"
+IMAGE_VERSION = 1
+IMAGE_HEAD = struct.Struct(">4sBII")
+IMAGE_ENCODINGS = ("jpeg", "png", "raw")
+
+
+class TcpImageWriter(Writer):
+    """把影像連同一小段 JSON 表頭推給上位機（長連線）。
+
+    config: host, port, timeout_s=2, encoding=jpeg|png|raw, quality=85（jpeg）。
+    `send_image()` 送影像；`write(values)` 送一個只有表頭、沒有影像的影格（值放在表頭的 values），
+    所以同一條連線也能用 write_modbus 的對映表送純量。對方只要照 IMAGE_HEAD 讀四個欄位就能拆包。
+    """
+
+    kind = "tcp_image"
+    section = "tcp"
+    label = "TCP image push (a host system)"
+    description = "Pushes the image of a flow step to a host program over one long-lived TCP connection: a fixed 13-byte prefix, a JSON header (size, encoding, run id, verdict and named outputs) and the image bytes as JPEG, PNG or raw pixels."
+    fields = ["host", "port", "timeout_s", "encoding", "quality"]
+
+    def __init__(self, config, **kw) -> None:
+        super().__init__(config, **kw)
+        self.host = str(config.get("host") or "")
+        self.port = int(config.get("port", 0) or 0)
+        if not self.host or not self.port:
+            raise ValidationError("tcp_image needs a host and a port", code="comm_config")
+        self.encoding = str(config.get("encoding") or "jpeg").lower()
+        if self.encoding not in IMAGE_ENCODINGS:
+            raise ValidationError(f"encoding must be one of {', '.join(IMAGE_ENCODINGS)}", code="comm_config")
+        self.quality = int(config.get("quality", 85) or 85)
+        self.sock: socket.socket | None = None
+        self.frames = 0
+        self.bytes_sent = 0
+        self.last_frame_bytes = 0
+        self._open()
+
+    def _open(self) -> None:
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except OSError as exc:
+            raise CommError(f"Cannot reach {self.host}:{self.port}: {exc}") from exc
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock = sock
+
+    def _close(self) -> None:
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            finally:
+                self.sock = None
+
+    # -- 影格 -------------------------------------------------------------
+    def encode(self, image: np.ndarray, encoding: str | None = None, quality: int | None = None) -> tuple[bytes, dict[str, Any]]:
+        """影像 → (bytes, 表頭欄位)。raw 送原始像素（不正規化）；jpeg／png 先把非 8 位元正規化。"""
+        enc = (encoding or self.encoding).lower()
+        if enc not in IMAGE_ENCODINGS:
+            raise CommError(f"Unknown image encoding '{enc}'")
+        meta: dict[str, Any] = {"width": int(image.shape[1]), "height": int(image.shape[0]),
+                                "channels": int(image.shape[2]) if image.ndim == 3 else 1, "dtype": str(image.dtype), "encoding": enc}
+        if enc == "raw":
+            return np.ascontiguousarray(image).tobytes(), meta
+        img = image
+        if img.dtype != np.uint8:
+            lo, hi = float(np.nanmin(img)), float(np.nanmax(img))
+            scale = 255.0 / (hi - lo) if hi > lo else 1.0
+            img = np.clip((img.astype(np.float32) - lo) * scale, 0, 255).astype(np.uint8)
+        params = [int(cv2.IMWRITE_JPEG_QUALITY), int(quality or self.quality)] if enc == "jpeg" else []
+        ok, buf = cv2.imencode(".jpg" if enc == "jpeg" else ".png", img, params)
+        if not ok:
+            raise CommError("Could not encode the image")
+        return buf.tobytes(), meta
+
+    @staticmethod
+    def frame(header: dict[str, Any], payload: bytes = b"") -> bytes:
+        head = json.dumps(header, ensure_ascii=False, default=str).encode("utf-8")
+        return IMAGE_HEAD.pack(IMAGE_MAGIC, IMAGE_VERSION, len(head), len(payload)) + head + payload
+
+    def _send(self, data: bytes) -> None:
+        """送一個影格；第一次失敗關閉重開再試一次（上位機重啟後第一張不該就掉）。"""
+        for attempt in (1, 2):
+            try:
+                if self.sock is None:
+                    self._open()
+                self.sock.settimeout(self.timeout)
+                self.sock.sendall(data)
+                return
+            except (OSError, CommError) as exc:
+                self._close()
+                if attempt == 2:
+                    raise CommError(f"Send failed: {exc}") from exc
+                self.reconnects += 1
+
+    def send_image(self, image: np.ndarray, header: dict[str, Any] | None = None, *, encoding: str | None = None,
+                   quality: int | None = None, timeout: float | None = None) -> dict[str, Any]:
+        """把一張影像推出去；回 {bytes, encoding, width, height}。失敗拋 CommError（工具層決定要不要降級）。"""
+        started = time.perf_counter()
+        with self._lock:
+            old = self.timeout
+            if timeout:
+                self.timeout = float(timeout)
+            try:
+                payload, meta = self.encode(image, encoding, quality)
+                head = {**(header or {}), **meta, "name": (header or {}).get("name") or self.name}
+                data = self.frame(head, payload)
+                try:
+                    self._send(data)
+                except CommError as exc:
+                    self.errors += 1
+                    self.last_error = str(exc)
+                    self._trace("send_image", {k: v for k, v in head.items() if k != "values"}, {"error": str(exc)}, started, ok=False)
+                    raise
+                self.writes += 1
+                self.frames += 1
+                self.bytes_sent += len(data)
+                self.last_frame_bytes = len(payload)
+                self.last_write_at = time.time()
+                out = {"bytes": len(payload), "encoding": meta["encoding"], "width": meta["width"], "height": meta["height"]}
+                self._trace("send_image", {k: v for k, v in head.items() if k != "values"}, out, started)
+                return out
+            finally:
+                self.timeout = old
+
+    def _write(self, values: dict[str, Any]) -> dict[str, Any]:
+        self._send(self.frame({"name": self.name, "values": values}))
+        return {"written": len(values)}
+
+    def _read(self, addresses: list[str]) -> dict[str, Any]:
+        raise CommError("tcp_image cannot read back")
+
+    def info(self) -> dict[str, Any]:
+        return {**super().info(), "host": self.host, "port": self.port, "connected": self.sock is not None,
+                "encoding": self.encoding, "frames": self.frames, "bytes_sent": self.bytes_sent, "last_frame_bytes": self.last_frame_bytes}
+
+
+# ---------------------------------------------------------------------------
 # registry / 快取
 # ---------------------------------------------------------------------------
 _BUILTIN: dict[str, type[Writer]] = {
     "modbus_tcp": ModbusTcpWriter,
     "modbus_server": ModbusServerWriter,
     "tcp_client": TcpClientWriter,
+    "tcp_image": TcpImageWriter,
 }
 
 #: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
@@ -814,6 +958,7 @@ def kinds() -> list[dict[str, Any]]:
         {"kind": "modbus_server", "section": "modbus-server", "label": "Modbus TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
          "description": "The platform is the server and listens on a port for any Modbus TCP master to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
         {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
+        {"kind": "tcp_image", "section": "tcp", "label": TcpImageWriter.label, "fields": list(TcpImageWriter.fields), "description": TcpImageWriter.description},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
@@ -831,7 +976,7 @@ def kinds() -> list[dict[str, Any]]:
 
 
 __all__ = [
-    "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter",
+    "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter", "TcpImageWriter", "IMAGE_HEAD", "IMAGE_MAGIC",
     "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer", "register_kind",
     "connection_info", "prefetch_connections", "get_connection", "kinds",
 ]

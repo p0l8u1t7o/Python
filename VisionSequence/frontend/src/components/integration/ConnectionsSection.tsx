@@ -3,7 +3,7 @@
  * （Modbus 從站／主站頁，建立時不必選種類）；沒給 `kind` 時由 `section` 決定收哪些 kind（tcp／plugins 頁），
  * 後端 `comm.writers.kinds()` 是唯一事實來源，所以不會有連線找不到頁面而刪不掉。
  * kind 來自 GET /connections/kinds（含 fields）；config 表單依 kind 的 fields 產生：
- * modbus_tcp（主站，連到 PLC）／modbus_server（從站，本機開埠讓 PLC 來讀寫）: host/port/unit_id/timeout_s|size/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；
+ * modbus_tcp（主站，連到設備）／modbus_server（從站，本機開埠讓對方主站來讀寫）: host/port/unit_id/timeout_s|size/word_order；tcp_client: host/port/timeout_s/template/newline/wait_reply；tcp_image: host/port/timeout_s/encoding/quality；
  * plugin: class。有 connections 功能的人才能新增／修改／測試／手動寫入；所有登入者可看列表與狀態。
  */
 import { useMemo, useState } from 'react'
@@ -27,6 +27,8 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'mul
   template: 'multiline',
   newline: 'text',
   wait_reply: 'boolean',
+  encoding: 'select',
+  quality: 'number',
   channels: 'list',
   class: 'text',
   trigger_address: 'text',
@@ -43,6 +45,7 @@ const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
   modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
   modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
   tcp_client: { host: '127.0.0.1', port: 9000, timeout_s: 2, template: '', newline: '\n', wait_reply: false },
+  tcp_image: { host: '127.0.0.1', port: 9001, timeout_s: 2, encoding: 'jpeg', quality: 85 },
   plugin: { class: '' },
 }
 
@@ -53,6 +56,9 @@ function ConfigField({ field, value, onChange }: { field: string; value: unknown
   if (type === 'boolean') return <Checkbox label={label} checked={Boolean(value)} onChange={onChange} />
   if (type === 'select' && field === 'word_order') {
     return <Select label={label} value={String(value ?? 'big')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'big', label: t('connections.wordOrders.big') }, { value: 'little', label: t('connections.wordOrders.little') }]} />
+  }
+  if (type === 'select' && field === 'encoding') {
+    return <Select label={label} value={String(value ?? 'jpeg')} onChange={(e) => onChange(e.target.value)} options={['jpeg', 'png', 'raw'].map((v) => ({ value: v, label: t(`connections.encodings.${v}`) }))} />
   }
   if (type === 'select' && field === 'trigger_mode') {
     return <Select label={label} value={String(value ?? 'rising')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'rising', label: t('connections.triggerModes.rising') }, { value: 'nonzero', label: t('connections.triggerModes.nonzero') }]} />

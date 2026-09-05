@@ -781,6 +781,8 @@ const zhHant = {
     deleted: '已刪除連線',
     adminOnly: '只有管理員能新增／修改連線',
     fields: {
+      encoding: '影像編碼',
+      quality: 'JPEG 品質',
       host: '主機',
       port: '埠',
       unit_id: 'Unit ID',
@@ -810,6 +812,7 @@ const zhHant = {
     },
     triggerModes: { rising: '邊緣觸發（0 變非零才跑一次）', nonzero: '持續觸發（只要非零就一直跑）' },
     wordOrders: { big: 'big（高字組在前）', little: 'little（低字組在前）' },
+    encodings: { jpeg: 'JPEG（檔案小、有損）', png: 'PNG（無損）', raw: '原始像素（不編碼）' },
   },
   viewer: {
     noImage: '尚無影像',
@@ -1073,7 +1076,7 @@ const zhHant = {
     tabs: { http: 'HTTP API', tcp: 'TCP 指令', events: '事件監看', modbusServer: 'Modbus 從站', modbusClient: 'Modbus 主站', capture: '擷取端', plugins: '外掛' },
     desc: {
       http: '外部系統以 HTTP 觸發執行並取回結果；可在這裡直接試打並產生 curl／Python／C# 片段。',
-      tcp: '設備最容易接的介面：一行指令、一行 JSON 回應。',
+      tcp: '設備最容易接的介面：送一行指令、回一行 JSON。主動輸出可把一行文字／JSON 或整張影像推給上位機。',
       events: '訂閱 SSE 事件串流，即時看到每一次執行的結果。',
       modbusServer: '本平台開埠，任何 Modbus TCP 主站來讀寫我們的暫存器：從站連線、觸發旗標、位址格式與對映。',
       modbusClient: '本平台連出去讀寫任何 Modbus TCP 設備：主站連線、位址格式與對映。',
