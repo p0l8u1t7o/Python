@@ -1,4 +1,4 @@
-"""資料夾外掛：把 .py 檔丟進專案根目錄的 plugins/ 就會自動掛載，不用改 .env。
+"""資料夾外掛：把 .py 檔丟進外掛資料夾（VISION_PLUGIN_DIR，預設 <VS_HOME>/plugins）就會自動掛載，不用改 .env。
 
 支援三類物件（都用繼承，放同一個檔案裡也可以）：
     apps.vision.tools.base.Tool          自訂工具（畫布調色盤）
@@ -125,29 +125,55 @@ def _requirements_path(path: Path) -> Path | None:
 
 
 def _requirements_hint(path: Path) -> str:
-    """外掛附 requirements.txt 時，在缺依賴的錯誤旁提示安裝指令。"""
+    """外掛附 requirements.txt 時，在缺依賴的錯誤旁提示安裝指令（用這個行程的 python，發行版沒有 .venv）。"""
     req = (path / "requirements.txt") if path.is_dir() else path.with_suffix(".requirements.txt")
     if req.exists():
-        return f'Install the plugin dependencies first: .venv\\Scripts\\pip install -r "{req}"'
-    return "A plugin's dependencies must be installed into the platform's .venv, because it loads in the same process; see the integration section of the plugins documentation."
+        return f'Install the plugin dependencies first: "{sys.executable}" -m pip install -r "{req}" (on a deployed station: vsctl plugins deps)'
+    return "A plugin's dependencies must be installed into the platform's Python, because it loads in the same process; see the integration section of the plugins documentation."
+
+
+#: 外掛資料夾在 sys.modules 裡的套件名：不管資料夾在哪，外掛一律是 plugins.<name>（資料夾型外掛的相對 import 才成立）。
+PACKAGE_NAME = "plugins"
+
+
+def _ensure_package(root: Path) -> str:
+    """把外掛資料夾註冊成頂層套件 `plugins`：有 __init__.py 就執行它，沒有就當 namespace package。
+    已經指到同一個資料夾就直接用；指到別處（測試換目錄）就整包換掉並丟掉舊子模組。"""
+    root = root.resolve()
+    existing = sys.modules.get(PACKAGE_NAME)
+    if existing is not None:
+        paths = [Path(p).resolve() for p in (getattr(existing, "__path__", None) or [])]
+        if root in paths:
+            return PACKAGE_NAME
+        for name in [n for n in sys.modules if n == PACKAGE_NAME or n.startswith(PACKAGE_NAME + ".")]:
+            del sys.modules[name]
+    init = root / "__init__.py"
+    if init.exists():
+        spec = importlib.util.spec_from_file_location(PACKAGE_NAME, init, submodule_search_locations=[str(root)])
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load {init}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[PACKAGE_NAME] = module
+        spec.loader.exec_module(module)
+    else:
+        module = ModuleType(PACKAGE_NAME)
+        module.__path__ = [str(root)]  # type: ignore[attr-defined]
+        module.__package__ = PACKAGE_NAME
+        sys.modules[PACKAGE_NAME] = module
+    importlib.invalidate_caches()
+    return PACKAGE_NAME
 
 
 def _import(path: Path) -> ModuleType:
-    """優先用套件路徑 import（plugins/ 是專案根目錄下的套件）；其他位置用檔案路徑載入。
-    path 是 .py 檔（單檔外掛）或含 __init__.py 的資料夾（資料夾型外掛，掛載點是它的 __init__）。"""
-    package_root = Path(settings.BASE_DIR) / "plugins"
-    if path.parent.resolve() == package_root.resolve() and (package_root / "__init__.py").exists():
-        return importlib.import_module(f"plugins.{path.stem}")
-    name = f"_vs_folder_plugin_{path.stem}"
-    target = path / "__init__.py" if path.is_dir() else path
-    locations = [str(path)] if path.is_dir() else None
-    spec = importlib.util.spec_from_file_location(name, target, submodule_search_locations=locations)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
+    """一律以 plugins.<name> 載入（path 是 .py 檔或含 __init__.py 的資料夾）；同名但檔案不同（另一個資料夾）就重新載入。"""
+    pkg = _ensure_package(path.parent)
+    name = f"{pkg}.{path.stem}"
+    target = (path / "__init__.py") if path.is_dir() else path
+    cached = sys.modules.get(name)
+    if cached is not None and Path(getattr(cached, "__file__", "") or "").resolve() != target.resolve():
+        for stale in [n for n in sys.modules if n == name or n.startswith(name + ".")]:
+            del sys.modules[stale]
+    return importlib.import_module(name)
 
 
 def _register_module(module: ModuleType) -> list[str]:

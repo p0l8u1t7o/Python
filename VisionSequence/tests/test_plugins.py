@@ -164,6 +164,56 @@ class FolderLoaderTests(SimpleTestCase):
         finally:
             base.unregister("t_pkg")
 
+    def test_out_of_tree_folder_gets_package_semantics(self):
+        """發行版的外掛資料夾在程式樹外：載入後一樣是 plugins.<name>，資料夾型外掛的相對 import 與 __module__ 判斷成立。"""
+        import sys
+
+        from apps.core import plugins as loader
+
+        pkg = os.path.join(self.folder, "outside")
+        os.makedirs(pkg)
+        with open(os.path.join(pkg, "impl.py"), "w", encoding="utf-8") as f:
+            f.write(textwrap.dedent("""
+                from apps.vision.tools.base import Result, Tool
+                from .helper import LABEL
+
+                class OutTool(Tool):
+                    key = "t_outside"
+                    label = LABEL
+                    def execute(self, ctx):
+                        return Result(outputs={})
+            """))
+        with open(os.path.join(pkg, "helper.py"), "w", encoding="utf-8") as f:
+            f.write("LABEL = 'outside'\n")
+        with open(os.path.join(pkg, "__init__.py"), "w", encoding="utf-8") as f:
+            f.write("from .impl import OutTool\n")
+        saved = {n: m for n, m in sys.modules.items() if n == "plugins" or n.startswith("plugins.")}
+        try:
+            mounted = load_folder_plugins(self.folder, force=True)
+            self.assertIn("tool:t_outside", mounted)
+            self.assertEqual(sys.modules["plugins.outside"].OutTool.__module__, "plugins.outside.impl")
+            self.assertTrue(sys.modules["plugins"].__path__[0].lower().startswith(os.path.realpath(self.folder).lower()))
+            self.assertNotIn("_vs_folder_plugin_outside", sys.modules)
+            # 換回平台自己的 plugins/ 之後，套件與子模組跟著換（沒有殘留）
+            loader._ensure_package(loader.plugin_dir())
+            self.assertNotIn("plugins.outside", sys.modules)
+        finally:
+            base.unregister("t_outside")
+            for name in [n for n in sys.modules if n == "plugins" or n.startswith("plugins.")]:
+                del sys.modules[name]
+            sys.modules.update(saved)
+
+    def test_requirements_hint_uses_this_python(self):
+        from apps.core import plugins as loader
+
+        pkg = os.path.join(self.folder, "hinted")
+        os.makedirs(pkg)
+        open(os.path.join(pkg, "requirements.txt"), "w").close()
+        hint = loader._requirements_hint(__import__("pathlib").Path(pkg))
+        self.assertIn(__import__("sys").executable, hint)
+        self.assertIn("vsctl plugins deps", hint)
+        self.assertNotIn("Scripts\pip", hint)  # 不再寫死 .venvScriptspip
+
     def test_missing_dependency_hint(self):
         """外掛缺依賴：整體不炸、log 提示安裝該外掛的 requirements.txt。"""
         pkg = os.path.join(self.folder, "needs_dep")
@@ -250,6 +300,42 @@ class InventoryTests(SimpleTestCase):
         self.assertEqual(rows["inv_second.py"]["mounted"], ["comm:inv_second_kind"])
         # 外掛沒宣告 section 就歸外掛頁
         self.assertEqual({k["kind"]: k["section"] for k in writers.kinds()}["inv_second_kind"], "plugins")
+
+
+class PluginsCommandTests(SimpleTestCase):
+    """manage.py plugins --list：不用伺服器跑也能看外掛掛不掛得起來。"""
+
+    def test_list_json_and_table(self):
+        import io as _io
+        import json
+        import sys
+
+        from django.core.management import call_command
+
+        folder = temp_dir()
+        self.addCleanup(shutil.rmtree, folder, True)
+        with open(os.path.join(folder, "ok_plugin.py"), "w", encoding="utf-8") as f:
+            f.write("from apps.vision.tools.base import Result, Tool\nclass CmdTool(Tool):\n    key = 't_cmd'\n    label = 'cmd'\n    def execute(self, ctx):\n        return Result(outputs={})\n")
+        with open(os.path.join(folder, "broken.py"), "w", encoding="utf-8") as f:
+            f.write("import not_a_real_package_xyz\n")
+        saved = {n: m for n, m in sys.modules.items() if n == "plugins" or n.startswith("plugins.")}
+        try:
+            buf = _io.StringIO()
+            call_command("plugins", "--list", "--json", "--dir", folder, stdout=buf)
+            out = json.loads(buf.getvalue())
+            by_name = {it["name"]: it for it in out["items"]}
+            self.assertEqual(by_name["ok_plugin.py"]["status"], "ok")
+            self.assertEqual(by_name["ok_plugin.py"]["mounted"], ["tool:t_cmd"])
+            self.assertEqual(by_name["broken.py"]["status"], "error")
+            buf = _io.StringIO()
+            call_command("plugins", "--list", "--dir", folder, stdout=buf)
+            self.assertIn("ok_plugin.py", buf.getvalue())
+            self.assertIn("FAIL", buf.getvalue())
+        finally:
+            base.unregister("t_cmd")
+            for name in [n for n in sys.modules if n == "plugins" or n.startswith("plugins.")]:
+                del sys.modules[name]
+            sys.modules.update(saved)
 
 
 class PluginApiTests(TestCase):

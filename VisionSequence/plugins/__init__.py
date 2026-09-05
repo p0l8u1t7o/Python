@@ -1,4 +1,4 @@
-"""資料夾外掛：把 .py 檔丟進這個資料夾，重啟後端就會自動掛載，不用改 .env。
+"""資料夾外掛：把 .py 檔丟進這個資料夾（發行版是 <安裝目錄>\plugins），重啟後端就會自動掛載，不用改 .env。
 
 繼承下面任一基底類別即可（同一個檔案可以放多個、混著放）：
     apps.vision.tools.base.Tool          自訂工具 → 出現在畫布調色盤
@@ -18,7 +18,8 @@
     plugins/my_project/__init__.py   資料夾型外掛（整個外掛專案丟進來；__init__.py 匯出要掛載的類別）
 
 外掛有自己的依賴時附 requirements.txt（資料夾型放在資料夾內、單檔用 <name>.requirements.txt），
-`.\scripts\dev.ps1 -Setup` 會自動安裝；同行程載入，依賴必須裝進平台的 .venv。
+開發機 `.\scripts\dev.ps1 -Setup` 會自動安裝、發行版用 `vsctl plugins deps`（離線 wheel 放 <name>\wheels\ 或 _wheels\）；
+同行程載入，依賴必須裝進平台的 Python（3.12，wheel 要 cp312-win_amd64 或 py3-none-any）。
 Python 版本與平台不一致的外掛不能同行程載入，改跑 sidecar（見 docs/plugins.html「整合考量」）。
 
 規則與範例見 docs/plugins.html；本資料夾的 example_*.py 都是可直接執行的範例。
