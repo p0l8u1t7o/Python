@@ -2,8 +2,11 @@
 
     manage.py restore backup.zip --yes
 
-Overwrites the database and assets, so **stop the server first**. The existing database is kept
-next to the new one as `<name>.before-restore` in case the backup turns out to be the wrong one.
+Overwrites the database, assets, folder plugins and the capture client package, so **stop the server
+first**. The existing database is kept next to the new one as `<name>.before-restore` in case the
+backup turns out to be the wrong one. A backed-up .env is written next to the current one as
+`.env.from-backup` rather than over it: its absolute paths and keys belong to the old PC, merge by hand
+(vsctl env set) and restart.
 """
 
 from __future__ import annotations
@@ -61,10 +64,18 @@ class Command(BaseCommand):
             db.parent.mkdir(parents=True, exist_ok=True)
             with zf.open("db.sqlite3") as src, open(db, "wb") as out:
                 shutil.copyfileobj(src, out)
-            for prefix, root in (("assets", Path(settings.VISION["ASSET_DIR"])), ("archive", archive.root())):
+            targets = (
+                ("assets", Path(settings.VISION["ASSET_DIR"])), ("archive", archive.root()),
+                ("plugins", Path(settings.VISION["PLUGIN_DIR"])), ("downloads", Path(settings.DATA_DIR) / "downloads"),
+            )
+            for prefix, root in targets:
                 members = [n for n in names if n.startswith(f"{prefix}/") and not n.endswith("/")]
                 for member in members:
                     _safe_extract(zf, member, root, prefix)
                 if members:
                     self.stdout.write(f"Restored {len(members)} files into {root}")
-        self.stdout.write(self.style.SUCCESS("Restore complete. Run manage.py migrate, then start the server."))
+            if "env/.env" in names:
+                side = Path(settings.VS_HOME) / ".env.from-backup"
+                side.write_bytes(zf.read("env/.env"))
+                self.stdout.write(self.style.WARNING(f"The backup's .env was written to {side} (not applied: paths and keys belong to the old PC; merge what you need, e.g. VISION_STATION_ID)"))
+        self.stdout.write(self.style.SUCCESS("Restore complete. Run manage.py migrate, then start the server (plugins need their dependencies installed: vsctl plugins deps)."))

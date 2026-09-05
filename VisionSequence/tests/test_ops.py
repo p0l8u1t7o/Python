@@ -127,6 +127,63 @@ class BackupRestoreTests(TestCase):
             self.assertIn("station_id", manifest)
         out.unlink(missing_ok=True)
 
+    def test_backup_includes_env_and_plugins(self):
+        import tempfile
+
+        from django.test import override_settings
+
+        home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, home, True)
+        (home / ".env").write_text("VISION_STATION_ID=BK\n", encoding="utf-8")
+        plugins = home / "plugins"
+        (plugins / "mine" / "wheels").mkdir(parents=True)
+        (plugins / "mine" / "__init__.py").write_text("ENABLED = False\n", encoding="utf-8")
+        (plugins / "mine" / "wheels" / "x-1.0-py3-none-any.whl").write_bytes(b"whl")
+        (plugins / "mine" / "__pycache__").mkdir()
+        (plugins / "mine" / "__pycache__" / "a.pyc").write_bytes(b"pyc")
+        (plugins / "solo.py").write_text("ENABLED = False\n", encoding="utf-8")
+        downloads = Path(settings.DATA_DIR) / "downloads"
+        downloads.mkdir(parents=True, exist_ok=True)
+        (downloads / "manifest.json").write_text('{"version": "9.9.9", "filename": "VisionSequenceCapture-9.9.9-win64.zip"}', encoding="utf-8")
+        (downloads / "VisionSequenceCapture-9.9.9-win64.zip").write_bytes(b"zip")
+        self.addCleanup(lambda: [p.unlink(missing_ok=True) for p in (downloads / "manifest.json", downloads / "VisionSequenceCapture-9.9.9-win64.zip")])
+        out = Path(settings.DATA_DIR) / "backups" / "test-env-backup.zip"
+        with override_settings(VS_HOME=home, VISION={**settings.VISION, "PLUGIN_DIR": plugins}):
+            call_command("backup", "--out", str(out), stdout=io.StringIO())
+            with zipfile.ZipFile(out) as zf:
+                names = set(zf.namelist())
+                manifest = json.loads(zf.read("manifest.json"))
+            self.assertIn("env/.env", names)
+            self.assertIn("plugins/mine/__init__.py", names)
+            self.assertIn("plugins/solo.py", names)
+            self.assertNotIn("plugins/mine/wheels/x-1.0-py3-none-any.whl", names)  # 預設不帶 wheel
+            self.assertNotIn("plugins/mine/__pycache__/a.pyc", names)
+            self.assertIn("downloads/manifest.json", names)
+            self.assertNotIn("downloads/VisionSequenceCapture-9.9.9-win64.zip", names)
+            self.assertTrue(manifest["env_included"])
+            self.assertEqual(manifest["plugin_files"], 2)
+            self.assertEqual(manifest["capture_client_files"], 1)
+            self.assertIn("version", manifest)
+            out2 = out.with_name("test-env-backup-2.zip")
+            call_command("backup", "--out", str(out2), "--no-env", "--with-wheels", "--with-client", stdout=io.StringIO())
+            with zipfile.ZipFile(out2) as zf:
+                names = set(zf.namelist())
+            self.assertNotIn("env/.env", names)
+            self.assertIn("plugins/mine/wheels/x-1.0-py3-none-any.whl", names)
+            self.assertIn("downloads/VisionSequenceCapture-9.9.9-win64.zip", names)
+            # 還原：外掛與擷取端進對應資料夾，.env 另存不覆蓋
+            shutil.rmtree(plugins)
+            (downloads / "manifest.json").unlink()
+            (home / ".env").write_text("VISION_STATION_ID=CURRENT\n", encoding="utf-8")
+            call_command("restore", str(out), "--yes", stdout=io.StringIO())  # 第一份（含 .env＝BK）
+            self.assertTrue((plugins / "mine" / "__init__.py").exists())
+            self.assertTrue((plugins / "solo.py").exists())
+            self.assertTrue((downloads / "manifest.json").exists())
+            self.assertEqual((home / ".env").read_text(encoding="utf-8"), "VISION_STATION_ID=CURRENT\n")
+            self.assertEqual((home / ".env.from-backup").read_text(encoding="utf-8"), "VISION_STATION_ID=BK\n")
+        out.unlink(missing_ok=True)
+        out2.unlink(missing_ok=True)
+
     def test_restore_refuses_a_zip_that_is_not_a_backup(self):
         from django.core.management.base import CommandError
 
