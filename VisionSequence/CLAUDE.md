@@ -44,6 +44,7 @@
 - **開發溝通維持繁體中文**：對話、commit、CLAUDE.md、程式碼註解與 docstring、日誌訊息（`log.*`）、AI 助手的技能提示詞（`agent/skills/*.md`）。
 - 新增使用者看得到的字串一律先寫英文；中文由前端字典補（介面在 `i18n/locales/*`，工具目錄在 `tools.zh-Hant.ts`／`tools.zh-Hans.ts`，其餘後端目錄在 `catalogue.zh-Hant.ts`／`catalogue.zh-Hans.ts`）。
 - **後端目錄的中文對照**：影像來源種類、連線種類、深度學習訓練方式（含超參數的名稱／說明／選項與 `paramGroups` 分組名稱，四種 YOLO 共用 `yoloParams`）、內建範本走 `lib/catalogueLocale.ts`（在各自 query 的 `select` 疊上去，query key 帶語言）。工具目錄的**分類名稱與隱含埠**（`_image`／`_overlays`／`_flow`）在 `toolLocale.ts` 集中翻，外掛工具也翻得到。翻譯**只換顯示的字，`kind`／`key` 存進資料庫的值一律保持英文**（`lib/catalogueLocale.test.ts` 鎖住）；沒有對照的（外掛、自建範本）維持後端英文。新增內建來源／連線／訓練方式／範本要補那兩份字典。
+- **說明頁的全文在 i18n**（`help.content.*`：快速上手、名詞表、埠、快捷鍵、自動化接口、帳號；三語系陣列同構，`HelpPage` 用 `returnObjects` 整份取），不要再把說明寫回 tsx。
 - **畫面上不得寫死全形標點**（`：、；（）～　`）：那種字不管切成哪一種語言都會出現，英文介面會看到「Inputs：」。`src/test/i18n.test.ts` 的 `source files` 會掃原始碼擋下來（註解、語系檔、測試檔不算）。
 - 測試斷言用英文（介面與訊息的預設就是英文）。
 
@@ -130,6 +131,7 @@
 - 身分在 `security.py`：`Principal(kind=integrator|user|bootstrap)`；`request.auth` 就是它。執行類端點（run／preview／continuous／agent）都要 `principal(request).can_execute()`（鎖定時 423）。
 - **三個角色**（`accounts.models.ROLES`，存 `UserPref.role`；admin 與 `User.is_staff` 同步、權杖解析時 `select_related("user__pref")`）：`admin`／`engineer`（預設）／`operator`。
 - **角色能做什麼不是寫死的**（`apps/accounts/permissions.py`）：`FEATURES` 是封閉的功能清單（flows.run／flows.teach／flows.edit／sources／assets／batch／golden／dl／agent／integration／connections／audit），管理員在使用者頁勾選，存 `RolePermission`（一角色一列，沒有列＝出廠值，出廠值就是原本的三層）。守門函式是 `require_feature(request, "<key>")`；`require_admin` 只留給帳號、角色權限與系統設定（**不可授權出去**，否則工程師能把自己升成管理員）。**新增建立／修改類端點一定要掛一個功能鍵**；新增功能鍵＝`FEATURES` 加一筆＋三語系 `permissions.features.<key>`＋前端 `types.ts Feature`＋`AuthProvider FALLBACK`。
+- **前端也要照功能鍵把關入口**：參數卡頁 `readOnly = !auth.can('flows.teach')`（欄位改了會被擋、頂列顯示原因），流程頁與編輯器頂列沒有 flows.teach 就不放參數卡入口；編輯器／工具頁 `readOnly = !auth.isEngineer`（＝flows.edit）。伺服器永遠是最後一道（403），前端只是不讓人以為改得動。
 - `Principal.can(feature)` 每個請求查一次 `RolePermission` 並記在自己身上（**故意不做行程層快取**：改完要立刻生效，也不能讓測試互相污染）。前端 `auth.can(feature)` 只決定側欄與按鈕，真正把關在伺服器。API：`GET/PATCH /users/permissions`（管理員）、`/auth/me` 帶回 `permissions`。
 - **流程屬於產線不屬於個人**：`_visible_flows()` 對所有登入者回全部流程，`_editable_flow()` 只看角色（`can_edit_flow` 已不看 owner），`Flow.owner` 只是「建立者」（顯示與 `?mine=1`）。現場作業用 `_operable_flow()`（任何登入者，仍受引擎鎖管）。
 - **操作員的參數邊界**在 `apps/vision/teachguard.py`：`PATCH /flows/{id}` 對操作員只放行「圖以外欄位沒動、且只有 `Param.teach=True` 參數的值不同」，否則 403 `teach_only`。清單就是工具已標好的 teach 旗標（58 個），不另外維護。換線是 `POST /flows/{id}/recipes/{rid}/activate`（操作員可用），改配方內容仍需工程師。
