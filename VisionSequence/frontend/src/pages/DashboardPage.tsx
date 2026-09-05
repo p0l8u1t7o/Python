@@ -49,8 +49,9 @@ function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) 
   runRef.current = run
   const onRunRef = useRef(onRun)
   onRunRef.current = onRun
-  useFlowStream(flow.id, true, (event) => {
-    if (event.type === 'run_finished' && event.run) {
+  // 訂全域串流自己過濾（總覽頁已經開著全域那條）：一個分頁只有一條 SSE 連線
+  useFlowStream(null, true, (event) => {
+    if (event.flow_id === flow.id && event.type === 'run_finished' && event.run) {
       setRun(event.run)
       onRun(event.run)
     }

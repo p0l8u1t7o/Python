@@ -411,8 +411,10 @@ export interface Me {
   permissions?: Feature[]
   user: AuthUser | null
   /** 使用者介面偏好（theme 等；整合方/bootstrap 為空物件） */
-  prefs: { theme?: string }
+  prefs: { theme?: string; language?: string }
   lock: EngineLock
+  /** 伺服端版本（側欄頁尾顯示；以前另外輪詢 integration/info） */
+  version?: string
 }
 
 // ---- 範本庫（apps/vision/api_more.py） ----

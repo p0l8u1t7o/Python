@@ -6,22 +6,64 @@
 注意：在 ASGI（uvicorn）下 Django 對 StreamingHttpResponse 的**同步** generator 會
 `sync_to_async(list)` 整段收完才送出，等於沒有串流（瀏覽器 55 秒後才收到全部、期間顯示離線）。
 所以 ASGI 請求用 async generator，`bus.wait` 丟到執行緒等待；WSGI／測試 client 走同步版本。
+
+每條活著的串流都占一條等待執行緒：用專用的執行緒池（VISION_SSE_MAX_STREAMS，預設 64），不跟事件迴圈的預設池
+（min(32, cpu+4)，4 核站台只有 8 條）搶；超過上限回 503＋Retry-After 讓瀏覽器稍後重試，而不是無聲排隊讓全站看起來離線。
 """
 
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterator
 
 import orjson
-from django.http import HttpResponse, StreamingHttpResponse
+from django.conf import settings
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 
 from apps.vision.runner import bus, runner
 
 MAX_STREAM_SECONDS = 55
 HEARTBEAT_SECONDS = 15
 WAIT_SECONDS = 1.0
+
+_pool_lock = threading.Lock()
+_pool: ThreadPoolExecutor | None = None
+_active = 0
+
+
+def max_streams() -> int:
+    return max(1, int(settings.VISION.get("SSE_MAX_STREAMS") or 64))
+
+
+def _executor() -> ThreadPoolExecutor:
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ThreadPoolExecutor(max_workers=max_streams(), thread_name_prefix="vs-sse")
+        return _pool
+
+
+def _acquire_slot() -> bool:
+    global _active
+    with _pool_lock:
+        if _active >= max_streams():
+            return False
+        _active += 1
+        return True
+
+
+def _release_slot() -> None:
+    global _active
+    with _pool_lock:
+        _active = max(0, _active - 1)
+
+
+def active_streams() -> int:
+    with _pool_lock:
+        return _active
 
 
 def _sse(event: str, data) -> bytes:
@@ -44,6 +86,13 @@ class _Session:
         self.include_outputs = include_outputs
         self.deadline = time.monotonic() + max_seconds
         self.last_beat = time.monotonic()
+        self._released = False
+
+    def release(self) -> None:
+        """把占的串流名額還回去（generator 結束、客戶端斷線、或回應根本沒開始迭代都會走到；只做一次）。"""
+        if not self._released:
+            self._released = True
+            _release_slot()
 
     def head(self) -> Iterator[bytes]:
         yield b"retry: 1500\n\n"
@@ -81,21 +130,28 @@ class _Session:
 
 
 def _generate_sync(s: _Session):
-    yield from s.head()
-    while s.alive():
-        s.since, events = bus.wait(s.since, s.wait_timeout())
-        yield from s.frames(events)
-    yield s.tail()
+    try:
+        yield from s.head()
+        while s.alive():
+            s.since, events = bus.wait(s.since, s.wait_timeout())
+            yield from s.frames(events)
+        yield s.tail()
+    finally:
+        s.release()
 
 
 async def _generate_async(s: _Session):
-    for chunk in s.head():
-        yield chunk
-    while s.alive():
-        s.since, events = await asyncio.to_thread(bus.wait, s.since, s.wait_timeout())
-        for chunk in s.frames(events):
+    loop = asyncio.get_running_loop()
+    try:
+        for chunk in s.head():
             yield chunk
-    yield s.tail()
+        while s.alive():
+            s.since, events = await loop.run_in_executor(_executor(), bus.wait, s.since, s.wait_timeout())
+            for chunk in s.frames(events):
+                yield chunk
+        yield s.tail()
+    finally:
+        s.release()
 
 
 def _stream(request, *, flow_id: int | None):
@@ -114,12 +170,18 @@ def _stream(request, *, flow_id: int | None):
     except ValueError:
         max_seconds = MAX_STREAM_SECONDS
 
+    if not _acquire_slot():
+        response = JsonResponse({"error": {"code": "too_many_streams", "message": f"Too many live event streams on this station (limit {max_streams()}); try again shortly"}}, status=503)
+        response["Retry-After"] = "5"
+        return response
     session = _Session(since, flow_id, include_outputs, max_seconds)
     # ASGIRequest 有 scope；WSGI（runserver、測試 client）沒有。
     is_asgi = hasattr(request, "scope")
     response = StreamingHttpResponse(_generate_async(session) if is_asgi else _generate_sync(session), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
+    # 回應被關閉時（客戶端斷線、或還沒開始迭代就結束）也要還名額；generator 的 finally 再叫一次也沒關係
+    response._resource_closers.append(session.release)  # noqa: SLF001
     return response
 
 

@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Pause, Play, Trash2 } from 'lucide-react'
 
 import { Badge, Button, Card, CardHeader, StatusBadge } from '@/components/ui'
-import { streamUrl } from '@/lib/api'
-import { watchdog } from '@/lib/flowStream'
+import { subscribeStream, type StreamEvent } from '@/lib/flowStream'
 import { useFlows } from '@/lib/queries'
 
 interface WatchedEvent {
@@ -34,63 +33,28 @@ function EventsSection() {
   namesRef.current = names
 
   useEffect(() => {
-    let source: EventSource | null = null
-    let timer: number | undefined
-    let closed = false
-    let stopWatchdog: (() => void) | undefined
-    const open = () => {
-      if (closed) return
-      source = new EventSource(streamUrl(null, undefined, true))
-      stopWatchdog?.()
-      stopWatchdog = watchdog(source, () => {
-        setConnected(false)
-        source?.close()
-        if (!closed) timer = window.setTimeout(open, 5000)
-      })
-      source.addEventListener('open', () => setConnected(true))
-      for (const type of ['run_queued', 'run_started', 'run_finished', 'continuous', 'stats', 'lock', 'cleared']) {
-        source.addEventListener(type, (e) => {
-          if (pausedRef.current) return
-          let data: Record<string, unknown> = {}
-          try {
-            data = JSON.parse((e as MessageEvent).data) as Record<string, unknown>
-          } catch {
-            /* ignore */
-          }
-          const run = data.run as { status?: string; duration_ms?: number; outputs?: Record<string, unknown>; error?: string } | undefined
-          const flowId = data.flow_id as number | undefined
-          const lock = data.lock as { locked?: boolean; holder?: string } | undefined
-          const item: WatchedEvent = {
-            seq: (counter.current += 1),
-            time: new Date().toLocaleTimeString(),
-            type,
-            flow: flowId !== undefined ? namesRef.current.get(flowId) ?? `#${flowId}` : '',
-            status: run?.status ?? (type === 'continuous' ? (data.running ? 'running' : 'idle') : ''),
-            ms: run?.duration_ms ?? null,
-            detail: run ? run.error || JSON.stringify(run.outputs ?? {}).slice(0, 120) : lock ? `${lock.locked ? 'locked' : 'unlocked'} ${lock.holder ?? ''}` : JSON.stringify({ ...data, run: undefined }).slice(0, 120),
-          }
-          setEvents((old) => [item, ...old].slice(0, MAX_EVENTS))
-        })
-      }
-      source.addEventListener('bye', () => {
-        stopWatchdog?.()
-        source?.close()
-        timer = window.setTimeout(open, 50)
-      })
-      source.onerror = () => {
-        setConnected(false)
-        stopWatchdog?.()
-        source?.close()
-        if (!closed) timer = window.setTimeout(open, 5000)
-      }
-    }
-    open()
-    return () => {
-      closed = true
-      stopWatchdog?.()
-      source?.close()
-      window.clearTimeout(timer)
-    }
+    // 走共用的登記表：與總覽頁同一條全域連線，不另開
+    return subscribeStream(null, { outputs: true }, {
+      onState: setConnected,
+      onEvent: (event: StreamEvent) => {
+        if (pausedRef.current) return
+        const data = event as unknown as Record<string, unknown>
+        const type = event.type
+        const run = event.run as { status?: string; duration_ms?: number; outputs?: Record<string, unknown>; error?: string } | undefined
+        const flowId = typeof event.flow_id === 'number' ? event.flow_id : undefined
+        const lock = event.lock as { locked?: boolean; holder?: string } | undefined
+        const item: WatchedEvent = {
+          seq: (counter.current += 1),
+          time: new Date().toLocaleTimeString(),
+          type,
+          flow: flowId !== undefined ? namesRef.current.get(flowId) ?? `#${flowId}` : '',
+          status: run?.status ?? (type === 'continuous' ? (event.running ? 'running' : 'idle') : ''),
+          ms: run?.duration_ms ?? null,
+          detail: run ? run.error || JSON.stringify(run.outputs ?? {}).slice(0, 120) : lock ? `${lock.locked ? 'locked' : 'unlocked'} ${lock.holder ?? ''}` : JSON.stringify({ ...data, run: undefined }).slice(0, 120),
+        }
+        setEvents((old) => [item, ...old].slice(0, MAX_EVENTS))
+      },
+    })
   }, [])
 
   return (

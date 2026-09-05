@@ -109,6 +109,7 @@ export function useCapacity(intervalMs = 5000) {
     queryKey: keys.capacity,
     queryFn: () => api.get<Capacity>('/vision/capacity'),
     refetchInterval: intervalMs,
+    refetchOnWindowFocus: true,  // 多客戶端：切回來就看最新（隱藏時 TanStack 本來就會暫停輪詢）
   })
 }
 
@@ -117,6 +118,7 @@ export function useFlows(q = '', mine = false) {
   return useQuery({
     queryKey: [...keys.flows, q, mine],
     queryFn: () => api.get<Page<Flow>>('/vision/flows', { q, limit: 200, mine: mine ? 'true' : '' }),
+    refetchOnWindowFocus: true,  // 別台電腦可能新增或改了流程
   })
 }
 
@@ -482,7 +484,8 @@ export function useEngineLock(enabled = true) {
   return useQuery({
     queryKey: keys.lock,
     queryFn: () => api.get<EngineLock>('/vision/lock'),
-    refetchInterval: 30_000,
+    // 不輪詢：初值來自 /auth/me，變動靠 SSE 的 lock 事件，斷線重連時登記表會讓它失效重抓
+    refetchInterval: false,
     enabled,
   })
 }

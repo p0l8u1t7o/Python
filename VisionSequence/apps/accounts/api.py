@@ -174,9 +174,11 @@ def logout(request: HttpRequest):
 @router.get("/me")
 def me(request: HttpRequest):
     p = principal(request)
+    from apps.vision import __version__
+
     return {"kind": p.kind, "is_admin": p.is_admin, "role": p.role, "user": user_out(p.user) if p.user else None,
             "permissions": sorted(permissions.allowed(p.role), key=list(permissions.FEATURES).index),
-            "prefs": _prefs(p.user), "lock": EngineLock.current().to_dict()}
+            "prefs": _prefs(p.user), "lock": EngineLock.current().to_dict(), "version": __version__}
 
 
 @router.patch("/prefs")

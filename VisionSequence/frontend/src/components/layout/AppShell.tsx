@@ -15,7 +15,7 @@ import { LockBanner } from '@/components/auth/LockBanner'
 import { GlobalSearch } from '@/components/layout/GlobalSearch'
 import { useLockEvents } from '@/lib/flowStream'
 import { MOBILE_QUERY, NARROW_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
-import { useCapacity, useFlow, useIntegrationInfo } from '@/lib/queries'
+import { useCapacity, useFlow } from '@/lib/queries'
 import type { LucideIcon } from 'lucide-react'
 import type { Feature } from '@/lib/types'
 
@@ -59,7 +59,7 @@ function readCollapsed(): boolean {
 
 export function CapacityPill({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation()
-  const capacity = useCapacity()
+  const capacity = useCapacity(10_000)
   const data = capacity.data
   if (!data) return null
   const ratio = data.max_workers ? data.active / data.max_workers : 0
@@ -75,7 +75,7 @@ export function CapacityPill({ compact = false }: { compact?: boolean }) {
 /** 頂列容量：icon＋執行數角標，點開才列出執行中的流程（頂列按鍵先 icon、點擊出清單）。 */
 function CapacityMenu() {
   const { t } = useTranslation()
-  const capacity = useCapacity()
+  const capacity = useCapacity(10_000)
   const [open, setOpen] = useState(false)
   const data = capacity.data
   if (!data) return null
@@ -210,7 +210,6 @@ function Breadcrumb() {
 export function AppShell() {
   const { t } = useTranslation()
   const auth = useAuth()
-  const info = useIntegrationInfo()  // 版本號顯示在側欄底部
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [openGroups, setOpenGroups] = useState<string[]>(readOpenGroups)
   const toggleGroup = (key: string) =>
@@ -294,7 +293,7 @@ export function AppShell() {
           <Menu size={16} aria-hidden />
           {!narrow ? <span className="whitespace-nowrap">{t('nav.collapse')}</span> : null}
           {/* 版本號：客戶回報問題時的第一個問題 */}
-          {!narrow && info.data?.version ? <span className="ml-auto pr-1 font-mono text-[10px] text-sidebar-muted" data-testid="app-version">v{info.data.version}</span> : null}
+          {!narrow && auth.me?.version ? <span className="ml-auto pr-1 font-mono text-[10px] text-sidebar-muted" data-testid="app-version">v{auth.me.version}</span> : null}
         </button>
       </nav>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">

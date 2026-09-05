@@ -10,7 +10,7 @@ import { renderPage } from './render'
 
 installApiMock()
 
-vi.mock('@/lib/flowStream', () => ({ useLockEvents: () => {}, useFlowEvents: () => {}, useFlowStream: () => ({ events: [], seq: 0 }) }))
+vi.mock('@/lib/flowStream', () => ({ useLockEvents: () => {}, useFlowEvents: () => {}, useFlowStream: () => ({ events: [], seq: 0, connected: false, runningIds: new Set() }), subscribeStream: () => () => {}, setStreamClient: () => {} }))
 
 describe('pages render (smoke)', () => {
   it('AuditPage lists changes for an administrator', async () => {
