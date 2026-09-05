@@ -209,7 +209,7 @@ export function FlowsPage() {
                     <Td align="right">
                       <span className="inline-flex min-w-24 max-w-28 flex-wrap justify-end gap-0.5 sm:min-w-0 sm:max-w-none sm:flex-nowrap sm:gap-1" onClick={(e) => e.stopPropagation()}>
                         <Link to={`/flows/${flow.id}`} aria-label={t('flows.open')} title={t('flows.open')}><IconButton label={t('flows.open')}><Pencil size={15} /></IconButton></Link>
-                        <Link to={`/flows/${flow.id}/teach`} aria-label={t('flows.teach')} title={t('flows.teach')}><IconButton label={t('flows.teach')} data-testid="row-teach"><SlidersHorizontal size={15} /></IconButton></Link>
+                        {auth.can('flows.teach') ? <Link to={`/flows/${flow.id}/teach`} aria-label={t('flows.teach')} title={t('flows.teach')}><IconButton label={t('flows.teach')} data-testid="row-teach"><SlidersHorizontal size={15} /></IconButton></Link> : null}
                         <Link to={`/flows/${flow.id}/golden`} aria-label={t('flows.golden')} title={t('flows.golden')}><IconButton label={t('flows.golden')} data-testid="row-golden"><Gem size={15} /></IconButton></Link>
                         <Link to={`/flows/${flow.id}/stats`} aria-label={t('stats.open')} title={t('stats.open')}><IconButton label={t('stats.open')}><BarChart3 size={15} /></IconButton></Link>
                         <IconButton label={t('flows.export')} title={t('flows.exportHint')} onClick={() => void onExport(flow)} data-testid="row-export"><Download size={15} /></IconButton>

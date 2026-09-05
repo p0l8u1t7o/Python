@@ -16,6 +16,7 @@ import { VersionButton } from '@/components/flow/VersionPanel'
 import { BoundRecipeSelect } from '@/components/recipes/BoundRecipeSelect'
 import { Badge, Button, IconButton } from '@/components/ui'
 import type { FlowRecipe, ScratchImage } from '@/lib/types'
+import { useAuth } from '@/providers/AuthProvider'
 
 export interface EditorToolbarProps {
   flowId: number
@@ -113,6 +114,7 @@ export function MenuItem({ icon, children, onClick, to, disabled, testId }: { ic
 
 export function EditorToolbar(p: EditorToolbarProps) {
   const { t } = useTranslation()
+  const canTeach = useAuth().can('flows.teach')  // 沒有現場教導功能的角色不給參數卡入口
   const scratchInput = useRef<HTMLInputElement>(null)
   return (
     <header className="flex flex-col gap-1 border-b border-line bg-surface px-3 py-1.5" data-testid="editor-toolbar">
@@ -155,16 +157,22 @@ export function EditorToolbar(p: EditorToolbarProps) {
           </span>
         ) : null}
         {p.notCommissioned ? (
-          <Link to={`/flows/${p.flowId}/teach`} className="flex items-center gap-1 whitespace-nowrap rounded-md border border-warning/40 bg-warning-soft px-1.5 py-0.5 text-[11px] text-warning hover:underline" title={t('flows.notCommissionedHint')} data-testid="not-commissioned-badge">
-            <SlidersHorizontal size={11} /> {t('flows.notCommissioned')}
-          </Link>
+          canTeach ? (
+            <Link to={`/flows/${p.flowId}/teach`} className="flex items-center gap-1 whitespace-nowrap rounded-md border border-warning/40 bg-warning-soft px-1.5 py-0.5 text-[11px] text-warning hover:underline" title={t('flows.notCommissionedHint')} data-testid="not-commissioned-badge">
+              <SlidersHorizontal size={11} /> {t('flows.notCommissioned')}
+            </Link>
+          ) : (
+            <span className="flex items-center gap-1 whitespace-nowrap rounded-md border border-warning/40 bg-warning-soft px-1.5 py-0.5 text-[11px] text-warning" title={t('flows.notCommissionedHint')} data-testid="not-commissioned-badge">
+              <SlidersHorizontal size={11} /> {t('flows.notCommissioned')}
+            </span>
+          )
         ) : null}
         <span className="ml-auto flex flex-nowrap items-center gap-1 md:flex-wrap">
           <Badge tone={p.connected ? 'ok' : 'neutral'}>{p.connected ? t('dashboard.live') : t('dashboard.offline')}</Badge>
           <CapacityPill />
           <IconButton label={t('editor.undo')} onClick={p.onUndo} size="sm"><Undo2 size={15} /></IconButton>
           <IconButton label={t('editor.autoLayoutHint')} onClick={p.onAutoLayout} size="sm"><Network size={15} /></IconButton>
-          <Link to={`/flows/${p.flowId}/teach`} className="btn-icon" title={t('editor.teach')} aria-label={t('editor.teach')} data-testid="btn-teach"><SlidersHorizontal size={15} /></Link>
+          {canTeach ? <Link to={`/flows/${p.flowId}/teach`} className="btn-icon" title={t('editor.teach')} aria-label={t('editor.teach')} data-testid="btn-teach"><SlidersHorizontal size={15} /></Link> : null}
           <Link to={`/flows/${p.flowId}/golden`} className="btn-icon" title={t('editor.golden')} aria-label={t('editor.golden')} data-testid="btn-golden"><Gem size={15} /></Link>
           {p.onExport ? <IconButton label={t('editor.export')} title={t('flows.exportHint')} onClick={p.onExport} size="sm" data-testid="btn-export"><Download size={15} /></IconButton> : null}
           <Link to={`/flows/${p.flowId}/stats`} className="btn-icon" title={t('stats.open')} aria-label={t('stats.open')} data-testid="btn-stats"><BarChart3 size={15} /></Link>

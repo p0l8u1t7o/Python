@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useBlocker, useParams } from 'react-router-dom'
-import { ArrowLeft, BookOpen, BookmarkPlus, CheckCircle2, CircleDashed, ImageUp, Loader2, Save, SlidersHorizontal, Undo2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, BookmarkPlus, CheckCircle2, CircleDashed, ImageUp, Loader2, Lock, Save, SlidersHorizontal, Undo2 } from 'lucide-react'
 
 import { ScratchBadge } from '@/components/editor/EditorToolbar'
 import type { InspectorActions } from '@/components/editor/ParamField'
@@ -115,9 +115,9 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   )
 
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)
-  // 參數卡頁是現場微調的地方：操作員也能存（伺服器只放行標了 teach 的參數）；
+  // 參數卡頁是現場微調的地方：有 flows.teach 的人才能改（伺服器只放行標了 teach 的參數，沒有這個功能的角色會被 403）；
   // 「標記為已教導」是工程師的簽核動作，另外用 canCommission 控制。
-  const readOnly = false
+  const readOnly = !auth.can('flows.teach')
   const canCommission = auth.isEngineer
 
   // ---- 試跑 ----
@@ -187,6 +187,10 @@ function TeachPageInner({ flowId }: { flowId: number }) {
   // ---- 改值 ----
   const onChange = useCallback(
     (nodeId: string, key: string, value: unknown) => {
+      if (readOnly) {
+        toast.warning(t('teach.readOnlyHint'))
+        return
+      }
       if (recipe) {
         setOverrides((old) => ({ ...old, [nodeId]: { ...(old[nodeId] ?? {}), [key]: value } }))
         setRecipeDirty(true)
@@ -196,7 +200,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
       }
       if (!execLocked) schedulePreview(nodeId)
     },
-    [recipe, payloads, flowId, execLocked, schedulePreview],
+    [recipe, payloads, flowId, execLocked, schedulePreview, readOnly, toast, t],
   )
   const revert = useCallback(
     (nodeId: string, key: string) => {
@@ -342,6 +346,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
             </Button>
           </span>
           {dirty ? <span className="text-[11px] text-warning">{t('teach.unsaved')}</span> : null}
+          {readOnly ? <span className="flex items-center gap-1 text-[11px] text-warning" data-testid="teach-readonly"><Lock size={11} /> {t('teach.readOnlyHint')}</span> : null}
           <label className="flex items-center gap-1 text-[11px] text-muted" title={t('teach.lastImageHint')}>
             <input type="checkbox" className="accent-[var(--brand)]" checked={reuse} disabled={Boolean(scratch) || !lastSourceRef} onChange={(e) => setReuse(e.target.checked)} />
             {t('teach.lastImage')}
