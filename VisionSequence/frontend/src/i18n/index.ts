@@ -13,6 +13,10 @@ import zhHant from './locales/zh-Hant'
 
 export type Language = 'zh-Hant' | 'zh-Hans' | 'en'
 
+export function isLanguage(value: unknown): value is Language {
+  return value === 'en' || value === 'zh-Hans' || value === 'zh-Hant'
+}
+
 export function storedLanguage(): Language {
   try {
     const value = localStorage.getItem(LANGUAGE_KEY)
@@ -26,7 +30,8 @@ export function storedLanguage(): Language {
   }
 }
 
-export function setLanguage(language: Language) {
+/** 套用語言（不回寫伺服器）：登入時採用帳號偏好、切換時的共同部分。 */
+export function adoptRemoteLanguage(language: Language) {
   try {
     localStorage.setItem(LANGUAGE_KEY, language)
   } catch {
@@ -34,6 +39,11 @@ export function setLanguage(language: Language) {
   }
   void i18next.changeLanguage(language)
   document.documentElement.lang = language
+}
+
+/** 使用者在設定頁切換：本機記住並套用；登入者的帳號偏好由設定頁另外 PATCH /auth/prefs（換一台電腦登入就是同一種語言）。 */
+export function setLanguage(language: Language) {
+  adoptRemoteLanguage(language)
 }
 
 const initial = storedLanguage()

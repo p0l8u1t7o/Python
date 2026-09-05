@@ -604,6 +604,7 @@ const en = {
     title: 'Settings', apiKey: 'API key', theme: 'Theme', language: 'Language',
     themeLight: 'Light', themeDark: 'Dark', themeCyber: 'Cyberpunk', themeSystem: 'System',
     themeSaved: 'Signed in: your theme choice is saved to your account and follows you across devices.',
+    languageSaved: 'Saved to your account and used on every PC you sign in from.',
   },
   permissions: {
     title: 'Role permissions',

@@ -9,7 +9,7 @@ import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
 import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
-import { apiKey, setApiKey } from '@/lib/api'
+import { api, apiKey, setApiKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useCapacity, useUpdateProfile } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
@@ -97,6 +97,8 @@ export function SettingsPage() {
                 onChange={(v) => {
                   setLang(v)
                   setLanguage(v)
+                  // 登入者：存進帳號偏好，換一台電腦登入就是同一種語言（失敗不擋，本機已生效）
+                  if (auth.me?.kind === 'user') void api.patch('/auth/prefs', { language: v }).catch(() => {})
                 }}
                 options={[
                   { value: 'zh-Hant', label: '繁體中文' },
@@ -104,6 +106,7 @@ export function SettingsPage() {
                   { value: 'en', label: 'English' },
                 ]}
               />
+              {auth.me?.kind === 'user' ? <p className="mt-1 text-xs text-subtle">{t('settings.languageSaved')}</p> : null}
             </div>
         </Panel>
         <Card>

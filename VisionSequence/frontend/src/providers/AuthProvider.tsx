@@ -8,6 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
+import i18n, { adoptRemoteLanguage, isLanguage } from '@/i18n'
 import { api, authToken, onSessionExpired, setAuthToken } from '@/lib/api'
 import { keys, useEngineLock } from '@/lib/queries'
 import { isThemePreference, useTheme } from '@/providers/ThemeProvider'
@@ -57,9 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (next: Me | null) => {
       setMe(next)
       if (next?.lock) client.setQueryData<EngineLock>(keys.lock, next.lock)
-      // 登入者存過主題 → 套用伺服端偏好（不回寫；跨裝置/重整都一致）
+      // 登入者存過主題／語言 → 套用伺服端偏好（不回寫；跨裝置/重整都一致）
       const remote = next?.prefs?.theme
       if (isThemePreference(remote) && remote !== themeRef.current.preference) themeRef.current.adoptRemote(remote)
+      const lang = next?.prefs?.language
+      if (isLanguage(lang) && lang !== i18n.language) adoptRemoteLanguage(lang)
     },
     [client],
   )

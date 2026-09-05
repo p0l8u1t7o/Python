@@ -54,10 +54,13 @@ class PasswordIn(Schema):
 
 #: 前端可選的主題風格（封閉集合；前端 ThemeProvider 的 THEME 清單同步）。
 UI_THEMES = ("light", "dark", "system", "cyber")
+#: 與前端 i18n 的 Language 型別、設定頁的選項三處同步
+UI_LANGUAGES = ("en", "zh-Hant", "zh-Hans")
 
 
 class PrefsIn(Schema):
     theme: str | None = None
+    language: str | None = None
 
 
 class ProfileIn(Schema):
@@ -189,10 +192,14 @@ def patch_prefs(request: HttpRequest, payload: PrefsIn):
         raise ValidationError("An API key has no user preferences to save", code="no_user")
     if payload.theme is not None and payload.theme not in UI_THEMES:
         raise ValidationError(f"Unknown theme '{payload.theme}'", code="bad_theme", details={"available": list(UI_THEMES)})
+    if payload.language is not None and payload.language not in UI_LANGUAGES:
+        raise ValidationError(f"Unknown language '{payload.language}'", code="bad_language", details={"available": list(UI_LANGUAGES)})
     row, _ = UserPref.objects.get_or_create(user=p.user)
     ui = dict(row.ui or {})
     if payload.theme is not None:
         ui["theme"] = payload.theme
+    if payload.language is not None:
+        ui["language"] = payload.language
     row.ui = ui
     row.save(update_fields=["ui", "updated_at"])
     return {"prefs": ui}

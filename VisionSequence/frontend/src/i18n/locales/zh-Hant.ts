@@ -1115,6 +1115,7 @@ const zhHant = {
     themeDark: '深色',
     themeCyber: 'Cyberpunk',
     themeSaved: '已登入：主題選擇會儲存到您的帳號，換裝置也會套用。',
+    languageSaved: '已儲存到您的帳號，在任何一台電腦登入都用此語言。',
     themeSystem: '跟隨系統',
     language: '語言',
     capacity: '執行緒池',

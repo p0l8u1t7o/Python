@@ -427,3 +427,24 @@ class CreateAdminCommandTests(TestCase):
             call_command("create_admin", "boss", "--password-env", "VS_ADMIN_PASSWORD", stdout=_io.StringIO())
         with self.assertRaises(CommandError):
             call_command("create_admin", "boss", "--password", "ab", stdout=_io.StringIO())
+
+
+class LanguagePrefTests(TestCase):
+    """介面語言像主題一樣存帳號偏好：PATCH /auth/prefs {language} → /auth/me 帶回；非法值 422；與主題各自獨立。"""
+
+    def test_ui_prefs_language(self):
+        import json as _json
+
+        r = self.client.post("/api/auth/setup", data=_json.dumps({"username": "admin", "password": "secret1"}), content_type="application/json")
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {r.json()['token']}"}
+        r = self.client.patch("/api/auth/prefs", data='{"language": "zh-Hant"}', content_type="application/json", **auth)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self.client.get("/api/auth/me", **auth).json()["prefs"]["language"], "zh-Hant")
+        r = self.client.patch("/api/auth/prefs", data='{"language": "xx"}', content_type="application/json", **auth)
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.json()["error"]["code"], "bad_language")
+        # 主題與語言各自 PATCH，不會互相清掉
+        self.client.patch("/api/auth/prefs", data='{"theme": "dark"}', content_type="application/json", **auth)
+        prefs = self.client.get("/api/auth/me", **auth).json()["prefs"]
+        self.assertEqual(prefs, {"language": "zh-Hant", "theme": "dark"})
+        self.assertIn("version", self.client.get("/api/auth/me", **auth).json())

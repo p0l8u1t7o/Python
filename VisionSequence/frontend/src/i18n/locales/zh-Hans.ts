@@ -1115,6 +1115,7 @@ const zhHans = {
     themeDark: '深色',
     themeCyber: 'Cyberpunk',
     themeSaved: '已登录：主题选择会保存到您的帐号，换设备也会套用。',
+    languageSaved: '已保存到您的帐号，在任何一台电脑登录都用此语言。',
     themeSystem: '跟随系统',
     language: '语言',
     capacity: '线程池',
