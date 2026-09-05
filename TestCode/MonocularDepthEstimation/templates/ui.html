@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YOLO26 深度估計</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ui.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">YOLO26 Depth</div>
+  <div class="sub">單眼深度估計 · 相機即時疊圖</div>
+  <div class="spacer"></div>
+  <span id="status" class="status">尚未啟動</span>
+</header>
+
+<div class="layout">
+  <aside class="panel">
+    <section>
+      <h2>相機</h2>
+      <div class="row">
+        <select id="camera"></select>
+        <button id="refresh-cams" title="重新掃描相機">↻</button>
+      </div>
+      <div id="cam-info" class="muted">掃描中…</div>
+      <label>解析度
+        <select id="resolution"></select>
+      </label>
+      <div id="custom-res" class="row hidden">
+        <input type="number" id="res-w" placeholder="寬" min="160" step="2"> ×
+        <input type="number" id="res-h" placeholder="高" min="120" step="2">
+      </div>
+      <label><input type="checkbox" id="flip"> 左右鏡像</label>
+    </section>
+
+    <section>
+      <h2>推論</h2>
+      <label>裝置 <select id="device"></select></label>
+      <div id="device-note" class="muted"></div>
+      <label><input type="checkbox" id="half" checked> GPU 用 FP16（更快；CPU 忽略）</label>
+      <label>模型 <select id="model"></select></label>
+      <label>推論尺寸 <select id="imgsz"><option>320</option><option>480</option><option selected>640</option><option>800</option><option>1024</option></select></label>
+    </section>
+
+    <section>
+      <h2>顯示</h2>
+      <label>檢視
+        <select id="view">
+          <option value="overlay">深度疊圖</option>
+          <option value="depth">只看深度</option>
+          <option value="raw">原始畫面</option>
+        </select>
+      </label>
+      <label>透明度 <span id="alpha-val">0.55</span>
+        <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.55">
+      </label>
+      <label>色彩表 <select id="cmap"></select></label>
+      <label>深度範圍
+        <select id="range-mode">
+          <option value="auto">自動 (每幀 2~98 百分位)</option>
+          <option value="fixed">固定</option>
+        </select>
+      </label>
+      <div id="fixed-range" class="row hidden">
+        <input type="number" id="dmin" placeholder="最近 m" step="0.1" min="0"> ~
+        <input type="number" id="dmax" placeholder="最遠 m" step="0.1" min="0">
+      </div>
+    </section>
+
+    <section>
+      <div class="row">
+        <button id="start" class="primary">啟動</button>
+        <button id="stop" disabled>停止</button>
+        <button id="snapshot" disabled>快照</button>
+      </div>
+      <div id="snap-info" class="muted"></div>
+    </section>
+
+    <section>
+      <h2>狀態</h2>
+      <pre id="stats" class="stats">—</pre>
+    </section>
+  </aside>
+
+  <main class="view-wrap" id="view-wrap">
+    <div class="view-inner" id="view-inner">
+      <img id="stream" alt="">
+      <div id="hover" class="hover hidden"><span id="hover-text"></span></div>
+      <div id="placeholder" class="placeholder">選好相機與裝置後按「啟動」</div>
+    </div>
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='ui.js') }}"></script>
+</body>
+</html>
