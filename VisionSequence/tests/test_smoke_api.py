@@ -67,7 +67,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
     "/api/vision/integration/trace",
             "/api/vision/capture/clients", "/api/vision/capture/download/info", "/api/vision/capture/download", "/api/vision/capture/clients/nope/channels/x/preview",
             "/api/vision/connections", "/api/vision/dl/projects", "/api/vision/dl/trainers", "/api/vision/dl/devices", "/api/vision/dl/train/status",
-            "/api/vision/agent/info", "/api/vision/agent/help/search?q=批次測試", "/api/vision/agent/jobs", "/api/vision/agent/sessions", "/api/vision/agent/skills/custom", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",
+            "/api/vision/agent/info", "/api/vision/agent/help/search?q=批次測試", "/api/vision/agent/jobs", "/api/vision/agent/sessions", "/api/vision/agent/memory", "/api/vision/agent/skills/custom", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",
             f"/api/vision/batch/sets?flow_id={fid}", f"/api/vision/batch/sets/{self.set_id}", f"/api/vision/batch/sets/{self.set_id}/runs",
             f"/api/vision/batch/sets/{self.set_id}/images/0?max=32", f"/api/vision/batch/runs/{self.batch_run_id}",
             f"/api/vision/batch/runs/{self.batch_run_id}/insights", f"/api/vision/batch/runs/{self.batch_run_id}/compare?other={self.batch_run_id}",

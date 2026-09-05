@@ -27,6 +27,8 @@ POST  /vision/agent/tune       {graph, instruction, runs:[{name, image_ref, stat
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 import uuid
 from typing import Any
@@ -39,7 +41,7 @@ from apps.accounts.security import principal, require_feature
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.agent import consult as consult_mod
 from apps.vision.agent import help as help_mod
-from apps.vision.agent import jobs, loop, memory, providers, service, skills
+from apps.vision.agent import jobs, loop, memory, notes, providers, service, skills
 from apps.vision.models import AgentSession, AgentSkill, Flow
 from apps.vision.api import _decode_upload
 from apps.vision.images import store
@@ -109,6 +111,8 @@ class ChatContext(Schema):
     activity: list[dict[str, Any]] = []
     #: 使用者主動附上的畫面文字摘要
     screen: str = ""
+    #: 使用者主動附上的截圖（jpeg base64 或 data URL；只有 LLM 看得到）
+    screenshot: str = ""
 
 
 class ChatIn(Schema):
@@ -117,6 +121,38 @@ class ChatIn(Schema):
     mode: str = "auto"
     context: ChatContext = ChatContext()
     history: list[dict[str, Any]] = []
+
+
+class MemoryIn(Schema):
+    text: str
+
+
+class RateIn(Schema):
+    #: -1 / 0 / 1
+    rating: int
+
+
+MAX_SCREENSHOT_B64 = 4 * 1024 * 1024
+
+
+def _screenshot_b64(raw: str) -> str:
+    """data URL 或純 base64 → 純 base64；只收 JPEG、4 MB 以內，不合就 422。"""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("data:"):
+        if "," not in raw:
+            raise ValidationError("Bad screenshot data URL", code="screenshot_invalid")
+        raw = raw.split(",", 1)[1]
+    if len(raw) > MAX_SCREENSHOT_B64:
+        raise ValidationError("Screenshot is too large (max 4 MB)", code="screenshot_too_large")
+    try:
+        head = base64.b64decode(raw, validate=True)[:3]
+    except (ValueError, binascii.Error):
+        raise ValidationError("Screenshot is not valid base64", code="screenshot_invalid") from None
+    if head != b"\xff\xd8\xff":
+        raise ValidationError("Screenshot must be a JPEG", code="screenshot_invalid")
+    return raw
 
 
 class RefineIn(GenerateIn):
@@ -624,6 +660,20 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         raise ValidationError("The message cannot be empty", code="empty_message")
     settings = _settings_for(request)
     ctx = payload.context
+    # 「記住：…」／「忘記：…」是記憶指令，不經 LLM（整合方沒有使用者身分就當一般問句）
+    cmd = notes.parse_command(message)
+    if cmd and p.user is not None:
+        kind, text = cmd
+        if kind == "remember":
+            try:
+                row = notes.add_fact(p.user, text)
+            except ValueError as exc:
+                raise ValidationError(str(exc), code="memory_empty") from None
+            return {"kind": "help", "answer": notes.confirmation("remember", row.text, 0, ctx.lang), "provider": "memory", "sources": [], "warnings": [], "actions": [], "lookups": [], "memory": notes.out(row)}
+        if not text:
+            raise ValidationError("Say what to forget", code="memory_empty")
+        deleted = notes.forget_facts(p.user, text)
+        return {"kind": "help", "answer": notes.confirmation("forget", text, deleted, ctx.lang), "provider": "memory", "sources": [], "warnings": [], "actions": [], "lookups": []}
     intent = chat_intent(message, ctx, payload.mode)
     if intent != "help":
         # 使用說明問答不動引擎、也不需要助手權限；修改／諮詢／調整會試執行，要有 agent
@@ -662,8 +712,57 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
         return {"kind": "consult", "answer": out["answer"], "provider": out["provider"], "suggestions": out["suggestions"], "warnings": out["warnings"]}
     from apps.accounts.models import EngineLock
 
-    out = help_mod.answer(message, settings, context=ctx.dict(), history=payload.history, user=p.user, principal=p, lock=EngineLock.current().to_dict())
+    shot = _screenshot_b64(ctx.screenshot)
+    context = {k: v for k, v in ctx.dict().items() if k != "screenshot"}
+    out = help_mod.answer(message, settings, context=context, history=payload.history, user=p.user, principal=p, lock=EngineLock.current().to_dict(), screenshot=shot)
+    row = notes.record_qa(p.user, message, str(out.get("answer") or ""), context, str(out.get("provider") or ""))
+    if row is not None:
+        out["memory_id"] = row.id
     return {"kind": "help", **out}
+
+
+# ---------------------------------------------------------------------------
+# 長期記憶（每位使用者自己的：事實與可評分的問答）
+# ---------------------------------------------------------------------------
+def _memory_user(request: HttpRequest):
+    p = principal(request)
+    if p.user is None:
+        raise ValidationError("Assistant memory belongs to a signed-in user", code="memory_needs_user")
+    return p.user
+
+
+@router.get("/agent/memory")
+def list_memory(request: HttpRequest):
+    """自己的記憶：事實（記住：…）與最近的問答（含評分）。整合方沒有使用者身分，回空清單。"""
+    p = principal(request)
+    return {"facts": [notes.out(r) for r in notes.facts(p.user)], "qa": [notes.out(r) for r in notes.recent_qa(p.user)],
+            "limits": {"facts": notes.MAX_FACTS, "qa": notes.MAX_QA}}
+
+
+@router.post("/agent/memory", response={201: dict})
+def add_memory(request: HttpRequest, payload: MemoryIn):
+    user = _memory_user(request)
+    try:
+        row = notes.add_fact(user, payload.text)
+    except ValueError as exc:
+        raise ValidationError(str(exc), code="memory_empty") from None
+    return 201, notes.out(row)
+
+
+@router.post("/agent/memory/{memory_id}/rate")
+def rate_memory(request: HttpRequest, memory_id: int, payload: RateIn):
+    """評分一則回答（1 好、-1 不好、0 取消）；評過好的會在相似問題時當範例。"""
+    row = notes.rate(_memory_user(request), memory_id, payload.rating)
+    if row is None:
+        raise NotFound(f"No memory item {memory_id}", code="memory_not_found")
+    return notes.out(row)
+
+
+@router.delete("/agent/memory/{memory_id}", response={204: None})
+def delete_memory(request: HttpRequest, memory_id: int):
+    if not notes.delete(_memory_user(request), memory_id):
+        raise NotFound(f"No memory item {memory_id}", code="memory_not_found")
+    return 204, None
 
 
 @router.get("/agent/help/search")

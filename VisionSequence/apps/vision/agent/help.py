@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from apps.vision.agent import actions, lookup, providers, situation, skills
+from apps.vision.agent import actions, lookup, notes, providers, situation, skills
 from apps.vision.tools import base as tools
 
 log = logging.getLogger("vision.agent")
@@ -49,6 +49,8 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 - If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page.
 - You are also given the user's current situation: the page they are on, what it shows, their recent actions and errors, their role and the engine lock. Use it: if a recent error explains the question, explain that error first and how to fix it; point to the exact page, tab and button (the interface map lists them in the user's languages); never tell the user to do something their role cannot do, say which role can.
 - When lookup tools are available, use them to read the live state (flows, sources, connections, a run report, the lock, plugins) before answering questions about "why", "which" or "is it"; they are read-only and permission-checked, so a "not permitted" result means the user's role cannot see that, and you say so. Do not call a tool for questions the documentation alone answers.
+- If a screenshot is attached, answer from what is visible in it (labels, values, statuses, highlighted rows); say when something is not legible instead of guessing.
+- "Things the user asked you to remember" are facts this user stored on purpose: treat them as true for this user and use them when relevant.
 - You may end with ONE extra line `ACTIONS: [...]` (a JSON array, at most 3 items) offering shortcuts: {"kind":"navigate","to":"<route from the interface map with real ids filled in>","tab":"<tab key, optional>","label":"<short label in the user's language>"} or, in the flow editor, {"kind":"focus_node","node":"<node id>","label":"..."} / {"kind":"open_tool","node":"<node id>","label":"..."}. Only routes from the map; omit the line when nothing applies."""
 
 #: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/glossary.html 的對照表）。
@@ -449,9 +451,11 @@ def rule_actions(question: str, hits: list[tuple[Section, float]], context: dict
     return [{"kind": "navigate", "to": s.anchor, "label": str(names.get(lang) or names.get("en") or s.anchor)}]
 
 
-def _answer_with_lookups(settings: providers.AgentSettings, system: str, text: str, principal: Any) -> tuple[str, list[dict[str, Any]]]:
-    """帶唯讀查詢的多回合問答：模型可先查平台狀態再回答；回 (回覆文字, 查了什麼)。預算用完就要求直接回答。"""
-    history: list[dict[str, Any]] = [{"role": "user", "content": [{"type": "text", "text": text}]}]
+def _answer_with_lookups(settings: providers.AgentSettings, system: str, text: str, principal: Any, images: list[str] | None = None) -> tuple[str, list[dict[str, Any]]]:
+    """帶唯讀查詢的多回合問答：模型可先查平台狀態再回答；回 (回覆文字, 查了什麼)。預算用完就要求直接回答。images＝截圖（jpeg base64）。"""
+    parts: list[dict[str, Any]] = [{"type": "image", "data": b64} for b64 in (images or [])]
+    parts.append({"type": "text", "text": text})
+    history: list[dict[str, Any]] = [{"role": "user", "content": parts}]
     specs = lookup.specs()
     steps: list[dict[str, Any]] = []
     timeout = providers.generate_timeout()
@@ -471,14 +475,19 @@ def _answer_with_lookups(settings: providers.AgentSettings, system: str, text: s
 
 
 def answer(question: str, settings: providers.AgentSettings, *, context: dict[str, Any] | None = None,
-           history: list[dict[str, Any]] | None = None, user: Any = None, principal: Any = None, lock: dict[str, Any] | None = None) -> dict[str, Any]:
+           history: list[dict[str, Any]] | None = None, user: Any = None, principal: Any = None, lock: dict[str, Any] | None = None,
+           screenshot: str = "") -> dict[str, Any]:
     """{answer, provider, sources:[{title, page, heading, url, snippet}], warnings, actions, lookups}
 
-    context 除了頁面種類還可帶 page（頁面快照）、activity（操作軌跡）、lang、screen；principal／lock 由端點補（呼叫者自己的身分與鎖定）。
-    有 LLM 且供應商支援工具呼叫時，模型可先用 lookup 的唯讀查詢看平台狀態再回答；回覆尾端的 ACTIONS 行變成前端的動作晶片。"""
+    context 除了頁面種類還可帶 page（頁面快照）、activity（操作軌跡）、lang、screen；principal／lock 由端點補（呼叫者自己的身分與鎖定）；
+    screenshot 是使用者主動附上的畫面（jpeg base64），只有 LLM 看得到。
+    有 LLM 且供應商支援工具呼叫時，模型可先用 lookup 的唯讀查詢看平台狀態再回答；回覆尾端的 ACTIONS 行變成前端的動作晶片。
+    長期記憶（notes）：使用者要它記住的事實整段進現況、評過好的相似舊問答當範例；離線時相似度夠高直接用舊回答。"""
     ctx = context or {}
     kind_label = CONTEXT_LABELS.get(str(ctx.get("kind") or ""), "")
     hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx)}")
+    facts = notes.facts_text(user)
+    remembered = notes.recall(user, question)
     sections = _context_sections(ctx) + [s for s, _ in hits]
     seen: set[tuple[str, str]] = set()
     sections = [s for s in sections if not ((s.page, s.anchor, s.heading) in seen or seen.add((s.page, s.anchor, s.heading)))]  # type: ignore[func-returns-value]
@@ -487,22 +496,28 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     if providers.available(settings):
         try:
             where = situation.describe(ctx, principal=principal, lock=lock)
+            if facts:
+                where = (where + "\n" if where else "") + "Things the user asked you to remember:\n" + facts
+            if screenshot:
+                where = (where + "\n" if where else "") + "A screenshot of the user's current screen is attached; read it before answering."
             turns = [h for h in (history or []) if isinstance(h, dict) and str(h.get("text") or "").strip()][-6:]
             recent = "\n".join(f"{'使用者' if h.get('role') == 'user' else '助理'}：{str(h.get('text'))[:300]}" for h in turns)
             docs_text = "\n\n".join(f"《{s.title}》\n{s.text[:MAX_SECTION_CHARS]}" for s in sections[:TOP_K + 1])
-            text = "\n\n".join(x for x in [("Current situation:\n" + where) if where else "", ("最近對話：\n" + recent) if recent else "", "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
-            system = HELP_SYSTEM + "\n\n" + skills.platform_text()[:1500] + "\n\n" + ui_brief()
+            text = "\n\n".join(x for x in [("Current situation:\n" + where) if where else "", ("最近對話：\n" + recent) if recent else "", notes.examples_text(remembered),
+                                           "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
+            system = HELP_SYSTEM + "\n\n" + skills.with_custom(skills.platform_text(), "platform", user)[:2500] + "\n\n" + ui_brief()
+            images = [screenshot] if screenshot else []
             steps: list[dict[str, Any]] = []
             reply = ""
             if lookups_enabled() and principal is not None and settings.provider in providers._TOOL_IMPL:
                 try:
-                    reply, steps = _answer_with_lookups(settings, system, text, principal)
+                    reply, steps = _answer_with_lookups(settings, system, text, principal, images)
                 except Exception as exc:  # noqa: BLE001 - 工具呼叫失敗就退回一般問答
                     log.warning("說明問答工具呼叫失敗，退回單次問答：%s", exc)
                     warnings.append(f"即時查詢失敗，已改用純文件回答：{providers._explain(exc, providers.generate_timeout())}")
                     steps = []
             if not (reply and reply.strip()):
-                reply = providers.complete(settings, system, [], text)
+                reply = providers.complete(settings, system, images, text)
             if reply and reply.strip():
                 cleaned, raw_actions = parse_actions(reply)
                 # 模型沒給 ACTIONS 時，問「在哪裡」仍由規則補一個「前往」（實測 Gemini 常略過選填的那一行）
@@ -512,6 +527,11 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
         except Exception as exc:  # noqa: BLE001
             log.warning("說明問答 LLM 失敗：%s", exc)
             warnings.append(f"LLM（{settings.provider}）失敗，已改用文件節錄：{providers._explain(exc, providers.generate_timeout())}")
+    if screenshot:
+        warnings.append("離線規則模式看不到截圖，只依文字回答")
+    if remembered and remembered[0][1] >= notes.DIRECT_MIN:
+        # 這位使用者評過好的、幾乎同一個問題：直接用舊回答（仍附這次檢索到的參考）
+        return {"answer": remembered[0][0].answer, "provider": "memory", "sources": sources, "warnings": warnings, "actions": rule_actions(question, hits, ctx), "lookups": []}
     return {"answer": offline_answer(question, hits, context=ctx), "provider": "rules", "sources": sources, "warnings": warnings,
             "actions": rule_actions(question, hits, ctx), "lookups": []}
 

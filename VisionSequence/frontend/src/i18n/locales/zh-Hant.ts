@@ -1626,6 +1626,14 @@ const zhHant = {
     skillsCustomDeleted: '已刪除補充要領',
   },
   assistant: {
+    screenshot: '把此頁面的截圖附在下一則提問', screenshotTaken: '截圖已附在下一則提問', screenshotRemove: '移除截圖',
+    screenshotNeedsLlm: '截圖需要看得懂影像的 LLM 供應商', screenshotFailed: '無法擷取畫面',
+    rateUp: '有幫助', rateDown: '沒幫助', rated: '已記錄',
+    memory: {
+      open: '記憶：您要助手記住的事實，以及評過分的回答', facts: '記住的事實', qa: '最近的提問', empty: '尚無記憶',
+      placeholder: '要記住的事，例如：產線 3 用流程「檢測 A」', add: '記住', delete: '刪除', added: '已記住',
+      hint: '輸入「記住：…」可存一件事讓之後的回答參考；為回答評分，好的回答會被重用',
+    },
     hintTitle: '提示', hintAsk: '詢問助手', hintDismiss: '關閉',
     attachScreen: '之後的提問附上目前畫面（只有文字）', attachScreenOn: '每次提問都會附上畫面文字；點選可停止',
     hints: {

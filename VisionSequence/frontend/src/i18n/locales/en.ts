@@ -1008,6 +1008,14 @@ const en = {
     skillsCustomPlaceholder: 'e.g. hole diameters are always judged in mm here, pixel size 0.05 mm/px…', skillsScopeUser: 'Personal', skillsScopeSite: 'Site',
     skillsCustomSaved: 'Extra know-how saved', skillsCustomDeleted: 'Extra know-how deleted' },
   assistant: {
+    screenshot: 'Attach a screenshot of this page to the next question', screenshotTaken: 'Screenshot attached to the next question', screenshotRemove: 'Remove screenshot',
+    screenshotNeedsLlm: 'Screenshots need an LLM provider that reads images', screenshotFailed: 'Could not capture the screen',
+    rateUp: 'Helpful', rateDown: 'Not helpful', rated: 'Noted',
+    memory: {
+      open: 'Memory: facts you asked the assistant to remember, and your rated answers', facts: 'Remembered facts', qa: 'Recent questions', empty: 'Nothing remembered yet',
+      placeholder: 'Something to remember, e.g. line 3 uses flow "Inspect A"', add: 'Remember', delete: 'Delete', added: 'Remembered',
+      hint: 'Type "remember: …" to store a fact for later answers; rate answers so the good ones are reused',
+    },
     hintTitle: 'Hint', hintAsk: 'Ask the assistant', hintDismiss: 'Dismiss',
     attachScreen: 'Include what is on screen (text only) with the next questions', attachScreenOn: 'Screen text is sent with each question; click to stop',
     hints: {

@@ -1626,6 +1626,14 @@ const zhHans = {
     skillsCustomDeleted: '已删除补充要领',
   },
   assistant: {
+    screenshot: '把此页面的截图附在下一条提问', screenshotTaken: '截图已附在下一条提问', screenshotRemove: '移除截图',
+    screenshotNeedsLlm: '截图需要能看图像的 LLM 供应商', screenshotFailed: '无法截取画面',
+    rateUp: '有帮助', rateDown: '没帮助', rated: '已记录',
+    memory: {
+      open: '记忆：您要助手记住的事实，以及评过分的回答', facts: '记住的事实', qa: '最近的提问', empty: '尚无记忆',
+      placeholder: '要记住的事，例如：产线 3 用流程「检测 A」', add: '记住', delete: '删除', added: '已记住',
+      hint: '输入「记住：…」可存一件事让之后的回答参考；为回答评分，好的回答会被重用',
+    },
     hintTitle: '提示', hintAsk: '询问助手', hintDismiss: '关闭',
     attachScreen: '之后的提问附上当前画面（仅文字）', attachScreenOn: '每次提问都会附上画面文字；点选可停止',
     hints: {

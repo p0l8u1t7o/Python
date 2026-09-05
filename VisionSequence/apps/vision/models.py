@@ -334,6 +334,26 @@ class AgentSkill(models.Model):
         ordering = ["key", "scope"]
 
 
+class AssistantMemory(models.Model):
+    """全域 AI 助手的長期記憶（每位使用者自己的）：kind=fact 是使用者要它記住的一句話（「記住：…」）；
+    kind=qa 是問過的問答（text＝問題、answer＝回答、context＝當時的頁面），可評分，評過好的在相似問題時當範例。"""
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assistant_memories")
+    kind = models.CharField(max_length=8)  # fact | qa
+    text = models.TextField()
+    answer = models.TextField(blank=True, default="")
+    context = models.JSONField(default=dict, blank=True)
+    rating = models.SmallIntegerField(default=0)  # -1 / 0 / 1
+    hits = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [models.Index(fields=["owner", "kind"])]
+
+
 # ---------------------------------------------------------------------------
 # 批次測試（apps/vision/batch）
 # ---------------------------------------------------------------------------

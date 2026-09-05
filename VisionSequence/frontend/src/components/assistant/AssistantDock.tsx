@@ -6,8 +6,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Bot, Check, ExternalLink, Eye, EyeOff, Lightbulb, Monitor, MonitorOff, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, Lightbulb, Monitor, MonitorOff, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button } from '@/components/ui'
@@ -20,6 +20,7 @@ import { errorMessage } from '@/lib/errors'
 import i18n from '@/i18n'
 import { dismissHint, hintFor, shouldShow, type Hint } from '@/lib/hints'
 import { pageSnapshot, screenSummary, setIntegrationTab } from '@/lib/screen'
+import { base64Of, captureScreenshot } from '@/lib/screenshot'
 import { sectionOf } from '@/pages/integration/sections'
 import type { FlowGraph, RunReport } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
@@ -33,6 +34,9 @@ export type AssistantAction =
   | { kind: 'navigate'; to: string; tab?: string; label: string }
   | { kind: 'focus_node' | 'open_tool'; node: string; flow_id: number; label: string }
 interface Lookup { name: string; args: Record<string, unknown>; error?: string }
+/** 長期記憶的一筆：fact＝使用者要它記住的一句話；qa＝問過的問答（可評分）。 */
+interface MemoryItem { id: number; kind: 'fact' | 'qa'; text: string; answer: string; rating: number; created_at: string | null }
+interface MemoryList { facts: MemoryItem[]; qa: MemoryItem[]; limits: { facts: number; qa: number } }
 interface EditResult { graph: FlowGraph; rationale: string; provider: string; changes: string[]; report: RunReport | null; applied: boolean }
 interface ChatReply {
   kind: ReplyKind
@@ -46,6 +50,7 @@ interface ChatReply {
   batch_run_id?: number | null
   actions?: AssistantAction[]
   lookups?: Lookup[]
+  memory_id?: number
 }
 
 export interface ChatMessage {
@@ -63,6 +68,9 @@ export interface ChatMessage {
   contextKind?: AssistantKind
   actions?: AssistantAction[]
   lookups?: Lookup[]
+  /** 後端留的問答記憶 id（可評分） */
+  memoryId?: number
+  rating?: number
 }
 
 const STORAGE = 'vs.assistant.v1'
@@ -116,6 +124,24 @@ export function AssistantDock() {
   const [hint, setHint] = useState<Hint | null>(null)
   //: 附上畫面：開著時每次提問帶目前畫面的文字摘要（只有分享開著才會送）
   const [attachScreen, setAttachScreen] = useState(false)
+  //: 截圖：按相機擷取一張、附在下一則提問（送出後清掉）
+  const [shot, setShot] = useState<string | null>(null)
+  const [shotBusy, setShotBusy] = useState(false)
+  //: 記憶面板（事實與最近問答）
+  const [showMemory, setShowMemory] = useState(false)
+  const [memoryInput, setMemoryInput] = useState('')
+  const queryClient = useQueryClient()
+  const memory = useQuery({ queryKey: ['assistant-memory'], queryFn: () => api.get<MemoryList>('/vision/agent/memory'), enabled: showMemory })
+  const addMemory = useMutation({
+    mutationFn: (text: string) => api.post<MemoryItem>('/vision/agent/memory', { text }),
+    onSuccess: () => { setMemoryInput(''); toast.success(t('assistant.memory.added')); void queryClient.invalidateQueries({ queryKey: ['assistant-memory'] }) },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
+  const deleteMemory = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/agent/memory/${id}`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['assistant-memory'] }),
+    onError: (error) => toast.error(errorMessage(error)),
+  })
   useEffect(() => subscribeActivity(() => {
     const last = recentActivity(1)[0]
     const h = last ? hintFor(last) : null
@@ -188,7 +214,8 @@ export function AssistantDock() {
     abortRef.current = controller
     const history = messages.slice(-8).map((m) => ({ role: m.role, text: m.text.slice(0, 400) }))
     try {
-      const payload = { ...contextPayload(ctx, location.pathname), screen: attachScreen && share ? screenSummary() : '' }
+      const payload = { ...contextPayload(ctx, location.pathname), screen: attachScreen && share ? screenSummary() : '', screenshot: shot ? base64Of(shot) : '' }
+      setShot(null)
       const r = await api.post<ChatReply>('/vision/agent/chat', { message: text, mode, context: payload, history }, undefined, controller.signal)
       if (r.agentic && (r.kind === 'edit' || r.kind === 'tune')) {
         await jobs.start(r.kind === 'edit'
@@ -205,7 +232,8 @@ export function AssistantDock() {
       } else if (r.kind === 'consult') {
         push({ role: 'assistant', text: r.answer, kind: 'consult', provider: r.provider, suggestions: r.suggestions, warnings: r.warnings, contextKind: ctx.kind })
       } else {
-        push({ role: 'assistant', text: r.answer, kind: 'help', provider: r.provider, sources: r.sources, warnings: r.warnings, contextKind: ctx.kind, actions: r.actions, lookups: r.lookups })
+        push({ role: 'assistant', text: r.answer, kind: 'help', provider: r.provider, sources: r.sources, warnings: r.warnings, contextKind: ctx.kind, actions: r.actions, lookups: r.lookups, memoryId: r.memory_id })
+        if (r.provider === 'memory') void queryClient.invalidateQueries({ queryKey: ['assistant-memory'] })
       }
     } catch (error) {
       if (controller.signal.aborted) push({ role: 'assistant', text: t('agent.aborted') })
@@ -219,6 +247,28 @@ export function AssistantDock() {
   function abort() {
     if (jobs.running) void jobs.cancel()
     else abortRef.current?.abort()
+  }
+
+  async function takeShot() {
+    setShotBusy(true)
+    try {
+      const url = await captureScreenshot()
+      if (url) setShot(url)
+      else toast.warning(t('assistant.screenshotFailed'))
+    } finally {
+      setShotBusy(false)
+    }
+  }
+
+  /** 評分一則回答：好的會在相似問題時被重用。 */
+  async function rate(m: ChatMessage, rating: number) {
+    if (!m.memoryId) return
+    try {
+      await api.post(`/vision/agent/memory/${m.memoryId}/rate`, { rating })
+      setMessages((list) => list.map((x) => (x.id === m.id ? { ...x, rating } : x)))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
   }
 
   /** 回覆的捷徑：整合頁先記住要開的分頁再導頁；節點動作只在同一條流程的編輯器內有效。 */
@@ -264,6 +314,8 @@ export function AssistantDock() {
             <span className="shrink-0 whitespace-nowrap text-sm font-semibold">{t('assistant.title')}</span>
             {info.data ? <Badge tone={info.data.llm ? 'brand' : 'neutral'} className="max-w-[55%] truncate">{info.data.llm ? `${info.data.model}${agentic ? ` · ${t('assistant.agentic')}` : ''}` : t('agent.providerRules')}</Badge> : null}
             <span className="ml-auto flex items-center gap-0.5">
+              <button type="button" className={`btn-icon ${showMemory ? 'text-brand' : ''}`} title={t('assistant.memory.open')} aria-pressed={showMemory} onClick={() => setShowMemory((v) => !v)} data-testid="assistant-memory-toggle"><Brain size={14} /></button>
+              <button type="button" className={`btn-icon ${shot ? 'text-brand' : ''}`} title={!info.data?.llm ? t('assistant.screenshotNeedsLlm') : t('assistant.screenshot')} disabled={!info.data?.llm || !share || shotBusy} onClick={() => void takeShot()} data-testid="assistant-shot"><Camera size={14} /></button>
               <button type="button" className={`btn-icon ${attachScreen ? 'text-brand' : ''}`} title={attachScreen ? t('assistant.attachScreenOn') : t('assistant.attachScreen')} aria-pressed={attachScreen} disabled={!share} onClick={() => setAttachScreen((v) => !v)} data-testid="assistant-screen">{attachScreen ? <Monitor size={14} /> : <MonitorOff size={14} />}</button>
               <button type="button" className={`btn-icon ${share ? '' : 'text-warning'}`} title={share ? t('assistant.shareOn') : t('assistant.shareOff')} aria-pressed={share} onClick={() => setShareEnabled(!share)} data-testid="assistant-share">{share ? <Eye size={14} /> : <EyeOff size={14} />}</button>
               <button type="button" className="btn-icon" title={t('assistant.clear')} onClick={() => setMessages([])} data-testid="assistant-clear"><Trash2 size={14} /></button>
@@ -278,6 +330,40 @@ export function AssistantDock() {
               ))}
             </span>
           </div>
+          {showMemory ? (
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-xs" data-testid="assistant-memory">
+              <p className="text-[11px] text-muted">{t('assistant.memory.hint')}</p>
+              <div className="flex gap-1.5">
+                <input className="input flex-1 !py-1 text-xs" placeholder={t('assistant.memory.placeholder')} value={memoryInput} onChange={(e) => setMemoryInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && memoryInput.trim()) addMemory.mutate(memoryInput.trim()) }} data-testid="assistant-memory-input" />
+                <Button size="sm" variant="primary" disabled={!memoryInput.trim() || addMemory.isPending} onClick={() => addMemory.mutate(memoryInput.trim())} data-testid="assistant-memory-add">{t('assistant.memory.add')}</Button>
+              </div>
+              <section>
+                <p className="mb-1 font-semibold text-muted">{t('assistant.memory.facts')}{memory.data ? ` (${memory.data.facts.length}/${memory.data.limits.facts})` : ''}</p>
+                {memory.data && memory.data.facts.length === 0 ? <p className="text-subtle">{t('assistant.memory.empty')}</p> : null}
+                <ul className="space-y-1">
+                  {(memory.data?.facts ?? []).map((f) => (
+                    <li key={f.id} className="flex items-start gap-2 rounded-md bg-surface-muted px-2 py-1" data-testid="assistant-memory-fact">
+                      <span className="flex-1 break-words">{f.text}</span>
+                      <button type="button" className="btn-icon shrink-0" title={t('assistant.memory.delete')} aria-label={t('assistant.memory.delete')} onClick={() => deleteMemory.mutate(f.id)}><Trash2 size={12} /></button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <p className="mb-1 font-semibold text-muted">{t('assistant.memory.qa')}</p>
+                <ul className="space-y-1">
+                  {(memory.data?.qa ?? []).slice(0, 15).map((q) => (
+                    <li key={q.id} className="flex items-start gap-2 rounded-md bg-surface-muted px-2 py-1" data-testid="assistant-memory-qa">
+                      <span className="flex-1 truncate" title={q.answer}>{q.text}</span>
+                      {q.rating > 0 ? <ThumbsUp size={11} className="shrink-0 text-ok" /> : q.rating < 0 ? <ThumbsDown size={11} className="shrink-0 text-critical" /> : null}
+                      <button type="button" className="btn-icon shrink-0" title={t('assistant.memory.delete')} aria-label={t('assistant.memory.delete')} onClick={() => deleteMemory.mutate(q.id)}><Trash2 size={12} /></button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          ) : (
           <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 text-xs" data-testid="assistant-messages">
             {hint ? (
               <div className="rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-2 text-[11px]" data-testid="assistant-hint">
@@ -294,6 +380,7 @@ export function AssistantDock() {
               <div className="space-y-2">
                 <p className="text-muted">{t('assistant.empty')}</p>
                 <p className="text-[11px] text-subtle">{t(`assistant.hint.${ctx.kind}`, { defaultValue: t('assistant.hint.page') })}</p>
+                <p className="text-[11px] text-subtle">{t('assistant.memory.hint')}</p>
               </div>
             ) : null}
             {messages.map((m) => (
@@ -336,11 +423,26 @@ export function AssistantDock() {
                 {m.lookups?.length ? (
                   <p className="mt-1 text-[10px] text-subtle" data-testid="assistant-lookups">{t('assistant.checked')}: {m.lookups.map((l) => (l.error ? `${l.name} (${t('assistant.lookupDenied')})` : l.name)).join(', ')}</p>
                 ) : null}
+                {m.memoryId && m.kind === 'help' ? (
+                  <p className="mt-1 flex items-center gap-1 text-[10px] text-subtle">
+                    {m.rating ? <span>{t('assistant.rated')}</span> : null}
+                    <button type="button" className={`btn-icon !size-6 ${m.rating === 1 ? 'text-ok' : ''}`} title={t('assistant.rateUp')} aria-label={t('assistant.rateUp')} onClick={() => void rate(m, m.rating === 1 ? 0 : 1)} data-testid="assistant-rate-up"><ThumbsUp size={11} /></button>
+                    <button type="button" className={`btn-icon !size-6 ${m.rating === -1 ? 'text-critical' : ''}`} title={t('assistant.rateDown')} aria-label={t('assistant.rateDown')} onClick={() => void rate(m, m.rating === -1 ? 0 : -1)} data-testid="assistant-rate-down"><ThumbsDown size={11} /></button>
+                  </p>
+                ) : null}
               </div>
             ))}
             {jobs.job && (jobs.running || jobs.waiting) ? <AgentTimeline job={jobs.job} steps={jobs.steps} onCancel={abort} /> : null}
             {busy && !jobs.running ? <p className="text-subtle">{t('assistant.thinking')}</p> : null}
           </div>
+          )}
+          {shot ? (
+            <div className="flex items-center gap-2 border-t border-line px-3 py-1.5 text-[11px]" data-testid="assistant-shot-chip">
+              <img src={shot} alt="" className="h-8 w-auto rounded border border-line" />
+              <span className="flex-1 text-muted">{t('assistant.screenshotTaken')}</span>
+              <button type="button" className="btn-icon" title={t('assistant.screenshotRemove')} aria-label={t('assistant.screenshotRemove')} onClick={() => setShot(null)} data-testid="assistant-shot-remove"><X size={12} /></button>
+            </div>
+          ) : null}
           {messages.length === 0 && quickList.length ? (
             <div className="flex flex-wrap gap-1 border-t border-line px-3 py-1.5">
               {quickList.map((q) => <button key={q} type="button" disabled={busy} onClick={() => void send(q)} className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted hover:bg-surface-muted" data-testid="assistant-quick">{q}</button>)}

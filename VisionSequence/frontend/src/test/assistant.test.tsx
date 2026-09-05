@@ -6,6 +6,7 @@ import { installApiMock } from './apiMock'
 import { renderPage } from './render'
 
 installApiMock()
+vi.mock('@/lib/screenshot', () => ({ captureScreenshot: vi.fn(async () => 'data:image/jpeg;base64,QUJD'), base64Of: (s: string) => s.split(',')[1] ?? s }))
 
 import { AssistantDock, contextPayload } from '@/components/assistant/AssistantDock'
 import { clearActivity, logActivity, setShareEnabled, shareEnabled } from '@/lib/activity'
@@ -160,6 +161,57 @@ describe('AssistantDock', () => {
     expect(body.message).toContain('Nothing is listening at 127.0.0.1:9001')
     expect(body.context.screen).toContain('buttons:')
     expect(screen.queryByTestId('assistant-hint')).toBeNull()
+  })
+
+  it('rates a help answer, and the memory panel lists, adds and deletes facts', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'help', answer: '到來源庫', provider: 'openai', sources: [], memory_id: 5 })
+    renderPage(<AssistantDock />, { route: '/sources' })
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    const input = screen.getByTestId('assistant-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '如何建立影像來源？' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByTestId('assistant-rate-up')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('assistant-rate-up'))
+    await waitFor(() => expect(vi.mocked(api.post)).toHaveBeenCalledWith('/vision/agent/memory/5/rate', { rating: 1 }))
+    await waitFor(() => expect(screen.getByTestId('assistant-msg-assistant').textContent).toContain('Noted'))
+    fireEvent.click(screen.getByTestId('assistant-memory-toggle'))
+    await waitFor(() => expect(screen.getAllByTestId('assistant-memory-fact').length).toBe(1))
+    expect(screen.getByTestId('assistant-memory').textContent).toContain('產線 3 用流程「檢測 A」')
+    expect(screen.getAllByTestId('assistant-memory-qa').length).toBe(1)
+    fireEvent.change(screen.getByTestId('assistant-memory-input'), { target: { value: '我負責 B 線' } })
+    fireEvent.click(screen.getByTestId('assistant-memory-add'))
+    await waitFor(() => expect(vi.mocked(api.post)).toHaveBeenCalledWith('/vision/agent/memory', { text: '我負責 B 線' }))
+    fireEvent.click(screen.getAllByLabelText('Delete')[0])
+    await waitFor(() => expect(vi.mocked(api.delete)).toHaveBeenCalledWith('/vision/agent/memory/1'))
+    fireEvent.click(screen.getByTestId('assistant-memory-toggle'))
+    expect(screen.getByTestId('assistant-messages')).toBeTruthy()
+  })
+
+  it('attaches a screenshot to the next question when an LLM is configured', async () => {
+    const original = vi.mocked(api.get).getMockImplementation()!
+    vi.mocked(api.get).mockImplementation(async (path: string) => (path.startsWith('/vision/agent/info') ? { provider: 'openai', model: 'gpt-4o', llm: true, mode: 'single' } : original(path)))
+    try {
+      renderPage(<AssistantDock />, { route: '/sources' })
+      fireEvent.click(screen.getByTestId('assistant-toggle'))
+      await waitFor(() => expect((screen.getByTestId('assistant-shot') as HTMLButtonElement).disabled).toBe(false))
+      fireEvent.click(screen.getByTestId('assistant-shot'))
+      await waitFor(() => expect(screen.getByTestId('assistant-shot-chip')).toBeTruthy())
+      vi.mocked(api.post).mockResolvedValueOnce({ kind: 'help', answer: '看到了', provider: 'openai', sources: [] })
+      const input = screen.getByTestId('assistant-input') as HTMLInputElement
+      fireEvent.change(input, { target: { value: '這頁在顯示什麼？' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+      await waitFor(() => expect(screen.getAllByTestId('assistant-msg-assistant').length).toBe(1))
+      const body = vi.mocked(api.post).mock.calls[0][1] as { context: { screenshot: string } }
+      expect(body.context.screenshot).toBe('QUJD')
+      expect(screen.queryByTestId('assistant-shot-chip')).toBeNull()
+      // 沒有 LLM 時相機停用
+    } finally {
+      vi.mocked(api.get).mockImplementation(original)
+    }
+    localStorage.clear()  // 第一個視窗把 open 存進 localStorage，清掉再開第二個
+    renderPage(<AssistantDock />, { route: '/flows' })
+    fireEvent.click(screen.getAllByTestId('assistant-toggle')[1])
+    await waitFor(() => expect((screen.getAllByTestId('assistant-shot')[1] as HTMLButtonElement).disabled).toBe(true))
   })
 
   it('restores a persisted conversation', () => {
