@@ -228,6 +228,11 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { pathname } = useLocation()
   useEffect(() => { setMobileOpen(false) }, [pathname])
+  // 直接連到整合子頁（書籤、搜尋結果）時群組要是展開的，不然看不到自己在哪一頁
+  useEffect(() => {
+    const group = NAV.find((n) => n.tree && pathname.startsWith(n.to))
+    if (group) setOpenGroups((prev) => (prev.includes(group.key) ? prev : [...prev, group.key]))
+  }, [pathname])
   const narrow = collapsed && !mobile
   // 鎖定事件：流程串流會濾掉沒有 flow_id 的事件，所以這裡另開一條只聽 lock 的全域串流。
   useLockEvents(auth.authenticated)
@@ -256,16 +261,20 @@ export function AppShell() {
           {NAV.filter((item) => (!item.admin || auth.isAdmin) && (!item.feature || auth.can(item.feature))).map(({ to, key, icon: Icon, end, tree }) => (
             <div key={key}>
               <div className="relative flex items-center">
-                <NavLink to={to} end={end} onClick={() => setMobileOpen(false)} title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item flex-1 ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
+                <NavLink to={to} end={end} aria-expanded={tree && !narrow ? openGroups.includes(key) : undefined}
+                  onClick={(e) => {
+                    setMobileOpen(false)
+                    if (!tree || narrow) return
+                    // 群組項目點一下就展開／收合，不必再找右邊的小箭頭：收起來時展開並進入第一個子頁，
+                    // 已展開時只收合、停在目前的頁面
+                    if (openGroups.includes(key)) e.preventDefault()
+                    toggleGroup(key)
+                  }}
+                  title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item flex-1 ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
                   <Icon size={17} aria-hidden className="shrink-0" />
                   {narrow ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
+                  {tree && !narrow ? (openGroups.includes(key) ? <ChevronDown size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" /> : <ChevronRight size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" />) : null}
                 </NavLink>
-                {tree && !narrow ? (
-                  <button type="button" onClick={() => toggleGroup(key)} aria-expanded={openGroups.includes(key)} aria-label={t(openGroups.includes(key) ? 'nav.collapseGroup' : 'nav.expandGroup')}
-                    className="absolute right-1 flex size-6 items-center justify-center rounded text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-text" data-testid={`nav-${key}-toggle`}>
-                    {openGroups.includes(key) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </button>
-                ) : null}
               </div>
               {tree && !narrow && openGroups.includes(key) ? (
                 <div className="mb-1" data-testid={`nav-${key}-children`}>
