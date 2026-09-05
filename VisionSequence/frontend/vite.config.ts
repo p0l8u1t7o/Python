@@ -35,7 +35,10 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // 發行版不出 sourcemap（8 MB、暴露原始碼）；要除錯時 VITE_SOURCEMAP=1 npm run build
+    sourcemap: process.env.VITE_SOURCEMAP === '1',
+    // 與 Tailwind v4 的 CSS 底線一致（color-mix、@property）：Chrome/Edge 111、Firefox 128、Safari 16.4
+    target: ['chrome111', 'edge111', 'firefox128', 'safari16.4'],
     rollupOptions: {
       output: {
         manualChunks: {

@@ -112,10 +112,23 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
-STATICFILES_DIRS = [FRONTEND_DIST] if FRONTEND_DIST.exists() else []
 STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }
+# 前端 build 產物由 whitenoise 掛在 /（不是 /static/，index.html 引用的是 /assets/*）：hashed 的 /assets/* 給一年 immutable、
+# index.html 每次重新驗證、build 預壓的 .gz／.br 自動選用；深連結（/flows/3）不是檔案 → 落到 urls 的 _spa 回 index.html。
+# 每台客戶端電腦只下載一次 2.7 MB 的 JS，之後全是 304／快取，不再經過 Django 的 view。
+WHITENOISE_ROOT = str(FRONTEND_DIST) if FRONTEND_DIST.exists() else None
+WHITENOISE_INDEX_FILE = True
+WHITENOISE_IMMUTABLE_FILE_TEST = lambda path, url: url.startswith("/assets/")  # noqa: E731 - whitenoise 要的是可呼叫物件
+
+
+def _static_headers(headers, path, url):
+    if url in ("/", "/index.html"):
+        headers["Cache-Control"] = "no-cache"
+
+
+WHITENOISE_ADD_HEADERS_FUNCTION = _static_headers
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = [o for o in _env("CORS_ALLOWED_ORIGINS", "").split(",") if o]

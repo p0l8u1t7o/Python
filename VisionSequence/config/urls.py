@@ -30,15 +30,14 @@ def _events_stream(request):
 
 
 def _spa(request, path=""):
-    """正式環境：前端 build 產物由 Django 直接提供（前端路由一律回 index.html）。"""
-    dist = Path(settings.FRONTEND_DIST)
-    index = dist / "index.html"
+    """前端路由的深連結（/flows/3）一律回 index.html；靜態檔本身由 whitenoise 在中介層供應（settings.WHITENOISE_ROOT），
+    到得了這裡的檔案路徑就是不存在的檔案（例如 sourcemap），照樣回 index.html 讓前端路由處理。"""
+    index = Path(settings.FRONTEND_DIST) / "index.html"
     if not index.exists():
         raise Http404("The front end has not been built: run npm run build in frontend/")
-    candidate = dist / path
-    if path and candidate.is_file():
-        return serve(request, path, document_root=dist)
-    return FileResponse(open(index, "rb"), content_type="text/html")
+    response = FileResponse(open(index, "rb"), content_type="text/html")
+    response["Cache-Control"] = "no-cache"
+    return response
 
 
 urlpatterns = [
