@@ -5,9 +5,9 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Check, ExternalLink, Eye, EyeOff, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { ArrowRight, Bot, Check, ExternalLink, Eye, EyeOff, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button } from '@/components/ui'
@@ -18,7 +18,8 @@ import { contextFromPath, useAssistantContext, type AssistantContext, type Assis
 import type { Suggestion, TuneResult } from '@/lib/batch'
 import { errorMessage } from '@/lib/errors'
 import i18n from '@/i18n'
-import { pageSnapshot } from '@/lib/screen'
+import { pageSnapshot, setIntegrationTab } from '@/lib/screen'
+import { sectionOf } from '@/pages/integration/sections'
 import type { FlowGraph, RunReport } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -26,6 +27,11 @@ type Mode = 'auto' | 'help' | 'edit' | 'consult' | 'tune'
 type ReplyKind = 'help' | 'edit' | 'consult' | 'tune'
 
 interface Source { title: string; page: string; heading: string; url: string; snippet: string; kind: string }
+/** 回覆附的捷徑：前往頁面（可指定分頁）、在編輯器聚焦節點、開該節點的工具頁。 */
+export type AssistantAction =
+  | { kind: 'navigate'; to: string; tab?: string; label: string }
+  | { kind: 'focus_node' | 'open_tool'; node: string; flow_id: number; label: string }
+interface Lookup { name: string; args: Record<string, unknown>; error?: string }
 interface EditResult { graph: FlowGraph; rationale: string; provider: string; changes: string[]; report: RunReport | null; applied: boolean }
 interface ChatReply {
   kind: ReplyKind
@@ -37,6 +43,8 @@ interface ChatReply {
   suggestions?: Suggestion[]
   warnings?: string[]
   batch_run_id?: number | null
+  actions?: AssistantAction[]
+  lookups?: Lookup[]
 }
 
 export interface ChatMessage {
@@ -52,6 +60,8 @@ export interface ChatMessage {
   warnings?: string[]
   newRunId?: number | null
   contextKind?: AssistantKind
+  actions?: AssistantAction[]
+  lookups?: Lookup[]
 }
 
 const STORAGE = 'vs.assistant.v1'
@@ -90,6 +100,7 @@ export function AssistantDock() {
   const { t } = useTranslation()
   const toast = useToast()
   const location = useLocation()
+  const navigate = useNavigate()
   const registered = useAssistantContext()
   const ctx = useMemo<AssistantContext>(() => registered ?? contextFromPath(location.pathname), [registered, location.pathname])
   const initial = useMemo(load, [])
@@ -181,7 +192,7 @@ export function AssistantDock() {
       } else if (r.kind === 'consult') {
         push({ role: 'assistant', text: r.answer, kind: 'consult', provider: r.provider, suggestions: r.suggestions, warnings: r.warnings, contextKind: ctx.kind })
       } else {
-        push({ role: 'assistant', text: r.answer, kind: 'help', provider: r.provider, sources: r.sources, warnings: r.warnings, contextKind: ctx.kind })
+        push({ role: 'assistant', text: r.answer, kind: 'help', provider: r.provider, sources: r.sources, warnings: r.warnings, contextKind: ctx.kind, actions: r.actions, lookups: r.lookups })
       }
     } catch (error) {
       if (controller.signal.aborted) push({ role: 'assistant', text: t('agent.aborted') })
@@ -195,6 +206,20 @@ export function AssistantDock() {
   function abort() {
     if (jobs.running) void jobs.cancel()
     else abortRef.current?.abort()
+  }
+
+  /** 回覆的捷徑：整合頁先記住要開的分頁再導頁；節點動作只在同一條流程的編輯器內有效。 */
+  function runAction(a: AssistantAction) {
+    if (a.kind === 'navigate') {
+      if (a.tab && a.to.startsWith('/integration/')) setIntegrationTab(sectionOf(a.to), a.tab)
+      navigate(a.to)
+      return
+    }
+    if (a.kind === 'focus_node' && ctx.focusNode && ctx.flowId === a.flow_id) {
+      ctx.focusNode(a.node)
+      return
+    }
+    navigate(a.kind === 'open_tool' ? `/flows/${a.flow_id}/tools/${a.node}` : `/flows/${a.flow_id}`)
   }
 
   function applyEdit(m: ChatMessage) {
@@ -278,6 +303,14 @@ export function AssistantDock() {
                   </div>
                 ) : null}
                 {m.newRunId ? <p className="mt-1 text-[11px] text-brand">{t('batchPage.ai.newRun', { id: m.newRunId })}</p> : null}
+                {m.actions?.length ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {m.actions.map((a, i) => <Button key={i} size="xs" icon={<ArrowRight size={12} />} onClick={() => runAction(a)} data-testid="assistant-action">{a.label}</Button>)}
+                  </div>
+                ) : null}
+                {m.lookups?.length ? (
+                  <p className="mt-1 text-[10px] text-subtle" data-testid="assistant-lookups">{t('assistant.checked')}: {m.lookups.map((l) => (l.error ? `${l.name} (${t('assistant.lookupDenied')})` : l.name)).join(', ')}</p>
+                ) : null}
               </div>
             ))}
             {jobs.job && (jobs.running || jobs.waiting) ? <AgentTimeline job={jobs.job} steps={jobs.steps} onCancel={abort} /> : null}

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from apps.vision.agent import providers, situation, skills
+from apps.vision.agent import actions, lookup, providers, situation, skills
 from apps.vision.tools import base as tools
 
 log = logging.getLogger("vision.agent")
@@ -36,6 +36,10 @@ TOP_K = 5
 _WHERE = re.compile(r"哪裡|哪里|哪個頁面|哪个页面|在哪|哪一頁|哪一页|哪頁|哪页|怎麼去|怎么去|\bwhere\b|which (page|tab|menu)|how do i (get|go) to|navigate", re.IGNORECASE)
 UI_WEIGHT_WHERE = 1.3
 UI_WEIGHT_OTHER = 0.35
+#: 問答路徑最多幾回合工具呼叫（每回合可查多個），之後要求直接回答
+MAX_LOOKUP_TURNS = 4
+ACTION_KINDS = ("navigate", "focus_node", "open_tool")
+_ACTIONS_LINE = re.compile(r"^\s*ACTIONS:\s*(\[.*\])\s*$", re.MULTILINE | re.DOTALL)
 
 HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machine vision platform.
 - Answer only from the documentation excerpts below. If they do not cover it, say so plainly, suggest the page that might, and never invent a feature.
@@ -43,7 +47,9 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 - Conclusion first, then the steps; mostly bullets; under 300 words. Name the buttons and pages as the interface shows them ("New image set" on the Batch testing page).
 - End with a separate line starting "References:" listing the sections you used, as Page > Section.
 - If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page.
-- You are also given the user's current situation: the page they are on, what it shows, their recent actions and errors, their role and the engine lock. Use it: if a recent error explains the question, explain that error first and how to fix it; point to the exact page, tab and button (the interface map lists them in the user's languages); never tell the user to do something their role cannot do, say which role can."""
+- You are also given the user's current situation: the page they are on, what it shows, their recent actions and errors, their role and the engine lock. Use it: if a recent error explains the question, explain that error first and how to fix it; point to the exact page, tab and button (the interface map lists them in the user's languages); never tell the user to do something their role cannot do, say which role can.
+- When lookup tools are available, use them to read the live state (flows, sources, connections, a run report, the lock, plugins) before answering questions about "why", "which" or "is it"; they are read-only and permission-checked, so a "not permitted" result means the user's role cannot see that, and you say so. Do not call a tool for questions the documentation alone answers.
+- You may end with ONE extra line `ACTIONS: [...]` (a JSON array, at most 3 items) offering shortcuts: {"kind":"navigate","to":"<route from the interface map with real ids filled in>","tab":"<tab key, optional>","label":"<short label in the user's language>"} or, in the flow editor, {"kind":"focus_node","node":"<node id>","label":"..."} / {"kind":"open_tool","node":"<node id>","label":"..."}. Only routes from the map; omit the line when nothing applies."""
 
 #: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/glossary.html 的對照表）。
 BILINGUAL = {
@@ -247,7 +253,7 @@ def ui_brief() -> str:
         names = p.get("names") or {}
         extras = []
         if p.get("tabs"):
-            extras.append("tabs: " + ", ".join(str((t.get("names") or {}).get("en") or t.get("key")) for t in p["tabs"]))
+            extras.append("tabs: " + ", ".join(f"{t.get('key')} ({(t.get('names') or {}).get('en') or t.get('key')})" for t in p["tabs"]))
         if p.get("actions"):
             extras.append("buttons: " + ", ".join(str(a.get("en") or "") for a in p["actions"]))
         access = " [admin]" if p.get("admin") else (f" [{p['feature']}]" if p.get("feature") else "")
@@ -383,11 +389,93 @@ def offline_answer(question: str, hits: list[tuple[Section, float]], *, context:
     return "\n".join(lines)
 
 
+def lookups_enabled() -> bool:
+    """VISION_AGENT_HELP_LOOKUPS=0 關掉問答路徑的即時查詢（只剩文件）。"""
+    return str(providers._cfg("AGENT_HELP_LOOKUPS") or "1").strip().lower() not in ("0", "false", "off", "no")
+
+
+def parse_actions(text: str) -> tuple[str, list[dict[str, Any]]]:
+    """把回覆尾端的 `ACTIONS: [...]` 抽出來（找不到或壞掉就當沒有）；回 (去掉那行的文字, 原始動作清單)。"""
+    m = _ACTIONS_LINE.search(text or "")
+    if not m:
+        return (text or "").strip(), []
+    try:
+        raw = json.loads(m.group(1))
+    except ValueError:
+        return (text or "").strip(), []
+    cleaned = (text[:m.start()] + text[m.end():]).strip()
+    return cleaned, [a for a in raw if isinstance(a, dict)] if isinstance(raw, list) else []
+
+
+def validate_actions(raw: list[dict[str, Any]], context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """只留合法的動作：navigate 的路由要對得上介面地圖（分頁要存在）、focus_node／open_tool 要有流程與節點（圖有給時節點要存在）。"""
+    ctx = context or {}
+    graph = ctx.get("graph") if isinstance(ctx.get("graph"), dict) else None
+    node_ids = {str(n.get("id")) for n in (graph or {}).get("nodes", []) if isinstance(n, dict)} if graph else None
+    out: list[dict[str, Any]] = []
+    for a in raw[:3]:
+        kind = str(a.get("kind") or "")
+        label = str(a.get("label") or "")[:80]
+        if kind == "navigate":
+            to = str(a.get("to") or "").split("?")[0].strip()
+            page = ui_page_for(to) if to.startswith("/") else None
+            if not page:
+                continue
+            tab = str(a.get("tab") or "")
+            if tab and not any(t.get("key") == tab for t in page.get("tabs") or []):
+                tab = ""
+            item: dict[str, Any] = {"kind": "navigate", "to": to, "label": label or str((page.get("names") or {}).get("en") or to)}
+            if tab:
+                item["tab"] = tab
+            out.append(item)
+        elif kind in ("focus_node", "open_tool"):
+            node = str(a.get("node") or "")
+            if not node or (node_ids is not None and node not in node_ids) or not ctx.get("flow_id"):
+                continue
+            out.append({"kind": kind, "node": node, "flow_id": int(ctx["flow_id"]), "label": label or node})
+    return out
+
+
+def rule_actions(question: str, hits: list[tuple[Section, float]], context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """離線規則：問「在哪裡」而第一名是介面地圖段時，給一個「前往」動作（路由不含參數才給得出來）。"""
+    if not hits or not _WHERE.search(question):
+        return []
+    s = hits[0][0]
+    if s.kind != "ui" or ":" in s.anchor:
+        return []
+    page = ui_page_for(s.anchor) or {}
+    lang = str((context or {}).get("lang") or "en")
+    names = page.get("names") or {}
+    return [{"kind": "navigate", "to": s.anchor, "label": str(names.get(lang) or names.get("en") or s.anchor)}]
+
+
+def _answer_with_lookups(settings: providers.AgentSettings, system: str, text: str, principal: Any) -> tuple[str, list[dict[str, Any]]]:
+    """帶唯讀查詢的多回合問答：模型可先查平台狀態再回答；回 (回覆文字, 查了什麼)。預算用完就要求直接回答。"""
+    history: list[dict[str, Any]] = [{"role": "user", "content": [{"type": "text", "text": text}]}]
+    specs = lookup.specs()
+    steps: list[dict[str, Any]] = []
+    timeout = providers.generate_timeout()
+    for turn in range(MAX_LOOKUP_TURNS + 1):
+        reply = providers.complete_tools(settings, system, history, specs, timeout=timeout)
+        history.append({"role": "assistant", "content": reply.text, "tool_calls": [{"id": c.id, "name": c.name, "args": c.args} for c in reply.calls],
+                        **({"raw": reply.raw} if reply.raw else {})})
+        if not reply.calls or turn == MAX_LOOKUP_TURNS:
+            return reply.text, steps
+        for call in reply.calls:
+            result = lookup.dispatch(principal, call.name, call.args)
+            steps.append({"name": call.name, "args": {k: v for k, v in (call.args or {}).items()}, **({"error": result["error"]} if "error" in result else {})})
+            history.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": actions.serialize_result(result)})
+        if turn == MAX_LOOKUP_TURNS - 1:
+            history.append({"role": "user", "content": [{"type": "text", "text": "Lookup budget is used up: answer now with what you have."}]})
+    return "", steps
+
+
 def answer(question: str, settings: providers.AgentSettings, *, context: dict[str, Any] | None = None,
            history: list[dict[str, Any]] | None = None, user: Any = None, principal: Any = None, lock: dict[str, Any] | None = None) -> dict[str, Any]:
-    """{answer, provider, sources:[{title, page, heading, url, snippet}], warnings}
+    """{answer, provider, sources:[{title, page, heading, url, snippet}], warnings, actions, lookups}
 
-    context 除了頁面種類還可帶 page（頁面快照）、activity（操作軌跡）、lang、screen；principal／lock 由端點補（呼叫者自己的身分與鎖定）。"""
+    context 除了頁面種類還可帶 page（頁面快照）、activity（操作軌跡）、lang、screen；principal／lock 由端點補（呼叫者自己的身分與鎖定）。
+    有 LLM 且供應商支援工具呼叫時，模型可先用 lookup 的唯讀查詢看平台狀態再回答；回覆尾端的 ACTIONS 行變成前端的動作晶片。"""
     ctx = context or {}
     kind_label = CONTEXT_LABELS.get(str(ctx.get("kind") or ""), "")
     hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx)}")
@@ -403,14 +491,28 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
             recent = "\n".join(f"{'使用者' if h.get('role') == 'user' else '助理'}：{str(h.get('text'))[:300]}" for h in turns)
             docs_text = "\n\n".join(f"《{s.title}》\n{s.text[:MAX_SECTION_CHARS]}" for s in sections[:TOP_K + 1])
             text = "\n\n".join(x for x in [("Current situation:\n" + where) if where else "", ("最近對話：\n" + recent) if recent else "", "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
-            reply = providers.complete(settings, HELP_SYSTEM + "\n\n" + skills.platform_text()[:1500] + "\n\n" + ui_brief(), [], text)
+            system = HELP_SYSTEM + "\n\n" + skills.platform_text()[:1500] + "\n\n" + ui_brief()
+            steps: list[dict[str, Any]] = []
+            reply = ""
+            if lookups_enabled() and principal is not None and settings.provider in providers._TOOL_IMPL:
+                try:
+                    reply, steps = _answer_with_lookups(settings, system, text, principal)
+                except Exception as exc:  # noqa: BLE001 - 工具呼叫失敗就退回一般問答
+                    log.warning("說明問答工具呼叫失敗，退回單次問答：%s", exc)
+                    warnings.append(f"即時查詢失敗，已改用純文件回答：{providers._explain(exc, providers.generate_timeout())}")
+                    steps = []
+            if not (reply and reply.strip()):
+                reply = providers.complete(settings, system, [], text)
             if reply and reply.strip():
-                return {"answer": reply.strip(), "provider": settings.provider, "sources": sources, "warnings": warnings}
+                cleaned, raw_actions = parse_actions(reply)
+                return {"answer": cleaned, "provider": settings.provider, "sources": sources, "warnings": warnings,
+                        "actions": validate_actions(raw_actions, ctx), "lookups": steps}
             warnings.append(f"LLM（{settings.provider}）回了空白，已改用文件節錄")
         except Exception as exc:  # noqa: BLE001
             log.warning("說明問答 LLM 失敗：%s", exc)
             warnings.append(f"LLM（{settings.provider}）失敗，已改用文件節錄：{providers._explain(exc, providers.generate_timeout())}")
-    return {"answer": offline_answer(question, hits, context=ctx), "provider": "rules", "sources": sources, "warnings": warnings}
+    return {"answer": offline_answer(question, hits, context=ctx), "provider": "rules", "sources": sources, "warnings": warnings,
+            "actions": rule_actions(question, hits, ctx), "lookups": []}
 
 
 def index_stats() -> dict[str, Any]:

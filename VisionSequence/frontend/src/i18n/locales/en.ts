@@ -1008,6 +1008,7 @@ const en = {
     skillsCustomPlaceholder: 'e.g. hole diameters are always judged in mm here, pixel size 0.05 mm/px…', skillsScopeUser: 'Personal', skillsScopeSite: 'Site',
     skillsCustomSaved: 'Extra know-how saved', skillsCustomDeleted: 'Extra know-how deleted' },
   assistant: {
+    checked: 'Checked', lookupDenied: 'not permitted',
     shareOn: 'Sharing what is on screen with the assistant (page, selection, recent errors); click to stop sharing', shareOff: 'Not sharing the screen context; the assistant only knows which page you are on. Click to share',
     title: 'AI assistant', clear: 'Clear conversation', send: 'Send', placeholder: 'Ask how to use the platform, or give an edit instruction in the editor / batch page…', thinking: 'Thinking…',
     empty: 'This assistant is available on every page: platform questions are answered from the documentation with links; in the flow editor it edits the current flow; on the batch page it consults or tunes from the data.',

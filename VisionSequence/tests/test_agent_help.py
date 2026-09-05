@@ -254,7 +254,7 @@ class UiMapIndexTests(TestCase):
         self.assertIsNone(help_mod.ui_page_for("/nope/x"))
         brief = help_mod.ui_brief()
         self.assertIn("- Plugins (/integration/plugins) [integration]:", brief)
-        self.assertIn("tabs: Loaded plugins, Connections", brief)
+        self.assertIn("tabs: inventory (Loaded plugins), connections (Connections)", brief)
         self.assertIn("- Users (/users) [admin]:", brief)
 
     def test_missing_map_degrades(self):

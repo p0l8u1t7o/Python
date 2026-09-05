@@ -1626,6 +1626,7 @@ const zhHans = {
     skillsCustomDeleted: '已删除补充要领',
   },
   assistant: {
+    checked: '已查询', lookupDenied: '无权限',
     shareOn: '正在把画面现况（页面、选取、最近的错误）分享给助手；点选可停止分享', shareOff: '未分享画面现况，助手只知道您在哪个页面；点选可开启分享',
     title: 'AI 助手', clear: '清除对话', send: '发送', placeholder: '询问平台使用方式，或在编辑器／批次页下达修改指令…', thinking: '助手思考中…',
     empty: '此助手在任何页面都可打开：询问平台使用问题会依文档回答并附参考链接；在流程编辑器可直接请助手修改当前流程；在批次测试页可依数据咨询或调整参数。',

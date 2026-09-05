@@ -180,6 +180,7 @@ VISION = {
     "AGENT_BASE_URL": _env("VISION_AGENT_BASE_URL", ""),  # openai_compatible 本地端點，例如 http://127.0.0.1:11434/v1
     "AGENT_TIMEOUT_S": _env("VISION_AGENT_TIMEOUT_S", "120"),  # LLM 生成逾時（秒）；本地模型慢可拉長
     "AGENT_MODE": _env("VISION_AGENT_MODE", "single"),
+    "AGENT_HELP_LOOKUPS": _env("VISION_AGENT_HELP_LOOKUPS", "1"),  # 問答路徑的唯讀即時查詢（0＝關）
     # 批次測試：一個影像集最多幾張、每流程保留幾個影像集、每影像集保留幾次執行、同時執行的批次數
     "BATCH_MAX_IMAGES": _env_int("VISION_BATCH_MAX_IMAGES", 200),
     "KEEP_BATCH_SETS": _env_int("VISION_KEEP_BATCH_SETS", 10),

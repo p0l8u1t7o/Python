@@ -111,6 +111,25 @@ describe('AssistantDock', () => {
     setShareEnabled(true)
   })
 
+  it('renders action chips: navigate opens the page and tab, focus_node calls the editor', async () => {
+    const focusNode = vi.fn()
+    setAssistantContext({ kind: 'flow_editor', flowId: 1, flowName: 'F', focusNode })
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'help', answer: 'ok', provider: 'openai', sources: [],
+      actions: [{ kind: 'navigate', to: '/integration/modbus-server', tab: 'connections', label: '前往從站連線' }, { kind: 'focus_node', node: 'blob', flow_id: 1, label: '看 blob' }],
+      lookups: [{ name: 'list_connections', args: {} }, { name: 'list_plugins', args: {}, error: 'Not permitted' }] })
+    renderPage(<AssistantDock />, { route: '/flows/1' })
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    const input = screen.getByTestId('assistant-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '為什麼 PLC 連不上？' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getAllByTestId('assistant-action').length).toBe(2))
+    expect(screen.getByTestId('assistant-lookups').textContent).toBe('Checked: list_connections, list_plugins (not permitted)')
+    fireEvent.click(screen.getAllByTestId('assistant-action')[1])
+    expect(focusNode).toHaveBeenCalledWith('blob')
+    fireEvent.click(screen.getAllByTestId('assistant-action')[0])
+    expect(sessionStorage.getItem('vs.integrationTab.modbus-server')).toBe('connections')
+  })
+
   it('restores a persisted conversation', () => {
     localStorage.setItem('vs.assistant.v1', JSON.stringify({ open: true, messages: [{ id: 'a', role: 'user', text: '舊問題', at: 1 }, { id: 'b', role: 'assistant', text: '舊回答', at: 2 }] }))
     renderPage(<AssistantDock />, { route: '/sources' })

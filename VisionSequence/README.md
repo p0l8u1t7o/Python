@@ -100,6 +100,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 評測基準 `manage.py agent_bench`（21 個離線案例：意圖／判定／有效率），`tests/test_agent_bench.py` 守門檻。
 - 全域 AI 助手在編輯器內可用一句話修改目前流程、在批次測試頁可依結果諮詢與調整；所有助手呼叫皆可中斷。
 - 助手看得到「現況」：頁面快照（選取的步驟、未儲存、上次執行）、操作軌跡（最近的換頁、失敗的請求、執行結果；金鑰遮罩、不落地）、呼叫者角色與引擎鎖定，以及三語系的介面地圖（頁面、分頁、按鈕；`npm run ui-map` 產生）——回答會先解釋剛剛的錯誤、指到正確的頁面與按鈕、不建議角色做不到的事；助手視窗的眼睛圖示可關閉分享。
+- 助手能「自己去查」：有 LLM 時問答路徑可呼叫唯讀查詢（流程清單與細節、執行報告、來源、連線、鎖定、外掛、擷取端、權限、文件），依呼叫者權限把關、最多 4 回合；回覆下方列出查了什麼，並可附「前往某頁某分頁」「聚焦節點」「開工具頁」的捷徑晶片（離線規則問「在哪裡」也給前往）。
 - **響應式**：手機寬度側欄改抽屜、麵包屑精簡、表格只留主要欄位、編輯器只留畫布（參數走工具頁）、觸控目標放大；桌面／平板／手機三種寬度與深淺主題都經 Playwright 稽核。
 - **視覺設計**：品牌標誌（取景框＋鏡頭）貫穿側欄、登入頁與 favicon；登入頁品牌柔光背景；標題階層、表格動作欄位置、時間格式、空狀態與 toast 位置全站一致。
 - **上手引導**：流程還沒選影像來源時編輯器直接給下拉選；總覽卡一鍵「執行一次」；教導完成一鍵建立使用該模型的流程；批次影像集建立即跑第一次；工具頁「改參數即重跑」開關；取像步驟側欄直接選來源並看預覽縮圖；來源表單儲存前可「測試擷取」；離開未儲存的確認改為平台風格對話框。
@@ -311,7 +312,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | `VISION_API_KEY`、`VISION_STATION_ID`、`VISION_TCP_HOST/PORT` | 整合方金鑰、站台識別、TCP 介面 |
 | `VISION_CAPTURE_HOST/PORT`、`VISION_CAPTURE_AUTH`、`VISION_CAPTURE_MAX_FRAME_MB`、`VISION_CAPTURE_TIMEOUT_MS` | 擷取端擷取埠（預設 9100）、登錄金鑰（空＝沿用 API_KEY）、單張上限、預設逾時 |
 | `VISION_BATCH_MAX_IMAGES`、`VISION_KEEP_BATCH_SETS`、`VISION_KEEP_BATCH_RUNS`、`VISION_BATCH_MAX_RUNNING` | 批次測試：影像集上限（200）、每流程保留影像集數（10）、每影像集保留執行次數（20）、同時執行數（2） |
-| `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S`、`VISION_AGENT_MODE` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點；`MODE`＝single／agentic） |
+| `VISION_AGENT_PROVIDER`、`VISION_AGENT_API_KEY`、`VISION_AGENT_MODEL`、`VISION_AGENT_BASE_URL`、`VISION_AGENT_TIMEOUT_S`、`VISION_AGENT_HELP_LOOKUPS`、`VISION_AGENT_MODE` | AI 助手伺服器預設供應商（使用者自己的設定優先；留空＝離線規則引擎；`BASE_URL` 給 Ollama 等 OpenAI 相容本地端點；`MODE`＝single／agentic） |
 | `VISION_SAM_MODEL` | 深度學習教導的 SAM 權重（智慧選取／框選／全圖提案；sam2.1_t.pt 預設，mobile_sam.pt 較小、sam2.1_s.pt 更準） |
 | `CORS_ALLOWED_ORIGINS` | 前端獨立部署時允許的來源 |
 
