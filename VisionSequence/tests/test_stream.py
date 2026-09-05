@@ -12,7 +12,9 @@ from apps.vision import stream
 
 class StreamLimitTests(TestCase):
     def test_limit_and_release(self):
-        with override_settings(VISION={**settings.VISION, "SSE_MAX_STREAMS": 1}):
+        # 其他測試用 test client 開過串流但沒讀完也沒 close（真伺服器會在斷線時 close 而歸還名額），
+        # 名額計數會殘留；這裡從 0 起算，測的是「限額、迭代結束歸還、未迭代就 close 也歸還」本身
+        with mock.patch.object(stream, "_active", 0), override_settings(VISION={**settings.VISION, "SSE_MAX_STREAMS": 1}):
             with mock.patch.object(stream, "_active", 1):
                 r = self.client.get("/api/vision/events?max_seconds=0.2")
                 self.assertEqual(r.status_code, 503)
