@@ -57,10 +57,21 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Security 在最外層，靜態檔（whitenoise）的回應也帶安全標頭
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# LAN 上的安全標頭：影像與 SSE 的 URL 帶 ?token=，Referrer-Policy same-origin 不讓它隨連結外流；
+# 前端沒有 iframe，X-Frame-Options 直接 SAMEORIGIN。不開 HSTS／SSL redirect：沒憑證的站台要能留在 http。
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+SECURE_SSL_REDIRECT = False
+X_FRAME_OPTIONS = "SAMEORIGIN"
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
