@@ -9,6 +9,7 @@ installApiMock()
 
 import { AssistantDock, contextPayload } from '@/components/assistant/AssistantDock'
 import { clearActivity, logActivity, setShareEnabled, shareEnabled } from '@/lib/activity'
+import { resetHints } from '@/lib/hints'
 import { api } from '@/lib/api'
 import { contextFromPath, getAssistantContext, setAssistantContext } from '@/lib/assistantContext'
 
@@ -31,6 +32,9 @@ describe('assistant context', () => {
 describe('AssistantDock', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
+    clearActivity()
+    resetHints()
     setAssistantContext(null)
     vi.mocked(api.post).mockClear()
   })
@@ -128,6 +132,34 @@ describe('AssistantDock', () => {
     expect(focusNode).toHaveBeenCalledWith('blob')
     fireEvent.click(screen.getAllByTestId('assistant-action')[0])
     expect(sessionStorage.getItem('vs.integrationTab.modbus-server')).toBe('connections')
+  })
+
+  it('shows a proactive hint for a recognised failure and asks the assistant about it; screen text is attached on demand', async () => {
+    document.body.innerHTML = ''
+    renderPage(<AssistantDock />, { route: '/flows/1' })
+    logActivity('error', 'POST /vision/flows/1/run -> 423 engine_locked', 'locked by integrator')
+    await waitFor(() => expect(screen.getByTestId('assistant-toggle').textContent).toContain('1'))  // 未讀
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    const card = screen.getByTestId('assistant-hint')
+    expect(card.textContent).toContain('The engine is locked')
+    expect(card.textContent).toContain('locked by integrator')
+    // 同一種提示冷卻中不會再出現第二張
+    fireEvent.click(screen.getByTestId('assistant-hint-dismiss'))
+    expect(screen.queryByTestId('assistant-hint')).toBeNull()
+    logActivity('error', 'POST /vision/flows/1/run -> 423 engine_locked')
+    expect(screen.queryByTestId('assistant-hint')).toBeNull()
+    // 另一種提示：詢問會把問題送給助手，並附上畫面文字
+    logActivity('error', 'POST /comm/connections/test -> 422 connection_failed', 'Nothing is listening at 127.0.0.1:9001')
+    await waitFor(() => expect(screen.getByTestId('assistant-hint')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('assistant-screen'))
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'help', answer: '先啟動接收程式', provider: 'rules', sources: [] })
+    fireEvent.click(screen.getByTestId('assistant-hint-ask'))
+    await waitFor(() => expect(screen.getAllByTestId('assistant-msg-assistant').length).toBe(1))
+    const body = vi.mocked(api.post).mock.calls[0][1] as { message: string; context: { screen: string } }
+    expect(body.message).toContain('Why did this fail')
+    expect(body.message).toContain('Nothing is listening at 127.0.0.1:9001')
+    expect(body.context.screen).toContain('buttons:')
+    expect(screen.queryByTestId('assistant-hint')).toBeNull()
   })
 
   it('restores a persisted conversation', () => {

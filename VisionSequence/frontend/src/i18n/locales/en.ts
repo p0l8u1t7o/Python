@@ -1008,6 +1008,18 @@ const en = {
     skillsCustomPlaceholder: 'e.g. hole diameters are always judged in mm here, pixel size 0.05 mm/px…', skillsScopeUser: 'Personal', skillsScopeSite: 'Site',
     skillsCustomSaved: 'Extra know-how saved', skillsCustomDeleted: 'Extra know-how deleted' },
   assistant: {
+    hintTitle: 'Hint', hintAsk: 'Ask the assistant', hintDismiss: 'Dismiss',
+    attachScreen: 'Include what is on screen (text only) with the next questions', attachScreenOn: 'Screen text is sent with each question; click to stop',
+    hints: {
+      locked: 'The engine is locked, so runs are refused (423). Only the lock holder can run until it is released (HTTP DELETE /engine/lock or TCP UNLOCK).',
+      permission: 'Your role is not allowed to do that (403). An administrator grants features on the Users page.',
+      receiver: 'Nothing is listening on the target host and port. The platform connects out, so start the receiving program first, then test again.',
+      noSource: 'The capture step has no image source. Pick one in the inspector, or upload a scratch image to try the flow.',
+      portInUse: 'The port is already used by another program, so the server could not start. Free the port or change it in the connection.',
+      runFailed: 'The last run failed. The failing step and its message are in the report; the assistant can explain them.',
+      timeout: 'The run did not finish within the wait limit. It continues in the background; check the report by run id or raise timeout_s.',
+      serverError: 'The server returned an error. Check the server log (manage.py doctor) or ask the assistant with the error text.',
+    },
     checked: 'Checked', lookupDenied: 'not permitted',
     shareOn: 'Sharing what is on screen with the assistant (page, selection, recent errors); click to stop sharing', shareOff: 'Not sharing the screen context; the assistant only knows which page you are on. Click to share',
     title: 'AI assistant', clear: 'Clear conversation', send: 'Send', placeholder: 'Ask how to use the platform, or give an edit instruction in the editor / batch page…', thinking: 'Thinking…',

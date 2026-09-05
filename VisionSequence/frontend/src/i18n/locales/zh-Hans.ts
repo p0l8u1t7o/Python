@@ -1626,6 +1626,18 @@ const zhHans = {
     skillsCustomDeleted: '已删除补充要领',
   },
   assistant: {
+    hintTitle: '提示', hintAsk: '询问助手', hintDismiss: '关闭',
+    attachScreen: '之后的提问附上当前画面（仅文字）', attachScreenOn: '每次提问都会附上画面文字；点选可停止',
+    hints: {
+      locked: '引擎已锁定，执行被拒绝（423）。解除前只有锁定的持有者能执行（HTTP DELETE /engine/lock 或 TCP UNLOCK）。',
+      permission: '您的角色无法执行此动作（403）。功能由管理员在用户页面开启。',
+      receiver: '目标主机与端口没有程序在接收。本平台是主动连出去的，请先启动接收程序再测试。',
+      noSource: '取像步骤尚未选择图像源。请在侧栏选一个源，或上传暂存图像试执行。',
+      portInUse: '端口已被其他程序占用，从站无法启动。请释放该端口或在连接中改用其他端口。',
+      runFailed: '上一次执行失败。失败的步骤与信息在报告里，助手可以解释。',
+      timeout: '执行没有在等待上限内完成。执行仍在后台进行；可用 run_id 查报告，或调高 timeout_s。',
+      serverError: '服务器返回了错误。请查看服务器日志（manage.py doctor），或把错误文字交给助手。',
+    },
     checked: '已查询', lookupDenied: '无权限',
     shareOn: '正在把画面现况（页面、选取、最近的错误）分享给助手；点选可停止分享', shareOff: '未分享画面现况，助手只知道您在哪个页面；点选可开启分享',
     title: 'AI 助手', clear: '清除对话', send: '发送', placeholder: '询问平台使用方式，或在编辑器／批次页下达修改指令…', thinking: '助手思考中…',

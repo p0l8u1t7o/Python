@@ -7,18 +7,19 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, Bot, Check, ExternalLink, Eye, EyeOff, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { ArrowRight, Bot, Check, ExternalLink, Eye, EyeOff, Lightbulb, Monitor, MonitorOff, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button } from '@/components/ui'
 import { useAgentJob } from '@/lib/agentJob'
-import { activityPayload, logActivity, setActivityRoute, setShareEnabled, shareEnabled, subscribeActivity } from '@/lib/activity'
+import { activityPayload, logActivity, recentActivity, setActivityRoute, setShareEnabled, shareEnabled, subscribeActivity } from '@/lib/activity'
 import { api } from '@/lib/api'
 import { contextFromPath, useAssistantContext, type AssistantContext, type AssistantKind } from '@/lib/assistantContext'
 import type { Suggestion, TuneResult } from '@/lib/batch'
 import { errorMessage } from '@/lib/errors'
 import i18n from '@/i18n'
-import { pageSnapshot, setIntegrationTab } from '@/lib/screen'
+import { dismissHint, hintFor, shouldShow, type Hint } from '@/lib/hints'
+import { pageSnapshot, screenSummary, setIntegrationTab } from '@/lib/screen'
 import { sectionOf } from '@/pages/integration/sections'
 import type { FlowGraph, RunReport } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
@@ -111,6 +112,18 @@ export function AssistantDock() {
   const [busy, setBusy] = useState(false)
   const [unread, setUnread] = useState(0)
   const share = useSyncExternalStore(subscribeActivity, shareEnabled, shareEnabled)
+  //: 主動提示：軌跡出現認得的失敗就配一句提示與一個可直接送出的問題（同種 5 分鐘一次、關掉就不再出現）
+  const [hint, setHint] = useState<Hint | null>(null)
+  //: 附上畫面：開著時每次提問帶目前畫面的文字摘要（只有分享開著才會送）
+  const [attachScreen, setAttachScreen] = useState(false)
+  useEffect(() => subscribeActivity(() => {
+    const last = recentActivity(1)[0]
+    const h = last ? hintFor(last) : null
+    if (h && shouldShow(h)) {
+      setHint(h)
+      if (!openRef.current) setUnread((n) => n + 1)
+    }
+  }), [])
   //: 換頁記進操作軌跡（助手回答「剛剛」的依據）
   useEffect(() => {
     setActivityRoute(location.pathname)
@@ -175,7 +188,7 @@ export function AssistantDock() {
     abortRef.current = controller
     const history = messages.slice(-8).map((m) => ({ role: m.role, text: m.text.slice(0, 400) }))
     try {
-      const payload = contextPayload(ctx, location.pathname)
+      const payload = { ...contextPayload(ctx, location.pathname), screen: attachScreen && share ? screenSummary() : '' }
       const r = await api.post<ChatReply>('/vision/agent/chat', { message: text, mode, context: payload, history }, undefined, controller.signal)
       if (r.agentic && (r.kind === 'edit' || r.kind === 'tune')) {
         await jobs.start(r.kind === 'edit'
@@ -251,6 +264,7 @@ export function AssistantDock() {
             <span className="shrink-0 whitespace-nowrap text-sm font-semibold">{t('assistant.title')}</span>
             {info.data ? <Badge tone={info.data.llm ? 'brand' : 'neutral'} className="max-w-[55%] truncate">{info.data.llm ? `${info.data.model}${agentic ? ` · ${t('assistant.agentic')}` : ''}` : t('agent.providerRules')}</Badge> : null}
             <span className="ml-auto flex items-center gap-0.5">
+              <button type="button" className={`btn-icon ${attachScreen ? 'text-brand' : ''}`} title={attachScreen ? t('assistant.attachScreenOn') : t('assistant.attachScreen')} aria-pressed={attachScreen} disabled={!share} onClick={() => setAttachScreen((v) => !v)} data-testid="assistant-screen">{attachScreen ? <Monitor size={14} /> : <MonitorOff size={14} />}</button>
               <button type="button" className={`btn-icon ${share ? '' : 'text-warning'}`} title={share ? t('assistant.shareOn') : t('assistant.shareOff')} aria-pressed={share} onClick={() => setShareEnabled(!share)} data-testid="assistant-share">{share ? <Eye size={14} /> : <EyeOff size={14} />}</button>
               <button type="button" className="btn-icon" title={t('assistant.clear')} onClick={() => setMessages([])} data-testid="assistant-clear"><Trash2 size={14} /></button>
               <button type="button" className="btn-icon" title={t('common.close')} onClick={() => setOpen(false)}><X size={15} /></button>
@@ -265,6 +279,17 @@ export function AssistantDock() {
             </span>
           </div>
           <div ref={listRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 text-xs" data-testid="assistant-messages">
+            {hint ? (
+              <div className="rounded-lg border border-warning/40 bg-warning-soft px-2.5 py-2 text-[11px]" data-testid="assistant-hint">
+                <p className="flex items-center gap-1 font-semibold text-warning"><Lightbulb size={12} /> {t('assistant.hintTitle')}</p>
+                <p className="mt-0.5">{t(`assistant.hints.${hint.key}`)}</p>
+                <p className="mt-0.5 truncate text-subtle" title={hint.detail}>{hint.detail}</p>
+                <div className="mt-1 flex gap-1">
+                  <Button size="xs" variant="primary" disabled={busy} onClick={() => { const q = hint.question; setHint(null); void send(q) }} data-testid="assistant-hint-ask">{t('assistant.hintAsk')}</Button>
+                  <Button size="xs" onClick={() => { dismissHint(hint.key); setHint(null) }} data-testid="assistant-hint-dismiss">{t('assistant.hintDismiss')}</Button>
+                </div>
+              </div>
+            ) : null}
             {messages.length === 0 ? (
               <div className="space-y-2">
                 <p className="text-muted">{t('assistant.empty')}</p>
