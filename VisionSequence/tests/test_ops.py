@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -144,8 +145,12 @@ class DoctorTests(TestCase):
             call_command("doctor", "--json", stdout=buf)
         self.assertEqual(caught.exception.code, 1)
         checks = {c["check"]: c for c in json.loads(buf.getvalue())}
-        for expected in ("version", "database", "disk", "image archive", "history", "accounts"):
+        for expected in ("version", "python", "layout", "database", "disk", "image archive", "history", "accounts", "web interface", "plugins dir", "capture client build",
+                         "settings: DEBUG", "settings: SECRET_KEY", "settings: ALLOWED_HOSTS", "settings: API key", "settings: TCP auth"):
             self.assertIn(expected, checks)
+        self.assertTrue(any(c.startswith("HTTP port ") for c in checks), checks.keys())
+        self.assertTrue(any(c.startswith("TCP commands port ") for c in checks), checks.keys())
+        self.assertNotIn("API port 9000", checks)  # 以前把 TCP 埠標成 API
         from apps.vision import __version__
 
         self.assertEqual(checks["version"]["detail"], __version__)
@@ -154,8 +159,45 @@ class DoctorTests(TestCase):
     def test_doctor_is_quiet_when_everything_is_fine(self):
         from django.contrib.auth.models import User
 
+        import tempfile
+
+        from django.test import override_settings
+
         User.objects.create_user("admin", password="x", is_staff=True)
-        buf = io.StringIO()
-        call_command("doctor", "--json", stdout=buf)  # 不該拋 SystemExit
+        dist = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, dist, True)
+        (dist / "index.html").write_text("<html></html>", encoding="utf-8")
+        # 正式環境的樣子：隨機 SECRET_KEY、前端已 build；沒有 BAD 就不該拋 SystemExit
+        with override_settings(SECRET_KEY="a-real-random-secret-key-of-fifty-characters-1234567890", FRONTEND_DIST=dist):
+            buf = io.StringIO()
+            call_command("doctor", "--json", stdout=buf)
         checks = {c["check"]: c for c in json.loads(buf.getvalue())}
         self.assertEqual(checks["accounts"]["state"], "ok")
+        self.assertEqual(checks["web interface"]["state"], "ok")
+        self.assertEqual(checks["settings: SECRET_KEY"]["state"], "ok")
+
+    def test_doctor_flags_insecure_defaults_and_missing_plugin_dir(self):
+        from django.contrib.auth.models import User
+        from django.test import override_settings
+
+        User.objects.create_user("admin", password="x", is_staff=True)
+        with override_settings(DEBUG=True, SECRET_KEY="change-me", ALLOWED_HOSTS=["*"], VISION={**settings.VISION, "API_KEY": "", "TCP_AUTH": "", "PLUGIN_DIR": Path(settings.DATA_DIR) / "no-such-plugins"}):
+            buf = io.StringIO()
+            with self.assertRaises(SystemExit):
+                call_command("doctor", "--json", stdout=buf)
+            checks = {c["check"]: c for c in json.loads(buf.getvalue())}
+        self.assertEqual(checks["settings: DEBUG"]["state"], "warn")
+        self.assertEqual(checks["settings: SECRET_KEY"]["state"], "bad")
+        self.assertEqual(checks["settings: API key"]["state"], "warn")
+        self.assertEqual(checks["settings: TCP auth"]["state"], "warn")
+        self.assertEqual(checks["plugins dir"]["state"], "bad")
+        with override_settings(DEBUG=False, SECRET_KEY="a-real-random-secret-key-of-fifty-characters-1234567890", ALLOWED_HOSTS=["vision-st01", "192.168.1.5"],
+                               VISION={**settings.VISION, "API_KEY": "k", "TCP_AUTH": "t"}):
+            buf = io.StringIO()
+            try:
+                call_command("doctor", "--json", stdout=buf)
+            except SystemExit:
+                pass  # 其他檢查（例如前端 build）可能 BAD，這裡只看設定類
+            checks = {c["check"]: c for c in json.loads(buf.getvalue())}
+        for name in ("settings: DEBUG", "settings: SECRET_KEY", "settings: ALLOWED_HOSTS", "settings: API key", "settings: TCP auth", "plugins dir"):
+            self.assertEqual(checks[name]["state"], "ok", name)

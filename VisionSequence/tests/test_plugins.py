@@ -212,7 +212,7 @@ class FolderLoaderTests(SimpleTestCase):
         hint = loader._requirements_hint(__import__("pathlib").Path(pkg))
         self.assertIn(__import__("sys").executable, hint)
         self.assertIn("vsctl plugins deps", hint)
-        self.assertNotIn("Scripts\pip", hint)  # 不再寫死 .venvScriptspip
+        self.assertNotIn("Scripts" + chr(92) + "pip", hint)  # 不再寫死 .venv 的 pip 路徑
 
     def test_missing_dependency_hint(self):
         """外掛缺依賴：整體不炸、log 提示安裝該外掛的 requirements.txt。"""
