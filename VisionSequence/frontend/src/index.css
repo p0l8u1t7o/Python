@@ -255,11 +255,14 @@
   .btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:bg-surface-muted hover:text-content; }
   .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 bg-critical text-white shadow-sm shadow-critical/30 hover:opacity-90 active:translate-y-px active:shadow-none; }
   .btn-icon { @apply rounded-md p-1.5 text-muted transition hover:bg-surface-muted hover:text-content; }
-  /* 觸控裝置：圖示鈕與側欄項目至少 40px，不然手指點不準（滑鼠不受影響） */
+  /* 觸控裝置（操作站的觸控螢幕）：按鈕、輸入框、下拉、分頁鈕至少 40px，圖示鈕與側欄項目更大；滑鼠不受影響 */
   @media (pointer: coarse) {
     .btn-icon { @apply min-h-10 min-w-10 inline-flex items-center justify-center; }
     .nav-item { @apply min-h-11; }
     input[type='checkbox'] { @apply size-5; }
+    button:not(.btn-icon), .input, select, [role='tab'] { min-height: 2.5rem; }
+    td { padding-block: 0.625rem; }
+    .react-flow__handle { width: 14px; height: 14px; }
   }
 
   /* 側欄項目（摺疊時的 tooltip 用 .nav-tip）：圓角膠囊＋左側圓頭指示條 */

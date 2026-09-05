@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import i18n, { adoptRemoteLanguage, isLanguage } from '@/i18n'
 import { api, authToken, onSessionExpired, setAuthToken } from '@/lib/api'
+import { clearUserState } from '@/lib/localState'
 import { keys, useEngineLock } from '@/lib/queries'
 import { isThemePreference, useTheme } from '@/providers/ThemeProvider'
 import type { AuthUser, EngineLock, Feature, Me, Role } from '@/lib/types'
@@ -99,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       onSessionExpired(() => {
+        clearUserState()
         setMe(null)
         client.clear()
       }),
@@ -140,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     setAuthToken('')
+    clearUserState()  // 共用電腦：助手對話、TCP 命令歷史、API 金鑰不留給下一個人
     setMe(null)
     client.clear()
   }, [client])
