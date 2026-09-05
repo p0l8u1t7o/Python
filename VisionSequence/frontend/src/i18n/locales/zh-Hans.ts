@@ -1386,6 +1386,7 @@ const zhHans = {
         STOP: { summary: '停止连续模式', desc: '停掉该流程的连续执行。' },
         LOCK: { summary: '占住硬件', desc: '锁定引擎：网页只能编辑不能执行，TCP 与 API 密钥的调用者照常。reason 会显示在横幅；ttl 秒后自动解锁。' },
         UNLOCK: { summary: '解除锁定', desc: '释放由 LOCK 或 POST /api/vision/lock 取得的锁定。' },
+        AUTH: { summary: '此连接的认证', desc: '站台设置了 TCP 密钥（VISION_TCP_AUTH）时，连接后先发送一次，之后才能发送 PING 以外的指令；没发送的话每个指令都回 code unauthorized。' },
       },
       args: {
         flow: { name: 'flow', desc: '流程 id 或名称（名称含空白请加引号）' },
@@ -1394,6 +1395,7 @@ const zhHans = {
         recipe: { name: 'recipe=', desc: '这次执行用的配方名称或 id' },
         reason: { name: 'reason=', desc: '占住硬件的原因；显示在横幅' },
         ttl: { name: 'ttl=', desc: '几秒后自动解锁' },
+        key: { name: 'key', desc: '.env 里的站台 TCP 密钥（VISION_TCP_AUTH）' },
       },
       command: '指令',
       send: '送出',

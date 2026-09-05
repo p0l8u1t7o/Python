@@ -190,6 +190,7 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <tr><td><code>UNLOCK</code></td><td>Release the lock</td></tr>
 <tr><td><code>LIST</code></td><td>Every flow</td></tr>
 <tr><td><code>PING</code></td><td><code>{"ok":true,"pong":true}</code></td></tr>
+<tr><td><code>AUTH &lt;key&gt;</code></td><td><code>{"ok":true,"authenticated":true}</code> — only when the station has <code>VISION_TCP_AUTH</code> set (the installer generates one): send it once per connection before any other command except <code>PING</code>; otherwise every command answers <code>{"ok":false,"code":"unauthorized"}</code>. A wrong key is delayed half a second. With no key configured the port is open to whoever the firewall lets in.</td></tr>
 </table>
 <p><code>key=value</code> pairs go into <code>context</code>, where formulas and outputs in the flow can read them. The connection can be held open indefinitely; NODELAY is already on.</p>
 
@@ -245,7 +246,8 @@ GET /api/vision/events?since=&lt;seq&gt;                everything</pre>
 GET    /api/vision/lock                                                                  → {"locked", "holder", "reason", "locked_at", "expires_at"}
 DELETE /api/vision/lock   X-API-Key: ...                                                 → unlock
 
-TCP:   LOCK reason="production run" ttl=28800     → {"ok": true, "lock": {...}}
+TCP:   AUTH 0f3c…                                 → {"ok": true, "authenticated": true}   (once per connection, when VISION_TCP_AUTH is set)
+       LOCK reason="production run" ttl=28800     → {"ok": true, "lock": {...}}
        UNLOCK                                     → {"ok": true, "lock": {...}}
        STATUS                                     → capacity plus the current lock</pre>
 <ul>

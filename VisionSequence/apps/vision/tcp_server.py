@@ -11,6 +11,8 @@
     UNLOCK                                 解鎖
     LIST                                   所有流程
     PING                                   {"ok": true, "pong": true}
+    AUTH <key>                             設了 VISION_TCP_AUTH 時，連線後其他指令之前先送（PING 不用）；
+                                           沒送或錯誤回 {"ok": false, "code": "unauthorized"}
 錯誤回 {"ok": false, "error": "...", "code": "..."}；code 是穩定的英數字串，設備請用它分支
 （empty_command／unknown_command／missing_argument／bad_argument／flow_not_found／flow_queue_full…）。
 
@@ -34,7 +36,9 @@ import threading
 import time
 from typing import Any
 
+import hmac
 import orjson
+from django.conf import settings
 from django.db import close_old_connections
 
 from apps.accounts.models import EngineLock
@@ -167,9 +171,39 @@ def handle_command(line: str) -> dict[str, Any]:
         return {"ok": False, "error": repr(exc), "code": "internal_error"}
 
 
+def tcp_secret() -> str:
+    return str(settings.VISION.get("TCP_AUTH", "") or "")
+
+
+class Session:
+    """一條 TCP 連線的認證狀態：設了金鑰就要先 AUTH，之後這條連線都有效；金鑰為空＝相容舊設備，不驗證。"""
+
+    def __init__(self, secret: str | None = None) -> None:
+        self.secret = tcp_secret() if secret is None else secret
+        self.authed = not self.secret
+
+    def command(self, line: str) -> tuple[dict[str, Any], str]:
+        """處理一行；回 (回應, 記進追蹤的文字——AUTH 的金鑰遮掉)。"""
+        parts = _split(line)
+        cmd = parts[0].upper() if parts else ""
+        if cmd == "AUTH":
+            given = parts[1] if len(parts) > 1 else ""
+            ok = bool(self.secret) and hmac.compare_digest(given, self.secret)
+            if self.secret:
+                self.authed = ok  # 沒設金鑰的站台 AUTH 只是回錯，不會把開放的連線鎖起來
+            if ok:
+                return {"ok": True, "authenticated": True}, "AUTH ***"
+            time.sleep(0.5)  # 猜金鑰的節流
+            return {"ok": False, "error": "Bad key" if self.secret else "No TCP key is configured on this station", "code": "unauthorized"}, "AUTH ***"
+        if not self.authed and cmd != "PING":
+            return {"ok": False, "error": "Send AUTH <key> first", "code": "unauthorized"}, line.strip()[:200]
+        return handle_command(line), line.strip()[:200]
+
+
 class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        session = Session()
         while True:
             try:
                 raw = self.rfile.readline()
@@ -180,11 +214,11 @@ class _Handler(socketserver.StreamRequestHandler):
             line = raw.decode("utf-8", errors="replace")
             started = time.perf_counter()
             try:
-                response = handle_command(line)
+                response, shown = session.command(line)
             finally:
                 close_old_connections()  # 每條連線一條執行緒，各自的連線各自收
             trace.record(  # 整合頁「命令與結果」看得到（沒人在看時只記錯誤）
-                "tcp", line.strip()[:200] or "(blank)", direction="in", name=f"{self.client_address[0]}:{self.client_address[1]}",
+                "tcp", shown or "(blank)", direction="in", name=f"{self.client_address[0]}:{self.client_address[1]}",
                 detail=response, ok=bool(response.get("ok", True)), ms=(time.perf_counter() - started) * 1000,
             )
             try:

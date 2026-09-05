@@ -866,6 +866,7 @@ const en = {
         STOP: { summary: 'Stop continuous mode', desc: 'Stops the continuous run of that flow.' },
         LOCK: { summary: 'Hold the hardware', desc: 'Locks the engine: the web interface can edit but not run, while TCP and API-key callers continue. reason is shown in the banner; ttl in seconds auto-releases.' },
         UNLOCK: { summary: 'Release the lock', desc: 'Releases an engine lock taken by LOCK or POST /api/vision/lock.' },
+        AUTH: { summary: 'Sign in this connection', desc: 'Only when the station has a TCP key (VISION_TCP_AUTH): send it once after connecting, before any other command except PING. Without it every command answers code unauthorized.' },
       },
       args: {
         flow: { name: 'flow', desc: 'Flow id or name (quote a name with spaces)' },
@@ -874,6 +875,7 @@ const en = {
         recipe: { name: 'recipe=', desc: 'Recipe name or id for this run' },
         reason: { name: 'reason=', desc: 'Why the hardware is held; shown in the banner' },
         ttl: { name: 'ttl=', desc: 'Seconds until the lock releases itself' },
+        key: { name: 'key', desc: 'The station TCP key from .env (VISION_TCP_AUTH)' },
       },
       command: 'Command',
       send: 'Send',

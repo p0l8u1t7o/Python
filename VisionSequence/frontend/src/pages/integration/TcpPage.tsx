@@ -26,6 +26,7 @@ const TCP_CODES = ['empty_command', 'unknown_command', 'missing_argument', 'bad_
  */
 const COMMANDS: { name: string; syntax: string; args: string[]; example: string; response: string }[] = [
   { name: 'PING', syntax: 'PING', args: [], example: 'PING', response: '{"ok": true, "pong": true}' },
+  { name: 'AUTH', syntax: 'AUTH <key>', args: ['key'], example: 'AUTH <key>', response: '{"ok": true, "authenticated": true}' },
   { name: 'LIST', syntax: 'LIST', args: [], example: 'LIST', response: '{"ok": true, "flows": [{"id": 1, "name": "hole_count", "enabled": true}]}' },
   { name: 'STATUS', syntax: 'STATUS [flow]', args: ['flowOptional'], example: 'STATUS {flow}', response: '{"ok": true, "flow_id": 1, "stats": {"total": 120, "ok": 118, "ng": 2}, "continuous": false, "queued": 0, "running": false}' },
   { name: 'RUN', syntax: 'RUN <flow> [key=value ...]', args: ['flow', 'kv', 'recipe'], example: 'RUN {flow} lot=A1', response: '{"ok": true, "status": "ok", "judge": "OK", "outputs": {"hole_count": 3}, "duration_ms": 12.3, "run_id": "…"}' },

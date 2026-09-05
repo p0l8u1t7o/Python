@@ -1386,6 +1386,7 @@ const zhHant = {
         STOP: { summary: '停止連續模式', desc: '停掉該流程的連續執行。' },
         LOCK: { summary: '佔住硬體', desc: '鎖定引擎：網頁只能編輯不能執行，TCP 與 API 金鑰的呼叫者照常。reason 會顯示在橫幅；ttl 秒後自動解鎖。' },
         UNLOCK: { summary: '解除鎖定', desc: '釋放由 LOCK 或 POST /api/vision/lock 取得的鎖定。' },
+        AUTH: { summary: '此連線的認證', desc: '站台設定了 TCP 金鑰（VISION_TCP_AUTH）時，連線後先送一次，之後才能送 PING 以外的指令；沒送的話每個指令都回 code unauthorized。' },
       },
       args: {
         flow: { name: 'flow', desc: '流程 id 或名稱（名稱含空白請加引號）' },
@@ -1394,6 +1395,7 @@ const zhHant = {
         recipe: { name: 'recipe=', desc: '這次執行用的配方名稱或 id' },
         reason: { name: 'reason=', desc: '佔住硬體的原因；顯示在橫幅' },
         ttl: { name: 'ttl=', desc: '幾秒後自動解鎖' },
+        key: { name: 'key', desc: '.env 裡的站台 TCP 金鑰（VISION_TCP_AUTH）' },
       },
       command: '指令',
       send: '送出',
