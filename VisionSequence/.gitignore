@@ -13,3 +13,4 @@ Image/
 build/
 dist/
 release/
+frontend/*.tsbuildinfo
