@@ -128,6 +128,11 @@ function Invoke-VsManage($Layout, [string[]]$Arguments, [switch]$PassThru) {
     $env:VS_HOME = $Layout.Home
     $env:PYTHONIOENCODING = 'utf-8'
     $env:PYTHONUTF8 = '1'
+    # 維運指令不要外掛掛載那些 INFO 日誌（serve 保留）；stderr 有字時 PowerShell 在 Stop 模式下會把它當成錯誤中止，所以這裡放寬
+    $hadLogLevel = [Environment]::GetEnvironmentVariable('LOG_LEVEL')
+    if ($Arguments.Count -eq 0 -or $Arguments[0] -ne 'serve') { $env:LOG_LEVEL = 'WARNING' }
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     Push-Location $Layout.Current
     try {
         if ($PassThru) {
@@ -140,6 +145,8 @@ function Invoke-VsManage($Layout, [string[]]$Arguments, [switch]$PassThru) {
         return $LASTEXITCODE
     } finally {
         Pop-Location
+        $ErrorActionPreference = $prevEap
+        if ($null -eq $hadLogLevel) { Remove-Item Env:LOG_LEVEL -ErrorAction SilentlyContinue } else { $env:LOG_LEVEL = $hadLogLevel }
     }
 }
 
