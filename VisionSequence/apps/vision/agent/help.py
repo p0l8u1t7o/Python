@@ -505,8 +505,9 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
                 reply = providers.complete(settings, system, [], text)
             if reply and reply.strip():
                 cleaned, raw_actions = parse_actions(reply)
+                # 模型沒給 ACTIONS 時，問「在哪裡」仍由規則補一個「前往」（實測 Gemini 常略過選填的那一行）
                 return {"answer": cleaned, "provider": settings.provider, "sources": sources, "warnings": warnings,
-                        "actions": validate_actions(raw_actions, ctx), "lookups": steps}
+                        "actions": validate_actions(raw_actions, ctx) or rule_actions(question, hits, ctx), "lookups": steps}
             warnings.append(f"LLM（{settings.provider}）回了空白，已改用文件節錄")
         except Exception as exc:  # noqa: BLE001
             log.warning("說明問答 LLM 失敗：%s", exc)

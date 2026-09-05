@@ -201,6 +201,16 @@ class HelpLookupLoopTests(TestCase):
         self.assertEqual(len(help_mod.validate_actions(many, {})), 3)
         self.assertEqual(help_mod.validate_actions(many, {})[0]["label"], "Source library")
 
+    def test_llm_without_actions_line_still_gets_rule_navigate(self):
+        # 實測 Gemini 常略過選填的 ACTIONS 行：問「在哪裡」時規則補一個「前往」
+        with mock.patch.object(providers, "complete_tools", return_value=_reply("到「Modbus 從站」頁面的「連線」分頁。")):
+            out = help_mod.answer("Modbus 從站在哪個頁面設定？", LLM, context={"kind": "page", "lang": "zh-Hant"}, principal=Principal(kind="user", user=self.admin))
+        self.assertEqual(out["provider"], "openai")
+        self.assertEqual(out["actions"], [{"kind": "navigate", "to": "/integration/modbus-server", "label": "Modbus 從站"}])
+        with mock.patch.object(providers, "complete_tools", return_value=_reply("用新增流程。")):
+            out = help_mod.answer("如何建立流程？", LLM, context={"kind": "page"}, principal=Principal(kind="user", user=self.admin))
+        self.assertEqual(out["actions"], [])
+
     def test_rule_actions_offline(self):
         out = help_mod.answer("Modbus 從站在哪個頁面設定？", providers.AgentSettings(provider="offline"), context={"kind": "page", "lang": "zh-Hant"})
         self.assertEqual(out["provider"], "rules")
