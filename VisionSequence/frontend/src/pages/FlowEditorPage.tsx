@@ -45,7 +45,7 @@ import { downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { errorMessage } from '@/lib/errors'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
-import { useRegisterAssistantContext } from '@/lib/assistantContext'
+import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
 import { useAssetMutations, useClearRecent, useContinuous, useFlow, useFlowMutations, usePreviewFlow, useRecentRuns, useRecipes, useScratchImage, useSources, useToolTypes } from '@/lib/queries'
@@ -619,9 +619,22 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   const lastSourceRef = useMemo(() => sourceRefOf(activeRun, payloads.current), [activeRun])
   //: 全域 AI 助手：在編輯器內可直接請助手修改目前畫布（套用走復原堆疊）
+  //: 頁面現況給助手：用 ref 存最新值，describe() 讀時才取，不必把每個狀態都放進 deps
+  const snapshotRef = useRef<() => Record<string, unknown>>(() => ({}))
+  snapshotRef.current = () => {
+    const g = currentGraph()
+    const sel = selectedId ? g.nodes.find((n) => n.id === selectedId) : undefined
+    const types = new Map(g.nodes.map((n) => [n.id, n.type]))
+    return {
+      selected: sel ? { id: sel.id, type: sel.type, ...(sel.label ? { label: sel.label } : {}) } : null,
+      dirty, nodes: g.nodes.length, continuous: Boolean(flow.data?.continuous), locked: execLocked,
+      last_run: describeReport(activeRun, types),
+    }
+  }
   useRegisterAssistantContext({
     kind: 'flow_editor', flowId, flowName: meta.name, imageRef: lastSourceRef, execLocked, getGraph: currentGraph,
     applyGraph: (g, why) => { pushHistory(); restoreGraph(g); toast.success(why ? `${t('agent.applied')}: ${why}` : t('agent.applied')) },
+    describe: () => snapshotRef.current(), focusNode: (id) => setSelectedId(id),
   }, [flowId, meta.name, lastSourceRef, execLocked])
   /** 固定的來源影像：暫存影像優先，其次「用上次影像重跑」。 */
   const pinnedRef = scratch?.ref ?? (reuseImage ? lastSourceRef : null)

@@ -1,14 +1,18 @@
 /**
  * 全域 AI 助手的頁面脈絡：每個頁面在掛載時登記「我是誰、能做什麼」（流程編輯器：目前畫布與套用；批次頁：目前執行與建議套用；
  * 工具頁：節點型別），助手視窗依此分流（問答／修改流程／資料諮詢／依資料調整）並顯示對應的快速提示。
+ * `describe()` 回頁面自己的現況快照（選了哪個節點、上次執行怎麼了、未儲存…），讓助手回答時對得上畫面。
  * 與 flowDraft.ts 同樣是模組層 store＋useSyncExternalStore，頁面切換即自動清除。
  */
 import { useEffect, useSyncExternalStore } from 'react'
 
 import type { Suggestion } from '@/lib/batch'
-import type { FlowGraph } from '@/lib/types'
+import type { FlowGraph, RunReport } from '@/lib/types'
 
 export type AssistantKind = 'flow_editor' | 'tool' | 'batch' | 'golden' | 'agent' | 'dl' | 'sources' | 'assets' | 'dashboard' | 'page'
+
+/** 頁面現況快照：純資料、可 JSON 化；欄位由各頁自訂，後端只當文字脈絡用。 */
+export type PageSnapshot = Record<string, unknown>
 
 export interface AssistantContext {
   kind: AssistantKind
@@ -28,6 +32,10 @@ export interface AssistantContext {
   applySuggestions?: (suggestions: Suggestion[]) => void
   /** 批次頁：AI 調整產生了新的一次執行 */
   onNewRun?: (runId: number) => void
+  /** 頁面自己的現況（選取、上次執行、未儲存…）；每次提問時呼叫 */
+  describe?: () => PageSnapshot | null
+  /** 流程編輯器：選取並捲到某個節點（助手回覆的「前往」動作） */
+  focusNode?: (nodeId: string) => void
 }
 
 let current: AssistantContext | null = null
@@ -71,4 +79,19 @@ export function contextFromPath(pathname: string): AssistantContext {
     : /^\/flows\/\d+\/golden/.test(pathname) ? 'golden'
     : 'page'
   return { kind, route: pathname }
+}
+
+/** 一次執行的精簡摘要（狀態、錯誤、沒過的節點）；給快照與操作軌跡用，不含影像。 */
+export function describeReport(report: RunReport | null | undefined, types?: Map<string, string>): PageSnapshot | null {
+  if (!report) return null
+  const nodes = Object.entries(report.nodes ?? {})
+    .filter(([, n]) => n.status !== 'ok')
+    .slice(0, 8)
+    .map(([id, n]) => ({ id, ...(types?.get(id) ? { type: types.get(id) } : {}), status: n.status, ...(n.message ? { message: String(n.message).slice(0, 160) } : {}) }))
+  return {
+    status: report.status,
+    ...(report.error ? { error: String(report.error).slice(0, 300) } : {}),
+    duration_ms: Math.round(report.duration_ms ?? 0),
+    ...(nodes.length ? { nodes } : {}),
+  }
 }

@@ -101,6 +101,14 @@ class ChatContext(Schema):
     batch_run_id: int | None = None
     image_ref: str = ""
     graph: dict[str, Any] | None = None
+    #: 介面語言（en / zh-Hant / zh-Hans）
+    lang: str = ""
+    #: 頁面現況快照（選取、上次執行、未儲存…；由頁面 describe() 與 DOM 快照組成）
+    page: dict[str, Any] | None = None
+    #: 操作軌跡（最近的換頁、錯誤、執行結果）
+    activity: list[dict[str, Any]] = []
+    #: 使用者主動附上的畫面文字摘要
+    screen: str = ""
 
 
 class ChatIn(Schema):
@@ -652,7 +660,9 @@ def agent_chat(request: HttpRequest, payload: ChatIn):
             raise ValidationError("That run has not finished", code="run_not_done")
         out = consult_mod.consult(run, run.batch_set, message, settings, graph=ctx.graph, user=p.user)
         return {"kind": "consult", "answer": out["answer"], "provider": out["provider"], "suggestions": out["suggestions"], "warnings": out["warnings"]}
-    out = help_mod.answer(message, settings, context=ctx.dict(), history=payload.history, user=p.user)
+    from apps.accounts.models import EngineLock
+
+    out = help_mod.answer(message, settings, context=ctx.dict(), history=payload.history, user=p.user, principal=p, lock=EngineLock.current().to_dict())
     return {"kind": "help", **out}
 
 

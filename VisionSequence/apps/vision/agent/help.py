@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import html
+import json
 import logging
 import math
 import re
@@ -13,12 +14,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from apps.vision.agent import providers, skills
+from apps.vision.agent import providers, situation, skills
 from apps.vision.tools import base as tools
 
 log = logging.getLogger("vision.agent")
 
 DOCS_DIR = Path(__file__).resolve().parents[3] / "docs"
+#: 介面地圖（frontend/src/lib/uiMap.ts 經 `node scripts/ui_map.mjs` 產生；三語系的頁面名稱、用途、分頁與主要動作）
+UI_MAP_PATH = Path(__file__).resolve().parent / "ui_map.json"
 PAGE_TITLES = {
     "index.html": "Overview", "workflow-design.html": "Workflow design", "architecture.html": "Architecture", "automation.html": "Automation", "modbus.html": "Modbus",
     "dl.html": "Deep learning", "plugins.html": "Plugins", "contract.html": "Contract", "glossary.html": "Glossary", "golden.html": "Golden Set",
@@ -29,13 +32,18 @@ PAGE_TITLES = {
 PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9}
 MAX_SECTION_CHARS = 1400
 TOP_K = 5
+#: 問「在哪裡／哪個頁面」時介面地圖段加權，其餘降權：地圖段很短，BM25 的長度正規化會讓它們搶走「怎麼做」類問題的第一名。
+_WHERE = re.compile(r"哪裡|哪里|哪個頁面|哪个页面|在哪|哪一頁|哪一页|哪頁|哪页|怎麼去|怎么去|\bwhere\b|which (page|tab|menu)|how do i (get|go) to|navigate", re.IGNORECASE)
+UI_WEIGHT_WHERE = 1.3
+UI_WEIGHT_OTHER = 0.35
 
 HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machine vision platform.
 - Answer only from the documentation excerpts below. If they do not cover it, say so plainly, suggest the page that might, and never invent a feature.
 - Reply in the same language the question was asked in (the documentation is English; translate what you quote when the question is not).
 - Conclusion first, then the steps; mostly bullets; under 300 words. Name the buttons and pages as the interface shows them ("New image set" on the Batch testing page).
 - End with a separate line starting "References:" listing the sections you used, as Page > Section.
-- If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page."""
+- If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page.
+- You are also given the user's current situation: the page they are on, what it shows, their recent actions and errors, their role and the engine lock. Use it: if a recent error explains the question, explain that error first and how to fix it; point to the exact page, tab and button (the interface map lists them in the user's languages); never tell the user to do something their role cannot do, say which role can."""
 
 #: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/glossary.html 的對照表）。
 BILINGUAL = {
@@ -101,12 +109,14 @@ class Section:
     heading: str
     anchor: str
     text: str
-    kind: str = "doc"  # doc | glossary | tool
+    kind: str = "doc"  # doc | glossary | tool | ui
     tokens: dict[str, int] = field(default_factory=dict)
     length: int = 0
 
     @property
     def url(self) -> str:
+        if self.kind == "ui":
+            return self.anchor  # 介面地圖：anchor 就是前端路由
         return f"/docs/{self.page}#{self.anchor}" if self.anchor else f"/docs/{self.page}"
 
     @property
@@ -186,6 +196,65 @@ def _tool_sections() -> list[Section]:
     return out
 
 
+def load_ui_map() -> dict[str, Any]:
+    try:
+        return json.loads(UI_MAP_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.warning("介面地圖 %s 讀不到，助手不知道頁面與按鈕的名稱", UI_MAP_PATH)
+        return {"languages": [], "pages": []}
+
+
+def _names(row: dict[str, Any] | None) -> str:
+    """{'en': 'Sources', 'zh-Hant': '來源庫', ...} → 'Sources / 來源庫 / 来源库'（去重）。"""
+    seen: list[str] = []
+    for v in (row or {}).values():
+        if v and v not in seen:
+            seen.append(str(v))
+    return " / ".join(seen)
+
+
+def _ui_sections() -> list[Section]:
+    """介面地圖每頁一段：三語系的名稱、用途、分頁、動作與需要的功能，中文提問也檢索得到。"""
+    out: list[Section] = []
+    for p in load_ui_map().get("pages", []):
+        lines = [f"Page: {_names(p.get('names'))}", f"Route: {p.get('route')}", f"Purpose: {_names(p.get('summary'))}"]
+        if p.get("admin"):
+            lines.append("Access: administrators only")
+        elif p.get("feature"):
+            lines.append(f"Access: needs the '{p['feature']}' feature (administrators always can)")
+        if p.get("tabs"):
+            lines.append("Tabs: " + "; ".join(_names(t.get("names")) for t in p["tabs"]))
+        if p.get("actions"):
+            lines.append("Buttons: " + "; ".join(_names(a) for a in p["actions"]))
+        out.append(Section("ui", "Interface", str((p.get("names") or {}).get("en") or p.get("id")), str(p.get("route") or ""), "\n".join(lines), kind="ui"))
+    return out
+
+
+def ui_page_for(route: str) -> dict[str, Any] | None:
+    """前端路由（/flows/12/tools/blob）→ 介面地圖的頁面（/flows/:flowId/tools/:nodeId）；最長樣板優先。"""
+    best = None
+    for p in load_ui_map().get("pages", []):
+        pattern = "^" + re.sub(r":[A-Za-z]+", r"[^/]+", str(p.get("route") or "")) + "$"
+        if re.match(pattern, route or "") and (best is None or len(p["route"]) > len(best["route"])):
+            best = p
+    return best
+
+
+def ui_brief() -> str:
+    """給 system 提示的一頁地圖（英文一行一頁），讓 LLM 用介面上真正的名稱指路。"""
+    rows = []
+    for p in load_ui_map().get("pages", []):
+        names = p.get("names") or {}
+        extras = []
+        if p.get("tabs"):
+            extras.append("tabs: " + ", ".join(str((t.get("names") or {}).get("en") or t.get("key")) for t in p["tabs"]))
+        if p.get("actions"):
+            extras.append("buttons: " + ", ".join(str(a.get("en") or "") for a in p["actions"]))
+        access = " [admin]" if p.get("admin") else (f" [{p['feature']}]" if p.get("feature") else "")
+        rows.append(f"- {names.get('en') or p.get('id')} ({p.get('route')}){access}: {(p.get('summary') or {}).get('en', '')}" + (f"; {'; '.join(extras)}" if extras else ""))
+    return "# Interface map (page (route) [required feature]: purpose; tabs; buttons)\n" + "\n".join(rows)
+
+
 def _finish(sections: list[Section]) -> Index:
     df: dict[str, int] = {}
     total = 0
@@ -202,8 +271,9 @@ def _finish(sections: list[Section]) -> Index:
 
 
 def _stamp() -> float:
+    paths = list(DOCS_DIR.glob("*.html")) + ([UI_MAP_PATH] if UI_MAP_PATH.exists() else [])
     try:
-        return max(p.stat().st_mtime for p in DOCS_DIR.glob("*.html"))
+        return max(p.stat().st_mtime for p in paths)
     except ValueError:
         return 0.0
 
@@ -223,6 +293,7 @@ def build_index(force: bool = False) -> Index:
         except Exception:  # noqa: BLE001
             log.warning("說明索引：%s 解析失敗", path.name, exc_info=True)
     sections.extend(_tool_sections())
+    sections.extend(_ui_sections())
     _index = _finish(sections)
     return _index
 
@@ -234,6 +305,7 @@ def search(query: str, k: int = TOP_K, *, extra_terms: str = "") -> list[tuple[S
     if not q:
         return []
     n = len(idx.sections)
+    ui_weight = UI_WEIGHT_WHERE if _WHERE.search(query) else UI_WEIGHT_OTHER
     scored: list[tuple[Section, float]] = []
     for s in idx.sections:
         score = 0.0
@@ -248,7 +320,8 @@ def search(query: str, k: int = TOP_K, *, extra_terms: str = "") -> list[tuple[S
             if tok in head_tokens:
                 score += idf * 0.8
         if score > 0:
-            scored.append((s, score * PAGE_BOOST.get(s.page, 1.0) * (0.9 if s.kind == "tool" else 1.0)))
+            weight = 0.9 if s.kind == "tool" else ui_weight if s.kind == "ui" else 1.0
+            scored.append((s, score * PAGE_BOOST.get(s.page, 1.0) * weight))
     scored.sort(key=lambda r: -r[1])
     return scored[:k]
 
@@ -269,22 +342,41 @@ def snippet(section: Section, query: str, width: int = 240) -> str:
 
 
 def _context_sections(context: dict[str, Any] | None) -> list[Section]:
-    """目前頁面的專屬資料：工具頁／編輯器選到的工具技能。"""
+    """目前頁面的專屬資料：工具頁／編輯器選到的工具技能、目前所在頁面的介面地圖段。"""
     out: list[Section] = []
     node_type = str((context or {}).get("node_type") or "")
     if node_type and tools.has(node_type):
         t = tools.get(node_type)
         out.append(Section("agent.html", "AI skills", f"Tool: {t.label} ({t.key})", "skills", _strip(skills.skill_text(node_type))[:MAX_SECTION_CHARS * 2], kind="tool"))
+    route = str((context or {}).get("route") or "")
+    page = ui_page_for(route) if route else None
+    if page:
+        out.extend(s for s in build_index().sections if s.kind == "ui" and s.anchor == page.get("route"))
     return out
+
+
+def _error_terms(context: dict[str, Any] | None) -> str:
+    """最近的錯誤文字也拿去檢索（失敗碼與訊息常直接對到文件的一段）。"""
+    errs = situation.recent_errors(situation.clean_activity((context or {}).get("activity")))
+    if not errs:
+        return ""
+    e = errs[0]
+    return f"{e['text']} {e.get('detail', '')}"[:300]
 
 
 CONTEXT_LABELS = {"flow_editor": "flow editor", "tool": "tool page", "batch": "batch testing", "golden": "Golden Set", "agent": "AI assistant", "dl": "deep learning", "sources": "image sources", "assets": "assets", "dashboard": "dashboard", "page": ""}
 
 
-def offline_answer(question: str, hits: list[tuple[Section, float]]) -> str:
+def offline_answer(question: str, hits: list[tuple[Section, float]], *, context: dict[str, Any] | None = None) -> str:
+    lines: list[str] = []
+    errs = situation.recent_errors(situation.clean_activity((context or {}).get("activity")))
+    if errs:
+        e = errs[0]
+        lines.append(f"最近一次錯誤（{e['ago_s']} 秒前）：{e['text']}" + (f"——{e['detail']}" if e.get("detail") else ""))
     if not hits:
-        return "文件裡找不到與問題直接相關的段落。可試著換個關鍵詞（例如功能名稱或頁面名稱），或到「說明」頁瀏覽快速上手與名詞定義。"
-    lines = ["依平台文件："]
+        lines.append("文件裡找不到與問題直接相關的段落。可試著換個關鍵詞（例如功能名稱或頁面名稱），或到「說明」頁瀏覽快速上手與名詞定義。")
+        return "\n".join(lines)
+    lines.append("依平台文件：")
     for i, (s, _) in enumerate(hits[:3], start=1):
         lines.append(f"{i}. 《{s.title}》：{snippet(s, question)}")
     lines.append("（完整內容請見下方參考連結；離線規則模式只能節錄文件，接上 LLM 供應商可得到整理過的回答。）")
@@ -292,32 +384,37 @@ def offline_answer(question: str, hits: list[tuple[Section, float]]) -> str:
 
 
 def answer(question: str, settings: providers.AgentSettings, *, context: dict[str, Any] | None = None,
-           history: list[dict[str, Any]] | None = None, user: Any = None) -> dict[str, Any]:
-    """{answer, provider, sources:[{title, page, heading, url, snippet}], warnings}"""
+           history: list[dict[str, Any]] | None = None, user: Any = None, principal: Any = None, lock: dict[str, Any] | None = None) -> dict[str, Any]:
+    """{answer, provider, sources:[{title, page, heading, url, snippet}], warnings}
+
+    context 除了頁面種類還可帶 page（頁面快照）、activity（操作軌跡）、lang、screen；principal／lock 由端點補（呼叫者自己的身分與鎖定）。"""
     ctx = context or {}
     kind_label = CONTEXT_LABELS.get(str(ctx.get("kind") or ""), "")
-    hits = search(question, extra_terms=kind_label)
+    hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx)}")
     sections = _context_sections(ctx) + [s for s, _ in hits]
+    seen: set[tuple[str, str]] = set()
+    sections = [s for s in sections if not ((s.page, s.anchor, s.heading) in seen or seen.add((s.page, s.anchor, s.heading)))]  # type: ignore[func-returns-value]
     sources = [{"title": s.title, "page": s.page, "heading": s.heading, "url": s.url, "snippet": snippet(s, question), "kind": s.kind} for s in sections[:TOP_K + 1]]
     warnings: list[str] = []
     if providers.available(settings):
         try:
-            where = f"使用者目前在「{kind_label}」" + (f"（流程「{ctx.get('flow_name')}」）" if ctx.get("flow_name") else "") if kind_label else ""
+            where = situation.describe(ctx, principal=principal, lock=lock)
             turns = [h for h in (history or []) if isinstance(h, dict) and str(h.get("text") or "").strip()][-6:]
             recent = "\n".join(f"{'使用者' if h.get('role') == 'user' else '助理'}：{str(h.get('text'))[:300]}" for h in turns)
             docs_text = "\n\n".join(f"《{s.title}》\n{s.text[:MAX_SECTION_CHARS]}" for s in sections[:TOP_K + 1])
-            text = "\n\n".join(x for x in [where, ("最近對話：\n" + recent) if recent else "", "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
-            reply = providers.complete(settings, HELP_SYSTEM + "\n\n" + skills.platform_text()[:1500], [], text)
+            text = "\n\n".join(x for x in [("Current situation:\n" + where) if where else "", ("最近對話：\n" + recent) if recent else "", "文件片段：\n" + docs_text, f"問題：{question[:4000]}"] if x)
+            reply = providers.complete(settings, HELP_SYSTEM + "\n\n" + skills.platform_text()[:1500] + "\n\n" + ui_brief(), [], text)
             if reply and reply.strip():
                 return {"answer": reply.strip(), "provider": settings.provider, "sources": sources, "warnings": warnings}
             warnings.append(f"LLM（{settings.provider}）回了空白，已改用文件節錄")
         except Exception as exc:  # noqa: BLE001
             log.warning("說明問答 LLM 失敗：%s", exc)
             warnings.append(f"LLM（{settings.provider}）失敗，已改用文件節錄：{providers._explain(exc, providers.generate_timeout())}")
-    return {"answer": offline_answer(question, hits), "provider": "rules", "sources": sources, "warnings": warnings}
+    return {"answer": offline_answer(question, hits, context=ctx), "provider": "rules", "sources": sources, "warnings": warnings}
 
 
 def index_stats() -> dict[str, Any]:
     idx = build_index()
-    return {"sections": len(idx.sections), "pages": len({s.page for s in idx.sections if s.kind == "doc"}), "tools": sum(1 for s in idx.sections if s.kind == "tool")}
+    return {"sections": len(idx.sections), "pages": len({s.page for s in idx.sections if s.kind == "doc"}), "tools": sum(1 for s in idx.sections if s.kind == "tool"),
+            "ui_pages": sum(1 for s in idx.sections if s.kind == "ui")}
 

@@ -100,7 +100,11 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   const def = node ? defs.get(node.type) : undefined
   const payloads = useMemo(() => new Map((graph?.nodes ?? []).map((n) => [n.id, n])), [graph])
   //: 全域 AI 助手：知道目前在哪個工具，就能回答此工具的參數要領
-  useRegisterAssistantContext({ kind: 'tool', flowId, flowName: flow.data?.name, nodeId, nodeType: node?.type, getGraph: () => getSession(flowId).draft?.graph ?? flow.data?.graph ?? null }, [flowId, nodeId, node?.type, flow.data?.name])
+  const snapshotRef = useRef<() => Record<string, unknown>>(() => ({}))
+  useRegisterAssistantContext({
+    kind: 'tool', flowId, flowName: flow.data?.name, nodeId, nodeType: node?.type, getGraph: () => getSession(flowId).draft?.graph ?? flow.data?.graph ?? null,
+    describe: () => snapshotRef.current(),
+  }, [flowId, nodeId, node?.type, flow.data?.name])
   const edges = graph?.edges ?? []
 
   const execLocked = auth.lock.locked && auth.me?.kind !== 'integrator' && !isLockHolder(auth.me, auth.lock)
@@ -109,6 +113,12 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
   // ---- 結果 ----
   const run = session.previewRun
   const report = run?.nodes[nodeId]
+  //: 助手看得到此節點的參數與上次試執行的結果（純量輸出）
+  snapshotRef.current = () => ({
+    node: node ? { id: node.id, type: node.type, ...(node.label ? { label: node.label } : {}), params: node.params ?? {} } : null,
+    last_run: report ? { status: report.status, ...(report.message ? { message: report.message } : {}), outputs: Object.fromEntries(Object.entries(report.outputs ?? {}).filter(([, v]) => typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean').slice(0, 20)) } : null,
+    dirty: Boolean(session.draft && session.draft.dirty), read_only: readOnly,
+  })
   const lastSourceRef = useMemo(() => sourceRefOf(run, payloads), [run, payloads])
   const scratch = session.scratch
   const pinnedRef = scratch?.ref ?? (reuse ? lastSourceRef : null)

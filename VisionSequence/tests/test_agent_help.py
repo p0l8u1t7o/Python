@@ -13,7 +13,7 @@ from django.conf import settings
 from django.test import TestCase, override_settings
 
 from apps.vision.agent import help as help_mod
-from apps.vision.agent import providers, service
+from apps.vision.agent import providers, service, situation
 from apps.vision.batch import jobs, store
 from apps.vision.models import BatchSet, Flow, ImageSource
 from tests._helpers import temp_dir
@@ -51,7 +51,7 @@ class HelpIndexTests(TestCase):
         self.assertEqual(out["provider"], "rules")
         self.assertIn("依平台文件", out["answer"])
         self.assertTrue(out["sources"])
-        self.assertTrue(all(src["url"].startswith("/docs/") for src in out["sources"]))
+        self.assertTrue(all(src["url"].startswith("/docs/") or src["kind"] == "ui" for src in out["sources"]))
         self.assertLessEqual(len(help_mod.snippet(out and help_mod.search("Golden")[0][0], "Golden", 120)), 130)
         out = help_mod.answer("zzqqxx", providers.AgentSettings())
         self.assertIn("找不到", out["answer"])
@@ -87,6 +87,12 @@ class ChatApiTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["kind"], "help")
         self.assertTrue(r.json()["sources"])
+        # 頁面快照、操作軌跡、語系與畫面摘要都收得下；有最近錯誤時離線回答先講錯誤，參考裡有目前頁面的介面地圖段
+        r = self._chat({"message": "為什麼失敗？", "context": {"kind": "sources", "route": "/sources", "lang": "zh-Hant", "page": {"title": "Source library", "dialog": "New source"},
+                                                          "activity": [{"ago_s": 4, "kind": "error", "text": "POST /vision/sources/test -> 422 no_frame", "detail": "Nothing is listening", "route": "/sources"}], "screen": "x"}})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.json()["answer"].startswith("最近一次錯誤（4 秒前）"))
+        self.assertTrue(any(s["kind"] == "ui" and s["url"] == "/sources" for s in r.json()["sources"]), r.json()["sources"])
         self.assertEqual(self._chat({"message": "  "}).status_code, 422)
         r = self.client.get("/api/vision/agent/help/search?q=範本畫廊")
         self.assertEqual(r.status_code, 200)
@@ -150,3 +156,110 @@ class ChatApiTests(TestCase):
         r = self.client.get("/docs/batch.html")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.client.get("/docs/nope.html").status_code, 404)
+
+
+class SituationTests(TestCase):
+    """現況段落：頁面快照、操作軌跡、身分與鎖定；長度上限；離線回答帶最近錯誤；檢索用錯誤文字。"""
+
+    def test_describe_and_limits(self):
+        ctx = {"kind": "flow_editor", "route": "/flows/3", "flow_id": 3, "flow_name": "示範", "lang": "zh-Hant",
+               "page": {"selected": {"id": "blob", "type": "blob"}, "dirty": True, "last_run": {"status": "failed", "error": "Image source is not set"}},
+               "activity": [{"ago_s": 40, "kind": "nav", "text": "/flows/3"}, {"ago_s": 5, "kind": "error", "text": "POST /vision/flows/3/preview -> 422 no_source", "detail": "Image source is not set", "count": 2},
+                            {"kind": "", "text": "ignored"}, "junk"]}
+        text = situation.describe(ctx, principal=None, lock={"locked": True, "holder": "integrator", "reason": "maintenance"})
+        self.assertIn("Page: flow editor (route /flows/3)", text)
+        self.assertIn("Flow: 示範 (id 3)", text)
+        self.assertIn("UI language: zh-Hant", text)
+        self.assertIn('"selected": {"id": "blob"', text)
+        self.assertIn("5s ago [error] POST /vision/flows/3/preview -> 422 no_source — Image source is not set (x2)", text)
+        self.assertIn("Engine lock: locked by integrator (maintenance)", text)
+        self.assertEqual(situation.describe({}), "")
+        big = {"kind": "page", "page": {"rows": ["x" * 100] * 200}, "activity": [{"ago_s": 1, "kind": "nav", "text": "y" * 500}] * 100, "screen": "z" * 9000}
+        text = situation.describe(big)
+        self.assertLess(len(text), situation.MAX_PAGE_CHARS + situation.MAX_ACTIVITY_CHARS + situation.MAX_SCREEN_CHARS + 500)
+        self.assertIn("truncated", text)
+        errs = situation.recent_errors(situation.clean_activity(ctx["activity"]))
+        self.assertEqual(len(errs), 1)
+        self.assertEqual(errs[0]["count"], 2)
+
+    def test_principal_line_and_role_guard(self):
+        from django.contrib.auth.models import User
+
+        from apps.accounts.models import UserPref
+        from apps.accounts.security import Principal
+
+        u = User.objects.create_user("op", password="x")
+        UserPref.objects.create(user=u, role="operator")
+        text = situation.describe({"kind": "page"}, principal=Principal(kind="user", user=u))
+        self.assertIn("Caller: op, role operator, allowed features: ", text)
+        self.assertIn("flows.run", text)
+        self.assertNotIn("flows.edit", text)
+        self.assertIn("Do not tell them to do something their role cannot", text)
+        self.assertIn("integrator", situation.describe({}, principal=Principal(kind="integrator")))
+
+    def test_offline_answer_mentions_recent_error_and_searches_it(self):
+        ctx = {"kind": "sources", "route": "/sources", "activity": [{"ago_s": 3, "kind": "error", "text": "POST /vision/sources/test -> 422 no_frame", "detail": "Nothing is listening at 127.0.0.1:9001"}]}
+        out = help_mod.answer("為什麼測試失敗？", providers.AgentSettings(provider="offline"), context=ctx)
+        self.assertEqual(out["provider"], "rules")
+        self.assertTrue(out["answer"].startswith("最近一次錯誤（3 秒前）：POST /vision/sources/test -> 422 no_frame——Nothing is listening"))
+        self.assertTrue(out["sources"])
+        # 沒有錯誤時不會多出那一行
+        out = help_mod.answer("為什麼測試失敗？", providers.AgentSettings(provider="offline"), context={"kind": "sources"})
+        self.assertFalse(out["answer"].startswith("最近一次錯誤"))
+
+    def test_llm_prompt_carries_situation_and_ui_map(self):
+        from django.contrib.auth.models import User
+
+        from apps.accounts.security import Principal
+
+        u = User.objects.create_user("eng", password="x", is_staff=True)
+        ctx = {"kind": "tool", "route": "/flows/1/tools/blob", "node_type": "blob", "flow_name": "示範", "page": {"node": {"id": "blob", "params": {"min_area": 10}}},
+               "activity": [{"ago_s": 2, "kind": "run", "text": "preview flow 1: ng"}]}
+        with mock.patch.object(providers, "complete", return_value="回答") as done:
+            out = help_mod.answer("min_area 要多少？", LLM, context=ctx, principal=Principal(kind="user", user=u), lock={"locked": False})
+        self.assertEqual(out["answer"], "回答")
+        system, prompt = done.call_args.args[1], done.call_args.args[3]
+        self.assertIn("Current situation:", prompt)
+        self.assertIn("Page: tool page (route /flows/1/tools/blob)", prompt)
+        self.assertIn('"min_area": 10', prompt)
+        self.assertIn("2s ago [run] preview flow 1: ng", prompt)
+        self.assertIn("Caller: eng, role admin", prompt)
+        self.assertNotIn("Engine lock", prompt)
+        self.assertIn("# Interface map", system)
+        self.assertIn("Source library (/sources) [sources]", system)
+        # 目前頁面的介面地圖段也在參考裡（工具頁）
+        self.assertTrue(any(s["kind"] == "ui" and s["url"] == "/flows/:flowId/tools/:nodeId" for s in out["sources"]), out["sources"])
+
+
+class UiMapIndexTests(TestCase):
+    """介面地圖進索引：中文問「在哪裡」對到頁面、url 是前端路由、路由樣板比對、地圖檔更新會重建。"""
+
+    def test_ui_sections_searchable_in_three_languages(self):
+        stats = help_mod.index_stats()
+        self.assertGreaterEqual(stats["ui_pages"], 20)
+        for q in ("Modbus 從站在哪個頁面", "Modbus 从站在哪个页面", "Where is the Modbus server page"):
+            hits = help_mod.search(q, k=3)
+            ui = [s for s, _ in hits if s.kind == "ui"]
+            self.assertTrue(ui, (q, [s.title for s, _ in hits]))
+            self.assertEqual(ui[0].url, "/integration/modbus-server", q)
+            self.assertEqual(ui[0].title, "Interface › Modbus server")
+        sec = next(s for s in help_mod.build_index().sections if s.kind == "ui" and s.anchor == "/users")
+        self.assertIn("administrators only", sec.text)
+        self.assertIn("Buttons: New user / 新增使用者", sec.text)
+
+    def test_route_matching_and_brief(self):
+        self.assertEqual(help_mod.ui_page_for("/flows/12/tools/blob")["id"], "tool")
+        self.assertEqual(help_mod.ui_page_for("/flows/12")["id"], "flow_editor")
+        self.assertEqual(help_mod.ui_page_for("/integration/plugins")["id"], "integration_plugins")
+        self.assertIsNone(help_mod.ui_page_for("/nope/x"))
+        brief = help_mod.ui_brief()
+        self.assertIn("- Plugins (/integration/plugins) [integration]:", brief)
+        self.assertIn("tabs: Loaded plugins, Connections", brief)
+        self.assertIn("- Users (/users) [admin]:", brief)
+
+    def test_missing_map_degrades(self):
+        with mock.patch.object(help_mod, "UI_MAP_PATH", Path(TMP) / "nope.json"):
+            self.assertEqual(help_mod.load_ui_map()["pages"], [])
+            self.assertEqual(help_mod._ui_sections(), [])
+            self.assertIsNone(help_mod.ui_page_for("/sources"))
+            self.assertIn("# Interface map", help_mod.ui_brief())

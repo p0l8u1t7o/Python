@@ -105,6 +105,11 @@ SEARCH_BENCH = [
     ("SAM 智慧選取", {"dl.html"}),
     ("使用者可見文案的用詞規範", {"glossary.html"}),
     ("影像集最多幾張", {"batch.html", "user-guide.html"}),
+    # 介面地圖（ui_map.json）：問「在哪裡」要能對到頁面
+    ("Modbus 從站要在哪個頁面設定", {"ui", "modbus.html"}),
+    ("外掛頁面在哪裡", {"ui", "plugins.html"}),
+    ("角色權限在哪裡設定", {"ui", "user-guide.html", "automation.html", "glossary.html"}),
+    ("Where do I add a new connection", {"ui", "modbus.html", "automation.html", "user-guide.html"}),
 ]
 
 
@@ -212,7 +217,7 @@ class HelpRobustnessTests(TestCase):
         tmp = Path(tempfile.mkdtemp())
         try:
             (tmp / "a.html").write_text('<article><h1>甲</h1><h2 id="x">影像集建立</h2><p>' + "影像集是一組批量測試用的影像。" * 5 + "</p></article>", encoding="utf-8")
-            with mock.patch.object(help_mod, "DOCS_DIR", tmp):
+            with mock.patch.object(help_mod, "DOCS_DIR", tmp), mock.patch.object(help_mod, "UI_MAP_PATH", tmp / "none.json"):
                 first = help_mod.build_index(force=True)
                 docs = [s for s in first.sections if s.kind == "doc"]
                 self.assertEqual([s.page for s in docs], ["a.html"])

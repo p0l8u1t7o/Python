@@ -8,6 +8,7 @@ import { renderPage } from './render'
 installApiMock()
 
 import { AssistantDock, contextPayload } from '@/components/assistant/AssistantDock'
+import { clearActivity, logActivity, setShareEnabled, shareEnabled } from '@/lib/activity'
 import { api } from '@/lib/api'
 import { contextFromPath, getAssistantContext, setAssistantContext } from '@/lib/assistantContext'
 
@@ -75,6 +76,39 @@ describe('AssistantDock', () => {
     expect(applyGraph).toHaveBeenCalledTimes(1)
     expect((applyGraph.mock.calls[0][0] as { nodes: { params: { min_area: number } }[] }).nodes[0].params.min_area).toBe(40)
     await waitFor(() => expect(screen.queryByTestId('assistant-apply')).toBeNull())
+  })
+
+  it('sends the page snapshot, activity trail and language, and the share toggle turns them off', async () => {
+    clearActivity()
+    setShareEnabled(true)
+    setAssistantContext({ kind: 'sources', route: '/sources', describe: () => ({ selected: 'cam1', rows: 3 }) })
+    logActivity('error', 'POST /vision/sources/test -> 422 no_frame', 'Nothing is listening')
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'help', answer: '最近一次錯誤…', provider: 'rules', sources: [{ title: 'Interface › Source library', page: 'ui', heading: 'Source library', url: '/sources', snippet: '', kind: 'ui' }] })
+    renderPage(<AssistantDock />, { route: '/sources' })
+    fireEvent.click(screen.getByTestId('assistant-toggle'))
+    const input = screen.getByTestId('assistant-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '為什麼失敗？' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getAllByTestId('assistant-msg-assistant').length).toBe(1))
+    const body = vi.mocked(api.post).mock.calls[0][1] as { context: { lang: string; page: Record<string, unknown> | null; activity: { kind: string; text: string }[]; route: string } }
+    expect(body.context.lang).toBe('en')
+    expect(body.context.route).toBe('/sources')
+    expect(body.context.page).toMatchObject({ selected: 'cam1', rows: 3 })
+    expect(body.context.activity.some((a) => a.kind === 'error' && a.text.includes('no_frame'))).toBe(true)
+    expect(body.context.activity.some((a) => a.kind === 'nav' && a.text === '/sources')).toBe(true)
+    // 介面地圖類的參考是站內連結
+    expect(screen.getByTestId('assistant-ui-link').getAttribute('href')).toBe('/sources')
+    // 關掉分享後只送頁面種類
+    fireEvent.click(screen.getByTestId('assistant-share'))
+    expect(shareEnabled()).toBe(false)
+    vi.mocked(api.post).mockResolvedValueOnce({ kind: 'help', answer: 'ok', provider: 'rules', sources: [] })
+    fireEvent.change(input, { target: { value: '再問一次' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(screen.getAllByTestId('assistant-msg-assistant').length).toBe(2))
+    const second = vi.mocked(api.post).mock.calls[1][1] as { context: { page: unknown; activity: unknown[] } }
+    expect(second.context.page).toBeNull()
+    expect(second.context.activity).toEqual([])
+    setShareEnabled(true)
   })
 
   it('restores a persisted conversation', () => {

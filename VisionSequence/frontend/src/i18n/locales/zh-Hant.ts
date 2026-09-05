@@ -24,6 +24,7 @@ const zhHant = {
     expand: '展開側欄',
   },
   breadcrumb: {
+    editor: '流程編輯器',
     teach: '參數卡',
     tools: '工具頁',
     stats: '統計',
@@ -1625,6 +1626,7 @@ const zhHant = {
     skillsCustomDeleted: '已刪除補充要領',
   },
   assistant: {
+    shareOn: '正在把畫面現況（頁面、選取、最近的錯誤）分享給助手；點選可停止分享', shareOff: '未分享畫面現況，助手只知道您在哪個頁面；點選可開啟分享',
     title: 'AI 助手', clear: '清除對話', send: '送出', placeholder: '詢問平台使用方式，或在編輯器／批次頁下達修改指令…', thinking: '助手思考中…',
     empty: '此助手在任何頁面都可開啟：詢問平台使用問題會依文件回答並附參考連結；在流程編輯器可直接請助手修改目前流程；在批次測試頁可依資料諮詢或調整參數。',
     sources: '參考文件', applyNeedsEditor: '請回到該流程的編輯器再套用此修改', agentic: '代理',

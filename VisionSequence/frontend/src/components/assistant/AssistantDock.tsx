@@ -3,19 +3,22 @@
  * 一個輸入框依目前頁面脈絡分流：平台使用問答（文件檢索＋LLM）、流程編輯器修改流程（套用到畫布）、
  * 批次頁資料諮詢（建議套用）與依資料調整（新的一次執行）；代理模式下 edit／tune 走背景工作並顯示步驟時間軸。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Check, ExternalLink, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { Bot, Check, ExternalLink, Eye, EyeOff, Send, Sparkles, Square, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button } from '@/components/ui'
 import { useAgentJob } from '@/lib/agentJob'
+import { activityPayload, logActivity, setActivityRoute, setShareEnabled, shareEnabled, subscribeActivity } from '@/lib/activity'
 import { api } from '@/lib/api'
 import { contextFromPath, useAssistantContext, type AssistantContext, type AssistantKind } from '@/lib/assistantContext'
 import type { Suggestion, TuneResult } from '@/lib/batch'
 import { errorMessage } from '@/lib/errors'
+import i18n from '@/i18n'
+import { pageSnapshot } from '@/lib/screen'
 import type { FlowGraph, RunReport } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -71,11 +74,15 @@ function persist(open: boolean, messages: ChatMessage[]) {
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
-export function contextPayload(ctx: AssistantContext) {
+export function contextPayload(ctx: AssistantContext, pathname = ctx.route ?? '') {
   const wantsGraph = ctx.kind === 'flow_editor' || ctx.kind === 'tool' || ctx.kind === 'batch'
+  // 分享關閉時只送頁面種類與流程／節點識別，不送畫面快照與操作軌跡
+  const share = shareEnabled()
+  const page = share ? { ...pageSnapshot(pathname), ...(ctx.describe?.() ?? {}) } : null
   return {
-    kind: ctx.kind, route: ctx.route ?? '', flow_id: ctx.flowId ?? null, flow_name: ctx.flowName ?? '', node_id: ctx.nodeId ?? '', node_type: ctx.nodeType ?? '',
+    kind: ctx.kind, route: pathname || (ctx.route ?? ''), flow_id: ctx.flowId ?? null, flow_name: ctx.flowName ?? '', node_id: ctx.nodeId ?? '', node_type: ctx.nodeType ?? '',
     batch_run_id: ctx.batchRunId ?? null, image_ref: ctx.imageRef ?? '', graph: wantsGraph ? (ctx.getGraph?.() ?? null) : null,
+    lang: i18n.language, page: page && Object.keys(page).length ? page : null, activity: share ? activityPayload() : [],
   }
 }
 
@@ -92,6 +99,12 @@ export function AssistantDock() {
   const [mode, setMode] = useState<Mode>('auto')
   const [busy, setBusy] = useState(false)
   const [unread, setUnread] = useState(0)
+  const share = useSyncExternalStore(subscribeActivity, shareEnabled, shareEnabled)
+  //: 換頁記進操作軌跡（助手回答「剛剛」的依據）
+  useEffect(() => {
+    setActivityRoute(location.pathname)
+    logActivity('nav', location.pathname)
+  }, [location.pathname])
   const abortRef = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   //: 回覆常在 await 之後才到，用 ref 讀「當下」是否開著，才能正確計未讀
@@ -151,7 +164,7 @@ export function AssistantDock() {
     abortRef.current = controller
     const history = messages.slice(-8).map((m) => ({ role: m.role, text: m.text.slice(0, 400) }))
     try {
-      const payload = contextPayload(ctx)
+      const payload = contextPayload(ctx, location.pathname)
       const r = await api.post<ChatReply>('/vision/agent/chat', { message: text, mode, context: payload, history }, undefined, controller.signal)
       if (r.agentic && (r.kind === 'edit' || r.kind === 'tune')) {
         await jobs.start(r.kind === 'edit'
@@ -213,6 +226,7 @@ export function AssistantDock() {
             <span className="shrink-0 whitespace-nowrap text-sm font-semibold">{t('assistant.title')}</span>
             {info.data ? <Badge tone={info.data.llm ? 'brand' : 'neutral'} className="max-w-[55%] truncate">{info.data.llm ? `${info.data.model}${agentic ? ` · ${t('assistant.agentic')}` : ''}` : t('agent.providerRules')}</Badge> : null}
             <span className="ml-auto flex items-center gap-0.5">
+              <button type="button" className={`btn-icon ${share ? '' : 'text-warning'}`} title={share ? t('assistant.shareOn') : t('assistant.shareOff')} aria-pressed={share} onClick={() => setShareEnabled(!share)} data-testid="assistant-share">{share ? <Eye size={14} /> : <EyeOff size={14} />}</button>
               <button type="button" className="btn-icon" title={t('assistant.clear')} onClick={() => setMessages([])} data-testid="assistant-clear"><Trash2 size={14} /></button>
               <button type="button" className="btn-icon" title={t('common.close')} onClick={() => setOpen(false)}><X size={15} /></button>
             </span>
@@ -241,7 +255,11 @@ export function AssistantDock() {
                   <ul className="mt-1.5 space-y-0.5 border-t border-line pt-1.5 text-[11px]">
                     <li className="font-semibold text-muted">{t('assistant.sources')}</li>
                     {m.sources.slice(0, 4).map((s) => (
-                      <li key={s.url + s.heading}><a href={s.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">{s.title}<ExternalLink size={10} /></a></li>
+                      <li key={s.url + s.heading}>
+                        {s.kind === 'ui'
+                          ? <Link to={s.url} className="inline-flex items-center gap-1 text-brand hover:underline" data-testid="assistant-ui-link">{s.title}</Link>
+                          : <a href={s.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">{s.title}<ExternalLink size={10} /></a>}
+                      </li>
                     ))}
                   </ul>
                 ) : null}

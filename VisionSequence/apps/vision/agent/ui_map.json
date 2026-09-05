@@ -1,0 +1,816 @@
+{
+ "generated_from": "frontend/src/lib/uiMap.ts",
+ "languages": [
+  "en",
+  "zh-Hant",
+  "zh-Hans"
+ ],
+ "pages": [
+  {
+   "route": "/",
+   "id": "dashboard",
+   "names": {
+    "en": "Dashboard",
+    "zh-Hant": "總覽",
+    "zh-Hans": "总览"
+   },
+   "summary": {
+    "en": "The flow list, and the live image and inspection detail of the selected flow",
+    "zh-Hant": "流程清單、選定流程的即時影像與檢測資訊",
+    "zh-Hans": "流程列表、选定流程的实时图像与检测信息"
+   },
+   "actions": [
+    {
+     "en": "Run once",
+     "zh-Hant": "執行一次",
+     "zh-Hans": "执行一次"
+    }
+   ]
+  },
+  {
+   "route": "/flows",
+   "id": "flows",
+   "names": {
+    "en": "Flows",
+    "zh-Hant": "流程",
+    "zh-Hans": "流程"
+   },
+   "summary": {
+    "en": "The flow list",
+    "zh-Hant": "流程清單",
+    "zh-Hans": "流程列表"
+   },
+   "actions": [
+    {
+     "en": "New flow",
+     "zh-Hant": "新增流程",
+     "zh-Hans": "添加流程"
+    },
+    {
+     "en": "Export",
+     "zh-Hant": "匯出",
+     "zh-Hans": "导出"
+    }
+   ]
+  },
+  {
+   "route": "/flows/:flowId",
+   "id": "flow_editor",
+   "names": {
+    "en": "Flow editor",
+    "zh-Hant": "流程編輯器",
+    "zh-Hans": "流程编辑器"
+   },
+   "summary": {
+    "en": "Canvas, image viewer and inspector",
+    "zh-Hant": "畫布、影像視窗與側欄",
+    "zh-Hans": "画布、图像窗口与侧栏"
+   },
+   "feature": "flows.edit",
+   "actions": [
+    {
+     "en": "Save",
+     "zh-Hant": "儲存",
+     "zh-Hans": "保存"
+    },
+    {
+     "en": "Preview",
+     "zh-Hant": "試執行",
+     "zh-Hans": "试执行"
+    },
+    {
+     "en": "Export",
+     "zh-Hant": "匯出",
+     "zh-Hans": "导出"
+    }
+   ]
+  },
+  {
+   "route": "/flows/:flowId/tools/:nodeId",
+   "id": "tool",
+   "names": {
+    "en": "Tool page",
+    "zh-Hant": "工具頁",
+    "zh-Hans": "工具页"
+   },
+   "summary": {
+    "en": "A page dedicated to tuning one step",
+    "zh-Hant": "單一步驟的專屬調參頁",
+    "zh-Hans": "单一步骤的专属调参页"
+   },
+   "feature": "flows.edit"
+  },
+  {
+   "route": "/flows/:flowId/stats",
+   "id": "stats",
+   "names": {
+    "en": "Statistics",
+    "zh-Hant": "統計",
+    "zh-Hans": "统计"
+   },
+   "summary": {
+    "en": "Run history, the yield trend, hourly OK/NG",
+    "zh-Hant": "執行歷史、良率趨勢、每小時 OK／NG",
+    "zh-Hans": "执行历史、良率趋势、每小时 OK／NG"
+   }
+  },
+  {
+   "route": "/flows/:flowId/teach",
+   "id": "teach",
+   "names": {
+    "en": "Teach page",
+    "zh-Hant": "參數卡",
+    "zh-Hans": "参数卡"
+   },
+   "summary": {
+    "en": "Every teaching parameter grouped by step with a live preview, the recipe dropdown, and \"mark as commissioned\"",
+    "zh-Hant": "全部教導參數依步驟分組、即時試執行、配方下拉、「標記為已教導」",
+    "zh-Hans": "全部教导参数依步骤分组、实时试执行、配方下拉、「标记为已教导」"
+   },
+   "feature": "flows.teach",
+   "actions": [
+    {
+     "en": "Save to graph",
+     "zh-Hant": "儲存到圖",
+     "zh-Hans": "保存到图"
+    },
+    {
+     "en": "Save to recipe",
+     "zh-Hant": "儲存到配方",
+     "zh-Hans": "保存到配方"
+    }
+   ]
+  },
+  {
+   "route": "/flows/:flowId/golden",
+   "id": "golden",
+   "names": {
+    "en": "Golden Set",
+    "zh-Hant": "Golden Set",
+    "zh-Hans": "Golden Set"
+   },
+   "summary": {
+    "en": "Image cases with expectations, and regression testing (regressed cases first)",
+    "zh-Hant": "有期望值的影像案例與回歸測試（退步清單置頂）",
+    "zh-Hans": "有期望值的图像案例与回归测试（退步清单置顶）"
+   },
+   "feature": "golden",
+   "actions": [
+    {
+     "en": "Upload images",
+     "zh-Hant": "上傳影像新增",
+     "zh-Hans": "上传影像添加"
+    },
+    {
+     "en": "Run regression",
+     "zh-Hant": "執行回歸",
+     "zh-Hans": "运行回归"
+    }
+   ]
+  },
+  {
+   "route": "/batch",
+   "id": "batch",
+   "names": {
+    "en": "Batch test",
+    "zh-Hant": "批次測試",
+    "zh-Hans": "批次测试"
+   },
+   "summary": {
+    "en": "Run an image set through a flow; every run is stored, with expected labels, insights, tuning, comparison and AI consultation",
+    "zh-Hant": "用流程跑一個影像集；每次執行都保留，可標記期望、看洞察、調參、比較與 AI 諮詢",
+    "zh-Hans": "用流程跑一个图像集；每次执行都保留，可标记期望、看洞察、调参、比较与 AI 咨询"
+   },
+   "feature": "batch",
+   "tabs": [
+    {
+     "key": "result",
+     "names": {
+      "en": "Results",
+      "zh-Hant": "結果",
+      "zh-Hans": "结果"
+     }
+    },
+    {
+     "key": "images",
+     "names": {
+      "en": "Image set",
+      "zh-Hant": "影像集",
+      "zh-Hans": "影像集"
+     }
+    },
+    {
+     "key": "insights",
+     "names": {
+      "en": "Insights",
+      "zh-Hant": "洞察",
+      "zh-Hans": "洞察"
+     }
+    },
+    {
+     "key": "compare",
+     "names": {
+      "en": "Compare",
+      "zh-Hant": "比較",
+      "zh-Hans": "比较"
+     }
+    },
+    {
+     "key": "tune",
+     "names": {
+      "en": "Tune",
+      "zh-Hant": "調參",
+      "zh-Hans": "调参"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "en": "New image set",
+     "zh-Hant": "新增影像集",
+     "zh-Hans": "新增影像集"
+    },
+    {
+     "en": "Run this set",
+     "zh-Hant": "執行此影像集",
+     "zh-Hans": "执行此影像集"
+    },
+    {
+     "en": "Save to Golden Set",
+     "zh-Hant": "存入 Golden Set",
+     "zh-Hans": "存入 Golden Set"
+    }
+   ]
+  },
+  {
+   "route": "/dl",
+   "id": "dl",
+   "names": {
+    "en": "DL teaching",
+    "zh-Hant": "深度學習",
+    "zh-Hans": "深度学习"
+   },
+   "summary": {
+    "en": "Teaching projects: samples, labelling, datasets, training and model export",
+    "zh-Hant": "教導專案：樣本、標記、資料集、訓練與模型匯出",
+    "zh-Hans": "教导项目：样本、标记、数据集、训练与模型导出"
+   },
+   "feature": "dl",
+   "actions": [
+    {
+     "en": "New teaching project",
+     "zh-Hant": "新增教導專案",
+     "zh-Hans": "添加教导项目"
+    },
+    {
+     "en": "Upload images",
+     "zh-Hant": "上傳影像",
+     "zh-Hans": "上传影像"
+    },
+    {
+     "en": "Train",
+     "zh-Hant": "訓練",
+     "zh-Hans": "训练"
+    },
+    {
+     "en": "Create a flow with this model",
+     "zh-Hant": "建立流程使用此模型",
+     "zh-Hans": "建立流程使用此模型"
+    }
+   ]
+  },
+  {
+   "route": "/agent",
+   "id": "agent",
+   "names": {
+    "en": "AI assistant",
+    "zh-Hant": "AI 助手",
+    "zh-Hans": "AI 助手"
+   },
+   "summary": {
+    "en": "Image plus ROIs plus a sentence, into a generated flow; provider settings and AI skills",
+    "zh-Hant": "上傳影像＋圈選＋一句描述 → 生成流程；供應商設定與 AI 技能",
+    "zh-Hans": "上传图像＋圈选＋一句描述 → 生成流程；供应商设置与 AI 技能"
+   },
+   "feature": "agent",
+   "actions": [
+    {
+     "en": "Upload image",
+     "zh-Hant": "上傳影像",
+     "zh-Hans": "上传图像"
+    },
+    {
+     "en": "Add this ROI",
+     "zh-Hant": "加入此 ROI",
+     "zh-Hans": "加入此 ROI"
+    }
+   ]
+  },
+  {
+   "route": "/integration",
+   "id": "integration",
+   "names": {
+    "en": "External integration",
+    "zh-Hant": "外部整合",
+    "zh-Hans": "外部集成"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration"
+  },
+  {
+   "route": "/integration/http",
+   "id": "integration_http",
+   "names": {
+    "en": "HTTP API",
+    "zh-Hant": "HTTP API",
+    "zh-Hans": "HTTP API"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "tabs": [
+    {
+     "key": "try",
+     "names": {
+      "en": "Try it",
+      "zh-Hant": "試打",
+      "zh-Hans": "试打"
+     }
+    },
+    {
+     "key": "format",
+     "names": {
+      "en": "Response format",
+      "zh-Hant": "回傳格式",
+      "zh-Hans": "返回格式"
+     }
+    },
+    {
+     "key": "trace",
+     "names": {
+      "en": "Commands and results",
+      "zh-Hant": "命令與結果",
+      "zh-Hans": "命令与结果"
+     }
+    }
+   ]
+  },
+  {
+   "route": "/integration/tcp",
+   "id": "integration_tcp",
+   "names": {
+    "en": "TCP commands",
+    "zh-Hant": "TCP 指令",
+    "zh-Hans": "TCP 指令"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "tabs": [
+    {
+     "key": "try",
+     "names": {
+      "en": "Try it",
+      "zh-Hant": "試打",
+      "zh-Hans": "试打"
+     }
+    },
+    {
+     "key": "codes",
+     "names": {
+      "en": "Failure codes",
+      "zh-Hant": "失敗碼",
+      "zh-Hans": "失败码"
+     }
+    },
+    {
+     "key": "connections",
+     "names": {
+      "en": "Connections",
+      "zh-Hant": "連線",
+      "zh-Hans": "连接"
+     }
+    },
+    {
+     "key": "trace",
+     "names": {
+      "en": "Commands and results",
+      "zh-Hant": "命令與結果",
+      "zh-Hans": "命令与结果"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "en": "New connection",
+     "zh-Hant": "新增連線",
+     "zh-Hans": "添加连接"
+    }
+   ]
+  },
+  {
+   "route": "/integration/events",
+   "id": "integration_events",
+   "names": {
+    "en": "Event monitor",
+    "zh-Hant": "事件監看",
+    "zh-Hans": "事件监看"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration"
+  },
+  {
+   "route": "/integration/modbus-server",
+   "id": "integration_modbus_server",
+   "names": {
+    "en": "Modbus server",
+    "zh-Hant": "Modbus 從站",
+    "zh-Hans": "Modbus 从站"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "tabs": [
+    {
+     "key": "connections",
+     "names": {
+      "en": "Connections",
+      "zh-Hant": "連線",
+      "zh-Hans": "连接"
+     }
+    },
+    {
+     "key": "guide",
+     "names": {
+      "en": "Address format and mapping",
+      "zh-Hant": "位址格式與對映",
+      "zh-Hans": "地址格式与映射"
+     }
+    },
+    {
+     "key": "trace",
+     "names": {
+      "en": "Commands and results",
+      "zh-Hant": "命令與結果",
+      "zh-Hans": "命令与结果"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "en": "New connection",
+     "zh-Hant": "新增連線",
+     "zh-Hans": "添加连接"
+    }
+   ]
+  },
+  {
+   "route": "/integration/modbus-client",
+   "id": "integration_modbus_client",
+   "names": {
+    "en": "Modbus client",
+    "zh-Hant": "Modbus 主站",
+    "zh-Hans": "Modbus 主站"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "tabs": [
+    {
+     "key": "connections",
+     "names": {
+      "en": "Connections",
+      "zh-Hant": "連線",
+      "zh-Hans": "连接"
+     }
+    },
+    {
+     "key": "guide",
+     "names": {
+      "en": "Address format and mapping",
+      "zh-Hant": "位址格式與對映",
+      "zh-Hans": "地址格式与映射"
+     }
+    },
+    {
+     "key": "trace",
+     "names": {
+      "en": "Commands and results",
+      "zh-Hant": "命令與結果",
+      "zh-Hans": "命令与结果"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "en": "New connection",
+     "zh-Hant": "新增連線",
+     "zh-Hans": "添加连接"
+    }
+   ]
+  },
+  {
+   "route": "/integration/capture",
+   "id": "integration_capture",
+   "names": {
+    "en": "Capture client",
+    "zh-Hant": "擷取端",
+    "zh-Hans": "采集端"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "tabs": [
+    {
+     "key": "clients",
+     "names": {
+      "en": "Capture clients",
+      "zh-Hant": "擷取端",
+      "zh-Hans": "采集端"
+     }
+    },
+    {
+     "key": "trace",
+     "names": {
+      "en": "Commands and results",
+      "zh-Hant": "命令與結果",
+      "zh-Hans": "命令与结果"
+     }
+    }
+   ]
+  },
+  {
+   "route": "/integration/plugins",
+   "id": "integration_plugins",
+   "names": {
+    "en": "Plugins",
+    "zh-Hant": "外掛",
+    "zh-Hans": "插件"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "tabs": [
+    {
+     "key": "inventory",
+     "names": {
+      "en": "Loaded plugins",
+      "zh-Hant": "已載入的外掛",
+      "zh-Hans": "已加载的插件"
+     }
+    },
+    {
+     "key": "connections",
+     "names": {
+      "en": "Connections",
+      "zh-Hant": "連線",
+      "zh-Hans": "连接"
+     }
+    }
+   ],
+   "actions": [
+    {
+     "en": "Rescan",
+     "zh-Hant": "重新掃描",
+     "zh-Hans": "重新扫描"
+    },
+    {
+     "en": "New connection",
+     "zh-Hant": "新增連線",
+     "zh-Hans": "添加连接"
+    }
+   ]
+  },
+  {
+   "route": "/help",
+   "id": "help",
+   "names": {
+    "en": "Help",
+    "zh-Hant": "說明",
+    "zh-Hans": "说明"
+   },
+   "summary": {
+    "en": "Definitions and how-to",
+    "zh-Hant": "名詞定義與操作說明",
+    "zh-Hans": "名词定义与操作说明"
+   },
+   "tabs": [
+    {
+     "key": "quickstart",
+     "names": {
+      "en": "Quick start",
+      "zh-Hant": "快速上手",
+      "zh-Hans": "快速上手"
+     }
+    },
+    {
+     "key": "glossary",
+     "names": {
+      "en": "Glossary",
+      "zh-Hant": "名詞定義",
+      "zh-Hans": "名词定义"
+     }
+    },
+    {
+     "key": "ports",
+     "names": {
+      "en": "Port types & colours",
+      "zh-Hant": "埠型別與顏色",
+      "zh-Hans": "端口类型与颜色"
+     }
+    },
+    {
+     "key": "tools",
+     "names": {
+      "en": "Tool catalogue",
+      "zh-Hant": "工具目錄",
+      "zh-Hans": "工具目录"
+     }
+    },
+    {
+     "key": "shortcuts",
+     "names": {
+      "en": "Shortcuts",
+      "zh-Hant": "快捷鍵",
+      "zh-Hans": "快捷键"
+     }
+    },
+    {
+     "key": "automation",
+     "names": {
+      "en": "Automation API",
+      "zh-Hant": "自動化接口",
+      "zh-Hans": "自动化接口"
+     }
+    },
+    {
+     "key": "accounts",
+     "names": {
+      "en": "Accounts & lock",
+      "zh-Hant": "帳號與鎖定",
+      "zh-Hans": "帐号与锁定"
+     }
+    }
+   ]
+  },
+  {
+   "route": "/sources",
+   "id": "sources",
+   "names": {
+    "en": "Source library",
+    "zh-Hant": "影像來源庫",
+    "zh-Hans": "影像来源库"
+   },
+   "summary": {
+    "en": "Capture client cameras, folders and synthetic sources",
+    "zh-Hant": "擷取端相機、資料夾與合成來源",
+    "zh-Hans": "采集端相机、文件夹与合成来源"
+   },
+   "feature": "sources",
+   "actions": [
+    {
+     "en": "New source",
+     "zh-Hant": "新增來源",
+     "zh-Hans": "添加来源"
+    },
+    {
+     "en": "Test grab",
+     "zh-Hant": "測試擷取",
+     "zh-Hans": "测试撷取"
+    }
+   ]
+  },
+  {
+   "route": "/assets",
+   "id": "assets",
+   "names": {
+    "en": "Asset library",
+    "zh-Hant": "資產庫",
+    "zh-Hans": "资产库"
+   },
+   "summary": {
+    "en": "Template images and model files",
+    "zh-Hant": "範本影像與模型檔",
+    "zh-Hans": "模板图像与模型文件"
+   },
+   "feature": "assets",
+   "actions": [
+    {
+     "en": "Upload asset",
+     "zh-Hant": "上傳資產",
+     "zh-Hans": "上传资产"
+    }
+   ]
+  },
+  {
+   "route": "/users",
+   "id": "users",
+   "names": {
+    "en": "Users",
+    "zh-Hant": "使用者",
+    "zh-Hans": "用户"
+   },
+   "summary": {
+    "en": "Account management and role permissions (administrators)",
+    "zh-Hant": "帳號管理與角色權限（管理員）",
+    "zh-Hans": "账号管理与角色权限（管理员）"
+   },
+   "admin": true,
+   "actions": [
+    {
+     "en": "New user",
+     "zh-Hant": "新增使用者",
+     "zh-Hans": "添加用户"
+    },
+    {
+     "en": "Role permissions",
+     "zh-Hant": "角色權限",
+     "zh-Hans": "角色权限"
+    }
+   ]
+  },
+  {
+   "route": "/audit",
+   "id": "audit",
+   "names": {
+    "en": "Audit trail",
+    "zh-Hant": "操作紀錄",
+    "zh-Hans": "操作记录"
+   },
+   "summary": {
+    "en": "Who changed what and when (administrators)",
+    "zh-Hant": "誰在何時改了什麼（管理員）",
+    "zh-Hans": "谁在何时改了什么（管理员）"
+   },
+   "feature": "audit",
+   "actions": [
+    {
+     "en": "Export CSV",
+     "zh-Hant": "匯出 CSV",
+     "zh-Hans": "导出 CSV"
+    }
+   ]
+  },
+  {
+   "route": "/settings",
+   "id": "settings",
+   "names": {
+    "en": "Settings",
+    "zh-Hant": "設定",
+    "zh-Hans": "设置"
+   },
+   "summary": {
+    "en": "Keys, theme, language, the account and the password",
+    "zh-Hant": "金鑰、主題、語言、帳號與密碼",
+    "zh-Hans": "密钥、主题、语言、账号与密码"
+   },
+   "actions": [
+    {
+     "en": "Change password",
+     "zh-Hant": "修改密碼",
+     "zh-Hans": "修改密码"
+    }
+   ]
+  },
+  {
+   "route": "/login",
+   "id": "login",
+   "names": {
+    "en": "Sign in",
+    "zh-Hant": "登入",
+    "zh-Hans": "登录"
+   },
+   "summary": {
+    "en": "Sign in, or create the first administrator",
+    "zh-Hant": "登入，或建立第一個管理員",
+    "zh-Hans": "登录，或建立第一个管理员"
+   }
+  }
+ ]
+}

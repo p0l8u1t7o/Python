@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ui-map": "node scripts/ui_map.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",

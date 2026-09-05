@@ -4,6 +4,8 @@
  * 401 → 清 token 並通知 AuthProvider（onSessionExpired）導到登入頁。
  */
 
+import { logActivity } from '@/lib/activity'
+
 /** API 基底：獨立部署前端時以 VITE_API_BASE_URL 指向後端（含 /api）；同源時走 /api（dev 由 Vite 代理、正式由 whitenoise 同站服務）。 */
 export const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
 export const API_KEY_STORAGE = 'vs.apiKey'
@@ -214,6 +216,10 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (response.status === 401 && !NO_EXPIRE_PATHS.some((p) => path.startsWith(p))) {
       setAuthToken('')
       notifySessionExpired()
+    }
+    // 失敗的請求記進操作軌跡（給 AI 助手解釋「剛剛為什麼失敗」）；助手自己的呼叫與登入逾時不記
+    if (response.status !== 401 && !path.startsWith('/vision/agent/')) {
+      logActivity('error', `${options.method ?? (body ? 'POST' : 'GET')} ${path} -> ${response.status} ${error.code}`, error.message)
     }
     // 423 engine_locked：details 就是 lock 物件，留給 UI 顯示。
     throw error

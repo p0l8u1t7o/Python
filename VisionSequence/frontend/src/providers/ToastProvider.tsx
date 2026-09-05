@@ -2,6 +2,8 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 
+import { logActivity } from '@/lib/activity'
+
 type ToastKind = 'success' | 'error' | 'info' | 'warning'
 
 interface Toast {
@@ -44,6 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback(
     (message: string, kind: ToastKind = 'info', durationMs?: number) => {
       const id = nextId.current++
+      if (kind !== 'info') logActivity(kind, message)
       setToasts((current) => [...current.slice(-4), { id, kind, message }])
       window.setTimeout(() => dismiss(id), durationMs ?? DURATION[kind])
     },

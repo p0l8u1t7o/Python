@@ -4,6 +4,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
+import { logActivity } from '@/lib/activity'
+
 import { ApiError, api, request } from './api'
 import { localiseList, localiseTrainers } from './catalogueLocale'
 import type { OpenApiDocument } from '@/pages/integration/openapi'
@@ -205,6 +207,12 @@ export interface RunFlowArgs {
   recipe?: string | null
 }
 
+/** 執行結果的一行細節（錯誤或沒過的節點），給操作軌跡用。 */
+function reportDetail(report: RunReport): string {
+  if (report.error) return report.error
+  return Object.entries(report.nodes ?? {}).filter(([, n]) => n.status !== 'ok').slice(0, 4).map(([id, n]) => `${id}: ${n.status}${n.message ? ` (${n.message})` : ''}`).join('; ')
+}
+
 export function useRunFlow() {
   const client = useQueryClient()
   return useMutation({
@@ -219,7 +227,10 @@ export function useRunFlow() {
       }
       return api.post<RunReport>(`/vision/flows/${flowId}/run`, { context: context ?? null, wait, ...(recipe ? { recipe } : {}) }, query)
     },
-    onSuccess: () => void client.invalidateQueries({ queryKey: keys.capacity }),
+    onSuccess: (report, args) => {
+      logActivity('run', `run flow ${args.flowId}: ${report.status}`, reportDetail(report))
+      void client.invalidateQueries({ queryKey: keys.capacity })
+    },
   })
 }
 
@@ -261,7 +272,7 @@ export async function previewFlow({ flowId, graph, context, reuse_image_ref, unt
 }
 
 export function usePreviewFlow() {
-  return useMutation({ mutationFn: previewFlow })
+  return useMutation({ mutationFn: previewFlow, onSuccess: (report, args) => logActivity('run', `preview flow ${args.flowId}: ${report.status}`, reportDetail(report)) })
 }
 
 /** 暫存影像：只進快取不進影像來源庫；之後試跑帶 reuse_image_ref。 */

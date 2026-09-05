@@ -3,7 +3,7 @@
  * 洞察（建議門檻）→ 調參重跑／比較 → 寫回流程／存為配方／帶回編輯器 → AI 諮詢與調整（結果成為新的一次執行）。
  * 查詢參數：?flow=&set=&run=&draft=1（編輯器頂列「批次測試」帶草稿過來）。
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { BarChart3, GitCompare, Images, ListChecks, SlidersHorizontal } from 'lucide-react'
@@ -222,9 +222,16 @@ export function BatchPage() {
   const currentRun: BatchRun | null = run.data ?? null
   const currentSet: BatchSet | null = set.data ?? null
   //: 全域 AI 助手：選定一次已完成的執行後可資料諮詢／依資料調整，建議可套進調參面板、新執行自動選中
+  const snapshotRef = useRef<() => Record<string, unknown>>(() => ({}))
+  snapshotRef.current = () => ({
+    tab,
+    set: currentSet ? { id: currentSet.id, name: currentSet.name, images: currentSet.images?.length ?? 0 } : null,
+    run: currentRun ? { id: currentRun.id, status: currentRun.status, origin: currentRun.origin, summary: currentRun.summary } : null,
+  })
   useRegisterAssistantContext({
     kind: 'batch', flowId, flowName: flow.data?.name, batchRunId: currentRun?.status === 'done' ? currentRun.id : null,
     getGraph: () => graph ?? run.data?.graph ?? flow.data?.graph ?? null, applySuggestions: (sugs) => apply(sugs, false), onNewRun,
+    describe: () => snapshotRef.current(),
   }, [flowId, flow.data?.name, currentRun?.id, currentRun?.status, graph, setId])
 
   return (
