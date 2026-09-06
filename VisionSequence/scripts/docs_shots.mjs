@@ -155,6 +155,12 @@ try {
     { target: '[role="dialog"] select, [role="dialog"] [data-testid="source-kind"]', label: 'kind' }, { target: '[data-testid="cfg-browse"]' }, { target: '[data-testid="source-test"]' }, { target: '[data-testid="source-test-box"]' },
   ])
   await page.keyboard.press('Escape')
+  // 10-2 標定
+  await go('/calibration', 'main')
+  await capture(page, 'calibration', [
+    { target: '[data-testid="calib-mode-board"]' }, { target: '[data-testid="calib-source"]' }, { target: '[data-testid="calib-capture"]' },
+    { target: '[data-testid="calib-cols"]' }, { target: '[data-testid="calib-unit"]' }, { target: '[data-testid="calib-solve"]' }, { target: '[data-testid="calib-save"]' },
+  ])
   // 11 資產
   await go('/assets', 'main')
   await capture(page, 'assets', [{ target: page.getByRole('button', { name: 'Upload asset' }), label: 'Upload asset' }, { target: '[data-testid="manage-groups"]' }, { target: 'main .grid', label: 'asset cards' }])

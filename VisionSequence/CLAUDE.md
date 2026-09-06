@@ -6,13 +6,13 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：68 個內建工具（8 類）、184 個 API 端點、27 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁 docs、後端 515 項＋前端 57 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：72 個內建工具（8 類）、191 個 API 端點、27 個資料模型、19 個前端頁面（另 7 個整合子頁）、18 頁 docs、後端 636 項＋前端 97 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
   - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP；`runserver` 只用來開發且加 `--noreload`。
   - 三種身分：使用者（登入 token）、整合方（API 金鑰、永遠可執行、可鎖引擎）、bootstrap（沒有任何使用者時放行 `/auth/setup`）。
-- **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`apps/vision/capture`（擷取端 hub／Grabber／API）、`vscapture/`（擷取端桌面程式，不 import Django）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py／build_capture_client.ps1；發行與現場：build_release.ps1／build_dl_pack.ps1／installer.iss／install.ps1／vsctl.ps1／service.ps1／proxy.ps1／vslib.ps1）。
+- **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / calib / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`apps/vision/capture`（擷取端 hub／Grabber／API）、`vscapture/`（擷取端桌面程式，不 import Django）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py／build_capture_client.ps1；發行與現場：build_release.ps1／build_dl_pack.ps1／installer.iss／install.ps1／vsctl.ps1／service.ps1／proxy.ps1／vslib.ps1）。
 - **一次執行的路徑**：觸發 → `Runner.compiled_for`（validate → apply_recipe → compile，快取鍵 `(version, recipe_id, updated_at)`）→ `_prefetch` 在呼叫者執行緒開來源／資產 → 執行緒池 `engine.execute`（`ToolContext.image()` 依 `accepts` 做位深 coerce）→ 影像進 `images.store`、`RunReport` → SSE／統計／背景批次寫 `FlowRun`。
 - **前端接縫**：頁面只透過 `lib/api.ts`（`BASE_URL`＝`VITE_API_BASE_URL` 或 `/api`）、`lib/queries.ts`、`lib/flowStream.ts` 與後端往來，不直接 fetch；各頁 lazy chunk；跨頁草稿在 `lib/flowDraft.ts`。
 - **文件**：`README.md`（全貌）、`docs/*.html`（**全英文**，18 頁：使用者手冊、設計手冊、合約、自動化、Modbus、擷取端、部署維運、檢測功能、範例樣板、AI 助手、DL、批次、Golden、外掛、名詞規範、效能）。
@@ -101,6 +101,31 @@
 ### 資料夾外掛（plugins/）
 - **外掛頁** `/integration/plugins`：`apps/core/plugins.py` 每個檔案的載入結果記在 `_inventory`（status ok／disabled／error／empty、mounted、error 含 pip 提示），`GET /vision/plugins`（integration 功能）讀清單、`POST /vision/plugins/rescan`（管理員）只掛新檔與重試失敗的——**已載入的檔案改了要重啟**（Python 模組不能安全熱重載）。前端 `pages/integration/PluginsPage.tsx`；外掛提供的連線種類在該頁的「連線」分頁。
 - 繼承 `Tool`／`Grabber`／`Writer`／`Trainer` 的單檔或資料夾型模組丟進 `plugins/` 即自動掛載（`apps/core/plugins.py`；不用改 .env）。外掛內 `ENABLED`／`enabled`／`label`／`description` 控制掛載與顯示；key／kind 重複時內建優先。外掛依賴附 requirements.txt（`dev.ps1 -Setup` 自動安裝）；Python 版本不一致走 sidecar，見 docs/plugins.html。範例：`plugins/example_dark_ratio.py`、`plugins/example_csv_writer.py`。
+
+### 標定（apps/vision/calib.py、api_calib.py、前端 /calibration）
+- **一份標定＝一個資產**（`Asset.kind="calibration"`，內容是 JSON 檔，走既有的 `ctx.asset_path`，沒有新 model、沒有 migration）。
+  payload 兩塊都是選配：`lens`（內參＋畸變係數）與 `world`（像素→世界的 3x3，kind＝scale／affine／perspective）。
+  刻意合成一份而不是分兩種檔案——現場只要在工具上選一個標定，畸變校正、量測換算、座標輸出就都對了。
+- `calib.validate()` 是 payload 的唯一事實來源（存檔與載入都過）；`load()` 依 mtime 快取（熱路徑每張影像都呼叫）；
+  `undistort()` 的映射表另外快取；改 payload 結構要同步 `validate`、`summary`、`quality` 與前端的 `WorldBlock`／`LensBlock`。
+- **解算一律最小平方，不用 RANSAC**：標定點是使用者一個個指定的，不該被悄悄丟掉；回傳**每個點的殘差**（`world.points[].error`），
+  前端把最大的那一點標紅。這是與 VM 最主要的差異，別為了簡化而拿掉。
+- `scaled_camera_matrix()`：影像尺寸與標定當下不同時自動換算內參（binning、換解析度），長寬比不同就明講不能換算而不是靜默校正錯。
+- 三個工具吃同一個資產：`undistort`（preprocess）、`to_world`（measure）、`calibration` 的 `asset` 模式。
+  `read_calibration()` 在 preprocess.py，measure.py 從那裡 import。
+- API `POST /vision/calibration/{capture,detect,snap,solve}`＋`POST/GET /vision/calibration/assets`：
+  **solve 只算不存**，使用者看過殘差才按儲存；`snap` 把點擊處吸附到附近特徵的中心（Otsu＋連通元件，挑包含點擊點的那一團）。
+- 前端 `/calibration` 三種模式共用一個 `ImageViewer`（`onPick` 標點）；標定板模式逐張顯示找到的點數與重投影誤差可刪除重算。
+
+### 格式化回覆（format_text 工具、TCP `fmt=`、HTTP `format=`）
+- 舊 PLC 與上位機解析不了 JSON。`format_text`（output 類）用樣板組一行文字：`{名字}` 取值的來源依序是
+  具名輸出 → 觸發帶進來的引數（lot／sn）→ 本節點輸入 a~d，另有 `run_id`／`station`；支援 `{width:.2f}` 這種格式規格；
+  使用者在欄位裡打的 `
+`／`	` 會轉成真的控制字元；填不到的名字預設留空（產線優先），可改成保留原樣或讓步驟失敗。
+  結果同時放進具名輸出（`name` 參數，預設 `text`）。
+- 設備端要純文字就 `RUN <flow> fmt=<name>`（TCP，回應不再包 JSON——`handle_command` 回 `{"_raw": ...}`，`_Handler` 原樣送出）
+  或 HTTP `{"format": "<name>"}`（回 `text/plain`）。沒有那個具名輸出時**仍回 JSON 錯誤** `no_such_output` 並列出有哪些名字，
+  設備才診斷得出是自己設錯。要主動推出去就把 `text` 接到 `write_modbus` 指向 `tcp_client` 連線。
 
 ### 這一站的摘要（apps/vision/summary.py）
 - `GET /vision/summary` 回這一站的良率摘要（station_id、版本、鎖定、每條流程今日 OK/NG/良率）；數字讀**每小時彙總** `FlowRunHourly`，與統計頁同一份。

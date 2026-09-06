@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 68 個內建工具、184 個 API 端點、27 個資料模型、18 個前端頁面（另 6 個整合子頁）、18 頁文件、後端 515 項＋前端 57 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 72 個內建工具、191 個 API 端點、27 個資料模型、19 個前端頁面（另 7 個整合子頁）、18 頁文件、後端 636 項＋前端 97 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -72,7 +72,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **批次測試頁／Golden Set**：獨立頁面選流程、建立影像集（上傳或來源擷取，≤200 張）批量執行並暫存每次逐張結果；標記期望 OK／NG 得命中率與混淆矩陣，洞察卡給建議門檻、輸出分佈與歷次趨勢；調參重跑同一影像集並逐張比較，滿意後寫回流程／存為配方／帶回編輯器；右下角的全域 AI 助手可依資料諮詢或調整、調參面板可自動調參（結果成為新執行）。案例可存入 Golden Set 作回歸基準，`manage.py regress` 可進 CI。
 - **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG。
 
-### 內建工具（61 個，8 類）
+### 內建工具（72 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（1） | image_source |
