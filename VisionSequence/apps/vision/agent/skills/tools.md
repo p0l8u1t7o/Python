@@ -118,6 +118,26 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 ## concentricity
 兩圓同心度：a/b 接 find_circle 的 cx/cy/r，`max_deviation` 填圖面同心度公差的一半。輸出 in_spec 給 bool_logic。
 
+## contour_find
+輪廓萃取：二值影像（灰階自動二值化，`polarity` 選亮／暗物件）取輪廓，`mode` external（只要外輪廓，最常用）／list（含孔洞）／
+ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全圖座標）、`count`、`areas`／`centers`（每條一項）與 `first_*`。
+接 contour_filter／contour_geometry／contour_match；只要粒子數與面積用 blob 就好，要「拿輪廓本身來算」才用這一組。
+
+## contour_filter
+輪廓篩選：面積／周長／凸度（面積÷凸包面積）／長寬比（最小外接矩形）／`roi` 內（重心落在區域內）過濾，`sort_by` 排序後
+`max_count` 只留前 N 條（`max_count=1`＋面積排序＝只留工件本體）。輸出篩後 `contours`、`count`、`rejected`。
+
+## contour_geometry
+輪廓幾何：每條輪廓算面積（像素數）、周長、重心、最小外接矩形（含角度）、最小外接圓、凸包面積／凸度、**凸缺陷**
+（`defect_depth` 以上的凹陷：缺角、崩邊、異物咬入）、圓形度、Hu 矩。list 埠每條一項、`first_*` 為第一條、
+`total_defects`／`max_defect_depth` 為全部。崩邊檢測：contour_find → contour_filter(max_count=1) → contour_geometry(defect_depth=…) →
+`if_number(first_defects eq 0)`。
+
+## contour_match
+輪廓比對：以 Hu 矩距離比對外形（不受位置、縮放、旋轉影響）。範本是 `reference` 埠（另一個 contour_find 的第一條）或
+`template` 影像資產（取二值化後最大形狀）；`max_distance` 0.05～0.3（同形狀接近 0）。輸出 `distance`（最佳）、`distances`、
+`match_flag`／`match_count`、`matched`／`best` contours，分支 match／no_match。用來分料、抓錯料或嚴重變形；細小缺角用 contour_geometry 的凸缺陷。
+
 ## to_world
 像素→真實世界座標（mm 或機械手座標），選一個含世界對應的 `calibration` 資產。
 `points` 進 → `points_world`／`x`／`y` 出（第一點）；`value`（像素長度）→ `length`；`angle`（影像角度）→ `angle`（世界角度）。

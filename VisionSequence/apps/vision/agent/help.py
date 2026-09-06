@@ -106,6 +106,7 @@ BILINGUAL = {
     "具名輸出": "named output", "引擎鎖定": "engine lock locked 423", "鎖定": "lock locked", "整合方": "integrator api key",
     "金鑰": "api key", "角色": "role", "管理員": "administrator admin", "工程師": "engineer", "操作員": "operator",
     "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "範例樣板": "example template sample",
+    "輪廓": "contour outline", "凸缺陷": "convexity defect chip", "崩邊": "chipped edge convexity defect", "缺角": "chipped corner convexity defect",
     "極座標展開": "polar unwrap ring strip", "極座標": "polar", "齒數": "tooth count gear", "展開圖": "unwrapped strip",
     "註解": "note", "批次測試": "batch testing", "影像集": "image set", "批次執行": "batch run",
     "資料洞察": "insights", "建議門檻": "threshold suggestion", "資料諮詢": "consult", "全域 AI 助手": "assistant dock",

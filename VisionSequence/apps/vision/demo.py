@@ -471,6 +471,36 @@ def gear_teeth_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def contour_defect_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]:
+    """輪廓崩邊檢測：contour_find（外輪廓）→ contour_filter（最大一條＝工件）→ contour_geometry（凸缺陷）→ 缺陷數＝0 → OK；
+    另用 contour_match 與範例外形資產比 Hu 矩距離（換料／變形守門）。對齊合成圖「沖壓件」：第 4 張上緣崩邊（缺陷深約 40 px）。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("find", "contour_find", 2, 0, "Outer contours", threshold_method="otsu", polarity="bright", mode="external", min_area=20000),
+        _node("keep", "contour_filter", 3, 0, "Keep the part", min_area=100000, sort_by="area", max_count=1),
+        _node("geo", "contour_geometry", 4, 0, "Geometry and chips", defect_depth=12),
+        _node("cmp", "if_number", 5, 0, "No chips?", operator="eq", threshold=0),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: chipped edge", verdict="ng", label="chipped_edge"),
+        _node("out_d", "output", 5, 1, "Output chip count", name="chip_count"),
+        _node("out_a", "output", 5, 2, "Output area", name="part_area_px"),
+        _node("match", "contour_match", 4, 2, "Outline vs. sample", template=template_asset, max_distance=0.05),
+        _node("out_m", "output", 5, 3, "Output shape distance", name="shape_distance"),
+        _note("n1", 0, 1, "About", "Contour find traces the outline, the filter keeps only the largest one (the part), and contour geometry reports its convexity defects — a bite out of the edge deeper than 12 px is a chip.\nContour match compares the silhouette with the sample outline by Hu moments: a wrong or badly deformed part scores a large distance."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "find", "image", "image"),
+        _edge("find", "keep", "contours", "contours"), _edge("keep", "geo", "contours", "contours"), _edge("gray", "geo", "image", "image"),
+        _edge("geo", "cmp", "first_defects", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("geo", "out_d", "first_defects", "value"), _edge("geo", "out_a", "first_area", "value"),
+        _edge("keep", "match", "contours", "contours"), _edge("gray", "match", "image", "image"),
+        _edge("match", "out_m", "distance", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -633,6 +663,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("preprocess_lab", "Pre-processing and measurement lab", "An image chain of bit depth, look-up table, filtering and flipping, plus a tour of line profile, statistics, histogram and edge density", "tutorial", preprocess_lab_flow),
     ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
+    ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
+     lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
@@ -660,6 +692,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "preprocess_lab": "Example: preprocessing lab",
     "geometry_count": "Example: circles and lines",
     "gear_teeth": "Example: gear teeth",
+    "contour_defect": "Example: stamped part",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
     "barcode_read": "Example: barcode label",
@@ -838,6 +871,7 @@ def seed_demo() -> list[str]:
     sample_asset("Example: cross locator template", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
     sample_asset("Example: cup locator template", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
     sample_asset("Example: print golden template", "golden_print", None)
+    sample_asset("Example: stamped part outline", "stamped_part", None)
     _seed_demo_models(created)
 
     # 範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES），不佔流程清單；清掉舊版 seed 建過的流程。

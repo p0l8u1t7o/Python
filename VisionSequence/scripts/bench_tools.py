@@ -169,7 +169,8 @@ class Scene:
         self.golden = save_png(self.gray, folder, f"golden_{w}.png")
         self.mask = cv2.threshold(self.gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
         self.calibration = save_calibration(folder, w, h)
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration}
+        self.shape_template = save_png(self.mask[cy - r : cy + r, cx - r : cx + r], folder, f"shape_{w}.png")
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -196,6 +197,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
 
     ring_map = _polar.mapping_dict(ring["cx"], ring["cy"], ring["r_inner"], ring["r_outer"], a0=None, a1=None, start_angle=0, direction="ccw",
                                    step_deg=_polar.step_degrees("auto", ring["r_outer"]), radial_step=1)
+    # contours 工具鏈的輸入：整張遮罩的外輪廓（雜訊粒子很多，接近產線最差情況）
+    mask_contours = [c for c in cv2.findContours(s.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0] if len(c) >= 4]
     return [
         # source / preprocess
         ("image_source", "image_source", None, {"mode": "input"}, {}, {"_input_image": big}),
@@ -257,6 +260,11 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("concentricity", "concentricity", None, {"max_deviation": 5}, {"a": {"cx": s.cx, "cy": s.cy, "r": 50}, "bx": s.cx + 1, "by": s.cy - 2, "br": 20}, {}),
         ("chamfer_angle 40", "chamfer_angle", big, {"roi": top_edge, "num_calipers": 40}, {}, {}),
         ("tolerance_judge", "tolerance_judge", None, {"nominal": 12, "upper_tol": 0.05, "lower_tol": -0.05}, {"value": 12.02}, {"_outputs": {}}),
+        ("contour_find (mask)", "contour_find", s.mask, {"threshold_method": "none", "min_area": 300}, {}, {}),
+        ("contour_find (gray otsu roi)", "contour_find", gray, {"roi": plate, "polarity": "dark"}, {}, {}),
+        ("contour_filter", "contour_filter", None, {"min_area": 300, "min_convexity": 0.5}, {"contours": mask_contours}, {}),
+        ("contour_geometry", "contour_geometry", None, {"defect_depth": 3}, {"contours": mask_contours}, {}),
+        ("contour_match", "contour_match", None, {"template": "shape", "max_distance": 0.2}, {"contours": mask_contours}, {}),
         ("line_profile", "line_profile", big, {"roi": {"shape": "line", "x1": s.cx - m * 0.2, "y1": s.cy, "x2": s.cx + m * 0.2, "y2": s.cy}}, {}, {}),
         ("color_stats", "color_stats", big, {"roi": plate}, {}, {}),
         ("geometry intersect", "geometry", None, {"mode": "intersect"}, {"a": {"x1": 0, "y1": 0, "x2": 100, "y2": 100}, "b": {"x1": 0, "y1": 100, "x2": 100, "y2": 0}}, {}),

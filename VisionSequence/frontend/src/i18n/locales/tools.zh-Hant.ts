@@ -496,6 +496,97 @@ export default {
       in_spec: "合格",
     },
   },
+  contour_filter: {
+    label: "輪廓篩選",
+    description: "依面積、周長、凸度、長寬比與位置留下合格的輪廓並排序。放在輪廓萃取與幾何／比對工具之間，先去掉雜訊、孔洞與不量的部位。",
+    params: {
+      min_area: { label: "最小面積" },
+      max_area: { label: "最大面積", help: "0 = 不限。" },
+      min_perimeter: { label: "最小周長", group: "更多限制" },
+      max_perimeter: { label: "最大周長", help: "0 = 不限。", group: "更多限制" },
+      min_convexity: { label: "最小凸度", help: "面積除以凸包面積；凸形為 1。", group: "更多限制" },
+      max_convexity: { label: "最大凸度", group: "更多限制" },
+      min_aspect: { label: "最小長寬比", help: "最小外接矩形的長邊除以短邊。", group: "更多限制" },
+      max_aspect: { label: "最大長寬比", help: "0 = 不限。", group: "更多限制" },
+      roi: { label: "只留區域內", help: "只留下重心落在此區域內的輪廓。", group: "更多限制" },
+      sort_by: {
+        label: "排序",
+        options: { area: "面積（大到小）", perimeter: "周長（長到短）", x: "X（左到右）", y: "Y（上到下）", none: "維持輸入順序" },
+      },
+      max_count: { label: "最多輸出", help: "排序後最多留這麼多條。" },
+      min_count: { label: "最少通過數", help: "少於此數視為 NG。", group: "判定" },
+    },
+    ports: {
+      contours: "輪廓", roi: "只留區域內（動態）", found: "找到", not_found: "未找到", count: "數量", rejected: "剔除數",
+      areas: "面積列表", first_area: "第一條面積", centers: "重心", first_cx: "第一條重心 X", first_cy: "第一條重心 Y",
+    },
+  },
+  contour_find: {
+    label: "輪廓萃取",
+    description: "從二值影像描出外形（灰階輸入先二值化）：只取外輪廓，或連孔洞一起。輪廓接輪廓篩選、輪廓幾何、輪廓比對與公差工具；座標是輸入影像的座標。",
+    params: {
+      roi: { label: "區域", help: "留空則整張影像。" },
+      threshold_method: {
+        label: "二值化",
+        options: { otsu: "Otsu（自動）", fixed: "固定", none: "輸入已是遮罩（非零即前景）" },
+      },
+      threshold: { label: "門檻" },
+      polarity: { label: "前景", options: { bright: "亮物件", dark: "暗物件" } },
+      mode: {
+        label: "擷取方式",
+        options: { external: "只取外輪廓", list: "全部輪廓（含孔洞，不分層）", ccomp: "外輪廓與其孔洞", tree: "完整階層" },
+      },
+      approx: { label: "簡化", help: "開：直線段只留端點。關：每個邊界像素都留。" },
+      min_points: { label: "最少點數", help: "點數少於此值的輪廓丟棄。" },
+      min_area: { label: "最小面積", help: "0 = 全部保留。" },
+      max_count: { label: "最多輸出" },
+    },
+    ports: {
+      image: "影像", roi: "區域（動態）", found: "找到", not_found: "未找到", contours: "輪廓", count: "數量",
+      areas: "面積列表", first_area: "第一條面積", centers: "重心", first_cx: "第一條重心 X", first_cy: "第一條重心 Y", mask: "遮罩",
+    },
+  },
+  contour_geometry: {
+    label: "輪廓幾何",
+    description: "量每一條輪廓：面積、周長、重心、最小外接矩形（含角度）、最小外接圓、凸包面積與凸度、凸缺陷（缺角、邊緣被咬掉一塊、異物咬入外形——計數並回報最深的一個）、圓形度與 Hu 矩。列表每條一項；first_ 埠是第一條。",
+    params: {
+      defect_depth: { label: "缺陷深度", help: "外形相對凸包凹陷超過此深度就算一個凸缺陷。" },
+      max_contours: { label: "最多輪廓數", help: "只量前 N 條。" },
+    },
+    ports: {
+      contours: "輪廓", image: "影像（顯示用）", geometry: "幾何", count: "數量", areas: "面積列表", perimeters: "周長列表", centers: "重心",
+      rects: "最小外接矩形", circles: "外接圓", convexities: "凸度列表", defect_counts: "缺陷數列表", defect_points: "缺陷點",
+      first_area: "第一條面積", first_perimeter: "第一條周長", first_cx: "第一條重心 X", first_cy: "第一條重心 Y",
+      first_w: "第一條長", first_h: "第一條寬", first_angle: "第一條角度", first_r: "第一條外接圓半徑", first_convexity: "第一條凸度",
+      first_circularity: "第一條圓形度", first_defects: "第一條缺陷數", first_max_defect_depth: "第一條最深缺陷",
+      total_defects: "缺陷總數", max_defect_depth: "最深缺陷",
+    },
+  },
+  contour_match: {
+    label: "輪廓比對",
+    description: "以 Hu 矩距離把每條輪廓與參考外形比對，不受位置、縮放與旋轉影響。參考來自另一個輪廓萃取（參考埠）或範本影像中最大的形狀。距離低於上限即為相符——用來依外形分料，或抓錯料與變形件。",
+    params: {
+      template: { label: "範本影像", help: "參考埠沒接時使用；二值化後最大的亮形狀就是參考。" },
+      template_threshold: {
+        label: "範本二值化",
+        options: { otsu: "Otsu（自動）", fixed: "固定", none: "範本已是遮罩" },
+        group: "範本",
+      },
+      threshold: { label: "門檻", group: "範本" },
+      polarity: { label: "範本前景", options: { bright: "亮形狀", dark: "暗形狀" }, group: "範本" },
+      method: {
+        label: "方法",
+        options: { i1: "I1（|1/mA − 1/mB| 總和）", i2: "I2（|mA − mB| 總和）", i3: "I3（最大相對差）" },
+      },
+      max_distance: { label: "最大距離", help: "距離不超過此值即相符。相同形狀接近 0；可試 0.05～0.3。" },
+      min_matches: { label: "最少相符數", help: "相符的輪廓少於此數視為 NG。", group: "判定" },
+    },
+    ports: {
+      contours: "輪廓", reference: "參考輪廓", image: "影像（顯示用）", match: "相符", no_match: "不符",
+      distances: "距離列表", distance: "最佳距離", best_index: "最佳索引", match_flag: "相符", match_count: "相符數",
+      matched: "相符的輪廓", best: "最佳輪廓", first_distance: "第一條距離",
+    },
+  },
   convert_depth: {
     label: "位深轉換",
     description: "8 位元／16 位元／浮點影像互轉。轉 8 位元可選右移（線性、可預期）或 min-max 拉伸（吃滿動態範圍）。",

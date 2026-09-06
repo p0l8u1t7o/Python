@@ -138,6 +138,29 @@ def gear(teeth: int = 12) -> list[np.ndarray]:
     return out
 
 
+def stamped_part() -> list[np.ndarray]:
+    """輪廓幾何：暗底亮沖壓件（八角板＋4 個孔＋長槽），位置與角度小幅變動；第 4 張上緣被咬掉一塊（崩邊，凸缺陷深約 40 px，NG）。"""
+    out = []
+    for i in range(4):
+        img = _canvas(1280, 960, 30)
+        cx, cy = 640 + (i % 2) * 6 - 3, 480 + (i % 3) * 4 - 4
+        rot = np.deg2rad((i - 1.5) * 1.2)
+        base = np.array([[-350, -210], [-290, -270], [290, -270], [350, -210], [350, 210], [290, 270], [-290, 270], [-350, 210]], dtype=np.float64)
+        if i == 3:
+            # 上緣中段咬掉一個三角（崩邊）
+            base = np.array([[-350, -210], [-290, -270], [-40, -270], [0, -230], [40, -270], [290, -270], [350, -210], [350, 210], [290, 270], [-290, 270], [-350, 210]], dtype=np.float64)
+        m = np.array([[np.cos(rot), -np.sin(rot)], [np.sin(rot), np.cos(rot)]])
+        pts = base @ m.T + np.array([cx, cy])
+        cv2.fillPoly(img, [np.round(pts).astype(np.int32)], (200, 200, 205))
+        for hx, hy in ((-260, -160), (260, -160), (-260, 160), (260, 160)):
+            px, py = (np.array([hx, hy]) @ m.T) + np.array([cx, cy])
+            cv2.circle(img, (int(round(px)), int(round(py))), 38, (30, 30, 30), -1)
+        slot = np.array([[-120, -25], [120, -25], [120, 25], [-120, 25]], dtype=np.float64) @ m.T + np.array([cx, cy])
+        cv2.fillPoly(img, [np.round(slot).astype(np.int32)], (30, 30, 30))
+        out.append(_noise(img, 4, 90 + i))
+    return out
+
+
 def color_blocks() -> list[np.ndarray]:
     """顏色檢驗：左＝目標紅色塊、中＝綠、右＝藍；第 4 張紅色偏橘（NG）。"""
     out = []
@@ -296,6 +319,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "gradient_chart": ("preprocessing lab", gradient_chart),
     "multi_circles": ("circles and lines", multi_circles),
     "gear": ("gear teeth", gear),
+    "stamped_part": ("stamped part", stamped_part),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
     "cup": ("cup gauge", cup),

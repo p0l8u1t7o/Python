@@ -33,7 +33,7 @@ class RegistryTests(SimpleTestCase):
             "blob", "defect_diff", "barcode", "text_presence", "color_check", "edge_density", "pixel_count",
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
-            "polar_unwrap", "polar_restore",
+            "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -70,6 +70,10 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["concentricity"], {"max_deviation"})
         self.assertEqual(teach["polar_unwrap"], {"roi", "start_angle"})
         self.assertEqual(teach["polar_restore"], set())
+        self.assertEqual(teach["contour_find"], {"threshold", "min_area"})
+        self.assertEqual(teach["contour_filter"], {"min_area", "max_area"})
+        self.assertEqual(teach["contour_geometry"], {"defect_depth"})
+        self.assertEqual(teach["contour_match"], {"max_distance"})
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 
@@ -923,6 +927,120 @@ class PolarTests(SimpleTestCase):
             run_tool("polar_restore", None, {}, {"points": [[1, 1]]})
         empty = run_tool("polar_restore", None, {}, {"mapping": r.outputs["mapping"]})
         self.assertEqual(empty.outputs["count"], 0)
+
+
+class ContourTests(SimpleTestCase):
+    """WP-15 contours 工具鏈：萃取（面積＝像素數）、凸缺陷、篩選、Hu 矩比對、串接。"""
+
+    @staticmethod
+    def _rect_mask(notch: bool = False) -> np.ndarray:
+        img = np.zeros((480, 640), np.uint8)
+        cv2.rectangle(img, (100, 90), (499, 389), 255, -1)
+        if notch:
+            cv2.fillPoly(img, [np.array([[280, 90], [320, 90], [300, 120]], np.int32)], 0)  # 三角缺角，深 30
+        return img
+
+    @staticmethod
+    def _star(cx: float, cy: float, r: float, scale: float = 1.0, rot: float = 0.0) -> np.ndarray:
+        pts = []
+        for k in range(10):
+            a = math.radians(rot + k * 36)
+            rr = r * scale * (1.0 if k % 2 == 0 else 0.45)
+            pts.append([cx + rr * math.cos(a), cy + rr * math.sin(a)])
+        return np.round(np.array(pts)).astype(np.int32)
+
+    def test_find_area_is_pixel_count(self):
+        r = run_tool("contour_find", self._rect_mask(), {"threshold_method": "none"})
+        self.assertEqual(r.branch, "found")
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertEqual(r.outputs["first_area"], 120000.0)  # 400×300，誤差 0（規格要求 < 1%）
+        self.assertAlmostEqual(r.outputs["first_cx"], 299.5, delta=0.01)
+        self.assertAlmostEqual(r.outputs["first_cy"], 239.5, delta=0.01)
+        self.assertEqual(r.outputs["contours"][0].shape[1:], (1, 2))
+        self.assertEqual({o["kind"] for o in r.overlays}, {"contours"})
+        # 灰階輸入自動二值化＋ROI 裁切座標換回全圖
+        gray = (self._rect_mask() // 2 + 20).astype(np.uint8)
+        r = run_tool("contour_find", gray, {"roi": {"shape": "rect", "x": 50, "y": 50, "w": 300, "h": 200}})
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertAlmostEqual(r.outputs["first_cx"], (100 + 349) / 2, delta=0.6)
+        empty = run_tool("contour_find", np.zeros((40, 40), np.uint8), {"threshold_method": "none"})
+        self.assertEqual((empty.branch, empty.status, empty.outputs["count"]), ("not_found", "ng", 0))
+
+    def test_find_modes_return_holes(self):
+        img = self._rect_mask()
+        cv2.circle(img, (300, 240), 40, 0, -1)
+        ext = run_tool("contour_find", img, {"threshold_method": "none", "mode": "external"})
+        every = run_tool("contour_find", img, {"threshold_method": "none", "mode": "list"})
+        self.assertEqual((ext.outputs["count"], every.outputs["count"]), (1, 2))
+        self.assertAlmostEqual(every.outputs["areas"][1], math.pi * 40.5 * 40.5, delta=150)  # 孔的輪廓含邊界像素環，略大於幾何面積
+
+    def test_geometry_convexity_defect(self):
+        r = run_tool("contour_find", self._rect_mask(notch=True), {"threshold_method": "none"})
+        g = run_tool("contour_geometry", None, {"defect_depth": 5}, {"contours": r.outputs["contours"]})
+        self.assertEqual(g.outputs["first_defects"], 1)
+        self.assertAlmostEqual(g.outputs["first_max_defect_depth"], 30, delta=2)
+        d = g.outputs["geometry"][0]["defects"][0]
+        self.assertAlmostEqual(d["x"], 300, delta=2)
+        self.assertLess(g.outputs["first_convexity"], 1.0)
+        self.assertEqual(g.outputs["defect_points"], [[d["x"], d["y"]]])
+        self.assertTrue(any(o["kind"] == "point" and o["color"] == "#ef4444" for o in g.overlays))
+        clean = run_tool("contour_geometry", None, {"defect_depth": 5}, {"contours": run_tool("contour_find", self._rect_mask(), {"threshold_method": "none"}).outputs["contours"]})
+        self.assertEqual((clean.outputs["first_defects"], clean.outputs["first_convexity"]), (0, 1.0))
+        self.assertAlmostEqual(clean.outputs["first_w"], 399, delta=1)
+        self.assertAlmostEqual(clean.outputs["first_h"], 299, delta=1)
+        self.assertEqual(len(clean.outputs["geometry"][0]["hu"]), 7)
+        none = run_tool("contour_geometry", None, {}, {"contours": []})
+        self.assertEqual(none.outputs["count"], 0)
+
+    def test_filter_limits_and_sort(self):
+        img = np.zeros((480, 640), np.uint8)
+        cv2.circle(img, (150, 150), 60, 255, -1)
+        cv2.rectangle(img, (400, 300), (600, 400), 255, -1)
+        cv2.circle(img, (500, 100), 10, 255, -1)
+        cnts = run_tool("contour_find", img, {"threshold_method": "none"}).outputs["contours"]
+        f = run_tool("contour_filter", None, {"min_area": 1000, "sort_by": "x"}, {"contours": cnts})
+        self.assertEqual((f.outputs["count"], f.outputs["rejected"]), (2, 1))
+        self.assertLess(f.outputs["centers"][0][0], f.outputs["centers"][1][0])
+        inside = run_tool("contour_filter", None, {"roi": {"shape": "rect", "x": 350, "y": 250, "w": 300, "h": 200}}, {"contours": cnts})
+        self.assertEqual(inside.outputs["count"], 1)
+        self.assertAlmostEqual(inside.outputs["first_area"], 201 * 101, delta=1)
+        aspect = run_tool("contour_filter", None, {"min_aspect": 1.5}, {"contours": cnts})
+        self.assertEqual(aspect.outputs["count"], 1)
+        nothing = run_tool("contour_filter", None, {"min_area": 1e9}, {"contours": cnts})
+        self.assertEqual((nothing.branch, nothing.status), ("not_found", "ng"))
+
+    def test_match_template_asset_and_reference_port(self):
+        tpl = np.zeros((200, 200), np.uint8)
+        cv2.fillPoly(tpl, [self._star(100, 100, 80)], 255)
+        folder = temp_dir()
+        tpl_path = save_png(tpl, folder, "star.png")
+        scene = np.zeros((480, 640), np.uint8)
+        cv2.fillPoly(scene, [self._star(200, 240, 80, 1.4, 25)], 255)  # 放大、旋轉的星形
+        cv2.rectangle(scene, (400, 150), (560, 330), 255, -1)
+        cnts = run_tool("contour_find", scene, {"threshold_method": "none"}).outputs["contours"]
+        m = run_tool("contour_match", None, {"template": "t", "max_distance": 0.1}, {"contours": cnts}, assets={"t": tpl_path})
+        self.assertEqual(m.branch, "match")
+        self.assertEqual(m.outputs["match_count"], 1)
+        self.assertLess(m.outputs["distance"], 0.02)
+        star_idx = m.outputs["best_index"]
+        self.assertGreater(m.outputs["distances"][1 - star_idx], 0.1)
+        self.assertEqual(len(m.outputs["matched"]), 1)
+        ref = run_tool("contour_match", None, {"max_distance": 0.05}, {"contours": cnts, "reference": [cnts[star_idx]]})
+        self.assertAlmostEqual(ref.outputs["distance"], 0.0, places=6)
+        with self.assertRaises(ToolError):
+            run_tool("contour_match", None, {}, {"contours": cnts})
+        strict = run_tool("contour_match", None, {"template": "t", "max_distance": 0.0001}, {"contours": cnts[1 - star_idx: 2 - star_idx]}, assets={"t": tpl_path})
+        self.assertEqual((strict.branch, strict.status), ("no_match", "ng"))
+
+    def test_chain_find_filter_geometry(self):
+        img = self._rect_mask(notch=True)
+        cv2.circle(img, (40, 40), 8, 255, -1)  # 雜訊粒子
+        found = run_tool("contour_find", img, {"threshold_method": "none"})
+        kept = run_tool("contour_filter", None, {"min_area": 5000}, {"contours": found.outputs["contours"]})
+        geo = run_tool("contour_geometry", None, {"defect_depth": 10}, {"contours": kept.outputs["contours"]})
+        self.assertEqual((found.outputs["count"], kept.outputs["count"], geo.outputs["count"]), (2, 1, 1))
+        self.assertEqual(geo.outputs["total_defects"], 1)
+        self.assertEqual(geo.outputs["areas"], kept.outputs["areas"])
 
 
 class AlgorithmAccuracyTests(SimpleTestCase):

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：76 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：80 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -28,7 +28,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，19 個：含 4 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，20 個：含 4 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
