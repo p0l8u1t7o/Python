@@ -108,6 +108,21 @@ def write_onnx(path: str, nodes: list[tuple[str, list[str], list[str]]], inputs:
     return path
 
 
+def fake_backbone(path: str, size: int = 320) -> str:
+    """不帶權重的異常檢測「backbone」：AveragePool 8×8 → f2 (1,3,s/8,s/8)、AveragePool 16×16 → f3 (1,3,s/16,s/16)。
+    特徵＝局部平均色；刮痕（暗線）會讓局部平均掉下去，足夠驗證整條鏈（測試與 bench 用，不需 torch）。"""
+    from apps.vision.dl.onnx_io import build_model
+
+    model = build_model(
+        nodes=[("AveragePool", ["x"], ["f2"], {"kernel_shape": [8, 8], "strides": [8, 8]}), ("AveragePool", ["x"], ["f3"], {"kernel_shape": [16, 16], "strides": [16, 16]})],
+        inputs=[("x", [1, 3, size, size])], outputs=[("f2", [1, 3, size // 8, size // 8]), ("f3", [1, 3, size // 16, size // 16])],
+    )
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "wb") as fh:
+        fh.write(model)
+    return path
+
+
 def gap_classifier_onnx(folder: str, size: int = 8) -> str:
     """x[1,3,s,s] → GlobalAveragePool → Flatten → y[1,3]：類別 = 平均值最高的通道。"""
     return write_onnx(os.path.join(folder, "gap.onnx"),

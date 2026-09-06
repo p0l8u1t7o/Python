@@ -279,5 +279,12 @@ YOLO-pose 關鍵點：輸出每個物件的 `keypoints`（[x,y,conf]×N，COCO �
 ## yolo_obb
 YOLO-obb 旋轉框：輸出 `matches`（cx, cy, w, h, angle°, points 四角）、`contours`（四角輪廓）；適合傾斜擺放的工件計數／定位，角度可接 formula／tolerance_judge 做方向檢查。底模 `yolo11n-obb.pt`（DOTA 航拍類別）僅供試用，自訂類別用「旋轉框偵測（YOLO-obb）」訓練（polygon 標記自動取最小外接旋轉矩形）。
 
+## dl_anomaly
+只教良品的異常檢測：`model` 是教導頁用「Anomaly detection (good parts only)」訓練的模型（只要 20～50 張良品、不用標記）；
+`threshold` 0＝用模型自帶的自動門檻（良品分數 mean + kσ），良品被誤判就調高；`min_area` 擋雜訊；`roi` 檢測區（會縮放到模型輸入尺寸，
+別框太大）；`device` auto／cpu／cuda。輸出 `score`（最大異常分數）、`count`／`total_area`、`score_map`（熱圖：門檻映到中灰、2 倍門檻飽和，
+現場調門檻看它）、`mask`、`regions`，分支 ok／defect。沒有壞品樣本、缺陷型態不固定（刮痕、凹陷、缺料、異物）時優先用它；
+有明確類別且壞品夠多再考慮 yolo_*／dl_segment。
+
 ## python_script
 自訂 Python 檢測（只在使用者明確要求「自己寫程式」時才用；一般需求優先用內建工具）。`code` 定義 `def run(ctx)`：`ctx.image`（唯讀）、`ctx.gray()`、`ctx.inputs['a'..'d']`、`ctx.params['p1'..'p3']`（現場參數，技術員可在參數卡調）、`ctx.roi()`／`ctx.crop()`；回傳 dict：`value`／`result`／`text`／`data`／`image`（新陣列）／`status`（ok|ng）／`branch`（pass|fail）／`overlays`／`message`。輸出埠固定：value、result、text、data、image；`pass`／`fail` 分支接 judge。只能匯入 numpy／cv2／math／json／re／statistics／itertools／collections／functools／time；不能用 dunder、exec／eval／open；純 Python 迴圈超過 `max_ms` 會中止。**只有管理員能儲存新腳本**，生成後要提醒使用者由管理員儲存核准。

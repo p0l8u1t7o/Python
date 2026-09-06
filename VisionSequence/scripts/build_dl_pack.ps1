@@ -6,7 +6,7 @@
     Vendor side. Produces build\release\VisionSequence-DL-<variant>-<ver>.zip containing
       wheels\                 every wheel for Python 3.12 / win_amd64 (torch, torchvision from the PyTorch index; the rest from PyPI)
       requirements-dl.lock.txt  the exact versions that were resolved (vsctl dl install uses it with --no-index)
-      weights\                yolo11n.pt, yolo11n-seg.pt, yolo11n-cls.pt, sam2.1_t.pt, mobile_sam.pt (+ SHA256SUMS.txt)
+      weights\                yolo11n.pt, yolo11n-seg.pt, yolo11n-cls.pt, sam2.1_t.pt, mobile_sam.pt, resnet18_l2l3.onnx (+ SHA256SUMS.txt)
       dl-pack.json            variant, python, torch, onnxruntime, weights
     A station installs it with: vsctl dl install VisionSequence-DL-cu128-<ver>.zip -Predict
 
@@ -96,8 +96,18 @@ if (-not $SkipWeights) {
         Copy-Item -LiteralPath $dest -Destination (Join-Path $work 'weights')
         $sums += "{0}  {1}" -f (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLower(), $w
     }
+    # 異常檢測 backbone（ResNet18 layer2/3 ONNX）：用 build venv 的 torch＋torchvision 匯出，隨包附帶（執行期不下載）
+    $backbone = Join-Path $cache 'resnet18_l2l3.onnx'
+    if (-not (Test-Path -LiteralPath $backbone)) {
+        Write-Host "  exporting resnet18_l2l3.onnx"
+        $env:DJANGO_SETTINGS_MODULE = 'config.settings'
+        & $python (Join-Path $repo 'manage.py') anomaly_backbone --export | Out-Null
+        Copy-Item -LiteralPath (Join-Path $repo 'data\assets\dl\weights\resnet18_l2l3.onnx') -Destination $backbone
+    }
+    Copy-Item -LiteralPath $backbone -Destination (Join-Path $work 'weights')
+    $sums += "{0}  {1}" -f (Get-FileHash -LiteralPath $backbone -Algorithm SHA256).Hash.ToLower(), 'resnet18_l2l3.onnx'
     [IO.File]::WriteAllText((Join-Path $work 'weights\SHA256SUMS.txt'), (($sums -join "`n") + "`n"))
-    Write-VsOk "$($Weights.Count) weight files"
+    Write-VsOk "$($Weights.Count + 1) weight files"
 }
 
 # ---- 4. 描述檔與 zip ------------------------------------------------------------------------------------------

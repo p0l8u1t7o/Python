@@ -22,6 +22,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.detect",
     "apps.vision.tools.builtin.stat",
     "apps.vision.tools.builtin.dl",
+    "apps.vision.tools.builtin.anomaly_tool",
     "apps.vision.tools.builtin.yolo",
     "apps.vision.tools.builtin.logic",
     "apps.vision.tools.builtin.script",

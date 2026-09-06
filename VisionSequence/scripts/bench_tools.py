@@ -46,7 +46,7 @@ from apps.vision.sources.grabbers import SyntheticGrabber  # noqa: E402
 from apps.vision.tools import base, register_builtins  # noqa: E402
 from apps.vision.tools.base import Result, ToolContext  # noqa: E402
 from apps.vision.tools.builtin.script import TEMPLATE as SCRIPT_TEMPLATE  # noqa: E402
-from tests._helpers import _field_bytes, _field_str, _field_varint, _value_info, gap_classifier_onnx, identity_onnx, save_png, yolo_seg_onnx  # noqa: E402
+from tests._helpers import _field_bytes, _field_str, _field_varint, _value_info, fake_backbone, gap_classifier_onnx, identity_onnx, save_png, yolo_seg_onnx  # noqa: E402
 
 register_builtins()
 
@@ -189,8 +189,18 @@ class Scene:
 
         self.shape_model = os.path.join(folder, f"shape_{w}.npz")
         _shapemodel.save(self.shape_model, _shapemodel.teach(self.gray[cy - r : cy + r, cx - r : cx + r]))
+        # 異常檢測：假 backbone（pooling）＋ 4 張擾動良品建的小記憶庫（真 backbone 的數字見 docs/performance.html）
+        from apps.vision.dl.anomaly_trainer import AnomalyTrainer
+        from apps.vision.dl.base import SampleRef as _SampleRef
+
+        fb = fake_backbone(os.path.join(folder, "fake_backbone.onnx"), size=224)
+        goods = [_SampleRef(id=f"a{i}", label="", path=save_png(np.clip(self.image.astype(np.int16) + int(rng.integers(-6, 7)), 0, 255).astype(np.uint8), folder, f"anomaly_{w}_{i}.png")) for i in range(4)]
+        res = AnomalyTrainer().train(goods, ["good"], {"input_size": 224, "coreset_ratio": 0.5, "projection_dims": 0, "backbone_path": fb}, "cpu", lambda f, s, m: None)
+        self.anomaly_model = os.path.join(folder, f"anomaly_{w}.npz")
+        with open(self.anomaly_model, "wb") as fh:
+            fh.write(res.weights_bytes)
         self.flat_bgr = save_png(cv2.cvtColor(np.clip(vignette * 235, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR), folder, f"flatc_{w}.png")
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -318,6 +328,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("pixel_count (full)", "pixel_count", s.mask, {}, {}, {}),
         ("pixel_count (circle)", "pixel_count", s.mask, {"roi": center_circle}, {}, {}),
         # dl
+        ("dl_anomaly (fake backbone, roi)", "dl_anomaly", big, {"model": "anomaly", "roi": plate, "device": "cpu"}, {}, {}),
         ("dl_classify", "dl_classify", big, {"model": "gap", "roi": plate}, {}, {}),
         ("dl_detect", "dl_detect", big, {"model": "yolo", "labels": "a\nb\nc\nd", "roi": plate, "conf": 0.1}, {}, {}),
         ("dl_segment", "dl_segment", big, {"model": "idn", "roi": plate}, {}, {}),

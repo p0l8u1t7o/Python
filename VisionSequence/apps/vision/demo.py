@@ -755,6 +755,28 @@ def dl_segment_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})
     return {"nodes": nodes, "edges": edges}
 
 
+def anomaly_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})) -> dict[str, Any]:
+    """只教良品的異常檢測：dl_anomaly（seed 用 20 張乾淨鋁板建的記憶庫）→ 異常區數 → OK/NG；分數圖給現場調門檻看。"""
+    asset_id, params = model
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("anom", "dl_anomaly", 1, 0, "Anomaly (good parts only)", model=asset_id, threshold=params.get("threshold", 0), min_area=params.get("min_area", 30)),
+        _node("cmp", "if_number", 2, 0, "No anomaly?", operator="eq", threshold=0),
+        _node("ok", "judge", 3, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG: anomaly", verdict="ng", label="anomaly"),
+        _node("out_s", "output", 2, 1, "Output max score", name="anomaly_score"),
+        _node("out_n", "output", 2, 2, "Output region count", name="anomaly_count"),
+        _note("n1", 0, 1, "About", "The model was built from good pictures only — no defect was ever shown to it. Every patch is scored by its distance to the nearest good patch in the memory bank; the threshold comes from the good pictures' own scores.\nOpen the score map output to see where the anomaly is; raise the threshold on the tool if good parts are flagged."),
+    ]
+    edges = [
+        _edge("src", "anom", "image", "image"),
+        _edge("anom", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("anom", "out_s", "score", "value"), _edge("anom", "out_n", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
     """seed 訓練的示範模型資產：(asset id, 建議的工具參數)；還沒 seed 就回空（範本照樣能載入）。"""
     row = Asset.objects.filter(name=name, kind="model").only("id", "meta").first()
@@ -803,6 +825,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("yolo_area", "YOLO instance segmentation: sign area", "yolo_segment's union mask into a pixel count and an area threshold, showing segmentation feeding a measurement (deep-learning dependencies required)", "detect", yolo_area_flow),
     ("dl_classify_demo", "Classification: good / missing hole (taught model)", "The built-in MLP classifier trained by seeding, into dl_classify pass/fail — how a taught model gets into a flow", "quality",
      lambda sid: dl_classify_flow(sid, _demo_model("Example: classifier (good / missing hole)"))),
+    ("anomaly_demo", "Anomaly detection: good parts only (taught model)", "The anomaly model built by seeding from 20 clean plates scores every patch against the good memory bank; scratches it has never seen come out as anomalies (needs the anomaly backbone)", "quality",
+     lambda sid: anomaly_flow(sid, _demo_model("Example: anomaly (scratch plate)"))),
     ("dl_segment_demo", "Semantic segmentation: scratch area (taught model)", "The patch_segment model trained by seeding, into a dl_segment scratch-area threshold and OK/NG", "quality",
      lambda sid: dl_segment_flow(sid, _demo_model("Example: segmenter (scratch)"))),
 )
@@ -833,10 +857,13 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "yolo_area": "Example: stop sign",
     "dl_classify_demo": "Example: classification teaching",
     "dl_segment_demo": "Example: segmentation teaching",
+    "anomaly_demo": "Example: segmentation teaching",
 }
 
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
 TEMPLATES_NEED_DL = ("yolo_count", "yolo_area")
+#: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
+TEMPLATES_NEED_BACKBONE = ("anomaly_demo",)
 
 
 def _seed_demo_models(created: list[str]) -> None:
@@ -854,10 +881,15 @@ def _seed_demo_models(created: list[str]) -> None:
     from apps.vision.dl.base import SampleRef
 
     dl_base.register_builtins()
-    specs = (
+    specs = [
         ("Example: classifier (good / missing hole)", "mlp_classify", demo_images.dl_parts_labeled, ["ok", "ng"], {"input_size": 64, "epochs": 300, "val_split": 0.2, "augment": True}),
         ("Example: segmenter (scratch)", "patch_segment", demo_images.dl_scratch_labeled, ["scratch"], {"input_size": 128, "epochs": 200, "samples_per_image": 2000}),
-    )
+    ]
+    from apps.vision.dl import anomaly as _anomaly
+
+    if _anomaly.backbone_available():
+        # 只教良品的異常檢測：需要平台附帶的 backbone（開發機 manage.py anomaly_backbone --export；現場由 DL 加購包附帶）
+        specs.append(("Example: anomaly (scratch plate)", "anomaly", demo_images.dl_clean_plates, ["good"], {"input_size": 320, "coreset_ratio": 0.1}))
     for name, kind, maker, classes, params in specs:
         if Asset.objects.filter(name=name, kind="model").exists():
             continue
@@ -873,6 +905,18 @@ def _seed_demo_models(created: list[str]) -> None:
                 else:
                     refs.append(SampleRef(id=f"s{i}", label=str(label), path=path))
             result = dl_base.get_trainer(kind).train(refs, classes, params, "cpu", lambda f, s, m: None)
+            if result.weights_bytes and result.weights_tool_key:
+                # 主產物是原生權重（異常檢測的記憶庫 npz）：與 jobs._train 同樣存成 model 資產
+                weights_id = _uuid.uuid4()
+                wpath = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{weights_id.hex}{result.weights_ext}")
+                with open(wpath, "wb") as fh:
+                    fh.write(result.weights_bytes)
+                Asset.objects.create(
+                    id=weights_id, name=name, kind="model", group="Examples", path=wpath, size=len(result.weights_bytes),
+                    meta={"trainer": kind, "project": "Examples", "tool_key": result.weights_tool_key, "tool_params": result.weights_tool_params, "metrics": result.metrics, "format": result.weights_ext.lstrip(".")},
+                )
+                created.append(f"模型資產 {name}（新建，{kind}）")
+                continue
             asset_id = _uuid.uuid4()
             path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.onnx")
             with open(path, "wb") as f:

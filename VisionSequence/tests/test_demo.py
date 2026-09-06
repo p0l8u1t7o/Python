@@ -14,7 +14,7 @@ from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 
 from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
-from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATE_SAMPLE_SOURCES, TEMPLATES_NEED_DL, seed_demo
+from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATE_SAMPLE_SOURCES, TEMPLATES_NEED_BACKBONE, TEMPLATES_NEED_DL, seed_demo
 from apps.vision.graph import validate_graph
 from apps.vision.models import Asset, Flow, ImageSource, ResourceGroup
 
@@ -43,12 +43,16 @@ class DemoSeedTests(TransactionTestCase):
             self.assertEqual(Asset.objects.filter(group="Examples", kind="image").count(), 5)
             self.assertEqual(Asset.objects.filter(group="Examples", kind="file").count(), 2)
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
-            self.assertEqual(sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True)), ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)"])
-            self.assertEqual(len(BUILTIN_TEMPLATES), 24)
+            model_names = sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True))
+            self.assertEqual([n for n in model_names if "anomaly" not in n], ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)"])
+            self.assertEqual(len(BUILTIN_TEMPLATES), 25)
             import importlib.util
             import os
 
             run_dl = os.environ.get("VISION_TEST_DL") == "1" and importlib.util.find_spec("ultralytics") is not None
+            from apps.vision.dl import anomaly as _anomaly
+
+            backbone_ok = _anomaly.backbone_available()
             # 範例樣板不佔流程清單：seed 只建 2 個示範流程
             self.assertEqual(Flow.objects.count(), 2)
 
@@ -59,6 +63,9 @@ class DemoSeedTests(TransactionTestCase):
                 graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=src.id)
                 if key in TEMPLATES_NEED_DL and not run_dl:
                     validate_graph(graph)  # 沒有 DL 依賴（或未設 VISION_TEST_DL=1）只驗 graph，實跑見 tests/test_dl_live.py
+                    continue
+                if key in TEMPLATES_NEED_BACKBONE and not backbone_ok:
+                    validate_graph(graph)  # 沒有異常檢測 backbone：只驗 graph（有 backbone 的機器會實跑，seed 會訓練示範模型）
                     continue
                 flow = Flow.objects.create(name=f"tpl-{key}", graph=validate_graph(graph))
                 try:

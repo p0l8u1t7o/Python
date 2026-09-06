@@ -375,6 +375,11 @@ def _scratch_plate(seed: int, n_scratch: int) -> tuple[np.ndarray, list[dict]]:
     return _noise(img, 2, seed), shapes
 
 
+def dl_clean_plates(n: int = 20) -> list[tuple[np.ndarray, str]]:
+    """seed 用來訓練示範異常檢測模型的良品（沒有刮痕的紋理鋁板），與樣本圖不同 seed。"""
+    return [(_scratch_plate(5000 + i, 0)[0], "") for i in range(n)]
+
+
 def dl_scratch() -> list[np.ndarray]:
     """DL 語意分割範本的樣本圖：3 張乾淨、2 張有刮痕（NG）。"""
     return [_scratch_plate(300 + i, 0 if i < 3 else (1 if i == 3 else 2))[0] for i in range(5)]

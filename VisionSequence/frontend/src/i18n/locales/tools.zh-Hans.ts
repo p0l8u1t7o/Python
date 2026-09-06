@@ -749,6 +749,19 @@ export default {
       distance: "距離",
     },
   },
+  dl_anomaly: {
+    label: "深度学习异常检测",
+    description: "用只以良品训练的模型，为画面每个区域打「与教导良品差多少」的分数。超过阈值的就是异常——划痕、凹陷、缺料、异物——完全不必给它看过缺陷。调阈值时看分数图。",
+    params: {
+      model: { label: "异常模型", help: "在教导页以「异常检测（只教良品）」训练。" },
+      roi: { label: "区域", help: "留空则整张图像；区域会缩放到模型的输入尺寸。" },
+      threshold: { label: "阈值", help: "异常分数高于此值的像素视为缺陷。0 = 使用模型内置的自动阈值。" },
+      min_area: { label: "最小缺陷面积" },
+      device: { label: "设备", options: { auto: "自动（有 GPU 就用）", cpu: "CPU", cuda: "CUDA" } },
+      max_count: { label: "最多输出", group: "高级" },
+    },
+    ports: { image: "图像", roi: "区域（动态）", ok: "干净", defect: "有缺陷", score: "最大分数", count: "数量", total_area: "总面积", score_map: "分数图", mask: "掩码", regions: "区域", threshold_used: "使用的阈值" },
+  },
   dl_classify: {
     label: "DL 分类",
     description: "以 ONNX 分类模型判斷区域屬于哪一类；最高分类别分数達门槛走 pass。",

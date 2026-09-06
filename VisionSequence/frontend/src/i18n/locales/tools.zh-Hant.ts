@@ -749,6 +749,19 @@ export default {
       distance: "距離",
     },
   },
+  dl_anomaly: {
+    label: "深度學習異常檢測",
+    description: "用只以良品訓練的模型，為畫面每個區域打「與教導良品差多少」的分數。超過門檻的就是異常——刮痕、凹陷、缺料、異物——完全不必給它看過缺陷。調門檻時看分數圖。",
+    params: {
+      model: { label: "異常模型", help: "在教導頁以「異常檢測（只教良品）」訓練。" },
+      roi: { label: "區域", help: "留空則整張影像；區域會縮放到模型的輸入尺寸。" },
+      threshold: { label: "門檻", help: "異常分數高於此值的像素視為缺陷。0 = 使用模型內建的自動門檻。" },
+      min_area: { label: "最小缺陷面積" },
+      device: { label: "裝置", options: { auto: "自動（有 GPU 就用）", cpu: "CPU", cuda: "CUDA" } },
+      max_count: { label: "最多輸出", group: "進階" },
+    },
+    ports: { image: "影像", roi: "區域（動態）", ok: "乾淨", defect: "有缺陷", score: "最大分數", count: "數量", total_area: "總面積", score_map: "分數圖", mask: "遮罩", regions: "區域", threshold_used: "使用的門檻" },
+  },
   dl_classify: {
     label: "DL 分類",
     description: "以 ONNX 分類模型判斷區域屬於哪一類；最高分類別分數達門檻走 pass。",
