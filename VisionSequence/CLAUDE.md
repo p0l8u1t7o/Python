@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：94 個內建工具（8 類）、221 個 API 端點、29 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：94 個內建工具（8 類）、224 個 API 端點、30 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -170,6 +170,7 @@
 ### 保留策略與維運（FlowRunHourly、backup／restore／purge／doctor）
 - **四層保留**：封存影像（`ARCHIVE_DAYS`／`ARCHIVE_MAX_GB`）→ 明細 `FlowRun`（`KEEP_RUN_DAYS` 預設 30 天，`KEEP_RUN_ROWS` 20000 是保險）→ **每小時彙總 `FlowRunHourly` 永久保留** → **量測值 `MeasurementLog`**（WP-14：每次 run 的每個數值具名輸出一列，`MEASUREMENT_LOG`／`MEASUREMENT_DAYS` 365；`_Persister._log_measurements` 與明細同一批 bulk_create，0.11 ms/run 在背景執行緒；`apps/vision/spc.py` I-MR／X̄-R／Cp,Cpk／Nelson／規格從 tolerance_judge 綁；`GET /flows/{id}/spc`、`GET /spc/alerts`（30 秒快取）；統計頁「量測值」分頁 `components/stats/SpcPanel.tsx`、總覽 `SpcAlerts`）。`_write` 把 NaN／inf 轉 null（SQLite JSON_VALID 會擋，否則整筆 run 消失）。
 - `_Persister._rollup` 在寫明細的同一批累加彙總（`F()` 增量＋`Greatest`；依 flow／hour／station／recipe 一列）。**`GET /flows/{id}/stats` 已改查彙總**，明細清掉或重開機都不會讓良率曲線消失。改 stats 要記得它讀的是彙總不是明細。
+- **自動整理**（`apps/vision/retention.py`＋單列 `RetentionSettings`，migration 0025）：保存時限存資料庫（設定頁改、`effective()` 記憶體快取、`save()` 作廢快取），`.env` 是出廠值；**預設 365 天**（執行明細／操作紀錄／量測值），封存影像沿用 90 天＋20 GB。`_Persister` 閒置分支呼叫 `maybe_sweep()`：小整理每 10 分鐘、深度整理（備份份數、孤兒固定影像、VACUUM）一天一次且要在 `window_hour` 且閒置 60 秒；`sweep()` 每批 500 列、每批前檢查 `busy()`（runner.capacity 有 flows 或持久化佇列非空）就停手。API `GET/PATCH /vision/retention`、`POST /vision/retention/sweep`（管理員，有稽核）；前端 `components/settings/RetentionCard.tsx`；`purge` 多了 `--backups`／`--pictures`；`restore` 會順手修剪舊的 `.before-restore-*` 副本；doctor 有 retention／backups 兩條。**熱路徑不碰這個模組**，新增可設定欄位＝`retention.FIELDS`＋model 欄位＋migration＋前端型別與卡片＋三語系。
 - 維運指令：`backup`（SQLite 線上備份 API，`--with-images` 才含封存）／`restore`（擋 zip slip、舊 DB 留一份）／`purge --dry-run`／`doctor`（有 FAIL 時離開碼 1，客服第一句就靠它）／`precision`（WP-13：`apps/vision/precision.py`，repeatability／reproducibility／grr 走 engine.execute 直跑；AIAG MSA ANOVA 單評估者；`POST /flows/{id}/precision` 給統計頁的精度卡，GR&R 只在 CLI；報告 markdown 貼進 docs/performance.html §8）。
 - **版本號單一來源** `apps/vision/__init__.py` 的 `__version__`；`/healthz`、`integration/info`、前端側欄底部、`doctor` 都讀它。
 

@@ -477,3 +477,31 @@ class ScriptApproval(models.Model):
 
     def __str__(self) -> str:
         return f"ScriptApproval {self.code_hash[:8]}"
+
+
+class RetentionSettings(models.Model):
+    """單列（id=1）：資料保存時限與維護視窗（apps/vision/retention.py 讀進記憶體快取）。
+
+    沒有這一列時用 `.env`／出廠值；前端「設定」頁改的是這一列，改完立刻生效（不必重開伺服器）。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    #: 0 = 永久保留
+    run_days = models.PositiveIntegerField(default=365)
+    audit_days = models.PositiveIntegerField(default=365)
+    measurement_days = models.PositiveIntegerField(default=365)
+    archive_days = models.PositiveIntegerField(default=90)
+    archive_max_gb = models.FloatField(default=20.0)
+    #: 備份 zip 與還原前資料庫副本各保留幾份
+    backup_keep = models.PositiveIntegerField(default=10)
+    #: 維護視窗開始的整點（當地時間）：備份整理與 SQLite 空間回收只在這一小時做
+    window_hour = models.PositiveSmallIntegerField(default=3)
+    vacuum = models.BooleanField(default=True)
+    enabled = models.BooleanField(default=True)
+    last_sweep_at = models.DateTimeField(null=True, blank=True)
+    last_deep_at = models.DateTimeField(null=True, blank=True)
+    last_result = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return "RetentionSettings"

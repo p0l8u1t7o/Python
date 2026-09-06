@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 94 個內建工具、221 個 API 端點、29 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 780 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 94 個內建工具、224 個 API 端點、30 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 780 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -96,6 +96,12 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 量測：`contour_find`／`contour_filter`／`contour_geometry`／`contour_match`（輪廓鏈與凸缺陷）、`circular_caliper`／`profile_defect`（圓形卡尺與序列缺陷）、`gdt_measure`（形位公差：直線度／平面度／真圓度 MZC／平行度／垂直度／傾斜度）、`to_world` 接數值埠、標定頁覆蓋率地圖與警告。
 - 檢測：`defect_stat`（統計範本比對）、`dl_anomaly`（只教良品的異常檢測）、`ocr_read`／`ocv_verify`（離線 OCR 與字型教導）、`barcode_grade`（ISO 15415／15416／AIM DPM 條碼品質分級，解碼靠 zxing-cpp）。
 - 品質資料：`manage.py precision`（重複性／再現性／GR&R 報告與 CI 門檻，統計頁精度卡）、量測值 SPC（`MeasurementLog`、管制圖／Cp,Cpk／Nelson 判異、總覽告警、`GET /flows/{id}/spc`、`GET /spc/alerts`）。
+
+### 資料保留與自動整理
+
+- 保存時限（執行明細、操作紀錄、量測值、封存影像、備份份數、維護時段）存在資料庫單列，**設定頁**（管理員）可改、立即生效；預設 **1 年**，0＝永久；每小時彙總永久保留，良率曲線不受影響。
+- **不影響檢測**：清理跑在既有的歷史寫入執行緒的空檔，每批 500 列，發現有 run 在排隊／執行／連續模式立刻停手；備份整理、孤兒圖片與 VACUUM 只在維護時段且引擎閒置一分鐘後才做。
+- `GET/PATCH /vision/retention`、`POST /vision/retention/sweep`（立即整理）、`manage.py purge [--pictures --backups N]`、`doctor` 的 retention／backups 兩行。
 
 ### 範本畫廊與範例樣板
 30 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、圓盤崩邊、真圓度形位公差、刻印字光度立體、條碼品質分級、排除區、平場校正、統計良品比對、形狀比對定位、異常檢測、日期碼讀取、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。

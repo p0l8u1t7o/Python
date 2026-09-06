@@ -45,6 +45,13 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/calibration')) return { items: [] }
   if (path.startsWith('/vision/assets')) return { items: [] }
   if (path.startsWith('/vision/groups')) return { items: [{ id: 1, kind: 'source', name: '範例' }] }
+  if (path.startsWith('/vision/retention')) {
+    const settings = { run_days: 365, audit_days: 365, measurement_days: 365, archive_days: 90, archive_max_gb: 20, backup_keep: 10, window_hour: 3, vacuum: true, enabled: true }
+    return {
+      settings, defaults: settings, last_sweep_at: null, last_deep_at: null, last_result: {}, busy: false,
+      usage: { db_bytes: 1048576, archive_files: 0, archive_bytes: 0, backup_files: 0, backup_bytes: 0, runs: 0, audit: 0, measurements: 0 },
+    }
+  }
   if (path.startsWith('/vision/templates')) return { items: [], can_manage: true }
   if (path.startsWith('/vision/capacity')) return { active: 0, max_workers: 4, flows: [], images: { images: 0, bytes: 0, runs: 0, encoded: 0 }, queue: {} }
   if (path.startsWith('/vision/agent/info')) return { provider: 'offline', model: '', llm: false, has_key: false, key_hint: '', source: 'none', mode: 'single', reason: '', providers: [{ value: 'offline', label: '離線規則引擎', default_model: '' }] }

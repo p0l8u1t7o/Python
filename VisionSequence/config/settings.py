@@ -161,15 +161,21 @@ VISION = {
     "IMAGE_CACHE_MB": _env_int("VISION_IMAGE_CACHE_MB", 1024),
     # 是否把每次 run 寫進資料庫（背景執行緒批次寫）。高速產線可關閉只留統計。
     "PERSIST_RUNS": _env_bool("VISION_PERSIST_RUNS", True),
+    #: 持久化執行緒閒置時做資料保留整理（測試會關掉）
+    "RETENTION_SWEEP": _env_bool("VISION_RETENTION_SWEEP", True),
     # 資料庫保留的 run 記錄上限（每流程）。
     # 明細保留天數為主、筆數為輔；每小時彙總（FlowRunHourly）永久保留
-    "KEEP_RUN_DAYS": _env_int("VISION_KEEP_RUN_DAYS", 30),
+    "KEEP_RUN_DAYS": _env_int("VISION_KEEP_RUN_DAYS", 365),
     "KEEP_RUN_ROWS": _env_int("VISION_KEEP_RUN_ROWS", 20000),
     # 量測值 SPC：具名數值輸出另存 MeasurementLog（保留天數獨立於明細；0＝永久）
     "MEASUREMENT_LOG": _env_bool("VISION_MEASUREMENT_LOG", True),
     "MEASUREMENT_DAYS": _env_int("VISION_MEASUREMENT_DAYS", 365),
     "KEEP_VERSIONS": _env_int("VISION_KEEP_VERSIONS", 50),
-    "AUDIT_DAYS": _env_int("VISION_AUDIT_DAYS", 730),
+    "AUDIT_DAYS": _env_int("VISION_AUDIT_DAYS", 365),
+    #: 備份 zip 與還原前資料庫副本各保留幾份（0＝全部保留）
+    "KEEP_BACKUPS": _env_int("VISION_KEEP_BACKUPS", 10),
+    #: 維護視窗：這個整點（當地時間）才做備份整理與 SQLite 空間回收
+    "MAINTENANCE_HOUR": _env_int("VISION_MAINTENANCE_HOUR", 3),
     # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。
     "PLUGIN_DIR": Path(_env("VISION_PLUGIN_DIR", str(VS_HOME / "plugins"))),
     # 外掛工具模組（逗號分隔的 python 模組路徑），啟動時 import；模組內呼叫 register()。

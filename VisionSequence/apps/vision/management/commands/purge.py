@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import datetime as dt
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.core import audit
-from apps.vision import archive
+from apps.vision import archive, retention
 from apps.vision.models import Flow, FlowRun, FlowVersion
 from apps.vision.versions import prune as prune_versions
 
@@ -32,12 +31,14 @@ class Command(BaseCommand):
         parser.add_argument("--archive-gb", type=float, default=None)
         parser.add_argument("--audit", type=int, default=None, help="Keep audit entries for this many days (0 = keep)")
         parser.add_argument("--measurements", type=int, default=None, help="Keep SPC measurement rows for this many days (0 = keep)")
+        parser.add_argument("--backups", type=int, default=None, help="Keep this many backup zips and pre-restore database copies")
+        parser.add_argument("--pictures", action="store_true", help="Also delete fixed pictures no flow, version or template refers to")
 
     def handle(self, *args, **options):
-        cfg = settings.VISION
+        cfg = retention.effective()  # 設定頁改的保存時限是唯一事實來源（沒有列時＝.env／出廠值）
         dry = options["dry_run"]
-        runs_days = cfg.get("KEEP_RUN_DAYS", 30) if options["runs"] is None else options["runs"]
-        audit_days = cfg.get("AUDIT_DAYS", 730) if options["audit"] is None else options["audit"]
+        runs_days = cfg["run_days"] if options["runs"] is None else options["runs"]
+        audit_days = cfg["audit_days"] if options["audit"] is None else options["audit"]
 
         if runs_days and runs_days > 0:
             cutoff = timezone.now() - dt.timedelta(days=int(runs_days))
@@ -59,7 +60,7 @@ class Command(BaseCommand):
 
         if audit_days and audit_days > 0:
             self.stdout.write(f"audit older than {audit_days}d: {audit.purge(days=0) if dry else audit.purge(days=int(audit_days))} removed")
-        meas_days = cfg.get("MEASUREMENT_DAYS", 365) if options["measurements"] is None else options["measurements"]
+        meas_days = cfg["measurement_days"] if options["measurements"] is None else options["measurements"]
         if meas_days and meas_days > 0:
             from apps.vision.models import MeasurementLog
 
@@ -74,4 +75,18 @@ class Command(BaseCommand):
         for flow in Flow.objects.all():
             snapshots += 0 if dry else prune_versions(flow)
         self.stdout.write(f"flow snapshots removed: {snapshots} (kept {FlowVersion.objects.count()})")
+
+        keep_backups = cfg["backup_keep"] if options["backups"] is None else options["backups"]
+        files = retention.backup_files()
+        self.stdout.write(f"backups: {len(files)} files, {sum(st.st_size for _p, st in files) / (1 << 20):.1f} MB (keeping {keep_backups} of each kind)")
+        if not dry:
+            self.stdout.write(f"  removed {retention.purge_backups(int(keep_backups))} files")
+
+        if options["pictures"]:
+            from apps.vision import fixed_images
+
+            orphans = fixed_images.orphans()
+            self.stdout.write(f"fixed pictures with nothing referring to them: {len(orphans)}")
+            if not dry:
+                self.stdout.write(f"  removed {retention.purge_orphan_pictures(min_age_s=0)} files")
         self.stdout.write(self.style.SUCCESS("Dry run — nothing was deleted." if dry else "Purge complete."))

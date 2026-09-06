@@ -7,6 +7,7 @@ import { Check, KeyRound } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
+import { RetentionCard } from '@/components/settings/RetentionCard'
 import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
 import { api, apiKey, setApiKey } from '@/lib/api'
@@ -132,6 +133,7 @@ export function SettingsPage() {
             <ChangePasswordModal open={changing} onClose={() => setChanging(false)} />
           </CardBody>
         </Card>
+        {auth.isAdmin ? <RetentionCard /> : null}
         <Panel title={t('settings.capacity')} description={t('settings.capacityHint')} bodyClassName="p-4" testId="panel-capacity">
           <div>
             {capacity.data ? (

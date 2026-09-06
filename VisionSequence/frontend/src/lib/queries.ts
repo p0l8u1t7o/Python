@@ -13,17 +13,17 @@ import type { OpenApiDocument } from '@/pages/integration/openapi'
 import { localiseCatalogue } from './toolLocale'
 import type { Language } from '@/i18n'
 import type {
-  CaptureClients,
-  CaptureDownloadInfo,
   ArchivePolicy,
   Asset,
   AuthUser,
   Capacity,
+  CaptureClients,
+  CaptureDownloadInfo,
   Connection,
   ConnectionKind,
   ConnectionOpResult,
-  DlDevices,
   DlDatasetVersion,
+  DlDevices,
   DlProject,
   DlSample,
   DlShape,
@@ -50,16 +50,19 @@ import type {
   RecipeImportCheck,
   RecipeImportResult,
   RegressResult,
+  RetentionSettings,
+  RetentionStatus,
+  RetentionSweepResult,
   Role,
   RolePermissions,
   RunReport,
   ScratchImage,
   SourceKind,
+  SpcAlertsResult,
+  SpcResult,
   TcpResult,
   TemplateInstance,
   ToolCatalogue,
-  SpcAlertsResult,
-  SpcResult,
 } from './types'
 
 export const keys = {
@@ -106,6 +109,34 @@ export function useToolTypes() {
     queryFn: () => api.get<ToolCatalogue>('/vision/tool-types'),
     select: (data) => localiseCatalogue(data, language),
     staleTime: 5 * 60_000,
+  })
+}
+
+/** 資料保留（管理員）：設定、用量與上次整理；存檔與「立即整理」後把新狀態寫回快取。 */
+export function useRetention(enabled = true) {
+  return useQuery({
+    queryKey: ['retention'],
+    queryFn: () => api.get<RetentionStatus>('/vision/retention'),
+    enabled,
+  })
+}
+
+export function useSaveRetention() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Partial<RetentionSettings>) => api.patch<RetentionStatus>('/vision/retention', body),
+    onSuccess: (data) => client.setQueryData(['retention'], data),
+  })
+}
+
+export function useSweepRetention() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post<{ result: RetentionSweepResult; status: RetentionStatus }>('/vision/retention/sweep', {}),
+    onSuccess: (data) => {
+      client.setQueryData(['retention'], data.status)
+      void client.invalidateQueries({ queryKey: ['audit'] })
+    },
   })
 }
 

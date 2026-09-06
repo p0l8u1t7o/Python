@@ -28,7 +28,7 @@ from apps.core import audit
 from apps.core import plugins as folder_plugins
 from apps.core.models import AuditLog
 from apps.core.errors import Conflict, NotFound, PermissionDenied, ValidationError
-from apps.vision import __version__, demo, summary, trace
+from apps.vision import __version__, demo, retention, summary, trace
 from apps.vision.api import _decode_upload, _visible_flows
 from apps.vision.graph import validate_graph
 from apps.vision.models import FlowTemplate, ImageSource
@@ -330,6 +330,43 @@ def _time_range(since: str, until: str):
         return timezone.make_aware(t, timezone.get_current_timezone()) if timezone.is_naive(t) else t
 
     return parse(since, False), parse(until, True)
+
+
+@router.get("/retention")
+def retention_status(request: HttpRequest):
+    """Retention settings, what the last clean-up removed, and how much space each store is using."""
+    require_admin(request)
+    return retention.status()
+
+
+@router.patch("/retention")
+def retention_patch(request: HttpRequest):
+    """Change how long data is kept (days; 0 = keep for ever) and when the maintenance window runs."""
+    require_admin(request)
+    body = json.loads(request.body or b"{}")
+    if not isinstance(body, dict):
+        raise ValidationError("A JSON object is required", code="bad_body")
+    unknown = sorted(set(body) - set(retention.FIELDS))
+    if unknown:
+        raise ValidationError(f"Unknown setting: {', '.join(unknown)}", code="bad_field", details={"fields": unknown})
+    try:
+        saved = retention.save(body)
+    except (TypeError, ValueError):
+        raise ValidationError("Days must be whole numbers and the size a number", code="bad_value") from None
+    audit.record(request, "retention.update", target_type="settings", target_name="retention",
+                 summary=f"run {saved['run_days']}d, audit {saved['audit_days']}d, measurements {saved['measurement_days']}d", detail=saved)
+    return retention.status()
+
+
+@router.post("/retention/sweep")
+def retention_sweep(request: HttpRequest):
+    """Clean up now (the same work the maintenance window does), instead of waiting for it."""
+    require_admin(request)
+    deep = bool(json.loads(request.body or b"{}").get("deep", True)) if request.body else True
+    result = retention.sweep(deep=deep, force=True)
+    audit.record(request, "retention.sweep", target_type="settings", target_name="retention",
+                 summary=f"removed {result['runs']} runs, {result['audit']} audit rows, {result['archive_files']} pictures", detail=result)
+    return {"result": result, "status": retention.status()}
 
 
 @router.get("/audit")

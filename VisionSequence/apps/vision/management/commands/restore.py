@@ -61,6 +61,12 @@ class Command(BaseCommand):
                 keep = db.with_suffix(db.suffix + f".before-restore-{time.strftime('%Y%m%d-%H%M%S')}")
                 shutil.copy2(db, keep)
                 self.stdout.write(f"Previous database kept at {keep}")
+                # 舊的副本只留設定的份數，否則每次還原都多一份 DB 大小的檔案留在 data\
+                from apps.vision import retention
+
+                dropped = retention.purge_backups(retention.effective()["backup_keep"])
+                if dropped:
+                    self.stdout.write(f"Removed {dropped} older backup files")
             db.parent.mkdir(parents=True, exist_ok=True)
             with zf.open("db.sqlite3") as src, open(db, "wb") as out:
                 shutil.copyfileobj(src, out)

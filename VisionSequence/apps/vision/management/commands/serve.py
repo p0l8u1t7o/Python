@@ -64,6 +64,12 @@ class Command(BaseCommand):
             # 從站要一直在聽（PLC 隨時會連），設了觸發位址的連線要開始輪詢；
             # 以前得等有人按「測試」或流程跑過一次才開埠，伺服器重開後 PLC 就連不上。
             writers.autostart()
+        # 持久化執行緒同時是維護執行緒：沒有任何 run 的站台也要清過期資料（只有 serve 打開，測試與 CLI 不做）
+        from apps.vision import retention
+        from apps.vision.runner import persister
+
+        retention.enable_background()
+        persister.ensure()
         try:
             uvicorn.run(
                 "config.asgi:application",

@@ -76,8 +76,19 @@ class Command(BaseCommand):
         acc = accel.status()
         add("acceleration", OK, f"{acc['backend']}" + (f" ({acc['device']})" if acc['device'] else "") + f", VISION_ACCEL={acc['mode']}" + (f": {acc['reason']}" if acc['backend'] == 'cpu' and acc['mode'] != 'cpu' else ""))
 
-        add("history", OK, f"{FlowRun.objects.count()} run rows (kept {cfg.get('KEEP_RUN_DAYS')}d), {FlowRunHourly.objects.count()} hourly rows (kept forever)")
-        add("measurements", OK, f"{MeasurementLog.objects.count()} SPC rows ({'on' if cfg.get('MEASUREMENT_LOG', True) else 'off'}, kept {cfg.get('MEASUREMENT_DAYS')}d)")
+        from apps.vision import retention
+
+        keep = retention.effective()
+        add("history", OK, f"{FlowRun.objects.count()} run rows (kept {keep['run_days']}d), {FlowRunHourly.objects.count()} hourly rows (kept forever)")
+        add("measurements", OK, f"{MeasurementLog.objects.count()} SPC rows ({'on' if cfg.get('MEASUREMENT_LOG', True) else 'off'}, kept {keep['measurement_days']}d)")
+
+        state = retention.status()
+        last = state["last_sweep_at"] or "never"
+        add("retention", OK if keep["enabled"] else WARN,
+            f"runs {keep['run_days']}d, audit {keep['audit_days']}d, pictures {keep['archive_days']}d/{keep['archive_max_gb']:g} GB, "
+            f"window {keep['window_hour']:02d}:00, last clean-up {last}" + ("" if keep["enabled"] else " (automatic clean-up is off)"))
+        backups = state["usage"]
+        add("backups", OK, f"{backups['backup_files']} files, {backups['backup_bytes'] / (1 << 20):.1f} MB (kept {keep['backup_keep']})")
 
         http_port = int(cfg.get("HTTP_PORT") or 8000)
         served = _healthz(http_port)

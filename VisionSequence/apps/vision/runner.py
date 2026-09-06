@@ -107,9 +107,10 @@ class _Persister(threading.Thread):
             try:
                 report = self.q.get(timeout=2.0)
             except queue.Empty:
-                # 沒有 run 也要把流程變數寫回（PLC 用 SET 改了料號，兩秒內落地）
+                # 沒有 run 也要把流程變數寫回（PLC 用 SET 改了料號，兩秒內落地），順便看看該不該做資料保留整理
                 try:
                     variables.store.flush()
+                    self._housekeeping()
                 finally:
                     close_old_connections()
                 continue
@@ -131,6 +132,19 @@ class _Persister(threading.Thread):
                 log.exception("寫入 FlowRun 失敗")
             finally:
                 close_old_connections()
+
+    @staticmethod
+    def _housekeeping() -> None:
+        """閒置時的資料保留整理：retention 自己判斷時間到了沒、引擎忙不忙（每批 500 列就讓出）。"""
+        if not _cfg("RETENTION_SWEEP", True):
+            return
+        try:
+            from apps.vision import retention
+
+            if retention.background_enabled():
+                retention.maybe_sweep()
+        except Exception:  # noqa: BLE001 - 維護不能拖垮持久化
+            log.exception("資料保留整理失敗")
 
     @staticmethod
     def _rollup(rows: list[FlowRun]) -> None:
@@ -211,10 +225,13 @@ class _Persister(threading.Thread):
         self._prune_counter += len(rows)
         if self._prune_counter >= 500:
             self._prune_counter = 0
-            mdays = int(_cfg("MEASUREMENT_DAYS", 365))
+            from apps.vision import retention as _retention
+
+            keep_cfg = _retention.effective()
+            mdays = int(keep_cfg["measurement_days"])
             if mdays > 0:
                 MeasurementLog.objects.filter(ts__lt=datetime.now(timezone.utc) - timedelta(days=mdays)).delete()
-            days = int(_cfg("KEEP_RUN_DAYS", 30))
+            days = int(keep_cfg["run_days"])
             if days > 0:
                 cutoff = datetime.now(timezone.utc) - timedelta(days=days)
                 for run_id, images in FlowRun.objects.filter(started_at__lt=cutoff).values_list("id", "images")[:5000]:

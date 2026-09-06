@@ -445,6 +445,92 @@ export interface FlowTemplate {
   has_samples?: boolean
 }
 
+/** 資料保留設定（單列，管理員可改；天數 0 = 永久保留） */
+export interface RetentionSettings {
+  run_days: number
+  audit_days: number
+  measurement_days: number
+  archive_days: number
+  archive_max_gb: number
+  backup_keep: number
+  window_hour: number
+  vacuum: boolean
+  enabled: boolean
+}
+
+export interface RetentionSweepResult {
+  runs: number
+  measurements: number
+  audit: number
+  archive_files: number
+  archive_freed: number
+  backups: number
+  vacuum: boolean
+  ms?: number
+}
+
+export interface RetentionStatus {
+  settings: RetentionSettings
+  defaults: RetentionSettings
+  last_sweep_at: string | null
+  last_deep_at: string | null
+  last_result: Partial<RetentionSweepResult>
+  usage: {
+    db_bytes: number
+    archive_files: number
+    archive_bytes: number
+    backup_files: number
+    backup_bytes: number
+    runs: number
+    audit: number
+    measurements: number
+  }
+  busy: boolean
+}
+
+/** 資料保留設定（單列，管理員可改；天數 0 = 永久保留） */
+export interface RetentionSettings {
+  run_days: number
+  audit_days: number
+  measurement_days: number
+  archive_days: number
+  archive_max_gb: number
+  backup_keep: number
+  window_hour: number
+  vacuum: boolean
+  enabled: boolean
+}
+
+export interface RetentionSweepResult {
+  runs: number
+  measurements: number
+  audit: number
+  archive_files: number
+  archive_freed: number
+  backups: number
+  vacuum: boolean
+  ms?: number
+}
+
+export interface RetentionStatus {
+  settings: RetentionSettings
+  defaults: RetentionSettings
+  last_sweep_at: string | null
+  last_deep_at: string | null
+  last_result: Partial<RetentionSweepResult>
+  usage: {
+    db_bytes: number
+    archive_files: number
+    archive_bytes: number
+    backup_files: number
+    backup_bytes: number
+    runs: number
+    audit: number
+    measurements: number
+  }
+  busy: boolean
+}
+
 export interface TemplateInstance {
   graph: FlowGraph
   /** 有取像步驟但沒選來源 */

@@ -150,6 +150,9 @@ describe('pages render (smoke)', () => {
     const { SettingsPage } = await import('@/pages/SettingsPage')
     renderPage(<SettingsPage />, { route: '/settings' })
     expect((await screen.findAllByText('Settings')).length).toBeGreaterThan(0)
+    // 管理員才看得到資料保留卡片，且欄位值來自伺服器
+    expect(await screen.findByTestId('retention-card')).toBeTruthy()
+    expect((await screen.findByTestId('retention-run_days')).getAttribute('value')).toBe('365')
     const { LoginPage } = await import('@/pages/LoginPage')
     renderPage(<LoginPage />, { route: '/login' })
     expect((await screen.findAllByText(/Sign in|Username|VisionSequence/)).length).toBeGreaterThan(0)
