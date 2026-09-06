@@ -1445,7 +1445,7 @@ const zhHant = {
         PING: { summary: '有人在嗎', desc: '心跳；回 {"ok": true, "pong": true}。' },
         LIST: { summary: '所有流程', desc: 'id、名稱與是否啟用——就是 RUN 與 TRIGGER 接受的值。' },
         STATUS: { summary: '統計或容量', desc: '帶流程：該流程的即時統計、連續模式是否在跑、排隊中的觸發數。不帶：執行緒容量、每條流程的排隊上限與引擎鎖定。' },
-        RUN: { summary: '執行一次並等結果', desc: '跑完回 status、judge、outputs、耗時與 run_id。key=value 進 context；recipe=<名稱> 指定配方。值除非是乾淨的十進位數字否則維持字串，所以 lot=00123 的前導零會保留。' },
+        RUN: { summary: '執行一次並等結果', desc: '跑完回 status、judge、outputs、耗時與 run_id。key=value 進 context；recipe=<名稱> 指定配方。值除非是乾淨的十進位數字否則維持字串，所以 lot=00123 的前導零會保留。；fmt=<輸出> 改回該具名輸出的純文字而不是 JSON' },
         TRIGGER: { summary: '執行一次、不等結果', desc: '排入佇列後立刻回 run_id；之後用 GET /api/vision/runs/{run_id} 取結果。引數與 RUN 相同。' },
         START: { summary: '開始連續模式', desc: '流程每一輪都向影像來源取像，直到 STOP。' },
         STOP: { summary: '停止連續模式', desc: '停掉該流程的連續執行。' },
@@ -1454,6 +1454,7 @@ const zhHant = {
         AUTH: { summary: '此連線的認證', desc: '站台設定了 TCP 金鑰（VISION_TCP_AUTH）時，連線後先送一次，之後才能送 PING 以外的指令；沒送的話每個指令都回 code unauthorized。' },
       },
       args: {
+        fmt: { name: 'fmt=<輸出>', desc: '改回那個具名輸出的純文字而不是 JSON，給解析不了 JSON 的設備' },
         flow: { name: 'flow', desc: '流程 id 或名稱（名稱含空白請加引號）' },
         flowOptional: { name: '[flow]', desc: '可選的流程 id 或名稱；不帶就回引擎容量' },
         kv: { name: 'key=value …', desc: '任意個，放進執行的 context；值含空白請加引號' },

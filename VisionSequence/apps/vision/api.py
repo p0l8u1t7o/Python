@@ -386,6 +386,7 @@ def run_flow(
     include_nodes: bool | None = None,
     trigger: str = "api",
     recipe: str | None = None,
+    format: str = "",
 ):
     """執行一次。
 
@@ -397,6 +398,8 @@ def run_flow(
       結果之後仍可用 run_id 取回）。未指定時用伺服器的 RUN_TIMEOUT_S 再加 5 秒緩衝。
     - `include_nodes=1`（舊名 `include_images`）：回應加上每個步驟的輸出與標記。
       **影像不會內嵌在 JSON 裡**：outputs／nodes 給的是影像 ref，畫面用 `GET /images/{ref}` 取。
+    - `format=<具名輸出>`：改回 `text/plain` 的那一行（流程裡用「格式化回覆」工具產生），
+      給讀不了 JSON 的上位機；沒有那個輸出回 422 `no_such_output`。
     """
     flow = get_flow(flow_id)
     require_feature(request, "flows.run").can_execute()
@@ -412,6 +415,7 @@ def run_flow(
         timeout_s = body.get("timeout_s", timeout_s) if isinstance(body, dict) else timeout_s
         include_images = bool(body.get("include_nodes", body.get("include_images", include_images))) if isinstance(body, dict) else include_images
         recipe = body.get("recipe", body.get("recipe_id", recipe)) if isinstance(body, dict) else recipe
+        format = str(body.get("format", format) or "") if isinstance(body, dict) else format
     else:
         recipe = request.POST.get("recipe") or recipe
         ctx = _parse_context(context)
@@ -432,6 +436,16 @@ def run_flow(
                      detail={"flow": flow.name, "run_id": run_id, "timeout_s": wait_s}, ok=False, ms=wait_s * 1000)
         raise APIError(f"Timed out after {wait_s:g}s waiting for the result; the run continues and can be fetched by run_id",
                        code="run_timeout", status_code=504, details={"run_id": run_id, "flow_id": flow.id}) from None
+    if format:
+        value = report.outputs.get(format)
+        if value is None:
+            raise ValidationError(f"This run produced no output named '{format}'; add a Format a reply step to the flow",
+                                  code="no_such_output", details={"outputs": sorted(report.outputs), "run_id": report.id})
+        text = value if isinstance(value, str) else str(value)
+        trace.record("http", f"POST /flows/{flow.id}/run → {report.status} (text)", direction="in", name=trigger,
+                     detail={"flow": flow.name, "format": format, "reply": text[:200], "run_id": report.id},
+                     ok=report.status != "failed", ms=report.duration_ms)
+        return HttpResponse(text, content_type="text/plain; charset=utf-8")
     out = report.to_dict(include_node_outputs=include_images)
     trace.record(  # 整合頁「命令與結果」：外部系統這次要了什麼、拿到什麼
         "http", f"POST /flows/{flow.id}/run → {out.get('status')}", direction="in", name=trigger,

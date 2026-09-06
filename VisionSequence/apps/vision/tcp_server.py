@@ -3,6 +3,9 @@
 指令（以 \\n 結尾，大小寫不拘）：
     RUN <flow_id 或 名稱> [key=value ...]   執行一次並等結果；回 JSON：
         {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
+        帶 fmt=<具名輸出> 時**改回那個輸出的純文字**（給讀不了 JSON 的舊設備）：
+        `RUN 1 fmt=text` → `OK,12.35\r\n`。那一行由流程裡的「格式化回覆」工具產生；
+        沒有那個輸出時仍回 JSON 錯誤 {"ok": false, "code": "no_such_output"}，設備才知道是自己設錯。
     TRIGGER <flow> [key=value ...]         只觸發不等結果；回 {"ok": true, "queued": true, "run_id": "..."}
                                            結果之後用 GET /api/vision/runs/{run_id} 取（排隊中回 status="queued"）
     STATUS [flow]                          統計；不帶流程回容量（含 max_queue_per_flow 與 lock）
@@ -147,10 +150,18 @@ def handle_command(line: str) -> dict[str, Any]:
             except BadArgument as bad:
                 return {"ok": False, "error": f"The argument '{bad.token}' is not key=value; quote a value containing spaces", "code": "bad_argument"}
             recipe = context.pop("recipe", None)
+            fmt = str(context.pop("fmt", "") or "")
             if cmd == "TRIGGER":
                 future = runner.submit(flow, trigger="tcp", context=context or None, recipe=recipe)
                 return {"ok": True, "queued": True, "run_id": getattr(future, "run_id", "")}
             report = runner.run_sync(flow, trigger="tcp", context=context or None, recipe=recipe)
+            if fmt:
+                # 純文字回覆：設備要的就是這一行，不再包一層 JSON
+                value = report.outputs.get(fmt)
+                if value is None:
+                    return {"ok": False, "error": f"This run produced no output named '{fmt}'; add a Format a reply step",
+                            "code": "no_such_output", "outputs": sorted(report.outputs)}
+                return {"_raw": value if isinstance(value, str) else str(value)}
             return {
                 "ok": True,
                 "status": report.status,
@@ -219,10 +230,11 @@ class _Handler(socketserver.StreamRequestHandler):
                 close_old_connections()  # 每條連線一條執行緒，各自的連線各自收
             trace.record(  # 整合頁「命令與結果」看得到（沒人在看時只記錯誤）
                 "tcp", shown or "(blank)", direction="in", name=f"{self.client_address[0]}:{self.client_address[1]}",
-                detail=response, ok=bool(response.get("ok", True)), ms=(time.perf_counter() - started) * 1000,
+                detail=response, ok=bool(response.get("ok", "_raw" in response)), ms=(time.perf_counter() - started) * 1000,
             )
             try:
-                self.wfile.write(orjson.dumps(response) + b"\n")
+                raw = response.get("_raw") if isinstance(response, dict) else None
+                self.wfile.write(raw.encode("utf-8", errors="replace") if isinstance(raw, str) else orjson.dumps(response) + b"\n")
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, OSError):
                 return

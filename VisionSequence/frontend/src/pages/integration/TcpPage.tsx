@@ -29,7 +29,7 @@ const COMMANDS: { name: string; syntax: string; args: string[]; example: string;
   { name: 'AUTH', syntax: 'AUTH <key>', args: ['key'], example: 'AUTH <key>', response: '{"ok": true, "authenticated": true}' },
   { name: 'LIST', syntax: 'LIST', args: [], example: 'LIST', response: '{"ok": true, "flows": [{"id": 1, "name": "hole_count", "enabled": true}]}' },
   { name: 'STATUS', syntax: 'STATUS [flow]', args: ['flowOptional'], example: 'STATUS {flow}', response: '{"ok": true, "flow_id": 1, "stats": {"total": 120, "ok": 118, "ng": 2}, "continuous": false, "queued": 0, "running": false}' },
-  { name: 'RUN', syntax: 'RUN <flow> [key=value ...]', args: ['flow', 'kv', 'recipe'], example: 'RUN {flow} lot=A1', response: '{"ok": true, "status": "ok", "judge": "OK", "outputs": {"hole_count": 3}, "duration_ms": 12.3, "run_id": "…"}' },
+  { name: 'RUN', syntax: 'RUN <flow> [key=value ...] [fmt=<output>]', args: ['flow', 'kv', 'recipe', 'fmt'], example: 'RUN {flow} lot=A1', response: '{"ok": true, "status": "ok", "judge": "OK", "outputs": {"hole_count": 3}, "duration_ms": 12.3, "run_id": "…"}' },
   { name: 'TRIGGER', syntax: 'TRIGGER <flow> [key=value ...]', args: ['flow', 'kv', 'recipe'], example: 'TRIGGER {flow} lot=A1', response: '{"ok": true, "queued": true, "run_id": "…"}' },
   { name: 'START', syntax: 'START <flow>', args: ['flow'], example: 'START {flow}', response: '{"ok": true, "continuous": true}' },
   { name: 'STOP', syntax: 'STOP <flow>', args: ['flow'], example: 'STOP {flow}', response: '{"ok": true, "continuous": false}' },

@@ -202,4 +202,110 @@ def draw_overlay(canvas: np.ndarray, ov: dict[str, Any], thickness: int = 2) -> 
         cv2.putText(canvas, str(label), (x, max(12, y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
 
-TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), DrawResultTool()]
+class FormatTextTool(Tool):
+    key = "format_text"
+    label = "Format a reply"
+    description = (
+        "Builds one line of text out of the results, for equipment that cannot read JSON. Write the layout with the value "
+        "names in braces, for example OK,{width:.2f},{height:.2f} — the reply then carries it, and Write Modbus or a "
+        "TCP connection can send it out."
+    )
+    category = "output"
+    icon = "Type"
+    params = [
+        Param(
+            "template", "Layout", kind="multiline", required=True, default="{judge},{value}",
+            teach=True,
+            help_text=(
+                "Names in braces are filled in: judge (OK or NG), any named output made earlier in the flow, anything the "
+                "trigger sent with the request (a lot or serial number), and this step's own inputs a, b, c and d. "
+                "Round a number with {name:.2f}, pad with {name:05.1f}. Type \\r\\n for a carriage return and line feed, \\t for a tab."
+            ),
+        ),
+        Param("name", "Output name", kind="output_key", default="text", help_text="The reply carries the line under this name. Ask for it with fmt on the TCP command or format in the HTTP request."),
+        Param("ending", "Line ending", kind="select", default="none", options=[
+            {"value": "none", "label": "None"}, {"value": "lf", "label": "Line feed (\\n)"},
+            {"value": "crlf", "label": "Carriage return and line feed (\\r\\n)"}, {"value": "cr", "label": "Carriage return (\\r)"},
+        ]),
+        Param("missing", "When a name has no value", kind="select", default="blank", options=[
+            {"value": "blank", "label": "Leave it empty"},
+            {"value": "keep", "label": "Leave the name in place"},
+            {"value": "fail", "label": "Fail the step"},
+        ], group="Advanced"),
+    ]
+    inputs = [Port("a", "a", "any", required=False), Port("b", "b", "any", required=False),
+              Port("c", "c", "any", required=False), Port("d", "d", "any", required=False)]
+    outputs = [Port("text", "Text", "string")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        template = str(ctx.param("template", "") or "")
+        if not template.strip():
+            raise ToolError("Write the layout of the line, for example {judge},{value}")
+        template = _unescape(template)
+        values = self._values(ctx)
+        missing = str(ctx.param("missing", "blank"))
+        seen: list[str] = []
+        try:
+            text = template.format_map(_Fill(values, missing, seen))
+        except (ValueError, TypeError, IndexError) as exc:
+            raise ToolError(f"The layout could not be filled in: {exc}") from None
+        if missing == "fail" and seen:
+            raise ToolError(f"No value for {', '.join(sorted(set(seen))[:5])}; run the step that produces it first")
+        text += {"lf": "\n", "crlf": "\r\n", "cr": "\r"}.get(str(ctx.param("ending", "none")), "")
+        name = str(ctx.param("name", "text") or "text")
+        outputs = dict(ctx.context.get("_outputs") or {})
+        outputs[name] = text
+        return Result(outputs={"text": text}, context={"_outputs": outputs},
+                      message=repr(text)[1:-1][:200] if text else "(empty)")
+
+    def _values(self, ctx: ToolContext) -> dict[str, Any]:
+        """能填進樣板的名字：具名輸出 → 觸發帶進來的引數 → 這一步的輸入 a~d。後者優先。"""
+        values: dict[str, Any] = {}
+        for key, value in (ctx.context.get("_outputs") or {}).items():
+            values[str(key)] = value
+        judge = ctx.context.get("_judge")
+        if judge is not None and "judge" not in values:
+            values["judge"] = str(judge).upper()
+        for key, value in ctx.context.items():
+            if not str(key).startswith("_"):
+                values[str(key)] = value
+        for key in ("a", "b", "c", "d"):
+            value = ctx.inputs.get(key)
+            if value is not None:
+                values[key] = _plain(value)
+        values.setdefault("run_id", ctx.run_id)
+        values.setdefault("station", str(settings.VISION.get("STATION_ID", "")))
+        return values
+
+
+def _unescape(text: str) -> str:
+    """使用者在單行欄位裡打的 \\r\\n 要變成真的控制字元（設備的協定就是這樣寫的）。"""
+    return text.replace("\\r", "\r").replace("\\n", "\n").replace("\\t", "\t")
+
+
+def _plain(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist() if value.size <= 50 else f"array{tuple(value.shape)}"
+    if isinstance(value, (np.floating,)):
+        return float(value)
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.bool_,)):
+        return bool(value)
+    return value
+
+
+class _Fill(dict):
+    """format_map 的填值：找不到的名字依設定留空／保留原樣／記下來讓工具報錯。"""
+
+    def __init__(self, values: dict[str, Any], missing: str, seen: list[str]) -> None:
+        super().__init__(values)
+        self._missing = missing
+        self._seen = seen
+
+    def __missing__(self, key: str) -> Any:
+        self._seen.append(key)
+        return "{" + key + "}" if self._missing == "keep" else ""
+
+
+TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), DrawResultTool(), FormatTextTool()]

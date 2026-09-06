@@ -235,6 +235,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("intensity (circle roi)", "intensity", big, {"roi": center_circle}, {}, {}),
         ("intensity (full)", "intensity", big, {}, {}, {}),
         ("calibration", "calibration", None, {"pixel_size_mm": 0.01}, {"value": 123.4}, {}),
+        ("format_text", "format_text", None, {"template": "{judge},{a:.2f},{lot}", "ending": "crlf"}, {"a": 12.3456}, {"_judge": "ok", "lot": "A17"}),
         ("calibration (asset)", "calibration", None, {"mode": "asset", "calibration": "cal"}, {"value": 123.4}, {}),
         ("to_world (points)", "to_world", None, {"calibration": "cal"}, {"points": [[s.cx, s.cy], [s.cx + 40, s.cy + 25]], "value": 100.0, "angle": 30.0}, {}),
         ("histogram (rect roi)", "histogram", big, {"roi": plate}, {}, {}),

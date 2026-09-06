@@ -106,7 +106,7 @@ describe('pages render (smoke)', () => {
     // Swagger 風格的指令列：展開 RUN 看得到引數表與 Try it out
     fireEvent.click(screen.getByTestId('tcp-cmd-RUN').querySelector('button')!)
     expect(screen.getByTestId('tcp-try')).toBeInTheDocument()
-    expect(screen.getByText('RUN <flow> [key=value ...]')).toBeInTheDocument()
+    expect(screen.getByText('RUN <flow> [key=value ...] [fmt=<output>]')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('tab', { name: 'Commands and results' }))
     expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
     const { ModbusServerPage } = await import('@/pages/integration/ModbusPage')

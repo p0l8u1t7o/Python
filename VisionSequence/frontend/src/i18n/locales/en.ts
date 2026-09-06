@@ -863,7 +863,7 @@ const en = {
         PING: { summary: 'Is anyone there', desc: 'A heartbeat; answers {"ok": true, "pong": true}.' },
         LIST: { summary: 'Every flow', desc: 'Ids, names and whether each flow is enabled — the values RUN and TRIGGER accept.' },
         STATUS: { summary: 'Statistics or capacity', desc: 'With a flow: its live statistics, whether continuous mode runs, how many triggers are queued. Without one: worker capacity, the per-flow queue limit and the engine lock.' },
-        RUN: { summary: 'Run once and wait for the result', desc: 'Runs the flow and answers with status, judge, outputs, duration and run_id. key=value pairs go into context; recipe=<name> picks a recipe. Values stay strings unless they are clean decimal numbers, so lot=00123 keeps its zeros.' },
+        RUN: { summary: 'Run once and wait for the result', desc: 'Runs the flow and answers with status, judge, outputs, duration and run_id. key=value pairs go into context; recipe=<name> picks a recipe; fmt=<output> answers with that named output as plain text instead of JSON. Values stay strings unless they are clean decimal numbers, so lot=00123 keeps its zeros.' },
         TRIGGER: { summary: 'Run once, do not wait', desc: 'Queues the run and answers at once with run_id; collect the result later with GET /api/vision/runs/{run_id}. Same arguments as RUN.' },
         START: { summary: 'Start continuous mode', desc: 'The flow grabs from its image source on every cycle until STOP.' },
         STOP: { summary: 'Stop continuous mode', desc: 'Stops the continuous run of that flow.' },
@@ -872,6 +872,7 @@ const en = {
         AUTH: { summary: 'Sign in this connection', desc: 'Only when the station has a TCP key (VISION_TCP_AUTH): send it once after connecting, before any other command except PING. Without it every command answers code unauthorized.' },
       },
       args: {
+        fmt: { name: 'fmt=<output>', desc: 'Answer with that named output as plain text instead of JSON, for equipment that cannot parse JSON' },
         flow: { name: 'flow', desc: 'Flow id or name (quote a name with spaces)' },
         flowOptional: { name: '[flow]', desc: 'Optional flow id or name; without it the answer is the engine capacity' },
         kv: { name: 'key=value …', desc: 'Any number of pairs, placed into the run context; quote a value containing spaces' },

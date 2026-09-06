@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html" aria-current="page">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. Identity (the same on every endpoint)</a></li><li><a href="#http">1. HTTP synchronous run (the common case)</a></li><li><a href="#tcp">2. One-line TCP commands (easiest for equipment)</a><ul><li><a href="#tcp-values">2-1. Argument types (part numbers and barcodes survive intact)</a></li><li><a href="#tcp-codes">2-2. Error codes (branch on code, not on the text)</a></li></ul></li><li><a href="#sse">3. Live SSE events (HMI and dashboards)</a></li><li><a href="#upload">4. When the camera is not on this machine: push an image</a><ul><li><a href="#upload-capture">4-1. The camera is on another PC: the capture client</a></li></ul></li><li><a href="#perf">Performance advice</a></li><li><a href="#lock">5. Identity and the engine lock (the hardware belongs to the line)</a></li><li><a href="#pages">5b. Integration pages: one page per method</a></li><li><a href="#trace">5c. Commands and results (debugging)</a></li><li><a href="#push">6. Pushing results out (Modbus client or slave)</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. Identity (the same on every endpoint)</a></li><li><a href="#http">1. HTTP synchronous run (the common case)</a></li><li><a href="#tcp">2. One-line TCP commands (easiest for equipment)</a><ul><li><a href="#tcp-values">2-1. Argument types (part numbers and barcodes survive intact)</a></li><li><a href="#plain">2-3. Plain text for equipment that cannot read JSON</a></li><li><a href="#tcp-codes">2-2. Error codes (branch on code, not on the text)</a></li></ul></li><li><a href="#sse">3. Live SSE events (HMI and dashboards)</a></li><li><a href="#upload">4. When the camera is not on this machine: push an image</a><ul><li><a href="#upload-capture">4-1. The camera is on another PC: the capture client</a></li></ul></li><li><a href="#perf">Performance advice</a></li><li><a href="#lock">5. Identity and the engine lock (the hardware belongs to the line)</a></li><li><a href="#pages">5b. Integration pages: one page per method</a></li><li><a href="#trace">5c. Commands and results (debugging)</a></li><li><a href="#push">6. Pushing results out (Modbus client or slave)</a></li></ul></aside><article class="doc">
 
 <h1>Automation (Modbus TCP, host systems, MES)</h1>
 <p>Three ways in, all returning the same shape.</p>
@@ -183,6 +183,8 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <table>
 <tr><th>Command</th><th>Response</th></tr>
 <tr><td><code>RUN 1</code> / <code>RUN hole_count lot=A1</code></td><td><code>{"ok":true,"status":"ok","judge":"OK","outputs":{…},"duration_ms":12.3,"run_id":"…"}</code></td></tr>
+<tr><td><code>RUN 1 fmt=line</code></td><td><code>OK,12.35,8.10
+</code> — <strong>plain text, not JSON</strong>: the named output built by a <em>Format a reply</em> step (see <a href="#plain">2-3</a>)</td></tr>
 <tr><td><code>TRIGGER 1</code> / <code>TRIGGER 1 lot=A1</code></td><td><code>{"ok":true,"queued":true,"run_id":"…"}</code> — it does not wait; collect the result with <code>GET /api/vision/runs/{run_id}</code></td></tr>
 <tr><td><code>STATUS</code> / <code>STATUS 1</code></td><td>Capacity and the engine lock, or that flow's statistics</td></tr>
 <tr><td><code>START 1</code> / <code>STOP 1</code></td><td>Continuous mode</td></tr>
@@ -201,6 +203,20 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <li>An argument that is not in <code>key=value</code> shape returns <code>bad_argument</code>, rather than silently dropping half a barcode.</li>
 </ul>
 
+<h3 id="plain">2-3. Plain text for equipment that cannot read JSON</h3>
+<p>Plenty of PLCs, older host programs and print controllers can only take a fixed line such as <code>OK,12.35,8.10</code>. Build that line inside the flow with the <strong>Format a reply</strong> step, then ask for it by name:</p>
+<table>
+<tr><th>Where</th><th>How</th><th>Answer</th></tr>
+<tr><td>In the flow</td><td>Add <em>Format a reply</em> after the verdict. Layout <code>{judge},{width:.2f},{height:.2f}</code>, line ending CRLF, output name <code>line</code>.</td><td>The run now carries <code>outputs.line</code></td></tr>
+<tr><td>TCP</td><td><code>RUN 1 fmt=line</code></td><td><code>OK,12.35,8.10
+</code> exactly as laid out, with no JSON wrapper</td></tr>
+<tr><td>HTTP</td><td><code>POST /api/vision/flows/1/run</code> with <code>{"format": "line"}</code></td><td><code>text/plain</code> with the same line</td></tr>
+</table>
+<p>Names in braces are filled from the verdict (<code>judge</code>), any named output made earlier in the flow, whatever the trigger sent (<code>lot</code>, <code>sn</code>), that step's own inputs <code>a</code> to <code>d</code>, plus <code>run_id</code> and <code>station</code>. Round with <code>{width:.2f}</code>, pad with <code>{count:05d}</code>, and type <code>
+</code> or <code>	</code> where the protocol needs them. A name with no value is left empty by default, so one missing measurement does not stop the line; switch that to <em>Fail the step</em> while you are commissioning.</p>
+<p>If the run has no output under that name the answer is still JSON, with <code>code: "no_such_output"</code> and the list of names that <em>are</em> there — a device that gets nothing back is much harder to diagnose than one that gets a reason.</p>
+<p>The same line can be <strong>pushed</strong> instead of pulled: wire the step's <code>text</code> output into <em>Write Modbus</em> aimed at a <code>tcp_client</code> connection, and the platform sends it to the host program as each part is inspected.</p>
+
 <h3 id="tcp-codes">2-2. Error codes (branch on <code>code</code>, not on the text)</h3>
 <p>A failure always returns <code>{"ok": false, "error": "a readable explanation", "code": "…"}</code>. The wording of <code>error</code> may be polished between releases; <code>code</code> will not.</p>
 <table>
@@ -214,6 +230,7 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <tr><td><code>flow_queue_full</code></td><td>That flow already has the maximum number of triggers waiting; retry shortly</td></tr>
 <tr><td><code>recipe_not_found</code></td><td>The recipe named by <code>recipe=</code> does not exist</td></tr>
 <tr><td><code>engine_locked</code></td><td>The engine is locked (see §5)</td></tr>
+<tr><td><code>no_such_output</code></td><td><code>fmt=</code> named an output the run did not produce; the reply lists the names that exist</td></tr>
 <tr><td><code>internal_error</code></td><td>A server exception, recorded in the log</td></tr>
 </table>
 
