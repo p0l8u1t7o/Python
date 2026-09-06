@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 import ast
 import math
 import operator
@@ -216,4 +218,120 @@ class CounterTool(Tool):
         return Result(outputs={"count": n}, message=f"{n} items")
 
 
-TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool()]
+
+SCOPE_OPTIONS = [{"value": "flow", "label": "This flow"}, {"value": "station", "label": "Whole station"}]
+
+
+class VariableGetTool(Tool):
+    key = "variable_get"
+    label = "Read a variable"
+    description = (
+        "Reads a value that survives between runs: a running count, the previous part's result, or the lot number a "
+        "PLC sent with SET. Falls back to the default when nothing has been stored yet."
+    )
+    category = "logic"
+    icon = "Database"
+    params = [
+        Param("name", "Variable", kind="text", required=True, default="counter", help_text="Letters, digits and underscores."),
+        Param("scope", "Scope", kind="select", default="flow", options=SCOPE_OPTIONS, help_text="This flow only, or shared by every flow on the station."),
+        Param("default", "Default", kind="text", default="0", help_text="Used until something is stored. A number stays a number; true and false are booleans."),
+    ]
+    inputs: list[Port] = []
+    outputs = [Port("value", "Value", "any"), Port("number", "As number", "number"), Port("text", "As text", "string"), Port("found", "Was set", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        from apps.vision import variables as _vars
+
+        name = str(ctx.param("name", "") or "")
+        scope = str(ctx.param("scope", "flow"))
+        try:
+            value = ctx.variable(name, _MISSING, scope)
+        except _vars.VariableError as exc:
+            raise ToolError(str(exc)) from None
+        found = value is not _MISSING
+        if not found:
+            value = _vars.parse_default(ctx.param("default", None))
+        number = float("nan")
+        if isinstance(value, bool):
+            number = 1.0 if value else 0.0
+        elif isinstance(value, (int, float)):
+            number = float(value)
+        elif isinstance(value, str):
+            try:
+                number = float(value)
+            except ValueError:
+                number = float("nan")
+        text = "" if value is None else (value if isinstance(value, str) else str(value))
+        return Result(outputs={"value": value, "number": number, "text": text, "found": found},
+                      message=f"{name} = {text[:80]}" + ("" if found else " (default)"))
+
+
+class VariableSetTool(Tool):
+    key = "variable_set"
+    label = "Store a variable"
+    description = (
+        "Keeps a value for later runs: store it, add to it (a running count or total), or keep the largest or smallest "
+        "seen. Read it back anywhere with Read a variable, or from outside with GET /flows/{id}/variables and TCP VARS."
+    )
+    category = "logic"
+    icon = "DatabaseZap"
+    params = [
+        Param("name", "Variable", kind="text", required=True, default="counter"),
+        Param("scope", "Scope", kind="select", default="flow", options=SCOPE_OPTIONS),
+        Param("mode", "How", kind="select", default="set", options=[
+            {"value": "set", "label": "Store the value"},
+            {"value": "add", "label": "Add to it (count, total)"},
+            {"value": "max", "label": "Keep the largest"},
+            {"value": "min", "label": "Keep the smallest"},
+        ]),
+    ]
+    inputs = [Port("value", "Value", "any", required=False)]
+    outputs = [Port("value", "Stored value", "any"), Port("previous", "Previous value", "any")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        from apps.vision import variables as _vars
+
+        name = str(ctx.param("name", "") or "")
+        scope = str(ctx.param("scope", "flow"))
+        mode = str(ctx.param("mode", "set"))
+        value = ctx.inputs.get("value")
+        if value is None and mode == "add":
+            value = 1  # 沒接輸入的「加」就是計數
+        if value is None:
+            raise ToolError("Wire a value in")
+        try:
+            if mode in ("add", "max", "min"):
+                current = ctx.variable(name, None, scope)
+                try:
+                    incoming = float(value)
+                except (TypeError, ValueError):
+                    raise ToolError(f"'{mode}' needs a number, got {value!r}") from None
+                try:
+                    base = float(current) if current is not None else None
+                except (TypeError, ValueError):
+                    base = None
+                if base is None:
+                    result: Any = incoming
+                elif mode == "add":
+                    result = base + incoming
+                elif mode == "max":
+                    result = max(base, incoming)
+                else:
+                    result = min(base, incoming)
+                if float(result).is_integer() and isinstance(value, (int, float)) and not isinstance(value, bool) and (current is None or float(current).is_integer()):
+                    result = int(result)
+                previous = ctx.set_variable(name, result, scope)
+                stored = result
+            else:
+                previous = ctx.set_variable(name, value, scope)
+                stored = ctx.variable(name, None, scope)
+        except _vars.VariableError as exc:
+            raise ToolError(str(exc)) from None
+        shown = stored if not isinstance(stored, np.ndarray) else f"image {stored.shape[1]}x{stored.shape[0]}"
+        note = " (trial: not kept)" if ctx.sandboxed() else ""
+        return Result(outputs={"value": stored, "previous": previous}, message=f"{name} = {str(shown)[:80]}{note}")
+
+
+_MISSING = object()
+
+TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool(), VariableGetTool(), VariableSetTool()]

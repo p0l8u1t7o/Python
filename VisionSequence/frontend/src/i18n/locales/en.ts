@@ -861,6 +861,8 @@ const en = {
     tcp: {
       explorer: { title: 'Command explorer', hint: 'Connect to {{host}}:{{port}}, send one line ending with \\n, read one JSON line back. Expand a command, press "Try it out", edit the line and execute it against this server.', commands: 'Commands' },
       cmd: {
+        VARS: { summary: 'Read the variables', desc: 'The values a flow keeps between runs (counts, the previous part, the lot number): VARS <flow> for one flow, VARS station for the whole station.' },
+        SET: { summary: 'Write variables', desc: 'Sets one or more variables and stores them at once: SET <flow> lot=A17 at a changeover, SET <flow> parts=0 to reset a count. Same value rules as RUN, so lot=00123 keeps its zeros.' },
         PING: { summary: 'Is anyone there', desc: 'A heartbeat; answers {"ok": true, "pong": true}.' },
         LIST: { summary: 'Every flow', desc: 'Ids, names and whether each flow is enabled — the values RUN and TRIGGER accept.' },
         STATUS: { summary: 'Statistics or capacity', desc: 'With a flow: its live statistics, whether continuous mode runs, how many triggers are queued. Without one: worker capacity, the per-flow queue limit and the engine lock.' },
@@ -873,6 +875,8 @@ const en = {
         AUTH: { summary: 'Sign in this connection', desc: 'Only when the station has a TCP key (VISION_TCP_AUTH): send it once after connecting, before any other command except PING. Without it every command answers code unauthorized.' },
       },
       args: {
+        target: { name: 'flow|station', desc: 'A flow id or name, or the word station for the shared station variables' },
+        setkv: { name: 'key=value …', desc: 'Variables to store; a name is letters, digits and underscores' },
         fmt: { name: 'fmt=<output>', desc: 'Answer with that named output as plain text instead of JSON, for equipment that cannot parse JSON' },
         flow: { name: 'flow', desc: 'Flow id or name (quote a name with spaces)' },
         flowOptional: { name: '[flow]', desc: 'Optional flow id or name; without it the answer is the engine capacity' },
@@ -1528,6 +1532,15 @@ const enExtra2 = {
 
 /** Keys that only existed in Chinese until the product went English-first; merged last. */
 const enExtra3 = {
+  variables: {
+    title: 'Variables',
+    hint: 'Values that survive between runs: counts, the previous part, the lot number a PLC sent. Steps read them with Read a variable and write them with Store a variable; devices use TCP VARS and SET.',
+    scope: { flow: 'This flow', station: 'Station' },
+    empty: 'Nothing stored yet',
+    name: 'Name',
+    value: 'Value',
+    add: 'Add',
+  },
   calibration: {
     title: 'Calibration',
     subtitle: 'Teach the station what one pixel is worth in the real world, and how much the lens bends the picture. Teach it once; every flow can use it.',

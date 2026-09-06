@@ -41,6 +41,7 @@ import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
 import { SaveTemplateModal, TemplateGallery } from '@/components/templates/TemplateGallery'
 import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
+import { VariablesCard } from '@/components/flow/VariablesCard'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { errorMessage } from '@/lib/errors'
@@ -1117,6 +1118,10 @@ function EditorInner({ flowId }: { flowId: number }) {
                     disabled={readOnly}
                     onChange={(v) => patch.mutate({ id: flowId, is_enabled: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
                   />
+                  <div className="border-t border-line pt-3">
+                    <p className="mb-1.5 text-xs font-semibold text-heading">{t('variables.title')}</p>
+                    <VariablesCard flowId={flowId} />
+                  </div>
                 </div>
               )
             ) : (

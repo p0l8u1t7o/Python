@@ -621,6 +621,22 @@ export function useTcpCommand() {
   })
 }
 
+// ---- 流程變數（跨執行的狀態；記憶體為正本，API 是 write-through） ----
+export interface FlowVariables {
+  flow_id: number
+  items: Record<string, unknown>
+  station: Record<string, unknown>
+}
+
+export function useFlowVariables(flowId: number | null) {
+  return useQuery({
+    queryKey: ['flow-variables', flowId] as const,
+    queryFn: () => api.get<FlowVariables>(`/vision/flows/${flowId}/variables`),
+    enabled: flowId !== null,
+    refetchInterval: 5000,
+  })
+}
+
 // ---- 配方（FlowRecipe） ----
 export function useRecipes(flowId: number | null) {
   return useQuery({

@@ -39,6 +39,18 @@ class Flow(models.Model):
         return self.name
 
 
+class FlowVariable(models.Model):
+    """流程／站台變數的落地副本——記憶體是正本（apps/vision/variables.py），這裡只為了重開機不丟。flow=NULL 是站台範圍。"""
+
+    flow = models.ForeignKey("Flow", null=True, blank=True, on_delete=models.CASCADE, related_name="variables")
+    name = models.CharField(max_length=64)
+    value = models.JSONField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["flow", "name"], name="uniq_flow_variable")]
+
+
 class FlowVersion(models.Model):
     """流程每一次存檔的快照。
 

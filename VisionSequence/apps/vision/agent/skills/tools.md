@@ -136,6 +136,12 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 ## judge
 決定 run 的 OK/NG：`verdict` ok/ng 放在分支下游、`by_input` 收 bool。`label` 寫 NG 原因（上位機看得到）。每條互斥分支各接一個。
 
+## variable_get / variable_set
+跨執行、跨流程的狀態：累計計數、上一片的結果、PLC 用 `SET` 送來的料號。`scope` 選 `flow`（這條流程）或 `station`（整站共用）。
+`variable_set` 的 `mode`：set 存值、add 累加（沒接輸入＝計數 +1）、max／min 留極值；`variable_get` 沒存過就用 `default`
+（數字是數字、true/false 是布林）。試執行與批次測試在沙箱裡，不會動到產線的值。整合端用 `GET/PUT /flows/{id}/variables`
+或 TCP `VARS`／`SET` 讀寫。要「跟上一片比」就把影像存進變數（只留記憶體）。
+
 ## format_text
 把結果排成一行文字給讀不了 JSON 的設備：`template` 用 `{名字}` 取值（judge、先前的具名輸出、觸發帶進來的引數如 lot／sn、
 本節點輸入 a~d，另有 run_id／station），`{width:.2f}` 控制小數，`\\r\\n` 會變成真的控制字元；`ending` 補行尾、`name` 決定

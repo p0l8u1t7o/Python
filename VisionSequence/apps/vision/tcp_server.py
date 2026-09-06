@@ -13,6 +13,8 @@
     LOCK [reason="..." ttl=秒]             鎖定引擎：網頁端只能編輯不能執行，整合方照常
     UNLOCK                                 解鎖
     LIST                                   所有流程
+    VARS <flow|station>                    流程或站台的變數（累計、上一片、料號）：{"ok": true, "items": {...}}
+    SET <flow|station> key=value ...       寫變數（換線送料號、重置計數）；立刻落地。值的型別規則同 RUN 的引數
     PING                                   {"ok": true, "pong": true}
     AUTH <key>                             設了 VISION_TCP_AUTH 時，連線後其他指令之前先送（PING 不用）；
                                            沒送或錯誤回 {"ok": false, "code": "unauthorized"}
@@ -48,7 +50,7 @@ from apps.accounts.models import EngineLock
 from apps.accounts.security import Principal
 from apps.core import audit
 from apps.core.errors import APIError
-from apps.vision import trace
+from apps.vision import trace, variables
 from apps.vision.models import Flow
 from apps.vision.runner import runner
 
@@ -127,6 +129,31 @@ def handle_command(line: str) -> dict[str, Any]:
             return {"ok": True, "lock": lock.to_dict()}
         if cmd == "LIST":
             return {"ok": True, "flows": [{"id": f.id, "name": f.name, "enabled": f.is_enabled} for f in Flow.objects.all()]}
+        if cmd in ("VARS", "SET"):
+            if len(parts) < 2:
+                return {"ok": False, "error": f"{cmd} needs a flow id, a flow name or 'station'", "code": "missing_argument"}
+            if parts[1].lower() == "station":
+                scope, label = None, "station"
+            else:
+                flow = _find_flow(parts[1])
+                if flow is None:
+                    return {"ok": False, "error": f"Flow '{parts[1]}' does not exist", "code": "flow_not_found"}
+                scope, label = flow.id, flow.name
+            variables.store.ensure_loaded(scope)
+            if cmd == "SET":
+                try:
+                    values = _parse_kv(parts[2:])
+                except BadArgument as bad:
+                    return {"ok": False, "error": f"The argument '{bad.token}' is not key=value; quote a value containing spaces", "code": "bad_argument"}
+                if not values:
+                    return {"ok": False, "error": "SET needs at least one key=value", "code": "missing_argument"}
+                for key, value in values.items():
+                    try:
+                        variables.store.set(scope, key, value)
+                    except variables.VariableError as exc:
+                        return {"ok": False, "error": f"{key}: {exc}", "code": "bad_variable"}
+                variables.store.flush()
+            return {"ok": True, "scope": label, "items": variables.store.snapshot(scope)}
         if cmd in ("RUN", "TRIGGER", "START", "STOP", "STATUS"):
             if cmd == "STATUS" and len(parts) == 1:
                 return {"ok": True, **runner.capacity(), "lock": EngineLock.current().to_dict()}

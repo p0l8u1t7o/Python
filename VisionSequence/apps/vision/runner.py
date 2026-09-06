@@ -31,6 +31,7 @@ from django.db.models.functions import Greatest
 
 from apps.core.errors import Conflict, NotFound, RateLimited
 from apps.vision import archive, engine
+from apps.vision import variables
 from apps.vision.graph import CompiledGraph, compile_graph, restrict_to, validate_graph
 from apps.vision.images import store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource
@@ -102,7 +103,15 @@ class _Persister(threading.Thread):
 
     def run(self) -> None:
         while True:
-            report = self.q.get()
+            try:
+                report = self.q.get(timeout=2.0)
+            except queue.Empty:
+                # 沒有 run 也要把流程變數寫回（PLC 用 SET 改了料號，兩秒內落地）
+                try:
+                    variables.store.flush()
+                finally:
+                    close_old_connections()
+                continue
             if report is None:
                 return
             batch = [report]
@@ -116,6 +125,7 @@ class _Persister(threading.Thread):
                 batch.append(nxt)
             try:
                 self._write(batch)
+                variables.store.flush()
             except Exception:  # noqa: BLE001
                 log.exception("寫入 FlowRun 失敗")
             finally:
@@ -201,6 +211,8 @@ class _Persister(threading.Thread):
 persister = _Persister()
 
 
+# 變數一髒就確保持久化執行緒活著（它每 2 秒會 flush 一次）
+variables.store.on_dirty = persister.ensure
 # ---------------------------------------------------------------------------
 # 每流程的執行期狀態
 # ---------------------------------------------------------------------------
@@ -297,6 +309,7 @@ class Runner:
         if rt:
             for r in rt.recent:
                 store.drop_run(r.id)
+        variables.store.forget(flow_id)
 
     @property
     def max_queue_per_flow(self) -> int:
@@ -395,6 +408,9 @@ class Runner:
             raise Conflict("The flow is disabled", code="flow_disabled")
         recipe_obj = resolve_recipe(flow, recipe)
         compiled = self.compiled_for(flow, graph_override=graph_override, recipe=recipe_obj)
+        # 流程變數在呼叫者執行緒載入（引擎執行緒不碰 DB）
+        variables.store.ensure_loaded(flow.id)
+        variables.store.ensure_loaded(None)
         if until_node:
             compiled = restrict_to(compiled, until_node)
         rt = self.runtime(flow.id)

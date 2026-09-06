@@ -1,5 +1,14 @@
 /** 繁體中文（預設語言）。key 以功能分組；en.ts 缺的 key 會退回這裡。 */
 const zhHant = {
+  variables: {
+    title: '變數',
+    hint: '在執行之間保留的值：計數、上一片、PLC 送來的料號。步驟用「讀取變數」讀、「儲存變數」寫；設備用 TCP 的 VARS 與 SET。',
+    scope: { flow: '此流程', station: '整站' },
+    empty: '尚無存值',
+    name: '名稱',
+    value: '值',
+    add: '新增',
+  },
   calibration: {
     title: '標定',
     subtitle: '教平台一個像素在真實世界是多少、鏡頭把畫面拱成什麼樣。教一次，所有流程都能用同一份。',
@@ -1444,6 +1453,8 @@ const zhHant = {
     tcp: {
       explorer: { title: '指令總覽', hint: '連到 {{host}}:{{port}}，送一行以 \\n 結尾的指令、讀回一行 JSON。展開指令、按「試打」、改好那一行後對本伺服器執行。', commands: '指令' },
       cmd: {
+        VARS: { summary: '讀變數', desc: '流程在執行之間保留的值（計數、上一片、料號）：VARS <flow> 看一條流程，VARS station 看整站共用的。' },
+        SET: { summary: '寫變數', desc: '一次寫一個或多個變數並立刻落地：換線時 SET <flow> lot=A17、重置計數 SET <flow> parts=0。值的規則同 RUN，lot=00123 的前導零保留。' },
         PING: { summary: '有人在嗎', desc: '心跳；回 {"ok": true, "pong": true}。' },
         LIST: { summary: '所有流程', desc: 'id、名稱與是否啟用——就是 RUN 與 TRIGGER 接受的值。' },
         STATUS: { summary: '統計或容量', desc: '帶流程：該流程的即時統計、連續模式是否在跑、排隊中的觸發數。不帶：執行緒容量、每條流程的排隊上限與引擎鎖定。' },
@@ -1456,6 +1467,8 @@ const zhHant = {
         AUTH: { summary: '此連線的認證', desc: '站台設定了 TCP 金鑰（VISION_TCP_AUTH）時，連線後先送一次，之後才能送 PING 以外的指令；沒送的話每個指令都回 code unauthorized。' },
       },
       args: {
+        target: { name: 'flow|station', desc: '流程 id 或名稱，或寫 station 代表整站共用的變數' },
+        setkv: { name: 'key=value …', desc: '要存的變數；名稱只能是英數與底線' },
         fmt: { name: 'fmt=<輸出>', desc: '改回那個具名輸出的純文字而不是 JSON，給解析不了 JSON 的設備' },
         flow: { name: 'flow', desc: '流程 id 或名稱（名稱含空白請加引號）' },
         flowOptional: { name: '[flow]', desc: '可選的流程 id 或名稱；不帶就回引擎容量' },

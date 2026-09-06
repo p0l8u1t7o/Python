@@ -202,6 +202,36 @@ class ToolContext:
             raise ToolError(f"Input port '{key}' has no image")
         return image
 
+    # -- 流程變數（apps/vision/variables.py）：跨執行、跨流程的狀態 ----------------------------------
+    def sandboxed(self) -> bool:
+        """試執行、批次測試、AI 試跑與 bench：變數只在這次 run 的覆蓋層裡讀寫，不碰產線的值。"""
+        return bool(self.preview or self.flow_id <= 0 or self.context.get("_sandbox"))
+
+    def variable(self, name: str, default: Any = None, scope: str = "flow") -> Any:
+        """讀一個變數（scope＝flow｜station）。沙箱裡先看本次 run 自己寫過的，再看真正的值。"""
+        from apps.vision import variables as _vars
+
+        key = _vars.scope_for(self.flow_id, scope)
+        name = _vars.check_name(name)
+        overlay = self.context.get("_variables_overlay")
+        if isinstance(overlay, dict) and f"{key}:{name}" in overlay:
+            return overlay[f"{key}:{name}"]
+        return _vars.store.get(key, name, default)
+
+    def set_variable(self, name: str, value: Any, scope: str = "flow") -> Any:
+        """寫一個變數，回上一個值。沙箱裡只寫覆蓋層（工具頁按十次試執行，產線計數不會多十）。"""
+        from apps.vision import variables as _vars
+
+        key = _vars.scope_for(self.flow_id, scope)
+        name = _vars.check_name(name)
+        if self.sandboxed():
+            stored, _ = _vars.normalize(value)
+            overlay = self.context.setdefault("_variables_overlay", {})
+            previous = overlay.get(f"{key}:{name}", _vars.store.get(key, name))
+            overlay[f"{key}:{name}"] = stored
+            return previous
+        return _vars.store.set(key, name, value)
+
     def roi(self, key: str = "roi") -> dict[str, Any] | None:
         """ROI 優先取輸入埠（動態 region），其次取參數（畫布上畫的）。"""
         value = self.inputs.get(key)

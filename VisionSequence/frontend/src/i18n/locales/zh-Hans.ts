@@ -1,5 +1,14 @@
 /** 简体中文（由 zh-Hant 以 OpenCC tw2sp 转换＋人工词汇微调产生；缺的 key 会退回繁中）。 */
 const zhHans = {
+  variables: {
+    title: '变量',
+    hint: '在执行之间保留的值：计数、上一片、PLC 送来的批号。步骤用「读取变量」读、「存储变量」写；设备用 TCP 的 VARS 与 SET。',
+    scope: { flow: '此流程', station: '整站' },
+    empty: '尚无存值',
+    name: '名称',
+    value: '值',
+    add: '新增',
+  },
   calibration: {
     title: '标定',
     subtitle: '教平台一个像素在真实世界是多少、镜头把画面拱成什么样。教一次，所有流程都能用同一份。',
@@ -1444,6 +1453,8 @@ const zhHans = {
     tcp: {
       explorer: { title: '指令总览', hint: '连到 {{host}}:{{port}}，送一行以 \\n 结尾的指令、读回一行 JSON。展开指令、按「试打」、改好那一行后对本服务器执行。', commands: '指令' },
       cmd: {
+        VARS: { summary: '读变量', desc: '流程在执行之间保留的值（计数、上一片、批号）：VARS <flow> 看一条流程，VARS station 看整站共用的。' },
+        SET: { summary: '写变量', desc: '一次写一个或多个变量并立刻落地：换线时 SET <flow> lot=A17、重置计数 SET <flow> parts=0。值的规则同 RUN，lot=00123 的前导零保留。' },
         PING: { summary: '有人在吗', desc: '心跳；返回 {"ok": true, "pong": true}。' },
         LIST: { summary: '所有流程', desc: 'id、名称与是否启用——就是 RUN 与 TRIGGER 接受的值。' },
         STATUS: { summary: '统计或容量', desc: '带流程：该流程的实时统计、连续模式是否在跑、排队中的触发数。不带：线程容量、每条流程的排队上限与引擎锁定。' },
@@ -1456,6 +1467,8 @@ const zhHans = {
         AUTH: { summary: '此连接的认证', desc: '站台设置了 TCP 密钥（VISION_TCP_AUTH）时，连接后先发送一次，之后才能发送 PING 以外的指令；没发送的话每个指令都回 code unauthorized。' },
       },
       args: {
+        target: { name: 'flow|station', desc: '流程 id 或名称，或写 station 代表整站共用的变量' },
+        setkv: { name: 'key=value …', desc: '要存的变量；名称只能是英数与下划线' },
         fmt: { name: 'fmt=<输出>', desc: '改回那个具名输出的纯文本而不是 JSON，给解析不了 JSON 的设备' },
         flow: { name: 'flow', desc: '流程 id 或名称（名称含空白请加引号）' },
         flowOptional: { name: '[flow]', desc: '可选的流程 id 或名称；不带就返回引擎容量' },
