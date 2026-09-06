@@ -58,6 +58,7 @@ export const UI_PAGES: UiPage[] = [
     tabs: [{ key: 'quickstart', label: 'help.tabs.quickstart' }, { key: 'glossary', label: 'help.tabs.glossary' }, { key: 'ports', label: 'help.tabs.ports' }, { key: 'tools', label: 'help.tabs.tools' }, { key: 'shortcuts', label: 'help.tabs.shortcuts' }, { key: 'automation', label: 'help.tabs.automation' }, { key: 'accounts', label: 'help.tabs.accounts' }] },
   { route: '/sources', id: 'sources', nav: 'nav.sources', feature: 'sources', help: '/sources', actions: ['sources.create', 'sources.test'] },
   { route: '/assets', id: 'assets', nav: 'nav.assets', feature: 'assets', help: '/assets', actions: ['assets.upload'] },
+  { route: '/calibration', id: 'calibration', nav: 'nav.calibration', feature: 'assets', help: '/calibration', actions: ['calibration.capture', 'calibration.calculate', 'calibration.save'] },
   { route: '/users', id: 'users', nav: 'nav.users', admin: true, help: '/users', actions: ['users.create', 'permissions.title'] },
   { route: '/audit', id: 'audit', nav: 'nav.audit', feature: 'audit', help: '/audit', actions: ['audit.export'] },
   { route: '/settings', id: 'settings', nav: 'nav.settings', help: '/settings', actions: ['auth.changePassword'] },

@@ -1,0 +1,570 @@
+/**
+ * 標定頁：教平台「一個像素是多少毫米」與「鏡頭把畫面拱成什麼樣」，存成一個標定資產給工具用。
+ *
+ * 三種做法一頁到底，差別只在右邊面板：標定板（鏡頭＋比例）、機械手對點、兩點已知距離。
+ * 刻意先算再存——殘差先給人看，覺得哪一點或哪一張不對可以刪掉重算，滿意了才存成資產。
+ */
+import { useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Camera, Crosshair, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { Page } from '@/components/layout/AppShell'
+import { ImageViewer } from '@/components/viewer/ImageViewer'
+import {
+  Badge, Button, Card, CardBody, CardHeader, Checkbox, EmptyRow, EmptyState, IconButton, Modal,
+  PageHeader, Select, TBody, THead, Table, Td, TextInput, Th, Tr,
+} from '@/components/ui'
+import { api, imageUrl } from '@/lib/api'
+import { errorMessage } from '@/lib/errors'
+import { useAssets, useSources } from '@/lib/queries'
+import type { Overlay } from '@/lib/types'
+import { useToast } from '@/providers/ToastProvider'
+
+type Mode = 'board' | 'points' | 'distance'
+type BoardKind = 'chessboard' | 'circles' | 'acircles'
+type WorldKind = 'affine' | 'perspective' | 'scale'
+
+interface Shot {
+  ref: string
+  width: number
+  height: number
+  name: string
+  corners: number[][] | null
+  overlays: Overlay[]
+  hint: string
+  error: number | null
+}
+
+interface MarkedPoint {
+  px: [number, number]
+  world: [string, string]
+  error: number | null
+}
+
+interface SolveResult {
+  payload: Record<string, unknown>
+  summary: string
+  quality: Record<string, string>
+}
+
+interface WorldBlock {
+  kind: string
+  mm_per_px: number
+  rms: number
+  max_error: number
+  points?: { error: number }[]
+}
+
+interface LensBlock {
+  rms: number
+  views: number
+  view_errors: number[]
+}
+
+const UNITS = [{ value: 'mm', key: 'mm' }, { value: 'um', key: 'um' }, { value: 'in', key: 'inch' }] as const
+const QUALITY_TONE: Record<string, 'ok' | 'warning' | 'critical'> = { good: 'ok', fair: 'warning', poor: 'critical' }
+
+function worldOf(result: SolveResult | null): WorldBlock | null {
+  return (result?.payload?.world as WorldBlock | undefined) ?? null
+}
+
+function lensOf(result: SolveResult | null): LensBlock | null {
+  return (result?.payload?.lens as LensBlock | undefined) ?? null
+}
+
+export function CalibrationPage() {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const sources = useSources()
+  const calibrations = useAssets('calibration')
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  const [mode, setMode] = useState<Mode>('board')
+  const [sourceId, setSourceId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [shots, setShots] = useState<Shot[]>([])
+  const [current, setCurrent] = useState(0)
+  const [boardKind, setBoardKind] = useState<BoardKind>('chessboard')
+  const [cols, setCols] = useState('9')
+  const [rows, setRows] = useState('6')
+  const [spacing, setSpacing] = useState('5')
+  const [unit, setUnit] = useState('mm')
+  const [points, setPoints] = useState<MarkedPoint[]>([])
+  const [worldKind, setWorldKind] = useState<WorldKind>('affine')
+  const [snap, setSnap] = useState(true)
+  const [distance, setDistance] = useState('10')
+  const [result, setResult] = useState<SolveResult | null>(null)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveGroup, setSaveGroup] = useState('')
+
+  const shot: Shot | null = shots[current] ?? null
+  const detected = shots.filter((s) => s.corners?.length)
+
+  function reset() {
+    setShots([])
+    setCurrent(0)
+    setPoints([])
+    setResult(null)
+  }
+
+  function switchMode(next: Mode) {
+    setMode(next)
+    setResult(null)
+    setPoints([])
+    // 標定板要多張、另外兩種只用一張：換模式時只留目前這張，不必重拍
+    if (next !== 'board' && shots.length > 1) {
+      setShots(shot ? [shot] : [])
+      setCurrent(0)
+    }
+  }
+
+  async function detect(target: Shot): Promise<Shot> {
+    const body = await api.post<{ found: boolean; corners: number[][]; overlays: Overlay[]; hint?: string }>(
+      '/vision/calibration/detect',
+      { ref: target.ref, kind: boardKind, cols: Number(cols), rows: Number(rows) },
+    )
+    return { ...target, corners: body.found ? body.corners : null, overlays: body.overlays ?? [], hint: body.hint ?? '' }
+  }
+
+  async function addShot(captured: { ref: string; width: number; height: number; name: string }) {
+    let next: Shot = { ...captured, corners: null, overlays: [], hint: '', error: null }
+    if (mode === 'board') {
+      try {
+        next = await detect(next)
+      } catch (err) {
+        next = { ...next, hint: errorMessage(err) }
+      }
+    }
+    setResult(null)
+    if (mode === 'board') {
+      setShots((prev) => [...prev, next])
+      setCurrent(shots.length)
+    } else {
+      setShots([next])
+      setCurrent(0)
+      setPoints([])
+    }
+  }
+
+  async function capture() {
+    if (!sourceId) return
+    setBusy(true)
+    try {
+      const body = await api.post<{ ref: string; width: number; height: number; name: string }>(
+        '/vision/calibration/capture', {}, { source_id: Number(sourceId) },
+      )
+      await addShot(body)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function upload(files: FileList | null) {
+    if (!files?.length) return
+    setBusy(true)
+    try {
+      for (const file of Array.from(files).slice(0, 40)) {
+        const form = new FormData()
+        form.append('image', file)
+        const body = await api.postForm<{ ref: string; width: number; height: number; name: string }>('/vision/calibration/capture', form)
+        await addShot({ ...body, name: file.name })
+        if (mode !== 'board') break
+      }
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function redetectAll() {
+    setBusy(true)
+    try {
+      const next = await Promise.all(shots.map((s) => detect(s).catch((err) => ({ ...s, corners: null, hint: errorMessage(err) }))))
+      setShots(next)
+      setResult(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function addPoint(x: number, y: number) {
+    let px: [number, number] = [x, y]
+    if (snap && shot) {
+      try {
+        const body = await api.post<{ found: boolean; x: number; y: number }>('/vision/calibration/snap', { ref: shot.ref, x, y })
+        if (body.found) px = [body.x, body.y]
+      } catch {
+        /* 吸附失敗就用點擊位置，不打斷操作 */
+      }
+    }
+    setResult(null)
+    setPoints((prev) => (prev.length >= (mode === 'distance' ? 2 : 200) ? prev : [...prev, { px, world: ['', ''], error: null }]))
+  }
+
+  async function solve() {
+    if (!shot) return
+    setBusy(true)
+    try {
+      const base = { image_size: [shot.width, shot.height], unit }
+      let body: Record<string, unknown>
+      if (mode === 'board') {
+        body = { ...base, mode: 'board', kind: boardKind, cols: Number(cols), rows: Number(rows), spacing: Number(spacing), views: detected.map((s) => s.corners) }
+      } else if (mode === 'points') {
+        body = {
+          ...base, mode: 'points', world_kind: worldKind,
+          points: points.map((p) => ({ px: p.px, world: [Number(p.world[0] || 0), Number(p.world[1] || 0)] })),
+        }
+      } else {
+        body = { ...base, mode: 'distance', distance: Number(distance), points: points.map((p) => ({ px: p.px })) }
+      }
+      const solved = await api.post<SolveResult>('/vision/calibration/solve', body)
+      setResult(solved)
+      const world = solved.payload.world as WorldBlock | undefined
+      if (mode === 'board') {
+        const lens = solved.payload.lens as LensBlock | undefined
+        setShots((prev) => {
+          const errors = lens?.view_errors ?? []
+          let i = 0
+          return prev.map((s) => (s.corners?.length ? { ...s, error: errors[i++] ?? null } : s))
+        })
+      }
+      if (mode === 'points' && world?.points) {
+        setPoints((prev) => prev.map((p, i) => ({ ...p, error: world.points?.[i]?.error ?? null })))
+      }
+      toast.success(t('calibration.solved'))
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function save() {
+    if (!result) return
+    setBusy(true)
+    try {
+      await api.post('/vision/calibration/assets', { name: saveName.trim(), group: saveGroup.trim(), payload: result.payload })
+      toast.success(t('calibration.saved', { name: saveName.trim() }))
+      setSaveOpen(false)
+      void calibrations.refetch()
+      reset()
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const overlays = useMemo<Overlay[]>(() => {
+    if (mode === 'board') return shot?.overlays ?? []
+    return points.flatMap((p, i) => {
+      const worst = points.reduce((m, q) => Math.max(m, q.error ?? 0), 0)
+      const bad = p.error != null && worst > 0 && p.error >= worst
+      const label = p.error != null ? `${i + 1}: ${p.error.toFixed(3)} ${unit}` : String(i + 1)
+      return [{ kind: 'point', x: p.px[0], y: p.px[1], color: bad ? '#ef4444' : '#22c55e', label } as Overlay]
+    })
+  }, [mode, shot, points, unit])
+
+  const world = worldOf(result)
+  const lens = lensOf(result)
+  const canSolve = mode === 'board'
+    ? detected.length > 0 && Number(spacing) > 0
+    : mode === 'points'
+      ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
+      : points.length === 2 && Number(distance) > 0
+
+  return (
+    <Page>
+      <PageHeader
+        title={t('calibration.title')}
+        description={t('calibration.subtitle')}
+        actions={
+          <Button
+            variant="primary"
+            icon={<Save size={14} />}
+            disabled={!result}
+            onClick={() => {
+              setSaveName(saveName || t('calibration.defaultName'))
+              setSaveOpen(true)
+            }}
+            data-testid="calib-save"
+          >
+            {t('calibration.save')}
+          </Button>
+        }
+      />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        {(['board', 'points', 'distance'] as Mode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => switchMode(m)}
+            className={`rounded-lg border p-3 text-left transition ${mode === m ? 'border-brand bg-brand/5' : 'border-line hover:border-brand/40'}`}
+            data-testid={`calib-mode-${m}`}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : <Ruler size={15} />}
+              {t(`calibration.modes.${m}.title`)}
+            </div>
+            <p className="mt-1 text-xs text-subtle">{t(`calibration.modes.${m}.hint`)}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <Card>
+          <CardHeader
+            title={t('calibration.picture')}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={sourceId}
+                  onChange={(e) => setSourceId(e.target.value)}
+                  placeholder={t('calibration.pickSource')}
+                  options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }))}
+                  data-testid="calib-source"
+                />
+                <Button icon={<Camera size={14} />} disabled={!sourceId} loading={busy} onClick={() => void capture()} data-testid="calib-capture">
+                  {t('calibration.capture')}
+                </Button>
+                <Button icon={<Upload size={14} />} loading={busy} onClick={() => fileInput.current?.click()} data-testid="calib-upload">
+                  {t('calibration.upload')}
+                </Button>
+                <input ref={fileInput} type="file" accept="image/*" multiple={mode === 'board'} className="hidden" onChange={(e) => { void upload(e.target.files); e.target.value = '' }} />
+              </div>
+            }
+          />
+          <CardBody>
+            {shot ? (
+              <>
+                <ImageViewer
+                  src={imageUrl(shot.ref, 1600)}
+                  imageWidth={shot.width}
+                  imageHeight={shot.height}
+                  overlays={overlays}
+                  onPick={mode === 'board' ? undefined : (x, y) => void addPoint(x, y)}
+                  className="h-[420px]"
+                />
+                <p className="mt-2 text-xs text-subtle">
+                  {mode === 'board' ? (shot.corners?.length ? t('calibration.boardFound', { count: shot.corners.length }) : shot.hint || t('calibration.boardMissing')) : t('calibration.clickHint')}
+                </p>
+              </>
+            ) : (
+              <EmptyState title={t('calibration.noPicture')} description={t('calibration.noPictureHint')} icon={<Camera size={22} />} />
+            )}
+          </CardBody>
+        </Card>
+
+        <div className="space-y-4">
+          {mode === 'board' ? (
+            <Card>
+              <CardHeader title={t('calibration.board')} />
+              <CardBody className="space-y-3">
+                <Select
+                  label={t('calibration.boardKind')}
+                  value={boardKind}
+                  onChange={(e) => setBoardKind(e.target.value as BoardKind)}
+                  options={(['chessboard', 'circles', 'acircles'] as BoardKind[]).map((k) => ({ value: k, label: t(`calibration.boardKinds.${k}`) }))}
+                  data-testid="calib-board-kind"
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  <TextInput label={t('calibration.cols')} value={cols} inputMode="numeric" onChange={(e) => setCols(e.target.value)} data-testid="calib-cols" />
+                  <TextInput label={t('calibration.rows')} value={rows} inputMode="numeric" onChange={(e) => setRows(e.target.value)} data-testid="calib-rows" />
+                  <TextInput label={t('calibration.spacing')} value={spacing} inputMode="decimal" suffix={unit} onChange={(e) => setSpacing(e.target.value)} data-testid="calib-spacing" />
+                </div>
+                <p className="text-xs text-subtle">{t('calibration.boardHint')}</p>
+                <Button loading={busy} disabled={!shots.length} onClick={() => void redetectAll()} data-testid="calib-redetect">
+                  {t('calibration.redetect')}
+                </Button>
+                <Table>
+                  <THead>
+                    <Tr>
+                      <Th>{t('calibration.shot')}</Th>
+                      <Th>{t('calibration.found')}</Th>
+                      <Th align="right">{t('calibration.viewError')}</Th>
+                      <Th />
+                    </Tr>
+                  </THead>
+                  <TBody>
+                    {shots.length ? shots.map((s, i) => (
+                      <Tr key={s.ref} selected={i === current} onClick={() => setCurrent(i)} testId={`calib-shot-${i}`}>
+                        <Td>{s.name}</Td>
+                        <Td>{s.corners?.length ? <Badge tone="ok">{s.corners.length}</Badge> : <Badge tone="critical">{t('calibration.notFound')}</Badge>}</Td>
+                        <Td align="right">{s.error == null ? '—' : `${s.error.toFixed(3)} px`}</Td>
+                        <Td align="right">
+                          <IconButton
+                            label={t('common.delete')}
+                            onClick={() => {
+                              setShots((prev) => prev.filter((_, j) => j !== i))
+                              setCurrent(0)
+                              setResult(null)
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </IconButton>
+                        </Td>
+                      </Tr>
+                    )) : <EmptyRow colSpan={4} message={t('calibration.noShots')} />}
+                  </TBody>
+                </Table>
+              </CardBody>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader title={mode === 'points' ? t('calibration.robotPoints') : t('calibration.twoPoints')} />
+              <CardBody className="space-y-3">
+                <Checkbox label={t('calibration.snap')} hint={t('calibration.snapHint')} checked={snap} onChange={setSnap} />
+                {mode === 'points' ? (
+                  <Select
+                    label={t('calibration.worldKind')}
+                    value={worldKind}
+                    onChange={(e) => setWorldKind(e.target.value as WorldKind)}
+                    options={(['affine', 'perspective', 'scale'] as WorldKind[]).map((k) => ({ value: k, label: t(`calibration.worldKinds.${k}`) }))}
+                    hint={t(`calibration.worldKindHints.${worldKind}`)}
+                    data-testid="calib-world-kind"
+                  />
+                ) : (
+                  <TextInput
+                    label={t('calibration.realDistance')}
+                    value={distance}
+                    inputMode="decimal"
+                    suffix={unit}
+                    onChange={(e) => setDistance(e.target.value)}
+                    hint={t('calibration.realDistanceHint')}
+                    data-testid="calib-distance"
+                  />
+                )}
+                <Table>
+                  <THead>
+                    <Tr>
+                      <Th>#</Th>
+                      <Th>{t('calibration.pixel')}</Th>
+                      {mode === 'points' ? <Th>{`X (${unit})`}</Th> : null}
+                      {mode === 'points' ? <Th>{`Y (${unit})`}</Th> : null}
+                      <Th align="right">{t('calibration.pointError')}</Th>
+                      <Th />
+                    </Tr>
+                  </THead>
+                  <TBody>
+                    {points.length ? points.map((p, i) => (
+                      <Tr key={`${p.px[0]}-${p.px[1]}-${i}`} testId={`calib-point-${i}`}>
+                        <Td>{i + 1}</Td>
+                        <Td>{`${p.px[0].toFixed(1)}, ${p.px[1].toFixed(1)}`}</Td>
+                        {mode === 'points' ? (
+                          <>
+                            <Td>
+                              <TextInput
+                                value={p.world[0]}
+                                inputMode="decimal"
+                                onChange={(e) => setPoints((prev) => prev.map((q, j) => (j === i ? { ...q, world: [e.target.value, q.world[1]] } : q)))}
+                                data-testid={`calib-world-x-${i}`}
+                              />
+                            </Td>
+                            <Td>
+                              <TextInput
+                                value={p.world[1]}
+                                inputMode="decimal"
+                                onChange={(e) => setPoints((prev) => prev.map((q, j) => (j === i ? { ...q, world: [q.world[0], e.target.value] } : q)))}
+                                data-testid={`calib-world-y-${i}`}
+                              />
+                            </Td>
+                          </>
+                        ) : null}
+                        <Td align="right">{p.error == null ? '—' : `${p.error.toFixed(3)}`}</Td>
+                        <Td align="right">
+                          <IconButton label={t('common.delete')} onClick={() => { setPoints((prev) => prev.filter((_, j) => j !== i)); setResult(null) }}>
+                            <Trash2 size={13} />
+                          </IconButton>
+                        </Td>
+                      </Tr>
+                    )) : <EmptyRow colSpan={mode === 'points' ? 6 : 4} message={t('calibration.noPoints')} />}
+                  </TBody>
+                </Table>
+              </CardBody>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader title={t('calibration.result')} />
+            <CardBody className="space-y-2">
+              <Select
+                label={t('calibration.unit')}
+                value={unit}
+                onChange={(e) => { setUnit(e.target.value); setResult(null) }}
+                options={UNITS.map((u) => ({ value: u.value, label: t(`calibration.units.${u.key}`) }))}
+                hint={t('calibration.unitHint')}
+                data-testid="calib-unit"
+              />
+              <Button variant="primary" loading={busy} disabled={!canSolve} onClick={() => void solve()} data-testid="calib-solve">
+                {t('calibration.calculate')}
+              </Button>
+              {result ? (
+                <div className="space-y-2 text-sm" data-testid="calib-result">
+                  {world ? (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xl font-semibold tabular-nums">{world.mm_per_px.toFixed(5)}</span>
+                        <span className="text-xs text-subtle">{`${unit}/px`}</span>
+                        {result.quality.world ? <Badge tone={QUALITY_TONE[result.quality.world]}>{t(`calibration.quality.${result.quality.world}`)}</Badge> : null}
+                      </div>
+                      {world.points?.length ? (
+                        <p className="text-xs text-subtle">{t('calibration.fitError', { rms: world.rms.toFixed(3), max: world.max_error.toFixed(3), unit })}</p>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {lens ? (
+                    <p className="text-xs text-subtle">
+                      {t('calibration.lensError', { views: lens.views, rms: lens.rms.toFixed(3) })}{' '}
+                      {result.quality.lens ? <Badge tone={QUALITY_TONE[result.quality.lens]}>{t(`calibration.quality.${result.quality.lens}`)}</Badge> : null}
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-subtle">{t('calibration.useHint')}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-subtle">{t(`calibration.modes.${mode}.steps`)}</p>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title={t('calibration.existing')} />
+            <CardBody>
+              {calibrations.data?.items.length ? (
+                <ul className="space-y-1 text-xs">
+                  {calibrations.data.items.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{a.name}</span>
+                      <span className="shrink-0 text-subtle">{String((a.meta as { summary?: string } | undefined)?.summary ?? '')}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-subtle">{t('calibration.noneYet')}</p>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+
+      <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title={t('calibration.save')}>
+        <div className="space-y-3">
+          <TextInput label={t('common.name')} value={saveName} onChange={(e) => setSaveName(e.target.value)} data-testid="calib-save-name" />
+          <TextInput label={t('common.group')} value={saveGroup} onChange={(e) => setSaveGroup(e.target.value)} />
+          <p className="text-xs text-subtle">{result?.summary}</p>
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setSaveOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" loading={busy} disabled={!saveName.trim()} onClick={() => void save()} data-testid="calib-save-confirm">
+              {t('common.save')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </Page>
+  )
+}
+
+export default CalibrationPage

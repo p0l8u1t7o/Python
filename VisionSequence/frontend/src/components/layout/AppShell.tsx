@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, History, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, History, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Ruler, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
@@ -28,6 +28,7 @@ const NAV: { to: string; key: string; icon: LucideIcon; end: boolean; admin?: bo
   { to: '/flows', key: 'flows', icon: Workflow, end: false },
   { to: '/batch', key: 'batch', icon: FlaskConical, end: false, feature: 'batch' },
   { to: '/sources', key: 'sources', icon: Camera, end: false, feature: 'sources' },
+  { to: '/calibration', key: 'calibration', icon: Ruler, end: false, feature: 'assets' },
   { to: '/assets', key: 'assets', icon: Images, end: false, feature: 'assets' },
   { to: '/dl', key: 'dl', icon: Brain, end: false, feature: 'dl' },
   { to: '/agent', key: 'agent', icon: Sparkles, end: false, feature: 'agent' },

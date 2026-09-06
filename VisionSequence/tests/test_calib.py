@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import math
 import os
@@ -14,9 +15,11 @@ import time
 
 import cv2
 import numpy as np
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.vision import calib
+from apps.vision.images import store
+from apps.vision.models import Asset
 from apps.vision.tools.base import ToolError
 from tests._helpers import run_tool, temp_dir
 
@@ -334,3 +337,171 @@ class ToolTests(SimpleTestCase):
             run_tool("calibration", None, {"mode": "asset", "calibration": "lens"}, inputs={"value": 1.0}, assets=self.assets)
         # 舊的兩種模式不受影響
         self.assertAlmostEqual(run_tool("calibration", None, {"pixel_size_mm": 0.01}, inputs={"value": 100.0}).outputs["mm"], 1.0, places=9)
+
+
+def chessboard_image(cols: int = 9, rows: int = 6, square: int = 70) -> np.ndarray:
+    img = np.full((rows * square + 180, cols * square + 240), 255, np.uint8)
+    for r in range(rows + 1):
+        for c in range(cols + 1):
+            if (r + c) % 2 == 0:
+                cv2.rectangle(img, (120 + c * square, 90 + r * square), (120 + (c + 1) * square - 1, 90 + (r + 1) * square - 1), 0, -1)
+    return img
+
+
+class ApiTests(TestCase):
+    """標定頁的 API：拍照→偵測→解算→存成資產。solve 不會偷偷存，存是另一步。"""
+
+    def setUp(self):
+        self.addCleanup(calib.invalidate)
+        self.board = chessboard_image()
+        info = store.put("calibtest:capture:image", self.board, flow_id=0, run_id="calibtest", pinned=True)
+        self.ref = info["ref"]
+        self.size = [info["width"], info["height"]]
+        self.addCleanup(store.drop_run, "calibtest")
+
+    def post(self, path: str, body: dict):
+        return self.client.post(f"/api/vision/calibration/{path}", data=json.dumps(body), content_type="application/json")
+
+    # ---- 拍照 ----
+    def test_capture_uploaded_image(self):
+        ok, buf = cv2.imencode(".png", self.board)
+        self.assertTrue(ok)
+        upload = io.BytesIO(buf.tobytes())
+        upload.name = "board.png"
+        r = self.client.post("/api/vision/calibration/capture", data={"image": upload})
+        self.assertEqual(r.status_code, 201, r.content)
+        body = r.json()
+        self.assertEqual([body["width"], body["height"]], list(self.board.shape[1::-1]))
+        self.assertIsNotNone(store.get(body["ref"]))
+        store.drop_run(body["ref"].split(":")[0])
+
+    def test_capture_without_anything(self):
+        r = self.client.post("/api/vision/calibration/capture", data={})
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.json()["error"]["code"], "no_input")
+
+    # ---- 偵測 ----
+    def test_detect_board(self):
+        r = self.post("detect", {"ref": self.ref, "kind": "chessboard", "cols": 9, "rows": 6})
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertTrue(body["found"])
+        self.assertEqual(body["count"], 54)
+        self.assertEqual(len(body["corners"]), 54)
+        kinds = {o["kind"] for o in body["overlays"]}
+        self.assertEqual(kinds, {"points", "polyline", "point"})
+
+    def test_detect_says_why_when_it_fails(self):
+        r = self.post("detect", {"ref": self.ref, "kind": "chessboard", "cols": 7, "rows": 5})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(r.json()["found"])
+        self.assertIn("7 x 5", r.json()["hint"])
+        self.assertEqual(self.post("detect", {"ref": "gone", "cols": 9, "rows": 6}).status_code, 404)
+        self.assertEqual(self.post("detect", {"ref": self.ref, "kind": "nope", "cols": 9, "rows": 6}).status_code, 422)
+
+    # ---- 吸附 ----
+    def test_snap_to_a_feature(self):
+        img = np.full((200, 200), 240, np.uint8)
+        cv2.circle(img, (120, 80), 12, 20, -1)
+        store.put("snap:capture:image", img, flow_id=0, run_id="snap", pinned=True)
+        self.addCleanup(store.drop_run, "snap")
+        r = self.post("snap", {"ref": "snap:capture:image", "x": 126, "y": 86, "radius": 25})
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertTrue(body["found"])
+        self.assertAlmostEqual(body["x"], 120.0, delta=1.0)
+        self.assertAlmostEqual(body["y"], 80.0, delta=1.0)
+        # 空白處吸附不到就照實說，不會亂給一個點
+        blank_r = self.post("snap", {"ref": "snap:capture:image", "x": 20, "y": 20, "radius": 10})
+        self.assertFalse(blank_r.json()["found"])
+        self.assertEqual(self.post("snap", {"ref": "snap:capture:image", "x": "a", "y": 1}).status_code, 422)
+
+    # ---- 解算 ----
+    def test_solve_board_gives_lens_and_world(self):
+        corners = calib.find_board(self.board, 9, 6, "chessboard")
+        views = [corners.tolist() for _ in range(4)]
+        r = self.post("solve", {"mode": "board", "image_size": self.size, "cols": 9, "rows": 6, "spacing": 5.0, "views": views})
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertIn("world", body["payload"])
+        self.assertEqual(body["payload"]["world"]["kind"], "perspective")
+        self.assertGreater(body["payload"]["world"]["mm_per_px"], 0)
+        self.assertIn("mm/px", body["summary"])
+        self.assertIn("world", body["quality"])
+        # 只有一張時仍給世界座標，但沒有鏡頭資料
+        one = self.post("solve", {"mode": "board", "image_size": self.size, "cols": 9, "rows": 6, "spacing": 5.0, "views": views[:1]})
+        self.assertEqual(one.status_code, 200, one.content)
+        self.assertNotIn("lens", one.json()["payload"])
+
+    def test_solve_points_reports_residuals(self):
+        truth = affine_matrix()
+        px = [[100.0, 120], [900, 140], [880, 700], [120, 690], [500, 400], [300, 250], [700, 550]]
+        world = calib.apply(truth, px)
+        points = [{"px": p, "world": list(w)} for p, w in zip(px, world.tolist(), strict=True)]
+        points[1]["world"][0] += 0.6
+        r = self.post("solve", {"mode": "points", "image_size": self.size, "world_kind": "affine", "points": points})
+        self.assertEqual(r.status_code, 200, r.content)
+        got = r.json()["payload"]["world"]
+        self.assertEqual(len(got["points"]), 7)
+        self.assertEqual(int(np.argmax([p["error"] for p in got["points"]])), 1)
+        self.assertGreater(got["max_error"], got["rms"])
+
+    def test_solve_distance(self):
+        r = self.post("solve", {"mode": "distance", "image_size": self.size, "distance": 25.0,
+                                "points": [{"px": [100, 100]}, {"px": [600, 100]}]})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertAlmostEqual(r.json()["payload"]["world"]["mm_per_px"], 0.05, places=9)
+
+    def test_solve_rejects_bad_input(self):
+        cases = [
+            ({"mode": "nope", "image_size": self.size}, "bad_mode"),
+            ({"mode": "board", "image_size": [0, 0]}, "bad_size"),
+            ({"mode": "board", "image_size": self.size, "views": []}, "no_views"),
+            ({"mode": "distance", "image_size": self.size, "points": [{"px": [1, 1]}], "distance": 5}, "bad_points"),
+            ({"mode": "distance", "image_size": self.size, "points": [{"px": [1, 1]}, {"px": [2, 2]}], "distance": 0}, "bad_distance"),
+            ({"mode": "distance", "image_size": self.size, "points": [{"px": [1, 1]}, {"px": [1, 1]}], "distance": 5}, "bad_points"),
+            ({"mode": "points", "image_size": self.size, "points": [{"px": [1, 1], "world": [0, 0]}]}, "bad_calibration"),
+        ]
+        for body, code in cases:
+            r = self.post("solve", body)
+            self.assertEqual(r.status_code, 422, (body, r.content))
+            self.assertEqual(r.json()["error"]["code"], code, (body, r.content))
+
+    def test_solve_keeps_an_existing_lens(self):
+        lens = lens_payload()["lens"]
+        r = self.post("solve", {"mode": "distance", "image_size": self.size, "distance": 25.0, "lens": lens,
+                                "points": [{"px": [100, 100]}, {"px": [600, 100]}]})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn("lens", r.json()["payload"])
+
+    # ---- 存成資產 ----
+    def test_create_and_read_asset(self):
+        payload = calib.validate({**lens_payload(), "world": world_payload()["world"]})
+        r = self.post("assets", {"name": "station A", "group": "line 1", "payload": payload})
+        self.assertEqual(r.status_code, 201, r.content)
+        body = r.json()
+        asset = Asset.objects.get(pk=body["id"])
+        self.addCleanup(lambda: os.path.exists(asset.path) and os.remove(asset.path))
+        self.assertEqual(asset.kind, "calibration")
+        self.assertEqual(asset.group, "line 1")
+        self.assertTrue(asset.meta["has_lens"])
+        self.assertTrue(asset.meta["has_world"])
+        self.assertGreater(asset.size, 0)
+        # 讀回來
+        r = self.client.get(f"/api/vision/calibration/assets/{asset.id}")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["payload"]["world"]["kind"], "affine")
+        self.assertIn("lens", r.json()["summary"])
+        # 工具真的吃得到這個檔
+        loaded = calib.load(asset.path)
+        self.assertIn("lens", loaded)
+        # 一般資產清單也看得到，且能依 kind 過濾
+        listing = self.client.get("/api/vision/assets?kind=calibration").json()["items"]
+        self.assertEqual([a["id"] for a in listing], [str(asset.id)])
+
+    def test_asset_errors(self):
+        self.assertEqual(self.post("assets", {"name": "x", "payload": {"image_size": [10, 10]}}).status_code, 422)
+        r = self.client.get("/api/vision/calibration/assets/00000000-0000-0000-0000-000000000000")
+        self.assertEqual(r.status_code, 404)
+        image_asset = Asset.objects.create(name="img", kind="image", path="nope.png", size=1)
+        self.assertEqual(self.client.get(f"/api/vision/calibration/assets/{image_asset.id}").status_code, 404)

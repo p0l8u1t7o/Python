@@ -349,7 +349,7 @@ export interface Asset {
   name: string
   /** 使用者自訂群組（'' = 未分組） */
   group: string
-  kind: 'image' | 'model' | 'file'
+  kind: 'image' | 'model' | 'file' | 'calibration'
   size: number
   meta: Record<string, unknown>
   created_at: string

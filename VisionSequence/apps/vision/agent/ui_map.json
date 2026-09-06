@@ -729,6 +729,38 @@
    ]
   },
   {
+   "route": "/calibration",
+   "id": "calibration",
+   "names": {
+    "en": "Calibration",
+    "zh-Hant": "標定",
+    "zh-Hans": "标定"
+   },
+   "summary": {
+    "en": "Teach millimetres per pixel, lens distortion and robot coordinates, saved as a calibration",
+    "zh-Hant": "教出每像素幾毫米、鏡頭畸變與機械手座標，存成標定資產",
+    "zh-Hans": "教出每像素几毫米、镜头畸变与机械手坐标，存为标定资产"
+   },
+   "feature": "assets",
+   "actions": [
+    {
+     "en": "Capture",
+     "zh-Hant": "擷取",
+     "zh-Hans": "采集"
+    },
+    {
+     "en": "Calculate",
+     "zh-Hant": "計算",
+     "zh-Hans": "计算"
+    },
+    {
+     "en": "Save calibration",
+     "zh-Hant": "儲存標定",
+     "zh-Hans": "保存标定"
+    }
+   ]
+  },
+  {
    "route": "/users",
    "id": "users",
    "names": {

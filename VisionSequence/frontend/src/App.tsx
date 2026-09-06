@@ -27,6 +27,7 @@ const IntegrationCapturePage = lazy(() => import('@/pages/integration/CapturePag
 const IntegrationPluginsPage = lazy(() => import('@/pages/integration/PluginsPage').then((m) => ({ default: m.PluginsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
+const CalibrationPage = lazy(() => import('@/pages/CalibrationPage').then((m) => ({ default: m.CalibrationPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
 const TeachPage = lazy(() => import('@/pages/TeachPage').then((m) => ({ default: m.TeachPage })))
 const DlPage = lazy(() => import('@/pages/DlPage').then((m) => ({ default: m.DlPage })))
@@ -81,6 +82,7 @@ const router = createBrowserRouter([
           },
           { path: 'help', element: <HelpPage /> },
           { path: 'sources', element: <SourcesPage /> },
+          { path: 'calibration', element: <CalibrationPage /> },
           { path: 'assets', element: <AssetsPage /> },
           { path: 'users', element: <UsersPage /> },
           { path: 'audit', element: <AuditPage /> },

@@ -34,6 +34,10 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/capture')) return {}
   if (path.startsWith('/vision/sources/kinds')) return { items: [{ kind: 'folder', label: '資料夾', fields: ['path'] }, { kind: 'capture', label: '擷取端相機', fields: ['client', 'channel', 'mode', 'timeout_ms', 'fresh', 'encoding'] }] }
   if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: {}, is_enabled: true }, { id: 2, name: '產線相機', kind: 'capture', group: '', config: { client: 'old-pc', channel: 'cam1', mode: 'on_demand' }, status: { open: false, connected: false, last_error: '' }, is_enabled: true }] }
+  if (path.startsWith('/vision/calibration/capture')) return { ref: 'cal:capture:image', width: 640, height: 480, name: 'shot.png' }
+  if (path.startsWith('/vision/calibration/detect')) return { found: true, count: 54, corners: [[10, 10], [20, 10]], overlays: [{ kind: 'points', points: [[10, 10], [20, 10]] }] }
+  if (path.startsWith('/vision/calibration/solve')) return { payload: { unit: 'mm', image_size: [640, 480], world: { kind: 'perspective', matrix: [[0.05, 0, 0], [0, 0.05, 0], [0, 0, 1]], mm_per_px: 0.05, rms: 0.01, max_error: 0.02, points: [] } }, summary: 'perspective 0.05000 mm/px', quality: { world: 'good' } }
+  if (path.startsWith('/vision/calibration')) return { items: [] }
   if (path.startsWith('/vision/assets')) return { items: [] }
   if (path.startsWith('/vision/groups')) return { items: [{ id: 1, kind: 'source', name: '範例' }] }
   if (path.startsWith('/vision/templates')) return { items: [], can_manage: true }

@@ -44,6 +44,28 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(screen.getByText('Offline rule engine')).toBeInTheDocument())
   })
 
+  it('CalibrationPage offers the three ways and calculates from a board', async () => {
+    const { CalibrationPage } = await import('@/pages/CalibrationPage')
+    renderPage(<CalibrationPage />, { route: '/calibration' })
+    expect(await screen.findByTestId('calib-mode-board')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mode-points')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mode-distance')).toBeInTheDocument()
+    // 還沒有影像：不能計算也不能儲存
+    expect(screen.getByTestId('calib-solve')).toBeDisabled()
+    expect(screen.getByTestId('calib-save')).toBeDisabled()
+    // 從影像來源拍一張 → 自動找標定板 → 可以計算（來源清單載完才選得到）
+    const picker = screen.getByTestId('calib-source') as HTMLSelectElement
+    await waitFor(() => expect(picker.querySelector('option[value="1"]')).not.toBeNull())
+    fireEvent.change(picker, { target: { value: '1' } })
+    await waitFor(() => expect(screen.getByTestId('calib-capture')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('calib-capture'))
+    await waitFor(() => expect(screen.getByTestId('calib-solve')).toBeEnabled())
+    fireEvent.click(screen.getByTestId('calib-solve'))
+    // 算完才給存，且結果用白話呈現
+    expect(await screen.findByTestId('calib-result')).toHaveTextContent('0.05000')
+    await waitFor(() => expect(screen.getByTestId('calib-save')).toBeEnabled())
+  })
+
   it('BatchPage renders flow picker and empty image sets', async () => {
     const { BatchPage } = await import('@/pages/BatchPage')
     renderPage(<BatchPage />, { route: '/batch' })
