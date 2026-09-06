@@ -59,6 +59,7 @@ from apps.vision.api_more import router as more_router  # noqa: E402
 from apps.vision.api_recipes import router as recipes_router  # noqa: E402
 from apps.vision.api_calib import router as calib_router  # noqa: E402
 from apps.vision.api_variables import router as variables_router  # noqa: E402
+from apps.vision.api_board import router as board_router  # noqa: E402
 from apps.comm.api import router as comm_router  # noqa: E402
 from apps.vision.api_flowio import router as flowio_router  # noqa: E402
 from apps.golden.api import router as golden_router  # noqa: E402
@@ -77,6 +78,7 @@ api.add_router("/vision", batch_router)
 api.add_router("/vision", recipes_router)
 api.add_router("/vision", calib_router)
 api.add_router("/vision", variables_router)
+api.add_router("/vision", board_router)
 api.add_router("/vision", vision_router)
 api.add_router("/vision", more_router)
 api.add_router("/vision", comm_router)

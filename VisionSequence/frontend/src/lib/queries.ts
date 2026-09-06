@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { logActivity } from '@/lib/activity'
 
 import { ApiError, api, request } from './api'
+import type { BoardConfig, BoardData } from './board'
 import { localiseList, localiseTrainers } from './catalogueLocale'
 import type { OpenApiDocument } from '@/pages/integration/openapi'
 import { localiseCatalogue } from './toolLocale'
@@ -140,6 +141,8 @@ export interface FlowPatch {
   commissioned?: boolean
   /** 影像封存策略（工程師才能改） */
   archive_policy?: Partial<ArchivePolicy>
+  /** 現場看板設定（工程師才能改） */
+  board?: BoardConfig
 }
 
 export function useFlowMutations() {
@@ -618,6 +621,16 @@ export function useIntegrationInfo() {
 export function useTcpCommand() {
   return useMutation({
     mutationFn: ({ command, timeout_s }: { command: string; timeout_s?: number }) => api.post<TcpResult>('/vision/integration/tcp', { command, timeout_s: timeout_s ?? 10 }),
+  })
+}
+
+// ---- 看板（設定＋最新 run＋今日良率一次拿齊；整合端自建 UI 也用同一個端點） ----
+export function useBoard(flowId: number | null) {
+  return useQuery({
+    queryKey: ['board', flowId] as const,
+    queryFn: () => api.get<BoardData>(`/vision/flows/${flowId}/board`),
+    enabled: flowId !== null,
+    refetchInterval: 15000,
   })
 }
 

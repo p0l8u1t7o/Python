@@ -21,6 +21,7 @@ class FlowPatch(Schema):
     continuous_interval_ms: int | None = None
     commissioned: bool | None = None
     archive_policy: dict | None = None
+    board: dict | None = None
 
 
 class RecipeIn(Schema):

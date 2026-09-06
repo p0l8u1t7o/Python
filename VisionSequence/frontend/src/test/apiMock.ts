@@ -34,6 +34,7 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/capture')) return {}
   if (path.startsWith('/vision/sources/kinds')) return { items: [{ kind: 'folder', label: '資料夾', fields: ['path'] }, { kind: 'capture', label: '擷取端相機', fields: ['client', 'channel', 'mode', 'timeout_ms', 'fresh', 'encoding'] }] }
   if (path.startsWith('/vision/sources')) return { items: [{ id: 1, name: '範例：圓孔量測', kind: 'folder', group: '範例', config: { path: 'x' }, status: {}, is_enabled: true }, { id: 2, name: '產線相機', kind: 'capture', group: '', config: { client: 'old-pc', channel: 'cam1', mode: 'on_demand' }, status: { open: false, connected: false, last_error: '' }, is_enabled: true }] }
+  if (/\/vision\/flows\/\d+\/board$/.test(path)) return { flow: { id: 1, name: 'demo', title: 'Line 1' }, config: { title: 'Line 1', image: '', overlays: true, values: [{ key: 'width', unit: 'mm', low: 1, high: 2 }], variables: [], show_verdict: true, show_counts: true }, run: null, values: [{ key: 'width', label: 'width', unit: 'mm', value: null, text: '', ok: null, present: false }], variables: { lot: 'A17' }, counts: { date: '2026-09-06', total: 10, ok: 9, ng: 1, failed: 0, yield: 90 }, stats: {} }
   if (/\/vision\/flows\/\d+\/variables$/.test(path)) return { flow_id: 1, items: { parts: 12, lot: 'A17' }, station: { shift: 'day' } }
   if (path.startsWith('/vision/variables')) return { items: { shift: 'day' } }
   if (path.startsWith('/vision/calibration/capture')) return { ref: 'cal:capture:image', width: 640, height: 480, name: 'shot.png' }

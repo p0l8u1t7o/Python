@@ -29,6 +29,8 @@ class Flow(models.Model):
     commissioned = models.BooleanField(default=False)
     #: 影像封存策略（見 apps/vision/archive.py）；空 dict＝用 .env 的出貨預設。
     archive_policy = models.JSONField(default=dict, blank=True)
+    #: 現場看板要顯示什麼（見 apps/vision/board.py）；空 dict＝全部具名輸出＋最後一張影像。
+    board = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

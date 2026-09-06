@@ -159,6 +159,8 @@ export interface FlowStats {
 
 export interface Flow {
   archive_policy?: ArchivePolicy
+  /** 現場看板設定（apps/vision/board.py）；空物件＝預設 */
+  board?: import('./board').BoardConfig
   id: number
   name: string
   description: string

@@ -28,6 +28,7 @@ const IntegrationPluginsPage = lazy(() => import('@/pages/integration/PluginsPag
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SourcesPage = lazy(() => import('@/pages/SourcesPage').then((m) => ({ default: m.SourcesPage })))
 const CalibrationPage = lazy(() => import('@/pages/CalibrationPage').then((m) => ({ default: m.CalibrationPage })))
+const BoardPage = lazy(() => import('@/pages/BoardPage').then((m) => ({ default: m.BoardPage })))
 const StatsPage = lazy(() => import('@/pages/StatsPage').then((m) => ({ default: m.StatsPage })))
 const TeachPage = lazy(() => import('@/pages/TeachPage').then((m) => ({ default: m.TeachPage })))
 const DlPage = lazy(() => import('@/pages/DlPage').then((m) => ({ default: m.DlPage })))
@@ -48,6 +49,8 @@ const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
+      // 現場全螢幕看板：沒有側欄與頂列（kiosk 用），登入照常
+      { path: '/board/:flowId', element: <Suspense fallback={<LoadingState />}><BoardPage /></Suspense> },
       {
         path: '/',
         element: <AppShell />,

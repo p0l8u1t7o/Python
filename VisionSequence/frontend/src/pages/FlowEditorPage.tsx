@@ -41,6 +41,7 @@ import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
 import { SaveTemplateModal, TemplateGallery } from '@/components/templates/TemplateGallery'
 import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
+import { BoardSettings } from '@/components/flow/BoardSettings'
 import { VariablesCard } from '@/components/flow/VariablesCard'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
@@ -333,6 +334,11 @@ function EditorInner({ flowId }: { flowId: number }) {
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
 
   const problemMap = useMemo(() => graphProblems(graphNodes, graphEdges, defs), [graphNodes, graphEdges, defs])
+  const boardOutputNames = useMemo(() => Array.from(new Set(graphNodes.filter((n) => n.type === 'output' || n.type === 'format_text').map((n) => String(n.params?.name ?? '')).filter(Boolean))), [graphNodes])
+  const boardImageNodes = useMemo(
+    () => graphNodes.filter((n) => defs.get(n.type)?.outputs.some((p) => p.type === 'image' && !p.implicit)).map((n) => ({ id: n.id, label: n.label || defs.get(n.type)?.label || n.id })),
+    [graphNodes, defs],
+  )
 
   // ---- 步驟裝飾：只在有變的步驟回新物件 ----
   const slowestMs = useMemo(() => (activeRun ? Math.max(0, ...Object.values(activeRun.nodes).map((r) => (r.status === 'skipped' ? 0 : r.duration_ms))) : 0), [activeRun])
@@ -1121,6 +1127,18 @@ function EditorInner({ flowId }: { flowId: number }) {
                   <div className="border-t border-line pt-3">
                     <p className="mb-1.5 text-xs font-semibold text-heading">{t('variables.title')}</p>
                     <VariablesCard flowId={flowId} />
+                  </div>
+                  <div className="border-t border-line pt-3">
+                    <p className="mb-1.5 text-xs font-semibold text-heading">{t('board.settings.title')}</p>
+                    <BoardSettings
+                      flowId={flowId}
+                      config={flow.data?.board}
+                      outputNames={boardOutputNames}
+                      imageNodes={boardImageNodes}
+                      readOnly={readOnly}
+                      saving={patch.isPending}
+                      onSave={(cfg) => patch.mutate({ id: flowId, board: cfg }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('board.settings.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
+                    />
                   </div>
                 </div>
               )

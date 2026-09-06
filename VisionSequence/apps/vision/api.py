@@ -42,7 +42,7 @@ from ninja import File, Form, Router, Schema, UploadedFile
 from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
 from apps.core import audit
-from apps.vision import archive, graphdiff, schemas, scripts, teachguard, trace, versions
+from apps.vision import archive, board, graphdiff, schemas, scripts, teachguard, trace, versions
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource, ResourceGroup
@@ -70,6 +70,7 @@ def _flow_out(flow: Flow) -> dict[str, Any]:
         "continuous_interval_ms": flow.continuous_interval_ms,
         "commissioned": flow.commissioned,
         "archive_policy": archive.policy_for(flow),
+        "board": board.sanitize(flow.board),
         "recipe_count": flow.recipes.count(),
         "node_count": len((flow.graph or {}).get("nodes") or []),
         "created_at": flow.created_at.isoformat(),
@@ -238,7 +239,7 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     if not p.can("flows.edit"):
         # 沒有 flows.edit 的人只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
         require_feature(request, "flows.teach")
-        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned", "archive_policy") if getattr(payload, f) is not None]
+        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned", "archive_policy", "board") if getattr(payload, f) is not None]
         if touched or payload.graph is None:
             raise PermissionDenied("Your role may only change on-site teaching parameters on this flow", code="permission_denied")
         try:
@@ -259,6 +260,8 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         flow.commissioned = payload.commissioned
     if payload.archive_policy is not None:
         flow.archive_policy = archive.sanitize(payload.archive_policy)
+    if payload.board is not None:
+        flow.board = board.sanitize(payload.board)
     field_changes = {}
     graph_changed = False
     if payload.graph is not None:

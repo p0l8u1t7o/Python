@@ -63,6 +63,7 @@ export const UI_PAGES: UiPage[] = [
   { route: '/audit', id: 'audit', nav: 'nav.audit', feature: 'audit', help: '/audit', actions: ['audit.export'] },
   { route: '/settings', id: 'settings', nav: 'nav.settings', help: '/settings', actions: ['auth.changePassword'] },
   { route: '/login', id: 'login', title: 'auth.loginTitle', help: '/login' },
+  { route: '/board/:flowId', id: 'board', title: 'board.settings.title', help: '/board/:flowId' },
 ]
 
 /** 不進地圖的路由：純轉址。 */

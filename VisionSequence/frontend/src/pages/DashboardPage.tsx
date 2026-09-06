@@ -11,6 +11,7 @@ import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '@/components/ui'
 import { TrendStrip } from '@/pages/StatsPage'
 import { api, imageUrl } from '@/lib/api'
+import { evaluateValues, pickImage } from '@/lib/board'
 import { lastImage } from '@/lib/runImages'
 import { useToast } from '@/providers/ToastProvider'
 import { errorMessage } from '@/lib/errors'
@@ -71,7 +72,8 @@ function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) 
       cancelled = true
     }
   }, [flow.id])
-  const image = run ? lastImage(run) : null
+  // 看板設定指定了節點就顯示那一張，否則最後一張
+  const image = run ? (pickImage(run, flow.board?.image) ?? lastImage(run)) : null
   const overlays = useMemo(() => (run ? Object.values(run.nodes).flatMap((n) => n.overlays ?? []) : []), [run])
   if (!image || !run) {
     return (
@@ -91,8 +93,9 @@ function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) 
 }
 
 /** 左欄：即時檢測資訊（最新一筆 run 的判定／耗時／來源／具名輸出）。 */
-function LiveInfo({ run }: { run: RunReport | null }) {
+function LiveInfo({ run, flow }: { run: RunReport | null; flow: Flow | null }) {
   const { t } = useTranslation()
+  const values = run ? evaluateValues(flow?.board, run.outputs as Record<string, unknown>) : []
   return (
     <Card className="p-3">
       <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-heading"><MonitorPlay size={13} className="text-brand" />{t('dashboard.liveInfo')}</p>
@@ -108,12 +111,20 @@ function LiveInfo({ run }: { run: RunReport | null }) {
             {run.station_id ? <span>{t('dashboard.station')} <code className="font-mono">{run.station_id}</code></span> : null}
             {run.recipe ? <span>{t('dashboard.recipe')} <code className="font-mono">{run.recipe}</code></span> : null}
           </div>
-          {Object.keys(run.outputs).length ? (
-            <div className="rounded-md border border-line px-2 py-1.5">
-              {Object.entries(run.outputs).map(([k, v]) => (
-                <p key={k} className="flex justify-between gap-2"><span className="truncate">{k}</span><span className="tnum shrink-0 font-medium text-content">{String(v)}</span></p>
+          {values.length ? (
+            <div className="rounded-md border border-line px-2 py-1.5" data-testid="live-values">
+              {values.map((v) => (
+                <p key={v.key} className="flex justify-between gap-2">
+                  <span className="truncate">{v.label}</span>
+                  <span className={`tnum shrink-0 font-medium ${v.ok === null ? 'text-content' : v.ok ? 'text-ok' : 'text-critical'}`}>{v.present ? v.text : '—'}{v.unit ? ` ${v.unit}` : ''}</span>
+                </p>
               ))}
             </div>
+          ) : null}
+          {flow ? (
+            <a className="inline-flex items-center gap-1 text-xs text-brand hover:underline" href={`/board/${flow.id}`} target="_blank" rel="noreferrer" data-testid="dash-open-board">
+              <MonitorPlay size={12} /> {t('board.settings.open')}
+            </a>
           ) : null}
           {run.warnings?.length ? <p className="text-warning">{run.warnings.join('; ')}</p> : null}
         </div>
@@ -237,7 +248,7 @@ export function DashboardPage() {
           </div>
           {/* 右欄：即時檢測資訊 */}
           <div className="min-w-0">
-            <LiveInfo run={lastRun} />
+            <LiveInfo run={lastRun} flow={items.find((f) => f.id === watchingId) ?? null} />
           </div>
         </div>
       )}

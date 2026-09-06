@@ -342,7 +342,8 @@ class Runner:
             self._prefetch(compiled)
             return compiled
         rt = self.runtime(flow.id)
-        key = (flow.version, recipe.id if recipe else 0, recipe.updated_at.isoformat() if recipe else "")
+        # 流程自己的 updated_at 也進鍵：同一個 id、同一個版本但內容不同（測試裡序號重用、還原舊版）不會拿到舊的編譯結果
+        key = (flow.version, flow.updated_at.isoformat() if flow.updated_at else "", recipe.id if recipe else 0, recipe.updated_at.isoformat() if recipe else "")
         cached = rt.compiled_by_recipe.get(key)
         if cached is not None:
             return cached

@@ -843,6 +843,20 @@
     "zh-Hant": "登入，或建立第一個管理員",
     "zh-Hans": "登录，或建立第一个管理员"
    }
+  },
+  {
+   "route": "/board/:flowId",
+   "id": "board",
+   "names": {
+    "en": "Board",
+    "zh-Hant": "看板",
+    "zh-Hans": "看板"
+   },
+   "summary": {
+    "en": "Full-screen board for one flow: the picture, the verdict, the values chosen under Board, today's counts and variables",
+    "zh-Hant": "單一流程的全螢幕看板：影像、判定、看板設定選的數值、今日數量與變數",
+    "zh-Hans": "单一流程的全屏看板：影像、判定、看板设置选的数值、今日数量与变量"
+   }
   }
  ]
 }
