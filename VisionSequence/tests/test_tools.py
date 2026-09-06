@@ -530,6 +530,33 @@ class ToolPurityTests(SimpleTestCase):
             shutil.rmtree(folder, ignore_errors=True)
 
 
+    def test_overlays_use_known_kinds(self):
+        """每個標記都要有前端畫得出來的 kind。寫成 "type" 或打錯字時前端只會安靜地不畫，這裡擋下來。"""
+        import os
+        import shutil
+        import sys
+
+        scripts = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from bench_tools import Scene, cases, make_ctx
+
+        known = {"rect", "circle", "annulus", "polygon", "polyline", "line", "point", "points", "text", "contours"}
+        folder = temp_dir()
+        try:
+            scene = Scene(640, 480, folder)
+            seen = 0
+            for name, key, image, params, inputs, context in cases(scene):
+                result = base.get(key).execute(make_ctx(key, image, params, inputs, scene.assets, context))
+                for overlay in result.overlays:
+                    self.assertIsInstance(overlay, dict, f"{name}（{key}）的標記不是 dict")
+                    self.assertIn(overlay.get("kind"), known, f"{name}（{key}）的標記 kind 前端畫不出來：{overlay!r}"[:200])
+                    seen += 1
+            self.assertGreater(seen, 100)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 class DlTests(SimpleTestCase):
     def setUp(self):
         if dl_mod.ort is None:

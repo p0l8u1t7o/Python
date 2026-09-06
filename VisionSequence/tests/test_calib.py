@@ -312,7 +312,8 @@ class ToolTests(SimpleTestCase):
         self.assertAlmostEqual(r.outputs["length"], 5.0, places=6)   # 100 px * 0.05
         self.assertAlmostEqual(r.outputs["angle"], 42.0, places=4)   # 影像 30° + 座標系 12°
         self.assertAlmostEqual(r.outputs["scale"], 0.05, places=9)
-        self.assertTrue(any(o.get("type") == "point" for o in r.overlays))
+        # overlay 的鍵是 kind（不是 type），寫錯前端不會畫但也不會報錯
+        self.assertTrue(any(o.get("kind") == "point" and "label" in o for o in r.overlays))
 
     def test_to_world_needs_a_world_mapping_and_an_input(self):
         with self.assertRaises(ToolError) as bad:

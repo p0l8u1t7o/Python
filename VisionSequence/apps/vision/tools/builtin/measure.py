@@ -1163,7 +1163,7 @@ class ToWorldTool(Tool):
                 parts.append(f"({outputs['x']:.{digits}f}, {outputs['y']:.{digits}f}) {unit}")
                 # 標記畫在輸入影像的全圖座標上，文字寫世界座標——現場一眼就能對照
                 for i in range(min(len(src), 32)):
-                    overlays.append({"type": "point", "x": float(src[i, 0]), "y": float(src[i, 1]),
+                    overlays.append({"kind": "point", "x": float(src[i, 0]), "y": float(src[i, 1]), "color": "#22c55e",
                                      "label": f"{mapped[i, 0]:.{digits}f}, {mapped[i, 1]:.{digits}f}"})
         if value is not None:
             try:
