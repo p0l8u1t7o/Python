@@ -1902,6 +1902,26 @@ export default {
       ok: "成功",
     },
   },
+  region_combine: {
+    label: "区域组合",
+    description: "把好几个区域组成一个：从测量区挖掉孔位、字样或反光带（挖除）、把分开的几块合成一块（并集）、只留重叠处（交集）。结果接任何工具的区域输入端口——blob、统计、良品比对等都按组合后的掩码算。",
+    params: {
+      base: { label: "基底区域", help: "起始的区域。留空则以第一个接进来的区域为基底。" },
+      mode: {
+        label: "模式",
+        options: { subtract: "挖除（从基底挖掉这些区域）", union: "并集（把这些区域加进基底）", intersect: "交集（只留重叠处）" },
+      },
+    },
+    ports: { base: "基底区域（动态）", regions: "要组合的区域", image: "图像（显示用）", region: "区域", count: "组成数" },
+  },
+  region_from_shape: {
+    label: "区域",
+    description: "把画好的形状变成区域输出，让画布上能有第二、第三个区域——交给区域组合的排除区与加量区域。本身不影响图像。",
+    params: {
+      roi: { label: "形状", help: "任何形状：矩形、旋转矩形、圆、椭圆、圆环、多边形。" },
+    },
+    ports: { image: "图像（显示用）", region: "区域" },
+  },
   resize: {
     label: "比例",
     description: "依比例或指定尺寸缩放；大图先缩小再處理是最有效的加速。",

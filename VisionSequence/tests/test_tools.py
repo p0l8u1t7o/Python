@@ -34,6 +34,7 @@ class RegistryTests(SimpleTestCase):
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
+            "region_from_shape", "region_combine",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -74,6 +75,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["contour_filter"], {"min_area", "max_area"})
         self.assertEqual(teach["contour_geometry"], {"defect_depth"})
         self.assertEqual(teach["contour_match"], {"max_distance"})
+        self.assertEqual(teach["region_combine"], {"base"})
+        self.assertEqual(teach["region_from_shape"], {"roi"})
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 
@@ -1041,6 +1044,115 @@ class ContourTests(SimpleTestCase):
         self.assertEqual((found.outputs["count"], kept.outputs["count"], geo.outputs["count"]), (2, 1, 1))
         self.assertEqual(geo.outputs["total_defects"], 1)
         self.assertEqual(geo.outputs["areas"], kept.outputs["areas"])
+
+
+class CompositeRoiTests(SimpleTestCase):
+    """WP-08 多重 ROI 與排除區：composite 的遮罩／外框／中心／位移／標記，與 region_combine／region_from_shape 工具。"""
+
+    RECT = {"shape": "rect", "x": 20, "y": 10, "w": 100, "h": 60}
+    HOLE = {"shape": "circle", "cx": 70, "cy": 40, "r": 15}
+
+    def test_mask_union_subtract_intersect_nested(self):
+        from apps.vision.tools.roi import composite, mask_for
+
+        rect_px = 100 * 60
+        hole_px = int(mask_for(self.HOLE, 160, 100).sum() / 255)
+        sub = composite(self.RECT, [("subtract", self.HOLE)])
+        self.assertEqual(int(mask_for(sub, 160, 100).sum() / 255), rect_px - hole_px)
+        far = {"shape": "rect", "x": 130, "y": 80, "w": 20, "h": 10}
+        uni = composite(self.RECT, [("union", far)])
+        self.assertEqual(int(mask_for(uni, 160, 100).sum() / 255), rect_px + 200)
+        inter = composite(self.RECT, [("intersect", {"shape": "rect", "x": 100, "y": 50, "w": 100, "h": 100})])
+        self.assertEqual(int(mask_for(inter, 160, 100).sum() / 255), 20 * 20)
+        # 巢狀：(rect − hole) ∪ far，再挖掉 far 的一半
+        nested = composite(uni_sub := composite(sub, [("union", far)]), [("subtract", {"shape": "rect", "x": 130, "y": 80, "w": 10, "h": 10})])
+        self.assertEqual(len(uni_sub["ops"]), 3)
+        self.assertEqual(int(mask_for(nested, 160, 100).sum() / 255), rect_px - hole_px + 100)
+        # 子視窗（crop 用的 offset）與全圖一致
+        full = mask_for(sub, 160, 100)
+        window = mask_for(sub, 100, 60, offset=(20, 10))
+        self.assertTrue(np.array_equal(full[10:70, 20:120], window))
+        with self.assertRaises(ValueError):
+            composite(self.RECT, [("xor", self.HOLE)])
+
+    def test_bounding_rect_center_transform_overlay(self):
+        from apps.vision.tools.roi import bounding_rect, composite, crop, region_center, region_overlay, region_overlays, transform_region
+
+        sub = composite(self.RECT, [("subtract", {"shape": "circle", "cx": 150, "cy": 40, "r": 40})])
+        self.assertEqual(bounding_rect(sub, 400, 300), (20, 10, 100, 60))  # 挖除項不擴大外框
+        uni = composite(self.RECT, [("union", {"shape": "rect", "x": 150, "y": 100, "w": 10, "h": 10})])
+        self.assertEqual(bounding_rect(uni, 400, 300), (20, 10, 140, 100))
+        cx, cy = region_center(composite(self.RECT, [("subtract", {"shape": "rect", "x": 20, "y": 10, "w": 50, "h": 60})]))
+        self.assertAlmostEqual(cx, 95, delta=1.0)  # 挖掉左半後重心在右半
+        self.assertAlmostEqual(cy, 40, delta=1.0)
+        moved = transform_region(composite(self.RECT, [("subtract", self.HOLE)]), 5, -3)
+        self.assertEqual(moved["shape"], "composite")
+        self.assertEqual((moved["ops"][0]["region"]["x"], moved["ops"][1]["region"]["cx"]), (25, 75))
+        rotated = transform_region(composite(self.RECT, [("subtract", self.HOLE)]), 0, 0, 90, (70, 40))
+        self.assertEqual(rotated["ops"][0]["region"]["shape"], "rotated_rect")
+        ov = region_overlay(composite(self.RECT, [("subtract", self.HOLE)]))
+        self.assertEqual(ov["kind"], "contours")
+        self.assertEqual(len(ov["contours"]), 2)  # 外框＋孔
+        parts = region_overlays(composite(self.RECT, [("subtract", self.HOLE), ("union", {"shape": "point", "x": 1, "y": 1})]))
+        self.assertEqual([p["kind"] for p in parts], ["rect", "circle", "point"])
+        self.assertEqual(parts[1]["color"], "#ef4444")
+        c = crop(np.zeros((300, 400), np.uint8), sub)
+        self.assertEqual(c.image.shape, (60, 100))
+        self.assertIsNotNone(c.mask)
+
+    def test_existing_tools_honour_composite(self):
+        from apps.vision.tools.roi import composite
+
+        img = np.full((100, 160), 200, np.uint8)
+        cv2.circle(img, (70, 40), 15, 20, -1)  # 量測區中央一個暗孔
+        with_hole = run_tool("intensity", img, {"roi": self.RECT})
+        excluded = run_tool("intensity", img, {}, {"roi": composite(self.RECT, [("subtract", self.HOLE)])})
+        self.assertLess(with_hole.outputs["mean"], 190)
+        self.assertEqual(excluded.outputs["mean"], 200.0)  # 孔內像素完全不算
+        self.assertEqual(excluded.outputs["pixels"], with_hole.outputs["pixels"] - int(cv2.countNonZero(cv2.circle(np.zeros((100, 160), np.uint8), (70, 40), 15, 255, -1))))
+        # blob／pixel_count／histogram／edge_density／color_check／contour_find／find_circle／caliper 都吃得下
+        mask = np.zeros((100, 160), np.uint8)
+        cv2.circle(mask, (70, 40), 15, 255, -1)
+        cv2.circle(mask, (30, 30), 5, 255, -1)
+        blobs = run_tool("blob", mask, {"threshold_method": "none", "min_area": 10}, {"roi": composite(self.RECT, [("subtract", self.HOLE)])})
+        self.assertEqual(blobs.outputs["count"], 1)  # 大圓被挖掉、只剩小圓
+        self.assertEqual(run_tool("pixel_count", mask, {}, {"roi": composite(self.RECT, [("subtract", self.HOLE)])}).outputs["count"], int(cv2.countNonZero(mask[10:70, 20:120]) - int(mask[25:56, 55:86].sum() / 255)))
+        for key, params in (("histogram", {}), ("edge_density", {}), ("color_check", {"color": "#c8c8c8"}), ("contour_find", {"threshold_method": "fixed", "threshold": 100, "polarity": "dark"})):
+            r = run_tool(key, img, params, {"roi": composite(self.RECT, [("subtract", self.HOLE)])})
+            self.assertNotEqual(r.status, "error", key)
+        ring = circle_image(cx=160, cy=120, r=50)
+        fc = run_tool("find_circle", ring, {"edge_threshold": 20}, {"roi": composite({"shape": "rect", "x": 80, "y": 40, "w": 160, "h": 160}, [("subtract", {"shape": "circle", "cx": 160, "cy": 120, "r": 20})])})
+        self.assertEqual(fc.branch, "found")
+        self.assertAlmostEqual(fc.outputs["r"], 50, delta=1.0)
+        cal = run_tool("caliper", rect_image(), {}, {"roi": composite({"shape": "rect", "x": 60, "y": 100, "w": 200, "h": 20}, [("subtract", {"shape": "circle", "cx": 160, "cy": 110, "r": 5})])})
+        self.assertEqual(cal.status, "ok", cal.message)  # 矩形類工具退化用組合區域的外框
+        self.assertAlmostEqual(cal.outputs["width"], 120, delta=1.5)
+
+    def test_region_tools(self):
+        from apps.vision.tools.roi import mask_for
+
+        shape = run_tool("region_from_shape", None, {"roi": self.HOLE})
+        self.assertEqual(shape.outputs["region"], self.HOLE)
+        combined = run_tool("region_combine", None, {"base": self.RECT, "mode": "subtract"}, {"regions": [shape.outputs["region"], {"shape": "rect", "x": 20, "y": 10, "w": 10, "h": 10}]})
+        region = combined.outputs["region"]
+        self.assertEqual(region["shape"], "composite")
+        self.assertEqual([op["op"] for op in region["ops"]], ["union", "subtract", "subtract"])
+        self.assertEqual(combined.outputs["count"], 3)
+        self.assertEqual({o["kind"] for o in combined.overlays}, {"rect", "circle", "contours"})
+        area = int(mask_for(region, 160, 100).sum() / 255)
+        self.assertEqual(area, 6000 - int(mask_for(self.HOLE, 160, 100).sum() / 255) - 100)
+        # 基底走輸入埠、regions 只有一個 dict、union 模式；基底缺省時第一個 region 當基底
+        uni = run_tool("region_combine", None, {"mode": "union"}, {"base": self.RECT, "regions": {"shape": "rect", "x": 200, "y": 0, "w": 10, "h": 10}})
+        self.assertEqual(int(mask_for(uni.outputs["region"], 300, 100).sum() / 255), 6100)
+        first = run_tool("region_combine", None, {"mode": "intersect"}, {"regions": [self.RECT, {"shape": "rect", "x": 100, "y": 50, "w": 100, "h": 100}]})
+        self.assertEqual(int(mask_for(first.outputs["region"], 300, 200).sum() / 255), 400)
+        # 再組合一次：composite 當基底會接續 ops，不會巢狀兩層
+        again = run_tool("region_combine", None, {"mode": "subtract"}, {"base": region, "regions": [{"shape": "point", "x": 50, "y": 50}]})
+        self.assertEqual(len(again.outputs["region"]["ops"]), 4)
+        with self.assertRaises(ToolError):
+            run_tool("region_combine", None, {}, {})
+        with self.assertRaises(ToolError):
+            run_tool("region_from_shape", None, {})
 
 
 class AlgorithmAccuracyTests(SimpleTestCase):

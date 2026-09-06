@@ -199,6 +199,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
                                    step_deg=_polar.step_degrees("auto", ring["r_outer"]), radial_step=1)
     # contours 工具鏈的輸入：整張遮罩的外輪廓（雜訊粒子很多，接近產線最差情況）
     mask_contours = [c for c in cv2.findContours(s.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0] if len(c) >= 4]
+    # 組合區域：板子矩形挖掉中央孔（多重 ROI／排除區）
+    from apps.vision.tools import roi as _roi
+
+    plate_minus_hole = _roi.composite(plate, [("subtract", center_circle)])
     return [
         # source / preprocess
         ("image_source", "image_source", None, {"mode": "input"}, {}, {"_input_image": big}),
@@ -234,6 +238,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("template_match roi+rot", "template_match", big, {"template": "tpl", "roi": plate, "pyramid": True, "threshold": 0.6, "angle_range": 10, "angle_step": 5}, {}, {}),
         ("shape_align", "shape_align", None, {"ref_x": s.cx, "ref_y": s.cy}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("fixture_roi", "fixture_roi", None, {"roi": plate}, {"transform": {"dx": 3, "dy": -2, "dtheta": 1.5, "pivot": [s.cx, s.cy]}}, {}),
+        ("region_from_shape", "region_from_shape", None, {"roi": center_circle}, {}, {}),
+        ("region_combine subtract", "region_combine", None, {"base": plate, "mode": "subtract"}, {"regions": [center_circle, s.rect(-0.2, -0.15, 0.05, 0.05)]}, {}),
+        ("intensity (composite roi)", "intensity", big, {}, {"roi": plate_minus_hole}, {}),
+        ("blob (composite roi)", "blob", gray, {"threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {"roi": plate_minus_hole}, {}),
         ("find_circle 36", "find_circle", big, {"roi": center_circle, "num_rays": 36}, {}, {}),
         ("find_circle 180", "find_circle", big, {"roi": center_circle, "num_rays": 180}, {}, {}),
         ("find_line 20", "find_line", big, {"roi": top_edge, "num_calipers": 20}, {}, {}),

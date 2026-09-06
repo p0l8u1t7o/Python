@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
-from apps.vision.tools.roi import Crop, crop, region_center, region_overlay, transform_region
+from apps.vision.tools.roi import Crop, crop, extent, region_center, region_overlay, transform_region
 
 
 def to_gray(image: np.ndarray) -> np.ndarray:
@@ -802,6 +802,10 @@ class FindCircleTool(Tool):
             a0, a1 = region.get("a0"), region.get("a1")
         elif shape == "rect":
             r_in, r_out = 0.0, min(float(region["w"]), float(region["h"])) / 2
+        elif shape == "composite":
+            # 組合區域：從遮罩重心往外掃到外框的內切半徑
+            x0, y0, x1, y1 = extent(region)
+            r_in, r_out = 0.0, min(x1 - x0, y1 - y0) / 2
         else:
             raise ToolError(f"Find circle does not support a {shape} region")
         if r_out - r_in < 3:
@@ -859,6 +863,12 @@ def _as_rotated_rect(region: dict[str, Any]) -> dict[str, Any]:
         return {"shape": "rotated_rect", "cx": region["x"] + region["w"] / 2, "cy": region["y"] + region["h"] / 2, "w": region["w"], "h": region["h"], "angle": 0.0}
     if region.get("shape") == "rotated_rect":
         return region
+    if region.get("shape") == "composite":
+        # 組合區域：矩形類工具用它的外框（挖除項不擴大外框）
+        x0, y0, x1, y1 = extent(region)
+        if x1 - x0 < 1 or y1 - y0 < 1:
+            raise ToolError("The combined region is empty")
+        return {"shape": "rotated_rect", "cx": (x0 + x1) / 2, "cy": (y0 + y1) / 2, "w": x1 - x0, "h": y1 - y0, "angle": 0.0}
     raise ToolError(f"This tool needs a rectangle or rotated rectangle, got {region.get('shape')}")
 
 

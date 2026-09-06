@@ -23,7 +23,7 @@ from apps.vision.tools.builtin.locate import (
     to_gray,
 )
 from apps.vision.tools.hist import otsu_from_hist as _otsu_from_hist
-from apps.vision.tools.roi import crop, region_center, region_overlay
+from apps.vision.tools.roi import crop, extent as roi_extent, region_center, region_overlay
 
 
 def _point(value: Any, fallback: tuple[Any, Any] | None = None) -> tuple[float, float] | None:
@@ -406,7 +406,7 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
     smoothing = ctx.integer("smoothing", 3)
     num = max(6, ctx.integer("num_rays", 36))
     shape = region.get("shape")
-    if shape in ("circle", "annulus", "polygon"):
+    if shape in ("circle", "annulus", "polygon", "composite"):
         cx, cy = origin if origin is not None else region_center(region)
         a0 = a1 = None
         mask, off = None, (0, 0)
@@ -416,7 +416,12 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
             r_in, r_out = float(region["r_inner"]), float(region["r_outer"])
             a0, a1 = region.get("a0"), region.get("a1")
         else:
-            pts = np.asarray(region["points"], dtype=np.float64)
+            # 多邊形／組合區域：掃到最遠角落，遮罩決定哪些邊緣點算數
+            if shape == "polygon":
+                pts = np.asarray(region["points"], dtype=np.float64)
+            else:
+                x0, y0, x1, y1 = roi_extent(region)
+                pts = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float64)
             r_in, r_out = 0.0, float(np.hypot(pts[:, 0] - cx, pts[:, 1] - cy).max())
             c = crop(image, region)
             mask, off = c.mask, (c.x0, c.y0)
@@ -438,7 +443,7 @@ def _region_edge_points(ctx: ToolContext, image: np.ndarray, region: dict[str, A
     raise ToolError(f"A {shape} region is not supported")
 
 
-_RADIAL_SHAPES = ("circle", "annulus", "polygon")
+_RADIAL_SHAPES = ("circle", "annulus", "polygon", "composite")
 
 
 def _refined_points(ctx: ToolContext, image: np.ndarray, region: dict[str, Any], center: tuple[float, float]) -> np.ndarray | None:

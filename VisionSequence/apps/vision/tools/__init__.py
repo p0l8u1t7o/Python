@@ -15,6 +15,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.preprocess",
     "apps.vision.tools.builtin.polar",
     "apps.vision.tools.builtin.locate",
+    "apps.vision.tools.builtin.region",
     "apps.vision.tools.builtin.measure",
     "apps.vision.tools.builtin.contours",
     "apps.vision.tools.builtin.detect",

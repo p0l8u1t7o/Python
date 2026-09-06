@@ -79,6 +79,15 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## fixture_roi
 ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.transform，輸出 `region` 接量測工具的 `roi` 輸入埠。每個要跟著動的 ROI 一個 fixture_roi。
 
+## region_from_shape
+把一個畫好的形狀變成 `region` 輸出（本身不動影像）：畫布上要有第二、第三個區域（排除區、加量的區域）就放它，接進 region_combine。
+
+## region_combine
+區域組合（多重 ROI 與排除區）：`base`（基底區域，可畫或接 `base` 埠）＋ `regions`（多條 region 邊）依 `mode` 組成一個 composite 區域——
+`subtract` 挖掉孔位／字樣／反光帶／料號區、`union` 把幾塊合成一塊、`intersect` 只留重疊。輸出 `region` 接任何工具的 `roi` 輸入埠
+（intensity／histogram／blob／pixel_count／edge_density／color_check／defect_diff／contour_find 全部照遮罩算；矩形類量測工具退化用外框）。
+量測區裡有會變的孔或印字時一定要挖掉，否則平均值、粒子數會跟著跳。
+
 ## find_circle
 射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）；只有一段弧時給 `a0/a1` 起迄角，掃描線只落在扇形內。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。ROI 沒對準圓心也沒關係：`refine`（預設開）會從擬合圓心重掃一次。擬合是幾何最小平方（部分弧無偏）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
 

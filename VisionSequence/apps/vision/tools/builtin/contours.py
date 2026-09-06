@@ -21,7 +21,7 @@ import numpy as np
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.detect import _binarize
 from apps.vision.tools.builtin.locate import read_asset_image, to_gray
-from apps.vision.tools.roi import crop, mask_for, region_overlay
+from apps.vision.tools.roi import crop, extent, mask_for, region_overlay
 
 MODE_OPTIONS = [
     {"value": "external", "label": "Outer contours only"},
@@ -275,9 +275,8 @@ class ContourFilterTool(Tool):
         region = ctx.roi()
         inside_mask = None
         if region is not None:
-            bx = int(max(p[0] for p in _region_extent(region))) + 2
-            by = int(max(p[1] for p in _region_extent(region))) + 2
-            inside_mask = mask_for(region, max(1, bx), max(1, by))
+            _, _, ex1, ey1 = extent(region)
+            inside_mask = mask_for(region, max(1, int(math.ceil(ex1)) + 2), max(1, int(math.ceil(ey1)) + 2))
         kept: list[tuple[np.ndarray, float, float, tuple[float, float]]] = []
         rejected = 0
         for cnt in contours:
@@ -323,36 +322,6 @@ class ContourFilterTool(Tool):
             overlays=overlays, branch="found" if count else "not_found", status="ok" if count >= ctx.integer("min_count", 1) else "ng",
             message=f"{count} kept, {rejected} rejected",
         )
-
-
-def _region_extent(region: dict[str, Any]) -> list[tuple[float, float]]:
-    """region 的幾個極端點（給 mask_for 決定畫多大）。"""
-    shape = region.get("shape")
-    if shape == "rect":
-        return [(region["x"] + region["w"], region["y"] + region["h"])]
-    if shape in ("rotated_rect",):
-        d = math.hypot(region["w"], region["h"]) / 2
-        return [(region["cx"] + d, region["cy"] + d)]
-    if shape == "circle":
-        return [(region["cx"] + region["r"], region["cy"] + region["r"])]
-    if shape == "annulus":
-        return [(region["cx"] + region["r_outer"], region["cy"] + region["r_outer"])]
-    if shape == "ellipse":
-        d = max(region["rx"], region["ry"])
-        return [(region["cx"] + d, region["cy"] + d)]
-    if shape in ("polygon", "polyline"):
-        pts = np.asarray(region["points"], dtype=np.float64)
-        return [(float(pts[:, 0].max()), float(pts[:, 1].max()))]
-    if shape == "line":
-        return [(max(region["x1"], region["x2"]), max(region["y1"], region["y2"]))]
-    if shape == "point":
-        return [(region["x"], region["y"])]
-    if shape == "composite":
-        pts: list[tuple[float, float]] = []
-        for op in region.get("ops", []):
-            pts.extend(_region_extent(op.get("region") or {}))
-        return pts or [(1.0, 1.0)]
-    return [(1.0, 1.0)]
 
 
 # ---------------------------------------------------------------------------

@@ -501,6 +501,41 @@ def contour_defect_flow(source_id: Any, template_asset: str = "") -> dict[str, A
     return {"nodes": nodes, "edges": edges}
 
 
+def exclusion_zone_flow(source_id: Any) -> dict[str, Any]:
+    """排除區：板面量測區挖掉中央孔（孔徑會變）與角落料號區 → intensity 平均只算板面 → in_range 判定曝光／髒污。
+
+    對齊合成圖「圓孔尺寸量測」（亮板 190 灰階、中央暗孔 r 174～190）：不挖孔時平均約 150 且隨孔徑跳動，挖掉後穩定在 190 上下。"""
+    plate = {"shape": "rect", "x": 180, "y": 140, "w": 920, "h": 680}
+    hole = {"shape": "circle", "cx": 640, "cy": 480, "r": 215}
+    corner = {"shape": "rect", "x": 900, "y": 700, "w": 200, "h": 120}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("hole", "region_from_shape", 1, 1, "Hole (exclude)", roi=hole),
+        _node("corner", "region_from_shape", 1, 2, "Label area (exclude)", roi=corner),
+        _node("combine", "region_combine", 2, 1, "Plate minus holes", base=plate, mode="subtract"),
+        _node("stats", "intensity", 3, 0, "Plate brightness"),
+        _node("rng", "in_range", 4, 0, "Plate 170 to 215?", low=170, high=215),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: plate too dark or bright", verdict="ng", label="plate_brightness"),
+        _node("out", "output", 4, 1, "Output plate mean", name="plate_mean"),
+        _node("blob", "blob", 3, 2, "Dark marks on the plate", threshold_method="fixed", threshold=120, polarity="dark", min_area=200, min_count=0),
+        _node("out_b", "output", 4, 2, "Output mark count", name="mark_count"),
+        _note("n1", 0, 1, "About", "Two Region steps draw the exclusion zones; Region combine cuts them out of the plate rectangle and feeds the result into the region input of the statistics and blob steps.\nThe hole changes size from picture to picture, yet the plate mean stays put because the hole pixels are never counted."),
+    ]
+    edges = [
+        _edge("src", "gray"),
+        _edge("hole", "combine", "region", "regions"), _edge("corner", "combine", "region", "regions"), _edge("gray", "combine", "image", "image"),
+        _edge("gray", "stats", "image", "image"), _edge("combine", "stats", "region", "roi"),
+        _edge("stats", "rng", "mean", "value"),
+        _edge("rng", "ok", "inside", "_flow"), _edge("rng", "ng", "outside", "_flow"),
+        _edge("stats", "out", "mean", "value"),
+        _edge("gray", "blob", "image", "image"), _edge("combine", "blob", "region", "roi"),
+        _edge("blob", "out_b", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -665,6 +700,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
      lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
+    ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
@@ -693,6 +729,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "geometry_count": "Example: circles and lines",
     "gear_teeth": "Example: gear teeth",
     "contour_defect": "Example: stamped part",
+    "exclusion_zone": "Example: circle gauge",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
     "barcode_read": "Example: barcode label",

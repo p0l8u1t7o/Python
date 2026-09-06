@@ -1902,6 +1902,26 @@ export default {
       ok: "成功",
     },
   },
+  region_combine: {
+    label: "區域組合",
+    description: "把好幾個區域組成一個：從量測區挖掉孔位、字樣或反光帶（挖除）、把分開的幾塊合成一塊（聯集）、只留重疊處（交集）。結果接任何工具的區域輸入埠——blob、統計、良品比對等都照組合後的遮罩算。",
+    params: {
+      base: { label: "基底區域", help: "起始的區域。留空則以第一個接進來的區域為基底。" },
+      mode: {
+        label: "模式",
+        options: { subtract: "挖除（從基底挖掉這些區域）", union: "聯集（把這些區域加進基底）", intersect: "交集（只留重疊處）" },
+      },
+    },
+    ports: { base: "基底區域（動態）", regions: "要組合的區域", image: "影像（顯示用）", region: "區域", count: "組成數" },
+  },
+  region_from_shape: {
+    label: "區域",
+    description: "把畫好的形狀變成區域輸出，讓畫布上能有第二、第三個區域——交給區域組合的排除區與加量區域。本身不影響影像。",
+    params: {
+      roi: { label: "形狀", help: "任何形狀：矩形、旋轉矩形、圓、橢圓、圓環、多邊形。" },
+    },
+    ports: { image: "影像（顯示用）", region: "區域" },
+  },
   resize: {
     label: "比例",
     description: "依比例或指定尺寸縮放；大圖先縮小再處理是最有效的加速。",

@@ -10,6 +10,9 @@ region dict 形狀：
   {"shape": "polyline", "points": [[x, y], ...]}             NI 的 Broken Line（不閉合）
   {"shape": "line", "x1", "y1", "x2", "y2"}
   {"shape": "point", "x", "y"}
+  {"shape": "composite", "ops": [{"op": "union"|"subtract"|"intersect", "region": {...}}, ...]}
+      多重 ROI 與排除區：第一項是起始集合（其 op 忽略），之後依序聯集／挖除／交集；region 可再是 composite（巢狀）。
+      畫布不畫這種形狀，由 region_combine 工具在執行時組出來、經 region 埠餵給下游；下游只要走 crop()／mask_for() 就直接吃。
 所有工具都用這裡的 helper，座標慣例只在一處。
 """
 
@@ -20,6 +23,8 @@ from typing import Any
 
 import cv2
 import numpy as np
+
+COMPOSITE_OPS = ("union", "subtract", "intersect")
 
 
 @dataclass
@@ -47,11 +52,25 @@ class Crop:
         return pts + np.array([self.x0, self.y0], dtype=np.float64)
 
 
-def bounding_rect(region: dict[str, Any], w: int, h: int) -> tuple[int, int, int, int]:
-    """region 的軸對齊外框（已夾在影像內）：x, y, w, h。"""
+def composite(base: dict[str, Any], ops: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    """建 composite region：base 為起始集合（已是 composite 就接續它的 ops），其後依序套用 (op, region)。"""
+    items: list[dict[str, Any]] = []
+    if base.get("shape") == "composite":
+        items.extend({"op": str(o.get("op", "union")), "region": dict(o.get("region") or {})} for o in base.get("ops", []))
+    else:
+        items.append({"op": "union", "region": dict(base)})
+    for op, region in ops:
+        if op not in COMPOSITE_OPS:
+            raise ValueError(f"Unknown composite op {op!r}")
+        items.append({"op": op, "region": dict(region)})
+    return {"shape": "composite", "ops": items}
+
+
+def extent(region: dict[str, Any]) -> tuple[float, float, float, float]:
+    """region 的軸對齊外框（不夾影像）：x0, y0, x1, y1。composite 取所有非 subtract 項的聯集（挖除不擴大外框）。"""
     shape = region.get("shape")
     if shape == "rect":
-        x, y, rw, rh = region["x"], region["y"], region["w"], region["h"]
+        x, y, rw, rh = float(region["x"]), float(region["y"]), float(region["w"]), float(region["h"])
     elif shape == "rotated_rect":
         box = cv2.boxPoints(((float(region["cx"]), float(region["cy"])), (float(region["w"]), float(region["h"])), float(region.get("angle", 0))))
         x, y, rw, rh = cv2.boundingRect(box.astype(np.float32))
@@ -75,21 +94,49 @@ def bounding_rect(region: dict[str, Any], w: int, h: int) -> tuple[int, int, int
         xs = [region["x1"], region["x2"]]
         ys = [region["y1"], region["y2"]]
         x, y, rw, rh = min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+    elif shape == "composite":
+        ops = list(region.get("ops", []))
+        boxes = [extent(op.get("region") or {}) for i, op in enumerate(ops) if i == 0 or op.get("op") == "union"]
+        if not boxes:
+            return 0.0, 0.0, 0.0, 0.0
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
     else:
         raise ValueError(f"Unknown ROI shape {shape!r}")
-    x0 = max(0, int(np.floor(x)))
-    y0 = max(0, int(np.floor(y)))
-    x1 = min(w, int(np.ceil(x + rw)))
-    y1 = min(h, int(np.ceil(y + rh)))
+    return float(x), float(y), float(x + rw), float(y + rh)
+
+
+def bounding_rect(region: dict[str, Any], w: int, h: int) -> tuple[int, int, int, int]:
+    """region 的軸對齊外框（已夾在影像內）：x, y, w, h。"""
+    ex0, ey0, ex1, ey1 = extent(region)
+    x0 = max(0, int(np.floor(ex0)))
+    y0 = max(0, int(np.floor(ey0)))
+    x1 = min(w, int(np.ceil(ex1)))
+    y1 = min(h, int(np.ceil(ey1)))
     return x0, y0, max(0, x1 - x0), max(0, y1 - y0)
 
 
 def mask_for(region: dict[str, Any], w: int, h: int, *, offset: tuple[int, int] = (0, 0)) -> np.ndarray:
     """0/255 遮罩。預設全圖大小；給 offset=(x0, y0) 時只畫 w×h 的子視窗（座標平移 -x0, -y0），
     crop() 用它避免每次為了一個小 ROI 配置整張影像大小的遮罩。"""
+    shape = region.get("shape")
+    if shape == "composite":
+        ops = list(region.get("ops", []))
+        if not ops:
+            return np.zeros((h, w), dtype=np.uint8)
+        mask = mask_for(ops[0].get("region") or {}, w, h, offset=offset)
+        for op in ops[1:]:
+            sub = mask_for(op.get("region") or {}, w, h, offset=offset)
+            kind = op.get("op", "union")
+            if kind == "subtract":
+                cv2.bitwise_not(sub, dst=sub)
+                cv2.bitwise_and(mask, sub, dst=mask)
+            elif kind == "intersect":
+                cv2.bitwise_and(mask, sub, dst=mask)
+            else:
+                cv2.bitwise_or(mask, sub, dst=mask)
+        return mask
     mask = np.zeros((h, w), dtype=np.uint8)
     ox, oy = offset
-    shape = region.get("shape")
     if shape == "rect":
         x, y, rw, rh = bounding_rect(region, w + ox, h + oy)
         x, y = x - ox, y - oy
@@ -130,7 +177,7 @@ def crop(image: np.ndarray, region: dict[str, Any] | None, *, upright: bool = Fa
     """裁出 ROI。
 
     upright=True 且 ROI 為 rotated_rect 時，會把區域旋轉擺正（量測類工具需要）；
-    其餘形狀裁外框並附遮罩（非矩形區域外的像素在 mask 為 0）。
+    其餘形狀裁外框並附遮罩（非矩形區域外的像素在 mask 為 0）；composite 也是外框＋遮罩。
     """
     h, w = image.shape[:2]
     if region is None:
@@ -156,8 +203,24 @@ def crop(image: np.ndarray, region: dict[str, Any] | None, *, upright: bool = Fa
     return Crop(image=sub, x0=x, y0=y, mask=mask)
 
 
+_OVERLAY_MAX_SIDE = 16384
+
+
+def _composite_outline(region: dict[str, Any]) -> list[list[list[float]]]:
+    """composite 的實際範圍（聯集減挖除）畫成輪廓多邊形（含內孔），給顯示層用。"""
+    ex0, ey0, ex1, ey1 = extent(region)
+    x0, y0 = int(np.floor(ex0)) - 1, int(np.floor(ey0)) - 1
+    w = min(_OVERLAY_MAX_SIDE, int(np.ceil(ex1)) - x0 + 2)
+    h = min(_OVERLAY_MAX_SIDE, int(np.ceil(ey1)) - y0 + 2)
+    if w <= 0 or h <= 0:
+        return []
+    mask = mask_for(region, w, h, offset=(x0, y0))
+    found, _ = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    return [(cnt.reshape(-1, 2) + np.array([x0, y0])).tolist() for cnt in found if len(cnt) >= 3]
+
+
 def region_overlay(region: dict[str, Any], color: str = "#38bdf8", label: str = "") -> dict[str, Any]:
-    """把 ROI 畫成 overlay（前端用），方便工具顯示它實際看的範圍。"""
+    """把 ROI 畫成 overlay（前端用），方便工具顯示它實際看的範圍。composite 畫成它的實際輪廓（含挖掉的孔）。"""
     shape = region.get("shape")
     base: dict[str, Any] = {"color": color, "width": 1, "dash": True}
     if label:
@@ -184,7 +247,21 @@ def region_overlay(region: dict[str, Any], color: str = "#38bdf8", label: str = 
         return {"kind": "point", "x": region["x"], "y": region["y"], **base}
     if shape == "line":
         return {"kind": "line", "x1": region["x1"], "y1": region["y1"], "x2": region["x2"], "y2": region["y2"], **base}
+    if shape == "composite":
+        return {"kind": "contours", "contours": _composite_outline(region), **base}
     return {"kind": "text", "x": 0, "y": 0, "text": f"unknown roi {shape}", **base}
+
+
+def region_overlays(region: dict[str, Any], color: str = "#38bdf8", label: str = "") -> list[dict[str, Any]]:
+    """每個組成形狀一個 overlay：composite 逐項展開（挖除項紅色、交集項紫色），其他形狀就是 [region_overlay]。"""
+    if region.get("shape") != "composite":
+        return [region_overlay(region, color, label)]
+    out = []
+    for i, op in enumerate(region.get("ops", [])):
+        kind = "base" if i == 0 else str(op.get("op", "union"))
+        tone = {"subtract": "#ef4444", "intersect": "#a78bfa"}.get(kind, color)
+        out.extend(region_overlays(op.get("region") or {}, tone, f"{label} {kind}".strip() if label or i else kind))
+    return out
 
 
 def region_center(region: dict[str, Any]) -> tuple[float, float]:
@@ -200,13 +277,26 @@ def region_center(region: dict[str, Any]) -> tuple[float, float]:
         return float(pts[:, 0].mean()), float(pts[:, 1].mean())
     if shape == "line":
         return (region["x1"] + region["x2"]) / 2, (region["y1"] + region["y2"]) / 2
+    if shape == "composite":
+        # 實際遮罩的重心（挖除後）；空遮罩退回第一項的中心
+        ex0, ey0, ex1, ey1 = extent(region)
+        x0, y0 = int(np.floor(ex0)), int(np.floor(ey0))
+        w, h = min(_OVERLAY_MAX_SIDE, int(np.ceil(ex1)) - x0 + 1), min(_OVERLAY_MAX_SIDE, int(np.ceil(ey1)) - y0 + 1)
+        if w > 0 and h > 0:
+            m = cv2.moments(mask_for(region, w, h, offset=(x0, y0)), binaryImage=True)
+            if m["m00"] > 0:
+                return float(m["m10"] / m["m00"] + x0), float(m["m01"] / m["m00"] + y0)
+        ops = region.get("ops", [])
+        return region_center(ops[0].get("region") or {}) if ops else (0.0, 0.0)
     return 0.0, 0.0
 
 
 def transform_region(region: dict[str, Any], dx: float, dy: float, dtheta: float = 0.0, pivot: tuple[float, float] | None = None) -> dict[str, Any]:
-    """依定位結果平移／旋轉 ROI（定位後的跟隨 ROI）。dtheta 為度。"""
+    """依定位結果平移／旋轉 ROI（定位後的跟隨 ROI）。dtheta 為度。composite 遞迴套用到每一項。"""
     out = dict(region)
     shape = region.get("shape")
+    if shape == "composite":
+        return {"shape": "composite", "ops": [{"op": op.get("op", "union"), "region": transform_region(op.get("region") or {}, dx, dy, dtheta, pivot)} for op in region.get("ops", [])]}
     if dtheta and pivot is not None:
         m = cv2.getRotationMatrix2D(pivot, -dtheta, 1.0)
 
