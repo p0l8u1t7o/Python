@@ -118,6 +118,9 @@ const zhHant = {
     tagline: '機器視覺流程平台',
   },
   nav: {
+    inspect: '影像檢測',
+    teach: '影像教導',
+    resources: '檢測資源',
     calibration: '標定', 
     menu: '選單',
     batch: '批次測試',

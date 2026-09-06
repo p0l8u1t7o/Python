@@ -2,6 +2,9 @@
 const en = {
   app: { name: 'VisionSequence', tagline: 'Machine vision flow platform' },
   nav: {
+    inspect: 'Inspection',
+    teach: 'Teaching',
+    resources: 'Resources',
     calibration: 'Calibration', 
     batch: 'Batch test',
     dashboard: 'Dashboard',

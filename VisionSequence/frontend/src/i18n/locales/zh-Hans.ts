@@ -118,6 +118,9 @@ const zhHans = {
     tagline: '机器视觉流程平台',
   },
   nav: {
+    inspect: '图像检测',
+    teach: '图像教导',
+    resources: '检测资源',
     calibration: '标定', 
     menu: '菜单',
     batch: '批次测试',

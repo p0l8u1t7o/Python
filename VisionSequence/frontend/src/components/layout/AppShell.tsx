@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, History, Images, KeyRound, LayoutDashboard, LogOut, Menu, Plug, Ruler, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, GraduationCap, HelpCircle, History, Images, KeyRound, LayoutDashboard, Library, LogOut, Menu, Plug, Ruler, ScanSearch, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
@@ -23,30 +23,60 @@ import { SECTIONS } from '@/pages/integration/sections'
 import { useAuth } from '@/providers/AuthProvider'
 
 /** 側欄項目；`feature` 有值時要有該功能才看得到（管理員永遠看得到），`admin` 是只有管理員。 */
-const NAV: { to: string; key: string; icon: LucideIcon; end: boolean; admin?: boolean; feature?: Feature; tree?: boolean }[] = [
+/** 側欄的一個可點項目 */
+interface NavLeaf { to: string; key: string; icon: LucideIcon; end: boolean; admin?: boolean; feature?: Feature }
+/** 父項目：自己不一定是一頁（沒有 to 就純粹是分組），children 是子項目；integration 的子項目由 SECTIONS 動態產生 */
+interface NavNode extends Partial<NavLeaf> { key: string; icon: LucideIcon; children?: NavLeaf[]; sections?: boolean }
+
+const NAV: NavNode[] = [
   { to: '/', key: 'dashboard', icon: LayoutDashboard, end: true },
-  { to: '/flows', key: 'flows', icon: Workflow, end: false },
-  { to: '/batch', key: 'batch', icon: FlaskConical, end: false, feature: 'batch' },
-  { to: '/sources', key: 'sources', icon: Camera, end: false, feature: 'sources' },
-  { to: '/calibration', key: 'calibration', icon: Ruler, end: false, feature: 'assets' },
-  { to: '/assets', key: 'assets', icon: Images, end: false, feature: 'assets' },
-  { to: '/dl', key: 'dl', icon: Brain, end: false, feature: 'dl' },
-  { to: '/agent', key: 'agent', icon: Sparkles, end: false, feature: 'agent' },
-  { to: '/integration', key: 'integration', icon: Plug, end: false, feature: 'integration', tree: true },
+  {
+    key: 'inspect', icon: ScanSearch, children: [
+      { to: '/flows', key: 'flows', icon: Workflow, end: false },
+      { to: '/batch', key: 'batch', icon: FlaskConical, end: false, feature: 'batch' },
+      { to: '/agent', key: 'agent', icon: Sparkles, end: false, feature: 'agent' },
+    ],
+  },
+  {
+    key: 'teach', icon: GraduationCap, children: [
+      { to: '/calibration', key: 'calibration', icon: Ruler, end: false, feature: 'assets' },
+      { to: '/dl', key: 'dl', icon: Brain, end: false, feature: 'dl' },
+    ],
+  },
+  {
+    key: 'resources', icon: Library, children: [
+      { to: '/sources', key: 'sources', icon: Camera, end: false, feature: 'sources' },
+      { to: '/assets', key: 'assets', icon: Images, end: false, feature: 'assets' },
+    ],
+  },
+  { to: '/integration', key: 'integration', icon: Plug, end: false, feature: 'integration', sections: true },
   { to: '/users', key: 'users', icon: Users, end: false, admin: true },
   { to: '/audit', key: 'audit', icon: History, end: false, feature: 'audit' },
   { to: '/settings', key: 'settings', icon: Settings, end: false },
   { to: '/help', key: 'help', icon: HelpCircle, end: false },
 ]
 
+/** 所有可點項目（父項目攤平）：麵包屑與摺疊側欄用 */
+export const NAV_LEAVES: NavLeaf[] = NAV.flatMap((n) => (n.children ?? (n.to ? [n as NavLeaf] : [])))
+//: 第一次使用時三個分組是開的（不然使用者看不到流程頁）；integration 維持收合
+const DEFAULT_OPEN = ['inspect', 'teach', 'resources']
+
+/** 分組本身沒有權限旗標：只要有一個子項目看得到就顯示 */
+function visibleNav(item: { admin?: boolean; feature?: Feature; children?: { admin?: boolean; feature?: Feature }[] },
+                    auth: { isAdmin: boolean; can: (f: Feature) => boolean }): boolean {
+  if (item.children?.length) return item.children.some((c) => visibleNav(c, auth))
+  return (!item.admin || auth.isAdmin) && (!item.feature || auth.can(item.feature))
+}
+
 export const SIDEBAR_KEY = 'vs.sidebar'
 const NAV_OPEN_KEY = 'vs.navOpen'
 
 function readOpenGroups(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(NAV_OPEN_KEY) || '[]') as string[]
+    const raw = localStorage.getItem(NAV_OPEN_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : [...DEFAULT_OPEN]
   } catch {
-    return []
+    return [...DEFAULT_OPEN]
   }
 }
 
@@ -186,7 +216,7 @@ function Breadcrumb() {
   const narrow = useMediaQuery(NARROW_QUERY)
   const crumbs: { label: string; to?: string }[] = [{ label: t('nav.dashboard'), to: '/' }]
   if (parts.length) {
-    const nav = NAV.find((n) => n.to === `/${parts[0]}`)
+    const nav = NAV_LEAVES.find((n) => n.to === `/${parts[0]}`)
     if (nav) crumbs.push({ label: t(`nav.${nav.key}`), to: parts.length > 1 ? nav.to : undefined })
     if (flowId !== null) {
       crumbs.push({ label: flow.data?.name ?? `#${flowId}`, to: flowMatch?.[2] ? `/flows/${flowId}` : undefined })
@@ -230,7 +260,7 @@ export function AppShell() {
   useEffect(() => { setMobileOpen(false) }, [pathname])
   // 直接連到整合子頁（書籤、搜尋結果）時群組要是展開的，不然看不到自己在哪一頁
   useEffect(() => {
-    const group = NAV.find((n) => n.tree && pathname.startsWith(n.to))
+    const group = NAV.find((n) => (n.sections && n.to && pathname.startsWith(n.to)) || n.children?.some((c) => pathname.startsWith(c.to)))
     if (group) setOpenGroups((prev) => (prev.includes(group.key) ? prev : [...prev, group.key]))
   }, [pathname])
   const narrow = collapsed && !mobile
@@ -258,37 +288,67 @@ export function AppShell() {
         {!narrow ? <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">{t('nav.section')}</p> : <div className="pt-2" />}
         {/* 摺疊時 tooltip 要伸出側欄：overflow-y-auto 會把 overflow-x 也變成 auto 而裁掉 tooltip，所以摺疊時改 overflow-visible（10 項一定塞得下） */}
         <div className={`flex-1 ${narrow ? 'overflow-visible' : 'overflow-y-auto'}`}>
-          {NAV.filter((item) => (!item.admin || auth.isAdmin) && (!item.feature || auth.can(item.feature))).map(({ to, key, icon: Icon, end, tree }) => (
-            <div key={key}>
-              <div className="relative flex items-center">
-                <NavLink to={to} end={end} aria-expanded={tree && !narrow ? openGroups.includes(key) : undefined}
-                  onClick={(e) => {
-                    setMobileOpen(false)
-                    if (!tree || narrow) return
-                    // 群組項目點一下就展開／收合，不必再找右邊的小箭頭：收起來時展開並進入第一個子頁，
-                    // 已展開時只收合、停在目前的頁面
-                    if (openGroups.includes(key)) e.preventDefault()
-                    toggleGroup(key)
-                  }}
-                  title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item flex-1 ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
-                  <Icon size={17} aria-hidden className="shrink-0" />
-                  {narrow ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
-                  {tree && !narrow ? (openGroups.includes(key) ? <ChevronDown size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" /> : <ChevronRight size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" />) : null}
-                </NavLink>
-              </div>
-              {tree && !narrow && openGroups.includes(key) ? (
-                <div className="mb-1" data-testid={`nav-${key}-children`}>
-                  {SECTIONS.map((section) => (
-                    <NavLink key={section.id} to={`/integration/${section.id}`} onClick={() => setMobileOpen(false)}
-                      className={({ isActive }) => `nav-item !py-1.5 !pl-9 text-[13px] ${isActive ? 'active' : ''}`} data-testid={`nav-integration-${section.id}`}>
-                      <section.icon size={14} aria-hidden className="shrink-0" />
-                      <span className="truncate">{t(`integration.tabs.${section.key}`)}</span>
-                    </NavLink>
-                  ))}
+          {/* 摺疊成窄側欄時分組標題沒有意義（點不到頁面），直接把所有可點項目攤平 */}
+          {(narrow ? NAV_LEAVES.map((leaf) => ({ ...leaf, children: undefined, sections: false })) as NavNode[] : NAV)
+            .filter((item) => visibleNav(item, auth))
+            .map((item) => {
+              const { to, key, icon: Icon, end, sections, children } = item
+              const open = openGroups.includes(key)
+              const kids = (children ?? []).filter((c) => visibleNav(c, auth))
+              const groupActive = kids.some((c) => pathname.startsWith(c.to))
+              return (
+                <div key={key}>
+                  <div className="relative flex items-center">
+                    {to ? (
+                      <NavLink to={to} end={end} aria-expanded={sections && !narrow ? open : undefined}
+                        onClick={(e) => {
+                          setMobileOpen(false)
+                          if (!sections || narrow) return
+                          // 群組項目點一下就展開／收合，不必再找右邊的小箭頭：收起來時展開並進入第一個子頁，
+                          // 已展開時只收合、停在目前的頁面
+                          if (open) e.preventDefault()
+                          toggleGroup(key)
+                        }}
+                        title={narrow ? undefined : t(`nav.${key}`)} className={({ isActive }) => `nav-item flex-1 ${isActive ? 'active' : ''} ${narrow ? 'justify-center !px-0' : ''}`} data-testid={`nav-${key}`}>
+                        <Icon size={17} aria-hidden className="shrink-0" />
+                        {narrow ? <span className="nav-tip" role="tooltip">{t(`nav.${key}`)}</span> : <span className="truncate">{t(`nav.${key}`)}</span>}
+                        {sections && !narrow ? (open ? <ChevronDown size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" /> : <ChevronRight size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" />) : null}
+                      </NavLink>
+                    ) : (
+                      // 純分組（自己不是一頁）：點一下展開／收合，目前頁面在裡面時標題也高亮
+                      <button type="button" onClick={() => toggleGroup(key)} aria-expanded={open}
+                        className={`nav-item flex-1 ${groupActive && !open ? 'active' : ''}`} data-testid={`nav-${key}`}>
+                        <Icon size={17} aria-hidden className="shrink-0" />
+                        <span className="truncate">{t(`nav.${key}`)}</span>
+                        {open ? <ChevronDown size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" /> : <ChevronRight size={14} aria-hidden className="ml-auto shrink-0 text-sidebar-muted" />}
+                      </button>
+                    )}
+                  </div>
+                  {!narrow && open && kids.length ? (
+                    <div className="mb-1" data-testid={`nav-${key}-children`}>
+                      {kids.map((child) => (
+                        <NavLink key={child.key} to={child.to} end={child.end} onClick={() => setMobileOpen(false)}
+                          className={({ isActive }) => `nav-item !py-1.5 !pl-9 text-[13px] ${isActive ? 'active' : ''}`} data-testid={`nav-${child.key}`}>
+                          <child.icon size={14} aria-hidden className="shrink-0" />
+                          <span className="truncate">{t(`nav.${child.key}`)}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  ) : null}
+                  {sections && !narrow && open ? (
+                    <div className="mb-1" data-testid={`nav-${key}-children`}>
+                      {SECTIONS.map((section) => (
+                        <NavLink key={section.id} to={`/integration/${section.id}`} onClick={() => setMobileOpen(false)}
+                          className={({ isActive }) => `nav-item !py-1.5 !pl-9 text-[13px] ${isActive ? 'active' : ''}`} data-testid={`nav-integration-${section.id}`}>
+                          <section.icon size={14} aria-hidden className="shrink-0" />
+                          <span className="truncate">{t(`integration.tabs.${section.key}`)}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-          ))}
+              )
+            })}
         </div>
         <button type="button" onClick={() => setCollapsed((v) => !v)} className={`${mobile ? 'hidden' : 'flex'} h-11 items-center gap-3 border-t border-[var(--sidebar-line)] text-[12px] text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-text ${narrow ? 'justify-center' : 'px-4'}`} title={narrow ? t('nav.expand') : t('nav.collapse')} aria-label={narrow ? t('nav.expand') : t('nav.collapse')} data-testid="sidebar-toggle">
           <Menu size={16} aria-hidden />
