@@ -70,9 +70,10 @@ class Command(BaseCommand):
         add("image archive", WARN if cap_gb and used_gb > cap_gb * 0.9 else OK,
             f"{stats['files']} files, {used_gb:.2f} / {cap_gb:g} GB in {stats['dir']}")
 
-        from apps.vision.models import FlowRun, FlowRunHourly
+        from apps.vision.models import FlowRun, FlowRunHourly, MeasurementLog
 
         add("history", OK, f"{FlowRun.objects.count()} run rows (kept {cfg.get('KEEP_RUN_DAYS')}d), {FlowRunHourly.objects.count()} hourly rows (kept forever)")
+        add("measurements", OK, f"{MeasurementLog.objects.count()} SPC rows ({'on' if cfg.get('MEASUREMENT_LOG', True) else 'off'}, kept {cfg.get('MEASUREMENT_DAYS')}d)")
 
         http_port = int(cfg.get("HTTP_PORT") or 8000)
         served = _healthz(http_port)

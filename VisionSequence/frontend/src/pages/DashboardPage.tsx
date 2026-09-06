@@ -1,6 +1,7 @@
 /** 總覽：左欄＝流程卡垂直清單（點卡＝選擇觀看，不再跳編輯器；編輯器／統計改小圖示鈕）＋
  *  即時檢測資訊；中央＝選中流程的即時影像。訂該流程 SSE（含輸出），外部 API／連續執行
  *  觸發的每筆檢測完成立即更新。全域 SSE 照樣把 stats 寫進 flows 快取（卡片數字即時）。 */
+import { SpcAlerts } from '@/components/stats/SpcAlerts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -224,6 +225,7 @@ export function DashboardPage() {
         }
       />
       <CapacityBar />
+      <SpcAlerts />
       {flows.isPending ? (
         <LoadingState />
       ) : flows.isError ? (

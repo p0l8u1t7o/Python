@@ -31,6 +31,7 @@ class Command(BaseCommand):
         parser.add_argument("--archive-days", type=int, default=None)
         parser.add_argument("--archive-gb", type=float, default=None)
         parser.add_argument("--audit", type=int, default=None, help="Keep audit entries for this many days (0 = keep)")
+        parser.add_argument("--measurements", type=int, default=None, help="Keep SPC measurement rows for this many days (0 = keep)")
 
     def handle(self, *args, **options):
         cfg = settings.VISION
@@ -58,6 +59,17 @@ class Command(BaseCommand):
 
         if audit_days and audit_days > 0:
             self.stdout.write(f"audit older than {audit_days}d: {audit.purge(days=0) if dry else audit.purge(days=int(audit_days))} removed")
+        meas_days = cfg.get("MEASUREMENT_DAYS", 365) if options["measurements"] is None else options["measurements"]
+        if meas_days and meas_days > 0:
+            from apps.vision.models import MeasurementLog
+
+            doomed_m = MeasurementLog.objects.filter(ts__lt=timezone.now() - dt.timedelta(days=int(meas_days)))
+            n = doomed_m.count()
+            self.stdout.write(f"measurements older than {meas_days}d: {n}")
+            if n and not dry:
+                doomed_m.delete()
+        else:
+            self.stdout.write("measurements: keeping everything (0 = no age limit)")
         snapshots = 0
         for flow in Flow.objects.all():
             snapshots += 0 if dry else prune_versions(flow)

@@ -14,6 +14,7 @@ import { outputsSummary } from '@/components/editor/ResultsPanel'
 import { Page } from '@/components/layout/AppShell'
 import { Button, Card, CardBody, CardHeader, EmptyRow, ErrorState, LoadingState, PageHeader, SegmentedControl, Select, StatusBadge, TBody, THead, Table, Td, Th, Tr, Tile } from '@/components/ui'
 import { api } from '@/lib/api'
+import { SpcPanel } from '@/components/stats/SpcPanel'
 import { useFlow, useFlowStats, useRunHistory } from '@/lib/queries'
 import type { FlowStats } from '@/lib/types'
 
@@ -131,6 +132,7 @@ export function StatsPage() {
   const id = Number(flowId)
   const flow = useFlow(Number.isNaN(id) ? null : id)
   const [period, setPeriod] = useState<Period>('24')
+  const [view, setView] = useState<'yield' | 'spc'>('yield')
   const [status, setStatus] = useState('')
   const [offset, setOffset] = useState(0)
   const stats = useFlowStats(Number.isNaN(id) ? null : id, Number(period))
@@ -159,12 +161,15 @@ export function StatsPage() {
         description={<span>{t('stats.subtitle')}{latest?.station_id ? <span className="ml-2 text-xs">· {t('stats.station')} <code className="font-mono">{latest.station_id}</code></span> : null}{latest?.recipe ? <span className="ml-2 text-xs">· {t('stats.recipe')} <code className="font-mono">{latest.recipe}</code></span> : null}</span>}
         actions={
           <>
+            <SegmentedControl size="sm" value={view} onChange={(v) => setView(v as 'yield' | 'spc')} options={[{ value: 'yield', label: t('stats.viewYield') }, { value: 'spc', label: t('stats.viewSpc') }]} />
             <SegmentedControl size="sm" value={period} onChange={(v) => { setPeriod(v); setOffset(0) }} options={PERIODS.map((v) => ({ value: v, label: t(`stats.periods.${v}`) }))} />
             <Link to={`/flows/${id}`}><Button size="sm" icon={<ArrowLeft size={14} />}>{t('stats.backToEditor')}</Button></Link>
           </>
         }
       />
-      {stats.isPending ? (
+      {view === 'spc' ? (
+        <SpcPanel flowId={id} />
+      ) : stats.isPending ? (
         <LoadingState />
       ) : stats.isError ? (
         <ErrorState error={stats.error} onRetry={() => void stats.refetch()} />

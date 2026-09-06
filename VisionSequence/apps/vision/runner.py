@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import queue
 import threading
 import time
@@ -31,10 +32,10 @@ from django.db.models.functions import Greatest
 
 from apps.core.errors import Conflict, NotFound, RateLimited
 from apps.vision import archive, engine
-from apps.vision import variables
+from apps.vision import spc, variables
 from apps.vision.graph import CompiledGraph, compile_graph, restrict_to, validate_graph
 from apps.vision.images import store
-from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource
+from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource, MeasurementLog
 from apps.vision.sources import grab_by_id, open_source
 
 log = logging.getLogger(__name__)
@@ -159,6 +160,23 @@ class _Persister(threading.Thread):
                     total_ms=F("total_ms") + b["total_ms"], max_ms=Greatest(F("max_ms"), Value(b["max_ms"])),
                 )
 
+    @staticmethod
+    def _log_measurements(batch: list[engine.RunReport], rows: list[FlowRun]) -> int:
+        """具名數值輸出 → MeasurementLog（WP-14）；與明細同一批寫、bool 與非數值略過。回寫入筆數。"""
+        if not _cfg("MEASUREMENT_LOG", True):
+            return 0
+        logs: list[MeasurementLog] = []
+        for r, row in zip(batch, rows):
+            for name, value in (r.outputs or {}).items():
+                if spc.is_number(value):
+                    logs.append(MeasurementLog(flow_id=r.flow_id, run_id=row.id, name=str(name)[:80], value=float(value), ts=row.started_at, station_id=row.station_id))
+        if logs:
+            try:
+                MeasurementLog.objects.bulk_create(logs, batch_size=500, ignore_conflicts=True)
+            except IntegrityError:  # 流程剛被刪：這批量測值跟著丟
+                return 0
+        return len(logs)
+
     def _write(self, batch: list[engine.RunReport]) -> None:
         rows = [
             FlowRun(
@@ -171,7 +189,7 @@ class _Persister(threading.Thread):
                 recipe=r.recipe,
                 duration_ms=r.duration_ms,
                 nodes={nid: {"status": n.status, "duration_ms": round(n.duration_ms, 2), "message": n.message[:200]} for nid, n in r.nodes.items()},
-                outputs=r.outputs,
+                outputs=_json_safe(r.outputs),
                 images=archive.save(r, getattr(r, "archive_images", None) or {}),
                 error=r.error[:2000],
                 started_at=datetime.fromtimestamp(r.started_at, tz=timezone.utc),
@@ -189,9 +207,13 @@ class _Persister(threading.Thread):
                 except IntegrityError:
                     pass
         self._rollup(rows)
+        self._log_measurements(batch, rows)
         self._prune_counter += len(rows)
         if self._prune_counter >= 500:
             self._prune_counter = 0
+            mdays = int(_cfg("MEASUREMENT_DAYS", 365))
+            if mdays > 0:
+                MeasurementLog.objects.filter(ts__lt=datetime.now(timezone.utc) - timedelta(days=mdays)).delete()
             days = int(_cfg("KEEP_RUN_DAYS", 30))
             if days > 0:
                 cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -206,6 +228,17 @@ class _Persister(threading.Thread):
                         archive.drop_run(run_id.hex, images)
                     FlowRun.objects.filter(id__in=[d[0] for d in doomed]).delete()
             archive.purge()  # 順便照天數與容量上限清封存
+
+
+def _json_safe(value: Any) -> Any:
+    """NaN／inf 轉 None：SQLite 的 JSON_VALID 會拒絕 NaN，一個算不出來的量測值不能讓整筆 run 記錄消失。"""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 persister = _Persister()

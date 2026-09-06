@@ -150,6 +150,25 @@ class FlowRunHourly(models.Model):
     def total(self) -> int:
         return self.ok + self.ng + self.failed
 
+
+class MeasurementLog(models.Model):
+    """具名數值輸出的輕量時間序列（WP-14 SPC）：每次 run 的每個數值輸出一列，與明細 `FlowRun` 分開保留。
+
+    明細 30 天就淘汰、還有筆數上限，SPC 要看的是「孔徑最近三個月在往上漂」——所以另存一張只有
+    (flow, run, name, value, ts, station) 的表，保留天數獨立（`MEASUREMENT_DAYS`，0＝永久）。寫入走
+    持久化執行緒的同一批 bulk_create，不碰引擎熱路徑。
+    """
+
+    flow = models.ForeignKey("Flow", on_delete=models.CASCADE, related_name="measurements")
+    run_id = models.UUIDField()
+    name = models.CharField(max_length=80)
+    value = models.FloatField()
+    ts = models.DateTimeField()
+    station_id = models.CharField(max_length=40, default="ST01")
+
+    class Meta:
+        indexes = [models.Index(fields=["flow", "name", "ts"], name="vision_meas_flow_name_ts")]
+
     def __str__(self) -> str:
         return f"{self.flow_id} {self.hour:%Y-%m-%d %H} {self.total}"
 

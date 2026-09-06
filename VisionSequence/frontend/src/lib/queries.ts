@@ -58,6 +58,8 @@ import type {
   TcpResult,
   TemplateInstance,
   ToolCatalogue,
+  SpcAlertsResult,
+  SpcResult,
 } from './types'
 
 export const keys = {
@@ -68,6 +70,8 @@ export const keys = {
   recent: (id: number) => ['recent', id] as const,
   history: (id: number, params: Record<string, unknown>) => ['history', id, params] as const,
   stats: (id: number, hours: number) => ['flow-stats', id, hours] as const,
+  spc: (id: number, output: string, chart: string, subgroup: number, hours: number) => ['flow-spc', id, output, chart, subgroup, hours] as const,
+  spcAlerts: ['spc-alerts'] as const,
   sources: ['sources'] as const,
   sourceKinds: ['source-kinds'] as const,
   assets: (kind: string) => ['assets', kind] as const,
@@ -199,6 +203,21 @@ export function useFlowStats(flowId: number | null, hours = 24) {
     queryFn: () => api.get<FlowStatsDb>(`/vision/flows/${flowId}/stats`, { hours }),
     enabled: flowId !== null,
   })
+}
+
+/** 量測值 SPC（WP-14）：具名輸出的時間序列＋管制界限／Cp、Cpk／Nelson 判異；output 空字串＝伺服端選第一個。 */
+export function useFlowSpc(flowId: number | null, opts: { output: string; chart: 'imr' | 'xbar_r'; subgroup: number; hours: number }) {
+  return useQuery({
+    queryKey: keys.spc(flowId ?? 0, opts.output, opts.chart, opts.subgroup, opts.hours),
+    queryFn: () => api.get<SpcResult>(`/vision/flows/${flowId}/spc`, { output: opts.output, chart: opts.chart, subgroup: opts.subgroup, hours: opts.hours, limit: 1000 }),
+    enabled: flowId !== null,
+    refetchInterval: 30_000,
+  })
+}
+
+/** 總覽頁的量測值告警（伺服端快取 30 秒）。 */
+export function useSpcAlerts() {
+  return useQuery({ queryKey: keys.spcAlerts, queryFn: () => api.get<SpcAlertsResult>('/vision/spc/alerts'), refetchInterval: 60_000 })
 }
 
 // ---- 執行 ----

@@ -782,3 +782,60 @@ export interface DlSuggestion {
   score: number
   shapes?: DlShape[]
 }
+
+/** 量測值 SPC（GET /flows/{id}/spc） */
+export interface SpcLimits {
+  chart: 'imr' | 'xbar_r'
+  n: number
+  subgroup?: number
+  cl?: number | null
+  ucl?: number | null
+  lcl?: number | null
+  sigma?: number | null
+  mr_bar?: number | null
+  mr_ucl?: number | null
+  r_bar?: number
+  r_ucl?: number
+  r_lcl?: number
+  xbar?: number[]
+  r?: number[]
+}
+export interface SpcCapability {
+  usl: number | null
+  lsl: number | null
+  cp?: number
+  cpk?: number
+  cpu?: number
+  cpl?: number
+  out_of_spec?: number
+}
+export interface SpcAlert {
+  rule: number
+  text: string
+  points: number[]
+}
+export interface SpcResult {
+  flow_id: number
+  output: string
+  outputs: string[]
+  hours: number
+  chart: 'imr' | 'xbar_r'
+  subgroup: number
+  enabled: boolean
+  retention_days: number
+  series: { ts: string; value: number; run_id: string }[]
+  analysis: {
+    limits: SpcLimits
+    capability: SpcCapability
+    rules: Record<string, number[]>
+    rule_names: Record<string, string>
+    flagged: number[]
+    summary: { n: number; mean: number | null; std: number | null; min: number | null; max: number | null }
+  }
+  spec: { usl?: number; lsl?: number; nominal?: number; unit?: string; node_id?: string; source?: string }
+  alerts?: SpcAlert[]
+}
+export interface SpcAlertsResult {
+  items: { flow_id: number; flow_name: string; output: string; alerts: SpcAlert[]; last_ts: string; points: number }[]
+  cached: boolean
+}

@@ -165,6 +165,9 @@ VISION = {
     # 明細保留天數為主、筆數為輔；每小時彙總（FlowRunHourly）永久保留
     "KEEP_RUN_DAYS": _env_int("VISION_KEEP_RUN_DAYS", 30),
     "KEEP_RUN_ROWS": _env_int("VISION_KEEP_RUN_ROWS", 20000),
+    # 量測值 SPC：具名數值輸出另存 MeasurementLog（保留天數獨立於明細；0＝永久）
+    "MEASUREMENT_LOG": _env_bool("VISION_MEASUREMENT_LOG", True),
+    "MEASUREMENT_DAYS": _env_int("VISION_MEASUREMENT_DAYS", 365),
     "KEEP_VERSIONS": _env_int("VISION_KEEP_VERSIONS", 50),
     "AUDIT_DAYS": _env_int("VISION_AUDIT_DAYS", 730),
     # 資料夾外掛：這個資料夾下的 .py 啟動時自動掛載（繼承 Tool／Grabber／Writer 即可，不用改 .env）。
