@@ -76,7 +76,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **現場看板**：每條流程設定要顯示哪些具名輸出（標籤、單位、公差）、哪張影像、哪些變數；總覽頁照它顯示，`/board/:id` 是給操作站的全螢幕看板。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 
-### 內建工具（90 個，8 類）
+### 內建工具（93 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（1） | image_source |
@@ -89,6 +89,13 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 輸出（6） | judge, output, draw_result, save_image, write_modbus, send_image（TCP 傳圖） |
 
 影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。
+
+**演算能力補強（2026-09，16 個工作包，規格見 `docs/vision-capabilities.html` 與 `docs/performance.html`）**：
+- 前處理：`polar_unwrap`／`polar_restore`（環形工件展開）、`shading_correct`（平場校正）、`undistort` alpha 與 mm_per_pixel、`photometric_stereo`（四燈光度立體，刻印字／凹坑）、`accel` 透明 GPU 後端（只對 ≥ 4 MP 的 remap／中值／卷積／FFT，實測理由見效能頁）。
+- 定位與區域：`shape_match`（幾何形狀比對，遮擋與打光變化不怕）、`region_from_shape`／`region_combine`（組合區域：聯集／挖除／交集）。
+- 量測：`contour_find`／`contour_filter`／`contour_geometry`／`contour_match`（輪廓鏈與凸缺陷）、`circular_caliper`／`profile_defect`（圓形卡尺與序列缺陷）、`gdt_measure`（形位公差：直線度／平面度／真圓度 MZC／平行度／垂直度／傾斜度）、`to_world` 接數值埠、標定頁覆蓋率地圖與警告。
+- 檢測：`defect_stat`（統計範本比對）、`dl_anomaly`（只教良品的異常檢測）、`ocr_read`／`ocv_verify`（離線 OCR 與字型教導）、`barcode_grade`（ISO 15415／15416／AIM DPM 條碼品質分級，解碼靠 zxing-cpp）。
+- 品質資料：`manage.py precision`（重複性／再現性／GR&R 報告與 CI 門檻，統計頁精度卡）、量測值 SPC（`MeasurementLog`、管制圖／Cp,Cpk／Nelson 判異、總覽告警、`GET /flows/{id}/spc`、`GET /spc/alerts`）。
 
 ### 範本畫廊與範例樣板
 30 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、圓盤崩邊、真圓度形位公差、刻印字光度立體、條碼品質分級、排除區、平場校正、統計良品比對、形狀比對定位、異常檢測、日期碼讀取、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。

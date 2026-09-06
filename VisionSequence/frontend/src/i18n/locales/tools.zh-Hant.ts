@@ -404,6 +404,37 @@ export default {
     },
     ports: { image: "影像", roi: "區域（動態）", pass: "合格", fail: "不合格", grade: "等級", grade_value: "等級分數", params: "分項", text: "內容", symbology: "碼制", decoded: "已解碼" },
   },
+  variable_get: {
+    label: "讀取變數",
+    description: "讀出流程或站台變數：料號、計數、上一件的量測值。尚未儲存時用預設值。",
+    params: {
+      name: { label: "變數", help: "英數字與底線。" },
+      scope: { label: "範圍", help: "只限這條流程，或整站所有流程共用。", options: { flow: "這條流程", station: "整個站台" } },
+      default: { label: "預設值", help: "尚未儲存前使用。數字仍是數字；true 與 false 是布林。" },
+    },
+    ports: { value: "值", number: "數值", text: "文字", found: "已設定" },
+  },
+  variable_set: {
+    label: "儲存變數",
+    description: "把值存進流程或站台變數：累計數量、記住最大值、把料號傳給下一條流程。試執行只寫在覆蓋層，不動真正的計數。",
+    params: {
+      name: { label: "變數" },
+      scope: { label: "範圍", options: { flow: "這條流程", station: "整個站台" } },
+      mode: { label: "方式", options: { set: "儲存這個值", add: "加上去（計數、總和）", max: "保留最大", min: "保留最小" } },
+    },
+    ports: { value: "值", previous: "先前的值" },
+  },
+  format_text: {
+    label: "格式化回覆",
+    description: "用樣板組一行純文字給讀不懂 JSON 的設備：{名字} 依序取具名輸出、觸發引數（lot、sn）、本節點輸入 a～d，另有 {run_id} 與 {station}；支援 {width:.2f} 這類格式。設備端用 TCP 的 fmt= 或 HTTP 的 format 取這一行。",
+    params: {
+      template: { label: "樣板", help: "例如 OK;{diameter:.2f};{lot}。\\n 與 \\t 會轉成真正的控制字元。" },
+      name: { label: "輸出名稱", help: "回覆以此名稱帶這一行；TCP 指令的 fmt 或 HTTP 的 format 指定它。" },
+      ending: { label: "行尾", options: { none: "無", lf: "換行（\\n）", crlf: "回車換行（\\r\\n）", cr: "回車（\\r）" } },
+      missing: { label: "名字沒有值時", options: { blank: "留空", keep: "保留名字原樣", fail: "讓步驟失敗" } },
+    },
+    ports: { a: "a", b: "b", c: "c", d: "d", text: "文字" },
+  },
   circular_caliper: {
     label: "圓形卡尺",
     description: "沿圓形邊緣放一圈徑向卡尺，量出每個角度的半徑。半徑序列一眼看出崩邊、缺口、毛刺與不圓；跳動量（最大減最小）就是徑向偏差。把數值接進序列缺陷就能數出缺陷。",

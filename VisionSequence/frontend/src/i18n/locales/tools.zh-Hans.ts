@@ -404,6 +404,37 @@ export default {
     },
     ports: { image: "图像", roi: "区域（动态）", pass: "合格", fail: "不合格", grade: "等级", grade_value: "等级分数", params: "分项", text: "内容", symbology: "码制", decoded: "已解码" },
   },
+  variable_get: {
+    label: "读取变量",
+    description: "读出流程或站台变量：料号、计数、上一件的测量值。尚未存储时用默认值。",
+    params: {
+      name: { label: "变量", help: "英数字与下划线。" },
+      scope: { label: "范围", help: "只限这条流程，或整站所有流程共用。", options: { flow: "这条流程", station: "整个站台" } },
+      default: { label: "默认值", help: "尚未存储前使用。数字仍是数字；true 与 false 是布尔。" },
+    },
+    ports: { value: "值", number: "数值", text: "文字", found: "已设定" },
+  },
+  variable_set: {
+    label: "存储变量",
+    description: "把值存进流程或站台变量：累计数量、记住最大值、把料号传给下一条流程。试执行只写在覆盖层，不动真正的计数。",
+    params: {
+      name: { label: "变量" },
+      scope: { label: "范围", options: { flow: "这条流程", station: "整个站台" } },
+      mode: { label: "方式", options: { set: "存储这个值", add: "加上去（计数、总和）", max: "保留最大", min: "保留最小" } },
+    },
+    ports: { value: "值", previous: "先前的值" },
+  },
+  format_text: {
+    label: "格式化回复",
+    description: "用模板组一行纯文本给读不懂 JSON 的设备：{名字} 依序取具名输出、触发参数（lot、sn）、本节点输入 a～d，另有 {run_id} 与 {station}；支持 {width:.2f} 这类格式。设备端用 TCP 的 fmt= 或 HTTP 的 format 取这一行。",
+    params: {
+      template: { label: "模板", help: "例如 OK;{diameter:.2f};{lot}。\\n 与 \\t 会转成真正的控制字符。" },
+      name: { label: "输出名称", help: "回复以此名称带这一行；TCP 指令的 fmt 或 HTTP 的 format 指定它。" },
+      ending: { label: "行尾", options: { none: "无", lf: "换行（\\n）", crlf: "回车换行（\\r\\n）", cr: "回车（\\r）" } },
+      missing: { label: "名字没有值时", options: { blank: "留空", keep: "保留名字原样", fail: "让步骤失败" } },
+    },
+    ports: { a: "a", b: "b", c: "c", d: "d", text: "文字" },
+  },
   circular_caliper: {
     label: "圆形卡尺",
     description: "沿圆形边缘放一圈径向卡尺，量出每个角度的半径。半径序列一眼看出崩边、缺口、毛刺与不圆；跳动量（最大减最小）就是径向偏差。把数值接进序列缺陷就能数出缺陷。",

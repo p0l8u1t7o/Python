@@ -846,6 +846,9 @@ const en = {
     http: {
       ops: {
         runFlow: { summary: 'Run a flow once', desc: 'Send an image (multipart, field image) or let the flow use its own image source (JSON body). wait=1 returns the RunReport; wait=0 returns 202 with a run_id to collect later. context key/value pairs are visible to formulas and outputs; recipe picks a recipe by name or id.' },
+        spc: { summary: 'Measurement series and control chart of one output', desc: 'The values of one numeric named output over the last hours from the measurement log, with control limits (I-MR or X-bar R), Cp/Cpk when a Tolerance judge is bound, and the Nelson rules triggered; without output, the list of outputs available.' },
+        spcAlerts: { summary: 'Outputs out of control right now', desc: 'Every flow and output whose latest points trigger a Nelson rule or fall outside the specification; cached for thirty seconds on the server, so poll at that rate or slower.' },
+        precision: { summary: 'Run a precision study', desc: 'Runs the flow N times on the same picture (repeatability) or on fresh captures (reproducibility) outside the queue and returns sigma, range and gauge capability per numeric output with a markdown report. Gauge R&R runs from the command line.' },
         getRun: { summary: 'Collect a result by run id', desc: 'The report of a run started with wait=0 or TRIGGER. Until it finishes the answer carries status "queued" or "running"; afterwards the full RunReport, from memory or from the database history.' },
         listFlows: { summary: 'List flows', desc: 'Every flow with its enabled state, version and live statistics; ids and names are what RUN, TRIGGER and the run endpoint accept.' },
         flowStats: { summary: 'Yield and timing of one flow', desc: 'Totals, OK/NG counts and the hourly roll-up over the last hours; read from the permanent hourly table, so the numbers survive history clean-up.' },

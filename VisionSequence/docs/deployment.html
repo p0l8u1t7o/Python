@@ -219,7 +219,7 @@
 <tr><td><code>vsctl start | stop | restart</code></td><td>The API service; the proxy follows it (it depends on it)</td></tr>
 <tr><td><code>vsctl logs [-Tail 200] [-Follow] [-Proxy]</code></td><td><code>data\logs\service.log</code> or <code>proxy.log</code></td></tr>
 <tr><td><code>vsctl run</code></td><td>Runs the platform in the foreground for debugging (stop the service first)</td></tr>
-<tr><td><code>vsctl doctor [-Json]</code>, <code>backup</code>, <code>restore &lt;zip&gt;</code>, <code>purge --dry-run</code></td><td>Health check, backup, restore (stops, restores, migrates, starts), retention</td></tr>
+<tr><td><code>vsctl doctor [-Json]</code>, <code>backup</code>, <code>restore &lt;zip&gt;</code>, <code>purge --dry-run [--measurements N]</code></td><td>Health check, backup, restore (stops, restores, migrates, starts), retention</td></tr>
 <tr><td><code>vsctl update &lt;zip&gt;</code>, <code>rollback [&lt;ver&gt;]</code>, <code>versions</code></td><td><a href="#upgrade">§10</a></td></tr>
 <tr><td><code>vsctl plugins list | install &lt;zip&gt; | deps | rescan</code></td><td><a href="#plugins">§11</a></td></tr>
 <tr><td><code>vsctl dl install &lt;pack.zip&gt; | dl check -Predict</code></td><td><a href="#dl">§12</a></td></tr>

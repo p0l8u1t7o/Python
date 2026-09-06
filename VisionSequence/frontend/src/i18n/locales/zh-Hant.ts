@@ -1480,6 +1480,9 @@ const zhHant = {
     http: {
       ops: {
         runFlow: { summary: '執行一次流程', desc: '送一張影像（multipart，欄位 image）或讓流程用自己的影像來源（JSON 本文）。wait=1 回 RunReport；wait=0 回 202 與 run_id，之後再取。context 的 key/value 給公式與輸出用；recipe 以名稱或 id 指定配方。' },
+        spc: { summary: '單一輸出的量測序列與管制圖', desc: '量測值紀錄裡某個數值具名輸出最近幾小時的值，附管制界限（I-MR 或 X̄-R）、綁定公差判定時的 Cp／Cpk，以及觸發的 Nelson 法則；不給 output 就回可選的輸出清單。' },
+        spcAlerts: { summary: '此刻失控的輸出', desc: '每條流程中最近幾點觸發 Nelson 法則或超出規格的輸出；伺服端快取 30 秒，請以此頻率或更慢輪詢。' },
+        precision: { summary: '執行精度研究', desc: '在佇列之外把流程對同一張影像（重複性）或每次重新取像（再現性）跑 N 次，回每個數值輸出的 σ、極差與量具能力，附 markdown 報告；GR&R 由命令列執行。' },
         getRun: { summary: '依 run id 取結果', desc: 'wait=0 或 TRIGGER 啟動的執行結果。還沒跑完時 status 是 queued 或 running；跑完後是完整的 RunReport（記憶體或資料庫歷史）。' },
         listFlows: { summary: '列出流程', desc: '每條流程的啟用狀態、版本與即時統計；id 與名稱就是 RUN、TRIGGER 與執行端點接受的值。' },
         flowStats: { summary: '單一流程的良率與耗時', desc: '最近幾小時的總數、OK/NG 與每小時彙總；讀永久保留的彙總表，明細清掉數字也不會消失。' },
