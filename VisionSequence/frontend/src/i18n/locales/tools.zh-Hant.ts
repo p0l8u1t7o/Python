@@ -2016,6 +2016,21 @@ export default {
       path: "路徑",
     },
   },
+  shading_correct: {
+    label: "平場校正",
+    description: "把打光不均拉平。除以同一組光下拍的均勻白板影像（平場），可先扣暗場；或用大核模糊從影像本身估背景。校正後固定門檻在整個視野都適用，而不是只有中央。",
+    params: {
+      mode: {
+        label: "模式",
+        options: { flat_field: "平場（白板參考）", dark_flat: "暗場＋白板參考", estimate: "從影像估背景" },
+      },
+      flat: { label: "白板參考", help: "工作解析度下拍的均勻白板。上傳成影像資產。" },
+      dark: { label: "暗場參考", help: "蓋上鏡頭蓋拍的一張，去掉感測器固定偏移。" },
+      blur_sigma: { label: "背景模糊", help: "背景估計的範圍，要比想留下的特徵大。" },
+      target_level: { label: "目標亮度", help: "白板映到的灰階（均勻白板校正後就是這個值）；0 = 白板自己的平均。估背景時是輸出的平均亮度；0 = 影像自己的平均。" },
+    },
+    ports: { image: "影像", mean_before: "校正前平均", mean_after: "校正後平均" },
+  },
   shape_align: {
     label: "定位補正",
     description: "比較目前定位結果與教導時的參考位置，算出平移／旋轉量（dx, dy, dθ），供 ROI 跟隨使用。",

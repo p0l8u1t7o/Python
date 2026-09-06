@@ -536,6 +536,35 @@ def exclusion_zone_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def shading_flow(source_id: Any, flat_asset: str = "") -> dict[str, Any]:
+    """平場校正：白板參考影像除掉漸暈 → 固定門檻找暗污點 → blob 計數 → 6 顆＝OK。
+
+    對齊合成圖「打光不均」：角落亮度只剩 45%，不校正時固定門檻在角落整片誤判；校正後每張 6 顆（第 4 張多一大塊 → 7，NG）。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("flat", "shading_correct", 2, 0, "Flat-field correction", mode="flat_field", flat=flat_asset, target_level=200),
+        _node("thr", "threshold", 3, 0, "Dark spots", method="fixed", threshold=120, invert=True),
+        _node("blob", "blob", 4, 0, "Spot blobs", threshold_method="none", min_area=400, max_area=20000),
+        _node("cmp", "if_number", 5, 0, "6 spots?", operator="eq", threshold=6),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: extra mark", verdict="ng", label="spot_count"),
+        _node("out", "output", 5, 1, "Output spot count", name="spot_count"),
+        _node("raw_thr", "threshold", 3, 2, "Same threshold, no correction", method="fixed", threshold=120, invert=True),
+        _node("raw_blob", "blob", 4, 2, "Spots without correction", threshold_method="none", min_area=400),
+        _node("out_raw", "output", 5, 2, "Output uncorrected count", name="spot_count_uncorrected"),
+        _note("n1", 0, 1, "About", "The lighting falls to 45% in the corners. The white-reference asset was taken under the same light, so dividing by it flattens the field and one fixed threshold works everywhere.\nThe lower branch runs the same threshold on the uncorrected image: the dark corners swallow the spots and the count is wrong."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "flat", "image", "image"), _edge("flat", "thr", "image", "image"), _edge("thr", "blob", "image", "image"),
+        _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("blob", "out", "count", "value"),
+        _edge("gray", "raw_thr", "image", "image"), _edge("raw_thr", "raw_blob", "image", "image"), _edge("raw_blob", "out_raw", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -701,6 +730,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
      lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
+    ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
+     lambda sid: shading_flow(sid, _demo_asset("Example: white reference (uneven lighting)"))),
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
@@ -730,6 +761,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "gear_teeth": "Example: gear teeth",
     "contour_defect": "Example: stamped part",
     "exclusion_zone": "Example: circle gauge",
+    "shading": "Example: uneven lighting",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
     "barcode_read": "Example: barcode label",
@@ -873,8 +905,8 @@ def seed_demo() -> list[str]:
         created.append(f"影像來源 {src.name}（{'新建' if made_src else '既有'}）")
         return src
 
-    def sample_asset(name: str, key: str, region: dict[str, Any] | None) -> str:
-        """從樣本圖第 1 張裁一塊存成資產（既有同名資產直接沿用），回傳 asset id。"""
+    def sample_asset(name: str, key: str, region: dict[str, Any] | None, image: Any = None) -> str:
+        """從樣本圖第 1 張裁一塊存成資產（既有同名資產直接沿用），回傳 asset id；給 image 時直接存那張（參考影像）。"""
         existing = Asset.objects.filter(name=name, kind="image").first()
         if existing:
             return str(existing.id)
@@ -887,9 +919,10 @@ def seed_demo() -> list[str]:
 
         from apps.vision.tools.roi import crop as roi_crop
 
-        folder = demo_images.write_set(key)
-        first = sorted(n for n in os.listdir(folder) if n.endswith(".png"))[0]
-        image = cv2.imdecode(np.fromfile(os.path.join(folder, first), dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            folder = demo_images.write_set(key)
+            first = sorted(n for n in os.listdir(folder) if n.endswith(".png"))[0]
+            image = cv2.imdecode(np.fromfile(os.path.join(folder, first), dtype=np.uint8), cv2.IMREAD_COLOR)
         piece = roi_crop(image, region, upright=True).image if region else image
         asset_id = _uuid.uuid4()
         path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.png")
@@ -909,6 +942,7 @@ def seed_demo() -> list[str]:
     sample_asset("Example: cup locator template", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
     sample_asset("Example: print golden template", "golden_print", None)
     sample_asset("Example: stamped part outline", "stamped_part", None)
+    sample_asset("Example: white reference (uneven lighting)", "vignette", None, image=demo_images.vignette_flat())
     _seed_demo_models(created)
 
     # 範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES），不佔流程清單；清掉舊版 seed 建過的流程。

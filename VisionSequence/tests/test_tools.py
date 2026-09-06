@@ -34,7 +34,7 @@ class RegistryTests(SimpleTestCase):
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
-            "region_from_shape", "region_combine",
+            "region_from_shape", "region_combine", "shading_correct",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -77,6 +77,7 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["contour_match"], {"max_distance"})
         self.assertEqual(teach["region_combine"], {"base"})
         self.assertEqual(teach["region_from_shape"], {"roi"})
+        self.assertEqual(teach["shading_correct"], set())
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 
@@ -1153,6 +1154,74 @@ class CompositeRoiTests(SimpleTestCase):
             run_tool("region_combine", None, {}, {})
         with self.assertRaises(ToolError):
             run_tool("region_from_shape", None, {})
+
+
+class ShadingTests(SimpleTestCase):
+    """WP-12 平場／陰影校正：徑向漸暈校正回均勻、增益圖快取、尺寸不符訊息、暗場、背景估計、位深與彩色。"""
+
+    @staticmethod
+    def _vignette(level: float, h: int = 240, w: int = 320) -> np.ndarray:
+        yy, xx = np.mgrid[0:h, 0:w]
+        v = 1.0 - 0.5 * (((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / ((w / 2) ** 2 + (h / 2) ** 2))
+        return np.clip(v * level, 0, 255).astype(np.uint8)
+
+    def test_flat_field_restores_uniform_image(self):
+        from apps.vision.tools.builtin import preprocess as pp
+
+        folder = temp_dir()
+        flat = save_png(self._vignette(240), folder, "flat.png")
+        img = self._vignette(180)
+        self.assertGreater(float(img.std()), 15)
+        pp._GAIN_CACHE.clear()
+        r = run_tool("shading_correct", img, {"mode": "flat_field", "flat": "f"}, assets={"f": flat})
+        out = r.outputs["image"]
+        self.assertEqual(out.dtype, np.uint8)
+        self.assertLess(float(out.std()), 1.0)  # 漸暈拿掉後回到均勻（原圖標準差 ~20）
+        self.assertAlmostEqual(r.outputs["mean_after"], 180 / 240 * float(self._vignette(240).mean()), delta=1.5)
+        self.assertEqual(r.detail["zero_ratio"], 0.0)
+        # 增益圖快取：第二次是同一個物件
+        gain_obj = next(iter(pp._GAIN_CACHE.values()))[2]
+        run_tool("shading_correct", img, {"mode": "flat_field", "flat": "f"}, assets={"f": flat})
+        self.assertIs(next(iter(pp._GAIN_CACHE.values()))[2], gain_obj)
+        # 目標亮度：白板映到 200
+        t = run_tool("shading_correct", self._vignette(240), {"mode": "flat_field", "flat": "f", "target_level": 200}, assets={"f": flat})
+        self.assertAlmostEqual(t.outputs["mean_after"], 200, delta=1.0)
+
+    def test_dark_flat_estimate_and_errors(self):
+        folder = temp_dir()
+        flat = save_png(self._vignette(240), folder, "flat.png")
+        dark = save_png(np.full((240, 320), 12, np.uint8), folder, "dark.png")
+        img = np.clip(self._vignette(180).astype(np.int32) + 12, 0, 255).astype(np.uint8)
+        r = run_tool("shading_correct", img, {"mode": "dark_flat", "flat": "f", "dark": "d"}, assets={"f": flat, "d": dark})
+        self.assertLess(float(r.outputs["image"].std()), 2.0)
+        e = run_tool("shading_correct", self._vignette(180), {"mode": "estimate", "blur_sigma": 101})
+        self.assertLess(float(e.outputs["image"].std()), 3.0)  # 原圖 σ≈20；小圖邊界外推留一點殘差
+        self.assertAlmostEqual(e.outputs["mean_after"], e.outputs["mean_before"], delta=1.5)
+        with self.assertRaises(ToolError) as cm:
+            run_tool("shading_correct", self._vignette(180, 120, 160), {"mode": "flat_field", "flat": "f"}, assets={"f": flat})
+        self.assertIn("320×240", str(cm.exception))
+        self.assertIn("160×120", str(cm.exception))
+        # 灰階白板套在彩色影像上：參考影像依影像通道數解碼，三通道同一組增益
+        colour = run_tool("shading_correct", cv2.cvtColor(self._vignette(180), cv2.COLOR_GRAY2BGR), {"mode": "flat_field", "flat": "f"}, assets={"f": flat})
+        self.assertLess(float(colour.outputs["image"].std()), 1.0)
+        with self.assertRaises(ToolError):
+            run_tool("shading_correct", self._vignette(180), {"mode": "flat_field"})
+
+    def test_keeps_depth_and_colour(self):
+        folder = temp_dir()
+        flat_gray = save_png(self._vignette(240), folder, "flat.png")
+        flat_bgr = save_png(cv2.cvtColor(self._vignette(240), cv2.COLOR_GRAY2BGR), folder, "flatc.png")
+        u16 = self._vignette(180).astype(np.uint16) << 8
+        r = run_tool("shading_correct", u16, {"mode": "flat_field", "flat": "f"}, assets={"f": flat_gray})
+        self.assertEqual(r.outputs["image"].dtype, np.uint16)
+        self.assertLess(float(r.outputs["image"].std()) / 256, 1.0)
+        f32 = self._vignette(180).astype(np.float32)
+        r = run_tool("shading_correct", f32, {"mode": "flat_field", "flat": "f"}, assets={"f": flat_gray})
+        self.assertEqual(r.outputs["image"].dtype, np.float32)
+        bgr = cv2.cvtColor(self._vignette(180), cv2.COLOR_GRAY2BGR)
+        r = run_tool("shading_correct", bgr, {"mode": "flat_field", "flat": "c"}, assets={"c": flat_bgr})
+        self.assertEqual(r.outputs["image"].shape, bgr.shape)
+        self.assertLess(float(r.outputs["image"].std()), 1.0)
 
 
 class AlgorithmAccuracyTests(SimpleTestCase):

@@ -170,7 +170,11 @@ class Scene:
         self.mask = cv2.threshold(self.gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
         self.calibration = save_calibration(folder, w, h)
         self.shape_template = save_png(self.mask[cy - r : cy + r, cx - r : cx + r], folder, f"shape_{w}.png")
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template}
+        yy, xx = np.mgrid[0:h, 0:w]
+        vignette = 1.0 - 0.45 * (((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / ((w / 2) ** 2 + (h / 2) ** 2))
+        self.flat = save_png(np.clip(vignette * 235, 0, 255).astype(np.uint8), folder, f"flat_{w}.png")
+        self.flat_bgr = save_png(cv2.cvtColor(np.clip(vignette * 235, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR), folder, f"flatc_{w}.png")
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -228,6 +232,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("fft_filter lowpass", "fft_filter", gray, {"mode": "lowpass", "cutoff": 0.15}, {}, {}),
         ("warp_perspective", "warp_perspective", big, {"roi": {"shape": "polygon", "points": [[s.cx - m * 0.2, s.cy - m * 0.15], [s.cx + m * 0.22, s.cy - m * 0.12], [s.cx + m * 0.2, s.cy + m * 0.15], [s.cx - m * 0.18, s.cy + m * 0.16]]}}, {}, {}),
         ("undistort", "undistort", big, {"calibration": "cal"}, {}, {}),
+        ("shading_correct flat (gray)", "shading_correct", gray, {"mode": "flat_field", "flat": "flat"}, {}, {}),
+        ("shading_correct flat (bgr)", "shading_correct", big, {"mode": "flat_field", "flat": "flat_bgr"}, {}, {}),
+        ("shading_correct estimate", "shading_correct", gray, {"mode": "estimate", "blur_sigma": 51}, {}, {}),
         ("polar_unwrap auto", "polar_unwrap", big, {"roi": ring}, {}, {}),
         ("polar_unwrap 0.5deg cubic", "polar_unwrap", big, {"roi": ring, "angle_step": "0.5", "interpolation": "cubic"}, {}, {}),
         ("polar_restore", "polar_restore", None, {}, {"mapping": ring_map, "points": [[10.0, 5.0], [400.0, 50.0]], "contours": [np.array([[[1, 1]], [[30, 1]], [[30, 20]]], dtype=np.int32)]}, {}),

@@ -64,6 +64,11 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 `image` 接原圖（標記畫在原圖上給現場看）。輸出 `points`／`contours`（原圖座標）、`first_x/first_y`、`first_angle`（度，畫面順時針）、
 `first_radius`。**在展開圖上找到缺陷後一定要接這個**，否則現場看不到缺陷在原圖的哪裡。
 
+## shading_correct
+平場／陰影校正：打光不均（角落暗、漸暈、側光）時放在取像後、二值化前。`flat_field` 除以白板參考影像資產（同一組光下拍一張均勻白板，
+上傳成影像資產，尺寸要與工作解析度相同）；`dark_flat` 再扣暗場；`estimate` 沒有白板時用大核模糊估背景（`blur_sigma` 要比要留的特徵大）。
+`target_level` 是白板映到的灰階（0＝白板自己的平均）。校正後固定門檻整個視野都適用；門檻類工具（threshold／blob／pixel_count）誤判在角落時先想到它。
+
 ## convert_depth
 16-bit／浮點影像轉 8-bit（`shift` 右移保線性、`minmax` 拉滿），或反向。多數工具會自動正規化，只有要控制映射方式時才放。
 

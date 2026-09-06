@@ -40,10 +40,10 @@ class DemoSeedTests(TransactionTestCase):
 
             self.assertTrue(ResourceGroup.objects.filter(kind="source", name="Examples").exists())
             self.assertGreaterEqual(ImageSource.objects.filter(group="Examples").count(), 11)
-            self.assertEqual(Asset.objects.filter(group="Examples", kind="image").count(), 4)
+            self.assertEqual(Asset.objects.filter(group="Examples", kind="image").count(), 5)
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
             self.assertEqual(sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True)), ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)"])
-            self.assertEqual(len(BUILTIN_TEMPLATES), 21)
+            self.assertEqual(len(BUILTIN_TEMPLATES), 22)
             import importlib.util
             import os
 

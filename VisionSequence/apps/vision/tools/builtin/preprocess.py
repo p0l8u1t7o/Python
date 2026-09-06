@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
+from typing import Any
+
 import cv2
 import numpy as np
 
 from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.builtin.locate import read_asset_image
 from apps.vision.tools.roi import crop, region_overlay
 
 
@@ -659,8 +664,133 @@ class UndistortTool(Tool):
         return Result(outputs={"image": out}, message=f"Corrected ({lens['views']} views, {lens['rms']:.2f} px)")
 
 
+# ---------------------------------------------------------------------------
+# 平場／陰影校正
+# ---------------------------------------------------------------------------
+SHADING_MODE_OPTIONS = [
+    {"value": "flat_field", "label": "Flat field (white reference)"},
+    {"value": "dark_flat", "label": "Dark and flat references"},
+    {"value": "estimate", "label": "Estimate the background from the image"},
+]
+
+#: 增益圖快取：(flat 路徑, dark 路徑, 影像通道數, 目標亮度) → (flat 物件, dark 物件, gain f32, 零值比例)。
+#: 參考影像由 read_asset_image 依 mtime／size 快取，這裡以物件身分比對即可跟著失效。
+_GAIN_CACHE: "OrderedDict[tuple[Any, ...], tuple[Any, Any, np.ndarray, float]]" = OrderedDict()
+_GAIN_LOCK = threading.Lock()
+
+
+def shading_gain(flat: np.ndarray, dark: np.ndarray | None, target: float) -> tuple[np.ndarray, float]:
+    """增益圖：gain = target / (flat − dark)，target 0＝(flat − dark) 的平均；參考值 < 1 的位置增益設 1，回報其比例。"""
+    base = flat.astype(np.float32)
+    if dark is not None:
+        base = base - dark.astype(np.float32)
+    bad = base < 1.0
+    zero_ratio = float(bad.mean()) if base.size else 0.0
+    level = float(target) if target > 0 else float(base[~bad].mean()) if (~bad).any() else 1.0
+    gain = np.empty_like(base)
+    np.divide(level, base, out=gain, where=~bad)
+    gain[bad] = 1.0
+    return gain, zero_ratio
+
+
+def _mean_level(image: np.ndarray) -> float:
+    """整張平均灰階（cv2.mean 一趟 SIMD，比 ndarray.mean 快 5 倍；彩色取三通道平均）。"""
+    m = cv2.mean(image)
+    return float(m[0]) if image.ndim == 2 else float((m[0] + m[1] + m[2]) / 3.0)
+
+
+def _to_depth(out: np.ndarray, like: np.ndarray) -> np.ndarray:
+    """float32 結果回到輸入位深（u8 用 convertScaleAbs 一趟四捨五入飽和；u16 夾到範圍；f32 原樣）。"""
+    if like.dtype == np.uint8:
+        return cv2.convertScaleAbs(out)
+    if like.dtype == np.uint16:
+        return np.clip(out, 0, 65535, out=out).astype(np.uint16)
+    return out
+
+
+class ShadingCorrectTool(Tool):
+    key = "shading_correct"
+    label = "Shading correction"
+    description = (
+        "Evens out uneven lighting. Divide by a picture of a plain white board taken under the same light (flat field), optionally "
+        "after subtracting a dark frame, or estimate the background from the image itself with a large blur. Fixed thresholds then hold "
+        "across the whole field of view instead of only in the middle."
+    )
+    category = "preprocess"
+    icon = "SunDim"
+    accepts = ("u8", "u16", "f32")
+    params = [
+        Param("mode", "Mode", kind="select", default="flat_field", options=SHADING_MODE_OPTIONS),
+        Param("flat", "White reference", kind="asset", accept="image", visible_when={"param": "mode", "in": ["flat_field", "dark_flat"]},
+              help_text="A picture of a uniform white board at the working resolution. Upload it as an image asset."),
+        Param("dark", "Dark reference", kind="asset", accept="image", visible_when={"param": "mode", "in": ["dark_flat"]},
+              help_text="A picture with the lens capped; removes the sensor's fixed offset."),
+        Param("blur_sigma", "Background blur", kind="number", default=51, minimum=3, maximum=501, step=2, unit="px", visible_when={"param": "mode", "in": ["estimate"]},
+              help_text="How wide the background estimate is. Larger than the features you want to keep."),
+        Param("target_level", "Target level", kind="number", default=0, minimum=0, help_text="The grey level the white reference is mapped to (a plain board comes out at this value); 0 = the reference's own mean. When estimating, the mean level of the output; 0 = the image's own mean."),
+    ]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image"), Port("mean_before", "Mean before", "number"), Port("mean_after", "Mean after", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        mode = str(ctx.param("mode", "flat_field"))
+        target = ctx.number("target_level", 0)
+        before = _mean_level(image)
+        if mode == "estimate":
+            # 背景是平滑的：縮小 4 倍再模糊、放大回來（1280×960 σ=51 從 12 ms 降到 1 ms 級），結果與全解析度模糊只差取樣誤差
+            sigma = max(3.0, ctx.number("blur_sigma", 51))
+            h, w = image.shape[:2]
+            ds = 4 if min(h, w) >= 256 else 1
+            f = image.astype(np.float32)
+            small = cv2.resize(f, (max(1, w // ds), max(1, h // ds)), interpolation=cv2.INTER_AREA) if ds > 1 else f
+            k = max(3, int(sigma / ds)) | 1
+            background = cv2.GaussianBlur(small, (k, k), sigma / ds / 3.0, borderType=cv2.BORDER_REPLICATE)
+            if ds > 1:
+                background = cv2.resize(background, (w, h), interpolation=cv2.INTER_LINEAR)
+            level = target if target > 0 else before
+            cv2.subtract(f, background, dst=f)
+            f += np.float32(level)
+            out = _to_depth(f, image)
+            return Result(outputs={"image": out, "mean_before": before, "mean_after": _mean_level(out)}, message=f"estimate σ={sigma:g}")
+        gray = image.ndim == 2
+        flat = read_asset_image(ctx, "flat", gray=gray)
+        dark = read_asset_image(ctx, "dark", gray=gray) if mode == "dark_flat" else None
+        for name, ref in (("white", flat), ("dark", dark)):
+            if ref is None:
+                continue
+            if ref.shape[:2] != image.shape[:2]:
+                raise ToolError(f"The {name} reference is {ref.shape[1]}×{ref.shape[0]} but the image is {image.shape[1]}×{image.shape[0]}; retake the reference at the working resolution")
+            if ref.ndim != image.ndim:
+                raise ToolError(f"The {name} reference is {'grayscale' if ref.ndim == 2 else 'colour'} but the image is {'grayscale' if gray else 'colour'}")
+        key = (ctx.param("flat"), ctx.param("dark") if dark is not None else None, image.ndim, float(target))
+        with _GAIN_LOCK:
+            hit = _GAIN_CACHE.get(key)
+            if hit is not None and hit[0] is flat and hit[1] is dark:
+                _GAIN_CACHE.move_to_end(key)
+                gain, zero_ratio = hit[2], hit[3]
+            else:
+                hit = None
+        if hit is None:
+            gain, zero_ratio = shading_gain(flat, dark, target)
+            with _GAIN_LOCK:
+                _GAIN_CACHE[key] = (flat, dark, gain, zero_ratio)
+                while len(_GAIN_CACHE) > 8:
+                    _GAIN_CACHE.popitem(last=False)
+        # 每幀一次乘法：cv2.multiply 直接吃 u8／u16 輸入產 float32（不先 astype 多跑一趟）
+        if dark is not None:
+            f = cv2.subtract(image, dark, dtype=cv2.CV_32F)
+            cv2.multiply(f, gain, dst=f)
+        else:
+            f = cv2.multiply(image, gain, dtype=cv2.CV_32F)
+        out = _to_depth(f, image)
+        detail = {"zero_ratio": round(zero_ratio, 6), "gain_min": round(float(gain.min()), 4), "gain_max": round(float(gain.max()), 4)}
+        return Result(outputs={"image": out, "mean_before": before, "mean_after": _mean_level(out)}, detail=detail,
+                      message=f"{mode}: gain {detail['gain_min']:.2f}–{detail['gain_max']:.2f}" + (f", {zero_ratio:.1%} unusable reference pixels" if zero_ratio else ""))
+
+
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
     ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
-    ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(), UndistortTool(),
+    ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(), UndistortTool(), ShadingCorrectTool(),
 ]

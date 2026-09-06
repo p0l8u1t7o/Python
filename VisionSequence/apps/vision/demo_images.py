@@ -161,6 +161,34 @@ def stamped_part() -> list[np.ndarray]:
     return out
 
 
+def _vignette_field(w: int = 1280, h: int = 960, strength: float = 0.55) -> np.ndarray:
+    """徑向漸暈係數（中心 1、角落 1−strength），模擬打光不均。"""
+    yy, xx = np.mgrid[0:h, 0:w]
+    return 1.0 - strength * (((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / ((w / 2) ** 2 + (h / 2) ** 2))
+
+
+def vignette_flat() -> np.ndarray:
+    """白板參考影像：均勻白板在同一組打光下拍的樣子（只有漸暈）。seed 存成資產給平場校正範本。"""
+    return np.clip(_vignette_field() * 235, 0, 255).astype(np.uint8)
+
+
+def vignette_parts() -> list[np.ndarray]:
+    """平場校正：亮板上有 6 顆暗污點分布到角落，整張套強漸暈（角落只剩 45% 亮度）；第 4 張多一大塊污漬（NG）。
+    不校正時角落整片低於門檻、污點數不對；校正後每張的 6 顆（第 4 張 7 顆）都數得出來。"""
+    out = []
+    field = _vignette_field()
+    spots = [(140, 120), (1140, 130), (640, 480), (150, 840), (1130, 830), (640, 150)]
+    for i in range(4):
+        base = np.full((960, 1280), 200, np.float64)
+        for k, (sx, sy) in enumerate(spots):
+            cv2.circle(base, (sx + (i % 2) * 5, sy + (i % 3) * 4), 22 + (k % 3) * 4, 60, -1)
+        if i == 3:
+            cv2.circle(base, (400, 700), 45, 60, -1)
+        img = np.clip(base * field, 0, 255).astype(np.uint8)
+        out.append(_noise(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), 4, 110 + i))
+    return out
+
+
 def color_blocks() -> list[np.ndarray]:
     """顏色檢驗：左＝目標紅色塊、中＝綠、右＝藍；第 4 張紅色偏橘（NG）。"""
     out = []
@@ -320,6 +348,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "multi_circles": ("circles and lines", multi_circles),
     "gear": ("gear teeth", gear),
     "stamped_part": ("stamped part", stamped_part),
+    "vignette": ("uneven lighting", vignette_parts),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
     "cup": ("cup gauge", cup),

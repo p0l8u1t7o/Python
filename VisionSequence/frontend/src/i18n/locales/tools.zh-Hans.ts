@@ -2016,6 +2016,21 @@ export default {
       path: "路径",
     },
   },
+  shading_correct: {
+    label: "平场校正",
+    description: "把打光不均拉平。除以同一组光下拍的均匀白板图像（平场），可先扣暗场；或用大核模糊从图像本身估背景。校正后固定阈值在整个视野都适用，而不是只有中央。",
+    params: {
+      mode: {
+        label: "模式",
+        options: { flat_field: "平场（白板参考）", dark_flat: "暗场＋白板参考", estimate: "从图像估背景" },
+      },
+      flat: { label: "白板参考", help: "工作分辨率下拍的均匀白板。上传成图像资产。" },
+      dark: { label: "暗场参考", help: "盖上镜头盖拍的一张，去掉传感器固定偏移。" },
+      blur_sigma: { label: "背景模糊", help: "背景估计的范围，要比想留下的特征大。" },
+      target_level: { label: "目标亮度", help: "白板映到的灰度（均匀白板校正后就是这个值）；0 = 白板自己的平均。估背景时是输出的平均亮度；0 = 图像自己的平均。" },
+    },
+    ports: { image: "图像", mean_before: "校正前平均", mean_after: "校正后平均" },
+  },
   shape_align: {
     label: "定位补正",
     description: "比較目前定位结果与教導时的参考位置，算出平移／旋转量（dx, dy, dθ），供 ROI 跟随使用。",
