@@ -190,6 +190,12 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         [{"kind": "points", "points": [[float(i), float(i)] for i in range(0, 200, 4)]}, {"kind": "text", "x": 20, "y": 80, "text": "hello"}],
     ]
     top_edge = {"shape": "rotated_rect", "cx": s.cx, "cy": s.cy - 0.2 * s.h, "w": 0.4 * s.w, "h": 40, "angle": s.angle}
+    # 極座標展開：1280×960 時 r 200～300（規格的效能預算案例）；640×480 等比縮小
+    ring = {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.2083, "r_outer": m * 0.3125}
+    from apps.vision.tools.builtin import polar as _polar
+
+    ring_map = _polar.mapping_dict(ring["cx"], ring["cy"], ring["r_inner"], ring["r_outer"], a0=None, a1=None, start_angle=0, direction="ccw",
+                                   step_deg=_polar.step_degrees("auto", ring["r_outer"]), radial_step=1)
     return [
         # source / preprocess
         ("image_source", "image_source", None, {"mode": "input"}, {}, {"_input_image": big}),
@@ -215,6 +221,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("fft_filter lowpass", "fft_filter", gray, {"mode": "lowpass", "cutoff": 0.15}, {}, {}),
         ("warp_perspective", "warp_perspective", big, {"roi": {"shape": "polygon", "points": [[s.cx - m * 0.2, s.cy - m * 0.15], [s.cx + m * 0.22, s.cy - m * 0.12], [s.cx + m * 0.2, s.cy + m * 0.15], [s.cx - m * 0.18, s.cy + m * 0.16]]}}, {}, {}),
         ("undistort", "undistort", big, {"calibration": "cal"}, {}, {}),
+        ("polar_unwrap auto", "polar_unwrap", big, {"roi": ring}, {}, {}),
+        ("polar_unwrap 0.5deg cubic", "polar_unwrap", big, {"roi": ring, "angle_step": "0.5", "interpolation": "cubic"}, {}, {}),
+        ("polar_restore", "polar_restore", None, {}, {"mapping": ring_map, "points": [[10.0, 5.0], [400.0, 50.0]], "contours": [np.array([[[1, 1]], [[30, 1]], [[30, 20]]], dtype=np.int32)]}, {}),
         # locate
         ("template_match pyramid", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6}, {}, {}),
         ("template_match no-pyr", "template_match", big, {"template": "tpl", "pyramid": False, "threshold": 0.6}, {}, {}),

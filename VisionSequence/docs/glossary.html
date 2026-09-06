@@ -207,6 +207,7 @@
 <tr><td>Concentricity</td><td>同心度</td><td>The centre offset between two circles. GD&amp;T concentricity is twice the offset; over max_deviation takes the ng branch.</td></tr>
 <tr><td>Wall thickness</td><td>壁厚</td><td>The distance between paired outer and inner edges along a section, with min, max or mean over several calipers</td></tr>
 <tr><td>Region / ROI</td><td>區域／ROI</td><td>The area drawn on the image to inspect (rectangle, rotated rectangle, ellipse, annulus, polygon, polyline, line, point)</td></tr>
+<tr><td>Polar unwrap</td><td>極座標展開</td><td>Flattening a ring (an annulus ROI, optionally a sector) into a strip whose width is angle and height is radius, so circumferential features — threads, teeth, nicks, text on a round label — become straight rows for the ordinary tools. The <code>mapping</code> output describes the geometry; Polar restore uses it to put points and contours back on the original picture.</td></tr>
 <tr><td>Overlay</td><td>標記</td><td>The result graphics a tool draws on the image (boxes, circles, points, text). Metadata only — never burned into the image.</td></tr>
 <tr><td>Run</td><td>執行</td><td>One execution of the flow, complete or up to a step; the result is OK, NG or failed</td></tr>
 <tr><td>Preview</td><td>試執行</td><td>Runs the unsaved graph and keeps every intermediate image; not written to history</td></tr>

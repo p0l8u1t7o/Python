@@ -113,6 +113,31 @@ def multi_circles() -> list[np.ndarray]:
     return out
 
 
+def gear(teeth: int = 12) -> list[np.ndarray]:
+    """圓周齒數：暗底亮齒輪（齒根 r=260、齒頂 r=320、中心孔），12 齒；第 4 張缺一齒（NG）。極座標展開範本用。"""
+    out = []
+    for i in range(4):
+        img = _canvas(1280, 960, 30)
+        cx, cy = 640 + (i % 2) * 4 - 2, 480 + (i % 3) * 3 - 3
+        cv2.circle(img, (cx, cy), 260, (200, 200, 205), -1)
+        phase = i * 2.0  # 齒相位小幅變動（展開起始角 18° 落在齒隙，不會把一顆齒切成兩塊）
+        for k in range(teeth):
+            if i == 3 and k == 4:
+                continue  # NG：缺一齒
+            a = np.deg2rad(phase + k * 360.0 / teeth)
+            half_root, half_tip = np.deg2rad(9.0), np.deg2rad(6.0)
+            pts = np.array([
+                [cx + 250 * np.cos(a - half_root), cy + 250 * np.sin(a - half_root)],
+                [cx + 320 * np.cos(a - half_tip), cy + 320 * np.sin(a - half_tip)],
+                [cx + 320 * np.cos(a + half_tip), cy + 320 * np.sin(a + half_tip)],
+                [cx + 250 * np.cos(a + half_root), cy + 250 * np.sin(a + half_root)],
+            ], dtype=np.float64)
+            cv2.fillPoly(img, [np.round(pts).astype(np.int32)], (200, 200, 205))
+        cv2.circle(img, (cx, cy), 60, (30, 30, 30), -1)
+        out.append(_noise(img, 4, 70 + i))
+    return out
+
+
 def color_blocks() -> list[np.ndarray]:
     """顏色檢驗：左＝目標紅色塊、中＝綠、右＝藍；第 4 張紅色偏橘（NG）。"""
     out = []
@@ -270,6 +295,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "textile": ("fabric defect", textile),
     "gradient_chart": ("preprocessing lab", gradient_chart),
     "multi_circles": ("circles and lines", multi_circles),
+    "gear": ("gear teeth", gear),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
     "cup": ("cup gauge", cup),

@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 BUILTIN_MODULES = [
     "apps.vision.tools.builtin.source",
     "apps.vision.tools.builtin.preprocess",
+    "apps.vision.tools.builtin.polar",
     "apps.vision.tools.builtin.locate",
     "apps.vision.tools.builtin.measure",
     "apps.vision.tools.builtin.detect",

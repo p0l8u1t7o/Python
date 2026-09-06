@@ -442,6 +442,35 @@ def geometry_count_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def gear_teeth_flow(source_id: Any) -> dict[str, Any]:
+    """圓周齒數：極座標展開齒圈 → 二值化 → blob 數齒 → 12 齒判定；齒的位置用 polar_restore 標回原圖。
+
+    對齊合成圖「齒輪齒數」：齒根 r=260、齒頂 r=320，展開 r 270～330 的環帶，每齒在展開圖上是一塊亮矩形；起始角 18° 落在齒隙（接縫不切齒）。"""
+    ring = {"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 270, "r_outer": 330}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("polar", "polar_unwrap", 2, 0, "Unwrap the tooth ring", roi=ring, angle_step="auto", direction="cw", start_angle=18),
+        _node("thr", "threshold", 3, 0, "Bright teeth", method="fixed", threshold=100),
+        _node("blob", "blob", 4, 0, "Tooth blobs", threshold_method="none", min_area=400, sort_by="x"),
+        _node("cmp", "if_number", 5, 0, "12 teeth?", operator="eq", threshold=12),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: tooth missing", verdict="ng", label="tooth_count"),
+        _node("out", "output", 5, 1, "Output tooth count", name="tooth_count"),
+        _node("restore", "polar_restore", 5, 2, "Teeth on the original"),
+        _note("n1", 0, 1, "About", "The ring between the root and tip radius is flattened into a strip, so every tooth becomes a bright block and the gaps become dark columns.\nBlob counts the blocks; Polar restore puts their centres back on the original picture. The fourth image is missing a tooth."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "polar", "image", "image"), _edge("polar", "thr", "image", "image"), _edge("thr", "blob", "image", "image"),
+        _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("blob", "out", "count", "value"),
+        _edge("src", "restore", "image", "image"), _edge("polar", "restore", "mapping", "mapping"),
+        _edge("blob", "restore", "centers", "points"), _edge("blob", "restore", "contours", "contours"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -603,6 +632,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("fft_defect", "Fabric defect", "A frequency-domain low pass removes the periodic weave and what is left is the scratch; a mask pulls out the defect area", "quality", fft_defect_flow),
     ("preprocess_lab", "Pre-processing and measurement lab", "An image chain of bit depth, look-up table, filtering and flipping, plus a tour of line profile, statistics, histogram and edge density", "tutorial", preprocess_lab_flow),
     ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
+    ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
@@ -629,6 +659,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "fft_defect": "Example: fabric defect",
     "preprocess_lab": "Example: preprocessing lab",
     "geometry_count": "Example: circles and lines",
+    "gear_teeth": "Example: gear teeth",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
     "barcode_read": "Example: barcode label",

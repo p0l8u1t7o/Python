@@ -1627,6 +1627,113 @@ export default {
       total: "区域像素数",
     },
   },
+  polar_restore: {
+    label: "极坐标还原",
+    description: "把在展开图上找到的点与轮廓换回原图坐标，让极坐标展开后找到的缺陷能标在原图上。接极坐标展开的「对应」输出；下方的数值与设置只在没接对应时才用。",
+    params: {
+      r_outer: {
+        label: "外半径",
+        help: "只在没接对应端口时使用。",
+        group: "无对应时",
+      },
+      angle_step: {
+        label: "角度步进",
+        group: "无对应时",
+        options: {
+          auto: "自动（外缘 1 px 弧长）",
+          "0.5": "0.5°",
+          "1": "1°",
+          "2": "2°",
+        },
+      },
+      radial_step: {
+        label: "径向步进",
+        group: "无对应时",
+      },
+      direction: {
+        label: "方向",
+        group: "无对应时",
+        options: {
+          ccw: "逆时针",
+          cw: "顺时针",
+        },
+      },
+      start_angle: {
+        label: "起始角",
+        group: "无对应时",
+      },
+    },
+    ports: {
+      image: "原图（显示用）",
+      mapping: "对应",
+      points: "点（展开图）",
+      contours: "轮廓（展开图）",
+      cx: "中心 X",
+      cy: "中心 Y",
+      r_inner: "内半径",
+      r_outer: "外半径",
+      count: "数量",
+      first_x: "第一个 X",
+      first_y: "第一个 Y",
+      first_angle: "第一个角度",
+      first_radius: "第一个半径",
+    },
+  },
+  polar_unwrap: {
+    label: "极坐标展开",
+    description: "把圆环摊平成长条图：宽＝角度、高＝半径（内圈在上）。螺纹、齿轮齿、轴承滚珠、O-ring 缺口、圆形标签文字都变成一列直的，一般的二值化、blob、卡尺与找线工具就读得到。把「对应」输出接到极坐标还原，结果就能画回原图。",
+    params: {
+      roi: {
+        label: "圆环",
+        help: "要展开的环带。带起止角的圆环只展开该扇形。",
+      },
+      angle_step: {
+        label: "角度步进",
+        help: "每一列几度。自动＝外缘每列 1 px，不会欠采样。",
+        options: {
+          auto: "自动（外缘 1 px 弧长）",
+          "0.5": "0.5°",
+          "1": "1°",
+          "2": "2°",
+        },
+      },
+      radial_step: {
+        label: "径向步进",
+        help: "每一行几个像素。",
+      },
+      direction: {
+        label: "方向",
+        help: "长条图沿圆环走的方向（以画面为准）。",
+        options: {
+          ccw: "逆时针",
+          cw: "顺时针",
+        },
+      },
+      start_angle: {
+        label: "起始角",
+        help: "长条图左缘落在哪个角度（0 = 3 点钟方向，正值为顺时针）。扇形不用此值，从自己的起止角开始。",
+      },
+      interpolation: {
+        label: "插值",
+        group: "高级",
+        options: {
+          nearest: "最近邻",
+          linear: "线性",
+          cubic: "三次",
+        },
+      },
+    },
+    ports: {
+      image: "图像",
+      roi: "圆环（动态）",
+      mapping: "对应",
+      cx: "中心 X",
+      cy: "中心 Y",
+      r_inner: "内半径",
+      r_outer: "外半径",
+      step_deg: "每列角度",
+    },
+  },
   python_script: {
     label: "Python 脚本",
     description: "自己寫一段 Python（def run(ctx)）做检测：讀影像／上游值／現場参数，回传数值、布林、文字、资料、新影像与标记，并決定通过／不良分支。只有管理員能編輯脚本；受限执行（白名单匯入、逾时中止）。",

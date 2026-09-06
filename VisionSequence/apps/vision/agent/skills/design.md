@@ -36,6 +36,7 @@
 | 表面缺陷（均勻表面） | `blur` → `threshold(fixed, 平均±3σ)` → `morphology` → `blob(count==0)` | `edge_density` 守門 |
 | 讀碼 | `barcode` | 斜貼先 `warp_perspective` 拉正；文字有無 `text_presence` |
 | 亮度／曝光守門 | `intensity.mean` → `in_range` | `histogram.otsu` |
+| 圓周上的齒／缺口／螺紋 | `polar_unwrap`（annulus ROI）→ `threshold` → `blob` → `if_number(eq N)` | 位置標回原圖 `polar_restore(mapping)`；沿圓周量寬度用展開圖上的 `caliper`／`line_profile` |
 
 ## 自動調參要領
 

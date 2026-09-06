@@ -33,6 +33,7 @@ class RegistryTests(SimpleTestCase):
             "blob", "defect_diff", "barcode", "text_presence", "color_check", "edge_density", "pixel_count",
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
+            "polar_unwrap", "polar_restore",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -67,6 +68,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["text_presence"], {"min_ratio", "max_ratio"})
         self.assertEqual(teach["tolerance_judge"], {"nominal", "upper_tol", "lower_tol"})
         self.assertEqual(teach["concentricity"], {"max_deviation"})
+        self.assertEqual(teach["polar_unwrap"], {"roi", "start_angle"})
+        self.assertEqual(teach["polar_restore"], set())
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 
@@ -826,6 +829,101 @@ class RoiShapeTests(SimpleTestCase):
         r = run_tool("intensity", img, {"roi": {"shape": "point", "x": 9, "y": 7}})
         self.assertEqual(r.outputs["mean"], 137.0)
         self.assertEqual(r.outputs["pixels"], 1)
+
+class PolarTests(SimpleTestCase):
+    """WP-04 極座標展開：合成 N 條徑向線的圓環 → 展開後 blob 數＝N；還原往返；扇形寬度；方向與起始角；位深。"""
+
+    N = 12
+
+    def _ring(self, n: int | None = None, phase: float = 7.0) -> np.ndarray:
+        n = n or self.N
+        img = np.full((480, 640), 30, np.uint8)
+        cx, cy = 320, 240
+        cv2.circle(img, (cx, cy), 150, 80, -1)
+        cv2.circle(img, (cx, cy), 100, 30, -1)
+        for k in range(n):
+            t = math.radians(phase + k * 360.0 / n)
+            cv2.line(img, (int(round(cx + 103 * math.cos(t))), int(round(cy + 103 * math.sin(t)))),
+                     (int(round(cx + 147 * math.cos(t))), int(round(cy + 147 * math.sin(t)))), 230, 4)
+        return img
+
+    ROI = {"shape": "annulus", "cx": 320, "cy": 240, "r_inner": 100, "r_outer": 150}
+
+    def test_unwrap_counts_radial_lines(self):
+        r = run_tool("polar_unwrap", self._ring(), {"roi": self.ROI})
+        self.assertEqual(r.status, "ok", r.message)
+        strip = r.outputs["image"]
+        m = r.outputs["mapping"]
+        # auto 步進：外緣弧長 1 px → 寬＝2π·r_outer；高＝r_outer−r_inner+1
+        self.assertEqual(strip.shape, (51, int(round(2 * math.pi * 150))))
+        self.assertEqual((m["width"], m["height"]), (strip.shape[1], strip.shape[0]))
+        self.assertAlmostEqual(r.outputs["step_deg"], 360 / (2 * math.pi * 150))
+        b = run_tool("blob", strip, {"threshold_method": "fixed", "threshold": 150, "min_area": 40})
+        self.assertEqual(b.outputs["count"], self.N)
+        self.assertEqual({o["kind"] for o in r.overlays}, {"annulus", "line"})
+
+    def test_restore_roundtrip_and_marks_the_lines(self):
+        from apps.vision.tools.builtin import polar
+
+        r = run_tool("polar_unwrap", self._ring(), {"roi": self.ROI})
+        m = r.outputs["mapping"]
+        pts = np.array([[440.0, 240.0], [320.0, 120.0], [320 - 140 * math.cos(0.4), 240 + 140 * math.sin(0.4)]])
+        back = polar.polar_to_image(polar.image_to_polar(pts, m), m)
+        self.assertLess(float(np.abs(back - pts).max()), 0.5)
+        b = run_tool("blob", r.outputs["image"], {"threshold_method": "fixed", "threshold": 150, "min_area": 40})
+        rr = run_tool("polar_restore", None, {}, {"mapping": m, "points": b.outputs["centers"], "contours": b.outputs["contours"]})
+        self.assertEqual(rr.outputs["count"], 2 * self.N)
+        self.assertEqual(len(rr.outputs["contours"]), self.N)
+        self.assertEqual(rr.outputs["contours"][0].shape[1:], (1, 2))
+        angles = sorted((math.degrees(math.atan2(y - 240, x - 320)) - 7.0) % 30.0 for x, y in rr.outputs["points"])
+        for a in angles:  # 每個還原的中心都落在某條徑向線上（相位 7°、間隔 30°）
+            self.assertLess(min(a, 30 - a), 1.0, angles)
+        for x, y in rr.outputs["points"]:
+            self.assertTrue(103 <= math.hypot(x - 320, y - 240) <= 147)
+        self.assertEqual({o["kind"] for o in rr.overlays}, {"contours", "points"})
+        self.assertFalse(math.isnan(rr.outputs["first_angle"]))
+
+    def test_sector_width(self):
+        r = run_tool("polar_unwrap", self._ring(), {"roi": {**self.ROI, "a0": 0, "a1": 90}, "angle_step": "1"})
+        self.assertEqual(r.outputs["image"].shape, (51, 91))
+        r = run_tool("polar_unwrap", self._ring(), {"roi": {**self.ROI, "a0": 300, "a1": 60}, "angle_step": "2"})
+        self.assertEqual(r.outputs["image"].shape[1], 61)  # 跨 0° 的扇形：120°／2° ＋ 1
+        self.assertTrue(r.outputs["mapping"]["sector"])
+
+    def test_direction_and_start_angle(self):
+        img = self._ring(n=1, phase=0.0)  # 只有 3 點鐘方向一條線
+        cw = run_tool("polar_unwrap", img, {"roi": self.ROI, "angle_step": "1", "direction": "cw", "start_angle": -45})
+        ccw = run_tool("polar_unwrap", img, {"roi": self.ROI, "angle_step": "1", "direction": "ccw", "start_angle": -45})
+        col_cw = int(np.argmax(cw.outputs["image"][25]))
+        col_ccw = int(np.argmax(ccw.outputs["image"][25]))
+        self.assertAlmostEqual(col_cw, 45, delta=1)   # 順時針：−45° 起走 45° 到 0°
+        self.assertAlmostEqual(col_ccw, 315, delta=1)  # 逆時針：−45° 往回走 315° 到 0°
+
+    def test_keeps_depth_and_colour(self):
+        u16 = (self._ring().astype(np.uint16) << 8)
+        r = run_tool("polar_unwrap", u16, {"roi": self.ROI, "interpolation": "nearest"})
+        self.assertEqual(r.outputs["image"].dtype, np.uint16)
+        bgr = cv2.cvtColor(self._ring(), cv2.COLOR_GRAY2BGR)
+        r = run_tool("polar_unwrap", bgr, {"roi": self.ROI, "interpolation": "cubic"})
+        self.assertEqual(r.outputs["image"].shape[2], 3)
+        with self.assertRaises(ToolError):
+            run_tool("polar_unwrap", bgr, {"roi": {"shape": "rect", "x": 0, "y": 0, "w": 10, "h": 10}})
+        r = run_tool("polar_unwrap", bgr, {}, {"roi": {"shape": "circle", "cx": 320, "cy": 240, "r": 60}})
+        self.assertEqual(r.outputs["r_inner"], 0.0)
+
+    def test_restore_without_mapping_uses_numbers_and_params(self):
+        r = run_tool("polar_unwrap", self._ring(), {"roi": self.ROI, "angle_step": "1", "direction": "cw", "start_angle": 10})
+        rr = run_tool("polar_restore", None, {"angle_step": "1", "direction": "cw", "start_angle": 10},
+                      {"cx": 320, "cy": 240, "r_inner": 100, "r_outer": 150, "points": [[35, 20]]})
+        expect = (320 + 120 * math.cos(math.radians(45)), 240 + 120 * math.sin(math.radians(45)))
+        self.assertAlmostEqual(rr.outputs["first_x"], expect[0], places=6)
+        self.assertAlmostEqual(rr.outputs["first_y"], expect[1], places=6)
+        self.assertEqual(r.outputs["mapping"]["step_deg"], 1.0)
+        with self.assertRaises(ToolError):
+            run_tool("polar_restore", None, {}, {"points": [[1, 1]]})
+        empty = run_tool("polar_restore", None, {}, {"mapping": r.outputs["mapping"]})
+        self.assertEqual(empty.outputs["count"], 0)
+
 
 class AlgorithmAccuracyTests(SimpleTestCase):
     """演算法精度：以解析式反鋸齒的合成影像（已知真值）鎖住次像素精度、部分圓弧無偏與方向慣例。"""

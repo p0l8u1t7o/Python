@@ -52,6 +52,18 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 校正後量測值才不會隨位置漂。`keep_edges` 開＝整個畫面留著（角落補黑），關＝縮放到全部都是有效像素。
 沒有標定資產就別放這個節點。
 
+## polar_unwrap
+極座標展開：圓周類檢測（瓶蓋螺紋、齒輪齒數、軸承滾珠、O-ring 缺口、環形焊道、圓形標籤字元）先把環帶攤平成
+「寬＝角度、高＝半徑（內圈在上）」的長條圖，再接一般工具：`threshold` → `blob` 數齒／數缺口、`caliper` 量沿圓周的寬度、
+`line_profile` 看一圈的亮度、`find_line` 找環上的直邊。`roi` 用 `annulus`（環要蓋住要看的齒／紋；帶 `a0/a1` 只展開扇形）或 `circle`。
+`angle_step` 留 `auto`（外緣弧長 1 px）；`start_angle` 是接縫位置（現場教導：把接縫放在齒隙或無特徵處，否則一顆齒會被切成兩塊）；
+`direction` 決定條帶走向。輸出 `image`（展開圖）與 `mapping`（幾何描述，接 polar_restore）。
+
+## polar_restore
+展開圖座標換回原圖：`mapping` 接 polar_unwrap.mapping，`points`／`contours` 接展開圖上工具的輸出（blob.centers／contours），
+`image` 接原圖（標記畫在原圖上給現場看）。輸出 `points`／`contours`（原圖座標）、`first_x/first_y`、`first_angle`（度，畫面順時針）、
+`first_radius`。**在展開圖上找到缺陷後一定要接這個**，否則現場看不到缺陷在原圖的哪裡。
+
 ## convert_depth
 16-bit／浮點影像轉 8-bit（`shift` 右移保線性、`minmax` 拉滿），或反向。多數工具會自動正規化，只有要控制映射方式時才放。
 
