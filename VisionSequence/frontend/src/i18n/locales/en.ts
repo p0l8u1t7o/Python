@@ -687,6 +687,9 @@ const en = {
     useDraft: 'Use the current canvas (unsaved graph)',
   },
   audit: {
+    since: 'From',
+    until: 'To',
+    pageSize: 'Rows per page',
     title: 'Audit trail',
     subtitle: 'Who changed what, and when',
     empty: 'No changes recorded yet',

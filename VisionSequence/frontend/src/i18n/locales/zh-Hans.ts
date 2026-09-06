@@ -1319,6 +1319,9 @@ const zhHans = {
     cols2: { pick: '勾选' },
   },
   audit: {
+    since: '起',
+    until: '迄',
+    pageSize: '每页条数',
     title: '操作记录',
     subtitle: '谁在什么时候改了什么',
     empty: '尚无变更记录',

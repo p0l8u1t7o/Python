@@ -1319,6 +1319,9 @@ const zhHant = {
     cols2: { pick: '勾選' },
   },
   audit: {
+    since: '起',
+    until: '迄',
+    pageSize: '每頁筆數',
     title: '操作紀錄',
     subtitle: '誰在什麼時候改了什麼',
     empty: '尚無變更紀錄',

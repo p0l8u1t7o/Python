@@ -300,9 +300,31 @@ def station_summary(request: HttpRequest, hours: int = 24):
 # ---------------------------------------------------------------------------
 # 稽核軌跡（apps/core/audit.py）
 # ---------------------------------------------------------------------------
+def _time_range(since: str, until: str):
+    """時間區段：日期（YYYY-MM-DD，本地時區；until 含當天）或 ISO 時間；解析不了回 422。"""
+    import datetime as dt
+
+    from django.utils import dateparse, timezone
+
+    def parse(raw: str, end: bool):
+        raw = (raw or "").strip()
+        if not raw:
+            return None
+        d = dateparse.parse_date(raw)
+        if d is not None:
+            base = timezone.make_aware(dt.datetime.combine(d, dt.time.min), timezone.get_current_timezone())
+            return base + dt.timedelta(days=1) if end else base
+        t = dateparse.parse_datetime(raw)
+        if t is None:
+            raise ValidationError(f"Cannot parse the time '{raw}' (use YYYY-MM-DD or an ISO time)", code="bad_time")
+        return timezone.make_aware(t, timezone.get_current_timezone()) if timezone.is_naive(t) else t
+
+    return parse(since, False), parse(until, True)
+
+
 @router.get("/audit")
 def audit_log(request: HttpRequest, action: str = "", target_type: str = "", target_id: str = "",
-              actor: str = "", q: str = "", limit: int = 50, offset: int = 0):
+              actor: str = "", q: str = "", since: str = "", until: str = "", limit: int = 50, offset: int = 0):
     """Who changed what, newest first. Administrators only — it records people, not machines."""
     require_feature(request, "audit")
     qs = AuditLog.objects.all()
@@ -316,6 +338,11 @@ def audit_log(request: HttpRequest, action: str = "", target_type: str = "", tar
         qs = qs.filter(actor_name=actor)
     if q:
         qs = qs.filter(Q(summary__icontains=q) | Q(target_name__icontains=q))
+    lo, hi = _time_range(since, until)
+    if lo is not None:
+        qs = qs.filter(at__gte=lo)
+    if hi is not None:
+        qs = qs.filter(at__lt=hi)
     total = qs.count()
     limit = max(1, min(500, int(limit)))
     rows = list(qs.select_related("actor")[offset : offset + limit])

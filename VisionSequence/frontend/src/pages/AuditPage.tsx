@@ -29,7 +29,7 @@ interface AuditRow {
   ip: string
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZES = [25, 50, 100, 200, 500]
 
 /** flow.update → warning (it changes what the line accepts); deletions → critical. */
 function tone(action: string): 'ok' | 'warning' | 'critical' | 'info' {
@@ -46,9 +46,13 @@ export function AuditPage() {
   const [actor, setActor] = useState('')
   const [q, setQ] = useState('')
   const [offset, setOffset] = useState(0)
+  const [since, setSince] = useState('')
+  const [until, setUntil] = useState('')
+  const [pageSize, setPageSize] = useState(50)
   const [openRow, setOpenRow] = useState<number | null>(null)
 
-  const params = { action, actor, q, limit: PAGE_SIZE, offset }
+  const PAGE_SIZE = pageSize
+  const params = { action, actor, q, since, until, limit: pageSize, offset }
   const list = useQuery({
     queryKey: ['audit', params],
     queryFn: () => api.get<{ items: AuditRow[]; total: number; actions: string[]; actors: string[] }>('/vision/audit', params),
@@ -74,6 +78,9 @@ export function AuditPage() {
               options={[{ value: '', label: t('common.all') }, ...(list.data?.actors ?? []).map((a) => ({ value: a, label: a }))]} />
             <TextInput label={t('common.search')} value={q} className="!w-56"
               onChange={(e) => { setQ(e.target.value); setOffset(0) }} data-testid="audit-search" />
+            <TextInput label={t('audit.since')} type="date" value={since} onChange={(e) => { setSince(e.target.value); setOffset(0) }} data-testid="audit-since" />
+            <TextInput label={t('audit.until')} type="date" value={until} onChange={(e) => { setUntil(e.target.value); setOffset(0) }} data-testid="audit-until" />
+            <Select label={t('audit.pageSize')} value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setOffset(0) }} options={PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) }))} data-testid="audit-page-size" />
           </div>
         </CardBody>
       </Card>
