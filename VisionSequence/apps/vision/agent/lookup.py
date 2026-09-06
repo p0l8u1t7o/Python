@@ -209,6 +209,13 @@ def h_get_tool(p: Any, args: dict[str, Any]) -> dict[str, Any]:
         return {"error": f"No tool '{key}'"}
 
 
+def h_camera_optics(_principal: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """相機／鏡頭選型的算式：給什麼算什麼（焦距、視野、需要的像素、景深、曝光上限、頻寬與介面）。"""
+    from apps.vision.agent import optics
+
+    return optics.solve(**args)
+
+
 LOOKUPS: list[Lookup] = [
     Lookup("list_flows", "List the inspection flows with version, node count, recipes, continuous state, statistics and the last run. Optional name filter.", _obj({"query": {"type": "string"}}), h_list_flows),
     Lookup("get_flow", "One flow in detail: its steps (id, type, label, enabled, scalar params), recipes, statistics and the last three runs.", _obj({"flow_id": {"type": "integer"}}, ["flow_id"]), h_get_flow),
@@ -221,6 +228,26 @@ LOOKUPS: list[Lookup] = [
     Lookup("capture_clients", "Connected capture clients and their camera channels.", _obj({}), h_capture_clients, feature="sources"),
     Lookup("search_docs", "Search the documentation and the interface map for a phrase (any language).", _obj({"query": {"type": "string"}}, ["query"]), h_search_docs),
     Lookup("get_tool", "A tool's full skill text: parameters, ports and tuning guidance.", _obj({"key": {"type": "string", "description": "tool type, e.g. blob"}}, ["key"]), h_get_tool),
+    Lookup("camera_optics",
+           "Camera, lens and lighting arithmetic for choosing hardware: give any of field of view, working distance, smallest feature, "
+           "sensor format, focal length, f-number, frame rate, belt speed — it returns the focal length (and the nearest stock lens), "
+           "the sensor pixels needed, mm per pixel, depth of field, the exposure that keeps motion blur under a pixel, the bandwidth and "
+           "which interfaces carry it. Use it instead of doing the arithmetic yourself.",
+           _obj({
+               "fov_mm": {"type": "number", "description": "field of view along the sensor's long axis"},
+               "fov_height_mm": {"type": "number"},
+               "wd_mm": {"type": "number", "description": "working distance"},
+               "feature_mm": {"type": "number", "description": "smallest feature to see"},
+               "task": {"type": "string", "enum": ["detect", "measure", "read"], "description": "how many pixels the feature needs"},
+               "pixels_per_feature": {"type": "number"},
+               "sensor_format": {"type": "string", "description": '1/1.8, 2/3, 1, 4/3…'},
+               "sensor_mm": {"type": "number", "description": "sensor width in mm when the format is unknown"},
+               "width_px": {"type": "integer"}, "height_px": {"type": "integer"},
+               "focal_mm": {"type": "number"}, "f_number": {"type": "number"}, "pixel_size_um": {"type": "number"},
+               "fps": {"type": "number"}, "color": {"type": "string", "description": "color for 3 bytes per pixel; blank = mono"},
+               "bytes_per_px": {"type": "number"},
+               "speed_mm_s": {"type": "number", "description": "how fast the part moves"}, "blur_px": {"type": "number"},
+           }), h_camera_optics),
 ]
 LOOKUP_MAP: dict[str, Lookup] = {x.name: x for x in LOOKUPS}
 

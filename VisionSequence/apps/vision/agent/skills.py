@@ -20,8 +20,8 @@ from typing import Any
 from apps.vision.tools import base as tools
 
 SKILL_DIR = Path(__file__).parent / "skills"
-GUIDE_KEYS = ("platform", "design", "agentic")
-GUIDE_LABELS = {"platform": "平台規則", "design": "流程設計原則", "agentic": "代理工作方式"}
+GUIDE_KEYS = ("platform", "design", "agentic", "imaging")
+GUIDE_LABELS = {"platform": "平台規則", "design": "流程設計原則", "agentic": "代理工作方式", "imaging": "取像與打光"}
 
 #: 自訂技能（AgentSkill）改變時 +1；build_system(epoch) 以它當快取鍵，system 段才會重組。
 _epoch = 0
@@ -135,6 +135,19 @@ def agentic_text() -> str:
 
 
 @lru_cache(maxsize=1)
+def imaging_text() -> str:
+    """取像與打光（相機、鏡頭、介面、光源）：選型問答用，不進 system 段（太長且不是每次都要）。"""
+    return (SKILL_DIR / "imaging.md").read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def imaging_sections() -> list[tuple[str, str]]:
+    """imaging.md 的 `## 標題` 分段 → [(標題, 內文)]，給說明檢索當一節一節的來源。"""
+    text = imaging_text()
+    return [(m.group(1).strip(), m.group(2).strip()) for m in re.finditer(r"^## (.+?)\s*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)]
+
+
+@lru_cache(maxsize=1)
 def curated_notes() -> dict[str, str]:
     """tools.md 的 `## <type>` 分段 → {type: 要領文字}。"""
     text = (SKILL_DIR / "tools.md").read_text(encoding="utf-8")
@@ -223,6 +236,8 @@ def base_skill_text(key: str) -> str:
         return design_text()
     if key == "agentic":
         return agentic_text()
+    if key == "imaging":
+        return imaging_text()
     return tool_skill(key, custom=False)
 
 

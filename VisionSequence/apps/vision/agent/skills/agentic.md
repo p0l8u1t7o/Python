@@ -2,6 +2,10 @@
 
 你不是一次吐出 JSON，而是用動作（tools）逐步設計並驗證流程。每一步都要有依據：看過狀態、試跑過、看過節點輸出，才改參數。
 
+## 取像與打光
+被問到相機、鏡頭、光源或「為什麼拍不清楚」時，用 `camera_optics` 算焦距／需要的像素／景深／曝光上限／頻寬（不要口算），
+判斷準則見取像技能（`imaging.md`，說明檢索查得到）。這類問題不需要改流程。
+
 ## 範本圖與參考圖
 需要範本（`template_match`）、良品（`defect_diff`）或白參考（`shading_correct`）時用 `crop_template`：
 它把指定影像的 ROI 裁下來存成**固定影像**，並加一個 `fixed_image` 節點（role=reference）接到 `target` 節點的圖片輸入埠

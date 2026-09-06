@@ -80,6 +80,7 @@ def msg(lang: Any, key: str, **kw: Any) -> str:
 
 #: 問答路徑最多幾回合工具呼叫（每回合可查多個），之後要求直接回答
 MAX_LOOKUP_TURNS = 4
+NL = chr(10)
 ACTION_KINDS = ("navigate", "focus_node", "open_tool")
 _ACTIONS_LINE = re.compile(r"^\s*ACTIONS:\s*(\[.*\])\s*$", re.MULTILINE | re.DOTALL)
 
@@ -91,6 +92,7 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 - If the question is about changing a flow or a parameter, mention that the assistant can make the change directly in the flow editor or on the batch page.
 - You are also given the user's current situation: the page they are on, what it shows, their recent actions and errors, their role and the engine lock. Use it: if a recent error explains the question, explain that error first and how to fix it; point to the exact page, tab and button (the interface map lists them in the user's languages); never tell the user to do something their role cannot do, say which role can.
 - When lookup tools are available, use them to read the live state (flows, sources, connections, a run report, the lock, plugins) before answering questions about "why", "which" or "is it"; they are read-only and permission-checked, so a "not permitted" result means the user's role cannot see that, and you say so. Do not call a tool for questions the documentation alone answers.
+- Hardware questions — which camera, lens, sensor, interface or lighting, what field of view, working distance, resolution, frame rate, exposure or bandwidth — are yours to answer: call `camera_optics` with whatever the user gave and explain its numbers (never estimate the arithmetic yourself, and never tell the user to ask the assistant, you are the assistant). Pair the numbers with the lighting advice from the imaging sections.
 - If a screenshot is attached, answer from what is visible in it (labels, values, statuses, highlighted rows); say when something is not legible instead of guessing.
 - "Things the user asked you to remember" are facts this user stored on purpose: treat them as true for this user and use them when relevant.
 - You may end with ONE extra line `ACTIONS: [...]` (a JSON array, at most 3 items) offering shortcuts: {"kind":"navigate","to":"<route from the interface map with real ids filled in>","tab":"<tab key, optional>","label":"<short label in the user's language>"} or, in the flow editor, {"kind":"focus_node","node":"<node id>","label":"..."} / {"kind":"open_tool","node":"<node id>","label":"..."}. Only routes from the map; omit the line when nothing applies."""
@@ -98,6 +100,12 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 #: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/glossary.html 的對照表）。
 BILINGUAL = {
     "影像來源": "image source camera", "來源": "source", "資料夾": "folder", "相機": "camera", "取像": "acquire grab image",
+    "鏡頭": "lens focal length", "焦距": "focal length lens", "視野": "field of view fov", "工作距離": "working distance wd",
+    "景深": "depth of field dof", "光圈": "aperture f-number", "遠心": "telecentric lens", "感光元件": "sensor format",
+    "解析度": "resolution pixels", "像素": "pixel resolution", "選型": "choosing camera lens", "頻寬": "bandwidth interface",
+    "介面": "interface GigE USB3 CoaXPress", "打光": "lighting illumination", "光源": "light source lighting", "背光": "backlight",
+    "同軸光": "coaxial light", "暗場": "dark field low angle", "環形光": "ring light", "圓頂光": "dome light diffuse",
+    "偏光": "polariser polarizing filter", "頻閃": "strobe flash", "曝光": "exposure time", "運動模糊": "motion blur",
     "擷取端": "capture client", "通道": "channel", "共享記憶體": "shared memory", "連續串流": "continuous stream",
     "依需求取像": "on demand grab", "流程": "flow graph", "步驟": "node step", "工具": "tool", "連線": "edge connection",
     "埠": "port", "參數": "parameter param", "教導參數": "teaching parameter teach", "參數卡": "teach page",
@@ -275,6 +283,14 @@ def _names(row: dict[str, Any] | None) -> str:
     return " / ".join(seen)
 
 
+def _imaging_sections() -> list[Section]:
+    """取像與打光的技能：一個 `##` 一節，讓「怎麼選鏡頭」「刮痕怎麼打光」問得到。"""
+    out = []
+    for heading, body in skills.imaging_sections():
+        out.append(Section("agent.html", "Imaging and lighting", heading, "imaging", _strip(body)[:MAX_SECTION_CHARS * 2], kind="tool"))
+    return out
+
+
 def _ui_sections() -> list[Section]:
     """介面地圖每頁一段：三語系的名稱、用途、分頁、動作與需要的功能，中文提問也檢索得到。"""
     out: list[Section] = []
@@ -365,6 +381,7 @@ def build_index(force: bool = False) -> Index:
         except Exception:  # noqa: BLE001
             log.warning("說明索引：%s 解析失敗", path.name, exc_info=True)
     sections.extend(_tool_sections())
+    sections.extend(_imaging_sections())
     sections.extend(_ui_sections())
     _index = _finish(sections)
     return _index
@@ -411,6 +428,26 @@ def snippet(section: Section, query: str, width: int = 240) -> str:
             best, best_pos = hits, pos
     piece = text[best_pos:best_pos + width].strip()
     return ("…" if best_pos else "") + piece + ("…" if best_pos + width < len(text) else "")
+
+
+def _optics_section(question: str) -> list[Section]:
+    """問題裡有取像數字（視野、工作距離、特徵、fps、線速…）就先把規格算好，模型直接引用算出來的數字。
+
+    這樣不管模型有沒有呼叫 camera_optics，回答裡的焦距與頻寬都是算的而不是猜的；離線規則路徑也拿得到。
+    """
+    from apps.vision.agent import optics
+
+    if not optics.relevant(question):
+        return []
+    args = optics.parse_question(question)
+    if len(args) < 2:
+        return []
+    result = optics.solve(**args)
+    lines = ["Computed from the numbers in the question (arithmetic done by the platform, quote these):",
+             "Inputs: " + ", ".join(f"{k}={v}" for k, v in result["inputs"].items())]
+    lines += [f"{k}: {v}" for k, v in result.items() if k not in ("inputs", "notes")]
+    lines += result["notes"]
+    return [Section("agent.html", "Imaging and lighting", "Camera and lens calculation", "imaging", NL.join(lines), kind="tool")]
 
 
 def _context_sections(context: dict[str, Any] | None) -> list[Section]:
@@ -560,7 +597,7 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx, question)}")
     facts = notes.facts_text(user)
     remembered = notes.recall(user, question)
-    sections = _context_sections(ctx) + [s for s, _ in hits]
+    sections = _optics_section(question) + _context_sections(ctx) + [s for s, _ in hits]
     seen: set[tuple[str, str, str]] = set()
     sections = [s for s in sections if not ((s.page, s.anchor, s.heading) in seen or seen.add((s.page, s.anchor, s.heading)))]  # type: ignore[func-returns-value]
     # 目前頁面的介面段只給模型當脈絡；除非檢索本來就命中，否則不列進參考（免得每次都出現「Interface › 目前頁」）
