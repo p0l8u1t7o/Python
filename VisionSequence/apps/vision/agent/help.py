@@ -105,7 +105,7 @@ BILINGUAL = {
     "連續執行": "continuous", "暫存影像": "scratch image", "資產": "asset", "判定": "judge verdict",
     "具名輸出": "named output", "引擎鎖定": "engine lock locked 423", "鎖定": "lock locked", "整合方": "integrator api key",
     "金鑰": "api key", "角色": "role", "管理員": "administrator admin", "工程師": "engineer", "操作員": "operator",
-    "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "範例樣板": "example template sample",
+    "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "固定影像": "fixed image picture", "範例樣板": "example template sample",
     "文字辨識": "ocr text read", "字串驗證": "ocv text verify expected", "字型教導": "font teaching taught font ocr", "日期碼": "date code lot number ocr",
     "條碼分級": "barcode quality grade verifier iso 15415 15416", "條碼品質": "barcode quality grade verifier", "符號對比": "symbol contrast grade", "調變": "modulation grade", "未用錯誤更正": "unused error correction UEC", "固定圖形損傷": "fixed pattern damage", "靜區": "quiet zone barcode",
     "形位公差": "form and position tolerance gdt", "直線度": "straightness minimum zone band", "真圓度": "roundness minimum zone circle MZC", "平行度": "parallelism datum", "垂直度": "perpendicularity datum", "傾斜度": "angularity reference angle",

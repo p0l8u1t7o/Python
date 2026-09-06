@@ -63,6 +63,7 @@ from apps.vision.api_shapemodel import router as shapemodel_router  # noqa: E402
 from apps.vision.api_ocr import router as ocr_router  # noqa: E402
 from apps.vision.api_precision import router as precision_router  # noqa: E402
 from apps.vision.api_spc import router as spc_router  # noqa: E402
+from apps.vision.api_fixed import router as fixed_router  # noqa: E402
 from apps.vision.api_variables import router as variables_router  # noqa: E402
 from apps.vision.api_board import router as board_router  # noqa: E402
 from apps.comm.api import router as comm_router  # noqa: E402
@@ -82,6 +83,7 @@ api.add_router("/vision", golden_router)
 api.add_router("/vision", batch_router)
 api.add_router("/vision", precision_router)
 api.add_router("/vision", spc_router)
+api.add_router("/vision", fixed_router)
 api.add_router("/vision", recipes_router)
 api.add_router("/vision", calib_router)
 api.add_router("/vision", stattpl_router)

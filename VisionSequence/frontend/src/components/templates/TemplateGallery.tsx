@@ -96,13 +96,17 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
   const [name, setName] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('')
   const [pendingDelete, setPendingDelete] = useState<FlowTemplate | null>(null)
   const [busy, setBusy] = useState(false)
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return (templates.data?.items ?? []).filter((it) => !q || `${it.name} ${it.description} ${it.category}`.toLowerCase().includes(q))
-  }, [templates.data, query])
+    return (templates.data?.items ?? []).filter((it) => (!category || it.category === category) && (!q || `${it.name} ${it.description} ${it.category}`.toLowerCase().includes(q)))
+  }, [templates.data, query, category])
+  const allItems = templates.data?.items ?? []
+  const categoriesPresent = useMemo(() => GALLERY_ORDER.filter((c) => allItems.some((it) => it.category === c)).concat(Array.from(new Set(allItems.map((it) => it.category))).filter((c) => !GALLERY_ORDER.includes(c))), [allItems])
+  const groups = useMemo(() => categoriesPresent.map((c) => ({ category: c, items: items.filter((it) => it.category === c) })).filter((g) => g.items.length), [categoriesPresent, items])
   const selected = items.find((it) => it.id === selectedId) ?? null
   const effectiveName = nameTouched ? name : selected?.name ?? ''
   const canManage = templates.data?.can_manage ?? false
@@ -113,7 +117,8 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
     if (mode === 'create' && !effectiveName.trim()) return toast.error(t('flows.nameRequired'))
     setBusy(true)
     try {
-      const inst = await instantiate.mutateAsync({ id: selected.id, source_id: sourceId ? Number(sourceId) : null, prefix: mode === 'load' ? prefix : '' })
+      const useSamples = sourceId === '' || sourceId === 'samples'
+      const inst = await instantiate.mutateAsync({ id: selected.id, source_id: sourceId && sourceId !== 'samples' ? Number(sourceId) : null, prefix: mode === 'load' ? prefix : '', use_samples: useSamples })
       const done = await onPick({ graph: inst.graph, name: effectiveName.trim() || inst.name, description: inst.description, missingSource: inst.missing_source, template: selected })
       if (done === false) return
       setSelectedId(null)
@@ -162,10 +167,23 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
         <ErrorState error={templates.error} onRetry={() => void templates.refetch()} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-          <div className="grid max-h-[55vh] gap-3 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3" data-testid="template-grid">
-            {items.length === 0 ? <p className="col-span-full py-8 text-center text-sm text-muted">{t('templates.empty')}</p> : null}
-            {items.map((it) => (
+          <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1" data-testid="template-grid">
+            <div className="flex flex-wrap gap-1" data-testid="template-categories">
+              <Button size="xs" active={category === ''} onClick={() => setCategory('')}>{t('templates.allCategories')}</Button>
+              {categoriesPresent.map((c) => (
+                <Button key={c} size="xs" active={category === c} onClick={() => setCategory(category === c ? '' : c)}>{categoryLabel(t, c)} <span className="tnum text-muted">{allItems.filter((it) => it.category === c).length}</span></Button>
+              ))}
+            </div>
+            {items.length === 0 ? <p className="py-8 text-center text-sm text-muted">{t('templates.empty')}</p> : null}
+            {groups.map((g) => (
+              <section key={g.category} data-testid={`template-group-${g.category}`}>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{categoryLabel(t, g.category)} <span className="tnum">({g.items.length})</span></h3>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {g.items.map((it) => (
               <TemplateCard key={it.id} template={it} selected={it.id === selectedId} onSelect={() => setSelectedId(it.id)} canDelete={it.source === 'custom' && (canManage || it.owner_name === myName)} onDelete={() => setPendingDelete(it)} />
+            ))}
+                </div>
+              </section>
             ))}
           </div>
           <div className="space-y-3 border-t border-line pt-3 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
@@ -181,8 +199,8 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
               label={t('templates.source')}
               value={sourceId}
               onChange={(e) => setSourceId(e.target.value)}
-              placeholder={t('templates.sourceNone')}
-              options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})` }))}
+              placeholder={selected?.has_samples ? t('templates.samplesOption') : t('templates.sourceNone')}
+              options={[...(selected?.has_samples ? [{ value: 'samples', label: t('templates.samplesOption') }] : []), ...(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})` }))]}
               data-testid="template-source"
             />
             {mode === 'create' ? (
@@ -197,6 +215,8 @@ export function TemplateGallery({ open, onClose, mode, onPick, prefix }: Templat
 }
 
 const CATEGORIES = ['custom', 'count', 'quality', 'measure', 'detect', 'identify']
+/** 畫廊分組順序：先教學，再依檢測目的，自訂最後 */
+const GALLERY_ORDER = ['tutorial', 'count', 'measure', 'quality', 'detect', 'identify', 'custom']
 
 /** 存為範本：名稱／說明／類別。 */
 export function SaveTemplateModal({ open, onClose, graph, defaultName }: { open: boolean; onClose: () => void; graph: () => FlowGraph; defaultName: string }) {

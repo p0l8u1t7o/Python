@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 #: 內建工具模組；每個模組定義 TOOLS = [ToolInstance, ...]。
 BUILTIN_MODULES = [
     "apps.vision.tools.builtin.source",
+    "apps.vision.tools.builtin.fixed_image",
     "apps.vision.tools.builtin.preprocess",
     "apps.vision.tools.builtin.polar",
     "apps.vision.tools.builtin.photometric",

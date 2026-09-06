@@ -4,11 +4,12 @@
  */
 import { useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Crop, Scan, Upload, X } from 'lucide-react'
+import { Crop, ImagePlus, Scan, Upload, X } from 'lucide-react'
 
 import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 import { useAssetMutations, useAssets, useConnections, useSources } from '@/lib/queries'
-import type { Region, ToolParam } from '@/lib/types'
+import { api, fixedImageUrl } from '@/lib/api'
+import type { FixedImageDesc, Region, ToolParam } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { errorMessage } from '@/lib/errors'
 import { useAuth } from '@/providers/AuthProvider'
@@ -43,6 +44,63 @@ function describeRegion(region: Region): string {
     default:
       return JSON.stringify(region)
   }
+}
+
+/** 固定影像清單：縮圖格、多檔上傳（POST /vision/fixed-images）、移除；值是描述子陣列。 */
+export function ImagesField({ label, hint, required, value, onChange, readOnly }: { label: string; hint?: string; required?: boolean; value: unknown; onChange: (v: unknown) => void; readOnly?: boolean }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const input = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const items = Array.isArray(value) ? (value as FixedImageDesc[]).filter((d) => d && typeof d.id === 'string') : []
+  async function upload(files: FileList | null) {
+    if (!files || !files.length) return
+    const form = new FormData()
+    for (const f of Array.from(files)) form.append('files', f)
+    setBusy(true)
+    try {
+      const res = await api.postForm<{ items: FixedImageDesc[] }>('/vision/fixed-images', form)
+      const seen = new Set(items.map((d) => d.id))
+      onChange([...items, ...res.items.filter((d) => !seen.has(d.id))])
+      toast.success(t('editor.params.picturesAdded', { count: res.items.length }))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="label">{label}{required ? <span className="text-critical"> *</span> : null}</span>
+        <span className="text-xs text-muted tnum">{t('editor.params.picturesCount', { count: items.length })}</span>
+      </div>
+      {items.length ? (
+        <div className="grid grid-cols-3 gap-1.5" data-testid="images-grid">
+          {items.map((d, i) => (
+            <div key={d.id} className="group relative overflow-hidden rounded border border-line bg-surface-muted" title={`${d.name} · ${d.width}×${d.height}`}>
+              <img src={fixedImageUrl(d.id, 160)} alt={d.name} className="block aspect-[4/3] w-full object-cover" loading="lazy" />
+              <span className="absolute left-0.5 top-0.5 rounded bg-black/60 px-1 text-[10px] text-white tnum">{i + 1}</span>
+              {!readOnly ? (
+                <button type="button" className="absolute right-0.5 top-0.5 hidden rounded bg-black/60 p-0.5 text-white group-hover:block" title={t('editor.params.removePicture')} onClick={() => onChange(items.filter((x) => x.id !== d.id))}>
+                  <X size={12} />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="hint">{t('editor.params.noPictures')}</p>
+      )}
+      {!readOnly ? (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <Button size="xs" icon={<ImagePlus size={12} />} loading={busy} onClick={() => input.current?.click()} data-testid="images-upload">{t('editor.params.uploadPictures')}</Button>
+          <input ref={input} type="file" className="hidden" accept="image/*" multiple onChange={(e) => { void upload(e.target.files); e.target.value = '' }} />
+        </div>
+      ) : null}
+      {hint ? <p className="hint">{hint}</p> : null}
+    </div>
+  )
 }
 
 function JsonField({ label, hint, value, onChange, mono = false, rows = 3 }: { label: string; hint?: string; value: unknown; onChange: (v: unknown) => void; mono?: boolean; rows?: number }) {
@@ -168,6 +226,9 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
       return (
         <Select label={label} required={param.required} hint={help} value={text} placeholder={t('editor.params.pickSource')} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: `${s.name} (${s.kind})`, disabled: !s.is_enabled }))} />
       )
+
+    case 'images':
+      return <ImagesField label={label} hint={help} required={param.required} value={value} onChange={onChange} readOnly={!auth.isEngineer} />
 
     case 'asset': {
       const accept = param.accept || 'image'

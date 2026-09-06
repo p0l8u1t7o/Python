@@ -90,7 +90,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             f"/api/vision/calibration/assets/{self.calibration_id}", f"/api/vision/assets/{self.stat_id}/stat-template", f"/api/vision/assets/{self.stat_id}/stat-template/mean",
             f"/api/vision/assets/{self.shape_id}/shape-model", f"/api/vision/assets/{self.shape_id}/shape-model/preview",
             "/api/vision/groups?kind=source", "/api/vision/fs",
-            "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info", "/api/vision/plugins",
+            "/api/vision/templates", "/api/vision/fixed-images", "/api/vision/capacity", "/api/vision/integration/info", "/api/vision/plugins",
             "/api/vision/audit", "/api/vision/audit.csv", "/api/vision/summary", f"/api/vision/flows/{fid}/versions", f"/api/vision/flows/{fid}/versions/1",
     "/api/vision/integration/trace",
             "/api/vision/capture/clients", "/api/vision/capture/download/info", "/api/vision/capture/download", "/api/vision/capture/clients/nope/channels/x/preview",

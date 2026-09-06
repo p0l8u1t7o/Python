@@ -543,6 +543,7 @@ const zhHant = {
     importNoFile: '請先選擇 .flow.json 檔',
   },
   editor: {
+    picturesSection: '此步驟的圖片',
     sourceSection: '影像來源',
     sourcePreviewHint: '目前來源的預覽；試執行即以此來源的影像執行',
     leaveTitle: '離開此頁？',
@@ -680,6 +681,11 @@ const zhHant = {
       error: '錯誤',
     },
     params: {
+      uploadPictures: '上傳圖片',
+      noPictures: '尚無圖片——上傳一張或多張，圖片會跟著流程保存。',
+      picturesCount: '{{count}} 張',
+      removePicture: '移除圖片',
+      picturesAdded: '已加入 {{count}} 張圖片',
       roiShape: '形狀',
       roiNone: '尚未設定',
       pickSource: '選擇影像來源',
@@ -1268,6 +1274,8 @@ const zhHant = {
     fromTemplate: '從範本建立',
     gallery: '範本畫廊',
     galleryHint: '選一個範本，指定影像來源與流程名稱後建立流程',
+    samplesOption: '範本自帶的樣本圖（固定影像步驟）',
+    allCategories: '全部',
     load: '載入範本',
     loadHint: '用範本內容取代目前畫布',
     loadConfirm: '畫布有未儲存的變更，載入範本會取代目前內容，確定？',

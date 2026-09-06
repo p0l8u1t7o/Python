@@ -84,6 +84,12 @@ export function withKey(url: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}`
 }
 
+/** 固定影像的網址（w = 縮圖寬度，0 = 原圖）。 */
+export function fixedImageUrl(id: string, w = 0): string {
+  if (!id) return ''
+  return withKey(w ? `${BASE_URL}/vision/fixed-images/${encodeURIComponent(id)}/thumb?w=${w}` : `${BASE_URL}/vision/fixed-images/${encodeURIComponent(id)}`)
+}
+
 /** 快取影像的網址。max = 最長邊（0 = 原圖）。 */
 export function imageUrl(ref: string | null | undefined, max = 0, fmt: 'jpeg' | 'png' = 'jpeg'): string {
   if (!ref) return ''

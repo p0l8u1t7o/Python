@@ -666,6 +666,7 @@ export default {
       min_matches: { label: "最少相符数", help: "相符的轮廓少于此数视为 NG。", group: "判定" },
     },
     ports: {
+      template_image: "模板图",
       contours: "轮廓", reference: "参考轮廓", image: "图像（显示用）", match: "相符", no_match: "不符",
       distances: "距离列表", distance: "最佳距离", best_index: "最佳索引", match_flag: "相符", match_count: "相符数",
       matched: "相符的轮廓", best: "最佳轮廓", first_distance: "第一条距离",
@@ -785,6 +786,7 @@ export default {
       },
     },
     ports: {
+      template_image: "良品图",
       image: "影像",
       roi: "区域（動态）",
       ok: "無缺陷",
@@ -1603,6 +1605,50 @@ export default {
       result: "结果",
     },
   },
+  fixed_image: {
+    label: "固定图像",
+    description: "以上传到此步骤的图片取代相机：一张，或多张每次执行轮流取用。图片跟着流程保存，从模板或上传图片建立的流程在哪里都能执行；也用来把参考图（模板、良品、白参考）透过图片输入端口交给需要的工具。",
+    params: {
+      images: {
+        label: "图片",
+        help: "上传一张或多张图片；图片会跟着流程保存。",
+      },
+      mode: {
+        label: "取哪一张",
+        options: {
+          cycle: "每次执行取下一张（试执行停在当前这张）",
+          fixed: "固定取第 N 张",
+        },
+      },
+      index: {
+        label: "序号",
+        help: "1 = 第一张。",
+      },
+      role: {
+        label: "角色",
+        options: {
+          acquire: "待检图像（API 送图、批次测试或重跑时以送来的图取代）",
+          reference: "供其他工具使用的参考图（模板、良品、白参考）：永不取代",
+        },
+      },
+      convert: {
+        label: "色彩",
+        options: {
+          keep: "维持上传时的样子",
+          gray: "灰度",
+          bgr: "彩色（3 通道）",
+        },
+      },
+    },
+    ports: {
+      image: "图像",
+      index: "图片序号",
+      name: "图片名称",
+      count: "图片张数",
+      width: "宽",
+      height: "高",
+    },
+  },
   image_source: {
     label: "影像来源",
     description: "从设定的影像来源抓一張影像；API 直接送图时（POST run 附影像）優先使用送来的影像。",
@@ -2279,6 +2325,7 @@ export default {
       },
     },
     ports: {
+      template_image: "模板图",
       image: "影像",
       roi: "搜尋范围（動态）",
       found: "找到",

@@ -543,6 +543,7 @@ const zhHans = {
     importNoFile: '请先选择 .flow.json 档',
   },
   editor: {
+    picturesSection: '此步骤的图片',
     sourceSection: '影像来源',
     sourcePreviewHint: '当前来源的预览；试执行即以此来源的影像执行',
     leaveTitle: '离开此页？',
@@ -680,6 +681,11 @@ const zhHans = {
       error: '错误',
     },
     params: {
+      uploadPictures: '上传图片',
+      noPictures: '尚无图片——上传一张或多张，图片会跟着流程保存。',
+      picturesCount: '{{count}} 张',
+      removePicture: '移除图片',
+      picturesAdded: '已加入 {{count}} 张图片',
       roiShape: '形状',
       roiNone: '尚未设置',
       pickSource: '选择影像来源',
@@ -1268,6 +1274,8 @@ const zhHans = {
     fromTemplate: '从范本创建',
     gallery: '范本画廊',
     galleryHint: '选一个范本，指定影像来源与流程名称后创建流程',
+    samplesOption: '模板自带的样本图（固定图像步骤）',
+    allCategories: '全部',
     load: '加载范本',
     loadHint: '用范本内容取代目前画布',
     loadConfirm: '画布有未保存的变更，加载范本会取代目前内容，确定？',

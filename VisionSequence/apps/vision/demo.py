@@ -10,6 +10,8 @@ folder 來源、群組「範例」）＋範本／良品資產（從樣本圖自�
 
 from __future__ import annotations
 
+import logging
+
 from typing import Any
 
 import numpy as np
@@ -17,6 +19,8 @@ import numpy as np
 from apps.vision.graph import validate_graph
 from apps.vision.models import Asset, Flow, ImageSource, ResourceGroup
 from apps.vision.tools import base as tools
+
+log = logging.getLogger(__name__)
 
 GX, GY = 300, 170
 
@@ -92,14 +96,15 @@ def brightness_gate_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
-def locate_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]:
+def locate_measure_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
     """定位＋卡尺：範本比對 → 定位補正 → ROI 跟隨 → 卡尺量帶高 → 公差。
 
     對齊合成圖「定位量測」：十字標記標稱 (260, 220)，中央亮帶高 160px（NG 張 200px）。"""
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
         _node("gray", "grayscale", 1, 0, "Grayscale"),
-        _node("tm", "template_match", 2, 0, "Find locator template", threshold=0.6, max_matches=1, template=template_asset),
+        _node("tm", "template_match", 2, 0, "Find locator template", threshold=0.6, max_matches=1),
+        _node("ref", "fixed_image", 0, 3, "Locator template picture", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
         _node("align", "shape_align", 3, 0, "Locate correction", ref_x=260, ref_y=220, ref_angle=0),
         _node("fix", "fixture_roi", 4, 0, "ROI follow", roi={"shape": "rotated_rect", "cx": 690, "cy": 480, "w": 300, "h": 60, "angle": 90}),
         _node("cal", "caliper", 5, 0, "Caliper band height", polarity="any", edge_pair="widest"),
@@ -108,9 +113,10 @@ def locate_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, A
         _node("ng", "judge", 7, 1, "NG: width out of tolerance", verdict="ng", label="width"),
         _node("out", "output", 6, 1, "Output width", name="width_px"),
         _node("nf", "judge", 3, 1, "NG: template not found", verdict="ng", label="not_found"),
-        _note("n1", 0, 1, "How to use it", "The template is the cross marker at the top left of the sample image (created by seeding).\nWhen the part moves, the ROI follows the locate result, so the caliper always measures on the bright band.\nFor your own part: draw a new template, take the reference position in one click, and redraw the ROI."),
+        _note("n1", 0, 1, "How to use it", "The template is the cross marker at the top left of the sample image, carried by the Fixed image step wired into the locator's template input.\nWhen the part moves, the ROI follows the locate result, so the caliper always measures on the bright band.\nFor your own part: draw a new template, take the reference position in one click, and redraw the ROI."),
     ]
     edges = [
+        _edge("ref", "tm", "image", "template_image"),
         _edge("src", "gray"), _edge("gray", "tm"),
         _edge("tm", "align", "matches", "matches"),
         _edge("tm", "nf", "not_found", "_flow"),
@@ -123,7 +129,7 @@ def locate_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, A
     return {"nodes": nodes, "edges": edges}
 
 
-def cup_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]:
+def cup_measure_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
     """深抽杯件量測：定位 → ROI 跟隨 ×3 → 外徑／內徑找圓 + 壁厚 → 同心度 → 公差判定 ×3 → 具名輸出 → 判定。
 
     教導步驟（現場調機時照順序做，數值參數都已標 teach，可在參數卡頁一次調完）：
@@ -140,7 +146,8 @@ def cup_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
         _node("gray", "grayscale", 1, 0, "Grayscale"),
-        _node("tm", "template_match", 2, 0, "Find locator template", threshold=0.6, max_matches=1, angle_range=10, angle_step=2, template=template_asset),
+        _node("tm", "template_match", 2, 0, "Find locator template", threshold=0.6, max_matches=1, angle_range=10, angle_step=2),
+        _node("ref", "fixed_image", 0, 3, "Locator template picture", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
         _node("align", "shape_align", 3, 0, "Locate correction", ref_x=200, ref_y=170, ref_angle=0),
         _node("nf", "judge", 3, 1, "NG: template not found", verdict="ng", label="not_found"),
         _node("fix_od", "fixture_roi", 4, 0, "Outer ROI follow", roi=od_roi),
@@ -164,6 +171,7 @@ def cup_measure_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]
         _note("n1", 0, 1, "Teaching steps", "1. Locator template: draw a box around a feature of the cup rim.\n2. Preview once, then set the locate correction's reference position to the current match.\n3. Three ROIs follow it: the outer annulus, the inner annulus, and a line across the wall.\n4. Fill each tolerance judge with the nominal, the deviations and where on the drawing it comes from; concentricity takes max_deviation."),
     ]
     edges = [
+        _edge("ref", "tm", "image", "template_image"),
         _edge("src", "gray"), _edge("gray", "tm"),
         _edge("tm", "align", "matches", "matches"), _edge("tm", "nf", "not_found", "_flow"),
         _edge("gray", "fix_od", "image", "image"), _edge("align", "fix_od", "transform", "transform"),
@@ -302,21 +310,23 @@ def edge_angle_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
-def golden_compare_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]:
+def golden_compare_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
     """印刷良品比對：與良品範本做差異比對，任何多印／髒污／缺損都算缺陷。
 
     對齊合成圖「印刷良品比對」：第 1 張＝良品（seed 已存成資產），NG 張多一塊污漬。"""
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
-        _node("diff", "defect_diff", 1, 0, "Golden compare", template=template_asset, align="phase", threshold=45, min_area=200),
+        _node("diff", "defect_diff", 1, 0, "Golden compare", align="phase", threshold=45, min_area=200),
+        _node("ref", "fixed_image", 0, 3, "Golden sample picture", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
         _node("ng", "judge", 2, 1, "NG: appearance defect", verdict="ng", label="defect"),
         _node("out_n", "output", 2, 2, "Output defect count", name="defect_count"),
         _node("out_a", "output", 3, 2, "Output defect area", name="defect_area"),
         _node("draw", "draw_result", 3, 0, "Result image"),
-        _note("n1", 0, 1, "About", "The golden template is the first sample image (the asset is created by seeding).\nDisplacement is corrected automatically by phase alignment; the difference threshold and the minimum area set the sensitivity."),
+        _note("n1", 0, 1, "About", "The golden sample is the first sample image, carried by the Fixed image step wired into the golden-compare tool's picture input.\nDisplacement is corrected automatically by phase alignment; the difference threshold and the minimum area set the sensitivity."),
     ]
     edges = [
+        _edge("ref", "diff", "image", "template_image"),
         _edge("src", "diff"),
         _edge("diff", "ok", "ok", "_flow"), _edge("diff", "ng", "defect", "_flow"),
         _edge("diff", "out_n", "count", "value"), _edge("diff", "out_a", "total_area", "value"),
@@ -473,7 +483,7 @@ def gear_teeth_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
-def contour_defect_flow(source_id: Any, template_asset: str = "") -> dict[str, Any]:
+def contour_defect_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
     """輪廓崩邊檢測：contour_find（外輪廓）→ contour_filter（最大一條＝工件）→ contour_geometry（凸缺陷）→ 缺陷數＝0 → OK；
     另用 contour_match 與範例外形資產比 Hu 矩距離（換料／變形守門）。對齊合成圖「沖壓件」：第 4 張上緣崩邊（缺陷深約 40 px）。"""
     nodes = [
@@ -487,11 +497,13 @@ def contour_defect_flow(source_id: Any, template_asset: str = "") -> dict[str, A
         _node("ng", "judge", 6, 1, "NG: chipped edge", verdict="ng", label="chipped_edge"),
         _node("out_d", "output", 5, 1, "Output chip count", name="chip_count"),
         _node("out_a", "output", 5, 2, "Output area", name="part_area_px"),
-        _node("match", "contour_match", 4, 2, "Outline vs. sample", template=template_asset, max_distance=0.05),
+        _node("match", "contour_match", 4, 2, "Outline vs. sample", max_distance=0.05),
+        _node("ref", "fixed_image", 0, 3, "Sample outline picture", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
         _node("out_m", "output", 5, 3, "Output shape distance", name="shape_distance"),
         _note("n1", 0, 1, "About", "Contour find traces the outline, the filter keeps only the largest one (the part), and contour geometry reports its convexity defects — a bite out of the edge deeper than 12 px is a chip.\nContour match compares the silhouette with the sample outline by Hu moments: a wrong or badly deformed part scores a large distance."),
     ]
     edges = [
+        _edge("ref", "match", "image", "template_image"),
         _edge("src", "gray"), _edge("gray", "find", "image", "image"),
         _edge("find", "keep", "contours", "contours"), _edge("keep", "geo", "contours", "contours"), _edge("gray", "geo", "image", "image"),
         _edge("geo", "cmp", "first_defects", "value"),
@@ -538,14 +550,15 @@ def exclusion_zone_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
-def shading_flow(source_id: Any, flat_asset: str = "") -> dict[str, Any]:
+def shading_flow(source_id: Any, flat_ref: dict[str, Any] | None = None) -> dict[str, Any]:
     """平場校正：白板參考影像除掉漸暈 → 固定門檻找暗污點 → blob 計數 → 6 顆＝OK。
 
     對齊合成圖「打光不均」：角落亮度只剩 45%，不校正時固定門檻在角落整片誤判；校正後每張 6 顆（第 4 張多一大塊 → 7，NG）。"""
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
         _node("gray", "grayscale", 1, 0, "Grayscale"),
-        _node("flat", "shading_correct", 2, 0, "Flat-field correction", mode="flat_field", flat=flat_asset, target_level=200),
+        _node("flat", "shading_correct", 2, 0, "Flat-field correction", mode="flat_field", target_level=200),
+        _node("ref", "fixed_image", 0, 3, "White reference picture", images=[flat_ref] if flat_ref else [], mode="fixed", index=1, role="reference"),
         _node("thr", "threshold", 3, 0, "Dark spots", method="fixed", threshold=120, invert=True),
         _node("blob", "blob", 4, 0, "Spot blobs", threshold_method="none", min_area=400, max_area=20000),
         _node("cmp", "if_number", 5, 0, "6 spots?", operator="eq", threshold=6),
@@ -558,6 +571,7 @@ def shading_flow(source_id: Any, flat_asset: str = "") -> dict[str, Any]:
         _note("n1", 0, 1, "About", "The lighting falls to 45% in the corners. The white-reference asset was taken under the same light, so dividing by it flattens the field and one fixed threshold works everywhere.\nThe lower branch runs the same threshold on the uncorrected image: the dark corners swallow the spots and the count is wrong."),
     ]
     edges = [
+        _edge("ref", "flat", "image", "flat_image"),
         _edge("src", "gray"), _edge("gray", "flat", "image", "image"), _edge("flat", "thr", "image", "image"), _edge("thr", "blob", "image", "image"),
         _edge("blob", "cmp", "count", "value"),
         _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
@@ -836,7 +850,7 @@ def dl_classify_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {}
         _node("ng", "judge", 2, 1, "NG: missing hole", verdict="ng", label="missing_hole"),
         _node("out", "output", 2, 2, "Output score", name="ok_score"),
         _node("draw", "draw_result", 1, 2, "Result image"),
-        _note("n1", 0, 1, "About", "The model \"Example: classifier (good / missing hole)\" is trained by seed_demo on 30 synthetic samples (the built-in MLP, seconds on CPU).\nThat MLP sees the whole downscaled image, which suits classes that differ in overall appearance; for small defects in random positions use semantic segmentation or YOLO. For your own part: create a classification project on the Deep learning page, label a few images, press train, and swap this node's model asset for the result."),
+        _note("n1", 0, 1, "About", "The model \"Example: classifier (good / missing hole)\" is trained by seed_demo on 30 synthetic samples (the built-in MLP, seconds on CPU).\nThat MLP sees the whole downscaled image, which suits classes that differ in overall appearance; for small defects in random positions use semantic segmentation or instance segmentation. For your own part: create a classification project on the Deep learning page, label a few images, press train, and swap this node's model asset for the result."),
     ]
     edges = [
         _edge("src", "cls"), _edge("cls", "ok", "pass", "_flow"), _edge("cls", "ng", "fail", "_flow"),
@@ -926,6 +940,95 @@ def _demo_asset(name: str, kind: str = "image") -> str:
     return str(row.id) if row else ""
 
 
+#: 範本的參考圖（以前是 5 個影像資產）：名稱 → (樣本集 key, 裁切區域, 產生器名)；由 _demo_ref 現算並存進固定影像庫（內容雜湊，重跑不重複）。
+REF_SPECS: dict[str, tuple[str, dict[str, Any] | None, str]] = {
+    "cross locator template": ("marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120}, ""),
+    "cup locator template": ("cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100}, ""),
+    "print golden template": ("golden_print", None, ""),
+    "stamped part outline": ("stamped_part", None, ""),
+    "white reference (uneven lighting)": ("vignette", None, "vignette_flat"),
+}
+_FIXED_CACHE: dict[str, Any] = {}
+
+
+def _cached_present(value: Any) -> bool:
+    """快取的描述子指到的檔案都還在才算數（資產目錄換了、或孤兒清理刪掉了就重生）。"""
+    from apps.vision import fixed_images
+
+    descs = value if isinstance(value, list) else [value]
+    return all(isinstance(d, dict) and fixed_images.exists(str(d.get("id") or "")) for d in descs)
+
+
+def _demo_ref(name: str) -> dict[str, Any] | None:
+    """範本參考圖的固定影像描述子（從樣本圖第 1 張裁一塊，或用產生器的圖）；算不出來回 None（範本照樣能載入，圖留給使用者上傳）。"""
+    key = f"ref:{name}"
+    if key in _FIXED_CACHE and _cached_present(_FIXED_CACHE[key]):
+        return _FIXED_CACHE[key]
+    spec = REF_SPECS.get(name)
+    if spec is None:
+        return None
+    try:
+        import os
+
+        import cv2
+        import numpy as np
+
+        from apps.vision import demo_images, fixed_images
+        from apps.vision.tools.roi import crop as roi_crop
+
+        set_key, region, maker = spec
+        if maker:
+            image = getattr(demo_images, maker)()
+        else:
+            folder = demo_images.write_set(set_key)
+            first = sorted(n for n in os.listdir(folder) if n.endswith(".png"))[0]
+            image = cv2.imdecode(np.fromfile(os.path.join(folder, first), dtype=np.uint8), cv2.IMREAD_COLOR)
+        piece = roi_crop(image, region, upright=True).image if region else image
+        desc = fixed_images.store(np.ascontiguousarray(piece), f"Example {name}.png")
+    except Exception:  # noqa: BLE001 - 範本目錄不能因為樣本圖產不出來而炸
+        log.warning("範本參考圖 %s 產生失敗", name, exc_info=True)
+        return None
+    _FIXED_CACHE[key] = desc
+    return desc
+
+
+def template_samples(key: str) -> list[dict[str, Any]]:
+    """內建範本的樣本圖（固定影像描述子清單，依檔名排序；第 4 張多半刻意 NG）；沒有樣本集的範本回空清單。"""
+    set_key = TEMPLATE_SAMPLE_SETS.get(key)
+    if not set_key:
+        return []
+    cache_key = f"set:{set_key}"
+    if cache_key in _FIXED_CACHE and _cached_present(_FIXED_CACHE[cache_key]):
+        return [dict(d) for d in _FIXED_CACHE[cache_key]]
+    try:
+        import os
+
+        from apps.vision import demo_images, fixed_images
+
+        folder = demo_images.write_set(set_key)
+        out = []
+        for f in sorted(n for n in os.listdir(folder) if n.endswith(".png")):
+            with open(os.path.join(folder, f), "rb") as fh:
+                out.append(fixed_images.store_bytes(fh.read(), f"{demo_images.SAMPLE_SETS[set_key][0]} {f}"))
+    except Exception:  # noqa: BLE001
+        log.warning("範本樣本圖 %s 產生失敗", set_key, exc_info=True)
+        return []
+    _FIXED_CACHE[cache_key] = out
+    return [dict(d) for d in out]
+
+
+def builtin_fixed_ids() -> set[str]:
+    """內建範本會用到的所有固定影像 id（樣本集＋參考圖），purge 清孤兒時要保留。"""
+    out: set[str] = set()
+    for key in TEMPLATE_SAMPLE_SETS:
+        out |= {d["id"] for d in template_samples(key)}
+    for name in REF_SPECS:
+        d = _demo_ref(name)
+        if d:
+            out.add(d["id"])
+    return out
+
+
 #: 範本畫廊的內建範本目錄：(key, 名稱, 說明, 分類, builder)。
 #: builder 在 request 時才呼叫（範例資產 id 由 _demo_asset 現查，seed 過就開箱即用）。
 BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
@@ -933,8 +1036,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("exposure", "Exposure check", "Downscale, Otsu threshold, range check, OK/NG", "quality", brightness_gate_flow),
     ("circle_gauge", "Circle gauge", "Find circle, diameter, pixel calibration to mm, tolerance judge — plus a sector ROI arc fit and ellipse roundness", "measure", circle_gauge_flow),
     ("edge_angle", "Edge angle", "Two line finds into an angle tolerance, the intersection point, and a 45 degree chamfer measurement", "measure", edge_angle_flow),
-    ("golden_compare", "Print compare", "Difference against a golden template to catch overprinting, smudges and gaps; the template asset is created from the sample images", "quality",
-     lambda sid: golden_compare_flow(sid, _demo_asset("Example: print golden template"))),
+    ("golden_compare", "Print compare", "Difference against a golden sample to catch overprinting, smudges and gaps; the golden picture comes with the template as a fixed image", "quality",
+     lambda sid: golden_compare_flow(sid, _demo_ref("print golden template"))),
     ("stat_compare", "Statistical print compare", "Per-pixel mean and spread from 30 good prints; anything beyond 4 standard deviations is a defect, so light and texture variation no longer force a loose threshold", "quality",
      lambda sid: stat_compare_flow(sid, _demo_asset("Example: statistical template (print)", "file"))),
     ("fft_defect", "Fabric defect", "A frequency-domain low pass removes the periodic weave and what is left is the scratch; a mask pulls out the defect area", "quality", fft_defect_flow),
@@ -942,14 +1045,14 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
-     lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
+     lambda sid: contour_defect_flow(sid, _demo_ref("stamped part outline"))),
     ("circular_defect", "Chipped rim (circular caliper)", "A ring of 180 radial calipers gives the radius at every angle and the run-out; Profile defects fits a circle and marks every dip or empty caliper as a chip, drawn as a red arc on the rim", "measure", circular_defect_flow),
     ("form_tolerance", "Roundness (form tolerance)", "180 radial calipers give the edge points; Form and position tolerance fits the minimum-zone circle (ISO 1101) and passes the disc when the ring between the two concentric circles is within 5 px — the chipped rim fails", "measure", form_tolerance_flow),
     ("emboss_defect", "Embossed characters and dents (photometric stereo)", "Four crops split a 2×2 picture of the plate under four lights; Photometric stereo turns them into a shape-strength map on which a pixel count in the check zone finds the dent that no single picture shows", "quality", emboss_defect_flow),
     ("barcode_grade", "Barcode quality grade (ISO 15415)", "Grades the Data Matrix on the label like a verifier — contrast, modulation, fixed pattern damage, axial and grid non-uniformity, unused error correction — and passes it at C or better; the dirty symbol fails", "detect", barcode_grade_flow),
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
-     lambda sid: shading_flow(sid, _demo_asset("Example: white reference (uneven lighting)"))),
+     lambda sid: shading_flow(sid, _demo_ref("white reference (uneven lighting)"))),
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
@@ -959,7 +1062,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("shape_locate", "Shape match locate (any angle, any light)", "Edge-direction shape matching finds the part turned, darkened or among clutter, feeds Locate offset and ROI follow, and rejects a different part", "measure",
      lambda sid: shape_match_flow(sid, _demo_asset("Example: shape model (bracket)", "file"))),
     ("locate_measure", "Locate and gauge", "Template match, locate correction, ROI follow, caliper width, tolerance judge", "measure",
-     lambda sid: locate_measure_flow(sid, _demo_asset("Example: cross locator template"))),
+     lambda sid: locate_measure_flow(sid, _demo_ref("cross locator template"))),
     ("cup_measure", "Deep-drawn cup gauge", "Template match, locate correction, three ROIs following, outer and inner circle finds plus wall thickness, concentricity, three tolerance judges, named outputs, OK/NG", "measure",
      lambda sid: cup_measure_flow(sid, _demo_ref("cup locator template"))),
     ("ai_count", "AI object count (stock model)", "ai_detect finds stop signs with the COCO stock model and judges the count. No training needed and the GPU is used automatically (deep-learning dependencies required)", "count", yolo_count_flow),
@@ -1119,6 +1222,33 @@ _LEGACY_RENAMES: dict[str, str] = {
 }
 
 
+def _drop_legacy_examples(created: list[str]) -> None:
+    """舊版 seed 建的範例資料夾來源（每個樣本集一個）與 5 個參考影像資產：沒有任何流程引用的就刪掉，讓來源庫與資產庫只剩使用者自己的東西。"""
+    import json as _json
+
+    graphs = " ".join(_json.dumps(g) for g in Flow.objects.values_list("graph", flat=True))
+    from apps.vision import demo_images
+
+    names = [f"Example: {label}" for label, _fn in demo_images.SAMPLE_SETS.values()]
+    for src in ImageSource.objects.filter(kind="folder", group="Examples", name__in=names):
+        if f'"source_id": {src.id}' in graphs or f'"source_id": "{src.id}"' in graphs:
+            continue
+        src.delete()
+        created.append(f"移除舊範例來源 {src.name}")
+    for asset in Asset.objects.filter(kind="image", group="Examples", name__in=[f"Example: {n}" for n in REF_SPECS]):
+        if str(asset.id) in graphs:
+            continue
+        try:
+            import os
+
+            if asset.path and os.path.isfile(asset.path):
+                os.remove(asset.path)
+        except OSError:
+            pass
+        asset.delete()
+        created.append(f"移除舊範例資產 {asset.name}")
+
+
 def _rename_legacy(created: list[str]) -> None:
     """把舊安裝的中文示範資料改成英文名（同名已存在就不動，交給後續 get_or_create）。"""
     for model, kinds in ((ImageSource, None), (Asset, ("image", "model")), (Flow, None)):
@@ -1155,54 +1285,11 @@ def seed_demo() -> list[str]:
         source.save(update_fields=["group"])
     created.append(f"影像來源 {source.name}（{'新建' if made else '既有'}）")
 
-    def folder_source(key: str) -> ImageSource:
-        folder = demo_images.write_set(key)
-        label = demo_images.SAMPLE_SETS[key][0]
-        src, made_src = ImageSource.objects.get_or_create(
-            name=f"Example: {label}",
-            defaults={"kind": "folder", "group": "Examples", "config": {"path": folder, "loop": True, "sort": "name"}},
-        )
-        created.append(f"影像來源 {src.name}（{'新建' if made_src else '既有'}）")
-        return src
-
-    def sample_asset(name: str, key: str, region: dict[str, Any] | None, image: Any = None) -> str:
-        """從樣本圖第 1 張裁一塊存成資產（既有同名資產直接沿用），回傳 asset id；給 image 時直接存那張（參考影像）。"""
-        existing = Asset.objects.filter(name=name, kind="image").first()
-        if existing:
-            return str(existing.id)
-        import os
-        import uuid as _uuid
-
-        import cv2
-        import numpy as np
-        from django.conf import settings
-
-        from apps.vision.tools.roi import crop as roi_crop
-
-        if image is None:
-            folder = demo_images.write_set(key)
-            first = sorted(n for n in os.listdir(folder) if n.endswith(".png"))[0]
-            image = cv2.imdecode(np.fromfile(os.path.join(folder, first), dtype=np.uint8), cv2.IMREAD_COLOR)
-        piece = roi_crop(image, region, upright=True).image if region else image
-        asset_id = _uuid.uuid4()
-        path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.png")
-        ok, buf = cv2.imencode(".png", piece)
-        buf.tofile(path)
-        asset = Asset.objects.create(
-            id=asset_id, name=name, kind="image", group="Examples", path=path, size=int(buf.size),
-            meta={"width": int(piece.shape[1]), "height": int(piece.shape[0]), "channels": 3},
-        )
-        created.append(f"資產 {asset.name}（新建）")
-        return str(asset.id)
-
-    # 每個範本畫廊樣板一組樣本來源；範例資產從樣本圖自動裁切（builtin 範本 instantiate 時現查）。
-    for key in demo_images.SAMPLE_SETS:
-        folder_source(key)
-    sample_asset("Example: cross locator template", "marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120})
-    sample_asset("Example: cup locator template", "cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100})
-    sample_asset("Example: print golden template", "golden_print", None)
-    sample_asset("Example: stamped part outline", "stamped_part", None)
-    sample_asset("Example: white reference (uneven lighting)", "vignette", None, image=demo_images.vignette_flat())
+    # 樣本圖與參考圖是固定影像（跟著範本走），不再佔影像來源庫與資產庫
+    n_samples = sum(len(template_samples(key)) for key in TEMPLATE_SAMPLE_SETS)
+    n_refs = sum(1 for name in REF_SPECS if _demo_ref(name))
+    created.append(f"固定影像：樣本圖 {n_samples} 張、參考圖 {n_refs} 張")
+    _drop_legacy_examples(created)
     if not Asset.objects.filter(name="Example: shape model (bracket)", kind="file").exists():
         import os
         import uuid as _uuid

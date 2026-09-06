@@ -27,7 +27,7 @@ from apps.vision.graph import validate_graph
 from apps.vision.models import Flow
 
 SCHEMA_VERSION = 1
-DOC_KEYS = ("schema_version", "exported_at", "name", "description", "continuous_interval_ms", "graph")
+DOC_KEYS = ("schema_version", "exported_at", "name", "description", "continuous_interval_ms", "graph", "fixed_images")
 NODE_KEYS = ("id", "type", "label", "description", "enabled", "continue_on_error", "color", "params", "position", "width", "height")
 EDGE_KEYS = ("id", "source", "source_handle", "target", "target_handle")
 
@@ -102,7 +102,44 @@ def export_flow(flow: Flow) -> dict[str, Any]:
         "continuous_interval_ms": int(flow.continuous_interval_ms or 0),
         "graph": normalize_graph(templatize(flow.graph or {"nodes": [], "edges": []})),
     }
-    return {k: doc[k] for k in DOC_KEYS}
+    # 只有圖裡真的用到固定影像才帶（沒有的流程維持原本的匯出格式）
+    pictures = _fixed_images_payload(flow.graph or {})
+    if pictures:
+        doc["fixed_images"] = pictures
+    return {k: doc[k] for k in DOC_KEYS if k in doc}
+
+
+def _fixed_images_payload(graph: dict[str, Any]) -> dict[str, str]:
+    """流程引用的固定影像（PNG base64）：匯出檔自給自足，匯入到別台也跑得起來。"""
+    import base64
+
+    from apps.vision import fixed_images
+
+    out: dict[str, str] = {}
+    for image_id in sorted(fixed_images.ids_in_graph(graph)):
+        try:
+            with open(fixed_images.path_of(image_id), "rb") as fh:
+                out[image_id] = base64.b64encode(fh.read()).decode("ascii")
+        except (OSError, fixed_images.FixedImageError):
+            continue
+    return out
+
+
+def restore_fixed_images(doc: dict[str, Any]) -> int:
+    """匯入：把文件裡的固定影像寫回檔案庫（內容雜湊命名，id 不變）。回寫入張數。"""
+    import base64
+
+    from apps.vision import fixed_images
+
+    n = 0
+    for image_id, b64 in (doc.get("fixed_images") or {}).items():
+        try:
+            desc = fixed_images.store_bytes(base64.b64decode(b64))
+        except (ValueError, fixed_images.FixedImageError):
+            continue
+        if desc["id"] == image_id:
+            n += 1
+    return n
 
 
 def dumps(doc: dict[str, Any]) -> str:
@@ -162,6 +199,7 @@ def _carry_over_sources(graph: dict[str, Any], existing: dict[str, Any]) -> None
 def import_flow(doc: dict[str, Any], *, source_id: int | None = None, owner=None) -> tuple[Flow, bool]:
     """依 name upsert：存在則更新 graph／description／間隔並 version+1；不存在則建立。
     更新既有流程且未指定 source_id 時，取像步驟沿用原流程的來源。"""
+    restore_fixed_images(doc)
     graph = materialize_graph(doc, source_id=source_id)
     name = str(doc["name"]).strip()
     description = str(doc.get("description") or "")

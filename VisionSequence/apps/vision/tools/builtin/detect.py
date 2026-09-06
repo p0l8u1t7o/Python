@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
-from apps.vision.tools.builtin.locate import read_asset_image, to_gray
+from apps.vision.tools.builtin.locate import reference_image, to_gray
 from apps.vision.tools.hist import masked_hist, otsu_from_hist
 from apps.vision.tools.roi import crop, region_overlay
 
@@ -327,7 +327,7 @@ class DefectDiffTool(Tool):
     category = "detect"
     icon = "Diff"
     params = [
-        Param("template", "Golden template", kind="asset", accept="image", required=True),
+        Param("template", "Golden template", kind="asset", accept="image", required=False, help_text="Not needed when a picture is connected to the golden picture input."),
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Blank uses the whole image. The template must be the same size as the image, or it is scaled to match."),
         Param("align", "Aligned", kind="select", default="phase", options=[
             {"value": "none", "label": "No alignment"}, {"value": "phase", "label": "Phase correlation (translation)"}, {"value": "ecc", "label": "ECC (translation and rotation)"},
@@ -339,7 +339,7 @@ class DefectDiffTool(Tool):
         Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=5000),
         Param("border", "Ignore border", kind="number", default=4, minimum=0, unit="px", group="Advanced", help_text="Alignment leaves false differences at the border; ignore this many pixels."),
     ]
-    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False), Port("template_image", "Golden picture", "image", required=False)]
     outputs = [
         flow_out("ok", "Clean", "ok"), flow_out("defect", "Defective", "critical"),
         Port("defects", "Defects", "matches"), Port("count", "Count", "number"), Port("total_area", "Total area", "number"),
@@ -349,7 +349,7 @@ class DefectDiffTool(Tool):
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())
-        template = read_asset_image(ctx, "template")
+        template = reference_image(ctx, "template_image", "template")
         region = ctx.roi()
         c = crop(gray, region)
         if c.image.size == 0:

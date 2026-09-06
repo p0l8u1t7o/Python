@@ -30,6 +30,18 @@ _ASSET_CACHE_MAX = 32
 _ASSET_LOCK = threading.Lock()
 
 
+def reference_image(ctx: ToolContext, port: str, key: str, *, gray: bool = True) -> np.ndarray:
+    """參考影像：影像輸入埠（例如固定影像工具接進來）優先，沒接才讀 `key` 資產。回傳的陣列不可原地修改。"""
+    img = ctx.inputs.get(port)
+    if isinstance(img, np.ndarray) and img.size:
+        if gray and img.ndim == 3:
+            return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return np.ascontiguousarray(img)
+    if not ctx.param(key):
+        raise ToolError(f"Connect a picture to '{port}' or choose an asset for '{key}'")
+    return read_asset_image(ctx, key, gray=gray)
+
+
 def read_asset_image(ctx: ToolContext, key: str, *, gray: bool = True) -> np.ndarray:
     """讀取資產影像（支援非 ASCII 路徑）。缺資產 → ToolError。
 
@@ -520,7 +532,7 @@ class TemplateMatchTool(Tool):
     category = "locate"
     icon = "ScanSearch"
     params = [
-        Param("template", "Template image", kind="asset", accept="image", required=True, help_text="The uploaded template image (matched in grayscale)."),
+        Param("template", "Template image", kind="asset", accept="image", required=False, help_text="Not needed when a picture is connected to the template picture input. The uploaded template image (matched in grayscale)."),
         Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect"], help_text="Leave blank to search the whole image."),
         Param("threshold", "Score threshold", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, help_text="NCC score 0–1; below this is not a match.", teach=True),
         Param("max_matches", "Max matches", kind="number", default=1, minimum=1, maximum=500),
@@ -529,7 +541,7 @@ class TemplateMatchTool(Tool):
         Param("pyramid", "Pyramid speed-up", kind="boolean", default=True, help_text="Search a quarter-size image first, then refine around the candidates. Turns itself off for very small templates.", group="Advanced"),
         Param("subpixel", "Sub-pixel refine", kind="boolean", default=True, help_text="Position comes from a 3×3 parabolic interpolation of the correlation map; with a rotation search the angle is interpolated from neighbouring scores, beating the angle step.", group="Advanced"),
     ]
-    inputs = [Port("image", "Image", "image"), Port("roi", "Search region (dynamic)", "region", required=False)]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Search region (dynamic)", "region", required=False), Port("template_image", "Template picture", "image", required=False)]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("matches", "Matches", "matches"), Port("count", "Count", "number"),
@@ -540,7 +552,7 @@ class TemplateMatchTool(Tool):
 
     def execute(self, ctx: ToolContext) -> Result:
         image = to_gray(ctx.require_image())
-        tpl = read_asset_image(ctx, "template")
+        tpl = reference_image(ctx, "template_image", "template")
         region = ctx.roi()
         c = crop(image, region, upright=True)
         search = np.ascontiguousarray(c.image)

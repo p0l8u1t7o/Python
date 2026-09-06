@@ -2,6 +2,12 @@
 
 每段寫「什麼時候用、怎麼接、參數要領、陷阱」。參數與埠的完整定義由平台自動附在後面，這裡只寫目錄看不出來的經驗。
 
+## fixed_image
+固定影像（source 類）：`images` 是上傳到步驟裡的圖片清單（跟著流程存，不是資產），`mode` cycle 每次執行輪下一張／fixed 固定第 `index` 張；
+`role` acquire＝待檢影像（API 送圖、批次測試會取代它），reference＝參考圖（永不取代）。沒有相機時用它取代 image_source；
+要把範本／良品／白參考交給 template_match、defect_diff、contour_match、shading_correct，就放一個 role=reference 的固定影像節點，
+把 `image` 接到那些工具的 `template_image`／`flat_image`／`dark_image` 埠（接了埠就不必選資產）。
+
 ## image_source
 流程的起點、只能有一個。AI 生成時 `params` 只填 `{"mode": "auto"}`：試跑吃上傳影像，存成流程後使用者在編輯器選來源。不要綁 `source_id`。
 

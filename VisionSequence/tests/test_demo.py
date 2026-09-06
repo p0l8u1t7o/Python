@@ -14,6 +14,7 @@ from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 
 from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
+from apps.vision import demo, fixed_images
 from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATE_SAMPLE_SOURCES, TEMPLATES_NEED_BACKBONE, TEMPLATES_NEED_DL, seed_demo
 from apps.vision.graph import validate_graph
 from apps.vision.models import Asset, Flow, ImageSource, ResourceGroup
@@ -40,7 +41,6 @@ class DemoSeedTests(TransactionTestCase):
         import importlib.util
         import os
 
-        import cv2
         import numpy as np
 
         from apps.vision import engine
@@ -66,19 +66,19 @@ class DemoSeedTests(TransactionTestCase):
             for key, name, _desc, _cat, builder in BUILTIN_TEMPLATES:
                 if (key in TEMPLATES_NEED_DL and not run_dl) or (key in TEMPLATES_NEED_BACKBONE and not backbone_ok):
                     continue
-                src = ImageSource.objects.get(name=TEMPLATE_SAMPLE_SOURCES[key])
-                folder = (src.config or {}).get("path")
-                if not folder:
+                samples = demo.template_samples(key)
+                if not samples:
                     continue  # 合成來源：每張隨機，單張實跑已在上一條測試
-                compiled = compile_graph(validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=src.id)))
+                compiled = compile_graph(validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=None, samples=samples)))
                 runner._prefetch(compiled)
                 statuses = []
-                for f in sorted(x for x in os.listdir(folder) if x.endswith(".png")):
-                    img = cv2.imdecode(np.fromfile(os.path.join(folder, f), dtype=np.uint8), cv2.IMREAD_COLOR)
-                    rep = engine.execute(compiled, flow_id=0, flow_version=1, trigger="test", grab=runner._grab, asset_path=runner._asset_path, preview=False, input_image=img, run_id=f"seq{key}{f}"[:32])
+                for d in samples:
+                    img = fixed_images.load(d["id"])
+                    self.assertIsNotNone(img, (name, d))
+                    rep = engine.execute(compiled, flow_id=0, flow_version=1, trigger="test", grab=runner._grab, asset_path=runner._asset_path, preview=False, input_image=np.ascontiguousarray(img), run_id=f"seq{key}{d['id']}"[:32])
                     errors = {nid: nr.message for nid, nr in rep.nodes.items() if nr.status == "error"}
                     if errors:
-                        problems.append(f"{name} / {f}: error nodes {errors}")
+                        problems.append(f"{name} / {d['name']}: error nodes {errors}")
                     statuses.append(rep.status)
                 seq = " ".join(statuses)
                 if key in expected and seq != expected[key]:
@@ -91,8 +91,11 @@ class DemoSeedTests(TransactionTestCase):
             seed_demo()  # idempotent：重跑不炸、不重複建資源
 
             self.assertTrue(ResourceGroup.objects.filter(kind="source", name="Examples").exists())
-            self.assertGreaterEqual(ImageSource.objects.filter(group="Examples").count(), 11)
-            self.assertEqual(Asset.objects.filter(group="Examples", kind="image").count(), 5)
+            # 樣本圖與參考圖都是固定影像（跟著範本走）：來源庫只剩合成來源、資產庫沒有範例影像
+            self.assertEqual(ImageSource.objects.filter(group="Examples").count(), 1)
+            self.assertEqual(Asset.objects.filter(group="Examples", kind="image").count(), 0)
+            self.assertGreaterEqual(len(fixed_images.list_ids()), 60)
+            self.assertTrue(all(demo._demo_ref(n) for n in demo.REF_SPECS))
             self.assertEqual(Asset.objects.filter(group="Examples", kind="file").count(), 2)
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
             model_names = sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True))
@@ -111,8 +114,11 @@ class DemoSeedTests(TransactionTestCase):
             from apps.vision.runner import runner
 
             for key, name, _desc, _cat, builder in BUILTIN_TEMPLATES:
-                src = ImageSource.objects.get(name=TEMPLATE_SAMPLE_SOURCES[key])
-                graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=src.id)
+                samples = demo.template_samples(key)
+                source_id = None if samples else ImageSource.objects.get(name=TEMPLATE_SAMPLE_SOURCES[key]).id
+                graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=source_id, samples=samples)
+                if samples:
+                    self.assertEqual(next(n for n in graph["nodes"] if n["id"] == "src")["type"], "fixed_image", name)
                 if key in TEMPLATES_NEED_DL and not run_dl:
                     validate_graph(graph)  # 沒有 DL 依賴（或未設 VISION_TEST_DL=1）只驗 graph，實跑見 tests/test_dl_live.py
                     continue

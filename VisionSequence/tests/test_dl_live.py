@@ -299,16 +299,15 @@ class AutoLabelLiveTests(TransactionTestCase):
 class GalleryDlTemplatesLiveTests(TransactionTestCase):
     def test_yolo_templates_run_on_sample_sources(self):
         from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
-        from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATE_SAMPLE_SOURCES, TEMPLATES_NEED_DL, seed_demo
-        from apps.vision.models import ImageSource
+        from apps.vision import demo
+        from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATES_NEED_DL, seed_demo
         from apps.vision.runner import runner
 
         seed_demo()
         for key, name, _d, _c, builder in BUILTIN_TEMPLATES:
             if key not in TEMPLATES_NEED_DL:
                 continue
-            src = ImageSource.objects.get(name=TEMPLATE_SAMPLE_SOURCES[key])
-            flow = Flow.objects.create(name=f"tpl-{key}", graph=validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=src.id)))
+            flow = Flow.objects.create(name=f"tpl-{key}", graph=validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=None, samples=demo.template_samples(key))))
             try:
                 statuses = []
                 for _ in range(5):  # 樣本圖 5 張輪播：前 3 張 OK、後 2 張 NG

@@ -51,6 +51,7 @@ class TemplateIn(Schema):
 
 
 class InstantiateIn(Schema):
+    use_samples: bool = True  # 沒選來源時，內建範本用自己的樣本圖（fixed_image）
     source_id: int | None = None
     #: 節點 id 前綴，避免載進已有內容的畫布時撞名。
     prefix: str = ""
@@ -71,7 +72,7 @@ def _builtin_templates() -> list[dict[str, Any]]:
         graph = builder(SOURCE_PLACEHOLDER)
         items.append({
             "id": f"builtin:{key}", "name": name, "description": desc, "category": category, "source": "builtin",
-            "node_count": len(graph["nodes"]), "graph": graph, "owner_name": "", "created_at": None,
+            "node_count": len(graph["nodes"]), "graph": graph, "owner_name": "", "created_at": None, "has_samples": key in demo.TEMPLATE_SAMPLE_SETS,
         })
     _BUILTIN_CACHE.update(at=now, items=items)
     return items
@@ -96,7 +97,8 @@ def templatize(graph: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def instantiate(graph: dict[str, Any], *, source_id: int | None, prefix: str = "") -> dict[str, Any]:
+def instantiate(graph: dict[str, Any], *, source_id: int | None, prefix: str = "", samples: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """把 {SOURCE} 換成來源 id；沒有來源但有樣本圖（samples＝固定影像描述子）時，取像節點改成 fixed_image 帶著那些圖（範本畫廊的預設）。"""
     out = json.loads(json.dumps(graph))
     rename = {n["id"]: f"{prefix}{n['id']}" for n in out.get("nodes", [])} if prefix else {}
     for node in out.get("nodes", []):
@@ -104,7 +106,12 @@ def instantiate(graph: dict[str, Any], *, source_id: int | None, prefix: str = "
             node["id"] = rename[node["id"]]
         params = node.get("params") or {}
         if node.get("type") == "image_source" and params.get("source_id") == SOURCE_PLACEHOLDER:
-            params["source_id"] = source_id if source_id is not None else ""
+            if source_id is None and samples:
+                node["type"] = "fixed_image"
+                node["label"] = node.get("label") or "Sample pictures"
+                node["params"] = {"images": json.loads(json.dumps(samples)), "mode": "cycle", "index": 1, "convert": params.get("convert", "keep")}
+            else:
+                params["source_id"] = source_id if source_id is not None else ""
     for edge in out.get("edges", []):
         if rename:
             edge["source"] = rename.get(edge["source"], edge["source"])
@@ -167,9 +174,12 @@ def instantiate_template(request: HttpRequest, template_id: str, payload: Instan
     source_id = payload.source_id
     if source_id is not None and not ImageSource.objects.filter(pk=source_id).exists():
         raise NotFound("Image source not found", code="source_not_found")
-    graph = instantiate(t["graph"], source_id=source_id, prefix=payload.prefix)
+    samples = None
+    if source_id is None and payload.use_samples and str(t["id"]).startswith("builtin:"):
+        samples = demo.template_samples(str(t["id"]).split(":", 1)[1]) or None
+    graph = instantiate(t["graph"], source_id=source_id, prefix=payload.prefix, samples=samples)
     missing = source_id is None and any(n.get("type") == "image_source" for n in graph["nodes"])
-    return {"graph": validate_graph(graph), "missing_source": missing, "name": t["name"], "description": t["description"]}
+    return {"graph": validate_graph(graph), "missing_source": missing, "used_samples": bool(samples), "name": t["name"], "description": t["description"]}
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,8 @@ import { SlidersHorizontal } from 'lucide-react'
 
 import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
 import { sourcePreviewUrl } from '@/lib/api'
+import { useAuth } from '@/providers/AuthProvider'
+import { ImagesField } from '@/components/editor/ParamField'
 import { nodeProblems } from '@/lib/graphValidation'
 import { useSources } from '@/lib/queries'
 import type { GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
@@ -59,6 +61,7 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
         </Link>
       )}
       {node.type === 'image_source' ? <SourceSection node={node} onChange={onChange} /> : null}
+      {node.type === 'fixed_image' ? <FixedImagesSection node={node} onChange={onChange} /> : null}
       <TextInput label={t('editor.nodeName')} value={node.label ?? ''} placeholder={definition?.label} hint={isNote ? undefined : t('editor.nodeNameHint')} onChange={(e) => onChange({ label: e.target.value })} />
       <TextArea label={t('editor.nodeNote')} rows={isNote ? 5 : 2} value={node.description ?? ''} onChange={(e) => onChange({ description: e.target.value })} />
       <ColorField label={t('editor.nodeColor')} clearLabel={t('editor.nodeColorReset')} value={node.color ?? ''} onChange={(color) => onChange({ color })} />
@@ -91,6 +94,17 @@ export function Inspector({ flowId, node, definition, edges, onChange, onDelete 
         <p className="mb-2 font-mono text-[11px] text-muted">id: {node.id}</p>
         <button type="button" onClick={onDelete} className="text-xs text-critical hover:underline">{t('editor.deleteNode')}</button>
       </div>
+    </div>
+  )
+}
+
+/** 固定影像步驟：直接在檢視器上傳／移除圖片（與工具頁的 images 參數同一份值）。 */
+function FixedImagesSection({ node, onChange }: { node: GraphNode; onChange: (patch: Partial<GraphNode>) => void }) {
+  const { t } = useTranslation()
+  const auth = useAuth()
+  return (
+    <div className="rounded-md border border-line bg-surface p-2" data-testid="inspector-fixed-images">
+      <ImagesField label={t('editor.picturesSection')} value={node.params?.images} readOnly={!auth.isEngineer} onChange={(images) => onChange({ params: { ...(node.params ?? {}), images } })} />
     </div>
   )
 }

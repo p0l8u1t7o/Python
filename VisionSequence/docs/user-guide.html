@@ -197,7 +197,7 @@
 <li data-n="6"><strong>Export</strong> the flow as JSON.</li>
 <li data-n="7"><strong>Recipes</strong>: the parameter sets for changeover.</li>
 </ol></figcaption></figure>
-<p><strong>The template gallery</strong> holds eighteen built-in templates (counting, exposure, circle gauging, edge angle, golden comparison, fabric defects, a pre-processing tutorial, circles and lines, colour presence, colour verification, barcode labels, locate and gauge, cup gauging and more), each with synthetic sample images. Pick the matching "Example: …" source when you create one and it runs immediately. Your own flow can be saved as a template for others to reuse. Details in <a href="samples.html">Example templates</a>.</p>
+<p><strong>The template gallery</strong> holds thirty built-in templates <strong>grouped by category</strong> — tutorial, counting, measurement, quality, defects, identification, then your own — with a filter row above the cards. Each built-in template carries its synthetic sample pictures: leave the source at "The template's sample pictures" and the acquire step becomes a <strong>Fixed image</strong> step that takes the next sample on each run (the fourth picture of most sets is the deliberate reject), so the new flow runs immediately; pick a real source instead when the camera is ready. Your own flow can be saved as a template for others to reuse. Details in <a href="samples.html">Example templates</a>.</p>
 <p>Export and import use a stable JSON format, so flows can be kept in version control and moved between stations; the page asks which image source to bind on import. See <a href="golden.html">Golden Set and export</a>.</p>
 
 <h2 id="editor">4. The flow editor</h2>
@@ -220,6 +220,7 @@
 <li><strong>Where is the time going?</strong> After a preview every step shows its time and a thin bar: the slowest step of that run is red, anything over half of it orange. Right-click a step and choose <strong>Run to here</strong> to run only that step and the ones before it &mdash; when you are tuning one step there is no need to wait for the rest of the flow.</li>
 <li>The inspector's <strong>Settings</strong> tab (nothing selected) holds the flow's description, continuous interval and enabled switch, then two cards: <strong>Variables</strong> &mdash; the values this flow keeps between runs (a count, the previous part, the lot number a PLC sent), which you can read, change or clear right there; and <strong>Board</strong> &mdash; what the operator board shows for this flow (see <a href="#board">7-1</a>).</li>
 <li><strong>No image source chosen yet?</strong> A yellow banner appears at the top of the editor; pick a source from the dropdown in the banner (or upload a scratch image) and you can preview straight away. Selecting the acquire step shows the current source in a dropdown with a preview thumbnail in the inspector, where you can switch source directly.</li>
+<li><strong>No camera at all?</strong> Add a <strong>Fixed image</strong> step (Source category) instead of an image source and upload one or more pictures into it; they are stored with the flow (export carries them along) and each run takes the next one, while a preview stays on the current picture. The same step, with its role set to "reference", hands a template, golden sample or white reference to a locating, golden-comparison or flat-field tool through that tool's picture input port — no asset needed.</li>
 <li><strong>Want to write a little Python?</strong> The Logic category has a "Python script" tool: write <code>def run(ctx)</code> in the code editor on the tool page (np, cv2 and math are available), read <code>ctx.image</code>, the upstream values in <code>ctx.inputs</code>, the on-site parameters <code>ctx.params['p1'..'p3']</code> and the region from <code>ctx.roi()</code>, and return a number, a bool, text, data, a new image and overlays, choosing the pass or fail branch. The output ports are fixed (value, result, text, data, image). The script runs in the engine process under restrictions — allow-listed imports, a timeout, a read-only input image — and <strong>only an administrator can edit and save it, which is what approves it</strong>. Everyone else can view and run an approved script, and adjust its on-site parameters on the teach page without touching the code.</li>
 </ol>
 <figure class="shot"><img src="img/tool-picker.jpg" alt="The tool picker"><figcaption><b>Tool picker</b> (editor › Add tool)
@@ -339,6 +340,7 @@
 <li data-n="3"><strong>Manage groups</strong>: rename or delete the groups shown as filter chips above the list.</li>
 <li data-n="4">The list: name, group, kind, settings summary and live status (connected, fps, last frame); the switch enables or disables a source and the eye previews it.</li>
 </ol></figcaption></figure>
+<p>The example sample pictures do not appear here any more: they travel with the templates as fixed images (see the Fixed image step above), so the library only holds your cameras, folders and pushed sources.</p>
 <figure class="shot"><img src="img/source-form.jpg" alt="The new source form"><figcaption><b>New source</b>
 <ol class="callouts">
 <li data-n="1">The <strong>kind</strong>: capture client camera, folder (read in a loop), a single file, pushed uploads, a synthetic generator, or a plugin kind.</li>
@@ -374,7 +376,7 @@
 <li data-n="2"><strong>Manage groups</strong>, the same way as sources.</li>
 <li data-n="3">The asset cards; a tool page can also create a template from a box drawn on the current image and save it here directly.</li>
 </ol></figcaption></figure>
-<p>Templates are used by locating and golden-comparison tools, models by the deep-learning tools, and dataset archives by the teaching page. The example sources and assets are in the "Examples" group.</p>
+<p>Templates are used by locating and golden-comparison tools, models by the deep-learning tools, and dataset archives by the teaching page. A reference picture can also be given to a tool without an asset: connect a Fixed image step (role "reference") to the tool's picture input port, which is how the built-in templates carry their golden prints and locator templates. The example statistical template, shape model and taught models are in the "Examples" group.</p>
 
 <h2 id="dl">12. Deep-learning teaching</h2>
 <figure class="shot"><img src="img/dl.jpg" alt="The DL teaching page"><figcaption><b>DL teaching</b> (sidebar › DL teaching, route <code>/dl</code>)

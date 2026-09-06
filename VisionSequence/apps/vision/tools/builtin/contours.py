@@ -403,9 +403,13 @@ def template_contour(ctx: ToolContext) -> np.ndarray:
     ref = _as_contours(ctx.inputs.get("reference"))
     if ref:
         return ref[0]
-    if not ctx.param("template"):
-        raise ToolError("Connect a reference contour or choose a template image asset")
-    tpl = read_asset_image(ctx, "template", gray=True)
+    pic = ctx.inputs.get("template_image")
+    if isinstance(pic, np.ndarray) and pic.size:
+        tpl = cv2.cvtColor(pic, cv2.COLOR_BGR2GRAY) if pic.ndim == 3 else pic
+    else:
+        if not ctx.param("template"):
+            raise ToolError("Connect a reference contour or a template picture, or choose a template image asset")
+        tpl = read_asset_image(ctx, "template", gray=True)
     mask = _binarize(np.ascontiguousarray(tpl), ctx.param("template_threshold", "otsu"), ctx.number("threshold", 128), ctx.param("polarity", "bright"), None)
     found, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     found = [c for c in found if len(c) >= 4]
@@ -436,7 +440,7 @@ class ContourMatchTool(Tool):
               help_text="A contour at or below this distance matches. Identical shapes score near 0; try 0.05 to 0.3."),
         Param("min_matches", "Min matches", kind="number", default=1, minimum=0, group="Verdict", help_text="Fewer matching contours than this is an NG."),
     ]
-    inputs = [Port("contours", "Contours", "contours"), Port("reference", "Reference contour", "contours", required=False), Port("image", "Image (for display)", "image", required=False)]
+    inputs = [Port("contours", "Contours", "contours"), Port("reference", "Reference contour", "contours", required=False), Port("template_image", "Template picture", "image", required=False), Port("image", "Image (for display)", "image", required=False)]
     outputs = [
         flow_out("match", "Match", "ok"), flow_out("no_match", "No match", "critical"),
         Port("distances", "Distances", "list"), Port("distance", "Best distance", "number"), Port("best_index", "Best index", "number"),

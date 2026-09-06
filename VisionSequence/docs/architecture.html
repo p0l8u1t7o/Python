@@ -211,7 +211,7 @@ register(tool) / get(key) / catalogue()</pre>
 <h3 id="sec-3-1">The built-in categories (74 tools)</h3>
 <table>
 <tr><th>category</th><th>Tools</th></tr>
-<tr><td>source</td><td>image_source (a pushed image takes priority over the configured source)</td></tr>
+<tr><td>source</td><td>image_source (a pushed image takes priority over the configured source) fixed_image (pictures stored with the flow, content-addressed under ASSET_DIR/fixed/; a pushed image takes priority unless the step is a reference)</td></tr>
 <tr><td>preprocess</td><td>grayscale crop blur threshold morphology resize color_convert color_range lut arithmetic apply_mask filter rotate_flip convert_depth fft_filter warp_perspective</td></tr>
 <tr><td>locate</td><td>template_match (NCC with rotation and a pyramid) shape_align fixture_roi find_circle find_line hough_circles hough_lines</td></tr>
 <tr><td>measure</td><td>caliper distance angle intensity calibration histogram line_profile geometry; and for cup gauging: fit_arc (radius, cx, cy, residual_rms, start_angle, end_angle), fit_ellipse (cx, cy, a, b, angle, roundness = b/a), wall_thickness (paired edges: thickness, min, max, mean, profile, pairs), concentricity (two circles: deviation, dx, dy, verdict, branching ok/ng), chamfer_angle (RANSAC on two line segments: angle_deg, length, line1, line2), tolerance_judge (nominal, upper_tol, lower_tol, spec_source → verdict, deviation, in_spec, branching pass/fail, and written into run.outputs.tolerances)</td></tr>
@@ -258,6 +258,8 @@ run.outputs = context["_outputs"], written by the judge and output tools</pre>
 
 <h2 id="images">6. The image cache (images.py)</h2>
 <p>A ref is <code>"{run_id}:{node_id}:{port}"</code>. Each flow keeps the images of the last KEEP_RUN_IMAGES runs, with a global LRU by bytes up to IMAGE_CACHE_MB. <code>encode(ref, max_side, fmt, quality)</code> is deferred until somebody asks and shrinks to the requested longest side (the front end defaults to 1600). Floating-point and 16-bit images are normalised to 8 bits for display.</p>
+
+<p><strong>Fixed pictures</strong> (<code>fixed_images.py</code>) are the other, persistent picture store: the <code>fixed_image</code> tool's parameter holds descriptors and the PNGs live under <code>ASSET_DIR/fixed/&lt;sha&gt;.png</code>, loaded with an mtime cache and handed to the engine read-only. They are not assets — no database row, no group — which is what lets a template carry its sample pictures and a flow export embed them. Orphans (files nothing references: flows, versions, templates and the built-in template sets) are listed by <code>GET /vision/fixed-images</code> for the purge to remove.</p>
 
 <h2 id="retention">5-1. Retention and the hourly roll-up</h2>
 <ul>

@@ -17,6 +17,16 @@ export type ParamKind =
   | 'expression'
   | 'code'
   | 'output_key'
+  | 'images'
+
+/** 固定影像描述子（fixed_image 工具的 images 參數元素；檔案在伺服端 ASSET_DIR/fixed/） */
+export interface FixedImageDesc {
+  id: string
+  name: string
+  width: number
+  height: number
+  size: number
+}
 
 export type PortType =
   | 'image'
@@ -431,12 +441,16 @@ export interface FlowTemplate {
   graph: FlowGraph
   owner_name: string
   created_at: string | null
+  /** 內建範本附樣本圖：不選來源時取像步驟變成固定影像 */
+  has_samples?: boolean
 }
 
 export interface TemplateInstance {
   graph: FlowGraph
   /** 有取像步驟但沒選來源 */
   missing_source: boolean
+  /** 取像步驟已換成範本的樣本圖 */
+  used_samples?: boolean
   name: string
   description: string
 }

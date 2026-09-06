@@ -323,6 +323,7 @@ const en = {
     readOnlyHint: 'Only administrators can modify shared flows; duplicate it first',
   },
   editor: {
+    picturesSection: 'Pictures in this step',
     sourceSection: 'Image source',
     sourcePreviewHint: 'Preview of the current source; test runs use images from this source',
     leaveTitle: 'Leave this page?',
@@ -637,6 +638,8 @@ const en = {
     fromTemplate: 'From template',
     gallery: 'Template gallery',
     galleryHint: 'Pick a template, choose an image source and a flow name',
+    samplesOption: 'The template\'s sample pictures (fixed image step)',
+    allCategories: 'All',
     load: 'Load template',
     loadHint: 'Replace the canvas with the template',
     loadConfirm: 'The canvas has unsaved changes; loading a template replaces it. Continue?',
@@ -1195,7 +1198,15 @@ const enExtra = {
     teach: 'Teach page',
     golden: 'Golden Set',
     export: 'Export',
-    params: { connectionHint: 'Pick a connection name from the list or type one (id also works)', connectionNone: 'No connections yet: create one under External integration (Modbus or TCP)' },
+    params: {
+      connectionHint: 'Pick a connection name from the list or type one (id also works)',
+      connectionNone: 'No connections yet: create one under External integration (Modbus or TCP)',
+      uploadPictures: 'Upload pictures',
+      noPictures: 'No pictures yet — upload one or more; they are stored with the flow.',
+      picturesCount: '{{count}} pictures',
+      removePicture: 'Remove picture',
+      picturesAdded: '{{count}} pictures added',
+    },
   },
   teach: {
     readOnlyHint: 'Your role may not change on-site parameters or change over; ask an administrator for the "On-site parameters and changeover" permission',

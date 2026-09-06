@@ -617,8 +617,8 @@ export function useTemplateMutations() {
     onSuccess: invalidate,
   })
   const instantiate = useMutation({
-    mutationFn: ({ id, source_id, prefix }: { id: string; source_id?: number | null; prefix?: string }) =>
-      api.post<TemplateInstance>(`/vision/templates/${encodeURIComponent(id)}/instantiate`, { source_id: source_id ?? null, prefix: prefix ?? '' }),
+    mutationFn: ({ id, source_id, prefix, use_samples }: { id: string; source_id?: number | null; prefix?: string; use_samples?: boolean }) =>
+      api.post<TemplateInstance>(`/vision/templates/${encodeURIComponent(id)}/instantiate`, { source_id: source_id ?? null, prefix: prefix ?? '', use_samples: use_samples ?? true }),
   })
   return { create, remove, instantiate }
 }

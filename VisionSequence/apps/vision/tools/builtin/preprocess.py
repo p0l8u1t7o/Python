@@ -12,7 +12,7 @@ import numpy as np
 from apps.vision import calib
 from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
-from apps.vision.tools.builtin.locate import read_asset_image
+from apps.vision.tools.builtin.locate import reference_image
 from apps.vision.tools.roi import crop, region_overlay
 
 
@@ -738,7 +738,7 @@ class ShadingCorrectTool(Tool):
               help_text="How wide the background estimate is. Larger than the features you want to keep."),
         Param("target_level", "Target level", kind="number", default=0, minimum=0, help_text="The grey level the white reference is mapped to (a plain board comes out at this value); 0 = the reference's own mean. When estimating, the mean level of the output; 0 = the image's own mean."),
     ]
-    inputs = [Port("image", "Image", "image")]
+    inputs = [Port("image", "Image", "image"), Port("flat_image", "White reference picture", "image", required=False), Port("dark_image", "Dark reference picture", "image", required=False)]
     outputs = [Port("image", "Image", "image"), Port("mean_before", "Mean before", "number"), Port("mean_after", "Mean after", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -763,8 +763,8 @@ class ShadingCorrectTool(Tool):
             out = _to_depth(f, image)
             return Result(outputs={"image": out, "mean_before": before, "mean_after": _mean_level(out)}, message=f"estimate σ={sigma:g}")
         gray = image.ndim == 2
-        flat = read_asset_image(ctx, "flat", gray=gray)
-        dark = read_asset_image(ctx, "dark", gray=gray) if mode == "dark_flat" else None
+        flat = reference_image(ctx, "flat_image", "flat", gray=gray)
+        dark = reference_image(ctx, "dark_image", "dark", gray=gray) if mode == "dark_flat" else None
         for name, ref in (("white", flat), ("dark", dark)):
             if ref is None:
                 continue
