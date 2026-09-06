@@ -71,6 +71,19 @@ def golden_print() -> list[np.ndarray]:
     return out
 
 
+def golden_print_variants(n: int = 30) -> list[np.ndarray]:
+    """統計範本的建模樣本：印刷良品（golden_print 第 1 張的圖案）加整張亮度擾動 ±8、位移 ±3、雜訊，n 張。"""
+    base = golden_print()[0]
+    out = []
+    for i in range(n):
+        r = np.random.default_rng(500 + i)
+        m = np.array([[1, 0, int(r.integers(-3, 4))], [0, 1, int(r.integers(-3, 4))]], np.float32)
+        img = cv2.warpAffine(base, m, (base.shape[1], base.shape[0]), borderMode=cv2.BORDER_REPLICATE)
+        img = np.clip(img.astype(np.int16) + int(r.integers(-8, 9)), 0, 255).astype(np.uint8)
+        out.append(_noise(img, 3, 600 + i))
+    return out
+
+
 def textile() -> list[np.ndarray]:
     """頻域瑕疵：週期性織紋；第 4 張有一道斜向刮痕（NG）。"""
     out = []

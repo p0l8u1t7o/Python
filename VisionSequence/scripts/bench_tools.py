@@ -173,8 +173,20 @@ class Scene:
         yy, xx = np.mgrid[0:h, 0:w]
         vignette = 1.0 - 0.45 * (((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / ((w / 2) ** 2 + (h / 2) ** 2))
         self.flat = save_png(np.clip(vignette * 235, 0, 255).astype(np.uint8), folder, f"flat_{w}.png")
+        # 統計範本：以場景灰階為底做 8 張亮度／位移擾動的良品建模（板子區域）
+        from apps.vision import stattpl as _stattpl
+
+        rng = np.random.default_rng(3)
+        good = []
+        for i in range(8):
+            m = np.array([[1, 0, rng.integers(-3, 4)], [0, 1, rng.integers(-3, 4)]], np.float32)
+            shifted = cv2.warpAffine(self.gray, m, (w, h), borderMode=cv2.BORDER_REPLICATE)
+            good.append(np.clip(shifted.astype(np.int16) + int(rng.integers(-8, 9)), 0, 255).astype(np.uint8))
+        payload, _ = _stattpl.build(good, self.rect(-0.25, -0.2, 0.5, 0.4), "phase")
+        self.stat_model = os.path.join(folder, f"stat_{w}.npz")
+        _stattpl.save(self.stat_model, payload)
         self.flat_bgr = save_png(cv2.cvtColor(np.clip(vignette * 235, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR), folder, f"flatc_{w}.png")
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -288,6 +300,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("blob (gray, fixed)", "blob", gray, {"threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {}, {}),
         ("blob (mask, none)", "blob", s.mask, {"threshold_method": "none", "min_area": 300}, {}, {}),
         ("blob (roi circle)", "blob", gray, {"roi": center_circle, "threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {}, {}),
+        ("defect_stat phase (roi)", "defect_stat", big, {"model": "stat", "roi": plate, "sigma": 4}, {}, {}),
+        ("defect_stat none (roi)", "defect_stat", big, {"model": "stat", "roi": plate, "sigma": 4, "align": "none"}, {}, {}),
         ("defect_diff phase", "defect_diff", big, {"template": "golden", "align": "phase"}, {}, {}),
         ("defect_diff none roi", "defect_diff", big, {"template": "golden", "align": "none", "roi": plate}, {}, {}),
         ("barcode", "barcode", big, {"roi": plate}, {}, {}),

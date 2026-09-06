@@ -34,7 +34,7 @@ class RegistryTests(SimpleTestCase):
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
-            "region_from_shape", "region_combine", "shading_correct",
+            "region_from_shape", "region_combine", "shading_correct", "defect_stat",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -78,6 +78,7 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["region_combine"], {"base"})
         self.assertEqual(teach["region_from_shape"], {"roi"})
         self.assertEqual(teach["shading_correct"], set())
+        self.assertEqual(teach["defect_stat"], {"roi", "sigma", "min_area", "direction"})
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 

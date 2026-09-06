@@ -565,6 +565,30 @@ def shading_flow(source_id: Any, flat_asset: str = "") -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def stat_compare_flow(source_id: Any, model_asset: str = "") -> dict[str, Any]:
+    """統計良品比對：defect_stat（30 張良品建的 mean／std 範本）→ 缺陷數 → OK/NG；旁邊放 defect_diff 對照同一張。
+
+    對齊合成圖「印刷良品比對」（第 4 張多一塊污漬）：σ 門檻 4 不必為了打光波動放鬆。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("stat", "defect_stat", 2, 0, "Statistical compare", model=model_asset, sigma=4, min_area=30),
+        _node("cmp", "if_number", 3, 0, "No defects?", operator="eq", threshold=0),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: print defect", verdict="ng", label="print_defect"),
+        _node("out", "output", 3, 1, "Output defect count", name="defect_count"),
+        _node("out_s", "output", 3, 2, "Output max deviation", name="max_sigma"),
+        _note("n1", 0, 1, "About", "The statistical template was built by seeding from 30 good prints with brightness jitter and small shifts, so every pixel knows its own normal spread.\nA defect is anything more than 4 standard deviations from normal; the fourth image carries a smudge."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "stat", "image", "image"),
+        _edge("stat", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("stat", "out", "count", "value"), _edge("stat", "out_s", "max_sigma", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -708,9 +732,9 @@ def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
     return str(row.id), dict((row.meta or {}).get("tool_params") or {})
 
 
-def _demo_asset(name: str) -> str:
+def _demo_asset(name: str, kind: str = "image") -> str:
     """seed 建立的範例資產 id；還沒 seed 就回空字串（範本照樣能載入，資產欄留給使用者填）。"""
-    row = Asset.objects.filter(name=name, kind="image").only("id").first()
+    row = Asset.objects.filter(name=name, kind=kind).only("id").first()
     return str(row.id) if row else ""
 
 
@@ -723,6 +747,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("edge_angle", "Edge angle", "Two line finds into an angle tolerance, the intersection point, and a 45 degree chamfer measurement", "measure", edge_angle_flow),
     ("golden_compare", "Print compare", "Difference against a golden template to catch overprinting, smudges and gaps; the template asset is created from the sample images", "quality",
      lambda sid: golden_compare_flow(sid, _demo_asset("Example: print golden template"))),
+    ("stat_compare", "Statistical print compare", "Per-pixel mean and spread from 30 good prints; anything beyond 4 standard deviations is a defect, so light and texture variation no longer force a loose threshold", "quality",
+     lambda sid: stat_compare_flow(sid, _demo_asset("Example: statistical template (print)", "file"))),
     ("fft_defect", "Fabric defect", "A frequency-domain low pass removes the periodic weave and what is left is the scratch; a mask pulls out the defect area", "quality", fft_defect_flow),
     ("preprocess_lab", "Pre-processing and measurement lab", "An image chain of bit depth, look-up table, filtering and flipping, plus a tour of line profile, statistics, histogram and edge density", "tutorial", preprocess_lab_flow),
     ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
@@ -756,6 +782,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "edge_angle": "Example: edge angle",
     "golden_compare": "Example: print compare",
     "fft_defect": "Example: fabric defect",
+    "stat_compare": "Example: print compare",
     "preprocess_lab": "Example: preprocessing lab",
     "geometry_count": "Example: circles and lines",
     "gear_teeth": "Example: gear teeth",
@@ -943,6 +970,20 @@ def seed_demo() -> list[str]:
     sample_asset("Example: print golden template", "golden_print", None)
     sample_asset("Example: stamped part outline", "stamped_part", None)
     sample_asset("Example: white reference (uneven lighting)", "vignette", None, image=demo_images.vignette_flat())
+    if not Asset.objects.filter(name="Example: statistical template (print)", kind="file").exists():
+        import os
+        import uuid as _uuid
+
+        from django.conf import settings
+
+        from apps.vision import stattpl
+
+        payload, meta = stattpl.build(demo_images.golden_print_variants(30), None, "phase")
+        stat_id = _uuid.uuid4()
+        stat_path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{stat_id.hex}.npz")
+        size = stattpl.save(stat_path, payload)
+        Asset.objects.create(id=stat_id, name="Example: statistical template (print)", kind="file", group="Examples", path=stat_path, size=size, meta=meta)
+        created.append("資產 Example: statistical template (print)（新建）")
     _seed_demo_models(created)
 
     # 範例樣板放在「範本畫廊」（BUILTIN_TEMPLATES），不佔流程清單；清掉舊版 seed 建過的流程。

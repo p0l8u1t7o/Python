@@ -31,7 +31,7 @@
 | 角度 | `find_line`×2 → `angle` | 斜切角 `chamfer_angle`；交點 `geometry(intersect)` |
 | 距離 | 兩個找圓／找線 → `distance` | 點到線 `geometry(point_line)` |
 | 換算 mm | `calibration(pixel_size_mm)` 在數值進 `tolerance_judge` 之前 | |
-| 表面缺陷（有良品） | `defect_diff(template=良品資產)` | |
+| 表面缺陷（有良品） | 良品 ≥ 10 張：`defect_stat(model=統計範本資產, sigma=4)`；只有 1 張：`defect_diff(template=良品資產)` | 統計範本用 POST /vision/assets/stat-template 建（可直接吃批次影像集） |
 | 表面缺陷（規律紋理） | `fft_filter(lowpass)` → `threshold` → `blob` | |
 | 表面缺陷（均勻表面） | `blur` → `threshold(fixed, 平均±3σ)` → `morphology` → `blob(count==0)` | `edge_density` 守門 |
 | 讀碼 | `barcode` | 斜貼先 `warp_perspective` 拉正；文字有無 `text_presence` |

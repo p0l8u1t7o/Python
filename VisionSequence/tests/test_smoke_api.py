@@ -42,6 +42,9 @@ class GetEndpointsSmokeTests(TransactionTestCase):
         r = self.client.post("/api/vision/calibration/assets", data=json.dumps({"name": "cal", "payload": payload}), content_type="application/json")
         self.assertEqual(r.status_code, 201, r.content)
         self.calibration_id = r.json()["id"]
+        r = self.client.post("/api/vision/assets/stat-template", data={"images": [_png_upload(), _png_upload(), _png_upload()], "name": "stat", "align": "none"})
+        self.assertEqual(r.status_code, 201, r.content)
+        self.stat_id = r.json()["id"]
         # 跑一次，讓 recent／stats／runs 有資料
         r = self.client.post(f"/api/vision/flows/{self.flow.id}/run", data=json.dumps({"wait": True}), content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content)
@@ -66,7 +69,8 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             f"/api/vision/flows/{fid}/export", f"/api/vision/runs/{self.run_id}", f"/api/vision/flows/{fid}/board", f"/api/vision/flows/{fid}/variables", "/api/vision/variables",
             "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/assets?kind=calibration",
-            f"/api/vision/calibration/assets/{self.calibration_id}", "/api/vision/groups?kind=source", "/api/vision/fs",
+            f"/api/vision/calibration/assets/{self.calibration_id}", f"/api/vision/assets/{self.stat_id}/stat-template", f"/api/vision/assets/{self.stat_id}/stat-template/mean",
+            "/api/vision/groups?kind=source", "/api/vision/fs",
             "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info", "/api/vision/plugins",
             "/api/vision/audit", "/api/vision/audit.csv", "/api/vision/summary", f"/api/vision/flows/{fid}/versions", f"/api/vision/flows/{fid}/versions/1",
     "/api/vision/integration/trace",

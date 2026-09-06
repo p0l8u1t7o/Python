@@ -302,7 +302,9 @@ def _align(image: np.ndarray, template: np.ndarray, method: str, template_f32: n
     """把範本對齊到影像（回傳對齊後的範本與位移資訊）。"""
     if method == "phase":
         win = _hanning(image.shape[1], image.shape[0])
-        tpl_f = template_f32 if template_f32 is not None else template.astype(np.float32)
+        # phaseCorrelate 帶 window 時會就地改寫「尺寸已是 DFT 最佳尺寸」的輸入（1280×960、640×480 都是）；
+        # template_f32 是快取共用的前處理結果，給複本，否則第二次起就對著被視窗壓過的範本在對齊。
+        tpl_f = np.array(template_f32, copy=True) if template_f32 is not None else template.astype(np.float32)
         (dx, dy), resp = cv2.phaseCorrelate(image.astype(np.float32), tpl_f, win)
         m = np.array([[1, 0, -dx], [0, 1, -dy]], dtype=np.float32)
         return cv2.warpAffine(template, m, (image.shape[1], image.shape[0]), borderMode=cv2.BORDER_REPLICATE), {"dx": float(-dx), "dy": float(-dy), "response": float(resp)}

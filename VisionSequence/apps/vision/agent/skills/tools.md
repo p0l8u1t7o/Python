@@ -229,6 +229,13 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 ## defect_diff
 良品差異比對：`template` 良品資產（與 ROI 同尺寸），`align=phase` 補位移，`threshold`（灰階差）與 `min_area` 決定靈敏度，`border` 忽略對齊邊界假差異。輸出 `ok/defect` 分支、`count/total_area`、`defect_mask`。
 
+## defect_stat
+統計良品比對：`model` 是統計範本資產（≥ 10 張良品用 `POST /vision/assets/stat-template` 或 `manage.py stat_template` 建的 npz，
+每像素有自己的 mean／std）；`sigma`（幾倍 σ 算缺陷，先 3～4）、`min_sigma_floor`（std 下限，均勻區才不會炸假缺陷）、`min_area`、
+`direction` darker／brighter／both。`roi` 要與建模時同一個區域（尺寸不同會報錯）。比 defect_diff 穩：打光波動、材質紋理、位置微移
+都在各像素的正常範圍內，門檻不必放鬆。有多張良品時優先用它；只有一張良品才用 defect_diff。輸出 count／total_area／max_sigma／
+defect_mask／deviation（1σ＝32 灰階的偏離影像）、分支 ok／defect。
+
 ## barcode
 一維碼／QR：`roi` 縮小範圍加速；`expected` 填預期內容可直接判定。輸出 `first`（字串）、`count`、`found/not_found`。
 

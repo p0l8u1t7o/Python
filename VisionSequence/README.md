@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 83 個內建工具、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁文件、後端 664 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 84 個內建工具、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁文件、後端 664 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -76,14 +76,14 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **現場看板**：每條流程設定要顯示哪些具名輸出（標籤、單位、公差）、哪張影像、哪些變數；總覽頁照它顯示，`/board/:id` 是給操作站的全螢幕看板。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 
-### 內建工具（83 個，8 類）
+### 內建工具（84 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（1） | image_source |
 | 前處理（19） | grayscale, crop, resize, blur, threshold, morphology, lut, filter, fft_filter, warp_perspective, undistort, shading_correct, polar_unwrap, polar_restore, convert_depth, rotate_flip, color_convert, color_range, apply_mask, arithmetic |
 | 定位（9） | template_match, shape_align, fixture_roi, region_from_shape, region_combine（多重 ROI／排除區）, find_circle, find_line, hough_circles, hough_lines |
 | 量測（19） | caliper, wall_thickness, fit_arc, fit_ellipse, chamfer_angle, angle, distance, geometry, concentricity, calibration, to_world, intensity, histogram, line_profile, color_stats, edge_density, contour_find, contour_filter, contour_geometry, contour_match |
-| 檢測／識別（8） | blob, defect_diff, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
+| 檢測／識別（9） | blob, defect_diff, defect_stat（統計範本）, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
 | 深度學習（9） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）；yolo_detect, yolo_segment, yolo_classify, yolo_pose, yolo_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
 | 邏輯（7） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, python_script（自寫 Python，管理員核准） |
 | 輸出（6） | judge, output, draw_result, save_image, write_modbus, send_image（TCP 傳圖） |
@@ -91,7 +91,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。
 
 ### 範本畫廊與範例樣板
-22 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、排除區、平場校正、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。
+23 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、排除區、平場校正、統計良品比對、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。
 
 ### AI 助手（`/agent`）
 

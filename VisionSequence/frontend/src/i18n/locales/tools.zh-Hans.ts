@@ -712,6 +712,23 @@ export default {
       diff: "差異影像",
     },
   },
+  defect_stat: {
+    label: "统计良品比对",
+    description: "与多张良品建的统计模板比对：每个像素有自己的平均与变异范围，纹理区允许波动、平坦区抓得紧。偏离正常几倍标准差以上就是缺陷。打光变动与材质纹理下比单张良品稳得多。",
+    params: {
+      model: { label: "统计模板", help: "用 POST /vision/assets/stat-template 或 manage.py stat_template 由良品图像建立（.npz 文件资产）。" },
+      roi: { label: "区域", help: "尺寸必须与建立模板时的区域相同；留空则整张图像。" },
+      align: { label: "对齐", options: { none: "不对齐", phase: "相位相关（平移）" } },
+      sigma: { label: "σ 阈值", help: "偏离正常几倍标准差算缺陷。先用 3；良品被误判就调高。" },
+      min_sigma_floor: { label: "最小变异", help: "标准差不会低于此值，均匀区才不会把单阶噪声当缺陷。" },
+      min_area: { label: "最小缺陷面积" },
+      direction: { label: "方向", options: { both: "变暗或变亮", darker: "只看变暗", brighter: "只看变亮" } },
+      border: { label: "忽略边界", help: "对齐后边界会有假差异，忽略这些像素。" },
+      morph: { label: "开运算核", group: "高级" },
+      max_count: { label: "最多输出", group: "高级" },
+    },
+    ports: { image: "图像", roi: "区域（动态）", ok: "干净", defect: "有缺陷", count: "数量", total_area: "总面积", max_sigma: "最大偏离", defect_mask: "缺陷掩码", deviation: "偏离图像", regions: "缺陷" },
+  },
   distance: {
     label: "距離",
     description: "兩点距離（像素）。点可为 {x,y} / [x,y]，或分别接 ax, ay, bx, by 四个数值。",
