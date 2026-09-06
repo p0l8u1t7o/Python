@@ -80,16 +80,21 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
   })
 
-  it('SourcesPage lists sources with actions column last (same as flows)', async () => {
+  it('SourcesPage shows the tree by default and can switch to cards', async () => {
     const { SourcesPage } = await import('@/pages/SourcesPage')
     renderPage(<SourcesPage />, { route: '/sources' })
-    expect(await screen.findByText('範例：圓孔量測')).toBeInTheDocument()
-    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
-    expect(headers[0]).toBe('Name')
-    expect(headers[headers.length - 1]).toBe('Actions')
+    expect(await screen.findByText(/範例：圓孔量測/)).toBeInTheDocument()
+    // 預設樹狀：種類是父層，來源是葉節點
+    expect(screen.getByTestId('source-tree')).toBeInTheDocument()
+    expect(screen.queryByTestId('source-cards')).toBeNull()
+    expect(screen.getAllByTestId('source-row').length).toBeGreaterThan(0)
     // 擷取端相機來源：離線徽章；頁首「下載擷取端」在未建置時停用
     expect(screen.getByText('Capture client offline')).toBeInTheDocument()
     expect(screen.getByTestId('capture-download')).toBeDisabled()
+    fireEvent.click(screen.getByText('Cards'))
+    expect(screen.getByTestId('source-cards')).toBeInTheDocument()
+    expect(screen.getAllByTestId('source-card').length).toBeGreaterThan(0)
+    expect(localStorage.getItem('vs.sourcesView')).toBe('cards')
   })
 
   it('integration layout titles the section with its own dictionary key (modbus-server -> Modbus server)', async () => {

@@ -79,7 +79,7 @@ export function AssetTree({ items, onEdit, onDelete }: { items: Asset[]; onEdit:
                 <div key={groupKey}>
                   <button type="button" className="flex w-full items-center gap-2 py-1.5 pl-8 pr-3 text-left hover:bg-surface-muted" onClick={() => toggle(groupKey)} aria-expanded={groupOpen}>
                     {groupOpen ? <ChevronDown size={12} className="text-subtle" /> : <ChevronRight size={12} className="text-subtle" />}
-                    <span className="text-xs text-muted">{group.group || t('groups.ungrouped')}</span>
+                    <span className="text-xs text-muted">{group.group || t('common.ungrouped')}</span>
                     <span className="tnum text-[11px] text-subtle">{group.items.length}</span>
                   </button>
                   {groupOpen ? group.items.map((asset) => (

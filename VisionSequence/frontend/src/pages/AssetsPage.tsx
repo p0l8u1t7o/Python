@@ -18,11 +18,12 @@ import { formatSize } from '@/components/assets/AssetTree'
 const VIEW_KEY = 'vs.assetsView'
 type AssetView = 'cards' | 'tree'
 
+//: 預設樹狀：模型與檔案沒有縮圖，樹狀一眼看得出這個站台有哪些東西
 function storedView(): AssetView {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'tree' ? 'tree' : 'cards'
+    return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'tree'
   } catch {
-    return 'cards'
+    return 'tree'
   }
 }
 

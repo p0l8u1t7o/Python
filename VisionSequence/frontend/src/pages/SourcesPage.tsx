@@ -1,15 +1,16 @@
 /** 影像來源 CRUD。config 欄位依 kind 的 fields 顯示（伺服器 /sources/kinds 給）。 */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, Eye, FolderOpen, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { Camera, FolderOpen, LayoutGrid, ListTree, Plus, RefreshCw } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, GROUP_ALL, GroupChips, GroupSelect, IconButton, LoadingState, Modal, PageHeader, Select, Switch, TBody, THead, Table, Td, TextInput, Th, Tr, matchGroup } from '@/components/ui'
+import { SourceCards, SourceTree } from '@/components/sources/SourceViews'
+import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyState, ErrorState, GROUP_ALL, GroupChips, GroupSelect, LoadingState, Modal, PageHeader, SegmentedControl, Select, TextInput, matchGroup } from '@/components/ui'
 import { GroupManager } from '@/components/GroupManager'
 import { CaptureDownloadButton } from '@/components/capture/CaptureSection'
 import { api, sourcePreviewUrl } from '@/lib/api'
 import { FsBrowser } from '@/components/FsBrowser'
 import { errorMessage } from '@/lib/errors'
-import { sourceStatus, summarizeSourceConfig } from '@/lib/sources'
+import { sourceStatus } from '@/lib/sources'
 import { useCaptureClients, useGroups, useSourceKinds, useSourceMutations, useSources, type SourceBody } from '@/lib/queries'
 import type { CaptureClient, ImageSource } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
@@ -28,6 +29,18 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select'> = {
   fresh: 'boolean',
 }
 const FIELD_DEFAULT: Record<string, unknown> = { loop: true, sort: 'name', pattern: '*.png;*.jpg;*.bmp', width: 1280, height: 960, seed: 0, defect_rate: 0.3, mode: 'on_demand', timeout_ms: 1000, fresh: true, encoding: 'auto' }
+const VIEW_KEY = 'vs.sourcesView'
+type SourceView = 'tree' | 'cards'
+
+//: 預設樹狀：來源多起來（多台相機＋資料夾）時，依種類分層比一長串清單好找
+function storedView(): SourceView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'tree'
+  } catch {
+    return 'tree'
+  }
+}
+
 const CAPTURE_MODES = ['on_demand', 'stream'] as const
 const CAPTURE_ENCODINGS = ['auto', 'raw', 'lz4', 'jpeg'] as const
 function ConfigField({ kind, field, value, config, onChange, onBrowse, captureClients, captureLoading, onRefreshCapture }: {
@@ -146,6 +159,7 @@ export function SourcesPage() {
   const { create, patch, remove, push } = useSourceMutations()
   const [editing, setEditing] = useState<{ id: number | null; body: SourceBody } | null>(null)
   const [groupFilter, setGroupFilter] = useState(GROUP_ALL)
+  const [view, setView] = useState<SourceView>(storedView)
   const [managingGroups, setManagingGroups] = useState(false)
   const groups = useGroups('source')
   const [pendingDelete, setPendingDelete] = useState<ImageSource | null>(null)
@@ -154,6 +168,17 @@ export function SourcesPage() {
   // 擷取端清單只在「擷取端相機」表單開著時輪詢
   const capture = useCaptureClients(editing !== null && editing.body.kind === 'capture')
   const kindList = kinds.data ?? []
+  const visible = (sources.data?.items ?? []).filter((s) => matchGroup(s, groupFilter))
+  //: 兩種檢視共用的資料與動作（樹狀與卡片只是排版不同）
+  const viewHandlers = {
+    kindLabel: (kind: string) => kindList.find((k) => k.kind === kind)?.label ?? kind,
+    status: (s: ImageSource) => <SourceStatusCell status={s.status} />,
+    onPreview: (s: ImageSource) => setPreview({ source: s, url: sourcePreviewUrl(s.id) }),
+    onEdit: (s: ImageSource) => setEditing({ id: s.id, body: { name: s.name, kind: s.kind, config: { ...s.config }, is_enabled: s.is_enabled, group: s.group } }),
+    onDelete: (s: ImageSource) => setPendingDelete(s),
+    onToggle: (s: ImageSource, enabled: boolean) => patch.mutate({ id: s.id, is_enabled: enabled }),
+    onPush: (s: ImageSource, file: File | undefined) => void onPush(s, file),
+  }
   const fieldsFor = useMemo(() => new Map(kindList.map((k) => [k.kind, k.fields])), [kindList])
   function openCreate() {
     const kind = kindList[0]?.kind ?? 'folder'
@@ -220,57 +245,26 @@ export function SourcesPage() {
   const body = editing?.body
   return (
     <Page>
-      <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<><CaptureDownloadButton /><Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button><Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button></>} />
+      <PageHeader title={t('sources.title')} description={t('sources.subtitle')} actions={<><SegmentedControl
+          value={view}
+          onChange={(v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* 忽略 */ } }}
+          options={[
+            { value: 'tree', label: <span className="flex items-center gap-1"><ListTree size={13} /> {t('assets.views.tree')}</span> },
+            { value: 'cards', label: <span className="flex items-center gap-1"><LayoutGrid size={13} /> {t('assets.views.cards')}</span> },
+          ]}
+        /><CaptureDownloadButton /><Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button><Button variant="primary" icon={<Plus size={15} />} onClick={openCreate}>{t('sources.create')}</Button></>} />
       <GroupChips items={sources.data?.items ?? []} value={groupFilter} onChange={setGroupFilter} />
-      <Card className="overflow-hidden">
-        {sources.isPending ? (
-          <LoadingState />
-        ) : sources.isError ? (
-          <ErrorState error={sources.error} onRetry={() => void sources.refetch()} />
-        ) : (
-          <Table>
-            <THead>
-              <Th>{t('common.name')}</Th>
-              <Th className="max-lg:hidden">{t('common.group')}</Th>
-              <Th>{t('sources.kind')}</Th>
-              <Th className="max-xl:hidden">{t('sources.config')}</Th>
-              <Th>{t('sources.status')}</Th>
-              <Th align="center">{t('common.enabled')}</Th>
-              <Th align="right">{t('common.actions')}</Th>
-            </THead>
-            <TBody>
-              {sources.data.items.length === 0 ? (
-                <EmptyRow colSpan={7} message={<span className="inline-flex flex-col items-center gap-1"><Camera className="size-5" />{t('sources.empty')}</span>} />
-              ) : (
-                sources.data.items.filter((s) => matchGroup(s, groupFilter)).map((s) => (
-                  <Tr key={s.id}>
-                    <Td className="min-w-40 font-medium">{s.name} <span className="text-xs text-muted">#{s.id}</span></Td>
-                    <Td className="max-lg:hidden">{s.group ? <Badge>{s.group}</Badge> : <span className="text-xs text-subtle">—</span>}</Td>
-                    <Td><Badge tone="info">{kindList.find((k) => k.kind === s.kind)?.label ?? s.kind}</Badge></Td>
-                    <Td className="max-xl:hidden"><span className="block max-w-xs truncate text-xs text-muted" title={JSON.stringify(s.config)}>{summarizeSourceConfig(s.kind, s.config)}</span></Td>
-                    <Td><SourceStatusCell status={s.status} /></Td>
-                    <Td align="center"><Switch checked={s.is_enabled} label={t('common.enabled')} onChange={(v) => patch.mutate({ id: s.id, is_enabled: v })} /></Td>
-                    <Td align="right">
-                      <span className="inline-flex items-center justify-end gap-1">
-                        {s.kind === 'upload' ? (
-                          <label className="btn-icon cursor-pointer" title={t('common.upload')}>
-                            <Upload size={15} />
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => void onPush(s, e.target.files?.[0])} />
-                          </label>
-                        ) : null}
-                        <IconButton label={t('sources.preview')} onClick={() => setPreview({ source: s, url: sourcePreviewUrl(s.id) })}><Eye size={15} /></IconButton>
-                        <IconButton label={t('common.edit')} onClick={() => setEditing({ id: s.id, body: { name: s.name, kind: s.kind, config: { ...s.config }, is_enabled: s.is_enabled, group: s.group } })}><Pencil size={15} /></IconButton>
-                        <span className="mx-0.5 h-4 w-px bg-line" aria-hidden />
-                        <IconButton label={t('common.delete')} onClick={() => setPendingDelete(s)} className="hover:!bg-critical-soft hover:!text-critical"><Trash2 size={15} /></IconButton>
-                      </span>
-                    </Td>
-                  </Tr>
-                ))
-              )}
-            </TBody>
-          </Table>
-        )}
-      </Card>
+      {sources.isPending ? (
+        <Card><LoadingState /></Card>
+      ) : sources.isError ? (
+        <Card><ErrorState error={sources.error} onRetry={() => void sources.refetch()} /></Card>
+      ) : visible.length === 0 ? (
+        <Card><EmptyState icon={<Camera className="size-6" />} title={t('sources.empty')} /></Card>
+      ) : view === 'tree' ? (
+        <SourceTree items={visible} {...viewHandlers} />
+      ) : (
+        <SourceCards items={visible} {...viewHandlers} />
+      )}
       <Modal
         open={editing !== null}
         onClose={() => setEditing(null)}

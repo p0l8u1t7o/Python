@@ -225,7 +225,7 @@ describe('AssistantDock', () => {
 
   it('lists past conversations and deletes one', async () => {
     const original = vi.mocked(api.get).getMockImplementation()!
-    vi.mocked(api.get).mockImplementation(async (path: string, params?: unknown) => (
+    vi.mocked(api.get).mockImplementation(async (path: string, params?: Record<string, unknown>) => (
       path.startsWith('/vision/agent/chats')
         ? { items: [{ id: 3, title: '怎麼標定？', count: 4, updated_at: '2026-09-06T10:00:00Z' }], limits: { chats: 50, messages: 60 } }
         : original(path, params)
