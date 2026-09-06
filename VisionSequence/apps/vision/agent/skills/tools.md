@@ -313,5 +313,19 @@ YOLO-obb 旋轉框：輸出 `matches`（cx, cy, w, h, angle°, points 四角）�
 現場調門檻看它）、`mask`、`regions`，分支 ok／defect。沒有壞品樣本、缺陷型態不固定（刮痕、凹陷、缺料、異物）時優先用它；
 有明確類別且壞品夠多再考慮 yolo_*／dl_segment。
 
+## gdt_measure
+形位公差（ISO 1101 最小區域，不是最小二乘）：`mode` straightness／flatness（2D 投影，同一個帶）／roundness／parallelism／perpendicularity／angularity。
+點集模式接 `points`（find_line.points、circular_caliper.points、find_circle.points、contour_filter.contours 取第一條）；基準模式 `a`／`b` 接兩條
+find_line.line（或點集、`{"angle": 度}`），`b` 是基準：垂直度把基準轉 90°、傾斜度轉 `reference_angle`。直線度＝包住所有點的最小寬度平行帶
+（凸包＋旋轉卡尺）；真圓度＝最小區域圓 MZC（Nelder–Mead 從最小二乘圓起步，detail.lsc 同時給 LSC 值）；平行度等＝a 的點到基準方向的偏差帶，
+兩端點時＝|Δθ|×線長。`tolerance`（teach）是公差帶寬度；`unit` mm 時接 `scale` 埠（undistort／to_world 的 mm_per_pixel）或填 `mm_per_px`。
+輸出 `deviation`／`in_spec`／`unit`＋pass／fail 分支；detail 有方法名、擬合參數、極值點索引，現場爭議拿得出來。
+
+## photometric_stereo
+光度立體：同一件在 3～4 個方向打光各拍一張（`image`＝光 1、`image_1..3`），`light_azimuth`（畫面 +x 起順時針，0＝自右、90＝自下）與
+`light_elevation` 要與燈架一致。輸出 `curvature`（有號散度：凸亮凹暗，刻印字最清楚）、`curvature_abs`（shape strength，無號，接 threshold／blob）、
+`albedo`（去掉打光的材質圖，印刷／髒污用它）、`normal_x/normal_y`。單張看不見的浮凸／凹坑／拋光面刮痕用這個，之後照一般流程 blob／ocr_read。
+一次觸發要連拍四張：來源端還沒就緒時用 `crop` 把 2×2 拼圖拆開（範本「刻印字／凹凸缺陷」就是這樣）。`drop_darkest` 預設開（四燈時每像素丟最暗一張，深槽陰影不拉歪）。
+
 ## python_script
 自訂 Python 檢測（只在使用者明確要求「自己寫程式」時才用；一般需求優先用內建工具）。`code` 定義 `def run(ctx)`：`ctx.image`（唯讀）、`ctx.gray()`、`ctx.inputs['a'..'d']`、`ctx.params['p1'..'p3']`（現場參數，技術員可在參數卡調）、`ctx.roi()`／`ctx.crop()`；回傳 dict：`value`／`result`／`text`／`data`／`image`（新陣列）／`status`（ok|ng）／`branch`（pass|fail）／`overlays`／`message`。輸出埠固定：value、result、text、data、image；`pass`／`fail` 分支接 judge。只能匯入 numpy／cv2／math／json／re／statistics／itertools／collections／functools／time；不能用 dunder、exec／eval／open；純 Python 迴圈超過 `max_ms` 會中止。**只有管理員能儲存新腳本**，生成後要提醒使用者由管理員儲存核准。

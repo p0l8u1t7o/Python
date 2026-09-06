@@ -366,6 +366,30 @@ export default {
       points: "邊緣點",
     },
   },
+  gdt_measure: {
+    label: "形位公差",
+    description: "照圖面語言量幾何公差（ISO 1101）：直線度與平面度是包住所有點的最窄平行帶，真圓度是兩個同心圓之間最窄的環，平行度、垂直度與傾斜度是特徵相對基準的偏差帶。回報偏差、是否在公差內，以及背後的方法與極值點。",
+    params: {
+      mode: { label: "公差項目", options: { straightness: "直線度（點集）", flatness: "平面度（點集，2D 投影）", roundness: "真圓度（點集）", parallelism: "平行度（a 對基準 b）", perpendicularity: "垂直度（a 對基準 b）", angularity: "傾斜度（a 對基準 b 成參考角）" } },
+      tolerance: { label: "公差帶", help: "偏差必須落在的帶寬（像素；有比例時為毫米）。" },
+      unit: { label: "單位", options: { px: "像素", mm: "毫米（比例來自標定工具）" } },
+      mm_per_px: { label: "每像素 mm", help: "留 0 並接入標定工具的比例輸入。" },
+      reference_angle: { label: "參考角", help: "特徵 a 應與基準 b 成的角度（正值＝畫面順時針）。" },
+    },
+    ports: { points: "點", a: "特徵 a", b: "基準 b", scale: "比例（每像素 mm）", image: "影像（顯示用）", pass: "合格", fail: "不合格", deviation: "偏差", in_spec: "在公差內", unit: "單位", tolerance: "公差" },
+  },
+  photometric_stereo: {
+    label: "光度立體",
+    description: "把同一件在三或四個方向打光各拍的一張合成表面形狀：浮凸與刻印字、凹坑、凸點與拋光面刮痕在曲率圖上一目了然，即使任何單張都看不出來。反射率輸出是去掉打光後的材質。",
+    params: {
+      light_azimuth: { label: "光源方位角", help: "每盞燈一個角度（度），繞畫面一圈（0＝自右、90＝自下，順時針）。四燈各隔 90° 是常見燈架。" },
+      light_elevation: { label: "光源仰角", help: "燈離表面的仰角；所有燈相同。" },
+      output: { label: "影像輸出", options: { curvature: "曲率（有號形狀圖：凸亮凹暗）", curvature_abs: "形狀強度（無號曲率，供二值化）", normal_x: "法向 X（左右斜度）", normal_y: "法向 Y（上下斜度）", albedo: "反射率（去掉打光）", all: "全部（影像＝曲率）" } },
+      normalize: { label: "正規化為 8 位元", help: "關閉時保留 float32 圖（曲率與法向帶正負號）。" },
+      drop_darkest: { label: "每像素丟掉最暗的燈", help: "四燈時每個像素用較亮的三張求解，深槽裡的陰影不會把法向拉歪。", group: "進階" },
+    },
+    ports: { image: "光 1", image_1: "光 2", image_2: "光 3", image_3: "光 4", curvature: "曲率", curvature_abs: "形狀強度", albedo: "反射率", normal_x: "法向 X", normal_y: "法向 Y", lights: "使用的燈數" },
+  },
   circular_caliper: {
     label: "圓形卡尺",
     description: "沿圓形邊緣放一圈徑向卡尺，量出每個角度的半徑。半徑序列一眼看出崩邊、缺口、毛刺與不圓；跳動量（最大減最小）就是徑向偏差。把數值接進序列缺陷就能數出缺陷。",

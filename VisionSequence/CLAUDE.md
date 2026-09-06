@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：90 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：92 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -28,7 +28,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，27 個：含 5 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/`，folder 來源、群組「範例」）＋範本／良品資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，29 個：含 5 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。`tests/test_demo.py` 逐範本掛上對應樣本來源實跑鎖住。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -73,6 +73,7 @@
 - **工具目錄一律英文**（label／description／help_text／group／選項／埠名稱與 `CATEGORY_LABELS`）——後端是唯一事實來源。中文由前端字典 `i18n/locales/tools.zh-Hant.ts`／`tools.zh-Hans.ts` 疊上去（`lib/toolLocale.ts` 在 `useToolTypes` 的 `select` 一次套用，其他頁面不必知道）。**新增或改工具文案時要同步那兩份字典**；沒有對照的工具（外掛）自然顯示後端的英文。
 - 新增 `Param.kind` 或 `Port.type`：後端封閉集合、前端 `ParamField` switch、`catalogue()`、`docs/contract.html`、`docs/glossary.html` 五處同步。新增 ROI 形狀＝`tools/roi.py` 各 helper＋前端 `types.ts Region`／`roiEditor.ts`／`geometry.ts` 的 switch 同步（typecheck 會抓漏），見 docs/vision-capabilities.html。**組合區域** `{"shape": "composite", "ops": [{op, region}]}`（union／subtract／intersect，可巢狀）只在執行時由 `region_combine` 組出、經 region 埠傳遞，畫布不畫；`roi.extent()` 是不夾影像的外框（挖除項不擴大）、`region_overlay` 對 composite 畫實際輪廓、`region_overlays()` 逐項展開；矩形類工具（`_as_rotated_rect`）與 find_circle 對 composite 退化成外框、徑向類（`_region_edge_points`）走遮罩。
 - **Python 腳本工具**（`builtin/script.py`，`python_script`）：使用者程式碼 `def run(ctx)` 與引擎同行程受限執行——受限 builtins、import 白名單、AST 禁 dunder／exec／open、`sys.settrace` 看門狗只追蹤 `<python_script>` frame（`max_ms`）、輸入影像唯讀 view、模組命名空間依程式碼 hash 快取；固定輸出埠（value／result／text／data／image＋pass／fail）。**核准清單** `apps/vision/scripts.py`＋`ScriptApproval`（migration 0014）：只有管理員儲存（POST/PATCH /flows、匯入）時登記的 sha256 才會執行（內建 `TEMPLATE` 例外，插入工具即可試執行），一般使用者送新腳本 403；試執行由 `scripts.client_context(admin=)` 放 `_script_admin`（外部 context 的 `_` 鍵一律丟掉）；配方不能覆寫 `code`。`Param.kind="code"`（`accept`＝語言）前端 `CodeField`（非管理員唯讀），工具頁參數欄遇到 code 參數自動加寬。測試 `tests/test_script_tool.py`；bench／純度掃描用 context `_script_admin`。
+- **光度立體**（`builtin/photometric.py`）：整條管線按列分塊（約 40K 像素留在快取內；整張 numpy 逐元素每趟 1.5 ms 是頻寬綁死的），四燈丟最暗用留一法更新式 g_d = g_full − c_d·r_d（不做子集偽逆的逐像素 gather，那要 50 ms），最暗索引在 u8 上用 cv2.min／compare；`solve()` 回 (3,H,W) 法向。**形位公差**（`builtin/gdt.py`）：直線度＝凸包＋旋轉卡尺最小帶、真圓度＝MZC（Nelder–Mead 從 `fit_circle_lsq` 起步，detail.lsc 留最小二乘對照）；`points` 埠也吃 contours（取第一條）。
 - 舊工具名（`edges`→`filter`、`hist_eq`→`lut`、`write_plc`→`write_modbus`）由 `graph.LEGACY_TOOL_TYPES` 在 validate／compile 時自動換，參數名刻意相容。
 
 ### 擷取端（apps/vision/capture、vscapture/）

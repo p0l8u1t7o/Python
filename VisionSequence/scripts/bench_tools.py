@@ -219,6 +219,16 @@ class Scene:
         self.ocr_line = np.full((h, w), 235, np.uint8)
         self.ocr_line[h // 2 - 40 : h // 2 + 40, w // 2 - 200 : w // 2 + 200] = _render("24091237", size=36)
         self.flat_bgr = save_png(cv2.cvtColor(np.clip(vignette * 235, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR), folder, f"flatc_{w}.png")
+        # 光度立體：以板子遮罩當高度場（6 px 浮凸）渲染四個方向的打光影像
+        from apps.vision.tools.builtin.photometric import light_directions
+
+        height = cv2.GaussianBlur(self.mask.astype(np.float32) / 255.0, (0, 0), 3) * 6.0
+        gx = cv2.Sobel(height, cv2.CV_32F, 1, 0, ksize=3, scale=1 / 8)
+        gy = cv2.Sobel(height, cv2.CV_32F, 0, 1, ksize=3, scale=1 / 8)
+        nrm = np.dstack([-gx, -gy, np.ones_like(gx)])
+        nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
+        lights = light_directions([0, 90, 180, 270], 30)
+        self.lit = [np.clip(180.0 * np.clip(nrm @ lights[k], 0, None) + 8, 0, 255).astype(np.uint8) for k in range(4)]
         self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
@@ -327,6 +337,11 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("chamfer_angle 40", "chamfer_angle", big, {"roi": top_edge, "num_calipers": 40}, {}, {}),
         ("tolerance_judge", "tolerance_judge", None, {"nominal": 12, "upper_tol": 0.05, "lower_tol": -0.05}, {"value": 12.02}, {"_outputs": {}}),
         ("contour_find (mask)", "contour_find", s.mask, {"threshold_method": "none", "min_area": 300}, {}, {}),
+        ("photometric_stereo (4 lights, drop darkest)", "photometric_stereo", s.lit[0], {"output": "curvature"}, {"image_1": s.lit[1], "image_2": s.lit[2], "image_3": s.lit[3]}, {}),
+        ("photometric_stereo (4 lights, plain)", "photometric_stereo", s.lit[0], {"output": "curvature", "drop_darkest": False}, {"image_1": s.lit[1], "image_2": s.lit[2], "image_3": s.lit[3]}, {}),
+        ("gdt_measure straightness 2000", "gdt_measure", None, {"mode": "straightness", "tolerance": 20}, {"points": [[x, 5 * math.sin(x / 50)] for x in np.linspace(0, 1000, 2000)]}, {}),
+        ("gdt_measure roundness 360 (MZC)", "gdt_measure", None, {"mode": "roundness", "tolerance": 5}, {"points": [[s.cx + (100 + 1.5 * math.cos(3 * math.radians(i))) * math.cos(math.radians(i)), s.cy + (100 + 1.5 * math.cos(3 * math.radians(i))) * math.sin(math.radians(i))] for i in range(360)]}, {}),
+        ("gdt_measure perpendicularity", "gdt_measure", None, {"mode": "perpendicularity", "tolerance": 2}, {"a": {"x1": 50, "y1": 50, "x2": 52, "y2": 250}, "b": {"x1": 0, "y1": 0, "x2": 300, "y2": 0}}, {}),
         ("contour_find (gray otsu roi)", "contour_find", gray, {"roi": plate, "polarity": "dark"}, {}, {}),
         ("contour_filter", "contour_filter", None, {"min_area": 300, "min_convexity": 0.5}, {"contours": mask_contours}, {}),
         ("contour_geometry", "contour_geometry", None, {"defect_depth": 3}, {"contours": mask_contours}, {}),

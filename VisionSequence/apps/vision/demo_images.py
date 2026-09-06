@@ -253,6 +253,41 @@ def chipped_disc() -> list[np.ndarray]:
     return out
 
 
+EMBOSS_DENT_ZONE = {"shape": "rect", "x": 380, "y": 60, "w": 200, "h": 170}
+
+
+def emboss_quad() -> list[np.ndarray]:
+    """刻印字／凹凸缺陷（光度立體）：每張 1280×960 是同一塊板在四個方向打光下的 2×2 拼圖（左上＝光 1 自右、右上＝光 2 自下、
+    左下＝光 3 自左、右下＝光 4 自上，各 640×480）。板面反射率有斑駁（四張相同，單張二值化抓不到字），只有高度差：
+    浮凸「VS 42」6 px；第 4 張右上角區多一個凹坑（NG）。用 photometric_stereo 的 shape strength 抓凹坑。"""
+    from apps.vision.tools.builtin.photometric import light_directions
+
+    out = []
+    qw, qh = 640, 480
+    lights = light_directions([0, 90, 180, 270], 30)
+    for i in range(4):
+        rng = np.random.default_rng(700 + i)
+        mask = np.zeros((qh, qw), np.uint8)
+        cv2.putText(mask, "VS 42", (60, 400), cv2.FONT_HERSHEY_SIMPLEX, 5, 255, 24)
+        height = cv2.GaussianBlur(mask.astype(np.float32) / 255.0, (0, 0), 3) * 6.0
+        if i == 3:
+            yy, xx = np.mgrid[0:qh, 0:qw].astype(np.float32)
+            height -= 5.0 * np.exp(-((xx - 480) ** 2 + (yy - 145) ** 2) / (2 * 14.0**2))
+        gx = cv2.Sobel(height, cv2.CV_32F, 1, 0, ksize=3, scale=1 / 8)
+        gy = cv2.Sobel(height, cv2.CV_32F, 0, 1, ksize=3, scale=1 / 8)
+        nrm = np.dstack([-gx, -gy, np.ones_like(gx)])
+        nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
+        albedo = cv2.GaussianBlur(rng.normal(0, 22, (qh, qw)).astype(np.float32), (0, 0), 2) + 175.0
+        tiles = []
+        for k in range(4):
+            shade = np.clip(nrm @ lights[k], 0, None)
+            img = np.clip(albedo * shade + 8 + rng.normal(0, 2, (qh, qw)), 0, 255).astype(np.uint8)
+            tiles.append(img)
+        quad = np.vstack([np.hstack(tiles[0:2]), np.hstack(tiles[2:4])])
+        out.append(cv2.cvtColor(quad, cv2.COLOR_GRAY2BGR))
+    return out
+
+
 def _date_code_font(size: int = 40):
     from PIL import ImageFont
 
@@ -461,6 +496,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "vignette": ("uneven lighting", vignette_parts),
     "shape_parts": ("shape match", shape_parts),
     "chipped_disc": ("chipped disc", chipped_disc),
+    "emboss_quad": ("embossed plate (four lights)", emboss_quad),
     "date_codes": ("date code label", date_codes),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),

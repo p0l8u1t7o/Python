@@ -107,6 +107,8 @@ BILINGUAL = {
     "金鑰": "api key", "角色": "role", "管理員": "administrator admin", "工程師": "engineer", "操作員": "operator",
     "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "範例樣板": "example template sample",
     "文字辨識": "ocr text read", "字串驗證": "ocv text verify expected", "字型教導": "font teaching taught font ocr", "日期碼": "date code lot number ocr",
+    "形位公差": "form and position tolerance gdt", "直線度": "straightness minimum zone band", "真圓度": "roundness minimum zone circle MZC", "平行度": "parallelism datum", "垂直度": "perpendicularity datum", "傾斜度": "angularity reference angle",
+    "光度立體": "photometric stereo four lights surface normal curvature", "刻印字": "embossed engraved characters photometric stereo", "凹坑": "dent photometric stereo curvature", "反射率圖": "albedo photometric stereo",
     "圓形卡尺": "circular caliper radius run-out", "徑向跳動": "run-out radial deviation circular caliper", "序列缺陷": "profile defects sequence",
     "異常檢測": "anomaly detection good parts only memory bank", "只教良品": "anomaly detection good parts only", "記憶庫": "memory bank anomaly",
     "形狀比對": "shape match geometric matching edge direction", "形狀範本": "shape model asset", "幾何比對": "geometric matching shape match",

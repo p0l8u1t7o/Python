@@ -960,6 +960,28 @@ class ContourTests(SimpleTestCase):
             pts.append([cx + rr * math.cos(a), cy + rr * math.sin(a)])
         return np.round(np.array(pts)).astype(np.int32)
 
+
+    def test_chain_into_gdt_measure(self):
+        """WP-10 串接：contour_find → contour_filter → contour_geometry → gdt_measure（真圓度）——圓盤在公差內、崩邊的圓盤超差。"""
+        for chip, expect in ((False, "pass"), (True, "fail")):
+            img = np.zeros((480, 640), np.uint8)
+            cv2.circle(img, (320, 240), 150, 255, -1)
+            cv2.circle(img, (40, 40), 12, 255, -1)  # 小雜點：篩選要把它去掉
+            if chip:
+                cv2.ellipse(img, (470, 240), (30, 18), 0, 0, 360, 0, -1)
+            found = run_tool("contour_find", img, {"threshold_method": "none", "mode": "external"})
+            self.assertEqual(found.outputs["count"], 2)
+            filt = run_tool("contour_filter", None, {"min_area": 5000}, {"contours": found.outputs["contours"]})
+            self.assertEqual(filt.outputs["count"], 1)
+            geo = run_tool("contour_geometry", None, {}, {"contours": filt.outputs["contours"]})
+            self.assertGreater(geo.outputs["first_circularity"], 0.75)  # 像素化輪廓的周長偏長，圓的 4πA/P² 約 0.82
+            r = run_tool("gdt_measure", None, {"mode": "roundness", "tolerance": 4}, {"points": filt.outputs["contours"]})
+            self.assertEqual(r.branch, expect, r.message)
+            if chip:
+                self.assertGreater(r.outputs["deviation"], 10)
+            else:
+                self.assertLess(r.outputs["deviation"], 1.5)  # 像素化的圓：MZC 帶寬在 1 px 上下
+
     def test_find_area_is_pixel_count(self):
         r = run_tool("contour_find", self._rect_mask(), {"threshold_method": "none"})
         self.assertEqual(r.branch, "found")
@@ -1411,3 +1433,198 @@ class AlgorithmAccuracyTests(SimpleTestCase):
         red = np.zeros((40, 40, 3), np.uint8)
         red[:] = (0, 0, 220)
         self.assertFalse(run_tool("color_check", red, {"color": "#00ff00", "space": "hsv", "tolerance": 10}).outputs["is_match"])
+
+
+class GdtTests(SimpleTestCase):
+    """WP-10 形位公差：每個 mode 對人工構造點集的解析解（ISO 1101 最小區域，不是最小二乘）。"""
+
+    @staticmethod
+    def _rot(pts, deg, cx=0.0, cy=0.0):
+        t = math.radians(deg)
+        c, s_ = math.cos(t), math.sin(t)
+        p = np.asarray(pts, dtype=np.float64) - [cx, cy]
+        return np.column_stack([p[:, 0] * c - p[:, 1] * s_, p[:, 0] * s_ + p[:, 1] * c]) + [cx, cy]
+
+    @staticmethod
+    def _sine_line():
+        x = np.linspace(0, 400, 201)
+        return np.column_stack([x, 100 + 2.0 * np.sin(x / 400 * 2 * math.pi * 3)])  # 振幅 2 → 直線度 4
+
+    def test_straightness_is_minimum_zone_band_not_least_squares(self):
+        pts = self._sine_line()
+        for deg, want_angle in ((0, 0.0), (30, 30.0), (-75, -75.0)):
+            r = run_tool("gdt_measure", None, {"mode": "straightness", "tolerance": 4.5}, {"points": self._rot(pts, deg, 200, 100).tolist()})
+            self.assertAlmostEqual(r.outputs["deviation"], 4.0, delta=0.01, msg=f"rot {deg}")
+            self.assertAlmostEqual(r.detail["angle"], want_angle, delta=0.2)
+            self.assertTrue(r.outputs["in_spec"])
+            self.assertEqual((r.branch, r.status, r.outputs["unit"]), ("pass", "ok", "px"))
+            self.assertEqual(r.detail["method"], "rotating calipers")
+            self.assertEqual(len(r.detail["extreme_index"]), 2)
+        # 最小二乘殘差帶會說 4.6：這就是規格要求旋轉卡尺而不是 LSQ 的原因
+        A = np.column_stack([pts[:, 0], np.ones(len(pts))])
+        coef, *_ = np.linalg.lstsq(A, pts[:, 1], rcond=None)
+        res = pts[:, 1] - A @ coef
+        self.assertGreater(res.max() - res.min(), 4.5)
+        # flatness（2D 投影）＝同一個帶；公差 3 → fail
+        r = run_tool("gdt_measure", None, {"mode": "flatness", "tolerance": 3}, {"points": pts.tolist()})
+        self.assertAlmostEqual(r.outputs["deviation"], 4.0, delta=0.01)
+        self.assertEqual((r.branch, r.status), ("fail", "ng"))
+        # 共線兩點：0
+        r = run_tool("gdt_measure", None, {"mode": "straightness", "tolerance": 1}, {"points": [[0, 0], [10, 10]]})
+        self.assertEqual(r.outputs["deviation"], 0.0)
+
+    def test_roundness_mzc_versus_lsc(self):
+        th = np.linspace(0, 2 * math.pi, 360, endpoint=False)
+        rr = 100 + 1.5 * np.cos(3 * th)  # 三瓣：峰谷 3
+        lobed = np.column_stack([300 + rr * np.cos(th), 300 + rr * np.sin(th)])
+        r = run_tool("gdt_measure", None, {"mode": "roundness", "tolerance": 3.2}, {"points": lobed.tolist()})
+        self.assertAlmostEqual(r.outputs["deviation"], 3.0, delta=0.01)
+        self.assertAlmostEqual(r.detail["lsc"]["width"], 3.0, delta=0.01)
+        self.assertAlmostEqual(r.detail["cx"], 300, delta=0.01)
+        self.assertIn("MZC", r.detail["method"])
+        self.assertEqual(r.branch, "pass")
+        kinds = [o["kind"] for o in r.overlays]
+        self.assertEqual(kinds.count("circle"), 2)  # 內外包絡圓
+        # D 形（一側切平）：最小二乘圓心被平邊拉走，MZC 重新定心後的帶寬更窄——差異記錄在 detail.lsc
+        dx = np.minimum(300 + 100 * np.cos(th), 390)
+        dshape = np.column_stack([dx, 300 + 100 * np.sin(th)])
+        r = run_tool("gdt_measure", None, {"mode": "roundness", "tolerance": 5}, {"points": dshape.tolist()})
+        self.assertLess(r.outputs["deviation"], r.detail["lsc"]["width"])
+        self.assertAlmostEqual(r.outputs["deviation"], 9.52, delta=0.05)
+        self.assertAlmostEqual(r.detail["lsc"]["width"], 9.82, delta=0.05)
+        self.assertEqual(r.branch, "fail")
+
+    def test_parallelism_perpendicularity_angularity(self):
+        b = {"x1": 0, "y1": 0, "x2": 300, "y2": 0}
+        cases = (("parallelism", 1.0, 0, 200 * math.sin(math.radians(1.0)), "fail"),
+                 ("perpendicularity", 90.5, 0, 200 * math.sin(math.radians(0.5)), "pass"),
+                 ("angularity", 45.2, 45, 200 * math.sin(math.radians(0.2)), "pass"))
+        for mode, ang, ref, expect, branch in cases:
+            a = {"x1": 50, "y1": 50, "x2": 50 + 200 * math.cos(math.radians(ang)), "y2": 50 + 200 * math.sin(math.radians(ang))}
+            r = run_tool("gdt_measure", None, {"mode": mode, "tolerance": 2, "reference_angle": ref}, {"a": a, "b": b})
+            self.assertAlmostEqual(r.outputs["deviation"], expect, delta=1e-3, msg=mode)
+            self.assertAlmostEqual(r.detail["angle_difference"], abs(ang - ref) % 90 if mode != "perpendicularity" else 0.5, delta=1e-3)
+            self.assertEqual(r.branch, branch, mode)
+            self.assertTrue(any(o.get("label") == "datum" for o in r.overlays))
+        # a 為點集、b 為點集（主方向）或角度
+        pa = self._rot(np.column_stack([np.linspace(0, 200, 50), np.zeros(50)]), 1.0)
+        pb = np.column_stack([np.linspace(0, 300, 50), np.full(50, 300.0)])
+        want = 200 * math.sin(math.radians(1.0))
+        for datum in (pb.tolist(), {"angle": 0}):
+            r = run_tool("gdt_measure", None, {"mode": "parallelism", "tolerance": 4}, {"a": pa.tolist(), "b": datum})
+            self.assertAlmostEqual(r.outputs["deviation"], want, delta=1e-3)
+            self.assertEqual(r.detail["feature_points"], 50)
+
+    def test_mm_mode_and_errors(self):
+        pts = self._sine_line().tolist()
+        r = run_tool("gdt_measure", None, {"mode": "straightness", "tolerance": 0.05, "unit": "mm"}, {"points": pts, "scale": 0.01})
+        self.assertAlmostEqual(r.outputs["deviation"], 0.04, delta=1e-4)
+        self.assertEqual((r.outputs["unit"], r.branch), ("mm", "pass"))
+        r = run_tool("gdt_measure", None, {"mode": "straightness", "tolerance": 0.05, "unit": "mm", "mm_per_px": 0.02}, {"points": pts})
+        self.assertAlmostEqual(r.outputs["deviation"], 0.08, delta=1e-4)
+        self.assertEqual(r.branch, "fail")
+        with self.assertRaisesMessage(ToolError, "needs a scale"):
+            run_tool("gdt_measure", None, {"mode": "straightness", "unit": "mm"}, {"points": pts})
+        with self.assertRaisesMessage(ToolError, "Connect the points"):
+            run_tool("gdt_measure", None, {"mode": "roundness"}, {"points": [[0, 0], [1, 1]]})
+        with self.assertRaisesMessage(ToolError, "Connect feature a"):
+            run_tool("gdt_measure", None, {"mode": "parallelism"}, {"a": {"x1": 0, "y1": 0, "x2": 1, "y2": 0}})
+
+
+class PhotometricTests(SimpleTestCase):
+    """WP-11 光度立體：球面法向誤差 < 5°、刻印字單張抓不到／curvature 抓得到、3 燈可解、退化與尺寸錯誤。"""
+
+    AZ = [0, 90, 180, 270]
+    EL = 30.0
+
+    @classmethod
+    def _render(cls, normals_hw3, albedo, ambient=0.0):
+        from apps.vision.tools.builtin import photometric as P
+
+        L = P.light_directions(cls.AZ, cls.EL)
+        return [np.clip(albedo * np.clip(normals_hw3 @ L[k], 0, None) + ambient, 0, 255).astype(np.uint8) for k in range(4)]
+
+    @staticmethod
+    def _sphere(h=400, w=400, r=150.0):
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+        x, y = xx - w / 2, yy - h / 2
+        inside = x * x + y * y < r * r
+        z = np.sqrt(np.clip(r * r - x * x - y * y, 0, None))
+        n = np.dstack([x / r, y / r, z / r])
+        n[~inside] = [0, 0, 1]
+        return n, inside
+
+    def test_sphere_normals_within_5_degrees(self):
+        from apps.vision.tools.builtin import photometric as P
+
+        n_true, inside = self._sphere()
+        imgs = self._render(n_true, 200.0)
+        L = P.light_directions(self.AZ, self.EL)
+        lit = (np.stack([n_true @ L[k] for k in range(4)]) > 0.02).sum(axis=0)
+        for drop in (True, False):
+            n_est, albedo = P.solve(imgs, self.AZ, self.EL, drop_darkest=drop)
+            self.assertEqual(n_est.shape, (3, 400, 400))
+            err = np.degrees(np.arccos(np.clip((np.moveaxis(n_est, 0, -1) * n_true).sum(axis=2), -1, 1)))
+            self.assertLess(err[inside & (lit >= 4)].max(), 1.0, f"drop={drop}: fully lit pixels")
+            if drop:
+                # 一盞燈在陰影裡：丟掉最暗那張後仍準（p95 < 1°、最大 < 5°）
+                self.assertLess(np.percentile(err[inside & (lit >= 3)], 95), 1.0)
+                self.assertLess(err[inside & (lit >= 3)].max(), 5.0)
+            else:
+                self.assertGreater(err[inside & (lit == 3)].max(), 5.0)  # 不丟：陰影把法向拉歪，這就是 drop_darkest 的理由
+            self.assertAlmostEqual(float(np.median(albedo[inside & (lit >= 4)])), 200.0, delta=2.0)
+
+    def test_embossed_text_invisible_to_threshold_visible_in_curvature(self):
+        h, w = 480, 640
+        mask = np.zeros((h, w), np.uint8)
+        cv2.putText(mask, "VS 42", (60, 300), cv2.FONT_HERSHEY_SIMPLEX, 5, 255, 24)
+        height = cv2.GaussianBlur(mask.astype(np.float32) / 255.0, (0, 0), 3) * 6.0
+        gx = cv2.Sobel(height, cv2.CV_32F, 1, 0, ksize=3, scale=1 / 8)
+        gy = cv2.Sobel(height, cv2.CV_32F, 0, 1, ksize=3, scale=1 / 8)
+        nrm = np.dstack([-gx, -gy, np.ones_like(gx)])
+        nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
+        imgs = self._render(nrm, 180.0, ambient=10)
+        letters = mask > 0
+        for k in range(4):  # 任一張單獨 Otsu 二值化：與字的 IoU < 0.2（兩種極性都試）
+            th = cv2.threshold(imgs[k], 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+            for pol in (th > 0, th == 0):
+                self.assertLess((pol & letters).sum() / (pol | letters).sum(), 0.2)
+        r = run_tool("photometric_stereo", imgs[0], {"output": "curvature"}, {"image_1": imgs[1], "image_2": imgs[2], "image_3": imgs[3]})
+        self.assertEqual(r.outputs["lights"], 4)
+        curv = r.outputs["image"]
+        self.assertEqual((curv.dtype, curv.shape), (np.uint8, (h, w)))
+        edge = (cv2.absdiff(curv, 128) > 25).astype(np.uint8) * 255
+        filled = cv2.morphologyEx(edge, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))) > 0
+        self.assertGreater((filled & letters).sum() / (filled | letters).sum(), 0.45)
+        # 凸起內部散度為正（亮）、外緣為負（暗）；shape strength 是無號版
+        signed = curv.astype(np.int32) - 128
+        self.assertGreater(signed[letters].mean(), 30)
+        self.assertGreater(r.outputs["curvature_abs"][letters].mean(), r.outputs["curvature_abs"][~cv2.dilate(mask, np.ones((9, 9))).astype(bool)].mean())
+        self.assertEqual(set(r.outputs) - {"image", "lights"}, {"curvature", "curvature_abs", "albedo", "normal_x", "normal_y"})
+        # 反射率圖幾乎是平的（材質同色）
+        alb = r.outputs["albedo"]
+        self.assertLess(float(alb[letters].mean() - alb[~letters].mean()), 12)
+        # float 輸出
+        rf = run_tool("photometric_stereo", imgs[0], {"normalize": False, "output": "normal_x"}, {"image_1": imgs[1], "image_2": imgs[2], "image_3": imgs[3]})
+        self.assertEqual(rf.outputs["image"].dtype, np.float32)
+        self.assertLessEqual(float(np.abs(rf.outputs["image"]).max()), 1.0)
+
+    def test_three_lights_and_errors(self):
+        n_true, inside = self._sphere(120, 120, 40)
+        imgs = self._render(n_true, 150.0)
+        r = run_tool("photometric_stereo", imgs[0], {"light_azimuth": "[0, 120, 240]"}, {"image_1": imgs[1], "image_2": imgs[2]})
+        self.assertEqual(r.outputs["lights"], 3)
+        with self.assertRaisesMessage(ToolError, "At least three lighting pictures"):
+            run_tool("photometric_stereo", imgs[0], {}, {"image_1": imgs[1]})
+        with self.assertRaisesMessage(ToolError, "degenerate"):
+            run_tool("photometric_stereo", imgs[0], {"light_azimuth": [0, 0, 0, 0]}, {"image_1": imgs[1], "image_2": imgs[2], "image_3": imgs[3]})
+        with self.assertRaisesMessage(ToolError, "same size"):
+            run_tool("photometric_stereo", imgs[0], {}, {"image_1": imgs[1], "image_2": imgs[2][:60], "image_3": imgs[3]})
+        with self.assertRaisesMessage(ToolError, "only 3 light azimuths"):
+            run_tool("photometric_stereo", imgs[0], {"light_azimuth": [0, 90, 180]}, {"image_1": imgs[1], "image_2": imgs[2], "image_3": imgs[3]})
+        with self.assertRaisesMessage(ToolError, "JSON list"):
+            run_tool("photometric_stereo", imgs[0], {"light_azimuth": "nope"}, {"image_1": imgs[1], "image_2": imgs[2]})
+        # 彩色輸入也吃（轉灰階）
+        bgr = [cv2.cvtColor(im, cv2.COLOR_GRAY2BGR) for im in imgs]
+        r = run_tool("photometric_stereo", bgr[0], {}, {"image_1": bgr[1], "image_2": bgr[2], "image_3": bgr[3]})
+        self.assertEqual(r.outputs["image"].shape, (120, 120))

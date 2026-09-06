@@ -366,6 +366,30 @@ export default {
       points: "边缘点",
     },
   },
+  gdt_measure: {
+    label: "形位公差",
+    description: "照图面语言测几何公差（ISO 1101）：直线度与平面度是包住所有点的最窄平行带，真圆度是两个同心圆之间最窄的环，平行度、垂直度与倾斜度是特征相对基准的偏差带。报告偏差、是否在公差内，以及背后的方法与极值点。",
+    params: {
+      mode: { label: "公差项目", options: { straightness: "直线度（点集）", flatness: "平面度（点集，2D 投影）", roundness: "真圆度（点集）", parallelism: "平行度（a 对基准 b）", perpendicularity: "垂直度（a 对基准 b）", angularity: "倾斜度（a 对基准 b 成参考角）" } },
+      tolerance: { label: "公差带", help: "偏差必须落在的带宽（像素；有比例时为毫米）。" },
+      unit: { label: "单位", options: { px: "像素", mm: "毫米（比例来自标定工具）" } },
+      mm_per_px: { label: "每像素 mm", help: "留 0 并接入标定工具的比例输入。" },
+      reference_angle: { label: "参考角", help: "特征 a 应与基准 b 成的角度（正值＝画面顺时针）。" },
+    },
+    ports: { points: "点", a: "特征 a", b: "基准 b", scale: "比例（每像素 mm）", image: "图像（显示用）", pass: "合格", fail: "不合格", deviation: "偏差", in_spec: "在公差内", unit: "单位", tolerance: "公差" },
+  },
+  photometric_stereo: {
+    label: "光度立体",
+    description: "把同一件在三或四个方向打光各拍的一张合成表面形状：浮凸与刻印字、凹坑、凸点与抛光面划痕在曲率图上一目了然，即使任何单张都看不出来。反射率输出是去掉打光后的材质。",
+    params: {
+      light_azimuth: { label: "光源方位角", help: "每盏灯一个角度（度），绕画面一圈（0＝自右、90＝自下，顺时针）。四灯各隔 90° 是常见灯架。" },
+      light_elevation: { label: "光源仰角", help: "灯离表面的仰角；所有灯相同。" },
+      output: { label: "图像输出", options: { curvature: "曲率（有号形状图：凸亮凹暗）", curvature_abs: "形状强度（无号曲率，供二值化）", normal_x: "法向 X（左右斜度）", normal_y: "法向 Y（上下斜度）", albedo: "反射率（去掉打光）", all: "全部（图像＝曲率）" } },
+      normalize: { label: "归一化为 8 位", help: "关闭时保留 float32 图（曲率与法向带正负号）。" },
+      drop_darkest: { label: "每像素丢掉最暗的灯", help: "四灯时每个像素用较亮的三张求解，深槽里的阴影不会把法向拉歪。", group: "高级" },
+    },
+    ports: { image: "光 1", image_1: "光 2", image_2: "光 3", image_3: "光 4", curvature: "曲率", curvature_abs: "形状强度", albedo: "反射率", normal_x: "法向 X", normal_y: "法向 Y", lights: "使用的灯数" },
+  },
   circular_caliper: {
     label: "圆形卡尺",
     description: "沿圆形边缘放一圈径向卡尺，量出每个角度的半径。半径序列一眼看出崩边、缺口、毛刺与不圆；跳动量（最大减最小）就是径向偏差。把数值接进序列缺陷就能数出缺陷。",

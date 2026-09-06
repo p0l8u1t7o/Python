@@ -650,6 +650,64 @@ def circular_defect_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def emboss_defect_flow(source_id: Any) -> dict[str, Any]:
+    """刻印字／凹凸缺陷：四個象限各裁成一張打光影像 → photometric_stereo（shape strength）→ 凹坑區 blob 計數 → 0 個 → OK。
+
+    對齊合成圖「浮凸板（四燈）」：第 4 張右上角區多一個凹坑（NG）；反射率斑駁讓單張二值化抓不到任何形狀。"""
+    q = [{"shape": "rect", "x": 0, "y": 0, "w": 640, "h": 480}, {"shape": "rect", "x": 640, "y": 0, "w": 640, "h": 480},
+         {"shape": "rect", "x": 0, "y": 480, "w": 640, "h": 480}, {"shape": "rect", "x": 640, "y": 480, "w": 640, "h": 480}]
+    from apps.vision import demo_images as _di
+
+    zone = dict(_di.EMBOSS_DENT_ZONE)
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("q1", "crop", 1, 0, "Light 1 (right)", roi=q[0]),
+        _node("q2", "crop", 1, 1, "Light 2 (below)", roi=q[1]),
+        _node("q3", "crop", 1, 2, "Light 3 (left)", roi=q[2]),
+        _node("q4", "crop", 1, 3, "Light 4 (above)", roi=q[3]),
+        _node("ps", "photometric_stereo", 2, 0, "Surface shape", light_azimuth=[0, 90, 180, 270], light_elevation=30, output="curvature_abs"),
+        _node("blob", "blob", 3, 0, "Dents in the check zone", roi=zone, threshold_method="fixed", threshold=90, polarity="bright", min_area=60),
+        _node("cmp", "if_number", 4, 0, "No dents?", operator="eq", threshold=0),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: surface dent", verdict="ng", label="dent"),
+        _node("out_n", "output", 4, 1, "Output dent count", name="dent_count"),
+        _note("n1", 2, 2, "About", "The same plate is photographed four times, each time lit from a different side; the sample picture tiles those four views 2×2 and the Crop steps split them again. Photometric stereo solves the surface normal at every pixel and its shape-strength map shows where the surface bends — the embossed characters and any dent — while ignoring the mottled reflectance that defeats a threshold on any single picture.\nThe blob step counts shapes inside the check zone above the characters; a dent there is NG."),
+    ]
+    edges = [
+        _edge("src", "q1"), _edge("src", "q2"), _edge("src", "q3"), _edge("src", "q4"),
+        _edge("q1", "ps", "image", "image"), _edge("q2", "ps", "image", "image_1"), _edge("q3", "ps", "image", "image_2"), _edge("q4", "ps", "image", "image_3"),
+        _edge("ps", "blob", "image", "image"),
+        _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("blob", "out_n", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def form_tolerance_flow(source_id: Any) -> dict[str, Any]:
+    """真圓度（形位公差）：circular_caliper 沿圓周 180 把卡尺取邊緣點 → gdt_measure(roundness, MZC) → 公差 5 px 內 → OK。
+
+    對齊合成圖「圓盤崩邊」：第 4 張右下緣 7 px 深的缺口讓最小區域帶寬超過公差（NG）。"""
+    ring = {"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 250, "r_outer": 350}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("cal", "circular_caliper", 2, 0, "Edge points at 180 angles", roi=ring, caliper_count=180, polarity="light_to_dark", edge_select="first", edge_threshold=20),
+        _node("gdt", "gdt_measure", 3, 0, "Roundness (minimum zone)", mode="roundness", tolerance=5, unit="px"),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: out of round", verdict="ng", label="roundness"),
+        _node("out_d", "output", 4, 2, "Output roundness", name="roundness_px"),
+        _note("n1", 0, 1, "About", "Roundness the way a drawing states it (ISO 1101): the narrowest ring between two concentric circles that holds every edge point — the minimum-zone circle, not a least-squares residual. The detail of the tolerance step also reports the least-squares value and the two extreme points, so a disputed part can be argued from the numbers.\nThe same step measures straightness, flatness, parallelism, perpendicularity and angularity; switch the unit to millimetres and connect the calibration scale to report in mm."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "cal", "image", "image"),
+        _edge("cal", "gdt", "points", "points"), _edge("gray", "gdt", "image", "image"),
+        _edge("gdt", "ok", "pass", "_flow"), _edge("gdt", "ng", "fail", "_flow"),
+        _edge("gdt", "out_d", "deviation", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -864,6 +922,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
      lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
     ("circular_defect", "Chipped rim (circular caliper)", "A ring of 180 radial calipers gives the radius at every angle and the run-out; Profile defects fits a circle and marks every dip or empty caliper as a chip, drawn as a red arc on the rim", "measure", circular_defect_flow),
+    ("form_tolerance", "Roundness (form tolerance)", "180 radial calipers give the edge points; Form and position tolerance fits the minimum-zone circle (ISO 1101) and passes the disc when the ring between the two concentric circles is within 5 px — the chipped rim fails", "measure", form_tolerance_flow),
+    ("emboss_defect", "Embossed characters and dents (photometric stereo)", "Four crops split a 2×2 picture of the plate under four lights; Photometric stereo turns them into a shape-strength map on which a blob count in the check zone finds the dent that no single picture shows", "quality", emboss_defect_flow),
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
      lambda sid: shading_flow(sid, _demo_asset("Example: white reference (uneven lighting)"))),
@@ -904,6 +964,8 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "contour_defect": "Example: stamped part",
     "exclusion_zone": "Example: circle gauge",
     "circular_defect": "Example: chipped disc",
+    "form_tolerance": "Example: chipped disc",
+    "emboss_defect": "Example: embossed plate (four lights)",
     "shading": "Example: uneven lighting",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
