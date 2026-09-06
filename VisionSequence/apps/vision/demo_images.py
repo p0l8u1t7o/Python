@@ -253,6 +253,47 @@ def chipped_disc() -> list[np.ndarray]:
     return out
 
 
+def _date_code_font(size: int = 40):
+    from PIL import ImageFont
+
+    return ImageFont.load_default(size=size)
+
+
+def _render_code(text: str, w: int = 520, h: int = 110, size: int = 44) -> np.ndarray:
+    """PIL 內建 TrueType 字型渲染一行字（暗字亮底）。"""
+    from PIL import Image, ImageDraw
+
+    font = _date_code_font(size)
+    img = Image.new("L", (w, h), 232)
+    d = ImageDraw.Draw(img)
+    bb = d.textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    d.text(((w - tw) // 2 - bb[0], (h - th) // 2 - bb[1]), text, fill=28, font=font)
+    return np.array(img)
+
+
+def date_codes() -> list[np.ndarray]:
+    """日期碼標籤：白標籤上一行 8 位數字（噴印風格）；第 4 張第 4 個字被污點蓋住一半（讀錯 → NG）。"""
+    out = []
+    codes = ["24091201", "24091202", "24091203", "24091204"]
+    for i, code in enumerate(codes):
+        img = _canvas(1280, 960, 70)
+        cv2.rectangle(img, (240, 300), (1040, 660), (225, 225, 228), -1)
+        line = _render_code(code)
+        y0, x0 = 430 + (i % 2) * 6, 380 + (i % 3) * 5
+        img[y0 : y0 + line.shape[0], x0 : x0 + line.shape[1]] = cv2.cvtColor(line, cv2.COLOR_GRAY2BGR)
+        if i == 3:
+            cv2.circle(img, (x0 + 235, y0 + 40), 16, (60, 60, 65), -1)  # 污點蓋住第 4 個字
+        out.append(_noise(img, 3, 170 + i))
+    return out
+
+
+def date_code_lines(n: int = 24) -> list[tuple[np.ndarray, str]]:
+    """seed 教字型用的行影像：隨機 8 位數字（同一個 PIL 字型）。"""
+    rng = np.random.default_rng(77)
+    return [(_render_code("".join(rng.choice(list("0123456789"), 8)), w=400, h=80, size=36), None) for _ in range(n)]
+
+
 def color_blocks() -> list[np.ndarray]:
     """顏色檢驗：左＝目標紅色塊、中＝綠、右＝藍；第 4 張紅色偏橘（NG）。"""
     out = []
@@ -420,6 +461,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "vignette": ("uneven lighting", vignette_parts),
     "shape_parts": ("shape match", shape_parts),
     "chipped_disc": ("chipped disc", chipped_disc),
+    "date_codes": ("date code label", date_codes),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
     "cup": ("cup gauge", cup),

@@ -199,8 +199,27 @@ class Scene:
         self.anomaly_model = os.path.join(folder, f"anomaly_{w}.npz")
         with open(self.anomaly_model, "wb") as fh:
             fh.write(res.weights_bytes)
+        # OCR：用 PIL 內建字型教一個數字字型模型（bench 的 ocr_read 走教導路；通用 PP-OCR 路只在有模型的機器上量）
+        from apps.vision import ocr as _ocr
+        from tests.test_ocr import digits as _digits, render as _render
+
+        rng_t = np.random.default_rng(11)
+        tiles, labels = [], []
+        for _ in range(20):
+            txt = _digits(rng_t, 8)
+            line = _render(txt, size=36)
+            boxes = _ocr.segment_chars(line, "projection")
+            if len(boxes) == len(txt):
+                for b, ch in zip(boxes, txt):
+                    tiles.append(_ocr.char_tile(line, b))
+                    labels.append(ch)
+        self.font_model = os.path.join(folder, "font.npz")
+        with open(self.font_model, "wb") as fh:
+            fh.write(_ocr.pack_font(_ocr.train_font(tiles, labels, epochs=150)))
+        self.ocr_line = np.full((h, w), 235, np.uint8)
+        self.ocr_line[h // 2 - 40 : h // 2 + 40, w // 2 - 200 : w // 2 + 200] = _render("24091237", size=36)
         self.flat_bgr = save_png(cv2.cvtColor(np.clip(vignette * 235, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR), folder, f"flatc_{w}.png")
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -325,6 +344,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("defect_diff phase", "defect_diff", big, {"template": "golden", "align": "phase"}, {}, {}),
         ("defect_diff none roi", "defect_diff", big, {"template": "golden", "align": "none", "roi": plate}, {}, {}),
         ("barcode", "barcode", big, {"roi": plate}, {}, {}),
+        ("ocr_read taught font (400x80)", "ocr_read", s.ocr_line, {"model": "font", "roi": {"shape": "rect", "x": s.w / 2 - 200, "y": s.h / 2 - 40, "w": 400, "h": 80}, "charset": "digits"}, {}, {}),
+        ("ocv_verify", "ocv_verify", None, {"expected": "########"}, {"text": "24091237", "items": [{"text": "24091237", "box": [[0, 0], [1, 0], [1, 1], [0, 1]], "confidence": 0.9, "chars": [{"ch": c, "conf": 0.9, "box": [[i, 0], [i + 1, 0], [i + 1, 1], [i, 1]]} for i, c in enumerate("24091237")]}]}, {}),
         ("text_presence", "text_presence", big, {"roi": s.rect(-0.1, 0.12, 0.2, 0.06)}, {}, {}),
         ("color_check", "color_check", big, {"roi": plate, "color": "#c8c8cd"}, {}, {}),
         ("edge_density", "edge_density", big, {"roi": plate}, {}, {}),

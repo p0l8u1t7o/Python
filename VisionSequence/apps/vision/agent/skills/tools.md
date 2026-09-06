@@ -260,6 +260,19 @@ defect_mask／deviation（1σ＝32 灰階的偏離影像）、分支 ok／defect
 ## barcode
 一維碼／QR：`roi` 縮小範圍加速；`expected` 填預期內容可直接判定。輸出 `first`（字串）、`count`、`found/not_found`。
 
+## ocr_read
+文字辨識（讀日期碼、批號、料號）：`roi` 框一行字，`charset` 依內容限制字元集（日期碼 `digits`、料號 `upper`；`custom` 自訂）——
+限制字元集準確率大幅提升；`polarity` 暗字亮底／亮字暗底；`min_confidence` 逐字信心門檻（低於就 not_found）。`mode=detect`
+先偵測多行再逐行讀（多行標籤）。點陣噴印、DPM 打標這種通用模型會爛的字體：`model` 選教導過的字型（POST /vision/ocr/fonts/{name}/samples
+存樣本、…/train 出模型），走切分＋逐字分類（`segmentation` projection／components／fixed＋`char_count`）。輸出 `text`、`items`
+（每行 {text, box, confidence, chars:[{ch, conf, box}]}）、`confidence`（全體最小）；接 ocv_verify 做比對。通用模型要先安裝
+（manage.py ocr_models --install），沒有時走教導字型仍可用。
+
+## ocv_verify
+字串驗證：`text` 接 ocr_read.text、`items` 也接上（逐字信心與紅框）。`expected` 支援 `?`（任一字）與 `#`（任一數字），
+`expected_source=input` 從 `expected` 埠拿 MES 下發的批號；`mode` exact／contains／regex；`min_char_confidence` 字對但信心不足也算 NG。
+輸出 `match`、`actual`、`fail_index`（第一個不符的字元，−1＝全符），分支 pass／fail。
+
 ## text_presence
 文字有無（筆畫密度，不是 OCR）：`roi` 框住字區，`polarity` dark/bright，`min_ratio/max_ratio` 決定 present。
 

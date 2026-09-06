@@ -105,6 +105,22 @@ if (-not $SkipWeights) {
         Copy-Item -LiteralPath (Join-Path $repo 'data\assets\dl\weights\resnet18_l2l3.onnx') -Destination $backbone
     }
     Copy-Item -LiteralPath $backbone -Destination (Join-Path $work 'weights')
+    # OCR 模型（PP-OCRv4 ONNX，RapidOCR 打包，Apache-2.0）：從 rapidocr-onnxruntime wheel 取出三個檔進 ocr\；vsctl dl install 複製到 ASSET_DIR\ocr
+    $ocrWheel = Get-ChildItem -LiteralPath $cache -Filter 'rapidocr_onnxruntime-*.whl' | Select-Object -First 1
+    if (-not $ocrWheel) {
+        Write-Host "  downloading rapidocr-onnxruntime wheel (OCR models)"
+        Native { & $python -m pip download rapidocr-onnxruntime --no-deps -d $cache -q }
+        $ocrWheel = Get-ChildItem -LiteralPath $cache -Filter 'rapidocr_onnxruntime-*.whl' | Select-Object -First 1
+    }
+    if ($ocrWheel) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $work 'ocr') | Out-Null
+        $env:DJANGO_SETTINGS_MODULE = 'config.settings'
+        $env:VISION_ASSET_DIR = Join-Path $work 'ocr-stage'
+        & $python (Join-Path $repo 'manage.py') ocr_models --install $ocrWheel.FullName | Out-Null
+        Copy-Item -Path (Join-Path $work 'ocr-stage\ocr\*') -Destination (Join-Path $work 'ocr') -Force
+        Remove-Item -Recurse -Force (Join-Path $work 'ocr-stage')
+        Remove-Item Env:VISION_ASSET_DIR
+    }
     $sums += "{0}  {1}" -f (Get-FileHash -LiteralPath $backbone -Algorithm SHA256).Hash.ToLower(), 'resnet18_l2l3.onnx'
     [IO.File]::WriteAllText((Join-Path $work 'weights\SHA256SUMS.txt'), (($sums -join "`n") + "`n"))
     Write-VsOk "$($Weights.Count + 1) weight files"

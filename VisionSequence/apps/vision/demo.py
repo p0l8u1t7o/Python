@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from apps.vision.graph import validate_graph
 from apps.vision.models import Asset, Flow, ImageSource, ResourceGroup
 from apps.vision.tools import base as tools
@@ -805,6 +807,31 @@ def anomaly_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})) -
     return {"nodes": nodes, "edges": edges}
 
 
+def date_code_flow(source_id: Any, font_asset: str = "") -> dict[str, Any]:
+    """日期碼讀取與驗證：ocr_read（seed 教的數字字型）→ ocv_verify（預期 ########、逐字信心）→ pass/fail；輸出讀到的字串。
+
+    對齊合成圖「日期碼標籤」：第 4 張有一字被污點蓋住 → 讀錯或信心不足 → NG，紅框標出是第幾個字。"""
+    roi = {"shape": "rect", "x": 360, "y": 410, "w": 560, "h": 150}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("ocr", "ocr_read", 2, 0, "Read the date code", roi=roi, model=font_asset, charset="digits", min_confidence=0.6, segmentation="projection"),
+        _node("ocv", "ocv_verify", 3, 0, "Eight digits?", expected="########", min_char_confidence=0.6),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: date code unreadable", verdict="ng", label="date_code"),
+        _node("out", "output", 3, 1, "Output date code", name="date_code"),
+        _node("out_c", "output", 3, 2, "Output confidence", name="ocr_confidence"),
+        _note("n1", 0, 1, "About", "The font was taught by seeding from 24 rendered lines of digits, so the read runs entirely offline: characters are segmented by the gaps between them and classified one by one.\nText verify checks the pattern (eight digits) and the confidence of every character; the fourth picture has a smudge over one digit and takes the NG branch with that digit boxed in red."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "ocr", "image", "image"),
+        _edge("ocr", "ocv", "text", "text"), _edge("ocr", "ocv", "items", "items"), _edge("gray", "ocv", "image", "image"),
+        _edge("ocv", "ok", "pass", "_flow"), _edge("ocv", "ng", "fail", "_flow"),
+        _edge("ocr", "out", "text", "value"), _edge("ocr", "out_c", "confidence", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
     """seed 訓練的示範模型資產：(asset id, 建議的工具參數)；還沒 seed 就回空（範本照樣能載入）。"""
     row = Asset.objects.filter(name=name, kind="model").only("id", "meta").first()
@@ -843,6 +870,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
+    ("date_code", "Date code read and verify (taught font)", "Text read with a font taught by seeding — segmentation plus per-character classification, fully offline — into Text verify against an eight-digit pattern with per-character confidence; a smudged digit is boxed in red", "identify",
+     lambda sid: date_code_flow(sid, _demo_asset("Example: taught font (digits)", "model"))),
     ("label_read", "Barcode label with perspective correction", "Four-point perspective correction straightens the tilted label before reading it, plus a text-presence check on the serial area", "identify", label_flow),
     ("shape_locate", "Shape match locate (any angle, any light)", "Edge-direction shape matching finds the part turned, darkened or among clutter, feeds Locate offset and ROI follow, and rejects a different part", "measure",
      lambda sid: shape_match_flow(sid, _demo_asset("Example: shape model (bracket)", "file"))),
@@ -880,6 +909,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "color_verify": "Example: colour blocks",
     "barcode_read": "Example: barcode label",
     "label_read": "Example: barcode label",
+    "date_code": "Example: date code label",
     "locate_measure": "Example: locate and gauge",
     "shape_locate": "Example: shape match",
     "cup_measure": "Example: cup gauge",
@@ -1095,6 +1125,34 @@ def seed_demo() -> list[str]:
         size = shapemodel.save(shape_path, model)
         Asset.objects.create(id=shape_id, name="Example: shape model (bracket)", kind="file", group="Examples", path=shape_path, size=size, meta=meta)
         created.append("資產 Example: shape model (bracket)（新建）")
+    if not Asset.objects.filter(name="Example: taught font (digits)", kind="model").exists():
+        # OCR 字型教導：PIL 內建字型的數字行 → 切分 → 訓練 → 模型資產（ocr_read 的 model）；完全離線，不需要通用 OCR 模型
+        import os
+        import uuid as _uuid
+
+        from django.conf import settings
+
+        from apps.vision import ocr as _ocr
+
+        tiles, labels = [], []
+        rng = np.random.default_rng(78)
+        for _ in range(24):
+            code = "".join(rng.choice(list("0123456789"), 8))
+            line = demo_images._render_code(code, w=400, h=80, size=36)
+            boxes = _ocr.segment_chars(line, "projection")
+            if len(boxes) == len(code):
+                for b, ch in zip(boxes, code):
+                    tiles.append(_ocr.char_tile(line, b))
+                    labels.append(ch)
+        font_model = _ocr.train_font(tiles, labels, epochs=300)
+        font_bytes = _ocr.pack_font(font_model)
+        font_id = _uuid.uuid4()
+        font_path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{font_id.hex}.npz")
+        with open(font_path, "wb") as fh:
+            fh.write(font_bytes)
+        Asset.objects.create(id=font_id, name="Example: taught font (digits)", kind="model", group="Examples", path=font_path, size=len(font_bytes),
+                             meta={"trainer": "ocr_font", "font": "example-digits", "tool_key": "ocr_read", "tool_params": {"charset": "digits"}, "classes": font_model["classes"], "metrics": font_model["metrics"], "format": "npz", "ocr_font": True})
+        created.append("模型資產 Example: taught font (digits)（新建，ocr_font）")
     if not Asset.objects.filter(name="Example: statistical template (print)", kind="file").exists():
         import os
         import uuid as _uuid

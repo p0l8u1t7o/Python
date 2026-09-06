@@ -74,7 +74,8 @@ KEYWORD_TOOLS: dict[str, tuple[str, ...]] = {
     "顏色|颜色|色差|偏色|color|紅|红|綠|绿|藍|蓝|黃|黄": ("color_check", "color_stats", "color_range", "pixel_count", "color_convert"),
     "有沒有|有没有|有無|有无|是否|缺料|presence|missing": ("blob", "pixel_count", "color_range", "template_match", "intensity"),
     "條碼|条码|二維碼|二维码|qr|barcode|讀碼|读码|標籤|标签": ("barcode", "warp_perspective", "text_presence"),
-    "文字|序號|序号|印字|text": ("text_presence", "warp_perspective"),
+    "文字|序號|序号|印字|text": ("ocr_read", "ocv_verify", "text_presence", "warp_perspective"),
+    "讀字|读字|辨識|识别|日期碼|日期码|批號|批号|料號|料号|字元|字符|噴印|喷印|打標|打标|ocr|ocv|lot|date code|serial": ("ocr_read", "ocv_verify", "warp_perspective"),
     "亮度|曝光|太暗|太亮|brightness|exposure": ("intensity", "histogram", "lut", "resize"),
     "定位|位移|偏移|範本|范本|template|align|跟隨|跟随": ("shape_match", "template_match", "shape_align", "fixture_roi"),
     "形狀比對|形状比对|幾何比對|几何比对|任意角度|旋轉件|旋转件|遮擋|遮挡|多件|上下料|shape match|geometric": ("shape_match", "shape_align", "fixture_roi"),
@@ -103,7 +104,7 @@ INTENT_TOOLS: dict[str, tuple[str, ...]] = {
     "brightness": ("intensity", "histogram"),
     "barcode": ("barcode", "warp_perspective", "text_presence"),
     "generic": ("intensity", "histogram", "edge_density"),
-    "text": ("text_presence",),
+    "text": ("ocr_read", "ocv_verify", "text_presence"),
     "distance": ("find_circle", "distance", "calibration", "tolerance_judge"),
     "template_presence": ("template_match", "shape_match"),
 }

@@ -463,6 +463,15 @@ function Install-DlPack([string]$Pack, [string]$Tree, [string]$Python, [switch]$
             Copy-Item -Path (Join-Path $weightsSrc '*') -Destination $weightsDst -Force
             Write-VsOk "Weights copied to $weightsDst"
         }
+        $ocrSrc = Join-Path $root 'ocr'
+        if (Test-Path -LiteralPath $ocrSrc) {
+            # OCR 模型（PP-OCRv4 ONNX）：manage.py ocr_models --install 也做得到；這裡順手裝進 ASSET_DIR\ocr
+            $assetDir = Get-VsSetting $layout 'VISION_ASSET_DIR' (Join-Path $layout.DataDir 'assets')
+            $ocrDst = Join-Path $assetDir 'ocr'
+            New-Item -ItemType Directory -Force -Path $ocrDst | Out-Null
+            Copy-Item -Path (Join-Path $ocrSrc '*') -Destination $ocrDst -Force
+            Write-VsOk "OCR models copied to $ocrDst"
+        }
         New-Item -ItemType Directory -Force -Path $packsDir | Out-Null
         $kept = Join-Path $packsDir (Split-Path -Leaf $Pack)
         if ((Resolve-Path -LiteralPath $Pack).Path -ne $kept) { Copy-Item -LiteralPath $Pack -Destination $kept -Force }

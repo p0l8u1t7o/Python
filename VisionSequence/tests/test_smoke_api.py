@@ -86,7 +86,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             f"/api/vision/flows/{fid}/runs?limit=5", f"/api/vision/flows/{fid}/recipes", f"/api/vision/flows/{fid}/golden", f"/api/vision/flows/{fid}/golden/baseline",
             f"/api/vision/flows/{fid}/export", f"/api/vision/runs/{self.run_id}", f"/api/vision/flows/{fid}/board", f"/api/vision/flows/{fid}/variables", "/api/vision/variables",
             "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
-            "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/assets?kind=calibration",
+            "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/ocr/models", "/api/vision/ocr/fonts", "/api/vision/assets?kind=calibration",
             f"/api/vision/calibration/assets/{self.calibration_id}", f"/api/vision/assets/{self.stat_id}/stat-template", f"/api/vision/assets/{self.stat_id}/stat-template/mean",
             f"/api/vision/assets/{self.shape_id}/shape-model", f"/api/vision/assets/{self.shape_id}/shape-model/preview",
             "/api/vision/groups?kind=source", "/api/vision/fs",
