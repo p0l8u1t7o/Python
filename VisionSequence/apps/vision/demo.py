@@ -620,6 +620,34 @@ def shape_match_flow(source_id: Any, model_asset: str = "") -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def circular_defect_flow(source_id: Any) -> dict[str, Any]:
+    """圓形工件崩邊：circular_caliper 沿圓周 180 把卡尺量半徑 → profile_defect 對擬合圓看凹陷／打空 → 缺陷數＝0 → OK；另輸出徑向跳動。
+
+    對齊合成圖「圓盤崩邊」：第 4 張右下緣 24°×7 px 缺口（NG）。"""
+    ring = {"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 250, "r_outer": 350}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("cal", "circular_caliper", 2, 0, "Radius at 180 angles", roi=ring, caliper_count=180, polarity="light_to_dark", edge_select="first", edge_threshold=20),
+        _node("pd", "profile_defect", 3, 0, "Chips on the rim", baseline="fit_circle", threshold=3, min_width=2, direction="inward"),
+        _node("cmp", "if_number", 4, 0, "No chips?", operator="eq", threshold=0),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: chipped rim", verdict="ng", label="rim_chip"),
+        _node("out_n", "output", 4, 1, "Output chip count", name="chip_count"),
+        _node("out_r", "output", 3, 2, "Output run-out", name="runout_px"),
+        _node("out_m", "output", 4, 2, "Output mean radius", name="radius_px"),
+        _note("n1", 0, 1, "About", "The circular caliper measures the radius at every 2°; the run-out (max minus min) is the out-of-round. Profile defects fits a circle to those points and marks every stretch that sinks 3 px below it — or where a caliper found no edge at all, which is what a large chip looks like.\nThe defect is drawn as a red arc on the rim of the original picture."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "cal", "image", "image"),
+        _edge("cal", "pd", "radii", "values"), _edge("cal", "pd", "all_points", "points"), _edge("gray", "pd", "image", "image"),
+        _edge("pd", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("pd", "out_n", "count", "value"), _edge("cal", "out_r", "runout", "value"), _edge("cal", "out_m", "mean_r", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -808,6 +836,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
      lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
+    ("circular_defect", "Chipped rim (circular caliper)", "A ring of 180 radial calipers gives the radius at every angle and the run-out; Profile defects fits a circle and marks every dip or empty caliper as a chip, drawn as a red arc on the rim", "measure", circular_defect_flow),
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
      lambda sid: shading_flow(sid, _demo_asset("Example: white reference (uneven lighting)"))),
@@ -845,6 +874,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "gear_teeth": "Example: gear teeth",
     "contour_defect": "Example: stamped part",
     "exclusion_zone": "Example: circle gauge",
+    "circular_defect": "Example: chipped disc",
     "shading": "Example: uneven lighting",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",

@@ -34,7 +34,7 @@ class RegistryTests(SimpleTestCase):
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
-            "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly",
+            "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly", "circular_caliper", "profile_defect",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -81,6 +81,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["defect_stat"], {"roi", "sigma", "min_area", "direction"})
         self.assertEqual(teach["shape_match"], {"min_score", "max_matches", "angle_start", "angle_extent"})
         self.assertEqual(teach["dl_anomaly"], {"roi", "threshold", "min_area"})
+        self.assertEqual(teach["circular_caliper"], {"roi", "caliper_count", "edge_threshold", "polarity", "edge_select"})
+        self.assertEqual(teach["profile_defect"], {"threshold", "threshold_mode", "min_width", "direction", "max_defects"})
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 

@@ -112,6 +112,20 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 ## wall_thickness
 沿壁放多條卡尺量厚度：`roi` 用 **line 橫切壁**（最直觀）或矩形長邊沿壁。輸出 `thickness`（平均）、min/max。「沒有找到成對的邊緣」通常是掃描方向錯或 band 太窄。
 
+## circular_caliper
+圓形卡尺：`roi` 用 `annulus` 蓋住圓緣（帶 a0/a1 只量扇形），沿圓周放 `caliper_count` 把徑向卡尺（72～360），每把切向平均
+`caliper_width` 個樣本降噪，`polarity`（由內往外的灰階變化）／`edge_select` first（內緣）last（外緣）／`edge_threshold` 與 find_circle 同義。
+輸出 `radii`（每把一項，找不到為 null）、`all_points`（與 radii 對齊，缺的為 null）、`points`（找到的點，可接 fit_arc）、
+`mean_r/min_r/max_r/runout`（徑向跳動＝max−min）、`missing_count`。離群半徑只從統計剔除、不從 radii 拿掉（缺口本身就是離群）。
+崩邊／毛刺／缺口接 profile_defect；只要直徑用 find_circle 就好。
+
+## profile_defect
+序列缺陷：`values` 接 circular_caliper.radii（或 line_profile 剖面），`points` 接 all_points 讓缺陷畫回原圖圓周（紅弧）。
+`baseline` fit_circle（圓周用，需 points）／median（滑動中位數，`window`）／fit_line／mean；`threshold`（絕對值或 `threshold_mode=sigma` 的倍數）、
+`min_width`（連續點數，擋單點雜訊）、`direction` inward（缺口、凹陷）／outward（毛刺、凸起）／both、`max_defects`（0＝有就 NG）、
+`wrap`（圓周開、線剖面關）。**卡尺打空（null）也算缺陷**（`missing_as_defect`），大缺口最容易漏判。輸出 `count`／`defects`
+（start、end、peak_index、peak_deviation、direction、missing）／`max_deviation`，分支 ok／defect。
+
 ## fit_arc
 只有一段弧（缺口、扇形、R 角）時用，`roi` 用 annulus 加 `a0/a1` 起迄角（掃描線只落在扇形內），或多邊形楔形。擬合是 Taubin＋幾何精修（30°～90° 的短弧也無偏），`refine` 預設開會從擬合圓心重掃。輸出 radius、cx/cy、residual_rms、start_angle/end_angle。
 

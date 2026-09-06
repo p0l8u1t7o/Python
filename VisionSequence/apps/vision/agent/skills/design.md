@@ -40,6 +40,7 @@
 | 亮度／曝光守門 | `intensity.mean` → `in_range` | `histogram.otsu` |
 | 角落偏暗／打光不均 | `shading_correct(flat_field, flat=白板資產)` 放在 threshold 前 | 沒有白板 `estimate`；只是曝光整體偏 `lut` |
 | 量測區要挖掉孔／字樣／反光 | `region_from_shape`×N → `region_combine(subtract)` → 接量測工具的 `roi` 埠 | `union` 合併幾塊、`intersect` 取重疊 |
+| 圓形工件的崩邊／缺口／毛刺／徑向跳動 | `circular_caliper`（annulus ROI）→ `profile_defect(fit_circle)` → `if_number(count eq 0)` | 跳動量 `circular_caliper.runout` 接 tolerance_judge；不規則外形用 contour_geometry 的凸缺陷 |
 | 缺角／崩邊／外形是否對 | `contour_find` → `contour_filter(max_count=1)` → `contour_geometry(defect_depth)` → `if_number(first_defects eq 0)` | 外形換料 `contour_match(template)`；面積與計數用 `blob` 即可 |
 | 圓周上的齒／缺口／螺紋 | `polar_unwrap`（annulus ROI）→ `threshold` → `blob` → `if_number(eq N)` | 位置標回原圖 `polar_restore(mapping)`；沿圓周量寬度用展開圖上的 `caliper`／`line_profile` |
 

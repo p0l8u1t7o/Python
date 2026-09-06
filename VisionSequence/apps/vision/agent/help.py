@@ -106,6 +106,7 @@ BILINGUAL = {
     "具名輸出": "named output", "引擎鎖定": "engine lock locked 423", "鎖定": "lock locked", "整合方": "integrator api key",
     "金鑰": "api key", "角色": "role", "管理員": "administrator admin", "工程師": "engineer", "操作員": "operator",
     "重置": "reset", "範本": "template", "範本畫廊": "template gallery", "範例樣板": "example template sample",
+    "圓形卡尺": "circular caliper radius run-out", "徑向跳動": "run-out radial deviation circular caliper", "序列缺陷": "profile defects sequence",
     "異常檢測": "anomaly detection good parts only memory bank", "只教良品": "anomaly detection good parts only", "記憶庫": "memory bank anomaly",
     "形狀比對": "shape match geometric matching edge direction", "形狀範本": "shape model asset", "幾何比對": "geometric matching shape match",
     "統計範本": "statistical template stat template mean std", "統計良品比對": "statistical defects stat template",

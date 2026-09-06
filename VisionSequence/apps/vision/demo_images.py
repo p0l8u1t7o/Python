@@ -236,6 +236,23 @@ def shape_parts() -> list[np.ndarray]:
     return out
 
 
+def chipped_disc() -> list[np.ndarray]:
+    """圓形工件崩邊：暗底亮圓盤（r=300），中心小孔；第 4 張右下緣有一個 24°×7 px 的缺口（NG）。圓形卡尺範本用。"""
+    out = []
+    for i in range(4):
+        img = _canvas(1280, 960, 40)
+        cx, cy = 640 + (i % 2) * 5 - 2, 480 + (i % 3) * 4 - 4
+        cv2.circle(img, (cx, cy), 300, (200, 200, 205), -1)
+        cv2.circle(img, (cx, cy), 40, (40, 40, 40), -1)
+        if i == 3:
+            a0, a1 = np.deg2rad(40 - 12), np.deg2rad(40 + 12)
+            inner = [(cx + 293 * np.cos(a), cy + 293 * np.sin(a)) for a in np.linspace(a0, a1, 14)]
+            outer = [(cx + 330 * np.cos(a), cy + 330 * np.sin(a)) for a in np.linspace(a1, a0, 14)]
+            cv2.fillPoly(img, [np.round(np.array(inner + outer)).astype(np.int32)], (40, 40, 40))
+        out.append(_noise(img, 4, 150 + i))
+    return out
+
+
 def color_blocks() -> list[np.ndarray]:
     """顏色檢驗：左＝目標紅色塊、中＝綠、右＝藍；第 4 張紅色偏橘（NG）。"""
     out = []
@@ -402,6 +419,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "stamped_part": ("stamped part", stamped_part),
     "vignette": ("uneven lighting", vignette_parts),
     "shape_parts": ("shape match", shape_parts),
+    "chipped_disc": ("chipped disc", chipped_disc),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
     "cup": ("cup gauge", cup),

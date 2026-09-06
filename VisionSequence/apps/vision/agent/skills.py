@@ -84,6 +84,7 @@ KEYWORD_TOOLS: dict[str, tuple[str, ...]] = {
     "mm|毫米|公厘|公差|標稱|标称|tolerance": ("calibration", "tolerance_judge", "bool_logic"),
     "打光不均|光不均|漸暈|渐晕|暗角|角落暗|陰影校正|阴影校正|平場|平场|白板|shading|flat field|flat-field|vignett|uneven light": ("shading_correct", "threshold", "blob"),
     "排除|挖掉|挖除|扣掉|扣除|避開|避开|遮掉|不算|組合區|组合区|多重|exclude|exclusion|subtract|combine|mask out|ignore area": ("region_from_shape", "region_combine"),
+    "圓周缺口|圆周缺口|崩邊|崩边|毛刺|徑向跳動|径向跳动|跳動|跳动|真圓|真圆|圓度|圆度|圓形卡尺|圆形卡尺|runout|run-out|circular caliper|rim": ("circular_caliper", "profile_defect", "if_number", "tolerance_judge"),
     "輪廓|轮廓|外形|凸|缺角|崩邊|崩边|崩角|毛邊|毛边|contour|outline|silhouette|convex|chip|notch|hu": ("contour_find", "contour_filter", "contour_geometry", "contour_match", "threshold", "if_number"),
     "圓周|圆周|齒|齿|螺紋|螺纹|環形|环形|極座標|极坐标|展開|展开|polar|unwrap|gear|thread|o-ring|滾珠|滚珠": ("polar_unwrap", "polar_restore", "threshold", "blob", "if_number"),
 }

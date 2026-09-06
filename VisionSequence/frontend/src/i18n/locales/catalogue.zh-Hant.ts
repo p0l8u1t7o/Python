@@ -131,6 +131,7 @@ export default {
     dl_classify_demo: { name: '分類：良品／缺孔（教導模型）', description: '由 seed 訓練的內建 MLP 分類器接 dl_classify 判定——示範教導出來的模型怎麼進流程' },
     gear_teeth: { name: '圓周齒數（極座標展開）', description: '極座標展開把齒圈攤平成長條圖，二值化與 blob 數齒，極座標還原把每顆齒標回原圖' },
     contour_defect: { name: '崩邊檢測（輪廓幾何）', description: '輪廓萃取、篩出工件本體、輪廓幾何數超過 12 px 的凸缺陷、OK/NG，另以 Hu 矩與範例外形比對' },
+    circular_defect: { name: '圓盤崩邊（圓形卡尺）', description: '180 把徑向卡尺給每個角度的半徑與跳動量；序列缺陷擬合圓後把每處凹陷或打空的卡尺標成崩邊，畫成圓緣上的紅弧' },
     exclusion_zone: { name: '排除區（組合區域）', description: '兩個畫好的區域由區域組合從板面矩形挖掉，經區域輸入埠餵給統計與 blob 步驟，孔內像素完全不算' },
     shading: { name: '平場校正（打光不均）', description: '除以白板參考資產，讓同一個固定門檻在角落也找得到暗污點；旁支示範不校正時同一門檻的誤判' },
     stat_compare: { name: '統計良品比對', description: '30 張良品建的逐像素平均與變異，偏離 4 個標準差以上就是缺陷，光線與紋理變動不再逼門檻放鬆' },

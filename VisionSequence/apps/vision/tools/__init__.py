@@ -19,6 +19,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.region",
     "apps.vision.tools.builtin.measure",
     "apps.vision.tools.builtin.contours",
+    "apps.vision.tools.builtin.circular",
     "apps.vision.tools.builtin.detect",
     "apps.vision.tools.builtin.stat",
     "apps.vision.tools.builtin.dl",
