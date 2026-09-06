@@ -170,8 +170,9 @@
 <ol>
 <li>"Download capture client" at the top of the Image sources page, or Integration ▸ Capture (which shows the version, size, SHA-256 and build time). The button is disabled until the server has built it; how to build is in <a href="#files">§12</a>.</li>
 <li>Unzip it anywhere (avoid very long paths; no administrator rights needed) and run <code>VisionSequenceCapture.exe</code>. The first time, Windows SmartScreen may say the publisher is unknown: choose "More info" then "Run anyway".</li>
-<li>The Connection panel: the server's hostname or IP, the port (9100 by default), the client name (what the web interface shows; reconnecting from the same machine replaces the old connection), the key (only needed when the server has <code>VISION_CAPTURE_AUTH</code> or <code>VISION_API_KEY</code> set), local mode (automatic, force shared memory, or always TCP) and whether to connect at start-up.</li>
-<li>Press Connect. The status bar shows connected, the round-trip latency, frames sent, the rate and the transport in use (shared memory or TCP).</li>
+<li><strong>Settings live in the menu bar</strong>: Settings ▸ Connection, Settings ▸ Camera channels and Settings ▸ Delivery each open their own small window, while the main window keeps what you watch while the line runs — the connection status card, the channel list with its state, the live preview, the camera parameters and the log.</li>
+<li>The <strong>Connection window</strong> (Settings ▸ Connection, or the Settings button on the status card): the server's hostname or IP, the port (9100 by default), the client name (what the web interface shows; reconnecting from the same machine replaces the old connection), the key (only needed when the server has <code>VISION_CAPTURE_AUTH</code> or <code>VISION_API_KEY</code> set), local mode (automatic, force shared memory, or always TCP) and whether to connect at start-up.</li>
+<li>Press <strong>Connect</strong> on the status card. The status bar shows connected, the round-trip latency, frames sent, the rate and the transport in use (shared memory or TCP).</li>
 </ol>
 <h3 id="install-files">2-2. Configuration, logs and headless mode</h3>
 <ul>
@@ -182,12 +183,12 @@
 </ul>
 <h3 id="install-ui">2-3. The interface: language and appearance</h3>
 <p>The top right of the window switches the <strong>language</strong> (English, 繁體中文, 简体中文 — the same three as the web interface) and the <strong>appearance</strong> (dark or light). Both take effect immediately without restarting and are saved with the settings (<code>ui.language</code>, <code>ui.theme</code>). The standard camera parameter names (exposure time, gain, frame rate, pixel format, width, height, offsets, trigger mode) are translated; a vendor's own parameters keep their SDK names, and a channel name is your own text and is never translated.</p>
-<p>The layout: connection and channels on the left, the live preview and the ROI toolbar in the middle, camera parameters and delivery settings on tabs to the right, and a collapsible log at the bottom. When a new version exists, a banner appears at the top. The brand colour matches the web interface, and dark is the default.</p>
+<p>The layout: the connection status card and the channel list (with open, close, start and stop) on the left, the live preview and the ROI toolbar in the middle, the camera parameters on the right, and a collapsible log at the bottom. Adding, removing and renaming channels, choosing the camera kind and device, and the delivery settings live in their own windows under the Settings menu. When a new version exists, a banner appears at the top. The brand colour matches the web interface, and dark is the default.</p>
 <p><strong>The window resizes freely and the layout follows</strong> (the splitters between columns can be dragged too):</p>
 <table>
 <tr><th>Window width</th><th>Layout</th></tr>
-<tr><td>≥ 1180 px</td><td>Three columns: connection and channels | preview and ROI | parameters and delivery</td></tr>
-<tr><td>≥ 820 px</td><td>Two columns: connection and channels | preview and ROI above, parameters and delivery below</td></tr>
+<tr><td>≥ 1180 px</td><td>Three columns: connection status and channels | preview and ROI | camera parameters</td></tr>
+<tr><td>≥ 820 px</td><td>Two columns: connection status and channels | preview and ROI above, camera parameters below</td></tr>
 <tr><td>&lt; 820 px</td><td>One column: the preview on top and the rest below; the left column scrolls and the header keeps only the essential controls</td></tr>
 </table>
 <p>The ROI toolbar folds into two rows when there is no width for one (the numbers on one row, the actions on the other), and the window still works down to about 640×480.</p>
@@ -207,7 +208,7 @@
 <li>The installer is pulled <strong>down the same authenticated capture connection</strong> in 1 MiB chunks — no second port, no second key, and nothing to do with being signed in to the web interface. The download is checked against its <strong>SHA-256</strong> and discarded entirely if it does not match.</li>
 <li>It is unpacked into <code>%APPDATA%\VisionSequenceCapture\updates\staging-&lt;version&gt;\</code>, and then <strong>the new version's console executable</strong> takes over: wait for the old process to exit, overwrite the installation folder, restart. The updater runs from the new folder, so it cannot overwrite itself, and the configuration and logs live in <code>%APPDATA%</code> and are untouched.</li>
 </ol>
-<p>The Connection panel's <strong>automatic update</strong> setting has three values: <code>off</code> never checks, <code>notify</code> shows a banner and leaves the decision to you (the default), and <code>auto</code> downloads and installs by itself. The banner shows the version, the size and the download progress, and can be cancelled. "Help → Check for updates" asks at any time. In headless mode only <code>auto</code> actually updates (the others just write to the log). Running from source never overwrites in place; it downloads, unpacks and tells you.</p>
+<p>The connection window's <strong>automatic update</strong> setting has three values: <code>off</code> never checks, <code>notify</code> shows a banner and leaves the decision to you (the default), and <code>auto</code> downloads and installs by itself. The banner shows the version, the size and the download progress, and can be cancelled. "Help → Check for updates" asks at any time. In headless mode only <code>auto</code> actually updates (the others just write to the log). Running from source never overwrites in place; it downloads, unpacks and tells you.</p>
 <p>Every failure is safe: an interrupted download, a SHA-256 mismatch or a locked file is logged, and the existing version carries on acquiring. The updater retries for 30 seconds while overwriting, in case an antivirus or a file handle is holding on. An older client (from before automatic updates existed) is unaffected by a newer server — it simply will not update itself, so download it again from the web interface.</p>
 
 <h2 id="channels">3. Channels, preview and ROI</h2>

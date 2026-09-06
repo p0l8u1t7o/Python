@@ -1,4 +1,8 @@
-"""「通道」面板：通道清單、新增／移除、相機種類與裝置、開啟／關閉／開始／停止。"""
+"""通道面板：同一個元件兩種用法——主視窗只顯示清單與開關相機的操作，
+選單開的「相機通道」彈出視窗才有新增／移除與名稱／種類／裝置的編輯。
+
+沒有用到的元件照樣建立（`_load_form`／`_update_state` 不必分兩套），只是不放進版面，所以不會顯示。
+"""
 
 from __future__ import annotations
 
@@ -21,10 +25,12 @@ class ChannelsPanel(QGroupBox):
     selected = Signal(str)  # cid（空字串＝沒有選取）
     dirty = Signal()
 
-    def __init__(self, engine: CaptureEngine, bridge: EngineBridge, parent: QWidget | None = None) -> None:
+    def __init__(self, engine: CaptureEngine, bridge: EngineBridge, parent: QWidget | None = None, *, edit: bool = True, ops: bool = True) -> None:
         super().__init__(parent)
         self.engine = engine
         self.bridge = bridge
+        self.edit_enabled = edit
+        self.ops_enabled = ops
         self._loading = False
         self._theme = "dark"
         self._backends: list[dict[str, Any]] = []
@@ -83,10 +89,10 @@ class ChannelsPanel(QGroupBox):
         self.close_btn.clicked.connect(lambda: self._camera_op("close"))
         self.start_btn.clicked.connect(lambda: self._camera_op("start"))
         self.stop_btn.clicked.connect(lambda: self._camera_op("stop"))
-        ops = QGridLayout()
-        ops.setSpacing(6)
+        ops_grid = QGridLayout()
+        ops_grid.setSpacing(6)
         for i, b in enumerate((self.open_btn, self.close_btn, self.start_btn, self.stop_btn)):
-            ops.addWidget(b, i // 2, i % 2)
+            ops_grid.addWidget(b, i // 2, i % 2)
         self.state_label = QLabel("—")
         self.state_label.setProperty("role", "strong")
         self.error_label = muted("")
@@ -95,19 +101,24 @@ class ChannelsPanel(QGroupBox):
         lay = QVBoxLayout(self)
         lay.setSpacing(9)
         lay.addWidget(self.list)
-        lay.addLayout(btns)
-        lay.addWidget(hline())
-        lay.addLayout(self.form)
-        lay.addLayout(ops)
-        lay.addWidget(self.state_label)
-        lay.addWidget(self.error_label)
+        if edit:
+            lay.addLayout(btns)
+            lay.addWidget(hline())
+            lay.addLayout(self.form)
+        if ops:
+            if edit:
+                lay.addWidget(hline())
+            lay.addLayout(ops_grid)
+            lay.addWidget(self.state_label)
+            lay.addWidget(self.error_label)
+        lay.addStretch(1)
         self._set_form_enabled(False)
         self.retranslate()
         self.bridge.run_async(cameras.describe_backends, on_done=self.set_backends)
 
     # ---- 語言／主題 ----
     def retranslate(self) -> None:
-        self.setTitle(tr("channels.title"))
+        self.setTitle(tr("channels.title") if self.ops_enabled else tr("channels.editTitle"))
         self.add_btn.setText(tr("channels.add"))
         self.remove_btn.setText(tr("channels.remove"))
         self.scan_btn.setText(tr("channels.scan"))

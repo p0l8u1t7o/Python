@@ -12,7 +12,7 @@ from typing import Any
 
 from PySide6.QtCore import QByteArray, QEvent, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence, QPixmap
-from PySide6.QtWidgets import QApplication, QComboBox, QDockWidget, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea, QSplitter, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QDockWidget, QGroupBox, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QScrollArea, QSplitter, QVBoxLayout, QWidget
 
 from vscapture import __version__, config as configmod
 from vscapture.engine import CaptureEngine
@@ -20,7 +20,8 @@ from vscapture.i18n import LANGUAGES, set_language, tr
 from vscapture.logs import log_dir
 from vscapture.ui.bridge import EngineBridge
 from vscapture.ui.channels_panel import ChannelsPanel
-from vscapture.ui.connection_panel import ConnectionPanel
+from vscapture.ui.connection_panel import ConnectionForm, ConnectionStatus
+from vscapture.ui.dialogs import SettingsDialog
 from vscapture.ui.delivery_panel import DeliveryPanel
 from vscapture.ui.live_view import LivePanel
 from vscapture.ui.log_panel import LogPanel
@@ -93,8 +94,11 @@ class MainWindow(QMainWindow):
         self.banner = UpdateBanner(engine)
         self.banner.install_requested.connect(self.start_update)
 
-        self.connection = ConnectionPanel()
-        self.channels = ChannelsPanel(engine, bridge)
+        # 設定在「設定」選單的彈出視窗裡；主畫面只留現場要盯的東西（連線狀態、通道狀態、預覽）
+        self.connection = ConnectionStatus()
+        self.connection_form = ConnectionForm()
+        self.channels = ChannelsPanel(engine, bridge, edit=False, ops=True)
+        self.channels_edit = ChannelsPanel(engine, bridge, edit=True, ops=False)
         left = QWidget()
         ll = QVBoxLayout(left)
         ll.setContentsMargins(0, 0, 0, 0)
@@ -107,10 +111,11 @@ class MainWindow(QMainWindow):
         self.live = LivePanel(engine, bridge)
         self.params = ParamsPanel(engine, bridge)
         self.delivery = DeliveryPanel(engine, bridge)
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self.params, "")
-        self.tabs.addTab(self.delivery, "")
-        self.tabs.setMinimumWidth(260)
+        self.params_box = QGroupBox()
+        pl = QVBoxLayout(self.params_box)
+        pl.setContentsMargins(9, 9, 9, 9)
+        pl.addWidget(self.params)
+        self.params_box.setMinimumWidth(260)
 
         # 版面隨視窗寬度重排：寬＝三欄、中＝左欄＋（預覽上／設定下）、窄＝單欄堆疊
         self.left = left
@@ -146,6 +151,11 @@ class MainWindow(QMainWindow):
         self.log_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
 
+        self.connection_dialog = SettingsDialog(self, self.connection_form, "connection.title", min_size=(420, 300))
+        self.channels_dialog = SettingsDialog(self, self.channels_edit, "channels.editTitle", min_size=(440, 420))
+        self.delivery_dialog = SettingsDialog(self, self.delivery, "delivery.tab", min_size=(420, 380))
+        self.connection_dialog.closed.connect(self._on_connection_dialog_closed)
+
         self._build_menu()
         self.status_bar = self.statusBar()
 
@@ -167,22 +177,29 @@ class MainWindow(QMainWindow):
         bridge.log.connect(self.log_panel.append)
         self.connection.connect_clicked.connect(self.connect_now)
         self.connection.disconnect_clicked.connect(self.disconnect_now)
-        self.connection.changed.connect(self.mark_dirty)
+        self.connection.settings_clicked.connect(self.open_connection_settings)
+        self.connection_form.changed.connect(self.mark_dirty)
         self.channels.selected.connect(self._on_channel_selected)
         self.channels.dirty.connect(self.mark_dirty)
+        bridge.channel.connect(self.channels_edit.on_channel_event)
+        # 在彈出視窗新增／刪除／改名之後，主視窗那份清單要跟上
+        self.channels_edit.dirty.connect(self.mark_dirty)
+        self.channels_edit.dirty.connect(self.channels.refresh_list)
         self.live.dirty.connect(self.mark_dirty)
         self.live.dirty.connect(self.params.reload)  # 硬體 ROI 生效後寬高／位移會變
         self.params.dirty.connect(self.mark_dirty)
         self.params.save_requested.connect(self.save_config)
         self.delivery.dirty.connect(self.mark_dirty)
 
-        self.connection.load_from(engine.cfg.connection)
+        self.connection_form.load_from(engine.cfg.connection)
+        self.connection.show_target(engine.cfg.connection)
         self.live.set_preview_fps(engine.cfg.ui.preview_fps)
         self._apply_layout(force=True)
         self.apply_theme(self.theme)
         self.retranslate()
         self._restore_geometry()
         self.channels.refresh_list()
+        self.channels_edit.refresh_list()
 
         self.resizeDocks([self.log_dock], [150], Qt.Orientation.Vertical)
         # 上面把設定填進各面板時，元件的 changed 訊號會誤觸「有未儲存的變更」；
@@ -201,11 +218,11 @@ class MainWindow(QMainWindow):
         if mode == self._layout_mode and not force:
             return
         self._layout_mode = mode
-        for w in (self.left_scroll, self.live, self.tabs, self.inner):
+        for w in (self.left_scroll, self.live, self.params_box, self.inner):
             w.setParent(None)
         if mode == "wide":
             self.outer.setOrientation(Qt.Orientation.Horizontal)
-            for w in (self.left_scroll, self.live, self.tabs):
+            for w in (self.left_scroll, self.live, self.params_box):
                 self.outer.addWidget(w)
             self.outer.setStretchFactor(1, 1)
             self.outer.setSizes([360, max(400, width - 760), 380])
@@ -213,7 +230,7 @@ class MainWindow(QMainWindow):
             self.outer.setOrientation(Qt.Orientation.Horizontal)
             self.inner.setOrientation(Qt.Orientation.Vertical)
             self.inner.addWidget(self.live)
-            self.inner.addWidget(self.tabs)
+            self.inner.addWidget(self.params_box)
             self.inner.setStretchFactor(0, 1)
             self.inner.setSizes([max(240, self.height() - 380), 320])
             self.outer.addWidget(self.left_scroll)
@@ -222,19 +239,19 @@ class MainWindow(QMainWindow):
             self.outer.setSizes([340, max(320, width - 360)])
         else:
             self.outer.setOrientation(Qt.Orientation.Vertical)
-            for w in (self.live, self.left_scroll, self.tabs):
+            for w in (self.live, self.left_scroll, self.params_box):
                 self.outer.addWidget(w)
             for i in range(3):
                 self.outer.setStretchFactor(i, 1)
             self.outer.setSizes([max(240, self.height() // 3), 380, 380])
         narrow = mode == "narrow"
         self.left.setMinimumWidth(0 if narrow else 260)
-        self.tabs.setMinimumWidth(0 if narrow else 260)
+        self.params_box.setMinimumWidth(0 if narrow else 260)
         self.version_label.setVisible(not narrow)
         self.language_label.setVisible(not narrow)
         self.theme_label.setVisible(not narrow)
         self.brand.setVisible(width >= 640)
-        for w in (self.left_scroll, self.live, self.tabs):
+        for w in (self.left_scroll, self.live, self.params_box):
             w.setVisible(True)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
@@ -267,10 +284,13 @@ class MainWindow(QMainWindow):
         self.theme_label.setText(tr("common.theme"))
         for i, key in enumerate(THEMES):
             self.theme_box.setItemText(i, tr("common.themeDark") if key == "dark" else tr("common.themeLight"))
-        self.tabs.setTabText(0, tr("params.tab"))
-        self.tabs.setTabText(1, tr("delivery.tab"))
+        self.params_box.setTitle(tr("params.tab"))
         self.log_dock.setWindowTitle(tr("log.title"))
         self.file_menu.setTitle(tr("menu.file"))
+        self.settings_menu.setTitle(tr("menu.settings"))
+        self.connection_action.setText(tr("menu.connectionSettings"))
+        self.channels_action.setText(tr("menu.channelSettings"))
+        self.delivery_action.setText(tr("menu.deliverySettings"))
         self.view_menu.setTitle(tr("menu.view"))
         self.help_menu.setTitle(tr("menu.help"))
         self.save_action.setText(tr("menu.save"))
@@ -280,8 +300,11 @@ class MainWindow(QMainWindow):
         self.log_action.setText(tr("menu.log"))
         self.update_action.setText(tr("menu.checkUpdate"))
         self.about_action.setText(tr("menu.about"))
-        for panel in (self.connection, self.channels, self.live, self.params, self.delivery, self.log_panel, self.banner):
+        for panel in (self.connection, self.connection_form, self.channels, self.channels_edit, self.live, self.params, self.delivery, self.log_panel, self.banner):
             panel.retranslate()
+        for dialog in (self.connection_dialog, self.channels_dialog, self.delivery_dialog):
+            dialog.retranslate()
+        self.connection.show_target(self.engine.cfg.connection)
         if self.tray is not None:
             self.tray.retranslate()
         self._on_connection({"state": self.engine.transport.state.value, "detail": self.engine.transport.state_detail})
@@ -290,7 +313,7 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         self.theme = apply_theme(app, theme) if app is not None else theme
         self.engine.cfg.ui.theme = self.theme
-        for panel in (self.connection, self.channels, self.live, self.log_panel):
+        for panel in (self.connection, self.channels, self.channels_edit, self.live, self.log_panel):
             panel.set_theme(self.theme)
         c = palette(self.theme)
         self.version_label.setStyleSheet(f"color:{c['subtle']};")
@@ -328,6 +351,15 @@ class MainWindow(QMainWindow):
             self.file_menu.addAction(action)
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.quit_action)
+        self.settings_menu = bar.addMenu("")
+        self.connection_action = QAction("", self)
+        self.connection_action.triggered.connect(self.open_connection_settings)
+        self.channels_action = QAction("", self)
+        self.channels_action.triggered.connect(self.open_channel_settings)
+        self.delivery_action = QAction("", self)
+        self.delivery_action.triggered.connect(self.open_delivery_settings)
+        for action in (self.connection_action, self.channels_action, self.delivery_action):
+            self.settings_menu.addAction(action)
         self.view_menu = bar.addMenu("")
         self.log_action = QAction("", self)
         self.log_action.setCheckable(True)
@@ -342,10 +374,32 @@ class MainWindow(QMainWindow):
         self.help_menu.addAction(self.update_action)
         self.help_menu.addAction(self.about_action)
 
+    # ---- 設定視窗 ----
+    @Slot()
+    def open_connection_settings(self) -> None:
+        self.connection_form.load_from(self.engine.cfg.connection)
+        self.connection_form.set_connected(self.engine.transport.state.value in ("connected", "connecting", "reconnecting"))
+        self.connection_dialog.open_dialog()
+
+    @Slot()
+    def open_channel_settings(self) -> None:
+        self.channels_edit.refresh_list(select=self.channels.current_id() or None)
+        self.channels_dialog.open_dialog()
+
+    @Slot()
+    def open_delivery_settings(self) -> None:
+        self.delivery.set_channel(self.engine.channels.get(self.channels.current_id()))
+        self.delivery_dialog.open_dialog()
+
+    def _on_connection_dialog_closed(self) -> None:
+        """關掉設定視窗就把欄位寫回設定，狀態卡上的「要連誰」也跟著更新。"""
+        self.connection_form.apply_to(self.engine.cfg.connection)
+        self.connection.show_target(self.engine.cfg.connection)
+
     # ---- 動作 ----
     @Slot()
     def connect_now(self) -> None:
-        self.connection.apply_to(self.engine.cfg.connection)
+        self.connection_form.apply_to(self.engine.cfg.connection)
         self.engine.connect()
 
     @Slot()
@@ -381,7 +435,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def save_config(self) -> None:
-        self.connection.apply_to(self.engine.cfg.connection)
+        self.connection_form.apply_to(self.engine.cfg.connection)
         self.engine.cfg.ui.window_geometry = base64.b64encode(bytes(self.saveGeometry().data())).decode("ascii")
         try:
             path = self.engine.save_config()
@@ -404,10 +458,12 @@ class MainWindow(QMainWindow):
         self._on_channel_selected("")
 
         def done(_r: Any) -> None:
-            self.connection.load_from(self.engine.cfg.connection)
+            self.connection_form.load_from(self.engine.cfg.connection)
+            self.connection.show_target(self.engine.cfg.connection)
             self.language.setCurrentIndex(max(0, self.language.findData(self.engine.cfg.ui.language)))
             self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(self.engine.cfg.ui.theme)))
             self.channels.refresh_list()
+            self.channels_edit.refresh_list()
             self._dirty = False
             self.setWindowTitle(tr("app.title"))
             self.status_bar.showMessage(tr("dialog.reloaded"), 4000)
@@ -438,6 +494,7 @@ class MainWindow(QMainWindow):
     def _on_connection(self, data: dict[str, Any]) -> None:
         self.connection.on_connection(data)
         state = str(data.get("state") or "disconnected")
+        self.connection_form.set_connected(state in ("connected", "connecting", "reconnecting"))
         label = conn_state_label(state)
         detail = detail_text(str(data.get("detail") or ""))
         self.status_bar.showMessage(f"{label} — {detail}" if detail else label)
@@ -460,7 +517,7 @@ class MainWindow(QMainWindow):
         ch = self.engine.channels.get(cid) if cid else None
         self.live.set_channel(ch)
         self.params.set_channel(ch)
-        self.delivery.set_channel(ch)
+        self.delivery.set_channel(ch)  # 傳送設定視窗可能正開著，跟著切通道
 
     def _refresh_stats(self) -> None:
         self.connection.update_stats(self.engine.transport.stats())
