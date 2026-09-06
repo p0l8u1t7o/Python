@@ -334,6 +334,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const problemMap = useMemo(() => graphProblems(graphNodes, graphEdges, defs), [graphNodes, graphEdges, defs])
 
   // ---- 步驟裝飾：只在有變的步驟回新物件 ----
+  const slowestMs = useMemo(() => (activeRun ? Math.max(0, ...Object.values(activeRun.nodes).map((r) => (r.status === 'skipped' ? 0 : r.duration_ms))) : 0), [activeRun])
   const decoratedNodes = useMemo(
     () =>
       nodes.map((node) => {
@@ -342,10 +343,11 @@ function EditorInner({ flowId }: { flowId: number }) {
         const problems = problemMap.get(node.id)
         const problem = problems?.length ? t(`editor.validation.${problems[0].code}`, problems[0].values) : undefined
         const isRunning = running && data.enabled && node.type === 'tool'
-        if (data.report === report && data.problem === problem && Boolean(data.running) === isRunning) return node
-        return { ...node, data: { ...data, report, problem, running: isRunning } }
+        const heat = report && slowestMs > 0 && report.status !== 'skipped' ? report.duration_ms / slowestMs : 0
+        if (data.report === report && data.problem === problem && Boolean(data.running) === isRunning && data.heat === heat) return node
+        return { ...node, data: { ...data, report, problem, running: isRunning, heat } }
       }),
-    [nodes, activeRun, problemMap, running, t],
+    [nodes, activeRun, problemMap, running, slowestMs, t],
   )
   const decoratedEdges = useMemo(
     () =>
@@ -639,12 +641,14 @@ function EditorInner({ flowId }: { flowId: number }) {
   /** 固定的來源影像：暫存影像優先，其次「用上次影像重跑」。 */
   const pinnedRef = scratch?.ref ?? (reuseImage ? lastSourceRef : null)
 
-  const doPreview = useCallback(async () => {
+  const doPreview = useCallback(async (untilNode?: string) => {
     try {
-      const report = await preview.mutateAsync({ flowId, graph: currentGraph(), reuse_image_ref: pinnedRef })
+      // untilNode：只跑到那一步（含它的上游），下游全部略過——調某一步時不必等整張圖跑完
+      const report = await preview.mutateAsync({ flowId, graph: currentGraph(), reuse_image_ref: pinnedRef, until_node: untilNode ?? null })
       setPreviewRun(report)
       setPinnedRunId(null)
-      toast.push(t('editor.toast.previewDone', { status: t(`status.${report.status}`), ms: Math.round(report.duration_ms) }), report.status === 'ok' ? 'success' : report.status === 'ng' ? 'warning' : 'error', 1500)
+      if (untilNode) setSelectedId(untilNode)
+      toast.push(t(untilNode ? 'editor.toast.runToDone' : 'editor.toast.previewDone', { status: t(`status.${report.status}`), ms: Math.round(report.duration_ms) }), report.status === 'ok' ? 'success' : report.status === 'ng' ? 'warning' : 'error', 1500)
     } catch (error) {
       toast.error(errorMessage(error))
     }
@@ -1160,6 +1164,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         menu={nodeMenu}
         onClose={() => setNodeMenu(null)}
         onOpenTool={(node) => navigate(`/flows/${flowId}/tools/${encodeURIComponent(node.id)}`)}
+        onRunTo={execLocked ? undefined : (node) => void doPreview(node.id)}
         onDuplicate={duplicateNode}
         onToggleEnabled={(node) => patchNode(node.id, { enabled: node.enabled === false })}
         onDelete={(node) => deleteNodes([node.id])}

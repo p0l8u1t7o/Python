@@ -3,9 +3,11 @@
  * of an archived run. Runs whose pictures were kept can be opened long after the memory cache
  * dropped them — that is the whole point of the archive (see apps/vision/archive.py).
  */
+import { useNavigate } from 'react-router-dom'
+import { updateSession } from '@/lib/flowDraft'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, Image as ImageIcon } from 'lucide-react'
+import { Archive, Image as ImageIcon, Wrench } from 'lucide-react'
 
 import { Badge, Button, Modal } from '@/components/ui'
 import { imageUrl } from '@/lib/api'
@@ -38,7 +40,20 @@ export function ArchiveHint({ flow, ngCount }: { flow: Flow | undefined; ngCount
 /** Thumbnails of one archived run; `open` comes from the row the user clicked. */
 export function ArchivedImages({ run, open }: { run: RunReport; open: boolean }) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [zoom, setZoom] = useState<string | null>(null)
+  /** 把這張封存影像當成編輯器的暫存影像（試執行會用它；快取沒有時伺服端會回頭讀封存），然後開編輯器。 */
+  async function openInEditor(flowId: number, ref: string) {
+    const size = await new Promise<{ width: number; height: number }>((resolve) => {
+      const probe = new Image()
+      probe.onload = () => resolve({ width: probe.naturalWidth, height: probe.naturalHeight })
+      probe.onerror = () => resolve({ width: 0, height: 0 })
+      probe.src = imageUrl(ref)
+    })
+    updateSession(flowId, { scratch: { ref, name: ref.split(':').slice(1).join(':') || ref, ...size } })
+    setZoom(null)
+    navigate(`/flows/${flowId}`)
+  }
   const refs = Object.keys(run.images ?? {})
   if (!refs.length) return null
   return (
@@ -54,7 +69,17 @@ export function ArchivedImages({ run, open }: { run: RunReport; open: boolean })
         </div>
       ) : null}
       <Modal open={zoom !== null} onClose={() => setZoom(null)} title={t('archive.viewTitle')} size="lg">
-        {zoom ? <img src={imageUrl(zoom, 1600)} alt={zoom} className="max-h-[70vh] w-full object-contain" /> : null}
+        {zoom ? (
+          <div className="space-y-3">
+            <img src={imageUrl(zoom, 1600)} alt={zoom} className="max-h-[65vh] w-full object-contain" />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="truncate font-mono text-[11px] text-subtle">{zoom}</span>
+              <Button size="sm" variant="primary" icon={<Wrench size={13} />} onClick={() => void openInEditor(run.flow_id, zoom)} data-testid="archive-use-in-editor">
+                {t('archive.useInEditor')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </>
   )

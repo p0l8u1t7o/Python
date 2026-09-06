@@ -644,6 +644,7 @@ const zhHans = {
     toast: {
       saved: '流程已保存',
       previewDone: '试执行完成：{{status}}（{{ms}} ms）',
+      runToDone: '已跑到该步骤：{{status}}，{{ms}} ms',
       needSave: '请先保存流程',
       validationWarning: '有 {{count}} 个步骤的参数有问题',
       scratchUploaded: '已上传暂存影像「{{name}}」（{{w}}×{{h}}）',
@@ -1297,6 +1298,7 @@ const zhHans = {
     enabled: '之后的不良图像会被保留',
     hasImages: '已封存 {{count}} 张图像，点选此行查看',
     viewTitle: '封存图像',
+    useInEditor: '在编辑器用这张影像重跑',
   },
   stats: {
     title: '统计',
@@ -1862,6 +1864,8 @@ const zhHans = {
     copyParams: '拷贝参数',
     pasteParams: '粘贴参数',
     pasteParamsHint: '只能贴到同类型的步骤',
+    runTo: '只跑到这里',
+    runToHint: '执行此步骤与它之前的步骤，之后的全部略过',
     paramsCopied: '已拷贝「{{name}}」的参数',
     paramsPasted: '已粘贴参数',
   },

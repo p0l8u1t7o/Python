@@ -644,6 +644,7 @@ const zhHant = {
     toast: {
       saved: '流程已儲存',
       previewDone: '試執行完成：{{status}}（{{ms}} ms）',
+      runToDone: '已跑到該步驟：{{status}}，{{ms}} ms',
       needSave: '請先儲存流程',
       validationWarning: '有 {{count}} 個步驟的參數有問題',
       scratchUploaded: '已上傳暫存影像「{{name}}」（{{w}}×{{h}}）',
@@ -1297,6 +1298,7 @@ const zhHant = {
     enabled: '之後的不良影像會被保留',
     hasImages: '已封存 {{count}} 張影像，點選此列檢視',
     viewTitle: '封存影像',
+    useInEditor: '在編輯器用這張影像重跑',
   },
   stats: {
     title: '統計',
@@ -1862,6 +1864,8 @@ const zhHant = {
     copyParams: '複製參數',
     pasteParams: '貼上參數',
     pasteParamsHint: '只能貼到同型別的步驟',
+    runTo: '只跑到這裡',
+    runToHint: '執行此步驟與它之前的步驟，之後的全部略過',
     paramsCopied: '已複製「{{name}}」的參數',
     paramsPasted: '已貼上參數',
   },

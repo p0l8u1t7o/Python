@@ -717,6 +717,7 @@ const en = {
     enabled: 'Reject images will be kept from now on',
     hasImages: '{{count}} archived images — click the row to view',
     viewTitle: 'Archived image',
+    useInEditor: 'Rerun this picture in the editor',
   },
   stats: {
     title: 'Statistics',
@@ -1143,6 +1144,8 @@ const en = {
     copyParams: 'Copy parameters',
     pasteParams: 'Paste parameters',
     pasteParamsHint: 'Only onto a step of the same type',
+    runTo: 'Run to here',
+    runToHint: 'Runs this step and everything before it; the steps after it are skipped',
     paramsCopied: 'Parameters of "{{name}}" copied',
     paramsPasted: 'Parameters pasted',
   },
@@ -1709,6 +1712,7 @@ const enExtra3 = {
     toast: {
       saved: 'Flow saved',
       previewDone: 'Preview finished: {{status}} ({{ms}} ms)',
+      runToDone: 'Ran to that step: {{status}}, {{ms}} ms',
       needSave: 'Save the flow first',
       validationWarning: '{{count}} steps have parameter problems',
       continuousStarted: 'Continuous run started',

@@ -126,6 +126,23 @@ class ArchiveRunTests(TransactionTestCase):
         self.assertIsNotNone(img, "封存讀不回來就沒有意義")
         self.assertGreater(img.size, 0)
 
+    def test_preview_reuses_an_archived_picture(self):
+        """統計頁「在編輯器用這張影像重跑」：快取沒了也能拿封存的那張試執行；真的沒有就 404 image_gone。"""
+        import json
+
+        row = self._run(mode="ng", ng=True)
+        ref = next(iter(row.images))
+        store.drop_run(row.id.hex)
+        self.assertIsNone(store.get(ref))
+        flow = Flow.objects.get(pk=row.flow_id)
+        body = {"graph": flow.graph, "reuse_image_ref": ref}
+        r = self.client.post(f"/api/vision/flows/{flow.id}/preview", data=json.dumps(body), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn(r.json()["status"], ("ok", "ng"))
+        r = self.client.post(f"/api/vision/flows/{flow.id}/preview", data=json.dumps({**body, "reuse_image_ref": "nope:src:image"}), content_type="application/json")
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.json()["error"]["code"], "image_gone")
+
     def test_ok_run_is_not_archived_in_ng_mode(self):
         row = self._run(mode="ng", ng=False)
         self.assertEqual(row.images, {})

@@ -138,13 +138,25 @@ function ToolNodeInner({ data, selected }: NodeProps) {
         <div className="pb-2" />
       )}
       {report ? (
-        // 獨立一列（不用 absolute）：疊在角落會壓到最後一個輸出埠的名稱
-        <p className={`px-3 pb-1 text-right text-[9px] leading-none tabular-nums ${customBg ? 'opacity-70' : 'text-subtle'}`}>
-          {Math.round(report.duration_ms)} ms
-        </p>
+        // 獨立一列（不用 absolute）：疊在角落會壓到最後一個輸出埠的名稱。
+        // 耗時依「佔該次最慢節點的比例」著色：最慢的紅、一半以上橙，瓶頸一眼看得到。
+        <div className="px-3 pb-1" data-testid="node-timing" data-heat={heatLevel(node.heat)}>
+          <div className="h-0.5 w-full overflow-hidden rounded bg-line/60">
+            <div className={`h-full ${heatLevel(node.heat) === 'hot' ? 'bg-critical' : heatLevel(node.heat) === 'warm' ? 'bg-warning' : 'bg-ok/60'}`} style={{ width: `${Math.round(Math.max(0.04, node.heat ?? 0) * 100)}%` }} />
+          </div>
+          <p className={`text-right text-[9px] leading-none tabular-nums ${heatLevel(node.heat) === 'hot' ? 'font-semibold text-critical' : heatLevel(node.heat) === 'warm' ? 'text-warning' : customBg ? 'opacity-70' : 'text-subtle'}`}>
+            {report.duration_ms >= 10 ? Math.round(report.duration_ms) : report.duration_ms.toFixed(1)} ms
+          </p>
+        </div>
       ) : null}
     </div>
   )
+}
+
+/** 0.85 以上＝該次最慢的那幾步（hot）、0.5 以上＝值得看一眼（warm）。 */
+export function heatLevel(heat: number | undefined): 'hot' | 'warm' | 'cool' {
+  if (heat === undefined || heat <= 0) return 'cool'
+  return heat >= 0.85 ? 'hot' : heat >= 0.5 ? 'warm' : 'cool'
 }
 
 export const ToolNode = memo(ToolNodeInner)

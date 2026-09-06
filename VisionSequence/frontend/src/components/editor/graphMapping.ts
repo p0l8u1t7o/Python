@@ -23,6 +23,8 @@ export interface ToolNodeData extends Record<string, unknown> {
   params: Record<string, unknown>
   /** 上一次 run 的節點報告（狀態、耗時） */
   report?: NodeReport
+  /** 耗時佔該次 run 最慢節點的比例（0~1）；最慢的著紅，一眼看出瓶頸 */
+  heat?: number
   running?: boolean
   problem?: string
   /** 有 flow 邊連入 → 畫控制輸入菱形（其實一律畫，因為連線前不知道） */

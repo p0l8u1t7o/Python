@@ -577,7 +577,10 @@ def preview_flow(request: HttpRequest, flow_id: int, payload: schemas.PreviewReq
     if payload.reuse_image_ref:
         input_image = store.get(payload.reuse_image_ref)
         if input_image is None:
-            raise NotFound("That image is no longer cached", code="image_gone")
+            # 快取淘汰後回頭找封存：統計頁「用這張影像重跑」拿的就是三天前那片不良品
+            input_image = archive.read(payload.reuse_image_ref.split(":", 1)[0], payload.reuse_image_ref)
+        if input_image is None:
+            raise NotFound("That image is no longer available (not in cache and not archived)", code="image_gone")
     report = runner.run_sync(
         flow,
         trigger="preview",
