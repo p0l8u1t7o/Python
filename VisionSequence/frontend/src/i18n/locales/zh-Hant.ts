@@ -1214,6 +1214,7 @@ const zhHant = {
     sortOptions: { name: '檔名', mtime: '修改時間', random: '隨機' },
   },
   assets: {
+    views: { cards: '卡片', tree: '樹狀' },
     editGroup: '編輯名稱／群組',
     title: '資產庫',
     subtitle: '範本影像、模型與其他檔案',
@@ -1224,7 +1225,7 @@ const zhHant = {
     created: '建立時間',
     deleteTitle: '刪除資產',
     deleteMessage: '確定要刪除「{{name}}」？使用此資產的流程將無法執行。',
-    kinds: { image: '影像', model: '模型', file: '檔案' },
+    kinds: { image: '影像', model: '模型', file: '檔案', calibration: '標定', dataset: '資料集' },
     uploaded: '已上傳',
     deleted: '已刪除',
     file: '檔案',

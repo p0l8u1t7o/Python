@@ -1,10 +1,11 @@
 /** 資產：影像縮圖網格、上傳（image/model/file）、刪除。 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FileBox, Images, Pencil, Trash2, Upload } from 'lucide-react'
+import { FileBox, Images, LayoutGrid, ListTree, Pencil, Trash2, Upload } from 'lucide-react'
 
+import { AssetTree } from '@/components/assets/AssetTree'
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, GROUP_ALL, GroupChips, GroupSelect, LoadingState, Modal, PageHeader, Select, TextInput, matchGroup } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, GROUP_ALL, GroupChips, GroupSelect, LoadingState, Modal, PageHeader, SegmentedControl, Select, TextInput, matchGroup } from '@/components/ui'
 import { GroupManager } from '@/components/GroupManager'
 import { assetUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
@@ -12,10 +13,17 @@ import { useAssetMutations, useAssets, useGroups } from '@/lib/queries'
 import type { Asset } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
+import { formatSize } from '@/components/assets/AssetTree'
+
+const VIEW_KEY = 'vs.assetsView'
+type AssetView = 'cards' | 'tree'
+
+function storedView(): AssetView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'tree' ? 'tree' : 'cards'
+  } catch {
+    return 'cards'
+  }
 }
 
 export function AssetsPage() {
@@ -29,6 +37,7 @@ export function AssetsPage() {
   const [pendingDelete, setPendingDelete] = useState<Asset | null>(null)
   const [groupFilter, setGroupFilter] = useState(GROUP_ALL)
   const [managingGroups, setManagingGroups] = useState(false)
+  const [view, setView] = useState<AssetView>(storedView)
   const groups = useGroups('asset')
   //: 編輯名稱／群組的小 Modal
   const [editing, setEditing] = useState<{ asset: Asset; name: string; group: string } | null>(null)
@@ -76,6 +85,14 @@ export function AssetsPage() {
         description={t('assets.subtitle')}
         actions={
           <>
+            <SegmentedControl
+              value={view}
+              onChange={(v) => { setView(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* 忽略 */ } }}
+              options={[
+                { value: 'cards', label: <span className="flex items-center gap-1"><LayoutGrid size={13} /> {t('assets.views.cards')}</span> },
+                { value: 'tree', label: <span className="flex items-center gap-1"><ListTree size={13} /> {t('assets.views.tree')}</span> },
+              ]}
+            />
             <Select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} placeholder={t('common.none')} aria-label={t('assets.kind')} options={kindOptions} className="w-36" />
             <Button onClick={() => setManagingGroups(true)} data-testid="manage-groups">{t('groups.manage')}</Button>
             <Button variant="primary" icon={<Upload size={15} />} onClick={() => setUploading(true)}>{t('assets.upload')}</Button>
@@ -89,6 +106,9 @@ export function AssetsPage() {
         <ErrorState error={assets.error} onRetry={() => void assets.refetch()} />
       ) : assets.data.items.length === 0 ? (
         <Card><EmptyState icon={<Images className="size-6" />} title={t('assets.empty')} /></Card>
+      ) : view === 'tree' ? (
+        <AssetTree items={assets.data.items.filter((a) => matchGroup(a, groupFilter))}
+          onEdit={(asset) => setEditing({ asset, name: asset.name, group: asset.group })} onDelete={setPendingDelete} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {assets.data.items.filter((a) => matchGroup(a, groupFilter)).map((asset) => (

@@ -1214,6 +1214,7 @@ const zhHans = {
     sortOptions: { name: '文件名', mtime: '修改时间', random: '随机' },
   },
   assets: {
+    views: { cards: '卡片', tree: '树状' },
     editGroup: '编辑名称／分组',
     title: '资产库',
     subtitle: '范本影像、模型与其他文件',
@@ -1224,7 +1225,7 @@ const zhHans = {
     created: '创建时间',
     deleteTitle: '删除资产',
     deleteMessage: '确定要删除「{{name}}」？使用此资产的流程将无法运行。',
-    kinds: { image: '影像', model: '模型', file: '文件' },
+    kinds: { image: '影像', model: '模型', file: '文件', calibration: '标定', dataset: '数据集' },
     uploaded: '已上传',
     deleted: '已删除',
     file: '文件',

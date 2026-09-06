@@ -1849,7 +1849,7 @@ const enExtra3 = {
     kind: 'Type', size: 'Size', created: 'Created', file: 'File',
     deleteTitle: 'Delete asset',
     deleteMessage: 'Delete "{{name}}"? Flows using it will stop working.',
-    kinds: { image: 'Image', model: 'Model', file: 'File' },
+    kinds: { image: 'Image', model: 'Model', file: 'File', calibration: 'Calibration', dataset: 'Dataset' },
     uploaded: 'Uploaded', deleted: 'Deleted',
   },
   settings: {
