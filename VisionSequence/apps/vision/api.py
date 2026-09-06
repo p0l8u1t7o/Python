@@ -123,6 +123,18 @@ def _decode_upload(upload: UploadedFile | None) -> np.ndarray | None:
     return image
 
 
+#: 節點報告的完整欄位：落地的 FlowRun 只留 status／duration_ms／message，
+#: 讀回來時要補齊其餘欄位，否則前端拿到少一半鍵的 NodeReport（`Object.entries(outputs)` 會炸）。
+_NODE_DEFAULTS: dict[str, Any] = {"status": "ok", "duration_ms": 0.0, "message": "", "branch": None,
+                                  "outputs": {}, "overlays": [], "overlay_on": None, "detail": {}, "logs": []}
+
+
+def _nodes_out(nodes: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(nodes, dict):
+        return {}
+    return {str(nid): {**_NODE_DEFAULTS, **(row if isinstance(row, dict) else {})} for nid, row in nodes.items()}
+
+
 def _run_row_out(run: FlowRun) -> dict[str, Any]:
     return {
         "id": run.id.hex,
@@ -133,8 +145,8 @@ def _run_row_out(run: FlowRun) -> dict[str, Any]:
         "station_id": run.station_id,
         "recipe": run.recipe,
         "duration_ms": run.duration_ms,
-        "nodes": run.nodes,
-        "outputs": run.outputs,
+        "nodes": _nodes_out(run.nodes),
+        "outputs": run.outputs or {},
         "images": run.images or {},
         "error": run.error,
         "started_at": run.started_at.timestamp(),

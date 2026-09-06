@@ -433,6 +433,17 @@ class PersistedRunTests(TransactionTestCase):
         stats = self.client.get(f"/api/vision/flows/{flow['id']}/stats").json()
         self.assertGreaterEqual(stats["total"], 3)
         self.assertGreaterEqual(stats["by_status"].get("ok", 0), 3)
+        # 落地的 run 只留 status／duration_ms／message，讀回來要補齊整個 NodeReport 形狀
+        # （少一個 outputs 前端 `Object.entries(...)` 就整頁炸掉）
+        row = r.json()["items"][0]
+        one = self.client.get(f"/api/vision/runs/{row['id']}").json()
+        for report in (row, one):
+            self.assertTrue(report["nodes"])
+            for node_id, node in report["nodes"].items():
+                self.assertEqual(sorted(node), sorted(["status", "duration_ms", "message", "branch", "outputs", "overlays", "overlay_on", "detail", "logs"]), node_id)
+                self.assertIsInstance(node["outputs"], dict)
+                self.assertIsInstance(node["overlays"], list)
+            self.assertIsInstance(report["outputs"], dict)
 
 
 class ResourceGroupTests(ApiTests.__bases__[0]):

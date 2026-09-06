@@ -196,6 +196,7 @@
  outputs: {...named outputs},
  nodes: {node_id: {status: ok|ng|error|skipped, duration_ms, message, branch, outputs: {port: value}, overlays: [...], overlay_on, detail, logs}}}</pre>
 <p>An image output is <code>{"ref": "runid:node:port" | null, "width", "height", "channels"}</code>; fetch it from <code>GET /api/vision/images/{ref}?max=1024&amp;fmt=jpeg|png</code>. When the run is no longer cached the endpoint falls back to the image archive, so an archived reject can still be opened days later.</p>
+<p><strong>A run read back from the database</strong> (<code>GET /runs/{id}</code> and <code>GET /flows/{id}/runs</code> once it is no longer in memory) keeps the same shape: only <code>status</code>, <code>duration_ms</code> and <code>message</code> are actually stored per node, and the rest of the keys come back empty (<code>outputs: {}</code>, <code>overlays: []</code>, <code>detail: {}</code>, <code>logs: []</code>) rather than missing, so a client can read <code>report.nodes[id].outputs</code> without checking first.</p>
 <p>Preview mode (<code>POST /flows/{id}/preview</code> with <code>{graph, context?, reuse_image_ref?}</code>) keeps every intermediate image, and <code>detail._input_ref</code> points at each step's input image.</p>
 
 <h3 id="preview">Preview extras (used by the tool page)</h3>

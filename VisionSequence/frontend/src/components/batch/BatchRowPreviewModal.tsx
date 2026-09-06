@@ -34,7 +34,7 @@ export function BatchRowPreviewModal({ run, set, index, graph, onClose }: { run:
   const size = useMemo(() => {
     if (!report) return { w: 0, h: 0 }
     for (const rep of Object.values(report.nodes)) {
-      const img = Object.values(rep.outputs).find((v) => v && typeof v === 'object' && 'width' in (v as object)) as { width: number; height: number } | undefined
+      const img = Object.values(rep.outputs ?? {}).find((v) => v && typeof v === 'object' && 'width' in (v as object)) as { width: number; height: number } | undefined
       if (img) return { w: img.width, h: img.height }
     }
     return { w: 0, h: 0 }
@@ -49,7 +49,7 @@ export function BatchRowPreviewModal({ run, set, index, graph, onClose }: { run:
             <StatusBadge status={report.status} />
             <span className="tnum text-muted">{Math.round(report.duration_ms)} ms</span>
             {report.error ? <span className="text-critical">{report.error}</span> : null}
-            <span className="font-mono text-muted">{Object.entries(report.outputs).slice(0, 6).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ')}</span>
+            <span className="font-mono text-muted">{Object.entries(report.outputs ?? {}).slice(0, 6).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ')}</span>
           </div>
           <div className="h-[65vh] rounded-lg bg-viewer">
             <ImageViewer src={ref ? imageUrl(ref, 1600) : null} imageWidth={size.w} imageHeight={size.h} overlays={overlays} toolbar className="h-full w-full"

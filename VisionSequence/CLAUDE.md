@@ -197,6 +197,7 @@
 ### 引擎、Runner、影像快取
 - 執行緒池內的熱路徑**不碰資料庫**：來源與資產在 `Runner._prefetch()`（呼叫者執行緒）先開好；連續模式每 2 秒才回 DB 確認一次。
 - 配方（`FlowRecipe`）：執行時 `apply_recipe()` 疊參數再編譯；`run`／`preview`／TCP `recipe=` 都可指定，未指定用預設配方。每筆 run 帶 `station_id`（`VISION_STATION_ID`）；未 `commissioned` 的流程只加 warnings 不阻擋。
+- **落地的 run 讀回來要補齊節點報告形狀**：`FlowRun.nodes` 只存 status／duration_ms／message，`api._nodes_out` 補上 outputs／overlays／branch／detail／logs 的空值（少一個鍵前端 `Object.entries` 就整頁崩）。
 - 影像快取 `images.ImageStore`：每流程保留最近 N 次 run 的影像（`KEEP_RUN_IMAGES`）；**暫存影像上傳與 AI 助手影像用 `store.put(..., pinned=True)`**，不佔 run 輪替名額（否則工具頁試執行 N+1 次就把暫存影像擠掉）；總量 LRU。engine 會把節點影像輸出自動放進 store（ref＝`{run_id}:{node}:{port}`）。
 - viewer 規則：執行前（mode='input'）一律不疊 overlays；無影像輸出的工具只在 output-fallback 時疊標記；`firstImageOutput`／`lastImage` 忽略 `_image`。
 

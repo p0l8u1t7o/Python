@@ -89,30 +89,30 @@ export function NodeResult({ report, run }: { report: NodeReport | undefined; ru
         <DetailRow label={t('editor.result.status')}><StatusBadge status={report.status} /></DetailRow>
         <DetailRow label={t('editor.result.duration')}><span className="tnum">{report.duration_ms.toFixed(1)} ms</span></DetailRow>
         {report.branch ? <DetailRow label={t('editor.result.branch')} mono>{report.branch}</DetailRow> : null}
-        <DetailRow label={t('editor.result.overlays')}>{report.overlays.length}</DetailRow>
+        <DetailRow label={t('editor.result.overlays')}>{(report.overlays ?? []).length}</DetailRow>
       </dl>
       {report.message ? <p className={`rounded-lg px-3 py-2 text-xs ${report.status === 'error' ? 'bg-critical-soft text-critical' : report.status === 'ng' ? 'bg-warning-soft text-warning' : 'bg-surface-muted text-content'}`}>{report.message}</p> : null}
       <div>
         <p className="label">{t('editor.result.outputs')}</p>
         <table className="w-full text-xs">
           <tbody className="divide-y divide-line">
-            {Object.entries(report.outputs).map(([key, value]) => (
+            {Object.entries(report.outputs ?? {}).map(([key, value]) => (
               <tr key={key}>
                 <td className="py-1 pr-2 font-mono text-muted">{key}</td>
                 <td className="py-1 text-right font-mono" title={typeof value === 'object' ? JSON.stringify(value) : undefined}>{formatValue(value)}</td>
               </tr>
             ))}
-            {Object.keys(report.outputs).length === 0 ? (
+            {Object.keys(report.outputs ?? {}).length === 0 ? (
               <tr><td className="py-1 text-muted">—</td></tr>
             ) : null}
           </tbody>
         </table>
       </div>
-      {report.logs.length ? (
+      {report.logs?.length ? (
         <div>
           <p className="label">{t('editor.result.logs')}</p>
           <ul className="max-h-40 space-y-0.5 overflow-y-auto font-mono text-[11px]">
-            {report.logs.map((log, i) => (
+            {(report.logs ?? []).map((log, i) => (
               <li key={i} className={log.level === 'error' ? 'text-critical' : log.level === 'warning' ? 'text-warning' : 'text-muted'}>
                 [{log.level}] {log.message}
               </li>
@@ -123,7 +123,7 @@ export function NodeResult({ report, run }: { report: NodeReport | undefined; ru
       {Object.keys(report.detail ?? {}).filter((k) => !k.startsWith('_')).length ? (
         <details className="text-xs">
           <summary className="cursor-pointer text-muted">detail</summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded bg-surface-muted p-2 font-mono text-[10px]">{JSON.stringify(Object.fromEntries(Object.entries(report.detail).filter(([k]) => !k.startsWith('_'))), null, 2)}</pre>
+          <pre className="mt-1 max-h-48 overflow-auto rounded bg-surface-muted p-2 font-mono text-[10px]">{JSON.stringify(Object.fromEntries(Object.entries(report.detail ?? {}).filter(([k]) => !k.startsWith('_'))), null, 2)}</pre>
         </details>
       ) : null}
       {run ? <RunOutputs run={run} /> : null}
@@ -142,13 +142,13 @@ export function RunOutputs({ run }: { run: RunReport }) {
       {run.error ? <p className="mb-1 text-xs text-critical">{run.error}</p> : null}
       <table className="w-full text-xs">
         <tbody className="divide-y divide-line">
-          {Object.entries(run.outputs).map(([key, value]) => (
+          {Object.entries(run.outputs ?? {}).map(([key, value]) => (
             <tr key={key}>
               <td className="py-1 pr-2 font-mono text-muted">{key}</td>
               <td className="py-1 text-right font-mono">{formatValue(value)}</td>
             </tr>
           ))}
-          {Object.keys(run.outputs).length === 0 ? <tr><td className="py-1 text-muted">—</td></tr> : null}
+          {Object.keys(run.outputs ?? {}).length === 0 ? <tr><td className="py-1 text-muted">—</td></tr> : null}
         </tbody>
       </table>
     </div>

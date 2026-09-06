@@ -401,7 +401,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
               <DetailRow label={t('editor.result.status')}><StatusBadge status={report.status} /></DetailRow>
               <DetailRow label={t('editor.result.duration')}><span className="tnum">{report.duration_ms.toFixed(1)} ms</span></DetailRow>
               {report.branch ? <DetailRow label={t('editor.result.branch')} mono>{report.branch}</DetailRow> : null}
-              <DetailRow label={t('editor.result.overlays')}>{report.overlays.length}</DetailRow>
+              <DetailRow label={t('editor.result.overlays')}>{(report.overlays ?? []).length}</DetailRow>
             </dl>
           ) : (
             <p className="mb-3 text-xs text-muted">{t('editor.result.noResult')}</p>
@@ -455,7 +455,7 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
             <div>
               <p className="label">{t('editor.result.logs')}</p>
               <ul className="max-h-40 space-y-0.5 overflow-y-auto font-mono text-[11px]">
-                {report.logs.map((log, i) => (
+                {(report.logs ?? []).map((log, i) => (
                   <li key={i} className={log.level === 'error' ? 'text-critical' : log.level === 'warning' ? 'text-warning' : 'text-muted'}>[{log.level}] {log.message}</li>
                 ))}
               </ul>

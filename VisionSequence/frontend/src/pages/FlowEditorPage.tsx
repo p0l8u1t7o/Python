@@ -94,7 +94,7 @@ export interface ViewTarget {
 
 export function firstImageOutput(report: NodeReport | undefined): { ref: string | null; width: number; height: number } | null {
   if (!report) return null
-  for (const [key, value] of Object.entries(report.outputs)) {
+  for (const [key, value] of Object.entries(report.outputs ?? {})) {
     if (key === '_image') continue // 隱含直通埠＝原影像，不是「執行後」結果（否則 overlay 會消失、前後看起來相反）
     if (isImageRef(value)) return { ref: value.ref, width: value.width, height: value.height }
   }
@@ -142,7 +142,7 @@ export function resolveView(run: RunReport | null, selectedId: string | null, mo
   if (!chosen) return { ...empty, nodeId, hasInput: false, hasOutput: false }
   // 「執行前」（明確選 input）一律乾淨——標記是檢測「結果」，只該出現在執行後；
   // 無影像輸出的工具（找圓/blob…）在 output 模式 fallback 到輸入圖，那才疊標記。
-  let overlays: Overlay[] = mode === 'input' && input !== null ? [] : useInput || !input ? report.overlays : []
+  let overlays: Overlay[] = mode === 'input' && input !== null ? [] : useInput || !input ? report.overlays ?? [] : []
   if (allOverlays) {
     overlays = order.flatMap((id) => run.nodes[id]?.overlays ?? [])
   }
