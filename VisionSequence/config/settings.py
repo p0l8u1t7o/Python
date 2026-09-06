@@ -195,6 +195,9 @@ VISION = {
     "SAM_MODEL": _env("VISION_SAM_MODEL", "sam2.1_t.pt"),
     # OpenCV 執行緒數；0 = 交給 OpenCV 自己決定。多流程並行時建議 1～2，避免互搶。
     "CV_THREADS": _env_int("VISION_CV_THREADS", 2),
+    # 前處理加速（WP-16）：auto｜cpu｜opencl｜cuda；只有 remap／medianBlur／filter2D／dft 在影像 ≥ ACCEL_MIN_PIXELS 時走 GPU（見 docs/performance.html §5.7o）
+    "ACCEL": _env("VISION_ACCEL", "auto"),
+    "ACCEL_MIN_PIXELS": _env_int("VISION_ACCEL_MIN_PIXELS", 4_000_000),
     # 站台識別：寫進每筆 run、回傳與事件（多站匯總用）。
     "STATION_ID": _env("VISION_STATION_ID", "ST01"),
     # HTTP 埠（manage.py serve 的預設；doctor 也探這個埠）。

@@ -368,6 +368,7 @@ run.outputs = context["_outputs"], written by the judge and output tools</pre>
 <tr><td>VISION_AUDIT_DAYS</td><td>730</td><td>Audit log retention (0 for forever)</td></tr>
 <tr><td>VISION_KEEP_VERSIONS</td><td>50</td><td>Versions kept per flow (released ones are always kept)</td></tr>
 <tr><td>VISION_CV_THREADS</td><td>2</td><td>Algorithm parallelism inside one tool; 1–2 when flows run in parallel</td></tr>
+<tr><td>VISION_ACCEL / VISION_ACCEL_MIN_PIXELS</td><td>auto / 4000000</td><td>GPU pre-processing through OpenCL for remap, median blur, custom-kernel filters and DFT on pictures of at least this many pixels (auto = when the machine has OpenCL; cpu | opencl | cuda; <code>doctor</code> shows the backend in use) — see Performance §5.7o for why only these</td></tr>
 <tr><td>VISION_PLUGIN_DIR</td><td>./plugins</td><td>The plugin folder (auto-detected)</td></tr>
 <tr><td>VISION_TOOL_PLUGINS / SOURCE_PLUGINS / COMM_PLUGINS</td><td>empty</td><td>Module-path plugins (advanced)</td></tr>
 <tr><td>VISION_API_KEY</td><td>empty</td><td>The optional key</td></tr>

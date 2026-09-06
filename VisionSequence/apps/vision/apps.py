@@ -19,6 +19,9 @@ class VisionConfig(AppConfig):
         threads = settings.VISION.get("CV_THREADS", 0)
         if threads:
             cv2.setNumThreads(int(threads))
+        from apps.vision.tools import accel
+
+        accel.configure(str(settings.VISION.get("ACCEL", "auto")), int(settings.VISION.get("ACCEL_MIN_PIXELS", accel.DEFAULT_MIN_PIXELS)))
 
         from apps.vision.tools import register_builtins
 

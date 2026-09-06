@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 93 個內建工具、201 個 API 端點、29 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 664 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 93 個內建工具、201 個 API 端點、29 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 780 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -319,6 +319,7 @@ graph JSON 格式與埠合約見 `docs/contract.html`；**不改 graph 格式、
 | `VISION_MAX_WORKERS`、`VISION_MAX_QUEUE_PER_FLOW`、`VISION_RUN_TIMEOUT_S` | 引擎並行與逾時 |
 | `VISION_KEEP_RUN_IMAGES`、`VISION_IMAGE_CACHE_MB`、`VISION_PERSIST_RUNS`、`VISION_KEEP_RUN_ROWS` | 影像快取與執行紀錄 |
 | `VISION_MEASUREMENT_LOG`、`VISION_MEASUREMENT_DAYS` | 量測值 SPC：具名數值輸出另存一年（統計頁「量測值」管制圖、總覽告警） |
+| `VISION_ACCEL`、`VISION_ACCEL_MIN_PIXELS` | 前處理加速（auto／cpu／opencl／cuda）：只對 ≥ 4 MP 影像的重取樣／中值／卷積／FFT 走 OpenCL，實測理由見 docs/performance.html §5.7o |
 | `VISION_PLUGIN_DIR`、`VISION_TOOL_PLUGINS`、`VISION_SOURCE_PLUGINS`、`VISION_COMM_PLUGINS` | 外掛 |
 | `VISION_API_KEY`、`VISION_STATION_ID`、`VISION_TCP_HOST/PORT` | 整合方金鑰、站台識別、TCP 介面 |
 | `VISION_CAPTURE_HOST/PORT`、`VISION_CAPTURE_AUTH`、`VISION_CAPTURE_MAX_FRAME_MB`、`VISION_CAPTURE_TIMEOUT_MS` | 擷取端擷取埠（預設 9100）、登錄金鑰（空＝沿用 API_KEY）、單張上限、預設逾時 |

@@ -22,6 +22,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
 from apps.vision.tools.roi import region_overlay
 
@@ -160,7 +161,7 @@ def _maps(m: dict[str, Any], interpolation: str) -> tuple[np.ndarray, np.ndarray
 def unwrap(image: np.ndarray, m: dict[str, Any], interpolation: str = "linear") -> np.ndarray:
     """依 mapping 展開影像（寬＝角度、高＝半徑；內圈在上）。多位深與彩色原樣進出。"""
     map1, map2 = _maps(m, interpolation)
-    return cv2.remap(image, map1, map2, _INTERP.get(interpolation, cv2.INTER_LINEAR), borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return accel.remap(image, map1, map2, _INTERP.get(interpolation, cv2.INTER_LINEAR), border_mode=cv2.BORDER_CONSTANT, border_value=0)
 
 
 class PolarUnwrapTool(Tool):

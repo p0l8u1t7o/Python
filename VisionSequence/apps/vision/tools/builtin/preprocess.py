@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from apps.vision import calib
+from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
 from apps.vision.tools.builtin.locate import read_asset_image
 from apps.vision.tools.roi import crop, region_overlay
@@ -86,7 +87,7 @@ class BlurTool(Tool):
         method = ctx.param("method", "gaussian")
         sigma = ctx.number("sigma", 0)
         if method == "median":
-            out = cv2.medianBlur(image, k)
+            out = accel.median_blur(image, k)
         elif method == "bilateral":
             out = cv2.bilateralFilter(image, k, sigma or 50, sigma or 50)
         elif method == "box":
@@ -508,7 +509,7 @@ class FilterTool(Tool):
         if method == "sharpen":
             k = float(ctx.number("strength", 1.0))
             kernel = np.array([[0, -k, 0], [-k, 1 + 4 * k, -k], [0, -k, 0]], dtype=np.float32)
-            out = cv2.filter2D(image, -1, kernel)
+            out = accel.filter2d(image, -1, kernel)
         elif method == "canny":
             out = cv2.Canny(to_gray(image), ctx.number("low", 50), ctx.number("high", 150), apertureSize=max(3, ksize))
         elif method == "laplacian":
@@ -534,7 +535,7 @@ class FilterTool(Tool):
             out = cv2.convertScaleAbs(g.astype(np.float32) - cv2.GaussianBlur(g, (0, 0), 3).astype(np.float32) + 128.0)
         elif method == "emboss":
             kernel = np.array([[-2, -1, 0], [-1, 1, 1], [0, 1, 2]], dtype=np.float32)
-            out = cv2.filter2D(to_gray(image), -1, kernel)
+            out = accel.filter2d(to_gray(image), -1, kernel)
         else:
             raw = ctx.param("kernel")
             try:
@@ -543,7 +544,7 @@ class FilterTool(Tool):
                     raise ValueError
             except (TypeError, ValueError):
                 raise ToolError("A custom kernel must be a 3×3 array of numbers") from None
-            out = cv2.filter2D(image, -1, kernel)
+            out = accel.filter2d(image, -1, kernel)
         return Result(outputs={"image": out}, message=method)
 
 

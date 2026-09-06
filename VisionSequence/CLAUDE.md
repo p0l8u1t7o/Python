@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：93 個內建工具（8 類）、201 個 API 端點、29 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：93 個內建工具（8 類）、201 個 API 端點、29 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -75,6 +75,7 @@
 - **Python 腳本工具**（`builtin/script.py`，`python_script`）：使用者程式碼 `def run(ctx)` 與引擎同行程受限執行——受限 builtins、import 白名單、AST 禁 dunder／exec／open、`sys.settrace` 看門狗只追蹤 `<python_script>` frame（`max_ms`）、輸入影像唯讀 view、模組命名空間依程式碼 hash 快取；固定輸出埠（value／result／text／data／image＋pass／fail）。**核准清單** `apps/vision/scripts.py`＋`ScriptApproval`（migration 0014）：只有管理員儲存（POST/PATCH /flows、匯入）時登記的 sha256 才會執行（內建 `TEMPLATE` 例外，插入工具即可試執行），一般使用者送新腳本 403；試執行由 `scripts.client_context(admin=)` 放 `_script_admin`（外部 context 的 `_` 鍵一律丟掉）；配方不能覆寫 `code`。`Param.kind="code"`（`accept`＝語言）前端 `CodeField`（非管理員唯讀），工具頁參數欄遇到 code 參數自動加寬。測試 `tests/test_script_tool.py`；bench／純度掃描用 context `_script_admin`。
 - **條碼品質分級**（`apps/vision/grading.py`＋`builtin/barcode_grade.py`，WP-09）：解碼與符號結構靠 **zxing-cpp**（requirements.txt；`Result.extra` 的 UEC／Version 免寫 RS；角點對 QR 是邊界、對 Data Matrix 是含邊像素→`refine_grid` 用固定圖形外緣重擬合四邊）；門檻表 `THRESHOLDS`，15415／DPM／15416 三條路徑分開；反射率＝灰階/255、孔徑＝圓盤濾波，數值對得上驗證器的量級但不是認證。`barcode` 工具有 zxing 就優先用它（Data Matrix／Aztec／PDF417／Code 128），沒裝退回 OpenCV。
 - **光度立體**（`builtin/photometric.py`）：整條管線按列分塊（約 40K 像素留在快取內；整張 numpy 逐元素每趟 1.5 ms 是頻寬綁死的），四燈丟最暗用留一法更新式 g_d = g_full − c_d·r_d（不做子集偽逆的逐像素 gather，那要 50 ms），最暗索引在 u8 上用 cv2.min／compare；`solve()` 回 (3,H,W) 法向。**形位公差**（`builtin/gdt.py`）：直線度＝凸包＋旋轉卡尺最小帶、真圓度＝MZC（Nelder–Mead 從 `fit_circle_lsq` 起步，detail.lsc 留最小二乘對照）；`points` 埠也吃 contours（取第一條）。
+- **前處理加速**（`tools/accel.py`，WP-16）：先量再說——RTX 5070 Ti 上 OpenCL 對 4000×3000 的 blur→filter→open→threshold 整段只 1.04×（GaussianBlur 0.39×、形態學 1.0×，傳輸只佔 4 ms），所以**不做編譯期 GPU 區段**；只有 remap 2.65×、medianBlur 2.5×、filter2D 1.8×、dft 1.65× 有賺，wrapper 只在 ≥ `ACCEL_MIN_PIXELS`（4 MP）且 `VISION_ACCEL` 允許時走 UMat，失敗退回 CPU；polar_unwrap／undistort／filter（median、自訂核）走它。headless wheel 沒有 `cv2.cuda`，`cuda` 選項會退回並記原因。
 - 舊工具名（`edges`→`filter`、`hist_eq`→`lut`、`write_plc`→`write_modbus`）由 `graph.LEGACY_TOOL_TYPES` 在 validate／compile 時自動換，參數名刻意相容。
 
 ### 擷取端（apps/vision/capture、vscapture/）

@@ -393,7 +393,9 @@ def undistort(image: np.ndarray, payload: dict[str, Any], alpha: float = 0.0) ->
             if len(_maps) > 8:
                 _maps.pop(next(iter(_maps)))
             _maps[key] = maps
-    return cv2.remap(image, maps[0], maps[1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    from apps.vision.tools import accel
+
+    return accel.remap(image, maps[0], maps[1], cv2.INTER_LINEAR, border_mode=cv2.BORDER_CONSTANT)
 
 
 RMS_WARN_PX = 0.5

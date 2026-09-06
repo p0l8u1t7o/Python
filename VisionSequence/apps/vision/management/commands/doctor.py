@@ -71,6 +71,10 @@ class Command(BaseCommand):
             f"{stats['files']} files, {used_gb:.2f} / {cap_gb:g} GB in {stats['dir']}")
 
         from apps.vision.models import FlowRun, FlowRunHourly, MeasurementLog
+        from apps.vision.tools import accel
+
+        acc = accel.status()
+        add("acceleration", OK, f"{acc['backend']}" + (f" ({acc['device']})" if acc['device'] else "") + f", VISION_ACCEL={acc['mode']}" + (f": {acc['reason']}" if acc['backend'] == 'cpu' and acc['mode'] != 'cpu' else ""))
 
         add("history", OK, f"{FlowRun.objects.count()} run rows (kept {cfg.get('KEEP_RUN_DAYS')}d), {FlowRunHourly.objects.count()} hourly rows (kept forever)")
         add("measurements", OK, f"{MeasurementLog.objects.count()} SPC rows ({'on' if cfg.get('MEASUREMENT_LOG', True) else 'off'}, kept {cfg.get('MEASUREMENT_DAYS')}d)")
