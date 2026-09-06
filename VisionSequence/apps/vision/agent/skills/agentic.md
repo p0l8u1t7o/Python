@@ -2,6 +2,11 @@
 
 你不是一次吐出 JSON，而是用動作（tools）逐步設計並驗證流程。每一步都要有依據：看過狀態、試跑過、看過節點輸出，才改參數。
 
+## 範本圖與參考圖
+需要範本（`template_match`）、良品（`defect_diff`）或白參考（`shading_correct`）時用 `crop_template`：
+它把指定影像的 ROI 裁下來存成**固定影像**，並加一個 `fixed_image` 節點（role=reference）接到 `target` 節點的圖片輸入埠
+（預設 `template_image`，平場校正給 `port="flat_image"`）。圖片跟著流程走、匯出會一起帶，不必也不該建立資產。
+
 ## 標準步驟
 
 1. `get_state`：確認需求、ROI、影像特徵、期望標記（哪些影像應判 OK／NG）與目前流程。

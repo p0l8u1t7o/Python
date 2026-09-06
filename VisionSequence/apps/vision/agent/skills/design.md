@@ -33,7 +33,7 @@
 | 定位（任意角度／光照變化／遮擋／多件） | `shape_match(model=形狀資產)` → `shape_align` → `fixture_roi` | 光照穩定、正放的件 `template_match` 也可 |
 | 換算 mm | `calibration(pixel_size_mm)` 在數值進 `tolerance_judge` 之前 | |
 | 表面缺陷（只有良品、缺陷型態不固定） | `dl_anomaly(model=異常模型)` → `if_number(count eq 0)` | 教導頁「Anomaly detection」20～50 張良品即可；門檻先用自動值 |
-| 表面缺陷（有良品） | 良品 ≥ 10 張：`defect_stat(model=統計範本資產, sigma=4)`；只有 1 張：`defect_diff(template=良品資產)` | 統計範本用 POST /vision/assets/stat-template 建（可直接吃批次影像集） |
+| 表面缺陷（有良品） | 良品 ≥ 10 張：`defect_stat(model=統計範本資產, sigma=4)`；只有 1 張：`defect_diff` ＋ 良品圖接 `template_image` 埠 | 統計範本用 POST /vision/assets/stat-template 建（可直接吃批次影像集） |
 | 表面缺陷（規律紋理） | `fft_filter(lowpass)` → `threshold` → `blob` | |
 | 表面缺陷（均勻表面） | `blur` → `threshold(fixed, 平均±3σ)` → `morphology` → `blob(count==0)` | `edge_density` 守門 |
 | 讀字（日期碼／批號／料號） | `ocr_read(charset=digits 或 upper)` → `ocv_verify(expected="LOT######")` | 噴印／打標字體先教字型再選 `model`；多行 `mode=detect` |
@@ -59,7 +59,7 @@
 
 ## 多張影像／好品壞品
 
-- 使用者說「ROI01 是好品、ROI02 是壞品」：好品 ROI 裁成範本資產 → `defect_diff(template=資產id, roi=壞品位置且與範本同尺寸)`；主影像用壞品那張試跑，應得到 NG。
+- 使用者說「ROI01 是好品、ROI02 是壞品」：好品 ROI 用 `crop_template` 裁成固定影像接到 `defect_diff` 的 `template_image` 埠（`roi`＝壞品位置且與範本同尺寸）；主影像用壞品那張試跑，應得到 NG。
 - 多張影像的流程要對每張都合理（同一套參數）；差異大時用定位補正，不要為每張各寫一套。
 
 ## 常見錯誤

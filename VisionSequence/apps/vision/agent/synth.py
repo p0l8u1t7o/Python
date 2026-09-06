@@ -16,7 +16,15 @@ from apps.vision.demo import GY, _edge, _node, _note
 from apps.vision.tools import base as tools
 
 #: 良品比對用：把某張影像的 ROI 裁成範本資產，回 asset id。(image_index, region, name) -> id
-MakeAsset = Callable[[int, dict[str, Any], str], str]
+#: 把某張影像的 ROI 裁成固定影像描述子（`Param(kind="images")` 的元素）；裁不出來回 None。
+MakeAsset = Callable[[int, dict[str, Any], str], "dict[str, Any] | None"]
+
+
+def _picture_node(node_id: str, picture: dict[str, Any] | None, col: int, row: int, label: str) -> list[dict[str, Any]]:
+    """參考圖節點：role=reference 的固定影像（批次測試送進來的待測圖不會取代它）。"""
+    if not picture:
+        return []
+    return [_node(node_id, "fixed_image", col, row, label, images=[picture], mode="fixed", index=1, role="reference")]
 
 
 def _src_gray(prompt_note: str) -> tuple[list[dict], list[dict]]:
@@ -443,32 +451,35 @@ def synth_template_presence(intent: Intent, regions: list, analysis: dict, make_
     idx = intent.template_roi if intent.template_roi is not None else 0
     tpl = regions[idx] if idx < len(regions) else None
     rows = analysis.get("regions") or []
-    template_id = ""
+    picture: dict[str, Any] | None = None
     search = None
     if tpl is not None:
         image_idx = int(tpl.get("image", 0) or 0)
         if make_asset is not None:
-            template_id = make_asset(image_idx, tpl["region"], "AI 助手：圖案範本")
+            picture = make_asset(image_idx, tpl["region"], "AI 助手：圖案範本")
         b = rows[idx].get("bounds") if idx < len(rows) and rows[idx].get("bounds") else None
         if b:
             w, h = _image_size(analysis, image_idx)
             search = _expand_rect(b, 1.0, w, h)
     nodes = [
         _node("src", "image_source", 0, 0, "取像", mode="auto"),
-        _node("tm", "template_match", 1, 0, "找圖案", template=template_id, roi=search, threshold=0.7, max_matches=1, angle_range=0),
+        _node("tm", "template_match", 1, 0, "找圖案", roi=search, threshold=0.7, max_matches=1, angle_range=0),
+        *_picture_node("tpl", picture, 0, 3, "圖案範本圖"),
         _node("ok", "judge", 2, 0, "OK：有圖案", verdict="ok"),
         _node("ng", "judge", 2, 1, "NG：沒有圖案", verdict="ng", label="missing"),
         _node("out", "output", 2, 2, "輸出比對分數", name="match_score"),
-        _note("hint", 0, 1, "AI 助手", "由 AI 助手生成：圖案有無。範本＝您圈的 ROI（已存成資產），在 ROI 周圍一圈範圍內搜尋；分數門檻 0.7，會旋轉的工件再加 angle_range。"),
+        _note("hint", 0, 1, "AI 助手", "由 AI 助手生成：圖案有無。範本＝您圈的 ROI，已存成「圖案範本圖」固定影像節點接到比對工具的圖片輸入埠（跟著流程走，換台機器也能跑）；在 ROI 周圍一圈範圍內搜尋；分數門檻 0.7，會旋轉的工件再加 angle_range。"),
     ]
     edges = [
         _edge("src", "tm"),
         _edge("tm", "ok", "found", "_flow"), _edge("tm", "ng", "not_found", "_flow"),
         _edge("tm", "out", "best_score", "value"),
     ]
-    why = "ROI 裁成範本資產，在其周圍搜尋，分數 ≥ 0.7 算有"
-    if not template_id:
-        why += "（範本尚未建立：請圈選圖案 ROI 後重新生成）"
+    if picture:
+        edges.append(_edge("tpl", "tm", "image", "template_image"))
+    why = "ROI 裁成範本圖（跟著流程走的固定影像），在其周圍搜尋，分數 ≥ 0.7 算有"
+    if not picture:
+        why += "（範本圖尚未建立：請圈選圖案 ROI 後重新生成，或在工具的圖片輸入埠接一個固定影像）"
     return _finish(nodes, edges, col=3), why
 
 
@@ -521,9 +532,9 @@ def synth_golden(intent: Intent, regions: list[dict[str, Any]], analysis: dict[s
     good_idx = intent.good_roi if intent.good_roi is not None else 0
     good = regions[good_idx] if good_idx < len(regions) else None
     bad = regions[intent.bad_roi] if intent.bad_roi is not None and intent.bad_roi < len(regions) else None
-    template_id = ""
+    picture: dict[str, Any] | None = None
     if good is not None and make_asset is not None:
-        template_id = make_asset(int(good.get("image", 0) or 0), good["region"], "AI 助手：良品範本")
+        picture = make_asset(int(good.get("image", 0) or 0), good["region"], "AI 助手：良品範本")
     good_bounds = rows[good_idx].get("bounds") if good_idx < len(rows) and rows[good_idx].get("bounds") else None
     if bad is not None and good_bounds and rows[intent.bad_roi].get("bounds"):
         roi = _same_size_rect(good_bounds, rows[intent.bad_roi]["bounds"])
@@ -536,21 +547,24 @@ def synth_golden(intent: Intent, regions: list[dict[str, Any]], analysis: dict[s
     min_area = int(_clip(float(ginfo.get("area", 100000)) * 0.001, 30, 500))
     nodes = [
         _node("src", "image_source", 0, 0, "取像", mode="auto"),
-        _node("diff", "defect_diff", 1, 0, "良品比對", template=template_id, roi=roi, align="phase", threshold=threshold, min_area=min_area),
+        _node("diff", "defect_diff", 1, 0, "良品比對", roi=roi, align="phase", threshold=threshold, min_area=min_area),
+        *_picture_node("tpl", picture, 0, 3, "良品圖"),
         _node("ok", "judge", 2, 0, "OK", verdict="ok"),
         _node("ng", "judge", 2, 1, "NG：與良品有差異", verdict="ng", label="defect"),
         _node("out_n", "output", 2, 2, "輸出缺陷數", name="defect_count"),
         _node("out_a", "output", 3, 2, "輸出缺陷面積", name="defect_area"),
-        _note("hint", 0, 1, "AI 助手", "由 AI 助手生成：良品比對。範本＝你圈的好品 ROI（已存成資產），檢測框與範本同尺寸。\n位移由相位對齊補正；差異門檻與最小面積決定靈敏度。"),
+        _note("hint", 0, 1, "AI 助手", "由 AI 助手生成：良品比對。範本＝您圈的好品 ROI，已存成「良品圖」固定影像節點接到比對工具的圖片輸入埠（跟著流程走）；檢測框與範本同尺寸。\n位移由相位對齊補正；差異門檻與最小面積決定靈敏度。"),
     ]
     edges = [
         _edge("src", "diff"),
         _edge("diff", "ok", "ok", "_flow"), _edge("diff", "ng", "defect", "_flow"),
         _edge("diff", "out_n", "count", "value"), _edge("diff", "out_a", "total_area", "value"),
     ]
-    why = f"好品 ROI 裁成範本資產，在檢測框內做差異比對（門檻 {threshold}、最小面積 {min_area}px²，依良品區域雜訊）"
-    if not template_id:
-        why += "（範本尚未建立：請在「良品比對」工具頁上傳或框選範本）"
+    if picture:
+        edges.append(_edge("tpl", "diff", "image", "template_image"))
+    why = f"好品 ROI 裁成良品圖（跟著流程走的固定影像），在檢測框內做差異比對（門檻 {threshold}、最小面積 {min_area}px²，依良品區域雜訊）"
+    if not picture:
+        why += "（良品圖尚未建立：請在「良品比對」工具頁上傳，或接一個固定影像到它的圖片輸入埠）"
     return _finish(nodes, edges, col=3), why
 
 
@@ -569,7 +583,7 @@ def wrap_with_locate(graph: dict[str, Any], regions: list[dict[str, Any]], analy
     b = rows[locator_idx]["bounds"]
     image_idx = int(loc.get("image", 0) or 0)
     width, height = _image_size(analysis, image_idx)
-    template_id = make_asset(image_idx, loc["region"], "AI 助手：定位範本") if make_asset is not None else ""
+    picture = make_asset(image_idx, loc["region"], "AI 助手：定位範本") if make_asset is not None else None
     search = _expand_rect(b, 1.5, width, height)
     ref_x, ref_y = b["x"] + b["w"] / 2, b["y"] + b["h"] / 2
     out = json.loads(json.dumps(graph))
@@ -578,7 +592,8 @@ def wrap_with_locate(graph: dict[str, Any], regions: list[dict[str, Any]], analy
         return graph, ""
     feed = next((n["id"] for n in out["nodes"] if n.get("type") == "grayscale"), src_id)
     new_nodes = [
-        _node("loc_tm", "template_match", 1, 0, "找定位範本", template=template_id, roi=search, threshold=threshold, max_matches=1, angle_range=0),
+        _node("loc_tm", "template_match", 1, 0, "找定位範本", roi=search, threshold=threshold, max_matches=1, angle_range=0),
+        *_picture_node("loc_tpl", picture, 0, 3, "定位範本圖"),
         _node("loc_align", "shape_align", 2, 0, "定位補正", ref_x=round(ref_x, 1), ref_y=round(ref_y, 1), ref_angle=0, use_angle=False),
         _node("loc_nf", "judge", 3, 0, "NG：定位失敗", verdict="ng", label="locate_failed"),
     ]
@@ -587,6 +602,8 @@ def wrap_with_locate(graph: dict[str, Any], regions: list[dict[str, Any]], analy
         _edge("loc_tm", "loc_align", "matches", "matches"),
         _edge("loc_tm", "loc_nf", "not_found", "_flow"),
     ]
+    if picture:
+        new_edges.append(_edge("loc_tpl", "loc_tm", "image", "template_image"))
     col, followed = 4, 0
     for n in out["nodes"]:
         roi = (n.get("params") or {}).get("roi")
@@ -605,9 +622,9 @@ def wrap_with_locate(graph: dict[str, Any], regions: list[dict[str, Any]], analy
         n["position"] = pos
     out["nodes"] = new_nodes + out["nodes"]
     out["edges"] = out["edges"] + new_edges
-    why = f"定位補正：ROI{locator_idx + 1:02d} 裁成定位範本（參考位置 {ref_x:.0f},{ref_y:.0f}），{followed} 個 ROI 跟隨位移"
-    if not template_id:
-        why += "（範本尚未建立）"
+    why = f"定位補正：ROI{locator_idx + 1:02d} 裁成定位範本圖（參考位置 {ref_x:.0f},{ref_y:.0f}），{followed} 個 ROI 跟隨位移"
+    if not picture:
+        why += "（定位範本圖尚未建立）"
     return out, why
 
 

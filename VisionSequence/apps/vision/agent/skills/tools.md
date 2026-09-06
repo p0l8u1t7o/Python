@@ -82,7 +82,7 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 固定角度旋轉／翻轉（相機裝反）。`keep_size=true` 不改尺寸會裁角。
 
 ## template_match
-範本比對定位：`template` 是資產 id（使用者框選建立），`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。AI 生成時沒有資產可填就留空並在 note 提醒。
+範本比對定位：範本圖有兩種給法——**首選** `crop_template` 動作把 ROI 裁成固定影像節點接到 `template_image` 埠（圖片跟著流程走），或 `template` 選既有影像資產；`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。兩者都沒有時留空並在 note 提醒使用者補圖。
 
 ## shape_match
 形狀比對定位（幾何比對）：以邊緣**梯度方向**計分，光照變化、部分遮擋、雜亂背景、任意角度都撐得住，是 template_match（NCC）撐不住時的首選

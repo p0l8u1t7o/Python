@@ -218,6 +218,9 @@
 <pre>POST /api/vision/agent/tune  {graph, instruction, runs:[{name, image_ref, status, outputs}]}
 → {graph, rationale, changes, before:{ok,ng,failed}, after:{…}, items:[{name, before, after}], applied}</pre>
 
+<h3 id="pictures">Reference pictures travel with the flow</h3>
+<p>When a design needs a reference picture — the template for <code>template_match</code>, the golden sample for <code>defect_diff</code>, the white reference for <code>shading_correct</code> — the assistant crops it out of the picture you uploaded and puts it in a <strong>Fixed image</strong> step (role "reference") wired into that tool's picture input, instead of creating an asset. The picture is stored with the flow and travels with an export, so nothing accumulates in the asset library and the flow runs as-is on another station. In agentic mode this is the <code>crop_template</code> action, which takes the <code>target</code> node and the port to wire into.</p>
+
 <h2 id="generate">Part 2 · Generating a flow on the assistant page</h2>
 
 <p>The AI assistant page in the sidebar turns an image, a few ROIs and a sentence into a runnable flow. This part covers the questions it asks first, several images and numbered ROIs, candidates and auto-tuning, locate correction, refinement in words, agentic mode, the session memory and the provider settings.</p>

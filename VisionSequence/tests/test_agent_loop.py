@@ -112,8 +112,16 @@ class ActionTests(TestCase):
         self.assertTrue(out["ok"], out)
         validate_graph(state.graph)
         self.assertEqual(next(n for n in state.graph["nodes"] if n["id"] == "close")["params"]["ksize"], 5)
+        # 裁範本圖：不帶 target 只回描述子，帶 target 就加一個固定影像節點接到那個工具的圖片輸入埠
         out = actions.dispatch(state, "crop_template", {"image": 1, "region": {"shape": "rect", "x": 60, "y": 200, "w": 80, "h": 80}, "name": "t"})
-        self.assertIn("asset_id", out)
+        self.assertIn("picture", out)
+        state.graph["nodes"].append({"id": "tm", "type": "template_match", "label": "找範本", "x": 6, "y": 0, "params": {"threshold": 0.7}})
+        out = actions.dispatch(state, "crop_template", {"image": 1, "region": {"shape": "rect", "x": 60, "y": 200, "w": 80, "h": 80}, "name": "t", "target": "tm"})
+        self.assertEqual(out.get("picture_node"), "pic_tm", out)
+        pic = next(n for n in state.graph["nodes"] if n["id"] == "pic_tm")
+        self.assertEqual(pic["params"]["role"], "reference")
+        self.assertTrue(any(e["source"] == "pic_tm" and e["target"] == "tm" and e["target_handle"] == "template_image" for e in state.graph["edges"]))
+        self.assertIn("error", actions.dispatch(state, "crop_template", {"image": 1, "region": {"shape": "rect", "x": 0, "y": 0, "w": 10, "h": 10}, "target": "nope"}))
         out = actions.dispatch(state, "replace_graph", {"graph": {"nodes": [{"id": "s", "type": "image_source", "params": {"mode": "auto"}}, {"id": "w", "type": "write_modbus", "params": {}}], "edges": []}})
         self.assertIn("error", out)
 

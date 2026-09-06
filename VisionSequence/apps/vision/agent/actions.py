@@ -35,7 +35,8 @@ class AgentState:
     analysis: dict[str, Any] | None
     intent: Intent
     expected: list[str]
-    make_asset: Callable[[int, dict[str, Any], str], str] | None = None
+    #: 把某張影像的 ROI 裁成固定影像描述子（不是資產）；synth 與 crop_template 共用
+    make_asset: Callable[[int, dict[str, Any], str], "dict[str, Any] | None"] | None = None
     graph: dict[str, Any] | None = None
     rationale: str = ""
     feedback: str = ""
@@ -347,18 +348,39 @@ def h_inspect_node(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def h_crop_template(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
+    """把 ROI 裁成固定影像，加一個 fixed_image 節點（role=reference）接到 target 的圖片輸入埠。
+
+    圖片跟著流程走（匯出會一起帶），不再在資產庫留檔；沒給 target 就只回描述子。
+    """
     if state.make_asset is None:
-        return {"error": "此工作階段無法建立資產"}
+        return {"error": "此工作階段沒有影像可以裁"}
     idx = int(args.get("image", 1) or 1) - 1
     region = args.get("region")
     if isinstance(region, str):
         region = json.loads(region)
     if not (0 <= idx < len(state.images)) or not isinstance(region, dict) or not region.get("shape"):
         return {"error": "需要 image（1 起算）與 region（ROI dict）"}
-    asset_id = state.make_asset(idx, region, str(args.get("name") or "AI 助手：範本"))
-    if not asset_id:
+    picture = state.make_asset(idx, region, str(args.get("name") or "AI 助手：範本"))
+    if not picture:
         return {"error": "裁切結果為空，請檢查 region"}
-    return {"asset_id": asset_id, "image": idx + 1}
+    target = str(args.get("target") or "").strip()
+    if not target:
+        return {"picture": picture, "image": idx + 1,
+                "hint": "把它放進 fixed_image 節點的 images 參數（mode=fixed、role=reference），再接到工具的圖片輸入埠；或重呼叫本動作並帶 target"}
+    if state.graph is None:
+        return {"error": "目前沒有流程可以接"}
+    graph = json.loads(json.dumps(state.graph))
+    if not any(n.get("id") == target for n in graph.get("nodes") or []):
+        return {"error": f"沒有節點 {target}"}
+    port = str(args.get("port") or "template_image")
+    node_id = f"pic_{target}"
+    graph["nodes"] = [n for n in graph["nodes"] if n.get("id") != node_id]
+    graph["edges"] = [e for e in graph["edges"] if e.get("source") != node_id and not (e.get("target") == target and e.get("target_handle") == port)]
+    graph["nodes"].append({"id": node_id, "type": "fixed_image", "label": str(args.get("name") or "範本圖"), "x": 0, "y": 320,
+                           "params": {"images": [picture], "mode": "fixed", "index": 1, "role": "reference"}})
+    graph["edges"].append({"source": node_id, "source_handle": "image", "target": target, "target_handle": port})
+    state.graph = check_graph(graph)  # 失敗會拋，dispatch 會翻成 {"error"} 回給模型
+    return {"picture_node": node_id, "target": target, "port": port, "image": idx + 1, "size": [picture["width"], picture["height"]]}
 
 
 def h_auto_tune(state: AgentState, args: dict[str, Any]) -> dict[str, Any]:
@@ -432,7 +454,10 @@ ACTIONS: list[ActionSpec] = [
                }, ["op"])}}, ["ops"]), h_patch_graph),
     ActionSpec("run_trial", "把目前流程在影像上試跑，回每張的狀態、具名輸出、各節點訊息與命中摘要。", _obj({"images": {"type": "array", "items": {"type": "integer"}, "description": "影像編號清單（1 起算）；省略＝全部"}}), h_run_trial),
     ActionSpec("inspect_node", "在一張影像上試跑並回某個節點的完整輸出與訊息（除錯用）。", _obj({"node": {"type": "string"}, "image": {"type": "integer"}}, ["node"]), h_inspect_node),
-    ActionSpec("crop_template", "把某張影像的區域裁成範本資產（給 template_match／defect_diff 的 template 參數）。", _obj({"image": {"type": "integer"}, "region": _REGION_SCHEMA, "name": {"type": "string"}}, ["image", "region"]), h_crop_template),
+    ActionSpec("crop_template", "把某張影像的區域裁成範本圖，並加一個固定影像節點接到 target 節點的圖片輸入埠（template_match 的 template_image、defect_diff 的 template_image、shading_correct 的 flat_image）。圖片跟著流程走，不進資產庫。",
+               _obj({"image": {"type": "integer"}, "region": _REGION_SCHEMA, "name": {"type": "string"},
+                     "target": {"type": "string", "description": "要接的節點 id；省略＝只裁不接"},
+                     "port": {"type": "string", "description": "圖片輸入埠，預設 template_image"}}, ["image", "region"]), h_crop_template),
     ActionSpec("auto_tune", "用影像標記做資料驅動自動調參（只動現場調機參數，嚴格變好才採納）。", _obj({"max_evals": {"type": "integer"}, "deadline_s": {"type": "number"}}), h_auto_tune),
     ActionSpec("ask_user", "資訊不足時向使用者提問（最多 3 題），迴圈會暫停等待回答。只在關鍵資訊缺失時使用。",
                _obj({"questions": {"type": "array", "items": _obj({"id": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["choice", "number", "text", "roi"]},

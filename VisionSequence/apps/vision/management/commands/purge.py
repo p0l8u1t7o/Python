@@ -11,6 +11,8 @@ looser settings, or for freeing space in a hurry.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -33,6 +35,7 @@ class Command(BaseCommand):
         parser.add_argument("--measurements", type=int, default=None, help="Keep SPC measurement rows for this many days (0 = keep)")
         parser.add_argument("--backups", type=int, default=None, help="Keep this many backup zips and pre-restore database copies")
         parser.add_argument("--pictures", action="store_true", help="Also delete fixed pictures no flow, version or template refers to")
+        parser.add_argument("--agent-assets", action="store_true", help="Also delete the AI assistant's old template images from the asset library (only those nothing refers to)")
 
     def handle(self, *args, **options):
         cfg = retention.effective()  # 設定頁改的保存時限是唯一事實來源（沒有列時＝.env／出廠值）
@@ -81,6 +84,23 @@ class Command(BaseCommand):
         self.stdout.write(f"backups: {len(files)} files, {sum(st.st_size for _p, st in files) / (1 << 20):.1f} MB (keeping {keep_backups} of each kind)")
         if not dry:
             self.stdout.write(f"  removed {retention.purge_backups(int(keep_backups))} files")
+
+        if options["agent_assets"]:
+            # 舊版助手把範本裁成資產（群組「AI 助手」）；現在改存固定影像，沒人引用的舊資產可以清掉
+            from apps.vision.models import Asset, FlowTemplate
+
+            graphs = " ".join(json.dumps(g) for model in (Flow, FlowVersion, FlowTemplate) for g in model.objects.values_list("graph", flat=True))
+            doomed_assets = [a for a in Asset.objects.filter(kind="image", group="AI 助手") if str(a.id) not in graphs]
+            self.stdout.write(f"AI assistant template images nothing refers to: {len(doomed_assets)}")
+            if not dry:
+                for asset in doomed_assets:
+                    try:
+                        if asset.path and os.path.isfile(asset.path):
+                            os.remove(asset.path)
+                    except OSError:
+                        pass
+                    asset.delete()
+                self.stdout.write(f"  removed {len(doomed_assets)}")
 
         if options["pictures"]:
             from apps.vision import fixed_images

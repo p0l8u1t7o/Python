@@ -130,7 +130,13 @@ class ServiceTests(TestCase):
         self.assertEqual(result["intent"], "golden")
         self.assertEqual(result["main_image"], 1)  # 壞品那張當主影像
         self.assertEqual([r["status"] for r in result["reports"]], ["ok", "ng"])
-        self.assertEqual(Asset.objects.filter(group="AI 助手").count(), 1)
+        # 良品圖跟著流程走（固定影像節點接到比對工具的圖片輸入埠），資產庫不再多一列
+        self.assertEqual(Asset.objects.filter(group="AI 助手").count(), 0)
+        pic = next(n for n in result["graph"]["nodes"] if n["type"] == "fixed_image")
+        self.assertEqual(pic["params"]["role"], "reference")
+        self.assertEqual(len(pic["params"]["images"]), 1)
+        self.assertTrue(fixed_images.exists(pic["params"]["images"][0]["id"]))
+        self.assertTrue(any(e["source"] == pic["id"] and e["target_handle"] == "template_image" for e in result["graph"]["edges"]))
 
     def test_generate_color_presence(self):
         region = {"shape": "rect", "x": 220, "y": 170, "w": 200, "h": 140}
@@ -444,7 +450,10 @@ class Phase1Tests(TestCase):
         self.assertEqual(r["intent"], "template_presence")
         self.assertEqual([x["status"] for x in r["reports"]], ["ok", "ng"])
         tm = next(n for n in r["graph"]["nodes"] if n["type"] == "template_match")
-        self.assertTrue(Asset.objects.filter(pk=tm["params"]["template"]).exists())
+        self.assertNotIn("template", tm["params"])  # 範本圖走圖片輸入埠，不再是資產參數
+        pic = next(n for n in r["graph"]["nodes"] if n["type"] == "fixed_image")
+        self.assertTrue(fixed_images.exists(pic["params"]["images"][0]["id"]))
+        self.assertTrue(any(e["source"] == pic["id"] and e["target"] == tm["id"] and e["target_handle"] == "template_image" for e in r["graph"]["edges"]))
 
     def test_locate_wrap_structure_and_runs(self):
         from apps.vision import demo_images

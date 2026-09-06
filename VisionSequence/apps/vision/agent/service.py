@@ -8,16 +8,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import uuid
 from typing import Any
 
-import cv2
 import numpy as np
-from django.conf import settings as dj_settings
 
-from apps.vision import engine
+from apps.vision import engine, fixed_images
 from apps.vision.agent import analysis as analysis_mod
 from apps.vision.agent import clarify as clarify_mod
 from apps.vision.agent import actions, autotune, intents, llm, memory, providers, synth
@@ -151,25 +148,24 @@ def _main_image(regions: list[dict[str, Any]], intent: intents.Intent | None, co
     return max(votes, key=lambda k: votes[k]) if votes else 0
 
 
-def _make_asset_factory(images: list[np.ndarray]):
-    def make_asset(image_idx: int, region: dict[str, Any], name: str) -> str:
+def _make_picture_factory(images: list[np.ndarray]):
+    """把 ROI 裁下來存成**固定影像**（跟著流程走），不再在資產庫留一堆「AI 助手：…範本」。
+
+    回傳描述子（`Param(kind="images")` 的元素），合成器把它放進 fixed_image 節點接到工具的圖片輸入埠。
+    """
+
+    def make_picture(image_idx: int, region: dict[str, Any], name: str) -> dict[str, Any] | None:
         img = images[image_idx] if 0 <= image_idx < len(images) else images[0]
         piece = roi_crop(img, region, upright=True).image
         if piece.size == 0:
-            return ""
-        asset_id = uuid.uuid4()
-        path = os.path.join(str(dj_settings.VISION["ASSET_DIR"]), f"{asset_id.hex}.png")
-        ok, buf = cv2.imencode(".png", piece)
-        if not ok:
-            return ""
-        buf.tofile(path)
-        Asset.objects.create(
-            id=asset_id, name=f"{name} {asset_id.hex[:6]}", kind="image", group="AI 助手", path=path, size=int(buf.size),
-            meta={"width": int(piece.shape[1]), "height": int(piece.shape[0]), "channels": int(piece.shape[2]) if piece.ndim == 3 else 1},
-        )
-        return str(asset_id)
+            return None
+        try:
+            return fixed_images.store(np.ascontiguousarray(piece), f"{name}.png")
+        except Exception:  # noqa: BLE001 - 存不下去就當作沒有範本圖（合成器會給提示）
+            log.warning("AI 助手的範本圖存檔失敗", exc_info=True)
+            return None
 
-    return make_asset
+    return make_picture
 
 
 def _result(graph: dict[str, Any], rationale: str, provider: str, intent: str, report: dict[str, Any],
@@ -249,7 +245,7 @@ def generate(images: list[np.ndarray], regions: list[dict[str, Any]], prompt: st
     if got is not None:
         result = _result(graph, rationale, settings.provider, intent.kind, report, reports, main_image=main, candidates=[], labels=expected, similar=similar_out)
     else:
-        cands = synth.candidates(intent, regions, feats, make_asset=_make_asset_factory(images), priors=priors)
+        cands = synth.candidates(intent, regions, feats, make_asset=_make_picture_factory(images), priors=priors)
         ranked, win = _rank_candidates(cands, images, expected)
         graph, rationale = ranked[win]["graph"], ranked[win]["rationale"]
         extra: dict[str, Any] = {}
@@ -577,7 +573,7 @@ def build_state(task: str, images: list[np.ndarray], regions: list[dict[str, Any
     _, priors, examples = recall(intent.kind, feats) if (feats and task == "generate") else ([], {}, "")
     state = actions.AgentState(
         task=task, images=images, regions=regions, prompt=text, analysis=feats, intent=intent,
-        expected=expected_labels(regions, labels, len(images)), make_asset=_make_asset_factory(images) if images else None,
+        expected=expected_labels(regions, labels, len(images)), make_asset=_make_picture_factory(images) if images else None,
         graph=validate_graph(graph) if graph else None, feedback=instruction, answers=list(answers or []),
         batch_summary=((extra_summary.strip() + "\n") if extra_summary.strip() else "") + (_batch_summary(runs) if runs else ""),
         owner=owner, priors=priors, examples=examples,
