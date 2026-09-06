@@ -63,6 +63,15 @@ function Get-VsLayout {
     環境變數 VS_HOME 可強制指定（測試用）。回傳的 Current 是「服務要指向的固定路徑」：發行版永遠是 current junction，升級只換它。
     #>
     $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path.TrimEnd('\')
+    # 經 <VS_HOME>\current 這個 junction 進來時（安裝根的 vsctl.cmd 就是這樣呼叫），Resolve-Path 不會解 junction：
+    # root 會變成 <VS_HOME>\current、上一層不叫 app、被當成開發配置而找不到 .env 與 data\。這裡把 junction 換成它指向的版本樹。
+    try {
+        $rootItem = Get-Item -LiteralPath $root -Force -ErrorAction Stop
+        if (($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $rootItem.Target) {
+            $t = [string]($rootItem.Target | Select-Object -First 1)
+            if ($t -and (Test-Path -LiteralPath $t)) { $root = $t.TrimEnd('\') }
+        }
+    } catch { }
     $appDir = Split-Path -Parent $root
     $release = ((Split-Path -Leaf $appDir) -eq 'app')
     $vsHome = $root
