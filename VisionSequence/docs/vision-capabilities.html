@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html" aria-current="page">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roi">1. ROI shapes and how they work</a></li><li><a href="#depth">2. Image formats and bit depth</a></li><li><a href="#tools">3. What each capability maps to</a></li><li><a href="#skip">4. Deliberately left out, or left to a plugin</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roi">1. ROI shapes and how they work</a></li><li><a href="#depth">2. Image formats and bit depth</a></li><li><a href="#tools">3. What each capability maps to</a></li><li><a href="#skip">4. Deliberately left out, or left to a plugin</a></li><li><a href="#barcode-grading">Barcode quality grading — what the parameters mean</a><ul><li><a href="#grading-2d">2D symbols — ISO/IEC 15415 (Data Matrix, QR)</a></li><li><a href="#grading-dpm">Direct part marks — AIM DPM (ISO/IEC TR 29158)</a></li><li><a href="#grading-1d">Linear symbols — ISO/IEC 15416 (EAN, UPC, Code 128, Code 39)</a></li></ul></li></ul></aside><article class="doc">
 
 <h1>Inspection capabilities: ROIs, image formats, tools</h1>
 <p>Measured against what a mainstream machine-vision package offers: which ROI shapes the platform has and how they are implemented, how multiple bit depths are handled, and how each class of inspection maps onto a tool here — including what was added recently and what is deliberately left out.</p>
@@ -211,7 +211,8 @@
 <tr><td>Golden template comparison</td><td><code>defect_diff</code> with phase alignment, plus the Golden Set regression page</td><td>original</td></tr>
 <tr><td>Statistical template comparison (many good parts)</td><td><code>defect_stat</code> against a per-pixel mean/standard-deviation template built from N good images (<code>POST /vision/assets/stat-template</code> from uploads or a batch image set, or <code>manage.py stat_template</code>; phase-aligned, an .npz file asset cached in memory). Deviation in standard deviations with a spread floor, darker/brighter/both, defect mask and a deviation image</td><td><strong>added</strong></td></tr>
 <tr><td>OCR and OCV (date codes, lot and part numbers)</td><td><code>ocr_read</code>: the offline PP-OCRv4 models (Apache-2.0, installed into <code>ASSET_DIR/ocr</code> with <code>manage.py ocr_models --install</code>, never downloaded at run time) for one line or several detected lines, with character-set restriction, polarity and per-character boxes and confidences; or a <strong>taught font</strong> (segmentation by gaps, components or fixed pitch, then a small classifier trained from lines you label — for dot-matrix and laser-marked fonts) built through <code>POST /vision/ocr/fonts/{name}/samples</code> and <code>/train</code> or <code>manage.py ocr_font</code>. <code>ocv_verify</code> compares with an expected string (<code>?</code> any character, <code>#</code> any digit; contains and regular expressions), from a parameter or from the host system, reports the first wrong character and boxes it in red</td><td><strong>added</strong></td></tr>
-<tr><td>Barcodes (1D, DataMatrix, PDF417)</td><td><code>barcode</code>, using whichever decoder backend is installed</td><td>original</td></tr>
+<tr><td>Barcodes (1D, QR, Data Matrix, Aztec, PDF417)</td><td><code>barcode</code>: zxing-cpp when installed (the release ships it), OpenCV's QR and EAN/UPC decoders otherwise</td><td>original, decoder upgraded</td></tr>
+<tr><td>Barcode quality grading (ISO/IEC 15415, ISO/IEC 15416, AIM DPM)</td><td><code>barcode_grade</code>: every parameter of the standard with its own grade and the overall grade A–F, a minimum-grade pass/fail, the decoded content and the symbology; see <a href="#barcode-grading">Barcode quality grading</a> for what each parameter means</td><td><strong>added</strong></td></tr>
 <tr><td>Classification</td><td><code>dl_classify</code>, trained inside the platform</td><td>original</td></tr>
 <tr><td>Unsupervised anomaly detection (teach good parts only)</td><td><code>dl_anomaly</code> with the <code>anomaly</code> model kind on the teaching page: a memory bank of good patch features from a shipped ResNet18 backbone, nearest-neighbour distance as the score, an automatic threshold from the good pictures, a score map for tuning. No defect samples and no labels needed</td><td><strong>added</strong></td></tr>
 <tr><td>Object detection, instance segmentation, pose, oriented boxes (YOLO)</td><td><code>yolo_detect</code>, <code>yolo_segment</code>, <code>yolo_pose</code>, <code>yolo_obb</code>, <code>yolo_classify</code> — native ultralytics inference; detection, segmentation, classification and OBB can all be trained inside the platform</td><td>added</td></tr>
@@ -227,6 +228,41 @@
 <li><strong>Freehand ROIs</strong>: see §1.</li>
 <li><strong>The complex image type</strong>: it exists only inside <code>fft_filter</code> and is not a port type, which keeps the dataflow simple.</li>
 </ul>
+
+<h2 id="barcode-grading">Barcode quality grading — what the parameters mean</h2>
+<p>The <code>barcode_grade</code> step measures a symbol the way a verifier does and reports every parameter with its own grade (A = 4 down to F = 0). The overall grade is the <strong>lowest</strong> parameter grade for 2D symbols, and for linear symbols the average of ten scan lines (each scan line taking its lowest parameter). It reads 8-bit grey levels as reflectance and models the optical aperture as a disc filter, so the numbers match a verifier's magnitude; it is not a certified verifier, and no lighting or reflectance calibration is applied. The <em>Parameters</em> output lists every value, grade and a note, which is where a C is explained.</p>
+<h3 id="grading-2d">2D symbols — ISO/IEC 15415 (Data Matrix, QR)</h3>
+<table>
+<tr><th>Parameter</th><th>What it measures</th><th>Typical cause when it drops</th><th>Grade thresholds</th></tr>
+<tr><td>Decode</td><td>Whether the symbol decodes at all</td><td>Missing quiet zone, too many damaged modules, wrong symbology filter</td><td>A when decoded, F otherwise (nothing else is graded)</td></tr>
+<tr><td>Symbol contrast</td><td>Brightest minus darkest reflectance across the symbol and its quiet zone (0–1)</td><td>Weak ink, glossy or dark substrate, under-exposure</td><td>≥ 0.70 A, ≥ 0.55 B, ≥ 0.40 C, ≥ 0.20 D</td></tr>
+<tr><td>Modulation</td><td>How far each module sits from the global threshold, relative to the contrast: 2·|R − GT| / SC for the worst module. Modules below a level count as damaged codewords, and the error-correction budget decides whether the level is still reached</td><td>Blur, noise, ink spread or voids, uneven lighting</td><td>Per module ≥ 0.50 A, ≥ 0.40 B, ≥ 0.30 C, ≥ 0.20 D; combined with unused error correction</td></tr>
+<tr><td>Fixed pattern damage</td><td>The finder and clock patterns (Data Matrix: the solid L and the alternating clock track; QR: the three finders, timing, alignment and format information) and the quiet zone, compared with what they must be</td><td>Dirt on the edge of the symbol, print cut off, marks in the quiet zone</td><td>Damaged fraction 0 A, ≤ 9% B, ≤ 13% C, ≤ 17% D (finders by damaged module count 0/1/2/3; format information by bit errors)</td></tr>
+<tr><td>Axial non-uniformity</td><td>Difference between the horizontal and vertical module pitch, relative to the mean</td><td>Camera not square to the part, stretched print, non-square pixels</td><td>≤ 0.06 A, ≤ 0.08 B, ≤ 0.10 C, ≤ 0.12 D</td></tr>
+<tr><td>Grid non-uniformity</td><td>Largest deviation of any module edge from the ideal grid, in module units, measured along every row and column</td><td>Warped label, perspective, jitter in a marking head</td><td>≤ 0.38 A, ≤ 0.50 B, ≤ 0.63 C, ≤ 0.75 D</td></tr>
+<tr><td>Unused error correction</td><td>The share of the error-correction capacity still unused after decoding (1.0 = no errors corrected)</td><td>Damaged, flipped or missing modules</td><td>≥ 0.62 A, ≥ 0.50 B, ≥ 0.37 C, ≥ 0.25 D</td></tr>
+</table>
+<h3 id="grading-dpm">Direct part marks — AIM DPM (ISO/IEC TR 29158)</h3>
+<p>Marks on metal or plastic rarely reach the contrast a printed label has, so the DPM standard replaces two parameters and adds one, and allows a median pre-filter and a smaller aperture (50% of the module). Decode, fixed pattern damage, axial and grid non-uniformity and unused error correction are graded as above.</p>
+<table>
+<tr><th>Parameter</th><th>What it measures</th><th>Grade thresholds</th></tr>
+<tr><td>Cell contrast</td><td>(mean of light cells − mean of dark cells) / mean of light cells — uses the cell means, not the extremes</td><td>≥ 0.30 A, ≥ 0.25 B, ≥ 0.20 C, ≥ 0.15 D</td></tr>
+<tr><td>Cell modulation</td><td>Each cell's distance from the threshold relative to the light or dark cell mean, with the same error-correction allowance as modulation</td><td>≥ 0.50 A, ≥ 0.40 B, ≥ 0.30 C, ≥ 0.20 D</td></tr>
+<tr><td>Minimum reflectance</td><td>Darkest point as a fraction of the brightest — an exposure check</td><td>≥ 5% A, otherwise F (the image is under-exposed for DPM)</td></tr>
+</table>
+<h3 id="grading-1d">Linear symbols — ISO/IEC 15416 (EAN, UPC, Code 128, Code 39)</h3>
+<p>Ten scan lines are taken across the bar height (10% to 90%); each is graded on the parameters below and takes its lowest; the overall value is the mean of the ten (3.5 and above A, 2.5 B, 1.5 C, 0.5 D). Linear symbols always grade under 15416 whichever standard is selected.</p>
+<table>
+<tr><th>Parameter</th><th>What it measures</th><th>Grade thresholds</th></tr>
+<tr><td>Decode</td><td>Whether the scan line decodes to the same content</td><td>A or F per scan</td></tr>
+<tr><td>Symbol contrast</td><td>Rmax − Rmin along the scan</td><td>≥ 0.70 A, ≥ 0.55 B, ≥ 0.40 C, ≥ 0.20 D</td></tr>
+<tr><td>Minimum reflectance</td><td>The darkest bar must be at most half as bright as the brightest space</td><td>Rmin ≤ 0.5·Rmax A, otherwise F</td></tr>
+<tr><td>Edge contrast</td><td>Smallest contrast between any adjacent bar and space</td><td>≥ 0.15 A, otherwise F</td></tr>
+<tr><td>Modulation</td><td>Edge contrast / symbol contrast</td><td>≥ 0.70 A, ≥ 0.60 B, ≥ 0.50 C, ≥ 0.40 D</td></tr>
+<tr><td>Defects</td><td>Largest spot in a space or void in a bar (element reflectance non-uniformity) / symbol contrast</td><td>≤ 0.15 A, ≤ 0.20 B, ≤ 0.25 C, ≤ 0.30 D</td></tr>
+<tr><td>Decodability</td><td>How close the bar and space widths are to their nominal multiples of the module (1 − 2·worst deviation)</td><td>≥ 0.62 A, ≥ 0.50 B, ≥ 0.37 C, ≥ 0.25 D</td></tr>
+</table>
+<p>Set <em>Minimum grade</em> to what the customer specification demands (automotive and medical labels usually ask for C or better, sometimes B); the step passes when the overall grade is that or better. The reference grid for 2D symbols is refined from the symbol's own fixed patterns, so the grade does not depend on which decoder found the symbol.</p>
 
 </article></div><!-- /doc-layout -->
 <h2 id="accuracy">5. 量測精度與演算法慣例</h2>

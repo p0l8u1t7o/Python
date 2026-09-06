@@ -43,6 +43,7 @@
 | 量測區要挖掉孔／字樣／反光 | `region_from_shape`×N → `region_combine(subtract)` → 接量測工具的 `roi` 埠 | `union` 合併幾塊、`intersect` 取重疊 |
 | 圓形工件的崩邊／缺口／毛刺／徑向跳動 | `circular_caliper`（annulus ROI）→ `profile_defect(fit_circle)` → `if_number(count eq 0)` | 跳動量 `circular_caliper.runout` 接 tolerance_judge；不規則外形用 contour_geometry 的凸缺陷 |
 | 缺角／崩邊／外形是否對 | `contour_find` → `contour_filter(max_count=1)` → `contour_geometry(defect_depth)` → `if_number(first_defects eq 0)` | 外形換料 `contour_match(template)`；面積與計數用 `blob` 即可 |
+| 條碼／二維碼的印刷品質要達 X 級（客戶規格、汽車／醫材） | `barcode_grade(standard, min_grade)` → pass／fail，`grade`／`params` 接 output | 只要讀內容用 `barcode`；金屬打標選 aim_dpm；線性碼自動走 15416 |
 | 圖面上的形位公差（直線度／真圓度／平行度／垂直度） | 取點（`find_line.points`／`circular_caliper.points`／`contour_filter.contours`）或兩條 `find_line.line` → `gdt_measure(mode, tolerance)` → pass／fail | mm 要接 `scale`（undistort 的 mm_per_pixel）；真圓度是 MZC，detail.lsc 給最小二乘對照 |
 | 刻印字／浮凸／凹坑／拋光面刮痕（單張看不見） | 四方向打光各一張 → `photometric_stereo(output=curvature_abs)` → `threshold`／`blob` 或 `ocr_read` | 來源端不能連拍時用 `crop` 拆 2×2 拼圖；`albedo` 輸出給印刷／髒污 |
 | 圓周上的齒／缺口／螺紋 | `polar_unwrap`（annulus ROI）→ `threshold` → `blob` → `if_number(eq N)` | 位置標回原圖 `polar_restore(mapping)`；沿圓周量寬度用展開圖上的 `caliper`／`line_profile` |

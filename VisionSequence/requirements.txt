@@ -13,6 +13,7 @@ python-dotenv==1.0.1           # .env
 numpy==2.2.3                   # 所有影像資料的載體（工具之間傳 ndarray，不落地）
 opencv-python-headless==4.11.0.86   # 全部內建工具的實作；headless 不拉 GUI 相依
 scipy==1.15.2                  # 部分量測工具（最小外接圓、曲線擬合）
+zxing-cpp==3.1.1               # 條碼解碼與品質分級（barcode／barcode_grade：Data Matrix、QR、Code 128、EAN；Apache-2.0）
 pillow==11.1.0                 # 讀寫少數 OpenCV 不支援的格式、EXIF 方向
 
 # ---- 通訊（主動輸出到 PLC） ----------------------------------------------------

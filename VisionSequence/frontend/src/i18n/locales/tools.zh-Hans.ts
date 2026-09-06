@@ -60,7 +60,7 @@ export default {
   },
   barcode: {
     label: "條碼 / QR",
-    description: "解碼 QR code 与一維條碼（EAN/UPC/Code128 等）。",
+    description: "解码 QR code、Data Matrix、Aztec、PDF417 与一维条码（EAN/UPC/Code 128/Code 39 等）。",
     params: {
       roi: {
         label: "区域",
@@ -69,7 +69,8 @@ export default {
       types: {
         label: "类型",
         options: {
-          all: "QR + 一維條碼",
+          all: "全部码制",
+          "2d": "二维码（QR、Data Matrix、Aztec、PDF417）",
           qr: "只 QR",
           "1d": "只一維條碼",
         },
@@ -389,6 +390,19 @@ export default {
       drop_darkest: { label: "每像素丢掉最暗的灯", help: "四灯时每个像素用较亮的三张求解，深槽里的阴影不会把法向拉歪。", group: "高级" },
     },
     ports: { image: "光 1", image_1: "光 2", image_2: "光 3", image_3: "光 4", curvature: "曲率", curvature_abs: "形状强度", albedo: "反射率", normal_x: "法向 X", normal_y: "法向 Y", lights: "使用的灯数" },
+  },
+  barcode_grade: {
+    label: "条码品质分级",
+    description: "像验证器一样替二维或一维条码评级：Data Matrix 与 QR 走 ISO/IEC 15415、线性码走 ISO/IEC 15416、金属直接打标走 AIM DPM。每个分项（对比、调制、固定图形损伤、轴向与格点不均匀、未用错误更正、缺陷、可解码度）各自给分，总评 A 到 F，并判定是否达到最低等级。以 8 位灰阶当反射率，数值对得上验证器的量级但不是认证。",
+    params: {
+      roi: { label: "区域", help: "符号与它的静区；留空则整张图像。" },
+      standard: { label: "标准", help: "线性码一律以 15416 分级；DPM 以格对比与格调制取代 15415 的对比与调制。", options: { iso15415: "ISO/IEC 15415（2D：Data Matrix、QR）", iso15416: "ISO/IEC 15416（1D：EAN、UPC、Code 128、Code 39）", aim_dpm: "AIM DPM（ISO/IEC TR 29158，金属直接打标）" } },
+      symbology: { label: "码制", options: { auto: "不限", datamatrix: "Data Matrix", qr: "QR Code", ean_upc: "EAN / UPC", code128: "Code 128", code39: "Code 39" } },
+      aperture: { label: "孔径", help: "合成孔径直径；0＝模块大小的 80%（DPM 为 50%）。" },
+      min_grade: { label: "最低等级", help: "总评要达到此等级或更好才合格。", options: { A: "A（4.0）", B: "B（3.0）", C: "C（2.0）", D: "D（1.0）", F: "F（0.0）" } },
+      dpm_filter: { label: "DPM 前置滤波", help: "AIM DPM 允许测量前先做图像处理。", options: { none: "无", median: "中值 3×3" }, group: "高级" },
+    },
+    ports: { image: "图像", roi: "区域（动态）", pass: "合格", fail: "不合格", grade: "等级", grade_value: "等级分数", params: "分项", text: "内容", symbology: "码制", decoded: "已解码" },
   },
   circular_caliper: {
     label: "圆形卡尺",

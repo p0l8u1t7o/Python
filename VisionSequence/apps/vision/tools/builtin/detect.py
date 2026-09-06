@@ -412,15 +412,40 @@ class DefectDiffTool(Tool):
         )
 
 
+def _zxing_codes(sub: np.ndarray, types: str, c: Any) -> list[dict[str, Any]] | None:
+    """zxing-cpp（有裝時優先）：Data Matrix、Aztec、PDF417、Code 128／39 等 OpenCV 沒有的碼制。沒裝回 None 讓 OpenCV 路徑接手。"""
+    try:
+        import zxingcpp
+    except ImportError:
+        return None
+    B = zxingcpp.BarcodeFormat
+    fmts = {"qr": B.QRCode | B.MicroQRCode, "2d": B.QRCode | B.MicroQRCode | B.DataMatrix | B.Aztec | B.PDF417, "1d": B.EAN13 | B.EAN8 | B.UPCA | B.UPCE | B.Code128 | B.Code39 | B.Code93 | B.ITF | B.Codabar}.get(types)
+    kwargs = {"formats": fmts} if fmts is not None else {}
+    out: list[dict[str, Any]] = []
+    try:
+        results = zxingcpp.read_barcodes(np.ascontiguousarray(sub), **kwargs)
+    except Exception:  # noqa: BLE001 - 解碼器例外視為沒找到
+        return []
+    for r in results:
+        if not r.valid or not r.text:
+            continue
+        p = r.position
+        quad = np.array([[p.top_left.x, p.top_left.y], [p.top_right.x, p.top_right.y], [p.bottom_right.x, p.bottom_right.y], [p.bottom_left.x, p.bottom_left.y]], dtype=np.float64)
+        fmt = str(getattr(r, "symbology", "") or r.format)
+        fmt = {"QR Code": "QR", "Micro QR Code": "MicroQR", "Data Matrix": "DataMatrix"}.get(fmt, fmt)
+        out.append({"text": str(r.text), "type": fmt, "points": c.points_to_full(quad).round(1).tolist()})
+    return out
+
+
 class BarcodeTool(Tool):
     key = "barcode"
     label = "Barcode / QR"
-    description = "Decodes QR codes and 1D barcodes (EAN, UPC, Code128 and friends)."
+    description = "Decodes QR codes, Data Matrix, Aztec, PDF417 and 1D barcodes (EAN, UPC, Code 128, Code 39 and friends)."
     category = "detect"
     icon = "QrCode"
     params = [
         Param("roi", "Region", kind="roi", shapes=["rect"], help_text="Leave blank for the whole image."),
-        Param("types", "Type", kind="select", default="all", options=[{"value": "all", "label": "QR and 1D barcodes"}, {"value": "qr", "label": "QR only"}, {"value": "1d", "label": "1D barcodes only"}]),
+        Param("types", "Type", kind="select", default="all", options=[{"value": "all", "label": "All codes"}, {"value": "qr", "label": "QR only"}, {"value": "2d", "label": "2D codes (QR, Data Matrix, Aztec, PDF417)"}, {"value": "1d", "label": "1D barcodes only"}]),
         Param("expected", "Expected content", kind="text", default="", help_text="When set, the content must match exactly to take the match branch."),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
@@ -437,7 +462,11 @@ class BarcodeTool(Tool):
             raise ToolError("The region falls outside the image")
         sub = np.ascontiguousarray(c.image)
         types = ctx.param("types", "all")
-        codes: list[dict[str, Any]] = []
+        codes: list[dict[str, Any]] = _zxing_codes(sub, types, c)
+        if codes is None:
+            codes = []
+        elif codes or types == "2d":
+            types = "none"  # zxing 找到了（或只要 2D）：不再走 OpenCV 後備
         if types in ("all", "qr"):
             try:
                 ok, infos, pts, _ = cv2.QRCodeDetector().detectAndDecodeMulti(sub)

@@ -288,6 +288,54 @@ def emboss_quad() -> list[np.ndarray]:
     return out
 
 
+BARCODE_GRADE_ROI = {"shape": "rect", "x": 380, "y": 260, "w": 520, "h": 440}
+
+
+def _datamatrix_bitmap(text: str) -> np.ndarray:
+    """zxing 產 Data Matrix 位圖（0/255，含 1 模組靜區）；沒有 zxing 就用棋盤替代（解不出來→分級 F，流程仍可跑）。"""
+    try:
+        import zxingcpp
+
+        return np.array(zxingcpp.write_barcode(zxingcpp.BarcodeFormat.DataMatrix, text, quiet_zone=1))
+    except Exception:  # noqa: BLE001
+        board = np.indices((14, 14)).sum(axis=0) % 2
+        return (board * 255).astype(np.uint8)
+
+
+def barcode_grades() -> list[np.ndarray]:
+    """條碼品質分級：白標籤上一個 Data Matrix（模組 14 px），四張品質遞減——1 乾淨（A）、2 對比偏低（B）、3 對比低＋模糊＋雜訊（C）、
+    4 四個散開的墨點翻轉了四格＋靜區污漬（D，NG）。符號是 8×32 的長方形 Data Matrix；標籤上另有一行料號文字當背景。"""
+    out = []
+    bitmap = _datamatrix_bitmap("VS-SN-000123")
+    module = 14
+    sym = np.kron(bitmap, np.ones((module, module), np.uint8))
+    for i in range(4):
+        rng = np.random.default_rng(900 + i)
+        img = _canvas(1280, 960, 70)
+        cv2.rectangle(img, (400, 280), (880, 680), (238, 238, 236), -1)  # 標籤
+        cv2.putText(img, "VS-SN-000123", (430, 650), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (40, 40, 40), 2)
+        label = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        x0, y0 = 640 - sym.shape[1] // 2, 460 - sym.shape[0] // 2
+        patch_ = sym.astype(np.float32)
+        lo, hi = {0: (10, 238), 1: (72, 235), 2: (100, 215), 3: (10, 238)}[i]
+        patch_ = lo + patch_ / 255.0 * (hi - lo)
+        if i == 2:
+            patch_ = cv2.GaussianBlur(patch_, (0, 0), 2.2)
+        region = label[y0:y0 + sym.shape[0], x0:x0 + sym.shape[1]].astype(np.float32)
+        region[:] = np.where(sym.reshape(sym.shape) >= 0, patch_, region)
+        if i == 3:
+            for r_, c_ in ((2, 5), (4, 11), (6, 19), (3, 27)):  # 四個散開的墨點／針孔：各翻一格（四個碼字錯）
+                blk = patch_[module * r_:module * (r_ + 1), module * c_:module * (c_ + 1)]
+                blk[:] = 248 - blk
+            cv2.rectangle(patch_, (2, module * 2), (module - 4, module * 6), 30, -1)              # 靜區污漬
+            region[:] = patch_
+        label[y0:y0 + sym.shape[0], x0:x0 + sym.shape[1]] = np.clip(region, 0, 255).astype(np.uint8)
+        noise_sigma = {0: 2, 1: 4, 2: 9, 3: 3}[i]
+        label = np.clip(label.astype(np.float32) + rng.normal(0, noise_sigma, label.shape), 0, 255).astype(np.uint8)
+        out.append(cv2.cvtColor(label, cv2.COLOR_GRAY2BGR))
+    return out
+
+
 def _date_code_font(size: int = 40):
     from PIL import ImageFont
 
@@ -497,6 +545,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "shape_parts": ("shape match", shape_parts),
     "chipped_disc": ("chipped disc", chipped_disc),
     "emboss_quad": ("embossed plate (four lights)", emboss_quad),
+    "barcode_grades": ("barcode grading", barcode_grades),
     "date_codes": ("date code label", date_codes),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),

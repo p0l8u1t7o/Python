@@ -229,6 +229,14 @@ class Scene:
         nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
         lights = light_directions([0, 90, 180, 270], 30)
         self.lit = [np.clip(180.0 * np.clip(nrm @ lights[k], 0, None) + 8, 0, 255).astype(np.uint8) for k in range(4)]
+        # 條碼分級：Data Matrix（模組 8 px）貼在場景中央偏上；沒有 zxing 就是棋盤（工具回 F，仍可量時間）
+        from apps.vision.demo_images import _datamatrix_bitmap
+
+        dm = np.kron(_datamatrix_bitmap("VS-000123"), np.ones((8, 8), np.uint8))
+        self.dm_image = self.gray.copy()
+        y0, x0 = int(self.cy) - dm.shape[0] // 2 - int(self.m * 0.3), int(self.cx) - dm.shape[1] // 2
+        self.dm_image[y0:y0 + dm.shape[0], x0:x0 + dm.shape[1]] = dm
+        self.dm_roi = {"shape": "rect", "x": x0 - 20, "y": y0 - 20, "w": dm.shape[1] + 40, "h": dm.shape[0] + 40}
         self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
@@ -337,6 +345,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("chamfer_angle 40", "chamfer_angle", big, {"roi": top_edge, "num_calipers": 40}, {}, {}),
         ("tolerance_judge", "tolerance_judge", None, {"nominal": 12, "upper_tol": 0.05, "lower_tol": -0.05}, {"value": 12.02}, {"_outputs": {}}),
         ("contour_find (mask)", "contour_find", s.mask, {"threshold_method": "none", "min_area": 300}, {}, {}),
+        ("barcode_grade (Data Matrix roi)", "barcode_grade", s.dm_image, {"roi": s.dm_roi, "symbology": "datamatrix"}, {}, {}),
+        ("barcode_grade (Data Matrix full image)", "barcode_grade", s.dm_image, {"symbology": "datamatrix"}, {}, {}),
+        ("barcode (Data Matrix, zxing)", "barcode", s.dm_image, {"roi": s.dm_roi, "types": "2d"}, {}, {}),
         ("photometric_stereo (4 lights, drop darkest)", "photometric_stereo", s.lit[0], {"output": "curvature"}, {"image_1": s.lit[1], "image_2": s.lit[2], "image_3": s.lit[3]}, {}),
         ("photometric_stereo (4 lights, plain)", "photometric_stereo", s.lit[0], {"output": "curvature", "drop_darkest": False}, {"image_1": s.lit[1], "image_2": s.lit[2], "image_3": s.lit[3]}, {}),
         ("gdt_measure straightness 2000", "gdt_measure", None, {"mode": "straightness", "tolerance": 20}, {"points": [[x, 5 * math.sin(x / 50)] for x in np.linspace(0, 1000, 2000)]}, {}),

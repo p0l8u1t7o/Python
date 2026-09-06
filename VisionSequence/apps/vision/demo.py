@@ -708,6 +708,30 @@ def form_tolerance_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def barcode_grade_flow(source_id: Any) -> dict[str, Any]:
+    """條碼品質分級：barcode_grade（ISO 15415，最低 C）→ pass／fail；輸出總評字母、分數與內容。
+
+    對齊合成圖「條碼分級」：1 乾淨 A、2 對比偏低 B、3 模糊雜訊 C、4 髒污與靜區污漬（NG）。"""
+    from apps.vision import demo_images as _di
+
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("grade", "barcode_grade", 1, 0, "Grade the Data Matrix", roi=dict(_di.BARCODE_GRADE_ROI), standard="iso15415", symbology="datamatrix", min_grade="C"),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG: print quality", verdict="ng", label="barcode_grade"),
+        _node("out_g", "output", 2, 2, "Output grade", name="grade"),
+        _node("out_v", "output", 2, 3, "Output grade value", name="grade_value"),
+        _node("out_t", "output", 3, 2, "Output content", name="content"),
+        _note("n1", 0, 1, "About", "The grade step measures the symbol the way a verifier does (ISO/IEC 15415): symbol contrast, modulation, fixed pattern damage, axial and grid non-uniformity and unused error correction, each graded A to F, and the overall grade is the lowest of them. The parameters output lists every value with its grade, so a C can be traced to the cause — low contrast, a dirty quiet zone, damaged modules.\nSwitch the standard to ISO/IEC 15416 for linear codes or AIM DPM for marks on metal; switch the minimum grade to what the customer's specification demands."),
+    ]
+    edges = [
+        _edge("src", "grade"),
+        _edge("grade", "ok", "pass", "_flow"), _edge("grade", "ng", "fail", "_flow"),
+        _edge("grade", "out_g", "grade", "value"), _edge("grade", "out_v", "grade_value", "value"), _edge("grade", "out_t", "text", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -924,6 +948,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("circular_defect", "Chipped rim (circular caliper)", "A ring of 180 radial calipers gives the radius at every angle and the run-out; Profile defects fits a circle and marks every dip or empty caliper as a chip, drawn as a red arc on the rim", "measure", circular_defect_flow),
     ("form_tolerance", "Roundness (form tolerance)", "180 radial calipers give the edge points; Form and position tolerance fits the minimum-zone circle (ISO 1101) and passes the disc when the ring between the two concentric circles is within 5 px — the chipped rim fails", "measure", form_tolerance_flow),
     ("emboss_defect", "Embossed characters and dents (photometric stereo)", "Four crops split a 2×2 picture of the plate under four lights; Photometric stereo turns them into a shape-strength map on which a blob count in the check zone finds the dent that no single picture shows", "quality", emboss_defect_flow),
+    ("barcode_grade", "Barcode quality grade (ISO 15415)", "Grades the Data Matrix on the label like a verifier — contrast, modulation, fixed pattern damage, axial and grid non-uniformity, unused error correction — and passes it at C or better; the dirty symbol fails", "detect", barcode_grade_flow),
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
      lambda sid: shading_flow(sid, _demo_asset("Example: white reference (uneven lighting)"))),
@@ -966,6 +991,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "circular_defect": "Example: chipped disc",
     "form_tolerance": "Example: chipped disc",
     "emboss_defect": "Example: embossed plate (four lights)",
+    "barcode_grade": "Example: barcode grading",
     "shading": "Example: uneven lighting",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",

@@ -258,7 +258,15 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 defect_mask／deviation（1σ＝32 灰階的偏離影像）、分支 ok／defect。
 
 ## barcode
-一維碼／QR：`roi` 縮小範圍加速；`expected` 填預期內容可直接判定。輸出 `first`（字串）、`count`、`found/not_found`。
+一維碼／QR／Data Matrix／Aztec／PDF417（zxing-cpp；沒裝時退回 QR＋EAN/UPC）：`roi` 縮小範圍加速；`types` all／qr／2d／1d；`expected` 填預期內容可直接判定。輸出 `first`（字串）、`count`、`found/not_found`、`codes`（type／points）。
+
+## barcode_grade
+條碼品質分級（驗證器等級）：`roi` 框住符號與靜區（teach）、`standard` iso15415（2D：Data Matrix／QR）／iso15416（1D，線性碼自動走這條）／aim_dpm
+（金屬直接打標：cell_contrast／cell_modulation／minimum_reflectance 取代 15415 的對比與調變，`dpm_filter` 可先中值濾波）、`symbology` 限定碼制、
+`min_grade`（teach，預設 C）。輸出 `grade`（A～F）、`grade_value`（4.0～0）、`params`（每分項 value／grade／note）、`text`、`symbology`＋pass／fail。
+分項：decode、symbol_contrast、modulation、fixed_pattern_damage、axial_nonuniformity、grid_nonuniformity、unused_error_correction（1D：min_reflectance、
+edge_contrast、defects、decodability）。總評＝最低分（1D 是 10 條掃描線平均）。detail 有 fixed_pattern 各段損傷與 1D 每條掃描線，被判 C 的原因看 params。
+客戶規格寫「grade ≥ B」就把 min_grade 設 B；純讀內容用 barcode 就好，分級比讀慢（DM 240² 約 5 ms、1D 10 條掃描 15 ms）。
 
 ## ocr_read
 文字辨識（讀日期碼、批號、料號）：`roi` 框一行字，`charset` 依內容限制字元集（日期碼 `digits`、料號 `upper`；`custom` 自訂）——
