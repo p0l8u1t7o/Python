@@ -3,15 +3,17 @@
  * 耗時折線（runs 歷史）、執行歷史表（狀態篩選、分頁）。資料來自 GET /flows/{id}/stats 與 GET /flows/{id}/runs。
  */
 import { useMemo, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, BarChart3 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Copy, Ruler } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { ArchiveHint, ArchivedImages } from '@/components/flow/ArchiveHint'
 import { outputsSummary } from '@/components/editor/ResultsPanel'
 import { Page } from '@/components/layout/AppShell'
 import { Button, Card, CardBody, CardHeader, EmptyRow, ErrorState, LoadingState, PageHeader, SegmentedControl, Select, StatusBadge, TBody, THead, Table, Td, Th, Tr, Tile } from '@/components/ui'
+import { api } from '@/lib/api'
 import { useFlow, useFlowStats, useRunHistory } from '@/lib/queries'
 import type { FlowStats } from '@/lib/types'
 
@@ -30,6 +32,92 @@ export function TrendStrip({ statuses, className = '' }: { statuses: string[]; c
         <span key={i} className={`flex-1 ${s === 'ok' ? 'bg-ok' : s === 'ng' ? 'bg-warning' : 'bg-critical'}`} />
       ))}
     </div>
+  )
+}
+
+type PrecisionStats = { n: number; mean: number | null; std: number | null; range: number | null; min: number | null; max: number | null; six_sigma: number | null }
+type PrecisionResult = {
+  mode: string
+  runs: number
+  outputs: Record<string, { stats: PrecisionStats; cg?: number; cgk?: number; tolerance?: number }>
+  skipped_outputs: string[]
+  duration_ms: PrecisionStats
+  markdown: string
+}
+
+const fmt = (v: number | null | undefined, nd = 4) => (v == null ? '—' : Number.isFinite(v) ? v.toFixed(nd) : '∞')
+
+/** 精度研究（WP-13）：同圖重複 N 次（重複性）或重新取像 N 次（再現性），每個具名數值輸出的 σ／極差；報告 markdown 可複製。 */
+function PrecisionCard({ flowId }: { flowId: number }) {
+  const { t } = useTranslation()
+  const [mode, setMode] = useState<'repeatability' | 'reproducibility'>('repeatability')
+  const [repeat, setRepeat] = useState(30)
+  const [copied, setCopied] = useState(false)
+  const study = useMutation({
+    mutationFn: () => api.post<PrecisionResult>(`/vision/flows/${flowId}/precision`, { mode, repeat }),
+  })
+  const result = study.data
+  const copy = async () => {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result.markdown)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* 剪貼簿不可用（非安全來源）：略過 */
+    }
+  }
+  return (
+    <Card testId="precision-card">
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Ruler size={16} className="text-brand" />{t('precision.title')}</span>}
+        description={t('precision.subtitle')}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl size="sm" value={mode} onChange={(v) => setMode(v as 'repeatability' | 'reproducibility')}
+              options={[{ value: 'repeatability', label: t('precision.repeatability') }, { value: 'reproducibility', label: t('precision.reproducibility') }]} />
+            <label className="flex items-center gap-1 text-xs text-muted">{t('precision.repeat')}
+              <input type="number" min={2} max={200} value={repeat} onChange={(e) => setRepeat(Math.max(2, Math.min(200, Number(e.target.value) || 2)))} className="input w-20" data-testid="precision-repeat" />
+            </label>
+            <Button size="sm" variant="primary" disabled={study.isPending} onClick={() => study.mutate()} data-testid="precision-run">{study.isPending ? t('precision.running') : t('precision.run')}</Button>
+          </div>
+        }
+      />
+      <CardBody>
+        {study.isError ? <ErrorState error={study.error} /> : null}
+        {!result && !study.isError ? <p className="text-sm text-muted">{t('precision.empty')}</p> : null}
+        {result ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">{t('precision.summary', { mode: t(`precision.${result.mode}`), runs: result.runs, ms: fmt(result.duration_ms.mean, 1) })}</p>
+            <div className="overflow-x-auto">
+              <Table>
+                <THead>
+                  <Tr>
+                    <Th>{t('precision.output')}</Th><Th align="right">n</Th><Th align="right">{t('precision.mean')}</Th><Th align="right">σ</Th>
+                    <Th align="right">{t('precision.range')}</Th><Th align="right">{t('precision.min')}</Th><Th align="right">{t('precision.max')}</Th><Th align="right">6σ</Th>
+                  </Tr>
+                </THead>
+                <TBody>
+                  {Object.keys(result.outputs).length === 0 ? <EmptyRow colSpan={8} message={t('precision.noNumeric')} /> : null}
+                  {Object.entries(result.outputs).map(([name, o]) => (
+                    <Tr key={name} testId={`precision-row-${name}`}>
+                      <Td className="font-mono text-xs">{name}</Td><Td align="right" className="tnum">{o.stats.n}</Td><Td align="right" className="tnum">{fmt(o.stats.mean)}</Td>
+                      <Td align="right" className="tnum font-semibold">{fmt(o.stats.std)}</Td><Td align="right" className="tnum">{fmt(o.stats.range)}</Td>
+                      <Td align="right" className="tnum">{fmt(o.stats.min)}</Td><Td align="right" className="tnum">{fmt(o.stats.max)}</Td><Td align="right" className="tnum">{fmt(o.stats.six_sigma)}</Td>
+                    </Tr>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+            {result.skipped_outputs.length ? <p className="text-xs text-muted">{t('precision.skipped', { names: result.skipped_outputs.join(', ') })}</p> : null}
+            <div className="flex items-center gap-2">
+              <Button size="xs" icon={<Copy size={12} />} onClick={copy} data-testid="precision-copy">{copied ? t('precision.copied') : t('precision.copyReport')}</Button>
+              <span className="text-xs text-muted">{t('precision.grrHint')}</span>
+            </div>
+          </div>
+        ) : null}
+      </CardBody>
+    </Card>
   )
 }
 
@@ -194,6 +282,7 @@ export function StatsPage() {
               </>
             )}
           </Card>
+          <PrecisionCard flowId={id} />
         </>
       )}
     </Page>

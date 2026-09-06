@@ -1805,6 +1805,27 @@ const enExtra3 = {
     saved: 'Settings saved',
     displayNameSaved: 'Display name updated',
   },
+  precision: {
+    title: 'Precision study',
+    subtitle: 'How much the named outputs vary — the same picture run again (repeatability) or the part captured again (reproducibility). GR&R across several parts runs from the command line.',
+    repeatability: 'Repeatability',
+    reproducibility: 'Reproducibility',
+    repeat: 'Runs',
+    run: 'Run study',
+    running: 'Running…',
+    empty: 'Pick a mode and the number of runs, then run the study. A deterministic flow gives a σ of exactly 0 for repeatability; anything else is the algorithm\'s own uncertainty.',
+    summary: '{{mode}}, {{runs}} runs, {{ms}} ms per run on average',
+    output: 'Output',
+    mean: 'Mean',
+    range: 'Range',
+    min: 'Min',
+    max: 'Max',
+    noNumeric: 'The flow has no numeric named outputs',
+    skipped: 'Not analysed (not numeric): {{names}}',
+    copyReport: 'Copy report',
+    copied: 'Copied',
+    grrHint: 'Formulas, tolerances, Cg/Cgk and GR&R: manage.py precision',
+  },
 }
 
 export default merge(merge(merge(en, enExtra), enExtra2), enExtra3)

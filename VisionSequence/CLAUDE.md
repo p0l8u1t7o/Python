@@ -162,7 +162,7 @@
 ### 保留策略與維運（FlowRunHourly、backup／restore／purge／doctor）
 - **三層保留**：封存影像（`ARCHIVE_DAYS`／`ARCHIVE_MAX_GB`）→ 明細 `FlowRun`（`KEEP_RUN_DAYS` 預設 30 天，`KEEP_RUN_ROWS` 20000 是保險）→ **每小時彙總 `FlowRunHourly` 永久保留**。
 - `_Persister._rollup` 在寫明細的同一批累加彙總（`F()` 增量＋`Greatest`；依 flow／hour／station／recipe 一列）。**`GET /flows/{id}/stats` 已改查彙總**，明細清掉或重開機都不會讓良率曲線消失。改 stats 要記得它讀的是彙總不是明細。
-- 維運指令：`backup`（SQLite 線上備份 API，`--with-images` 才含封存）／`restore`（擋 zip slip、舊 DB 留一份）／`purge --dry-run`／`doctor`（有 FAIL 時離開碼 1，客服第一句就靠它）。
+- 維運指令：`backup`（SQLite 線上備份 API，`--with-images` 才含封存）／`restore`（擋 zip slip、舊 DB 留一份）／`purge --dry-run`／`doctor`（有 FAIL 時離開碼 1，客服第一句就靠它）／`precision`（WP-13：`apps/vision/precision.py`，repeatability／reproducibility／grr 走 engine.execute 直跑；AIAG MSA ANOVA 單評估者；`POST /flows/{id}/precision` 給統計頁的精度卡，GR&R 只在 CLI；報告 markdown 貼進 docs/performance.html §8）。
 - **版本號單一來源** `apps/vision/__init__.py` 的 `__version__`；`/healthz`、`integration/info`、前端側欄底部、`doctor` 都讀它。
 
 ### 稽核軌跡（apps/core/audit.py、core.AuditLog）

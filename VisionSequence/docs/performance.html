@@ -147,7 +147,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html" aria-current="page">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#env">1. The machine and the method</a></li><li><a href="#summary">2. The summary</a></li><li><a href="#table">3. Every tool, before and after</a></li><li><a href="#engine">4. The engine and the image cache</a><ul><li><a href="#sec-4-1">4.1 The &quot;hole count&quot; demo flow, node by node (1280×960, preview=False, after)</a></li><li><a href="#sec-4-2">4.2 The engine&#x27;s fixed overhead</a></li><li><a href="#sec-4-3">4.3 ImageStore.encode (1280×960 BGR, JPEG 85)</a></li></ul></li><li><a href="#changes">5. What each optimisation did, and why</a><ul><li><a href="#sec-5-1">5.1 blob: filter the noise mask with connected components first (detect._prefilter_small)</a></li><li><a href="#sec-5-2">5.2 intensity and histogram: every statistic from one histogram pass (measure._roi_hist, _hist_stats)</a></li><li><a href="#sec-5-3">5.3 find_circle, find_line and caliper: batched edge detection, vectorised RANSAC</a></li><li><a href="#sec-5-4">5.4 template_match: an unmasked coarse pass, a pruned fine pass</a></li><li><a href="#sec-5-5">5.5 Caching decoded asset images (locate.read_asset_image)</a></li><li><a href="#sec-5-6">5.6 defect_diff: caching the Hanning window and the template pre-processing</a></li><li><a href="#sec-5-7">5.7 Smaller items</a></li><li><a href="#sec-5-7b">5.7b Polar unwrap (new tool, measured on delivery)</a></li><li><a href="#sec-5-7c">5.7c Contour tool chain (new tools, measured on delivery)</a></li><li><a href="#sec-5-7d">5.7d Combined regions (WP-08, measured on delivery)</a></li><li><a href="#sec-5-7e">5.7e Shading correction (WP-12, measured on delivery)</a></li><li><a href="#sec-5-7f">5.7f Statistical template comparison (WP-07, measured on delivery)</a></li><li><a href="#sec-5-7g">5.7g Shape matching (WP-01, measured on delivery)</a></li><li><a href="#sec-5-7h">5.7h Anomaly detection (WP-06, measured on delivery)</a></li><li><a href="#sec-5-7i">5.7i Circular caliper and profile defects (WP-05, measured on delivery)</a></li><li><a href="#sec-5-7j">5.7j OCR and OCV (WP-02, measured on delivery)</a></li><li><a href="#sec-5-7k">5.7k Form and position tolerance (WP-10, measured on delivery)</a></li><li><a href="#sec-5-7l">5.7l Photometric stereo (WP-11, measured on delivery)</a></li><li><a href="#sec-5-7m">5.7m Barcode quality grading (WP-09, measured on delivery)</a></li><li><a href="#sec-5-8">5.8 Looked at and left alone</a></li></ul></li><li><a href="#advice">6. Advice</a></li><li><a href="#capture">6b. Capture client transfer (large frames)</a></li><li><a href="#rerun">7. Re-running the benchmarks</a></li></ul></aside><article class="doc wide">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#env">1. The machine and the method</a></li><li><a href="#summary">2. The summary</a></li><li><a href="#table">3. Every tool, before and after</a></li><li><a href="#engine">4. The engine and the image cache</a><ul><li><a href="#sec-4-1">4.1 The &quot;hole count&quot; demo flow, node by node (1280×960, preview=False, after)</a></li><li><a href="#sec-4-2">4.2 The engine&#x27;s fixed overhead</a></li><li><a href="#sec-4-3">4.3 ImageStore.encode (1280×960 BGR, JPEG 85)</a></li></ul></li><li><a href="#changes">5. What each optimisation did, and why</a><ul><li><a href="#sec-5-1">5.1 blob: filter the noise mask with connected components first (detect._prefilter_small)</a></li><li><a href="#sec-5-2">5.2 intensity and histogram: every statistic from one histogram pass (measure._roi_hist, _hist_stats)</a></li><li><a href="#sec-5-3">5.3 find_circle, find_line and caliper: batched edge detection, vectorised RANSAC</a></li><li><a href="#sec-5-4">5.4 template_match: an unmasked coarse pass, a pruned fine pass</a></li><li><a href="#sec-5-5">5.5 Caching decoded asset images (locate.read_asset_image)</a></li><li><a href="#sec-5-6">5.6 defect_diff: caching the Hanning window and the template pre-processing</a></li><li><a href="#sec-5-7">5.7 Smaller items</a></li><li><a href="#sec-5-7b">5.7b Polar unwrap (new tool, measured on delivery)</a></li><li><a href="#sec-5-7c">5.7c Contour tool chain (new tools, measured on delivery)</a></li><li><a href="#sec-5-7d">5.7d Combined regions (WP-08, measured on delivery)</a></li><li><a href="#sec-5-7e">5.7e Shading correction (WP-12, measured on delivery)</a></li><li><a href="#sec-5-7f">5.7f Statistical template comparison (WP-07, measured on delivery)</a></li><li><a href="#sec-5-7g">5.7g Shape matching (WP-01, measured on delivery)</a></li><li><a href="#sec-5-7h">5.7h Anomaly detection (WP-06, measured on delivery)</a></li><li><a href="#sec-5-7i">5.7i Circular caliper and profile defects (WP-05, measured on delivery)</a></li><li><a href="#sec-5-7j">5.7j OCR and OCV (WP-02, measured on delivery)</a></li><li><a href="#sec-5-7k">5.7k Form and position tolerance (WP-10, measured on delivery)</a></li><li><a href="#sec-5-7l">5.7l Photometric stereo (WP-11, measured on delivery)</a></li><li><a href="#sec-5-7m">5.7m Barcode quality grading (WP-09, measured on delivery)</a></li><li><a href="#sec-5-8">5.8 Looked at and left alone</a></li></ul></li><li><a href="#advice">6. Advice</a></li><li><a href="#capture">6b. Capture client transfer (large frames)</a></li><li><a href="#rerun">7. Re-running the benchmarks</a></li><li><a href="#precision">8. Precision — repeatability, reproducibility and gauge R&amp;R</a></li></ul></aside><article class="doc wide">
 
 <h1>Performance report</h1>
 <p>Every built-in tool and the engine were benchmarked, the slow ones optimised without changing any interface, and the before-and-after recorded here along with the advice that follows from it. The raw numbers are in <code>docs/bench-before.txt</code> and <code>docs/bench-after.txt</code>; the measurement script is <code>scripts/bench_tools.py</code>.</p>
@@ -397,6 +397,84 @@ cmp/out/ok  &lt; 0.01 ms
 .venv/Scripts/python.exe scripts/bench_capture.py                     # capture transfer (20 MP colour, shared memory and TCP)
 </pre>
 <p>Verification: <code>.venv/Scripts/python.exe manage.py test --noinput</code> and <code>.venv/Scripts/python.exe -m ruff check apps tests scripts config</code> were green before and after. The tools' output shapes and values are held by <code>tests/test_tools.py</code>, and a separate equivalence check comparing the old and new implementations item by item (blob, intensity, histogram, find_edges, caliper_points, apply_mask, mask_for) matched exactly during development.</p>
+
+<h2 id="precision">8. Precision — repeatability, reproducibility and gauge R&amp;R</h2>
+<p>Speed is only half of an acceptance report; the other half is how much the numbers move. <code>manage.py precision</code> runs a flow the way the engine runs it (no queue, no statistics, no run history) and reports every numeric named output the way AIAG MSA 4th edition defines the metrics, with the formulas printed in the report so the customer can check them. The Statistics page has the same study for repeatability and reproducibility (the <em>Precision study</em> card); gauge R&amp;R across several parts runs from the command line because it needs the part pictures.</p>
+<table>
+<tr><th>Mode</th><th>What runs</th><th>What it tells you</th></tr>
+<tr><td><code>repeatability</code></td><td>One picture run N times</td><td>σ and range of each output. A deterministic flow gives exactly 0; anything else is the algorithm's own uncertainty (random initialisation, thread timing).</td></tr>
+<tr><td><code>reproducibility</code></td><td>The same part captured N times (the flow's own source, or <code>--source</code>)</td><td>σ and range including camera noise and lighting drift; with <code>--tolerance name=T</code> also 6σ/T and Cg, with <code>--reference name=X</code> also the bias and Cgk.</td></tr>
+<tr><td><code>grr</code></td><td>P parts × r trials (<code>--parts-dir</code>: one sub-folder per part, one file per trial; or <code>--parts N</code> with a live source, prompting per part)</td><td>ANOVA with one appraiser: EV, PV, GRR, TV, %GR&amp;R (&lt; 10% excellent, 10–30% acceptable, &gt; 30% unacceptable), ndc (≥ 5), and with a tolerance %GR&amp;R of tolerance and Cg.</td></tr>
+</table>
+<pre><code>manage.py precision "Demo: hole count" --repeat 30 --output report.json --markdown report.md
+manage.py precision 2 --mode reproducibility --repeat 30 --tolerance otsu=20 --max-sigma otsu=0.5
+manage.py precision 143 --mode grr --parts-dir parts\ --tolerance mean_intensity=40 --max-grr 30</code></pre>
+<p><code>--max-sigma [name=]S</code> and <code>--max-grr PCT</code> are CI gates: the command exits 1 when a limit is missed, and the JSON carries the same verdict under <code>limits</code>, so a precision regression fails a pipeline the same way a Golden Set mismatch does. The three reports below were produced on the machine of section 1 with the demo flows; they are the markdown output pasted as is.</p>
+<details open><summary>Repeatability — Demo: hole count (synthetic source, one picture run 30 times)</summary>
+<ul><li>Flow: Demo: hole count (id 1, version 83)</li><li>Mode: repeatability, 30 runs</li><li>Generated: 2026-09-06T06:14:41+00:00; total runs 30; run time median 7.6 ms</li></ul>
+<h5>Output <code>hole_count</code></h5>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>n</td><td>30</td></tr>
+<tr><td>Mean</td><td>4.0000</td></tr>
+<tr><td>σ (sample)</td><td>0.0000</td></tr>
+<tr><td>Range (max − min)</td><td>0.0000</td></tr>
+<tr><td>Min / max</td><td>4.0000 / 4.0000</td></tr>
+<tr><td>6σ</td><td>0.0000</td></tr>
+</table>
+<p>Non-numeric outputs not analysed: judge, judge_label</p>
+<h5>Method</h5>
+<ul><li>σ = sample standard deviation of the N runs on the same picture (ddof = 1); range = max − min</li><li>6σ / T = share of the tolerance consumed by six standard deviations (when a tolerance is given)</li><li>Cg = 0.2·T / (6·σ); Cgk = (0.1·T − |mean − reference|) / (3·σ); both ≥ 1.33 pass (AIAG MSA 4th ed., gauge capability)</li></ul>
+</details>
+<details open><summary>Reproducibility — Demo: exposure check (30 fresh pictures of the synthetic source, tolerance 20 on otsu)</summary>
+<ul><li>Flow: Demo: exposure check (id 2, version 55)</li><li>Mode: reproducibility, 30 runs</li><li>Generated: 2026-09-06T06:14:42+00:00; total runs 30; run time median 30.5 ms</li></ul>
+<h5>Output <code>otsu</code></h5>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>n</td><td>30</td></tr>
+<tr><td>Mean</td><td>133.9667</td></tr>
+<tr><td>σ (sample)</td><td>0.1826</td></tr>
+<tr><td>Range (max − min)</td><td>1.0000</td></tr>
+<tr><td>Min / max</td><td>133.0000 / 134.0000</td></tr>
+<tr><td>6σ</td><td>1.0954</td></tr>
+<tr><td>Tolerance</td><td>20.0000</td></tr>
+<tr><td>6σ / tolerance</td><td>5.48 %</td></tr>
+<tr><td>Cg</td><td>3.65 (≥ 1.33 pass)</td></tr>
+</table>
+<p>Non-numeric outputs not analysed: judge</p>
+<h5>Method</h5>
+<ul><li>σ = sample standard deviation of the N runs, each on a fresh picture of the same part (ddof = 1); range = max − min</li><li>6σ / T = share of the tolerance consumed by six standard deviations (when a tolerance is given)</li><li>Cg = 0.2·T / (6·σ); Cgk = (0.1·T − |mean − reference|) / (3·σ); both ≥ 1.33 pass</li></ul>
+</details>
+<details open><summary>Gauge R&amp;R — mean intensity over 5 parts × 3 trials (parts folder, tolerance 40)</summary>
+<ul><li>Flow: AI DEMO (id 143, version 11)</li><li>Mode: grr, 5 parts × 3 trials</li><li>Generated: 2026-09-06T06:14:44+00:00; total runs 15; run time median 2.3 ms</li></ul>
+<h5>Output <code>mean_intensity</code></h5>
+<table>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr><td>Parts × trials</td><td>5 × 3</td></tr>
+<tr><td>Grand mean</td><td>104.7613</td></tr>
+<tr><td>EV (repeatability, σ)</td><td>0.0106</td></tr>
+<tr><td>PV (part variation, σ)</td><td>21.6352</td></tr>
+<tr><td>GRR (σ)</td><td>0.0106</td></tr>
+<tr><td>TV (total, σ)</td><td>21.6353</td></tr>
+<tr><td>%GR&amp;R (of total variation)</td><td>0.05 % — <strong>excellent</strong></td></tr>
+<tr><td>%PV</td><td>100.00 %</td></tr>
+<tr><td>ndc (distinct categories)</td><td>2865 (≥ 5 acceptable)</td></tr>
+<tr><td>Tolerance</td><td>40.0000</td></tr>
+<tr><td>%GR&amp;R (of tolerance)</td><td>0.16 %</td></tr>
+<tr><td>Cg</td><td>125.24</td></tr>
+</table>
+<table>
+<tr><th>Part</th><th>n</th><th>mean</th><th>σ</th><th>range</th></tr>
+<tr><td>part_01</td><td>3</td><td>77.3933</td><td>0.0115</td><td>0.0200</td></tr>
+<tr><td>part_02</td><td>3</td><td>91.0767</td><td>0.0153</td><td>0.0300</td></tr>
+<tr><td>part_03</td><td>3</td><td>104.7667</td><td>0.0115</td><td>0.0200</td></tr>
+<tr><td>part_04</td><td>3</td><td>118.4433</td><td>0.0058</td><td>0.0100</td></tr>
+<tr><td>part_05</td><td>3</td><td>132.1267</td><td>0.0058</td><td>0.0100</td></tr>
+</table>
+<p>Non-numeric outputs not analysed: judge, judge_label</p>
+<h5>Method</h5>
+<ul><li>ANOVA, one appraiser (AIAG MSA 4th ed. chapter III section B): MS_part = r·Σ(ȳ_p − ȳ)² / (p − 1); MS_error = ΣΣ(y − ȳ_p)² / (p·(r − 1))</li><li>EV (repeatability) = √MS_error; PV (part variation) = √max(0, (MS_part − MS_error) / r); GRR = EV; TV = √(GRR² + PV²)</li><li>%GR&amp;R = 100·GRR / TV (&lt; 10% excellent, 10–30% acceptable, &gt; 30% unacceptable); ndc = ⌊1.41·PV / GRR⌋ (≥ 5 acceptable)</li><li>With a tolerance T: %GR&amp;R(tolerance) = 100·6·GRR / T; Cg = 0.2·T / (6·EV)</li></ul>
+</details>
 
 </article></div><!-- /doc-layout -->
 <script>
