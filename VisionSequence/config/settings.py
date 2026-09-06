@@ -241,6 +241,9 @@ VISION = {
 }
 VISION["ASSET_DIR"].mkdir(parents=True, exist_ok=True)
 
+#: 測試時把資產目錄換到系統暫存區（測試寫的固定影像／模型／封存不該留在站台的 datassets）
+TEST_RUNNER = "config.testrunner.VisionTestRunner"
+
 # 使用者權杖有效期（小時）。
 AUTH_TOKEN_TTL_HOURS = _env_int("AUTH_TOKEN_TTL_HOURS", 24 * 14)
 
