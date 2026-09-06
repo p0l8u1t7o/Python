@@ -47,6 +47,11 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## warp_perspective
 四點透視校正：`roi` 用 `polygon` 四個角點（順序自動排），`width/height` 給輸出尺寸。標籤斜貼、相機斜拍時放在 barcode／text_presence／量測前面。
 
+## undistort
+鏡頭畸變校正：選一個 `calibration` 資產（標定頁做的），放在取像後、量測前。廣角或近距離時邊角的直線會拱起來，
+校正後量測值才不會隨位置漂。`keep_edges` 開＝整個畫面留著（角落補黑），關＝縮放到全部都是有效像素。
+沒有標定資產就別放這個節點。
+
 ## convert_depth
 16-bit／浮點影像轉 8-bit（`shift` 右移保線性、`minmax` 拉滿），或反向。多數工具會自動正規化，只有要控制映射方式時才放。
 
@@ -101,8 +106,14 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 ## concentricity
 兩圓同心度：a/b 接 find_circle 的 cx/cy/r，`max_deviation` 填圖面同心度公差的一半。輸出 in_spec 給 bool_logic。
 
+## to_world
+像素→真實世界座標（mm 或機械手座標），選一個含世界對應的 `calibration` 資產。
+`points` 進 → `points_world`／`x`／`y` 出（第一點）；`value`（像素長度）→ `length`；`angle`（影像角度）→ `angle`（世界角度）。
+要把位置交給機械手抓取時用它，接在 template_match／find_circle 的中心座標後面，再接 output 具名輸出。
+只換算長度用 calibration 就夠，不必用這個。
+
 ## calibration
-像素→mm：`pixel_size` 模式填 `pixel_size_mm`（0.05 mm/px 之類）；或 `two_point` 用 px_distance/real_mm。`value` 進、`mm` 出，放在 tolerance_judge 前。
+像素→mm：`pixel_size` 模式填 `pixel_size_mm`（0.05 mm/px 之類）；`known_distance` 用 px_distance/real_mm；`asset` 模式直接吃標定資產（站台重新標定後所有流程一起更新，優先用這個）。`value` 進、`mm` 出，放在 tolerance_judge 前。
 
 ## tolerance_judge
 標稱值±公差判定：`nominal/upper_tol/lower_tol/unit/spec_source/name`。輸出 `in_spec`（bool，接 bool_logic 或 judge by_input）、`pass/fail` 分支、`deviation`。

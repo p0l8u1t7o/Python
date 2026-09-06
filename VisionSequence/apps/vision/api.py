@@ -1034,8 +1034,8 @@ def list_assets(request: HttpRequest, kind: str = ""):
 @router.post("/assets", response={201: dict})
 def upload_asset(request: HttpRequest, file: UploadedFile = File(...), kind: str = Form("image"), name: str = Form(""), group: str = Form("")):
     require_feature(request, "assets")
-    if kind not in ("image", "model", "file"):
-        raise ValidationError("kind must be image, model or file", code="bad_kind")
+    if kind not in ("image", "model", "file", "calibration"):
+        raise ValidationError("kind must be image, model, file or calibration", code="bad_kind")
     asset_id = uuid.uuid4()
     ext = os.path.splitext(file.name or "")[1].lower() or ""
     folder = settings.VISION["ASSET_DIR"]

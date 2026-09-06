@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import math
 import os
 import platform
 import statistics
@@ -131,6 +132,23 @@ def yolo_like_onnx(folder: str, size: int = 8) -> str:
     return path
 
 
+def save_calibration(folder: str, w: int, h: int) -> str:
+    """一份典型的站台標定：桶形畸變＋帶旋轉的仿射世界座標（undistort／to_world 的 bench 用）。"""
+    from apps.vision import calib
+
+    f = 1.4 * max(w, h)
+    ang = math.radians(12)
+    k = 0.05
+    payload = {
+        "unit": "mm", "image_size": [w, h],
+        "lens": {"camera_matrix": [[f, 0, w / 2], [0, f, h / 2], [0, 0, 1]], "dist_coeffs": [-0.22, 0.08, 0.0, 0.0, 0.0], "rms": 0.19, "views": 12},
+        "world": {"kind": "affine", "matrix": [[k * math.cos(ang), -k * math.sin(ang), 12.0], [k * math.sin(ang), k * math.cos(ang), -8.0], [0, 0, 1]], "mm_per_px": k, "rms": 0.01, "max_error": 0.02},
+    }
+    path = os.path.join(folder, f"calib_{w}.json")
+    calib.save(path, payload)
+    return path
+
+
 class Scene:
     """一張合成影像與它的幾何（板子中心、孔位），讓每個工具的 ROI 都落在有東西的地方。"""
 
@@ -150,7 +168,8 @@ class Scene:
         self.template = save_png(self.gray[cy - r : cy + r, cx - r : cx + r], folder, f"tpl_{w}.png")
         self.golden = save_png(self.gray, folder, f"golden_{w}.png")
         self.mask = cv2.threshold(self.gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder)}
+        self.calibration = save_calibration(folder, w, h)
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -195,6 +214,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("filter gradient", "filter", big, {"method": "gradient"}, {}, {}),
         ("fft_filter lowpass", "fft_filter", gray, {"mode": "lowpass", "cutoff": 0.15}, {}, {}),
         ("warp_perspective", "warp_perspective", big, {"roi": {"shape": "polygon", "points": [[s.cx - m * 0.2, s.cy - m * 0.15], [s.cx + m * 0.22, s.cy - m * 0.12], [s.cx + m * 0.2, s.cy + m * 0.15], [s.cx - m * 0.18, s.cy + m * 0.16]]}}, {}, {}),
+        ("undistort", "undistort", big, {"calibration": "cal"}, {}, {}),
         # locate
         ("template_match pyramid", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6}, {}, {}),
         ("template_match no-pyr", "template_match", big, {"template": "tpl", "pyramid": False, "threshold": 0.6}, {}, {}),
@@ -215,6 +235,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("intensity (circle roi)", "intensity", big, {"roi": center_circle}, {}, {}),
         ("intensity (full)", "intensity", big, {}, {}, {}),
         ("calibration", "calibration", None, {"pixel_size_mm": 0.01}, {"value": 123.4}, {}),
+        ("calibration (asset)", "calibration", None, {"mode": "asset", "calibration": "cal"}, {"value": 123.4}, {}),
+        ("to_world (points)", "to_world", None, {"calibration": "cal"}, {"points": [[s.cx, s.cy], [s.cx + 40, s.cy + 25]], "value": 100.0, "angle": 30.0}, {}),
         ("histogram (rect roi)", "histogram", big, {"roi": plate}, {}, {}),
         ("histogram (full)", "histogram", big, {}, {}, {}),
         ("fit_arc (annulus 90)", "fit_arc", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),

@@ -8,7 +8,9 @@ from typing import Any
 import cv2
 import numpy as np
 
+from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.builtin.preprocess import read_calibration
 from apps.vision.tools.builtin.locate import (
     POLARITY_OPTIONS,
     _as_rotated_rect,
@@ -314,7 +316,10 @@ class CalibrationTool(Tool):
     params = [
         Param("mode", "Calibration mode", kind="select", default="pixel_size", options=[
             {"value": "pixel_size", "label": "mm per pixel"}, {"value": "known_distance", "label": "Known distance"},
+            {"value": "asset", "label": "From a calibration"},
         ]),
+        Param("calibration", "Calibration", kind="asset", accept="calibration", visible_when={"param": "mode", "in": ["asset"]},
+              help_text="Made on the Calibration page. Use this instead of typing a number: re-calibrating the station updates every flow at once."),
         Param("pixel_size_mm", "mm per pixel", kind="number", default=0.01, minimum=0, step=0.0001, unit="mm/px", visible_when={"param": "mode", "in": ["pixel_size"]}),
         Param("px_distance", "Pixel distance", kind="number", default=100, minimum=0, unit="px", visible_when={"param": "mode", "in": ["known_distance"]}),
         Param("real_mm", "Real distance", kind="number", default=1, minimum=0, unit="mm", visible_when={"param": "mode", "in": ["known_distance"]}),
@@ -324,11 +329,18 @@ class CalibrationTool(Tool):
     outputs = [Port("mm", "Millimetres", "number"), Port("scale", "Scale", "number"), Port("points_mm", "Points (mm)", "points")]
 
     def execute(self, ctx: ToolContext) -> Result:
-        if ctx.param("mode", "pixel_size") == "known_distance":
+        mode = ctx.param("mode", "pixel_size")
+        if mode == "known_distance":
             px = ctx.number("px_distance", 0)
             if px <= 0:
                 raise ToolError("The pixel distance must be greater than 0")
             k = ctx.number("real_mm", 0) / px
+        elif mode == "asset":
+            payload = read_calibration(ctx)
+            world = payload.get("world")
+            if not world:
+                raise ToolError("That calibration has no scale yet: add a board, a known distance or robot points to it")
+            k = float(world.get("mm_per_px") or 0)
         else:
             k = ctx.number("pixel_size_mm", 0)
         if k <= 0:
@@ -1096,8 +1108,95 @@ class GeometryTool(Tool):
                       message=f"Perpendicular distance {d:.2f}px" if mode == "point_line" else f"projection ({px:.1f}, {py:.1f})")
 
 
+class ToWorldTool(Tool):
+    key = "to_world"
+    label = "Real-world coordinates"
+    description = (
+        "Turns pixel positions into the coordinates the machine works in: millimetres on the table, or the numbers a robot "
+        "expects. Wire a position in and read X and Y out; lengths and angles are converted with the same calibration."
+    )
+    category = "measure"
+    icon = "Axis3d"
+    params = [
+        Param("calibration", "Calibration", kind="asset", accept="calibration", required=True,
+              help_text="Made on the Calibration page. Teach it once per station; every flow follows."),
+        Param("decimals", "Decimals", kind="number", default=3, minimum=0, maximum=6, step=1, group="advanced"),
+    ]
+    inputs = [
+        Port("points", "Points", "points", required=False),
+        Port("value", "Pixel length", "number", required=False),
+        Port("angle", "Angle (image)", "number", required=False),
+    ]
+    outputs = [
+        Port("points_world", "Points (real world)", "points"),
+        Port("x", "X", "number"), Port("y", "Y", "number"),
+        Port("length", "Length", "number"), Port("angle", "Angle (real world)", "number"),
+        Port("scale", "Scale", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        payload = read_calibration(ctx)
+        world = payload.get("world")
+        if not world:
+            raise ToolError("That calibration only corrects the lens: add a board, a known distance or robot points to get coordinates")
+        matrix = world["matrix"]
+        unit = payload.get("unit", "mm")
+        digits = max(0, min(6, ctx.integer("decimals", 3)))
+
+        pts = ctx.inputs.get("points")
+        value = ctx.inputs.get("value")
+        angle_in = ctx.inputs.get("angle")
+        if pts is None and value is None and angle_in is None:
+            raise ToolError("No input: wire points, a pixel length or an angle")
+
+        outputs: dict[str, Any] = {"scale": float(world.get("mm_per_px") or 0)}
+        overlays: list[dict[str, Any]] = []
+        parts: list[str] = []
+        centre: tuple[float, float] | None = None
+        if pts is not None:
+            src = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
+            mapped = calib.apply(matrix, src)
+            outputs["points_world"] = mapped.tolist()
+            if len(mapped):
+                centre = (float(src[0, 0]), float(src[0, 1]))
+                outputs["x"], outputs["y"] = float(mapped[0, 0]), float(mapped[0, 1])
+                parts.append(f"({outputs['x']:.{digits}f}, {outputs['y']:.{digits}f}) {unit}")
+                # 標記畫在輸入影像的全圖座標上，文字寫世界座標——現場一眼就能對照
+                for i in range(min(len(src), 32)):
+                    overlays.append({"type": "point", "x": float(src[i, 0]), "y": float(src[i, 1]),
+                                     "label": f"{mapped[i, 0]:.{digits}f}, {mapped[i, 1]:.{digits}f}"})
+        if value is not None:
+            try:
+                px_len = float(value)
+            except (TypeError, ValueError):
+                raise ToolError(f"The pixel length is not a number: {value!r}") from None
+            at = centre if centre is not None else _image_centre(ctx)
+            outputs["length"] = px_len * calib.scale_at(matrix, at)
+            parts.append(f"{outputs['length']:.{digits}f} {unit}")
+        if angle_in is not None:
+            try:
+                deg = float(angle_in)
+            except (TypeError, ValueError):
+                raise ToolError(f"The angle is not a number: {angle_in!r}") from None
+            at = centre if centre is not None else _image_centre(ctx)
+            outputs["angle"] = calib.angle_to_world(matrix, deg, at)
+            parts.append(f"{outputs['angle']:.2f}°")
+        return Result(outputs=outputs, overlays=overlays, message=" · ".join(parts) or "no values")
+
+
+def _image_centre(ctx: ToolContext) -> tuple[float, float]:
+    """沒有具體位置時用影像中心估比例（透視標定下比例會隨位置變）。"""
+    image = ctx.image("_image") if ctx.inputs.get("_image") is not None else None
+    if image is None:
+        image = ctx.image("image")
+    if image is None:
+        return (0.0, 0.0)
+    h, w = image.shape[:2]
+    return (w / 2.0, h / 2.0)
+
+
 TOOLS = [
-    CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(),
+    CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), ToWorldTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
     LineProfileTool(), ColorStatsTool(), GeometryTool(),
 ]

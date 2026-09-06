@@ -5,8 +5,17 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
 from apps.vision.tools.roi import crop, region_overlay
+
+
+def read_calibration(ctx: ToolContext, key: str = "calibration") -> dict:
+    """標定參數（asset）→ payload；壞掉或沒選都翻成給使用者看的訊息。"""
+    try:
+        return calib.from_asset(ctx.param(key), ctx.asset_path)
+    except calib.CalibError as exc:
+        raise ToolError(str(exc)) from None
 
 
 def to_gray(image: np.ndarray) -> np.ndarray:
@@ -620,8 +629,38 @@ class WarpPerspectiveTool(Tool):
         return Result(outputs={"image": out}, overlays=[region_overlay(region, label="src")], message=f"{w_out}×{h_out}")
 
 
+class UndistortTool(Tool):
+    key = "undistort"
+    accepts = ("u8", "u16", "f32")
+    label = "Lens correction"
+    description = (
+        "Straightens what the lens bent, using a calibration. A wide-angle or short working distance makes straight edges "
+        "bow outwards near the corners; measure on the corrected image and the numbers stop drifting across the field of view."
+    )
+    category = "preprocess"
+    icon = "Aperture"
+    params = [
+        Param("calibration", "Calibration", kind="asset", accept="calibration", required=True,
+              help_text="Made on the Calibration page from a few pictures of a board. The same calibration also drives Real-world coordinates."),
+        Param("keep_edges", "Keep the whole frame", kind="boolean", default=False,
+              help_text="On: nothing is cut, the corners get black borders. Off: zooms so every pixel is real image."),
+    ]
+    inputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        payload = read_calibration(ctx)
+        image = ctx.require_image()
+        try:
+            out = calib.undistort(image, payload, alpha=1.0 if ctx.flag("keep_edges") else 0.0)
+        except calib.CalibError as exc:
+            raise ToolError(str(exc)) from None
+        lens = payload["lens"]
+        return Result(outputs={"image": out}, message=f"Corrected ({lens['views']} views, {lens['rms']:.2f} px)")
+
+
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
     ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
-    ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(),
+    ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(), UndistortTool(),
 ]
