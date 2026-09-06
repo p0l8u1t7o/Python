@@ -214,11 +214,33 @@ describe('AssistantDock', () => {
     await waitFor(() => expect((screen.getAllByTestId('assistant-shot')[1] as HTMLButtonElement).disabled).toBe(true))
   })
 
-  it('restores a persisted conversation', () => {
-    localStorage.setItem('vs.assistant.v1', JSON.stringify({ open: true, messages: [{ id: 'a', role: 'user', text: '舊問題', at: 1 }, { id: 'b', role: 'assistant', text: '舊回答', at: 2 }] }))
+  it('restores a persisted conversation and starts a new one', () => {
+    localStorage.setItem('vs.assistant.v1', JSON.stringify({ open: true, sessionId: 7, messages: [{ id: 'a', role: 'user', text: '舊問題', at: 1 }, { id: 'b', role: 'assistant', text: '舊回答', at: 2 }] }))
     renderPage(<AssistantDock />, { route: '/sources' })
     expect(screen.getByTestId('assistant-dock').textContent).toContain('舊回答')
-    fireEvent.click(screen.getByTestId('assistant-clear'))
+    fireEvent.click(screen.getByTestId('assistant-new-session'))
     expect(screen.queryByTestId('assistant-msg-user')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('vs.assistant.v1') ?? '{}').sessionId).toBeNull()
+  })
+
+  it('lists past conversations and deletes one', async () => {
+    const original = vi.mocked(api.get).getMockImplementation()!
+    vi.mocked(api.get).mockImplementation(async (path: string, params?: unknown) => (
+      path.startsWith('/vision/agent/chats')
+        ? { items: [{ id: 3, title: '怎麼標定？', count: 4, updated_at: '2026-09-06T10:00:00Z' }], limits: { chats: 50, messages: 60 } }
+        : original(path, params)
+    ))
+    try {
+      localStorage.clear()
+      renderPage(<AssistantDock />, { route: '/flows' })
+      fireEvent.click(screen.getAllByTestId('assistant-toggle')[0])
+      fireEvent.click(await screen.findByTestId('assistant-history-toggle'))
+      const row = await screen.findByTestId('assistant-session')
+      expect(row.textContent).toContain('怎麼標定？')
+      fireEvent.click(screen.getByTestId('assistant-session-delete'))
+      await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/vision/agent/chats/3'))
+    } finally {
+      vi.mocked(api.get).mockImplementation(original)
+    }
   })
 })

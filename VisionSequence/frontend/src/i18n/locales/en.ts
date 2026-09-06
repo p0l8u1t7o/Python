@@ -603,7 +603,7 @@ const en = {
       client: 'Capture client', channel: 'Channel', mode: 'Grab mode', timeout_ms: 'Timeout (ms)', fresh: 'Require a fresh frame', encoding: 'Transport encoding',
     },
   },
-  assets: { editGroup: 'Edit name / group', title: 'Asset library', upload: 'Upload asset', empty: 'No assets yet' },
+  assets: { editGroup: 'Edit name / group', title: 'Asset library', upload: 'Upload asset', empty: 'No assets yet', views: { cards: 'Cards', tree: 'Tree' } },
   settings: {
     retention: {
       title: 'Data retention',
@@ -1060,6 +1060,15 @@ const en = {
     screenshot: 'Attach a screenshot of this page to the next question', screenshotTaken: 'Screenshot attached to the next question', screenshotRemove: 'Remove screenshot',
     screenshotNeedsLlm: 'Screenshots need an LLM provider that reads images', screenshotFailed: 'Could not capture the screen',
     rateUp: 'Helpful', rateDown: 'Not helpful', rated: 'Noted',
+      sessions: {
+        new: 'New conversation',
+        history: 'Past conversations',
+        hint: 'Conversations are kept with your account, so they follow you to another PC.',
+        empty: 'No past conversations yet',
+        untitled: 'New conversation',
+        count: '{{count}} messages',
+        delete: 'Delete conversation',
+      },
     memory: {
       open: 'Memory: facts you asked the assistant to remember, and your rated answers', facts: 'Remembered facts', qa: 'Recent questions', empty: 'Nothing remembered yet',
       placeholder: 'Something to remember, e.g. line 3 uses flow "Inspect A"', add: 'Remember', delete: 'Delete', added: 'Remembered',

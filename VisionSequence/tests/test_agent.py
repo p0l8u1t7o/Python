@@ -13,6 +13,7 @@ import numpy as np
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from apps.vision import fixed_images
 from apps.vision.agent import analysis, intents, providers, service, synth
 from apps.vision.graph import validate_graph
 from apps.vision.models import Asset

@@ -39,7 +39,7 @@ from ninja import File, Router, Schema, UploadedFile
 from apps.accounts.models import UserPref
 from apps.accounts.security import principal, require_feature
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.agent import consult as consult_mod
+from apps.vision.agent import chats, consult as consult_mod
 from apps.vision.agent import help as help_mod
 from apps.vision.agent import jobs, loop, memory, notes, providers, service, skills
 from apps.vision.models import AgentSession, AgentSkill, Flow
@@ -125,6 +125,13 @@ class ChatIn(Schema):
 
 class MemoryIn(Schema):
     text: str
+
+
+class ChatSaveIn(Schema):
+    """整條對話覆寫：messages 是前端的 ChatMessage 陣列，title 省略＝由第一句話取。"""
+
+    messages: list[dict] | None = None
+    title: str | None = None
 
 
 class RateIn(Schema):
@@ -762,6 +769,44 @@ def rate_memory(request: HttpRequest, memory_id: int, payload: RateIn):
 def delete_memory(request: HttpRequest, memory_id: int):
     if not notes.delete(_memory_user(request), memory_id):
         raise NotFound(f"No memory item {memory_id}", code="memory_not_found")
+    return 204, None
+
+
+@router.get("/agent/chats")
+def list_chats(request: HttpRequest):
+    """My assistant conversations, newest first (title, message count, when it was last used)."""
+    p = principal(request)
+    return {"items": chats.listing(p.user) if p.user else [], "limits": {"chats": chats.MAX_CHATS, "messages": chats.MAX_MESSAGES}}
+
+
+@router.post("/agent/chats", response={201: dict})
+def create_chat(request: HttpRequest, payload: ChatSaveIn):
+    """Start a conversation (usually empty; the window saves into it as you talk)."""
+    row = chats.create(_memory_user(request), payload.messages, payload.title or "")
+    return 201, chats.out(row, with_messages=True)
+
+
+@router.get("/agent/chats/{chat_id}")
+def get_chat(request: HttpRequest, chat_id: int):
+    row = chats.get(_memory_user(request), chat_id)
+    if row is None:
+        raise NotFound(f"No conversation {chat_id}", code="chat_not_found")
+    return chats.out(row, with_messages=True)
+
+
+@router.patch("/agent/chats/{chat_id}")
+def save_chat(request: HttpRequest, chat_id: int, payload: ChatSaveIn):
+    """Replace the conversation's messages (the window saves after each reply) or rename it."""
+    row = chats.get(_memory_user(request), chat_id)
+    if row is None:
+        raise NotFound(f"No conversation {chat_id}", code="chat_not_found")
+    return chats.out(chats.save(row, payload.messages, payload.title), with_messages=True)
+
+
+@router.delete("/agent/chats/{chat_id}", response={204: None})
+def delete_chat(request: HttpRequest, chat_id: int):
+    if not chats.delete(_memory_user(request), chat_id):
+        raise NotFound(f"No conversation {chat_id}", code="chat_not_found")
     return 204, None
 
 

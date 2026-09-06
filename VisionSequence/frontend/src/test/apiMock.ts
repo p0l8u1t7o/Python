@@ -45,6 +45,7 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/calibration')) return { items: [] }
   if (path.startsWith('/vision/assets')) return { items: [] }
   if (path.startsWith('/vision/groups')) return { items: [{ id: 1, kind: 'source', name: '範例' }] }
+  if (path.startsWith('/vision/agent/chats')) return { items: [], limits: { chats: 50, messages: 60 } }
   if (path.startsWith('/vision/retention')) {
     const settings = { run_days: 365, audit_days: 365, measurement_days: 365, archive_days: 90, archive_max_gb: 20, backup_keep: 10, window_hour: 3, vacuum: true, enabled: true }
     return {

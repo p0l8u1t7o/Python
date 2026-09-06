@@ -1797,6 +1797,15 @@ const zhHans = {
     screenshot: '把此页面的截图附在下一条提问', screenshotTaken: '截图已附在下一条提问', screenshotRemove: '移除截图',
     screenshotNeedsLlm: '截图需要能看图像的 LLM 供应商', screenshotFailed: '无法截取画面',
     rateUp: '有帮助', rateDown: '没帮助', rated: '已记录',
+      sessions: {
+        new: '新对话',
+        history: '过去的对话',
+        hint: '对话存在您的账号里，换一台电脑登录也看得到。',
+        empty: '尚无过去的对话',
+        untitled: '新对话',
+        count: '{{count}} 条',
+        delete: '删除对话',
+      },
     memory: {
       open: '记忆：您要助手记住的事实，以及评过分的回答', facts: '记住的事实', qa: '最近的提问', empty: '尚无记忆',
       placeholder: '要记住的事，例如：产线 3 用流程「检测 A」', add: '记住', delete: '删除', added: '已记住',

@@ -505,3 +505,23 @@ class RetentionSettings(models.Model):
 
     def __str__(self) -> str:
         return "RetentionSettings"
+
+
+class AssistantChat(models.Model):
+    """全域 AI 助手的一次對話（每位使用者自己的）：標題由第一句話取，訊息是前端 ChatMessage 陣列。
+
+    以前只有一條對話存在瀏覽器（換電腦就不見）；這裡讓使用者開新對話、回到過去的對話、刪掉不要的。
+    """
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assistant_chats")
+    title = models.CharField(max_length=120, blank=True, default="")
+    messages = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        #: 同一秒存的兩條要有穩定順序（淘汰最舊的時才不會挑錯）
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"AssistantChat {self.pk} {self.title[:20]}"

@@ -1797,6 +1797,15 @@ const zhHant = {
     screenshot: '把此頁面的截圖附在下一則提問', screenshotTaken: '截圖已附在下一則提問', screenshotRemove: '移除截圖',
     screenshotNeedsLlm: '截圖需要看得懂影像的 LLM 供應商', screenshotFailed: '無法擷取畫面',
     rateUp: '有幫助', rateDown: '沒幫助', rated: '已記錄',
+      sessions: {
+        new: '新對話',
+        history: '過去的對話',
+        hint: '對話存在您的帳號裡，換一台電腦登入也看得到。',
+        empty: '尚無過去的對話',
+        untitled: '新對話',
+        count: '{{count}} 則',
+        delete: '刪除對話',
+      },
     memory: {
       open: '記憶：您要助手記住的事實，以及評過分的回答', facts: '記住的事實', qa: '最近的提問', empty: '尚無記憶',
       placeholder: '要記住的事，例如：產線 3 用流程「檢測 A」', add: '記住', delete: '刪除', added: '已記住',

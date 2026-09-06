@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, Lightbulb, Monitor, MonitorOff, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
+import { ArrowRight, Bot, Brain, Camera, Check, ExternalLink, Eye, EyeOff, History, Lightbulb, Monitor, MonitorOff, Plus, Send, Sparkles, Square, ThumbsDown, ThumbsUp, Trash2, X } from 'lucide-react'
 
 import { AgentTimeline } from '@/components/agent/AgentTimeline'
 import { Badge, Button } from '@/components/ui'
@@ -17,12 +17,14 @@ import { api } from '@/lib/api'
 import { contextFromPath, useAssistantContext, type AssistantContext, type AssistantKind } from '@/lib/assistantContext'
 import type { Suggestion, TuneResult } from '@/lib/batch'
 import { errorMessage } from '@/lib/errors'
+import { formatDateTime } from '@/lib/format'
 import i18n from '@/i18n'
 import { dismissHint, hintFor, shouldShow, type Hint } from '@/lib/hints'
 import { pageSnapshot, screenSummary, setIntegrationTab } from '@/lib/screen'
 import { base64Of, captureScreenshot } from '@/lib/screenshot'
 import { sectionOf } from '@/pages/integration/sections'
 import type { FlowGraph, RunReport } from '@/lib/types'
+import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
 type Mode = 'auto' | 'help' | 'edit' | 'consult' | 'tune'
@@ -37,6 +39,8 @@ interface Lookup { name: string; args: Record<string, unknown>; error?: string }
 /** 長期記憶的一筆：fact＝使用者要它記住的一句話；qa＝問過的問答（可評分）。 */
 interface MemoryItem { id: number; kind: 'fact' | 'qa'; text: string; answer: string; rating: number; created_at: string | null }
 interface MemoryList { facts: MemoryItem[]; qa: MemoryItem[]; limits: { facts: number; qa: number } }
+/** 過去的對話（伺服器存，每位使用者自己的） */
+interface ChatSummary { id: number; title: string; count: number; updated_at: string | null }
 interface EditResult { graph: FlowGraph; rationale: string; provider: string; changes: string[]; report: RunReport | null; applied: boolean }
 interface ChatReply {
   kind: ReplyKind
@@ -76,19 +80,23 @@ export interface ChatMessage {
 const STORAGE = 'vs.assistant.v1'
 const MAX_MESSAGES = 60
 
-function load(): { open: boolean; messages: ChatMessage[] } {
+function load(): { open: boolean; messages: ChatMessage[]; sessionId: number | null } {
   try {
     const raw = localStorage.getItem(STORAGE)
     if (raw) {
-      const parsed = JSON.parse(raw) as { open?: boolean; messages?: ChatMessage[] }
-      return { open: Boolean(parsed.open), messages: Array.isArray(parsed.messages) ? parsed.messages.slice(-MAX_MESSAGES) : [] }
+      const parsed = JSON.parse(raw) as { open?: boolean; messages?: ChatMessage[]; sessionId?: number | null }
+      return {
+        open: Boolean(parsed.open),
+        messages: Array.isArray(parsed.messages) ? parsed.messages.slice(-MAX_MESSAGES) : [],
+        sessionId: typeof parsed.sessionId === 'number' ? parsed.sessionId : null,
+      }
     }
   } catch { /* 無法讀取就從空的開始 */ }
-  return { open: false, messages: [] }
+  return { open: false, messages: [], sessionId: null }
 }
 
-function persist(open: boolean, messages: ChatMessage[]) {
-  try { localStorage.setItem(STORAGE, JSON.stringify({ open, messages: messages.slice(-MAX_MESSAGES) })) } catch { /* 忽略 */ }
+function persist(open: boolean, messages: ChatMessage[], sessionId: number | null) {
+  try { localStorage.setItem(STORAGE, JSON.stringify({ open, messages: messages.slice(-MAX_MESSAGES), sessionId })) } catch { /* 忽略 */ }
 }
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
@@ -129,9 +137,27 @@ export function AssistantDock() {
   const [shotBusy, setShotBusy] = useState(false)
   //: 記憶面板（事實與最近問答）
   const [showMemory, setShowMemory] = useState(false)
+  //: 對話：目前這條的 id（伺服器）＋過去對話面板
+  const auth = useAuth()
+  const canStore = auth.me?.kind === 'user'
+  const [sessionId, setSessionId] = useState<number | null>(initial.sessionId)
+  const [showHistory, setShowHistory] = useState(false)
   const [memoryInput, setMemoryInput] = useState('')
   const queryClient = useQueryClient()
   const memory = useQuery({ queryKey: ['assistant-memory'], queryFn: () => api.get<MemoryList>('/vision/agent/memory'), enabled: showMemory })
+  const chatList = useQuery({
+    queryKey: ['assistant-chats'],
+    queryFn: () => api.get<{ items: ChatSummary[] }>('/vision/agent/chats'),
+    enabled: canStore && showHistory,
+  })
+  const removeChat = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/agent/chats/${id}`),
+    onSuccess: (_data, id) => {
+      if (id === sessionId) { setMessages([]); setSessionId(null) }
+      void queryClient.invalidateQueries({ queryKey: ['assistant-chats'] })
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  })
   const addMemory = useMutation({
     mutationFn: (text: string) => api.post<MemoryItem>('/vision/agent/memory', { text }),
     onSuccess: () => { setMemoryInput(''); toast.success(t('assistant.memory.added')); void queryClient.invalidateQueries({ queryKey: ['assistant-memory'] }) },
@@ -164,7 +190,52 @@ export function AssistantDock() {
   const jobs = useAgentJob<EditResult | TuneResult>()
   const agentic = Boolean(info.data?.llm && info.data?.mode === 'agentic')
 
-  useEffect(() => { persist(open, messages) }, [open, messages])
+  useEffect(() => { persist(open, messages, sessionId) }, [open, messages, sessionId])
+  //: 訊息變了就寫回伺服器（延遲 1 秒批次寫；沒有對話就先開一條）。失敗不打擾使用者——本機還留著。
+  const savingRef = useRef(false)
+  useEffect(() => {
+    if (!canStore || messages.length === 0) return
+    const timer = window.setTimeout(async () => {
+      if (savingRef.current) return
+      savingRef.current = true
+      try {
+        const body = { messages: messages.slice(-MAX_MESSAGES) }
+        if (sessionId === null) {
+          const row = await api.post<ChatSummary>('/vision/agent/chats', body)
+          setSessionId(row.id)
+        } else {
+          await api.patch(`/vision/agent/chats/${sessionId}`, body)
+        }
+        void queryClient.invalidateQueries({ queryKey: ['assistant-chats'] })
+      } catch {
+        /* 對話存檔失敗（離線、權限）：不擋使用，下一則再試 */
+      } finally {
+        savingRef.current = false
+      }
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [messages, canStore, sessionId, queryClient])
+
+  /** 開新對話：目前這條已經在伺服器上，直接清空畫面即可。 */
+  function newSession() {
+    setMessages([])
+    setSessionId(null)
+    setShowHistory(false)
+    setShowMemory(false)
+    setHint(null)
+  }
+
+  /** 回到過去的對話：把訊息整條載回來（來源、建議、動作都還原）。 */
+  async function openSession(id: number) {
+    try {
+      const row = await api.get<{ id: number; messages: ChatMessage[] }>(`/vision/agent/chats/${id}`)
+      setMessages(Array.isArray(row.messages) ? row.messages : [])
+      setSessionId(row.id)
+      setShowHistory(false)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
   useEffect(() => {
     if (!open) return
     setUnread(0)
@@ -314,11 +385,15 @@ export function AssistantDock() {
             <span className="shrink-0 whitespace-nowrap text-sm font-semibold">{t('assistant.title')}</span>
             {info.data ? <Badge tone={info.data.llm ? 'brand' : 'neutral'} className="max-w-[55%] truncate">{info.data.llm ? `${info.data.model}${agentic ? ` · ${t('assistant.agentic')}` : ''}` : t('agent.providerRules')}</Badge> : null}
             <span className="ml-auto flex items-center gap-0.5">
-              <button type="button" className={`btn-icon ${showMemory ? 'text-brand' : ''}`} title={t('assistant.memory.open')} aria-pressed={showMemory} onClick={() => setShowMemory((v) => !v)} data-testid="assistant-memory-toggle"><Brain size={14} /></button>
+              <button type="button" className={`btn-icon ${showMemory ? 'text-brand' : ''}`} title={t('assistant.memory.open')} aria-pressed={showMemory} onClick={() => { setShowMemory((v) => !v); setShowHistory(false) }} data-testid="assistant-memory-toggle"><Brain size={14} /></button>
               <button type="button" className={`btn-icon ${shot ? 'text-brand' : ''}`} title={!info.data?.llm ? t('assistant.screenshotNeedsLlm') : t('assistant.screenshot')} disabled={!info.data?.llm || !share || shotBusy} onClick={() => void takeShot()} data-testid="assistant-shot"><Camera size={14} /></button>
               <button type="button" className={`btn-icon ${attachScreen ? 'text-brand' : ''}`} title={attachScreen ? t('assistant.attachScreenOn') : t('assistant.attachScreen')} aria-pressed={attachScreen} disabled={!share} onClick={() => setAttachScreen((v) => !v)} data-testid="assistant-screen">{attachScreen ? <Monitor size={14} /> : <MonitorOff size={14} />}</button>
               <button type="button" className={`btn-icon ${share ? '' : 'text-warning'}`} title={share ? t('assistant.shareOn') : t('assistant.shareOff')} aria-pressed={share} onClick={() => setShareEnabled(!share)} data-testid="assistant-share">{share ? <Eye size={14} /> : <EyeOff size={14} />}</button>
-              <button type="button" className="btn-icon" title={t('assistant.clear')} onClick={() => setMessages([])} data-testid="assistant-clear"><Trash2 size={14} /></button>
+              {canStore ? (
+                <button type="button" className={`btn-icon ${showHistory ? 'text-brand' : ''}`} title={t('assistant.sessions.history')} aria-pressed={showHistory}
+                  onClick={() => { setShowHistory((v) => !v); setShowMemory(false) }} data-testid="assistant-history-toggle"><History size={14} /></button>
+              ) : null}
+              <button type="button" className="btn-icon" title={t('assistant.sessions.new')} onClick={newSession} data-testid="assistant-new-session"><Plus size={15} /></button>
               <button type="button" className="btn-icon" title={t('common.close')} onClick={() => setOpen(false)}><X size={15} /></button>
             </span>
           </header>
@@ -330,7 +405,28 @@ export function AssistantDock() {
               ))}
             </span>
           </div>
-          {showMemory ? (
+          {showHistory ? (
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 text-xs" data-testid="assistant-history">
+              <div className="flex items-center gap-2">
+                <p className="flex-1 text-[11px] text-muted">{t('assistant.sessions.hint')}</p>
+                <Button size="xs" variant="primary" onClick={newSession} data-testid="assistant-history-new">{t('assistant.sessions.new')}</Button>
+              </div>
+              {chatList.isPending ? <p className="text-subtle">{t('common.loading')}</p> : null}
+              {chatList.data && chatList.data.items.length === 0 ? <p className="text-subtle" data-testid="assistant-history-empty">{t('assistant.sessions.empty')}</p> : null}
+              <ul className="space-y-1">
+                {(chatList.data?.items ?? []).map((c) => (
+                  <li key={c.id} className={`flex items-start gap-2 rounded-md px-2 py-1 ${c.id === sessionId ? 'bg-brand-soft' : 'bg-surface-muted'}`} data-testid="assistant-session">
+                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => void openSession(c.id)} data-testid="assistant-session-open">
+                      <span className="block truncate">{c.title || t('assistant.sessions.untitled')}</span>
+                      <span className="block text-[10px] text-subtle">{t('assistant.sessions.count', { count: c.count })}{c.updated_at ? ` · ${formatDateTime(c.updated_at)}` : ''}</span>
+                    </button>
+                    <button type="button" className="btn-icon shrink-0" title={t('assistant.sessions.delete')} aria-label={t('assistant.sessions.delete')}
+                      onClick={() => removeChat.mutate(c.id)} data-testid="assistant-session-delete"><Trash2 size={12} /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : showMemory ? (
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-xs" data-testid="assistant-memory">
               <p className="text-[11px] text-muted">{t('assistant.memory.hint')}</p>
               <div className="flex gap-1.5">
