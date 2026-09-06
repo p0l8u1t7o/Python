@@ -1,6 +1,6 @@
 """YOLO 整合：資料集匯出（segment／detect／obb／classify）、trainer 目錄、訓練產物雙資產（best.pt＋ONNX）；
-以及需要 ultralytics＋GPU／網路的實機測試（設 VISION_TEST_DL=1 才跑）：yolo_* 五個工具、SAM2 點／框／全圖、
-sam-point／auto-label API、四個 trainer 各訓練 1 epoch 並用產物在 yolo_* 工具實跑。"""
+以及需要 ultralytics＋GPU／網路的實機測試（設 VISION_TEST_DL=1 才跑）：ai_* 五個工具、SAM2 點／框／全圖、
+sam-point／auto-label API、四個 trainer 各訓練 1 epoch 並用產物在 ai_* 工具實跑。"""
 
 from __future__ import annotations
 
@@ -95,23 +95,24 @@ class TrainerRegistryTests(SimpleTestCase):
     def test_yolo_trainers_registered(self):
         dl_base.register_builtins()
         cat = {t["kind"]: t for t in dl_base.catalogue()}
-        self.assertTrue({"yolo_seg", "yolo_detect", "yolo_cls", "yolo_obb"} <= set(cat))
-        self.assertEqual({k: cat[k]["label_mode"] for k in ("yolo_seg", "yolo_detect", "yolo_cls", "yolo_obb")}, {"yolo_seg": "shapes", "yolo_detect": "shapes", "yolo_cls": "classes", "yolo_obb": "shapes"})
-        self.assertEqual({k: cat[k]["tool_key"] for k in ("yolo_seg", "yolo_detect", "yolo_cls", "yolo_obb")}, {"yolo_seg": "yolo_segment", "yolo_detect": "yolo_detect", "yolo_cls": "yolo_classify", "yolo_obb": "yolo_obb"})
-        self.assertNotIn("mosaic", [p["key"] for p in cat["yolo_cls"]["params"]])
-        self.assertEqual(cat["yolo_cls"]["min_per_class"], 2)
+        self.assertTrue({"ai_seg", "ai_detect", "ai_cls", "ai_obb"} <= set(cat))
+        self.assertEqual({k: cat[k]["label_mode"] for k in ("ai_seg", "ai_detect", "ai_cls", "ai_obb")}, {"ai_seg": "shapes", "ai_detect": "shapes", "ai_cls": "classes", "ai_obb": "shapes"})
+        self.assertEqual({k: cat[k]["tool_key"] for k in ("ai_seg", "ai_detect", "ai_cls", "ai_obb")}, {"ai_seg": "ai_segment", "ai_detect": "ai_detect", "ai_cls": "ai_classify", "ai_obb": "ai_obb"})
+        self.assertNotIn("mosaic", [p["key"] for p in cat["ai_cls"]["params"]])
+        self.assertEqual(cat["ai_cls"]["min_per_class"], 2)
         keys = {t.key for t in tools_base.all_types()}
-        self.assertTrue({"yolo_detect", "yolo_segment", "yolo_classify", "yolo_pose", "yolo_obb"} <= keys)
-        for k in ("yolo_detect", "yolo_segment", "yolo_classify", "yolo_pose", "yolo_obb"):
+        self.assertTrue({"ai_detect", "ai_segment", "ai_classify", "ai_pose", "ai_obb"} <= keys)
+        for k in ("ai_detect", "ai_segment", "ai_classify", "ai_pose", "ai_obb"):
             t = tools_base.get(k)
             self.assertEqual(t.category, "dl")
             self.assertTrue(t.heavy)
             self.assertIn("model", [p.key for p in t.params])
             self.assertIn("model_name", [p.key for p in t.params])
 
-    def test_tool_without_model_gives_clean_error(self):
+    def test_tool_with_missing_asset_gives_clean_error(self):
+        # 沒選資產＝用官方底模（大小 n），所以「乾淨的錯誤」改由不存在的資產觸發
         with self.assertRaises(tools_base.ToolError):
-            run_tool("yolo_detect", np.zeros((64, 64, 3), np.uint8), {"model_name": ""})
+            run_tool("ai_detect", np.zeros((64, 64, 3), np.uint8), {"model": "missing-asset", "model_name": ""})
 
 
 TMP = temp_dir()
@@ -121,12 +122,12 @@ class _FakeWeightsTrainer(dl_base.Trainer):
     kind = "fake_weights"
     label = "fake"
     label_mode = "classes"
-    tool_key = "yolo_detect"
+    tool_key = "ai_detect"
 
     def train(self, samples, classes, params, device, progress):
         progress(0.5, "half", None)
         return TrainResult(onnx_bytes=b"ONNX", metrics={"acc": 1.0}, tool_key="dl_detect", tool_params={"labels": "a"},
-                           weights_bytes=b"PT", weights_ext=".pt", weights_tool_key="yolo_detect", weights_tool_params={"model_name": "", "conf": 0.3})
+                           weights_bytes=b"PT", weights_ext=".pt", weights_tool_key="ai_detect", weights_tool_params={"model_name": "", "conf": 0.3})
 
 
 @override_settings(VISION={**settings.VISION, "ASSET_DIR": Path(TMP), "PERSIST_RUNS": False})
@@ -149,12 +150,12 @@ class WeightsAssetTests(TransactionTestCase):
             self.assertEqual(len(assets), 2)
             pt = next(a for a in assets if a.path.endswith(".pt"))
             onnx = next(a for a in assets if a.path.endswith(".onnx"))
-            self.assertEqual((pt.name, pt.meta["tool_key"], pt.meta["format"], pt.meta["onnx_asset_id"]), ("模型 A", "yolo_detect", "pt", onnx.id.hex))
+            self.assertEqual((pt.name, pt.meta["tool_key"], pt.meta["format"], pt.meta["onnx_asset_id"]), ("模型 A", "ai_detect", "pt", onnx.id.hex))
             self.assertEqual((onnx.name, onnx.meta["tool_key"], onnx.meta["format"]), ("模型 A (ONNX)", "dl_detect", "onnx"))
             project.refresh_from_db()
             self.assertEqual(project.last_asset_id, pt.id.hex)
             self.assertEqual(project.last_metrics["onnx_asset_id"], onnx.id.hex)
-            self.assertEqual((job.status, job.tool_key, job.tool_params["conf"], job.asset_id), ("done", "yolo_detect", 0.3, pt.id.hex))
+            self.assertEqual((job.status, job.tool_key, job.tool_params["conf"], job.asset_id), ("done", "ai_detect", 0.3, pt.id.hex))
             self.assertEqual(open(pt.path, "rb").read(), b"PT")
         finally:
             dl_base._TRAINERS.pop(_FakeWeightsTrainer.kind, None)
@@ -172,42 +173,42 @@ class YoloToolsLiveTests(SimpleTestCase):
         cls.boats = _sample(BOATS_URL)
 
     def test_detect_with_roi_and_filters(self):
-        r = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25})
+        r = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25})
         self.assertEqual((r.status, r.branch), ("ok", "found"))
         self.assertIn("bus", r.outputs["labels"])
         self.assertGreaterEqual(r.outputs["count"], 4)
         self.assertEqual({k for k in r.outputs["matches"][0]} >= {"x", "y", "w", "h", "cx", "cy", "label", "score", "index"}, True)
         self.assertNotIn("_i", r.outputs["matches"][0])
         roi = {"shape": "rect", "x": 0, "y": 200, "w": 810, "h": 600}
-        r2 = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25, "roi": roi, "filter_labels": "person"})
+        r2 = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25, "roi": roi, "filter_labels": "person"})
         self.assertTrue(all(lbl == "person" for lbl in r2.outputs["labels"]))
         self.assertTrue(all(200 <= d["cy"] <= 800 for d in r2.outputs["matches"]))
         self.assertEqual(r2.overlays[0]["kind"], "polygon" if r2.overlays[0].get("kind") == "polygon" else r2.overlays[0]["kind"])  # roi overlay 在第一個
-        r3 = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "roi": {"shape": "rotated_rect", "cx": 405, "cy": 540, "w": 700, "h": 900, "angle": 10}})
+        r3 = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "roi": {"shape": "rotated_rect", "cx": 405, "cy": 540, "w": 700, "h": 900, "angle": 10}})
         self.assertGreaterEqual(r3.outputs["count"], 3)
-        r4 = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "min_count": 99})
+        r4 = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "min_count": 99})
         self.assertEqual((r4.status, r4.branch), ("ng", "found"))
-        r5 = run_tool("yolo_detect", np.zeros((320, 320, 3), np.uint8), {"model_name": "yolo11n.pt"})
+        r5 = run_tool("ai_detect", np.zeros((320, 320, 3), np.uint8), {"model_name": "yolo11n.pt"})
         self.assertEqual((r5.outputs["count"], r5.branch, r5.status), (0, "not_found", "ng"))
 
     def test_segment_classify_pose_obb(self):
-        r = run_tool("yolo_segment", self.bus, {"model_name": "yolo11n-seg.pt", "conf": 0.25})
+        r = run_tool("ai_segment", self.bus, {"model_name": "yolo11n-seg.pt", "conf": 0.25})
         self.assertGreaterEqual(r.outputs["count"], 4)
         self.assertEqual(r.outputs["mask"].shape, self.bus.shape[:2])
         self.assertGreater(int(r.outputs["mask"].max()), 0)
         self.assertEqual(len(r.outputs["contours"]), len([o for o in r.overlays if o["kind"] == "contours"]) or len(r.outputs["contours"]))
         self.assertTrue(all(m["area"] > 0 for m in r.outputs["matches"]))
-        c = run_tool("yolo_classify", self.bus, {"model_name": "yolo11n-cls.pt", "threshold": 0.1, "top_k": 3})
+        c = run_tool("ai_classify", self.bus, {"model_name": "yolo11n-cls.pt", "threshold": 0.1, "top_k": 3})
         self.assertEqual(len(c.outputs["top"]), 3)
         self.assertEqual(c.outputs["label"], c.outputs["top"][0]["label"])
-        c2 = run_tool("yolo_classify", self.bus, {"model_name": "yolo11n-cls.pt", "threshold": 0.1, "pass_labels": "nothing"})
+        c2 = run_tool("ai_classify", self.bus, {"model_name": "yolo11n-cls.pt", "threshold": 0.1, "pass_labels": "nothing"})
         self.assertEqual((c2.status, c2.branch), ("ng", "fail"))
-        p = run_tool("yolo_pose", self.bus, {"model_name": "yolo11n-pose.pt", "conf": 0.25})
+        p = run_tool("ai_pose", self.bus, {"model_name": "yolo11n-pose.pt", "conf": 0.25})
         self.assertGreaterEqual(p.outputs["count"], 3)
         self.assertEqual(len(p.outputs["keypoints"][0]["points"]), 17)
         self.assertEqual(len(p.outputs["keypoints"][0]["points"][0]), 3)
         self.assertTrue(any(o["kind"] == "line" for o in p.overlays))
-        o = run_tool("yolo_obb", self.boats, {"model_name": "yolo11n-obb.pt", "conf": 0.25, "max_count": 20})
+        o = run_tool("ai_obb", self.boats, {"model_name": "yolo11n-obb.pt", "conf": 0.25, "max_count": 20})
         self.assertGreaterEqual(o.outputs["count"], 5)
         self.assertLessEqual(o.outputs["count"], 20)
         m = o.outputs["matches"][0]
@@ -218,19 +219,19 @@ class YoloToolsLiveTests(SimpleTestCase):
     def test_model_asset_pt_and_onnx_and_task_mismatch(self):
         w = _weights_dir()
         pt = os.path.join(w, "yolo11n.pt")
-        r = run_tool("yolo_detect", self.bus, {"model": "w", "conf": 0.25}, assets={"w": pt})
+        r = run_tool("ai_detect", self.bus, {"model": "w", "conf": 0.25}, assets={"w": pt})
         self.assertGreaterEqual(r.outputs["count"], 4)
         onnx = os.path.join(w, "yolo11n.onnx")
         if not os.path.isfile(onnx):
             from ultralytics import YOLO
 
             YOLO(pt).export(format="onnx", imgsz=640, dynamic=False, verbose=False)
-        r2 = run_tool("yolo_detect", self.bus, {"model": "o", "conf": 0.25, "device": "cpu"}, assets={"o": onnx})
+        r2 = run_tool("ai_detect", self.bus, {"model": "o", "conf": 0.25, "device": "cpu"}, assets={"o": onnx})
         self.assertGreaterEqual(r2.outputs["count"], 4)
         with self.assertRaises(tools_base.ToolError):
-            run_tool("yolo_pose", self.bus, {"model_name": "yolo11n.pt"})
+            run_tool("ai_pose", self.bus, {"model_name": "yolo11n.pt"})
         with self.assertRaises(tools_base.ToolError):
-            run_tool("yolo_detect", self.bus, {"model_name": "nope-model.pt"})
+            run_tool("ai_detect", self.bus, {"model_name": "nope-model.pt"})
 
 
 @live
@@ -269,7 +270,7 @@ class SamApiLiveTests(TransactionTestCase):
 
     def test_sam_point_boxes_and_auto_label_sam(self):
         bus = _sample(BUS_URL)
-        r = self._json("post", "/api/vision/dl/projects", {"name": "sam-live", "trainer_kind": "yolo_seg", "classes": ["thing"]})
+        r = self._json("post", "/api/vision/dl/projects", {"name": "sam-live", "trainer_kind": "ai_seg", "classes": ["thing"]})
         self.assertEqual(r.status_code, 201, r.content)
         pid = r.json()["id"]
         ok, buf = cv2.imencode(".jpg", bus)
@@ -290,7 +291,7 @@ class SamApiLiveTests(TransactionTestCase):
         self.assertTrue(1 <= len(body["items"][0]["shapes"]) <= 5)
         self.assertTrue(all(sh["label"] == "thing" for sh in body["items"][0]["shapes"]))
         # classes 專案不能用 SAM 全圖提案
-        r = self._json("post", "/api/vision/dl/projects", {"name": "sam-live-cls", "trainer_kind": "yolo_cls", "classes": ["a", "b"]})
+        r = self._json("post", "/api/vision/dl/projects", {"name": "sam-live-cls", "trainer_kind": "ai_cls", "classes": ["a", "b"]})
         self.assertEqual(self._json("post", f"/api/vision/dl/projects/{r.json()['id']}/auto-label", {"method": "sam"}).status_code, 422)
 
 
@@ -317,7 +318,7 @@ def _synthetic_samples(folder: str, n: int = 8, size: int = 160) -> list[SampleR
 
 @live
 class YoloTrainLiveTests(SimpleTestCase):
-    """四個 trainer 各訓練 1 epoch（imgsz 160、合成資料），產物能在對應的 yolo_* 工具實跑。"""
+    """四個 trainer 各訓練 1 epoch（imgsz 160、合成資料），產物能在對應的 ai_* 工具實跑。"""
 
     def _train(self, trainer_kind: str, refs: list[SampleRef], classes: list[str], extra: dict[str, Any] | None = None):
         dl_base.register_builtins()
@@ -335,7 +336,7 @@ class YoloTrainLiveTests(SimpleTestCase):
             def history(self, point):
                 history.append(point)
 
-        params = {"epochs": 1, "imgsz": 160 if trainer_kind != "yolo_cls" else 224, "batch": 4, "workers": 0, "patience": 5, "mosaic": 0.0, **(extra or {})}
+        params = {"epochs": 1, "imgsz": 160 if trainer_kind != "ai_cls" else 224, "batch": 4, "workers": 0, "patience": 5, "mosaic": 0.0, **(extra or {})}
         result = trainer.train(refs, classes, params, "cuda" if _cuda() else "cpu", P())
         self.assertTrue(result.onnx_bytes)
         self.assertTrue(result.weights_bytes)
@@ -350,36 +351,36 @@ class YoloTrainLiveTests(SimpleTestCase):
             refs = _synthetic_samples(folder)
             labeled = [r for r in refs if r.shapes]
             # 只有偶數張有形狀（4 張：val 1、train 3）
-            det = self._train("yolo_detect", labeled, ["sq"])
+            det = self._train("ai_detect", labeled, ["sq"])
             pt = os.path.join(folder, "det.pt")
             open(pt, "wb").write(det.weights_bytes)
-            r = run_tool("yolo_detect", cv2.imread(refs[0].path), {"model": "m", **det.weights_tool_params, "conf": 0.01}, assets={"m": pt})
+            r = run_tool("ai_detect", cv2.imread(refs[0].path), {"model": "m", **det.weights_tool_params, "conf": 0.01}, assets={"m": pt})
             self.assertIn(r.branch, ("found", "not_found"))
             onnx = os.path.join(folder, "det.onnx")
             open(onnx, "wb").write(det.onnx_bytes)
             r2 = run_tool("dl_detect", cv2.imread(refs[0].path), {"model": "o", **det.tool_params, "conf": 0.01}, assets={"o": onnx})
             self.assertIn(r2.branch, ("found", "not_found"))
             poly = [SampleRef(id=s.id, label=s.label, path=s.path, split=s.split, shapes=[{"label": "sq", "kind": "polygon", "points": [[p[0][0], p[0][1]], [p[1][0], p[0][1]], [p[1][0], p[1][1]], [p[0][0], p[1][1]]]} for p in [sh["points"] for sh in s.shapes]]) for s in labeled]
-            seg = self._train("yolo_seg", poly, ["sq"], {"model": "yolo11n-seg.pt"})
+            seg = self._train("ai_seg", poly, ["sq"], {"model": "yolo11n-seg.pt"})
             open(os.path.join(folder, "seg.pt"), "wb").write(seg.weights_bytes)
-            r3 = run_tool("yolo_segment", cv2.imread(refs[0].path), {"model": "s", **seg.weights_tool_params, "conf": 0.01}, assets={"s": os.path.join(folder, "seg.pt")})
+            r3 = run_tool("ai_segment", cv2.imread(refs[0].path), {"model": "s", **seg.weights_tool_params, "conf": 0.01}, assets={"s": os.path.join(folder, "seg.pt")})
             self.assertEqual(r3.outputs["mask"].shape, (160, 160))
-            obb = self._train("yolo_obb", poly, ["sq"])
+            obb = self._train("ai_obb", poly, ["sq"])
             open(os.path.join(folder, "obb.pt"), "wb").write(obb.weights_bytes)
-            r4 = run_tool("yolo_obb", cv2.imread(refs[0].path), {"model": "b", **obb.weights_tool_params, "conf": 0.01}, assets={"b": os.path.join(folder, "obb.pt")})
+            r4 = run_tool("ai_obb", cv2.imread(refs[0].path), {"model": "b", **obb.weights_tool_params, "conf": 0.01}, assets={"b": os.path.join(folder, "obb.pt")})
             self.assertIn("matches", r4.outputs)
             self.assertEqual(obb.tool_key, "")
-            cls = self._train("yolo_cls", refs, ["bright", "dark"])
+            cls = self._train("ai_cls", refs, ["bright", "dark"])
             self.assertEqual(sorted(cls.metrics["classes"]), ["bright", "dark"])
             open(os.path.join(folder, "cls.pt"), "wb").write(cls.weights_bytes)
-            r5 = run_tool("yolo_classify", cv2.imread(refs[0].path), {"model": "c", **cls.weights_tool_params, "threshold": 0.0}, assets={"c": os.path.join(folder, "cls.pt")})
+            r5 = run_tool("ai_classify", cv2.imread(refs[0].path), {"model": "c", **cls.weights_tool_params, "threshold": 0.0}, assets={"c": os.path.join(folder, "cls.pt")})
             self.assertIn(r5.outputs["label"], ("bright", "dark"))
             open(os.path.join(folder, "cls.onnx"), "wb").write(cls.onnx_bytes)
             r6 = run_tool("dl_classify", cv2.imread(refs[0].path), {"model": "co", **cls.tool_params, "threshold": 0.0}, assets={"co": os.path.join(folder, "cls.onnx")})
             self.assertIn(r6.outputs["label"], ("bright", "dark"))
             # 訓練後的自動標記：detect 用 best.pt 提案 bbox
             dl_base.register_builtins()
-            sugg = dl_base.get_trainer("yolo_detect").suggest([], [SampleRef(id="u", label="", path=refs[0].path)], ["sq"], {"weights": det.metrics["weights_path"], "suggest_conf": 0.01, "imgsz": 160})
+            sugg = dl_base.get_trainer("ai_detect").suggest([], [SampleRef(id="u", label="", path=refs[0].path)], ["sq"], {"weights": det.metrics["weights_path"], "suggest_conf": 0.01, "imgsz": 160})
             self.assertTrue(all(sh["kind"] == "bbox" for s in sugg for sh in (s.shapes or [])))
         finally:
             shutil.rmtree(folder, ignore_errors=True)

@@ -1,5 +1,5 @@
 """深度學習實機測試（VISION_TEST_DL=1；需要 ultralytics＋GPU／網路）：六個 trainer 經 API 走完（建專案→樣本→訓練→資產→流程實跑）、
-訓練中取消、yolo_* 工具的輸入邊界（灰階／極小／大圖／CPU／FP16／並行／ONNX 資產）、dl_detect 用 CUDA provider、SAM 正負點與多框、
+訓練中取消、ai_* 工具的輸入邊界（灰階／極小／大圖／CPU／FP16／並行／ONNX 資產）、dl_detect 用 CUDA provider、SAM 正負點與多框、
 各 trainer 的自動標記、範例畫廊的 DL 範本實跑。"""
 
 from __future__ import annotations
@@ -133,36 +133,36 @@ class TrainersApiLiveTests(TransactionTestCase):
         asset = Asset.objects.get(pk=st["asset_id"])
         _, node = self._run_flow("dl_segment", {**st["tool_params"], "model": str(asset.id), "target_class": 1}, demo_images._scratch_plate(9, 2)[0])
         self.assertGreater(node.outputs["area"], 0)
-        # 3 yolo_detect → yolo_detect（.pt）＋ dl_detect（ONNX）
-        pid, st = self._train_project("yolo_detect", ["sq"], _shape_samples(), {"epochs": 1, "imgsz": 160, "batch": 4, "mosaic": 0.0}, "shapes")
+        # 3 ai_detect → ai_detect（.pt）＋ dl_detect（ONNX）
+        pid, st = self._train_project("ai_detect", ["sq"], _shape_samples(), {"epochs": 1, "imgsz": 160, "batch": 4, "mosaic": 0.0}, "shapes")
         pt = Asset.objects.get(pk=st["asset_id"])
         self.assertTrue(pt.path.endswith(".pt"))
         onnx = Asset.objects.get(pk=st["metrics"]["onnx_asset_id"])
         img = _shape_samples(1)[0][0]
-        _, node = self._run_flow("yolo_detect", {**st["tool_params"], "model": str(pt.id), "conf": 0.01, "device": device, "min_count": 0}, img)
+        _, node = self._run_flow("ai_detect", {**st["tool_params"], "model": str(pt.id), "conf": 0.01, "device": device, "min_count": 0}, img)
         self.assertIn("count", node.outputs)
         _, node2 = self._run_flow("dl_detect", {**onnx.meta["tool_params"], "model": str(onnx.id), "conf": 0.01, "min_count": 0}, img)
         self.assertIn("count", node2.outputs)
         r = self.client.get(f"/api/vision/dl/projects/{pid}")
         self.assertEqual(r.json()["last_asset_id"], pt.id.hex)
-        # 4 yolo_seg → yolo_segment
-        pid, st = self._train_project("yolo_seg", ["sq"], _shape_samples(kind="polygon"), {"epochs": 1, "imgsz": 160, "batch": 4, "mosaic": 0.0, "model": "yolo11n-seg.pt"}, "shapes")
-        _, node = self._run_flow("yolo_segment", {**st["tool_params"], "model": str(Asset.objects.get(pk=st["asset_id"]).id), "conf": 0.01, "min_count": 0}, img)
+        # 4 ai_seg → ai_segment
+        pid, st = self._train_project("ai_seg", ["sq"], _shape_samples(kind="polygon"), {"epochs": 1, "imgsz": 160, "batch": 4, "mosaic": 0.0, "model": "yolo11n-seg.pt"}, "shapes")
+        _, node = self._run_flow("ai_segment", {**st["tool_params"], "model": str(Asset.objects.get(pk=st["asset_id"]).id), "conf": 0.01, "min_count": 0}, img)
         mask = node.outputs["mask"]
         self.assertTrue(isinstance(mask, dict) or getattr(mask, "shape", None) == (160, 160))  # 引擎報告裡影像輸出是快取 ref
-        # 5 yolo_obb → yolo_obb
-        pid, st = self._train_project("yolo_obb", ["sq"], _shape_samples(kind="polygon"), {"epochs": 1, "imgsz": 160, "batch": 4, "mosaic": 0.0}, "shapes")
-        _, node = self._run_flow("yolo_obb", {**st["tool_params"], "model": str(Asset.objects.get(pk=st["asset_id"]).id), "conf": 0.01, "min_count": 0}, img)
+        # 5 ai_obb → ai_obb
+        pid, st = self._train_project("ai_obb", ["sq"], _shape_samples(kind="polygon"), {"epochs": 1, "imgsz": 160, "batch": 4, "mosaic": 0.0}, "shapes")
+        _, node = self._run_flow("ai_obb", {**st["tool_params"], "model": str(Asset.objects.get(pk=st["asset_id"]).id), "conf": 0.01, "min_count": 0}, img)
         self.assertIn("matches", node.outputs)
-        # 6 yolo_cls → yolo_classify
-        pid, st = self._train_project("yolo_cls", ["bright", "dark"], _class_samples(), {"epochs": 1, "imgsz": 224, "batch": 4}, "classes")
+        # 6 ai_cls → ai_classify
+        pid, st = self._train_project("ai_cls", ["bright", "dark"], _class_samples(), {"epochs": 1, "imgsz": 224, "batch": 4}, "classes")
         self.assertEqual(sorted(st["metrics"]["classes"]), ["bright", "dark"])
-        _, node = self._run_flow("yolo_classify", {**st["tool_params"], "model": str(Asset.objects.get(pk=st["asset_id"]).id), "threshold": 0.0}, _class_samples(1)[0][0])
+        _, node = self._run_flow("ai_classify", {**st["tool_params"], "model": str(Asset.objects.get(pk=st["asset_id"]).id), "threshold": 0.0}, _class_samples(1)[0][0])
         self.assertIn(node.outputs["label"], ("bright", "dark"))
         self.assertEqual(Asset.objects.filter(kind="model").count(), 2 + 2 * 4)  # 內建 2 個各 1 資產、YOLO 4 個各 2 資產
 
     def test_cancel_yolo_training_keeps_partial_artifacts(self):
-        r = self._json("post", "/api/vision/dl/projects", {"name": f"live-cancel-{time.time_ns()}", "trainer_kind": "yolo_detect", "classes": ["sq"]})
+        r = self._json("post", "/api/vision/dl/projects", {"name": f"live-cancel-{time.time_ns()}", "trainer_kind": "ai_detect", "classes": ["sq"]})
         pid = r.json()["id"]
         for i, (image, shapes) in enumerate(_shape_samples()):
             sid = self._upload(pid, image, f"c{i}.png")
@@ -193,18 +193,18 @@ class InferenceLiveEdgeTests(SimpleTestCase):
 
     def test_input_variants_devices_and_concurrency(self):
         gray = cv2.cvtColor(self.bus, cv2.COLOR_BGR2GRAY)
-        r = run_tool("yolo_detect", gray, {"model_name": "yolo11n.pt", "conf": 0.25})
+        r = run_tool("ai_detect", gray, {"model_name": "yolo11n.pt", "conf": 0.25})
         self.assertGreaterEqual(r.outputs["count"], 4)  # 灰階輸入照樣偵測
-        tiny = run_tool("yolo_detect", np.zeros((24, 24, 3), np.uint8), {"model_name": "yolo11n.pt", "min_count": 0})
+        tiny = run_tool("ai_detect", np.zeros((24, 24, 3), np.uint8), {"model_name": "yolo11n.pt", "min_count": 0})
         self.assertEqual(tiny.outputs["count"], 0)
         big = cv2.resize(self.bus, (1620, 2160))
-        rb = run_tool("yolo_detect", big, {"model_name": "yolo11n.pt", "conf": 0.25, "imgsz": 960})
+        rb = run_tool("ai_detect", big, {"model_name": "yolo11n.pt", "conf": 0.25, "imgsz": 960})
         self.assertGreaterEqual(rb.outputs["count"], 4)
         self.assertGreater(max(d["cx"] for d in rb.outputs["matches"]), 810)  # 座標在大圖座標系（原圖寬 810）
-        cpu = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25, "device": "cpu"})
+        cpu = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25, "device": "cpu"})
         self.assertIn("cpu", cpu.message)
         if _cuda():
-            half = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25, "device": "cuda", "half": True})
+            half = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25, "device": "cuda", "half": True})
             self.assertIn("cuda", half.message)
             self.assertLessEqual(abs(half.outputs["count"] - cpu.outputs["count"]), 1)
         # 同一模型 4 執行緒並行：結果一致、不炸
@@ -212,7 +212,7 @@ class InferenceLiveEdgeTests(SimpleTestCase):
 
         def work():
             try:
-                results.append(run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25}).outputs["count"])
+                results.append(run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25}).outputs["count"])
             except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
 
@@ -231,7 +231,7 @@ class InferenceLiveEdgeTests(SimpleTestCase):
             from ultralytics import YOLO
 
             YOLO(os.path.join(w, "yolo11n.pt")).export(format="onnx", imgsz=640, dynamic=False, verbose=False)
-        r = run_tool("yolo_detect", self.bus, {"model": "o", "conf": 0.25, "device": "cuda" if _cuda() else "cpu"}, assets={"o": onnx})
+        r = run_tool("ai_detect", self.bus, {"model": "o", "conf": 0.25, "device": "cuda" if _cuda() else "cpu"}, assets={"o": onnx})
         self.assertGreaterEqual(r.outputs["count"], 4)
         # dl_detect（自家 ONNX 後處理）在 CUDA provider 上：結果與 torch 路徑一致（±1）
         from apps.vision.tools.builtin import dl as dl_mod
@@ -245,7 +245,7 @@ class InferenceLiveEdgeTests(SimpleTestCase):
                 rd = run_tool("dl_detect", self.bus, {"model": "o", "labels": labels, "conf": 0.25, "iou": 0.45, "input_size": 640}, assets={"o": onnx})
                 sess = dl_mod.get_session(onnx)
                 self.assertIn("CUDAExecutionProvider", sess.get_providers())
-                torch_count = run_tool("yolo_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25}).outputs["count"]
+                torch_count = run_tool("ai_detect", self.bus, {"model_name": "yolo11n.pt", "conf": 0.25}).outputs["count"]
                 self.assertLessEqual(abs(rd.outputs["count"] - torch_count), 2)
             finally:
                 devices._preferred = []
@@ -280,7 +280,7 @@ class AutoLabelLiveTests(TransactionTestCase):
 
     def test_base_model_suggestions_per_trainer(self):
         bus, boats = _sample(BUS_URL), _sample(BOATS_URL)
-        for kind, image, expect_kind in (("yolo_seg", bus, "polygon"), ("yolo_detect", bus, "bbox"), ("yolo_obb", boats, "polygon")):
+        for kind, image, expect_kind in (("ai_seg", bus, "polygon"), ("ai_detect", bus, "bbox"), ("ai_obb", boats, "polygon")):
             r = self._json("post", "/api/vision/dl/projects", {"name": f"al-{kind}-{time.time_ns()}", "trainer_kind": kind, "classes": ["thing"]})
             pid = r.json()["id"]
             ok, buf = cv2.imencode(".jpg", image)

@@ -786,16 +786,16 @@ def label_flow(source_id: Any) -> dict[str, Any]:
 
 
 def yolo_count_flow(source_id: Any) -> dict[str, Any]:
-    """YOLO 物件計數（官方底模）：yolo_detect 只留 stop sign → 數量 = 2 → OK；不用訓練，第一次執行自動下載 yolo11n.pt。"""
+    """YOLO 物件計數（官方底模）：ai_detect 只留 stop sign → 數量 = 2 → OK；不用訓練，第一次執行自動下載 yolo11n.pt。"""
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
-        _node("det", "yolo_detect", 1, 0, "YOLO find signs", model_name="yolo11n.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
+        _node("det", "ai_detect", 1, 0, "Find signs (AI)", model_size="n", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
         _node("cmp", "if_number", 2, 0, "2 signs?", operator="eq", threshold=2),
         _node("ok", "judge", 3, 0, "OK", verdict="ok"),
         _node("ng", "judge", 3, 1, "NG: wrong count", verdict="ng", label="sign_count"),
         _node("out", "output", 2, 1, "Output count", name="sign_count"),
         _node("draw", "draw_result", 2, 2, "Result image"),
-        _note("n1", 0, 1, "About", "The stock COCO model (yolo11n.pt) recognises stop signs directly, with no training; the first run downloads about 5 MB of weights.\nFor your own objects: train an object detection (YOLO) project on the Deep learning page and select the result as the model asset."),
+        _note("n1", 0, 1, "About", "The stock model recognises stop signs directly, with no training; the first run downloads about 5 MB of weights.\nFor your own objects: train an object detection (AI) project on the Deep learning page and select the result as the model asset."),
     ]
     edges = [
         _edge("src", "det"), _edge("det", "cmp", "count", "value"),
@@ -806,10 +806,10 @@ def yolo_count_flow(source_id: Any) -> dict[str, Any]:
 
 
 def yolo_area_flow(source_id: Any) -> dict[str, Any]:
-    """YOLO 實例分割（官方底模）：yolo_segment 的聯合遮罩 → 像素計數（面積）→ 門檻判定；輸出標誌面積。"""
+    """YOLO 實例分割（官方底模）：ai_segment 的聯合遮罩 → 像素計數（面積）→ 門檻判定；輸出標誌面積。"""
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
-        _node("seg", "yolo_segment", 1, 0, "YOLO segment signs", model_name="yolo11n-seg.pt", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
+        _node("seg", "ai_segment", 1, 0, "Segment signs (AI)", model_size="n", conf=0.4, filter_labels="stop sign", min_count=1, imgsz=640),
         _node("area", "pixel_count", 2, 0, "Sign area", threshold=128, min_count=15000, max_count=45000),
         _node("ok", "judge", 3, 0, "OK", verdict="ok"),
         _node("ng", "judge", 3, 1, "NG: area out of range", verdict="ng", label="sign_area"),
@@ -961,9 +961,9 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("locate_measure", "Locate and gauge", "Template match, locate correction, ROI follow, caliper width, tolerance judge", "measure",
      lambda sid: locate_measure_flow(sid, _demo_asset("Example: cross locator template"))),
     ("cup_measure", "Deep-drawn cup gauge", "Template match, locate correction, three ROIs following, outer and inner circle finds plus wall thickness, concentricity, three tolerance judges, named outputs, OK/NG", "measure",
-     lambda sid: cup_measure_flow(sid, _demo_asset("Example: cup locator template"))),
-    ("yolo_count", "YOLO object count (stock model)", "yolo_detect finds stop signs with the COCO stock model and judges the count. No training needed and the GPU is used automatically (deep-learning dependencies required)", "count", yolo_count_flow),
-    ("yolo_area", "YOLO instance segmentation: sign area", "yolo_segment's union mask into a pixel count and an area threshold, showing segmentation feeding a measurement (deep-learning dependencies required)", "detect", yolo_area_flow),
+     lambda sid: cup_measure_flow(sid, _demo_ref("cup locator template"))),
+    ("ai_count", "AI object count (stock model)", "ai_detect finds stop signs with the COCO stock model and judges the count. No training needed and the GPU is used automatically (deep-learning dependencies required)", "count", yolo_count_flow),
+    ("ai_area", "AI instance segmentation: sign area", "ai_segment's union mask into a pixel count and an area threshold, showing segmentation feeding a measurement (deep-learning dependencies required)", "detect", yolo_area_flow),
     ("dl_classify_demo", "Classification: good / missing hole (taught model)", "The built-in MLP classifier trained by seeding, into dl_classify pass/fail — how a taught model gets into a flow", "quality",
      lambda sid: dl_classify_flow(sid, _demo_model("Example: classifier (good / missing hole)"))),
     ("anomaly_demo", "Anomaly detection: good parts only (taught model)", "The anomaly model built by seeding from 20 clean plates scores every patch against the good memory bank; scratches it has never seen come out as anomalies (needs the anomaly backbone)", "quality",
@@ -999,15 +999,24 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "locate_measure": "Example: locate and gauge",
     "shape_locate": "Example: shape match",
     "cup_measure": "Example: cup gauge",
-    "yolo_count": "Example: stop sign",
-    "yolo_area": "Example: stop sign",
+    "ai_count": "Example: stop sign",
+    "ai_area": "Example: stop sign",
     "dl_classify_demo": "Example: classification teaching",
     "dl_segment_demo": "Example: segmentation teaching",
     "anomaly_demo": "Example: segmentation teaching",
 }
 
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
-TEMPLATES_NEED_DL = ("yolo_count", "yolo_area")
+#: 範本 key → 樣本集 key（demo_images.SAMPLE_SETS）；沒有樣本集（用合成來源）的範本不在這裡
+def _sample_sets() -> dict[str, str]:
+    from apps.vision import demo_images
+
+    labels = {f"Example: {label}": set_key for set_key, (label, _fn) in demo_images.SAMPLE_SETS.items()}
+    return {key: labels[name] for key, name in TEMPLATE_SAMPLE_SOURCES.items() if name in labels}
+
+
+TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
+TEMPLATES_NEED_DL = ("ai_count", "ai_area")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
 TEMPLATES_NEED_BACKBONE = ("anomaly_demo",)
 

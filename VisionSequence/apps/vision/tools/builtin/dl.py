@@ -160,8 +160,8 @@ def _common_params(size_default: int) -> list[Param]:
         Param("model", "ONNX model", kind="asset", accept="model", required=True),
         Param("labels", "Class names", kind="multiline", default="", help_text="One class per line, in the model's output order; blank falls back to indices."),
         Param("input_size", "Input size", kind="number", default=size_default, minimum=8, maximum=4096, help_text="A model with a fixed input size wins over this setting."),
-        Param("mean", "Mean", kind="text", default="0.485,0.456,0.406", group="Pre-processing", help_text="In 0–1 units; YOLO models normally want 0."),
-        Param("std", "Std", kind="text", default="0.229,0.224,0.225", group="Pre-processing", help_text="YOLO models normally want 1."),
+        Param("mean", "Mean", kind="text", default="0.485,0.456,0.406", group="Pre-processing", help_text="In 0–1 units; detection networks normally want 0."),
+        Param("std", "Std", kind="text", default="0.229,0.224,0.225", group="Pre-processing", help_text="Detection networks normally want 1."),
         Param("color_order", "Channel order", kind="select", default="rgb", options=[{"value": "rgb", "label": "RGB"}, {"value": "bgr", "label": "BGR"}], group="Pre-processing"),
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
     ]
@@ -244,7 +244,7 @@ def parse_yolo(out: np.ndarray, num_labels: int) -> tuple[np.ndarray, np.ndarray
 class DlDetectTool(Tool):
     key = "dl_detect"
     label = "DL object detection"
-    description = "Finds objects with an ONNX detection model (YOLOv5 or v8 style output), including letterbox pre-processing and NMS."
+    description = "Finds objects with an ONNX detection model (detection-network style output), including letterbox pre-processing and NMS."
     category = "dl"
     icon = "ScanFace"
     heavy = True
@@ -396,7 +396,7 @@ def parse_yolo_seg(det: np.ndarray, protos: np.ndarray, *, conf: float, iou: flo
     ch = d.shape[1]
     nc = ch - 4 - nm
     if nc < 1:
-        raise ToolError(f"Not a YOLO-seg output ({ch} columns, {nm} protos)")
+        raise ToolError(f"Not an instance-segmentation output ({ch} columns, {nm} protos)")
     boxes_cxcywh = d[:, :4]
     cls_scores = d[:, 4 : 4 + nc]
     coefs = d[:, 4 + nc :]
@@ -433,7 +433,7 @@ def parse_yolo_seg(det: np.ndarray, protos: np.ndarray, *, conf: float, iou: flo
 class DlInstanceTool(Tool):
     key = "dl_instance"
     label = "DL instance segmentation"
-    description = "Finds each object's contour and class with a YOLO-seg style ONNX model, including letterbox pre-processing, NMS and mask assembly. You can train one on the platform's deep-learning page."
+    description = "Finds each object's contour and class with an instance-segmentation ONNX model, including letterbox pre-processing, NMS and mask assembly. You can train one on the platform's deep-learning page."
     category = "dl"
     icon = "Shapes"
     heavy = True
@@ -462,7 +462,7 @@ class DlInstanceTool(Tool):
         protos = next((o for o in outputs if np.asarray(o).ndim == 4), None)
         det = next((o for o in outputs if np.asarray(o) is not protos), None)
         if protos is None or det is None:
-            raise ToolError("The model output has no protos (is it a YOLO-seg model?)")
+            raise ToolError("The model output has no protos (is it an instance-segmentation model?)")
         instances = parse_yolo_seg(det, protos, conf=ctx.number("conf", 0.25), iou=ctx.number("iou", 0.45), max_count=ctx.integer("max_count", 100), size=size)
 
         labels = _labels(ctx)

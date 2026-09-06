@@ -145,9 +145,14 @@ def register_trainer(cls: type[Trainer]) -> bool:
         return True
 
 
+#: 訓練方式改名前的 kind（舊專案與整合端的呼叫仍可用）
+LEGACY_TRAINER_KINDS = {"yolo_seg": "ai_seg", "yolo_detect": "ai_detect", "yolo_cls": "ai_cls", "yolo_obb": "ai_obb"}
+
+
 def get_trainer(kind: str) -> Trainer:
     from apps.core.errors import ValidationError
 
+    kind = LEGACY_TRAINER_KINDS.get(kind, kind)
     trainer = _TRAINERS.get(kind)
     if trainer is None:
         raise ValidationError(f"Unknown model kind '{kind}'", code="unknown_trainer", details={"available": sorted(_TRAINERS)})

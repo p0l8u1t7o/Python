@@ -192,9 +192,9 @@ class YoloTrainerTests(SimpleTestCase):
 
     def test_catalogue_and_missing_deps(self):
         items = {t["kind"]: t for t in dl_base.catalogue()}
-        self.assertIn("yolo_seg", items)
-        self.assertEqual(items["yolo_seg"]["label_mode"], "shapes")
-        self.assertEqual(items["yolo_seg"]["tool_key"], "yolo_segment")  # 主產物 best.pt 給原生工具；ONNX 副產物給 dl_instance
+        self.assertIn("ai_seg", items)
+        self.assertEqual(items["ai_seg"]["label_mode"], "shapes")
+        self.assertEqual(items["ai_seg"]["tool_key"], "ai_segment")  # 主產物 best.pt 給原生工具；ONNX 副產物給 dl_instance
         try:
             import ultralytics  # noqa: F401
 
@@ -206,7 +206,7 @@ class YoloTrainerTests(SimpleTestCase):
             try:
                 refs = _write_seg_samples(folder, 3)
                 with self.assertRaises(TrainError) as ctx:
-                    dl_base.get_trainer("yolo_seg").train(refs, CLASSES, {}, "cpu", lambda *a: None)
+                    dl_base.get_trainer("ai_seg").train(refs, CLASSES, {}, "cpu", lambda *a: None)
                 self.assertIn("ultralytics", str(ctx.exception))
             finally:
                 shutil.rmtree(folder, ignore_errors=True)

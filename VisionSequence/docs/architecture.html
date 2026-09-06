@@ -216,7 +216,7 @@ register(tool) / get(key) / catalogue()</pre>
 <tr><td>locate</td><td>template_match (NCC with rotation and a pyramid) shape_align fixture_roi find_circle find_line hough_circles hough_lines</td></tr>
 <tr><td>measure</td><td>caliper distance angle intensity calibration histogram line_profile geometry; and for cup gauging: fit_arc (radius, cx, cy, residual_rms, start_angle, end_angle), fit_ellipse (cx, cy, a, b, angle, roundness = b/a), wall_thickness (paired edges: thickness, min, max, mean, profile, pairs), concentricity (two circles: deviation, dx, dy, verdict, branching ok/ng), chamfer_angle (RANSAC on two line segments: angle_deg, length, line1, line2), tolerance_judge (nominal, upper_tol, lower_tol, spec_source → verdict, deviation, in_spec, branching pass/fail, and written into run.outputs.tolerances)</td></tr>
 <tr><td>detect</td><td>blob defect_diff barcode text_presence color_check color_stats edge_density pixel_count</td></tr>
-<tr><td>dl</td><td>dl_classify dl_detect dl_segment dl_instance (onnxruntime, sessions cached by path); yolo_detect yolo_segment yolo_classify yolo_pose yolo_obb (native ultralytics)</td></tr>
+<tr><td>dl</td><td>dl_classify dl_detect dl_segment dl_instance (onnxruntime, sessions cached by path); ai_detect ai_segment ai_classify ai_pose ai_obb (native network)</td></tr>
 <tr><td>logic</td><td>if_number in_range bool_logic formula (an AST allow-list) count_list read_modbus python_script</td></tr>
 <tr><td>output</td><td>judge output save_image draw_result write_modbus send_image</td></tr>
 </table>

@@ -197,8 +197,7 @@ def create_project(request: HttpRequest):
     name = str(body.get("name") or "").strip()
     if not name:
         raise ValidationError("A name is required", code="bad_name")
-    kind = str(body.get("trainer_kind") or "")
-    dl_base.get_trainer(kind)  # 驗證存在
+    kind = dl_base.get_trainer(str(body.get("trainer_kind") or "")).kind  # 驗證存在（舊名稱換成新的）
     classes = [str(c).strip() for c in (body.get("classes") or []) if str(c).strip()]
     if DlProject.objects.filter(name=name).exists():
         raise ValidationError(f'The name "{name}" is taken', code="duplicate_name")
@@ -481,7 +480,7 @@ def dataset_import(request: HttpRequest, project_id: int):
     body = _body(request)
     root = str(body.get("dir") or "").strip()
     if not root or not os.path.isdir(root):
-        raise ValidationError("dir is required (an existing YOLO folder on the server)", code="bad_dir")
+        raise ValidationError("dir is required (an existing label folder on the server)", code="bad_dir")
     classes = read_yaml_classes(root) or list(project.classes or [])
     missing = [c for c in classes if c not in (project.classes or [])]
     if missing:

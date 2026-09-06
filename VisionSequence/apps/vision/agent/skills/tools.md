@@ -299,27 +299,27 @@ read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連�
 ## note
 不是工具：畫布便利貼（type=note、不接邊），寫流程說明或調機備註。
 
-## yolo_detect
-ultralytics YOLO 物件偵測（原生 torch 推論，GPU 自動使用）：`model` 選教導頁訓練的 .pt 資產，沒選時用 `model_name` 官方底模（`yolo11n.pt`，COCO 80 類，第一次自動下載）。`conf` 是主要調機參數、`iou` NMS、`filter_labels` 只留某些類別、`min_count/max_count_ok` 決定 ok/ng。輸出 `detections/matches`（x,y,w,h,cx,cy,label,score）、`count`、`labels`；`found/not_found` 分支。要客製類別請先在「深度學習教導」用「物件偵測（YOLO）」訓練。
+## ai_detect
+神經網路物件偵測（原生 torch 推論，GPU 自動使用）：`model` 選教導頁訓練的 .pt 資產，沒選時用 `model_name` 官方底模（`yolo11n.pt`，COCO 80 類，第一次自動下載）。`conf` 是主要調機參數、`iou` NMS、`filter_labels` 只留某些類別、`min_count/max_count_ok` 決定 ok/ng。輸出 `detections/matches`（x,y,w,h,cx,cy,label,score）、`count`、`labels`；`found/not_found` 分支。要客製類別請先在「深度學習教導」用「物件偵測（YOLO）」訓練。
 
-## yolo_segment
-ultralytics YOLO-seg 實例分割：同 yolo_detect 的模型與門檻參數，另有 `min_area` 濾小實例。輸出 `count`、`matches`（含 area）、`mask`（聯合遮罩，可接 blob／pixel_count）、`contours`（可接 geometry／量測）、`labels`。底模 `yolo11n-seg.pt`；自訂類別用「實例分割（YOLO-seg）」訓練。
+## ai_segment
+實例分割網路：同 ai_detect 的模型與門檻參數，另有 `min_area` 濾小實例。輸出 `count`、`matches`（含 area）、`mask`（聯合遮罩，可接 blob／pixel_count）、`contours`（可接 geometry／量測）、`labels`。底模 `yolo11n-seg.pt`；自訂類別用「實例分割（YOLO-seg）」訓練。
 
-## yolo_classify
-ultralytics YOLO-cls 影像分類：`imgsz` 224；`threshold` 分數門檻、`pass_labels` 合格類別、`top_k`。輸出 `label/score/index/top`，`pass/fail` 分支。底模 `yolo11n-cls.pt` 是 ImageNet 類別，實務上必用「影像分類（YOLO-cls）」訓練自己的類別。
+## ai_classify
+分類網路影像分類：`imgsz` 224；`threshold` 分數門檻、`pass_labels` 合格類別、`top_k`。輸出 `label/score/index/top`，`pass/fail` 分支。底模 `yolo11n-cls.pt` 是 ImageNet 類別，實務上必用「影像分類（YOLO-cls）」訓練自己的類別。
 
-## yolo_pose
-YOLO-pose 關鍵點：輸出每個物件的 `keypoints`（[x,y,conf]×N，COCO 人體 17 點）與 `matches` 框；`kpt_conf` 只影響顯示。適合姿勢／位置檢查、人員闖入。平台目前不提供關鍵點標記訓練，需用官方或自備 pose 權重。
+## ai_pose
+姿態網路關鍵點：輸出每個物件的 `keypoints`（[x,y,conf]×N，COCO 人體 17 點）與 `matches` 框；`kpt_conf` 只影響顯示。適合姿勢／位置檢查、人員闖入。平台目前不提供關鍵點標記訓練，需用官方或自備 pose 權重。
 
-## yolo_obb
-YOLO-obb 旋轉框：輸出 `matches`（cx, cy, w, h, angle°, points 四角）、`contours`（四角輪廓）；適合傾斜擺放的工件計數／定位，角度可接 formula／tolerance_judge 做方向檢查。底模 `yolo11n-obb.pt`（DOTA 航拍類別）僅供試用，自訂類別用「旋轉框偵測（YOLO-obb）」訓練（polygon 標記自動取最小外接旋轉矩形）。
+## ai_obb
+旋轉框網路：輸出 `matches`（cx, cy, w, h, angle°, points 四角）、`contours`（四角輪廓）；適合傾斜擺放的工件計數／定位，角度可接 formula／tolerance_judge 做方向檢查。底模 `yolo11n-obb.pt`（DOTA 航拍類別）僅供試用，自訂類別用「旋轉框偵測（YOLO-obb）」訓練（polygon 標記自動取最小外接旋轉矩形）。
 
 ## dl_anomaly
 只教良品的異常檢測：`model` 是教導頁用「Anomaly detection (good parts only)」訓練的模型（只要 20～50 張良品、不用標記）；
 `threshold` 0＝用模型自帶的自動門檻（良品分數 mean + kσ），良品被誤判就調高；`min_area` 擋雜訊；`roi` 檢測區（會縮放到模型輸入尺寸，
 別框太大）；`device` auto／cpu／cuda。輸出 `score`（最大異常分數）、`count`／`total_area`、`score_map`（熱圖：門檻映到中灰、2 倍門檻飽和，
 現場調門檻看它）、`mask`、`regions`，分支 ok／defect。沒有壞品樣本、缺陷型態不固定（刮痕、凹陷、缺料、異物）時優先用它；
-有明確類別且壞品夠多再考慮 yolo_*／dl_segment。
+有明確類別且壞品夠多再考慮 ai_*／dl_segment。
 
 ## gdt_measure
 形位公差（ISO 1101 最小區域，不是最小二乘）：`mode` straightness／flatness（2D 投影，同一個帶）／roundness／parallelism／perpendicularity／angularity。

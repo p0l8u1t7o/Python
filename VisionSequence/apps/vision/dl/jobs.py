@@ -186,7 +186,7 @@ def _train(job: TrainJob, project_id: int, params: dict[str, Any]) -> None:
     )
     primary_id, tool_key, tool_params = onnx_id, result.tool_key, result.tool_params
     if has_weights:
-        # 原生權重（best.pt）另存一個資產，成為專案主產物：對應的 yolo_* 工具直接選它
+        # 原生權重（best.pt）另存一個資產，成為專案主產物：對應的 ai_* 工具直接選它
         weights_id = uuid.uuid4()
         wpath = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{weights_id.hex}{result.weights_ext}")
         with open(wpath, "wb") as f:

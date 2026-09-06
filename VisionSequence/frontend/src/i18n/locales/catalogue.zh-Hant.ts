@@ -38,9 +38,9 @@ export default {
     Advanced: '進階',
     Augment: '資料增強',
   },
-  /** 四種 YOLO 訓練方式的超參數幾乎相同，共用這一份。 */
-  yoloParams: {
-    model: { label: '底模', help: 'ultralytics 的模型名稱（第一次使用時下載）或 .pt 檔路徑；填上一次訓練的 best.pt 就會接著它繼續訓練。' },
+  /** 四種神經網路訓練方式的超參數幾乎相同，共用這一份。 */
+  sharedParams: {
+    model: { label: '底模大小', help: '預訓練的起點（第一次使用時下載）；越大越準但訓練與執行越慢。透過 API 也接受 .pt 檔路徑。', options: { n: 'Nano（最快，預設）', s: 'Small', m: 'Medium', l: 'Large', x: 'Extra large（最準，最慢）' } },
     epochs: { label: '訓練回合數' },
     imgsz: { label: '影像尺寸', options: { 224: '224（建議）', 320: '320', 480: '480', 640: '640（建議）', 960: '960' } },
     batch: { label: '批次大小' },
@@ -94,21 +94,21 @@ export default {
         projection_dims: { label: '特徵投影', help: '384 維特徵的固定隨機投影。128 維保留距離排序，執行時間約縮短三倍。', options: { 0: '不投影（384 維，最慢）', 128: '128 維（建議）', 64: '64 維（最快）' } },
       },
     },
-    yolo_cls: {
-      label: '影像分類（YOLO-cls）',
-      description: '一張一類，從 ImageNet 預訓練底模微調 YOLO 分類模型。比內建 MLP 分類準確，但需要 ultralytics（torch）。產物：best.pt 給 YOLO 分類工具、ONNX 給深度學習分類工具。',
+    ai_cls: {
+      label: '影像分類（AI）',
+      description: '一張一類，從 ImageNet 預訓練底模微調 分類網路。比內建 MLP 分類準確，但需要深度學習加購包。產物：訓練好的權重給 AI 分類工具、ONNX 給深度學習分類工具。',
     },
-    yolo_detect: {
-      label: '物件偵測（YOLO）',
-      description: '從外框標記訓練 YOLO 偵測模型（多邊形會取外接框），找出每個物件的框與類別。訓練最快、標記成本最低。產物：best.pt 給 YOLO 物件偵測工具、ONNX 給深度學習物件偵測工具。',
+    ai_detect: {
+      label: '物件偵測（AI）',
+      description: '從外框標記訓練 偵測網路（多邊形會取外接框），找出每個物件的框與類別。訓練最快、標記成本最低。產物：訓練好的權重給 AI 物件偵測工具、ONNX 給深度學習物件偵測工具。',
     },
-    yolo_obb: {
-      label: '旋轉框偵測（YOLO-obb）',
-      description: '從多邊形（取最小面積旋轉矩形）或外框訓練 YOLO OBB 模型，回傳每個物件的旋轉矩形（中心、尺寸、角度），適合斜擺的零件。產物：best.pt 給 YOLO 旋轉框工具（ONNX 僅供外部使用）。',
+    ai_obb: {
+      label: '旋轉框偵測（AI）',
+      description: '從多邊形（取最小面積旋轉矩形）或外框訓練 旋轉框網路，回傳每個物件的旋轉矩形（中心、尺寸、角度），適合斜擺的零件。產物：訓練好的權重給 AI 旋轉框工具（ONNX 僅供外部使用）。',
     },
-    yolo_seg: {
-      label: '實例分割（YOLO-seg）',
-      description: '從多邊形標記訓練 YOLO 分割模型，找出每個物件的輪廓與類別。需要 ultralytics（torch），建議搭配 NVIDIA GPU。官方底模第一次使用時下載，訓練前也能自動標記（底模提出輪廓，掛在第一個類別）。產物：best.pt 給 YOLO 實例分割工具、ONNX 給深度學習實例分割工具。',
+    ai_seg: {
+      label: '實例分割（AI）',
+      description: '從多邊形標記訓練 實例分割網路，找出每個物件的輪廓與類別。需要深度學習加購包，建議搭配 NVIDIA GPU。官方底模第一次使用時下載，訓練前也能自動標記（底模提出輪廓，掛在第一個類別）。產物：訓練好的權重給 AI 實例分割工具、ONNX 給深度學習實例分割工具。',
     },
   },
   templates: {
@@ -126,8 +126,8 @@ export default {
     label_read: { name: '含透視校正的條碼標籤', description: '四點透視校正把歪斜的標籤拉正再讀，另加序號區的文字存在檢查' },
     locate_measure: { name: '定位與量測', description: '範本比對、定位補正、ROI 跟隨、卡尺寬度、公差判定' },
     cup_measure: { name: '深沖杯件量測', description: '範本比對、定位補正、三個 ROI 跟隨、內外圓與壁厚、同心度、三個公差判定、具名輸出、OK/NG' },
-    yolo_count: { name: 'YOLO 物件計數（官方底模）', description: 'yolo_detect 以 COCO 官方底模找停止標誌並判定數量。免訓練、自動用 GPU（需要深度學習依賴）' },
-    yolo_area: { name: 'YOLO 實例分割：標誌面積', description: 'yolo_segment 的聯集遮罩接像素計數與面積門檻，示範分割接量測（需要深度學習依賴）' },
+    ai_count: { name: 'AI 物件計數（官方底模）', description: 'ai_detect 以 COCO 官方底模找停止標誌並判定數量。免訓練、自動用 GPU（需要深度學習依賴）' },
+    ai_area: { name: 'AI 實例分割：標誌面積', description: 'ai_segment 的聯集遮罩接像素計數與面積門檻，示範分割接量測（需要深度學習依賴）' },
     dl_classify_demo: { name: '分類：良品／缺孔（教導模型）', description: '由 seed 訓練的內建 MLP 分類器接 dl_classify 判定——示範教導出來的模型怎麼進流程' },
     gear_teeth: { name: '圓周齒數（極座標展開）', description: '極座標展開把齒圈攤平成長條圖，二值化與 blob 數齒，極座標還原把每顆齒標回原圖' },
     contour_defect: { name: '崩邊檢測（輪廓幾何）', description: '輪廓萃取、篩出工件本體、輪廓幾何數超過 12 px 的凸缺陷、OK/NG，另以 Hu 矩與範例外形比對' },

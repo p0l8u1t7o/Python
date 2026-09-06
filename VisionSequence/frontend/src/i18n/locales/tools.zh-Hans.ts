@@ -863,11 +863,11 @@ export default {
       },
       mean: {
         label: "平均",
-        help: "以 0~1 为单位；YOLO 通常填 0。",
+        help: "以 0~1 为单位；检测网络通常填 0。",
         group: "前處理",
       },
       std: {
-        help: "YOLO 通常填 1。",
+        help: "检测网络通常填 1。",
         group: "前處理",
       },
       color_order: {
@@ -903,7 +903,7 @@ export default {
   },
   dl_detect: {
     label: "DL 物件偵测",
-    description: "以 ONNX 偵测模型（YOLOv5/v8 風格输出）找物件；含 letterbox 前處理与 NMS。",
+    description: "以 ONNX 偵测模型（检测网络风格输出）找物件；含 letterbox 前處理与 NMS。",
     params: {
       model: {
         label: "ONNX 模型",
@@ -918,11 +918,11 @@ export default {
       },
       mean: {
         label: "平均",
-        help: "以 0~1 为单位；YOLO 通常填 0。",
+        help: "以 0~1 为单位；检测网络通常填 0。",
         group: "前處理",
       },
       std: {
-        help: "YOLO 通常填 1。",
+        help: "检测网络通常填 1。",
         group: "前處理",
       },
       color_order: {
@@ -969,7 +969,7 @@ export default {
   },
   dl_instance: {
     label: "DL 实例分割",
-    description: "以 YOLO-seg 風格的 ONNX 模型找出每个物件的轮廓与类别（含 letterbox 前處理、NMS 与 mask 合成）。可在平台的深度學習頁教導。",
+    description: "以实例分割 ONNX 模型找出每个物件的轮廓与类别（含 letterbox 前處理、NMS 与 mask 合成）。可在平台的深度學習頁教導。",
     params: {
       model: {
         label: "ONNX 模型",
@@ -984,11 +984,11 @@ export default {
       },
       mean: {
         label: "平均",
-        help: "以 0~1 为单位；YOLO 通常填 0。",
+        help: "以 0~1 为单位；检测网络通常填 0。",
         group: "前處理",
       },
       std: {
-        help: "YOLO 通常填 1。",
+        help: "检测网络通常填 1。",
         group: "前處理",
       },
       color_order: {
@@ -1050,11 +1050,11 @@ export default {
       },
       mean: {
         label: "平均",
-        help: "以 0~1 为单位；YOLO 通常填 0。",
+        help: "以 0~1 为单位；检测网络通常填 0。",
         group: "前處理",
       },
       std: {
-        help: "YOLO 通常填 1。",
+        help: "检测网络通常填 1。",
         group: "前處理",
       },
       color_order: {
@@ -2530,17 +2530,29 @@ export default {
       ok: "成功",
     },
   },
-  yolo_classify: {
-    label: "YOLO 分类",
-    description: "以 ultralytics YOLO-cls 模型判斷区域屬于哪一类；最高分类别分数達门槛（且在合格类别内）走 pass。",
+  ai_classify: {
+    label: "分类（AI）",
+    description: "以分类网络（官方底模或教导页训练的模型）判斷区域屬于哪一类；最高分类别分数達门槛（且在合格类别内）走 pass。",
     params: {
       model: {
         label: "模型资产",
         help: "教導頁訓練出的模型（.pt／.onnx）或自行上传的 .pt；留空則用下方底模名称。",
       },
+      model_size: {
+        label: "底模大小",
+        help: "只在没选模型资产时使用；越大越准但越慢。底模第一次使用时自动下载。",
+        options: {
+          n: "Nano（最快，默认）",
+          s: "Small",
+          m: "Medium",
+          l: "Large",
+          x: "Extra large（最准，最慢）",
+        },
+      },
       model_name: {
-        label: "底模名称",
-        help: "官方名称（第一次使用自動下载）或本機 .pt 路径；只在沒选模型资产时使用。",
+        label: "模型文件（高级）",
+        help: "本机 .pt 路径，会取代底模；平常留空。",
+        group: "高级",
       },
       imgsz: {
         label: "推論尺寸",
@@ -2583,17 +2595,29 @@ export default {
       index: "索引",
     },
   },
-  yolo_detect: {
-    label: "YOLO 物件偵测",
-    description: "以 ultralytics YOLO 模型（官方底模或教導頁訓練的 .pt）找物件并回框、类别与分数；GPU 自動使用。",
+  ai_detect: {
+    label: "对象检测（AI）",
+    description: "以神经网络模型（官方底模或教導頁訓練的 .pt）找物件并回框、类别与分数；GPU 自動使用。",
     params: {
       model: {
         label: "模型资产",
         help: "教導頁訓練出的模型（.pt／.onnx）或自行上传的 .pt；留空則用下方底模名称。",
       },
+      model_size: {
+        label: "底模大小",
+        help: "只在没选模型资产时使用；越大越准但越慢。底模第一次使用时自动下载。",
+        options: {
+          n: "Nano（最快，默认）",
+          s: "Small",
+          m: "Medium",
+          l: "Large",
+          x: "Extra large（最准，最慢）",
+        },
+      },
       model_name: {
-        label: "底模名称",
-        help: "官方名称（第一次使用自動下载）或本機 .pt 路径；只在沒选模型资产时使用。",
+        label: "模型文件（高级）",
+        help: "本机 .pt 路径，会取代底模；平常留空。",
+        group: "高级",
       },
       imgsz: {
         label: "推論尺寸",
@@ -2654,17 +2678,29 @@ export default {
       labels: "类别列表",
     },
   },
-  yolo_obb: {
-    label: "YOLO 旋转框（OBB）",
-    description: "以 ultralytics YOLO-obb 模型找物件并回旋转矩形（中心、宽高、角度）与四角座标；适合倾斜摆放的工件。",
+  ai_obb: {
+    label: "旋转框（AI）",
+    description: "以旋转框网络找物件并回旋转矩形（中心、宽高、角度）与四角座标；适合倾斜摆放的工件。",
     params: {
       model: {
         label: "模型资产",
         help: "教導頁訓練出的模型（.pt／.onnx）或自行上传的 .pt；留空則用下方底模名称。",
       },
+      model_size: {
+        label: "底模大小",
+        help: "只在没选模型资产时使用；越大越准但越慢。底模第一次使用时自动下载。",
+        options: {
+          n: "Nano（最快，默认）",
+          s: "Small",
+          m: "Medium",
+          l: "Large",
+          x: "Extra large（最准，最慢）",
+        },
+      },
       model_name: {
-        label: "底模名称",
-        help: "官方名称（第一次使用自動下载）或本機 .pt 路径；只在沒选模型资产时使用。",
+        label: "模型文件（高级）",
+        help: "本机 .pt 路径，会取代底模；平常留空。",
+        group: "高级",
       },
       imgsz: {
         label: "推論尺寸",
@@ -2725,17 +2761,29 @@ export default {
       labels: "类别列表",
     },
   },
-  yolo_pose: {
-    label: "YOLO 姿态（关键点）",
-    description: "以 ultralytics YOLO-pose 模型找物件并回每个物件的关键点座标与信心（COCO 人体 17 点或自訂关键点）；可做位置／姿勢检查。",
+  ai_pose: {
+    label: "姿态关键点（AI）",
+    description: "以姿态网络找物件并回每个物件的关键点座标与信心（COCO 人体 17 点或自訂关键点）；可做位置／姿勢检查。",
     params: {
       model: {
         label: "模型资产",
         help: "教導頁訓練出的模型（.pt／.onnx）或自行上传的 .pt；留空則用下方底模名称。",
       },
+      model_size: {
+        label: "底模大小",
+        help: "只在没选模型资产时使用；越大越准但越慢。底模第一次使用时自动下载。",
+        options: {
+          n: "Nano（最快，默认）",
+          s: "Small",
+          m: "Medium",
+          l: "Large",
+          x: "Extra large（最准，最慢）",
+        },
+      },
       model_name: {
-        label: "底模名称",
-        help: "官方名称（第一次使用自動下载）或本機 .pt 路径；只在沒选模型资产时使用。",
+        label: "模型文件（高级）",
+        help: "本机 .pt 路径，会取代底模；平常留空。",
+        group: "高级",
       },
       imgsz: {
         label: "推論尺寸",
@@ -2800,17 +2848,29 @@ export default {
       labels: "类别列表",
     },
   },
-  yolo_segment: {
-    label: "YOLO 实例分割",
-    description: "以 ultralytics YOLO-seg 模型找出每个物件的轮廓、类别与面积；输出聯合遮罩与轮廓給後续量测。",
+  ai_segment: {
+    label: "实例分割（AI）",
+    description: "以实例分割网络（官方底模或教导页训练的模型）找出每个物件的轮廓、类别与面积；输出聯合遮罩与轮廓給後续量测。",
     params: {
       model: {
         label: "模型资产",
         help: "教導頁訓練出的模型（.pt／.onnx）或自行上传的 .pt；留空則用下方底模名称。",
       },
+      model_size: {
+        label: "底模大小",
+        help: "只在没选模型资产时使用；越大越准但越慢。底模第一次使用时自动下载。",
+        options: {
+          n: "Nano（最快，默认）",
+          s: "Small",
+          m: "Medium",
+          l: "Large",
+          x: "Extra large（最准，最慢）",
+        },
+      },
       model_name: {
-        label: "底模名称",
-        help: "官方名称（第一次使用自動下载）或本機 .pt 路径；只在沒选模型资产时使用。",
+        label: "模型文件（高级）",
+        help: "本机 .pt 路径，会取代底模；平常留空。",
+        group: "高级",
       },
       imgsz: {
         label: "推論尺寸",

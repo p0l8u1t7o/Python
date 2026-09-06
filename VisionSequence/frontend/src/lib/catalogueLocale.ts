@@ -33,8 +33,8 @@ interface CatalogueDict {
   sourceKinds?: Record<string, Entry>
   connectionKinds?: Record<string, Entry>
   trainers?: Record<string, TrainerEntry>
-  /** 四種 YOLO 訓練方式共用的超參數（trainer 自己的 params 優先）。 */
-  yoloParams?: Record<string, ParamText>
+  /** 四種神經網路訓練方式共用的超參數（trainer 自己的 params 優先）。 */
+  sharedParams?: Record<string, ParamText>
   /** Param.group 的名稱（Advanced／Augment），所有訓練方式共用。 */
   paramGroups?: Record<string, string>
   templates?: Record<string, Entry>
@@ -87,14 +87,14 @@ function localiseParam(param: ToolParam, text: ParamText | undefined, groups: Re
   }
 }
 
-/** 訓練方式：名稱、說明，加上超參數的名稱／說明／選項與分組名稱。YOLO 四種共用一份參數字典。 */
+/** 訓練方式：名稱、說明，加上超參數的名稱／說明／選項與分組名稱。神經網路四種共用一份參數字典。 */
 export function localiseTrainers(items: DlTrainerDef[], language: Language): DlTrainerDef[] {
   const dict = DICTS[language]
   if (!dict) return items
   const groups = dict.paramGroups ?? {}
   return items.map((trainer) => {
     const text = dict.trainers?.[trainer.kind]
-    const shared = trainer.kind.startsWith('yolo_') ? dict.yoloParams ?? {} : {}
+    const shared = trainer.kind.startsWith('ai_') ? dict.sharedParams ?? {} : {}
     return {
       ...trainer,
       label: text?.label ?? trainer.label,

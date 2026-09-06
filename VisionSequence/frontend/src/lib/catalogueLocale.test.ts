@@ -36,8 +36,8 @@ describe('catalogueLocale', () => {
     const conns = localiseList('connectionKinds', [{ kind: 'modbus_server', label: 'Modbus/TCP server (this machine listens)' }], (k) => k.kind, 'zh-Hant')
     expect(conns[0].kind).toBe('modbus_server')
     expect(conns[0].label).toContain('從站')
-    const trainers = localiseList('trainers', [{ kind: 'yolo_detect', label: 'Object detection (YOLO)' }], (t) => t.kind, 'zh-Hans')
-    expect(trainers[0].label).toBe('目标检测（YOLO）')
+    const trainers = localiseList('trainers', [{ kind: 'ai_detect', label: 'Object detection (AI)' }], (t) => t.kind, 'zh-Hans')
+    expect(trainers[0].label).toBe('目标检测（AI）')
   })
 
   it('translates a built-in template by its key, and leaves a custom one alone', () => {

@@ -59,7 +59,7 @@ describe('localiseTrainers', () => {
       ],
     },
     {
-      kind: 'yolo_detect', label: 'Object detection (YOLO)', description: '', label_mode: 'shapes', tool_key: 'yolo_detect', devices: ['cuda'], min_per_class: 2,
+      kind: 'ai_detect', label: 'Object detection (AI)', description: '', label_mode: 'shapes', tool_key: 'ai_detect', devices: ['cuda'], min_per_class: 2,
       params: [
         { key: 'mosaic', label: 'Mosaic augmentation', kind: 'number', required: false, default: 1, help_text: 'Tiles four samples…', options: [], unit: '', minimum: 0, maximum: 1, step: 0.1, visible_when: null, shapes: [], accept: '', group: 'Augment', teach: false },
         { key: 'custom_from_plugin', label: 'Custom', kind: 'number', required: false, default: 1, help_text: '', options: [], unit: '', minimum: 0, maximum: 1, step: 1, visible_when: null, shapes: [], accept: '', group: 'Advanced', teach: false },
@@ -74,7 +74,7 @@ describe('localiseTrainers', () => {
     expect(mlp.params[0].options[0].label).toBe('64x64（建議）')
     expect(mlp.params[0].options[0].value).toBe(64)  // 值不動
     expect(mlp.params[1].group).toBe('進階')
-    // YOLO 四種共用一份參數字典
+    // 神經網路四種共用一份參數字典
     expect(yolo.params[0].label).toBe('Mosaic 增強')
     expect(yolo.params[0].help_text).toContain('四張')
     expect(yolo.params[0].group).toBe('資料增強')

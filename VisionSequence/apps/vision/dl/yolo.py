@@ -8,9 +8,9 @@
 - 指標去掉 metrics/ 前綴；分割任務優先 (M)（mask）、退回 (B)（box）。
 - 設 YOLO_OFFLINE=1 避免無網路環境卡住（基底權重 .pt 第一次仍需可取得）。
 
-產物：best.pt（主產物，給原生 yolo_* 工具，GPU 推論、後處理與訓練一致）＋ ONNX（副產物，給 dl_* ONNX 工具或
+產物：best.pt（主產物，給原生 ai_* 工具，GPU 推論、後處理與訓練一致）＋ ONNX（副產物，給 dl_* ONNX 工具或
 外部執行環境）；兩者都存成 model 資產（jobs._train），專案的 last_asset 指向 .pt。
-姿態（pose）訓練需要關鍵點標記介面，目前只提供推論工具（yolo_pose 用官方或自備權重）。
+姿態（pose）訓練需要關鍵點標記介面，目前只提供推論工具（ai_pose 用官方或自備權重）。
 """
 
 from __future__ import annotations
@@ -59,6 +59,23 @@ def _weights_dir() -> str:
     return folder
 
 
+SIZE_OPTIONS = [
+    {"value": "n", "label": "Nano (fastest, default)"}, {"value": "s", "label": "Small"}, {"value": "m", "label": "Medium"},
+    {"value": "l", "label": "Large"}, {"value": "x", "label": "Extra large (most accurate, slowest)"},
+]
+_TASK_SUFFIX = {"segment": "-seg", "detect": "", "classify": "-cls", "obb": "-obb", "pose": "-pose"}
+
+
+def base_model_for(task: str, value: Any) -> str:
+    """訓練參數 `model`：大小代碼（n/s/m/l/x）→ 該任務的官方底模；其他字串（檔案路徑、完整名稱）原樣。"""
+    v = str(value or "").strip()
+    if not v:
+        v = "n"
+    if len(v) == 1 and v.lower() in "nsmlx":
+        return f"yolo11{v.lower()}{_TASK_SUFFIX.get(task, '')}.pt"
+    return v
+
+
 def resolve_model(name: str, log_fn=None) -> str:
     """把模型參數解析成本地檔案路徑；官方底模名稱（yolo11n.pt、yolo11n-seg.pt、sam2.1_t.pt 等）不存在時自動下載。
 
@@ -81,7 +98,7 @@ def resolve_model(name: str, log_fn=None) -> str:
             return target
         _download(base, target, log_fn)
     if log_fn:
-        log_fn(f"The stock model {base} has been downloaded to {target}")
+        log_fn("The stock model has been downloaded")
     return target
 
 
@@ -94,7 +111,7 @@ def _download(base: str, target: str, log_fn=None) -> None:
     for release in _ASSET_RELEASES:
         url = _ASSET_URL.format(release=release, name=base)
         if log_fn:
-            log_fn(f"Downloading the stock model {base} (first use; {url}）…")
+            log_fn("Downloading the stock model (first use)…")
         log.info("下載 YOLO 底模 %s ← %s", base, url)
         fd, tmp = tempfile.mkstemp(dir=_weights_dir(), suffix=".part")
         try:
@@ -108,11 +125,11 @@ def _download(base: str, target: str, log_fn=None) -> None:
             if exc.code == 404:
                 last_error = f"HTTP 404 ({url})"
                 continue  # 下一個 release
-            raise TrainError(f"The stock model {base} could not be downloaded (HTTP {exc.code}). {url}") from None
+            raise TrainError(f"The stock model could not be downloaded (HTTP {exc.code})") from None
         except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
             _cleanup(tmp)
-            raise TrainError(f"The stock model {base} could not be downloaded ({exc}). Check that the server has network access, or download it by hand and put the path in the base model parameter: {url}") from None
-    raise TrainError(f"The model name {base} does not exist (there is no such file in the official assets; {last_error}). Check the name, for example yolo11n.pt, yolo11n-seg.pt, yolo11n-cls.pt or yolo11n-obb.pt.")
+            raise TrainError(f"The stock model could not be downloaded ({exc}). Check that the server has network access, or install the deep-learning add-on pack, which includes it") from None
+    raise TrainError(f"The stock model is not available for download ({last_error}); install the deep-learning add-on pack or check the model file path")
 
 
 _download_lock = threading.Lock()
@@ -150,7 +167,7 @@ def _params(base_model: str, task: str) -> list[Param]:
     imgsz = ([{"value": 224, "label": "224 (recommended)"}, {"value": 320, "label": "320"}] if task == "classify"
              else [{"value": 320, "label": "320"}, {"value": 480, "label": "480"}, {"value": 640, "label": "640 (recommended)"}, {"value": 960, "label": "960"}])
     out = [
-        Param("model", "Base model", kind="text", default=base_model, help_text="An ultralytics model name (downloaded on first use) or a path to a .pt file; the best.pt of a previous run continues training from it."),
+        Param("model", "Stock model size", kind="select", default="n", options=SIZE_OPTIONS, help_text="The pretrained starting point (downloaded on first use); larger is more accurate but slower to train and run. A path to a .pt file is also accepted through the API."),
         Param("epochs", "Epochs", kind="number", default=100, minimum=1, maximum=2000),
         Param("imgsz", "Image size", kind="select", default=224 if task == "classify" else 640, options=imgsz),
         Param("batch", "Batch", kind="number", default=8, minimum=1, maximum=128, group="Advanced"),
@@ -174,7 +191,7 @@ class _YoloTrainer(Trainer):
     task = "segment"  # segment | detect | classify | obb
     base_model = "yolov8n-seg.pt"
     label_mode = "shapes"
-    tool_key = "yolo_segment"  # 主產物 best.pt 給的原生工具
+    tool_key = "ai_segment"  # 主產物 best.pt 給的原生工具
     onnx_tool_key = "dl_instance"  # 副產物 ONNX 給的工具（"" = 沒有對應的 ONNX 工具）
     devices = ("cuda", "cpu")
     min_per_class = 1
@@ -217,9 +234,9 @@ class _YoloTrainer(Trainer):
             if stats["train"] < 1 or stats["val"] < 1:
                 raise TrainError("Too few labelled samples: train and val need at least one each (ten or more per class is recommended)")
 
-            model = YOLO(resolve_model(str(params.get("model") or self.base_model), lambda m: _plog(progress, m)))
+            model = YOLO(resolve_model(base_model_for(self.task, params.get("model")), lambda m: _plog(progress, m)))
             if str(getattr(model, "task", "") or self.task) != self.task:
-                raise TrainError(f"The base model's task is {model.task}, while this trainer needs {self.task} (for example {self.base_model}）")
+                raise TrainError(f"The base model's task is {model.task}, while this trainer needs {self.task} (pick a model trained for this task)")
             epochs = int(params.get("epochs") or 100)
             imgsz = int(params.get("imgsz") or (224 if self.task == "classify" else 640))
             state: dict[str, Any] = {"epochs": epochs, "batches": 1, "batch": 0, "epoch": 0, "last_started": -1}
@@ -334,7 +351,7 @@ class _YoloTrainer(Trainer):
         if weights and not os.path.isfile(weights):
             raise TrainError(f"The weights from the last training run have gone ({weights}). Train again, or clear the project's weights parameter.")
         if not weights:
-            weights = resolve_model(str(params.get("model") or self.base_model))
+            weights = resolve_model(base_model_for(self.task, params.get("model")))
             if not os.path.isfile(weights):
                 raise TrainError(f"Model file not found: {weights}. Give a stock model name (which downloads automatically) or the path to an existing .pt file.")
             using_base = True
@@ -431,47 +448,47 @@ class _YoloTrainer(Trainer):
 
 
 class YoloSegTrainer(_YoloTrainer):
-    kind = "yolo_seg"
-    label = "Instance segmentation (YOLO-seg)"
-    description = "Trains a YOLO segmentation model from polygon labels, finding each object's outline and class. It needs ultralytics (torch) and an NVIDIA GPU is recommended. The stock model downloads on first use, and automatic labelling works even before training (the stock model proposes outlines, attached to the first class). Products: best.pt for the YOLO instance segmentation tool and ONNX for the DL instance segmentation tool."
+    kind = "ai_seg"
+    label = "Instance segmentation (AI)"
+    description = "Trains an instance-segmentation network from polygon labels, finding each object's outline and class. It needs the deep-learning add-on and an NVIDIA GPU is recommended. The stock model downloads on first use, and automatic labelling works even before training (the stock model proposes outlines, attached to the first class). Products: the trained weights for the AI instance segmentation tool and ONNX for the DL instance segmentation tool."
     task = "segment"
     base_model = "yolov8n-seg.pt"
-    tool_key = "yolo_segment"
+    tool_key = "ai_segment"
     onnx_tool_key = "dl_instance"
     params = _params("yolov8n-seg.pt", "segment")
 
 
 class YoloDetectTrainer(_YoloTrainer):
-    kind = "yolo_detect"
-    label = "Object detection (YOLO)"
-    description = "Trains a YOLO detection model from bounding boxes (a polygon becomes its bounding box), finding each object's box and class. The fastest to train and the cheapest to label. Products: best.pt for the YOLO object detection tool and ONNX for the DL object detection tool."
+    kind = "ai_detect"
+    label = "Object detection (AI)"
+    description = "Trains a detection network from bounding boxes (a polygon becomes its bounding box), finding each object's box and class. The fastest to train and the cheapest to label. Products: the trained weights for the AI object detection tool and ONNX for the DL object detection tool."
     task = "detect"
     base_model = "yolo11n.pt"
-    tool_key = "yolo_detect"
+    tool_key = "ai_detect"
     onnx_tool_key = "dl_detect"
     params = _params("yolo11n.pt", "detect")
 
 
 class YoloClassifyTrainer(_YoloTrainer):
-    kind = "yolo_cls"
-    label = "Image classification (YOLO-cls)"
-    description = "One class per image, fine-tuning a YOLO classification model from an ImageNet-pretrained base. More accurate than the built-in MLP classifier, and it needs ultralytics (torch). Products: best.pt for the YOLO classification tool and ONNX for the DL classification tool."
+    kind = "ai_cls"
+    label = "Image classification (AI)"
+    description = "One class per image, fine-tuning a classification network from a pretrained base. More accurate than the built-in MLP classifier, and it needs the deep-learning add-on. Products: the trained weights for the AI classification tool and ONNX for the DL classification tool."
     task = "classify"
     base_model = "yolo11n-cls.pt"
     label_mode = "classes"
-    tool_key = "yolo_classify"
+    tool_key = "ai_classify"
     onnx_tool_key = "dl_classify"
     min_per_class = 2
     params = _params("yolo11n-cls.pt", "classify")
 
 
 class YoloObbTrainer(_YoloTrainer):
-    kind = "yolo_obb"
-    label = "Oriented box detection (YOLO-obb)"
-    description = "Trains a YOLO OBB model from polygons (reduced to their minimum-area rotated rectangle) or boxes, returning each object's rotated rectangle (centre, size and angle), which suits parts that sit at an angle. Product: best.pt for the YOLO oriented box tool (the ONNX is for external use only)."
+    kind = "ai_obb"
+    label = "Oriented box detection (AI)"
+    description = "Trains an oriented-box network from polygons (reduced to their minimum-area rotated rectangle) or boxes, returning each object's rotated rectangle (centre, size and angle), which suits parts that sit at an angle. Product: the trained weights for the AI oriented box tool (the ONNX is for external use only)."
     task = "obb"
     base_model = "yolo11n-obb.pt"
-    tool_key = "yolo_obb"
+    tool_key = "ai_obb"
     onnx_tool_key = ""
     params = _params("yolo11n-obb.pt", "obb")
 

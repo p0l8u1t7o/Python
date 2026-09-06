@@ -43,8 +43,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(cats["caliper"], "measure")
         self.assertEqual(cats["blob"], "detect")
         self.assertEqual(cats["dl_classify"], "dl")
-        self.assertEqual({k for k in keys if k.startswith("yolo_")}, {"yolo_detect", "yolo_segment", "yolo_classify", "yolo_pose", "yolo_obb"})
-        self.assertEqual(cats["yolo_detect"], "dl")
+        self.assertEqual({k for k in keys if k.startswith("ai_")}, {"ai_detect", "ai_segment", "ai_classify", "ai_pose", "ai_obb"})
+        self.assertEqual(cats["ai_detect"], "dl")
         base.catalogue()  # 不會炸
 
     def test_teach_params_marked(self):
@@ -62,8 +62,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["if_number"], {"threshold"})
         self.assertEqual(teach["dl_classify"], {"threshold"})
         self.assertEqual(teach["dl_detect"], {"conf"})
-        self.assertEqual(teach["yolo_detect"], {"conf"})
-        self.assertEqual(teach["yolo_classify"], {"threshold"})
+        self.assertEqual(teach["ai_detect"], {"conf"})
+        self.assertEqual(teach["ai_classify"], {"threshold"})
         self.assertEqual(teach["pixel_count"], {"min_count", "max_count"})
         self.assertEqual(teach["edge_density"], {"max_ratio"})
         self.assertEqual(teach["text_presence"], {"min_ratio", "max_ratio"})

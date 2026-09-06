@@ -1,6 +1,6 @@
 """contours 工具鏈：輪廓萃取 → 篩選 → 幾何 → 比對。
 
-`contours` 埠型別早就有（blob／dl_instance／yolo_segment 都會吐），但一直缺「單獨拿輪廓來算」的工具。
+`contours` 埠型別早就有（blob／dl_instance／ai_segment 都會吐），但一直缺「單獨拿輪廓來算」的工具。
 這一組補完後，形位公差（gdt_measure）與輪廓缺陷掃描才有完整的資料來源。
 
 慣例（四個工具一致）：

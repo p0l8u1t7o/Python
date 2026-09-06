@@ -1,5 +1,5 @@
 """深度學習深度測試（不需 torch／網路）：dl_* ONNX 工具的邊界、內建 trainer 的增強／分割／取消／建議、訓練工作生命週期、
-yolo_* 工具的座標回映與判定（假 Results）、yolo_runtime 快取與裝置、resolve_model 下載退回、SAM 幾何與全圖提案、YOLO trainer 的提案轉換。"""
+ai_* 工具的座標回映與判定（假 Results）、yolo_runtime 快取與裝置、resolve_model 下載退回、SAM 幾何與全圖提案、YOLO trainer 的提案轉換。"""
 
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ def _fake_runtime(task: str, names: dict[int, str], result: Any):
 
 
 class _Runtime:
-    """with _Runtime(task, names, result) as model: 讓 yolo_* 工具不用 torch。"""
+    """with _Runtime(task, names, result) as model: 讓 ai_* 工具不用 torch。"""
 
     def __init__(self, task, names, result, device="cpu"):
         self.model = FakeModel(task, names, result)
@@ -355,7 +355,7 @@ class TrainJobLifecycleTests(TransactionTestCase):
 
 
 # ---------------------------------------------------------------------------
-# yolo_* 工具：座標回映與判定（假 Results，不需 torch）
+# ai_* 工具：座標回映與判定（假 Results，不需 torch）
 # ---------------------------------------------------------------------------
 IMG = np.zeros((150, 200, 3), np.uint8)
 NAMES = {0: "person", 1: "bus"}
@@ -365,7 +365,7 @@ class YoloToolMappingTests(SimpleTestCase):
     def test_detect_rect_roi_filter_and_verdict(self):
         res = Res(boxes=Boxes([[10, 10, 50, 60], [70, 20, 90, 40]], [0.9, 0.6], [1, 0]))
         with _Runtime("detect", NAMES, res) as model:
-            r = run_tool("yolo_detect", IMG, {"model_name": "x.pt", "roi": {"shape": "rect", "x": 50, "y": 20, "w": 100, "h": 100}, "conf": 0.3, "iou": 0.5, "max_count": 7, "imgsz": 320})
+            r = run_tool("ai_detect", IMG, {"model_name": "x.pt", "roi": {"shape": "rect", "x": 50, "y": 20, "w": 100, "h": 100}, "conf": 0.3, "iou": 0.5, "max_count": 7, "imgsz": 320})
         self.assertEqual(r.outputs["count"], 2)
         d = r.outputs["matches"][0]
         self.assertEqual((d["x"], d["y"], d["w"], d["h"], d["cx"], d["cy"], d["label"], d["score"]), (60.0, 30.0, 40.0, 50.0, 80.0, 55.0, "bus", 0.9))
@@ -375,24 +375,24 @@ class YoloToolMappingTests(SimpleTestCase):
         self.assertEqual(r.overlays[0]["kind"], "rect")  # roi overlay
         self.assertEqual(len(r.overlays), 3)
         with _Runtime("detect", NAMES, res):
-            r2 = run_tool("yolo_detect", IMG, {"model_name": "x.pt", "filter_labels": "person", "min_count": 2})
+            r2 = run_tool("ai_detect", IMG, {"model_name": "x.pt", "filter_labels": "person", "min_count": 2})
         self.assertEqual((r2.outputs["count"], r2.outputs["labels"], r2.status, r2.branch), (1, ["person"], "ng", "found"))
         with _Runtime("detect", NAMES, res):
-            r3 = run_tool("yolo_detect", IMG, {"model_name": "x.pt", "max_count_ok": 1})
+            r3 = run_tool("ai_detect", IMG, {"model_name": "x.pt", "max_count_ok": 1})
         self.assertEqual(r3.status, "ng")
         with _Runtime("detect", NAMES, None):
-            r4 = run_tool("yolo_detect", IMG, {"model_name": "x.pt", "min_count": 0})
+            r4 = run_tool("ai_detect", IMG, {"model_name": "x.pt", "min_count": 0})
         self.assertEqual((r4.outputs["count"], r4.branch, r4.status), (0, "not_found", "ok"))
         with _Runtime("pose", NAMES, res):
             with self.assertRaises(tools_base.ToolError):
-                run_tool("yolo_segment", IMG, {"model_name": "x.pt"})
+                run_tool("ai_segment", IMG, {"model_name": "x.pt"})
 
     def test_detect_rotated_roi_maps_through_to_full(self):
         region = {"shape": "rotated_rect", "cx": 100, "cy": 75, "w": 120, "h": 80, "angle": 30}
         c = crop(IMG, region, upright=True)
         res = Res(boxes=Boxes([[10, 10, 30, 30]], [0.8], [0]))
         with _Runtime("detect", NAMES, res):
-            r = run_tool("yolo_detect", IMG, {"model_name": "x.pt", "roi": region})
+            r = run_tool("ai_detect", IMG, {"model_name": "x.pt", "roi": region})
         d = r.outputs["matches"][0]
         ex, ey = c.to_full(10, 10)
         self.assertAlmostEqual(d["x"], round(ex, 1), places=1)
@@ -402,8 +402,8 @@ class YoloToolMappingTests(SimpleTestCase):
     def test_half_only_when_cuda_and_requested(self):
         res = Res(boxes=Boxes([[0, 0, 5, 5]], [0.9], [0]))
         with _Runtime("detect", NAMES, res, device="cuda") as model:
-            run_tool("yolo_detect", IMG, {"model_name": "x.pt", "half": True})
-            run_tool("yolo_detect", IMG, {"model_name": "x.pt", "half": False})
+            run_tool("ai_detect", IMG, {"model_name": "x.pt", "half": True})
+            run_tool("ai_detect", IMG, {"model_name": "x.pt", "half": False})
         self.assertEqual([c.get("half") for c in model.calls], [True, None])
 
     def test_segment_masks_resize_offsets_min_area(self):
@@ -413,7 +413,7 @@ class YoloToolMappingTests(SimpleTestCase):
         data[1, 0:2, 0:2] = 1  # 很小 → 被 min_area 濾掉
         res = Res(boxes=Boxes([[12, 12, 62, 62], [0, 0, 6, 6]], [0.9, 0.5], [1, 0]), masks=Masks(data))
         with _Runtime("segment", NAMES, res):
-            r = run_tool("yolo_segment", IMG, {"model_name": "x.pt", "roi": region, "min_area": 100})
+            r = run_tool("ai_segment", IMG, {"model_name": "x.pt", "roi": region, "min_area": 100})
         self.assertEqual(r.outputs["count"], 1)
         m = r.outputs["matches"][0]
         self.assertEqual((m["label"], m["x"], m["y"], m["w"], m["h"]), ("bus", 32.0, 22.0, 50.0, 50.0))
@@ -433,7 +433,7 @@ class YoloToolMappingTests(SimpleTestCase):
         conf[0, 3] = 0.1  # 低信心點不畫
         res = Res(boxes=Boxes([[5, 5, 100, 100]], [0.9], [0]), keypoints=Kpts(xy, conf))
         with _Runtime("pose", {0: "person"}, res):
-            r = run_tool("yolo_pose", IMG, {"model_name": "x.pt", "roi": {"shape": "rect", "x": 30, "y": 10, "w": 150, "h": 130}, "kpt_conf": 0.3})
+            r = run_tool("ai_pose", IMG, {"model_name": "x.pt", "roi": {"shape": "rect", "x": 30, "y": 10, "w": 150, "h": 130}, "kpt_conf": 0.3})
         k = r.outputs["keypoints"][0]
         self.assertEqual(len(k["points"]), 17)
         self.assertEqual(k["points"][0][:2], [40.0, 30.0])
@@ -450,30 +450,30 @@ class YoloToolMappingTests(SimpleTestCase):
         xywhr = np.array([[20, 15, 20, 10, np.deg2rad(15)]], np.float32)
         res = Res(obb=Obb(corners, xywhr, [0.7], [1]))
         with _Runtime("obb", NAMES, res):
-            r = run_tool("yolo_obb", IMG, {"model_name": "x.pt", "roi": {"shape": "rect", "x": 100, "y": 50, "w": 80, "h": 60}})
+            r = run_tool("ai_obb", IMG, {"model_name": "x.pt", "roi": {"shape": "rect", "x": 100, "y": 50, "w": 80, "h": 60}})
         m = r.outputs["matches"][0]
         self.assertEqual((m["cx"], m["cy"], m["w"], m["h"], m["angle"], m["label"]), (120.0, 65.0, 20.0, 10.0, 15.0, "bus"))
         self.assertEqual(m["points"][0], [110.0, 60.0])
         self.assertEqual(r.outputs["contours"][0].shape, (4, 1, 2))
         self.assertEqual([o["kind"] for o in r.overlays], ["rect", "polygon"])
         with _Runtime("obb", NAMES, res):
-            r2 = run_tool("yolo_obb", IMG, {"model_name": "x.pt", "filter_labels": "person"})
+            r2 = run_tool("ai_obb", IMG, {"model_name": "x.pt", "filter_labels": "person"})
         self.assertEqual(r2.outputs["count"], 0)
 
     def test_classify_topk_threshold_pass_labels(self):
         res = Res(probs=Probs([1, 0, 2], [0.6, 0.3, 0.1]))
         names = {0: "cat", 1: "dog", 2: "bird"}
         with _Runtime("classify", names, res):
-            r = run_tool("yolo_classify", IMG, {"model_name": "x.pt", "top_k": 2, "threshold": 0.5})
-            r2 = run_tool("yolo_classify", IMG, {"model_name": "x.pt", "threshold": 0.7})
-            r3 = run_tool("yolo_classify", IMG, {"model_name": "x.pt", "threshold": 0.5, "pass_labels": "cat,bird"})
+            r = run_tool("ai_classify", IMG, {"model_name": "x.pt", "top_k": 2, "threshold": 0.5})
+            r2 = run_tool("ai_classify", IMG, {"model_name": "x.pt", "threshold": 0.7})
+            r3 = run_tool("ai_classify", IMG, {"model_name": "x.pt", "threshold": 0.5, "pass_labels": "cat,bird"})
         self.assertEqual((r.outputs["label"], r.outputs["index"], r.outputs["score"], len(r.outputs["top"]), r.branch), ("dog", 1, 0.6, 2, "pass"))
         self.assertEqual(r.overlays[0]["kind"], "text")
         self.assertEqual(r2.branch, "fail")
         self.assertEqual(r3.status, "ng")
         with _Runtime("classify", names, Res()):
             with self.assertRaises(tools_base.ToolError):
-                run_tool("yolo_classify", IMG, {"model_name": "x.pt"})
+                run_tool("ai_classify", IMG, {"model_name": "x.pt"})
 
 
 # ---------------------------------------------------------------------------
@@ -589,7 +589,7 @@ class YoloRuntimeTests(SimpleTestCase):
             with mock.patch("urllib.request.urlopen", side_effect=lambda url, timeout=0: (_ for _ in ()).throw(urllib.error.HTTPError(url, 404, "nf", {}, None))):
                 with self.assertRaises(TrainError) as ctx:
                     yolo.resolve_model("yolo99z.pt")
-            self.assertIn("does not exist", str(ctx.exception))
+            self.assertIn("not available for download", str(ctx.exception))
             for name in ("yolo26n-seg.pt", "yolo11x-pose.pt", "sam2.1_b.pt", "mobile_sam.pt", "yolov8n-cls.pt"):
                 self.assertTrue(yolo._ASSET_NAME.match(name), name)
             self.assertFalse(yolo._ASSET_NAME.match("best.pt"))

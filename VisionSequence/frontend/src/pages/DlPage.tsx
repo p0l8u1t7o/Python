@@ -340,7 +340,7 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
   const [test, setTest] = useState('10')
   const [verName, setVerName] = useState('')
   const [deletingVersion, setDeletingVersion] = useState<DlDatasetVersion | null>(null)
-  //: YOLO 資料集互通（shapes 專案；伺服器本機路徑）：null = 關閉
+  //: 標記資料集互通（shapes 專案；伺服器本機路徑）：null = 關閉
   const [interop, setInterop] = useState<'export' | 'import' | null>(null)
   const [interopDir, setInteropDir] = useState('')
   const splitCounts = useMemo(() => {
@@ -367,7 +367,7 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
         toast.success(t('dl.exported', r))
       } else {
         const r = await datasetImport.mutateAsync({ projectId: project.id, dir })
-        toast.success(t('dl.importedYolo', r))
+        toast.success(t('dl.importedLabels', r))
       }
       setInterop(null)
     } catch (e) {
@@ -436,27 +436,27 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
             </Button>
           </div>
         </div>
-        {/* YOLO txt 互通（shapes 專案；VisionStereo 格式，伺服器本機路徑） */}
+        {/* 標記 txt 互通（shapes 專案；VisionStereo 格式，伺服器本機路徑） */}
         {isShapes ? (
           <div className="space-y-1.5 border-t border-line pt-2.5">
             <p className="text-xs font-medium text-muted">{t('dl.interop')}</p>
             <div className="flex gap-2">
-              <Button size="sm" disabled={!samples.length} onClick={() => setInterop('export')} data-testid="dl-yolo-export"><Download size={13} /> {t('dl.exportYolo')}</Button>
-              <Button size="sm" onClick={() => setInterop('import')} data-testid="dl-yolo-import"><Upload size={13} /> {t('dl.importYolo')}</Button>
+              <Button size="sm" disabled={!samples.length} onClick={() => setInterop('export')} data-testid="dl-labels-export"><Download size={13} /> {t('dl.exportLabels')}</Button>
+              <Button size="sm" onClick={() => setInterop('import')} data-testid="dl-labels-import"><Upload size={13} /> {t('dl.importLabels')}</Button>
             </div>
             <p className="text-xs text-subtle">{t('dl.interopHint')}</p>
           </div>
         ) : null}
       </div>
-      <Modal open={interop !== null} onClose={() => setInterop(null)} title={interop === 'export' ? t('dl.exportYolo') : t('dl.importYolo')} dirty={Boolean(interopDir)}
+      <Modal open={interop !== null} onClose={() => setInterop(null)} title={interop === 'export' ? t('dl.exportLabels') : t('dl.importLabels')} dirty={Boolean(interopDir)}
         footer={<><Button onClick={() => setInterop(null)}>{t('common.cancel')}</Button>
           <Button variant="primary" loading={datasetExport.isPending || datasetImport.isPending} disabled={!interopDir.trim()} onClick={() => void runInterop()} data-testid="dl-interop-go">
-            {interop === 'export' ? t('dl.exportYolo') : t('dl.importYolo')}
+            {interop === 'export' ? t('dl.exportLabels') : t('dl.importLabels')}
           </Button></>}>
         <div className="space-y-3">
           <TextInput label={t('dl.serverDir')} hint={t('dl.serverDirHint')} placeholder="D:\Datasets\part1" value={interopDir}
             onChange={(e) => setInteropDir(e.target.value)} autoFocus data-testid="dl-interop-dir" />
-          <p className="text-xs text-subtle">{interop === 'export' ? t('dl.exportYoloHint', { val }) : t('dl.importYoloHint')}</p>
+          <p className="text-xs text-subtle">{interop === 'export' ? t('dl.exportLabelsHint', { val }) : t('dl.importLabelsHint')}</p>
         </div>
       </Modal>
       <ConfirmDialog open={deletingVersion !== null} onClose={() => setDeletingVersion(null)} danger title={t('dl.deleteVersion')}

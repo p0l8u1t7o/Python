@@ -84,7 +84,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 定位（10） | template_match, shape_match（幾何比對）, shape_align, fixture_roi, region_from_shape, region_combine（多重 ROI／排除區）, find_circle, find_line, hough_circles, hough_lines |
 | 量測（21） | caliper, circular_caliper, profile_defect, wall_thickness, fit_arc, fit_ellipse, chamfer_angle, angle, distance, geometry, concentricity, calibration, to_world, intensity, histogram, line_profile, color_stats, edge_density, contour_find, contour_filter, contour_geometry, contour_match |
 | 檢測／識別（11） | blob, defect_diff, defect_stat（統計範本）, ocr_read（文字辨識）, ocv_verify（字串驗證）, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
-| 深度學習（10） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）, dl_anomaly（只教良品的異常檢測）；yolo_detect, yolo_segment, yolo_classify, yolo_pose, yolo_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
+| 深度學習（10） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）, dl_anomaly（只教良品的異常檢測）；ai_detect, ai_segment, ai_classify, ai_pose, ai_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
 | 邏輯（7） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, python_script（自寫 Python，管理員核准） |
 | 輸出（6） | judge, output, draw_result, save_image, write_modbus, send_image（TCP 傳圖） |
 
@@ -122,7 +122,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 
 ### 深度學習教導（`/dl`）
 
-- **YOLO 訓練（四種）**：物件偵測（bbox）、實例分割（polygon）、影像分類（classes）、旋轉框 OBB（polygon 取最小外接旋轉矩形）；ultralytics 訓練、進度／曲線／log 回報、可中止；產物 best.pt（主，給 yolo_* 工具）＋ONNX（副，給 dl_* 工具）兩個資產。
+- **YOLO 訓練（四種）**：物件偵測（bbox）、實例分割（polygon）、影像分類（classes）、旋轉框 OBB（polygon 取最小外接旋轉矩形）；ultralytics 訓練、進度／曲線／log 回報、可中止；產物 best.pt（主，給 ai_* 工具）＋ONNX（副，給 dl_* 工具）兩個資產。
 - **SAM2 智慧標記**：點擊（正／負點）、拖曳框選、沒有模型時的「SAM 全圖提案」；權重 `VISION_SAM_MODEL`（預設 sam2.1_t.pt）自動下載，失敗退回 mobile_sam。
 - **依賴**：`requirements-dl.txt`＋`scripts/setup_dl.ps1`（先 torch cu128 再 ultralytics；onnxruntime-gpu 鎖 1.22 配 CUDA 12）＋`manage.py dl_check --predict` 驗證；踩坑清單見 docs/dl.html §11。
 教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/dl.html`。

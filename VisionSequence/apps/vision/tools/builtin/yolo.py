@@ -26,10 +26,27 @@ IMGSZ_OPTIONS = [{"value": 320, "label": "320"}, {"value": 480, "label": "480"},
 DEVICE_OPTIONS = [{"value": "auto", "label": "Automatic (use the GPU when there is one)"}, {"value": "cuda", "label": "GPU (CUDA)"}, {"value": "cpu", "label": "CPU"}]
 
 
-def _common_params(task: str, default_weights: str, imgsz: int = 640) -> list[Param]:
+#: 官方底模檔名的後綴（技術名稱只留在這裡與 dl/yolo.py；產品表面只有「大小」）。
+STOCK_SUFFIX = {"detect": "", "segment": "-seg", "classify": "-cls", "pose": "-pose", "obb": "-obb"}
+SIZE_OPTIONS = [
+    {"value": "n", "label": "Nano (fastest, default)"}, {"value": "s", "label": "Small"}, {"value": "m", "label": "Medium"},
+    {"value": "l", "label": "Large"}, {"value": "x", "label": "Extra large (most accurate, slowest)"},
+]
+
+
+def stock_model(task: str, size: str = "n") -> str:
+    """任務＋大小 → 官方底模檔名（不存在的大小退回 nano）。"""
+    size = str(size or "n").strip().lower()
+    if size not in "nsmlx" or len(size) != 1:
+        size = "n"
+    return f"yolo11{size}{STOCK_SUFFIX.get(task, '')}.pt"
+
+
+def _common_params(task: str, imgsz: int = 640) -> list[Param]:
     return [
-        Param("model", "Model asset", kind="asset", accept="model", required=False, help_text="A model trained on the teaching page (.pt or .onnx) or one you uploaded; blank falls back to the base model below."),
-        Param("model_name", "Base model", kind="text", default=default_weights, help_text="An official model name (downloaded on first use) or a local .pt path; used only when no model asset is chosen."),
+        Param("model", "Model asset", kind="asset", accept="model", required=False, help_text="A model trained on the teaching page (.pt or .onnx) or one you uploaded; blank falls back to the stock model below."),
+        Param("model_size", "Stock model size", kind="select", default="n", options=SIZE_OPTIONS, help_text="Used only when no model asset is chosen; larger is more accurate but slower. The stock model downloads on first use."),
+        Param("model_name", "Model file (advanced)", kind="text", default="", group="Advanced", help_text="A local .pt path that overrides the stock model; leave blank normally."),
         Param("imgsz", "Inference size", kind="select", default=imgsz, options=IMGSZ_OPTIONS if task != "classify" else [{"value": 224, "label": "224 (recommended)"}, {"value": 320, "label": "320"}], help_text="Most accurate when it matches training."),
         Param("device", "Device", kind="select", default="auto", options=DEVICE_OPTIONS, group="Advanced"),
         Param("half", "Half precision (FP16)", kind="boolean", default=False, group="Advanced", help_text="GPU only: faster and lighter on memory."),
@@ -67,15 +84,13 @@ class _YoloTool(Tool):
                     raise ToolError(f"Model asset {asset_id} not found")
                 model = yolo_runtime.load(path, task=self.task)
             else:
-                name = str(ctx.param("model_name") or "").strip()
-                if not name:
-                    raise ToolError("No model is set: choose a model asset or name a base model")
+                name = str(ctx.param("model_name") or "").strip() or stock_model(self.task, str(ctx.param("model_size") or "n"))
                 model = yolo_runtime.load(name, task=self.task)
         except yolo_runtime.ModelUnavailable as exc:
             raise ToolError(str(exc)) from None
         task = yolo_runtime.task_of(model)
         if task and task not in (self.accepted_tasks or (self.task,)):
-            raise ToolError(f"The model does {task} but this tool needs {self.task}; use the matching YOLO tool")
+            raise ToolError(f"The model does {task} but this tool needs {self.task}; use the matching AI tool")
         return model
 
     def _predict(self, ctx: ToolContext, model: Any, image: np.ndarray, **extra: Any):
@@ -142,12 +157,12 @@ def _region_angle(region: dict[str, Any] | None) -> float:
 
 
 class YoloDetectTool(_YoloTool):
-    key = "yolo_detect"
-    label = "YOLO object detection"
-    description = "Finds objects with an ultralytics YOLO model — an official base model or a .pt trained on the teaching page — returning boxes, classes and scores. A GPU is used automatically when present."
+    key = "ai_detect"
+    label = "Object detection (AI)"
+    description = "Finds objects with a neural network — a stock model or one trained on the teaching page — returning boxes, classes and scores. A GPU is used automatically when present."
     task = "detect"
     accepted_tasks = ("detect", "segment", "pose", "obb")
-    params = _common_params("detect", "yolo11n.pt") + _detect_params()
+    params = _common_params("detect") + _detect_params()
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("detections", "Detections", "matches"), Port("count", "Count", "number"),
                Port("matches", "Matches (with cx, cy)", "matches"), Port("labels", "Class list", "list")]
@@ -172,12 +187,12 @@ class YoloDetectTool(_YoloTool):
 
 
 class YoloSegmentTool(_YoloTool):
-    key = "yolo_segment"
-    label = "YOLO instance segmentation"
-    description = "Uses an ultralytics YOLO-seg model to find each object's contour, class and area, and outputs a union mask and contours for later measurement."
+    key = "ai_segment"
+    label = "Instance segmentation (AI)"
+    description = "Uses an instance-segmentation network (a stock model or one trained on the teaching page) to find each object's contour, class and area, and outputs a union mask and contours for later measurement."
     task = "segment"
     icon = "Brain"
-    params = _common_params("segment", "yolo11n-seg.pt") + _detect_params() + [Param("min_area", "Min area", kind="number", default=0, minimum=0, unit="px²", group="Verdict", help_text="Instances smaller than this are skipped.")]
+    params = _common_params("segment") + _detect_params() + [Param("min_area", "Min area", kind="number", default=0, minimum=0, unit="px²", group="Verdict", help_text="Instances smaller than this are skipped.")]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("count", "Count", "number"), Port("matches", "Instances", "matches"),
                Port("mask", "Union mask", "image"), Port("contours", "Contour", "contours"), Port("labels", "Class list", "list")]
@@ -232,12 +247,12 @@ class YoloSegmentTool(_YoloTool):
 
 
 class YoloClassifyTool(_YoloTool):
-    key = "yolo_classify"
-    label = "YOLO classification"
-    description = "Classifies the region with an ultralytics YOLO-cls model; it passes when the top class scores above the threshold and is in the passing list."
+    key = "ai_classify"
+    label = "Classification (AI)"
+    description = "Classifies the region with a classification network (a stock model or one trained on the teaching page); it passes when the top class scores above the threshold and is in the passing list."
     task = "classify"
     icon = "Brain"
-    params = _common_params("classify", "yolo11n-cls.pt", imgsz=224) + [
+    params = _common_params("classify", imgsz=224) + [
         Param("threshold", "Score threshold", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
         Param("top_k", "Top-K", kind="number", default=3, minimum=1, maximum=50),
         Param("pass_labels", "Passing classes", kind="text", default="", help_text="Comma separated; when set, the top class must be in this list to pass."),
@@ -271,12 +286,12 @@ class YoloClassifyTool(_YoloTool):
 
 
 class YoloPoseTool(_YoloTool):
-    key = "yolo_pose"
-    label = "YOLO pose (keypoints)"
-    description = "Finds objects with an ultralytics YOLO-pose model and returns each object's keypoint coordinates and confidence (the 17 COCO body points or your own), for position and pose checks."
+    key = "ai_pose"
+    label = "Pose keypoints (AI)"
+    description = "Finds objects with a pose network and returns each object's keypoint coordinates and confidence (the 17 COCO body points or your own), for position and pose checks."
     task = "pose"
     icon = "PersonStanding"
-    params = _common_params("pose", "yolo11n-pose.pt") + _detect_params() + [
+    params = _common_params("pose") + _detect_params() + [
         Param("kpt_conf", "Keypoint confidence", kind="range", default=0.3, minimum=0, maximum=1, step=0.05, help_text="Keypoints below the threshold are not drawn but are still output, each with its confidence."),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
@@ -322,12 +337,12 @@ class YoloPoseTool(_YoloTool):
 
 
 class YoloObbTool(_YoloTool):
-    key = "yolo_obb"
-    label = "YOLO oriented boxes (OBB)"
-    description = "Finds objects with an ultralytics YOLO-obb model and returns oriented boxes (centre, size, angle) and their four corners — the right choice for parts that sit at an angle."
+    key = "ai_obb"
+    label = "Oriented boxes (AI)"
+    description = "Finds objects with an oriented-box network and returns oriented boxes (centre, size, angle) and their four corners — the right choice for parts that sit at an angle."
     task = "obb"
     icon = "RotateCw"
-    params = _common_params("obb", "yolo11n-obb.pt") + _detect_params()
+    params = _common_params("obb") + _detect_params()
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"), Port("count", "Count", "number"), Port("matches", "Oriented boxes (cx, cy, w, h, angle)", "matches"),
                Port("contours", "Corner contours", "contours"), Port("labels", "Class list", "list")]
