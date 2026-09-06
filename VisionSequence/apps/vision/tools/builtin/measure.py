@@ -1129,6 +1129,7 @@ class ToWorldTool(Tool):
     ]
     inputs = [
         Port("points", "Points", "points", required=False),
+        Port("x", "X (pixels)", "number", required=False), Port("y", "Y (pixels)", "number", required=False),
         Port("value", "Pixel length", "number", required=False),
         Port("angle", "Angle (image)", "number", required=False),
     ]
@@ -1151,8 +1152,15 @@ class ToWorldTool(Tool):
         pts = ctx.inputs.get("points")
         value = ctx.inputs.get("value")
         angle_in = ctx.inputs.get("angle")
+        px_x, px_y = ctx.inputs.get("x"), ctx.inputs.get("y")
+        if pts is None and px_x is not None and px_y is not None:
+            # 單點以 x／y 數值埠進來（find_circle.cx/cy、shape_match.best_x/best_y）
+            try:
+                pts = [[float(px_x), float(px_y)]]
+            except (TypeError, ValueError):
+                raise ToolError("x and y must be numbers") from None
         if pts is None and value is None and angle_in is None:
-            raise ToolError("No input: wire points, a pixel length or an angle")
+            raise ToolError("No input: wire points (or x and y), a pixel length or an angle")
 
         outputs: dict[str, Any] = {"scale": float(world.get("mm_per_px") or 0)}
         overlays: list[dict[str, Any]] = []

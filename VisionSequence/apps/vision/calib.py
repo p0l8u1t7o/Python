@@ -396,6 +396,52 @@ def undistort(image: np.ndarray, payload: dict[str, Any], alpha: float = 0.0) ->
     return cv2.remap(image, maps[0], maps[1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 
 
+RMS_WARN_PX = 0.5
+
+
+def coverage(views: list[Any], image_size: tuple[int, int], cols: int = 4, rows: int = 3) -> dict[str, Any]:
+    """標定板角點的視野覆蓋率：把畫面切成 cols×rows 格，數每格落了幾個角點；沒樣本的格子（多半在邊角）就是畸變估不準的地方。"""
+    w, h = max(1, int(image_size[0])), max(1, int(image_size[1]))
+    grid = [[0] * cols for _ in range(rows)]
+    total = 0
+    for v in views or []:
+        pts = np.asarray(v, dtype=np.float64).reshape(-1, 2)
+        for x, y in pts:
+            cx = min(cols - 1, max(0, int(x * cols / w)))
+            cy = min(rows - 1, max(0, int(y * rows / h)))
+            grid[cy][cx] += 1
+            total += 1
+    missing = [{"col": c, "row": r, "x": (c + 0.5) * w / cols, "y": (r + 0.5) * h / rows} for r in range(rows) for c in range(cols) if grid[r][c] == 0]
+    covered = cols * rows - len(missing)
+    edge_missing = [m for m in missing if m["col"] in (0, cols - 1) or m["row"] in (0, rows - 1)]
+    return {"cols": cols, "rows": rows, "grid": grid, "points": total, "cells": cols * rows, "covered": covered,
+            "ratio": round(covered / (cols * rows), 3), "missing": missing, "edge_missing": len(edge_missing)}
+
+
+def warnings(payload: dict[str, Any], cov: dict[str, Any] | None = None) -> list[str]:
+    """給人看的警告（英文，介面翻譯）：重投影誤差過大、視野覆蓋不足、張數太少、世界殘差大。"""
+    out: list[str] = []
+    lens = payload.get("lens") or {}
+    if lens:
+        rms = float(lens.get("rms") or 0)
+        if rms > RMS_WARN_PX:
+            out.append(f"Reprojection error {rms:.2f} px is above {RMS_WARN_PX:g} px: redo the calibration with sharper, evenly lit pictures and the board tilted more, especially near the edges")
+        if int(lens.get("views") or 0) < 8:
+            out.append(f"Only {int(lens.get('views') or 0)} pictures: 10 to 15 with the board at different positions and tilts gives a steadier lens model")
+    if cov and cov.get("cells"):
+        if cov["ratio"] < 0.75:
+            out.append(f"The board covered {cov['covered']} of {cov['cells']} areas of the picture; take pictures with the board near the edges and corners too")
+        elif cov.get("edge_missing"):
+            out.append(f"{cov['edge_missing']} edge areas have no corners yet: distortion is largest there, so add pictures with the board at the edges")
+    world = payload.get("world") or {}
+    if world and world.get("rms") is not None:
+        unit = payload.get("unit", "mm")
+        mm_per_px = float(world.get("mm_per_px") or 0)
+        if mm_per_px > 0 and float(world["rms"]) > 2.0 * mm_per_px:
+            out.append(f"Point residual {float(world['rms']):.3f} {unit} is more than two pixels: check the point pairs, or use a perspective mapping if the camera looks at the plane at an angle")
+    return out
+
+
 def quality(payload: dict[str, Any]) -> dict[str, str]:
     """把 rms 翻成白話等級：現場的人不需要知道「重投影誤差」是什麼。"""
     out: dict[str, str] = {}

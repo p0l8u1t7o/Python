@@ -2301,6 +2301,15 @@ export default {
       threshold_used: "實際門檻",
     },
   },
+  to_world: {
+    label: "真實世界座標",
+    description: "把像素位置換成機器實際使用的座標：檯面上的毫米，或機械手要的數字。接入一個位置就讀出 X 與 Y；長度與角度用同一份標定換算。",
+    params: {
+      calibration: { label: "標定資產", help: "在標定頁做出來。一站教一次，所有流程跟著用。" },
+      decimals: { label: "小數位數", group: "進階" },
+    },
+    ports: { points: "點", x: "X（像素）", y: "Y（像素）", value: "像素長度", angle: "角度（影像）", points_world: "點（真實世界）", length: "長度", scale: "比例" },
+  },
   tolerance_judge: {
     label: "公差判定",
     description: "量測值是否在「標稱 ＋上偏差／＋下偏差」內；判定連同標稱值、上下限、圖面出處一起寫進 run.outputs.tolerances，供 Cpk 與追溯。",
@@ -2390,6 +2399,16 @@ export default {
       profile: "各卡尺壁厚",
       pairs: "邊緣對",
     },
+  },
+  undistort: {
+    label: "鏡頭校正",
+    description: "用標定資產把鏡頭彎掉的部分拉直。廣角或近距離時邊角的直線會往外拱；在校正後的影像上量測，數值就不會隨視野位置漂移。",
+    params: {
+      calibration: { label: "標定資產", help: "在標定頁用幾張標定板照片做出來。同一份標定也驅動「真實世界座標」。" },
+      alpha: { label: "保留畫面", help: "0 = 裁掉所有黑邊（放大到全部都是有效像素）；1 = 保留整個畫面（角落補黑）；中間值保留該比例。" },
+      keep_edges: { label: "保留整個畫面", help: "舊流程用：等於 alpha 1。alpha 大於 0 時忽略。", group: "進階" },
+    },
+    ports: { image: "影像", mm_per_pixel: "每像素 mm" },
   },
   warp_perspective: {
     label: "透視校正",

@@ -647,21 +647,29 @@ class UndistortTool(Tool):
     params = [
         Param("calibration", "Calibration", kind="asset", accept="calibration", required=True,
               help_text="Made on the Calibration page from a few pictures of a board. The same calibration also drives Real-world coordinates."),
-        Param("keep_edges", "Keep the whole frame", kind="boolean", default=False,
-              help_text="On: nothing is cut, the corners get black borders. Off: zooms so every pixel is real image."),
+        Param("alpha", "Frame kept", kind="range", default=0, minimum=0, maximum=1, step=0.05,
+              help_text="0 = cut away every black border (zoom so all pixels are real image); 1 = keep the whole frame with black corners; in between keeps that share."),
+        Param("keep_edges", "Keep the whole frame", kind="boolean", default=False, group="Advanced",
+              help_text="Older flows: the same as alpha 1. Ignored when alpha is above 0."),
     ]
     inputs = [Port("image", "Image", "image")]
-    outputs = [Port("image", "Image", "image")]
+    outputs = [Port("image", "Image", "image"), Port("mm_per_pixel", "mm per pixel", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         payload = read_calibration(ctx)
         image = ctx.require_image()
+        alpha = ctx.number("alpha", 0)
+        if alpha <= 0 and ctx.flag("keep_edges"):
+            alpha = 1.0
         try:
-            out = calib.undistort(image, payload, alpha=1.0 if ctx.flag("keep_edges") else 0.0)
+            out = calib.undistort(image, payload, alpha=alpha)
         except calib.CalibError as exc:
             raise ToolError(str(exc)) from None
         lens = payload["lens"]
-        return Result(outputs={"image": out}, message=f"Corrected ({lens['views']} views, {lens['rms']:.2f} px)")
+        world = payload.get("world") or {}
+        mm_per_px = float(world.get("mm_per_px") or 0) or float("nan")
+        return Result(outputs={"image": out, "mm_per_pixel": mm_per_px},
+                      message=f"Corrected ({lens['views']} views, {lens['rms']:.2f} px, alpha {alpha:.2f})" + (f", {mm_per_px:.4f} {payload.get('unit', 'mm')}/px" if mm_per_px == mm_per_px else ""))
 
 
 # ---------------------------------------------------------------------------

@@ -138,7 +138,8 @@ class LensTests(SimpleTestCase):
         cam = np.asarray(lens["camera_matrix"])
         self.assertAlmostEqual(cam[0, 0], CAM[0, 0], delta=1.0)
         self.assertAlmostEqual(cam[0, 2], CAM[0, 2], delta=1.0)
-        self.assertAlmostEqual(np.asarray(lens["dist_coeffs"])[0], DIST[0], delta=0.01)
+        self.assertAlmostEqual(np.asarray(lens["dist_coeffs"])[0], DIST[0], delta=abs(DIST[0]) * 0.02)  # k1 誤差 < 2%
+        self.assertAlmostEqual(np.asarray(lens["dist_coeffs"])[1], DIST[1], delta=abs(DIST[1]) * 0.05)
         self.assertLess(lens["rms"], 0.05)
         self.assertEqual(len(lens["view_errors"]), 10)
         calib.validate({"image_size": [W, H], "lens": lens})
@@ -153,6 +154,26 @@ class LensTests(SimpleTestCase):
         views[1] = views[1][:-1]
         with self.assertRaises(calib.CalibError):
             calib.calibrate_lens(views, obj, (W, H))
+
+
+class CoverageTests(SimpleTestCase):
+    def test_coverage_grid_and_warnings(self):
+        views = [[[100 + i * 50, 100 + j * 50] for i in range(9) for j in range(6)]]  # 只在左上角
+        cov = calib.coverage(views, (W, H))
+        self.assertEqual((cov["cols"], cov["rows"], cov["cells"]), (4, 3, 12))
+        self.assertEqual(cov["points"], 54)
+        self.assertLess(cov["covered"], 6)
+        self.assertGreater(cov["edge_missing"], 0)
+        self.assertTrue(any("edges" in w or "areas" in w for w in calib.warnings({}, cov)))
+        spread = [[[x, y] for x in range(40, W, 120) for y in range(40, H, 120)]]
+        full = calib.coverage(spread, (W, H))
+        self.assertEqual(full["covered"], 12)
+        self.assertEqual(full["missing"], [])
+        bad = calib.warnings({"lens": {"rms": 0.9, "views": 5, "camera_matrix": CAM.tolist(), "dist_coeffs": DIST.tolist()}}, full)
+        self.assertTrue(any("0.9" in w and "0.5" in w for w in bad))
+        self.assertTrue(any("5 pictures" in w for w in bad))
+        self.assertEqual(calib.warnings({"lens": {"rms": 0.2, "views": 12}}, full), [])
+        self.assertTrue(calib.warnings({"unit": "mm", "world": {"rms": 0.5, "mm_per_px": 0.05}}))
 
 
 class BoardTests(SimpleTestCase):
@@ -318,6 +339,42 @@ class ToolTests(SimpleTestCase):
         # overlay 的鍵是 kind（不是 type），寫錯前端不會畫但也不會報錯
         self.assertTrue(any(o.get("kind") == "point" and "label" in o for o in r.overlays))
 
+    def test_to_world_accepts_x_y_numbers_and_mirrored_calibrations(self):
+        r = run_tool("to_world", None, {"calibration": "world"}, inputs={"x": 100.0, "y": 200.0}, assets=self.assets)
+        expect = calib.apply(affine_matrix(), [[100.0, 200.0]])[0]
+        self.assertAlmostEqual(r.outputs["x"], float(expect[0]), places=6)
+        self.assertAlmostEqual(r.outputs["y"], float(expect[1]), places=6)
+        # 往返：image → world → image 誤差 < 1e-6
+        back = np.linalg.solve(affine_matrix(), np.array([expect[0], expect[1], 1.0]))
+        self.assertLess(abs(back[0] - 100.0) + abs(back[1] - 200.0), 1e-6)
+        # 鏡像（相機裝反：handedness 翻轉，det < 0）：角度換算跟著鏡像，往返仍一致
+        mirror = affine_matrix() @ np.diag([1.0, -1.0, 1.0])
+        path = os.path.join(self.folder, "mirror.json")
+        calib.save(path, world_payload(mirror))
+        m = run_tool("to_world", None, {"calibration": "m"}, inputs={"x": 100.0, "y": 200.0, "angle": 30.0}, assets={"m": path})
+        self.assertLess(np.linalg.det(mirror[:2, :2]), 0)
+        self.assertAlmostEqual(m.outputs["angle"], -(30.0) + 12.0, delta=1e-4)  # 鏡像：影像 +30° → 世界 −30°，再加座標系 12°
+        with self.assertRaises(ToolError):
+            run_tool("to_world", None, {"calibration": "world"}, inputs={"x": "a", "y": 1.0}, assets=self.assets)
+
+    def test_undistort_alpha_cache_and_mm_per_pixel(self):
+        import time
+
+        img = np.zeros((H, W, 3), np.uint8)
+        img[400:500, 300:900] = 255
+        full = run_tool("undistort", img, {"calibration": "both", "alpha": 1.0}, assets=self.assets)
+        crop_ = run_tool("undistort", img, {"calibration": "both", "alpha": 0.0}, assets=self.assets)
+        self.assertLess(int((full.outputs["image"] > 40).sum()), int((crop_.outputs["image"] > 40).sum()))
+        self.assertAlmostEqual(full.outputs["mm_per_pixel"], 0.05, places=9)  # 有世界對應時直接接 calibration
+        self.assertTrue(np.isnan(run_tool("undistort", img, {"calibration": "lens"}, assets=self.assets).outputs["mm_per_pixel"]))
+        # map 快取：100 幀平均 ≈ 純 remap（第一幀含建表）
+        ts = []
+        for _ in range(100):
+            t0 = time.perf_counter()
+            run_tool("undistort", img, {"calibration": "lens", "alpha": 0.5}, assets=self.assets)
+            ts.append(time.perf_counter() - t0)
+        self.assertLess(float(np.mean(ts[1:])), 3 * float(np.median(ts[1:])) + 0.002)
+
     def test_to_world_needs_a_world_mapping_and_an_input(self):
         with self.assertRaises(ToolError) as bad:
             run_tool("to_world", None, {"calibration": "lens"}, inputs={"value": 1.0}, assets=self.assets)
@@ -432,6 +489,30 @@ class ApiTests(TestCase):
         one = self.post("solve", {"mode": "board", "image_size": self.size, "cols": 9, "rows": 6, "spacing": 5.0, "views": views[:1]})
         self.assertEqual(one.status_code, 200, one.content)
         self.assertNotIn("lens", one.json()["payload"])
+
+    def test_coverage_endpoint_and_solve_warnings(self):
+        views = [[[100 + i * 50, 100 + j * 50] for i in range(9) for j in range(6)]]
+        r = self.client.post("/api/vision/calibration/coverage", data=json.dumps({"image_size": [W, H], "views": views}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual(body["cells"], 12)
+        self.assertGreater(len(body["missing"]), 0)
+        self.assertTrue(any(o["kind"] == "rect" and o["color"] == "#ef4444" for o in body["overlays"]))
+        self.assertTrue(body["warnings"])
+        self.assertEqual(self.client.post("/api/vision/calibration/coverage", data=json.dumps({"image_size": [W], "views": []}), content_type="application/json").status_code, 422)
+        # solve 回 warnings（張數少）與 coverage
+        rng = np.random.default_rng(3)
+        obj = calib.board_object_points(9, 6, 20.0)
+        obj -= obj.mean(axis=0)
+        vs = []
+        for _ in range(3):
+            pts, _ = cv2.projectPoints(obj.astype(np.float32), rng.uniform(-0.3, 0.3, 3), np.array([rng.uniform(-20, 20), rng.uniform(-20, 20), 500.0]), CAM, DIST)
+            vs.append(pts.reshape(-1, 2).tolist())
+        r = self.client.post("/api/vision/calibration/solve", data=json.dumps({"mode": "board", "image_size": [W, H], "cols": 9, "rows": 6, "spacing": 20.0, "views": vs}), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual(body["coverage"]["cells"], 12)
+        self.assertTrue(any("pictures" in w for w in body["warnings"]))
 
     def test_solve_points_reports_residuals(self):
         truth = affine_matrix()

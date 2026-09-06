@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：90 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：90 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -15,7 +15,7 @@
 - **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / calib / variables / board / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`apps/vision/capture`（擷取端 hub／Grabber／API）、`vscapture/`（擷取端桌面程式，不 import Django）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py／build_capture_client.ps1；發行與現場：build_release.ps1／build_dl_pack.ps1／installer.iss／install.ps1／vsctl.ps1／service.ps1／proxy.ps1／vslib.ps1）。
 - **一次執行的路徑**：觸發 → `Runner.compiled_for`（validate → apply_recipe → compile，快取鍵 `(version, recipe_id, updated_at)`）→ `_prefetch` 在呼叫者執行緒開來源／資產 → 執行緒池 `engine.execute`（`ToolContext.image()` 依 `accepts` 做位深 coerce）→ 影像進 `images.store`、`RunReport` → SSE／統計／背景批次寫 `FlowRun`。
 - **前端接縫**：頁面只透過 `lib/api.ts`（`BASE_URL`＝`VITE_API_BASE_URL` 或 `/api`）、`lib/queries.ts`、`lib/flowStream.ts` 與後端往來，不直接 fetch；各頁 lazy chunk；跨頁草稿在 `lib/flowDraft.ts`。
-- **文件**：`README.md`（全貌）、`docs/*.html`（**全英文**，18 頁：使用者手冊、設計手冊、合約、自動化、Modbus、擷取端、部署維運、檢測功能、範例樣板、AI 助手、DL、批次、Golden、外掛、名詞規範、效能）。
+- **文件**：`README.md`（全貌）、`docs/*.html`（**全英文**，19 頁：使用者手冊、設計手冊、合約、自動化、Modbus、擷取端、部署維運、檢測功能、標定、範例樣板、AI 助手、DL、批次、Golden、外掛、名詞規範、效能）。
 
 ## 2. 工作方式
 

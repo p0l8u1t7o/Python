@@ -226,7 +226,31 @@ def solve(request: HttpRequest):
         raise _fail(exc) from None
     except (TypeError, ValueError, IndexError, AttributeError) as exc:
         raise ValidationError(f"Those numbers do not make a calibration: {exc}", code="bad_calibration") from None
-    return {"payload": checked, "summary": calib.summary(checked), "quality": calib.quality(checked)}
+    cov = calib.coverage(data.get("views") or [], (width, height)) if mode == "board" else None
+    return {"payload": checked, "summary": calib.summary(checked), "quality": calib.quality(checked), "coverage": cov, "warnings": calib.warnings(checked, cov)}
+
+
+@router.post("/calibration/coverage")
+def board_coverage(request: HttpRequest):
+    """已採集的標定板角點蓋住了畫面的哪些區域（採集中即時提示「邊角樣本不足」）。{image_size, views[[[x,y],...],...]}"""
+    require_feature(request, "assets")
+    data = _body(request)
+    size = data.get("image_size") or []
+    try:
+        width, height = int(size[0]), int(size[1])
+    except (TypeError, ValueError, IndexError):
+        raise ValidationError("image_size must be [width, height]", code="bad_size") from None
+    views = data.get("views") or []
+    if not isinstance(views, list) or len(views) > MAX_VIEWS:
+        raise ValidationError(f"views must be a list of at most {MAX_VIEWS} corner sets", code="bad_views")
+    try:
+        cov = calib.coverage(views, (width, height), int(data.get("cols") or 4), int(data.get("rows") or 3))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"views must be lists of [x, y] points: {exc}", code="bad_views") from None
+    cell_w, cell_h = width / cov["cols"], height / cov["rows"]
+    overlays = [{"kind": "rect", "x": m["col"] * cell_w, "y": m["row"] * cell_h, "w": cell_w, "h": cell_h, "color": "#ef4444", "width": 1, "dash": True, "label": "no corners"} for m in cov["missing"]]
+    overlays.append({"kind": "points", "points": [[float(p[0]), float(p[1])] for v in views for p in np.asarray(v, dtype=np.float64).reshape(-1, 2)][:4000], "color": "#38bdf8"})
+    return {**cov, "overlays": overlays, "warnings": calib.warnings({}, cov)}
 
 
 @router.post("/calibration/assets", response={201: dict})

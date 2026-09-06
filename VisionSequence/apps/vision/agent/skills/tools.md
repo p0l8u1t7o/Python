@@ -49,7 +49,7 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 
 ## undistort
 鏡頭畸變校正：選一個 `calibration` 資產（標定頁做的），放在取像後、量測前。廣角或近距離時邊角的直線會拱起來，
-校正後量測值才不會隨位置漂。`keep_edges` 開＝整個畫面留著（角落補黑），關＝縮放到全部都是有效像素。
+校正後量測值才不會隨位置漂。`alpha` 0＝縮放到全部都是有效像素、1＝整個畫面留著（角落補黑）；`mm_per_pixel` 輸出接 calibration。
 沒有標定資產就別放這個節點。
 
 ## polar_unwrap
@@ -175,7 +175,7 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 
 ## to_world
 像素→真實世界座標（mm 或機械手座標），選一個含世界對應的 `calibration` 資產。
-`points` 進 → `points_world`／`x`／`y` 出（第一點）；`value`（像素長度）→ `length`；`angle`（影像角度）→ `angle`（世界角度）。
+`points` 進（或 `x`／`y` 數值埠接 find_circle.cx/cy、shape_match.best_x/best_y）→ `points_world`／`x`／`y` 出（第一點）；`value`（像素長度）→ `length`；`angle`（影像角度）→ `angle`（世界角度，鏡像安裝也對）。
 要把位置交給機械手抓取時用它，接在 template_match／find_circle 的中心座標後面，再接 output 具名輸出。
 只換算長度用 calibration 就夠，不必用這個。
 

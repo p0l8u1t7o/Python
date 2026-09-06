@@ -44,6 +44,28 @@ interface SolveResult {
   payload: Record<string, unknown>
   summary: string
   quality: Record<string, string>
+  warnings?: string[]
+  coverage?: { covered: number; cells: number; edge_missing: number } | null
+}
+
+const COVERAGE_COLS = 4
+const COVERAGE_ROWS = 3
+const RMS_WARN_PX = 0.5
+
+/** 已採集角點的視野覆蓋率：4×3 格，沒角點的格子（多在邊角）就是畸變估不準的地方。純函式，與後端 calib.coverage 同一套格子。 */
+function coverageOf(views: number[][][], width: number, height: number) {
+  const grid = Array.from({ length: COVERAGE_ROWS }, () => new Array<number>(COVERAGE_COLS).fill(0))
+  for (const view of views) {
+    for (const [x, y] of view) {
+      const cx = Math.min(COVERAGE_COLS - 1, Math.max(0, Math.floor((x * COVERAGE_COLS) / Math.max(1, width))))
+      const cy = Math.min(COVERAGE_ROWS - 1, Math.max(0, Math.floor((y * COVERAGE_ROWS) / Math.max(1, height))))
+      grid[cy][cx] += 1
+    }
+  }
+  const missing: { col: number; row: number }[] = []
+  grid.forEach((row, r) => row.forEach((n, c) => { if (n === 0) missing.push({ col: c, row: r }) }))
+  const edgeMissing = missing.filter((m) => m.col === 0 || m.col === COVERAGE_COLS - 1 || m.row === 0 || m.row === COVERAGE_ROWS - 1).length
+  return { grid, missing, covered: COVERAGE_COLS * COVERAGE_ROWS - missing.length, cells: COVERAGE_COLS * COVERAGE_ROWS, edgeMissing }
 }
 
 interface WorldBlock {
@@ -82,6 +104,7 @@ export function CalibrationPage() {
   const [sourceId, setSourceId] = useState('')
   const [busy, setBusy] = useState(false)
   const [shots, setShots] = useState<Shot[]>([])
+  const [showCoverage, setShowCoverage] = useState(true)
   const [current, setCurrent] = useState(0)
   const [boardKind, setBoardKind] = useState<BoardKind>('chessboard')
   const [cols, setCols] = useState('9')
@@ -258,15 +281,28 @@ export function CalibrationPage() {
     }
   }
 
+  const coverage = useMemo(() => {
+    if (mode !== 'board' || !shot) return null
+    return coverageOf(detected.map((s) => s.corners ?? []), shot.width, shot.height)
+  }, [mode, shot, detected])
+
   const overlays = useMemo<Overlay[]>(() => {
-    if (mode === 'board') return shot?.overlays ?? []
+    if (mode === 'board') {
+      const base = shot?.overlays ?? []
+      if (!coverage || !shot || !showCoverage) return base
+      const cellW = shot.width / COVERAGE_COLS
+      const cellH = shot.height / COVERAGE_ROWS
+      const cells = coverage.missing.map((m) => ({ kind: 'rect', x: m.col * cellW, y: m.row * cellH, w: cellW, h: cellH, color: '#ef4444', width: 1, dash: true } as Overlay))
+      const others = detected.filter((s) => s.ref !== shot.ref).flatMap((s) => s.corners ?? [])
+      return [...cells, ...(others.length ? [{ kind: 'points', points: others, color: '#38bdf8' } as Overlay] : []), ...base]
+    }
     return points.flatMap((p, i) => {
       const worst = points.reduce((m, q) => Math.max(m, q.error ?? 0), 0)
       const bad = p.error != null && worst > 0 && p.error >= worst
       const label = p.error != null ? `${i + 1}: ${p.error.toFixed(3)} ${unit}` : String(i + 1)
       return [{ kind: 'point', x: p.px[0], y: p.px[1], color: bad ? '#ef4444' : '#22c55e', label } as Overlay]
     })
-  }, [mode, shot, points, unit])
+  }, [mode, shot, points, unit, coverage, detected, showCoverage])
 
   const world = worldOf(result)
   const lens = lensOf(result)
@@ -377,6 +413,16 @@ export function CalibrationPage() {
                   <TextInput label={t('calibration.spacing')} value={spacing} inputMode="decimal" suffix={unit} onChange={(e) => setSpacing(e.target.value)} data-testid="calib-spacing" />
                 </div>
                 <p className="text-xs text-subtle">{t('calibration.boardHint')}</p>
+                {coverage ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="calib-coverage">
+                    <Badge tone={coverage.covered === coverage.cells ? 'ok' : coverage.edgeMissing ? 'warning' : 'neutral'}>{t('calibration.coverage', { covered: coverage.covered, cells: coverage.cells })}</Badge>
+                    <span className="text-subtle">{coverage.covered === coverage.cells ? t('calibration.coverageOk') : coverage.edgeMissing ? t('calibration.coverageEdge', { n: coverage.edgeMissing }) : t('calibration.coverageMore')}</span>
+                    <label className="ml-auto flex items-center gap-1 text-subtle">
+                      <input type="checkbox" checked={showCoverage} onChange={(e) => setShowCoverage(e.target.checked)} />
+                      {t('calibration.showCoverage')}
+                    </label>
+                  </div>
+                ) : null}
                 <Button loading={busy} disabled={!shots.length} onClick={() => void redetectAll()} data-testid="calib-redetect">
                   {t('calibration.redetect')}
                 </Button>
@@ -521,6 +567,14 @@ export function CalibrationPage() {
                       {t('calibration.lensError', { views: lens.views, rms: lens.rms.toFixed(3) })}{' '}
                       {result.quality.lens ? <Badge tone={QUALITY_TONE[result.quality.lens]}>{t(`calibration.quality.${result.quality.lens}`)}</Badge> : null}
                     </p>
+                  ) : null}
+                  {lens && lens.rms > RMS_WARN_PX ? (
+                    <p className="text-xs text-warning" data-testid="calib-rms-warning">{t('calibration.rmsWarning', { rms: lens.rms.toFixed(2) })}</p>
+                  ) : null}
+                  {result.warnings?.length ? (
+                    <ul className="list-disc space-y-0.5 pl-4 text-xs text-warning" data-testid="calib-warnings">
+                      {result.warnings.map((w) => <li key={w}>{w}</li>)}
+                    </ul>
                   ) : null}
                   <p className="text-xs text-subtle">{t('calibration.useHint')}</p>
                 </div>

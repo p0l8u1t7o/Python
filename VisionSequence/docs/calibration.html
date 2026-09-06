@@ -1,8 +1,8 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>VisionSequence documentation</title>
+<title>Calibration — VisionSequence</title>
 <style>
   /* Cyberpunk：深空黑＋霓虹綠／青、等寬標題、電路格線、HUD 角括號（與前端 .theme-cyber 同一套色票） */
   :root {
@@ -143,55 +143,55 @@
 </style>
 </head>
 <body>
-<nav class="site"><a href="index.html" aria-current="page">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#start">Start here</a></li><li><a href="#using">Using the platform</a></li><li><a href="#integrating">Integrating and operating</a></li><li><a href="#extending">Extending</a></li><li><a href="#internals">Design and internals</a></li></ul></aside><article class="doc">
+<nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html" aria-current="page">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#modes">1. The three ways to calibrate</a></li><li><a href="#coverage">2. Coverage and the warnings that matter</a></li><li><a href="#tools">3. The tools</a><ul><li><a href="#undistort">undistort (pre-processing)</a></li><li><a href="#to-world">to_world (measurement) — real-world and robot coordinates</a></li><li><a href="#calibration-tool">calibration (measurement)</a></li></ul></li><li><a href="#asset">4. What the asset holds</a></li><li><a href="#accuracy">5. Accuracy, checked</a></li></ul></aside><article class="doc">
 
-<h1>VisionSequence documentation</h1>
-<p>Everything under <code>docs/</code> is plain HTML with its screenshots in <code>docs/img/</code>: each page carries its own styling, depends on nothing external, and opens straight in a browser or from the product at <code>/docs/&lt;page&gt;.html</code>. The global AI assistant answers from these pages and links to the section it used. Development conventions, the verification checklist and the Git rules live in <code>CLAUDE.md</code> at the project root; <code>README.md</code> is the quick start.</p>
+<h1>Camera calibration, lens correction and robot coordinates</h1>
+<p>Three things the Calibration page (<code>/calibration</code>) produces, all stored in one <strong>calibration asset</strong> (kind <code>calibration</code>, a JSON file): the lens model that straightens what a wide-angle or close lens bends, the mapping from pixels to millimetres on the plane the parts sit on, and the mapping from pixels to the coordinates a robot expects. Two tools consume it — <code>undistort</code> before measuring and <code>to_world</code> after locating — and the <code>calibration</code> tool's asset mode converts a single length. Teach it once per station; every flow that picks the asset follows, and re-teaching after a lens or camera change updates them all.</p>
 
-<h2 id="start">Start here</h2>
+<h2 id="modes">1. The three ways to calibrate</h2>
 <table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="user-guide.html">User guide</a></td><td>The illustrated walkthrough, page by page in sidebar order: every section opens with an annotated screenshot whose numbered markers say exactly where each button and panel is — getting around, accounts and permissions, flows and templates, the editor and the tool picker, the tool page and ROIs, the teach page and recipes, running and statistics, batch testing, the Golden Set, sources and the capture client, assets, deep-learning teaching, the AI assistant page and the global assistant, the integration pages, the engine lock, audit, settings, help, and the FAQ.</td></tr>
-<tr><td><a href="samples.html">Example templates</a></td><td>The ready-to-run templates <code>seed_demo</code> creates: the synthetic sample images, the tools each one covers, the assets involved and how to rebuild them.</td></tr>
-<tr><td><a href="glossary.html">Glossary</a></td><td>The naming authority: pages, editor areas, core terms, port types and their colours, status wording — kept identical across the interface, the code and these documents, with the Chinese equivalents.</td></tr>
+<tr><th>Mode</th><th>What you do</th><th>What you get</th></tr>
+<tr><td>Board</td><td>Take 10 to 15 pictures of a chessboard or circle grid at different positions and tilts, filling the edges and corners of the picture as well as the middle; enter the inner-corner count and spacing</td><td>The lens model (camera matrix and distortion coefficients, with the reprojection error per picture) and, from the picture you choose, the millimetre mapping of the plane</td></tr>
+<tr><td>Points</td><td>Click a feature on the picture, type the robot's coordinates for that spot, repeat for at least 4 spots (9 spread over the working area is better)</td><td>An affine or perspective mapping from pixels to robot coordinates with the residual of every point, so a mistyped one shows up immediately</td></tr>
+<tr><td>Distance</td><td>Click two points and type the real distance between them</td><td>A plain scale — enough for measurement flows that only need millimetres</td></tr>
 </table>
+<p>The <strong>Solve</strong> step shows the result without saving it: the residuals, the quality badge, the coverage of the picture and the warnings. Save only when you are satisfied. The solver refuses fewer than 4 point pairs for a perspective mapping (3 for affine, 2 for a scale) with a 422 rather than a silently poor fit.</p>
 
-<h2 id="using">Using the platform</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="calibration.html">Calibration</a></td><td>Camera calibration on the Calibration page: board, points and known-distance modes, the coverage map and the warnings that matter (reprojection error, too few pictures, empty edge areas), the <code>undistort</code> and <code>to_world</code> tools, the calibration asset format and the accuracy checks.</td></tr>
-<tr><td><a href="vision-capabilities.html">Inspection capabilities</a></td><td>The ROI shapes and how they are implemented, image bit depth (8-bit, 16-bit, floating point), and an overview of the inspection tools with their trade-offs and accuracy.</td></tr>
-<tr><td><a href="batch.html">Batch testing</a></td><td>The batch page: image sets and the stored per-image results, expected labels and hit rate, data insights and suggested thresholds, re-running after tuning and comparing, writing the result back to the flow, a recipe or a Golden Set, AI consultation and tuning, background execution and retention.</td></tr>
-<tr><td><a href="golden.html">Golden Set and export</a></td><td>Golden Set regression testing (expected results, baselines, the regressed list, the confusion matrix, <code>manage.py regress</code>) and flow export and import (a stable serialisation format, <code>manage.py flow</code>, the export and import API, running it in CI).</td></tr>
-<tr><td><a href="dl.html">Deep-learning teaching</a></td><td>Labelling and training inside the platform: teaching projects, sample collection, automatic labelling, server-side training with GPU and provider settings, exporting a model to the asset library. The trainer registry takes plugins, so new model kinds drop in. Also the five YOLO inference tools, the four YOLO trainers, SAM2 click, box and whole-image proposals, and the GPU dependency order that matters.</td></tr>
-<tr><td><a href="agent.html">AI assistant</a></td><td>In three parts: the global assistant on every page (documentation answers, what it knows about your screen, live lookups and shortcuts, hints, screenshots, long-term memory, tuning from batch data); generating a flow on the assistant page (clarifying questions, several images and ROIs, candidates and auto-tuning, locate correction, refinement, agentic mode, sessions and priors, providers); and under the hood (architecture, the rule engine, the LLM path, skills, API, benchmark, trade-offs).</td></tr>
-</table>
+<h2 id="coverage">2. Coverage and the warnings that matter</h2>
+<p>Lens distortion is largest in the corners, so a calibration whose board pictures all sit in the middle of the frame is accurate in the middle and wrong where it matters. While you collect board pictures the page keeps a <strong>coverage map</strong>: the picture is divided into a 4×3 grid and every cell that has received no corner yet is drawn as a red dashed box on the current picture, with a line saying how many of the twelve areas are covered and how many <em>edge</em> areas are still empty. Add pictures with the board pushed into those areas until the map is clear.</p>
+<p>After solving, the page shows the warnings the solver raises, in plain words:</p>
+<ul>
+<li><strong>Reprojection error above 0.5 px</strong> — the lens model does not explain the pictures well: blurred or unevenly lit pictures, a board that is not flat, or too little tilt. Redo it.</li>
+<li><strong>Fewer than 8 pictures</strong> — the model will be unsteady; 10 to 15 is the norm.</li>
+<li><strong>Coverage below three quarters, or empty edge areas</strong> — see above.</li>
+<li><strong>Point residual above two pixels</strong> (points mode) — a mistyped coordinate, a feature clicked on the wrong spot, or a camera looking at the plane at an angle that needs the perspective mapping rather than the affine one.</li>
+</ul>
+<p>The same information comes back from the API: <code>POST /vision/calibration/solve</code> returns <code>coverage</code> and <code>warnings[]</code> next to the payload, and <code>POST /vision/calibration/coverage</code> (image size plus the corner sets collected so far) returns the grid, the empty cells and ready-made overlays for a custom front end.</p>
 
-<h2 id="integrating">Integrating and operating</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="automation.html">Automation</a></td><td>Being called: HTTP synchronous runs, one-line TCP commands, live SSE events, pushing images, performance advice, identity and the engine lock, the integration pages.</td></tr>
-<tr><td><a href="modbus.html">Modbus</a></td><td>Calling out and being polled: connection kinds (Modbus TCP client, Modbus server, TCP client, TCP image push, plugins) and their config, address format, the write and read mapping tables, triggering a flow from a device flag, degradation, the connection API and writing your own Writer.</td></tr>
-<tr><td><a href="capture-client.html">Capture client</a></td><td>When the camera is on another PC or needs a vendor SDK: a downloadable desktop program drives webcams, Basler and IDS cameras where they are and connects out to the server's capture port. Shared memory on the same machine, lossless TCP across machines; channels, ROI, parameters, on-demand grabs and continuous streaming; the "capture client camera" source, protocol v1 and the acceptance checklist.</td></tr>
-<tr><td><a href="deployment.html">Deployment and operations</a></td><td>Putting the platform on a customer's PC and keeping it running: the setup wizard and the install root, the <code>vsctl</code> command line, Windows services, ports and firewall, HTTPS and the client PCs that only run a browser, accounts and keys, backup and restore, upgrading and rolling back, plugins and the deep-learning pack on site, monitoring, several stations, disaster recovery, security, and building a release.</td></tr>
-</table>
+<h2 id="tools">3. The tools</h2>
+<h3 id="undistort">undistort (pre-processing)</h3>
+<p>Straightens the picture with the lens part of the calibration. <code>alpha</code> chooses how much of the frame to keep: 0 zooms so that every pixel is real image (no black borders), 1 keeps the whole frame with black corners, values between keep that share. The remap tables are built once per (calibration, image size, alpha) and cached, so a frame costs one <code>remap</code>; the <em>mm per pixel</em> output carries the plane scale when the calibration has one, ready to feed the <code>calibration</code> tool. A picture whose size differs from the calibration is handled by rescaling the camera matrix; a different <em>aspect ratio</em> is refused with a message that names both sizes — the usual symptom of a camera swap.</p>
+<h3 id="to-world">to_world (measurement) — real-world and robot coordinates</h3>
+<p>Turns pixel positions into the calibration's world coordinates: wire a locate tool's centre into the <code>x</code>/<code>y</code> ports (or a <code>points</code> list), read <code>x</code>/<code>y</code> in millimetres or robot units; a pixel length becomes a real length and an image angle becomes a world angle, both converted with the mapping at that position (so a perspective mapping's varying scale is respected). A mirrored mapping — a camera mounted so that the image is flipped relative to the robot's axes — flips the angle sign accordingly, which is why the angle goes through the mapping rather than being copied. Wire the outputs to <code>output</code> steps to hand a pick position to the robot.</p>
+<h3 id="calibration-tool">calibration (measurement)</h3>
+<p>Length conversion only: pixel size, a known distance, or the asset. Use the asset mode so that re-teaching the station updates every flow.</p>
 
-<h2 id="extending">Extending</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="plugins.html">Plugins</a></td><td>Drop a file in a folder and it loads: subclass Tool, Grabber, Writer or Trainer, put it in <code>plugins/</code> and it is detected automatically. Module-level variables control the display name, description and whether it loads at all; the Plugins page shows what mounted and why something failed; two shipped examples and the rules for writing your own.</td></tr>
-<tr><td><a href="contract.html">Front-end / back-end contract</a></td><td>The graph JSON, ROI regions, overlays, the RunReport, the advanced preview endpoints and the front-end skeleton — what a parallel work stream needs to agree on.</td></tr>
-</table>
+<h2 id="asset">4. What the asset holds</h2>
+<pre><code>{
+  "unit": "mm", "image_size": [1280, 960],
+  "lens":  {"camera_matrix": [[fx,0,cx],[0,fy,cy],[0,0,1]], "dist_coeffs": [k1,k2,p1,p2,k3], "rms": 0.21, "views": 12, "view_errors": [...]},
+  "world": {"kind": "affine", "matrix": [[...3x3...]], "mm_per_px": 0.0512, "rms": 0.03, "max_error": 0.07, "points": [{"px":[..],"world":[..],"error":..}]}
+}</code></pre>
+<p><code>lens</code> and <code>world</code> can each be absent (a lens-only or a scale-only calibration). <code>GET /vision/calibration/assets/{id}</code> returns the content with the summary and quality; <code>manage.py</code> has no calibration command because the board pictures come from the camera through the page.</p>
 
-<h2 id="internals">Design and internals</h2>
-<table>
-<tr><th>Document</th><th>What it covers</th></tr>
-<tr><td><a href="workflow-design.html">Workflow design</a></td><td>The thinking behind the platform: why an in-process dataflow DAG rather than a control-flow engine, closed sets and safety boundaries, keeping the database off the hot path, degradation strategy, and the extension seams.</td></tr>
-<tr><td><a href="architecture.html">Architecture</a></td><td>How the platform is built: data model, tool framework, graph validation and compilation, the engine, Runner concurrency, image cache, image sources, HTTP/SSE/TCP, the front end, accounts and the engine lock, settings, tests and the pitfalls we hit.</td></tr>
-<tr><td><a href="performance.html">Performance</a></td><td>Measured figures for the engine and the tools, and the record of what each optimisation bought.</td></tr>
-<tr><td><code>README.md</code> / <code>CLAUDE.md</code></td><td>The whole picture (features, architecture, code map, data model, API, extension points, settings, deployment) and the development conventions (checklists, module notes, pitfalls) — the entry point on GitHub.</td></tr>
-</table>
+<h2 id="accuracy">5. Accuracy, checked</h2>
+<ul>
+<li>Synthetic pictures with known distortion (k1 = −0.28, k2 = 0.12): the solver recovers k1 within 2% and the focal length within one pixel (<code>tests/test_calib.py</code>).</li>
+<li><code>to_world</code> round trip image → world → image within 1e-6, including a mirrored mapping.</li>
+<li><code>undistort</code> at 1280×960: the first frame builds the maps, every following frame is the plain remap; the test asserts that 100 frames average the steady-state time.</li>
+</ul>
+<p>Not in scope: eye-in-hand (a camera on the arm), 3D poses and stereo — the platform calibrates a fixed camera against the plane the parts lie on, which is what an inspection station needs.</p>
 
 </article></div><!-- /doc-layout -->
 <script>
