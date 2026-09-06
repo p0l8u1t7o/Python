@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 72 個內建工具、191 個 API 端點、27 個資料模型、19 個前端頁面（另 7 個整合子頁）、18 頁文件、後端 636 項＋前端 97 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 74 個內建工具、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁文件、後端 664 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -70,9 +70,13 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **配方**：同一流程多組參數覆寫（換線），HTTP／TCP 皆可指定。
 - **Python 腳本工具**：管理員可在工具頁直接寫 `def run(ctx)` 做自訂檢測（同行程受限執行：白名單匯入、逾時中止、輸入唯讀），輸出數值／布林／文字／資料／影像與通過／不良分支；一般使用者可執行已核准的腳本並調整現場參數。
 - **批次測試頁／Golden Set**：獨立頁面選流程、建立影像集（上傳或來源擷取，≤200 張）批量執行並暫存每次逐張結果；標記期望 OK／NG 得命中率與混淆矩陣，洞察卡給建議門檻、輸出分佈與歷次趨勢；調參重跑同一影像集並逐張比較，滿意後寫回流程／存為配方／帶回編輯器；右下角的全域 AI 助手可依資料諮詢或調整、調參面板可自動調參（結果成為新執行）。案例可存入 Golden Set 作回歸基準，`manage.py regress` 可進 CI。
-- **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG。
+- **統計**（`/flows/:id/stats`）：執行歷史、良率趨勢、每小時 OK/NG；封存影像可「在編輯器用這張重跑」。
+- **標定**（`/calibration`）：標定板（鏡頭畸變＋比例）／機械手對點／已知距離三種做法，先看每點殘差再存成一個標定資產；`undistort`、`to_world`、`calibration` 三個工具共用。
+- **流程變數**：`variable_set`／`variable_get` 在執行之間保留計數、上一片、料號（flow／station 兩個範圍）；試執行與批次在沙箱不動產線的值。
+- **現場看板**：每條流程設定要顯示哪些具名輸出（標籤、單位、公差）、哪張影像、哪些變數；總覽頁照它顯示，`/board/:id` 是給操作站的全螢幕看板。
+- **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 
-### 內建工具（72 個，8 類）
+### 內建工具（74 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（1） | image_source |
@@ -129,7 +133,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 
 ### 自動化整合
 - HTTP：`POST /api/vision/flows/{id}/run`（可附影像、指定配方、同步／非同步）。
-- TCP：一行指令 `RUN <flow> [recipe=…]` 回一行 JSON（同行程）。
+- TCP：一行指令 `RUN <flow> [recipe=…]` 回一行 JSON（同行程）；`RUN <flow> fmt=<輸出>` 回純文字給讀不了 JSON 的設備（流程裡用 `format_text` 排版）；`VARS`／`SET` 讀寫變數（換線送料號、重置計數）。
+- 變數與看板 API：`GET/PUT /flows/{id}/variables`、`/vision/variables`；`GET /flows/{id}/board` 一次拿齊看板要顯示的一切（公差判定已算好），整合端自建畫面用它。
 - SSE：即時事件串流；總覽頁可觀看任一流程的即時影像與結果。
 - Modbus TCP／TCP 文字／模擬 DIO 主動輸出（`write_modbus` 工具，失敗降級不停線）。
 - **Modbus 主站與從站**：`modbus_tcp` 平台連到 PLC 去讀寫；`modbus_server` 平台開埠（預設 5020）讓 PLC 當主站來讀寫平台的暫存器。流程工具 `write_modbus`（寫判定／量測值）與 `read_modbus`（讀料號／觸發旗標，可併進具名輸出）。

@@ -155,6 +155,22 @@ try {
     { target: '[role="dialog"] select, [role="dialog"] [data-testid="source-kind"]', label: 'kind' }, { target: '[data-testid="cfg-browse"]' }, { target: '[data-testid="source-test"]' }, { target: '[data-testid="source-test-box"]' },
   ])
   await page.keyboard.press('Escape')
+  // 7-1 現場看板：示範流程設兩個數值＋公差、變數，跑過之後開全螢幕看板
+  {
+    const bflow = statsFlow
+    const bfull = await j(`/vision/flows/${bflow.id}`)
+    const names = bfull.graph.nodes.filter((n) => n.type === 'output').map((n) => n.params?.name).filter(Boolean)
+    await j(`/vision/flows/${bflow.id}`, { method: 'PATCH', body: JSON.stringify({ board: { values: names.slice(0, 3).map((k) => ({ key: k, unit: 'px', decimals: 1, low: 0 })), show_counts: true } }) })
+    await j(`/vision/flows/${bflow.id}/variables`, { method: 'PUT', body: JSON.stringify({ values: { lot: 'A17', parts: 128 } }) })
+    await j(`/vision/flows/${bflow.id}/run?wait=1`, { method: 'POST', body: '{}' })
+    await page.goto(`${FRONT}/board/${bflow.id}`)
+    await page.waitForSelector('[data-testid="board-page"]', { timeout: 20000 })
+    await page.waitForTimeout(1500)
+    await capture(page, 'board', [
+      { target: '[data-testid="board-title"]' }, { target: '[data-testid="board-verdict"]' }, { target: '[data-testid="board-values"]' },
+      { target: '[data-testid="board-counts"]' }, { target: '[data-testid="board-variables"]' }, { target: '[data-testid="board-exit"]' },
+    ])
+  }
   // 10-2 標定
   await go('/calibration', 'main')
   await capture(page, 'calibration', [

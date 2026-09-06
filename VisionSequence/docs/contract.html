@@ -265,6 +265,8 @@ POST /vision/flows/{id}/run        body or form may carry recipe (id or name); o
 POST /vision/flows/{id}/preview    body may carry recipe
 The RunReport carries station_id, recipe and warnings[] (for example "not commissioned yet").
 PATCH /vision/flows/{id} {commissioned: true}   set after the parameter card is confirmed
+PATCH /vision/flows/{id} {board: {...}}          what the operator board shows (flows.edit); GET /vision/flows/{id}/board returns the prepared data
+GET/PUT /vision/flows/{id}/variables, /vision/variables   values kept between runs (PUT needs flows.teach; {"values": {...}} merges)
 Param has teach: bool — the parameter card lists only the teachable ones, and an operator may change only those.</pre>
 
 <h2 id="recipe-io">Recipe export, import and the save-scope check (api_recipes.py)</h2>

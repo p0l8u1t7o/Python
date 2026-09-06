@@ -6,13 +6,13 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：72 個內建工具（8 類）、191 個 API 端點、27 個資料模型、19 個前端頁面（另 7 個整合子頁）、18 頁 docs、後端 636 項＋前端 97 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：74 個內建工具（8 類）、198 個 API 端點、28 個資料模型、20 個前端頁面（另 7 個整合子頁）、18 頁 docs、後端 664 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
   - **只能有一個 API 行程**（引擎狀態、影像快取、SSE bus 都在行程內）。`manage.py serve` = uvicorn workers=1 + TCP；`runserver` 只用來開發且加 `--noreload`。
   - 三種身分：使用者（登入 token）、整合方（API 金鑰、永遠可執行、可鎖引擎）、bootstrap（沒有任何使用者時放行 `/auth/setup`）。
-- **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / calib / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`apps/vision/capture`（擷取端 hub／Grabber／API）、`vscapture/`（擷取端桌面程式，不 import Django）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py／build_capture_client.ps1；發行與現場：build_release.ps1／build_dl_pack.ps1／installer.iss／install.ps1／vsctl.ps1／service.ps1／proxy.ps1／vslib.ps1）。
+- **目錄**：`config/`（settings：`VISION` dict 全部走 .env；`api.py` 掛 Router）、`apps/core`（錯誤、外掛掃描）、`apps/accounts`（身分、鎖定、偏好）、`apps/vision`（models / graph / engine / runner / images / api* / calib / variables / board / stream / tcp_server / sources / tools / dl / agent / demo）、`apps/comm`（Modbus 等主動輸出）、`apps/golden`（回歸）、`apps/vision/capture`（擷取端 hub／Grabber／API）、`vscapture/`（擷取端桌面程式，不 import Django）、`plugins/`（資料夾外掛）、`frontend/`、`tests/`、`docs/`、`scripts/`（dev.ps1／stop.ps1／bench_tools.py／build_capture_client.ps1；發行與現場：build_release.ps1／build_dl_pack.ps1／installer.iss／install.ps1／vsctl.ps1／service.ps1／proxy.ps1／vslib.ps1）。
 - **一次執行的路徑**：觸發 → `Runner.compiled_for`（validate → apply_recipe → compile，快取鍵 `(version, recipe_id, updated_at)`）→ `_prefetch` 在呼叫者執行緒開來源／資產 → 執行緒池 `engine.execute`（`ToolContext.image()` 依 `accepts` 做位深 coerce）→ 影像進 `images.store`、`RunReport` → SSE／統計／背景批次寫 `FlowRun`。
 - **前端接縫**：頁面只透過 `lib/api.ts`（`BASE_URL`＝`VITE_API_BASE_URL` 或 `/api`）、`lib/queries.ts`、`lib/flowStream.ts` 與後端往來，不直接 fetch；各頁 lazy chunk；跨頁草稿在 `lib/flowDraft.ts`。
 - **文件**：`README.md`（全貌）、`docs/*.html`（**全英文**，18 頁：使用者手冊、設計手冊、合約、自動化、Modbus、擷取端、部署維運、檢測功能、範例樣板、AI 助手、DL、批次、Golden、外掛、名詞規範、效能）。
@@ -116,6 +116,31 @@
 - API `POST /vision/calibration/{capture,detect,snap,solve}`＋`POST/GET /vision/calibration/assets`：
   **solve 只算不存**，使用者看過殘差才按儲存；`snap` 把點擊處吸附到附近特徵的中心（Otsu＋連通元件，挑包含點擊點的那一團）。
 - 前端 `/calibration` 三種模式共用一個 `ImageViewer`（`onPick` 標點）；標定板模式逐張顯示找到的點數與重投影誤差可刪除重算。
+
+### 流程變數（apps/vision/variables.py、api_variables.py、工具 variable_get／variable_set）
+- **記憶體是正本、熱路徑不碰 DB**：`VariableStore` 兩個範圍（flow_id／None＝站台）；`runner.submit` 在呼叫者執行緒 `ensure_loaded`，
+  引擎執行緒只讀寫 dict；髒鍵由持久化執行緒定時 flush（`_Persister.run` 用 `q.get(timeout=2)`，沒 run 也會寫），
+  API／TCP 寫入是 write-through；`flush` 上鎖避免兩邊同時寫同一列（站台範圍 flow=NULL，SQLite 的唯一約束擋不住 NULL）。
+- `FlowVariable`（migration 0021）只是落地副本；影像（ndarray）只留記憶體，落地時把舊的持久值刪掉免得重開機讀到過期數字。
+- **ToolContext.variable()／set_variable()／sandboxed()** 是外掛也用的接縫：preview、`flow_id<=0`（批次、AI 試跑）或 context 帶
+  `_sandbox`（bench）一律寫覆蓋層 `_variables_overlay`（鍵 `f"{scope}:{name}"`），讀時先看覆蓋層再看真值——工具頁按十次試執行產線計數不會多十。
+- 值的規則在 `variables.normalize`（numpy 純量轉型、64 KB、非有限數→None）、名稱 `NAME_RE`；`parse_default` 把欄位字串轉數字／布林。
+- 寫入權限＝`flows.teach`（換線是操作員的事），有稽核 `flow.variables`／`station.variables`。新增範圍或型別要同步 `SCOPES`、TCP `SET`、前端 `VariablesCard`。
+
+### 看板（apps/vision/board.py、api_board.py、前端 /board/:flowId、BoardSettings）
+- `Flow.board`（migration 0022）存設定，`board.sanitize` 只留合法欄位（壞設定不讓總覽頁炸），`effective()` 疊預設。
+- **`GET /flows/{id}/board` 是整合端自建畫面的唯一入口**：設定＋最新 run（影像 ref／標記／判定）＋數值（公差判定 `ok` 已算好）＋今日良率
+  （`today_counts` 讀 FlowRunHourly，與統計頁同一份）＋變數。前端 `lib/board.ts` 有同一套評估規則（`evaluateValues`／`pickImage`／`runToBoard`），
+  SSE 每片即時更新、設定與今日數字 15 秒抓一次；改規則要兩邊一起改（`board.test.ts` 與 `test_board.py` 都鎖住）。
+  JS `toFixed` 與 Python 格式化在「剛好一半」的進位不同，測試資料避開 .x5。
+- `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
+- `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
+  跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 除錯視覺化（編輯器）
+- 節點耗時熱點：`FlowEditorPage` 算 `slowestMs`，節點 data 帶 `heat`（0～1），`ToolNode.heatLevel` ≥0.85 紅、≥0.5 橙。
+- 「只跑到這裡」＝既有的 preview `until_node`（`graph.restrict_to` 只留該節點與上游）從右鍵選單觸發；引擎鎖定時不顯示。
+- 統計頁封存影像「在編輯器用這張重跑」＝把 ref 寫進 `flowDraft` 的 scratch，preview 的 `reuse_image_ref` 找不到快取時回頭讀封存。
 
 ### 格式化回覆（format_text 工具、TCP `fmt=`、HTTP `format=`）
 - 舊 PLC 與上位機解析不了 JSON。`format_text`（output 類）用樣板組一行文字：`{名字}` 取值的來源依序是

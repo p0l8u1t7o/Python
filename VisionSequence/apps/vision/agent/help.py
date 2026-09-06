@@ -29,7 +29,8 @@ PAGE_TITLES = {
     "agent.html": "AI assistant", "user-guide.html": "User guide", "capture-client.html": "Capture client", "deployment.html": "Deployment",
 }
 #: 使用者手冊與 AI 助手／批次頁最貼近操作，檢索時略加權；合約／設計手冊偏工程。
-PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9}
+#: 頁面加權：手冊與功能頁優先；合約／架構／效能／部署與名詞表是參考資料，「怎麼做」的問題不該被它們搶走第一名
+PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9, "glossary.html": 0.9}
 MAX_SECTION_CHARS = 1400
 TOP_K = 5
 #: 問「在哪裡／哪個頁面」時介面地圖段加權，其餘降權：地圖段很短，BM25 的長度正規化會讓它們搶走「怎麼做」類問題的第一名。

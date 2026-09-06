@@ -222,6 +222,9 @@
 <tr><td>Asset</td><td>資產</td><td>A file: a template image, an ONNX model, a dataset archive</td></tr>
 <tr><td>Judge</td><td>判定</td><td>The OK/NG conclusion, from the judge tool</td></tr>
 <tr><td>Named output</td><td>具名輸出</td><td>A key and value returned to the automation system, from the output tool</td></tr>
+<tr><td>Variable</td><td>變數</td><td>A value a flow keeps between runs (a running count, the previous part, the lot number a PLC sent); scope flow or station. Read and stored by the variable steps, the variables API and TCP VARS/SET; trial runs see a private copy</td></tr>
+<tr><td>Board</td><td>看板</td><td>What the operator screen shows for a flow: the chosen named outputs with label, unit and tolerance, the picture, today's counts and variables. Configured in the flow editor, shown on the Dashboard and on the full-screen board page</td></tr>
+<tr><td>Calibration</td><td>標定</td><td>One asset holding the lens correction and the pixel-to-real-world mapping for a camera, made on the Calibration page and used by the Lens correction, Real-world coordinates and Pixel calibration steps</td></tr>
 <tr><td>Engine lock</td><td>引擎鎖定</td><td>An integrator holding the hardware: everyone else can edit but not execute. Set it over HTTP (<code>POST /vision/lock</code>) or TCP (<code>LOCK</code> / <code>UNLOCK</code>); while it holds, a banner across the top of the interface says who has it.</td></tr>
 <tr><td>Integrator</td><td>整合方</td><td>An automation system calling with an API key</td></tr>
 <tr><td>Role</td><td>角色</td><td>administrator, engineer or operator (<code>UserPref.role</code>). An administrator manages accounts, permissions and settings; the other two roles have whatever functions an administrator ticked for them (see Role permissions).</td></tr>

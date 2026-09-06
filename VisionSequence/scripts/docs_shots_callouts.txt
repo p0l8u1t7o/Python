@@ -9,6 +9,7 @@ golden: 1=[data-testid="golden-upload"] | 2=[data-testid="golden-regress"] | 3=[
 batch: 1=[data-testid="batch-flow"] | 2=New image set | 3=[data-testid="batch-run-start"] | 4=Results tab | 5=Insights tab | 6=Tune tab | 7=[data-testid="assistant-toggle"]
 sources: 1=New source | 2=download | 3=[data-testid="manage-groups"] | 4=main table
 source-form: 1=kind | 2=[data-testid="cfg-browse"] | 3=[data-testid="source-test"] | 4=[data-testid="source-test-box"]
+board: 1=[data-testid="board-title"] | 2=[data-testid="board-verdict"] | 3=[data-testid="board-values"] | 4=[data-testid="board-counts"] | 5=[data-testid="board-variables"] | 6=[data-testid="board-exit"]
 calibration: 1=[data-testid="calib-mode-board"] | 2=[data-testid="calib-source"] | 3=[data-testid="calib-capture"] | 4=[data-testid="calib-cols"] | 5=[data-testid="calib-unit"] | 6=[data-testid="calib-solve"] | 7=[data-testid="calib-save"]
 assets: 1=Upload asset | 2=[data-testid="manage-groups"] | 3=asset cards
 dl: 1=[data-testid="dl-new"] | 2=[data-testid="dl-grid"] | 3=[data-testid="dl-auto"] | 4=[data-testid="dl-train"]
