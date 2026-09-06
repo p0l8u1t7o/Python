@@ -178,6 +178,7 @@ $env:VS_HOME = $Root
 $env:PYTHONIOENCODING = 'utf-8'
 $env:PYTHONUTF8 = '1'
 $env:YOLO_OFFLINE = '1'
+$env:LOG_LEVEL = 'WARNING'   # 啟動 INFO 日誌走 stderr，在 Stop 模式下會被當成錯誤中止腳本（vslib Invoke-VsManage 同樣做法）
 Write-VsStep "Database migration"
 Push-Location $target
 try {

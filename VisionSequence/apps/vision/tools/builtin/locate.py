@@ -679,6 +679,8 @@ def _current_pose(ctx: ToolContext) -> tuple[float, float, float]:
                 return float(x), float(y), float(m.get("angle", 0) or 0)
     a, b, cc = ctx.inputs.get("a"), ctx.inputs.get("b"), ctx.inputs.get("c")
     if a is None or b is None:
+        if "matches" in ctx.inputs or "a" in ctx.inputs or "b" in ctx.inputs:
+            return math.nan, math.nan, 0.0  # 上游有接、只是這次沒找到：讓工具回 ng，不是 raise
         raise ToolError("No current position: wire matches, or a/b as X/Y")
     try:
         return float(a), float(b), float(cc or 0)
@@ -711,7 +713,9 @@ class ShapeAlignTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         x, y, angle = _current_pose(ctx)
         if not all(np.isfinite([x, y])):
-            raise ToolError("The current position is not a valid number (the target may not have been found)")
+            # 找不到東西回 ng、不 raise（工具規則）：下游 ROI 跟隨拿到 None 會把區域留在原地
+            return Result(outputs={"dx": None, "dy": None, "dtheta": None, "transform": None}, status="ng",
+                          message="No current position: the locate step found nothing")
         rx, ry, ra = ctx.number("ref_x"), ctx.number("ref_y"), ctx.number("ref_angle")
         dx, dy = x - rx, y - ry
         dtheta = (angle - ra) if ctx.flag("use_angle", True) else 0.0
@@ -743,6 +747,10 @@ class FixtureRoiTool(Tool):
         if not isinstance(region, dict) or not region.get("shape"):
             raise ToolError("No region is set")
         t = ctx.inputs.get("transform")
+        if t is None and "transform" in ctx.inputs:
+            # 定位補正這次沒找到（回 None）：區域留在原地、標 ng，下游量測照跑但整次 run 是 NG
+            return Result(outputs={"region": region}, overlays=[region_overlay(region, color="#ef4444", label="not moved")], status="ng",
+                          message="No transform (the locate step found nothing); region left in place")
         if not isinstance(t, dict):
             raise ToolError("The transform input must come from a locate-offset step")
         try:

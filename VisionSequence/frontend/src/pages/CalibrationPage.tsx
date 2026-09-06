@@ -428,13 +428,10 @@ export function CalibrationPage() {
                 </Button>
                 <Table>
                   <THead>
-                    <Tr>
-                      <Th>{t('calibration.shot')}</Th>
+                    <Th>{t('calibration.shot')}</Th>
                       <Th>{t('calibration.found')}</Th>
                       <Th align="right">{t('calibration.viewError')}</Th>
-                      <Th />
-                    </Tr>
-                  </THead>
+                      <Th /></THead>
                   <TBody>
                     {shots.length ? shots.map((s, i) => (
                       <Tr key={s.ref} selected={i === current} onClick={() => setCurrent(i)} testId={`calib-shot-${i}`}>
@@ -486,15 +483,12 @@ export function CalibrationPage() {
                 )}
                 <Table>
                   <THead>
-                    <Tr>
-                      <Th>#</Th>
+                    <Th>#</Th>
                       <Th>{t('calibration.pixel')}</Th>
                       {mode === 'points' ? <Th>{`X (${unit})`}</Th> : null}
                       {mode === 'points' ? <Th>{`Y (${unit})`}</Th> : null}
                       <Th align="right">{t('calibration.pointError')}</Th>
-                      <Th />
-                    </Tr>
-                  </THead>
+                      <Th /></THead>
                   <TBody>
                     {points.length ? points.map((p, i) => (
                       <Tr key={`${p.px[0]}-${p.px[1]}-${i}`} testId={`calib-point-${i}`}>

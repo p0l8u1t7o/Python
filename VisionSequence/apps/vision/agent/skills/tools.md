@@ -333,7 +333,7 @@ find_line.line（或點集、`{"angle": 度}`），`b` 是基準：垂直度把�
 光度立體：同一件在 3～4 個方向打光各拍一張（`image`＝光 1、`image_1..3`），`light_azimuth`（畫面 +x 起順時針，0＝自右、90＝自下）與
 `light_elevation` 要與燈架一致。輸出 `curvature`（有號散度：凸亮凹暗，刻印字最清楚）、`curvature_abs`（shape strength，無號，接 threshold／blob）、
 `albedo`（去掉打光的材質圖，印刷／髒污用它）、`normal_x/normal_y`。單張看不見的浮凸／凹坑／拋光面刮痕用這個，之後照一般流程 blob／ocr_read。
-一次觸發要連拍四張：來源端還沒就緒時用 `crop` 把 2×2 拼圖拆開（範本「刻印字／凹凸缺陷」就是這樣）。`drop_darkest` 預設開（四燈時每像素丟最暗一張，深槽陰影不拉歪）。
+一次觸發要連拍四張：來源端還沒就緒時用 `crop` 把 2×2 拼圖拆開（範本「刻印字／凹凸缺陷」就是這樣）。「沒有凹坑＝好」的判定用 `pixel_count`（blob 找不到會回 ng，整次 run 就變 NG）。`drop_darkest` 預設開（四燈時每像素丟最暗一張，深槽陰影不拉歪）。
 
 ## python_script
 自訂 Python 檢測（只在使用者明確要求「自己寫程式」時才用；一般需求優先用內建工具）。`code` 定義 `def run(ctx)`：`ctx.image`（唯讀）、`ctx.gray()`、`ctx.inputs['a'..'d']`、`ctx.params['p1'..'p3']`（現場參數，技術員可在參數卡調）、`ctx.roi()`／`ctx.crop()`；回傳 dict：`value`／`result`／`text`／`data`／`image`（新陣列）／`status`（ok|ng）／`branch`（pass|fail）／`overlays`／`message`。輸出埠固定：value、result、text、data、image；`pass`／`fail` 分支接 judge。只能匯入 numpy／cv2／math／json／re／statistics／itertools／collections／functools／time；不能用 dunder、exec／eval／open；純 Python 迴圈超過 `max_ms` 會中止。**只有管理員能儲存新腳本**，生成後要提醒使用者由管理員儲存核准。

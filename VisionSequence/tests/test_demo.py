@@ -33,6 +33,58 @@ class DemoSeedTests(TransactionTestCase):
         self.tmp = tempfile.mkdtemp(prefix="vs-demo-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
 
+    def test_every_template_over_all_sample_pictures(self) -> None:
+        """深度測試：每個範本對它的每張樣本圖各跑一次（engine.execute 直跑），不得有 error 節點，OK/NG 序列要符合樣本的設計
+        （多數是「第 4 張刻意 NG」；排除區四張都 OK；DL 範本 3 好 2 壞；合成來源的範本每張隨機，只驗沒有 error）。
+        這條會抓到「找不到東西時 raise 而不是回 ng」與「blob 找不到把整次 run 判 NG」這類單張測試看不出的毛病。"""
+        import importlib.util
+        import os
+
+        import cv2
+        import numpy as np
+
+        from apps.vision import engine
+        from apps.vision.graph import compile_graph
+        from apps.vision.runner import runner
+
+        expected = {
+            "circle_gauge": "ok ok ok ng", "edge_angle": "ok ok ok ng", "golden_compare": "ok ok ok ng", "stat_compare": "ok ok ok ng",
+            "fft_defect": "ok ok ok ng", "geometry_count": "ok ok ok ng", "gear_teeth": "ok ok ok ng", "contour_defect": "ok ok ok ng",
+            "circular_defect": "ok ok ok ng", "form_tolerance": "ok ok ok ng", "emboss_defect": "ok ok ok ng", "barcode_grade": "ok ok ok ng",
+            "exclusion_zone": "ok ok ok ok", "shading": "ok ok ok ng", "color_presence": "ok ok ok ng", "color_verify": "ok ok ok ng",
+            "barcode_read": "ok ok ok ng", "date_code": "ok ok ok ng", "label_read": "ok ok ok ng", "shape_locate": "ok ok ok ng",
+            "locate_measure": "ok ok ok ng", "cup_measure": "ok ok ok ng", "dl_classify_demo": "ok ok ok ok ng ng", "anomaly_demo": "ok ok ok ng ng",
+            "dl_segment_demo": "ok ok ok ng ng",
+        }
+        with override_settings(VISION=_vision_with_tmp_asset_dir(self.tmp)):
+            seed_demo()
+            run_dl = os.environ.get("VISION_TEST_DL") == "1" and importlib.util.find_spec("ultralytics") is not None
+            from apps.vision.dl import anomaly as _anomaly
+
+            backbone_ok = _anomaly.backbone_available()
+            problems: list[str] = []
+            for key, name, _desc, _cat, builder in BUILTIN_TEMPLATES:
+                if (key in TEMPLATES_NEED_DL and not run_dl) or (key in TEMPLATES_NEED_BACKBONE and not backbone_ok):
+                    continue
+                src = ImageSource.objects.get(name=TEMPLATE_SAMPLE_SOURCES[key])
+                folder = (src.config or {}).get("path")
+                if not folder:
+                    continue  # 合成來源：每張隨機，單張實跑已在上一條測試
+                compiled = compile_graph(validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=src.id)))
+                runner._prefetch(compiled)
+                statuses = []
+                for f in sorted(x for x in os.listdir(folder) if x.endswith(".png")):
+                    img = cv2.imdecode(np.fromfile(os.path.join(folder, f), dtype=np.uint8), cv2.IMREAD_COLOR)
+                    rep = engine.execute(compiled, flow_id=0, flow_version=1, trigger="test", grab=runner._grab, asset_path=runner._asset_path, preview=False, input_image=img, run_id=f"seq{key}{f}"[:32])
+                    errors = {nid: nr.message for nid, nr in rep.nodes.items() if nr.status == "error"}
+                    if errors:
+                        problems.append(f"{name} / {f}: error nodes {errors}")
+                    statuses.append(rep.status)
+                seq = " ".join(statuses)
+                if key in expected and seq != expected[key]:
+                    problems.append(f"{name}: statuses {seq!r}, expected {expected[key]!r}")
+            self.assertFalse(problems, "\n".join(problems))
+
     def test_seed_builds_and_every_template_runs(self) -> None:
         with override_settings(VISION=_vision_with_tmp_asset_dir(self.tmp)):
             seed_demo()

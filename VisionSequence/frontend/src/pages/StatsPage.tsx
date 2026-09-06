@@ -93,10 +93,8 @@ function PrecisionCard({ flowId }: { flowId: number }) {
             <div className="overflow-x-auto">
               <Table>
                 <THead>
-                  <Tr>
-                    <Th>{t('precision.output')}</Th><Th align="right">n</Th><Th align="right">{t('precision.mean')}</Th><Th align="right">σ</Th>
-                    <Th align="right">{t('precision.range')}</Th><Th align="right">{t('precision.min')}</Th><Th align="right">{t('precision.max')}</Th><Th align="right">6σ</Th>
-                  </Tr>
+                  <Th>{t('precision.output')}</Th><Th align="right">n</Th><Th align="right">{t('precision.mean')}</Th><Th align="right">σ</Th>
+                  <Th align="right">{t('precision.range')}</Th><Th align="right">{t('precision.min')}</Th><Th align="right">{t('precision.max')}</Th><Th align="right">6σ</Th>
                 </THead>
                 <TBody>
                   {Object.keys(result.outputs).length === 0 ? <EmptyRow colSpan={8} message={t('precision.noNumeric')} /> : null}

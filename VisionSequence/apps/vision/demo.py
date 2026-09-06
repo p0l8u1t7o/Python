@@ -616,7 +616,7 @@ def shape_match_flow(source_id: Any, model_asset: str = "") -> dict[str, Any]:
         _edge("shape", "ok", "found", "_flow"), _edge("shape", "ng", "not_found", "_flow"),
         _edge("shape", "out_x", "best_x", "value"), _edge("shape", "out_y", "best_y", "value"),
         _edge("shape", "out_a", "best_angle", "value"), _edge("shape", "out_s", "best_score", "value"),
-        _edge("shape", "align", "matches", "matches"), _edge("align", "follow", "transform", "transform"),
+        _edge("shape", "align", "matches", "matches"), _edge("shape", "align", "found", "_flow"), _edge("align", "follow", "transform", "transform"),
         _edge("gray", "stats", "image", "image"), _edge("follow", "stats", "region", "roi"),
     ]
     return {"nodes": nodes, "edges": edges}
@@ -651,7 +651,7 @@ def circular_defect_flow(source_id: Any) -> dict[str, Any]:
 
 
 def emboss_defect_flow(source_id: Any) -> dict[str, Any]:
-    """刻印字／凹凸缺陷：四個象限各裁成一張打光影像 → photometric_stereo（shape strength）→ 凹坑區 blob 計數 → 0 個 → OK。
+    """刻印字／凹凸缺陷：四個象限各裁成一張打光影像 → photometric_stereo（shape strength）→ 凹坑區 pixel_count ≤ 40 → OK。
 
     對齊合成圖「浮凸板（四燈）」：第 4 張右上角區多一個凹坑（NG）；反射率斑駁讓單張二值化抓不到任何形狀。"""
     q = [{"shape": "rect", "x": 0, "y": 0, "w": 640, "h": 480}, {"shape": "rect", "x": 640, "y": 0, "w": 640, "h": 480},
@@ -666,20 +666,18 @@ def emboss_defect_flow(source_id: Any) -> dict[str, Any]:
         _node("q3", "crop", 1, 2, "Light 3 (left)", roi=q[2]),
         _node("q4", "crop", 1, 3, "Light 4 (above)", roi=q[3]),
         _node("ps", "photometric_stereo", 2, 0, "Surface shape", light_azimuth=[0, 90, 180, 270], light_elevation=30, output="curvature_abs"),
-        _node("blob", "blob", 3, 0, "Dents in the check zone", roi=zone, threshold_method="fixed", threshold=90, polarity="bright", min_area=60),
-        _node("cmp", "if_number", 4, 0, "No dents?", operator="eq", threshold=0),
-        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 5, 1, "NG: surface dent", verdict="ng", label="dent"),
-        _node("out_n", "output", 4, 1, "Output dent count", name="dent_count"),
-        _note("n1", 2, 2, "About", "The same plate is photographed four times, each time lit from a different side; the sample picture tiles those four views 2×2 and the Crop steps split them again. Photometric stereo solves the surface normal at every pixel and its shape-strength map shows where the surface bends — the embossed characters and any dent — while ignoring the mottled reflectance that defeats a threshold on any single picture.\nThe blob step counts shapes inside the check zone above the characters; a dent there is NG."),
+        _node("px", "pixel_count", 3, 0, "Shape pixels in the check zone", roi=zone, threshold=90, min_count=0, max_count=40),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: surface dent", verdict="ng", label="dent"),
+        _node("out_n", "output", 4, 2, "Output shape pixels", name="dent_pixels"),
+        _note("n1", 2, 2, "About", "The same plate is photographed four times, each time lit from a different side; the sample picture tiles those four views 2×2 and the Crop steps split them again. Photometric stereo solves the surface normal at every pixel and its shape-strength map shows where the surface bends — the embossed characters and any dent — while ignoring the mottled reflectance that defeats a threshold on any single picture.\nThe pixel-count step counts shape pixels inside the check zone above the characters; more than 40 of them means a dent, and that is NG. (A blob count would call an empty zone \u2018not found\u2019 and mark the run NG, so a pixel count is the right tool when nothing is the good answer.)"),
     ]
     edges = [
         _edge("src", "q1"), _edge("src", "q2"), _edge("src", "q3"), _edge("src", "q4"),
         _edge("q1", "ps", "image", "image"), _edge("q2", "ps", "image", "image_1"), _edge("q3", "ps", "image", "image_2"), _edge("q4", "ps", "image", "image_3"),
-        _edge("ps", "blob", "image", "image"),
-        _edge("blob", "cmp", "count", "value"),
-        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
-        _edge("blob", "out_n", "count", "value"),
+        _edge("ps", "px", "image", "image"),
+        _edge("px", "ok", "ok", "_flow"), _edge("px", "ng", "ng", "_flow"),
+        _edge("px", "out_n", "count", "value"),
     ]
     return {"nodes": nodes, "edges": edges}
 
@@ -947,7 +945,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: contour_defect_flow(sid, _demo_asset("Example: stamped part outline"))),
     ("circular_defect", "Chipped rim (circular caliper)", "A ring of 180 radial calipers gives the radius at every angle and the run-out; Profile defects fits a circle and marks every dip or empty caliper as a chip, drawn as a red arc on the rim", "measure", circular_defect_flow),
     ("form_tolerance", "Roundness (form tolerance)", "180 radial calipers give the edge points; Form and position tolerance fits the minimum-zone circle (ISO 1101) and passes the disc when the ring between the two concentric circles is within 5 px — the chipped rim fails", "measure", form_tolerance_flow),
-    ("emboss_defect", "Embossed characters and dents (photometric stereo)", "Four crops split a 2×2 picture of the plate under four lights; Photometric stereo turns them into a shape-strength map on which a blob count in the check zone finds the dent that no single picture shows", "quality", emboss_defect_flow),
+    ("emboss_defect", "Embossed characters and dents (photometric stereo)", "Four crops split a 2×2 picture of the plate under four lights; Photometric stereo turns them into a shape-strength map on which a pixel count in the check zone finds the dent that no single picture shows", "quality", emboss_defect_flow),
     ("barcode_grade", "Barcode quality grade (ISO 15415)", "Grades the Data Matrix on the label like a verifier — contrast, modulation, fixed pattern damage, axial and grid non-uniformity, unused error correction — and passes it at C or better; the dirty symbol fails", "detect", barcode_grade_flow),
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
