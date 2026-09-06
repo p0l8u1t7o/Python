@@ -75,7 +75,8 @@ KEYWORD_TOOLS: dict[str, tuple[str, ...]] = {
     "條碼|条码|二維碼|二维码|qr|barcode|讀碼|读码|標籤|标签": ("barcode", "warp_perspective", "text_presence"),
     "文字|序號|序号|印字|text": ("text_presence", "warp_perspective"),
     "亮度|曝光|太暗|太亮|brightness|exposure": ("intensity", "histogram", "lut", "resize"),
-    "定位|位移|偏移|範本|范本|template|align|跟隨|跟随": ("template_match", "shape_align", "fixture_roi"),
+    "定位|位移|偏移|範本|范本|template|align|跟隨|跟随": ("shape_match", "template_match", "shape_align", "fixture_roi"),
+    "形狀比對|形状比对|幾何比對|几何比对|任意角度|旋轉件|旋转件|遮擋|遮挡|多件|上下料|shape match|geometric": ("shape_match", "shape_align", "fixture_roi"),
     "紋|纹|網點|网点|週期|周期|texture|pattern": ("fft_filter", "threshold", "blob"),
     "斜貼|斜贴|透視|透视|拉正|perspective|warp": ("warp_perspective",),
     "剖面|profile|溝|沟": ("line_profile",),
@@ -102,7 +103,7 @@ INTENT_TOOLS: dict[str, tuple[str, ...]] = {
     "generic": ("intensity", "histogram", "edge_density"),
     "text": ("text_presence",),
     "distance": ("find_circle", "distance", "calibration", "tolerance_judge"),
-    "template_presence": ("template_match",),
+    "template_presence": ("template_match", "shape_match"),
 }
 
 _ROI_TOOLS = {

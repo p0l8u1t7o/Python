@@ -17,6 +17,17 @@ from django.test import TransactionTestCase, override_settings
 from apps.vision.models import Asset, Flow, ImageSource
 
 
+def _save_png(image: np.ndarray, name: str) -> str:
+    """把合成影像寫進 ASSET_DIR（形狀範本建模的來源資產）。"""
+    import os
+
+    path = os.path.join(str(settings.VISION["ASSET_DIR"]), name)
+    ok, buf = cv2.imencode(".png", image)
+    assert ok
+    buf.tofile(path)
+    return path
+
+
 def _png_upload(name: str = "a.png") -> io.BytesIO:
     ok, buf = cv2.imencode(".png", np.full((48, 64, 3), 160, np.uint8))
     assert ok
@@ -45,6 +56,13 @@ class GetEndpointsSmokeTests(TransactionTestCase):
         r = self.client.post("/api/vision/assets/stat-template", data={"images": [_png_upload(), _png_upload(), _png_upload()], "name": "stat", "align": "none"})
         self.assertEqual(r.status_code, 201, r.content)
         self.stat_id = r.json()["id"]
+        shape_src = np.full((120, 160), 40, np.uint8)
+        cv2.rectangle(shape_src, (40, 30), (110, 90), 220, -1)
+        cv2.circle(shape_src, (60, 50), 8, 90, -1)
+        shape_asset = Asset.objects.create(name="shape-src", kind="image", path=_save_png(shape_src, "shape-src.png"))
+        r = self.client.post("/api/vision/assets/shape-model", data=json.dumps({"asset_id": str(shape_asset.id), "name": "shape", "min_contrast": 10}), content_type="application/json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.shape_id = r.json()["id"]
         # 跑一次，讓 recent／stats／runs 有資料
         r = self.client.post(f"/api/vision/flows/{self.flow.id}/run", data=json.dumps({"wait": True}), content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content)
@@ -70,6 +88,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/assets?kind=calibration",
             f"/api/vision/calibration/assets/{self.calibration_id}", f"/api/vision/assets/{self.stat_id}/stat-template", f"/api/vision/assets/{self.stat_id}/stat-template/mean",
+            f"/api/vision/assets/{self.shape_id}/shape-model", f"/api/vision/assets/{self.shape_id}/shape-model/preview",
             "/api/vision/groups?kind=source", "/api/vision/fs",
             "/api/vision/templates", "/api/vision/capacity", "/api/vision/integration/info", "/api/vision/plugins",
             "/api/vision/audit", "/api/vision/audit.csv", "/api/vision/summary", f"/api/vision/flows/{fid}/versions", f"/api/vision/flows/{fid}/versions/1",

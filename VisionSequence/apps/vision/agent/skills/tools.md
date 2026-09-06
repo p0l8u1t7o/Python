@@ -78,6 +78,13 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## template_match
 範本比對定位：`template` 是資產 id（使用者框選建立），`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。AI 生成時沒有資產可填就留空並在 note 提醒。
 
+## shape_match
+形狀比對定位（幾何比對）：以邊緣**梯度方向**計分，光照變化、部分遮擋、雜亂背景、任意角度都撐得住，是 template_match（NCC）撐不住時的首選
+（機械手上下料、多件同時定位）。`model` 是形狀範本資產（用 `POST /vision/assets/shape-model` 從影像資產或試執行影像＋範本區建；
+可給 `exclude` 排除會變的印字），`min_score` 0.6～0.8（遮 25% 分數約掉 0.25）、`max_matches`、`angle_start/angle_extent`
+（範圍越窄越快）、`scale_min/max`（預設不搜尺度）、`polarity` ignore 找黑白反轉件。輸出 `matches`（與 template_match 同格式）接 shape_align、
+`best_x/best_y/best_angle/best_scale/best_score`，`not_found` 接 judge(ng)。沒有形狀資產可填時留空並在 note 提醒先建模。
+
 ## shape_align
 定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。
 

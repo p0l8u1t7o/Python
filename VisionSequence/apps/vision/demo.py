@@ -589,6 +589,37 @@ def stat_compare_flow(source_id: Any, model_asset: str = "") -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def shape_match_flow(source_id: Any, model_asset: str = "") -> dict[str, Any]:
+    """形狀比對定位：shape_match（任意角度、變暗、雜物都找得到）→ found/not_found → shape_align → fixture_roi 讓量測 ROI 跟著件走。
+
+    對齊合成圖「形狀比對」：第 1 張正放（seed 用它建模）、第 2 張轉 37° 變暗、第 3 張轉 −120° 加雜物、第 4 張是別的零件（NG）。"""
+    ref = {"shape": "rect", "x": 640 - 110, "y": 480 - 80, "w": 220, "h": 160}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("shape", "shape_match", 2, 0, "Find the bracket", model=model_asset, min_score=0.6, max_matches=1),
+        _node("ok", "judge", 3, 0, "OK: found", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG: not this part", verdict="ng", label="part_not_found"),
+        _node("out_x", "output", 3, 2, "Output X", name="part_x"),
+        _node("out_y", "output", 4, 2, "Output Y", name="part_y"),
+        _node("out_a", "output", 3, 3, "Output angle", name="part_angle"),
+        _node("out_s", "output", 4, 3, "Output score", name="shape_score"),
+        _node("align", "shape_align", 4, 0, "Locate offset", ref_x=640 + 0, ref_y=480 + 0, ref_angle=0),
+        _node("follow", "fixture_roi", 5, 0, "Part box follows", roi=ref),
+        _node("stats", "intensity", 6, 0, "Part brightness"),
+        _note("n1", 0, 1, "About", "Shape match scores the direction of edges, not grey values: the second picture is darker and turned 37°, the third is turned −120° among clutter, and both are found with a high score.\nThe fourth picture holds a different part, so nothing scores above 0.6 and the flow takes the NG branch. The model asset is built by seeding from the first picture."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "shape", "image", "image"),
+        _edge("shape", "ok", "found", "_flow"), _edge("shape", "ng", "not_found", "_flow"),
+        _edge("shape", "out_x", "best_x", "value"), _edge("shape", "out_y", "best_y", "value"),
+        _edge("shape", "out_a", "best_angle", "value"), _edge("shape", "out_s", "best_score", "value"),
+        _edge("shape", "align", "matches", "matches"), _edge("align", "follow", "transform", "transform"),
+        _edge("gray", "stats", "image", "image"), _edge("follow", "stats", "region", "roi"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def color_verify_flow(source_id: Any) -> dict[str, Any]:
     """顏色比對：指定區域的平均色與目標色比距離 → 判定；顏色統計輸出色碼。
 
@@ -762,6 +793,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
     ("label_read", "Barcode label with perspective correction", "Four-point perspective correction straightens the tilted label before reading it, plus a text-presence check on the serial area", "identify", label_flow),
+    ("shape_locate", "Shape match locate (any angle, any light)", "Edge-direction shape matching finds the part turned, darkened or among clutter, feeds Locate offset and ROI follow, and rejects a different part", "measure",
+     lambda sid: shape_match_flow(sid, _demo_asset("Example: shape model (bracket)", "file"))),
     ("locate_measure", "Locate and gauge", "Template match, locate correction, ROI follow, caliper width, tolerance judge", "measure",
      lambda sid: locate_measure_flow(sid, _demo_asset("Example: cross locator template"))),
     ("cup_measure", "Deep-drawn cup gauge", "Template match, locate correction, three ROIs following, outer and inner circle finds plus wall thickness, concentricity, three tolerance judges, named outputs, OK/NG", "measure",
@@ -794,6 +827,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "barcode_read": "Example: barcode label",
     "label_read": "Example: barcode label",
     "locate_measure": "Example: locate and gauge",
+    "shape_locate": "Example: shape match",
     "cup_measure": "Example: cup gauge",
     "yolo_count": "Example: stop sign",
     "yolo_area": "Example: stop sign",
@@ -970,6 +1004,23 @@ def seed_demo() -> list[str]:
     sample_asset("Example: print golden template", "golden_print", None)
     sample_asset("Example: stamped part outline", "stamped_part", None)
     sample_asset("Example: white reference (uneven lighting)", "vignette", None, image=demo_images.vignette_flat())
+    if not Asset.objects.filter(name="Example: shape model (bracket)", kind="file").exists():
+        import os
+        import uuid as _uuid
+
+        import cv2
+        from django.conf import settings
+
+        from apps.vision import shapemodel
+        from apps.vision.api_shapemodel import build_model
+
+        first = cv2.cvtColor(demo_images.shape_parts()[0], cv2.COLOR_BGR2GRAY)
+        model, meta = build_model(first, {"shape": "rect", "x": 640 - 125, "y": 480 - 95, "w": 250, "h": 190}, None, {"min_contrast": 10})
+        shape_id = _uuid.uuid4()
+        shape_path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{shape_id.hex}.npz")
+        size = shapemodel.save(shape_path, model)
+        Asset.objects.create(id=shape_id, name="Example: shape model (bracket)", kind="file", group="Examples", path=shape_path, size=size, meta=meta)
+        created.append("資產 Example: shape model (bracket)（新建）")
     if not Asset.objects.filter(name="Example: statistical template (print)", kind="file").exists():
         import os
         import uuid as _uuid

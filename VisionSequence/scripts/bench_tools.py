@@ -185,8 +185,12 @@ class Scene:
         payload, _ = _stattpl.build(good, self.rect(-0.25, -0.2, 0.5, 0.4), "phase")
         self.stat_model = os.path.join(folder, f"stat_{w}.npz")
         _stattpl.save(self.stat_model, payload)
+        from apps.vision import shapemodel as _shapemodel
+
+        self.shape_model = os.path.join(folder, f"shape_{w}.npz")
+        _shapemodel.save(self.shape_model, _shapemodel.teach(self.gray[cy - r : cy + r, cx - r : cx + r]))
         self.flat_bgr = save_png(cv2.cvtColor(np.clip(vignette * 235, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR), folder, f"flatc_{w}.png")
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -255,6 +259,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("template_match no-pyr", "template_match", big, {"template": "tpl", "pyramid": False, "threshold": 0.6}, {}, {}),
         ("template_match rot ±10/5", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6, "angle_range": 10, "angle_step": 5}, {}, {}),
         ("template_match roi+rot", "template_match", big, {"template": "tpl", "roi": plate, "pyramid": True, "threshold": 0.6, "angle_range": 10, "angle_step": 5}, {}, {}),
+        ("shape_match full angle", "shape_match", big, {"model": "shapemodel", "min_score": 0.6}, {}, {}),
+        ("shape_match ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "angle_start": -20, "angle_extent": 40}, {}, {}),
+        ("shape_match roi ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "roi": plate, "angle_start": -20, "angle_extent": 40}, {}, {}),
         ("shape_align", "shape_align", None, {"ref_x": s.cx, "ref_y": s.cy}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("fixture_roi", "fixture_roi", None, {"roi": plate}, {"transform": {"dx": 3, "dy": -2, "dtheta": 1.5, "pivot": [s.cx, s.cy]}}, {}),
         ("region_from_shape", "region_from_shape", None, {"roi": center_circle}, {}, {}),

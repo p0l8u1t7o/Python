@@ -202,6 +202,40 @@ def vignette_parts() -> list[np.ndarray]:
     return out
 
 
+def _bracket(img: np.ndarray, cx: float, cy: float, angle: float, bright: float = 1.0) -> None:
+    """形狀比對的示範工件：不對稱五邊形亮件＋偏心暗孔；角度為畫面順時針。"""
+    base = np.array([[-110, -80], [110, -80], [110, 30], [40, 80], [-110, 80]], np.float64)
+    t = np.deg2rad(angle)
+    r = np.array([[np.cos(t), -np.sin(t)], [np.sin(t), np.cos(t)]])
+    poly = (base @ r.T + [cx, cy]).round().astype(np.int32)
+    cv2.fillPoly(img, [poly], (int(205 * bright), int(200 * bright), int(200 * bright)))
+    hole = np.array([-40.0, -15.0]) @ r.T + [cx, cy]
+    cv2.circle(img, (int(round(hole[0])), int(round(hole[1]))), 24, (int(70 * bright), int(70 * bright), int(75 * bright)), -1)
+
+
+def shape_parts() -> list[np.ndarray]:
+    """形狀比對：第 1 張正放（建模用）、第 2 張轉 37° 且變暗 0.6、第 3 張轉 −120° 加雜物、第 4 張換成別的零件（找不到 → NG）。"""
+    out = []
+    img = _canvas(1280, 960, 45)
+    _bracket(img, 640, 480, 0)
+    out.append(_noise(img, 4, 130))
+    img = _canvas(1280, 960, 45)
+    _bracket(img, 780, 520, 37, bright=0.6)
+    out.append(_noise(img, 4, 131))
+    img = _canvas(1280, 960, 45)
+    _bracket(img, 520, 430, -120)
+    rng = np.random.default_rng(7)
+    for _ in range(25):
+        x, y = rng.integers(40, 1200), rng.integers(40, 900)
+        cv2.rectangle(img, (int(x), int(y)), (int(x) + 34, int(y) + 34), (175, 170, 170), -1)
+    out.append(_noise(img, 4, 132))
+    img = _canvas(1280, 960, 45)
+    cv2.circle(img, (640, 480), 120, (205, 200, 200), -1)  # 別的零件：圓盤
+    cv2.circle(img, (600, 465), 24, (70, 70, 75), -1)
+    out.append(_noise(img, 4, 133))
+    return out
+
+
 def color_blocks() -> list[np.ndarray]:
     """顏色檢驗：左＝目標紅色塊、中＝綠、右＝藍；第 4 張紅色偏橘（NG）。"""
     out = []
@@ -362,6 +396,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "gear": ("gear teeth", gear),
     "stamped_part": ("stamped part", stamped_part),
     "vignette": ("uneven lighting", vignette_parts),
+    "shape_parts": ("shape match", shape_parts),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
     "cup": ("cup gauge", cup),
