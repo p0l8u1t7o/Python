@@ -995,8 +995,11 @@ def _demo_ref(name: str) -> dict[str, Any] | None:
 def template_samples(key: str) -> list[dict[str, Any]]:
     """內建範本的樣本圖（固定影像描述子清單，依檔名排序；第 4 張多半刻意 NG）；沒有樣本集的範本回空清單。"""
     set_key = TEMPLATE_SAMPLE_SETS.get(key)
-    if not set_key:
-        return []
+    return sample_pictures(set_key) if set_key else []
+
+
+def sample_pictures(set_key: str) -> list[dict[str, Any]]:
+    """一個合成樣本集（demo_images.SAMPLE_SETS 的鍵）的固定影像描述子；產不出來回空清單。"""
     cache_key = f"set:{set_key}"
     if cache_key in _FIXED_CACHE and _cached_present(_FIXED_CACHE[cache_key]):
         return [dict(d) for d in _FIXED_CACHE[cache_key]]

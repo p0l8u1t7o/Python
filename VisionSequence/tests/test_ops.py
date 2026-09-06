@@ -6,6 +6,7 @@ import datetime as dt
 import io
 import json
 import shutil
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -112,9 +113,18 @@ class RetentionTests(TransactionTestCase):
 
 
 class BackupRestoreTests(TestCase):
+    def setUp(self):
+        # 備份會把整個 ASSET_DIR 打包：指到暫存目錄，否則測試會壓縮站台上的 GB 級資產（慢，還在 dataackups 留下大檔）
+        self.assets = Path(tempfile.mkdtemp(prefix="vs-backup-assets-"))
+        self.addCleanup(shutil.rmtree, self.assets, True)
+        patched = override_settings(VISION={**settings.VISION, "ASSET_DIR": self.assets})
+        patched.enable()
+        self.addCleanup(patched.disable)
+
     def test_round_trip(self):
         out = Path(settings.DATA_DIR) / "backups" / "test-backup.zip"
         out.unlink(missing_ok=True)
+        self.addCleanup(out.unlink, True)
         Flow.objects.create(name="in-the-backup", graph={})
         call_command("backup", "--out", str(out), stdout=io.StringIO())
         self.assertTrue(out.exists())
@@ -128,10 +138,6 @@ class BackupRestoreTests(TestCase):
         out.unlink(missing_ok=True)
 
     def test_backup_includes_env_and_plugins(self):
-        import tempfile
-
-        from django.test import override_settings
-
         home = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, home, True)
         (home / ".env").write_text("VISION_STATION_ID=BK\n", encoding="utf-8")
@@ -156,9 +162,13 @@ class BackupRestoreTests(TestCase):
                 real_manifest.write_bytes(saved_manifest)
 
         self.addCleanup(_restore_downloads)
+        # restore 會把現有的測試資料庫另存一份；測完自己收拾，別把副本留在 data/
+        db_path = Path(settings.DATABASES["default"]["NAME"])
+        self.addCleanup(lambda: [p.unlink(missing_ok=True) for p in db_path.parent.glob(db_path.name + ".before-restore-*")])
         real_manifest.write_text('{"version": "9.9.9", "filename": "VisionSequenceCapture-9.9.9-win64.zip"}', encoding="utf-8")
         (downloads / "VisionSequenceCapture-9.9.9-win64.zip").write_bytes(b"zip")
         out = Path(settings.DATA_DIR) / "backups" / "test-env-backup.zip"
+        self.addCleanup(out.unlink, True)
         with override_settings(VS_HOME=home, VISION={**settings.VISION, "PLUGIN_DIR": plugins}):
             call_command("backup", "--out", str(out), stdout=io.StringIO())
             with zipfile.ZipFile(out) as zf:
@@ -176,6 +186,7 @@ class BackupRestoreTests(TestCase):
             self.assertEqual(manifest["capture_client_files"], 1)
             self.assertIn("version", manifest)
             out2 = out.with_name("test-env-backup-2.zip")
+            self.addCleanup(out2.unlink, True)
             call_command("backup", "--out", str(out2), "--no-env", "--with-wheels", "--with-client", stdout=io.StringIO())
             with zipfile.ZipFile(out2) as zf:
                 names = set(zf.namelist())
