@@ -1,5 +1,7 @@
 .venv/
 __pycache__/
+VM Help
+Temp
 *.pyc
 .env
 data/
