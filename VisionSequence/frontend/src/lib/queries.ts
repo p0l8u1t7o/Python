@@ -1106,9 +1106,22 @@ export function useDlMutations() {
   const cancelTrain = useMutation({
     mutationFn: () => api.post<{ cancelled: boolean }>('/vision/dl/train/cancel', {}),
   })
+  // 訓練完不自動進資產庫：使用者命名後儲存，或整個放棄
+  const saveModel = useMutation({
+    mutationFn: (name: string) => api.post<DlTrainJob>('/vision/dl/train/save', { name }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['dl', 'train-status'] })
+      void client.invalidateQueries({ queryKey: ['dl', 'projects'] })
+      void client.invalidateQueries({ queryKey: ['assets'] })
+    },
+  })
+  const discardModel = useMutation({
+    mutationFn: () => api.post<{ discarded: boolean }>('/vision/dl/train/discard', {}),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'train-status'] }),
+  })
   const patchSettings = useMutation({
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, saveModel, discardModel, patchSettings }
 }

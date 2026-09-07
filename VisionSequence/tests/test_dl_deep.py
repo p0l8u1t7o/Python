@@ -4,6 +4,7 @@ ai_* 工具的座標回映與判定（假 Results）、yolo_runtime 快取與裝
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
 import threading
@@ -340,12 +341,29 @@ class TrainJobLifecycleTests(TransactionTestCase):
         jobs.start(project, {"steps": 2, "fail": True}, "cpu", "壞模型")
         st = _wait_job()
         self.assertEqual((st["status"], st["error"]), ("failed", "刻意失敗"))
-        # 成功 + 增量 log／history
+        # 成功 + 增量 log／history：訓練完只是「等著存」，資產庫還沒有東西
         jobs.start(project, {"steps": 3}, "cpu", "好模型")
         st = _wait_job()
         self.assertEqual((st["status"], st["asset_name"], st["tool_key"]), ("done", "好模型", "dl_classify"))
         self.assertGreaterEqual(len(st["history"]), 3)
-        self.assertEqual(Asset.objects.filter(kind="model", name="好模型").count(), 1)
+        self.assertTrue(st["pending"])
+        self.assertFalse(st["saved"])
+        self.assertEqual(Asset.objects.filter(kind="model").count(), 0)
+        # 命名後儲存才建資產並回寫專案
+        st = self.client.post("/api/vision/dl/train/save", data=json.dumps({"name": "改過的名字"}), content_type="application/json").json()
+        self.assertEqual((st["saved"], st["pending"], st["asset_name"]), (True, False, "改過的名字"))
+        self.assertEqual(Asset.objects.filter(kind="model", name="改過的名字").count(), 1)
+        project.refresh_from_db()
+        self.assertEqual(project.last_asset_id, st["asset_id"])
+        self.assertEqual(self.client.post("/api/vision/dl/train/save", data="{}", content_type="application/json").status_code, 409)  # 沒有待存的
+        # 放棄：檔案刪掉、資產庫不多東西
+        jobs.start(project, {"steps": 2}, "cpu", "不要的")
+        st = _wait_job()
+        folder = jobs.status()["id"]
+        self.assertTrue(os.path.isdir(os.path.join(jobs.pending_root(), folder)))
+        self.assertTrue(self.client.post("/api/vision/dl/train/discard", data="{}", content_type="application/json").json()["discarded"])
+        self.assertFalse(os.path.isdir(os.path.join(jobs.pending_root(), folder)))
+        self.assertEqual(Asset.objects.filter(kind="model").count(), 1)
         r = self.client.get(f"/api/vision/dl/train/status?log_from={st['log_next']}")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["job"]["logs"], [])  # 端點包在 {"job": …}

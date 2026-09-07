@@ -17,6 +17,7 @@ import { Page } from '@/components/layout/AppShell'
 import { Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, LoadingState, Modal, PageHeader, Panel, SegmentedControl, Select, TextInput } from '@/components/ui'
 import { assetUrl, dlSampleUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
+import { useConfirm } from '@/lib/useConfirm'
 import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainers, useDlTrainStatus, useDlVersions, useFlowMutations, useSources } from '@/lib/queries'
 import type { DlDatasetVersion, DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
@@ -155,9 +156,12 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   const { t } = useTranslation()
   const toast = useToast()
   const devices = useDlDevices()
-  const { startTrain, cancelTrain } = useDlMutations()
+  const { startTrain, cancelTrain, saveModel, discardModel } = useDlMutations()
+  const { confirm, dialog } = useConfirm()
   const [params, setParams] = useState<Record<string, unknown>>(() => ({ ...project.params }))
   const [assetName, setAssetName] = useState('')
+  /** 訓練完的命名（預設帶開始訓練時填的建議名稱） */
+  const [saveName, setSaveName] = useState('')
   const [device, setDevice] = useState('')
   const job = useDlTrainStatus(true)
   const navigate = useNavigate()
@@ -185,6 +189,30 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   }
   const running = job.data?.status === 'running'
   const mine = job.data && job.data.project_id === project.id
+  const waiting = Boolean(mine && job.data?.status === 'done' && job.data?.pending)  // 訓練好、還沒決定
+
+  async function keepModel() {
+    const j = job.data
+    if (!j) return
+    try {
+      const saved = await saveModel.mutateAsync(saveName.trim() || j.asset_name)
+      toast.success(t('dl.saved', { name: saved.asset_name }))
+      setSaveName('')
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  async function dropModel() {
+    if (!(await confirm(t('dl.discardConfirm'), { confirmLabel: t('dl.discardModel') }))) return
+    try {
+      await discardModel.mutateAsync()
+      toast.success(t('dl.discarded'))
+      setSaveName('')
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
 
   async function start() {
     try {
@@ -234,12 +262,23 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
 
         {/* 最近一次結果 */}
         {mine && job.data?.status === 'failed' ? <p className="rounded-md bg-critical-soft px-2.5 py-1.5 text-xs text-critical">{job.data.error}</p> : null}
-        {mine && job.data?.status === 'done' ? (
+        {waiting ? (
+          <div className="space-y-2 rounded-md border border-brand/40 bg-brand-soft px-2.5 py-2 text-xs" data-testid="dl-pending-model">
+            <p className="text-content">{t('dl.trained')}</p>
+            <TextInput label={t('dl.assetName')} value={saveName} placeholder={job.data?.asset_name} onChange={(e) => setSaveName(e.target.value)} data-testid="dl-save-name" />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="xs" variant="primary" loading={saveModel.isPending} onClick={() => void keepModel()} data-testid="dl-save-model">{t('dl.saveModel')}</Button>
+              <Button size="xs" loading={discardModel.isPending} onClick={() => void dropModel()} data-testid="dl-discard-model">{t('dl.discardModel')}</Button>
+            </div>
+          </div>
+        ) : null}
+        {mine && job.data?.status === 'done' && job.data?.saved ? (
           <div className="space-y-1.5 rounded-md bg-ok-soft px-2.5 py-1.5 text-xs text-ok">
             <p>{t('dl.done', { name: job.data.asset_name })} <Link to="/assets" className="underline">{t('dl.toAssets')}</Link>{' · '}{t('dl.useInTool', { tool: job.data.tool_key })}</p>
             <Button size="xs" variant="primary" loading={flowMut.create.isPending} onClick={() => void createFlowWithModel()} data-testid="dl-create-flow">{t('dl.createFlow')}</Button>
           </div>
         ) : null}
+        {mine && job.data?.discarded ? <p className="rounded-md bg-surface-muted px-2.5 py-1.5 text-xs text-muted" data-testid="dl-discarded">{t('dl.discarded')}</p> : null}
 
         {/* 指標：大數字磚 */}
         {metrics && Object.keys(metrics).length ? (
@@ -276,6 +315,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
           </Button>
         ) : null}
       </div>
+      {dialog}
     </Panel>
   )
 }

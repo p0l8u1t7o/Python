@@ -117,6 +117,9 @@ class TrainersApiLiveTests(TransactionTestCase):
         self.assertEqual(r.status_code, 202, r.content)
         st = self._wait()
         self.assertEqual(st["status"], "done", st.get("error"))
+        self.assertTrue(st["pending"])  # 訓練完不自動進資產庫
+        st = self._json("post", "/api/vision/dl/train/save", {"name": f"live-{kind}"}).json()
+        self.assertTrue(st["saved"])
         return pid, st
 
     def test_every_trainer_end_to_end(self):

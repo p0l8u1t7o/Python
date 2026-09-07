@@ -231,6 +231,8 @@ class TrainJobTests(TransactionTestCase):
             time.sleep(0.05)
         self.assertEqual(st["status"], "done", st)
         self.assertEqual(st["tool_key"], "dl_anomaly")
+        self.assertTrue(st["pending"])  # 訓練完先擱著，命名後才進資產庫
+        st = jobs.save("anomaly model")
         primary = Asset.objects.get(pk=st["asset_id"])
         self.assertTrue(primary.path.endswith(".npz"))
         self.assertEqual(primary.meta["tool_key"], "dl_anomaly")

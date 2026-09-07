@@ -869,6 +869,11 @@ export interface DlTrainJob {
   error: string
   asset_id: string
   asset_name: string
+  /** 訓練好但還沒決定要不要存進資產庫 */
+  pending?: boolean
+  /** 已經存進資產庫（asset_id 才有值） */
+  saved?: boolean
+  discarded?: boolean
   tool_key: string
   tool_params: Record<string, unknown>
   duration_s: number

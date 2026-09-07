@@ -146,6 +146,10 @@ class WeightsAssetTests(TransactionTestCase):
             project = DlProject.objects.create(name="fake-w", trainer_kind="fake_weights", classes=["a"])
             job = jobs.TrainJob(id="j1", project_id=project.id, project_name=project.name, trainer_kind="fake_weights", device="cpu", asset_name="模型 A")
             jobs._train(job, project.id, {})
+            # 訓練完只是擱著：資產庫還是空的，命名儲存後才有 .pt 與 ONNX 兩個資產
+            self.assertTrue(job.pending)
+            self.assertEqual(Asset.objects.filter(kind="model").count(), 0)
+            jobs.save("模型 A", job=job)
             assets = list(Asset.objects.filter(kind="model").order_by("created_at"))
             self.assertEqual(len(assets), 2)
             pt = next(a for a in assets if a.path.endswith(".pt"))

@@ -182,6 +182,10 @@ class DlApiTests(TransactionTestCase):
             time.sleep(0.2)
         self.assertIsNotNone(job)
         self.assertEqual(job["status"], "done", job)
+        # 訓練完等使用者決定：還沒有資產，命名儲存後才進資產庫
+        self.assertEqual((job["pending"], job["saved"], job["asset_id"]), (True, False, ""))
+        self.assertEqual(Asset.objects.filter(kind="model").count(), 0)
+        job = self.post("/api/vision/dl/train/save", {"name": "test-model"}).json()
         self.assertTrue(job["asset_id"])
         asset = Asset.objects.filter(pk=job["asset_id"]).first()
         self.assertIsNotNone(asset)

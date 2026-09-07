@@ -24,6 +24,7 @@ from django.http import HttpRequest, HttpResponse
 from ninja import File, Form, Router, UploadedFile
 
 from apps.accounts.security import authenticate, principal, require_admin, require_feature
+from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
 from apps.vision.dl import base as dl_base, devices, jobs, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
@@ -717,3 +718,22 @@ def train_status(request: HttpRequest, log_from: int = -1):
 def train_cancel(request: HttpRequest):
     require_feature(request, "dl")
     return {"cancelled": jobs.cancel()}
+
+
+@router.post("/dl/train/save")
+def train_save(request: HttpRequest):
+    """把剛訓練好的模型存進資產庫（訓練完不會自動存，先讓使用者看指標、命名）。"""
+    require_feature(request, "dl")
+    name = str(_body(request).get("name") or "")
+    job = jobs.save(name)
+    audit.record(request, "dl.model.save", target_type="asset", target_id=job["asset_id"], target_name=job["asset_name"],
+                 summary=f"{job['project_name']} → {job['asset_name']}",
+                 detail={"trainer": job["trainer_kind"], "tool": job["tool_key"], "metrics": job["metrics"]})
+    return job
+
+
+@router.post("/dl/train/discard")
+def train_discard(request: HttpRequest):
+    """不要這個模型：刪掉還沒進資產庫的產物檔。"""
+    require_feature(request, "dl")
+    return {"discarded": jobs.discard()}
