@@ -109,23 +109,28 @@ def available(s: AgentSettings) -> bool:
     return True
 
 
-def missing_reason(s: AgentSettings) -> str:
+def missing(s: AgentSettings) -> tuple[str, str]:
+    """設定還缺什麼：(原因碼, 英文一句話)；都齊了回 ("", "")。"""
     if s.provider == "offline":
-        return ""
+        return "", ""
     if s.provider == "openai_compatible":
         if not s.base_url:
-            return "未填 base URL（例如 http://127.0.0.1:11434/v1）"
+            return "no_base_url", "No base URL yet (for example http://127.0.0.1:11434/v1)"
         if not s.model:
-            return "未填模型名稱（可按「列出可用模型」）"
-        return ""
+            return "no_model", "No model name yet (use List models)"
+        return "", ""
     if not s.api_key:
-        return "未填 API 金鑰"
+        return "no_key", "No API key yet"
     if s.provider == "claude":
         try:
             import anthropic  # noqa: F401
         except ImportError:
-            return "尚未安裝 anthropic 套件（pip install anthropic）"
-    return ""
+            return "no_package", "The anthropic package is not installed (pip install anthropic)"
+    return "", ""
+
+
+def missing_reason(s: AgentSettings) -> str:
+    return missing(s)[1]
 
 
 def model_of(s: AgentSettings) -> str:
@@ -241,29 +246,47 @@ def complete(s: AgentSettings, system: str, images: list[str], text: str, histor
     return _IMPL[s.provider](s, system, images, text, history or [], timeout or generate_timeout(), json_mode)
 
 
-def _explain(exc: BaseException, timeout: float = TEST_TIMEOUT) -> str:
-    """把供應商例外翻成使用者看得懂的一句話。timeout 用來寫進逾時訊息（連線測試 15 秒、生成可到 120 秒）。"""
+#: 失敗原因碼：訊息本身是英文（產品表面），前端用 `agent.reason.<code>` 翻成介面語言。
+#: 新增一個碼要同步三語系字典與 docs/agent.html。
+REASON_CODES = (
+    "no_package", "no_key", "no_base_url", "no_model",           # 還沒設定完
+    "bad_key", "forbidden", "bad_model", "no_credit", "rate_limit",  # 供應商拒絕
+    "overloaded", "timeout", "network", "unknown",                # 暫時性
+)
+
+
+def explain(exc: BaseException, timeout: float = TEST_TIMEOUT) -> tuple[str, str]:
+    """把供應商例外翻成 (原因碼, 英文一句話)。timeout 用來寫進逾時訊息（連線測試 15 秒、生成可到 120 秒）。"""
     msg = str(exc)
     low = msg.lower()
+    detail = msg[:160]
     if isinstance(exc, ImportError):
-        return "尚未安裝 anthropic 套件（pip install anthropic）"
+        return "no_package", "The anthropic package is not installed (pip install anthropic)"
     if "503" in msg or "high demand" in low or "overloaded" in low or "unavailable" in low:
-        return "供應商目前過載（503），稍後再試或換一個模型（Gemini 建議 gemini-3.6-flash；「-latest」別名在高峰常過載）"
+        return "overloaded", "The provider is overloaded (503). Try again shortly, or pick another model"
     if "401" in msg or "authentication" in low or "invalid x-api-key" in low or "api key not valid" in low or "incorrect api key" in low:
-        return f"API 金鑰無效或被拒絕：{msg[:160]}"
+        return "bad_key", f"The API key was rejected: {detail}"
     if "403" in msg or "permission" in low:
-        return f"金鑰沒有權限：{msg[:160]}"
+        return "forbidden", f"This key is not allowed to use it: {detail}"
     if "404" in msg or "not_found" in low or "model" in low and ("not found" in low or "does not exist" in low or "no longer available" in low):
         hint = re.search(r"use models/([\w.\-]+)", msg)
-        suggested = f"，供應商建議改用 {hint.group(1)}" if hint else ""
-        return f"模型名稱不存在、已下架或無權使用{suggested}：{msg[:140]}"
+        suggested = f"; the provider suggests {hint.group(1)}" if hint else ""
+        return "bad_model", f"That model does not exist, is retired, or is not available to this key{suggested}: {msg[:140]}"
+    # 額度用完與速率限制都是 429，但要做的事完全不同（儲值 vs 等一下再試）
+    if "no credits" in low or "insufficient_quota" in low or "insufficient quota" in low or "exceeded your current quota" in low or "billing" in low or "credit balance" in low:
+        return "no_credit", f"The account has no credit left: top it up with the provider, then try again ({detail})"
     if "429" in msg or "rate" in low and "limit" in low:
-        return f"超過供應商速率／額度限制：{msg[:160]}"
+        return "rate_limit", f"Too many requests for now (rate limit): wait a moment and try again ({detail})"
     if "timed out" in low or "timeout" in low:
-        return f"供應商 {int(timeout)} 秒內沒回應：可能是模型過載或網路／代理問題，稍後再試或換模型"
+        return "timeout", f"No answer from the provider within {int(timeout)} s: the model may be busy, or the network or proxy is in the way"
     if "urlopen error" in low or "name or service not known" in low or "getaddrinfo" in low or "connection" in low:
-        return f"無法連到供應商：{msg[:160]}"
-    return msg[:200] or exc.__class__.__name__
+        return "network", f"Cannot reach the provider: {detail}"
+    return "unknown", msg[:200] or exc.__class__.__name__
+
+
+def _explain(exc: BaseException, timeout: float = TEST_TIMEOUT) -> str:
+    """只要訊息（流程／助手的警告字串用）。"""
+    return explain(exc, timeout)[1]
 
 
 def _get_json(url: str, headers: dict[str, str], timeout: float) -> dict[str, Any]:
@@ -278,10 +301,10 @@ def _get_json(url: str, headers: dict[str, str], timeout: float) -> dict[str, An
 def list_models(s: AgentSettings) -> dict[str, Any]:
     """列出這把金鑰能用的模型名（給設定視窗選）。回 {ok, models:[...], reason}。"""
     if s.provider == "offline":
-        return {"ok": True, "models": [], "reason": ""}
-    reason = missing_reason(s)
-    if reason:
-        return {"ok": False, "models": [], "reason": reason}
+        return {"ok": True, "models": [], "reason": "", "reason_code": ""}
+    code, reason = missing(s)
+    if code:
+        return {"ok": False, "models": [], "reason": reason, "reason_code": code}
     try:
         if s.provider == "claude":
             import anthropic
@@ -299,8 +322,9 @@ def list_models(s: AgentSettings) -> dict[str, Any]:
             out = _get_json("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", {"x-goog-api-key": s.api_key}, TEST_TIMEOUT)
             names = [m["name"].removeprefix("models/") for m in out.get("models", []) if "generateContent" in (m.get("supportedGenerationMethods") or [])]
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "models": [], "reason": _explain(exc)}
-    return {"ok": True, "models": names[:60], "reason": ""}
+        code, reason = explain(exc)
+        return {"ok": False, "models": [], "reason": reason, "reason_code": code}
+    return {"ok": True, "models": names[:60], "reason": "", "reason_code": ""}
 
 
 def test_connection(s: AgentSettings) -> dict[str, Any]:
@@ -309,17 +333,18 @@ def test_connection(s: AgentSettings) -> dict[str, Any]:
 
     base = {"provider": s.provider, "model": model_of(s), "source": s.source}
     if s.provider == "offline":
-        return {**base, "ok": True, "latency_ms": 0, "reply": "", "reason": "離線規則引擎不需連線"}
-    reason = missing_reason(s)
-    if reason:
-        return {**base, "ok": False, "latency_ms": 0, "reply": "", "reason": reason}
+        return {**base, "ok": True, "latency_ms": 0, "reply": "", "reason": "", "reason_code": ""}
+    code, reason = missing(s)
+    if code:
+        return {**base, "ok": False, "latency_ms": 0, "reply": "", "reason": reason, "reason_code": code}
     t0 = time.perf_counter()
     try:
         reply = complete(s, "你是連線測試。只回覆兩個字母：OK", [], "ping", timeout=TEST_TIMEOUT)
     except Exception as exc:  # noqa: BLE001 - 任何失敗都要翻成原因回前端
         log.warning("agent 供應商連線測試失敗（%s）：%s", s.provider, exc)
-        return {**base, "ok": False, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": "", "reason": _explain(exc, TEST_TIMEOUT)}
-    return {**base, "ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": reply.strip()[:80], "reason": ""}
+        code, reason = explain(exc, TEST_TIMEOUT)
+        return {**base, "ok": False, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": "", "reason": reason, "reason_code": code}
+    return {**base, "ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000), "reply": reply.strip()[:80], "reason": "", "reason_code": ""}
 
 
 # ---------------------------------------------------------------------------

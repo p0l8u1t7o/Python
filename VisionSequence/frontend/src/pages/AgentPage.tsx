@@ -158,9 +158,12 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const [mode, setMode] = useState('')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string } | null>(null)
+  const [testResult, setTestResult] = useState<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string; reason_code?: string } | null>(null)
   const [listing, setListing] = useState(false)
-  const [models, setModels] = useState<{ ok: boolean; models: string[]; reason: string } | null>(null)
+  const [models, setModels] = useState<{ ok: boolean; models: string[]; reason: string; reason_code?: string } | null>(null)
+
+  /** 失敗原因：碼有對照就翻成介面語言，沒有就用伺服器那句英文（供應商原文另外附在下面一行）。 */
+  const reasonText = (code: string | undefined, fallback: string) => (code ? t(`agent.reason.${code}`, { defaultValue: fallback }) : fallback)
 
   /** 畫面上這組設定（還沒儲存也能先試）：沒動過的欄位留空，伺服器沿用已儲存的值。 */
   function probeBody() {
@@ -170,7 +173,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   async function listModels() {
     setListing(true)
     try {
-      setModels(await api.post<{ ok: boolean; models: string[]; reason: string }>('/vision/agent/settings/models', probeBody()))
+      setModels(await api.post<{ ok: boolean; models: string[]; reason: string; reason_code?: string }>('/vision/agent/settings/models', probeBody()))
     } catch (error) {
       setModels({ ok: false, models: [], reason: errorMessage(error) })
     } finally {
@@ -188,7 +191,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   async function testConnection(body: Record<string, string | undefined> = probeBody()) {
     setTesting(true)
     try {
-      const r = await api.post<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string }>('/vision/agent/settings/test', body)
+      const r = await api.post<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string; reason_code?: string }>('/vision/agent/settings/test', body)
       setTestResult(r)
       return r
     } catch (error) {
@@ -247,7 +250,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
                       ))}
                     </div>
                   ) : <p className="text-[11px] text-subtle">{t('agent.noModels')}</p>
-                ) : <p className="text-[11px] text-critical">{models.reason}</p>
+                ) : <p className="text-[11px] text-critical" data-testid="agent-models-error">{reasonText(models.reason_code, models.reason)}</p>
               ) : null}
             </div>
             <div className="space-y-1">
@@ -267,9 +270,14 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
         {current?.server?.llm ? <p className="text-[11px] text-subtle">{t('agent.serverHasKey', { provider: current.server.provider })}</p> : null}
         {testResult ? (
           <div className={`rounded-lg border px-3 py-2 text-xs ${testResult.ok ? 'border-ok/40 bg-ok-soft text-ok' : 'border-critical/40 bg-critical-soft text-critical'}`} data-testid="agent-test-result">
-            {testResult.ok
-              ? (testResult.provider === 'offline' ? t('agent.testOffline') : t('agent.testOk', { model: testResult.model, ms: testResult.latency_ms }))
-              : t('agent.testFailed', { reason: testResult.reason })}
+            {testResult.ok ? (
+              testResult.provider === 'offline' ? t('agent.testOffline') : t('agent.testOk', { model: testResult.model, ms: testResult.latency_ms })
+            ) : (
+              <>
+                <p>{t('agent.testFailed', { reason: reasonText(testResult.reason_code, testResult.reason) })}</p>
+                {testResult.reason_code && testResult.reason_code !== 'unknown' ? <p className="mt-1 break-all opacity-70">{testResult.reason}</p> : null}
+              </>
+            )}
           </div>
         ) : null}
       </div>

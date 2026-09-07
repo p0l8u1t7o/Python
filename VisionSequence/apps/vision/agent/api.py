@@ -303,7 +303,7 @@ def _batch_context(request: HttpRequest, batch_run_id: int, graph: dict[str, Any
 @router.get("/agent/info")
 def agent_info(request: HttpRequest):
     s = _settings_for(request)
-    return {**s.public(), "reason": providers.missing_reason(s),
+    return {**s.public(), "reason": providers.missing(s)[1], "reason_code": providers.missing(s)[0],
             "providers": [{"value": p, "label": providers.PROVIDER_LABELS[p], "default_model": providers.DEFAULT_MODELS.get(p, "")} for p in providers.PROVIDERS]}
 
 
@@ -341,7 +341,7 @@ def patch_agent_settings(request: HttpRequest, payload: SettingsIn):
     row.agent = data
     row.save(update_fields=["agent", "updated_at"])
     mine = providers.user_settings(p.user) or providers.AgentSettings()
-    return {"configured": True, **mine.public(), "reason": providers.missing_reason(mine)}
+    return {"configured": True, **mine.public(), "reason": providers.missing(mine)[1], "reason_code": providers.missing(mine)[0]}
 
 
 @router.get("/agent/skills")

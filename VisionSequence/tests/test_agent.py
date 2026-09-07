@@ -261,13 +261,20 @@ class ImageStorePinnedTests(TestCase):
 
         out = providers.test_connection(providers.AgentSettings(provider="claude", api_key="", source="user"))
         self.assertFalse(out["ok"])
-        self.assertIn("金鑰", out["reason"])
-        # 供應商錯誤翻譯（不打外網）
-        self.assertIn("金鑰無效", providers._explain(RuntimeError("HTTP 400: API key not valid. Please pass a valid API key.")))
-        self.assertIn("模型", providers._explain(RuntimeError("HTTP 404: model 'nope' does not exist")))
-        self.assertIn("gemini-3.6-flash", providers._explain(RuntimeError('HTTP 404: {"error": {"message": "This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.6-flash"}}')))
-        self.assertIn("過載", providers._explain(RuntimeError("HTTP 503: This model is currently experiencing high demand")))
-        self.assertIn("anthropic", providers._explain(ImportError("No module named 'anthropic'")))
+        self.assertEqual(out["reason_code"], "no_key")
+        # 供應商錯誤分類（不打外網）：碼給前端翻譯，訊息是英文
+        code = lambda m: providers.explain(RuntimeError(m))[0]  # noqa: E731
+        self.assertEqual(code("HTTP 400: API key not valid. Please pass a valid API key."), "bad_key")
+        self.assertEqual(code("HTTP 404: model 'nope' does not exist"), "bad_model")
+        self.assertIn("gemini-3.6-flash", providers.explain(RuntimeError('HTTP 404: {"error": {"message": "This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.6-flash"}}'))[1])
+        self.assertEqual(code("HTTP 503: This model is currently experiencing high demand"), "overloaded")
+        self.assertEqual(providers.explain(ImportError("No module named 'anthropic'"))[0], "no_package")
+        # 429 有兩種：額度用完要儲值、速率限制等一下就好——訊息不能混為一談
+        self.assertEqual(code('HTTP 429: {"error": {"message": "You have no credits remaining. Add credits to continue using the API"}}'), "no_credit")
+        self.assertEqual(code("HTTP 429: You exceeded your current quota, please check your plan and billing details"), "no_credit")
+        self.assertEqual(code("HTTP 429: Rate limit reached for gpt-4o in organization org-x on tokens per min"), "rate_limit")
+        self.assertIn("credit", providers.explain(RuntimeError("HTTP 429: You have no credits remaining"))[1])
+        self.assertTrue(all(c in providers.REASON_CODES for c in (code("HTTP 401: nope"), code("boom"))))
         # 列模型：離線回空、缺金鑰回原因（不打外網）
         self.assertEqual(providers.list_models(providers.AgentSettings())["models"], [])
         out = providers.list_models(providers.AgentSettings(provider="openai", api_key="", source="user"))
@@ -280,10 +287,10 @@ class ImageStorePinnedTests(TestCase):
         # 已儲存的是離線；畫面上選 openai 又沒填金鑰 → 回「未填金鑰」而不是離線的 ok
         out = post("/api/vision/agent/settings/models", {"provider": "openai"}).json()
         self.assertFalse(out["ok"])
-        self.assertIn("金鑰", out["reason"])
+        self.assertEqual(out["reason_code"], "no_key")
         out = post("/api/vision/agent/settings/test", {"provider": "openai_compatible"}).json()
         self.assertFalse(out["ok"])
-        self.assertIn("base URL", out["reason"])
+        self.assertEqual(out["reason_code"], "no_base_url")
         # 明確選離線就是離線；沒帶 body 沿用已儲存的（也是離線）
         self.assertTrue(post("/api/vision/agent/settings/models", {"provider": "offline"}).json()["ok"])
         self.assertTrue(self.client.post("/api/vision/agent/settings/test").json()["ok"])
@@ -421,9 +428,9 @@ class Phase0Tests(TestCase):
         s = providers.AgentSettings(provider="openai_compatible", base_url="http://127.0.0.1:11434/v1", model="llama3.2-vision", source="user")
         self.assertTrue(s.uses_llm)
         self.assertTrue(providers.available(s))
-        self.assertEqual(providers.missing_reason(providers.AgentSettings(provider="openai_compatible", source="user")), "未填 base URL（例如 http://127.0.0.1:11434/v1）")
+        self.assertEqual(providers.missing(providers.AgentSettings(provider="openai_compatible", source="user"))[0], "no_base_url")
         self.assertEqual(providers.compat_url("http://h/v1/", "chat/completions"), "http://h/v1/chat/completions")
-        self.assertIn("120", providers._explain(RuntimeError("timed out"), 120.0))
+        self.assertIn("120", providers.explain(RuntimeError("timed out"), 120.0)[1])
 
 
 class Phase1Tests(TestCase):
