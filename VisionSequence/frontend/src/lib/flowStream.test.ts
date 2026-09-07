@@ -152,4 +152,25 @@ describe('stream registry', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.flows })
     off()
   })
+
+  it('does not let a trimmed run_finished overwrite the full run already cached', () => {
+    const off = subscribeStream(1, { outputs: true }, { onEvent: () => undefined })
+    const node = { status: 'ok', duration_ms: 1, message: '', branch: null, outputs: {}, overlays: [], overlay_on: null, detail: {}, logs: [] }
+    const base = { flow_id: 1, flow_version: 1, trigger: 'tcp', status: 'ok', started_at: 1, finished_at: 2, duration_ms: 1, error: '', outputs: {} }
+    const full = { ...base, id: 'r1', nodes: { src: { ...node, outputs: { image: { ref: 'r1:src:image', width: 4, height: 3 } } } } }
+    const lean = { ...base, id: 'r1', nodes: { src: node }, nodes_trimmed: true }
+    live()[0].emit('run_finished', { flow_id: 1, run: full })
+    live()[0].emit('run_finished', { flow_id: 1, run: lean })
+    const cached = client.getQueryData<{ items: { id: string; nodes_trimmed?: boolean; nodes: Record<string, { outputs: Record<string, unknown> }> }[] }>(keys.recent(1))
+    expect(cached?.items).toHaveLength(1)
+    expect(cached?.items[0].nodes_trimmed).toBeUndefined()
+    expect(cached?.items[0].nodes.src.outputs.image).toBeDefined()
+    // 反過來：只有瘦身版時照樣進快取，之後完整版來了要換成完整版
+    live()[0].emit('run_finished', { flow_id: 1, run: { ...lean, id: 'r2' } })
+    live()[0].emit('run_finished', { flow_id: 1, run: { ...full, id: 'r2' } })
+    const again = client.getQueryData<{ items: { id: string; nodes_trimmed?: boolean }[] }>(keys.recent(1))
+    expect(again?.items.map((r) => r.id)).toEqual(['r2', 'r1'])
+    expect(again?.items[0].nodes_trimmed).toBeUndefined()
+    off()
+  })
 })

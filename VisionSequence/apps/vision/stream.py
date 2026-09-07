@@ -23,6 +23,7 @@ import orjson
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 
+from apps.vision.engine import NODE_REPORT_DEFAULTS
 from apps.vision.runner import bus, runner
 
 MAX_STREAM_SECONDS = 55
@@ -113,8 +114,14 @@ class _Session:
                 continue
             payload = dict(event)
             if not self.include_outputs and "run" in payload:
+                # 瘦身：丟掉輸出／標記／detail，但形狀維持完整（前端 NodeReport 的每個鍵都在），
+                # 並標 nodes_trimmed 讓前端別拿它蓋掉同一個 run 的完整版。
                 run = dict(payload["run"])
-                run["nodes"] = {k: {kk: vv for kk, vv in v.items() if kk in ("status", "duration_ms", "message", "branch")} for k, v in run["nodes"].items()}
+                run["nodes"] = {
+                    k: {**NODE_REPORT_DEFAULTS, **{kk: vv for kk, vv in v.items() if kk in ("status", "duration_ms", "message", "branch", "overlay_on")}}
+                    for k, v in run["nodes"].items()
+                }
+                run["nodes_trimmed"] = True
                 payload["run"] = run
             payload["seq"] = self.since
             yield _sse(str(event.get("type", "event")), payload)

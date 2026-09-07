@@ -33,6 +33,31 @@ class StreamLimitTests(TestCase):
             r.close()
             self.assertEqual(stream.active_streams(), 0)
 
+    def test_trimmed_run_keeps_node_shape(self):
+        # outputs=0 的訂閱者拿到的 run 要瘦身（沒有 outputs／overlays／detail），但每個鍵都在且標 nodes_trimmed，
+        # 否則瘦身版經全域串流進了前端快取，編輯器一開 `outputs[...]` 就炸（Temp/Issue 流程工具編輯出錯）。
+        node = {"status": "ok", "duration_ms": 1.5, "message": "m", "branch": None, "overlay_on": "image",
+                "outputs": {"image": {"ref": "r:1:image", "width": 4, "height": 3}}, "overlays": [{"kind": "point"}],
+                "detail": {"_input_ref": "x"}, "logs": [{"level": "info", "message": "hi"}]}
+        event = {"type": "run_finished", "flow_id": 7, "run": {"id": "r", "nodes": {"n": node}, "outputs": {}}}
+        import orjson
+
+        def data_of(frames: list[bytes]) -> dict:
+            body = b"".join(frames)
+            line = next(ln for ln in body.split(b"\n") if ln.startswith(b"data: "))
+            return orjson.loads(line[6:])
+
+        lean = data_of(list(stream._Session(0, 7, False, 1.0).frames([event])))["run"]
+        self.assertTrue(lean["nodes_trimmed"])
+        self.assertEqual(set(lean["nodes"]["n"]), set(stream.NODE_REPORT_DEFAULTS))
+        self.assertEqual(lean["nodes"]["n"]["outputs"], {})
+        self.assertEqual(lean["nodes"]["n"]["overlays"], [])
+        self.assertEqual(lean["nodes"]["n"]["overlay_on"], "image")
+        self.assertEqual(lean["nodes"]["n"]["duration_ms"], 1.5)
+        full = data_of(list(stream._Session(0, 7, True, 1.0).frames([event])))["run"]
+        self.assertNotIn("nodes_trimmed", full)
+        self.assertEqual(full["nodes"]["n"]["outputs"]["image"]["ref"], "r:1:image")
+
     def test_pool_size_follows_setting(self):
         with mock.patch.object(stream, "_pool", None), override_settings(VISION={**settings.VISION, "SSE_MAX_STREAMS": 3}):
             pool = stream._executor()

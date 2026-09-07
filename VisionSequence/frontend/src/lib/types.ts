@@ -227,6 +227,8 @@ export interface RunReport {
   error: string
   outputs: Record<string, unknown>
   nodes: Record<string, NodeReport>
+  /** SSE 對不要輸出的訂閱者送的瘦身版：節點只有狀態，outputs／overlays／detail 是空的（別拿它蓋掉完整版） */
+  nodes_trimmed?: boolean
   persisted?: boolean
   station_id?: string
   /** 使用的配方名稱（空字串 = 沒有） */

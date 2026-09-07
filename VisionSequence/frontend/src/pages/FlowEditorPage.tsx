@@ -109,7 +109,7 @@ export function inputImage(run: RunReport, nodeId: string, report: NodeReport, e
   const edge = edges.find((e) => e.target === nodeId && (e.target_handle || def?.inputs[0]?.key) === port)
   let upstream: { ref: string | null; width: number; height: number } | null = null
   if (edge) {
-    const value = run.nodes[edge.source]?.outputs[edge.source_handle || '']
+    const value = run.nodes[edge.source]?.outputs?.[edge.source_handle || '']
     if (isImageRef(value)) upstream = { ref: value.ref, width: value.width, height: value.height }
   }
   // preview 模式：detail._input_ref 一定保留（上游影像可能已被快取淘汰）。
@@ -154,7 +154,7 @@ export function sourceRefOf(run: RunReport | null, payloads: Map<string, GraphNo
   if (!run) return null
   for (const [id, report] of Object.entries(run.nodes)) {
     if (payloads.get(id)?.type !== 'image_source') continue
-    const value = report.outputs.image
+    const value = report?.outputs?.image
     if (isImageRef(value) && value.ref) return value.ref
   }
   return null

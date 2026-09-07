@@ -43,6 +43,14 @@ class NodeReport:
     logs: list[dict[str, Any]] = field(default_factory=list)
 
 
+#: 節點報告對外的完整形狀。落地的 FlowRun 只留 status／duration_ms／message，SSE 對不要輸出的訂閱者也會瘦身；
+#: 讀回或瘦身時都要用這份補齊，否則前端拿到少一半鍵的 NodeReport（`outputs[...]`／`Object.entries(outputs)` 會炸）。
+NODE_REPORT_DEFAULTS: dict[str, Any] = {
+    "status": "ok", "duration_ms": 0.0, "message": "", "branch": None,
+    "outputs": {}, "overlays": [], "overlay_on": None, "detail": {}, "logs": [],
+}
+
+
 @dataclass
 class RunReport:
     id: str

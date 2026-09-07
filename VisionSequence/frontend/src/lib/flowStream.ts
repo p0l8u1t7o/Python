@@ -94,7 +94,10 @@ export function applyStreamEvent(client: QueryClient, event: StreamEvent) {
       const run = event.run
       if (!run) return
       client.setQueryData<RecentRuns>(keys.recent(flowId), (old) => {
-        const items = [run, ...(old?.items ?? []).filter((r) => r.id !== run.id)].slice(0, KEEP_RECENT)
+        // 瘦身版（沒有輸出）不能蓋掉快取裡同一個 run 的完整版：編輯器靠完整版顯示影像
+        const existing = (old?.items ?? []).find((r) => r.id === run.id)
+        const kept = run.nodes_trimmed && existing && !existing.nodes_trimmed ? existing : run
+        const items = [kept, ...(old?.items ?? []).filter((r) => r.id !== run.id)].slice(0, KEEP_RECENT)
         return { items, stats: event.stats ?? old?.stats ?? emptyStats(), continuous: old?.continuous ?? false }
       })
       if (event.stats) patchFlowCaches(client, flowId, { stats: event.stats })

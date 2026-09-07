@@ -43,6 +43,7 @@ from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, Conflict, NotFound, PermissionDenied, ValidationError
 from apps.core import audit
 from apps.vision import archive, board, graphdiff, schemas, scripts, teachguard, trace, versions
+from apps.vision.engine import NODE_REPORT_DEFAULTS
 from apps.vision.graph import validate_graph
 from apps.vision.images import encode_image, store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource, ResourceGroup
@@ -123,10 +124,8 @@ def _decode_upload(upload: UploadedFile | None) -> np.ndarray | None:
     return image
 
 
-#: 節點報告的完整欄位：落地的 FlowRun 只留 status／duration_ms／message，
-#: 讀回來時要補齊其餘欄位，否則前端拿到少一半鍵的 NodeReport（`Object.entries(outputs)` 會炸）。
-_NODE_DEFAULTS: dict[str, Any] = {"status": "ok", "duration_ms": 0.0, "message": "", "branch": None,
-                                  "outputs": {}, "overlays": [], "overlay_on": None, "detail": {}, "logs": []}
+#: 節點報告的完整欄位：落地的 FlowRun 只留 status／duration_ms／message，讀回來時要補齊（形狀與 SSE 瘦身共用）。
+_NODE_DEFAULTS: dict[str, Any] = NODE_REPORT_DEFAULTS
 
 
 def _nodes_out(nodes: Any) -> dict[str, dict[str, Any]]:
