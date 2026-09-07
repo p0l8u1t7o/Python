@@ -1,6 +1,6 @@
 /**
  * 步驟右鍵選單（NodeContextMenu）：開啟工具頁、複製、停用／啟用、刪除、複製參數／貼上參數（同型別）。
- * 位置用 fixed 座標；點外面或 Esc 關閉。
+ * 位置用 fixed 座標；點外面（含空白畫布）或 Esc 關閉。
  */
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -42,11 +42,12 @@ export function NodeContextMenu(p: NodeContextMenuProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-    document.addEventListener('mousedown', onDown)
-    // capture：焦點在畫布節點上時，React Flow 會在節點層處理 Escape 並停止冒泡，冒泡階段收不到
+    // 兩個都用 capture：React Flow 的畫布（d3-zoom）在 mousedown 就停止傳遞，
+    // 冒泡階段收不到 → 點空白畫布時選單關不掉；Escape 同理會被節點層吃掉。
+    document.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey, true)
     return () => {
-      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey, true)
     }
   }, [menu, onClose])

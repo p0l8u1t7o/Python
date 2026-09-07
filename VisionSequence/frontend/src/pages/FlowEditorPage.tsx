@@ -1066,7 +1066,7 @@ function EditorInner({ flowId }: { flowId: number }) {
                 setNodes((list) => list.map((n) => ({ ...n, selected: n.id === node.id })))
                 setNodeMenu({ x: e.clientX, y: e.clientY, node: payload })
               }}
-              onPaneClick={() => setSelectedId(null)}
+              onPaneClick={() => { setSelectedId(null); setNodeMenu(null) }}
               onDragOver={onDragOver}
               onDrop={onDrop}
             />
