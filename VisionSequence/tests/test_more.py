@@ -32,6 +32,8 @@ class TemplateTests(TestCase):
         self.assertEqual(r.status_code, 200)
         builtin = [t for t in r.json()["items"] if t["source"] == "builtin"]
         self.assertGreaterEqual(len(builtin), 5)
+        # 每個內建範本都附樣本圖：畫廊不選來源時取像節點就是帶著圖的固定影像
+        self.assertEqual([t["id"] for t in builtin if not t["has_samples"]], [])
         for t in builtin:
             r = self.client.post(f"/api/vision/templates/{t['id']}/instantiate", data=json.dumps({"source_id": self.source.id, "prefix": "x_"}), content_type="application/json")
             self.assertEqual(r.status_code, 200, (t["id"], r.content))
@@ -47,8 +49,18 @@ class TemplateTests(TestCase):
                 # （tests/test_demo.py 會用正確來源逐一實跑），在這張空白合成圖上
                 # 找不到特徵而 failed 是預期行為，這裡只驗 instantiate 出來的 graph 能執行不崩。
                 self.assertNotEqual(report.status, "failed", (t["id"], report.error))
-        # 沒給來源：佔位符清空並回報 missing
-        r = self.client.post("/api/vision/templates/builtin:exposure/instantiate", data=json.dumps({}), content_type="application/json")
+        # 沒給來源（畫廊預設）：取像節點換成帶著範例圖片的固定影像，不再要求先選來源
+        for t in builtin:
+            r = self.client.post(f"/api/vision/templates/{t['id']}/instantiate", data=json.dumps({}), content_type="application/json")
+            body = r.json()
+            self.assertTrue(body["used_samples"], t["id"])
+            self.assertFalse(body["missing_source"], t["id"])
+            nodes = body["graph"]["nodes"]
+            self.assertFalse([n for n in nodes if n["type"] == "image_source"], t["id"])
+            src = next(n for n in nodes if n["type"] == "fixed_image")
+            self.assertTrue(src["params"]["images"], t["id"])
+        # 明確不要樣本圖：回到佔位符清空並回報 missing（自訂範本與整合方走這條）
+        r = self.client.post("/api/vision/templates/builtin:exposure/instantiate", data=json.dumps({"use_samples": False}), content_type="application/json")
         self.assertTrue(r.json()["missing_source"])
 
     def test_custom_template_roundtrip(self):

@@ -1078,10 +1078,11 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: dl_segment_flow(sid, _demo_model("Example: segmenter (scratch)"))),
 )
 
-#: builtin 範本 key → 對應的範例樣本來源名稱（測試與文件用；hole_count／exposure 用合成來源）。
+#: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。
+#: **每個內建範本都要有一組**：範本畫廊預設把取像節點換成帶著這些圖的固定影像，載入即可試執行。
 TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
-    "hole_count": "Demo: synthetic parts",
-    "exposure": "Demo: synthetic parts",
+    "hole_count": "Example: plate holes",
+    "exposure": "Example: exposure",
     "circle_gauge": "Example: circle gauge",
     "edge_angle": "Example: edge angle",
     "golden_compare": "Example: print compare",
@@ -1112,9 +1113,8 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "anomaly_demo": "Example: segmentation teaching",
 }
 
-#: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
-#: 範本 key → 樣本集 key（demo_images.SAMPLE_SETS）；沒有樣本集（用合成來源）的範本不在這裡
 def _sample_sets() -> dict[str, str]:
+    """範本 key → 樣本集 key（demo_images.SAMPLE_SETS）；每個內建範本都要有一組（test_demo 鎖住）。"""
     from apps.vision import demo_images
 
     labels = {f"Example: {label}": set_key for set_key, (label, _fn) in demo_images.SAMPLE_SETS.items()}
@@ -1122,6 +1122,7 @@ def _sample_sets() -> dict[str, str]:
 
 
 TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
+#: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
 TEMPLATES_NEED_DL = ("ai_count", "ai_area")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
 TEMPLATES_NEED_BACKBONE = ("anomaly_demo",)

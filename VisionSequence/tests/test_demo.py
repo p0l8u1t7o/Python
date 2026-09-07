@@ -36,7 +36,7 @@ class DemoSeedTests(TransactionTestCase):
 
     def test_every_template_over_all_sample_pictures(self) -> None:
         """深度測試：每個範本對它的每張樣本圖各跑一次（engine.execute 直跑），不得有 error 節點，OK/NG 序列要符合樣本的設計
-        （多數是「第 4 張刻意 NG」；排除區四張都 OK；DL 範本 3 好 2 壞；合成來源的範本每張隨機，只驗沒有 error）。
+        （多數是「第 4 張刻意 NG」；排除區四張都 OK；DL 範本 3 好 2 壞）。
         這條會抓到「找不到東西時 raise 而不是回 ng」與「blob 找不到把整次 run 判 NG」這類單張測試看不出的毛病。"""
         import importlib.util
         import os
@@ -48,6 +48,7 @@ class DemoSeedTests(TransactionTestCase):
         from apps.vision.runner import runner
 
         expected = {
+            "hole_count": "ok ok ok ng", "exposure": "ok ok ok ng",
             "circle_gauge": "ok ok ok ng", "edge_angle": "ok ok ok ng", "golden_compare": "ok ok ok ng", "stat_compare": "ok ok ok ng",
             "fft_defect": "ok ok ok ng", "geometry_count": "ok ok ok ng", "gear_teeth": "ok ok ok ng", "contour_defect": "ok ok ok ng",
             "circular_defect": "ok ok ok ng", "form_tolerance": "ok ok ok ng", "emboss_defect": "ok ok ok ng", "barcode_grade": "ok ok ok ng",
@@ -67,8 +68,7 @@ class DemoSeedTests(TransactionTestCase):
                 if (key in TEMPLATES_NEED_DL and not run_dl) or (key in TEMPLATES_NEED_BACKBONE and not backbone_ok):
                     continue
                 samples = demo.template_samples(key)
-                if not samples:
-                    continue  # 合成來源：每張隨機，單張實跑已在上一條測試
+                self.assertTrue(samples, f"{name} 沒有樣本圖")
                 compiled = compile_graph(validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=None, samples=samples)))
                 runner._prefetch(compiled)
                 statuses = []
@@ -113,12 +113,17 @@ class DemoSeedTests(TransactionTestCase):
 
             from apps.vision.runner import runner
 
+            # 每個內建範本都有樣本圖：畫廊預設把取像節點換成帶圖的固定影像，載入就能試執行（沒有「請先選來源」）
+            self.assertEqual(set(demo.TEMPLATE_SAMPLE_SETS), {key for key, *_ in BUILTIN_TEMPLATES})
+            self.assertEqual(set(TEMPLATE_SAMPLE_SOURCES), set(demo.TEMPLATE_SAMPLE_SETS))
             for key, name, _desc, _cat, builder in BUILTIN_TEMPLATES:
                 samples = demo.template_samples(key)
-                source_id = None if samples else ImageSource.objects.get(name=TEMPLATE_SAMPLE_SOURCES[key]).id
-                graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=source_id, samples=samples)
-                if samples:
-                    self.assertEqual(next(n for n in graph["nodes"] if n["id"] == "src")["type"], "fixed_image", name)
+                self.assertTrue(samples, name)
+                graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=None, samples=samples)
+                src = next(n for n in graph["nodes"] if n["id"] == "src")
+                self.assertEqual(src["type"], "fixed_image", name)
+                self.assertEqual(len(src["params"]["images"]), len(samples), name)
+                self.assertFalse([n for n in graph["nodes"] if n["type"] == "image_source"], name)
                 if key in TEMPLATES_NEED_DL and not run_dl:
                     validate_graph(graph)  # 沒有 DL 依賴（或未設 VISION_TEST_DL=1）只驗 graph，實跑見 tests/test_dl_live.py
                     continue

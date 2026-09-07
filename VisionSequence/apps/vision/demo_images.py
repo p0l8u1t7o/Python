@@ -1,7 +1,7 @@
 """示範樣板的合成影像：每個樣板一組 PNG（含 1 張 NG 變體），寫到 data/samples/<key>/。
 
-seed_demo 呼叫 write_all()：資料夾已有檔就略過（idempotent）；每組配一個 folder 影像來源
-（群組「範例」、循環讀取），對應的示範流程開箱就能連續執行。
+每個內建範本都對應一組（`demo.TEMPLATE_SAMPLE_SOURCES`），圖存成固定影像跟著範本走：
+範本畫廊載入後第一個節點就是帶著這些圖的「固定影像」，不必先建影像來源。
 """
 
 from __future__ import annotations
@@ -477,6 +477,53 @@ def stop_signs() -> list[np.ndarray]:
     return out
 
 
+def _hole_plate(seed: int, angle: float, holes: int = 5, scratch: bool = False, plate: int = 200, back: int = 70) -> np.ndarray:
+    """孔數／曝光範本共用的板件：暗底上一塊亮板，四角＋中央共 5 個暗孔，另有打印的批號（細筆畫，開運算會濾掉）。
+    `holes=4` 少一個角孔（孔數 NG）；`plate`／`back` 調整曝光（曝光範本用）。"""
+    w, h = 1280, 960
+    img = _canvas(w, h, back)
+    cx, cy = w / 2, h / 2
+    rect = ((cx, cy), (w * 0.52, h * 0.44), angle)
+    cv2.fillPoly(img, [np.round(cv2.boxPoints(rect)).astype(np.int32)], (plate, plate, plate + 5))
+    m = cv2.getRotationMatrix2D((cx, cy), -angle, 1.0)
+
+    def at(ox: float, oy: float) -> tuple[int, int]:
+        p = m @ np.array([cx + ox, cy + oy, 1.0])
+        return int(round(p[0])), int(round(p[1]))
+
+    dark = max(0, min(plate, back) - 30)
+    for i, (ox, oy) in enumerate(((-w * 0.18, -h * 0.13), (w * 0.18, -h * 0.13), (-w * 0.18, h * 0.13), (w * 0.18, h * 0.13))):
+        if holes < 5 and i == 2:
+            continue
+        cv2.circle(img, at(ox, oy), 34, (dark, dark, dark + 3), -1)
+    cv2.circle(img, at(0, 0), 76, (dark, dark, dark + 3), -1)
+    cv2.putText(img, f"LOT {seed:05d}", at(-w * 0.09, h * 0.18), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (dark, dark, dark), 2)
+    if scratch:
+        # 刮痕畫在板面空白處：不能穿過孔（會把孔切成兩半而少算一個）
+        cv2.line(img, at(w * 0.10, -h * 0.05), at(w * 0.15, -h * 0.01), (min(255, plate + 40),) * 3, 3)
+    return _noise(img, 4, seed)
+
+
+def plate_holes() -> list[np.ndarray]:
+    """孔數檢測：亮板上 5 個暗孔（四角＋中央），位置與角度略有變化；第 4 張少一個孔（NG）。"""
+    return [
+        _hole_plate(1, 0.0),
+        _hole_plate(2, 5.0),
+        _hole_plate(3, -6.0, scratch=True),
+        _hole_plate(4, 3.0, holes=4),
+    ]
+
+
+def exposure_frames() -> list[np.ndarray]:
+    """曝光檢查：同一塊板在四種曝光下的 Otsu 門檻約 135／70／180／238；第 4 張過曝（NG）。"""
+    return [
+        _hole_plate(11, 0.0),
+        _hole_plate(12, 2.0, plate=110, back=30),
+        _hole_plate(13, -3.0, plate=240, back=120),
+        _hole_plate(14, 1.0, plate=252, back=225),
+    ]
+
+
 def _disc_part(seed: int, missing_hole: bool) -> np.ndarray:
     """分類教導：暗底亮圓盤零件（治具固定、位置 ±8 px）；NG 版少了中央孔。
     內建 MLP 分類器吃的是整張縮圖的像素，適合這種「整體外觀不同」的類別；位置隨機的細刮痕請改用語意分割或 YOLO。"""
@@ -533,6 +580,8 @@ def dl_scratch_labeled(n: int = 10) -> list[tuple[np.ndarray, list[dict]]]:
 
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
+    "plate_holes": ("plate holes", plate_holes),
+    "exposure_frames": ("exposure", exposure_frames),
     "circle_part": ("circle gauge", circle_part),
     "l_bracket": ("edge angle", l_bracket),
     "golden_print": ("print compare", golden_print),

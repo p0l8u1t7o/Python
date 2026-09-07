@@ -40,7 +40,7 @@ export function TemplateThumb({ graph, className = '' }: { graph: FlowGraph; cla
       })}
       {nodes.map((n) => {
         const p = pos.get(n.id)!
-        const fill = n.type === 'image_source' ? 'var(--brand)' : n.type === 'judge' ? 'var(--ok)' : 'var(--content-muted)'
+        const fill = n.type === 'image_source' || n.type === 'fixed_image' ? 'var(--brand)' : n.type === 'judge' ? 'var(--ok)' : 'var(--content-muted)'
         return <rect key={n.id} x={p.x} y={p.y} width={bw} height={bh} rx={2} fill={fill} opacity={0.85} />
       })}
     </svg>

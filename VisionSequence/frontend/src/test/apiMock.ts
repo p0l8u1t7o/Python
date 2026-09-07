@@ -53,7 +53,9 @@ export function routes(path: string): unknown {
       usage: { db_bytes: 1048576, archive_files: 0, archive_bytes: 0, backup_files: 0, backup_bytes: 0, runs: 0, audit: 0, measurements: 0 },
     }
   }
-  if (path.startsWith('/vision/templates')) return { items: [], can_manage: true }
+  // 內建範本：畫廊預設用範例圖片（has_samples），instantiate 回帶圖的固定影像節點
+  if (/\/vision\/templates\/[^/]+\/instantiate/.test(path)) return { graph: { nodes: [{ id: 'src', type: 'fixed_image', params: { images: [{ id: 'abc', name: 'sample 01.png', width: 8, height: 6, size: 99 }], role: 'acquire', mode: 'cycle' } }], edges: [] }, missing_source: false, used_samples: true, name: '孔數檢測', description: '' }
+  if (path.startsWith('/vision/templates')) return { items: [{ id: 'builtin:hole_count', name: '孔數檢測', description: '灰階、二值化、blob 計數', category: 'count', source: 'builtin', node_count: 8, graph: { nodes: [{ id: 'src', type: 'image_source', params: {} }], edges: [] }, owner_name: '', created_at: null, has_samples: true }], can_manage: true }
   if (path.startsWith('/vision/capacity')) return { active: 0, max_workers: 4, flows: [], images: { images: 0, bytes: 0, runs: 0, encoded: 0 }, queue: {} }
   if (path.startsWith('/vision/agent/info')) return { provider: 'offline', model: '', llm: false, has_key: false, key_hint: '', source: 'none', mode: 'single', reason: '', providers: [{ value: 'offline', label: '離線規則引擎', default_model: '' }] }
   if (path.startsWith('/vision/agent/jobs')) return { items: [] }
