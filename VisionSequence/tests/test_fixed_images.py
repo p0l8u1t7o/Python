@@ -1,4 +1,4 @@
-"""固定影像：檔案庫（雜湊去重、載入快取、縮圖、孤兒）、fixed_image 工具（輪播／固定／試執行不推進／_input_image 優先）、
+"""固定影像：檔案庫（雜湊去重、載入快取、縮圖、孤兒）、fixed_image 工具（輪播／固定／試執行也推進／_input_image 優先）、
 API（上傳多檔、from-ref、取檔與縮圖要登入）、範本以樣本圖實例化、參考影像埠（template_match／defect_diff／shading_correct／contour_match）、匯出匯入帶圖。"""
 
 from __future__ import annotations
@@ -87,9 +87,11 @@ class FixedImageToolTests(SimpleTestCase):
     def test_cycle_and_fixed_modes(self):
         seq = [self._run({"images": self.descs, "mode": "cycle"}).outputs["index"] for _ in range(4)]
         self.assertEqual(seq, [1, 2, 3, 1])
-        r = self._run({"images": self.descs, "mode": "cycle"}, preview=True)
-        self.assertEqual(r.outputs["index"], 2)  # 試執行看目前那張、不推進
-        self.assertEqual(self._run({"images": self.descs, "mode": "cycle"}, preview=True).outputs["index"], 2)
+        # 試執行也推進：現場按一次試執行就看下一張
+        self.assertEqual([self._run({"images": self.descs, "mode": "cycle"}, preview=True).outputs["index"] for _ in range(3)], [2, 3, 1])
+        # 批次測試與 AI 試跑（flow_id ≤ 0）自己餵圖，不動產線那條流程的游標
+        self.assertEqual([self._run({"images": self.descs, "mode": "cycle"}, flow_id=-1).outputs["index"] for _ in range(2)], [1, 1])
+        self.assertEqual(self._run({"images": self.descs, "mode": "cycle"}).outputs["index"], 2)
         r = self._run({"images": self.descs, "mode": "fixed", "index": 3})
         self.assertEqual((r.outputs["index"], r.outputs["name"], r.outputs["count"]), (3, "p30.png", 3))
         self.assertEqual(int(r.outputs["image"][30, 30, 0]), 30)

@@ -1616,7 +1616,7 @@ export default {
       mode: {
         label: "取哪一张",
         options: {
-          cycle: "每次执行取下一张（试执行停在当前这张）",
+          cycle: "每次执行取下一张（含试执行）",
           fixed: "固定取第 N 张",
         },
       },

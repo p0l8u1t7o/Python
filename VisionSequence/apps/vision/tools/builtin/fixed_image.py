@@ -1,7 +1,8 @@
 """固定影像（fixed_image）：把上傳的圖片記在流程裡，每次執行直接送出——不用影像來源、不佔資產庫。
 
 用途：沒有相機時用固定圖片跑流程、範本畫廊的樣本圖、範本比對／良品比對／平場的參考圖（接到那些工具的參考影像埠）。
-多張時 `mode`＝cycle 每次執行輪到下一張（試執行不推進游標，同一張看到底）、fixed 固定第 index 張。
+多張時 `mode`＝cycle 每次執行輪到下一張（**試執行也算一次**：現場調參要按一次看一張，不是一直看同一張）、fixed 固定第 index 張。
+游標只在真的有流程 id 時推進：批次測試（flow_id=-1）與 AI 試跑（flow_id=0）都自己餵圖，不該動到產線那條流程的位置。
 `role`＝acquire 時批次測試／精度研究／API 送圖（context 的 `_input_image`）優先——與取像工具同一條規則，這樣「用這張重跑」對固定影像流程也成立；
 `role`＝reference（範本圖、良品圖、白參考等接到其他工具參考埠的圖）永遠送自己的圖，否則批次測試會把待測圖同時餵給參考埠（比對自己＝永遠 OK）。
 """
@@ -37,7 +38,7 @@ class FixedImageTool(Tool):
     params = [
         Param("images", "Pictures", kind="images", required=True, help_text="Upload one or more pictures; they are stored with the flow."),
         Param("mode", "Which picture", kind="select", default="cycle", options=[
-            {"value": "cycle", "label": "Each run takes the next picture (preview stays on the current one)"},
+            {"value": "cycle", "label": "Each run takes the next picture, previews included"},
             {"value": "fixed", "label": "Always the picture at the index"},
         ]),
         Param("index", "Index", kind="number", default=1, minimum=1, visible_when={"param": "mode", "in": ["fixed"]}, help_text="1 = the first picture."),
@@ -69,7 +70,7 @@ class FixedImageTool(Tool):
                 key = (int(ctx.flow_id), str(ctx.node.get("id") or ""))
                 with _lock:
                     idx = _cursor.get(key, 0) % n
-                    if not ctx.preview and ctx.flow_id > 0:
+                    if ctx.flow_id > 0:  # 試執行也推進；批次與 AI 試跑（flow_id ≤ 0）不動游標
                         _cursor[key] = (idx + 1) % n
             d = descs[idx]
             image = fixed_images.load(str(d["id"]))
