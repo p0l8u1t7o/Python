@@ -274,6 +274,21 @@ class ImageStorePinnedTests(TestCase):
         self.assertFalse(out["ok"])
         self.assertEqual(self.client.post("/api/vision/agent/settings/models").json()["ok"], True)
 
+    def test_probe_uses_the_settings_on_screen(self):
+        """列模型／測試連線可帶著畫面上還沒儲存的供應商：選了就試那一家，不是已儲存的那家。"""
+        post = lambda path, body: self.client.post(path, data=json.dumps(body), content_type="application/json")  # noqa: E731
+        # 已儲存的是離線；畫面上選 openai 又沒填金鑰 → 回「未填金鑰」而不是離線的 ok
+        out = post("/api/vision/agent/settings/models", {"provider": "openai"}).json()
+        self.assertFalse(out["ok"])
+        self.assertIn("金鑰", out["reason"])
+        out = post("/api/vision/agent/settings/test", {"provider": "openai_compatible"}).json()
+        self.assertFalse(out["ok"])
+        self.assertIn("base URL", out["reason"])
+        # 明確選離線就是離線；沒帶 body 沿用已儲存的（也是離線）
+        self.assertTrue(post("/api/vision/agent/settings/models", {"provider": "offline"}).json()["ok"])
+        self.assertTrue(self.client.post("/api/vision/agent/settings/test").json()["ok"])
+        self.assertEqual(post("/api/vision/agent/settings/models", {"provider": "nope"}).status_code, 422)
+
 
 class ClarifyTests(TestCase):
     """詢問機制：資訊不足先問、答了就 ready、答案併進提示詞影響生成。"""

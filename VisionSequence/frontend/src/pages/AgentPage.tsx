@@ -162,10 +162,15 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const [listing, setListing] = useState(false)
   const [models, setModels] = useState<{ ok: boolean; models: string[]; reason: string } | null>(null)
 
+  /** 畫面上這組設定（還沒儲存也能先試）：沒動過的欄位留空，伺服器沿用已儲存的值。 */
+  function probeBody() {
+    return { provider: effProvider, model: model || undefined, api_key: apiKey || undefined, base_url: baseUrl || undefined }
+  }
+
   async function listModels() {
     setListing(true)
     try {
-      setModels(await api.post<{ ok: boolean; models: string[]; reason: string }>('/vision/agent/settings/models'))
+      setModels(await api.post<{ ok: boolean; models: string[]; reason: string }>('/vision/agent/settings/models', probeBody()))
     } catch (error) {
       setModels({ ok: false, models: [], reason: errorMessage(error) })
     } finally {
@@ -175,11 +180,15 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
   const current = mine.data
   const effProvider = provider || current?.provider || 'offline'
   const defaultModel = info?.providers.find((p) => p.value === effProvider)?.default_model ?? ''
+  // 換了供應商就要這一家自己的金鑰（伺服器不會拿別家的金鑰去打）；本地端點以 base URL 為準
+  const sameProvider = effProvider === current?.provider
+  const canProbe = Boolean(apiKey || baseUrl || (sameProvider && (current?.has_key || current?.base_url)))
 
-  async function testConnection() {
+  /** 預設試畫面上這組；存檔後傳 {} 讓伺服器用剛存好的設定（金鑰欄已清空，不能再拿舊值去試）。 */
+  async function testConnection(body: Record<string, string | undefined> = probeBody()) {
     setTesting(true)
     try {
-      const r = await api.post<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string }>('/vision/agent/settings/test')
+      const r = await api.post<{ ok: boolean; provider: string; model: string; latency_ms: number; reason: string }>('/vision/agent/settings/test', body)
       setTestResult(r)
       return r
     } catch (error) {
@@ -199,7 +208,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
       await client.invalidateQueries({ queryKey: ['agent-settings'] })
       setApiKey('')
       // 存完立刻打一次最小請求：成功／失敗原因直接顯示在視窗裡，不用猜
-      const r = await testConnection()
+      const r = await testConnection({})
       if (r.ok) toast.success(effProvider === 'offline' ? t('agent.settingsSaved') : t('agent.testOk', { model: r.model, ms: r.latency_ms }))
       else toast.error(t('agent.testFailed', { reason: r.reason }))
     } catch (error) {
@@ -217,7 +226,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
         <Button variant="primary" loading={saving} onClick={() => void save()} data-testid="agent-settings-save">{t('common.save')}</Button>
       </>}>
       <div className="space-y-3">
-        <Select label={t('agent.provider')} value={effProvider} onChange={(e) => setProvider(e.target.value)}
+        <Select label={t('agent.provider')} value={effProvider} onChange={(e) => { setProvider(e.target.value); setModels(null); setTestResult(null) }}
           options={(info?.providers ?? []).map((p) => ({ value: p.value, label: p.label }))} data-testid="agent-provider" />
         {effProvider !== 'offline' ? (
           <>
@@ -227,7 +236,7 @@ function ProviderSettingsModal({ open, onClose, info }: { open: boolean; onClose
             <div className="space-y-1.5">
               <div className="flex items-end gap-2">
                 <TextInput label={t('agent.model')} placeholder={defaultModel} value={model || (provider ? '' : current?.model ?? '')} onChange={(e) => setModel(e.target.value)} data-testid="agent-model" />
-                <Button loading={listing} disabled={!(current?.has_key || current?.base_url)} title={current?.has_key || current?.base_url ? t('agent.listModelsHint') : t('agent.listModelsNeedKey')} onClick={() => void listModels()} data-testid="agent-list-models">{t('agent.listModels')}</Button>
+                <Button loading={listing} disabled={!canProbe} title={canProbe ? t('agent.listModelsHint') : t('agent.listModelsNeedKey')} onClick={() => void listModels()} data-testid="agent-list-models">{t('agent.listModels')}</Button>
               </div>
               {models ? (
                 models.ok ? (

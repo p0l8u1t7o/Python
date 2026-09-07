@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import re
 import uuid
 from typing import Any
@@ -188,6 +189,15 @@ class TuneIn(Schema):
     batch_run_id: int | None = None
 
 
+class ProbeIn(Schema):
+    """列模型／測試連線要用的設定：欄位留空就用目前生效的那組，填了就用畫面上還沒儲存的（先試再存）。"""
+
+    provider: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+
+
 class SettingsIn(Schema):
     provider: str
     model: str | None = None
@@ -228,6 +238,29 @@ class SessionPatch(Schema):
 
 def _settings_for(request: HttpRequest) -> providers.AgentSettings:
     return providers.resolve(principal(request).user)
+
+
+def _probe_settings(request: HttpRequest) -> providers.AgentSettings:
+    """把畫面上的供應商設定（JSON body，可省略）疊到目前生效的設定上，沒填的欄位才沿用已儲存的。
+    **換了供應商又沒填金鑰時不沿用舊金鑰**：那把金鑰是別家的，拿去打只會得到看不懂的 401。
+    body 自己讀不走 ninja schema：這兩個端點在畫面上「不帶 body」也要能打（沿用已儲存的設定）。"""
+    payload = ProbeIn()
+    if request.content_type and request.content_type.startswith("application/json") and request.body:
+        try:
+            raw = json.loads(request.body)
+        except ValueError:
+            raise ValidationError("Body is not valid JSON", code="bad_json") from None
+        if isinstance(raw, dict):
+            payload = ProbeIn(**{k: v for k, v in raw.items() if k in ProbeIn.model_fields and isinstance(v, str)})
+    s = _settings_for(request)
+    provider = (payload.provider or s.provider).strip()
+    if provider not in providers.PROVIDERS:
+        raise ValidationError(f"Unknown provider '{provider}'", code="bad_provider", details={"available": list(providers.PROVIDERS)})
+    same = provider == s.provider
+    key = (payload.api_key or "").strip() or (s.api_key if same else "")
+    base_url = (payload.base_url or "").strip() or (s.base_url if same else "")
+    model = (payload.model or "").strip() or (s.model if same else "")
+    return providers.AgentSettings(provider=provider, model=model, api_key=key, base_url=base_url, source=s.source, mode=s.mode)
 
 
 def _run_images(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -379,14 +412,14 @@ def get_agent_skill(request: HttpRequest, key: str):
 
 @router.post("/agent/settings/models")
 def list_agent_models(request: HttpRequest):
-    """用目前生效的設定列出金鑰可用的模型名（先儲存供應商與金鑰再按）。"""
-    return providers.list_models(_settings_for(request))
+    """列出金鑰可用的模型名。帶著畫面上選的供應商／金鑰就用那組（不必先儲存），沒帶就用目前生效的。"""
+    return providers.list_models(_probe_settings(request))
 
 
 @router.post("/agent/settings/test")
 def test_agent_settings(request: HttpRequest):
-    """用目前生效的設定打一個最小請求，回成功與否＋失敗原因（金鑰錯、缺套件、模型名錯、網路）。"""
-    return providers.test_connection(_settings_for(request))
+    """打一個最小請求，回成功與否＋失敗原因（金鑰錯、缺套件、模型名錯、網路）；同樣可帶畫面上還沒儲存的設定。"""
+    return providers.test_connection(_probe_settings(request))
 
 
 @router.post("/agent/image", response={201: dict})
