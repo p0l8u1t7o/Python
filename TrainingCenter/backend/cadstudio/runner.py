@@ -53,7 +53,7 @@ def check_env() -> str | None:
     if not CAD_PYTHON.exists():
         return f"找不到 cadgen 的 Python：{CAD_PYTHON}。請先建立 cad/.venv 並安裝 cadgen（見 README「Text-to-CAD」），或設定環境變數 CAD_PYTHON。"
     if not (CAD_SKILL / "scripts" / "export").exists():
-        return f"找不到 text-to-cad skill：{CAD_SKILL}。請 git clone https://github.com/earthtojake/text-to-cad 到 cad/text-to-cad，或設定 CAD_SKILL。"
+        return f"找不到 text-to-cad skill：{CAD_SKILL}。請執行 .\\setup-cad.ps1（會 clone tag 0.4.28；0.5.0 起上游改成 cadgen CLI，抓 main 會缺 scripts/），或設定 CAD_SKILL。"
     return None
 
 

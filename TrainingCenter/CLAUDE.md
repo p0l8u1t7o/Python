@@ -65,6 +65,7 @@
 - Commons 全文搜尋很模糊（"six axis industrial robot" 會回美洲獅）；`deepcategory` 又太深（Industrial robots → 環球影城城堡）。最穩的是 `incategory` 直接成員 + 提示詞排序，即 seed 的 `cat:分類 ~ 提示詞` 語法。
 - Gemini：`gemini-2.5-pro` 已對新用戶停用（404），預設用別名 `gemini-pro-latest` 並在 404／429／5xx 時依 `GEMINI_FALLBACKS` 遞補；免費層 Pro 常 503，實際多半落到 flash 系列。
 - CAD Studio 早期版本的模式切換讓使用者誤按「直接執行程式」而建置範本；現在是兩個明確按鈕（AI 產生／執行下方程式），不要再做隱性模式。
+- `cad/text-to-cad` 一定要用 tag `0.4.28`（對齊 `setup-cad.ps1` 釘的 cadgen 版本）。上游 0.5.0 把 `skills/cad/scripts/{gen,export,inspect,snapshot}` 全換成 `cadgen` CLI，抓 main 會讓 CAD Studio 報「找不到 text-to-cad skill」，且 `cad/lib`、`cad/models/*.step.py` 都是 0.4.x API。已誤抓 main 時：`git -C cad/text-to-cad fetch --depth 1 origin tag 0.4.28 && git -C cad/text-to-cad checkout 0.4.28`。
 - `parts.col()` 同時接受 hex 字串與 build123d Color（AI 常傳 `srgb()` 物件）。`runner.HEADER` 對 `AssemblyHelper.add` 加了 `loc/location/position/rotation` 相容包裝與 `asm.root`；AI 模式失敗會自動修復最多 `MAX_REPAIR=2` 次。
 - Commons 分類名稱要先用 `prop=categoryinfo` 確認存在（很多直覺名稱不存在，如 Safety relays、Light curtains）。
 - Commons 對工業元件的覆蓋率很差，自動抓圖約四成會抓錯（安全光柵→數位顯微鏡、三色燈→燈塔油畫）。候選清單與各元件的原廠／搜尋連結整理在 `Docs/photo-candidates.{md,html,json}`。
