@@ -83,6 +83,8 @@ export interface ToolTypeDef {
   category_label: string
   icon: string
   heavy: boolean
+  /** 分支埠的數量由這個多行參數決定（每一行一個 case_N；後端 tools/base.py 的 cases_param） */
+  cases_param?: string
   params: ToolParam[]
   inputs: ToolPort[]
   outputs: ToolPort[]

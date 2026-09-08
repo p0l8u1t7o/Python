@@ -104,6 +104,11 @@ def validate_graph(graph: Any) -> dict:
         for port in ports:
             if port.key == key:
                 return port.type
+        if direction == "out":
+            # 分支埠的數量看節點自己的設定（`switch` 每個案例一條路）
+            for port in tools.case_ports(tool, node):
+                if port.key == key:
+                    return port.type
         raise GraphError(
             f"Node '{node_id}' ({tool.label}) has no {'input' if direction == 'in' else 'output'} port '{key}'",
             node_id=node_id,

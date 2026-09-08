@@ -424,6 +424,39 @@ export default {
     },
     ports: { value: "值", previous: "先前的值" },
   },
+  switch: {
+    label: "多路分支",
+    description: "一个值一条路：一个料号、一个配方码、一个等级各走各的。案例一行一个，这一步就长出对应数量的输出；都不符的走默认分支。",
+    params: {
+      cases: { label: "案例", help: "一行一个，由上往下比，第一个相符的胜出。比对选数字时，一行可以是单一数值（12）或范围（10-20）。每一行都会多一个输出端口，另外还有默认分支。" },
+      match: {
+        label: "比对",
+        options: {
+          exact: "值刚好是这个",
+          contains: "值包含这个",
+          prefix: "值开头是这个",
+          regex: "样式（正则表达式）",
+          number: "数字或范围（10-20）",
+        },
+      },
+      case_sensitive: { label: "区分大小写" },
+    },
+    ports: { value: "值", default: "都不符", index: "第几个案例", matched: "有相符", },
+  },
+  string_match: {
+    label: "文字比对",
+    description: "拿一段文字跟清单比对：这个条码是不是我们的、日期码在不在允许清单里、读到的内容有没有包含料号。走相符／不相符分支，并回报是哪一笔。",
+    params: {
+      list: { label: "允许的值", help: "一行一个。比对选样式时，每一行都是一个正则表达式。" },
+      match: {
+        label: "比对",
+        options: { exact: "文字刚好是这个", contains: "文字包含这个", prefix: "文字开头是这个", regex: "样式（正则表达式）" },
+      },
+      case_sensitive: { label: "区分大小写" },
+      invert: { label: "相符时反而算失败", help: "用在「这些字不准出现」的清单。" },
+    },
+    ports: { text: "文字", found: "相符", not_found: "不相符", index: "第几笔", matched: "相符的那一笔" },
+  },
   parse_message: {
     label: "拆解消息",
     description: "把一段文字拆成具名值：条码内容 LOT12345|2026-09-08|A7、文字识别读到的一行，或上位机随触发送来的消息。每个字段都会变成具名输出，后面的步骤可以拿去判断、比对或回送。",

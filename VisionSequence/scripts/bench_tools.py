@@ -400,6 +400,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("bool_logic", "bool_logic", None, {"mode": "and"}, {"values": [True, True, False]}, {}),
         ("formula", "formula", None, {"expression": "abs(a-b)/c*100"}, {"a": 3, "b": 1, "c": 4}, {}),
         ("parse_message", "parse_message", None, {"separator": "|", "fields": "lot\ndate\nslot:int\nw:float*0.01"}, {"text": "LOT12345|2026-09-08|7|1234"}, {}),
+        ("switch", "switch", None, {"cases": "A17\nB22\nC30"}, {"value": "B22"}, {}),
+        ("string_match", "string_match", None, {"list": "OK\nPASS", "match": "contains"}, {"text": "the PASS one"}, {}),
         ("python_script", "python_script", gray, {"code": SCRIPT_TEMPLATE}, {}, {"_script_admin": True}),
         ("count_list", "count_list", None, {}, {"items": list(range(100))}, {}),
         # output

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 
 import ast
@@ -9,7 +11,7 @@ import math
 import operator
 from typing import Any
 
-from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.base import MAX_CASES, Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 
 _OPS = {
     "gt": operator.gt, "ge": operator.ge, "lt": operator.lt, "le": operator.le,
@@ -334,6 +336,148 @@ class VariableSetTool(Tool):
 
 _MISSING = object()
 
+class SwitchTool(Tool):
+    key = "switch"
+    label = "Route by value"
+    description = (
+        "Sends the run down a different path for each value: one branch per part number, per recipe code, per grade. Write the "
+        "cases one per line and the step grows an output for each; anything that matches none of them takes the default branch."
+    )
+    category = "logic"
+    icon = "GitFork"
+    cases_param = "cases"
+    params = [
+        Param("cases", "Cases", kind="multiline", required=True, default="A17\\nB22\\nC30", teach=True,
+              help_text=(
+                  "One per line, in order; the first match wins. With Match set to a number a line may be a single value (12) "
+                  "or a range (10-20). The step grows one output per line, plus the default."
+              )),
+        Param("match", "Match", kind="select", default="exact", options=[
+            {"value": "exact", "label": "The value is exactly this"},
+            {"value": "contains", "label": "The value contains this"},
+            {"value": "prefix", "label": "The value starts with this"},
+            {"value": "regex", "label": "A pattern (regular expression)"},
+            {"value": "number", "label": "A number or a range (10-20)"},
+        ]),
+        Param("case_sensitive", "Match upper and lower case", kind="boolean", default=False, group="Advanced",
+              visible_when={"param": "match", "in": ["exact", "contains", "prefix", "regex"]}),
+    ]
+    inputs = [Port("value", "Value", "any")]
+    outputs = [
+        flow_out("default", "None of them", "warn"),
+        Port("index", "Which case", "number"), Port("matched", "Matched", "bool"), Port("value", "Value", "any"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        value = ctx.inputs.get("value")
+        if value is None:
+            raise ToolError("No value on the input")
+        cases = [ln.strip() for ln in str(ctx.param("cases", "") or "").splitlines() if ln.strip()][:MAX_CASES]
+        if not cases:
+            raise ToolError("List the cases, one per line")
+        mode = str(ctx.param("match", "exact"))
+        index = match_case(value, cases, mode, case_sensitive=ctx.flag("case_sensitive"))
+        branch = f"case_{index}" if index else "default"
+        shown = _plain_text(value)
+        return Result(
+            outputs={"index": index, "matched": bool(index), "value": value},
+            branch=branch,
+            message=f"{shown[:40]} -> {cases[index - 1] if index else 'default'}",
+        )
+
+
+class StringMatchTool(Tool):
+    key = "string_match"
+    label = "Check text"
+    description = (
+        "Checks a piece of text against a list: is this barcode one of ours, is this date code in the allowed set, does the "
+        "reading contain the part number. Takes the found or not-found branch and reports which entry matched."
+    )
+    category = "logic"
+    icon = "SearchCheck"
+    params = [
+        Param("list", "Allowed values", kind="multiline", required=True, default="OK", teach=True,
+              help_text="One per line. With Match set to a pattern each line is a regular expression."),
+        Param("match", "Match", kind="select", default="exact", options=[
+            {"value": "exact", "label": "The text is exactly this"},
+            {"value": "contains", "label": "The text contains this"},
+            {"value": "prefix", "label": "The text starts with this"},
+            {"value": "regex", "label": "A pattern (regular expression)"},
+        ]),
+        Param("case_sensitive", "Match upper and lower case", kind="boolean", default=False),
+        Param("invert", "Fail when it does match", kind="boolean", default=False, group="Advanced",
+              help_text="For a list of values that must not appear."),
+    ]
+    inputs = [Port("text", "Text", "any")]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("found", "Found", "bool"), Port("index", "Which entry", "number"),
+        Port("matched", "The entry that matched", "string"), Port("text", "Text", "string"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        value = ctx.inputs.get("text")
+        if value is None:
+            raise ToolError("Connect the text to check")
+        entries = [ln.strip() for ln in str(ctx.param("list", "") or "").splitlines() if ln.strip()]
+        if not entries:
+            raise ToolError("List the values to check against, one per line")
+        text = _plain_text(value)
+        index = match_case(text, entries, str(ctx.param("match", "exact")), case_sensitive=ctx.flag("case_sensitive"))
+        found = bool(index) != ctx.flag("invert")
+        return Result(
+            outputs={"found": found, "index": index, "matched": entries[index - 1] if index else "", "text": text},
+            branch="found" if found else "not_found",
+            status="ok",
+            message=f"'{text[:40]}' {'matches' if index else 'matches nothing'}{' — ' + entries[index - 1] if index else ''}",
+        )
+
+
+def _plain_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def match_case(value: Any, cases: list[str], mode: str, *, case_sensitive: bool = False) -> int:
+    """第一個相符的案例（1 起算）；都不符回 0。純函式，`switch` 與 `string_match` 共用。"""
+    if mode == "number":
+        try:
+            number = float(_plain_text(value))
+        except (TypeError, ValueError):
+            return 0
+        for i, case in enumerate(cases):
+            low, sep, high = case.partition("-")
+            try:
+                if sep and low.strip():
+                    if float(low) <= number <= float(high):
+                        return i + 1
+                elif abs(number - float(case)) < 1e-9:
+                    return i + 1
+            except (TypeError, ValueError):
+                continue
+        return 0
+    text = _plain_text(value)
+    hay = text if case_sensitive else text.lower()
+    for i, case in enumerate(cases):
+        needle = case if case_sensitive else case.lower()
+        if mode == "contains" and needle in hay:
+            return i + 1
+        if mode == "prefix" and hay.startswith(needle):
+            return i + 1
+        if mode == "regex":
+            try:
+                if re.search(case, text, 0 if case_sensitive else re.IGNORECASE):
+                    return i + 1
+            except re.error:
+                continue
+        elif mode == "exact" and hay == needle:
+            return i + 1
+    return 0
+
+
 class ParseMessageTool(Tool):
     key = "parse_message"
     label = "Split a message"
@@ -470,4 +614,4 @@ def _field_from_line(line: str, order: int) -> Any:
         raise ToolError(f"'{line}': {exc}") from None
 
 
-TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool(), VariableGetTool(), VariableSetTool(), ParseMessageTool()]
+TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool(), VariableGetTool(), VariableSetTool(), ParseMessageTool(), SwitchTool(), StringMatchTool()]

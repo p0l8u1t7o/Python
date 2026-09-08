@@ -311,6 +311,127 @@ class ParamBindingTests(SimpleTestCase):
         self.assertIn(("thr", "threshold"), {(d.node_id, d.key) for d in autotune.search_space(graph)})
 
 
+class SwitchTests(SimpleTestCase):
+    """一個料號一條路：`switch` 的分支埠數量看節點自己的設定。"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        register_builtins()
+
+    def _run(self, value, cases="A17\nB22\nC30", **params):
+        return run_tool("switch", None, {"cases": cases, **params}, inputs={"value": value})
+
+    def test_the_first_matching_case_wins(self):
+        self.assertEqual(self._run("A17").branch, "case_1")
+        self.assertEqual(self._run("B22").outputs["index"], 2)
+        self.assertEqual(self._run("ZZZ").branch, "default")
+        self.assertFalse(self._run("ZZZ").outputs["matched"])
+        self.assertEqual(self._run("a17").branch, "case_1")  # 預設不分大小寫
+        self.assertEqual(self._run("a17", case_sensitive=True).branch, "default")
+
+    def test_matching_by_part_of_the_text_or_a_pattern(self):
+        self.assertEqual(self._run("xx B22 yy", match="contains").branch, "case_2")
+        self.assertEqual(self._run("A17-0091", match="prefix").branch, "case_1")
+        self.assertEqual(self._run("abc123", cases="^[a-z]+" + chr(92) + "d+$", match="regex").branch, "case_1")
+        self.assertEqual(self._run("abc", cases="(", match="regex").branch, "default")  # 樣式壞掉不算相符
+
+    def test_numbers_and_ranges(self):
+        self.assertEqual(self._run(15, cases="1-9\n10-20", match="number").branch, "case_2")
+        self.assertEqual(self._run(5, cases="1-9\n10-20", match="number").branch, "case_1")
+        self.assertEqual(self._run(99, cases="1-9\n10-20", match="number").branch, "default")
+        self.assertEqual(self._run(7, cases="7", match="number").branch, "case_1")
+        self.assertEqual(self._run("nope", cases="7", match="number").branch, "default")
+
+    def test_the_settings_have_to_make_sense(self):
+        with self.assertRaisesMessage(base.ToolError, "List the cases"):
+            self._run("A17", cases="  ")
+        with self.assertRaisesMessage(base.ToolError, "No value"):
+            run_tool("switch", None, {"cases": "A"}, inputs={})
+
+    def test_the_branch_ports_follow_the_settings(self):
+        node = {"type": "switch", "params": {"cases": "A17\nB22"}}
+        ports = base.case_ports(base.get("switch"), node)
+        self.assertEqual([p.key for p in ports], ["case_1", "case_2"])
+        self.assertEqual([p.label for p in ports], ["A17", "B22"])
+        self.assertTrue(all(p.type == "flow" for p in ports))
+        self.assertEqual(base.case_ports(base.get("switch"), {"params": {"cases": ""}}), ())
+        self.assertEqual(base.case_ports(base.get("blob"), node), ())  # 沒宣告 cases_param 的工具沒有
+        many = {"params": {"cases": chr(10).join(str(i) for i in range(50))}}
+        self.assertEqual(len(base.case_ports(base.get("switch"), many)), base.MAX_CASES)
+
+    def test_only_the_chosen_branch_runs(self):
+        graph = {
+            "nodes": [
+                {"id": "src", "type": "image_source", "params": {"mode": "input"}},
+                {"id": "txt", "type": "format_text", "params": {"template": "B22"}},
+                {"id": "sw", "type": "switch", "params": {"cases": "A17\nB22"}},
+                {"id": "j1", "type": "judge", "params": {"verdict": "ok", "label": "first"}},
+                {"id": "j2", "type": "judge", "params": {"verdict": "ok", "label": "second"}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "txt", "source_handle": "text", "target": "sw", "target_handle": "value"},
+                {"id": "e2", "source": "sw", "source_handle": "case_1", "target": "j1", "target_handle": "_flow"},
+                {"id": "e3", "source": "sw", "source_handle": "case_2", "target": "j2", "target_handle": "_flow"},
+            ],
+        }
+        report = engine.execute(compile_graph(validate_graph(graph)), flow_id=0, flow_version=1, trigger="test",
+                                grab=lambda s: None, asset_path=lambda a: None, input_image=np.zeros((8, 8), np.uint8))
+        self.assertEqual(report.nodes["sw"].branch, "case_2")
+        self.assertEqual(report.nodes["j1"].status, "skipped")
+        self.assertEqual(report.nodes["j2"].status, "ok")
+
+    def test_a_branch_that_does_not_exist_is_refused(self):
+        graph = {
+            "nodes": [{"id": "sw", "type": "switch", "params": {"cases": "A17"}},
+                      {"id": "j", "type": "judge", "params": {"verdict": "ok"}}],
+            "edges": [{"id": "e", "source": "sw", "source_handle": "case_9", "target": "j", "target_handle": "_flow"}],
+        }
+        with self.assertRaisesMessage(GraphError, "case_9"):
+            validate_graph(graph)
+
+
+class StringMatchTests(SimpleTestCase):
+    """條碼是不是我們的、日期碼在不在允許清單裡。"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        register_builtins()
+
+    def _run(self, text, **params):
+        params.setdefault("list", "OK\nPASS")
+        return run_tool("string_match", None, params, inputs={"text": text})
+
+    def test_found_and_not_found(self):
+        r = self._run("PASS")
+        self.assertEqual((r.branch, r.outputs["index"], r.outputs["matched"]), ("found", 2, "PASS"))
+        self.assertTrue(r.outputs["found"])
+        r = self._run("NOPE")
+        self.assertEqual((r.branch, r.outputs["index"], r.outputs["matched"]), ("not_found", 0, ""))
+
+    def test_case_and_the_ways_to_match(self):
+        self.assertEqual(self._run("pass").branch, "found")
+        self.assertEqual(self._run("pass", case_sensitive=True).branch, "not_found")
+        self.assertEqual(self._run("the PASS one", match="contains").branch, "found")
+        self.assertEqual(self._run("PASSED", match="prefix").branch, "found")
+        self.assertEqual(self._run("A17-9", list="^A" + chr(92) + "d+", match="regex").branch, "found")
+
+    def test_a_list_of_values_that_must_not_appear(self):
+        r = self._run("GOOD", list="BAD\nSCRAP", invert=True)
+        self.assertEqual((r.branch, r.outputs["found"]), ("found", True))
+        self.assertEqual(self._run("BAD", list="BAD", invert=True).branch, "not_found")
+
+    def test_the_settings_have_to_make_sense(self):
+        with self.assertRaisesMessage(base.ToolError, "List the values"):
+            self._run("x", list="   ")
+        with self.assertRaisesMessage(base.ToolError, "Connect the text"):
+            run_tool("string_match", None, {"list": "A"}, inputs={})
+
+    def test_numbers_become_text_the_way_a_person_would_write_them(self):
+        self.assertEqual(self._run(7.0, list="7").branch, "found")  # 7.0 是 "7"，不是 "7.0"
+
+
 def _context(params: dict, inputs: dict) -> base.ToolContext:
     return base.ToolContext(
         run_id="r", flow_id=0, node={"params": params}, inputs=inputs, context={},

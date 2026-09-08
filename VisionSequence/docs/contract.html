@@ -213,6 +213,10 @@
 <li>Every tool's outputs end with the implicit port <code>{"key":"_overlays","type":"list","implicit":true}</code> carrying that step's marks, ready to wire into draw_result.</li>
 <li><strong>Bit depth</strong>: an image port carries uint8 (the norm), uint16 (16-bit grey or RGB) or float32. A tool declares what it accepts through <code>Tool.accepts</code>; anything outside that is normalised to 8-bit by <code>ToolContext.image()</code> (u16 shifted right by 8, floats min-max scaled) without touching the input array. Convert explicitly with the <code>convert_depth</code> tool. See <a href="vision-capabilities.html">Inspection capabilities</a>.</li>
 <li>The implicit ports — <code>_flow</code> and <code>_transform</code> in, <code>_overlays</code> and <code>_image</code> out — are declared once in <code>apps/vision/tools/base.py</code> (<code>IMPLICIT_INPUTS</code> and <code>IMPLICIT_OUTPUTS</code>); graph validation, the engine and this catalogue all read that table, so no tool declares them.</li>
+<li>A step whose branches come from its own settings (<em>Route by value</em>) grows one <code>flow</code> output per case,
+<code>case_1</code> upwards, named after the case. The catalogue only lists the fixed ports; the extra ones come from the node's
+parameters (<code>cases_param</code> names which parameter), so validation, the canvas and the engine all read the same list.
+A run takes <strong>one</strong> branch: the first case that matches, or <code>default</code>.</li>
 <li>A parameter can be <strong>driven by an earlier step</strong> instead of typed in: connect into the handle
 <code>param:&lt;parameter key&gt;</code> and that value is used at run time (the value on the step stays as the fallback for when the
 upstream produces nothing). The port's type comes from the parameter: a number parameter takes <code>number</code>, a checkbox takes

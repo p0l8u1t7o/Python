@@ -391,6 +391,8 @@ class Tool:
     #: 哪些參數填的是「通訊連線名稱」。Runner 的 prefetch 會照這個把連線在呼叫者執行緒
     #: 先開好（執行緒池內的熱路徑不碰資料庫）；沒宣告的話工具在執行時只會拿到 None。
     connection_params: tuple[str, ...] = ()
+    #: 分支埠的數量由這個多行參數決定（每一行一個 `case_N` 的 flow 輸出埠）；見 `case_ports()`。
+    cases_param: str = ""
 
     #: 可吃的影像位深（imgfmt.DEPTHS 子集合）。預設只吃 u8：其他位深進來會被自動
     #: 正規化（工具永遠不炸）；能原生處理 16-bit／浮點的工具自行宣告放寬。
@@ -525,6 +527,23 @@ IMPLICIT_OUTPUTS: tuple[ImplicitPort, ...] = (
 )
 
 
+def case_ports(tool: ToolType, node: dict[str, Any] | None) -> tuple[Port, ...]:
+    """依節點參數長出來的分支埠：`cases_param` 指定的多行參數，每一行一個 `case_N`。
+
+    埠數要看節點自己的設定（三個料號就三條路），寫不進類別；`graph.port_type` 驗證時查這裡，
+    前端 `graphMapping` 依同一份規則畫把手。
+    """
+    key = getattr(tool, "cases_param", "")
+    if not key or not isinstance(node, dict):
+        return ()
+    lines = [ln for ln in str((node.get("params") or {}).get(key) or "").splitlines() if ln.strip()]
+    return tuple(flow_out(f"case_{i + 1}", ln.strip()[:40]) for i, ln in enumerate(lines[:MAX_CASES]))
+
+
+#: 一個分支節點最多幾條路（再多就該用配方或查表，不是把圖畫成扇子）。
+MAX_CASES = 16
+
+
 def implicit_input(key: str) -> ImplicitPort | None:
     return next((p for p in IMPLICIT_INPUTS if p.key == key), None)
 
@@ -544,6 +563,8 @@ def catalogue() -> list[dict[str, Any]]:
             "icon": t.icon,
             "heavy": bool(getattr(t, "heavy", False)),
             "version": int(getattr(t, "version", 1)),
+            # 分支埠的數量看節點自己的設定；前端依這個參數名長出把手（`case_ports()` 是後端那一份）
+            "cases_param": str(getattr(t, "cases_param", "") or ""),
             "params": [p.as_dict() for p in t.params],
             "inputs": [p.as_dict() for p in t.inputs] + [s.as_dict() for s in IMPLICIT_INPUTS if s.shows_on(t)],
             "outputs": [p.as_dict() for p in t.outputs] + [s.as_dict() for s in IMPLICIT_OUTPUTS if s.shows_on(t)],

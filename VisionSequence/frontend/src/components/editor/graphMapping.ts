@@ -72,9 +72,22 @@ export function withParamPorts(definition: ToolTypeDef | undefined, exposed: str
   return extra.length ? { ...definition, inputs: [...definition.inputs, ...extra] } : definition
 }
 
+/** 一個分支節點最多幾條路（與後端 tools/base.py 的 MAX_CASES 同步）。 */
+export const MAX_CASES = 16
+
+/** `switch` 這種「一個案例一條路」的工具：依節點設定長出 case_1…case_N 的分支埠。 */
+export function withCasePorts(definition: ToolTypeDef | undefined, payload: GraphNode): ToolTypeDef | undefined {
+  const key = definition?.cases_param
+  if (!definition || !key) return definition
+  const lines = String((payload.params ?? {})[key] ?? '').split('\n').map((s) => s.trim()).filter(Boolean).slice(0, MAX_CASES)
+  if (!lines.length) return definition
+  const cases: ToolPort[] = lines.map((label, i) => ({ key: `case_${i + 1}`, label: label.slice(0, 40), type: 'flow', required: false, multiple: false, tone: 'neutral' }))
+  return { ...definition, outputs: [...cases, ...definition.outputs] }
+}
+
 export function nodeDataFrom(payload: GraphNode, definition: ToolTypeDef | undefined): ToolNodeData {
   return {
-    definition: withParamPorts(definition, payload.exposed_params),
+    definition: withCasePorts(withParamPorts(definition, payload.exposed_params), payload),
     label: payload.label ?? '',
     description: payload.description ?? '',
     enabled: payload.enabled !== false,

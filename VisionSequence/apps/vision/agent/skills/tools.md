@@ -213,6 +213,15 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 ## if_number
 數值比較（eq/ne/gt/ge/lt/le）→ `true/false` 分支。計數 == N 就是它。
 
+## switch
+一個值一條路（多料號、多等級）：`value` 接條碼／文字辨識／料號變數，`cases` 一行一個案例，
+節點就長出對應數量的分支埠（`case_1`…），都不符走 `default`。`match`＝exact／contains／prefix／regex／number
+（number 的一行可以是 `12` 或 `10-20`）。**一次只會走一條路**（第一個相符的），要多條同時走請並排放兩個 switch。
+
+## string_match
+文字在不在允許清單裡：`text` 接條碼或文字辨識，`list` 一行一個，走 `found`／`not_found`，
+輸出 `index`／`matched`。`invert` 用在「這些字不准出現」的黑名單。單一字串比對也用它（清單只寫一行）。
+
 ## bool_logic
 多個 bool 彙總（and/or/not）：`values` 埠可接多條邊。輸出 `result` 給 judge(by_input)。
 

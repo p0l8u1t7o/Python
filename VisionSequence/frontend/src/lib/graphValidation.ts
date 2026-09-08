@@ -123,7 +123,8 @@ export function checkConnection(
   const sHandle = conn.sourceHandle || sDef?.outputs[0]?.key || ''
   const tHandle = conn.targetHandle || tDef?.inputs[0]?.key || ''
   const sPort = sDef?.outputs.find((p) => p.key === sHandle)
-  const sType = sPort?.type ?? 'any'
+  // 動態分支埠（switch 的 case_N）不在目錄裡，型別一定是 flow
+  const sType = sPort?.type ?? (/^case_\d+$/.test(sHandle) ? 'flow' : 'any')
   const tPortDef = tDef?.inputs.find((p) => p.key === tHandle) ?? paramPort(tDef, tHandle)
   const tType = tHandle === FLOW_HANDLE ? 'flow' : (tPortDef?.type ?? 'any')
   if (sType === 'flow' && tHandle !== FLOW_HANDLE) return { code: 'flowOnly', values: {} }
