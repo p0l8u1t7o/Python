@@ -1173,6 +1173,505 @@ def hit_series(hits: list[CaliperHit], field: str = "offset") -> list[float | No
     return [float(getattr(h, field)) if h.found else None for h in hits]
 
 
+# ---------------------------------------------------------------------------
+# 幾何查找家族（都坐在 caliper_series 上）
+# ---------------------------------------------------------------------------
+def rect_corners(rect: dict[str, Any]) -> np.ndarray:
+    """旋轉矩形的四個角，**依畫面順時針**排列（左上→右上→右下→左下）。
+
+    順時針很重要：`line_geometry` 的掃描方向是線方向順時針轉 90°，所以沿著順時針走一圈，
+    每一邊的卡尺都是**由外往內**掃，四邊的極性因此一致。
+    """
+    cx, cy = float(rect["cx"]), float(rect["cy"])
+    hw, hh = float(rect["w"]) / 2, float(rect["h"]) / 2
+    ang = math.radians(float(rect.get("angle", 0)))
+    ux, uy = math.cos(ang), math.sin(ang)          # 寬的方向
+    vx, vy = -math.sin(ang), math.cos(ang)         # 高的方向
+    return np.array([
+        [cx - ux * hw - vx * hh, cy - uy * hw - vy * hh],
+        [cx + ux * hw - vx * hh, cy + uy * hw - vy * hh],
+        [cx + ux * hw + vx * hh, cy + uy * hw + vy * hh],
+        [cx - ux * hw + vx * hh, cy - uy * hw + vy * hh],
+    ], dtype=np.float64)
+
+
+def fit_points_line(points: np.ndarray, *, ransac: bool = True, tol: float = 2.0) -> tuple[float, float, float, float, np.ndarray] | None:
+    """一組點 → (vx, vy, x0, y0, inliers)；少於兩點回 None。"""
+    pts = np.asarray(points, dtype=np.float64)
+    if len(pts) < 2:
+        return None
+    inliers = np.ones(len(pts), dtype=bool)
+    if ransac and len(pts) >= 3:
+        fitted = fit_line_ransac(pts, tol=tol)
+        if fitted is not None:
+            (vx, vy, x0, y0), inliers = fitted
+            return float(vx), float(vy), float(x0), float(y0), inliers
+    vx, vy, x0, y0 = cv2.fitLine(pts.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
+    return float(vx), float(vy), float(x0), float(y0), inliers
+
+
+def line_span(fit: tuple[float, float, float, float], points: np.ndarray) -> dict[str, float]:
+    """把一組點投影到擬合直線上，取投影範圍當作線段端點。"""
+    vx, vy, x0, y0 = fit
+    pts = np.asarray(points, dtype=np.float64)
+    t = (pts[:, 0] - x0) * vx + (pts[:, 1] - y0) * vy
+    ends = []
+    for s in (float(t.min()), float(t.max())):
+        ends += [x0 + vx * s, y0 + vy * s]
+    return {"x1": round(ends[0], 4), "y1": round(ends[1], 4), "x2": round(ends[2], 4), "y2": round(ends[3], 4)}
+
+
+def _side_hits(image: np.ndarray, a: np.ndarray, b: np.ndarray, *, count: int, search: float, height: float,
+               polarity: str, threshold: float, smoothing: int, select: str, inset: float = 0.1) -> list[CaliperHit]:
+    """矩形的一條邊：從 a 走到 b 佈卡尺（掃描方向由外往內），兩端各縮 `inset` 比例避開角落。"""
+    a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
+    start = a + (b - a) * inset
+    end = b - (b - a) * inset
+    centers, scan, tangent, positions = line_geometry(start[0], start[1], end[0], end[1], count)
+    return caliper_series(image, centers, scan, tangent, positions, search=search, height=height,
+                          polarity=polarity, threshold=threshold, smoothing=smoothing, select=select)
+
+
+class FindRectangleTool(Tool):
+    key = "find_rectangle"
+    label = "Find a rectangle"
+    description = (
+        "Finds the four edges of a rectangular part in one step: calipers scan inwards from each side of the region, a line is "
+        "fitted to each edge, and the four corners come from where those lines cross. Reports the centre, width, height and "
+        "angle, and hands the found rectangle on as a region — so the next step can measure inside the part wherever it landed."
+    )
+    category = "locate"
+    icon = "RectangleHorizontal"
+    params = [
+        Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect"],
+              help_text="Draw it a little larger than the part; the calipers scan inwards from each side."),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS,
+              help_text="The grey change scanning inwards from outside the part."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("calipers", "Calipers per side", kind="number", default=12, minimum=3, maximum=200),
+        Param("search", "Search depth", kind="number", default=0.4, minimum=0.05, maximum=0.9, step=0.05,
+              help_text="How far into the region each caliper scans, as a fraction of the region. Enough to reach the edge, not so far that it reaches the far side."),
+        Param("caliper_width", "Caliper width", kind="number", default=5, minimum=1, maximum=99, unit="px", group="Advanced",
+              help_text="Averaged along the edge to quieten noise."),
+        Param("edge_select", "Which edge", kind="select", default="strongest", options=[
+            {"value": "strongest", "label": "Strongest"}, {"value": "first", "label": "First (outermost)"}, {"value": "last", "label": "Last (innermost)"},
+        ], group="Advanced"),
+        Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True, group="Advanced"),
+        Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
+        Port("width", "Width", "number"), Port("height", "Height", "number"), Port("angle", "Angle", "number"),
+        Port("rect", "Rectangle", "region"), Port("corners", "Corners", "points"), Port("lines", "Edges", "list"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("No region is set")
+        rect = _as_rotated_rect(region)
+        corners = rect_corners(rect)
+        depth = float(ctx.number("search", 0.4))
+        count = ctx.integer("calipers", 12)
+        polarity, threshold = str(ctx.param("polarity", "any")), ctx.number("edge_threshold", 20)
+        smoothing, select = ctx.integer("smoothing", 3), str(ctx.param("edge_select", "strongest"))
+        height = ctx.number("caliper_width", 5)
+        blank = {"cx": float("nan"), "cy": float("nan"), "width": float("nan"), "height": float("nan"),
+                 "angle": float("nan"), "rect": None, "corners": [], "lines": []}
+        overlays = [region_overlay(region, label="roi")]
+        fits: list[tuple[float, float, float, float]] = []
+        edge_points: list[list[float]] = []
+        for i in range(4):
+            across = float(rect["h"]) if i % 2 == 0 else float(rect["w"])  # 這一邊掃進去的方向有多長
+            hits = _side_hits(image, corners[i], corners[(i + 1) % 4], count=count, search=max(3.0, across * depth),
+                              height=height, polarity=polarity, threshold=threshold, smoothing=smoothing, select=select)
+            points = np.asarray(hit_points(hits), dtype=np.float64)
+            if len(points) < 2:
+                return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
+                              message=f"Side {i + 1} has too few edge points ({len(points)})")
+            fitted = fit_points_line(points, ransac=ctx.flag("ransac", True), tol=ctx.number("ransac_tol", 2))
+            if fitted is None:
+                return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message=f"Side {i + 1} could not be fitted")
+            fits.append(fitted[:4])
+            edge_points += points.round(2).tolist()
+        found_corners: list[list[float]] = []
+        for i in range(4):
+            # 角 i 是「前一邊」與「這一邊」的交點：邊 0 是上緣，所以角 0 是左上（上∩左）
+            point = intersect_fits(fits[i - 1], fits[i])
+            if point is None:
+                return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
+                              message="Two of the edges came out parallel, so there is no corner")
+            found_corners.append([round(point[0], 3), round(point[1], 3)])
+        pts = np.asarray(found_corners, dtype=np.float64)
+        cx, cy = float(pts[:, 0].mean()), float(pts[:, 1].mean())
+        width = float((np.hypot(*(pts[1] - pts[0])) + np.hypot(*(pts[3] - pts[2]))) / 2)
+        height_px = float((np.hypot(*(pts[2] - pts[1])) + np.hypot(*(pts[0] - pts[3]))) / 2)
+        angle = math.degrees(math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]))
+        angle = (angle + 90) % 180 - 90
+        out_rect = {"shape": "rotated_rect", "cx": round(cx, 3), "cy": round(cy, 3),
+                    "w": round(width, 3), "h": round(height_px, 3), "angle": round(angle, 3)}
+        overlays += [
+            {"kind": "points", "points": edge_points, "color": "#38bdf8"},
+            {"kind": "polygon", "points": found_corners, "color": "#22c55e", "width": 2, "label": f"{width:.1f}×{height_px:.1f}"},
+        ]
+        return Result(
+            outputs={"cx": round(cx, 3), "cy": round(cy, 3), "width": round(width, 3), "height": round(height_px, 3),
+                     "angle": round(angle, 3), "rect": out_rect, "corners": found_corners,
+                     "lines": [line_span(f, np.asarray(found_corners)) for f in fits]},
+            overlays=overlays, branch="found",
+            message=f"{width:.2f}×{height_px:.2f} at ({cx:.1f}, {cy:.1f}), {angle:.2f}°",
+        )
+
+
+def intersect_fits(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> tuple[float, float] | None:
+    """兩條 (vx, vy, x0, y0) 直線的交點；平行回 None。"""
+    (vx1, vy1, x1, y1), (vx2, vy2, x2, y2) = a, b
+    denom = vx1 * vy2 - vy1 * vx2
+    if abs(denom) < 1e-9:
+        return None
+    t = ((x2 - x1) * vy2 - (y2 - y1) * vx2) / denom
+    return x1 + vx1 * t, y1 + vy1 * t
+
+
+def _as_line(value: Any) -> tuple[float, float, float, float] | None:
+    """接受 {x1,y1,x2,y2}（找線、幾何作圖的 line 輸出都是這個形狀）。"""
+    if isinstance(value, dict) and all(k in value for k in ("x1", "y1", "x2", "y2")):
+        try:
+            return float(value["x1"]), float(value["y1"]), float(value["x2"]), float(value["y2"])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+class FindQuadrilateralTool(Tool):
+    key = "find_quadrilateral"
+    label = "Corners from four edges"
+    description = (
+        "Turns four edges into a four-cornered shape: wire in four Find-lines steps (one per side, in order round the part) "
+        "and this works out the corners, the side lengths and the diagonals. Use it when the part is not a rectangle — a "
+        "tapered pad, a trapezoid, a part seen at an angle."
+    )
+    category = "locate"
+    icon = "Pentagon"
+    params = []
+    inputs = [
+        Port("image", "Image", "image", required=False),
+        Port("a", "Edge 1", "any"), Port("b", "Edge 2", "any"), Port("c", "Edge 3", "any"), Port("d", "Edge 4", "any"),
+    ]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("corners", "Corners", "points"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
+        Port("sides", "Side lengths", "list"), Port("diagonals", "Diagonals", "list"), Port("area", "Area", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        lines = []
+        for key in ("a", "b", "c", "d"):
+            line = _as_line(ctx.inputs.get(key))
+            if line is None:
+                raise ToolError(f"Edge {key.upper()} is missing — wire four lines in, in order round the part")
+            lines.append(line)
+        blank = {"corners": [], "cx": float("nan"), "cy": float("nan"), "sides": [], "diagonals": [], "area": float("nan")}
+        corners: list[list[float]] = []
+        for i in range(4):
+            (x1, y1, x2, y2), (x3, y3, x4, y4) = lines[i], lines[(i + 1) % 4]
+            point = intersect_fits((x2 - x1, y2 - y1, x1, y1), (x4 - x3, y4 - y3, x3, y3))
+            if point is None:
+                return Result(outputs=blank, branch="not_found", status="ng",
+                              message=f"Edges {i + 1} and {(i + 1) % 4 + 1} are parallel, so they have no corner")
+            corners.append([round(point[0], 3), round(point[1], 3)])
+        pts = np.asarray(corners, dtype=np.float64)
+        sides = [round(float(np.hypot(*(pts[(i + 1) % 4] - pts[i]))), 3) for i in range(4)]
+        diagonals = [round(float(np.hypot(*(pts[2] - pts[0]))), 3), round(float(np.hypot(*(pts[3] - pts[1]))), 3)]
+        area = float(abs(np.cross(pts[2] - pts[0], pts[3] - pts[1])) / 2)
+        cx, cy = float(pts[:, 0].mean()), float(pts[:, 1].mean())
+        return Result(
+            outputs={"corners": corners, "cx": round(cx, 3), "cy": round(cy, 3), "sides": sides,
+                     "diagonals": diagonals, "area": round(area, 3)},
+            overlays=[{"kind": "polygon", "points": corners, "color": "#22c55e", "width": 2},
+                      {"kind": "point", "x": cx, "y": cy, "color": "#f59e0b", "label": "centre"}],
+            branch="found", message=f"sides {', '.join(f'{s:.1f}' for s in sides)}",
+        )
+
+
+class FindParallelLinesTool(Tool):
+    key = "find_parallel_lines"
+    label = "Find a pair of edges"
+    description = (
+        "Finds both sides of a track, a rib or a gap in one step: every caliper looks for two edges instead of one, a line is "
+        "fitted to each side, and the width between them is reported at each caliper and as a whole. The centre line comes out "
+        "too, which is what a following measurement usually wants."
+    )
+    category = "locate"
+    icon = "Equal"
+    params = [
+        Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect"],
+              help_text="The long side runs along the pair of edges; the calipers scan across the short side."),
+        Param("pair_polarity", "The band between the edges is", kind="select", default="any", options=[
+            {"value": "any", "label": "Either"}, {"value": "bright", "label": "Brighter than its surroundings"}, {"value": "dark", "label": "Darker than its surroundings"},
+        ], teach=True),
+        Param("pair_mode", "Which pair", kind="select", default="widest", options=[
+            {"value": "widest", "label": "The widest pair"}, {"value": "narrowest", "label": "The narrowest pair"},
+            {"value": "first_last", "label": "The outermost pair"}, {"value": "strongest", "label": "The strongest pair"},
+            {"value": "expected", "label": "Closest to the expected width"},
+        ]),
+        Param("expected_width", "Expected width", kind="number", default=0, minimum=0, unit="px", teach=True,
+              visible_when={"param": "pair_mode", "in": ["expected"]}),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("calipers", "Calipers", kind="number", default=20, minimum=2, maximum=500),
+        Param("caliper_width", "Caliper width", kind="number", default=3, minimum=1, maximum=99, unit="px", group="Advanced"),
+        Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True, group="Advanced"),
+        Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("distance", "Width", "number"), Port("min_distance", "Narrowest", "number"), Port("max_distance", "Widest", "number"),
+        Port("angle", "Angle", "number"), Port("line_a", "Edge A", "any"), Port("line_b", "Edge B", "any"),
+        Port("center_line", "Centre line", "any"), Port("widths", "Widths", "list"), Port("found_count", "Calipers that found a pair", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("No region is set")
+        rect = _as_rotated_rect(region)
+        horizontal = float(rect["w"]) >= float(rect["h"])
+        along = float(rect["w"]) if horizontal else float(rect["h"])
+        across = float(rect["h"]) if horizontal else float(rect["w"])
+        ang = math.radians(float(rect.get("angle", 0)))
+        ux, uy = (math.cos(ang), math.sin(ang)) if horizontal else (-math.sin(ang), math.cos(ang))
+        half = along / 2
+        x1, y1 = rect["cx"] - ux * half, rect["cy"] - uy * half
+        x2, y2 = rect["cx"] + ux * half, rect["cy"] + uy * half
+        count = ctx.integer("calipers", 20)
+        centers, scan, tangent, positions = line_geometry(x1, y1, x2, y2, count)
+        hits = caliper_series(
+            image, centers, scan, tangent, positions, search=across, height=ctx.number("caliper_width", 3),
+            threshold=ctx.number("edge_threshold", 20), smoothing=ctx.integer("smoothing", 3), mode="pair",
+            pair_mode=str(ctx.param("pair_mode", "widest")), pair_polarity=str(ctx.param("pair_polarity", "any")),
+            expected_width=ctx.number("expected_width", 0),
+        )
+        overlays = [region_overlay(region, label="roi")]
+        blank = {"distance": float("nan"), "min_distance": float("nan"), "max_distance": float("nan"), "angle": float("nan"),
+                 "line_a": None, "line_b": None, "center_line": None, "widths": [], "found_count": 0}
+        first = np.asarray(hit_points(hits), dtype=np.float64)
+        second = np.asarray(hit_points(hits, second=True), dtype=np.float64)
+        if len(first) < 2:
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
+                          message=f"Only {len(first)} of {count} calipers found a pair of edges")
+        ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
+        fit_a, fit_b = fit_points_line(first, ransac=ransac, tol=tol), fit_points_line(second, ransac=ransac, tol=tol)
+        if fit_a is None or fit_b is None:
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message="The edges could not be fitted")
+        line_a, line_b = line_span(fit_a[:4], first), line_span(fit_b[:4], second)
+        middle = np.vstack([(first + second) / 2])
+        fit_c = fit_points_line(middle, ransac=ransac, tol=tol)
+        center_line = line_span(fit_c[:4], middle) if fit_c else None
+        widths = [round(float(h.width), 4) for h in hits if h.found]
+        angle = math.degrees(math.atan2(fit_c[1], fit_c[0])) if fit_c else 0.0
+        angle = (angle + 90) % 180 - 90
+        overlays += [
+            {"kind": "points", "points": first.round(2).tolist(), "color": "#38bdf8"},
+            {"kind": "points", "points": second.round(2).tolist(), "color": "#a78bfa"},
+            {"kind": "line", **line_a, "color": "#22c55e", "width": 2},
+            {"kind": "line", **line_b, "color": "#22c55e", "width": 2},
+        ]
+        if center_line:
+            overlays.append({"kind": "line", **center_line, "color": "#f59e0b", "dash": True, "label": f"{float(np.mean(widths)):.2f}px"})
+        return Result(
+            outputs={"distance": round(float(np.mean(widths)), 4), "min_distance": round(float(np.min(widths)), 4),
+                     "max_distance": round(float(np.max(widths)), 4), "angle": round(angle, 3),
+                     "line_a": line_a, "line_b": line_b, "center_line": center_line, "widths": widths,
+                     "found_count": len(widths)},
+            overlays=overlays, branch="found",
+            message=f"width {float(np.mean(widths)):.2f}px ({np.min(widths):.2f}–{np.max(widths):.2f}), {len(widths)}/{count} calipers",
+        )
+
+
+class FindLinesMultiTool(Tool):
+    key = "find_lines_multi"
+    label = "Find several lines"
+    description = (
+        "Finds every straight edge in a region, not just one: the sides of a connector shell, the lines of a grid, several "
+        "leads at once. Edge points are collected, the strongest line is fitted and its points taken away, and that repeats "
+        "until nothing worth calling a line is left."
+    )
+    category = "locate"
+    icon = "AlignJustify"
+    params = [
+        Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect", "circle", "polygon"]),
+        Param("max_lines", "How many at most", kind="number", default=4, minimum=1, maximum=32),
+        Param("edge_threshold", "Edge threshold", kind="number", default=60, minimum=1, maximum=500, teach=True,
+              help_text="The grey gradient that counts as an edge."),
+        Param("min_points", "Points per line", kind="number", default=30, minimum=4, maximum=10000, teach=True,
+              help_text="A line has to have at least this many edge points, or it is not a line."),
+        Param("tolerance", "Fit tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", teach=True),
+        Param("min_length", "Shortest line", kind="number", default=20, minimum=1, unit="px", group="Advanced"),
+        Param("angle_filter", "Only lines near this angle", kind="number", default=0, minimum=-90, maximum=90, unit="°", group="Advanced"),
+        Param("angle_tolerance", "Angle tolerance", kind="number", default=0, minimum=0, maximum=90, unit="°", group="Advanced",
+              help_text="0 = keep every angle."),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("count", "How many", "number"), Port("lines", "Lines", "list"), Port("angles", "Angles", "list"),
+        Port("first", "First line", "any"), Port("points", "Edge points", "points"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("No region is set")
+        area = crop(image, region)
+        if area.image.size == 0:
+            raise ToolError("The region falls outside the image")
+        threshold = ctx.number("edge_threshold", 60)
+        edges = cv2.Canny(area.image, max(1.0, threshold / 2), threshold)
+        if area.mask is not None:
+            edges = cv2.bitwise_and(edges, edges, mask=area.mask)
+        ys, xs = np.nonzero(edges)
+        points = np.stack([xs + area.x0, ys + area.y0], axis=1).astype(np.float64)
+        overlays = [region_overlay(region, label="roi")]
+        blank = {"count": 0, "lines": [], "angles": [], "first": None, "points": []}
+        min_points = ctx.integer("min_points", 30)
+        if len(points) < min_points:
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng",
+                          message=f"Only {len(points)} edge points in the region")
+        wanted_angle, angle_tol = ctx.number("angle_filter", 0), ctx.number("angle_tolerance", 0)
+        min_length, tol = ctx.number("min_length", 20), ctx.number("tolerance", 2)
+        remaining = points
+        lines: list[dict[str, float]] = []
+        angles: list[float] = []
+        for _ in range(ctx.integer("max_lines", 4)):
+            if len(remaining) < min_points:
+                break
+            fitted = fit_line_ransac(remaining, tol=tol)
+            if fitted is None:
+                break
+            (vx, vy, x0, y0), inliers = fitted
+            if int(inliers.sum()) < min_points:
+                break
+            member = remaining[inliers]
+            span = line_span((float(vx), float(vy), float(x0), float(y0)), member)
+            length = math.hypot(span["x2"] - span["x1"], span["y2"] - span["y1"])
+            angle = (math.degrees(math.atan2(float(vy), float(vx))) + 90) % 180 - 90
+            remaining = remaining[~inliers]
+            if length < min_length:
+                continue
+            if angle_tol > 0 and abs(((angle - wanted_angle) + 90) % 180 - 90) > angle_tol:
+                continue
+            span["angle"] = round(angle, 3)
+            span["points"] = int(inliers.sum())
+            lines.append(span)
+            angles.append(round(angle, 3))
+        if not lines:
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message="No line was long or solid enough")
+        for i, line in enumerate(lines):
+            overlays.append({"kind": "line", "x1": line["x1"], "y1": line["y1"], "x2": line["x2"], "y2": line["y2"],
+                             "color": "#22c55e", "width": 2, "label": f"{i + 1}: {line['angle']:.1f}°"})
+        return Result(
+            outputs={"count": len(lines), "lines": lines, "angles": angles, "first": lines[0],
+                     "points": points[:2000].round(2).tolist()},
+            overlays=overlays, branch="found",
+            message=f"{len(lines)} lines: " + ", ".join(f"{a:.1f}°" for a in angles[:6]),
+        )
+
+
+class FindCirclesMatrixTool(Tool):
+    key = "find_circles_matrix"
+    label = "Find a grid of circles"
+    description = (
+        "Finds a whole array of holes, balls or pads at once: the region is divided into rows and columns and a circle is "
+        "looked for in each cell. Reports every centre and radius, which cells came up empty, and the pitch between them — "
+        "the usual answer for a ball grid, a connector or a drilled plate."
+    )
+    category = "locate"
+    icon = "Grid3x3"
+    params = [
+        Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect"],
+              help_text="Draw it round the whole array; it is divided evenly into cells."),
+        Param("rows", "Rows", kind="number", default=3, minimum=1, maximum=64, required=True),
+        Param("cols", "Columns", kind="number", default=3, minimum=1, maximum=64, required=True),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS,
+              help_text="The grey change scanning outwards from the centre of a cell."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("min_radius", "Smallest radius", kind="number", default=0, minimum=0, unit="px", teach=True),
+        Param("max_radius", "Largest radius", kind="number", default=0, minimum=0, unit="px", teach=True,
+              help_text="0 = up to half the cell."),
+        Param("num_rays", "Scan lines", kind="number", default=24, minimum=6, maximum=360, group="Advanced"),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("found", "All found", "ok"), flow_out("not_found", "Some missing", "critical"),
+        Port("count", "How many found", "number"), Port("expected", "How many expected", "number"),
+        Port("missing", "Missing cells", "list"), Port("centers", "Centres", "points"), Port("radii", "Radii", "list"),
+        Port("mean_radius", "Average radius", "number"), Port("pitch_x", "Pitch across", "number"), Port("pitch_y", "Pitch down", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("No region is set")
+        rect = _as_rotated_rect(region)
+        rows, cols = ctx.integer("rows", 3), ctx.integer("cols", 3)
+        corners = rect_corners(rect)
+        origin = corners[0]
+        u = (corners[1] - corners[0]) / cols   # 一格的橫向向量
+        v = (corners[3] - corners[0]) / rows   # 一格的縱向向量
+        cell = min(float(np.hypot(*u)), float(np.hypot(*v)))
+        max_r = ctx.number("max_radius", 0) or cell * 0.5
+        min_r = ctx.number("min_radius", 0)
+        polarity, threshold = str(ctx.param("polarity", "any")), ctx.number("edge_threshold", 20)
+        rays, smoothing = ctx.integer("num_rays", 24), ctx.integer("smoothing", 3)
+        centers: list[list[float]] = []
+        radii: list[float] = []
+        missing: list[int] = []
+        overlays = [region_overlay(region, label="roi")]
+        for r in range(rows):
+            for c in range(cols):
+                index = r * cols + c
+                middle = origin + u * (c + 0.5) + v * (r + 0.5)
+                pts = radial_edge_points(image, float(middle[0]), float(middle[1]), min_r, max_r, rays, polarity, threshold, "strongest", smoothing)
+                if len(pts) < 5:
+                    missing.append(index)
+                    continue
+                fitted = fit_circle_lsq(np.asarray(pts, dtype=np.float64))
+                if fitted is None:
+                    missing.append(index)
+                    continue
+                fx, fy, radius = fitted
+                if radius < max(1.0, min_r) or radius > max_r * 1.2 or math.hypot(fx - middle[0], fy - middle[1]) > cell * 0.4:
+                    missing.append(index)
+                    continue
+                centers.append([round(float(fx), 3), round(float(fy), 3)])
+                radii.append(round(float(radius), 3))
+                overlays.append({"kind": "circle", "cx": fx, "cy": fy, "r": radius, "color": "#22c55e"})
+        expected = rows * cols
+        pitch_x = float(np.hypot(*u)) if cols else 0.0
+        pitch_y = float(np.hypot(*v)) if rows else 0.0
+        mean_radius = float(np.mean(radii)) if radii else float("nan")
+        for index in missing:
+            middle = origin + u * (index % cols + 0.5) + v * (index // cols + 0.5)
+            overlays.append({"kind": "point", "x": float(middle[0]), "y": float(middle[1]), "color": "#ef4444", "label": "missing"})
+        return Result(
+            outputs={"count": len(centers), "expected": expected, "missing": missing, "centers": centers, "radii": radii,
+                     "mean_radius": round(mean_radius, 4) if radii else float("nan"),
+                     "pitch_x": round(pitch_x, 3), "pitch_y": round(pitch_y, 3)},
+            overlays=overlays, branch="found" if not missing else "not_found", status="ok" if not missing else "ng",
+            message=f"{len(centers)}/{expected} circles, r {mean_radius:.2f}" if radii else f"0/{expected} circles",
+        )
+
+
 class FindLineTool(Tool):
     key = "find_line"
     label = "Find lines"
@@ -1188,13 +1687,15 @@ class FindLineTool(Tool):
         Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
         Param("ransac_tol", "RANSAC tolerance", kind="number", default=2, minimum=0.5, maximum=50, unit="px", group="Advanced"),
         Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+        Param("gap_tolerant", "The edge is broken", kind="boolean", default=False, group="Advanced",
+              help_text="For a dashed or interrupted edge: the ends of the line are taken from the calipers that did find an edge, instead of the ends of the region. The fit itself already ignores the gaps."),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("x1", "X1", "number"), Port("y1", "Y1", "number"), Port("x2", "X2", "number"), Port("y2", "Y2", "number"),
         Port("angle", "Angle", "number"), Port("rho", "ρ", "number"), Port("theta", "θ", "number"),
-        Port("line", "Line", "any"), Port("points", "Edge points", "points"),
+        Port("line", "Line", "any"), Port("points", "Edge points", "points"), Port("coverage", "Coverage", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -1213,7 +1714,7 @@ class FindLineTool(Tool):
         overlays = [region_overlay(region, label="roi")]
         nan_out = {k: float("nan") for k in ("x1", "y1", "x2", "y2", "angle", "rho", "theta")}
         if len(pts_local) < 2:
-            return Result(outputs={**nan_out, "line": None, "points": []}, overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(pts_local)})")
+            return Result(outputs={**nan_out, "line": None, "points": [], "coverage": 0.0}, overlays=overlays, branch="not_found", status="ng", message=f"Too few edge points ({len(pts_local)})")
         full = c.points_to_full(np.asarray([(p[0], p[1]) for p in pts_local]))
         inliers = np.ones(len(full), dtype=bool)
         if ctx.flag("ransac", True) and len(full) >= 3:
@@ -1225,16 +1726,20 @@ class FindLineTool(Tool):
         else:
             vx, vy, x0, y0 = cv2.fitLine(full.astype(np.float32), cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
         vx, vy, x0, y0 = float(vx), float(vy), float(x0), float(y0)
-        # 端點：把 ROI 長邊兩端投影到直線上
-        half = (rr["w"] if horizontal else rr["h"]) / 2
-        ang = math.radians(float(rr.get("angle", 0)))
-        ux, uy = (math.cos(ang), math.sin(ang)) if horizontal else (-math.sin(ang), math.cos(ang))
-        ends = []
-        for s in (-half, half):
-            px, py = rr["cx"] + ux * s, rr["cy"] + uy * s
-            t = (px - x0) * vx + (py - y0) * vy
-            ends.append((x0 + vx * t, y0 + vy * t))
-        (x1, y1), (x2, y2) = ends
+        # 端點：把 ROI 長邊兩端投影到直線上（斷續邊改用「真的找到邊的那些卡尺」的範圍）
+        if ctx.flag("gap_tolerant"):
+            span = line_span((vx, vy, x0, y0), full[inliers] if inliers.any() else full)
+            (x1, y1), (x2, y2) = (span["x1"], span["y1"]), (span["x2"], span["y2"])
+        else:
+            half = (rr["w"] if horizontal else rr["h"]) / 2
+            ang = math.radians(float(rr.get("angle", 0)))
+            ux, uy = (math.cos(ang), math.sin(ang)) if horizontal else (-math.sin(ang), math.cos(ang))
+            ends = []
+            for s in (-half, half):
+                px, py = rr["cx"] + ux * s, rr["cy"] + uy * s
+                t = (px - x0) * vx + (py - y0) * vy
+                ends.append((x0 + vx * t, y0 + vy * t))
+            (x1, y1), (x2, y2) = ends
         angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
         # 法線式 ρ = x cosθ + y sinθ
         nx, ny = -vy, vx
@@ -1251,7 +1756,8 @@ class FindLineTool(Tool):
             {"kind": "line", "x1": x1, "y1": y1, "x2": x2, "y2": y2, "color": "#22c55e", "width": 2, "label": f"{angle:.2f}°"},
         ]
         return Result(
-            outputs={"x1": x1, "y1": y1, "x2": x2, "y2": y2, "angle": angle, "rho": rho, "theta": theta, "line": line, "points": full.round(2).tolist()},
+            outputs={"x1": x1, "y1": y1, "x2": x2, "y2": y2, "angle": angle, "rho": rho, "theta": theta, "line": line,
+                     "points": full.round(2).tolist(), "coverage": round(len(full) / max(1, ctx.integer("num_calipers", 20)), 4)},
             overlays=overlays, branch="found",
             message=f"Angle {angle:.2f}°, {int(inliers.sum())}/{len(full)} points, residual {float(dist[inliers].mean()):.2f}px",
         )
@@ -1352,5 +1858,5 @@ __all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edg
 
 TOOLS = [
     TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(), ImageFixtureTool(),
-    FindCircleTool(), FindLineTool(), HoughCirclesTool(), HoughLinesTool(),
+    FindCircleTool(), FindLineTool(), FindRectangleTool(), FindQuadrilateralTool(), FindParallelLinesTool(), FindLinesMultiTool(), FindCirclesMatrixTool(), HoughCirclesTool(), HoughLinesTool(),
 ]

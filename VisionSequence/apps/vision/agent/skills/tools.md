@@ -122,8 +122,33 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 ## find_circle
 射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）；只有一段弧時給 `a0/a1` 起迄角，掃描線只落在扇形內。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。ROI 沒對準圓心也沒關係：`refine`（預設開）會從擬合圓心重掃一次。擬合是幾何最小平方（部分弧無偏）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
 
+## find_rectangle
+一次找出矩形工件的四條邊：ROI 畫得比工件大一點，卡尺從四邊往內掃，四條線的交點就是四個角。
+`polarity` 是「由外往內」的灰階變化，`search` 是往內掃多深（區域的比例，夠碰到邊就好）。
+輸出的 `rect` 是**區域**，直接接下游工具的 region 埠，工件落在哪裡就量哪裡。角點依畫面順時針排（左上起）。
+
+## find_quadrilateral
+四條線 → 四個角：`a~d` 依序（繞工件一圈）接四個 `find_line` 的 `line`。工件不是矩形時用它，
+輸出角點、四條邊長、兩條對角線與面積。相鄰兩邊平行時走 `not_found`。
+
+## find_parallel_lines
+溝、肋、縫的兩側一次到手：ROI 長邊沿著那一對邊，每把卡尺找一對邊。
+`pair_polarity` 說「兩邊之間」是亮的還是暗的，`pair_mode` 選最寬／最窄／最外／最強／最接近預期。
+輸出兩條線、`center_line`（中線，後面要量的通常是它）、平均／最窄／最寬寬度與逐把的 `widths`。
+
+## find_lines_multi
+區域裡每一條直邊都找出來：Canny 取邊緣點 → RANSAC 擬合最強的一條 → 把它的點拿掉 → 再找下一條。
+`min_points` 與 `min_length` 擋掉雜訊，`angle_filter`＋`angle_tolerance` 只留某個方向的線。
+**一條有厚度的線會有兩個邊**，所以 `max_lines` 要抓兩倍。比 `hough_lines` 慢但給的是擬合好的線與點數。
+
+## find_circles_matrix
+整排的孔／球／墊一次找完：ROI 框住整個陣列，依 `rows`×`cols` 切格子，每格找一個圓。
+輸出每個圓心與半徑、`missing`（哪幾格是空的，格子由左上往右下編號）與格距；有缺就走 `not_found`。
+
 ## find_line
 卡尺式找直線：`roi` rect/rotated_rect，短邊方向掃描；輸出 `line`（接 angle／geometry 的 a/b）、`x1..y2`、`angle`。`direction` first/last/strongest 選邊。多用 RANSAC（預設開）抗雜點。
+
+斷續的邊（虛線、被遮住一段）打開 `gap_tolerant`：線的兩端取真的找到邊的範圍；`coverage` 回報幾成的卡尺打到邊。
 
 ## caliper
 量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。量亮條／暗條寬度給 `pair_polarity`（bright＝暗→亮再亮→暗、dark 相反）；知道大約寬度就填 `expected_width`（挑最接近的一對，旁邊有高對比雜訊邊也不會挑錯）。輸出 `width`（px）。

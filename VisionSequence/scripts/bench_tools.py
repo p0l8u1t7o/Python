@@ -321,6 +321,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("find_circle 180", "find_circle", big, {"roi": center_circle, "num_rays": 180}, {}, {}),
         ("find_line 20", "find_line", big, {"roi": top_edge, "num_calipers": 20}, {}, {}),
         ("find_line 100", "find_line", big, {"roi": top_edge, "num_calipers": 100}, {}, {}),
+        ("find_rectangle 12/side", "find_rectangle", big, {"roi": s.rect(-0.3, -0.25, 0.6, 0.5), "calipers": 12}, {}, {}),
+        ("find_parallel_lines 20", "find_parallel_lines", big, {"roi": s.rect(-0.3, -0.25, 0.6, 0.5), "calipers": 20}, {}, {}),
+        ("find_lines_multi 4", "find_lines_multi", big, {"roi": plate, "max_lines": 4}, {}, {}),
+        ("find_circles_matrix 3x3", "find_circles_matrix", big, {"roi": plate, "rows": 3, "cols": 3}, {}, {}),
         ("hough_circles", "hough_circles", big, {"roi": plate, "min_radius": int(hole_r * 0.7), "max_radius": int(m * 0.09), "min_dist": int(hole_r * 2)}, {}, {}),
         ("hough_lines", "hough_lines", big, {}, {}, {}),
         # measure

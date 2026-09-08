@@ -1577,6 +1577,135 @@ class SurfaceFilterTests(SimpleTestCase):
         self.assertTrue(np.array_equal(img, before))
 
 
+class GeometryFinderTests(SimpleTestCase):
+    """幾何查找家族：矩形、平行邊、多條線、圓陣列。真值用平台自己的 `mask_for` 畫，避免混進別套角度慣例。"""
+
+    @staticmethod
+    def _shape(region, size=(400, 500), fg=210, bg=40, blur=1.0):
+        from apps.vision.tools.roi import mask_for
+
+        h, w = size
+        mask = mask_for(region, w, h)
+        return cv2.GaussianBlur(np.where(mask > 0, fg, bg).astype(np.uint8), (0, 0), blur)
+
+    def test_a_rectangle_comes_back_with_its_size_and_angle(self):
+        truth = {"shape": "rotated_rect", "cx": 250.0, "cy": 180.0, "w": 200.0, "h": 120.0, "angle": 12.0}
+        img = self._shape(truth)
+        r = run_tool("find_rectangle", img, {"roi": {"shape": "rotated_rect", "cx": 250, "cy": 180, "w": 260, "h": 190, "angle": 12},
+                                             "polarity": "dark_to_light"})
+        self.assertEqual(r.branch, "found")
+        self.assertLess(abs(r.outputs["width"] - 200.0), 1.0, r.outputs["width"])
+        self.assertLess(abs(r.outputs["height"] - 120.0), 1.0, r.outputs["height"])
+        self.assertLess(abs(r.outputs["angle"] - 12.0), 0.5, r.outputs["angle"])
+        self.assertLess(math.hypot(r.outputs["cx"] - 250, r.outputs["cy"] - 180), 0.5)
+        self.assertEqual(len(r.outputs["corners"]), 4)
+        self.assertEqual(r.outputs["rect"]["shape"], "rotated_rect")  # 直接餵給下游當 ROI
+
+    def test_a_rectangle_that_is_not_there_takes_the_other_branch(self):
+        flat = np.full((300, 300), 128, np.uint8)
+        r = run_tool("find_rectangle", flat, {"roi": {"shape": "rect", "x": 20, "y": 20, "w": 260, "h": 260}})
+        self.assertEqual((r.branch, r.status), ("not_found", "ng"))
+        self.assertTrue(math.isnan(r.outputs["width"]))
+
+    def test_the_corners_come_out_clockwise_from_the_top_left(self):
+        truth = {"shape": "rect", "x": 150.0, "y": 120.0, "w": 200.0, "h": 120.0}
+        r = run_tool("find_rectangle", self._shape(truth), {"roi": {"shape": "rect", "x": 120, "y": 90, "w": 260, "h": 180},
+                                                            "polarity": "dark_to_light"})
+        corners = r.outputs["corners"]
+        self.assertLess(corners[0][0], corners[1][0])   # 左上在右上的左邊
+        self.assertLess(corners[0][1], corners[3][1])   # 左上在左下的上面
+        self.assertLess(corners[1][1], corners[2][1])   # 右上在右下的上面
+
+    def test_a_pair_of_edges_gives_the_width_and_the_centre_line(self):
+        band = np.full((300, 400), 30, np.uint8)
+        band[130:170, :] = 200
+        band = cv2.GaussianBlur(band, (0, 0), 0.8)
+        r = run_tool("find_parallel_lines", band, {"roi": {"shape": "rect", "x": 50, "y": 100, "w": 300, "h": 100},
+                                                   "pair_polarity": "bright", "pair_mode": "widest"})
+        self.assertEqual(r.branch, "found")
+        self.assertLess(abs(r.outputs["distance"] - 40.0), 0.3, r.outputs["distance"])
+        self.assertEqual(r.outputs["found_count"], 20)
+        self.assertLess(abs(r.outputs["angle"]), 0.2)
+        self.assertLess(abs(r.outputs["center_line"]["y1"] - 149.5), 0.3)  # 亮帶是第 130~169 列，中心在 149.5
+        self.assertEqual(len(r.outputs["widths"]), 20)
+
+    def test_a_pair_that_is_not_there_takes_the_other_branch(self):
+        r = run_tool("find_parallel_lines", np.full((200, 200), 100, np.uint8), {"roi": {"shape": "rect", "x": 20, "y": 20, "w": 160, "h": 100}})
+        self.assertEqual((r.branch, r.status), ("not_found", "ng"))
+
+    def test_several_lines_come_back_with_their_angles(self):
+        img = np.full((300, 400), 30, np.uint8)
+        cv2.line(img, (20, 60), (380, 60), 220, 5)
+        cv2.line(img, (60, 20), (60, 280), 220, 5)
+        r = run_tool("find_lines_multi", img, {"roi": {"shape": "rect", "x": 0, "y": 0, "w": 400, "h": 300},
+                                               "max_lines": 6, "min_points": 60})
+        self.assertEqual(r.branch, "found")
+        angles = [abs(a) for a in r.outputs["angles"]]
+        self.assertTrue(any(a < 2 for a in angles), angles)        # 水平那條
+        self.assertTrue(any(a > 88 for a in angles), angles)       # 垂直那條
+        self.assertGreaterEqual(r.outputs["count"], 2)
+        self.assertIn("angle", r.outputs["first"])
+
+    def test_lines_can_be_filtered_by_angle(self):
+        img = np.full((300, 400), 30, np.uint8)
+        cv2.line(img, (20, 60), (380, 60), 220, 5)
+        cv2.line(img, (60, 20), (60, 280), 220, 5)
+        r = run_tool("find_lines_multi", img, {"roi": {"shape": "rect", "x": 0, "y": 0, "w": 400, "h": 300},
+                                               "max_lines": 6, "min_points": 60, "angle_filter": 0, "angle_tolerance": 5})
+        self.assertTrue(all(abs(a) <= 5 for a in r.outputs["angles"]), r.outputs["angles"])
+        empty = run_tool("find_lines_multi", np.full((200, 200), 90, np.uint8), {"roi": {"shape": "rect", "x": 0, "y": 0, "w": 200, "h": 200}})
+        self.assertEqual((empty.branch, empty.status), ("not_found", "ng"))
+
+    def test_a_grid_of_circles_reports_the_missing_ones(self):
+        grid = np.full((300, 300), 220, np.uint8)
+        holes = [(r_, c_) for r_ in range(3) for c_ in range(3) if (r_, c_) != (1, 1)]
+        for r_, c_ in holes:
+            cv2.circle(grid, (50 + c_ * 100, 50 + r_ * 100), 22, 40, -1)
+        grid = cv2.GaussianBlur(grid, (0, 0), 0.8)
+        params = {"roi": {"shape": "rect", "x": 0, "y": 0, "w": 300, "h": 300}, "rows": 3, "cols": 3, "polarity": "dark_to_light"}
+        r = run_tool("find_circles_matrix", grid, params)
+        self.assertEqual((r.outputs["count"], r.outputs["expected"]), (8, 9))
+        self.assertEqual(r.outputs["missing"], [4])          # 中央那一格是空的
+        self.assertEqual((r.branch, r.status), ("not_found", "ng"))
+        self.assertLess(abs(r.outputs["mean_radius"] - 22.0), 0.6, r.outputs["mean_radius"])
+        self.assertEqual((r.outputs["pitch_x"], r.outputs["pitch_y"]), (100.0, 100.0))
+        full = grid.copy()
+        cv2.circle(full, (150, 150), 22, 40, -1)
+        r2 = run_tool("find_circles_matrix", cv2.GaussianBlur(full, (0, 0), 0.8), params)
+        self.assertEqual((r2.outputs["count"], r2.branch, r2.status), (9, "found", "ok"))
+
+    def test_four_edges_become_four_corners(self):
+        def line(x1, y1, x2, y2):
+            return {"x1": float(x1), "y1": float(y1), "x2": float(x2), "y2": float(y2)}
+
+        r = run_tool("find_quadrilateral", None, {}, inputs={
+            "a": line(0, 0, 100, 0), "b": line(100, 0, 100, 80), "c": line(100, 80, 0, 80), "d": line(0, 80, 0, 0)})
+        self.assertEqual(r.branch, "found")
+        self.assertEqual(r.outputs["corners"], [[100.0, 0.0], [100.0, 80.0], [0.0, 80.0], [0.0, 0.0]])
+        self.assertEqual(r.outputs["sides"], [80.0, 100.0, 80.0, 100.0])
+        self.assertEqual(r.outputs["area"], 8000.0)
+        with self.assertRaisesMessage(ToolError, "Edge C"):
+            run_tool("find_quadrilateral", None, {}, inputs={"a": line(0, 0, 1, 0), "b": line(1, 0, 1, 1), "d": line(0, 1, 0, 0)})
+        parallel = run_tool("find_quadrilateral", None, {}, inputs={
+            "a": line(0, 0, 100, 0), "b": line(0, 10, 100, 10), "c": line(100, 80, 0, 80), "d": line(0, 80, 0, 0)})
+        self.assertEqual(parallel.branch, "not_found")
+
+    def test_a_broken_edge_can_report_its_real_extent(self):
+        img = np.full((200, 400), 30, np.uint8)
+        for x in range(40, 360, 40):
+            cv2.line(img, (x, 100), (x + 20, 100), 220, 3)
+        img = cv2.GaussianBlur(img, (0, 0), 0.8)
+        roi = {"shape": "rect", "x": 20, "y": 80, "w": 360, "h": 40}
+        plain = run_tool("find_line", img, {"roi": roi, "polarity": "dark_to_light", "num_calipers": 30})
+        gappy = run_tool("find_line", img, {"roi": roi, "polarity": "dark_to_light", "num_calipers": 30, "gap_tolerant": True})
+        self.assertEqual((plain.branch, gappy.branch), ("found", "found"))
+        self.assertLess(plain.outputs["coverage"], 0.8)          # 虛線只有部分卡尺打得到
+        self.assertAlmostEqual(plain.outputs["x1"], 20.0, places=2)  # 一般模式：端點是 ROI 的兩端
+        self.assertGreater(gappy.outputs["x1"], 30.0)            # 斷續模式：端點是真的找到邊的範圍
+        self.assertLess(gappy.outputs["x2"], 350.0)
+        self.assertLess(abs(gappy.outputs["angle"]), 0.2)
+
+
 class GeometryConstructionTests(SimpleTestCase):
     """幾何作圖：圖面標的是「兩邊的中線」「孔到基準線的距離」，影像上沒有那條線，要算出來。"""
 
