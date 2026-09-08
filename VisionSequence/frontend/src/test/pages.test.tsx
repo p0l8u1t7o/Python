@@ -192,6 +192,15 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByTestId('dash-widget-stats')).toBeInTheDocument()
   })
 
+  it('DlPage shows quick register for box projects and starts it', async () => {
+    const { DlPage } = await import('@/pages/DlPage')
+    renderPage(<DlPage />, { route: '/dl' })
+    expect(await screen.findByTestId('dl-quick-register')).toHaveTextContent('Quick register')
+    expect(screen.getByText(/smallest size, 20 epochs/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('dl-quick-register-start'))
+    expect(await screen.findByTestId('dl-quick-params')).toHaveTextContent('imgsz: 320')
+  })
+
   it('SourcesPage shows the tree by default and can switch to cards', async () => {
     const { SourcesPage } = await import('@/pages/SourcesPage')
     renderPage(<SourcesPage />, { route: '/sources' })

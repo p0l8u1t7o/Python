@@ -28,7 +28,7 @@ from ninja import File, Form, Router, UploadedFile
 from apps.accounts.security import authenticate, principal, require_admin, require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.dl import base as dl_base, devices, jobs, retrieval, yolo_runtime
+from apps.vision.dl import base as dl_base, devices, jobs, quick, retrieval, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
 from apps.vision.images import encode_image
 from apps.vision.models import Asset, DlDatasetVersion, DlProject, DlSample
@@ -847,6 +847,19 @@ def start_training(request: HttpRequest, project_id: int):
         project.save(update_fields=["params", "updated_at"])
     device = str(body.get("device") or devices.train_device())
     return 202, jobs.start(project, params, device, str(body.get("asset_name") or ""))
+
+
+@router.post("/dl/projects/{project_id}/quick-register", response={202: dict})
+def quick_register(request: HttpRequest, project_id: int):
+    require_feature(request, "dl")
+    principal(request).can_execute()
+    project = _project(project_id)
+    body = _body(request)
+    return 202, quick.quick_register(
+        project,
+        device=str(body.get("device") or ""),
+        asset_name=str(body.get("asset_name") or ""),
+    )
 
 
 @router.get("/dl/train/status")

@@ -28,6 +28,7 @@ import type {
   DlDatasetVersion,
   DlDevices,
   DlProject,
+  DlQuickRegisterResult,
   DlRetrievalLibrary,
   DlSample,
   DlShape,
@@ -1243,6 +1244,14 @@ export function useDlMutations() {
       api.post<DlTrainJob>(`/vision/dl/projects/${projectId}/train`, { params, device, asset_name }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'train-status'] }),
   })
+  const quickRegister = useMutation({
+    mutationFn: ({ projectId, device, asset_name }: { projectId: number; device?: string; asset_name?: string }) =>
+      api.post<DlQuickRegisterResult>(`/vision/dl/projects/${projectId}/quick-register`, { device, asset_name }),
+    onSuccess: (_, v) => {
+      invalidateProject(v.projectId)
+      void client.invalidateQueries({ queryKey: ['dl', 'train-status'] })
+    },
+  })
   const cancelTrain = useMutation({
     mutationFn: () => api.post<{ cancelled: boolean }>('/vision/dl/train/cancel', {}),
   })
@@ -1263,5 +1272,5 @@ export function useDlMutations() {
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, addRetrievalItems, removeRetrievalItem, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, saveModel, discardModel, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, addRetrievalItems, removeRetrievalItem, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, quickRegister, cancelTrain, saveModel, discardModel, patchSettings }
 }

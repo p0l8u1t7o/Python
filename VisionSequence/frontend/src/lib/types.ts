@@ -1020,6 +1020,13 @@ export interface DlTrainJob {
   log_next: number
 }
 
+export interface DlQuickRegisterResult {
+  job_id: string
+  labeled: number
+  skipped: number
+  params: Record<string, unknown>
+}
+
 export interface DlSuggestion {
   id: string
   label: string

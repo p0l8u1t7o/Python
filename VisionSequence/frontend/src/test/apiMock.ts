@@ -36,6 +36,40 @@ export const DASHBOARD_LAYOUT = {
 
 export const DASHBOARD = { id: 1, name: 'Line status dashboard', is_default: true, owner_name: 'admin', updated_at: '2026-01-01T00:00:00Z', widget_count: 3, layout: DASHBOARD_LAYOUT }
 
+export const DL_PROJECT = {
+  id: 1,
+  name: 'Fast part',
+  description: '',
+  trainer_kind: 'ai_detect',
+  classes: ['part'],
+  params: {},
+  last_asset_id: '',
+  last_metrics: {},
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  counts: { total: 2, unlabeled: 2, per_class: { part: 0 } },
+}
+
+export const DL_TRAINER = {
+  kind: 'ai_detect',
+  label: 'Object detection',
+  description: 'Finds object boxes from labeled examples.',
+  label_mode: 'shapes',
+  tool_key: 'ai_detect',
+  devices: ['cpu'],
+  min_per_class: 1,
+  params: [
+    { key: 'model', label: 'Size', kind: 'select', required: false, default: 'n', help_text: '', options: [{ value: 'n', label: 'Nano' }], unit: '', minimum: null, maximum: null, step: null, visible_when: null, shapes: [], accept: '', group: '' },
+    { key: 'epochs', label: 'Epochs', kind: 'number', required: false, default: 100, help_text: '', options: [], unit: '', minimum: 1, maximum: 2000, step: null, visible_when: null, shapes: [], accept: '', group: '' },
+    { key: 'imgsz', label: 'Image size', kind: 'select', required: false, default: 640, help_text: '', options: [{ value: '320', label: '320' }, { value: '640', label: '640' }], unit: '', minimum: null, maximum: null, step: null, visible_when: null, shapes: [], accept: '', group: '' },
+  ],
+}
+
+export const DL_SAMPLES = [
+  { id: 's1', label: '', labeled_by: '', score: 0, width: 320, height: 240, created_at: '2026-01-01T00:00:00Z', shapes: [], split: '' },
+  { id: 's2', label: '', labeled_by: '', score: 0, width: 320, height: 240, created_at: '2026-01-01T00:00:01Z', shapes: [], split: '' },
+]
+
 export const DASHBOARD_DATA = {
   generated_at: '2026-01-01T00:00:00Z',
   flows: {
@@ -144,9 +178,13 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/agent/run')) return { graph: { nodes: [], edges: [] }, report: { id: 'r', status: 'ok', outputs: {}, nodes: {}, duration_ms: 1 }, reports: [], main_image: 0 }
   if (path.startsWith('/vision/agent/autotune')) return { graph: { nodes: [], edges: [] }, rationale: '', provider: 'autotune', changes: [], before: { ok: 0, ng: 0, failed: 0 }, after: null, items: [], applied: false }
   if (path.startsWith('/vision/agent/skills')) return { items: [{ key: 'platform', label: '平台規則', category: 'guide', curated: true }] }
-  if (path.startsWith('/vision/dl/projects')) return { items: [] }
-  if (path.startsWith('/vision/dl/trainers')) return { items: [] }
-  if (path.startsWith('/vision/dl/train/status')) return { running: false }
+  if (/\/vision\/dl\/projects\/\d+\/quick-register$/.test(path)) return { job_id: 'job123', labeled: 2, skipped: 0, params: { model: 'n', epochs: 20, imgsz: 320, batch: 4 } }
+  if (/\/vision\/dl\/projects\/\d+\/samples$/.test(path)) return { items: DL_SAMPLES }
+  if (/\/vision\/dl\/projects\/\d+\/versions$/.test(path)) return { items: [] }
+  if (/\/vision\/dl\/projects\/\d+$/.test(path)) return DL_PROJECT
+  if (path.startsWith('/vision/dl/projects')) return { items: [DL_PROJECT] }
+  if (path.startsWith('/vision/dl/trainers')) return { items: [DL_TRAINER] }
+  if (path.startsWith('/vision/dl/train/status')) return { job: null }
   if (path.startsWith('/vision/dl/devices')) return { available: ['cpu'], preferred: ['cpu'], train_device: 'cpu', accelerators: [], gpus: [], providers: ['CPUExecutionProvider'] }
   if (path.startsWith('/vision/integration/rules')) return { items: [{ id: 'r1', name: '', enabled: true, source: 'text', address: '', mode: 'rising', value: 0, value2: 0, match: 'prefix', pattern: 'SCAN ', capture: 'lot', action: 'run_flow', flow: 'demo', recipe: '', variable: '', scope: 'flow', set_value: '', args: {}, reason: '', ttl: 0, clear: false, done: '', reply: '' }] }
   if (path.startsWith('/vision/integration/trace')) return { items: [{ seq: 1, ts: 1788500000, channel: 'tcp', direction: 'in', name: '127.0.0.1:5000', summary: 'RUN 1', ok: true, ms: 3.2, detail: { ok: true } }], seq: 1, channels: { http: 0, tcp: 1, modbus: 0, capture: 0 }, keep: 300, watching: true }

@@ -19,7 +19,7 @@ import { assetUrl, dlSampleUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useConfirm } from '@/lib/useConfirm'
 import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlRetrievalLibrary, useDlSamples, useDlTrainers, useDlTrainStatus, useDlVersions, useFlowMutations, useSources } from '@/lib/queries'
-import type { DlDatasetVersion, DlProject, DlRetrievalLibrary, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
+import type { DlDatasetVersion, DlProject, DlQuickRegisterResult, DlRetrievalLibrary, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { CURVE_COLORS, classColor, classColorAt } from '@/lib/colors'
 
@@ -156,10 +156,11 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   const { t } = useTranslation()
   const toast = useToast()
   const devices = useDlDevices()
-  const { startTrain, cancelTrain, saveModel, discardModel } = useDlMutations()
+  const { startTrain, quickRegister, cancelTrain, saveModel, discardModel } = useDlMutations()
   const { confirm, dialog } = useConfirm()
   const [params, setParams] = useState<Record<string, unknown>>(() => ({ ...project.params }))
   const [assetName, setAssetName] = useState('')
+  const [quickResult, setQuickResult] = useState<DlQuickRegisterResult | null>(null)
   /** 訓練完的命名（預設帶開始訓練時填的建議名稱） */
   const [saveName, setSaveName] = useState('')
   const [device, setDevice] = useState('')
@@ -223,6 +224,17 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
     }
   }
 
+  async function runQuickRegister() {
+    try {
+      const result = await quickRegister.mutateAsync({ projectId: project.id, device: device || devices.data?.train_device || 'cpu', asset_name: assetName })
+      setQuickResult(result)
+      setParams(result.params)
+      toast.success(t('dl.quickRegisterStarted', { labeled: result.labeled, skipped: result.skipped }))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const metrics = (mine ? job.data?.metrics : project.last_metrics) as Record<string, unknown> | undefined
   // 超參數依 Param.group 分組：主要參數直接顯示，其餘（進階…）收進可摺疊區塊，表單才不會過長
   const mainParams = trainer.params.filter((p) => !p.group)
@@ -235,6 +247,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   )
   const percent = Math.round((job.data?.progress ?? 0) * 100)
   const statusTone: Record<string, 'ok' | 'info' | 'warning' | 'critical'> = { running: 'info', done: 'ok', failed: 'critical', cancelled: 'warning' }
+  const canQuickRegister = trainer.kind === 'ai_detect'
 
   return (
     <Panel
@@ -298,6 +311,32 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         {mine && job.data?.logs?.length ? <TrainLog logs={job.data.logs} /> : null}
 
         {/* 設定 */}
+        {canQuickRegister ? (
+          <div className="space-y-2 rounded-md border border-line bg-surface-muted px-3 py-2.5" data-testid="dl-quick-register">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <p className="font-medium text-content">{t('dl.quickRegister')}</p>
+                <p className="text-xs text-muted">{t('dl.quickRegisterHint')}</p>
+              </div>
+              <Button size="sm" variant="primary" loading={quickRegister.isPending} disabled={running || !project.classes.length || (project.counts?.total ?? 0) < 2} onClick={() => void runQuickRegister()} data-testid="dl-quick-register-start">
+                <Wand2 size={14} /> {t('dl.quickRegister')}
+              </Button>
+            </div>
+            <ol className="grid gap-1 text-xs text-muted sm:grid-cols-3">
+              <li>{t('dl.quickStepUpload')}</li>
+              <li>{t('dl.quickStepConfirm')}</li>
+              <li>{t('dl.quickStepTrain')}</li>
+            </ol>
+            <p className="text-xs text-subtle">{t('dl.quickPreset')}</p>
+            {quickResult ? (
+              <div className="flex flex-wrap gap-1.5 text-[11px]" data-testid="dl-quick-params">
+                {Object.entries(quickResult.params).map(([key, value]) => (
+                  <span key={key} className="rounded border border-line bg-surface px-1.5 py-0.5 text-muted">{key}: {String(value)}</span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {mainParams.map(field)}
         <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
           hint={devices.data?.gpus?.length ? devices.data.gpus.map((g) => g.name).join(', ') : t('dl.noGpu')}
