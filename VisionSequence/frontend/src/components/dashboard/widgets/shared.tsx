@@ -7,6 +7,7 @@ import { Lock, Maximize2, Play, Square } from 'lucide-react'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { Badge, Button, DetailRow, EmptyState, Switch, TextInput } from '@/components/ui'
 import { api, fixedImageUrl, imageUrl } from '@/lib/api'
+import { pickImage } from '@/lib/board'
 import {
   booleanProp,
   evalRule,
@@ -18,10 +19,9 @@ import {
   stringProp,
   templateText,
   valueOf,
-  valueRows,
   widgetById,
 } from '@/lib/dashboard'
-import { useContinuous, useFlow, useFlowMutations, useFlowSpc, useLockMutations, useRecipes, useRunFlow } from '@/lib/queries'
+import { useContinuous, useFlow, useFlowMutations, useFlowSpc, useLockMutations, useRecipes, useRunFlow, useRunHistory } from '@/lib/queries'
 import type { DashboardAction, DashboardRuleOp, DashboardWidget, RunReport } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -69,24 +69,41 @@ export function ImageWidgetBase(props: DashboardWidgetProps) {
   const { t } = useTranslation()
   const flowId = resolveFlow(props.widget, props.layout)
   const live = liveFor(props, flowId)
-  const image = imageOf(props.data, flowId, props.widget, live)
+  const historyLimit = numberProp(props.widget, 'history', 1)
+  const history = useRunHistory(flowId, { limit: historyLimit })
+  const [selectedRef, setSelectedRef] = useState('')
+  const currentImage = imageOf(props.data, flowId, props.widget, live)
+  const historyImages = useMemo(() => historyImagesFor(props.widget, history.data?.items ?? [], live, historyLimit), [props.widget, history.data, live, historyLimit])
+  const selectedImage = selectedRef ? historyImages.find((item) => item.ref === selectedRef) : null
+  const image = selectedImage ?? currentImage
   if (!image) return <WidgetShell><Placeholder message={t('dashboardRun.noImage')} /></WidgetShell>
   return (
     <WidgetShell className="p-0">
-      <div className="relative h-full min-h-48">
-        <ImageViewer
-          src={imageUrl(image.ref, 1600)}
-          imageWidth={image.width}
-          imageHeight={image.height}
-          overlays={image.overlays}
-          toolbar={false}
-          badge={latestBoardRun(flowPack(props.data, flowId), live) ? { text: latestBoardRun(flowPack(props.data, flowId), live)?.verdict ?? '', tone: statusTone(latestBoardRun(flowPack(props.data, flowId), live)?.status) === 'ng' ? 'ng' : 'ok' } : null}
-          className="h-full"
-        />
-        {booleanProp(props.widget, 'crosshair', false) ? (
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-1/2 top-0 h-full border-l border-white/40" />
-            <div className="absolute left-0 top-1/2 w-full border-t border-white/40" />
+      <div className="flex h-full min-h-48 flex-col">
+        <div className="relative min-h-0 flex-1">
+          <ImageViewer
+            src={imageUrl(image.ref, 1600)}
+            imageWidth={image.width}
+            imageHeight={image.height}
+            overlays={image.overlays}
+            toolbar={false}
+            badge={latestBoardRun(flowPack(props.data, flowId), live) ? { text: latestBoardRun(flowPack(props.data, flowId), live)?.verdict ?? '', tone: statusTone(latestBoardRun(flowPack(props.data, flowId), live)?.status) === 'ng' ? 'ng' : 'ok' } : null}
+            className="h-full"
+          />
+          {booleanProp(props.widget, 'crosshair', false) ? (
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute left-1/2 top-0 h-full border-l border-white/40" />
+              <div className="absolute left-0 top-1/2 w-full border-t border-white/40" />
+            </div>
+          ) : null}
+        </div>
+        {historyLimit > 1 && historyImages.length > 1 ? (
+          <div className="flex shrink-0 gap-1 overflow-x-auto border-t border-line bg-surface p-1.5">
+            {historyImages.map((item) => (
+              <button key={item.ref} type="button" title={item.runId} onClick={() => setSelectedRef(item.ref)} className={`h-14 w-20 shrink-0 overflow-hidden rounded border ${item.ref === image.ref ? 'border-brand' : 'border-line'}`}>
+                <img src={imageUrl(item.ref, 160)} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
           </div>
         ) : null}
       </div>
@@ -328,27 +345,87 @@ export function TableWidgetBase(props: DashboardWidgetProps) {
   const { t } = useTranslation()
   const flowId = resolveFlow(props.widget, props.layout)
   const live = liveFor(props, flowId)
-  const rows = valueRows(props.data, flowId, live)
-  const maxRows = numberProp(props.widget, 'rows', 8)
+  const maxRows = numberProp(props.widget, 'rows', 10)
+  const history = useRunHistory(flowId, { limit: maxRows })
+  const columns = Array.isArray(props.widget.props?.columns) ? props.widget.props.columns.filter((key): key is string => typeof key === 'string' && key.trim() !== '') : []
+  const rules = Array.isArray(props.widget.props?.rules) ? props.widget.props.rules : []
+  const rows = useMemo(() => historyRows(history.data?.items ?? [], live, maxRows), [history.data, live, maxRows])
   return (
     <WidgetShell title={t('dashboardRun.widgetTypes.table')}>
       {rows.length ? (
         <div className="h-full overflow-auto">
           <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-surface text-xs text-muted">
+              <tr>
+                <th className="py-1 pr-2 text-left font-medium">{t('dashboardRun.runId')}</th>
+                <th className="py-1 pr-2 text-left font-medium">{t('dashboardRun.time')}</th>
+                <th className="py-1 pr-2 text-left font-medium">{t('dashboardRun.verdict')}</th>
+                {columns.map((column) => <th key={column} className="py-1 pr-2 text-left font-medium">{column}</th>)}
+              </tr>
+            </thead>
             <tbody>
-              {rows.slice(0, maxRows).map((row) => (
-                <tr key={row.key} className={row.ok === false ? 'text-critical' : ''}>
-                  <td className="py-1 pr-2 text-muted">{row.label}</td>
-                  <td className="tnum py-1 text-right font-semibold">{row.text || '-'}</td>
-                  <td className="py-1 pl-1 text-xs text-muted">{row.unit}</td>
+              {rows.map((run) => {
+                const color = ruleColor(rules, run)
+                return (
+                <tr key={run.id} className="border-t border-line" style={color ? { color } : undefined}>
+                  <td className="max-w-28 truncate py-1 pr-2 font-mono text-xs">{run.id}</td>
+                  <td className="tnum whitespace-nowrap py-1 pr-2 text-xs">{run.finished_at ? new Date(run.finished_at * 1000).toLocaleTimeString() : '-'}</td>
+                  <td className="py-1 pr-2 font-semibold">{runVerdict(run)}</td>
+                  {columns.map((column) => <td key={column} className="tnum py-1 pr-2">{formatValue(runValue(run, column)) || '-'}</td>)}
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
       ) : <Placeholder message={t('dashboardRun.noRows')} />}
     </WidgetShell>
   )
+}
+
+function historyRows(history: RunReport[], live: RunReport | null, limit: number): RunReport[] {
+  const rows = live ? [live, ...history] : history
+  const seen = new Set<string>()
+  return rows.filter((run) => {
+    if (seen.has(run.id)) return false
+    seen.add(run.id)
+    return true
+  }).slice(0, limit)
+}
+
+function historyImagesFor(widget: DashboardWidget, history: RunReport[], live: RunReport | null, limit: number) {
+  return historyRows(history, live, limit).map((run) => {
+    const image = pickImage(run, stringProp(widget, 'node') ?? stringProp(widget, 'port'))
+    if (!image) return null
+    return {
+      ...image,
+      runId: run.id,
+      overlays: widget.props?.overlays === false ? [] : Object.values(run.nodes ?? {}).flatMap((node) => node.overlays ?? []),
+    }
+  }).filter((item): item is { ref: string; width: number; height: number; overlays: RunReport['nodes'][string]['overlays']; runId: string } => item !== null)
+}
+
+function runVerdict(run: RunReport): string {
+  const judge = run.outputs?.judge
+  return typeof judge === 'string' && judge ? judge : run.status.toUpperCase()
+}
+
+function runValue(run: RunReport, key: string): unknown {
+  if (key === 'run_id') return run.id
+  if (key === 'time') return run.finished_at ?? run.started_at
+  if (key === 'verdict' || key === 'judge') return runVerdict(run)
+  if (key === 'status') return run.status
+  if (key === 'duration_ms') return run.duration_ms
+  return run.outputs?.[key]
+}
+
+function ruleColor(rules: unknown[], run: RunReport): string {
+  for (const raw of rules) {
+    if (!raw || typeof raw !== 'object') continue
+    const rule = raw as { key?: unknown; op?: DashboardRuleOp; value?: unknown; color?: unknown }
+    if (typeof rule.key === 'string' && evalRule(rule.op, runValue(run, rule.key), rule.value)) return typeof rule.color === 'string' ? rule.color : 'var(--critical)'
+  }
+  return ''
 }
 
 export function LineChartWidgetBase(props: DashboardWidgetProps) {

@@ -2,15 +2,36 @@
  * 頁面 smoke 測試：每頁在假後端下都要能 render 出標題／主要區塊，且不丟例外。
  * 抓的是「改了型別或 hook 卻沒開過那一頁」的回歸；互動細節另寫。
  */
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { installApiMock } from './apiMock'
 import { renderPage } from './render'
+import { AuthProvider } from '@/providers/AuthProvider'
+import { ThemeProvider } from '@/providers/ThemeProvider'
+import { ToastProvider } from '@/providers/ToastProvider'
 
 installApiMock()
 
 vi.mock('@/lib/flowStream', () => ({ useLockEvents: () => {}, useFlowEvents: () => {}, useFlowStream: () => ({ events: [], seq: 0, connected: false, runningIds: new Set() }), subscribeStream: () => () => {}, setStreamClient: () => {} }))
+
+function renderDataPage(ui: React.ReactElement, route: string, path: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } })
+  const router = createMemoryRouter([{ path, element: ui }], { initialEntries: [route] })
+  return render(
+    <QueryClientProvider client={client}>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+}
 
 describe('pages render (smoke)', () => {
   it('AuditPage lists changes for an administrator', async () => {
@@ -104,6 +125,22 @@ describe('pages render (smoke)', () => {
     const { DashboardsPage } = await import('@/pages/dashboard/DashboardsPage')
     renderPage(<DashboardsPage />, { route: '/dashboards' })
     expect(await screen.findByText('Line status dashboard')).toBeInTheDocument()
+  })
+
+  it('DashboardDesignerPage renders the designer and accepts a dragged widget', async () => {
+    const { DashboardDesignerPage } = await import('@/pages/dashboard/DashboardDesignerPage')
+    renderDataPage(<DashboardDesignerPage />, '/dashboards/1/design', '/dashboards/:id/design')
+    expect(await screen.findByTestId('dash-design-catalog')).toBeInTheDocument()
+    expect(await screen.findByTestId('dash-design-grid')).toBeInTheDocument()
+    const payload = new Map<string, string>()
+    const dataTransfer = {
+      setData: (type: string, value: string) => payload.set(type, value),
+      getData: (type: string) => payload.get(type) ?? '',
+    }
+    fireEvent.dragStart(screen.getAllByTestId('dash-design-add-text')[0], { dataTransfer })
+    fireEvent.drop(screen.getByTestId('dash-design-cell-verdict'), { dataTransfer })
+    expect(await screen.findByTestId('dash-design-properties')).toBeInTheDocument()
+    expect(screen.getByTestId('dash-design-props')).toBeInTheDocument()
   })
 
   it('DashboardPage renders image, verdict and stats widgets', async () => {

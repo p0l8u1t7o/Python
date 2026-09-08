@@ -118,7 +118,7 @@ export function DashboardPage() {
           <div className="flex shrink-0 items-center gap-2">
             <Button size="sm" variant="ghost" icon={fullscreen ? <Shrink className="size-4" /> : <Expand className="size-4" />} onClick={() => void toggleFullscreen()}>{fullscreen ? t('dashboardRun.exitFullscreen') : t('dashboardRun.fullscreen')}</Button>
             <Button size="sm" variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={() => navigate('/dashboards')}>{t('dashboardRun.backToList')}</Button>
-            {auth.can('flows.edit') ? <Link to={`/dashboards?edit=${dashboard.id}`} className="btn h-8 px-2.5 text-xs"><Edit3 className="size-4" />{t('dashboardRun.editLayout')}</Link> : null}
+            {auth.can('flows.edit') ? <Link to={`/dashboards/${dashboard.id}/design`} className="btn h-8 px-2.5 text-xs"><Edit3 className="size-4" />{t('dashboardRun.editLayout')}</Link> : null}
           </div>
         </header>
       ) : null}

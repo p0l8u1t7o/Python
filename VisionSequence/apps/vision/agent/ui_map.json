@@ -195,6 +195,43 @@
    ]
   },
   {
+   "route": "/dashboards/:id/design",
+   "id": "dashboard_design",
+   "names": {
+    "en": "Dashboard designer",
+    "zh-Hant": "Dashboard 設計器",
+    "zh-Hans": "Dashboard 设计器"
+   },
+   "summary": {
+    "en": "Mouse-based dashboard layout designer with a grid canvas, widget library, properties, preview and JSON editor",
+    "zh-Hant": "以滑鼠設計運行介面版面，包含格線畫布、元件庫、屬性、預覽與 JSON 編輯",
+    "zh-Hans": "以鼠标设计运行界面版面，包含网格画布、组件库、属性、预览与 JSON 编辑"
+   },
+   "feature": "flows.edit",
+   "actions": [
+    {
+     "en": "Save layout",
+     "zh-Hant": "儲存版面",
+     "zh-Hans": "保存版面"
+    },
+    {
+     "en": "Export JSON",
+     "zh-Hant": "匯出 JSON",
+     "zh-Hans": "导出 JSON"
+    },
+    {
+     "en": "Import JSON",
+     "zh-Hant": "匯入 JSON",
+     "zh-Hans": "导入 JSON"
+    },
+    {
+     "en": "Apply template",
+     "zh-Hant": "套用範本",
+     "zh-Hans": "应用模板"
+    }
+   ]
+  },
+  {
    "route": "/dashboard",
    "id": "dashboard_default",
    "names": {

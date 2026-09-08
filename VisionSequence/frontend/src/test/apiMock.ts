@@ -9,7 +9,12 @@ export const ME = {
   prefs: {}, lock: { locked: false, holder: '', reason: '', expires_at: null },
 }
 
-export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: {} }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+
+export const RUNS = [
+  { id: 'run-2', flow_id: 1, flow_version: 1, trigger: 'ui', status: 'ng', started_at: 1788500100, finished_at: 1788500101, duration_ms: 14, error: '', outputs: { judge: 'NG', width: 2.2 }, nodes: { camera: { status: 'ok', duration_ms: 2, message: '', branch: null, outputs: { image: { ref: 'run-2:image', width: 640, height: 480 } }, overlays: [], overlay_on: null, detail: {}, logs: [] } }, persisted: true },
+  { id: 'run-1', flow_id: 1, flow_version: 1, trigger: 'ui', status: 'ok', started_at: 1788500000, finished_at: 1788500001, duration_ms: 13.5, error: '', outputs: { judge: 'OK', width: 1.5 }, nodes: { camera: { status: 'ok', duration_ms: 2, message: '', branch: null, outputs: { image: { ref: 'run-1:image', width: 640, height: 480 } }, overlays: [], overlay_on: null, detail: {}, logs: [] } }, persisted: true },
+]
 
 export const DASHBOARD_LAYOUT = {
   rows: 2,
@@ -72,9 +77,11 @@ export function routes(path: string): unknown {
   if (path === '/vision/dashboards/default') return DASHBOARD
   if (/\/vision\/dashboards\/\d+\/data$/.test(path)) return DASHBOARD_DATA
   if (/\/vision\/dashboards\/\d+$/.test(path)) return DASHBOARD
+  if (/\/vision\/flows\/\d+$/.test(path)) return FLOW
   if (/\/vision\/flows\/\d+\/versions/.test(path)) return { items: [], current: 1, keep: 50 }
   if (/\/vision\/flows\/\d+\/recipes/.test(path)) return { items: [] }
   if (/\/vision\/flows\/\d+\/recent/.test(path)) return { items: [] }
+  if (/\/vision\/flows\/\d+\/runs/.test(path)) return { items: RUNS, total: RUNS.length, limit: 20, offset: 0 }
   if (/\/vision\/flows\/\d+\/stats/.test(path)) return { hours: 24, total: 8, by_status: { ok: 7, ng: 1 }, avg_ms: 12, max_ms: 30, hourly: [], live: { runs: 0, ok: 0, ng: 0, failed: 0, avg_ms: 0, max_ms: 0, last_ms: 0, last_status: '', last_run_id: '', last_finished_at: 0 } }
   if (path.startsWith('/vision/flows')) return { items: [FLOW], total: 1, limit: 100, offset: 0 }
   if (path.startsWith('/vision/tool-types')) return { items: [{ key: 'grayscale', label: '灰階', description: '轉灰階', category: 'preprocess', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false }], categories: [{ key: 'preprocess', label: '影像前處理' }] }
@@ -86,6 +93,7 @@ export function routes(path: string): unknown {
   if (/\/vision\/flows\/\d+\/board$/.test(path)) return { flow: { id: 1, name: 'demo', title: 'Line 1' }, config: { title: 'Line 1', image: '', overlays: true, values: [{ key: 'width', unit: 'mm', low: 1, high: 2 }], variables: [], show_verdict: true, show_counts: true }, run: null, values: [{ key: 'width', label: 'width', unit: 'mm', value: null, text: '', ok: null, present: false }], variables: { lot: 'A17' }, counts: { date: '2026-09-06', total: 10, ok: 9, ng: 1, failed: 0, yield: 90 }, stats: {} }
   if (/\/vision\/flows\/\d+\/variables$/.test(path)) return { flow_id: 1, items: { parts: 12, lot: 'A17' }, station: { shift: 'day' } }
   if (path.startsWith('/vision/variables')) return { items: { shift: 'day' } }
+  if (path.startsWith('/vision/fixed-images')) return { items: [{ id: 'fixed-1', name: 'Reference' }], count: 1, bytes: 128, orphans: [] }
   if (path.startsWith('/vision/calibration/capture')) return { ref: 'cal:capture:image', width: 640, height: 480, name: 'shot.png' }
   if (path.startsWith('/vision/calibration/detect')) return { found: true, count: 54, corners: [[10, 10], [20, 10]], overlays: [{ kind: 'points', points: [[10, 10], [20, 10]] }] }
   if (path.startsWith('/vision/calibration/solve')) return { payload: { unit: 'mm', image_size: [640, 480], world: { kind: 'perspective', matrix: [[0.05, 0, 0], [0, 0.05, 0], [0, 0, 1]], mm_per_px: 0.05, rms: 0.01, max_error: 0.02, points: [] } }, summary: 'perspective 0.05000 mm/px', quality: { world: 'good' } }

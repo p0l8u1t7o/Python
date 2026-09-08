@@ -1,146 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Copy, Download, Edit3, ExternalLink, FileInput, Plus, Star, Trash2 } from 'lucide-react'
+import { Copy, Edit3, ExternalLink, Plus, Star, Trash2 } from 'lucide-react'
 
-import { CodeField } from '@/components/editor/CodeField'
 import { Page } from '@/components/layout/AppShell'
-import { IconButton, Badge, Button, Card, CardBody, CardHeader, Checkbox, EmptyRow, ErrorState, LoadingState, Modal, PageHeader, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
+import { IconButton, Badge, Button, Card, CardBody, CardHeader, EmptyRow, ErrorState, LoadingState, PageHeader, Select, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
 import { api } from '@/lib/api'
-import { DEFAULT_DASHBOARD_LAYOUT } from '@/lib/dashboard'
-import { errorMessage } from '@/lib/errors'
+import { cloneDashboardTemplate, DASHBOARD_CREATE_TEMPLATES } from '@/lib/dashboardTemplates'
 import { useConfirm } from '@/lib/useConfirm'
-import { useDashboard, useDashboardMutations, useDashboards } from '@/lib/queries'
-import type { Dashboard, DashboardLayout } from '@/lib/types'
+import { useDashboardMutations, useDashboards } from '@/lib/queries'
+import type { Dashboard } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
-
-function pretty(layout: DashboardLayout): string {
-  return JSON.stringify(layout, null, 2)
-}
-
-function cloneDefault(): DashboardLayout {
-  return JSON.parse(JSON.stringify(DEFAULT_DASHBOARD_LAYOUT)) as DashboardLayout
-}
-
-function downloadJson(name: string, layout: DashboardLayout) {
-  const blob = new Blob([pretty(layout)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${name || 'dashboard'}.json`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function DashboardEditor({ id, open, onClose }: { id: number | null; open: boolean; onClose: () => void }) {
-  const { t } = useTranslation()
-  const toast = useToast()
-  const q = useDashboard(open ? id : null)
-  const mutations = useDashboardMutations()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [name, setName] = useState('')
-  const [isDefault, setIsDefault] = useState(false)
-  const [layoutText, setLayoutText] = useState('')
-  const [layoutError, setLayoutError] = useState('')
-
-  useEffect(() => {
-    if (!q.data) return
-    setName(q.data.name)
-    setIsDefault(q.data.is_default)
-    setLayoutText(pretty(q.data.layout))
-    setLayoutError('')
-  }, [q.data])
-
-  const initial = q.data ? `${q.data.name}\n${q.data.is_default}\n${pretty(q.data.layout)}` : ''
-  const current = `${name}\n${isDefault}\n${layoutText}`
-  const dirty = Boolean(q.data && initial !== current)
-
-  const save = async () => {
-    if (!q.data) return
-    let layout: DashboardLayout
-    try {
-      layout = JSON.parse(layoutText) as DashboardLayout
-    } catch {
-      setLayoutError(t('dashboardRun.invalidJson'))
-      return
-    }
-    setLayoutError('')
-    try {
-      const saved = await mutations.update.mutateAsync({ id: q.data.id, name, is_default: isDefault, layout })
-      toast.success(t('dashboardRun.saved'))
-      setLayoutText(pretty(saved.layout))
-      onClose()
-    } catch (error) {
-      setLayoutError(errorMessage(error))
-    }
-  }
-
-  const importFile = async (file: File | undefined) => {
-    if (!file) return
-    setLayoutText(await file.text())
-    setLayoutError('')
-  }
-
-  const exportCurrent = () => {
-    if (!q.data) return
-    try {
-      downloadJson(q.data.name, JSON.parse(layoutText) as DashboardLayout)
-      setLayoutError('')
-    } catch {
-      setLayoutError(t('dashboardRun.invalidJson'))
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      dirty={dirty}
-      size="xl"
-      title={t('dashboardRun.editorTitle')}
-      description={t('dashboardRun.layoutHint')}
-      footer={
-        <>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="primary" loading={mutations.update.isPending} onClick={() => void save()}>{t('dashboardRun.save')}</Button>
-        </>
-      }
-    >
-      {q.isPending ? <LoadingState /> : q.isError ? <ErrorState error={q.error} onRetry={() => void q.refetch()} /> : (
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <TextInput label={t('dashboardRun.name')} value={name} onChange={(e) => setName(e.target.value)} />
-            <div className="flex items-end pb-2">
-              <Checkbox label={t('dashboardRun.isDefault')} checked={isDefault} onChange={setIsDefault} />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setLayoutText(pretty(cloneDefault()))}>{t('dashboardRun.loadDefault')}</Button>
-            <Button size="sm" icon={<Download className="size-4" />} onClick={exportCurrent}>{t('dashboardRun.exportJson')}</Button>
-            <Button size="sm" icon={<FileInput className="size-4" />} onClick={() => inputRef.current?.click()}>{t('dashboardRun.importJson')}</Button>
-            <input ref={inputRef} type="file" accept="application/json,.json" hidden onChange={(e) => void importFile(e.currentTarget.files?.[0])} />
-          </div>
-          <CodeField label={t('dashboardRun.layoutJson')} hint={t('dashboardRun.layoutHint')} value={layoutText} onChange={setLayoutText} language="json" />
-          {layoutError ? <p className="text-xs text-critical">{layoutError}</p> : null}
-        </div>
-      )}
-    </Modal>
-  )
-}
 
 export function DashboardsPage() {
   const { t } = useTranslation()
   const auth = useAuth()
   const toast = useToast()
   const { confirm, dialog } = useConfirm()
-  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
   const dashboards = useDashboards()
   const mutations = useDashboardMutations()
   const [newName, setNewName] = useState('')
-  const editId = params.get('edit') ? Number(params.get('edit')) : null
+  const [templateKey, setTemplateKey] = useState('default')
   const canEdit = auth.can('flows.edit')
 
   const items = dashboards.data?.items ?? []
@@ -149,10 +31,10 @@ export function DashboardsPage() {
   const create = async () => {
     const name = newName.trim()
     if (!name) return
-    const created = await mutations.create.mutateAsync({ name, layout: cloneDefault(), is_default: items.length === 0 })
+    const created = await mutations.create.mutateAsync({ name, layout: cloneDashboardTemplate(templateKey), is_default: items.length === 0 })
     setNewName('')
     toast.success(t('dashboardRun.saved'))
-    setParams({ edit: String(created.id) })
+    navigate(`/dashboards/${created.id}/design`)
   }
 
   const duplicate = async (summary: { id: number; name: string }) => {
@@ -176,6 +58,7 @@ export function DashboardsPage() {
         actions={canEdit ? (
           <div className="flex flex-wrap items-center gap-2">
             <TextInput value={newName} placeholder={t('dashboardRun.createName')} onChange={(e) => setNewName(e.target.value)} />
+            <Select value={templateKey} options={DASHBOARD_CREATE_TEMPLATES.map((item) => ({ value: item.key, label: t(item.titleKey) }))} onChange={(e) => setTemplateKey(e.target.value)} aria-label={t('dashboardDesign.templateMenu')} />
             <Button variant="primary" icon={<Plus className="size-4" />} loading={mutations.create.isPending} disabled={!newName.trim()} onClick={() => void create()}>{t('dashboardRun.create')}</Button>
           </div>
         ) : null}
@@ -207,7 +90,7 @@ export function DashboardsPage() {
                         <Link to={`/dashboard/${item.id}`} className="btn h-8 px-2.5 text-xs"><ExternalLink className="size-4" />{t('dashboardRun.open')}</Link>
                         {canEdit ? (
                           <>
-                            <Button size="sm" variant="ghost" icon={<Edit3 className="size-4" />} onClick={() => setParams({ edit: String(item.id) })}>{t('dashboardRun.editLayout')}</Button>
+                            <Link to={`/dashboards/${item.id}/design`} className="btn h-8 px-2.5 text-xs"><Edit3 className="size-4" />{t('dashboardRun.editLayout')}</Link>
                             <Button size="sm" variant="ghost" icon={<Star className="size-4" />} disabled={item.is_default} onClick={() => mutations.update.mutate({ id: item.id, is_default: true })}>{t('dashboardRun.setDefault')}</Button>
                             <Button size="sm" variant="ghost" icon={<Copy className="size-4" />} onClick={() => void duplicate(item)}>{t('dashboardRun.copy')}</Button>
                             <span className="mx-1 h-6 w-px self-center bg-line" aria-hidden />
@@ -223,7 +106,6 @@ export function DashboardsPage() {
           )}
         </CardBody>
       </Card>
-      <DashboardEditor id={editId} open={canEdit && editId !== null} onClose={() => setParams({})} />
       {dialog}
     </Page>
   )

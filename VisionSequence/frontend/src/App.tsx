@@ -12,6 +12,7 @@ const AgentPage = lazy(() => import('@/pages/AgentPage').then((m) => ({ default:
 const AssetsPage = lazy(() => import('@/pages/AssetsPage').then((m) => ({ default: m.AssetsPage })))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const DashboardsPage = lazy(() => import('@/pages/dashboard/DashboardsPage').then((m) => ({ default: m.DashboardsPage })))
+const DashboardDesignerPage = lazy(() => import('@/pages/dashboard/DashboardDesignerPage').then((m) => ({ default: m.DashboardDesignerPage })))
 const DashboardViewerPage = lazy(() => import('@/pages/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })))
 const FlowEditorPage = lazy(() => import('@/pages/FlowEditorPage').then((m) => ({ default: m.FlowEditorPage })))
 const FlowsPage = lazy(() => import('@/pages/FlowsPage').then((m) => ({ default: m.FlowsPage })))
@@ -62,6 +63,7 @@ const router = createBrowserRouter([
           { index: true, element: <DashboardPage /> },
           { path: 'flows', element: <FlowsPage /> },
           { path: 'dashboards', element: <DashboardsPage /> },
+          { path: 'dashboards/:id/design', element: <DashboardDesignerPage /> },
           { path: 'flows/:flowId', element: <FlowEditorPage /> },
           { path: 'flows/:flowId/tools/:nodeId', element: <ToolPage /> },
           { path: 'flows/:flowId/stats', element: <StatsPage /> },

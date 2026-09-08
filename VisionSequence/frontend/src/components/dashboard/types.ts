@@ -6,4 +6,5 @@ export interface DashboardWidgetProps {
   data?: DashboardData
   live: Record<number, RunReport | null>
   depth?: number
+  design?: boolean
 }

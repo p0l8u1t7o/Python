@@ -36,6 +36,7 @@ export const UI_PAGES: UiPage[] = [
   { route: '/flows/:flowId/teach', id: 'teach', title: 'breadcrumb.teach', feature: 'flows.teach', help: '/flows/:id/teach', actions: ['teach.saveGraph', 'teach.saveRecipe'] },
   { route: '/flows/:flowId/golden', id: 'golden', title: 'breadcrumb.golden', feature: 'golden', help: '/flows/:id/golden', actions: ['golden.upload', 'golden.regress'] },
   { route: '/dashboards', id: 'dashboards', nav: 'nav.dashboards', help: '/dashboards', actions: ['dashboardRun.create', 'dashboardRun.save'] },
+  { route: '/dashboards/:id/design', id: 'dashboard_design', title: 'dashboardDesign.title', feature: 'flows.edit', help: '/dashboards/:id/design', actions: ['dashboardRun.save', 'dashboardRun.exportJson', 'dashboardRun.importJson', 'dashboardDesign.applyTemplate'] },
   { route: '/dashboard', id: 'dashboard_default', title: 'dashboardRun.title', help: '/dashboard/:id', actions: ['dashboardRun.fullscreen'] },
   { route: '/dashboard/:id', id: 'dashboard_view', title: 'dashboardRun.title', help: '/dashboard/:id', actions: ['dashboardRun.runOnce', 'dashboardRun.fullscreen', 'dashboardRun.editLayout'] },
   { route: '/batch', id: 'batch', nav: 'nav.batch', feature: 'batch', help: '/batch',
