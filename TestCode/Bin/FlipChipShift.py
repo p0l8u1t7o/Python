@@ -39,6 +39,7 @@ Flip-Chip X 光影像：凸塊 (bump) 與基板焊墊 (pad) 圓心量測與偏�
 """
 import argparse
 import csv
+from functools import lru_cache
 import glob
 import os
 import sys
@@ -192,6 +193,7 @@ def big_ball_mask(den):
     return cv2.dilate(balls, se2)
 
 
+@lru_cache(maxsize=16)
 def _disc_kernel(r_in, r_out=None):
     """r_out=None: 半徑 r_in 的實心圓平均核；否則為 [r_in, r_out) 的環形平均核"""
     R = int(np.ceil(r_out if r_out else r_in))
@@ -298,10 +300,12 @@ class RaySampler:
         self.r = np.arange(0, P["r_max"], P["r_step"], dtype=np.float32)
         self.cos = np.cos(self.th)[:, None]
         self.sin = np.sin(self.th)[:, None]
+        self.xoffs = self.r[None, :] * self.cos
+        self.yoffs = self.r[None, :] * self.sin
 
     def sample(self, cx, cy):
-        xs = (cx + self.r[None, :] * self.cos).astype(np.float32)
-        ys = (cy + self.r[None, :] * self.sin).astype(np.float32)
+        xs = self.xoffs + np.float32(cx)
+        ys = self.yoffs + np.float32(cy)
         return cv2.remap(self.den, xs, ys, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
     def crossings(self, V, level, r_lo, r_hi, near=None, outermost=False):
@@ -314,21 +318,27 @@ class RaySampler:
         k_lo = int(max(r_lo / P["r_step"], 0))
         k_hi = int(min(r_hi / P["r_step"], len(self.r) - 1))
         out = np.full(len(self.th), np.nan, np.float64)
+        if k_hi <= k_lo:
+            return out, ~np.isnan(out)
         seg = V[:, k_lo:k_hi + 1]
         hit = (seg[:, :-1] < level) & (seg[:, 1:] >= level)
-        for i in range(len(self.th)):
-            ks = np.where(hit[i])[0]
-            if len(ks) == 0:
-                continue
-            if outermost:
-                k = ks[-1] + k_lo
-            elif near is None:
-                k = ks[0] + k_lo
-            else:
-                k = ks[np.argmin(np.abs(self.r[ks + k_lo] - near))] + k_lo
-            a, b = V[i, k], V[i, k + 1]
-            t = (level - a) / (b - a) if b != a else 0.0
-            out[i] = self.r[k] + t * P["r_step"]
+        rows = np.flatnonzero(hit.any(axis=1))
+        if len(rows) == 0:
+            return out, ~np.isnan(out)
+        if outermost:
+            idx = hit.shape[1] - 1 - np.argmax(hit[rows, ::-1], axis=1)
+        elif near is None:
+            idx = np.argmax(hit[rows], axis=1)
+        else:
+            rk = self.r[k_lo:k_hi]
+            dist = np.where(hit[rows], np.abs(rk[None, :] - float(near)), np.inf)
+            idx = np.argmin(dist, axis=1)
+        kk = idx + k_lo
+        a = V[rows, kk]
+        b = V[rows, kk + 1]
+        denom = b - a
+        t = np.divide(level - a, denom, out=np.zeros_like(a, dtype=np.float32), where=np.abs(denom) > 1e-9)
+        out[rows] = self.r[kk] + t * P["r_step"]
         return out, ~np.isnan(out)
 
     def to_points(self, cx, cy, rho, ok):
@@ -680,6 +690,7 @@ def detect_die_regions(gray):
     Z = bgs[::4, ::4].reshape(-1, 1).astype(np.float32)
     k = int(P["die_levels"])
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 0.5)
+    cv2.setRNGSeed(int(P.get("kmeans_seed", 0)))
     _, _, centers = cv2.kmeans(Z, k, None, crit, 5, cv2.KMEANS_PP_CENTERS)
     centers = np.sort(centers.ravel())
     thresholds = [(centers[i] + centers[i + 1]) / 2 for i in range(k - 1)]   # 由暗到亮
@@ -1176,10 +1187,29 @@ def dedupe(sites, min_dist=None):
     """同一顆被兩個候選核心量到時只留擬合較好的那個"""
     min_dist = min_dist or P["dedupe_dist"]
     sites = sorted(sites, key=lambda s: s["pad"]["rms"])
+    min_dist2 = min_dist * min_dist
+    cell = max(float(min_dist), 1.0)
+    grid = {}
     kept = []
     for s in sites:
-        if all(np.hypot(s["pad"]["x"] - k["pad"]["x"], s["pad"]["y"] - k["pad"]["y"]) > min_dist for k in kept):
+        px, py = s["pad"]["x"], s["pad"]["y"]
+        gx, gy = int(np.floor(px / cell)), int(np.floor(py / cell))
+        duplicate = False
+        for yy in range(gy - 1, gy + 2):
+            for xx in range(gx - 1, gx + 2):
+                for k in grid.get((xx, yy), ()):
+                    dx = px - k["pad"]["x"]
+                    dy = py - k["pad"]["y"]
+                    if dx * dx + dy * dy <= min_dist2:
+                        duplicate = True
+                        break
+                if duplicate:
+                    break
+            if duplicate:
+                break
+        if not duplicate:
             kept.append(s)
+            grid.setdefault((gx, gy), []).append(s)
     return kept
 
 
