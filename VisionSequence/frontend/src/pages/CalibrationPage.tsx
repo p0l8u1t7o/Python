@@ -1,25 +1,27 @@
 /**
  * 標定頁：教平台「一個像素是多少毫米」與「鏡頭把畫面拱成什麼樣」，存成一個標定資產給工具用。
  *
- * 三種做法一頁到底，差別只在右邊面板：標定板（鏡頭＋比例）、機械手對點、兩點已知距離。
+ * 四種做法一頁到底，差別只在右邊面板：標定板（鏡頭＋比例）、機械手對點、兩點已知距離、手眼標定精靈。
  * 刻意先算再存——殘差先給人看，覺得哪一點或哪一張不對可以刪掉重算，滿意了才存成資產。
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, Crosshair, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { Camera, Crosshair, Move, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import {
   Badge, Button, Card, CardBody, CardHeader, Checkbox, EmptyRow, EmptyState, IconButton, Modal,
   PageHeader, Select, TBody, THead, Table, Td, TextInput, Th, Tr,
 } from '@/components/ui'
+import { RobotResult, RobotWizard, useRobotWizard } from '@/components/calibration/RobotWizard'
+import type { RobotBlock } from '@/components/calibration/RobotWizard'
 import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useAssets, useSources } from '@/lib/queries'
 import type { Overlay } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
-type Mode = 'board' | 'points' | 'distance'
+type Mode = 'board' | 'points' | 'distance' | 'robot'
 type BoardKind = 'chessboard' | 'circles' | 'acircles'
 type WorldKind = 'affine' | 'perspective' | 'scale'
 
@@ -122,18 +124,21 @@ export function CalibrationPage() {
 
   const shot: Shot | null = shots[current] ?? null
   const detected = shots.filter((s) => s.corners?.length)
+  const robot = useRobotWizard(shot?.ref ?? null)
 
   function reset() {
     setShots([])
     setCurrent(0)
     setPoints([])
     setResult(null)
+    robot.reset()
   }
 
   function switchMode(next: Mode) {
     setMode(next)
     setResult(null)
     setPoints([])
+    robot.reset()
     // 標定板要多張、另外兩種只用一張：換模式時只留目前這張，不必重拍
     if (next !== 'board' && shots.length > 1) {
       setShots(shot ? [shot] : [])
@@ -224,6 +229,10 @@ export function CalibrationPage() {
       }
     }
     setResult(null)
+    if (mode === 'robot') {
+      robot.record(px)
+      return
+    }
     setPoints((prev) => (prev.length >= (mode === 'distance' ? 2 : 200) ? prev : [...prev, { px, world: ['', ''], error: null }]))
   }
 
@@ -235,6 +244,8 @@ export function CalibrationPage() {
       let body: Record<string, unknown>
       if (mode === 'board') {
         body = { ...base, mode: 'board', kind: boardKind, cols: Number(cols), rows: Number(rows), spacing: Number(spacing), views: detected.map((s) => s.corners) }
+      } else if (mode === 'robot') {
+        body = { ...base, ...robot.body() }
       } else if (mode === 'points') {
         body = {
           ...base, mode: 'points', world_kind: worldKind,
@@ -256,6 +267,9 @@ export function CalibrationPage() {
       }
       if (mode === 'points' && world?.points) {
         setPoints((prev) => prev.map((p, i) => ({ ...p, error: world.points?.[i]?.error ?? null })))
+      }
+      if (mode === 'robot') {
+        robot.applyResult((solved.payload.robot as RobotBlock | undefined) ?? null)
       }
       toast.success(t('calibration.solved'))
     } catch (err) {
@@ -296,21 +310,25 @@ export function CalibrationPage() {
       const others = detected.filter((s) => s.ref !== shot.ref).flatMap((s) => s.corners ?? [])
       return [...cells, ...(others.length ? [{ kind: 'points', points: others, color: '#38bdf8' } as Overlay] : []), ...base]
     }
+    if (mode === 'robot') return robot.overlays
     return points.flatMap((p, i) => {
       const worst = points.reduce((m, q) => Math.max(m, q.error ?? 0), 0)
       const bad = p.error != null && worst > 0 && p.error >= worst
       const label = p.error != null ? `${i + 1}: ${p.error.toFixed(3)} ${unit}` : String(i + 1)
       return [{ kind: 'point', x: p.px[0], y: p.px[1], color: bad ? '#ef4444' : '#22c55e', label } as Overlay]
     })
-  }, [mode, shot, points, unit, coverage, detected, showCoverage])
+  }, [mode, shot, points, unit, coverage, detected, showCoverage, robot.overlays])
 
   const world = worldOf(result)
   const lens = lensOf(result)
+  const robotBlock = (result?.payload?.robot as RobotBlock | undefined) ?? null
   const canSolve = mode === 'board'
     ? detected.length > 0 && Number(spacing) > 0
-    : mode === 'points'
-      ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
-      : points.length === 2 && Number(distance) > 0
+    : mode === 'robot'
+      ? robot.canSolve
+      : mode === 'points'
+        ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
+        : points.length === 2 && Number(distance) > 0
 
   return (
     <Page>
@@ -333,8 +351,8 @@ export function CalibrationPage() {
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        {(['board', 'points', 'distance'] as Mode[]).map((m) => (
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {(['board', 'points', 'distance', 'robot'] as Mode[]).map((m) => (
           <button
             key={m}
             type="button"
@@ -343,7 +361,7 @@ export function CalibrationPage() {
             data-testid={`calib-mode-${m}`}
           >
             <div className="flex items-center gap-2 text-sm font-medium">
-              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : <Ruler size={15} />}
+              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : <Move size={15} />}
               {t(`calibration.modes.${m}.title`)}
             </div>
             <p className="mt-1 text-xs text-subtle">{t(`calibration.modes.${m}.hint`)}</p>
@@ -456,6 +474,16 @@ export function CalibrationPage() {
                 </Table>
               </CardBody>
             </Card>
+          ) : mode === 'robot' ? (
+            <RobotWizard
+              wizard={robot}
+              unit={unit}
+              snap={snap}
+              onSnap={setSnap}
+              hasPicture={!!shot}
+              onChange={() => setResult(null)}
+              onLocateError={(message) => toast.error(message)}
+            />
           ) : (
             <Card>
               <CardHeader title={mode === 'points' ? t('calibration.robotPoints') : t('calibration.twoPoints')} />
@@ -544,6 +572,7 @@ export function CalibrationPage() {
               </Button>
               {result ? (
                 <div className="space-y-2 text-sm" data-testid="calib-result">
+                  {robotBlock ? <RobotResult robot={robotBlock} unit={unit} /> : null}
                   {world ? (
                     <>
                       <div className="flex items-baseline gap-2">

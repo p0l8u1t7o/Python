@@ -44,12 +44,13 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(screen.getByText('Offline rule engine')).toBeInTheDocument())
   })
 
-  it('CalibrationPage offers the three ways and calculates from a board', async () => {
+  it('CalibrationPage offers the four ways and calculates from a board', async () => {
     const { CalibrationPage } = await import('@/pages/CalibrationPage')
     renderPage(<CalibrationPage />, { route: '/calibration' })
     expect(await screen.findByTestId('calib-mode-board')).toBeInTheDocument()
     expect(screen.getByTestId('calib-mode-points')).toBeInTheDocument()
     expect(screen.getByTestId('calib-mode-distance')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mode-robot')).toBeInTheDocument()
     // 還沒有影像：不能計算也不能儲存
     expect(screen.getByTestId('calib-solve')).toBeDisabled()
     expect(screen.getByTestId('calib-save')).toBeDisabled()
@@ -64,6 +65,25 @@ describe('pages render (smoke)', () => {
     // 算完才給存，且結果用白話呈現
     expect(await screen.findByTestId('calib-result')).toHaveTextContent('0.05000')
     await waitFor(() => expect(screen.getByTestId('calib-save')).toBeEnabled())
+  })
+
+  it('CalibrationPage walks through the hand-eye wizard', async () => {
+    const { CalibrationPage } = await import('@/pages/CalibrationPage')
+    renderPage(<CalibrationPage />, { route: '/calibration' })
+    fireEvent.click(await screen.findByTestId('calib-mode-robot'))
+    // 三個步驟與平移表先出現，旋轉分頁只在要解旋轉中心時才有
+    expect(screen.getByTestId('calib-robot-steps')).toBeInTheDocument()
+    expect(screen.queryByTestId('calib-robot-stage')).toBeNull()
+    expect(screen.getByTestId('calib-solve')).toBeDisabled()
+    // 選了要解旋轉中心才會多出旋轉分頁
+    fireEvent.change(screen.getByTestId('calib-robot-kind'), { target: { value: 'translation_rotation' } })
+    expect(screen.getByTestId('calib-robot-stage')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('calib-robot-stage-rotation'))
+    expect(screen.getByTestId('calib-robot-rotation-hint')).toBeInTheDocument()
+    // 改用流程定位：沒有影像時定位鈕是停用的
+    fireEvent.click(screen.getByTestId('calib-robot-stage-translation'))
+    fireEvent.change(screen.getByTestId('calib-robot-locate'), { target: { value: 'flow' } })
+    expect(screen.getByTestId('calib-robot-run-locate')).toBeDisabled()
   })
 
   it('BatchPage renders flow picker and empty image sets', async () => {

@@ -144,17 +144,18 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html" aria-current="page">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#modes">1. The three ways to calibrate</a></li><li><a href="#coverage">2. Coverage and the warnings that matter</a></li><li><a href="#tools">3. The tools</a><ul><li><a href="#undistort">undistort (pre-processing)</a></li><li><a href="#to-world">to_world (measurement) — real-world and robot coordinates</a></li><li><a href="#calibration-tool">calibration (measurement)</a></li></ul></li><li><a href="#asset">4. What the asset holds</a></li><li><a href="#accuracy">5. Accuracy, checked</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#modes">1. The four ways to calibrate</a></li><li><a href="#coverage">2. Coverage and the warnings that matter</a></li><li><a href="#hand-eye">3. Hand-eye calibration</a></li><li><a href="#tools">4. The tools</a><ul><li><a href="#undistort">undistort (pre-processing)</a></li><li><a href="#to-world">to_world (measurement) — real-world and robot coordinates</a></li><li><a href="#calibration-tool">calibration (measurement)</a></li><li><a href="#align-offset">align_offset (locate)</a></li></ul></li><li><a href="#asset">5. What the asset holds</a></li><li><a href="#accuracy">6. Accuracy, checked</a></li></ul></aside><article class="doc">
 
 <h1>Camera calibration, lens correction and robot coordinates</h1>
-<p>Three things the Calibration page (<code>/calibration</code>) produces, all stored in one <strong>calibration asset</strong> (kind <code>calibration</code>, a JSON file): the lens model that straightens what a wide-angle or close lens bends, the mapping from pixels to millimetres on the plane the parts sit on, and the mapping from pixels to the coordinates a robot expects. Two tools consume it — <code>undistort</code> before measuring and <code>to_world</code> after locating — and the <code>calibration</code> tool's asset mode converts a single length. Teach it once per station; every flow that picks the asset follows, and re-teaching after a lens or camera change updates them all.</p>
+<p>Three things the Calibration page (<code>/calibration</code>) produces, all stored in one <strong>calibration asset</strong> (kind <code>calibration</code>, a JSON file): the lens model that straightens what a wide-angle or close lens bends, the mapping from pixels to millimetres on the plane the parts sit on, and the mapping from pixels to the coordinates a robot expects. The tools consume it through <code>undistort</code> before measuring, <code>to_world</code> after locating and <code>align_offset</code> for robot pick compensation; the <code>calibration</code> tool's asset mode converts a single length. Teach it once per station; every flow that picks the asset follows, and re-teaching after a lens or camera change updates them all.</p>
 
-<h2 id="modes">1. The three ways to calibrate</h2>
+<h2 id="modes">1. The four ways to calibrate</h2>
 <table>
 <tr><th>Mode</th><th>What you do</th><th>What you get</th></tr>
 <tr><td>Board</td><td>Take 10 to 15 pictures of a chessboard or circle grid at different positions and tilts, filling the edges and corners of the picture as well as the middle; enter the inner-corner count and spacing</td><td>The lens model (camera matrix and distortion coefficients, with the reprojection error per picture) and, from the picture you choose, the millimetre mapping of the plane</td></tr>
 <tr><td>Points</td><td>Click a feature on the picture, type the robot's coordinates for that spot, repeat for at least 4 spots (9 spread over the working area is better)</td><td>An affine or perspective mapping from pixels to robot coordinates with the residual of every point, so a mistyped one shows up immediately</td></tr>
 <tr><td>Distance</td><td>Click two points and type the real distance between them</td><td>A plain scale — enough for measurement flows that only need millimetres</td></tr>
+<tr><td>Hand-eye</td><td>Follow the wizard: move the robot to a place, type the coordinates the robot reports, take a picture and mark the feature (click with snap-to-centre, or let a flow step such as a template match find it). Repeat for three or more places. Optionally record the same feature at three or more angles in a second stage, with the robot held still and only the tool turning</td><td>A pixel-to-robot affine mapping, handedness and angle sign convention; the second stage adds the centre of rotation in pixels and robot units</td></tr>
 </table>
 <p>The <strong>Solve</strong> step shows the result without saving it: the residuals, the quality badge, the coverage of the picture and the warnings. Save only when you are satisfied. The solver refuses fewer than 4 point pairs for a perspective mapping (3 for affine, 2 for a scale) with a 422 rather than a silently poor fit.</p>
 
@@ -169,29 +170,80 @@
 </ul>
 <p>The same information comes back from the API: <code>POST /vision/calibration/solve</code> returns <code>coverage</code> and <code>warnings[]</code> next to the payload, and <code>POST /vision/calibration/coverage</code> (image size plus the corner sets collected so far) returns the grid, the empty cells and ready-made overlays for a custom front end.</p>
 
-<h2 id="tools">3. The tools</h2>
+<h2 id="hand-eye">3. Hand-eye calibration</h2>
+<p>The wizard separates <strong>translation</strong> from <strong>rotation</strong>. First collect three or more non-collinear pixel/robot point pairs by moving, entering the reported coordinates, taking a picture and locating the feature. Choose <code>translation_rotation</code> to add a separate rotation stage: keep the robot's X/Y position still, turn only the tool and record the same feature at three or more angles. Translation samples cannot stand in for this rotation arc.</p>
+<p>The fit solves a pixel → robot affine mapping (<code>robot.matrix</code>). The determinant of its 2×2 linear part gives <code>handedness</code>: positive is <code>right</code>, negative is <code>left</code> (mirrored). The default <code>angle_sign</code> is respectively +1 or −1 for the robot's +X-to-+Y angle convention; override it before saving if the controller uses a different convention. With the rotation stage, the fitted circle gives the centre in pixels and the matrix converts it to robot units.</p>
+<p><code>camera_mode</code> records whether the camera is <code>fixed</code> or <code>moving</code>. In either case the matrix comes from the actual point pairs; selecting a moving camera does not invert the mapping.</p>
+<p><strong>Least squares only, never RANSAC.</strong> Every point the operator entered stays in the fit and gets a residual: <code>points[].error</code> in robot units, and <code>rotation_points[].error</code> in pixels to the fitted circle. The worst translation point is drawn red on the picture when its residual is non-zero. Delete any point in either stage and solve again to recalculate the fit. The reason is simple: the operator typed those points; silently discarding one hides a typo.</p>
+<p>Send <code>POST /vision/calibration/solve</code> with <code>mode: "robot"</code>, <code>image_size: [w,h]</code>, <code>unit: "mm"</code>, <code>kind: "translation"</code> or <code>"translation_rotation"</code>, <code>camera_mode: "fixed"</code> or <code>"moving"</code>, and <code>points</code> containing <code>{"px":..,"py":..,"rx":..,"ry":..}</code> objects. <code>rotation_points</code> is a separate list of <code>[x,y]</code> pixel positions, required for <code>translation_rotation</code>; omit it or send an empty list for <code>translation</code>. The optional <code>angle_sign</code> is 1 or −1. For example:</p>
+<pre><code>{
+  "mode": "robot", "image_size": [1280, 960], "unit": "mm",
+  "kind": "translation_rotation", "camera_mode": "fixed",
+  "points": [
+    {"px": 100, "py": 100, "rx": 10, "ry": 10},
+    {"px": 300, "py": 100, "rx": 30, "ry": 10},
+    {"px": 100, "py": 300, "rx": 10, "ry": 30}
+  ],
+  "rotation_points": [[250,200], [200,250], [150,200]],
+  "angle_sign": 1
+}</code></pre>
+<p>The reply's <code>payload.robot</code> block is shown below (values rounded for readability). Solve only computes; to store it, send <code>POST /vision/calibration/assets</code> with a <code>name</code> and the complete returned <code>payload</code>.</p>
+<pre><code>{
+  "kind": "translation_rotation", "camera_mode": "fixed",
+  "matrix": [[0.1,0,0], [0,0.1,0], [0,0,1]],
+  "handedness": "right", "angle_sign": 1, "rms": 0, "max_error": 0,
+  "points": [
+    {"px": 100, "py": 100, "rx": 10, "ry": 10, "error": 0},
+    {"px": 300, "py": 100, "rx": 30, "ry": 10, "error": 0},
+    {"px": 100, "py": 300, "rx": 10, "ry": 30, "error": 0}
+  ],
+  "rotation_center_px": [200,200], "rotation_center_world": [20,20],
+  "rotation_points": [
+    {"px": 250, "py": 200, "error": 0},
+    {"px": 200, "py": 250, "error": 0},
+    {"px": 150, "py": 200, "error": 0}
+  ],
+  "rotation_rms_px": 0, "rotation_max_error_px": 0
+}</code></pre>
+
+<h2 id="tools">4. The tools</h2>
 <h3 id="undistort">undistort (pre-processing)</h3>
 <p>Straightens the picture with the lens part of the calibration. <code>alpha</code> chooses how much of the frame to keep: 0 zooms so that every pixel is real image (no black borders), 1 keeps the whole frame with black corners, values between keep that share. The remap tables are built once per (calibration, image size, alpha) and cached, so a frame costs one <code>remap</code>; the <em>mm per pixel</em> output carries the plane scale when the calibration has one, ready to feed the <code>calibration</code> tool. A picture whose size differs from the calibration is handled by rescaling the camera matrix; a different <em>aspect ratio</em> is refused with a message that names both sizes — the usual symptom of a camera swap.</p>
 <h3 id="to-world">to_world (measurement) — real-world and robot coordinates</h3>
 <p>Turns pixel positions into the calibration's world coordinates: wire a locate tool's centre into the <code>x</code>/<code>y</code> ports (or a <code>points</code> list), read <code>x</code>/<code>y</code> in millimetres or robot units; a pixel length becomes a real length and an image angle becomes a world angle, both converted with the mapping at that position (so a perspective mapping's varying scale is respected). A mirrored mapping — a camera mounted so that the image is flipped relative to the robot's axes — flips the angle sign accordingly, which is why the angle goes through the mapping rather than being copied. Wire the outputs to <code>output</code> steps to hand a pick position to the robot.</p>
 <h3 id="calibration-tool">calibration (measurement)</h3>
 <p>Length conversion only: pixel size, a known distance, or the asset. Use the asset mode so that re-teaching the station updates every flow.</p>
+<h3 id="align-offset">align_offset (locate)</h3>
+<p>Takes the same calibration asset to convert the compensated absolute pose to robot or world coordinates. When both mappings exist it prefers <code>robot</code> over <code>world</code>. See <a href="vision-capabilities.html#tools">Inspection capabilities</a> for the four modes, input ports and position-correction output.</p>
 
-<h2 id="asset">4. What the asset holds</h2>
+<h2 id="asset">5. What the asset holds</h2>
 <pre><code>{
   "unit": "mm", "image_size": [1280, 960],
   "lens":  {"camera_matrix": [[fx,0,cx],[0,fy,cy],[0,0,1]], "dist_coeffs": [k1,k2,p1,p2,k3], "rms": 0.21, "views": 12, "view_errors": [...]},
-  "world": {"kind": "affine", "matrix": [[...3x3...]], "mm_per_px": 0.0512, "rms": 0.03, "max_error": 0.07, "points": [{"px":[..],"world":[..],"error":..}]}
+  "world": {"kind": "affine", "matrix": [[...3x3...]], "mm_per_px": 0.0512, "rms": 0.03, "max_error": 0.07, "points": [{"px":[..],"world":[..],"error":..}]},
+  "robot": {"kind": "translation_rotation", "camera_mode": "fixed", "matrix": [[...3x3...]], "handedness": "right", "angle_sign": 1,
+            "rms": 0.03, "max_error": 0.07, "points": [{"px":..,"py":..,"rx":..,"ry":..,"error":..}],
+            "rotation_center_px": [..,..], "rotation_center_world": [..,..], "rotation_points": [{"px":..,"py":..,"error":..}],
+            "rotation_rms_px": 0.12, "rotation_max_error_px": 0.2}
 }</code></pre>
-<p><code>lens</code> and <code>world</code> can each be absent (a lens-only or a scale-only calibration). <code>GET /vision/calibration/assets/{id}</code> returns the content with the summary and quality; <code>manage.py</code> has no calibration command because the board pictures come from the camera through the page.</p>
+<p><code>lens</code>, <code>world</code> and <code>robot</code> are optional blocks; at least one must be present. The robot block holds:</p>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>kind</code>, <code>camera_mode</code></td><td><code>translation</code> or <code>translation_rotation</code>; camera <code>fixed</code> or <code>moving</code></td></tr>
+<tr><td><code>matrix</code>, <code>handedness</code>, <code>angle_sign</code></td><td>The 3×3 pixel-to-robot affine matrix (last row <code>[0,0,1]</code>), <code>right</code> or <code>left</code> from its determinant, and the saved +1 or −1 angle convention</td></tr>
+<tr><td><code>rms</code>, <code>max_error</code>, <code>points[]</code></td><td>RMS and worst residual in robot units; every entered <code>px</code>/<code>py</code>/<code>rx</code>/<code>ry</code> pair with its <code>error</code></td></tr>
+<tr><td><code>rotation_center_px</code>, <code>rotation_center_world</code></td><td>The fitted centre as <code>[x,y]</code> in pixels and robot units, added by the rotation stage</td></tr>
+<tr><td><code>rotation_points[]</code>, <code>rotation_rms_px</code>, <code>rotation_max_error_px</code></td><td>Each rotation sample's <code>px</code>/<code>py</code> and radial <code>error</code>, plus RMS and worst radial error, all in pixels; added by the rotation stage</td></tr>
+</table>
+<p><code>GET /vision/calibration/assets/{id}</code> returns the content with the summary and quality. The robot summary includes the kind, point count, RMS, worst residual, handedness and whether a rotation centre exists; with rotation samples it also lists their count and radial errors. <code>manage.py</code> has no calibration command because the pictures come from the camera through the page.</p>
 
-<h2 id="accuracy">5. Accuracy, checked</h2>
+<h2 id="accuracy">6. Accuracy, checked</h2>
 <ul>
 <li>Synthetic pictures with known distortion (k1 = −0.28, k2 = 0.12): the solver recovers k1 within 2% and the focal length within one pixel (<code>tests/test_calib.py</code>).</li>
 <li><code>to_world</code> round trip image → world → image within 1e-6, including a mirrored mapping.</li>
 <li><code>undistort</code> at 1280×960: the first frame builds the maps, every following frame is the plain remap; the test asserts that 100 frames average the steady-state time.</li>
 </ul>
-<p>Not in scope: eye-in-hand (a camera on the arm), 3D poses and stereo — the platform calibrates a fixed camera against the plane the parts lie on, which is what an inspection station needs.</p>
+<p>Not in scope: full 3D hand-eye poses and stereo. Hand-eye calibration records a fixed or moving camera and fits a 2D mapping from the supplied point pairs; it does not solve the camera's 3D pose on the arm.</p>
 
 </article></div><!-- /doc-layout -->
 <script>
