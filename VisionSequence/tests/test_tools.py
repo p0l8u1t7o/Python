@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
+import tempfile
 
 import cv2
 import numpy as np
-from django.test import SimpleTestCase
+from django.conf import settings
+from django.test import SimpleTestCase, override_settings
 
 from apps.vision.tools import base, defects
 from apps.vision.tools.base import ToolError
@@ -1575,6 +1577,114 @@ class SurfaceFilterTests(SimpleTestCase):
         before = img.copy()
         run_tool("surface_filter", img, {})
         self.assertTrue(np.array_equal(img, before))
+
+
+@override_settings(VISION={**settings.VISION, "ASSET_DIR": tempfile.mkdtemp(prefix="vs-tpl-")})
+class MultiTemplateTests(SimpleTestCase):
+    """一次比對好幾種模板：同一條線上兩種蓋子、同一個工件的兩種姿態。"""
+
+    @staticmethod
+    def _scene() -> np.ndarray:
+        """三個方塊（上排）＋兩個圓（下排）。"""
+        img = np.full((300, 500), 40, np.uint8)
+        for x in (60, 200, 340):
+            cv2.rectangle(img, (x, 60), (x + 40, 100), 220, -1)
+        for x in (100, 300):
+            cv2.circle(img, (x, 220), 22, 220, -1)
+        return cv2.GaussianBlur(img, (0, 0), 0.8)
+
+    def _run(self, image, **params):
+        base = {"threshold": 0.7, "max_matches": 10}
+        return run_tool("template_match", image, {**base, **params}, inputs=params.pop("_inputs", None) or {})
+
+    def test_one_template_still_behaves_exactly_as_before(self):
+        img = self._scene()
+        r = run_tool("template_match", img, {"threshold": 0.7, "max_matches": 10}, inputs={"template_image": img[55:105, 55:105].copy()})
+        self.assertEqual((r.branch, r.outputs["count"]), ("found", 5))   # 方塊與圓都像一個亮塊
+        self.assertEqual(r.outputs["best_label"], "")
+        self.assertEqual(r.outputs["counts"], [])                        # 只有一個模板就不分類
+
+    def test_several_templates_say_which_one_matched(self):
+        from apps.vision import fixed_images
+
+        img = self._scene()
+        square = fixed_images.store(img[55:105, 55:105].copy(), "square")
+        circle = fixed_images.store(img[195:245, 75:125].copy(), "circle")
+        r = run_tool("template_match", img, {"threshold": 0.85, "max_matches": 10, "templates": [square, circle]})
+        self.assertEqual(r.branch, "found")
+        labels = {m["label"] for m in r.outputs["matches"]}
+        self.assertEqual(labels, {"square", "circle"})
+        counts = {c["label"]: c["count"] for c in r.outputs["counts"]}
+        self.assertEqual(counts["square"], 3)
+        self.assertEqual(counts["circle"], 2)
+        self.assertIn(r.outputs["best_label"], ("square", "circle"))
+
+    def test_the_same_target_is_not_reported_twice(self):
+        """兩個模板都認得同一個目標時，只留分數高的那一個。"""
+        from apps.vision import fixed_images
+
+        img = self._scene()
+        a = fixed_images.store(img[55:105, 55:105].copy(), "a")
+        b = fixed_images.store(img[56:106, 56:106].copy(), "b")   # 幾乎一樣的模板
+        r = run_tool("template_match", img, {"threshold": 0.8, "max_matches": 10, "templates": [a, b]})
+        centres = [(round(m["cx"]), round(m["cy"])) for m in r.outputs["matches"]]
+        self.assertEqual(len(centres), len(set(centres)))
+        self.assertLessEqual(r.outputs["count"], 5)
+
+    def test_the_order_of_the_matches_can_be_chosen(self):
+        img = self._scene()
+        tpl = img[55:105, 55:105].copy()
+
+        def centres(mode):
+            r = run_tool("template_match", img, {"threshold": 0.7, "max_matches": 10, "sort_by": mode}, inputs={"template_image": tpl})
+            return [(round(m["cx"]), round(m["cy"])) for m in r.outputs["matches"]]
+
+        self.assertEqual(centres("x"), sorted(centres("x")))                       # 由左到右
+        self.assertEqual([c[1] for c in centres("y")], sorted(c[1] for c in centres("y")))
+        reading = centres("xy")
+        self.assertEqual(reading[:3], [(80, 80), (220, 80), (360, 80)])            # 先上排、再由左到右
+        self.assertEqual(reading[3:], [(100, 220), (300, 220)])
+        self.assertEqual(centres("score")[0], (80, 80))
+
+    def test_the_template_can_be_stretched(self):
+        img = self._scene()
+        tpl = img[55:105, 55:105].copy()
+        self.assertEqual(run_tool("template_match", img, {"threshold": 0.7, "max_matches": 10, "scale_x": 1.5},
+                                  inputs={"template_image": tpl}).outputs["count"], 0)
+        wide = np.full((300, 500), 40, np.uint8)
+        cv2.rectangle(wide, (60, 60), (120, 100), 220, -1)        # 寬了 1.5 倍的方塊
+        wide = cv2.GaussianBlur(wide, (0, 0), 0.8)
+        r = run_tool("template_match", wide, {"threshold": 0.6, "max_matches": 5, "scale_x": 1.5}, inputs={"template_image": tpl})
+        self.assertEqual(r.branch, "found")
+
+    def test_a_part_running_off_the_edge_can_still_be_found(self):
+        img = np.full((200, 200), 40, np.uint8)
+        cv2.rectangle(img, (150, 80), (230, 120), 220, -1)        # 右邊被切掉一半
+        img = cv2.GaussianBlur(img, (0, 0), 0.8)
+        tpl = np.full((50, 90), 40, np.uint8)
+        cv2.rectangle(tpl, (5, 5), (85, 45), 220, -1)
+        tpl = cv2.GaussianBlur(tpl, (0, 0), 0.8)
+        # 被切掉的工件分數本來就低（模板有一截對不到），所以門檻要放寬一點
+        plain = run_tool("template_match", img, {"threshold": 0.6, "max_matches": 3}, inputs={"template_image": tpl})
+        clipped = run_tool("template_match", img, {"threshold": 0.6, "max_matches": 3, "allow_clipped": True}, inputs={"template_image": tpl})
+        self.assertEqual(plain.outputs["count"], 0)
+        self.assertEqual(clipped.branch, "found")
+        self.assertGreater(clipped.outputs["best_x"], 150)
+        self.assertGreater(clipped.outputs["best_score"], 0.6)
+
+    def test_a_time_limit_returns_what_it_has(self):
+        img = self._scene()
+        tpl = img[55:105, 55:105].copy()
+        params = {"threshold": 0.7, "max_matches": 10, "angle_range": 30, "angle_step": 1, "pyramid": False}
+        full = run_tool("template_match", img, params, inputs={"template_image": tpl})
+        quick = run_tool("template_match", img, {**params, "timeout_ms": 1}, inputs={"template_image": tpl})
+        self.assertEqual(full.branch, "found")
+        self.assertEqual(quick.branch, "found")          # 有結果就回結果，不是失敗
+        self.assertLessEqual(quick.outputs["count"], full.outputs["count"])
+
+    def test_no_template_at_all_says_so(self):
+        with self.assertRaises(ToolError):
+            run_tool("template_match", self._scene(), {})
 
 
 class EdgeDefectTests(SimpleTestCase):

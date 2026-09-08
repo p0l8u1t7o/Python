@@ -91,6 +91,12 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## template_match
 範本比對定位：範本圖有兩種給法——**首選** `crop_template` 動作把 ROI 裁成固定影像節點接到 `template_image` 埠（圖片跟著流程走），或 `template` 選既有影像資產；`threshold` 0.6～0.8（NCC 分數），旋轉件給 `angle_range`（±度）與 `angle_step`（5 即可，`subpixel` 預設開會把位置內插到 0.05px、角度內插到步進的 1/10）。角度以畫面順時針為正，與 ROI／找直線一致，可直接餵 shape_align。輸出 `matches` 給 shape_align、`best_x/best_y`；`not_found` 分支接 judge(ng)。兩者都沒有時留空並在 note 提醒使用者補圖。
 
+**多模板**：`templates` 放好幾張固定影像（同一條線上兩種蓋子、同一工件的兩種姿態），每個 match 帶 `label` 說是哪一種，
+`counts` 給每種各幾個；重疊的目標只留分數最高的那一個。
+**排序** `sort_by`：score（預設）／x／y／xy（閱讀順序，取放最常用）／angle。
+**縮放** `scale_x`／`scale_y` 在比對前把模板拉伸（工件成像比教導時大或扁）。
+**邊界** `allow_clipped` 找跨在搜尋範圍邊上的工件（分數會低，門檻要放寬）。
+**逾時** `timeout_ms` 到了就回目前最好的結果，不讓大角度搜尋拖住產線。
 ## shape_match
 形狀比對定位（幾何比對）：以邊緣**梯度方向**計分，光照變化、部分遮擋、雜亂背景、任意角度都撐得住，是 template_match（NCC）撐不住時的首選
 （機械手上下料、多件同時定位）。`model` 是形狀範本資產（用 `POST /vision/assets/shape-model` 從影像資產或試執行影像＋範本區建；

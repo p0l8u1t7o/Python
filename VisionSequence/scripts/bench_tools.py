@@ -307,6 +307,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("template_match no-pyr", "template_match", big, {"template": "tpl", "pyramid": False, "threshold": 0.6}, {}, {}),
         ("template_match rot ±10/5", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6, "angle_range": 10, "angle_step": 5}, {}, {}),
         ("template_match roi+rot", "template_match", big, {"template": "tpl", "roi": plate, "pyramid": True, "threshold": 0.6, "angle_range": 10, "angle_step": 5}, {}, {}),
+        ("template_match sort xy", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6, "max_matches": 20, "sort_by": "xy"}, {}, {}),
+        ("template_match clipped", "template_match", big, {"template": "tpl", "pyramid": True, "threshold": 0.6, "allow_clipped": True}, {}, {}),
         ("shape_match full angle", "shape_match", big, {"model": "shapemodel", "min_score": 0.6}, {}, {}),
         ("shape_match ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "angle_start": -20, "angle_extent": 40}, {}, {}),
         ("shape_match roi ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "roi": plate, "angle_start": -20, "angle_extent": 40}, {}, {}),

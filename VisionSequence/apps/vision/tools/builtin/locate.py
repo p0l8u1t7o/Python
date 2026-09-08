@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import os
 import threading
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
@@ -534,11 +535,25 @@ class TemplateMatchTool(Tool):
     icon = "ScanSearch"
     params = [
         Param("template", "Template image", kind="asset", accept="image", required=False, help_text="Not needed when a picture is connected to the template picture input. The uploaded template image (matched in grayscale)."),
+        Param("templates", "More templates", kind="images", required=False,
+              help_text="Several shapes that all count as a find: two orientations of the same part, three lid types on one line. Each match says which one it was."),
         Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect"], help_text="Leave blank to search the whole image."),
         Param("threshold", "Score threshold", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, help_text="NCC score 0–1; below this is not a match.", teach=True),
         Param("max_matches", "Max matches", kind="number", default=1, minimum=1, maximum=500),
+        Param("sort_by", "Order the matches by", kind="select", default="score", options=[
+            {"value": "score", "label": "Score, best first"},
+            {"value": "x", "label": "Left to right"}, {"value": "y", "label": "Top to bottom"},
+            {"value": "xy", "label": "Reading order (rows, then across)"}, {"value": "angle", "label": "Angle"},
+        ], help_text="Reading order is what a pick-and-place usually wants; score is what a presence check wants."),
         Param("angle_range", "Rotation range ±", kind="number", default=0, minimum=0, maximum=180, unit="°", help_text="0 disables the rotation search.", group="Rotation", teach=True),
         Param("angle_step", "Angle step", kind="number", default=5, minimum=0.5, maximum=45, unit="°", group="Rotation"),
+        Param("scale_x", "Scale across", kind="number", default=1.0, minimum=0.1, maximum=10, step=0.05, group="Advanced",
+              help_text="Stretches the template before matching, for a part that images larger or narrower than the one it was taught on."),
+        Param("scale_y", "Scale down the picture", kind="number", default=1.0, minimum=0.1, maximum=10, step=0.05, group="Advanced"),
+        Param("allow_clipped", "Allow a part at the edge", kind="boolean", default=False, group="Advanced",
+              help_text="Finds a part that runs off the edge of the search region by padding it with its own border. The score of a clipped part is lower, so drop the threshold a little."),
+        Param("timeout_ms", "Give up after", kind="number", default=0, minimum=0, maximum=60000, unit="ms", group="Advanced",
+              help_text="Returns the best found so far instead of holding the line up. 0 = no limit."),
         Param("pyramid", "Pyramid speed-up", kind="boolean", default=True, help_text="Search a quarter-size image first, then refine around the candidates. Turns itself off for very small templates.", group="Advanced"),
         Param("subpixel", "Sub-pixel refine", kind="boolean", default=True, help_text="Position comes from a 3×3 parabolic interpolation of the correlation map; with a rotation search the angle is interpolated from neighbouring scores, beating the angle step.", group="Advanced"),
     ]
@@ -548,20 +563,18 @@ class TemplateMatchTool(Tool):
         Port("matches", "Matches", "matches"), Port("count", "Count", "number"),
         Port("best_x", "Best X", "number"), Port("best_y", "Best Y", "number"),
         Port("best_score", "Best score", "number"), Port("best_angle", "Best angle", "number"),
+        Port("best_label", "Best template", "string"), Port("counts", "Count per template", "list"),
     ]
     heavy = True
 
     def execute(self, ctx: ToolContext) -> Result:
         image = to_gray(ctx.require_image())
-        tpl = reference_image(ctx, "template_image", "template")
+        templates = _templates(ctx)
         region = ctx.roi()
         c = crop(image, region, upright=True)
         search = np.ascontiguousarray(c.image)
         if search.size == 0:
             raise ToolError("The search region falls outside the image")
-        th, tw = tpl.shape[:2]
-        if search.shape[0] < th or search.shape[1] < tw:
-            raise ToolError(f"The search region {search.shape[1]}×{search.shape[0]} is smaller than the template {tw}×{th}")
 
         threshold = float(np.clip(ctx.number("threshold", 0.7), 0, 1))
         max_n = max(1, ctx.integer("max_matches", 1))
@@ -573,109 +586,215 @@ class TemplateMatchTool(Tool):
                 angles.append(0.0)
         else:
             angles = [0.0]
+        deadline = (time.perf_counter() + ctx.number("timeout_ms", 0) / 1000.0) if ctx.number("timeout_ms", 0) > 0 else None
 
-        scale = 4
-        use_pyramid = ctx.flag("pyramid", True) and min(th, tw) >= 32 and min(search.shape[:2]) >= scale * 8
-        candidates: list[tuple[int, int, float, float, int, int]] = []  # x, y, score, angle, w, h（搜尋圖座標）
-        if use_pyramid:
-            small = cv2.resize(search, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
-            tpl_small = cv2.resize(tpl, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
-            coarse: list[tuple[int, int, float, float, int, int]] = []  # x, y, score, angle, rw, rh（縮圖座標）
-            common = _inscribed_half(max(abs(a) for a in angles), tpl_small.shape[1], tpl_small.shape[0]) if len(angles) > 1 else None
-            for angle in angles:
-                rt, rm = _rotate_template(tpl_small, angle)
-                ox = oy = 0
-                if common is not None:
-                    rt_c, ox, oy = _center_crop(rt, *common)
-                    res = _match(small, rt_c, None)
-                else:
-                    res = _match(small, rt, rm)
-                if res is None:
-                    continue
-                for x, y, s in _peaks(res, max(0.0, threshold - 0.15), max_n * 3, rt.shape[1], rt.shape[0]):
-                    coarse.append((x - ox, y - oy, s, angle, rt.shape[1], rt.shape[0]))
-            coarse.sort(key=lambda t: -t[2])
-            # 剪枝：同一位置（中心距離 < 縮圖範本半尺寸）最多細找分數最高的 3 個角度，
-            # 總數上限 max_n*4；避免 5 個角度在同一目標上各細找一次。
-            selected: list[tuple[int, int, float, float, int, int]] = []
-            locs: list[list[float]] = []  # cx, cy, count
-            min_d_small = max(2.0, min(tpl_small.shape[:2]) / 2)
-            for cand in coarse:
-                ccx, ccy = cand[0] + cand[4] / 2, cand[1] + cand[5] / 2
-                slot = next((loc for loc in locs if math.hypot(ccx - loc[0], ccy - loc[1]) < min_d_small), None)
-                if slot is None:
-                    locs.append([ccx, ccy, 1])
-                elif slot[2] >= 3:
-                    continue
-                else:
-                    slot[2] += 1
-                selected.append(cand)
-                if len(selected) >= max_n * 4:
-                    break
-            for x, y, _, angle, _, _ in selected:
-                rt, rm = _rotate_template(tpl, angle)
-                rh, rw = rt.shape[:2]
-                pad = scale * 2
-                x0, y0 = max(0, x * scale - pad), max(0, y * scale - pad)
-                x1, y1 = min(search.shape[1], x * scale + rw + pad), min(search.shape[0], y * scale + rh + pad)
-                window = search[y0:y1, x0:x1]
-                res = _match(window, rt, rm)
-                if res is None:
-                    continue
-                _, s, _, loc = cv2.minMaxLoc(res)
-                if s >= threshold:
-                    candidates.append((x0 + int(loc[0]), y0 + int(loc[1]), float(s), angle, rw, rh))
-        else:
-            for angle in angles:
-                rt, rm = _rotate_template(tpl, angle)
-                res = _match(search, rt, rm)
-                if res is None:
-                    continue
-                for x, y, s in _peaks(res, threshold, max_n, rt.shape[1], rt.shape[0]):
-                    candidates.append((x, y, s, angle, rt.shape[1], rt.shape[0]))
+        pad = 0
+        if ctx.flag("allow_clipped"):
+            # 工件跨在搜尋範圍邊上：把邊界往外複製半個範本，比對照樣做得下去（分數會低一些）
+            pad = max(t.shape[0] for _, t in templates) // 2
+            search = cv2.copyMakeBorder(search, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
 
-        # 跨角度的非極大抑制：中心距離小於範本半尺寸者視為同一目標
-        candidates.sort(key=lambda t: -t[2])
-        kept: list[tuple[int, int, float, float, int, int]] = []
-        min_d = max(2.0, min(tw, th) / 2)
-        for cand in candidates:
-            cx, cy = cand[0] + cand[4] / 2, cand[1] + cand[5] / 2
-            if all(math.hypot(cx - (k[0] + k[4] / 2), cy - (k[1] + k[5] / 2)) >= min_d for k in kept):
-                kept.append(cand)
+        found: list[tuple[float, dict[str, Any]]] = []
+        timed_out = False
+        for label, tpl in templates:
+            if deadline is not None and time.perf_counter() >= deadline:
+                timed_out = True
+                break
+            th, tw = tpl.shape[:2]
+            if search.shape[0] < th or search.shape[1] < tw:
+                if len(templates) == 1:
+                    raise ToolError(f"The search region {search.shape[1]}×{search.shape[0]} is smaller than the template {tw}×{th}")
+                continue
+            for x, y, score, angle, rw, rh in _search_template(
+                search, tpl, threshold=threshold, max_n=max_n, angles=angles,
+                pyramid=ctx.flag("pyramid", True), subpixel=ctx.flag("subpixel", True), angle_step=angle_step,
+                deadline=deadline,
+            ):
+                cx, cy = c.to_full(x - pad, y - pad)
+                total_angle = angle + (float(region.get("angle", 0)) if region and region.get("shape") == "rotated_rect" else 0.0)
+                found.append((score, {
+                    "x": round(cx - tw / 2, 2), "y": round(cy - th / 2, 2), "w": tw, "h": th,
+                    "cx": round(cx, 2), "cy": round(cy, 2), "score": round(score, 4), "angle": round(total_angle, 2),
+                    "label": label,
+                }))
+
+        # 跨模板的非極大抑制：中心靠得太近的視為同一個目標，留分數高的那一個
+        found.sort(key=lambda t: -t[0])
+        kept: list[dict[str, Any]] = []
+        for _, m in found:
+            span = max(2.0, min(m["w"], m["h"]) / 2)
+            if all(math.hypot(m["cx"] - k["cx"], m["cy"] - k["cy"]) >= span for k in kept):
+                kept.append(m)
             if len(kept) >= max_n:
                 break
+        matches = _sorted_matches(kept, str(ctx.param("sort_by", "score")))
 
-        matches: list[dict[str, Any]] = []
         overlays: list[dict[str, Any]] = []
         if region is not None:
             overlays.append(region_overlay(region, label="search"))
-        refine_step = angle_step if len(angles) > 1 else 0.0
-        do_subpixel = ctx.flag("subpixel", True)
-        for x, y, s, angle, rw, rh in kept:
-            sx, sy = x + rw / 2, y + rh / 2
-            if do_subpixel:
-                sx, sy, s, angle = _refine_match(search, tpl, sx, sy, angle, s, refine_step)
-            cx, cy = c.to_full(sx, sy)
-            fx, fy = cx - tw / 2, cy - th / 2
-            total_angle = angle + (float(region.get("angle", 0)) if region and region.get("shape") == "rotated_rect" else 0.0)
-            matches.append({
-                "x": round(fx, 2), "y": round(fy, 2), "w": tw, "h": th,
-                "cx": round(cx, 2), "cy": round(cy, 2), "score": round(s, 4), "angle": round(total_angle, 2),
-            })
-            overlays.append({"kind": "rect", "x": cx - tw / 2, "y": cy - th / 2, "w": tw, "h": th, "angle": total_angle, "color": "#22c55e", "width": 2, "label": f"{s:.2f}"})
-            overlays.append({"kind": "point", "x": cx, "y": cy, "color": "#22c55e"})
-        best = matches[0] if matches else None
+        for i, m in enumerate(matches):
+            tag = f"{m['score']:.2f}" + (f" {m['label']}" if m["label"] else "")
+            overlays.append({"kind": "rect", "x": m["cx"] - m["w"] / 2, "y": m["cy"] - m["h"] / 2, "w": m["w"], "h": m["h"],
+                             "angle": m["angle"], "color": "#22c55e", "width": 2, "label": f"{i + 1}: {tag}" if len(matches) > 1 else tag})
+            overlays.append({"kind": "point", "x": m["cx"], "y": m["cy"], "color": "#22c55e"})
+        best = max(matches, key=lambda m: m["score"]) if matches else None
+        counts = [{"label": label, "count": sum(1 for m in matches if m["label"] == label)} for label, _ in templates] if len(templates) > 1 else []
+        note = ", gave up on time" if timed_out else ""
         return Result(
             outputs={
                 "matches": matches, "count": len(matches),
                 "best_x": best["cx"] if best else float("nan"), "best_y": best["cy"] if best else float("nan"),
                 "best_score": best["score"] if best else 0.0, "best_angle": best["angle"] if best else 0.0,
+                "best_label": (best["label"] if best else ""),
+                "counts": counts,
             },
             overlays=overlays,
             branch="found" if matches else "not_found",
             status="ok" if matches else "ng",
-            message=f"{len(matches)} matches" + (f", best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else ""),
+            message=f"{len(matches)} matches" + (f", best {best['score']:.3f} @ ({best['cx']:.1f}, {best['cy']:.1f})" if best else "") + note,
         )
+
+
+def _templates(ctx: ToolContext) -> list[tuple[str, np.ndarray]]:
+    """要比對的模板：主模板（資產或接進來的圖）＋「更多模板」的固定影像。回 [(名字, 灰階圖)]。"""
+    from apps.vision import fixed_images
+
+    out: list[tuple[str, np.ndarray]] = []
+    extra = ctx.param("templates") or []
+    has_main = bool(ctx.param("template")) or isinstance(ctx.inputs.get("template_image"), np.ndarray)
+    if has_main or not extra:
+        out.append(("", reference_image(ctx, "template_image", "template")))
+    for item in extra if isinstance(extra, list) else []:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        img = fixed_images.load(str(item["id"]))
+        if img is None:
+            continue
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+        out.append((str(item.get("name") or item["id"])[:40], np.ascontiguousarray(gray)))
+    if not out:
+        raise ToolError("Choose a template image, connect one, or add some under More templates")
+    scale_x, scale_y = ctx.number("scale_x", 1.0), ctx.number("scale_y", 1.0)
+    if abs(scale_x - 1.0) > 1e-6 or abs(scale_y - 1.0) > 1e-6:
+        out = [(label, _scaled(tpl, scale_x, scale_y)) for label, tpl in out]
+    return out
+
+
+def _scaled(tpl: np.ndarray, sx: float, sy: float) -> np.ndarray:
+    w = max(3, int(round(tpl.shape[1] * sx)))
+    h = max(3, int(round(tpl.shape[0] * sy)))
+    interp = cv2.INTER_AREA if (w < tpl.shape[1] or h < tpl.shape[0]) else cv2.INTER_LINEAR
+    return cv2.resize(tpl, (w, h), interpolation=interp)
+
+
+def _sorted_matches(matches: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
+    """排序：分數（預設）、由左到右、由上到下、閱讀順序（先分列再由左到右）、角度。"""
+    if mode == "x":
+        return sorted(matches, key=lambda m: m["cx"])
+    if mode == "y":
+        return sorted(matches, key=lambda m: m["cy"])
+    if mode == "angle":
+        return sorted(matches, key=lambda m: m["angle"])
+    if mode == "xy" and matches:
+        row = max(2.0, min(m["h"] for m in matches) / 2)
+        return sorted(matches, key=lambda m: (round(m["cy"] / row), m["cx"]))
+    return sorted(matches, key=lambda m: -m["score"])
+
+
+def _search_template(search: np.ndarray, tpl: np.ndarray, *, threshold: float, max_n: int, angles: list[float],
+                     pyramid: bool, subpixel: bool, angle_step: float,
+                     deadline: float | None = None) -> list[tuple[float, float, float, float, int, int]]:
+    """單一模板的完整搜尋（金字塔粗找 → 細找 → 跨角度 NMS → 次像素）。
+
+    回 [(中心 x, 中心 y, 分數, 角度, 範本寬, 範本高)]，座標是**搜尋圖**的座標。
+    `deadline` 到了就停在目前找到的結果（角度搜尋很大時，寧可回次好的也不要拖住產線）。
+    `TemplateMatchTool.execute` 對每個模板呼叫一次再合併——多模板就是這樣長出來的，
+    單模板的路徑與行為完全沒變（`bench_tools.py` 的等價性鎖住）。
+    """
+    th, tw = tpl.shape[:2]
+    scale = 4
+    use_pyramid = pyramid and min(th, tw) >= 32 and min(search.shape[:2]) >= scale * 8
+    candidates: list[tuple[int, int, float, float, int, int]] = []
+    if use_pyramid:
+        small = cv2.resize(search, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
+        tpl_small = cv2.resize(tpl, None, fx=1 / scale, fy=1 / scale, interpolation=cv2.INTER_AREA)
+        coarse: list[tuple[int, int, float, float, int, int]] = []
+        common = _inscribed_half(max(abs(a) for a in angles), tpl_small.shape[1], tpl_small.shape[0]) if len(angles) > 1 else None
+        for angle in angles:
+            if deadline is not None and coarse and time.perf_counter() >= deadline:
+                break
+            rt, rm = _rotate_template(tpl_small, angle)
+            ox = oy = 0
+            if common is not None:
+                rt_c, ox, oy = _center_crop(rt, *common)
+                res = _match(small, rt_c, None)
+            else:
+                res = _match(small, rt, rm)
+            if res is None:
+                continue
+            for x, y, sc in _peaks(res, max(0.0, threshold - 0.15), max_n * 3, rt.shape[1], rt.shape[0]):
+                coarse.append((x - ox, y - oy, sc, angle, rt.shape[1], rt.shape[0]))
+        coarse.sort(key=lambda t: -t[2])
+        # 剪枝：同一位置（中心距離 < 縮圖範本半尺寸）最多細找分數最高的 3 個角度，
+        # 總數上限 max_n*4；避免 5 個角度在同一目標上各細找一次。
+        selected: list[tuple[int, int, float, float, int, int]] = []
+        locs: list[list[float]] = []
+        min_d_small = max(2.0, min(tpl_small.shape[:2]) / 2)
+        for cand in coarse:
+            ccx, ccy = cand[0] + cand[4] / 2, cand[1] + cand[5] / 2
+            slot = next((loc for loc in locs if math.hypot(ccx - loc[0], ccy - loc[1]) < min_d_small), None)
+            if slot is None:
+                locs.append([ccx, ccy, 1])
+            elif slot[2] >= 3:
+                continue
+            else:
+                slot[2] += 1
+            selected.append(cand)
+            if len(selected) >= max_n * 4:
+                break
+        for x, y, _, angle, _, _ in selected:
+            rt, rm = _rotate_template(tpl, angle)
+            rh, rw = rt.shape[:2]
+            pad = scale * 2
+            x0, y0 = max(0, x * scale - pad), max(0, y * scale - pad)
+            x1, y1 = min(search.shape[1], x * scale + rw + pad), min(search.shape[0], y * scale + rh + pad)
+            window = search[y0:y1, x0:x1]
+            res = _match(window, rt, rm)
+            if res is None:
+                continue
+            _, sc, _, loc = cv2.minMaxLoc(res)
+            if sc >= threshold:
+                candidates.append((x0 + int(loc[0]), y0 + int(loc[1]), float(sc), angle, rw, rh))
+    else:
+        for angle in angles:
+            if deadline is not None and candidates and time.perf_counter() >= deadline:
+                break
+            rt, rm = _rotate_template(tpl, angle)
+            res = _match(search, rt, rm)
+            if res is None:
+                continue
+            for x, y, sc in _peaks(res, threshold, max_n, rt.shape[1], rt.shape[0]):
+                candidates.append((x, y, sc, angle, rt.shape[1], rt.shape[0]))
+
+    # 跨角度的非極大抑制：中心距離小於範本半尺寸者視為同一目標
+    candidates.sort(key=lambda t: -t[2])
+    kept: list[tuple[int, int, float, float, int, int]] = []
+    min_d = max(2.0, min(tw, th) / 2)
+    for cand in candidates:
+        cx, cy = cand[0] + cand[4] / 2, cand[1] + cand[5] / 2
+        if all(math.hypot(cx - (k[0] + k[4] / 2), cy - (k[1] + k[5] / 2)) >= min_d for k in kept):
+            kept.append(cand)
+        if len(kept) >= max_n:
+            break
+
+    refine_step = angle_step if len(angles) > 1 else 0.0
+    out: list[tuple[float, float, float, float, int, int]] = []
+    for x, y, sc, angle, rw, rh in kept:
+        sx, sy = x + rw / 2, y + rh / 2
+        if subpixel:
+            sx, sy, sc, angle = _refine_match(search, tpl, sx, sy, angle, sc, refine_step)
+        out.append((sx, sy, sc, angle, tw, th))
+    return out
 
 
 # ---------------------------------------------------------------------------

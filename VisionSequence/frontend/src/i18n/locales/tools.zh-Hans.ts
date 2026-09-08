@@ -2503,6 +2503,16 @@ export default {
     label: "范本比对",
     description: "以正規化相关（NCC）在影像或搜尋范围内找范本；支援旋转搜尋、金字塔加速与次像素精修。角度以画面順时針为正（与 ROI／找直线相同）。",
     params: {
+      templates: { label: "更多模板", help: "好几种形状都算找到：同一个工件的两种姿态、同一条线上的三种盖子。每个结果都会说是哪一种。" },
+      sort_by: {
+        label: "结果排序",
+        help: "取放最常用阅读顺序；有无检测用分数。",
+        options: { score: "分数，最高在前", x: "由左到右", y: "由上到下", xy: "阅读顺序（先分行再由左到右）", angle: "角度" },
+      },
+      scale_x: { label: "横向缩放", help: "比对前先把模板拉伸，对付成像比示教时大或扁的工件。" },
+      scale_y: { label: "纵向缩放" },
+      allow_clipped: { label: "允许工件在边上", help: "把搜索范围的边界往外复制，跨在边上的工件也找得到。被切掉的工件分数会低，阈值要放宽一点。" },
+      timeout_ms: { label: "超时放弃", help: "时间到就回目前找到最好的，不让产线等。0＝不限。" },
       template: {
         label: "范本影像",
         help: "上传的范本影像（灰阶比对）。",
@@ -2550,6 +2560,8 @@ export default {
       best_y: "最佳 Y",
       best_score: "最佳分数",
       best_angle: "最佳角度",
+      best_label: "最佳模板",
+      counts: "各模板数量",
     },
   },
   text_presence: {
