@@ -12,6 +12,7 @@ import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, Segme
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
 import { api, apiKey, setApiKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
+import { normalizeOverlayLimit, readOverlayLimit, writeOverlayLimit } from '@/lib/overlayLimit'
 import { useCapacity, useUpdateProfile } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
 import { useTheme, type ThemePreference } from '@/providers/ThemeProvider'
@@ -27,6 +28,7 @@ export function SettingsPage() {
   const [key, setKey] = useState(apiKey())
   const [language, setLang] = useState<Language>(storedLanguage())
   const [changing, setChanging] = useState(false)
+  const [overlayLimit, setOverlayLimit] = useState(readOverlayLimit)
   const profile = useUpdateProfile()
   const [displayName, setDisplayName] = useState(auth.me?.user?.display_name ?? '')
   const nameDirty = auth.me?.user ? displayName.trim() !== (auth.me.user.display_name ?? '') : false
@@ -109,6 +111,18 @@ export function SettingsPage() {
               />
               {auth.me?.kind === 'user' ? <p className="mt-1 text-xs text-subtle">{t('settings.languageSaved')}</p> : null}
             </div>
+        </Panel>
+        <Panel title={t('settings.display')} description={t('settings.displayHint')} bodyClassName="space-y-3 p-4" testId="panel-display">
+          <TextInput
+            label={t('settings.overlayLimit')}
+            hint={t('settings.overlayLimitHint')}
+            type="number"
+            min={1}
+            step={100}
+            value={String(overlayLimit)}
+            onChange={(e) => setOverlayLimit(writeOverlayLimit(normalizeOverlayLimit(e.target.value)))}
+            data-testid="settings-overlay-limit"
+          />
         </Panel>
         <Card>
           <CardHeader title={t('auth.account')} />

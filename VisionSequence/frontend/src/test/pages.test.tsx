@@ -133,6 +133,14 @@ describe('pages render (smoke)', () => {
     fireEvent.click(screen.getByTestId('node-search-result'))
   })
 
+  it('FlowEditorPage clears visible results without throwing', async () => {
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    const button = await screen.findByTestId('editor-clear-results')
+    fireEvent.click(button)
+    expect(button).toBeInTheDocument()
+  })
+
   it('DashboardsPage lists operation dashboards from the API', async () => {
     const { DashboardsPage } = await import('@/pages/dashboard/DashboardsPage')
     renderPage(<DashboardsPage />, { route: '/dashboards' })

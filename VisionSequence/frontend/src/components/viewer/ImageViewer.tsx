@@ -22,9 +22,10 @@
  *      拖曳期間完全不觸發 React state 更新；工具列上的比例 % 與座標由 DOM ref 直接寫。
  *   3. 座標轉換見 useViewport.ts：screen = image * scale + t。
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Overlay, Region, RoiShape } from '@/lib/types'
+import { limitOverlays, readOverlayLimit } from '@/lib/overlayLimit'
 import { drawOverlays, type DrawEnv } from './drawOverlays'
 import {
   clampRegion,
@@ -139,11 +140,13 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [drawShape, setDrawShape] = useState<RoiShape | null>(null)
+  const [overlayLimit] = useState(readOverlayLimit)
 
   const allowedShapes = roiShapes ?? ALL_SHAPES
   const editMode = !!roi && !!onRoiChange
   const drawMode = !roi && !!onRoiChange && !!roiShapes && roiShapes.length > 0
   const roiMode = editMode || drawMode
+  const overlayLimitInfo = useMemo(() => limitOverlays(overlays, overlayLimit), [overlays, overlayLimit])
   const activeDrawShape: RoiShape =
     drawShape && allowedShapes.includes(drawShape)
       ? drawShape
@@ -153,7 +156,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
 
   // 讓原生事件處理器讀到最新 props / state，而不用每次都重新綁定監聽
   const latest = useRef({
-    overlays,
+    overlays: overlayLimitInfo.overlays,
     roi,
     onRoiChange,
     onPick,
@@ -168,7 +171,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     imageHeight,
   })
   latest.current = {
-    overlays,
+    overlays: overlayLimitInfo.overlays,
     roi,
     onRoiChange,
     onPick,
@@ -492,7 +495,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     // 父層回流新的 roi 後，放掉本地暫存
     if (!dragRef.current) liveRoiRef.current = null
     schedule(false, true)
-  }, [overlays, roi, showOverlays, editMode, schedule])
+  }, [overlayLimitInfo.overlays, roi, showOverlays, editMode, schedule])
 
   // ---------------- 互動 ----------------
 
@@ -877,7 +880,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           pixelRef={pixelRef}
           grid={grid}
           onToggleGrid={() => setGrid((g) => !g)}
-          hasOverlays={!!overlays && overlays.length > 0}
+          hasOverlays={overlayLimitInfo.total > 0}
           showOverlays={showOverlays}
           onToggleOverlays={() => setShowOverlays((v) => !v)}
           roiMode={roiMode}
@@ -895,6 +898,11 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           {badge.text}
         </div>
       )}
+      {showOverlays && overlayLimitInfo.truncated ? (
+        <div className="pointer-events-none absolute top-8 left-2 z-10 rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white/90">
+          {t('viewer.overlayLimitNotice', { shown: overlayLimitInfo.shown, total: overlayLimitInfo.total })}
+        </div>
+      ) : null}
       {drawMode && loaded && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-md bg-black/50 px-2 py-0.5 text-[11px] text-white/85">
           {t('viewer.drawHint')}

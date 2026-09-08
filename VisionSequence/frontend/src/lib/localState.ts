@@ -5,7 +5,7 @@
 export const USER_SCOPED_KEYS = ['vs.token', 'vs.apiKey', 'vs.assistant.v1', 'vs.assistant.share', 'vs.tcpHistory'] as const
 export const USER_SCOPED_SESSION_KEYS = ['vs.assistant.hints.dismissed'] as const
 /** 說明用：這些故意保留 */
-export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode'] as const
+export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit'] as const
 
 export function clearUserState(): void {
   for (const key of USER_SCOPED_KEYS) {

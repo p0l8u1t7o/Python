@@ -1,9 +1,11 @@
 /** 結果分頁（ResultsPanel）：最近執行、所選步驟的 outputs / message / 耗時 / logs、整個 run 的具名輸出、失敗時的醒目錯誤區塊。 */
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TriangleAlert } from 'lucide-react'
 
-import { Button, DetailRow, StatusBadge } from '@/components/ui'
-import { isImageRef, type GraphNode, type NodeReport, type RunReport } from '@/lib/types'
+import { Button, DetailRow, Select, StatusBadge, Tile } from '@/components/ui'
+import { calculateSpanTiming } from '@/lib/spanTiming'
+import { isImageRef, type GraphEdge, type GraphNode, type NodeReport, type RunReport } from '@/lib/types'
 
 /** run 裡第一個失敗的步驟（沒有就看 run.error）。 */
 export function firstFailure(run: RunReport | null, order: string[]): { nodeId: string | null; message: string } | null {
@@ -127,6 +129,70 @@ export function NodeResult({ report, run }: { report: NodeReport | undefined; ru
         </details>
       ) : null}
       {run ? <RunOutputs run={run} /> : null}
+    </div>
+  )
+}
+
+function nodeLabel(node: GraphNode | undefined, id: string): string {
+  return node?.label || id
+}
+
+export function SpanTimingCard({ run, nodes, edges }: { run: RunReport | null; nodes: GraphNode[]; edges: GraphEdge[] }) {
+  const { t } = useTranslation()
+  const [source, setSource] = useState('')
+  const [target, setTarget] = useState('')
+  const options = useMemo(() => nodes.filter((node) => Boolean(run?.nodes[node.id])), [nodes, run])
+  const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
+  const sourceId = options.some((node) => node.id === source) ? source : options[0]?.id ?? ''
+  const targetId = options.some((node) => node.id === target) ? target : options[options.length - 1]?.id ?? ''
+  const result = useMemo(() => {
+    if (!run || !sourceId || !targetId) return null
+    return calculateSpanTiming(run.nodes, edges, sourceId, targetId)
+  }, [run, edges, sourceId, targetId])
+  const maxNodeMs = Math.max(0, ...(result?.nodes.map((node) => node.durationMs) ?? []))
+
+  return (
+    <div className="border-y border-line p-3" data-testid="span-timing-card">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-muted">{t('editor.span.title')}</p>
+        {result?.hasPath ? <span className="tnum text-[11px] text-subtle">{result.percent.toFixed(1)}%</span> : null}
+      </div>
+      {!run ? (
+        <p className="text-xs text-muted">{t('editor.span.noRun')}</p>
+      ) : options.length === 0 ? (
+        <p className="text-xs text-muted">{t('editor.span.noNodes')}</p>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Select value={sourceId} onChange={(event) => setSource(event.target.value)} aria-label={t('editor.span.source')} options={options.map((node) => ({ value: node.id, label: nodeLabel(node, node.id) }))} />
+            <Select value={targetId} onChange={(event) => setTarget(event.target.value)} aria-label={t('editor.span.target')} options={options.map((node) => ({ value: node.id, label: nodeLabel(node, node.id) }))} />
+          </div>
+          {result && !result.hasPath ? (
+            <p className="rounded bg-surface-muted px-2 py-1.5 text-xs text-muted">{t('editor.span.noPath')}</p>
+          ) : result ? (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <Tile label={t('editor.span.total')} value={Math.round(result.totalMs)} unit="ms" />
+                <Tile label={t('editor.span.nodes')} value={result.nodeCount} />
+                <Tile label={t('editor.span.percent')} value={result.percent.toFixed(1)} unit="%" />
+              </div>
+              <div className="space-y-1.5">
+                {result.nodes.map((node) => (
+                  <div key={node.id}>
+                    <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
+                      <span className="truncate text-content" title={nodeLabel(byId.get(node.id), node.id)}>{nodeLabel(byId.get(node.id), node.id)}</span>
+                      <span className="tnum shrink-0 text-muted">{node.durationMs.toFixed(1)} ms</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded bg-line/60">
+                      <div className="h-full bg-brand" style={{ width: `${maxNodeMs > 0 ? Math.max(4, (node.durationMs / maxNodeMs) * 100) : 0}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

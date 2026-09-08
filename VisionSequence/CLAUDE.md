@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：109 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1075 項＋前端 138 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：109 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1075 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -158,6 +158,11 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 可觀測性小包（K3，純前端，Codex 實作）
+- **區間耗時**：`lib/spanTiming.ts` 的 `calculateSpanTiming(nodes, edges, source, target)`——沿資料流找出來源到目的的**所有路徑取聯集**，回總耗時／節點數／佔比（分母是該次 run 全部節點耗時）；處理 A==B、找不到路徑、節點不在報告裡、環路。卡片 `SpanTimingCard` 在編輯器右側「結果」分頁（**不是統計頁**：統計頁讀的是每小時彙總，沒有節點明細；編輯器同時有 run 報告與目前的邊線）。不新增後端端點。
+- **清空結果**：工具列 `editor-clear-results`，把目前顯示的 run 標記成已清空（`lib/clearResults.ts` 的 `selectVisibleRun` 決定畫面要用哪一次 run），節點狀態／熱點／overlays／結果面板一起回到未執行的樣子。**只清畫面，不動草稿、不存流程、不呼叫後端**；下次試執行或手動選最近執行就恢復。
+- **標記數上限**：`lib/overlayLimit.ts`（`normalizeOverlayLimit`／`limitOverlays`，localStorage 鍵 `vs.overlayLimit`，預設 2000）在 `ImageViewer` **繪製前**截斷並在角落顯示「顯示 N／共 M」；後端產生的 overlays 一字不動。設定在設定頁的顯示卡（裝置層）。**上限在 viewer 掛載時讀一次**，改完設定要換頁或重新整理才會套用到已開著的檢視器。
 
 ### 靜默暖機（A7，apps/vision/warmup.py，Codex 實作）
 - 伺服器起來後對流程各跑一次「不留痕跡」的執行，讓深度學習與腳本工具的第一片不會慢。**走批次那條直跑路徑**：`runner.compiled_for` → `engine.execute(flow_id=WARMUP_FLOW_ID=-2, trigger="warmup", initial_context={"_sandbox": True}, grab=_no_capture_grab)` → `images.store.drop_run`。不進佇列、不計統計、不發 SSE、不寫 `FlowRun`、變數走覆蓋層（實測 391 筆 FlowRun 與 9 筆每小時彙總前後不變）。

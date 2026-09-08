@@ -52,6 +52,7 @@ export interface EditorToolbarProps {
   onAutoLayout: () => void
   resetting: boolean
   onReset: () => void
+  onClearResults: () => void
   onBatchTest: () => void
   onLoadTemplate: () => void
   onSaveTemplate: () => void
@@ -225,6 +226,11 @@ export function EditorToolbar(p: EditorToolbarProps) {
           </Button>
         </span>
         {p.fpsLabel ? <span className="tnum whitespace-nowrap text-[11px] text-muted">{p.fpsLabel}</span> : null}
+        <span title={t('editor.clearResultsHint')}>
+          <Button size="sm" icon={<Eraser size={14} />} onClick={p.onClearResults} data-testid="editor-clear-results">
+            {t('editor.clearResults')}
+          </Button>
+        </span>
         <span title={t('editor.resetHint')}>
           <Button size="sm" icon={<Eraser size={14} />} loading={p.resetting} disabled={p.readOnly} onClick={p.onReset} data-testid="btn-reset">
             {t('editor.reset')}

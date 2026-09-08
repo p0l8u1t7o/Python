@@ -34,7 +34,7 @@ import { Inspector } from '@/components/editor/Inspector'
 import { NodeContextMenu, type NodeMenuState } from '@/components/editor/NodeContextMenu'
 import { NodeList } from '@/components/editor/NodeList'
 import { FavoriteTools, ToolPicker, readFavorites, writeFavorites } from '@/components/editor/ToolPalette'
-import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings } from '@/components/editor/ResultsPanel'
+import { NodeResult, RecentRunsTable, RunErrorBlock, RunWarnings, SpanTimingCard } from '@/components/editor/ResultsPanel'
 import { DRAG_MIME, HISTORY_LIMIT, computeLayout, edgeProps, graphFrom, isTypingTarget, nextNodeId, nodeDataFrom, toFlowEdges, toFlowNode, toFlowNodes, type ToolNodeData } from '@/components/editor/graphMapping'
 import { useResizer } from '@/components/editor/useResizer'
 import { RecipeDrawer } from '@/components/recipes/RecipeDrawer'
@@ -46,6 +46,7 @@ import { CommSettings } from '@/components/flow/CommSettings'
 import { VariablesCard } from '@/components/flow/VariablesCard'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
+import { selectVisibleRun } from '@/lib/clearResults'
 import { errorMessage } from '@/lib/errors'
 import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory } from '@/lib/flowHistory'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
@@ -222,6 +223,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
   const [allOverlays, setAllOverlays] = useState(false)
   const [pinnedRunId, setPinnedRunId] = useState<string | null>(null)
+  const [clearedRunId, setClearedRunId] = useState<string | null>(null)
   const [roiEditingKey, setRoiEditingKey] = useState<string | null>(null)
   const [templateKey, setTemplateKey] = useState<string | null>(null)
   const [templateRegion, setTemplateRegion] = useState<Region | null>(null)
@@ -321,16 +323,7 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   // ---- 目前顯示的 run ----
   const recentRuns = useMemo(() => recent.data?.items ?? [], [recent.data])
-  const activeRun = useMemo<RunReport | null>(() => {
-    if (pinnedRunId) {
-      if (previewRun?.id === pinnedRunId) return previewRun
-      return recentRuns.find((r) => r.id === pinnedRunId) ?? previewRun ?? recentRuns[0] ?? null
-    }
-    const latestRun = recentRuns[0] ?? null
-    if (!previewRun) return latestRun
-    if (!latestRun || previewRun.started_at >= latestRun.started_at) return previewRun
-    return latestRun
-  }, [pinnedRunId, previewRun, recentRuns])
+  const activeRun = useMemo<RunReport | null>(() => selectVisibleRun({ pinnedRunId, previewRun, recentRuns, clearedRunId }), [pinnedRunId, previewRun, recentRuns, clearedRunId])
 
   const graphNodes = useMemo(() => nodes.map((n) => payloads.current.get(n.id)).filter((p): p is GraphNode => Boolean(p)), [nodes])
   const graphEdges = useMemo<GraphEdge[]>(() => edges.map((e) => ({ id: e.id, source: e.source, target: e.target, source_handle: e.sourceHandle ?? '', target_handle: e.targetHandle ?? '' })), [edges])
@@ -685,12 +678,20 @@ function EditorInner({ flowId }: { flowId: number }) {
       const report = await preview.mutateAsync({ flowId, graph: currentGraph(), reuse_image_ref: pinnedRef, until_node: untilNode ?? null })
       setPreviewRun(report)
       setPinnedRunId(null)
+      setClearedRunId(null)
       if (untilNode) setSelectedId(untilNode)
       toast.push(t(untilNode ? 'editor.toast.runToDone' : 'editor.toast.previewDone', { status: t(`status.${report.status}`), ms: Math.round(report.duration_ms) }), report.status === 'ok' ? 'success' : report.status === 'ng' ? 'warning' : 'error', 1500)
     } catch (error) {
       toast.error(errorMessage(error))
     }
   }, [preview, flowId, currentGraph, pinnedRef, setPreviewRun, toast, t])
+
+  const clearResults = useCallback(() => {
+    setClearedRunId(activeRun?.id ?? null)
+    setPreviewRun(null)
+    setPinnedRunId(null)
+    setAllOverlays(false)
+  }, [activeRun, setPreviewRun])
 
   const exportFlow = useCallback(async () => {
     try {
@@ -732,6 +733,7 @@ function EditorInner({ flowId }: { flowId: number }) {
       await clearRecent.mutateAsync(flowId)
       setPreviewRun(null)
       setPinnedRunId(null)
+      setClearedRunId(null)
       toast.success(t('editor.toast.resetDone'))
     } catch (error) {
       toast.error(errorMessage(error))
@@ -957,6 +959,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         onAutoLayout={autoLayout}
         resetting={clearRecent.isPending}
         onReset={() => setAskReset(true)}
+        onClearResults={clearResults}
         onBatchTest={() => navigate(`/batch?flow=${flowId}${dirty ? '&draft=1' : ''}`)}
         onLoadTemplate={() => setGalleryOpen(true)}
         onSaveTemplate={() => setSaveTemplateOpen(true)}
@@ -1260,8 +1263,9 @@ function EditorInner({ flowId }: { flowId: number }) {
                 <RecentRunsTable
                   runs={previewRun && !recentRuns.some((r) => r.id === previewRun.id) ? [previewRun, ...recentRuns].slice(0, 8) : recentRuns}
                   selectedId={activeRun?.id ?? null}
-                  onSelect={(run) => setPinnedRunId(run.id)}
+                  onSelect={(run) => { setClearedRunId(null); setPinnedRunId(run.id) }}
                 />
+                <SpanTimingCard run={activeRun} nodes={graphNodes} edges={graphEdges} />
                 <p className="border-y border-line px-3 py-1.5 text-xs font-semibold text-muted">
                   {selected ? selected.label || selectedDef?.label || selected.id : t('editor.results')}
                 </p>
