@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from django.test import SimpleTestCase
 
-from apps.vision.tools import base
+from apps.vision.tools import base, defects
 from apps.vision.tools.base import ToolError
 from apps.vision.tools.builtin import dl as dl_mod
 from tests._helpers import (
@@ -1251,6 +1251,36 @@ class ShadingTests(SimpleTestCase):
         r = run_tool("shading_correct", bgr, {"mode": "flat_field", "flat": "c"}, assets={"c": flat_bgr})
         self.assertEqual(r.outputs["image"].shape, bgr.shape)
         self.assertLess(float(r.outputs["image"].std()), 1.0)
+
+
+class DefectSegmentTests(SimpleTestCase):
+    """一維缺陷分段的共用零件（tools/defects.py）：基線、離群、把超標的點串成區段。
+    `profile_defect` 與之後沿參考幾何佈卡尺的邊緣缺陷檢測共用同一套，所以直接對函式測。"""
+
+    def test_segments_merge_across_the_seam_only_when_wrapped(self):
+        flag = np.array([True, True, False, False, True, True], dtype=bool)
+        self.assertEqual(defects.segments(flag, False), [(0, 1), (4, 5)])
+        # 繞一圈時頭尾相連合併成一段（end 小於 start）
+        self.assertEqual(defects.segments(flag, True), [(4, 1)])
+        self.assertEqual(defects.seg_len((4, 1), 6), 4)
+        self.assertEqual(list(defects.seg_indices((4, 1), 6)), [4, 5, 0, 1])
+        self.assertEqual(defects.segments(np.zeros(5, bool), True), [])
+        self.assertEqual(defects.segments(np.ones(5, bool), True), [(0, 4)])
+
+    def test_moving_median_skips_gaps_and_wraps(self):
+        values = np.array([10.0, 10.0, np.nan, 10.0, 30.0])
+        out = defects.moving_median(values, 3, wrap=False)
+        self.assertAlmostEqual(out[2], 10.0)  # 中間的 NaN 由鄰居補
+        self.assertTrue(np.isfinite(out).all())
+        self.assertAlmostEqual(defects.moving_median(values, 3, wrap=True)[0], 10.0)
+
+    def test_robust_outliers_uses_mad_and_ignores_gaps(self):
+        values = np.array([10.0, 10.1, 9.9, 10.0, 20.0, np.nan])
+        flags = defects.robust_outliers(values, 3.0)
+        self.assertTrue(flags[4])
+        self.assertFalse(flags[:4].any())
+        self.assertFalse(flags[5])  # NaN 不算離群
+        self.assertFalse(defects.robust_outliers(values, 0).any())  # 0＝不篩
 
 
 class AlgorithmAccuracyTests(SimpleTestCase):

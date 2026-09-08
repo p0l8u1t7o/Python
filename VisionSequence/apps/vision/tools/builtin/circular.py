@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.defects import moving_median, robust_outliers, seg_indices, seg_len, segments
 from apps.vision.tools.builtin.locate import POLARITY_OPTIONS, find_edges_rows, fit_circle_lsq, pick_edge, sector_thetas, to_gray
 from apps.vision.tools.roi import region_overlay
 
@@ -36,20 +37,6 @@ def radial_profiles(image: np.ndarray, cx: float, cy: float, r_in: float, r_out:
     sampled = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     profiles = sampled.reshape(len(thetas), width, n_samples).astype(np.float32).mean(axis=1)
     return profiles, radii
-
-
-def robust_outliers(values: np.ndarray, sigma: float) -> np.ndarray:
-    """MAD 離群：|v − median| > sigma × 1.4826 × MAD 的為 True（NaN 不算）。"""
-    ok = np.isfinite(values)
-    out = np.zeros(len(values), dtype=bool)
-    if ok.sum() < 4 or sigma <= 0:
-        return out
-    med = float(np.median(values[ok]))
-    mad = float(np.median(np.abs(values[ok] - med))) * 1.4826
-    if mad < 1e-6:
-        mad = 1e-6
-    out[ok] = np.abs(values[ok] - med) > sigma * mad
-    return out
 
 
 class CircularCaliperTool(Tool):
@@ -187,60 +174,6 @@ def _as_points(value: Any) -> np.ndarray | None:
     return arr if len(arr) else None
 
 
-def moving_median(values: np.ndarray, window: int, wrap: bool) -> np.ndarray:
-    """滑動中位數基線（NaN 略過；wrap＝序列頭尾相連）。"""
-    n = len(values)
-    w = max(3, int(window) | 1)
-    half = w // 2
-    out = np.full(n, np.nan)
-    if n == 0:
-        return out
-    if wrap:
-        padded = np.concatenate([values[-half:], values, values[:half]])
-    else:
-        padded = np.concatenate([np.full(half, np.nan), values, np.full(half, np.nan)])
-    for i in range(n):
-        seg = padded[i : i + w]
-        seg = seg[np.isfinite(seg)]
-        if len(seg):
-            out[i] = np.median(seg)
-    return out
-
-
-def _segments(flag: np.ndarray, wrap: bool) -> list[tuple[int, int]]:
-    """連續 True 的區段 [(start, end)]（end 含）；wrap 時跨頭尾的區段合併（end 可能小於 start）。"""
-    n = len(flag)
-    if n == 0 or not flag.any():
-        return []
-    if flag.all():
-        return [(0, n - 1)]
-    segs: list[tuple[int, int]] = []
-    i = 0
-    while i < n:
-        if flag[i]:
-            j = i
-            while j + 1 < n and flag[j + 1]:
-                j += 1
-            segs.append((i, j))
-            i = j + 1
-        else:
-            i += 1
-    if wrap and len(segs) >= 2 and segs[0][0] == 0 and segs[-1][1] == n - 1:
-        first, last = segs[0], segs[-1]
-        segs = segs[1:-1] + [(last[0], first[1])]
-    return segs
-
-
-def _seg_len(seg: tuple[int, int], n: int) -> int:
-    s, e = seg
-    return e - s + 1 if e >= s else (n - s) + (e + 1)
-
-
-def _seg_indices(seg: tuple[int, int], n: int) -> np.ndarray:
-    s, e = seg
-    return np.arange(s, e + 1) if e >= s else np.concatenate([np.arange(s, n), np.arange(0, e + 1)])
-
-
 class ProfileDefectTool(Tool):
     key = "profile_defect"
     label = "Profile defects"
@@ -335,11 +268,11 @@ class ProfileDefectTool(Tool):
         min_width = max(1, ctx.integer("min_width", 2))
         defects: list[dict[str, Any]] = []
         overlays: list[dict[str, Any]] = []
-        for seg in _segments(flag, wrap):
-            width = _seg_len(seg, n)
+        for seg in segments(flag, wrap):
+            width = seg_len(seg, n)
             if width < min_width:
                 continue
-            ids = _seg_indices(seg, n)
+            ids = seg_indices(seg, n)
             seg_dev = dev[ids]
             has_missing = bool(missing[ids].any())
             if np.isfinite(seg_dev).any():
