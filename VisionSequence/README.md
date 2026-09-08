@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 118 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 1134 項＋前端 148 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 120 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 1140 項＋前端 148 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -78,7 +78,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **位置修正**：工件位置會變的時候，把定位補正接到量測步驟的「位置修正」埠，那一步畫的區域就自己跟著工件走（不必在圖裡插跟隨節點）；整條流程都要跟就用「影像跟隨」把影像轉回教導時的姿態。定位沒找到時區域留在原地並留下警告，不會靜默量到空氣。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 
-### 內建工具（118 個，8 類）
+### 內建工具（120 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（2） | image_source |
@@ -187,7 +187,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 │                    runner（執行緒池、compile 快取、背景持久化）           │
 │                    images（行程內影像快取，LRU + run 輪替，pinned）       │
 │                    stream（SSE bus）/ tcp_server / sources（grabbers）    │
-│                    tools/（Tool 框架＋61 內建）/ dl/（教導與訓練）         │
+│                    tools/（Tool 框架＋120 內建）/ dl/（教導與訓練）        │
 │                    agent/（AI 助手：分析→意圖→合成→試跑；LLM 供應器）      │
 │  apps/comm      ── Modbus／TCP 主動輸出（Writer）                         │
 │  apps/golden    ── Golden Set 回歸                                        │

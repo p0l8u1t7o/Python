@@ -11,8 +11,9 @@ import cv2
 import numpy as np
 
 from apps.vision import calib
+from apps.vision import fixed_images
 from apps.vision.tools import accel
-from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import reference_image
 from apps.vision.tools.roi import crop, region_overlay
 
@@ -301,25 +302,298 @@ class ResizeTool(Tool):
         return Result(outputs={"image": out, "scale_x": tw / w, "scale_y": th / h}, message=f"{w}×{h} → {tw}×{th}")
 
 
+COLOR_SPACE_OPTIONS = [
+    {"value": "hsv", "label": "HSV"},
+    {"value": "lab", "label": "Lab"},
+]
+_SEGMENT_COLORS = ["#ef4444", "#22c55e", "#3b82f6", "#f59e0b", "#a855f7", "#14b8a6", "#f97316", "#ec4899"]
+
+
+def _as_bgr(image: np.ndarray) -> np.ndarray:
+    return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) if image.ndim == 2 else image
+
+
+def _colour_space(image: np.ndarray, space: str) -> np.ndarray:
+    bgr = _as_bgr(image)
+    if space == "lab":
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    if space != "hsv":
+        raise ToolError("Colour space must be hsv or lab")
+    return cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+
+
+def _parse_segments(text: Any) -> list[tuple[str, tuple[int, int, int, int, int, int]]]:
+    segments: list[tuple[str, tuple[int, int, int, int, int, int]]] = []
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if ":" not in line:
+            raise ToolError("Each segment must be name:h_low,h_high,s_low,s_high,v_low,v_high")
+        name, values = line.split(":", 1)
+        parts = [p.strip() for p in values.split(",")]
+        if len(parts) != 6:
+            raise ToolError("Each segment must have six numeric limits")
+        try:
+            nums = tuple(int(round(float(p))) for p in parts)
+        except ValueError:
+            raise ToolError("Segment limits must be numeric") from None
+        segments.append(((name.strip() or f"class_{len(segments) + 1}")[:80], nums))
+    if not segments:
+        raise ToolError("At least one colour segment is required")
+    if len(segments) > 65535:
+        raise ToolError("At most 65535 colour segments are supported")
+    return segments
+
+
+def _range_mask(converted: np.ndarray, limits: tuple[int, int, int, int, int, int], space: str) -> np.ndarray:
+    a0, a1, b0, b1, c0, c1 = limits
+    if space == "hsv":
+        a0, a1 = int(np.clip(a0, 0, 179)), int(np.clip(a1, 0, 179))
+    else:
+        a0, a1 = int(np.clip(a0, 0, 255)), int(np.clip(a1, 0, 255))
+    b0, b1 = int(np.clip(b0, 0, 255)), int(np.clip(b1, 0, 255))
+    c0, c1 = int(np.clip(c0, 0, 255)), int(np.clip(c1, 0, 255))
+    if space == "hsv" and a0 > a1:
+        return cv2.inRange(converted, (a0, b0, c0), (179, b1, c1)) | cv2.inRange(converted, (0, b0, c0), (a1, b1, c1))
+    return cv2.inRange(converted, (a0, b0, c0), (a1, b1, c1))
+
+
+def _clean_colour_mask(mask: np.ndarray, min_area: float, smooth: int) -> np.ndarray:
+    out = mask
+    if smooth >= 2:
+        k = max(3, smooth | 1)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+        out = cv2.morphologyEx(out, cv2.MORPH_OPEN, kernel)
+        out = cv2.morphologyEx(out, cv2.MORPH_CLOSE, kernel)
+    if min_area <= 1:
+        return out
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(out, connectivity=8)
+    if n <= 1:
+        return out
+    keep = stats[:, cv2.CC_STAT_AREA] >= float(min_area)
+    keep[0] = False
+    return np.where(keep[labels], 255, 0).astype(np.uint8)
+
+
+class ColorSegmentTool(Tool):
+    key = "color_segment"
+    label = "Multi-colour segment"
+    description = "Segments several HSV or Lab ranges in one pass and outputs an integer label map for Label map blobs."
+    icon = "Tags"
+    params = [
+        Param("segments", "Segments", kind="multiline", required=True, default="red:170,10,80,255,80,255\ngreen:45,85,60,255,60,255\nblue:95,130,60,255,60,255",
+              help_text="One segment per line: name:H_low,H_high,S_low,S_high,V_low,V_high. In HSV, H_low > H_high wraps through 0/180, which is how red ranges are usually written."),
+        Param("space", "Colour space", kind="select", default="hsv", options=COLOR_SPACE_OPTIONS),
+        Param("min_area", "Min area", kind="number", default=0, minimum=0, unit="px簡", teach=True),
+        Param("smooth", "Smooth", kind="number", default=0, minimum=0, maximum=99, help_text="0 keeps the raw mask; 3 or larger applies open and close morphology."),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "composite"], help_text="Leave blank for the whole image."),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [Port("labels", "Label map", "image"), Port("areas", "Areas", "list"), Port("classes", "Classes", "list")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("The region falls outside the image")
+        space = str(ctx.param("space", "hsv")).lower()
+        converted = _colour_space(np.ascontiguousarray(c.image), space)
+        segments = _parse_segments(ctx.param("segments", ""))
+        local_dtype = np.uint16 if len(segments) > 255 else np.uint8
+        local_labels = np.zeros(c.image.shape[:2], dtype=local_dtype)
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
+        classes: list[str] = []
+        areas: list[dict[str, Any]] = []
+        min_area = ctx.number("min_area", 0)
+        smooth = max(0, ctx.integer("smooth", 0))
+        for idx, (name, limits) in enumerate(segments, start=1):
+            mask = _clean_colour_mask(_range_mask(converted, limits, space), min_area, smooth)
+            if c.mask is not None:
+                mask = cv2.bitwise_and(mask, c.mask)
+            write = (mask > 0) & (local_labels == 0)
+            local_labels[write] = idx
+            final = (local_labels == idx).astype(np.uint8) * 255
+            area = int(np.count_nonzero(final))
+            classes.append(name)
+            areas.append({"class_id": idx, "label": name, "area": area})
+            contours, _ = cv2.findContours(final, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                offset = np.array([c.x0, c.y0], dtype=np.int32)
+                overlays.append({
+                    "kind": "contours",
+                    "contours": [(cnt + offset).reshape(-1, 2).tolist() for cnt in contours],
+                    "color": _SEGMENT_COLORS[(idx - 1) % len(_SEGMENT_COLORS)],
+                    "width": 1,
+                    "label": name,
+                })
+        labels = np.zeros(image.shape[:2], dtype=local_labels.dtype)
+        labels[c.y0 : c.y0 + local_labels.shape[0], c.x0 : c.x0 + local_labels.shape[1]] = local_labels
+        total = sum(a["area"] for a in areas)
+        return Result(outputs={"labels": labels, "areas": areas, "classes": classes}, overlays=overlays,
+                      message=f"{len(classes)} classes, {total} px")
+
+
+def _colour_hist(image: np.ndarray, space: str, bins: int, mask: np.ndarray | None = None) -> np.ndarray:
+    converted = _colour_space(np.ascontiguousarray(image), space)
+    if space == "hsv":
+        hist = cv2.calcHist([converted], [0, 1], mask, [bins, bins], [0, 180, 0, 256])
+    else:
+        hist = cv2.calcHist([converted], [1, 2], mask, [bins, bins], [0, 256, 0, 256])
+    total = float(hist.sum())
+    if total <= 0:
+        raise ToolError("The colour histogram has no pixels")
+    return (hist / total).astype(np.float32)
+
+
+def _hist_signature(hist: np.ndarray) -> np.ndarray:
+    ys, xs = np.nonzero(hist > 0)
+    if len(xs) == 0:
+        return np.zeros((0, 3), dtype=np.float32)
+    return np.column_stack([hist[ys, xs], xs.astype(np.float32), ys.astype(np.float32)]).astype(np.float32)
+
+
+_COLOR_HIST_CACHE: "OrderedDict[tuple[Any, ...], tuple[np.ndarray, np.ndarray]]" = OrderedDict()
+_COLOR_HIST_LOCK = threading.Lock()
+
+
+def _sample_hist(sample: dict[str, Any], space: str, bins: int) -> tuple[np.ndarray, np.ndarray]:
+    image_id = str(sample.get("id") or "")
+    key = (image_id, space, bins)
+    with _COLOR_HIST_LOCK:
+        hit = _COLOR_HIST_CACHE.get(key)
+        if hit is not None:
+            _COLOR_HIST_CACHE.move_to_end(key)
+            return hit
+    image = fixed_images.load(image_id)
+    if image is None:
+        raise ToolError(f"Sample image '{sample.get('name') or image_id}' could not be loaded")
+    hist = _colour_hist(image, space, bins)
+    sig = _hist_signature(hist)
+    with _COLOR_HIST_LOCK:
+        _COLOR_HIST_CACHE[key] = (hist, sig)
+        while len(_COLOR_HIST_CACHE) > 32:
+            _COLOR_HIST_CACHE.popitem(last=False)
+    return hist, sig
+
+
+def _hist_similarity(hist: np.ndarray, sig: np.ndarray, sample_hist: np.ndarray, sample_sig: np.ndarray, metric: str) -> float:
+    if metric == "earth_mover":
+        if sig.size == 0 or sample_sig.size == 0:
+            return 0.0
+        distance = cv2.EMD(sig, sample_sig, cv2.DIST_L2)[0]
+        max_distance = math.sqrt(2.0) * max(1, hist.shape[0] - 1)
+        return float(np.clip(1.0 - distance / max_distance, 0.0, 1.0))
+    return float(np.minimum(hist, sample_hist).sum())
+
+
+class ColorClassifyTool(Tool):
+    key = "color_classify"
+    label = "Sample colour classify"
+    description = "Compares the ROI colour histogram with fixed image samples and returns the closest sample label."
+    icon = "Palette"
+    params = [
+        Param("samples", "Samples", kind="images", required=True),
+        Param("space", "Colour space", kind="select", default="hsv", options=COLOR_SPACE_OPTIONS),
+        Param("bins", "Bins", kind="number", default=16, minimum=2, maximum=64),
+        Param("metric", "Metric", kind="select", default="histogram_intersection", options=[
+            {"value": "histogram_intersection", "label": "Histogram intersection"},
+            {"value": "earth_mover", "label": "Earth mover"},
+        ]),
+        Param("min_similarity", "Min similarity", kind="range", default=0.75, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "composite"], help_text="Leave blank for the whole image."),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("ok", "Pass", "ok"), flow_out("ng", "Below similarity", "critical"),
+        Port("label", "Label", "string"), Port("similarity", "Similarity", "number"), Port("ranking", "Ranking", "list"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        samples = ctx.param("samples", [])
+        if not isinstance(samples, list) or not samples:
+            raise ToolError("At least one sample image is required")
+        image = ctx.require_image()
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("The region falls outside the image")
+        space = str(ctx.param("space", "hsv")).lower()
+        bins = max(2, min(64, ctx.integer("bins", 16)))
+        metric = str(ctx.param("metric", "histogram_intersection"))
+        hist = _colour_hist(c.image, space, bins, c.mask)
+        sig = _hist_signature(hist)
+        ranking: list[dict[str, Any]] = []
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            sample_hist, sample_sig = _sample_hist(sample, space, bins)
+            label = str(sample.get("name") or sample.get("id") or "")
+            ranking.append({
+                "id": str(sample.get("id") or ""),
+                "label": label,
+                "similarity": round(_hist_similarity(hist, sig, sample_hist, sample_sig, metric), 6),
+            })
+        if not ranking:
+            raise ToolError("No usable sample images were provided")
+        ranking.sort(key=lambda item: float(item["similarity"]), reverse=True)
+        top = ranking[0]
+        similarity = float(top["similarity"])
+        ok = similarity >= ctx.number("min_similarity", 0.75)
+        label = str(top["label"])
+        overlays = [region_overlay(region, color="#22c55e" if ok else "#ef4444", label=f"{label} {similarity:.3f}")] if region else []
+        return Result(
+            outputs={"label": label, "similarity": similarity, "ranking": ranking[:3]},
+            overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng",
+            message=f"{label} {similarity:.3f}" if ok else f"{label} {similarity:.3f} below minimum",
+        )
+
+
 class ColorConvertTool(Tool):
     key = "color_convert"
     label = "Colour space / channel"
-    description = "Convert to HSV or Lab, or pull out a single channel, as preparation for a colour check."
+    description = "Convert to HSV or Lab, pull out a single channel, or merge three grayscale channels into colour."
     icon = "Palette"
     params = [
         Param("mode", "Output", kind="select", default="hsv_s", options=[
             {"value": "bgr_b", "label": "B channel"}, {"value": "bgr_g", "label": "G channel"}, {"value": "bgr_r", "label": "R channel"},
             {"value": "hsv_h", "label": "HSV: H"}, {"value": "hsv_s", "label": "HSV: S"}, {"value": "hsv_v", "label": "HSV: V"},
             {"value": "lab_l", "label": "Lab: L"}, {"value": "lab_a", "label": "Lab: a"}, {"value": "lab_b", "label": "Lab: b"},
-            {"value": "hsv", "label": "Whole HSV (3 channels)"},
+            {"value": "hsv", "label": "Whole HSV (3 channels)"}, {"value": "merge_rgb", "label": "Merge R/G/B grayscale"},
         ]),
+    ]
+    inputs = [
+        Port("image", "Image", "image", required=False),
+        Port("r", "R grayscale", "image", required=False),
+        Port("g", "G grayscale", "image", required=False),
+        Port("b", "B grayscale", "image", required=False),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
+        mode = ctx.param("mode", "hsv_s")
+        if mode == "merge_rgb":
+            channels = {key: ctx.image(key) for key in ("r", "g", "b")}
+            refs = [img for img in channels.values() if img is not None]
+            if not refs:
+                raise ToolError("Merge RGB needs at least one grayscale channel")
+            shape = refs[0].shape[:2]
+            dtype = refs[0].dtype
+            merged: dict[str, np.ndarray] = {}
+            for key, img in channels.items():
+                if img is None:
+                    merged[key] = np.zeros(shape, dtype=dtype)
+                    continue
+                gray = to_gray(img)
+                if gray.shape[:2] != shape:
+                    raise ToolError(
+                        f"Merge RGB channel '{key}' is {gray.shape[1]}x{gray.shape[0]} but the first channel is {shape[1]}x{shape[0]}"
+                    )
+                merged[key] = gray.astype(dtype, copy=False)
+            return Result(outputs={"image": cv2.merge([merged["b"], merged["g"], merged["r"]])}, message=f"merged {shape[1]}x{shape[0]}")
         image = ctx.require_image()
         if image.ndim == 2:
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        mode = ctx.param("mode", "hsv_s")
         if mode == "hsv":
             return Result(outputs={"image": cv2.cvtColor(image, cv2.COLOR_BGR2HSV)})
         space, ch = mode.split("_")
@@ -1035,6 +1309,6 @@ class ShadingCorrectTool(Tool):
 
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
-    ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
+    ColorSegmentTool(), ColorClassifyTool(), ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
     ConvertDepthTool(), LutTool(), FilterTool(), SurfaceFilterTool(), FftFilterTool(), SurfaceFilterTool(), WarpPerspectiveTool(), UndistortTool(), ShadingCorrectTool(),
 ]

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：118 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1134 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：120 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1140 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -164,6 +164,12 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 色彩三件（J2，Codex 實作，放 preprocess.py）
+- `color_segment`（多色分割）：`segments` 一行一段 `名稱:H下,H上,S下,S上,V下,V上`，輸出 `labels`（單通道整數標籤圖，第 n 段＝n、背景 0，**可直接接 `blob_label`**）、`areas`、`classes`。**色相環繞**：H 下界大於上界時視為跨 0/180（例如紅色 `170,10` 拆成 `H≥170 或 H≤10`）——這是色相分割最常見的坑。與既有 `color_range` 的分工：單一色域用 `color_range`，多色一次切用這顆。
+- `color_classify`（樣本顏色分類）：`samples` 是固定影像清單、標籤取影像名，比對 ROI 的色彩直方圖（交集或推土機距離），輸出 `label`／`similarity`／前三名 `ranking`，低於門檻走 ng。**樣本直方圖依「固定影像 id＋色彩空間＋bins」快取**，不會每片重算。
+- `color_convert` 加 `merge_rgb`：三個選填灰階埠合成彩色，缺通道補 0，尺寸不一致回 ToolError 指出是哪一個通道。既有轉換模式一字不變。
+- 實測：紅綠藍三塊各 100×100，三段面積**零誤差**（紅色段刻意跨界仍正確）；標籤圖接 `blob_label` 每類各 1 個；合成彩色三通道值與來源一致。
 
 ### 字串規則（G1）與清單後處理（J3）
 - `ocr_read` 加 `pattern`（位置樣板：`N` 數字／`A` 字母／`X` 任意／其他字元逐字相符，空字串＝不檢查）與 `confusables`（一行一條 `從:到`，預設 `O:0 I:1 S:5 B:8 Z:2`）。**只在該位原字不符樣板、且替換後符合時才換**——樣板該位要字母時 `O` 不會被換成 `0`（實測六種情形全對）。`text` 保持原始辨識結果，另出 `corrected`／`pattern_ok`／`corrections`。

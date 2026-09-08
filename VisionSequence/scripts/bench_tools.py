@@ -237,6 +237,13 @@ class Scene:
         y0, x0 = int(self.cy) - dm.shape[0] // 2 - int(self.m * 0.3), int(self.cx) - dm.shape[1] // 2
         self.dm_image[y0:y0 + dm.shape[0], x0:x0 + dm.shape[1]] = dm
         self.dm_roi = {"shape": "rect", "x": x0 - 20, "y": y0 - 20, "w": dm.shape[1] + 40, "h": dm.shape[0] + 40}
+        from apps.vision import fixed_images
+
+        self.color_samples = [
+            fixed_images.store(np.full((32, 32, 3), (0, 0, 255), np.uint8), "red"),
+            fixed_images.store(np.full((32, 32, 3), (0, 255, 0), np.uint8), "green"),
+            fixed_images.store(np.full((32, 32, 3), (255, 0, 0), np.uint8), "blue"),
+        ]
         self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
@@ -280,6 +287,14 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     label_map[35:95, 35:95] = 1
     label_map[45:85, 135:175] = 2
     label_map[105:145, 145:205] = 2
+    color_blocks = np.zeros((180, 300, 3), dtype=np.uint8)
+    color_blocks[30:130, 20:100] = (0, 0, 255)
+    color_blocks[30:130, 110:190] = (0, 255, 0)
+    color_blocks[30:130, 200:280] = (255, 0, 0)
+    color_segments = "red:170,10,80,255,80,255\ngreen:45,85,80,255,80,255\nblue:110,130,80,255,80,255"
+    merge_r = np.full((180, 300), 40, np.uint8)
+    merge_g = np.full((180, 300), 120, np.uint8)
+    merge_b = np.full((180, 300), 210, np.uint8)
     grid_matches = [
         {"cx": 20.0 + col * 30.0, "cy": 25.0 + row * 40.0, "w": 12.0, "h": 8.0, "score": 0.8, "angle": 0.0, "label": "dot"}
         for row in range(3)
@@ -318,6 +333,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("resize 0.5", "resize", big, {"scale": 0.5}, {}, {}),
         ("color_convert hsv_s", "color_convert", big, {"mode": "hsv_s"}, {}, {}),
         ("color_range", "color_range", big, {"h_low": 0, "h_high": 179, "s_low": 0, "s_high": 60, "v_low": 100, "v_high": 255}, {}, {}),
+        ("color_segment", "color_segment", color_blocks, {"segments": color_segments, "space": "hsv"}, {}, {}),
+        ("color_classify", "color_classify", color_blocks, {"samples": s.color_samples, "space": "hsv", "bins": 16}, {}, {}),
+        ("color_convert merge_rgb", "color_convert", None, {"mode": "merge_rgb"}, {"r": merge_r, "g": merge_g, "b": merge_b}, {}),
         ("lut clahe", "lut", big, {"mode": "clahe"}, {}, {}),
         ("lut normalize_ratio", "lut", gray, {"mode": "normalize_ratio", "low_percent": 1, "high_percent": 99}, {}, {}),
         ("arithmetic absdiff", "arithmetic", None, {"op": "absdiff"}, {"a": big, "b": big}, {}),

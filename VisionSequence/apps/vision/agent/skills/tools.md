@@ -55,6 +55,15 @@ gain 調到刮傷看得清楚、表面仍然暗為止，再設門檻。
 ## color_range
 HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段），S/V 0～255。輸出遮罩＋`ratio`。接 pixel_count 判斷有無。
 
+## color_segment
+多色分割：`segments` 一行一段，格式 `名稱:H下,H上,S下,S上,V下,V上`，第 1 行輸出標籤 1、第 2 行標籤 2，背景是 0。HSV 的紅色常跨過 0/180，當 H 下界大於上界（例如 `170,10`）時視為環繞，會抓 `170..179` 與 `0..10` 兩段。輸出 `labels` 可直接接 `blob_label.labels` 做每色 blob、面積與數量；`areas/classes` 給快速判定與顯示。多段重疊時前面的段先佔標籤，設定色域時要避免重疊。單一色域用 `color_range`；多色一次切用 `color_segment`。
+
+## color_classify
+樣本顏色分類：`samples` 選固定影像，每張影像名稱就是回傳 label；工具把 ROI 的顏色直方圖和樣本比對，輸出 `label/similarity/ranking`，低於 `min_similarity` 走 ng。少量穩定色票用 `histogram_intersection`；顏色有漸層或光照飄移時可試 `earth_mover`，但 bins 不要開太大。樣本直方圖會依固定影像 id、`space`、`bins` 快取，不會每片重算。
+
+## color_convert merge_rgb
+三通道合成：`mode=merge_rgb` 時改用選填的 `r/g/b` 灰階輸入合成彩色影像；沒接的通道補 0，三個已接通道尺寸必須一致。用在多光源或多通道拍攝，輸出仍是一般彩色影像可接後續工具。
+
 ## apply_mask
 把遮罩（255 保留、0 填 fill）套到影像，常用來只留缺陷區或只看某個色塊；`mask` 埠接 blob.mask／threshold 影像。
 
