@@ -147,10 +147,29 @@ export default {
       angle_b: "B 角度",
     },
   },
+  frame_accumulate: {
+    label: "多幀累積",
+    description: "跨多次執行累積影像，輸出平均、最大或最小結果。",
+    params: {
+      mode: { label: "模式", options: { mean: "平均", max: "最大", min: "最小" } },
+      count: { label: "張數" },
+      emit: { label: "輸出", options: { ready: "滿張數才輸出", always: "每次都輸出" } },
+      reset: { label: "重設" },
+    },
+    ports: { image: "影像", reset: "重設", frames: "已累積張數", ready: "已就緒", waiting: "等待中" },
+  },
+  previous_image: {
+    label: "上一張影像",
+    description: "從同一流程最近的執行影像快取讀取指定節點輸出。",
+    params: { node: { label: "節點 ID" }, port: { label: "輸出埠" }, k: { label: "往前第幾次" } },
+    ports: { image: "影像", found: "找到", not_found: "找不到" },
+  },
   apply_mask: {
     label: "套用遮罩",
     description: "只保留遮罩為 255 的像素（其餘設為指定灰階）。",
     params: {
+      side: { label: "填值位置", options: { outside: "遮罩外", inside: "遮罩內" } },
+      fill_value: { label: "填值" },
       fill: {
         label: "遮罩外填值",
       },
@@ -168,13 +187,30 @@ export default {
         label: "運算",
         options: {
           absdiff: "絕對差 |A-B|",
+          min: "最小值",
+          max: "最大值",
+          mean: "平均",
+          weighted: "加權",
           invert: "反相 A",
         },
       },
+      weight: { label: "A 權重" },
     },
     ports: {
       image: "影像",
     },
+  },
+  paste_back: {
+    label: "貼回影像",
+    description: "把處理後的小圖貼回大圖，超出邊界時自動裁切。",
+    params: {
+      x: { label: "X" },
+      y: { label: "Y" },
+      region: { label: "區域" },
+      mode: { label: "模式", options: { replace: "取代", blend: "混合", masked: "遮罩貼回" } },
+      alpha: { label: "Alpha" },
+    },
+    ports: { image: "底圖", patch: "小圖", region: "區域", mask: "遮罩" },
   },
   barcode: {
     label: "條碼 / QR",
@@ -3352,9 +3388,15 @@ export default {
     label: "鏡頭校正",
     description: "用標定資產把鏡頭彎掉的部分拉直。廣角或近距離時邊角的直線會往外拱；在校正後的影像上量測，數值就不會隨視野位置漂移。",
     params: {
+      mode: { label: "??", options: { calibration: "???", manual: "??" } },
       calibration: { label: "標定資產", help: "在標定頁用幾張標定板照片做出來。同一份標定也驅動「真實世界座標」。" },
       alpha: { label: "保留畫面", help: "0 = 裁掉所有黑邊（放大到全部都是有效像素）；1 = 保留整個畫面（角落補黑）；中間值保留該比例。" },
       keep_edges: { label: "保留整個畫面", help: "舊流程用：等於 alpha 1。alpha 大於 0 時忽略。", group: "進階" },
+      k1: { label: "K1" },
+      k2: { label: "K2" },
+      cx: { label: "?? X" },
+      cy: { label: "?? Y" },
+      scale: { label: "??" },
     },
     ports: { image: "影像", mm_per_pixel: "每像素 mm" },
   },

@@ -65,15 +65,30 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 三通道合成：`mode=merge_rgb` 時改用選填的 `r/g/b` 灰階輸入合成彩色影像；沒接的通道補 0，三個已接通道尺寸必須一致。用在多光源或多通道拍攝，輸出仍是一般彩色影像可接後續工具。
 
 ## apply_mask
+`side=inside` 時填遮罩內、保留遮罩外；舊流程不填 `side/fill_value` 時仍是遮罩外補 0。
+
 把遮罩（255 保留、0 填 fill）套到影像，常用來只留缺陷區或只看某個色塊；`mask` 埠接 blob.mask／threshold 影像。
 
 ## arithmetic
+`min/max/mean/weighted` 用來融合兩張同尺寸影像，`weighted` 是 A*weight+B*(1-weight)；位元遮罩才用 `and/or/xor`。
+
+## frame_accumulate
+低光雜訊大時用 `mode=mean` 累積多次 run；移動亮點或刮痕掃描用 `max`，暗點用 `min`。`count` 未滿且 `emit=ready` 時不輸出影像；試執行、`flow_id<=0`、`_sandbox` 都只寫變數覆蓋層，不會推進正式流程的累積狀態。換工件、換光源或流程開始前可接 `reset`。
+
+## previous_image
+從 `images.store` 讀同一 flow 最近第 k 次 run 的 `node:port` 影像，找不到走 `not_found` 而不是錯誤。常和 `arithmetic absdiff` 接在一起做上一片/這一片的變化檢查；它只讀記憶體快取，太舊的 run 可能已被淘汰。
+
+## paste_back
+ROI 處理完要回到全圖座標時使用：`crop.image` 做完濾波/遮罩後接 `patch`，`crop.offset_x/offset_y` 接 `param:x/param:y`，或直接接 `region`。`replace` 最常用，`blend` 看局部處理痕跡，`masked` 只貼遮罩內；超出全圖邊界會裁切。
+
 兩張影像運算：`absdiff` 看處理前後或兩張差異；`subtract` 去背景（先拍空景）；`add`／`multiply` 做加權。兩張尺寸要一致。
 
 ## warp_perspective
 四點透視校正：`roi` 用 `polygon` 四個角點（順序自動排），`width/height` 給輸出尺寸。標籤斜貼、相機斜拍時放在 barcode／text_presence／量測前面。
 
 ## undistort
+沒有標定資產但只有輕微桶形/枕形失真時，可改 `mode=manual`，調 `k1/k2`（現場 teach 參數）、中心與 scale；正式標定仍比 manual 穩。
+
 鏡頭畸變校正：選一個 `calibration` 資產（標定頁做的），放在取像後、量測前。廣角或近距離時邊角的直線會拱起來，
 校正後量測值才不會隨位置漂。`alpha` 0＝縮放到全部都是有效像素、1＝整個畫面留著（角落補黑）；`mm_per_pixel` 輸出接 calibration。
 沒有標定資產就別放這個節點。

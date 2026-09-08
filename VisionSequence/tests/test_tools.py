@@ -83,6 +83,7 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["region_combine"], {"base"})
         self.assertEqual(teach["region_from_shape"], {"roi"})
         self.assertEqual(teach["shading_correct"], set())
+        self.assertEqual(teach["undistort"], {"k1", "k2"})
         self.assertEqual(teach["defect_stat"], {"roi", "sigma", "min_area", "direction"})
         self.assertEqual(teach["shape_match"], {"min_score", "max_matches", "angle_start", "angle_extent"})
         self.assertEqual(teach["dl_anomaly"], {"roi", "threshold", "min_area"})

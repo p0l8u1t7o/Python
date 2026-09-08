@@ -131,7 +131,12 @@ class VariableStore:
             out = {}
             for name, value in self._values.get(scope, {}).items():
                 if isinstance(value, np.ndarray):
-                    out[name] = {"image": True, "width": int(value.shape[1]), "height": int(value.shape[0])}
+                    # 形狀不一定是 (h, w)：工具可能存 1 維佔位或 0 維純量。
+                    # 這裡是顯示／API 路徑（board、dashboard、變數面板都走它），
+                    # 讀不到寬高就回 0，**絕不能讓一個奇怪的形狀把整個看板打成 500**。
+                    h = int(value.shape[0]) if value.ndim >= 1 else 0
+                    w = int(value.shape[1]) if value.ndim >= 2 else 0
+                    out[name] = {"image": True, "width": w, "height": h}
                 else:
                     out[name] = value
             return out

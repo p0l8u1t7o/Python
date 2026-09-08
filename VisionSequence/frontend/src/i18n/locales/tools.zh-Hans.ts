@@ -147,10 +147,29 @@ export default {
       angle_b: "B 角度",
     },
   },
+  frame_accumulate: {
+    label: "????",
+    description: "???????????????????????",
+    params: {
+      mode: { label: "??", options: { mean: "??", max: "??", min: "??" } },
+      count: { label: "??" },
+      emit: { label: "??", options: { ready: "??????", always: "?????" } },
+      reset: { label: "??" },
+    },
+    ports: { image: "??", reset: "??", frames: "?????", ready: "???", waiting: "???" },
+  },
+  previous_image: {
+    label: "?????",
+    description: "???????????????????????",
+    params: { node: { label: "?? ID" }, port: { label: "????" }, k: { label: "?????" } },
+    ports: { image: "??", found: "??", not_found: "???" },
+  },
   apply_mask: {
     label: "套用遮罩",
     description: "只保留遮罩为 255 的像素（其余设为指定灰阶）。",
     params: {
+      side: { label: "????", options: { outside: "???", inside: "???" } },
+      fill_value: { label: "??" },
       fill: {
         label: "遮罩外填值",
       },
@@ -168,13 +187,30 @@ export default {
         label: "運算",
         options: {
           absdiff: "絕对差 |A-B|",
+          min: "???",
+          max: "???",
+          mean: "??",
+          weighted: "??",
           invert: "反相 A",
         },
       },
+      weight: { label: "A ??" },
     },
     ports: {
       image: "影像",
     },
+  },
+  paste_back: {
+    label: "????",
+    description: "??????????????????????",
+    params: {
+      x: { label: "X" },
+      y: { label: "Y" },
+      region: { label: "??" },
+      mode: { label: "??", options: { replace: "??", blend: "??", masked: "????" } },
+      alpha: { label: "Alpha" },
+    },
+    ports: { image: "??", patch: "??", region: "??", mask: "??" },
   },
   barcode: {
     label: "條碼 / QR",
@@ -3352,9 +3388,15 @@ export default {
     label: "镜头校正",
     description: "用标定资产把镜头弯掉的部分拉直。广角或近距离时边角的直线会往外拱；在校正后的图像上测量，数值就不会随视野位置漂移。",
     params: {
+      mode: { label: "??", options: { calibration: "????", manual: "??" } },
       calibration: { label: "标定资产", help: "在标定页用几张标定板照片做出来。同一份标定也驱动「真实世界坐标」。" },
       alpha: { label: "保留画面", help: "0 = 裁掉所有黑边（放大到全部都是有效像素）；1 = 保留整个画面（角落补黑）；中间值保留该比例。" },
       keep_edges: { label: "保留整个画面", help: "旧流程用：等于 alpha 1。alpha 大于 0 时忽略。", group: "高级" },
+      k1: { label: "K1" },
+      k2: { label: "K2" },
+      cx: { label: "?? X" },
+      cy: { label: "?? Y" },
+      scale: { label: "??" },
     },
     ports: { image: "图像", mm_per_pixel: "每像素 mm" },
   },

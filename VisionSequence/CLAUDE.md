@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：128 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：131 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -250,6 +250,12 @@
 - **暖機絕不碰相機**：`grab` 換成一律回 None 並記 log 的假函式；取像節點是 `source` 模式直接 skipped，`auto`／`input` 模式只在快取裡已有該來源影像時沿用，否則 skipped 並回報原因。
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
+
+### 多幀累積、影像運算與簡易畸變（C3／J4／J5，`tools/builtin/frames.py`＋`preprocess.py`，Codex 實作）
+- **`frame_accumulate`**（C3）：把每次 run 的影像累積成 mean／max／min，`count` 張才輸出（`emit` 決定）；狀態存流程變數，`reset` 可清空。**preview／`flow_id<=0` 一律走覆蓋層**——實測產線累積 1 張後連按三次試執行，產線狀態一字不變、下一片仍是第 2 張。`previous_image` 讀 `images.store` 最近第 k 次 run 的節點輸出，找不到走 `not_found`。
+- **踩過的坑（會把看板打成 500）**：`_empty_image()` 原本存 `np.empty((0,))`（1 維），而 `variables.snapshot()` 把每個 ndarray 都當影像去讀 `shape[1]` → IndexError。流程只要 reset 過一次，`GET /flows/{id}/board`、`/flows/{id}/variables` 與 `/dashboards/{id}/data` **全部 500**（實測 200 → 500）。兩層都補：工具改存 `None`，`snapshot()` 對任何維度都安全（讀不到寬高回 0）——**它是顯示／API 路徑，不能讓一個奇怪的形狀把整片看板打掛**。`tests/test_frames_and_paste.py` 有回歸測試鎖住。
+- **J4**：`arithmetic` 加 min／max／mean／weighted（`weight`）；`apply_mask` 加 `side`＝inside／outside 與 `fill_value`；新 `paste_back`（region 埠或 x／y，mode＝replace／blend／masked，超界自動裁掉）——實測貼回結果與直接改大圖**逐像素相同**。
+- **J5**：`undistort` 加 `mode="manual"`（`k1`／`k2`／`cx`／`cy`／`scale`），沒有標定檔也能修輕微桶形／枕形。`k1`／`k2` 標 `teach=True`。實測最外側格線離中心 60 px：k1 −0.30 → 57.5、0 → 60.0（與輸入完全相同）、+0.30 → 63.0，**單調且 0 正好不動**。`mode="calibration"` 行為一字不變（bench 鎖住）。
 
 ### 影像拼接（C2，`tools/builtin/stitch.py`，Codex 實作）
 - 一個工件太大、一台相機拍不完就分區拍再拼。`stitch_images`（preprocess）兩種 `mode`：

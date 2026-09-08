@@ -15,7 +15,7 @@ from apps.vision import fixed_images
 from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.builtin.locate import reference_image
-from apps.vision.tools.roi import crop, region_overlay
+from apps.vision.tools.roi import bounding_rect, crop, region_overlay
 
 
 _COMPARE_CODES = {
@@ -642,14 +642,17 @@ class ArithmeticTool(Tool):
     key = "arithmetic"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "Image maths"
-    description = "Add, subtract, difference, AND or OR two images, or invert and adjust brightness and contrast on one."
+    description = "Add, subtract, difference, min, max, mean, weighted blend, AND, OR or XOR two images, or invert and adjust brightness and contrast on one."
     icon = "Calculator"
     params = [
         Param("op", "Operation", kind="select", default="absdiff", options=[
             {"value": "absdiff", "label": "Absolute difference |A-B|"}, {"value": "add", "label": "A+B"}, {"value": "subtract", "label": "A-B"},
+            {"value": "min", "label": "Minimum"}, {"value": "max", "label": "Maximum"}, {"value": "mean", "label": "Mean"},
+            {"value": "weighted", "label": "Weighted A+B"},
             {"value": "and", "label": "A AND B"}, {"value": "or", "label": "A OR B"}, {"value": "xor", "label": "A XOR B"},
             {"value": "invert", "label": "Invert A"}, {"value": "gain", "label": "A×gain + bias"},
         ]),
+        Param("weight", "Weight A", kind="range", default=0.5, minimum=0, maximum=1, step=0.05, visible_when={"param": "op", "in": ["weighted"]}),
         Param("gain", "gain", kind="number", default=1.0, step=0.1, visible_when={"param": "op", "in": ["gain"]}),
         Param("bias", "bias", kind="number", default=0, visible_when={"param": "op", "in": ["gain"]}),
     ]
@@ -670,6 +673,15 @@ class ArithmeticTool(Tool):
                 b = to_gray(b) if a.ndim == 2 else cv2.cvtColor(b, cv2.COLOR_GRAY2BGR)
             if a.shape[:2] != b.shape[:2]:
                 b = cv2.resize(b, (a.shape[1], a.shape[0]))
+        if op == "min":
+            return Result(outputs={"image": cv2.min(a, b)})
+        if op == "max":
+            return Result(outputs={"image": cv2.max(a, b)})
+        if op == "mean":
+            return Result(outputs={"image": cv2.addWeighted(a, 0.5, b, 0.5, 0)})
+        if op == "weighted":
+            weight = min(1.0, max(0.0, ctx.number("weight", 0.5)))
+            return Result(outputs={"image": cv2.addWeighted(a, weight, b, 1.0 - weight, 0)})
         fn = {"absdiff": cv2.absdiff, "add": cv2.add, "subtract": cv2.subtract, "and": cv2.bitwise_and, "or": cv2.bitwise_or, "xor": cv2.bitwise_xor}[op]
         return Result(outputs={"image": fn(a, b)})
 
@@ -678,9 +690,16 @@ class MaskApplyTool(Tool):
     key = "apply_mask"
     accepts = ("u8", "u16", "f32")  # cv2 原生支援多位深，原樣進出
     label = "Apply mask"
-    description = "Keep only the pixels where the mask is 255; the rest become the fill grey level."
+    description = "Keep only the pixels where the mask is 255, or fill either side of the mask with a grey level."
     icon = "Layers"
-    params = [Param("fill", "Fill outside mask", kind="number", default=0, minimum=0, maximum=255)]
+    params = [
+        Param("side", "Fill side", kind="select", default="outside", options=[
+            {"value": "outside", "label": "Outside mask"},
+            {"value": "inside", "label": "Inside mask"},
+        ]),
+        Param("fill_value", "Fill value", kind="number", default=0, minimum=0, maximum=255),
+        Param("fill", "Fill outside mask", kind="number", default=0, minimum=0, maximum=255, group="Compatibility"),
+    ]
     inputs = [Port("image", "Image", "image"), Port("mask", "Mask", "image")]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -688,7 +707,12 @@ class MaskApplyTool(Tool):
         mask = to_gray(ctx.require_image("mask"))
         if mask.shape[:2] != image.shape[:2]:
             mask = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
-        fill = ctx.integer("fill", 0)
+        fill = ctx.integer("fill_value", ctx.integer("fill", 0)) if "fill_value" in ctx.params else ctx.integer("fill", 0)
+        if ctx.param("side", "outside") == "inside":
+            out = image.copy()
+            paint = np.full_like(image, fill)
+            cv2.copyTo(paint, mask, out)
+            return Result(outputs={"image": out})
         # copyTo（新配置的目的地會先清零）比 bitwise_and(mask=) 快約 40%；要填值時直接以填值為底再覆蓋。
         if fill:
             out = np.full_like(image, fill)
@@ -696,6 +720,76 @@ class MaskApplyTool(Tool):
         else:
             out = cv2.copyTo(image, mask)
         return Result(outputs={"image": out})
+
+
+class PasteBackTool(Tool):
+    key = "paste_back"
+    accepts = ("u8", "u16", "f32")
+    label = "Paste back"
+    description = "Pastes a processed ROI image back onto a larger image, clipping at the image boundary."
+    category = "preprocess"
+    icon = "ClipboardPaste"
+    params = [
+        Param("x", "X", kind="number", default=0),
+        Param("y", "Y", kind="number", default=0),
+        Param("region", "Region", kind="roi", required=False, shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "composite"]),
+        Param("mode", "Mode", kind="select", default="replace", options=[
+            {"value": "replace", "label": "Replace"},
+            {"value": "blend", "label": "Blend"},
+            {"value": "masked", "label": "Masked"},
+        ]),
+        Param("alpha", "Alpha", kind="range", default=0.5, minimum=0, maximum=1, step=0.05, visible_when={"param": "mode", "in": ["blend"]}),
+    ]
+    inputs = [
+        Port("image", "Base image", "image"),
+        Port("patch", "Patch", "image"),
+        Port("region", "Region", "region", required=False),
+        Port("mask", "Mask", "image", required=False),
+    ]
+    outputs = [Port("image", "Image", "image")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        base = ctx.require_image()
+        patch = _match_image_shape(ctx.require_image("patch"), base)
+        region = ctx.roi("region")
+        x = ctx.integer("x", 0)
+        y = ctx.integer("y", 0)
+        if region is not None:
+            x, y, _, _ = bounding_rect(region, base.shape[1], base.shape[0])
+        out = base.copy()
+        h, w = base.shape[:2]
+        ph, pw = patch.shape[:2]
+        x0, y0 = max(0, x), max(0, y)
+        x1, y1 = min(w, x + pw), min(h, y + ph)
+        if x0 >= x1 or y0 >= y1:
+            return Result(outputs={"image": out}, message="outside")
+        sx0, sy0 = x0 - x, y0 - y
+        sx1, sy1 = sx0 + (x1 - x0), sy0 + (y1 - y0)
+        src = patch[sy0:sy1, sx0:sx1]
+        dst = out[y0:y1, x0:x1]
+        mode = str(ctx.param("mode", "replace"))
+        if mode == "blend":
+            alpha = min(1.0, max(0.0, ctx.number("alpha", 0.5)))
+            out[y0:y1, x0:x1] = cv2.addWeighted(src, alpha, dst, 1.0 - alpha, 0)
+        elif mode == "masked":
+            mask = ctx.image("mask")
+            if mask is None:
+                mask = np.full((ph, pw), 255, dtype=np.uint8)
+            mask = to_gray(mask)
+            if mask.shape[:2] != (ph, pw):
+                mask = cv2.resize(mask, (pw, ph), interpolation=cv2.INTER_NEAREST)
+            cv2.copyTo(src, mask[sy0:sy1, sx0:sx1], dst)
+        else:
+            out[y0:y1, x0:x1] = src
+        return Result(outputs={"image": out}, message=f"{x0},{y0} {x1 - x0}x{y1 - y0}")
+
+
+def _match_image_shape(image: np.ndarray, like: np.ndarray) -> np.ndarray:
+    if image.ndim == like.ndim:
+        return image.astype(like.dtype, copy=False)
+    if like.ndim == 2:
+        return to_gray(image).astype(like.dtype, copy=False)
+    return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR).astype(like.dtype, copy=False)
 
 
 class RotateFlipTool(Tool):
@@ -1155,17 +1249,43 @@ class UndistortTool(Tool):
     category = "preprocess"
     icon = "Aperture"
     params = [
-        Param("calibration", "Calibration", kind="asset", accept="calibration", required=True,
+        Param("mode", "Mode", kind="select", default="calibration", options=[
+            {"value": "calibration", "label": "Calibration"},
+            {"value": "manual", "label": "Manual"},
+        ]),
+        Param("calibration", "Calibration", kind="asset", accept="calibration", required=False, visible_when={"param": "mode", "in": ["calibration"]},
               help_text="Made on the Calibration page from a few pictures of a board. The same calibration also drives Real-world coordinates."),
         Param("alpha", "Frame kept", kind="range", default=0, minimum=0, maximum=1, step=0.05,
               help_text="0 = cut away every black border (zoom so all pixels are real image); 1 = keep the whole frame with black corners; in between keeps that share."),
         Param("keep_edges", "Keep the whole frame", kind="boolean", default=False, group="Advanced",
               help_text="Older flows: the same as alpha 1. Ignored when alpha is above 0."),
+        Param("k1", "K1", kind="number", default=0, step=0.001, visible_when={"param": "mode", "in": ["manual"]}, teach=True),
+        Param("k2", "K2", kind="number", default=0, step=0.001, visible_when={"param": "mode", "in": ["manual"]}, teach=True),
+        Param("cx", "Centre X", kind="number", default=0, visible_when={"param": "mode", "in": ["manual"]}),
+        Param("cy", "Centre Y", kind="number", default=0, visible_when={"param": "mode", "in": ["manual"]}),
+        Param("scale", "Scale", kind="number", default=1, minimum=0.01, maximum=100, step=0.05, visible_when={"param": "mode", "in": ["manual"]}),
     ]
     inputs = [Port("image", "Image", "image")]
     outputs = [Port("image", "Image", "image"), Port("mm_per_pixel", "mm per pixel", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
+        if ctx.param("mode", "calibration") == "manual":
+            image = ctx.require_image()
+            alpha = ctx.number("alpha", 0)
+            if alpha <= 0 and ctx.flag("keep_edges"):
+                alpha = 1.0
+            k1 = ctx.number("k1", 0)
+            k2 = ctx.number("k2", 0)
+            out = _manual_undistort(
+                image,
+                k1=k1,
+                k2=k2,
+                cx=ctx.param("cx", None),
+                cy=ctx.param("cy", None),
+                scale=ctx.number("scale", 1),
+                alpha=alpha,
+            )
+            return Result(outputs={"image": out, "mm_per_pixel": float("nan")}, message=f"Manual k1={k1:g} k2={k2:g}")
         payload = read_calibration(ctx)
         image = ctx.require_image()
         alpha = ctx.number("alpha", 0)
@@ -1180,6 +1300,41 @@ class UndistortTool(Tool):
         mm_per_px = float(world.get("mm_per_px") or 0) or float("nan")
         return Result(outputs={"image": out, "mm_per_pixel": mm_per_px},
                       message=f"Corrected ({lens['views']} views, {lens['rms']:.2f} px, alpha {alpha:.2f})" + (f", {mm_per_px:.4f} {payload.get('unit', 'mm')}/px" if mm_per_px == mm_per_px else ""))
+
+
+_MANUAL_UNDISTORT_MAPS: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
+_MANUAL_UNDISTORT_LOCK = threading.Lock()
+
+
+def _manual_undistort(image: np.ndarray, *, k1: float, k2: float, cx: Any, cy: Any, scale: float, alpha: float) -> np.ndarray:
+    h, w = image.shape[:2]
+    k1 = float(k1)
+    k2 = float(k2)
+    if abs(k1) < 1e-12 and abs(k2) < 1e-12:
+        return image.copy()
+    try:
+        centre_x = float(cx)
+    except (TypeError, ValueError):
+        centre_x = (w - 1) / 2.0
+    try:
+        centre_y = float(cy)
+    except (TypeError, ValueError):
+        centre_y = (h - 1) / 2.0
+    focal = max(1e-6, float(scale)) * max(w, h)
+    cam = np.array([[focal, 0.0, centre_x], [0.0, focal, centre_y], [0.0, 0.0, 1.0]], dtype=np.float64)
+    dist = np.array([k1, k2, 0.0, 0.0, 0.0], dtype=np.float64)
+    alpha = min(1.0, max(0.0, float(alpha)))
+    key = (w, h, round(focal, 6), round(centre_x, 6), round(centre_y, 6), round(k1, 8), round(k2, 8), round(alpha, 3))
+    with _MANUAL_UNDISTORT_LOCK:
+        maps = _MANUAL_UNDISTORT_MAPS.get(key)
+    if maps is None:
+        new_cam, _ = cv2.getOptimalNewCameraMatrix(cam, dist, (w, h), alpha, (w, h))
+        maps = cv2.initUndistortRectifyMap(cam, dist, None, new_cam, (w, h), cv2.CV_16SC2)
+        with _MANUAL_UNDISTORT_LOCK:
+            if len(_MANUAL_UNDISTORT_MAPS) > 8:
+                _MANUAL_UNDISTORT_MAPS.pop(next(iter(_MANUAL_UNDISTORT_MAPS)))
+            _MANUAL_UNDISTORT_MAPS[key] = maps
+    return accel.remap(image, maps[0], maps[1], cv2.INTER_LINEAR, border_mode=cv2.BORDER_CONSTANT)
 
 
 # ---------------------------------------------------------------------------
@@ -1309,6 +1464,6 @@ class ShadingCorrectTool(Tool):
 
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
-    ColorSegmentTool(), ColorClassifyTool(), ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
+    ColorSegmentTool(), ColorClassifyTool(), ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), PasteBackTool(), RotateFlipTool(),
     ConvertDepthTool(), LutTool(), FilterTool(), SurfaceFilterTool(), FftFilterTool(), SurfaceFilterTool(), WarpPerspectiveTool(), UndistortTool(), ShadingCorrectTool(),
 ]

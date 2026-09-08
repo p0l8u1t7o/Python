@@ -352,6 +352,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     from apps.vision.tools import roi as _roi
 
     plate_minus_hole = _roi.composite(plate, [("subtract", center_circle)])
+    from apps.vision.images import store as _image_store
+
+    prev_run = f"bench-prev-{s.w}x{s.h}"
+    _image_store.put(f"{prev_run}:grayscale:image", gray, flow_id=1, run_id=prev_run)
     return [
         # source / preprocess
         ("image_source", "image_source", None, {"mode": "input"}, {}, {"_input_image": big}),
@@ -378,8 +382,11 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("color_convert merge_rgb", "color_convert", None, {"mode": "merge_rgb"}, {"r": merge_r, "g": merge_g, "b": merge_b}, {}),
         ("lut clahe", "lut", big, {"mode": "clahe"}, {}, {}),
         ("lut normalize_ratio", "lut", gray, {"mode": "normalize_ratio", "low_percent": 1, "high_percent": 99}, {}, {}),
+        ("frame_accumulate mean", "frame_accumulate", gray, {"mode": "mean", "count": 999, "emit": "always"}, {}, {"_sandbox": True}),
+        ("previous_image", "previous_image", None, {"node": "grayscale", "port": "image", "k": 1}, {}, {}),
         ("arithmetic absdiff", "arithmetic", None, {"op": "absdiff"}, {"a": big, "b": big}, {}),
         ("apply_mask", "apply_mask", big, {"fill": 0}, {"mask": s.mask}, {}),
+        ("paste_back replace", "paste_back", big, {"x": int(s.w * 0.1), "y": int(s.h * 0.1)}, {"patch": big[: max(1, s.h // 8), : max(1, s.w // 8)]}, {}),
         ("filter canny", "filter", big, {"method": "canny"}, {}, {}),
         ("rotate_flip 15deg", "rotate_flip", big, {"angle": 15, "keep_size": True}, {}, {}),
         ("convert_depth u16", "convert_depth", big, {"to": "u16"}, {}, {}),
