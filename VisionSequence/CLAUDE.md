@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：109 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1046 項＋前端 119 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：109 個內建工具（8 類）、242 個 API 端點、33 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1059 項＋前端 119 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -185,6 +185,12 @@
 - **接縫**：`runner.compiled_for` 在呼叫者執行緒 `reporting.set_rules(flow.id, flow.comm, flow.name)` 放進記憶體（熱路徑不碰 DB），`runner._record` 在 `bus.publish` 之後 `reporting.deliver(report)`——**同一條執行緒同步送**，不經佇列也不經匯流排，所以不會漏掉任何一片（這是與 `events.py` 最大的差別）。`trigger == "preview"` 與 `flow_id <= 0` 不送。
 - 只對 `Writer.texts=True` 的連線有意義（Modbus 是位址對位址的，那種需求用 `write_modbus`）。上位機沒開著時 `_send` 記一次追蹤並退避 `RETRY_S`（2 秒），不讓每片都等到連線逾時。`interval` 由行程層單一 `_Ticker`（100 ms）驅動，只送最近一片的值。
 - 前端 `components/flow/CommSettings.tsx`（編輯器右側設定面板，在看板設定下面）。新增欄位＝`reporting.Rule`＋`_rule_from`＋前端型別 `CommRule`＋三語系 `comm.*`＋`tests/test_reporting.py`。
+
+### 運行介面 Dashboard（apps/vision/dashboard.py、api_dashboard.py、Dashboard model；K1a 後端，Codex 實作）
+- **站台級、跨流程的另一層，不擴充 `Flow.board`**（那是每流程簡易看板，餵三個表面且 `GET /flows/{id}/board` 是文件化契約）。`Dashboard(name, layout, is_default, owner)`（migration 0029；`is_default` 站台最多一筆：`save()` 清掉其他的＋條件唯一約束）。
+- `layout={rows, cols, cells[{id,row,col,row_span,col_span}], bars{top,bottom,left,right}, default_flow_id, widgets[{id,type,cell,props,source{flow_id,kind,key}}], theme}`；`WIDGET_TYPES` 封閉 22 種（image／images／run_control／run_status／verdict／text／button／switch／param／variable／traffic_light／conditional_light／group／tabs／table／line_chart／stats／pie／image_static／clock／log／device_status），props 由 `WIDGET_PROPS` 表驅動逐型別驗證；`validate()` 嚴格（存檔用，422 `bad_layout` 指出哪個 widget 哪個欄位）、`effective()` 寬鬆（檢視用，丟掉不認得的、補預設，壞設定不讓頁面炸）、`DEFAULT_LAYOUT`、`flows_of()`。
+- API `GET/POST /vision/dashboards`、`GET /dashboards/default`（**註冊在 `/{id}` 之前**）、`GET/PATCH/DELETE /dashboards/{id}`、`GET /dashboards/{id}/data`——檢視端與整合端的資料入口：`{generated_at, flows:{flow_id: board.build() 那一包}, device:{station_id, version, lock, capacity, flows_running}, variables.station}`，**只算版面用到的流程**，今日數字走 `board.today_counts_many()` 一次查完；缺流程放 `{missing: true}`。檢視＝任何登入者，建立／修改／刪除＝`flows.edit`，稽核 `dashboard.create／update／delete`。前端檢視端（kiosk 路由＋widget 元件庫）是 K1a 下一批。
+- **坑**：Codex 沙盒寫不進 `models.py`，第一版把模型塞成 `api_dashboard.py` 的 fallback；已搬回 `models.py`。模型一律放 `models.py`，migration 才對得上。
 
 ### 這一站的摘要（apps/vision/summary.py）
 - `GET /vision/summary` 回這一站的良率摘要（station_id、版本、鎖定、每條流程今日 OK/NG/良率）；數字讀**每小時彙總** `FlowRunHourly`，與統計頁同一份。

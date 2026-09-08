@@ -137,6 +137,33 @@ def today_counts(flow_id: int) -> dict[str, Any]:
             "yield": round(ok / total * 100, 1) if total else None}
 
 
+def today_counts_many(flow_ids: set[int] | list[int] | tuple[int, ...]) -> dict[int, dict[str, Any]]:
+    """一次彙總多個流程今日 OK/NG，供站台 Dashboard 避免逐流程查詢。"""
+    from apps.vision.models import FlowRunHourly
+
+    ids = sorted({int(fid) for fid in flow_ids if int(fid) > 0})
+    if not ids:
+        return {}
+    now = timezone.localtime()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = FlowRunHourly.objects.filter(flow_id__in=ids, hour__gte=start).values("flow_id").annotate(
+        ok=Sum("ok"), ng=Sum("ng"), failed=Sum("failed")
+    )
+    out = {
+        fid: {"date": start.date().isoformat(), "total": 0, "ok": 0, "ng": 0, "failed": 0, "yield": None}
+        for fid in ids
+    }
+    for row in rows:
+        fid = int(row["flow_id"])
+        ok, ng, failed = int(row.get("ok") or 0), int(row.get("ng") or 0), int(row.get("failed") or 0)
+        total = ok + ng + failed
+        out[fid] = {
+            "date": start.date().isoformat(), "total": total, "ok": ok, "ng": ng, "failed": failed,
+            "yield": round(ok / total * 100, 1) if total else None,
+        }
+    return out
+
+
 def build(flow: Any, run: dict[str, Any] | None, *, variables: dict[str, Any] | None = None, stats: dict[str, Any] | None = None) -> dict[str, Any]:
     """組看板資料。`run` 是 RunReport.to_dict(include_node_outputs=True)；沒有 run 也要回完整結構（等待中）。"""
     cfg = effective(getattr(flow, "board", None))

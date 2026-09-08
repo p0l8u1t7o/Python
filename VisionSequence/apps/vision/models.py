@@ -12,7 +12,8 @@ from __future__ import annotations
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Q
 
 
 class Flow(models.Model):
@@ -527,3 +528,34 @@ class AssistantChat(models.Model):
 
     def __str__(self) -> str:
         return f"AssistantChat {self.pk} {self.title[:20]}"
+
+
+class Dashboard(models.Model):
+    """站台層級的運行介面版面（K1a）：跨流程、多 widget，與每流程的 `Flow.board` 是兩層。
+
+    版面 JSON 的形狀與逐型別驗證在 `apps/vision/dashboard.py`（`validate` 嚴格給存檔、`effective` 寬鬆給檢視）。
+    `is_default` 站台最多一筆：存檔時把其他的清掉，資料庫再用條件唯一約束擋住並發。
+    """
+
+    name = models.CharField(max_length=200)
+    layout = models.JSONField(default=dict, blank=True)
+    is_default = models.BooleanField(default=False)
+    #: 只是建立者（顯示用）；版面屬於站台不屬於個人
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="dashboards")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["is_default"], condition=Q(is_default=True), name="uniq_default_dashboard")]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def save(self, *args, **kwargs) -> None:
+        if self.is_default:
+            with transaction.atomic():
+                type(self).objects.exclude(pk=self.pk).filter(is_default=True).update(is_default=False)
+                super().save(*args, **kwargs)
+            return
+        super().save(*args, **kwargs)

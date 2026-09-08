@@ -14,6 +14,7 @@ import numpy as np
 from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 
+from apps.vision.api_dashboard import Dashboard
 from apps.vision.models import Asset, Flow, ImageSource
 
 
@@ -67,6 +68,23 @@ class GetEndpointsSmokeTests(TransactionTestCase):
         r = self.client.post(f"/api/vision/flows/{self.flow.id}/run", data=json.dumps({"wait": True}), content_type="application/json")
         self.assertEqual(r.status_code, 200, r.content)
         self.run_id = r.json()["id"]
+        self.dashboard = Dashboard.objects.create(
+            name="smoke",
+            is_default=True,
+            layout={
+                "rows": 1,
+                "cols": 2,
+                "cells": [
+                    {"id": "image", "row": 1, "col": 1, "row_span": 1, "col_span": 1},
+                    {"id": "status", "row": 1, "col": 2, "row_span": 1, "col_span": 1},
+                ],
+                "default_flow_id": self.flow.id,
+                "widgets": [
+                    {"id": "image", "type": "image", "cell": "image", "props": {}, "source": {"kind": "image"}},
+                    {"id": "status", "type": "run_status", "cell": "status", "props": {}, "source": {"kind": "status"}},
+                ],
+            },
+        )
         # 批次測試：一個影像集＋一次執行（背景執行緒，等它跑完）
         from apps.vision.batch import jobs as batch_jobs
 
@@ -87,6 +105,8 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             f"/api/vision/flows/{fid}/export", f"/api/vision/runs/{self.run_id}", f"/api/vision/flows/{fid}/board", f"/api/vision/flows/{fid}/variables", "/api/vision/variables",
             "/api/vision/tool-types", "/api/vision/sources", "/api/vision/sources/kinds", f"/api/vision/sources/{sid}",
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/ocr/models", "/api/vision/ocr/fonts", "/api/vision/assets?kind=calibration",
+            "/api/vision/dashboards", "/api/vision/dashboards/default",
+            f"/api/vision/dashboards/{self.dashboard.id}", f"/api/vision/dashboards/{self.dashboard.id}/data",
             f"/api/vision/calibration/assets/{self.calibration_id}", f"/api/vision/assets/{self.stat_id}/stat-template", f"/api/vision/assets/{self.stat_id}/stat-template/mean",
             f"/api/vision/assets/{self.shape_id}/shape-model", f"/api/vision/assets/{self.shape_id}/shape-model/preview",
             "/api/vision/groups?kind=source", "/api/vision/fs",
