@@ -500,6 +500,8 @@ class RetentionSettings(models.Model):
     measurement_days = models.PositiveIntegerField(default=365)
     archive_days = models.PositiveIntegerField(default=90)
     archive_max_gb = models.FloatField(default=20.0)
+    file_output_days = models.PositiveIntegerField(default=90)
+    file_output_max_gb = models.FloatField(default=20.0)
     #: 備份 zip 與還原前資料庫副本各保留幾份
     backup_keep = models.PositiveIntegerField(default=10)
     #: 維護視窗開始的整點（當地時間）：備份整理與 SQLite 空間回收只在這一小時做

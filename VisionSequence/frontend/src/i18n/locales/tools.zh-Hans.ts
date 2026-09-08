@@ -2481,6 +2481,22 @@ export default {
     },
     ports: { image: "图像", sent: "已送出", bytes: "字节数" },
   },
+  write_log: {
+    label: "写入记录",
+    description: "把具名输出写成一列 CSV 或一行 TXT，背景写入 DATA_DIR/file_outputs 下的相对资料夹。",
+    params: {
+      path: { label: "相对路径", help: "位于 DATA_DIR/file_outputs 下；绝对路径与 .. 会被拒绝。" },
+      format: { label: "格式", options: { csv: "CSV", txt: "TXT" } },
+      fields: { label: "字段", help: "一行一栏。可填字段名，或使用 {width:.2f} 这类样板。" },
+      header: { label: "写入表头" },
+      filename: { label: "文件名", help: "可使用 {station}、{date}、{lot}、{run_id:.8}。" },
+      daily_folder: { label: "按日资料夹" },
+      rotate_mb: { label: "依大小轮替", group: "轮替" },
+      rotate_rows: { label: "依行数轮替", group: "轮替" },
+      encoding: { label: "编码", group: "进阶" },
+    },
+    ports: { a: "a", b: "b", c: "c", d: "d", path: "路径", queued: "已排入队列" },
+  },
   save_image: {
     label: "存档",
     description: "把影像存到资料夹（依判定 OK/NG 分子资料夹可选）。档名含时间戳与 run id。",
@@ -2492,6 +2508,10 @@ export default {
       format: {
         label: "格式",
       },
+      condition: {
+        label: "保存条件",
+        options: { all: "全部", ok: "只存 OK", ng: "只存 NG" },
+      },
       split_by_judge: {
         label: "依判定分资料夹",
       },
@@ -2500,6 +2520,17 @@ export default {
       },
       prefix: {
         label: "档名前綴",
+      },
+      filename: {
+        label: "文件名",
+        help: "可使用 {station}、{date}、{lot}、{run_id:.8}。",
+      },
+      daily_folder: {
+        label: "按日资料夹",
+      },
+      jpeg_quality: {
+        label: "JPEG 质量",
+        group: "进阶",
       },
     },
     ports: {

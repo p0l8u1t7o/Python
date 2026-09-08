@@ -316,6 +316,11 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 本節點輸入 a~d，另有 run_id／station），`{width:.2f}` 控制小數，`\\r\\n` 會變成真的控制字元；`ending` 補行尾、`name` 決定
 具名輸出的名字。設備端用 `RUN <flow> fmt=<name>`（TCP）或 `format=<name>`（HTTP）就拿到純文字。放在 judge 與其他 output 之後。
 
+## write_log
+每片要留下 CSV/TXT 紀錄時使用，例如品保要 `judge,width,lot,run_id`。`fields` 一行一欄，純欄位名依 `format_text` 的取值順序讀值，也可寫 `{width:.2f}`；`filename` 同樣可用 `{station}`、`{date}`、`{lot}`、`{run_id:.8}`。
+`path` 是 `DATA_DIR/file_outputs` 下的相對子資料夾，`daily_folder` 會再加 yyyyMMdd，`rotate_mb`／`rotate_rows` 避免單檔過大。工具只排入背景佇列，preview 與批次沙盒不寫檔；佇列滿時丟棄當次輸出並讓 run 繼續。
+文字紀錄用 `write_log`；即時回覆上位機仍用 `format_text` 搭配 HTTP/TCP，影像追溯用 `save_image`，統計頁回看用流程影像封存。
+
 ## output
 具名輸出：`name` 英文鍵名，`value` 埠接數值／字串／影像。上位機從 `outputs[name]` 拿。
 
@@ -399,7 +404,8 @@ edge_contrast、defects、decodability）。總評＝最低分（1D 是 10 條�
 文字有無（筆畫密度，不是 OCR）：`roi` 框住字區，`polarity` dark/bright，`min_ratio/max_ratio` 決定 present。
 
 ## save_image
-每次執行寫檔；AI 不生成，需要時提醒使用者手動加。
+把影像排入背景檔案輸出佇列；AI 不生成，需要時提醒使用者手動加。`filename` 可用與 `format_text` 相同的 `{}` 樣板，`daily_folder` 加 yyyyMMdd 子資料夾，JPEG 用 `jpeg_quality` 控制品質；`condition` 可選 all/ok/ng，舊的 `only_ng` 等同 NG only。
+此工具是使用者自訂的影像輸出，適合每片追溯到指定資料夾；流程的影像封存是統計頁回看用，依封存政策保存來源／結果圖，兩者分工不同。
 
 ## send_image
 整合用（使用者要求「把影像傳給上位機」「NG 圖送到 MES」時才加）：把該步驟的影像推給 tcp_image 連線（JPEG／PNG／raw），

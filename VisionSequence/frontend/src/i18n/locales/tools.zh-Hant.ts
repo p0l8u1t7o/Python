@@ -2481,6 +2481,22 @@ export default {
     },
     ports: { image: "影像", sent: "已送出", bytes: "位元組數" },
   },
+  write_log: {
+    label: "寫入紀錄",
+    description: "把具名輸出寫成一列 CSV 或一行 TXT，背景寫入 DATA_DIR/file_outputs 下的相對資料夾。",
+    params: {
+      path: { label: "相對路徑", help: "位於 DATA_DIR/file_outputs 下；絕對路徑與 .. 會被拒絕。" },
+      format: { label: "格式", options: { csv: "CSV", txt: "TXT" } },
+      fields: { label: "欄位", help: "一行一欄。可填欄位名，或使用 {width:.2f} 這類樣板。" },
+      header: { label: "寫入標頭" },
+      filename: { label: "檔名", help: "可使用 {station}、{date}、{lot}、{run_id:.8}。" },
+      daily_folder: { label: "按日資料夾" },
+      rotate_mb: { label: "依大小輪替", group: "輪替" },
+      rotate_rows: { label: "依列數輪替", group: "輪替" },
+      encoding: { label: "編碼", group: "進階" },
+    },
+    ports: { a: "a", b: "b", c: "c", d: "d", path: "路徑", queued: "已排入佇列" },
+  },
   save_image: {
     label: "存檔",
     description: "把影像存到資料夾（依判定 OK/NG 分子資料夾可選）。檔名含時間戳與 run id。",
@@ -2492,6 +2508,10 @@ export default {
       format: {
         label: "格式",
       },
+      condition: {
+        label: "保存條件",
+        options: { all: "全部", ok: "只存 OK", ng: "只存 NG" },
+      },
       split_by_judge: {
         label: "依判定分資料夾",
       },
@@ -2500,6 +2520,17 @@ export default {
       },
       prefix: {
         label: "檔名前綴",
+      },
+      filename: {
+        label: "檔名",
+        help: "可使用 {station}、{date}、{lot}、{run_id:.8}。",
+      },
+      daily_folder: {
+        label: "按日資料夾",
+      },
+      jpeg_quality: {
+        label: "JPEG 品質",
+        group: "進階",
       },
     },
     ports: {

@@ -25,7 +25,7 @@ from django.db import connection
 from django.utils import timezone
 
 from apps.core.models import AuditLog
-from apps.vision import archive
+from apps.vision import archive, fileout
 from apps.vision.models import FlowRun, MeasurementLog, RetentionSettings
 
 #: 一批刪幾列（刪完就讓出，避免長交易卡住寫入）
@@ -42,7 +42,8 @@ ORPHAN_AGE_S = 7 * 86400.0
 #: 可設定的欄位與型別（前端只送這些）
 FIELDS: dict[str, type] = {
     "run_days": int, "audit_days": int, "measurement_days": int, "archive_days": int,
-    "archive_max_gb": float, "backup_keep": int, "window_hour": int, "vacuum": bool, "enabled": bool,
+    "archive_max_gb": float, "file_output_days": int, "file_output_max_gb": float,
+    "backup_keep": int, "window_hour": int, "vacuum": bool, "enabled": bool,
 }
 #: 天數欄位的上限（0＝永久保留）
 MAX_DAYS = 3650
@@ -65,6 +66,8 @@ def defaults() -> dict[str, Any]:
         "measurement_days": int(cfg.get("MEASUREMENT_DAYS", 365) or 0),
         "archive_days": int(cfg.get("ARCHIVE_DAYS", 90) or 0),
         "archive_max_gb": float(cfg.get("ARCHIVE_MAX_GB", 20.0) or 0),
+        "file_output_days": int(cfg.get("FILE_OUTPUT_DAYS", 90) or 0),
+        "file_output_max_gb": float(cfg.get("FILE_OUTPUT_MAX_GB", 20.0) or 0),
         "backup_keep": int(cfg.get("KEEP_BACKUPS", 10) or 0),
         "window_hour": int(cfg.get("MAINTENANCE_HOUR", 3)),
         "vacuum": True,
@@ -145,7 +148,7 @@ def busy() -> bool:
                 return True
     except Exception:  # noqa: BLE001
         return True  # 問不出來就當忙，寧可不刪
-    return bool(runner_mod.persister.q.qsize())
+    return bool(runner_mod.persister.q.qsize() or fileout.queue_depth())
 
 
 def _note_idle() -> float:
@@ -200,7 +203,12 @@ def _sweep_rows(model, field: str, cutoff: dt.datetime, budget: int) -> int:
 def sweep(*, deep: bool = False, budget: int = 5000, force: bool = False) -> dict[str, Any]:
     """跑一次整理，回報刪了什麼。`deep`＝連備份與 VACUUM 一起做（維護視窗）。"""
     cfg = effective()
-    result: dict[str, Any] = {"runs": 0, "measurements": 0, "audit": 0, "archive_files": 0, "archive_freed": 0, "pictures": 0, "backups": 0, "vacuum": False}
+    result: dict[str, Any] = {
+        "runs": 0, "measurements": 0, "audit": 0,
+        "archive_files": 0, "archive_freed": 0,
+        "file_output_files": 0, "file_output_freed": 0,
+        "pictures": 0, "backups": 0, "vacuum": False,
+    }
     if not cfg["enabled"] and not force:
         return result
     started = time.perf_counter()
@@ -218,6 +226,10 @@ def sweep(*, deep: bool = False, budget: int = 5000, force: bool = False) -> dic
         purged = archive.purge(days=cfg["archive_days"] or 0, max_bytes=int(cfg["archive_max_gb"] * (1 << 30)))
         result["archive_files"] = int(purged.get("removed", 0))
         result["archive_freed"] = int(purged.get("freed", 0))
+    if force or not busy():
+        purged = fileout.purge(days=cfg["file_output_days"] or 0, max_bytes=int(cfg["file_output_max_gb"] * (1 << 30)))
+        result["file_output_files"] = int(purged.get("removed", 0))
+        result["file_output_freed"] = int(purged.get("freed", 0))
     if deep:
         result["pictures"] = purge_orphan_pictures()
         result["backups"] = purge_backups(cfg["backup_keep"])
@@ -375,6 +387,7 @@ def status() -> dict[str, Any]:
     row = RetentionSettings.objects.filter(id=1).first()
     files = backup_files()
     stats = archive.stats()
+    out_stats = fileout.stats()
     return {
         "settings": cfg,
         "defaults": defaults(),
@@ -385,6 +398,8 @@ def status() -> dict[str, Any]:
             "db_bytes": db_bytes(),
             "archive_files": int(stats.get("files", 0)),
             "archive_bytes": int(stats.get("bytes", 0)),
+            "file_output_files": int(out_stats.get("files", 0)),
+            "file_output_bytes": int(out_stats.get("bytes", 0)),
             "backup_files": len(files),
             "backup_bytes": sum(st.st_size for _p, st in files),
             "picture_bytes": _fixed_bytes(),

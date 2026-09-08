@@ -163,6 +163,11 @@ VISION = {
     "ARCHIVE_DAYS": _env_int("VISION_ARCHIVE_DAYS", 90),
     "ARCHIVE_MAX_GB": _env_float("VISION_ARCHIVE_MAX_GB", 20.0),
     "ARCHIVE_DIR": _env("VISION_ARCHIVE_DIR", ""),
+    # 使用者設定的 CSV/TXT 與影像輸出，預設在 DATA_DIR/file_outputs。
+    "FILE_OUTPUT_DIR": _env("VISION_FILE_OUTPUT_DIR", ""),
+    "FILE_OUTPUT_DAYS": _env_int("VISION_FILE_OUTPUT_DAYS", 90),
+    "FILE_OUTPUT_MAX_GB": _env_float("VISION_FILE_OUTPUT_MAX_GB", 20.0),
+    "FILE_OUTPUT_QUEUE": _env_int("VISION_FILE_OUTPUT_QUEUE", 1000),
     # 影像快取總量上限（MB）。
     "IMAGE_CACHE_MB": _env_int("VISION_IMAGE_CACHE_MB", 1024),
     # 是否把每次 run 寫進資料庫（背景執行緒批次寫）。高速產線可關閉只留統計。

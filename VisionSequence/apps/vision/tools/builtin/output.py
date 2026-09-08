@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import os
 import time
 from typing import Any
@@ -90,15 +91,22 @@ class SaveImageTool(Tool):
     key = "save_image"
     accepts = ("u8", "u16", "f32")  # 16-bit PNG/TIFF 原樣存檔
     label = "Save"
-    description = "Saves the image into a folder, optionally in an OK or NG sub-folder. The filename carries the timestamp and the run id."
+    description = "Saves the image into a folder in the background, optionally in an OK or NG sub-folder. The filename may use values such as {station}, {date}, {run_id} and named outputs."
     category = "output"
     icon = "Save"
     params = [
         Param("folder", "Folder", kind="text", required=True, help_text="Blank saves to DATA_DIR/saved/<flow_id>."),
         Param("format", "Format", kind="select", default="png", options=[{"value": "png", "label": "PNG"}, {"value": "jpg", "label": "JPEG"}, {"value": "bmp", "label": "BMP"}]),
+        Param("condition", "Save when", kind="select", default="all", options=[
+            {"value": "all", "label": "All runs"}, {"value": "ok", "label": "OK only"}, {"value": "ng", "label": "NG only"},
+        ]),
         Param("split_by_judge", "Sub-folder per verdict", kind="boolean", default=True),
         Param("only_ng", "Rejects only", kind="boolean", default=False),
         Param("prefix", "Filename prefix", kind="text", default=""),
+        Param("filename", "Filename", kind="text", default="{date}-{time}-{run_id:.8}", teach=True,
+              help_text="Uses the same names as Format a reply, for example {station}_{lot}_{run_id:.8}."),
+        Param("daily_folder", "Daily folder", kind="boolean", default=False),
+        Param("jpeg_quality", "JPEG quality", kind="number", default=85, minimum=30, maximum=100, group="Advanced"),
     ]
     inputs = [Port("image", "Image", "image")]
     outputs = [Port("path", "Path", "string")]
@@ -106,20 +114,97 @@ class SaveImageTool(Tool):
     def execute(self, ctx: ToolContext) -> Result:
         image = ctx.require_image()
         judge = str(ctx.context.get("_judge") or "ok")
-        if ctx.flag("only_ng") and judge != "ng":
+        condition = str(ctx.param("condition", "all") or "all").lower()
+        if ctx.flag("only_ng") or condition == "ng":
+            condition = "ng"
+        if condition in ("ok", "ng") and judge != condition:
             return Result(outputs={"path": ""}, message="OK, not saved")
         folder = str(ctx.param("folder") or os.path.join(str(settings.DATA_DIR), "saved", str(ctx.flow_id)))
         if ctx.flag("split_by_judge", True):
             folder = os.path.join(folder, judge.upper())
-        os.makedirs(folder, exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        name = f"{ctx.param('prefix', '')}{stamp}-{ctx.run_id[:8]}.{ctx.param('format', 'png')}"
-        path = os.path.join(folder, name)
-        ok, buf = cv2.imencode("." + str(ctx.param("format", "png")), image)
-        if not ok:
-            raise ToolError("Could not encode the image")
-        buf.tofile(path)
-        return Result(outputs={"path": path}, message=f"Saved {path}")
+        try:
+            name = fill_template(str(ctx.param("filename", "{date}-{time}-{run_id:.8}") or "{date}-{time}-{run_id:.8}"), ctx, missing="blank")
+        except (ValueError, TypeError, IndexError) as exc:
+            raise ToolError(f"The filename could not be filled in: {exc}") from None
+        prefix = str(ctx.param("prefix", "") or "")
+        from apps.vision import fileout
+
+        path = fileout.image_path(
+            os.path.abspath(folder),
+            prefix + name,
+            str(ctx.param("format", "png") or "png"),
+            daily_folder=ctx.flag("daily_folder", False),
+            when=ctx.moment,
+        )
+        if ctx.sandboxed():
+            return Result(outputs={"path": str(path)}, message=f"Would save {path}")
+        queued = fileout.submit(fileout.ImageJob(path=path, image=image, fmt=str(ctx.param("format", "png") or "png").lower(), quality=ctx.integer("jpeg_quality", 85)))
+        return Result(outputs={"path": str(path)}, message=(f"Queued {path}" if queued else "Dropped: file output queue is full"), detail={"queued": queued})
+
+
+class WriteLogTool(Tool):
+    key = "write_log"
+    label = "Write log"
+    description = "Writes named outputs as one TXT line or one CSV row in the background under DATA_DIR/file_outputs."
+    category = "output"
+    icon = "FileText"
+    params = [
+        Param("path", "Path", kind="text", default="", required=False, teach=True,
+              help_text="Relative folder under DATA_DIR/file_outputs. Absolute paths and '..' are rejected."),
+        Param("format", "Format", kind="select", default="csv", options=[{"value": "csv", "label": "CSV"}, {"value": "txt", "label": "TXT"}]),
+        Param("fields", "Fields", kind="multiline", default="judge\nrun_id", required=True, teach=True,
+              help_text="One field per line. A plain name reads that value; a {name:.2f} layout uses the same syntax as Format a reply."),
+        Param("header", "Header row", kind="boolean", default=True),
+        Param("filename", "Filename", kind="text", default="{station}_{date}", teach=True,
+              help_text="Uses the same names as Format a reply, for example {station}_{lot}_{date}."),
+        Param("daily_folder", "Daily folder", kind="boolean", default=True),
+        Param("rotate_mb", "Rotate size", kind="number", default=0, minimum=0, unit="MB", group="Rotation"),
+        Param("rotate_rows", "Rotate rows", kind="number", default=0, minimum=0, group="Rotation"),
+        Param("encoding", "Encoding", kind="text", default="utf-8", group="Advanced"),
+    ]
+    inputs = [Port("a", "a", "any", required=False), Port("b", "b", "any", required=False),
+              Port("c", "c", "any", required=False), Port("d", "d", "any", required=False)]
+    outputs = [Port("path", "Path", "string"), Port("queued", "Queued", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        fmt = str(ctx.param("format", "csv") or "csv").lower()
+        if fmt not in ("csv", "txt"):
+            raise ToolError("Format must be csv or txt")
+        fields = _field_lines(str(ctx.param("fields", "") or ""))
+        if not fields:
+            raise ToolError("Write at least one field")
+        encoding = str(ctx.param("encoding", "utf-8") or "utf-8")
+        try:
+            codecs.lookup(encoding)
+        except LookupError:
+            raise ToolError(f"Unknown encoding '{encoding}'") from None
+        try:
+            values = format_values(ctx)
+            row = [_field_value(field, values) for field in fields]
+            filename = fill_template(str(ctx.param("filename", "{station}_{date}") or "{station}_{date}"), ctx, missing="blank")
+        except (ValueError, TypeError, IndexError) as exc:
+            raise ToolError(f"The log row could not be filled in: {exc}") from None
+        from apps.vision import fileout
+
+        try:
+            folder = fileout.resolve_dir(str(ctx.param("path", "") or ""))
+        except ValueError as exc:
+            raise ToolError(str(exc)) from None
+        path = fileout.text_path(folder, filename, fmt, daily_folder=ctx.flag("daily_folder", True), when=ctx.moment)
+        if ctx.sandboxed():
+            return Result(outputs={"path": str(path), "queued": False}, message=f"Would write {path}")
+        job = fileout.TextJob(
+            path=path,
+            fmt=fmt,
+            row=[str(v) for v in row],
+            header=[_field_header(f) for f in fields],
+            write_header=ctx.flag("header", True),
+            rotate_bytes=max(0, int(ctx.number("rotate_mb", 0) * 1024 * 1024)),
+            rotate_rows=max(0, ctx.integer("rotate_rows", 0)),
+            encoding=encoding,
+        )
+        queued = fileout.submit(job)
+        return Result(outputs={"path": str(path), "queued": queued}, message=(f"Queued {path}" if queued else "Dropped: file output queue is full"), detail={"queued": queued})
 
 
 class DrawResultTool(Tool):
@@ -154,6 +239,51 @@ class DrawResultTool(Tool):
                 cv2.rectangle(canvas, (0, 0), (220, 60), color, -1)
                 cv2.putText(canvas, judge, (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (255, 255, 255), 3)
         return Result(outputs={"image": canvas})
+
+
+def format_values(ctx: ToolContext) -> dict[str, Any]:
+    """依照 format_text 的順序彙整可填入樣板的值。"""
+    values: dict[str, Any] = {}
+    for key, value in (ctx.context.get("_outputs") or {}).items():
+        values[str(key)] = value
+    judge = ctx.context.get("_judge")
+    if judge is not None and "judge" not in values:
+        values["judge"] = str(judge).upper()
+    for key, value in ctx.context.items():
+        if not str(key).startswith("_"):
+            values[str(key)] = value
+    for key in ("a", "b", "c", "d"):
+        value = ctx.inputs.get(key)
+        if value is not None:
+            values[key] = _plain(value)
+    values.setdefault("run_id", ctx.run_id)
+    values.setdefault("station", str(settings.VISION.get("STATION_ID", "")))
+    when = time.localtime(ctx.moment or time.time())
+    values.setdefault("date", time.strftime("%Y%m%d", when))
+    values.setdefault("time", time.strftime("%H%M%S", when))
+    return values
+
+
+def fill_template(template: str, ctx: ToolContext, *, missing: str = "blank", seen: list[str] | None = None) -> str:
+    return _unescape(template).format_map(_Fill(format_values(ctx), missing, seen if seen is not None else []))
+
+
+def _field_lines(text: str) -> list[str]:
+    return [line.strip() for line in str(text or "").splitlines() if line.strip()]
+
+
+def _field_value(field: str, values: dict[str, Any]) -> Any:
+    field = field.strip()
+    if "{" in field or "}" in field:
+        return _unescape(field).format_map(_Fill(values, "blank", []))
+    return _Fill(values, "blank", [])[field]
+
+
+def _field_header(field: str) -> str:
+    field = field.strip()
+    if field.startswith("{") and field.endswith("}") and field.count("{") == 1 and field.count("}") == 1:
+        return field[1:-1].split(":", 1)[0] or field
+    return field
 
 
 def _bgr(color: str | None) -> tuple[int, int, int]:
@@ -242,11 +372,10 @@ class FormatTextTool(Tool):
         if not template.strip():
             raise ToolError("Write the layout of the line, for example {judge},{value}")
         template = _unescape(template)
-        values = self._values(ctx)
         missing = str(ctx.param("missing", "blank"))
         seen: list[str] = []
         try:
-            text = template.format_map(_Fill(values, missing, seen))
+            text = fill_template(template, ctx, missing=missing, seen=seen)
         except (ValueError, TypeError, IndexError) as exc:
             raise ToolError(f"The layout could not be filled in: {exc}") from None
         if missing == "fail" and seen:
@@ -260,22 +389,7 @@ class FormatTextTool(Tool):
 
     def _values(self, ctx: ToolContext) -> dict[str, Any]:
         """能填進樣板的名字：具名輸出 → 觸發帶進來的引數 → 這一步的輸入 a~d。後者優先。"""
-        values: dict[str, Any] = {}
-        for key, value in (ctx.context.get("_outputs") or {}).items():
-            values[str(key)] = value
-        judge = ctx.context.get("_judge")
-        if judge is not None and "judge" not in values:
-            values["judge"] = str(judge).upper()
-        for key, value in ctx.context.items():
-            if not str(key).startswith("_"):
-                values[str(key)] = value
-        for key in ("a", "b", "c", "d"):
-            value = ctx.inputs.get(key)
-            if value is not None:
-                values[key] = _plain(value)
-        values.setdefault("run_id", ctx.run_id)
-        values.setdefault("station", str(settings.VISION.get("STATION_ID", "")))
-        return values
+        return format_values(ctx)
 
 
 def _unescape(text: str) -> str:
@@ -308,4 +422,4 @@ class _Fill(dict):
         return "{" + key + "}" if self._missing == "keep" else ""
 
 
-TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), DrawResultTool(), FormatTextTool()]
+TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), WriteLogTool(), DrawResultTool(), FormatTextTool()]

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：109 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1075 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：110 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1085 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -158,6 +158,13 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 檔案輸出（B6，apps/vision/fileout.py，Codex 實作）
+- **給使用者自訂的檔案落地，與 `archive.py` 的影像封存是兩條路**（封存是給統計頁回看的）。新工具 `write_log`（output 類）把具名輸出寫成 CSV／TXT 一列；`save_image` 補了檔名樣板、按日目錄、JPEG 品質與 `condition`。
+- **熱路徑不做 IO**：工具只算好路徑與內容就 `submit()` 進**有界佇列**（`QUEUE_LIMIT`），背景 daemon 執行緒 `vision-fileout` 實際寫檔；**佇列滿了丟棄該筆並記一次警告，產線優先**，run 不會失敗。訊息誠實地說 `Queued <path>`（不是「已存」），輸出埠有 `queued`。preview 與 `flow_id<=0`（批次、AI 試跑、bench）不落檔，只回 `Would write／Would save`——所以 bench 的 `save_image` 結果字串從 `Saved` 變成 `Would save`，這是預期的。
+- **路徑一律鎖在 `DATA_DIR/file_outputs`（或 `VISION_FILE_OUTPUT_DIR`）底下**：`resolve_dir()` 擋掉絕對路徑、磁碟代號、根目錄與任何 `..`，違反時 ToolError。
+- 保留接進 `retention.py`：`file_output_days`／`file_output_max_gb`（migration 0031），`busy()` 會看檔案輸出佇列深度，`sweep()` 一併清。
+- **行程結束前會排空佇列**（`atexit` → `_drain_on_exit()`，上限 `EXIT_FLUSH_S`）：品保靠這些 CSV，服務重啟不該吃掉最後幾列。`ExitDrainTests` 鎖住。
 
 ### 可觀測性小包（K3，純前端，Codex 實作）
 - **區間耗時**：`lib/spanTiming.ts` 的 `calculateSpanTiming(nodes, edges, source, target)`——沿資料流找出來源到目的的**所有路徑取聯集**，回總耗時／節點數／佔比（分母是該次 run 全部節點耗時）；處理 A==B、找不到路徑、節點不在報告裡、環路。卡片 `SpanTimingCard` 在編輯器右側「結果」分頁（**不是統計頁**：統計頁讀的是每小時彙總，沒有節點明細；編輯器同時有 run 報告與目前的邊線）。不新增後端端點。

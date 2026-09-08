@@ -424,10 +424,11 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         # output
         ("judge", "judge", None, {"verdict": "by_input"}, {"value": True}, {}),
         ("output", "output", None, {"name": "v"}, {"value": 1.23456}, {}),
+        ("write_log csv", "write_log", None, {"path": "bench", "format": "csv", "fields": "judge\nv\nlot\n{a:.2f}", "filename": "{station}_{date}", "daily_folder": True}, {"a": 12.3456}, {"_judge": "OK", "_outputs": {"v": 1.23456}, "lot": "A17", "_sandbox": True}),
         ("write_modbus", "write_modbus", None, {"connection": "bench_sim", "mapping": [{"src": "judge", "address": "ok"}]}, {}, {"_judge": "OK"}),
         ("read_modbus", "read_modbus", None, {"connection": "bench_sim", "mapping": [{"name": "ok", "address": "ok"}]}, {}, {}),
         ("send_image (degraded)", "send_image", gray, {"connection": "bench_sim"}, {}, {"_judge": "OK"}),
-        ("save_image png", "save_image", gray, {"folder": os.path.join(s.folder, "saved"), "format": "png", "split_by_judge": False}, {}, {}),
+        ("save_image png", "save_image", gray, {"folder": os.path.join(s.folder, "saved"), "format": "png", "split_by_judge": False}, {}, {"_sandbox": True}),
         ("draw_result", "draw_result", big, {}, {"overlays": overlays}, {"_judge": "ok"}),
     ]
 
