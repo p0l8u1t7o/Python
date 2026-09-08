@@ -1,5 +1,23 @@
 /** 繁體中文（預設語言）。key 以功能分組；en.ts 缺的 key 會退回這裡。 */
 const zhHant = {
+  comm: {
+    title: '結果回送',
+    hint: '這條流程跑完一片就送一行給上位機，不必在畫布上接線。大括號裡的名字會被填進去：judge、任何具名輸出、觸發帶進來的引數，另有 run_id、station、flow 與 duration_ms。協定需要換行就打 \\r\\n。',
+    saved: '結果回送已儲存',
+    noConnections: '目前沒有送得出文字的連線。請先到「外部整合」建立一條 TCP 連線。設備是 Modbus 的話，改在畫布上用「寫入 Modbus」把值對到位址。',
+    add: '新增回送對象',
+    when: '什麼時候送',
+    whens: { on_finish: '每一片跑完就送', interval: '固定節拍送' },
+    interval: '節拍（毫秒）',
+    ok: '判定 OK 時',
+    ng: '判定 NG 時',
+    failed: '執行失敗時',
+    failedHint: '工具錯誤、逾時，或來源沒有影像。某一行留空就是那種結果不送。',
+    node: '只在',
+    everyRun: '每一片都送',
+    nodeStatus: '的狀態是',
+    nodeStatuses: { any: '有執行到', ok: 'OK', ng: 'NG', error: '錯誤', skipped: '略過' },
+  },
   board: {
     exit: '回到平台',
     waiting: '等待下一次檢測',

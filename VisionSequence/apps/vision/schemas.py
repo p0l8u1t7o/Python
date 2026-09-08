@@ -22,6 +22,7 @@ class FlowPatch(Schema):
     commissioned: bool | None = None
     archive_policy: dict | None = None
     board: dict | None = None
+    comm: list | None = None
 
 
 class RecipeIn(Schema):

@@ -19,6 +19,7 @@ import type {
   Capacity,
   CaptureClients,
   CaptureDownloadInfo,
+  CommRule,
   Connection,
   ConnectionKind,
   ConnectionOpResult,
@@ -179,6 +180,7 @@ export interface FlowPatch {
   archive_policy?: Partial<ArchivePolicy>
   /** 現場看板設定（工程師才能改） */
   board?: BoardConfig
+  comm?: CommRule[]
 }
 
 export function useFlowMutations() {

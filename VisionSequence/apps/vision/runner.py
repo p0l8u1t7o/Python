@@ -32,7 +32,7 @@ from django.db.models.functions import Greatest
 
 from apps.core.errors import Conflict, NotFound, RateLimited
 from apps.vision import archive, engine
-from apps.vision import spc, variables
+from apps.vision import reporting, spc, variables
 from apps.vision.graph import CompiledGraph, compile_graph, restrict_to, validate_graph
 from apps.vision.images import store
 from apps.vision.models import Asset, Flow, FlowRecipe, FlowRun, FlowRunHourly, ImageSource, MeasurementLog
@@ -360,6 +360,7 @@ class Runner:
             for r in rt.recent:
                 store.drop_run(r.id)
         variables.store.forget(flow_id)
+        reporting.forget(flow_id)
 
     @property
     def max_queue_per_flow(self) -> int:
@@ -392,6 +393,8 @@ class Runner:
             self._prefetch(compiled)
             return compiled
         rt = self.runtime(flow.id)
+        # 結果回送規則在呼叫者執行緒讀進記憶體（引擎執行緒的熱路徑不碰資料庫）
+        reporting.set_rules(flow.id, flow.comm, flow.name)
         # 流程自己的 updated_at 也進鍵：同一個 id、同一個版本但內容不同（測試裡序號重用、還原舊版）不會拿到舊的編譯結果
         key = (flow.version, flow.updated_at.isoformat() if flow.updated_at else "", recipe.id if recipe else 0, recipe.updated_at.isoformat() if recipe else "")
         cached = rt.compiled_by_recipe.get(key)
@@ -568,6 +571,9 @@ class Runner:
                 report.archive_images = archive.capture(report, store, queue_depth=persister.q.qsize())
             persister.submit(report)
         bus.publish({"type": "run_finished", "flow_id": rt.flow_id, "run": report.to_dict(include_node_outputs=True), "stats": s.to_dict()})
+        if report.trigger != "preview" and report.flow_id > 0:
+            # 逐片回送：跑完就在這條執行緒送出去（不經佇列也不經匯流排，才不會漏掉任何一片）
+            reporting.deliver(report)
 
     # -- 接縫 ---------------------------------------------------------------
     @staticmethod

@@ -171,6 +171,8 @@ export interface Flow {
   archive_policy?: ArchivePolicy
   /** 現場看板設定（apps/vision/board.py）；空物件＝預設 */
   board?: import('./board').BoardConfig
+  /** 結果回送規則（apps/vision/reporting.py）；空陣列＝不回送 */
+  comm?: CommRule[]
   id: number
   name: string
   description: string
@@ -980,4 +982,21 @@ export interface TriggerRule {
   clear: boolean
   done: string
   reply: string
+}
+
+/**
+ * 結果回送規則：這條流程跑完要把結果送給誰、送什麼（後端 apps/vision/reporting.py，存在 Flow.comm）。
+ */
+export interface CommRule {
+  id: string
+  name: string
+  enabled: boolean
+  connection: string
+  when: 'on_finish' | 'interval'
+  interval_ms: number
+  node: string
+  node_status: 'any' | 'ok' | 'ng' | 'error' | 'skipped'
+  ok: string
+  ng: string
+  failed: string
 }

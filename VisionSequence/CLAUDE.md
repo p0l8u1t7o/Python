@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：95 個內建工具（8 類）、233 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：95 個內建工具（8 類）、233 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 898 項＋前端 115 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -168,6 +168,12 @@
   `ABCD／BADC／CDAB／DCBA`。**取不到值一律回 None 不丟例外**（設備偶爾送半行，不能讓產線停），只有設定本身壞掉才 `ProtocolError`。
   工具的欄位語法是一行一個 `name[:type][:位置或位元組範圍][:位元組順序][*倍率]`（`_field_from_line`），每個欄位都進具名輸出，
   缺值走 `not_matched` 分支。
+
+### 流程結果回送（apps/vision/reporting.py、Flow.comm）
+- **宣告式的「結果怎麼回來」**：`Flow.comm`（migration 0028，`sanitize` 比照 board）是一張表——`{connection, when: on_finish|interval, interval_ms, node, node_status, ok, ng, failed}`。樣板的名字與 `format_text` 同一套（具名輸出／觸發引數／judge／run_id／station／flow／recipe／duration_ms），三種結果各自的樣板留空就是那種結果不送。
+- **接縫**：`runner.compiled_for` 在呼叫者執行緒 `reporting.set_rules(flow.id, flow.comm, flow.name)` 放進記憶體（熱路徑不碰 DB），`runner._record` 在 `bus.publish` 之後 `reporting.deliver(report)`——**同一條執行緒同步送**，不經佇列也不經匯流排，所以不會漏掉任何一片（這是與 `events.py` 最大的差別）。`trigger == "preview"` 與 `flow_id <= 0` 不送。
+- 只對 `Writer.texts=True` 的連線有意義（Modbus 是位址對位址的，那種需求用 `write_modbus`）。上位機沒開著時 `_send` 記一次追蹤並退避 `RETRY_S`（2 秒），不讓每片都等到連線逾時。`interval` 由行程層單一 `_Ticker`（100 ms）驅動，只送最近一片的值。
+- 前端 `components/flow/CommSettings.tsx`（編輯器右側設定面板，在看板設定下面）。新增欄位＝`reporting.Rule`＋`_rule_from`＋前端型別 `CommRule`＋三語系 `comm.*`＋`tests/test_reporting.py`。
 
 ### 這一站的摘要（apps/vision/summary.py）
 - `GET /vision/summary` 回這一站的良率摘要（station_id、版本、鎖定、每條流程今日 OK/NG/良率）；數字讀**每小時彙總** `FlowRunHourly`，與統計頁同一份。

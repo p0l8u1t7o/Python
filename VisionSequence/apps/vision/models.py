@@ -31,6 +31,8 @@ class Flow(models.Model):
     archive_policy = models.JSONField(default=dict, blank=True)
     #: 現場看板要顯示什麼（見 apps/vision/board.py）；空 dict＝全部具名輸出＋最後一張影像。
     board = models.JSONField(default=dict, blank=True)
+    #: 結果要回送給誰、送什麼（見 apps/vision/reporting.py）；空清單＝不回送。
+    comm = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

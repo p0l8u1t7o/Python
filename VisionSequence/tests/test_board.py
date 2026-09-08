@@ -94,6 +94,7 @@ class BuildTests(TestCase):
 class ApiTests(TestCase):
     def setUp(self):
         self.flow = Flow.objects.create(name="api", graph={"nodes": [], "edges": []})
+        runner.forget(self.flow.id)  # 流程 id 會被別的測試重用，先清掉它們留下的 run
 
     def test_patch_and_read_back(self):
         body = {"board": {"title": "L1", "values": [{"key": "width", "low": 1, "high": 2}], "junk": 1}}

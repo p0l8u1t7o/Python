@@ -1666,6 +1666,24 @@ const enExtra2 = {
 
 /** Keys that only existed in Chinese until the product went English-first; merged last. */
 const enExtra3 = {
+  comm: {
+    title: 'Send the result',
+    hint: 'When this flow finishes a part, send a line to a host system — no need to wire a step into the canvas. Names in braces are filled in: judge, any named output, whatever the trigger sent, plus run_id, station, flow and duration_ms. Type \\r\\n where the protocol needs it.',
+    saved: 'Result reporting saved',
+    noConnections: 'No connection can send a line of text yet. Add a TCP connection under Integration. For a Modbus device, map values to addresses with a Write Modbus step instead.',
+    add: 'Add a destination',
+    when: 'Send',
+    whens: { on_finish: 'Every part, as it finishes', interval: 'On a fixed beat' },
+    interval: 'Beat (ms)',
+    ok: 'When OK',
+    ng: 'When NG',
+    failed: 'When it fails',
+    failedHint: 'A tool error, a timeout, or no image from the source. Leave a line blank to send nothing for that outcome.',
+    node: 'Only when',
+    everyRun: 'Every part',
+    nodeStatus: 'is',
+    nodeStatuses: { any: 'reached at all', ok: 'OK', ng: 'NG', error: 'in error', skipped: 'skipped' },
+  },
   board: {
     exit: 'Back to the platform',
     waiting: 'Waiting for the next inspection',

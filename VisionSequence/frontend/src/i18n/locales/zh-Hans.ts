@@ -1,5 +1,23 @@
 /** 简体中文（由 zh-Hant 以 OpenCC tw2sp 转换＋人工词汇微调产生；缺的 key 会退回繁中）。 */
 const zhHans = {
+  comm: {
+    title: '结果回送',
+    hint: '这条流程跑完一片就送一行给上位机，不必在画布上接线。大括号里的名字会被填进去：judge、任何具名输出、触发带进来的参数，另有 run_id、station、flow 与 duration_ms。协议需要换行就打 \\r\\n。',
+    saved: '结果回送已保存',
+    noConnections: '目前没有送得出文字的连接。请先到「外部集成」建立一条 TCP 连接。设备是 Modbus 的话，改在画布上用「写入 Modbus」把值对到地址。',
+    add: '新增回送对象',
+    when: '什么时候送',
+    whens: { on_finish: '每一片跑完就送', interval: '固定节拍送' },
+    interval: '节拍（毫秒）',
+    ok: '判定 OK 时',
+    ng: '判定 NG 时',
+    failed: '执行失败时',
+    failedHint: '工具错误、超时，或来源没有图像。某一行留空就是那种结果不送。',
+    node: '只在',
+    everyRun: '每一片都送',
+    nodeStatus: '的状态是',
+    nodeStatuses: { any: '有执行到', ok: 'OK', ng: 'NG', error: '错误', skipped: '跳过' },
+  },
   board: {
     exit: '回到平台',
     waiting: '等待下一次检测',

@@ -42,6 +42,7 @@ import { SaveTemplateModal, TemplateGallery } from '@/components/templates/Templ
 import { Button, Checkbox, ConfirmDialog, ErrorState, LoadingState, Modal, Select, StatusBadge, Tabs, TextInput } from '@/components/ui'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import { BoardSettings } from '@/components/flow/BoardSettings'
+import { CommSettings } from '@/components/flow/CommSettings'
 import { VariablesCard } from '@/components/flow/VariablesCard'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
@@ -1138,6 +1139,16 @@ function EditorInner({ flowId }: { flowId: number }) {
                       readOnly={readOnly}
                       saving={patch.isPending}
                       onSave={(cfg) => patch.mutate({ id: flowId, board: cfg }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('board.settings.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
+                    />
+                  </div>
+                  <div className="border-t border-line pt-3">
+                    <p className="mb-1.5 text-xs font-semibold text-heading">{t('comm.title')}</p>
+                    <CommSettings
+                      config={flow.data?.comm}
+                      nodes={boardImageNodes}
+                      readOnly={readOnly}
+                      saving={patch.isPending}
+                      onSave={(rules) => patch.mutate({ id: flowId, comm: rules }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}`; toast.success(t('comm.saved')) }, onError: (error) => toast.error(errorMessage(error)) })}
                     />
                   </div>
                 </div>
