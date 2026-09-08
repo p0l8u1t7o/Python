@@ -23,6 +23,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.contours",
     "apps.vision.tools.builtin.gdt",
     "apps.vision.tools.builtin.circular",
+    "apps.vision.tools.builtin.edge_defect",
     "apps.vision.tools.builtin.detect",
     "apps.vision.tools.builtin.barcode_grade",
     "apps.vision.tools.builtin.ocr_tools",

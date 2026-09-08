@@ -173,6 +173,14 @@ low pass is the right tool when the background repeats (a weave, a screen), this
 The cost is one convolution per angle: about 25&nbsp;ms on 640&times;480 and 90&nbsp;ms on 1280&times;960 for eight angles, so give it a
 region when the part is larger than the area you care about.</p>
 
+<p><strong>A whole edge at once</strong> is <code>edge_defect</code>: calipers are laid along a straight or round edge — the
+region drawn on the canvas, or better, the line or circle the previous step actually found — and every stretch that strays from
+that ideal edge comes back as a fault with a kind attached. A nick or a burr is a run that sits too far in or out, a chip is a run
+where the edge vanished altogether, a mismatch is a sudden step between neighbours, and in pair mode the width between the two
+edges is checked directly. Each fault carries its box, its length along the edge and its area, so a flow can judge on the worst
+one or on how many there are. It shares its baseline-and-segment logic with <code>profile_defect</code>, which is the right tool
+when the radius series itself is wanted for something else.</p>
+
 <h2 id="depth">2. Image formats and bit depth</h2>
 <p>The image types a machine-vision package deals with are grayscale U8, I16 and float, complex, RGB U32, HSL U32 and RGB U64. The platform maps them onto numpy dtypes (<code>tools/imgfmt.py</code>):</p>
 <table>

@@ -1577,6 +1577,161 @@ class SurfaceFilterTests(SimpleTestCase):
         self.assertTrue(np.array_equal(img, before))
 
 
+class EdgeDefectTests(SimpleTestCase):
+    """沿一條邊找缺陷並分類：缺口、斷裂、階差、寬度不對。"""
+
+    LINE_ROI = {"shape": "rect", "x": 20, "y": 130, "w": 360, "h": 40}
+    DISC_ROI = {"shape": "circle", "cx": 200, "cy": 200, "r": 120}
+
+    @staticmethod
+    def _edge(notch=None, step=0):
+        """上暗下亮，交界在 y=150。notch=(x0, x1, deep) 挖一個缺口；step 讓右半邊整個上下位移。"""
+        img = np.full((300, 400), 40, np.uint8)
+        img[150:, :] = 210
+        if step:
+            img[150:, 200:] = 40
+            img[150 + step:, 200:] = 210
+        if notch:
+            x0, x1, deep = notch
+            cv2.rectangle(img, (x0, 150), (x1, 150 + deep), 40, -1)
+        return cv2.GaussianBlur(img, (0, 0), 0.8)
+
+    @staticmethod
+    def _disc(gap=None):
+        """亮圓盤 r=120；gap=(起, 迄) 度數的缺口。"""
+        img = np.zeros((400, 400), np.uint8)
+        cv2.circle(img, (200, 200), 120, 220, -1)
+        if gap:
+            cv2.ellipse(img, (200, 200), (120, 120), 0, gap[0], gap[1], 0, -1)
+        return cv2.GaussianBlur(img, (0, 0), 0.8)
+
+    def _run(self, image, **params):
+        base = {"roi": self.LINE_ROI, "polarity": "dark_to_light", "calipers": 80, "search": 18, "threshold": 2.0}
+        return run_tool("edge_defect", image, {**base, **params})
+
+    def test_a_clean_edge_is_clean(self):
+        r = self._run(self._edge())
+        self.assertEqual((r.branch, r.status), ("ok", "ok"))
+        self.assertEqual(r.outputs["count"], 0)
+        self.assertEqual(len(r.outputs["points"]), 80)
+        self.assertIn("80/80", r.message)
+
+    def test_a_notch_is_one_fault_with_a_box_and_a_length(self):
+        r = self._run(self._edge(notch=(180, 200, 6)))
+        self.assertEqual((r.branch, r.status), ("defect", "ng"))
+        self.assertEqual(r.outputs["count"], 1)
+        fault = r.outputs["defects"][0]
+        self.assertEqual(fault["type"], "dislocation")
+        self.assertGreater(abs(fault["peak"]), 4.0)          # 缺口 6 px 深
+        self.assertGreater(fault["size"], 8.0)               # 沿邊長度（缺口 20 px 寬）
+        self.assertLess(fault["size"], 40.0)
+        self.assertEqual(fault["rect"]["shape"], "rotated_rect")
+        self.assertGreater(fault["area"], 0)
+        self.assertAlmostEqual(r.outputs["max_size"], fault["size"], places=3)
+
+    def test_which_side_counts_can_be_narrowed(self):
+        img = self._edge(notch=(180, 200, 6))
+        both = self._run(img, direction="both").outputs["count"]
+        self.assertEqual(both, 1)
+        # 這個缺口讓邊往掃描方向（下）移動，所以只看反向就找不到
+        one_way = self._run(img, direction="inward").outputs["count"]
+        other_way = self._run(img, direction="outward").outputs["count"]
+        self.assertEqual(sorted([one_way, other_way]), [0, 1])
+
+    def test_single_caliper_noise_is_not_a_fault(self):
+        img = self._edge(notch=(198, 201, 5))   # 只有兩三把卡尺打得到
+        self.assertEqual(self._run(img, min_width=6).outputs["count"], 0)
+        self.assertGreaterEqual(self._run(img, min_width=1).outputs["count"], 1)
+
+    def test_a_gap_in_a_round_edge_is_a_break(self):
+        r = run_tool("edge_defect", self._disc(gap=(20, 35)),
+                     {"roi": self.DISC_ROI, "polarity": "light_to_dark", "calipers": 180, "search": 25, "threshold": 2.5})
+        self.assertEqual((r.branch, r.status), ("defect", "ng"))
+        self.assertEqual(r.outputs["count"], 1)
+        fault = r.outputs["defects"][0]
+        self.assertEqual(fault["type"], "fracture")
+        self.assertEqual(fault["direction"], "missing")
+        self.assertGreater(fault["count"], 4)                 # 15° 的缺口 ≈ 180 把裡的 7~8 把
+        self.assertLess(abs(fault["position"] - 20), 4)       # 位置是角度（度）
+        clean = run_tool("edge_defect", self._disc(),
+                         {"roi": self.DISC_ROI, "polarity": "light_to_dark", "calipers": 180, "search": 25, "threshold": 2.5})
+        self.assertEqual((clean.branch, clean.outputs["count"]), ("ok", 0))
+
+    def test_a_break_can_be_switched_off(self):
+        params = {"roi": self.DISC_ROI, "polarity": "light_to_dark", "calipers": 180, "search": 25, "threshold": 2.5}
+        with_break = run_tool("edge_defect", self._disc(gap=(20, 35)), params)
+        without = run_tool("edge_defect", self._disc(gap=(20, 35)), {**params, "fracture_run": 0})
+        self.assertEqual(with_break.outputs["count"], 1)
+        self.assertEqual(without.outputs["count"], 0)  # 打空不算缺陷了，剩下的都在門檻內
+
+    def test_a_step_between_neighbours_is_its_own_kind(self):
+        img = self._edge(step=8)
+        # 只看階差：整段偏移的門檻關掉
+        r = self._run(img, threshold=0, step_threshold=4)
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertEqual(r.outputs["defects"][0]["type"], "step")
+        self.assertEqual(self._run(img, threshold=0, step_threshold=0).outputs["count"], 0)
+
+    def test_a_pair_of_edges_checks_the_width(self):
+        band = np.full((200, 400), 30, np.uint8)
+        band[90:130, :] = 200
+        band[90:110, 200:260] = 30                  # 這一段只剩一半寬
+        band = cv2.GaussianBlur(band, (0, 0), 0.8)
+        r = run_tool("edge_defect", band, {"roi": {"shape": "rect", "x": 10, "y": 70, "w": 380, "h": 80}, "mode": "pair",
+                                           "pair_polarity": "bright", "calipers": 60, "search": 60, "threshold": 0, "width_min": 35})
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertEqual(r.outputs["defects"][0]["type"], "width")
+        widths = [w for w in r.outputs["widths"] if w]
+        self.assertEqual(len(widths), 60)
+        self.assertLess(abs(max(widths) - 40.0), 0.3)
+
+    def test_a_missing_band_is_a_break_not_a_width_fault(self):
+        band = np.full((200, 400), 30, np.uint8)
+        band[90:130, :] = 200
+        band[90:130, 200:240] = 30                  # 整段不見了
+        band = cv2.GaussianBlur(band, (0, 0), 0.8)
+        r = run_tool("edge_defect", band, {"roi": {"shape": "rect", "x": 10, "y": 70, "w": 380, "h": 80}, "mode": "pair",
+                                           "pair_polarity": "bright", "calipers": 60, "search": 60, "threshold": 3})
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertEqual(r.outputs["defects"][0]["type"], "fracture")
+
+    def test_the_ideal_edge_can_come_from_the_step_before(self):
+        """接上游找圓的結果：理想邊是這一顆工件實際的圓，不是教導時畫的位置。"""
+        img = self._disc(gap=(20, 35))
+        circle = run_tool("find_circle", img, {"roi": {"shape": "annulus", "cx": 205, "cy": 195, "r_inner": 90, "r_outer": 150},
+                                               "polarity": "light_to_dark", "num_rays": 72})
+        self.assertIsNotNone(circle.outputs["circle"])
+        r = run_tool("edge_defect", img, {"calipers": 180, "search": 25, "polarity": "light_to_dark", "threshold": 2.5},
+                     inputs={"circle": circle.outputs["circle"]})
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertEqual(r.outputs["defects"][0]["type"], "fracture")
+
+    def test_the_settings_have_to_make_sense(self):
+        with self.assertRaisesMessage(ToolError, "Draw a region"):
+            run_tool("edge_defect", self._edge(), {})
+        with self.assertRaisesMessage(ToolError, "rectangle"):
+            run_tool("edge_defect", self._edge(), {"roi": {"shape": "polygon", "points": [[0, 0], [10, 0], [10, 10]]}})
+
+    def test_how_many_faults_are_allowed(self):
+        img = self._edge(notch=(120, 140, 6))
+        cv2.rectangle(img, (260, 150), (280, 156), 40, -1)
+        img = cv2.GaussianBlur(img, (0, 0), 0.8)
+        two = self._run(img)
+        self.assertEqual(two.outputs["count"], 2)
+        self.assertEqual(two.branch, "defect")
+        self.assertEqual(self._run(img, max_defects=2).branch, "ok")   # 兩個以內可以接受
+        self.assertEqual(self._run(img, max_defects=1).branch, "defect")
+
+    def test_the_step_helper_marks_both_sides_of_a_jump(self):
+        from apps.vision.tools.builtin.edge_defect import step_flags
+
+        values = np.array([0.0, 0.1, 0.0, 5.0, 5.1, 5.0])
+        flags = step_flags(values, 2.0)
+        self.assertEqual(list(flags), [False, False, True, True, False, False])
+        self.assertFalse(step_flags(values, 0).any())
+        self.assertFalse(step_flags(np.array([1.0]), 1.0).any())
+
+
 class GeometryFinderTests(SimpleTestCase):
     """幾何查找家族：矩形、平行邊、多條線、圓陣列。真值用平台自己的 `mask_for` 畫，避免混進別套角度慣例。"""
 

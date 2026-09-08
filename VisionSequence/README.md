@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 105 個內建工具、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 968 項＋前端 115 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 106 個內建工具、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 981 項＋前端 115 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -78,14 +78,14 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **位置修正**：工件位置會變的時候，把定位補正接到量測步驟的「位置修正」埠，那一步畫的區域就自己跟著工件走（不必在圖裡插跟隨節點）；整條流程都要跟就用「影像跟隨」把影像轉回教導時的姿態。定位沒找到時區域留在原地並留下警告，不會靜默量到空氣。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 
-### 內建工具（105 個，8 類）
+### 內建工具（106 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（1） | image_source |
 | 前處理（20） | grayscale, crop, resize, blur, threshold, morphology, lut, filter, surface_filter（表面缺陷濾波）, fft_filter, warp_perspective, undistort, shading_correct, polar_unwrap, polar_restore, convert_depth, rotate_flip, color_convert, color_range, apply_mask, arithmetic |
 | 定位（16） | template_match, shape_match（幾何比對）, shape_align, fixture_roi, image_fixture（影像轉回教導姿態）, region_from_shape, region_combine（多重 ROI／排除區）, find_circle, find_line, find_rectangle, find_quadrilateral, find_parallel_lines, find_lines_multi, find_circles_matrix, hough_circles, hough_lines |
 | 量測（22） | caliper, circular_caliper, profile_defect, wall_thickness, fit_arc, fit_ellipse, chamfer_angle, angle, distance（點／線／圓）, geometry（作圖）, points_merge, concentricity, calibration, to_world, intensity, histogram, line_profile, color_stats, edge_density, contour_find, contour_filter, contour_geometry, contour_match |
-| 檢測／識別（11） | blob, defect_diff, defect_stat（統計範本）, ocr_read（文字辨識）, ocv_verify（字串驗證）, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
+| 檢測／識別（12） | blob, edge_defect（邊緣缺陷：缺口／崩掉／錯位／寬度）, defect_diff, defect_stat（統計範本）, ocr_read（文字辨識）, ocv_verify（字串驗證）, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
 | 深度學習（10） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）, dl_anomaly（只教良品的異常檢測）；ai_detect, ai_segment, ai_classify, ai_pose, ai_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
 | 邏輯（10） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, parse_message（拆解設備送來的訊息）, switch（多路分支）, string_match（文字比對）, python_script（自寫 Python，管理員核准） |
 | 輸出（6） | judge, output, draw_result, save_image, write_modbus, send_image（TCP 傳圖） |
@@ -106,7 +106,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - `GET/PATCH /vision/retention`、`POST /vision/retention/sweep`（立即整理）、`manage.py purge [--pictures --backups N]`、`doctor` 的 retention／backups 兩行。
 
 ### 範本畫廊與範例樣板
-31 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、圓盤崩邊、真圓度形位公差、刻印字光度立體、條碼品質分級、排除區、平場校正、統計良品比對、形狀比對定位、異常檢測、日期碼讀取、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。
+32 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、圓盤崩邊、真圓度形位公差、刻印字光度立體、條碼品質分級、排除區、平場校正、統計良品比對、形狀比對定位、異常檢測、日期碼讀取、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 58/67 個工具。詳見 `docs/samples.html`。
 - **畫廊分類分組**（教學、計數、量測、品質、缺陷、辨識、自訂）＋篩選列；內建範本自帶樣本圖：來源留「範本自帶的樣本圖」時取像步驟變成 **固定影像** 工具（`fixed_image`，圖片跟著流程存、每次執行輪到下一張），要接相機再選來源。範本比對／良品比對／平場的參考圖也是固定影像節點接到工具的圖片輸入埠（`template_image`／`flat_image`／`dark_image`），不再建立範例來源與影像資產。
 
 ### AI 助手（`/agent`）

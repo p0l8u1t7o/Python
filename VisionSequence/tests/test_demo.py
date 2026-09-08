@@ -51,7 +51,7 @@ class DemoSeedTests(TransactionTestCase):
             "hole_count": "ok ok ok ng", "exposure": "ok ok ok ng",
             "circle_gauge": "ok ok ok ng", "edge_angle": "ok ok ok ng", "golden_compare": "ok ok ok ng", "stat_compare": "ok ok ok ng",
             "fft_defect": "ok ok ok ng", "surface_scratch": "ok ok ok ng", "geometry_count": "ok ok ok ng", "gear_teeth": "ok ok ok ng", "contour_defect": "ok ok ok ng",
-            "circular_defect": "ok ok ok ng", "form_tolerance": "ok ok ok ng", "emboss_defect": "ok ok ok ng", "barcode_grade": "ok ok ok ng",
+            "circular_defect": "ok ok ok ng", "edge_defect_demo": "ok ok ok ng", "form_tolerance": "ok ok ok ng", "emboss_defect": "ok ok ok ng", "barcode_grade": "ok ok ok ng",
             "exclusion_zone": "ok ok ok ok", "shading": "ok ok ok ng", "color_presence": "ok ok ok ng", "color_verify": "ok ok ok ng",
             "barcode_read": "ok ok ok ng", "date_code": "ok ok ok ng", "label_read": "ok ok ok ng", "shape_locate": "ok ok ok ng",
             "locate_measure": "ok ok ok ng", "cup_measure": "ok ok ok ng", "dl_classify_demo": "ok ok ok ok ng ng", "anomaly_demo": "ok ok ok ng ng",
@@ -100,7 +100,7 @@ class DemoSeedTests(TransactionTestCase):
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
             model_names = sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True))
             self.assertEqual([n for n in model_names if "anomaly" not in n], ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)", "Example: taught font (digits)"])
-            self.assertEqual(len(BUILTIN_TEMPLATES), 31)
+            self.assertEqual(len(BUILTIN_TEMPLATES), 32)
             import importlib.util
             import os
 

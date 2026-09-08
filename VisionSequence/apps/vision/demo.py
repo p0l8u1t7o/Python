@@ -488,6 +488,39 @@ def surface_scratch_flow(source_id: str) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+def edge_defect_flow(source_id: str) -> dict:
+    """邊緣缺陷：一顆工具沿圓周佈卡尺、找缺陷、分類（與「圓周崩邊」是同一組樣本的兩種做法）。
+
+    圓周崩邊那條是「圓形卡尺 → 半徑序列 → 序列缺陷」三顆工具接起來；這裡是一顆工具做完，
+    而且每個缺陷都帶外框、長度與種類（偏移／斷裂／階差）。
+    """
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("circle", "find_circle", 2, 0, "Find the rim", roi={"shape": "annulus", "cx": 640, "cy": 480, "r_inner": 250, "r_outer": 340},
+              polarity="light_to_dark", edge_threshold=25, num_rays=72),
+        _node("edge", "edge_defect", 3, 0, "Edge defects", calipers=180, search=40, edge_threshold=25,
+              polarity="light_to_dark", threshold=3.0, min_width=2, fracture_run=2, max_defects=0),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: chipped rim", verdict="ng", label="chip"),
+        _node("out", "output", 4, 2, "Output how many", name="defect_count"),
+        _node("size", "output", 4, 3, "Output the longest", name="defect_size"),
+        _node("draw", "draw_result", 5, 2, "Result image"),
+        _note("n1", 0, 1, "About", "The rim is found first, so the ideal edge is the circle this part actually has, not where it was taught.\nEvery caliper that finds no edge at all is a break; a run that sits too far in or out is a nick or a burr.\nCompare with the chipped-rim template, which builds the same check out of three separate steps."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "circle"),
+        _edge("gray", "edge", "image", "image"),
+        _edge("circle", "edge", "circle", "circle"),
+        _edge("edge", "ok", "ok", "_flow"), _edge("edge", "ng", "defect", "_flow"),
+        _edge("edge", "out", "count", "value"),
+        _edge("edge", "size", "max_size", "value"),
+        _edge("gray", "draw", "image", "image"),
+        _edge("edge", "draw", "_overlays", "overlays"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def gear_teeth_flow(source_id: Any) -> dict[str, Any]:
     """圓周齒數：極座標展開齒圈 → 二值化 → blob 數齒 → 12 齒判定；齒的位置用 polar_restore 標回原圖。
 
@@ -1084,6 +1117,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
      lambda sid: contour_defect_flow(sid, _demo_ref("stamped part outline"))),
+    ("edge_defect_demo", "Chipped rim (edge defects)", "One step lays 180 calipers round the rim the part actually has, finds every stretch that strays and says what kind of fault it is, with a box round each", "measure", edge_defect_flow),
     ("circular_defect", "Chipped rim (circular caliper)", "A ring of 180 radial calipers gives the radius at every angle and the run-out; Profile defects fits a circle and marks every dip or empty caliper as a chip, drawn as a red arc on the rim", "measure", circular_defect_flow),
     ("form_tolerance", "Roundness (form tolerance)", "180 radial calipers give the edge points; Form and position tolerance fits the minimum-zone circle (ISO 1101) and passes the disc when the ring between the two concentric circles is within 5 px — the chipped rim fails", "measure", form_tolerance_flow),
     ("emboss_defect", "Embossed characters and dents (photometric stereo)", "Four crops split a 2×2 picture of the plate under four lights; Photometric stereo turns them into a shape-strength map on which a pixel count in the check zone finds the dent that no single picture shows", "quality", emboss_defect_flow),
@@ -1130,6 +1164,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "contour_defect": "Example: stamped part",
     "exclusion_zone": "Example: circle gauge",
     "circular_defect": "Example: chipped disc",
+    "edge_defect_demo": "Example: chipped disc",
     "form_tolerance": "Example: chipped disc",
     "emboss_defect": "Example: embossed plate (four lights)",
     "barcode_grade": "Example: barcode grading",

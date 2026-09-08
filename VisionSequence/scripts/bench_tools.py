@@ -343,6 +343,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("histogram (full)", "histogram", big, {}, {}, {}),
         ("circular_caliper 72", "circular_caliper", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "caliper_count": 72}, {}, {}),
         ("circular_caliper 360", "circular_caliper", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "caliper_count": 360}, {}, {}),
+        ("edge_defect line 180", "edge_defect", gray, {"roi": top_edge, "calipers": 180, "search": 30}, {}, {}),
+        ("edge_defect arc 180", "edge_defect", gray, {"roi": center_circle, "calipers": 180, "search": 30}, {}, {}),
         ("profile_defect (fit_circle 360)", "profile_defect", None, {"baseline": "fit_circle", "threshold": 3}, {"values": [float(m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)) for i in range(360)], "points": [[s.cx + math.cos(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)), s.cy + math.sin(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0))] for i in range(360)]}, {}),
         ("fit_arc (annulus 90)", "fit_arc", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),
         ("fit_ellipse (annulus 90)", "fit_ellipse", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),

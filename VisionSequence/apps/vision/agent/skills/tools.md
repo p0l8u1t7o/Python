@@ -318,6 +318,18 @@ ROI 平均色與目標色（`color` 十六進位）距離 ≤ `tolerance` → ma
 ## color_stats
 ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_number。
 
+## edge_defect
+**整條邊一次檢查完**（缺口、毛刺、崩掉、錯位、寬度不對都在這一顆）：沿參考邊佈一排卡尺，
+偏離理想邊的那幾段就是缺陷，每個都帶種類、外框、沿邊長度與面積。
+- 參考邊：畫矩形＝直邊（長邊沿著邊）、畫圓／圓環＝圓邊；**更好的做法是接上游的 `line`／`circle`**
+  （`find_line.line`、`find_circle.circle`、`fit_arc.circle`），這樣理想邊是這一顆工件實際的邊，工件會動也不怕。
+- 種類：`dislocation`（一整段偏進去或偏出來，看 `threshold` 與 `direction`）、`fracture`（連續幾把找不到邊＝那一段沒了，
+  `fracture_run`）、`step`（相鄰兩處忽然接不上，`step_threshold`）、`width`（成對模式的 `width_min`／`width_max`）。
+- `mode="pair"` 量的是兩邊之間的寬度（肋、溝、縫），基線一律取中位數寬度。
+- 判定接 `count`（幾個）或 `max_size`／`max_deviation`（最嚴重的那個）；`max_defects` 是可以接受幾個。
+- 與 `circular_caliper`＋`profile_defect` 的分工：那條路是「半徑序列」拿去別的地方用（畫趨勢、算跳動），
+  這一顆是「就是要找缺陷並分類」。範本畫廊兩種都有（圓周崩邊／邊緣缺陷），同一組樣本可以對照。
+
 ## defect_diff
 良品差異比對：`template` 良品資產（與 ROI 同尺寸），`align=phase` 補位移，`threshold`（灰階差）與 `min_area` 決定靈敏度，`border` 忽略對齊邊界假差異。輸出 `ok/defect` 分支、`count/total_area`、`defect_mask`。
 

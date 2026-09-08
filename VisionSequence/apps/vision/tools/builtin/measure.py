@@ -543,6 +543,7 @@ class FitArcTool(Tool):
         Port("radius", "Radius", "number"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
         Port("residual_rms", "Residual RMS", "number"), Port("points", "Edge points", "points"),
         Port("start_angle", "Start angle", "number"), Port("end_angle", "End angle", "number"),
+        Port("circle", "Circle", "any"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -553,7 +554,7 @@ class FitArcTool(Tool):
         pts = _region_edge_points(ctx, image, region)
         overlays = [region_overlay(region, label="arc roi")]
         nan = float("nan")
-        ng = {"radius": nan, "cx": nan, "cy": nan, "residual_rms": nan, "points": pts.round(2).tolist(), "start_angle": nan, "end_angle": nan}
+        ng = {"radius": nan, "cx": nan, "cy": nan, "residual_rms": nan, "points": pts.round(2).tolist(), "start_angle": nan, "end_angle": nan, "circle": None}
         if len(pts) < 3:
             return Result(outputs=ng, overlays=overlays, status="ng", message=f"Too few edge points ({len(pts)})")
         use_ransac, tol = ctx.flag("ransac", True), ctx.number("ransac_tol", 2)
@@ -580,7 +581,8 @@ class FitArcTool(Tool):
             {"kind": "point", "x": cx, "y": cy, "color": "#f59e0b"},
         ]
         return Result(
-            outputs={"radius": r, "cx": cx, "cy": cy, "residual_rms": rms, "points": pts.round(2).tolist(), "start_angle": start, "end_angle": end},
+            outputs={"radius": r, "cx": cx, "cy": cy, "residual_rms": rms, "points": pts.round(2).tolist(), "start_angle": start, "end_angle": end,
+                     "circle": {"cx": round(float(cx), 4), "cy": round(float(cy), 4), "r": round(float(r), 4)}},
             overlays=overlays, message=f"R={r:.2f}px centre ({cx:.1f}, {cy:.1f}), {int(inliers.sum())}/{len(pts)} points, RMS {rms:.2f}px, {start:.0f}°→{end:.0f}°",
         )
 
