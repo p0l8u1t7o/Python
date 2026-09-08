@@ -187,6 +187,8 @@ export interface Flow {
   is_enabled: boolean
   version: number
   continuous_interval_ms: number
+  timeout_s: number
+  stop_on_ng: boolean
   node_count: number
   created_at: string
   updated_at: string

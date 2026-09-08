@@ -657,6 +657,10 @@ const zhHans = {
     importedUpdated: '已更新流程「{{name}}」',
     importNoFile: '请先选择 .flow.json 档',
   },
+  flow: {
+    timeoutS: '流程超时秒数 (0 = 不限)',
+    stopOnNg: 'NG 后停止',
+  },
   editor: {
     picturesSection: '此步骤的图片',
     sourceSection: '影像来源',
@@ -697,6 +701,7 @@ const zhHans = {
     autoLayout: '自动排列',
     autoLayoutHint: '依数据流从左到右分层排列',
     undo: '复原（Ctrl+Z）',
+    redo: '重做 (Ctrl+Shift+Z / Ctrl+Y)',
     zoomIn: '放大',
     zoomOut: '缩小',
     zoom: '缩放',
@@ -735,6 +740,7 @@ const zhHans = {
     problems: '{{count}} 个问题',
     flowDisabled: '流程已停用',
     flowDisabledHint: '流程已停用，无法运行一次／连续运行（试执行不受影响）；在侧栏或流程列表打开「激活」',
+    search: { label: '搜索节点', placeholder: '搜索节点...', empty: '尚无符合的步骤' },
     recipe: '配方',
     recipeHint: '运行一次／试执行时叠上此配方的参数覆写；空白 = 默认配方（若有）',
     recipeDefault: '（默认配方）',

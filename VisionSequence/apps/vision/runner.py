@@ -524,6 +524,8 @@ class Runner:
                     input_image=input_image,
                     run_id=run_id,
                     deadline=deadline,
+                    flow_timeout_s=getattr(flow, "timeout_s", 0),
+                    stop_on_ng=bool(getattr(flow, "stop_on_ng", False)),
                 )
             except Exception as exc:  # noqa: BLE001 — 引擎本身的 bug，不該發生
                 log.exception("引擎失敗 flow=%s", flow.id)

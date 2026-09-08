@@ -121,6 +121,18 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
   })
 
+  it('FlowEditorPage searches nodes from the canvas', async () => {
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    const input = await screen.findByTestId('node-search-input')
+    fireEvent.change(input, { target: { value: 'camera' } })
+    const results = await screen.findByTestId('node-search-results')
+    expect(results).toHaveTextContent('camera')
+    fireEvent.click(screen.getByTestId('node-search-result'))
+  })
+
   it('DashboardsPage lists operation dashboards from the API', async () => {
     const { DashboardsPage } = await import('@/pages/dashboard/DashboardsPage')
     renderPage(<DashboardsPage />, { route: '/dashboards' })

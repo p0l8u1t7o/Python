@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Images, Keyboard, LayoutTemplate, Lock, Network, Plug, PowerOff, Radio, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
+import { BarChart3, BookOpen, ChevronDown, Download, Eraser, FlaskConical, Gem, HelpCircle, ImageUp, Images, Keyboard, LayoutTemplate, Lock, Network, Plug, PowerOff, Radio, Redo2, Save, SlidersHorizontal, Square, TriangleAlert, Undo2, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { CapacityPill } from '@/components/layout/AppShell'
@@ -48,6 +48,7 @@ export interface EditorToolbarProps {
   fpsLabel?: string
   connected: boolean
   onUndo: () => void
+  onRedo: () => void
   onAutoLayout: () => void
   resetting: boolean
   onReset: () => void
@@ -171,6 +172,7 @@ export function EditorToolbar(p: EditorToolbarProps) {
           <Badge tone={p.connected ? 'ok' : 'neutral'}>{p.connected ? t('dashboard.live') : t('dashboard.offline')}</Badge>
           <CapacityPill />
           <IconButton label={t('editor.undo')} onClick={p.onUndo} size="sm"><Undo2 size={15} /></IconButton>
+          <IconButton label={t('editor.redo')} onClick={p.onRedo} size="sm"><Redo2 size={15} /></IconButton>
           <IconButton label={t('editor.autoLayoutHint')} onClick={p.onAutoLayout} size="sm"><Network size={15} /></IconButton>
           {canTeach ? <Link to={`/flows/${p.flowId}/teach`} className="btn-icon" title={t('editor.teach')} aria-label={t('editor.teach')} data-testid="btn-teach"><SlidersHorizontal size={15} /></Link> : null}
           <Link to={`/flows/${p.flowId}/golden`} className="btn-icon" title={t('editor.golden')} aria-label={t('editor.golden')} data-testid="btn-golden"><Gem size={15} /></Link>

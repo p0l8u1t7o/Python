@@ -251,6 +251,8 @@ export interface FlowPatch {
   graph?: FlowGraph
   is_enabled?: boolean
   continuous_interval_ms?: number
+  timeout_s?: number
+  stop_on_ng?: boolean
   /** 參數卡頁「標記為已教導」 */
   commissioned?: boolean
   /** 影像封存策略（工程師才能改） */

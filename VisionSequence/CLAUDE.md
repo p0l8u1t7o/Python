@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：109 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1062 項＋前端 125 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：109 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1070 項＋前端 138 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -158,6 +158,11 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 流程層限制與編輯器小功能（A5，Codex 實作）
+- `Flow.timeout_s`（秒，0＝不限）與 `Flow.stop_on_ng`（migration 0030）。**兩者都在節點與節點之間判斷，跑完當前節點才停**（VisionMaster 語意，量到的時間會略大於設定值）；`engine.execute` 多兩個選填參數 `flow_timeout_s`／`stop_on_ng`，`runner` 從 Flow 傳進去。逾時 → `RunReport.status="failed"`＋`error`／warnings 寫明停在哪一步；判 NG 就停 → 認 `status=="ng"`／`branch=="ng"`／`_judge=="ng"`，run 照樣落地成 ng，未跑到的節點是 `skipped`。**`RUN_TIMEOUT_S` 不動**（那是整體保險），`timeout_s=0` 與 `stop_on_ng=False` 時行為與以前完全相同。
+- 兩個欄位走既有 `PATCH /flows/{id}`（`flows.edit`；`teachguard` 的 `touched` 清單已含它們，操作員改會 403），`_flow_out` 回傳、複製流程會沿用。
+- 編輯器：Ctrl+F 搜尋節點（`lib/nodeSearch.ts` 純函式比對 id／標題／型別／參數值，`data-testid="node-search*"`，Enter 跳下一個、Esc 關閉、選中就 `setCenter` 置中並選取）、redo（Ctrl+Shift+Z／Ctrl+Y，歷史純函式在 `lib/flowHistory.ts` 的 `{past, future}`，新編輯動作清掉 future）。**自動連線吸附還沒做。**
 
 ### 除錯視覺化（編輯器）
 - 節點耗時熱點：`FlowEditorPage` 算 `slowestMs`，節點 data 帶 `heat`（0～1），`ToolNode.heatLevel` ≥0.85 紅、≥0.5 橙。

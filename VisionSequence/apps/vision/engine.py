@@ -162,6 +162,8 @@ def execute(
     input_image: np.ndarray | None = None,
     run_id: str | None = None,
     deadline: float | None = None,
+    flow_timeout_s: int | float = 0,
+    stop_on_ng: bool = False,
     on_node: Callable[[str, NodeReport], None] | None = None,
 ) -> RunReport:
     run_id = run_id or uuid.uuid4().hex
@@ -177,6 +179,7 @@ def execute(
     branch_of: dict[str, str | None] = {}
     any_ng = False
     any_error = False
+    flow_timeout_s = max(0.0, float(flow_timeout_s or 0))
 
     for node_id in compiled.order:
         cn = compiled.nodes[node_id]
@@ -377,8 +380,18 @@ def execute(
                 report.error = report.error or f"{cn.node.get('label') or cn.type}: {result.message}"
         if on_node:
             on_node(node_id, node_report)
+        if flow_timeout_s > 0 and time.perf_counter() - t0 > flow_timeout_s:
+            any_error = True
+            message = f"Flow timed out after {flow_timeout_s:g}s; stopped after step '{node_id}'"
+            report.error = report.error or message
+            report.warnings.append(message)
+            break
+        if stop_on_ng and (node_report.status == "ng" or result.branch == "ng" or context.get("_judge") == "ng"):
+            any_ng = True
+            report.warnings.append(f"Stopped after NG at step '{node_id}'")
+            break
 
-    # 未執行到的節點（逾時中斷）標 skipped。
+    # 未執行到的節點標 skipped。
     for node_id in compiled.order:
         if node_id not in report.nodes:
             report.nodes[node_id] = NodeReport(status="skipped", message="Not run")

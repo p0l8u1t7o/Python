@@ -11,6 +11,8 @@ class FlowIn(Schema):
     graph: dict[str, Any] | None = None
     is_enabled: bool = True
     continuous_interval_ms: int = 0
+    timeout_s: int = 0
+    stop_on_ng: bool = False
 
 
 class FlowPatch(Schema):
@@ -19,6 +21,8 @@ class FlowPatch(Schema):
     graph: dict[str, Any] | None = None
     is_enabled: bool | None = None
     continuous_interval_ms: int | None = None
+    timeout_s: int | None = None
+    stop_on_ng: bool | None = None
     commissioned: bool | None = None
     archive_policy: dict | None = None
     board: dict | None = None
@@ -47,6 +51,8 @@ class FlowOut(Schema):
     is_enabled: bool
     version: int
     continuous_interval_ms: int
+    timeout_s: int
+    stop_on_ng: bool
     node_count: int
     created_at: str
     updated_at: str

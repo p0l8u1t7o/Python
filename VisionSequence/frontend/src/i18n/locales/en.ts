@@ -332,6 +332,10 @@ const en = {
     readOnly: 'Read-only',
     readOnlyHint: 'Only administrators can modify shared flows; duplicate it first',
   },
+  flow: {
+    timeoutS: 'Flow timeout (s, 0 = none)',
+    stopOnNg: 'Stop on NG',
+  },
   editor: {
     picturesSection: 'Pictures in this step',
     sourceSection: 'Image source',
@@ -346,6 +350,7 @@ const en = {
     preview: 'Preview',
     continuous: 'Continuous',
     autoLayout: 'Auto layout',
+    redo: 'Redo',
     palette: 'Toolbox',
     nodeList: 'Steps',
     inspector: 'Settings',
@@ -369,6 +374,7 @@ const en = {
     problemsOnNode: '{{count}} parameter problem(s) on this step; fix them in the tool page',
     flowDisabled: 'Flow disabled',
     flowDisabledHint: 'The flow is disabled: run once / continuous are rejected (preview still works). Enable it in the sidebar or the flow list.',
+    search: { label: 'Search nodes', placeholder: 'Search nodes...', empty: 'No matching steps' },
     viewer: { split: 'Before / after', splitHint: 'Show input and output side by side', before: 'Before', after: 'After' },
     result: { failedAt: '"{{name}}" failed', gotoNode: 'Go to step', flow: 'flow' },
     toast: { scratchUploaded: 'Scratch image "{{name}}" uploaded ({{w}}×{{h}})', resetDone: 'Reset done' },

@@ -657,6 +657,10 @@ const zhHant = {
     importedUpdated: '已更新流程「{{name}}」',
     importNoFile: '請先選擇 .flow.json 檔',
   },
+  flow: {
+    timeoutS: '流程逾時秒數 (0 = 不限)',
+    stopOnNg: 'NG 後停止',
+  },
   editor: {
     picturesSection: '此步驟的圖片',
     sourceSection: '影像來源',
@@ -697,6 +701,7 @@ const zhHant = {
     autoLayout: '自動排列',
     autoLayoutHint: '依資料流從左到右分層排列',
     undo: '復原（Ctrl+Z）',
+    redo: '重做 (Ctrl+Shift+Z / Ctrl+Y)',
     zoomIn: '放大',
     zoomOut: '縮小',
     zoom: '縮放',
@@ -735,6 +740,7 @@ const zhHant = {
     problems: '{{count}} 個問題',
     flowDisabled: '流程已停用',
     flowDisabledHint: '流程已停用，無法執行一次／連續執行（試執行不受影響）；在側欄或流程列表開啟「啟用」',
+    search: { label: '搜尋節點', placeholder: '搜尋節點...', empty: '尚無符合的步驟' },
     recipe: '配方',
     recipeHint: '執行一次／試執行時疊上此配方的參數覆寫；空白 = 預設配方（若有）',
     recipeDefault: '（預設配方）',

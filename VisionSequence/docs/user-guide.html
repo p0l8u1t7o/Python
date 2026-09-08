@@ -212,11 +212,12 @@
 <li data-n="7"><strong>Open tool page</strong> goes to the dedicated tuning page for that step.</li>
 <li data-n="8"><strong>Preview</strong> runs the current canvas, unsaved changes included.</li>
 <li data-n="9">The <strong>teach page</strong> shortcut.</li>
-<li data-n="10">The <strong>statistics</strong> shortcut; the icons next to it are undo, auto-layout, versions, export and Golden Set.</li>
+<li data-n="10">The <strong>statistics</strong> shortcut; the icons next to it are undo, redo, auto-layout, versions, export and Golden Set.</li>
 </ol></figcaption></figure>
 <ol>
 <li>Wiring a judging tool's branch port to a step's <code>_flow</code> port makes that step conditional; every step also passes its image straight through on the <code>_image</code> port, so a tool that only produces numbers can still sit in the middle of an image chain.</li>
 <li>Ctrl+S saves. Unsaved changes are kept as a draft and survive leaving and coming back; "Run once" and "Continuous" use the saved version, "Preview" uses the draft.</li>
+<li>Ctrl+F opens node search. It matches a step's id, title, tool type and filled parameter values; Enter jumps through matches, Esc closes it. Undo and redo share the same edit history: Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes.</li>
 <li><strong>Where is the time going?</strong> After a preview every step shows its time and a thin bar: the slowest step of that run is red, anything over half of it orange. Right-click a step and choose <strong>Run to here</strong> to run only that step and the ones before it &mdash; when you are tuning one step there is no need to wait for the rest of the flow.</li>
 <li>The inspector's <strong>Settings</strong> tab (nothing selected) holds the flow's description, continuous interval and enabled switch, then two cards: <strong>Variables</strong> &mdash; the values this flow keeps between runs (a count, the previous part, the lot number a PLC sent), which you can read, change or clear right there; and <strong>Board</strong> &mdash; what the operator board shows for this flow (see <a href="#board">7-1</a>).</li>
 <li><strong>No image source chosen yet?</strong> A yellow banner appears at the top of the editor; pick a source from the dropdown in the banner (or upload a scratch image) and you can preview straight away. Selecting the acquire step shows the current source in a dropdown with a preview thumbnail in the inspector, where you can switch source directly.</li>

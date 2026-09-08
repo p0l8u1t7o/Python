@@ -69,6 +69,8 @@ def _flow_out(flow: Flow) -> dict[str, Any]:
         "is_enabled": flow.is_enabled,
         "version": flow.version,
         "continuous_interval_ms": flow.continuous_interval_ms,
+        "timeout_s": flow.timeout_s,
+        "stop_on_ng": flow.stop_on_ng,
         "commissioned": flow.commissioned,
         "archive_policy": archive.policy_for(flow),
         "board": board.sanitize(flow.board),
@@ -226,6 +228,8 @@ def create_flow(request: HttpRequest, payload: schemas.FlowIn):
                 graph=graph,
                 is_enabled=payload.is_enabled,
                 continuous_interval_ms=payload.continuous_interval_ms,
+                timeout_s=max(0, payload.timeout_s),
+                stop_on_ng=payload.stop_on_ng,
             )
     except IntegrityError:
         raise Conflict("A flow with that name already exists", code="flow_name_taken") from None
@@ -247,11 +251,11 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     p = principal(request)
     flow = get_flow(flow_id)
     before_graph = flow.graph or {}
-    before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned")}
+    before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "stop_on_ng", "commissioned")}
     if not p.can("flows.edit"):
         # 沒有 flows.edit 的人只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
         require_feature(request, "flows.teach")
-        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "commissioned", "archive_policy", "board", "comm") if getattr(payload, f) is not None]
+        touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "stop_on_ng", "commissioned", "archive_policy", "board", "comm") if getattr(payload, f) is not None]
         if touched or payload.graph is None:
             raise PermissionDenied("Your role may only change on-site teaching parameters on this flow", code="permission_denied")
         try:
@@ -268,6 +272,10 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
             runner.stop_continuous(flow.id)
     if payload.continuous_interval_ms is not None:
         flow.continuous_interval_ms = max(0, payload.continuous_interval_ms)
+    if payload.timeout_s is not None:
+        flow.timeout_s = max(0, payload.timeout_s)
+    if payload.stop_on_ng is not None:
+        flow.stop_on_ng = payload.stop_on_ng
     if payload.commissioned is not None:
         flow.commissioned = payload.commissioned
     if payload.archive_policy is not None:
@@ -373,7 +381,16 @@ def duplicate_flow(request: HttpRequest, flow_id: int):
     while Flow.objects.filter(name=name).exists():
         name = f"{flow.name} (copy {i})"
         i += 1
-    copy = Flow.objects.create(name=name, description=flow.description, graph=flow.graph, owner=principal(request).user, is_enabled=False, continuous_interval_ms=flow.continuous_interval_ms)
+    copy = Flow.objects.create(
+        name=name,
+        description=flow.description,
+        graph=flow.graph,
+        owner=principal(request).user,
+        is_enabled=False,
+        continuous_interval_ms=flow.continuous_interval_ms,
+        timeout_s=flow.timeout_s,
+        stop_on_ng=flow.stop_on_ng,
+    )
     return 201, _flow_out(copy)
 
 

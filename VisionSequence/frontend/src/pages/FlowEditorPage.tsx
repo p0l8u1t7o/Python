@@ -47,7 +47,9 @@ import { VariablesCard } from '@/components/flow/VariablesCard'
 import { downloadFile, imageUrl } from '@/lib/api'
 import { useConfirm } from '@/lib/useConfirm'
 import { errorMessage } from '@/lib/errors'
+import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory } from '@/lib/flowHistory'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
+import { searchNodes } from '@/lib/nodeSearch'
 import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
@@ -185,7 +187,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const { t } = useTranslation()
   const toast = useToast()
   const auth = useAuth()
-  const { screenToFlowPosition, fitView } = useReactFlow()
+  const { screenToFlowPosition, fitView, setCenter, getZoom } = useReactFlow()
 
   const catalogue = useToolTypes()
   const flow = useFlow(flowId)
@@ -231,6 +233,10 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false)
   const [nodeMenu, setNodeMenu] = useState<NodeMenuState | null>(null)
   const [paramsClipboard, setParamsClipboard] = useState<{ type: string; params: Record<string, unknown> } | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchActive, setSearchActive] = useState(0)
+  const searchInput = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   const previewRun = session.previewRun
@@ -257,7 +263,7 @@ function EditorInner({ flowId }: { flowId: number }) {
   const edgesRef = useRef<Edge[]>([])
   nodesRef.current = nodes
   edgesRef.current = edges
-  const history = useRef<FlowGraph[]>([])
+  const history = useRef(createHistory<FlowGraph>(HISTORY_LIMIT))
   const clipboard = useRef<{ nodes: GraphNode[]; edges: GraphEdge[] } | null>(null)
   const loadedFor = useRef('')
 
@@ -278,7 +284,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     setEdges(toFlowEdges(graph, defs))
     setMeta(source ? { name: source.name, description: source.description } : { name: data.name, description: data.description })
     setDirty(source ? source.dirty : false)
-    history.current = []
+    history.current = createHistory<FlowGraph>(HISTORY_LIMIT)
   }, [flow.data, defs, setNodes, setEdges, flowId])
 
   // ---- 離開頁面時把目前的圖寫成草稿（工具頁會讀；回來時 version 相符就沿用） ----
@@ -333,6 +339,10 @@ function EditorInner({ flowId }: { flowId: number }) {
   const sourceList = useSources()
   const nodeOrder = useMemo(() => topoOrder(graphNodes, graphEdges), [graphNodes, graphEdges])
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
+  const searchResults = useMemo(() => searchNodes(graphNodes, defs, searchQuery), [graphNodes, defs, searchQuery])
+  useEffect(() => {
+    if (searchActive !== 0 && searchActive >= searchResults.length) setSearchActive(0)
+  }, [searchActive, searchResults.length])
 
   const problemMap = useMemo(() => graphProblems(graphNodes, graphEdges, defs), [graphNodes, graphEdges, defs])
   const boardOutputNames = useMemo(() => Array.from(new Set(graphNodes.filter((n) => n.type === 'output' || n.type === 'format_text').map((n) => String(n.params?.name ?? '')).filter(Boolean))), [graphNodes])
@@ -395,8 +405,7 @@ function EditorInner({ flowId }: { flowId: number }) {
 
   // ---- 編輯操作 ----
   const pushHistory = useCallback(() => {
-    history.current.push(currentGraph())
-    if (history.current.length > HISTORY_LIMIT) history.current.shift()
+    history.current = pushEditHistory(history.current, currentGraph())
   }, [currentGraph])
 
   const restoreGraph = useCallback(
@@ -411,9 +420,16 @@ function EditorInner({ flowId }: { flowId: number }) {
   )
 
   const undo = useCallback(() => {
-    const previous = history.current.pop()
-    if (previous) restoreGraph(previous)
-  }, [restoreGraph])
+    const previous = undoHistory(history.current, currentGraph())
+    history.current = previous.state
+    if (previous.value) restoreGraph(previous.value)
+  }, [currentGraph, restoreGraph])
+
+  const redo = useCallback(() => {
+    const next = redoHistory(history.current, currentGraph())
+    history.current = next.state
+    if (next.value) restoreGraph(next.value)
+  }, [currentGraph, restoreGraph])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -605,6 +621,20 @@ function EditorInner({ flowId }: { flowId: number }) {
     [setNodes, fitView],
   )
 
+  const centerSearchNode = useCallback(
+    (id: string) => {
+      const node = nodesRef.current.find((item) => item.id === id)
+      if (!node) return
+      setSelectedId(id)
+      setRightTab('inspector')
+      setNodes((list) => list.map((item) => ({ ...item, selected: item.id === id })))
+      const width = node.width ?? 180
+      const height = node.height ?? 72
+      void setCenter(node.position.x + width / 2, node.position.y + height / 2, { duration: 300, zoom: Math.min(Math.max(getZoom(), 0.8), 1.2) })
+    },
+    [getZoom, setCenter, setNodes],
+  )
+
   // ---- 存檔／執行 ----
   const save = useCallback(async (): Promise<boolean> => {
     if (readOnly) {
@@ -767,9 +797,16 @@ function EditorInner({ flowId }: { flowId: number }) {
         void saveRef.current()
         return
       }
+      if (ctrl && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        setSearchOpen(true)
+        window.setTimeout(() => searchInput.current?.focus(), 0)
+        return
+      }
       if (isTypingTarget(event.target)) return
       if (event.key === 'Escape') {
-        if (roiEditingKey) setRoiEditingKey(null)
+        if (searchOpen) setSearchOpen(false)
+        else if (roiEditingKey) setRoiEditingKey(null)
         else if (templateKey) {
           setTemplateKey(null)
           setTemplateRegion(null)
@@ -785,7 +822,11 @@ function EditorInner({ flowId }: { flowId: number }) {
         paste()
       } else if (ctrl && event.key.toLowerCase() === 'z') {
         event.preventDefault()
-        undo()
+        if (event.shiftKey) redo()
+        else undo()
+      } else if (ctrl && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        redo()
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         const chosen = nodesRef.current.filter((n) => n.selected)
         if (chosen.length) {
@@ -805,7 +846,7 @@ function EditorInner({ flowId }: { flowId: number }) {
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [copySelection, paste, undo, deleteNodes, pushHistory, setEdges, setNodes, roiEditingKey, templateKey])
+  }, [copySelection, paste, undo, redo, deleteNodes, pushHistory, setEdges, setNodes, roiEditingKey, templateKey, searchOpen])
 
   // ---- 影像視窗 ----
   const selected = selectedId ? payloads.current.get(selectedId) : undefined
@@ -912,6 +953,7 @@ function EditorInner({ flowId }: { flowId: number }) {
         fpsLabel={isContinuous ? `${fps !== null ? t('editor.fps', { fps: fps.toFixed(1) }) : ''} ${flow.data?.stats.last_ms ? `· ${Math.round(flow.data.stats.last_ms)} ms` : ''}`.trim() : undefined}
         connected={stream.connected}
         onUndo={undo}
+        onRedo={redo}
         onAutoLayout={autoLayout}
         resetting={clearRecent.isPending}
         onReset={() => setAskReset(true)}
@@ -1031,6 +1073,49 @@ function EditorInner({ flowId }: { flowId: number }) {
           </div>
           <div className="vs-resizer vs-resizer-y" onMouseDown={onCanvasResize} />
           <div className="relative min-h-60" style={{ height: `${layout.canvas * 100}%` }}>
+            {searchOpen ? (
+              <div className="absolute left-2 top-2 z-20 w-72 rounded-lg border border-line bg-surface p-2 shadow-lg" data-testid="node-search">
+                <input
+                  ref={searchInput}
+                  className="input !py-1.5 text-sm"
+                  value={searchQuery}
+                  placeholder={t('editor.search.placeholder')}
+                  aria-label={t('editor.search.label')}
+                  onChange={(event) => { setSearchQuery(event.target.value); setSearchActive(0) }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault()
+                      setSearchOpen(false)
+                    } else if (event.key === 'Enter' && searchResults.length) {
+                      event.preventDefault()
+                      const index = searchActive % searchResults.length
+                      centerSearchNode(searchResults[index].node.id)
+                      setSearchActive((index + 1) % searchResults.length)
+                    }
+                  }}
+                  data-testid="node-search-input"
+                />
+                <div className="mt-1 max-h-48 overflow-y-auto text-xs" data-testid="node-search-results">
+                  {searchQuery.trim() && searchResults.length === 0 ? <p className="px-2 py-1.5 text-subtle">{t('editor.search.empty')}</p> : null}
+                  {searchResults.map((result, index) => (
+                    <button
+                      key={result.node.id}
+                      type="button"
+                      className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left hover:bg-surface-muted ${index === searchActive ? 'bg-brand-soft text-brand' : ''}`}
+                      onMouseEnter={() => setSearchActive(index)}
+                      onClick={() => { setSearchActive(index); centerSearchNode(result.node.id) }}
+                      data-testid="node-search-result"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{result.title}</span>
+                        <span className="block truncate text-[11px] text-muted">{result.node.id} · {result.tool}</span>
+                      </span>
+                      {result.matches[0] ? <span className="max-w-24 truncate text-[11px] text-subtle">{result.matches[0]}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <FlowCanvas
               interaction={interaction}
               onInteractionChange={(mode) => { setInteraction(mode); storeInteractionMode(mode) }}
@@ -1117,6 +1202,14 @@ function EditorInner({ flowId }: { flowId: number }) {
                     disabled={readOnly}
                     onChange={(e) => patch.mutate({ id: flowId, continuous_interval_ms: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
                   />
+                  <TextInput
+                    label={t('flow.timeoutS')}
+                    type="number"
+                    min={0}
+                    value={String(flow.data?.timeout_s ?? 0)}
+                    disabled={readOnly}
+                    onChange={(e) => patch.mutate({ id: flowId, timeout_s: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
+                  />
                   {/* 複製出來的流程預設停用；不用回列表就能在這裡開啟 */}
                   <Checkbox
                     label={t('flows.enabledToggle')}
@@ -1124,6 +1217,12 @@ function EditorInner({ flowId }: { flowId: number }) {
                     checked={flow.data?.is_enabled !== false}
                     disabled={readOnly}
                     onChange={(v) => patch.mutate({ id: flowId, is_enabled: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                  />
+                  <Checkbox
+                    label={t('flow.stopOnNg')}
+                    checked={flow.data?.stop_on_ng === true}
+                    disabled={readOnly}
+                    onChange={(v) => patch.mutate({ id: flowId, stop_on_ng: v }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
                   />
                   <div className="border-t border-line pt-3">
                     <p className="mb-1.5 text-xs font-semibold text-heading">{t('variables.title')}</p>
