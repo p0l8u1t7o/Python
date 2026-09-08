@@ -5,7 +5,7 @@ import { Copy, Download, Edit3, ExternalLink, FileInput, Plus, Star, Trash2 } fr
 
 import { CodeField } from '@/components/editor/CodeField'
 import { Page } from '@/components/layout/AppShell'
-import { Badge, Button, Card, CardBody, CardHeader, Checkbox, EmptyRow, ErrorState, LoadingState, Modal, PageHeader, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
+import { IconButton, Badge, Button, Card, CardBody, CardHeader, Checkbox, EmptyRow, ErrorState, LoadingState, Modal, PageHeader, TBody, THead, Table, Td, TextInput, Th, Tr } from '@/components/ui'
 import { api } from '@/lib/api'
 import { DEFAULT_DASHBOARD_LAYOUT } from '@/lib/dashboard'
 import { errorMessage } from '@/lib/errors'
@@ -210,7 +210,8 @@ export function DashboardsPage() {
                             <Button size="sm" variant="ghost" icon={<Edit3 className="size-4" />} onClick={() => setParams({ edit: String(item.id) })}>{t('dashboardRun.editLayout')}</Button>
                             <Button size="sm" variant="ghost" icon={<Star className="size-4" />} disabled={item.is_default} onClick={() => mutations.update.mutate({ id: item.id, is_default: true })}>{t('dashboardRun.setDefault')}</Button>
                             <Button size="sm" variant="ghost" icon={<Copy className="size-4" />} onClick={() => void duplicate(item)}>{t('dashboardRun.copy')}</Button>
-                            <Button size="sm" variant="danger" icon={<Trash2 className="size-4" />} disabled={ordered.length <= 1} onClick={() => void remove(item)}>{t('dashboardRun.remove')}</Button>
+                            <span className="mx-1 h-6 w-px self-center bg-line" aria-hidden />
+                            <IconButton label={t('dashboardRun.remove')} disabled={ordered.length <= 1} onClick={() => void remove(item)} className="hover:!bg-critical-soft hover:!text-critical"><Trash2 size={15} /></IconButton>
                           </>
                         ) : null}
                       </div>

@@ -51,7 +51,7 @@ WIDGET_PROPS: dict[str, dict[str, tuple[str, Any, Any]]] = {
         "overlays": ("bool", True, None),
         "history": ("int", 1, (1, 50)),
     },
-    "run_control": {"flow_id": ("flow_id", _REQUIRED, None)},
+    "run_control": {"flow_id": ("flow_id", None, None)},
     "run_status": {},
     "verdict": {},
     "text": {"template": ("text", _REQUIRED, None)},
@@ -121,7 +121,7 @@ DEFAULT_LAYOUT: dict[str, Any] = {
         {"id": "latest_image", "type": "image", "cell": "image", "props": {"overlays": True, "crosshair": False, "history": 1}, "source": {"kind": "image"}},
         {"id": "verdict", "type": "verdict", "cell": "verdict", "props": {}, "source": {"kind": "status"}},
         {"id": "today", "type": "stats", "cell": "stats", "props": {}, "source": {"kind": "counts"}},
-        {"id": "run", "type": "run_control", "cell": "control", "props": {"flow_id": 1}},
+        {"id": "run", "type": "run_control", "cell": "control", "props": {}},
     ],
     "theme": {},
 }
