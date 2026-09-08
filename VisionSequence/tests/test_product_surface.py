@@ -14,14 +14,19 @@ from django.conf import settings
 from django.test import TestCase
 
 BANNED = ("yolo", "ultralytics")
+#: 介面字典再多擋模型名（docs 的安裝與疑難排解段落仍需要真實套件名，所以只用在字典上）
+UI_BANNED = (r"\bSAM\d*\b",)
 ROOT = str(settings.BASE_DIR)
 
 
 def _hits(text: str, words=BANNED) -> list[str]:
+    """比對不分大小寫；但**全大寫的樣式**（UI_BANNED 的 SAM）刻意區分大小寫比對——
+    不然 i18n 的鍵名 autoLabelSam／samRemaining 會被誤判成畫面上的技術名稱。"""
     low = text.lower()
     out = []
     for w in words:
-        for m in re.finditer(w, low):
+        cased = w != w.lower()          # 樣式本身帶大寫＝要求原文也是大寫
+        for m in re.finditer(w, text if cased else low):
             out.append(text[max(0, m.start() - 50):m.end() + 50].replace("\n", " "))
     return out
 
@@ -52,7 +57,9 @@ class ProductSurfaceTests(TestCase):
         for f in files:
             with self.subTest(file=os.path.basename(f)):
                 with open(f, encoding="utf-8") as fh:
-                    self.assertEqual(_hits(fh.read()), [])
+                    # 介面字典是使用者每天看的字，連模型名（SAM／SAM2）都不該出現：
+                    # 曾經有「SAM 全圖提案」這種按鈕名一路留到畫面上。
+                    self.assertEqual(_hits(fh.read(), BANNED + UI_BANNED), [])
 
     def test_docs_prose(self):
         files = glob.glob(os.path.join(ROOT, "docs", "*.html"))
