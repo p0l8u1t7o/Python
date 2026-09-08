@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
 from typing import Any
 
+import cv2
 import numpy as np
 
 from apps.vision import shapemodel
@@ -19,13 +22,83 @@ POLARITY_OPTIONS = [
     {"value": "use_polarity", "label": "Use polarity (dark-on-light stays dark-on-light)"},
     {"value": "ignore_polarity", "label": "Ignore polarity (also finds the inverted part)"},
 ]
+MODEL_SOURCE_OPTIONS = [
+    {"value": "asset", "label": "Asset"},
+    {"value": "builtin", "label": "Built-in mark"},
+]
+BUILTIN_SHAPE_OPTIONS = [
+    {"value": "cross", "label": "Cross"},
+    {"value": "square_outline", "label": "Square outline"},
+    {"value": "disc", "label": "Disc"},
+]
+
+_BUILTIN_MODEL_CACHE: "OrderedDict[tuple[str, int, int], dict[str, Any]]" = OrderedDict()
+_BUILTIN_MODEL_CACHE_MAX = 32
+_BUILTIN_LOCK = threading.Lock()
 
 
 def read_model(ctx: ToolContext, key: str = "model") -> dict[str, Any]:
+    if str(ctx.param("model_source", "asset")) == "builtin":
+        return builtin_model(
+            str(ctx.param("builtin_shape", "cross")),
+            ctx.integer("builtin_size", 48),
+            ctx.integer("builtin_line_width", 6),
+        )
     try:
         return shapemodel.from_asset(ctx.param(key), ctx.asset_path)
     except shapemodel.ShapeModelError as exc:
         raise ToolError(str(exc)) from None
+
+
+def clear_builtin_model_cache() -> None:
+    """測試用：清掉內建 Mark 形狀模型快取。"""
+    with _BUILTIN_LOCK:
+        _BUILTIN_MODEL_CACHE.clear()
+
+
+def _builtin_key(shape: str, size: int, line_width: int) -> tuple[str, int, int]:
+    shape = shape if shape in {o["value"] for o in BUILTIN_SHAPE_OPTIONS} else "cross"
+    size = int(np.clip(size, 8, 512))
+    line_width = int(np.clip(line_width, 1, max(1, size // 2)))
+    return shape, size, line_width
+
+
+def builtin_template(shape: str, size: int, line_width: int) -> np.ndarray:
+    """合成乾淨的內建 Mark 樣板，後續仍交給 shapemodel.teach() 建模。"""
+    shape, size, line_width = _builtin_key(shape, size, line_width)
+    pad = max(8, line_width * 3)
+    side = size + pad * 2
+    img = np.full((side, side), 30, dtype=np.uint8)
+    c = side // 2
+    half = size // 2
+    if shape == "cross":
+        cv2.line(img, (c - half, c), (c + half, c), 220, line_width, lineType=cv2.LINE_8)
+        cv2.line(img, (c, c - half), (c, c + half), 220, line_width, lineType=cv2.LINE_8)
+    elif shape == "square_outline":
+        cv2.rectangle(img, (c - half, c - half), (c + half, c + half), 220, line_width, lineType=cv2.LINE_8)
+    else:
+        cv2.circle(img, (c, c), half, 220, -1, lineType=cv2.LINE_8)
+    return cv2.GaussianBlur(img, (3, 3), 0.4)
+
+
+def builtin_model(shape: str, size: int, line_width: int) -> dict[str, Any]:
+    """依圖形種類與尺寸參數快取 shapemodel.teach() 產物。"""
+    cache_key = _builtin_key(shape, size, line_width)
+    with _BUILTIN_LOCK:
+        hit = _BUILTIN_MODEL_CACHE.get(cache_key)
+        if hit is not None:
+            _BUILTIN_MODEL_CACHE.move_to_end(cache_key)
+            return hit
+    try:
+        model = shapemodel.teach(builtin_template(*cache_key), contrast_low=None, contrast_high=None, min_contrast=4.0, max_points=1024)
+    except shapemodel.ShapeModelError as exc:
+        raise ToolError(str(exc)) from None
+    with _BUILTIN_LOCK:
+        _BUILTIN_MODEL_CACHE[cache_key] = model
+        _BUILTIN_MODEL_CACHE.move_to_end(cache_key)
+        while len(_BUILTIN_MODEL_CACHE) > _BUILTIN_MODEL_CACHE_MAX:
+            _BUILTIN_MODEL_CACHE.popitem(last=False)
+    return model
 
 
 class ShapeMatchTool(Tool):
@@ -41,8 +114,17 @@ class ShapeMatchTool(Tool):
     heavy = True
     accepts = ("u8",)
     params = [
+        Param("model_source", "Model source", kind="select", default="asset", options=MODEL_SOURCE_OPTIONS,
+              help_text="Use an uploaded taught shape model asset, or synthesize a built-in fiducial mark model in memory."),
         Param("model", "Shape model", kind="asset", accept="file", required=True,
+              visible_when={"param": "model_source", "in": ["asset"]},
               help_text="Built from an image asset with POST /vision/assets/shape-model or manage.py shape_model (an .npz file asset)."),
+        Param("builtin_shape", "Built-in shape", kind="select", default="cross", options=BUILTIN_SHAPE_OPTIONS,
+              visible_when={"param": "model_source", "in": ["builtin"]}, help_text="Cross, square outline or solid disc mark."),
+        Param("builtin_size", "Mark size", kind="number", default=48, minimum=8, maximum=512, step=1,
+              visible_when={"param": "model_source", "in": ["builtin"]}, help_text="Outer diameter or side length in pixels.", teach=True),
+        Param("builtin_line_width", "Line width", kind="number", default=6, minimum=1, maximum=128, step=1,
+              visible_when={"param": "model_source", "in": ["builtin"]}, help_text="Stroke width for cross and square outline marks.", teach=True),
         Param("roi", "Search region", kind="roi", shapes=["rect", "rotated_rect", "polygon"], help_text="Leave blank for the whole image."),
         Param("min_score", "Min score", kind="range", default=0.7, minimum=0, maximum=1, step=0.01, teach=True,
               help_text="1 = every model edge matches. Occlusion lowers it in proportion: a quarter hidden scores about 0.75."),

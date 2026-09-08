@@ -85,7 +85,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["shading_correct"], set())
         self.assertEqual(teach["undistort"], {"k1", "k2"})
         self.assertEqual(teach["defect_stat"], {"roi", "sigma", "min_area", "direction"})
-        self.assertEqual(teach["shape_match"], {"min_score", "max_matches", "angle_start", "angle_extent"})
+        self.assertEqual(teach["shape_match"], {"min_score", "max_matches", "angle_start", "angle_extent",
+                                                 "builtin_size", "builtin_line_width"})
         self.assertEqual(teach["dl_anomaly"], {"roi", "threshold", "min_area"})
         self.assertEqual(teach["circular_caliper"], {"roi", "caliper_count", "edge_threshold", "polarity", "edge_select"})
         self.assertEqual(teach["profile_defect"], {"threshold", "threshold_mode", "min_width", "direction", "max_defects"})

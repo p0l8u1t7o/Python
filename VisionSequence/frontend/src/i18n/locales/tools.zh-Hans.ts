@@ -3026,7 +3026,11 @@ export default {
     label: "形状比对",
     description: "以边缘的方向而不是灰度值找教导过的形状，所以光线变了、物体被遮住一部分、背景杂乱或零件转到任何角度都照样找得到。在资产页从一张良品建模；输出的比对结果接定位补正，用法与模板比对相同。",
     params: {
+      model_source: { label: "模型来源", help: "使用已上传的形状模型资产，或在内存合成内建基准 Mark 模型。", options: { asset: "资产", builtin: "内建 Mark" } },
       model: { label: "形状模板", help: "用 POST /vision/assets/shape-model 或 manage.py shape_model 从图像资产建立（.npz 文件资产）。" },
+      builtin_shape: { label: "内建图形", help: "十字、空心方框或实心圆 Mark。", options: { cross: "十字", square_outline: "空心方框", disc: "实心圆" } },
+      builtin_size: { label: "Mark 尺寸", help: "外径或边长，单位为像素。" },
+      builtin_line_width: { label: "线宽", help: "十字与空心方框的笔画宽度。" },
       roi: { label: "搜索区域", help: "留空则整张图像。" },
       min_score: { label: "最低分数", help: "1 = 每个模型边缘都吻合。遮挡会等比例降分：遮住四分之一约 0.75。" },
       max_matches: { label: "最多比对数" },
@@ -3041,6 +3045,23 @@ export default {
       min_contrast: { label: "最小对比", help: "搜索图像中弱于此值的边缘不计；0 = 用模型自己的值。", group: "高级" },
     },
     ports: { image: "图像", roi: "搜索区域（动态）", found: "找到", not_found: "未找到", matches: "比对结果", count: "数量", best_x: "最佳 X", best_y: "最佳 Y", best_angle: "最佳角度", best_scale: "最佳尺度", best_score: "最佳分数" },
+  },
+  track_objects: {
+    label: "目标追踪",
+    description: "在连续执行中用预测位置与最近邻配对，替匹配框维持稳定 ID。试执行与沙盒只写变量覆盖层，不会推进正式追踪状态。",
+    params: {
+      state_name: { label: "状态变量", help: "保存追踪状态的流程变量；多个追踪器请用不同名称。" },
+      max_distance: { label: "最大距离", help: "检测中心离预测位置超过此距离时，建立新目标。" },
+      max_missing: { label: "最大丢失次数", help: "连续丢失超过此值才淘汰目标。" },
+      reset: { label: "重设", help: "本次帧处理前清除已保存的追踪状态。" },
+      line_mode: { label: "计数线", options: { none: "无", points: "两点" }, group: "计数" },
+      count_line: { label: "线段点", help: "两点格式：[[x1,y1],[x2,y2]]。由负侧跨到正侧算 count_in。", group: "计数" },
+    },
+    ports: {
+      matches: "匹配", boxes: "方框", count_line: "计数线", reset: "重设", image: "图像（显示用）",
+      ok: "追踪中", not_found: "无目标", tracks: "追踪目标", count: "数量", new_count: "新增数", lost_count: "淘汰数",
+      count_in: "进入计数", count_out: "离开计数",
+    },
   },
   template_match: {
     label: "范本比对",

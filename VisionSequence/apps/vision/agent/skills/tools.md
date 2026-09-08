@@ -132,10 +132,18 @@ ROI 處理完要回到全圖座標時使用：`crop.image` 做完濾波/遮罩�
 **逾時** `timeout_ms` 到了就回目前最好的結果，不讓大角度搜尋拖住產線。
 ## shape_match
 形狀比對定位（幾何比對）：以邊緣**梯度方向**計分，光照變化、部分遮擋、雜亂背景、任意角度都撐得住，是 template_match（NCC）撐不住時的首選
-（機械手上下料、多件同時定位）。`model` 是形狀範本資產（用 `POST /vision/assets/shape-model` 從影像資產或試執行影像＋範本區建；
+（機械手上下料、多件同時定位）。`model_source=asset` 時 `model` 是形狀範本資產（用 `POST /vision/assets/shape-model` 從影像資產或試執行影像＋範本區建；
 可給 `exclude` 排除會變的印字），`min_score` 0.6～0.8（遮 25% 分數約掉 0.25）、`max_matches`、`angle_start/angle_extent`
 （範圍越窄越快）、`scale_min/max`（預設不搜尺度）、`polarity` ignore 找黑白反轉件。輸出 `matches`（與 template_match 同格式）接 shape_align、
 `best_x/best_y/best_angle/best_scale/best_score`，`not_found` 接 judge(ng)。沒有形狀資產可填時留空並在 note 提醒先建模。
+PCB 十字 Mark、方形對位塊、圓形基準孔這種規則圖形可改 `model_source=builtin`，選 `builtin_shape=cross/square_outline/disc`，再填外徑或邊長與線寬；平台會在記憶體合成乾淨樣板後走同一套 shapemodel 建模，不需要先拍一張 Mark 再教模型。
+
+## track_objects
+目標追蹤（logic 類，連續模式才有意義）：吃上游 `matches` 或 `boxes`，用「上次位置＋速度」預測下一格，再和這次偵測做最近鄰配對，輸出穩定 `id/cx/cy/vx/vy/age/missing`。
+接在 `shape_match`、`template_match`、`blob`、`ai_detect` 這類會輸出框的位置之後，用在輸送帶計數、暫時遮蔽仍要保留同一 ID、或兩個物件交錯移動時避免搶 ID。
+`max_distance` 要大於單格可能移動距離但小於兩個物件的安全間距；`max_missing` 是遮蔽容忍格數，超過才淘汰並讓下次偵測拿新 ID。
+`line_mode=points` 時 `count_line` 填兩點，中心從有號負側跨到正側加 `count_in`，反向加 `count_out`；線的點順序會決定正負方向。
+狀態存在 `state_name` 指定的流程變數，只存純量與清單；試執行、`flow_id<=0`、`_sandbox` 都只寫覆蓋層，不會污染產線追蹤狀態。換批、換場景或重跑序列前接 `reset`。
 
 ## shape_align
 定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。

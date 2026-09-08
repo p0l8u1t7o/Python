@@ -191,62 +191,6 @@ class FrameAndPasteTests(SimpleTestCase):
         self.assertEqual(out[32, 32, :2].tolist(), [32, 32])
         self.assertEqual(out[64, 64, :2].tolist(), [56, 56])
 
-    def helper_accumulator_state_survives_the_variables_snapshot(self):
-        """frame_accumulate 存的狀態不得讓 variables.snapshot() 拋例外。
-
-        踩過的坑：清空時存 `np.empty((0,))`（1 維），而 snapshot 把每個 ndarray 都當影像去讀
-        `shape[1]` → IndexError。流程只要 reset 過一次，`GET /flows/{id}/board`、
-        `/flows/{id}/variables` 與 `/dashboards/{id}/data` 就全部 500——board 是文件化的
-        整合契約，現場看板會整片掛掉。這條同時鎖住工具層與 snapshot 的加固。
-        """
-        flow_id = 4321          # SimpleTestCase 不能碰 DB：store 的 set/snapshot 純記憶體，不必 ensure_loaded
-        image = np.full((6, 8), 60, np.uint8)
-
-        # 1) 清空之後 snapshot 要正常
-        run("frame_accumulate", image, {"count": 3, "reset": True}, {}, flow_id=flow_id, preview=False, node_id="acc")
-        snap = variables.store.snapshot(flow_id)
-        self.assertIsInstance(snap, dict)
-
-        # 2) 累積中（真的存了 2 維影像）也要正常，而且回報得出寬高
-        run("frame_accumulate", image, {"count": 3}, {}, flow_id=flow_id, preview=False, node_id="acc")
-        snap = variables.store.snapshot(flow_id)
-        images = [v for v in snap.values() if isinstance(v, dict) and v.get("image")]
-        self.assertTrue(images, snap)
-        self.assertEqual((images[0]["width"], images[0]["height"]), (8, 6))
-
-        # 3) 任何形狀的 ndarray 都不該讓這條顯示路徑炸掉
-        variables.store.set(flow_id, "odd_scalar", np.float32(1.5))
-        variables.store.set(flow_id, "odd_1d", np.zeros((3,), np.uint8))
-        self.assertIsInstance(variables.store.snapshot(flow_id), dict)
-
-    def helper_accumulator_state_survives_the_variables_snapshot_duplicate(self):
-        """frame_accumulate 存的狀態不得讓 variables.snapshot() 拋例外。
-
-        踩過的坑：清空時存 `np.empty((0,))`（1 維），而 snapshot 把每個 ndarray 都當影像去讀
-        `shape[1]` → IndexError。流程只要 reset 過一次，`GET /flows/{id}/board`、
-        `/flows/{id}/variables` 與 `/dashboards/{id}/data` 就全部 500——board 是文件化的
-        整合契約，現場看板會整片掛掉。這條同時鎖住工具層與 snapshot 的加固。
-        """
-        flow_id = 4321          # SimpleTestCase 不能碰 DB：store 的 set/snapshot 純記憶體
-        image = np.full((6, 8), 60, np.uint8)
-
-        # 1) 清空之後 snapshot 要正常
-        run("frame_accumulate", image, {"count": 3, "reset": True}, {}, flow_id=flow_id, preview=False, node_id="acc")
-        snap = variables.store.snapshot(flow_id)
-        self.assertIsInstance(snap, dict)
-
-        # 2) 累積中（真的存了 2 維影像）也要正常，而且回報得出寬高
-        run("frame_accumulate", image, {"count": 3}, {}, flow_id=flow_id, preview=False, node_id="acc")
-        snap = variables.store.snapshot(flow_id)
-        images = [v for v in snap.values() if isinstance(v, dict) and v.get("image")]
-        self.assertTrue(images, snap)
-        self.assertEqual((images[0]["width"], images[0]["height"]), (8, 6))
-
-        # 3) 任何形狀的 ndarray 都不該讓這條顯示路徑炸掉
-        variables.store.set(flow_id, "odd_scalar", np.float32(1.5))
-        variables.store.set(flow_id, "odd_1d", np.zeros((3,), np.uint8))
-        self.assertIsInstance(variables.store.snapshot(flow_id), dict)
-
     def test_accumulator_state_survives_the_variables_snapshot(self):
         """frame_accumulate 存的狀態不得讓 variables.snapshot() 拋例外。
 

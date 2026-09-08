@@ -3026,7 +3026,11 @@ export default {
     label: "形狀比對",
     description: "以邊緣的方向而不是灰階值找教導過的形狀，所以光線變了、物件被遮住一部分、背景雜亂或零件轉到任何角度都照樣找得到。在資產頁從一張良品建模；輸出的比對結果接定位補正，用法與範本比對相同。",
     params: {
+      model_source: { label: "模型來源", help: "使用已上傳的形狀模型資產，或在記憶體合成內建基準 Mark 模型。", options: { asset: "資產", builtin: "內建 Mark" } },
       model: { label: "形狀範本", help: "用 POST /vision/assets/shape-model 或 manage.py shape_model 從影像資產建立（.npz 檔案資產）。" },
+      builtin_shape: { label: "內建圖形", help: "十字、空心方框或實心圓 Mark。", options: { cross: "十字", square_outline: "空心方框", disc: "實心圓" } },
+      builtin_size: { label: "Mark 尺寸", help: "外徑或邊長，單位為像素。" },
+      builtin_line_width: { label: "線寬", help: "十字與空心方框的筆畫寬度。" },
       roi: { label: "搜尋區域", help: "留空則整張影像。" },
       min_score: { label: "最低分數", help: "1 = 每個模型邊緣都吻合。遮擋會等比例降分：遮住四分之一約 0.75。" },
       max_matches: { label: "最多比對數" },
@@ -3041,6 +3045,23 @@ export default {
       min_contrast: { label: "最小對比", help: "搜尋影像中弱於此值的邊緣不計；0 = 用模型自己的值。", group: "進階" },
     },
     ports: { image: "影像", roi: "搜尋區域（動態）", found: "找到", not_found: "未找到", matches: "比對結果", count: "數量", best_x: "最佳 X", best_y: "最佳 Y", best_angle: "最佳角度", best_scale: "最佳尺度", best_score: "最佳分數" },
+  },
+  track_objects: {
+    label: "目標追蹤",
+    description: "在連續執行中用預測位置與最近鄰配對，替匹配框維持穩定 ID。試執行與沙盒只寫變數覆蓋層，不會推進正式追蹤狀態。",
+    params: {
+      state_name: { label: "狀態變數", help: "保存追蹤狀態的流程變數；多個追蹤器請用不同名稱。" },
+      max_distance: { label: "最大距離", help: "偵測中心離預測位置超過此距離時，建立新目標。" },
+      max_missing: { label: "最大丟失次數", help: "連續丟失超過此值才淘汰目標。" },
+      reset: { label: "重設", help: "本次影格處理前清除已保存的追蹤狀態。" },
+      line_mode: { label: "計數線", options: { none: "無", points: "兩點" }, group: "計數" },
+      count_line: { label: "線段點", help: "兩點格式：[[x1,y1],[x2,y2]]。由負側跨到正側算 count_in。", group: "計數" },
+    },
+    ports: {
+      matches: "匹配", boxes: "方框", count_line: "計數線", reset: "重設", image: "影像（顯示用）",
+      ok: "追蹤中", not_found: "無目標", tracks: "追蹤目標", count: "數量", new_count: "新增數", lost_count: "淘汰數",
+      count_in: "進入計數", count_out: "離開計數",
+    },
   },
   template_match: {
     label: "範本比對",

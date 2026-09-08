@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：131 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：132 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -250,6 +250,12 @@
 - **暖機絕不碰相機**：`grab` 換成一律回 None 並記 log 的假函式；取像節點是 `source` 模式直接 skipped，`auto`／`input` 模式只在快取裡已有該來源影像時沿用，否則 skipped 並回報原因。
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
+
+### 內建 Mark 圖形與目標追蹤（D8／D9，`tools/builtin/shape.py`＋`track.py`，Codex 實作）
+- **D8**：`shape_match` 的 `model_source`＝`asset`（**預設，行為一字不變**）／`builtin`。內建三種：`cross`／**`square_outline`**／`disc`（**選項值是 `square_outline` 不是 `square`**，寫錯會靜默 fallback 成 cross——我第一次驗證就踩到，位置差 29 px 還以為是 bug）。做法是**在記憶體合成乾淨樣板再餵既有的 `shapemodel.teach()`**，沒有另寫一套邊緣模型產生器；`_BUILTIN_MODEL_CACHE`（OrderedDict＋lock，鍵 `(shape, size, line_width)`，上限 32）。`builtin_size`／`builtin_line_width` 標 `teach=True`（換線換料號，Mark 尺寸會變，與 D5 的 `expected_width` 同理）。
+  實測（真值 (180,140)）：cross 0.46 px／square_outline 0.49 px／disc 0.31 px，score 都是 1.000；旋轉 30° 後角度誤差 cross 0.53°／square 0.28°。**快取實測 0.47 ms → 0.016 ms（30×）**，換尺寸會另建一筆。
+- **D9 `track_objects`**（logic，純資料工具）：吃 `matches`／`boxes`，狀態存流程變數（**只存純量與清單，不要存 ndarray**——剛修過 1 維佔位陣列害 board 端點 500 的坑）。**用預測位置（上次位置＋速度）配對**，不是純最近鄰：實測兩個目標相向而行交錯後，ID 仍各自跟著自己的物體（第 5～6 幀 ID 1 在右、ID 2 在左），純最近鄰在交錯點會互換。
+  等速右移五片 ID 全程不變、`vx` 估到 10.0；遮蔽一片 `missing=1` 且 ID 延續；超過 `max_missing` 才換新 ID。選配計數線用**有號的跨越方向**判斷 `count_in`／`count_out`。**只在連續模式有意義**；preview／`flow_id<=0` 走覆蓋層（實測連按三次產線狀態一字不變）。測試 `tests/test_track_and_mark.py`。
 
 ### 多幀累積、影像運算與簡易畸變（C3／J4／J5，`tools/builtin/frames.py`＋`preprocess.py`，Codex 實作）
 - **`frame_accumulate`**（C3）：把每次 run 的影像累積成 mean／max／min，`count` 張才輸出（`emit` 決定）；狀態存流程變數，`reset` 可清空。**preview／`flow_id<=0` 一律走覆蓋層**——實測產線累積 1 張後連按三次試執行，產線狀態一字不變、下一片仍是第 2 張。`previous_image` 讀 `images.store` 最近第 k 次 run 的節點輸出，找不到走 `not_found`。

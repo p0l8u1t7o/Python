@@ -340,6 +340,19 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         {"cx": 12.0, "cy": 10.0, "w": 10.0, "h": 10.0, "score": 0.9, "angle": 0.0, "label": "part"},
         {"cx": 50.0, "cy": 50.0, "w": 10.0, "h": 10.0, "score": 0.4, "angle": 0.0, "label": "part"},
     ]
+    from apps.vision.tools.builtin import shape as _shape
+
+    mark = np.full((180, 220), 30, np.uint8)
+    mark_tpl = _shape.builtin_template("cross", 48, 6)
+    mark_y, mark_x = mark.shape[0] // 2 - mark_tpl.shape[0] // 2, mark.shape[1] // 2 - mark_tpl.shape[1] // 2
+    mark[mark_y:mark_y + mark_tpl.shape[0], mark_x:mark_x + mark_tpl.shape[1]] = mark_tpl
+    track_state = {
+        "next_id": 3, "count_in": 0, "count_out": 0,
+        "tracks": [
+            {"id": 1, "cx": 40.0, "cy": 40.0, "vx": 8.0, "vy": 0.0, "age": 3, "missing": 0, "last_cx": 40.0, "last_cy": 40.0, "line_side": None},
+            {"id": 2, "cx": 90.0, "cy": 70.0, "vx": -5.0, "vy": 0.0, "age": 3, "missing": 0, "last_cx": 90.0, "last_cy": 70.0, "line_side": None},
+        ],
+    }
     # 極座標展開：1280×960 時 r 200～300（規格的效能預算案例）；640×480 等比縮小
     ring = {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.2083, "r_outer": m * 0.3125}
     from apps.vision.tools.builtin import polar as _polar
@@ -412,6 +425,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("shape_match full angle", "shape_match", big, {"model": "shapemodel", "min_score": 0.6}, {}, {}),
         ("shape_match ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "angle_start": -20, "angle_extent": 40}, {}, {}),
         ("shape_match roi ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "roi": plate, "angle_start": -20, "angle_extent": 40}, {}, {}),
+        ("shape_match builtin cross", "shape_match", mark, {"model_source": "builtin", "builtin_shape": "cross", "builtin_size": 48, "builtin_line_width": 6, "min_score": 0.45, "angle_start": -45, "angle_extent": 90}, {}, {}),
         ("shape_align", "shape_align", None, {"ref_x": s.cx, "ref_y": s.cy}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("align_offset point", "align_offset", None, {"ref_x": s.cx, "ref_y": s.cy, "ref_angle": 0}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("align_offset grab", "align_offset", None, {"mode": "grab", "ref_x": s.cx, "ref_y": s.cy, "grab_x": s.cx + 40, "grab_y": s.cy + 10}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
@@ -542,6 +556,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("python_script", "python_script", gray, {"code": SCRIPT_TEMPLATE}, {}, {"_script_admin": True}),
         ("boxes_merge", "boxes_merge", None, {"mode": "iou", "threshold": 0.5, "keep": "highest_score"}, {"matches": merge_matches}, {}),
         ("array_correct", "array_correct", None, {"rows": 3, "cols": 4, "tolerance": 2}, {"matches": grid_matches}, {}),
+        ("track_objects 2 targets", "track_objects", None, {"state_name": "bench_track", "max_distance": 20, "max_missing": 1},
+         {"matches": [{"cx": 48.0, "cy": 40.0, "w": 8.0, "h": 8.0}, {"cx": 85.0, "cy": 70.0, "w": 8.0, "h": 8.0}]},
+         {"_sandbox": True, "_variables_overlay": {"1:bench_track": track_state}}),
         ("count_list", "count_list", None, {}, {"items": list(range(100))}, {}),
         ("tile 3x4", "tile", None, {"width": s.w, "height": s.h, "rows": 3, "cols": 4, "overlap": 0.25}, {}, {}),
         ("call_flow (sandbox)", "call_flow", gray, {"target_flow_id": 1, "prefix": "child_"}, {}, {"_sandbox": True}),
