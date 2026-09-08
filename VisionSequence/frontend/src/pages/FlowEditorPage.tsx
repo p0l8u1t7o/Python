@@ -26,7 +26,7 @@ import {
   type Node,
   type NodeChange,
 } from '@xyflow/react'
-import { Camera, Check, Columns2, Layers, RotateCcw } from 'lucide-react'
+import { Camera, Check, Columns2, Layers, LayoutGrid, RotateCcw } from 'lucide-react'
 
 import { EditorToolbar } from '@/components/editor/EditorToolbar'
 import { FlowCanvas, readInteractionMode, storeInteractionMode, type InteractionMode } from '@/components/editor/FlowCanvas'
@@ -51,6 +51,8 @@ import { errorMessage } from '@/lib/errors'
 import { createHistory, pushHistory as pushEditHistory, redoHistory, undoHistory } from '@/lib/flowHistory'
 import { getSession, setDraft, updateSession, useFlowSession } from '@/lib/flowDraft'
 import { searchNodes } from '@/lib/nodeSearch'
+import { readEditorGridView, writeEditorGridView } from '@/lib/localState'
+import { GRID_COUNTS, bindGridCell, gridCellImage, gridPlacement, normalizeGridLayout, setGridCount, type GridBinding, type GridCount, type GridLayout } from '@/lib/gridView'
 import { describeReport, useRegisterAssistantContext } from '@/lib/assistantContext'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { DECORATION_TYPES, checkConnection, graphProblems } from '@/lib/graphValidation'
@@ -221,6 +223,8 @@ function EditorInner({ flowId }: { flowId: number }) {
   const [rightTab, setRightTab] = useState<'inspector' | 'results'>('inspector')
   const [viewMode, setViewMode] = useState<'input' | 'output'>('input')
   const [split, setSplit] = useState(true) // 進編輯器預設就看「執行前／後」並排
+  const [gridMode, setGridMode] = useState(false)
+  const [gridLayout, setGridLayout] = useState<GridLayout>(() => normalizeGridLayout(readEditorGridView(flowId)))
   const [allOverlays, setAllOverlays] = useState(false)
   const [pinnedRunId, setPinnedRunId] = useState<string | null>(null)
   const [clearedRunId, setClearedRunId] = useState<string | null>(null)
@@ -253,6 +257,14 @@ function EditorInner({ flowId }: { flowId: number }) {
       /* ignore */
     }
   }, [layout])
+
+  useEffect(() => {
+    setGridLayout(normalizeGridLayout(readEditorGridView(flowId)))
+  }, [flowId])
+
+  useEffect(() => {
+    writeEditorGridView(flowId, gridLayout)
+  }, [flowId, gridLayout])
 
   const defs = useMemo(() => {
     const map = new Map<string, ToolTypeDef>()
@@ -863,6 +875,40 @@ function EditorInner({ flowId }: { flowId: number }) {
     () => (split ? resolveView(activeRun, selectedId, 'output', false, graphEdges, defs, payloads.current, nodeOrder) : null),
     [split, activeRun, selectedId, graphEdges, defs, nodeOrder],
   )
+  const compareView = useMemo(() => {
+    if (roiEditingKey || templateKey) return null
+    const otherMode = effectiveMode === 'input' ? 'output' : 'input'
+    const other = resolveView(activeRun, selectedId, otherMode, false, graphEdges, defs, payloads.current, nodeOrder)
+    return other.ref && other.ref !== view.ref ? other : null
+  }, [activeRun, selectedId, effectiveMode, graphEdges, defs, nodeOrder, roiEditingKey, templateKey, view.ref])
+  const gridPlace = useMemo(() => gridPlacement(gridLayout.count), [gridLayout.count])
+  const imageNodeIds = useMemo(() => new Set(graphNodes.map((node) => node.id)), [graphNodes])
+  const imagePortOptions = useMemo(() => {
+    const out = new Map<string, { value: string; label: string }[]>()
+    for (const node of graphNodes) {
+      const ports = new Map<string, string>()
+      for (const port of defs.get(node.type)?.outputs ?? []) {
+        if (port.type === 'image') ports.set(port.key, port.label || port.key)
+      }
+      const report = activeRun?.nodes[node.id]
+      for (const [key, value] of Object.entries(report?.outputs ?? {})) {
+        if (isImageRef(value)) ports.set(key, ports.get(key) ?? key)
+      }
+      if (ports.size) out.set(node.id, Array.from(ports.entries()).map(([value, label]) => ({ value, label })))
+    }
+    return out
+  }, [activeRun, defs, graphNodes])
+  const gridNodeOptions = useMemo(
+    () => graphNodes.filter((node) => imagePortOptions.has(node.id)).map((node) => ({ value: node.id, label: node.label || defs.get(node.type)?.label || node.id })),
+    [defs, graphNodes, imagePortOptions],
+  )
+  const gridImages = useMemo(
+    () => gridLayout.bindings.map((binding) => gridCellImage(activeRun, binding, imageNodeIds)),
+    [activeRun, gridLayout.bindings, imageNodeIds],
+  )
+  const setGridBinding = useCallback((index: number, binding: GridBinding | null) => {
+    setGridLayout((layout) => bindGridCell(layout, index, binding))
+  }, [])
   const roiParam = roiEditingKey ? selectedDef?.params.find((p) => p.key === roiEditingKey) : undefined
   const roiValue = roiParam && selected ? (selected.params?.[roiParam.key] as Region | null | undefined) ?? null : null
   const badge = activeRun
@@ -1006,47 +1052,115 @@ function EditorInner({ flowId }: { flowId: number }) {
         {/* 中：影像視窗（上）＋ 畫布（下） */}
         <div ref={centerRef} className="flex min-w-0 flex-1 flex-col">
           <div className="relative flex min-h-0 flex-1">
-            <div className="relative min-w-0 flex-1" data-testid="viewer-main">
-              <ImageViewer
-                src={view.ref ? imageUrl(view.ref, 1600) : null}
-                imageWidth={view.width}
-                imageHeight={view.height}
-                overlays={roiEditingKey || templateKey ? [] : view.overlays}
-                badge={badge}
-                toolbar
-                className="h-full w-full"
-                {...viewerRoiProps}
-              />
-              {split ? <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span> : null}
-            </div>
-            {split && outputView ? (
-              <div className="relative min-w-0 flex-1 border-l border-line" data-testid="viewer-after">
-                {/* 沒有影像輸出的步驟（blob／比較…）：與工具頁一致，右邊顯示「標記疊在輸入影像上」而不是空白 */}
-                <ImageViewer
-                  src={outputView.ref ? imageUrl(outputView.ref, 1600) : null}
-                  imageWidth={outputView.width}
-                  imageHeight={outputView.height}
-                  overlays={outputView.hasOutput ? [] : outputView.overlays}
-                  toolbar
-                  className="h-full w-full"
-                />
-                <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.after')}{outputView.hasOutput || !outputView.ref ? '' : ` · ${t('tool.overlaysOnInput')}`}</span>
+            {gridMode ? (
+              <div
+                className="grid min-h-0 min-w-0 flex-1 gap-1 bg-viewer p-1"
+                style={{ gridTemplateColumns: `repeat(${gridPlace.cols}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${gridPlace.rows}, minmax(0, 1fr))` }}
+                data-testid="editor-grid-view"
+              >
+                {Array.from({ length: gridLayout.count }, (_, index) => {
+                  const binding = gridLayout.bindings[index] ?? null
+                  const ports = binding?.nodeId ? imagePortOptions.get(binding.nodeId) ?? [] : []
+                  const image = gridImages[index]
+                  return (
+                    <div key={index} className="relative min-h-0 min-w-0 overflow-hidden rounded-md border border-line bg-viewer" data-testid="editor-grid-cell">
+                      <ImageViewer
+                        src={image?.ref ? imageUrl(image.ref, 1200) : null}
+                        imageWidth={image?.width ?? 0}
+                        imageHeight={image?.height ?? 0}
+                        overlays={[]}
+                        toolbar
+                        className="h-full w-full"
+                        stateKey={`flow:${flowId}:grid:${index}`}
+                      />
+                      <div className="absolute inset-x-1 bottom-1 z-20 grid grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] gap-1 rounded-md bg-surface/90 p-1 backdrop-blur">
+                        <Select
+                          className="!h-7 !py-0 text-xs"
+                          aria-label={t('editor.viewer.gridNode')}
+                          value={binding?.nodeId ?? ''}
+                          placeholder={t('editor.viewer.gridEmpty')}
+                          options={gridNodeOptions}
+                          onChange={(event) => {
+                            const nodeId = event.target.value
+                            const port = imagePortOptions.get(nodeId)?.[0]?.value ?? ''
+                            setGridBinding(index, nodeId && port ? { nodeId, port } : null)
+                          }}
+                        />
+                        <Select
+                          className="!h-7 !py-0 text-xs"
+                          aria-label={t('editor.viewer.gridPort')}
+                          value={binding?.port ?? ''}
+                          placeholder={t('editor.viewer.gridPort')}
+                          disabled={!binding?.nodeId}
+                          options={ports}
+                          onChange={(event) => {
+                            if (!binding?.nodeId) return
+                            setGridBinding(index, event.target.value ? { nodeId: binding.nodeId, port: event.target.value } : null)
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            ) : null}
+            ) : (
+              <>
+                <div className="relative min-w-0 flex-1" data-testid="viewer-main">
+                  <ImageViewer
+                    src={view.ref ? imageUrl(view.ref, 1600) : null}
+                    imageWidth={view.width}
+                    imageHeight={view.height}
+                    overlays={roiEditingKey || templateKey ? [] : view.overlays}
+                    compareSrc={compareView?.ref ? imageUrl(compareView.ref, 1600) : null}
+                    compareWidth={compareView?.width ?? 0}
+                    compareHeight={compareView?.height ?? 0}
+                    stateKey={`flow:${flowId}:main`}
+                    badge={badge}
+                    toolbar
+                    className="h-full w-full"
+                    {...viewerRoiProps}
+                  />
+                  {split ? <span className="pointer-events-none absolute left-2 top-16 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span> : null}
+                </div>
+                {split && outputView ? (
+                  <div className="relative min-w-0 flex-1 border-l border-line" data-testid="viewer-after">
+                    {/* 沒有影像輸出的步驟（blob／比較…）：與工具頁一致，右邊顯示「標記疊在輸入影像上」而不是空白 */}
+                    <ImageViewer
+                      src={outputView.ref ? imageUrl(outputView.ref, 1600) : null}
+                      imageWidth={outputView.width}
+                      imageHeight={outputView.height}
+                      overlays={outputView.hasOutput ? [] : outputView.overlays}
+                      toolbar
+                      stateKey={`flow:${flowId}:after`}
+                      className="h-full w-full"
+                    />
+                    <span className="pointer-events-none absolute left-2 top-16 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.after')}{outputView.hasOutput || !outputView.ref ? '' : ` · ${t('tool.overlaysOnInput')}`}</span>
+                  </div>
+                ) : null}
+              </>
+            )}
             {/* 影像視窗的顯示選項 */}
             <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-lg border border-line bg-surface/90 px-1.5 py-1 text-[11px] backdrop-blur">
               <Camera size={12} className="text-muted" />
-              <button type="button" className={optionBtn(effectiveMode === 'input' && !split)} disabled={!view.hasInput || split} onClick={() => setViewMode('input')}>
+              <button type="button" className={optionBtn(effectiveMode === 'input' && !split && !gridMode)} disabled={!view.hasInput || split || gridMode} onClick={() => setViewMode('input')}>
                 {t('editor.viewer.showInput')}
               </button>
-              <button type="button" className={optionBtn(effectiveMode === 'output' && !split)} disabled={!view.hasOutput || split} onClick={() => setViewMode('output')}>
+              <button type="button" className={optionBtn(effectiveMode === 'output' && !split && !gridMode)} disabled={!view.hasOutput || split || gridMode} onClick={() => setViewMode('output')}>
                 {t('editor.viewer.showOutput')}
               </button>
-              <button type="button" className={`flex items-center gap-1 ${optionBtn(split)}`} onClick={() => setSplit((v) => !v)} title={t('editor.viewer.splitHint')} data-testid="btn-split">
+              <button type="button" className={`flex items-center gap-1 ${optionBtn(split && !gridMode)}`} disabled={gridMode} onClick={() => setSplit((v) => !v)} title={t('editor.viewer.splitHint')} data-testid="btn-split">
                 <Columns2 size={12} /> {t('editor.viewer.split')}
               </button>
+              <button type="button" className={`flex items-center gap-1 ${optionBtn(gridMode)}`} onClick={() => setGridMode((value) => !value)} title={t('editor.viewer.gridHint')} data-testid="btn-grid-view">
+                <LayoutGrid size={12} /> {t('editor.viewer.gridView')}
+              </button>
+              {gridMode ? GRID_COUNTS.map((count) => (
+                <button key={count} type="button" className={optionBtn(gridLayout.count === count)} onClick={() => setGridLayout((layout) => setGridCount(layout, count as GridCount))}>
+                  {count}
+                </button>
+              )) : null}
               <span className="mx-0.5 h-3.5 w-px bg-line" />
-              <button type="button" className={`flex items-center gap-1 ${optionBtn(allOverlays)}`} onClick={() => setAllOverlays((v) => !v)} title={t('editor.viewer.allOverlays')}>
+              <button type="button" className={`flex items-center gap-1 ${optionBtn(allOverlays && !gridMode)}`} disabled={gridMode} onClick={() => setAllOverlays((v) => !v)} title={t('editor.viewer.allOverlays')}>
                 <Layers size={12} /> {t('editor.viewer.allOverlays')}
               </button>
               {pinnedRunId ? (

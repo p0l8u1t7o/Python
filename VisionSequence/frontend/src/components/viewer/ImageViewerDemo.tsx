@@ -100,6 +100,7 @@ export function ImageViewerDemo() {
         onRoiChange={mode === 'edit' ? setRoi : undefined}
         onPick={mode === 'pick' ? (x, y) => setPicked([x, y]) : undefined}
         badge={{ text: 'OK', tone: 'ok' }}
+        stateKey="viewer-demo"
       />
     </div>
   )

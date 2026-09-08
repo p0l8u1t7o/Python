@@ -362,7 +362,20 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
           <div className="relative flex min-h-80 flex-1 md:min-h-0">
             <div className="relative min-w-0 flex-1" data-testid="tool-before">
               {/* 執行前一律乾淨（標記只出現在右邊「執行後」；ROI 框是參數顯示，不算標記） */}
-              <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={[]} toolbar className="h-full w-full" badge={null} {...beforeRoi} />
+              <ImageViewer
+                src={input?.ref ? imageUrl(input.ref, 1600) : null}
+                imageWidth={inputW}
+                imageHeight={inputH}
+                overlays={[]}
+                compareSrc={output?.ref ? imageUrl(output.ref, 1600) : null}
+                compareWidth={output?.width ?? 0}
+                compareHeight={output?.height ?? 0}
+                toolbar
+                className="h-full w-full"
+                badge={null}
+                stateKey={`tool:${flowId}:${nodeId}:before`}
+                {...beforeRoi}
+              />
               <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">{t('editor.viewer.before')}</span>
               {templateKey ? (
                 <div className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-lg border border-brand bg-surface/95 px-2 py-1 text-[11px]">
@@ -379,9 +392,9 @@ function ToolPageInner({ flowId, nodeId }: { flowId: number; nodeId: string }) {
             </div>
             <div className="relative min-w-0 flex-1 border-l border-line" data-testid="tool-after">
               {output ? (
-                <ImageViewer src={output.ref ? imageUrl(output.ref, 1600) : null} imageWidth={output.width} imageHeight={output.height} overlays={[]} toolbar className="h-full w-full" badge={badge} />
+                <ImageViewer src={output.ref ? imageUrl(output.ref, 1600) : null} imageWidth={output.width} imageHeight={output.height} overlays={[]} toolbar className="h-full w-full" badge={badge} stateKey={`tool:${flowId}:${nodeId}:after`} />
               ) : (
-                <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={report?.overlays ?? []} toolbar className="h-full w-full" badge={badge} />
+                <ImageViewer src={input?.ref ? imageUrl(input.ref, 1600) : null} imageWidth={inputW} imageHeight={inputH} overlays={report?.overlays ?? []} toolbar className="h-full w-full" badge={badge} stateKey={`tool:${flowId}:${nodeId}:after`} />
               )}
               <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">
                 {t('editor.viewer.after')}{output ? '' : ` · ${t('tool.overlaysOnInput')}`}

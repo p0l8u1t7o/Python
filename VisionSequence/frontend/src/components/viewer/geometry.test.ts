@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { clampRegion, convertRegion, pointInPolygon, regionBounds, regionCenter, regionFromDrag, regionsEqual, roundRegion, translateRegion } from '@/components/viewer/geometry'
+import { toImage } from '@/components/viewer/useViewport'
 
 describe('viewer geometry', () => {
   it('drag → rect, bounds and center', () => {
@@ -37,5 +38,9 @@ describe('viewer geometry', () => {
     expect(regionsEqual(r, null)).toBe(false)
     expect(pointInPolygon(5, 5, [[0, 0], [10, 0], [10, 10], [0, 10]])).toBe(true)
     expect(pointInPolygon(15, 5, [[0, 0], [10, 0], [10, 10], [0, 10]])).toBe(false)
+  })
+
+  it('maps a panned and zoomed screen point back to image coordinates', () => {
+    expect(toImage({ scale: 2.5, tx: 40, ty: -15 }, 165, 235)).toEqual([50, 100])
   })
 })

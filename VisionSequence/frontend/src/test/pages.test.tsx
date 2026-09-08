@@ -141,6 +141,15 @@ describe('pages render (smoke)', () => {
     expect(button).toBeInTheDocument()
   })
 
+  it('FlowEditorPage opens the image grid viewer mode', async () => {
+    const { FlowEditorPage } = await import('@/pages/FlowEditorPage')
+    renderDataPage(<FlowEditorPage />, '/flows/1', '/flows/:flowId')
+    await screen.findByTestId('editor-toolbar')
+    fireEvent.click(await screen.findByTestId('btn-grid-view'))
+    expect(await screen.findByTestId('editor-grid-view')).toBeInTheDocument()
+    expect(screen.getAllByTestId('editor-grid-cell')).toHaveLength(4)
+  })
+
   it('DashboardsPage lists operation dashboards from the API', async () => {
     const { DashboardsPage } = await import('@/pages/dashboard/DashboardsPage')
     renderPage(<DashboardsPage />, { route: '/dashboards' })

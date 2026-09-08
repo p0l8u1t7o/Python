@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Overlay, Region, RoiShape } from '@/lib/types'
+import { readViewerState, writeViewerState } from '@/lib/localState'
 import { limitOverlays, readOverlayLimit } from '@/lib/overlayLimit'
 import { drawOverlays, type DrawEnv } from './drawOverlays'
 import {
@@ -50,6 +51,7 @@ import {
   recenterOnResize,
   scaleCenteredOnImage,
   toImage,
+  toScreen,
   useViewport,
   zoomAt,
   type Viewport,
@@ -74,6 +76,10 @@ export interface ImageViewerProps {
   /** 受控視角（可選）：與另一個檢視器同步用 */
   viewport?: Viewport | null
   onViewportChange?: (vp: Viewport) => void
+  compareSrc?: string | null
+  compareWidth?: number
+  compareHeight?: number
+  stateKey?: string
 }
 
 const ALL_SHAPES: RoiShape[] = ['rect', 'rotated_rect', 'circle', 'ellipse', 'annulus', 'polygon', 'line']
@@ -84,6 +90,7 @@ type Drag =
   | { kind: 'handle'; handle: Handle; region0: Region }
   | { kind: 'move'; region0: Region; ix0: number; iy0: number }
   | { kind: 'draw'; shape: RoiShape; ix0: number; iy0: number }
+  | { kind: 'crosshair'; axis: 'x' | 'y' | 'both' }
 
 interface Sampler {
   ctx: CanvasRenderingContext2D
@@ -110,6 +117,10 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     onHover,
     viewport,
     onViewportChange,
+    compareSrc,
+    compareWidth = 0,
+    compareHeight = 0,
+    stateKey,
   } = props
   const onViewportChangeRef = useRef(onViewportChange)
   onViewportChangeRef.current = onViewportChange
@@ -122,6 +133,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
 
   const vpRef = useViewport()
   const imgRef = useRef<HTMLImageElement | null>(null)
+  const compareImgRef = useRef<HTMLImageElement | null>(null)
   const samplerRef = useRef<Sampler | null>(null)
   const sizeRef = useRef({ w: 0, h: 0, dpr: 1 })
   const fittedRef = useRef(false)
@@ -141,6 +153,13 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   const [loadError, setLoadError] = useState(false)
   const [drawShape, setDrawShape] = useState<RoiShape | null>(null)
   const [overlayLimit] = useState(readOverlayLimit)
+  const viewerStateScope = useMemo(() => stateKey ?? `page:${typeof window === 'undefined' ? 'default' : window.location.pathname || 'default'}`, [stateKey])
+  const savedViewerState = useMemo(() => readViewerState(viewerStateScope), [viewerStateScope])
+  const [crosshairEnabled, setCrosshairEnabled] = useState(savedViewerState.crosshair ?? false)
+  const [crosshair, setCrosshair] = useState<{ x: number | null; y: number | null }>({ x: savedViewerState.x ?? null, y: savedViewerState.y ?? null })
+  const [compareOpacity, setCompareOpacity] = useState(savedViewerState.compareOpacity ?? 50)
+  const [compareLoaded, setCompareLoaded] = useState(false)
+  const [compareLoadError, setCompareLoadError] = useState(false)
 
   const allowedShapes = roiShapes ?? ALL_SHAPES
   const editMode = !!roi && !!onRoiChange
@@ -167,6 +186,11 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     activeDrawShape,
     showOverlays,
     grid,
+    crosshairEnabled,
+    crosshair,
+    compareOpacity,
+    compareWidth,
+    compareHeight,
     imageWidth,
     imageHeight,
   })
@@ -182,6 +206,11 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     activeDrawShape,
     showOverlays,
     grid,
+    crosshairEnabled,
+    crosshair,
+    compareOpacity,
+    compareWidth,
+    compareHeight,
     imageWidth,
     imageHeight,
   }
@@ -197,6 +226,44 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     const vp = vpRef.current
     return { scale: vp.scale, dpr: sizeRef.current.dpr, tx: vp.tx, ty: vp.ty }
   }, [vpRef])
+
+  const crosshairPoint = useCallback((): [number, number] | null => {
+    const [W, H] = dims()
+    if (W <= 0 || H <= 0) return null
+    const { crosshair } = latest.current
+    const x = Math.min(W - 1, Math.max(0, crosshair.x ?? Math.floor(W / 2)))
+    const y = Math.min(H - 1, Math.max(0, crosshair.y ?? Math.floor(H / 2)))
+    return [x, y]
+  }, [dims])
+
+  const samplePixel = useCallback((ix: number, iy: number): string | null => {
+    const [W, H] = dims()
+    const px = Math.floor(ix)
+    const py = Math.floor(iy)
+    if (W <= 0 || H <= 0 || px < 0 || py < 0 || px >= W || py >= H) return null
+    const s = samplerRef.current
+    if (!s) return null
+    const qx = Math.min(s.w - 1, Math.floor((px * s.w) / W))
+    const qy = Math.min(s.h - 1, Math.floor((py * s.h) / H))
+    const d = s.ctx.getImageData(qx, qy, 1, 1).data
+    const val = d[0] === d[1] && d[1] === d[2] ? `G ${d[0]}` : `RGB ${d[0]},${d[1]},${d[2]}`
+    return `${s.approx ? '~ ' : ''}${val}`
+  }, [dims])
+
+  useEffect(() => {
+    setCrosshairEnabled(savedViewerState.crosshair ?? false)
+    setCrosshair({ x: savedViewerState.x ?? null, y: savedViewerState.y ?? null })
+    setCompareOpacity(savedViewerState.compareOpacity ?? 50)
+  }, [savedViewerState])
+
+  useEffect(() => {
+    writeViewerState(viewerStateScope, {
+      crosshair: crosshairEnabled,
+      x: crosshair.x,
+      y: crosshair.y,
+      compareOpacity,
+    })
+  }, [viewerStateScope, crosshairEnabled, crosshair, compareOpacity])
 
   // ---------------- 繪製 ----------------
 
@@ -216,6 +283,27 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       ctx.imageSmoothingEnabled = vp.scale <= 2
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, vp.tx, vp.ty, W * vp.scale, H * vp.scale)
+    }
+    const compare = compareImgRef.current
+    if (compare && W > 0 && H > 0) {
+      const cw = latest.current.compareWidth || compare.naturalWidth
+      const ch = latest.current.compareHeight || compare.naturalHeight
+      ctx.save()
+      ctx.globalAlpha = Math.min(1, Math.max(0, latest.current.compareOpacity / 100))
+      ctx.imageSmoothingEnabled = vp.scale <= 2
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(
+        compare,
+        0,
+        0,
+        compare.naturalWidth,
+        compare.naturalHeight,
+        vp.tx + ((W - cw) * vp.scale) / 2,
+        vp.ty + ((H - ch) * vp.scale) / 2,
+        cw * vp.scale,
+        ch * vp.scale,
+      )
+      ctx.restore()
     }
     if (W > 0 && H > 0) {
       // 影像邊界 1px 邊框（對齊半像素避免糊）
@@ -270,7 +358,28 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         selectedVertex: selectedVertexRef.current,
       })
     }
-  }, [env])
+    if (L.crosshairEnabled) {
+      const point = crosshairPoint()
+      if (point) {
+        const [sx, sy] = toScreen(vpRef.current, point[0], point[1])
+        ctx.save()
+        ctx.globalCompositeOperation = 'difference'
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(Math.round(sx) + 0.5, 0)
+        ctx.lineTo(Math.round(sx) + 0.5, h)
+        ctx.moveTo(0, Math.round(sy) + 0.5)
+        ctx.lineTo(w, Math.round(sy) + 0.5)
+        ctx.stroke()
+        ctx.restore()
+        ctx.fillStyle = 'rgba(14,165,233,0.95)'
+        ctx.beginPath()
+        ctx.arc(sx, sy, 3.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }, [crosshairPoint, env, vpRef])
 
   const schedule = useCallback(
     (image: boolean, overlay: boolean) => {
@@ -474,6 +583,35 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
     }
   }, [src, dims, fit, schedule])
 
+  useEffect(() => {
+    setCompareLoadError(false)
+    if (!compareSrc) {
+      compareImgRef.current = null
+      setCompareLoaded(false)
+      schedule(true, false)
+      return
+    }
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      compareImgRef.current = img
+      setCompareLoaded(true)
+      schedule(true, false)
+    }
+    img.onerror = () => {
+      if (cancelled) return
+      compareImgRef.current = null
+      setCompareLoaded(false)
+      setCompareLoadError(true)
+      schedule(true, false)
+    }
+    img.src = compareSrc
+    return () => {
+      cancelled = true
+    }
+  }, [compareSrc, schedule])
+
   // 座標系尺寸改變（換了不同影像）→ 重新 fit
   const prevDimsRef = useRef({ w: imageWidth, h: imageHeight })
   useEffect(() => {
@@ -490,12 +628,12 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
   // props 變動 → 重繪對應層
   useEffect(() => {
     schedule(true, false)
-  }, [grid, schedule])
+  }, [grid, compareOpacity, compareWidth, compareHeight, schedule])
   useEffect(() => {
     // 父層回流新的 roi 後，放掉本地暫存
     if (!dragRef.current) liveRoiRef.current = null
     schedule(false, true)
-  }, [overlayLimitInfo.overlays, roi, showOverlays, editMode, schedule])
+  }, [overlayLimitInfo.overlays, roi, showOverlays, editMode, crosshairEnabled, crosshair, schedule])
 
   // ---------------- 互動 ----------------
 
@@ -535,16 +673,21 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       }
       const px = Math.floor(ix)
       const py = Math.floor(iy)
-      let text = `${px}, ${py}`
-      const s = samplerRef.current
-      if (s) {
-        const qx = Math.min(s.w - 1, Math.floor((px * s.w) / W))
-        const qy = Math.min(s.h - 1, Math.floor((py * s.h) / H))
-        const d = s.ctx.getImageData(qx, qy, 1, 1).data
-        const val = d[0] === d[1] && d[1] === d[2] ? `G ${d[0]}` : `RGB ${d[0]},${d[1]},${d[2]}`
-        text += `  ${s.approx ? '≈' : ''}${val}`
-      }
-      elp.textContent = text
+      const value = samplePixel(px, py)
+      elp.textContent = value ? `${t('viewer.cursorInfo')}: X ${px} Y ${py}  ${value}` : `${t('viewer.cursorInfo')}: X ${px} Y ${py}`
+    }
+
+    const hitCrosshair = (sx: number, sy: number): 'x' | 'y' | 'both' | null => {
+      if (!latest.current.crosshairEnabled) return null
+      const point = crosshairPoint()
+      if (!point) return null
+      const [cx, cy] = toScreen(vpRef.current, point[0], point[1])
+      const hitX = Math.abs(sx - cx) <= 7
+      const hitY = Math.abs(sy - cy) <= 7
+      if (hitX && hitY) return 'both'
+      if (hitX) return 'x'
+      if (hitY) return 'y'
+      return null
     }
 
     const hoverCursor = (ix: number, iy: number) => {
@@ -565,6 +708,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         schedule(false, true)
       }
       if (L.drawMode) return setCursor('crosshair')
+      if (hitCrosshair(ix * vpRef.current.scale + vpRef.current.tx, iy * vpRef.current.scale + vpRef.current.ty)) return setCursor('crosshair')
       setCursor(L.onPick ? 'crosshair' : 'grab')
     }
 
@@ -587,6 +731,13 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       const startPan = (pick: boolean) => {
         dragRef.current = { kind: 'pan', sx0: sx, sy0: sy, vp0: { ...vpRef.current }, moved: false, pick }
         setCursor('grabbing')
+      }
+      const crosshairAxis = ev.button === 0 ? hitCrosshair(sx, sy) : null
+      if (crosshairAxis) {
+        dragRef.current = { kind: 'crosshair', axis: crosshairAxis }
+        setCursor('crosshair')
+        ov.setPointerCapture(ev.pointerId)
+        return
       }
       if (ev.button === 1) {
         ev.preventDefault()
@@ -683,6 +834,18 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           schedule(false, true)
           break
         }
+        case 'crosshair': {
+          const [ix, iy] = toImage(vpRef.current, sx, sy)
+          const point = crosshairPoint()
+          if (!point) break
+          const [W, H] = dims()
+          setCrosshair({
+            x: drag.axis === 'y' ? point[0] : Math.min(W - 1, Math.max(0, ix)),
+            y: drag.axis === 'x' ? point[1] : Math.min(H - 1, Math.max(0, iy)),
+          })
+          schedule(false, true)
+          break
+        }
       }
       updatePixelLabel(sx, sy)
       emitHover(sx, sy)
@@ -728,6 +891,8 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           schedule(false, true)
           break
         }
+        case 'crosshair':
+          break
       }
       hoverCursor(ix, iy)
       schedule(false, true)
@@ -851,7 +1016,7 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
         hoverEmitRef.current.id = 0
       }
     }
-  }, [dims, emitRoi, env, fit, flushRoi, oneToOne, schedule, setViewport, vpRef, zoomBy])
+  }, [crosshairPoint, dims, emitRoi, env, fit, flushRoi, oneToOne, samplePixel, schedule, setViewport, t, vpRef, zoomBy])
 
   // ---------------- 渲染 ----------------
 
@@ -861,6 +1026,20 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       : badge?.tone === 'ng'
         ? 'bg-red-600 text-white'
         : 'bg-neutral-600 text-white'
+  const crosshairReadout = crosshairEnabled
+    ? (() => {
+        const point = crosshairPoint()
+        if (!point) return ''
+        const x = Math.floor(point[0])
+        const y = Math.floor(point[1])
+        const value = samplePixel(x, y)
+        return value ? t('viewer.crosshairReadout', { x, y, value }) : t('viewer.crosshairReadoutNoValue', { x, y })
+      })()
+    : ''
+  const compare = compareImgRef.current
+  const compareW = compare ? compareWidth || compare.naturalWidth : 0
+  const compareH = compare ? compareHeight || compare.naturalHeight : 0
+  const compareMismatch = compareLoaded && compareW > 0 && compareH > 0 && imageWidth > 0 && imageHeight > 0 && (compareW !== imageWidth || compareH !== imageHeight)
 
   return (
     <div
@@ -880,9 +1059,18 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
           pixelRef={pixelRef}
           grid={grid}
           onToggleGrid={() => setGrid((g) => !g)}
+          crosshair={crosshairEnabled}
+          onToggleCrosshair={() => {
+            const point = crosshairPoint()
+            if (point) setCrosshair((current) => ({ x: current.x ?? point[0], y: current.y ?? point[1] }))
+            setCrosshairEnabled((value) => !value)
+          }}
           hasOverlays={overlayLimitInfo.total > 0}
           showOverlays={showOverlays}
           onToggleOverlays={() => setShowOverlays((v) => !v)}
+          hasCompare={Boolean(compareSrc)}
+          compareOpacity={compareOpacity}
+          onCompareOpacityChange={(value) => setCompareOpacity(Math.min(100, Math.max(0, Math.round(value))))}
           roiMode={roiMode}
           shapes={allowedShapes}
           activeShape={roi ? roi.shape : drawMode ? activeDrawShape : null}
@@ -901,6 +1089,21 @@ export function ImageViewer(props: ImageViewerProps): JSX.Element {
       {showOverlays && overlayLimitInfo.truncated ? (
         <div className="pointer-events-none absolute top-8 left-2 z-10 rounded-md bg-black/55 px-2 py-0.5 text-[11px] text-white/90">
           {t('viewer.overlayLimitNotice', { shown: overlayLimitInfo.shown, total: overlayLimitInfo.total })}
+        </div>
+      ) : null}
+      {crosshairReadout ? (
+        <div className="pointer-events-none absolute top-16 left-2 z-10 rounded-md bg-black/55 px-2 py-0.5 font-mono text-[11px] text-white/90">
+          {crosshairReadout}
+        </div>
+      ) : null}
+      {compareMismatch ? (
+        <div className="pointer-events-none absolute bottom-8 left-2 z-10 rounded-md bg-warning/85 px-2 py-0.5 text-[11px] text-black">
+          {t('viewer.compareSizeMismatch', { main: `${imageWidth}x${imageHeight}`, compare: `${compareW}x${compareH}` })}
+        </div>
+      ) : null}
+      {compareLoadError ? (
+        <div className="pointer-events-none absolute bottom-8 right-2 z-10 rounded-md bg-critical/85 px-2 py-0.5 text-[11px] text-white">
+          {t('viewer.compareLoadFailed')}
         </div>
       ) : null}
       {drawMode && loaded && (

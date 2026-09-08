@@ -52,7 +52,7 @@ export function BatchRowPreviewModal({ run, set, index, graph, onClose }: { run:
             <span className="font-mono text-muted">{Object.entries(report.outputs ?? {}).slice(0, 6).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ')}</span>
           </div>
           <div className="h-[65vh] rounded-lg bg-viewer">
-            <ImageViewer src={ref ? imageUrl(ref, 1600) : null} imageWidth={size.w} imageHeight={size.h} overlays={overlays} toolbar className="h-full w-full"
+            <ImageViewer src={ref ? imageUrl(ref, 1600) : null} imageWidth={size.w} imageHeight={size.h} overlays={overlays} toolbar className="h-full w-full" stateKey={`batch-preview:${report.id}`}
               badge={{ text: t(`status.${report.status}`), tone: report.status === 'ok' ? 'ok' : report.status === 'ng' || report.status === 'failed' ? 'ng' : 'neutral' }} />
           </div>
         </div>

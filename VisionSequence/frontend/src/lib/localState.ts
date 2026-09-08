@@ -5,7 +5,86 @@
 export const USER_SCOPED_KEYS = ['vs.token', 'vs.apiKey', 'vs.assistant.v1', 'vs.assistant.share', 'vs.tcpHistory'] as const
 export const USER_SCOPED_SESSION_KEYS = ['vs.assistant.hints.dismissed'] as const
 /** 說明用：這些故意保留 */
-export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit'] as const
+export const DEVICE_SCOPED_KEYS = ['vs.theme', 'vs.language', 'vs.sidebar', 'vs.navOpen', 'vs.favoriteTools', 'vs.editorLayout', 'vs.canvasMode', 'vs.overlayLimit', 'vs.viewerState.v1', 'vs.editorGridView.v1'] as const
+
+export interface ViewerLocalState {
+  crosshair: boolean
+  x: number | null
+  y: number | null
+  compareOpacity: number
+}
+
+export interface EditorGridLocalState {
+  count: number
+  bindings: ({ nodeId: string; port: string } | null)[]
+}
+
+const VIEWER_STATE_KEY = 'vs.viewerState.v1'
+const EDITOR_GRID_VIEW_KEY = 'vs.editorGridView.v1'
+
+function readRecord(key: string): Record<string, unknown> {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeRecord(key: string, value: Record<string, unknown>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* private mode */
+  }
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+export function readViewerState(scope: string): Partial<ViewerLocalState> {
+  const item = readRecord(VIEWER_STATE_KEY)[scope]
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return {}
+  const raw = item as Record<string, unknown>
+  const opacity = finiteNumber(raw.compareOpacity)
+  return {
+    crosshair: raw.crosshair === true,
+    x: finiteNumber(raw.x),
+    y: finiteNumber(raw.y),
+    compareOpacity: opacity === null ? undefined : Math.min(100, Math.max(0, Math.round(opacity))),
+  }
+}
+
+export function writeViewerState(scope: string, state: Partial<ViewerLocalState>): void {
+  const record = readRecord(VIEWER_STATE_KEY)
+  record[scope] = { ...(record[scope] && typeof record[scope] === 'object' ? record[scope] as Record<string, unknown> : {}), ...state }
+  writeRecord(VIEWER_STATE_KEY, record)
+}
+
+export function readEditorGridView(flowId: number): Partial<EditorGridLocalState> {
+  const item = readRecord(EDITOR_GRID_VIEW_KEY)[String(flowId)]
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return {}
+  const raw = item as Record<string, unknown>
+  return {
+    count: finiteNumber(raw.count) ?? undefined,
+    bindings: Array.isArray(raw.bindings)
+      ? raw.bindings.map((binding) => {
+          if (!binding || typeof binding !== 'object' || Array.isArray(binding)) return null
+          const b = binding as Record<string, unknown>
+          return typeof b.nodeId === 'string' && typeof b.port === 'string' ? { nodeId: b.nodeId, port: b.port } : null
+        })
+      : undefined,
+  }
+}
+
+export function writeEditorGridView(flowId: number, state: EditorGridLocalState): void {
+  const record = readRecord(EDITOR_GRID_VIEW_KEY)
+  record[String(flowId)] = state
+  writeRecord(EDITOR_GRID_VIEW_KEY, record)
+}
 
 export function clearUserState(): void {
   for (const key of USER_SCOPED_KEYS) {

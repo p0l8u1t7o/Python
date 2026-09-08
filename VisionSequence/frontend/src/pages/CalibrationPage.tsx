@@ -402,6 +402,7 @@ export function CalibrationPage() {
                   overlays={overlays}
                   onPick={mode === 'board' ? undefined : (x, y) => void addPoint(x, y)}
                   className="h-[420px]"
+                  stateKey="calibration:main"
                 />
                 <p className="mt-2 text-xs text-subtle">
                   {mode === 'board' ? (shot.corners?.length ? t('calibration.boardFound', { count: shot.corners.length }) : shot.hint || t('calibration.boardMissing')) : t('calibration.clickHint')}

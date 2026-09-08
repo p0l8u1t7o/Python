@@ -89,7 +89,7 @@ function FlowLiveMonitor({ flow, onRun }: { flow: Flow; onRun: (run: RunReport) 
   }
   return (
     <ImageViewer className="h-full w-full" src={imageUrl(image.ref, 1600)} imageWidth={image.width} imageHeight={image.height}
-      overlays={overlays} badge={{ text: run.status.toUpperCase(), tone: run.status === 'ok' ? 'ok' : 'ng' }} />
+      overlays={overlays} badge={{ text: run.status.toUpperCase(), tone: run.status === 'ok' ? 'ok' : 'ng' }} stateKey={`dashboard:${flow.id}`} />
   )
 }
 

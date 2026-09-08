@@ -978,6 +978,7 @@ export function AgentPage() {
                 toolbar
                 className="h-full w-full"
                 badge={activeReport ? { text: activeReport.status.toUpperCase(), tone: tone(activeReport.status) } : null}
+                stateKey={`agent:${image.ref}`}
               />
             ) : (
               <button type="button" onClick={() => fileRef.current?.click()}

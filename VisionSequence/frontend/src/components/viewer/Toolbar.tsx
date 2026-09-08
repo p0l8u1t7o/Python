@@ -30,9 +30,14 @@ export interface ToolbarProps {
   pixelRef: RefObject<HTMLSpanElement | null>
   grid: boolean
   onToggleGrid: () => void
+  crosshair: boolean
+  onToggleCrosshair: () => void
   hasOverlays: boolean
   showOverlays: boolean
   onToggleOverlays: () => void
+  hasCompare: boolean
+  compareOpacity: number
+  onCompareOpacityChange: (value: number) => void
   /** ROI 編輯／繪製模式才顯示形狀按鈕 */
   roiMode: boolean
   shapes: RoiShape[]
@@ -91,6 +96,14 @@ export function Toolbar(p: ToolbarProps) {
         >
           <Grid3x3 size={14} />
         </button>
+        <button
+          type="button"
+          className={`${btn} ${p.crosshair ? btnOn : ''}`}
+          title={t('viewer.crosshair')}
+          onClick={p.onToggleCrosshair}
+        >
+          <Crosshair size={14} />
+        </button>
         {p.hasOverlays && (
           <button
             type="button"
@@ -100,6 +113,24 @@ export function Toolbar(p: ToolbarProps) {
           >
             <Layers size={14} />
           </button>
+        )}
+        {p.hasCompare && (
+          <>
+            <span className="mx-0.5 h-4 w-px bg-white/20" />
+            <label className="flex items-center gap-1 px-1 text-[11px] text-white/85" title={t('viewer.compareOpacity')}>
+              <Layers size={13} />
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={p.compareOpacity}
+                aria-label={t('viewer.compareOpacity')}
+                className="h-1 w-20 accent-sky-400"
+                onChange={(event) => p.onCompareOpacityChange(Number(event.target.value))}
+              />
+              <span className="tnum w-8 text-right">{p.compareOpacity}%</span>
+            </label>
+          </>
         )}
         {p.roiMode && p.shapes.length > 0 && (
           <>

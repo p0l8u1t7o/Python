@@ -89,6 +89,7 @@ export function ImageWidgetBase(props: DashboardWidgetProps) {
             toolbar={false}
             badge={latestBoardRun(flowPack(props.data, flowId), live) ? { text: latestBoardRun(flowPack(props.data, flowId), live)?.verdict ?? '', tone: statusTone(latestBoardRun(flowPack(props.data, flowId), live)?.status) === 'ng' ? 'ng' : 'ok' } : null}
             className="h-full"
+            stateKey={`dashboard-widget:${props.widget.id}`}
           />
           {booleanProp(props.widget, 'crosshair', false) ? (
             <div className="pointer-events-none absolute inset-0">

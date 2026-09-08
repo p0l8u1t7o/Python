@@ -77,7 +77,7 @@ export function BoardPage() {
       <main className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,30%)]">
         <section className="relative min-h-[40vh] overflow-hidden rounded-xl border border-white/10 bg-viewer">
           {run?.image ? (
-            <ImageViewer className="h-full w-full" toolbar={false} src={imageUrl(run.image.ref, 1920)} imageWidth={run.image.width} imageHeight={run.image.height} overlays={overlays} />
+            <ImageViewer className="h-full w-full" toolbar={false} src={imageUrl(run.image.ref, 1920)} imageWidth={run.image.width} imageHeight={run.image.height} overlays={overlays} stateKey={`board:${flowId}`} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-white/60">
               <MonitorPlay size={40} className="text-brand" aria-hidden />

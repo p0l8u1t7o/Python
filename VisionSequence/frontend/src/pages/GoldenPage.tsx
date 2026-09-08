@@ -406,7 +406,7 @@ function GoldenPageInner({ flowId }: { flowId: number }) {
               <span className="font-mono text-muted">{Object.entries(viewRun.outputs).slice(0, 6).map(([k, v]) => `${k}=${formatValue(v)}`).join('  ')}</span>
             </div>
             <div className="h-[65vh] rounded-lg bg-viewer">
-              <ImageViewer src={viewRef ? imageUrl(viewRef, 1600) : null} imageWidth={viewSize.w} imageHeight={viewSize.h} overlays={viewOverlays} toolbar className="h-full w-full" badge={{ text: t(`status.${viewRun.status}`), tone: viewRun.status === 'ok' ? 'ok' : viewRun.status === 'ng' || viewRun.status === 'failed' ? 'ng' : 'neutral' }} />
+              <ImageViewer src={viewRef ? imageUrl(viewRef, 1600) : null} imageWidth={viewSize.w} imageHeight={viewSize.h} overlays={viewOverlays} toolbar className="h-full w-full" badge={{ text: t(`status.${viewRun.status}`), tone: viewRun.status === 'ok' ? 'ok' : viewRun.status === 'ng' || viewRun.status === 'failed' ? 'ng' : 'neutral' }} stateKey={`golden:${flowId}`} />
             </div>
           </div>
         ) : null}

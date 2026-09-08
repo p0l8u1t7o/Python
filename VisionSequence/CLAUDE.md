@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：120 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1150 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：120 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1150 項＋前端 155 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -164,6 +164,13 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 影像顯示增強（K2，純前端，Codex 實作）
+- **`ImageViewer` 是九個頁面共用的**（編輯器、工具頁、教導、良品比對、標定、AI 助手、批次、深度學習、看板）——改它一定要逐頁確認。新 props 全部選填（`compareSrc`／`compareWidth`／`compareHeight`／`stateKey`），未傳時行為與以前完全相同。
+- **十字線與游標資訊**：工具列的十字線鈕（`title` 走 i18n，沒有可見文字，用 `getByTitle` 找），兩條可拖曳的線、交點的影像座標與灰階／RGB、游標移動時的資訊列。座標一律走 `useViewport` 的 `image = (screen − translation) / scale`，**縮放平移後仍正確**（`geometry.test.ts` 有一條明確斷言：scale 2.5、位移 (40, −15)、螢幕 (165, 235) → 影像 (50, 100)）。
+- **疊圖**：`compareSrc` 加透明度滑桿；**尺寸不同時不硬拉伸**，第二張以自身尺寸置中並提示尺寸不同。編輯器把執行前／後接上去。
+- **宮格**：編輯器 `btn-grid-view`，1／2／4／6／9 格，每格綁一個節點與輸出埠；純邏輯在 `lib/gridView.ts`（格數變動保留既有綁定、節點不存在或埠沒有影像都處理），版面依流程 id 存裝置層。
+- 狀態鍵：十字線與透明度存 `vs.viewerState.v1`、**每個呼叫點各自的 `stateKey` 分開存**（同一頁多個檢視器不互相覆蓋）；宮格存 `vs.editorGridView.v1`。
 
 ### 流程帶著資產搬站（H3）與處理器加速（H4）
 - `serialize.export_flow(flow, include_assets=False)`：**預設維持原輸出形狀**（沒有 `assets` 鍵）；開啟時掃流程參數裡的資產 id，內嵌 `kind`／`name`／`sha256`／`size`／base64。上限 `VISION_EXPORT_MAX_MB`（預設 200，**是頂層設定不是 `VISION` dict 的鍵**——放進 dict 會被 `.env.example` 的覆蓋規則測試擋下）；超過就不內嵌並在 `asset_warnings` 列出是哪些、多少 MB。

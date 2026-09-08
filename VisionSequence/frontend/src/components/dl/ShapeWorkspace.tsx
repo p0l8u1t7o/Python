@@ -620,6 +620,7 @@ export function ShapeWorkspace({ project, samples, suggestions, onSave, onAccept
               onDoublePick={mode === 'polygon' && draft.length ? doubleFinish : undefined}
               onViewportChange={(vp) => { viewportRef.current = vp }}
               badge={dirty ? { text: t('dl.unsaved'), tone: 'neutral' } : null}
+              stateKey={`dl-shapes:${sample.id}`}
             />
           </div>
         </div>

@@ -123,6 +123,7 @@ export function ClassifyWorkspace({ project, samples, suggestions, selectedId, o
             imageWidth={sample.width}
             imageHeight={sample.height}
             badge={sample.label ? { text: sample.label, tone: 'neutral' } : null}
+            stateKey={`dl-classify:${sample.id}`}
           />
         </div>
       </div>

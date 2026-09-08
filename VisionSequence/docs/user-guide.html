@@ -214,6 +214,9 @@
 <li data-n="9">The <strong>teach page</strong> shortcut.</li>
 <li data-n="10">The <strong>statistics</strong> shortcut; the icons next to it are undo, redo, auto-layout, versions, export and Golden Set.</li>
 </ol></figcaption></figure>
+<p>The image viewer toolbar includes a <strong>Crosshair</strong> button. Turn it on to show one horizontal and one vertical line, then drag either line to measure an image position. The viewer shows the line intersection as image X/Y coordinates and reads the pixel value at that point. Moving the mouse over the image also shows a cursor information bar with image coordinates and the current grey or RGB value; zooming and panning do not change the coordinate system.</p>
+<p>When the editor has both the selected step input and output image, the main viewer can overlay the second image on top of the first. Use <strong>Overlay opacity</strong> in the viewer toolbar to blend before and after. If the two images have different dimensions, the overlay is centred at its own size instead of being stretched to the main image, and the viewer marks the size mismatch.</p>
+<p>Use <strong>Grid</strong> in the image viewer strip to switch the editor into grid view. Choose 1, 2, 4, 6 or 9 cells, then bind each cell to a step and one of its image output ports. The grid layout and bindings are remembered per flow on this browser, so common tuning views can be reopened without rebuilding the layout.</p>
 <ol>
 <li>Wiring a judging tool's branch port to a step's <code>_flow</code> port makes that step conditional; every step also passes its image straight through on the <code>_image</code> port, so a tool that only produces numbers can still sit in the middle of an image chain.</li>
 <li>Ctrl+S saves. Unsaved changes are kept as a draft and survive leaving and coming back; "Run once" and "Continuous" use the saved version, "Preview" uses the draft.</li>

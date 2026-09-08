@@ -472,7 +472,7 @@ function TeachPageInner({ flowId }: { flowId: number }) {
         {/* 右：影像視窗（大）＋結果摘要 */}
         <div className="flex min-w-0 flex-1 flex-col" data-testid="teach-viewer">
           <div className="relative min-h-0 flex-1">
-            <ImageViewer src={focusInput?.ref ? imageUrl(focusInput.ref, 1600) : null} imageWidth={focusInput?.width ?? 0} imageHeight={focusInput?.height ?? 0} overlays={focusReport?.overlays ?? []} toolbar className="h-full w-full" badge={badge} />
+            <ImageViewer src={focusInput?.ref ? imageUrl(focusInput.ref, 1600) : null} imageWidth={focusInput?.width ?? 0} imageHeight={focusInput?.height ?? 0} overlays={focusReport?.overlays ?? []} toolbar className="h-full w-full" badge={badge} stateKey={`teach:${flowId}`} />
             <span className="pointer-events-none absolute left-2 top-8 rounded bg-black/50 px-1.5 py-0.5 text-[11px] text-white/90">
               {focusGroup ? `${t('teach.focused')}: ${focusGroup.node.label || focusGroup.def.label}` : t('teach.viewerHint')}
             </span>
