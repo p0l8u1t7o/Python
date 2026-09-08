@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html" aria-current="page">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#pages">Pages (sidebar and routes)</a></li><li><a href="#editor">Parts of the flow editor</a></li><li><a href="#terms">Core terms</a></li><li><a href="#port-colors">Port type colours (fixed, never reused)</a></li><li><a href="#status">Status wording</a></li><li><a href="#tone">Tone of voice</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#pages">Pages (sidebar and routes)</a></li><li><a href="#editor">Parts of the flow editor</a></li><li><a href="#vision-terms">Machine vision vocabulary</a></li><li><a href="#terms">Core terms</a></li><li><a href="#port-colors">Port type colours (fixed, never reused)</a></li><li><a href="#status">Status wording</a></li><li><a href="#tone">Tone of voice</a></li></ul></aside><article class="doc">
 
 <h1>Glossary and naming rules</h1>
 <p>One thing, one name — identical in the interface, in the code and in these documents. Add a new term to this table before you use it. The Chinese column is the wording used by the zh-Hant locale, which the translations must follow.</p>
@@ -192,6 +192,34 @@
 <tr><td>Inspector</td><td>側欄</td><td>Inspector</td><td>Right column: the flow's shared settings, or the selected step's basics and "Open tool page"</td></tr>
 <tr><td>Results panel</td><td>結果分頁</td><td>ResultsPanel</td><td>The Results tab in the inspector: recent runs (with an extra column when recipes exist), output values, errors and warnings (<code>RunWarnings</code>, the yellow notices from run.warnings)</td></tr>
 <tr><td>Lock banner</td><td>鎖定橫幅</td><td>LockBanner</td><td>The yellow banner shown while the engine is locked</td></tr>
+</table>
+
+<h2 id="vision-terms">Machine vision vocabulary</h2>
+<p>The words the industry uses, and what each one means here. Coordinates, angles and the reference-versus-current pair come up in every locating, measuring and correction job, so they are worth pinning down before the product terms below.</p>
+<table>
+<tr><th>Term</th><th>Chinese</th><th>Definition</th></tr>
+<tr><td>Image coordinate system</td><td>影像座標系</td><td>Origin at the top left of the picture, x to the right, y down, <strong>angle positive clockwise</strong>. Every ROI, every overlay and every coordinate a step outputs is in this system, at full-image scale — a step that works on a crop converts back before it reports.</td></tr>
+<tr><td>Physical coordinate system</td><td>物理座標系</td><td>Millimetres on the table, or the numbers the machine works in. A calibration asset holds the transform between it and the image system; Real-world coordinates applies it.</td></tr>
+<tr><td>Handedness</td><td>左手／右手座標系</td><td>Whether the second axis turns clockwise or anticlockwise from the first. The image system is left-handed (y points down); most machines are right-handed (y points up), which is why an uncorrected angle comes out mirrored.</td></tr>
+<tr><td>Chiral consistency</td><td>手性一致性</td><td>Whether the image system and the machine system have the same handedness. A calibration that maps pixels to machine coordinates has to preserve it, otherwise every correction is mirrored — worth checking once when a station is set up, not once per part.</td></tr>
+<tr><td>Physical point</td><td>物理點</td><td>A point converted out of pixels into the physical system by a calibration.</td></tr>
+<tr><td>Single pixel precision</td><td>單像素精度（像素當量）</td><td>How much of the real world one pixel covers, in millimetres per pixel (<code>mm_per_px</code> on a calibration). Smaller is finer; it sets the floor on what a measurement can resolve.</td></tr>
+<tr><td>Pose</td><td>位姿</td><td>Where a found object sits and how it is turned — x, y and angle together. Locate offset compares the pose it was taught with the pose in this picture and outputs the difference as a transform.</td></tr>
+<tr><td>Teaching point</td><td>示教點</td><td>The reference taken from a good part: the reference x, y and angle on Locate offset, or the position the machine was taught to go to.</td></tr>
+<tr><td>Run point</td><td>運行點</td><td>Where the part actually sits on this run — what the locating step found. The correction sent to the machine is the difference between the teaching point and the run point.</td></tr>
+<tr><td>Line and line angle</td><td>線／線角度</td><td>A line travels as its two end points. Its angle is measured from the +x axis, positive clockwise, like every other angle here.</td></tr>
+<tr><td>Caliper</td><td>卡尺</td><td>A small oriented rectangle whose grey values are projected onto one axis, so a step change in the profile locates an edge to sub-pixel accuracy. Find lines, Find circles, Caliper, Wall thickness and Circular caliper all place rows of them; a caliper's height averages across the edge, its width sets how far it searches.</td></tr>
+<tr><td>Detection area</td><td>檢測區</td><td>The region a step actually works in — its ROI, after any exclusion zones are cut out and after ROI follow has moved it.</td></tr>
+<tr><td>Mask</td><td>遮罩</td><td>A single-channel picture where 255 means "use this pixel" and 0 means "ignore it". Apply mask turns a region into one; several tools output theirs so a later step can reuse the same shape.</td></tr>
+<tr><td>Box</td><td>檢測框</td><td>A rectangle given as centre, width, height and angle. Match and detection results travel as boxes on the <code>matches</code> port.</td></tr>
+<tr><td>Blob</td><td>連通區域</td><td>A connected run of pixels that pass the threshold. Blob analysis measures each one's area, centre, bounding box and circularity, and can filter and sort on them.</td></tr>
+<tr><td>Centroid</td><td>形心</td><td>The mean position of the pixels or points in a region. For a symmetric shape it is the centre; for a chipped one it moves towards the remaining material.</td></tr>
+<tr><td>Probability map</td><td>機率圖</td><td>A greyscale picture whose pixel values are the strength of a result rather than brightness — a segmentation's class confidence, an anomaly score. Threshold it and measure the result with Blob analysis.</td></tr>
+<tr><td>Model</td><td>模型</td><td>Three different things share this word: a <strong>shape model</strong> taught from an outline, a <strong>statistical template</strong> built from many good parts, and a <strong>trained network</strong>. All three are assets; the tool that consumes one says which it needs, so check the kind before wiring it.</td></tr>
+<tr><td>Colour space</td><td>色彩空間</td><td>How a colour is split into numbers. RGB mixes brightness into all three; HSV and HSI separate hue and saturation from intensity; Lab and YUV separate a luma channel from two colour channels. Judging colour under changing light is easier in any of the last three.</td></tr>
+<tr><td>Solution</td><td>方案</td><td>Other platforms keep one file per station holding the flows, camera settings, communication and operator screen. There is no such file here: the station is the unit — its flows, sources, connections and settings, backed up together by <code>manage.py backup</code> and moved by flow export and import.</td></tr>
+<tr><td>Industrial computer (IPC)</td><td>工控機</td><td>The fanless PC in the cabinet that runs the platform. One station, one API process.</td></tr>
+<tr><td>Robot arm</td><td>機械手臂</td><td>The machine that acts on what the inspection found — it receives a corrected position, not a picture.</td></tr>
 </table>
 
 <h2 id="terms">Core terms</h2>
