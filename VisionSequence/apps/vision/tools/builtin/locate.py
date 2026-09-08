@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs
 from apps.vision.tools.roi import Crop, crop, extent, region_center, region_overlay, transform_region
 
 
@@ -982,6 +983,7 @@ class FindCircleTool(Tool):
     category = "locate"
     icon = "Circle"
     params = [
+        CALIBRATION_PARAM,
         Param("roi", "Region", kind="roi", required=True, shapes=["circle", "annulus", "rect"], help_text="Circle or ring: scan outwards to the outer radius (a ring may set start and end angles to scan only that sector). Rectangle: scan to the inscribed radius."),
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, help_text="How the grey level changes along the scan line, inside out."),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, help_text="A grey gradient below this is not an edge.", teach=True),
@@ -994,6 +996,10 @@ class FindCircleTool(Tool):
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
+        Port("cx_world", "Centre X (world)", "number"),
+        Port("cy_world", "Centre Y (world)", "number"),
+        Port("r_world", "R (world)", "number"),
+        Port("unit", "Unit", "string"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"), Port("r", "Radius", "number"),
         Port("points", "Edge points", "points"), Port("score", "Score", "number"), Port("circle", "Circle", "any"),
@@ -1061,7 +1067,8 @@ class FindCircleTool(Tool):
         ]
         return Result(
             outputs={"cx": fcx, "cy": fcy, "r": fr, "points": arr.round(2).tolist(), "score": score,
-                     "circle": {"cx": round(float(fcx), 4), "cy": round(float(fcy), 4), "r": round(float(fr), 4)}},
+                     "circle": {"cx": round(float(fcx), 4), "cy": round(float(fcy), 4), "r": round(float(fr), 4)},
+                     **world_outputs(ctx, points={("cx", "cy"): (fcx, fcy)}, lengths={"r": (fr, (fcx, fcy))})},
             overlays=overlays, branch="found",
             message=f"Centre ({fcx:.1f}, {fcy:.1f}) r={fr:.1f}, {int(inliers.sum())}/{num_rays} points, residual {float(resid[inliers].mean()):.2f}px",
             detail={"rms": float(np.sqrt((resid[inliers] ** 2).mean()))},
@@ -1363,6 +1370,7 @@ class FindRectangleTool(Tool):
     category = "locate"
     icon = "RectangleHorizontal"
     params = [
+        CALIBRATION_PARAM,
         Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect"],
               help_text="Draw it a little larger than the part; the calipers scan inwards from each side."),
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS,
@@ -1382,6 +1390,12 @@ class FindRectangleTool(Tool):
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
+        Port("cx_world", "Centre X (world)", "number"),
+        Port("cy_world", "Centre Y (world)", "number"),
+        Port("width_world", "Width (world)", "number"),
+        Port("height_world", "Height (world)", "number"),
+        Port("angle_world", "Angle (world)", "number"),
+        Port("unit", "Unit", "string"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
         Port("width", "Width", "number"), Port("height", "Height", "number"), Port("angle", "Angle", "number"),
@@ -1441,7 +1455,10 @@ class FindRectangleTool(Tool):
         return Result(
             outputs={"cx": round(cx, 3), "cy": round(cy, 3), "width": round(width, 3), "height": round(height_px, 3),
                      "angle": round(angle, 3), "rect": out_rect, "corners": found_corners,
-                     "lines": [line_span(f, np.asarray(found_corners)) for f in fits]},
+                     "lines": [line_span(f, np.asarray(found_corners)) for f in fits],
+                     **world_outputs(ctx, points={("cx", "cy"): (round(cx, 3), round(cy, 3))},
+                                     lengths={"width": (round(width, 3), (cx, cy)), "height": (round(height_px, 3), (cx, cy))},
+                                     angles={"angle": (round(angle, 3), (cx, cy))})},
             overlays=overlays, branch="found",
             message=f"{width:.2f}×{height_px:.2f} at ({cx:.1f}, {cy:.1f}), {angle:.2f}°",
         )
@@ -1529,6 +1546,7 @@ class FindParallelLinesTool(Tool):
     category = "locate"
     icon = "Equal"
     params = [
+        CALIBRATION_PARAM,
         Param("roi", "Region", kind="roi", required=True, shapes=["rect", "rotated_rect"],
               help_text="The long side runs along the pair of edges; the calipers scan across the short side."),
         Param("pair_polarity", "The band between the edges is", kind="select", default="any", options=[
@@ -1550,6 +1568,11 @@ class FindParallelLinesTool(Tool):
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
+        Port("distance_world", "Distance (world)", "number"),
+        Port("min_distance_world", "Min Distance (world)", "number"),
+        Port("max_distance_world", "Max Distance (world)", "number"),
+        Port("angle_world", "Angle (world)", "number"),
+        Port("unit", "Unit", "string"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("distance", "Width", "number"), Port("min_distance", "Narrowest", "number"), Port("max_distance", "Widest", "number"),
         Port("angle", "Angle", "number"), Port("line_a", "Edge A", "any"), Port("line_b", "Edge B", "any"),
@@ -1609,7 +1632,10 @@ class FindParallelLinesTool(Tool):
             outputs={"distance": round(float(np.mean(widths)), 4), "min_distance": round(float(np.min(widths)), 4),
                      "max_distance": round(float(np.max(widths)), 4), "angle": round(angle, 3),
                      "line_a": line_a, "line_b": line_b, "center_line": center_line, "widths": widths,
-                     "found_count": len(widths)},
+                     "found_count": len(widths),
+                     **world_outputs(ctx, lengths={key: (round(float(fn(widths)), 4), tuple(middle.mean(axis=0)))
+                                                   for key, fn in (("distance", np.mean), ("min_distance", np.min), ("max_distance", np.max))},
+                                     angles={"angle": (round(angle, 3), tuple(middle.mean(axis=0)))})},
             overlays=overlays, branch="found",
             message=f"width {float(np.mean(widths)):.2f}px ({np.min(widths):.2f}–{np.max(widths):.2f}), {len(widths)}/{count} calipers",
         )
@@ -1799,6 +1825,7 @@ class FindLineTool(Tool):
     category = "locate"
     icon = "Slash"
     params = [
+        CALIBRATION_PARAM,
         Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="The long side is the line direction; calipers scan across the short side."),
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, help_text="How the grey level changes across the short side (top to bottom / left to right)."),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
@@ -1812,6 +1839,12 @@ class FindLineTool(Tool):
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
+        Port("x1_world", "X1 (world)", "number"),
+        Port("y1_world", "Y1 (world)", "number"),
+        Port("x2_world", "X2 (world)", "number"),
+        Port("y2_world", "Y2 (world)", "number"),
+        Port("angle_world", "Angle (world)", "number"),
+        Port("unit", "Unit", "string"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
         Port("x1", "X1", "number"), Port("y1", "Y1", "number"), Port("x2", "X2", "number"), Port("y2", "Y2", "number"),
         Port("angle", "Angle", "number"), Port("rho", "ρ", "number"), Port("theta", "θ", "number"),
@@ -1877,7 +1910,9 @@ class FindLineTool(Tool):
         ]
         return Result(
             outputs={"x1": x1, "y1": y1, "x2": x2, "y2": y2, "angle": angle, "rho": rho, "theta": theta, "line": line,
-                     "points": full.round(2).tolist(), "coverage": round(len(full) / max(1, ctx.integer("num_calipers", 20)), 4)},
+                     "points": full.round(2).tolist(), "coverage": round(len(full) / max(1, ctx.integer("num_calipers", 20)), 4),
+                     **world_outputs(ctx, points={("x1", "y1"): (x1, y1), ("x2", "y2"): (x2, y2)},
+                                     angles={"angle": (angle, ((x1 + x2) / 2, (y1 + y2) / 2))})},
             overlays=overlays, branch="found",
             message=f"Angle {angle:.2f}°, {int(inliers.sum())}/{len(full)} points, residual {float(dist[inliers].mean()):.2f}px",
         )

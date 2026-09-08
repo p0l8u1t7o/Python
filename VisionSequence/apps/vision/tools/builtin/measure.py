@@ -10,6 +10,7 @@ import numpy as np
 
 from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs, read_mapping
 from apps.vision.tools.builtin.preprocess import read_calibration
 from apps.vision.tools.builtin.locate import (
     POLARITY_OPTIONS,
@@ -72,6 +73,7 @@ class CaliperTool(Tool):
     category = "measure"
     icon = "Ruler"
     params = [
+        CALIBRATION_PARAM,
         Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="Scans along the long side, averaging across the short side to beat noise."),
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
@@ -89,6 +91,12 @@ class CaliperTool(Tool):
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
+        Port("width_world", "Width (world)", "number"),
+        Port("edge1_x_world", "Edge 1 X (world)", "number"),
+        Port("edge1_y_world", "Edge 1 Y (world)", "number"),
+        Port("edge2_x_world", "Edge 2 X (world)", "number"),
+        Port("edge2_y_world", "Edge 2 Y (world)", "number"),
+        Port("unit", "Unit", "string"),
         Port("width", "Width", "number"),
         Port("edge1_x", "Edge 1 X", "number"), Port("edge1_y", "Edge 1 Y", "number"),
         Port("edge2_x", "Edge 2 X", "number"), Port("edge2_y", "Edge 2 Y", "number"),
@@ -139,7 +147,9 @@ class CaliperTool(Tool):
         ]
         return Result(
             outputs={"width": width, "edge1_x": e1[0], "edge1_y": e1[1], "edge2_x": e2[0], "edge2_y": e2[1],
-                     "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
+                     "edges": [round(e[0], 2) for e in edges], "profile": prof_list,
+                     **world_outputs(ctx, points={("edge1_x", "edge1_y"): e1, ("edge2_x", "edge2_y"): e2},
+                                     lengths={"width": (width, ((e1[0] + e2[0]) / 2, (e1[1] + e2[1]) / 2))})},
             overlays=overlays, message=f"Width {width:.2f}px ({len(edges)} edges)",
         )
 
@@ -155,6 +165,7 @@ class DistanceTool(Tool):
     category = "measure"
     icon = "MoveHorizontal"
     params = [
+        CALIBRATION_PARAM,
         Param("mode", "Measure", kind="select", default="euclid", options=[
             {"value": "euclid", "label": "Straight-line distance"},
             {"value": "dx", "label": "Distance in X"},
@@ -170,14 +181,16 @@ class DistanceTool(Tool):
         Port("ax", "A.x", "number", required=False), Port("ay", "A.y", "number", required=False),
         Port("bx", "B.x", "number", required=False), Port("by", "B.y", "number", required=False),
     ]
-    outputs = [Port("distance", "Distance", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number")]
+    outputs = [
+        Port("distance_world", "Distance (world)", "number"), Port("unit", "Unit", "string"),
+        Port("distance", "Distance", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         mode = str(ctx.param("mode", "euclid"))
         raw_a, raw_b = ctx.inputs.get("a"), ctx.inputs.get("b")
         shape_a, shape_b = _as_line(raw_a) or _as_circle(raw_a), _as_line(raw_b) or _as_circle(raw_b)
         if shape_a is not None or shape_b is not None:
-            return _shape_distance(raw_a, raw_b, mode)
+            return _shape_distance(raw_a, raw_b, mode, ctx)
         a = _point(raw_a, (ctx.inputs.get("ax"), ctx.inputs.get("ay")))
         b = _point(raw_b, (ctx.inputs.get("bx"), ctx.inputs.get("by")))
         if a is None or b is None:
@@ -191,10 +204,11 @@ class DistanceTool(Tool):
             {"kind": "point", "x": b[0], "y": b[1], "color": "#38bdf8", "label": "B"},
             {"kind": "line", "x1": a[0], "y1": a[1], "x2": b[0], "y2": b[1], "color": "#f59e0b", "width": 2, "label": f"{d:.2f}px"},
         ]
-        return Result(outputs={"distance": d, "dx": dx, "dy": dy}, overlays=overlays, message=f"{d:.2f}px")
+        return Result(outputs={"distance": d, "dx": dx, "dy": dy,
+                               **world_outputs(ctx, lengths={"distance": (d, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))})}, overlays=overlays, message=f"{d:.2f}px")
 
 
-def _shape_distance(raw_a: Any, raw_b: Any, mode: str) -> Result:
+def _shape_distance(raw_a: Any, raw_b: Any, mode: str, ctx: ToolContext) -> Result:
     """A 或 B 是圓或直線時的量法。回的兩個端點就是量到的那一段，畫出來一眼看得懂。"""
     a_line, a_circle, a_point = _as_line(raw_a), _as_circle(raw_a), _as_point(raw_a)
     b_line, b_circle, b_point = _as_line(raw_b), _as_circle(raw_b), _as_point(raw_b)
@@ -250,7 +264,8 @@ def _shape_distance(raw_a: Any, raw_b: Any, mode: str) -> Result:
         {"kind": "point", "x": pa[0], "y": pa[1], "color": "#38bdf8", "label": "A"},
         {"kind": "point", "x": pb[0], "y": pb[1], "color": "#38bdf8", "label": "B"},
     ]
-    return Result(outputs={"distance": d, "dx": dx, "dy": dy}, overlays=overlays, message=f"{d:.2f}px")
+    return Result(outputs={"distance": d, "dx": dx, "dy": dy,
+                           **world_outputs(ctx, lengths={"distance": (d, ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2))})}, overlays=overlays, message=f"{d:.2f}px")
 
 
 class AngleTool(Tool):
@@ -533,6 +548,7 @@ class FitArcTool(Tool):
     category = "measure"
     icon = "Spline"
     params = [
+        CALIBRATION_PARAM,
         Param("roi", "Region", kind="roi", required=True, shapes=["annulus", "polygon", "rotated_rect", "circle", "rect"], help_text="Circle, ring or polygon: scan radially outwards from the centre. Rectangle: place calipers along the long side."),
         *_EDGE_PARAMS,
         Param("ransac", "RANSAC outlier rejection", kind="boolean", default=True),
@@ -540,6 +556,12 @@ class FitArcTool(Tool):
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [
+        Port("radius_world", "Radius (world)", "number"),
+        Port("cx_world", "Centre X (world)", "number"),
+        Port("cy_world", "Centre Y (world)", "number"),
+        Port("start_angle_world", "Start Angle (world)", "number"),
+        Port("end_angle_world", "End Angle (world)", "number"),
+        Port("unit", "Unit", "string"),
         Port("radius", "Radius", "number"), Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number"),
         Port("residual_rms", "Residual RMS", "number"), Port("points", "Edge points", "points"),
         Port("start_angle", "Start angle", "number"), Port("end_angle", "End angle", "number"),
@@ -582,7 +604,9 @@ class FitArcTool(Tool):
         ]
         return Result(
             outputs={"radius": r, "cx": cx, "cy": cy, "residual_rms": rms, "points": pts.round(2).tolist(), "start_angle": start, "end_angle": end,
-                     "circle": {"cx": round(float(cx), 4), "cy": round(float(cy), 4), "r": round(float(r), 4)}},
+                     "circle": {"cx": round(float(cx), 4), "cy": round(float(cy), 4), "r": round(float(r), 4)},
+                     **world_outputs(ctx, points={("cx", "cy"): (cx, cy)}, lengths={"radius": (r, (cx, cy))},
+                                     angles={"start_angle": (start, (cx, cy)), "end_angle": (end, (cx, cy))})},
             overlays=overlays, message=f"R={r:.2f}px centre ({cx:.1f}, {cy:.1f}), {int(inliers.sum())}/{len(pts)} points, RMS {rms:.2f}px, {start:.0f}°→{end:.0f}°",
         )
 
@@ -1259,6 +1283,7 @@ class GeometryTool(Tool):
     category = "measure"
     icon = "Ruler"
     params = [
+        CALIBRATION_PARAM,
         Param("mode", "Compute", kind="select", default="intersect", options=[
             {"value": "intersect", "label": "Where two lines meet"},
             {"value": "point_line", "label": "Perpendicular distance from a point to a line"},
@@ -1286,11 +1311,45 @@ class GeometryTool(Tool):
         Port("c", "C (point)", "any", required=False),
     ]
     outputs = [
+        Port("x_world", "X (world)", "number"),
+        Port("y_world", "Y (world)", "number"),
+        Port("distance_world", "Distance (world)", "number"),
+        Port("angle_world", "Angle (world)", "number"),
+        Port("unit", "Unit", "string"),
         Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "Distance", "number"),
         Port("angle", "Angle", "number"), Port("line", "Line", "any"), Port("circle", "Circle", "any"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
+        result = self._pixel_result(ctx)
+        if not ctx.param("calibration") or result.status != "ok":
+            return result
+        values = result.outputs
+        at = (values["x"], values["y"])
+        mode = ctx.param("mode", "intersect")
+        result.outputs.update(world_outputs(ctx, points={("x", "y"): at},
+                                           lengths={"distance": (values["distance"], at)},
+                                           angles={"angle": (values["angle"], at)}))
+        if mode in ("intersect", "rotate"):
+            # 夾角與旋轉量是兩個方向之差，標定自身的旋轉不應加進去。
+            _, mapping = read_mapping(ctx)
+            if mode == "intersect":
+                directions = [line_angle(_need_line(ctx.inputs.get(key), key)) for key in ("a", "b")]
+            else:
+                point = _need_point(ctx.inputs.get("a"), "A")
+                pivot = _as_point(ctx.inputs.get("b")) or (0.0, 0.0)
+                at = pivot
+                initial = math.degrees(math.atan2(point[1] - pivot[1], point[0] - pivot[0]))
+                directions = [initial, initial + values["angle"]]
+            first, second = [calib.angle_to_world(mapping["matrix"], angle, at) for angle in directions]
+            delta = (second - first + 180) % 360 - 180
+            result.outputs["angle_world"] = min(abs(delta), 180 - abs(delta)) if mode == "intersect" else delta
+        elif mode in ("midpoint", "point_line", "project", "circle_3pts"):
+            result.outputs["angle_world"] = None
+        return result
+
+    def _pixel_result(self, ctx: ToolContext) -> Result:
+        """保留原始十二種模式的像素輸出與標記。"""
         mode = str(ctx.param("mode", "intersect"))
         a, b, c = ctx.inputs.get("a"), ctx.inputs.get("b"), ctx.inputs.get("c")
         blank = {"x": 0.0, "y": 0.0, "distance": 0.0, "angle": 0.0, "line": None, "circle": None}
@@ -1454,6 +1513,93 @@ def _point_list(value: Any) -> list[list[float]]:
     return out
 
 
+def _frame_matrix(frame: Any) -> np.ndarray:
+    """像素轉自訂座標：先移原點、旋轉負角度，再除以比例。"""
+    try:
+        x, y = map(float, frame["origin"])
+        angle, scale = float(frame["angle"]), float(frame["scale"])
+        if not np.isfinite([x, y, angle, scale]).all() or scale <= 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise ToolError("A coordinate frame needs a finite origin, angle and positive scale") from None
+    rad = math.radians(angle)
+    c, s = math.cos(rad) / scale, math.sin(rad) / scale
+    return np.array([[c, s, -c * x - s * y], [-s, c, s * x - c * y], [0, 0, 1]], dtype=np.float64)
+
+
+class CoordinateTool(Tool):
+    """由原點與有向基準建立座標系；角度正值為畫面順時針。"""
+
+    key = "coordinate"
+    label = "Coordinate frame"
+    description = "Define an origin and X axis from a point and angle, two points, or a directed line. Wire the frame to real-world coordinates."
+    category = "measure"
+    icon = "Axis3d"
+    params = [
+        Param("mode", "Define by", kind="select", default="point_angle", options=[
+            {"value": "point_angle", "label": "Point and angle"},
+            {"value": "two_points", "label": "Two points"},
+            {"value": "line", "label": "Directed line"},
+        ]),
+        Param("origin_x", "Origin X", kind="number", teach=True, unit="px",
+              visible_when={"param": "mode", "in": ["point_angle", "two_points"]},
+              help_text="Used with Origin Y when the point input is not connected."),
+        Param("origin_y", "Origin Y", kind="number", teach=True, unit="px",
+              visible_when={"param": "mode", "in": ["point_angle", "two_points"]}),
+        Param("axis_angle", "X axis angle", kind="number", default=0, teach=True, unit="°",
+              visible_when={"param": "mode", "in": ["point_angle"]},
+              help_text="Clockwise on screen. Used when the angle input is not connected."),
+    ]
+    inputs = [
+        Port("point", "Origin point", "any", required=False),
+        Port("angle", "X axis angle", "number", required=False),
+        Port("point2", "Point on X axis", "any", required=False),
+        Port("line", "Directed line", "any", required=False),
+    ]
+    outputs = [
+        Port("frame", "Coordinate frame", "any"), Port("origin_x", "Origin X", "number"),
+        Port("origin_y", "Origin Y", "number"), Port("angle", "X axis angle", "number"),
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        mode = ctx.param("mode", "point_angle")
+        try:
+            if mode == "line":
+                line = _line(ctx.inputs.get("line"))
+                if line is None:
+                    raise ValueError
+                origin, tip = line[:2], line[2:]
+            elif mode in ("point_angle", "two_points"):
+                origin = (_point(ctx.inputs["point"]) if "point" in ctx.inputs else
+                          _point(None, (ctx.param("origin_x"), ctx.param("origin_y"))))
+                tip = _point(ctx.inputs.get("point2")) if mode == "two_points" else None
+            else:
+                raise ValueError
+            if origin is None or not np.isfinite(origin).all():
+                raise ValueError
+            if mode == "point_angle":
+                angle = float(ctx.inputs["angle"] if "angle" in ctx.inputs else ctx.param("axis_angle", 0))
+            else:
+                if tip is None or not np.isfinite(tip).all() or math.dist(origin, tip) <= 1e-12:
+                    raise ValueError
+                angle = math.degrees(math.atan2(tip[1] - origin[1], tip[0] - origin[0]))
+            if not math.isfinite(angle):
+                raise ValueError
+        except (TypeError, ValueError, OverflowError):
+            return Result(status="ng", branch="not_found", message="No valid origin and X axis were provided",
+                          outputs={"frame": None, "origin_x": None, "origin_y": None, "angle": None})
+        x, y = origin
+        rad = math.radians(angle)
+        c, s = 40 * math.cos(rad), 40 * math.sin(rad)
+        return Result(outputs={"frame": {"origin": [x, y], "angle": angle, "scale": 1.0},
+                               "origin_x": x, "origin_y": y, "angle": angle}, branch="found",
+                      overlays=[{"kind": "point", "x": x, "y": y, "label": "Origin", "color": "#f59e0b"},
+                                {"kind": "line", "x1": x, "y1": y, "x2": x + c, "y2": y + s, "label": "X", "color": "#ef4444"},
+                                {"kind": "line", "x1": x, "y1": y, "x2": x - s, "y2": y + c, "label": "Y", "color": "#22c55e"}],
+                      message=f"Origin ({x:.3f}, {y:.3f}), X axis {angle:.3f}°")
+
+
 class ToWorldTool(Tool):
     key = "to_world"
     label = "Real-world coordinates"
@@ -1464,11 +1610,15 @@ class ToWorldTool(Tool):
     category = "measure"
     icon = "Axis3d"
     params = [
-        Param("calibration", "Calibration", kind="asset", accept="calibration", required=True,
-              help_text="Made on the Calibration page. Teach it once per station; every flow follows."),
+        Param("mode", "Direction", kind="select", default="to_world", options=[
+            {"value": "to_world", "label": "To world"}, {"value": "to_pixel", "label": "To pixels"},
+        ], help_text="To pixels treats x/y/points as world or frame coordinates; x/y/points_world outputs then contain image pixels. Lengths and angles follow the same direction."),
+        Param("calibration", "Calibration", kind="asset", accept="calibration", required=False, group="Advanced",
+              help_text="Optional. Without calibration, outputs use pixels in the connected frame. With no frame, coordinates are unchanged."),
         Param("decimals", "Decimals", kind="number", default=3, minimum=0, maximum=6, step=1, group="advanced"),
     ]
     inputs = [
+        Port("frame", "Coordinate frame", "any", required=False),
         Port("points", "Points", "points", required=False),
         Port("x", "X (pixels)", "number", required=False), Port("y", "Y (pixels)", "number", required=False),
         Port("value", "Pixel length", "number", required=False),
@@ -1482,12 +1632,32 @@ class ToWorldTool(Tool):
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
-        payload = read_calibration(ctx)
-        world = payload.get("world")
-        if not world:
-            raise ToolError("That calibration only corrects the lens: add a board, a known distance or robot points to get coordinates")
-        matrix = world["matrix"]
-        unit = payload.get("unit", "mm")
+        mode = ctx.param("mode", "to_world")
+        if mode not in ("to_world", "to_pixel"):
+            raise ToolError("Direction must be to_world or to_pixel")
+        reverse = mode == "to_pixel"
+        world: dict[str, Any] = {}
+        matrix = np.eye(3)
+        unit = "px"
+        if ctx.param("calibration"):
+            payload = read_calibration(ctx)
+            # 保留既有 world 優先行為，機構專用資產則使用 robot。
+            world = payload.get("world") or payload.get("robot")
+            if not world:
+                raise ToolError("That calibration only corrects the lens: add a board, a known distance or robot points to get coordinates")
+            matrix = np.asarray(world["matrix"], dtype=np.float64)
+            unit = payload.get("unit", "mm")
+        frame = ctx.inputs.get("frame")
+        if "frame" in ctx.inputs and frame is None:
+            return Result(status="ng", message="The coordinate frame is unavailable")
+        if frame is not None:
+            matrix = matrix @ _frame_matrix(frame)
+        if reverse:
+            try:
+                matrix = np.linalg.inv(matrix)
+            except np.linalg.LinAlgError:
+                raise ToolError("The coordinate mapping is not invertible") from None
+            unit = "px"
         digits = max(0, min(6, ctx.integer("decimals", 3)))
 
         pts = ctx.inputs.get("points")
@@ -1502,8 +1672,12 @@ class ToWorldTool(Tool):
                 raise ToolError("x and y must be numbers") from None
         if pts is None and value is None and angle_in is None:
             raise ToolError("No input: wire points (or x and y), a pixel length or an angle")
+        if pts is None and frame is None and not ctx.param("calibration") and not reverse:
+            raise ToolError("No calibration is selected: wire a coordinate frame or select a calibration to convert a length or angle")
 
         outputs: dict[str, Any] = {"scale": float(world.get("mm_per_px") or 0)}
+        if frame is not None or reverse or not ctx.param("calibration"):
+            outputs["scale"] = calib.scale_at(matrix, (0.0, 0.0))
         overlays: list[dict[str, Any]] = []
         parts: list[str] = []
         centre: tuple[float, float] | None = None
@@ -1517,7 +1691,8 @@ class ToWorldTool(Tool):
                 parts.append(f"({outputs['x']:.{digits}f}, {outputs['y']:.{digits}f}) {unit}")
                 # 標記畫在輸入影像的全圖座標上，文字寫世界座標——現場一眼就能對照
                 for i in range(min(len(src), 32)):
-                    overlays.append({"kind": "point", "x": float(src[i, 0]), "y": float(src[i, 1]), "color": "#22c55e",
+                    overlay_point = mapped[i] if reverse else src[i]
+                    overlays.append({"kind": "point", "x": float(overlay_point[0]), "y": float(overlay_point[1]), "color": "#22c55e",
                                      "label": f"{mapped[i, 0]:.{digits}f}, {mapped[i, 1]:.{digits}f}"})
         if value is not None:
             try:
@@ -1552,5 +1727,5 @@ def _image_centre(ctx: ToolContext) -> tuple[float, float]:
 TOOLS = [
     CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), ToWorldTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
-    LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(),
+    LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(), CoordinateTool(),
 ]

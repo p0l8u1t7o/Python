@@ -1750,6 +1750,7 @@ const enExtra3 = {
       robot: { title: 'Hand-eye', hint: 'Move the robot to a few places, mark the same feature each time, and the station learns where to send it.', steps: 'Move the robot, type the coordinates it reports, take a picture, mark the feature. Three places or more, then calculate.' },
     },
     robot: {
+      precision: 'Per pixel ≈ {{value}} {{unit}}',
       title: 'Hand-eye wizard',
       kind: 'What to solve',
       kinds: { translation: 'Position only', translation_rotation: 'Position and centre of rotation' },

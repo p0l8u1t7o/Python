@@ -35,6 +35,7 @@ interface RotationPoint {
 
 /** 已解出的機構區塊（solve 回來的 payload.robot） */
 export interface RobotBlock {
+  matrix: number[][]
   kind: string
   camera_mode: string
   handedness: 'left' | 'right'
@@ -384,6 +385,8 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
 /** 結果卡上機構專屬的那幾行（手性、角度正負、旋轉中心）。 */
 export function RobotResult({ robot, unit }: { robot: RobotBlock; unit: string }) {
   const { t } = useTranslation()
+  const matrix = robot.matrix
+  const precision = Math.sqrt(Math.abs(matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]))
   return (
     <div className="space-y-1 text-sm" data-testid="calib-robot-result">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -393,6 +396,9 @@ export function RobotResult({ robot, unit }: { robot: RobotBlock; unit: string }
         <Badge tone="neutral">{t('calibration.robot.angleSign', { sign: robot.angle_sign > 0 ? '+1' : '-1' })}</Badge>
       </div>
       <p className="text-xs text-subtle">{t('calibration.fitError', { rms: robot.rms.toFixed(3), max: robot.max_error.toFixed(3), unit })}</p>
+      <p className="text-xs text-subtle" data-testid="calib-robot-precision">
+        {t('calibration.robot.precision', { value: Number(precision.toPrecision(6)).toString(), unit })}
+      </p>
       {robot.rotation_center_px ? (
         <p className="text-xs text-subtle" data-testid="calib-robot-center">
           {t('calibration.robot.center', {

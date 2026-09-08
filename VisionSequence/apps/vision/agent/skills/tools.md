@@ -135,9 +135,11 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 量測區裡有會變的孔或印字時一定要挖掉，否則平均值、粒子數會跟著跳。
 
 ## find_circle
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 射線式找圓（精量測）：`roi` 用 `annulus`，環要蓋住圓緣（r_inner ≈ 0.6r、r_outer ≈ 1.4r）；只有一段弧時給 `a0/a1` 起迄角，掃描線只落在扇形內。`edge_select` first/last 決定內緣或外緣（同心環杯件：外徑 last、內徑 first）。ROI 沒對準圓心也沒關係：`refine`（預設開）會從擬合圓心重掃一次。擬合是幾何最小平方（部分弧無偏）。輸出 `cx/cy/r`、`points`（給 calibration）。`not_found` 接 judge(ng)。
 
 ## find_rectangle
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 一次找出矩形工件的四條邊：ROI 畫得比工件大一點，卡尺從四邊往內掃，四條線的交點就是四個角。
 `polarity` 是「由外往內」的灰階變化，`search` 是往內掃多深（區域的比例，夠碰到邊就好）。
 輸出的 `rect` 是**區域**，直接接下游工具的 region 埠，工件落在哪裡就量哪裡。角點依畫面順時針排（左上起）。
@@ -147,6 +149,7 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 輸出角點、四條邊長、兩條對角線與面積。相鄰兩邊平行時走 `not_found`。
 
 ## find_parallel_lines
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 溝、肋、縫的兩側一次到手：ROI 長邊沿著那一對邊，每把卡尺找一對邊。
 `pair_polarity` 說「兩邊之間」是亮的還是暗的，`pair_mode` 選最寬／最窄／最外／最強／最接近預期。
 輸出兩條線、`center_line`（中線，後面要量的通常是它）、平均／最窄／最寬寬度與逐把的 `widths`。
@@ -161,11 +164,13 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 輸出每個圓心與半徑、`missing`（哪幾格是空的，格子由左上往右下編號）與格距；有缺就走 `not_found`。
 
 ## find_line
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 卡尺式找直線：`roi` rect/rotated_rect，短邊方向掃描；輸出 `line`（接 angle／geometry 的 a/b）、`x1..y2`、`angle`。`direction` first/last/strongest 選邊。多用 RANSAC（預設開）抗雜點。
 
 斷續的邊（虛線、被遮住一段）打開 `gap_tolerant`：線的兩端取真的找到邊的範圍；`coverage` 回報幾成的卡尺打到邊。
 
 ## caliper
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。量亮條／暗條寬度給 `pair_polarity`（bright＝暗→亮再亮→暗、dark 相反）；知道大約寬度就填 `expected_width`（挑最接近的一對，旁邊有高對比雜訊邊也不會挑錯）。輸出 `width`（px）。
 
 ## wall_thickness
@@ -186,6 +191,7 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 （start、end、peak_index、peak_deviation、direction、missing）／`max_deviation`，分支 ok／defect。
 
 ## fit_arc
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 只有一段弧（缺口、扇形、R 角）時用，`roi` 用 annulus 加 `a0/a1` 起迄角（掃描線只落在扇形內），或多邊形楔形。擬合是 Taubin＋幾何精修（30°～90° 的短弧也無偏），`refine` 預設開會從擬合圓心重掃。輸出 radius、cx/cy、residual_rms、start_angle/end_angle。
 
 ## fit_ellipse
@@ -204,11 +210,13 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 兩條線夾角：`a/b` 接 find_line.line（或八個端點數值）。`range` 0_90 折成銳角、0_180 保留方向。
 
 ## distance
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 兩個東西的距離：`ax/ay/bx/by` 接 find_circle.cx/cy 等，或直接把 `a`／`b` 接線（`{x1,y1,x2,y2}`）或圓（`{cx,cy,r}`）。
 `mode` 除了直線／X／Y 之外還有 **nearest（邊到邊）／farthest／centers**——**圖面標孔到孔多半是邊到邊，不是圓心距**。
 輸出 `distance/dx/dy`（px）。
 
 ## geometry
+選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 圖面標了、影像上看不到的幾何都在這裡：`intersect`（兩線交點，順便給夾角）、`point_line`／`project`、`midpoint`、
 `line_2pts`、`parallel`（給 B 就過那個點，否則用 `offset` 平移）、`perpendicular`（B 是要通過的點）、`perp_bisector`、
 `median`（兩邊的中線）、`bisector`（角平分線）、`circle_3pts`（A/B/C 三點）、`rotate`（繞 B 轉 `angle`，順時針為正）。
@@ -242,11 +250,19 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 `template` 影像資產（取二值化後最大形狀）；`max_distance` 0.05～0.3（同形狀接近 0）。輸出 `distance`（最佳）、`distances`、
 `match_flag`／`match_count`、`matched`／`best` contours，分支 match／no_match。用來分料、抓錯料或嚴重變形；細小缺角用 contour_geometry 的凸缺陷。
 
+## coordinate
+自訂座標系（measure）：`mode=point_angle` 用 `point` 埠或 `origin_x/origin_y` 參數作原點，`angle` 埠或 `axis_angle`（預設 0）作 X 軸方向。
+`mode=two_points` 用 `point`（也可填原點參數）與 `point2`（X 軸上的另一點）；`mode=line` 用 `line` 起點作原點、起點到終點作 X 軸。
+輸出 `frame={"origin":[x,y],"angle":deg,"scale":1.0}`、`origin_x/origin_y/angle`，成功走 `found`，缺值或重合兩點走 `not_found`（ng），不使用舊座標。
+角度正值＝畫面順時針；overlay 顯示原點與兩軸。`origin_x/origin_y/axis_angle` 可現場教導；接埠優先於參數，原點參數沒有預設值。
+
 ## to_world
-像素→真實世界座標（mm 或機械手座標），選一個含世界對應的 `calibration` 資產。
+像素→真實世界座標（mm、um、in 或機械手座標），`calibration` 改為選填。保留既有 world 映射優先行為，資產僅有 robot 時也可使用。
+新增選填 `frame` 輸入：先平移到原點、旋轉 −angle、除以 scale，再套標定；標定需對應該座標系。未選標定只回座標系內的像素值，連 frame 也沒有則原樣回座標。
+`mode=to_world` 為預設；`mode=to_pixel` 將輸入 x/y/points 當世界（或座標系）座標，反算標定與 frame 回全圖像素（透視也適用）。輸出沿用 `x/y/points_world`，反向時語意為像素，`value/angle` 亦依反向映射換算。`decimals` 只控制顯示文字，不截斷輸出精度。相容既有流程：正向只接長度或角度且無座標時，仍需標定或 frame。
 `points` 進（或 `x`／`y` 數值埠接 find_circle.cx/cy、shape_match.best_x/best_y）→ `points_world`／`x`／`y` 出（第一點）；`value`（像素長度）→ `length`；`angle`（影像角度）→ `angle`（世界角度，鏡像安裝也對）。
 要把位置交給機械手抓取時用它，接在 template_match／find_circle 的中心座標後面，再接 output 具名輸出。
-只換算長度用 calibration 就夠，不必用這個。
+量測工具已選 calibration 時可直接讀 *_world，不必再接長度換算。`fit_arc` 的半徑為 `radius_world`；`find_parallel_lines` 的寬度為 `distance_world`；`geometry` 的線段長度／半徑沿用 `distance_world`（circle_3pts），世界夾角由兩個方向的差值計算，無角度的模式輸出 `angle_world=None`。
 
 ## calibration
 像素→mm：`pixel_size` 模式填 `pixel_size_mm`（0.05 mm/px 之類）；`known_distance` 用 px_distance/real_mm；`asset` 模式直接吃標定資產（站台重新標定後所有流程一起更新，優先用這個）。`value` 進、`mm` 出，放在 tolerance_judge 前。

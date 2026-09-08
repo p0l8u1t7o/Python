@@ -77,6 +77,7 @@ const zhHans = {
       robot: { title: '手眼标定', hint: '让机构走几个位置、每次标同一个特征，平台就学会该把它送到哪里。', steps: '机构移到位、填入它回报的坐标、取像、标出特征。三个位置以上就能计算。' },
     },
     robot: {
+      precision: '每像素 ≈ {{value}} {{unit}}',
       title: '手眼标定向导',
       kind: '要解什么',
       kinds: { translation: '只解位置', translation_rotation: '位置与旋转中心' },

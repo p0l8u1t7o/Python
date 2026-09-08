@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：107 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1021 項＋前端 119 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：108 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1037 項＋前端 119 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -133,6 +133,7 @@
 - `scaled_camera_matrix()`：影像尺寸與標定當下不同時自動換算內參（binning、換解析度），長寬比不同就明講不能換算而不是靜默校正錯。
 - **手眼標定（`calib.robot{}`）**：payload 第三塊 `robot`（kind＝translation／translation_rotation、camera_mode＝fixed／moving、`matrix` 像素→機構仿射、`handedness` 由 `det(matrix[:2,:2])` 決定、`angle_sign` ±1 可在存檔前覆寫、`points[]` 每點 `{px,py,rx,ry,error}`、含旋轉時 `rotation_center_px/world`＋`rotation_points[]` 徑向殘差）；`solve_robot()` 平移與旋轉**分兩組採集**（拿平移走的點擬旋轉中心是錯的），仍是最小平方、逐點殘差。API 走既有 `POST /calibration/solve` 的 `mode="robot"`（平移點是四個純量欄位，與 `mode="points"` 的 `px:[x,y]` 不同）。前端第四種模式 `'robot'` 的精靈在 `components/calibration/RobotWizard.tsx`：`useRobotWizard(shotRef)` 持有全部狀態（`record`／`body`／`applyResult`／`overlays`），標定頁只把 `onPick` 轉給它；定位方式 click（沿用 snap）或 flow（`previewFlow` 帶 `reuse_image_ref`＋`until_node`，`pointOf()` 從節點輸出取點——**`graph.nodes` 是陣列**，選單的值是節點 id）。
 - 四個工具吃同一個資產：`undistort`（preprocess）、`to_world`（measure）、`calibration` 的 `asset` 模式、`align_offset`（locate；有 `robot` 就優先用它，否則 `world`）。
+- **量測直接輸出物理量（E1，Codex 實作）**：`tools/physical.py` 的 `CALIBRATION_PARAM`（選填 asset，Advanced 群）＋`world_outputs(ctx, points={("cx","cy"): (x,y)}, lengths={"r": (px, at)}, angles={"angle": (deg, at)})` → `<鍵>_world`＋`unit`；**沒選標定回 `{}`、既有埠一字不變**（bench 鎖住），長度用 `scale_at` 的位置相依比例、角度走 `angle_to_world`、映射 `robot` 優先於 `world`。已接上：`distance`／`caliper`／`find_circle`／`fit_arc`／`find_rectangle`／`find_parallel_lines`／`find_line`／`geometry`（夾角與旋轉量是兩方向之差，標定自身的旋轉不加進去）。新工具 `coordinate`（measure）：point_angle／two_points／line 三種方式定原點與 x 軸，輸出 `frame`＝`{origin, angle, scale}`。`to_world` 多了 `frame` 輸入（`_frame_matrix`：移原點→旋轉 −angle→除以 scale，再疊標定）與 `mode`＝to_world／to_pixel（反向用 `np.linalg.inv`，perspective 也齊次反算），`calibration` 改選填（**沒接 frame、預設 mode、有標定時行為與以前完全相同**）；`to_world` 保留 world 優先（與 `physical.py` 的 robot 優先不同，資產同時有兩塊時要注意）。測試 `tests/test_physical.py`。標定頁 `RobotResult` 顯示每像素 ≈ sqrt|det| 的精度。
   `read_calibration()` 在 preprocess.py，measure.py 從那裡 import。
 - API `POST /vision/calibration/{capture,detect,snap,solve}`＋`POST/GET /vision/calibration/assets`：
   **solve 只算不存**，使用者看過殘差才按儲存；`snap` 把點擊處吸附到附近特徵的中心（Otsu＋連通元件，挑包含點擊點的那一團）。

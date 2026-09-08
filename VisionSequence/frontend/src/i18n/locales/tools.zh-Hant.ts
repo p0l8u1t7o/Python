@@ -8,6 +8,42 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  coordinate: {
+    "label": "自訂座標系",
+    "description": "由原點與角度、兩點或有向直線定義原點及 X 軸；frame 輸出可接至真實世界座標工具。角度正值為畫面順時針。",
+    "params": {
+      "mode": {
+        "label": "定義方式",
+        "options": {
+          "point_angle": "原點與角度",
+          "two_points": "兩點",
+          "line": "有向直線"
+        }
+      },
+      "origin_x": {
+        "label": "原點 X",
+        "help": "未連接 point 埠時，與原點 Y 一起使用。"
+      },
+      "origin_y": {
+        "label": "原點 Y"
+      },
+      "axis_angle": {
+        "label": "X 軸角度",
+        "help": "畫面順時針為正；未連接 angle 埠時使用。"
+      }
+    },
+    "ports": {
+      "point": "原點",
+      "angle": "X 軸角度",
+      "point2": "X 軸上的另一點",
+      "line": "有向直線",
+      "frame": "座標系",
+      "origin_x": "原點 X",
+      "origin_y": "原點 Y",
+      "found": "已建立",
+      "not_found": "未找到"
+    }
+  },
   angle: {
     label: "夾角",
     description: "兩條直線的夾角（度）。直線可為 {x1,y1,x2,y2} 或分別接八個數值。",
@@ -258,6 +294,7 @@ export default {
     label: "卡尺",
     description: "在矩形區域內沿長邊投影灰階剖面，找一對邊緣並量測寬度（像素）。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       roi: {
         label: "區域",
         help: "沿長邊方向掃描，短邊方向取平均以抗雜訊。",
@@ -300,7 +337,7 @@ export default {
         group: "進階",
       },
     },
-    ports: {
+    ports: { width_world: "寬度（物理量）", edge1_x_world: "邊緣 1 X（世界）", edge1_y_world: "邊緣 1 Y（世界）", edge2_x_world: "邊緣 2 X（世界）", edge2_y_world: "邊緣 2 Y（世界）", unit: "單位",
       image: "影像",
       roi: "區域（動態）",
       width: "寬",
@@ -905,6 +942,7 @@ export default {
     label: "距離",
     description: "兩個東西之間的距離（像素）。多半是兩點，但 A 與 B 也可以是線或圓：孔到邊的間隙、兩孔之間的淨距、凸台到基準線多遠。點＝{x,y} 或 [x,y]（也可分別接四個數值），線＝{x1,y1,x2,y2}，圓＝{cx,cy,r}。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       mode: {
         label: "量測",
         help: "後三種在 A 或 B 是圓或線時才有差別：圖面標的通常是孔的邊緣，不是圓心。",
@@ -918,7 +956,7 @@ export default {
         },
       },
     },
-    ports: {
+    ports: { distance_world: "距離（物理量）", unit: "單位",
       image: "影像",
       a: "A（點／線／圓）",
       b: "B（點／線／圓）",
@@ -1312,6 +1350,7 @@ export default {
     label: "找圓",
     description: "從 ROI 中心向外發射徑向掃描線找邊緣點，再以最小平方或 RANSAC 擬合圓。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       roi: {
         label: "區域",
         help: "圓／圓環：由中心往外掃到外半徑（圓環可設扇形起迄角，只掃該扇形）；矩形：掃到內切半徑。",
@@ -1357,7 +1396,7 @@ export default {
         group: "進階",
       },
     },
-    ports: {
+    ports: { cx_world: "圓心 X（世界）", cy_world: "圓心 Y（世界）", r_world: "半徑（物理量）", unit: "單位",
       image: "影像",
       roi: "區域（動態）",
       found: "找到",
@@ -1374,6 +1413,7 @@ export default {
     label: "找矩形",
     description: "一次找出矩形工件的四條邊：卡尺從區域的四邊各自往內掃，每條邊擬合一條線，四個角就是線的交點。回中心、寬、高與角度，找到的矩形也直接當區域傳下去——後面那一步就能在工件落在哪裡就量哪裡。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       roi: { label: "區域", help: "畫得比工件大一點；卡尺會從四邊往內掃。" },
       polarity: { label: "邊緣極性", help: "由外往內掃時的灰階變化。" },
       edge_threshold: { label: "邊緣門檻" },
@@ -1385,7 +1425,7 @@ export default {
       ransac_tol: { label: "RANSAC 容差" },
       smoothing: { label: "剖面平滑" },
     },
-    ports: { image: "影像", roi: "區域（動態）", found: "找到", not_found: "沒找到", cx: "中心 X", cy: "中心 Y", width: "寬", height: "高", angle: "角度", rect: "矩形", corners: "角點", lines: "四條邊" },
+    ports: { cx_world: "中心 X（世界）", cy_world: "中心 Y（世界）", width_world: "寬度（物理量）", height_world: "高度（物理量）", angle_world: "角度（世界）", unit: "單位", image: "影像", roi: "區域（動態）", found: "找到", not_found: "沒找到", cx: "中心 X", cy: "中心 Y", width: "寬", height: "高", angle: "角度", rect: "矩形", corners: "角點", lines: "四條邊" },
   },
   find_quadrilateral: {
     label: "四邊求角點",
@@ -1397,6 +1437,7 @@ export default {
     label: "找一對邊",
     description: "一次找出溝、肋或縫的兩側：每把卡尺找的是一對邊而不是一條邊，兩側各擬合一條線，並回報每把卡尺量到的寬度與整體寬度。中線也一起給——後面要量的通常就是它。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       roi: { label: "區域", help: "長邊沿著這一對邊，卡尺跨著短邊掃。" },
       pair_polarity: { label: "兩邊之間", options: { any: "都可以", bright: "比周圍亮", dark: "比周圍暗" } },
       pair_mode: { label: "取哪一對", options: { widest: "最寬的一對", narrowest: "最窄的一對", first_last: "最外面的一對", strongest: "最強的一對", expected: "最接近預期寬度" } },
@@ -1408,7 +1449,7 @@ export default {
       ransac_tol: { label: "RANSAC 容差" },
       smoothing: { label: "剖面平滑" },
     },
-    ports: { image: "影像", roi: "區域（動態）", found: "找到", not_found: "沒找到", distance: "寬度", min_distance: "最窄", max_distance: "最寬", angle: "角度", line_a: "邊 A", line_b: "邊 B", center_line: "中線", widths: "各處寬度", found_count: "找到成對的卡尺數" },
+    ports: { distance_world: "寬度（物理量）", min_distance_world: "最窄寬度（物理量）", max_distance_world: "最寬寬度（物理量）", angle_world: "角度（世界）", unit: "單位", image: "影像", roi: "區域（動態）", found: "找到", not_found: "沒找到", distance: "寬度", min_distance: "最窄", max_distance: "最寬", angle: "角度", line_a: "邊 A", line_b: "邊 B", center_line: "中線", widths: "各處寬度", found_count: "找到成對的卡尺數" },
   },
   find_lines_multi: {
     label: "找多條線",
@@ -1445,6 +1486,7 @@ export default {
     label: "找直線",
     description: "在矩形區域內放多條垂直於長邊的卡尺掃描線找邊緣點，再擬合直線（可 RANSAC）。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       roi: {
         label: "區域",
         help: "長邊方向為直線方向，卡尺沿短邊掃描。",
@@ -1489,7 +1531,7 @@ export default {
         group: "進階",
       },
     },
-    ports: {
+    ports: { x1_world: "起點 X（世界）", y1_world: "起點 Y（世界）", x2_world: "終點 X（世界）", y2_world: "終點 Y（世界）", angle_world: "角度（世界）", unit: "單位",
       image: "影像",
       roi: "區域（動態）",
       found: "找到",
@@ -1504,6 +1546,7 @@ export default {
     label: "圓弧擬合",
     description: "在區域內找邊緣點並以最小平方（可 RANSAC）擬合圓弧：R 角、杯口圓角的半徑與圓心。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       roi: {
         label: "區域",
         help: "圓／環／多邊形：由中心往外徑向掃描；矩形：沿長邊放卡尺。",
@@ -1548,7 +1591,7 @@ export default {
         group: "進階",
       },
     },
-    ports: {
+    ports: { cx_world: "圓心 X（世界）", cy_world: "圓心 Y（世界）", radius_world: "半徑（物理量）", start_angle_world: "起始角度（世界）", end_angle_world: "結束角度（世界）", unit: "單位",
       image: "影像",
       roi: "區域（動態）",
       radius: "半徑",
@@ -1663,6 +1706,7 @@ export default {
     label: "幾何計算",
     description: "算出圖面上標了、影像上卻看不到的幾何：兩線交點、點到線垂距、與某條線平行或垂直的線、兩邊的中線、角平分線、三點定圓、繞一點旋轉。線與點接找線／找圓／卡尺的輸出；線與圓輸出可以直接接給下一步。",
     params: {
+      calibration: { label: "標定資產", group: "進階", help: "選填；選了標定就多出 *_world 與 unit 埠，優先使用機構映射。長度使用量測位置的面積等效比例，角度單位為度。" },
       mode: {
         label: "計算",
         options: {
@@ -1683,7 +1727,7 @@ export default {
       offset: { label: "偏移", help: "沒接要通過的點時，把線往旁邊平移多少。正值是線方向的右手邊。" },
       angle: { label: "角度", help: "畫面順時針為正，與平台其他角度同向。" },
     },
-    ports: {
+    ports: { x_world: "X（世界）", y_world: "Y（世界）", distance_world: "距離或半徑（物理量）", angle_world: "角度（世界）", unit: "單位",
       a: "A（線／點）",
       b: "B（線／點）",
       c: "C（點）",
@@ -2677,10 +2721,11 @@ export default {
     label: "真實世界座標",
     description: "把像素位置換成機器實際使用的座標：檯面上的毫米，或機械手要的數字。接入一個位置就讀出 X 與 Y；長度與角度用同一份標定換算。",
     params: {
-      calibration: { label: "標定資產", help: "在標定頁做出來。一站教一次，所有流程跟著用。" },
+      mode: { label: "換算方向", help: "to_pixel 將 x/y/points 視為世界或座標系內的座標，輸出 x/y/points_world 為影像像素；長度與角度同方向換算。", options: { to_world: "轉為世界座標", to_pixel: "轉為像素座標" } },
+      calibration: { label: "標定資產", group: "進階", help: "選填；未選標定時輸出座標系內的像素值，未接 frame 時保留原座標。" },
       decimals: { label: "小數位數", group: "進階" },
     },
-    ports: { points: "點", x: "X（像素）", y: "Y（像素）", value: "像素長度", angle: "角度（影像）", points_world: "點（真實世界）", length: "長度", scale: "比例" },
+    ports: { frame: "座標系", points: "點", x: "X（像素）", y: "Y（像素）", value: "像素長度", angle: "角度（影像）", points_world: "點（真實世界）", length: "長度", scale: "比例" },
   },
   tolerance_judge: {
     label: "公差判定",

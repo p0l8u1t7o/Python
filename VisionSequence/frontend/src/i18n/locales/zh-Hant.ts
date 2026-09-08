@@ -77,6 +77,7 @@ const zhHant = {
       robot: { title: '手眼標定', hint: '讓機構走幾個位置、每次標同一個特徵，平台就學會該把它送到哪裡。', steps: '機構移到位、填入它回報的座標、取像、標出特徵。三個位置以上就能計算。' },
     },
     robot: {
+      precision: '每像素 ≈ {{value}} {{unit}}',
       title: '手眼標定精靈',
       kind: '要解什麼',
       kinds: { translation: '只解位置', translation_rotation: '位置與旋轉中心' },
