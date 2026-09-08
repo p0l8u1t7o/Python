@@ -78,6 +78,11 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 校正後量測值才不會隨位置漂。`alpha` 0＝縮放到全部都是有效像素、1＝整個畫面留著（角落補黑）；`mm_per_pixel` 輸出接 calibration。
 沒有標定資產就別放這個節點。
 
+## stitch_images
+多相機拼接。主要接 `image_1`～`image_4` 即時影像埠；沒有接影像埠時才讀 `images` 固定影像清單，適合 demo、bench 或固定樣本。至少兩張、最多四張。
+`mode=grid` 用在相機固定排成列欄時：設定 `rows`、`cols`、`order`（`row_major`／`column_major`）、`trim`，尺寸不一致會指名第幾張影像，不會偷偷 resize。`blend` 可用 `mean`、`min`、`max`、`uncover`；`uncover` 是後圖蓋前圖，最快。
+`mode=homography` 用每張校正資產的 `world.matrix` 投到共同世界平面；若沒有 world，影像 2～4 可用既有 `mapping.matrix` 映到影像 1，再接影像 1 的 world 或直接用影像 1 像素平面。不要重新求相機間關係。輸出 `origin` 是世界座標 (0,0) 落在輸出影像的像素，`scale` 是每像素世界單位；grid 另有 `offsets` 給座標還原。
+
 ## polar_unwrap
 極座標展開：圓周類檢測（瓶蓋螺紋、齒輪齒數、軸承滾珠、O-ring 缺口、環形焊道、圓形標籤字元）先把環帶攤平成
 「寬＝角度、高＝半徑（內圈在上）」的長條圖，再接一般工具：`threshold` → `blob` 數齒／數缺口、`caliper` 量沿圓周的寬度、

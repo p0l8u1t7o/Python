@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：127 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：128 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -138,7 +138,7 @@
   前端把最大的那一點標紅。這是與 VM 最主要的差異，別為了簡化而拿掉。
 - `scaled_camera_matrix()`：影像尺寸與標定當下不同時自動換算內參（binning、換解析度），長寬比不同就明講不能換算而不是靜默校正錯。
 - **手眼標定（`calib.robot{}`）**：payload 第三塊 `robot`（kind＝translation／translation_rotation、camera_mode＝fixed／moving、`matrix` 像素→機構仿射、`handedness` 由 `det(matrix[:2,:2])` 決定、`angle_sign` ±1 可在存檔前覆寫、`points[]` 每點 `{px,py,rx,ry,error}`、含旋轉時 `rotation_center_px/world`＋`rotation_points[]` 徑向殘差）；`solve_robot()` 平移與旋轉**分兩組採集**（拿平移走的點擬旋轉中心是錯的），仍是最小平方、逐點殘差。API 走既有 `POST /calibration/solve` 的 `mode="robot"`（平移點是四個純量欄位，與 `mode="points"` 的 `px:[x,y]` 不同）。前端第四種模式 `'robot'` 的精靈在 `components/calibration/RobotWizard.tsx`：`useRobotWizard(shotRef)` 持有全部狀態（`record`／`body`／`applyResult`／`overlays`），標定頁只把 `onPick` 轉給它；定位方式 click（沿用 snap）或 flow（`previewFlow` 帶 `reuse_image_ref`＋`until_node`，`pointOf()` 從節點輸出取點——**`graph.nodes` 是陣列**，選單的值是節點 id）。
-- 四個工具吃同一個資產：`undistort`（preprocess）、`to_world`（measure）、`calibration` 的 `asset` 模式、`align_offset`（locate；有 `robot` 就優先用它，否則 `world`）。
+- 五個工具吃同一個資產：`undistort`（preprocess）、`stitch_images`（preprocess）、`to_world`（measure）、`calibration` 的 `asset` 模式、`align_offset`（locate；有 `robot` 就優先用它，否則 `world`）。
 - **量測直接輸出物理量（E1，Codex 實作）**：`tools/physical.py` 的 `CALIBRATION_PARAM`（選填 asset，Advanced 群）＋`world_outputs(ctx, points={("cx","cy"): (x,y)}, lengths={"r": (px, at)}, angles={"angle": (deg, at)})` → `<鍵>_world`＋`unit`；**沒選標定回 `{}`、既有埠一字不變**（bench 鎖住），長度用 `scale_at` 的位置相依比例、角度走 `angle_to_world`、映射 `robot` 優先於 `world`。已接上：`distance`／`caliper`／`find_circle`／`fit_arc`／`find_rectangle`／`find_parallel_lines`／`find_line`／`geometry`（夾角與旋轉量是兩方向之差，標定自身的旋轉不加進去）。新工具 `coordinate`（measure）：point_angle／two_points／line 三種方式定原點與 x 軸，輸出 `frame`＝`{origin, angle, scale}`。`to_world` 多了 `frame` 輸入（`_frame_matrix`：移原點→旋轉 −angle→除以 scale，再疊標定）與 `mode`＝to_world／to_pixel（反向用 `np.linalg.inv`，perspective 也齊次反算），`calibration` 改選填（**沒接 frame、預設 mode、有標定時行為與以前完全相同**）；`to_world` 保留 world 優先（與 `physical.py` 的 robot 優先不同，資產同時有兩塊時要注意）。測試 `tests/test_physical.py`。標定頁 `RobotResult` 顯示每像素 ≈ sqrt|det| 的精度。
   `read_calibration()` 在 preprocess.py，measure.py 從那裡 import。
 - **相機間映射（`calib.mapping{}`，I3，Codex 實作）**：payload 第四塊 `mapping`（`from_source`／`to_source`／`kind`＝affine｜perspective／`matrix` 3x3／`points[{ax,ay,bx,by,error}]`／`rms`／`max_error`）——一條線上兩台相機各看工件的一部分時，把甲相機找到的位置換算成乙相機的座標。`solve_mapping(pairs, kind)` 仿射走 `lstsq`、透視走**正規化 DLT**（一般最小平方的精度壓不進 1e-6）；`solve_mapping_from_boards()` 讓兩台各自拍同一塊標定板，各解 pixel→board 再組 `H_b⁻¹·H_a`。**一樣是最小平方、不丟點、逐點殘差**（與 `solve_world`／`solve_robot` 同一個設計原則，別為了簡化改成 RANSAC）。`validate()` 的「至少要有一塊」放寬成 lens／world／robot／mapping 四選一。
@@ -250,6 +250,14 @@
 - **暖機絕不碰相機**：`grab` 換成一律回 None 並記 log 的假函式；取像節點是 `source` 模式直接 skipped，`auto`／`input` 模式只在快取裡已有該來源影像時沿用，否則 skipped 並回報原因。
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
+
+### 影像拼接（C2，`tools/builtin/stitch.py`，Codex 實作）
+- 一個工件太大、一台相機拍不完就分區拍再拼。`stitch_images`（preprocess）兩種 `mode`：
+  **`grid`**（現場最常用）——相機排成 rows×cols、位置固定沒有透視差，直接排排貼；`order`／`trim`／`overlap_x`／`overlap_y`／`blend`＝uncover（後蓋前，最快）／mean／min／max。**尺寸不一致要指出是哪一張**（實測訊息會說「Image 2 (image_2) is 60x30 … but image 1 is 60x50」），不靜默拉伸。
+  **`homography`**——每張各自選一個帶 `world` 的標定，投影到同一個世界平面再合成；輸出 `origin`（**世界原點對應輸出影像的哪個像素**，比對時是 `out[oy:oy+H, ox:ox+W]`，別把號弄反）與 `scale`。
+- 輸入兩種來源都吃：`image_1`…`image_4` 埠或 `Param(kind="images")` 的固定影像。grid 模式另出 `offsets`（每張貼在哪，給座標還原用）。
+- **精度實測**：grid 2×2 把隨機紋理大圖切開再拼回**逐像素完全相同**（灰階與彩色都是，最大差 0）；四種 blend 在已知重疊（100 與 200）上分別得 200／150／100／200。homography 路徑用已知的透視矩陣來回一趟，平均差 4.31 灰階、中位數 3——**故意錯開 1 px 平均差就跳到 11.74**，所以那個 4.31 是插值損失不是對位誤差。
+- 標定頁第六種模式（`components/calibration/StitchWizard.tsx`，比照 `MappingWizard`）：**設定存進流程圖的 `stitch_images` 節點參數、來源存在各 `image_source` 節點——沒有新資產種類、沒有 migration。**
 
 ### 子流程與逐項迴圈（A6，`tools/builtin/subflow.py`，Codex 實作）
 - **`call_flow` 與 `trigger_flow`（A4）是兩件事，別把其中一個做成另一個**：`trigger_flow` 是**另一條 run**（走 runner 佇列、有自己的 run_id 與統計）；`call_flow` 是**在目前這次 run 之內、同一條執行緒**直呼 `engine.execute()` 跑另一條流程的編譯圖——不進佇列、不寫 `FlowRun`、不發 SSE、不計統計（實測子流程的 `stats.runs` 與 `recent` 都是 0）。編譯圖走 `runner.compiled_for()` 所以享用既有快取。

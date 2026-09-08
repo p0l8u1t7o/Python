@@ -360,6 +360,12 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("crop (rotated)", "crop", big, {"roi": {"shape": "rotated_rect", "cx": s.cx, "cy": s.cy, "w": 0.5 * s.w, "h": 0.4 * s.h, "angle": s.angle}}, {}, {}),
         ("blur gaussian 5", "blur", big, {"method": "gaussian", "ksize": 5}, {}, {}),
         ("blur median 5", "blur", gray, {"method": "median", "ksize": 5}, {}, {}),
+        ("stitch_images grid 2x2", "stitch_images", None, {"mode": "grid", "rows": 2, "cols": 2}, {
+            "image_1": big[: s.h // 2, : s.w // 2],
+            "image_2": big[: s.h // 2, s.w // 2 :],
+            "image_3": big[s.h // 2 :, : s.w // 2],
+            "image_4": big[s.h // 2 :, s.w // 2 :],
+        }, {}),
         ("threshold otsu", "threshold", big, {"method": "otsu"}, {}, {}),
         ("threshold adaptive", "threshold", gray, {"method": "adaptive_gaussian", "block": 31}, {}, {}),
         ("threshold sauvola", "threshold", gray, {"method": "sauvola", "window": 31, "k": 0.2, "invert": True}, {}, {}),

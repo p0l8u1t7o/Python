@@ -1,12 +1,12 @@
 /**
  * 標定頁：教平台「一個像素是多少毫米」與「鏡頭把畫面拱成什麼樣」，存成一個標定資產給工具用。
  *
- * 四種做法一頁到底，差別只在右邊面板：標定板（鏡頭＋比例）、機械手對點、兩點已知距離、手眼標定精靈。
+ * 六種做法一頁到底，差別只在右邊面板：標定板、對點、距離、手眼、相機映射、拼接設定。
  * 刻意先算再存——殘差先給人看，覺得哪一點或哪一張不對可以刪掉重算，滿意了才存成資產。
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRightLeft, Camera, Crosshair, Move, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { ArrowRightLeft, Camera, Crosshair, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import {
@@ -17,13 +17,14 @@ import { RobotResult, RobotWizard, useRobotWizard } from '@/components/calibrati
 import type { RobotBlock } from '@/components/calibration/RobotWizard'
 import { MappingResult, MappingWizard, useMappingWizard } from '@/components/calibration/MappingWizard'
 import type { MappingBlock } from '@/components/calibration/MappingWizard'
+import { StitchWizard, useStitchWizard } from '@/components/calibration/StitchWizard'
 import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useAssets, useSources } from '@/lib/queries'
 import type { Overlay } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
-type Mode = 'board' | 'points' | 'distance' | 'robot' | 'mapping'
+type Mode = 'board' | 'points' | 'distance' | 'robot' | 'mapping' | 'stitch'
 type BoardKind = 'chessboard' | 'circles' | 'acircles'
 type WorldKind = 'affine' | 'perspective' | 'scale'
 
@@ -128,6 +129,7 @@ export function CalibrationPage() {
   const detected = shots.filter((s) => s.corners?.length)
   const robot = useRobotWizard(shot?.ref ?? null)
   const mapping = useMappingWizard()
+  const stitch = useStitchWizard()
 
   function reset() {
     setShots([])
@@ -136,6 +138,7 @@ export function CalibrationPage() {
     setResult(null)
     robot.reset()
     mapping.reset()
+    stitch.reset()
   }
 
   function switchMode(next: Mode) {
@@ -144,8 +147,9 @@ export function CalibrationPage() {
     setPoints([])
     robot.reset()
     mapping.reset()
-    // 標定板要多張、另外兩種只用一張：換模式時只留目前這張，不必重拍
-    if (next !== 'board' && next !== 'mapping' && shots.length > 1) {
+    stitch.reset()
+    // 標定板與跨相機模式保留多張影像；單張模式切換時只留目前影像。
+    if (next !== 'board' && next !== 'mapping' && next !== 'stitch' && shots.length > 1) {
       setShots(shot ? [shot] : [])
       setCurrent(0)
     }
@@ -333,7 +337,9 @@ export function CalibrationPage() {
   const lens = lensOf(result)
   const robotBlock = (result?.payload?.robot as RobotBlock | undefined) ?? null
   const mappingBlock = (result?.payload?.mapping as MappingBlock | undefined) ?? null
-  const canSolve = mode === 'board'
+  const canSolve = mode === 'stitch'
+    ? false
+    : mode === 'board'
     ? detected.length > 0 && Number(spacing) > 0
     : mode === 'mapping'
       ? mapping.canSolve
@@ -364,8 +370,8 @@ export function CalibrationPage() {
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {(['board', 'points', 'distance', 'robot', 'mapping'] as Mode[]).map((m) => (
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        {(['board', 'points', 'distance', 'robot', 'mapping', 'stitch'] as Mode[]).map((m) => (
           <button
             key={m}
             type="button"
@@ -374,7 +380,7 @@ export function CalibrationPage() {
             data-testid={`calib-mode-${m}`}
           >
             <div className="flex items-center gap-2 text-sm font-medium">
-              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : m === 'mapping' ? <ArrowRightLeft size={15} /> : <Move size={15} />}
+              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : m === 'mapping' ? <ArrowRightLeft size={15} /> : m === 'stitch' ? <PanelsTopLeft size={15} /> : <Move size={15} />}
               {t(`calibration.modes.${m}.title`)}
             </div>
             <p className="mt-1 text-xs text-subtle">{t(`calibration.modes.${m}.hint`)}</p>
@@ -388,6 +394,12 @@ export function CalibrationPage() {
             wizard={mapping}
             onChange={() => setResult(null)}
             onError={(message) => toast.error(message)}
+          />
+        ) : mode === 'stitch' ? (
+          <StitchWizard
+            wizard={stitch}
+            onError={(message) => toast.error(message)}
+            onSaved={(message) => toast.success(message)}
           />
         ) : (
         <Card>
@@ -436,7 +448,7 @@ export function CalibrationPage() {
         )}
 
         <div className="space-y-4">
-          {mode === 'mapping' ? null : mode === 'board' ? (
+          {mode === 'mapping' || mode === 'stitch' ? null : mode === 'board' ? (
             <Card>
               <CardHeader title={t('calibration.board')} />
               <CardBody className="space-y-3">
@@ -578,7 +590,7 @@ export function CalibrationPage() {
             </Card>
           )}
 
-          <Card>
+          {mode === 'stitch' ? null : <Card>
             <CardHeader title={t('calibration.result')} />
             <CardBody className="space-y-2">
               <Select
@@ -628,7 +640,7 @@ export function CalibrationPage() {
                 <p className="text-xs text-subtle">{t(`calibration.modes.${mode}.steps`)}</p>
               )}
             </CardBody>
-          </Card>
+          </Card>}
 
           <Card>
             <CardHeader title={t('calibration.existing')} />

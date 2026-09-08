@@ -14,6 +14,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.source",
     "apps.vision.tools.builtin.fixed_image",
     "apps.vision.tools.builtin.preprocess",
+    "apps.vision.tools.builtin.stitch",
     "apps.vision.tools.builtin.polar",
     "apps.vision.tools.builtin.photometric",
     "apps.vision.tools.builtin.locate",
