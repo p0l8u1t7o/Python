@@ -157,10 +157,20 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 兩條線夾角：`a/b` 接 find_line.line（或八個端點數值）。`range` 0_90 折成銳角、0_180 保留方向。
 
 ## distance
-兩點距離：`ax/ay/bx/by` 接 find_circle.cx/cy 等；輸出 `distance/dx/dy`（px）。
+兩個東西的距離：`ax/ay/bx/by` 接 find_circle.cx/cy 等，或直接把 `a`／`b` 接線（`{x1,y1,x2,y2}`）或圓（`{cx,cy,r}`）。
+`mode` 除了直線／X／Y 之外還有 **nearest（邊到邊）／farthest／centers**——**圖面標孔到孔多半是邊到邊，不是圓心距**。
+輸出 `distance/dx/dy`（px）。
 
 ## geometry
-兩線交點、點到線垂距、中點、投影：`a/b` 接 line 或 point（any 型）。
+圖面標了、影像上看不到的幾何都在這裡：`intersect`（兩線交點，順便給夾角）、`point_line`／`project`、`midpoint`、
+`line_2pts`、`parallel`（給 B 就過那個點，否則用 `offset` 平移）、`perpendicular`（B 是要通過的點）、`perp_bisector`、
+`median`（兩邊的中線）、`bisector`（角平分線）、`circle_3pts`（A/B/C 三點）、`rotate`（繞 B 轉 `angle`，順時針為正）。
+`a/b/c` 接 line、point 或 circle（any 型）；輸出多了 **`line` 與 `circle`**，可以直接接給下一個 geometry 或 distance。
+畫布上畫的基準線用 `region_from_shape` 的 `line`／`circle`／`point` 輸出接進來。
+
+## points_merge
+把幾個步驟的點併成一組再一次擬合（四把卡尺量同一條邊、整排孔的圓心）：`a~d` 各吃一個點或一串點，
+輸出 `points`／`count`／`cx`／`cy`。接 `find_line`／`fit_arc` 的 points 埠。
 
 ## concentricity
 兩圓同心度：a/b 接 find_circle 的 cx/cy/r，`max_deviation` 填圖面同心度公差的一半。輸出 in_spec 給 bool_logic。

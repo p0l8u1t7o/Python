@@ -833,23 +833,27 @@ export default {
     ports: { image: "图像", roi: "区域（动态）", ok: "干净", defect: "有缺陷", count: "数量", total_area: "总面积", max_sigma: "最大偏离", defect_mask: "缺陷掩码", deviation: "偏离图像", regions: "缺陷" },
   },
   distance: {
-    label: "距離",
-    description: "兩点距離（像素）。点可为 {x,y} / [x,y]，或分别接 ax, ay, bx, by 四个数值。",
+    label: "距离",
+    description: "两个东西之间的距离（像素）。多半是两点，但 A 与 B 也可以是线或圆：孔到边的间隙、两孔之间的净距、凸台到基准线多远。点＝{x,y} 或 [x,y]（也可分别接四个数值），线＝{x1,y1,x2,y2}，圆＝{cx,cy,r}。",
     params: {
       mode: {
-        label: "量测",
+        label: "测量",
+        help: "后三种在 A 或 B 是圆或线时才有差别：图面标的通常是孔的边缘，不是圆心。",
         options: {
-          euclid: "直线距離",
-          dx: "X 方向距離",
-          dy: "Y 方向距離",
+          euclid: "直线距离",
+          dx: "X 方向距离",
+          dy: "Y 方向距离",
+          nearest: "最近的两点（边到边）",
+          farthest: "最远的两点",
+          centers: "中心到中心",
         },
       },
     },
     ports: {
-      image: "影像",
-      a: "点 A",
-      b: "点 B",
-      distance: "距離",
+      image: "图像",
+      a: "A（点／线／圆）",
+      b: "B（点／线／圆）",
+      distance: "距离",
     },
   },
   dl_anomaly: {
@@ -1485,24 +1489,46 @@ export default {
       result: "布林",
     },
   },
+  points_merge: {
+    label: "点集合",
+    description: "把几个步骤找到的点并成一组，一次拟合或一次测量就涵盖全部：四把卡尺量同一条边的边缘点、整排孔的圆心。每个输入吃一个点或一串点。",
+    params: {
+      unique: { label: "去掉重复", help: "距离小于 0.1 像素的点算同一个。" },
+    },
+    ports: { a: "A", b: "B", c: "C", d: "D", image: "图像", points: "点", count: "数量", cx: "中心 X", cy: "中心 Y" },
+  },
   geometry: {
-    label: "幾何计算",
-    description: "解析幾何：兩线交点、点到线垂距、兩点中点、点在线上的投影。线＝{x1,y1,x2,y2}、点＝[x,y] 或 {x,y}（接找线／找圆等工具的输出）。",
+    label: "几何计算",
+    description: "算出图面上标了、图像上却看不到的几何：两线交点、点到线垂距、与某条线平行或垂直的线、两边的中线、角平分线、三点定圆、绕一点旋转。线与点接找线／找圆／卡尺的输出；线与圆输出可以直接接给下一步。",
     params: {
       mode: {
         label: "计算",
         options: {
-          intersect: "兩线交点",
+          intersect: "两线交点",
           point_line: "点到线垂距",
-          midpoint: "兩点中点",
+          midpoint: "两点中点",
           project: "点投影到线",
+          line_2pts: "两点连成的线",
+          parallel: "与这条线平行的线",
+          perpendicular: "与这条线垂直的线",
+          perp_bisector: "两点的中垂线",
+          median: "两线的中线",
+          bisector: "角平分线",
+          circle_3pts: "三点定圆",
+          rotate: "绕一点旋转",
         },
       },
+      offset: { label: "偏移", help: "没接要通过的点时，把线往旁边平移多少。正值是线方向的右手边。" },
+      angle: { label: "角度", help: "画面顺时针为正，与平台其他角度同向。" },
     },
     ports: {
       a: "A（线／点）",
       b: "B（线／点）",
-      distance: "距離",
+      c: "C（点）",
+      distance: "距离",
+      angle: "角度",
+      line: "线",
+      circle: "圆",
     },
   },
   grayscale: {
@@ -2148,11 +2174,11 @@ export default {
   },
   region_from_shape: {
     label: "区域",
-    description: "把画好的形状变成区域输出，让画布上能有第二、第三个区域——交给区域组合的排除区与加量区域。本身不影响图像。",
+    description: "把画好的形状变成区域输出，让画布上能有第二、第三个区域——交给区域组合的排除区与加量区域。另外会把形状的中心、线与圆一起送出去，所以在画布上画一条基准线就能量每个孔到它的距离（那条线是图面给的，图像上找不到）。本身不影响图像。",
     params: {
       roi: { label: "形状", help: "任何形状：矩形、旋转矩形、圆、椭圆、圆环、多边形。" },
     },
-    ports: { image: "图像（显示用）", region: "区域" },
+    ports: { image: "图像（显示用）", region: "区域", point: "中心", line: "线", circle: "圆" },
   },
   resize: {
     label: "比例",

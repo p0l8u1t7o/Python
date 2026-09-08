@@ -147,13 +147,22 @@ class CaliperTool(Tool):
 class DistanceTool(Tool):
     key = "distance"
     label = "Distance"
-    description = "The distance between two points, in pixels. A point may be {x,y} or [x,y], or four separate numbers ax, ay, bx, by."
+    description = (
+        "The distance between two things, in pixels. Two points is the usual case, but A and B may also be a line or a circle: "
+        "the gap between a hole and an edge, the clearance between two holes, how far a boss is from a datum line. A point is "
+        "{x,y} or [x,y] (or four separate numbers), a line is {x1,y1,x2,y2}, a circle is {cx,cy,r}."
+    )
     category = "measure"
     icon = "MoveHorizontal"
     params = [
         Param("mode", "Measure", kind="select", default="euclid", options=[
-            {"value": "euclid", "label": "Straight-line distance"}, {"value": "dx", "label": "Distance in X"}, {"value": "dy", "label": "Distance in Y"},
-        ]),
+            {"value": "euclid", "label": "Straight-line distance"},
+            {"value": "dx", "label": "Distance in X"},
+            {"value": "dy", "label": "Distance in Y"},
+            {"value": "nearest", "label": "Closest points (edge to edge)"},
+            {"value": "farthest", "label": "Furthest points"},
+            {"value": "centers", "label": "Centre to centre"},
+        ], help_text="The last three matter when A or B is a circle or a line: a circle's edge, not its centre, is usually what the drawing calls out."),
     ]
     inputs = [
         Port("image", "Image", "image", required=False),
@@ -164,14 +173,18 @@ class DistanceTool(Tool):
     outputs = [Port("distance", "Distance", "number"), Port("dx", "dx", "number"), Port("dy", "dy", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
-        a = _point(ctx.inputs.get("a"), (ctx.inputs.get("ax"), ctx.inputs.get("ay")))
-        b = _point(ctx.inputs.get("b"), (ctx.inputs.get("bx"), ctx.inputs.get("by")))
+        mode = str(ctx.param("mode", "euclid"))
+        raw_a, raw_b = ctx.inputs.get("a"), ctx.inputs.get("b")
+        shape_a, shape_b = _as_line(raw_a) or _as_circle(raw_a), _as_line(raw_b) or _as_circle(raw_b)
+        if shape_a is not None or shape_b is not None:
+            return _shape_distance(raw_a, raw_b, mode)
+        a = _point(raw_a, (ctx.inputs.get("ax"), ctx.inputs.get("ay")))
+        b = _point(raw_b, (ctx.inputs.get("bx"), ctx.inputs.get("by")))
         if a is None or b is None:
             raise ToolError("Two points are needed: wire a/b, or ax, ay, bx, by")
         if not all(np.isfinite([*a, *b])):
             return Result(outputs={"distance": float("nan"), "dx": float("nan"), "dy": float("nan")}, status="ng", message="The input point is not valid (the upstream step may have found nothing)")
         dx, dy = b[0] - a[0], b[1] - a[1]
-        mode = ctx.param("mode", "euclid")
         d = abs(dx) if mode == "dx" else abs(dy) if mode == "dy" else math.hypot(dx, dy)
         overlays = [
             {"kind": "point", "x": a[0], "y": a[1], "color": "#38bdf8", "label": "A"},
@@ -179,6 +192,65 @@ class DistanceTool(Tool):
             {"kind": "line", "x1": a[0], "y1": a[1], "x2": b[0], "y2": b[1], "color": "#f59e0b", "width": 2, "label": f"{d:.2f}px"},
         ]
         return Result(outputs={"distance": d, "dx": dx, "dy": dy}, overlays=overlays, message=f"{d:.2f}px")
+
+
+def _shape_distance(raw_a: Any, raw_b: Any, mode: str) -> Result:
+    """A 或 B 是圓或直線時的量法。回的兩個端點就是量到的那一段，畫出來一眼看得懂。"""
+    a_line, a_circle, a_point = _as_line(raw_a), _as_circle(raw_a), _as_point(raw_a)
+    b_line, b_circle, b_point = _as_line(raw_b), _as_circle(raw_b), _as_point(raw_b)
+    far = mode == "farthest"
+    centers = mode == "centers"
+
+    def circle_to_point(circle: tuple[float, float, float], point: tuple[float, float]) -> tuple[tuple[float, float], tuple[float, float]]:
+        cx, cy, r = circle
+        span = math.hypot(point[0] - cx, point[1] - cy)
+        if span < 1e-9:
+            return (cx + r, cy), point
+        ux, uy = (point[0] - cx) / span, (point[1] - cy) / span
+        sign = -1.0 if far else 1.0
+        return (cx + sign * ux * r, cy + sign * uy * r), point
+
+    if a_circle and b_circle:
+        (ax, ay, ar), (bx, by, br) = a_circle, b_circle
+        span = math.hypot(bx - ax, by - ay)
+        if centers or span < 1e-9:
+            pa, pb = (ax, ay), (bx, by)
+        else:
+            ux, uy = (bx - ax) / span, (by - ay) / span
+            sa, sb = (-1.0, 1.0) if far else (1.0, -1.0)
+            pa, pb = (ax + sa * ux * ar, ay + sa * uy * ar), (bx + sb * ux * br, by + sb * uy * br)
+    elif a_circle and (b_line or b_point):
+        if b_line:
+            foot = point_to_line((a_circle[0], a_circle[1]), b_line)[:2]
+            pa, pb = (circle_to_point(a_circle, foot)[0], foot) if not centers else ((a_circle[0], a_circle[1]), foot)
+        else:
+            pa, pb = (circle_to_point(a_circle, b_point) if not centers else ((a_circle[0], a_circle[1]), b_point))
+    elif b_circle and (a_line or a_point):
+        if a_line:
+            foot = point_to_line((b_circle[0], b_circle[1]), a_line)[:2]
+            pb, pa = (circle_to_point(b_circle, foot)[0], foot) if not centers else ((b_circle[0], b_circle[1]), foot)
+        else:
+            pb, pa = (circle_to_point(b_circle, a_point) if not centers else ((b_circle[0], b_circle[1]), a_point))
+    elif a_line and b_line:
+        # 兩條線：量 B 的中點到 A 的垂距（平行時就是間距，不平行時是「在那一點的間距」）
+        mid = ((b_line[0] + b_line[2]) / 2, (b_line[1] + b_line[3]) / 2)
+        foot = point_to_line(mid, a_line)[:2]
+        pa, pb = foot, mid
+    elif a_line and b_point:
+        pa, pb = point_to_line(b_point, a_line)[:2], b_point
+    elif b_line and a_point:
+        pa, pb = a_point, point_to_line(a_point, b_line)[:2]
+    else:
+        raise ToolError("Wire a point, a line {x1,y1,x2,y2} or a circle {cx,cy,r} into both A and B")
+
+    dx, dy = pb[0] - pa[0], pb[1] - pa[1]
+    d = abs(dx) if mode == "dx" else abs(dy) if mode == "dy" else math.hypot(dx, dy)
+    overlays = [
+        {"kind": "line", "x1": pa[0], "y1": pa[1], "x2": pb[0], "y2": pb[1], "color": "#f59e0b", "width": 2, "label": f"{d:.2f}px"},
+        {"kind": "point", "x": pa[0], "y": pa[1], "color": "#38bdf8", "label": "A"},
+        {"kind": "point", "x": pb[0], "y": pb[1], "color": "#38bdf8", "label": "B"},
+    ]
+    return Result(outputs={"distance": d, "dx": dx, "dy": dy}, overlays=overlays, message=f"{d:.2f}px")
 
 
 class AngleTool(Tool):
@@ -1027,62 +1099,357 @@ def _as_point(value: Any) -> tuple[float, float] | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# 幾何作圖（純函式：好測，AI 助手與其他工具也用得到）
+# ---------------------------------------------------------------------------
+#: 作圖產生的直線畫多長（線本身是無限長的，這只是拿來顯示與傳遞的一段）。
+LINE_SPAN = 200.0
+
+
+def _as_circle(value: Any) -> tuple[float, float, float] | None:
+    """接受 {cx,cy,r}、{x,y,r} 或 region 的 circle。"""
+    if not isinstance(value, dict):
+        return None
+    r = value.get("r", value.get("radius"))
+    x = value.get("cx", value.get("x"))
+    y = value.get("cy", value.get("y"))
+    if r is None or x is None or y is None:
+        return None
+    try:
+        return float(x), float(y), float(r)
+    except (TypeError, ValueError):
+        return None
+
+
+def _line_dict(x1: float, y1: float, x2: float, y2: float) -> dict[str, float]:
+    return {"x1": round(x1, 4), "y1": round(y1, 4), "x2": round(x2, 4), "y2": round(y2, 4)}
+
+
+def _unit(line: tuple[float, float, float, float]) -> tuple[float, float]:
+    x1, y1, x2, y2 = line
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy)
+    if length < 1e-9:
+        raise ToolError("The line's two ends are the same point")
+    return dx / length, dy / length
+
+
+def line_through(px: float, py: float, ux: float, uy: float, span: float = LINE_SPAN) -> dict[str, float]:
+    """過一點、方向為 (ux, uy) 的直線（畫成 ±span 的一段）。"""
+    return _line_dict(px - ux * span, py - uy * span, px + ux * span, py + uy * span)
+
+
+def parallel_line(line: tuple[float, float, float, float], *, through: tuple[float, float] | None = None, offset: float = 0.0) -> dict[str, float]:
+    """平行線：給點就過那個點，否則往法線方向平移 offset（正值＝法線 (−uy, ux) 的方向）。"""
+    ux, uy = _unit(line)
+    if through is not None:
+        return line_through(through[0], through[1], ux, uy)
+    cx, cy = (line[0] + line[2]) / 2, (line[1] + line[3]) / 2
+    return line_through(cx - uy * offset, cy + ux * offset, ux, uy)
+
+
+def perpendicular_line(line: tuple[float, float, float, float], through: tuple[float, float]) -> dict[str, float]:
+    """過一點、與這條線垂直的直線。"""
+    ux, uy = _unit(line)
+    return line_through(through[0], through[1], -uy, ux)
+
+
+def perpendicular_bisector(a: tuple[float, float], b: tuple[float, float]) -> dict[str, float]:
+    """兩點的中垂線。"""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    if math.hypot(dx, dy) < 1e-9:
+        raise ToolError("The two points are the same")
+    return perpendicular_line((a[0], a[1], b[0], b[1]), ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
+
+
+def bisector_line(la: tuple[float, float, float, float], lb: tuple[float, float, float, float]) -> dict[str, float]:
+    """兩條線的角平分線（過交點；平行時退回中線）。"""
+    ua = _unit(la)
+    ub = _unit(lb)
+    cross = ua[0] * ub[1] - ua[1] * ub[0]
+    if abs(cross) < 1e-9:
+        return median_line(la, lb)
+    point = intersect_lines(la, lb)
+    if point is None:
+        return median_line(la, lb)
+    # 兩個單位方向相加＝夾角的角平分線方向（方向相反時取差）
+    sign = 1.0 if ua[0] * ub[0] + ua[1] * ub[1] >= 0 else -1.0
+    dx, dy = ua[0] + sign * ub[0], ua[1] + sign * ub[1]
+    length = math.hypot(dx, dy)
+    if length < 1e-9:
+        raise ToolError("The two lines have no bisector")
+    return line_through(point[0], point[1], dx / length, dy / length)
+
+
+def median_line(la: tuple[float, float, float, float], lb: tuple[float, float, float, float]) -> dict[str, float]:
+    """兩條（大致平行的）線的中線：方向取平均，位置取兩線中點的中點。"""
+    ua, ub = _unit(la), _unit(lb)
+    sign = 1.0 if ua[0] * ub[0] + ua[1] * ub[1] >= 0 else -1.0
+    dx, dy = ua[0] + sign * ub[0], ua[1] + sign * ub[1]
+    length = math.hypot(dx, dy)
+    if length < 1e-9:
+        raise ToolError("The two lines point in opposite directions")
+    mx = (la[0] + la[2] + lb[0] + lb[2]) / 4
+    my = (la[1] + la[3] + lb[1] + lb[3]) / 4
+    return line_through(mx, my, dx / length, dy / length)
+
+
+def intersect_lines(la: tuple[float, float, float, float], lb: tuple[float, float, float, float]) -> tuple[float, float] | None:
+    """兩條線的交點；平行回 None。"""
+    x1, y1, x2, y2 = la
+    x3, y3, x4, y4 = lb
+    denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if abs(denom) < 1e-9:
+        return None
+    px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom
+    py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
+    return px, py
+
+
+def circle_from_three(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> dict[str, float]:
+    """三點定圓（外心）。三點共線時 ToolError。"""
+    ax, ay = a
+    bx, by = b
+    cx, cy = c
+    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(d) < 1e-9:
+        raise ToolError("The three points are on one line, so no circle passes through them")
+    ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d
+    uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d
+    return {"cx": round(ux, 4), "cy": round(uy, 4), "r": round(math.hypot(ax - ux, ay - uy), 4)}
+
+
+def rotate_point(point: tuple[float, float], pivot: tuple[float, float], degrees: float) -> tuple[float, float]:
+    """繞一點旋轉（**角度正值＝畫面順時針**，與平台其他地方同向）。"""
+    rad = math.radians(degrees)
+    cos, sin = math.cos(rad), math.sin(rad)
+    dx, dy = point[0] - pivot[0], point[1] - pivot[1]
+    return pivot[0] + dx * cos - dy * sin, pivot[1] + dx * sin + dy * cos
+
+
+def line_angle(line: tuple[float, float, float, float]) -> float:
+    """直線的角度（度，畫面順時針為正，範圍 −90~90）。"""
+    ux, uy = _unit(line)
+    return (math.degrees(math.atan2(uy, ux)) + 90) % 180 - 90
+
+
+def point_to_line(point: tuple[float, float], line: tuple[float, float, float, float]) -> tuple[float, float, float]:
+    """點到直線：回 (垂足 x, 垂足 y, 距離)。"""
+    x1, y1, x2, y2 = line
+    dx, dy = x2 - x1, y2 - y1
+    norm = dx * dx + dy * dy
+    if norm < 1e-9:
+        raise ToolError("The line's two ends are the same point")
+    t = ((point[0] - x1) * dx + (point[1] - y1) * dy) / norm
+    px, py = x1 + t * dx, y1 + t * dy
+    return px, py, math.hypot(point[0] - px, point[1] - py)
+
+
 class GeometryTool(Tool):
     key = "geometry"
     label = "Geometry"
-    description = "Analytic geometry: the intersection of two lines, the perpendicular distance from a point to a line, the midpoint of two points, and the projection of a point onto a line. A line is {x1,y1,x2,y2}; a point is [x,y] or {x,y} — wire them from find-line or find-circle."
+    description = (
+        "Works out the geometry the drawing calls for but the picture does not show: where two lines meet, the perpendicular "
+        "distance from a point to a line, a line parallel or perpendicular to another, the line halfway between two edges, the "
+        "bisector of a corner, the circle through three points, or a point turned about another. Wire lines and points in from "
+        "find-line, find-circle or caliper; the line and circle outputs go straight into the next step."
+    )
     category = "measure"
     icon = "Ruler"
     params = [
         Param("mode", "Compute", kind="select", default="intersect", options=[
-            {"value": "intersect", "label": "Intersection of two lines"}, {"value": "point_line", "label": "Perpendicular distance from a point to a line"},
-            {"value": "midpoint", "label": "Midpoint of two points"}, {"value": "project", "label": "Projection of a point onto a line"},
+            {"value": "intersect", "label": "Where two lines meet"},
+            {"value": "point_line", "label": "Perpendicular distance from a point to a line"},
+            {"value": "midpoint", "label": "Midpoint of two points"},
+            {"value": "project", "label": "Projection of a point onto a line"},
+            {"value": "line_2pts", "label": "The line through two points"},
+            {"value": "parallel", "label": "A line parallel to this one"},
+            {"value": "perpendicular", "label": "A line at right angles to this one"},
+            {"value": "perp_bisector", "label": "The line halfway between two points"},
+            {"value": "median", "label": "The line halfway between two lines"},
+            {"value": "bisector", "label": "The line that halves a corner"},
+            {"value": "circle_3pts", "label": "The circle through three points"},
+            {"value": "rotate", "label": "Turn a point about another"},
         ]),
+        Param("offset", "Offset", kind="number", default=0, unit="px", teach=True,
+              visible_when={"param": "mode", "in": ["parallel"]},
+              help_text="How far to move the line sideways when no point is wired in. Positive is to the right of the line's direction."),
+        Param("angle", "Angle", kind="number", default=0, unit="°", teach=True,
+              visible_when={"param": "mode", "in": ["rotate"]},
+              help_text="Clockwise on screen, like every other angle on the platform."),
     ]
-    inputs = [Port("a", "A (line / point)", "any"), Port("b", "B (line / point)", "any")]
-    outputs = [Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "Distance", "number")]
+    inputs = [
+        Port("a", "A (line / point)", "any"),
+        Port("b", "B (line / point)", "any", required=False),
+        Port("c", "C (point)", "any", required=False),
+    ]
+    outputs = [
+        Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "Distance", "number"),
+        Port("angle", "Angle", "number"), Port("line", "Line", "any"), Port("circle", "Circle", "any"),
+    ]
 
     def execute(self, ctx: ToolContext) -> Result:
-        mode = ctx.param("mode", "intersect")
-        a, b = ctx.inputs.get("a"), ctx.inputs.get("b")
+        mode = str(ctx.param("mode", "intersect"))
+        a, b, c = ctx.inputs.get("a"), ctx.inputs.get("b"), ctx.inputs.get("c")
+        blank = {"x": 0.0, "y": 0.0, "distance": 0.0, "angle": 0.0, "line": None, "circle": None}
+
         if mode == "intersect":
-            la, lb = _as_line(a), _as_line(b)
-            if not la or not lb:
-                raise ToolError("An intersection needs two lines {x1,y1,x2,y2}")
-            x1, y1, x2, y2 = la
-            x3, y3, x4, y4 = lb
-            denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
-            if abs(denom) < 1e-9:
-                return Result(status="ng", message="The lines are parallel and never meet", outputs={"x": 0.0, "y": 0.0, "distance": 0.0})
-            px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / denom
-            py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denom
-            overlays = [{"kind": "point", "x": px, "y": py, "label": "Intersection"}]
-            return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": 0.0}, overlays=overlays, message=f"({px:.1f}, {py:.1f})")
+            la, lb = _need_line(a, "A"), _need_line(b, "B")
+            point = intersect_lines(la, lb)
+            if point is None:
+                return Result(status="ng", message="The lines are parallel and never meet", outputs=blank)
+            angle = abs(line_angle(la) - line_angle(lb))
+            angle = min(angle, 180 - angle)
+            return Result(outputs={**blank, "x": round(point[0], 2), "y": round(point[1], 2), "angle": round(angle, 3)},
+                          overlays=[{"kind": "point", "x": point[0], "y": point[1], "label": "Intersection"}],
+                          message=f"({point[0]:.1f}, {point[1]:.1f}), {angle:.2f}°")
+
         if mode == "midpoint":
-            pa, pb = _as_point(a), _as_point(b)
-            if not pa or not pb:
-                raise ToolError("A midpoint needs two points")
+            pa, pb = _need_point(a, "A"), _need_point(b, "B")
             mx, my = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
             d = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
-            return Result(outputs={"x": round(mx, 2), "y": round(my, 2), "distance": round(d, 2)},
+            return Result(outputs={**blank, "x": round(mx, 2), "y": round(my, 2), "distance": round(d, 2)},
                           overlays=[{"kind": "point", "x": mx, "y": my, "label": "midpoint"}], message=f"({mx:.1f}, {my:.1f})")
-        # point_line / project：a=點、b=線
+
+        if mode == "line_2pts":
+            pa, pb = _need_point(a, "A"), _need_point(b, "B")
+            line = _line_dict(pa[0], pa[1], pb[0], pb[1])
+            angle = line_angle((pa[0], pa[1], pb[0], pb[1]))
+            return Result(outputs={**blank, "line": line, "angle": round(angle, 3), "x": round((pa[0] + pb[0]) / 2, 2), "y": round((pa[1] + pb[1]) / 2, 2),
+                                   "distance": round(math.hypot(pb[0] - pa[0], pb[1] - pa[1]), 2)},
+                          overlays=[{"kind": "line", **line, "label": f"{angle:.1f}°"}], message=f"{angle:.2f}°")
+
+        if mode in ("parallel", "perpendicular"):
+            la = _need_line(a, "A")
+            through = _as_point(b)
+            if mode == "perpendicular" and through is None:
+                raise ToolError("Wire the point the line has to pass through into B")
+            line = (parallel_line(la, through=through, offset=ctx.number("offset"))
+                    if mode == "parallel" else perpendicular_line(la, through))
+            return _line_result(line, blank)
+
+        if mode == "perp_bisector":
+            line = perpendicular_bisector(_need_point(a, "A"), _need_point(b, "B"))
+            return _line_result(line, blank)
+
+        if mode in ("median", "bisector"):
+            la, lb = _need_line(a, "A"), _need_line(b, "B")
+            line = median_line(la, lb) if mode == "median" else bisector_line(la, lb)
+            return _line_result(line, blank)
+
+        if mode == "circle_3pts":
+            circle = circle_from_three(_need_point(a, "A"), _need_point(b, "B"), _need_point(c, "C"))
+            return Result(outputs={**blank, "circle": circle, "x": circle["cx"], "y": circle["cy"], "distance": circle["r"]},
+                          overlays=[{"kind": "circle", "cx": circle["cx"], "cy": circle["cy"], "r": circle["r"], "label": f"r={circle['r']:.2f}"}],
+                          message=f"({circle['cx']:.1f}, {circle['cy']:.1f}) r={circle['r']:.2f}")
+
+        if mode == "rotate":
+            pa = _need_point(a, "A")
+            pivot = _as_point(b) or (0.0, 0.0)
+            degrees = ctx.number("angle")
+            x, y = rotate_point(pa, pivot, degrees)
+            return Result(outputs={**blank, "x": round(x, 3), "y": round(y, 3), "angle": degrees,
+                                   "distance": round(math.hypot(x - pivot[0], y - pivot[1]), 3)},
+                          overlays=[{"kind": "point", "x": pivot[0], "y": pivot[1], "color": "#38bdf8", "label": "pivot"},
+                                    {"kind": "point", "x": x, "y": y, "label": f"{degrees:.1f}°"}],
+                          message=f"({x:.1f}, {y:.1f})")
+
+        # point_line / project：a=點、b=線（接反了也行）
         pa, lb = _as_point(a), _as_line(b)
-        if not pa and _as_point(b) and _as_line(a):  # 接反了也行
+        if not pa and _as_point(b) and _as_line(a):
             pa, lb = _as_point(b), _as_line(a)
         if not pa or not lb:
             raise ToolError("A point and a line are needed")
-        x1, y1, x2, y2 = lb
-        dx, dy = x2 - x1, y2 - y1
-        norm = dx * dx + dy * dy
-        if norm < 1e-9:
-            raise ToolError("The line's two ends are the same point")
-        t = ((pa[0] - x1) * dx + (pa[1] - y1) * dy) / norm
-        px, py = x1 + t * dx, y1 + t * dy
-        d = math.hypot(pa[0] - px, pa[1] - py)
+        px, py, d = point_to_line(pa, lb)
         overlays = [{"kind": "line", "x1": pa[0], "y1": pa[1], "x2": px, "y2": py, "label": f"{d:.1f}px"}]
-        return Result(outputs={"x": round(px, 2), "y": round(py, 2), "distance": round(d, 2)}, overlays=overlays,
+        return Result(outputs={**blank, "x": round(px, 2), "y": round(py, 2), "distance": round(d, 2)}, overlays=overlays,
                       message=f"Perpendicular distance {d:.2f}px" if mode == "point_line" else f"projection ({px:.1f}, {py:.1f})")
+
+
+def _need_line(value: Any, which: str) -> tuple[float, float, float, float]:
+    line = _as_line(value)
+    if line is None:
+        raise ToolError(f"Input {which} has to be a line {{x1,y1,x2,y2}} — wire it from find-line or the line output of another geometry step")
+    return line
+
+
+def _need_point(value: Any, which: str) -> tuple[float, float]:
+    point = _as_point(value)
+    if point is None:
+        raise ToolError(f"Input {which} has to be a point [x, y] — wire it from find-circle, caliper or a blob centre")
+    return point
+
+
+def _line_result(line: dict[str, float], blank: dict[str, Any]) -> Result:
+    angle = line_angle((line["x1"], line["y1"], line["x2"], line["y2"]))
+    return Result(
+        outputs={**blank, "line": line, "angle": round(angle, 3),
+                 "x": round((line["x1"] + line["x2"]) / 2, 2), "y": round((line["y1"] + line["y2"]) / 2, 2)},
+        overlays=[{"kind": "line", **line, "color": "#22c55e", "label": f"{angle:.1f}°"}],
+        message=f"{angle:.2f}°",
+    )
+
+
+class PointsMergeTool(Tool):
+    key = "points_merge"
+    label = "Point set"
+    description = (
+        "Collects points from several steps into one set, so a single fit or measurement covers the lot: the edge points of "
+        "four calipers fitted to one line, the hole centres of a whole row. Each input takes one point or a list of points."
+    )
+    category = "measure"
+    icon = "Spline"
+    params = [
+        Param("unique", "Drop repeats", kind="boolean", default=False, help_text="Points closer together than a tenth of a pixel count as one."),
+    ]
+    inputs = [
+        Port("a", "A", "any"), Port("b", "B", "any", required=False),
+        Port("c", "C", "any", required=False), Port("d", "D", "any", required=False),
+        Port("image", "Image", "image", required=False),
+    ]
+    outputs = [Port("points", "Points", "points"), Port("count", "Count", "number"),
+               Port("cx", "Centre X", "number"), Port("cy", "Centre Y", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        points: list[list[float]] = []
+        for key in ("a", "b", "c", "d"):
+            points += _point_list(ctx.inputs.get(key))
+        if ctx.flag("unique"):
+            seen: list[list[float]] = []
+            for p in points:
+                if not any(abs(p[0] - q[0]) < 0.1 and abs(p[1] - q[1]) < 0.1 for q in seen):
+                    seen.append(p)
+            points = seen
+        if not points:
+            return Result(status="ng", outputs={"points": [], "count": 0, "cx": float("nan"), "cy": float("nan")},
+                          message="No points came in (the steps above may have found nothing)")
+        cx = sum(p[0] for p in points) / len(points)
+        cy = sum(p[1] for p in points) / len(points)
+        return Result(
+            outputs={"points": points, "count": len(points), "cx": round(cx, 3), "cy": round(cy, 3)},
+            overlays=[{"kind": "points", "points": points, "color": "#22c55e"},
+                      {"kind": "point", "x": cx, "y": cy, "color": "#f59e0b", "label": "centre"}],
+            message=f"{len(points)} points, centre ({cx:.1f}, {cy:.1f})",
+        )
+
+
+def _point_list(value: Any) -> list[list[float]]:
+    """一個點、一串點、或帶 x/y 的字典清單 → [[x, y], ...]（認不得的安靜略過）。"""
+    if value is None:
+        return []
+    single = _as_point(value)
+    if single is not None and not isinstance(value, (list, tuple, np.ndarray)):
+        return [[single[0], single[1]]]
+    out: list[list[float]] = []
+    if isinstance(value, np.ndarray):
+        flat = value.reshape(-1, 2) if value.ndim >= 2 and value.shape[-1] == 2 else None
+        return [[float(x), float(y)] for x, y in flat] if flat is not None else []
+    if isinstance(value, (list, tuple)):
+        if single is not None and all(isinstance(v, (int, float, np.floating, np.integer)) for v in value[:2]):
+            return [[single[0], single[1]]]
+        for item in value:
+            out += _point_list(item)
+    return out
 
 
 class ToWorldTool(Tool):
@@ -1183,5 +1550,5 @@ def _image_centre(ctx: ToolContext) -> tuple[float, float]:
 TOOLS = [
     CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), ToWorldTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
-    LineProfileTool(), ColorStatsTool(), GeometryTool(),
+    LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(),
 ]

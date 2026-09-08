@@ -1520,6 +1520,134 @@ class ParseMessageToolTests(SimpleTestCase):
             run_tool("parse_message", None, {"mode": "fixed", "fields": "a:int:x-y"}, inputs={"text": b"ab"})
 
 
+class GeometryConstructionTests(SimpleTestCase):
+    """幾何作圖：圖面標的是「兩邊的中線」「孔到基準線的距離」，影像上沒有那條線，要算出來。"""
+
+    H0 = {"x1": 0.0, "y1": 0.0, "x2": 100.0, "y2": 0.0}      # y=0 的水平線
+    H20 = {"x1": 0.0, "y1": 20.0, "x2": 100.0, "y2": 20.0}   # y=20 的水平線
+    V50 = {"x1": 50.0, "y1": -50.0, "x2": 50.0, "y2": 50.0}  # x=50 的垂直線
+
+    def _geo(self, mode, **kw):
+        params = {"mode": mode}
+        for key in ("offset", "angle"):
+            if key in kw:
+                params[key] = kw.pop(key)
+        return run_tool("geometry", None, params, inputs=kw)
+
+    @staticmethod
+    def _on_line(line, x, y, tol=1e-6):
+        """(x, y) 在這條線上嗎（垂距 < tol）。"""
+        from apps.vision.tools.builtin.measure import point_to_line
+
+        return point_to_line((x, y), (line["x1"], line["y1"], line["x2"], line["y2"]))[2] < tol
+
+    def test_where_two_lines_meet_and_at_what_angle(self):
+        r = self._geo("intersect", a=self.H0, b=self.V50)
+        self.assertEqual((round(r.outputs["x"]), round(r.outputs["y"])), (50, 0))
+        self.assertAlmostEqual(r.outputs["angle"], 90.0, places=3)
+        self.assertEqual(self._geo("intersect", a=self.H0, b=self.H20).status, "ng")  # 平行線不會相交
+
+    def test_the_line_halfway_between_two_edges(self):
+        line = self._geo("median", a=self.H0, b=self.H20).outputs["line"]
+        self.assertTrue(self._on_line(line, 0, 10))
+        self.assertTrue(self._on_line(line, 100, 10))
+
+    def test_the_line_that_halves_a_corner(self):
+        line = self._geo("bisector", a=self.H0, b=self.V50).outputs["line"]
+        self.assertTrue(self._on_line(line, 50, 0))       # 過交點
+        self.assertTrue(self._on_line(line, 60, 10))      # 45°
+
+    def test_parallel_by_offset_or_through_a_point(self):
+        shifted = self._geo("parallel", a=self.H0, offset=15).outputs["line"]
+        self.assertTrue(self._on_line(shifted, 0, 15))
+        through = self._geo("parallel", a=self.H0, b=[10.0, 30.0]).outputs["line"]
+        self.assertTrue(self._on_line(through, 999, 30))
+
+    def test_perpendicular_and_the_halfway_line_between_two_points(self):
+        perp = self._geo("perpendicular", a=self.H0, b=[25.0, 0.0]).outputs["line"]
+        self.assertTrue(self._on_line(perp, 25, 999))
+        with self.assertRaises(ToolError):
+            self._geo("perpendicular", a=self.H0)  # 沒給要過的點
+        half = self._geo("perp_bisector", a=[0.0, 0.0], b=[10.0, 10.0]).outputs["line"]
+        self.assertTrue(self._on_line(half, 5, 5))
+        self.assertTrue(self._on_line(half, 10, 0))
+
+    def test_the_circle_through_three_points(self):
+        circle = self._geo("circle_3pts", a=[0.0, 0.0], b=[10.0, 0.0], c=[5.0, 5.0]).outputs["circle"]
+        self.assertEqual((circle["cx"], circle["cy"], circle["r"]), (5.0, 0.0, 5.0))
+        with self.assertRaisesMessage(ToolError, "on one line"):
+            self._geo("circle_3pts", a=[0.0, 0.0], b=[5.0, 0.0], c=[10.0, 0.0])
+
+    def test_turning_a_point_is_clockwise_like_every_other_angle(self):
+        r = self._geo("rotate", a=[10.0, 0.0], b=[0.0, 0.0], angle=90)
+        self.assertEqual((round(r.outputs["x"], 6), round(r.outputs["y"], 6)), (0.0, 10.0))
+
+    def test_a_line_through_two_points_reports_its_angle(self):
+        r = self._geo("line_2pts", a=[0.0, 0.0], b=[10.0, 10.0])
+        self.assertAlmostEqual(r.outputs["angle"], 45.0, places=3)
+        self.assertAlmostEqual(r.outputs["distance"], 14.142, places=2)
+
+    def test_the_wrong_kind_of_input_says_which_one(self):
+        with self.assertRaisesMessage(ToolError, "Input B"):
+            self._geo("intersect", a=self.H0, b=[1.0, 2.0])
+        with self.assertRaisesMessage(ToolError, "Input A"):
+            self._geo("circle_3pts", a=self.H0, b=[1.0, 2.0], c=[3.0, 4.0])
+
+
+class ShapeDistanceTests(SimpleTestCase):
+    """圖面標的常常是「孔邊到邊」而不是「圓心到圓心」。"""
+
+    C0 = {"cx": 0.0, "cy": 0.0, "r": 5.0}
+    C30 = {"cx": 30.0, "cy": 0.0, "r": 5.0}
+    LINE = {"x1": 0.0, "y1": 20.0, "x2": 100.0, "y2": 20.0}
+
+    def _d(self, mode, **kw):
+        return round(run_tool("distance", None, {"mode": mode}, inputs=kw).outputs["distance"], 4)
+
+    def test_two_circles(self):
+        self.assertEqual(self._d("centers", a=self.C0, b=self.C30), 30.0)
+        self.assertEqual(self._d("nearest", a=self.C0, b=self.C30), 20.0)
+        self.assertEqual(self._d("farthest", a=self.C0, b=self.C30), 40.0)
+
+    def test_a_circle_and_a_line_or_a_point(self):
+        self.assertEqual(self._d("nearest", a=self.C0, b=self.LINE), 15.0)
+        self.assertEqual(self._d("centers", a=self.C0, b=self.LINE), 20.0)
+        self.assertEqual(self._d("nearest", a=self.C0, b=[0.0, 40.0]), 35.0)
+        self.assertEqual(self._d("farthest", a=self.C0, b=[0.0, 40.0]), 45.0)
+        self.assertEqual(self._d("nearest", a=[0.0, 40.0], b=self.C0), 35.0)  # 接反了也一樣
+
+    def test_a_point_and_a_line(self):
+        self.assertEqual(self._d("nearest", a=self.LINE, b=[0.0, 40.0]), 20.0)
+        self.assertEqual(self._d("euclid", a=[10.0, 0.0], b=self.LINE), 20.0)
+
+    def test_two_points_are_unchanged(self):
+        self.assertEqual(self._d("euclid", a=[0.0, 0.0], b=[3.0, 4.0]), 5.0)
+        self.assertEqual(self._d("dx", a=[0.0, 0.0], b=[3.0, 4.0]), 3.0)
+
+
+class PointSetTests(SimpleTestCase):
+    """把幾個步驟找到的點併成一組，一次擬合。"""
+
+    def test_points_come_together_with_a_centre(self):
+        r = run_tool("points_merge", None, {}, inputs={"a": [1.0, 2.0], "b": [[3.0, 4.0], [5.0, 6.0]], "c": {"x": 7.0, "y": 8.0}})
+        self.assertEqual(r.outputs["count"], 4)
+        self.assertEqual(r.outputs["points"][0], [1.0, 2.0])
+        self.assertEqual((r.outputs["cx"], r.outputs["cy"]), (4.0, 5.0))
+
+    def test_repeats_can_be_dropped_and_nothing_is_ng(self):
+        self.assertEqual(run_tool("points_merge", None, {"unique": True}, inputs={"a": [[1.0, 1.0], [1.0, 1.0], [2.0, 2.0]]}).outputs["count"], 2)
+        self.assertEqual(run_tool("points_merge", None, {}, inputs={}).status, "ng")
+
+    def test_a_drawn_shape_feeds_the_geometry_steps(self):
+        """畫布上畫一條基準線，就能量每個孔到它的距離——那條線是圖面給的，影像上找不到。"""
+        line = run_tool("region_from_shape", None, {"roi": {"shape": "line", "x1": 0.0, "y1": 0.0, "x2": 10.0, "y2": 0.0}})
+        self.assertEqual(line.outputs["line"], {"x1": 0.0, "y1": 0.0, "x2": 10.0, "y2": 0.0})
+        self.assertEqual(line.outputs["point"], [5.0, 0.0])
+        circle = run_tool("region_from_shape", None, {"roi": {"shape": "circle", "cx": 5.0, "cy": 5.0, "r": 3.0}})
+        self.assertEqual(circle.outputs["circle"], {"cx": 5.0, "cy": 5.0, "r": 3.0})
+        self.assertIsNone(run_tool("region_from_shape", None, {"roi": {"shape": "rect", "x": 0, "y": 0, "w": 4, "h": 4}}).outputs["line"])
+
+
 class CaliperSeriesTests(SimpleTestCase):
     """通用卡尺序列（locate.caliper_series）：沿直線／圓弧等距佈卡尺，單邊或邊緣對，回全圖座標。
     這是幾何查找家族與邊緣缺陷家族共用的原語，所以直接對它測精度與慣例。"""

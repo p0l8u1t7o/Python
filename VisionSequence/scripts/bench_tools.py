@@ -361,6 +361,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("line_profile", "line_profile", big, {"roi": {"shape": "line", "x1": s.cx - m * 0.2, "y1": s.cy, "x2": s.cx + m * 0.2, "y2": s.cy}}, {}, {}),
         ("color_stats", "color_stats", big, {"roi": plate}, {}, {}),
         ("geometry intersect", "geometry", None, {"mode": "intersect"}, {"a": {"x1": 0, "y1": 0, "x2": 100, "y2": 100}, "b": {"x1": 0, "y1": 100, "x2": 100, "y2": 0}}, {}),
+        ("geometry median", "geometry", None, {"mode": "median"}, {"a": {"x1": 0, "y1": 0, "x2": 100, "y2": 0}, "b": {"x1": 0, "y1": 20, "x2": 100, "y2": 20}}, {}),
+        ("geometry circle_3pts", "geometry", None, {"mode": "circle_3pts"}, {"a": [0, 0], "b": [10, 0], "c": [5, 5]}, {}),
+        ("distance circle-circle", "distance", None, {"mode": "nearest"}, {"a": {"cx": 0, "cy": 0, "r": 5}, "b": {"cx": 30, "cy": 0, "r": 5}}, {}),
+        ("points_merge", "points_merge", None, {}, {"a": [[float(i), float(i)] for i in range(200)], "b": [5.0, 6.0]}, {}),
         ("blob separate", "blob", s.mask, {"threshold_method": "none", "min_area": 300, "separate": True}, {}, {}),
         # detect
         ("blob (gray, fixed)", "blob", gray, {"threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {}, {}),

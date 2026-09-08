@@ -834,21 +834,25 @@ export default {
   },
   distance: {
     label: "距離",
-    description: "兩點距離（像素）。點可為 {x,y} / [x,y]，或分別接 ax, ay, bx, by 四個數值。",
+    description: "兩個東西之間的距離（像素）。多半是兩點，但 A 與 B 也可以是線或圓：孔到邊的間隙、兩孔之間的淨距、凸台到基準線多遠。點＝{x,y} 或 [x,y]（也可分別接四個數值），線＝{x1,y1,x2,y2}，圓＝{cx,cy,r}。",
     params: {
       mode: {
         label: "量測",
+        help: "後三種在 A 或 B 是圓或線時才有差別：圖面標的通常是孔的邊緣，不是圓心。",
         options: {
           euclid: "直線距離",
           dx: "X 方向距離",
           dy: "Y 方向距離",
+          nearest: "最近的兩點（邊到邊）",
+          farthest: "最遠的兩點",
+          centers: "中心到中心",
         },
       },
     },
     ports: {
       image: "影像",
-      a: "點 A",
-      b: "點 B",
+      a: "A（點／線／圓）",
+      b: "B（點／線／圓）",
       distance: "距離",
     },
   },
@@ -1485,9 +1489,17 @@ export default {
       result: "布林",
     },
   },
+  points_merge: {
+    label: "點集合",
+    description: "把幾個步驟找到的點併成一組，一次擬合或一次量測就涵蓋全部：四把卡尺量同一條邊的邊緣點、整排孔的圓心。每個輸入吃一個點或一串點。",
+    params: {
+      unique: { label: "去掉重複", help: "距離小於 0.1 像素的點算同一個。" },
+    },
+    ports: { a: "A", b: "B", c: "C", d: "D", image: "影像", points: "點", count: "數量", cx: "中心 X", cy: "中心 Y" },
+  },
   geometry: {
     label: "幾何計算",
-    description: "解析幾何：兩線交點、點到線垂距、兩點中點、點在線上的投影。線＝{x1,y1,x2,y2}、點＝[x,y] 或 {x,y}（接找線／找圓等工具的輸出）。",
+    description: "算出圖面上標了、影像上卻看不到的幾何：兩線交點、點到線垂距、與某條線平行或垂直的線、兩邊的中線、角平分線、三點定圓、繞一點旋轉。線與點接找線／找圓／卡尺的輸出；線與圓輸出可以直接接給下一步。",
     params: {
       mode: {
         label: "計算",
@@ -1496,13 +1508,27 @@ export default {
           point_line: "點到線垂距",
           midpoint: "兩點中點",
           project: "點投影到線",
+          line_2pts: "兩點連成的線",
+          parallel: "與這條線平行的線",
+          perpendicular: "與這條線垂直的線",
+          perp_bisector: "兩點的中垂線",
+          median: "兩線的中線",
+          bisector: "角平分線",
+          circle_3pts: "三點定圓",
+          rotate: "繞一點旋轉",
         },
       },
+      offset: { label: "偏移", help: "沒接要通過的點時，把線往旁邊平移多少。正值是線方向的右手邊。" },
+      angle: { label: "角度", help: "畫面順時針為正，與平台其他角度同向。" },
     },
     ports: {
       a: "A（線／點）",
       b: "B（線／點）",
+      c: "C（點）",
       distance: "距離",
+      angle: "角度",
+      line: "線",
+      circle: "圓",
     },
   },
   grayscale: {
@@ -2148,11 +2174,11 @@ export default {
   },
   region_from_shape: {
     label: "區域",
-    description: "把畫好的形狀變成區域輸出，讓畫布上能有第二、第三個區域——交給區域組合的排除區與加量區域。本身不影響影像。",
+    description: "把畫好的形狀變成區域輸出，讓畫布上能有第二、第三個區域——交給區域組合的排除區與加量區域。另外會把形狀的中心、線與圓一起送出去，所以在畫布上畫一條基準線就能量每個孔到它的距離（那條線是圖面給的，影像上找不到）。本身不影響影像。",
     params: {
       roi: { label: "形狀", help: "任何形狀：矩形、旋轉矩形、圓、橢圓、圓環、多邊形。" },
     },
-    ports: { image: "影像（顯示用）", region: "區域" },
+    ports: { image: "影像（顯示用）", region: "區域", point: "中心", line: "線", circle: "圓" },
   },
   resize: {
     label: "比例",

@@ -45,13 +45,36 @@ class RegionFromShapeTool(Tool):
     icon = "Square"
     params = [Param("roi", "Shape", kind="roi", required=True, teach=True, help_text="Any shape: rectangle, rotated rectangle, circle, ellipse, annulus, polygon.")]
     inputs = [Port("image", "Image (for drawing)", "image", required=False)]
-    outputs = [Port("region", "Region", "region")]
+    outputs = [
+        Port("region", "Region", "region"),
+        Port("point", "Centre", "any"), Port("line", "Line", "any"), Port("circle", "Circle", "any"),
+    ]
 
     def execute(self, ctx: ToolContext) -> Result:
         region = ctx.roi("roi")  # ctx.roi 會套上位置修正（接了 _transform 時形狀跟著工件走）
         if not isinstance(region, dict) or not region.get("shape"):
             raise ToolError("No shape is drawn")
-        return Result(outputs={"region": dict(region)}, overlays=[region_overlay(region, label="region")], message=str(region.get("shape")))
+        return Result(outputs={"region": dict(region), **_geometry_of(region)},
+                      overlays=[region_overlay(region, label="region")], message=str(region.get("shape")))
+
+
+def _geometry_of(region: dict[str, Any]) -> dict[str, Any]:
+    """畫布上畫的形狀 → 幾何運算吃得下的東西：中心點永遠有，畫的是線就給線，畫的是圓就給圓。
+
+    這樣「在畫布上畫一條基準線，量每個孔到它的距離」就不必先找出那條線——它是圖面給的，不是影像上的。
+    """
+    from apps.vision.tools.roi import region_center
+
+    shape = str(region.get("shape") or "")
+    cx, cy = region_center(region)
+    out: dict[str, Any] = {"point": [round(cx, 4), round(cy, 4)], "line": None, "circle": None}
+    if shape == "line":
+        out["line"] = {"x1": float(region["x1"]), "y1": float(region["y1"]), "x2": float(region["x2"]), "y2": float(region["y2"])}
+    elif shape in ("circle", "annulus"):
+        radius = region.get("r", region.get("r_outer"))
+        if radius is not None:
+            out["circle"] = {"cx": round(cx, 4), "cy": round(cy, 4), "r": float(radius)}
+    return out
 
 
 class RegionCombineTool(Tool):
