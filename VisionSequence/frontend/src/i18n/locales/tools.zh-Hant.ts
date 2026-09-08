@@ -1771,6 +1771,50 @@ export default {
       image: "影像",
     },
   },
+  sharpness: {
+    label: "清晰度",
+    description: "評估 ROI 內的對焦與震動模糊程度，可設定上下限並輸出雜訊估計。",
+    params: {
+      roi: {
+        label: "區域",
+        help: "留空時使用整張影像。",
+      },
+      method: {
+        label: "方法",
+        help: "Laplacian variance 最通用；Gradient energy 適合穩定邊緣；Autocorrelation drop 對隨機雜訊較不敏感。",
+        options: {
+          laplacian: "Laplacian 變異數",
+          gradient: "梯度能量",
+          autocorrelation: "自相關落差",
+        },
+      },
+      normalize: {
+        label: "依對比正規化",
+        help: "開啟後，分數是每像素反應能量除以 ROI 灰階變異數：Laplacian 為 px^-4，gradient 為 px^-2，autocorrelation 為無量綱相關落差。",
+      },
+      min_score: {
+        label: "最低分數",
+        help: "0 表示不判下限；分數低於此值走 NG。",
+      },
+      max_score: {
+        label: "最高分數",
+        help: "0 表示不判上限；分數高於此值走 NG，可用於攔截雜訊或過度銳化造成的虛高分數。",
+      },
+      noise_estimate: {
+        label: "估計雜訊",
+        help: "輸出穩健高頻雜訊水準；低光源會讓雜訊抬高清晰度分數。",
+      },
+    },
+    ports: {
+      image: "影像",
+      roi: "區域（動態）",
+      score: "分數",
+      noise: "雜訊",
+      method: "方法",
+      ok: "合格",
+      ng: "超出範圍",
+    },
+  },
   histogram: {
     label: "直方圖",
     description: "區域內 256 階灰階直方圖與峰值。",

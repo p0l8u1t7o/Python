@@ -1771,6 +1771,50 @@ export default {
       image: "影像",
     },
   },
+  sharpness: {
+    label: "清晰度",
+    description: "评估 ROI 内的对焦与震动模糊程度，可设置上下限并输出噪声估计。",
+    params: {
+      roi: {
+        label: "区域",
+        help: "留空时使用整张图像。",
+      },
+      method: {
+        label: "方法",
+        help: "Laplacian variance 最通用；Gradient energy 适合稳定边缘；Autocorrelation drop 对随机噪声较不敏感。",
+        options: {
+          laplacian: "Laplacian 方差",
+          gradient: "梯度能量",
+          autocorrelation: "自相关落差",
+        },
+      },
+      normalize: {
+        label: "按对比归一化",
+        help: "开启后，分数是每像素响应能量除以 ROI 灰阶方差：Laplacian 为 px^-4，gradient 为 px^-2，autocorrelation 为无量纲相关落差。",
+      },
+      min_score: {
+        label: "最低分数",
+        help: "0 表示不判下限；分数低于此值走 NG。",
+      },
+      max_score: {
+        label: "最高分数",
+        help: "0 表示不判上限；分数高于此值走 NG，可用于拦截噪声或过度锐化造成的虚高分数。",
+      },
+      noise_estimate: {
+        label: "估计噪声",
+        help: "输出稳健高频噪声水平；低光源会让噪声抬高清晰度分数。",
+      },
+    },
+    ports: {
+      image: "图像",
+      roi: "区域（动态）",
+      score: "分数",
+      noise: "噪声",
+      method: "方法",
+      ok: "合格",
+      ng: "超出范围",
+    },
+  },
   histogram: {
     label: "直方图",
     description: "区域内 256 阶灰阶直方图与峰值。",

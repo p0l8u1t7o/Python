@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from apps.vision import calib
+from apps.vision.tools import accel
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs, read_mapping
 from apps.vision.tools.builtin.preprocess import read_calibration
@@ -444,6 +445,152 @@ class HistogramTool(Tool):
             hist = hist / max(1.0, hist.sum())
         overlays = [region_overlay(region, label=f"peak {peak}")] if region else []
         return Result(outputs={"histogram": hist.tolist(), "peak": peak, "peak_count": peak_count, "otsu": float(otsu)}, overlays=overlays, message=f"Peak {peak}, Otsu {otsu:g}")
+
+
+SHARPNESS_METHODS = [
+    {
+        "value": "laplacian",
+        "label": "Laplacian variance",
+        "help_text": "General-purpose focus and motion-blur score. It reacts strongly to fine edges and texture.",
+    },
+    {
+        "value": "gradient",
+        "label": "Gradient energy",
+        "help_text": "Tenengrad-style squared gradient energy. Use it when stable edges dominate the region.",
+    },
+    {
+        "value": "autocorrelation",
+        "label": "Autocorrelation drop",
+        "help_text": "Compares one- and two-pixel neighbour correlation. Use it when sensor noise would otherwise lift edge-energy scores.",
+    },
+]
+
+
+def _masked_values(image: np.ndarray, mask: np.ndarray | None) -> np.ndarray:
+    return image.reshape(-1) if mask is None else image[mask > 0]
+
+
+def _masked_stats(image: np.ndarray, mask: np.ndarray | None) -> tuple[float, float, int]:
+    valid = int(image.size) if mask is None else int(cv2.countNonZero(mask))
+    if valid <= 0:
+        return 0.0, 0.0, 0
+    mean, std = cv2.meanStdDev(np.ascontiguousarray(image), mask)
+    return float(mean[0, 0]), float(std[0, 0] ** 2), valid
+
+
+def _sharpness_noise(gray: np.ndarray, mask: np.ndarray | None) -> float:
+    # 現場光量不足時，感測器雜訊會把高頻能量撐高，讓清晰度分數看起來比實際更好。
+    # 這裡用 3x3 中值濾波後的殘差 MAD 估計獨立高頻雜訊，方便把雜訊與真正邊緣分開監看。
+    med = accel.median_blur(np.ascontiguousarray(gray), 3)
+    residual = gray.astype(np.float32, copy=False) - med.astype(np.float32, copy=False)
+    vals = _masked_values(residual, mask)
+    if vals.size == 0:
+        return 0.0
+    center = float(np.median(vals))
+    mad = float(np.median(np.abs(vals - center)))
+    return 1.4826 * mad
+
+
+def _lag_covariance(delta: np.ndarray, dx: int, dy: int, mask: np.ndarray | None) -> float:
+    h, w = delta.shape[:2]
+    if w <= abs(dx) or h <= abs(dy):
+        return 0.0
+    a = delta[max(0, dy): h + min(0, dy), max(0, dx): w + min(0, dx)]
+    b = delta[max(0, -dy): h - max(0, dy), max(0, -dx): w - max(0, dx)]
+    if mask is not None:
+        ma = mask[max(0, dy): h + min(0, dy), max(0, dx): w + min(0, dx)] > 0
+        mb = mask[max(0, -dy): h - max(0, dy), max(0, -dx): w - max(0, dx)] > 0
+        sel = ma & mb
+        if not np.any(sel):
+            return 0.0
+        return float(np.mean(a[sel] * b[sel]))
+    return float(np.mean(a * b))
+
+
+def _sharpness_score(gray: np.ndarray, mask: np.ndarray | None, method: str, normalize: bool) -> float:
+    mean, contrast, count = _masked_stats(gray, mask)
+    if count < 9:
+        raise ToolError("The region has too few pixels")
+    src = np.ascontiguousarray(gray)
+    if method == "laplacian":
+        response = cv2.Laplacian(src, cv2.CV_16S, ksize=3)
+        _, raw, _ = _masked_stats(response, mask)
+        scale = contrast if normalize else 1.0
+    elif method == "gradient":
+        gx, gy = cv2.spatialGradient(src, ksize=3)
+        energy = gx.astype(np.float32)
+        np.multiply(energy, energy, out=energy)
+        gy2 = gy.astype(np.float32)
+        energy += gy2 * gy2
+        raw = float(cv2.sumElems(energy)[0]) if mask is None else float(energy[mask > 0].sum())
+        scale = count * contrast if normalize else 1.0
+    elif method == "autocorrelation":
+        # 自相關要看多個位移的協方差，會比單次卷積多幾趟陣列掃描；換來的是對獨立雜訊較不敏感。
+        delta = src.astype(np.float32) - mean
+        lag1 = _lag_covariance(delta, 1, 0, mask) + _lag_covariance(delta, 0, 1, mask)
+        lag2 = _lag_covariance(delta, 2, 0, mask) + _lag_covariance(delta, 0, 2, mask)
+        raw = max(0.0, lag1 - lag2)
+        scale = 2.0 * contrast if normalize else 1.0
+    else:
+        raise ToolError("Unknown sharpness method")
+    if normalize:
+        return raw / max(scale, 1e-6)
+    return raw
+
+
+class SharpnessTool(Tool):
+    key = "sharpness"
+    label = "Sharpness"
+    description = "Scores focus and motion blur in a region, with optional pass limits and a noise estimate."
+    category = "measure"
+    icon = "Focus"
+    params = [
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon"], help_text="Leave blank for the whole image."),
+        Param("method", "Method", kind="select", default="laplacian", options=SHARPNESS_METHODS,
+              help_text="Laplacian variance is the general default; gradient energy suits stable edges; autocorrelation is less sensitive to random noise."),
+        Param("normalize", "Normalize by contrast", kind="boolean", default=True,
+              help_text="On, the score is per-pixel response energy divided by the region grey-level variance: px^-4 for Laplacian, px^-2 for gradient, and a unitless correlation drop for autocorrelation."),
+        Param("min_score", "Minimum score", kind="number", default=0, minimum=0, teach=True,
+              help_text="0 disables the lower pass limit. Scores below this take the NG branch."),
+        Param("max_score", "Maximum score", kind="number", default=0, minimum=0, teach=True,
+              help_text="0 disables the upper pass limit. Scores above this take the NG branch, useful when noise or over-sharpening raises the score."),
+        Param("noise_estimate", "Estimate noise", kind="boolean", default=False,
+              help_text="Also reports a robust high-frequency noise level. Low light can raise sharpness scores through noise instead of real detail."),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        Port("score", "Score", "number"),
+        Port("noise", "Noise", "number"),
+        Port("method", "Method", "string"),
+        flow_out("ok", "Pass", "ok"),
+        flow_out("ng", "Out of range", "critical"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        c = crop(image, region)
+        if c.image.size == 0:
+            raise ToolError("The region falls outside the image")
+        method = str(ctx.param("method", "laplacian"))
+        normalize = ctx.flag("normalize", True)
+        score = _sharpness_score(c.image, c.mask, method, normalize)
+        noise = _sharpness_noise(c.image, c.mask) if ctx.flag("noise_estimate", False) else None
+        min_score = ctx.number("min_score", 0)
+        max_score = ctx.number("max_score", 0)
+        ok = (min_score <= 0 or score >= min_score) and (max_score <= 0 or score <= max_score)
+        label = f"sharpness {score:.3g}"
+        overlay = region_overlay(region, label=label) if region else {"kind": "rect", "x": 0, "y": 0, "w": image.shape[1], "h": image.shape[0], "color": "#38bdf8", "width": 1, "dash": True, "label": label}
+        message = f"Score {score:.4g}"
+        if noise is not None:
+            message += f", noise {noise:.3g}"
+        return Result(
+            outputs={"score": score, "noise": noise, "method": method},
+            overlays=[overlay],
+            branch="ok" if ok else "ng",
+            status="ok" if ok else "ng",
+            message=message,
+        )
 
 
 
@@ -1725,7 +1872,7 @@ def _image_centre(ctx: ToolContext) -> tuple[float, float]:
 
 
 TOOLS = [
-    CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), ToWorldTool(),
+    CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), SharpnessTool(), ToWorldTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
     LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(), CoordinateTool(),
 ]

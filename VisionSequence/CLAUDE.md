@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：110 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1085 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：111 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1090 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -158,6 +158,13 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 清晰度評估（C4，`sharpness`，Codex 實作）
+- 現場最常見的兩個問題是鏡頭沒對焦與震動模糊，兩者都會讓量測失準卻不一定判 NG。`sharpness`（measure 類）給一個可監看、可設門檻的分數：`method`＝laplacian（二階響應的變異數，最通用）／gradient（Tenengrad 類的梯度能量）／autocorrelation（短位移與長位移的自相關差，較不受雜訊直接拉高，但要掃多組位移所以慢）。`normalize` 除以區域對比與面積，讓不同大小的 ROI 與不同亮度可以比較。合格範圍 `min_score`／`max_score`（0＝不判）走 ok／ng 分支。走 `ctx.roi()`，位置修正自動生效。
+- **雜訊會讓清晰度分數虛高**——低光高增益時最容易誤判。實測：同一張 sigma 3 的模糊圖，加了雜訊後 laplacian 分數從 0.015 變成 2.81（**虛高 190 倍**），而 `noise_estimate` 的輸出從 0 升到 10.4。所以現場設門檻時要一起看 `noise`，這件事寫進了 help_text 與 `agent/skills/tools.md`。
+- 效能（1280×960，bench）：laplacian 0.21 ms／gradient 1.18 ms／autocorrelation 2.33 ms。只有選填的雜訊估計走 `accel`（median），其餘 CPU 卷積已是毫秒級不必硬套 GPU。
+- 測試 `tests/test_sharpness.py` 鎖住唯一真正重要的性質：**同一張圖越糊分數越低**（三種方法對 sigma 0／0.8／1.6／3／5 都嚴格遞減）。
+- **擷取端預覽指標那一半沒做**（需要重新打包擷取端，留到硬體階段）。
 
 ### 檔案輸出（B6，apps/vision/fileout.py，Codex 實作）
 - **給使用者自訂的檔案落地，與 `archive.py` 的影像封存是兩條路**（封存是給統計頁回看的）。新工具 `write_log`（output 類）把具名輸出寫成 CSV／TXT 一列；`save_image` 補了檔名樣板、按日目錄、JPEG 品質與 `condition`。

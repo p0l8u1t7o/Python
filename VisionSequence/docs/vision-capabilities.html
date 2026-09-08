@@ -206,6 +206,7 @@ when the radius series itself is wanted for something else.</p>
 <tr><td>Particle analysis and filtering</td><td><code>blob</code>: area, circularity, bounding box, plus <strong>new</strong> perimeter, orientation and elongation</td><td>original plus new</td></tr>
 <tr><td>Separating touching particles (watershed)</td><td>The "split touching particles" option on <code>blob</code> (distance transform plus watershed)</td><td><strong>added</strong></td></tr>
 <tr><td>Light meter (point, line, rectangle)</td><td><code>intensity</code>, now including a <strong>point ROI</strong>, and <code>line_profile</code> (<strong>new</strong>: profile along a polyline with statistics)</td><td>original plus new</td></tr>
+<tr><td>Focus and blur monitoring</td><td><code>sharpness</code>: Laplacian variance, Tenengrad-style gradient energy, or an autocorrelation drop score over the whole image or an ROI; optional contrast normalisation, upper/lower pass limits, and a robust high-frequency noise estimate for low-light false-high scores</td><td><strong>added</strong></td></tr>
 <tr><td>Colour statistics</td><td><code>color_stats</code> (RGB and HSV statistics, dominant hue, mean colour)</td><td><strong>added</strong></td></tr>
 <tr><td>Colour comparison</td><td><code>color_check</code> and <code>color_range</code></td><td>original</td></tr>
 <tr><td>Edge detection: find lines and circles (rake and spoke)</td><td><code>find_line</code> and <code>find_circle</code> (RANSAC, geometric fitting, sector ROIs, rescan refinement)</td><td>original, accuracy improved</td></tr>

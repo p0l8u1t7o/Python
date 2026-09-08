@@ -342,6 +342,15 @@ ROI 灰階統計（mean/std/min/max/median）。亮度守門、簡單有無。
 ## histogram
 直方圖與 Otsu 門檻／峰值；教學與曝光診斷。
 
+## sharpness
+用來監看鏡頭失焦、震動或曝光時間過長造成的模糊；它輸出 `score`，並可用 `min_score` / `max_score` 直接走 `ok` / `ng` 分支。要做產線攔截時，先在良品清楚影像上取穩定分數，再把 `min_score` 設在良品低分側以下一點。`max_score` 通常不設，只有在過度銳化或雜訊會把分數拉高時才用。
+
+`method=laplacian` 是最通用的預設，對細邊與紋理最敏感；`gradient` 適合 ROI 裡有穩定邊緣時使用，分數通常較平順；`autocorrelation` 用一、二像素位移的相關性落差，對隨機雜訊比較不敏感，但因為要多次掃描位移陣列，會比單次卷積型方法慢。
+
+`normalize=true` 時分數已用 ROI 內灰階變異數縮放，比較適合跨 ROI 大小、照明強弱或對比不同的影像比較。雜訊會讓清晰度分數虛高，尤其是光量不足、相機增益拉高時；懷疑這種情況就開 `noise_estimate`，同時監看 `noise`，不要只靠 `score` 判定焦距。
+
+分工上，`sharpness` 是影像品質監控工具；`caliper`、`find_line`、`find_circle`、`line_profile` 仍負責定位、找邊或量測。若要知道某條邊的位置或寬度，用那些工具；若要判斷整個 ROI 是否清楚、是否應先攔下不量，才用 `sharpness`。
+
 ## line_profile
 沿線／折線取灰階剖面：量溝深、找邊緣位置、看印刷條紋。`roi` 用 line/polyline。
 
