@@ -25,6 +25,7 @@ import numpy as np
 
 from apps.vision.graph import DECORATION_TYPES, CompiledGraph, CompiledNode
 from apps.vision.images import store
+from apps.vision.tools import base as tools_base
 from apps.vision.tools.base import Result, ToolContext, ToolError
 
 log = logging.getLogger(__name__)
@@ -224,13 +225,18 @@ def execute(
                 # 未連線的必填輸入：來源工具可以自己抓（例如 image_source），其他標錯。
                 if not getattr(cn.tool, "allows_unconnected", False):
                     blocked = blocked or f"input port '{port.key}' is not connected"
-        # 隱含影像直通輸入（_image）：不進工具邏輯，只作為本節點直通輸出的來源
-        for src, sport in cn.inputs.get("_image", []):
-            if status_of.get(src) in ("ok", "ng"):
+        # 隱含輸入埠（collect=True 的那些，目前只有影像直通 _image）：不進工具邏輯，引擎自己用
+        for spec in tools_base.IMPLICIT_INPUTS:
+            if not spec.collect:
+                continue
+            for src, sport in cn.inputs.get(spec.key, []):
+                if status_of.get(src) not in ("ok", "ng"):
+                    continue
                 value = outputs.get((src, sport))
-                if isinstance(value, np.ndarray):
-                    inputs["_image"] = value
-                    break
+                if value is None or (spec.type == "image" and not isinstance(value, np.ndarray)):
+                    continue
+                inputs[spec.key] = value
+                break
         if blocked:
             node_report.status = "skipped"
             node_report.message = blocked
@@ -296,7 +302,7 @@ def execute(
             context.update(result.context)
 
         # 輸出登記（含隱含的標記輸出埠）
-        outputs[(node_id, "_overlays")] = result.overlays
+        outputs[(node_id, tools_base.OVERLAYS_OUT)] = result.overlays
         for k, v in result.outputs.items():
             outputs[(node_id, k)] = v
             if isinstance(v, np.ndarray) and any(p.key == k and p.type == "image" for p in cn.tool.outputs):
@@ -311,15 +317,15 @@ def execute(
                 node_report.outputs[k] = _jsonable(v)
         # 影像直通（_image，宣告輸出之後才登記——分析／檢視優先看真正的輸出埠）：
         # 原影像原樣往下傳；overlays 只是 metadata、工具不就地改影像，下游檢測不受標記影響。
-        thru = inputs.get("_image")
+        thru = inputs.get(tools_base.IMAGE_THRU)
         if not isinstance(thru, np.ndarray) and cn.primary_image_port:
             v = inputs.get(cn.primary_image_port)
             thru = v if isinstance(v, np.ndarray) else None
         if isinstance(thru, np.ndarray):
-            outputs[(node_id, "_image")] = thru
+            outputs[(node_id, tools_base.IMAGE_THRU)] = thru
             # 只在被接走時放進 report：直通埠不是「執行後」結果，viewer／分析都不該看到它
-            if (node_id, "_image") in compiled.consumed:
-                node_report.outputs["_image"] = store.put(f"{run_id}:{node_id}:_image", thru, flow_id=flow_id, run_id=run_id)
+            if (node_id, tools_base.IMAGE_THRU) in compiled.consumed:
+                node_report.outputs[tools_base.IMAGE_THRU] = store.put(f"{run_id}:{node_id}:{tools_base.IMAGE_THRU}", thru, flow_id=flow_id, run_id=run_id)
         # 讓前端也能看到 primary 輸入影像（overlay 座標系）——只在試跑時，避免重複快取。
         if preview and cn.primary_image_port and isinstance(inputs.get(cn.primary_image_port), np.ndarray):
             src = next((s for s in cn.inputs.get(cn.primary_image_port, [])), None)

@@ -18,9 +18,10 @@ LEGACY_TOOL_TYPES = {
     # 深度學習工具改名（產品表面不再出現技術名稱；migration 0024 也把既有流程的 type 改掉）
     "yolo_detect": "ai_detect", "yolo_segment": "ai_segment", "yolo_classify": "ai_classify", "yolo_pose": "ai_pose", "yolo_obb": "ai_obb",
 }
-FLOW_IN = "_flow"  # 每個可執行節點的隱含控制輸入埠
-OVERLAYS_OUT = "_overlays"  # 每個可執行節點的隱含輸出埠：該節點的標記（list），供 draw_result 疊圖
-IMAGE_THRU = "_image"  # 隱含影像直通埠：每個工具預設可把影像傳進（無 image 輸入者）、傳出（原樣）
+#: 隱含埠的名字與規格都在 tools/base.py 的 IMPLICIT_INPUTS／IMPLICIT_OUTPUTS，這裡只是取個短名字用。
+FLOW_IN = tools.FLOW_IN
+OVERLAYS_OUT = tools.OVERLAYS_OUT
+IMAGE_THRU = tools.IMAGE_THRU
 
 
 class GraphError(ValidationError):
@@ -86,12 +87,9 @@ def validate_graph(graph: Any) -> dict:
         if node["type"] in DECORATION_TYPES:
             raise GraphError("A note cannot take part in the dataflow", node_id=node_id)
         tool = tools.get(str(node["type"]))
-        if direction == "in" and key == FLOW_IN:
-            return "flow"
-        if direction == "out" and key == OVERLAYS_OUT:
-            return "list"
-        if key == IMAGE_THRU:
-            return "image"
+        implicit = tools.implicit_input(key) if direction == "in" else tools.implicit_output(key)
+        if implicit is not None:
+            return implicit.type
         ports = tool.inputs if direction == "in" else tool.outputs
         for port in ports:
             if port.key == key:
@@ -136,8 +134,9 @@ def validate_graph(graph: Any) -> dict:
                 port=t_handle,
             )
         if tt != "flow":
-            # 隱含直通埠不在宣告清單裡，一律單線
-            multiple = False if t_handle == IMAGE_THRU else next(p for p in t_tool.inputs if p.key == t_handle).multiple
+            # 隱含輸入埠不在工具的宣告清單裡（next() 會 StopIteration），能不能接多條看那張表
+            implicit_in = tools.implicit_input(t_handle)
+            multiple = implicit_in.multiple if implicit_in else next(p for p in t_tool.inputs if p.key == t_handle).multiple
             count = connected_inputs.get((target, t_handle), 0) + 1
             connected_inputs[(target, t_handle)] = count
             if count > 1 and not multiple:

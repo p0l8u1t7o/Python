@@ -60,6 +60,28 @@ class ValidateGraphTests(SimpleTestCase):
 
 
 class CompileGraphTests(SimpleTestCase):
+    def test_implicit_ports_come_from_one_table(self):
+        """隱含埠的型別、單／多線、進不進目錄都讀 tools/base.py 的那張表——加新的埠只要補一筆。"""
+        from apps.vision.tools import base
+
+        # 表本身：控制輸入可多線且不進目錄，影像直通單線、由引擎收值
+        flow_in = base.implicit_input(base.FLOW_IN)
+        thru_in = base.implicit_input(base.IMAGE_THRU)
+        self.assertEqual((flow_in.type, flow_in.multiple, flow_in.catalogued), ("flow", True, False))
+        self.assertEqual((thru_in.type, thru_in.multiple, thru_in.collect), ("image", False, True))
+        self.assertIsNone(base.implicit_input(base.OVERLAYS_OUT))  # 標記只是輸出
+        self.assertIsNone(base.implicit_output(base.FLOW_IN))
+        # 驗證走表：兩條線接同一個直通輸入要擋（隱含埠不在工具的宣告清單裡，不能讓 next() 炸掉）
+        g = {"nodes": [n("a", "image_source"), n("b", "image_source"), n("c", "judge")],
+             "edges": [e("a", "c", "image", "_image"), e("b", "c", "image", "_image")]}
+        with self.assertRaises(ValidationError) as ctx:
+            validate_graph(g)
+        self.assertIn("only one connection", str(ctx.exception))
+        # 控制輸入可以接多條
+        multi = {"nodes": [n("c1", "if_number"), n("c2", "if_number"), n("j", "judge")],
+                 "edges": [e("c1", "j", "true", "_flow"), e("c2", "j", "false", "_flow")]}
+        self.assertEqual(len(validate_graph(multi)["edges"]), 2)
+
     def test_order_and_consumed(self):
         g = validate_graph({
             "nodes": [n("src", "image_source"), n("g", "grayscale"), n("t", "threshold"), n("c", "if_number"), n("j", "judge")],

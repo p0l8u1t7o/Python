@@ -381,12 +381,64 @@ CATEGORY_LABELS = {
 }
 
 
-#: 每個工具都有的隱含輸出：本節點的標記（overlays），接給 draw_result 疊圖。
-IMPLICIT_OVERLAYS_PORT = {"key": "_overlays", "label": "Overlays", "type": "list", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
-#: 影像直通（每個工具預設可把影像傳進、傳出）：輸出＝原影像原樣往下傳（標記只是 metadata 不畫進影像）；
-#: 沒有任何 image 輸入的工具（邏輯類）另補直通輸入。引擎在 execute 後負責發值（工具本身不讀不寫）。
-IMPLICIT_IMAGE_OUT = {"key": "_image", "label": "Image (pass-through)", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
-IMPLICIT_IMAGE_IN = {"key": "_image", "label": "Image (pass-through)", "type": "image", "required": False, "multiple": False, "tone": "neutral", "implicit": True}
+#: ---------------------------------------------------------------------------
+#: 隱含埠：每個節點都有、工具不必宣告的埠。**這張表是唯一事實來源**——
+#: graph 的型別驗證與單線檢查、engine 的輸入蒐集、給前端的工具目錄都讀它，
+#: 所以新增一個隱含埠只要在下面補一筆，94 個工具一律不用改。
+#: 記得同步 `frontend/src/lib/toolLocale.ts` 的 IMPLICIT_PORTS（兩種中文）與 docs/contract.html。
+FLOW_IN = "_flow"  # 控制輸入：接上游的 flow 分支把手，決定這個節點跑不跑
+OVERLAYS_OUT = "_overlays"  # 本節點的標記（list），供 draw_result 疊圖
+IMAGE_THRU = "_image"  # 影像直通：原影像原樣往下傳（標記只是 metadata，不畫進影像）
+
+
+def _takes_no_image(tool: ToolType) -> bool:
+    """沒有任何 image 輸入的工具（邏輯類）才補直通輸入埠。"""
+    return not any(p.type == "image" for p in tool.inputs)
+
+
+@dataclass(frozen=True)
+class ImplicitPort:
+    """一個隱含埠的宣告。
+
+    `when`：出現在工具目錄的條件（None＝每個工具都有）；不在目錄裡的埠前端不會畫把手。
+    `catalogued`：False＝只做驗證、不進目錄（控制輸入由前端另外畫成菱形把手）。
+    `collect`：True＝引擎把上游的值放進 `ctx.inputs[key]` 給引擎自己用（工具讀不到，也不該讀）。
+    `multiple`：允許多條邊接進來（隱含輸入預設單線）。
+    """
+
+    key: str
+    label: str
+    type: str
+    when: Callable[[ToolType], bool] | None = None
+    multiple: bool = False
+    catalogued: bool = True
+    collect: bool = False
+
+    def shows_on(self, tool: ToolType) -> bool:
+        return self.catalogued and (self.when is None or self.when(tool))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"key": self.key, "label": self.label, "type": self.type, "required": False,
+                "multiple": self.multiple, "tone": "neutral", "implicit": True}
+
+
+IMPLICIT_INPUTS: tuple[ImplicitPort, ...] = (
+    # 控制輸入：可接多條（任一分支到達就執行）；由 graph／engine 的分支邏輯處理，不進 ctx.inputs
+    ImplicitPort(FLOW_IN, "Control", "flow", multiple=True, catalogued=False),
+    ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image", when=_takes_no_image, collect=True),
+)
+IMPLICIT_OUTPUTS: tuple[ImplicitPort, ...] = (
+    ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image"),
+    ImplicitPort(OVERLAYS_OUT, "Overlays", "list"),
+)
+
+
+def implicit_input(key: str) -> ImplicitPort | None:
+    return next((p for p in IMPLICIT_INPUTS if p.key == key), None)
+
+
+def implicit_output(key: str) -> ImplicitPort | None:
+    return next((p for p in IMPLICIT_OUTPUTS if p.key == key), None)
 
 
 def catalogue() -> list[dict[str, Any]]:
@@ -401,8 +453,8 @@ def catalogue() -> list[dict[str, Any]]:
             "heavy": bool(getattr(t, "heavy", False)),
             "version": int(getattr(t, "version", 1)),
             "params": [p.as_dict() for p in t.params],
-            "inputs": [p.as_dict() for p in t.inputs] + ([] if any(p.type == "image" for p in t.inputs) else [IMPLICIT_IMAGE_IN]),
-            "outputs": [p.as_dict() for p in t.outputs] + [IMPLICIT_IMAGE_OUT, IMPLICIT_OVERLAYS_PORT],
+            "inputs": [p.as_dict() for p in t.inputs] + [s.as_dict() for s in IMPLICIT_INPUTS if s.shows_on(t)],
+            "outputs": [p.as_dict() for p in t.outputs] + [s.as_dict() for s in IMPLICIT_OUTPUTS if s.shows_on(t)],
         }
         for t in all_types()
     ]
