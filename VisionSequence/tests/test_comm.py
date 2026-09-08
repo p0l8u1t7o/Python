@@ -415,6 +415,21 @@ class TriggerLoopTests(SimpleTestCase):
         self.assertTrue(any("Trigger" in s for s in summaries), summaries)
         self.assertFalse(any(s.startswith("讀取") for s in summaries), summaries)
 
+    def test_quiet_write_stays_out_of_the_trace(self):
+        """心跳與週期回送每秒一則，記下去會把真正的命令沖出環形緩衝；失敗仍要記（與 read 同一個規則）。"""
+        trace.clear()
+        self.addCleanup(trace.clear)
+        trace.watch()
+        w = MemoryWriter({"channels": ["DO0"]}, name="hb")
+        w.write({"DO0": 1}, quiet=True)
+        self.assertEqual(trace.entries("modbus"), [])
+        self.assertEqual(w.state["DO0"], 1)  # 值照樣寫進去
+        w.write({"DO0": 0})
+        self.assertEqual(len(trace.entries("modbus")), 1)
+        with self.assertRaises(CommError):
+            w.write({"NOPE": 1}, quiet=True)  # 失敗的靜默寫入還是要留下紀錄
+        self.assertTrue(any(not e["ok"] for e in trace.entries("modbus")))
+
     def test_status_and_registry(self):
         w = self.FakeWriter()
         self.addCleanup(triggers.stop_all)

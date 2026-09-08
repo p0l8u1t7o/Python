@@ -138,8 +138,10 @@ class Writer:
         pass
 
     # -- 公開介面 -----------------------------------------------------------
-    def write(self, values: dict[str, Any], *, timeout: float | None = None) -> dict[str, Any]:
-        """寫一批；第一次失敗會關閉、重開連線再試一次，第二次失敗才拋 CommError。"""
+    def write(self, values: dict[str, Any], *, timeout: float | None = None, quiet: bool = False) -> dict[str, Any]:
+        """寫一批；第一次失敗會關閉、重開連線再試一次，第二次失敗才拋 CommError。
+        `quiet=True`：成功不進整合追蹤（與 `read` 同一個規則）——心跳與週期回送每秒一則，
+        記下去只會把真正的命令沖出環形緩衝；失敗照樣記。"""
         if not values:
             return {"written": 0}
         started = time.perf_counter()
@@ -166,7 +168,8 @@ class Writer:
                         raise CommError(f"{self.name or self.kind}: {self.last_error}") from exc2
                 self.writes += 1
                 self.last_write_at = time.time()
-                self._trace("write", values, out, started)
+                if not quiet:
+                    self._trace("write", values, out, started)
                 return out
             except CommError as exc:
                 self._trace("write", values, {"error": str(exc)}, started, ok=False)

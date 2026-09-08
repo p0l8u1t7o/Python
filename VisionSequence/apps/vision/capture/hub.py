@@ -38,6 +38,17 @@ log = logging.getLogger(__name__)
 RCVBUF = 4 << 20
 
 
+def _publish(kind: str, **fields: Any) -> None:
+    """相機上下線進行程內事件匯流排（連線層的事件回報要用）。hub 不碰 ORM，這裡也只是記憶體。
+    發不出去不能影響擷取端連線，所以整段包起來。"""
+    try:
+        from apps.vision.runner import bus
+
+        bus.publish({"type": kind, **fields})
+    except Exception:  # noqa: BLE001 - 事件發不出去不能拖垮取像
+        log.debug("擷取端事件 %s 發布失敗", kind, exc_info=True)
+
+
 def _cfg(key: str, default: Any) -> Any:
     return getattr(settings, "VISION", {}).get(key, default)
 
@@ -318,6 +329,7 @@ class ClientSession(threading.Thread):
             if on:
                 self.set_stream(cid, True)
         log.info("擷取端 %s 已連線（%s:%s，%s，通道 %d）", self.name_, self.peer[0], self.peer[1], "同機" if self.local else "跨機", len(self.channels))
+        _publish("source_connected", client=self.name_, local=self.local, channels=[c.id for c in self.channels])
         trace.record("capture", f"Capture client {self.name_} connected ({"same machine" if self.local else "across machines"}, channels {len(self.channels)}）", name=self.name_,
                      detail={"address": f"{self.peer[0]}:{self.peer[1]}", "version": self.version, "channels": [c.id for c in self.channels]}, force=True)
         return True
@@ -705,6 +717,7 @@ class ClientSession(threading.Thread):
             self.shm = None
         if self.registered:
             log.info("擷取端 %s 斷線（%s）", self.name_, self.close_reason)
+            _publish("source_lost", client=self.name_, reason=self.close_reason)
 
     def to_dict(self) -> dict[str, Any]:
         with self._lock:

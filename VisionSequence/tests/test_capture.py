@@ -333,6 +333,26 @@ class HubTests(_HubBase):
         self.assertEqual(item["channels"][0]["width"], 64)
         self.assertTrue(item["local"])
 
+    def test_connect_and_disconnect_publish_events(self):
+        """相機上下線要進事件匯流排：連線層的事件回報（設備端的「相機掉了」）就是讀這個。"""
+        from apps.vision.runner import bus
+
+        since = bus.seq
+        c = self.connect(name="ev1")
+        self.assertTrue(_wait(lambda: any(x["name"] == "ev1" for x in hub.clients())))
+        _, events = bus.wait(since, 0.1)
+        connected = [e for e in events if e.get("type") == "source_connected" and e.get("client") == "ev1"]
+        self.assertEqual(len(connected), 1, events)
+        self.assertEqual(connected[0]["channels"], ["cam0"])
+        self.assertTrue(connected[0]["local"])
+        since = bus.seq
+        c.close()
+        self.assertTrue(_wait(lambda: not any(x["name"] == "ev1" for x in hub.clients())))
+        _, events = bus.wait(since, 0.5)
+        lost = [e for e in events if e.get("type") == "source_lost" and e.get("client") == "ev1"]
+        self.assertEqual(len(lost), 1, events)
+        self.assertTrue(lost[0]["reason"])
+
     def test_remote_hostname_is_not_local(self):
         c = self.connect(name="pc2", hostname="OTHER-PC")
         self.assertFalse(c.welcome["local"])

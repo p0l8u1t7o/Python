@@ -65,11 +65,14 @@ class Command(BaseCommand):
             # 以前得等有人按「測試」或流程跑過一次才開埠，伺服器重開後 PLC 就連不上。
             writers.autostart()
         # 持久化執行緒同時是維護執行緒：沒有任何 run 的站台也要清過期資料（只有 serve 打開，測試與 CLI 不做）
-        from apps.vision import retention
-        from apps.vision.runner import persister
+        from apps.vision import __version__, retention
+        from apps.vision.runner import bus, persister
 
         retention.enable_background()
         persister.ensure()
+        # 站台就緒：TCP、擷取端埠與連線都起來了，HTTP 接著開。設備端要「平台重開了」這個訊號
+        # （PLC 常在斷電重開後要重送料號與配方），所以發成事件讓連線層的事件回報看得到。
+        bus.publish({"type": "server_ready", "station_id": str(settings.VISION.get("STATION_ID", "")), "version": __version__})
         try:
             uvicorn.run(
                 "config.asgi:application",
