@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 113 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 1106 項＋前端 148 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 113 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 1112 項＋前端 148 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -433,4 +433,9 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 
 ## 尚未實作
 
-標定子系統、GenICam 內建來源、零樣本異常偵測、少樣本訓練、SSO。AI 助手目前不自動生成需要模型／連線／寫檔副作用的工具（dl_*、write_modbus、save_image），需要時以註解提醒使用者。
+**伺服器端沒有通用 GenICam 來源**（擷取端另外支援 Basler／IDS／uEye 各自的 SDK）、**沒有單一登入（SSO）**、**沒有快速註冊訓練層與影像檢索分類**（H1b／H2）。
+
+AI 助手不自動生成需要模型、連線或寫檔副作用的工具（`dl_*`、`write_modbus`、`save_image`），需要時以註解提醒使用者。
+
+> 標定（含手眼標定）、註冊式檢測（零訓練）與只教良品的異常檢測**都已實作**，先前這一段把它們列為未實作是文件落後，已更正。
+> 完整的未完成清單與排程在 `VM Help/分析/00-開發方案-對標VisionMaster.md` 的階段 2～4。

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：113 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1106 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：113 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1112 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -52,6 +52,12 @@
 ### 紅線
 - 不重寫引擎、不改 graph JSON 格式、不把 `Flow.graph` 搬出資料庫、不引入 Node.js 服務／微服務、不開第二個 API 行程。
 - 使用者可見文案不得出現技術來源字樣（NI Vision／OpenCV／cv2）；`plugins.html` 程式碼範例的 import 是例外。
+
+### 文件不得落後實作（tests/test_docs_claims.py）
+- **災情**：README 的「尚未實作」曾經列著**已經做好的標定子系統**；`docs/architecture.html` 的工具表停在 74 個、`docs/samples.html` 停在 67 個，而實際是 113 個。人看到會困惑，**AI 代理看到會當成事實**——可能重做已有的功能，或誤判既有能力。
+- 現在有一支測試把「文件宣稱」與「程式碼現況」綁在一起：README 與 CLAUDE.md 的內建工具數、CLAUDE.md 的範本數、架構頁的工具數與**逐一列出的工具鍵集合**（多列或漏列都失敗）、範例頁的涵蓋率、以及「尚未實作」段落不得列出程式碼裡確實存在的能力（探針表 `NotImplementedSectionTests.CAPABILITIES`）。
+- **架構頁的工具表由登錄表產生**，不要手改；新增工具後那支測試會紅，順手把數字與表格更新即可（重跑 `scripts/docs_style.py` 保持版面）。
+- 新增一種「文件宣稱」值得守門時＝`test_docs_claims.py` 加一條，不要只靠人記得。
 
 ### 文件與命名
 - **`docs/` 下只放 HTML（截圖放 `docs/img/*.jpg`，`config/urls.py` 一併提供），內文一律英文**（每頁內嵌同一段 CSS、無外部依賴；`<html lang="en">`、`<title>`、`nav.site` 標籤都是英文）；新文件也要 HTML，並在 `docs/index.html` 加連結、各頁 `nav.site` 同步（改 nav 用 scratchpad 的 `nav_en.py` 之類的跨檔替換，`docs_style.py` 不處理 nav）。改了行為要同步更新對應的 docs 頁、`README.md` 與本檔。中文讀者用瀏覽器翻譯閱讀，不再維護中文版。`glossary.html` 例外：核心名詞表保留「Chinese」欄，是 zh-Hant 語系與 `help.py BILINGUAL` 的對照來源。
