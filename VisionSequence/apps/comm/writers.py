@@ -37,7 +37,7 @@ import cv2
 import numpy as np
 from django.conf import settings
 
-from apps.comm import triggers
+from apps.comm import events as eventmod, triggers
 from apps.core.errors import NotFound, ValidationError
 
 log = logging.getLogger(__name__)
@@ -109,6 +109,8 @@ class Writer:
     enabled = True
     #: True = 這個連線自己開埠等對方連進來（從站／伺服器）；啟動時要自動開，不能等第一次寫入。
     listens = False
+    #: True = 送得出一段自己排版好的文字（事件回報、心跳、接收規則的回覆）；Modbus 這種只有位址的連線是 False。
+    texts = False
     #: 這種連線由哪個整合頁管理（`/integration/<section>`）；外掛沒宣告就歸到外掛頁。
     section = "plugins"
 
@@ -133,6 +135,9 @@ class Writer:
 
     def _read(self, addresses: list[str]) -> dict[str, Any]:
         raise CommError(f"{self.kind} cannot read back")
+
+    def _send_text(self, text: str) -> dict[str, Any]:
+        raise CommError(f"{self.kind} cannot send a line of text")
 
     def _close(self) -> None:
         pass
@@ -176,6 +181,42 @@ class Writer:
                 raise
             finally:
                 self.timeout = old
+
+    def send_text(self, text: str, *, quiet: bool = False) -> dict[str, Any]:
+        """送一段自己排好版的文字（事件回報、心跳、接收規則的回覆）。
+
+        與 `write` 的差別：`write` 是「把這些值送出去」，由連線的樣板決定長相；
+        `send_text` 是「原樣送這一行」，樣板已經在呼叫端套好了。失敗一樣重連再試一次。
+        """
+        started = time.perf_counter()
+        with self._lock:
+            try:
+                try:
+                    out = self._send_text(text)
+                except CommError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    self.errors += 1
+                    self.last_error = _msg(exc)
+                    self.reconnects += 1
+                    try:
+                        self._close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    try:
+                        self._open()
+                        out = self._send_text(text)
+                    except Exception as exc2:  # noqa: BLE001
+                        self.last_error = _msg(exc2)
+                        raise CommError(f"{self.name or self.kind}: {self.last_error}") from exc2
+                self.writes += 1
+                self.last_write_at = time.time()
+                if not quiet:
+                    self._trace("send", text, out, started)
+                return out
+            except CommError as exc:
+                self._trace("send", text, {"error": str(exc)}, started, ok=False)
+                raise
 
     def read(self, addresses: list[str], *, quiet: bool = False) -> dict[str, Any]:
         """讀一批。`quiet=True`：成功不進整合追蹤——觸發輪詢每秒幾十次，
@@ -519,6 +560,7 @@ class TcpClientWriter(Writer):
     """
 
     kind = "tcp_client"
+    texts = True
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -576,6 +618,16 @@ class TcpClientWriter(Writer):
                 buf += chunk
             out["reply"] = buf.decode(self.encoding, errors="replace").strip()
         return out
+
+    def _send_text(self, text: str) -> dict[str, Any]:
+        """原樣送出（事件、心跳與規則回覆）；沒有結尾字元時補上，設備才切得出一行。"""
+        if self.sock is None:
+            self._open()
+        payload = text if not self.newline or text.endswith(self.newline) else text + self.newline
+        self.sock.settimeout(self.timeout)
+        self.sock.sendall(payload.encode(self.encoding, errors="replace"))
+        self.last_payload = payload
+        return {"sent": len(payload), "payload": payload}
 
     def _read(self, addresses: list[str]) -> dict[str, Any]:
         raise CommError("tcp_client cannot read back")
@@ -786,12 +838,14 @@ def open_connection(conn, *, force: bool = False) -> Writer:
         writer = cls(dict(conn.config or {}), connection_id=conn.id, name=conn.name)
         _open[conn.id] = (stamp, writer)
         _by_name[conn.name] = writer
-    triggers.sync(conn.id, writer, conn.config or {})  # 有設觸發位址就開始輪詢（鎖外，迴圈會用到 writer）
+    triggers.sync(conn.id, writer, conn.config or {})  # 有規則就開始輪詢（鎖外，迴圈會用到 writer）
+    eventmod.sync(conn.id, writer, conn.config or {})  # 有選事件或開心跳就開始回報
     return writer
 
 
 def _drop_locked(connection_id: int) -> None:
     triggers.stop(connection_id)
+    eventmod.stop(connection_id)
     cached = _open.pop(connection_id, None)
     if not cached:
         return
@@ -811,6 +865,7 @@ def close_connection(connection_id: int) -> None:
 
 def close_all() -> None:
     triggers.stop_all()
+    eventmod.stop_all()
     with _lock:
         for cid in list(_open):
             _drop_locked(cid)
@@ -840,6 +895,7 @@ def connection_info(conn) -> dict[str, Any]:
     with _lock:
         cached = _open.get(conn.id)
     trigger = triggers.status(conn.id)
+    reporting = eventmod.status(conn.id)
     if not cached:
         # 從站開不起來（埠被別的程式佔走是最常見的）時，狀態要說得出原因——
         # 不然管理員只看到「未開啟」，PLC 連不上卻找不到頭緒。
@@ -848,6 +904,8 @@ def connection_info(conn) -> dict[str, Any]:
             out["error"] = _start_errors[conn.id]
         if trigger:
             out["trigger"] = trigger
+        if reporting:
+            out["events"] = reporting
         return out
     try:
         info = {"open": True, **cached[1].info()}
@@ -855,6 +913,8 @@ def connection_info(conn) -> dict[str, Any]:
         info = {"open": True, "error": str(exc)}
     if trigger:
         info["trigger"] = trigger
+    if reporting:
+        info["events"] = reporting
     return info
 
 
@@ -863,12 +923,13 @@ _start_errors: dict[int, str] = {}
 
 
 def should_autostart(conn) -> bool:
-    """從站要一直在聽、設了觸發位址的要開始輪詢——這種連線不能等第一次寫入才開。"""
+    """從站要一直在聽、有觸發規則或事件回報的要開始跑——這種連線不能等第一次寫入才開。"""
     try:
         cls = _resolve_class(conn.kind, conn.config or {})
     except Exception:  # noqa: BLE001
         return False
-    return bool(conn.is_enabled and (getattr(cls, "listens", False) or triggers.settings_of(conn.config or {})))
+    config = conn.config or {}
+    return bool(conn.is_enabled and (getattr(cls, "listens", False) or triggers.settings_of(config) or eventmod.settings_of(config)))
 
 
 def ensure_started(conn) -> None:
@@ -948,6 +1009,10 @@ def get_connection(connection_id: int):
 #: 觸發規則表（`triggers` 是規則陣列，見 apps/comm/rules.py）；`trigger_interval_ms` 是整條連線的輪詢間隔。
 #: 舊的扁平 `trigger_address`／`trigger_flow`… 仍讀得到（`rules.from_legacy`），但表單只給規則表。
 TRIGGER_FIELDS = ["triggers", "trigger_interval_ms"]
+#: 站台事件回報與心跳（見 apps/comm/events.py）。文字連線兩者都能用；
+#: Modbus 只有心跳（把遞增的計數寫進一個位址，PLC 的看門狗就是這樣做的）。
+EVENT_FIELDS = ["events", "event_template", "heartbeat_ms", "heartbeat_payload"]
+MODBUS_EVENT_FIELDS = ["heartbeat_ms", "heartbeat_address"]
 _MODBUS_MASTER_FIELDS = ["host", "port", "unit_id", "timeout_s", "word_order"]
 _MODBUS_SLAVE_FIELDS = ["host", "port", "unit_id", "size", "word_order"]
 
@@ -959,11 +1024,11 @@ FALLBACK_SECTION = "plugins"
 def kinds() -> list[dict[str, Any]]:
     plugins = getattr(settings, "VISION", {}).get("COMM_PLUGINS", {})
     out = [
-        {"kind": "modbus_tcp", "section": "modbus-client", "label": "Modbus TCP client (connects to a device)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS],
+        {"kind": "modbus_tcp", "section": "modbus-client", "label": "Modbus TCP client (connects to a device)", "fields": [*_MODBUS_MASTER_FIELDS, *TRIGGER_FIELDS, *MODBUS_EVENT_FIELDS],
          "description": "The platform is the client and connects to any Modbus TCP device — a controller, a drive, an I/O module, a host program — reading and writing its coils and registers. It can also poll one address as a trigger source."},
-        {"kind": "modbus_server", "section": "modbus-server", "label": "Modbus TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS],
+        {"kind": "modbus_server", "section": "modbus-server", "label": "Modbus TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS, *MODBUS_EVENT_FIELDS],
          "description": "The platform is the server and listens on a port for any Modbus TCP master to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
-        {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply"]},
+        {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply", *EVENT_FIELDS]},
         {"kind": "tcp_image", "section": "tcp", "label": TcpImageWriter.label, "fields": list(TcpImageWriter.fields), "description": TcpImageWriter.description},
     ]
     for kind, cls in _PLUGIN_KINDS.items():

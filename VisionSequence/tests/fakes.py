@@ -23,6 +23,7 @@ class MemoryWriter(Writer):
     label = "In-memory (tests)"
     fields = ["channels"]
     section = "plugins"
+    texts = True  # 事件回報與心跳的測試要有個「送得出文字」的假設備
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -32,6 +33,7 @@ class MemoryWriter(Writer):
         self.channels = [str(c) for c in channels]
         self.state: dict[str, Any] = {c: 0 for c in self.channels}
         self.history: list[dict[str, Any]] = []
+        self.lines: list[str] = []
 
     def _write(self, values: dict[str, Any]) -> dict[str, Any]:
         if self.channels:
@@ -44,6 +46,10 @@ class MemoryWriter(Writer):
 
     def _read(self, addresses: list[str]) -> dict[str, Any]:
         return {a: self.state.get(a) for a in addresses}
+
+    def _send_text(self, text: str) -> dict[str, Any]:
+        self.lines.append(text)
+        return {"sent": len(text)}
 
     def info(self) -> dict[str, Any]:
         return {**super().info(), "channels": self.channels, "state": dict(self.state)}

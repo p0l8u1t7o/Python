@@ -18,12 +18,12 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from pymodbus.client import ModbusTcpClient
 
-from apps.comm import protocol, rules, triggers, writers
+from apps.comm import events, protocol, rules, triggers, writers
 from apps.vision import trace
 from apps.comm.models import Connection
 from apps.comm.writers import CommError, ModbusTcpWriter, TcpClientWriter, parse_address
 from apps.vision.models import Flow, ImageSource
-from apps.vision.runner import runner
+from apps.vision.runner import bus, runner
 from tests._helpers import run_tool
 from tests.fakes import MEMORY_KIND, MemoryWriter, register_memory_kind
 
@@ -625,6 +625,114 @@ class TriggerLoopTests(SimpleTestCase):
         self.assertEqual(sorted(loop.acted[:2]), ["big", "run"])
         self.assertEqual(w.reads[-1], ["coil:0", "coil:1", "hr:5"])  # 一次讀完
         self.assertEqual(loop.status()["rules"][0]["fired"], 1)
+
+
+class EventReportTests(SimpleTestCase):
+    """站台事件回報與心跳（apps/comm/events.py）：上位機不必輪詢也知道這一站在做什麼。"""
+
+    def _wait(self, cond, timeout=3.0):
+        end = time.time() + timeout
+        while time.time() < end:
+            if cond():
+                return True
+            time.sleep(0.02)
+        return False
+
+    def _loop(self, writer, **config):
+        settings = events.settings_of(config)
+        self.assertIsNotNone(settings, config)
+        loop = events.EventLoop(writer, settings)
+        self.addCleanup(loop.stop)
+        loop.start()
+        self.assertTrue(self._wait(lambda: loop.since is not None), "事件迴圈沒起來")
+        return loop
+
+    def test_settings_are_off_until_something_is_asked_for(self):
+        self.assertIsNone(events.settings_of({}))
+        self.assertIsNone(events.settings_of({"events": ["nope"]}))
+        self.assertIsNone(events.settings_of({"heartbeat_ms": 0}))
+        picked = events.settings_of({"events": ["lock", "nope", "flow_busy"]})
+        self.assertEqual(picked["kinds"], ["lock", "flow_busy"])  # 認不得的丟掉
+        self.assertEqual(picked["template"], events.DEFAULT_TEMPLATE)
+        self.assertEqual(events.settings_of({"heartbeat_ms": 5})["heartbeat_ms"], events.MIN_HEARTBEAT_MS)
+        self.assertEqual(events.settings_of({"heartbeat_ms": "很快"}), None)
+
+    def test_translate_maps_the_bus_onto_the_reported_kinds(self):
+        self.assertEqual(events.translate({"type": "server_ready", "station_id": "ST09", "version": "1.0.0"}),
+                         ("server_ready", {"id": "ST09", "name": "ST09", "version": "1.0.0"}))
+        self.assertEqual(events.translate({"type": "run_started", "flow_id": 3, "run_id": "r1"})[0], "flow_busy")
+        kind, fields = events.translate({"type": "run_finished", "flow_id": 3, "run": {"id": "r1", "status": "ng", "outputs": {"judge": "NG"}}})
+        self.assertEqual((kind, fields["judge"], fields["status"]), ("flow_idle", "NG", "ng"))
+        self.assertEqual(events.translate({"type": "lock", "lock": {"locked": True, "holder": "integrator"}})[0], "lock")
+        self.assertEqual(events.translate({"type": "lock", "lock": {"locked": False}})[0], "unlock")
+        self.assertEqual(events.translate({"type": "source_lost", "client": "line-1", "reason": "closed"}),
+                         ("source_lost", {"id": "line-1", "name": "line-1", "reason": "closed"}))
+        self.assertIsNone(events.translate({"type": "run_queued", "flow_id": 1}))  # 不在封閉集合裡
+
+    def test_only_the_chosen_events_go_out(self):
+        w = MemoryWriter({}, name="host")
+        loop = self._loop(w, events=["lock", "unlock"], event_template="{event};{id};{reason}")
+        bus.publish({"type": "run_started", "flow_id": 1, "run_id": "r1"})  # 沒選，不送
+        bus.publish({"type": "lock", "lock": {"locked": True, "holder": "integrator", "reason": "maintenance"}})
+        self.assertTrue(self._wait(lambda: w.lines), "選了的事件沒送出去")
+        self.assertEqual(w.lines, ["lock;integrator;maintenance"])
+        bus.publish({"type": "lock", "lock": {"locked": False}})
+        self.assertTrue(self._wait(lambda: len(w.lines) >= 2))
+        self.assertEqual(w.lines[1], "unlock;;")  # 樣板填不到的名字留空
+        self.assertEqual(loop.status()["sent"], 2)
+
+    def test_history_is_not_replayed_when_the_connection_reopens(self):
+        """重開連線不該把之前的事件重播一遍（上位機會以為又鎖了一次）。"""
+        bus.publish({"type": "lock", "lock": {"locked": True, "holder": "integrator"}})
+        w = MemoryWriter({}, name="host")
+        self._loop(w, events=["lock"])
+        time.sleep(0.15)
+        self.assertEqual(w.lines, [])
+
+    def test_text_heartbeat_keeps_ticking(self):
+        w = MemoryWriter({}, name="host")
+        with override_settings(VISION={**settings.VISION, "STATION_ID": "ST09"}):
+            loop = self._loop(w, heartbeat_ms=events.MIN_HEARTBEAT_MS, heartbeat_payload="ALIVE;{station}")
+            self.assertTrue(self._wait(lambda: len(w.lines) >= 2), w.lines)
+        self.assertEqual(w.lines[0], "ALIVE;ST09")
+        self.assertGreaterEqual(loop.status()["beats"], 2)
+
+    def test_modbus_heartbeat_is_a_counter_the_master_can_watch(self):
+        w = MemoryWriter({"channels": ["hr:100"]}, name="plc")
+        self._loop(w, heartbeat_ms=events.MIN_HEARTBEAT_MS, heartbeat_address="hr:100")
+        self.assertTrue(self._wait(lambda: w.state.get("hr:100", 0) >= 2), w.state)
+        first = w.state["hr:100"]
+        self.assertTrue(self._wait(lambda: w.state["hr:100"] > first))  # 數字要一直往上走
+
+    def test_a_host_that_is_not_listening_does_not_kill_the_loop(self):
+        w = MemoryWriter({"channels": ["hr:1"]}, name="plc")  # 宣告了通道，寫別的位址會失敗
+        loop = self._loop(w, heartbeat_ms=events.MIN_HEARTBEAT_MS, heartbeat_address="hr:99")
+        self.assertTrue(self._wait(lambda: loop.errors >= 2), loop.status())
+        self.assertIn("hr:99", loop.last_error)
+        self.assertTrue(loop.is_alive())
+
+    def test_heartbeat_and_events_stay_out_of_the_trace(self):
+        """每秒一則，記下去會把真正的命令沖出 300 筆的環形緩衝。"""
+        trace.clear()
+        self.addCleanup(trace.clear)
+        trace.watch()
+        w = MemoryWriter({}, name="host")
+        self._loop(w, events=["lock"], heartbeat_ms=events.MIN_HEARTBEAT_MS)
+        bus.publish({"type": "lock", "lock": {"locked": True, "holder": "integrator"}})
+        self.assertTrue(self._wait(lambda: len(w.lines) >= 2))
+        self.assertEqual(trace.entries("modbus"), [])
+
+    def test_registry_starts_and_stops_with_the_connection(self):
+        w = MemoryWriter({}, name="host")
+        self.addCleanup(events.stop_all)
+        config = {"events": ["lock"], "heartbeat_ms": 500}
+        loop = events.sync(77, w, config)
+        self.assertIsNotNone(loop)
+        self.assertEqual(events.sync(77, w, dict(config)), loop)  # 設定沒變就沿用
+        st = events.status(77)
+        self.assertEqual((st["events"], st["heartbeat_ms"], st["running"]), (["lock"], 500, True))
+        self.assertIsNone(events.sync(77, w, {}))  # 拿掉設定就停掉
+        self.assertIsNone(events.status(77))
 
 
 class AutostartTests(TestCase):

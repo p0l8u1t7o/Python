@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html" aria-current="page">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Rules: what the equipment does, what the platform does</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Rules: what the equipment does, what the platform does</a><ul><li><a href="#heartbeat">1-2. Heartbeat: a counter the master can watch</a></li></ul></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
 
 <h1>Pushing results out (Modbus TCP and host systems)</h1>
 <p><a href="automation.html">Automation</a> is <strong>passive</strong>: equipment or a host system calls us and collects the result. This page is <strong>active</strong>: when a flow finishes, the engine writes the judgement and the measurements into the equipment's coils and registers over Modbus TCP, or pushes a line of text to a host system. It works like image sources — create a <strong>connection</strong> on the settings page, then put a <strong>write Modbus</strong> (<code>write_modbus</code>) tool in the flow, point it at that connection and fill in the mapping table.</p>
@@ -219,6 +219,14 @@ Master  : sees done → reads the results → done := 0</pre>
 <li>Rules and the runs they start appear under Commands and results (see <a href="#trace">§6b</a>), so while debugging you can see how long each one took and what it judged.</li>
 <li>Stations set up before the rule table used a single flat trigger (<code>trigger_address</code>, <code>trigger_flow</code>, <code>trigger_mode</code>, <code>trigger_clear</code>, <code>trigger_done_address</code>, <code>trigger_recipe</code>). Those settings still work and are shown as one rule; saving the connection writes them back as a table.</li>
 </ul>
+
+<h3 id="heartbeat">1-2. Heartbeat: a counter the master can watch</h3>
+<p>A master usually wants to know the station is still alive without asking. Set <em>Heartbeat every</em> and
+<em>Heartbeat address</em> on the connection, and the platform writes a counter that goes up on every beat
+(1 … 32767, then round again) into that address. When the number stops moving, the station is gone — the same watchdog
+pattern a PLC uses with any other device. The minimum interval is 200 ms; a faster beat only queues behind the line's own
+writes. It is a quiet write, so it does not flush <a href="#trace">Commands and results</a>, and the beat count is in the
+connection status under <code>events</code>. Text connections send a line instead of a counter; see the automation page.</p>
 
 <h2 id="address">2. Address format (modbus_tcp)</h2>
 <table>
