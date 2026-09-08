@@ -17,6 +17,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from apps.vision import calib
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs
 from apps.vision.tools.roi import Crop, crop, extent, polyline_points, region_center, region_overlay, resample_polyline, transform_region
@@ -971,6 +972,121 @@ def inverse_matrix(dx: float, dy: float, dtheta: float, pivot: tuple[float, floa
     move = np.eye(3, dtype=np.float64)
     move[0, 2], move[1, 2] = float(dx), float(dy)
     return np.linalg.inv(move @ forward)[:2].astype(np.float32)
+
+
+def _finite_points(value: Any, name: str) -> np.ndarray:
+    """把工具輸入轉成 Nx2 點陣列。"""
+    try:
+        points = np.asarray(value, dtype=np.float64).reshape(-1, 2)
+    except (TypeError, ValueError, OverflowError):
+        raise ToolError(f"{name} must be [x, y] points") from None
+    if len(points) == 0 or not np.isfinite(points).all():
+        raise ToolError(f"{name} must contain finite [x, y] points")
+    return points
+
+
+def _match_point(match: dict[str, Any], index: int) -> tuple[float, float, str, str]:
+    x_key = "cx" if "cx" in match else "x"
+    y_key = "cy" if "cy" in match else "y"
+    try:
+        x, y = float(match[x_key]), float(match[y_key])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise ToolError(f"matches[{index}] must contain cx/cy or x/y") from None
+    if not np.isfinite([x, y]).all():
+        raise ToolError(f"matches[{index}] must contain finite coordinates")
+    return x, y, x_key, y_key
+
+
+class MapPointsTool(Tool):
+    key = "map_points"
+    label = "Map points"
+    description = "Maps points or locate matches through a camera-to-camera calibration mapping, forward or inverse."
+    category = "locate"
+    icon = "ArrowRightLeft"
+    params = [
+        Param("calibration", "Calibration", kind="asset", accept="calibration", required=True,
+              help_text="Pick a calibration asset that contains a camera mapping."),
+        Param("direction", "Direction", kind="select", default="forward", options=[
+            {"value": "forward", "label": "Forward"},
+            {"value": "inverse", "label": "Inverse"},
+        ], help_text="Forward maps camera A to camera B; inverse uses the inverse matrix."),
+    ]
+    inputs = [
+        Port("points", "Points", "points", required=False),
+        Port("matches", "Matches", "matches", required=False),
+        Port("x", "X", "number", required=False),
+        Port("y", "Y", "number", required=False),
+    ]
+    outputs = [
+        Port("x", "Mapped X", "number"), Port("y", "Mapped Y", "number"),
+        Port("points", "Mapped points", "points"), Port("matches", "Mapped matches", "matches"),
+        Port("count", "Mapped count", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        try:
+            payload = calib.from_asset(ctx.param("calibration"), ctx.asset_path)
+        except calib.CalibError as exc:
+            raise ToolError(str(exc)) from None
+        mapping = payload.get("mapping")
+        if not mapping:
+            raise ToolError("The selected calibration has no mapping block; create a camera mapping calibration first")
+        matrix = np.asarray(mapping["matrix"], dtype=np.float64)
+        direction = str(ctx.param("direction", "forward"))
+        if direction == "inverse":
+            matrix = np.linalg.inv(matrix)
+        elif direction != "forward":
+            raise ToolError("direction must be forward or inverse")
+
+        outputs: dict[str, Any] = {"count": 0}
+        overlays: list[dict[str, Any]] = []
+        total = 0
+        if ctx.inputs.get("points") is not None:
+            pts = _finite_points(ctx.inputs["points"], "points")
+            mapped = calib.apply(matrix, pts)
+            outputs["points"] = [[float(x), float(y)] for x, y in mapped]
+            overlays.append({"kind": "points", "points": outputs["points"], "color": "#22c55e"})
+            total += len(mapped)
+        if ctx.inputs.get("matches") is not None:
+            raw = ctx.inputs["matches"]
+            if not isinstance(raw, list) or not raw:
+                raise ToolError("matches must be a non-empty list")
+            coords = []
+            keys = []
+            for i, item in enumerate(raw):
+                if not isinstance(item, dict):
+                    raise ToolError(f"matches[{i}] must be an object")
+                x, y, x_key, y_key = _match_point(item, i)
+                coords.append([x, y])
+                keys.append((x_key, y_key))
+            mapped = calib.apply(matrix, coords)
+            out_matches = []
+            for item, (x_key, y_key), (mx, my), source in zip(raw, keys, mapped, coords, strict=True):
+                mapped_item = dict(item)
+                mapped_item[x_key] = float(mx)
+                mapped_item[y_key] = float(my)
+                if "angle" in mapped_item:
+                    mapped_item["angle"] = calib.angle_to_world(matrix, float(mapped_item["angle"]), tuple(source))
+                out_matches.append(mapped_item)
+            outputs["matches"] = out_matches
+            outputs.setdefault("points", [[float(x), float(y)] for x, y in mapped])
+            overlays.append({"kind": "points", "points": [[float(x), float(y)] for x, y in mapped], "color": "#38bdf8"})
+            total += len(mapped)
+        if "x" in ctx.inputs or "y" in ctx.inputs:
+            try:
+                x, y = float(ctx.inputs["x"]), float(ctx.inputs["y"])
+            except (KeyError, TypeError, ValueError, OverflowError):
+                raise ToolError("x and y must both be finite numbers") from None
+            if not np.isfinite([x, y]).all():
+                raise ToolError("x and y must both be finite numbers")
+            mx, my = calib.apply(matrix, [[x, y]])[0]
+            outputs["x"], outputs["y"] = float(mx), float(my)
+            overlays.append({"kind": "point", "x": float(mx), "y": float(my), "color": "#22c55e", "label": "mapped"})
+            total += 1
+        if total == 0:
+            raise ToolError("Wire points, matches, or x/y into map_points")
+        outputs["count"] = total
+        return Result(outputs=outputs, overlays=overlays, message=f"Mapped {total} point(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -2211,5 +2327,5 @@ __all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edg
 
 TOOLS = [
     TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(), ImageFixtureTool(),
-    FindCircleTool(), FindLineTool(), PathExtractTool(), FindRectangleTool(), FindQuadrilateralTool(), FindParallelLinesTool(), FindLinesMultiTool(), FindCirclesMatrixTool(), HoughCirclesTool(), HoughLinesTool(),
+    MapPointsTool(), FindCircleTool(), FindLineTool(), PathExtractTool(), FindRectangleTool(), FindQuadrilateralTool(), FindParallelLinesTool(), FindLinesMultiTool(), FindCirclesMatrixTool(), HoughCirclesTool(), HoughLinesTool(),
 ]

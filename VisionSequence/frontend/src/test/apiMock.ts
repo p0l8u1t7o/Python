@@ -59,7 +59,7 @@ export const DASHBOARD_DATA = {
   variables: { station: { shift: 'day' } },
 }
 
-export function routes(path: string): unknown {
+export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/auth/status')) return { setup_required: false }
   if (path.startsWith('/auth/me')) return ME
   if (path.startsWith('/vision/batch/sets/')) return { id: 1, flow_id: 1, name: '影像集 A', source: 'upload', image_count: 0, size_bytes: 0, owner_id: 1, labeled: { ok: 0, ng: 0 }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', images: [], can_manage: true, items: [], total: 0 }
@@ -96,7 +96,31 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/fixed-images')) return { items: [{ id: 'fixed-1', name: 'Reference' }], count: 1, bytes: 128, orphans: [] }
   if (path.startsWith('/vision/calibration/capture')) return { ref: 'cal:capture:image', width: 640, height: 480, name: 'shot.png' }
   if (path.startsWith('/vision/calibration/detect')) return { found: true, count: 54, corners: [[10, 10], [20, 10]], overlays: [{ kind: 'points', points: [[10, 10], [20, 10]] }] }
-  if (path.startsWith('/vision/calibration/solve')) return { payload: { unit: 'mm', image_size: [640, 480], world: { kind: 'perspective', matrix: [[0.05, 0, 0], [0, 0.05, 0], [0, 0, 1]], mm_per_px: 0.05, rms: 0.01, max_error: 0.02, points: [] } }, summary: 'perspective 0.05000 mm/px', quality: { world: 'good' } }
+  if (path.startsWith('/vision/calibration/solve')) {
+    const mode = typeof body === 'object' && body ? (body as { mode?: unknown }).mode : ''
+    if (mode === 'mapping') {
+      return {
+        payload: {
+          unit: 'mm',
+          image_size: [640, 480],
+          mapping: {
+            kind: 'affine',
+            matrix: [[1, 0, 30], [0, 1, -20], [0, 0, 1]],
+            points: [
+              { ax: 10, ay: 20, bx: 40, by: 0, error: 0.01 },
+              { ax: 80, ay: 20, bx: 110, by: 0, error: 0.02 },
+              { ax: 10, ay: 90, bx: 40, by: 70, error: 0.01 },
+            ],
+            rms: 0.01,
+            max_error: 0.02,
+          },
+        },
+        summary: 'camera affine 0.010 px rms',
+        quality: { mapping: 'good' },
+      }
+    }
+    return { payload: { unit: 'mm', image_size: [640, 480], world: { kind: 'perspective', matrix: [[0.05, 0, 0], [0, 0.05, 0], [0, 0, 1]], mm_per_px: 0.05, rms: 0.01, max_error: 0.02, points: [] } }, summary: 'perspective 0.05000 mm/px', quality: { world: 'good' } }
+  }
   if (path.startsWith('/vision/calibration')) return { items: [] }
   if (path.startsWith('/vision/assets')) return { items: [] }
   if (path.startsWith('/vision/groups')) return { items: [{ id: 1, kind: 'source', name: '範例' }] }
@@ -154,7 +178,7 @@ export function installApiMock() {
       ...actual,
       api: {
         get: vi.fn(async (path: string) => routes(path)),
-        post: vi.fn(async (path: string) => routes(path)),
+        post: vi.fn(async (path: string, body?: unknown) => routes(path, body)),
         postForm: vi.fn(async (path: string) => routes(path)),
         put: vi.fn(async (path: string) => routes(path)),
         patch: vi.fn(async (path: string) => routes(path)),

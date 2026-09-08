@@ -75,6 +75,7 @@ const zhHans = {
       points: { title: '机械手对点', hint: '在影像上标位置，填入机械手在该处回报的坐标。', steps: '标三个以上的点，填入机械手回报的坐标，然后按计算。' },
       distance: { title: '已知距离', hint: '标两个点、填入实际距离。要毫米最快的做法。', steps: '标两个点，填入两点的实际距离，然后按计算。' },
       robot: { title: '手眼标定', hint: '让机构走几个位置、每次标同一个特征，平台就学会该把它送到哪里。', steps: '机构移到位、填入它回报的坐标、取像、标出特征。三个位置以上就能计算。' },
+      mapping: { title: '相机映射', hint: '把一台相机影像中的坐标换到另一台相机影像。', steps: '采集或上传两台相机的影像，轮流标对应点，然后计算。' },
     },
     robot: {
       precision: '每像素 ≈ {{value}} {{unit}}',
@@ -117,6 +118,20 @@ const zhHans = {
       handedness: { right: '右手系', left: '左手系（坐标轴镜像）' },
       angleSign: '角度正负 {{sign}}',
       center: '旋转中心在 {{x}}, {{y}} px，拟合圆残差 {{rms}} px。',
+    },
+    mapping: {
+      title: '相机间映射',
+      camera: { a: '相机 A', b: '相机 B' },
+      next: { a: '下一点：相机 A', b: '下一点：相机 B' },
+      kind: '映射方式',
+      kinds: { affine: '仿射（3 组以上）', perspective: '透视（4 组以上）' },
+      kindHints: {
+        affine: '两个视角差异是平移、旋转、缩放或剪切时使用。',
+        perspective: '两台相机从不同角度看同一个平面时使用。',
+      },
+      count: '已有 {{count}} 组完整对应点；至少需要 {{need}} 组。',
+      rms: 'px 平均误差',
+      precision: '每个 A 像素约为 {{value}} 个 B 像素',
     },
     picture: '影像',
     pickSource: '影像来源',

@@ -87,6 +87,8 @@ class AlignOffsetTool(Tool):
         Port("abs_angle", "Absolute angle (image)", "number"),
         Port("world_x", "Absolute world X", "number"), Port("world_y", "Absolute world Y", "number"),
         Port("world_angle", "Absolute world angle", "number"),
+        Port("mapped_x", "Mapped X", "number"), Port("mapped_y", "Mapped Y", "number"),
+        Port("mapped_angle", "Mapped angle", "number"),
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
     ]
 
@@ -160,13 +162,22 @@ class AlignOffsetTool(Tool):
                 payload = calib.from_asset(ctx.param("calibration"), ctx.asset_path)
                 mapping = payload.get("robot") or payload.get("world")
                 if not mapping:
-                    raise ValueError("The calibration needs a robot or world mapping")
-                matrix = mapping["matrix"]
-                wx, wy = map(float, calib.apply(matrix, [[ax, ay]])[0])
-                wa = calib.angle_to_world(matrix, angle, (ax, ay))
-                if not np.isfinite([wx, wy, wa]).all():
-                    raise ValueError("The calibrated position and angle must be finite")
-                outputs.update(world_x=wx, world_y=wy, world_angle=wa)
+                    if not payload.get("mapping"):
+                        raise ValueError("The calibration needs a robot, world, or camera mapping")
+                else:
+                    matrix = mapping["matrix"]
+                    wx, wy = map(float, calib.apply(matrix, [[ax, ay]])[0])
+                    wa = calib.angle_to_world(matrix, angle, (ax, ay))
+                    if not np.isfinite([wx, wy, wa]).all():
+                        raise ValueError("The calibrated position and angle must be finite")
+                    outputs.update(world_x=wx, world_y=wy, world_angle=wa)
+                camera_mapping = payload.get("mapping")
+                if camera_mapping:
+                    mx, my = map(float, calib.apply(camera_mapping["matrix"], [[ax, ay]])[0])
+                    ma = calib.angle_to_world(camera_mapping["matrix"], angle, (ax, ay))
+                    if not np.isfinite([mx, my, ma]).all():
+                        raise ValueError("The mapped position and angle must be finite")
+                    outputs.update(mapped_x=mx, mapped_y=my, mapped_angle=ma)
         except (ToolError, ValueError, TypeError, KeyError, OverflowError, np.linalg.LinAlgError) as exc:
             return self._not_found(ctx, f"Alignment unavailable: {exc}")
 

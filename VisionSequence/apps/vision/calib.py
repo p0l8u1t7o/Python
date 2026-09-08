@@ -45,6 +45,7 @@ VERSION = 1
 BOARD_KINDS = ("chessboard", "circles", "acircles")
 #: 世界座標對應的解法；點數下限
 WORLD_KINDS = {"scale": 2, "affine": 3, "perspective": 4}
+MAPPING_KINDS = {"affine": 3, "perspective": 4}
 ROBOT_KINDS = ("translation", "translation_rotation")
 CAMERA_MODES = ("fixed", "moving")
 
@@ -116,9 +117,51 @@ def validate(payload: Any) -> dict[str, Any]:
         }
     if "robot" in payload:
         out["robot"] = _validate_robot(payload["robot"])
-    if not any(key in out for key in ("lens", "world", "robot")):
-        raise CalibError("A calibration needs a lens, a world mapping, or a robot mapping")
+    if "mapping" in payload:
+        out["mapping"] = _validate_mapping(payload["mapping"])
+    if not any(key in out for key in ("lens", "world", "robot", "mapping")):
+        raise CalibError("A calibration needs a lens, a world mapping, a robot mapping, or a camera mapping")
     return out
+
+
+def _mapping_points(raw: Any, *, errors: bool = False) -> list[dict[str, float]]:
+    """檢查相機間對應點；每一點都保留，讓前端能標出最大殘差。"""
+    if not isinstance(raw, list):
+        raise CalibError("mapping.points must be a list")
+    fields = ("ax", "ay", "bx", "by", "error") if errors else ("ax", "ay", "bx", "by")
+    points = []
+    for i, point in enumerate(raw):
+        if not isinstance(point, dict):
+            raise CalibError(f"mapping.points[{i}] must be an object with ax, ay, bx and by")
+        points.append({key: _robot_number(point.get(key), f"mapping.points[{i}].{key}", nonnegative=key == "error") for key in fields})
+    return points
+
+
+def _validate_mapping(mapping: Any) -> dict[str, Any]:
+    """檢查相機 A 到相機 B 的 3x3 映射。"""
+    if not isinstance(mapping, dict):
+        raise CalibError("mapping must be an object")
+    kind = str(mapping.get("kind") or "")
+    if kind not in MAPPING_KINDS:
+        raise CalibError("mapping.kind must be affine or perspective")
+    try:
+        matrix = np.asarray(mapping.get("matrix"), dtype=np.float64).reshape(3, 3)
+    except (TypeError, ValueError, OverflowError):
+        raise CalibError("mapping.matrix must be a finite 3x3 matrix") from None
+    if not np.isfinite(matrix).all():
+        raise CalibError("mapping.matrix contains non-finite numbers")
+    if abs(np.linalg.det(matrix)) < 1e-12:
+        raise CalibError("mapping.matrix is singular")
+    points = _mapping_points(mapping.get("points", []), errors=True)
+    return {
+        "from_source": str(mapping.get("from_source") or "")[:200],
+        "to_source": str(mapping.get("to_source") or "")[:200],
+        "kind": kind,
+        "matrix": matrix.tolist(),
+        "points": points[:200],
+        "rms": _robot_number(mapping.get("rms"), "mapping.rms", nonnegative=True),
+        "max_error": _robot_number(mapping.get("max_error"), "mapping.max_error", nonnegative=True),
+    }
 
 
 def _robot_number(value: Any, field: str, *, nonnegative: bool = False) -> float:
@@ -288,6 +331,13 @@ def summary(payload: dict[str, Any]) -> str:
         if robot.get("rotation_points"):
             bits.append(f"rotation {len(robot['rotation_points'])} points, RMS {robot['rotation_rms_px']:.3f} px, "
                         f"max {robot['rotation_max_error_px']:.3f} px")
+    mapping = payload.get("mapping")
+    if mapping:
+        label = "camera mapping"
+        if mapping.get("from_source") or mapping.get("to_source"):
+            label = f"{mapping.get('from_source') or 'camera A'} to {mapping.get('to_source') or 'camera B'}"
+        bits.append(f"{label} {mapping['kind']}, {len(mapping.get('points') or [])} points, RMS {mapping['rms']:.3f} px, "
+                    f"max {mapping['max_error']:.3f} px")
     return "; ".join(bits) or "empty"
 
 
@@ -410,6 +460,111 @@ def solve_world(pairs: list[tuple[tuple[float, float], tuple[float, float]]], ki
             for i in range(len(src))
         ],
     }
+
+
+def _normalize_points_2d(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """把點正規化到平均距離 sqrt(2)，提升 DLT 的數值穩定度。"""
+    centroid = points.mean(axis=0)
+    shifted = points - centroid
+    mean_dist = float(np.linalg.norm(shifted, axis=1).mean())
+    if mean_dist <= 1e-12:
+        raise CalibError("The points are repeated; the camera mapping is singular")
+    scale = math.sqrt(2.0) / mean_dist
+    transform = np.array([[scale, 0.0, -scale * centroid[0]], [0.0, scale, -scale * centroid[1]], [0.0, 0.0, 1.0]], dtype=np.float64)
+    homo = np.column_stack([points, np.ones(len(points), dtype=np.float64)])
+    return (transform @ homo.T).T[:, :2], transform
+
+
+def _solve_homography_lstsq(src: np.ndarray, dst: np.ndarray) -> np.ndarray:
+    """以所有對應點做正規化 DLT 最小平方，解出 src 到 dst 的 homography。"""
+    src_n, t_src = _normalize_points_2d(src)
+    dst_n, t_dst = _normalize_points_2d(dst)
+    rows = []
+    for (x, y), (u, v) in zip(src_n, dst_n, strict=True):
+        rows.append([-x, -y, -1.0, 0.0, 0.0, 0.0, u * x, u * y, u])
+        rows.append([0.0, 0.0, 0.0, -x, -y, -1.0, v * x, v * y, v])
+    _, _, vt = np.linalg.svd(np.asarray(rows, dtype=np.float64))
+    h = vt[-1].reshape(3, 3)
+    matrix = np.linalg.inv(t_dst) @ h @ t_src
+    if abs(matrix[2, 2]) > 1e-12:
+        matrix = matrix / matrix[2, 2]
+    return matrix
+
+
+def solve_mapping(
+    pairs: list[tuple[tuple[float, float], tuple[float, float]]],
+    kind: str = "affine",
+    *,
+    from_source: str = "",
+    to_source: str = "",
+    matrix: Any | None = None,
+) -> dict[str, Any]:
+    """以最小平方解相機 A 像素到相機 B 像素的映射，並回傳每個點的殘差。"""
+    if kind not in MAPPING_KINDS:
+        raise CalibError(f"kind must be one of {', '.join(MAPPING_KINDS)}")
+    need = MAPPING_KINDS[kind]
+    if len(pairs) < need:
+        raise CalibError(f"{kind} needs at least {need} points, got {len(pairs)}")
+    src = np.asarray([p[0] for p in pairs], dtype=np.float64).reshape(-1, 2)
+    dst = np.asarray([p[1] for p in pairs], dtype=np.float64).reshape(-1, 2)
+    if not np.isfinite(src).all() or not np.isfinite(dst).all():
+        raise CalibError("The mapping points contain non-finite numbers")
+
+    if matrix is None:
+        if kind == "affine":
+            a = np.hstack([src, np.ones((len(src), 1))])
+            sol, *_ = np.linalg.lstsq(a, dst, rcond=None)
+            matrix_arr = np.vstack([sol.T, [0.0, 0.0, 1.0]])
+        else:
+            matrix_arr = _solve_homography_lstsq(src, dst)
+    else:
+        try:
+            matrix_arr = np.asarray(matrix, dtype=np.float64).reshape(3, 3)
+        except (TypeError, ValueError, OverflowError):
+            raise CalibError("mapping.matrix must be a finite 3x3 matrix") from None
+        if not np.isfinite(matrix_arr).all():
+            raise CalibError("mapping.matrix contains non-finite numbers")
+    if abs(np.linalg.det(matrix_arr)) < 1e-12:
+        raise CalibError("The points are collinear or repeated; the camera mapping is singular")
+
+    mapped = apply(matrix_arr, src)
+    errors = np.linalg.norm(mapped - dst, axis=1)
+    payload = {
+        "from_source": from_source,
+        "to_source": to_source,
+        "kind": kind,
+        "matrix": matrix_arr.tolist(),
+        "points": [
+            {"ax": float(src[i, 0]), "ay": float(src[i, 1]), "bx": float(dst[i, 0]), "by": float(dst[i, 1]), "error": float(errors[i])}
+            for i in range(len(src))
+        ],
+        "rms": float(math.sqrt(float((errors**2).mean()))),
+        "max_error": float(errors.max()),
+    }
+    return _validate_mapping(payload)
+
+
+def solve_mapping_from_boards(
+    corners_a: Any,
+    corners_b: Any,
+    object_points: np.ndarray,
+    *,
+    from_source: str = "",
+    to_source: str = "",
+) -> dict[str, Any]:
+    """由兩台相機看到的同一塊標定板角點組成 A 像素到 B 像素的透視映射。"""
+    a = np.asarray(corners_a, dtype=np.float64).reshape(-1, 2)
+    b = np.asarray(corners_b, dtype=np.float64).reshape(-1, 2)
+    obj = np.asarray(object_points, dtype=np.float64).reshape(-1, 3)
+    if len(a) != len(obj) or len(b) != len(obj):
+        raise CalibError("Each camera view must have the same number of points as the board")
+    a_to_board = _solve_homography_lstsq(a, obj[:, :2])
+    b_to_board = _solve_homography_lstsq(b, obj[:, :2])
+    board_to_b = np.linalg.inv(b_to_board)
+    matrix = board_to_b @ a_to_board
+    matrix = matrix / matrix[2, 2]
+    pairs = [((float(pa[0]), float(pa[1])), (float(pb[0]), float(pb[1]))) for pa, pb in zip(a, b, strict=True)]
+    return solve_mapping(pairs, "perspective", from_source=from_source, to_source=to_source, matrix=matrix)
 
 
 def solve_robot(points: Any, *, kind: str, camera_mode: str) -> dict[str, Any]:
@@ -611,6 +766,13 @@ def warnings(payload: dict[str, Any], cov: dict[str, Any] | None = None) -> list
             out.append("Robot rotation center is unavailable: collect a rotation arc before using rotation compensation")
         if robot.get("rotation_rms_px", 0) > RMS_WARN_PX:
             out.append(f"Robot rotation residual {robot['rotation_rms_px']:.3f} px: check that the same feature rotates with robot XY held fixed")
+    mapping = payload.get("mapping") or {}
+    if mapping and mapping.get("rms") is not None:
+        points = mapping.get("points") or []
+        if len(points) <= MAPPING_KINDS.get(str(mapping.get("kind")), 4):
+            out.append("Camera mapping has only the minimum number of points: add more spread across the overlap to check residuals")
+        if float(mapping.get("rms") or 0) > 1.0 or float(mapping.get("max_error") or 0) > 3.0:
+            out.append(f"Camera mapping RMS {float(mapping['rms']):.3f} px, maximum residual {float(mapping.get('max_error') or 0):.3f} px: check all point pairs")
     return out
 
 
@@ -632,4 +794,8 @@ def quality(payload: dict[str, Any]) -> dict[str, str]:
         in_px = robot["rms"] / px if px > 0 else math.inf
         in_px = max(in_px, robot.get("rotation_rms_px", 0))
         out["robot"] = "good" if in_px <= 1.0 else ("fair" if in_px <= 3.0 else "poor")
+    mapping = payload.get("mapping")
+    if mapping:
+        rms = float(mapping.get("rms") or 0)
+        out["mapping"] = "good" if rms <= 1.0 else ("fair" if rms <= 3.0 else "poor")
     return out

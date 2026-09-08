@@ -149,6 +149,23 @@ def save_calibration(folder: str, w: int, h: int) -> str:
     return path
 
 
+def save_mapping_calibration(folder: str, w: int, h: int) -> str:
+    """建立一份只含相機映射的標定資產，避免影響既有世界座標 bench。"""
+    from apps.vision import calib
+
+    matrix = [[1.0, 0.0, 30.0], [0.0, 1.0, -20.0], [0.0, 0.0, 1.0]]
+    pairs = [
+        ([10.0, 20.0], [40.0, 0.0]),
+        ([120.0, 20.0], [150.0, 0.0]),
+        ([10.0, 100.0], [40.0, 80.0]),
+        ([120.0, 100.0], [150.0, 80.0]),
+    ]
+    payload = {"unit": "px", "image_size": [w, h], "mapping": calib.solve_mapping(pairs, "affine", matrix=matrix, from_source="A", to_source="B")}
+    path = os.path.join(folder, f"mapcal_{w}.json")
+    calib.save(path, payload)
+    return path
+
+
 class Scene:
     """一張合成影像與它的幾何（板子中心、孔位），讓每個工具的 ROI 都落在有東西的地方。"""
 
@@ -169,6 +186,7 @@ class Scene:
         self.golden = save_png(self.gray, folder, f"golden_{w}.png")
         self.mask = cv2.threshold(self.gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
         self.calibration = save_calibration(folder, w, h)
+        self.mapping_calibration = save_mapping_calibration(folder, w, h)
         self.shape_template = save_png(self.mask[cy - r : cy + r, cx - r : cx + r], folder, f"shape_{w}.png")
         yy, xx = np.mgrid[0:h, 0:w]
         vignette = 1.0 - 0.45 * (((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / ((w / 2) ** 2 + (h / 2) ** 2))
@@ -244,7 +262,7 @@ class Scene:
             fixed_images.store(np.full((32, 32, 3), (0, 255, 0), np.uint8), "green"),
             fixed_images.store(np.full((32, 32, 3), (255, 0, 0), np.uint8), "blue"),
         ]
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "mapcal": self.mapping_calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -370,6 +388,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("align_offset point", "align_offset", None, {"ref_x": s.cx, "ref_y": s.cy, "ref_angle": 0}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("align_offset grab", "align_offset", None, {"mode": "grab", "ref_x": s.cx, "ref_y": s.cy, "grab_x": s.cx + 40, "grab_y": s.cy + 10}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("align_offset set", "align_offset", None, {"mode": "point_set", "ref_points": [[10, 10], [90, 12], [50, 70]]}, {"points": [[13, 8], [93, 10], [53, 68]]}, {}),
+        ("map_points", "map_points", None, {"calibration": "mapcal"}, {"points": [[10.0, 20.0], [30.0, 40.0]], "x": 5.0, "y": 6.0}, {}),
         ("fixture_roi", "fixture_roi", None, {"roi": plate}, {"transform": {"dx": 3, "dy": -2, "dtheta": 1.5, "pivot": [s.cx, s.cy]}}, {}),
         ("image_fixture", "image_fixture", gray, {}, {"transform": {"dx": 3, "dy": -2, "dtheta": 1.5, "pivot": [s.cx, s.cy]}}, {}),
         ("region_from_shape", "region_from_shape", None, {"roi": center_circle}, {}, {}),

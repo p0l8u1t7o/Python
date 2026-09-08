@@ -57,6 +57,22 @@ def _fail(exc: calib.CalibError) -> ValidationError:
     return ValidationError(str(exc), code="bad_calibration")
 
 
+def _corner_views(raw: Any, name: str) -> list[np.ndarray]:
+    if not isinstance(raw, list) or not raw:
+        raise ValidationError(f"{name} must contain board corner points", code="bad_points")
+    try:
+        arr = np.asarray(raw, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError(f"{name} must be lists of [x, y] points: {exc}", code="bad_points") from None
+    if arr.ndim == 2 and arr.shape[1] == 2:
+        return [arr]
+    if arr.ndim == 3 and arr.shape[2] == 2:
+        if len(arr) > MAX_VIEWS:
+            raise ValidationError(f"At most {MAX_VIEWS} board views", code="too_many_views")
+        return [arr[i] for i in range(len(arr))]
+    raise ValidationError(f"{name} must be one view or a list of views of [x, y] points", code="bad_points")
+
+
 @router.post("/calibration/capture", response={201: dict})
 def capture(request: HttpRequest, image: UploadedFile = File(None), source_id: int | None = None):
     """拍一張給標定用：帶 source_id 從影像來源抓，或直接上傳檔案。影像只進快取（pinned），不進資產庫。"""
@@ -234,8 +250,44 @@ def solve(request: HttpRequest):
                 payload["robot"]["angle_sign"] = data["angle_sign"]
             if data.get("world"):
                 payload["world"] = data["world"]
+        elif mode == "mapping":
+            kind = str(data.get("kind") or "affine")
+            from_source = str(data.get("from_source") or "")
+            to_source = str(data.get("to_source") or "")
+            if "points" in data:
+                raw = data.get("points") or []
+                if not isinstance(raw, list):
+                    raise ValidationError("points must be a list", code="bad_points")
+                if len(raw) > MAX_POINTS:
+                    raise ValidationError(f"At most {MAX_POINTS} points", code="too_many_points")
+                pairs = []
+                for item in raw:
+                    a = np.asarray(item.get("a"), dtype=np.float64).reshape(2)
+                    b = np.asarray(item.get("b"), dtype=np.float64).reshape(2)
+                    pairs.append(((float(a[0]), float(a[1])), (float(b[0]), float(b[1]))))
+                payload["mapping"] = calib.solve_mapping(pairs, kind, from_source=from_source, to_source=to_source)
+            else:
+                cols, rows = int(data.get("cols") or 0), int(data.get("rows") or 0)
+                spacing = float(data.get("spacing") or 0)
+                board_kind = str(data.get("board_kind") or data.get("boardKind") or "chessboard")
+                obj = calib.board_object_points(cols, rows, spacing, board_kind)
+                views_a = _corner_views(data.get("views_a"), "views_a")
+                views_b = _corner_views(data.get("views_b"), "views_b")
+                if len(views_a) != len(views_b):
+                    raise ValidationError("views_a and views_b must have the same number of views", code="bad_points")
+                if len(views_a) == 1 and kind == "perspective":
+                    payload["mapping"] = calib.solve_mapping_from_boards(views_a[0], views_b[0], obj, from_source=from_source, to_source=to_source)
+                else:
+                    pairs = []
+                    for va, vb in zip(views_a, views_b, strict=True):
+                        if len(va) != len(obj) or len(vb) != len(obj):
+                            raise calib.CalibError("Each camera view must have the same number of points as the board")
+                        pairs.extend(((float(a[0]), float(a[1])), (float(b[0]), float(b[1]))) for a, b in zip(va, vb, strict=True))
+                    if len(pairs) > MAX_POINTS:
+                        raise ValidationError(f"At most {MAX_POINTS} points", code="too_many_points")
+                    payload["mapping"] = calib.solve_mapping(pairs, kind, from_source=from_source, to_source=to_source)
         else:
-            raise ValidationError("mode must be board, points, distance or robot", code="bad_mode")
+            raise ValidationError("mode must be board, points, distance, robot or mapping", code="bad_mode")
         if data.get("lens"):  # 沿用既有標定的鏡頭部分（只想重做世界座標時）
             payload["lens"] = data["lens"]
         checked = calib.validate(payload)
@@ -288,7 +340,7 @@ def create_asset(request: HttpRequest):
         group=str(data.get("group") or "").strip()[:60],
         meta={"summary": calib.summary(payload), "quality": calib.quality(payload), "unit": payload["unit"],
               "image_size": payload["image_size"], "has_lens": "lens" in payload, "has_world": "world" in payload,
-              "has_robot": "robot" in payload},
+              "has_robot": "robot" in payload, "has_mapping": "mapping" in payload},
     )
     audit.record(request, "asset.calibration", f"asset:{asset.id}", summary=f"{name}: {calib.summary(payload)}")
     return 201, {"id": str(asset.id), "name": asset.name, "kind": asset.kind, "group": asset.group,

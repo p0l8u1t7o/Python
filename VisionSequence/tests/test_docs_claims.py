@@ -32,6 +32,14 @@ def _one_int(pattern: str, text: str, what: str) -> int:
     return int(found[0])
 
 
+def _count_backend_tests() -> int:
+    """數 tests/ 底下的測試方法；只求量級對得上，不必與 runner 完全一致。"""
+    total = 0
+    for path in (ROOT / "tests").glob("test_*.py"):
+        total += len(re.findall(r"^\s+def test_\w+", path.read_text(encoding="utf-8"), re.M))
+    return total
+
+
 class ScaleClaimTests(TestCase):
     """README 與 CLAUDE.md 的規模數字要與實際相符。"""
 
@@ -46,6 +54,21 @@ class ScaleClaimTests(TestCase):
     def test_template_count_is_current(self):
         claimed = _one_int(r"`demo.BUILTIN_TEMPLATES`，(\d+) 個", _read("CLAUDE.md"), "範本數")
         self.assertEqual(claimed, len(demo.BUILTIN_TEMPLATES), "CLAUDE.md 的範本數過期")
+
+    def test_backend_test_count_claim_is_roughly_current(self):
+        """測試數量用「約 N 項」寫，容許 5% 誤差。
+
+        每加一條測試就讓文件變紅太吵，但整整差了一兩百項就會誤導——
+        使用者實際踩到的就是「文件中的測試數量存在不同版本的敘述」。
+        所以綁一個寬鬆的範圍：小幅增加不必改，長期漂移會被抓出來。
+        """
+        actual = _count_backend_tests()
+        for name in ("README.md", "CLAUDE.md"):
+            claimed = _one_int(r"後端約 (\d+) 項", _read(name), "後端測試數")
+            self.assertLessEqual(
+                abs(claimed - actual) / max(actual, 1), 0.05,
+                f"{name} 宣稱後端約 {claimed} 項測試，實際 {actual} 項，差太多了")
+
 
     def test_documented_categories_cover_every_tool(self):
         """架構頁的工具表要列出登錄表裡的每一個工具，也不能列出不存在的。"""

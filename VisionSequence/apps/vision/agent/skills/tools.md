@@ -129,6 +129,11 @@ grab（教導時的取料點跟著轉，輸出 `abs_x/abs_y/abs_angle` 就是手
 選了 `calibration`（手眼標定資產）才會多出 `world_*`；沒選就只給像素。
 輸出的 `transform` 與 shape_align 同格式，可以直接接到任何工具的位置修正埠。
 
+## map_points
+相機間座標映射：選一份含 `mapping` 區塊的標定資產，把 A 相機座標換成 B 相機座標；`direction=inverse` 會用反矩陣走回來。
+輸入可接 `points`、`matches`，或單點 `x`/`y`。`matches` 會保留原本欄位，只更新 `cx`/`cy` 或 `x`/`y`，有 `angle` 時一併轉成另一台相機座標的角度。
+沒有 mapping 區塊時工具會失敗並說明要先建立相機映射標定。
+
 ## image_fixture
 把整張影像轉回教導時的姿態（`fixture_roi` 的另一種做法）：`transform` 接 `shape_align`，輸出的影像給下游所有步驟。
 **跟隨區域與跟隨影像二選一**——區域少就用位置修正埠（每個有 ROI 的工具都有 `_transform`，接上去就好），

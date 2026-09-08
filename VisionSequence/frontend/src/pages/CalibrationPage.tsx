@@ -6,7 +6,7 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, Crosshair, Move, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { ArrowRightLeft, Camera, Crosshair, Move, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import {
@@ -15,13 +15,15 @@ import {
 } from '@/components/ui'
 import { RobotResult, RobotWizard, useRobotWizard } from '@/components/calibration/RobotWizard'
 import type { RobotBlock } from '@/components/calibration/RobotWizard'
+import { MappingResult, MappingWizard, useMappingWizard } from '@/components/calibration/MappingWizard'
+import type { MappingBlock } from '@/components/calibration/MappingWizard'
 import { api, imageUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useAssets, useSources } from '@/lib/queries'
 import type { Overlay } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
-type Mode = 'board' | 'points' | 'distance' | 'robot'
+type Mode = 'board' | 'points' | 'distance' | 'robot' | 'mapping'
 type BoardKind = 'chessboard' | 'circles' | 'acircles'
 type WorldKind = 'affine' | 'perspective' | 'scale'
 
@@ -125,6 +127,7 @@ export function CalibrationPage() {
   const shot: Shot | null = shots[current] ?? null
   const detected = shots.filter((s) => s.corners?.length)
   const robot = useRobotWizard(shot?.ref ?? null)
+  const mapping = useMappingWizard()
 
   function reset() {
     setShots([])
@@ -132,6 +135,7 @@ export function CalibrationPage() {
     setPoints([])
     setResult(null)
     robot.reset()
+    mapping.reset()
   }
 
   function switchMode(next: Mode) {
@@ -139,8 +143,9 @@ export function CalibrationPage() {
     setResult(null)
     setPoints([])
     robot.reset()
+    mapping.reset()
     // 標定板要多張、另外兩種只用一張：換模式時只留目前這張，不必重拍
-    if (next !== 'board' && shots.length > 1) {
+    if (next !== 'board' && next !== 'mapping' && shots.length > 1) {
       setShots(shot ? [shot] : [])
       setCurrent(0)
     }
@@ -237,13 +242,15 @@ export function CalibrationPage() {
   }
 
   async function solve() {
-    if (!shot) return
+    if (mode !== 'mapping' && !shot) return
     setBusy(true)
     try {
-      const base = { image_size: [shot.width, shot.height], unit }
+      const base = mode === 'mapping' ? {} : { image_size: [shot!.width, shot!.height], unit }
       let body: Record<string, unknown>
       if (mode === 'board') {
         body = { ...base, mode: 'board', kind: boardKind, cols: Number(cols), rows: Number(rows), spacing: Number(spacing), views: detected.map((s) => s.corners) }
+      } else if (mode === 'mapping') {
+        body = mapping.body()
       } else if (mode === 'robot') {
         body = { ...base, ...robot.body() }
       } else if (mode === 'points') {
@@ -270,6 +277,9 @@ export function CalibrationPage() {
       }
       if (mode === 'robot') {
         robot.applyResult((solved.payload.robot as RobotBlock | undefined) ?? null)
+      }
+      if (mode === 'mapping') {
+        mapping.applyResult((solved.payload.mapping as MappingBlock | undefined) ?? null)
       }
       toast.success(t('calibration.solved'))
     } catch (err) {
@@ -322,13 +332,16 @@ export function CalibrationPage() {
   const world = worldOf(result)
   const lens = lensOf(result)
   const robotBlock = (result?.payload?.robot as RobotBlock | undefined) ?? null
+  const mappingBlock = (result?.payload?.mapping as MappingBlock | undefined) ?? null
   const canSolve = mode === 'board'
     ? detected.length > 0 && Number(spacing) > 0
-    : mode === 'robot'
-      ? robot.canSolve
-      : mode === 'points'
-        ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
-        : points.length === 2 && Number(distance) > 0
+    : mode === 'mapping'
+      ? mapping.canSolve
+      : mode === 'robot'
+        ? robot.canSolve
+        : mode === 'points'
+          ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
+          : points.length === 2 && Number(distance) > 0
 
   return (
     <Page>
@@ -351,8 +364,8 @@ export function CalibrationPage() {
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {(['board', 'points', 'distance', 'robot'] as Mode[]).map((m) => (
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {(['board', 'points', 'distance', 'robot', 'mapping'] as Mode[]).map((m) => (
           <button
             key={m}
             type="button"
@@ -361,7 +374,7 @@ export function CalibrationPage() {
             data-testid={`calib-mode-${m}`}
           >
             <div className="flex items-center gap-2 text-sm font-medium">
-              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : <Move size={15} />}
+              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : m === 'mapping' ? <ArrowRightLeft size={15} /> : <Move size={15} />}
               {t(`calibration.modes.${m}.title`)}
             </div>
             <p className="mt-1 text-xs text-subtle">{t(`calibration.modes.${m}.hint`)}</p>
@@ -370,6 +383,13 @@ export function CalibrationPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        {mode === 'mapping' ? (
+          <MappingWizard
+            wizard={mapping}
+            onChange={() => setResult(null)}
+            onError={(message) => toast.error(message)}
+          />
+        ) : (
         <Card>
           <CardHeader
             title={t('calibration.picture')}
@@ -413,9 +433,10 @@ export function CalibrationPage() {
             )}
           </CardBody>
         </Card>
+        )}
 
         <div className="space-y-4">
-          {mode === 'board' ? (
+          {mode === 'mapping' ? null : mode === 'board' ? (
             <Card>
               <CardHeader title={t('calibration.board')} />
               <CardBody className="space-y-3">
@@ -574,6 +595,7 @@ export function CalibrationPage() {
               {result ? (
                 <div className="space-y-2 text-sm" data-testid="calib-result">
                   {robotBlock ? <RobotResult robot={robotBlock} unit={unit} /> : null}
+                  {mappingBlock ? <MappingResult mapping={mappingBlock} /> : null}
                   {world ? (
                     <>
                       <div className="flex items-baseline gap-2">

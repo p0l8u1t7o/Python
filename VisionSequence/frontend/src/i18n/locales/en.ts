@@ -1767,6 +1767,7 @@ const enExtra3 = {
       points: { title: 'Robot points', hint: 'Mark places in the picture and type the coordinates your robot reports for them.', steps: 'Mark three or more points, type the coordinates your robot reports, then calculate.' },
       distance: { title: 'Known distance', hint: 'Mark two points and type how far apart they really are. The quickest way to get millimetres.', steps: 'Mark two points, type the real distance between them, then calculate.' },
       robot: { title: 'Hand-eye', hint: 'Move the robot to a few places, mark the same feature each time, and the station learns where to send it.', steps: 'Move the robot, type the coordinates it reports, take a picture, mark the feature. Three places or more, then calculate.' },
+      mapping: { title: 'Camera mapping', hint: 'Map coordinates from one camera image into another camera image.', steps: 'Capture or upload both camera views, mark matching points in turn, then calculate.' },
     },
     robot: {
       precision: 'Per pixel ≈ {{value}} {{unit}}',
@@ -1809,6 +1810,20 @@ const enExtra3 = {
       handedness: { right: 'Right-handed', left: 'Left-handed (mirrored axes)' },
       angleSign: 'Angle sign {{sign}}',
       center: 'Centre of rotation at {{x}}, {{y}} px, {{rms}} px on the fitted circle.',
+    },
+    mapping: {
+      title: 'Camera mapping',
+      camera: { a: 'Camera A', b: 'Camera B' },
+      next: { a: 'Next: Camera A', b: 'Next: Camera B' },
+      kind: 'Mapping',
+      kinds: { affine: 'Affine (3 pairs or more)', perspective: 'Perspective (4 pairs or more)' },
+      kindHints: {
+        affine: 'Use when the two views differ by shift, rotation, scale or shear.',
+        perspective: 'Use when the cameras see the same plane from different angles.',
+      },
+      count: '{{count}} complete pairs; {{need}} needed.',
+      rms: 'px average error',
+      precision: 'Per A pixel ~= {{value}} B px',
     },
     picture: 'Picture',
     pickSource: 'Image source',

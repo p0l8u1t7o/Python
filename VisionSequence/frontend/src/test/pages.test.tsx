@@ -65,13 +65,14 @@ describe('pages render (smoke)', () => {
     await waitFor(() => expect(screen.getByText('Offline rule engine')).toBeInTheDocument())
   })
 
-  it('CalibrationPage offers the four ways and calculates from a board', async () => {
+  it('CalibrationPage offers the five ways and calculates from a board', async () => {
     const { CalibrationPage } = await import('@/pages/CalibrationPage')
     renderPage(<CalibrationPage />, { route: '/calibration' })
     expect(await screen.findByTestId('calib-mode-board')).toBeInTheDocument()
     expect(screen.getByTestId('calib-mode-points')).toBeInTheDocument()
     expect(screen.getByTestId('calib-mode-distance')).toBeInTheDocument()
     expect(screen.getByTestId('calib-mode-robot')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mode-mapping')).toBeInTheDocument()
     // 還沒有影像：不能計算也不能儲存
     expect(screen.getByTestId('calib-solve')).toBeDisabled()
     expect(screen.getByTestId('calib-save')).toBeDisabled()
@@ -119,6 +120,17 @@ describe('pages render (smoke)', () => {
     const { FlowsPage } = await import('@/pages/FlowsPage')
     renderPage(<FlowsPage />, { route: '/flows' })
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
+  })
+
+  it('CalibrationPage opens the camera mapping wizard', async () => {
+    const { CalibrationPage } = await import('@/pages/CalibrationPage')
+    renderPage(<CalibrationPage />, { route: '/calibration' })
+    fireEvent.click(await screen.findByTestId('calib-mode-mapping'))
+    expect(screen.getByTestId('calib-mapping-wizard')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mapping-kind')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mapping-source-a')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-mapping-source-b')).toBeInTheDocument()
+    expect(screen.getByTestId('calib-solve')).toBeDisabled()
   })
 
   it('FlowEditorPage searches nodes from the canvas', async () => {

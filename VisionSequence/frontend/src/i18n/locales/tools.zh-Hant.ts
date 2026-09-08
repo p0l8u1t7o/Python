@@ -2865,6 +2865,22 @@ export default {
       found: "算出來了", not_found: "沒有目前位置",
     },
   },
+  map_points: {
+    label: "相機映射",
+    description: "使用含 mapping 區塊的標定資產，把 A 相機座標換到 B 相機座標；可反向使用。",
+    params: {
+      calibration: { label: "映射標定", help: "必填；需由標定頁的相機映射模式建立，資產內要有 mapping 區塊。" },
+      direction: { label: "方向", options: { forward: "正向", inverse: "反向" } },
+    },
+    ports: {
+      image: "影像",
+      points: "點集",
+      matches: "定位結果",
+      x: "X",
+      y: "Y",
+      count: "數量",
+    },
+  },
   shape_align: {
     label: "定位補正",
     description: "比較目前定位結果與教導時的參考位置，算出平移／旋轉量（dx, dy, dθ），供 ROI 跟隨使用。",

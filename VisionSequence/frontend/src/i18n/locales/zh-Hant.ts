@@ -75,6 +75,7 @@ const zhHant = {
       points: { title: '機械手對點', hint: '在影像上標位置，填入機械手在該處回報的座標。', steps: '標三個以上的點，填入機械手回報的座標，然後按計算。' },
       distance: { title: '已知距離', hint: '標兩個點、填入實際距離。要毫米最快的做法。', steps: '標兩個點，填入兩點的實際距離，然後按計算。' },
       robot: { title: '手眼標定', hint: '讓機構走幾個位置、每次標同一個特徵，平台就學會該把它送到哪裡。', steps: '機構移到位、填入它回報的座標、取像、標出特徵。三個位置以上就能計算。' },
+      mapping: { title: '相機映射', hint: '把一台相機影像中的座標換到另一台相機影像。', steps: '擷取或上傳兩台相機的影像，輪流標對應點，然後計算。' },
     },
     robot: {
       precision: '每像素 ≈ {{value}} {{unit}}',
@@ -117,6 +118,20 @@ const zhHant = {
       handedness: { right: '右手系', left: '左手系（座標軸鏡像）' },
       angleSign: '角度正負 {{sign}}',
       center: '旋轉中心在 {{x}}, {{y}} px，擬合圓殘差 {{rms}} px。',
+    },
+    mapping: {
+      title: '相機間映射',
+      camera: { a: '相機 A', b: '相機 B' },
+      next: { a: '下一點：相機 A', b: '下一點：相機 B' },
+      kind: '映射方式',
+      kinds: { affine: '仿射（3 組以上）', perspective: '透視（4 組以上）' },
+      kindHints: {
+        affine: '兩個視角差異是平移、旋轉、縮放或剪切時使用。',
+        perspective: '兩台相機從不同角度看同一個平面時使用。',
+      },
+      count: '已有 {{count}} 組完整對應點；至少需要 {{need}} 組。',
+      rms: 'px 平均誤差',
+      precision: '每個 A 像素約為 {{value}} 個 B 像素',
     },
     picture: '影像',
     pickSource: '影像來源',
