@@ -150,6 +150,12 @@ VISION = {
     "MAX_QUEUE_PER_FLOW": _env_int("VISION_MAX_QUEUE_PER_FLOW", 16),
     # 單一 run 的牆鐘上限（秒）；超過標 failed。
     "RUN_TIMEOUT_S": _env_float("VISION_RUN_TIMEOUT_S", 30.0),
+    # 伺服器啟動後的靜默暖機: off | commissioned | all. 預設關閉, 避免改變既有站台啟動行為.
+    "WARMUP": _env("VISION_WARMUP", "off"),
+    # 每條暖機流程的上限秒數.
+    "WARMUP_TIMEOUT_S": _env_float("VISION_WARMUP_TIMEOUT_S", 30.0),
+    # 逗號分隔的流程 id 清單; 空值時依 VISION_WARMUP 規則選擇.
+    "WARMUP_FLOWS": _env("VISION_WARMUP_FLOWS", ""),
     # 每個流程在記憶體保留幾次 run 的影像（供前端檢視）。
     "KEEP_RUN_IMAGES": _env_int("VISION_KEEP_RUN_IMAGES", 8),
     # 影像封存（出貨預設不存；各流程自己開，見 apps/vision/archive.py）

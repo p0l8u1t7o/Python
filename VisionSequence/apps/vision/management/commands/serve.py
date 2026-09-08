@@ -9,11 +9,14 @@ SSE 串流不會占住整個伺服器。服務管理員（NSSM）送 Ctrl-C 時 
 from __future__ import annotations
 
 import copy
+import logging
 import os
 from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+
+log = logging.getLogger(__name__)
 
 
 def _log_config() -> dict:
@@ -41,6 +44,7 @@ class Command(BaseCommand):
         parser.add_argument("--capture-port", type=int, default=settings.VISION["CAPTURE_PORT"], help="擷取端連入埠（相機電腦上的擷取程式）")
         parser.add_argument("--no-capture", action="store_true")
         parser.add_argument("--no-comm", action="store_true", help="不自動開啟 Modbus 從站與觸發輪詢")
+        parser.add_argument("--no-warmup", action="store_true", help="停用啟動後的靜默暖機")
         parser.add_argument("--reload", action="store_true", help="開發用自動重載（狀態會遺失）")
 
     def handle(self, *args, **options):
@@ -73,6 +77,8 @@ class Command(BaseCommand):
         # 站台就緒：TCP、擷取端埠與連線都起來了，HTTP 接著開。設備端要「平台重開了」這個訊號
         # （PLC 常在斷電重開後要重送料號與配方），所以發成事件讓連線層的事件回報看得到。
         bus.publish({"type": "server_ready", "station_id": str(settings.VISION.get("STATION_ID", "")), "version": __version__})
+        if not options["no_warmup"]:
+            _start_warmup_if_enabled(options["port"])
         try:
             uvicorn.run(
                 "config.asgi:application",
@@ -87,3 +93,15 @@ class Command(BaseCommand):
         finally:
             if pid_file is not None:
                 pid_file.unlink(missing_ok=True)
+
+
+def _start_warmup_if_enabled(port: int) -> None:
+    mode = str(settings.VISION.get("WARMUP", "off") or "off").strip().lower()
+    if mode == "off":
+        return
+    if mode not in ("commissioned", "all"):
+        log.warning("啟動暖機設定無效: VISION_WARMUP=%s", mode)
+        return
+    from apps.vision import warmup
+
+    warmup.start_background(port=int(port), timeout_s=float(settings.VISION.get("WARMUP_TIMEOUT_S", 30)))
