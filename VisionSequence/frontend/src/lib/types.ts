@@ -1000,3 +1000,20 @@ export interface CommRule {
   ng: string
   failed: string
 }
+
+/** 站台複製包：整份通訊設定（後端 apps/comm/api.py 的 export／import）。 */
+export interface ConnectionsExport {
+  version: number
+  station_id?: string
+  exported_at?: string
+  connections: { name: string; kind: string; config: Record<string, unknown>; is_enabled: boolean }[]
+  station_rules?: TriggerRule[]
+}
+
+export interface ConnectionsImportResult {
+  created: string[]
+  updated: string[]
+  skipped: string[]
+  failed: { name: string; error: string }[]
+  station_rules: number | null
+}

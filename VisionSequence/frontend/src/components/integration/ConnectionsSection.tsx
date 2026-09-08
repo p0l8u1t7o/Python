@@ -8,13 +8,13 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, Cable, Pencil, PenLine, Plug, Plus, Trash2 } from 'lucide-react'
+import { Activity, Cable, Download, Pencil, PenLine, Plug, Plus, Trash2, Upload } from 'lucide-react'
 
 import { RuleTable } from '@/components/integration/RuleTable'
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, Select, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
-import { fetchConnectionState, useConnectionKinds, useConnectionMutations, useConnections, type ConnectionBody } from '@/lib/queries'
-import type { Connection, ConnectionOpResult, TriggerRule } from '@/lib/types'
+import { fetchConnectionState, fetchConnectionsExport, useConnectionKinds, useConnectionMutations, useConnections, useImportConnections, type ConnectionBody } from '@/lib/queries'
+import type { Connection, ConnectionOpResult, ConnectionsExport, TriggerRule } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
@@ -110,6 +110,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
   const connections = useConnections()
   const kinds = useConnectionKinds()
   const { create, patch, remove, test, write } = useConnectionMutations()
+  const importAll = useImportConnections()
   const [editing, setEditing] = useState<{ id: number | null; body: ConnectionBody } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Connection | null>(null)
   const [writing, setWriting] = useState<{ conn: Connection; values: string; result: ConnectionOpResult | null } | null>(null)
@@ -188,6 +189,33 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
       toast.error(errorMessage(error))
     }
   }
+  /** 整份通訊設定：換一台工控機時匯出再匯入，不必一條一條重打（密碼欄位在伺服器就遮掉了）。 */
+  async function onExport() {
+    try {
+      const data = await fetchConnectionsExport()
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `connections-${data.station_id || 'station'}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+  async function onImport(file: File) {
+    try {
+      const data = JSON.parse(await file.text()) as ConnectionsExport
+      if (!Array.isArray(data?.connections)) throw new Error(t('connections.importInvalid'))
+      const result = await importAll.mutateAsync(data)
+      const failed = result.failed.length
+      if (failed) toast.error(t('connections.importFailed', { count: failed, name: result.failed[0]?.name ?? '' }))
+      else toast.success(t('connections.imported', { created: result.created.length, updated: result.updated.length }))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
   async function readState(view: NonNullable<typeof stateView>) {
     setStateView({ ...view, loading: true })
     try {
@@ -204,7 +232,22 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted">{t('connections.subtitle')}</p>
-        <span title={canManage ? undefined : t('connections.adminOnly')}><Button variant="primary" icon={<Plus size={15} />} disabled={!canManage} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button></span>
+        <span className="flex flex-wrap items-center gap-2" title={canManage ? undefined : t('connections.adminOnly')}>
+          <Button icon={<Download size={15} />} disabled={!canManage} onClick={() => void onExport()} title={t('connections.exportAllHint')} data-testid="conn-export">{t('connections.export')}</Button>
+          <label className={`btn-secondary cursor-pointer ${canManage ? '' : 'pointer-events-none opacity-50'}`} title={t('connections.importHint')}>
+            <Upload size={15} />
+            {t('connections.import')}
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              disabled={!canManage}
+              onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void onImport(file) }}
+              data-testid="conn-import"
+            />
+          </label>
+          <Button variant="primary" icon={<Plus size={15} />} disabled={!canManage} onClick={openCreate} data-testid="conn-create">{t('connections.create')}</Button>
+        </span>
       </div>
       <Card className="overflow-hidden">
         {connections.isPending ? (

@@ -23,6 +23,8 @@ import type {
   Connection,
   ConnectionKind,
   ConnectionOpResult,
+  ConnectionsExport,
+  ConnectionsImportResult,
   DlDatasetVersion,
   DlDevices,
   DlProject,
@@ -865,6 +867,22 @@ export function useConnections(enabled = true) {
 }
 
 /** 站台接收規則：TCP 指令埠收到「不是指令」的一行時比對這一張表。 */
+/** 整份通訊設定（連線、觸發規則、站台接收規則）：站台複製包。密碼欄位在伺服器就遮掉了。 */
+export function fetchConnectionsExport() {
+  return api.get<ConnectionsExport>('/vision/connections/export')
+}
+
+export function useImportConnections() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ConnectionsExport & { overwrite?: boolean }) => api.post<ConnectionsImportResult>('/vision/connections/import', body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.connections })
+      void client.invalidateQueries({ queryKey: ['station-rules'] })
+    },
+  })
+}
+
 export function useStationRules(enabled = true) {
   return useQuery({
     queryKey: ['station-rules'],

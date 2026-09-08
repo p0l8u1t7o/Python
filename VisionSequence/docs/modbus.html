@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html" aria-current="page">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Rules: what the equipment does, what the platform does</a><ul><li><a href="#heartbeat">1-2. Heartbeat: a counter the master can watch</a></li></ul></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Rules: what the equipment does, what the platform does</a><ul><li><a href="#heartbeat">1-2. Heartbeat: a counter the master can watch</a></li></ul></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#copy">5b. Copying a station&#x27;s integration settings</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
 
 <h1>Pushing results out (Modbus TCP and host systems)</h1>
 <p><a href="automation.html">Automation</a> is <strong>passive</strong>: equipment or a host system calls us and collects the result. This page is <strong>active</strong>: when a flow finishes, the engine writes the judgement and the measurements into the equipment's coils and registers over Modbus TCP, or pushes a line of text to a host system. It works like image sources — create a <strong>connection</strong> on the settings page, then put a <strong>write Modbus</strong> (<code>write_modbus</code>) tool in the flow, point it at that connection and fill in the mapping table.</p>
@@ -322,6 +322,20 @@ POST   /api/vision/connections/{id}/test       administrator: reconnect → {"ok
 POST   /api/vision/connections/{id}/write      administrator: write once by hand, {"values": {"coil:0": 1, "holding:100:float32": 1.5}}
 GET    /api/vision/connections/{id}/state      read back, ?addresses=coil:0,holding:100</pre>
 <p>An integrator (API key) counts as an administrator. <code>test</code> and <code>write</code> report failures as 200 with <code>ok=false</code>, so the integration page can show the reason.</p>
+
+<h2 id="copy">5b. Copying a station's integration settings</h2>
+<p>A second line usually wants the same wiring as the first. <strong>Export</strong> on any connections tab downloads one file with
+every connection on this station, its rule table and the station's receive rules; <strong>Import</strong> on the new station applies
+it. Connections of the same name are updated, the rest are created, and nothing is deleted — importing can add wiring but never
+takes any away.</p>
+<pre>GET  /api/vision/connections/export      -&gt; {"version": 1, "station_id": "ST01", "connections": [...], "station_rules": [...]}
+POST /api/vision/connections/import      &lt;- the same document; {"overwrite": false} only creates what is missing</pre>
+<p>Anything that looks like a password (a config key containing <code>password</code>, <code>secret</code>, <code>token</code>,
+<code>key</code> or <code>auth</code>) is replaced with <code>***</code> <strong>before the file leaves the server</strong>, so the
+document is safe to email or keep in version control. On import a <code>***</code> is put back to whatever that station already had
+under the same name, which means copying settings never wipes a password that was set locally; a station that had nothing there
+simply gets nothing. One malformed entry is reported in <code>failed</code> and the rest still import, and the whole thing is in the
+audit trail as <code>connection.import</code>.</p>
 
 <h2 id="plugin">6. Writing your own Writer</h2>
 <p>Drop a .py file subclassing <code>Writer</code> into <code>plugins/</code> at the project root and it loads automatically — no .env change needed. The rules and the module variables are in <a href="plugins.html">Plugins</a>, and <code>plugins/example_csv_writer.py</code> ships as a working example:</p>

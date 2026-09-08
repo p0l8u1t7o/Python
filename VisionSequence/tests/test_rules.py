@@ -13,10 +13,11 @@ from django.test import TestCase, TransactionTestCase, override_settings
 
 from apps.accounts.models import EngineLock
 from apps.comm import rules
-from apps.comm.models import StationRules
+from apps.comm.models import Connection, StationRules
 from apps.vision import variables
 from apps.vision.models import Flow, FlowRecipe, ImageSource
 from apps.vision.tcp_server import Session
+from tests.fakes import MEMORY_KIND, register_memory_kind
 
 GRAPH = {
     "nodes": [
@@ -30,6 +31,80 @@ GRAPH = {
 
 def _rule(**kw) -> rules.Rule:
     return rules.parse([kw])[0]
+
+
+class ConnectionExportTests(TestCase):
+    """整份通訊設定匯出匯入（站台複製包）：換一台工控機不必一條一條重打。"""
+
+    def setUp(self):
+        register_memory_kind()
+        self.addCleanup(rules.invalidate)
+        Connection.objects.create(name="host", kind=MEMORY_KIND, config={"channels": ["DO0"], "password": "s3cret"})
+        Connection.objects.create(name="plc", kind=MEMORY_KIND, config={
+            "channels": ["coil:0"], "trigger_interval_ms": 50,
+            "triggers": [{"address": "coil:0", "action": "run_flow", "flow": "檢測"}]}, is_enabled=False)
+        rules.save_station_rules([{"source": "text", "match": "prefix", "pattern": "SCAN ", "capture": "lot", "action": "lock"}])
+
+    def _export(self):
+        r = self.client.get("/api/vision/connections/export")
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()
+
+    def test_export_carries_the_rules_and_hides_the_passwords(self):
+        data = self._export()
+        self.assertEqual(data["version"], 1)
+        names = {c["name"]: c for c in data["connections"]}
+        self.assertEqual(set(names), {"host", "plc"})
+        self.assertEqual(names["host"]["config"]["password"], "***")   # 設定檔會被寄來寄去
+        self.assertEqual(names["host"]["config"]["channels"], ["DO0"])
+        self.assertEqual(names["plc"]["is_enabled"], False)
+        self.assertEqual(names["plc"]["config"]["triggers"][0]["address"], "coil:0")
+        self.assertEqual(data["station_rules"][0]["pattern"], "SCAN ")
+
+    def test_import_creates_updates_and_keeps_the_password(self):
+        data = self._export()
+        Connection.objects.filter(name="plc").delete()
+        data["connections"][0]["config"]["channels"] = ["DO0", "DO1"]
+        r = self.client.post("/api/vision/connections/import", data=json.dumps(data), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual((body["created"], body["updated"], body["failed"]), (["plc"], ["host"], []))
+        host = Connection.objects.get(name="host")
+        self.assertEqual(host.config["channels"], ["DO0", "DO1"])
+        self.assertEqual(host.config["password"], "s3cret")  # 遮起來的欄位還原成這一台原本的值
+        self.assertEqual(Connection.objects.get(name="plc").config["triggers"][0]["flow"], "檢測")
+        self.assertEqual(body["station_rules"], 1)
+
+    def test_a_masked_password_with_nothing_to_restore_is_dropped(self):
+        data = {"connections": [{"name": "新的", "kind": MEMORY_KIND, "config": {"channels": [], "password": "***"}}]}
+        r = self.client.post("/api/vision/connections/import", data=json.dumps(data), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertNotIn("password", Connection.objects.get(name="新的").config)
+
+    def test_one_bad_row_does_not_take_the_rest_down(self):
+        data = {"connections": [
+            {"name": "壞的", "kind": "沒這種連線", "config": {}},
+            {"name": "沒名字的", "kind": ""},
+            {"name": "好的", "kind": MEMORY_KIND, "config": {"channels": []}},
+        ]}
+        r = self.client.post("/api/vision/connections/import", data=json.dumps(data), content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertEqual(body["created"], ["好的"])
+        self.assertEqual([f["name"] for f in body["failed"]], ["壞的", "沒名字的"])
+        self.assertTrue(Connection.objects.filter(name="好的").exists())
+
+    def test_overwrite_off_keeps_what_is_here(self):
+        data = {"connections": [{"name": "host", "kind": MEMORY_KIND, "config": {"channels": ["別動我"]}}], "overwrite": False}
+        r = self.client.post("/api/vision/connections/import", data=json.dumps(data), content_type="application/json")
+        self.assertEqual(r.json()["skipped"], ["host"])
+        self.assertEqual(Connection.objects.get(name="host").config["channels"], ["DO0"])
+
+    def test_import_is_in_the_audit_trail(self):
+        from apps.core.models import AuditLog
+
+        self.client.post("/api/vision/connections/import", data=json.dumps({"connections": []}), content_type="application/json")
+        self.assertTrue(AuditLog.objects.filter(action="connection.import").exists())
 
 
 class RuleActionTests(TestCase):

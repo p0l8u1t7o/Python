@@ -929,6 +929,13 @@ const zhHant = {
     created: '已建立連線',
     updated: '已更新連線',
     deleted: '已刪除連線',
+    export: '匯出',
+    exportAllHint: '把這一台的所有連線與規則存成一個檔案。密碼在離開伺服器之前就換成 *** 了。',
+    import: '匯入',
+    importHint: '把匯出的檔案套到這一台：同名的連線更新設定，其餘新建，不會刪掉任何東西。',
+    imported: '已匯入：新建 {{created}} 條、更新 {{updated}} 條',
+    importFailed: '有 {{count}} 條匯不進來，第一條是 {{name}}',
+    importInvalid: '所選檔案不是匯出的通訊設定',
     adminOnly: '只有管理員能新增／修改連線',
     fields: {
       encoding: '影像編碼',

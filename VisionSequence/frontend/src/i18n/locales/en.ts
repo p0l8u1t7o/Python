@@ -1467,6 +1467,13 @@ const enExtra = {
     created: 'Connection created',
     updated: 'Connection updated',
     deleted: 'Connection deleted',
+    export: 'Export',
+    exportAllHint: 'Every connection on this station, with its rules, as one file. Passwords are replaced with *** before it leaves the server.',
+    import: 'Import',
+    importHint: 'Apply an exported file to this station: connections of the same name are updated, the rest are created, and nothing is deleted.',
+    imported: 'Imported: {{created}} created, {{updated}} updated',
+    importFailed: '{{count}} entries could not be imported, starting with {{name}}',
+    importInvalid: 'That file is not an exported connection settings file',
     adminOnly: 'Only admins can create or edit connections',
     fields: {
       encoding: 'Image encoding',

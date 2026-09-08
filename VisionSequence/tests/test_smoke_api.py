@@ -94,6 +94,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             "/api/vision/audit", "/api/vision/audit.csv", "/api/vision/summary", f"/api/vision/flows/{fid}/versions", f"/api/vision/flows/{fid}/versions/1",
     "/api/vision/integration/trace",
     "/api/vision/integration/rules",
+    "/api/vision/connections/export",
             "/api/vision/capture/clients", "/api/vision/capture/download/info", "/api/vision/capture/download", "/api/vision/capture/clients/nope/channels/x/preview",
             "/api/vision/connections", "/api/vision/dl/projects", "/api/vision/dl/trainers", "/api/vision/dl/devices", "/api/vision/dl/train/status",
             "/api/vision/agent/info", "/api/vision/agent/help/search?q=批次測試", "/api/vision/agent/jobs", "/api/vision/agent/sessions", "/api/vision/agent/memory", "/api/vision/agent/skills/custom", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",

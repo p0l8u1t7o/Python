@@ -929,6 +929,13 @@ const zhHans = {
     created: '已创建连接',
     updated: '已更新连接',
     deleted: '已删除连接',
+    export: '导出',
+    exportAllHint: '把这一台的所有连接与规则存成一个文件。密码在离开服务器之前就换成 *** 了。',
+    import: '导入',
+    importHint: '把导出的文件套到这一台：同名的连接更新设置，其余新建，不会删掉任何东西。',
+    imported: '已导入：新建 {{created}} 条、更新 {{updated}} 条',
+    importFailed: '有 {{count}} 条导不进来，第一条是 {{name}}',
+    importInvalid: '所选文件不是导出的通讯设置',
     adminOnly: '只有管理员能添加／修改连接',
     fields: {
       encoding: '图像编码',
