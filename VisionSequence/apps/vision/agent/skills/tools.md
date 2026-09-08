@@ -321,6 +321,25 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 ## count_list
 清單長度（hough_lines.lines、blob.blobs 等）→ `count`。
 
+## boxes_merge
+框清單後處理：`matches` 接 template_match／register_detect／偵測類輸出的框。`mode=iou` 用重疊比例合併同一物件的重複框；
+`mode=centre_distance` 用中心距離合併固定間距附近的重複框。`same_label_only=true` 只合併同類別。`keep` 決定 score／label 等 metadata
+取自分數最高、面積最大或最早出現的框；輸出框本身會擴成整組的外接框。輸出 `matches`、`count`。
+
+## boxes_filter
+框清單篩選：`matches` 接框，依 `min/max_width`、`min/max_height`、`min/max_area`、`min/max_aspect`、`min/max_score`、
+`labels` 與 `roi` 篩掉不合格框。`roi_mode=inside` 留中心在區域內的框，`outside` 則留區域外。輸出 `matches`、`count`、`removed`。
+這不是輪廓篩選；輪廓請用 `contour_filter`。
+
+## array_correct
+規則陣列補點：點膠、插件、針腳這類應排成 `rows × cols` 的框清單，接到 `matches` 後用找到的中心分群出每列／每欄位置，
+再回報缺格。`tolerance` 小於 1 時是 pitch 比例，大於等於 1 時是像素距離。輸出 `matches` 會包含補上的框（`filled=true`、
+`grid_row/grid_col/grid_index`），`missing` 列出缺格索引與推估中心，並以 `ok/ng` 分支判斷完整或缺件。
+
+## list_sort
+排序清單：`matches` 可依 `x`、`y`、`xy`（閱讀順序：先分列再由左到右）、`score`、`label` 排序；`values` 只能用 `by=value`。
+輸出排序後的 `matches` 或 `values`、`count`、`first`。要在取第一個、上位機輸出、機械手補正前固定順序時用它。
+
 ## judge
 決定 run 的 OK/NG：`verdict` ok/ng 放在分支下游、`by_input` 收 bool。`label` 寫 NG 原因（上位機看得到）。每條互斥分支各接一個。
 
@@ -435,7 +454,10 @@ edge_contrast、defects、decodability）。總評＝最低分（1D 是 10 條�
 限制字元集準確率大幅提升；`polarity` 暗字亮底／亮字暗底；`min_confidence` 逐字信心門檻（低於就 not_found）。`mode=detect`
 先偵測多行再逐行讀（多行標籤）。點陣噴印、DPM 打標這種通用模型會爛的字體：`model` 選教導過的字型（POST /vision/ocr/fonts/{name}/samples
 存樣本、…/train 出模型），走切分＋逐字分類（`segmentation` projection／components／fixed＋`char_count`）。輸出 `text`、`items`
-（每行 {text, box, confidence, chars:[{ch, conf, box}]}）、`confidence`（全體最小）；接 ocv_verify 做比對。通用模型要先安裝
+（每行 {text, box, confidence, chars:[{ch, conf, box}]}）、`confidence`（全體最小）；`pattern` 是位置樣板（`N` 數字、`A` 英文字母、
+`X` 任意、其他字元必須完全相同），不符就走 `not_found/ng`；`confusables` 一行一個 `從:到`，只在替換後符合該位置樣板時才修正
+（如 `O:0` 只會在該位要求 `N` 時套用）。`text` 永遠是原始辨識字串，`corrected` 是修正後字串，`pattern_ok` 是樣板結果，
+`corrections` 是替換明細。接 ocv_verify 做比對時，若要用修正值就接 `corrected`。通用模型要先安裝
 （manage.py ocr_models --install），沒有時走教導字型仍可用。
 
 ## ocv_verify

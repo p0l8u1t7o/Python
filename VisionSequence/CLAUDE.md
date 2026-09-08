@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：114 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1127 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：118 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1134 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -164,6 +164,12 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 字串規則（G1）與清單後處理（J3）
+- `ocr_read` 加 `pattern`（位置樣板：`N` 數字／`A` 字母／`X` 任意／其他字元逐字相符，空字串＝不檢查）與 `confusables`（一行一條 `從:到`，預設 `O:0 I:1 S:5 B:8 Z:2`）。**只在該位原字不符樣板、且替換後符合時才換**——樣板該位要字母時 `O` 不會被換成 `0`（實測六種情形全對）。`text` 保持原始辨識結果，另出 `corrected`／`pattern_ok`／`corrections`。
+- 新檔 `tools/builtin/lists.py` 四個純資料工具（不吃影像，`image` 埠只為畫標記）：`boxes_merge`（iou／中心距，`keep`＝分數最高／最大／第一個）、`boxes_filter`（大小／長寬比／分數／標籤／在某區域內外，另出 `removed`）、`array_correct`（**點膠與插件最常用**：以中心一維聚類推列行、用間距中位數推 pitch，把框指派到最近格，缺格補估計框並標 `filled=True`，`missing` 帶索引與推估位置）、`list_sort`（`by`＝value／x／y／xy／score／label）。
+- **`list_sort` 的 `xy` 與 `template_match` 是同一套分列規則**（列高＝最小框高的一半、至少 2 px），實測兩者輸出完全一致；測這個時框高要合理，太小會讓相鄰列被拆開。
+- 實測：3 框重疊組正確併成 2 框並保留最高分；3×4 網格拿掉兩格，`missing` 正好是那兩格且補點位置與真值零誤差。
 
 ### 區域自適應門檻與正規化（J1）、子圖座標還原（I6）
 - `threshold` 的 `method` 多 **`sauvola`**（`T = m·(1 + k·(s/128 − 1))`，用標準差相對 8 位元動態範圍的一半正規化，壓得住平坦背景）與 **`niblack`**（`T = m + k·s`，對紋理與雜訊更敏感）；另加 `compare`（ge／le／eq／ne）、`offset`（在算出的門檻上再加減常數，**`teach=True`**，`test_teach_params_marked` 的集合跟著長大）、`outside_roi`（black／keep）。

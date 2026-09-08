@@ -27,6 +27,7 @@ CHARSET_OPTIONS = [
 ]
 POLARITY_OPTIONS = [{"value": "dark_on_light", "label": "Dark text on a light background"}, {"value": "light_on_dark", "label": "Light text on a dark background"}]
 SEG_OPTIONS = [{"value": "projection", "label": "Projection (gaps between characters)"}, {"value": "components", "label": "Connected components"}, {"value": "fixed", "label": "Fixed pitch (known character count)"}]
+DEFAULT_CONFUSABLES = "O:0\nI:1\nS:5\nB:8\nZ:2"
 
 
 def _allowed(ctx: ToolContext) -> str:
@@ -34,6 +35,49 @@ def _allowed(ctx: ToolContext) -> str:
     if choice == "custom":
         return str(ctx.param("custom_charset", "") or "")
     return ocr.CHARSETS.get(choice, "")
+
+
+def _pattern_char_ok(ch: str, spec: str) -> bool:
+    if spec == "N":
+        return ch.isdigit()
+    if spec == "A":
+        return ("A" <= ch <= "Z") or ("a" <= ch <= "z")
+    if spec == "X":
+        return True
+    return ch == spec
+
+
+def _parse_confusables(text: Any) -> dict[str, str]:
+    rules: dict[str, str] = {}
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line or ":" not in line:
+            continue
+        src, _, dst = line.partition(":")
+        src, dst = src.strip(), dst.strip()
+        if len(src) == 1 and len(dst) == 1:
+            rules[src] = dst
+    return rules
+
+
+def _apply_pattern(text: str, pattern: str, confusables: str) -> tuple[str, bool, list[dict[str, Any]]]:
+    """依位置樣板修正常見誤辨字；原字已符合該位置時不改。"""
+    if not pattern:
+        return text, True, []
+    rules = _parse_confusables(confusables)
+    chars = list(text)
+    corrections: list[dict[str, Any]] = []
+    for i, ch in enumerate(chars[:len(pattern)]):
+        spec = pattern[i]
+        if _pattern_char_ok(ch, spec):
+            continue
+        repl = rules.get(ch)
+        if repl is not None and _pattern_char_ok(repl, spec):
+            chars[i] = repl
+            corrections.append({"index": i, "from": ch, "to": repl, "pattern": spec})
+    corrected = "".join(chars)
+    ok = len(corrected) == len(pattern) and all(_pattern_char_ok(ch, spec) for ch, spec in zip(corrected, pattern))
+    return corrected, ok, corrections
 
 
 class OcrReadTool(Tool):
@@ -55,6 +99,8 @@ class OcrReadTool(Tool):
         Param("custom_charset", "Custom characters", kind="text", visible_when={"param": "charset", "in": ["custom"]}, teach=True, help_text="Every character that may appear, e.g. 0123456789ABCDEF-"),
         Param("polarity", "Polarity", kind="select", default="dark_on_light", options=POLARITY_OPTIONS, teach=True),
         Param("min_confidence", "Min confidence", kind="range", default=0.5, minimum=0, maximum=1, step=0.05, teach=True, help_text="A character below this makes the read not found."),
+        Param("pattern", "Position pattern", kind="text", default="", help_text="N=digit, A=letter, X=any, any other character must match exactly. Blank disables this check."),
+        Param("confusables", "Confusable replacements", kind="multiline", default=DEFAULT_CONFUSABLES, help_text="One rule per line, from:to. A replacement is used only when it satisfies the pattern at that position."),
         Param("preprocess", "Pre-processing", kind="select", default="auto", options=[{"value": "auto", "label": "Auto (contrast stretch and denoise)"}, {"value": "none", "label": "None"}]),
         Param("segmentation", "Segmentation (taught font)", kind="select", default="projection", options=SEG_OPTIONS, group="Taught font"),
         Param("char_count", "Character count (fixed pitch)", kind="number", default=0, minimum=0, maximum=200, group="Taught font", help_text="Fixed-pitch segmentation splits the ink extent into this many cells."),
@@ -62,7 +108,8 @@ class OcrReadTool(Tool):
     inputs = [Port("image", "Image", "image"), Port("roi", "Text region (dynamic)", "region", required=False)]
     outputs = [
         flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
-        Port("text", "Text", "string"), Port("items", "Lines", "list"), Port("confidence", "Confidence", "number"), Port("count", "Line count", "number"),
+        Port("text", "Text", "string"), Port("corrected", "Corrected text", "string"), Port("pattern_ok", "Pattern OK", "bool"),
+        Port("corrections", "Corrections", "list"), Port("items", "Lines", "list"), Port("confidence", "Confidence", "number"), Port("count", "Line count", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
@@ -109,18 +156,22 @@ class OcrReadTool(Tool):
             raise ToolError(str(exc)) from None
         items = [it for it in items if it["text"]]
         text = "\n".join(it["text"] for it in items)
+        pattern = str(ctx.param("pattern", "") or "")
+        raw_confusables = ctx.params.get("confusables", DEFAULT_CONFUSABLES)
+        corrected, pattern_ok, corrections = _apply_pattern(text, pattern, "" if raw_confusables is None else str(raw_confusables))
         confidences = [ch["conf"] for it in items for ch in it["chars"]]
         confidence = min(confidences) if confidences else 0.0
-        found = bool(text) and confidence >= min_conf
+        found = bool(text) and confidence >= min_conf and pattern_ok
         overlays: list[dict[str, Any]] = [region_overlay(region, label="text")] if region else []
         for it in items:
             overlays.append({"kind": "polygon", "points": it["box"], "color": "#22c55e" if it["confidence"] >= min_conf else "#f59e0b", "width": 2, "label": it["text"]})
             for ch in it["chars"]:
                 overlays.append({"kind": "polygon", "points": ch["box"], "color": "#22c55e" if ch["conf"] >= min_conf else "#f59e0b", "width": 1, "dash": True})
         return Result(
-            outputs={"text": text, "items": items, "confidence": round(confidence, 4), "count": len(items)},
+            outputs={"text": text, "corrected": corrected, "pattern_ok": bool(pattern_ok), "corrections": corrections,
+                     "items": items, "confidence": round(confidence, 4), "count": len(items)},
             overlays=overlays, branch="found" if found else "not_found", status="ok" if found else "ng",
-            message=(f"'{text}' ({confidence:.2f})" if text else "no text") + ("" if found else " — below the confidence threshold" if text else ""),
+            message=(f"'{text}' ({confidence:.2f})" if text else "no text") + ("" if found else " — pattern mismatch" if text and not pattern_ok else " — below the confidence threshold" if text else ""),
         )
 
     @staticmethod

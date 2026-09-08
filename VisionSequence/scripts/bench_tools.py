@@ -280,6 +280,17 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     label_map[35:95, 35:95] = 1
     label_map[45:85, 135:175] = 2
     label_map[105:145, 145:205] = 2
+    grid_matches = [
+        {"cx": 20.0 + col * 30.0, "cy": 25.0 + row * 40.0, "w": 12.0, "h": 8.0, "score": 0.8, "angle": 0.0, "label": "dot"}
+        for row in range(3)
+        for col in range(4)
+        if row * 4 + col not in (5, 10)
+    ]
+    merge_matches = [
+        {"cx": 10.0, "cy": 10.0, "w": 10.0, "h": 10.0, "score": 0.2, "angle": 0.0, "label": "part"},
+        {"cx": 12.0, "cy": 10.0, "w": 10.0, "h": 10.0, "score": 0.9, "angle": 0.0, "label": "part"},
+        {"cx": 50.0, "cy": 50.0, "w": 10.0, "h": 10.0, "score": 0.4, "angle": 0.0, "label": "part"},
+    ]
     # 極座標展開：1280×960 時 r 200～300（規格的效能預算案例）；640×480 等比縮小
     ring = {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.2083, "r_outer": m * 0.3125}
     from apps.vision.tools.builtin import polar as _polar
@@ -433,6 +444,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("defect_diff none roi", "defect_diff", big, {"template": "golden", "align": "none", "roi": plate}, {}, {}),
         ("barcode", "barcode", big, {"roi": plate}, {}, {}),
         ("ocr_read taught font (400x80)", "ocr_read", s.ocr_line, {"model": "font", "roi": {"shape": "rect", "x": s.w / 2 - 200, "y": s.h / 2 - 40, "w": 400, "h": 80}, "charset": "digits"}, {}, {}),
+        ("ocr_read pattern", "ocr_read", s.ocr_line, {"model": "font", "roi": {"shape": "rect", "x": s.w / 2 - 200, "y": s.h / 2 - 40, "w": 400, "h": 80}, "charset": "digits", "pattern": "NNNNNNNN"}, {}, {}),
         ("ocv_verify", "ocv_verify", None, {"expected": "########"}, {"text": "24091237", "items": [{"text": "24091237", "box": [[0, 0], [1, 0], [1, 1], [0, 1]], "confidence": 0.9, "chars": [{"ch": c, "conf": 0.9, "box": [[i, 0], [i + 1, 0], [i + 1, 1], [i, 1]]} for i, c in enumerate("24091237")]}]}, {}),
         ("text_presence", "text_presence", big, {"roi": s.rect(-0.1, 0.12, 0.2, 0.06)}, {}, {}),
         ("color_check", "color_check", big, {"roi": plate, "color": "#c8c8cd"}, {}, {}),
@@ -460,6 +472,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("switch", "switch", None, {"cases": "A17\nB22\nC30"}, {"value": "B22"}, {}),
         ("string_match", "string_match", None, {"list": "OK\nPASS", "match": "contains"}, {"text": "the PASS one"}, {}),
         ("python_script", "python_script", gray, {"code": SCRIPT_TEMPLATE}, {}, {"_script_admin": True}),
+        ("boxes_merge", "boxes_merge", None, {"mode": "iou", "threshold": 0.5, "keep": "highest_score"}, {"matches": merge_matches}, {}),
+        ("array_correct", "array_correct", None, {"rows": 3, "cols": 4, "tolerance": 2}, {"matches": grid_matches}, {}),
         ("count_list", "count_list", None, {}, {"items": list(range(100))}, {}),
         # output
         ("judge", "judge", None, {"verdict": "by_input"}, {"value": True}, {}),

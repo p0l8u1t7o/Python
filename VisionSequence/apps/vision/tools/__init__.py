@@ -28,6 +28,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.detect",
     "apps.vision.tools.builtin.barcode_grade",
     "apps.vision.tools.builtin.ocr_tools",
+    "apps.vision.tools.builtin.lists",
     "apps.vision.tools.builtin.stat",
     "apps.vision.tools.builtin.dl",
     "apps.vision.tools.builtin.anomaly_tool",
