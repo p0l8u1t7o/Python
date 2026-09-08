@@ -277,6 +277,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     cv2.rectangle(path_block, (40, 40), (200, 140), 220, -1)
     path_block = cv2.GaussianBlur(path_block, (0, 0), 0.8)
     path_square = {"shape": "polygon", "points": [[35, 35], [205, 35], [205, 145], [35, 145]]}
+    edge_model_square = {"version": 1, "image_size": [240, 180], "closed": True, "points": [[40, 40], [200, 40], [200, 140], [40, 140]]}
     blob_hyst = np.full((180, 240), 10, np.uint8)
     blob_hyst[45:125, 45:135] = 115
     blob_hyst[70:100, 75:105] = 230
@@ -413,6 +414,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("circular_caliper 360", "circular_caliper", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "caliper_count": 360}, {}, {}),
         ("edge_defect line 180", "edge_defect", gray, {"roi": top_edge, "calipers": 180, "search": 30}, {}, {}),
         ("edge_defect arc 180", "edge_defect", gray, {"roi": center_circle, "calipers": 180, "search": 30}, {}, {}),
+        ("edge_model_defect 240", "edge_model_defect", path_block, {"model": edge_model_square, "calipers": 240, "search": 28, "threshold": 3, "polarity": "light_to_dark", "edge_threshold": 12}, {}, {}),
         ("edge_trend line 60", "edge_trend", trend_edge, {"calipers": 60, "search": 24, "caliper_width": 5, "polarity": "dark_to_light",
                                                            "edge_threshold": 10, "baseline": "reference", "max_deviation": 2},
          {"line": {"x1": 20, "y1": 69.5, "x2": 200, "y2": 69.5}}, {}),

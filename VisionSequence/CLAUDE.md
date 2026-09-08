@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：120 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1150 項＋前端 155 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：121 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1150 項＋前端 155 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -164,6 +164,13 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 邊緣模型缺陷（F2，`edge_model_defect`，Codex 實作）
+- **分工**：直線與圓弧用 `edge_defect`、整面比對用 `defect_diff`、**任意輪廓（沖壓件、墊片、齒形）用這顆**。實作＝**D6 的等距取樣與法線找邊 ＋ F1 的分段分類**，兩邊都是重用不是重寫。
+- 輪廓模型存在節點的 `model`（json）參數裡：`{version, image_size, closed, points}`，`points` 是教導影像座標的閉合輪廓，工具會正規化成「正偏移＝向外」。**沒有新增資產種類**（不動 model 與 migration）。
+- `model` 空但有 `reference`（`kind="images"`）時，執行時用第一張良品自動教一次（`teach_contour`，訊息會標明是自動教導），**不寫回參數**。
+- **位置修正是這顆的關鍵**：輪廓是教導時的座標，工件會位移旋轉——接上游的 `_transform` 就用 `apply_transform` 把輪廓移過去（與 ROI 同一套慣例）。實測：工件平移 (7, −4) 並轉 12° 後，不給修正誤判 8 個缺陷，**給了修正就回到 0 個判良品**。
+- 實測：良品 0 缺陷、最大偏移 0.0；邊上挖半徑 5 的缺口 → 1 個缺陷、最大偏移 4.92、方向 inward、帶外框與沿邊長度面積。
 
 ### 影像顯示增強（K2，純前端，Codex 實作）
 - **`ImageViewer` 是九個頁面共用的**（編輯器、工具頁、教導、良品比對、標定、AI 助手、批次、深度學習、看板）——改它一定要逐頁確認。新 props 全部選填（`compareSrc`／`compareWidth`／`compareHeight`／`stateKey`），未傳時行為與以前完全相同。

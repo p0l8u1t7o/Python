@@ -20,8 +20,10 @@ from typing import Any
 import cv2
 import numpy as np
 
+from apps.vision import fixed_images
 from apps.vision.tools import defects
-from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.base import TRANSFORM_IN, Param, Port, Result, Tool, ToolContext, ToolError, flow_out
+from apps.vision.tools.builtin.contours import _binarize, pixel_area
 from apps.vision.tools.builtin.locate import (
     CaliperHit,
     arc_geometry,
@@ -30,14 +32,88 @@ from apps.vision.tools.builtin.locate import (
     fit_points_line,
     hit_points,
     line_geometry,
+    polyline_geometry,
     to_gray,
 )
-from apps.vision.tools.roi import region_overlay
+from apps.vision.tools.roi import apply_transform, crop, region_overlay
 
 #: 缺陷種類（產品表面用得到的字）。
 DEFECT_TYPES = ("dislocation", "fracture", "step", "width")
 #: 缺陷的顏色（畫在影像上）。
 _COLORS = {"dislocation": "#f59e0b", "fracture": "#ef4444", "step": "#a855f7", "width": "#0ea5e9"}
+
+
+def teach_contour(image: np.ndarray, roi: dict[str, Any] | None = None, simplify: float = 2.0) -> list[list[float]]:
+    """從良品影像教出最外層輪廓點集。
+
+    輸入影像會轉灰階後用既有 `contour_find` 的二值化規則（Otsu、亮物件）取外輪廓；
+    `roi` 可限制教導範圍，回傳點一律是原影像座標。`simplify` 是 `approxPolyDP` 的像素公差。
+    回傳值可直接存成 `edge_model_defect.model` 的 `points`。
+    """
+    gray = to_gray(image)
+    c = crop(gray, roi)
+    if c.image.size == 0:
+        return []
+    mask = _binarize(np.ascontiguousarray(c.image), "otsu", 128, "bright", c.mask)
+    if c.mask is not None:
+        mask = cv2.bitwise_and(mask, c.mask)
+    found, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    found = [cnt for cnt in found if len(cnt) >= 3]
+    if not found:
+        return []
+    cnt = max(found, key=pixel_area)
+    eps = max(0.0, float(simplify or 0.0))
+    if eps > 0:
+        cnt = cv2.approxPolyDP(cnt, eps, True)
+    pts = c.points_to_full(cnt.reshape(-1, 2)).astype(np.float64)
+    if len(pts) >= 3 and cv2.contourArea(pts.astype(np.float32), oriented=True) > 0:
+        pts = pts[::-1]
+    return [[round(float(x), 3), round(float(y), 3)] for x, y in pts]
+
+
+def _model_payload(value: Any, image_shape: tuple[int, ...] | None = None) -> dict[str, Any] | None:
+    """整理輪廓模型 JSON；支援正式 dict 與純 points list。"""
+    if value in (None, "", []):
+        return None
+    if isinstance(value, dict):
+        points = value.get("points")
+        closed = bool(value.get("closed", True))
+        size = value.get("image_size") or value.get("size")
+        version = int(value.get("version", 1) or 1)
+    else:
+        points, closed, size, version = value, True, None, 1
+    try:
+        pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    except (TypeError, ValueError):
+        return None
+    if len(pts) < 2:
+        return None
+    if closed and len(pts) >= 3 and cv2.contourArea(pts.astype(np.float32), oriented=True) > 0:
+        pts = pts[::-1]
+    if not size and image_shape is not None:
+        size = [int(image_shape[1]), int(image_shape[0])]
+    return {
+        "version": version,
+        "image_size": [int(size[0]), int(size[1])] if isinstance(size, (list, tuple)) and len(size) >= 2 else None,
+        "closed": closed,
+        "points": [[float(x), float(y)] for x, y in pts],
+    }
+
+
+def _reference_model(ctx: ToolContext, roi: dict[str, Any] | None) -> tuple[dict[str, Any] | None, bool]:
+    """從 reference 固定影像自動教一次輪廓模型；只回本次結果，不寫回節點參數。"""
+    refs = ctx.param("reference") or []
+    if not isinstance(refs, list) or not refs:
+        return None, False
+    first = refs[0]
+    image_id = first.get("id") if isinstance(first, dict) else ""
+    image = fixed_images.load(str(image_id or ""))
+    if image is None:
+        raise ToolError("The reference picture is missing; add it again")
+    points = teach_contour(image, roi=roi, simplify=ctx.number("teach_simplify", 2.0))
+    if len(points) < 3:
+        return None, True
+    return _model_payload({"version": 1, "image_size": [image.shape[1], image.shape[0]], "closed": True, "points": points}), True
 
 
 def step_flags(values: np.ndarray, threshold: float) -> np.ndarray:
@@ -375,4 +451,177 @@ class EdgeDefectTool(Tool):
         return items
 
 
-TOOLS = [EdgeDefectTool()]
+class EdgeModelDefectTool(Tool):
+    key = "edge_model_defect"
+    label = "Edge model defects"
+    description = (
+        "Learns a good part outline as a point model, then places normal calipers along that outline on every run. "
+        "Each found edge point is compared with the model: inward runs are missing material, outward runs are extra material, "
+        "and consecutive missing calipers are chips or breaks. Use it for stamped, gasket, toothed or otherwise free-form outlines."
+    )
+    category = "detect"
+    icon = "Spline"
+    params = [
+        Param("roi", "Teaching region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon"],
+              help_text="Optional region used only when automatically teaching from the reference picture. Leave blank to teach from the whole reference."),
+        Param("model", "Contour model", kind="json", default=None,
+              help_text=("JSON object: {version:1, image_size:[width,height], closed:true, points:[[x,y],...]}. "
+                         "Points are taught image coordinates. For a closed model, points are normalised so positive offsets point outward.")),
+        Param("reference", "Reference picture", kind="images",
+              help_text="Optional good part picture. If the model is empty, the first picture is used to teach the contour for this run."),
+        Param("calipers", "Calipers", kind="number", default=160, minimum=4, maximum=10000,
+              help_text="How many places along the model outline are checked. More finds smaller faults and takes longer."),
+        Param("search", "Search range", kind="number", default=24, minimum=2, maximum=2000, unit="px", teach=True,
+              help_text="Total distance each normal caliper searches across the model outline."),
+        Param("caliper_width", "Caliper width", kind="number", default=3, minimum=1, maximum=99, unit="px",
+              help_text="Averaged along the outline tangent to quieten noise."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("polarity", "Edge polarity", kind="select", default="light_to_dark", options=[
+            {"value": "any", "label": "Either"}, {"value": "dark_to_light", "label": "Dark to light"}, {"value": "light_to_dark", "label": "Light to dark"},
+        ], teach=True),
+        Param("edge_select", "Which edge", kind="select", default="strongest", options=[
+            {"value": "strongest", "label": "Strongest"}, {"value": "first", "label": "First"}, {"value": "last", "label": "Last"},
+        ], group="Advanced"),
+        Param("threshold", "Out by more than", kind="number", default=2.0, minimum=0, step=0.1, unit="px", teach=True,
+              help_text="A stretch further than this from the taught outline is a fault."),
+        Param("min_width", "At least this many calipers", kind="number", default=2, minimum=1, teach=True,
+              help_text="Stops single-caliper noise being called a fault."),
+        Param("direction", "Which side counts", kind="select", default="both", options=[
+            {"value": "both", "label": "Either side"}, {"value": "inward", "label": "Only missing material"}, {"value": "outward", "label": "Only extra material"},
+        ], teach=True),
+        Param("fracture_run", "A break is this many calipers with no edge", kind="number", default=2, minimum=0, teach=True,
+              help_text="A caliper that finds no edge at all usually means the edge is gone there. 0 turns this off."),
+        Param("step_threshold", "A step between neighbours over", kind="number", default=0, minimum=0, step=0.1, unit="px", teach=True,
+              help_text="A sudden jump from one caliper to the next. 0 turns this off."),
+        Param("max_defects", "More faults than this is a reject", kind="number", default=0, minimum=0, teach=True,
+              help_text="0 = any fault is a reject."),
+        Param("teach_simplify", "Teaching simplification", kind="number", default=2.0, minimum=0, step=0.1, unit="px", group="Advanced",
+              help_text="Polygon approximation tolerance used only when the model is empty and a reference picture teaches the contour."),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+    ]
+    inputs = [
+        Port("image", "Image", "image"),
+        Port("roi", "Teaching region (dynamic)", "region", required=False),
+    ]
+    outputs = [
+        flow_out("ok", "Clean", "ok"), flow_out("defect", "Faults found", "critical"),
+        Port("count", "How many", "number"), Port("defects", "Faults", "list"),
+        Port("max_deviation", "Worst deviation", "number"),
+        Port("points", "Edge points", "points"), Port("deviations", "Deviations", "list"),
+        Port("missing", "Missing indices", "list"), Port("image", "Image", "image"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        teach_roi = ctx.roi()
+        model = _model_payload(ctx.param("model"), image.shape)
+        auto_taught = False
+        if model is None:
+            model, auto_taught = _reference_model(ctx, teach_roi)
+        if model is None:
+            return Result(
+                outputs={"count": 0, "defects": [], "max_deviation": 0.0, "points": [], "deviations": [], "missing": [], "image": image},
+                overlays=[],
+                branch="defect", status="ng",
+                message="No contour model is set, and no reference picture could teach one",
+            )
+        points = model["points"]
+        closed = bool(model.get("closed", True))
+        region = {"shape": "polygon" if closed else "polyline", "points": points}
+        if TRANSFORM_IN in ctx.inputs:
+            transform = ctx.inputs.get(TRANSFORM_IN)
+            if transform is None:
+                ctx.fixture_missing = True
+            else:
+                region = apply_transform(region, transform)
+        moved_points = region.get("points") or []
+        count = max(4, ctx.integer("calipers", 160))
+        centers, scan, tangent, positions = polyline_geometry(moved_points, closed, count=count)
+        wrap = closed
+        if len(centers) == 0:
+            return Result(
+                outputs={"count": 0, "defects": [], "max_deviation": 0.0, "points": [], "deviations": [], "missing": [], "image": image},
+                overlays=[region_overlay(region, label="model")],
+                branch="defect", status="ng", message="The contour model is too short to sample",
+            )
+        hits = caliper_series(
+            image, centers, scan, tangent, positions,
+            search=ctx.number("search", 24), height=ctx.number("caliper_width", 3),
+            polarity=str(ctx.param("polarity", "light_to_dark")), threshold=ctx.number("edge_threshold", 20),
+            smoothing=ctx.integer("smoothing", 3), mode="single",
+            select=str(ctx.param("edge_select", "strongest")),
+        )
+        series = np.array([h.offset for h in hits], dtype=np.float64)
+        found = np.array([h.found for h in hits], dtype=bool)
+        series[~found] = np.nan
+        baseline = np.zeros(len(series), dtype=np.float64)
+        deviation = series - baseline
+        flags, kinds = EdgeDefectTool._flags(ctx, deviation, found, series, False, wrap)
+        runs = EdgeDefectTool._runs(ctx, flags, kinds, wrap)
+        items = self._describe_model(runs, hits, deviation, positions, wrap)
+        limit = ctx.integer("max_defects", 0)
+        bad = len(items) > limit if limit else bool(items)
+        hit_points_out = [[round(h.x, 2), round(h.y, 2)] for h in hits if h.found]
+        missing = [int(i) for i in np.nonzero(~found)[0]]
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="model")]
+        overlays.append({"kind": "points", "points": hit_points_out, "color": "#22c55e"})
+        for item in items:
+            rect = item.get("rect")
+            if rect:
+                overlays.append({
+                    "kind": "rect", "x": rect["cx"] - rect["w"] / 2, "y": rect["cy"] - rect["h"] / 2,
+                    "w": rect["w"], "h": rect["h"], "angle": rect["angle"],
+                    "color": _COLORS.get(item["type"], "#ef4444"), "width": 2, "label": item["type"],
+                })
+        worst = max((abs(i["max_deviation"] or 0.0) for i in items), default=0.0)
+        note = "auto-taught contour, " if auto_taught else ""
+        return Result(
+            outputs={
+                "count": len(items), "defects": items, "max_deviation": round(float(worst), 4),
+                "points": hit_points_out,
+                "deviations": [None if not np.isfinite(v) else round(float(v), 4) for v in deviation],
+                "missing": missing, "image": image,
+            },
+            overlays=overlays, branch="defect" if bad else "ok", status="ng" if bad else "ok",
+            message=(f"{note}{len(items)} faults, worst {worst:.2f}px"
+                     if items else f"{note}clean ({int(found.sum())}/{len(hits)} calipers found the edge)"),
+            detail={"model": {"image_size": model.get("image_size"), "closed": closed, "points": len(points)}, "auto_taught": auto_taught},
+        )
+
+    @staticmethod
+    def _describe_model(runs: list[tuple[int, int, str]], hits: list[CaliperHit], deviation: np.ndarray,
+                        positions: np.ndarray, wrap: bool) -> list[dict[str, Any]]:
+        """任意輪廓缺陷段描述；沿邊長度用模型弧長座標，不用端點直線距離。"""
+        n = len(hits)
+        total = float(positions[-1] + (positions[1] - positions[0])) if wrap and len(positions) > 1 else float(positions[-1] if len(positions) else 0.0)
+        items: list[dict[str, Any]] = []
+        for start, end, kind in runs:
+            indices = defects.seg_indices((start, end), n)
+            pts: list[list[float]] = []
+            for i in indices:
+                h = hits[i]
+                pts.append([h.x, h.y] if h.found else [h.cx, h.cy])
+            values = np.array([deviation[i] for i in indices], dtype=np.float64)
+            finite = values[np.isfinite(values)]
+            peak = float(finite[np.argmax(np.abs(finite))]) if len(finite) else float("nan")
+            if end >= start:
+                length = float(positions[end] - positions[start])
+            else:
+                length = float(total - positions[start] + positions[end])
+            if len(indices) > 1 and len(positions) > 1:
+                length += float(np.median(np.diff(positions[: min(len(positions), max(2, len(positions)))])))
+            rect = defect_rect(np.asarray(pts, dtype=np.float64))
+            area = float(rect["w"] * rect["h"]) if rect else 0.0
+            items.append({
+                "type": kind, "start": int(start), "end": int(end), "count": len(indices),
+                "length": round(max(0.0, length), 3), "area": round(area, 3),
+                "max_deviation": round(peak, 4) if np.isfinite(peak) else None,
+                "peak": round(peak, 4) if np.isfinite(peak) else None,
+                "direction": ("outward" if peak > 0 else "inward") if np.isfinite(peak) else "missing",
+                "position": round(float(positions[start]), 3),
+                "rect": rect,
+            })
+        return items
+
+
+TOOLS = [EdgeDefectTool(), EdgeModelDefectTool()]

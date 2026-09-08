@@ -437,6 +437,16 @@ ROI 顏色統計輸出（RGB/HSV 平均、hex）給上位機記錄或接 if_numb
 - 與 `circular_caliper`＋`profile_defect` 的分工：那條路是「半徑序列」拿去別的地方用（畫趨勢、算跳動），
   這一顆是「就是要找缺陷並分類」。範本畫廊兩種都有（圓周崩邊／邊緣缺陷），同一組樣本可以對照。
 
+## edge_model_defect
+任意輪廓的缺口／毛刺／崩角：把良品外輪廓存成 `model` JSON（`version`、`image_size`、`closed`、`points`），
+每次沿模型等距佈法向卡尺，輸出 `points`、`deviations`、`missing` 與分段後的 `defects`。閉合模型的正偏移是向外，
+所以 `direction=inward` 只抓少料／缺口，`direction=outward` 只抓多料／毛刺；連續打空由 `fracture_run` 判 fracture。
+模型為空但有 `reference` 固定影像時，會用第一張良品影像本次自動教導輪廓。
+
+分工：直線或圓弧邊用 `edge_defect`（可接 `find_line.line`／`find_circle.circle`，幾何更簡單也更快）；沖壓件、
+墊片、齒形、FPC 外形這種任意輪廓用 `edge_model_defect`；已經有序列要自行分段才用 `profile_defect`；
+整面紋理、印刷、髒污或未知位置差異用 `defect_diff`／`defect_stat`，不要把它們拿來量輪廓偏移。
+
 ## defect_diff
 良品差異比對：`template` 良品資產（與 ROI 同尺寸），`align=phase` 補位移，`threshold`（灰階差）與 `min_area` 決定靈敏度，`border` 忽略對齊邊界假差異。輸出 `ok/defect` 分支、`count/total_area`、`defect_mask`。
 
