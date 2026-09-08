@@ -18,6 +18,9 @@ _preferred: list[str] = []
 #: 訓練裝置偏好（cpu / cuda…）。
 _train_device = ""  # "" = 未設定 → 有 CUDA 就用 cuda
 _lock = threading.Lock()
+PROCESSOR_ACCEL_PROVIDER = "OpenVINOExecutionProvider"
+_CPU_PROVIDER = "CPUExecutionProvider"
+_CUDA_PROVIDER = "CUDAExecutionProvider"
 
 
 def available_providers() -> list[str]:
@@ -27,6 +30,35 @@ def available_providers() -> list[str]:
         return list(ort.get_available_providers())
     except ImportError:
         return []
+
+
+def _provider_label(provider: str) -> str:
+    """給產品表面用的中性名稱；provider 原始值只當設定值與除錯資料。"""
+    if provider == _CPU_PROVIDER:
+        return "CPU"
+    if provider == _CUDA_PROVIDER:
+        return "GPU acceleration"
+    if provider == PROCESSOR_ACCEL_PROVIDER:
+        return "Processor acceleration"
+    return provider.replace("ExecutionProvider", "")
+
+
+def _provider_details(providers: list[str]) -> list[dict[str, Any]]:
+    order = [_CUDA_PROVIDER, PROCESSOR_ACCEL_PROVIDER, _CPU_PROVIDER]
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for provider in order + providers:
+        if provider in seen:
+            continue
+        seen.add(provider)
+        rows.append({"provider": provider, "label": _provider_label(provider), "available": provider in providers})
+    return rows
+
+
+def _auto_providers(avail: list[str]) -> list[str]:
+    out = [p for p in (_CUDA_PROVIDER, PROCESSOR_ACCEL_PROVIDER) if p in avail]
+    out.append(_CPU_PROVIDER)
+    return out
 
 
 _torch_cuda: bool | None = None
@@ -78,7 +110,8 @@ def info() -> dict[str, Any]:
         ort_version = ort.__version__
     except ImportError:
         ort_version = ""
-    accel = [p for p in providers if p != "CPUExecutionProvider"]
+    details = _provider_details(providers)
+    accel = [d["label"] for d in details if d["available"] and d["provider"] != _CPU_PROVIDER]
     with _lock:
         preferred = list(_preferred)
     device = train_device()  # 未設定時回自動判斷的裝置（有 CUDA 就 cuda），前端預設值才不會顯示 CPU
@@ -87,6 +120,8 @@ def info() -> dict[str, Any]:
         "onnxruntime": ort_version,
         "providers": providers,
         "accelerators": accel,
+        "provider_details": details,
+        "processor_acceleration_available": PROCESSOR_ACCEL_PROVIDER in providers,
         "gpus": _gpus(),
         "preferred_providers": preferred,
         "train_device": device,
@@ -99,9 +134,9 @@ def preferred_providers() -> list[str]:
     with _lock:
         chosen = list(_preferred)
     avail = available_providers()
-    out = [p for p in chosen if p in avail]
-    if "CPUExecutionProvider" not in out:
-        out.append("CPUExecutionProvider")
+    out = [p for p in chosen if p in avail] if chosen else _auto_providers(avail)
+    if _CPU_PROVIDER not in out:
+        out.append(_CPU_PROVIDER)
     return out
 
 

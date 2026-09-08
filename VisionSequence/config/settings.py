@@ -88,6 +88,8 @@ TEMPLATES = [
 
 DATA_DIR = Path(_env("DATA_DIR", str(VS_HOME / "data")))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+VISION_EXPORT_MAX_MB_KEY = "VISION_EXPORT_MAX_MB"
+VISION_EXPORT_MAX_MB = _env_int(VISION_EXPORT_MAX_MB_KEY, 200)
 
 DATABASES = {
     "default": {

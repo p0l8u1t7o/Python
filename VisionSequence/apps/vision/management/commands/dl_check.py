@@ -70,6 +70,7 @@ class Command(BaseCommand):
             providers = ort.get_available_providers()
             gpu_pkg = importlib.util.find_spec("onnxruntime") is not None and any("gpu" in d.metadata["Name"].lower() for d in _dists("onnxruntime"))
             row(True, "onnxruntime", f"{ort_v}（{'onnxruntime-gpu' if gpu_pkg else 'onnxruntime'}）providers：{', '.join(providers)}")
+            row(True, "processor accel", "可用" if "OpenVINOExecutionProvider" in providers else "不可用")
             both = len(_dists("onnxruntime")) > 1
             row(not both, "ort packages", "onnxruntime 與 onnxruntime-gpu 同時安裝" if both else "只有一個 onnxruntime 套件",
                 "pip uninstall -y onnxruntime onnxruntime-gpu 後只裝其中一個")
@@ -95,7 +96,7 @@ class Command(BaseCommand):
         from apps.vision.dl import devices
 
         info = devices.info()
-        row(True, "dl settings", f"train_device={info.get('train_device')}、preferred providers={info.get('preferred')}")
+        row(True, "dl settings", f"train_device={info.get('train_device')}、preferred providers={info.get('preferred_providers')}")
 
         if opts.get("predict"):
             try:

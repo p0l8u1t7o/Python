@@ -401,6 +401,7 @@ const zhHans = {
     noGpu: '未侦测到 GPU，使用 CPU',
     accelOn: '加速器：{{list}}',
     cpuOnly: '推论／训练使用 CPU',
+    providerLabels: { cpu: 'CPU', gpu: 'GPU 加速', processor: '处理器加速' },
     assetName: '模型资产名称',
     start: '开始训练',
     cancel: '取消训练',

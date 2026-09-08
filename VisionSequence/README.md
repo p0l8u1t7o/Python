@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 120 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 1140 項＋前端 148 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 120 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 1150 項＋前端 148 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -136,11 +136,11 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 
 - **YOLO 訓練（四種）**：物件偵測（bbox）、實例分割（polygon）、影像分類（classes）、旋轉框 OBB（polygon 取最小外接旋轉矩形）；ultralytics 訓練、進度／曲線／log 回報、可中止；產物 best.pt（主，給 ai_* 工具）＋ONNX（副，給 dl_* 工具）兩個資產。
 - **SAM2 智慧標記**：點擊（正／負點）、拖曳框選、沒有模型時的「SAM 全圖提案」；權重 `VISION_SAM_MODEL`（預設 sam2.1_t.pt）自動下載，失敗退回 mobile_sam。
-- **依賴**：`requirements-dl.txt`＋`scripts/setup_dl.ps1`（先 torch cu128 再 ultralytics；onnxruntime-gpu 鎖 1.22 配 CUDA 12）＋`manage.py dl_check --predict` 驗證；踩坑清單見 docs/dl.html §11。
+- **依賴**：`requirements-dl.txt`＋`scripts/setup_dl.ps1`（先 torch cu128 再 ultralytics；onnxruntime-gpu 鎖 1.22 配 CUDA 12；處理器加速 runtime 與其他 onnxruntime 套件互斥）＋`manage.py dl_check --predict` 驗證；踩坑清單見 docs/dl.html §11。
 教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/dl.html`。
 
 ### 影像來源與資產
-**擷取端相機**（webcam／Basler／IDS，由擷取端程式驅動）、資料夾（循環）、單檔、上傳、合成影像；folder／file 可用伺服器檔案瀏覽器選路徑。資產：範本影像、ONNX 模型、資料集 zip。兩者皆可群組分類。
+**擷取端相機**（webcam／Basler／IDS，由擷取端程式驅動）、資料夾（循環）、單檔、上傳、合成影像；folder／file 可用伺服器檔案瀏覽器選路徑。資產：範本影像、ONNX 模型、標定、資料集 zip。流程匯出可選擇把引用的資產一併內嵌，匯入時以 sha256 去重並把流程圖裡的資產 id 換成本機 id。兩者皆可群組分類。
 
 ### 擷取端（相機在別台電腦或需要廠牌 SDK）
 - 可從網頁下載的 Windows 桌面程式（`vscapture/`，PySide6，PyInstaller 打包）：在相機所在的電腦驅動網路攝影機／Basler（pypylon）／IDS（ids_peak）／uEye／模擬相機，**主動連到伺服端擷取埠 9100**登記名稱與通道；多通道、即時預覽、ROI 圈選只傳 ROI（支援硬體 ROI）、相機參數自動表單並可存檔、傳送設定（不壓縮／LZ4／JPEG、單色、縮小、依需求取像／連續串流、測試傳送）、記錄、系統匣、無介面常駐。
@@ -241,7 +241,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | `apps/golden/` | Golden 案例、基準、回歸 |
 | `apps/vision/batch/` | 批次測試：`store`（檔案／序列化／淘汰）、`jobs`（背景執行）、`insights`（洞察與建議門檻）、`api` |
 | `apps/vision/management/commands/` | `serve`、`seed_demo`、`flow export|import|run`、`run_tcp_server`、`regress`、`create_admin` |
-| `tests/` | 24 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊、擷取端…） |
+| `tests/` | 26 個測試模組（引擎、工具純度與位深、API、smoke 掃描、範本實跑、AI 助手、DL、配方、Golden、外掛、通訊、擷取端、流程資產匯出、推論 providers…） |
 
 ### 前端（`frontend/src/`，約 21.5k 行 TS/TSX）
 
@@ -400,7 +400,7 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 
 - 單一行程是設計前提：不要開多個 worker 或多副本共用同一資料庫的引擎狀態；反向代理只能掛在 `/`（用主機名或埠分站台）。
 - 其他客戶端電腦只要瀏覽器（Chrome/Edge 111+、Firefox 128+、Safari 16.4+）；語言與主題跟帳號、登出清掉使用者層的本機狀態、每站同時 64 條 SSE 串流、HTTPS 內建 CA 的 `certs\root.crt` 匯入一次。
-- 可選依賴：`onnxruntime`（DL 推論）、`ultralytics`＋`torch`（YOLO 訓練、SAM）、`anthropic`（Claude 供應器；GPT／Gemini 走標準庫 REST 零依賴）。缺件時對應功能提示安裝指令，其餘正常；客戶站台用 DL 加購包離線安裝。
+- 可選依賴：`onnxruntime`（DL 推論；CPU、GPU 或處理器加速 runtime 只能留一個）、`ultralytics`＋`torch`（YOLO 訓練、SAM）、`anthropic`（Claude 供應器；GPT／Gemini 走標準庫 REST 零依賴）。缺件時對應功能提示安裝指令，其餘正常；客戶站台用 DL 加購包離線安裝。
 
 ---
 

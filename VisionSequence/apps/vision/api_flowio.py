@@ -1,6 +1,6 @@
 """流程匯出／匯入 API（格式見 apps/vision/serialize.py 與 docs/golden.html）。
 
-GET  /vision/flows/{id}/export      下載 .flow.json（Content-Disposition attachment）
+GET  /vision/flows/{id}/export      下載 .flow.json（Content-Disposition attachment；include_assets=true 可內嵌資產）
 POST /vision/flows/import           JSON body {doc?, ...doc, source_id?} 或 multipart file（＋form source_id）→ {flow, created}
 """
 
@@ -30,11 +30,11 @@ def _safe_filename(name: str) -> str:
 
 
 @router.get("/flows/{flow_id}/export")
-def export_flow(request: HttpRequest, flow_id: int, download: bool = True):
+def export_flow(request: HttpRequest, flow_id: int, download: bool = True, include_assets: bool = False):
     flow = get_flow(flow_id)
     if not _visible_flows(request).filter(pk=flow.pk).exists():
         raise NotFound(f"Flow {flow_id} not found", code="flow_not_found")
-    data = serialize.to_bytes(serialize.export_flow(flow))
+    data = serialize.to_bytes(serialize.export_flow(flow, include_assets=include_assets))
     response = HttpResponse(data, content_type="application/json; charset=utf-8")
     if download:
         ascii_name = _safe_filename(flow.name).encode("ascii", "ignore").decode() or "flow.flow.json"
@@ -82,4 +82,4 @@ def import_flow(request: HttpRequest):
         raise NotFound("The flow does not exist or cannot be updated", code="flow_not_found")
     scripts.check_graph_edit(p, doc.get("graph"), flow=existing)  # Python 腳本：一般使用者只能匯入已核准的程式碼
     flow, created = serialize.import_flow(doc, source_id=source_id, owner=p.user)
-    return (201 if created else 200), {"flow": _flow_out(flow), "created": created}
+    return (201 if created else 200), {"flow": _flow_out(flow), "created": created, "assets": serialize.asset_import_report(doc)}

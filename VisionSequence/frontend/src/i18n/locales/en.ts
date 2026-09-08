@@ -182,6 +182,7 @@ const en = {
     noGpu: 'No GPU detected, using CPU',
     accelOn: 'Accelerators: {{list}}',
     cpuOnly: 'CPU inference / training',
+    providerLabels: { cpu: 'CPU', gpu: 'GPU acceleration', processor: 'Processor acceleration' },
     assetName: 'Model asset name',
     start: 'Start training',
     cancel: 'Cancel training',

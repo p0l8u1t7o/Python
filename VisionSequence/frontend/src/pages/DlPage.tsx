@@ -748,7 +748,8 @@ export function DlPage() {
         title={t('dl.title')}
         description={t('dl.subtitle')}
         actions={
-          <span className="flex items-center gap-2 text-xs text-muted" title={(devices.data?.providers ?? []).join('\n')}>
+          // 提示文字用後端給的中性名稱；原始 provider 值只當設定值與除錯資料，不進產品表面。
+          <span className="flex items-center gap-2 text-xs text-muted" title={(devices.data?.accelerators ?? []).join('\n')}>
             <Cpu size={14} />
             {devices.data ? (accel.length ? t('dl.accelOn', { list: accel.map((p) => p.replace('ExecutionProvider', '')).join(', ') }) : t('dl.cpuOnly')) : '…'}
             {devices.data?.gpus?.length ? <Badge tone="ok">{devices.data.gpus[0].name}</Badge> : null}

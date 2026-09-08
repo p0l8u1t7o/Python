@@ -401,6 +401,7 @@ const zhHant = {
     noGpu: '未偵測到 GPU，使用 CPU',
     accelOn: '加速器：{{list}}',
     cpuOnly: '推論／訓練使用 CPU',
+    providerLabels: { cpu: 'CPU', gpu: 'GPU 加速', processor: '處理器加速' },
     assetName: '模型資產名稱',
     start: '開始訓練',
     cancel: '取消訓練',

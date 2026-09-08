@@ -16,20 +16,23 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 
 from apps.core.errors import Conflict, ValidationError
 from apps.vision.api_more import instantiate, templatize
 from apps.vision.graph import validate_graph
-from apps.vision.models import Flow
+from apps.vision.models import Asset, Flow
 
 SCHEMA_VERSION = 1
-DOC_KEYS = ("schema_version", "exported_at", "name", "description", "continuous_interval_ms", "graph", "fixed_images")
+DOC_KEYS = ("schema_version", "exported_at", "name", "description", "continuous_interval_ms", "graph", "fixed_images", "assets", "asset_warnings")
 NODE_KEYS = ("id", "type", "label", "description", "enabled", "continue_on_error", "color", "params", "position", "width", "height")
 EDGE_KEYS = ("id", "source", "source_handle", "target", "target_handle")
+ASSET_REPORT_KEY = "_asset_import"
 
 
 def _ordered(obj: dict[str, Any], first: tuple[str, ...]) -> dict[str, Any]:
@@ -93,7 +96,7 @@ def _exported_at() -> str:
     return dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def export_flow(flow: Flow) -> dict[str, Any]:
+def export_flow(flow: Flow, *, include_assets: bool = False) -> dict[str, Any]:
     doc = {
         "schema_version": SCHEMA_VERSION,
         "exported_at": _exported_at(),
@@ -106,6 +109,11 @@ def export_flow(flow: Flow) -> dict[str, Any]:
     pictures = _fixed_images_payload(flow.graph or {})
     if pictures:
         doc["fixed_images"] = pictures
+    if include_assets:
+        assets, warnings = _assets_payload(flow.graph or {})
+        doc["assets"] = assets
+        if warnings["skipped"]:
+            doc["asset_warnings"] = warnings
     return {k: doc[k] for k in DOC_KEYS if k in doc}
 
 
@@ -140,6 +148,194 @@ def restore_fixed_images(doc: dict[str, Any]) -> int:
         if desc["id"] == image_id:
             n += 1
     return n
+
+
+def _uuid_text(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    try:
+        return str(uuid.UUID(value))
+    except (TypeError, ValueError, AttributeError):
+        return ""
+
+
+def _asset_ids_in_graph(graph: dict[str, Any] | None) -> dict[str, set[str]]:
+    """掃流程參數裡看起來像 UUID 的字串；是否真是資產稍後交給資料庫確認。"""
+    out: dict[str, set[str]] = {}
+
+    def visit(value: Any) -> None:
+        if isinstance(value, str):
+            key = _uuid_text(value)
+            if key:
+                out.setdefault(key, set()).add(value)
+            return
+        if isinstance(value, dict):
+            for item in value.values():
+                visit(item)
+            return
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    for node in (graph or {}).get("nodes") or []:
+        visit((node.get("params") or {}))
+    return out
+
+
+def _sha256_file(path: str) -> str:
+    digest = __import__("hashlib").sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _mb(size: int) -> float:
+    return round(size / (1024 * 1024), 3)
+
+
+def _assets_payload(graph: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """流程引用的 Asset 內嵌封包；總量超過上限時略過並在文件中列明。"""
+    import base64
+
+    refs = _asset_ids_in_graph(graph)
+    rows = list(Asset.objects.filter(pk__in=refs).order_by("id"))
+    max_mb = int(getattr(settings, "VISION_EXPORT_MAX_MB", 200) or 0)
+    limit = max(0, max_mb) * 1024 * 1024
+    total = 0
+    embedded: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for asset in rows:
+        try:
+            size = int(os.path.getsize(asset.path))
+            sha = _sha256_file(asset.path)
+        except OSError:
+            skipped.append({"id": str(asset.id), "name": asset.name, "kind": asset.kind, "size": int(asset.size or 0), "reason": "missing_file"})
+            continue
+        total += size
+        if size > limit or total > limit:
+            skipped.append({"id": str(asset.id), "name": asset.name, "kind": asset.kind, "size": size, "sha256": sha, "reason": "export_size_limit"})
+            continue
+        with open(asset.path, "rb") as fh:
+            data = fh.read()
+        embedded.append({
+            "id": str(asset.id),
+            "kind": asset.kind,
+            "name": asset.name,
+            "sha256": sha,
+            "size": len(data),
+            "extension": os.path.splitext(asset.path)[1].lower(),
+            "group": asset.group,
+            "meta": asset.meta or {},
+            "data": base64.b64encode(data).decode("ascii"),
+        })
+    return embedded, {
+        "max_mb": max_mb,
+        "total_mb": _mb(total),
+        "skipped_mb": _mb(sum(int(item.get("size") or 0) for item in skipped)),
+        "skipped": skipped,
+    }
+
+
+def _existing_assets_by_sha() -> dict[str, Asset]:
+    found: dict[str, Asset] = {}
+    for asset in Asset.objects.all().order_by("created_at"):
+        try:
+            sha = _sha256_file(asset.path)
+        except OSError:
+            continue
+        found.setdefault(sha, asset)
+    return found
+
+
+def _safe_extension(value: Any) -> str:
+    ext = os.path.splitext(str(value or ""))[1].lower()
+    if 1 < len(ext) <= 10 and ext[1:].replace("_", "").isalnum():
+        return ext
+    return ".bin"
+
+
+def _replace_asset_ids(value: Any, id_map: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        key = _uuid_text(value)
+        return id_map.get(value) or (id_map.get(key) if key else None) or value
+    if isinstance(value, list):
+        return [_replace_asset_ids(item, id_map) for item in value]
+    if isinstance(value, dict):
+        return {k: _replace_asset_ids(v, id_map) for k, v in value.items()}
+    return value
+
+
+def restore_assets(doc: dict[str, Any]) -> dict[str, Any]:
+    """匯入內嵌資產：以 sha256 去重，並把流程參數裡的舊 Asset id 換成本機 id。"""
+    import base64
+
+    refs = _asset_ids_in_graph(doc.get("graph") or {})
+    embedded = {str(item.get("id") or ""): item for item in (doc.get("assets") or []) if isinstance(item, dict)}
+    existing_by_sha = _existing_assets_by_sha()
+    id_map: dict[str, str] = {}
+    report: dict[str, Any] = {"restored": [], "reused": [], "missing": []}
+
+    for old_id, item in sorted(embedded.items()):
+        old_key = _uuid_text(old_id)
+        if old_key not in refs:
+            continue
+        try:
+            data = base64.b64decode(str(item.get("data") or ""), validate=True)
+        except (ValueError, TypeError):
+            report["missing"].append({"id": old_id, "name": str(item.get("name") or ""), "kind": str(item.get("kind") or ""), "reason": "bad_data"})
+            continue
+        sha = __import__("hashlib").sha256(data).hexdigest()
+        if sha != str(item.get("sha256") or "") or len(data) != int(item.get("size") or len(data)):
+            report["missing"].append({"id": old_id, "name": str(item.get("name") or ""), "kind": str(item.get("kind") or ""), "reason": "checksum_mismatch"})
+            continue
+        asset = existing_by_sha.get(sha)
+        if asset is None:
+            asset_id = uuid.uuid4()
+            ext = _safe_extension(item.get("extension") or item.get("name"))
+            path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{asset_id.hex}{ext}")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            tmp = path + ".part"
+            with open(tmp, "wb") as fh:
+                fh.write(data)
+            os.replace(tmp, path)
+            asset = Asset.objects.create(
+                id=asset_id,
+                name=str(item.get("name") or asset_id.hex)[:200],
+                kind=str(item.get("kind") or "file")[:20],
+                group=str(item.get("group") or "")[:60],
+                path=path,
+                size=len(data),
+                meta=dict(item.get("meta") or {}),
+            )
+            existing_by_sha[sha] = asset
+            report["restored"].append({"old_id": old_id, "id": str(asset.id), "name": asset.name, "kind": asset.kind, "sha256": sha, "size": len(data)})
+        else:
+            report["reused"].append({"old_id": old_id, "id": str(asset.id), "name": asset.name, "kind": asset.kind, "sha256": sha, "size": int(asset.size or len(data))})
+        id_map[old_id] = str(asset.id)
+        id_map[old_key] = str(asset.id)
+        id_map[old_key.replace("-", "")] = str(asset.id)
+
+    for old_key, tokens in refs.items():
+        if old_key in id_map:
+            continue
+        if Asset.objects.filter(pk=old_key).exists():
+            continue
+        item = embedded.get(old_key) or embedded.get(old_key.replace("-", ""))
+        report["missing"].append({
+            "id": sorted(tokens)[0],
+            "name": str((item or {}).get("name") or ""),
+            "kind": str((item or {}).get("kind") or ""),
+            "reason": "not_embedded",
+        })
+    if id_map:
+        doc["graph"] = _replace_asset_ids(doc.get("graph") or {}, id_map)
+    doc[ASSET_REPORT_KEY] = report
+    return report
+
+
+def asset_import_report(doc: dict[str, Any]) -> dict[str, Any]:
+    return dict(doc.get(ASSET_REPORT_KEY) or {"restored": [], "reused": [], "missing": []})
 
 
 def dumps(doc: dict[str, Any]) -> str:
@@ -200,6 +396,7 @@ def import_flow(doc: dict[str, Any], *, source_id: int | None = None, owner=None
     """依 name upsert：存在則更新 graph／description／間隔並 version+1；不存在則建立。
     更新既有流程且未指定 source_id 時，取像步驟沿用原流程的來源。"""
     restore_fixed_images(doc)
+    restore_assets(doc)
     graph = materialize_graph(doc, source_id=source_id)
     name = str(doc["name"]).strip()
     description = str(doc.get("description") or "")
@@ -232,4 +429,7 @@ def find_flow(ref: str) -> Flow | None:
     return Flow.objects.filter(name=ref).first()
 
 
-__all__ = ["SCHEMA_VERSION", "export_flow", "normalize_graph", "dumps", "to_bytes", "write_file", "parse", "materialize_graph", "import_flow", "find_flow"]
+__all__ = [
+    "SCHEMA_VERSION", "export_flow", "normalize_graph", "dumps", "to_bytes", "write_file", "parse",
+    "materialize_graph", "import_flow", "find_flow", "restore_assets", "asset_import_report",
+]
