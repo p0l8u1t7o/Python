@@ -119,6 +119,138 @@ class SolveWorldTests(SimpleTestCase):
         self.assertEqual(calib.apply(np.eye(3), []).shape, (0, 2))
 
 
+def robot_samples(matrix: np.ndarray | None = None) -> list[dict]:
+    """合成分散於工作區的平移點對，中心點方便驗證離群殘差。"""
+    px = np.array([[100, 100], [900, 100], [900, 700], [100, 700], [300, 250], [700, 550], [500, 400]], dtype=float)
+    target = calib.apply(affine_matrix() if matrix is None else matrix, px)
+    return [{"px": float(p[0]), "py": float(p[1]), "rx": float(r[0]), "ry": float(r[1])}
+            for p, r in zip(px, target, strict=True)]
+
+
+class SolveRobotTests(SimpleTestCase):
+    def test_recovers_affine_and_handedness_for_both_camera_modes(self):
+        for mode in ("fixed", "moving"):
+            for mirror in (False, True):
+                truth = affine_matrix() @ np.diag([1, -1 if mirror else 1, 1])
+                points = robot_samples(truth)
+                before = json.dumps(points)
+                got = calib.solve_robot(points, kind="translation", camera_mode=mode)
+                np.testing.assert_allclose(got["matrix"], truth, atol=1e-6, rtol=0)
+                probes = [[44, 55], [650, 440], [1000, 810]]
+                np.testing.assert_allclose(calib.apply(got["matrix"], probes), calib.apply(truth, probes), atol=1e-6, rtol=0)
+                self.assertEqual(got["handedness"], "left" if mirror else "right")
+                self.assertEqual(got["angle_sign"], -1 if mirror else 1)
+                self.assertEqual(got["camera_mode"], mode)
+                self.assertEqual(json.dumps(points), before)
+                self.assertLess(got["max_error"], 1e-6)
+                self.assertNotIn("rotation_center_px", got)
+                checked = calib.validate({"image_size": [W, H], "robot": got})
+                self.assertEqual(checked["robot"], got)
+
+    def test_rotation_center_from_separate_short_arc(self):
+        center = np.array([423.5, 317.25])
+        angles = np.deg2rad(np.linspace(15, 105, 12))
+        arc = center + 85 * np.column_stack([np.cos(angles), np.sin(angles)])
+        for mode in ("fixed", "moving"):
+            got = calib.solve_robot({"translation": robot_samples(), "rotation": arc.tolist()},
+                                    kind="translation_rotation", camera_mode=mode)
+            self.assertLess(np.linalg.norm(np.array(got["rotation_center_px"]) - center), 0.5)
+            np.testing.assert_allclose(got["rotation_center_world"], calib.apply(affine_matrix(), [center])[0], atol=1e-6)
+            payload = {"image_size": [W, H], "robot": got}
+            self.assertEqual(calib.validate(payload)["robot"], got)
+            self.assertIn("rotation center: yes", calib.summary(payload))
+            self.assertEqual(calib.warnings(payload), [])
+            self.assertEqual(len(got["rotation_points"]), len(arc))
+            self.assertLess(got["rotation_max_error_px"], 1e-6)
+
+    def test_rotation_outlier_is_retained_in_circle_fit(self):
+        angles = np.linspace(0, 2 * np.pi, 20, endpoint=False)
+        arc = np.array([400, 300]) + 85 * np.column_stack([np.cos(angles), np.sin(angles)])
+        arc[0, 0] += 10
+        got = calib.solve_robot({"translation": robot_samples(), "rotation": arc.tolist()},
+                                kind="translation_rotation", camera_mode="fixed")
+        residuals = [p["error"] for p in got["rotation_points"]]
+        self.assertEqual(len(residuals), len(arc))
+        self.assertEqual(int(np.argmax(residuals)), 0)
+        self.assertGreater(residuals[0], 4 * max(residuals[1:]))
+        self.assertGreater(np.linalg.norm(np.array(got["rotation_center_px"]) - [400, 300]), 0.1)
+        self.assertTrue(any("rotation residual" in w for w in calib.warnings({"robot": got})))
+
+    def test_keeps_outlier_and_reports_every_residual(self):
+        points = robot_samples()
+        points[-1]["rx"] += 5
+        got = calib.solve_robot(points, kind="translation", camera_mode="fixed")
+        errors = np.array([p["error"] for p in got["points"]])
+        self.assertEqual(len(errors), len(points))
+        self.assertEqual(int(errors.argmax()), len(points) - 1)
+        self.assertGreater(errors[-1], 4 * max(errors[:-1]))
+        self.assertGreater(min(errors[:-1]), 0.1)
+        mapped = calib.apply(got["matrix"], [[p["px"], p["py"]] for p in points])
+        expected = np.linalg.norm(mapped - [[p["rx"], p["ry"]] for p in points], axis=1)
+        np.testing.assert_allclose(errors, expected, atol=1e-9)
+        self.assertAlmostEqual(got["rms"], float(np.sqrt(np.mean(expected**2))))
+        self.assertEqual(got["max_error"], float(errors.max()))
+        payload = {"image_size": [W, H], "robot": got}
+        self.assertIn("7 points", calib.summary(payload))
+        self.assertIn("max", calib.summary(payload))
+        self.assertEqual(calib.quality(payload)["robot"], "poor")
+        self.assertTrue(any("maximum residual" in warning for warning in calib.warnings(payload)))
+
+    def test_rejects_bad_inputs_and_degenerate_samples(self):
+        cases = [
+            ([], "translation", "fixed", "at least 3"),
+            (robot_samples(), "bad", "fixed", "robot.kind"),
+            (robot_samples(), "translation", "bad", "robot.camera_mode"),
+            ([None] * 3, "translation", "fixed", "must be an object"),
+            ([{"px": 1}] * 3, "translation", "fixed", "py"),
+            ([{"px": i, "py": 2 * i, "rx": i, "ry": i} for i in range(3)], "translation", "fixed", "collinear"),
+            (robot_samples(), "translation_rotation", "fixed", "rotation_points"),
+        ]
+        for rotation in ([], [[1, 2]], [[1, 2, 3]] * 3, [[1, 2], [2, 4], [3, 6]], [[float("nan"), 1]] * 3):
+            cases.append(({"translation": robot_samples(), "rotation": rotation}, "translation_rotation", "fixed", "rotation_points"))
+        for points, kind, mode, message in cases:
+            with self.subTest(message=message, points=points):
+                with self.assertRaisesRegex(calib.CalibError, message):
+                    calib.solve_robot(points, kind=kind, camera_mode=mode)
+
+    def test_validate_reports_field_errors(self):
+        robot = calib.solve_robot(robot_samples(), kind="translation", camera_mode="fixed")
+        cases = [("kind", "bad"), ("camera_mode", None), ("handedness", "left"),
+                 ("handedness", "bad"), ("angle_sign", 0), ("angle_sign", True),
+                 ("matrix", [1] * 9), ("matrix", np.zeros((3, 3)).tolist()),
+                 ("matrix", [[1, 0, 0], [0, 1, 0], [0.1, 0, 1]]),
+                 ("matrix", [[float("inf"), 0, 0], [0, 1, 0], [0, 0, 1]]),
+                 ("rms", -1), ("rms", float("nan")), ("points", {}), ("points", []),
+                 ("rotation_points", []), ("rotation_points", [None] * 3),
+                 ("rotation_points", [{"px": 1, "py": 2, "error": -1}] * 3),
+                 ("rotation_center_px", [1]), ("rotation_center_world", [None, 2])]
+        for key, value in cases:
+            with self.subTest(key=key, value=value):
+                with self.assertRaisesRegex(calib.CalibError, f"robot.{key}"):
+                    calib.validate({"image_size": [W, H], "robot": {**robot, key: value}})
+        for value in (None, [], "bad", {}):
+            with self.assertRaisesRegex(calib.CalibError, "robot"):
+                calib.validate({"image_size": [W, H], "robot": value})
+        for key in ("px", "py", "rx", "ry", "error"):
+            bad_points = [{**p} for p in robot["points"]]
+            bad_points[1][key] = float("inf")
+            with self.assertRaisesRegex(calib.CalibError, key):
+                calib.validate({"image_size": [W, H], "robot": {**robot, "points": bad_points}})
+        with self.assertRaisesRegex(calib.CalibError, "does not match"):
+            calib.validate({"image_size": [W, H], "robot": {**robot, "rotation_center_px": [0, 0], "rotation_center_world": [0, 0]}})
+
+    def test_optional_centers_and_coexisting_blocks(self):
+        robot = calib.solve_robot(robot_samples()[:3], kind="translation", camera_mode="fixed")
+        payload = {**lens_payload(), "world": world_payload()["world"], "robot": robot}
+        self.assertEqual(set(calib.quality(calib.validate(payload))), {"lens", "robot"})
+        self.assertTrue(any("only 3 points" in warning for warning in calib.warnings(payload)))
+        for key in ("rotation_center_px", "rotation_center_world"):
+            self.assertIn(key, calib.validate({**payload, "robot": {**robot, key: [1, 2]}})["robot"])
+        # 保存超過既有世界標定上限的點數，也不得靜默裁掉機構點。
+        many = {**robot, "points": robot["points"] * 80}
+        self.assertEqual(len(calib.validate({**payload, "robot": many})["robot"]["points"]), 240)
+
+
 class LensTests(SimpleTestCase):
     def _views(self, count: int = 10) -> tuple[list[np.ndarray], np.ndarray]:
         rng = np.random.default_rng(7)
@@ -532,6 +664,58 @@ class ApiTests(TestCase):
                                 "points": [{"px": [100, 100]}, {"px": [600, 100]}]})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertAlmostEqual(r.json()["payload"]["world"]["mm_per_px"], 0.05, places=9)
+
+    def test_solve_robot_only_calculates_and_keeps_existing_blocks(self):
+        points = robot_samples()
+        points[-1]["rx"] += 5
+        before = Asset.objects.count()
+        r = self.post("solve", {"mode": "robot", "image_size": self.size, "points": points,
+                                "camera_mode": "moving", "angle_sign": -1,
+                                "lens": lens_payload()["lens"], "world": world_payload()["world"]})
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        robot = body["payload"]["robot"]
+        self.assertEqual(len(robot["points"]), len(points))
+        self.assertEqual(int(np.argmax([p["error"] for p in robot["points"]])), len(points) - 1)
+        self.assertEqual(robot["camera_mode"], "moving")
+        self.assertEqual(robot["angle_sign"], -1)
+        self.assertIn("lens", body["payload"])
+        self.assertIn("world", body["payload"])
+        self.assertIn("robot", body["summary"])
+        self.assertEqual(body["quality"]["robot"], "poor")
+        self.assertTrue(body["warnings"])
+        self.assertEqual(Asset.objects.count(), before)
+
+    def test_solve_robot_rotation_and_save_round_trip(self):
+        angles = np.linspace(0, 2 * np.pi, 10, endpoint=False)
+        arc = np.array([400, 300]) + 50 * np.column_stack([np.cos(angles), np.sin(angles)])
+        r = self.post("solve", {"mode": "robot", "image_size": self.size, "kind": "translation_rotation",
+                                "points": robot_samples(), "rotation_points": arc.tolist()})
+        self.assertEqual(r.status_code, 200, r.content)
+        payload = r.json()["payload"]
+        np.testing.assert_allclose(payload["robot"]["rotation_center_px"], [400, 300], atol=0.5)
+        self.assertFalse(Asset.objects.exists())
+        saved = self.post("assets", {"name": "robot station", "payload": payload})
+        self.assertEqual(saved.status_code, 201, saved.content)
+        asset = Asset.objects.get(pk=saved.json()["id"])
+        self.addCleanup(lambda: os.path.exists(asset.path) and os.remove(asset.path))
+        self.assertTrue(asset.meta["has_robot"])
+        self.assertFalse(asset.meta["has_lens"])
+        self.assertEqual(calib.load(asset.path), payload)
+        read = self.client.get(f"/api/vision/calibration/assets/{asset.id}")
+        self.assertEqual(read.json()["payload"], payload)
+
+    def test_solve_robot_bad_input_is_422(self):
+        base = {"mode": "robot", "image_size": self.size, "points": robot_samples()}
+        cases = [{"points": None}, {"points": [None] * 3}, {"points": robot_samples() * 30},
+                 {"kind": "bad"}, {"camera_mode": []}, {"angle_sign": 2},
+                 {"kind": "translation_rotation"}, {"rotation_points": {}},
+                 {"rotation_points": [[1, 2]] * 201}]
+        for change in cases:
+            with self.subTest(change=change):
+                r = self.post("solve", {**base, **change})
+                self.assertEqual(r.status_code, 422, r.content)
+                self.assertTrue(r.json()["error"]["message"].isascii())
 
     def test_solve_rejects_bad_input(self):
         cases = [

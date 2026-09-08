@@ -23,7 +23,7 @@ payload 結構（`validate()` 是唯一的事實來源）::
       "note": ""
     }
 
-`lens` 與 `world` 都是選配：只想要 mm/px 就只有 world.scale；只想校正畸變就只有 lens。
+`lens`、`world` 與 `robot` 都是選配，至少提供一塊；`robot` 保存像素到機構的仿射與旋轉中心。
 
 幾何慣例與平台其他地方一致：影像座標 y 向下、像素中心在整數座標、影像角度正值＝畫面順時針。
 世界角度則以世界座標軸本身度量（+X 轉向 +Y 為正），因為機械手的座標系是使用者自己定的。
@@ -45,6 +45,8 @@ VERSION = 1
 BOARD_KINDS = ("chessboard", "circles", "acircles")
 #: 世界座標對應的解法；點數下限
 WORLD_KINDS = {"scale": 2, "affine": 3, "perspective": 4}
+ROBOT_KINDS = ("translation", "translation_rotation")
+CAMERA_MODES = ("fixed", "moving")
 
 
 class CalibError(ValueError):
@@ -112,8 +114,98 @@ def validate(payload: Any) -> dict[str, Any]:
                 for p in (world.get("points") or []) if isinstance(p, dict)
             ][:200],
         }
-    if "lens" not in out and "world" not in out:
-        raise CalibError("A calibration needs a lens, a world mapping, or both")
+    if "robot" in payload:
+        out["robot"] = _validate_robot(payload["robot"])
+    if not any(key in out for key in ("lens", "world", "robot")):
+        raise CalibError("A calibration needs a lens, a world mapping, or a robot mapping")
+    return out
+
+
+def _robot_number(value: Any, field: str, *, nonnegative: bool = False) -> float:
+    """機構標定不默默補零；指出錯誤欄位，讓使用者修正原始資料。"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        raise CalibError(f"{field} must be a finite number") from None
+    if isinstance(value, (bool, list, dict)) or not math.isfinite(number):
+        raise CalibError(f"{field} must be a finite number")
+    if nonnegative and number < 0:
+        raise CalibError(f"{field} must be non-negative")
+    return number
+
+
+def _robot_points(raw: Any, *, errors: bool = False) -> list[dict[str, float]]:
+    """平移點使用獨立純量欄位；保留順序與所有點，不做截斷或剔除。"""
+    if not isinstance(raw, list):
+        raise CalibError("robot.points must be a list")
+    if len(raw) < 3:
+        raise CalibError("robot.points needs at least 3 points")
+    fields = ("px", "py", "rx", "ry", "error") if errors else ("px", "py", "rx", "ry")
+    points = []
+    for i, point in enumerate(raw):
+        if not isinstance(point, dict):
+            raise CalibError(f"robot.points[{i}] must be an object with px, py, rx and ry")
+        points.append({key: _robot_number(point.get(key), f"robot.points[{i}].{key}", nonnegative=key == "error") for key in fields})
+    return points
+
+
+def _validate_robot(robot: Any) -> dict[str, Any]:
+    """驗證機構仿射、方向慣例與殘差，旋轉中心若兩種座標都有就互驗。"""
+    if not isinstance(robot, dict):
+        raise CalibError("robot must be an object")
+    if robot.get("kind") not in ROBOT_KINDS:
+        raise CalibError("robot.kind must be translation or translation_rotation")
+    if robot.get("camera_mode") not in CAMERA_MODES:
+        raise CalibError("robot.camera_mode must be fixed or moving")
+    try:
+        matrix = np.asarray(robot.get("matrix"), dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        raise CalibError("robot.matrix must be a finite 3x3 affine matrix") from None
+    if matrix.shape != (3, 3) or not np.isfinite(matrix).all():
+        raise CalibError("robot.matrix must be a finite 3x3 affine matrix")
+    if not np.allclose(matrix[2], [0, 0, 1], rtol=0, atol=1e-12):
+        raise CalibError("robot.matrix must be affine with last row [0, 0, 1]")
+    det = float(np.linalg.det(matrix[:2, :2]))
+    if not math.isfinite(det) or abs(det) < 1e-12:
+        raise CalibError("robot.matrix is singular")
+    handedness = "left" if det < 0 else "right"
+    if robot.get("handedness") not in ("left", "right"):
+        raise CalibError("robot.handedness must be right or left")
+    if robot["handedness"] != handedness:
+        raise CalibError("robot.handedness does not match robot.matrix")
+    sign = _robot_number(robot.get("angle_sign"), "robot.angle_sign")
+    if sign not in (-1, 1):
+        raise CalibError("robot.angle_sign must be +1 or -1")
+    points = _robot_points(robot.get("points"), errors=True)
+    out = {"kind": robot["kind"], "camera_mode": robot["camera_mode"], "matrix": matrix.tolist(),
+           "handedness": handedness, "angle_sign": int(sign), "points": points,
+           "rms": _robot_number(robot.get("rms"), "robot.rms", nonnegative=True),
+           "max_error": max(p["error"] for p in points)}
+    for key in ("rotation_center_px", "rotation_center_world"):
+        if key in robot:
+            value = robot[key]
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise CalibError(f"robot.{key} must be [x, y]")
+            out[key] = [_robot_number(v, f"robot.{key}") for v in value]
+    if "rotation_center_px" in out and "rotation_center_world" in out:
+        expected = apply(matrix, [out["rotation_center_px"]])[0]
+        if not np.allclose(expected, out["rotation_center_world"], rtol=1e-9, atol=1e-6):
+            raise CalibError("robot.rotation_center_world does not match robot.rotation_center_px and matrix")
+    if "rotation_points" in robot:
+        raw = robot["rotation_points"]
+        if not isinstance(raw, list) or len(raw) < 3:
+            raise CalibError("robot.rotation_points must contain at least 3 points")
+        out["rotation_points"] = []
+        for i, point in enumerate(raw):
+            if not isinstance(point, dict):
+                raise CalibError(f"robot.rotation_points[{i}] must be an object with px, py and error")
+            out["rotation_points"].append({
+                key: _robot_number(point.get(key), f"robot.rotation_points[{i}].{key}", nonnegative=key == "error")
+                for key in ("px", "py", "error")
+            })
+        radial_errors = np.array([p["error"] for p in out["rotation_points"]])
+        out["rotation_rms_px"] = float(np.sqrt(np.mean(radial_errors**2)))
+        out["rotation_max_error_px"] = float(radial_errors.max())
     return out
 
 
@@ -187,6 +279,15 @@ def summary(payload: dict[str, Any]) -> str:
         bits.append(f"{world['kind']} {world.get('mm_per_px', 0):.5f} {unit}/px")
         if world.get("points"):
             bits.append(f"fit {world.get('rms', 0):.3f} {unit}")
+    robot = payload.get("robot")
+    if robot:
+        unit = payload.get("unit", "mm")
+        center = "yes" if "rotation_center_px" in robot and "rotation_center_world" in robot else "no"
+        bits.append(f"robot {robot['kind']}, {len(robot['points'])} points, RMS {robot['rms']:.3f} {unit}, "
+                    f"max {max(p['error'] for p in robot['points']):.3f} {unit}, {robot['handedness']}-handed, rotation center: {center}")
+        if robot.get("rotation_points"):
+            bits.append(f"rotation {len(robot['rotation_points'])} points, RMS {robot['rotation_rms_px']:.3f} px, "
+                        f"max {robot['rotation_max_error_px']:.3f} px")
     return "; ".join(bits) or "empty"
 
 
@@ -309,6 +410,61 @@ def solve_world(pairs: list[tuple[tuple[float, float], tuple[float, float]]], ki
             for i in range(len(src))
         ],
     }
+
+
+def solve_robot(points: Any, *, kind: str, camera_mode: str) -> dict[str, Any]:
+    """解手眼平移與旋轉中心，所有取樣一律最小平方。
+
+    平移輸入為 [{px, py, rx, ry}, ...]；含旋轉時用
+    {translation: [...], rotation: [[x, y], ...]}，兩組必須分別採集。
+    rotation 是機構 XY 不動、同一特徵繞軸旋轉的像素軌跡，不可拿平移走點代替。
+    相機模式只是記錄取樣架構；兩者的矩陣都由實際點對決定，不擅自反轉。
+    angle_sign 依 +X→+Y 的機構角度慣例由手性決定；不同控制器可在保存前明確覆寫。
+    points[].error 是機構座標殘差；rotation_points[].error 是到擬合圓的徑向像素殘差。
+    """
+    if kind not in ROBOT_KINDS:
+        raise CalibError("robot.kind must be translation or translation_rotation")
+    if camera_mode not in CAMERA_MODES:
+        raise CalibError("robot.camera_mode must be fixed or moving")
+    raw = points.get("translation") if isinstance(points, dict) else points
+    samples = _robot_points(raw)
+    src = np.array([[p["px"], p["py"]] for p in samples])
+    if np.linalg.matrix_rank(src - src.mean(axis=0)) < 2:
+        raise CalibError("robot.points are collinear or repeated")
+    try:
+        world = solve_world([((p["px"], p["py"]), (p["rx"], p["ry"])) for p in samples], "affine")
+    except np.linalg.LinAlgError:
+        raise CalibError("Could not fit robot.points; check the point coordinates") from None
+    matrix = np.asarray(world["matrix"])
+    left = np.linalg.det(matrix[:2, :2]) < 0
+    robot = {"kind": kind, "camera_mode": camera_mode, "matrix": world["matrix"],
+             "handedness": "left" if left else "right", "angle_sign": -1 if left else 1,
+             "rms": world["rms"], "max_error": world["max_error"],
+             "points": [{**p, "error": fit["error"]} for p, fit in zip(samples, world["points"], strict=True)]}
+    if kind == "translation_rotation":
+        from apps.vision.tools.builtin.locate import fit_circle_lsq
+
+        raw_rotation = points.get("rotation") if isinstance(points, dict) else None
+        try:
+            rotation = np.asarray(raw_rotation, dtype=np.float64)
+        except (TypeError, ValueError, OverflowError):
+            raise CalibError("rotation_points must contain at least 3 finite [x, y] points") from None
+        if rotation.ndim != 2 or rotation.shape[1] != 2 or len(rotation) < 3 or not np.isfinite(rotation).all():
+            raise CalibError("rotation_points must contain at least 3 finite [x, y] points")
+        if np.linalg.matrix_rank(rotation - rotation.mean(axis=0)) < 2:
+            raise CalibError("rotation_points are collinear or repeated; a rotation arc is required")
+        try:
+            circle = fit_circle_lsq(rotation)
+        except np.linalg.LinAlgError:
+            circle = None
+        if circle is None or not np.isfinite(circle).all() or circle[2] <= 0:
+            raise CalibError("Could not fit a rotation center to rotation_points")
+        robot["rotation_center_px"] = list(circle[:2])
+        robot["rotation_center_world"] = apply(matrix, [circle[:2]])[0].tolist()
+        radial_errors = np.abs(np.linalg.norm(rotation - circle[:2], axis=1) - circle[2])
+        robot["rotation_points"] = [{"px": float(p[0]), "py": float(p[1]), "error": float(error)}
+                                    for p, error in zip(rotation, radial_errors, strict=True)]
+    return _validate_robot(robot)
 
 
 def world_from_board(corners: np.ndarray, object_points: np.ndarray) -> dict[str, Any]:
@@ -441,6 +597,20 @@ def warnings(payload: dict[str, Any], cov: dict[str, Any] | None = None) -> list
         mm_per_px = float(world.get("mm_per_px") or 0)
         if mm_per_px > 0 and float(world["rms"]) > 2.0 * mm_per_px:
             out.append(f"Point residual {float(world['rms']):.3f} {unit} is more than two pixels: check the point pairs, or use a perspective mapping if the camera looks at the plane at an angle")
+    robot = payload.get("robot") or {}
+    if robot:
+        if len(robot["points"]) <= 3:
+            out.append("Robot calibration has only 3 points: add more points across the working area to check residuals")
+        px = scale_at(robot["matrix"], (0, 0))
+        maximum = max(p["error"] for p in robot["points"])
+        if robot["rms"] > 2 * px or maximum > 3 * px:
+            out.append(f"Robot RMS {robot['rms']:.3f}, maximum residual {maximum:.3f} {payload.get('unit', 'mm')}: check all point pairs")
+        if robot["handedness"] == "left":
+            out.append("Robot mapping is left-handed: verify the controller angle direction and angle_sign")
+        if "rotation_center_px" not in robot or "rotation_center_world" not in robot:
+            out.append("Robot rotation center is unavailable: collect a rotation arc before using rotation compensation")
+        if robot.get("rotation_rms_px", 0) > RMS_WARN_PX:
+            out.append(f"Robot rotation residual {robot['rotation_rms_px']:.3f} px: check that the same feature rotates with robot XY held fixed")
     return out
 
 
@@ -456,4 +626,10 @@ def quality(payload: dict[str, Any]) -> dict[str, str]:
         rms, px = float(world.get("rms") or 0), float(world.get("mm_per_px") or 0)
         in_px = rms / px if px > 0 else 0.0
         out["world"] = "good" if in_px <= 1.0 else ("fair" if in_px <= 3.0 else "poor")
+    robot = payload.get("robot")
+    if robot:
+        px = scale_at(robot["matrix"], (0, 0))
+        in_px = robot["rms"] / px if px > 0 else math.inf
+        in_px = max(in_px, robot.get("rotation_rms_px", 0))
+        out["robot"] = "good" if in_px <= 1.0 else ("fair" if in_px <= 3.0 else "poor")
     return out

@@ -157,6 +157,7 @@ def solve(request: HttpRequest):
     mode=board       views[[[x,y],...],...]＋cols/rows/spacing(+kind)：多張出鏡頭內參，指定的那一張同時給世界座標
     mode=points      points[{px:[x,y], world:[X,Y]}]＋world_kind：影像↔機械手（或治具）座標
     mode=distance    points 兩點＋distance：純比例（最快的一種，量測換算用這個就夠）
+    mode=robot       points[{px,py,rx,ry}]＋kind/camera_mode；rotation_points[[x,y],...] 為另外採集的旋轉軌跡
     """
     require_feature(request, "assets")
     data = _body(request)
@@ -217,8 +218,24 @@ def solve(request: HttpRequest):
                     wd = np.asarray(item.get("world"), dtype=np.float64).reshape(2)
                     pairs.append(((float(px[0]), float(px[1])), (float(wd[0]), float(wd[1]))))
                 payload["world"] = calib.solve_world(pairs, str(data.get("world_kind") or "affine"))
+        elif mode == "robot":
+            raw = data.get("points")
+            rotation = data.get("rotation_points", [])
+            for name, values in (("points", raw), ("rotation_points", rotation)):
+                if not isinstance(values, list):
+                    raise ValidationError(f"{name} must be a list", code="bad_points")
+                if len(values) > MAX_POINTS:
+                    raise ValidationError(f"At most {MAX_POINTS} {name}", code="too_many_points")
+            payload["robot"] = calib.solve_robot(
+                {"translation": raw, "rotation": rotation},
+                kind=data.get("kind", "translation"), camera_mode=data.get("camera_mode", "fixed"),
+            )
+            if "angle_sign" in data:
+                payload["robot"]["angle_sign"] = data["angle_sign"]
+            if data.get("world"):
+                payload["world"] = data["world"]
         else:
-            raise ValidationError("mode must be board, points or distance", code="bad_mode")
+            raise ValidationError("mode must be board, points, distance or robot", code="bad_mode")
         if data.get("lens"):  # 沿用既有標定的鏡頭部分（只想重做世界座標時）
             payload["lens"] = data["lens"]
         checked = calib.validate(payload)
@@ -270,7 +287,8 @@ def create_asset(request: HttpRequest):
         id=asset_id, name=name[:200], kind="calibration", path=path, size=os.path.getsize(path),
         group=str(data.get("group") or "").strip()[:60],
         meta={"summary": calib.summary(payload), "quality": calib.quality(payload), "unit": payload["unit"],
-              "image_size": payload["image_size"], "has_lens": "lens" in payload, "has_world": "world" in payload},
+              "image_size": payload["image_size"], "has_lens": "lens" in payload, "has_world": "world" in payload,
+              "has_robot": "robot" in payload},
     )
     audit.record(request, "asset.calibration", f"asset:{asset.id}", summary=f"{name}: {calib.summary(payload)}")
     return 201, {"id": str(asset.id), "name": asset.name, "kind": asset.kind, "group": asset.group,
