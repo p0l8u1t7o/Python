@@ -94,7 +94,13 @@ def din_module(w=70, d=100, h=120, color="#5A6470", terminals=8, led=True, name=
     pitch = (w - 14) / max(terminals - 1, 1)
     screws = [col(Pos(-(w - 14) / 2 + i * pitch, -d / 2 - 6, h - 24) * Sphere(1.5), STEEL) for i in range(terminals)]
     leds = [col(Pos(-w / 2 + 8 + i * 6, -d / 2 - 0.5, h - 12) * Box(3, 1, 3), "#33CC66") for i in range(min(6, terminals))] if led else []
-    return comp(name, body, tb, screws, leds)
+    # Front service covers, terminal recesses and ventilation distinguish molded
+    # controller housings from plain blocks. No vendor branding is reproduced.
+    covers = [col(Pos(0, -d / 2 - 0.8, z) * Box(w - 6, 1.5, 25), "#737D85") for z in (18, 50)]
+    vents = [col(Pos(-w / 2 + 8 + i * 5, 0, h + 0.2) * Box(1.8, d - 22, 0.5), BLACK) for i in range(max(1, int((w - 16) / 5)))]
+    port = col(Pos(w / 2 - 12, -d / 2 - 1.6, 38) * Box(12, 2, 9), BLACK)
+    label = col(Pos(0, -d / 2 - 1.7, 57) * Box(w - 12, 0.4, 5), "#AFB8BF")
+    return comp(name, body, tb, screws, leds, covers, vents, port, label)
 
 
 def plc(name="plc", cpu_w=70, io_modules=3):
@@ -212,7 +218,7 @@ def m12_connector(name="m12"):
 # =====================================================================
 # 氣路元件
 # =====================================================================
-def pneumatic_cylinder(bore=25, stroke=20, name="cylinder", body_color=DARK, rod_out=0.0):
+def pneumatic_cylinder(bore=25, stroke=20, name="cylinder", body_color=ALU, rod_out=0.0):
     """薄型／方型氣缸；原點在缸體底面中心，+Z 為桿伸出方向。rod_out：桿伸出量（動畫初始）。"""
     w = bore + 15
     length = bore * 1.6 + stroke
@@ -348,11 +354,13 @@ def coolant_quick_connect(name="quick_connect"):
 
 
 def gripper(name="gripper", open_mm=10.0):
-    body = box(40, 30, 50, TEAL, r=2)
+    body = box(40, 30, 50, DARK, r=2)
     body = holes_z(body, [(sx * 14, sy * 9) for sx in (-1, 1) for sy in (-1, 1)], 4.5, 12)
-    body = col(body, TEAL)
+    body = col(body, DARK)
     fingers = [col(Pos(sx * (open_mm / 2 + 2.5), 0, 48) * Box(5, 12, 20, align=BOT), "#C0C0C0") for sx in (-1, 1)]
-    return comp(name, body, label_shape(fingers[0], "finger_left"), label_shape(fingers[1], "finger_right"))
+    rail = col(Pos(0, 0, 47) * Box(36, 15, 4), STEEL)
+    screws = [col(Pos(x, -15.5, z) * Rot(90, 0, 0) * Cylinder(2, 1.5), STEEL) for x in (-12, 12) for z in (10, 37)]
+    return comp(name, body, rail, screws, label_shape(fingers[0], "finger_left"), label_shape(fingers[1], "finger_right"))
 
 
 def vacuum_pads(name="vacuum_pads", n=4, pad_d=20):
@@ -486,12 +494,15 @@ def hmi_panel(name="hmi", w=310, h=230, d=60):
 
 
 def industrial_camera(name="camera", size=29, length=42):
-    body = box(size, size, length, BLACK, r=1.5)
+    body = box(size, size, length - 4, ALU, r=1.5, z0=2)
     mount = col(Pos(0, 0, -4) * Cylinder(14.2, 4, align=BOT), GREY)
     mount = col(mount - Pos(0, 0, -5) * Cylinder(12.7, 6, align=BOT), GREY)
     glass = col(Pos(0, 0, -0.5) * Cylinder(12.2, 0.5, align=BOT), "#38414D", 0.5)
     rj45 = col(Pos(-4, 4, length) * Box(16, 13.5, 2), "#111")
-    return comp(name, body, mount, glass, rj45)
+    caps = [box(size, size, 2, BLACK, r=1, z0=z) for z in (0, length - 2)]
+    screws = [col(Pos(x, y, -0.5) * Cylinder(1.1, 1, align=BOT), STEEL) for x in (-size/2+3, size/2-3) for y in (-size/2+3, size/2-3)]
+    plate = col(Pos(size/2+0.1, 0, length/2) * Box(0.4, size-6, 12), GREY)
+    return comp(name, body, caps, mount, glass, rj45, screws, plate)
 
 
 def lens(name="lens", d=30, length=60):

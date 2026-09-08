@@ -2,6 +2,8 @@ import { IxCard, IxCardContent, IxKeyValue, IxKeyValueList, IxPill, IxTypography
 import { type Component, type Domain, DOMAIN_COLOR, DOMAIN_LABEL } from '../api';
 import { MechanismAnimation } from './Animations';
 import { ModelViewer } from './ModelViewer';
+import { ComponentImage } from './ComponentImage';
+import { componentVisual } from '../componentVisuals';
 
 interface Props {
   component: Component | null;
@@ -24,25 +26,12 @@ export function ComponentDetail({ component, domain, moduleName }: Props) {
     );
   }
   const specs = Object.entries(component.specs ?? {});
+  const visual = componentVisual(component);
+  const modelUrl = component.model_file || visual?.model;
   return (
     <IxCard className="detail-panel">
       <IxCardContent>
-        {component.photo ? (
-          <img className="detail-photo" src={component.photo} alt={component.name} />
-        ) : (
-          <div className="photo-placeholder">
-            尚未上傳真實照片
-            <br />
-            請將照片放到 backend/media/components/&lt;設備&gt;/{component.slug}.jpg 後重新執行 load_seed
-          </div>
-        )}
-        {component.photo_credit && (
-          <IxTypography format="label-sm" textColor="soft">
-            {component.photo_source_url ? (
-              <a href={component.photo_source_url} target="_blank" rel="noreferrer" style={{ color: 'inherit' }}>{component.photo_credit}</a>
-            ) : component.photo_credit}
-          </IxTypography>
-        )}
+        <ComponentImage item={component} className="detail-photo" showCredit />
         <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', margin: '0.75rem 0 0.25rem' }}>
           {domain && (
             <IxPill variant="custom" background={DOMAIN_COLOR[domain]} pillColor="#000">
@@ -60,10 +49,10 @@ export function ComponentDetail({ component, domain, moduleName }: Props) {
         <div className="section-title">安裝位置</div>
         <IxTypography format="body">{component.install_location}</IxTypography>
 
-        {component.model_file && (
+        {modelUrl && (
           <>
-            <div className="section-title">3D CAD（拖曳旋轉）</div>
-            <ModelViewer url={component.model_file} />
+            <div className="section-title">{visual?.conceptual ? '3D 軟體概念圖' : '3D 元件模型'}</div>
+            <ModelViewer key={modelUrl} url={modelUrl} fallbackUrl={visual?.model} />
           </>
         )}
 

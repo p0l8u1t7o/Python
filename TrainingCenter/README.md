@@ -56,6 +56,35 @@ API 文件：http://127.0.0.1:8001/api/docs
 
 ## 元件照片
 
+前端的設備清單、元件詳細面板、元件字典與知識卡共用 `ComponentImage`：實拍照片優先，缺少或載入失敗時使用本地 CAD 渲染縮圖（標示「3D 示意」）；只有未知類型或縮圖損壞才退回 SVG。軟體元件以螢幕與流程／資料／視覺畫面呈現，標示「概念圖」。圖庫不覆蓋資料庫的照片與來源，也不宣稱是特定品牌型號的原廠模型。
+
+### 本地 3D 圖庫與動畫
+
+`frontend/public/component-visuals/` 隨專案提供 110 組 GLB + 640×480 PNG，透過 `frontend/src/assets/component-visuals.json` 精確對應全部 175 個設備元件與 185 張知識卡（相同零件家族共用資產）。正常啟動不需要另外安裝 CAD 環境或下載圖床圖片。
+
+- 點選設備元件後可拖曳旋轉、縮放、自動旋轉與重設 3D 視角。既有 `model_file` 優先，缺檔時回到內建模型。
+- 列表只載入靜態縮圖；詳細檢視進入可視範圍才建立 Canvas，靜止時按需重繪。
+- 機台動畫提供 0.5×／1×／2×、暫停與重播；暫停不累積模擬時間。AOI 每三件示範一次 NG 剔除，其餘 OK 放行；相機平滑回程。新增 CAD 節點保留原始位置與關節姿態。
+- 機台場景中未建模的元件，使用圖庫模型呈現可點選的小型實體；尺寸為辨識用途，不作機台尺寸量測。
+
+修改模型後重建（需要既有 `cad/.venv`；圖庫生成器對缺漏對應或建置失敗會回傳非零結束碼）：
+
+```powershell
+$env:PYTHONUTF8 = '1'
+cad/.venv/Scripts/python.exe cad/build_visual_library.py
+# 另一個終端先在 frontend 執行 npm run dev
+cd frontend
+# 首次：npx playwright-core install chromium；或指定已安裝 Chromium 的 chrome.exe
+$env:CHROMIUM_PATH = 'C:/Users/grown/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe'
+npm run render:icons
+npm test
+npm run build
+```
+
+`cad/lib/parts.py` 為既有零件庫，`cad/lib/visual_parts.py` 補充手臂分節、軸承、減速機、卡套接頭與軟體概念模型；`cad/build_visual_library.py` 維護 slug／知識卡料號的對應。`frontend/tools/render-components.ts` 使用同一套材質分類、室內環境光與陰影批次渲染，無外部 HDR 相依。新增元件後先新增對應與模型再重建，`npm test` 會檢查所有 seed 的 GLB 與縮圖是否完整。
+
+外觀參考：[SMC CQ2 氣缸](https://www.smcworld.com/webcatalog/en-sg/air-cylinders/compact-air-cylinders/CQ2-CDQ2-Z-E/)、[Siemens S7-1200](https://www.siemens.com/en-us/products/simatic/s7-1200-g2/)、[Basler 工業相機](https://www.baslerweb.com/en/use-cases/helmee-imaging-aoi-high-gloss-car-parts/)、[Festo DHPS 夾爪](https://media.festo.com/media/202808_documentation.pdf)。上述照片僅供外觀研究，圖庫圖片為本專案 CAD 自行渲染。
+
 ### 來源一：Wikimedia Commons（預設，已內建）
 
 每個元件的 seed 都有 `photo_query`，以 `|` 分隔多組、依序嘗試：

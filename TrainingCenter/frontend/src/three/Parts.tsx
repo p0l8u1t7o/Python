@@ -1,12 +1,14 @@
-import { createContext, useContext, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { advanceTime, cyclePosition } from './animationTime';
 
 /** 3D 場景共用狀態：目前選取／滑過的 mesh 名稱與動畫開關。 */
 export interface SceneState {
   selected: string | null;
   hovered: string | null;
   playing: boolean;
+  speed?: number;
   onSelect?: (mesh: string) => void;
   onHover?: (mesh: string | null) => void;
   /** 場景回報目前的動作步驟名稱，由 Viewer 顯示在畫面上。 */
@@ -31,6 +33,7 @@ export interface CycleState {
   /** 這一步內的進度 0..1 */
   p: number;
   name: string;
+  round: number;
 }
 
 /** S 形加減速：起步與停止都平順，用在載台、輸送這類有慣量的運動。 */
@@ -55,28 +58,23 @@ export const seg = (t: number, from: number, to: number) =>
  * 依步驟表推進的循環計時器。回傳 ref（不觸發重繪），場景在自己的 useFrame 裡讀。
  * 步驟名稱改變時透過 SceneCtx.onStep 回報，讓 Viewer 顯示「現在在做什麼」。
  */
+export function useAnimationClock() {
+  const { playing, speed = 1 } = useContext(SceneCtx);
+  const clock = useRef(0);
+  useFrame((_, dt) => { clock.current = advanceTime(clock.current, dt, playing && !document.hidden, speed); });
+  return clock;
+}
+
 export function useCycle(steps: CycleStep[]): React.RefObject<CycleState> {
   const { playing, onStep } = useContext(SceneCtx);
-  const state = useRef<CycleState>({ i: 0, p: 0, name: steps[0]?.name ?? '' });
-  const clock = useRef(0);
-  const total = steps.reduce((s, x) => s + x.dur, 0) || 1;
-
-  useFrame((_, dt) => {
+  const state = useRef<CycleState>({ i: 0, p: 0, name: steps[0]?.name ?? '', round: 0 });
+  const clock = useAnimationClock();
+  useEffect(() => { onStep?.(steps[0]?.name ?? ''); }, [onStep, steps]);
+  useFrame(() => {
     if (!playing) return;
-    clock.current = (clock.current + Math.min(dt, 0.1)) % total;
-    let acc = 0;
-    for (let i = 0; i < steps.length; i++) {
-      if (clock.current < acc + steps[i].dur) {
-        state.current.i = i;
-        state.current.p = (clock.current - acc) / steps[i].dur;
-        if (state.current.name !== steps[i].name) {
-          state.current.name = steps[i].name;
-          onStep?.(steps[i].name);
-        }
-        return;
-      }
-      acc += steps[i].dur;
-    }
+    const next = cyclePosition(clock.current, steps);
+    if (state.current.name !== next.name) onStep?.(next.name);
+    state.current = next;
   });
   return state;
 }
@@ -205,10 +203,11 @@ export function RobotArm({ position, rotation = [0, 0, 0], prefix, phase = 0, co
   const j4 = useRef<THREE.Group>(null);
   const j5 = useRef<THREE.Group>(null);
   const fingers = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
+  const clock = useAnimationClock();
+  useFrame(() => {
     if (!playing) return;
     // 場景給了 pose 就照教好的點位走；否則沿用自由擺動（純展示用）
-    const t = clock.getElapsedTime() + phase;
+    const t = clock.current + phase;
     const p = pose?.() ?? [
       Math.sin(t * 0.6) * 0.8,
       -0.4 + Math.sin(t * 0.8) * 0.35,
@@ -306,11 +305,12 @@ export function BeltConveyor({ position, length = 1.5, width = 0.3, names, carri
   const carrier = useRef<THREE.Group>(null);
   const pulleys = useRef<THREE.Group>(null);
   const travelled = useRef(0);
+  const { speed = 1 } = useContext(SceneCtx);
   useFrame((_, dt) => {
     if (!playing) return;
     // 停線時皮帶與滾輪一起停：現場看到的就是「線停了，帶子也不動」
     if (run && !run()) return;
-    const d = Math.min(dt, 0.1);
+    const d = Math.min(dt, 0.1) * speed;
     travelled.current += d * 0.25;
     if (carrier.current) carrier.current.position.x = (travelled.current % length) - length / 2;
     pulleys.current?.children.forEach((c) => (c.rotation.y += d * 5));
@@ -354,12 +354,12 @@ export function BeltConveyor({ position, length = 1.5, width = 0.3, names, carri
 
 /** 動力滾筒輸送機，沿 X 軸；每根滾筒各自繞軸自轉，含側框、機架與電動滾筒控制卡。 */
 export function RollerConveyor({ position, length = 2, width = 0.4, name, rotationY = 0, run }: { position: Vec3; length?: number; width?: number; name: string; rotationY?: number; run?: () => boolean }) {
-  const { playing } = useContext(SceneCtx);
+  const { playing, speed = 1 } = useContext(SceneCtx);
   const grp = useRef<THREE.Group>(null);
   useFrame((_, dt) => {
     if (!playing || !grp.current) return;
     if (run && !run()) return;   // 累積式輸送：載具停下來時滾筒也停
-    const d = Math.min(dt, 0.1);
+    const d = Math.min(dt, 0.1) * speed;
     grp.current.children.forEach((c) => (c.rotation.y += d * 4)); // cylinder 幾何軸為 Y
   });
   const n = Math.floor(length / 0.08);
@@ -401,18 +401,20 @@ export function Cylinder({
   const { playing } = useContext(SceneCtx);
   const rod = useRef<THREE.Group>(null);
   const actual = useRef(0);
-  useFrame(({ clock }, dt) => {
+  const clock = useAnimationClock();
+  const { speed = 1 } = useContext(SceneCtx);
+  useFrame((_, dt) => {
     if (!playing || !rod.current) return;
     let p: number;
     if (drive) {
       const target = Math.min(1, Math.max(0, drive()));
-      const step = Math.min(dt, 0.1) / travel;
+      const step = Math.min(dt, 0.1) * speed / travel;
       // 活塞不會瞬移：往命令位置逼近，最後一小段用緩衝曲線吃掉衝擊
       actual.current += Math.max(-step, Math.min(step, target - actual.current));
-      p = target > actual.current - 1e-6 ? cushion(actual.current) : actual.current;
-      onPos?.(actual.current);
+      p = cushion(actual.current);
+      onPos?.(p);
     } else {
-      p = Math.sin(clock.getElapsedTime() * 1.5 + phase) * 0.5 + 0.5;
+      p = Math.sin(clock.current * 1.5 + phase) * 0.5 + 0.5;
     }
     rod.current.position.y = p * stroke;
   });
@@ -435,7 +437,8 @@ export function Cylinder({
 export function Fan({ position, rotation, name, r = 0.2 }: { position: Vec3; rotation?: Vec3; name: string; r?: number }) {
   const { playing } = useContext(SceneCtx);
   const g = useRef<THREE.Group>(null);
-  useFrame((_, dt) => { if (playing && g.current) g.current.rotation.z += dt * 8; });
+  const { speed = 1 } = useContext(SceneCtx);
+  useFrame((_, dt) => { if (playing && g.current) g.current.rotation.z += Math.min(dt, 0.1) * speed * 8; });
   return (
     <group position={position} rotation={rotation}>
       <Cyl name={name} r={r * 1.1} h={r * 0.5} rotation={[Math.PI / 2, 0, 0]} color="#222" metalness={0.4} roughness={0.6} />
@@ -460,14 +463,15 @@ export function Fan({ position, rotation, name, r = 0.2 }: { position: Vec3; rot
 export function Blinker({ position, name, color = '#ffb100', r = 0.03, on }: { position: Vec3; name: string; color?: string; r?: number; on?: () => boolean }) {
   const { playing } = useContext(SceneCtx);
   const m = useRef<THREE.MeshStandardMaterial>(null);
-  useFrame(({ clock }) => {
-    if (!m.current) return;
+  const clock = useAnimationClock();
+  useFrame((_, dt) => {
+    if (!m.current || !playing) return;
     if (on) {
       // 訊號燈：ON 時亮起，OFF 時只留下微弱的本體色，方便一眼看出訊號狀態
       const target = on() ? 1.6 : 0.04;
-      m.current.emissiveIntensity += (target - m.current.emissiveIntensity) * 0.35;
+      m.current.emissiveIntensity = THREE.MathUtils.damp(m.current.emissiveIntensity, target, 22, Math.min(dt, 0.1));
     } else if (playing) {
-      m.current.emissiveIntensity = 0.5 + Math.sin(clock.getElapsedTime() * 6) * 0.5;
+      m.current.emissiveIntensity = 0.5 + Math.sin(clock.current * 6) * 0.5;
     }
   });
   const ctx = useContext(SceneCtx);

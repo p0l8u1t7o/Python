@@ -16,6 +16,7 @@ sys.path.insert(0, str(HERE / "lib"))
 from build123d import Unit, export_gltf  # noqa: E402
 
 import parts  # noqa: E402
+from visual_parts import EXTRA_BUILDERS  # noqa: E402
 
 # builder 名稱 → 呼叫方式（無參數即用預設）
 BUILDERS: dict[str, tuple] = {
@@ -117,6 +118,9 @@ BUILDERS: dict[str, tuple] = {
 }
 
 
+BUILDERS.update(EXTRA_BUILDERS)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
@@ -131,7 +135,10 @@ def main():
         try:
             shape = fn(**kw)
             bb = shape.bounding_box()
-            export_gltf(shape, str(out / f"{n}.glb"), unit=Unit.MM, binary=True)
+            # Display meshes: sub-millimetre tessellation retains mounting holes
+            # without hundreds of thousands of triangles in tiny screw heads.
+            export_gltf(shape, str(out / f"{n}.glb"), unit=Unit.MM, binary=True,
+                        linear_deflection=0.15, angular_deflection=0.22)
             print(f"[OK] {n:24s} bbox {bb.size.X:7.1f} x {bb.size.Y:7.1f} x {bb.size.Z:7.1f} mm")
             ok += 1
         except Exception:  # noqa: BLE001
@@ -139,6 +146,8 @@ def main():
             print(f"[ERR] {n}")
             traceback.print_exc(limit=2)
     print(f"done: {ok} ok, {fail} failed")
+    if fail:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

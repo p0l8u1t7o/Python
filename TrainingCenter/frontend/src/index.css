@@ -92,11 +92,29 @@ body { font-family: 'Siemens Sans', 'Noto Sans TC', 'Microsoft JhengHei', system
   width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 4px;
   background: var(--theme-color-3);
 }
-.photo-placeholder {
-  width: 100%; aspect-ratio: 4/3; border-radius: 4px; display: grid; place-items: center;
-  background: repeating-linear-gradient(45deg, var(--theme-color-3) 0 10px, var(--theme-color-2) 10px 20px);
-  color: var(--theme-color-soft-text); font-size: 0.8rem; text-align: center; padding: 1rem;
+.component-image-block { min-width: 0; }
+.component-image { position: relative; overflow: hidden; border-radius: 4px; }
+.component-image > img, .component-image > svg {
+  display: block; width: 100%; height: 100%; object-fit: contain;
 }
+.component-image > svg { background: #0c2030; }
+.component-image-label {
+  position: absolute; right: 3px; bottom: 3px; padding: 1px 4px;
+  border-radius: 3px; background: #0c2030e6; color: #b8d8e8;
+  font-size: 10px; line-height: 1.4; pointer-events: none;
+}
+.component-image-credit { margin-top: 4px; font-size: 0.7rem; color: var(--theme-color-soft-text); }
+.component-image-credit a { color: inherit; }
+.component-image > img { background: #e8edf2; }
+.model-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.model-toolbar button, .viewer-speed {
+  color: var(--theme-color-std-text); background: var(--theme-color-2);
+  border: 1px solid var(--theme-color-soft-bdr); border-radius: 3px; padding: 5px 8px; cursor: pointer;
+}
+.model-toolbar button[aria-pressed="true"] { border-color: var(--theme-color-primary); color: var(--theme-color-primary); }
+.model-toolbar span { font-size: 11px; color: var(--theme-color-soft-text); }
+.model-status { color: #d6e7f0; font-size: 12px; white-space: nowrap; }
+.viewer.is-paused .viewer-step-dot { animation-play-state: paused; }
 .animation-box {
   margin-top: 0.75rem; border-radius: 4px; background: var(--theme-color-1);
   border: 1px solid var(--theme-color-soft-bdr); padding: 0.5rem;

@@ -4,6 +4,8 @@ import { IxCard, IxCardContent, IxContentHeader, IxPill, IxSpinner, IxTabItem, I
 import { api, type Component, type Domain, type Equipment, DOMAIN_COLOR, DOMAIN_LABEL, DOMAINS } from '../api';
 import { Viewer, type HotspotItem } from '../three/Viewer';
 import { ComponentDetail } from '../components/ComponentDetail';
+import { ComponentImage } from '../components/ComponentImage';
+import { componentVisual } from '../componentVisuals';
 
 const GUIDE_ICON: Record<string, string> = { bolt: '⚡', air: '💨', water: '💧', gas: '🔥', lock: '🔒', robot: '🦾' };
 
@@ -130,7 +132,7 @@ export default function EquipmentPage() {
               <div className="component-list">
                 {m.components.map((c) => (
                   <div key={c.id} id={`component-${c.id}`} className={`component-row ${selected?.id === c.id ? 'active' : ''}`} onClick={() => select(c)}>
-                    {c.photo ? <img className="thumb" src={c.photo} alt={c.name} /> : <div className="thumb">待上傳照片</div>}
+                    <ComponentImage item={c} className="thumb" />
                     <div>
                       <div className="title">{c.name}</div>
                       <div className="sub">{c.function}</div>
@@ -139,7 +141,7 @@ export default function EquipmentPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                       {c.category && <IxPill variant="neutral" outline>{c.category}</IxPill>}
                       {c.animation_key && <IxPill variant="info" outline>動畫</IxPill>}
-                      {c.model_file && <IxPill variant="success" outline>3D CAD</IxPill>}
+                      {(c.model_file || componentVisual(c)) && <IxPill variant="success" outline>3D 模型</IxPill>}
                     </div>
                   </div>
                 ))}

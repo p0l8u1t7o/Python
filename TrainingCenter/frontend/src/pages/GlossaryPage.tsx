@@ -3,6 +3,7 @@ import { IxCard, IxCardContent, IxContentHeader, IxInput, IxPill, IxTabItem, IxT
 import { useOutletContext } from 'react-router-dom';
 import { api, type Component, type Domain, type Equipment, type EquipmentSummary, DOMAIN_COLOR, DOMAIN_LABEL, DOMAINS } from '../api';
 import { MechanismAnimation } from '../components/Animations';
+import { ComponentImage } from '../components/ComponentImage';
 
 interface Row extends Component {
   equipmentName: string;
@@ -68,8 +69,8 @@ export default function GlossaryPage() {
         {filtered.map((r) => (
           <IxCard key={r.id}>
             <IxCardContent>
-              <div style={{ display: 'grid', gridTemplateColumns: r.photo ? '72px 1fr' : '1fr', gap: '0.6rem', alignItems: 'start' }}>
-                {r.photo && <img src={r.photo} alt={r.name} style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 4 }} />}
+              <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', gap: '0.6rem', alignItems: 'start' }}>
+                <ComponentImage item={r} style={{ width: 72, height: 72 }} />
                 <div>
                   <IxTypography format="h5">{r.name}</IxTypography>
                   <IxTypography format="body-sm" textColor="soft">

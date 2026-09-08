@@ -16,7 +16,7 @@ const STEPS: CycleStep[] = [
   { name: '擋停 + 頂升定位', dur: 1.3 },
   { name: '掃描取像：XY 平台逐點定位、頻閃取像', dur: 5.0 },
   { name: '判定：影像處理與 OK / NG 判斷', dur: 1.0 },
-  { name: 'NG 剔除：推料氣缸將不良品排出', dur: 1.6 },
+  { name: '分選：OK 等待放行／每三件一件 NG 剔除', dur: 1.6 },
   { name: '降下並放行', dur: 1.4 },
 ];
 
@@ -39,7 +39,8 @@ export function AoiScene() {
   const stopperCmd = () => (cycle.current.i >= 1 && cycle.current.i <= 4 ? 1 : 0);
   const liftCmd = () => (cycle.current.i >= 1 && cycle.current.i <= 4 ? 1 : 0);
   // 這一輪是不是 NG？用循環次數做出「大部分 OK、偶爾 NG」的節奏
-  const rejectCmd = () => (cycle.current.i === 4 ? 1 : 0);
+  const isReject = () => cycle.current.round % 3 === 2;
+  const rejectCmd = () => (cycle.current.i === 4 && isReject() ? 1 : 0);
 
   useFrame(() => {
     if (!playing) return;
@@ -61,9 +62,10 @@ export function AoiScene() {
       gz = from[1] + (to[1] - from[1]) * k;
       // 停穩之後才頻閃：閃一下就過
       if (local > 0.62 && local < 0.78) strobe = 1 - Math.abs(local - 0.7) / 0.08;
-    } else {
-      gx = 0;
-      gz = 0;
+    } else if (i === 3) {
+      // 回程也沿連續曲線移動，不在取像完成時瞬間跳回原點。
+      gx = POINTS[POINTS.length - 1][0] * (1 - ease(p));
+      gz = POINTS[POINTS.length - 1][1] * (1 - ease(p));
     }
     if (xCarriage.current) xCarriage.current.position.x = gx;
     if (yBeam.current) yBeam.current.position.z = gz;
@@ -73,7 +75,8 @@ export function AoiScene() {
     const w = workpiece.current;
     if (w) {
       if (i === 0) w.position.set(-1.4 + ease(p) * 1.4, 0.79 + liftPos.current * 0.04, 0);
-      else if (i === 4) w.position.set(1.0 * ease(p), 0.79 + liftPos.current * 0.04, -ease(p) * 0.5);
+      else if (i === 4 && isReject()) w.position.set(0, 0.79 + liftPos.current * 0.04, -ease(p) * 0.65);
+      else if (i === 5 && isReject()) w.position.set(0, 0.79, -0.65 - ease(p) * 0.5);
       else if (i === 5) w.position.set(ease(p) * 1.5, 0.79 + liftPos.current * 0.04, 0);
       else w.position.set(0, 0.79 + liftPos.current * 0.04, 0);
     }

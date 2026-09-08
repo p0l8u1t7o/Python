@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { IxIcon } from '@siemens/ix-react';
 import { iconInfo, iconLocation, iconWarning } from '@siemens/ix-icons/icons';
 import { Inline } from './Markdown';
+import { ComponentImage } from './ComponentImage';
 import { CATEGORY_COLOR, CATEGORY_LABEL, type KnowledgeCard } from '../training';
 
 /** 一張元件知識卡。點一下展開安裝位置與現場重點。 */
@@ -27,7 +28,7 @@ function Card({ card }: { card: KnowledgeCard }) {
         </span>
         <span className="kcard-cat">{CATEGORY_LABEL[card.category]}</span>
       </div>
-      {card.photo && <img className="kcard-photo" src={card.photo} alt={card.name} loading="lazy" />}
+      <ComponentImage item={card} className="kcard-photo" showCredit={open} />
       <h5>{card.name}</h5>
       <div className="kcard-en">{card.name_en}</div>
       <p className="kcard-fn">
@@ -52,7 +53,6 @@ function Card({ card }: { card: KnowledgeCard }) {
               </span>
             </p>
           )}
-          {card.photo_credit && <div className="kcard-credit">{card.photo_credit}</div>}
         </div>
       )}
     </article>

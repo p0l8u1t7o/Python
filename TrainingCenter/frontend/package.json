@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "render:icons": "node tools/render-component-icons.mjs",
+    "test": "node --test tools/visuals.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
@@ -30,6 +32,7 @@
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
+    "playwright-core": "^1.63.0",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"
   }

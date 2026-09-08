@@ -1,11 +1,12 @@
 import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { ContactShadows, Environment, Grid, Html, Lightformer, OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { IxButton, IxIconButton } from '@siemens/ix-react';
 import { iconPause, iconPlay } from '@siemens/ix-icons/icons';
-import { Box, SceneCtx } from './Parts';
+import { SceneCtx } from './Parts';
+import { DetailedPart } from './DetailedPart';
 import { GltfScene } from './GltfScene';
 import { FuelCellScene } from './scenes/FuelCell';
 import { AoiScene } from './scenes/Aoi';
@@ -59,17 +60,31 @@ function Lighting() {
 function CameraRig({ view, focus }: { view: string; focus: [number, number, number] | null }) {
   const { camera } = useThree();
   const controls = useRef<OrbitControlsImpl>(null);
+  const destination = useRef(new THREE.Vector3(...VIEWS[view].pos));
+  const target = useRef(new THREE.Vector3(0, 0.8, 0));
+  const moving = useRef(true);
   useEffect(() => {
-    camera.position.set(...VIEWS[view].pos);
-    controls.current?.target.set(0, 0.8, 0);
-    controls.current?.update();
+    destination.current.set(...VIEWS[view].pos);
+    target.current.set(0, 0.8, 0);
+    moving.current = true;
   }, [view, camera]);
   useEffect(() => {
     if (!focus || !controls.current) return;
-    controls.current.target.set(...focus);
+    // Preserve the current camera offset when focusing a different component.
+    const offset = camera.position.clone().sub(controls.current.target);
+    target.current.set(...focus);
+    destination.current.copy(target.current).add(offset);
+    moving.current = true;
+  }, [focus, camera]);
+  useFrame((_, dt) => {
+    if (!moving.current || !controls.current) return;
+    const alpha = 1 - Math.exp(-7 * Math.min(dt, 0.1));
+    camera.position.lerp(destination.current, alpha);
+    controls.current.target.lerp(target.current, alpha);
     controls.current.update();
-  }, [focus]);
-  return <OrbitControls ref={controls} makeDefault enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI / 2 - 0.02} minDistance={1.5} maxDistance={15} />;
+    if (camera.position.distanceTo(destination.current) < 0.003) moving.current = false;
+  });
+  return <OrbitControls ref={controls} makeDefault onStart={() => { moving.current = false; }} enableDamping dampingFactor={0.1} maxPolarAngle={Math.PI / 2 - 0.02} minDistance={0.4} maxDistance={15} />;
 }
 
 
@@ -85,7 +100,12 @@ function AutoParts({ hotspots }: { hotspots: HotspotItem[] }) {
   useEffect(() => {
     const t = setTimeout(() => {
       const names = new Set<string>();
-      scene.traverse((o) => { if (o.name) names.add(o.name); });
+      scene.traverse((o) => {
+        // Do not count the auto-added meshes themselves on subsequent renders.
+        let parent: THREE.Object3D | null = o;
+        while (parent) { if (parent.userData.autoPart) return; parent = parent.parent; }
+        if (o.name) names.add(o.name);
+      });
       const seen = new Set<string>();
       setMissing(
         hotspots.filter((h) => {
@@ -100,16 +120,8 @@ function AutoParts({ hotspots }: { hotspots: HotspotItem[] }) {
   }, [hotspots, scene]);
   return (
     <>
-      {missing.map(({ component: c, domain }) => (
-        <Box
-          key={c.mesh_name}
-          name={c.mesh_name}
-          size={[0.08, 0.06, 0.06]}
-          position={c.pos}
-          color={domain === 'utility' ? '#d4a017' : '#7d8790'}
-          metalness={0.8}
-          roughness={0.3}
-        />
+      {missing.map(({ component: c }) => (
+        <DetailedPart key={c.mesh_name} component={c} />
       ))}
     </>
   );
@@ -144,7 +156,9 @@ interface ViewerProps {
 /** 設備 3D 檢視器：軌道旋轉、預設視角、滑鼠指到零件高亮並顯示名稱、點擊選取、動畫播放。 */
 export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, onSelect }: ViewerProps) {
   const [view, setView] = useState('iso');
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [speed, setSpeed] = useState(1);
+  const [restart, setRestart] = useState(0);
   // 目前的動作步驟（由場景的 useCycle 回報），讓學員看得懂機台正在做什麼
   const [step, setStep] = useState('');
   const [hovered, setHovered] = useState<string | null>(null);
@@ -165,14 +179,18 @@ export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, 
   };
 
   return (
-    <div className="viewer">
+    <div className={`viewer${playing ? '' : ' is-paused'}`}>
       <div className="viewer-toolbar">
         {Object.entries(VIEWS).map(([k, v]) => (
           <IxButton key={k} variant={view === k ? 'primary' : 'subtle-secondary'} onClick={() => setView(k)}>
             {v.label}
           </IxButton>
         ))}
-        <IxIconButton size="24" variant="subtle-secondary" icon={playing ? iconPause : iconPlay} onClick={() => setPlaying((p) => !p)} />
+        <IxIconButton size="24" variant="subtle-secondary" aria-label={playing ? '暫停動畫' : '播放動畫'} title={playing ? '暫停動畫' : '播放動畫'} icon={playing ? iconPause : iconPlay} onClick={() => setPlaying((p) => !p)} />
+        <select className="viewer-speed" aria-label="動畫速度" value={speed} onChange={e => setSpeed(Number(e.target.value))}>
+          <option value={0.5}>0.5× 慢速</option><option value={1}>1× 正常</option><option value={2}>2× 快速</option>
+        </select>
+        <IxButton variant="subtle-secondary" onClick={() => { setRestart(n => n + 1); setStep(''); }}>重播</IxButton>
       </div>
       {step && (
         <div className="viewer-step">
@@ -183,7 +201,7 @@ export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, 
       <div className="viewer-legend">拖曳旋轉 · 滾輪縮放 · 右鍵平移 · 滑鼠移到零件上會高亮並顯示名稱，點擊查看說明</div>
       <Canvas
         shadows
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         camera={{ fov: 45, position: VIEWS.iso.pos }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
         onPointerMissed={() => setHovered(null)}
@@ -191,7 +209,7 @@ export function Viewer({ sceneKey, modelFile, hotspots, activeDomain, selected, 
         <color attach="background" args={['#1f242b']} />
         <fog attach="fog" args={['#1f242b', 12, 30]} />
         <Lighting />
-        <SceneCtx.Provider value={{ selected: selected?.mesh_name ?? null, hovered, playing, onSelect: selectByMesh, onHover: setHovered, onStep: setStep }}>
+        <SceneCtx.Provider key={`${sceneKey}-${restart}`} value={{ selected: selected?.mesh_name ?? null, hovered, playing, speed, onSelect: selectByMesh, onHover: setHovered, onStep: setStep }}>
           <Suspense fallback={null}>
             {modelFile ? (
               /* text-to-cad 整機 glb：節點名稱即 mesh_name，所有元件都有實體，不需 AutoParts */

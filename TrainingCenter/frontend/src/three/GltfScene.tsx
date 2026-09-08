@@ -2,7 +2,9 @@ import { useContext, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { SceneCtx } from './Parts';
+import { SceneCtx, useAnimationClock } from './Parts';
+import { disposeModelMaterials, prepareModel } from './modelMaterials';
+import { rotateAroundPivot, translateAlongAxis } from './modelAnimation';
 
 /**
  * 載入 text-to-cad（cadgen）匯出的設備 glb，並提供與程序化場景相同的互動：
@@ -11,7 +13,7 @@ import { SceneCtx } from './Parts';
  */
 
 type Kind = 'rev' | 'spin' | 'rod' | 'carrier' | 'blink';
-interface Anim { node: THREE.Object3D; kind: Kind; pivot: THREE.Vector3; axis: THREE.Vector3; phase: number; range: number }
+interface Anim { node: THREE.Object3D; kind: Kind; pivot: THREE.Vector3; axis: THREE.Vector3; phase: number; range: number; position: THREE.Vector3; rotation: THREE.Quaternion }
 
 const HIGHLIGHT = new THREE.Color('#00cccc');
 const HOVER = new THREE.Color('#ffb100');
@@ -23,7 +25,10 @@ function hashPhase(s: string) {
 }
 
 export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<string> }) {
-  const { scene } = useGLTF(url);
+  const { scene: source } = useGLTF(url);
+  const scene = useMemo(() => prepareModel(source), [source]);
+  useEffect(() => () => disposeModelMaterials(scene), [scene]);
+  const clock = useAnimationClock();
   const ctx = useContext(SceneCtx);
   const highlighted = useRef<string | null>(null);
   const hoveredRef = useRef<string | null>(null);
@@ -32,22 +37,6 @@ export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<st
   const anims = useMemo<Anim[]>(() => {
     const list: Anim[] = [];
     scene.updateMatrixWorld(true);
-    scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) {
-        m.castShadow = true;
-        m.receiveShadow = true;
-        if (Array.isArray(m.material)) m.material = m.material.map((mm) => mm.clone());
-        else m.material = (m.material as THREE.Material).clone();
-        const mat = m.material as THREE.MeshStandardMaterial;
-        if (mat.isMeshStandardMaterial) {
-          mat.metalness = Math.max(mat.metalness, 0.35);
-          mat.roughness = Math.min(mat.roughness, 0.55);
-          mat.envMapIntensity = 1.1;
-          if (mat.opacity < 1) mat.transparent = true;
-        }
-      }
-    });
     scene.traverse((node) => {
       const animChild = node.children.find((c) => c.name.startsWith('_anim_'));
       if (!animChild) return;
@@ -63,7 +52,7 @@ export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<st
       node.parent?.worldToLocal(pivot);
       node.parent?.worldToLocal(axisPt);
       const axis = axisPt.clone().sub(pivot).normalize();
-      list.push({ node, kind, pivot, axis, phase: hashPhase(node.name), range: kind === 'rev' ? 0.35 : 0.02 });
+      list.push({ node, kind, pivot, axis, phase: hashPhase(node.name), range: kind === 'rev' ? 0.35 : 0.02, position: node.position.clone(), rotation: node.quaternion.clone() });
     });
     // 隱藏所有基準點
     scene.traverse((o) => { if (o.name.startsWith('_pivot') || o.name.startsWith('_axis') || o.name.startsWith('_anim_')) o.visible = false; });
@@ -77,7 +66,7 @@ export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<st
       if (knownNames.has(o.name)) {
         const meshes: THREE.Mesh[] = [];
         o.traverse((c) => { if ((c as THREE.Mesh).isMesh) meshes.push(c as THREE.Mesh); });
-        map.set(o.name, meshes);
+        map.set(o.name, [...(map.get(o.name) ?? []), ...meshes]);
       }
     });
     return map;
@@ -86,10 +75,12 @@ export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<st
   const setEmissive = (name: string | null, color: THREE.Color | null, intensity: number) => {
     if (!name) return;
     groups.get(name)?.forEach((m) => {
-      const mat = m.material as THREE.MeshStandardMaterial;
-      if (!mat.isMeshStandardMaterial) return;
-      mat.emissive.copy(color ?? new THREE.Color(0, 0, 0));
-      mat.emissiveIntensity = intensity;
+      for (const material of Array.isArray(m.material) ? m.material : [m.material]) {
+        const mat = material as THREE.MeshStandardMaterial;
+        if (!mat.isMeshStandardMaterial) continue;
+        mat.emissive.copy(color ?? new THREE.Color(0, 0, 0));
+        mat.emissiveIntensity = intensity;
+      }
     });
   };
 
@@ -110,27 +101,31 @@ export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<st
   }, [ctx.hovered, ctx.selected, groups]);
 
   const q = useMemo(() => new THREE.Quaternion(), []);
-  useFrame(({ clock }) => {
+  useFrame(() => {
     if (!ctx.playing) return;
-    const t = clock.getElapsedTime();
+    const t = clock.current;
     for (const a of anims) {
       if (a.kind === 'rev' || a.kind === 'spin') {
-        const ang = a.kind === 'rev' ? Math.sin(t * 0.8 + a.phase) * a.range : (t * 6 + a.phase) % (Math.PI * 2);
+        const ang = a.kind === 'rev' ? (Math.sin(t * 0.8 + a.phase) - Math.sin(a.phase)) * a.range : (t * 6) % (Math.PI * 2);
         q.setFromAxisAngle(a.axis, ang);
-        a.node.quaternion.copy(q);
-        // 繞樞軸旋轉：position = pivot - R*pivot
-        a.node.position.copy(a.pivot).sub(a.pivot.clone().applyQuaternion(q));
+        rotateAroundPivot(a.node, a.position, a.rotation, a.pivot, q);
       } else if (a.kind === 'rod') {
-        const s = (Math.sin(t * 1.5 + a.phase) * 0.5 + 0.5) * 0.03; // 30 mm 行程
-        a.node.position.copy(a.axis).multiplyScalar(s);
+        const s = (1 - Math.cos(t * 1.5)) * 0.015; // 30 mm 行程，零位起動
+        translateAlongAxis(a.node, a.position, a.axis, s);
       } else if (a.kind === 'carrier') {
         const L = 1.2;
-        const s = ((t * 0.25 + a.phase) % L) - L / 2;
-        a.node.position.copy(a.axis).multiplyScalar(s);
+        const s = Math.sin(t * 0.5) * L / 2;
+        translateAlongAxis(a.node, a.position, a.axis, s);
       } else if (a.kind === 'blink') {
         a.node.traverse((o) => {
-          const mat = (o as THREE.Mesh).material as THREE.MeshStandardMaterial;
-          if (mat?.isMeshStandardMaterial) { mat.emissive.set(mat.color); mat.emissiveIntensity = 0.5 + Math.sin(t * 6 + a.phase) * 0.5; }
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          // Selection highlighting takes precedence over status-light animation.
+          if (groups.get(ctx.selected ?? '')?.includes(mesh) || groups.get(ctx.hovered ?? '')?.includes(mesh)) return;
+          for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+            const mat = material as THREE.MeshStandardMaterial;
+            if (mat.isMeshStandardMaterial) { mat.emissive.copy(mat.color); mat.emissiveIntensity = 0.5 + Math.sin(t * 6 + a.phase) * 0.5; }
+          }
         });
       }
     }
@@ -148,6 +143,7 @@ export function GltfScene({ url, knownNames }: { url: string; knownNames: Set<st
   return (
     <primitive
       object={scene}
+      dispose={null}
       onClick={(e: { stopPropagation: () => void; object: THREE.Object3D }) => { e.stopPropagation(); const n = findName(e.object); if (n) ctx.onSelect?.(n); }}
       onPointerMove={(e: { stopPropagation: () => void; object: THREE.Object3D }) => { e.stopPropagation(); const n = findName(e.object); if (n !== hoveredRef.current) ctx.onHover?.(n); document.body.style.cursor = n ? 'pointer' : 'auto'; }}
       /* 跨 mesh 移動會先 out 再 move；同一幀內 React 批次更新，不會閃爍 */

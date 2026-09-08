@@ -54,7 +54,8 @@ export function RobotCellScene() {
     if (i === 1) return p < 0.55 ? R1_PICK : lerpPose(R1_PICK, R1_PICK_CLOSED, ease((p - 0.55) / 0.45));
     if (i === 2) return p < 0.75 ? lerpPose(R1_PICK_CLOSED, R1_PLACE, ease(p / 0.75))
       : lerpPose(R1_PLACE, R1_PLACE_OPEN, ease((p - 0.75) / 0.25));
-    return lerpPose(R1_PLACE_OPEN, R1_HOME, ease(Math.min(1, cycle.current.p * 2)));
+    if (i === 3) return lerpPose(R1_PLACE_OPEN, R1_HOME, ease(Math.min(1, p * 2)));
+    return R1_HOME;
   };
 
   const r2Pose = (): Pose => {
@@ -63,7 +64,8 @@ export function RobotCellScene() {
     // 下壓 → 鎖付（末端軸持續旋轉）→ 退回
     const k = p < 0.3 ? ease(p / 0.3) : p < 0.75 ? 1 : 1 - ease((p - 0.75) / 0.25);
     const pose = lerpPose(R2_HOME, R2_WORK, k);
-    if (p >= 0.3 && p < 0.75) pose[3] = (p - 0.3) * 40;    // J4 轉動＝起子在鎖
+    // 整數圈數收尾，避免退出鎖付階段時腕軸角度突跳。
+    if (p >= 0.3 && p < 0.75) pose[3] = ease((p - 0.3) / 0.45) * Math.PI * 4;
     return pose;
   };
 
