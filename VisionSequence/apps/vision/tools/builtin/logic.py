@@ -334,4 +334,140 @@ class VariableSetTool(Tool):
 
 _MISSING = object()
 
-TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool(), VariableGetTool(), VariableSetTool()]
+class ParseMessageTool(Tool):
+    key = "parse_message"
+    label = "Split a message"
+    description = (
+        "Splits one piece of text into named values: a barcode payload like LOT12345|2026-09-08|A7, a line read by OCR, "
+        "or a message the host sent with the trigger. Each field becomes a named output, so a later step can judge it, "
+        "compare it or send it back."
+    )
+    category = "logic"
+    icon = "SplitSquareHorizontal"
+    params = [
+        Param("mode", "How it is laid out", kind="select", default="delimiter", options=[
+            {"value": "delimiter", "label": "Fields separated by a character"},
+            {"value": "regex", "label": "A pattern (regular expression)"},
+            {"value": "fixed", "label": "Fixed byte positions"},
+        ]),
+        Param("separator", "Separator", kind="text", default=",", teach=True,
+              visible_when={"param": "mode", "in": ["delimiter"]},
+              help_text="One or more characters. Type \\t for a tab."),
+        Param("pattern", "Pattern", kind="text", default="", teach=True,
+              visible_when={"param": "mode", "in": ["regex"]},
+              help_text=r"For example LOT(?P<lot>\d+)\s+(?P<qty>\d+). Named groups fill the field of the same name; otherwise the groups fill the fields in order."),
+        Param(
+            "fields", "Fields", kind="multiline", required=True, default="lot\ndate\nslot:int",
+            teach=True,
+            help_text=(
+                "One field per line, in order. Just a name takes the next piece as text; add a type with a colon "
+                "(name:int, name:float, name:bool, name:hex). Take a piece out of order with its position, counting from 0 "
+                "(name:int:3). For fixed byte positions give the byte range instead (name:int:0-1) and, when the equipment "
+                "sends them the other way round, the byte order (name:float:2-5:DCBA). Multiply a number with *0.01 when the "
+                "equipment sends 1234 for 12.34."
+            ),
+        ),
+        Param("publish", "Add to the reply", kind="boolean", default=True,
+              help_text="Each field also becomes a named output, so the HTTP and TCP replies carry it."),
+        Param("prefix", "Name prefix", kind="text", default="", group="Advanced",
+              help_text="Put in front of every field name in the reply, to keep two messages apart."),
+        Param("on_missing", "When a field has no value", kind="select", default="pass", options=[
+            {"value": "pass", "label": "Leave it empty and carry on"},
+            {"value": "fail", "label": "Fail the step"},
+        ], group="Advanced"),
+    ]
+    inputs = [Port("text", "Text", "any")]
+    outputs = [
+        flow_out("matched", "Matched", tone="ok"),
+        flow_out("not_matched", "Not matched", tone="warn"),
+        Port("fields", "Fields", "list"),
+        Port("count", "Fields found", "number"),
+        Port("first", "First field", "any"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        from apps.comm import protocol
+
+        payload = ctx.inputs.get("text")
+        if payload is None:
+            raise ToolError("Connect the text to split (a barcode, an OCR reading or a value)")
+        lines = [ln.strip() for ln in str(ctx.param("fields", "") or "").splitlines() if ln.strip()]
+        if not lines:
+            raise ToolError("List the fields, one per line, for example lot or slot:int")
+        mode = str(ctx.param("mode", "delimiter"))
+        try:
+            spec = protocol.Spec(
+                mode=mode,
+                fields=[_field_from_line(ln, i) for i, ln in enumerate(lines)],
+                separator=str(ctx.param("separator", ",")),
+                pattern=str(ctx.param("pattern", "")),
+            )
+            values = protocol.parse(spec, payload)
+        except protocol.ProtocolError as exc:
+            raise ToolError(str(exc)) from None
+        found = {k: v for k, v in values.items() if v is not None}
+        prefix = str(ctx.param("prefix", "") or "")
+        if ctx.flag("publish", True):
+            outputs = dict(ctx.context.get("_outputs") or {})
+            for k, v in values.items():
+                outputs[f"{prefix}{k}"] = v
+            context = {"_outputs": outputs}
+        else:
+            context = {}
+        ok = len(found) == len(values)
+        if not ok and str(ctx.param("on_missing", "pass")) == "fail":
+            status = "ng"
+        else:
+            status = "ok"
+        items = [{"name": k, "value": v} for k, v in values.items()]
+        first = next(iter(values.values()), None)
+        summary = "、".join(f"{k}={v}" for k, v in list(values.items())[:4]) or "(none)"
+        return Result(
+            status=status,
+            outputs={"fields": items, "count": len(found), "first": first, **values},
+            branch="matched" if ok else "not_matched",
+            context=context,
+            message=f"{len(found)}/{len(values)}: {summary}"[:200],
+        )
+
+
+def _field_from_line(line: str, order: int) -> Any:
+    """一行欄位設定 → protocol.Field。語法：name[:type][:位置或位元組範圍][:位元組順序][*倍率]
+
+    `lot`、`slot:int`、`qty:int:3`（第 3 段）、`w:float:2-5:DCBA`（位元組 2~5，小端）、`w:int:0-1*0.01`。
+    """
+    from apps.comm import protocol
+
+    text, scale = line, 1.0
+    if "*" in text:
+        text, _, raw = text.partition("*")
+        try:
+            scale = float(raw)
+        except ValueError:
+            raise ToolError(f"'{line}': the multiplier after * is not a number") from None
+    parts = [p.strip() for p in text.split(":")]
+    name = parts[0]
+    kind = parts[1].lower() if len(parts) > 1 and parts[1] else "string"
+    where = parts[2] if len(parts) > 2 and parts[2] else ""
+    byte_order = parts[3].upper() if len(parts) > 3 and parts[3] else "ABCD"
+    index = start = end = None
+    if "-" in where:
+        a, _, b = where.partition("-")
+        try:
+            start, end = int(a), int(b)
+        except ValueError:
+            raise ToolError(f"'{line}': the byte range should look like 0-3") from None
+    elif where:
+        try:
+            index = int(where)
+        except ValueError:
+            raise ToolError(f"'{line}': the position should be a number counting from 0") from None
+    else:
+        index = order
+    try:
+        return protocol.Field(name=name, type=kind, index=index, start=start, end=end, order=byte_order, scale=scale)
+    except protocol.ProtocolError as exc:
+        raise ToolError(f"'{line}': {exc}") from None
+
+
+TOOLS = [CompareNumberTool(), CompareRangeTool(), BoolLogicTool(), FormulaTool(), CounterTool(), VariableGetTool(), VariableSetTool(), ParseMessageTool()]

@@ -1465,6 +1465,61 @@ class AlgorithmAccuracyTests(SimpleTestCase):
         self.assertFalse(run_tool("color_check", red, {"color": "#00ff00", "space": "hsv", "tolerance": 10}).outputs["is_match"])
 
 
+class ParseMessageToolTests(SimpleTestCase):
+    """把一段文字拆成具名值：條碼 payload、OCR 讀到的一行、上位機送來的訊息。"""
+
+    def _run(self, text, **params):
+        params.setdefault("fields", "lot\ndate\nslot:int")
+        return run_tool("parse_message", None, params, inputs={"text": text})
+
+    def test_splits_a_barcode_payload_into_named_outputs(self):
+        r = self._run("LOT12345|2026-09-08|7", separator="|")
+        self.assertEqual((r.status, r.branch), ("ok", "matched"))
+        self.assertEqual(r.outputs["lot"], "LOT12345")
+        self.assertEqual(r.outputs["slot"], 7)
+        self.assertEqual(r.outputs["count"], 3)
+        self.assertEqual(r.outputs["first"], "LOT12345")
+        self.assertEqual([f["name"] for f in r.outputs["fields"]], ["lot", "date", "slot"])
+        # 每個欄位也進具名輸出，回覆才帶得回去
+        self.assertEqual(r.context["_outputs"]["slot"], 7)
+
+    def test_missing_fields_take_the_not_matched_branch(self):
+        r = self._run("LOT9", separator="|")
+        self.assertEqual((r.status, r.branch), ("ok", "not_matched"))
+        self.assertIsNone(r.outputs["date"])
+        self.assertEqual(r.outputs["count"], 1)
+        # 要當成失敗才設 on_missing=fail
+        self.assertEqual(self._run("LOT9", separator="|", on_missing="fail").status, "ng")
+
+    def test_field_line_syntax(self):
+        # 位置、倍率、位元組範圍與位元組順序
+        r = run_tool("parse_message", None, {"fields": "qty:int:2"}, inputs={"text": "a,b,42"})
+        self.assertEqual(r.outputs["qty"], 42)
+        r = run_tool("parse_message", None, {"fields": "w:float*0.01"}, inputs={"text": "1234"})
+        self.assertEqual(r.outputs["w"], 12.34)
+        r = run_tool("parse_message", None, {"mode": "fixed", "fields": "id:int:0-1\ntag:string:2-3"},
+                     inputs={"text": b"\x01\x02AB"})
+        self.assertEqual((r.outputs["id"], r.outputs["tag"]), (258, "AB"))
+        r = run_tool("parse_message", None, {"mode": "fixed", "fields": "n:int:0-1:DCBA"}, inputs={"text": b"\x02\x01"})
+        self.assertEqual(r.outputs["n"], 258)
+
+    def test_prefix_and_publish_off(self):
+        r = self._run("A|B|1", separator="|", prefix="in_")
+        self.assertIn("in_lot", r.context["_outputs"])
+        self.assertNotIn("lot", r.context["_outputs"])
+        self.assertEqual(self._run("A|B|1", separator="|", publish=False).context, {})
+
+    def test_bad_settings_say_what_to_fix(self):
+        with self.assertRaisesMessage(ToolError, "List the fields"):
+            run_tool("parse_message", None, {"fields": "  "}, inputs={"text": "x"})
+        with self.assertRaisesMessage(ToolError, "Connect the text"):
+            run_tool("parse_message", None, {}, inputs={})
+        with self.assertRaisesMessage(ToolError, "multiplier"):
+            run_tool("parse_message", None, {"fields": "a*zz"}, inputs={"text": "1"})
+        with self.assertRaisesMessage(ToolError, "byte range"):
+            run_tool("parse_message", None, {"mode": "fixed", "fields": "a:int:x-y"}, inputs={"text": b"ab"})
+
+
 class CaliperSeriesTests(SimpleTestCase):
     """通用卡尺序列（locate.caliper_series）：沿直線／圓弧等距佈卡尺，單邊或邊緣對，回全圖座標。
     這是幾何查找家族與邊緣缺陷家族共用的原語，所以直接對它測精度與慣例。"""

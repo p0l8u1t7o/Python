@@ -215,6 +215,14 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 （數字是數字、true/false 是布林）。試執行與批次測試在沙箱裡，不會動到產線的值。整合端用 `GET/PUT /flows/{id}/variables`
 或 TCP `VARS`／`SET` 讀寫。要「跟上一片比」就把影像存進變數（只留記憶體）。
 
+## parse_message
+`format_text` 的反向：把一段文字或位元組拆成具名值。輸入 `text` 接條碼的 `text`、文字辨識的 `text`，或觸發帶進來的字串。
+`mode` 三種——`delimiter`（`separator` 分段，最常用）、`regex`（`pattern` 的具名群組填同名欄位，否則依序填）、
+`fixed`（設備送定長二進位時用位元組範圍）。`fields` 一行一個欄位：`lot`／`slot:int`／`qty:int:3`（第 3 段，0 起算）／
+`w:float:2-5:DCBA`（位元組 2~5，位元組順序相反）／`w:int*0.01`（設備送 1234 代表 12.34）。
+每個欄位都進具名輸出（`publish`），所以後面可以直接 `compare_number`／`ocv_verify` 判斷，或 `format_text` 取 `{lot}` 回送。
+欄位取不到值走 `not_matched` 分支（缺值是 None，不會讓流程失敗）；要當成不合格才把 `on_missing` 設成 fail。
+
 ## format_text
 把結果排成一行文字給讀不了 JSON 的設備：`template` 用 `{名字}` 取值（judge、先前的具名輸出、觸發帶進來的引數如 lot／sn、
 本節點輸入 a~d，另有 run_id／station），`{width:.2f}` 控制小數，`\\r\\n` 會變成真的控制字元；`ending` 補行尾、`name` 決定

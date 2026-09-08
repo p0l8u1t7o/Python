@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：94 個內建工具（8 類）、229 個 API 端點、31 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：95 個內建工具（8 類）、229 個 API 端點、31 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -153,7 +153,7 @@
 - 「只跑到這裡」＝既有的 preview `until_node`（`graph.restrict_to` 只留該節點與上游）從右鍵選單觸發；引擎鎖定時不顯示。
 - 統計頁封存影像「在編輯器用這張重跑」＝把 ref 寫進 `flowDraft` 的 scratch，preview 的 `reuse_image_ref` 找不到快取時回頭讀封存。
 
-### 格式化回覆（format_text 工具、TCP `fmt=`、HTTP `format=`）
+### 格式化回覆與拆解訊息（format_text／parse_message 工具、apps/comm/protocol.py）
 - 舊 PLC 與上位機解析不了 JSON。`format_text`（output 類）用樣板組一行文字：`{名字}` 取值的來源依序是
   具名輸出 → 觸發帶進來的引數（lot／sn）→ 本節點輸入 a~d，另有 `run_id`／`station`；支援 `{width:.2f}` 這種格式規格；
   使用者在欄位裡打的 `
@@ -162,6 +162,12 @@
 - 設備端要純文字就 `RUN <flow> fmt=<name>`（TCP，回應不再包 JSON——`handle_command` 回 `{"_raw": ...}`，`_Handler` 原樣送出）
   或 HTTP `{"format": "<name>"}`（回 `text/plain`）。沒有那個具名輸出時**仍回 JSON 錯誤** `no_such_output` 並列出有哪些名字，
   設備才診斷得出是自己設錯。要主動推出去就把 `text` 接到 `write_modbus` 指向 `tcp_client` 連線。
+- **反向是 `parse_message`**（logic 類）：設備送進來的一段文字／位元組拆成具名值（條碼 payload、文字辨識的一行、觸發引數）。
+  解析規則在 `apps/comm/protocol.py`（純函式、零 Django 依賴，之後連線上的接收規則共用）：`Spec(mode, fields, separator, pattern)`
+  三種 `mode`＝delimiter／regex／fixed，`Field(name, type, index, start, end, order, scale)`，位元組順序沿用 Modbus 的
+  `ABCD／BADC／CDAB／DCBA`。**取不到值一律回 None 不丟例外**（設備偶爾送半行，不能讓產線停），只有設定本身壞掉才 `ProtocolError`。
+  工具的欄位語法是一行一個 `name[:type][:位置或位元組範圍][:位元組順序][*倍率]`（`_field_from_line`），每個欄位都進具名輸出，
+  缺值走 `not_matched` 分支。
 
 ### 這一站的摘要（apps/vision/summary.py）
 - `GET /vision/summary` 回這一站的良率摘要（station_id、版本、鎖定、每條流程今日 OK/NG/良率）；數字讀**每小時彙總** `FlowRunHourly`，與統計頁同一份。

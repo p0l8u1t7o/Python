@@ -19,7 +19,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from pymodbus.client import ModbusTcpClient
 
-from apps.comm import triggers, writers
+from apps.comm import protocol, triggers, writers
 from apps.vision import trace
 from apps.comm.models import Connection
 from apps.comm.writers import CommError, ModbusTcpWriter, TcpClientWriter, parse_address
@@ -315,6 +315,78 @@ class TriggerConfigTests(SimpleTestCase):
         self.assertEqual(bad["interval_ms"], triggers.DEFAULT_INTERVAL_MS)
         nz = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_mode": "NONZERO", "trigger_clear": False})
         self.assertEqual((nz["mode"], nz["clear"]), ("nonzero", False))
+
+
+class ProtocolTests(SimpleTestCase):
+    """把設備送來的一段文字／位元組拆成具名欄位，以及組回去（apps/comm/protocol.py）。
+    流程裡的 parse_message 工具與之後連線上的接收規則都走這一套，所以直接對純函式測。"""
+
+    def test_delimiter_takes_fields_in_order_and_by_position(self):
+        spec = {"mode": "delimiter", "separator": "|", "fields": [
+            {"name": "lot"}, {"name": "date"}, {"name": "slot", "type": "int"}]}
+        self.assertEqual(protocol.parse(spec, "LOT12345|2026-09-08|7"),
+                         {"lot": "LOT12345", "date": "2026-09-08", "slot": 7})
+        # 少了幾段：缺的是 None，不丟例外（設備偶爾送半行，不該讓整條流程炸掉）
+        self.assertEqual(protocol.parse(spec, "LOT9"), {"lot": "LOT9", "date": None, "slot": None})
+        # 指定位置就不照順序（0 起）
+        out = protocol.parse({"mode": "delimiter", "fields": [{"name": "qty", "type": "int", "index": 2}]}, "a,b,42")
+        self.assertEqual(out, {"qty": 42})
+        # 分隔字元可以寫成跳脫字
+        self.assertEqual(protocol.parse({"mode": "delimiter", "separator": "\\t", "fields": [{"name": "a"}, {"name": "b"}]}, "x\ty"),
+                         {"a": "x", "b": "y"})
+
+    def test_types_scale_and_unparsable_values(self):
+        spec = {"mode": "delimiter", "fields": [
+            {"name": "n", "type": "int"}, {"name": "w", "type": "float", "scale": 0.01},
+            {"name": "ok", "type": "bool"}, {"name": "bad", "type": "int"}]}
+        self.assertEqual(protocol.parse(spec, "42,1234,OK,abc"),
+                         {"n": 42, "w": 12.34, "ok": True, "bad": None})
+        self.assertIs(protocol.parse(spec, "42,1234,NG,1")["ok"], False)
+        # default 只在取不到值時用
+        self.assertEqual(protocol.parse({"mode": "delimiter", "fields": [{"name": "a"}, {"name": "b", "default": "-"}]}, "x"),
+                         {"a": "x", "b": "-"})
+
+    def test_regex_uses_named_groups_then_order(self):
+        spec = {"mode": "regex", "pattern": r"LOT(?P<lot>\d+)\s+(?P<qty>\d+)",
+                "fields": [{"name": "qty", "type": "int"}, {"name": "lot"}]}
+        self.assertEqual(protocol.parse(spec, "HDR LOT4471 250 END"), {"qty": 250, "lot": "4471"})
+        self.assertEqual(protocol.parse(spec, "nothing here"), {"qty": None, "lot": None})
+        by_order = {"mode": "regex", "pattern": r"(\w+)-(\d+)", "fields": [{"name": "a"}, {"name": "b", "type": "int"}]}
+        self.assertEqual(protocol.parse(by_order, "AB-7"), {"a": "AB", "b": 7})
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.parse({"mode": "regex", "pattern": "(", "fields": [{"name": "a"}]}, "x")
+
+    def test_fixed_bytes_round_trip_in_every_byte_order(self):
+        for order in protocol.BYTE_ORDERS:
+            spec = {"mode": "fixed", "fields": [
+                {"name": "id", "type": "int", "start": 0, "end": 1, "order": order},
+                {"name": "w", "type": "float", "start": 2, "end": 5, "order": order},
+                {"name": "tag", "type": "string", "start": 6, "end": 9}]}
+            raw = protocol.pack(spec, {"id": 258, "w": 12.5, "tag": "AB"})
+            self.assertEqual(len(raw), 10)
+            self.assertEqual(protocol.parse(spec, raw), {"id": 258, "w": 12.5, "tag": "AB"})
+        # 大端與小端真的不一樣
+        big = protocol.pack({"mode": "fixed", "fields": [{"name": "n", "type": "int", "start": 0, "end": 1}]}, {"n": 258})
+        little = protocol.pack({"mode": "fixed", "fields": [{"name": "n", "type": "int", "start": 0, "end": 1, "order": "DCBA"}]}, {"n": 258})
+        self.assertEqual((big.hex(), little.hex()), ("0102", "0201"))
+        # 短了就取不到值（不是例外）
+        self.assertIsNone(protocol.parse({"mode": "fixed", "fields": [{"name": "n", "type": "int", "start": 4, "end": 7}]}, b"ab")["n"])
+
+    def test_bad_specifications_are_rejected_up_front(self):
+        for bad in ({"mode": "nope", "fields": [{"name": "a"}]},
+                    {"mode": "delimiter", "fields": []},
+                    {"mode": "delimiter", "fields": [{"name": ""}]},
+                    {"mode": "delimiter", "fields": [{"name": "a"}, {"name": "a"}]},
+                    {"mode": "delimiter", "fields": [{"name": "a", "type": "nope"}]},
+                    {"mode": "fixed", "fields": [{"name": "a", "start": 5, "end": 2}]},
+                    {"mode": "fixed", "fields": [{"name": "a"}]},
+                    {"mode": "regex", "fields": [{"name": "a"}]}):
+            with self.assertRaises(protocol.ProtocolError, msg=bad):
+                protocol.spec_from(bad)
+
+    def test_pack_text_joins_in_field_order(self):
+        spec = {"mode": "delimiter", "separator": ",", "fields": [{"name": "judge"}, {"name": "w"}, {"name": "lot"}]}
+        self.assertEqual(protocol.pack(spec, {"judge": "OK", "w": 12.34, "lot": None}), "OK,12.34,")
 
 
 class TriggerLoopTests(SimpleTestCase):

@@ -424,6 +424,23 @@ export default {
     },
     ports: { value: "值", previous: "先前的值" },
   },
+  parse_message: {
+    label: "拆解訊息",
+    description: "把一段文字拆成具名值：條碼內容 LOT12345|2026-09-08|A7、文字辨識讀到的一行，或上位機隨觸發送來的訊息。每個欄位都會變成具名輸出，後面的步驟可以拿去判斷、比對或回送。",
+    params: {
+      mode: { label: "排列方式", options: { delimiter: "以字元分隔", regex: "以樣式（規則運算式）", fixed: "固定位元組位置" } },
+      separator: { label: "分隔字元", help: "一個或多個字元。定位字元請輸入 \\t。" },
+      pattern: { label: "樣式", help: "例如 LOT(?P<lot>\\d+)\\s+(?P<qty>\\d+)。具名群組會填進同名欄位，否則依序填。" },
+      fields: {
+        label: "欄位",
+        help: "一行一個欄位，依序對應。只寫名稱就取下一段文字；加冒號指定型別（name:int、name:float、name:bool、name:hex）。要跳著取就寫位置，從 0 起算（name:int:3）。固定位元組位置改寫位元組範圍（name:int:0-1）；設備的位元組順序相反時再加順序（name:float:2-5:DCBA）。設備送 1234 代表 12.34 就加 *0.01。",
+      },
+      publish: { label: "併入回覆", help: "每個欄位也成為具名輸出，HTTP 與 TCP 的回覆就會帶上。" },
+      prefix: { label: "名稱前綴", help: "加在每個欄位名稱前面，用來區分兩段訊息。" },
+      on_missing: { label: "欄位取不到值時", options: { pass: "留空並繼續", fail: "讓步驟失敗" } },
+    },
+    ports: { text: "文字", matched: "相符", not_matched: "未相符", fields: "欄位", count: "取到幾個", first: "第一個欄位" },
+  },
   format_text: {
     label: "格式化回覆",
     description: "用樣板組一行純文字給讀不懂 JSON 的設備：{名字} 依序取具名輸出、觸發引數（lot、sn）、本節點輸入 a～d，另有 {run_id} 與 {station}；支援 {width:.2f} 這類格式。設備端用 TCP 的 fmt= 或 HTTP 的 format 取這一行。",

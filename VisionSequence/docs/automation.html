@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html" aria-current="page">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. Identity (the same on every endpoint)</a></li><li><a href="#http">1. HTTP synchronous run (the common case)</a></li><li><a href="#tcp">2. One-line TCP commands (easiest for equipment)</a><ul><li><a href="#tcp-values">2-1. Argument types (part numbers and barcodes survive intact)</a></li><li><a href="#plain">2-3. Plain text for equipment that cannot read JSON</a></li><li><a href="#variables">2-4. Variables: the lot number, a running count, the previous part</a></li><li><a href="#board">2-5. One call for a custom operator screen</a></li><li><a href="#tcp-codes">2-2. Error codes (branch on code, not on the text)</a></li></ul></li><li><a href="#sse">3. Live SSE events (HMI and dashboards)</a></li><li><a href="#upload">4. When the camera is not on this machine: push an image</a><ul><li><a href="#upload-capture">4-1. The camera is on another PC: the capture client</a></li></ul></li><li><a href="#perf">Performance advice</a></li><li><a href="#lock">5. Identity and the engine lock (the hardware belongs to the line)</a></li><li><a href="#pages">5b. Integration pages: one page per method</a></li><li><a href="#trace">5c. Commands and results (debugging)</a></li><li><a href="#push">6. Pushing results out (Modbus client or slave)</a></li><li><a href="#quality-data">Quality data for an MES: SPC series, alerts and precision studies</a></li><li><a href="#ocr-fonts">OCR models and taught fonts</a></li><li><a href="#shape-model">Shape model assets</a></li><li><a href="#stat-template">Statistical template assets</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#auth">0. Identity (the same on every endpoint)</a></li><li><a href="#http">1. HTTP synchronous run (the common case)</a></li><li><a href="#tcp">2. One-line TCP commands (easiest for equipment)</a><ul><li><a href="#tcp-values">2-1. Argument types (part numbers and barcodes survive intact)</a></li><li><a href="#plain">2-3. Plain text for equipment that cannot read JSON</a></li><li><a href="#variables">2-4. Variables: the lot number, a running count, the previous part</a></li><li><a href="#board">2-5. One call for a custom operator screen</a></li><li><a href="#tcp-codes">2-2. Error codes (branch on code, not on the text)</a></li><li><a href="#parse">2-6. Reading a message the equipment sent</a></li></ul></li><li><a href="#sse">3. Live SSE events (HMI and dashboards)</a></li><li><a href="#upload">4. When the camera is not on this machine: push an image</a><ul><li><a href="#upload-capture">4-1. The camera is on another PC: the capture client</a></li></ul></li><li><a href="#perf">Performance advice</a></li><li><a href="#lock">5. Identity and the engine lock (the hardware belongs to the line)</a></li><li><a href="#pages">5b. Integration pages: one page per method</a></li><li><a href="#trace">5c. Commands and results (debugging)</a></li><li><a href="#push">6. Pushing results out (Modbus client or slave)</a></li><li><a href="#quality-data">Quality data for an MES: SPC series, alerts and precision studies</a></li><li><a href="#ocr-fonts">OCR models and taught fonts</a></li><li><a href="#shape-model">Shape model assets</a></li><li><a href="#stat-template">Statistical template assets</a></li></ul></aside><article class="doc">
 
 <h1>Automation (Modbus TCP, host systems, MES)</h1>
 <p>Three ways in, all returning the same shape.</p>
@@ -248,6 +248,28 @@ curl -X POST http://127.0.0.1:8000/api/vision/flows/1/run -F image=@part.png -F 
 <tr><td><code>bad_variable</code></td><td><code>SET</code> was given a name that is not letters, digits and underscores, or a value that cannot be stored</td></tr>
 <tr><td><code>internal_error</code></td><td>A server exception, recorded in the log</td></tr>
 </table>
+
+<h3 id="parse">2-6. Reading a message the equipment sent</h3>
+<p>The mirror of <a href="#plain">2-3</a>. Equipment rarely sends JSON either: a barcode reader gives one string, a host program
+sends a fixed line, an older controller sends a few bytes. The <strong>Split a message</strong> step turns that into named values the
+rest of the flow can use, and it reads a piece of text from anywhere &mdash; a barcode step, a text-reading step, or a
+<code>key=value</code> argument that came in with the trigger.</p>
+<table>
+<tr><th>How it is laid out</th><th>Example message</th><th>Fields</th><th>Result</th></tr>
+<tr><td>Separated by a character</td><td><code>LOT12345|2026-09-08|7</code></td><td><code>lot</code><br><code>date</code><br><code>slot:int</code></td><td><code>lot</code> = <code>LOT12345</code>, <code>date</code> = <code>2026-09-08</code>, <code>slot</code> = <code>7</code></td></tr>
+<tr><td>A pattern</td><td><code>HDR LOT4471 250 END</code></td><td>Pattern <code>LOT(?P&lt;lot&gt;\d+)\s+(?P&lt;qty&gt;\d+)</code>, fields <code>lot</code> and <code>qty:int</code></td><td><code>lot</code> = <code>4471</code>, <code>qty</code> = <code>250</code></td></tr>
+<tr><td>Fixed byte positions</td><td><code>01 02 41 42</code></td><td><code>id:int:0-1</code><br><code>tag:string:2-3</code></td><td><code>id</code> = <code>258</code>, <code>tag</code> = <code>AB</code></td></tr>
+</table>
+<p>One field per line, in order. A name on its own takes the next piece as text; a colon adds a type
+(<code>int</code>, <code>float</code>, <code>bool</code>, <code>hex</code>). Take a piece out of order with its position counting from 0
+(<code>qty:int:3</code>). For fixed byte positions give a byte range instead (<code>id:int:0-1</code>) and, when the equipment sends the
+bytes the other way round, the byte order as well (<code>w:float:2-5:DCBA</code>; the orders are ABCD, BADC, CDAB and DCBA, the same
+names the Modbus page uses). Where the equipment sends <code>1234</code> for 12.34, multiply with <code>*0.01</code>.</p>
+<p>Every field also becomes a <strong>named output</strong>, so it appears in the reply, a later step can judge it, and
+<em>Format a reply</em> can send it straight back out as <code>{lot}</code>. A field the message did not carry is left empty rather
+than raising an error, and the step takes its <em>not matched</em> branch &mdash; half a barcode should not stop the line. Wire the
+recovery (read again, ask the operator, mark the part) to that branch; set <em>When a field has no value</em> to <em>Fail the
+step</em> only while you are commissioning and want the run marked NG.</p>
 
 <h2 id="sse">3. Live SSE events (HMI and dashboards)</h2>
 <pre>GET /api/vision/flows/{id}/stream?since=&lt;seq&gt;     one flow

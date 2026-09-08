@@ -424,6 +424,23 @@ export default {
     },
     ports: { value: "值", previous: "先前的值" },
   },
+  parse_message: {
+    label: "拆解消息",
+    description: "把一段文字拆成具名值：条码内容 LOT12345|2026-09-08|A7、文字识别读到的一行，或上位机随触发送来的消息。每个字段都会变成具名输出，后面的步骤可以拿去判断、比对或回送。",
+    params: {
+      mode: { label: "排列方式", options: { delimiter: "以字符分隔", regex: "以样式（正则表达式）", fixed: "固定字节位置" } },
+      separator: { label: "分隔字符", help: "一个或多个字符。制表符请输入 \\t。" },
+      pattern: { label: "样式", help: "例如 LOT(?P<lot>\\d+)\\s+(?P<qty>\\d+)。具名分组会填进同名字段，否则依序填。" },
+      fields: {
+        label: "字段",
+        help: "一行一个字段，依序对应。只写名称就取下一段文字；加冒号指定类型（name:int、name:float、name:bool、name:hex）。要跳着取就写位置，从 0 起算（name:int:3）。固定字节位置改写字节范围（name:int:0-1）；设备的字节顺序相反时再加顺序（name:float:2-5:DCBA）。设备送 1234 代表 12.34 就加 *0.01。",
+      },
+      publish: { label: "并入回复", help: "每个字段也成为具名输出，HTTP 与 TCP 的回复就会带上。" },
+      prefix: { label: "名称前缀", help: "加在每个字段名称前面，用来区分两段消息。" },
+      on_missing: { label: "字段取不到值时", options: { pass: "留空并继续", fail: "让步骤失败" } },
+    },
+    ports: { text: "文字", matched: "相符", not_matched: "未相符", fields: "字段", count: "取到几个", first: "第一个字段" },
+  },
   format_text: {
     label: "格式化回复",
     description: "用模板组一行纯文本给读不懂 JSON 的设备：{名字} 依序取具名输出、触发参数（lot、sn）、本节点输入 a～d，另有 {run_id} 与 {station}；支持 {width:.2f} 这类格式。设备端用 TCP 的 fmt= 或 HTTP 的 format 取这一行。",
