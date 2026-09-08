@@ -1194,6 +1194,20 @@ export default {
       edges: "边缘影像",
     },
   },
+  surface_filter: {
+    label: "表面缺陷滤波",
+    description: "在本身就有纹理的表面上把划伤、发丝与细裂纹挑出来。一般的边缘滤波连纹理一起找；这一个沿着缺陷方向平均、跨着缺陷方向微分，换几个角度取最强的，所以细长的痕迹会浮出来、纹路不会。结果拿去二值化，或直接用最强响应判定。",
+    params: {
+      polarity: { label: "要找的", options: { dark: "比表面暗（常见的划伤）", bright: "比表面亮", any: "都可以" } },
+      width: { label: "缺陷宽度", help: "痕迹大概几个像素宽。太小纹理会穿过来，太大细划伤会被吃掉。" },
+      length: { label: "缺陷长度", help: "痕迹延伸多长。越长把表面平均掉越多，但短的痕迹也会跟着不见。" },
+      directions: { label: "方向数", help: "在半圈里试几个角度。多了只是慢一点、好一点点；8 个大多够用。" },
+      gain: { label: "增益", help: "响应变成图像之前乘上去的倍数。调到划伤看得清楚、表面仍然暗为止。" },
+      offset: { label: "偏移", help: "每个像素都加上这个值。" },
+      roi: { label: "区域", help: "只滤这一块，其余原样传下去。" },
+    },
+    ports: { image: "图像", region: "区域（动态）", max_response: "最强响应", mean_response: "平均响应" },
+  },
   fft_filter: {
     label: "频域滤波（FFT）",
     description: "频域滤波：低通去周期性纹理／雜訊、高通留边缘，截斷（truncate）或高斯衰減（attenuate）。另输出频谱图供检視。",

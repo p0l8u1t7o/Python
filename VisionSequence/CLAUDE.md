@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：99 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 953 項＋前端 115 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：100 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 958 項＋前端 115 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -28,7 +28,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，30 個：含 5 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**30 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，31 個：含 5 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**31 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -80,6 +80,7 @@
 - **Python 腳本工具**（`builtin/script.py`，`python_script`）：使用者程式碼 `def run(ctx)` 與引擎同行程受限執行——受限 builtins、import 白名單、AST 禁 dunder／exec／open、`sys.settrace` 看門狗只追蹤 `<python_script>` frame（`max_ms`）、輸入影像唯讀 view、模組命名空間依程式碼 hash 快取；固定輸出埠（value／result／text／data／image＋pass／fail）。**核准清單** `apps/vision/scripts.py`＋`ScriptApproval`（migration 0014）：只有管理員儲存（POST/PATCH /flows、匯入）時登記的 sha256 才會執行（內建 `TEMPLATE` 例外，插入工具即可試執行），一般使用者送新腳本 403；試執行由 `scripts.client_context(admin=)` 放 `_script_admin`（外部 context 的 `_` 鍵一律丟掉）；配方不能覆寫 `code`。`Param.kind="code"`（`accept`＝語言）前端 `CodeField`（非管理員唯讀），工具頁參數欄遇到 code 參數自動加寬。測試 `tests/test_script_tool.py`；bench／純度掃描用 context `_script_admin`。
 - **條碼品質分級**（`apps/vision/grading.py`＋`builtin/barcode_grade.py`，WP-09）：解碼與符號結構靠 **zxing-cpp**（requirements.txt；`Result.extra` 的 UEC／Version 免寫 RS；角點對 QR 是邊界、對 Data Matrix 是含邊像素→`refine_grid` 用固定圖形外緣重擬合四邊）；門檻表 `THRESHOLDS`，15415／DPM／15416 三條路徑分開；反射率＝灰階/255、孔徑＝圓盤濾波，數值對得上驗證器的量級但不是認證。`barcode` 工具有 zxing 就優先用它（Data Matrix／Aztec／PDF417／Code 128），沒裝退回 OpenCV。
 - **光度立體**（`builtin/photometric.py`）：整條管線按列分塊（約 40K 像素留在快取內；整張 numpy 逐元素每趟 1.5 ms 是頻寬綁死的），四燈丟最暗用留一法更新式 g_d = g_full − c_d·r_d（不做子集偽逆的逐像素 gather，那要 50 ms），最暗索引在 u8 上用 cv2.min／compare；`solve()` 回 (3,H,W) 法向。**形位公差**（`builtin/gdt.py`）：直線度＝凸包＋旋轉卡尺最小帶、真圓度＝MZC（Nelder–Mead 從 `fit_circle_lsq` 起步，detail.lsc 留最小二乘對照）；`points` 埠也吃 contours（取第一條）。
+- **表面缺陷濾波**（`builtin/preprocess.py` 的 `surface_kernels`＋`surface_filter`）：一組旋轉的異向核（跨線二階高斯導數×沿線高斯平滑），核**中心正、兩側負**（亮線回正、暗線回負，工具再依 polarity 取號），零均值所以平坦區回 0；核依 `(width, height, directions, sigma)` 快取（`_SURFACE_KERNELS`，上限 32 組）。**餵 u8 進 filter2D、輸出 float**（先轉 float32 會慢 30%），核寬只取 ±3σ。成本是「一個方向一次卷積」：1280×960 八方向約 90 ms、640×480 約 25 ms——大圖請給 ROI。與 `fft_filter` 分工：背景規則用頻域、隨機紋理用這個。
 - **前處理加速**（`tools/accel.py`，WP-16）：先量再說——RTX 5070 Ti 上 OpenCL 對 4000×3000 的 blur→filter→open→threshold 整段只 1.04×（GaussianBlur 0.39×、形態學 1.0×，傳輸只佔 4 ms），所以**不做編譯期 GPU 區段**；只有 remap 2.65×、medianBlur 2.5×、filter2D 1.8×、dft 1.65× 有賺，wrapper 只在 ≥ `ACCEL_MIN_PIXELS`（4 MP）且 `VISION_ACCEL` 允許時走 UMat，失敗退回 CPU；polar_unwrap／undistort／filter（median、自訂核）走它。headless wheel 沒有 `cv2.cuda`，`cuda` 選項會退回並記原因。
 - 舊工具名（`edges`→`filter`、`hist_eq`→`lut`、`write_plc`→`write_modbus`）由 `graph.LEGACY_TOOL_TYPES` 在 validate／compile 時自動換，參數名刻意相容。
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 from collections import OrderedDict
 from typing import Any
@@ -475,6 +476,126 @@ class LutTool(Tool):
         return Result(outputs={"image": cv2.LUT(image, lut)}, message=mode)
 
 
+#: 旋轉異向核的快取（參數相同就重用；一組 12 個 21×21 的核算一次約 1 ms，每張影像都算太浪費）。
+_SURFACE_KERNELS: dict[tuple, tuple[np.ndarray, ...]] = {}
+#: 快取上限（參數是使用者調的，不會有幾百組）。
+_KERNEL_CACHE_MAX = 32
+
+
+def surface_kernels(width: int, height: int, directions: int, sigma: float) -> tuple[np.ndarray, ...]:
+    """一組沿不同方向的細長「線偵測」核（跨線方向是二階高斯導數，沿線方向是高斯平滑）。
+
+    刮傷、髮絲、細裂紋在灰階上是一條「比周圍暗（或亮）一點」的細長帶子，一般的邊緣濾波
+    會被工件本身的紋理淹掉；沿著缺陷方向平均、跨著缺陷方向取二階導數，就只留下細長的東西。
+    `directions` 個方向平均分佈在 0~180°（線沒有方向性，180° 之後會重複）。
+    """
+    key = (width, height, directions, round(float(sigma), 4))
+    cached = _SURFACE_KERNELS.get(key)
+    if cached is not None:
+        return cached
+    half_w, half_h = width // 2, height // 2
+    ys, xs = np.mgrid[-half_h:half_h + 1, -half_w:half_w + 1].astype(np.float32)
+    along = max(0.6, height / 4.0)  # 沿線方向的平滑量：核愈長平滑愈多
+    kernels: list[np.ndarray] = []
+    for i in range(directions):
+        theta = math.pi * i / directions
+        cos, sin = math.cos(theta), math.sin(theta)
+        # u＝跨線方向、v＝沿線方向（畫面座標 y 向下，角度順時針為正）
+        u = xs * cos + ys * sin
+        v = -xs * sin + ys * cos
+        # 中心正、兩側負：亮的細線回正值、暗的細線回負值（工具再依 polarity 取號）
+        across = (1.0 / sigma ** 2 - u * u / sigma ** 4) * np.exp(-(u * u) / (2 * sigma * sigma))
+        kernel = across * np.exp(-(v * v) / (2 * along * along))
+        kernel -= kernel.mean()  # 零均值：平坦區域回 0，才不會被整體亮度帶著走
+        norm = float(np.abs(kernel).sum())
+        kernels.append((kernel / norm * 2.0).astype(np.float32) if norm > 1e-9 else kernel.astype(np.float32))
+    if len(_SURFACE_KERNELS) >= _KERNEL_CACHE_MAX:
+        _SURFACE_KERNELS.clear()
+    _SURFACE_KERNELS[key] = tuple(kernels)
+    return _SURFACE_KERNELS[key]
+
+
+class SurfaceFilterTool(Tool):
+    key = "surface_filter"
+    label = "Surface defect filter"
+    description = (
+        "Brings out scratches, hairs and fine cracks on a surface that has its own texture. A plain edge filter finds the "
+        "texture as well; this one averages along the defect and differentiates across it, at several angles, and keeps the "
+        "strongest answer — so a long thin mark stands out and the grain does not. Threshold the result, or judge the peak."
+    )
+    category = "preprocess"
+    icon = "Scan"
+    params = [
+        Param("polarity", "Look for", kind="select", default="dark", options=[
+            {"value": "dark", "label": "Darker than the surface (the usual scratch)"},
+            {"value": "bright", "label": "Brighter than the surface"},
+            {"value": "any", "label": "Either"},
+        ], teach=True),
+        Param("width", "Defect width", kind="number", default=3, minimum=1, maximum=31, step=2, unit="px", teach=True,
+              help_text="Roughly how many pixels across the mark is. Too small and the texture comes through; too large and a fine scratch is lost."),
+        Param("length", "Defect length", kind="number", default=15, minimum=3, maximum=63, step=2, unit="px", teach=True,
+              help_text="How far the mark runs. Longer averages more of the surface away, but a short mark then disappears too."),
+        Param("directions", "Directions", kind="number", default=8, minimum=2, maximum=32, step=1,
+              help_text="How many angles to try, spread over half a turn. More is slower and only slightly better; 8 covers most work."),
+        Param("gain", "Gain", kind="number", default=8.0, minimum=0.1, maximum=100, step=0.1, teach=True,
+              help_text="Multiplies the answer before it becomes a picture. Turn it up until the mark is clearly visible and the surface stays dark."),
+        Param("offset", "Offset", kind="number", default=0, minimum=-255, maximum=255, group="Advanced",
+              help_text="Added to every pixel of the answer."),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus", "polygon"], required=False,
+              help_text="Only this area is filtered; the rest of the picture comes through untouched."),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("region", "Region", "region", required=False)]
+    outputs = [
+        Port("image", "Filtered", "image"),
+        Port("max_response", "Strongest", "number"),
+        Port("mean_response", "Average", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        region = ctx.roi()
+        area = None if region is None else crop(gray, region)
+        crop_img = gray if area is None else area.image
+        if crop_img.size == 0:
+            raise ToolError("The region falls outside the picture")
+        width = max(1, ctx.integer("width", 3) | 1)
+        length = max(3, ctx.integer("length", 15) | 1)
+        directions = min(32, max(2, ctx.integer("directions", 8)))
+        sigma = max(0.5, width / 2.0)
+        # 核只要蓋到 ±3σ 就夠（再寬只是多算），高度就是缺陷長度
+        kernels = surface_kernels(2 * int(round(3 * sigma)) + 1, length, directions, sigma)
+        polarity = str(ctx.param("polarity", "dark"))
+        # 直接餵 8-bit 進去、輸出 float：先轉成 float32 會讓每一趟多讀四倍記憶體（實測慢 30%）
+        source = crop_img
+        best: np.ndarray | None = None
+        for kernel in kernels:
+            response = accel.filter2d(source, cv2.CV_32F, kernel)
+            if polarity == "dark":
+                response = -response
+            elif polarity == "any":
+                response = np.abs(response)
+            best = response if best is None else np.maximum(best, response)
+        assert best is not None
+        peak = float(best.max())
+        average = float(best.mean())
+        scaled = np.clip(best * ctx.number("gain", 8.0) + ctx.number("offset"), 0, 255).astype(np.uint8)
+        if region is None:
+            out = scaled
+        else:
+            # 只處理區域內：其餘照原樣傳下去（下游還看得到工件，不是一片黑）
+            out = gray.copy()
+            h, w = crop_img.shape[:2]
+            patch = out[area.y0:area.y0 + h, area.x0:area.x0 + w]
+            # 非矩形區域：只換遮罩之內的像素，其餘照原樣（下游還看得到工件，不是一片黑）
+            patch[:] = scaled if area.mask is None else np.where(area.mask > 0, scaled, patch)
+        return Result(
+            outputs={"image": out, "max_response": round(peak, 4), "mean_response": round(average, 4)},
+            overlays=[region_overlay(region)] if region is not None else [],
+            message=f"peak {peak:.3f}, average {average:.3f} ({directions} directions)",
+        )
+
+
 class FilterTool(Tool):
     key = "filter"
     label = "Convolution filter"
@@ -801,5 +922,5 @@ class ShadingCorrectTool(Tool):
 TOOLS = [
     GrayscaleTool(), CropTool(), BlurTool(), ThresholdTool(), MorphologyTool(), ResizeTool(),
     ColorConvertTool(), ColorRangeTool(), ArithmeticTool(), MaskApplyTool(), RotateFlipTool(),
-    ConvertDepthTool(), LutTool(), FilterTool(), FftFilterTool(), WarpPerspectiveTool(), UndistortTool(), ShadingCorrectTool(),
+    ConvertDepthTool(), LutTool(), FilterTool(), SurfaceFilterTool(), FftFilterTool(), SurfaceFilterTool(), WarpPerspectiveTool(), UndistortTool(), ShadingCorrectTool(),
 ]

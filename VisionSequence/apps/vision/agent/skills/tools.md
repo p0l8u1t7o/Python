@@ -29,6 +29,13 @@
 ## filter
 銳化／邊緣：`sharpen` 補模糊；`canny`（low/high 約 1:2～1:3）取邊緣圖給 hough_lines／edge_density；`laplacian`／`sobel` 取梯度圖。
 
+## surface_filter
+有紋理的面上找細長瑕疵（刮傷、髮絲、細裂紋）：`width` 填缺陷大概幾像素寬、`length` 填它延伸多長、
+`polarity` 選比表面暗還是亮，`directions` 8 就夠。輸出是「回應影像」＋ `max_response`，
+**接 threshold → blob 數面積**，或直接用 `max_response` 判定。
+**與 fft_filter 分工**：背景是規則紋路（織品、網點）用頻域低通；背景是隨機紋理（拉絲、噴砂、毛絲面）用這個。
+gain 調到刮傷看得清楚、表面仍然暗為止，再設門檻。
+
 ## fft_filter
 頻域濾波。規律紋理（織紋、網點、印刷網格）背景：`lowpass` cutoff 0.05～0.1 把紋理濾掉，殘留的大尺度暗痕就是缺陷；`highpass` 去掉光照漸層，輸出以中灰 128 為零點（暗於 128＝負響應），接 threshold 時門檻要以 128 為中心。輸出 `spectrum` 可看頻譜。
 

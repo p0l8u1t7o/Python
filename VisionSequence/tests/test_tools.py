@@ -1520,6 +1520,63 @@ class ParseMessageToolTests(SimpleTestCase):
             run_tool("parse_message", None, {"mode": "fixed", "fields": "a:int:x-y"}, inputs={"text": b"ab"})
 
 
+class SurfaceFilterTests(SimpleTestCase):
+    """表面缺陷濾波：有紋理的面上找細長刮傷。一般的邊緣濾波會把紋理一起找出來。"""
+
+    @staticmethod
+    def _surface(scratch: bool, seed: int = 5) -> np.ndarray:
+        """拉絲紋理（隨機、非週期），要的話畫一道細刮傷。"""
+        rng = np.random.default_rng(seed)
+        base = np.full((300, 400), 175.0, np.float32) + rng.normal(0, 16, (300, 400)).astype(np.float32)
+        base = cv2.GaussianBlur(base, (61, 3), 0)
+        img = np.clip(base, 0, 255).astype(np.uint8)
+        if scratch:
+            cv2.line(img, (60, 80), (320, 200), 120, 2)
+        return cv2.GaussianBlur(img, (0, 0), 0.8)
+
+    def test_a_scratch_stands_out_and_the_grain_does_not(self):
+        with_mark = run_tool("surface_filter", self._surface(True), {"polarity": "dark", "width": 3, "length": 21})
+        clean = run_tool("surface_filter", self._surface(False), {"polarity": "dark", "width": 3, "length": 21})
+        self.assertGreater(with_mark.outputs["max_response"], clean.outputs["max_response"] * 2)
+        self.assertEqual(with_mark.outputs["image"].dtype, np.uint8)
+        self.assertEqual(with_mark.outputs["image"].shape, (300, 400))
+
+    def test_polarity_picks_the_side(self):
+        bright = self._surface(False).copy()
+        cv2.line(bright, (60, 80), (320, 200), 235, 2)  # 亮刮傷
+        dark_side = run_tool("surface_filter", bright, {"polarity": "dark"}).outputs["max_response"]
+        bright_side = run_tool("surface_filter", bright, {"polarity": "bright"}).outputs["max_response"]
+        either = run_tool("surface_filter", bright, {"polarity": "any"}).outputs["max_response"]
+        self.assertGreater(bright_side, dark_side)
+        self.assertAlmostEqual(either, bright_side, places=3)
+
+    def test_the_region_limits_the_work_and_the_rest_comes_through(self):
+        img = self._surface(True)
+        far = {"shape": "rect", "x": 0, "y": 220, "w": 120, "h": 70}  # 刮傷不在裡面
+        result = run_tool("surface_filter", img, {"roi": far, "gain": 14})
+        out = result.outputs["image"]
+        self.assertTrue(np.array_equal(out[0:50, 300:400], img[0:50, 300:400]))  # 區域外原樣
+        self.assertFalse(np.array_equal(out[230:280, 10:110], img[230:280, 10:110]))
+        self.assertEqual(len(result.overlays), 1)
+
+    def test_the_kernels_are_worked_out_once(self):
+        from apps.vision.tools.builtin.preprocess import surface_kernels
+
+        first = surface_kernels(13, 21, 8, 1.5)
+        self.assertIs(surface_kernels(13, 21, 8, 1.5), first)
+        self.assertEqual(len(first), 8)
+        for kernel in first:
+            self.assertEqual(kernel.shape, (21, 13))
+            self.assertLess(abs(float(kernel.sum())), 1e-4)  # 零均值：平坦區域回 0
+        self.assertEqual(len(surface_kernels(13, 21, 4, 1.5)), 4)
+
+    def test_the_input_is_left_alone(self):
+        img = self._surface(True)
+        before = img.copy()
+        run_tool("surface_filter", img, {})
+        self.assertTrue(np.array_equal(img, before))
+
+
 class GeometryConstructionTests(SimpleTestCase):
     """幾何作圖：圖面標的是「兩邊的中線」「孔到基準線的距離」，影像上沒有那條線，要算出來。"""
 

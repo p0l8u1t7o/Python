@@ -454,6 +454,40 @@ def geometry_count_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def surface_scratch_flow(source_id: str) -> dict:
+    """表面缺陷濾波：拉絲金屬面上的細刮傷。
+
+    與「織紋瑕疵」是一對：那邊的背景是規則的（低通就濾掉），這邊是隨機的拉絲紋理，
+    頻域那一招無效，只能靠「沿著缺陷方向平均、跨著缺陷方向微分」把細長的東西挑出來。
+    """
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("filt", "surface_filter", 2, 0, "Surface defect filter", polarity="dark", width=3, length=31, directions=8, gain=14),
+        _node("thr", "threshold", 3, 0, "Keep the strong answers", method="fixed", threshold=150),
+        _node("blob", "blob", 4, 0, "Scratch blobs", threshold_method="none", polarity="bright", min_area=250, min_count=0),
+        _node("cmp", "if_number", 5, 0, "No scratches?", operator="eq", threshold=0),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: surface scratch", verdict="ng", label="scratch"),
+        _node("out", "output", 5, 1, "Output scratch count", name="scratch_count"),
+        _node("peak", "output", 5, 2, "Output the strongest answer", name="peak"),
+        _node("draw", "draw_result", 6, 2, "Result image"),
+        _note("n1", 0, 1, "About", "A brushed surface has no repeating pattern, so a frequency filter cannot separate it from a scratch (compare the fabric template).\nThis filter averages along the mark and differentiates across it at eight angles, so a long thin mark stands out and the grain does not.\nTurn the gain up until the mark is clear and the surface stays dark, then set the threshold."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "filt"),
+        _edge("filt", "thr", "image", "image"),
+        _edge("thr", "blob"),
+        _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("blob", "out", "count", "value"),
+        _edge("filt", "peak", "max_response", "value"),
+        _edge("gray", "draw", "image", "image"),
+        _edge("blob", "draw", "_overlays", "overlays"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def gear_teeth_flow(source_id: Any) -> dict[str, Any]:
     """圓周齒數：極座標展開齒圈 → 二值化 → blob 數齒 → 12 齒判定；齒的位置用 polar_restore 標回原圖。
 
@@ -1044,6 +1078,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("stat_compare", "Statistical print compare", "Per-pixel mean and spread from 30 good prints; anything beyond 4 standard deviations is a defect, so light and texture variation no longer force a loose threshold", "quality",
      lambda sid: stat_compare_flow(sid, _demo_asset("Example: statistical template (print)", "file"))),
     ("fft_defect", "Fabric defect", "A frequency-domain low pass removes the periodic weave and what is left is the scratch; a mask pulls out the defect area", "quality", fft_defect_flow),
+    ("surface_scratch", "Surface scratch (filter)", "A brushed surface has no repeating pattern for a frequency filter to remove; the surface defect filter averages along the mark and differentiates across it instead", "quality", surface_scratch_flow),
     ("preprocess_lab", "Pre-processing and measurement lab", "An image chain of bit depth, look-up table, filtering and flipping, plus a tour of line profile, statistics, histogram and edge density", "tutorial", preprocess_lab_flow),
     ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
@@ -1087,6 +1122,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "edge_angle": "Example: edge angle",
     "golden_compare": "Example: print compare",
     "fft_defect": "Example: fabric defect",
+    "surface_scratch": "Example: brushed surface",
     "stat_compare": "Example: print compare",
     "preprocess_lab": "Example: preprocessing lab",
     "geometry_count": "Example: circles and lines",

@@ -98,6 +98,27 @@ def textile() -> list[np.ndarray]:
     return out
 
 
+def brushed_surface() -> list[np.ndarray]:
+    """表面缺陷濾波：拉絲金屬面（**沒有週期性**，所以頻域那一招無效）；第 4 張有一道細刮傷（NG）。
+
+    與「織紋瑕疵」刻意配成一對：織紋是規則的，低通就濾掉了；拉絲面是隨機的，
+    只能靠「沿著缺陷平均、跨著缺陷微分」把細長的東西挑出來。
+    """
+    out = []
+    for i in range(4):
+        rng = np.random.default_rng(700 + i)
+        base = np.full((960, 1280), 175.0, np.float32)
+        base += rng.normal(0, 16, base.shape).astype(np.float32)
+        base = cv2.GaussianBlur(base, (61, 3), 0)          # 沿 x 拉長 → 拉絲紋理
+        base += rng.normal(0, 4, base.shape).astype(np.float32)
+        img = np.clip(base, 0, 255).astype(np.uint8)
+        if i == 3:
+            cv2.line(img, (280, 240), (980, 700), 120, 3)  # 細刮傷：比表面暗一點點
+        img = cv2.GaussianBlur(img, (0, 0), 0.8)
+        out.append(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR))
+    return out
+
+
 def gradient_chart() -> list[np.ndarray]:
     """前處理與剖面教學圖：水平灰階漸層＋亮暗階梯＋一條暗溝（線剖面量得到）。"""
     out = []
@@ -586,6 +607,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "l_bracket": ("edge angle", l_bracket),
     "golden_print": ("print compare", golden_print),
     "textile": ("fabric defect", textile),
+    "brushed_surface": ("brushed surface", brushed_surface),
     "gradient_chart": ("preprocessing lab", gradient_chart),
     "multi_circles": ("circles and lines", multi_circles),
     "gear": ("gear teeth", gear),

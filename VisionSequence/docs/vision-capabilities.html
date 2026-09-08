@@ -166,6 +166,13 @@
 </table>
 <p>Any ROI can also arrive through the <code>region</code> input port, and <code>transform_region()</code> translates and rotates every shape. Position correction rides on that: wire a locate offset into a step's <code>_transform</code> input and <code>ToolContext.roi()</code> moves the drawn region before the tool ever sees it, so crops, masks and marks stay in full-image coordinates and no tool needs to know.</p>
 
+<p><strong>Surface defects on a textured face</strong> (scratches, hairs, fine cracks) have their own filter,
+<code>surface_filter</code>: it averages along the mark and differentiates across it, at eight angles by default, and keeps the
+strongest answer, so a long thin mark stands out while the grain does not. It pairs with <code>fft_filter</code> &mdash; a frequency
+low pass is the right tool when the background repeats (a weave, a screen), this one when it does not (brushed, blasted, hairline).
+The cost is one convolution per angle: about 25&nbsp;ms on 640&times;480 and 90&nbsp;ms on 1280&times;960 for eight angles, so give it a
+region when the part is larger than the area you care about.</p>
+
 <h2 id="depth">2. Image formats and bit depth</h2>
 <p>The image types a machine-vision package deals with are grayscale U8, I16 and float, complex, RGB U32, HSL U32 and RGB U64. The platform maps them onto numpy dtypes (<code>tools/imgfmt.py</code>):</p>
 <table>

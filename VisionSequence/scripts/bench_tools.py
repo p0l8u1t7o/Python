@@ -292,6 +292,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("convert_depth u16", "convert_depth", big, {"to": "u16"}, {}, {}),
         ("lut gamma", "lut", big, {"mode": "power", "gamma": 0.6}, {}, {}),
         ("filter gradient", "filter", big, {"method": "gradient"}, {}, {}),
+        ("surface_filter 8 dirs", "surface_filter", gray, {"width": 3, "length": 21, "directions": 8}, {}, {}),
         ("fft_filter lowpass", "fft_filter", gray, {"mode": "lowpass", "cutoff": 0.15}, {}, {}),
         ("warp_perspective", "warp_perspective", big, {"roi": {"shape": "polygon", "points": [[s.cx - m * 0.2, s.cy - m * 0.15], [s.cx + m * 0.22, s.cy - m * 0.12], [s.cx + m * 0.2, s.cy + m * 0.15], [s.cx - m * 0.18, s.cy + m * 0.16]]}}, {}, {}),
         ("undistort", "undistort", big, {"calibration": "cal"}, {}, {}),

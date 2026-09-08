@@ -1194,6 +1194,20 @@ export default {
       edges: "邊緣影像",
     },
   },
+  surface_filter: {
+    label: "表面缺陷濾波",
+    description: "在本身就有紋理的表面上把刮傷、髮絲與細裂紋挑出來。一般的邊緣濾波連紋理一起找；這一個沿著缺陷方向平均、跨著缺陷方向微分，換幾個角度取最強的，所以細長的痕跡會浮出來、紋路不會。結果拿去二值化，或直接用最強回應判定。",
+    params: {
+      polarity: { label: "要找的", options: { dark: "比表面暗（常見的刮傷）", bright: "比表面亮", any: "都可以" } },
+      width: { label: "缺陷寬度", help: "痕跡大概幾個像素寬。太小紋理會穿過來，太大細刮傷會被吃掉。" },
+      length: { label: "缺陷長度", help: "痕跡延伸多長。愈長把表面平均掉愈多，但短的痕跡也會跟著不見。" },
+      directions: { label: "方向數", help: "在半圈裡試幾個角度。多了只是慢一點、好一點點；8 個大多夠用。" },
+      gain: { label: "增益", help: "回應變成影像之前乘上去的倍數。調到刮傷看得清楚、表面仍然暗為止。" },
+      offset: { label: "偏移", help: "每個像素都加上這個值。" },
+      roi: { label: "區域", help: "只濾這一塊，其餘原樣傳下去。" },
+    },
+    ports: { image: "影像", region: "區域（動態）", max_response: "最強回應", mean_response: "平均回應" },
+  },
   fft_filter: {
     label: "頻域濾波（FFT）",
     description: "頻域濾波：低通去週期性紋理／雜訊、高通留邊緣，截斷（truncate）或高斯衰減（attenuate）。另輸出頻譜圖供檢視。",
