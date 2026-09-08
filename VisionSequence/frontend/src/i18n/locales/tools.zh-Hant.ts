@@ -337,6 +337,15 @@ export default {
       edge_threshold: {
         label: "邊緣門檻",
       },
+      max_results: {
+        label: "最多結果",
+        help: "回傳排序後前 N 個邊緣對候選；單一寬度與邊緣座標仍取第一筆。",
+      },
+      sort_by: {
+        label: "排序依據",
+        help: "分數＝對比加權，扣掉位置誤差與寬度誤差的加權罰分。",
+        options: { score: "分數", position: "位置", contrast: "對比" },
+      },
       edge_pair: {
         label: "取邊緣對",
         options: {
@@ -359,6 +368,22 @@ export default {
         label: "期望寬度",
         help: "大於 0 時改挑「寬度最接近此值」的邊緣對（優先於取邊緣對模式）。",
       },
+      expected_position: {
+        label: "期望位置",
+        help: "沿掃描方向的期望候選中心（px）；0 表示不使用位置項。",
+      },
+      position_weight: {
+        label: "位置權重",
+        help: "每偏離期望位置 1 px 扣多少分。",
+      },
+      contrast_weight: {
+        label: "對比權重",
+        help: "每 1 灰階/px 邊緣對比加多少分；所有權重為 0 時分數退回對比。",
+      },
+      width_weight: {
+        label: "寬度權重",
+        help: "每偏離期望寬度 1 px 扣多少分。",
+      },
       smoothing: {
         label: "剖面平滑",
         group: "進階",
@@ -372,7 +397,7 @@ export default {
       edge1_y: "邊緣1 Y",
       edge2_x: "邊緣2 X",
       edge2_y: "邊緣2 Y",
-      edges: "所有邊緣位置",
+      edges: "邊緣候選",
       profile: "剖面",
     },
   },
@@ -2867,6 +2892,35 @@ export default {
       upper: "上限",
       lower: "下限",
       spec_source: "圖面出處",
+    },
+  },
+  edge_trend: {
+    label: "邊緣趨勢",
+    description: "沿一條直線或圓形邊緣放多把卡尺，輸出每把卡尺相對基線的偏移序列、缺失位置與統計。",
+    params: {
+      roi: { label: "參考", help: "沒有接上游線或圓時使用；上游幾何優先於 ROI。" },
+      calipers: { label: "卡尺數" },
+      search: { label: "搜尋範圍", help: "每把卡尺沿法線方向搜尋的距離。" },
+      caliper_width: { label: "卡尺寬度", help: "沿著邊平均，用來降噪。" },
+      edge_threshold: { label: "邊緣門檻" },
+      mode: { label: "模式", options: { single: "單一邊緣", pair: "邊緣對" } },
+      polarity: { label: "邊緣極性", options: { any: "任一", dark_to_light: "暗到亮", light_to_dark: "亮到暗" } },
+      pair_polarity: { label: "邊緣對極性", options: { any: "任一", bright: "亮帶", dark: "暗帶" } },
+      baseline: {
+        label: "基線",
+        help: "offsets 是命中 offset 減去基線，單位 px。",
+        options: { fit: "擬合命中邊", median: "滑動中位數", reference: "參考幾何" },
+      },
+      max_deviation: { label: "最大偏移", help: "最大絕對偏移超過此值時走 NG 分支；0 表示不限制。" },
+      window: { label: "中位數視窗" },
+      smoothing: { label: "剖面平滑" },
+      edge_select: { label: "選哪個邊", options: { strongest: "最強", first: "第一個", last: "最後一個" } },
+    },
+    ports: {
+      image: "影像", roi: "參考（動態）", line: "參考線", circle: "參考圓",
+      ok: "趨勢合格", ng: "趨勢超標",
+      offsets: "偏移序列", widths: "寬度序列", positions: "位置", points: "邊緣點",
+      missing: "打空索引", mean: "平均", std: "標準差", min: "最小", max: "最大", range: "範圍",
     },
   },
   wall_thickness: {

@@ -9,17 +9,24 @@ import cv2
 import numpy as np
 
 from apps.vision import calib
-from apps.vision.tools import accel
+from apps.vision.tools import accel, defects
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs, read_mapping
 from apps.vision.tools.builtin.preprocess import read_calibration
 from apps.vision.tools.builtin.locate import (
+    CaliperHit,
     POLARITY_OPTIONS,
     _as_rotated_rect,
+    arc_geometry,
     caliper_points,
+    caliper_series,
     find_edges_1d,
     find_edges_rows,
+    fit_circle_lsq,
+    fit_points_line,
+    hit_points,
     pick_pair,
+    line_geometry,
     fit_circle_points,
     fit_line_ransac,
     radial_edge_points,
@@ -67,6 +74,49 @@ def _line(value: Any) -> tuple[float, float, float, float] | None:
     return None
 
 
+_CALIPER_SORT_OPTIONS = [
+    {"value": "score", "label": "Score"},
+    {"value": "position", "label": "Position"},
+    {"value": "contrast", "label": "Contrast"},
+]
+
+
+def _pair_candidates(edges: list[tuple[float, float]], pair_polarity: str) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """依邊緣對極性產生所有可用候選，保留原始掃描方向順序。"""
+    if pair_polarity == "any":
+        return [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :]]
+    first_positive = pair_polarity == "bright"
+    return [(a, b) for a, b in zip(edges[:-1], edges[1:]) if (a[1] > 0) == first_positive and (b[1] > 0) != first_positive]
+
+
+def _caliper_candidate_score(
+    position: float,
+    contrast: float,
+    width: float,
+    *,
+    expected_position: float,
+    position_weight: float,
+    contrast_weight: float,
+    expected_width: float,
+    width_weight: float,
+) -> float:
+    """卡尺候選分數；0 權重時以對比作為排序分數。"""
+    if position_weight == 0 and contrast_weight == 0 and width_weight == 0:
+        return float(contrast)
+    score = float(contrast_weight) * float(contrast)
+    if expected_position > 0 and position_weight:
+        score -= float(position_weight) * abs(float(position) - float(expected_position))
+    if expected_width > 0 and width_weight:
+        score -= float(width_weight) * abs(float(width) - float(expected_width))
+    return float(score)
+
+
+def _round_float(value: float, digits: int = 3) -> float | None:
+    if not np.isfinite(value):
+        return None
+    return round(float(value), digits)
+
+
 class CaliperTool(Tool):
     key = "caliper"
     label = "Caliper"
@@ -78,6 +128,10 @@ class CaliperTool(Tool):
         Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"], help_text="Scans along the long side, averaging across the short side to beat noise."),
         Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True),
         Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("max_results", "Max results", kind="number", default=1, minimum=1, maximum=200,
+              help_text="Returns the first N edge-pair candidates in edges. The single width and edge ports still use the first result."),
+        Param("sort_by", "Sort by", kind="select", default="score", options=_CALIPER_SORT_OPTIONS,
+              help_text="score uses contrast minus weighted position or width error; position is near-to-far along the scan; contrast is grey-level change per pixel."),
         Param("edge_pair", "Pick edge pair", kind="select", default="first_last", options=[
             {"value": "first_last", "label": "First and last"},
             {"value": "widest", "label": "Widest pair"},
@@ -87,7 +141,16 @@ class CaliperTool(Tool):
         Param("pair_polarity", "Edge pair polarity", kind="select", default="any", options=[
             {"value": "any", "label": "Any"}, {"value": "bright", "label": "Bright band (dark to light, then light to dark)"}, {"value": "dark", "label": "Dark band (light to dark, then dark to light)"},
         ], help_text="Constrains the polarity order of a pair, so measuring a bright or dark bar does not latch onto a neighbouring noise edge."),
-        Param("expected_width", "Expected width", kind="number", default=0, minimum=0, unit="px", help_text="Above 0, picks the edge pair whose width is closest to this instead of following the pair mode."),
+        Param("expected_position", "Expected position", kind="number", default=0, minimum=0, unit="px", teach=True,
+              help_text="Expected candidate centre along the scan direction; 0 disables the position term."),
+        Param("position_weight", "Position weight", kind="number", default=0, minimum=0,
+              help_text="Score penalty per pixel away from expected_position."),
+        Param("contrast_weight", "Contrast weight", kind="number", default=0, minimum=0,
+              help_text="Score gain per grey-level-per-pixel of edge contrast. With all weights at 0, score falls back to contrast."),
+        Param("expected_width", "Expected width", kind="number", default=0, minimum=0, unit="px", teach=True,
+              help_text="Expected edge-pair width in px. Legacy single-result mode still uses it to pick the closest width; with width_weight > 0 it also contributes a score penalty per px of width error."),
+        Param("width_weight", "Width weight", kind="number", default=0, minimum=0,
+              help_text="Score penalty per pixel away from expected_width for edge-pair candidates."),
         Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
     ]
     inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
@@ -123,15 +186,79 @@ class CaliperTool(Tool):
         prof_list = np.round(profile, 1).tolist()
         if len(edges) < 2:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
-                                   "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
+                                   "edges": [], "profile": prof_list},
                           overlays=overlays, status="ng", message=f"Fewer than two edges ({len(edges)})")
-        pair = pick_pair(edges, ctx.param("edge_pair", "first_last"), ctx.param("pair_polarity", "any"), ctx.number("expected_width", 0))
-        if pair is None:
+        sort_by = str(ctx.param("sort_by", "score"))
+        max_results = max(1, ctx.integer("max_results", 1))
+        expected_position = ctx.number("expected_position", 0)
+        position_weight = ctx.number("position_weight", 0)
+        contrast_weight = ctx.number("contrast_weight", 0)
+        expected_width = ctx.number("expected_width", 0)
+        width_weight = ctx.number("width_weight", 0)
+        legacy_single = (
+            max_results == 1
+            and sort_by == "score"
+            and expected_position <= 0
+            and position_weight == 0
+            and contrast_weight == 0
+            and width_weight == 0
+        )
+        if legacy_single:
+            pairs = [pick_pair(edges, ctx.param("edge_pair", "first_last"), ctx.param("pair_polarity", "any"), expected_width)]
+        else:
+            pairs = _pair_candidates(edges, ctx.param("pair_polarity", "any"))
+        pairs = [p for p in pairs if p is not None]
+        if not pairs:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
-                                   "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
+                                   "edges": [], "profile": prof_list},
                           overlays=overlays, status="ng", message="No edge pair matches the polarity")
-        (p1, _), (p2, _) = pair
         mid = (h if horizontal else w) / 2
+
+        def candidate(pair: tuple[tuple[float, float], tuple[float, float]]) -> dict[str, Any]:
+            (p1, g1), (p2, g2) = pair
+            position = (p1 + p2) / 2.0
+            width = abs(p2 - p1)
+            contrast = abs(g1) + abs(g2)
+            score = _caliper_candidate_score(
+                position, contrast, width,
+                expected_position=expected_position,
+                position_weight=position_weight,
+                contrast_weight=contrast_weight,
+                expected_width=expected_width,
+                width_weight=width_weight,
+            )
+            if horizontal:
+                e1, e2 = c.to_full(p1, mid), c.to_full(p2, mid)
+            else:
+                e1, e2 = c.to_full(mid, p1), c.to_full(mid, p2)
+            return {
+                "position": round(float(position), 3),
+                "contrast": round(float(contrast), 3),
+                "score": round(float(score), 3),
+                "width": round(float(width), 3),
+                "edge1_position": round(float(p1), 3),
+                "edge1_contrast": round(float(g1), 3),
+                "edge1_x": round(float(e1[0]), 3),
+                "edge1_y": round(float(e1[1]), 3),
+                "edge2_position": round(float(p2), 3),
+                "edge2_contrast": round(float(g2), 3),
+                "edge2_x": round(float(e2[0]), 3),
+                "edge2_y": round(float(e2[1]), 3),
+                "_pair": pair,
+                "_points": (e1, e2),
+            }
+
+        candidates = [candidate(p) for p in pairs]
+        if not legacy_single:
+            if sort_by == "position":
+                candidates.sort(key=lambda item: (item["position"], -item["score"]))
+            elif sort_by == "contrast":
+                candidates.sort(key=lambda item: (-item["contrast"], item["position"]))
+            else:
+                candidates.sort(key=lambda item: (-item["score"], item["position"]))
+        candidates = candidates[:max_results]
+        chosen = candidates[0]
+        (p1, _), (p2, _) = chosen["_pair"]
         if horizontal:
             e1, e2 = c.to_full(p1, mid), c.to_full(p2, mid)
             seg1 = (c.to_full(p1, 0), c.to_full(p1, h))
@@ -148,7 +275,7 @@ class CaliperTool(Tool):
         ]
         return Result(
             outputs={"width": width, "edge1_x": e1[0], "edge1_y": e1[1], "edge2_x": e2[0], "edge2_y": e2[1],
-                     "edges": [round(e[0], 2) for e in edges], "profile": prof_list,
+                     "edges": [{k: v for k, v in item.items() if not k.startswith("_")} for item in candidates], "profile": prof_list,
                      **world_outputs(ctx, points={("edge1_x", "edge1_y"): e1, ("edge2_x", "edge2_y"): e2},
                                      lengths={"width": (width, ((e1[0] + e2[0]) / 2, (e1[1] + e2[1]) / 2))})},
             overlays=overlays, message=f"Width {width:.2f}px ({len(edges)} edges)",
@@ -1015,6 +1142,192 @@ class ConcentricityTool(Tool):
         )
 
 
+def _edge_trend_reference(ctx: ToolContext) -> tuple[str, tuple, dict[str, Any] | None]:
+    """取得 edge_trend 的參考幾何；上游幾何優先於畫布 ROI。"""
+    line = _line(ctx.inputs.get("line"))
+    if line is not None:
+        return "line", line, {"kind": "line", "x1": line[0], "y1": line[1], "x2": line[2], "y2": line[3], "color": "#38bdf8", "dash": True}
+    circle_in = ctx.inputs.get("circle")
+    if isinstance(circle_in, dict) and all(k in circle_in for k in ("cx", "cy", "r")):
+        circle = (float(circle_in["cx"]), float(circle_in["cy"]), float(circle_in["r"]), 0.0, 360.0)
+        return "arc", circle, {"kind": "circle", "cx": circle[0], "cy": circle[1], "r": circle[2], "color": "#38bdf8", "dash": True}
+    region = ctx.roi()
+    if region is None:
+        raise ToolError("Draw a region along the edge, or wire a line or a circle in from a locate step")
+    shape = str(region.get("shape") or "")
+    if shape in ("circle", "annulus"):
+        cx, cy = float(region["cx"]), float(region["cy"])
+        radius = float(region.get("r", region.get("r_outer", 0)) or 0)
+        if shape == "annulus":
+            radius = (float(region["r_inner"]) + float(region["r_outer"])) / 2
+        return "arc", (cx, cy, radius, float(region.get("a0", 0) or 0), float(region.get("a1", 360) or 360)), region_overlay(region, label="trend")
+    if shape in ("rect", "rotated_rect"):
+        if shape == "rect":
+            cx = float(region["x"]) + float(region["w"]) / 2
+            cy = float(region["y"]) + float(region["h"]) / 2
+            rw, rh, angle = float(region["w"]), float(region["h"]), 0.0
+        else:
+            cx, cy = float(region["cx"]), float(region["cy"])
+            rw, rh, angle = float(region["w"]), float(region["h"]), float(region.get("angle", 0))
+        horizontal = rw >= rh
+        length = rw if horizontal else rh
+        rad = math.radians(angle)
+        ux, uy = (math.cos(rad), math.sin(rad)) if horizontal else (-math.sin(rad), math.cos(rad))
+        half = length / 2.0
+        line = (cx - ux * half, cy - uy * half, cx + ux * half, cy + uy * half)
+        return "line", line, region_overlay(region, label="trend")
+    raise ToolError("The region has to be a rectangle, circle or annulus")
+
+
+def _edge_trend_baseline(ctx: ToolContext, hits: list[CaliperHit], series: np.ndarray, kind: str, wrap: bool) -> np.ndarray:
+    """依選定模式產生每把卡尺的 offset 基線。"""
+    mode = str(ctx.param("baseline", "fit"))
+    n = len(series)
+    finite = np.isfinite(series)
+    if mode == "reference":
+        return np.zeros(n) if finite.any() else np.full(n, np.nan)
+    if mode == "median":
+        return defects.moving_median(series, ctx.integer("window", 9), wrap)
+    if finite.sum() < 3:
+        return np.full(n, float(np.nanmedian(series)) if finite.any() else np.nan)
+    points = np.asarray(hit_points(hits), dtype=np.float64)
+    if kind == "arc" and len(points) >= 5:
+        fitted = fit_circle_lsq(points)
+        if fitted is not None:
+            fx, fy, radius = fitted
+            out = np.full(n, np.nan)
+            for i, h in enumerate(hits):
+                if h.found:
+                    out[i] = -(math.hypot(h.cx - fx, h.cy - fy) - radius)
+            return out
+    if kind == "line" and len(points) >= 2:
+        fitted = fit_points_line(points, ransac=True, tol=max(1.0, ctx.number("max_deviation", 2.0) * 1.5))
+        if fitted is not None:
+            vx, vy, x0, y0, _ = fitted
+            nx, ny = -vy, vx
+            out = np.full(n, np.nan)
+            for i, h in enumerate(hits):
+                if h.found:
+                    out[i] = -((h.cx - x0) * nx + (h.cy - y0) * ny)
+            return out
+    return np.full(n, float(np.nanmedian(series)))
+
+
+class EdgeTrendTool(Tool):
+    key = "edge_trend"
+    label = "Edge trend"
+    description = "Lays calipers along a straight or round edge and returns the per-caliper offset trend, widths in pair mode, missing indices and summary statistics."
+    category = "measure"
+    icon = "Activity"
+    params = [
+        Param("roi", "Reference", kind="roi", shapes=["rect", "rotated_rect", "circle", "annulus"],
+              help_text="Draw along the edge when no upstream line or circle is connected. Wired geometry takes priority."),
+        Param("calipers", "Calipers", kind="number", default=60, minimum=3, maximum=1000, teach=True),
+        Param("search", "Search range", kind="number", default=20, minimum=2, maximum=2000, unit="px", teach=True),
+        Param("caliper_width", "Caliper width", kind="number", default=3, minimum=1, maximum=99, unit="px",
+              help_text="Averaging width along the edge."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True),
+        Param("mode", "Mode", kind="select", default="single", options=[
+            {"value": "single", "label": "Single edge"}, {"value": "pair", "label": "Edge pair"},
+        ]),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True,
+              visible_when={"param": "mode", "in": ["single"]}),
+        Param("pair_polarity", "Pair polarity", kind="select", default="any", options=[
+            {"value": "any", "label": "Any"}, {"value": "bright", "label": "Bright band"}, {"value": "dark", "label": "Dark band"},
+        ], teach=True, visible_when={"param": "mode", "in": ["pair"]}),
+        Param("baseline", "Baseline", kind="select", default="fit", options=[
+            {"value": "fit", "label": "Fit to found edge"},
+            {"value": "median", "label": "Moving median"},
+            {"value": "reference", "label": "Reference geometry"},
+        ], help_text="Offsets are hit offset minus this baseline, in px."),
+        Param("max_deviation", "Max deviation", kind="number", default=2.0, minimum=0, step=0.1, unit="px", teach=True,
+              help_text="Maximum absolute offset trend before taking the NG branch; 0 disables the limit."),
+        Param("window", "Median window", kind="number", default=9, minimum=3, maximum=999, group="Advanced",
+              visible_when={"param": "baseline", "in": ["median"]}),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+        Param("edge_select", "Which edge", kind="select", default="strongest", options=_EDGE_SELECT_OPTIONS, group="Advanced",
+              visible_when={"param": "mode", "in": ["single"]}),
+    ]
+    inputs = [
+        Port("image", "Image", "image"),
+        Port("roi", "Region (dynamic)", "region", required=False),
+        Port("line", "Reference line", "any", required=False),
+        Port("circle", "Reference circle", "any", required=False),
+    ]
+    outputs = [
+        flow_out("ok", "In trend", "ok"), flow_out("ng", "Out of trend", "critical"),
+        Port("offsets", "Offsets", "list"), Port("widths", "Widths", "list"), Port("positions", "Positions", "list"),
+        Port("points", "Edge points", "points"), Port("missing", "Missing indices", "list"),
+        Port("mean", "Mean", "number"), Port("std", "Std dev", "number"), Port("min", "Min", "number"),
+        Port("max", "Max", "number"), Port("range", "Range", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        kind, geometry, reference_overlay = _edge_trend_reference(ctx)
+        count = ctx.integer("calipers", 60)
+        wrap = kind == "arc" and abs(float(geometry[4]) - float(geometry[3])) >= 359.9
+        if kind == "line":
+            centers, scan, tangent, positions = line_geometry(*geometry, count)
+        else:
+            cx, cy, radius, a0, a1 = geometry
+            centers, scan, tangent, positions = arc_geometry(cx, cy, radius, count, a0=a0, a1=a1)
+        pair = str(ctx.param("mode", "single")) == "pair"
+        hits = caliper_series(
+            image, centers, scan, tangent, positions,
+            search=ctx.number("search", 20), height=ctx.number("caliper_width", 3),
+            polarity=str(ctx.param("polarity", "any")), threshold=ctx.number("edge_threshold", 20),
+            smoothing=ctx.integer("smoothing", 3), mode="pair" if pair else "single",
+            select=str(ctx.param("edge_select", "strongest")),
+            pair_polarity=str(ctx.param("pair_polarity", "any")),
+        )
+        raw_offsets = np.array([h.offset if h.found else np.nan for h in hits], dtype=np.float64)
+        baseline = _edge_trend_baseline(ctx, hits, raw_offsets, kind, wrap)
+        offsets = raw_offsets - baseline
+        finite = offsets[np.isfinite(offsets)]
+        nan = float("nan")
+        stats = {
+            "mean": float(finite.mean()) if len(finite) else nan,
+            "std": float(finite.std()) if len(finite) else nan,
+            "min": float(finite.min()) if len(finite) else nan,
+            "max": float(finite.max()) if len(finite) else nan,
+            "range": float(finite.max() - finite.min()) if len(finite) else nan,
+        }
+        limit = ctx.number("max_deviation", 2.0)
+        worst = float(np.max(np.abs(finite))) if len(finite) else nan
+        ok = bool(len(finite)) and (limit <= 0 or worst <= limit)
+        over = np.isfinite(offsets) & (limit > 0) & (np.abs(offsets) > limit)
+        missing = [int(h.index) for h in hits if not h.found]
+        points = [[round(h.x, 2), round(h.y, 2)] for h in hits if h.found]
+        overlays: list[dict[str, Any]] = [reference_overlay] if reference_overlay else []
+        good_points = [[round(h.x, 2), round(h.y, 2)] for h in hits if h.found and not over[h.index]]
+        bad_points = [[round(h.x, 2), round(h.y, 2)] for h in hits if h.found and over[h.index]]
+        if good_points:
+            overlays.append({"kind": "points", "points": good_points, "color": "#22c55e"})
+        if bad_points:
+            overlays.append({"kind": "points", "points": bad_points, "color": "#ef4444"})
+        if pair:
+            second = [[round(h.x2, 2), round(h.y2, 2)] for h in hits if h.found]
+            if second:
+                overlays.append({"kind": "points", "points": second, "color": "#a78bfa"})
+        if missing:
+            overlays.append({"kind": "points", "points": [[round(h.cx, 2), round(h.cy, 2)] for h in hits if not h.found], "color": "#64748b"})
+        return Result(
+            outputs={
+                "offsets": [None if not np.isfinite(v) else round(float(v), 4) for v in offsets],
+                "widths": [None if not h.found else round(float(h.width), 4) for h in hits] if pair else [],
+                "positions": [round(float(p), 4) for p in positions],
+                "points": points,
+                "missing": missing,
+                **{k: (_round_float(v, 4) if np.isfinite(v) else nan) for k, v in stats.items()},
+            },
+            overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng",
+            message=(f"trend {stats['mean']:.2f}±{stats['std']:.2f}px, max {worst:.2f}px ({len(missing)} missing)"
+                     if len(finite) else f"no edge trend ({len(missing)} missing)"),
+            detail={"baseline": ctx.param("baseline", "fit"), "found": int(sum(h.found for h in hits)), "total": len(hits)},
+        )
+
+
 def _line_from_fit(vx: float, vy: float, x0: float, y0: float, pts: np.ndarray) -> dict[str, float]:
     """把 (方向, 一點) 與其內點投影成線段端點。"""
     t = (pts[:, 0] - x0) * vx + (pts[:, 1] - y0) * vy
@@ -1874,5 +2187,5 @@ def _image_centre(ctx: ToolContext) -> tuple[float, float]:
 TOOLS = [
     CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), SharpnessTool(), ToWorldTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
-    LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(), CoordinateTool(),
+    EdgeTrendTool(), LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(), CoordinateTool(),
 ]

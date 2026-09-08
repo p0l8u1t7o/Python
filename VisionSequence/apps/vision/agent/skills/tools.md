@@ -173,6 +173,21 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。量亮條／暗條寬度給 `pair_polarity`（bright＝暗→亮再亮→暗、dark 相反）；知道大約寬度就填 `expected_width`（挑最接近的一對，旁邊有高對比雜訊邊也不會挑錯）。輸出 `width`（px）。
 
+多候選：`max_results` 大於 1 時，`edges` 會列出前 N 個候選，每筆含掃描方向位置、兩個邊的位置、對比、分數與寬度；
+`sort_by=position` 用由近到遠順序，`contrast` 用灰階/px 對比，`score` 則用加權分數排序。單一 `width/edge1_x/...`
+永遠取排序後第一筆。
+評分：權重全為 0 時分數退回對比；打開權重時，score = `contrast_weight * contrast`
+- `position_weight * abs(position - expected_position)`（`expected_position=0` 不用）
+- `width_weight * abs(width - expected_width)`（`expected_width=0` 不用）。位置與寬度都是 px；對比是灰階/px。
+
+## edge_trend
+整條邊趨勢：直接沿參考直線或圓放 `caliper_series`，不是重新掃描一套。上游 `line`／`circle` 優先於 ROI；沒有幾何輸入時，
+ROI 用 rect/rotated_rect 表示直線邊、circle/annulus 表示圓邊。`calipers` 決定趨勢點數，`search` 是每把卡尺的法向搜尋距離，
+`caliper_width` 是沿邊平均寬度，`mode=single/pair` 決定找單邊或邊緣對。
+輸出 `offsets` 是每把卡尺相對基線的偏移，可接 `profile_defect.values`；`points` 是命中點，可接 `profile_defect.points`；
+`missing` 保留打空的卡尺索引。`baseline=reference` 看相對教導幾何的偏移，`fit` 會用命中點擬合直線／圓後看殘差，
+`median` 用滑動中位數看局部突變。`max_deviation` 是 px 門檻，超過走 `ng` 分支；overlay 會把超標命中點標紅。
+
 ## wall_thickness
 沿壁放多條卡尺量厚度：`roi` 用 **line 橫切壁**（最直觀）或矩形長邊沿壁。輸出 `thickness`（平均）、min/max。「沒有找到成對的邊緣」通常是掃描方向錯或 band 太窄。
 

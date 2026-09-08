@@ -258,6 +258,14 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         [{"kind": "points", "points": [[float(i), float(i)] for i in range(0, 200, 4)]}, {"kind": "text", "x": 20, "y": 80, "text": "hello"}],
     ]
     top_edge = {"shape": "rotated_rect", "cx": s.cx, "cy": s.cy - 0.2 * s.h, "w": 0.4 * s.w, "h": 40, "angle": s.angle}
+    caliper_bars = np.full((90, 220), 40, np.uint8)
+    caliper_bars[:, 45:55] = 100
+    caliper_bars[:, 150:160] = 230
+    caliper_bars = cv2.GaussianBlur(caliper_bars, (0, 0), 0.8)
+    trend_edge = np.full((140, 220), 40, np.uint8)
+    for x in range(trend_edge.shape[1]):
+        trend_edge[70 + (3 if 90 <= x < 130 else 0) :, x] = 210
+    trend_edge = cv2.GaussianBlur(trend_edge, (0, 0), 0.8)
     # 極座標展開：1280×960 時 r 200～300（規格的效能預算案例）；640×480 等比縮小
     ring = {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.2083, "r_outer": m * 0.3125}
     from apps.vision.tools.builtin import polar as _polar
@@ -334,6 +342,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("hough_lines", "hough_lines", big, {}, {}, {}),
         # measure
         ("caliper", "caliper", big, {"roi": {"shape": "rect", "x": s.cx - m * 0.12, "y": s.cy - 10, "w": m * 0.24, "h": 20}}, {}, {}),
+        ("caliper multi weighted", "caliper", caliper_bars, {"roi": {"shape": "rect", "x": 0, "y": 20, "w": 200, "h": 40}, "pair_polarity": "bright",
+                                                              "max_results": 3, "expected_position": 50, "position_weight": 5, "contrast_weight": 1, "edge_threshold": 5}, {}, {}),
         ("distance", "distance", None, {}, {"a": [1.0, 2.0], "b": [4.0, 6.0]}, {}),
         ("angle", "angle", None, {}, {"a": {"x1": 0, "y1": 0, "x2": 10, "y2": 0}, "b": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}}, {}),
         ("intensity (circle roi)", "intensity", big, {"roi": center_circle}, {}, {}),
@@ -358,6 +368,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("circular_caliper 360", "circular_caliper", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "caliper_count": 360}, {}, {}),
         ("edge_defect line 180", "edge_defect", gray, {"roi": top_edge, "calipers": 180, "search": 30}, {}, {}),
         ("edge_defect arc 180", "edge_defect", gray, {"roi": center_circle, "calipers": 180, "search": 30}, {}, {}),
+        ("edge_trend line 60", "edge_trend", trend_edge, {"calipers": 60, "search": 24, "caliper_width": 5, "polarity": "dark_to_light",
+                                                           "edge_threshold": 10, "baseline": "reference", "max_deviation": 2},
+         {"line": {"x1": 20, "y1": 69.5, "x2": 200, "y2": 69.5}}, {}),
         ("profile_defect (fit_circle 360)", "profile_defect", None, {"baseline": "fit_circle", "threshold": 3}, {"values": [float(m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)) for i in range(360)], "points": [[s.cx + math.cos(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)), s.cy + math.sin(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0))] for i in range(360)]}, {}),
         ("fit_arc (annulus 90)", "fit_arc", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),
         ("fit_ellipse (annulus 90)", "fit_ellipse", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),

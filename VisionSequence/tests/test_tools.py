@@ -54,7 +54,9 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["threshold"], {"threshold", "low", "high", "block", "c"})
         self.assertEqual(teach["template_match"], {"threshold", "angle_range"})
         self.assertEqual(teach["blob"], {"min_area", "max_area", "min_circularity"})
-        self.assertEqual(teach["caliper"], {"edge_threshold", "polarity"})
+        # 期望位置與期望寬度是換線會調的產品尺寸，開放給操作員；
+        # 三個權重（position／contrast／width）是演算法調校，留給工程師。
+        self.assertEqual(teach["caliper"], {"edge_threshold", "polarity", "expected_position", "expected_width"})
         self.assertEqual(teach["find_circle"], {"edge_threshold"})
         self.assertEqual(teach["find_line"], {"edge_threshold"})
         self.assertEqual(teach["defect_diff"], {"threshold", "min_area"})
