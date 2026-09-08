@@ -944,6 +944,30 @@ export interface DlSample {
   split: '' | 'train' | 'val' | 'test'
 }
 
+export interface DlRetrievalItem {
+  index: number
+  id: string
+  label: string
+  thumb: string
+}
+
+export interface DlRetrievalClass {
+  label: string
+  count: number
+  items: DlRetrievalItem[]
+}
+
+export interface DlRetrievalLibrary {
+  asset_id: string
+  total: number
+  classes: DlRetrievalClass[]
+  items: DlRetrievalItem[]
+  metrics: Record<string, unknown>
+  created?: number
+  skipped?: number
+  duplicates?: number
+}
+
 export interface DlDatasetVersion {
   id: number
   name: string

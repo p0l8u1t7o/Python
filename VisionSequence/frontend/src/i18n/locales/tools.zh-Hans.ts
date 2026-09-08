@@ -1210,6 +1210,28 @@ export default {
       distance: "距离",
     },
   },
+  dl_retrieval: {
+    label: '参考库比对',
+    description: '将影像与已保存的参考库比较，返回最接近的类别。',
+    params: {
+      model: { label: '参考库', help: '用于比对的已保存参考库。' },
+      roi: { label: 'ROI', help: '要比对的区域；留空代表全图。' },
+      topk: { label: '投票数', help: '用几张最接近的参考图决定类别。' },
+      min_similarity: { label: '最低相似度', help: '低于此值时走 not_matched。' },
+      expected: { label: '预期类别', help: '选填；填入后只有相符才是 ok。' },
+      device: { label: '执行设备', options: { auto: '自动', cpu: 'CPU', cuda: 'CUDA', directml: 'DirectML' } },
+      backbone_path: { label: '参考比对文件', help: '测试用内部文件覆盖。' },
+    },
+    ports: {
+      label: '类别',
+      similarity: '相似度',
+      confidence: '信心',
+      topk: '最接近列表',
+      ok: 'OK',
+      ng: 'NG',
+      not_matched: '未符合',
+    },
+  },
   dl_anomaly: {
     label: "深度学习异常检测",
     description: "用只以良品训练的模型，为画面每个区域打「与教导良品差多少」的分数。超过阈值的就是异常——划痕、凹陷、缺料、异物——完全不必给它看过缺陷。调阈值时看分数图。",

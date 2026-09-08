@@ -1210,6 +1210,28 @@ export default {
       distance: "距離",
     },
   },
+  dl_retrieval: {
+    label: '參考庫比對',
+    description: '將影像與已儲存的參考庫比較，回傳最接近的類別。',
+    params: {
+      model: { label: '參考庫', help: '用於比對的已儲存參考庫。' },
+      roi: { label: 'ROI', help: '要比對的區域；留空代表全圖。' },
+      topk: { label: '投票數', help: '用幾張最接近的參考圖決定類別。' },
+      min_similarity: { label: '最低相似度', help: '低於此值時走 not_matched。' },
+      expected: { label: '預期類別', help: '選填；填入後只有相符才是 ok。' },
+      device: { label: '執行裝置', options: { auto: '自動', cpu: 'CPU', cuda: 'CUDA', directml: 'DirectML' } },
+      backbone_path: { label: '參考比對檔', help: '測試用內部檔案覆寫。' },
+    },
+    ports: {
+      label: '類別',
+      similarity: '相似度',
+      confidence: '信心',
+      topk: '最接近清單',
+      ok: 'OK',
+      ng: 'NG',
+      not_matched: '未符合',
+    },
+  },
   dl_anomaly: {
     label: "深度學習異常檢測",
     description: "用只以良品訓練的模型，為畫面每個區域打「與教導良品差多少」的分數。超過門檻的就是異常——刮痕、凹陷、缺料、異物——完全不必給它看過缺陷。調門檻時看分數圖。",

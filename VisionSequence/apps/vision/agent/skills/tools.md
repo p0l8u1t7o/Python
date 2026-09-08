@@ -523,6 +523,12 @@ read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連�
 ## ai_obb
 旋轉框網路：輸出 `matches`（cx, cy, w, h, angle°, points 四角）、`contours`（四角輪廓）；適合傾斜擺放的工件計數／定位，角度可接 formula／tolerance_judge 做方向檢查。底模 `yolo11n-obb.pt`（DOTA 航拍類別）僅供試用，自訂類別用「旋轉框偵測（YOLO-obb）」訓練（polygon 標記自動取最小外接旋轉矩形）。
 
+## dl_retrieval
+影像類別會一直增加時優先用這個：先把已標記圖片建成 reference library，之後新增類別只要加參考圖，不需要重訓。
+工具參數 `model` 必填，`roi` 可限制比對範圍，`topk` 是投票數，`min_similarity` 低於門檻會走 `not_matched`（status=`ng`，不要當錯誤），`expected` 填了才把結果轉成 ok/ng 判定。
+輸出 `label/similarity/confidence/topk/ok`；`topk` 每筆有 label、similarity、index。遇到缺 model 或庫壞掉要回 ToolError。
+不要把它改寫成傳統分類模型流程；需求核心是「加圖即可加類別」。
+
 ## dl_anomaly
 只教良品、找未知缺陷用此工具；只有少量目標裁切圖且要定位或計數時，改用 register_detect。
 只教良品的異常檢測：`model` 是教導頁用「Anomaly detection (good parts only)」訓練的模型（只要 20～50 張良品、不用標記）；

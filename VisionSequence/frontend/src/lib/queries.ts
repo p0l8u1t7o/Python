@@ -28,6 +28,7 @@ import type {
   DlDatasetVersion,
   DlDevices,
   DlProject,
+  DlRetrievalLibrary,
   DlSample,
   DlShape,
   DlSuggestion,
@@ -1104,6 +1105,14 @@ export function useDlSamples(projectId: number | null) {
   })
 }
 
+export function useDlRetrievalLibrary(projectId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ['dl', 'retrieval-library', projectId],
+    queryFn: () => api.get<DlRetrievalLibrary>(`/vision/dl/projects/${projectId}/retrieval-library`),
+    enabled: enabled && projectId !== null,
+  })
+}
+
 export function useDlVersions(projectId: number | null) {
   return useQuery({
     queryKey: ['dl', 'versions', projectId],
@@ -1129,6 +1138,7 @@ export function useDlMutations() {
   const invalidateProject = (id: number) => {
     void client.invalidateQueries({ queryKey: ['dl', 'project', id] })
     void client.invalidateQueries({ queryKey: ['dl', 'samples', id] })
+    void client.invalidateQueries({ queryKey: ['dl', 'retrieval-library', id] })
     invalidateProjects()
   }
   const createProject = useMutation({
@@ -1152,6 +1162,20 @@ export function useDlMutations() {
       form.append('label', label || '')
       return api.postForm<{ items: DlSample[]; skipped: number; duplicates: number }>(`/vision/dl/projects/${projectId}/samples`, form)
     },
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const addRetrievalItems = useMutation({
+    mutationFn: ({ projectId, files, label }: { projectId: number; files: File[]; label: string }) => {
+      const form = new FormData()
+      for (const f of files) form.append('files', f)
+      form.append('label', label)
+      return api.postForm<DlRetrievalLibrary>(`/vision/dl/projects/${projectId}/retrieval-library/items`, form)
+    },
+    onSuccess: (_, v) => invalidateProject(v.projectId),
+  })
+  const removeRetrievalItem = useMutation({
+    mutationFn: ({ projectId, index }: { projectId: number; index: number }) =>
+      api.delete<DlRetrievalLibrary>(`/vision/dl/projects/${projectId}/retrieval-library/items/${index}`),
     onSuccess: (_, v) => invalidateProject(v.projectId),
   })
   const fromSource = useMutation({
@@ -1239,5 +1263,5 @@ export function useDlMutations() {
     mutationFn: (body: { providers?: string[]; train_device?: string }) => api.patch<DlDevices>('/vision/dl/settings', body),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['dl', 'devices'] }),
   })
-  return { createProject, patchProject, removeProject, uploadSamples, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, saveModel, discardModel, patchSettings }
+  return { createProject, patchProject, removeProject, uploadSamples, addRetrievalItems, removeRetrievalItem, fromSource, setLabel, setShapes, setSplit, autoSplit, freezeVersion, removeVersion, datasetExport, datasetImport, samPoint, removeSample, bulkLabels, autoLabel, startTrain, cancelTrain, saveModel, discardModel, patchSettings }
 }

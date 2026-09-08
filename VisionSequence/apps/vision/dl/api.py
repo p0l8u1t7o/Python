@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -15,6 +16,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -26,7 +28,7 @@ from ninja import File, Form, Router, UploadedFile
 from apps.accounts.security import authenticate, principal, require_admin, require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision.dl import base as dl_base, devices, jobs, yolo_runtime
+from apps.vision.dl import base as dl_base, devices, jobs, retrieval, yolo_runtime
 from apps.vision.dl.base import SampleRef, TrainError
 from apps.vision.images import encode_image
 from apps.vision.models import Asset, DlDatasetVersion, DlProject, DlSample
@@ -102,6 +104,88 @@ def _sample_out(sample: DlSample) -> dict[str, Any]:
         "score": sample.score, "width": sample.width, "height": sample.height, "created_at": sample.created_at,
         "shapes": list(sample.shapes or []), "split": sample.split,
     }
+
+
+def _retrieval_project(project: DlProject) -> None:
+    if project.trainer_kind != "retrieval":
+        raise ValidationError("This project does not use a reference library", code="bad_project_kind")
+
+
+def _retrieval_asset(project: DlProject) -> Asset:
+    _retrieval_project(project)
+    if not project.last_asset_id:
+        raise ValidationError("Build the reference library before editing it", code="missing_library")
+    asset = Asset.objects.filter(pk=project.last_asset_id).first()
+    if asset is None or asset.kind != "model":
+        raise NotFound("Reference library asset not found", code="library_not_found")
+    return asset
+
+
+def _retrieval_metrics(model: dict[str, Any], previous: dict[str, Any] | None = None) -> dict[str, Any]:
+    labels = np.asarray(model.get("labels"), dtype=np.int32)
+    classes = [str(c) for c in (model.get("classes") or [])]
+    topk = int((model.get("meta") or {}).get("topk") or 3)
+    counts = {name: int(np.count_nonzero(labels == i)) for i, name in enumerate(classes)}
+    vectors = np.asarray(model.get("vectors"), dtype=np.float32)
+    out = dict(previous or {})
+    out.update(
+        {
+            "library_size": int(len(vectors)),
+            "classes": int(len(classes)),
+            "per_class": counts,
+            "leave_one_out_accuracy": retrieval.leave_one_out(vectors, labels, classes, topk) if len(vectors) > 1 else 0.0,
+            "topk": topk,
+        }
+    )
+    return out
+
+
+def _retrieval_out(project: DlProject) -> dict[str, Any]:
+    _retrieval_project(project)
+    if not project.last_asset_id:
+        return {"asset_id": "", "total": 0, "classes": [], "items": [], "metrics": dict(project.last_metrics or {})}
+    asset = _retrieval_asset(project)
+    try:
+        model = retrieval.load(asset.path)
+    except retrieval.RetrievalError as exc:
+        raise ValidationError(str(exc), code="bad_library") from None
+    labels = np.asarray(model.get("labels"), dtype=np.int32)
+    class_names = [str(c) for c in (model.get("classes") or [])]
+    items: list[dict[str, Any]] = []
+    groups: dict[str, list[dict[str, Any]]] = {name: [] for name in class_names}
+    for idx, label_index in enumerate(labels):
+        label = class_names[int(label_index)] if 0 <= int(label_index) < len(class_names) else ""
+        thumb = model.get("thumbs", [])[idx] if idx < len(model.get("thumbs", [])) else b""
+        row = {
+            "index": int(idx),
+            "id": str((model.get("thumb_ids") or [""])[idx]),
+            "label": label,
+            "thumb": f"data:image/jpeg;base64,{base64.b64encode(thumb).decode('ascii')}" if thumb else "",
+        }
+        items.append(row)
+        groups.setdefault(label, []).append(row)
+    return {
+        "asset_id": str(asset.id),
+        "total": int(len(items)),
+        "classes": [{"label": name, "count": len(groups.get(name, [])), "items": groups.get(name, [])} for name in class_names],
+        "items": items,
+        "metrics": _retrieval_metrics(model, dict(project.last_metrics or {})),
+    }
+
+
+def _write_retrieval_model(project: DlProject, asset: Asset, data: bytes) -> dict[str, Any]:
+    path = Path(asset.path)
+    with path.open("wb") as fh:
+        fh.write(data)
+    retrieval.invalidate(path)
+    asset.size = os.path.getsize(path)
+    model = retrieval.loads(data, path=str(path.resolve()))
+    metrics = _retrieval_metrics(model, dict(project.last_metrics or {}))
+    asset.meta = {**dict(asset.meta or {}), "metrics": metrics}
+    asset.save(update_fields=["size", "meta"])
+    project.last_metrics = metrics
+    project.save(update_fields=["last_metrics", "updated_at"])
+    return _retrieval_out(project)
 
 
 def _pixels_sha256(image: np.ndarray) -> str:
@@ -294,6 +378,62 @@ def upload_samples(request: HttpRequest, project_id: int, files: list[UploadedFi
             seen.add(sha)
             created.append(_sample_out(_save_sample(project, image, label, sha=sha)))
     return 201, {"items": created, "skipped": skipped, "duplicates": duplicates}
+
+
+@router.get("/dl/projects/{project_id}/retrieval-library")
+def get_retrieval_library(request: HttpRequest, project_id: int):
+    return _retrieval_out(_project(project_id))
+
+
+@router.post("/dl/projects/{project_id}/retrieval-library/items", response={201: dict})
+def add_retrieval_items(request: HttpRequest, project_id: int, files: list[UploadedFile] = File(...), label: str = Form("")):
+    require_feature(request, "dl")
+    principal(request).can_execute()
+    project = _project(project_id)
+    asset = _retrieval_asset(project)
+    name = str(label or "").strip()
+    if not name:
+        raise ValidationError("A label is required", code="bad_label")
+    classes = list(project.classes or [])
+    if name not in classes:
+        classes.append(name)
+        project.classes = classes
+        project.save(update_fields=["classes", "updated_at"])
+    model = retrieval.load(asset.path)
+    created, skipped, duplicates = 0, 0, 0
+    seen = _existing_shas(project)
+    data = b""
+    for file in files:
+        for image in _iter_upload_images(file):
+            if image is None:
+                skipped += 1
+                continue
+            sha = _pixels_sha256(image)
+            if sha in seen:
+                duplicates += 1
+                continue
+            seen.add(sha)
+            _save_sample(project, image, name, sha=sha)
+            data = retrieval.add(model, image, name)
+            model = retrieval.loads(data, path=str(Path(asset.path).resolve()))
+            created += 1
+    if created == 0:
+        return 201, {**_retrieval_out(project), "created": 0, "skipped": skipped, "duplicates": duplicates}
+    out = _write_retrieval_model(project, asset, data)
+    return 201, {**out, "created": created, "skipped": skipped, "duplicates": duplicates}
+
+
+@router.delete("/dl/projects/{project_id}/retrieval-library/items/{index}")
+def remove_retrieval_item(request: HttpRequest, project_id: int, index: int):
+    require_feature(request, "dl")
+    principal(request).can_execute()
+    project = _project(project_id)
+    asset = _retrieval_asset(project)
+    try:
+        data = retrieval.remove(retrieval.load(asset.path), int(index))
+    except retrieval.RetrievalError as exc:
+        raise ValidationError(str(exc), code="bad_library_item") from None
+    return _write_retrieval_model(project, asset, data)
 
 
 @router.post("/dl/projects/{project_id}/samples/from-source", response={201: dict})

@@ -15,7 +15,7 @@ from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 
 from apps.vision.api_dashboard import Dashboard
-from apps.vision.models import Asset, Flow, ImageSource
+from apps.vision.models import Asset, DlProject, Flow, ImageSource
 
 
 def _save_png(image: np.ndarray, name: str) -> str:
@@ -86,6 +86,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             },
         )
         # 批次測試：一個影像集＋一次執行（背景執行緒，等它跑完）
+        self.retrieval_project = DlProject.objects.create(name="retrieval-smoke", trainer_kind="retrieval", classes=["ok"])
         from apps.vision.batch import jobs as batch_jobs
 
         r = self.client.post("/api/vision/batch/sets", data={"images": [_png_upload()], "flow_id": self.flow.id, "name": "smoke"})
@@ -117,6 +118,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
     "/api/vision/connections/export",
             "/api/vision/capture/clients", "/api/vision/capture/download/info", "/api/vision/capture/download", "/api/vision/capture/clients/nope/channels/x/preview",
             "/api/vision/connections", "/api/vision/dl/projects", "/api/vision/dl/trainers", "/api/vision/dl/devices", "/api/vision/dl/train/status",
+            f"/api/vision/dl/projects/{self.retrieval_project.id}/retrieval-library",
             "/api/vision/agent/info", "/api/vision/agent/help/search?q=批次測試", "/api/vision/agent/jobs", "/api/vision/agent/sessions", "/api/vision/agent/memory", "/api/vision/agent/skills/custom", "/api/vision/agent/skills", "/api/vision/agent/skills/platform", "/api/vision/agent/skills/blob",
             f"/api/vision/batch/sets?flow_id={fid}", f"/api/vision/batch/sets/{self.set_id}", f"/api/vision/batch/sets/{self.set_id}/runs",
             f"/api/vision/batch/sets/{self.set_id}/images/0?max=32", f"/api/vision/batch/runs/{self.batch_run_id}",

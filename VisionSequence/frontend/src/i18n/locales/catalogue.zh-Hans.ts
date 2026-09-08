@@ -94,6 +94,18 @@ export default {
         projection_dims: { label: '特征投影', help: '384 维特征的固定随机投影。128 维保留距离排序，运行时间约缩短三倍。', options: { 0: '不投影（384 维，最慢）', 128: '128 维（建议）', 64: '64 维（最快）' } },
       },
     },
+    retrieval: {
+      label: '影像检索库',
+      description: '把已标记影像建立成参考库；日后新增类别只需加入新影像。',
+      params: {
+        input_size: { label: '输入尺寸', help: '新增参考图时使用的方形尺寸。' },
+        topk: { label: '投票数', help: '用几张最接近的参考图决定最终类别。' },
+        augment: { label: '保存轻度变化', help: '为每张已标记影像额外保存镜射与小角度参考。' },
+        augment_angle: { label: '倾斜角度', help: '保存轻度变化时使用的小角度。' },
+        projection_dims: { label: '压缩参考库', options: { 0: '关闭', 64: '小型', 128: '标准' } },
+        backbone_path: { label: '参考比对文件', help: '测试用内部文件覆盖。' },
+      },
+    },
     ai_cls: {
       label: '图像分类（AI）',
       description: '一张一类，从 ImageNet 预训练底模微调 分类网络。比内置 MLP 分类准确，但需要深度学习加购包。产物：训练好的权重给 AI 分类工具、ONNX 给深度学习分类工具。',

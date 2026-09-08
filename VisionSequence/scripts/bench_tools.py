@@ -217,6 +217,21 @@ class Scene:
         self.anomaly_model = os.path.join(folder, f"anomaly_{w}.npz")
         with open(self.anomaly_model, "wb") as fh:
             fh.write(res.weights_bytes)
+        from apps.vision.dl.retrieval_trainer import RetrievalTrainer
+
+        ref_red = np.full((224, 224, 3), (0, 0, 255), np.uint8)
+        ref_green = np.full((224, 224, 3), (0, 255, 0), np.uint8)
+        ref_blue = np.full((224, 224, 3), (255, 0, 0), np.uint8)
+        self.retrieval_probe = ref_red.copy()
+        refs = [
+            _SampleRef(id="r0", label="red", path=save_png(ref_red, folder, f"retrieval_red_{w}.png")),
+            _SampleRef(id="g0", label="green", path=save_png(ref_green, folder, f"retrieval_green_{w}.png")),
+            _SampleRef(id="b0", label="blue", path=save_png(ref_blue, folder, f"retrieval_blue_{w}.png")),
+        ]
+        res = RetrievalTrainer().train(refs, ["red", "green", "blue"], {"input_size": 224, "topk": 1, "projection_dims": 0, "backbone_path": fb}, "cpu", lambda f, s, m: None)
+        self.retrieval_model = os.path.join(folder, f"retrieval_{w}.npz")
+        with open(self.retrieval_model, "wb") as fh:
+            fh.write(res.weights_bytes)
         # OCR：用 PIL 內建字型教一個數字字型模型（bench 的 ocr_read 走教導路；通用 PP-OCR 路只在有模型的機器上量）
         from apps.vision import ocr as _ocr
         from tests.test_ocr import digits as _digits, render as _render
@@ -262,7 +277,7 @@ class Scene:
             fixed_images.store(np.full((32, 32, 3), (0, 255, 0), np.uint8), "green"),
             fixed_images.store(np.full((32, 32, 3), (255, 0, 0), np.uint8), "blue"),
         ]
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "mapcal": self.mapping_calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "font": self.font_model}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "mapcal": self.mapping_calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "retrieval": self.retrieval_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -492,6 +507,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("pixel_count (circle)", "pixel_count", s.mask, {"roi": center_circle}, {}, {}),
         # dl
         ("dl_anomaly (fake backbone, roi)", "dl_anomaly", big, {"model": "anomaly", "roi": plate, "device": "cpu"}, {}, {}),
+        ("dl_retrieval (fake backbone)", "dl_retrieval", s.retrieval_probe, {"model": "retrieval", "topk": 1, "device": "cpu"}, {}, {}),
         ("dl_classify", "dl_classify", big, {"model": "gap", "roi": plate}, {}, {}),
         ("dl_detect", "dl_detect", big, {"model": "yolo", "labels": "a\nb\nc\nd", "roi": plate, "conf": 0.1}, {}, {}),
         ("dl_segment", "dl_segment", big, {"model": "idn", "roi": plate}, {}, {}),

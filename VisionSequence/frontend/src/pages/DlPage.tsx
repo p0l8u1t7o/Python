@@ -18,8 +18,8 @@ import { Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, LoadingState,
 import { assetUrl, dlSampleUrl } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useConfirm } from '@/lib/useConfirm'
-import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlSamples, useDlTrainers, useDlTrainStatus, useDlVersions, useFlowMutations, useSources } from '@/lib/queries'
-import type { DlDatasetVersion, DlProject, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
+import { useDlDevices, useDlMutations, useDlProject, useDlProjects, useDlRetrievalLibrary, useDlSamples, useDlTrainers, useDlTrainStatus, useDlVersions, useFlowMutations, useSources } from '@/lib/queries'
+import type { DlDatasetVersion, DlProject, DlRetrievalLibrary, DlSample, DlShape, DlSuggestion, DlTrainerDef } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 import { CURVE_COLORS, classColor, classColorAt } from '@/lib/colors'
 
@@ -163,6 +163,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
   /** 訓練完的命名（預設帶開始訓練時填的建議名稱） */
   const [saveName, setSaveName] = useState('')
   const [device, setDevice] = useState('')
+  const isRetrieval = trainer.kind === 'retrieval'
   const job = useDlTrainStatus(true)
   const navigate = useNavigate()
   const flowMut = useFlowMutations()
@@ -237,8 +238,8 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
 
   return (
     <Panel
-      title={<span className="flex items-center gap-2"><Cpu size={15} className="text-brand" />{t('dl.train')}</span>}
-      description={t('dl.trainHint')}
+      title={<span className="flex items-center gap-2">{isRetrieval ? <Database size={15} className="text-brand" /> : <Cpu size={15} className="text-brand" />}{t(isRetrieval ? 'dl.libraryBuild' : 'dl.train')}</span>}
+      description={t(isRetrieval ? 'dl.libraryBuildHint' : 'dl.trainHint')}
       actions={mine && job.data ? <Badge tone={statusTone[job.data.status] ?? 'neutral'}>{t(`dl.status.${job.data.status}`, { defaultValue: job.data.status })}</Badge> : null}
       bodyClassName="space-y-3 p-4 text-sm" testId="dl-train-panel"
     >
@@ -254,7 +255,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
               <span className="tnum shrink-0 font-medium text-content">{percent}%</span>
             </div>
             <div className="flex items-center gap-2 pt-0.5">
-              <Button size="sm" onClick={() => void cancelTrain.mutateAsync()}><Square size={13} /> {t('dl.cancel')}</Button>
+              <Button size="sm" onClick={() => void cancelTrain.mutateAsync()}><Square size={13} /> {t(isRetrieval ? 'dl.cancelBuild' : 'dl.cancel')}</Button>
               <span className="tnum text-xs text-subtle">{t('dl.elapsed', { s: Math.round(job.data?.duration_s ?? 0) })}</span>
             </div>
           </div>
@@ -264,8 +265,8 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         {mine && job.data?.status === 'failed' ? <p className="rounded-md bg-critical-soft px-2.5 py-1.5 text-xs text-critical">{job.data.error}</p> : null}
         {waiting ? (
           <div className="space-y-2 rounded-md border border-brand/40 bg-brand-soft px-2.5 py-2 text-xs" data-testid="dl-pending-model">
-            <p className="text-content">{t('dl.trained')}</p>
-            <TextInput label={t('dl.assetName')} value={saveName} placeholder={job.data?.asset_name} onChange={(e) => setSaveName(e.target.value)} data-testid="dl-save-name" />
+            <p className="text-content">{t(isRetrieval ? 'dl.libraryBuilt' : 'dl.trained')}</p>
+            <TextInput label={t(isRetrieval ? 'dl.libraryAssetName' : 'dl.assetName')} value={saveName} placeholder={job.data?.asset_name} onChange={(e) => setSaveName(e.target.value)} data-testid="dl-save-name" />
             <div className="flex flex-wrap items-center gap-2">
               <Button size="xs" variant="primary" loading={saveModel.isPending} onClick={() => void keepModel()} data-testid="dl-save-model">{t('dl.saveModel')}</Button>
               <Button size="xs" loading={discardModel.isPending} onClick={() => void dropModel()} data-testid="dl-discard-model">{t('dl.discardModel')}</Button>
@@ -283,7 +284,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         {/* 指標：大數字磚 */}
         {metrics && Object.keys(metrics).length ? (
           <div className="grid grid-cols-2 gap-1.5" data-testid="dl-metrics">
-            {['train_accuracy', 'val_accuracy', 'mAP50', 'mAP50-95', 'loss', 'samples'].filter((k) => metrics[k] !== undefined && metrics[k] !== null).slice(0, 4).map((k) => (
+            {['leave_one_out_accuracy', 'library_size', 'classes', 'train_accuracy', 'val_accuracy', 'mAP50', 'mAP50-95', 'loss', 'samples'].filter((k) => metrics[k] !== undefined && metrics[k] !== null).slice(0, 4).map((k) => (
               <div key={k} className="rounded-md border border-line px-2.5 py-1.5">
                 <p className="truncate text-[11px] text-muted">{t(`dl.metrics.${k}`, { defaultValue: k })}</p>
                 <p className="tnum text-lg font-semibold leading-tight text-heading">
@@ -301,7 +302,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
         <Select label={t('dl.device')} value={device || devices.data?.train_device || 'cpu'} onChange={(e) => setDevice(e.target.value)}
           hint={devices.data?.gpus?.length ? devices.data.gpus.map((g) => g.name).join(', ') : t('dl.noGpu')}
           options={(devices.data?.train_devices ?? ['cpu']).filter((d) => trainer.devices.includes(d) || d === 'cpu').map((d) => ({ value: d, label: d.toUpperCase() }))} />
-        <TextInput label={t('dl.assetName')} placeholder={`${project.name}-model`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
+        <TextInput label={t(isRetrieval ? 'dl.libraryAssetName' : 'dl.assetName')} placeholder={`${project.name}-${isRetrieval ? 'library' : 'model'}`} value={assetName} onChange={(e) => setAssetName(e.target.value)} />
         {Object.entries(groups).map(([name, list]) => (
           <details key={name} className="rounded-md border border-line px-2.5 py-1.5">
             <summary className="cursor-pointer select-none text-xs font-medium text-muted">{name} ({list.length})</summary>
@@ -311,7 +312,7 @@ function TrainPanel({ project, trainer }: { project: DlProject; trainer: DlTrain
 
         {!running ? (
           <Button variant="primary" className="w-full" loading={startTrain.isPending} onClick={() => void start()} data-testid="dl-train">
-            <Play size={14} /> {t('dl.start')}
+            <Play size={14} /> {t(isRetrieval ? 'dl.buildLibrary' : 'dl.start')}
           </Button>
         ) : null}
       </div>
@@ -509,6 +510,120 @@ function DatasetPanel({ project, samples, isShapes }: { project: DlProject; samp
 }
 
 /** 樣本篩選（網格與大圖檢視共用）：全部／未標記／自動標記待確認／指定類別。 */
+function RetrievalLibraryPanel({ project }: { project: DlProject }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const library = useDlRetrievalLibrary(project.id, project.trainer_kind === 'retrieval')
+  const { addRetrievalItems, removeRetrievalItem } = useDlMutations()
+  const { confirm, dialog } = useConfirm()
+  const [label, setLabel] = useState(project.classes[0] ?? '')
+  const [newLabel, setNewLabel] = useState('')
+  const selectedLabel = label === '__new__' ? newLabel.trim() : label
+  const metrics = (library.data?.metrics ?? project.last_metrics ?? {}) as DlRetrievalLibrary['metrics']
+  const accuracy = typeof metrics.leave_one_out_accuracy === 'number' ? Math.round(metrics.leave_one_out_accuracy * 100) : null
+
+  useEffect(() => {
+    if (!label && project.classes.length) setLabel(project.classes[0])
+  }, [label, project.classes])
+
+  async function add(list: FileList | null) {
+    if (!list?.length || !selectedLabel) return
+    try {
+      const result = await addRetrievalItems.mutateAsync({ projectId: project.id, files: Array.from(list), label: selectedLabel })
+      toast.success(t('dl.librarySaved', { count: result.created ?? 0 }))
+      setNewLabel('')
+      if (fileInput.current) fileInput.current.value = ''
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  async function remove(index: number) {
+    if (!(await confirm(t('dl.removeReferenceConfirm'), { confirmLabel: t('common.delete') }))) return
+    try {
+      await removeRetrievalItem.mutateAsync({ projectId: project.id, index })
+      toast.success(t('dl.libraryRemoved'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
+  return (
+    <Panel
+      title={<span className="flex items-center gap-2"><Database size={15} className="text-brand" />{t('dl.referenceLibrary')}</span>}
+      description={t('dl.referenceLibraryHint')}
+      bodyClassName="space-y-3 p-4 text-sm"
+      testId="dl-retrieval-library"
+    >
+      <div className="grid grid-cols-3 gap-1.5 text-center">
+        <div className="rounded-md border border-line px-2 py-1.5">
+          <p className="truncate text-[11px] text-muted">{t('dl.referencesUnit')}</p>
+          <p className="tnum text-base font-semibold text-heading">{library.data?.total ?? 0}</p>
+        </div>
+        <div className="rounded-md border border-line px-2 py-1.5">
+          <p className="truncate text-[11px] text-muted">{t('dl.classesUnit')}</p>
+          <p className="tnum text-base font-semibold text-heading">{library.data?.classes.length ?? project.classes.length}</p>
+        </div>
+        <div className="rounded-md border border-line px-2 py-1.5">
+          <p className="truncate text-[11px] text-muted">{t('dl.leaveOneOutAccuracy')}</p>
+          <p className="tnum text-base font-semibold text-heading">{accuracy === null ? '—' : `${accuracy}%`}</p>
+        </div>
+      </div>
+
+      {project.last_asset_id ? (
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+          <Select
+            label={t('dl.referenceLabel')}
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            options={[...project.classes.map((c) => ({ value: c, label: c })), { value: '__new__', label: t('dl.newReferenceLabel') }]}
+          />
+          <Button loading={addRetrievalItems.isPending} disabled={!selectedLabel} onClick={() => fileInput.current?.click()}>
+            <Upload size={14} /> {t('dl.addReference')}
+          </Button>
+          {label === '__new__' ? (
+            <TextInput label={t('dl.newReferenceLabel')} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} className="col-span-2" />
+          ) : null}
+          <input ref={fileInput} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void add(e.currentTarget.files)} />
+        </div>
+      ) : (
+        <EmptyState compact icon={<Database className="size-6" />} title={t('dl.noLibrary')} description={t('dl.noLibraryHint')} />
+      )}
+
+      {library.isLoading ? <LoadingState compact /> : null}
+      {(library.data?.classes ?? []).map((group) => (
+        <div key={group.label} className="space-y-2 border-t border-line pt-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="size-2 rounded-full" style={{ background: classColor(project.classes, group.label) }} />
+              <span className="truncate font-medium text-heading">{group.label}</span>
+            </span>
+            <Badge>{group.count}</Badge>
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-2">
+            {group.items.map((item) => (
+              <div key={item.id} className="group relative overflow-hidden rounded-md border border-line bg-surface-muted">
+                {item.thumb ? <img src={item.thumb} alt="" className="aspect-square w-full object-cover" loading="lazy" /> : <div className="aspect-square w-full" />}
+                <button
+                  type="button"
+                  className="absolute right-1 top-1 rounded bg-black/50 p-1 text-white opacity-0 transition-opacity hover:bg-critical group-hover:opacity-100"
+                  title={t('dl.removeReference')}
+                  aria-label={t('dl.removeReference')}
+                  onClick={() => void remove(item.index)}
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {dialog}
+    </Panel>
+  )
+}
+
 function filterSamples(samples: DlSample[], filter: string): DlSample[] {
   return samples.filter((s) => {
     if (filter === '__all__') return true
@@ -629,6 +744,7 @@ export function DlPage() {
 
   const trainer = useMemo(() => trainers.data?.find((x) => x.kind === project.data?.trainer_kind), [trainers.data, project.data])
   const isShapes = trainer?.label_mode === 'shapes'
+  const isRetrieval = trainer?.kind === 'retrieval'
   const accel = devices.data?.accelerators ?? []
 
   async function onFiles(list: FileList | null) {
@@ -861,9 +977,11 @@ export function DlPage() {
                         { value: '__all__', label: t('dl.filterAll') },
                         { value: '__unlabeled__', label: `${t('dl.unlabeled')} (${counts?.unlabeled ?? 0})` },
                         { value: '__auto__', label: t('dl.filterAuto') },
-                        { value: '__train__', label: `${t('dl.split.train')} (train)` },
-                        { value: '__val__', label: `${t('dl.split.val')} (val)` },
-                        { value: '__test__', label: `${t('dl.split.test')} (test)` },
+                        ...(isRetrieval ? [] : [
+                          { value: '__train__', label: `${t('dl.split.train')} (train)` },
+                          { value: '__val__', label: `${t('dl.split.val')} (val)` },
+                          { value: '__test__', label: `${t('dl.split.test')} (test)` },
+                        ]),
                         ...project.data.classes.map((c) => ({ value: c, label: c })),
                       ]} />
                     <Button size="sm" variant="ghost" title={t('dl.deleteProject')} onClick={() => setDeleting(true)}><Trash2 size={14} /></Button>
@@ -897,7 +1015,8 @@ export function DlPage() {
         {/* 訓練面板 */}
         <div className="space-y-3">
           {project.data && trainer ? <TrainPanel key={project.data.id} project={project.data} trainer={trainer} /> : null}
-          {project.data ? <DatasetPanel key={`ds-${project.data.id}`} project={project.data} samples={samples.data ?? []} isShapes={!!isShapes} /> : null}
+          {project.data && isRetrieval ? <RetrievalLibraryPanel key={`lib-${project.data.id}`} project={project.data} /> : null}
+          {project.data && !isRetrieval ? <DatasetPanel key={`ds-${project.data.id}`} project={project.data} samples={samples.data ?? []} isShapes={!!isShapes} /> : null}
         </div>
       </div>
 

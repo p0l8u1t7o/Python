@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 122 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1170 項＋前端約 156 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 123 個內建工具、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁文件、後端約 1170 項＋前端約 156 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -78,7 +78,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **位置修正**：工件位置會變的時候，把定位補正接到量測步驟的「位置修正」埠，那一步畫的區域就自己跟著工件走（不必在圖裡插跟隨節點）；整條流程都要跟就用「影像跟隨」把影像轉回教導時的姿態。定位沒找到時區域留在原地並留下警告，不會靜默量到空氣。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 
-### 內建工具（122 個，8 類）
+### 內建工具（123 個，8 類）
 | 類別 | 工具 |
 |---|---|
 | 影像來源（2） | image_source |
@@ -86,7 +86,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 定位（18） | template_match（多模板、排序、縮放、邊界、逾時）, shape_match（幾何比對）, shape_align, fixture_roi, image_fixture（影像轉回教導姿態）, region_from_shape, region_combine（多重 ROI／排除區）, find_circle, find_line, find_rectangle, find_quadrilateral, find_parallel_lines, find_lines_multi, find_circles_matrix, hough_circles, hough_lines |
 | 量測（27） | caliper, circular_caliper, profile_defect, wall_thickness, fit_arc, fit_ellipse, chamfer_angle, angle, distance（點／線／圓）, geometry（作圖）, points_merge, concentricity, calibration, to_world, intensity, histogram, line_profile, color_stats, edge_density, contour_find, contour_filter, contour_geometry, contour_match |
 | 檢測／識別（15） | blob, edge_defect（邊緣缺陷：缺口／崩掉／錯位／寬度）, edge_model_defect（任意輪廓缺陷）, defect_diff, defect_stat（統計範本）, ocr_read（文字辨識）, ocv_verify（字串驗證）, barcode, text_presence, color_check, pixel_count, dark_ratio（外掛範例）, … |
-| 深度學習（11） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）, dl_anomaly（只教良品的異常檢測）；ai_detect, ai_segment, ai_classify, ai_pose, ai_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
+| 深度學習（12） | dl_classify, dl_detect, dl_segment, dl_instance（ONNX 推論）, dl_anomaly（只教良品的異常檢測）, dl_retrieval；ai_detect, ai_segment, ai_classify, ai_pose, ai_obb（ultralytics 原生推論，GPU 自動使用，模型選教導產物或官方底模） |
 | 邏輯（16） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, boxes_merge, boxes_filter, array_correct, list_sort, parse_message（拆解設備送來的訊息）, switch（多路分支）, string_match（文字比對）, python_script（自寫 Python，管理員核准） |
 | 輸出（8） | judge, output, draw_result, save_image, write_modbus, send_image（TCP 傳圖） |
 
@@ -96,7 +96,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 前處理：`polar_unwrap`／`polar_restore`（環形工件展開）、`shading_correct`（平場校正）、`undistort` alpha 與 mm_per_pixel、`photometric_stereo`（四燈光度立體，刻印字／凹坑）、`accel` 透明 GPU 後端（只對 ≥ 4 MP 的 remap／中值／卷積／FFT，實測理由見效能頁）。
 - 定位與區域：`shape_match`（幾何形狀比對，遮擋與打光變化不怕）、`region_from_shape`／`region_combine`（組合區域：聯集／挖除／交集）。
 - 量測：`contour_find`／`contour_filter`／`contour_geometry`／`contour_match`（輪廓鏈與凸缺陷）、`circular_caliper`／`profile_defect`（圓形卡尺與序列缺陷）、`gdt_measure`（形位公差：直線度／平面度／真圓度 MZC／平行度／垂直度／傾斜度）、`to_world` 接數值埠、標定頁覆蓋率地圖與警告。
-- 檢測：`defect_stat`（統計範本比對）、`dl_anomaly`（只教良品的異常檢測）、`ocr_read`／`ocv_verify`（離線 OCR 與字型教導）、`barcode_grade`（ISO 15415／15416／AIM DPM 條碼品質分級，解碼靠 zxing-cpp）。
+- 檢測：`defect_stat`（統計範本比對）、`dl_anomaly`（只教良品的異常檢測）、`dl_retrieval`、`ocr_read`／`ocv_verify`（離線 OCR 與字型教導）、`barcode_grade`（ISO 15415／15416／AIM DPM 條碼品質分級，解碼靠 zxing-cpp）。
 - 品質資料：`manage.py precision`（重複性／再現性／GR&R 報告與 CI 門檻，統計頁精度卡）、量測值 SPC（`MeasurementLog`、管制圖／Cp,Cpk／Nelson 判異、總覽告警、`GET /flows/{id}/spc`、`GET /spc/alerts`）。
 
 ### 資料保留與自動整理
@@ -187,7 +187,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 │                    runner（執行緒池、compile 快取、背景持久化）           │
 │                    images（行程內影像快取，LRU + run 輪替，pinned）       │
 │                    stream（SSE bus）/ tcp_server / sources（grabbers）    │
-│                    tools/（Tool 框架＋122 內建）/ dl/（教導與訓練）        │
+│                    tools/（Tool 框架＋123 內建）/ dl/（教導與訓練）        │
 │                    agent/（AI 助手：分析→意圖→合成→試跑；LLM 供應器）      │
 │  apps/comm      ── Modbus／TCP 主動輸出（Writer）                         │
 │  apps/golden    ── Golden Set 回歸                                        │

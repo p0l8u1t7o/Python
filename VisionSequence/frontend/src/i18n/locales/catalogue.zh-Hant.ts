@@ -94,6 +94,18 @@ export default {
         projection_dims: { label: '特徵投影', help: '384 維特徵的固定隨機投影。128 維保留距離排序，執行時間約縮短三倍。', options: { 0: '不投影（384 維，最慢）', 128: '128 維（建議）', 64: '64 維（最快）' } },
       },
     },
+    retrieval: {
+      label: '影像檢索庫',
+      description: '把已標記影像建立成參考庫；日後新增類別只需加入新影像。',
+      params: {
+        input_size: { label: '輸入尺寸', help: '新增參考圖時使用的方形尺寸。' },
+        topk: { label: '投票數', help: '用幾張最接近的參考圖決定最終類別。' },
+        augment: { label: '儲存輕度變化', help: '為每張已標記影像額外保存鏡射與小角度參考。' },
+        augment_angle: { label: '傾斜角度', help: '儲存輕度變化時使用的小角度。' },
+        projection_dims: { label: '壓縮參考庫', options: { 0: '關閉', 64: '小型', 128: '標準' } },
+        backbone_path: { label: '參考比對檔', help: '測試用內部檔案覆寫。' },
+      },
+    },
     ai_cls: {
       label: '影像分類（AI）',
       description: '一張一類，從 ImageNet 預訓練底模微調 分類網路。比內建 MLP 分類準確，但需要深度學習加購包。產物：訓練好的權重給 AI 分類工具、ONNX 給深度學習分類工具。',

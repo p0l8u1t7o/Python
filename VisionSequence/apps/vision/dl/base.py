@@ -182,8 +182,8 @@ def register_builtins() -> None:
     global _registered
     if _registered:
         return
-    from apps.vision.dl import anomaly_trainer, builtin, yolo
+    from apps.vision.dl import anomaly_trainer, builtin, retrieval_trainer, yolo
 
-    for cls in builtin.TRAINERS + yolo.TRAINERS + anomaly_trainer.TRAINERS:
+    for cls in builtin.TRAINERS + yolo.TRAINERS + anomaly_trainer.TRAINERS + retrieval_trainer.TRAINERS:
         register_trainer(cls)
     _registered = True
