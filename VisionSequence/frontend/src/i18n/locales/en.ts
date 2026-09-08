@@ -362,6 +362,7 @@ const en = {
   },
   flow: {
     timeoutS: 'Flow timeout (s, 0 = none)',
+    concurrency: 'Flow concurrency',
     stopOnNg: 'Stop on NG',
   },
   editor: {
@@ -2144,7 +2145,7 @@ const enExtra3 = {
     },
     params: {
       roiShape: 'Shape', roiNone: 'Not set',
-      pickSource: 'Choose an image source', pickAsset: 'Choose an asset', uploadAsset: 'Upload',
+      pickSource: 'Choose an image source', pickFlow: 'Choose a flow', pickAsset: 'Choose an asset', uploadAsset: 'Upload',
       rangeLow: 'Low', rangeHigh: 'High',
       codeAdminOnly: 'Only administrators can edit scripts; you can read and run approved ones',
       jsonInvalid: 'Malformed JSON',

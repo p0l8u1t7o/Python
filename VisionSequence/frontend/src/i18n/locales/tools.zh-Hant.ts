@@ -8,6 +8,18 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  trigger_flow: {
+    label: '觸發流程',
+    description: '從目前執行中啟動另一條流程。非同步只排隊後繼續；同步會在安全容量下等待子流程結果。',
+    params: {
+      target_flow_id: { label: '目標流程', help: '選擇下一條要執行的流程；圖中保存的是流程 id。' },
+      mode: { label: '模式', options: { async: '非同步：排隊後繼續', sync: '同步：等待結果' } },
+      timeout_ms: { label: '同步逾時' },
+      pass_outputs: { label: '傳遞具名輸出' },
+      pass_image: { label: '傳遞影像' },
+    },
+    ports: { image: '影像', run_id: '執行 ID', judge: '判定', ok: 'OK', ng: 'NG', failed: '失敗' },
+  },
   register_detect: {
     label: '註冊式檢測',
     description: '使用少量目標裁切圖尋找、計數或檢查零件有無，無需訓練。加入相似物的排除圖可減少誤判。',

@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Crop, ImagePlus, Scan, Upload, X } from 'lucide-react'
 
 import { Button, Checkbox, Select, TextArea, TextInput } from '@/components/ui'
-import { useAssetMutations, useAssets, useConnections, useSources } from '@/lib/queries'
+import { useAssetMutations, useAssets, useConnections, useFlows, useSources } from '@/lib/queries'
 import { api, fixedImageUrl } from '@/lib/api'
 import type { FixedImageDesc, Region, ToolParam } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
@@ -135,6 +135,22 @@ function JsonField({ label, hint, value, onChange, mono = false, rows = 3 }: { l
   )
 }
 
+function FlowSelectField({ label, hint, required, value, onChange }: { label: string; hint?: string; required?: boolean; value: string; onChange: (value: unknown) => void }) {
+  const { t } = useTranslation()
+  const flows = useFlows()
+  return (
+    <Select
+      label={label}
+      required={required}
+      hint={hint}
+      value={value}
+      placeholder={t('editor.params.pickFlow')}
+      onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+      options={(flows.data?.items ?? []).map((flow) => ({ value: String(flow.id), label: flow.name, disabled: !flow.is_enabled }))}
+    />
+  )
+}
+
 export function ParamField({ param, value, onChange, actions }: { param: ToolParam; value: unknown; onChange: (value: unknown) => void; actions: InspectorActions }) {
   const { t } = useTranslation()
   const toast = useToast()
@@ -156,6 +172,9 @@ export function ParamField({ param, value, onChange, actions }: { param: ToolPar
       return <Checkbox label={label} hint={help} checked={Boolean(value)} onChange={onChange} />
 
     case 'number':
+      if (param.key === 'target_flow_id') {
+        return <FlowSelectField label={label} hint={help} required={param.required} value={text} onChange={onChange} />
+      }
       return (
         <TextInput
           label={label}

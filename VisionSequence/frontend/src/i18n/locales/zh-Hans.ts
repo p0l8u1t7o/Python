@@ -702,6 +702,7 @@ const zhHans = {
   },
   flow: {
     timeoutS: '流程超时秒数 (0 = 不限)',
+    concurrency: '流程并行度',
     stopOnNg: 'NG 后停止',
   },
   editor: {
@@ -877,6 +878,7 @@ const zhHans = {
       roiShape: '形状',
       roiNone: '尚未设置',
       pickSource: '选择影像来源',
+      pickFlow: '选择流程',
       pickAsset: '选择资产',
       uploadAsset: '上传',
       rangeLow: '下限',
@@ -2508,4 +2510,3 @@ const zhHans = {
 } as const
 
 export default zhHans
-

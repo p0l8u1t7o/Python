@@ -702,6 +702,7 @@ const zhHant = {
   },
   flow: {
     timeoutS: '流程逾時秒數 (0 = 不限)',
+    concurrency: '流程並行度',
     stopOnNg: 'NG 後停止',
   },
   editor: {
@@ -877,6 +878,7 @@ const zhHant = {
       roiShape: '形狀',
       roiNone: '尚未設定',
       pickSource: '選擇影像來源',
+      pickFlow: '選擇流程',
       pickAsset: '選擇資產',
       uploadAsset: '上傳',
       rangeLow: '下限',

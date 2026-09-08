@@ -29,6 +29,8 @@ class Flow(models.Model):
     #: 這條流程跑多久算逾時（秒；0＝不限）。語意刻意與 VisionMaster 一致：**跑完當前節點才停**，
     #: 不硬砍執行中的工具，所以量到的時間會略大於設定值。整體保險仍是 RUN_TIMEOUT_S。
     timeout_s = models.PositiveIntegerField(default=0)
+    #: 同一條流程可同時執行幾個 run；1 為既有行為，多站共用流程時可調高。
+    concurrency = models.PositiveIntegerField(default=1)
     #: 任何節點判 NG 就不再往下跑（省掉後面的工站時間）；預設關閉，行為與以前相同。
     stop_on_ng = models.BooleanField(default=False)
     #: 現場教導完成（參數卡頁確認）；False 時 run 仍可執行，只在 RunReport 加 warnings。

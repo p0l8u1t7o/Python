@@ -165,7 +165,8 @@ def handle_command(line: str) -> dict[str, Any]:
             if cmd == "STATUS":
                 rt = runner.runtime(flow.id)
                 return {"ok": True, "flow_id": flow.id, "stats": rt.stats.to_dict(), "continuous": runner.is_continuous(flow.id),
-                        "queued": rt.queued, "running": rt.running, "max_queue_per_flow": runner.max_queue_per_flow}
+                        "queued": rt.queued, "running": rt.running, "concurrency": flow.concurrency,
+                        "max_queue_per_flow": runner.max_queue_per_flow}
             if cmd == "START":
                 runner.start_continuous(flow)
                 return {"ok": True, "continuous": True}

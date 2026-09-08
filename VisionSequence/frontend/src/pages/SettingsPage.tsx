@@ -157,7 +157,7 @@ export function SettingsPage() {
                 <DetailRow label="images">{capacity.data.images.images} / {Math.round(capacity.data.images.bytes / 1048576)} MB / {capacity.data.images.runs} runs</DetailRow>
                 {capacity.data.flows.map((f) => (
                   <DetailRow key={f.flow_id} label={f.flow_name || `#${f.flow_id}`}>
-                    {f.running ? t('status.running') : t('status.idle')} · queued {f.queued}{f.continuous ? ` · ${t('dashboard.continuous')}` : ''}
+                    {f.running > 0 ? `${t('status.running')} ${f.running}` : t('status.idle')} · queued {f.queued}{f.continuous ? ` · ${t('dashboard.continuous')}` : ''}
                   </DetailRow>
                 ))}
               </dl>

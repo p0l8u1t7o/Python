@@ -38,6 +38,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.logic",
     "apps.vision.tools.builtin.script",
     "apps.vision.tools.builtin.output",
+    "apps.vision.tools.builtin.trigger",
     "apps.vision.tools.builtin.modbus",
 ]
 

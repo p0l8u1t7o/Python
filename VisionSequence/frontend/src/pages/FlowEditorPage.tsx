@@ -1327,6 +1327,15 @@ function EditorInner({ flowId }: { flowId: number }) {
                     disabled={readOnly}
                     onChange={(e) => patch.mutate({ id: flowId, timeout_s: Number(e.target.value) || 0 }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` } })}
                   />
+                  <TextInput
+                    label={t('flow.concurrency')}
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={String(flow.data?.concurrency ?? 1)}
+                    disabled={readOnly}
+                    onChange={(e) => patch.mutate({ id: flowId, concurrency: Math.max(1, Number(e.target.value) || 1) }, { onSuccess: (saved) => { loadedFor.current = `${saved.id}:${saved.version}` }, onError: (error) => toast.error(errorMessage(error)) })}
+                  />
                   {/* 複製出來的流程預設停用；不用回列表就能在這裡開啟 */}
                   <Checkbox
                     label={t('flows.enabledToggle')}

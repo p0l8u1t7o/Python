@@ -188,6 +188,7 @@ export interface Flow {
   version: number
   continuous_interval_ms: number
   timeout_s: number
+  concurrency: number
   stop_on_ng: boolean
   node_count: number
   created_at: string
@@ -287,7 +288,8 @@ export interface ScratchImage {
 export interface Capacity {
   max_workers: number
   active: number
-  flows: { flow_id: number; flow_name: string; running: boolean; queued: number; continuous: boolean }[]
+  workers_busy?: number
+  flows: { flow_id: number; flow_name: string; running: number; queued: number; continuous: boolean }[]
   images: { images: number; bytes: number; runs: number }
 }
 

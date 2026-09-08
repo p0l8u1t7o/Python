@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：123 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：124 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -250,6 +250,13 @@
 - **暖機絕不碰相機**：`grab` 換成一律回 None 並記 log 的假函式；取像節點是 `source` 模式直接 skipped，`auto`／`input` 模式只在快取裡已有該來源影像時沿用，否則 skipped 並回報原因。
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
+
+### 流程觸發流程與流程並行度（A4，Codex 實作）
+- **`Flow.concurrency`**（migration 0032，正整數，**預設 1＝與以前完全相同**）：`FlowRuntime.lock` 從 `threading.Lock` 換成 `gate`（`Condition`）＋`running` 計數。**容量放在 `FlowRuntime.concurrency` 這個記憶體欄位，由 `submit()` 在呼叫者執行緒從 `Flow.concurrency` 更新**——第一版在 gate 的 wait 迴圈裡每 50 ms 查一次 `Flow`，一條排隊的 run 一秒就打 20 次 SQLite（實測 17 次／秒），違反「執行緒池熱路徑不碰資料庫」；改成只讀記憶體後是 0 次。調大並行度由下一次 submit 帶進來，調小不硬砍已在跑的 run。`capacity()` 多回 `workers_busy`。
+- 欄位走既有 `PATCH /flows/{id}`（**schema 沒動，端點用 raw JSON 讀取並驗證**；0／負數／非數字回 422），`api.py` 的 `touched` 清單含它所以操作員 403，`_flow_out` 回傳，複製流程沿用；編輯器設定面板在「流程逾時秒數」下方。
+- **工具 `trigger_flow`（output）**：`target_flow_id`＋`mode`＝async（預設）／sync＋`timeout_ms`＋`pass_outputs`／`pass_image`（影像走 `images.store` 的 ref，**不把 ndarray 塞進 context**）；輸出 `run_id`／`judge`／`ok`，分支 ok／ng／failed。
+- **兩個一定要守住的防護**：①**同步模式的死結**——呼叫中的 run 已佔住一條執行緒池 worker，若池子滿了還去 `result()` 等子流程就會互等；`runner.sync_wait_available()` 同時看 `workers_busy < max_workers` 與 executor 待辦佇列，沒把握就 `ToolError` **不隱性退成 async**。②**環路**——context 帶 `_trigger_chain`，自我觸發與 A→B→A 都在執行前擋下並把鏈印出來。
+- `preview`／`flow_id<=0`（批次、AI 試跑、bench）**不真的觸發**，回 `Would trigger flow N`（比照 `fileout.py`）。目標不存在或已停用 → `ToolError`。測試 `tests/test_trigger_flow.py`。
 
 ### 流程層限制與編輯器小功能（A5，Codex 實作）
 - `Flow.timeout_s`（秒，0＝不限）與 `Flow.stop_on_ng`（migration 0030）。**兩者都在節點與節點之間判斷，跑完當前節點才停**（VisionMaster 語意，量到的時間會略大於設定值）；`engine.execute` 多兩個選填參數 `flow_timeout_s`／`stop_on_ng`，`runner` 從 Flow 傳進去。逾時 → `RunReport.status="failed"`＋`error`／warnings 寫明停在哪一步；判 NG 就停 → 認 `status=="ng"`／`branch=="ng"`／`_judge=="ng"`，run 照樣落地成 ng，未跑到的節點是 `skipped`。**`RUN_TIMEOUT_S` 不動**（那是整體保險），`timeout_s=0` 與 `stop_on_ng=False` 時行為與以前完全相同。

@@ -381,6 +381,11 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 `path` 是 `DATA_DIR/file_outputs` 下的相對子資料夾，`daily_folder` 會再加 yyyyMMdd，`rotate_mb`／`rotate_rows` 避免單檔過大。工具只排入背景佇列，preview 與批次沙盒不寫檔；佇列滿時丟棄當次輸出並讓 run 繼續。
 文字紀錄用 `write_log`；即時回覆上位機仍用 `format_text` 搭配 HTTP/TCP，影像追溯用 `save_image`，統計頁回看用流程影像封存。
 
+## trigger_flow
+一條流程跑完要叫另一條流程時使用，例如前段定位後叫量測流程，或 NG 分支叫複檢流程。`target_flow_id` 選目標流程；`mode=async` 只排隊並輸出 `run_id`，父流程繼續；`mode=sync` 等子流程結果並輸出 `run_id/judge/ok`，依子流程結果走 ok／ng／failed 分支。
+同步模式會先檢查 runner 容量與執行緒池，沒有明確空 worker 就失敗，避免父流程佔著 worker 等子流程、子流程又排不到 worker 的死結。自我觸發與 A→B→A 會用觸發鏈擋下。preview、批次、AI 試跑與 bench 是沙箱，只回 `Would trigger flow ...`，不真的排隊。
+可勾選是否傳遞目前具名輸出與影像；影像只用快取 ref 傳遞，不把 ndarray 放進 context。
+
 ## output
 具名輸出：`name` 英文鍵名，`value` 埠接數值／字串／影像。上位機從 `outputs[name]` 拿。
 

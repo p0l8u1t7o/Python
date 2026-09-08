@@ -254,6 +254,7 @@ export interface FlowPatch {
   is_enabled?: boolean
   continuous_interval_ms?: number
   timeout_s?: number
+  concurrency?: number
   stop_on_ng?: boolean
   /** 參數卡頁「標記為已教導」 */
   commissioned?: boolean
@@ -271,7 +272,7 @@ export function useFlowMutations() {
     void client.invalidateQueries({ queryKey: keys.capacity })
   }
   const create = useMutation({
-    mutationFn: (body: { name: string; description?: string; graph?: FlowGraph }) =>
+    mutationFn: (body: { name: string; description?: string; graph?: FlowGraph; concurrency?: number }) =>
       api.post<Flow>('/vision/flows', body),
     onSuccess: invalidate,
   })

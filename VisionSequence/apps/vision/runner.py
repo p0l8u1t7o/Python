@@ -296,9 +296,17 @@ class FlowRuntime:
     compiled_version: int = -1
     #: (version, recipe_id, recipe_updated_at) → 編譯結果
     compiled_by_recipe: dict = field(default_factory=dict)
-    lock: threading.Lock = field(default_factory=threading.Lock)
+    #: 這個 gate 是「容量號誌」：容量放在 concurrency 這個記憶體欄位，
+    #: 由 submit()（呼叫者執行緒，本來就會碰 DB）從 Flow.concurrency 更新。
+    #: **執行緒池裡等待的 run 一律只讀記憶體**——熱路徑不碰資料庫是這個引擎的硬規則，
+    #: 早期版本在 wait 迴圈裡每 50 ms 查一次 Flow，一條排隊的 run 一秒就打 20 次 SQLite。
+    #: 調大並行度時，下一次 submit 就會把新容量帶進來；調小時不硬砍已在跑的 run。
+    #: concurrency=1 時條件就是 running < 1，行為等同原本整段 with lock。
+    gate: threading.Condition = field(default_factory=lambda: threading.Condition(threading.Lock()))
+    #: 目前允許的同時 run 數（submit 在呼叫者執行緒更新，gate 只讀它）
+    concurrency: int = 1
     queued: int = 0
-    running: bool = False
+    running: int = 0
     stats: FlowStats = field(default_factory=FlowStats)
     #: 最近的 run 報告（新在後），上限 KEEP_RUN_IMAGES。
     recent: list[engine.RunReport] = field(default_factory=list)
@@ -320,6 +328,8 @@ class Runner:
         self._pool: ThreadPoolExecutor | None = None
         self._active = 0
         self._active_lock = threading.Lock()
+        self._workers_busy = 0
+        self._workers_lock = threading.Lock()
         self._asset_paths: dict[str, str] = {}
 
     # -- 池 ---------------------------------------------------------------
@@ -374,7 +384,29 @@ class Runner:
                 for fid, rt in self._runtimes.items()
                 if rt.running or rt.queued or (rt.continuous and rt.continuous.is_alive())
             ]
-        return {"max_workers": self.max_workers, "max_queue_per_flow": self.max_queue_per_flow, "active": self._active, "flows": busy, "images": store.stats()}
+        with self._active_lock:
+            active = self._active
+        with self._workers_lock:
+            workers_busy = self._workers_busy
+        return {"max_workers": self.max_workers, "max_queue_per_flow": self.max_queue_per_flow, "active": active,
+                "workers_busy": workers_busy, "flows": busy, "images": store.stats()}
+
+    def sync_wait_available(self) -> tuple[bool, dict[str, Any]]:
+        """同步觸發前的死結檢查。
+
+        呼叫中的 run 已佔住一條 ThreadPoolExecutor worker；若所有 worker 都在跑或等流程 gate，
+        子流程即使 submit 進去也沒有執行緒可跑，父流程再 result() 等它就會互等。這裡同時看
+        runner.capacity() 與 pool 的待辦佇列：只在有空 worker 且沒有已排在 executor 裡的工作時才允許同步等。
+        """
+        data = self.capacity()
+        queued = 0
+        if self._pool is not None:
+            try:
+                queued = int(self._pool._work_queue.qsize())  # noqa: SLF001 - ThreadPoolExecutor 沒有公開待辦深度。
+            except Exception:  # noqa: BLE001
+                queued = 1
+        ok = int(data["workers_busy"]) < int(data["max_workers"]) and queued == 0
+        return ok, {**data, "executor_queued": queued}
 
     def pending_status(self, run_id: str) -> tuple[int, str] | None:
         """已受理但還沒有結果的 run → (flow_id, "queued"|"running")。"""
@@ -468,6 +500,8 @@ class Runner:
         if until_node:
             compiled = restrict_to(compiled, until_node)
         rt = self.runtime(flow.id)
+        # 並行度在這裡（呼叫者執行緒）讀進記憶體，執行緒池的 gate 才不用碰 DB
+        rt.concurrency = max(1, int(getattr(flow, "concurrency", 1) or 1))
         limit = self.max_queue_per_flow
         run_id = uuid.uuid4().hex
         with self._lock:
@@ -486,6 +520,24 @@ class Runner:
         future = self.submit(flow, **kw)
         return future.result(timeout=timeout or float(_cfg("RUN_TIMEOUT_S", 30)) + 5)
 
+    def _flow_concurrency(self, rt: FlowRuntime, flow: Flow) -> int:
+        """目前的並行度。**只讀記憶體**——submit() 已在呼叫者執行緒把 Flow.concurrency 帶進來。"""
+        current = rt.concurrency or getattr(flow, "concurrency", 1) or 1
+        return max(1, int(current))
+
+    def _acquire_flow_slot(self, rt: FlowRuntime, flow: Flow) -> None:
+        with rt.gate:
+            while rt.running >= self._flow_concurrency(rt, flow):
+                rt.gate.wait(0.05)
+            rt.running += 1
+            rt.gate.notify_all()
+
+    @staticmethod
+    def _release_flow_slot(rt: FlowRuntime) -> None:
+        with rt.gate:
+            rt.running = max(0, rt.running - 1)
+            rt.gate.notify_all()
+
     def _execute(
         self,
         flow: Flow,
@@ -499,18 +551,22 @@ class Runner:
         recipe_name: str = "",
         archive_policy: dict[str, Any] | None = None,
     ) -> engine.RunReport:
-        with rt.lock:  # 同一流程一次一個 run
-            # 排隊數在「真的輪到自己」時才扣：等鎖的 run 也算在排隊上限內，
+        with self._workers_lock:
+            self._workers_busy += 1
+        try:
+            self._acquire_flow_slot(rt, flow)
+            # 排隊數在「真的取得流程許可」時才扣：等 gate 的 run 也算在排隊上限內，
             # 否則執行緒池有空位時上限永遠不會生效。
             with self._lock:
                 rt.queued -= 1
                 if run_id in rt.pending:
                     rt.pending[run_id] = "running"
-            rt.running = True
             with self._active_lock:
                 self._active += 1
             bus.publish({"type": "run_started", "flow_id": flow.id, "run_id": run_id})
             try:
+                if input_image is None and context and context.get("_input_image_ref"):
+                    input_image = store.get(str(context.get("_input_image_ref") or ""))
                 deadline = time.perf_counter() + float(_cfg("RUN_TIMEOUT_S", 30))
                 report = engine.execute(
                     compiled,
@@ -531,10 +587,13 @@ class Runner:
                 log.exception("引擎失敗 flow=%s", flow.id)
                 report = engine.RunReport(id=run_id, flow_id=flow.id, flow_version=flow.version, trigger=trigger, status="failed", error=f"engine: {exc!r}", started_at=time.time(), finished_at=time.time())
             finally:
-                rt.running = False
                 with self._active_lock:
                     self._active -= 1
+                self._release_flow_slot(rt)
                 close_old_connections()
+        finally:
+            with self._workers_lock:
+                self._workers_busy = max(0, self._workers_busy - 1)
         report.station_id = str(_cfg("STATION_ID", "ST01"))
         report.recipe = recipe_name
         report.archive_policy = archive_policy

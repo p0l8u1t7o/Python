@@ -70,6 +70,7 @@ def _flow_out(flow: Flow) -> dict[str, Any]:
         "version": flow.version,
         "continuous_interval_ms": flow.continuous_interval_ms,
         "timeout_s": flow.timeout_s,
+        "concurrency": flow.concurrency,
         "stop_on_ng": flow.stop_on_ng,
         "commissioned": flow.commissioned,
         "archive_policy": archive.policy_for(flow),
@@ -125,6 +126,31 @@ def _decode_upload(upload: UploadedFile | None) -> np.ndarray | None:
     if image.ndim == 3 and image.shape[2] == 4:
         image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
     return image
+
+
+_MISSING = object()
+
+
+def _json_payload_field(request: HttpRequest, key: str) -> Any:
+    if not (request.content_type and request.content_type.startswith("application/json") and request.body):
+        return _MISSING
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return _MISSING
+    if isinstance(body, dict) and key in body:
+        return body[key]
+    return _MISSING
+
+
+def _positive_int(value: Any, name: str) -> int:
+    try:
+        out = int(value)
+    except (TypeError, ValueError):
+        raise ValidationError(f"{name} must be a positive integer", code="bad_argument") from None
+    if out < 1:
+        raise ValidationError(f"{name} must be a positive integer", code="bad_argument")
+    return out
 
 
 #: 節點報告的完整欄位：落地的 FlowRun 只留 status／duration_ms／message，讀回來時要補齊（形狀與 SSE 瘦身共用）。
@@ -218,6 +244,7 @@ def list_flows(request: HttpRequest, q: str = "", limit: int = 100, offset: int 
 def create_flow(request: HttpRequest, payload: schemas.FlowIn):
     require_feature(request, "flows.edit")
     graph = validate_graph(payload.graph) if payload.graph else {"nodes": [], "edges": []}
+    raw_concurrency = _json_payload_field(request, "concurrency")
     scripts.check_graph_edit(principal(request), graph)  # Python 腳本：一般使用者只能用已核准的程式碼
     try:
         with transaction.atomic():
@@ -229,6 +256,7 @@ def create_flow(request: HttpRequest, payload: schemas.FlowIn):
                 is_enabled=payload.is_enabled,
                 continuous_interval_ms=payload.continuous_interval_ms,
                 timeout_s=max(0, payload.timeout_s),
+                concurrency=1 if raw_concurrency is _MISSING else _positive_int(raw_concurrency, "concurrency"),
                 stop_on_ng=payload.stop_on_ng,
             )
     except IntegrityError:
@@ -251,11 +279,14 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
     p = principal(request)
     flow = get_flow(flow_id)
     before_graph = flow.graph or {}
-    before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "stop_on_ng", "commissioned")}
+    before_fields = {f: getattr(flow, f) for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "concurrency", "stop_on_ng", "commissioned")}
+    raw_concurrency = _json_payload_field(request, "concurrency")
     if not p.can("flows.edit"):
         # 沒有 flows.edit 的人只能在參數卡頁微調現場參數：圖以外的欄位一律不准，圖只准 teach 參數的值變。
         require_feature(request, "flows.teach")
         touched = [f for f in ("name", "description", "is_enabled", "continuous_interval_ms", "timeout_s", "stop_on_ng", "commissioned", "archive_policy", "board", "comm") if getattr(payload, f) is not None]
+        if raw_concurrency is not _MISSING:
+            touched.append("concurrency")
         if touched or payload.graph is None:
             raise PermissionDenied("Your role may only change on-site teaching parameters on this flow", code="permission_denied")
         try:
@@ -274,6 +305,8 @@ def patch_flow(request: HttpRequest, flow_id: int, payload: schemas.FlowPatch):
         flow.continuous_interval_ms = max(0, payload.continuous_interval_ms)
     if payload.timeout_s is not None:
         flow.timeout_s = max(0, payload.timeout_s)
+    if raw_concurrency is not _MISSING:
+        flow.concurrency = _positive_int(raw_concurrency, "concurrency")
     if payload.stop_on_ng is not None:
         flow.stop_on_ng = payload.stop_on_ng
     if payload.commissioned is not None:
@@ -389,6 +422,7 @@ def duplicate_flow(request: HttpRequest, flow_id: int):
         is_enabled=False,
         continuous_interval_ms=flow.continuous_interval_ms,
         timeout_s=flow.timeout_s,
+        concurrency=flow.concurrency,
         stop_on_ng=flow.stop_on_ng,
     )
     return 201, _flow_out(copy)
