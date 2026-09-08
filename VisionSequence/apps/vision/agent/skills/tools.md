@@ -20,11 +20,15 @@
 ## threshold
 二值化。門檻不確定用 `method="otsu"`；背景不均用 `adaptive`（block 31～101、c 5～10）；已知固定灰階用 `fixed`。目標比背景暗要 `invert=true`（讓目標變白 255）。輸出 `threshold_used` 可當曝光指標。
 
+光照左右不均、金屬表面文字／刻印在不同區域亮度落差很大時，用 `method="sauvola"` 或 `method="niblack"`。`sauvola` 會用局部平均與局部標準差調整門檻，平坦背景較穩；`niblack` 是局部平均加上 `k * std`，對低對比文字較敏感但也較吃雜訊。只想改門檻方向或等於門檻是否算前景時才設 `compare`；裁完 ROI 後只處理局部，`outside_roi=black` 做遮罩，`outside_roi=keep` 保留原灰階。
+
 ## morphology
 二值化後整理：`open` 去小雜點、`close` 補小洞、`erode`／`dilate` 調粗細。ksize 3～7；比目標小、比雜訊大。
 
 ## lut
 灰階映射：`gamma`<1 提亮暗部、>1 壓亮部；`clahe` 局部對比（clip 2～4、tile 8）；`linear` 用 brightness／contrast。放在 threshold 前面救對比。
+
+`normalize_ratio` 是百分位拉伸，忽略極端離群值，把 `low_percent`～`high_percent` 映到 0～255，適合有少量反光點、黑點但主體對比不足。`normalize_std` 是把整張圖調到指定平均與標準差，適合同一批影像要維持亮度／對比尺度一致；它不會特別忽略離群值。
 
 ## filter
 銳化／邊緣：`sharpen` 補模糊；`canny`（low/high 約 1:2～1:3）取邊緣圖給 hough_lines／edge_density；`laplacian`／`sobel` 取梯度圖。
@@ -243,6 +247,7 @@ ROI 用 rect/rotated_rect 表示直線邊、circle/annulus 表示圓邊。`calip
 `line_2pts`、`parallel`（給 B 就過那個點，否則用 `offset` 平移）、`perpendicular`（B 是要通過的點）、`perp_bisector`、
 `median`（兩邊的中線）、`bisector`（角平分線）、`circle_3pts`（A/B/C 三點）、`rotate`（繞 B 轉 `angle`，順時針為正）。
 `a/b/c` 接 line、point 或 circle（any 型）；輸出多了 **`line` 與 `circle`**，可以直接接給下一個 geometry 或 distance。
+裁切後要把子圖座標還原回原圖，用 `mode="offset"`：把 `crop.offset_x`／`crop.offset_y` 接到 geometry 的同名輸入埠，`points` 或 `matches` 接下游量到的點集／比對結果；`sign="add"` 加回原圖座標，`sign="subtract"` 反向扣回子圖座標。沒接 offset 埠時才用參數值。
 畫布上畫的基準線用 `region_from_shape` 的 `line`／`circle`／`point` 輸出接進來。
 
 ## points_merge

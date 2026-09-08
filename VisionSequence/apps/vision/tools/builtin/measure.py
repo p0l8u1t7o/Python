@@ -1719,6 +1719,32 @@ def line_angle(line: tuple[float, float, float, float]) -> float:
     return (math.degrees(math.atan2(uy, ux)) + 90) % 180 - 90
 
 
+def offset_points(points: Any, dx: float, dy: float) -> list[list[float]]:
+    """複製點集並整體平移，不修改上游輸入。"""
+    arr = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    return (arr + np.array([dx, dy], dtype=np.float64)).round(4).tolist()
+
+
+def offset_matches(matches: Any, dx: float, dy: float) -> list[dict[str, Any]]:
+    """複製比對結果並平移常見座標欄位。"""
+    if not isinstance(matches, list):
+        raise ToolError("Matches must be a list")
+    shifted: list[dict[str, Any]] = []
+    for item in matches:
+        if not isinstance(item, dict):
+            raise ToolError("Each match must be a dictionary")
+        m = dict(item)
+        for x_key, y_key in (("x", "y"), ("cx", "cy"), ("x1", "y1"), ("x2", "y2")):
+            if x_key in m and y_key in m:
+                m[x_key] = round(float(m[x_key]) + dx, 4)
+                m[y_key] = round(float(m[y_key]) + dy, 4)
+        for key in ("points", "corners"):
+            if key in m and m[key] is not None:
+                m[key] = offset_points(m[key], dx, dy)
+        shifted.append(m)
+    return shifted
+
+
 def point_to_line(point: tuple[float, float], line: tuple[float, float, float, float]) -> tuple[float, float, float]:
     """點到直線：回 (垂足 x, 垂足 y, 距離)。"""
     x1, y1, x2, y2 = line
@@ -1757,6 +1783,7 @@ class GeometryTool(Tool):
             {"value": "bisector", "label": "The line that halves a corner"},
             {"value": "circle_3pts", "label": "The circle through three points"},
             {"value": "rotate", "label": "Turn a point about another"},
+            {"value": "offset", "label": "Offset points or matches"},
         ]),
         Param("offset", "Offset", kind="number", default=0, unit="px", teach=True,
               visible_when={"param": "mode", "in": ["parallel"]},
@@ -1764,11 +1791,26 @@ class GeometryTool(Tool):
         Param("angle", "Angle", kind="number", default=0, unit="°", teach=True,
               visible_when={"param": "mode", "in": ["rotate"]},
               help_text="Clockwise on screen, like every other angle on the platform."),
+        Param("offset_x", "Offset X", kind="number", default=0, unit="px", teach=True,
+              visible_when={"param": "mode", "in": ["offset"]},
+              help_text="X shift to apply when the offset_x input is not wired."),
+        Param("offset_y", "Offset Y", kind="number", default=0, unit="px", teach=True,
+              visible_when={"param": "mode", "in": ["offset"]},
+              help_text="Y shift to apply when the offset_y input is not wired."),
+        Param("sign", "Sign", kind="select", default="add", options=[
+            {"value": "add", "label": "Add"},
+            {"value": "subtract", "label": "Subtract"},
+        ], visible_when={"param": "mode", "in": ["offset"]},
+              help_text="Add restores crop-local coordinates to the original image; subtract maps original-image coordinates back into the crop."),
     ]
     inputs = [
-        Port("a", "A (line / point)", "any"),
+        Port("a", "A (line / point)", "any", required=False),
         Port("b", "B (line / point)", "any", required=False),
         Port("c", "C (point)", "any", required=False),
+        Port("points", "Points", "points", required=False),
+        Port("matches", "Matches", "matches", required=False),
+        Port("offset_x", "Offset X", "number", required=False),
+        Port("offset_y", "Offset Y", "number", required=False),
     ]
     outputs = [
         Port("x_world", "X (world)", "number"),
@@ -1778,11 +1820,12 @@ class GeometryTool(Tool):
         Port("unit", "Unit", "string"),
         Port("x", "X", "number"), Port("y", "Y", "number"), Port("distance", "Distance", "number"),
         Port("angle", "Angle", "number"), Port("line", "Line", "any"), Port("circle", "Circle", "any"),
+        Port("points", "Points", "points"), Port("matches", "Matches", "matches"), Port("count", "Count", "number"),
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
         result = self._pixel_result(ctx)
-        if not ctx.param("calibration") or result.status != "ok":
+        if ctx.param("mode", "intersect") == "offset" or not ctx.param("calibration") or result.status != "ok":
             return result
         values = result.outputs
         at = (values["x"], values["y"])
@@ -1813,6 +1856,27 @@ class GeometryTool(Tool):
         mode = str(ctx.param("mode", "intersect"))
         a, b, c = ctx.inputs.get("a"), ctx.inputs.get("b"), ctx.inputs.get("c")
         blank = {"x": 0.0, "y": 0.0, "distance": 0.0, "angle": 0.0, "line": None, "circle": None}
+
+        if mode == "offset":
+            dx = float(ctx.inputs["offset_x"]) if ctx.inputs.get("offset_x") is not None else ctx.number("offset_x", 0)
+            dy = float(ctx.inputs["offset_y"]) if ctx.inputs.get("offset_y") is not None else ctx.number("offset_y", 0)
+            if ctx.param("sign", "add") == "subtract":
+                dx, dy = -dx, -dy
+            if ctx.inputs.get("points") is not None:
+                points = offset_points(ctx.inputs.get("points"), dx, dy)
+                first = points[0] if points else [0.0, 0.0]
+                return Result(outputs={**blank, "points": points, "matches": [], "count": len(points), "x": first[0], "y": first[1]},
+                              overlays=[{"kind": "points", "points": points, "color": "#22c55e"}] if points else [],
+                              message=f"{len(points)} points offset ({dx:g}, {dy:g})")
+            if ctx.inputs.get("matches") is not None:
+                matches = offset_matches(ctx.inputs.get("matches"), dx, dy)
+                best = matches[0] if matches else {}
+                x = float(best.get("cx", best.get("x", 0.0)) or 0.0)
+                y = float(best.get("cy", best.get("y", 0.0)) or 0.0)
+                return Result(outputs={**blank, "points": [], "matches": matches, "count": len(matches), "x": x, "y": y},
+                              message=f"{len(matches)} matches offset ({dx:g}, {dy:g})")
+            return Result(status="ng", outputs={**blank, "points": [], "matches": [], "count": 0},
+                          message="Wire points or matches to offset")
 
         if mode == "intersect":
             la, lb = _need_line(a, "A"), _need_line(b, "B")

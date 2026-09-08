@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：114 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1118 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：114 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1127 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -164,6 +164,13 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 區域自適應門檻與正規化（J1）、子圖座標還原（I6）
+- `threshold` 的 `method` 多 **`sauvola`**（`T = m·(1 + k·(s/128 − 1))`，用標準差相對 8 位元動態範圍的一半正規化，壓得住平坦背景）與 **`niblack`**（`T = m + k·s`，對紋理與雜訊更敏感）；另加 `compare`（ge／le／eq／ne）、`offset`（在算出的門檻上再加減常數，**`teach=True`**，`test_teach_params_marked` 的集合跟著長大）、`outside_roi`（black／keep）。
+- **為什麼要有**：光照不均的表面文字與刻印，全域門檻抓得到字但會把漸層的暗側整片誤判。實測（左暗右亮的漸層背景、兩側文字對比同為 60 灰階）：otsu 與 fixed 都是文字 100% 抓到但**背景誤判 47～49%**，sauvola **背景誤判 0%**、niblack 1.3%。
+- `lut` 多 `normalize_ratio`（百分位拉伸，離群值被夾住）與 `normalize_std`（對齊平均與標準差）。
+- `geometry` 多 `mode="offset"`：把 `points` 或 `matches` 整體平移，`offset_x`／`offset_y` 參數或接上游 `crop` 的同名輸出（**埠優先於參數**），`sign`＝add／subtract。子圖裡量到的座標加回原圖用這個；實測加減來回完全一致。
+- 既有方法與預設值結果一字不變（bench 鎖住）。
 
 ### Blob 增強與標籤化（D7，Codex 實作）
 - `blob` 的 `threshold_method` 多兩種：**`hysteresis`（雙門檻）**——`threshold` 是高門檻找種子、`threshold_low` 是低門檻往外長，只有碰得到種子的低門檻連通區才算數（解決「亮塊裡有更亮核心」與「邊界漸變」，也順便排除沒有種子的雜訊塊）；**`soft`（軟門檻）**——以 `threshold` 為中心、`soft_width` 為過渡寬度加權，**面積是權重和所以會是小數**。既有方法結果一字不變（bench 鎖住），`_prefilter_small()` 沒動。

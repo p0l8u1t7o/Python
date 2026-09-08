@@ -17,6 +17,14 @@ from apps.vision.tools.builtin.locate import reference_image
 from apps.vision.tools.roi import crop, region_overlay
 
 
+_COMPARE_CODES = {
+    "ge": cv2.CMP_GE,
+    "le": cv2.CMP_LE,
+    "eq": cv2.CMP_EQ,
+    "ne": cv2.CMP_NE,
+}
+
+
 def read_calibration(ctx: ToolContext, key: str = "calibration") -> dict:
     """標定參數（asset）→ payload；壞掉或沒選都翻成給使用者看的訊息。"""
     try:
@@ -108,39 +116,123 @@ class ThresholdTool(Tool):
             {"value": "fixed", "label": "Fixed"}, {"value": "otsu", "label": "Otsu (automatic)"},
             {"value": "triangle", "label": "Triangle (automatic)"},
             {"value": "adaptive_mean", "label": "Adaptive (mean)"}, {"value": "adaptive_gaussian", "label": "Adaptive (Gaussian)"},
+            {"value": "sauvola", "label": "Sauvola (local mean and contrast)"},
+            {"value": "niblack", "label": "Niblack (local mean plus k sigma)"},
             {"value": "range", "label": "Grey range"},
-        ]),
+        ], help_text="Sauvola uses mean * (1 + k * (std / 128 - 1)), so flat background moves toward the local mean and textured areas get a wider threshold. Niblack uses mean + k * std, a direct local mean plus contrast offset."),
         Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["fixed"]}, teach=True),
         Param("low", "Lower", kind="number", default=0, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
         Param("high", "Upper", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "method", "in": ["range"]}, teach=True),
         Param("block", "Block size (odd)", kind="number", default=31, minimum=3, maximum=255, step=2, visible_when={"param": "method", "in": ["adaptive_mean", "adaptive_gaussian"]}, teach=True),
         Param("c", "Constant C", kind="number", default=5, minimum=-100, maximum=100, visible_when={"param": "method", "in": ["adaptive_mean", "adaptive_gaussian"]}, teach=True),
+        Param("window", "Window size (odd)", kind="number", default=31, minimum=3, maximum=255, step=2, visible_when={"param": "method", "in": ["sauvola", "niblack"]}),
+        Param("k", "k", kind="number", default=0.2, minimum=-2, maximum=2, step=0.05, visible_when={"param": "method", "in": ["sauvola", "niblack"]}),
+        Param("compare", "Compare", kind="select", default="", options=[
+            {"value": "ge", "label": "Pixel >= threshold"},
+            {"value": "le", "label": "Pixel <= threshold"},
+            {"value": "eq", "label": "Pixel == threshold"},
+            {"value": "ne", "label": "Pixel != threshold"},
+        ], help_text="Leave unchanged to keep the legacy threshold meaning. Set this only when equality or the opposite comparison matters."),
+        Param("offset", "Threshold offset", kind="number", teach=True, default=0, minimum=-255, maximum=255,
+              help_text="Added to the threshold after it is calculated."),
+        Param("roi", "Region", kind="roi", shapes=["rect", "rotated_rect", "circle", "ellipse", "annulus", "polygon", "composite"], required=False),
+        Param("outside_roi", "Outside ROI", kind="select", default="black", options=[
+            {"value": "black", "label": "Black"},
+            {"value": "keep", "label": "Keep original grey"},
+        ]),
         Param("invert", "Invert (dark objects are foreground)", kind="boolean", default=False),
     ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
     outputs = [Port("image", "Mask", "image"), Port("threshold_used", "Threshold used", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
         gray = to_gray(ctx.require_image())
+        region = ctx.roi()
+        area = crop(gray, region) if region is not None else None
+        work = area.image if area is not None else gray
         method = ctx.param("method", "otsu")
         inv = ctx.flag("invert")
+        compare = str(ctx.params["compare"]) if "compare" in ctx.params and ctx.param("compare") in _COMPARE_CODES else ""
+        threshold_offset = ctx.number("offset", 0) if "offset" in ctx.params else 0.0
         used = 0.0
         if method == "otsu":
-            used, out = cv2.threshold(gray, 0, 255, (cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY) | cv2.THRESH_OTSU)
+            used, out = cv2.threshold(work, 0, 255, (cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY) | cv2.THRESH_OTSU)
+            if compare or threshold_offset:
+                out = _threshold_compare(work, used + threshold_offset, compare, inv)
         elif method == "triangle":
-            used, out = cv2.threshold(gray, 0, 255, (cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY) | cv2.THRESH_TRIANGLE)
+            used, out = cv2.threshold(work, 0, 255, (cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY) | cv2.THRESH_TRIANGLE)
+            if compare or threshold_offset:
+                out = _threshold_compare(work, used + threshold_offset, compare, inv)
         elif method in ("adaptive_mean", "adaptive_gaussian"):
             b = max(3, ctx.integer("block", 31))
             if b % 2 == 0:
                 b += 1
-            out = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C if method == "adaptive_mean" else cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY, b, ctx.number("c", 5))
+            if compare:
+                thresholds = _adaptive_thresholds(work, method, b, ctx.number("c", 5)) + threshold_offset
+                out = _threshold_compare(work, thresholds, compare, inv)
+            else:
+                out = cv2.adaptiveThreshold(work, 255, cv2.ADAPTIVE_THRESH_MEAN_C if method == "adaptive_mean" else cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY, b, ctx.number("c", 5) - threshold_offset)
+        elif method in ("sauvola", "niblack"):
+            w = max(3, ctx.integer("window", 31))
+            if w % 2 == 0:
+                w += 1
+            thresholds = _local_thresholds(work, method, w, ctx.number("k", 0.2)) + threshold_offset
+            out = _threshold_compare(work, thresholds, compare, inv)
         elif method == "range":
-            out = cv2.inRange(gray, int(ctx.number("low", 0)), int(ctx.number("high", 128)))
+            off = int(round(threshold_offset))
+            out = cv2.inRange(work, int(ctx.number("low", 0)) + off, int(ctx.number("high", 128)) + off)
             if inv:
                 out = cv2.bitwise_not(out)
         else:
             used = ctx.number("threshold", 128)
-            _, out = cv2.threshold(gray, used, 255, cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY)
+            if compare or threshold_offset:
+                out = _threshold_compare(work, used + threshold_offset, compare, inv)
+            else:
+                _, out = cv2.threshold(work, used, 255, cv2.THRESH_BINARY_INV if inv else cv2.THRESH_BINARY)
+        if area is not None:
+            full = gray.copy() if ctx.param("outside_roi", "black") == "keep" else np.zeros_like(gray)
+            if area.mask is not None:
+                current = full[area.y0 : area.y0 + area.image.shape[0], area.x0 : area.x0 + area.image.shape[1]].copy()
+                cv2.copyTo(out, area.mask, current)
+                full[area.y0 : area.y0 + area.image.shape[0], area.x0 : area.x0 + area.image.shape[1]] = current
+            else:
+                full[area.y0 : area.y0 + out.shape[0], area.x0 : area.x0 + out.shape[1]] = out
+            out = full
         return Result(outputs={"image": out, "threshold_used": float(used)}, message=f"{method} t={used:g}")
+
+
+def _threshold_compare(image: np.ndarray, threshold: float | np.ndarray, compare: str, invert: bool) -> np.ndarray:
+    """依比較方式產生 0/255 遮罩；compare 空值保留舊版大於門檻語意。"""
+    if compare:
+        out = cv2.compare(image.astype(np.float32), threshold, _COMPARE_CODES[compare])
+        return cv2.bitwise_not(out) if invert else out
+    if isinstance(threshold, np.ndarray):
+        out = cv2.compare(image.astype(np.float32), threshold.astype(np.float32), cv2.CMP_LE if invert else cv2.CMP_GT)
+        return out
+    _, out = cv2.threshold(image, float(threshold), 255, cv2.THRESH_BINARY_INV if invert else cv2.THRESH_BINARY)
+    return out
+
+
+def _adaptive_thresholds(image: np.ndarray, method: str, block: int, c_value: float) -> np.ndarray:
+    """取得自適應門檻圖；只供新比較模式使用，避免改動舊版路徑。"""
+    src = image.astype(np.float32)
+    if method == "adaptive_gaussian":
+        mean = cv2.GaussianBlur(src, (block, block), 0, borderType=cv2.BORDER_REPLICATE)
+    else:
+        mean = cv2.boxFilter(src, cv2.CV_32F, (block, block), normalize=True, borderType=cv2.BORDER_REPLICATE)
+    return mean - float(c_value)
+
+
+def _local_thresholds(image: np.ndarray, method: str, window: int, k_value: float) -> np.ndarray:
+    """Sauvola 與 Niblack 的區域門檻圖。"""
+    src = image.astype(np.float32)
+    mean = cv2.boxFilter(src, cv2.CV_32F, (window, window), normalize=True, borderType=cv2.BORDER_REPLICATE)
+    mean_sq = cv2.boxFilter(src * src, cv2.CV_32F, (window, window), normalize=True, borderType=cv2.BORDER_REPLICATE)
+    std = cv2.sqrt(np.maximum(mean_sq - mean * mean, 0.0))
+    k = float(k_value)
+    if method == "sauvola":
+        return mean * (1.0 + k * (std / 128.0 - 1.0))
+    return mean + k * std
 
 
 class MorphologyTool(Tool):
@@ -435,12 +527,18 @@ class LutTool(Tool):
             {"value": "log", "label": "Log (opens up the shadows)"}, {"value": "exp", "label": "Exponential (opens up the highlights)"},
             {"value": "sqrt", "label": "Square root"}, {"value": "square", "label": "Square"}, {"value": "invert", "label": "Invert"},
             {"value": "equalize", "label": "Histogram equalisation"}, {"value": "clahe", "label": "CLAHE (local contrast)"},
+            {"value": "normalize_ratio", "label": "Percentile stretch"},
+            {"value": "normalize_std", "label": "Mean / standard deviation normalisation"},
         ]),
         Param("clip", "CLAHE clip", kind="number", default=2.0, minimum=0.1, maximum=40, step=0.1, visible_when={"param": "mode", "in": ["clahe"]}),
         Param("tile", "CLAHE tiles", kind="number", default=8, minimum=1, maximum=64, visible_when={"param": "mode", "in": ["clahe"]}),
         Param("brightness", "Brightness", kind="range", default=0, minimum=-100, maximum=100, step=1, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
         Param("contrast", "Contrast", kind="range", default=1.0, minimum=0.1, maximum=3.0, step=0.05, visible_when={"param": "mode", "in": ["linear"]}, teach=True),
         Param("gamma", "Gamma", kind="range", default=1.0, minimum=0.1, maximum=5.0, step=0.05, visible_when={"param": "mode", "in": ["power"]}, teach=True),
+        Param("low_percent", "Low percentile", kind="number", default=1, minimum=0, maximum=100, step=0.1, visible_when={"param": "mode", "in": ["normalize_ratio"]}, teach=True),
+        Param("high_percent", "High percentile", kind="number", default=99, minimum=0, maximum=100, step=0.1, visible_when={"param": "mode", "in": ["normalize_ratio"]}, teach=True),
+        Param("target_mean", "Target mean", kind="number", default=128, minimum=0, maximum=255, step=1, visible_when={"param": "mode", "in": ["normalize_std"]}, teach=True),
+        Param("target_std", "Target standard deviation", kind="number", default=40, minimum=0, maximum=128, step=1, visible_when={"param": "mode", "in": ["normalize_std"]}, teach=True),
     ]
     inputs = [Port("image", "Image", "image")]
     outputs = [Port("image", "Image", "image")]
@@ -457,6 +555,22 @@ class LutTool(Tool):
             t = max(1, ctx.integer("tile", 8))
             clahe = cv2.createCLAHE(clipLimit=ctx.number("clip", 2.0), tileGridSize=(t, t))
             return Result(outputs={"image": clahe.apply(to_gray(image))}, message=mode)
+        if mode == "normalize_ratio":
+            low = min(100.0, max(0.0, ctx.number("low_percent", 1)))
+            high = min(100.0, max(0.0, ctx.number("high_percent", 99)))
+            if high < low:
+                low, high = high, low
+            lo, hi = np.percentile(image.astype(np.float32), [low, high])
+            scale = 255.0 / (float(hi) - float(lo)) if hi > lo else 1.0
+            out = np.clip((image.astype(np.float32) - float(lo)) * scale, 0, 255).astype(np.uint8)
+            return Result(outputs={"image": out}, message=f"{mode} {low:g}-{high:g}%")
+        if mode == "normalize_std":
+            src = image.astype(np.float32)
+            mean, std = float(src.mean()), float(src.std())
+            target_mean = ctx.number("target_mean", 128)
+            target_std = max(0.0, ctx.number("target_std", 40))
+            out = np.full(src.shape, target_mean, dtype=np.float32) if std < 1e-9 else (src - mean) * (target_std / std) + target_mean
+            return Result(outputs={"image": np.clip(np.rint(out), 0, 255).astype(np.uint8)}, message=f"{mode} mean={target_mean:g} std={target_std:g}")
         x = np.arange(256, dtype=np.float32)
         if mode == "linear":
             table = (x - 128.0) * ctx.number("contrast", 1.0) + 128.0 + ctx.number("brightness", 0.0)

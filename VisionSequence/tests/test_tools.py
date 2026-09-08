@@ -51,7 +51,8 @@ class RegistryTests(SimpleTestCase):
 
     def test_teach_params_marked(self):
         teach = {t.key: {p.key for p in t.params if p.teach} for t in base.all_types()}
-        self.assertEqual(teach["threshold"], {"threshold", "low", "high", "block", "c"})
+        # offset 是在算出的門檻上再加減一個常數，換線時操作員會調；區域自適應的視窗與 k 屬於工程師。
+        self.assertEqual(teach["threshold"], {"threshold", "low", "high", "block", "c", "offset"})
         self.assertEqual(teach["template_match"], {"threshold", "angle_range"})
         self.assertEqual(teach["blob"], {"min_area", "max_area", "min_circularity"})
         # 期望位置與期望寬度是換線會調的產品尺寸，開放給操作員；
