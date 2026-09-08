@@ -1448,6 +1448,15 @@ export default {
       points: "邊緣點",
     },
   },
+  image_fixture: {
+    label: "影像跟隨",
+    description: "依定位補正的結果把影像轉回教導時的姿態，後面每一步看到的工件就永遠在同一個地方。要沿用一條在單一樣品上調好的流程，這是最省事的做法：沒有區域需要跟隨，教導好的範本照樣比得到。",
+    params: {
+      border: { label: "邊緣填色", help: "影像轉過之後角落會空出來，這裡決定填什麼。", options: { black: "黑", white: "白", replicate: "最近的像素" } },
+      smooth: { label: "平滑像素", help: "開：內插，看起來對、量起來也準。關：取最近的像素，標記與遮罩不會糊掉。" },
+    },
+    ports: { image: "影像", transform: "位置修正", dx: "dx", dy: "dy", dtheta: "角度差" },
+  },
   fixture_roi: {
     label: "ROI 跟隨",
     description: "把畫好的 ROI 依定位補正的 dx/dy/dθ 移動，輸出動態區域給下游工具的 ROI 輸入埠。",

@@ -225,7 +225,7 @@ def execute(
                 # 未連線的必填輸入：來源工具可以自己抓（例如 image_source），其他標錯。
                 if not getattr(cn.tool, "allows_unconnected", False):
                     blocked = blocked or f"input port '{port.key}' is not connected"
-        # 隱含輸入埠（collect=True 的那些，目前只有影像直通 _image）：不進工具邏輯，引擎自己用
+        # 隱含輸入埠（collect=True 的那些：影像直通 _image、位置修正 _transform）
         for spec in tools_base.IMPLICIT_INPUTS:
             if not spec.collect:
                 continue
@@ -233,7 +233,12 @@ def execute(
                 if status_of.get(src) not in ("ok", "ng"):
                     continue
                 value = outputs.get((src, sport))
-                if value is None or (spec.type == "image" and not isinstance(value, np.ndarray)):
+                if spec.type == "image" and not isinstance(value, np.ndarray):
+                    continue
+                if value is None:
+                    # 接了但這次沒找到：keep_none 的埠要留一個 None，工具才分得出「沒接」與「沒找到」
+                    if spec.keep_none:
+                        inputs.setdefault(spec.key, None)
                     continue
                 inputs[spec.key] = value
                 break
@@ -298,6 +303,12 @@ def execute(
         node_report.detail = _jsonable(result.detail)
         node_report.overlays = result.overlays
         node_report.overlay_on = result.overlay_on or cn.primary_image_port
+        if ctx.fixture_missing:
+            # 位置修正接上了但這一次沒找到：區域留在原地，量到的數字未必是這個工件的
+            note = f"'{node_id}': the position correction found nothing, so the region stayed where it was drawn"
+            if note not in report.warnings:
+                report.warnings.append(note)
+            node_report.detail = {**(node_report.detail or {}), "fixture": "missing"}
         if result.context:
             context.update(result.context)
 

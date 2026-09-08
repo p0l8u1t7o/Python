@@ -94,6 +94,12 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## shape_align
 定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。
 
+## image_fixture
+把整張影像轉回教導時的姿態（`fixture_roi` 的另一種做法）：`transform` 接 `shape_align`，輸出的影像給下游所有步驟。
+**跟隨區域與跟隨影像二選一**——區域少就用位置修正埠（每個有 ROI 的工具都有 `_transform`，接上去就好），
+整條流程都要跟、或教導好的範本要照樣比得到，就在取像之後放一顆 `image_fixture`。
+邊緣會空出來（`border` 決定填黑／白／最近的像素）；量測前不要關 `smooth`。定位沒找到時影像原樣傳下去並標 ng。
+
 ## fixture_roi
 ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.transform，輸出 `region` 接量測工具的 `roi` 輸入埠。每個要跟著動的 ROI 一個 fixture_roi。
 

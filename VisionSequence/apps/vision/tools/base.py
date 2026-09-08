@@ -160,6 +160,9 @@ class ToolContext:
     #: 本工具宣告可吃的影像位深（Tool.accepts；image() 會把宣告外的位深自動正規化成 u8）。
     depth: tuple[str, ...] = ("u8",)
     _params_cache: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
+    _roi_cache: dict[str, Any] = field(default_factory=dict, init=False, repr=False, compare=False)
+    #: 上游接了位置修正但這次沒找到（區域留在原地）；引擎會把它變成一則警告。
+    fixture_missing: bool = field(default=False, init=False, repr=False, compare=False)
 
     @property
     def params(self) -> dict[str, Any]:
@@ -234,14 +237,38 @@ class ToolContext:
         return _vars.store.set(key, name, value)
 
     def roi(self, key: str = "roi") -> dict[str, Any] | None:
-        """ROI 優先取輸入埠（動態 region），其次取參數（畫布上畫的）。"""
+        """ROI 優先取輸入埠（動態 region），其次取參數（畫布上畫的）。
+
+        **位置修正內建在這裡**：節點的 `_transform` 埠接了定位補正之後，畫布上畫的 ROI 會自動
+        跟著工件走，工具本身不必知道有這回事（`crop`／`to_full` 照舊，overlays 仍是全圖座標）。
+        上游接了但這次沒找到（transform 是 None）：**區域留在原地**並記一筆 `fixture_missing`，
+        引擎會把它變成警告——靜默量到空氣比量錯更難查。
+        """
+        cached = self._roi_cache.get(key)
+        if cached is not None:
+            return cached if cached is not _NO_ROI else None
+        region = None
         value = self.inputs.get(key)
         if isinstance(value, dict) and value.get("shape"):
-            return value
-        value = self.params.get(key)
-        if isinstance(value, dict) and value.get("shape"):
-            return value
-        return None
+            region = value
+        else:
+            value = self.params.get(key)
+            if isinstance(value, dict) and value.get("shape"):
+                region = value
+        if region is not None and TRANSFORM_IN in self.inputs:
+            from apps.vision.tools import roi as roi_mod
+
+            transform = self.inputs.get(TRANSFORM_IN)
+            if transform is None:
+                self.fixture_missing = True
+            else:
+                region = roi_mod.apply_transform(region, transform)
+        self._roi_cache[key] = region if region is not None else _NO_ROI
+        return region
+
+
+#: `_roi_cache` 的哨兵：記住「這個鍵沒有區域」，才不會每次都重算。
+_NO_ROI: dict[str, Any] = {}
 
 
 class ToolError(Exception):
@@ -386,9 +413,16 @@ CATEGORY_LABELS = {
 #: graph 的型別驗證與單線檢查、engine 的輸入蒐集、給前端的工具目錄都讀它，
 #: 所以新增一個隱含埠只要在下面補一筆，94 個工具一律不用改。
 #: 記得同步 `frontend/src/lib/toolLocale.ts` 的 IMPLICIT_PORTS（兩種中文）與 docs/contract.html。
-FLOW_IN = "_flow"  # 控制輸入：接上游的 flow 分支把手，決定這個節點跑不跑
+FLOW_IN = "_flow"
+#: 位置修正：接上定位補正的 transform，這個節點畫的每個 ROI 就跟著走（見 IMPLICIT_INPUTS）。
+TRANSFORM_IN = "_transform"  # 控制輸入：接上游的 flow 分支把手，決定這個節點跑不跑
 OVERLAYS_OUT = "_overlays"  # 本節點的標記（list），供 draw_result 疊圖
 IMAGE_THRU = "_image"  # 影像直通：原影像原樣往下傳（標記只是 metadata，不畫進影像）
+
+
+def _has_roi_param(tool: ToolType) -> bool:
+    """工具在畫布上畫得出 ROI（有 kind="roi" 的參數）才需要位置修正埠。"""
+    return any(getattr(p, "kind", "") == "roi" for p in getattr(tool, "params", ()) or ())
 
 
 def _takes_no_image(tool: ToolType) -> bool:
@@ -413,6 +447,8 @@ class ImplicitPort:
     multiple: bool = False
     catalogued: bool = True
     collect: bool = False
+    #: True＝上游有接但值是 None 時仍要留一個 None（讓工具分得出「沒接」與「接了但沒找到」）。
+    keep_none: bool = False
 
     def shows_on(self, tool: ToolType) -> bool:
         return self.catalogued and (self.when is None or self.when(tool))
@@ -426,6 +462,8 @@ IMPLICIT_INPUTS: tuple[ImplicitPort, ...] = (
     # 控制輸入：可接多條（任一分支到達就執行）；由 graph／engine 的分支邏輯處理，不進 ctx.inputs
     ImplicitPort(FLOW_IN, "Control", "flow", multiple=True, catalogued=False),
     ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image", when=_takes_no_image, collect=True),
+    # 位置修正：有畫 ROI 的工具才出現；`ctx.roi()` 會把區域跟著工件移動，工具本身不必知道
+    ImplicitPort(TRANSFORM_IN, "Position correction", "any", when=_has_roi_param, collect=True, keep_none=True),
 )
 IMPLICIT_OUTPUTS: tuple[ImplicitPort, ...] = (
     ImplicitPort(IMAGE_THRU, "Image (pass-through)", "image"),

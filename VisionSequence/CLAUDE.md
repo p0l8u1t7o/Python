@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：95 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 904 項＋前端 115 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：96 個內建工具（8 類）、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 918 項＋前端 115 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -68,6 +68,7 @@
 - 繼承 `Tool`，宣告 `params`（kind 只能是 `PARAM_KINDS`）、`inputs`、`outputs`（type 只能是 `PORT_TYPES`），`execute(ctx) -> Result`。內建放進對應 builtin 模組的 `TOOLS`。
 - 找不到東西回 `status="ng"` 或分支，不要 `raise`；可預期失敗 `raise ToolError(...)`。overlays 座標一律是**該節點輸入影像**的全圖座標；ROI 用 `tools/roi.py` 的 `crop()` 與 `Crop.to_full()`。**overlays 不得畫進影像、不得就地修改輸入 ndarray**（`tests/test_tools.py ToolPurityTests` 全工具掃描鎖住）。
 - 影像位深：工具預設只吃 u8（其他自動正規化）；cv2 原生支援 u16/f32 的工具宣告 `accepts = ("u8","u16","f32")`（`imgfmt.py`）。
+- **位置修正（`_transform` 隱含輸入埠）**：有 `Param(kind="roi")` 的工具自動長出這個埠（`base._has_roi_param`）；接上 `shape_align` 的 `transform`，**`ToolContext.roi()` 會在工具看到區域之前就把它移好**（記憶化在 `_roi_cache`），所以 crop／mask／overlay 全都不必改，仍是全圖座標。接了但這次沒找到（值是 None，靠 `ImplicitPort.keep_none` 保留）＝區域留在原地並設 `ctx.fixture_missing`，引擎轉成一則 run 警告與 `node.detail.fixture="missing"`——**靜默量到空氣比量錯更難查**。整條流程都要跟就用 `image_fixture`（反矩陣 warpAffine 把影像轉回教導姿態，`locate.inverse_matrix` 與 `roi.transform_region` 互為反函式，有測試鎖住）。**工具不要再直接讀 `ctx.params.get("roi")`**（會畫回原位），一律走 `ctx.roi()`。
 - **幾何慣例**：影像座標 y 向下、像素中心在整數座標；**角度正值＝畫面順時針**（ROI 旋轉矩形、找直線 atan2、範本比對 `best_angle`、定位補正 dθ、overlay angle 全部同向；cv2.getRotationMatrix2D 是逆時針為正，呼叫時取負）。圓擬合用 `locate.fit_circle_lsq`（Taubin＋幾何精修，部分弧無偏；`fit_circle_kasa` 只當起始值）、徑向掃描用 `locate.radial_edge_points`（支援扇形 a0/a1、遮罩）、Otsu 用 `tools/hist.py`；blob 的 `area` 是像素數。
 - **沿幾何佈卡尺一律用 `locate.caliper_series`**（別再寫第四套掃描）：`line_geometry`／`arc_geometry` 產生「中心＋掃描方向＋切向＋位置」四個陣列（折線與任意路徑自己組也可以），`caliper_series` 一次 `cv2.remap` 取樣＋一次 `find_edges_rows` 找邊，回 `CaliperHit`（全圖座標、相對中線的 `offset`、`position`；`mode="pair"` 另有第二個邊與 `width`）。**打空的卡尺照樣回傳 `found=False`**——大缺口會讓卡尺找不到邊，那是缺陷訊號不是雜訊；接 `hit_series()` 轉成一維序列丟給 `tools/defects.py` 分段。線的掃描方向＝線方向順時針轉 90°（要反向就把起訖點對調）。既有的 `caliper_points`（擺正 crop）／`radial_edge_points`／`circular.radial_profiles`／`measure._band_profiles` 維持原樣不動（bench 鎖住），新工具走 `caliper_series`。邊緣對的挑選 `locate.pick_pair`（原本在 measure.py）。精度與慣例的量化稽核在 `tests/test_tools.py AlgorithmAccuracyTests`，見 docs/vision-capabilities.html §5。
 - 新增工具 checklist：`register()`（放進模組 `TOOLS`）→ `tests/test_tools.py` 至少一案例 → `scripts/bench_tools.py` 加一筆 → 現場調的參數標 `teach=True` → `agent/skills/tools.md` 補一段要領 → 需要的話加進範例樣板。前端不用改。

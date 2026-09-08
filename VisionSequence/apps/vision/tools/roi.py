@@ -291,6 +291,28 @@ def region_center(region: dict[str, Any]) -> tuple[float, float]:
     return 0.0, 0.0
 
 
+def apply_transform(region: dict[str, Any], transform: Any) -> dict[str, Any]:
+    """把定位補正的 transform 套到區域上。
+
+    transform＝`{"dx", "dy", "dtheta", "pivot": [x, y]}`（定位補正、形狀比對定位都產這個形狀）。
+    沒有 pivot 就以區域自己的中心為軸——單純平移時兩者等價，有旋轉時才看得出差別。
+    形狀怎麼轉由 `transform_region` 負責（矩形帶角度自動升格、組合區域遞迴）。
+    """
+    if not isinstance(transform, dict) or not isinstance(region, dict) or not region.get("shape"):
+        return region
+    try:
+        dx = float(transform.get("dx", 0) or 0)
+        dy = float(transform.get("dy", 0) or 0)
+        dtheta = float(transform.get("dtheta", 0) or 0)
+    except (TypeError, ValueError):
+        return region
+    if not (dx or dy or dtheta):
+        return region
+    pivot = transform.get("pivot")
+    at = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else region_center(region)
+    return transform_region(region, dx, dy, dtheta, pivot=at)
+
+
 def transform_region(region: dict[str, Any], dx: float, dy: float, dtheta: float = 0.0, pivot: tuple[float, float] | None = None) -> dict[str, Any]:
     """依定位結果平移／旋轉 ROI（定位後的跟隨 ROI）。dtheta 為度。composite 遞迴套用到每一項。"""
     out = dict(region)

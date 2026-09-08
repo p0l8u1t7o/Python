@@ -781,6 +781,78 @@ class FixtureRoiTool(Tool):
         return Result(outputs={"region": moved}, overlays=overlays, message=f"dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°")
 
 
+class ImageFixtureTool(Tool):
+    key = "image_fixture"
+    label = "Image follow"
+    description = (
+        "Turns the picture back to the pose the flow was taught on, using the offset from a locate step. Everything downstream "
+        "then sees the part in the same place every time, which is the easy way to reuse a flow that was set up on one sample: "
+        "no region needs to follow, and a taught template still matches."
+    )
+    category = "locate"
+    icon = "Frame"
+    params = [
+        Param("border", "Fill the edges with", kind="select", default="black", options=[
+            {"value": "black", "label": "Black"},
+            {"value": "white", "label": "White"},
+            {"value": "replicate", "label": "The nearest pixel"},
+        ], help_text="Turning the picture leaves empty corners; this is what goes in them."),
+        Param("smooth", "Smooth the pixels", kind="boolean", default=True,
+              help_text="On: interpolate, which looks right and measures better. Off: nearest pixel, which keeps labels and masks crisp."),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("transform", "Transform", "any")]
+    outputs = [
+        Port("image", "Image", "image"),
+        Port("dx", "dx", "number"), Port("dy", "dy", "number"), Port("dtheta", "d angle", "number"),
+    ]
+    accepts = ("u8", "u16", "f32")
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = ctx.require_image()
+        t = ctx.inputs.get("transform")
+        if t is None:
+            # 定位這次沒找到：影像原樣傳下去、標 ng（下游照跑，整次 run 是 NG）
+            return Result(outputs={"image": image, "dx": 0.0, "dy": 0.0, "dtheta": 0.0}, status="ng",
+                          message="No transform (the locate step found nothing); picture left as it is")
+        if not isinstance(t, dict):
+            raise ToolError("The transform input must come from a locate-offset step")
+        try:
+            dx, dy = float(t.get("dx", 0) or 0), float(t.get("dy", 0) or 0)
+            dtheta = float(t.get("dtheta", 0) or 0)
+        except (TypeError, ValueError):
+            raise ToolError("The transform values are not numbers") from None
+        pivot = t.get("pivot")
+        at = (float(pivot[0]), float(pivot[1])) if isinstance(pivot, (list, tuple)) and len(pivot) == 2 else (image.shape[1] / 2, image.shape[0] / 2)
+        matrix = inverse_matrix(dx, dy, dtheta, at)
+        border, value = _BORDERS.get(str(ctx.param("border", "black")), (cv2.BORDER_CONSTANT, 0))
+        if str(ctx.param("border", "black")) == "white":
+            value = 255 if image.dtype == np.uint8 else float(np.iinfo(image.dtype).max if image.dtype.kind in "ui" else 1.0)
+        flags = cv2.INTER_LINEAR if ctx.flag("smooth", True) else cv2.INTER_NEAREST
+        out = cv2.warpAffine(image, matrix, (image.shape[1], image.shape[0]), flags=flags, borderMode=border, borderValue=value)
+        return Result(
+            outputs={"image": out, "dx": dx, "dy": dy, "dtheta": dtheta},
+            message=f"back by dx={dx:.1f} dy={dy:.1f} dθ={dtheta:.1f}°",
+        )
+
+
+#: image_fixture 的邊界填法。
+_BORDERS = {"black": (cv2.BORDER_CONSTANT, 0), "white": (cv2.BORDER_CONSTANT, 255), "replicate": (cv2.BORDER_REPLICATE, 0)}
+
+
+def inverse_matrix(dx: float, dy: float, dtheta: float, pivot: tuple[float, float]) -> np.ndarray:
+    """把「工件從教導姿態移動了多少」反過來，得到 warpAffine 用的 2x3 矩陣。
+
+    正向（`roi.transform_region` 的做法）是：先繞 pivot 轉 dtheta（畫面順時針為正，所以
+    `getRotationMatrix2D` 傳 −dtheta），再平移 (dx, dy)。這裡回的是它的反矩陣，
+    warpAffine 套上去就把影像轉回教導時的位置。
+    """
+    forward = np.eye(3, dtype=np.float64)
+    forward[:2] = cv2.getRotationMatrix2D(pivot, -float(dtheta), 1.0)
+    move = np.eye(3, dtype=np.float64)
+    move[0, 2], move[1, 2] = float(dx), float(dy)
+    return np.linalg.inv(move @ forward)[:2].astype(np.float32)
+
+
 # ---------------------------------------------------------------------------
 # 找圓
 # ---------------------------------------------------------------------------
@@ -1279,6 +1351,6 @@ class HoughLinesTool(Tool):
 __all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "sector_thetas", "radial_edge_points", "fit_circle_kasa", "fit_circle_lsq", "fit_circle_ransac", "fit_circle_points", "fit_line_ransac", "POLARITY_OPTIONS"]
 
 TOOLS = [
-    TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(),
+    TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(), ImageFixtureTool(),
     FindCircleTool(), FindLineTool(), HoughCirclesTool(), HoughLinesTool(),
 ]

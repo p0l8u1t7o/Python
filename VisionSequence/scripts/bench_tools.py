@@ -311,6 +311,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("shape_match roi ±20°", "shape_match", big, {"model": "shapemodel", "min_score": 0.6, "roi": plate, "angle_start": -20, "angle_extent": 40}, {}, {}),
         ("shape_align", "shape_align", None, {"ref_x": s.cx, "ref_y": s.cy}, {"matches": [{"cx": s.cx + 3, "cy": s.cy - 2, "angle": 1.5}]}, {}),
         ("fixture_roi", "fixture_roi", None, {"roi": plate}, {"transform": {"dx": 3, "dy": -2, "dtheta": 1.5, "pivot": [s.cx, s.cy]}}, {}),
+        ("image_fixture", "image_fixture", gray, {}, {"transform": {"dx": 3, "dy": -2, "dtheta": 1.5, "pivot": [s.cx, s.cy]}}, {}),
         ("region_from_shape", "region_from_shape", None, {"roi": center_circle}, {}, {}),
         ("region_combine subtract", "region_combine", None, {"base": plate, "mode": "subtract"}, {"regions": [center_circle, s.rect(-0.2, -0.15, 0.05, 0.05)]}, {}),
         ("intensity (composite roi)", "intensity", big, {}, {"roi": plate_minus_hole}, {}),

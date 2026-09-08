@@ -48,7 +48,7 @@ class RegionFromShapeTool(Tool):
     outputs = [Port("region", "Region", "region")]
 
     def execute(self, ctx: ToolContext) -> Result:
-        region = ctx.params.get("roi")
+        region = ctx.roi("roi")  # ctx.roi 會套上位置修正（接了 _transform 時形狀跟著工件走）
         if not isinstance(region, dict) or not region.get("shape"):
             raise ToolError("No shape is drawn")
         return Result(outputs={"region": dict(region)}, overlays=[region_overlay(region, label="region")], message=str(region.get("shape")))
@@ -76,9 +76,7 @@ class RegionCombineTool(Tool):
     outputs = [Port("region", "Region", "region"), Port("count", "Parts", "number")]
 
     def execute(self, ctx: ToolContext) -> Result:
-        base = ctx.inputs.get("base")
-        if not (isinstance(base, dict) and base.get("shape")):
-            base = ctx.params.get("base")
+        base = ctx.roi("base")  # 輸入埠優先、其次畫布上畫的；ctx.roi 會套上位置修正
         others = _regions(ctx.inputs.get("regions"))
         if not (isinstance(base, dict) and base.get("shape")):
             if not others:
