@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：124 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：127 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1170 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -250,6 +250,15 @@
 - **暖機絕不碰相機**：`grab` 換成一律回 None 並記 log 的假函式；取像節點是 `source` 模式直接 skipped，`auto`／`input` 模式只在快取裡已有該來源影像時沿用，否則 skipped 並回報原因。
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
+
+### 子流程與逐項迴圈（A6，`tools/builtin/subflow.py`，Codex 實作）
+- **`call_flow` 與 `trigger_flow`（A4）是兩件事，別把其中一個做成另一個**：`trigger_flow` 是**另一條 run**（走 runner 佇列、有自己的 run_id 與統計）；`call_flow` 是**在目前這次 run 之內、同一條執行緒**直呼 `engine.execute()` 跑另一條流程的編譯圖——不進佇列、不寫 `FlowRun`、不發 SSE、不計統計（實測子流程的 `stats.runs` 與 `recent` 都是 0）。編譯圖走 `runner.compiled_for()` 所以享用既有快取。
+- **engine 只為了可重入加 2 行**：把既有的 `deadline` 放進 `context["_deadline"]`，子流程共用父流程剩下的時間，不各自算各自的。**沒有重寫引擎、沒有改 graph JSON 格式。**
+- **環路與深度**：`call_flow` 直接沿用 `trigger_flow` 的 `_trigger_chain`，所以 **A→call→A 與 A→trigger→B→call→A 都擋得到**（兩顆工具共用同一條鏈是刻意的）；另有 `MAX_SUBFLOW_DEPTH`＝5。
+- **`for_each`**：對 `matches`／`regions`／`images` 逐項跑同一條子流程並彙總（`count`／`ok_count`／`ng_count`／`items`／`all_ok`，`max_items`、`on_error`＝continue／stop）。**座標還原直接用 I6 既有的 `measure.offset_points`／`offset_matches`，沒有另寫一套**——實測三個 ROI 各自量到的形心還原回全圖與真值誤差 0.00。
+- **`tile`**：`rows`／`cols`／`overlap`（ratio 或 px）／`include_remainder` → `regions`（標準 ROI dict `{shape,x,y,w,h}`，可直接接 `for_each`）。純幾何、可單元測試；實測 3×4 不重疊時逐像素覆蓋數 min=max=1。
+- `preview`／`flow_id<=0` 一律回 `Would call flow N` 不真的執行。測試 `tests/test_subflow.py`。
+- **規格寫的 `docs/design.html` 不存在**，新章節寫進既有的 `docs/workflow-design.html`。
 
 ### 流程觸發流程與流程並行度（A4，Codex 實作）
 - **`Flow.concurrency`**（migration 0032，正整數，**預設 1＝與以前完全相同**）：`FlowRuntime.lock` 從 `threading.Lock` 換成 `gate`（`Condition`）＋`running` 計數。**容量放在 `FlowRuntime.concurrency` 這個記憶體欄位，由 `submit()` 在呼叫者執行緒從 `Flow.concurrency` 更新**——第一版在 gate 的 wait 迴圈裡每 50 ms 查一次 `Flow`，一條排隊的 run 一秒就打 20 次 SQLite（實測 17 次／秒），違反「執行緒池熱路徑不碰資料庫」；改成只讀記憶體後是 0 次。調大並行度由下一次 submit 帶進來，調小不硬砍已在跑的 run。`capacity()` 多回 `workers_busy`。

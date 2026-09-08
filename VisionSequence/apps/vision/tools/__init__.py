@@ -36,6 +36,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.register",
     "apps.vision.tools.builtin.yolo",
     "apps.vision.tools.builtin.logic",
+    "apps.vision.tools.builtin.subflow",
     "apps.vision.tools.builtin.script",
     "apps.vision.tools.builtin.output",
     "apps.vision.tools.builtin.trigger",

@@ -386,6 +386,16 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 同步模式會先檢查 runner 容量與執行緒池，沒有明確空 worker 就失敗，避免父流程佔著 worker 等子流程、子流程又排不到 worker 的死結。自我觸發與 A→B→A 會用觸發鏈擋下。preview、批次、AI 試跑與 bench 是沙箱，只回 `Would trigger flow ...`，不真的排隊。
 可勾選是否傳遞目前具名輸出與影像；影像只用快取 ref 傳遞，不把 ndarray 放進 context。
 
+## call_flow
+同行程子流程：把重複的一段檢測抽成另一條流程，父流程用 `target_flow_id` 呼叫。它不進 runner 佇列、不產生新的 FlowRun、不發 SSE、不累計統計；只在目前 run 的同一條執行緒內直呼 engine。輸出 `judge/ok/duration_ms/outputs`，並把子流程具名輸出加上 `prefix` 併回父流程。
+與 `trigger_flow` 共用觸發鏈，所以 A→call→A、A→trigger→B→call→A 都會被擋；另有巢狀深度上限。逾時沿用父流程剩餘 deadline。
+
+## for_each
+逐項對 `matches`、`regions` 或多張 `images` 呼叫一條子流程。region 會先裁成子影像再執行，子圖座標的 points/matches 與常見 x/y 輸出會用 `geometry` 的 offset 規則加回原圖位移。輸出 `count/ok_count/ng_count/items/all_ok`，有 `max_items` 上限；`on_error` 可選 continue 或 stop。
+
+## tile
+純幾何切片工具：依 `rows/cols/overlap` 產生矩形 `regions` 與 `count`，不處理像素。可直接接 `for_each`，讓大圖逐塊跑同一段子流程。
+
 ## output
 具名輸出：`name` 英文鍵名，`value` 埠接數值／字串／影像。上位機從 `outputs[name]` 拿。
 

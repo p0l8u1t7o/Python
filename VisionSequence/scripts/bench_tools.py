@@ -530,6 +530,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("boxes_merge", "boxes_merge", None, {"mode": "iou", "threshold": 0.5, "keep": "highest_score"}, {"matches": merge_matches}, {}),
         ("array_correct", "array_correct", None, {"rows": 3, "cols": 4, "tolerance": 2}, {"matches": grid_matches}, {}),
         ("count_list", "count_list", None, {}, {"items": list(range(100))}, {}),
+        ("tile 3x4", "tile", None, {"width": s.w, "height": s.h, "rows": 3, "cols": 4, "overlap": 0.25}, {}, {}),
+        ("call_flow (sandbox)", "call_flow", gray, {"target_flow_id": 1, "prefix": "child_"}, {}, {"_sandbox": True}),
+        ("for_each regions (sandbox)", "for_each", gray, {"target_flow_id": 1, "source": "regions", "max_items": 3},
+         {"regions": [s.rect(-0.2, -0.1, 0.1, 0.1), s.rect(0.0, -0.1, 0.1, 0.1), s.rect(0.2, -0.1, 0.1, 0.1)]}, {"_sandbox": True}),
         # output
         ("judge", "judge", None, {"verdict": "by_input"}, {"value": True}, {}),
         ("output", "output", None, {"name": "v"}, {"value": 1.23456}, {}),

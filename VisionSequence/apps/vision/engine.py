@@ -173,6 +173,8 @@ def execute(
     context: dict[str, Any] = dict(initial_context or {})
     if input_image is not None:
         context["_input_image"] = input_image
+    if deadline is not None:
+        context["_deadline"] = deadline
 
     outputs: dict[tuple[str, str], Any] = {}
     status_of: dict[str, str] = {}
