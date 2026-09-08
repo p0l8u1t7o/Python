@@ -333,24 +333,38 @@ class HubTests(_HubBase):
         self.assertEqual(item["channels"][0]["width"], 64)
         self.assertTrue(item["local"])
 
+    @staticmethod
+    def _collect(since: int, kind: str, client: str, timeout: float = 3.0) -> list[dict]:
+        """等到匯流排上出現這個事件為止。
+
+        不能只等 `hub.clients()` 出現：註冊比發事件早一點點，而且別的測試留下的事件會讓
+        `bus.wait` 立刻返回（`_seq > since` 就不等了），這個測試以前因此偶爾抓不到。
+        """
+        from apps.vision.runner import bus
+
+        seen: list[dict] = []
+        end = time.time() + timeout
+        while time.time() < end:
+            since, events = bus.wait(since, 0.1)
+            seen += [e for e in events if e.get("type") == kind and e.get("client") == client]
+            if seen:
+                return seen
+        return seen
+
     def test_connect_and_disconnect_publish_events(self):
         """相機上下線要進事件匯流排：連線層的事件回報（設備端的「相機掉了」）就是讀這個。"""
         from apps.vision.runner import bus
 
         since = bus.seq
         c = self.connect(name="ev1")
-        self.assertTrue(_wait(lambda: any(x["name"] == "ev1" for x in hub.clients())))
-        _, events = bus.wait(since, 0.1)
-        connected = [e for e in events if e.get("type") == "source_connected" and e.get("client") == "ev1"]
-        self.assertEqual(len(connected), 1, events)
+        connected = self._collect(since, "source_connected", "ev1")
+        self.assertEqual(len(connected), 1, connected)
         self.assertEqual(connected[0]["channels"], ["cam0"])
         self.assertTrue(connected[0]["local"])
         since = bus.seq
         c.close()
-        self.assertTrue(_wait(lambda: not any(x["name"] == "ev1" for x in hub.clients())))
-        _, events = bus.wait(since, 0.5)
-        lost = [e for e in events if e.get("type") == "source_lost" and e.get("client") == "ev1"]
-        self.assertEqual(len(lost), 1, events)
+        lost = self._collect(since, "source_lost", "ev1")
+        self.assertEqual(len(lost), 1, lost)
         self.assertTrue(lost[0]["reason"])
 
     def test_remote_hostname_is_not_local(self):

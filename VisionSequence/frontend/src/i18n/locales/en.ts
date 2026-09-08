@@ -1874,6 +1874,12 @@ const enExtra3 = {
     nodeEnabledHint: 'Disabling skips this step and everything downstream of it',
     continueOnError: 'Continue on error',
     continueOnErrorHint: 'A failure here does not stop the flow; downstream steps receive empty values',
+    param: {
+      bind: 'Let an earlier step set this',
+      unbind: 'Set it here again',
+      exposed: 'Waiting for a value: this parameter now has an input on the canvas.',
+      boundTo: 'Set by {{node}} at run time; the value here is only a fallback.',
+    },
     noParameters: 'This tool has no parameters',
     inputs: 'Inputs', outputs: 'Outputs',
     deleteNode: 'Delete step', unknownTool: 'Unknown tool', heavy: 'Can be slow',

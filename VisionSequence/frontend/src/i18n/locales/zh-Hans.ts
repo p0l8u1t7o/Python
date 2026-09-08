@@ -631,6 +631,12 @@ const zhHans = {
     continueOnError: '出错时继续',
     continueOnErrorHint: '此步骤失败时不中止整个流程，下游收到空值',
     parameters: '参数',
+    param: {
+      bind: '改由前面的步骤决定',
+      unbind: '改回在这里填',
+      exposed: '等着接值：此参数在画布上多了一个输入端口。',
+      boundTo: '执行时由 {{node}} 决定；这里填的值只是接不到时的备援。',
+    },
     noParameters: '此工具没有参数',
     inputs: '输入',
     outputs: '输出',

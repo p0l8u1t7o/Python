@@ -61,6 +61,9 @@ export interface ToolParam {
   teach?: boolean
 }
 
+/** 參數埠的把手前綴（後端 apps/vision/tools/base.py 的 PARAM_PREFIX）。 */
+export const PARAM_PREFIX = 'param:'
+
 export interface ToolPort {
   key: string
   label: string
@@ -139,6 +142,8 @@ export interface GraphNode {
   position?: { x: number; y: number }
   width?: number
   height?: number
+  /** 外露成輸入埠的參數（`param:<key>`）；接上上游就改吃那個值 */
+  exposed_params?: string[]
 }
 
 export interface GraphEdge {

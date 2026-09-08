@@ -1,7 +1,9 @@
 /** 步驟的完整參數表單：依 def.params 產生（基本／進階分組、visible_when、前端驗證訊息）。工具頁左欄用。 */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Link2 } from 'lucide-react'
+import { PARAM_PREFIX } from '@/lib/types'
+import { bindableParams } from '@/components/editor/graphMapping'
 
 import { nodeProblems, paramVisible } from '@/lib/graphValidation'
 import type { GraphEdge, GraphNode, ToolTypeDef } from '@/lib/types'
@@ -14,15 +16,44 @@ export function ParamForm({ node, definition, edges, onChange, actions }: { node
   const problems = useMemo(() => nodeProblems(node, definition, edges), [node, definition, edges])
   const problemByKey = new Map(problems.map((p) => [p.key, p]))
 
+  // 參數訂閱：外露成埠的參數在畫布上多一個把手，接上上游就改吃那個值（後端 apps/vision/tools/base.py）
+  const exposed = new Set(node.exposed_params ?? [])
+  const boundFrom = new Map(
+    edges
+      .filter((e) => e.target === node.id && (e.target_handle ?? '').startsWith(PARAM_PREFIX))
+      .map((e) => [(e.target_handle ?? '').slice(PARAM_PREFIX.length), e.source] as const),
+  )
+  const bindable = new Set(bindableParams(definition).map((p) => p.key))
+  const toggleExpose = (key: string) => {
+    const next = new Set(exposed)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    onChange({ exposed_params: [...next] })
+  }
+
   const visibleParams = (definition?.params ?? []).filter((p) => paramVisible(p, params))
   const basic = visibleParams.filter((p) => !p.group)
   const advanced = visibleParams.filter((p) => p.group)
 
   const renderParam = (param: (typeof visibleParams)[number]) => {
     const problem = problemByKey.get(param.key)
+    const source = boundFrom.get(param.key)
+    const on = exposed.has(param.key)
     return (
-      <div key={param.key} data-param={param.key}>
+      <div key={param.key} data-param={param.key} className="group relative">
+        {bindable.has(param.key) ? (
+          <button
+            type="button"
+            className={`btn-icon absolute right-0 top-0 z-10 ${on ? 'text-brand' : 'text-subtle opacity-0 transition group-hover:opacity-100'}`}
+            title={t(on ? 'editor.param.unbind' : 'editor.param.bind')}
+            onClick={() => toggleExpose(param.key)}
+            data-testid={`param-bind-${param.key}`}
+          >
+            <Link2 size={13} />
+          </button>
+        ) : null}
         <ParamField param={param} value={params[param.key] ?? param.default} actions={actions} onChange={(value) => onChange({ params: { ...params, [param.key]: value } })} />
+        {source ? <p className="mt-1 text-[11px] text-muted">{t('editor.param.boundTo', { node: source })}</p> : on ? <p className="mt-1 text-[11px] text-subtle">{t('editor.param.exposed')}</p> : null}
         {problem ? <p className="mt-1 text-[11px] text-critical">{t(`editor.validation.${problem.code}`, problem.values)}</p> : null}
       </div>
     )

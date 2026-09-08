@@ -225,6 +225,25 @@ def execute(
                 # 未連線的必填輸入：來源工具可以自己抓（例如 image_source），其他標錯。
                 if not getattr(cn.tool, "allows_unconnected", False):
                     blocked = blocked or f"input port '{port.key}' is not connected"
+        # 參數訂閱：`param:<key>` 的上游值疊在節點參數之上（工具照常用 ctx.param()）
+        bound: dict[str, Any] = {}
+        bad_params: list[str] = []
+        for handle, sources in cn.inputs.items():
+            if not handle.startswith(tools_base.PARAM_PREFIX):
+                continue
+            spec = next((p for p in cn.tool.params if p.key == handle[len(tools_base.PARAM_PREFIX):]), None)
+            if spec is None:
+                continue
+            for src, sport in sources:
+                if status_of.get(src) not in ("ok", "ng"):
+                    continue
+                value = tools_base.coerce_param(spec, outputs.get((src, sport)))
+                if value is tools_base._BAD_PARAM:  # noqa: SLF001 — 同一個模組的哨兵
+                    bad_params.append(f"{handle} from '{src}.{sport}'")
+                    continue
+                bound[spec.key] = value
+                break
+
         # 隱含輸入埠（collect=True 的那些：影像直通 _image、位置修正 _transform）
         for spec in tools_base.IMPLICIT_INPUTS:
             if not spec.collect:
@@ -284,7 +303,10 @@ def execute(
             asset_path=asset_path,
             grab=grab,
             preview=preview,
+            bound=bound,
         )
+        for note in bad_params:
+            _log(f"The value on {note} could not be used for that parameter; the value set on the step is used instead", level="warn")
         try:
             result = cn.tool.execute(ctx)
             if not isinstance(result, Result):

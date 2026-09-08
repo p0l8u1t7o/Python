@@ -125,9 +125,22 @@ def _ladder(p: Any, v: Any) -> list[Any]:
     return []
 
 
+def _bound_params(graph: dict[str, Any]) -> set[tuple[str, str]]:
+    """被上游接管的參數（`param:<key>` 埠）：調它沒有用，執行時會被上游的值蓋掉。"""
+    from apps.vision.tools.base import PARAM_PREFIX
+
+    out: set[tuple[str, str]] = set()
+    for e in graph.get("edges", []) or []:
+        handle = str((e or {}).get("target_handle") or (e or {}).get("targetHandle") or "")
+        if handle.startswith(PARAM_PREFIX):
+            out.add((str(e.get("target") or ""), handle[len(PARAM_PREFIX):]))
+    return out
+
+
 def search_space(graph: dict[str, Any], priors: dict[tuple[str, str], Any] | None = None) -> list[Dim]:
     """走訪 graph，每個 teach=True 且可見的參數一個維度；priors（相似成功案例的值）排在候選最前面先試。"""
     dims: list[Dim] = []
+    bound = _bound_params(graph)
     for n in graph.get("nodes", []):
         t = str(n.get("type", ""))
         if t == "note" or n.get("enabled", True) is False or not tools.has(t):
@@ -136,6 +149,8 @@ def search_space(graph: dict[str, Any], priors: dict[tuple[str, str], Any] | Non
         params = n.get("params") or {}
         for p in tool.params:
             if not getattr(p, "teach", False) or _skip(t, p.key) or not _visible(p, params, tool):
+                continue
+            if (str(n.get("id") or ""), p.key) in bound:
                 continue
             v = params.get(p.key, p.default)
             cands = _ladder(p, v)

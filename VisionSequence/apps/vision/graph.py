@@ -90,6 +90,16 @@ def validate_graph(graph: Any) -> dict:
         implicit = tools.implicit_input(key) if direction == "in" else tools.implicit_output(key)
         if implicit is not None:
             return implicit.type
+        if direction == "in":
+            # 參數訂閱：`param:<key>` 讓這個參數改吃上游送來的值（型別依 Param.kind）
+            bound = tools.param_port(tool, key)
+            if bound is not None:
+                return bound.type
+            if key.startswith(tools.PARAM_PREFIX):
+                raise GraphError(
+                    f"Node '{node_id}' ({tool.label}) has no parameter '{key[len(tools.PARAM_PREFIX):]}' that can be driven by a value",
+                    node_id=node_id, port=key,
+                )
         ports = tool.inputs if direction == "in" else tool.outputs
         for port in ports:
             if port.key == key:
@@ -136,7 +146,9 @@ def validate_graph(graph: Any) -> dict:
         if tt != "flow":
             # 隱含輸入埠不在工具的宣告清單裡（next() 會 StopIteration），能不能接多條看那張表
             implicit_in = tools.implicit_input(t_handle)
-            multiple = implicit_in.multiple if implicit_in else next(p for p in t_tool.inputs if p.key == t_handle).multiple
+            declared = next((p for p in t_tool.inputs if p.key == t_handle), None)
+            # 隱含埠與參數埠都不在工具的宣告清單裡；參數埠一定只能接一條（一個參數一個值）
+            multiple = implicit_in.multiple if implicit_in else bool(declared and declared.multiple)
             count = connected_inputs.get((target, t_handle), 0) + 1
             connected_inputs[(target, t_handle)] = count
             if count > 1 and not multiple:

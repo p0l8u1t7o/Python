@@ -631,6 +631,12 @@ const zhHant = {
     continueOnError: '出錯時繼續',
     continueOnErrorHint: '此步驟失敗時不中止整個流程，下游收到空值',
     parameters: '參數',
+    param: {
+      bind: '改由前面的步驟決定',
+      unbind: '改回在這裡填',
+      exposed: '等著接值：此參數在畫布上多了一個輸入埠。',
+      boundTo: '執行時由 {{node}} 決定；這裡填的值只是接不到時的備援。',
+    },
     noParameters: '此工具沒有參數',
     inputs: '輸入',
     outputs: '輸出',

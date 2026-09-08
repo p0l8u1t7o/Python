@@ -55,6 +55,56 @@ PARAM_KINDS = (
 )
 
 
+# ---------------------------------------------------------------------------
+# 參數訂閱（`param:<key>` 虛擬輸入埠）
+# ---------------------------------------------------------------------------
+#: 參數埠的把手前綴。`param:threshold` ＝「這個節點的 threshold 參數改吃上游送來的值」。
+PARAM_PREFIX = "param:"
+#: Param.kind → 埠型別。沒列到的（color、expression、output_key…）一律當字串。
+PARAM_PORT_TYPES: dict[str, str] = {
+    "number": "number", "range": "number", "boolean": "bool", "roi": "region", "json": "any",
+}
+#: **不可綁定的參數**。`code` 是資安項——綁上去就繞過了腳本的 sha256 核准（apps/vision/scripts.py）；
+#: `images`／`asset`／`source` 是資源指標不是值，執行期換掉會讓預先載入（Runner._prefetch）失效。
+UNBINDABLE_KINDS = ("code", "images", "asset", "source")
+
+
+def param_port(tool: ToolType, handle: str) -> Port | None:
+    """`param:<key>` → 一個虛擬輸入埠；不是參數埠、參數不存在或不可綁定時回 None。"""
+    if not handle.startswith(PARAM_PREFIX):
+        return None
+    key = handle[len(PARAM_PREFIX):]
+    spec = next((p for p in getattr(tool, "params", ()) or () if p.key == key), None)
+    if spec is None or spec.kind in UNBINDABLE_KINDS:
+        return None
+    return Port(handle, spec.label or key, PARAM_PORT_TYPES.get(spec.kind, "string"), required=False)
+
+
+def coerce_param(spec: "Param", value: Any) -> Any:
+    """把上游送來的值轉成這個參數要的型別。轉不動回 `_BAD_PARAM`（呼叫端丟掉並記一筆）。"""
+    if value is None:
+        return _BAD_PARAM
+    kind = spec.kind
+    try:
+        if kind in ("number", "range"):
+            return float(value)
+        if kind == "boolean":
+            if isinstance(value, str):
+                return value.strip().lower() in ("1", "true", "yes", "on")
+            return bool(value)
+        if kind == "roi":
+            return value if isinstance(value, dict) and value.get("shape") else _BAD_PARAM
+        if kind == "json":
+            return value
+        return str(value)
+    except (TypeError, ValueError):
+        return _BAD_PARAM
+
+
+#: `coerce_param` 轉不動時的哨兵（None 是合法的參數值，不能拿來當失敗訊號）。
+_BAD_PARAM = object()
+
+
 class UnknownToolType(ValidationError):
     def __init__(self, key: str, available: list[str] | None = None) -> None:
         super().__init__(
@@ -159,6 +209,8 @@ class ToolContext:
     preview: bool = False
     #: 本工具宣告可吃的影像位深（Tool.accepts；image() 會把宣告外的位深自動正規化成 u8）。
     depth: tuple[str, ...] = ("u8",)
+    #: 執行期綁定的參數（`param:<key>` 埠收到的值）；疊在節點參數之上，工具完全不必知道。
+    bound: dict[str, Any] = field(default_factory=dict)
     _params_cache: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
     _roi_cache: dict[str, Any] = field(default_factory=dict, init=False, repr=False, compare=False)
     #: 上游接了位置修正但這次沒找到（區域留在原地）；引擎會把它變成一則警告。
@@ -170,6 +222,8 @@ class ToolContext:
         cached = self._params_cache
         if cached is None:
             cached = self._params_cache = dict(self.node.get("params") or {})
+            if self.bound:
+                cached.update(self.bound)  # 執行期綁定勝過畫布上填的值（配方也是先套完才進來）
         return cached
 
     def param(self, key: str, default: Any = None) -> Any:

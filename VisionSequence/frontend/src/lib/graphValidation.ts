@@ -2,6 +2,7 @@
  * 前端的圖檢查。伺服器存檔時仍會驗證，這裡只是在操作者還盯著欄位時先說出來。
  * 回傳 i18n key + values，讓訊息跟介面語言走。
  */
+import { paramPort } from '@/components/editor/graphMapping'
 import { FLOW_HANDLE, compatible } from './ports'
 import type { GraphEdge, GraphNode, ToolParam, ToolTypeDef } from './types'
 
@@ -123,7 +124,8 @@ export function checkConnection(
   const tHandle = conn.targetHandle || tDef?.inputs[0]?.key || ''
   const sPort = sDef?.outputs.find((p) => p.key === sHandle)
   const sType = sPort?.type ?? 'any'
-  const tType = tHandle === FLOW_HANDLE ? 'flow' : (tDef?.inputs.find((p) => p.key === tHandle)?.type ?? 'any')
+  const tPortDef = tDef?.inputs.find((p) => p.key === tHandle) ?? paramPort(tDef, tHandle)
+  const tType = tHandle === FLOW_HANDLE ? 'flow' : (tPortDef?.type ?? 'any')
   if (sType === 'flow' && tHandle !== FLOW_HANDLE) return { code: 'flowOnly', values: {} }
   if (!compatible(sType, tType)) {
     return {
@@ -132,7 +134,7 @@ export function checkConnection(
     }
   }
   if (tHandle !== FLOW_HANDLE) {
-    const tPort = tDef?.inputs.find((p) => p.key === tHandle)
+    const tPort = tPortDef
     if (tPort && !tPort.multiple && edges.some((e) => e.target === conn.target && (e.target_handle ?? '') === tHandle)) {
       return { code: 'singleInput', values: {} }
     }

@@ -213,6 +213,15 @@
 <li>Every tool's outputs end with the implicit port <code>{"key":"_overlays","type":"list","implicit":true}</code> carrying that step's marks, ready to wire into draw_result.</li>
 <li><strong>Bit depth</strong>: an image port carries uint8 (the norm), uint16 (16-bit grey or RGB) or float32. A tool declares what it accepts through <code>Tool.accepts</code>; anything outside that is normalised to 8-bit by <code>ToolContext.image()</code> (u16 shifted right by 8, floats min-max scaled) without touching the input array. Convert explicitly with the <code>convert_depth</code> tool. See <a href="vision-capabilities.html">Inspection capabilities</a>.</li>
 <li>The implicit ports — <code>_flow</code> and <code>_transform</code> in, <code>_overlays</code> and <code>_image</code> out — are declared once in <code>apps/vision/tools/base.py</code> (<code>IMPLICIT_INPUTS</code> and <code>IMPLICIT_OUTPUTS</code>); graph validation, the engine and this catalogue all read that table, so no tool declares them.</li>
+<li>A parameter can be <strong>driven by an earlier step</strong> instead of typed in: connect into the handle
+<code>param:&lt;parameter key&gt;</code> and that value is used at run time (the value on the step stays as the fallback for when the
+upstream produces nothing). The port's type comes from the parameter: a number parameter takes <code>number</code>, a checkbox takes
+<code>bool</code>, a region parameter takes <code>region</code>, everything else takes text. Four kinds are deliberately
+<strong>not</strong> connectable — <code>code</code>, because a script would then bypass the approval its hash is checked against, and
+<code>images</code>, <code>asset</code> and <code>source</code>, because those name a resource that has to be opened before the run
+starts. A value that cannot be used for that parameter is dropped with a note in the step's log rather than failing the run.
+The canvas only draws a handle for parameters the flow author exposed (<code>node.exposed_params</code>), so a step with twenty
+parameters does not sprout twenty sockets.</li>
 <li>Every tool with a drawn region (a parameter of kind <code>roi</code>) also has the implicit input
 <code>{"key":"_transform","type":"any","implicit":true}</code>: <strong>position correction</strong>. Wire the
 <code>transform</code> output of a locate-offset step into it and every region that step draws follows the part, with no ROI-follow

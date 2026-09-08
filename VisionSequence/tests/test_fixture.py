@@ -12,7 +12,7 @@ import numpy as np
 from django.test import SimpleTestCase
 
 from apps.vision import engine
-from apps.vision.graph import compile_graph, validate_graph
+from apps.vision.graph import GraphError, compile_graph, validate_graph
 from apps.vision.tools import base, register_builtins
 from apps.vision.tools.base import all_types, catalogue
 from apps.vision.tools import roi as roi_mod
@@ -203,6 +203,112 @@ class ImageFixtureToolTests(SimpleTestCase):
         self.assertIs(result.outputs["image"], img)
         with self.assertRaises(base.ToolError):
             run_tool("image_fixture", img, {}, inputs={"transform": "不是 transform"})
+
+
+class ParamBindingTests(SimpleTestCase):
+    """參數訂閱：`param:<key>` 讓一個參數改吃上游送來的值（門檻跟著亮度走就是這樣做的）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        register_builtins()
+
+    @staticmethod
+    def _graph(handle: str = "param:threshold") -> dict:
+        return {
+            "nodes": [
+                {"id": "src", "type": "image_source", "params": {"mode": "input"}},
+                {"id": "i", "type": "intensity", "params": {}},
+                {"id": "thr", "type": "threshold", "params": {"method": "fixed", "threshold": 10}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "src", "source_handle": "image", "target": "i", "target_handle": "image"},
+                {"id": "e2", "source": "src", "source_handle": "image", "target": "thr", "target_handle": "image"},
+                {"id": "e3", "source": "i", "source_handle": "mean", "target": "thr", "target_handle": handle},
+            ],
+        }
+
+    @staticmethod
+    def _run(graph: dict, image):
+        return engine.execute(compile_graph(validate_graph(graph)), flow_id=0, flow_version=1, trigger="test",
+                              grab=lambda s: None, asset_path=lambda a: None, input_image=image, preview=True)
+
+    def test_the_upstream_value_wins_over_the_one_on_the_step(self):
+        img = np.zeros((100, 120), np.uint8)
+        cv2.rectangle(img, (20, 20), (60, 60), 200, -1)
+        report = self._run(self._graph(), img)
+        mean = report.nodes["i"].outputs["mean"]
+        self.assertGreater(mean, 20)
+        self.assertIn(f"{mean:.4g}"[:4], report.nodes["thr"].message)  # 用了平均值，不是畫布上填的 10
+        self.assertEqual(report.nodes["thr"].status, "ok")
+
+    def test_a_parameter_that_cannot_be_driven_is_refused(self):
+        # code 綁上去會繞過腳本核准（apps/vision/scripts.py），這是資安項
+        with self.assertRaisesMessage(GraphError, "has no parameter 'code'"):
+            validate_graph({
+                "nodes": [{"id": "i", "type": "intensity", "params": {}}, {"id": "s", "type": "python_script", "params": {}}],
+                "edges": [{"id": "e", "source": "i", "source_handle": "mean", "target": "s", "target_handle": "param:code"}],
+            })
+        for kind_key, tool in (("model", "dl_classify"), ("source_id", "image_source")):
+            with self.assertRaises(GraphError, msg=kind_key):
+                validate_graph({
+                    "nodes": [{"id": "i", "type": "intensity", "params": {}}, {"id": "t", "type": tool, "params": {}}],
+                    "edges": [{"id": "e", "source": "i", "source_handle": "mean", "target": "t", "target_handle": f"param:{kind_key}"}],
+                })
+
+    def test_an_unknown_parameter_says_so(self):
+        with self.assertRaisesMessage(GraphError, "has no parameter 'nope'"):
+            validate_graph({
+                "nodes": [{"id": "i", "type": "intensity", "params": {}}, {"id": "b", "type": "blob", "params": {}}],
+                "edges": [{"id": "e", "source": "i", "source_handle": "mean", "target": "b", "target_handle": "param:nope"}],
+            })
+
+    def test_one_value_per_parameter(self):
+        graph = self._graph()
+        graph["nodes"].append({"id": "i2", "type": "intensity", "params": {}})
+        graph["edges"].append({"id": "e4", "source": "src", "source_handle": "image", "target": "i2", "target_handle": "image"})
+        graph["edges"].append({"id": "e5", "source": "i2", "source_handle": "mean", "target": "thr", "target_handle": "param:threshold"})
+        with self.assertRaises(GraphError):
+            validate_graph(graph)
+
+    def test_no_value_from_upstream_falls_back_to_the_step(self):
+        """上游這次沒算出值（定位補正找不到，dx 是 None）：丟掉那個覆蓋、記一筆，不讓整次 run 失敗。"""
+        graph = {
+            "nodes": [
+                {"id": "src", "type": "image_source", "params": {"mode": "input"}},
+                {"id": "loc", "type": "shape_align", "params": {"ref_x": 10, "ref_y": 10}},
+                {"id": "thr", "type": "threshold", "params": {"method": "fixed", "threshold": 77}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "src", "source_handle": "image", "target": "thr", "target_handle": "image"},
+                {"id": "e2", "source": "loc", "source_handle": "dx", "target": "thr", "target_handle": "param:threshold"},
+            ],
+        }
+        report = self._run(graph, np.zeros((40, 40), np.uint8))
+        self.assertEqual(report.nodes["thr"].status, "ok")
+        self.assertIn("77", report.nodes["thr"].message)  # 退回畫布上填的值
+        self.assertTrue(any("could not be used" in log["message"] for log in report.nodes["thr"].logs), report.nodes["thr"].logs)
+
+    def test_types_are_converted_the_way_the_parameter_needs(self):
+        number = base.Param("threshold", "Threshold", kind="number")
+        self.assertEqual(base.coerce_param(number, "12.5"), 12.5)
+        self.assertIs(base.coerce_param(number, "abc"), base._BAD_PARAM)  # noqa: SLF001
+        self.assertIs(base.coerce_param(number, None), base._BAD_PARAM)  # noqa: SLF001
+        boolean = base.Param("on", "On", kind="boolean")
+        self.assertIs(base.coerce_param(boolean, "yes"), True)
+        self.assertIs(base.coerce_param(boolean, 0), False)
+        region = base.Param("roi", "Region", kind="roi")
+        self.assertEqual(base.coerce_param(region, {"shape": "rect", "x": 1, "y": 1, "w": 2, "h": 2})["shape"], "rect")
+        self.assertIs(base.coerce_param(region, 5), base._BAD_PARAM)  # noqa: SLF001
+
+    def test_autotune_leaves_bound_parameters_alone(self):
+        from apps.vision.agent import autotune
+
+        graph = self._graph()
+        keys = {(d.node_id, d.key) for d in autotune.search_space(graph)}
+        self.assertNotIn(("thr", "threshold"), keys)  # 調它沒有用，執行時會被上游蓋掉
+        graph["edges"] = [e for e in graph["edges"] if e["id"] != "e3"]
+        self.assertIn(("thr", "threshold"), {(d.node_id, d.key) for d in autotune.search_space(graph)})
 
 
 def _context(params: dict, inputs: dict) -> base.ToolContext:

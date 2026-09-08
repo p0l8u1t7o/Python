@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 96 個內建工具、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 918 項＋前端 115 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 96 個內建工具、235 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 925 項＋前端 115 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -74,6 +74,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **標定**（`/calibration`）：標定板（鏡頭畸變＋比例）／機械手對點／已知距離三種做法，先看每點殘差再存成一個標定資產；`undistort`、`to_world`、`calibration` 三個工具共用。
 - **流程變數**：`variable_set`／`variable_get` 在執行之間保留計數、上一片、料號（flow／station 兩個範圍）；試執行與批次在沙箱不動產線的值。
 - **現場看板**：每條流程設定要顯示哪些具名輸出（標籤、單位、公差）、哪張影像、哪些變數；總覽頁照它顯示，`/board/:id` 是給操作站的全螢幕看板。
+- **參數訂閱**：門檻要跟著亮度走的時候，把上游的數值接到參數的輸入埠，執行時就用那個值，不必寫公式再手動填。
 - **位置修正**：工件位置會變的時候，把定位補正接到量測步驟的「位置修正」埠，那一步畫的區域就自己跟著工件走（不必在圖裡插跟隨節點）；整條流程都要跟就用「影像跟隨」把影像轉回教導時的姿態。定位沒找到時區域留在原地並留下警告，不會靜默量到空氣。
 - **除錯**：試執行後節點顯示耗時熱點（最慢紅）、右鍵「只跑到這裡」。
 

@@ -6,7 +6,8 @@ import { MarkerType, type Edge, type Node } from '@xyflow/react'
 
 import { DECORATION_TYPES } from '@/lib/graphValidation'
 import { FLOW_HANDLE } from '@/lib/ports'
-import type { FlowGraph, GraphEdge, GraphNode, NodeReport, ToolTypeDef } from '@/lib/types'
+import { PARAM_PREFIX } from '@/lib/types'
+import type { FlowGraph, GraphEdge, GraphNode, NodeReport, PortType, ToolParam, ToolPort, ToolTypeDef } from '@/lib/types'
 
 export const DRAG_MIME = 'application/x-vs-tool'
 export const HISTORY_LIMIT = 50
@@ -45,9 +46,35 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
+/**
+ * 參數埠：把一個參數外露成輸入埠（`param:<key>`），接上上游就改吃那個值。
+ * 型別對照與黑名單跟後端 `apps/vision/tools/base.py` 同一份——`code` 綁上去會繞過腳本核准，
+ * `images`／`asset`／`source` 是資源指標不是值（執行前要先載入）。
+ */
+const PARAM_PORT_TYPE: Record<string, PortType> = { number: 'number', range: 'number', boolean: 'bool', roi: 'region', json: 'any' }
+export const UNBINDABLE_KINDS = new Set(['code', 'images', 'asset', 'source'])
+
+export function bindableParams(definition: ToolTypeDef | undefined): ToolParam[] {
+  return (definition?.params ?? []).filter((p) => !UNBINDABLE_KINDS.has(p.kind))
+}
+
+export function paramPort(definition: ToolTypeDef | undefined, handle: string): ToolPort | undefined {
+  if (!handle.startsWith(PARAM_PREFIX)) return undefined
+  const spec = definition?.params?.find((p) => p.key === handle.slice(PARAM_PREFIX.length))
+  if (!spec || UNBINDABLE_KINDS.has(spec.kind)) return undefined
+  return { key: handle, label: spec.label || spec.key, type: PARAM_PORT_TYPE[spec.kind] ?? 'string', required: false, multiple: false, tone: 'neutral', implicit: true }
+}
+
+/** 節點外露的參數 → 附加在定義上的輸入埠（畫布上才畫得出把手）。 */
+export function withParamPorts(definition: ToolTypeDef | undefined, exposed: string[] | undefined): ToolTypeDef | undefined {
+  if (!definition || !exposed?.length) return definition
+  const extra = exposed.map((key) => paramPort(definition, `${PARAM_PREFIX}${key}`)).filter((p): p is ToolPort => Boolean(p))
+  return extra.length ? { ...definition, inputs: [...definition.inputs, ...extra] } : definition
+}
+
 export function nodeDataFrom(payload: GraphNode, definition: ToolTypeDef | undefined): ToolNodeData {
   return {
-    definition,
+    definition: withParamPorts(definition, payload.exposed_params),
     label: payload.label ?? '',
     description: payload.description ?? '',
     enabled: payload.enabled !== false,
