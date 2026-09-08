@@ -270,6 +270,16 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     cv2.rectangle(path_block, (40, 40), (200, 140), 220, -1)
     path_block = cv2.GaussianBlur(path_block, (0, 0), 0.8)
     path_square = {"shape": "polygon", "points": [[35, 35], [205, 35], [205, 145], [35, 145]]}
+    blob_hyst = np.full((180, 240), 10, np.uint8)
+    blob_hyst[45:125, 45:135] = 115
+    blob_hyst[70:100, 75:105] = 230
+    blob_hyst[55:115, 165:205] = 115
+    yy_b, xx_b = np.mgrid[0:180, 0:240]
+    blob_soft = np.clip(230 - np.hypot(xx_b - 120, yy_b - 90) * 3.0, 20, 230).astype(np.uint8)
+    label_map = np.zeros((180, 240), np.uint8)
+    label_map[35:95, 35:95] = 1
+    label_map[45:85, 135:175] = 2
+    label_map[105:145, 145:205] = 2
     # 極座標展開：1280×960 時 r 200～300（規格的效能預算案例）；640×480 等比縮小
     ring = {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.2083, "r_outer": m * 0.3125}
     from apps.vision.tools.builtin import polar as _polar
@@ -411,6 +421,9 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("blob (gray, fixed)", "blob", gray, {"threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {}, {}),
         ("blob (mask, none)", "blob", s.mask, {"threshold_method": "none", "min_area": 300}, {}, {}),
         ("blob (roi circle)", "blob", gray, {"roi": center_circle, "threshold_method": "fixed", "threshold": 60, "polarity": "dark", "min_area": 300}, {}, {}),
+        ("blob hysteresis", "blob", blob_hyst, {"threshold_method": "hysteresis", "threshold": 200, "threshold_low": 100, "min_area": 300}, {}, {}),
+        ("blob soft", "blob", blob_soft, {"threshold_method": "soft", "threshold": 150, "soft_width": 60, "min_area": 300}, {}, {}),
+        ("blob_label", "blob_label", None, {"classes": "1:scratch\n2:dent", "min_area": 300}, {"labels": label_map}, {}),
         ("defect_stat phase (roi)", "defect_stat", big, {"model": "stat", "roi": plate, "sigma": 4}, {}, {}),
         ("defect_stat none (roi)", "defect_stat", big, {"model": "stat", "roi": plate, "sigma": 4, "align": "none"}, {}, {}),
         ("defect_diff phase", "defect_diff", big, {"template": "golden", "align": "phase"}, {}, {}),

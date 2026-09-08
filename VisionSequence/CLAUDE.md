@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：113 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1112 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：114 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1118 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -164,6 +164,12 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### Blob 增強與標籤化（D7，Codex 實作）
+- `blob` 的 `threshold_method` 多兩種：**`hysteresis`（雙門檻）**——`threshold` 是高門檻找種子、`threshold_low` 是低門檻往外長，只有碰得到種子的低門檻連通區才算數（解決「亮塊裡有更亮核心」與「邊界漸變」，也順便排除沒有種子的雜訊塊）；**`soft`（軟門檻）**——以 `threshold` 為中心、`soft_width` 為過渡寬度加權，**面積是權重和所以會是小數**。既有方法結果一字不變（bench 鎖住），`_prefilter_small()` 沒動。
+- `sort_by` 補 `perimeter`／`width`／`height`／`xy`（閱讀順序，與 `template_match` 同一套）；每個 blob 多一個 `inscribed_rect`（最大軸對齊內接矩形，逐列直方圖＋單調堆疊，每個 bbox `O(w·h)`）——現場用來判「這個孔塞不塞得下」。
+- 新工具 `blob_label`（detect）：吃單通道整數標籤圖＋`classes`（一行一個 `編號:名稱`）逐類做連通元件，回帶 `label`／`class_id` 的 blob 與 `counts`。**接法**：`dl_segment.class_map` 直接接（保留類別 id）；`ai_segment.mask` 是單類二值圖，用 `255:名稱`。
+- 實測：高門檻只抓到核心 441、低門檻把外圈與雜訊塊都收進來 [1681, 3721]、雙門檻正好只留 [3721]；軟門檻 2094.7 介於兩者之間；實心 50×40 矩形的內接矩形正好是它本身，半徑 20 的圓得 29×29（r√2≈28.3）。
 
 ### 路徑提取（D6，`path_extract`，Codex 實作）
 - 直線用 `find_line`、圓弧用 `find_circle`／`fit_arc`，**任意折線或輪廓才用這顆**（沖壓件外緣、軟板邊、密封膠道）。路徑來源＝`roi`（重用既有的 `polygon`／`line` 形狀，**沒有新增 ROI 形狀**）或上游 `points` 埠，`closed` 可覆寫開放／封閉。

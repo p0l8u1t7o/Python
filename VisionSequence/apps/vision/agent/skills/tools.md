@@ -350,7 +350,14 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 把所有 overlay 畫到影像上輸出（總覽／存檔用）；輸入接原圖。
 
 ## blob
-粒子分析：內建二值化（`threshold_method` otsu/fixed、`polarity` bright/dark；非矩形 ROI 的 Otsu 只看遮罩內）或接已二值化的影像（fixed+128+bright）。`area` 是像素數（1 像素粒子就是 1），`min_area/max_area/min_circularity` 篩選；黏連粒子 `separate=true`（分水嶺，種子視窗依 min_area 推算的半徑，大小粒子混在一起也切得開）。輸出 `count`、`blobs`、`centers`、`mask`、`found/not_found`（`min_count` 決定）。
+粒子分析：內建二值化（`threshold_method` otsu/fixed/hysteresis/soft、`polarity` bright/dark；非矩形 ROI 的 Otsu 只看遮罩內）或接已二值化的影像（fixed+128+bright）。`area` 是像素數（1 像素粒子就是 1）；`soft` 時 `area` 是權重和，可能是小數。`min_area/max_area/min_circularity` 篩選；黏連粒子 `separate=true`（分水嶺，種子視窗依 min_area 推算的半徑，大小粒子混在一起也切得開）。輸出 `count`、`blobs`、`centers`、`mask`、`found/not_found`（`min_count` 決定）。
+
+亮塊裡有更亮核心、邊界灰階慢慢變淡、單一門檻要嘛只抓核心要嘛吃到旁邊雜訊時，用 `threshold_method=hysteresis`：`threshold` 是高門檻種子，`threshold_low` 是往外長的低門檻，只保留碰得到種子的低門檻連通區。邊界本來就模糊、希望面積不要被一個硬門檻跳動影響時，用 `threshold_method=soft`，`threshold` 放在過渡中心，`soft_width` 放灰階過渡寬度。
+
+每筆 `blobs` 含 `bbox`、`perimeter`、`orientation`、`elongation`、`inscribed_rect`。`inscribed_rect` 是最大軸對齊內接矩形，用來判斷孔或區域能不能塞下指定矩形；需要按閱讀順序取點陣時 `sort_by=xy`。
+
+## blob_label
+標籤圖粒子分析：`labels` 接單通道整數標籤圖，`classes` 一行一個 `編號:名稱`，`ignore_label` 預設 0 當背景。最直接接 `dl_segment.class_map`，會保留每個像素的類別編號；若接 `ai_segment.mask`，它是 0/255 聯合遮罩，請把 `classes` 寫成 `255:part`，只能當單一類別使用。逐類別做連通元件，輸出帶 `label/class_id` 的 `blobs`、每類 `counts`、總 `count`、`contours`，`min_count/max_count_ok` 決定 `ok/ng`。
 
 ## pixel_count
 數 ≥ threshold 的像素：接 color_range／threshold 輸出，`min_count/max_count` 決定 ok/ng。

@@ -167,11 +167,21 @@ export default {
         options: {
           otsu: "Otsu 自動",
           fixed: "固定门槛",
+          hysteresis: "双门槛（高种子＋低成长）",
+          soft: "软门槛加权",
           none: "输入已是遮罩（非 0 即前景）",
         },
       },
       threshold: {
         label: "门槛",
+      },
+      threshold_low: {
+        label: "低门槛",
+        help: "双门槛会从高门槛种子往相连的低门槛像素成长。",
+      },
+      soft_width: {
+        label: "软门槛宽度",
+        help: "门槛附近以 0～1 加权，面积可能是小数。",
       },
       polarity: {
         label: "前景",
@@ -200,7 +210,11 @@ export default {
           area: "面积（大→小）",
           x: "X（左→右）",
           y: "Y（上→下）",
+          xy: "阅读顺序（先行后列）",
           circularity: "圆形度（高→低）",
+          perimeter: "周长（大到小）",
+          width: "宽度（大到小）",
+          height: "高度（大到小）",
         },
       },
       separate: {
@@ -237,6 +251,66 @@ export default {
       mask: "遮罩",
       first_cx: "第一个中心 X",
       first_cy: "第一个中心 Y",
+    },
+  },
+  blob_label: {
+    label: "标签图 Blob",
+    description: "对单通道标签图逐类别做 blob 分析，输出每个区块的类别名称、类别编号、面积、中心、外框、周长与最大内接矩形。可接 dl_segment 的 class_map；若接 ai_segment 的 mask，请用 255 当单一类别。",
+    params: {
+      roi: {
+        label: "区域",
+        help: "留空代表整张标签图。",
+      },
+      classes: {
+        label: "类别表",
+        help: "一行一个「编号:名称」，例如 1:scratch。",
+      },
+      min_area: {
+        label: "最小面积",
+      },
+      max_area: {
+        label: "最大面积",
+        help: "0 代表不限制。",
+      },
+      max_count: {
+        label: "最多结果",
+      },
+      sort_by: {
+        label: "排序",
+        options: {
+          area: "面积（大到小）",
+          x: "X（左到右）",
+          y: "Y（上到下）",
+          xy: "阅读顺序（先行后列）",
+          circularity: "圆形度（高到低）",
+          perimeter: "周长（大到小）",
+          width: "宽度（大到小）",
+          height: "高度（大到小）",
+        },
+      },
+      ignore_label: {
+        label: "忽略标签",
+        help: "通常 0 是背景。",
+      },
+      min_count: {
+        label: "合格最少数量",
+        group: "判定",
+      },
+      max_count_ok: {
+        label: "合格最多数量",
+        help: "0 代表不限制。",
+        group: "判定",
+      },
+    },
+    ports: {
+      labels: "标签图",
+      roi: "区域（动态）",
+      ok: "通过",
+      ng: "失败",
+      blobs: "Blob 列表",
+      counts: "各类数量",
+      count: "总数",
+      contours: "轮廓",
     },
   },
   blur: {

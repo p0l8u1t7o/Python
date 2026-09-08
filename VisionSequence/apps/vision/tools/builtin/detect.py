@@ -76,6 +76,41 @@ def _prefilter_small(mask: np.ndarray, min_area: float) -> tuple[np.ndarray, np.
     return lut[labels], labels, stats
 
 
+def _largest_rect(binary: np.ndarray) -> dict[str, int]:
+    """用逐列直方圖找二值圖中最大的軸對齊內接矩形，時間 O(w*h)。"""
+    if binary.size == 0 or not np.any(binary):
+        return {"x": 0, "y": 0, "w": 0, "h": 0}
+    heights = np.zeros(binary.shape[1], dtype=np.int32)
+    best = (0, 0, 0, 0, 0)  # area, x, y, w, h
+    for y in range(binary.shape[0]):
+        heights = np.where(binary[y] > 0, heights + 1, 0)
+        stack: list[int] = []
+        for x in range(binary.shape[1] + 1):
+            cur = int(heights[x]) if x < binary.shape[1] else 0
+            while stack and int(heights[stack[-1]]) > cur:
+                top = stack.pop()
+                h = int(heights[top])
+                left = stack[-1] + 1 if stack else 0
+                w = x - left
+                area = w * h
+                if area > best[0]:
+                    best = (area, left, y - h + 1, w, h)
+            stack.append(x)
+    return {"x": int(best[1]), "y": int(best[2]), "w": int(best[3]), "h": int(best[4])}
+
+
+def _component_mask(mask: np.ndarray, cnt: np.ndarray, x: int, y: int, w: int, h: int, *, fill_holes: bool,
+                    label_map: np.ndarray | None = None, label_id: int | None = None) -> np.ndarray:
+    """建立單一 blob 在 bbox 內的遮罩，供加權面積與內接矩形共用。"""
+    if label_map is not None and label_id is not None and not fill_holes:
+        return (label_map[y : y + h, x : x + w] == label_id).astype(np.uint8) * 255
+    filled = np.zeros((h, w), dtype=np.uint8)
+    cv2.drawContours(filled, [cnt - np.array([x, y], dtype=cnt.dtype)], -1, 255, -1)
+    if not fill_holes:
+        filled = cv2.bitwise_and(filled, mask[y : y + h, x : x + w])
+    return filled
+
+
 def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0, min_circularity: float = 0,
                   external_only: bool = True, fill_holes: bool = False) -> tuple[list[dict[str, Any]], list[np.ndarray]]:
     """從二值遮罩取輪廓並計算幾何特徵；座標為遮罩座標。
@@ -99,9 +134,11 @@ def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0,
     for i, cnt in enumerate(contours):
         if hier[i][3] != -1:
             continue  # 洞不算 blob
+        label_id = None
         if labels is not None:
             px, py = int(cnt[0][0][0]), int(cnt[0][0][1])
-            area = float(stats[labels[py, px], cv2.CC_STAT_AREA])
+            label_id = int(labels[py, px])
+            area = float(stats[label_id, cv2.CC_STAT_AREA])
         else:
             area = -1.0
         if area < 0 or (with_holes and hier[i][2] != -1):
@@ -124,6 +161,10 @@ def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0,
         else:
             cx, cy = float(cnt[:, 0, 0].mean()), float(cnt[:, 0, 1].mean())
         x, y, w, h = cv2.boundingRect(cnt)
+        rect_mask = _component_mask(mask, cnt, x, y, w, h, fill_holes=fill_holes, label_map=labels, label_id=label_id)
+        inscribed = _largest_rect(rect_mask)
+        inscribed["x"] += int(x)
+        inscribed["y"] += int(y)
         angle = 0.0
         rw, rh = float(w), float(h)
         if len(cnt) >= 5:
@@ -135,7 +176,7 @@ def analyze_blobs(mask: np.ndarray, *, min_area: float = 0, max_area: float = 0,
         blobs.append({
             "cx": round(float(cx), 2), "cy": round(float(cy), 2), "area": area, "w": round(rw, 2), "h": round(rh, 2),
             "angle": round(float(angle), 2), "circularity": round(circularity, 4), "perimeter": round(perimeter, 2),
-            "bbox": [int(x), int(y), int(w), int(h)],
+            "bbox": [int(x), int(y), int(w), int(h)], "inscribed_rect": inscribed,
         })
         kept.append(cnt)
     return blobs, kept
@@ -167,6 +208,84 @@ def _watershed_split(mask: np.ndarray, min_radius: float = 0.0) -> np.ndarray:
     return out
 
 
+BLOB_SORT_OPTIONS = [
+    {"value": "area", "label": "Area (large to small)"}, {"value": "x", "label": "X (left to right)"},
+    {"value": "y", "label": "Y (top to bottom)"}, {"value": "xy", "label": "Reading order (rows, then across)"},
+    {"value": "circularity", "label": "Circularity (high to low)"}, {"value": "perimeter", "label": "Perimeter (large to small)"},
+    {"value": "width", "label": "Width (large to small)"}, {"value": "height", "label": "Height (large to small)"},
+]
+
+
+def _sort_blob_indexes(blobs: list[dict[str, Any]], sort_by: str, max_count: int) -> list[int]:
+    """依 blob 常用欄位排序；xy 與 template_match 同為先分列再由左到右。"""
+    if sort_by == "xy" and blobs:
+        row = max(2.0, min(float(b.get("h", 0) or 0) for b in blobs) / 2)
+
+        def keyf(b: dict[str, Any]) -> tuple[int, float]:
+            return round(float(b["cy"]) / row), float(b["cx"])
+    else:
+        keyf = {
+            "area": lambda b: -float(b["area"]),
+            "x": lambda b: float(b["cx"]),
+            "y": lambda b: float(b["cy"]),
+            "circularity": lambda b: -float(b["circularity"]),
+            "perimeter": lambda b: -float(b["perimeter"]),
+            "width": lambda b: -float(b["w"]),
+            "height": lambda b: -float(b["h"]),
+        }.get(sort_by, lambda b: -float(b["area"]))
+    return sorted(range(len(blobs)), key=lambda i: keyf(blobs[i]))[:max_count]
+
+
+def _threshold_mask(gray: np.ndarray, threshold: float, polarity: str) -> np.ndarray:
+    flag = cv2.THRESH_BINARY_INV if polarity == "dark" else cv2.THRESH_BINARY
+    _, mask = cv2.threshold(gray, threshold, 255, flag)
+    return mask
+
+
+def _hysteresis_mask(gray: np.ndarray, high: float, low: float, polarity: str) -> np.ndarray:
+    """雙門檻：只保留碰得到高門檻種子的低門檻連通區。"""
+    seed = _threshold_mask(gray, high, polarity)
+    grow = _threshold_mask(gray, low, polarity)
+    n, labels, _, _ = cv2.connectedComponentsWithStats(grow, connectivity=8)
+    if n <= 1:
+        return grow
+    keep = np.zeros(n, dtype=bool)
+    keep[np.unique(labels[seed > 0])] = True
+    keep[0] = False
+    return np.where(keep[labels], 255, 0).astype(np.uint8)
+
+
+def _soft_mask(gray: np.ndarray, threshold: float, width: float, polarity: str) -> tuple[np.ndarray, np.ndarray]:
+    """軟門檻：回傳候選 mask 與 0..1 權重圖，面積稍後以權重和計算。"""
+    span = max(1e-6, float(width))
+    g = gray.astype(np.float32)
+    if polarity == "dark":
+        weights = np.clip((threshold + span / 2 - g) / span, 0.0, 1.0)
+    else:
+        weights = np.clip((g - (threshold - span / 2)) / span, 0.0, 1.0)
+    return (weights > 0).astype(np.uint8) * 255, weights
+
+
+def _soft_area(weights: np.ndarray, mask: np.ndarray, cnt: np.ndarray, fill_holes: bool) -> float:
+    x, y, w, h = cv2.boundingRect(cnt)
+    part = _component_mask(mask, cnt, x, y, w, h, fill_holes=fill_holes)
+    return float(weights[y : y + h, x : x + w][part > 0].sum())
+
+
+def _parse_classes(text: Any) -> dict[int, str]:
+    classes: dict[int, str] = {}
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line or ":" not in line:
+            continue
+        key, name = line.split(":", 1)
+        try:
+            classes[int(key.strip())] = name.strip() or key.strip()
+        except ValueError:
+            continue
+    return classes
+
+
 class BlobTool(Tool):
     key = "blob"
     label = "Blob analysis"
@@ -176,17 +295,21 @@ class BlobTool(Tool):
     params = [
         Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole image."),
         Param("threshold_method", "Threshold", kind="select", default="otsu", options=[
-            {"value": "otsu", "label": "Otsu (automatic)"}, {"value": "fixed", "label": "Fixed"}, {"value": "none", "label": "The input is already a mask (anything non-zero is foreground)"},
+            {"value": "otsu", "label": "Otsu (automatic)"}, {"value": "fixed", "label": "Fixed"},
+            {"value": "hysteresis", "label": "Hysteresis (high seed + low grow)"}, {"value": "soft", "label": "Soft weighted"},
+            {"value": "none", "label": "The input is already a mask (anything non-zero is foreground)"},
         ]),
-        Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "threshold_method", "in": ["fixed"]}),
+        Param("threshold", "Threshold", kind="number", default=128, minimum=0, maximum=255, visible_when={"param": "threshold_method", "in": ["fixed", "hysteresis", "soft"]}),
+        Param("threshold_low", "Low threshold", kind="number", default=96, minimum=0, maximum=255, visible_when={"param": "threshold_method", "in": ["hysteresis"]},
+              help_text="Hysteresis grows from the high threshold seeds into connected low-threshold pixels."),
+        Param("soft_width", "Soft width", kind="number", default=32, minimum=0.001, maximum=255, visible_when={"param": "threshold_method", "in": ["soft"]},
+              help_text="Pixels fade from 0 to 1 across this width around the threshold; area can therefore be fractional."),
         Param("polarity", "Foreground", kind="select", default="bright", options=[{"value": "bright", "label": "Bright objects"}, {"value": "dark", "label": "Dark objects"}]),
         Param("min_area", "Min area", kind="number", default=50, minimum=0, unit="px²", teach=True),
         Param("max_area", "Max area", kind="number", default=0, minimum=0, unit="px²", help_text="0 means no limit.", teach=True),
         Param("min_circularity", "Min circularity", kind="range", default=0, minimum=0, maximum=1, step=0.01, help_text="4πA/P², 1 for a perfect circle.", teach=True),
         Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=5000),
-        Param("sort_by", "Sort by", kind="select", default="area", options=[
-            {"value": "area", "label": "Area (large to small)"}, {"value": "x", "label": "X (left to right)"}, {"value": "y", "label": "Y (top to bottom)"}, {"value": "circularity", "label": "Circularity (high to low)"},
-        ]),
+        Param("sort_by", "Sort by", kind="select", default="area", options=BLOB_SORT_OPTIONS),
         Param("separate", "Split touching particles", kind="boolean", default=False, group="Advanced", help_text="A distance transform plus watershed splits touching particles before measuring; the seed window comes from the particle radius implied by the minimum area."),
         Param("fill_holes", "Fill holes", kind="boolean", default=False, group="Advanced"),
         Param("external_only", "Outer contours only", kind="boolean", default=True, group="Advanced", help_text="Turn off and holes are subtracted from the area."),
@@ -209,18 +332,39 @@ class BlobTool(Tool):
         if c.image.size == 0:
             raise ToolError("The region falls outside the image")
         polarity = ctx.param("polarity", "bright")
-        mask = _binarize(np.ascontiguousarray(c.image), ctx.param("threshold_method", "otsu"), ctx.number("threshold", 128), polarity, c.mask)
+        sub = np.ascontiguousarray(c.image)
+        method = str(ctx.param("threshold_method", "otsu"))
+        weights = None
+        if method == "hysteresis":
+            mask = _hysteresis_mask(sub, ctx.number("threshold", 128), ctx.number("threshold_low", 96), polarity)
+        elif method == "soft":
+            mask, weights = _soft_mask(sub, ctx.number("threshold", 128), ctx.number("soft_width", 32), polarity)
+        else:
+            mask = _binarize(sub, method, ctx.number("threshold", 128), polarity, c.mask)
         if c.mask is not None:
             mask = cv2.bitwise_and(mask, c.mask)
+            if weights is not None:
+                weights = np.where(c.mask > 0, weights, 0.0)
         if ctx.flag("separate"):
             mask = _watershed_split(mask, math.sqrt(max(0.0, ctx.number("min_area", 50)) / math.pi))
         blobs, contours = analyze_blobs(
             mask, min_area=ctx.number("min_area", 50), max_area=ctx.number("max_area", 0),
             min_circularity=ctx.number("min_circularity", 0), external_only=ctx.flag("external_only", True), fill_holes=ctx.flag("fill_holes"),
         )
+        if weights is not None:
+            soft_blobs: list[dict[str, Any]] = []
+            soft_contours: list[np.ndarray] = []
+            min_area, max_area = ctx.number("min_area", 50), ctx.number("max_area", 0)
+            for b, cnt in zip(blobs, contours):
+                area = _soft_area(weights, mask, cnt, ctx.flag("fill_holes"))
+                if area < min_area or (max_area > 0 and area > max_area):
+                    continue
+                b["area"] = area
+                soft_blobs.append(b)
+                soft_contours.append(cnt)
+            blobs, contours = soft_blobs, soft_contours
         sort_by = ctx.param("sort_by", "area")
-        keyf = {"area": lambda b: -b["area"], "x": lambda b: b["cx"], "y": lambda b: b["cy"], "circularity": lambda b: -b["circularity"]}[sort_by if sort_by in ("area", "x", "y", "circularity") else "area"]
-        order = sorted(range(len(blobs)), key=lambda i: keyf(blobs[i]))[: ctx.integer("max_count", 100)]
+        order = _sort_blob_indexes(blobs, str(sort_by), ctx.integer("max_count", 100))
         blobs = [blobs[i] for i in order]
         contours = [contours[i] for i in order]
         # 換回全圖座標
@@ -230,6 +374,8 @@ class BlobTool(Tool):
             b["cx"] += c.x0
             b["cy"] += c.y0
             b["bbox"] = [b["bbox"][0] + c.x0, b["bbox"][1] + c.y0, b["bbox"][2], b["bbox"][3]]
+            b["inscribed_rect"] = {"x": b["inscribed_rect"]["x"] + c.x0, "y": b["inscribed_rect"]["y"] + c.y0,
+                                   "w": b["inscribed_rect"]["w"], "h": b["inscribed_rect"]["h"]}
             # NI 粒子量測對照：周長／方向／伸長比（fitEllipse 需要至少 5 點）
             b["perimeter"] = round(float(cv2.arcLength(cnt, True)), 2)
             if len(cnt) >= 5:
@@ -262,6 +408,93 @@ class BlobTool(Tool):
             overlays=overlays, branch="found" if count else "not_found", status="ok" if ok else "ng",
             message=f"{count} blobs" + (f", max {blobs[0]['area'] if sort_by == 'area' else max(b['area'] for b in blobs):.0f}px²" if blobs else ""),
         )
+
+
+class BlobLabelTool(Tool):
+    key = "blob_label"
+    label = "Label map blobs"
+    description = "Measures connected blobs in a single-channel label map. Connect dl_segment class_map to keep class ids, or connect ai_segment mask as a binary 255 label when all instances can be handled as one class."
+    category = "detect"
+    icon = "Tags"
+    accepts = ("u8", "u16", "f32")
+    params = [
+        Param("roi", "Region", kind="roi", shapes=ROI_SHAPES, help_text="Leave blank for the whole label map."),
+        Param("classes", "Classes", kind="multiline", default="1:scratch", help_text="One class per line, for example 1:scratch. Class ids not listed use their numeric id."),
+        Param("min_area", "Min area", kind="number", default=1, minimum=0, unit="px²", teach=True),
+        Param("max_area", "Max area", kind="number", default=0, minimum=0, unit="px²", help_text="0 means no limit.", teach=True),
+        Param("max_count", "Max results", kind="number", default=100, minimum=1, maximum=20000),
+        Param("sort_by", "Sort by", kind="select", default="area", options=BLOB_SORT_OPTIONS),
+        Param("ignore_label", "Ignore label", kind="number", default=0, minimum=0, help_text="Usually 0 is the background label."),
+        Param("min_count", "Min passing count", kind="number", default=1, minimum=0, group="Verdict", teach=True),
+        Param("max_count_ok", "Max passing count", kind="number", default=0, minimum=0, group="Verdict", help_text="0 means no limit.", teach=True),
+    ]
+    inputs = [Port("labels", "Label map", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("ok", "Pass", "ok"), flow_out("ng", "Fail", "critical"),
+        Port("blobs", "Blobs", "matches"), Port("counts", "Count per class", "list"), Port("count", "Count", "number"),
+        Port("contours", "Contour", "contours"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        labels = ctx.require_image("labels")
+        if labels.ndim == 3:
+            if labels.shape[2] == 1:
+                labels = labels[:, :, 0]
+            else:
+                raise ToolError("The labels input must be single-channel")
+        if not np.issubdtype(labels.dtype, np.integer):
+            rounded = np.rint(labels)
+            if not np.allclose(labels, rounded, equal_nan=False):
+                raise ToolError("The labels input must contain integer class ids")
+            labels = rounded.astype(np.int32)
+        region = ctx.roi()
+        c = crop(labels, region)
+        if c.image.size == 0:
+            raise ToolError("The region falls outside the label map")
+        sub = np.ascontiguousarray(c.image)
+        ignore = ctx.integer("ignore_label", 0)
+        classes = _parse_classes(ctx.param("classes", ""))
+        ids = [cid for cid in sorted(classes) if cid != ignore] if classes else [int(v) for v in np.unique(sub) if int(v) != ignore]
+        seen = {int(v) for v in np.unique(sub) if int(v) != ignore}
+        ids = sorted(set(ids) | seen)
+        blobs: list[dict[str, Any]] = []
+        contours: list[np.ndarray] = []
+        per_class = {cid: 0 for cid in ids}
+        for cid in ids:
+            mask = (sub == cid).astype(np.uint8) * 255
+            if c.mask is not None:
+                mask = cv2.bitwise_and(mask, c.mask)
+            found, found_contours = analyze_blobs(mask, min_area=ctx.number("min_area", 1), max_area=ctx.number("max_area", 0))
+            name = classes.get(cid, str(cid))
+            per_class[cid] = len(found)
+            for b in found:
+                b["class_id"] = int(cid)
+                b["label"] = name
+                blobs.append(b)
+            contours.extend(found_contours)
+        order = _sort_blob_indexes(blobs, str(ctx.param("sort_by", "area")), ctx.integer("max_count", 100))
+        blobs = [blobs[i] for i in order]
+        contours = [contours[i] for i in order]
+        offset = np.array([c.x0, c.y0], dtype=np.int32)
+        full_contours = [cnt + offset for cnt in contours]
+        for b, cnt in zip(blobs, full_contours):
+            b["cx"] += c.x0
+            b["cy"] += c.y0
+            b["bbox"] = [b["bbox"][0] + c.x0, b["bbox"][1] + c.y0, b["bbox"][2], b["bbox"][3]]
+            b["inscribed_rect"] = {"x": b["inscribed_rect"]["x"] + c.x0, "y": b["inscribed_rect"]["y"] + c.y0,
+                                   "w": b["inscribed_rect"]["w"], "h": b["inscribed_rect"]["h"]}
+            b["perimeter"] = round(float(cv2.arcLength(cnt, True)), 2)
+        counts = [{"class_id": int(cid), "label": classes.get(cid, str(cid)), "count": int(per_class.get(cid, 0))} for cid in sorted(per_class)]
+        count = len(blobs)
+        lo, hi = ctx.integer("min_count", 1), ctx.integer("max_count_ok", 0)
+        ok = count >= lo and (hi <= 0 or count <= hi)
+        overlays: list[dict[str, Any]] = [region_overlay(region, label="roi")] if region else []
+        if full_contours:
+            overlays.append({"kind": "contours", "contours": [cnt.reshape(-1, 2).tolist() for cnt in full_contours], "color": "#22c55e" if ok else "#ef4444", "width": 1})
+        for i, b in enumerate(blobs):
+            overlays.append({"kind": "point", "x": b["cx"], "y": b["cy"], "color": "#f59e0b", "label": f"#{i + 1} {b['label']}"})
+        return Result(outputs={"blobs": blobs, "counts": counts, "count": count, "contours": full_contours},
+                      overlays=overlays, branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{count} labelled blobs")
 
 
 _HANNING: dict[tuple[int, int], np.ndarray] = {}
@@ -677,4 +910,4 @@ class PixelCountTool(Tool):
                       branch="ok" if ok else "ng", status="ok" if ok else "ng", message=f"{n} px ({ratio * 100:.2f}%)")
 
 
-TOOLS = [BlobTool(), DefectDiffTool(), BarcodeTool(), TextPresenceTool(), ColorCheckTool(), EdgeDensityTool(), PixelCountTool()]
+TOOLS = [BlobTool(), BlobLabelTool(), DefectDiffTool(), BarcodeTool(), TextPresenceTool(), ColorCheckTool(), EdgeDensityTool(), PixelCountTool()]

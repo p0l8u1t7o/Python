@@ -167,11 +167,21 @@ export default {
         options: {
           otsu: "Otsu 自動",
           fixed: "固定門檻",
+          hysteresis: "雙門檻（高種子＋低成長）",
+          soft: "軟門檻加權",
           none: "輸入已是遮罩（非 0 即前景）",
         },
       },
       threshold: {
         label: "門檻",
+      },
+      threshold_low: {
+        label: "低門檻",
+        help: "雙門檻會從高門檻種子往相連的低門檻像素成長。",
+      },
+      soft_width: {
+        label: "軟門檻寬度",
+        help: "門檻附近以 0～1 加權，面積可能是小數。",
       },
       polarity: {
         label: "前景",
@@ -200,7 +210,11 @@ export default {
           area: "面積（大→小）",
           x: "X（左→右）",
           y: "Y（上→下）",
+          xy: "閱讀順序（先列後欄）",
           circularity: "圓形度（高→低）",
+          perimeter: "周長（大到小）",
+          width: "寬度（大到小）",
+          height: "高度（大到小）",
         },
       },
       separate: {
@@ -237,6 +251,66 @@ export default {
       mask: "遮罩",
       first_cx: "第一個中心 X",
       first_cy: "第一個中心 Y",
+    },
+  },
+  blob_label: {
+    label: "標籤圖 Blob",
+    description: "對單通道標籤圖逐類別做 blob 分析，輸出每個區塊的類別名稱、類別編號、面積、中心、外框、周長與最大內接矩形。可接 dl_segment 的 class_map；若接 ai_segment 的 mask，請用 255 當單一類別。",
+    params: {
+      roi: {
+        label: "區域",
+        help: "留空代表整張標籤圖。",
+      },
+      classes: {
+        label: "類別表",
+        help: "一行一個「編號:名稱」，例如 1:scratch。",
+      },
+      min_area: {
+        label: "最小面積",
+      },
+      max_area: {
+        label: "最大面積",
+        help: "0 代表不限制。",
+      },
+      max_count: {
+        label: "最多結果",
+      },
+      sort_by: {
+        label: "排序",
+        options: {
+          area: "面積（大到小）",
+          x: "X（左到右）",
+          y: "Y（上到下）",
+          xy: "閱讀順序（先列後欄）",
+          circularity: "圓形度（高到低）",
+          perimeter: "周長（大到小）",
+          width: "寬度（大到小）",
+          height: "高度（大到小）",
+        },
+      },
+      ignore_label: {
+        label: "忽略標籤",
+        help: "通常 0 是背景。",
+      },
+      min_count: {
+        label: "合格最少數量",
+        group: "判定",
+      },
+      max_count_ok: {
+        label: "合格最多數量",
+        help: "0 代表不限制。",
+        group: "判定",
+      },
+    },
+    ports: {
+      labels: "標籤圖",
+      roi: "區域（動態）",
+      ok: "通過",
+      ng: "失敗",
+      blobs: "Blob 列表",
+      counts: "各類數量",
+      count: "總數",
+      contours: "輪廓",
     },
   },
   blur: {
