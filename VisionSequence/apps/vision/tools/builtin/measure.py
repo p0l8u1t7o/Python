@@ -17,6 +17,7 @@ from apps.vision.tools.builtin.locate import (
     caliper_points,
     find_edges_1d,
     find_edges_rows,
+    pick_pair,
     fit_circle_points,
     fit_line_ransac,
     radial_edge_points,
@@ -62,35 +63,6 @@ def _line(value: Any) -> tuple[float, float, float, float] | None:
         if a and b:
             return a[0], a[1], b[0], b[1]
     return None
-
-
-def _pick_pair(edges: list[tuple[float, float]], mode: str, pair_polarity: str, expected: float) -> tuple[tuple[float, float], tuple[float, float]] | None:
-    """依模式挑一對邊緣。pair_polarity 限制兩個邊緣的梯度符號（亮條＝先正後負、暗條＝先負後正）；
-    expected > 0 時改挑寬度最接近期望值的一對（同寬時取較強者）。"""
-    if pair_polarity == "any":
-        cands = [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :]]
-    else:
-        first_pos = pair_polarity == "bright"
-        cands = [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :] if (a[1] > 0) == first_pos and (b[1] > 0) != first_pos]
-    if not cands:
-        return None
-    if expected > 0:
-        return min(cands, key=lambda p: (abs((p[1][0] - p[0][0]) - expected), -(abs(p[0][1]) + abs(p[1][1]))))
-    if pair_polarity == "any":
-        if mode == "narrowest":
-            return min(zip(edges[:-1], edges[1:]), key=lambda p: p[1][0] - p[0][0])
-        if mode == "strongest":
-            top = sorted(edges, key=lambda e: -abs(e[1]))[:2]
-            return tuple(sorted(top, key=lambda e: e[0]))  # type: ignore[return-value]
-        return edges[0], edges[-1]
-    if mode == "narrowest":
-        return min(cands, key=lambda p: p[1][0] - p[0][0])
-    if mode == "strongest":
-        return max(cands, key=lambda p: abs(p[0][1]) + abs(p[1][1]))
-    if mode == "widest":
-        return max(cands, key=lambda p: p[1][0] - p[0][0])
-    first = cands[0][0]
-    return first, max((b for a, b in cands if a is first), key=lambda e: e[0])
 
 
 class CaliperTool(Tool):
@@ -144,7 +116,7 @@ class CaliperTool(Tool):
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [round(e[0], 2) for e in edges], "profile": prof_list},
                           overlays=overlays, status="ng", message=f"Fewer than two edges ({len(edges)})")
-        pair = _pick_pair(edges, ctx.param("edge_pair", "first_last"), ctx.param("pair_polarity", "any"), ctx.number("expected_width", 0))
+        pair = pick_pair(edges, ctx.param("edge_pair", "first_last"), ctx.param("pair_polarity", "any"), ctx.number("expected_width", 0))
         if pair is None:
             return Result(outputs={"width": nan, "edge1_x": nan, "edge1_y": nan, "edge2_x": nan, "edge2_y": nan,
                                    "edges": [round(e[0], 2) for e in edges], "profile": prof_list},

@@ -10,6 +10,7 @@ import math
 import os
 import threading
 from collections import OrderedDict
+from dataclasses import dataclass
 from typing import Any
 
 import cv2
@@ -892,6 +893,35 @@ def _as_rotated_rect(region: dict[str, Any]) -> dict[str, Any]:
     raise ToolError(f"This tool needs a rectangle or rotated rectangle, got {region.get('shape')}")
 
 
+def pick_pair(edges: list[tuple[float, float]], mode: str, pair_polarity: str, expected: float) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """依模式挑一對邊緣。pair_polarity 限制兩個邊緣的梯度符號（亮條＝先正後負、暗條＝先負後正）；
+    expected > 0 時改挑寬度最接近期望值的一對（同寬時取較強者）。"""
+    if pair_polarity == "any":
+        cands = [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :]]
+    else:
+        first_pos = pair_polarity == "bright"
+        cands = [(a, b) for i, a in enumerate(edges) for b in edges[i + 1 :] if (a[1] > 0) == first_pos and (b[1] > 0) != first_pos]
+    if not cands:
+        return None
+    if expected > 0:
+        return min(cands, key=lambda p: (abs((p[1][0] - p[0][0]) - expected), -(abs(p[0][1]) + abs(p[1][1]))))
+    if pair_polarity == "any":
+        if mode == "narrowest":
+            return min(zip(edges[:-1], edges[1:]), key=lambda p: p[1][0] - p[0][0])
+        if mode == "strongest":
+            top = sorted(edges, key=lambda e: -abs(e[1]))[:2]
+            return tuple(sorted(top, key=lambda e: e[0]))  # type: ignore[return-value]
+        return edges[0], edges[-1]
+    if mode == "narrowest":
+        return min(cands, key=lambda p: p[1][0] - p[0][0])
+    if mode == "strongest":
+        return max(cands, key=lambda p: abs(p[0][1]) + abs(p[1][1]))
+    if mode == "widest":
+        return max(cands, key=lambda p: p[1][0] - p[0][0])
+    first = cands[0][0]
+    return first, max((b for a, b in cands if a is first), key=lambda e: e[0])
+
+
 def caliper_points(crop_img: np.ndarray, num: int, polarity: str, threshold: float, direction: str, smoothing: int) -> tuple[list[tuple[float, float, float]], bool]:
     """在擺正的 crop 內，沿長邊等距放 num 條卡尺（垂直於長邊），每條回傳 (x, y, 強度)。
 
@@ -925,6 +955,150 @@ def caliper_points(crop_img: np.ndarray, num: int, polarity: str, threshold: flo
         else:
             pts.append((e[0], float(cpos), e[1]))
     return pts, horizontal
+
+
+# ---------------------------------------------------------------------------
+# 通用卡尺序列：沿一條幾何等距佈卡尺
+# ---------------------------------------------------------------------------
+@dataclass
+class CaliperHit:
+    """一把卡尺的結果（全圖座標）。
+
+    `found=False` 表示這把打空——**打空本身就是缺陷訊號**（大缺口會讓卡尺完全找不到邊），
+    所以不要把它濾掉，座標與強度留 NaN 讓下游決定。
+    `offset` 是邊緣相對卡尺中線的位移（沿掃描方向為正），量偏移與階差用它比座標好用。
+    邊緣對模式才有 `x2/y2/strength2/width`（width 是兩邊之間的距離，px）。
+    """
+
+    index: int
+    #: 卡尺沿幾何的位置：直線是離起點的弧長（px），圓弧是角度（度，畫面順時針為正）
+    position: float
+    #: 卡尺中心（全圖座標）
+    cx: float
+    cy: float
+    found: bool = False
+    x: float = float("nan")
+    y: float = float("nan")
+    strength: float = float("nan")
+    offset: float = float("nan")
+    x2: float = float("nan")
+    y2: float = float("nan")
+    strength2: float = float("nan")
+    width: float = float("nan")
+
+
+def line_geometry(x1: float, y1: float, x2: float, y2: float, count: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """沿線段等距佈 count 把卡尺：回 (中心點 (N,2), 掃描方向 (N,2), 切向 (N,2), 位置 (N,))。
+
+    **掃描方向＝線方向順時針轉 90°**（(dx,dy) → (−dy,dx)，影像 y 向下，與平台「角度正值＝畫面順時針」同一慣例）：
+    沿 +x 的線往 +y（畫面下方）掃，沿 +y 的線往 −x 掃。要往反方向掃就把線的起訖點對調。
+    位置回傳離起點的弧長（px）。"""
+    p1 = np.array([float(x1), float(y1)])
+    p2 = np.array([float(x2), float(y2)])
+    length = float(np.hypot(*(p2 - p1)))
+    if length < 1e-6:
+        raise ToolError("The line is too short to place calipers on")
+    n = max(1, int(count))
+    t = np.linspace(0.0, 1.0, n) if n > 1 else np.array([0.5])
+    centers = p1[None, :] + t[:, None] * (p2 - p1)[None, :]
+    along = (p2 - p1) / length
+    normal = np.array([-along[1], along[0]])
+    return centers, np.tile(normal, (n, 1)), np.tile(along, (n, 1)), t * length
+
+
+def arc_geometry(cx: float, cy: float, radius: float, count: int, a0: float | None = None, a1: float | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """沿圓（或扇形 a0→a1，度、畫面順時針為正）等距佈 count 把卡尺：掃描方向＝徑向（向外為正），
+    切向＝圓周方向。位置回傳角度（度）。"""
+    thetas = sector_thetas(max(1, int(count)), a0, a1).astype(np.float64)
+    cos_t, sin_t = np.cos(thetas), np.sin(thetas)
+    radial = np.stack([cos_t, sin_t], axis=1)
+    tangent = np.stack([-sin_t, cos_t], axis=1)
+    centers = np.array([float(cx), float(cy)])[None, :] + radial * float(radius)
+    return centers, radial, tangent, np.degrees(thetas)
+
+
+def caliper_series(
+    image: np.ndarray,
+    centers: np.ndarray,
+    scan: np.ndarray,
+    tangent: np.ndarray,
+    positions: np.ndarray,
+    *,
+    search: float,
+    height: float = 1.0,
+    polarity: str = "any",
+    threshold: float = 20.0,
+    smoothing: int = 3,
+    mode: str = "single",
+    select: str = "strongest",
+    pair_mode: str = "first_last",
+    pair_polarity: str = "any",
+    expected_width: float = 0.0,
+) -> list[CaliperHit]:
+    """沿一條幾何佈好的卡尺一次全掃：每把在掃描方向取 `search` px 的剖面（切向平均 `height` px 降噪），
+    找一個邊（mode="single"）或一對邊（mode="pair"），回全圖座標。
+
+    幾何由 `centers`／`scan`／`tangent`／`positions` 四個陣列描述（用 `line_geometry`／`arc_geometry` 產生，
+    折線與任意路徑自己組也可以），所以直線、圓弧、路徑共用同一條程式路徑。取樣是一次 `cv2.remap`
+    ((N×height) × samples)、找邊是一次 `find_edges_rows`——180 把卡尺也只有兩次呼叫。
+
+    找不到邊的卡尺**照樣回傳**（`found=False`），因為打空是缺陷判斷的訊號之一。
+    """
+    img = to_gray(image)
+    n = len(centers)
+    if n == 0:
+        return []
+    span = max(2.0, float(search))
+    samples = int(math.ceil(span)) + 1
+    offsets = np.linspace(-span / 2.0, span / 2.0, samples)
+    rows = max(1, int(round(float(height))))
+    tang = (np.arange(rows, dtype=np.float64) - (rows - 1) / 2.0)
+    # (N, rows, samples) 的取樣格：中心 + 掃描方向×位移 + 切向×降噪位移
+    cx = centers[:, 0][:, None, None] + scan[:, 0][:, None, None] * offsets[None, None, :] + tangent[:, 0][:, None, None] * tang[None, :, None]
+    cy = centers[:, 1][:, None, None] + scan[:, 1][:, None, None] * offsets[None, None, :] + tangent[:, 1][:, None, None] * tang[None, :, None]
+    sampled = cv2.remap(img, cx.astype(np.float32).reshape(-1, samples), cy.astype(np.float32).reshape(-1, samples),
+                        cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    profiles = sampled.reshape(n, rows, samples).astype(np.float32).mean(axis=1)
+    step = span / max(1, samples - 1)
+
+    def at(i: int, pos: float) -> tuple[float, float, float]:
+        """剖面上的次像素位置 → (x, y, 相對中線的位移)。"""
+        off = -span / 2.0 + pos * step
+        return float(centers[i, 0] + scan[i, 0] * off), float(centers[i, 1] + scan[i, 1] * off), float(off)
+
+    out: list[CaliperHit] = []
+    for i, edges in enumerate(find_edges_rows(profiles, polarity, threshold, smoothing)):
+        hit = CaliperHit(index=i, position=float(positions[i]), cx=float(centers[i, 0]), cy=float(centers[i, 1]))
+        if mode == "pair":
+            pair = pick_pair(edges, pair_mode, pair_polarity, float(expected_width))
+            if pair is not None:
+                (p0, s0), (p1, s1) = pair
+                x0, y0, o0 = at(i, p0)
+                x1, y1, o1 = at(i, p1)
+                hit.found = True
+                hit.x, hit.y, hit.strength, hit.offset = x0, y0, float(s0), o0
+                hit.x2, hit.y2, hit.strength2 = x1, y1, float(s1)
+                hit.width = abs(o1 - o0)
+        else:
+            e = pick_edge(edges, select)
+            if e is not None:
+                x0, y0, o0 = at(i, e[0])
+                hit.found = True
+                hit.x, hit.y, hit.strength, hit.offset = x0, y0, float(e[1]), o0
+        out.append(hit)
+    return out
+
+
+def hit_points(hits: list[CaliperHit], *, second: bool = False) -> list[list[float]]:
+    """找到邊的那些卡尺的點（全圖座標）；`second=True` 取邊緣對的第二個邊。"""
+    if second:
+        return [[h.x2, h.y2] for h in hits if h.found]
+    return [[h.x, h.y] for h in hits if h.found]
+
+
+def hit_series(hits: list[CaliperHit], field: str = "offset") -> list[float | None]:
+    """把一串卡尺結果變成一維序列（給 tools/defects.py 的分段用）；打空的位置是 None。"""
+    return [float(getattr(h, field)) if h.found else None for h in hits]
 
 
 class FindLineTool(Tool):

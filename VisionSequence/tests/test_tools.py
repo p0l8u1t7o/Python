@@ -1465,6 +1465,124 @@ class AlgorithmAccuracyTests(SimpleTestCase):
         self.assertFalse(run_tool("color_check", red, {"color": "#00ff00", "space": "hsv", "tolerance": 10}).outputs["is_match"])
 
 
+class CaliperSeriesTests(SimpleTestCase):
+    """通用卡尺序列（locate.caliper_series）：沿直線／圓弧等距佈卡尺，單邊或邊緣對，回全圖座標。
+    這是幾何查找家族與邊緣缺陷家族共用的原語，所以直接對它測精度與慣例。"""
+
+    @staticmethod
+    def _edge_image(h=300, w=400, x_edge=180.5, bg=40, fg=200, blur=1.0, noise=2.0, seed=3):
+        """垂直的亮暗交界：覆蓋率反鋸齒，邊在 x_edge（次像素真值）。"""
+        xx = np.tile(np.arange(w, dtype=np.float64), (h, 1))
+        cov = np.clip(xx - x_edge + 0.5, 0, 1)
+        img = cv2.GaussianBlur((bg + (fg - bg) * cov).astype(np.uint8), (0, 0), blur)
+        rng = np.random.default_rng(seed)
+        return np.clip(img.astype(np.float32) + rng.normal(0, noise, img.shape), 0, 255).astype(np.uint8)
+
+    def test_line_calipers_hit_a_known_edge_to_sub_pixel(self):
+        from apps.vision.tools.builtin.locate import caliper_series, line_geometry
+
+        img = self._edge_image(x_edge=180.5)
+        # 掃描方向＝線方向順時針轉 90°：線由下往上（0,−1）→ 掃描往 +x。中心在 x=180，搜尋 ±20
+        centers, scan, tang, pos = line_geometry(180, 280, 180, 20, 24)
+        self.assertAlmostEqual(float(scan[0][0]), 1.0, places=6)
+        self.assertAlmostEqual(float(scan[0][1]), 0.0, places=6)
+        hits = caliper_series(img, centers, scan, tang, pos, search=40, height=5, polarity="dark_to_light", threshold=15)
+        self.assertEqual(len(hits), 24)
+        self.assertTrue(all(h.found for h in hits))
+        xs = np.array([h.x for h in hits])
+        self.assertLess(abs(xs.mean() - 180.5), 0.2, xs.mean())
+        self.assertLess(xs.std(), 0.15, xs.std())
+        # position 是離起點的弧長，第一把 0、最後一把＝線長
+        self.assertAlmostEqual(hits[0].position, 0.0, places=6)
+        self.assertAlmostEqual(hits[-1].position, 260.0, places=6)
+        # offset 是相對卡尺中線的位移（掃描方向為正）：中心在 180、邊在 180.5
+        self.assertLess(abs(np.mean([h.offset for h in hits]) - 0.5), 0.2)
+        # 反向極性找不到 → 照樣回傳，found=False（打空是缺陷訊號，不能被濾掉）
+        blind = caliper_series(img, centers, scan, tang, pos, search=40, height=5, polarity="light_to_dark", threshold=15)
+        self.assertEqual(len(blind), 24)
+        self.assertFalse(any(h.found for h in blind))
+        self.assertTrue(all(math.isnan(h.x) for h in blind))
+
+    def test_arc_calipers_recover_the_radius(self):
+        from apps.vision.tools.builtin.locate import arc_geometry, caliper_series, fit_circle_lsq, hit_points
+
+        img = AlgorithmAccuracyTests._disk(400, 400, 200.0, 200.0, 80.0)
+        centers, scan, tang, pos = arc_geometry(200, 200, 80, 90)
+        hits = caliper_series(img, centers, scan, tang, pos, search=30, height=3, polarity="light_to_dark", threshold=10, select="strongest")
+        self.assertGreater(sum(h.found for h in hits), 85)
+        radii = np.array([math.hypot(h.x - 200, h.y - 200) for h in hits if h.found])
+        self.assertLess(abs(radii.mean() - 80.0), 0.2, radii.mean())
+        cx, cy, r = fit_circle_lsq(np.array(hit_points(hits)))
+        self.assertLess(abs(r - 80.0), 0.2)
+        self.assertLess(math.hypot(cx - 200, cy - 200), 0.2)
+        # position 是角度（度，畫面順時針為正）
+        self.assertAlmostEqual(hits[0].position, 0.0, places=6)
+        self.assertAlmostEqual(hits[10].position, 40.0, places=4)  # 90 把繞一圈，每把 4°（角度用 float32 取樣）
+
+    def test_pair_mode_measures_a_band_width(self):
+        from apps.vision.tools.builtin.locate import caliper_series, line_geometry
+
+        img = np.full((200, 300), 40, np.uint8)
+        img[:, 100:130] = 200  # 30 px 寬的亮帶
+        img = cv2.GaussianBlur(img, (0, 0), 0.8)
+        centers, scan, tang, pos = line_geometry(115, 40, 115, 160, 12)
+        hits = caliper_series(img, centers, scan, tang, pos, search=80, height=3, mode="pair",
+                              pair_mode="widest", pair_polarity="bright", threshold=15)
+        self.assertTrue(all(h.found for h in hits))
+        widths = np.array([h.width for h in hits])
+        self.assertLess(abs(widths.mean() - 30.0), 0.3, widths.mean())
+        self.assertLess(widths.std(), 0.1)
+        # 兩個邊都是全圖座標，依掃描方向排；這條線（由上往下）往 −x 掃，所以先遇到右邊那條
+        self.assertAlmostEqual(float(scan[0][0]), -1.0, places=6)
+        self.assertEqual({round(hits[0].x, 1), round(hits[0].x2, 1)}, {129.5, 99.5})
+        self.assertGreater(hits[0].x, hits[0].x2)
+
+    def test_series_and_missing_calipers_feed_the_defect_helpers(self):
+        from apps.vision.tools.builtin.locate import arc_geometry, caliper_series, hit_series
+
+        img = AlgorithmAccuracyTests._disk(400, 400, 200.0, 200.0, 80.0)
+        cv2.ellipse(img, (200, 200), (80, 80), 0, 20, 40, 40, -1)  # 一段缺口
+        img = cv2.GaussianBlur(img, (0, 0), 0.8)
+        centers, scan, tang, pos = arc_geometry(200, 200, 80, 180)
+        hits = caliper_series(img, centers, scan, tang, pos, search=24, height=3, polarity="light_to_dark", threshold=10)
+        series = hit_series(hits, "offset")
+        self.assertEqual(len(series), 180)
+        self.assertTrue(any(v is None for v in series))  # 缺口讓卡尺打空
+        values = np.array([np.nan if v is None else v for v in series])
+        flag = ~np.isfinite(values)
+        segs = defects.segments(flag, wrap=True)
+        self.assertTrue(segs)
+        self.assertGreaterEqual(max(defects.seg_len(s, 180) for s in segs), 5)
+
+    def test_agrees_with_the_existing_line_and_arc_scanners(self):
+        """同一張圖、同一組設定，新原語與既有的 caliper_points／radial_edge_points 找到同一條邊。"""
+        from apps.vision.tools.builtin.locate import (
+            arc_geometry, caliper_points, caliper_series, line_geometry, radial_edge_points,
+        )
+
+        # 直線：既有 caliper_points 在擺正的 crop 內佈卡尺
+        img = self._edge_image(x_edge=180.5)
+        crop_img = img[20:280, 160:200]  # 高 260、寬 40 → 長邊是 y
+        pts, horizontal = caliper_points(crop_img, 20, "dark_to_light", 15, "strongest", 3)
+        self.assertFalse(horizontal)
+        old_x = np.array([p[0] for p in pts]) + 160
+        centers, scan, tang, pos = line_geometry(180, 20 + 253.5, 180, 20 + 6.5, 20)  # 由下往上＝掃描往 +x
+        hits = caliper_series(img, centers, scan, tang, pos, search=40, height=13, polarity="dark_to_light", threshold=15, select="strongest")
+        new_x = np.array([h.x for h in hits if h.found])
+        self.assertEqual(len(new_x), len(old_x))
+        self.assertLess(abs(new_x.mean() - old_x.mean()), 0.1, (new_x.mean(), old_x.mean()))
+
+        # 圓弧：既有 radial_edge_points 由圓心向外掃
+        disc = AlgorithmAccuracyTests._disk(400, 400, 200.0, 200.0, 80.0)
+        old_pts = np.array(radial_edge_points(disc, 200, 200, 65, 95, 72, "light_to_dark", 10, "strongest", 3))
+        old_r = np.hypot(old_pts[:, 0] - 200, old_pts[:, 1] - 200)
+        centers, scan, tang, pos = arc_geometry(200, 200, 80, 72)
+        hits = caliper_series(disc, centers, scan, tang, pos, search=30, height=1, polarity="light_to_dark", threshold=10, select="strongest")
+        new_r = np.array([math.hypot(h.x - 200, h.y - 200) for h in hits if h.found])
+        self.assertEqual(len(new_r), len(old_r))
+        self.assertLess(abs(new_r.mean() - old_r.mean()), 0.05, (new_r.mean(), old_r.mean()))
+
+
 class GdtTests(SimpleTestCase):
     """WP-10 形位公差：每個 mode 對人工構造點集的解析解（ISO 1101 最小區域，不是最小二乘）。"""
 
