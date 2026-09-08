@@ -351,3 +351,68 @@ def transform_region(region: dict[str, Any], dx: float, dy: float, dtheta: float
         x2, y2 = rot(region["x2"], region["y2"])
         out.update({"x1": x1 + dx, "y1": y1 + dy, "x2": x2 + dx, "y2": y2 + dy})
     return out
+
+
+def _polyline_segments(points: Any, closed: bool) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """整理折線線段，並略過零長度線段。"""
+    try:
+        pts = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    except (TypeError, ValueError):
+        return np.zeros((0, 2)), np.zeros((0, 2)), np.zeros(0)
+    if len(pts) < 2:
+        return np.zeros((0, 2)), np.zeros((0, 2)), np.zeros(0)
+    if closed:
+        starts = pts
+        ends = np.roll(pts, -1, axis=0)
+    else:
+        starts = pts[:-1]
+        ends = pts[1:]
+    vec = ends - starts
+    lengths = np.hypot(vec[:, 0], vec[:, 1])
+    keep = lengths > 1e-9
+    return starts[keep], vec[keep], lengths[keep]
+
+
+def polyline_points(points: Any, closed: bool) -> float:
+    """回傳折線或封閉多邊形路徑總長，單點與重合點視為 0。"""
+    _, _, lengths = _polyline_segments(points, closed)
+    return float(lengths.sum())
+
+
+def resample_polyline(
+    points: Any,
+    closed: bool,
+    spacing: float | None = None,
+    count: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """沿路徑等距取樣，回傳取樣點與每點切線單位向量。"""
+    starts, vec, lengths = _polyline_segments(points, closed)
+    total = float(lengths.sum())
+    if total <= 1e-9:
+        return np.zeros((0, 2), dtype=np.float64), np.zeros((0, 2), dtype=np.float64)
+
+    n = int(count or 0)
+    if n > 0:
+        if closed:
+            positions = np.linspace(0.0, total, n, endpoint=False, dtype=np.float64)
+        elif n == 1:
+            positions = np.array([total / 2.0], dtype=np.float64)
+        else:
+            positions = np.linspace(0.0, total, n, endpoint=True, dtype=np.float64)
+    else:
+        step = float(spacing or 0)
+        if step <= 0:
+            step = 1.0
+        stop = total if closed else total + step * 1e-9
+        positions = np.arange(0.0, stop, step, dtype=np.float64)
+        if len(positions) == 0:
+            positions = np.array([0.0], dtype=np.float64)
+
+    cum = np.cumsum(lengths)
+    idx = np.searchsorted(cum, positions, side="right")
+    idx = np.clip(idx, 0, len(lengths) - 1)
+    prev = np.r_[0.0, cum[:-1]][idx]
+    local = np.divide(positions - prev, lengths[idx], out=np.zeros_like(positions), where=lengths[idx] > 0)
+    samples = starts[idx] + vec[idx] * local[:, None]
+    tangents = vec[idx] / lengths[idx][:, None]
+    return samples.astype(np.float64, copy=False), tangents.astype(np.float64, copy=False)

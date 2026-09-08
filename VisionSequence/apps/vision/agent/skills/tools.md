@@ -188,6 +188,13 @@ ROI 用 rect/rotated_rect 表示直線邊、circle/annulus 表示圓邊。`calip
 `missing` 保留打空的卡尺索引。`baseline=reference` 看相對教導幾何的偏移，`fit` 會用命中點擬合直線／圓後看殘差，
 `median` 用滑動中位數看局部突變。`max_deviation` 是 px 門檻，超過走 `ng` 分支；overlay 會把超標命中點標紅。
 
+## path_extract
+沿任意折線或多邊形輪廓取樣。`equal_interval` 只把路徑轉成等距點集與每點切線角；`edge_search` 會在每個取樣點的法線方向放一把卡尺，輸出找到的邊緣點、相對路徑的 offsets、pair mode 的 widths，以及 missing 索引。
+
+分工：直線邊要先用 `find_line`，圓或圓弧要用 `find_circle`/`fit_arc`；只有沖壓外緣、FPC 邊、膠道等任意折線或多邊形路徑，才用 `path_extract`。上游 `points` 會優先於畫布 ROI；polygon 預設封閉、line 與 wired points 預設開放，可用 `closed` 覆寫。`search` 是法線方向半徑，法線沿切線順時針轉 90 度。
+
+`path_extract.points` 可直接接 `profile_defect.points` 或其他點集量測；若要做整條邊缺陷分段，通常用 `path_extract.offsets` 當序列、`path_extract.points` 當對應位置，再交給缺陷分段工具。
+
 ## wall_thickness
 沿壁放多條卡尺量厚度：`roi` 用 **line 橫切壁**（最直觀）或矩形長邊沿壁。輸出 `thickness`（平均）、min/max。「沒有找到成對的邊緣」通常是掃描方向錯或 band 太窄。
 

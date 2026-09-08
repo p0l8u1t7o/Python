@@ -266,6 +266,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     for x in range(trend_edge.shape[1]):
         trend_edge[70 + (3 if 90 <= x < 130 else 0) :, x] = 210
     trend_edge = cv2.GaussianBlur(trend_edge, (0, 0), 0.8)
+    path_block = np.full((180, 240), 30, np.uint8)
+    cv2.rectangle(path_block, (40, 40), (200, 140), 220, -1)
+    path_block = cv2.GaussianBlur(path_block, (0, 0), 0.8)
+    path_square = {"shape": "polygon", "points": [[35, 35], [205, 35], [205, 145], [35, 145]]}
     # 極座標展開：1280×960 時 r 200～300（規格的效能預算案例）；640×480 等比縮小
     ring = {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.2083, "r_outer": m * 0.3125}
     from apps.vision.tools.builtin import polar as _polar
@@ -371,6 +375,10 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("edge_trend line 60", "edge_trend", trend_edge, {"calipers": 60, "search": 24, "caliper_width": 5, "polarity": "dark_to_light",
                                                            "edge_threshold": 10, "baseline": "reference", "max_deviation": 2},
          {"line": {"x1": 20, "y1": 69.5, "x2": 200, "y2": 69.5}}, {}),
+        ("path_extract interval", "path_extract", None, {"roi": path_square, "spacing": 10}, {}, {}),
+        ("path_extract edge_search", "path_extract", path_block, {"mode": "edge_search", "spacing": 10, "search": 12,
+                                                                  "caliper_width": 3, "polarity": "dark_to_light", "edge_threshold": 15},
+         {"points": [[45, 35], [195, 35]]}, {}),
         ("profile_defect (fit_circle 360)", "profile_defect", None, {"baseline": "fit_circle", "threshold": 3}, {"values": [float(m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)) for i in range(360)], "points": [[s.cx + math.cos(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0)), s.cy + math.sin(math.radians(i)) * (m * 0.12 + (2.0 if 40 <= i < 46 else 0.0))] for i in range(360)]}, {}),
         ("fit_arc (annulus 90)", "fit_arc", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),
         ("fit_ellipse (annulus 90)", "fit_ellipse", big, {"roi": {"shape": "annulus", "cx": s.cx, "cy": s.cy, "r_inner": m * 0.06, "r_outer": m * 0.18}, "num_rays": 90}, {}, {}),

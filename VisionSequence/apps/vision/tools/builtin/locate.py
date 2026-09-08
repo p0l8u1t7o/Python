@@ -19,7 +19,7 @@ import numpy as np
 
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 from apps.vision.tools.physical import CALIBRATION_PARAM, world_outputs
-from apps.vision.tools.roi import Crop, crop, extent, region_center, region_overlay, transform_region
+from apps.vision.tools.roi import Crop, crop, extent, polyline_points, region_center, region_overlay, resample_polyline, transform_region
 
 
 def to_gray(image: np.ndarray) -> np.ndarray:
@@ -1216,6 +1216,36 @@ def arc_geometry(cx: float, cy: float, radius: float, count: int, a0: float | No
     return centers, radial, tangent, np.degrees(thetas)
 
 
+def _polyline_positions(length: float, closed: bool, spacing: float | None, count: int | None) -> np.ndarray:
+    """依 path_extract 的 spacing/count 規則產生路徑座標。"""
+    total = float(length)
+    if total <= 1e-9:
+        return np.zeros(0, dtype=np.float64)
+    n = int(count or 0)
+    if n > 0:
+        if closed:
+            return np.linspace(0.0, total, n, endpoint=False, dtype=np.float64)
+        if n == 1:
+            return np.array([total / 2.0], dtype=np.float64)
+        return np.linspace(0.0, total, n, endpoint=True, dtype=np.float64)
+    step = float(spacing or 0)
+    if step <= 0:
+        step = 1.0
+    stop = total if closed else total + step * 1e-9
+    pos = np.arange(0.0, stop, step, dtype=np.float64)
+    return pos if len(pos) else np.array([0.0], dtype=np.float64)
+
+
+def polyline_geometry(points: Any, closed: bool, spacing: float | None = None, count: int | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """將折線路徑轉成 caliper_series 需要的中心、法線、切線與路徑座標。"""
+    centers, tangent = resample_polyline(points, closed, spacing=spacing, count=count)
+    positions = _polyline_positions(polyline_points(points, closed), closed, spacing, count)
+    if len(centers) != len(positions):
+        positions = positions[: len(centers)]
+    scan = np.column_stack([-tangent[:, 1], tangent[:, 0]]) if len(tangent) else np.zeros((0, 2), dtype=np.float64)
+    return centers, scan, tangent, positions
+
+
 def caliper_series(
     image: np.ndarray,
     centers: np.ndarray,
@@ -1298,6 +1328,174 @@ def hit_points(hits: list[CaliperHit], *, second: bool = False) -> list[list[flo
 def hit_series(hits: list[CaliperHit], field: str = "offset") -> list[float | None]:
     """把一串卡尺結果變成一維序列（給 tools/defects.py 的分段用）；打空的位置是 None。"""
     return [float(getattr(h, field)) if h.found else None for h in hits]
+
+
+def _path_points(value: Any) -> list[list[float]] | None:
+    """將上游點集整理成 [[x, y], ...]；格式不對時回 None。"""
+    if isinstance(value, dict) and "points" in value:
+        value = value.get("points")
+    try:
+        arr = np.asarray(value, dtype=np.float64).reshape(-1, 2)
+    except (TypeError, ValueError):
+        return None
+    if arr.size == 0:
+        return []
+    return arr.tolist()
+
+
+def _path_reference(ctx: ToolContext) -> tuple[list[list[float]], bool, dict[str, Any] | None]:
+    """取得 path_extract 的參考路徑；上游點集優先於畫布 ROI。"""
+    wired = _path_points(ctx.inputs.get("points"))
+    if wired is not None:
+        default_closed = False
+        closed = ctx.flag("closed", default_closed) if "closed" in ctx.params and ctx.param("closed", None) not in (None, "") else default_closed
+        overlay = {"kind": "polygon" if closed else "polyline", "points": wired, "color": "#38bdf8", "dash": True}
+        return wired, closed, overlay
+    region = ctx.roi()
+    if region is None:
+        return [], False, None
+    shape = str(region.get("shape") or "")
+    if shape == "line":
+        pts = [[float(region["x1"]), float(region["y1"])], [float(region["x2"]), float(region["y2"])]]
+        default_closed = False
+    elif shape in ("polygon", "polyline"):
+        pts = _path_points(region.get("points")) or []
+        default_closed = shape == "polygon"
+    else:
+        return [], False, region_overlay(region, label="path")
+    closed = ctx.flag("closed", default_closed) if "closed" in ctx.params and ctx.param("closed", None) not in (None, "") else default_closed
+    return pts, closed, region_overlay(region, label="path")
+
+
+def _tangent_angles(tangent: np.ndarray) -> list[float]:
+    """切線角度，影像座標 y 向下時正值為畫面順時針。"""
+    angles = np.degrees(np.arctan2(tangent[:, 1], tangent[:, 0]))
+    angles = (angles + 180.0) % 360.0 - 180.0
+    return [round(float(a), 6) for a in angles]
+
+
+class PathExtractTool(Tool):
+    key = "path_extract"
+    label = "Path extract"
+    description = "Samples a drawn path at equal intervals, or places calipers normal to that path and returns the edge points, offsets and missing indices."
+    category = "locate"
+    icon = "Route"
+    params = [
+        Param("roi", "Path", kind="roi", shapes=["polygon", "line"],
+              help_text="Draw a polygon for a closed path or a line for an open path. Wired points take priority."),
+        Param("mode", "Mode", kind="select", default="equal_interval", options=[
+            {"value": "equal_interval", "label": "Equal interval"},
+            {"value": "edge_search", "label": "Edge search"},
+        ]),
+        Param("closed", "Closed path", kind="boolean", default=None,
+              help_text="Leave unset to follow the path type: polygons are closed, lines and wired points are open."),
+        Param("spacing", "Spacing", kind="number", default=10, minimum=0, unit="px",
+              help_text="Distance between samples. Count takes priority when it is greater than zero."),
+        Param("count", "Count", kind="number", default=0, minimum=0, maximum=10000,
+              help_text="Number of samples. Greater than zero overrides spacing."),
+        Param("search", "Search radius", kind="number", default=20, minimum=1, maximum=2000, unit="px",
+              visible_when={"param": "mode", "in": ["edge_search"]}),
+        Param("caliper_width", "Caliper width", kind="number", default=3, minimum=1, maximum=99, unit="px",
+              visible_when={"param": "mode", "in": ["edge_search"]},
+              help_text="Averaged along the path tangent to quieten noise."),
+        Param("edge_threshold", "Edge threshold", kind="number", default=20, minimum=1, maximum=255, teach=True,
+              visible_when={"param": "mode", "in": ["edge_search"]}),
+        Param("polarity", "Edge polarity", kind="select", default="any", options=POLARITY_OPTIONS, teach=True,
+              visible_when={"param": "mode", "in": ["edge_search"]}),
+        Param("edge_select", "Which edge", kind="select", default="strongest", options=[
+            {"value": "strongest", "label": "Strongest"},
+            {"value": "first", "label": "First"},
+            {"value": "last", "label": "Last"},
+        ], visible_when={"param": "mode", "in": ["edge_search"]}),
+        Param("edge_mode", "Edge mode", kind="select", default="single", options=[
+            {"value": "single", "label": "Single edge"},
+            {"value": "pair", "label": "Edge pair"},
+        ], visible_when={"param": "mode", "in": ["edge_search"]}),
+        Param("pair_polarity", "Pair polarity", kind="select", default="any", options=[
+            {"value": "any", "label": "Any"},
+            {"value": "bright", "label": "Bright band"},
+            {"value": "dark", "label": "Dark band"},
+        ], visible_when={"param": "edge_mode", "in": ["pair"]}),
+        Param("pair_mode", "Which pair", kind="select", default="first_last", options=[
+            {"value": "first_last", "label": "Outermost pair"},
+            {"value": "widest", "label": "Widest pair"},
+            {"value": "narrowest", "label": "Narrowest pair"},
+            {"value": "strongest", "label": "Strongest pair"},
+            {"value": "expected", "label": "Closest to expected width"},
+        ], visible_when={"param": "edge_mode", "in": ["pair"]}),
+        Param("expected_width", "Expected width", kind="number", default=0, minimum=0, unit="px",
+              visible_when={"param": "pair_mode", "in": ["expected"]}),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced",
+              visible_when={"param": "mode", "in": ["edge_search"]}),
+    ]
+    inputs = [
+        Port("image", "Image", "image", required=False),
+        Port("roi", "Region (dynamic)", "region", required=False),
+        Port("points", "Path points", "points", required=False),
+    ]
+    outputs = [
+        flow_out("ok", "OK", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("points", "Points", "points"), Port("angles", "Tangent angles", "list"),
+        Port("offsets", "Offsets", "list"), Port("widths", "Widths", "list"), Port("missing", "Missing indices", "list"),
+        Port("count", "Count", "number"), Port("length", "Path length", "number"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        path_mode = str(ctx.param("mode", "equal_interval"))
+        edge_mode = str(ctx.param("edge_mode", "single"))
+        if path_mode in ("single", "pair"):
+            edge_mode = path_mode
+            path_mode = "edge_search"
+        pts, closed, reference_overlay = _path_reference(ctx)
+        length = polyline_points(pts, closed)
+        count = ctx.integer("count", 0)
+        spacing = None if count > 0 else ctx.number("spacing", 10)
+        centers, scan, tangent, positions = polyline_geometry(pts, closed, spacing=spacing, count=count if count > 0 else None)
+        overlays: list[dict[str, Any]] = [reference_overlay] if reference_overlay else []
+        blank = {"points": [], "angles": [], "offsets": [], "widths": [], "missing": [], "count": 0, "length": round(length, 6)}
+        if length <= 1e-9 or len(centers) == 0:
+            return Result(outputs=blank, overlays=overlays, branch="not_found", status="ng", message="The path is too short to sample")
+        angles = _tangent_angles(tangent)
+        sample_points = centers.round(3).tolist()
+        overlays.append({"kind": "points", "points": sample_points, "color": "#38bdf8"})
+        if path_mode != "edge_search":
+            return Result(
+                outputs={**blank, "points": sample_points, "angles": angles, "count": len(sample_points)},
+                overlays=overlays, branch="ok", message=f"{len(sample_points)} samples over {length:.2f}px",
+            )
+
+        image = to_gray(ctx.require_image())
+        pair = edge_mode == "pair"
+        hits = caliper_series(
+            image, centers, scan, tangent, positions,
+            search=max(1.0, ctx.number("search", 20) * 2.0), height=ctx.number("caliper_width", 3),
+            polarity=str(ctx.param("polarity", "any")), threshold=ctx.number("edge_threshold", 20),
+            smoothing=ctx.integer("smoothing", 3), mode="pair" if pair else "single",
+            select=str(ctx.param("edge_select", "strongest")),
+            pair_mode=str(ctx.param("pair_mode", "first_last")), pair_polarity=str(ctx.param("pair_polarity", "any")),
+            expected_width=ctx.number("expected_width", 0),
+        )
+        found_points = [[round(h.x, 3), round(h.y, 3)] for h in hits if h.found]
+        missing = [int(h.index) for h in hits if not h.found]
+        offsets = [None if not h.found else round(float(h.offset), 6) for h in hits]
+        widths = [None if not h.found or not pair else round(float(h.width), 6) for h in hits]
+        if found_points:
+            overlays.append({"kind": "points", "points": found_points, "color": "#22c55e"})
+        if pair:
+            second = [[round(h.x2, 3), round(h.y2, 3)] for h in hits if h.found]
+            if second:
+                overlays.append({"kind": "points", "points": second, "color": "#a78bfa"})
+        if missing:
+            overlays.append({"kind": "points", "points": [[round(h.cx, 3), round(h.cy, 3)] for h in hits if not h.found], "color": "#64748b"})
+        ok = len(found_points) > 0 and not missing
+        return Result(
+            outputs={
+                "points": found_points, "angles": angles, "offsets": offsets, "widths": widths, "missing": missing,
+                "count": len(found_points), "length": round(length, 6),
+            },
+            overlays=overlays, branch="ok" if ok else "not_found", status="ok" if ok else "ng",
+            message=f"{len(found_points)}/{len(hits)} edge points over {length:.2f}px",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2009,9 +2207,9 @@ class HoughLinesTool(Tool):
                       branch="found" if lines else "not_found", status="ok" if lines else "ng", message=f"{len(lines)} segments")
 
 
-__all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "sector_thetas", "radial_edge_points", "fit_circle_kasa", "fit_circle_lsq", "fit_circle_ransac", "fit_circle_points", "fit_line_ransac", "POLARITY_OPTIONS"]
+__all__ = ["Crop", "to_gray", "read_asset_image", "clear_asset_cache", "find_edges_1d", "find_edges_rows", "pick_edge", "caliper_points", "sector_thetas", "radial_edge_points", "polyline_geometry", "fit_circle_kasa", "fit_circle_lsq", "fit_circle_ransac", "fit_circle_points", "fit_line_ransac", "POLARITY_OPTIONS"]
 
 TOOLS = [
     TemplateMatchTool(), ShapeAlignTool(), FixtureRoiTool(), ImageFixtureTool(),
-    FindCircleTool(), FindLineTool(), FindRectangleTool(), FindQuadrilateralTool(), FindParallelLinesTool(), FindLinesMultiTool(), FindCirclesMatrixTool(), HoughCirclesTool(), HoughLinesTool(),
+    FindCircleTool(), FindLineTool(), PathExtractTool(), FindRectangleTool(), FindQuadrilateralTool(), FindParallelLinesTool(), FindLinesMultiTool(), FindCirclesMatrixTool(), HoughCirclesTool(), HoughLinesTool(),
 ]

@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：112 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1097 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：113 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 1106 項＋前端 148 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -158,6 +158,14 @@
 - `/board/:flowId` 掛在 RequireAuth 底下、AppShell 外（kiosk）；介面地圖用 `title` 而不是 `nav`。總覽頁的 `LiveInfo`／`FlowLiveMonitor` 也吃同一份設定。
 - `runner.compiled_for` 的快取鍵含流程自己的 `updated_at`：TransactionTestCase 重用流程 id 時不會拿到舊的編譯結果；
   跨執行緒跑 run 的測試在 setUp 先 `runner.forget(flow.id)` 清掉別的測試留下的統計。
+
+### 路徑提取（D6，`path_extract`，Codex 實作）
+- 直線用 `find_line`、圓弧用 `find_circle`／`fit_arc`，**任意折線或輪廓才用這顆**（沖壓件外緣、軟板邊、密封膠道）。路徑來源＝`roi`（重用既有的 `polygon`／`line` 形狀，**沒有新增 ROI 形狀**）或上游 `points` 埠，`closed` 可覆寫開放／封閉。
+- `roi.py` 新增兩個純函式：`polyline_points(points, closed)`（總長，略過零長度線段）與 `resample_polyline(...)`（`count>0` 優先於 `spacing`，封閉路徑不重複起點）；`locate.py` 的 `polyline_geometry` 把取樣點轉成「中心＋掃描方向＋切向＋位置」四個陣列後**交給既有 `caliper_series`**，不碰核心卡尺函式。
+- **法線＝切線 `(tx,ty)` 轉成 `(-ty,tx)`**，與 `line_geometry` 同一慣例；影像座標 y 向下時這就是畫面順時針 90°（向右的切線掃向下）。實測水平段切線角 0°、向下段 +90°。
+- 兩種 `mode`：`equal_interval`（點集＋每點切線角）／`edge_search`（每點法線方向一把卡尺，輸出邊緣點、有號偏移、`missing`）。**參數命名的坑**：`mode` 已用於取樣方式，所以單邊／成對改叫 `edge_mode`（`mode=single/pair` 保留為相容別名）。
+- 退化輸入（單點、空點集、重合點）回長度 0 與空取樣，工具層走 `not_found`，純函式不丟例外。
+- 實測：L 形折線總長與取樣間距完全準確；亮塊上緣找邊誤差 0.5 px（像素中心慣例）；整段挖空時該段索引正確進 `missing`。
 
 ### 卡尺增強與邊緣趨勢（D5，Codex 實作）
 - `caliper` 加 `max_results`／`sort_by`（score／position／contrast）與新輸出埠 `edges`（候選清單，每筆帶 position／width／contrast／score）；**`max_results=1` 且預設排序與權重時走既有 `pick_pair` 舊路徑，結果一字不變**（bench 鎖住）。
