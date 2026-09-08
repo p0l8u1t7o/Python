@@ -17,6 +17,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.polar",
     "apps.vision.tools.builtin.photometric",
     "apps.vision.tools.builtin.locate",
+    "apps.vision.tools.builtin.align",
     "apps.vision.tools.builtin.shape",
     "apps.vision.tools.builtin.region",
     "apps.vision.tools.builtin.measure",

@@ -107,6 +107,15 @@ HSV 範圍遮罩：H 0～179（紅色跨 0：用 0～10 或 170～179 兩段）�
 ## shape_align
 定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。
 
+## align_offset
+對位偏移：把教導姿態與目前姿態的差算成「要修正多少」。`shape_align` 是給 ROI 跟隨用的，
+這一顆是**給機構走的**——多了取料點補償與世界／機構座標輸出。
+`mode`：point（單點＋角度，最常用）／point_set（2～8 組對應點做剛體解，兩個定位孔就夠）／
+grab（教導時的取料點跟著轉，輸出 `abs_x/abs_y/abs_angle` 就是手臂要走的點）／line（線的中點與方向）。
+姿態來源與 shape_align 同一套：`matches` 優先，其次 a/b/c 三個數值埠。上游這次沒找到就走 `not_found` 分支，不會丟例外。
+選了 `calibration`（手眼標定資產）才會多出 `world_*`；沒選就只給像素。
+輸出的 `transform` 與 shape_align 同格式，可以直接接到任何工具的位置修正埠。
+
 ## image_fixture
 把整張影像轉回教導時的姿態（`fixture_roi` 的另一種做法）：`transform` 接 `shape_align`，輸出的影像給下游所有步驟。
 **跟隨區域與跟隨影像二選一**——區域少就用位置修正埠（每個有 ROI 的工具都有 `_transform`，接上去就好），

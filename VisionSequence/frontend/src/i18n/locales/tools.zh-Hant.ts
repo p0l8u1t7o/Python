@@ -2451,6 +2451,36 @@ export default {
     },
     ports: { image: "影像", mean_before: "校正前平均", mean_after: "校正後平均" },
   },
+  align_offset: {
+    label: "對位偏移",
+    description: "把教導時的位置與現在的位置一比，算出機構要修正多少。定位補正是給區域跟隨用的，這一顆是給機構走的：多了取料點補償，選了手眼標定還會直接給機構座標。",
+    params: {
+      mode: {
+        label: "怎麼比",
+        options: {
+          point: "一個點加角度",
+          point_set: "好幾組對應點",
+          grab: "取料點補償",
+          line: "線的中點與方向",
+        },
+      },
+      ref_x: { label: "教導 X", help: "教導時工件所在的位置（試執行一次就可以把現在的值填進來）。" },
+      ref_y: { label: "教導 Y" },
+      ref_angle: { label: "教導角度", help: "角度正值＝畫面順時針。" },
+      ref_points: { label: "教導點集", help: "2～8 組 [x, y]，順序要與現在的點集一致。只解旋轉與平移，不含縮放。" },
+      grab_x: { label: "教導取料 X", help: "教導時手臂抓在工件的哪一點。工件轉了，這一點會跟著轉。" },
+      grab_y: { label: "教導取料 Y" },
+      calibration: { label: "手眼標定", help: "選填。選了才會多給機構座標；沒選就只有像素。" },
+    },
+    ports: {
+      image: "影像", matches: "定位結果", a: "目前 X", b: "目前 Y", c: "目前角度",
+      points: "目前點集", line: "目前直線",
+      dx: "X 偏移", dy: "Y 偏移", dtheta: "角度偏移", transform: "位置修正",
+      abs_x: "絕對 X（像素）", abs_y: "絕對 Y（像素）", abs_angle: "絕對角度（影像）",
+      world_x: "機構 X", world_y: "機構 Y", world_angle: "機構角度",
+      found: "算出來了", not_found: "沒有目前位置",
+    },
+  },
   shape_align: {
     label: "定位補正",
     description: "比較目前定位結果與教導時的參考位置，算出平移／旋轉量（dx, dy, dθ），供 ROI 跟隨使用。",
