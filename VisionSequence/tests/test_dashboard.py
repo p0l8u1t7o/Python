@@ -112,6 +112,49 @@ class DashboardValidationTests(TestCase):
         self.assertEqual(dashboard.flows_of(raw), {3, 4, 5})
 
 
+class WidgetRoundTripTests(SimpleTestCase):
+    """每一種 widget 存進去都要讀得回來。
+
+    真實災情：`validate` 把 `clock.timezone` 補成空字串存檔，`effective` 又把空字串judge 成
+    「必填沒填」而丟掉整個 widget——使用者在設計端放了時鐘，存檔成功，回到畫面卻不見了。
+    """
+
+    @staticmethod
+    def _sample(kind, constraint):
+        return {
+            "text": "x", "int": 1, "number": 1.0, "bool": True, "any": 1, "flow_id": 1,
+            "color": "#112233", "choice": (constraint or ("",))[0], "children": [],
+            "tabs": [], "columns": ["value"], "rules": [], "image_items": [],
+        }[kind]
+
+    def _widget(self, index, typ):
+        props = {name: self._sample(kind, constraint)
+                 for name, (kind, default, constraint) in dashboard.WIDGET_PROPS[typ].items()
+                 if default is dashboard._REQUIRED}
+        return {"id": f"w{index}", "type": typ, "cell": "only", "props": props}
+
+    def test_every_widget_type_survives_validate_then_effective(self):
+        layout = {
+            "rows": 1, "cols": 1,
+            "cells": [{"id": "only", "row": 1, "col": 1, "row_span": 1, "col_span": 1}],
+            "widgets": [self._widget(i, typ) for i, typ in enumerate(dashboard.WIDGET_TYPES)],
+        }
+        saved = dashboard.validate(copy.deepcopy(layout))
+        self.assertEqual([w["type"] for w in saved["widgets"]], list(dashboard.WIDGET_TYPES))
+        shown = dashboard.effective(copy.deepcopy(saved))
+        self.assertEqual([w["type"] for w in shown["widgets"]], list(dashboard.WIDGET_TYPES))
+        # 讀回來的版面要能原樣再存回去（設計端與 JSON 編輯器走的都是這條路）
+        self.assertEqual([w["type"] for w in dashboard.validate(copy.deepcopy(shown))["widgets"]], list(dashboard.WIDGET_TYPES))
+
+    def test_optional_text_may_be_empty_but_required_text_may_not(self):
+        base = {"rows": 1, "cols": 1, "cells": [{"id": "only", "row": 1, "col": 1, "row_span": 1, "col_span": 1}]}
+        clock = {**base, "widgets": [{"id": "c", "type": "clock", "cell": "only", "props": {"timezone": "", "format": "HH:mm"}}]}
+        self.assertEqual(len(dashboard.validate(copy.deepcopy(clock))["widgets"]), 1)
+        self.assertEqual(len(dashboard.effective(copy.deepcopy(clock))["widgets"]), 1)
+        text = {**base, "widgets": [{"id": "t", "type": "text", "cell": "only", "props": {"template": ""}}]}
+        with self.assertRaises(dashboard.DashboardError):
+            dashboard.validate(copy.deepcopy(text))
+
 class DashboardApiTests(TestCase):
     def setUp(self):
         self.flow = Flow.objects.create(name="dash-flow", graph={"nodes": [], "edges": []})

@@ -304,7 +304,10 @@ def _props(wid: str, typ: str, raw: Any, *, strict: bool) -> dict[str, Any]:
                 raise DashboardError(f"Widget '{wid}' missing props.{name}")
             out[name] = copy.deepcopy(default)
             continue
-        out[name] = _check_value(raw[name], f"Widget '{wid}' props.{name}", kind, constraint, strict=strict)
+        # 必填與否看 spec 的預設值：預設是空字串的欄位（時鐘時區、群組標題）送空字串是合法的，
+        # 否則 validate 會把它補成 ""，effective 再把整個 widget 判成壞的丟掉（存了就消失）。
+        out[name] = _check_value(raw[name], f"Widget '{wid}' props.{name}", kind, constraint,
+                                 strict=strict, required=default is _REQUIRED)
     return out
 
 
@@ -330,7 +333,7 @@ def _source(wid: str, raw: Any, *, strict: bool) -> dict[str, Any]:
     return out
 
 
-def _check_value(value: Any, field: str, kind: str, constraint: Any, *, strict: bool) -> Any:
+def _check_value(value: Any, field: str, kind: str, constraint: Any, *, strict: bool, required: bool = True) -> Any:
     if kind == "any":
         return value
     if kind == "bool":
@@ -358,7 +361,7 @@ def _check_value(value: Any, field: str, kind: str, constraint: Any, *, strict: 
             raise DashboardError(f"{field} must be a #rrggbb color")
         return value
     if kind == "text":
-        return _text(value, field, required=True, strict=strict)
+        return _text(value, field, required=required, strict=strict)
     if kind == "children":
         return _string_list(value, field)
     if kind == "columns":

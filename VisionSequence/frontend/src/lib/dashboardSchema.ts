@@ -199,7 +199,9 @@ function checkValue(value: unknown, path: string, field: string, spec: Dashboard
   if (spec.kind === 'flow_id' && value !== null && !positiveInt(value)) errors.push({ path, message: `${field} must be a positive integer`, widgetId })
   if (spec.kind === 'choice' && !spec.choices?.includes(String(value))) errors.push({ path, message: `${field} must be one of ${(spec.choices ?? []).join(', ')}`, widgetId })
   if (spec.kind === 'color' && (typeof value !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(value))) errors.push({ path, message: `${field} must be a #rrggbb color`, widgetId })
-  if (spec.kind === 'text' && !text(value)) errors.push({ path, message: `${field} must be a string`, widgetId })
+  // 選填的文字屬性（時鐘時區、群組標題）允許空字串：後端存檔時本來就會把它補成空字串，
+  // 讀回來再存回去不該被自己的驗證擋下來（設計端會顯示「must be a string」而不送出）。
+  if (spec.kind === 'text' && (spec.required ? !text(value) : typeof value !== 'string')) errors.push({ path, message: `${field} must be a string`, widgetId })
   if (spec.kind === 'children') checkStringList(value, path, field, errors, widgetId, false)
   if (spec.kind === 'columns') checkStringList(value, path, field, errors, widgetId, true)
   if (spec.kind === 'tabs') checkTabs(value, path, field, errors, widgetId)
