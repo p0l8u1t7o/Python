@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：95 個內建工具（8 類）、229 個 API 端點、31 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：95 個內建工具（8 類）、233 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端 780 項＋前端 102 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -252,7 +252,8 @@
 - **非同步結果**：`runner.submit` 把 run_id 掛在回傳的 Future 上（`future.run_id`）並登記進 `FlowRuntime.pending`；`GET /runs/{id}` 對還沒跑完的 run 回 `status=queued|running`（不是 404）。結果進 `recent` 後 pending 就移除。
 - **排隊上限**：`MAX_QUEUE_PER_FLOW`（預設 16）是「同一流程可同時等待的觸發數」——每個流程一次只跑一個 run（`rt.lock`），多站共用同一流程時請求會排隊。上限與現況在 `capacity()` 與 TCP `STATUS <flow>`。
 - **`timeout_s`** 是外部呼叫者的等待上限（逾時 504 `run_timeout` 並附 run_id，執行不中止）；沒指定才用 `RUN_TIMEOUT_S + 5` 讓引擎自己的逾時先觸發。`include_images` 已更名 `include_nodes`（舊名保留），影像永遠走 `GET /images/{ref}`。
-- **Modbus 觸發**（`apps/comm/triggers.py`）：連線設定 `trigger_address`／`trigger_flow`／`trigger_interval_ms`／`trigger_mode`（rising｜nonzero）／`trigger_clear`／`trigger_done_address`／`trigger_recipe`；一條連線一條輪詢執行緒，讀到非零就 `runner.run_sync(trigger="modbus")`，跑前清旗標、跑後設完成位址，PLC 斷線指數退避。**從站模式沒有這一層的話，PLC 寫旗標不會有任何事發生。** 狀態在 `connection_info` 的 `trigger` 欄。
+- **觸發規則表**（`apps/comm/rules.py`＋`triggers.py`）：一條連線一張表（`Connection.config["triggers"]` 陣列，`trigger_interval_ms` 是整條連線的輪詢間隔），每一列是「來源 → 動作」。來源 `value`（位址＋`rising`／`falling`／`change`／`nonzero`／`equal`／`not_equal`／`range`；除了 `nonzero` 是位準，其餘都是**條件成立的那一刻**觸發一次）或 `text`（`exact`／`contains`／`prefix`／`regex`，`capture` 給抓到的內容一個名字，regex 的具名群組自動帶進去）。動作 `run_flow`／`activate_recipe`／`set_variable`／`lock`／`unlock`。**舊的扁平 `trigger_*` 由 `rules.from_legacy` 包成單一規則**（既有站台不必改設定；`api._shown_config` 顯示成規則表，一存檔就升級）。`TriggerLoop` 每輪只做**一次 `read()`** 把整張表要看的位址讀完，跑前清旗標（`clear`）、跑後設完成位址（`done`），PLC 斷線指數退避；`fire()` 的 `find_flow` 可注入（迴圈用有快取的版本）。**從站模式沒有這一層的話，PLC 寫旗標不會有任何事發生。** 狀態在 `connection_info` 的 `trigger` 欄（頂層是第一條規則，`rules[]` 逐條的觸發次數）。
+- **站台接收規則**（`StationRules` 單列，migration comm/0002）：TCP 指令埠收到「不是指令」的一行時比對（條碼槍直接送料號、舊上位機送一行自訂訊息）。`tcp_server.match_rules` 掛在 `handle_command` 的 unknown_command 之前，**在 `AUTH` 之後**（規則不會把有金鑰的站台開放出去）；有 `reply` 樣板就走既有的 `{"_raw"}` 通道回純文字，沒有就回一則 JSON。`rules.station_rules()` 有記憶體快取（每一行都要比對），`save_station_rules` 作廢它。API `GET/PATCH /vision/integration/rules`（改的人要 connections 功能，有稽核 `rules.update`）。前端 `components/integration/RuleTable.tsx` 兩處共用（連線表單的 `triggers` 欄位、TCP 頁的「接收規則」分頁）。新增動作＝`rules.ACTIONS` 加一筆＋`fire()` 分支＋三語系 `integration.rules.actions.<key>`＋`tests/test_rules.py` 案例。
 - **連線的自動啟動**：`Writer.listens=True`（從站）或有觸發設定的連線由 `writers.autostart()` 在 `manage.py serve` 啟動時開好、建立／修改時 `ensure_started()` 立刻開——以前要等有人按「測試」或流程跑過一次，伺服器重開後 PLC 就連不上。開不起來的原因存在 `_start_errors` 並出現在連線狀態的 `error`（埠被佔用最常見）。
 - **連線預先載入**：工具以 `Tool.connection_params` 宣告哪些參數是連線名稱，`prefetch_connections` 照這個掃（以前寫死 `write_modbus`，只讀不寫的流程拿不到連線會靜默降級）。新增會用連線的工具記得宣告。
 - **追蹤的噪音**：`Writer.read(..., quiet=True)` 成功不進追蹤（失敗照記）——觸發輪詢每秒幾十次，記下去會把真正的命令沖出 300 筆的環形緩衝。TraceLog 的箭頭：`←`＝direction in（外部送進來）、`→`＝out（平台送出去）。

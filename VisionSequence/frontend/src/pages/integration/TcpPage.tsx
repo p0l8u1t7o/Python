@@ -4,16 +4,18 @@
  */
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, ChevronDown, ChevronRight, ListChecks, Play, Plug, Send, Terminal } from 'lucide-react'
+import { Activity, ChevronDown, ChevronRight, ListChecks, Play, Plug, Send, SplitSquareHorizontal, Terminal } from 'lucide-react'
 
 import { CodeBlock, CopyButton, SectionTabs, connectHost, useSectionInfo } from './shared'
 import { ConnectionsSection } from '@/components/integration/ConnectionsSection'
+import { RuleTable } from '@/components/integration/RuleTable'
 import { TraceLog } from '@/components/integration/TraceLog'
 import { Badge, Button, Card, CardBody, CardHeader, LoadingState, TextInput } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
-import { useFlows, useTcpCommand } from '@/lib/queries'
+import { useFlows, useSaveStationRules, useStationRules, useTcpCommand } from '@/lib/queries'
+import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
-import type { IntegrationInfo, TcpResult } from '@/lib/types'
+import type { IntegrationInfo, TcpResult, TriggerRule } from '@/lib/types'
 
 const TCP_HISTORY_KEY = 'vs.tcpHistory'
 
@@ -38,6 +40,38 @@ const COMMANDS: { name: string; syntax: string; args: string[]; example: string;
   { name: 'LOCK', syntax: 'LOCK [reason="..."] [ttl=seconds]', args: ['reason', 'ttl'], example: 'LOCK reason="camera calibration" ttl=600', response: '{"ok": true, "lock": {"locked": true, "holder": "integrator", "reason": "camera calibration", "expires_at": "…"}}' },
   { name: 'UNLOCK', syntax: 'UNLOCK', args: [], example: 'UNLOCK', response: '{"ok": true, "lock": {"locked": false}}' },
 ]
+
+/** 站台接收規則：指令埠收到「不是指令」的一行時比對（條碼槍直接把料號送進來就是這一種）。 */
+function StationRulesCard() {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const auth = useAuth()
+  const query = useStationRules()
+  const save = useSaveStationRules()
+  const [draft, setDraft] = useState<TriggerRule[] | null>(null)
+  const canManage = auth.can('connections')
+  const rules = draft ?? query.data?.items ?? []
+  async function onSave() {
+    try {
+      await save.mutateAsync(rules)
+      setDraft(null)
+      toast.success(t('integration.rules.saved'))
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+  return (
+    <Card>
+      <CardHeader title={t('integration.rules.stationTitle')} description={t('integration.rules.stationHint')} />
+      <CardBody className="space-y-3">
+        {query.isPending ? <LoadingState /> : <RuleTable rules={rules} source="text" readOnly={!canManage} onChange={setDraft} />}
+        <div className="flex justify-end">
+          <Button variant="primary" disabled={!canManage || draft === null} loading={save.isPending} onClick={() => void onSave()} data-testid="station-rules-save">{t('common.save')}</Button>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
 
 function TcpCodesCard() {
   const { t } = useTranslation()
@@ -228,6 +262,7 @@ export function TcpPage() {
   return (
     <SectionTabs section="tcp" tabs={[
       { key: 'try', label: t('integration.sections.try'), icon: Send, content: <CommandExplorer info={info} /> },
+      { key: 'rules', label: t('integration.sections.rules'), icon: SplitSquareHorizontal, content: <StationRulesCard /> },
       { key: 'codes', label: t('integration.sections.codes'), icon: ListChecks, content: <TcpCodesCard /> },
       { key: 'connections', label: t('integration.sections.connections'), icon: Plug, content: <ConnectionsSection section="tcp" /> },
       { key: 'trace', label: t('integration.trace.title'), icon: Activity, content: <TraceLog channel="tcp" /> },

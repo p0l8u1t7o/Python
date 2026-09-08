@@ -10,14 +10,15 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Activity, Cable, Pencil, PenLine, Plug, Plus, Trash2 } from 'lucide-react'
 
+import { RuleTable } from '@/components/integration/RuleTable'
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyRow, ErrorState, IconButton, LoadingState, Modal, Select, Switch, TBody, THead, Table, Td, TextArea, TextInput, Th, Tr } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
 import { fetchConnectionState, useConnectionKinds, useConnectionMutations, useConnections, type ConnectionBody } from '@/lib/queries'
-import type { Connection, ConnectionOpResult } from '@/lib/types'
+import type { Connection, ConnectionOpResult, TriggerRule } from '@/lib/types'
 import { useAuth } from '@/providers/AuthProvider'
 import { useToast } from '@/providers/ToastProvider'
 
-const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'multiline' | 'list'> = {
+const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'multiline' | 'list' | 'rules'> = {
   host: 'text',
   port: 'number',
   unit_id: 'number',
@@ -31,19 +32,14 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'mul
   quality: 'number',
   channels: 'list',
   class: 'text',
-  trigger_address: 'text',
-  trigger_flow: 'text',
+  triggers: 'rules',
   trigger_interval_ms: 'number',
-  trigger_mode: 'select',
-  trigger_clear: 'boolean',
-  trigger_done_address: 'text',
-  trigger_recipe: 'text',
 }
 /** 觸發設定在表單裡自成一段（前面的欄位是連線本身，後面的是「誰來觸發檢測」）。 */
-const TRIGGER_FIELDS = new Set(['trigger_address', 'trigger_flow', 'trigger_interval_ms', 'trigger_mode', 'trigger_clear', 'trigger_done_address', 'trigger_recipe'])
+const TRIGGER_FIELDS = new Set(['triggers', 'trigger_interval_ms'])
 const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
-  modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
-  modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big', trigger_address: '', trigger_flow: '', trigger_interval_ms: 50, trigger_mode: 'rising', trigger_clear: true, trigger_done_address: '', trigger_recipe: '' },
+  modbus_tcp: { host: '127.0.0.1', port: 502, unit_id: 1, timeout_s: 2, word_order: 'big', triggers: [], trigger_interval_ms: 50 },
+  modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big', triggers: [], trigger_interval_ms: 50 },
   tcp_client: { host: '127.0.0.1', port: 9000, timeout_s: 2, template: '', newline: '\n', wait_reply: false },
   tcp_image: { host: '127.0.0.1', port: 9001, timeout_s: 2, encoding: 'jpeg', quality: 85 },
   plugin: { class: '' },
@@ -60,11 +56,8 @@ function ConfigField({ field, value, onChange }: { field: string; value: unknown
   if (type === 'select' && field === 'encoding') {
     return <Select label={label} value={String(value ?? 'jpeg')} onChange={(e) => onChange(e.target.value)} options={['jpeg', 'png', 'raw'].map((v) => ({ value: v, label: t(`connections.encodings.${v}`) }))} />
   }
-  if (type === 'select' && field === 'trigger_mode') {
-    return <Select label={label} value={String(value ?? 'rising')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'rising', label: t('connections.triggerModes.rising') }, { value: 'nonzero', label: t('connections.triggerModes.nonzero') }]} />
-  }
-  if (field === 'trigger_address' || field === 'trigger_flow') {
-    return <TextInput label={label} hint={t(`connections.fields.${field}Hint`)} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+  if (type === 'rules') {
+    return <RuleTable rules={Array.isArray(value) ? (value as TriggerRule[]) : []} source="value" onChange={(rules) => onChange(rules)} />
   }
   if (type === 'multiline') return <TextArea label={label} hint={t('connections.fields.templateHint')} rows={2} className="font-mono text-xs" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
   if (type === 'list') {
@@ -257,7 +250,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
               <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
             ))}
             {(fieldsFor.get(body.kind) ?? []).some((f) => TRIGGER_FIELDS.has(f)) ? (
-              <details className="rounded border border-line" open={Boolean(body.config.trigger_address)} data-testid="conn-trigger">
+              <details className="rounded border border-line" open={Array.isArray(body.config.triggers) && body.config.triggers.length > 0} data-testid="conn-trigger">
                 <summary className="cursor-pointer px-3 py-2 text-sm font-medium">{t('connections.trigger.title')}</summary>
                 <div className="space-y-3 border-t border-line p-3">
                   <p className="text-xs text-muted">{t('connections.trigger.hint')}</p>

@@ -44,7 +44,7 @@ export const UI_PAGES: UiPage[] = [
   { route: '/integration/http', id: 'integration_http', title: 'integration.tabs.http', feature: 'integration', help: '/integration',
     tabs: [{ key: 'try', label: 'integration.sections.try' }, { key: 'format', label: 'integration.sections.format' }, TRACE] },
   { route: '/integration/tcp', id: 'integration_tcp', title: 'integration.tabs.tcp', feature: 'integration', help: '/integration',
-    tabs: [{ key: 'try', label: 'integration.sections.try' }, { key: 'codes', label: 'integration.sections.codes' }, { key: 'connections', label: 'integration.sections.connections' }, TRACE], actions: ['connections.create'] },
+    tabs: [{ key: 'try', label: 'integration.sections.try' }, { key: 'rules', label: 'integration.sections.rules' }, { key: 'codes', label: 'integration.sections.codes' }, { key: 'connections', label: 'integration.sections.connections' }, TRACE], actions: ['connections.create'] },
   { route: '/integration/events', id: 'integration_events', title: 'integration.tabs.events', feature: 'integration', help: '/integration' },
   { route: '/integration/modbus-server', id: 'integration_modbus_server', title: 'integration.tabs.modbusServer', feature: 'integration', help: '/integration',
     tabs: [{ key: 'connections', label: 'integration.sections.connections' }, { key: 'guide', label: 'integration.sections.guide' }, TRACE], actions: ['connections.create'] },

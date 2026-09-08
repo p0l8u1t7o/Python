@@ -10,7 +10,7 @@
 | 後端 | Django 5.1 + django-ninja + OpenCV／numpy／scipy（可選 onnxruntime、torch/ultralytics、anthropic） |
 | 前端 | React 19 + Vite + TypeScript + Tailwind v4 + @xyflow/react（React Flow）+ TanStack Query + i18next |
 | 執行 | 單一行程：uvicorn（HTTP + SSE）＋ TCP 介面同行程；資料流 DAG 引擎在執行緒池內跑，影像以 numpy 在記憶體傳遞 |
-| 規模 | 95 個內建工具、229 個 API 端點、31 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 780 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
+| 規模 | 95 個內建工具、233 個 API 端點、32 個資料模型、20 個前端頁面（另 7 個整合子頁）、19 頁文件、後端 780 項＋前端 102 項自動測試；擷取端桌面程式（vscapture，PySide6） |
 
 ---
 
@@ -155,6 +155,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - SSE：即時事件串流；總覽頁可觀看任一流程的即時影像與結果。
 - Modbus TCP／TCP 文字／模擬 DIO 主動輸出（`write_modbus` 工具，失敗降級不停線）。
 - **Modbus 主站與從站**：`modbus_tcp` 平台連到 PLC 去讀寫；`modbus_server` 平台開埠（預設 5020）讓 PLC 當主站來讀寫平台的暫存器。流程工具 `write_modbus`（寫判定／量測值）與 `read_modbus`（讀料號／觸發旗標，可併進具名輸出）。
+- **觸發規則表**：一條連線一張表，每一列是「設備做了什麼 → 平台做什麼」。來源是位址的值（變成非零／變回零／值變了／等於／進入範圍）或收到的一行文字（整行等於／包含／開頭是／樣式），動作是執行流程、換配方、存變數、鎖住或解除硬體。一輪只讀一次，十條規則與一條一樣輕。舊的單一觸發設定照樣讀得懂。
+- **接收規則**：條碼機或舊上位機只送一行文字（不是指令）也能觸發——在「整合 ▸ TCP ▸ 接收規則」比對，抓到的料號可以帶進流程，回覆可設成純文字。
 - **整合頁**：每一種整合方式都是獨立頁面（`/integration/http|tcp|events|modbus|capture`），側欄可展開成樹狀；**連線由用到它的整合頁自己管理**（Modbus 頁管 Modbus 主站／從站／模擬 DIO，TCP 頁管上位機 TCP 與外掛輸出），回傳格式與錯誤碼在 HTTP 頁、TCP 失敗碼在 TCP 頁；每頁下方有**命令與結果**即時追蹤（時間、方向、耗時、完整內容），便於除錯。
 - 引擎鎖定：整合方以 HTTP（`POST /vision/lock`）或 TCP（`LOCK`／`UNLOCK`）鎖定，使用者只能編輯不能執行；鎖定期間網頁上方橫幅顯示持有者與原因。詳見 `docs/automation.html`、`docs/modbus.html`。
 

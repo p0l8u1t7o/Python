@@ -9,6 +9,8 @@ DELETE /vision/connections/{id}             管理員
 POST   /vision/connections/{id}/test        管理員：重新連線並回 info（失敗回 ok=false 與錯誤）
 POST   /vision/connections/{id}/write       管理員：手動寫一筆 {"values": {"coil:0": 1}}
 GET    /vision/connections/{id}/state       讀回 ?addresses=a,b
+GET    /vision/integration/rules           站台接收規則（TCP 指令埠收到不是指令的一行時比對）
+PATCH  /vision/integration/rules           管理員：整份取代
 
 從站（`modbus_server`）與設了 `trigger_address` 的連線在建立／修改後會立刻開起來，
 伺服器啟動時也會自動開（`writers.autostart()`，由 `manage.py serve` 呼叫）。
@@ -23,7 +25,7 @@ from django.http import HttpRequest
 from ninja import Router, Schema
 
 from apps.accounts.security import principal, require_feature
-from apps.comm import writers
+from apps.comm import rules as rulemod, writers
 from apps.comm.models import Connection
 from apps.core import audit
 from apps.core.errors import Conflict, ValidationError
@@ -50,12 +52,31 @@ class WriteIn(Schema):
     timeout_s: float | None = None
 
 
+class RulesIn(Schema):
+    rules: list[dict[str, Any]]
+
+
+#: 舊的扁平觸發設定；顯示時換成規則表，使用者一存檔就升級（`rules.rules_of` 兩種都讀得懂）。
+_LEGACY_TRIGGER_KEYS = ("trigger_address", "trigger_flow", "trigger_mode", "trigger_clear", "trigger_done_address", "trigger_recipe")
+
+
+def _shown_config(conn: Connection) -> dict[str, Any]:
+    config = dict(conn.config or {})
+    if "triggers" not in config:
+        legacy = rulemod.from_legacy(config)
+        if legacy:
+            config["triggers"] = [r.as_dict() for r in legacy]
+            for key in _LEGACY_TRIGGER_KEYS:
+                config.pop(key, None)
+    return config
+
+
 def _out(conn: Connection) -> dict[str, Any]:
     return {
         "id": conn.id,
         "name": conn.name,
         "kind": conn.kind,
-        "config": conn.config or {},
+        "config": _shown_config(conn),
         "is_enabled": conn.is_enabled,
         "status": writers.connection_info(conn),
         "created_at": conn.created_at.isoformat(),
@@ -65,6 +86,14 @@ def _out(conn: Connection) -> dict[str, Any]:
 
 def _check_kind(kind: str, config: dict[str, Any]) -> None:
     writers._resolve_class(kind, config)  # 未知 kind 直接 422
+
+
+def _clean(config: dict[str, Any] | None) -> dict[str, Any]:
+    """存檔前把觸發規則表正規化（壞掉的列丟掉，不讓設錯的一列害整條連線開不起來）。"""
+    config = dict(config or {})
+    if "triggers" in config:
+        config["triggers"] = rulemod.sanitize(config.get("triggers"))
+    return config
 
 
 @router.get("/connections/kinds")
@@ -88,7 +117,7 @@ def create_connection(request: HttpRequest, payload: ConnectionIn):
     _check_kind(payload.kind, payload.config)
     try:
         with transaction.atomic():
-            conn = Connection.objects.create(name=name, kind=payload.kind, config=payload.config, is_enabled=payload.is_enabled)
+            conn = Connection.objects.create(name=name, kind=payload.kind, config=_clean(payload.config), is_enabled=payload.is_enabled)
     except IntegrityError:
         raise Conflict("A connection with that name already exists", code="connection_name_taken") from None
     writers.ensure_started(conn)  # 從站與觸發輪詢不必等到有人按「測試」
@@ -112,7 +141,7 @@ def patch_connection(request: HttpRequest, connection_id: int, payload: Connecti
     if payload.kind is not None:
         conn.kind = payload.kind
     if payload.config is not None:
-        conn.config = payload.config
+        conn.config = _clean(payload.config)
     if payload.is_enabled is not None:
         conn.is_enabled = payload.is_enabled
     _check_kind(conn.kind, conn.config or {})
@@ -173,3 +202,25 @@ def connection_state(request: HttpRequest, connection_id: int, addresses: str = 
         return {"ok": True, "values": writer.read(wanted) if wanted else {}, "info": writer.info()}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)[:500]}
+
+
+# ---------------------------------------------------------------------------
+# 站台接收規則（TCP 指令埠）
+# ---------------------------------------------------------------------------
+@router.get("/integration/rules")
+def list_station_rules(request: HttpRequest):
+    """站台層的接收規則：TCP 指令埠收到「不是指令」的一行時比對這一張表。"""
+    principal(request)
+    from apps.comm.models import StationRules
+
+    row = StationRules.objects.filter(pk=1).first()
+    return {"items": row.rules if row else [], "updated_at": row.updated_at.isoformat() if row else ""}
+
+
+@router.patch("/integration/rules")
+def save_station_rules(request: HttpRequest, payload: RulesIn):
+    """整份取代（規則表在畫面上是一張表，逐列 PATCH 只會讓前端更難寫）。"""
+    require_feature(request, "connections")
+    saved = rulemod.save_station_rules(payload.rules)
+    audit.record(request, "rules.update", target_type="station", summary=f"{len(saved)} rules", detail={"rules": saved})
+    return {"items": saved}

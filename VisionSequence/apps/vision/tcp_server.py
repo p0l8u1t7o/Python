@@ -201,12 +201,52 @@ def handle_command(line: str) -> dict[str, Any]:
                 "run_id": report.id,
                 "error": report.error,
             }
+        matched = match_rules(line)
+        if matched is not None:  # 不是指令的一行：交給站台接收規則（條碼槍直接送料號就是這一種）
+            return matched
         return {"ok": False, "error": f"Unknown command {cmd}", "code": "unknown_command"}
     except APIError as exc:
         return {"ok": False, "error": exc.message, "code": exc.code}
     except Exception as exc:  # noqa: BLE001
         log.exception("TCP 指令失敗：%s", line)
         return {"ok": False, "error": repr(exc), "code": "internal_error"}
+
+
+def match_rules(line: str) -> dict[str, Any] | None:
+    """不是指令的一行 → 站台接收規則（`apps/comm/rules.py`）。沒有規則相符回 None。
+
+    規則可以帶回覆樣板：有樣板就回純文字（走既有的 `{"_raw"}` 通道，設備讀不了 JSON 也接得上），
+    沒有就回一則 JSON 說做了什麼。動作失敗回 `code: "rule_failed"`，設備才診斷得出是規則設錯。
+    """
+    from apps.comm import rules as rulemod
+
+    text = (line or "").strip()
+    if not text:
+        return None
+    for rule in rulemod.station_rules():
+        captured = rulemod.match_text(rule, text)
+        if captured is None:
+            continue
+        try:
+            outcome = rulemod.fire(rule, {"text": text, **captured}, trigger="tcp")
+        except Exception as exc:  # noqa: BLE001 — 規則設錯不該讓連線斷掉
+            log.warning("接收規則失敗（%s）：%s", rule.label(), exc)
+            return {"ok": False, "error": str(exc)[:300], "code": "rule_failed", "rule": rule.label()}
+        if rule.reply:
+            outputs = outcome.get("outputs") or {}
+            values = {
+                "text": text, **captured, **outputs,
+                "status": outcome.get("status", ""), "run_id": outcome.get("run_id", ""),
+                "judge": outputs.get("judge", str(outcome.get("status", "")).upper()),
+            }
+            payload = rulemod.render(rule.reply, values)
+            return {"_raw": payload if payload.endswith(("\n", "\r")) else payload + "\n"}
+        return {
+            "ok": bool(outcome.get("ok", True)), "rule": rule.label(), "action": rule.action,
+            "status": outcome.get("status", ""), "run_id": outcome.get("run_id", ""),
+            "outputs": outcome.get("outputs", {}), "summary": outcome.get("summary", ""),
+        }
+    return None
 
 
 def tcp_secret() -> str:

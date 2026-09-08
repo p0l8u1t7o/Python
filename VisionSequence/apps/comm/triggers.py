@@ -1,18 +1,22 @@
-"""Modbus 觸發：PLC 寫一個旗標位址，平台就跑一次流程。
+"""觸發輪詢：設備寫一個位址，平台就照規則表做事。
 
 從站（`modbus_server`）模式下，PLC 是主站——它只會「寫暫存器」，不會呼叫我們的 HTTP／TCP。
 沒有這一層的話，PLC 把觸發旗標寫進來也不會有任何事發生，整條線只能改用連續模式輪詢
 （每一輪都取像，白白吃掉相機頻寬與 CPU）。主站（`modbus_tcp`）模式同樣可用：輪詢 PLC 自己的
 暫存器當觸發源。
 
-握手（`trigger_clear` 與 `trigger_done_address` 都是選填）：
+**一條連線一張規則表**（`apps/comm/rules.py`）：每一列是「哪個位址怎麼變 → 做什麼」，
+所以同一台控制器可以一個位址觸發檢測、另一個位址換配方、再一個位址鎖住硬體。
+舊的扁平 `trigger_*` 設定由 `rules.rules_of()` 包成單一規則，既有站台不必改設定。
+
+握手（每條規則各自的 `clear` 與 `done`，都是選填）：
 
     PLC:  trigger := 1
-    平台: 看到 → 清 trigger（trigger_clear）→ 跑流程 → 流程自己用「寫入 Modbus」送結果
-          → done := 1（trigger_done_address）
+    平台: 看到 → 清 trigger（clear）→ 跑流程 → 流程自己用「寫入 Modbus」送結果
+          → done := 1（done）
     PLC:  看到 done → 讀結果 → done := 0
 
-一條連線一條執行緒，只做「讀一個位址、必要時跑一次流程」；不碰執行緒池的熱路徑，
+一條連線一條執行緒，每輪只做一次 `read()` 把所有規則要看的位址一起讀回來；不碰執行緒池的熱路徑，
 流程本身照樣走 runner（統計、SSE、歷史都與其他觸發來源一致）。
 """
 
@@ -22,6 +26,8 @@ import logging
 import threading
 import time
 from typing import Any
+
+from apps.comm import rules as rulemod
 
 log = logging.getLogger(__name__)
 
@@ -34,132 +40,121 @@ MAX_BACKOFF_S = 5.0
 FLOW_REFRESH_S = 2.0
 
 
-def config_of(config: dict[str, Any]) -> dict[str, Any] | None:
-    """從連線設定挑出觸發設定；沒有 `trigger_address` 或 `trigger_flow` 就是沒開。"""
-    address = str(config.get("trigger_address") or "").strip()
-    flow = str(config.get("trigger_flow") or "").strip()
-    if not address or not flow:
+def settings_of(config: dict[str, Any]) -> dict[str, Any] | None:
+    """連線設定 → 輪詢設定；沒有任何「值」規則就是沒開（文字規則不需要輪詢）。"""
+    listed = [r for r in rulemod.rules_of(config or {}) if r.source == "value"]
+    if not listed:
         return None
     try:
-        interval = int(config.get("trigger_interval_ms") or DEFAULT_INTERVAL_MS)
+        interval = int((config or {}).get("trigger_interval_ms") or DEFAULT_INTERVAL_MS)
     except (TypeError, ValueError):
         interval = DEFAULT_INTERVAL_MS
-    mode = str(config.get("trigger_mode") or "rising").lower()
-    return {
-        "address": address,
-        "flow": flow,
-        "interval_ms": max(MIN_INTERVAL_MS, interval),
-        # rising＝0 變成非零才觸發（PLC 要自己清旗標或交給 trigger_clear）；
-        # nonzero＝只要讀到非零就一直觸發（旗標當「連續檢測中」用）。
-        "mode": "nonzero" if mode == "nonzero" else "rising",
-        "clear": bool(config.get("trigger_clear", True)),
-        "done": str(config.get("trigger_done_address") or "").strip(),
-        "recipe": str(config.get("trigger_recipe") or "").strip(),
-    }
+    return {"interval_ms": max(MIN_INTERVAL_MS, interval), "rules": listed}
 
 
 class TriggerLoop(threading.Thread):
-    """一條連線一個觸發迴圈。`writer` 只要有 `read()`／`write()` 就能用。"""
+    """一條連線一個輪詢迴圈。`writer` 只要有 `read()`／`write()` 就能用。"""
 
     def __init__(self, writer, settings: dict[str, Any]) -> None:
-        super().__init__(name=f"modbus-trigger-{writer.name or writer.kind}", daemon=True)
+        super().__init__(name=f"trigger-{writer.name or writer.kind}", daemon=True)
         self.writer = writer
         self.settings = settings
+        self.rules: list[rulemod.Rule] = list(settings["rules"])
         self.fired = 0
         self.errors = 0
         self.last_error = ""
         self.last_fired_at = 0.0
+        self._counts: dict[str, int] = {r.id: 0 for r in self.rules}
+        self._previous: dict[str, Any] = {}
         self._halt = threading.Event()
-        self._flow = None
-        self._flow_at = 0.0
+        self._flows: dict[str, tuple[Any, float]] = {}
 
     def stop(self) -> None:
         self._halt.set()
 
     def status(self) -> dict[str, Any]:
+        """連線狀態的 `trigger` 欄。第一條規則的位址與流程留在頂層，舊的整合端不用改。"""
+        first = self.rules[0]
         return {
-            "address": self.settings["address"], "flow": self.settings["flow"], "mode": self.settings["mode"],
+            "address": first.address, "flow": first.flow, "mode": first.mode,
             "interval_ms": self.settings["interval_ms"], "running": self.is_alive(), "fired": self.fired,
             "errors": self.errors, "last_error": self.last_error, "last_fired_at": self.last_fired_at,
+            "rules": [
+                {"id": r.id, "label": r.label(), "address": r.address, "mode": r.mode,
+                 "action": r.action, "flow": r.flow, "fired": self._counts.get(r.id, 0)}
+                for r in self.rules
+            ],
         }
 
     # -- 迴圈 ---------------------------------------------------------------
     def run(self) -> None:
-        address = self.settings["address"]
+        addresses = rulemod.watched_addresses(self.rules)
         interval = self.settings["interval_ms"] / 1000.0
-        rising = self.settings["mode"] == "rising"
-        last_on = False
         backoff = 0.0
         while not self._halt.wait(backoff or interval):
             try:
-                value = bool(self.writer.read([address], quiet=True).get(address))
+                values = self.writer.read(addresses, quiet=True)
                 backoff = 0.0
             except Exception as exc:  # noqa: BLE001 — PLC 斷線是常態，退避後繼續試
                 self.errors += 1
                 self.last_error = str(exc)[:200]
                 backoff = min(MAX_BACKOFF_S, max(interval * 4, (backoff or interval) * 2))
                 continue
-            fire = value and (not rising or not last_on)
-            last_on = value
-            if fire:
-                self._fire()
+            for rule in self.rules:
+                current = values.get(rule.address)
+                if rulemod.match_value(rule, self._previous.get(rule.address), current):
+                    self._fire(rule, current)
+            self._previous = dict(values)
 
-    def _fire(self) -> None:
+    def _fire(self, rule: rulemod.Rule, value: Any) -> None:
         from apps.vision import trace
 
         started = time.perf_counter()
-        settings = self.settings
         try:
-            if settings["clear"]:  # 先清旗標再跑，跑很久也不會被重複觸發
-                self.writer.write({settings["address"]: 0})
-            flow = self._resolve_flow()
-            if flow is None:
-                raise LookupError(f"Flow '{settings['flow']}' does not exist or is disabled")
-            report = self._run(flow)
+            if rule.clear:  # 先清旗標再做事，跑很久也不會被重複觸發
+                self.writer.write({rule.address: 0})
+                self._previous[rule.address] = 0
+            outcome = self._act(rule, {"trigger_value": value})
             self.fired += 1
+            self._counts[rule.id] = self._counts.get(rule.id, 0) + 1
             self.last_fired_at = time.time()
-            if settings["done"]:
-                self.writer.write({settings["done"]: 1})
+            if rule.done:
+                self.writer.write({rule.done: 1})
             trace.record(
-                "modbus", f"Trigger {settings['address']} -> {flow.name}: {report.status}", direction="in",
-                name=self.writer.name or self.writer.kind, ok=report.status != "failed",
-                ms=(time.perf_counter() - started) * 1000,
-                detail={"flow": flow.name, "run_id": report.id, "status": report.status, "outputs": report.outputs, "error": report.error},
+                "modbus", f"Trigger {rule.label()}: {outcome.get('summary', '')}".strip(), direction="in",
+                name=self.writer.name or self.writer.kind, ok=bool(outcome.get("ok", True)),
+                ms=(time.perf_counter() - started) * 1000, detail=outcome.get("detail"),
             )
         except Exception as exc:  # noqa: BLE001 — 觸發失敗只記錄，迴圈要活著
             self.errors += 1
             self.last_error = str(exc)[:200]
-            log.warning("Modbus 觸發失敗（%s）：%s", self.writer.name, self.last_error)
-            trace.record("modbus", f"Trigger {settings['address']} failed", direction="in", name=self.writer.name or self.writer.kind,
+            log.warning("觸發規則失敗（%s／%s）：%s", self.writer.name, rule.label(), self.last_error)
+            trace.record("modbus", f"Trigger {rule.label()} failed", direction="in", name=self.writer.name or self.writer.kind,
                          ok=False, ms=(time.perf_counter() - started) * 1000, detail={"error": self.last_error})
 
-    def _resolve_flow(self):
+    def _act(self, rule: rulemod.Rule, context: dict[str, Any]) -> dict[str, Any]:
+        """執行規則的動作（測試把這個換掉就不必真的跑流程）。"""
+        from django.db import close_old_connections
+
+        try:
+            return rulemod.fire(rule, context, trigger="modbus", find_flow=self._resolve_flow)
+        finally:
+            close_old_connections()
+
+    def _resolve_flow(self, ident: str):
         """流程列快取 FLOW_REFRESH_S 秒（PLC 每 50 ms 觸發也不會每次查 DB）。"""
         now = time.monotonic()
-        if self._flow is not None and now - self._flow_at < FLOW_REFRESH_S:
-            return self._flow
+        cached = self._flows.get(ident)
+        if cached is not None and now - cached[1] < FLOW_REFRESH_S:
+            return cached[0]
         from django.db import close_old_connections
 
-        from apps.vision.models import Flow
-
-        ident = self.settings["flow"]
         try:
-            qs = Flow.objects.filter(pk=int(ident)) if ident.isdigit() else Flow.objects.filter(name=ident)
-            self._flow = qs.filter(is_enabled=True).first()
+            flow = rulemod.find_flow(ident)
         finally:
             close_old_connections()
-        self._flow_at = now
-        return self._flow
-
-    def _run(self, flow):
-        from django.db import close_old_connections
-
-        from apps.vision.runner import runner
-
-        try:
-            return runner.run_sync(flow, trigger="modbus", recipe=self.settings["recipe"] or None)
-        finally:
-            close_old_connections()
+        self._flows[ident] = (flow, now)
+        return flow
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +165,8 @@ _loops: dict[int, TriggerLoop] = {}
 
 
 def sync(connection_id: int, writer, config: dict[str, Any]) -> TriggerLoop | None:
-    """依設定啟動／停止該連線的觸發迴圈；設定沒變就沿用現有的。回目前的迴圈。"""
-    settings = config_of(config or {})
+    """依設定啟動／停止該連線的輪詢迴圈；設定沒變就沿用現有的。回目前的迴圈。"""
+    settings = settings_of(config or {})
     with _lock:
         current = _loops.get(connection_id)
         if current is not None and current.is_alive() and settings == current.settings and current.writer is writer:
@@ -183,7 +178,7 @@ def sync(connection_id: int, writer, config: dict[str, Any]) -> TriggerLoop | No
             return None
         loop = _loops[connection_id] = TriggerLoop(writer, settings)
     loop.start()
-    log.info("Modbus 觸發已啟動：%s %s → 流程 %s", writer.name, settings["address"], settings["flow"])
+    log.info("觸發輪詢已啟動：%s（%s 條規則，每 %s ms）", writer.name, len(settings["rules"]), settings["interval_ms"])
     return loop
 
 

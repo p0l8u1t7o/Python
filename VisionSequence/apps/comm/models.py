@@ -22,3 +22,19 @@ class Connection(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class StationRules(models.Model):
+    """單列（id=1）：站台層的接收規則（`apps/comm/rules.py` 的文字規則）。
+
+    TCP 指令埠收到「不是指令」的一行時比對這一張表——條碼槍直接把料號送進來、
+    上位機送一行自訂訊息，都是這一種。規則屬於這一台站台而不是某條連線，
+    因為指令埠是站台開的，不是誰連出去的。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    rules = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "station rules"

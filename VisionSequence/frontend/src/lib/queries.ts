@@ -28,8 +28,8 @@ import type {
   DlSample,
   DlShape,
   DlSuggestion,
-  DlTrainJob,
   DlTrainerDef,
+  DlTrainJob,
   EngineLock,
   ExpectStatus,
   Feature,
@@ -63,6 +63,7 @@ import type {
   TcpResult,
   TemplateInstance,
   ToolCatalogue,
+  TriggerRule,
 } from './types'
 
 export const keys = {
@@ -860,6 +861,24 @@ export function useConnections(enabled = true) {
     enabled,
   })
 }
+
+/** 站台接收規則：TCP 指令埠收到「不是指令」的一行時比對這一張表。 */
+export function useStationRules(enabled = true) {
+  return useQuery({
+    queryKey: ['station-rules'],
+    queryFn: () => api.get<{ items: TriggerRule[] }>('/vision/integration/rules'),
+    enabled,
+  })
+}
+
+export function useSaveStationRules() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (rules: TriggerRule[]) => api.patch<{ items: TriggerRule[] }>('/vision/integration/rules', { rules }),
+    onSuccess: (data) => client.setQueryData(['station-rules'], data),
+  })
+}
+
 
 export function useConnectionKinds() {
   const { i18n } = useTranslation()

@@ -112,6 +112,10 @@ describe('pages render (smoke)', () => {
     fireEvent.click(screen.getByTestId('tcp-cmd-RUN').querySelector('button')!)
     expect(screen.getByTestId('tcp-try')).toBeInTheDocument()
     expect(screen.getByText('RUN <flow> [key=value ...] [fmt=<output>]')).toBeInTheDocument()
+    // 接收規則分頁：不是指令的一行也能觸發（規則來自假後端）
+    fireEvent.click(await screen.findByRole('tab', { name: 'Receive rules' }))
+    expect(await screen.findByTestId('rule-0')).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/^SCAN/)).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('tab', { name: 'Commands and results' }))
     expect(await screen.findByTestId('trace-rows-tcp')).toHaveTextContent('RUN 1')  // 假後端的追蹤紀錄
     const { ModbusServerPage } = await import('@/pages/integration/ModbusPage')

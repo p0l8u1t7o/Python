@@ -868,7 +868,7 @@ def should_autostart(conn) -> bool:
         cls = _resolve_class(conn.kind, conn.config or {})
     except Exception:  # noqa: BLE001
         return False
-    return bool(conn.is_enabled and (getattr(cls, "listens", False) or triggers.config_of(conn.config or {})))
+    return bool(conn.is_enabled and (getattr(cls, "listens", False) or triggers.settings_of(conn.config or {})))
 
 
 def ensure_started(conn) -> None:
@@ -945,8 +945,9 @@ def get_connection(connection_id: int):
     return conn
 
 
-#: 兩種 Modbus 連線共用的觸發設定（見 apps/comm/triggers.py）。
-TRIGGER_FIELDS = ["trigger_address", "trigger_flow", "trigger_interval_ms", "trigger_mode", "trigger_clear", "trigger_done_address", "trigger_recipe"]
+#: 觸發規則表（`triggers` 是規則陣列，見 apps/comm/rules.py）；`trigger_interval_ms` 是整條連線的輪詢間隔。
+#: 舊的扁平 `trigger_address`／`trigger_flow`… 仍讀得到（`rules.from_legacy`），但表單只給規則表。
+TRIGGER_FIELDS = ["triggers", "trigger_interval_ms"]
 _MODBUS_MASTER_FIELDS = ["host", "port", "unit_id", "timeout_s", "word_order"]
 _MODBUS_SLAVE_FIELDS = ["host", "port", "unit_id", "size", "word_order"]
 

@@ -386,6 +386,14 @@
      }
     },
     {
+     "key": "rules",
+     "names": {
+      "en": "Receive rules",
+      "zh-Hant": "接收規則",
+      "zh-Hans": "接收规则"
+     }
+    },
+    {
      "key": "codes",
      "names": {
       "en": "Failure codes",

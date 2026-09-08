@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html" aria-current="page">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Triggering: the master writes a flag and the platform inspects</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#roles">0. Two roles: client and server</a></li><li><a href="#kinds">1. Connection kinds and their config</a></li><li><a href="#trigger">1-1. Rules: what the equipment does, what the platform does</a></li><li><a href="#address">2. Address format (modbus_tcp)</a></li><li><a href="#tool">3. The flow tools: write_modbus, read_modbus and send_image</a><ul><li><a href="#read-tool">3-1. Reading Modbus (read_modbus)</a></li></ul></li><li><a href="#degrade">4. Degradation</a></li><li><a href="#api">5. Connection API</a></li><li><a href="#plugin">6. Writing your own Writer</a></li><li><a href="#trace">6b. Commands and results (debugging)</a></li><li><a href="#internals">7. How it is put together</a></li></ul></aside><article class="doc">
 
 <h1>Pushing results out (Modbus TCP and host systems)</h1>
 <p><a href="automation.html">Automation</a> is <strong>passive</strong>: equipment or a host system calls us and collects the result. This page is <strong>active</strong>: when a flow finishes, the engine writes the judgement and the measurements into the equipment's coils and registers over Modbus TCP, or pushes a line of text to a host system. It works like image sources — create a <strong>connection</strong> on the settings page, then put a <strong>write Modbus</strong> (<code>write_modbus</code>) tool in the flow, point it at that connection and fill in the mapping table.</p>
@@ -176,27 +176,48 @@
 </table>
 <p>Common field: <code>timeout_s</code>, the timeout of a single write, two seconds by default. Changing a connection's settings (PATCH) closes the old connection, and the next run reopens it.</p>
 
-<h2 id="trigger">1-1. Triggering: the master writes a flag and the platform inspects</h2>
-<p>In server mode the other side is the master — it writes registers, it does not call the platform's HTTP or TCP interfaces. <strong>Without this layer, a trigger flag written by the master does nothing at all</strong> and the line has to fall back to continuous mode, grabbing an image on every cycle and wasting camera bandwidth and CPU. So both kinds of Modbus connection can be given a trigger address:</p>
+<h2 id="trigger">1-1. Rules: what the equipment does, what the platform does</h2>
+<p>In server mode the other side is the master — it writes registers, it does not call the platform's HTTP or TCP interfaces. <strong>Without this layer, a trigger flag written by the master does nothing at all</strong> and the line has to fall back to continuous mode, grabbing an image on every cycle and wasting camera bandwidth and CPU. So both kinds of Modbus connection carry a <strong>rule table</strong>: one row per address the equipment writes.</p>
 <pre>{"host": "0.0.0.0", "port": 5020, "unit_id": 1, "size": 512,
- "trigger_address": "coil:0",        ← the master writes non-zero and one inspection runs
- "trigger_flow": "appearance",        ← a flow name or id (a disabled flow is never triggered)
- "trigger_interval_ms": 50,           ← polling interval, minimum 10
- "trigger_mode": "rising",            ← rising: runs once on 0 → non-zero; nonzero: runs while it stays non-zero
- "trigger_clear": true,               ← clear the flag before running, so a long run cannot re-trigger
- "trigger_done_address": "coil:1",    ← write 1 when finished (optional)
- "trigger_recipe": ""}                ← use a specific recipe (optional)</pre>
-<p>A complete handshake:</p>
+ "trigger_interval_ms": 50,          ← how often the whole table is polled, minimum 10 ms
+ "triggers": [
+   {"name": "inspect",  "address": "coil:0",     "mode": "rising", "clear": true, "done": "coil:1",
+    "action": "run_flow", "flow": "appearance"},
+   {"name": "changeover", "address": "holding:20", "mode": "change",
+    "action": "activate_recipe", "flow": "appearance", "recipe": "A17"},
+   {"name": "maintenance", "address": "coil:9",   "mode": "rising",
+    "action": "lock", "reason": "maintenance", "ttl": 600}
+ ]}</pre>
+<p><strong>When</strong> — how the value has to behave for the row to fire:</p>
+<table>
+<tr><th>mode</th><th>Fires</th></tr>
+<tr><td><code>rising</code></td><td>The value goes non-zero. Once per edge, so a long run cannot re-trigger itself.</td></tr>
+<tr><td><code>falling</code></td><td>The value goes back to zero.</td></tr>
+<tr><td><code>change</code></td><td>The value is different from the previous poll — a part number or a recipe word.</td></tr>
+<tr><td><code>nonzero</code></td><td>While the value stays non-zero. This one is a level, not an edge: it keeps firing.</td></tr>
+<tr><td><code>equal</code> / <code>not_equal</code></td><td>Becomes equal to (or different from) <code>value</code>. Once, at the moment it becomes true.</td></tr>
+<tr><td><code>range</code></td><td>Comes into <code>value</code> … <code>value2</code>. Once, on entry.</td></tr>
+</table>
+<p><strong>Then</strong> — what the platform does:</p>
+<table>
+<tr><th>action</th><th>What it needs</th><th>What happens</th></tr>
+<tr><td><code>run_flow</code></td><td><code>flow</code>, optionally <code>recipe</code></td><td>Runs it once and waits, exactly as an HTTP or TCP trigger would (recorded as <code>modbus</code>)</td></tr>
+<tr><td><code>activate_recipe</code></td><td><code>flow</code>, <code>recipe</code></td><td>Changes over: that recipe becomes the flow's default</td></tr>
+<tr><td><code>set_variable</code></td><td><code>variable</code>, <code>scope</code>, <code>set_value</code></td><td>Stores a variable — reset a count, record the shift</td></tr>
+<tr><td><code>lock</code> / <code>unlock</code></td><td>optionally <code>reason</code>, <code>ttl</code></td><td>Holds the hardware for maintenance, and releases it</td></tr>
+</table>
+<p>A complete handshake for the first row:</p>
 <pre>Master  : trigger := 1
 Platform: sees it → clears trigger → runs the flow → the flow's "write Modbus" step puts the
           judgement and measurements into the registers → done := 1
 Master  : sees done → reads the results → done := 0</pre>
 <ul>
-<li><strong>The flow writes its own results</strong>: put a "write Modbus" node at the end and map as many values as you like. The trigger settings only clear the flag and set the done address.</li>
-<li>One connection gets one polling thread, which does nothing but read a single address. The flow itself still goes through the Runner, so statistics, events and history are identical to any other trigger source (the trigger is recorded as <code>modbus</code>).</li>
-<li>If the device drops off, polling backs off exponentially to a maximum of five seconds and keeps retrying, resuming automatically when the connection returns. The failure count and the last reason are in the connection status under <code>trigger</code>.</li>
+<li><strong>The flow writes its own results</strong>: put a "write Modbus" node at the end and map as many values as you like. The rule only clears the flag and sets the done address.</li>
+<li>One connection gets one polling thread and <strong>one read per cycle</strong> covering every address in the table, so ten rules cost no more Modbus traffic than one.</li>
+<li>If the device drops off, polling backs off exponentially to a maximum of five seconds and keeps retrying, resuming automatically when the connection returns. The failure count and the last reason are in the connection status under <code>trigger</code>, with a per-rule count.</li>
 <li>Client mode (<code>modbus_tcp</code>) can do this too: poll a register on the device as the trigger source.</li>
-<li>Both the trigger and the run it starts appear under Commands and results (see <a href="#trace">§6b</a>), so while debugging you can see how long each trigger took and what it judged.</li>
+<li>Rules and the runs they start appear under Commands and results (see <a href="#trace">§6b</a>), so while debugging you can see how long each one took and what it judged.</li>
+<li>Stations set up before the rule table used a single flat trigger (<code>trigger_address</code>, <code>trigger_flow</code>, <code>trigger_mode</code>, <code>trigger_clear</code>, <code>trigger_done_address</code>, <code>trigger_recipe</code>). Those settings still work and are shown as one rule; saving the connection writes them back as a table.</li>
 </ul>
 
 <h2 id="address">2. Address format (modbus_tcp)</h2>

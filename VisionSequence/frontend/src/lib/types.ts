@@ -946,3 +946,38 @@ export interface SpcAlertsResult {
   items: { flow_id: number; flow_name: string; output: string; alerts: SpcAlert[]; last_ts: string; points: number }[]
   cached: boolean
 }
+
+/**
+ * 觸發規則：設備做了什麼 → 平台做什麼（後端 apps/comm/rules.py）。
+ * 連線的規則存在 config.triggers；站台的文字規則存在 /vision/integration/rules。
+ */
+export type RuleSource = 'value' | 'text'
+export type RuleValueMode = 'rising' | 'falling' | 'change' | 'nonzero' | 'equal' | 'not_equal' | 'range'
+export type RuleTextMatch = 'exact' | 'contains' | 'prefix' | 'regex'
+export type RuleAction = 'run_flow' | 'activate_recipe' | 'set_variable' | 'lock' | 'unlock'
+
+export interface TriggerRule {
+  id: string
+  name: string
+  enabled: boolean
+  source: RuleSource
+  address: string
+  mode: RuleValueMode
+  value: number
+  value2: number
+  match: RuleTextMatch
+  pattern: string
+  capture: string
+  action: RuleAction
+  flow: string
+  recipe: string
+  variable: string
+  scope: 'flow' | 'station'
+  set_value: string
+  args: Record<string, unknown>
+  reason: string
+  ttl: number
+  clear: boolean
+  done: string
+  reply: string
+}

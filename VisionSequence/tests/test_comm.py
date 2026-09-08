@@ -10,7 +10,6 @@ import logging
 import socket
 import threading
 import time
-from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
@@ -19,7 +18,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from pymodbus.client import ModbusTcpClient
 
-from apps.comm import protocol, triggers, writers
+from apps.comm import protocol, rules, triggers, writers
 from apps.vision import trace
 from apps.comm.models import Connection
 from apps.comm.writers import CommError, ModbusTcpWriter, TcpClientWriter, parse_address
@@ -296,25 +295,111 @@ class ModbusServerTests(SimpleTestCase):
             self.writer._read(["holding:0"])  # noqa: SLF001 — 關閉後直接讀應該明確失敗
 
 
-class TriggerConfigTests(SimpleTestCase):
-    """觸發設定的解析（純函式，不起執行緒）。"""
+class RuleTableTests(SimpleTestCase):
+    """規則表的解析與比對（純函式，不起執行緒、不碰資料庫）。"""
 
-    def test_off_unless_both_address_and_flow(self):
-        self.assertIsNone(triggers.config_of({}))
-        self.assertIsNone(triggers.config_of({"trigger_address": "coil:0"}))
-        self.assertIsNone(triggers.config_of({"trigger_flow": "檢測"}))
+    def test_legacy_flat_settings_become_one_rule(self):
+        """既有站台的扁平 trigger_* 設定不必改，照樣是一條規則。"""
+        self.assertEqual(rules.rules_of({}), [])
+        self.assertEqual(rules.rules_of({"trigger_address": "coil:0"}), [])  # 少了流程就是沒開
+        self.assertEqual(rules.rules_of({"trigger_flow": "檢測"}), [])
+        one = rules.rules_of({"trigger_address": " coil:0 ", "trigger_flow": " 檢測 ", "trigger_done_address": "coil:1"})
+        self.assertEqual(len(one), 1)
+        self.assertEqual((one[0].source, one[0].address, one[0].flow, one[0].mode), ("value", "coil:0", "檢測", "rising"))
+        self.assertEqual((one[0].action, one[0].clear, one[0].done), ("run_flow", True, "coil:1"))
+        nz = rules.rules_of({"trigger_address": "a", "trigger_flow": "b", "trigger_mode": "NONZERO", "trigger_clear": False})
+        self.assertEqual((nz[0].mode, nz[0].clear), ("nonzero", False))
+        # 有 triggers 就以它為準，即使是空的（使用者可以把規則全刪掉）
+        self.assertEqual(rules.rules_of({"triggers": [], "trigger_address": "a", "trigger_flow": "b"}), [])
 
-    def test_defaults_and_clamps(self):
-        cfg = triggers.config_of({"trigger_address": " coil:0 ", "trigger_flow": " 檢測 "})
-        self.assertEqual((cfg["address"], cfg["flow"]), ("coil:0", "檢測"))
-        self.assertEqual((cfg["mode"], cfg["clear"], cfg["done"]), ("rising", True, ""))
-        self.assertEqual(cfg["interval_ms"], triggers.DEFAULT_INTERVAL_MS)
-        fast = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_interval_ms": 1})
-        self.assertEqual(fast["interval_ms"], triggers.MIN_INTERVAL_MS)
-        bad = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_interval_ms": "很快"})
-        self.assertEqual(bad["interval_ms"], triggers.DEFAULT_INTERVAL_MS)
-        nz = triggers.config_of({"trigger_address": "a", "trigger_flow": "b", "trigger_mode": "NONZERO", "trigger_clear": False})
-        self.assertEqual((nz["mode"], nz["clear"]), ("nonzero", False))
+    def test_several_rules_on_one_connection(self):
+        table = [
+            {"address": "coil:0", "action": "run_flow", "flow": "檢測", "clear": True},
+            {"address": "hr:10", "mode": "change", "action": "activate_recipe", "flow": "檢測", "recipe": "A 料號"},
+            {"address": "coil:9", "action": "lock", "reason": "維修", "ttl": 600},
+            {"enabled": False, "address": "coil:8", "action": "unlock"},
+        ]
+        parsed = rules.rules_of({"triggers": table})
+        self.assertEqual([r.action for r in parsed], ["run_flow", "activate_recipe", "lock"])  # 停用的不算
+        self.assertEqual([r.id for r in parsed], ["r1", "r2", "r3"])
+        self.assertEqual(rules.watched_addresses(parsed), ["coil:0", "hr:10", "coil:9"])
+        self.assertEqual(rules.watched_addresses(parsed + parsed), ["coil:0", "hr:10", "coil:9"])  # 同位址只讀一次
+
+    def test_broken_rows_are_dropped_not_raised(self):
+        """一列設錯不該讓整條連線開不起來。"""
+        table = [
+            {"address": "coil:0", "action": "run_flow"},                       # 沒有流程
+            {"source": "text", "match": "regex", "pattern": "(", "action": "lock"},  # 樣式編不起來
+            {"source": "text", "action": "lock"},                              # 沒有樣式
+            "不是物件",
+            {"address": "coil:1", "action": "run_flow", "flow": "好的"},
+        ]
+        self.assertEqual([r.flow for r in rules.parse(table)], ["好的"])
+        cleaned = rules.sanitize(table)
+        self.assertEqual(len(cleaned), 1)
+        self.assertEqual(cleaned[0]["address"], "coil:1")
+        self.assertEqual(rules.sanitize("不是清單"), [])
+        self.assertEqual(len(rules.sanitize([{"address": "a", "action": "lock"}] * 80)), rules.MAX_RULES)
+
+    def test_value_modes(self):
+        def rule(**kw):
+            return rules.parse([{"address": "a", "action": "lock", **kw}])[0]
+
+        rising = rule(mode="rising")
+        self.assertTrue(rules.match_value(rising, None, 1))   # 第一輪就是 1：PLC 早就寫進來了，照樣觸發
+        self.assertFalse(rules.match_value(rising, 1, 1))     # 還是 1：不重複觸發
+        self.assertTrue(rules.match_value(rising, 0, 1))
+        falling = rule(mode="falling")
+        self.assertTrue(rules.match_value(falling, 1, 0))
+        self.assertFalse(rules.match_value(falling, 0, 0))
+        nonzero = rule(mode="nonzero")
+        self.assertTrue(rules.match_value(nonzero, 1, 1))     # 位準：只要非零就一直觸發
+        change = rule(mode="change")
+        self.assertFalse(rules.match_value(change, None, 7))  # 沒有前值就沒有「變了」
+        self.assertTrue(rules.match_value(change, 7, 8))
+        self.assertFalse(rules.match_value(change, 8, 8))
+        equal = rule(mode="equal", value=5)
+        self.assertTrue(rules.match_value(equal, 4, 5))
+        self.assertFalse(rules.match_value(equal, 5, 5))      # 邊緣：停在 5 不會每輪都跑
+        self.assertFalse(rules.match_value(equal, 5, 6))
+        span = rule(mode="range", value=10, value2=20)
+        self.assertTrue(rules.match_value(span, 5, 15))
+        self.assertFalse(rules.match_value(span, 15, 16))
+        self.assertTrue(rules.match_value(rule(mode="range", value=20, value2=10), 5, 15))  # 上下界寫反照樣認得
+        self.assertFalse(rules.match_value(rule(mode="equal", value=5), 0, "壞掉的值"))
+
+    def test_text_matching_and_capture(self):
+        def rule(**kw):
+            return rules.parse([{"source": "text", "action": "lock", **kw}])[0]
+
+        self.assertEqual(rules.match_text(rule(match="exact", pattern="GO"), " GO "), {})
+        self.assertIsNone(rules.match_text(rule(match="exact", pattern="GO"), "GO NOW"))
+        self.assertEqual(rules.match_text(rule(match="contains", pattern="LOT", capture="line"), "xx LOT9 yy"),
+                         {"line": "xx LOT9 yy"})
+        self.assertEqual(rules.match_text(rule(match="prefix", pattern="SCAN ", capture="lot"), "SCAN A1234 "),
+                         {"lot": "A1234"})
+        self.assertIsNone(rules.match_text(rule(match="prefix", pattern="SCAN "), "READ A1234"))
+        by_group = rule(match="regex", pattern=r"LOT(\d+)", capture="lot")
+        self.assertEqual(rules.match_text(by_group, "HDR LOT4471 END"), {"lot": "4471"})
+        named = rule(match="regex", pattern=r"(?P<lot>[A-Z]\d+)\s+(?P<qty>\d+)")
+        self.assertEqual(rules.match_text(named, "A17 250"), {"lot": "A17", "qty": "250"})
+        self.assertIsNone(rules.match_text(named, "nothing"))
+
+    def test_reply_template_fills_blanks_and_takes_control_characters(self):
+        self.assertEqual(rules.render("{judge},{w}", {"judge": "OK", "w": 12.3}), "OK,12.3")
+        self.assertEqual(rules.render("{judge},{missing}", {"judge": "NG"}), "NG,")
+        self.assertEqual(rules.render("A" + chr(92) + "r" + chr(92) + "n", {}), "A" + chr(13) + chr(10))
+
+    def test_polling_settings_come_from_the_value_rules(self):
+        self.assertIsNone(triggers.settings_of({}))
+        self.assertIsNone(triggers.settings_of({"triggers": [{"source": "text", "pattern": "GO", "action": "lock"}]}))
+        setting = triggers.settings_of({"trigger_address": "a", "trigger_flow": "b"})
+        self.assertEqual(setting["interval_ms"], triggers.DEFAULT_INTERVAL_MS)
+        self.assertEqual(len(setting["rules"]), 1)
+        self.assertEqual(triggers.settings_of({"trigger_address": "a", "trigger_flow": "b", "trigger_interval_ms": 1})["interval_ms"],
+                         triggers.MIN_INTERVAL_MS)
+        self.assertEqual(triggers.settings_of({"trigger_address": "a", "trigger_flow": "b", "trigger_interval_ms": "很快"})["interval_ms"],
+                         triggers.DEFAULT_INTERVAL_MS)
 
 
 class ProtocolTests(SimpleTestCase):
@@ -399,11 +484,13 @@ class TriggerLoopTests(SimpleTestCase):
         def __init__(self, values=None):
             self.values = dict(values or {})
             self.written = []
+            self.reads = []
             self.fail_reads = 0
             self.lock = threading.Lock()
 
         def read(self, addresses, quiet=False):
             with self.lock:
+                self.reads.append(list(addresses))
                 if self.fail_reads > 0:
                     self.fail_reads -= 1
                     raise writers.CommError("PLC 沒回應")
@@ -415,11 +502,13 @@ class TriggerLoopTests(SimpleTestCase):
                 self.written.append(dict(values))
             return {"written": len(values)}
 
-    def _loop(self, writer, **cfg):
-        settings = triggers.config_of({"trigger_address": "coil:0", "trigger_flow": "x", "trigger_interval_ms": 10, **cfg})
+    def _loop(self, writer, rule=None, **cfg):
+        """一條規則的迴圈；動作換成假的，測的是輪詢與握手而不是流程本身。"""
+        settings = triggers.settings_of({"triggers": [{"address": "coil:0", "action": "run_flow", "flow": "x", **(rule or {})}],
+                                         "trigger_interval_ms": 10, **cfg})
         loop = triggers.TriggerLoop(writer, settings)
-        loop._run = lambda flow: SimpleNamespace(id="run1", status="ok", outputs={"judge": "OK"}, error="")  # noqa: SLF001
-        loop._resolve_flow = lambda: SimpleNamespace(name="x")  # noqa: SLF001
+        loop.acted = []
+        loop._act = lambda r, ctx: (loop.acted.append((r.id, ctx)), {"ok": True, "summary": "x: ok", "detail": {}})[1]  # noqa: SLF001
         self.addCleanup(loop.stop)
         return loop
 
@@ -433,7 +522,7 @@ class TriggerLoopTests(SimpleTestCase):
 
     def test_rising_edge_fires_once_and_does_the_handshake(self):
         w = self.FakeWriter({"coil:0": 1})
-        loop = self._loop(w, trigger_done_address="coil:1")
+        loop = self._loop(w, rule={"clear": True, "done": "coil:1"})
         loop.start()
         self.assertTrue(self._wait(lambda: loop.fired >= 1), "旗標寫進來卻沒有觸發")
         self.assertEqual(w.values["coil:0"], 0)  # 先清旗標
@@ -445,7 +534,7 @@ class TriggerLoopTests(SimpleTestCase):
 
     def test_nonzero_mode_keeps_firing(self):
         w = self.FakeWriter({"coil:0": 1})
-        loop = self._loop(w, trigger_mode="nonzero", trigger_clear=False)
+        loop = self._loop(w, rule={"mode": "nonzero"})
         loop.start()
         self.assertTrue(self._wait(lambda: loop.fired >= 3), "nonzero 模式應該持續觸發")
         self.assertEqual(w.written, [])  # 沒有 clear、沒有 done 就不該寫任何東西
@@ -461,9 +550,10 @@ class TriggerLoopTests(SimpleTestCase):
 
     def test_missing_flow_is_recorded_not_raised(self):
         w = self.FakeWriter({"coil:0": 1})
-        settings = triggers.config_of({"trigger_address": "coil:0", "trigger_flow": "沒這個流程", "trigger_interval_ms": 10})
+        settings = triggers.settings_of({"triggers": [{"address": "coil:0", "action": "run_flow", "flow": "沒這個流程"}],
+                                         "trigger_interval_ms": 10})
         loop = triggers.TriggerLoop(w, settings)
-        loop._resolve_flow = lambda: None  # noqa: SLF001
+        loop._resolve_flow = lambda ident: None  # noqa: SLF001
         self.addCleanup(loop.stop)
         loop.start()
         self.assertTrue(self._wait(lambda: loop.errors >= 1))
@@ -505,14 +595,36 @@ class TriggerLoopTests(SimpleTestCase):
     def test_status_and_registry(self):
         w = self.FakeWriter()
         self.addCleanup(triggers.stop_all)
-        loop = triggers.sync(4242, w, {"trigger_address": "coil:9", "trigger_flow": "f", "trigger_interval_ms": 50})
+        config = {"triggers": [{"address": "coil:9", "action": "run_flow", "flow": "f"},
+                               {"address": "coil:8", "action": "unlock"}], "trigger_interval_ms": 50}
+        loop = triggers.sync(4242, w, config)
         self.assertIsNotNone(loop)
-        self.assertEqual(triggers.sync(4242, w, {"trigger_address": "coil:9", "trigger_flow": "f", "trigger_interval_ms": 50}), loop)  # 設定沒變就沿用
+        self.assertEqual(triggers.sync(4242, w, dict(config)), loop)  # 設定沒變就沿用
         st = triggers.status(4242)
         self.assertEqual((st["address"], st["flow"], st["running"]), ("coil:9", "f", True))
+        self.assertEqual([r["action"] for r in st["rules"]], ["run_flow", "unlock"])
         self.assertIsNone(triggers.sync(4242, w, {}))  # 拿掉設定就停掉
         self.assertIsNone(triggers.status(4242))
         self.assertFalse(loop.is_alive() and not loop._halt.is_set())  # noqa: SLF001
+
+    def test_one_read_serves_every_rule(self):
+        """三條規則不該變成三次 read——PLC 每秒被問幾十次已經夠多了。"""
+        w = self.FakeWriter({"coil:0": 0, "coil:1": 0, "hr:5": 0})
+        settings = triggers.settings_of({"trigger_interval_ms": 10, "triggers": [
+            {"id": "run", "address": "coil:0", "action": "run_flow", "flow": "x"},
+            {"id": "unlock", "address": "coil:1", "action": "unlock"},
+            {"id": "big", "address": "hr:5", "mode": "range", "value": 10, "value2": 20, "action": "lock"},
+        ]})
+        loop = triggers.TriggerLoop(w, settings)
+        loop.acted = []
+        loop._act = lambda r, ctx: (loop.acted.append(r.id), {"ok": True, "summary": r.id})[1]  # noqa: SLF001
+        self.addCleanup(loop.stop)
+        loop.start()
+        w.values.update({"coil:0": 1, "hr:5": 15})
+        self.assertTrue(self._wait(lambda: len(loop.acted) >= 2), loop.acted)
+        self.assertEqual(sorted(loop.acted[:2]), ["big", "run"])
+        self.assertEqual(w.reads[-1], ["coil:0", "coil:1", "hr:5"])  # 一次讀完
+        self.assertEqual(loop.status()["rules"][0]["fired"], 1)
 
 
 class AutostartTests(TestCase):
