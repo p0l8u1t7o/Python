@@ -429,11 +429,26 @@ read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連�
 旋轉框網路：輸出 `matches`（cx, cy, w, h, angle°, points 四角）、`contours`（四角輪廓）；適合傾斜擺放的工件計數／定位，角度可接 formula／tolerance_judge 做方向檢查。底模 `yolo11n-obb.pt`（DOTA 航拍類別）僅供試用，自訂類別用「旋轉框偵測（YOLO-obb）」訓練（polygon 標記自動取最小外接旋轉矩形）。
 
 ## dl_anomaly
+只教良品、找未知缺陷用此工具；只有少量目標裁切圖且要定位或計數時，改用 register_detect。
 只教良品的異常檢測：`model` 是教導頁用「Anomaly detection (good parts only)」訓練的模型（只要 20～50 張良品、不用標記）；
 `threshold` 0＝用模型自帶的自動門檻（良品分數 mean + kσ），良品被誤判就調高；`min_area` 擋雜訊；`roi` 檢測區（會縮放到模型輸入尺寸，
 別框太大）；`device` auto／cpu／cuda。輸出 `score`（最大異常分數）、`count`／`total_area`、`score_map`（熱圖：門檻映到中灰、2 倍門檻飽和，
 現場調門檻看它）、`mask`、`regions`，分支 ok／defect。沒有壞品樣本、缺陷型態不固定（刮痕、凹陷、缺料、異物）時優先用它；
 有明確類別且壞品夠多再考慮 ai_*／dl_segment。
+
+## register_detect
+零訓練註冊式檢測：已有少量（建議少於十張）目標裁切圖，要找出所有相似零件、計數或判有無時用它，不需建立訓練專案。
+`registrations` 是固定影像描述子清單，每張含一個目標與少許背景；`negatives` 放不該計入的相似物。
+`roi` 可用矩形／旋轉矩形；`scales` 如 `0.8,1.0,1.25`；`angle_range` 和 `angle_step` 其中一個為 0 就不轉。
+`min_similarity` 是主要教導門檻；`max_count` 限制回傳數，須大於預期實際數量以免漏報超量；`nms_overlap` 去重；
+`min_size/max_size` 限制框的兩邊長（px，0 不限）。`mode=detect` 分支 found／not_found；`count` 用含端點的
+`min_count/max_count_ok` 回 ok／ng；`presence` 用 `expected=present/absent` 回 ok／ng，無物件且預期 absent 時是 OK。
+輸出 `matches`（與 template_match 相同的 x,y,cx,cy,w,h,angle,score,label；label 是註冊圖名稱）、`count`、`best_score`、
+`best_x/best_y`、`present`；座標皆為輸入影像全圖。未找到時 best_score=0、best_x/best_y 無有效數值。
+像素外觀穩定且需精確定位用 template_match；主要依外形且光線變動大用 shape_match；只教良品、找未知表面缺陷用 dl_anomaly。
+需 DL 加購包附帶的特徵模型，執行期不下載；`device` auto／cpu／cuda。搜尋圖以 320 工作尺寸抽特徵，位置精度受特徵格距限制，
+微小目標應縮小 ROI；多尺度與角度以調整註冊圖的特徵網格搜尋。`backbone_path` 僅供內部測試，不替使用者設定。
+範例 `register_count` 直接由第一張樣本圖裁切註冊，前三張三個零件 OK，第四張缺一個 NG。
 
 ## gdt_measure
 形位公差（ISO 1101 最小區域，不是最小二乘）：`mode` straightness／flatness（2D 投影，同一個帶）／roundness／parallelism／perpendicularity／angularity。

@@ -197,6 +197,7 @@ when the radius series itself is wanted for something else.</p>
 <h2 id="tools">3. What each capability maps to</h2>
 <table>
 <tr><th>Capability</th><th>Tool</th><th>Status</th></tr>
+<tr><td>Register detect / count / presence (zero training)</td><td><code>register_detect</code> finds similar parts from a few cropped registered pictures, with optional excluded lookalikes, search regions, sizes and angles. Returns labelled matches, count, best position and similarity, and presence. Detect branches on found / not found; count and presence branch on accepted / rejected. Requires the feature model supplied in the deep learning pack; no runtime download</td><td><strong>added</strong></td></tr>
 <tr><td>Look-up table (linear, log, exp, power, sqrt, square, brightness/contrast/gamma)</td><td><code>lut</code>, including histogram equalisation and CLAHE. The former contrast tool folded into it; old flows are mapped automatically and keep their parameters</td><td><strong>added</strong></td></tr>
 <tr><td>Convolution and nth-order filters</td><td><code>filter</code> (sharpen, Canny, Laplacian, Sobel, Prewitt, high pass, emboss, custom 3×3; the former edge tool folded into it). Smoothing is <code>blur</code></td><td><strong>added</strong></td></tr>
 <tr><td>FFT frequency filtering (truncate / attenuate)</td><td><code>fft_filter</code>, with a spectrum output</td><td><strong>added</strong></td></tr>

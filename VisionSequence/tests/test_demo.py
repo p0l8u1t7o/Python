@@ -48,6 +48,7 @@ class DemoSeedTests(TransactionTestCase):
         from apps.vision.runner import runner
 
         expected = {
+            "register_count": "ok ok ok ng",
             "hole_count": "ok ok ok ng", "exposure": "ok ok ok ng",
             "circle_gauge": "ok ok ok ng", "edge_angle": "ok ok ok ng", "golden_compare": "ok ok ok ng", "stat_compare": "ok ok ok ng",
             "fft_defect": "ok ok ok ng", "surface_scratch": "ok ok ok ng", "geometry_count": "ok ok ok ng", "gear_teeth": "ok ok ok ng", "contour_defect": "ok ok ok ng",
@@ -100,7 +101,7 @@ class DemoSeedTests(TransactionTestCase):
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
             model_names = sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True))
             self.assertEqual([n for n in model_names if "anomaly" not in n], ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)", "Example: taught font (digits)"])
-            self.assertEqual(len(BUILTIN_TEMPLATES), 32)
+            self.assertEqual(len(BUILTIN_TEMPLATES), 33)
             import importlib.util
             import os
 

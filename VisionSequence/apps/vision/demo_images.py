@@ -599,8 +599,22 @@ def dl_scratch_labeled(n: int = 10) -> list[tuple[np.ndarray, list[dict]]]:
     return [_scratch_plate(3000 + i, 1 + i % 2) for i in range(n)]
 
 
+def registered_parts() -> list[np.ndarray]:
+    """註冊計數：三張各三個帶孔方塊，第四張缺一個；留背景邊界供裁切註冊。"""
+    out = []
+    for i, (dx, dy) in enumerate([(0, 0), (16, 12), (-16, 24), (0, 0)]):
+        image = np.full((480, 640, 3), 30, np.uint8)
+        for x, y in [(64, 48), (256, 48), (64, 240)][:2 if i == 3 else 3]:
+            x, y = x + dx, y + dy
+            image[y + 16:y + 80, x + 16:x + 80] = (210, 220, 230)
+            cv2.circle(image, (x + 48, y + 48), 12, (30, 30, 30), -1)
+        out.append(image)
+    return out
+
+
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
+    "registered_parts": ("registered parts", registered_parts),
     "plate_holes": ("plate holes", plate_holes),
     "exposure_frames": ("exposure", exposure_frames),
     "circle_part": ("circle gauge", circle_part),

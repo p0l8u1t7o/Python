@@ -8,6 +8,33 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  register_detect: {
+    label: '註冊式檢測',
+    description: '使用少量目標裁切圖尋找、計數或檢查零件有無，無需訓練。加入相似物的排除圖可減少誤判。',
+    params: {
+      registrations: { label: '註冊圖', help: '每張裁切圖包含一個目標並保留少許背景，建議少於十張。' },
+      negatives: { label: '排除圖', help: '選填：不得計入的相似物裁切圖。' },
+      roi: { label: '搜尋區域' },
+      mode: { label: '模式', options: { detect: '檢測', count: '計數', presence: '有無' } },
+      scales: { label: '搜尋尺寸', help: '以逗號分隔相對尺寸，例如 0.8,1.0,1.25。' },
+      angle_range: { label: '角度範圍', help: '從零度向兩側搜尋，0 表示不旋轉。' },
+      angle_step: { label: '角度間距', help: '相鄰搜尋角度的間距，0 表示不旋轉。' },
+      min_similarity: { label: '最低相似度' },
+      max_count: { label: '最多結果數' },
+      nms_overlap: { label: '最大重疊比例' },
+      min_size: { label: '最小邊長', help: '兩邊皆須達到此下限，0 表示不限。' },
+      max_size: { label: '最大邊長', help: '任一邊皆不得超過此上限，0 表示不限。' },
+      min_count: { label: '合格數量下限' },
+      max_count_ok: { label: '合格數量上限' },
+      expected: { label: '預期狀態', options: { present: '有', absent: '無' } },
+      device: { label: '運算裝置', options: { auto: '自動', cpu: '處理器', cuda: '圖形處理器' } },
+      backbone_path: { label: '特徵模型檔案', help: '內部測試用，留空使用已安裝的特徵模型。' },
+    },
+    ports: {
+      image: '影像', roi: '搜尋區域', found: '已找到', not_found: '未找到', ok: '合格', ng: '不合格',
+      matches: '比對結果', count: '數量', best_score: '最佳相似度', best_x: '最佳 X', best_y: '最佳 Y', present: '存在',
+    },
+  },
   coordinate: {
     "label": "自訂座標系",
     "description": "由原點與角度、兩點或有向直線定義原點及 X 軸；frame 輸出可接至真實世界座標工具。角度正值為畫面順時針。",

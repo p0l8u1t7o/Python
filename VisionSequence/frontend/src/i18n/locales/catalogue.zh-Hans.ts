@@ -112,6 +112,7 @@ export default {
     },
   },
   templates: {
+    register_count: { name: '以注册图计数零件', description: '由一张零件裁切图查找相似目标，恰好三个才合格，无需训练。需要深度学习加购包。' },
     form_tolerance: { name: '真圆度（形位公差）', description: '180 把径向卡尺取边缘点，形位公差以最小区域圆（ISO 1101）评真圆度，两同心圆的环宽在 5 px 内合格——崩边的圆盘不合格' },
     emboss_defect: { name: '刻印字与凹坑（光度立体）', description: '四个裁切把四灯 2×2 拼图拆开，光度立体合成形状强度图，检查区的像素计数找出单张看不见的凹坑' },
     barcode_grade: { name: '条码品质分级（ISO 15415）', description: '像验证器一样替标签上的 Data Matrix 评级——对比、调制、固定图形损伤、轴向与格点不均匀、未用错误更正——C 级以上合格，脏污的符号不合格' },

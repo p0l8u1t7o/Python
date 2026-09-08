@@ -993,6 +993,20 @@ def date_code_flow(source_id: Any, font_asset: str = "") -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def register_count_flow(source_id: Any) -> dict[str, Any]:
+    """三個註冊零件才合格；直接由樣本圖裁切參考，不建立訓練資產。"""
+    reference = _demo_ref("registered square part")
+    return {"nodes": [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("detect", "register_detect", 1, 0, "Count registered parts", registrations=[reference] if reference else [], mode="count", min_count=3, max_count_ok=3, min_similarity=0.9),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG: wrong part count", verdict="ng", label="part_count"),
+    ], "edges": [
+        _edge("src", "detect", "image", "image"),
+        _edge("detect", "ok", "ok", "_flow"), _edge("detect", "ng", "ng", "_flow"),
+    ]}
+
+
 def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
     """seed 訓練的示範模型資產：(asset id, 建議的工具參數)；還沒 seed 就回空（範本照樣能載入）。"""
     row = Asset.objects.filter(name=name, kind="model").only("id", "meta").first()
@@ -1009,6 +1023,7 @@ def _demo_asset(name: str, kind: str = "image") -> str:
 
 #: 範本的參考圖（以前是 5 個影像資產）：名稱 → (樣本集 key, 裁切區域, 產生器名)；由 _demo_ref 現算並存進固定影像庫（內容雜湊，重跑不重複）。
 REF_SPECS: dict[str, tuple[str, dict[str, Any] | None, str]] = {
+    "registered square part": ("registered_parts", {"shape": "rect", "x": 64, "y": 48, "w": 96, "h": 96}, ""),
     "cross locator template": ("marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120}, ""),
     "cup locator template": ("cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100}, ""),
     "print golden template": ("golden_print", None, ""),
@@ -1102,6 +1117,7 @@ def builtin_fixed_ids() -> set[str]:
 #: 範本畫廊的內建範本目錄：(key, 名稱, 說明, 分類, builder)。
 #: builder 在 request 時才呼叫（範例資產 id 由 _demo_asset 現查，seed 過就開箱即用）。
 BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
+    ("register_count", "Count parts by registration", "Register one cropped part and accept exactly three matches, without training. Requires the deep learning pack.", "count", register_count_flow),
     ("hole_count", "Hole count", "Grayscale, denoise, threshold, morphology, blob count, number check, OK/NG — with a named output and a result image", "count", hole_count_flow),
     ("exposure", "Exposure check", "Downscale, Otsu threshold, range check, OK/NG", "quality", brightness_gate_flow),
     ("circle_gauge", "Circle gauge", "Find circle, diameter, pixel calibration to mm, tolerance judge — plus a sector ROI arc fit and ellipse roundness", "measure", circle_gauge_flow),
@@ -1150,6 +1166,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
 #: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。
 #: **每個內建範本都要有一組**：範本畫廊預設把取像節點換成帶著這些圖的固定影像，載入即可試執行。
 TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
+    "register_count": "Example: registered parts",
     "hole_count": "Example: plate holes",
     "exposure": "Example: exposure",
     "circle_gauge": "Example: circle gauge",
@@ -1196,7 +1213,7 @@ TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
 TEMPLATES_NEED_DL = ("ai_count", "ai_area")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
-TEMPLATES_NEED_BACKBONE = ("anomaly_demo",)
+TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count")
 
 
 def _seed_demo_models(created: list[str]) -> None:

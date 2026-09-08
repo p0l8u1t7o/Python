@@ -519,6 +519,32 @@ def bench_encode(s: Scene, out: io.StringIO) -> None:
     out.write(f"  BGR   max_side=1024  png     cold {med:>8.3f} / {p95:>8.3f} ms  ({len(data) / 1024:.0f} KB)\n")
 
 
+def bench_registration(out: io.StringIO, folder: str) -> None:
+    """兩張註冊圖、640×480 單尺度；假模型驗流程，有正式模型時另列實際 CPU 耗時。"""
+    from django.conf import settings
+    from django.test import override_settings
+
+    from apps.vision import demo_images, fixed_images
+    from apps.vision.dl import anomaly
+
+    installed = anomaly.backbone_path()
+    models = [("fake", fake_backbone(os.path.join(folder, "register_backbone.onnx"), 320))]
+    if os.path.isfile(installed):
+        models.append(("installed", installed))
+    image = demo_images.registered_parts()[0]
+    patch = image[48:144, 64:160]
+    with override_settings(VISION={**settings.VISION, "ASSET_DIR": os.path.join(folder, "registration")}):
+        refs = [fixed_images.store(patch, "Part"), fixed_images.store(np.clip(patch.astype(np.int16) - 5, 0, 255).astype(np.uint8), "Dim part")]
+        out.write("\n== register_detect @ 640×480, 2 registrations, single scale, CPU ==\n")
+        for label, path in models:
+            for mode in ("detect", "count"):
+                params = {"registrations": refs, "backbone_path": path, "device": "cpu", "mode": mode, "min_similarity": 0.9, "min_count": 3, "max_count_ok": 3}
+                tool = base.get("register_detect")
+                med, p95, result = timeit(lambda: tool.execute(make_ctx("register_detect", image, params, {}, {}, {})))
+                assert result.status == "ok" and result.outputs["count"] == 3, result
+                out.write(f"register_detect ({mode}, {label})  median {med:.3f} / p95 {p95:.3f} ms   {result.status} {result.message}\n")
+
+
 def main() -> None:
     global RUNS, REPEAT
     ap = argparse.ArgumentParser()
@@ -535,6 +561,7 @@ def main() -> None:
     out.write(f"Python {platform.python_version()}  OpenCV {cv2.__version__}  numpy {np.__version__}  cv2 threads={cv2.getNumThreads()}  {platform.processor()}\n")
     out.write(f"每工具 {RUNS} 次取 median／p95，重複 {REPEAT} 輪取最小值；{pin_note}\n")
     folder = tempfile.mkdtemp(prefix="vs-bench-")
+    bench_registration(out, folder)
     scenes = [Scene(1280, 960, folder), Scene(640, 480, folder)]
     for s in scenes:
         bench_tools(s, out)

@@ -8,6 +8,33 @@
  * Generated from the catalogue; keep it in step when tool wording changes.
  */
 export default {
+  register_detect: {
+    label: '注册式检测',
+    description: '使用少量目标裁切图查找、计数或检查零件有无，无需训练。加入相似物的排除图可减少误判。',
+    params: {
+      registrations: { label: '注册图', help: '每张裁切图包含一个目标并保留少许背景，建议少于十张。' },
+      negatives: { label: '排除图', help: '选填：不得计入的相似物裁切图。' },
+      roi: { label: '搜索区域' },
+      mode: { label: '模式', options: { detect: '检测', count: '计数', presence: '有无' } },
+      scales: { label: '搜索尺寸', help: '以逗号分隔相对尺寸，例如 0.8,1.0,1.25。' },
+      angle_range: { label: '角度范围', help: '从零度向两侧搜索，0 表示不旋转。' },
+      angle_step: { label: '角度间距', help: '相邻搜索角度的间距，0 表示不旋转。' },
+      min_similarity: { label: '最低相似度' },
+      max_count: { label: '最多结果数' },
+      nms_overlap: { label: '最大重叠比例' },
+      min_size: { label: '最小边长', help: '两边皆须达到此下限，0 表示不限。' },
+      max_size: { label: '最大边长', help: '任一边皆不得超过此上限，0 表示不限。' },
+      min_count: { label: '合格数量下限' },
+      max_count_ok: { label: '合格数量上限' },
+      expected: { label: '预期状态', options: { present: '有', absent: '无' } },
+      device: { label: '运算设备', options: { auto: '自动', cpu: '处理器', cuda: '图形处理器' } },
+      backbone_path: { label: '特征模型文件', help: '内部测试用，留空使用已安装的特征模型。' },
+    },
+    ports: {
+      image: '图像', roi: '搜索区域', found: '已找到', not_found: '未找到', ok: '合格', ng: '不合格',
+      matches: '匹配结果', count: '数量', best_score: '最佳相似度', best_x: '最佳 X', best_y: '最佳 Y', present: '存在',
+    },
+  },
   coordinate: {
     "label": "自订坐标系",
     "description": "由原点与角度、两点或有向直线定义原点及 X 轴；frame 输出可接至真实世界坐标工具。角度正值为画面顺时针。",
