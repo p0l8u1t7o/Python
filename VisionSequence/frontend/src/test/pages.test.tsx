@@ -100,6 +100,20 @@ describe('pages render (smoke)', () => {
     expect(await screen.findByText('示範流程')).toBeInTheDocument()
   })
 
+  it('DashboardsPage lists operation dashboards from the API', async () => {
+    const { DashboardsPage } = await import('@/pages/dashboard/DashboardsPage')
+    renderPage(<DashboardsPage />, { route: '/dashboards' })
+    expect(await screen.findByText('Line status dashboard')).toBeInTheDocument()
+  })
+
+  it('DashboardPage renders image, verdict and stats widgets', async () => {
+    const { DashboardPage } = await import('@/pages/dashboard/DashboardPage')
+    renderPage(<DashboardPage />, { route: '/dashboard' })
+    expect(await screen.findByTestId('dash-widget-image')).toBeInTheDocument()
+    expect(await screen.findByTestId('dash-widget-verdict')).toBeInTheDocument()
+    expect(await screen.findByTestId('dash-widget-stats')).toBeInTheDocument()
+  })
+
   it('SourcesPage shows the tree by default and can switch to cards', async () => {
     const { SourcesPage } = await import('@/pages/SourcesPage')
     renderPage(<SourcesPage />, { route: '/sources' })

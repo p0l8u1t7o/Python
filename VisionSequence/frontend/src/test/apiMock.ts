@@ -11,6 +11,49 @@ export const ME = {
 
 export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
 
+export const DASHBOARD_LAYOUT = {
+  rows: 2,
+  cols: 3,
+  cells: [
+    { id: 'image', row: 1, col: 1, row_span: 2, col_span: 2 },
+    { id: 'verdict', row: 1, col: 3, row_span: 1, col_span: 1 },
+    { id: 'stats', row: 2, col: 3, row_span: 1, col_span: 1 },
+  ],
+  bars: { top: true, bottom: true, left: false, right: false },
+  default_flow_id: 1,
+  widgets: [
+    { id: 'latest_image', type: 'image', cell: 'image', props: { overlays: true, crosshair: true }, source: { flow_id: 1, kind: 'image' } },
+    { id: 'verdict', type: 'verdict', cell: 'verdict', props: {}, source: { flow_id: 1, kind: 'status' } },
+    { id: 'today', type: 'stats', cell: 'stats', props: {}, source: { flow_id: 1, kind: 'counts' } },
+  ],
+  theme: {},
+}
+
+export const DASHBOARD = { id: 1, name: 'Line status dashboard', is_default: true, owner_name: 'admin', updated_at: '2026-01-01T00:00:00Z', widget_count: 3, layout: DASHBOARD_LAYOUT }
+
+export const DASHBOARD_DATA = {
+  generated_at: '2026-01-01T00:00:00Z',
+  flows: {
+    '1': {
+      flow: { id: 1, name: 'demo', title: 'Line 1' },
+      config: { title: 'Line 1', image: '', overlays: true, values: [{ key: 'width', unit: 'mm', low: 1, high: 2 }], variables: ['lot'], show_verdict: true, show_counts: true },
+      run: { id: 'run-1', status: 'ok', verdict: 'OK', label: '', started_at: 1788500000, duration_ms: 13.5, trigger: 'ui', recipe: '', error: '', image: { ref: 'run-1:image', width: 640, height: 480 }, overlays: [] },
+      values: [{ key: 'width', label: 'width', unit: 'mm', value: 1.5, text: '1.5', ok: true, present: true }],
+      variables: { lot: 'A17' },
+      counts: { date: '2026-09-08', total: 10, ok: 9, ng: 1, failed: 0, yield: 0.9 },
+      stats: {},
+    },
+  },
+  device: {
+    station_id: 'ST01',
+    version: '1.0.0',
+    lock: { locked: false, holder: '', reason: '' },
+    capacity: { active: 0, max_workers: 4, flows: [], images: { images: 0, bytes: 0, runs: 0, encoded: 0 } },
+    flows_running: [],
+  },
+  variables: { station: { shift: 'day' } },
+}
+
 export function routes(path: string): unknown {
   if (path.startsWith('/auth/status')) return { setup_required: false }
   if (path.startsWith('/auth/me')) return ME
@@ -25,6 +68,10 @@ export function routes(path: string): unknown {
   if (path.startsWith('/vision/spc/alerts')) return { items: [], cached: false }
   if (path.startsWith('/vision/summary')) return { station_id: 'ST01', version: '1.0.0', hours: 24, locked: false, totals: { total: 0, ok: 0, ng: 0, failed: 0, yield: null }, flows: [] }
   if (path.startsWith('/vision/audit')) return { items: [{ id: 1, at: '2026-01-01T00:00:00Z', actor: 'admin', actor_kind: 'user', action: 'flow.update', target_type: 'flow', target_id: '1', target_name: '示範流程', summary: 'threshold 60 → 46', detail: {}, ip: '127.0.0.1' }], total: 1, limit: 50, offset: 0, actions: ['flow.update'], actors: ['admin'] }
+  if (path === '/vision/dashboards') return { items: [DASHBOARD] }
+  if (path === '/vision/dashboards/default') return DASHBOARD
+  if (/\/vision\/dashboards\/\d+\/data$/.test(path)) return DASHBOARD_DATA
+  if (/\/vision\/dashboards\/\d+$/.test(path)) return DASHBOARD
   if (/\/vision\/flows\/\d+\/versions/.test(path)) return { items: [], current: 1, keep: 50 }
   if (/\/vision\/flows\/\d+\/recipes/.test(path)) return { items: [] }
   if (/\/vision\/flows\/\d+\/recent/.test(path)) return { items: [] }
@@ -101,6 +148,7 @@ export function installApiMock() {
         get: vi.fn(async (path: string) => routes(path)),
         post: vi.fn(async (path: string) => routes(path)),
         postForm: vi.fn(async (path: string) => routes(path)),
+        put: vi.fn(async (path: string) => routes(path)),
         patch: vi.fn(async (path: string) => routes(path)),
         delete: vi.fn(async () => undefined),
       },

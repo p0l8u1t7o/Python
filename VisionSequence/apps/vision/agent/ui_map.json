@@ -169,6 +169,84 @@
    ]
   },
   {
+   "route": "/dashboards",
+   "id": "dashboards",
+   "names": {
+    "en": "Operation dashboards",
+    "zh-Hant": "運行介面",
+    "zh-Hans": "运行界面"
+   },
+   "summary": {
+    "en": "Station dashboard list, default selection and JSON layout editing",
+    "zh-Hant": "站台運行介面清單、預設設定與 JSON 版面編輯",
+    "zh-Hans": "站台运行界面列表、默认设置与 JSON 版面编辑"
+   },
+   "actions": [
+    {
+     "en": "New dashboard",
+     "zh-Hant": "新增介面",
+     "zh-Hans": "新增界面"
+    },
+    {
+     "en": "Save layout",
+     "zh-Hant": "儲存版面",
+     "zh-Hans": "保存版面"
+    }
+   ]
+  },
+  {
+   "route": "/dashboard",
+   "id": "dashboard_default",
+   "names": {
+    "en": "Operation dashboard",
+    "zh-Hant": "運行介面",
+    "zh-Hans": "运行界面"
+   },
+   "summary": {
+    "en": "Full-screen operator interface with live images, verdicts, counts, controls and station status",
+    "zh-Hant": "全螢幕操作介面，包含即時影像、判定、數量、控制與站台狀態",
+    "zh-Hans": "全屏操作界面，包含实时影像、判定、数量、控制与站台状态"
+   },
+   "actions": [
+    {
+     "en": "Full screen",
+     "zh-Hant": "全螢幕",
+     "zh-Hans": "全屏"
+    }
+   ]
+  },
+  {
+   "route": "/dashboard/:id",
+   "id": "dashboard_view",
+   "names": {
+    "en": "Operation dashboard",
+    "zh-Hant": "運行介面",
+    "zh-Hans": "运行界面"
+   },
+   "summary": {
+    "en": "Full-screen operator interface with live images, verdicts, counts, controls and station status",
+    "zh-Hant": "全螢幕操作介面，包含即時影像、判定、數量、控制與站台狀態",
+    "zh-Hans": "全屏操作界面，包含实时影像、判定、数量、控制与站台状态"
+   },
+   "actions": [
+    {
+     "en": "Run once",
+     "zh-Hant": "執行一次",
+     "zh-Hans": "执行一次"
+    },
+    {
+     "en": "Full screen",
+     "zh-Hant": "全螢幕",
+     "zh-Hans": "全屏"
+    },
+    {
+     "en": "Edit layout",
+     "zh-Hant": "編輯版面",
+     "zh-Hans": "编辑版面"
+    }
+   ]
+  },
+  {
    "route": "/batch",
    "id": "batch",
    "names": {

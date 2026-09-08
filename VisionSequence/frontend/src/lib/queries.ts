@@ -33,6 +33,10 @@ import type {
   DlSuggestion,
   DlTrainerDef,
   DlTrainJob,
+  Dashboard,
+  DashboardData,
+  DashboardLayout,
+  DashboardSummary,
   EngineLock,
   ExpectStatus,
   Feature,
@@ -95,6 +99,10 @@ export const keys = {
   goldenBaseline: (flowId: number) => ['golden-baseline', flowId] as const,
   connections: ['connections'] as const,
   connectionKinds: ['connection-kinds'] as const,
+  dashboards: ['dashboards'] as const,
+  dashboard: (id: number) => ['dashboard', id] as const,
+  dashboardDefault: ['dashboard-default'] as const,
+  dashboardData: (id: number) => ['dashboard-data', id] as const,
 }
 
 export interface RecentRuns {
@@ -168,6 +176,73 @@ export function useFlow(id: number | null) {
     queryFn: () => api.get<Flow>(`/vision/flows/${id}`),
     enabled: id !== null,
   })
+}
+
+export function useDashboards() {
+  return useQuery({
+    queryKey: keys.dashboards,
+    queryFn: () => api.get<{ items: DashboardSummary[] }>('/vision/dashboards'),
+  })
+}
+
+export function useDashboard(id: number | null) {
+  return useQuery({
+    queryKey: keys.dashboard(id ?? 0),
+    queryFn: () => api.get<Dashboard>(`/vision/dashboards/${id}`),
+    enabled: id !== null,
+  })
+}
+
+export function useDefaultDashboard(enabled = true) {
+  return useQuery({
+    queryKey: keys.dashboardDefault,
+    queryFn: () => api.get<Dashboard>('/vision/dashboards/default'),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useDashboardData(id: number | null, opts: { refetchInterval?: number | false } = {}) {
+  return useQuery({
+    queryKey: keys.dashboardData(id ?? 0),
+    queryFn: () => api.get<DashboardData>(`/vision/dashboards/${id}/data`),
+    enabled: id !== null,
+    refetchInterval: opts.refetchInterval ?? 15000,
+  })
+}
+
+export function useDashboardMutations() {
+  const client = useQueryClient()
+  const invalidate = () => {
+    void client.invalidateQueries({ queryKey: keys.dashboards })
+    void client.invalidateQueries({ queryKey: keys.dashboardDefault })
+  }
+  const create = useMutation({
+    mutationFn: (body: { name: string; layout?: DashboardLayout; is_default?: boolean }) =>
+      api.post<Dashboard>('/vision/dashboards', body),
+    onSuccess: (dashboard) => {
+      client.setQueryData(keys.dashboard(dashboard.id), dashboard)
+      invalidate()
+    },
+  })
+  const update = useMutation({
+    mutationFn: ({ id, ...body }: { id: number; name?: string; layout?: DashboardLayout; is_default?: boolean }) =>
+      api.patch<Dashboard>(`/vision/dashboards/${id}`, body),
+    onSuccess: (dashboard) => {
+      client.setQueryData(keys.dashboard(dashboard.id), dashboard)
+      void client.invalidateQueries({ queryKey: keys.dashboardData(dashboard.id) })
+      invalidate()
+    },
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => api.delete(`/vision/dashboards/${id}`),
+    onSuccess: (_data, id) => {
+      client.removeQueries({ queryKey: keys.dashboard(id) })
+      client.removeQueries({ queryKey: keys.dashboardData(id) })
+      invalidate()
+    },
+  })
+  return { create, update, remove }
 }
 
 export interface FlowPatch {

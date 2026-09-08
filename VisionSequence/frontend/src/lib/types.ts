@@ -289,6 +289,108 @@ export interface Capacity {
   images: { images: number; bytes: number; runs: number }
 }
 
+export type DashboardWidgetType =
+  | 'image'
+  | 'images'
+  | 'run_control'
+  | 'run_status'
+  | 'verdict'
+  | 'text'
+  | 'button'
+  | 'switch'
+  | 'param'
+  | 'variable'
+  | 'traffic_light'
+  | 'conditional_light'
+  | 'group'
+  | 'tabs'
+  | 'table'
+  | 'line_chart'
+  | 'stats'
+  | 'pie'
+  | 'image_static'
+  | 'clock'
+  | 'log'
+  | 'device_status'
+
+export type DashboardSourceKind = 'output' | 'variable' | 'image' | 'status' | 'counts' | 'spc' | 'device'
+export type DashboardAction =
+  | 'run_once'
+  | 'continuous_start'
+  | 'continuous_stop'
+  | 'activate_recipe'
+  | 'set_variable'
+  | 'navigate'
+  | 'lock'
+  | 'unlock'
+
+export type DashboardRuleOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'contains'
+
+export interface DashboardWidgetSource {
+  flow_id?: number | null
+  kind?: DashboardSourceKind
+  key?: string
+}
+
+export interface DashboardCell {
+  id: string
+  row: number
+  col: number
+  row_span: number
+  col_span: number
+}
+
+export interface DashboardBars {
+  top?: boolean
+  bottom?: boolean
+  left?: boolean
+  right?: boolean
+}
+
+export interface DashboardWidget {
+  id: string
+  type: DashboardWidgetType
+  cell?: string
+  props?: Record<string, unknown>
+  source?: DashboardWidgetSource
+}
+
+export interface DashboardLayout {
+  rows: number
+  cols: number
+  cells: DashboardCell[]
+  bars: DashboardBars
+  default_flow_id?: number | null
+  widgets: DashboardWidget[]
+  theme?: Record<string, unknown>
+}
+
+export interface DashboardSummary {
+  id: number
+  name: string
+  is_default: boolean
+  owner_name?: string
+  updated_at: string
+  widget_count: number
+}
+
+export interface Dashboard extends DashboardSummary {
+  layout: DashboardLayout
+}
+
+export interface DashboardData {
+  generated_at: string
+  flows: Record<string, import('./board').BoardData | { missing: true }>
+  device: {
+    station_id: string
+    version: string
+    lock: Pick<EngineLock, 'locked' | 'holder' | 'reason'>
+    capacity: Capacity
+    flows_running: number[]
+  }
+  variables: { station: Record<string, unknown> }
+}
+
 export interface ImageSource {
   id: number
   name: string

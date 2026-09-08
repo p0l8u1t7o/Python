@@ -297,7 +297,9 @@ def _props(wid: str, typ: str, raw: Any, *, strict: bool) -> dict[str, Any]:
             raise DashboardError(f"Widget '{wid}' has unknown props.{sorted(extra)[0]}")
     out: dict[str, Any] = {}
     for name, (kind, default, constraint) in spec.items():
-        if name not in raw:
+        # 沒給、或給 null 的選填 props 都算「用預設」：effective() 會把選填欄位補成 None，
+        # 檢視端 GET 回來的版面必須能原樣 PATCH 回去（JSON 編輯器就是這條路）。
+        if name not in raw or (raw[name] is None and default is not _REQUIRED):
             if default is _REQUIRED:
                 raise DashboardError(f"Widget '{wid}' missing props.{name}")
             out[name] = copy.deepcopy(default)

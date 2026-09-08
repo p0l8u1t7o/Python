@@ -4,12 +4,11 @@ import copy
 import json
 
 from django.conf import settings
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 
 from apps.core.models import AuditLog
 from apps.vision import dashboard, variables
-from apps.vision.api_dashboard import Dashboard
-from apps.vision.models import Flow, ImageSource
+from apps.vision.models import Dashboard, Flow, ImageSource
 from apps.vision.runner import runner
 
 
@@ -38,6 +37,17 @@ class DashboardValidationTests(TestCase):
         out = dashboard.validate(dashboard.DEFAULT_LAYOUT)
         self.assertEqual(out["rows"], 2)
         self.assertIn("run_control", [w["type"] for w in out["widgets"]])
+
+    def test_effective_layout_round_trips_through_validate(self):
+        """檢視端 GET 回來的版面（選填欄位補成 None）必須能原樣 PATCH 回去——JSON 編輯器走的就是這條路。"""
+        shown = dashboard.effective(dashboard.DEFAULT_LAYOUT)
+        self.assertIn("node", shown["widgets"][0]["props"])          # image 的選填 node 被補成 None
+        again = dashboard.validate(copy.deepcopy(shown))
+        self.assertEqual(dashboard.effective(again), shown)
+        # 明確給 null 的選填 props 也算「用預設」
+        layout = copy.deepcopy(dashboard.DEFAULT_LAYOUT)
+        layout["widgets"][0]["props"] = {"node": None, "port": None}
+        self.assertIsNone(dashboard.validate(layout)["widgets"][0]["props"]["node"])
 
     def test_rejects_unknown_widget_type(self):
         raw = layout()
@@ -217,3 +227,25 @@ class DashboardDataTests(TransactionTestCase):
         self.assertIn("capacity", body["device"])
         self.assertEqual(body["variables"]["station"]["station_mode"], "auto")
         self.assertEqual(body["flows"]["9999"], {"missing": True})
+
+
+class RoundTripTests(SimpleTestCase):
+    """GET 回來的版面（effective 補了 None）直接存回去必須過驗證：JSON 編輯器走的就是這條路。"""
+
+    def test_effective_output_validates_again(self):
+        from apps.vision import dashboard
+
+        shown = dashboard.effective(dashboard.DEFAULT_LAYOUT)
+        self.assertEqual(dashboard.validate(shown)["widgets"], shown["widgets"])
+
+    def test_null_optional_prop_means_default(self):
+        from apps.vision import dashboard
+
+        layout = dashboard.effective(dashboard.DEFAULT_LAYOUT)
+        image = next(w for w in layout["widgets"] if w["type"] == "image")
+        image["props"]["node"] = None
+        checked = dashboard.validate(layout)
+        self.assertIsNone(next(w for w in checked["widgets"] if w["type"] == "image")["props"]["node"])
+        with self.assertRaises(dashboard.DashboardError):
+            image["props"]["node"] = 123
+            dashboard.validate(layout)
