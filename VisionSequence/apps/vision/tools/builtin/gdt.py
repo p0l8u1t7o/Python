@@ -132,6 +132,10 @@ def min_zone_circle(pts: np.ndarray) -> dict[str, Any]:
     if lsq is None:
         raise ToolError("The points do not describe a circle")
     cx, cy, r = lsq
+    extent = float(np.hypot(*(pts.max(axis=0) - pts.min(axis=0)))) + 1e-9
+    if not np.isfinite(r) or r > 50.0 * extent:
+        # 點幾乎共線：圓半徑爆成點雲跨距的幾十倍以上，兩個同心圓的環寬會小到誤判「合格」——這裡沒有圓可量
+        raise ToolError("The points are nearly collinear, so roundness is undefined; use straightness for a straight edge")
     start = np.array([cx, cy], dtype=np.float64)
     lsc = _radial_span(start, pts)
     try:

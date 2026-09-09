@@ -1020,6 +1020,14 @@ class FitArcTool(Tool):
         ng["points"] = pts.round(2).tolist()
         cx, cy, r = circle
         good = pts[inliers]
+        chord_pts = good if len(good) >= 3 else pts
+        span = float(np.hypot(*(chord_pts.max(axis=0) - chord_pts.min(axis=0)))) + 1.0
+        # 弓高（sagitta）：內點的跨距當弦長，圓在弦中點鼓起多少；不到 1.5 px 就是一條直線，不是弧（外點不算，會把弦撐大而漏判）
+        # （極性選反只剩零星幾點時，半徑會爆成幾千像素、圓心跑到影像外，以前仍判 ok 並把圓心畫出去）
+        sagitta = r - math.sqrt(max(0.0, r * r - (span / 2.0) ** 2))
+        if not math.isfinite(r) or sagitta < 1.5:
+            overlays.append({"kind": "points", "points": pts.round(2).tolist(), "color": "#ef4444"})
+            return Result(outputs=ng, overlays=overlays, status="ng", message=f"Arc fit is degenerate (R={r:.0f}px over a {span:.0f}px chord bulges only {sagitta:.2f}px); the edge points are nearly straight")
         resid = np.hypot(good[:, 0] - cx, good[:, 1] - cy) - r
         rms = float(np.sqrt((resid**2).mean())) if len(good) else nan
         start, end = _arc_span(np.degrees(np.arctan2(good[:, 1] - cy, good[:, 0] - cx)))
@@ -1556,6 +1564,10 @@ class ChamferAngleTool(Tool):
             ix, iy = x01 + vx1 * t, y01 + vy1 * t
         else:
             ix, iy = nan, nan
+        # 交點離邊緣點雲太遠＝兩條線幾乎平行、或方向選項選到了另一條邊：量到的角度沒有意義，判 ng 而不是把交點畫到幾萬像素外
+        span = float(np.hypot(*(pts.max(axis=0) - pts.min(axis=0)))) + 1.0
+        centre = pts.mean(axis=0)
+        far = bool(np.isfinite(ix)) and float(np.hypot(ix - centre[0], iy - centre[1])) > 3.0 * span + 50.0
         overlays += [
             {"kind": "points", "points": pts[inl1].round(2).tolist(), "color": "#38bdf8"},
             {"kind": "points", "points": rest[inl2].round(2).tolist(), "color": "#22c55e"},
@@ -1563,6 +1575,11 @@ class ChamferAngleTool(Tool):
             {"kind": "line", "x1": line1["x1"], "y1": line1["y1"], "x2": line1["x2"], "y2": line1["y2"], "color": "#38bdf8", "width": 2, "label": "Main edge"},
             {"kind": "line", "x1": line2["x1"], "y1": line2["y1"], "x2": line2["x2"], "y2": line2["y2"], "color": "#22c55e", "width": 2, "label": f"{angle:.1f}° L={line2['length']:.1f}"},
         ]
+        if far:
+            return Result(
+                outputs={**ng_out, "line1": line1, "line2": line2, "points": pts.round(2).tolist()}, overlays=overlays, status="ng",
+                message=f"The two fitted edges are nearly parallel (intersection {float(np.hypot(ix - centre[0], iy - centre[1])):.0f} px away); check the direction and threshold",
+            )
         if np.isfinite(ix):
             overlays.append({"kind": "point", "x": ix, "y": iy, "color": "#f59e0b"})
         return Result(

@@ -2474,3 +2474,67 @@ class PhotometricTests(SimpleTestCase):
         bgr = [cv2.cvtColor(im, cv2.COLOR_GRAY2BGR) for im in imgs]
         r = run_tool("photometric_stereo", bgr[0], {}, {"image_1": bgr[1], "image_2": bgr[2], "image_3": bgr[3]})
         self.assertEqual(r.outputs["image"].shape, (120, 120))
+
+
+class ToolAuditRegressionTests(SimpleTestCase):
+    """`scripts/tool_audit.py` 第一輪抓到的四個問題：狀態說 ok 卻把標記畫到幾萬像素外、或沒有東西可量卻判合格。
+    案例直接取 bench 的 Scene（seed 固定），與體檢腳本同一組輸入。"""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import os
+        import sys
+
+        scripts = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+        if scripts not in sys.path:
+            sys.path.insert(0, scripts)
+        from bench_tools import Scene, cases, make_ctx
+
+        cls.folder = temp_dir()
+        cls.scene = Scene(640, 480, cls.folder)
+        cls.cases = {name: (key, image, params, inputs, context) for name, key, image, params, inputs, context in cases(cls.scene)}
+        cls.make_ctx = staticmethod(make_ctx)
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+
+        shutil.rmtree(cls.folder, ignore_errors=True)
+        super().tearDownClass()
+
+    def _run(self, name: str, **overrides):
+        key, image, params, inputs, context = self.cases[name]
+        return base.get(key).execute(self.make_ctx(key, image, {**params, **overrides}, inputs, self.scene.assets, context))
+
+    def _far_overlay(self, result, w=640, h=480):
+        for ov in result.overlays:
+            for k in ("x", "y", "cx", "cy", "x1", "y1", "x2", "y2"):
+                v = ov.get(k)
+                if v is not None and abs(float(v)) > 2 * max(w, h) + 10:
+                    return ov
+        return None
+
+    def test_chamfer_angle_nearly_parallel_edges_are_ng(self):
+        """選錯邊（direction=last）時兩條線幾乎平行，交點在幾萬像素外：要判 ng，不能把交點畫出去。"""
+        for overrides in ({"direction": "last"}, {"direction": "strongest"}, {"edge_threshold": 1}):
+            r = self._run("chamfer_angle 40", **overrides)
+            self.assertIsNone(self._far_overlay(r), (overrides, r.message))
+            if r.status == "ok":
+                self.assertTrue(math.isfinite(r.outputs["ix"]) and abs(r.outputs["ix"]) < 1300, (overrides, r.outputs["ix"]))
+
+    def test_fit_arc_degenerate_fit_is_ng(self):
+        """極性選反只剩零星幾點時圓心跑到幾千像素外：判 ng，半徑不能是幾千像素的「弧」。"""
+        r = self._run("fit_arc (annulus 90)", polarity="light_to_dark")
+        self.assertIsNone(self._far_overlay(r), r.message)
+        if r.status == "ok":
+            self.assertLess(r.outputs["radius"], 2000)
+
+    def test_gdt_roundness_on_collinear_points_is_not_a_pass(self):
+        """直線上的點拿去量真圓度：最小二乘圓半徑趨近無限大、環寬趨近 0，以前會判「合格」。"""
+        with self.assertRaises(ToolError):
+            self._run("gdt_measure straightness 2000", mode="roundness")
+
+    def test_contour_geometry_requires_contours(self):
+        with self.assertRaises(ToolError):
+            run_tool("contour_geometry", blank(), {})

@@ -358,6 +358,8 @@ class ContourGeometryTool(Tool):
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
+        if ctx.inputs.get("contours") is None:
+            raise ToolError("Wire contours into contour_geometry (contour_find.contours or contour_filter.contours)")
         contours = _as_contours(ctx.inputs.get("contours"))[: ctx.integer("max_contours", 200)]
         depth = ctx.number("defect_depth", 3)
         rows = [describe(cnt, depth) for cnt in contours]
