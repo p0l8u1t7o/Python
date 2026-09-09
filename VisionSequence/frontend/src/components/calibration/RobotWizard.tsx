@@ -5,7 +5,7 @@
  * 把 body() 送去 solve——那一頁不必為了第四種模式再長一倍。
  * 平移與旋轉刻意分兩次採集：拿平移走的點去擬旋轉中心是錯的，量的是兩件事。
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Crosshair, Trash2 } from 'lucide-react'
 import {
@@ -13,13 +13,14 @@ import {
   Select, TBody, THead, Table, Td, TextInput, Th, Tr,
 } from '@/components/ui'
 import { errorMessage } from '@/lib/errors'
-import { previewFlow, useFlow, useFlows } from '@/lib/queries'
-import type { Overlay } from '@/lib/types'
+import { previewFlow, useCalibrationRobotSignals, useFlow, useFlows } from '@/lib/queries'
+import type { CalibrationSignal, Overlay } from '@/lib/types'
 
 export type RobotKind = 'translation' | 'translation_rotation'
 export type CameraMode = 'fixed' | 'moving'
 type Stage = 'translation' | 'rotation'
 type Locate = 'click' | 'flow'
+type CoordinateSource = 'manual' | 'connection'
 
 interface RobotPoint {
   px: [number, number]
@@ -30,6 +31,7 @@ interface RobotPoint {
 
 interface RotationPoint {
   px: [number, number]
+  r?: string
   error: number | null
 }
 
@@ -82,6 +84,13 @@ export function useRobotWizard(shotRef: string | null) {
   const [next, setNext] = useState<[string, string]>(['', ''])
   const [points, setPoints] = useState<RobotPoint[]>([])
   const [rotation, setRotation] = useState<RotationPoint[]>([])
+  const [coordinateSource, setCoordinateSource] = useState<CoordinateSource>('manual')
+  const [signalSeq, setSignalSeq] = useState(0)
+  const [receivedCount, setReceivedCount] = useState(0)
+  const [lastSignal, setLastSignal] = useState<CalibrationSignal | null>(null)
+  const [connectionEnded, setConnectionEnded] = useState(false)
+  const [teachSignal, setTeachSignal] = useState<CalibrationSignal | null>(null)
+  const [rotationR, setRotationR] = useState('')
   const [locate, setLocate] = useState<Locate>('click')
   const [flowId, setFlowId] = useState('')
   const [nodeId, setNodeId] = useState('')
@@ -91,10 +100,57 @@ export function useRobotWizard(shotRef: string | null) {
 
   function record(px: [number, number]) {
     if (stage === 'rotation') {
-      setRotation((prev) => (prev.length >= MAX_POINTS ? prev : [...prev, { px, error: null }]))
+      setRotation((prev) => (prev.length >= MAX_POINTS ? prev : [...prev, { px, r: rotationR, error: null }]))
       return
     }
     setPoints((prev) => (prev.length >= MAX_POINTS ? prev : [...prev, { px, robot: [next[0], next[1]], error: null }]))
+  }
+
+  function consumeSignals(items: CalibrationSignal[], lastSeq: number): boolean {
+    if (lastSeq > signalSeq) setSignalSeq(lastSeq)
+    if (!items.length) return false
+    let dirty = false
+    for (const item of items) {
+      setLastSignal(item)
+      if (item.kind === 'start') {
+        setPoints([])
+        setRotation([])
+        setStage('translation')
+        setReceivedCount(0)
+        setConnectionEnded(false)
+        setTeachSignal(null)
+        setRotationR('')
+        dirty = true
+      } else if (item.kind === 'point') {
+        setReceivedCount((prev) => prev + 1)
+        setConnectionEnded(false)
+        if (stage === 'rotation') {
+          const rText = item.r == null ? '' : String(item.r)
+          setRotationR(rText)
+          setRotation((prev) => {
+            const index = prev.findIndex((point) => !point.r)
+            if (index < 0) return prev
+            dirty = true
+            return prev.map((point, i) => (i === index ? { ...point, r: rText } : point))
+          })
+        } else if (item.x != null && item.y != null) {
+          const robot: [string, string] = [String(item.x), String(item.y)]
+          setNext(robot)
+          setPoints((prev) => {
+            const index = prev.findIndex((point) => point.robot[0].trim() === '' || point.robot[1].trim() === '')
+            if (index < 0) return prev
+            dirty = true
+            return prev.map((point, i) => (i === index ? { ...point, robot } : point))
+          })
+        }
+        dirty = true
+      } else if (item.kind === 'end') {
+        setConnectionEnded(true)
+      } else if (item.kind === 'teach') {
+        setTeachSignal(item)
+      }
+    }
+    return dirty
   }
 
   /** 用一條流程定位這一張的特徵：試跑到選定的節點，取它輸出的點。 */
@@ -121,6 +177,10 @@ export function useRobotWizard(shotRef: string | null) {
     setRotation([])
     setStage('translation')
     setLocated('')
+    setReceivedCount(0)
+    setConnectionEnded(false)
+    setTeachSignal(null)
+    setRotationR('')
   }
 
   const filled = points.every((p) => p.robot[0].trim() !== '' && p.robot[1].trim() !== '')
@@ -156,9 +216,11 @@ export function useRobotWizard(shotRef: string | null) {
 
   return {
     kind, setKind, cameraMode, setCameraMode, stage, setStage, next, setNext,
-    points, setPoints, rotation, setRotation, locate, setLocate,
+    points, setPoints, rotation, setRotation, coordinateSource, setCoordinateSource,
+    signalSeq, receivedCount, lastSignal, connectionEnded, teachSignal, rotationR,
+    locate, setLocate,
     flowId, setFlowId, nodeId, setNodeId, locating, located, flow,
-    record, locateWithFlow, reset, canSolve, body, applyResult, overlays,
+    record, locateWithFlow, reset, consumeSignals, canSolve, body, applyResult, overlays,
   }
 }
 
@@ -179,6 +241,7 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
   const { t } = useTranslation()
   const flows = useFlows()
   const rotating = wizard.kind === 'translation_rotation'
+  const signals = useCalibrationRobotSignals(wizard.signalSeq, wizard.coordinateSource === 'connection')
   // graph.nodes 是陣列不是字典：值要用節點 id，until_node 與報告的 nodes[] 都靠它
   const nodes = (wizard.flow.data?.graph?.nodes ?? [])
     .filter((n) => n.type !== 'note' && n.type !== 'image_source')
@@ -193,6 +256,11 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
     setter(value)
     onChange()
   }
+
+  useEffect(() => {
+    if (!signals.data) return
+    if (wizard.consumeSignals(signals.data.items, signals.data.last_seq)) onChange()
+  }, [signals.data])
 
   return (
     <Card>
@@ -242,7 +310,38 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
           </div>
         ) : null}
 
-        {wizard.stage === 'translation' ? (
+        <Select
+          label={t('calibration.robot.coordSource')}
+          value={wizard.coordinateSource}
+          onChange={(e) => update(wizard.setCoordinateSource, e.target.value as CoordinateSource)}
+          options={(['manual', 'connection'] as CoordinateSource[]).map((source) => ({ value: source, label: t(`calibration.robot.coordSources.${source}`) }))}
+          hint={t(`calibration.robot.coordSourceHints.${wizard.coordinateSource}`)}
+          data-testid="calib-robot-coord-source"
+        />
+
+        {wizard.coordinateSource === 'connection' ? (
+          <div className="space-y-1 rounded-md border border-line bg-panel/40 p-2 text-xs" data-testid="calib-robot-connection">
+            <p className="text-subtle">{t('calibration.robot.connectionSetup')}</p>
+            <p>{t('calibration.robot.received', { n: wizard.receivedCount })}</p>
+            {wizard.connectionEnded ? <p className="text-brand">{t('calibration.robot.connectionEnd')}</p> : null}
+            {wizard.teachSignal ? (
+              <p className="text-subtle">{t('calibration.robot.teachPoint', {
+                x: wizard.teachSignal.x ?? '', y: wizard.teachSignal.y ?? '', r: wizard.teachSignal.r ?? '',
+              })}</p>
+            ) : null}
+            {wizard.lastSignal ? (
+              <p className="break-words text-subtle" title={wizard.lastSignal.source}>
+                {t('calibration.robot.lastSignal', {
+                  kind: t(`integration.rules.signalKinds.${wizard.lastSignal.kind}`),
+                  time: new Date(wizard.lastSignal.ts * 1000).toLocaleTimeString(),
+                  source: wizard.lastSignal.source || '-',
+                })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {wizard.stage === 'translation' && wizard.coordinateSource === 'manual' ? (
           <div className="grid grid-cols-2 gap-2">
             <TextInput
               label={`${t('calibration.robot.nextX')} (${unit})`}
@@ -259,9 +358,12 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
               data-testid="calib-robot-next-y"
             />
           </div>
-        ) : (
-          <p className="text-xs text-subtle" data-testid="calib-robot-rotation-hint">{t('calibration.robot.rotationHint')}</p>
-        )}
+        ) : wizard.stage === 'rotation' ? (
+          <div className="space-y-1 text-xs text-subtle" data-testid="calib-robot-rotation-hint">
+            <p>{t('calibration.robot.rotationHint')}</p>
+            {wizard.coordinateSource === 'connection' && wizard.rotationR ? <p>{`${t('calibration.robot.rotationAngle')}: ${wizard.rotationR}`}</p> : null}
+          </div>
+        ) : null}
 
         <Select
           label={t('calibration.robot.locate')}
@@ -349,6 +451,7 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
             <THead>
               <Th>#</Th>
               <Th>{t('calibration.pixel')}</Th>
+              <Th>{t('calibration.robot.rotationAngle')}</Th>
               <Th align="right">{t('calibration.robot.radialError')}</Th>
               <Th /></THead>
             <TBody>
@@ -356,6 +459,7 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
                 <Tr key={`${p.px[0]}-${p.px[1]}-${i}`} testId={`calib-robot-rot-${i}`}>
                   <Td>{`R${i + 1}`}</Td>
                   <Td>{`${p.px[0].toFixed(1)}, ${p.px[1].toFixed(1)}`}</Td>
+                  <Td>{p.r || '—'}</Td>
                   <Td align="right">{p.error == null ? '—' : `${p.error.toFixed(3)} px`}</Td>
                   <Td align="right">
                     <IconButton label={t('common.delete')} onClick={() => { wizard.setRotation((prev) => prev.filter((_, j) => j !== i)); onChange() }}>
@@ -363,7 +467,7 @@ export function RobotWizard({ wizard, unit, snap, onSnap, hasPicture, onChange, 
                     </IconButton>
                   </Td>
                 </Tr>
-              )) : <EmptyRow colSpan={4} message={t('calibration.robot.noRotation')} />}
+              )) : <EmptyRow colSpan={5} message={t('calibration.robot.noRotation')} />}
             </TBody>
           </Table>
         )}

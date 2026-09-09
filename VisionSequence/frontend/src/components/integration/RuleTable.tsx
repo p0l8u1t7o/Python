@@ -9,12 +9,13 @@ import { useTranslation } from 'react-i18next'
 import { ListPlus, Trash2 } from 'lucide-react'
 
 import { Button, Checkbox, EmptyState, IconButton, Select, Switch, TextInput } from '@/components/ui'
-import { useFlows } from '@/lib/queries'
-import type { RuleAction, RuleSource, RuleTextMatch, RuleValueMode, TriggerRule } from '@/lib/types'
+import { useFlow, useFlows, useToolTypes } from '@/lib/queries'
+import type { CalibrationSignalKind, GraphNode, RuleAction, RuleSource, RuleTextMatch, RuleValueMode, TriggerRule } from '@/lib/types'
 
 const VALUE_MODES: RuleValueMode[] = ['rising', 'falling', 'change', 'nonzero', 'equal', 'not_equal', 'range']
 const TEXT_MATCHES: RuleTextMatch[] = ['exact', 'contains', 'prefix', 'regex']
-const ACTIONS: RuleAction[] = ['run_flow', 'activate_recipe', 'set_variable', 'lock', 'unlock']
+const ACTIONS: RuleAction[] = ['run_flow', 'activate_recipe', 'set_variable', 'set_param', 'calibration_signal', 'lock', 'unlock']
+const SIGNAL_KINDS: CalibrationSignalKind[] = ['start', 'point', 'end', 'teach']
 /** 要填比較值的比對方式（其餘看的是變化，不需要數字）。 */
 const NEEDS_VALUE: RuleValueMode[] = ['equal', 'not_equal', 'range']
 
@@ -23,17 +24,54 @@ export function emptyRule(source: RuleSource): TriggerRule {
     id: '', name: '', enabled: true, source,
     address: '', mode: 'rising', value: 0, value2: 0,
     match: 'contains', pattern: '', capture: '',
-    action: 'run_flow', flow: '', recipe: '', variable: '', scope: 'flow', set_value: '', args: {},
+    action: 'run_flow', flow: '', recipe: '', variable: '', node: '', param: '', scope: 'flow', set_value: '', signal_kind: 'point', args: {},
     reason: '', ttl: 0, clear: source === 'value', done: '', reply: '',
   }
 }
 
-function FlowPicker({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+function FlowPicker({ value, onChange, label, disabled = false }: { value: string; onChange: (v: string) => void; label: string; disabled?: boolean }) {
   const flows = useFlows()
   const names = (flows.data?.items ?? []).map((f) => f.name)
   const options = [{ value: '', label: '—' }, ...names.map((n) => ({ value: n, label: n }))]
   if (value && !names.includes(value)) options.push({ value, label: value })
-  return <Select label={label} value={value} onChange={(e) => onChange(e.target.value)} options={options} />
+  return <Select label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} options={options} />
+}
+
+function nodeLabel(node: GraphNode): string {
+  return `${node.id}${node.label ? ` (${node.label})` : node.type ? ` (${node.type})` : ''}`
+}
+
+function SetParamFields({ rule, set, readOnly }: { rule: TriggerRule; set: (patch: Partial<TriggerRule>) => void; readOnly: boolean }) {
+  const { t } = useTranslation()
+  const flows = useFlows()
+  const toolTypes = useToolTypes()
+  const flowItem = (flows.data?.items ?? []).find((f) => f.name === rule.flow)
+  const flowDetail = useFlow(flowItem ? flowItem.id : null)
+  const graph = flowDetail.data?.graph ?? flowItem?.graph
+  const nodes = (graph?.nodes ?? []).filter((n) => n.type !== 'note')
+  const selectedNode = nodes.find((n) => n.id === rule.node)
+  const tool = selectedNode ? (toolTypes.data?.items ?? []).find((item) => item.key === selectedNode.type) : null
+  const teachParams = (tool?.params ?? []).filter((param) => param.teach)
+  const nodeOptions = [{ value: '', label: '—' }, ...nodes.map((node) => ({ value: node.id, label: nodeLabel(node) }))]
+  if (rule.node && !nodes.some((node) => node.id === rule.node)) nodeOptions.push({ value: rule.node, label: rule.node })
+  const paramOptions = [{ value: '', label: '—' }, ...teachParams.map((param) => ({ value: param.key, label: `${param.key} (${param.label})` }))]
+  if (rule.param && !teachParams.some((param) => param.key === rule.param)) paramOptions.push({ value: rule.param, label: rule.param })
+  return (
+    <>
+      <FlowPicker label={t('integration.rules.flow')} value={rule.flow} disabled={readOnly} onChange={(v) => set({ flow: v, node: '', param: '' })} />
+      {nodes.length ? (
+        <Select label={t('integration.rules.node')} value={rule.node} disabled={readOnly} onChange={(e) => set({ node: e.target.value, param: '' })} options={nodeOptions} />
+      ) : (
+        <TextInput label={t('integration.rules.node')} className="font-mono" value={rule.node} disabled={readOnly} onChange={(e) => set({ node: e.target.value })} />
+      )}
+      {teachParams.length ? (
+        <Select label={t('integration.rules.param')} value={rule.param} disabled={readOnly} onChange={(e) => set({ param: e.target.value })} options={paramOptions} />
+      ) : (
+        <TextInput label={t('integration.rules.param')} className="font-mono" value={rule.param} disabled={readOnly} onChange={(e) => set({ param: e.target.value })} />
+      )}
+      <TextInput label={t('integration.rules.setParamValue')} hint={t('integration.rules.setParamValueHint')} className="font-mono" value={rule.set_value} disabled={readOnly} onChange={(e) => set({ set_value: e.target.value })} />
+    </>
+  )
 }
 
 function RuleRow({ rule, index, onChange, onRemove, readOnly }: {
@@ -80,7 +118,7 @@ function RuleRow({ rule, index, onChange, onRemove, readOnly }: {
       <div className={grid}>
         <Select label={t('integration.rules.action')} value={rule.action} disabled={readOnly} onChange={(e) => set({ action: e.target.value as RuleAction })} options={ACTIONS.map((a) => ({ value: a, label: t(`integration.rules.actions.${a}`) }))} />
         {rule.action === 'run_flow' || rule.action === 'activate_recipe' || (rule.action === 'set_variable' && rule.scope === 'flow') ? (
-          <FlowPicker label={t('integration.rules.flow')} value={rule.flow} onChange={(v) => set({ flow: v })} />
+          <FlowPicker label={t('integration.rules.flow')} value={rule.flow} disabled={readOnly} onChange={(v) => set({ flow: v })} />
         ) : null}
         {rule.action === 'activate_recipe' ? (
           <TextInput label={t('integration.rules.recipe')} hint={t('integration.rules.recipeHint')} value={rule.recipe} disabled={readOnly} onChange={(e) => set({ recipe: e.target.value })} />
@@ -91,6 +129,17 @@ function RuleRow({ rule, index, onChange, onRemove, readOnly }: {
             <TextInput label={t('integration.rules.variable')} className="font-mono" value={rule.variable} disabled={readOnly} onChange={(e) => set({ variable: e.target.value })} />
             <TextInput label={t('integration.rules.setValue')} hint={t('integration.rules.setValueHint')} className="font-mono" value={rule.set_value} disabled={readOnly} onChange={(e) => set({ set_value: e.target.value })} />
           </>
+        ) : null}
+        {rule.action === 'set_param' ? <SetParamFields rule={rule} set={set} readOnly={readOnly} /> : null}
+        {rule.action === 'calibration_signal' ? (
+          <Select
+            label={t('integration.rules.signalKind')}
+            value={rule.signal_kind}
+            disabled={readOnly}
+            onChange={(e) => set({ signal_kind: e.target.value as CalibrationSignalKind })}
+            options={SIGNAL_KINDS.map((kind) => ({ value: kind, label: t(`integration.rules.signalKinds.${kind}`) }))}
+            hint={t('integration.rules.signalKindHint')}
+          />
         ) : null}
         {rule.action === 'lock' ? (
           <>

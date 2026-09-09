@@ -17,6 +17,7 @@ from apps.comm.models import Connection, StationRules
 from apps.vision import variables
 from apps.vision.models import Flow, FlowRecipe, ImageSource
 from apps.vision.tcp_server import Session
+from apps.vision.tools import base
 from tests.fakes import MEMORY_KIND, register_memory_kind
 
 GRAPH = {
@@ -26,6 +27,36 @@ GRAPH = {
         {"id": "j", "type": "judge", "params": {"verdict": "ok"}},
     ],
     "edges": [{"source": "src", "target": "i"}],
+}
+
+
+class RuntimeParamTool(base.Tool):
+    key = "codex_runtime_params"
+    label = "Runtime params"
+    category = "logic"
+    params = [
+        base.Param("num", "Number", kind="number", default=1, teach=True),
+        base.Param("choice", "Choice", kind="select", default="a", options=[{"value": "a", "label": "A"}, {"value": "b", "label": "B"}], teach=True),
+        base.Param("flag", "Flag", kind="boolean", default=False, teach=True),
+        base.Param("locked", "Locked", kind="text", default="engineer-only"),
+    ]
+    inputs = []
+    outputs = [
+        base.Port("num", "Number", "number"),
+        base.Port("choice", "Choice", "string"),
+        base.Port("flag", "Flag", "bool"),
+    ]
+
+    def execute(self, ctx: base.ToolContext) -> base.Result:
+        return base.Result(outputs={"num": ctx.number("num", 1), "choice": ctx.param("choice", "a"), "flag": ctx.flag("flag")})
+
+
+PARAM_GRAPH = {
+    "nodes": [
+        {"id": "p", "type": "codex_runtime_params", "params": {"num": 1, "choice": "a", "flag": False, "locked": "engineer-only"}},
+        {"id": "out", "type": "output", "params": {"name": "observed"}},
+    ],
+    "edges": [{"source": "p", "target": "out", "source_handle": "num", "target_handle": "value"}],
 }
 
 
@@ -147,6 +178,97 @@ class RuleActionTests(TestCase):
         Flow.objects.filter(pk=self.flow.pk).update(is_enabled=False)
         with self.assertRaisesMessage(LookupError, "does not exist or is disabled"):
             rules.fire(_rule(address="coil:0", action="run_flow", flow="檢測"))
+
+
+@override_settings(VISION={**settings.VISION, "PERSIST_RUNS": False})
+class SetParamActionTests(TransactionTestCase):
+    """整合規則寫現場參數：落在預設配方，下一次 run 才吃到。"""
+
+    def setUp(self):
+        if not base.has(RuntimeParamTool.key):
+            base.register(RuntimeParamTool())
+        self.addCleanup(base.unregister, RuntimeParamTool.key)
+        self.flow = Flow.objects.create(name="現場調參", graph=PARAM_GRAPH, commissioned=True)
+
+    def test_writes_the_default_recipe_and_the_next_run_uses_it(self):
+        from apps.vision.runner import runner
+
+        before = runner.run_sync(self.flow, trigger="test")
+        self.assertEqual(before.outputs["observed"], 1.0)
+        out = rules.fire(_rule(address="hr:1", action="set_param", flow="現場調參", node="p", param="num", set_value="{value}"), {"value": "7.5"})
+        self.assertTrue(out["ok"], out)
+        recipe = FlowRecipe.objects.get(flow=self.flow, is_default=True)
+        self.assertEqual(recipe.name, "Runtime overrides")
+        self.assertEqual(recipe.param_overrides, {"p": {"num": 7.5}})
+        self.flow.refresh_from_db()
+        after = runner.run_sync(self.flow, trigger="test")
+        self.assertEqual(after.outputs["observed"], 7.5)
+
+    def test_converts_select_and_boolean_values(self):
+        out = rules.fire(_rule(address="hr:2", action="set_param", flow="現場調參", node="p", param="choice", set_value="b"))
+        self.assertTrue(out["ok"], out)
+        out = rules.fire(_rule(address="hr:3", action="set_param", flow="現場調參", node="p", param="flag", set_value="yes"))
+        self.assertTrue(out["ok"], out)
+        recipe = FlowRecipe.objects.get(flow=self.flow, is_default=True)
+        self.assertEqual(recipe.param_overrides["p"]["choice"], "b")
+        self.assertEqual(recipe.param_overrides["p"]["flag"], True)
+
+    def test_rejects_missing_non_teach_and_bad_values_without_writing(self):
+        cases = [
+            {"node": "missing", "param": "num", "set_value": "2", "summary": "Node"},
+            {"node": "p", "param": "missing", "set_value": "2", "summary": "Parameter"},
+            {"node": "p", "param": "locked", "set_value": "operator", "summary": "not an on-site parameter"},
+            {"node": "p", "param": "num", "set_value": "not-a-number", "summary": "not valid"},
+            {"node": "p", "param": "choice", "set_value": "z", "summary": "allowed options"},
+            {"node": "p", "param": "flag", "set_value": "maybe", "summary": "not valid"},
+        ]
+        for case in cases:
+            out = rules.fire(_rule(address="hr:9", action="set_param", flow="現場調參", **{k: v for k, v in case.items() if k != "summary"}))
+            self.assertFalse(out["ok"], out)
+            self.assertIn(case["summary"], out["summary"])
+        self.assertFalse(FlowRecipe.objects.filter(flow=self.flow).exists())
+
+    def test_rule_shape_requires_flow_node_and_param_only(self):
+        self.assertEqual(rules.parse([{"address": "hr:1", "action": "set_param", "flow": "現場調參", "node": "p"}]), [])
+        rule = _rule(address="hr:1", action="set_param", flow="現場調參", node="p", param="num")
+        self.assertEqual((rule.flow, rule.node, rule.param), ("現場調參", "p", "num"))
+
+
+class CalibrationSignalRuleTests(TestCase):
+    """站台接收規則把 Start／Calibration／End／Teach 變成手眼標定精靈可輪詢的訊號。"""
+
+    def setUp(self):
+        from apps.vision import calib_signals
+
+        calib_signals.clear()
+        self.addCleanup(calib_signals.clear)
+
+    def test_point_signal_uses_named_regex_groups(self):
+        from apps.vision import calib_signals
+
+        rule = _rule(source="text", match="regex", pattern=r"Calibration\((?P<x>[-\d.]+),(?P<y>[-\d.]+),(?P<r>[-\d.]+)\)", action="calibration_signal", signal_kind="point")
+        captured = rules.match_text(rule, "Calibration(12.5,8.0,90)")
+        out = rules.fire(rule, {"text": "Calibration(12.5,8.0,90)", **captured})
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(calib_signals.latest()["kind"], "point")
+        self.assertEqual((calib_signals.latest()["x"], calib_signals.latest()["y"], calib_signals.latest()["r"]), (12.5, 8.0, 90.0))
+
+    def test_point_and_teach_need_x_and_y(self):
+        out = rules.fire(_rule(source="text", pattern="P", action="calibration_signal", signal_kind="point"))
+        self.assertFalse(out["ok"], out)
+        out = rules.fire(_rule(source="text", pattern="T", action="calibration_signal", signal_kind="teach", args={"x": 1, "y": 2}))
+        self.assertTrue(out["ok"], out)
+
+    def test_start_clears_previous_items_and_end_is_recorded(self):
+        from apps.vision import calib_signals
+
+        calib_signals.push("point", 1, 2)
+        out = rules.fire(_rule(source="text", pattern="S", action="calibration_signal", signal_kind="start"))
+        self.assertTrue(out["ok"], out)
+        self.assertEqual([item["kind"] for item in calib_signals.since(0)], ["start"])
+        out = rules.fire(_rule(source="text", pattern="E", action="calibration_signal", signal_kind="end"))
+        self.assertTrue(out["ok"], out)
+        self.assertEqual([item["kind"] for item in calib_signals.since(0)], ["start", "end"])
 
 
 class StationRuleStorageTests(TestCase):

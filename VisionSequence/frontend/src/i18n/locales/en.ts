@@ -1721,6 +1721,26 @@ const enExtra2 = {
 
 /** Keys that only existed in Chinese until the product went English-first; merged last. */
 const enExtra3 = {
+  integration: {
+    rules: {
+      actions: {
+        set_param: 'Set a parameter',
+        calibration_signal: 'Calibration signal',
+      },
+      node: 'Step',
+      param: 'Parameter',
+      setParamValue: 'Value to set',
+      setParamValueHint: 'Only parameters marked teach=True can be changed. The value is stored in the flow default recipe.',
+      signalKind: 'Signal',
+      signalKindHint: 'Start clears queued calibration signals before recording the new start marker.',
+      signalKinds: {
+        start: 'Start',
+        point: 'Calibration point',
+        end: 'End',
+        teach: 'Teach point',
+      },
+    },
+  },
   stationTeach: {
     title: 'Station teach',
     subtitle: 'Tune on-site parameters across every visible flow from one station view.',
@@ -1863,6 +1883,18 @@ const enExtra3 = {
         click: 'Click the feature; the mark can snap to the centre of what you clicked near.',
         flow: 'A flow finds the feature for you, which repeats better than a click. Pick the flow and the step whose result is the position.',
       },
+      coordSource: 'Robot coordinate source',
+      coordSources: { manual: 'Manual entry', connection: 'Connection' },
+      coordSourceHints: {
+        manual: 'Type the robot X and Y before recording each point.',
+        connection: 'Receive Start, Calibration(X,Y,R), End and Teach lines through receive rules on the TCP page.',
+      },
+      connectionSetup: 'On the TCP page, add a regex receive rule and choose the calibration_signal action.',
+      received: 'Received {{n}} item(s).',
+      connectionEnd: 'End received. Calculate when the required points are ready.',
+      teachPoint: 'Teach point: X {{x}}, Y {{y}}, R {{r}}.',
+      lastSignal: 'Last {{kind}} at {{time}}: {{source}}',
+      rotationAngle: 'R',
       pickFlow: 'Flow',
       pickNode: 'Step',
       runLocate: 'Find and record',

@@ -287,6 +287,8 @@ the station keeps a table of what such a line means:</p>
 <tr><th>When the line</th><th>Keep it as</th><th>Then</th></tr>
 <tr><td>starts with <code>SCAN </code></td><td><code>lot</code></td><td>Run the appearance flow, replying <code>{judge},{lot}</code></td></tr>
 <tr><td>matches <code>(?P&lt;lot&gt;[A-Z]\d+)</code></td><td>(named groups are kept automatically)</td><td>Store the variable <code>lot</code> from <code>{lot}</code></td></tr>
+<tr><td>matches <code>THR (?P&lt;v&gt;\d+)</code></td><td><code>v</code></td><td>Set one teachable flow parameter from <code>{v}</code>; the value is stored in that flow's default recipe, creating <code>Runtime overrides</code> when no default exists, and the graph is not changed</td></tr>
+<tr><td>matches <code>Calibration\((?P&lt;x&gt;[^,]+),(?P&lt;y&gt;[^,]+),(?P&lt;r&gt;[^)]+)\)</code></td><td>named <code>x</code>, <code>y</code>, <code>r</code></td><td>Record a hand-eye calibration signal for the Calibration page</td></tr>
 <tr><td>is exactly <code>STOP</code></td><td>&mdash;</td><td>Hold the hardware</td></tr>
 </table>
 <p>Commands always win: a line is matched against the rules only when it is not <code>RUN</code>, <code>STATUS</code>, <code>PING</code> and the

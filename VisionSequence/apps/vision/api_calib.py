@@ -6,6 +6,8 @@
     POST /vision/calibration/solve          {mode, ...} → payload＋品質評語（**先看再存**，不會偷偷寫進資產）
     POST /vision/calibration/assets         {name, payload} → 201 資產
     GET  /vision/calibration/assets/{id}    → 資產內容、摘要與品質
+    GET  /vision/calibration/robot/signals  → 手眼標定通訊訊號
+    DELETE /vision/calibration/robot/signals → 清空手眼標定通訊訊號
 
 `solve` 與 `assets` 分開是刻意的：使用者先看到殘差、決定要不要剔掉某一點或某一張，滿意了才存。
 """
@@ -26,7 +28,7 @@ from ninja import File, Router, UploadedFile
 from apps.accounts.security import require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision import calib, calibboard, sources
+from apps.vision import calib, calib_signals, calibboard, sources
 from apps.vision.images import store
 from apps.vision.models import Asset
 
@@ -86,6 +88,22 @@ def board_png(request: HttpRequest, pattern: str = "chessboard", rows: int = 6, 
         f'inline; filename="calibration-{spec.pattern}-{spec.cols}x{spec.rows}-{spec.spacing_mm:g}mm-{spec.dpi}dpi.png"'
     )
     return response
+
+
+@router.get("/calibration/robot/signals")
+def robot_signals(request: HttpRequest, since: int = 0):
+    """讀取手眼標定精靈收到的短期機構座標訊號。"""
+    require_feature(request, "assets")
+    items = calib_signals.since(max(0, int(since or 0)))
+    return {"items": items, "last_seq": items[-1]["seq"] if items else calib_signals.current_seq()}
+
+
+@router.delete("/calibration/robot/signals")
+def clear_robot_signals(request: HttpRequest):
+    """清空手眼標定精靈的短期訊號佇列。"""
+    require_feature(request, "assets")
+    calib_signals.clear()
+    return {"items": [], "last_seq": calib_signals.current_seq()}
 
 
 @router.post("/calibration/capture", response={201: dict})

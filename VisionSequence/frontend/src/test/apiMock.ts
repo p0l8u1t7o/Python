@@ -145,6 +145,12 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/flows\/\d+\/variables$/.test(path)) return { flow_id: 1, items: { parts: 12, lot: 'A17' }, station: { shift: 'day' } }
   if (path.startsWith('/vision/variables')) return { items: { shift: 'day' } }
   if (path.startsWith('/vision/fixed-images')) return { items: [{ id: 'fixed-1', name: 'Reference' }], count: 1, bytes: 128, orphans: [] }
+  if (path.startsWith('/vision/calibration/robot/signals')) {
+    return {
+      items: [{ seq: 1, kind: 'point', x: 12, y: 34, r: 90, ts: 1788500000, source: 'Calibration(12,34,90)' }],
+      last_seq: 1,
+    }
+  }
   if (path.startsWith('/vision/calibration/capture')) return { ref: 'cal:capture:image', width: 640, height: 480, name: 'shot.png' }
   if (path.startsWith('/vision/calibration/detect')) return { found: true, count: 54, corners: [[10, 10], [20, 10]], overlays: [{ kind: 'points', points: [[10, 10], [20, 10]] }] }
   if (path.startsWith('/vision/calibration/solve')) {
@@ -203,7 +209,7 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/dl/trainers')) return { items: [DL_TRAINER] }
   if (path.startsWith('/vision/dl/train/status')) return { job: null }
   if (path.startsWith('/vision/dl/devices')) return { available: ['cpu'], preferred: ['cpu'], train_device: 'cpu', accelerators: [], gpus: [], providers: ['CPUExecutionProvider'] }
-  if (path.startsWith('/vision/integration/rules')) return { items: [{ id: 'r1', name: '', enabled: true, source: 'text', address: '', mode: 'rising', value: 0, value2: 0, match: 'prefix', pattern: 'SCAN ', capture: 'lot', action: 'run_flow', flow: 'demo', recipe: '', variable: '', scope: 'flow', set_value: '', args: {}, reason: '', ttl: 0, clear: false, done: '', reply: '' }] }
+  if (path.startsWith('/vision/integration/rules')) return { items: [{ id: 'r1', name: '', enabled: true, source: 'text', address: '', mode: 'rising', value: 0, value2: 0, match: 'prefix', pattern: 'SCAN ', capture: 'lot', action: 'run_flow', flow: 'demo', node: '', param: '', recipe: '', variable: '', scope: 'flow', set_value: '', signal_kind: 'point', args: {}, reason: '', ttl: 0, clear: false, done: '', reply: '' }] }
   if (path.startsWith('/vision/integration/trace')) return { items: [{ seq: 1, ts: 1788500000, channel: 'tcp', direction: 'in', name: '127.0.0.1:5000', summary: 'RUN 1', ok: true, ms: 3.2, detail: { ok: true } }], seq: 1, channels: { http: 0, tcp: 1, modbus: 0, capture: 0 }, keep: 300, watching: true }
   if (path.startsWith('/vision/integration/info')) return { http_base: 'http://127.0.0.1:8000/api', host: '127.0.0.1', http_port: 8000, tcp_host: '0.0.0.0', tcp_port: 9000, tcp_listening: true, api_key_required: false, max_workers: 4, run_timeout_s: 30, commands: ['RUN <flow> [k=v ...]', 'TRIGGER <flow>', 'STATUS [flow]', 'LIST', 'PING'], capture_host: '0.0.0.0', capture_port: 9100, capture_listening: true, capture_download_url: '/api/vision/capture/download' }
   if (path.startsWith('/openapi.json')) return { openapi: '3.1.0', info: { title: 'VisionSequence API', version: '1.0' }, paths: {

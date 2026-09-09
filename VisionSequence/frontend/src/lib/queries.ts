@@ -16,6 +16,7 @@ import type {
   ArchivePolicy,
   Asset,
   AuthUser,
+  CalibrationSignalList,
   Capacity,
   CaptureClients,
   CaptureDownloadInfo,
@@ -116,6 +117,7 @@ export const keys = {
   autoSaveSettings: ['settings', 'auto-save'] as const,
   stationTeachParams: ['station-teach', 'params'] as const,
   stationTeachGroups: ['station-teach', 'groups'] as const,
+  calibrationSignals: (since: number) => ['calibration', 'robot-signals', since] as const,
 }
 
 export interface RecentRuns {
@@ -371,6 +373,15 @@ export function useStationTeachGroups() {
     queryKey: keys.stationTeachGroups,
     queryFn: () => api.get<StationTeachGroupList>('/vision/teach/groups'),
     refetchOnWindowFocus: true,
+  })
+}
+
+export function useCalibrationRobotSignals(since: number, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.calibrationSignals(since),
+    queryFn: () => api.get<CalibrationSignalList>('/vision/calibration/robot/signals', { since }),
+    enabled,
+    refetchInterval: enabled ? 1000 : false,
   })
 }
 

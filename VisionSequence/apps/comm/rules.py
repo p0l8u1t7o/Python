@@ -6,7 +6,7 @@
 
     來源 value：讀一個位址，比對方式 rising／falling／change／nonzero／equal／not_equal／range
     來源 text ：收到一行文字，比對方式 exact／contains／prefix／regex（regex 的群組可帶進流程）
-    動作      ：run_flow（帶 lot／sn 等引數）／activate_recipe（換線）／set_variable／lock／unlock
+    動作      ：run_flow（帶 lot／sn 等引數）／activate_recipe（換線）／set_variable／set_param／calibration_signal／lock／unlock
 
 規則存在 `Connection.config["triggers"]`（陣列）；舊的扁平 `trigger_*` 鍵由 `rules_of()` 包成
 單一規則，所以既有站台不必改設定就照常運作。文字規則另外存在站台層（`StationRules`），
@@ -37,8 +37,9 @@ EDGE_MODES = ("rising", "falling", "change", "equal", "not_equal", "range")
 #: 文字的比對方式。
 TEXT_MATCHES = ("exact", "contains", "prefix", "regex")
 #: 動作。
-ACTIONS = ("run_flow", "activate_recipe", "set_variable", "lock", "unlock")
+ACTIONS = ("run_flow", "activate_recipe", "set_variable", "set_param", "calibration_signal", "lock", "unlock")
 SCOPES = ("flow", "station")
+SIGNAL_KINDS = ("start", "point", "end", "teach")
 
 #: 規則名稱與引數名稱的長度上限（設定是人打的，擋住離譜的值就好）。
 MAX_TEXT = 300
@@ -72,8 +73,11 @@ class Rule:
     flow: str = ""
     recipe: str = ""
     variable: str = ""
+    node: str = ""
+    param: str = ""
     scope: str = "flow"
     set_value: str = ""
+    signal_kind: str = "point"
     args: dict[str, Any] = field(default_factory=dict)
     reason: str = ""
     ttl: int = 0
@@ -89,7 +93,8 @@ class Rule:
             "address": self.address, "mode": self.mode, "value": self.value, "value2": self.value2,
             "match": self.match, "pattern": self.pattern, "capture": self.capture,
             "action": self.action, "flow": self.flow, "recipe": self.recipe,
-            "variable": self.variable, "scope": self.scope, "set_value": self.set_value, "args": dict(self.args),
+            "variable": self.variable, "node": self.node, "param": self.param,
+            "scope": self.scope, "set_value": self.set_value, "signal_kind": self.signal_kind, "args": dict(self.args),
             "reason": self.reason, "ttl": self.ttl, "clear": self.clear, "done": self.done, "reply": self.reply,
         }
 
@@ -98,7 +103,7 @@ class Rule:
         if self.name:
             return self.name
         where = f"{self.address} {self.mode}" if self.source == "value" else f"{self.match} '{self.pattern}'"
-        target = self.flow or self.variable or self.recipe or self.action
+        target = self.flow or self.variable or self.recipe or self.node or self.signal_kind or self.action
         return f"{where} -> {self.action} {target}".strip()
 
 
@@ -148,8 +153,11 @@ def _rule_from(raw: Any, index: int) -> Rule | None:
         flow=_text(raw.get("flow"), 120),
         recipe=_text(raw.get("recipe"), 120),
         variable=_text(raw.get("variable"), 60),
+        node=_text(raw.get("node"), 80),
+        param=_text(raw.get("param"), 80),
         scope=_pick(raw.get("scope"), SCOPES, "flow"),
         set_value=_raw_text(raw.get("set_value")),
+        signal_kind=_pick(raw.get("signal_kind"), SIGNAL_KINDS, "point"),
         args={str(k)[:40]: v for k, v in (raw.get("args") or {}).items()} if isinstance(raw.get("args"), dict) else {},
         reason=_text(raw.get("reason")),
         ttl=max(0, int(_number(raw.get("ttl")))),
@@ -173,6 +181,8 @@ def _rule_from(raw: Any, index: int) -> Rule | None:
     if action == "set_variable" and not rule.variable:
         return None
     if action == "set_variable" and rule.scope == "flow" and not rule.flow:
+        return None
+    if action == "set_param" and (not rule.flow or not rule.node or not rule.param):
         return None
     return rule
 
@@ -380,12 +390,98 @@ def find_flow(ident: str):
     return qs.filter(is_enabled=True).first()
 
 
+def _rule_value(rule: Rule, context: dict[str, Any]) -> str:
+    """取規則要寫入的值；樣板可使用文字規則抓到的欄位。"""
+    return render(rule.set_value, context) if "{" in rule.set_value else rule.set_value
+
+
+def _find_node(graph: dict[str, Any], node_id: str) -> dict[str, Any] | None:
+    for node in (graph or {}).get("nodes", []):
+        if isinstance(node, dict) and str(node.get("id") or "") == node_id:
+            return node
+    return None
+
+
+def _set_param(rule: Rule, context: dict[str, Any], *, find_flow=find_flow) -> dict[str, Any]:
+    """把整合端送來的值寫進預設配方；只允許現場教導參數。"""
+    flow = find_flow(rule.flow)
+    if flow is None:
+        return {"ok": False, "action": rule.action, "summary": f"Flow '{rule.flow}' does not exist or is disabled", "detail": {}}
+    node = _find_node(flow.graph, rule.node)
+    if node is None:
+        return {"ok": False, "action": rule.action, "summary": f"Node '{rule.node}' does not exist", "detail": {"flow": flow.name}}
+    try:
+        from apps.vision.tools import base, register_builtins
+
+        register_builtins()
+        tool = base.get(str(node.get("type") or ""))
+    except Exception:  # noqa: BLE001 — 工具登錄異常要回規則失敗，不讓接收端斷線
+        return {"ok": False, "action": rule.action, "summary": f"Tool '{node.get('type')}' does not exist", "detail": {"flow": flow.name, "node": rule.node}}
+    spec = next((p for p in getattr(tool, "params", ()) or () if p.key == rule.param), None)
+    if spec is None:
+        return {"ok": False, "action": rule.action, "summary": f"Parameter '{rule.param}' does not exist", "detail": {"flow": flow.name, "node": rule.node}}
+    if not bool(getattr(spec, "teach", False)):
+        return {"ok": False, "action": rule.action, "summary": f"Parameter '{rule.param}' is not an on-site parameter", "detail": {"flow": flow.name, "node": rule.node}}
+    raw = _rule_value(rule, context)
+    if spec.kind == "boolean" and isinstance(raw, str) and raw.strip().lower() not in ("1", "true", "yes", "on", "0", "false", "no", "off"):
+        return {"ok": False, "action": rule.action, "summary": f"Value for '{rule.param}' is not valid", "detail": {"flow": flow.name, "node": rule.node, "value": raw}}
+    value = base.coerce_param(spec, raw)
+    if value is base._BAD_PARAM:
+        return {"ok": False, "action": rule.action, "summary": f"Value for '{rule.param}' is not valid", "detail": {"flow": flow.name, "node": rule.node, "value": raw}}
+    if spec.kind == "select" and spec.options:
+        allowed = {str(item.get("value")) for item in spec.options}
+        if str(value) not in allowed:
+            return {"ok": False, "action": rule.action, "summary": f"Value for '{rule.param}' is not one of the allowed options", "detail": {"flow": flow.name, "node": rule.node, "value": value}}
+
+    from django.db import transaction
+    from apps.vision.models import FlowRecipe
+
+    with transaction.atomic():
+        recipe = flow.recipes.select_for_update().filter(is_default=True).first()
+        if recipe is None:
+            recipe = FlowRecipe.objects.create(flow=flow, name="Runtime overrides", is_default=True)
+        overrides = dict(recipe.param_overrides or {})
+        node_patch = dict(overrides.get(rule.node) or {})
+        node_patch[rule.param] = value
+        overrides[rule.node] = node_patch
+        recipe.param_overrides = overrides
+        recipe.save(update_fields=["param_overrides", "updated_at"])
+    return {
+        "ok": True, "action": rule.action, "summary": f"{flow.name}.{rule.node}.{rule.param}={value}",
+        "detail": {"flow": flow.name, "recipe": recipe.name, "node": rule.node, "param": rule.param, "value": value},
+    }
+
+
+def _context_value(name: str, incoming: dict[str, Any], args: dict[str, Any]) -> Any:
+    return incoming[name] if name in incoming else args.get(name)
+
+
+def _calibration_signal(rule: Rule, incoming: dict[str, Any]) -> dict[str, Any]:
+    """把接收規則解析到的標定訊號放進行程內佇列。"""
+    from apps.vision import calib_signals
+
+    args = dict(rule.args or {})
+    x = _context_value("x", incoming, args)
+    y = _context_value("y", incoming, args)
+    r = _context_value("r", incoming, args)
+    if rule.signal_kind in ("point", "teach") and (x in (None, "") or y in (None, "")):
+        return {"ok": False, "action": rule.action, "summary": f"{rule.signal_kind} needs x and y", "detail": {"kind": rule.signal_kind}}
+    try:
+        if rule.signal_kind == "start":
+            calib_signals.clear()
+        item = calib_signals.push(rule.signal_kind, x=x, y=y, r=r, source=str(incoming.get("text") or rule.label()))
+    except ValueError as exc:
+        return {"ok": False, "action": rule.action, "summary": str(exc), "detail": {"kind": rule.signal_kind}}
+    return {"ok": True, "action": rule.action, "summary": f"calibration {rule.signal_kind} #{item['seq']}", "detail": item}
+
+
 def fire(rule: Rule, context: dict[str, Any] | None = None, *, trigger: str = "rule", find_flow=find_flow) -> dict[str, Any]:
     """執行規則的動作。回 `{ok, action, summary, detail}`；例外由呼叫端記進追蹤，不往上丟。
 
     `find_flow` 可以換掉（輪詢迴圈用有快取的版本，PLC 每 50 ms 觸發也不會每次查資料庫）。
     """
-    context = dict(context or {})
+    incoming = dict(context or {})
+    context = dict(incoming)
     context.update(rule.args)
     if rule.action == "run_flow":
         flow = find_flow(rule.flow)
@@ -427,6 +523,10 @@ def fire(rule: Rule, context: dict[str, Any] | None = None, *, trigger: str = "r
         raw = render(rule.set_value, context) if "{" in rule.set_value else rule.set_value
         stored = variables.store.set(variables.scope_for(flow_id, rule.scope), rule.variable, variables.parse_default(raw))
         return {"ok": True, "action": rule.action, "summary": f"{rule.variable}={stored}", "detail": {"scope": rule.scope, "name": rule.variable, "value": stored}}
+    if rule.action == "set_param":
+        return _set_param(rule, context, find_flow=find_flow)
+    if rule.action == "calibration_signal":
+        return _calibration_signal(rule, incoming)
     if rule.action in ("lock", "unlock"):
         from apps.accounts.models import EngineLock
 
@@ -440,7 +540,7 @@ def fire(rule: Rule, context: dict[str, Any] | None = None, *, trigger: str = "r
 
 
 __all__ = [
-    "ACTIONS", "EDGE_MODES", "MAX_RULES", "Rule", "SCOPES", "SOURCES", "TEXT_MATCHES", "VALUE_MODES",
+    "ACTIONS", "EDGE_MODES", "MAX_RULES", "Rule", "SCOPES", "SIGNAL_KINDS", "SOURCES", "TEXT_MATCHES", "VALUE_MODES",
     "find_flow", "fire", "from_legacy", "invalidate", "match_text", "match_value", "parse", "render", "rules_of",
     "sanitize", "save_station_rules", "station_rules", "watched_addresses",
 ]

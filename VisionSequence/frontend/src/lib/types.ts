@@ -1166,7 +1166,8 @@ export interface SpcAlertsResult {
 export type RuleSource = 'value' | 'text'
 export type RuleValueMode = 'rising' | 'falling' | 'change' | 'nonzero' | 'equal' | 'not_equal' | 'range'
 export type RuleTextMatch = 'exact' | 'contains' | 'prefix' | 'regex'
-export type RuleAction = 'run_flow' | 'activate_recipe' | 'set_variable' | 'lock' | 'unlock'
+export type RuleAction = 'run_flow' | 'activate_recipe' | 'set_variable' | 'set_param' | 'calibration_signal' | 'lock' | 'unlock'
+export type CalibrationSignalKind = 'start' | 'point' | 'end' | 'teach'
 
 export interface TriggerRule {
   id: string
@@ -1184,14 +1185,32 @@ export interface TriggerRule {
   flow: string
   recipe: string
   variable: string
+  node: string
+  param: string
   scope: 'flow' | 'station'
   set_value: string
+  signal_kind: CalibrationSignalKind
   args: Record<string, unknown>
   reason: string
   ttl: number
   clear: boolean
   done: string
   reply: string
+}
+
+export interface CalibrationSignal {
+  seq: number
+  kind: CalibrationSignalKind
+  x: number | null
+  y: number | null
+  r: number | null
+  ts: number
+  source: string
+}
+
+export interface CalibrationSignalList {
+  items: CalibrationSignal[]
+  last_seq: number
 }
 
 /**
