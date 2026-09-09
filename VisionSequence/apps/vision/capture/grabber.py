@@ -55,6 +55,13 @@ class CaptureGrabber(Grabber):
             hub.note_user(self.client, self.channel, self.name, True)
 
     def grab(self) -> np.ndarray | None:
+        return self._grab_with(fresh=self.fresh, timeout=self.timeout)
+
+    def grab_fresh(self, timeout: float | None = None) -> np.ndarray | None:
+        """讓取像工具明確要求打光或改參數之後的新影格。"""
+        return self._grab_with(fresh=True, timeout=timeout or self.timeout)
+
+    def _grab_with(self, *, fresh: bool, timeout: float) -> np.ndarray | None:
         self.timed_out = False
         session = hub.get(self.client)
         if session is None:
@@ -72,11 +79,11 @@ class CaptureGrabber(Grabber):
                         self.last_meta = None
                     log.info("擷取端串流來源 %s 偵測到 session 重連，已重新要求串流", self.name or self.client)
                 frame = session.latest(self.channel)
-                if frame is None or (self.fresh and frame.meta.seq <= self.last_seq):
-                    frame = session.wait_for_seq(self.channel, self.last_seq if self.fresh else 0, self.timeout)
+                if frame is None or (fresh and frame.meta.seq <= self.last_seq):
+                    frame = session.wait_for_seq(self.channel, self.last_seq if fresh else 0, timeout)
             else:
-                min_seq = self.last_seq if self.fresh else 0
-                frame = session.request_frame(self.channel, timeout=self.timeout, min_seq=min_seq, after_request=self.fresh, encoding=self.encoding)
+                min_seq = self.last_seq if fresh else 0
+                frame = session.request_frame(self.channel, timeout=timeout, min_seq=min_seq, after_request=fresh, encoding=self.encoding)
         except CaptureError as exc:
             self.last_error = str(exc)
             self.timed_out = exc.code == "timeout"

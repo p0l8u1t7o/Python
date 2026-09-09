@@ -18,6 +18,7 @@ BUILTIN_MODULES = [
     "apps.vision.tools.builtin.stitch",
     "apps.vision.tools.builtin.polar",
     "apps.vision.tools.builtin.photometric",
+    "apps.vision.tools.builtin.multilight",
     "apps.vision.tools.builtin.locate",
     "apps.vision.tools.builtin.align",
     "apps.vision.tools.builtin.shape",

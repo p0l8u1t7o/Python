@@ -38,6 +38,7 @@ class RegistryTests(SimpleTestCase):
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
             "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly", "circular_caliper", "profile_defect", "ocr_read", "ocv_verify",
             "boxes_overlap", "list_filter", "list_classify", "list_pick",
+            "multi_light_grab", "multi_light_fuse",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -55,6 +56,8 @@ class RegistryTests(SimpleTestCase):
         # offset 是在算出的門檻上再加減一個常數，換線時操作員會調；區域自適應的視窗與 k 屬於工程師。
         self.assertEqual(teach["threshold"], {"threshold", "low", "high", "block", "c", "offset"})
         self.assertEqual(teach["image_source"], {"exposure_us", "gain_db"})
+        self.assertEqual(teach["multi_light_grab"], {"steps", "settle_ms"})
+        self.assertEqual(teach["multi_light_fuse"], set())
         self.assertEqual(teach["camera_io"], {"line", "pulse_ms"})
         self.assertEqual(teach["camera_set"], {"values", "user_set_name"})
         self.assertEqual(teach["template_match"], {"threshold", "angle_range"})

@@ -425,6 +425,7 @@ the flow's settings and the failures in <a href="#trace">Commands and results</a
 </table>
 <p>Shared settings: the <strong>line terminator</strong> (LF, CR, CRLF or one you type), and the <strong>encoding</strong> (UTF-8, ASCII, Latin-1, or <code>hex</code>
 for devices that exchange raw bytes as hexadecimal text). A connection reconnects on its own after a drop, backing off from half a second up to thirty.</p>
+<p>For <code>light</code> connections, <code>lead_time_ms</code> and <code>strobe</code> are consumed by <code>multi_light_grab</code>. When a step's settle time is zero, the tool waits the configured lead time after changing brightness; a strobe connection sends on, requests a fresh exposure, then sends off for every step. The standalone <code>set_light</code> tool still only sends the requested light command and does not add timing of its own.</p>
 <p>Every line that arrives is matched against the station receive rules on the TCP page, exactly like a line sent to the command port: the rule can run a flow,
 switch a recipe, set a variable, write an on-site parameter or feed the hand-eye calibration wizard, and its reply template is written back to the same device.</p>
 <p>Two details worth knowing, because they decide whether a rule ever matches:</p>

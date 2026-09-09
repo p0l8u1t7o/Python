@@ -128,7 +128,9 @@ export function checkConnection(
   const tPortDef = tDef?.inputs.find((p) => p.key === tHandle) ?? paramPort(tDef, tHandle)
   const tType = tHandle === FLOW_HANDLE ? 'flow' : (tPortDef?.type ?? 'any')
   if (sType === 'flow' && tHandle !== FLOW_HANDLE) return { code: 'flowOnly', values: {} }
-  if (!compatible(sType, tType)) {
+  // 多重埠本來就收多張同型別，所以一條 list 線也可以接進去（與後端 graph.validate_graph 同一條規則）
+  const listIntoMultiple = sType === 'list' && Boolean(tPortDef?.multiple) && tType === tPortDef?.type
+  if (!listIntoMultiple && !compatible(sType, tType)) {
     return {
       code: 'incompatible',
       values: { source: `${sourceNode.label || sourceNode.type}.${sHandle}`, sourceType: sType, target: `${targetNode.label || targetNode.type}.${tHandle}`, targetType: tType },

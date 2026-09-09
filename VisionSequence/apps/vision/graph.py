@@ -142,7 +142,11 @@ def validate_graph(graph: Any) -> dict:
             t_handle = t_tool.inputs[0].key if t_tool.inputs else FLOW_IN
         st = port_type(source, s_handle, "out")
         tt = port_type(target, t_handle, "in")
-        if not _compatible(st, tt):
+        declared_in = next((p for p in t_tool.inputs if p.key == t_handle), None)
+        # 多重埠（multiple）本來就收「多張同型別」，所以一條 list 線也可以接進去（例如 multi_light_grab.images →
+        # multi_light_fuse.images）；工具端一律把清單攤平。單一埠不放行，否則一張影像的埠會收到一串。
+        list_into_multiple = st == "list" and declared_in is not None and declared_in.multiple and tt == declared_in.type
+        if not list_into_multiple and not _compatible(st, tt):
             raise GraphError(
                 f"'{source}.{s_handle}'（{st}) cannot connect to '{target}.{t_handle}'（{tt}）",
                 node_id=target,
@@ -151,9 +155,8 @@ def validate_graph(graph: Any) -> dict:
         if tt != "flow":
             # 隱含輸入埠不在工具的宣告清單裡（next() 會 StopIteration），能不能接多條看那張表
             implicit_in = tools.implicit_input(t_handle)
-            declared = next((p for p in t_tool.inputs if p.key == t_handle), None)
             # 隱含埠與參數埠都不在工具的宣告清單裡；參數埠一定只能接一條（一個參數一個值）
-            multiple = implicit_in.multiple if implicit_in else bool(declared and declared.multiple)
+            multiple = implicit_in.multiple if implicit_in else bool(declared_in and declared_in.multiple)
             count = connected_inputs.get((target, t_handle), 0) + 1
             connected_inputs[(target, t_handle)] = count
             if count > 1 and not multiple:

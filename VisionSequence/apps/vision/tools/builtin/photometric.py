@@ -189,8 +189,10 @@ class PhotometricStereoTool(Tool):
               help_text="With four lights, solve each pixel from the three brighter pictures so shadows in deep grooves do not tilt the normal."),
     ]
     inputs = [
-        Port("image", "Light 1", "image"), Port("image_1", "Light 2", "image", required=False),
+        Port("images", "Lights", "image", required=False, multiple=True),
+        Port("image", "Light 1", "image", required=False), Port("image_1", "Light 2", "image", required=False),
         Port("image_2", "Light 3", "image", required=False), Port("image_3", "Light 4", "image", required=False),
+        Port("azimuths", "Azimuths", "list", required=False), Port("elevation", "Elevation", "number", required=False),
     ]
     outputs = [
         Port("image", "Image", "image"), Port("curvature", "Curvature", "image"), Port("curvature_abs", "Shape strength", "image"),
@@ -199,16 +201,12 @@ class PhotometricStereoTool(Tool):
     ]
 
     def execute(self, ctx: ToolContext) -> Result:
-        images = [ctx.image("image")]
-        for key in ("image_1", "image_2", "image_3"):
-            im = ctx.image(key)
-            if im is not None:
-                images.append(im)
-        if images[0] is None:
+        images = _input_images(ctx)
+        if not images:
             raise ToolError("Input port 'image' has no image")
         if len(images) < 3:
             raise ToolError("At least three lighting pictures are needed (four is the usual rig)")
-        raw = ctx.param("light_azimuth", [0, 90, 180, 270])
+        raw = ctx.inputs.get("azimuths") if ctx.inputs.get("azimuths") is not None else ctx.param("light_azimuth", [0, 90, 180, 270])
         if isinstance(raw, str):
             try:
                 raw = json.loads(raw)
@@ -220,7 +218,7 @@ class PhotometricStereoTool(Tool):
             raise ToolError("Light azimuths must be a list of numbers") from None
         if len(azimuths) < len(images):
             raise ToolError(f"{len(images)} pictures but only {len(azimuths)} light azimuths")
-        elevation = ctx.number("light_elevation", 30)
+        elevation = _input_elevation(ctx)
         normals, albedo = solve(images, azimuths, elevation, ctx.flag("drop_darkest", True))
         curv = curvature_of(normals)
         norm = ctx.flag("normalize", True)
@@ -230,6 +228,42 @@ class PhotometricStereoTool(Tool):
         main = maps.get(which, maps["curvature"])
         return Result(outputs={"image": main, "lights": len(images), **maps},
                       message=f"{len(images)} lights, elevation {elevation:g}°, output {which}")
+
+
+def _input_images(ctx: ToolContext) -> list[np.ndarray]:
+    """新 images 多重埠有接線時優先；否則完全沿用舊的 image/image_1..3。"""
+    raw = ctx.inputs.get("images")
+    images: list[np.ndarray] = []
+    if isinstance(raw, np.ndarray):
+        images.append(raw)
+    elif isinstance(raw, (list, tuple)):
+        for item in raw:
+            if isinstance(item, np.ndarray):
+                images.append(item)
+            elif isinstance(item, (list, tuple)):
+                images.extend(x for x in item if isinstance(x, np.ndarray))
+    if images:
+        return images
+    first = ctx.image("image")
+    if first is None:
+        return []
+    images.append(first)
+    for key in ("image_1", "image_2", "image_3"):
+        im = ctx.image(key)
+        if im is not None:
+            images.append(im)
+    return images
+
+
+def _input_elevation(ctx: ToolContext) -> float:
+    """輸入埠有值時覆寫參數；沒接時維持舊參數行為。"""
+    value = ctx.inputs.get("elevation")
+    if value is not None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            raise ToolError("Elevation input must be a number") from None
+    return ctx.number("light_elevation", 30)
 
 
 TOOLS = [PhotometricStereoTool()]

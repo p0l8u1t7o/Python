@@ -37,6 +37,20 @@ class ValidateGraphTests(SimpleTestCase):
             validate_graph({"nodes": [n("a", "image_source"), n("c", "if_number")], "edges": [e("a", "c", "image", "value")]})
         self.assertEqual(ctx.exception.code, "invalid_graph")
 
+    def test_list_output_can_feed_a_multiple_image_port(self):
+        """multi_light_grab.images（list）接進 multi_light_fuse／photometric_stereo 的 images（image、multiple）。
+
+        執行層一直吃得下，但第一版的圖驗證擋掉了——探針把整條流程接起來才發現畫布上根本接不上線。
+        單一影像埠仍不放行，否則一張影像的埠會收到一串。
+        """
+        g = validate_graph({
+            "nodes": [n("g", "multi_light_grab", source=1, connection="light", steps="1,255"), n("f", "multi_light_fuse"), n("p", "photometric_stereo")],
+            "edges": [e("g", "f", "images", "images"), e("g", "p", "images", "images"), e("g", "p", "azimuths", "azimuths")],
+        })
+        self.assertEqual(len(g["edges"]), 3)
+        with self.assertRaises(ValidationError):
+            validate_graph({"nodes": [n("g", "multi_light_grab", source=1, connection="light", steps="1,255"), n("b", "grayscale")], "edges": [e("g", "b", "images", "image")]})
+
     def test_flow_handle_only_to_flow_input(self):
         with self.assertRaises(ValidationError):
             validate_graph({"nodes": [n("c", "if_number"), n("j", "judge")], "edges": [e("c", "j", "true", "value")]})

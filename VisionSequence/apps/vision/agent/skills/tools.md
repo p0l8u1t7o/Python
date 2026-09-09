@@ -9,6 +9,7 @@
 把 `image` 接到那些工具的 `template_image`／`flat_image`／`dark_image` 埠（接了埠就不必選資產）。
 
 ## image_source
+`frames>1` 會在同一次 run 連續要求 fresh frame，輸出 `images` 清單且 `image` 仍是第一張；`frames_timeout_ms=0` 使用來源逾時。批次逾時沿用既有 `timeout` 分支語意。
 流程的起點、只能有一個。AI 生成時 `params` 只填 `{"mode": "auto"}`：試跑吃上傳影像，存成流程後使用者在編輯器選來源。不要綁 `source_id`。
 
 ## grayscale
@@ -637,10 +638,18 @@ find_line.line（或點集、`{"angle": 度}`），`b` 是基準：垂直度把�
 輸出 `deviation`／`in_spec`／`unit`＋pass／fail 分支；detail 有方法名、擬合參數、極值點索引，現場爭議拿得出來。
 
 ## photometric_stereo
+也可接 `images` 多重影像埠，接上時優先於 `image/image_1..3`；`azimuths` 與 `elevation` 輸入埠會覆寫參數，沒接時結果必須與舊接法相同。
 光度立體：同一件在 3～4 個方向打光各拍一張（`image`＝光 1、`image_1..3`），`light_azimuth`（畫面 +x 起順時針，0＝自右、90＝自下）與
 `light_elevation` 要與燈架一致。輸出 `curvature`（有號散度：凸亮凹暗，刻印字最清楚）、`curvature_abs`（shape strength，無號，接 threshold／blob）、
 `albedo`（去掉打光的材質圖，印刷／髒污用它）、`normal_x/normal_y`。單張看不見的浮凸／凹坑／拋光面刮痕用這個，之後照一般流程 blob／ocr_read。
 一次觸發要連拍四張：來源端還沒就緒時用 `crop` 把 2×2 拼圖拆開（範本「刻印字／凹凸缺陷」就是這樣）。「沒有凹坑＝好」的判定用 `pixel_count`（blob 找不到會回 ng，整次 run 就變 NG）。`drop_darkest` 預設開（四燈時每像素丟最暗一張，深槽陰影不拉歪）。
+
+## multi_light_grab
+多光源序列取像：`source` 必填，capture 來源每一步依序做 `set_light(channel, brightness)`、strobe 連線送 `on`、等待 `settle_ms`（0 時用連線 `lead_time_ms`）、可選 `exposure_us` 用 `set_params_once()`，再 `grab_fresh()` 要求打光後的新影格；strobe 步驟取像後送 `off`。非 capture 來源會取同一張 N 次並警告，讓無相機流程可試接線；光源連線缺失時除非 `required=true`，否則降級只取像並標記 `lit=false`。
+`steps` 每行 `channel,brightness[,exposure_us][,azimuth][,elevation]`，1～8 步。輸出 `images`、`image/image_1/image_2/image_3`、`azimuths/elevations`、`count`、`duration_ms`；`after=off/keep/restore` 決定收尾關燈、保留最後一步或恢復取像前記得的各通道亮度。
+
+## multi_light_fuse
+多光源融合：輸入 `images` 多重影像埠或 `image/image_1..3`。逐像素定義：`reflection` 為各張中值、兩張以下用最小值；`shadow` 為 max-min；`mean` 為平均；`direction` 對每張灰階做 Sobel，按各張 `azimuths` 加權累積 x/y 梯度，再投影到 `angle`。`halo_removal` 只套在 reflection，做大核背景減除。尺寸不一致要指出第幾張。
 
 ## python_script
 自訂 Python 檢測（只在使用者明確要求「自己寫程式」時才用；一般需求優先用內建工具）。`code` 定義 `def run(ctx)`：`ctx.image`（唯讀）、`ctx.gray()`、`ctx.inputs['a'..'d']`、`ctx.params['p1'..'p3']`（現場參數，技術員可在參數卡調）、`ctx.roi()`／`ctx.crop()`；回傳 dict：`value`／`result`／`text`／`data`／`image`（新陣列）／`status`（ok|ng）／`branch`（pass|fail）／`overlays`／`message`。輸出埠固定：value、result、text、data、image；`pass`／`fail` 分支接 judge。只能匯入 numpy／cv2／math／json／re／statistics／itertools／collections／functools／time；不能用 dunder、exec／eval／open；純 Python 迴圈超過 `max_ms` 會中止。**只有管理員能儲存新腳本**，生成後要提醒使用者由管理員儲存核准。
