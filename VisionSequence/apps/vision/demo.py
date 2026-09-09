@@ -1127,6 +1127,296 @@ def register_count_flow(source_id: Any) -> dict[str, Any]:
     ]}
 
 
+SCRIPT_MEASURE_CODE = '''def run(ctx):
+    items = ctx.inputs.get("a") or []
+    if not isinstance(items, list) or not items:
+        return {"value": 0, "result": False, "status": "ng", "branch": "fail", "message": "No measured part"}
+    largest = max(items, key=lambda b: float(b.get("area", 0)))
+    box = largest.get("bbox") or [0, 0, largest.get("w", 0), largest.get("h", 0)]
+    w = float(box[2] or 0)
+    h = float(box[3] or 0)
+    aspect = max(w, h) / max(1.0, min(w, h))
+    fill = float(largest.get("area", 0)) / max(1.0, w * h)
+    ok = 1.2 <= aspect <= 2.2 and fill >= 0.65
+    return {
+        "value": aspect,
+        "result": ok,
+        "status": "ok" if ok else "ng",
+        "branch": "pass" if ok else "fail",
+        "data": {"aspect": round(aspect, 3), "fill": round(fill, 3)},
+        "message": f"aspect={aspect:.2f}, fill={fill:.2f}",
+    }
+'''
+
+
+def _demo_flow_id(name: str = "Demo: hole count") -> int:
+    """查詢 seed 建立的示範流程 id；若尚未 seed，保留正整數讓範本仍可載入。"""
+    try:
+        row = Flow.objects.filter(name=name).only("id").first()
+        return int(row.id) if row is not None else 1
+    except Exception:  # noqa: BLE001 - 匯入文件或尚未初始化 DB 時，範本仍需可序列化。
+        return 1
+
+
+def list_postprocess_flow(source_id: Any) -> dict[str, Any]:
+    """散裝零件後處理範例：用清單過濾、排序、挑選、分級與點集合併整理 blob 結果。"""
+    left_roi = {"shape": "rect", "x": 0, "y": 0, "w": 280, "h": 400}
+    right_roi = {"shape": "rect", "x": 280, "y": 0, "w": 280, "h": 400}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("thr", "threshold", 2, 0, "Bright parts mask", method="fixed", threshold=120),
+        _node("blob", "blob", 3, 0, "All part blobs", min_area=250, max_area=30000, sort_by="area"),
+        _node("left", "blob", 3, 1, "Left side centres", roi=left_roi, min_area=250, max_area=30000, sort_by="x"),
+        _node("right", "blob", 3, 2, "Right side centres", roi=right_roi, min_area=250, max_area=30000, sort_by="x"),
+        _node("pts", "points_merge", 4, 2, "Merged centres", unique=True),
+        _node("flt", "list_filter", 4, 0, "Reject dust and oversize", field="area", op="between", value="1000", value2="9000"),
+        _node("sort", "list_sort", 5, 0, "Scan order", by="xy"),
+        _node("pick", "list_pick", 6, 0, "Largest kept part", by="max", field="area"),
+        _node("class", "list_classify", 6, 1, "Area class", field="area", classes="small:0,2500\nstandard:2500,6000\nlarge:6000,9000"),
+        _node("cmp", "if_number", 7, 0, "6 valid parts?", operator="eq", threshold=6),
+        _node("ok", "judge", 8, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 8, 1, "NG: count or size", verdict="ng", label="list_postprocess"),
+        _node("out", "output", 7, 1, "Output valid count", name="valid_parts"),
+        _note("n1", 0, 1, "About", "The fourth picture has one missing part and one oversize part. The size filter drops the oversize blob, so the valid count falls below six."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "thr"), _edge("thr", "blob"), _edge("thr", "left"), _edge("thr", "right"),
+        _edge("left", "pts", "centers", "a"), _edge("right", "pts", "centers", "b"), _edge("src", "pts", "image", "image"),
+        _edge("blob", "flt", "blobs", "matches"), _edge("src", "flt", "image", "image"),
+        _edge("flt", "sort", "matches", "matches"), _edge("sort", "pick", "matches", "matches"), _edge("sort", "class", "matches", "matches"),
+        _edge("flt", "cmp", "count", "value"), _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("flt", "out", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def boxes_cleanup_flow(source_id: Any, marker_ref: dict[str, Any] | None = None) -> dict[str, Any]:
+    """重疊定位結果清理範例：合併 template match 結果、過濾尺寸，並檢查是否壓到禁區。"""
+    zone_roi = {"shape": "rect", "x": 325, "y": 92, "w": 120, "h": 148}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("ref", "fixed_image", 0, 3, "Marker template", images=[marker_ref] if marker_ref else [], mode="fixed", index=1, role="reference"),
+        _node("tm", "template_match", 2, 0, "Find markers", threshold=0.62, max_matches=8, sort_by="score"),
+        _node("merge", "boxes_merge", 3, 0, "Merge duplicates", mode="center_distance", threshold=18, same_label_only=False),
+        _node("flt", "boxes_filter", 4, 0, "Marker size and score", min_width=34, max_width=64, min_height=28, max_height=54, min_score=0.55),
+        _node("zone", "blob", 3, 1, "No-go zone box", roi=zone_roi, polarity="bright", threshold_method="fixed", threshold=70, min_area=10000, max_count=1),
+        _node("ov", "boxes_overlap", 5, 0, "No marker in no-go zone", metric="a_area", min_overlap=0.18, mode="none"),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: marker in zone", verdict="ng", label="box_zone"),
+        _note("n1", 0, 1, "About", "The grey no-go zone is measured as one box. The marker boxes are compared against it after merge and size filtering."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("ref", "tm", "image", "template_image"), _edge("gray", "tm"),
+        _edge("tm", "merge", "matches", "matches"), _edge("merge", "flt", "matches", "matches"),
+        _edge("gray", "zone", "image", "image"),
+        _edge("flt", "ov", "matches", "matches"), _edge("zone", "ov", "blobs", "matches_b"), _edge("src", "ov", "image", "image"),
+        _edge("ov", "ok", "ok", "_flow"), _edge("ov", "ng", "ng", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def array_placement_flow(source_id: Any) -> dict[str, Any]:
+    """規則陣列放置範例：3x4 元件先抓 blob，再由陣列校正補出缺格位置並判定。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("thr", "threshold", 2, 0, "Component mask", method="fixed", threshold=130),
+        _node("blob", "blob", 3, 0, "Component blobs", min_area=900, max_area=4000, sort_by="xy", max_count=20),
+        _node("arr", "array_correct", 4, 0, "3 x 4 grid", rows=3, cols=4, tolerance=0.4),
+        _node("miss", "count_list", 5, 0, "Missing count"),
+        _node("cmp", "if_number", 6, 0, "No missing site?", operator="eq", threshold=0),
+        _node("ok", "judge", 7, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 7, 1, "NG: missing site", verdict="ng", label="array_missing"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "thr"), _edge("thr", "blob"),
+        _edge("blob", "arr", "blobs", "matches"), _edge("src", "arr", "image", "image"),
+        _edge("arr", "miss", "missing", "items"), _edge("miss", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def label_map_count_flow(source_id: Any) -> dict[str, Any]:
+    """多色分割計數範例：紅、綠、藍區塊轉成 label map 後用 blob_label 統計。"""
+    segments = "red:170,10,80,255,80,255\ngreen:45,85,60,255,60,255\nblue:95,130,60,255,60,255"
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("seg", "color_segment", 1, 0, "Segment red green blue", segments=segments, space="hsv", min_area=1000, smooth=3),
+        _node("lbl", "blob_label", 2, 0, "Count coloured blobs", classes="1:red\n2:green\n3:blue", min_area=2000, min_count=3, max_count_ok=3),
+        _node("ok", "judge", 3, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG: missing colour", verdict="ng", label="colour_count"),
+        _node("out", "output", 2, 1, "Output class count", name="colour_blob_count"),
+    ]
+    edges = [
+        _edge("src", "seg"), _edge("seg", "lbl", "labels", "labels"),
+        _edge("lbl", "ok", "ok", "_flow"), _edge("lbl", "ng", "ng", "_flow"),
+        _edge("lbl", "out", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def color_sample_classify_flow(source_id: Any, samples: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """固定色票分類範例：把 ROI 的顏色直方圖和三張固定樣本色票比對。"""
+    roi = {"shape": "rect", "x": 124, "y": 74, "w": 172, "h": 132}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("cls", "color_classify", 1, 0, "Classify colour sample", samples=samples or [], roi=roi, space="hsv", bins=32, min_similarity=0.5),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG: unknown colour", verdict="ng", label="colour_sample"),
+        _node("out", "output", 2, 2, "Output colour label", name="colour_label"),
+    ]
+    edges = [
+        _edge("src", "cls"), _edge("cls", "ok", "ok", "_flow"), _edge("cls", "ng", "ng", "_flow"),
+        _edge("cls", "out", "label", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def variable_switch_flow(source_id: Any) -> dict[str, Any]:
+    """變數配方切換範例：sandbox 下變數寫入覆蓋層，不會污染實際站台狀態。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("recipe", "variable_get", 1, 0, "Read recipe variable", name="recipe", scope="flow", default="bright"),
+        _node("sw", "switch", 2, 0, "Route recipe", cases="bright\ndim", match="exact"),
+        _node("bthr", "threshold", 3, 0, "Bright recipe threshold", method="fixed", threshold=170),
+        _node("bblob", "blob", 4, 0, "Bright parts", min_area=1200, max_area=6000, min_count=1),
+        _node("dthr", "threshold", 3, 1, "Dim recipe threshold", method="fixed", threshold=90),
+        _node("dblob", "blob", 4, 1, "Dim parts", min_area=1200, max_area=6000, min_count=1),
+        _node("set_b", "variable_set", 5, 0, "Add bright count", name="inspected_count", scope="flow", mode="add"),
+        _node("set_d", "variable_set", 5, 1, "Add dim count", name="inspected_count", scope="flow", mode="add"),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: branch failed", verdict="ng", label="recipe_branch"),
+        _note("n1", 0, 1, "Sandbox variables", "Sample runs use the variable overlay: variable_set reports the new value for this run but does not keep it in the station store."),
+    ]
+    edges = [
+        _edge("recipe", "sw", "text", "value"),
+        _edge("sw", "bthr", "case_1", "_flow"), _edge("sw", "dthr", "case_2", "_flow"),
+        _edge("src", "bthr", "image", "image"), _edge("src", "dthr", "image", "image"),
+        _edge("bthr", "bblob"), _edge("dthr", "dblob"),
+        _edge("bblob", "set_b", "count", "value"), _edge("dblob", "set_d", "count", "value"),
+        _edge("bblob", "ok", "found", "_flow"), _edge("dblob", "ok", "found", "_flow"),
+        _edge("bblob", "ng", "not_found", "_flow"), _edge("dblob", "ng", "not_found", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def tile_for_each_flow(source_id: Any) -> dict[str, Any]:
+    """切片巡檢範例：把影像切成 2x2，逐格呼叫 seed 示範流程，並放一個直接 call_flow 節點。"""
+    target = _demo_flow_id()
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("tile", "tile", 1, 0, "2 x 2 tiles", rows=2, cols=2, overlap=0),
+        _node("each", "for_each", 2, 0, "Inspect each tile", target_flow_id=target, source="regions", pass_outputs=False, max_items=4),
+        _node("call", "call_flow", 2, 1, "Direct call example", target_flow_id=target, prefix="demo_", pass_outputs=False, pass_image=True),
+        _node("judge", "judge", 3, 0, "All tiles OK?", verdict="by_input"),
+        _note("n1", 0, 1, "Sandbox behaviour", "In sample mode call_flow and for_each return Would call messages, so the wiring is visible without requiring another real production flow."),
+    ]
+    edges = [
+        _edge("src", "tile", "image", "image"),
+        _edge("tile", "each", "regions", "regions"), _edge("src", "each", "image", "image"),
+        _edge("src", "call", "image", "image"),
+        _edge("each", "judge", "all_ok", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def script_measure_flow(source_id: Any) -> dict[str, Any]:
+    """自訂 Python 量測範例：blob 後用固定腳本計算最大零件長寬比與填滿率。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("thr", "threshold", 2, 0, "Part mask", method="fixed", threshold=130),
+        _node("blob", "blob", 3, 0, "Measured part", min_area=2000, max_area=40000, sort_by="area"),
+        _node("script", "python_script", 4, 0, "Aspect script", code=SCRIPT_MEASURE_CODE, max_ms=1000),
+        _node("rng", "in_range", 5, 0, "Aspect in range", low=1.2, high=2.2),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: custom score", verdict="ng", label="script_measure"),
+        _node("out", "output", 5, 1, "Output aspect", name="aspect_ratio"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "thr"), _edge("thr", "blob"),
+        _edge("blob", "script", "blobs", "a"), _edge("src", "script", "image", "image"),
+        _edge("script", "rng", "value", "value"),
+        _edge("rng", "ok", "inside", "_flow"), _edge("rng", "ng", "outside", "_flow"),
+        _edge("script", "out", "value", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def code_message_rules_flow(source_id: Any) -> dict[str, Any]:
+    """條碼訊息規則範例：解碼後拆批號與料號，並用正規表示式驗證批號。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("code", "barcode", 1, 0, "Read QR message", types="qr"),
+        _node("parse", "parse_message", 2, 0, "Split lot and part", mode="delimiter", separator="|", fields="lot\npart", publish=True),
+        _node("match", "string_match", 3, 0, "Lot format B######", list="^B[0-9]{6}$", match="regex", case_sensitive=True),
+        _node("fmt", "format_text", 4, 0, "Reply text", template="lot={a}, text={b}", name="message_reply"),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: bad lot", verdict="ng", label="message_rule"),
+    ]
+    edges = [
+        _edge("src", "code"), _edge("code", "parse", "first", "text"),
+        _edge("parse", "match", "first", "text"),
+        _edge("parse", "fmt", "first", "a"), _edge("match", "fmt", "text", "b"),
+        _edge("match", "ok", "found", "_flow"), _edge("match", "ng", "not_found", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def io_sequence_flow(source_id: Any) -> dict[str, Any]:
+    """設備 I/O 順序範例：相機設定、燈源、影像判定、輸出點、相機線與 Modbus 讀取都可降級。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("camset", "camera_set", 0, 1, "Apply camera settings", source=source_id, values="exposure_us=5000", user_set="none", required=False),
+        _node("light", "set_light", 1, 1, "Set ring light", connection="ring-light", channel=1, value=180, required=False),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("thr", "threshold", 2, 0, "Bright signal dots", method="fixed", threshold=140),
+        _node("blob", "blob", 3, 0, "Signal dot count", min_area=1200, max_area=4000),
+        _node("cmp", "if_number", 4, 0, "3 dots?", operator="eq", threshold=3),
+        _node("judge", "judge", 5, 0, "OK / NG", verdict="by_input"),
+        _node("io", "io_output", 6, 0, "Reject output", connection="station-io", address="coil:0", on_when="ng", pulse_ms=50, required=False),
+        _node("camio", "camera_io", 6, 1, "Camera reject line", source=source_id, line="Line1", on_when="ng", pulse_ms=50, required=False),
+        _node("mb", "read_modbus", 6, 2, "Read recipe register", connection="station-plc", mapping=[{"name": "recipe", "address": "holding:0"}], publish=False, on_error="warn"),
+        _note("n1", 0, 2, "Degraded I/O", "When these connections are absent, the steps log warnings and continue: camera settings, light, station output, camera output and Modbus read."),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "thr"), _edge("thr", "blob"), _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "judge", "result", "value"),
+        _edge("judge", "io", "verdict", "status"), _edge("judge", "camio", "verdict", "status"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def outputs_bundle_flow(source_id: Any) -> dict[str, Any]:
+    """輸出打包範例：把檢測結果格式化、寫 log、保存影像、送圖並觸發下一條流程。"""
+    target = _demo_flow_id()
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("thr", "threshold", 2, 0, "Part mask", method="fixed", threshold=130),
+        _node("blob", "blob", 3, 0, "Part blobs", min_area=1200, max_area=5000),
+        _node("cmp", "if_number", 4, 0, "3 parts?", operator="eq", threshold=3),
+        _node("judge", "judge", 5, 0, "OK / NG", verdict="by_input"),
+        _node("fmt", "format_text", 6, 0, "Bundle line", template="{a},{b}", name="bundle_text"),
+        _node("log", "write_log", 7, 0, "CSV log", path="examples", format="csv", fields="bundle_text\njudge\nrun_id", filename="outputs_bundle_{date}", daily_folder=False),
+        _node("save", "save_image", 7, 1, "Save rejects", folder="", format="png", condition="ng", split_by_judge=True, filename="{run_id:.8}"),
+        _node("send", "send_image", 7, 2, "Send result image", connection="image-host", encoding="png", include_values=True, on_error="warn"),
+        _node("trig", "trigger_flow", 7, 3, "Trigger audit flow", target_flow_id=target, mode="async", pass_outputs=True, pass_image=False),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "thr"), _edge("thr", "blob"), _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "judge", "result", "value"),
+        _edge("judge", "fmt", "verdict", "a"), _edge("blob", "fmt", "count", "b"),
+        _edge("fmt", "log", "text", "a"),
+        _edge("src", "save", "image", "image"), _edge("judge", "save", "verdict", "param:prefix"),
+        _edge("src", "send", "image", "image"), _edge("judge", "send", "verdict", "param:name"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def _demo_model(name: str) -> tuple[str, dict[str, Any]]:
     """seed 訓練的示範模型資產：(asset id, 建議的工具參數)；還沒 seed 就回空（範本照樣能載入）。"""
     row = Asset.objects.filter(name=name, kind="model").only("id", "meta").first()
@@ -1148,6 +1438,7 @@ def _demo_asset(name: str, kind: str = "image") -> str:
 #: 範本的參考圖（以前是 5 個影像資產）：名稱 → (樣本集 key, 裁切區域, 產生器名)；由 _demo_ref 現算並存進固定影像庫（內容雜湊，重跑不重複）。
 REF_SPECS: dict[str, tuple[str, dict[str, Any] | None, str]] = {
     "registered square part": ("registered_parts", {"shape": "rect", "x": 64, "y": 48, "w": 96, "h": 96}, ""),
+    "cleanup marker template": ("cleanup_boxes", {"shape": "rect", "x": 66, "y": 70, "w": 52, "h": 44}, ""),
     "cross locator template": ("marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120}, ""),
     "cup locator template": ("cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100}, ""),
     "print golden template": ("golden_print", None, ""),
@@ -1198,6 +1489,26 @@ def _demo_ref(name: str) -> dict[str, Any] | None:
     return desc
 
 
+def _color_sample_refs() -> list[dict[str, Any]]:
+    """建立 color_classify 範本使用的三張固定色票。"""
+    key = "refs:colour_samples"
+    if key in _FIXED_CACHE and _cached_present(_FIXED_CACHE[key]):
+        return [dict(d) for d in _FIXED_CACHE[key]]
+    try:
+        from apps.vision import fixed_images
+
+        specs = [("red sample", (45, 45, 218)), ("green sample", (62, 178, 62)), ("blue sample", (210, 92, 45))]
+        out = []
+        for name, colour in specs:
+            image = np.full((96, 96, 3), colour, dtype=np.uint8)
+            out.append(fixed_images.store(np.ascontiguousarray(image), f"Example {name}.png"))
+    except Exception:  # noqa: BLE001 - 色票只是範例參考圖，失敗時範本仍可載入。
+        log.warning("建立範例色票失敗", exc_info=True)
+        return []
+    _FIXED_CACHE[key] = out
+    return [dict(d) for d in out]
+
+
 def template_samples(key: str) -> list[dict[str, Any]]:
     """內建範本的樣本圖（固定影像描述子清單，依檔名排序；第 4 張多半刻意 NG）；沒有樣本集的範本回空清單。"""
     set_key = TEMPLATE_SAMPLE_SETS.get(key)
@@ -1235,6 +1546,7 @@ def builtin_fixed_ids() -> set[str]:
         d = _demo_ref(name)
         if d:
             out.add(d["id"])
+    out |= {d["id"] for d in _color_sample_refs()}
     return out
 
 
@@ -1253,6 +1565,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("fft_defect", "Fabric defect", "A frequency-domain low pass removes the periodic weave and what is left is the scratch; a mask pulls out the defect area", "quality", fft_defect_flow),
     ("surface_scratch", "Surface scratch (filter)", "A brushed surface has no repeating pattern for a frequency filter to remove; the surface defect filter averages along the mark and differentiates across it instead", "quality", surface_scratch_flow),
     ("preprocess_lab", "Pre-processing and measurement lab", "An image chain of bit depth, look-up table, filtering and flipping, plus a tour of line profile, statistics, histogram and edge density", "tutorial", preprocess_lab_flow),
+    ("list_postprocess", "Blob results sorted and picked", "Blob results filtered by area, sorted in scan order, picked by maximum area, classified by size and merged as point sets", "count", list_postprocess_flow),
+    ("array_placement", "Component array with a missing site", "Blob centres corrected into a 3 x 4 grid so the missing site can be reported and judged", "count", array_placement_flow),
     ("geometry_count", "Circles and lines", "Hough circles counted, Hough lines counted as a list, and two circle finds giving a centre distance", "count", geometry_count_flow),
     ("gear_teeth", "Gear tooth count (polar unwrap)", "Polar unwrap flattens the tooth ring into a strip, threshold and blob count the teeth, and Polar restore marks each tooth on the original picture", "count", gear_teeth_flow),
     ("contour_defect", "Chipped edge (contour geometry)", "Contour find, filter to the part, contour geometry counting convexity defects deeper than 12 px, OK/NG — plus a Hu-moment contour match against the sample outline", "quality",
@@ -1265,9 +1579,16 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("exclusion_zone", "Exclusion zones (combined region)", "Two drawn regions cut out of the plate rectangle by Region combine, feeding the statistics and blob steps through their region inputs — the hole pixels never count", "measure", exclusion_zone_flow),
     ("shading", "Flat-field correction (uneven lighting)", "Divide by a white-reference asset so one fixed threshold finds the dark spots in the corners too; a side branch shows the same threshold failing on the uncorrected picture", "quality",
      lambda sid: shading_flow(sid, _demo_ref("white reference (uneven lighting)"))),
+    ("boxes_cleanup", "Overlapping matches merged and kept out of a zone", "Template matches are merged, filtered by box size and score, then checked against a no-go-zone box for overlap", "quality",
+     lambda sid: boxes_cleanup_flow(sid, _demo_ref("cleanup marker template"))),
+    ("script_measure", "Custom Python measurement", "Blob measurements feed an approved Python script that calculates aspect ratio and a fill score before judging the range", "quality", script_measure_flow),
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
+    ("label_map_count", "Multi-colour segmentation to counts", "Three HSV colour ranges become a label map, then label-map blobs count the red, green and blue regions", "detect", label_map_count_flow),
+    ("color_sample_classify", "Classify by sample colours", "The part colour is compared with fixed red, green and blue sample images and rejected when no sample is close enough", "detect",
+     lambda sid: color_sample_classify_flow(sid, _color_sample_refs())),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
+    ("code_message_rules", "Decode, parse and match", "Read a QR payload, split lot and part fields, match the lot with a regular expression and format a reply", "identify", code_message_rules_flow),
     ("guided_code_read", "Locate then read code", "Find the likely code area, move a crop ROI to it, enlarge that crop, then decode. The stock detector size only demonstrates the wiring; train a detector for your own code location before production use.", "identify", guided_code_read_flow),
     ("date_code", "Date code read and verify (taught font)", "Text read with a font taught by seeding — segmentation plus per-character classification, fully offline — into Text verify against an eight-digit pattern with per-character confidence; a smudged digit is boxed in red", "identify",
      lambda sid: date_code_flow(sid, _demo_asset("Example: taught font (digits)", "model"))),
@@ -1284,6 +1605,10 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("conveyor_pick_bytetrack", "Conveyor pick (ByteTrack)", "Instance segmentation with the built-in ByteTrack tracker, edge filtering, confirmation by tracker ID, first-confirmed item formatting and a degraded robot text output (deep-learning dependencies required)", "automation", conveyor_pick_bytetrack_flow),
     ("conveyor_pick_stereo", "Conveyor pick (stereo Z)", "Stereo grab, instance segmentation, edge filtering, tracking, stereo depth on first-confirmed items and robot text output (deep-learning dependencies required)", "automation",
      lambda sid: conveyor_pick_stereo_flow(sid, _demo_asset(STEREO_CALIB_NAME, "calibration"))),
+    ("variable_switch", "Recipe switch by variable", "Read a recipe variable, switch between two threshold branches and store a running inspected count through the sandbox variable overlay", "automation", variable_switch_flow),
+    ("tile_for_each", "Tile the image and inspect each tile", "Split the image into a 2 x 2 grid, run a child flow for each tile in sandbox mode, and show a direct flow call", "automation", tile_for_each_flow),
+    ("io_sequence", "Light, camera IO and device signals", "Apply camera settings, set a light, inspect the image, pulse station and camera outputs, and read Modbus with degraded missing connections", "automation", io_sequence_flow),
+    ("outputs_bundle", "Log, save, send and trigger", "Format the result, write a CSV log, save reject images, send a result image and trigger an audit flow; sandbox mode reports Would actions", "automation", outputs_bundle_flow),
     ("dl_classify_demo", "Classification: good / missing hole (taught model)", "The built-in MLP classifier trained by seeding, into dl_classify pass/fail — how a taught model gets into a flow", "quality",
      lambda sid: dl_classify_flow(sid, _demo_model("Example: classifier (good / missing hole)"))),
     ("anomaly_demo", "Anomaly detection: good parts only (taught model)", "The anomaly model built by seeding from 20 clean plates scores every patch against the good memory bank; scratches it has never seen come out as anomalies (needs the anomaly backbone)", "quality",
@@ -1305,6 +1630,8 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "surface_scratch": "Example: brushed surface",
     "stat_compare": "Example: print compare",
     "preprocess_lab": "Example: preprocessing lab",
+    "list_postprocess": "Example: list postprocess parts",
+    "array_placement": "Example: component array",
     "geometry_count": "Example: circles and lines",
     "gear_teeth": "Example: gear teeth",
     "contour_defect": "Example: stamped part",
@@ -1315,9 +1642,14 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "emboss_defect": "Example: embossed plate (four lights)",
     "barcode_grade": "Example: barcode grading",
     "shading": "Example: uneven lighting",
+    "boxes_cleanup": "Example: box cleanup",
+    "script_measure": "Example: script rectangles",
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
+    "label_map_count": "Example: label map colours",
+    "color_sample_classify": "Example: sample colour cards",
     "barcode_read": "Example: barcode label",
+    "code_message_rules": "Example: coded messages",
     "guided_code_read": "Example: small code in clutter",
     "label_read": "Example: barcode label",
     "date_code": "Example: date code label",
@@ -1329,6 +1661,10 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "conveyor_pick": "Example: conveyor sequence",
     "conveyor_pick_bytetrack": "Example: conveyor sequence",
     "conveyor_pick_stereo": "Example: conveyor stereo sequence",
+    "variable_switch": "Example: variable recipe parts",
+    "tile_for_each": "Example: tiled panels",
+    "io_sequence": "Example: io signal parts",
+    "outputs_bundle": "Example: output bundle parts",
     "dl_classify_demo": "Example: classification teaching",
     "dl_segment_demo": "Example: segmentation teaching",
     "anomaly_demo": "Example: segmentation teaching",
@@ -1500,6 +1836,9 @@ def seed_demo() -> list[str]:
     _rename_legacy(created)
     for kind in ("source", "asset"):
         ResourceGroup.objects.get_or_create(kind=kind, name="Examples")
+    from apps.vision import scripts as _scripts
+
+    _scripts.approve(SCRIPT_MEASURE_CODE)
 
     source, made = ImageSource.objects.get_or_create(
         name="Demo: synthetic parts",

@@ -683,6 +683,169 @@ def small_code_scenes() -> list[np.ndarray]:
     return out
 
 
+def list_parts() -> list[np.ndarray]:
+    """小零件散布圖；前三張有 6 顆合格尺寸，第四張少一顆且多一顆過大的干擾物。"""
+    base = [(92, 98, 19), (214, 122, 27), (338, 92, 22), (480, 140, 31), (156, 288, 24), (404, 310, 29)]
+    out = []
+    for i in range(4):
+        img = _canvas(560, 400, 38)
+        parts = base if i != 3 else base[:-1]
+        for j, (cx, cy, r) in enumerate(parts):
+            dx = (i % 3 - 1) * (j % 2 + 1)
+            dy = ((i + j) % 3 - 1) * 2
+            cv2.circle(img, (cx + dx, cy + dy), r, (202, 208, 212), -1)
+            cv2.circle(img, (cx + dx, cy + dy), max(4, r // 4), (78, 82, 88), -1)
+        if i == 3:
+            cv2.circle(img, (462, 292), 58, (218, 220, 222), -1)
+        out.append(_noise(img, 3, 3100 + i))
+    return out
+
+
+def cleanup_boxes() -> list[np.ndarray]:
+    """重複定位標記與禁區；第四張多一個標記壓到禁區。"""
+    out = []
+    markers = [(92, 92), (156, 240), (244, 142)]
+    for i in range(4):
+        img = _canvas(520, 360, 42)
+        cv2.rectangle(img, (325, 92), (445, 240), (88, 92, 96), -1)
+        cv2.rectangle(img, (325, 92), (445, 240), (126, 130, 136), 3)
+        cv2.putText(img, "NO", (360, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (58, 62, 66), 2)
+        use = markers + ([(384, 170)] if i == 3 else [])
+        for j, (cx, cy) in enumerate(use):
+            x, y = cx + (i % 2) * 3 - 1, cy + ((i + j) % 2) * 2 - 1
+            cv2.rectangle(img, (x - 24, y - 20), (x + 24, y + 20), (214, 216, 220), -1)
+            cv2.line(img, (x - 15, y), (x + 15, y), (52, 56, 62), 4)
+            cv2.line(img, (x, y - 12), (x, y + 12), (52, 56, 62), 4)
+        out.append(_noise(img, 3, 3200 + i))
+    return out
+
+
+def component_array() -> list[np.ndarray]:
+    """3x4 元件陣列；第四張缺一格。"""
+    out = []
+    for i in range(4):
+        img = _canvas(560, 360, 36)
+        missing = (1, 2) if i == 3 else None
+        for r in range(3):
+            for c in range(4):
+                if (r, c) == missing:
+                    continue
+                cx = 100 + c * 115 + ((i + r) % 2) * 2
+                cy = 80 + r * 90 + ((i + c) % 2) * 2
+                cv2.rectangle(img, (cx - 24, cy - 18), (cx + 24, cy + 18), (204, 210, 214), -1)
+                cv2.circle(img, (cx, cy), 6, (80, 84, 88), -1)
+        out.append(_noise(img, 3, 3300 + i))
+    return out
+
+
+def label_map_colours() -> list[np.ndarray]:
+    """紅綠藍三色圓點計數；第四張少了藍色。"""
+    out = []
+    for i in range(4):
+        img = _canvas(520, 320, 52)
+        cv2.circle(img, (130, 160), 48, (45, 45, 218), -1)
+        cv2.circle(img, (260, 160), 48, (62, 178, 62), -1)
+        if i != 3:
+            cv2.circle(img, (390, 160), 48, (210, 92, 45), -1)
+        out.append(_noise(img, 2, 3400 + i))
+    return out
+
+
+def sample_colour_cards() -> list[np.ndarray]:
+    """樣本色分類卡；第四張是樣本外的橘色。"""
+    colours = [(45, 45, 218), (62, 178, 62), (210, 92, 45), (45, 142, 228)]
+    out = []
+    for i, colour in enumerate(colours):
+        img = _canvas(420, 280, 205)
+        cv2.rectangle(img, (120, 70), (300, 210), colour, -1)
+        cv2.rectangle(img, (120, 70), (300, 210), (45, 48, 52), 2)
+        out.append(_noise(img, 2, 3500 + i))
+    return out
+
+
+def variable_recipe_parts() -> list[np.ndarray]:
+    """變數配方範例；預設 bright 分支，第四張亮度不符合該分支。"""
+    out = []
+    levels = [214, 206, 218, 118]
+    for i, level in enumerate(levels):
+        img = _canvas(460, 320, 34)
+        for cx, cy in [(150, 120), (300, 120), (225, 220)]:
+            cv2.circle(img, (cx + (i % 2) * 3, cy), 34, (level, level, level + 2), -1)
+        out.append(_noise(img, 3, 3600 + i))
+    return out
+
+
+def tiled_panels() -> list[np.ndarray]:
+    """2x2 分格板；第四張右下格有暗污點。"""
+    out = []
+    for i in range(4):
+        img = _canvas(480, 320, 58)
+        for y in (0, 160):
+            for x in (0, 240):
+                cv2.rectangle(img, (x + 16, y + 16), (x + 224, y + 144), (202, 206, 210), -1)
+                cv2.rectangle(img, (x + 16, y + 16), (x + 224, y + 144), (82, 86, 90), 2)
+        if i == 3:
+            cv2.circle(img, (356, 238), 28, (48, 50, 52), -1)
+        out.append(_noise(img, 3, 3700 + i))
+    return out
+
+
+def script_rectangles() -> list[np.ndarray]:
+    """自訂量測用矩形；前三張長寬比合格，第四張過細。"""
+    out = []
+    sizes = [(180, 110), (172, 116), (188, 108), (230, 58)]
+    for i, (w, h) in enumerate(sizes):
+        img = _canvas(460, 300, 42)
+        rect = ((230.0, 150.0), (float(w), float(h)), float((-4, 3, 0, 2)[i]))
+        pts = np.round(cv2.boxPoints(rect)).astype(np.int32)
+        cv2.fillPoly(img, [pts], (210, 214, 218))
+        out.append(_noise(img, 3, 3800 + i))
+    return out
+
+
+def coded_messages() -> list[np.ndarray]:
+    """QR 訊息規則；第四張批號格式錯誤。"""
+    payloads = ["B240901|PN-100", "B240902|PN-100", "B240903|PN-100", "BAD901|PN-100"]
+    out = []
+    for i, payload in enumerate(payloads):
+        try:
+            enc = cv2.QRCodeEncoder.create()
+            qr = enc.encode(payload)
+        except Exception:  # noqa: BLE001 - 測試環境沒有 QR 編碼器時仍產生可見圖樣。
+            qr = ((np.indices((25, 25)).sum(axis=0) % 2) * 255).astype(np.uint8)
+        qr = cv2.resize(qr, (170, 170), interpolation=cv2.INTER_NEAREST)
+        img = _canvas(420, 300, 68)
+        cv2.rectangle(img, (90, 42), (330, 258), (238, 238, 236), -1)
+        img[62:232, 125:295] = cv2.cvtColor(qr, cv2.COLOR_GRAY2BGR)
+        cv2.putText(img, "PN-100", (145, 252), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (45, 45, 45), 2)
+        out.append(_noise(img, 2, 3900 + i))
+    return out
+
+
+def io_signal_parts() -> list[np.ndarray]:
+    """I/O 順序範例；前三張有三個亮點，第四張少一點。"""
+    out = []
+    for i in range(4):
+        img = _canvas(420, 300, 38)
+        pts = [(120, 100), (210, 180), (305, 110)] if i != 3 else [(120, 100), (210, 180)]
+        for cx, cy in pts:
+            cv2.circle(img, (cx + i % 2, cy), 28, (218, 220, 222), -1)
+        out.append(_noise(img, 3, 4000 + i))
+    return out
+
+
+def output_bundle_parts() -> list[np.ndarray]:
+    """輸出打包範例；前三張三顆零件，第四張多一顆。"""
+    out = []
+    for i in range(4):
+        img = _canvas(420, 300, 40)
+        pts = [(118, 145), (210, 145), (302, 145)] + ([(210, 220)] if i == 3 else [])
+        for cx, cy in pts:
+            cv2.rectangle(img, (cx - 24, cy - 24), (cx + 24, cy + 24), (208, 214, 218), -1)
+        out.append(_noise(img, 3, 4100 + i))
+    return out
+
+
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "registered_parts": ("registered parts", registered_parts),
@@ -711,6 +874,17 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "stop_signs": ("stop sign", stop_signs),
     "conveyor_sequence": ("conveyor sequence", conveyor_sequence),
     "conveyor_stereo_sequence": ("conveyor stereo sequence", conveyor_stereo_sequence),
+    "list_parts": ("list postprocess parts", list_parts),
+    "cleanup_boxes": ("box cleanup", cleanup_boxes),
+    "component_array": ("component array", component_array),
+    "label_map_colours": ("label map colours", label_map_colours),
+    "sample_colour_cards": ("sample colour cards", sample_colour_cards),
+    "variable_recipe_parts": ("variable recipe parts", variable_recipe_parts),
+    "tiled_panels": ("tiled panels", tiled_panels),
+    "script_rectangles": ("script rectangles", script_rectangles),
+    "coded_messages": ("coded messages", coded_messages),
+    "io_signal_parts": ("io signal parts", io_signal_parts),
+    "output_bundle_parts": ("output bundle parts", output_bundle_parts),
     "dl_parts": ("classification teaching", dl_parts),
     "dl_scratch": ("segmentation teaching", dl_scratch),
 }

@@ -526,7 +526,7 @@ def _camera_set_unavailable(ctx: ToolContext, required: bool, reason: str, detai
     if required:
         raise ToolError(reason)
     ctx.log(f"Camera settings failed (degraded): {reason}", level="warning")
-    return Result(status="ng", outputs={"ok": False, "applied": {}, "errors": {"connection": reason}}, message=f"Camera settings failed (degraded): {reason}"[:500], detail=detail)
+    return Result(status="ok", outputs={"ok": False, "applied": {}, "errors": {"connection": reason}}, message=f"Camera settings failed (degraded): {reason}"[:500], detail=detail)
 
 
 def _parse_camera_values(text: str) -> dict[str, Any]:

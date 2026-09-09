@@ -55,7 +55,7 @@ def _value_list(ctx: ToolContext) -> list[Any]:
 def _boxes(ctx: ToolContext) -> list[dict[str, Any]]:
     raw = ctx.inputs.get("matches")
     if not isinstance(raw, list):
-        if "values" in ctx.inputs:
+        if isinstance(ctx.inputs.get("values"), list):
             raise ToolError("This tool needs matches with cx/cy/w/h boxes, not values")
         raise ToolError("Connect a matches list")
     out: list[dict[str, Any]] = []
@@ -102,8 +102,8 @@ def _boxes_from_value(raw: Any, port: str) -> list[dict[str, Any]]:
 
 
 def _data_input(ctx: ToolContext) -> tuple[str, list[Any]]:
-    has_matches = "matches" in ctx.inputs
-    has_values = "values" in ctx.inputs
+    has_matches = isinstance(ctx.inputs.get("matches"), list)
+    has_values = isinstance(ctx.inputs.get("values"), list)
     if has_matches and has_values:
         raise ToolError("Connect either matches or values, not both")
     if has_matches:
@@ -114,7 +114,7 @@ def _data_input(ctx: ToolContext) -> tuple[str, list[Any]]:
 
 
 def _pick_input(ctx: ToolContext) -> tuple[str, list[Any]]:
-    present = [key for key in ("values", "matches", "points") if key in ctx.inputs]
+    present = [key for key in ("values", "matches", "points") if ctx.inputs.get(key) is not None]
     if len(present) > 1:
         raise ToolError("Connect only one of values, matches or points")
     if not present:
@@ -618,8 +618,8 @@ class ListSortTool(Tool):
     outputs = [Port("matches", "Sorted matches", "matches"), Port("values", "Sorted values", "list"), Port("count", "Count", "number"), Port("first", "First", "any")]
 
     def execute(self, ctx: ToolContext) -> Result:
-        has_matches = "matches" in ctx.inputs
-        has_values = "values" in ctx.inputs
+        has_matches = isinstance(ctx.inputs.get("matches"), list)
+        has_values = isinstance(ctx.inputs.get("values"), list)
         if has_matches and has_values:
             raise ToolError("Connect either matches or values, not both")
         by = str(ctx.param("by", "xy"))
