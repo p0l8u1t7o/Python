@@ -32,7 +32,7 @@ from vscapture.config import AppConfig, ChannelConfig, ConfigError, ConnectionCo
 from vscapture.frames import BufferPool, Frame, FrameSlot, crop_roi, encode, frame_item, prepare
 from vscapture.protocol import Encoding
 from vscapture.transport.sender import item_bytes
-from vscapture import i18n, params, update
+from vscapture import i18n, metrics, params, update
 from vscapture.shm import ShmRing, plan_slots
 from vscapture.transport.client import ConnState
 
@@ -94,6 +94,19 @@ class ConfigTests(SimpleTestCase):
         self.assertEqual(Roi(-5, 10, 5000, 10).clamp(640, 480), Roi(0, 10, 640, 10))
         self.assertTrue(Roi(0, 0, 640, 480).clamp(640, 480).is_full())
         self.assertEqual(configmod.new_channel_id(["cam1", "cam2"]), "cam3")
+
+    def test_channel_favourites_and_sharpness_config_are_backward_compatible(self):
+        old = configmod.AppConfig.from_dict({"channels": [{"id": "a", "backend": "fake"}]})
+        self.assertEqual(old.channels[0].favourite_params, [])
+        self.assertFalse(old.ui.show_sharpness)
+        cfg = configmod.AppConfig.from_dict({
+            "ui": {"show_sharpness": True},
+            "channels": [{"id": "a", "backend": "fake", "favourite_params": ["gain_db", 7, "", "TriggerDelay"]}],
+        })
+        self.assertTrue(cfg.ui.show_sharpness)
+        self.assertEqual(cfg.channels[0].favourite_params, ["gain_db", "TriggerDelay"])
+        bad = configmod.AppConfig.from_dict({"channels": [{"id": "a", "favourite_params": "gain_db"}]})
+        self.assertEqual(bad.channels[0].favourite_params, [])
 
 
 class FramesTests(SimpleTestCase):
@@ -467,6 +480,37 @@ class ParamTreeTests(SimpleTestCase):
             self.assertEqual(params.param_label(exposure), "Exposure")
         finally:
             i18n.set_language("zh-Hant")
+
+    def test_favourites_group_is_optional_and_sorts_first(self):
+        exposure = ParamSpec("exposure_us", "float", 5000.0, standard=True, label="曝光時間")
+        pattern = ParamSpec("Pattern", "enum", "a", label="Pattern")
+        favourite_names = {"Pattern"}
+        self.assertEqual(params.group_path(pattern, favourite_names), ("我的最愛",))
+        self.assertEqual(params.group_path(pattern), ("進階",))
+        self.assertEqual([s.name for s in sorted([exposure, pattern], key=lambda s: params.sort_key(s, favourite_names))], ["Pattern", "exposure_us"])
+
+
+class CaptureMetricTests(SimpleTestCase):
+    def test_preview_sharpness_matches_server_formula(self):
+        import cv2
+
+        from apps.vision.tools.builtin.measure import _sharpness_score
+
+        y, x = np.mgrid[0:160, 0:220]
+        clear = 128 + 50 * np.sin(x / 5.0) + 35 * np.sin(y / 7.0)
+        cv2.rectangle(clear, (24, 28), (120, 100), 235, -1)
+        cv2.putText(clear, "VS", (42, 145), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 20, 3)
+        clear = np.clip(clear, 0, 255).astype(np.uint8)
+        blurred = cv2.GaussianBlur(clear, (0, 0), 2.0)
+        pairs = [(clear, "clear"), (blurred, "blurred")]
+        scores: dict[str, float] = {}
+        for image, name in pairs:
+            server = _sharpness_score(image, None, "laplacian", True)
+            client = metrics.sharpness(image)
+            rel = abs(server - client) / max(1.0, abs(server))
+            self.assertLessEqual(rel, 0.01, f"{name}: server={server}, client={client}")
+            scores[name] = client
+        self.assertGreater(scores["clear"], scores["blurred"])
 
 
 class IdleStopTests(SimpleTestCase):

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
+import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QCheckBox, QGridLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget
@@ -13,8 +15,9 @@ from vscapture.channel import Channel, ChannelState
 from vscapture.config import Roi
 from vscapture.engine import CaptureEngine
 from vscapture.frames import to_display
-from vscapture.ui.bridge import EngineBridge
 from vscapture.i18n import tr
+from vscapture.metrics import sharpness
+from vscapture.ui.bridge import EngineBridge
 from vscapture.ui.theme import palette
 from vscapture.ui.widgets import muted
 
@@ -53,6 +56,10 @@ class LiveView(QWidget):
         self.timer.timeout.connect(self._tick)
         self._active = True
         self._interval = 66
+        self._sharpness_enabled = False
+        self._sharpness_score: float | None = None
+        self._sharpness_peak = 0.0
+        self._sharpness_cost_ms = 0.0
         self.set_preview_fps(15)
 
     def set_preview_fps(self, fps: int) -> None:
@@ -72,6 +79,8 @@ class LiveView(QWidget):
         self.channel = ch
         self._img = None
         self._seq = -1
+        self._sharpness_score = None
+        self._sharpness_peak = 0.0
         self.roi = Roi(ch.cfg.roi.x, ch.cfg.roi.y, ch.cfg.roi.w, ch.cfg.roi.h) if ch else Roi()
         self.hw_roi_active = bool(ch.hw_roi_active) if ch else False
         self.message = tr("live.pickChannel") if ch is None else tr("live.noImage")
@@ -79,6 +88,16 @@ class LiveView(QWidget):
 
     def set_roi(self, roi: Roi) -> None:
         self.roi = roi
+        self.update()
+
+    def set_sharpness_enabled(self, enabled: bool) -> None:
+        self._sharpness_enabled = bool(enabled)
+        if not enabled:
+            self._sharpness_score = None
+        self.update()
+
+    def reset_sharpness_peak(self) -> None:
+        self._sharpness_peak = max(0.0, self._sharpness_score or 0.0)
         self.update()
 
     # ---- 影像 ----
@@ -103,6 +122,9 @@ class LiveView(QWidget):
         self._seq = latest.seq
         image = latest.image
         disp = to_display(image, max(1, self.width()), max(1, self.height()))
+        if self._sharpness_enabled:
+            # 從已經縮給畫面用的那張再縮，不回頭碰原圖：2000 萬畫素從原圖縮一次要 35 ms，指標本身只要 0.05 ms
+            self._update_sharpness(disp)
         h, w = disp.shape[:2]
         if disp.ndim == 2:
             fmt = QImage.Format.Format_Grayscale8
@@ -117,6 +139,27 @@ class LiveView(QWidget):
         self.hw_roi_active = bool(ch.hw_roi_active)
         self._fps = float(ch.stats().get("fps") or 0.0)
         self.update()
+
+    @staticmethod
+    def _metric_gray(image: np.ndarray) -> np.ndarray:
+        if image.ndim == 2:
+            return image
+        import cv2
+
+        return cv2.cvtColor(np.ascontiguousarray(image), cv2.COLOR_BGR2GRAY if image.shape[2] == 3 else cv2.COLOR_BGRA2GRAY)
+
+    def _update_sharpness(self, image: np.ndarray) -> None:
+        start = time.perf_counter()
+        try:
+            preview = to_display(image, 320, 320)
+            score = sharpness(self._metric_gray(preview))
+        except Exception:  # noqa: BLE001 — 指標不能影響預覽
+            log.debug("清晰度指標計算失敗", exc_info=True)
+            self._sharpness_score = None
+            return
+        self._sharpness_cost_ms = (time.perf_counter() - start) * 1000.0
+        self._sharpness_score = score
+        self._sharpness_peak = max(self._sharpness_peak, score)
 
     # ---- 座標 ----
     def _fit(self) -> QRectF:
@@ -202,7 +245,39 @@ class LiveView(QWidget):
         p.drawText(QPointF(target.left() + 9, target.top() + 17), text)
         p.setPen(QColor("#e6e9ef"))
         p.drawText(QPointF(target.left() + 8, target.top() + 16), text)
+        self._draw_sharpness(p, target, c)
         p.end()
+
+    def _draw_sharpness(self, p: QPainter, target: QRectF, colors: dict[str, str]) -> None:
+        score = self._sharpness_score
+        if not self._sharpness_enabled or score is None:
+            return
+        text = tr("live.sharpnessHud", score=f"{score:.1f}")
+        font = QFont("Consolas")
+        font.setPointSize(9)
+        p.setFont(font)
+        fm = p.fontMetrics()
+        box_w = max(136, fm.horizontalAdvance(text) + 18)
+        box_h = 38
+        x = target.right() - box_w - 8
+        y = target.top() + 8
+        if x < target.left() + 8:
+            x = target.left() + 8
+        rect = QRectF(x, y, box_w, box_h)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(QPen(QColor(colors["line2"]), 1))
+        p.setBrush(QColor(0, 0, 0, 170))
+        p.drawRoundedRect(rect, 6, 6)
+        p.setPen(QColor("#e6e9ef"))
+        p.drawText(QPointF(x + 9, y + 16), text)
+        bar = QRectF(x + 9, y + 25, box_w - 18, 5)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(colors["line2"]))
+        p.drawRoundedRect(bar, 2, 2)
+        peak = max(self._sharpness_peak, score, 1e-6)
+        fill = QRectF(bar.left(), bar.top(), bar.width() * max(0.0, min(1.0, score / peak)), bar.height())
+        p.setBrush(QColor(colors["accent"]))
+        p.drawRoundedRect(fill, 2, 2)
 
     # ---- 滑鼠 ----
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
@@ -297,6 +372,12 @@ class LivePanel(QWidget):
         self.apply_btn.clicked.connect(self.apply_roi)
         self.snap_btn = QPushButton()
         self.snap_btn.clicked.connect(self.snap)
+        self.sharpness_check = QCheckBox()
+        self.sharpness_check.setChecked(bool(self.engine.cfg.ui.show_sharpness))
+        self.sharpness_check.toggled.connect(self._on_sharpness_toggled)
+        self.reset_sharpness_btn = QPushButton()
+        self.reset_sharpness_btn.clicked.connect(self.view.reset_sharpness_peak)
+        self.view.set_sharpness_enabled(self.sharpness_check.isChecked())
         # ROI 工具列：寬的時候一列，窄的時候拆成兩列（數值一列、動作一列）
         self.tools = QWidget()
         self.tools_grid = QGridLayout(self.tools)
@@ -325,6 +406,10 @@ class LivePanel(QWidget):
         self.apply_btn.setText(tr("live.applyRoi"))
         self.snap_btn.setText(tr("live.snap"))
         self.snap_btn.setToolTip(tr("live.snapTip"))
+        self.sharpness_check.setText(tr("live.sharpness"))
+        self.sharpness_check.setToolTip(tr("live.sharpnessTip"))
+        self.reset_sharpness_btn.setText(tr("live.resetSharpness"))
+        self.reset_sharpness_btn.setToolTip(tr("live.resetSharpnessTip"))
         self.status.setText(tr("live.hint"))
         self.view.message = tr("live.pickChannel") if self.channel is None else self.view.message
         self.view.update()
@@ -335,6 +420,10 @@ class LivePanel(QWidget):
 
     def set_preview_fps(self, fps: int) -> None:
         self.view.set_preview_fps(fps)
+
+    def set_sharpness_enabled(self, enabled: bool) -> None:
+        self.sharpness_check.setChecked(bool(enabled))
+        self.view.set_sharpness_enabled(enabled)
 
     def set_active(self, active: bool) -> None:
         self.view.set_active(active)
@@ -349,7 +438,7 @@ class LivePanel(QWidget):
             if item.widget() is not None:
                 item.widget().setParent(None)
         values = [self.roi_label, *self.spins.values()]
-        actions = [self.clear_btn, self.hw_check, self.apply_btn, self.snap_btn]
+        actions = [self.clear_btn, self.hw_check, self.apply_btn, self.snap_btn, self.sharpness_check, self.reset_sharpness_btn]
         if rows == 1:
             for i, w in enumerate(values):
                 self.tools_grid.addWidget(w, 0, i)
@@ -364,10 +453,11 @@ class LivePanel(QWidget):
         for w in (*values, *actions):
             w.setVisible(True)
         self.snap_btn.setVisible(self._snap_visible)
+        self.reset_sharpness_btn.setVisible(self.sharpness_check.isChecked())
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
-        self._reflow_tools(1 if self.width() >= 700 else 2)
+        self._reflow_tools(1 if self.width() >= 840 else 2)
 
     def set_channel(self, ch: Channel | None) -> None:
         self.channel = ch
@@ -380,6 +470,12 @@ class LivePanel(QWidget):
         self._loading = False
         self._show_roi(self.view.roi)
         self.refresh_buttons()
+
+    def _on_sharpness_toggled(self, enabled: bool) -> None:
+        self.engine.cfg.ui.show_sharpness = bool(enabled)
+        self.view.set_sharpness_enabled(enabled)
+        self.reset_sharpness_btn.setVisible(enabled)
+        self.dirty.emit()
 
     def refresh_buttons(self) -> None:
         ch = self.channel

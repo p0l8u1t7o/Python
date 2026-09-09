@@ -29,7 +29,7 @@ from vscapture.ui.params_panel import ParamsPanel
 from vscapture.ui.theme import THEMES, apply_theme, palette
 from vscapture.ui.tray import Tray
 from vscapture.ui.update_banner import UpdateBanner
-from vscapture.ui.widgets import conn_state_label, confirm, detail_text
+from vscapture.ui.widgets import conn_state_label, confirm, detail_text, shrinkable
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
         self.language_label = QLabel()
         self.language_label.setProperty("role", "muted")
         self.language = QComboBox()
+        shrinkable(self.language, 9)
         for code, name in LANGUAGES:
             self.language.addItem(name, code)
         self.language.setCurrentIndex(max(0, self.language.findData(engine.cfg.ui.language)))
@@ -74,6 +75,7 @@ class MainWindow(QMainWindow):
         self.theme_label = QLabel()
         self.theme_label.setProperty("role", "muted")
         self.theme_box = QComboBox()
+        shrinkable(self.theme_box, 8)
         for key in THEMES:
             self.theme_box.addItem("", key)
         self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(self.theme)))
@@ -460,6 +462,8 @@ class MainWindow(QMainWindow):
         def done(_r: Any) -> None:
             self.connection_form.load_from(self.engine.cfg.connection)
             self.connection.show_target(self.engine.cfg.connection)
+            self.live.set_preview_fps(self.engine.cfg.ui.preview_fps)
+            self.live.set_sharpness_enabled(self.engine.cfg.ui.show_sharpness)
             self.language.setCurrentIndex(max(0, self.language.findData(self.engine.cfg.ui.language)))
             self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(self.engine.cfg.ui.theme)))
             self.channels.refresh_list()

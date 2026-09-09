@@ -192,18 +192,24 @@ class ChannelConfig:
     roi: Roi = field(default_factory=Roi)
     hw_roi: bool = False
     delivery: DeliveryConfig = field(default_factory=DeliveryConfig)
+    favourite_params: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any], path: str) -> ChannelConfig:
         cid = str(d.get("id") or "").strip()
         if not cid:
             raise ConfigError("缺少 id", path)
+        favourites = d.get("favourite_params", [])
+        if not isinstance(favourites, list):
+            favourites = []
+        favourite_params = [str(item) for item in favourites if isinstance(item, str) and item.strip()]
         return cls(
             id=cid, name=str(d.get("name") or cid), enabled=bool(_pick(d, "enabled", True, path, bool)), preview=bool(_pick(d, "preview", True, path, bool)),
             backend=_pick(d, "backend", "webcam", path, str, BACKEND_NAMES), device_id=str(d.get("device_id") or ""),
             params=CameraParams.from_dict(d.get("params") or {}, f"{path}.params"),
             extras=dict(d.get("extras") or {}), roi=Roi.from_dict(d.get("roi"), f"{path}.roi"), hw_roi=bool(_pick(d, "hw_roi", False, path, bool)),
             delivery=DeliveryConfig.from_dict(d.get("delivery") or {}, f"{path}.delivery"),
+            favourite_params=favourite_params,
         )
 
 
@@ -211,6 +217,7 @@ class ChannelConfig:
 class UiConfig:
     start_minimized: bool = False
     preview_fps: int = 15
+    show_sharpness: bool = False
     window_geometry: str = ""
     language: str = "zh-Hant"  # 與網頁相同的三種語言
     theme: str = "dark"  # dark | light
@@ -220,6 +227,7 @@ class UiConfig:
         return cls(
             bool(_pick(d, "start_minimized", False, path, bool)),
             max(1, min(60, int(_pick(d, "preview_fps", 15, path, int)))),
+            bool(_pick(d, "show_sharpness", False, path, bool)),
             str(d.get("window_geometry") or ""),
             _pick(d, "language", "zh-Hant", path, str, LANGUAGES),
             _pick(d, "theme", "dark", path, str, THEMES),
