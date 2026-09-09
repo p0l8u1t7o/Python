@@ -73,6 +73,20 @@ def logo_image(present: bool, shift: int = 0) -> np.ndarray:
     return img
 
 
+def blurred(image: np.ndarray, sigma: float = 4.0) -> np.ndarray:
+    return cv2.GaussianBlur(image, (0, 0), sigma)
+
+
+def hole_image(ellipse: bool = False) -> np.ndarray:
+    """一個孔：圓（合格）或橢圓（真圓度超差）。"""
+    img = np.full((480, 640, 3), 200, np.uint8)
+    if ellipse:
+        cv2.ellipse(img, (320, 240), (60, 46), 0, 0, 360, (40, 40, 40), -1)
+    else:
+        cv2.circle(img, (320, 240), 60, (40, 40, 40), -1)
+    return img
+
+
 def flat_image(value: int = 128) -> np.ndarray:
     img = np.full((300, 400, 3), value, np.uint8)
     rng = np.random.default_rng(1)
@@ -100,6 +114,9 @@ def _rect(x: int, y: int, w: int, h: int, image: int = 0, hint: str = "") -> dic
 
 
 CASES: list[BenchCase] = [
+    BenchCase("focus_gate", "對焦：清楚 vs 模糊", lambda: [part_image(5), blurred(part_image(5))], "檢查影像有沒有對焦", "focus", ["ok", "ng"], tags=("focus",)),
+    BenchCase("roundness_hole", "真圓度：圓孔 vs 橢圓孔", lambda: [hole_image(), hole_image(ellipse=True)], "量這個孔的真圓度 ±2px", "roundness", ["ok", "ng"],
+              regions=[{"region": {"shape": "circle", "cx": 320, "cy": 240, "r": 90}, "image": 0}], tags=("measure", "gdt")),
     BenchCase("count_5", "計數：5 孔合成件", lambda: [part_image(5), part_image(4)], "應該有 5 個孔", "count", ["ok", "ng"], tags=("count",)),
     BenchCase("count_vague_answers", "計數：不明確提示＋問答補齊", lambda: [part_image(5)], "看一下這個", "count", ["ok"],
               answers=[{"id": "goal", "answer": "count"}, {"id": "count", "answer": "5"}, {"id": "roi_scope", "answer": "whole"}], tags=("count", "clarify")),

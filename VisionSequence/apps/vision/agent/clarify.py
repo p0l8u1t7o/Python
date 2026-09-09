@@ -18,8 +18,10 @@ GOAL_OPTIONS = [
     ("count", "計數（有幾個）"), ("diameter", "量測圓孔直徑"), ("width", "量測寬度／間距"), ("angle", "量測角度"),
     ("defect", "表面缺陷"), ("color", "顏色判斷"), ("presence", "有無檢測"), ("barcode", "讀取條碼"), ("brightness", "亮度／曝光守門"),
     ("text", "印字有無"), ("distance", "兩孔中心距"), ("template", "圖案有無（範本比對）"),
+    ("focus", "對焦／清晰度守門"), ("roundness", "真圓度"),
 ]
 _GOAL_PHRASE = {
+    "focus": "請檢查對焦是否清晰", "roundness": "請量測真圓度",
     "count": "請計數有幾個", "diameter": "請量測直徑", "width": "請量測寬度", "angle": "請量測角度",
     "defect": "請檢查表面缺陷刮痕", "color": "請檢查顏色是否正確", "presence": "請檢查有沒有", "barcode": "請讀取條碼", "brightness": "請檢查亮度",
     "text": "請檢查有沒有印字", "distance": "請量測兩孔的中心距離", "template": "請用範本比對檢查圖案有沒有",
@@ -151,6 +153,7 @@ def summary_of(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str
         "count": "計數", "diameter": "圓孔直徑量測", "width": "寬度量測", "angle": "角度量測", "golden": "良品比對", "defect": "表面缺陷",
         "color_match": "顏色比對", "color_presence": "顏色有無", "presence": "有無檢測", "brightness": "亮度守門", "barcode": "讀碼", "generic": "尚不明確",
         "text": "印字有無", "distance": "兩孔中心距", "template_presence": "圖案有無（範本比對）",
+        "focus": "對焦／清晰度守門", "roundness": "真圓度",
     }.get(intent.kind, intent.kind)
     bits = [f"判讀為「{kind_label}」", f"{len(regions)} 個 ROI", f"{analysis.get('image_count', 1)} 張影像"]
     if intent.expected_count is not None:

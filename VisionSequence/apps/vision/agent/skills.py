@@ -12,6 +12,7 @@ skills/ 目錄：
 
 from __future__ import annotations
 
+import logging
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any
 
 from apps.vision.tools import base as tools
 
+log = logging.getLogger(__name__)
 SKILL_DIR = Path(__file__).parent / "skills"
 GUIDE_KEYS = ("platform", "design", "agentic", "imaging")
 GUIDE_LABELS = {"platform": "平台規則", "design": "流程設計原則", "agentic": "代理工作方式", "imaging": "取像與打光"}
@@ -82,6 +84,7 @@ KEYWORD_TOOLS: dict[str, tuple[str, ...]] = {
     "紋|纹|網點|网点|週期|周期|texture|pattern": ("fft_filter", "threshold", "blob"),
     "斜貼|斜贴|透視|透视|拉正|perspective|warp": ("warp_perspective",),
     "剖面|profile|溝|沟": ("line_profile",),
+    "對焦|对焦|清晰|模糊|失焦|焦距|focus|blur|sharp|defocus": ("sharpness", "in_range", "intensity"),
     "mm|毫米|公厘|公差|標稱|标称|tolerance": ("calibration", "tolerance_judge", "bool_logic"),
     "打光不均|光不均|漸暈|渐晕|暗角|角落暗|陰影校正|阴影校正|平場|平场|白板|shading|flat field|flat-field|vignett|uneven light": ("shading_correct", "threshold", "blob"),
     "排除|挖掉|挖除|扣掉|扣除|避開|避开|遮掉|不算|組合區|组合区|多重|exclude|exclusion|subtract|combine|mask out|ignore area": ("region_from_shape", "region_combine"),
@@ -110,6 +113,8 @@ INTENT_TOOLS: dict[str, tuple[str, ...]] = {
     "text": ("ocr_read", "ocv_verify", "text_presence"),
     "distance": ("find_circle", "distance", "calibration", "tolerance_judge"),
     "template_presence": ("template_match", "shape_match"),
+    "focus": ("sharpness", "in_range"),
+    "roundness": ("find_circle", "gdt_measure", "circular_caliper", "tolerance_judge"),
 }
 
 _ROI_TOOLS = {
@@ -152,8 +157,13 @@ def curated_notes() -> dict[str, str]:
     """tools.md 的 `## <type>` 分段 → {type: 要領文字}。"""
     text = (SKILL_DIR / "tools.md").read_text(encoding="utf-8")
     notes: dict[str, str] = {}
-    for m in re.finditer(r"^## (\S+)\s*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL):
-        notes[m.group(1).strip()] = m.group(2).strip()
+    # 標題可以是 `## a / b`（幾顆工具共用一段要領）：每個 key 都登記同一段。以前只認單一 key，
+    # `write_modbus / read_modbus`、`variable_get / variable_set` 四顆工具其實一直沒有要領進技能。
+    for m in re.finditer(r"^## ([^\n]+?)\s*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL):
+        body = m.group(2).strip()
+        for key in re.split(r"\s*/\s*", m.group(1).strip()):
+            if key:
+                notes[key] = body
     return notes
 
 
@@ -285,9 +295,41 @@ def select_tools(text: str, regions: list[dict[str, Any]] | None = None, *, inte
     for r in regions or []:
         shape = str((r.get("region") or {}).get("shape", ""))
         add(optional, _ROI_TOOLS.get(shape, ()))
+    # 關鍵詞表只列得出常見的幾十顆；其餘 146 顆靠說明索引的工具技能段做檢索（BM25，中文提問會先補英文同義詞），
+    # 提示詞裡沒有表上的字也能把對的工具帶進來（例如「兩台相機拼成一張」→ stitch_images）
+    add(optional, retrieved_tools(text, k=RETRIEVED_TOOLS))
     if graph:
         add(optional, [n.get("type", "") for n in graph.get("nodes", []) if n.get("type") != "note"])
     return must + optional[: max(0, limit - len(must))]
+
+
+#: 檢索帶進來的工具數上限（放在 optional，會被既有 graph 的節點與 limit 擠）
+RETRIEVED_TOOLS = 6
+_TOOL_HEADING = re.compile(r"\(([a-z0-9_]+)\)\s*$")
+
+
+def retrieved_tools(text: str, k: int = RETRIEVED_TOOLS) -> list[str]:
+    """用說明索引（help.py 的工具技能段）依提示詞找相關工具 key，依分數排序。索引第一次用時建立並快取。"""
+    if not (text or "").strip():
+        return []
+    from apps.vision.agent import help as help_mod  # 延後 import：help 也 import skills
+
+    out: list[str] = []
+    try:
+        hits = help_mod.search(text, k=max(k * 3, 12))
+    except Exception:  # noqa: BLE001 - 索引建不起來不該讓生成失敗
+        log.warning("工具檢索失敗", exc_info=True)
+        return out
+    for section, _score in hits:
+        if section.kind != "tool":
+            continue
+        m = _TOOL_HEADING.search(section.heading)
+        key = m.group(1) if m else ""
+        if key and tools.has(key) and key not in out:
+            out.append(key)
+        if len(out) >= k:
+            break
+    return out
 
 
 @lru_cache(maxsize=4)

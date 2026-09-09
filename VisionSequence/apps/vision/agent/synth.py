@@ -350,6 +350,57 @@ def synth_brightness(intent: Intent, regions: list, analysis: dict) -> tuple[dic
     return _finish(nodes, edges, col=4), f"平均亮度 {mean:.0f}，範圍設 {low}~{high}"
 
 
+def synth_focus(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
+    """對焦／清晰度守門：sharpness 分數低於「目前影像的一半」判 NG；雜訊會讓分數虛高，所以一併輸出 noise。"""
+    roi = _region_of(regions)
+    info = _roi_info(analysis)
+    score = float(info.get("sharpness") or 0.0)
+    low = round(score * 0.5, 4) if score > 0 else 0.0
+    nodes, edges = _src_gray("由 AI 助手生成：對焦守門。門檻是目前這張（視為對焦良好）分數的一半；換鏡頭或光源後重新試執行再調。"
+                             "雜訊會讓清晰度虛高，低光高增益時請一起看 noise。")
+    nodes += [
+        _node("sharp", "sharpness", 2, 0, "清晰度", roi=roi, method="laplacian", normalize=True, noise_estimate=True),
+        _node("rng", "in_range", 3, 0, "清晰度門檻", low=low, high=1000000),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG：失焦或模糊", verdict="ng", label="out_of_focus"),
+        _node("out", "output", 3, 1, "輸出清晰度", name="sharpness"),
+        _node("out2", "output", 3, 2, "輸出雜訊", name="noise"),
+    ]
+    edges += [
+        _edge("gray", "sharp", "image", "image"),
+        _edge("sharp", "rng", "score", "value"),
+        _edge("rng", "ok", "inside", "_flow"), _edge("rng", "ng", "outside", "_flow"),
+        _edge("sharp", "out", "score", "value"), _edge("sharp", "out2", "noise", "value"),
+    ]
+    return _finish(nodes, edges, col=4), f"目前清晰度 {score:.3f}，最低門檻設 {low:.3f}"
+
+
+def synth_roundness(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
+    """真圓度：find_circle 的邊緣點 → gdt_measure 最小區域圓，環寬超過公差帶判 NG。"""
+    roi = _region_of(regions)
+    tol = float(intent.tol) if intent.tol else 2.0
+    unit = "mm" if intent.unit == "mm" and intent.mm_per_px else "px"
+    gdt_params: dict[str, Any] = {"mode": "roundness", "tolerance": tol, "unit": unit}
+    if unit == "mm":
+        gdt_params["mm_per_px"] = float(intent.mm_per_px)
+    nodes, edges = _src_gray("由 AI 助手生成：真圓度。find_circle 沿 ROI 徑向找邊緣點，gdt_measure 以最小區域圓（兩個同心圓的最窄環）量圓度，"
+                             f"公差帶 {tol:g} {unit}。孔太小或邊緣糊時把 ROI 貼緊孔緣。")
+    nodes += [
+        _node("circ", "find_circle", 2, 0, "找圓", roi=roi),
+        _node("gdt", "gdt_measure", 3, 0, "真圓度", **gdt_params),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG：真圓度超差", verdict="ng", label="roundness"),
+        _node("out", "output", 3, 1, "輸出圓度偏差", name="roundness"),
+    ]
+    edges += [
+        _edge("gray", "circ", "image", "image"),
+        _edge("circ", "gdt", "points", "points"),
+        _edge("gdt", "ok", "pass", "_flow"), _edge("gdt", "ng", "fail", "_flow"),
+        _edge("gdt", "out", "deviation", "value"),
+    ]
+    return _finish(nodes, edges, col=4), f"真圓度公差帶 {tol:g} {unit}"
+
+
 def synth_barcode(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
     nodes, edges = _src_gray("由 AI 助手生成：讀碼。標籤斜貼讀不到時，前面加「透視校正」工具拉正。")
@@ -516,6 +567,8 @@ SYNTHESIZERS = {
     "generic": synth_generic,
     "text": synth_text,
     "distance": synth_distance,
+    "focus": synth_focus,
+    "roundness": synth_roundness,
 }
 
 

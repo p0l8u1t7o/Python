@@ -59,6 +59,8 @@ class IntentTests(TestCase):
             ("表面有沒有刮痕", "defect", None),
             ("讀取條碼", "barcode", None),
             ("亮度是否正常", "brightness", None),
+            ("檢查有沒有對焦", "focus", None),
+            ("量這個孔的真圓度", "roundness", None),
         ]
         for prompt, kind, count in cases:
             intent = self._parse(prompt, img)
@@ -204,6 +206,25 @@ class SkillsTests(TestCase):
         curated = {it["key"] for it in items if it["curated"]}
         self.assertTrue({"find_circle", "caliper", "blob", "defect_diff", "judge", "output", "template_match"} <= curated)
         self.assertGreaterEqual(len(curated), 40)
+        # 每一顆內建工具都要有人工要領（tools.md 的 `## key` 或 `## a / b` 分段）：只有自動骨架的工具，助手只知道參數不知道怎麼用
+        notes = skills.curated_notes()
+        missing = sorted(t.key for t in tools.all_types() if t.key not in notes)
+        self.assertEqual(missing, [], f"tools.md 缺要領：{missing}")
+        for key in ("write_modbus", "read_modbus", "variable_get", "variable_set"):
+            self.assertGreater(len(notes[key]), 80, key)  # `## a / b` 共用段：兩顆都要拿到同一段要領
+
+    def test_select_tools_retrieves_beyond_the_keyword_table(self):
+        """關鍵詞表沒有的說法，靠說明索引的工具技能段把對的工具帶進來；表上有的仍在必帶區。"""
+        from apps.vision.agent import skills
+
+        picked = skills.select_tools("兩台相機各拍一半，拼成一張再檢查")
+        self.assertIn("stitch_images", picked)
+        self.assertLessEqual(len(picked), 24)
+        self.assertTrue(set(skills.CORE_TOOLS) <= set(picked))
+        self.assertIn("find_circle", skills.select_tools("量孔的直徑"))
+        self.assertEqual(skills.retrieved_tools(""), [])
+        keys = skills.retrieved_tools("track objects on a conveyor and send one line per part")
+        self.assertIn("track_objects", keys)
 
     def test_select_tools_by_keywords_roi_intent_and_graph(self):
         from apps.vision.agent import skills

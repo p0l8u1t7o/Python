@@ -87,6 +87,16 @@ def _outliers(gray: np.ndarray) -> dict[str, float]:
     return {"dark": round(dark, 5), "bright": round(bright, 5)}
 
 
+def _sharpness(gray: np.ndarray) -> float:
+    """清晰度：呼叫 sharpness 工具同一支評分（laplacian、normalize），生成的門檻才與工具輸出同一個尺度。"""
+    try:
+        from apps.vision.tools.builtin.measure import _sharpness_score
+
+        return round(float(_sharpness_score(gray, None, "laplacian", True)), 4)
+    except Exception:  # noqa: BLE001 - 區域太小等情況：沒有分數就不給門檻
+        return 0.0
+
+
 def analyze_region(image: np.ndarray, region: dict[str, Any] | None) -> dict[str, Any]:
     """單一 ROI 的特徵包。region=None 表示整張影像。"""
     piece = crop(image, region, upright=True).image if region else image
@@ -110,6 +120,7 @@ def analyze_region(image: np.ndarray, region: dict[str, Any] | None) -> dict[str
         "mean": round(float(gray.mean()), 1), "std": round(float(gray.std()), 1),
         "mad": round(mad, 1), "smooth_mad": round(smooth_mad, 1), "gradient": round(gradient, 3), "color_std": round(color_std, 1),
         "otsu": round(float(otsu), 1),
+        "sharpness": _sharpness(gray),
         "dark_ratio": round(dark_ratio, 3),
         "edge_ratio": round(edge_ratio, 4),
         "dominant": _dominant_hsv(piece),

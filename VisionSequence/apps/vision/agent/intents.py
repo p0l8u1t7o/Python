@@ -14,6 +14,7 @@ INTENT_KINDS = (
     "barcode", "count", "diameter", "width", "angle", "golden",
     "defect", "color_match", "color_presence", "presence", "brightness", "generic",
     "text", "distance", "template_presence",
+    "focus", "roundness",
 )
 
 _GOOD_WORDS = ("好品", "良品", "ok 品", "ok品", "正常品", "正常", "合格", "golden", "good", "reference", "範本", "范本")
@@ -177,6 +178,14 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
     if _has(low, "文字", "印字", "字有", "有字", "沒有字", "没有字", "序號", "序号", "字元", "字符", "刻字", "噴印", "喷印", "text", "print"):
         intent.kind = "text"
         intent.notes.append("印字有無（筆劃密度）")
+        return intent
+    if _has(low, "真圓度", "真圆度", "圓度", "圆度", "roundness", "圓不圓", "圆不圆", "不夠圓", "不够圆", "失圓", "失圆", "橢圓", "椭圆", "out of round"):
+        intent.kind = "roundness"
+        intent.notes.append("真圓度：找圓的邊緣點做最小區域圓，公差帶超過就 NG")
+        return intent
+    if _has(low, "對焦", "对焦", "清晰", "模糊", "失焦", "焦距", "沒對到焦", "没对到焦", "focus", "blur", "sharp", "defocus"):
+        intent.kind = "focus"
+        intent.notes.append("清晰度守門：以目前影像的分數一半當最低門檻")
         return intent
     circle_rois = [r for r in work_regions if str((r.get("region") or {}).get("shape", "")) in ("circle", "annulus")]
     if _has(low, "距離", "距离", "孔距", "中心距", "distance", "pitch") and (len(circle_rois) >= 2 or _has(low, "孔", "圓", "圆", "圓心", "圆心", "hole", "circle", "center")):

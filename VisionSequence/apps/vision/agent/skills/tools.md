@@ -668,3 +668,22 @@ find_line.line（或點集、`{"angle": 度}`），`b` 是基準：垂直度把�
 
 ## python_script
 自訂 Python 檢測（只在使用者明確要求「自己寫程式」時才用；一般需求優先用內建工具）。`code` 定義 `def run(ctx)`：`ctx.image`（唯讀）、`ctx.gray()`、`ctx.inputs['a'..'d']`、`ctx.params['p1'..'p3']`（現場參數，技術員可在參數卡調）、`ctx.roi()`／`ctx.crop()`；回傳 dict：`value`／`result`／`text`／`data`／`image`（新陣列）／`status`（ok|ng）／`branch`（pass|fail）／`overlays`／`message`。輸出埠固定：value、result、text、data、image；`pass`／`fail` 分支接 judge。只能匯入 numpy／cv2／math／json／re／statistics／itertools／collections／functools／time；不能用 dunder、exec／eval／open；純 Python 迴圈超過 `max_ms` 會中止。**只有管理員能儲存新腳本**，生成後要提醒使用者由管理員儲存核准。
+
+## peak_search
+沿矩形 ROI 的長邊取灰階剖面找亮峰或暗峰：數條紋、找刻線、量相鄰亮線的間距時用它（`caliper` 找的是邊緣，這顆找的是峰）。
+`roi` 用 rotated_rect 讓長邊沿著要掃的方向、短邊蓋住幾個像素做平均壓雜訊；`polarity` bright／dark／both；`min_prominence`
+是峰相對左右谷底的高度（灰階，雜訊多就調高）；`min_distance` 是兩峰最小間隔（px），小於它的併成一個；`smoothing` 是剖面平滑寬度。
+輸出 `peaks`（每筆 position／x／y／value／prominence）、`count`、`first_*`、`profile`（整條剖面，可接 `line_profile` 類的判斷）；
+找不到走 `not_found`。要「數幾條線」接 `if_number`；要「間距」用 `list_pick`／`formula` 從 `peaks` 取相鄰位置差。
+
+## dl_classify / dl_detect / dl_instance / dl_segment
+四顆都吃**教導頁訓練或外部匯入的 ONNX 模型**（`model` 資產），沒有模型就不要放進流程——有底模可直接用的是 ai_*（ai_classify／ai_detect／ai_segment）。
+共用前處理：`input_size`（模型固定尺寸時以模型為準）、`mean`／`std`（0～1 單位；偵測／分割網路通常 0 與 1，分類網路用 ImageNet 值）、
+`color_order`、`labels`（一行一類，順序＝模型輸出順序，空白就用索引）、`roi`（只送這塊，座標仍回全圖）。
+`dl_classify`：`threshold` 最高分門檻、`pass_labels` 只有這些類算過、`top_k` 列前幾名；分支 pass／fail，輸出 `label`／`score`／`index`／`top`。
+`dl_detect`：`conf`／`iou`（NMS）、`filter_labels` 只留這些類、`min_count` 最少要幾個才 found、`normalized` 模型輸出 0～1 座標時打開；
+輸出 `matches`（cx、cy、w、h、label、score，可直接接 `list_*`／`boxes_*`／`track_objects`）與 `count`。
+`dl_instance`：多了每個實例的輪廓——`mask`（聯集）、`contours`（可接 `contour_geometry`）、`max_count_ok` 上限判定；
+`dl_segment`：逐像素分類——`target_class` 決定 `mask` 是哪一類的 0/255 圖、`class_map` 保留全部類別（接 `blob_label` 逐類數）、
+`min_area`／`max_area` 用目標面積判 ok／ng，`classes` 列每類面積。這四顆都是 heavy 工具，`device` 由深度學習設定決定；
+第一片會慢（載模型），伺服器可開暖機。
