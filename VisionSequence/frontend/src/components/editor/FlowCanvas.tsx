@@ -71,6 +71,8 @@ export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, chi
       selectionKeyCode="Shift"
       selectionMode={SelectionMode.Partial}
       selectNodesOnDrag={false}
+      // 拉線時放開在把手 80px 內就自動接上（VM 的 ModuleConnectSpan）；預設 20px 要對得很準
+      connectionRadius={80}
       {...rest}
     >
       <Background />
