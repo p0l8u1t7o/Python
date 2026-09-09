@@ -29,8 +29,8 @@ PAGE_TITLES = {
     "agent.html": "AI assistant", "user-guide.html": "User guide", "capture-client.html": "Capture client", "deployment.html": "Deployment",
 }
 #: 使用者手冊與 AI 助手／批次頁最貼近操作，檢索時略加權；合約／設計手冊偏工程。
-#: 頁面加權：手冊與功能頁優先；合約／架構／效能／部署與名詞表是參考資料，「怎麼做」的問題不該被它們搶走第一名
-PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9, "glossary.html": 0.9}
+#: 頁面加權：手冊與功能頁優先；合約／架構／效能／部署與名詞表是參考資料，「怎麼做」的問題不該被它們搶走第一名；名詞表有中文欄，每一段都塞滿名詞，中文提問幾乎都命中，壓到 0.7 才不會把功能頁擠掉
+PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9, "glossary.html": 0.7}
 #: 使用者指南的 Markdown 正本：docs/guide/<lang>/<page>.md（en 是正本，zh-Hant／zh-Hans 是譯本）；有 md 的頁面不再索引同名 HTML。
 
 
@@ -445,7 +445,9 @@ def _finish(sections: list[Section]) -> Index:
     total = 0
     for s in sections:
         counts: dict[str, int] = {}
-        for tok in tokenize(f"{s.page_title} {s.heading} {s.heading} {s.text}"):
+        # 標題算兩次（標題命中比內文重要）；「（續）」續段只算一次——它只是同一節的後半，不該比正段更像那個標題
+        head = s.heading if s.heading.endswith("（續）") else f"{s.heading} {s.heading}"
+        for tok in tokenize(f"{s.page_title} {head} {s.text}"):
             counts[tok] = counts.get(tok, 0) + 1
         s.tokens = counts
         s.length = sum(counts.values())

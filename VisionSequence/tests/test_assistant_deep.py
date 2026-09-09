@@ -93,7 +93,7 @@ SEARCH_BENCH = [
     ("卡尺量測寬度", {"tool", "guide/vision-capabilities", "workflow-design.html", "guide/samples"}),
     ("blob 最小面積", {"tool", "guide/vision-capabilities"}),
     ("template_match 金字塔", {"tool", "performance.html", "guide/vision-capabilities"}),
-    ("SSE 事件串流", {"automation.html", "contract.html", "architecture.html"}),
+    ("SSE 事件串流", {"automation.html", "contract.html", "architecture.html", "guide/user-guide"}),  # 指南的 Quick reference 列出 SSE 端點
     ("代理模式是什麼", {"guide/agent", "guide/user-guide"}),
     ("自動調參怎麼跑", {"guide/agent", "guide/batch", "guide/golden", "guide/user-guide"}),
     ("執行緒池與效能", {"performance.html", "architecture.html"}),
