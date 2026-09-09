@@ -23,6 +23,7 @@
 - 對話、commit、文件一律繁體中文；程式碼、識別字、術語保持原文。
 - **git 根目錄是上一層 `d:\Working Space\Python`**（多專案工作區）。只 `git add` VisionSequence 底下的明確路徑，不要 `git add -A`。
 - 一個需求一個 commit；訊息寫清楚做了什麼、為什麼、驗證結果；結尾 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`。
+- **派工給 Codex**：`AGENTS.md` 是它的硬性守則（紅線＋之前犯過的錯＋必跑的驗證），Codex CLI 以本目錄為 cwd 會自動讀到，提示詞開頭仍要求「先讀 AGENTS.md」；一次只給一組與 Claude 手上不重疊的檔案清單，整合、獨立驗證與 commit 由 Claude 做。Codex 又犯新錯就補進 `AGENTS.md` §2。
 
 ### 啟動
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
