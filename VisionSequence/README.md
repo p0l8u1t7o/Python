@@ -55,7 +55,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - 第一次開啟前端會要求建立管理員（或 `manage.py create_admin <user> --password-env NAME`）。
 - 交付客戶：`.\scripts\build_release.ps1` 產出自帶 Python 的發行樹／zip／安裝程式，客戶端 `vsctl.cmd` 管服務、升級、外掛與 DL 加購包，見 [部署](#部署)。
 - API 文件（OpenAPI）：http://127.0.0.1:8000/api/docs
-- 使用者手冊：`docs/user-guide.html`；介面內「說明」頁有精簡版與工具目錄。
+- 使用者指南：介面內「說明」頁（`/help`，三語系、含工具目錄與搜尋）；正本是 `docs/guide/<lang>/*.md`（九頁），工程文件留 `docs/*.html`。
 
 ---
 
@@ -90,9 +90,9 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 | 邏輯（20） | if_number, in_range, tolerance_judge, bool_logic, formula, count_list, boxes_merge, boxes_filter, array_correct, list_sort, track_objects（連續模式目標追蹤）, parse_message（拆解設備送來的訊息）, switch（多路分支）, string_match（文字比對）, python_script（自寫 Python，管理員核准）, call_flow（同行程子流程）, for_each（逐項子流程）, tile（切片） |
 | 輸出（9） | judge, output, draw_result, save_image, format_text, write_log, trigger_flow, write_modbus, send_image（TCP 傳圖） |
 
-影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/vision-capabilities.html`。
+影像位深：工具預設只吃 8-bit，其餘自動正規化；宣告 `accepts` 的工具可原生處理 16-bit／浮點。詳見 `docs/guide/en/vision-capabilities.md`。
 
-**演算能力補強（2026-09，16 個工作包，規格見 `docs/vision-capabilities.html` 與 `docs/performance.html`）**：
+**演算能力補強（2026-09，16 個工作包，規格見 `docs/guide/en/vision-capabilities.md` 與 `docs/performance.html`）**：
 - 前處理：`polar_unwrap`／`polar_restore`（環形工件展開）、`shading_correct`（平場校正）、`stitch_images`（硬拼／投影拼接）、`undistort` alpha 與 mm_per_pixel、`photometric_stereo`（四燈光度立體，刻印字／凹坑）、`accel` 透明 GPU 後端（只對 ≥ 4 MP 的 remap／中值／卷積／FFT，實測理由見效能頁）。
 - 定位與區域：`shape_match`（幾何形狀比對，遮擋與打光變化不怕；可用內建 cross／square outline／disc Mark）、`region_from_shape`／`region_combine`（組合區域：聯集／挖除／交集）。
 - 量測：`contour_find`／`contour_filter`／`contour_geometry`／`contour_match`（輪廓鏈與凸缺陷）、`circular_caliper`／`profile_defect`（圓形卡尺與序列缺陷）、`gdt_measure`（形位公差：直線度／平面度／真圓度 MZC／平行度／垂直度／傾斜度）、`to_world` 接數值埠、標定頁覆蓋率地圖與警告。
@@ -106,7 +106,7 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - `GET/PATCH /vision/retention`、`POST /vision/retention/sweep`（立即整理）、`manage.py purge [--pictures --backups N]`、`doctor` 的 retention／backups 兩行。
 
 ### 範本畫廊與範例樣板
-68 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、圓盤崩邊、真圓度形位公差、刻印字光度立體、條碼品質分級、排除區、平場校正、統計良品比對、形狀比對定位、異常檢測、日期碼讀取、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 88/146 個工具。詳見 `docs/samples.html`。
+68 個內建範本（計數、曝光、圓孔量測、邊線夾角、圓周齒數、輪廓崩邊、圓盤崩邊、真圓度形位公差、刻印字光度立體、條碼品質分級、排除區、平場校正、統計良品比對、形狀比對定位、異常檢測、日期碼讀取、良品比對、織紋瑕疵、前處理教學、多圓幾何、顏色有無、顏色比對、條碼標籤、定位量測、杯件量測…），每個都配合成樣本圖（`data/samples/`，第 4 張刻意 NG）與自動裁切的範本資產；從範本建立流程時選對應「範例：⋯」來源即可直接執行。覆蓋 88/146 個工具。詳見 `docs/guide/en/samples.md`。
 - **畫廊分類分組**（教學、計數、量測、品質、缺陷、辨識、自訂）＋篩選列；內建範本自帶樣本圖：來源留「範本自帶的樣本圖」時取像步驟變成 **固定影像** 工具（`fixed_image`，圖片跟著流程存、每次執行輪到下一張），要接相機再選來源。範本比對／良品比對／平場的參考圖也是固定影像節點接到工具的圖片輸入埠（`template_image`／`flat_image`／`dark_image`），不再建立範例來源與影像資產。
 
 ### AI 助手（`/agent`）
@@ -130,14 +130,14 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 - **響應式**：手機寬度側欄改抽屜、麵包屑精簡、表格只留主要欄位、編輯器只留畫布（參數走工具頁）、觸控目標放大；桌面／平板／手機三種寬度與深淺主題都經 Playwright 稽核。
 - **視覺設計**：品牌標誌（取景框＋鏡頭）貫穿側欄、登入頁與 favicon；登入頁品牌柔光背景；標題階層、表格動作欄位置、時間格式、空狀態與 toast 位置全站一致。
 - **上手引導**：流程還沒選影像來源時編輯器直接給下拉選；總覽卡一鍵「執行一次」；教導完成一鍵建立使用該模型的流程；批次影像集建立即跑第一次；工具頁「改參數即重跑」開關；取像步驟側欄直接選來源並看預覽縮圖；來源表單儲存前可「測試擷取」；離開未儲存的確認改為平台風格對話框。
-- AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/agent.html`。
+- AI 代理技能（`apps/vision/agent/skills/*.md`）：平台規則、設計原則、每工具要領，AI 讀的與「AI 技能」視窗看到的是同一份。詳見 `docs/guide/en/agent.md`。
 
 ### 深度學習教導（`/dl`）
 
 - **YOLO 訓練（四種）**：物件偵測（bbox）、實例分割（polygon）、影像分類（classes）、旋轉框 OBB（polygon 取最小外接旋轉矩形）；ultralytics 訓練、進度／曲線／log 回報、可中止；產物 best.pt（主，給 ai_* 工具）＋ONNX（副，給 dl_* 工具）兩個資產。
 - **SAM2 智慧標記**：點擊（正／負點）、拖曳框選、沒有模型時的「SAM 全圖提案」；權重 `VISION_SAM_MODEL`（預設 sam2.1_t.pt）自動下載，失敗退回 mobile_sam。
 - **依賴**：`requirements-dl.txt`＋`scripts/setup_dl.ps1`（先 torch cu128 再 ultralytics；onnxruntime-gpu 鎖 1.22 配 CUDA 12；處理器加速 runtime 與其他 onnxruntime 套件互斥）＋`manage.py dl_check --predict` 驗證；踩坑清單見 docs/dl.html §11。
-教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/dl.html`。
+教導專案 → 樣本（上傳／zip／從來源連抓／匯入資料集，像素 SHA256 去重）→ 標記（分類點選；分割多邊形／矩形，SAM 智慧選取，自動標記）→ train/val/test 分割與資料集版本凍結 → 伺服端訓練（內建分類／輕量語意分割；YOLO-seg 選裝 ultralytics；曲線與 log、可中止）→ 模型匯出到資產庫給 DL 工具使用。詳見 `docs/guide/en/dl.md`。
 
 ### 影像來源與資產
 **擷取端相機**（webcam／Basler／IDS，由擷取端程式驅動）、資料夾（循環）、單檔、上傳、合成影像；folder／file 可用伺服器檔案瀏覽器選路徑。資產：範本影像、ONNX 模型、標定、資料集 zip。流程匯出可選擇把引用的資產一併內嵌，匯入時以 sha256 去重並把流程圖裡的資產 id 換成本機 id。兩者皆可群組分類。
@@ -167,8 +167,8 @@ cd frontend && npm install && npm run dev         # http://127.0.0.1:5173
 
 ### 帳號、介面與文件
 - 管理員／一般使用者／整合方（API 金鑰）三種身分；流程有擁有者；每人各自的介面偏好（主題：淺色／深色／Cyberpunk／跟隨系統；語系：繁中／簡中／英文）。
-- 用詞依商用產品規範（`docs/glossary.html`），前端測試自動擋口語詞。
-- 文件一律 HTML 在 `docs/`（無外部依賴，可離線閱讀）。
+- 用詞依商用產品規範（`docs/guide/en/glossary.md`），前端測試自動擋口語詞。
+- 工程文件是 HTML 在 `docs/`（無外部依賴，可離線閱讀）；使用者指南是 Markdown 在 `docs/guide/`，由前端說明頁呈現。
 
 ---
 
@@ -406,26 +406,19 @@ cd frontend && npm run -s typecheck && npm test && npm run build
 
 ## 文件地圖
 
-> `docs/` 下 18 頁 **全部是英文**（`docs_style.py` 統一版面）。中文讀者請用瀏覽器的翻譯功能閱讀；之後也只維護英文版。
+> `docs/` 下 10 頁工程文件**全部是英文**（`docs_style.py` 統一版面）。中文讀者請用瀏覽器的翻譯功能閱讀；之後也只維護英文版。
 
 | 文件 | 內容 |
 |---|---|
 | `docs/index.html` | 總覽與索引 |
-| `docs/user-guide.html` | 使用者手冊（圖文版）：依側欄順序逐頁說明，每節先放帶編號標記的截圖（`docs/img/`），標記對應下方清單指出按鈕與面板的位置——外框與導覽、帳號與權限、流程與範本、編輯器與工具選擇、工具頁與 ROI、參數卡與配方、執行與統計、批次測試、Golden Set、來源與擷取端、資產、深度學習、AI 助手頁與全域助手、整合頁、引擎鎖定、稽核／設定／說明、常見問題 |
+| `docs/guide/<lang>/*.md` | 使用者指南九頁（user-guide、samples、vision-capabilities、calibration、batch、dl、agent、golden、glossary）的 Markdown 正本，前端 `/help` 呈現；en 正本、zh-Hant／zh-Hans 譯本 |
 | `docs/workflow-design.html` | 工作流程設計手冊 |
 | `docs/architecture.html` | 設計手冊（資料模型、工具框架、引擎、Runner、API、前端、踩過的坑） |
 | `docs/contract.html` | 前後端資料合約、graph JSON、錯誤碼、解耦部署 |
 | `docs/automation.html`、`docs/modbus.html` | HTTP／TCP／SSE 整合、引擎鎖定；Modbus 主動輸出 |
-| `docs/vision-capabilities.html` | ROI 種類、位深設計、檢測工具總覽 |
-| `docs/samples.html` | 範例樣板與合成樣本圖 |
-| `docs/agent.html` | AI 助手，分三部：全域助手（文件問答、看得到的現況、唯讀查詢與捷徑、主動提示、截圖、長期記憶、依批次資料調整）；在助手頁生成流程（詢問機制、多圖 ROI、候選與自動調參、定位補正、微調、代理模式、工作階段與先驗、供應商）；內部（架構、規則引擎、LLM、技能、API、基準、取捨） |
-| `docs/dl.html` | 深度學習教導 |
-| `docs/batch.html` | 批次測試：影像集、暫存結果、洞察與建議門檻、調參、AI 諮詢、API、保留策略 |
-| `docs/golden.html` | Golden Set 與流程匯出入 |
 | `docs/plugins.html` | 資料夾外掛 |
 | `docs/capture-client.html` | 擷取端：安裝與連線、通道與 ROI、相機支援、共享記憶體與 TCP、網頁設定、效能、疑難排解、協定 v1、驗收清單 |
 | `docs/deployment.html` | 部署與維運：安裝程式與三層配置、`vsctl`、NSSM 服務、埠與防火牆、HTTPS 與客戶端電腦、帳號與金鑰、備份還原、升級與回滾、現場外掛與 DL 加購包、監控、多站台、災難復原、資安、發行建置 |
-| `docs/glossary.html` | 名詞規範與文案用詞規範 |
 | `docs/performance.html` | 效能報告 |
 | `CLAUDE.md` | 給 AI 協作者與開發者的專案須知：架構、慣例、驗證清單、踩過的坑、各模組要點 |
 

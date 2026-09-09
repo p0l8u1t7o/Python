@@ -158,9 +158,13 @@ class ChatApiTests(TestCase):
         self.assertEqual(self._chat({"message": "為什麼第 3 張 NG？", "mode": "consult", "context": {"kind": "batch"}}).status_code, 422)
 
     def test_docs_served(self):
-        r = self.client.get("/docs/batch.html")
+        r = self.client.get("/docs/modbus.html")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.client.get("/docs/nope.html").status_code, 404)
+        # 使用者指南九頁已搬進前端（docs/guide 的 Markdown）：舊網址 301 到 /help/<page>
+        r = self.client.get("/docs/batch.html")
+        self.assertEqual((r.status_code, r["Location"]), (301, "/help/batch"))
+        self.assertEqual(self.client.get("/docs/user-guide.html")["Location"], "/help/user-guide")
         # 使用者手冊的截圖（docs/img）同一條路提供（其他副檔名落到前端的 SPA 路由）
         self.assertEqual(self.client.get("/docs/img/shell.jpg").status_code, 200)
         self.assertEqual(self.client.get("/docs/img/shell.jpg")["Content-Type"], "image/jpeg")

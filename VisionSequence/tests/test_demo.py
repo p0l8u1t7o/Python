@@ -75,7 +75,7 @@ class DemoSeedTests(TransactionTestCase):
             "dl_segment_demo": "ok ok ok ng ng", "variable_switch": "ok ok ok ng", "tile_for_each": "ok ok ok ok", "io_sequence": "ok ok ok ng",
             "outputs_bundle": "ok ok ok ng",
             "ai_classify_demo": "ng ng ng ng", "ai_obb_demo": "ng ng ng ng", "ai_pose_demo": "ng ng ng ng",
-            "dl_retrieval_demo": "ok ok ok ng", "multi_light_surface": "ok ok ok ng",
+            "dl_retrieval_demo": "ok ok ok ng", "multi_light_surface": "ok ok ok ng", "guided_code_read": "ok ok ok ng",
         }
         with override_settings(VISION=_vision_with_tmp_asset_dir(self.tmp)):
             seed_demo()

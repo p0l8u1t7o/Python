@@ -247,7 +247,7 @@ def complete(s: AgentSettings, system: str, images: list[str], text: str, histor
 
 
 #: 失敗原因碼：訊息本身是英文（產品表面），前端用 `agent.reason.<code>` 翻成介面語言。
-#: 新增一個碼要同步三語系字典與 docs/agent.html。
+#: 新增一個碼要同步三語系字典與 docs/guide/en/agent.md。
 REASON_CODES = (
     "no_package", "no_key", "no_base_url", "no_model",           # 還沒設定完
     "bad_key", "forbidden", "bad_model", "no_credit", "rate_limit",  # 供應商拒絕

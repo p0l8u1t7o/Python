@@ -100,8 +100,9 @@ describe('translations', () => {
       for (const page of GUIDE_PAGES) {
         const en = read('en', page)
         const tr = read(lang, page)
-        const enIds = parseHeadings(en).map((h) => h.id)
-        const trIds = parseHeadings(tr).map((h) => h.id)
+        // h1 是頁標題（沒有 {#id}，slug 隨語言不同）；章節錨點從 h2 起比
+        const enIds = parseHeadings(en).filter((h) => h.level >= 2).map((h) => h.id)
+        const trIds = parseHeadings(tr).filter((h) => h.level >= 2).map((h) => h.id)
         expect(trIds, `${lang}/${page} anchors`).toEqual(enIds)
         expect((tr.match(/<figure/g) ?? []).length, `${lang}/${page} figures`).toBe((en.match(/<figure/g) ?? []).length)
         expect((tr.match(/\|---/g) ?? []).length, `${lang}/${page} tables`).toBe((en.match(/\|---/g) ?? []).length)

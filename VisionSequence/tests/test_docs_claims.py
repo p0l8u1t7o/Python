@@ -92,7 +92,7 @@ class ScaleClaimTests(TestCase):
             except Exception:  # noqa: BLE001 - 個別範本建不起來時不該讓這條斷言失真
                 self.skipTest("範本 builder 無法在測試環境建立，跳過涵蓋率比對")
         covered &= {t.key for t in self.tools}
-        page = _read("docs/samples.html")
+        page = _read("docs/guide/en/samples.md")  # 範例頁的正本是指南的 Markdown
         match = re.search(r"(\d+) of the (\d+) built-in tools appear in at least one template", page)
         self.assertIsNotNone(match, "範例頁找不到涵蓋率敘述")
         self.assertEqual((int(match.group(1)), int(match.group(2))), (len(covered), len(self.tools)),

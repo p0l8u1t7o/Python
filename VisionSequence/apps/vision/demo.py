@@ -232,26 +232,32 @@ def barcode_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
-def guided_code_read_flow(source_id: Any) -> dict[str, Any]:
-    """先以偵測框帶動 ROI, 再裁切放大後讀碼。"""
-    code_roi = {"shape": "rect", "x": 900, "y": 240, "w": 160, "h": 160}
+def guided_code_read_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
+    """先定位碼區再裁切放大讀碼：範本比對（QR 參考圖）→ 定位補正 → ROI 跟隨 → 裁切 → 放大 → 解碼。
+    合成樣本「small code in clutter」：QR 在大背景上到處移動，第 1 張 QR 中心 (962, 302)，第 4 張沒有碼。"""
+    code_roi = {"shape": "rect", "x": 900, "y": 240, "w": 124, "h": 124}
     nodes = [
         _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
-        _node("det", "ai_detect", 1, 0, "Find code area", model_size="n", conf=0.25, min_count=1, max_count=5, imgsz=640),
-        _node("align", "shape_align", 2, 0, "Use box position", ref_x=978, ref_y=318, ref_angle=0, use_angle=False),
-        _node("roi", "fixture_roi", 3, 0, "ROI follows box", roi=code_roi),
-        _node("crop", "crop", 4, 0, "Crop code area"),
-        _node("zoom", "resize", 5, 0, "Enlarge crop", scale=3.0),
-        _node("bc", "barcode", 6, 0, "Read code", types="qr"),
-        _node("ok", "judge", 7, 0, "OK", verdict="ok"),
-        _node("ng", "judge", 7, 1, "NG: nothing read", verdict="ng", label="no_code"),
-        _node("out", "output", 7, 2, "Output content", name="code"),
-        _node("draw", "draw_result", 6, 2, "Result image"),
-        _note("n1", 0, 1, "About", "Use this when the code is small, moves around, or sits on a busy background.\nThe stock detector setting is only here to demonstrate the wiring. For production, train a detector for the code location and select that model asset."),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("tm", "template_match", 2, 0, "Find the code", threshold=0.6, max_matches=1),
+        _node("ref", "fixed_image", 0, 3, "Code template picture", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
+        _node("align", "shape_align", 3, 0, "Use match position", ref_x=962, ref_y=302, ref_angle=0, use_angle=False),
+        _node("roi", "fixture_roi", 4, 0, "ROI follows the match", roi=code_roi),
+        _node("crop", "crop", 5, 0, "Crop code area"),
+        _node("zoom", "resize", 6, 0, "Enlarge crop", scale=3.0),
+        _node("bc", "barcode", 7, 0, "Read code", types="qr"),
+        _node("ok", "judge", 8, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 8, 1, "NG: nothing read", verdict="ng", label="no_code"),
+        _node("out", "output", 8, 2, "Output content", name="code"),
+        _node("draw", "draw_result", 7, 2, "Result image"),
+        _note("n1", 0, 1, "About", "Use this when the code is small, moves around, or sits on a busy background: decoding the whole picture fails, so a locator "
+              "(here template matching against a picture of the code; a taught detector works the same way through its matches port) moves a crop ROI onto "
+              "the code, and the enlarged crop decodes reliably."),
     ]
     edges = [
-        _edge("src", "det"),
-        _edge("det", "align", "matches", "matches"),
+        _edge("src", "gray"),
+        _edge("gray", "tm", "image", "image"), _edge("ref", "tm", "image", "template_image"),
+        _edge("tm", "align", "matches", "matches"),
         _edge("align", "roi", "transform", "transform"),
         _edge("src", "crop", "image", "image"),
         _edge("roi", "crop", "region", "roi"),
@@ -261,6 +267,7 @@ def guided_code_read_flow(source_id: Any) -> dict[str, Any]:
         _edge("bc", "ng", "not_found", "_flow"),
         _edge("bc", "out", "first", "value"),
         _edge("src", "draw", "image", "image"),
+        _edge("tm", "draw", "_overlays", "overlays"), _edge("roi", "draw", "_overlays", "overlays"), _edge("bc", "draw", "_overlays", "overlays"),
     ]
     return {"nodes": nodes, "edges": edges}
 
@@ -1888,6 +1895,7 @@ REF_SPECS: dict[str, tuple[str, dict[str, Any] | None, str]] = {
     "registered square part": ("registered_parts", {"shape": "rect", "x": 64, "y": 48, "w": 96, "h": 96}, ""),
     "cleanup marker template": ("cleanup_boxes", {"shape": "rect", "x": 66, "y": 70, "w": 52, "h": 44}, ""),
     "cross locator template": ("marker_plate", {"shape": "rect", "x": 200, "y": 160, "w": 120, "h": 120}, ""),
+    "small code template": ("small_code_scenes", {"shape": "rect", "x": 910, "y": 250, "w": 104, "h": 104}, ""),
     "cup locator template": ("cup", {"shape": "rect", "x": 150, "y": 120, "w": 100, "h": 100}, ""),
     "print golden template": ("golden_print", None, ""),
     "stamped part outline": ("stamped_part", None, ""),
@@ -2062,7 +2070,8 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: stitch_two_views_flow(sid, _demo_ref("stitch right view"))),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
     ("code_message_rules", "Decode, parse and match", "Read a QR payload, split lot and part fields, match the lot with a regular expression and format a reply", "identify", code_message_rules_flow),
-    ("guided_code_read", "Locate then read code", "Find the likely code area, move a crop ROI to it, enlarge that crop, then decode. The stock detector size only demonstrates the wiring; train a detector for your own code location before production use.", "identify", guided_code_read_flow),
+    ("guided_code_read", "Locate then read code", "Find the code with template matching, move a crop ROI onto it, enlarge that crop, then decode; a taught detector plugs into the same wiring through its matches port", "identify",
+     lambda sid: guided_code_read_flow(sid, _demo_ref("small code template"))),
     ("date_code", "Date code read and verify (taught font)", "Text read with a font taught by seeding — segmentation plus per-character classification, fully offline — into Text verify against an eight-digit pattern with per-character confidence; a smudged digit is boxed in red", "identify",
      lambda sid: date_code_flow(sid, _demo_asset("Example: taught font (digits)", "model"))),
     ("label_read", "Barcode label with perspective correction", "Four-point perspective correction straightens the tilted label before reading it, plus a text-presence check on the serial area", "identify", label_flow),
@@ -2180,11 +2189,14 @@ def _sample_sets() -> dict[str, str]:
 
 TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
-TEMPLATES_NEED_DL = ("ai_count", "ai_area", "ai_classify_demo", "ai_obb_demo", "ai_pose_demo", "guided_code_read", "conveyor_pick", "conveyor_pick_bytetrack", "conveyor_pick_stereo")
+TEMPLATES_NEED_DL = ("ai_count", "ai_area", "ai_classify_demo", "ai_obb_demo", "ai_pose_demo", "conveyor_pick", "conveyor_pick_bytetrack", "conveyor_pick_stereo")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
 TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count", "dl_retrieval_demo")
 #: Templates that demonstrate model-only tools whose seeded demo asset is intentionally blank.
 TEMPLATES_NEED_MODEL = ("dl_detect_instance_demo",)
+#: 逐張判定序列沒有「前三 OK 後二 NG」意義的範本，live 測試只要求跑得完沒有 error 節點：底模接線示範（合成樣本不會命中
+#: ImageNet／DOTA／人體關鍵點的真實類別）與輸送帶追蹤（一張影像的狀態取決於追蹤確認，不是單張良／不良）。
+TEMPLATES_WIRING_ONLY = ("ai_classify_demo", "ai_obb_demo", "ai_pose_demo", "conveyor_pick", "conveyor_pick_bytetrack", "conveyor_pick_stereo")
 
 
 def _seed_demo_models(created: list[str]) -> None:

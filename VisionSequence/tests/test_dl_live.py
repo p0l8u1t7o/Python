@@ -184,6 +184,9 @@ class TrainersApiLiveTests(TransactionTestCase):
         self.assertEqual(st["status"], "done", st.get("error"))
         self.assertTrue(st["metrics"]["stopped_early"])
         self.assertLess(st["metrics"].get("epoch", 40), 40)
+        # 訓練產物先進 pending，使用者命名存檔才建資產（取消提早停也一樣有部分產物可存）
+        self.assertTrue(st.get("pending"), st)
+        self.assertEqual(self._json("post", "/api/vision/dl/train/save", {"name": "cancel-me"}).status_code, 200)
         self.assertTrue(Asset.objects.filter(name="cancel-me").exists())
 
 
@@ -303,7 +306,7 @@ class GalleryDlTemplatesLiveTests(TransactionTestCase):
     def test_yolo_templates_run_on_sample_sources(self):
         from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
         from apps.vision import demo
-        from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATES_NEED_DL, seed_demo
+        from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATES_NEED_DL, TEMPLATES_WIRING_ONLY, seed_demo
         from apps.vision.runner import runner
 
         seed_demo()
@@ -318,6 +321,8 @@ class GalleryDlTemplatesLiveTests(TransactionTestCase):
                     errors = {nid: nr.message for nid, nr in report.nodes.items() if nr.status == "error"}
                     self.assertFalse(errors, f"{name} 有 error 節點: {errors}")
                     statuses.append(report.status)
+                if key in TEMPLATES_WIRING_ONLY:
+                    continue  # 底模接線示範：合成樣本辨識不到真實類別，只要求跑得完沒有 error 節點
                 self.assertEqual(statuses[:3], ["ok", "ok", "ok"], (name, statuses))
                 self.assertEqual(statuses[3:], ["ng", "ng"], (name, statuses))
             finally:

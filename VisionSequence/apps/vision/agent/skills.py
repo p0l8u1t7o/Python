@@ -316,7 +316,7 @@ def retrieved_tools(text: str, k: int = RETRIEVED_TOOLS) -> list[str]:
 
     out: list[str] = []
     try:
-        hits = help_mod.search(text, k=max(k * 3, 12))
+        hits = help_mod.search(text, k=max(k * 3, 12), kinds=("tool",))  # 只對工具技能段計分：指南章節（尤其中文譯本）會把工具擠出前幾名
     except Exception:  # noqa: BLE001 - 索引建不起來不該讓生成失敗
         log.warning("工具檢索失敗", exc_info=True)
         return out

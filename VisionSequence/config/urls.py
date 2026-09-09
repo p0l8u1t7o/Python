@@ -5,6 +5,7 @@ from pathlib import Path
 from django.conf import settings
 from django.http import FileResponse, Http404, JsonResponse
 from django.urls import path, re_path
+from django.views.generic import RedirectView
 from django.views.static import serve
 
 from config.api import api
@@ -46,6 +47,8 @@ urlpatterns = [
     path("api/vision/flows/<int:flow_id>/stream", _flow_stream, name="flow-stream"),
     path("api/vision/events", _events_stream, name="events-stream"),
     path("api/", api.urls),
+    # 使用者指南九頁已搬進前端（docs/guide 的 Markdown）：舊網址轉址到 /help/<page>（瀏覽器會保留 #錨點）
+    re_path(r"^docs/(?P<page>user-guide|samples|vision-capabilities|calibration|batch|dl|agent|golden|glossary)\.html$", RedirectView.as_view(url="/help/%(page)s", permanent=True), name="docs-guide-redirect"),
     # 文件（docs/*.html）由 Django 直接提供：全域 AI 助手回答附的參考連結、說明頁連結都指向這裡。
     re_path(r"^docs/(?P<path>(?:img/)?[\w\-]+\.(?:html|png|jpg|jpeg|webp))$", serve, {"document_root": settings.BASE_DIR / "docs"}, name="docs"),
     re_path(r"^(?!api/)(?P<path>.*)$", _spa, name="spa"),

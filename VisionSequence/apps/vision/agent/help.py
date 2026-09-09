@@ -111,7 +111,7 @@ HELP_SYSTEM = """You are the documentation assistant for VisionSequence, a machi
 - "Things the user asked you to remember" are facts this user stored on purpose: treat them as true for this user and use them when relevant.
 - You may end with ONE extra line `ACTIONS: [...]` (a JSON array, at most 3 items) offering shortcuts: {"kind":"navigate","to":"<route from the interface map with real ids filled in>","tab":"<tab key, optional>","label":"<short label in the user's language>"} or, in the flow editor, {"kind":"focus_node","node":"<node id>","label":"..."} / {"kind":"open_tool","node":"<node id>","label":"..."}. Only routes from the map; omit the line when nothing applies."""
 
-#: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/glossary.html 的對照表）。
+#: 中英對照：docs 是英文，中文提問先把詞彙補成英文再檢索（來源＝docs/guide/en/glossary.md 的對照表）。
 BILINGUAL = {
     "影像座標系": "image coordinate system pixel origin top left", "物理座標系": "physical coordinate system world millimetres",
     "世界座標": "world physical coordinate millimetres", "座標系": "coordinate system image physical",
@@ -232,6 +232,10 @@ class Index:
     df: dict[str, int]
     avg_len: float
     stamp: float
+    #: 依 kind 分開的 df 與（段數, 平均長度）：只搜某幾種段落（例如工具技能）時 idf 要在那個子集裡算，
+    #: 不然三語系指南章節的詞頻會把工具技能的分數拉低（「相機」在指南裡到處都是）
+    df_by_kind: dict[str, dict[str, int]] = field(default_factory=dict)
+    stats_by_kind: dict[str, tuple[int, float]] = field(default_factory=dict)
 
 
 _CJK = re.compile(r"[㐀-鿿]+")
@@ -442,6 +446,8 @@ def ui_brief(lang: str = "en") -> str:
 
 def _finish(sections: list[Section]) -> Index:
     df: dict[str, int] = {}
+    df_by_kind: dict[str, dict[str, int]] = {}
+    totals: dict[str, list[float]] = {}
     total = 0
     for s in sections:
         counts: dict[str, int] = {}
@@ -452,9 +458,15 @@ def _finish(sections: list[Section]) -> Index:
         s.tokens = counts
         s.length = sum(counts.values())
         total += s.length
+        kind_df = df_by_kind.setdefault(s.kind, {})
+        agg = totals.setdefault(s.kind, [0, 0.0])
+        agg[0] += 1
+        agg[1] += s.length
         for tok in counts:
             df[tok] = df.get(tok, 0) + 1
-    return Index(sections, df, (total / len(sections)) if sections else 1.0, _stamp())
+            kind_df[tok] = kind_df.get(tok, 0) + 1
+    stats = {kind: (int(n), (length / n) if n else 1.0) for kind, (n, length) in totals.items()}
+    return Index(sections, df, (total / len(sections)) if sections else 1.0, _stamp(), df_by_kind, stats)
 
 
 def _stamp() -> float:
@@ -490,25 +502,39 @@ def build_index(force: bool = False) -> Index:
     return _index
 
 
-def search(query: str, k: int = TOP_K, *, extra_terms: str = "", lang: str | None = None) -> list[tuple[Section, float]]:
-    """BM25（k1=1.5、b=0.75），標題命中加權、頁面加權；給了 lang 時其他語言的文件章節略降權（譯本存在就先給譯本）。"""
+def search(query: str, k: int = TOP_K, *, extra_terms: str = "", lang: str | None = None, kinds: tuple[str, ...] | None = None) -> list[tuple[Section, float]]:
+    """BM25（k1=1.5、b=0.75），標題命中加權、頁面加權；給了 lang 時其他語言的文件章節略降權（譯本存在就先給譯本）；
+    kinds 限定只對哪幾種段落計分（例如只找工具技能段，才不會被指南章節擠掉）。"""
     idx = build_index()
     q = tokenize(f"{expand_query(query)} {extra_terms}")
     if not q:
         return []
     n = len(idx.sections)
+    df = idx.df
+    avg_len = idx.avg_len
+    if kinds:
+        # 只搜這幾種段落：n／df／平均長度都在子集裡算，分數才反映「在工具技能裡有多特別」
+        n = sum(idx.stats_by_kind.get(kind, (0, 1.0))[0] for kind in kinds) or 1
+        df = {}
+        for kind in kinds:
+            for tok, count in idx.df_by_kind.get(kind, {}).items():
+                df[tok] = df.get(tok, 0) + count
+        lengths = [idx.stats_by_kind[kind] for kind in kinds if kind in idx.stats_by_kind]
+        avg_len = (sum(c * a for c, a in lengths) / max(1, sum(c for c, _ in lengths))) if lengths else idx.avg_len
     ui_weight = UI_WEIGHT_WHERE if _WHERE.search(query) else UI_WEIGHT_OTHER
     scored: list[tuple[Section, float]] = []
     for s in idx.sections:
+        if kinds and s.kind not in kinds:
+            continue
         score = 0.0
         head_tokens = set(tokenize(f"{s.page_title} {s.heading}"))
         for tok in set(q):
             tf = s.tokens.get(tok, 0)
             if not tf:
                 continue
-            dfv = idx.df.get(tok, 1)
+            dfv = df.get(tok, 1)
             idf = math.log(1 + (n - dfv + 0.5) / (dfv + 0.5))
-            score += idf * (tf * 2.5) / (tf + 1.5 * (0.25 + 0.75 * s.length / idx.avg_len))
+            score += idf * (tf * 2.5) / (tf + 1.5 * (0.25 + 0.75 * s.length / avg_len))
             if tok in head_tokens:
                 score += idf * 0.8
         if score > 0:
