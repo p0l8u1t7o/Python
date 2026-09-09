@@ -1151,6 +1151,55 @@ class FilterTool(Tool):
         return Result(outputs={"image": out}, message=method)
 
 
+#: fft_filter 的頻域遮罩快取：遮罩只依 (h, w, cutoff, style, highpass) 決定，產線每片影像尺寸相同，算一次就夠
+#: （1280×960 的遮罩要 21 ms，比正反轉換加起來還久）。值是 (h, w, 2) 的 float32——兩個通道放同一份遮罩，直接與
+#: cv2.dft 的複數輸出逐元素相乘，不走 numpy 的 (h, w, 1) 廣播（那個廣播在 1280×960 要 12 ms）。
+#: 單筆超過 _FFT_MASK_MAX_ENTRY 不快取，總量超過 _FFT_MASK_MAX_BYTES 淘汰最舊的。
+_FFT_MASKS: "OrderedDict[tuple[Any, ...], np.ndarray]" = OrderedDict()
+_FFT_MASK_LOCK = threading.Lock()
+_FFT_MASK_MAX_ENTRY = 64 * 1024 * 1024
+_FFT_MASK_MAX_BYTES = 128 * 1024 * 1024
+
+
+def fft_mask(h: int, w: int, cutoff: float, style: str, highpass: bool) -> np.ndarray:
+    """未 shift 頻域的濾波遮罩（唯讀、雙通道），與 numpy fft2＋fftshift 時代的結果逐格相同。
+
+    以前是 fftshift 之後以 (h/2, w/2) 為中心量距離：偶數尺寸時中心正好是 DC，奇數尺寸時中心落在半格上、正負頻率的
+    衰減不對稱，再取 ifft 的實部（等於用對稱化的遮罩 (M(k) + M(−k)) / 2 濾波）。這裡直接算「未 shift 的索引在 shift
+    後的位置」減去 h/2（用 float64 算，遮罩值才與以前位元相同；只以 DC 為中心會在奇數尺寸差到 2～11 灰階），奇數尺寸
+    再對稱化——只算實數輸出的反轉換假設頻譜共軛對稱，遮罩不對稱結果就不對。
+    """
+    key = (h, w, float(cutoff), style, bool(highpass))
+    with _FFT_MASK_LOCK:
+        cached = _FFT_MASKS.get(key)
+        if cached is not None:
+            _FFT_MASKS.move_to_end(key)
+            return cached
+    yy, xx = np.ogrid[:h, :w]
+    r = np.hypot(((yy + h // 2) % h) - h / 2.0, ((xx + w // 2) % w) - w / 2.0) / (min(h, w) / 2.0)
+    if style == "truncate":
+        mask = (r <= cutoff).astype(np.float32)
+    else:
+        mask = np.exp(-(r / cutoff) ** 2).astype(np.float32)
+    if highpass:
+        mask = 1.0 - mask
+    if h % 2 or w % 2:
+        mask = 0.5 * (mask + np.roll(mask[::-1, ::-1], 1, axis=(0, 1)))
+    pair = np.empty((h, w, 2), np.float32)
+    pair[:, :, 0] = mask
+    pair[:, :, 1] = mask
+    pair.flags.writeable = False
+    if pair.nbytes <= _FFT_MASK_MAX_ENTRY:
+        with _FFT_MASK_LOCK:
+            _FFT_MASKS[key] = pair
+            _FFT_MASKS.move_to_end(key)
+            total = sum(m.nbytes for m in _FFT_MASKS.values())
+            while total > _FFT_MASK_MAX_BYTES and len(_FFT_MASKS) > 1:
+                _, dropped = _FFT_MASKS.popitem(last=False)
+                total -= dropped.nbytes
+    return pair
+
+
 class FftFilterTool(Tool):
     key = "fft_filter"
     label = "Frequency filter (FFT)"
@@ -1175,27 +1224,33 @@ class FftFilterTool(Tool):
         image = ctx.require_image()
         gray = to_gray(image)
         x = gray.astype(np.float32)
-        f = np.fft.fftshift(np.fft.fft2(x))
         h, w = x.shape
-        yy, xx = np.ogrid[:h, :w]
-        r = np.hypot(yy - h / 2.0, xx - w / 2.0) / (min(h, w) / 2.0)
         cutoff = max(0.01, ctx.number("cutoff", 0.1))
-        if ctx.param("style", "attenuate") == "truncate":
-            mask = (r <= cutoff).astype(np.float32)
-        else:
-            mask = np.exp(-(r / cutoff) ** 2).astype(np.float32)
-        if ctx.param("mode", "lowpass") == "highpass":
-            mask = 1.0 - mask
-        out_f = np.fft.ifft2(np.fft.ifftshift(f * mask))
-        # 取實部（取絕對值會把高通的負響應翻正，邊緣兩側都變亮）；高通以中灰為零點讓正負響應都看得到，浮點保留帶號。
-        out = out_f.real.astype(np.float32)
         highpass = ctx.param("mode", "lowpass") == "highpass"
+        freq = accel.dft(x, flags=cv2.DFT_COMPLEX_OUTPUT)
+        # 頻譜圖：log(1 + |F|) 平移到中心再拉到 0～255——與以前同一條式子（先除以峰值再乘 255，峰值那一格才會正好是 255），
+        # 只是在 float32 上就地做，不留暫存陣列。
+        mag = cv2.magnitude(freq[:, :, 0], freq[:, :, 1])
+        np.log1p(mag, out=mag)
+        spectrum_f = np.fft.fftshift(mag)
+        peak = float(spectrum_f.max())
+        if peak > 0:
+            spectrum_f /= peak
+            spectrum_f *= 255.0
+            spectrum = spectrum_f.astype(np.uint8)
+        else:
+            spectrum = np.zeros_like(gray, dtype=np.uint8)
+        np.multiply(freq, fft_mask(h, w, cutoff, ctx.param("style", "attenuate"), highpass), out=freq)
+        out = accel.idft(freq, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
+        # 只算實數輸出（取絕對值會把高通的負響應翻正，邊緣兩側都變亮）；高通以中灰為零點讓正負響應都看得到，浮點保留帶號。
         if gray.dtype == np.uint8:
-            out = np.clip(out + (128.0 if highpass else 0.0), 0, 255).astype(np.uint8)
+            if highpass:
+                np.add(out, 128.0, out=out)
+            out = np.clip(out, 0, 255, out=out).astype(np.uint8)
         elif gray.dtype == np.uint16:
-            out = np.clip(out + (32768.0 if highpass else 0.0), 0, 65535).astype(np.uint16)
-        spectrum = np.log1p(np.abs(f))
-        spectrum = (spectrum / spectrum.max() * 255.0).astype(np.uint8) if spectrum.max() > 0 else np.zeros_like(gray, dtype=np.uint8)
+            if highpass:
+                np.add(out, 32768.0, out=out)
+            out = np.clip(out, 0, 65535, out=out).astype(np.uint16)
         return Result(outputs={"image": out, "spectrum": spectrum}, message=f"{ctx.param('mode', 'lowpass')} r={cutoff:g}")
 
 

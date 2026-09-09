@@ -375,7 +375,7 @@ def fit_circle_ransac(pts: np.ndarray, tol: float = 2.0, iterations: int = 200, 
 
 def fit_line_ransac(pts: np.ndarray, tol: float = 2.0, iterations: int = 200, seed: int = 0) -> tuple[tuple[float, float, float, float], np.ndarray] | None:
     """回傳 ((vx, vy, x0, y0), inlier_mask)。取樣與距離計算一次向量化。"""
-    pts = np.asarray(pts, dtype=np.float64)
+    pts = np.asarray(pts, dtype=np.float32)
     n = len(pts)
     if n < 2:
         return None
