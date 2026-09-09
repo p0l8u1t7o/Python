@@ -9,7 +9,7 @@ import { useDlMutations, useDlVideoExtractStatus, useVisionVideos } from '@/lib/
 import type { DlProject } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
-import { Button, Card, CardBody, Select, TextInput } from '@/components/ui'
+import { Button, Panel, Select, TextInput } from '@/components/ui'
 
 export function VideoExtractPanel({ project }: { project: DlProject }) {
   const { t } = useTranslation()
@@ -81,13 +81,16 @@ export function VideoExtractPanel({ project }: { project: DlProject }) {
   }
 
   return (
-    <Card>
-      <CardBody className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Film size={15} className="text-brand" />
-          <h2 className="text-sm font-semibold">{t('dl.videoExtract')}</h2>
-          <span className="ml-auto text-xs text-muted">{job.data ? t('dl.videoExtractProgress', { percent, saved: job.data.saved }) : t('dl.videoExtractIdle')}</span>
-        </div>
+    // 預設收合：展開時會把標記工作區整個往下推；有工作在跑（或跑過）時用 key 重掛載讓它自動展開
+    <Panel
+      key={job.data ? 'active' : 'idle'}
+      collapsible
+      defaultCollapsed={!job.data}
+      testId="dl-video-extract"
+      title={<span className="inline-flex items-center gap-2"><Film size={15} className="text-brand" />{t('dl.videoExtract')}</span>}
+      description={job.data ? t('dl.videoExtractProgress', { percent, saved: job.data.saved }) : t('dl.videoExtractIdle')}
+      bodyClassName="space-y-3 p-4"
+    >
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <Select label={t('dl.video')} value={video} onChange={(e) => setVideo(e.target.value)} options={options} placeholder={t('dl.videoPick')} disabled={running || videos.isLoading} />
           <TextInput label={t('dl.videoPath')} value={path} onChange={(e) => setPath(e.target.value)} disabled={running} />
@@ -124,12 +127,11 @@ export function VideoExtractPanel({ project }: { project: DlProject }) {
         ) : null}
         <div className="flex justify-end gap-2">
           {running ? <Button size="sm" onClick={() => void stop()} loading={stopVideoExtract.isPending}><Square size={13} /> {t('dl.videoStop')}</Button> : null}
-          <Button size="sm" variant="primary" disabled={!canStart || running} loading={startVideoExtract.isPending} onClick={() => void start()} data-testid="dl-video-extract">
+          <Button size="sm" variant="primary" disabled={!canStart || running} loading={startVideoExtract.isPending} onClick={() => void start()} data-testid="dl-video-extract-start">
             <Wand2 size={13} /> {t('dl.videoStart')}
           </Button>
         </div>
-      </CardBody>
-    </Card>
+    </Panel>
   )
 }
 

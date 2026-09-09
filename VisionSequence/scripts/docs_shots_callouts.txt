@@ -12,7 +12,6 @@ source-form: 1=kind | 2=[data-testid="cfg-browse"] | 3=[data-testid="source-test
 board: 1=[data-testid="board-title"] | 2=[data-testid="board-verdict"] | 3=[data-testid="board-values"] | 4=[data-testid="board-counts"] | 5=[data-testid="board-variables"] | 6=[data-testid="board-exit"]
 calibration: 1=[data-testid="calib-mode-board"] | 2=[data-testid="calib-source"] | 3=[data-testid="calib-capture"] | 4=[data-testid="calib-cols"] | 5=[data-testid="calib-unit"] | 6=[data-testid="calib-solve"] | 7=[data-testid="calib-save"]
 assets: 1=Upload asset | 2=[data-testid="manage-groups"] | 3=asset cards
-dl: 1=[data-testid="dl-new"] | 2=[data-testid="dl-grid"] | 3=[data-testid="dl-auto"] | 4=[data-testid="dl-train"]
 agent: 1=[data-testid="agent-upload"] | 2=[data-testid="agent-prompt"] | 3=[data-testid="agent-generate"] | 4=[data-testid="agent-settings"] | 5=[data-testid="agent-skills"]
 assistant: 1=[data-testid="assistant-toggle"] | 2=[data-testid="assistant-mode-auto"] | 3=[data-testid="assistant-memory-toggle"] | 4=[data-testid="assistant-shot"] | 5=[data-testid="assistant-screen"] | 6=[data-testid="assistant-share"] | 7=[data-testid="assistant-quick"] | 8=[data-testid="assistant-input"]
 integration-http: 1=[data-testid^="nav-integration-"] | 2=[data-testid="integration-info"] | 3=[data-testid^="section-tab-"] | 4=[data-testid="api-search"] | 5=[data-testid^="op-"]
@@ -25,3 +24,5 @@ settings: 1=[data-testid="profile-display-name"] | 2=password | 3=language | 4=[
 help: 1=Quick start tab | 2=Glossary tab | 3=Tool catalogue tab | 4=[data-testid="help-quickstart"]
 lock-banner: 1=[data-testid="lock-banner"] | 2=[data-testid="card-run"]
 integration-devices: 1=New connection | 2=connections | 3=Export
+dl: 1=dl-new | 2=dl-auto | 3=dl-train | 4=From video
+calibration-stereo: 1=Stereo mode | 2=Import | 3=Capture pair

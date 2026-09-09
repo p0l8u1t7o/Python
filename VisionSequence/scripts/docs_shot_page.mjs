@@ -21,6 +21,31 @@ const j = async (p, init = {}) => { const r = await fetch(`${API}${p}`, { ...ini
 
 /** 每頁：路由、等待哪個元素、標記清單（順序＝手冊 figcaption 的編號）；setup 建示範資料、teardown 清掉 */
 const PAGES = {
+  'dl': {
+    route: '/dl', ready: 'main',
+    // 示範站台有「實例分割」專案；影片抽樣面板在選了專案之後才出現
+    before: async (page) => {
+      const row = page.locator('button', { hasText: '實例分割' }).first()
+      if (await row.count()) { await row.click(); await page.waitForTimeout(1200) } else { console.log('missing dl project button') }
+      // 影片面板預設收合，手冊要看到它的欄位：展開它
+      const toggle = page.locator('[data-testid="dl-video-extract"] button[aria-expanded="false"]').first()
+      if (await toggle.count()) { await toggle.click(); await page.waitForTimeout(400) }
+    },
+    callouts: [
+      { target: '[data-testid="dl-new"]', label: 'dl-new' }, { target: '[data-testid="dl-grid"]', label: 'dl-grid' }, { target: '[data-testid="dl-auto"]', label: 'dl-auto' },
+      { target: '[data-testid="dl-split-stats"]', label: 'dl-split-stats' }, { target: '[data-testid="dl-freeze"]', label: 'dl-freeze' }, { target: '[data-testid="dl-train"]', label: 'dl-train' },
+      { target: '[data-testid="dl-create-flow"]', label: 'dl-create-flow' }, { target: '[data-testid="dl-video-extract-start"]', label: 'From video' },
+    ],
+  },
+  'calibration-stereo': {
+    route: '/calibration', ready: 'main',
+    before: async (page) => { await page.click('[data-testid="calib-mode-stereo"]'); await page.waitForTimeout(600) },
+    callouts: [
+      { target: '[data-testid="calib-mode-stereo"]', label: 'Stereo mode' }, { target: '[data-testid="calib-stereo-import"]', label: 'Import' },
+      { target: '[data-testid="calib-stereo-capture"]', label: 'Capture pair' }, { target: '[data-testid="calib-stereo-reference"]', label: 'Belt reference' },
+      { target: '[data-testid="calib-stereo-result"]', label: 'Result' },
+    ],
+  },
   'integration-devices': {
     route: '/integration/devices', ready: '[data-testid="integration-info"]',
     callouts: [{ target: '[data-testid="conn-create"]', label: 'New connection' }, { target: 'main table', label: 'connections' }, { target: '[data-testid="conn-export"]', label: 'Export' }],
@@ -52,9 +77,10 @@ async function resolve(page, target) {
   const loc = typeof target === 'string' ? (target.startsWith('text=') ? page.getByText(target.slice(5), { exact: false }) : page.locator(target)) : target(page)
   const first = loc.first()
   if (!(await first.count())) return null
-  try { await first.scrollIntoViewIfNeeded({ timeout: 1500 }) } catch { /* 固定元素不用捲 */ }
+  // 手冊圖是固定 1440×900 的首屏：不捲動頁面（捲了之後各目標的座標會對不上同一張截圖），首屏外的目標當沒抓到
+  await page.evaluate(() => window.scrollTo(0, 0))
   const b = await first.boundingBox()
-  return b && b.width > 0 && b.height > 0 ? b : null
+  return b && b.width > 0 && b.height > 0 && b.y >= 0 && b.y + b.height <= 900 ? b : null
 }
 
 function writeCallouts(name, line) {
@@ -81,6 +107,7 @@ for (const name of names) {
   await page.goto(`${FRONT}${spec.route}`)
   await page.waitForSelector(spec.ready, { timeout: 30000 })
   await page.waitForTimeout(1400)
+  if (spec.before) await spec.before(page)
   const rects = []
   const resolved = []
   for (const c of spec.callouts) {

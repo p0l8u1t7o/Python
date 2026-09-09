@@ -387,6 +387,13 @@
 <li data-n="6"><strong>Calculate</strong> works it out but does <em>not</em> save it: you first see how well it fits.</li>
 <li data-n="7"><strong>Save calibration</strong> stores it as an asset. Pick it afterwards in the Lens correction, Real-world coordinates or Pixel calibration step.</li>
 </ol></figcaption></figure>
+<figure class="shot"><img src="img/calibration-stereo.jpg" alt="Calibration › Stereo height"><figcaption><b>Stereo height</b> (a left/right camera pair measuring object height for robot picking)
+<ol class="callouts">
+<li data-n="1">The <strong>Stereo height</strong> mode: two cameras looking at the same belt from slightly different places; the difference between the two views gives the distance to each object.</li>
+<li data-n="2"><strong>Import stereo_config.json</strong> if the pair was calibrated elsewhere; only the two camera models and their relative pose are read, the rest is recomputed here.</li>
+<li data-n="3"><strong>Capture pair</strong> takes both pictures at once and lists every pair with its time offset and fit error; at least five pairs of the same board, then Calculate, then Save.</li>
+</ol></figcaption></figure>
+<p><strong>Belt height reference.</strong> Below the pair list, measure the empty belt once and type the robot Z that belt surface corresponds to; from then on the Stereo depth step reports each object top as an absolute robot Z, not just a distance from the camera. Without that reference the step still reports the distance and leaves Z empty.</p>
 <p><strong>Which way to use.</strong> If you only need measurements in millimetres, <em>Known distance</em> takes a minute: mark two points on something you have measured, type the distance. If the lens visibly bows straight edges near the corners, or the same part measures differently in the middle and at the edge of the field, use a <em>calibration board</em> &mdash; take three or more pictures with the board tilted and at different distances, filling the frame. If a robot has to go and pick the part up, use <em>Robot points</em>: jog the robot to three or more spots you can see, and type the coordinates it reports at each one.</p>
 <p><strong>Read the error before you save.</strong> Every method reports how well it fits. A board calibration shows the reprojection error per picture, so you can delete the one that was blurred and calculate again. Robot points show the error of <em>each</em> point, and the worst one is marked red on the image &mdash; usually that is where the robot was jogged to the wrong place or a coordinate was typed wrong. The result carries a plain verdict: good, fair, or do it again.</p>
 <p><strong>Marking points is forgiving.</strong> Click near a hole, a printed dot or a corner and the mark snaps to its centre, so you do not have to hit the exact pixel. Turn that off if you really want the spot you clicked.</p>
@@ -407,11 +414,12 @@
 <figure class="shot"><img src="img/dl.jpg" alt="The DL teaching page"><figcaption><b>DL teaching</b> (sidebar › DL teaching, route <code>/dl</code>)
 <ol class="callouts">
 <li data-n="1"><strong>New teaching project</strong>: choose the model kind (classification, semantic segmentation, instance segmentation, detection, pose, oriented boxes).</li>
-<li data-n="2">The <strong>sample grid</strong>: upload, a zip, a burst from a source, or import a dataset; duplicates are skipped automatically. Click a thumbnail to label it.</li>
-<li data-n="3"><strong>Auto-label</strong>: let the current model, or the smart-select model, propose labels that you confirm.</li>
-<li data-n="4"><strong>Train</strong>: split into train, val and test, freeze a dataset version and start training on the server; the finished model lands in the asset library.</li>
+<li data-n="2"><strong>Auto-label</strong>: let the current model, or the smart-select model, propose labels that you confirm.</li>
+<li data-n="3"><strong>Train</strong>: split into train, val and test, freeze a dataset version and start training on the server; the finished model lands in the asset library.</li>
+<li data-n="4"><strong>Create samples from video</strong> (collapsed until you open it): pick a video recorded by the capture client, the model to segment with, how many pictures to keep per tracked object and the frame interval between them; every kept frame becomes a sample with its objects already outlined, ready for correction.</li>
 </ol></figcaption></figure>
 <ol>
+<li>Samples: upload pictures or a zip, grab a burst from a source, import a dataset folder, or extract them from a video; duplicates are skipped automatically. Click a thumbnail to label it.</li>
 <li>Label: for classification, click a thumbnail and choose the class; for segmentation and detection, draw polygons or boxes, with "Smart select" clicking an object to trace it automatically.</li>
 <li>"Create a flow with this model" after training builds an acquire → inference flow and opens it in the editor.</li>
 </ol>
