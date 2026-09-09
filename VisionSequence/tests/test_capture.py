@@ -43,7 +43,7 @@ class FakeCaptureClient(threading.Thread):
     """會說協定 v1 的假擷取端：HELLO → 回答 GRAB／STREAM／PING、可推串流、可走共享記憶體。"""
 
     def __init__(self, port, name="fake", channels=None, *, auth="", transport="tcp", encoding="raw", protocol=1, machine_id="m1",
-                 hostname=None, answer_grabs=True, answer_pings=True, slots=2, bad_canary=False, frame_factory=None, version="0.1.0"):
+                 hostname=None, answer_grabs=True, answer_pings=True, slots=2, bad_canary=False, frame_factory=None, version="0.1.0", features=None):
         super().__init__(daemon=True)
         self.port, self.client_name, self.auth, self.transport = port, name, auth, transport
         self.encoding, self.protocol, self.machine_id = encoding, protocol, machine_id
@@ -51,7 +51,9 @@ class FakeCaptureClient(threading.Thread):
         self.answer_grabs, self.answer_pings, self.slots, self.bad_canary = answer_grabs, answer_pings, slots, bad_canary
         self.frame_factory = frame_factory
         self.version = version
+        self.features = {"lz4": HAS_LZ4, "shm": True, "jpeg": True, "channel_set": True} if features is None else dict(features)
         self.updates: list[dict] = []
+        self.channel_sets: list[dict] = []
         self.channels = [dict(c) for c in (channels or _default_channels())]
         self.sock = socket.create_connection(("127.0.0.1", port), timeout=5)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -135,7 +137,7 @@ class FakeCaptureClient(threading.Thread):
         try:
             self.send(MsgType.HELLO, 1, P.dumps_json({
                 "protocol": self.protocol, "name": self.client_name, "version": self.version, "auth": self.auth, "hostname": self.hostname, "pid": 1,
-                "machine_id": self.machine_id, "features": {"lz4": HAS_LZ4, "shm": True, "jpeg": True}, "channels": self.channels,
+                "machine_id": self.machine_id, "features": self.features, "channels": self.channels,
             }))
             mtype, req_id, header, _ = P.read_message(self.sock)
             self.welcome = P.loads_json(header) if mtype == MsgType.WELCOME else {"ok": False, "code": f"type{mtype}"}
@@ -155,6 +157,8 @@ class FakeCaptureClient(threading.Thread):
                 elif mtype == MsgType.STREAM:
                     body = P.loads_json(header)
                     self.send(MsgType.STREAM, req_id, P.dumps_json({**body, "ok": True}))
+                elif mtype == MsgType.CHANNEL_SET:
+                    self._on_channel_set(req_id, header)
                 elif mtype == MsgType.SLOT_FREE:
                     _, slot, seq = P.unpack_slot_free(header)
                     self.slot_free.append((slot, seq))
@@ -202,6 +206,17 @@ class FakeCaptureClient(threading.Thread):
         if encoding != Encoding.AUTO:
             enc = P.ENCODING_NAMES[encoding]
         self.send_frame(chan, seq, self.make_image(chan, seq), req_id=req_id, encoding=enc, flags=FrameFlags.FRESH if flags & GrabFlags.AFTER_REQUEST else 0)
+
+    def _on_channel_set(self, req_id, header):
+        body = P.loads_json(header)
+        self.channel_sets.append(body)
+        params = body.get("params") if isinstance(body.get("params"), dict) else {}
+        applied = dict(params)
+        command = str(body.get("command") or "")
+        args = body.get("args") if isinstance(body.get("args"), dict) else {}
+        if command == "line_out":
+            applied[f"output:{args.get('line') or ''}"] = bool(args.get("level"))
+        self.send(MsgType.CHANNEL_RESULT, req_id, P.dumps_json({"ok": True, "applied": applied, "errors": {}, "message": ""}))
 
     def wait_ready(self, timeout=5.0):
         self.ready.wait(timeout)
@@ -332,6 +347,21 @@ class HubTests(_HubBase):
         self.assertEqual(item["channels"][0]["id"], "cam0")
         self.assertEqual(item["channels"][0]["width"], 64)
         self.assertTrue(item["local"])
+
+    def test_channel_set_waits_for_result(self):
+        c = self.connect(name="pc-set")
+        result = hub.set_channel_params("pc-set", "cam0", {"exposure_us": 5000}, timeout=1.0)
+        self.assertEqual(result["applied"], {"exposure_us": 5000})
+        self.assertTrue(result["ok"])
+        self.assertEqual(c.channel_sets[0]["params"], {"exposure_us": 5000})
+
+    def test_old_client_is_not_sent_channel_set(self):
+        features = {"lz4": HAS_LZ4, "shm": True, "jpeg": True}
+        c = self.connect(name="pc-old", features=features)
+        with self.assertRaises(CaptureError) as cm:
+            hub.set_channel_params("pc-old", "cam0", {"gain_db": 2}, timeout=0.2)
+        self.assertEqual(cm.exception.code, "unsupported_feature")
+        self.assertFalse(any(mtype == MsgType.CHANNEL_SET for mtype, _, _ in c.received))
 
     @staticmethod
     def _collect(since: int, kind: str, client: str, timeout: float = 3.0) -> list[dict]:

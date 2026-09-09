@@ -384,6 +384,36 @@ class TransportLoopbackTests(SimpleTestCase):
             hub.request_frame("loop-pc", "nope", timeout=0.5)
         self.assertEqual(cm.exception.code, "no_channel")
 
+    def test_channel_set_params_outputs_and_user_sets(self):
+        self.engine.connect()
+        self.assertTrue(_wait(lambda: self.engine.transport.state == ConnState.CONNECTED, 5.0))
+        session = hub.get("loop-pc")
+        self.assertIsNotNone(session)
+        self.assertTrue(session.features.get("channel_set"))
+        channel_info = session.channel("a").to_dict()
+        self.assertIn("Line1", channel_info["outputs"])
+        self.assertIn("exposure_us", {p["name"] for p in channel_info["params"]})
+
+        result = hub.set_channel_params("loop-pc", "a", {"exposure_us": 12345, "gain_db": 6.5, "trigger_source": "Line1", "trigger_delay_us": 20}, timeout=2.0)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["applied"]["exposure_us"], 12345)
+        self.assertEqual(result["applied"]["gain_db"], 6.5)
+        self.assertEqual(result["applied"]["trigger_source"], "Line1")
+        self.assertEqual(result["applied"]["trigger_delay_us"], 20)
+
+        result = hub.channel_command("loop-pc", "a", "save_user_set", {"name": "job1"}, timeout=2.0)
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(hub.set_channel_params("loop-pc", "a", {"exposure_us": 22222}, timeout=2.0)["ok"])
+        result = hub.channel_command("loop-pc", "a", "load_user_set", {"name": "job1"}, timeout=2.0)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["applied"]["exposure_us"], 12345)
+
+        result = hub.channel_command("loop-pc", "a", "line_out", {"line": "Line1", "level": True, "pulse_ms": 50}, timeout=2.0)
+        self.assertTrue(result["ok"], result)
+        channel = self.engine.channels["a"]
+        self.assertTrue(channel.call(lambda: channel.camera.output_levels["Line1"]))
+        self.assertTrue(_wait(lambda: channel.call(lambda: channel.camera.output_levels["Line1"]) is False, 1.0))
+
 
 class HeadlessCliTests(SimpleTestCase):
     def test_parse_and_build(self):
@@ -701,4 +731,3 @@ class PackagingTests(SimpleTestCase):
             self.assertEqual(pk.main(["--dist", str(dist), "--out", str(Path(tmp) / "o"), "--version", "9.9.9", "--sdks", "ids_peak, pyueye"]), 0)
             manifest = json.loads((Path(tmp) / "o" / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual((manifest["version"], manifest["sdks"]), ("9.9.9", ["ids_peak", "pyueye"]))
-

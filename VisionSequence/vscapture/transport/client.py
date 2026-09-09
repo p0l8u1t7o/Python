@@ -16,6 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from vscapture import protocol as P
+from vscapture.cameras.base import CameraParamError
 from vscapture.config import ConnectionConfig
 from vscapture.frames import encode, frame_item, prepare
 from vscapture.protocol import Encoding, FrameFlags, FrameHeader, GrabFlags, MsgType, ProtocolError
@@ -57,6 +58,19 @@ def machine_id() -> str:
         return f"{socket.gethostname()}-{uuid.getnode():x}"
 
 
+def _bool_arg(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def _int_arg(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class TransportClient:
     def __init__(self, engine: CaptureEngine, cfg: ConnectionConfig, *, version: str) -> None:
         self.engine = engine
@@ -88,6 +102,8 @@ class TransportClient:
         self._offers: dict[int, str] = {}
         self._tests: dict[int, tuple[Future, float, int]] = {}
         self._pushers: dict[str, StreamPusher] = {}
+        self._pulse_lock = threading.Lock()
+        self._pulse_timers: set[threading.Timer] = set()
         self._pool: ThreadPoolExecutor | None = None
         self._last_rx = 0.0
         self._machine_id = machine_id()
@@ -210,7 +226,7 @@ class TransportClient:
         hello = {
             "protocol": P.PROTOCOL_VERSION, "name": self.cfg.client_name, "version": self.version, "auth": self.cfg.api_key,
             "hostname": socket.gethostname(), "pid": __import__("os").getpid(), "machine_id": self._machine_id,
-            "features": {"lz4": P.lz4_available(), "shm": True, "jpeg": True}, "channels": self.engine.hello_channels(),
+            "features": {"lz4": P.lz4_available(), "shm": True, "jpeg": True, "channel_set": True}, "channels": self.engine.hello_channels(),
         }
         sock.sendall(P.pack_json(MsgType.HELLO, hello, 1))
         sock.settimeout(P.HELLO_TIMEOUT_S)
@@ -292,6 +308,12 @@ class TransportClient:
                     self.rtt_ms = (time.perf_counter() - sent) * 1000
             elif mtype == MsgType.STREAM:
                 self._on_stream(req_id, P.loads_json(header))
+            elif mtype == MsgType.CHANNEL_SET:
+                # 相機命令要在相機執行緒排隊等結果（NEEDS_STOP 的參數還會停止重啟相機，數百 ms），
+                # 不能讓網路讀取執行緒同步等它——否則同一台擷取端上其他通道的 GRAB 全被排在後面。
+                # 實測通道 a 的命令卡 800 ms 時，通道 b 的取像延遲 743 ms；改成背景執行緒後 < 50 ms。
+                body = P.loads_json(header)
+                threading.Thread(target=self._on_channel_set, args=(req_id, body), name="vsc-channel-set", daemon=True).start()
             elif mtype == MsgType.SLOT_FREE:
                 chan, slot, seq = P.unpack_slot_free(header)
                 cid = self.engine.channel_id(chan)
@@ -384,6 +406,13 @@ class TransportClient:
     def _error(self, req_id: int, code: str, message: str) -> None:
         self.queue.put_control(P.pack_json(MsgType.ERROR, {"code": code, "message": message}, req_id))
 
+    def _channel_result(self, req_id: int, body: dict[str, Any]) -> None:
+        body.setdefault("ok", False)
+        body.setdefault("applied", {})
+        body.setdefault("errors", {})
+        body.setdefault("message", "")
+        self.queue.put_control(P.pack_json(MsgType.CHANNEL_RESULT, body, req_id))
+
     def _on_stream(self, req_id: int, body: dict[str, Any]) -> None:
         cid = str(body.get("channel") or "")
         enabled = bool(body.get("enabled"))
@@ -399,6 +428,83 @@ class TransportClient:
                 pusher.start()
         self.queue.put_control(P.pack_json(MsgType.STREAM, {"channel": cid, "enabled": enabled, "ok": ok}, req_id))
         self.engine.events.emit("stream", {"id": cid, "enabled": enabled and ok})
+
+    def _on_channel_set(self, req_id: int, body: dict[str, Any]) -> None:
+        cid = str(body.get("channel") or "")
+        ch = self.engine.channels.get(cid)
+        if ch is None:
+            self._channel_result(req_id, {"ok": False, "errors": {"channel": "no such channel"}, "message": "No such channel"})
+            return
+        if not ch.cfg.enabled:
+            self._channel_result(req_id, {"ok": False, "errors": {"channel": "channel disabled"}, "message": "Channel disabled"})
+            return
+        params = body.get("params") if isinstance(body.get("params"), dict) else {}
+        command = str(body.get("command") or "")
+        args = body.get("args") if isinstance(body.get("args"), dict) else {}
+        applied: dict[str, Any] = {}
+        errors: dict[str, str] = {}
+        messages: list[str] = []
+
+        if command == "load_user_set":
+            name = str(args.get("name") or "")
+            try:
+                ch.load_user_set(name)
+                applied.update(ch.param_values())
+            except Exception as exc:  # noqa: BLE001
+                errors["user_set"] = str(exc)
+        elif command and command not in ("line_out", "save_user_set"):
+            errors["command"] = f"unknown command: {command}"
+
+        if params:
+            try:
+                applied.update(ch.set_params(dict(params)))
+            except CameraParamError as exc:
+                errors.update({str(k): str(v) for k, v in exc.errors.items()})
+                applied.update(ch.param_values(set(params)))
+            except Exception as exc:  # noqa: BLE001
+                errors["params"] = str(exc)
+                applied.update(ch.param_values(set(params)))
+
+        if command == "line_out":
+            line = str(args.get("line") or "")
+            level = _bool_arg(args.get("level"))
+            pulse_ms = max(0, _int_arg(args.get("pulse_ms"), 0))
+            try:
+                ch.set_output(line, level)
+                applied[f"output:{line}"] = level
+                if pulse_ms > 0:
+                    self._schedule_output_reset(ch, line, not level, pulse_ms / 1000.0)
+                    messages.append("pulse scheduled")
+            except Exception as exc:  # noqa: BLE001
+                errors["line_out"] = str(exc)
+        elif command == "save_user_set":
+            name = str(args.get("name") or "")
+            try:
+                ch.save_user_set(name)
+            except Exception as exc:  # noqa: BLE001
+                errors["user_set"] = str(exc)
+
+        ok = not errors
+        self._channel_result(req_id, {"ok": ok, "applied": applied, "errors": errors, "message": "; ".join(messages)})
+
+    def _schedule_output_reset(self, ch, line: str, level: bool, delay_s: float) -> None:
+        timer: threading.Timer | None = None
+
+        def run() -> None:
+            try:
+                ch.set_output(line, level)
+            except Exception:  # noqa: BLE001
+                log.debug("camera output pulse reset failed", exc_info=True)
+            finally:
+                if timer is not None:
+                    with self._pulse_lock:
+                        self._pulse_timers.discard(timer)
+
+        timer = threading.Timer(delay_s, run)
+        timer.daemon = True
+        with self._pulse_lock:
+            self._pulse_timers.add(timer)
+        timer.start()
 
     def _on_shm_accept(self, req_id: int, body: dict[str, Any]) -> None:
         self._offers.pop(req_id, None)
@@ -464,6 +570,11 @@ class TransportClient:
 
     def _teardown(self, reason: str) -> None:
         sock, self._sock = self._sock, None
+        with self._pulse_lock:
+            timers = list(self._pulse_timers)
+            self._pulse_timers.clear()
+        for timer in timers:
+            timer.cancel()
         for p in list(self._pushers.values()):
             p.stop()
         self._pushers.clear()

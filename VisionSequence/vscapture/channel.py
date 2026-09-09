@@ -17,6 +17,7 @@ from vscapture import cameras
 from vscapture.cameras.base import Camera, CameraError, CameraParamError, DeviceDescription, ParamSpec
 from vscapture.config import ChannelConfig, Roi
 from vscapture.frames import Frame, FrameSlot
+from vscapture.params import NEEDS_STOP
 
 log = logging.getLogger(__name__)
 
@@ -252,13 +253,60 @@ class Channel:
         cam = self.camera
         if cam is None:
             raise CameraError("相機尚未開啟")
-        applied = self.call(cam.set_params, values)
+        applied = self.call(self._do_set_params, values)
         for key, value in applied.items():
             if hasattr(self.cfg.params, key):
                 setattr(self.cfg.params, key, value)
             else:
                 self.cfg.extras[key] = value
         return applied
+
+    def _do_set_params(self, values: dict[str, Any]) -> dict[str, Any]:
+        cam = self.camera
+        if cam is None:
+            raise CameraError("相機尚未開啟")
+        restart = self.state == ChannelState.RUNNING and any(str(k) in NEEDS_STOP for k in values)
+        if not restart:
+            return cam.set_params(values)
+        cam.stop()
+        self._set_state(ChannelState.OPEN)
+        try:
+            applied = cam.set_params(values)
+        except Exception:
+            try:
+                cam.start()
+                self._fps_last, self._fps_count = time.perf_counter(), 0
+                self._set_state(ChannelState.RUNNING)
+            except Exception as exc:  # noqa: BLE001
+                self._set_state(ChannelState.ERROR, str(exc))
+            raise
+        cam.start()
+        self._fps_last, self._fps_count = time.perf_counter(), 0
+        self._set_state(ChannelState.RUNNING)
+        return applied
+
+    def param_values(self, names: list[str] | tuple[str, ...] | set[str] | None = None) -> dict[str, Any]:
+        specs = self.params()
+        wanted = set(str(n) for n in names) if names is not None else set(specs)
+        return {name: spec.value for name, spec in specs.items() if name in wanted}
+
+    def set_output(self, line: str, level: bool) -> None:
+        cam = self.camera
+        if cam is None:
+            raise CameraError("相機尚未開啟")
+        return self.call(cam.set_output, line, level)
+
+    def load_user_set(self, name: str) -> None:
+        cam = self.camera
+        if cam is None:
+            raise CameraError("相機尚未開啟")
+        return self.call(cam.load_user_set, name)
+
+    def save_user_set(self, name: str) -> None:
+        cam = self.camera
+        if cam is None:
+            raise CameraError("相機尚未開啟")
+        return self.call(cam.save_user_set, name)
 
     def apply_roi(self, roi: Roi, hardware: bool) -> tuple[bool, Roi]:
         cam = self.camera
@@ -314,8 +362,14 @@ class Channel:
         native_color = bool(desc.native_color) if desc else (self.cfg.params.pixel_format or "BGR8") != "Mono8"
         mono = self.cfg.delivery.mono or (self.cfg.params.pixel_format or "").startswith("Mono")
         channels = 1 if (mono or not native_color) else 3
-        return {
+        out = {
             "id": self.cfg.id, "label": self.cfg.name or self.cfg.id, "driver": self.cfg.backend, "width": int(w), "height": int(h), "channels": channels, "dtype": "u8",
             "pixel_format": "Mono8" if channels == 1 else "BGR8", "roi": {"x": roi.x, "y": roi.y, "w": int(w), "h": int(h)}, "full": {"w": int(sw), "h": int(sh)},
             "mode": self.cfg.delivery.mode, "enabled": self.cfg.enabled, "max_bytes": int(max(1, w) * max(1, h) * channels),
         }
+        params = [spec.as_dict() for spec in self.params().values()]
+        if params:
+            out["params"] = params
+        if desc is not None and desc.output_lines:
+            out["outputs"] = list(desc.output_lines)
+        return out

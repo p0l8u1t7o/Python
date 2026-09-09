@@ -10,7 +10,7 @@ import numpy as np
 
 from vscapture.config import Roi
 
-STANDARD_PARAMS = ("exposure_us", "gain_db", "fps", "pixel_format", "width", "height", "offset_x", "offset_y", "trigger_mode")
+STANDARD_PARAMS = ("exposure_us", "gain_db", "fps", "pixel_format", "width", "height", "offset_x", "offset_y", "trigger_mode", "trigger_source", "trigger_delay_us")
 
 
 class CameraError(Exception):
@@ -49,6 +49,7 @@ class DeviceDescription:
     supports_hw_trigger: bool = False
     supports_sw_trigger: bool = False
     native_color: bool = True
+    output_lines: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -65,6 +66,13 @@ class ParamSpec:
     standard: bool = False
     group: str = ""
     label: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name, "kind": self.kind, "value": self.value, "min": self.min, "max": self.max, "step": self.step,
+            "choices": list(self.choices), "unit": self.unit, "writable": self.writable, "standard": self.standard,
+            "group": self.group, "label": self.label,
+        }
 
 
 class Camera(ABC):
@@ -115,6 +123,15 @@ class Camera(ABC):
     def apply_roi(self, roi: Roi, hardware: bool) -> tuple[bool, Roi]:
         """回 (是否硬體 ROI, 實際生效的 ROI)。預設不支援硬體 ROI → 軟體裁切。"""
         return False, roi
+
+    def set_output(self, line: str, level: bool) -> None:
+        raise CameraError("line output not supported")
+
+    def load_user_set(self, name: str) -> None:
+        raise CameraError("user set load not supported")
+
+    def save_user_set(self, name: str) -> None:
+        raise CameraError("user set save not supported")
 
     @abstractmethod
     def describe(self) -> DeviceDescription: ...

@@ -193,16 +193,21 @@ class ChannelState:
             "seq": self.last_seq, "last_frame_age_ms": age, "encoding": latest.meta.encoding if latest else "", "shm": bool(latest and latest.meta.shm),
             "last_error": self.last_error, "in_use_by": list(in_use_by or []), **self.rate.snapshot(),
         }
+        if isinstance(self.spec.get("params"), list):
+            out["params"] = self.spec["params"]
+        if isinstance(self.spec.get("outputs"), list):
+            out["outputs"] = self.spec["outputs"]
         return out
 
 
 class _Pending:
-    __slots__ = ("event", "frame", "error", "sent_at")
+    __slots__ = ("event", "frame", "error", "result", "sent_at")
 
     def __init__(self) -> None:
         self.event = threading.Event()
         self.frame: Frame | None = None
         self.error: CaptureError | None = None
+        self.result: dict[str, Any] | None = None
         self.sent_at = time.perf_counter()
 
 
@@ -435,6 +440,8 @@ class ClientSession(threading.Thread):
             if ch is not None:
                 with self._lock:
                     ch.streaming = bool(body.get("enabled")) and bool(body.get("ok", True))
+        elif mtype == MsgType.CHANNEL_RESULT:
+            self._resolve(req_id, result=P.loads_json(header))
         elif mtype == MsgType.UPDATE_PULL:
             self._on_update_pull(req_id, P.loads_json(header))
         elif mtype == MsgType.ERROR:
@@ -444,7 +451,7 @@ class ClientSession(threading.Thread):
             self._resolve(req_id, error=CaptureError(f"The capture client reported: {message}", code=code))
             if req_id == 0:
                 log.warning("擷取端 %s 回報錯誤 %s：%s", self.name_, code, message)
-        elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.SLOT_FREE, MsgType.TEST_RESULT, MsgType.UPDATE, MsgType.UPDATE_DATA):
+        elif mtype in (MsgType.HELLO, MsgType.WELCOME, MsgType.SHM_ACCEPT, MsgType.GRAB, MsgType.CHANNEL_SET, MsgType.SLOT_FREE, MsgType.TEST_RESULT, MsgType.UPDATE, MsgType.UPDATE_DATA):
             raise ProtocolError(f"A capture client must not send {MsgType(mtype).name}")
         else:
             raise ProtocolError(f"Unknown message type {mtype}")
@@ -627,14 +634,14 @@ class ClientSession(threading.Thread):
     def next_req_id(self) -> int:
         return next(self._req_counter)
 
-    def _resolve(self, req_id: int, *, error: CaptureError | None = None, frame: Frame | None = None) -> None:
+    def _resolve(self, req_id: int, *, error: CaptureError | None = None, frame: Frame | None = None, result: dict[str, Any] | None = None) -> None:
         if not req_id:
             return
         with self._lock:
             pending = self._pending.pop(req_id, None)
             if pending is None:
                 return
-            pending.error, pending.frame = error, frame
+            pending.error, pending.frame, pending.result = error, frame, result
             pending.event.set()
 
     # ---- 給 hub／grabber 用 ----
@@ -692,6 +699,58 @@ class ClientSession(threading.Thread):
     def set_stream(self, channel: str, enabled: bool, max_fps: float = 0) -> None:
         ch = self.channel(channel)
         self.send(MsgType.STREAM, self.next_req_id(), P.dumps_json({"channel": ch.id, "enabled": bool(enabled), "max_fps": float(max_fps or 0)}))
+
+    def _send_channel_set(self, channel: str, body: dict[str, Any], timeout: float) -> dict[str, Any]:
+        ch = self.channel(channel)
+        if not self.alive:
+            raise CaptureError("The capture client disconnected", code="disconnected")
+        if not bool(self.features.get("channel_set")):
+            raise CaptureError("capture client does not support channel_set; update the client", code="unsupported_feature")
+        req_id = self.next_req_id()
+        pending = _Pending()
+        with self._lock:
+            self._pending[req_id] = pending
+        try:
+            self.send(MsgType.CHANNEL_SET, req_id, P.dumps_json({"channel": ch.id, **body}))
+        except CaptureError:
+            with self._lock:
+                self._pending.pop(req_id, None)
+            raise
+        if not pending.event.wait(float(timeout) + 0.25):
+            with self._lock:
+                self._pending.pop(req_id, None)
+                ch.last_error = "The capture client timed out"
+            raise CaptureError(f'Capture client "{self.name_}" timed out without applying camera settings', code="timeout")
+        if pending.error is not None:
+            with self._lock:
+                ch.last_error = str(pending.error)
+            raise pending.error
+        result = pending.result if isinstance(pending.result, dict) else {}
+        normalized = {
+            "ok": bool(result.get("ok")),
+            "applied": result.get("applied") if isinstance(result.get("applied"), dict) else {},
+            "errors": result.get("errors") if isinstance(result.get("errors"), dict) else {},
+            "message": str(result.get("message") or ""),
+        }
+        self._merge_channel_params(ch, normalized["applied"])
+        return normalized
+
+    def _merge_channel_params(self, ch: ChannelState, applied: dict[str, Any]) -> None:
+        if not applied:
+            return
+        with self._lock:
+            specs = ch.spec.get("params")
+            if not isinstance(specs, list):
+                return
+            for spec in specs:
+                if isinstance(spec, dict) and str(spec.get("name") or "") in applied:
+                    spec["value"] = applied[str(spec.get("name") or "")]
+
+    def set_channel_params(self, channel: str, params: dict[str, Any], timeout: float = 2.0) -> dict[str, Any]:
+        return self._send_channel_set(channel, {"params": dict(params or {})}, timeout)
+
+    def channel_command(self, channel: str, command: str, args: dict[str, Any] | None = None, timeout: float = 2.0) -> dict[str, Any]:
+        return self._send_channel_set(channel, {"command": str(command), "args": dict(args or {})}, timeout)
 
     def close(self, reason: str = "closed") -> None:
         if self._closed.is_set():
@@ -848,6 +907,12 @@ class CaptureHub:
 
     def wait_for_seq(self, client: str, channel: str, min_seq: int, timeout: float) -> Frame:
         return self._require(client).wait_for_seq(channel, min_seq, timeout)
+
+    def set_channel_params(self, client: str, channel: str, params: dict[str, Any], timeout: float = 2.0) -> dict[str, Any]:
+        return self._require(client).set_channel_params(channel, params, timeout)
+
+    def channel_command(self, client: str, channel: str, command: str, args: dict[str, Any] | None = None, timeout: float = 2.0) -> dict[str, Any]:
+        return self._require(client).channel_command(channel, command, args, timeout)
 
     # ---- 串流 ----
     def stream_wanted(self, client: str, channel: str) -> bool:

@@ -2417,11 +2417,20 @@ export default {
           bgr: "轉彩色（BGR）",
         },
       },
+      exposure_us: {
+        label: "曝光",
+        help: "空白或 0 不改相機曝光。",
+      },
+      gain_db: {
+        label: "增益",
+        help: "空白或 0 不改相機增益。",
+      },
     },
     ports: {
       image: "影像",
       width: "寬",
       height: "高",
+      applied: "已套用相機設定",
     },
   },
   in_range: {
@@ -2975,6 +2984,33 @@ export default {
       timeout_s: { label: "逾時（秒）", group: "進階" },
     },
     ports: { status: "判定", ok: "成功", active: "輸出電平" },
+  },
+  camera_io: {
+    label: "相機 I/O",
+    description: "依目前 OK/NG 判定寫出擷取端相機的輸出線；脈衝由擷取端復位，寬度不受網路延遲影響。",
+    params: {
+      source: { label: "影像來源" },
+      line: { label: "輸出線" },
+      on_when: { label: "何時輸出", options: { ok: "OK", ng: "NG", always: "總是" } },
+      pulse_ms: { label: "脈衝", help: "0 維持電平；大於 0 時由擷取端背景計時器復位。" },
+      invert: { label: "反相" },
+      required: { label: "必要", help: "寫入相機輸出失敗時讓 run 失敗；預設關閉，通訊問題只降級。" },
+      timeout_s: { label: "逾時（秒）", group: "進階" },
+    },
+    ports: { status: "判定", ok: "成功", active: "輸出電平" },
+  },
+  camera_set: {
+    label: "相機設定",
+    description: "寫入擷取端相機特徵，並可載入或儲存 user set。",
+    params: {
+      source: { label: "影像來源" },
+      values: { label: "參數", help: "一行一個 name=value，例如 exposure_us=5000。" },
+      user_set: { label: "User set", options: { none: "不使用", load: "套參數前載入", save: "套參數後儲存" } },
+      user_set_name: { label: "User set 名稱" },
+      required: { label: "必要", help: "完全連不上相機時讓 run 失敗；預設關閉，通訊問題只降級。" },
+      timeout_s: { label: "逾時（秒）", group: "進階" },
+    },
+    ports: { ok: "成功", applied: "已套用", errors: "錯誤" },
   },
   write_log: {
     label: "寫入紀錄",

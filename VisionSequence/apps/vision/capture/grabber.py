@@ -44,6 +44,9 @@ class CaptureGrabber(Grabber):
         self.last_meta: FrameMeta | None = None
         self.timed_out = False
         self._stream_session_id = 0
+        self._params_session_id = 0
+        self._last_sent_params: dict[str, Any] = {}
+        self._last_param_result: dict[str, Any] = {"ok": True, "applied": {}, "errors": {}, "message": ""}
         if self.mode == "stream":
             hub.acquire_stream(self.client, self.channel, self.name)
             session = hub.get(self.client)
@@ -85,6 +88,26 @@ class CaptureGrabber(Grabber):
             self.last_error = ""
             self.timed_out = False
         return frame.image
+
+    def _session_id(self) -> int:
+        session = hub.get(self.client)
+        return int(getattr(session, "session_id", 0)) if session is not None else 0
+
+    def set_params_once(self, params: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        clean = {str(k): v for k, v in (params or {}).items() if str(k)}
+        if not clean:
+            return {"ok": True, "applied": {}, "errors": {}, "message": ""}
+        session_id = self._session_id()
+        if session_id and session_id == self._params_session_id and clean == self._last_sent_params:
+            return dict(self._last_param_result)
+        result = hub.set_channel_params(self.client, self.channel, clean, timeout or self.timeout)
+        self._params_session_id = session_id
+        self._last_sent_params = dict(clean)
+        self._last_param_result = dict(result)
+        return result
+
+    def command(self, command: str, args: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
+        return hub.channel_command(self.client, self.channel, command, args or {}, timeout or self.timeout)
 
     def close(self) -> None:
         if self.mode == "stream":
@@ -129,3 +152,31 @@ def channel_status(client: str, channel: str, *, encoding: str = "auto") -> dict
         "width": d["width"], "height": d["height"], "roi": d["roi"], "full": d["full"], "streaming": d["streaming"], "local": session.local, "last_error": d["last_error"],
     })
     return out
+
+
+def capture_grabber_for_source(source_id: str | int) -> tuple[CaptureGrabber | None, str]:
+    from apps.vision import sources
+
+    key = str(source_id)
+    try:
+        sid = int(key)
+    except (TypeError, ValueError):
+        return None, "missing"
+    with sources._lock:  # noqa: SLF001 - 相機控制要沿用來源快取，避免重開擷取來源。
+        cached = sources._open.get(sid)  # noqa: SLF001
+    if cached is not None:
+        grabber = cached[1]
+        return (grabber, "") if isinstance(grabber, CaptureGrabber) else (None, "not_capture")
+    try:
+        from apps.vision.models import ImageSource
+
+        source = ImageSource.objects.get(pk=sid)
+    except Exception:  # noqa: BLE001
+        return None, "missing"
+    if source.kind != CaptureGrabber.kind:
+        return None, "not_capture"
+    try:
+        grabber = sources.open_source(source)
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)
+    return (grabber, "") if isinstance(grabber, CaptureGrabber) else (None, "not_capture")

@@ -581,6 +581,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("trigger_flow", "trigger_flow", None, {"target_flow_id": 1, "mode": "async"}, {}, {"_sandbox": True}),
         ("set_light (degraded)", "set_light", None, {"connection": "bench_sim", "channel": 1, "value": 128}, {}, {}),
         ("io_output", "io_output", None, {"connection": "bench_sim", "address": "coil:1", "on_when": "ng"}, {}, {"_judge": "NG"}),
+        ("camera_io (degraded)", "camera_io", None, {"source": 0, "line": "Line1", "on_when": "ng"}, {}, {"_judge": "NG"}),
+        ("camera_set (degraded)", "camera_set", None, {"source": 0, "values": "exposure_us=5000"}, {}, {}),
         ("write_modbus", "write_modbus", None, {"connection": "bench_sim", "mapping": [{"src": "judge", "address": "ok"}]}, {}, {"_judge": "OK"}),
         ("read_modbus", "read_modbus", None, {"connection": "bench_sim", "mapping": [{"name": "ok", "address": "ok"}]}, {}, {}),
         ("send_image (degraded)", "send_image", gray, {"connection": "bench_sim"}, {}, {"_judge": "OK"}),

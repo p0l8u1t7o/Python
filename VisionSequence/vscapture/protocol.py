@@ -58,6 +58,8 @@ class MsgType(IntEnum):
     GRAB = 0x10
     FRAME = 0x11
     SLOT_FREE = 0x12
+    CHANNEL_SET = 0x13
+    CHANNEL_RESULT = 0x14
 
 
 class Encoding(IntEnum):
@@ -338,13 +340,20 @@ def validate_channel_dict(d: Any) -> dict[str, Any]:
     if mode not in MODES:
         mode = "on_demand"
     max_bytes = int(d.get("max_bytes") or frame_nbytes(max(width, 1), max(height, 1), channels, DTYPE_CODES[dtype]))
-    return {
+    out = {
         "id": cid, "label": str(d.get("label") or cid)[:120], "driver": str(d.get("driver") or "other")[:32],
         "width": width, "height": height, "channels": channels, "dtype": dtype,
         "pixel_format": str(d.get("pixel_format") or ("Mono8" if channels == 1 else "BGR8"))[:32],
         "roi": roi_out, "full": {"w": full_w, "h": full_h}, "mode": mode,
         "enabled": bool(d.get("enabled", True)), "max_bytes": max_bytes,
     }
+    params = d.get("params")
+    if isinstance(params, list):
+        out["params"] = [dict(p) for p in params if isinstance(p, dict)]
+    outputs = d.get("outputs")
+    if isinstance(outputs, list):
+        out["outputs"] = [str(v) for v in outputs if str(v)]
+    return out
 
 
 def is_loopback(ip: str) -> bool:

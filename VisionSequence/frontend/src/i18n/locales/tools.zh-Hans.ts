@@ -2417,11 +2417,20 @@ export default {
           bgr: "转彩色（BGR）",
         },
       },
+      exposure_us: {
+        label: "曝光",
+        help: "空白或 0 不改相机曝光。",
+      },
+      gain_db: {
+        label: "增益",
+        help: "空白或 0 不改相机增益。",
+      },
     },
     ports: {
       image: "影像",
       width: "宽",
       height: "高",
+      applied: "已套用相机设置",
     },
   },
   in_range: {
@@ -2975,6 +2984,33 @@ export default {
       timeout_s: { label: "超时（秒）", group: "进阶" },
     },
     ports: { status: "判定", ok: "成功", active: "输出电平" },
+  },
+  camera_io: {
+    label: "相机 I/O",
+    description: "依当前 OK/NG 判定写出撷取端相机的输出线；脉冲由撷取端复位，宽度不受网络延迟影响。",
+    params: {
+      source: { label: "影像来源" },
+      line: { label: "输出线" },
+      on_when: { label: "何时输出", options: { ok: "OK", ng: "NG", always: "总是" } },
+      pulse_ms: { label: "脉冲", help: "0 维持电平；大于 0 时由撷取端背景计时器复位。" },
+      invert: { label: "反相" },
+      required: { label: "必要", help: "写入相机输出失败时让 run 失败；默认关闭，通讯问题只降级。" },
+      timeout_s: { label: "超时（秒）", group: "进阶" },
+    },
+    ports: { status: "判定", ok: "成功", active: "输出电平" },
+  },
+  camera_set: {
+    label: "相机设置",
+    description: "写入撷取端相机特征，并可加载或保存 user set。",
+    params: {
+      source: { label: "影像来源" },
+      values: { label: "参数", help: "一行一个 name=value，例如 exposure_us=5000。" },
+      user_set: { label: "User set", options: { none: "不使用", load: "套参数前加载", save: "套参数后保存" } },
+      user_set_name: { label: "User set 名称" },
+      required: { label: "必要", help: "完全连不上相机时让 run 失败；默认关闭，通讯问题只降级。" },
+      timeout_s: { label: "超时（秒）", group: "进阶" },
+    },
+    ports: { ok: "成功", applied: "已套用", errors: "错误" },
   },
   write_log: {
     label: "写入记录",

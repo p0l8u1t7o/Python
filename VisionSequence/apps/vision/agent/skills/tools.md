@@ -568,6 +568,15 @@ edge_contrast、defects、decodability）。總評＝最低分（1D 是 10 條�
 Modbus 連線的 `address` 用 `coil:0`／`holding:100` 這種位址；light 連線則填通道號。`on_when` 決定 OK、NG 或 always 輸出，`invert` 處理低有效。
 `pulse_ms>0` 會先送出有效電平，再由背景計時器復位，工具本身不 sleep，不會卡住熱路徑；失敗預設降級，必要輸出才開 `required=true`。
 
+## camera_io
+整合用（使用者要求「用相機的 Line1/Line2 打 NG/OK 輸出」時才加）：`source` 必須選 capture 來源，工具依 `_judge` 或 `status` 輸入判斷 `on_when`。
+`line` 填擷取端回報的輸出線名；`pulse_ms>0` 時只送一次命令，脈衝復位在擷取端相機執行緒完成，server 不 sleep。
+連不上或不是 capture 來源預設降級，與 `io_output` 相同；必要輸出才開 `required=true`。
+
+## camera_set
+來源類工具：對 capture 來源寫相機特徵。`values` 一行一個 `name=value`，例如 `exposure_us=5000`、`gain_db=3.5`、`trigger_source=Line1`。
+`user_set=load` 會先載入再套 values；`user_set=save` 會套完 values 後儲存。部分參數失敗時回 NG 並輸出 `errors`，不讓整條流程 error；完全連不上時才依 `required` 決定降級或失敗。
+
 ## write_modbus / read_modbus
 整合用（AI 不主動生成，使用者要求「把結果寫給設備」「從 Modbus 讀料號」時才加）：write_modbus 依對映表把判定或具名輸出寫到連線；
 read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連線讀對方主站寫進平台的值），輸出 values／value／ok，publish=true 才進具名輸出。

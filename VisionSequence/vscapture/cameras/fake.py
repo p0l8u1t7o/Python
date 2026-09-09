@@ -43,6 +43,10 @@ class FakeCamera(Camera):
         self._fps = 30.0
         self._pixel_format = "BGR8"
         self._trigger = "freerun"
+        self._trigger_source = "Software"
+        self._trigger_delay_us = 0.0
+        self.output_levels = {"Line1": False, "Line2": False}
+        self._user_sets: dict[str, dict[str, Any]] = {}
         self._seq = 0
         self._last = 0.0
         self._trigger_event = threading.Event()
@@ -164,6 +168,8 @@ class FakeCamera(Camera):
             "offset_x": ParamSpec("offset_x", "int", self._roi.x, 0, sw - 8, 8, standard=True, label="X 位移"),
             "offset_y": ParamSpec("offset_y", "int", self._roi.y, 0, sh - 8, 8, standard=True, label="Y 位移"),
             "trigger_mode": ParamSpec("trigger_mode", "enum", self._trigger, choices=["freerun", "software"], standard=True, label="觸發模式"),
+            "trigger_source": ParamSpec("trigger_source", "enum", self._trigger_source, choices=["Line1", "Line2", "Software"], standard=True, label="觸發來源"),
+            "trigger_delay_us": ParamSpec("trigger_delay_us", "float", self._trigger_delay_us, 0.0, 1000000.0, 1.0, unit="µs", standard=True, label="觸發延遲"),
             "Pattern": ParamSpec("Pattern", "enum", "moving_square", choices=["moving_square"], label="Pattern"),
         }
 
@@ -196,6 +202,14 @@ class FakeCamera(Camera):
                         raise ValueError("不支援的觸發模式")
                     self._trigger = str(value)
                     applied[key] = self._trigger
+                elif key == "trigger_source":
+                    if value not in spec.choices:
+                        raise ValueError("不支援的觸發來源")
+                    self._trigger_source = str(value)
+                    applied[key] = self._trigger_source
+                elif key == "trigger_delay_us":
+                    self._trigger_delay_us = float(max(spec.min, min(spec.max, float(value))))
+                    applied[key] = self._trigger_delay_us
                 elif key in ("width", "height", "offset_x", "offset_y"):
                     applied[key] = int(value)
                 else:
@@ -231,4 +245,27 @@ class FakeCamera(Camera):
         return True, self._roi
 
     def describe(self) -> DeviceDescription:
-        return DeviceDescription("fake", "FakeCam", self._serial, self._sensor[0], self._sensor[1], ["Mono8", "BGR8"], True, False, True, True)
+        return DeviceDescription("fake", "FakeCam", self._serial, self._sensor[0], self._sensor[1], ["Mono8", "BGR8"], True, False, True, True, ["Line1", "Line2"])
+
+    def set_output(self, line: str, level: bool) -> None:
+        if line not in self.output_levels:
+            raise CameraError(f"unknown output line '{line}'")
+        self.output_levels[line] = bool(level)
+
+    def _user_set_values(self) -> dict[str, Any]:
+        return {key: spec.value for key, spec in self.get_params().items() if spec.writable and key != "Pattern"}
+
+    def save_user_set(self, name: str) -> None:
+        key = str(name or "").strip()
+        if not key:
+            raise CameraError("user set name is required")
+        self._user_sets[key] = dict(self._user_set_values())
+
+    def load_user_set(self, name: str) -> None:
+        key = str(name or "").strip()
+        if not key:
+            raise CameraError("user set name is required")
+        values = self._user_sets.get(key)
+        if values is None:
+            raise CameraError(f"user set '{key}' does not exist")
+        self.set_params(dict(values))

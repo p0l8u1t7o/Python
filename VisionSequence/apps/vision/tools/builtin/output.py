@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import codecs
+import json
 import os
 import threading
 import time
@@ -13,6 +14,7 @@ import numpy as np
 from django.conf import settings
 
 from apps.comm.writers import CommError, get_writer, parse_address
+from apps.vision.capture.hub import CaptureError
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
 
 
@@ -406,6 +408,161 @@ class IoOutputTool(Tool):
         return Result(outputs={"ok": True, "active": active}, message=f"Output {'pulse' if pulse_ms > 0 and active else 'level'} {address}", detail=detail)
 
 
+class CameraIoTool(Tool):
+    key = "camera_io"
+    label = "Camera I/O"
+    description = "Writes a camera output line according to the current OK/NG verdict. Pulses are restored by the capture client so network jitter does not affect the width."
+    category = "output"
+    icon = "ToggleRight"
+    params = [
+        Param("source", "Image source", kind="source", required=True),
+        Param("line", "Line", kind="text", default="Line1", required=True, teach=True),
+        Param("on_when", "On when", kind="select", default="ng", options=[
+            {"value": "ok", "label": "OK"},
+            {"value": "ng", "label": "NG"},
+            {"value": "always", "label": "Always"},
+        ]),
+        Param("pulse_ms", "Pulse", kind="number", default=0, minimum=0, maximum=60000, step=1, teach=True,
+              help_text="0 keeps the level. A positive value asks the capture client to reset the line in the background."),
+        Param("invert", "Invert", kind="boolean", default=False),
+        Param("required", "Required", kind="boolean", default=False, help_text="Fail the run when the camera output cannot be written; off by default so communication faults degrade."),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, group="Advanced"),
+    ]
+    inputs = [Port("status", "Verdict", "any", required=False)]
+    outputs = [Port("ok", "Succeeded", "bool"), Port("active", "Active level", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        source_id = ctx.param("source")
+        line = str(ctx.param("line", "Line1") or "Line1").strip()
+        on_when = str(ctx.param("on_when", "ng") or "ng").lower()
+        pulse_ms = max(0, ctx.integer("pulse_ms", 0))
+        required = ctx.flag("required", False)
+        timeout = ctx.number("timeout_s", 0) or None
+        judge = _judge_state(ctx)
+        active = on_when == "always" or judge == on_when
+        if ctx.flag("invert", False):
+            active = not active
+        detail: dict[str, Any] = {"source": source_id, "line": line, "judge": judge, "active": active, "pulse_ms": pulse_ms}
+        from apps.vision.capture.grabber import capture_grabber_for_source
+
+        grabber, reason = capture_grabber_for_source(source_id)
+        if grabber is None:
+            msg = f"Image source {source_id} is not a capture camera" if reason == "not_capture" else f"Capture camera {source_id} is not available: {reason}"
+            return _comm_failed(ctx, required, msg, {"ok": False, "active": active}, detail)
+        try:
+            result = grabber.command("line_out", {"line": line, "level": active, "pulse_ms": pulse_ms}, timeout=timeout)
+        except CaptureError as exc:
+            return _comm_failed(ctx, required, str(exc), {"ok": False, "active": active}, detail)
+        detail["result"] = result
+        if not result.get("ok"):
+            return _comm_failed(ctx, required, str(result.get("message") or result.get("errors") or "Camera output failed"), {"ok": False, "active": active}, detail)
+        return Result(outputs={"ok": True, "active": active}, message=f"Camera output {'pulse' if pulse_ms > 0 else 'level'} {line}", detail=detail)
+
+
+class CameraSetTool(Tool):
+    key = "camera_set"
+    label = "Camera settings"
+    description = "Writes camera feature values and can load or save a user set on a capture client camera."
+    category = "source"
+    icon = "SlidersHorizontal"
+    params = [
+        Param("source", "Image source", kind="source", required=True),
+        Param("values", "Values", kind="multiline", default="", teach=True,
+              help_text="One name=value per line, for example exposure_us=5000."),
+        Param("user_set", "User set", kind="select", default="none", options=[
+            {"value": "none", "label": "None"},
+            {"value": "load", "label": "Load before values"},
+            {"value": "save", "label": "Save after values"},
+        ]),
+        Param("user_set_name", "User set name", kind="text", default="Default", teach=True),
+        Param("required", "Required", kind="boolean", default=False, help_text="Fail the run when the camera cannot be reached; off by default so communication faults degrade."),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, group="Advanced"),
+    ]
+    inputs: list[Port] = []
+    outputs = [Port("ok", "Succeeded", "bool"), Port("applied", "Applied values", "any"), Port("errors", "Errors", "any")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        source_id = ctx.param("source")
+        required = ctx.flag("required", False)
+        timeout = ctx.number("timeout_s", 0) or None
+        detail: dict[str, Any] = {"source": source_id}
+        from apps.vision.capture.grabber import capture_grabber_for_source
+
+        grabber, reason = capture_grabber_for_source(source_id)
+        if grabber is None:
+            msg = f"Image source {source_id} is not a capture camera" if reason == "not_capture" else f"Capture camera {source_id} is not available: {reason}"
+            return _camera_set_unavailable(ctx, required, msg, detail)
+        values = _parse_camera_values(str(ctx.param("values", "") or ""))
+        user_set = str(ctx.param("user_set", "none") or "none").lower()
+        name = str(ctx.param("user_set_name", "Default") or "Default")
+        applied: dict[str, Any] = {}
+        errors: dict[str, Any] = {}
+        try:
+            if user_set == "load":
+                result = grabber.command("load_user_set", {"name": name}, timeout=timeout)
+                applied.update(result.get("applied") or {})
+                errors.update(result.get("errors") or {})
+            if values:
+                result = grabber.set_params_once(values, timeout=timeout)
+                applied.update(result.get("applied") or {})
+                errors.update(result.get("errors") or {})
+            if user_set == "save":
+                result = grabber.command("save_user_set", {"name": name}, timeout=timeout)
+                applied.update(result.get("applied") or {})
+                errors.update(result.get("errors") or {})
+        except CaptureError as exc:
+            return _camera_set_unavailable(ctx, required, str(exc), detail)
+        ok = not errors
+        detail.update({"applied": applied, "errors": errors, "user_set": user_set, "user_set_name": name})
+        return Result(
+            status="ok" if ok else "ng",
+            outputs={"ok": ok, "applied": applied, "errors": errors},
+            message="Camera settings applied" if ok else "Camera settings partially failed",
+            detail=detail,
+        )
+
+
+def _camera_set_unavailable(ctx: ToolContext, required: bool, reason: str, detail: dict[str, Any]) -> Result:
+    if required:
+        raise ToolError(reason)
+    ctx.log(f"Camera settings failed (degraded): {reason}", level="warning")
+    return Result(status="ng", outputs={"ok": False, "applied": {}, "errors": {"connection": reason}}, message=f"Camera settings failed (degraded): {reason}"[:500], detail=detail)
+
+
+def _parse_camera_values(text: str) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ToolError(f"Line {lineno} must be name=value")
+        name, value = line.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise ToolError(f"Line {lineno} has no name")
+        values[name] = _parse_camera_value(value.strip())
+    return values
+
+
+def _parse_camera_value(value: str) -> Any:
+    if value == "":
+        return ""
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        pass
+    lower = value.lower()
+    if lower in ("true", "on", "yes"):
+        return True
+    if lower in ("false", "off", "no"):
+        return False
+    try:
+        return float(value) if any(ch in value for ch in ".eE") else int(value)
+    except ValueError:
+        return value
+
+
 def format_values(ctx: ToolContext) -> dict[str, Any]:
     """依照 format_text 的順序彙整可填入樣板的值。"""
     values: dict[str, Any] = {}
@@ -587,4 +744,4 @@ class _Fill(dict):
         return "{" + key + "}" if self._missing == "keep" else ""
 
 
-TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), WriteLogTool(), DrawResultTool(), SetLightTool(), IoOutputTool(), FormatTextTool()]
+TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), WriteLogTool(), DrawResultTool(), SetLightTool(), IoOutputTool(), CameraIoTool(), CameraSetTool(), FormatTextTool()]

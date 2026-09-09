@@ -8,13 +8,17 @@ from django.conf import settings
 from django.http import FileResponse, HttpRequest, HttpResponse
 from ninja import Router, Schema
 
-from apps.accounts.security import authenticate, principal
+from apps.accounts.security import authenticate, principal, require_feature
 from apps.core.errors import APIError, NotFound, ServiceUnavailable
 from apps.vision.capture import build
 from apps.vision.capture.hub import CaptureError, hub
 from apps.vision.images import encode_image
 
 router = Router(tags=["capture"])
+
+
+class ChannelParamsIn(Schema):
+    params: dict[str, Any] = {}
 
 
 def download_info() -> dict[str, Any]:
@@ -64,6 +68,42 @@ def channel_preview(request: HttpRequest, name: str, cid: str, max: int = 1280):
     response = HttpResponse(encode_image(frame.image, max_side=max or None), content_type="image/jpeg")
     response["Cache-Control"] = "no-store"
     return response
+
+
+@router.get("/capture/clients/{name}/channels/{cid}/params")
+def channel_params(request: HttpRequest, name: str, cid: str):
+    require_feature(request, "sources")
+    session = hub.get(name)
+    if session is None:
+        raise NotFound(f'Capture client "{name}" is not connected', code="capture_client_not_found")
+    try:
+        ch = session.channel(cid)
+    except CaptureError as exc:
+        if exc.code in ("no_channel", "channel_disabled"):
+            raise NotFound(str(exc), code="capture_channel_not_found") from None
+        raise ServiceUnavailable(str(exc), code="capture_unavailable") from None
+    info = ch.to_dict()
+    return {
+        "client": name,
+        "channel": cid,
+        "params": info.get("params", []),
+        "outputs": info.get("outputs", []),
+        "features": {"sources": True, "channel_set": bool(session.features.get("channel_set"))},
+    }
+
+
+@router.patch("/capture/clients/{name}/channels/{cid}/params")
+def patch_channel_params(request: HttpRequest, name: str, cid: str, payload: ChannelParamsIn):
+    require_feature(request, "sources").can_execute()
+    try:
+        result = hub.set_channel_params(name, cid, payload.params, timeout=2.0)
+    except CaptureError as exc:
+        if exc.code == "client_offline":
+            raise NotFound(str(exc), code="capture_client_not_found") from None
+        if exc.code in ("no_channel", "channel_disabled"):
+            raise NotFound(str(exc), code="capture_channel_not_found") from None
+        raise ServiceUnavailable(str(exc), code="capture_unavailable") from None
+    return result
 
 
 class StreamIn(Schema):
