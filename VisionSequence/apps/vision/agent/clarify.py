@@ -153,7 +153,7 @@ def summary_of(intent: Intent, regions: list[dict[str, Any]], analysis: dict[str
         "count": "計數", "diameter": "圓孔直徑量測", "width": "寬度量測", "angle": "角度量測", "golden": "良品比對", "defect": "表面缺陷",
         "color_match": "顏色比對", "color_presence": "顏色有無", "presence": "有無檢測", "brightness": "亮度守門", "barcode": "讀碼", "generic": "尚不明確",
         "text": "印字有無", "distance": "兩孔中心距", "template_presence": "圖案有無（範本比對）",
-        "focus": "對焦／清晰度守門", "roundness": "真圓度",
+        "focus": "對焦／清晰度守門", "roundness": "真圓度", "template": "套用範本",
     }.get(intent.kind, intent.kind)
     bits = [f"判讀為「{kind_label}」", f"{len(regions)} 個 ROI", f"{analysis.get('image_count', 1)} 張影像"]
     if intent.expected_count is not None:

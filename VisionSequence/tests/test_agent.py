@@ -61,6 +61,7 @@ class IntentTests(TestCase):
             ("亮度是否正常", "brightness", None),
             ("檢查有沒有對焦", "focus", None),
             ("量這個孔的真圓度", "roundness", None),
+            ("recipe switch by a station variable", "template", None),
         ]
         for prompt, kind, count in cases:
             intent = self._parse(prompt, img)
@@ -92,6 +93,13 @@ class IntentTests(TestCase):
         regions[0]["hint"], regions[1]["hint"] = "壞品", "良品"
         intent = intents.parse("比對這兩塊", regions, feats)
         self.assertEqual((intent.good_roi, intent.bad_roi), (1, 0))
+
+    def test_template_intent_matches_gallery_and_keeps_vague_prompts_generic(self):
+        intent = self._parse("apply the conveyor pick template: segment, track and send one line per part", part_image())
+        self.assertEqual(intent.kind, "template")
+        self.assertTrue(intent.template_key.startswith("conveyor_pick"), intent.template_key)
+        self.assertEqual(intents.match_template("看一下這個")[0], "")
+        self.assertEqual(intents.match_template("the part")[0], "")
 
     def test_vague_prompt_falls_back(self):
         intent = self._parse("看一下這個", np.full((200, 200, 3), 128, np.uint8))

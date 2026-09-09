@@ -14,7 +14,7 @@ INTENT_KINDS = (
     "barcode", "count", "diameter", "width", "angle", "golden",
     "defect", "color_match", "color_presence", "presence", "brightness", "generic",
     "text", "distance", "template_presence",
-    "focus", "roundness",
+    "focus", "roundness", "template",
 )
 
 _GOOD_WORDS = ("好品", "良品", "ok 品", "ok品", "正常品", "正常", "合格", "golden", "good", "reference", "範本", "范本")
@@ -55,6 +55,8 @@ class Intent:
     locator_roi: int | None = None
     #: 圖案有無（範本比對）：哪個 ROI 裁成範本。
     template_roi: int | None = None
+    #: 範本意圖：套用哪個內建範本（demo.BUILTIN_TEMPLATES 的 key）。
+    template_key: str = ""
     #: 解析過程的說明（rationale 的素材）。
     notes: list[str] = field(default_factory=list)
 
@@ -110,6 +112,41 @@ def _expected_count(text: str) -> int | None:
     if m:
         return int(m.group(1))
     return None
+
+
+_STOP = {"the", "and", "with", "for", "into", "from", "that", "this", "then", "each", "one", "per", "its", "are", "was",
+         "use", "using", "template", "check", "image", "images", "part", "parts", "flow", "tool", "tools", "inspection", "required", "dependencies",
+         "deep", "learning", "model", "stock", "synthetic", "sample", "samples", "output", "text", "list"}
+TEMPLATE_MIN_OVERLAP = 2
+
+
+def match_template(prompt: str) -> tuple[str, float, int]:
+    """提示詞 ↔ 範本畫廊：名稱／說明／分類／用到的工具 key 拆成英文詞（中文提示先用 help.expand_query 補英文同義詞），
+    以重疊詞數（去掉停用詞）挑最像的範本；重疊不到 TEMPLATE_MIN_OVERLAP 個就回空。回 (key, 佔提示詞的比例, 重疊數)。"""
+    from apps.vision import demo
+    from apps.vision.agent import help as help_mod
+
+    def words(text: str) -> set[str]:
+        out: set[str] = set()
+        for tok in help_mod.tokenize(text.replace("_", " ").replace("-", " ")):
+            if len(tok) >= 3 and not tok.isdigit() and tok.isascii() and tok not in _STOP:
+                out.add(tok.rstrip("s") if len(tok) > 4 else tok)
+        return out
+
+    q = words(help_mod.expand_query(prompt or ""))
+    if len(q) < TEMPLATE_MIN_OVERLAP:
+        return "", 0.0, 0
+    best: tuple[str, float, int] = ("", 0.0, 0)
+    for key, name, desc, category, builder in demo.BUILTIN_TEMPLATES:
+        try:
+            tools = " ".join(str(n.get("type", "")) for n in builder("{SOURCE}").get("nodes", []))
+        except Exception:  # noqa: BLE001 - 範本建不出來（缺示範資產）就只比名稱與說明
+            tools = ""
+        overlap = len(q & (words(f"{key} {name} {category} {tools}") | words(desc)))
+        score = overlap / len(q)
+        if overlap >= TEMPLATE_MIN_OVERLAP and (overlap, score) > (best[2], best[1]):
+            best = (key, score, overlap)
+    return best
 
 
 def _has(text: str, *words: str) -> bool:
@@ -258,6 +295,13 @@ def parse(prompt: str, regions: list[dict[str, Any]], analysis: dict[str, Any]) 
             intent.kind = "count"
             intent.notes.append(f"提示詞不明確；ROI 內有 {dark} 顆暗粒子 → 計數")
             return intent
+    # 封閉意圖都對不上：拿範本畫廊比對，說得出「像哪個範本」就直接套用（畫廊有幾十個現成流程，比空手合成更接近使用者要的）
+    key, score, overlap = match_template(text)
+    if key:
+        intent.kind = "template"
+        intent.template_key = key
+        intent.notes.append(f"提示詞對到範本「{key}」（{overlap} 個關鍵詞相符）")
+        return intent
     intent.kind = "generic"
     intent.notes.append("提示詞不明確；先給量測資訊流程（統計／直方圖／邊緣密度），請補充描述後重新生成")
     return intent

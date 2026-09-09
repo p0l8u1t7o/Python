@@ -114,6 +114,7 @@ def _rect(x: int, y: int, w: int, h: int, image: int = 0, hint: str = "") -> dic
 
 
 CASES: list[BenchCase] = [
+    BenchCase("template_gallery", "範本：提示詞對到畫廊範本", lambda: [part_image(5)], "recipe switch by a station variable, then judge", "template", ["any"], tags=("template",)),
     BenchCase("focus_gate", "對焦：清楚 vs 模糊", lambda: [part_image(5), blurred(part_image(5))], "檢查影像有沒有對焦", "focus", ["ok", "ng"], tags=("focus",)),
     BenchCase("roundness_hole", "真圓度：圓孔 vs 橢圓孔", lambda: [hole_image(), hole_image(ellipse=True)], "量這個孔的真圓度 ±2px", "roundness", ["ok", "ng"],
               regions=[{"region": {"shape": "circle", "cx": 320, "cy": 240, "r": 90}, "image": 0}], tags=("measure", "gdt")),

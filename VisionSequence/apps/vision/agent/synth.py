@@ -401,6 +401,23 @@ def synth_roundness(intent: Intent, regions: list, analysis: dict) -> tuple[dict
     return _finish(nodes, edges, col=4), f"真圓度公差帶 {tol:g} {unit}"
 
 
+def synth_template(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
+    """套用內建範本：取像節點改成 auto（吃上傳影像），其餘照範本；找不到範本就退回資訊流程。"""
+    from apps.vision import demo
+    from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
+
+    entry = next((e for e in demo.BUILTIN_TEMPLATES if e[0] == intent.template_key), None)
+    if entry is None:
+        return synth_generic(intent, regions, analysis)
+    key, name, desc, _category, builder = entry
+    graph = instantiate(builder(SOURCE_PLACEHOLDER), source_id=None)
+    for node in graph.get("nodes", []):
+        if node.get("type") == "image_source":
+            node.setdefault("params", {}).update({"source_id": "", "mode": "auto"})
+    graph.setdefault("nodes", []).append(_note("ai_hint", 0, 3, "AI 助手", f"由 AI 助手套用範本「{name}」：{desc}\n請依實際影像調整各步驟的區域與門檻。"))
+    return graph, f"套用範本「{name}」（{key}）：{desc}"
+
+
 def synth_barcode(intent: Intent, regions: list, analysis: dict) -> tuple[dict, str]:
     roi = _region_of(regions)
     nodes, edges = _src_gray("由 AI 助手生成：讀碼。標籤斜貼讀不到時，前面加「透視校正」工具拉正。")
@@ -569,6 +586,7 @@ SYNTHESIZERS = {
     "distance": synth_distance,
     "focus": synth_focus,
     "roundness": synth_roundness,
+    "template": synth_template,
 }
 
 
