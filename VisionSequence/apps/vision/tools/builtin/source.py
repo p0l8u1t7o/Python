@@ -5,7 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
+from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 
 
 class ImageSourceTool(Tool):
@@ -27,9 +27,13 @@ class ImageSourceTool(Tool):
             {"value": "gray", "label": "Convert to grayscale"},
             {"value": "bgr", "label": "Convert to colour (BGR)"},
         ]),
+        Param("on_timeout", "On timeout", kind="select", default="error", options=[
+            {"value": "error", "label": "Raise an error"},
+            {"value": "ng", "label": "Mark NG and use the timeout branch"},
+        ]),
     ]
     inputs: list[Port] = []
-    outputs = [Port("image", "Image", "image"), Port("width", "Width", "number"), Port("height", "Height", "number")]
+    outputs = [Port("image", "Image", "image"), Port("width", "Width", "number"), Port("height", "Height", "number"), flow_out("timeout", "Timeout", "critical")]
 
     def execute(self, ctx: ToolContext) -> Result:
         mode = ctx.param("mode", "auto")
@@ -47,9 +51,12 @@ class ImageSourceTool(Tool):
             image = ctx.grab(str(source_id))
             used = f"source:{source_id}"
             if image is None:
-                from apps.vision.sources import last_error_of  # 來源自己知道的原因（例如擷取端未連線、資料夾讀完）
+                from apps.vision.sources import last_error_of, last_timeout_of  # 來源自己知道的原因（例如擷取端未連線、資料夾讀完）
 
                 reason = last_error_of(source_id)
+                if ctx.param("on_timeout", "error") == "ng" and last_timeout_of(source_id):
+                    msg = f"Image source {source_id} timed out" + (f": {reason}" if reason else "")
+                    return Result(status="ng", branch="timeout", message=msg)
                 raise ToolError(f"Image source {source_id} returned no image" + (f": {reason}" if reason else ""))
         if image is None:
             raise ToolError("No scratch image: upload one from the toolbar, or push an image through the API")

@@ -21,6 +21,14 @@ import { useToast } from '@/providers/ToastProvider'
 const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'multiline' | 'list' | 'rules' | 'events'> = {
   host: 'text',
   port: 'number',
+  baudrate: 'number',
+  bytesize: 'number',
+  parity: 'select',
+  stopbits: 'number',
+  bind_port: 'number',
+  max_clients: 'number',
+  end_char: 'select',
+  end_custom: 'text',
   unit_id: 'number',
   timeout_s: 'number',
   word_order: 'select',
@@ -51,19 +59,31 @@ const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
   modbus_server: { host: '0.0.0.0', port: 5020, unit_id: 1, size: 512, word_order: 'big', triggers: [], trigger_interval_ms: 50, heartbeat_ms: 0, heartbeat_address: '' },
   tcp_client: { host: '127.0.0.1', port: 9000, timeout_s: 2, template: '', newline: '\n', wait_reply: false, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
   tcp_image: { host: '127.0.0.1', port: 9001, timeout_s: 2, encoding: 'jpeg', quality: 85 },
+  serial: { port: 'COM3', baudrate: 9600, bytesize: 8, parity: 'N', stopbits: 1, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', triggers: [], trigger_interval_ms: 50, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
+  udp: { host: '127.0.0.1', port: 9002, bind_port: 0, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', triggers: [], trigger_interval_ms: 50, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
+  tcp_server_text: { host: '0.0.0.0', port: 9003, max_clients: 4, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', triggers: [], trigger_interval_ms: 50, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
   plugin: { class: '' },
 }
 
-function ConfigField({ field, value, onChange }: { field: string; value: unknown; onChange: (v: unknown) => void }) {
+const STREAM_KINDS = new Set(['serial', 'udp', 'tcp_server_text'])
+
+function ConfigField({ kind, field, value, onChange }: { kind: string; field: string; value: unknown; onChange: (v: unknown) => void }) {
   const { t } = useTranslation()
   const label = t(`connections.fields.${field}`, { defaultValue: field })
   const type = FIELD_TYPE[field] ?? 'text'
   if (type === 'boolean') return <Checkbox label={label} checked={Boolean(value)} onChange={onChange} />
+  if (type === 'select' && field === 'parity') {
+    return <Select label={label} value={String(value ?? 'N')} onChange={(e) => onChange(e.target.value)} options={['N', 'E', 'O'].map((v) => ({ value: v, label: t(`connections.parity.${v}`) }))} />
+  }
+  if (type === 'select' && field === 'end_char') {
+    return <Select label={label} value={String(value ?? '\\n')} onChange={(e) => onChange(e.target.value)} options={['\\n', '\\r', '\\r\\n', 'custom'].map((v) => ({ value: v, label: t(`connections.endings.${v.replace(/\\/g, '') || 'custom'}`, { defaultValue: v }) }))} />
+  }
   if (type === 'select' && field === 'word_order') {
     return <Select label={label} value={String(value ?? 'big')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'big', label: t('connections.wordOrders.big') }, { value: 'little', label: t('connections.wordOrders.little') }]} />
   }
   if (type === 'select' && field === 'encoding') {
-    return <Select label={label} value={String(value ?? 'jpeg')} onChange={(e) => onChange(e.target.value)} options={['jpeg', 'png', 'raw'].map((v) => ({ value: v, label: t(`connections.encodings.${v}`) }))} />
+    const options = STREAM_KINDS.has(kind) ? ['utf-8', 'ascii', 'latin-1', 'hex'] : ['jpeg', 'png', 'raw']
+    return <Select label={label} value={String(value ?? options[0])} onChange={(e) => onChange(e.target.value)} options={options.map((v) => ({ value: v, label: t(`connections.encodings.${v}`) }))} />
   }
   if (type === 'rules') {
     return <RuleTable rules={Array.isArray(value) ? (value as TriggerRule[]) : []} source="value" onChange={(rules) => onChange(rules)} />
@@ -317,7 +337,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
             <TextInput label={t('common.name')} required autoFocus value={body.name} onChange={(e) => setEditing({ ...editing!, body: { ...body, name: e.target.value } })} data-testid="conn-name-input" />
             {kind ? null : <Select label={t('connections.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} data-testid="conn-kind" />}
             {(fieldsFor.get(body.kind) ?? []).filter((f) => !TRIGGER_FIELDS.has(f) && !EVENT_FIELDS.has(f)).map((field) => (
-              <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
+              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
             ))}
             {(fieldsFor.get(body.kind) ?? []).some((f) => TRIGGER_FIELDS.has(f)) ? (
               <details className="rounded border border-line" open={Array.isArray(body.config.triggers) && body.config.triggers.length > 0} data-testid="conn-trigger">
@@ -325,7 +345,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
                 <div className="space-y-3 border-t border-line p-3">
                   <p className="text-xs text-muted">{t('connections.trigger.hint')}</p>
                   {(fieldsFor.get(body.kind) ?? []).filter((f) => TRIGGER_FIELDS.has(f)).map((field) => (
-                    <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
+                    <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
                   ))}
                 </div>
               </details>
@@ -336,7 +356,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
                 <div className="space-y-3 border-t border-line p-3">
                   <p className="text-xs text-muted">{t('connections.report.hint')}</p>
                   {(fieldsFor.get(body.kind) ?? []).filter((f) => EVENT_FIELDS.has(f)).map((field) => (
-                    <ConfigField key={field} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
+                    <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
                   ))}
                 </div>
               </details>

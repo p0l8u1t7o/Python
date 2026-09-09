@@ -18,6 +18,7 @@ pillow==11.1.0                 # 讀寫少數 OpenCV 不支援的格式、EXIF �
 
 # ---- 通訊（主動輸出到 PLC） ----------------------------------------------------
 pymodbus==3.15.0               # write_plc 工具的 Modbus/TCP 客戶端（apps/comm/writers.py）；測試用它的 TCP server
+pyserial==3.5                  # 串口連線（條碼槍、光源控制器等非 PLC 設備）；測試用它內建的 loop:// 虛擬埠，不需要實體 COM
 
 # ---- 可選：深度學習推論 -------------------------------------------------------
 onnxruntime==1.20.1            # dl_classify / dl_detect 工具；未安裝時工具會在執行時回報 error 而非整個平台失效

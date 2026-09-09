@@ -206,11 +206,18 @@ class _Pending:
         self.sent_at = time.perf_counter()
 
 
+#: 連線序號產生器（見 ClientSession.session_id）。
+_SESSION_SEQ = itertools.count(1)
+
+
 class ClientSession(threading.Thread):
     """一條擷取端連線：握手、讀取迴圈、影格接收；對外提供 request_frame／latest／wait_for_seq／set_stream。"""
 
     def __init__(self, hub: CaptureHub, sock: socket.socket, peer: tuple[str, int]) -> None:
         super().__init__(name="vision-capture-session", daemon=True)
+        #: 單調遞增的連線序號：擷取端斷線重連後要判斷「這是不是同一條連線」，
+        #: 不能用 id()——CPython 會重用記憶體位址，新的 session 很可能拿到剛釋放的舊位址。
+        self.session_id = next(_SESSION_SEQ)
         self.hub = hub
         self.sock = sock
         self.peer = peer

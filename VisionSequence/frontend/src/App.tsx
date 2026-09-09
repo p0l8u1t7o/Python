@@ -23,6 +23,7 @@ const IntegrationLayout = lazy(() => import('@/pages/IntegrationPage').then((m) 
 const IntegrationIndex = lazy(() => import('@/pages/IntegrationPage').then((m) => ({ default: m.IntegrationIndex })))
 const IntegrationHttpPage = lazy(() => import('@/pages/integration/HttpPage').then((m) => ({ default: m.HttpPage })))
 const IntegrationTcpPage = lazy(() => import('@/pages/integration/TcpPage').then((m) => ({ default: m.TcpPage })))
+const IntegrationDevicesPage = lazy(() => import('@/pages/integration/DevicesPage').then((m) => ({ default: m.DevicesPage })))
 const IntegrationEventsPage = lazy(() => import('@/pages/integration/EventsPage').then((m) => ({ default: m.EventsPage })))
 const IntegrationModbusServerPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusServerPage })))
 const IntegrationModbusClientPage = lazy(() => import('@/pages/integration/ModbusPage').then((m) => ({ default: m.ModbusClientPage })))
@@ -82,6 +83,7 @@ const router = createBrowserRouter([
               { index: true, element: <IntegrationIndex /> },
               { path: 'http', element: <IntegrationHttpPage /> },
               { path: 'tcp', element: <IntegrationTcpPage /> },
+              { path: 'devices', element: <IntegrationDevicesPage /> },
               { path: 'events', element: <IntegrationEventsPage /> },
               { path: 'modbus-server', element: <IntegrationModbusServerPage /> },
               { path: 'modbus-client', element: <IntegrationModbusClientPage /> },

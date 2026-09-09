@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,7 @@ from apps.vision.sources.grabbers import Grabber
 from vscapture.protocol import ENCODING_CODES, Encoding
 
 MODES = ("on_demand", "stream")
+log = logging.getLogger(__name__)
 
 
 class CaptureGrabber(Grabber):
@@ -40,18 +42,32 @@ class CaptureGrabber(Grabber):
         self.encoding = int(ENCODING_CODES.get(enc, Encoding.AUTO))
         self.last_seq = 0
         self.last_meta: FrameMeta | None = None
+        self.timed_out = False
+        self._stream_session_id = 0
         if self.mode == "stream":
             hub.acquire_stream(self.client, self.channel, self.name)
+            session = hub.get(self.client)
+            self._stream_session_id = int(getattr(session, "session_id", 0)) if session is not None else 0
         elif self.name:
             hub.note_user(self.client, self.channel, self.name, True)
 
     def grab(self) -> np.ndarray | None:
+        self.timed_out = False
         session = hub.get(self.client)
         if session is None:
             self.last_error = f"The capture client '{self.client}' is not connected"
             return None
         try:
             if self.mode == "stream":
+                if int(getattr(session, "session_id", 0)) != self._stream_session_id:
+                    hub.release_stream(self.client, self.channel, self.name)
+                    hub.acquire_stream(self.client, self.channel, self.name)
+                    self._stream_session_id = int(getattr(session, "session_id", 0))
+                    # 新連線的通道序號從頭算：舊的 last_seq 留著會讓 wait_for_seq 等一個永遠不會來的序號。
+                    with self._lock:
+                        self.last_seq = 0
+                        self.last_meta = None
+                    log.info("擷取端串流來源 %s 偵測到 session 重連，已重新要求串流", self.name or self.client)
                 frame = session.latest(self.channel)
                 if frame is None or (self.fresh and frame.meta.seq <= self.last_seq):
                     frame = session.wait_for_seq(self.channel, self.last_seq if self.fresh else 0, self.timeout)
@@ -60,17 +76,20 @@ class CaptureGrabber(Grabber):
                 frame = session.request_frame(self.channel, timeout=self.timeout, min_seq=min_seq, after_request=self.fresh, encoding=self.encoding)
         except CaptureError as exc:
             self.last_error = str(exc)
+            self.timed_out = exc.code == "timeout"
             return None
         with self._lock:
             self.frames += 1
             self.last_seq = frame.meta.seq
             self.last_meta = frame.meta
             self.last_error = ""
+            self.timed_out = False
         return frame.image
 
     def close(self) -> None:
         if self.mode == "stream":
             hub.release_stream(self.client, self.channel, self.name)
+            self._stream_session_id = 0
         elif self.name:
             hub.note_user(self.client, self.channel, self.name, False)
 

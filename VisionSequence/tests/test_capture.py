@@ -592,6 +592,38 @@ class CaptureGrabberTests(_HubBase):
         g.close()
         self.assertTrue(_wait(lambda: not session.by_id["cam0"].streaming))
 
+    def test_stream_mode_reacquires_after_session_reconnect(self):
+        c = self.connect(name="gr-re", machine_id="m-re")
+        g = CaptureGrabber({"client": "gr-re", "channel": "cam0", "mode": "stream", "timeout_ms": 800}, source_id=31, name="串流重連")
+        self.addCleanup(g.close)
+        first = hub.get("gr-re")
+        self.assertTrue(_wait(lambda: first.by_id["cam0"].streaming))
+        c.push("cam0")
+        self.assertIsNotNone(g.grab())
+        first_id = g._stream_session_id  # noqa: SLF001
+
+        c.close()
+        self.assertTrue(_wait(lambda: hub.get("gr-re") is None))
+        c2 = self.connect(name="gr-re", machine_id="m-re")
+        second = hub.get("gr-re")
+        self.assertIsNotNone(second)
+        threading.Timer(0.1, c2.push, args=("cam0",)).start()
+        self.assertIsNotNone(g.grab())
+        self.assertNotEqual(g._stream_session_id, first_id)  # noqa: SLF001
+        self.assertEqual(g._stream_session_id, second.session_id)  # noqa: SLF001 - 連線序號，不是 id()（位址會被重用）
+        self.assertTrue(second.by_id["cam0"].streaming)
+
+    def test_timeout_flag_distinguishes_capture_timeout(self):
+        self.connect(name="gr-timeout", answer_grabs=False)
+        g = CaptureGrabber({"client": "gr-timeout", "channel": "cam0", "timeout_ms": 100}, source_id=32, name="timeout")
+        self.addCleanup(g.close)
+        self.assertIsNone(g.grab())
+        self.assertTrue(g.timed_out)
+        self.assertIn("timed out", g.last_error)
+        offline = CaptureGrabber({"client": "ghost", "channel": "cam0"}, source_id=33, name="offline")
+        self.assertIsNone(offline.grab())
+        self.assertFalse(offline.timed_out)
+
     def test_offline_and_config_errors(self):
         g = CaptureGrabber({"client": "ghost", "channel": "cam0"})
         self.assertIsNone(g.grab())
@@ -809,3 +841,20 @@ class CaptureRunTests(TransactionTestCase):
         report = runner.run_sync(flow, trigger="test")
         self.assertEqual(report.status, "failed")
         self.assertIn("run1", report.nodes["src"].message or report.error or "")
+
+    def test_image_source_timeout_can_mark_ng(self):
+        from apps.vision.runner import runner
+
+        self.connect(name="run-timeout", answer_grabs=False)
+        _wait(lambda: hub.get("run-timeout") is not None)
+        src = ImageSource.objects.create(name="run-timeout", kind="capture", config={"client": "run-timeout", "channel": "cam0", "timeout_ms": 100})
+        flow = Flow.objects.create(name="capture-timeout-ng", graph={
+            "nodes": [{"id": "src", "type": "image_source", "params": {"source_id": src.id, "on_timeout": "ng"}}],
+            "edges": [],
+        })
+        runner.forget(flow.id)
+        report = runner.run_sync(flow, trigger="test")
+        self.assertEqual(report.nodes["src"].status, "ng")
+        self.assertEqual(report.nodes["src"].branch, "timeout")
+        self.assertIn("timed out", report.nodes["src"].message)
+        self.assertTrue(sources.last_timeout_of(src.id))

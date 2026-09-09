@@ -1721,7 +1721,26 @@ const enExtra2 = {
 
 /** Keys that only existed in Chinese until the product went English-first; merged last. */
 const enExtra3 = {
+  connections: {
+    fields: {
+      baudrate: 'Baud rate',
+      bytesize: 'Data bits',
+      parity: 'Parity',
+      stopbits: 'Stop bits',
+      bind_port: 'Local receive port',
+      max_clients: 'Maximum clients',
+      end_char: 'Line ending',
+      end_custom: 'Custom line ending',
+    },
+    encodings: { 'utf-8': 'UTF-8 text', ascii: 'ASCII text', 'latin-1': 'Latin-1 text', hex: 'Hex bytes', jpeg: 'JPEG (small, lossy)', png: 'PNG (lossless)', raw: 'Raw pixels (no encoding)' },
+    parity: { N: 'None', E: 'Even', O: 'Odd' },
+    endings: { n: 'LF', r: 'CR', rn: 'CRLF', custom: 'Custom' },
+  },
   integration: {
+    tabs: { devices: 'Device connections' },
+    desc: {
+      devices: 'Serial, UDP and TCP server text connections for line-based equipment.',
+    },
     rules: {
       actions: {
         set_param: 'Set a parameter',

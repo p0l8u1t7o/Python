@@ -276,6 +276,12 @@ describe('pages render (smoke)', () => {
     expect(screen.getAllByText(/master|server/i).length).toBeGreaterThan(0)
   })
 
+  it('DevicesPage lists the stream connections and the command trace', async () => {
+    const { DevicesPage } = await import('@/pages/integration/DevicesPage')
+    renderPage(<DevicesPage />, { route: '/integration/devices' })
+    expect(await screen.findByTestId('conn-create')).toBeInTheDocument()
+  })
+
   it('HttpPage is a Swagger-style explorer built from the OpenAPI description', async () => {
     const { HttpPage } = await import('@/pages/integration/HttpPage')
     renderPage(<HttpPage />, { route: '/integration/http' })

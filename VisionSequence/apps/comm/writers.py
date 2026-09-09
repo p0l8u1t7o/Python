@@ -27,6 +27,7 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+import queue
 import socket
 import struct
 import threading
@@ -113,6 +114,11 @@ class Writer:
     texts = False
     #: 這種連線由哪個整合頁管理（`/integration/<section>`）；外掛沒宣告就歸到外掛頁。
     section = "plugins"
+
+    @classmethod
+    def receives_config(cls, config: dict[str, Any]) -> bool:
+        """這份設定會不會「收」資料？會收的連線要自動開起來，不能等第一次寫入。"""
+        return False
 
     def __init__(self, config: dict[str, Any], *, connection_id: int = 0, name: str = "") -> None:
         self.config = config
@@ -637,6 +643,518 @@ class TcpClientWriter(Writer):
 
 
 # ---------------------------------------------------------------------------
+# 位元組串流（串口／UDP／TCP server）
+# ---------------------------------------------------------------------------
+STREAM_ENCODINGS = ("utf-8", "ascii", "latin-1", "hex")
+STREAM_ENDINGS = {"\\n": "\n", "\n": "\n", "\\r": "\r", "\r": "\r", "\\r\\n": "\r\n", "\r\n": "\r\n"}
+STREAM_FIELDS = ["timeout_s", "end_char", "end_custom", "encoding"]
+STREAM_BUFFER_LIMIT = 64 * 1024
+
+
+def _hex_bytes(text: str) -> bytes:
+    raw = "".join(str(text or "").split())
+    if len(raw) % 2:
+        raise CommError("Hex payloads need an even number of digits")
+    try:
+        return bytes.fromhex(raw)
+    except ValueError as exc:
+        raise CommError("Hex payloads can only contain 0-9 and A-F") from exc
+
+
+CR = bytes([13])  # 行尾的 CR；設備常送 CRLF 而設定只寫 LF
+
+
+class StreamWriter(Writer):
+    """共用的位元組串流連線；子類只負責開關連線與收送 bytes。"""
+
+    texts = True
+    section = "devices"
+
+    def __init__(self, config, **kw) -> None:
+        super().__init__(config, **kw)
+        self.template = str(config.get("template") or "")
+        raw_end = str(config.get("end_char") or "\\n")
+        if raw_end == "custom":
+            raw_end = str(config.get("end_custom") or "")
+        self.end = self._decode_end(raw_end)
+        self.end_bytes = self.end.encode("latin-1", errors="replace")
+        self.encoding = str(config.get("encoding") or "utf-8").lower()
+        if self.encoding not in STREAM_ENCODINGS:
+            raise ValidationError(f"encoding must be one of {', '.join(STREAM_ENCODINGS)}", code="comm_config")
+        self._closed = threading.Event()
+        self._connected = False
+        self._rx_thread: threading.Thread | None = None
+        self._send_lock = threading.Lock()
+        self.bytes_sent = 0
+        self.bytes_received = 0
+        self.lines_received = 0
+        self.last_payload = ""
+        self.last_line = ""
+        self._buffer_warnings = 0
+        #: 緩衝爆掉之後，丟到下一個結尾字元為止再重新收行（不然殘餘會污染下一行）。
+        self._resyncing = False
+
+    @staticmethod
+    def _decode_end(text: str) -> str:
+        from apps.comm.protocol import unescape
+
+        out = unescape(text)
+        return out if out else "\n"
+
+    def _start_stream(self) -> None:
+        self._open()
+        self._connected = True
+        if self._receives():
+            self._rx_thread = threading.Thread(target=self._receive_loop, name=f"stream-writer-{self.name or self.kind}", daemon=True)
+            self._rx_thread.start()
+
+    def _receives(self) -> bool:
+        return True
+
+    @classmethod
+    def receives_config(cls, config: dict[str, Any]) -> bool:
+        return True
+
+    def _send_bytes(self, data: bytes) -> Any:
+        raise NotImplementedError
+
+    def _recv_bytes(self) -> bytes:
+        raise NotImplementedError
+
+    def _require(self) -> None:
+        if self._closed.is_set():
+            raise CommError(f"{self.name or self.kind}: the connection is closed")
+        if not self._connected:
+            raise CommError(f"{self.name or self.kind}: the connection is not open")
+
+    def _payload_bytes(self, text: str) -> bytes:
+        if self.encoding != "hex":
+            return text.encode(self.encoding, errors="replace")
+        body = text
+        ended = bool(self.end and body.endswith(self.end))
+        if ended:
+            body = body[: -len(self.end)]
+        return _hex_bytes(body) + (self.end_bytes if ended else b"")
+
+    def _line_text(self, data: bytes) -> str:
+        if self.encoding == "hex":
+            return data.hex().upper()
+        return data.decode(self.encoding, errors="replace")
+
+    def _with_end(self, text: str) -> str:
+        return text if not self.end or text.endswith(self.end) else text + self.end
+
+    def render(self, values: dict[str, Any]) -> str:
+        if self.template:
+            text = self.template.format_map(_Missing(values))
+        else:
+            text = json.dumps(values, ensure_ascii=False, default=str)
+        return self._with_end(text)
+
+    def _send_payload(self, text: str) -> dict[str, Any]:
+        payload = self._with_end(text)
+        data = self._payload_bytes(payload)
+        with self._send_lock:
+            self._require()
+            try:
+                self._send_bytes(data)
+            except Exception as exc:  # noqa: BLE001
+                self._mark_disconnected(exc)
+                raise CommError(f"{self.name or self.kind}: {_msg(exc)}") from exc
+        self.bytes_sent += len(data)
+        self.last_payload = payload
+        return {"sent": len(payload), "bytes": len(data), "payload": payload}
+
+    def write(self, values: dict[str, Any], *, timeout: float | None = None, quiet: bool = False) -> dict[str, Any]:
+        if not values:
+            return {"written": 0}
+        started = time.perf_counter()
+        old = self.timeout
+        if timeout:
+            self.timeout = float(timeout)
+        try:
+            out = {"written": len(values), **self._send_payload(self.render(values))}
+            self.writes += 1
+            self.last_write_at = time.time()
+            if not quiet:
+                self._trace("write", values, out, started)
+            return out
+        except CommError as exc:
+            self.errors += 1
+            self.last_error = _msg(exc)
+            self._trace("write", values, {"error": str(exc)}, started, ok=False)
+            raise
+        finally:
+            self.timeout = old
+
+    def send_text(self, text: str, *, quiet: bool = False) -> dict[str, Any]:
+        started = time.perf_counter()
+        try:
+            out = self._send_payload(text)
+            self.writes += 1
+            self.last_write_at = time.time()
+            if not quiet:
+                self._trace("send", text, out, started)
+            return out
+        except CommError as exc:
+            self.errors += 1
+            self.last_error = _msg(exc)
+            self._trace("send", text, {"error": str(exc)}, started, ok=False)
+            raise
+
+    def _write(self, values: dict[str, Any]) -> dict[str, Any]:
+        return {"written": len(values), **self._send_payload(self.render(values))}
+
+    def _send_text(self, text: str) -> dict[str, Any]:
+        return self._send_payload(text)
+
+    def _read(self, addresses: list[str]) -> dict[str, Any]:
+        raise CommError(f"{self.kind} cannot read back")
+
+    def _mark_disconnected(self, exc: BaseException | str) -> None:
+        self.last_error = _msg(exc) if isinstance(exc, BaseException) else str(exc)[:300]
+        self._connected = False
+        try:
+            self._close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _receive_loop(self) -> None:
+        buf = bytearray()
+        backoff = 0.5
+        while not self._closed.is_set():
+            if not self._connected:
+                if self._closed.wait(backoff):
+                    return
+                try:
+                    self._open()
+                    self._connected = True
+                    self.reconnects += 1
+                    self.last_error = ""
+                    backoff = 0.5
+                except Exception as exc:  # noqa: BLE001
+                    self.last_error = _msg(exc)
+                    backoff = min(30.0, backoff * 2)
+                continue
+            try:
+                chunk = self._recv_bytes()
+            except Exception as exc:  # noqa: BLE001
+                if not self._closed.is_set():
+                    self.errors += 1
+                    self._mark_disconnected(exc)
+                continue
+            if not chunk:
+                continue
+            self.bytes_received += len(chunk)
+            buf.extend(chunk)
+            if self._resyncing:
+                # 還在丟棄爆掉那一行的殘餘：找到結尾字元才重新開始收。
+                cut = bytes(buf).find(self.end_bytes) if self.end_bytes else -1
+                if cut < 0:
+                    if len(buf) > STREAM_BUFFER_LIMIT:
+                        buf.clear()
+                    continue
+                buf = bytearray(buf[cut + len(self.end_bytes):])
+                self._resyncing = False
+            if len(buf) > STREAM_BUFFER_LIMIT:
+                self._buffer_warnings += 1
+                buf.clear()
+                self._resyncing = bool(self.end_bytes)
+                self._trace_in("input buffer exceeded 64 KB; dropped pending bytes", ok=False, detail={"bytes": STREAM_BUFFER_LIMIT})
+                continue
+            while self.end_bytes and self.end_bytes in buf:
+                line, _, rest = bytes(buf).partition(self.end_bytes)
+                buf = bytearray(rest)
+                # 設定成 LF 但設備照樣送 CRLF 是現場常態：行尾多出來的 CR 是框線不是內容，去掉。
+                if line.endswith(CR) and CR not in self.end_bytes:
+                    line = line[:-1]
+                self._on_line(self._line_text(line))
+
+    def _trace_in(self, summary: str, *, ok: bool = True, detail: Any = None) -> None:
+        try:
+            from apps.vision import trace
+
+            trace.record("modbus", summary, direction="in", name=self.name or self.kind, detail=detail, ok=ok, force=not ok)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_line(self, line: str) -> None:
+        self.lines_received += 1
+        self.last_line = line[:200]
+        self._trace_in(line, detail={"line": line})
+        try:
+            from apps.vision.tcp_server import match_rules
+
+            matched = match_rules(line)
+        except Exception as exc:  # noqa: BLE001
+            self._trace_in(f"rule failed: {_msg(exc)}", ok=False, detail={"line": line})
+            return
+        if matched is None:
+            return
+        reply = matched.get("_raw") if isinstance(matched, dict) else None
+        if reply is None:
+            reply = json.dumps(matched, ensure_ascii=False, default=str)
+        try:
+            self.send_text(str(reply), quiet=True)
+        except CommError:
+            pass
+
+    def close(self) -> None:
+        self._closed.set()
+        try:
+            self._close()
+        finally:
+            self._connected = False
+        if self._rx_thread is not None:
+            self._rx_thread.join(timeout=2.0)
+            self._rx_thread = None
+
+    def info(self) -> dict[str, Any]:
+        return {
+            **super().info(), "connected": self._connected, "bytes_sent": self.bytes_sent, "bytes_received": self.bytes_received,
+            "lines_received": self.lines_received, "last_line": self.last_line, "last_payload": self.last_payload,
+            "encoding": self.encoding, "end_char": self.end,
+        }
+
+
+class SerialStreamWriter(StreamWriter):
+    kind = "serial"
+    label = "Serial text device"
+    description = "Sends and receives line-based text or hex bytes over a serial port."
+    fields = ["port", "baudrate", "bytesize", "parity", "stopbits", *STREAM_FIELDS]
+
+    def __init__(self, config, **kw) -> None:
+        super().__init__(config, **kw)
+        self.port = str(config.get("port") or "").strip()
+        if not self.port:
+            raise ValidationError("serial needs a port", code="comm_config")
+        self.baudrate = int(config.get("baudrate", 9600) or 9600)
+        self.bytesize = int(config.get("bytesize", 8) or 8)
+        self.parity = str(config.get("parity") or "N").upper()[:1]
+        self.stopbits = float(config.get("stopbits", 1) or 1)
+        self.serial = None
+        self._start_stream()
+
+    def _open(self) -> None:
+        try:
+            import serial
+        except ImportError as exc:
+            raise CommError("Serial support is not installed; run pip install pyserial") from exc
+        self.serial = serial.serial_for_url(
+            self.port, baudrate=self.baudrate, bytesize=self.bytesize, parity=self.parity, stopbits=self.stopbits,
+            timeout=0.1, write_timeout=self.timeout,
+        )
+
+    def _close(self) -> None:
+        if self.serial is not None:
+            try:
+                self.serial.close()
+            finally:
+                self.serial = None
+
+    def _send_bytes(self, data: bytes) -> Any:
+        if self.serial is None:
+            raise CommError("The serial port is not open")
+        self.serial.write(data)
+        self.serial.flush()
+
+    def _recv_bytes(self) -> bytes:
+        if self.serial is None:
+            raise CommError("The serial port is not open")
+        return bytes(self.serial.read(4096))
+
+    def info(self) -> dict[str, Any]:
+        return {**super().info(), "port": self.port, "baudrate": self.baudrate, "bytesize": self.bytesize, "parity": self.parity, "stopbits": self.stopbits}
+
+
+class UdpStreamWriter(StreamWriter):
+    kind = "udp"
+    label = "UDP text device"
+    description = "Sends line-based text or hex bytes to a UDP endpoint, and can listen on a local port for received lines."
+    fields = ["host", "port", "bind_port", *STREAM_FIELDS]
+
+    def __init__(self, config, **kw) -> None:
+        super().__init__(config, **kw)
+        self.host = str(config.get("host") or "").strip()
+        self.port = int(config.get("port", 0) or 0)
+        self.bind_port = int(config.get("bind_port", 0) or 0)
+        if not self.host or not self.port:
+            raise ValidationError("udp needs a host and a port", code="comm_config")
+        self.sock: socket.socket | None = None
+        self._start_stream()
+
+    def _receives(self) -> bool:
+        return self.bind_port > 0
+
+    @classmethod
+    def receives_config(cls, config: dict[str, Any]) -> bool:
+        try:
+            return int(config.get("bind_port", 0) or 0) > 0
+        except (TypeError, ValueError):
+            return False
+
+    def _open(self) -> None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.2)
+        if self.bind_port > 0:
+            sock.bind(("", self.bind_port))
+        self.sock = sock
+
+    def _close(self) -> None:
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            finally:
+                self.sock = None
+
+    def _send_bytes(self, data: bytes) -> Any:
+        if self.sock is None:
+            raise CommError("The UDP socket is not open")
+        self.sock.sendto(data, (self.host, self.port))
+
+    def _recv_bytes(self) -> bytes:
+        if self.sock is None:
+            raise CommError("The UDP socket is not open")
+        try:
+            data, _peer = self.sock.recvfrom(65535)
+            return data
+        except socket.timeout:
+            return b""
+
+    def info(self) -> dict[str, Any]:
+        return {**super().info(), "host": self.host, "port": self.port, "bind_port": self.bind_port, "listening": self.bind_port > 0}
+
+
+class TcpServerTextWriter(StreamWriter):
+    kind = "tcp_server_text"
+    label = "TCP text device server"
+    description = "Listens for devices that connect to this machine, then sends and receives line-based text or hex bytes."
+    listens = True
+    fields = ["host", "port", "max_clients", *STREAM_FIELDS]
+
+    def __init__(self, config, **kw) -> None:
+        self._clients: set[socket.socket] = set()
+        self._clients_lock = threading.Lock()
+        self._accept_thread: threading.Thread | None = None
+        self._rx_queue: queue.Queue[bytes] = queue.Queue()
+        super().__init__(config, **kw)
+        self.host = str(config.get("host") or "0.0.0.0")
+        self.port = int(config.get("port", 0) or 0)
+        if not self.port:
+            raise ValidationError("tcp_server_text needs a port", code="comm_config")
+        self.max_clients = max(1, int(config.get("max_clients", 4) or 4))
+        self.server: socket.socket | None = None
+        self._start_stream()
+
+    def _open(self) -> None:
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind((self.host, self.port))
+        srv.listen(self.max_clients)
+        srv.settimeout(0.5)
+        self.server = srv
+        self.port = int(srv.getsockname()[1])
+        self._accept_thread = threading.Thread(target=self._accept_loop, name=f"tcp-device-{self.port}", daemon=True)
+        self._accept_thread.start()
+
+    def _accept_loop(self) -> None:
+        while not self._closed.is_set():
+            srv = self.server
+            if srv is None:
+                return
+            try:
+                client, _peer = srv.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            with self._clients_lock:
+                if len(self._clients) >= self.max_clients:
+                    client.close()
+                    continue
+                self._clients.add(client)
+            client.settimeout(0.5)
+            threading.Thread(target=self._client_loop, args=(client,), name=f"tcp-device-client-{self.port}", daemon=True).start()
+
+    def _client_loop(self, client: socket.socket) -> None:
+        try:
+            while not self._closed.is_set():
+                try:
+                    data = client.recv(4096)
+                except socket.timeout:
+                    continue
+                if not data:
+                    return
+                self._rx_queue.put(data)
+        except OSError:
+            pass
+        finally:
+            with self._clients_lock:
+                self._clients.discard(client)
+            try:
+                client.close()
+            except OSError:
+                pass
+
+    def _close(self) -> None:
+        srv, self.server = self.server, None
+        if srv is not None:
+            try:
+                srv.close()
+            except OSError:
+                pass
+        with self._clients_lock:
+            clients = list(self._clients)
+            self._clients.clear()
+        for client in clients:
+            try:
+                client.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                client.close()
+            except OSError:
+                pass
+        if self._accept_thread is not None:
+            self._accept_thread.join(timeout=1.0)
+            self._accept_thread = None
+
+    def _send_bytes(self, data: bytes) -> Any:
+        with self._clients_lock:
+            clients = list(self._clients)
+        if not clients:
+            raise CommError("No device is connected")
+        dead: list[socket.socket] = []
+        for client in clients:
+            try:
+                client.sendall(data)
+            except OSError:
+                dead.append(client)
+        if dead:
+            with self._clients_lock:
+                for client in dead:
+                    self._clients.discard(client)
+            for client in dead:
+                try:
+                    client.close()
+                except OSError:
+                    pass
+        if len(dead) == len(clients):
+            raise CommError("All connected devices failed")
+
+    def _recv_bytes(self) -> bytes:
+        try:
+            return self._rx_queue.get(timeout=0.2)
+        except queue.Empty:
+            return b""
+
+    def info(self) -> dict[str, Any]:
+        with self._clients_lock:
+            clients = len(self._clients)
+        return {**super().info(), "host": self.host, "port": self.port, "listening": self.server is not None, "clients": clients, "max_clients": self.max_clients}
+
+
+# ---------------------------------------------------------------------------
 # TCP 傳圖：把影像推給上位機
 # ---------------------------------------------------------------------------
 #: 影格：MAGIC(4) + 版本(1) + 表頭長度(4, big-endian) + 影像長度(4, big-endian) + 表頭 JSON + 影像 bytes。
@@ -785,6 +1303,9 @@ _BUILTIN: dict[str, type[Writer]] = {
     "modbus_server": ModbusServerWriter,
     "tcp_client": TcpClientWriter,
     "tcp_image": TcpImageWriter,
+    "serial": SerialStreamWriter,
+    "udp": UdpStreamWriter,
+    "tcp_server_text": TcpServerTextWriter,
 }
 
 #: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
@@ -929,7 +1450,12 @@ def should_autostart(conn) -> bool:
     except Exception:  # noqa: BLE001
         return False
     config = conn.config or {}
-    return bool(conn.is_enabled and (getattr(cls, "listens", False) or triggers.settings_of(config) or eventmod.settings_of(config)))
+    receives = False
+    try:
+        receives = bool(cls.receives_config(config))
+    except Exception:  # noqa: BLE001 - 設定壞掉不該擋住其他連線啟動
+        receives = False
+    return bool(conn.is_enabled and (getattr(cls, "listens", False) or receives or triggers.settings_of(config) or eventmod.settings_of(config)))
 
 
 def ensure_started(conn) -> None:
@@ -1030,6 +1556,9 @@ def kinds() -> list[dict[str, Any]]:
          "description": "The platform is the server and listens on a port for any Modbus TCP master to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
         {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply", *EVENT_FIELDS]},
         {"kind": "tcp_image", "section": "tcp", "label": TcpImageWriter.label, "fields": list(TcpImageWriter.fields), "description": TcpImageWriter.description},
+        {"kind": "serial", "section": "devices", "label": SerialStreamWriter.label, "fields": [*SerialStreamWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": SerialStreamWriter.description},
+        {"kind": "udp", "section": "devices", "label": UdpStreamWriter.label, "fields": [*UdpStreamWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": UdpStreamWriter.description},
+        {"kind": "tcp_server_text", "section": "devices", "label": TcpServerTextWriter.label, "fields": [*TcpServerTextWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": TcpServerTextWriter.description},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
@@ -1048,6 +1577,7 @@ def kinds() -> list[dict[str, Any]]:
 
 __all__ = [
     "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter", "TcpImageWriter", "IMAGE_HEAD", "IMAGE_MAGIC",
+    "StreamWriter", "SerialStreamWriter", "UdpStreamWriter", "TcpServerTextWriter",
     "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer", "register_kind",
     "connection_info", "prefetch_connections", "get_connection", "kinds",
 ]

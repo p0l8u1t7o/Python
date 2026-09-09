@@ -31,6 +31,18 @@ export default {
       label: 'TCP 傳圖（上位機）',
       description: '把流程某一步的影像經一條長連線推給上位程式：13 位元組定長前綴、JSON 表頭（尺寸、編碼、run id、判定與具名輸出）、影像 bytes（JPEG／PNG／原始像素）。',
     },
+    serial: {
+      label: '串口文字設備',
+      description: '透過串口收送逐行文字或十六進位位元組。',
+    },
+    udp: {
+      label: 'UDP 文字設備',
+      description: '把逐行文字或十六進位位元組送到 UDP 端點，也可開本機埠接收文字行。',
+    },
+    tcp_server_text: {
+      label: 'TCP 文字設備伺服器',
+      description: '本機開埠等待設備連進來，收送逐行文字或十六進位位元組。',
+    },
     plugin: { label: '外掛（自行指定類別路徑）' },
   },
   /** Advanced／Augment 這些分組名稱每個訓練方式共用。 */

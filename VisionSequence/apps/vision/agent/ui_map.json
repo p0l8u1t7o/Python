@@ -564,6 +564,28 @@
    ]
   },
   {
+   "route": "/integration/devices",
+   "id": "integration_devices",
+   "names": {
+    "en": "Device connections",
+    "zh-Hant": "設備連線",
+    "zh-Hans": "设备连接"
+   },
+   "summary": {
+    "en": "The API explorer with the result format, TCP commands with their failure codes, event monitoring, Modbus server and client connections, the capture client, and the plugin folder",
+    "zh-Hant": "API 總覽與回傳格式、TCP 指令與失敗碼、事件監看、Modbus 從站與主站連線、擷取端、外掛資料夾",
+    "zh-Hans": "API 总览与返回格式、TCP 指令与失败码、事件监看、Modbus 从站与主站连接、采集端、插件文件夹"
+   },
+   "feature": "integration",
+   "actions": [
+    {
+     "en": "New connection",
+     "zh-Hant": "新增連線",
+     "zh-Hans": "添加连接"
+    }
+   ]
+  },
+  {
    "route": "/integration/events",
    "id": "integration_events",
    "names": {

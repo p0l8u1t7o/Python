@@ -31,6 +31,18 @@ export default {
       label: 'TCP 传图（上位机）',
       description: '把流程某一步的图像经一条长连接推给上位程序：13 字节定长前缀、JSON 表头（尺寸、编码、run id、判定与具名输出）、图像 bytes（JPEG／PNG／原始像素）。',
     },
+    serial: {
+      label: '串口文本设备',
+      description: '通过串口收发逐行文本或十六进制字节。',
+    },
+    udp: {
+      label: 'UDP 文本设备',
+      description: '把逐行文本或十六进制字节送到 UDP 端点，也可开本机端口接收文本行。',
+    },
+    tcp_server_text: {
+      label: 'TCP 文本设备服务器',
+      description: '本机开端口等待设备连进来，收发逐行文本或十六进制字节。',
+    },
     plugin: { label: '插件（自行指定类路径）' },
   },
   /** Advanced／Augment 这些分组名称每个训练方式共用。 */

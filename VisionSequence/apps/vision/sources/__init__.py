@@ -134,6 +134,17 @@ def last_error_of(source_id: int | str) -> str:
     return str(getattr(cached[1], "last_error", "") or "") if cached else ""
 
 
+def last_timeout_of(source_id: int | str) -> bool:
+    """上一張是否因擷取逾時而失敗；其他離線或設定錯誤不算逾時。"""
+    try:
+        sid = int(source_id)
+    except (TypeError, ValueError):
+        return False
+    with _lock:
+        cached = _open.get(sid)
+    return bool(getattr(cached[1], "timed_out", False)) if cached else False
+
+
 def close_source(source_id: int) -> None:
     with _lock:
         cached = _open.pop(source_id, None)
