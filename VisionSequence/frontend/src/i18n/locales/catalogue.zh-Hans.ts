@@ -43,6 +43,10 @@ export default {
       label: 'TCP 文本设备服务器',
       description: '本机开端口等待设备连进来，收发逐行文本或十六进制字节。',
     },
+    light: {
+      label: '光源控制器',
+      description: '通过串口或 TCP 送出光源控制命令，可设置亮度、开灯与关灯模板。',
+    },
     plugin: { label: '插件（自行指定类路径）' },
   },
   /** Advanced／Augment 这些分组名称每个训练方式共用。 */

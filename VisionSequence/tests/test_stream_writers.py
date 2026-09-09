@@ -142,6 +142,8 @@ class TcpServerTextWriterTests(SimpleTestCase):
         self.assertEqual(kinds["serial"]["section"], "devices")
         self.assertEqual(kinds["udp"]["section"], "devices")
         self.assertEqual(kinds["tcp_server_text"]["section"], "devices")
+        self.assertEqual(kinds["light"]["section"], "devices")
         self.assertIn("end_char", kinds["serial"]["fields"])
         self.assertIn("bind_port", kinds["udp"]["fields"])
         self.assertIn("max_clients", kinds["tcp_server_text"]["fields"])
+        self.assertIn("brightness_template", kinds["light"]["fields"])

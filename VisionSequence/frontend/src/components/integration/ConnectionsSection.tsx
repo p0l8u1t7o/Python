@@ -27,6 +27,14 @@ const FIELD_TYPE: Record<string, 'text' | 'number' | 'boolean' | 'select' | 'mul
   stopbits: 'number',
   bind_port: 'number',
   max_clients: 'number',
+  transport: 'select',
+  preset: 'select',
+  brightness_template: 'text',
+  on_template: 'text',
+  off_template: 'text',
+  value_max: 'number',
+  strobe: 'select',
+  lead_time_ms: 'number',
   end_char: 'select',
   end_custom: 'text',
   unit_id: 'number',
@@ -62,10 +70,19 @@ const FIELD_DEFAULT: Record<string, Record<string, unknown>> = {
   serial: { port: 'COM3', baudrate: 9600, bytesize: 8, parity: 'N', stopbits: 1, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', triggers: [], trigger_interval_ms: 50, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
   udp: { host: '127.0.0.1', port: 9002, bind_port: 0, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', triggers: [], trigger_interval_ms: 50, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
   tcp_server_text: { host: '0.0.0.0', port: 9003, max_clients: 4, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', triggers: [], trigger_interval_ms: 50, events: [], event_template: '', heartbeat_ms: 0, heartbeat_payload: '' },
+  light: { transport: 'serial', preset: 'custom', host: '127.0.0.1', port: 'COM3', baudrate: 9600, bytesize: 8, parity: 'N', stopbits: 1, timeout_s: 2, end_char: '\\n', end_custom: '', encoding: 'utf-8', channels: 4, value_max: 255, brightness_template: '{channel},{value}', on_template: '{channel},ON', off_template: '{channel},OFF', strobe: 'steady', lead_time_ms: 0 },
   plugin: { class: '' },
 }
 
-const STREAM_KINDS = new Set(['serial', 'udp', 'tcp_server_text'])
+const LIGHT_PRESETS: Record<string, Record<string, unknown>> = {
+  custom: { brightness_template: '{channel},{value}', on_template: '{channel},ON', off_template: '{channel},OFF', channels: 4, value_max: 255 },
+  hikrobot_digital: { brightness_template: 'SL{channel_letter}{value:04d}#', on_template: 'SW{channel_letter}0001#', off_template: 'SW{channel_letter}0000#', channels: 4, value_max: 255, end_char: 'none', baudrate: 115200 },
+  ccs_pd3: { brightness_template: '@{channel0:02d}F{value:03d}{checksum}', on_template: '@{channel0:02d}L1{checksum}', off_template: '@{channel0:02d}L0{checksum}', channels: 3, value_max: 255, end_char: '\\r\\n', baudrate: 38400 },
+  ccs_pds: { brightness_template: '@99F{value:03d}{checksum}', on_template: '@99F{value_max:03d}{checksum}', off_template: '@99F000{checksum}', channels: 1, value_max: 255, end_char: '\\r\\n', baudrate: 9600 },
+  cst_dps: { brightness_template: 'S{channel_letter}{value:04d}TC#', on_template: 'S{channel_letter}{value:04d}TC#', off_template: 'S{channel_letter}0000FC#', channels: 4, value_max: 999, end_char: 'none', baudrate: 9600 },
+}
+
+const STREAM_KINDS = new Set(['serial', 'udp', 'tcp_server_text', 'light'])
 
 function ConfigField({ kind, field, value, onChange }: { kind: string; field: string; value: unknown; onChange: (v: unknown) => void }) {
   const { t } = useTranslation()
@@ -75,8 +92,18 @@ function ConfigField({ kind, field, value, onChange }: { kind: string; field: st
   if (type === 'select' && field === 'parity') {
     return <Select label={label} value={String(value ?? 'N')} onChange={(e) => onChange(e.target.value)} options={['N', 'E', 'O'].map((v) => ({ value: v, label: t(`connections.parity.${v}`) }))} />
   }
+  if (type === 'select' && field === 'transport') {
+    return <Select label={label} value={String(value ?? 'serial')} onChange={(e) => onChange(e.target.value)} options={['serial', 'tcp'].map((v) => ({ value: v, label: t(`connections.transports.${v}`) }))} />
+  }
+  if (type === 'select' && field === 'preset') {
+    return <Select label={label} value={String(value ?? 'custom')} onChange={(e) => onChange(e.target.value)} options={Object.keys(LIGHT_PRESETS).map((v) => ({ value: v, label: t(`connections.lightPresets.${v}`) }))} />
+  }
+  if (type === 'select' && field === 'strobe') {
+    return <Select label={label} value={String(value ?? 'steady')} onChange={(e) => onChange(e.target.value)} options={['steady', 'strobe'].map((v) => ({ value: v, label: t(`connections.strobeModes.${v}`) }))} />
+  }
   if (type === 'select' && field === 'end_char') {
-    return <Select label={label} value={String(value ?? '\\n')} onChange={(e) => onChange(e.target.value)} options={['\\n', '\\r', '\\r\\n', 'custom'].map((v) => ({ value: v, label: t(`connections.endings.${v.replace(/\\/g, '') || 'custom'}`, { defaultValue: v }) }))} />
+    const options = kind === 'light' ? ['\\n', '\\r', '\\r\\n', 'none', 'custom'] : ['\\n', '\\r', '\\r\\n', 'custom']
+    return <Select label={label} value={String(value ?? '\\n')} onChange={(e) => onChange(e.target.value)} options={options.map((v) => ({ value: v, label: t(`connections.endings.${v.replace(/\\/g, '') || v}`, { defaultValue: v }) }))} />
   }
   if (type === 'select' && field === 'word_order') {
     return <Select label={label} value={String(value ?? 'big')} onChange={(e) => onChange(e.target.value)} options={[{ value: 'big', label: t('connections.wordOrders.big') }, { value: 'little', label: t('connections.wordOrders.little') }]} />
@@ -111,6 +138,7 @@ function ConfigField({ kind, field, value, onChange }: { kind: string; field: st
     const text = Array.isArray(value) ? value.join(',') : typeof value === 'number' ? String(value) : String(value ?? '')
     return <TextInput label={label} hint={t('connections.fields.channelsHint')} value={text} onChange={(e) => onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
   }
+  if (kind === 'light' && field === 'port') return <TextInput label={label} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
   if (type === 'number') return <TextInput label={label} type="number" step={field === 'timeout_s' ? 0.1 : 1} value={value === undefined || value === null ? '' : String(value)} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
   if (field === 'newline') return <TextInput label={label} className="font-mono" value={JSON.stringify(String(value ?? '\n')).slice(1, -1)} onChange={(e) => onChange(e.target.value.replace(/\\n/g, '\n').replace(/\\r/g, '\r'))} />
   return <TextInput label={label} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
@@ -149,6 +177,10 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
     const out: Record<string, unknown> = {}
     for (const f of fieldsFor.get(kind) ?? []) if (f in base) out[f] = base[f]
     return out
+  }
+  function configChange(body: ConnectionBody, field: string, value: unknown) {
+    const patch = body.kind === 'light' && field === 'preset' ? { preset: value, ...(LIGHT_PRESETS[String(value)] ?? {}) } : { [field]: value }
+    setEditing({ ...editing!, body: { ...body, config: { ...body.config, ...patch } } })
   }
   function openCreate() {
     const first = kind ?? kindList[0]?.kind ?? ''
@@ -307,7 +339,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
                         <span className="inline-flex gap-1">
                           <IconButton label={t('connections.state')} onClick={() => void readState({ conn: c, addresses: '', result: null, loading: false })}><Activity size={15} /></IconButton>
                           <IconButton label={t('connections.test')} disabled={!canManage} onClick={() => void onTest(c)} data-testid="conn-test"><Plug size={15} /></IconButton>
-                          <IconButton label={t('connections.write')} disabled={!canManage} onClick={() => setWriting({ conn: c, values: c.kind.startsWith('modbus') ? '{"coil:0": 1}' : '{"judge": "OK"}', result: null })} data-testid="conn-write"><PenLine size={15} /></IconButton>
+                          <IconButton label={t('connections.write')} disabled={!canManage} onClick={() => setWriting({ conn: c, values: c.kind.startsWith('modbus') ? '{"coil:0": 1}' : c.kind === 'light' ? '{"1": 128}' : '{"judge": "OK"}', result: null })} data-testid="conn-write"><PenLine size={15} /></IconButton>
                           <IconButton label={t('common.edit')} disabled={!canManage} onClick={() => setEditing({ id: c.id, body: { name: c.name, kind: c.kind, config: { ...c.config }, is_enabled: c.is_enabled } })}><Pencil size={15} /></IconButton>
                           <IconButton label={t('common.delete')} disabled={!canManage} onClick={() => setPendingDelete(c)}><Trash2 size={15} className="text-critical" /></IconButton>
                         </span>
@@ -337,7 +369,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
             <TextInput label={t('common.name')} required autoFocus value={body.name} onChange={(e) => setEditing({ ...editing!, body: { ...body, name: e.target.value } })} data-testid="conn-name-input" />
             {kind ? null : <Select label={t('connections.kind')} value={body.kind} onChange={(e) => setEditing({ ...editing!, body: { ...body, kind: e.target.value, config: defaultsFor(e.target.value) } })} options={kindList.map((k) => ({ value: k.kind, label: k.label }))} data-testid="conn-kind" />}
             {(fieldsFor.get(body.kind) ?? []).filter((f) => !TRIGGER_FIELDS.has(f) && !EVENT_FIELDS.has(f)).map((field) => (
-              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => setEditing({ ...editing!, body: { ...body, config: { ...body.config, [field]: v } } })} />
+              <ConfigField key={field} kind={body.kind} field={field} value={body.config[field]} onChange={(v) => configChange(body, field, v)} />
             ))}
             {(fieldsFor.get(body.kind) ?? []).some((f) => TRIGGER_FIELDS.has(f)) ? (
               <details className="rounded border border-line" open={Array.isArray(body.config.triggers) && body.config.triggers.length > 0} data-testid="conn-trigger">

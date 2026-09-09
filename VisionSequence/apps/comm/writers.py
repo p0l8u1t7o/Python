@@ -1154,6 +1154,284 @@ class TcpServerTextWriter(StreamWriter):
         return {**super().info(), "host": self.host, "port": self.port, "listening": self.server is not None, "clients": clients, "max_clients": self.max_clients}
 
 
+LIGHT_PRESETS: dict[str, dict[str, Any]] = {
+    "custom": {
+        "brightness_template": "{channel},{value}",
+        "on_template": "{channel},ON",
+        "off_template": "{channel},OFF",
+        "channels": 4,
+        "value_max": 255,
+    },
+    "hikrobot_digital": {
+        "brightness_template": "SL{channel_letter}{value:04d}#",
+        "on_template": "SW{channel_letter}0001#",
+        "off_template": "SW{channel_letter}0000#",
+        "channels": 4,
+        "value_max": 255,
+        "end_char": "none",
+        "baudrate": 115200,
+    },
+    "ccs_pd3": {
+        "brightness_template": "@{channel0:02d}F{value:03d}{checksum}",
+        "on_template": "@{channel0:02d}L1{checksum}",
+        "off_template": "@{channel0:02d}L0{checksum}",
+        "channels": 3,
+        "value_max": 255,
+        "end_char": "\\r\\n",
+        "baudrate": 38400,
+    },
+    "ccs_pds": {
+        "brightness_template": "@99F{value:03d}{checksum}",
+        "on_template": "@99F{value_max:03d}{checksum}",
+        "off_template": "@99F000{checksum}",
+        "channels": 1,
+        "value_max": 255,
+        "end_char": "\\r\\n",
+        "baudrate": 9600,
+    },
+    "cst_dps": {
+        "brightness_template": "S{channel_letter}{value:04d}TC#",
+        "on_template": "S{channel_letter}{value:04d}TC#",
+        "off_template": "S{channel_letter}0000FC#",
+        "channels": 4,
+        "value_max": 999,
+        "end_char": "none",
+        "baudrate": 9600,
+    },
+}
+
+
+class LightControllerWriter(StreamWriter):
+    """光源控制器：用串口或 TCP 送一行可設定的 ASCII 命令。"""
+
+    kind = "light"
+    label = "Light controller"
+    description = "Controls a machine-vision light controller over serial or TCP with configurable line templates for brightness, on and off commands."
+    fields = [
+        "transport", "preset", "host", "port", "baudrate", "bytesize", "parity", "stopbits",
+        *STREAM_FIELDS, "channels", "value_max", "brightness_template", "on_template", "off_template", "strobe", "lead_time_ms",
+    ]
+
+    def __init__(self, config, **kw) -> None:
+        cfg = self._apply_preset(dict(config or {}))
+        super().__init__(cfg, **kw)
+        raw_end = str(cfg.get("end_char", "\\n") if cfg.get("end_char") is not None else "\\n").strip().lower()
+        if raw_end in ("", "none", "no", "false"):
+            self.end = ""
+            self.end_bytes = b""
+        self.transport = str(cfg.get("transport") or "serial").lower()
+        if self.transport not in ("serial", "tcp"):
+            raise ValidationError("light transport must be serial or tcp", code="comm_config")
+        self.preset = str(cfg.get("preset") or "custom")
+        self.channels = max(1, min(64, int(cfg.get("channels", 4) or 4)))
+        self.value_max = max(1, min(65535, int(cfg.get("value_max", 255) or 255)))
+        self.brightness_template = str(cfg.get("brightness_template") or "{channel},{value}")
+        self.on_template = str(cfg.get("on_template") or "")
+        self.off_template = str(cfg.get("off_template") or "")
+        self.strobe = str(cfg.get("strobe") or "steady")
+        self.lead_time_ms = max(0, int(float(cfg.get("lead_time_ms", 0) or 0)))
+        self.channel_values: dict[int, int] = {}
+        self.last_command = ""
+        self.serial = None
+        self.sock: socket.socket | None = None
+        self.host = str(cfg.get("host") or "").strip()
+        self.port = str(cfg.get("port") or "").strip()
+        self.tcp_port = 0
+        self.baudrate = int(cfg.get("baudrate", 9600) or 9600)
+        self.bytesize = int(cfg.get("bytesize", 8) or 8)
+        self.parity = str(cfg.get("parity") or "N").upper()[:1]
+        self.stopbits = float(cfg.get("stopbits", 1) or 1)
+        if self.transport == "serial":
+            if not self.port:
+                raise ValidationError("light serial transport needs a port", code="comm_config")
+        else:
+            if not self.host or not self.port:
+                raise ValidationError("light tcp transport needs a host and a port", code="comm_config")
+            self.tcp_port = int(self.port)
+        self._start_stream()
+
+    @staticmethod
+    def _apply_preset(config: dict[str, Any]) -> dict[str, Any]:
+        preset = str(config.get("preset") or "custom")
+        return {**LIGHT_PRESETS.get(preset, LIGHT_PRESETS["custom"]), **config}
+
+    def _open(self) -> None:
+        if self.transport == "serial":
+            try:
+                import serial
+            except ImportError as exc:
+                raise CommError("Serial support is not installed; run pip install pyserial") from exc
+            self.serial = serial.serial_for_url(
+                self.port, baudrate=self.baudrate, bytesize=self.bytesize, parity=self.parity, stopbits=self.stopbits,
+                timeout=0.1, write_timeout=self.timeout,
+            )
+            return
+        try:
+            sock = socket.create_connection((self.host, self.tcp_port), timeout=self.timeout)
+        except OSError as exc:
+            raise CommError(f"Cannot reach {self.host}:{self.tcp_port} ({exc})") from exc
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.settimeout(0.1)
+        self.sock = sock
+
+    def _close(self) -> None:
+        if self.serial is not None:
+            try:
+                self.serial.close()
+            finally:
+                self.serial = None
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            finally:
+                self.sock = None
+
+    def _send_bytes(self, data: bytes) -> Any:
+        if self.transport == "serial":
+            if self.serial is None:
+                raise CommError("The serial port is not open")
+            self.serial.write(data)
+            self.serial.flush()
+            return
+        if self.sock is None:
+            raise CommError("The TCP socket is not open")
+        self.sock.sendall(data)
+
+    def _recv_bytes(self) -> bytes:
+        if self.transport == "serial":
+            if self.serial is None:
+                raise CommError("The serial port is not open")
+            return bytes(self.serial.read(4096))
+        if self.sock is None:
+            raise CommError("The TCP socket is not open")
+        try:
+            data = self.sock.recv(4096)
+        except socket.timeout:
+            return b""
+        if not data:
+            raise CommError("The light controller closed the TCP connection")
+        return data
+
+    @staticmethod
+    def _channel_letter(channel: int) -> str:
+        return chr(ord("A") + channel - 1) if 1 <= channel <= 26 else str(channel)
+
+    def _values(self, channel: int, value: int) -> dict[str, Any]:
+        return {
+            "channel": channel, "channel0": channel - 1, "channel_letter": self._channel_letter(channel),
+            "value": value, "value_max": self.value_max, "strobe": self.strobe, "lead_time_ms": self.lead_time_ms,
+        }
+
+    def _render_template(self, template: str, channel: int, value: int) -> str:
+        from apps.comm.protocol import unescape
+
+        marker = "\u0000CHECKSUM\u0000"
+        values = self._values(channel, value)
+        values["checksum"] = marker
+        try:
+            rendered = unescape(template).format_map(_Missing(values))
+        except (KeyError, ValueError, TypeError, IndexError) as exc:
+            raise CommError(f"The light command template could not be filled in: {exc}") from None
+        if marker in rendered:
+            before = rendered.split(marker, 1)[0]
+            enc = self.encoding if self.encoding != "hex" else "ascii"
+            rendered = rendered.replace(marker, f"{sum(before.encode(enc, errors='replace')) & 0xFF:02X}")
+        return rendered
+
+    def render_light(self, channel: int | str, value: Any = None, mode: str = "brightness") -> str:
+        try:
+            ch = int(channel)
+        except (TypeError, ValueError):
+            raise CommError(f"Light channel must be an integer: {channel!r}") from None
+        if ch < 1 or ch > self.channels:
+            raise CommError(f"Light channel {ch} is outside 1..{self.channels}")
+        try:
+            level = int(round(float(self.value_max if value is None else value)))
+        except (TypeError, ValueError):
+            raise CommError(f"Light value must be a number: {value!r}") from None
+        if level < 0 or level > self.value_max:
+            raise CommError(f"Light value {level} is outside 0..{self.value_max}")
+        mode = str(mode or "brightness").lower()
+        if mode == "off":
+            template = self.off_template or self.brightness_template
+            level = 0
+        elif mode == "on":
+            template = self.on_template or self.brightness_template
+            level = self.channel_values.get(ch, level or self.value_max)
+        elif mode == "brightness":
+            template = self.brightness_template
+        else:
+            raise CommError("Light mode must be brightness, on or off")
+        if not template:
+            raise CommError(f"No light command template is configured for mode {mode}")
+        return self._render_template(template, ch, level)
+
+    def set_light(self, channel: int | str, value: Any = None, mode: str = "brightness", *, timeout: float | None = None,
+                  quiet: bool = False) -> dict[str, Any]:
+        started = time.perf_counter()
+        old = self.timeout
+        if timeout:
+            self.timeout = float(timeout)
+        request = {"channel": channel, "value": value, "mode": mode}
+        try:
+            command = self.render_light(channel, value, mode)
+            out = self._send_payload(command)
+            ch = int(channel)
+            mode_key = str(mode or "brightness").lower()
+            if mode_key == "off":
+                self.channel_values[ch] = 0
+            elif mode_key == "on":
+                self.channel_values[ch] = int(round(float(value))) if value is not None else self.channel_values.get(ch, self.value_max)
+            elif value is not None:
+                self.channel_values[ch] = int(round(float(value)))
+            self.last_command = command
+            self.writes += 1
+            self.last_write_at = time.time()
+            result = {**out, "command": command, "channel": ch, "value": self.channel_values.get(ch, 0)}
+            if not quiet:
+                self._trace("light", request, result, started)
+            return result
+        except CommError as exc:
+            self.errors += 1
+            self.last_error = _msg(exc)
+            self._trace("light", request, {"error": str(exc)}, started, ok=False)
+            raise
+        finally:
+            self.timeout = old
+
+    def write(self, values: dict[str, Any], *, timeout: float | None = None, quiet: bool = False) -> dict[str, Any]:
+        if not values:
+            return {"written": 0}
+        written: dict[str, Any] = {}
+        commands: list[str] = []
+        for channel, raw in values.items():
+            mode = "brightness"
+            value = raw
+            if isinstance(raw, str) and raw.strip().lower() in ("on", "off"):
+                mode = raw.strip().lower()
+                value = self.channel_values.get(int(channel), self.value_max)
+            elif isinstance(raw, bool):
+                mode = "on" if raw else "off"
+                value = self.channel_values.get(int(channel), self.value_max)
+            out = self.set_light(channel, value, mode, timeout=timeout, quiet=True)
+            written[str(channel)] = out["value"]
+            commands.append(str(out.get("command") or ""))
+        result = {"written": len(written), "values": written, "commands": commands, "last_command": commands[-1] if commands else ""}
+        if not quiet:
+            self._trace("write", values, result, time.perf_counter())
+        return result
+
+    def info(self) -> dict[str, Any]:
+        base = {
+            **super().info(), "transport": self.transport, "preset": self.preset, "channels": self.channels,
+            "value_max": self.value_max, "channel_values": dict(sorted(self.channel_values.items())),
+            "last_command": self.last_command, "strobe": self.strobe, "lead_time_ms": self.lead_time_ms,
+        }
+        if self.transport == "serial":
+            return {**base, "port": self.port, "baudrate": self.baudrate, "bytesize": self.bytesize, "parity": self.parity, "stopbits": self.stopbits}
+        return {**base, "host": self.host, "port": self.tcp_port}
+
+
 # ---------------------------------------------------------------------------
 # TCP 傳圖：把影像推給上位機
 # ---------------------------------------------------------------------------
@@ -1306,6 +1584,7 @@ _BUILTIN: dict[str, type[Writer]] = {
     "serial": SerialStreamWriter,
     "udp": UdpStreamWriter,
     "tcp_server_text": TcpServerTextWriter,
+    "light": LightControllerWriter,
 }
 
 #: 資料夾外掛註冊的 kind（apps.core.plugins 掛載）。
@@ -1559,6 +1838,8 @@ def kinds() -> list[dict[str, Any]]:
         {"kind": "serial", "section": "devices", "label": SerialStreamWriter.label, "fields": [*SerialStreamWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": SerialStreamWriter.description},
         {"kind": "udp", "section": "devices", "label": UdpStreamWriter.label, "fields": [*UdpStreamWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": UdpStreamWriter.description},
         {"kind": "tcp_server_text", "section": "devices", "label": TcpServerTextWriter.label, "fields": [*TcpServerTextWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": TcpServerTextWriter.description},
+        {"kind": "light", "section": "devices", "label": LightControllerWriter.label, "fields": list(LightControllerWriter.fields), "description": LightControllerWriter.description,
+         "presets": {key: {k: v for k, v in value.items() if k != "baudrate"} for key, value in LIGHT_PRESETS.items()}},
     ]
     for kind, cls in _PLUGIN_KINDS.items():
         out.append({
@@ -1577,7 +1858,7 @@ def kinds() -> list[dict[str, Any]]:
 
 __all__ = [
     "CommError", "Writer", "ModbusTcpWriter", "ModbusServerWriter", "TcpClientWriter", "TcpImageWriter", "IMAGE_HEAD", "IMAGE_MAGIC",
-    "StreamWriter", "SerialStreamWriter", "UdpStreamWriter", "TcpServerTextWriter",
+    "StreamWriter", "SerialStreamWriter", "UdpStreamWriter", "TcpServerTextWriter", "LightControllerWriter", "LIGHT_PRESETS",
     "parse_address", "coerce", "open_connection", "close_connection", "close_all", "get_writer", "register_writer", "register_kind",
     "connection_info", "prefetch_connections", "get_connection", "kinds",
 ]

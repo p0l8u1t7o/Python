@@ -579,6 +579,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("output", "output", None, {"name": "v"}, {"value": 1.23456}, {}),
         ("write_log csv", "write_log", None, {"path": "bench", "format": "csv", "fields": "judge\nv\nlot\n{a:.2f}", "filename": "{station}_{date}", "daily_folder": True}, {"a": 12.3456}, {"_judge": "OK", "_outputs": {"v": 1.23456}, "lot": "A17", "_sandbox": True}),
         ("trigger_flow", "trigger_flow", None, {"target_flow_id": 1, "mode": "async"}, {}, {"_sandbox": True}),
+        ("set_light (degraded)", "set_light", None, {"connection": "bench_sim", "channel": 1, "value": 128}, {}, {}),
+        ("io_output", "io_output", None, {"connection": "bench_sim", "address": "coil:1", "on_when": "ng"}, {}, {"_judge": "NG"}),
         ("write_modbus", "write_modbus", None, {"connection": "bench_sim", "mapping": [{"src": "judge", "address": "ok"}]}, {}, {"_judge": "OK"}),
         ("read_modbus", "read_modbus", None, {"connection": "bench_sim", "mapping": [{"name": "ok", "address": "ok"}]}, {}, {}),
         ("send_image (degraded)", "send_image", gray, {"connection": "bench_sim"}, {}, {"_judge": "OK"}),

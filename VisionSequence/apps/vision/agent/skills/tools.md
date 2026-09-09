@@ -558,6 +558,16 @@ edge_contrast、defects、decodability）。總評＝最低分（1D 是 10 條�
 整合用（使用者要求「把影像傳給上位機」「NG 圖送到 MES」時才加）：把該步驟的影像推給 tcp_image 連線（JPEG／PNG／raw），
 表頭帶 run_id、判定與具名輸出；only_ng=true 只送 NG；失敗預設降級不讓 run 失敗。放在流程尾端、判定之後，影像接想送的那一步的輸出。
 
+## set_light
+整合用（使用者要求「切光源」「調亮度」「某步驟前開燈」時才加）：先在「外部整合 > 設備連線」建 light 連線，流程裡用名稱引用。
+`channel` 是光源通道，`value` 是亮度且是 teach 參數，換料號常會調；`mode=brightness` 最常用，`on/off` 給只需要開關的站。
+失敗預設降級，避免光源控制器暫時斷線就把整條流程打成 error；真的不能漏打光的取像流程才把 `required=true`。
+
+## io_output
+整合用（使用者要求「NG 打一個輸出」「OK 脈衝通知設備」「用光源通道當指示燈」時才加）：接在判定之後，不接輸入時讀目前 `_judge`，也可把上游布林／狀態接到 `status`。
+Modbus 連線的 `address` 用 `coil:0`／`holding:100` 這種位址；light 連線則填通道號。`on_when` 決定 OK、NG 或 always 輸出，`invert` 處理低有效。
+`pulse_ms>0` 會先送出有效電平，再由背景計時器復位，工具本身不 sleep，不會卡住熱路徑；失敗預設降級，必要輸出才開 `required=true`。
+
 ## write_modbus / read_modbus
 整合用（AI 不主動生成，使用者要求「把結果寫給設備」「從 Modbus 讀料號」時才加）：write_modbus 依對映表把判定或具名輸出寫到連線；
 read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連線讀對方主站寫進平台的值），輸出 values／value／ok，publish=true 才進具名輸出。

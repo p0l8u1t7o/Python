@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import os
+import threading
 import time
 from typing import Any
 
@@ -11,6 +12,7 @@ import cv2
 import numpy as np
 from django.conf import settings
 
+from apps.comm.writers import CommError, get_writer, parse_address
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError
 
 
@@ -241,6 +243,169 @@ class DrawResultTool(Tool):
         return Result(outputs={"image": canvas})
 
 
+def _comm_failed(ctx: ToolContext, required: bool, reason: str, outputs: dict[str, Any], detail: dict[str, Any]) -> Result:
+    detail = {**detail, "error": reason}
+    if required:
+        return Result(status="error", outputs=outputs, message=reason[:500], detail=detail)
+    ctx.log(f"Output failed (degraded): {reason}", level="warning")
+    return Result(outputs=outputs, message=f"Output failed (degraded): {reason}"[:500], detail=detail)
+
+
+class SetLightTool(Tool):
+    key = "set_light"
+    label = "Set light"
+    description = "Sets a light-controller channel to a brightness, on or off state. By default a missing or failed connection only logs a warning and the flow continues."
+    category = "output"
+    icon = "Lightbulb"
+    connection_params = ("connection",)
+    params = [
+        Param("connection", "Connection", kind="text", required=True, help_text="The name of a light-controller connection under External integration > Device connections."),
+        Param("channel", "Channel", kind="number", default=1, minimum=1, step=1),
+        Param("value", "Brightness", kind="number", default=255, minimum=0, maximum=65535, step=1, teach=True,
+              help_text="0 to the connection's value_max. It is marked for on-site teaching because part changes often need a light level change."),
+        Param("mode", "Mode", kind="select", default="brightness", options=[
+            {"value": "brightness", "label": "Set brightness"},
+            {"value": "on", "label": "Turn on"},
+            {"value": "off", "label": "Turn off"},
+        ]),
+        Param("required", "Required", kind="boolean", default=False, help_text="Fail the run when the light command cannot be sent; off by default so communication faults degrade."),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, group="Advanced"),
+    ]
+    inputs: list[Port] = []
+    outputs = [Port("ok", "Succeeded", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        name = str(ctx.param("connection", "")).strip()
+        required = ctx.flag("required", False)
+        channel = ctx.integer("channel", 1)
+        value = ctx.integer("value", 255)
+        mode = str(ctx.param("mode", "brightness") or "brightness").lower()
+        timeout = ctx.number("timeout_s", 0) or None
+        detail: dict[str, Any] = {"connection": name, "channel": channel, "value": value, "mode": mode}
+        writer = get_writer(name)
+        if writer is None:
+            return _comm_failed(ctx, required, f"Connection '{name}' is not open or does not exist", {"ok": False}, detail)
+        value_max = getattr(writer, "value_max", None)
+        if value_max is not None and (value < 0 or value > int(value_max)):
+            return _comm_failed(ctx, required, f"Light value {value} is outside 0..{int(value_max)}", {"ok": False}, detail)
+        send = getattr(writer, "set_light", None)
+        if send is None:
+            return _comm_failed(ctx, required, f"Connection '{name}' cannot control light channels", {"ok": False}, detail)
+        try:
+            out = send(channel, value, mode, timeout=timeout)
+        except CommError as exc:
+            return _comm_failed(ctx, required, str(exc), {"ok": False}, detail)
+        except Exception as exc:  # noqa: BLE001 - 外掛 writer 的未預期例外也要走降級
+            return _comm_failed(ctx, required, f"{type(exc).__name__}: {exc}", {"ok": False}, detail)
+        detail["result"] = out
+        return Result(outputs={"ok": True}, message=f"Set light channel {channel}", detail=detail)
+
+
+class _PulseScheduler:
+    """用背景計時器復位脈衝，避免工具執行緒 sleep 卡住產線。"""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._timers: set[threading.Timer] = set()
+
+    def schedule(self, delay_s: float, fn, *args) -> None:
+        timer = threading.Timer(delay_s, self._run, args=(None, fn, args))
+        timer.daemon = True
+        with self._lock:
+            self._timers.add(timer)
+        timer.args = (timer, fn, args)
+        timer.start()
+
+    def _run(self, timer: threading.Timer | None, fn, args) -> None:
+        try:
+            fn(*args)
+        except Exception:  # noqa: BLE001 - 脈衝復位失敗只能記錄，不能影響已完成的 run
+            pass
+        finally:
+            if timer is not None:
+                with self._lock:
+                    self._timers.discard(timer)
+
+
+_PULSES = _PulseScheduler()
+
+
+def _judge_state(ctx: ToolContext) -> str:
+    value = ctx.inputs.get("status")
+    if value is None:
+        value = ctx.context.get("_judge")
+    if value is None:
+        value = (ctx.context.get("_outputs") or {}).get("judge")
+    if value is None:
+        value = ctx.context.get("status")
+    if isinstance(value, bool):
+        return "ok" if value else "ng"
+    text = str(value or "ok").strip().lower()
+    return "ng" if text in ("ng", "fail", "failed", "false", "0", "bad") else "ok"
+
+
+def _write_output(writer: Any, address: str, active: bool, timeout: float | None) -> dict[str, Any]:
+    send = getattr(writer, "set_light", None)
+    if send is not None:
+        out = send(int(address), None, "on" if active else "off", timeout=timeout)
+        return {"kind": "light", **dict(out)}
+    parse_address(address)
+    return dict(writer.write({address: active}, timeout=timeout))
+
+
+class IoOutputTool(Tool):
+    key = "io_output"
+    label = "I/O output"
+    description = "Writes a level or non-blocking pulse according to the current OK/NG verdict. It can write Modbus coils/registers or light-controller channels."
+    category = "output"
+    icon = "ToggleRight"
+    connection_params = ("connection",)
+    params = [
+        Param("connection", "Connection", kind="text", required=True, help_text="A Modbus or light-controller connection name; an id also works."),
+        Param("address", "Address", kind="text", default="coil:0", required=True, teach=True,
+              help_text="For Modbus, use area:offset[:dtype] such as coil:0. For a light controller, use the channel number."),
+        Param("on_when", "On when", kind="select", default="ng", options=[
+            {"value": "ok", "label": "OK"},
+            {"value": "ng", "label": "NG"},
+            {"value": "always", "label": "Always"},
+        ]),
+        Param("pulse_ms", "Pulse", kind="number", default=0, minimum=0, maximum=60000, step=1, teach=True,
+              help_text="0 keeps the level. A positive value schedules the reset in the background, so the flow thread does not sleep."),
+        Param("invert", "Invert", kind="boolean", default=False),
+        Param("required", "Required", kind="boolean", default=False, help_text="Fail the run when the output cannot be written; off by default so communication faults degrade."),
+        Param("timeout_s", "Timeout (s)", kind="number", default=0, minimum=0, maximum=60, step=0.1, group="Advanced"),
+    ]
+    inputs = [Port("status", "Verdict", "any", required=False)]
+    outputs = [Port("ok", "Succeeded", "bool"), Port("active", "Active level", "bool")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        name = str(ctx.param("connection", "")).strip()
+        address = str(ctx.param("address", "coil:0") or "coil:0").strip()
+        on_when = str(ctx.param("on_when", "ng") or "ng").lower()
+        pulse_ms = max(0, ctx.integer("pulse_ms", 0))
+        required = ctx.flag("required", False)
+        timeout = ctx.number("timeout_s", 0) or None
+        judge = _judge_state(ctx)
+        active = on_when == "always" or judge == on_when
+        if ctx.flag("invert", False):
+            active = not active
+        detail: dict[str, Any] = {"connection": name, "address": address, "judge": judge, "active": active, "pulse_ms": pulse_ms}
+        writer = get_writer(name)
+        if writer is None:
+            return _comm_failed(ctx, required, f"Connection '{name}' is not open or does not exist", {"ok": False, "active": active}, detail)
+        try:
+            result = _write_output(writer, address, active, timeout)
+        except CommError as exc:
+            return _comm_failed(ctx, required, str(exc), {"ok": False, "active": active}, detail)
+        except Exception as exc:  # noqa: BLE001 - 外掛 writer 的未預期例外也要走降級
+            return _comm_failed(ctx, required, f"{type(exc).__name__}: {exc}", {"ok": False, "active": active}, detail)
+        detail["result"] = result
+        if pulse_ms > 0 and active:
+            _PULSES.schedule(pulse_ms / 1000.0, _write_output, writer, address, not active, timeout)
+            detail["pulse_scheduled"] = True
+        return Result(outputs={"ok": True, "active": active}, message=f"Output {'pulse' if pulse_ms > 0 and active else 'level'} {address}", detail=detail)
+
+
 def format_values(ctx: ToolContext) -> dict[str, Any]:
     """依照 format_text 的順序彙整可填入樣板的值。"""
     values: dict[str, Any] = {}
@@ -422,4 +587,4 @@ class _Fill(dict):
         return "{" + key + "}" if self._missing == "keep" else ""
 
 
-TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), WriteLogTool(), DrawResultTool(), FormatTextTool()]
+TOOLS = [JudgeTool(), OutputValueTool(), SaveImageTool(), WriteLogTool(), DrawResultTool(), SetLightTool(), IoOutputTool(), FormatTextTool()]

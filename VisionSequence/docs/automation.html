@@ -421,6 +421,7 @@ the flow's settings and the failures in <a href="#trace">Commands and results</a
 <tr><td><code>serial</code></td><td>A COM port. The port field also accepts a URL, so <code>loop://</code> gives you a virtual port for testing without hardware.</td><td>port, baud rate, data bits, parity, stop bits</td></tr>
 <tr><td><code>udp</code></td><td>Sends datagrams to a host and port; set a bind port as well if the device sends data back.</td><td>host, port, bind port</td></tr>
 <tr><td><code>tcp_server_text</code></td><td>The platform opens a port and devices connect to it. Outgoing text goes to every connected device.</td><td>host, port, maximum clients</td></tr>
+<tr><td><code>light</code></td><td>A light controller reached over serial or TCP. It sends configured ASCII command templates for brightness, on and off.</td><td>transport, preset, channel count, maximum brightness, templates, strobe mode, lead time</td></tr>
 </table>
 <p>Shared settings: the <strong>line terminator</strong> (LF, CR, CRLF or one you type), and the <strong>encoding</strong> (UTF-8, ASCII, Latin-1, or <code>hex</code>
 for devices that exchange raw bytes as hexadecimal text). A connection reconnects on its own after a drop, backing off from half a second up to thirty.</p>
@@ -432,6 +433,14 @@ switch a recipe, set a variable, write an on-site parameter or feed the hand-eye
 <li>A line longer than 64 KB with no terminator in sight is dropped whole, and reading resynchronises at the next terminator. One burst of noise (a wrong baud rate,
 say) therefore costs you that line only; the next real line arrives clean instead of carrying the leftovers.</li>
 </ul>
+<p>A <code>light</code> connection stores the last brightness the platform sent for each channel and the last command string, so the state panel can show what the flow
+asked the controller to do. Presets fill only the editable templates and basic limits; the saved configuration remains the source of truth, and custom controllers can
+use any template with <code>{channel}</code>, <code>{channel0}</code>, <code>{channel_letter}</code>, <code>{value}</code>, formatted values such as
+<code>{value:03d}</code>, and a simple two-digit <code>{checksum}</code> placeholder.</p>
+<p>Two output tools use those connections from inside a flow. <em>Set light</em> (<code>set_light</code>) writes one light channel in brightness, on or off mode; the
+brightness value is an on-site teach parameter. <em>I/O output</em> (<code>io_output</code>) writes a Modbus address or a light channel according to the current verdict:
+OK, NG or always. A pulse writes the active level first and schedules the reset in a background timer, so the inspection thread does not sleep. Both tools degrade by
+default when the connection is missing or a write fails; turn on their required option only when that output must stop the run.</p>
 
 <h2 id="dashboard-data">Dashboard data endpoint</h2>
 <p><code>GET /api/vision/dashboards/{id}/data</code> is the station-level polling endpoint for operator dashboards and external HMIs. It does not replace <code>GET /api/vision/flows/{id}/board</code>: the flow endpoint still returns one prepared board packet for one flow, while the dashboard endpoint reads a dashboard layout, finds only the flows that layout references, and returns one prepared board packet per flow plus station data.</p>

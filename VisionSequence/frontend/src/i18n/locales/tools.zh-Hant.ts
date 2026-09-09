@@ -2949,6 +2949,33 @@ export default {
     },
     ports: { image: "影像", sent: "已送出", bytes: "位元組數" },
   },
+  set_light: {
+    label: "設定光源",
+    description: "設定光源控制器某一通道的亮度、開燈或關燈。連線缺失或送出失敗預設降級，流程繼續。",
+    params: {
+      connection: { label: "連線", help: "在「外部整合 > 設備連線」建立的光源控制器連線名稱。" },
+      channel: { label: "通道" },
+      value: { label: "亮度", help: "0 到連線設定的 value_max。換料號常要調光，因此列為現場教導參數。" },
+      mode: { label: "模式", options: { brightness: "設定亮度", on: "開燈", off: "關燈" } },
+      required: { label: "必要", help: "送不出光源命令時讓 run 失敗；預設關閉，通訊問題只降級。" },
+      timeout_s: { label: "逾時（秒）", group: "進階" },
+    },
+    ports: { ok: "成功" },
+  },
+  io_output: {
+    label: "I/O 輸出",
+    description: "依目前 OK/NG 判定寫出電平或非阻塞脈衝，可寫 Modbus 位址或光源控制器通道。",
+    params: {
+      connection: { label: "連線", help: "Modbus 或光源控制器連線名稱；填 id 也可以。" },
+      address: { label: "位址", help: "Modbus 用 coil:0 這類 area:offset[:dtype]；光源控制器填通道號。" },
+      on_when: { label: "何時輸出", options: { ok: "OK", ng: "NG", always: "總是" } },
+      pulse_ms: { label: "脈衝", help: "0 維持電平；大於 0 時由背景計時器復位，不會讓流程執行緒 sleep。" },
+      invert: { label: "反相" },
+      required: { label: "必要", help: "輸出失敗時讓 run 失敗；預設關閉，通訊問題只降級。" },
+      timeout_s: { label: "逾時（秒）", group: "進階" },
+    },
+    ports: { status: "判定", ok: "成功", active: "輸出電平" },
+  },
   write_log: {
     label: "寫入紀錄",
     description: "把具名輸出寫成一列 CSV 或一行 TXT，背景寫入 DATA_DIR/file_outputs 下的相對資料夾。",

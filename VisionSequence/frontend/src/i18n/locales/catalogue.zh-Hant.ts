@@ -43,6 +43,10 @@ export default {
       label: 'TCP 文字設備伺服器',
       description: '本機開埠等待設備連進來，收送逐行文字或十六進位位元組。',
     },
+    light: {
+      label: '光源控制器',
+      description: '透過串口或 TCP 送出光源控制命令，可設定亮度、開燈與關燈樣板。',
+    },
     plugin: { label: '外掛（自行指定類別路徑）' },
   },
   /** Advanced／Augment 這些分組名稱每個訓練方式共用。 */
