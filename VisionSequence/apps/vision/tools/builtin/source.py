@@ -210,7 +210,7 @@ class StereoGrabTool(Tool):
     outputs = [
         Port("image", "Left image", "image"),
         Port("image_right", "Right image", "image"),
-        Port("dt_ms", "Pair offset", "number"),
+        Port("dt_ms", "Pair offset (right minus left, ms)", "number"),
         Port("captured_at", "Captured at", "number", required=False),
         flow_out("timeout", "Timeout", "critical"),
     ]
@@ -263,7 +263,7 @@ class StereoGrabTool(Tool):
                 reason = left_reason if left is None else right_reason
                 raise ToolError("Stereo source returned no image" + (f": {reason}" if reason else ""))
         max_dt = ctx.number("max_dt_ms", 10)
-        if dt_ms is not None and max_dt > 0 and dt_ms > max_dt:
+        if dt_ms is not None and max_dt > 0 and abs(dt_ms) > max_dt:
             msg = f"Stereo pair offset {dt_ms:.2f} ms is over {max_dt:.2f} ms"
             ctx.log(msg, level="warning")
             warnings.append(msg)

@@ -172,8 +172,42 @@ export function routes(path: string, body?: unknown): unknown {
   }
   if (path.startsWith('/vision/calibration/capture')) return { ref: 'cal:capture:image', width: 640, height: 480, name: 'shot.png' }
   if (path.startsWith('/vision/calibration/detect')) return { found: true, count: 54, corners: [[10, 10], [20, 10]], overlays: [{ kind: 'points', points: [[10, 10], [20, 10]] }] }
+  if (path.startsWith('/vision/calibration/stereo/import')) return {
+    payload: {
+      unit: 'mm',
+      image_size: [640, 480],
+      stereo: {
+        left_source: 'left',
+        right_source: 'right',
+        M1: [[1200, 0, 320], [0, 1200, 240], [0, 0, 1]],
+        D1: [0, 0, 0, 0, 0],
+        M2: [[1200, 0, 320], [0, 1200, 240], [0, 0, 1]],
+        D2: [0, 0, 0, 0, 0],
+        R: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        T: [-60, 0, 0],
+        image_size: [640, 480],
+        rms: 0.1,
+        baseline_mm: 60,
+        points: [{ index: 0, error: 0.05 }],
+      },
+    },
+    summary: 'stereo baseline 60.000 mm, rms 0.100 px',
+    quality: { stereo: 'good' },
+  }
+  if (path.startsWith('/vision/calibration/stereo/reference')) return {
+    payload: { unit: 'mm', image_size: [640, 480], stereo: { rms: 0.1, baseline_mm: 60, points: [], z_ref: { d0_mm: 800, Z0_mm: 100, scale: 1 } } },
+    summary: 'stereo baseline 60.000 mm, rms 0.100 px, z reference set',
+    quality: { stereo: 'good' },
+  }
   if (path.startsWith('/vision/calibration/solve')) {
     const mode = typeof body === 'object' && body ? (body as { mode?: unknown }).mode : ''
+    if (mode === 'stereo') {
+      return {
+        payload: { unit: 'mm', image_size: [640, 480], stereo: { rms: 0.1, baseline_mm: 60, points: [{ index: 0, error: 0.05 }, { index: 1, error: 0.04 }, { index: 2, error: 0.03 }, { index: 3, error: 0.03 }, { index: 4, error: 0.04 }] } },
+        summary: 'stereo baseline 60.000 mm, rms 0.100 px',
+        quality: { stereo: 'good' },
+      }
+    }
     if (mode === 'mapping') {
       return {
         payload: {

@@ -4,6 +4,8 @@
     POST /vision/calibration/detect         {ref, kind, cols, rows} → 角點與可直接畫的標記
     POST /vision/calibration/snap           {ref, x, y, radius?} → 吸附到附近特徵的中心（點不準也沒關係）
     POST /vision/calibration/solve          {mode, ...} → payload＋品質評語（**先看再存**，不會偷偷寫進資產）
+    POST /vision/calibration/stereo/import  stereo_config.json → payload＋品質評語
+    POST /vision/calibration/stereo/reference {asset_id, left_ref, right_ref, roi, Z0_mm, scale?} → 更新 z_ref
     POST /vision/calibration/assets         {name, payload} → 201 資產
     GET  /vision/calibration/assets/{id}    → 資產內容、摘要與品質
     GET  /vision/calibration/robot/signals  → 手眼標定通訊訊號
@@ -207,6 +209,7 @@ def solve(request: HttpRequest):
     mode=points      points[{px:[x,y], world:[X,Y]}]＋world_kind：影像↔機械手（或治具）座標
     mode=distance    points 兩點＋distance：純比例（最快的一種，量測換算用這個就夠）
     mode=robot       points[{px,py,rx,ry}]＋kind/camera_mode；rotation_points[[x,y],...] 為另外採集的旋轉軌跡
+    mode=stereo      views_left/views_right 成對角點＋cols/rows/spacing(+kind)：雙相機外參
     """
     require_feature(request, "assets")
     data = _body(request)
@@ -319,8 +322,39 @@ def solve(request: HttpRequest):
                     if len(pairs) > MAX_POINTS:
                         raise ValidationError(f"At most {MAX_POINTS} points", code="too_many_points")
                     payload["mapping"] = calib.solve_mapping(pairs, kind, from_source=from_source, to_source=to_source)
+        elif mode == "stereo":
+            cols, rows = int(data.get("cols") or 0), int(data.get("rows") or 0)
+            spacing = float(data.get("spacing") or 0)
+            board_kind = str(data.get("kind") or data.get("board_kind") or "chessboard")
+            obj = calib.board_object_points(cols, rows, spacing, board_kind)
+            if "views_left" in data or "views_right" in data:
+                views_left = _corner_views(data.get("views_left"), "views_left")
+                views_right = _corner_views(data.get("views_right"), "views_right")
+            else:
+                left_refs = data.get("left_refs") or data.get("refs_left") or []
+                right_refs = data.get("right_refs") or data.get("refs_right") or []
+                if not isinstance(left_refs, list) or not isinstance(right_refs, list) or len(left_refs) != len(right_refs):
+                    raise ValidationError("left_refs and right_refs must contain the same number of images", code="bad_points")
+                if len(left_refs) > MAX_VIEWS:
+                    raise ValidationError(f"At most {MAX_VIEWS} paired pictures", code="too_many_views")
+                views_left, views_right = [], []
+                for left_ref, right_ref in zip(left_refs, right_refs, strict=True):
+                    cl = calib.find_board(_image(str(left_ref)), cols, rows, board_kind)
+                    cr = calib.find_board(_image(str(right_ref)), cols, rows, board_kind)
+                    if cl is None or cr is None:
+                        raise ValidationError("Every stereo pair must have the board found in both pictures", code="board_not_found")
+                    views_left.append(cl)
+                    views_right.append(cr)
+            if len(views_left) != len(views_right):
+                raise ValidationError("views_left and views_right must have the same number of views", code="bad_points")
+            payload["stereo"] = calib.solve_stereo(
+                views_left, views_right, obj, (width, height),
+                left_source=str(data.get("left_source") or ""),
+                right_source=str(data.get("right_source") or ""),
+                board={"pattern": board_kind, "rows": rows, "cols": cols, "spacing": spacing},
+            )
         else:
-            raise ValidationError("mode must be board, points, distance, robot or mapping", code="bad_mode")
+            raise ValidationError("mode must be board, points, distance, robot, mapping or stereo", code="bad_mode")
         if data.get("lens"):  # 沿用既有標定的鏡頭部分（只想重做世界座標時）
             payload["lens"] = data["lens"]
         checked = calib.validate(payload)
@@ -330,6 +364,95 @@ def solve(request: HttpRequest):
         raise ValidationError(f"Those numbers do not make a calibration: {exc}", code="bad_calibration") from None
     cov = calib.coverage(data.get("views") or [], (width, height)) if mode == "board" else None
     return {"payload": checked, "summary": calib.summary(checked), "quality": calib.quality(checked), "coverage": cov, "warnings": calib.warnings(checked, cov)}
+
+
+@router.post("/calibration/stereo/import")
+def import_stereo(request: HttpRequest, file: UploadedFile = File(None)):
+    """匯入外部 stereo_config.json，但不存成資產；讓使用者先看摘要。"""
+    require_feature(request, "assets")
+    try:
+        if file is not None:
+            config = json.loads(file.read().decode("utf-8-sig"))
+            left_source = right_source = ""
+        else:
+            data = _body(request)
+            config = data.get("config", data)
+            left_source = str(data.get("left_source") or "")
+            right_source = str(data.get("right_source") or "")
+        payload = calib.import_stereo_config(config, left_source=left_source, right_source=right_source)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValidationError(f"Could not read the stereo config: {exc}", code="bad_json") from None
+    except calib.CalibError as exc:
+        raise _fail(exc) from None
+    return {"payload": payload, "summary": calib.summary(payload), "quality": calib.quality(payload), "warnings": calib.warnings(payload)}
+
+
+@router.post("/calibration/stereo/reference")
+def stereo_reference(request: HttpRequest):
+    """在帶面 ROI 量一次 d0，寫入既有 stereo 標定資產的 z_ref。"""
+    require_feature(request, "assets")
+    data = _body(request)
+    try:
+        asset_id = uuid.UUID(str(data.get("asset_id") or ""))
+    except ValueError:
+        raise NotFound("Calibration not found", code="asset_not_found") from None
+    asset = Asset.objects.filter(pk=asset_id, kind="calibration").first()
+    if asset is None:
+        raise NotFound("Calibration not found", code="asset_not_found")
+    try:
+        payload = calib.load(asset.path)
+        left = _image(str(data.get("left_ref") or data.get("ref_left") or ""))
+        right = _image(str(data.get("right_ref") or data.get("ref_right") or ""))
+        roi = data.get("roi") or {}
+        if not isinstance(roi, dict):
+            raise ValidationError("roi must be an object", code="bad_roi")
+        match = _roi_match(roi)
+        from apps.vision.tools.builtin.stereo import measure_matches
+
+        measured = measure_matches(
+            left, right, [match], payload,
+            min_disparity=int(data.get("min_disparity") or 0),
+            num_disparities=int(data.get("num_disparities") or 128),
+            block_size=int(data.get("block_size") or 5),
+            scale=float(data.get("roi_scale") or data.get("scale_roi") or 0.5),
+            preprocess=str(data.get("preprocess") or "none"),
+            stat=str(data.get("stat") or "mean"),
+            min_valid_ratio=float(data.get("min_valid_ratio") or 0.1),
+            use_wls=bool(data.get("use_wls") or False),
+            dt_ms=None,
+            motion_compensation=False,
+            z_from_ref=False,
+            log_warning=None,
+        )
+        d0 = measured[0].get("distance_mm")
+        if d0 is None or float(d0) <= 0:
+            raise ValidationError("Could not measure a valid belt distance in that ROI", code="no_disparity")
+        stereo = dict(payload.get("stereo") or {})
+        stereo["z_ref"] = {"d0_mm": float(d0), "Z0_mm": float(data.get("Z0_mm")), "scale": float(data.get("scale") or 1.0)}
+        payload = {**payload, "stereo": stereo}
+        checked = calib.save(asset.path, payload)
+    except (TypeError, ValueError, IndexError) as exc:
+        raise ValidationError(f"Those numbers do not make a height reference: {exc}", code="bad_reference") from None
+    except calib.CalibError as exc:
+        raise _fail(exc) from None
+    asset.meta = {**(asset.meta or {}), "summary": calib.summary(checked), "quality": calib.quality(checked),
+                  "has_stereo": "stereo" in checked, "has_z_ref": bool((checked.get("stereo") or {}).get("z_ref"))}
+    asset.size = os.path.getsize(asset.path)
+    asset.save(update_fields=["meta", "size", "updated_at"])
+    audit.record(request, "asset.calibration", f"asset:{asset.id}", summary=f"{asset.name}: stereo height reference")
+    return {"payload": checked, "summary": calib.summary(checked), "quality": calib.quality(checked), "warnings": calib.warnings(checked)}
+
+
+def _roi_match(roi: dict[str, Any]) -> dict[str, Any]:
+    if roi.get("shape") == "polygon":
+        points = roi.get("points") or []
+        arr = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        x, y, w, h = cv2.boundingRect(arr.astype(np.float32))
+        return {"x": float(x), "y": float(y), "w": float(w), "h": float(h), "polygon": arr.tolist(), "centroid": arr.mean(axis=0).tolist()}
+    if roi.get("shape") == "rect":
+        x, y, w, h = float(roi.get("x")), float(roi.get("y")), float(roi.get("w")), float(roi.get("h"))
+        return {"x": x, "y": y, "w": w, "h": h, "cx": x + w / 2, "cy": y + h / 2}
+    raise ValidationError("roi must be a rectangle or polygon", code="bad_roi")
 
 
 @router.post("/calibration/coverage")

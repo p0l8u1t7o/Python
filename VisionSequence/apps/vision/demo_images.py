@@ -632,6 +632,26 @@ def conveyor_sequence() -> list[np.ndarray]:
     return out
 
 
+def conveyor_stereo_sequence() -> list[np.ndarray]:
+    """合成輸送帶左視野樣本；右視野由現場 stereo_grab 的 right source 提供。"""
+    out = []
+    f, baseline, depth = 1200.0, 60.0, 600.0
+    disp = int(round(f * baseline / depth))
+    for i, y in enumerate((62, 116, 170, 224)):
+        rng = np.random.default_rng(2400 + i)
+        left = rng.integers(28, 86, (360, 480), np.uint8)
+        right = np.full_like(left, 50)
+        right[:, : 480 - disp] = left[:, disp:]
+        for cx, cy, bw, bh in ((170, y, 72, 48), (290, y + 26, 84, 52), (375, y - 18, 64, 64)):
+            texture = rng.integers(150, 245, (bh, bw), np.uint8)
+            x0, y0 = int(cx - bw / 2), int(cy - bh / 2)
+            if 0 <= y0 < 360 - bh and 0 <= x0 < 480 - bw and x0 - disp >= 0:
+                left[y0 : y0 + bh, x0 : x0 + bw] = texture
+                right[y0 : y0 + bh, x0 - disp : x0 - disp + bw] = texture
+        out.append(cv2.cvtColor(left, cv2.COLOR_GRAY2BGR))
+    return out
+
+
 def small_code_scenes() -> list[np.ndarray]:
     """大背景上的小碼樣本: 前三張有移動的小 QR, 第四張缺碼作為 NG。"""
     try:
@@ -690,6 +710,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "marker_plate": ("locate and gauge", marker_plate),
     "stop_signs": ("stop sign", stop_signs),
     "conveyor_sequence": ("conveyor sequence", conveyor_sequence),
+    "conveyor_stereo_sequence": ("conveyor stereo sequence", conveyor_stereo_sequence),
     "dl_parts": ("classification teaching", dl_parts),
     "dl_scratch": ("segmentation teaching", dl_scratch),
 }

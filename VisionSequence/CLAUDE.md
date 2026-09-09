@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：145 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1307 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：146 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1307 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -29,7 +29,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，35 個：含 6 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**34 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，36 個：含 5 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**36 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -305,6 +305,13 @@
 - **成對取像**：hub `request_pair(client, ch_a, ch_b, timeout)`＝同一 session 對兩個通道背靠背送 `GRAB after_request`，等兩張回來後 `dt_ms`＝兩張擷取時間戳之差（沒時間戳退回到達時間差）。工具 `stereo_grab`（source 類；`left`／`right` 兩個 capture 來源、`max_dt_ms`（teach）超過只 warning、`on_timeout` 同 `image_source`）輸出 `image`／`image_right`／`dt_ms`／`captured_at`；非 capture 來源各自 grab、`dt_ms=None`。`CaptureGrabber.accept_frame()` 讓成對取回的影格同步更新 grabber 狀態。fake 相機 60 fps 實測 `dt` p50 3 ms。
 - **`scripts/bench_pipeline.py`**（真引擎＋`fake:2` 5MP 彩色 ×2 連本機 hub，流程 stream 來源 → 推論（沒 GPU 底模時用 blob 代替並標明）→ `edge_filter` → `track_objects` → `format_text` → `tcp_client(queue)` 對本機假 server，跑 10 秒）——**這是 40 ms 預算的量尺**。實測（本機）：擷取→TCP 收到 p50 22.4／p95 28.9 ms，其中 blob 15 ms（換成 `ai_segment` 5MP 約 8 ms）、擷取端發布→伺服端開跑 p50 5.7 ms（含 15 MB 共享記憶體複製 2.75 ms）、取像等待 p95 2.3 ms、影像年齡 p95 < 1.5 ms、平台 overhead（record／SSE／影像存入）p95 0.3 ms、TCP 送到收 p95 0.6 ms、跳幀 0.75%。**所以推式觸發與低延遲模式都不做**（門檻 3 ms 沒到）；hub 仍留了 `frame_event()`／`_notify_frame()`（收訊執行緒只 `set()`）給以後用。傳輸 bench 共享記憶體仍 116 fps。
 - 工具數 144 → 145。測試 `tests/test_conveyor_latency.py`（真引擎：時間戳合理、timing 鍵齊、`request_pair`、`stereo_grab` 走 `validate_graph`、舊擷取端零時間戳、stream 來源影像年齡）。
+
+### 輸送帶追蹤取料批 C：雙視野量 z（2026-09-09；Codex 實作、Claude 驗證並修補償方向）
+- **標定第五塊 `stereo{}`**（`calib._validate_stereo`：M1 D1 M2 D2 R T、`image_size`、`baseline_mm`、`z_ref{d0_mm, Z0_mm, scale}`；五塊選一）。來源兩種：`POST /calibration/stereo/import` 吃 VisionStereo 的 `stereo_config.json`（只讀 M1 D1 M2 D2 R T width height，R1 R2 P1 P2 Q 平台自己重算）；`POST /calibration/solve mode=stereo` 左右各 ≥ 5 張同一塊板 → 各自 `calibrateCamera` → `stereoCalibrate(FIX_INTRINSIC)`，**最小平方、逐張殘差、不用 RANSAC**，solve 只算不存。rectify map 依實際影像尺寸在 `calib.stereo_rectify()` 快取；identity 的 rectify 直接跳過 remap。`POST /calibration/stereo/reference` 量帶面基準 d0 並存 `z_ref`。
+- **`stereo_depth`**（measure；`tools/builtin/stereo.py`）：吃左圖、`image_right`、`matches`（polygon 建 mask，沒 polygon 用 bbox）、`dt_ms`；每物件只算 bbox 左擴 `min+num disparity` 的 ROI、縮 `scale`（預設 0.5）、SGBM_3WAY（＋WLS 需 contrib，缺就退回並記一次）、**只統計 mask 內的有效視差**（mean／median）→ `distance_mm = baseline·f/disp`，有 `z_ref` 才有 `z = Z0 + (d0 − d)·scale`（沒有 → `z=None`＋warning）。合成精度：600 mm 物體誤差 < 0.01 mm；5MP 三物件 200×200 ROI 5.3 ms。兩種接法都通：`ai_segment → edge_filter → stereo_depth → track_objects` 或 `track_objects → stereo_depth(new_confirmed)`（只算要送的）。
+  **坑（探針抓到、已修）**：批 B 的 `request_pair` 把左右時間差取了絕對值，Codex 的 Δt 補償與它的測試互相配合但**物理方向反了**——用「右相機晚拍、物體往 +x 走」的正確一對驗：不補償誤差 54 mm、補償後 120 mm。現在 **`dt_ms` 有號（右 − 左，正＝右晚拍）**，`stereo_grab.max_dt_ms` 比絕對值，`stereo_depth` 把右 ROI 往 `−v·dt` 移；測試兩個方向都補回 600.1 mm，且故意給反號要比不補償更差。
+- `format_text` 對值為 None 的欄位當「缺」（`stereo_depth` 量不到時 z=None，`{z:.2f}` 不再炸，補 0.00）。
+- 標定頁第七種模式 `'stereo'`（`components/calibration/StereoWizard.tsx`：拍 N 對→殘差表→解算→量帶面基準→存；精靈拍對目前用兩次 `/calibration/capture` 並顯示 UI 端的 dt，真正產線用 `stereo_grab`）；範本 `conveyor_pick_stereo`（樣本 `demo_images` 合成立體對，f 1200 px、baseline 60 mm）。工具數 145 → 146、範本 35 → 36。測試 `tests/test_stereo.py`。
 
 ### 多幀累積、影像運算與簡易畸變（C3／J4／J5，`tools/builtin/frames.py`＋`preprocess.py`，Codex 實作）
 - **`frame_accumulate`**（C3）：把每次 run 的影像累積成 mean／max／min，`count` 張才輸出（`emit` 決定）；狀態存流程變數，`reset` 可清空。**preview／`flow_id<=0` 一律走覆蓋層**——實測產線累積 1 張後連按三次試執行，產線狀態一字不變、下一片仍是第 2 張。`previous_image` 讀 `images.store` 最近第 k 次 run 的節點輸出，找不到走 `not_found`。

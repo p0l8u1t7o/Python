@@ -155,6 +155,23 @@ export type Region =
   | { shape: 'line'; x1: number; y1: number; x2: number; y2: number }
   | { shape: 'point'; x: number; y: number }
 
+export interface CalibrationSolveResult {
+  payload: Record<string, unknown>
+  summary: string
+  quality: Record<string, string>
+  warnings?: string[]
+  coverage?: { covered: number; cells: number; edge_missing: number } | null
+}
+
+export interface StereoReferenceBody {
+  asset_id: string
+  left_ref: string
+  right_ref: string
+  roi: Region
+  Z0_mm: number
+  scale?: number
+}
+
 // ---- Overlay（工具回傳、畫在輸入影像座標上） ----
 export type Overlay = {
   color?: string

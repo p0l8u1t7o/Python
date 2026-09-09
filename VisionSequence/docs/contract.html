@@ -144,7 +144,7 @@
 </head>
 <body>
 <nav class="site"><a href="index.html">Overview</a><a href="user-guide.html">User guide</a><a href="workflow-design.html">Workflow design</a><a href="architecture.html">Architecture</a><a href="automation.html">Automation</a><a href="modbus.html">Modbus</a><a href="capture-client.html">Capture client</a><a href="deployment.html">Deployment</a><a href="dl.html">Deep learning</a><a href="agent.html">AI assistant</a><a href="batch.html">Batch testing</a><a href="golden.html">Golden Set</a><a href="vision-capabilities.html">Inspection capabilities</a><a href="calibration.html">Calibration</a><a href="samples.html">Example templates</a><a href="performance.html">Performance</a><a href="plugins.html">Plugins</a><a href="contract.html" aria-current="page">Contract</a><a href="glossary.html">Glossary</a></nav>
-<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#backend">Back end (settled — do not change these interfaces)</a><ul><li><a href="#graph">The graph JSON</a></li><li><a href="#images">Fixed pictures (the value of a kind=images parameter)</a></li><li><a href="#roi">The ROI region (the value of a kind=roi parameter)</a></li><li><a href="#overlay">The overlay dict (Result.overlays, drawn in the step&#x27;s input image coordinates)</a></li><li><a href="#auth-shape">Identity and the shape of an error</a></li><li><a href="#runreport">The RunReport (returned by run and preview, and carried by the SSE run_finished event)</a></li><li><a href="#preview">Preview extras (used by the tool page)</a></li><li><a href="#paramkind">Notes on Param.kind</a></li></ul></li><li><a href="#dashboard">Dashboard model and layout</a></li><li><a href="#frontend">Front-end skeleton (settled)</a></li><li><a href="#more">Templates, batch testing and integration tools (apps/vision/api_more.py)</a></li><li><a href="#recipes">Recipes, stations and teaching</a></li><li><a href="#recipe-io">Recipe export, import and the save-scope check (api_recipes.py)</a></li><li><a href="#deploy">Deploying the two halves separately</a></li></ul></aside><article class="doc">
+<div class="doc-layout"><aside class="toc" aria-label="本頁目錄"><p class="toc-title">本頁目錄</p><ul><li><a href="#backend">Back end (settled — do not change these interfaces)</a><ul><li><a href="#graph">The graph JSON</a></li><li><a href="#images">Fixed pictures (the value of a kind=images parameter)</a></li><li><a href="#roi">The ROI region (the value of a kind=roi parameter)</a></li><li><a href="#overlay">The overlay dict (Result.overlays, drawn in the step&#x27;s input image coordinates)</a></li><li><a href="#auth-shape">Identity and the shape of an error</a></li><li><a href="#runreport">The RunReport (returned by run and preview, and carried by the SSE run_finished event)</a></li><li><a href="#preview">Preview extras (used by the tool page)</a></li><li><a href="#calibration-payload">Calibration payload</a></li><li><a href="#paramkind">Notes on Param.kind</a></li></ul></li><li><a href="#dashboard">Dashboard model and layout</a></li><li><a href="#frontend">Front-end skeleton (settled)</a></li><li><a href="#more">Templates, batch testing and integration tools (apps/vision/api_more.py)</a></li><li><a href="#recipes">Recipes, stations and teaching</a></li><li><a href="#recipe-io">Recipe export, import and the save-scope check (api_recipes.py)</a></li><li><a href="#deploy">Deploying the two halves separately</a></li></ul></aside><article class="doc">
 
 <h1>Front-end / back-end contract</h1>
 <p>What the two halves agree on, so they can be worked on in parallel.</p>
@@ -206,6 +206,33 @@
 <li><code>POST /flows/{id}/scratch-image</code> (multipart image) → <code>{ref,width,height,name}</code>: a scratch image that never enters the source library; pass it back as <code>reuse_image_ref</code>.</li>
 <li><code>DELETE /flows/{id}/recent</code> clears the in-memory history and statistics and emits the SSE event <code>cleared</code>.</li>
 </ul>
+
+<h3 id="calibration-payload">Calibration payload</h3>
+<p>A calibration asset is one JSON payload. At least one optional block must be present: <code>lens</code>, <code>world</code>, <code>robot</code>, <code>mapping</code> or <code>stereo</code>. <code>calib.validate()</code> remains the only source of truth for accepted payload shape.</p>
+<pre>{
+  "unit": "mm",
+  "image_size": [1280, 960],
+  "stereo": {
+    "left_source": "left",
+    "right_source": "right",
+    "M1": [[fx,0,cx],[0,fy,cy],[0,0,1]],
+    "D1": [k1,k2,p1,p2,k3],
+    "M2": [[fx,0,cx],[0,fy,cy],[0,0,1]],
+    "D2": [k1,k2,p1,p2,k3],
+    "R": [[...3x3...]],
+    "T": [tx,ty,tz],
+    "image_size": [1280, 960],
+    "rms": 0.2,
+    "baseline_mm": 60,
+    "board": {"pattern": "chessboard", "rows": 6, "cols": 9, "spacing": 20},
+    "points": [{"index": 0, "error": 0.08}],
+    "z_ref": {"d0_mm": 800, "Z0_mm": 100, "scale": 1}
+  }
+}</pre>
+<pre>POST /vision/calibration/solve                 mode may be board, points, distance, robot, mapping or stereo; solve computes only
+POST /vision/calibration/stereo/import         multipart file or JSON config with M1,D1,M2,D2,R,T,width,height; rectification is recomputed
+POST /vision/calibration/stereo/reference      {asset_id,left_ref,right_ref,roi,Z0_mm,scale?} stores stereo.z_ref from measured belt distance</pre>
+<p><code>stereo_depth</code> consumes a stereo calibration asset, <code>image_right</code>, object <code>matches</code> and optional <code>dt_ms</code>. It writes <code>distance_mm</code>, <code>disparity</code>, <code>valid_ratio</code>, <code>compensated</code> and <code>z</code> to each match; without <code>z_ref</code>, <code>z</code> is <code>null</code>.</p>
 
 <h3 id="paramkind">Notes on <code>Param.kind</code></h3>
 <ul>

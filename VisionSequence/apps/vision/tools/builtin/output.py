@@ -736,7 +736,9 @@ class FormatTextTool(Tool):
         for i, item in enumerate(items):
             values = dict(base_values)
             if isinstance(item, dict):
-                values.update(_plain_dict(item))
+                # 值是 None 的欄位當「缺」：stereo_depth 量不到時 z=None，樣板 {z:.2f} 對 None 會炸；
+                # 去掉之後走下面的預設（z 補 0）或 missing 策略，控制器至少拿得到一行
+                values.update({k: v for k, v in _plain_dict(item).items() if v is not None})
             else:
                 values["value"] = _plain(item)
             values.setdefault("item", _plain(item))

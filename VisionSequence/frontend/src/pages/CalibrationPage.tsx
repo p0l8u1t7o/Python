@@ -6,7 +6,7 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRightLeft, Camera, Crosshair, Download, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { ArrowRightLeft, Camera, Crosshair, Download, Layers3, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import {
@@ -17,14 +17,16 @@ import { RobotResult, RobotWizard, useRobotWizard } from '@/components/calibrati
 import type { RobotBlock } from '@/components/calibration/RobotWizard'
 import { MappingResult, MappingWizard, useMappingWizard } from '@/components/calibration/MappingWizard'
 import type { MappingBlock } from '@/components/calibration/MappingWizard'
+import { StereoResult, StereoWizard, useStereoWizard } from '@/components/calibration/StereoWizard'
+import type { StereoBlock } from '@/components/calibration/StereoWizard'
 import { StitchWizard, useStitchWizard } from '@/components/calibration/StitchWizard'
 import { BASE_URL, api, downloadFile, imageUrl, withKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useAssets, useSources } from '@/lib/queries'
-import type { Overlay } from '@/lib/types'
+import type { CalibrationSolveResult, Overlay } from '@/lib/types'
 import { useToast } from '@/providers/ToastProvider'
 
-type Mode = 'board' | 'points' | 'distance' | 'robot' | 'mapping' | 'stitch'
+type Mode = 'board' | 'points' | 'distance' | 'robot' | 'mapping' | 'stereo' | 'stitch'
 type BoardKind = 'chessboard' | 'circles' | 'acircles'
 type BoardPattern = 'chessboard' | 'acircles'
 type WorldKind = 'affine' | 'perspective' | 'scale'
@@ -46,13 +48,7 @@ interface MarkedPoint {
   error: number | null
 }
 
-interface SolveResult {
-  payload: Record<string, unknown>
-  summary: string
-  quality: Record<string, string>
-  warnings?: string[]
-  coverage?: { covered: number; cells: number; edge_missing: number } | null
-}
+type SolveResult = CalibrationSolveResult
 
 const COVERAGE_COLS = 4
 const COVERAGE_ROWS = 3
@@ -135,6 +131,7 @@ export function CalibrationPage() {
   const detected = shots.filter((s) => s.corners?.length)
   const robot = useRobotWizard(shot?.ref ?? null)
   const mapping = useMappingWizard()
+  const stereo = useStereoWizard()
   const stitch = useStitchWizard()
 
   const boardGeneratorQuery = useMemo(() => {
@@ -167,6 +164,7 @@ export function CalibrationPage() {
     setResult(null)
     robot.reset()
     mapping.reset()
+    stereo.reset()
     stitch.reset()
   }
 
@@ -176,9 +174,10 @@ export function CalibrationPage() {
     setPoints([])
     robot.reset()
     mapping.reset()
+    stereo.reset()
     stitch.reset()
     // 標定板與跨相機模式保留多張影像；單張模式切換時只留目前影像。
-    if (next !== 'board' && next !== 'mapping' && next !== 'stitch' && shots.length > 1) {
+    if (next !== 'board' && next !== 'mapping' && next !== 'stereo' && next !== 'stitch' && shots.length > 1) {
       setShots(shot ? [shot] : [])
       setCurrent(0)
     }
@@ -275,15 +274,17 @@ export function CalibrationPage() {
   }
 
   async function solve() {
-    if (mode !== 'mapping' && !shot) return
+    if (mode !== 'mapping' && mode !== 'stereo' && !shot) return
     setBusy(true)
     try {
-      const base = mode === 'mapping' ? {} : { image_size: [shot!.width, shot!.height], unit }
+      const base = mode === 'mapping' || mode === 'stereo' ? {} : { image_size: [shot!.width, shot!.height], unit }
       let body: Record<string, unknown>
       if (mode === 'board') {
         body = { ...base, mode: 'board', kind: boardKind, cols: Number(cols), rows: Number(rows), spacing: Number(spacing), views: detected.map((s) => s.corners) }
       } else if (mode === 'mapping') {
         body = mapping.body()
+      } else if (mode === 'stereo') {
+        body = stereo.body()
       } else if (mode === 'robot') {
         body = { ...base, ...robot.body() }
       } else if (mode === 'points') {
@@ -313,6 +314,9 @@ export function CalibrationPage() {
       }
       if (mode === 'mapping') {
         mapping.applyResult((solved.payload.mapping as MappingBlock | undefined) ?? null)
+      }
+      if (mode === 'stereo') {
+        stereo.applyResult((solved.payload.stereo as StereoBlock | undefined) ?? null)
       }
       toast.success(t('calibration.solved'))
     } catch (err) {
@@ -366,17 +370,20 @@ export function CalibrationPage() {
   const lens = lensOf(result)
   const robotBlock = (result?.payload?.robot as RobotBlock | undefined) ?? null
   const mappingBlock = (result?.payload?.mapping as MappingBlock | undefined) ?? null
+  const stereoBlock = (result?.payload?.stereo as StereoBlock | undefined) ?? null
   const canSolve = mode === 'stitch'
     ? false
     : mode === 'board'
     ? detected.length > 0 && Number(spacing) > 0
     : mode === 'mapping'
       ? mapping.canSolve
-      : mode === 'robot'
-        ? robot.canSolve
-        : mode === 'points'
-          ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
-          : points.length === 2 && Number(distance) > 0
+      : mode === 'stereo'
+        ? stereo.canSolve
+        : mode === 'robot'
+          ? robot.canSolve
+          : mode === 'points'
+            ? points.length >= (worldKind === 'perspective' ? 4 : worldKind === 'affine' ? 3 : 2) && points.every((p) => p.world[0] !== '' && p.world[1] !== '')
+            : points.length === 2 && Number(distance) > 0
 
   return (
     <Page>
@@ -399,8 +406,8 @@ export function CalibrationPage() {
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        {(['board', 'points', 'distance', 'robot', 'mapping', 'stitch'] as Mode[]).map((m) => (
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+        {(['board', 'points', 'distance', 'robot', 'mapping', 'stereo', 'stitch'] as Mode[]).map((m) => (
           <button
             key={m}
             type="button"
@@ -409,7 +416,7 @@ export function CalibrationPage() {
             data-testid={`calib-mode-${m}`}
           >
             <div className="flex items-center gap-2 text-sm font-medium">
-              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : m === 'mapping' ? <ArrowRightLeft size={15} /> : m === 'stitch' ? <PanelsTopLeft size={15} /> : <Move size={15} />}
+              {m === 'board' ? <Wand2 size={15} /> : m === 'points' ? <Crosshair size={15} /> : m === 'distance' ? <Ruler size={15} /> : m === 'mapping' ? <ArrowRightLeft size={15} /> : m === 'stereo' ? <Layers3 size={15} /> : m === 'stitch' ? <PanelsTopLeft size={15} /> : <Move size={15} />}
               {t(`calibration.modes.${m}.title`)}
             </div>
             <p className="mt-1 text-xs text-subtle">{t(`calibration.modes.${m}.hint`)}</p>
@@ -423,6 +430,17 @@ export function CalibrationPage() {
             wizard={mapping}
             onChange={() => setResult(null)}
             onError={(message) => toast.error(message)}
+          />
+        ) : mode === 'stereo' ? (
+          <StereoWizard
+            wizard={stereo}
+            onChange={() => setResult(null)}
+            onError={(message) => toast.error(message)}
+            onSolved={(solved) => {
+              setResult(solved)
+              stereo.applyResult((solved.payload.stereo as StereoBlock | undefined) ?? null)
+              toast.success(t('calibration.solved'))
+            }}
           />
         ) : mode === 'stitch' ? (
           <StitchWizard
@@ -478,7 +496,7 @@ export function CalibrationPage() {
         )}
 
         <div className="space-y-4">
-          {mode === 'mapping' || mode === 'stitch' ? null : mode === 'board' ? (
+          {mode === 'mapping' || mode === 'stereo' || mode === 'stitch' ? null : mode === 'board' ? (
             <Card>
               <CardHeader title={t('calibration.board')} />
               <CardBody className="space-y-3">
@@ -540,7 +558,7 @@ export function CalibrationPage() {
             </Card>
           ) : null}
 
-          {mode === 'mapping' || mode === 'stitch' ? null : mode === 'board' ? (
+          {mode === 'mapping' || mode === 'stereo' || mode === 'stitch' ? null : mode === 'board' ? (
             <Card>
               <CardHeader title={t('calibration.boardGenerator.title')} />
               <CardBody className="space-y-3">
@@ -666,6 +684,7 @@ export function CalibrationPage() {
                 <div className="space-y-2 text-sm" data-testid="calib-result">
                   {robotBlock ? <RobotResult robot={robotBlock} unit={unit} /> : null}
                   {mappingBlock ? <MappingResult mapping={mappingBlock} /> : null}
+                  {stereoBlock ? <StereoResult stereo={stereoBlock} /> : null}
                   {world ? (
                     <>
                       <div className="flex items-baseline gap-2">

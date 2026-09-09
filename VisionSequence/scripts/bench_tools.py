@@ -166,6 +166,53 @@ def save_mapping_calibration(folder: str, w: int, h: int) -> str:
     return path
 
 
+def save_stereo_calibration(folder: str, w: int, h: int, *, z_ref: bool = True) -> str:
+    """建立 rectified 合成立體對標定，供 stereo_depth bench 使用。"""
+    from apps.vision import calib
+
+    f, baseline = 1200.0, 60.0
+    stereo: dict[str, Any] = {
+        "left_source": "L", "right_source": "R",
+        "M1": [[f, 0.0, w / 2], [0.0, f, h / 2], [0.0, 0.0, 1.0]], "D1": [0, 0, 0, 0, 0],
+        "M2": [[f, 0.0, w / 2], [0.0, f, h / 2], [0.0, 0.0, 1.0]], "D2": [0, 0, 0, 0, 0],
+        "R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "T": [-baseline, 0, 0],
+        "image_size": [w, h], "rms": 0.1, "baseline_mm": baseline,
+        "points": [{"index": 0, "error": 0.01}],
+    }
+    if z_ref:
+        stereo["z_ref"] = {"d0_mm": 800.0, "Z0_mm": 50.0, "scale": 1.0}
+    payload = {"unit": "mm", "image_size": [w, h], "stereo": stereo}
+    path = os.path.join(folder, f"stereo_{w}.json")
+    calib.save(path, payload)
+    return path
+
+
+def stereo_scene(w: int, h: int, *, objects: int = 3, box: int = 200) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
+    """合成固定視差的紋理平面與凸起物件。"""
+    f, baseline, depth, plane_depth = 1200.0, 60.0, 600.0, 800.0
+    disp_obj = int(round(f * baseline / depth))
+    disp_plane = int(round(f * baseline / plane_depth))
+    rng = np.random.default_rng(9001 + w)
+    left = rng.integers(20, 90, (h, w), np.uint8)
+    right = np.full_like(left, 45)
+    right[:, : w - disp_plane] = left[:, disp_plane:]
+    matches = []
+    margin = max(180, box + disp_obj + 40)
+    xs = np.linspace(margin, w - margin - box, objects).astype(int)
+    y0 = max(80, h // 2 - box // 2)
+    for i, x0 in enumerate(xs):
+        texture = rng.integers(150, 245, (box, box), np.uint8)
+        y = min(h - box - 40, y0 + (i - 1) * 24)
+        left[y : y + box, x0 : x0 + box] = texture
+        right[y : y + box, x0 - disp_obj : x0 - disp_obj + box] = texture
+        matches.append({
+            "index": i, "label": "part",
+            "polygon": [[float(x0), float(y)], [float(x0 + box), float(y)], [float(x0 + box), float(y + box)], [float(x0), float(y + box)]],
+            "centroid": [float(x0 + box / 2), float(y + box / 2)],
+        })
+    return cv2.cvtColor(left, cv2.COLOR_GRAY2BGR), cv2.cvtColor(right, cv2.COLOR_GRAY2BGR), matches
+
+
 class Scene:
     """一張合成影像與它的幾何（板子中心、孔位），讓每個工具的 ROI 都落在有東西的地方。"""
 
@@ -187,6 +234,8 @@ class Scene:
         self.mask = cv2.threshold(self.gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
         self.calibration = save_calibration(folder, w, h)
         self.mapping_calibration = save_mapping_calibration(folder, w, h)
+        self.stereo_calibration = save_stereo_calibration(folder, w, h)
+        self.stereo_left, self.stereo_right, self.stereo_matches = stereo_scene(w, h, objects=2, box=max(80, min(w, h) // 8))
         self.shape_template = save_png(self.mask[cy - r : cy + r, cx - r : cx + r], folder, f"shape_{w}.png")
         yy, xx = np.mgrid[0:h, 0:w]
         vignette = 1.0 - 0.45 * (((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / ((w / 2) ** 2 + (h / 2) ** 2))
@@ -277,7 +326,7 @@ class Scene:
             fixed_images.store(np.full((32, 32, 3), (0, 255, 0), np.uint8), "green"),
             fixed_images.store(np.full((32, 32, 3), (255, 0, 0), np.uint8), "blue"),
         ]
-        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "mapcal": self.mapping_calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "retrieval": self.retrieval_model, "font": self.font_model}
+        self.assets = {"tpl": self.template, "golden": self.golden, "gap": gap_classifier_onnx(folder), "idn": identity_onnx(folder), "yolo": yolo_like_onnx(folder), "seg": yolo_seg_onnx(folder), "cal": self.calibration, "mapcal": self.mapping_calibration, "stcal": self.stereo_calibration, "shape": self.shape_template, "flat": self.flat, "flat_bgr": self.flat_bgr, "stat": self.stat_model, "shapemodel": self.shape_model, "anomaly": self.anomaly_model, "retrieval": self.retrieval_model, "font": self.font_model}
 
     def rect(self, fx: float, fy: float, fw: float, fh: float) -> dict[str, Any]:
         """以板子中心為原點、以影像比例給的矩形。"""
@@ -573,6 +622,8 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
         ("edge_filter polygon", "edge_filter", big, {"margin_top": 50, "margin_bottom": 50, "margin_left": 0, "margin_right": 0},
          {"matches": [{"cx": 80.0, "cy": 70.0, "w": 40.0, "h": 40.0, "polygon": [[60.0, 48.0], [100.0, 52.0], [96.0, 92.0], [62.0, 88.0]], "label": "part"},
                       {"cx": 140.0, "cy": 120.0, "w": 40.0, "h": 40.0, "polygon": [[120.0, 100.0], [160.0, 100.0], [160.0, 140.0], [120.0, 140.0]], "label": "part"}]}, {}),
+        ("stereo_depth", "stereo_depth", s.stereo_left, {"calibration": "stcal", "num_disparities": 160, "block_size": 5, "scale": 0.5, "min_valid_ratio": 0.25},
+         {"image_right": s.stereo_right, "matches": s.stereo_matches}, {}),
         ("list_filter", "list_filter", None, {"op": "ge", "value": "0.5", "field": "score"}, {"matches": merge_matches}, {}),
         ("list_classify", "list_classify", None, {"field": "score", "classes": "low:,0.5\nhigh:0.5,"}, {"matches": merge_matches}, {}),
         ("list_pick", "list_pick", None, {"by": "nearest", "x": 50, "y": 50}, {"matches": merge_matches}, {}),
@@ -644,6 +695,23 @@ def bench_tools(s: Scene, out: io.StringIO) -> dict[str, tuple[float, float]]:
         rows[name] = (med, p95)
         out.write(f"{name:<28}{med:>10.3f}{p95:>10.3f}   {msg}\n")
     return rows
+
+
+def bench_stereo_5mp(out: io.StringIO, folder: str) -> None:
+    """5MP、3 個 200x200 ROI 的 stereo_depth 熱路徑量測。"""
+    w, h = 2448, 2048
+    left, right, matches = stereo_scene(w, h, objects=3, box=200)
+    assets = {"stcal5": save_stereo_calibration(folder, w, h)}
+    params = {"calibration": "stcal5", "num_disparities": 160, "block_size": 5, "scale": 0.5, "min_valid_ratio": 0.25}
+    tool = base.get("stereo_depth")
+
+    def run() -> Result:
+        return tool.execute(make_ctx("stereo_depth", left, params, {"image_right": right, "matches": matches}, assets, {}))
+
+    med, p95, result = timeit(run, runs=max(10, min(RUNS, 20)))
+    out.write(f"\n== stereo_depth @ 2448x2048, 3 objects 200x200, scale=0.5: median {med:.3f} ms / p95 {p95:.3f} ms, {result.status} {result.message} ==\n")
+    for item in result.outputs.get("matches", []):
+        out.write(f"  #{item.get('index')} d={item.get('distance_mm')} mm z={item.get('z')} valid={item.get('valid_ratio')}\n")
 
 
 def bench_engine(s: Scene, out: io.StringIO) -> None:
@@ -737,6 +805,7 @@ def main() -> None:
     scenes = [Scene(1280, 960, folder), Scene(640, 480, folder)]
     for s in scenes:
         bench_tools(s, out)
+    bench_stereo_5mp(out, folder)
     for s in scenes:
         bench_engine(s, out)
     bench_overhead(out)

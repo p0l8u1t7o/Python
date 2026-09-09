@@ -17,6 +17,7 @@ import type {
   Asset,
   AuthUser,
   CalibrationSignalList,
+  CalibrationSolveResult,
   Capacity,
   CaptureClients,
   CaptureDownloadInfo,
@@ -74,6 +75,7 @@ import type {
   StationTeachGroupList,
   StationTeachParamList,
   StationTeachRef,
+  StereoReferenceBody,
   TcpResult,
   TemplateInstance,
   ToolCatalogue,
@@ -382,6 +384,12 @@ export function useCalibrationRobotSignals(since: number, enabled: boolean) {
     queryFn: () => api.get<CalibrationSignalList>('/vision/calibration/robot/signals', { since }),
     enabled,
     refetchInterval: enabled ? 1000 : false,
+  })
+}
+
+export function useStereoReference() {
+  return useMutation({
+    mutationFn: (body: StereoReferenceBody) => api.post<CalibrationSolveResult>('/vision/calibration/stereo/reference', body),
   })
 }
 

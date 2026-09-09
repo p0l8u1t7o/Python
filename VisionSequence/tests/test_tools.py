@@ -38,6 +38,7 @@ class RegistryTests(SimpleTestCase):
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
             "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly", "circular_caliper", "profile_defect", "ocr_read", "ocv_verify",
             "boxes_overlap", "edge_filter", "list_filter", "list_classify", "list_pick",
+            "stereo_depth",
             "multi_light_grab", "multi_light_fuse",
         }
         keys = {t.key for t in base.all_types()}
@@ -104,6 +105,7 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["ocv_verify"], {"expected", "min_char_confidence"})
         self.assertEqual(teach["boxes_overlap"], {"min_overlap"})
         self.assertEqual(teach["edge_filter"], {"margin_top", "margin_bottom", "margin_left", "margin_right"})
+        self.assertEqual(teach["stereo_depth"], {"num_disparities", "block_size", "min_valid_ratio"})
         self.assertEqual(teach["track_objects"], {"max_distance", "confirm_frames"})
         self.assertEqual(teach["list_filter"], {"value", "value2"})
         self.assertEqual(teach["list_classify"], {"classes"})

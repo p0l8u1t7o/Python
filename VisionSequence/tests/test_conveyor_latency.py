@@ -103,7 +103,7 @@ class ConveyorLatencyTests(TransactionTestCase):
         self.assertEqual(left.image.shape, (480, 640, 3))
         self.assertEqual(right.image.shape, (480, 640, 3))
         self.assertIsNotNone(dt_ms)
-        self.assertGreaterEqual(dt_ms or 0, 0.0)
+        self.assertIsInstance(dt_ms, float)  # 有號（右 − 左），fake 相機兩邊都可能先拍
 
     def test_stereo_grab_validate_graph_flow_can_run(self) -> None:
         self._start_capture()

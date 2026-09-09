@@ -15,6 +15,9 @@
 ## stereo_grab
 Stereo pair source. Set `left` and `right`; when both point to capture channels on the same client, the tool sends paired GRAB requests and returns `image`, `image_right`, `dt_ms` and `captured_at`. `max_dt_ms` only records a warning; `on_timeout` follows `image_source`.
 
+## stereo_depth
+Measure object top distance from a rectified stereo pair. Connect `image` and `image_right` from `stereo_grab`, and pass `matches` from segmentation, filtering, or `track_objects.new_confirmed`. The tool rectifies once per frame, computes SGBM only inside each object ROI, averages valid disparity inside the polygon mask, writes `distance_mm`, `disparity`, `valid_ratio`, `compensated`, and `z` back onto each match, and returns `z` from the first match. With `dt_ms` plus match `vx`/`vy`, the right ROI is shifted by `v * dt`; without velocity it leaves the pair unshifted and warns. If the calibration has no `stereo.z_ref`, robot `z` is empty but `distance_mm` is still reported.
+
 ## grayscale
 幾乎所有幾何／二值化工具的前置。彩色判斷（color_range／color_check／color_stats）**不要**經過它。
 

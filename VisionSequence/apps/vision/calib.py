@@ -23,7 +23,7 @@ payload 結構（`validate()` 是唯一的事實來源）::
       "note": ""
     }
 
-`lens`、`world` 與 `robot` 都是選配，至少提供一塊；`robot` 保存像素到機構的仿射與旋轉中心。
+`lens`、`world`、`robot`、`mapping` 與 `stereo` 都是選配，至少提供一塊；`robot` 保存像素到機構的仿射與旋轉中心。
 
 幾何慣例與平台其他地方一致：影像座標 y 向下、像素中心在整數座標、影像角度正值＝畫面順時針。
 世界角度則以世界座標軸本身度量（+X 轉向 +Y 為正），因為機械手的座標系是使用者自己定的。
@@ -48,6 +48,7 @@ WORLD_KINDS = {"scale": 2, "affine": 3, "perspective": 4}
 MAPPING_KINDS = {"affine": 3, "perspective": 4}
 ROBOT_KINDS = ("translation", "translation_rotation")
 CAMERA_MODES = ("fixed", "moving")
+DIST_SIZES = (4, 5, 8, 12, 14)
 
 
 class CalibError(ValueError):
@@ -83,7 +84,7 @@ def validate(payload: Any) -> dict[str, Any]:
             raise CalibError("lens contains non-finite numbers")
         if cam[0, 0] <= 0 or cam[1, 1] <= 0:
             raise CalibError("lens focal length must be positive")
-        if dist.size not in (4, 5, 8, 12, 14):
+        if dist.size not in DIST_SIZES:
             raise CalibError("dist_coeffs must have 4, 5, 8, 12 or 14 values")
         out["lens"] = {
             "camera_matrix": cam.tolist(), "dist_coeffs": dist.tolist(),
@@ -119,9 +120,102 @@ def validate(payload: Any) -> dict[str, Any]:
         out["robot"] = _validate_robot(payload["robot"])
     if "mapping" in payload:
         out["mapping"] = _validate_mapping(payload["mapping"])
-    if not any(key in out for key in ("lens", "world", "robot", "mapping")):
-        raise CalibError("A calibration needs a lens, a world mapping, a robot mapping, or a camera mapping")
+    if "stereo" in payload:
+        out["stereo"] = _validate_stereo(payload["stereo"], (w, h))
+    if not any(key in out for key in ("lens", "world", "robot", "mapping", "stereo")):
+        raise CalibError("A calibration needs a lens, a world mapping, a robot mapping, a camera mapping, or stereo data")
     return out
+
+
+def _matrix3(raw: Any, field: str) -> np.ndarray:
+    try:
+        matrix = np.asarray(raw, dtype=np.float64).reshape(3, 3)
+    except (TypeError, ValueError, OverflowError):
+        raise CalibError(f"stereo.{field} must be a finite 3x3 matrix") from None
+    if not np.isfinite(matrix).all():
+        raise CalibError(f"stereo.{field} contains non-finite numbers")
+    return matrix
+
+
+def _dist(raw: Any, field: str) -> np.ndarray:
+    try:
+        dist = np.asarray(raw, dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError, OverflowError):
+        raise CalibError(f"stereo.{field} must be distortion coefficients") from None
+    if not np.isfinite(dist).all() or dist.size not in DIST_SIZES:
+        raise CalibError(f"stereo.{field} must have 4, 5, 8, 12 or 14 finite values")
+    return dist
+
+
+def _validate_stereo(stereo: Any, default_size: tuple[int, int]) -> dict[str, Any]:
+    """檢查雙相機標定；只保存原始內外參，rectify map 在載入後依實際影像尺寸快取。"""
+    if not isinstance(stereo, dict):
+        raise CalibError("stereo must be an object")
+    raw_size = stereo.get("image_size") or list(default_size)
+    try:
+        w, h = int(raw_size[0]), int(raw_size[1])
+    except (TypeError, ValueError, IndexError):
+        raise CalibError("stereo.image_size must be [width, height]") from None
+    if w <= 0 or h <= 0:
+        raise CalibError("stereo.image_size must be positive")
+    m1, m2 = _matrix3(stereo.get("M1"), "M1"), _matrix3(stereo.get("M2"), "M2")
+    if m1[0, 0] <= 0 or m1[1, 1] <= 0 or m2[0, 0] <= 0 or m2[1, 1] <= 0:
+        raise CalibError("stereo focal length must be positive")
+    d1, d2 = _dist(stereo.get("D1"), "D1"), _dist(stereo.get("D2"), "D2")
+    r = _matrix3(stereo.get("R"), "R")
+    try:
+        t = np.asarray(stereo.get("T"), dtype=np.float64).reshape(-1)
+    except (TypeError, ValueError, OverflowError):
+        raise CalibError("stereo.T must be three finite values") from None
+    if t.size != 3 or not np.isfinite(t).all():
+        raise CalibError("stereo.T must be three finite values")
+    baseline = _num(stereo.get("baseline_mm"), float(np.linalg.norm(t)))
+    if baseline <= 0:
+        raise CalibError("stereo.baseline_mm must be greater than 0")
+    out: dict[str, Any] = {
+        "left_source": str(stereo.get("left_source") or "")[:200],
+        "right_source": str(stereo.get("right_source") or "")[:200],
+        "M1": m1.tolist(), "D1": d1.tolist(), "M2": m2.tolist(), "D2": d2.tolist(),
+        "R": r.tolist(), "T": t.tolist(), "image_size": [w, h],
+        "rms": _num(stereo.get("rms")), "baseline_mm": float(baseline),
+    }
+    board = stereo.get("board")
+    if isinstance(board, dict):
+        pattern = str(board.get("pattern") or "chessboard")
+        if pattern not in BOARD_KINDS:
+            raise CalibError(f"stereo.board.pattern must be one of {', '.join(BOARD_KINDS)}")
+        rows, cols = int(board.get("rows") or 0), int(board.get("cols") or 0)
+        spacing = _robot_number(board.get("spacing"), "stereo.board.spacing", nonnegative=True)
+        if rows < 2 or cols < 2 or spacing <= 0:
+            raise CalibError("stereo.board needs rows, cols and spacing")
+        out["board"] = {"pattern": pattern, "rows": rows, "cols": cols, "spacing": spacing}
+    points = []
+    raw_points = stereo.get("points") or []
+    if not isinstance(raw_points, list):
+        raise CalibError("stereo.points must be a list")
+    for i, point in enumerate(raw_points[:200]):
+        if not isinstance(point, dict):
+            raise CalibError(f"stereo.points[{i}] must be an object")
+        points.append({
+            "index": int(point.get("index", i)),
+            "error": _robot_number(point.get("error"), f"stereo.points[{i}].error", nonnegative=True),
+        })
+    out["points"] = points
+    if "z_ref" in stereo:
+        out["z_ref"] = _validate_z_ref(stereo["z_ref"])
+    return out
+
+
+def _validate_z_ref(raw: Any) -> dict[str, float]:
+    """帶面距離與機構絕對 Z 的一點基準；斜射可用 scale 修正。"""
+    if not isinstance(raw, dict):
+        raise CalibError("stereo.z_ref must be an object")
+    d0 = _robot_number(raw.get("d0_mm"), "stereo.z_ref.d0_mm", nonnegative=True)
+    if d0 <= 0:
+        raise CalibError("stereo.z_ref.d0_mm must be greater than 0")
+    z0 = _robot_number(raw.get("Z0_mm"), "stereo.z_ref.Z0_mm")
+    scale = _robot_number(raw.get("scale", 1.0), "stereo.z_ref.scale")
+    return {"d0_mm": d0, "Z0_mm": z0, "scale": scale}
 
 
 def _mapping_points(raw: Any, *, errors: bool = False) -> list[dict[str, float]]:
@@ -338,6 +432,11 @@ def summary(payload: dict[str, Any]) -> str:
             label = f"{mapping.get('from_source') or 'camera A'} to {mapping.get('to_source') or 'camera B'}"
         bits.append(f"{label} {mapping['kind']}, {len(mapping.get('points') or [])} points, RMS {mapping['rms']:.3f} px, "
                     f"max {mapping['max_error']:.3f} px")
+    stereo = payload.get("stereo")
+    if stereo:
+        bits.append(f"stereo baseline {float(stereo.get('baseline_mm') or 0):.3f} mm, RMS {float(stereo.get('rms') or 0):.3f} px")
+        if stereo.get("z_ref"):
+            bits.append("height reference set")
     return "; ".join(bits) or "empty"
 
 
@@ -575,6 +674,100 @@ def solve_mapping_from_boards(
     return solve_mapping(pairs, "perspective", from_source=from_source, to_source=to_source, matrix=matrix)
 
 
+def import_stereo_config(config: dict[str, Any], *, left_source: str = "", right_source: str = "") -> dict[str, Any]:
+    """匯入外部 stereo_config.json；只吃原始內外參，平台自己重算 rectify。"""
+    if not isinstance(config, dict):
+        raise CalibError("The stereo config must be a JSON object")
+    try:
+        width, height = int(config["width"]), int(config["height"])
+    except (KeyError, TypeError, ValueError):
+        raise CalibError("The stereo config needs width and height") from None
+    baseline = config.get("baseline_mm")
+    if baseline in (None, ""):
+        baseline = float(np.linalg.norm(np.asarray(config.get("T"), dtype=np.float64).reshape(3)))
+    stereo = {
+        "left_source": left_source,
+        "right_source": right_source,
+        "M1": config.get("M1"),
+        "D1": config.get("D1"),
+        "M2": config.get("M2"),
+        "D2": config.get("D2"),
+        "R": config.get("R"),
+        "T": config.get("T"),
+        "image_size": [width, height],
+        "rms": config.get("RMS_Error", config.get("rms", 0.0)),
+        "baseline_mm": baseline,
+        "points": [],
+    }
+    payload = {"unit": "mm", "image_size": [width, height], "stereo": stereo}
+    return validate(payload)
+
+
+def solve_stereo(
+    views_left: list[np.ndarray],
+    views_right: list[np.ndarray],
+    object_points: np.ndarray,
+    image_size: tuple[int, int],
+    *,
+    left_source: str = "",
+    right_source: str = "",
+    board: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """左右成對標定板角點 → 雙相機外參；所有張數都參與最小平方，不做剔除。"""
+    if len(views_left) != len(views_right):
+        raise CalibError("Left and right stereo views must have the same count")
+    if len(views_left) < 5:
+        raise CalibError("Stereo calibration needs at least 5 paired board views")
+    obj0 = np.asarray(object_points, dtype=np.float32).reshape(-1, 3)
+    obj = [obj0 for _ in views_left]
+    left = [np.asarray(v, dtype=np.float32).reshape(-1, 1, 2) for v in views_left]
+    right = [np.asarray(v, dtype=np.float32).reshape(-1, 1, 2) for v in views_right]
+    for lv, rv in zip(left, right, strict=True):
+        if lv.shape[0] != obj0.shape[0] or rv.shape[0] != obj0.shape[0]:
+            raise CalibError("Every stereo view must have the same number of points as the board")
+    size = (int(image_size[0]), int(image_size[1]))
+    _rms_l, m1, d1, _rv_l, _tv_l = cv2.calibrateCamera(obj, left, size, None, None)
+    _rms_r, m2, d2, _rv_r, _tv_r = cv2.calibrateCamera(obj, right, size, None, None)
+    criteria = (cv2.TERM_CRITERIA_MAX_ITER | cv2.TERM_CRITERIA_EPS, 100, 1e-5)
+    rms, m1, d1, m2, d2, r, t, _e, _f = cv2.stereoCalibrate(
+        obj, left, right, m1, d1, m2, d2, size,
+        criteria=criteria, flags=cv2.CALIB_FIX_INTRINSIC,
+    )
+    r = np.asarray(r, dtype=np.float64).reshape(3, 3)
+    t = np.asarray(t, dtype=np.float64).reshape(3, 1)
+    errors: list[float] = []
+    for lv, rv in zip(left, right, strict=True):
+        ok, rvec_l, tvec_l = cv2.solvePnP(obj0, lv, m1, d1, flags=cv2.SOLVEPNP_ITERATIVE)
+        if not ok:
+            raise CalibError("Could not solve one stereo board pose")
+        proj_l, _ = cv2.projectPoints(obj0, rvec_l, tvec_l, m1, d1)
+        rot_l, _ = cv2.Rodrigues(rvec_l)
+        rot_r = r @ rot_l
+        tvec_r = r @ tvec_l.reshape(3, 1) + t
+        rvec_r, _ = cv2.Rodrigues(rot_r)
+        proj_r, _ = cv2.projectPoints(obj0, rvec_r, tvec_r, m2, d2)
+        err_l = cv2.norm(lv, proj_l, cv2.NORM_L2) ** 2
+        err_r = cv2.norm(rv, proj_r, cv2.NORM_L2) ** 2
+        errors.append(float(math.sqrt((err_l + err_r) / (2 * len(obj0)))))
+    stereo: dict[str, Any] = {
+        "left_source": left_source,
+        "right_source": right_source,
+        "M1": np.asarray(m1, dtype=np.float64).tolist(),
+        "D1": np.asarray(d1, dtype=np.float64).reshape(-1).tolist(),
+        "M2": np.asarray(m2, dtype=np.float64).tolist(),
+        "D2": np.asarray(d2, dtype=np.float64).reshape(-1).tolist(),
+        "R": r.tolist(),
+        "T": t.reshape(3).tolist(),
+        "image_size": [size[0], size[1]],
+        "rms": float(rms),
+        "baseline_mm": float(np.linalg.norm(t)),
+        "points": [{"index": i, "error": err} for i, err in enumerate(errors)],
+    }
+    if board:
+        stereo["board"] = board
+    return _validate_stereo(stereo, size)
+
+
 def solve_robot(points: Any, *, kind: str, camera_mode: str) -> dict[str, Any]:
     """解手眼平移與旋轉中心，所有取樣一律最小平方。
 
@@ -672,6 +865,8 @@ def angle_to_world(matrix: Any, degrees: float, at: tuple[float, float] | None =
 # ---------------------------------------------------------------------------
 _maps: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
 _maps_lock = threading.Lock()
+_stereo_maps: dict[tuple, dict[str, Any]] = {}
+_stereo_maps_lock = threading.Lock()
 
 
 def scaled_camera_matrix(lens: dict[str, Any], calib_size: tuple[int, int], image_size: tuple[int, int]) -> np.ndarray:
@@ -715,6 +910,60 @@ def undistort(image: np.ndarray, payload: dict[str, Any], alpha: float = 0.0) ->
     from apps.vision.tools import accel
 
     return accel.remap(image, maps[0], maps[1], cv2.INTER_LINEAR, border_mode=cv2.BORDER_CONSTANT)
+
+
+def _round_key(arr: Any, places: int = 8) -> tuple[float, ...]:
+    return tuple(float(x) for x in np.round(np.asarray(arr, dtype=np.float64).reshape(-1), places))
+
+
+def stereo_rectify(payload: dict[str, Any], image_size: tuple[int, int]) -> dict[str, Any]:
+    """依實際影像尺寸取得雙相機校正映射表；熱路徑由此函式共享 map 快取。"""
+    stereo = payload.get("stereo")
+    if not stereo:
+        raise CalibError("This calibration has no stereo data")
+    w, h = int(image_size[0]), int(image_size[1])
+    if w <= 0 or h <= 0:
+        raise CalibError("image_size must be positive")
+    calib_size = tuple(stereo.get("image_size") or payload.get("image_size") or [w, h])
+    m1 = scaled_camera_matrix({"camera_matrix": stereo["M1"]}, calib_size, (w, h))
+    m2 = scaled_camera_matrix({"camera_matrix": stereo["M2"]}, calib_size, (w, h))
+    d1 = np.asarray(stereo["D1"], dtype=np.float64)
+    d2 = np.asarray(stereo["D2"], dtype=np.float64)
+    r = np.asarray(stereo["R"], dtype=np.float64).reshape(3, 3)
+    t = np.asarray(stereo["T"], dtype=np.float64).reshape(3, 1)
+    key = (w, h, _round_key(m1), _round_key(d1), _round_key(m2), _round_key(d2), _round_key(r), _round_key(t))
+    with _stereo_maps_lock:
+        hit = _stereo_maps.get(key)
+    if hit is not None:
+        return hit
+    rectified = bool(
+        np.allclose(d1, 0.0, atol=1e-12)
+        and np.allclose(d2, 0.0, atol=1e-12)
+        and np.allclose(r, np.eye(3), atol=1e-12)
+        and np.allclose(m1, m2, atol=1e-9)
+        and abs(float(t[1, 0])) <= 1e-12
+        and abs(float(t[2, 0])) <= 1e-12
+    )
+    r1, r2, p1, p2, q, _roi1, _roi2 = cv2.stereoRectify(m1, d1, m2, d2, (w, h), r, t, alpha=0)
+    if rectified:
+        maps_left = maps_right = None
+    else:
+        maps_left = cv2.initUndistortRectifyMap(m1, d1, r1, p1, (w, h), cv2.CV_32FC1)
+        maps_right = cv2.initUndistortRectifyMap(m2, d2, r2, p2, (w, h), cv2.CV_32FC1)
+    baseline = abs(float(p2[0, 3] / p2[0, 0])) if abs(float(p2[0, 0])) > 1e-12 else float(stereo["baseline_mm"])
+    if baseline <= 0:
+        baseline = float(stereo["baseline_mm"])
+    item = {
+        "left": maps_left, "right": maps_right, "rectified": rectified,
+        "R1": r1, "R2": r2, "P1": p1, "P2": p2, "Q": q,
+        "focal_px": abs(float(p1[0, 0])),
+        "baseline_mm": abs(baseline),
+    }
+    with _stereo_maps_lock:
+        if len(_stereo_maps) > 8:
+            _stereo_maps.pop(next(iter(_stereo_maps)))
+        _stereo_maps[key] = item
+    return item
 
 
 RMS_WARN_PX = 0.5
@@ -781,6 +1030,16 @@ def warnings(payload: dict[str, Any], cov: dict[str, Any] | None = None) -> list
             out.append("Camera mapping has only the minimum number of points: add more spread across the overlap to check residuals")
         if float(mapping.get("rms") or 0) > 1.0 or float(mapping.get("max_error") or 0) > 3.0:
             out.append(f"Camera mapping RMS {float(mapping['rms']):.3f} px, maximum residual {float(mapping.get('max_error') or 0):.3f} px: check all point pairs")
+    stereo = payload.get("stereo") or {}
+    if stereo:
+        points = stereo.get("points") or []
+        if len(points) < 8:
+            out.append("Stereo calibration has fewer than 8 paired pictures: add more board positions for a steadier depth model")
+        rms = float(stereo.get("rms") or 0)
+        if rms > RMS_WARN_PX:
+            out.append(f"Stereo reprojection error {rms:.2f} px is above {RMS_WARN_PX:g} px: retake sharper paired board pictures")
+        if not stereo.get("z_ref"):
+            out.append("Stereo has no height reference: depth tools will output camera distance but not robot Z")
     return out
 
 
@@ -806,4 +1065,8 @@ def quality(payload: dict[str, Any]) -> dict[str, str]:
     if mapping:
         rms = float(mapping.get("rms") or 0)
         out["mapping"] = "good" if rms <= 1.0 else ("fair" if rms <= 3.0 else "poor")
+    stereo = payload.get("stereo")
+    if stereo:
+        rms = float(stereo.get("rms") or 0)
+        out["stereo"] = "good" if rms <= 0.5 else ("fair" if rms <= 1.0 else "poor")
     return out

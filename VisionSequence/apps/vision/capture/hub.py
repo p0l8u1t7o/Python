@@ -727,10 +727,12 @@ class ClientSession(threading.Thread):
             assert pending.frame is not None
             frames.append(pending.frame)
         left, right = frames
+        # 有號：右 − 左，正＝右相機晚拍。下游做運動補償要靠這個號決定往哪邊移，取絕對值會讓補償反向
+        # （探針：物理正確的一對不補償誤差 54 mm、反向補償後 120 mm）。
         if left.meta.captured_at is not None and right.meta.captured_at is not None:
-            dt_ms = abs(left.meta.captured_at - right.meta.captured_at) * 1000.0
+            dt_ms = (right.meta.captured_at - left.meta.captured_at) * 1000.0
         else:
-            dt_ms = abs(left.meta.received_at - right.meta.received_at) * 1000.0
+            dt_ms = (right.meta.received_at - left.meta.received_at) * 1000.0
         return left, right, dt_ms
 
     def latest(self, channel: str) -> Frame | None:

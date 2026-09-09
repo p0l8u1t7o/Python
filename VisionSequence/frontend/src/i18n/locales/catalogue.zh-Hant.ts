@@ -162,6 +162,7 @@ export default {
     ai_count: { name: 'AI 物件計數（官方底模）', description: 'ai_detect 以 COCO 官方底模找停止標誌並判定數量。免訓練、自動用 GPU（需要深度學習依賴）' },
     ai_area: { name: 'AI 實例分割：標誌面積', description: 'ai_segment 的聯集遮罩接像素計數與面積門檻，示範分割接量測（需要深度學習依賴）' },
     conveyor_pick: { name: '輸送帶取料（單相機）', description: '實例分割、邊界排除、追蹤確認與逐筆文字輸出，只在物件第一次確認時送出 x、y、z。' },
+    conveyor_pick_stereo: { name: '輸送帶取料（雙視野）', description: '雙視野取像、實例分割、邊界排除、追蹤確認、stereo_depth 量 Z，並送出 x、y、z。' },
     dl_classify_demo: { name: '分類：良品／缺孔（教導模型）', description: '由 seed 訓練的內建 MLP 分類器接 dl_classify 判定——示範教導出來的模型怎麼進流程' },
     gear_teeth: { name: '圓周齒數（極座標展開）', description: '極座標展開把齒圈攤平成長條圖，二值化與 blob 數齒，極座標還原把每顆齒標回原圖' },
     contour_defect: { name: '崩邊檢測（輪廓幾何）', description: '輪廓萃取、篩出工件本體、輪廓幾何數超過 12 px 的凸缺陷、OK/NG，另以 Hu 矩與範例外形比對' },
