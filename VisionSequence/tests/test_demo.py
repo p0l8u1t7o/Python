@@ -56,6 +56,10 @@ class DemoSeedTests(TransactionTestCase):
             "circular_defect": "ok ok ok ng", "edge_defect_demo": "ok ok ok ng", "form_tolerance": "ok ok ok ng", "emboss_defect": "ok ok ok ng", "barcode_grade": "ok ok ok ng",
             "exclusion_zone": "ok ok ok ok", "shading": "ok ok ok ng", "color_presence": "ok ok ok ng", "color_verify": "ok ok ok ng",
             "label_map_count": "ok ok ok ng", "color_sample_classify": "ok ok ok ng",
+            "plate_corners": "ok ok ok ng", "parallel_edges": "ok ok ok ng", "hole_matrix": "ok ok ok ng", "edge_trend_peaks": "ok ok ok ng",
+            "outline_defect": "ok ok ok ng", "path_edge_search": "ok ok ok ng", "focus_gate": "ok ok ok ng", "temporal_frames": "ng ok ok ng",
+            "roi_process_paste": "ok ok ok ng", "manual_undistort_world": "ok ok ok ng", "camera_mapping": "ok ok ok ng",
+            "pick_offset": "ok ok ok ng", "fixture_rerun": "ok ok ok ng", "stitch_two_views": "ok ok ok ng",
             "barcode_read": "ok ok ok ng", "code_message_rules": "ok ok ok ng", "date_code": "ok ok ok ng", "label_read": "ok ok ok ng", "shape_locate": "ok ok ok ng",
             "locate_measure": "ok ok ok ng", "cup_measure": "ok ok ok ng", "dl_classify_demo": "ok ok ok ok ng ng", "anomaly_demo": "ok ok ok ng ng",
             "dl_segment_demo": "ok ok ok ng ng", "variable_switch": "ok ok ok ng", "tile_for_each": "ok ok ok ok", "io_sequence": "ok ok ok ng",
@@ -104,7 +108,7 @@ class DemoSeedTests(TransactionTestCase):
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
             model_names = sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True))
             self.assertEqual([n for n in model_names if "anomaly" not in n], ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)", "Example: taught font (digits)"])
-            self.assertEqual(len(BUILTIN_TEMPLATES), 48)
+            self.assertEqual(len(BUILTIN_TEMPLATES), 62)
             import importlib.util
             import os
 

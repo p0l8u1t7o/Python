@@ -763,6 +763,219 @@ def sample_colour_cards() -> list[np.ndarray]:
     return out
 
 
+def plate_corners() -> list[np.ndarray]:
+    """矩形板角點與歪斜量測；前三張尺寸合格，第四張寬度與角度超差。"""
+    out = []
+    specs = [((260, 180), (300, 170), -2), ((264, 178), (302, 168), 1.5), ((256, 182), (298, 172), 0.8), ((260, 180), (355, 155), 8)]
+    for i, (center, size, angle) in enumerate(specs):
+        img = _canvas(520, 360, 38)
+        pts = np.round(cv2.boxPoints((center, size, angle))).astype(np.int32)
+        cv2.fillPoly(img, [pts], (212, 216, 220))
+        cv2.circle(img, tuple(pts[0]), 9, (70, 76, 82), -1)
+        out.append(_noise(img, 3, 4200 + i))
+    return out
+
+
+def parallel_edges() -> list[np.ndarray]:
+    """槽寬與條紋數；第四張槽變寬。"""
+    out = []
+    widths = [70, 72, 68, 116]
+    for i, width in enumerate(widths):
+        img = _canvas(560, 340, 62)
+        cv2.rectangle(img, (55, 46), (505, 294), (198, 202, 206), -1)
+        y0, y1 = 170 - width // 2, 170 + width // 2
+        cv2.rectangle(img, (90, y0), (470, y1), (42, 46, 52), -1)
+        for x in (125, 205, 285, 365, 445):
+            cv2.line(img, (x + (i % 2), 55), (x + (i % 2), 130), (58, 62, 68), 5)
+        out.append(_noise(img, 3, 4300 + i))
+    return out
+
+
+def hole_matrix() -> list[np.ndarray]:
+    """3x3 孔陣列；第四張缺中右孔。"""
+    out = []
+    for i in range(4):
+        img = _canvas(500, 360, 48)
+        cv2.rectangle(img, (70, 50), (430, 310), (208, 212, 216), -1)
+        missing = (1, 2) if i == 3 else None
+        for r in range(3):
+            for c in range(3):
+                if (r, c) == missing:
+                    continue
+                cx = 130 + c * 120 + (i % 2) * 2
+                cy = 100 + r * 80 + ((i + c) % 2)
+                cv2.circle(img, (cx, cy), 23, (42, 46, 52), -1)
+        out.append(_noise(img, 3, 4400 + i))
+    return out
+
+
+def edge_trend_peaks() -> list[np.ndarray]:
+    """直邊趨勢與亮峰數；第四張直邊有凸起。"""
+    out = []
+    for i in range(4):
+        img = _canvas(560, 360, 44)
+        cv2.rectangle(img, (70, 188), (500, 270), (204, 208, 212), -1)
+        if i == 3:
+            cv2.rectangle(img, (285, 172), (350, 205), (204, 208, 212), -1)
+        for x in (145, 235, 325, 415):
+            cv2.rectangle(img, (x - 9 + (i % 2), 65), (x + 9 + (i % 2), 128), (224, 226, 228), -1)
+        out.append(_noise(img, 3, 4500 + i))
+    return out
+
+
+def outline_model_parts() -> list[np.ndarray]:
+    """教導輪廓缺陷；第 2、3 張平移旋轉，第四張缺口。"""
+    out = []
+    poses = [(260, 180, 0, False), (283, 194, 4, False), (238, 166, -5, False), (260, 180, 0, True)]
+    base = np.array([[-130, -78], [115, -78], [145, -48], [145, 68], [108, 92], [-124, 92], [-150, 58], [-150, -44]], dtype=np.float64)
+    for i, (cx, cy, angle, defect) in enumerate(poses):
+        img = _canvas(520, 360, 36)
+        pts = base.copy()
+        if defect:
+            pts = np.array([[-130, -78], [-25, -78], [2, -45], [30, -78], [115, -78], [145, -48], [145, 68], [108, 92], [-124, 92], [-150, 58], [-150, -44]], dtype=np.float64)
+        rad = np.deg2rad(angle)
+        rot = np.array([[np.cos(rad), -np.sin(rad)], [np.sin(rad), np.cos(rad)]])
+        cv2.fillPoly(img, [np.round(pts @ rot.T + [cx, cy]).astype(np.int32)], (206, 210, 214))
+        mark = np.round(np.array([[-38, -22], [38, -22], [38, 22], [-38, 22]], dtype=np.float64) @ rot.T + [cx, cy]).astype(np.int32)
+        cv2.fillPoly(img, [mark], (70, 74, 80))
+        out.append(_noise(img, 3, 4600 + i))
+    return out
+
+
+def path_edge_parts() -> list[np.ndarray]:
+    """折線路徑上的亮膠條；第四張中段缺口。"""
+    out = []
+    for i in range(4):
+        img = _canvas(560, 340, 42)
+        cv2.line(img, (45, 170), (525, 170), (210, 214, 218), 24, cv2.LINE_AA)
+        cv2.line(img, (45, 170), (525, 170), (238, 240, 242), 8, cv2.LINE_AA)
+        if i == 3:
+            cv2.line(img, (250, 170), (325, 170), (42, 42, 42), 34, cv2.LINE_AA)
+        out.append(_noise(img, 3, 4700 + i))
+    return out
+
+
+def focus_gate_parts() -> list[np.ndarray]:
+    """焦距閘門；第四張模糊。"""
+    out = []
+    for i in range(4):
+        img = _canvas(460, 300, 58)
+        for y in range(55, 245, 16):
+            cv2.line(img, (85, y), (375, y + (i % 2) * 2), (218, 220, 222), 3)
+        cv2.putText(img, "FOCUS", (118, 168), cv2.FONT_HERSHEY_SIMPLEX, 1.35, (40, 44, 50), 4)
+        if i == 3:
+            img = cv2.GaussianBlur(img, (21, 21), 0)
+        out.append(_noise(img, 2, 4800 + i))
+    return out
+
+
+def temporal_frames() -> list[np.ndarray]:
+    """跨幀平均與前一幀差異；第四張多一顆亮點。"""
+    out = []
+    for i in range(4):
+        img = _canvas(420, 300, 36)
+        cv2.circle(img, (150, 150), 34, (214, 218, 222), -1)
+        cv2.circle(img, (270, 150), 34, (214, 218, 222), -1)
+        if i == 3:
+            cv2.circle(img, (210, 220), 28, (214, 218, 222), -1)
+        out.append(_noise(img, 3, 4900 + i))
+    return out
+
+
+def roi_process_paste() -> list[np.ndarray]:
+    """ROI 內前處理後貼回整張；第四張 ROI 多一個缺陷。"""
+    out = []
+    for i in range(4):
+        img = _canvas(520, 320, 54)
+        cv2.rectangle(img, (95, 70), (425, 250), (198, 202, 206), -1)
+        for x in (165, 260, 355):
+            cv2.circle(img, (x, 160), 26, (78, 82, 88), -1)
+        if i == 3:
+            cv2.circle(img, (260, 96), 20, (36, 38, 42), -1)
+        out.append(_noise(img, 3, 5000 + i))
+    return out
+
+
+def undistort_world_parts() -> list[np.ndarray]:
+    """手動鏡頭修正與像素比例；第四張兩孔距離超差。"""
+    out = []
+    for i, dist in enumerate((200, 202, 198, 236)):
+        img = _canvas(520, 340, 48)
+        cv2.rectangle(img, (70, 52), (450, 288), (204, 208, 212), -1)
+        cx1, cx2, cy = 260 - dist // 2, 260 + dist // 2, 170
+        cv2.circle(img, (cx1, cy), 24, (42, 46, 52), -1)
+        cv2.circle(img, (cx2, cy + (i % 2)), 24, (42, 46, 52), -1)
+        out.append(_noise(img, 3, 5100 + i))
+    return out
+
+
+def camera_mapping_parts() -> list[np.ndarray]:
+    """相機 A 座標映射到相機 B；第四張找不到孔。"""
+    out = []
+    for i in range(4):
+        img = _canvas(420, 300, 45)
+        if i != 3:
+            cv2.circle(img, (175 + i * 8, 142 + i * 3), 26, (214, 218, 222), -1)
+            cv2.circle(img, (175 + i * 8, 142 + i * 3), 10, (50, 54, 60), -1)
+        cv2.rectangle(img, (48, 50), (372, 250), (88, 92, 98), 2)
+        out.append(_noise(img, 3, 5200 + i))
+    return out
+
+
+def pick_offset_parts() -> list[np.ndarray]:
+    """教導取料點補正；第 2、3 張平移旋轉，第四張無零件。"""
+    out = []
+    poses = [(230, 155, 0), (258, 174, 6), (204, 136, -7), (0, 0, 0)]
+    base = np.array([[-70, -42], [72, -42], [88, 24], [20, 62], [-74, 42]], dtype=np.float64)
+    for i, (cx, cy, angle) in enumerate(poses):
+        img = _canvas(460, 300, 38)
+        if i != 3:
+            rad = np.deg2rad(angle)
+            rot = np.array([[np.cos(rad), -np.sin(rad)], [np.sin(rad), np.cos(rad)]])
+            cv2.fillPoly(img, [np.round(base @ rot.T + [cx, cy]).astype(np.int32)], (210, 214, 218))
+            cv2.circle(img, tuple(np.round(np.array([20, 0]) @ rot.T + [cx, cy]).astype(int)), 12, (70, 74, 80), -1)
+        out.append(_noise(img, 3, 5300 + i))
+    return out
+
+
+def fixture_rerun_parts() -> list[np.ndarray]:
+    """整張影像回正後量測；第 2、3 張平移旋轉，第四張帶寬超差。"""
+    out = []
+    specs = [(260, 170, 0, 86), (285, 188, 5, 84), (236, 150, -6, 88), (260, 170, 0, 124)]
+    for i, (cx, cy, angle, band_h) in enumerate(specs):
+        img = _canvas(520, 340, 40)
+        rad = np.deg2rad(angle)
+        rot = np.array([[np.cos(rad), -np.sin(rad)], [np.sin(rad), np.cos(rad)]])
+        body = np.array([[-150, -92], [150, -92], [150, 92], [-150, 92]], dtype=np.float64)
+        cv2.fillPoly(img, [np.round(body @ rot.T + [cx, cy]).astype(np.int32)], (196, 200, 204))
+        band = np.array([[-105, -band_h / 2], [105, -band_h / 2], [105, band_h / 2], [-105, band_h / 2]], dtype=np.float64)
+        cv2.fillPoly(img, [np.round(band @ rot.T + [cx, cy]).astype(np.int32)], (76, 80, 86))
+        marker = np.array([[-28, -28], [28, -28], [28, 28], [-28, 28]], dtype=np.float64)
+        cv2.fillPoly(img, [np.round(marker @ rot.T + [cx - 92, cy - 56]).astype(np.int32)], (226, 228, 230))
+        out.append(_noise(img, 3, 5400 + i))
+    return out
+
+
+def stitch_views() -> list[np.ndarray]:
+    """左視野零件；右視野由固定影像提供，第四張少一顆。"""
+    out = []
+    for i in range(4):
+        img = _canvas(280, 240, 42)
+        pts = [(92, 86), (188, 150)] if i != 3 else [(92, 86)]
+        for cx, cy in pts:
+            cv2.circle(img, (cx + i % 2, cy), 24, (218, 222, 226), -1)
+        out.append(_noise(img, 3, 5500 + i))
+    return out
+
+
+def stitch_right_view() -> np.ndarray:
+    """拼接範本的右視野固定影像。"""
+    img = _canvas(280, 240, 42)
+    for cx, cy in ((84, 145), (188, 84)):
+        cv2.circle(img, (cx, cy), 24, (218, 222, 226), -1)
+    return _noise(img, 3, 5510)
+
+
 def variable_recipe_parts() -> list[np.ndarray]:
     """變數配方範例；預設 bright 分支，第四張亮度不符合該分支。"""
     out = []
@@ -879,6 +1092,20 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "component_array": ("component array", component_array),
     "label_map_colours": ("label map colours", label_map_colours),
     "sample_colour_cards": ("sample colour cards", sample_colour_cards),
+    "plate_corners": ("plate corners", plate_corners),
+    "parallel_edges": ("parallel edges", parallel_edges),
+    "hole_matrix": ("hole matrix", hole_matrix),
+    "edge_trend_peaks": ("edge trend peaks", edge_trend_peaks),
+    "outline_model_parts": ("outline model parts", outline_model_parts),
+    "path_edge_parts": ("path edge search", path_edge_parts),
+    "focus_gate_parts": ("focus gate", focus_gate_parts),
+    "temporal_frames": ("temporal frames", temporal_frames),
+    "roi_process_paste": ("ROI process paste", roi_process_paste),
+    "undistort_world_parts": ("undistort world parts", undistort_world_parts),
+    "camera_mapping_parts": ("camera mapping parts", camera_mapping_parts),
+    "pick_offset_parts": ("pick offset parts", pick_offset_parts),
+    "fixture_rerun_parts": ("fixture rerun parts", fixture_rerun_parts),
+    "stitch_views": ("stitch views", stitch_views),
     "variable_recipe_parts": ("variable recipe parts", variable_recipe_parts),
     "tiled_panels": ("tiled panels", tiled_panels),
     "script_rectangles": ("script rectangles", script_rectangles),

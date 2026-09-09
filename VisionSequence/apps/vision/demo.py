@@ -1127,6 +1127,321 @@ def register_count_flow(source_id: Any) -> dict[str, Any]:
     ]}
 
 
+def plate_corners_flow(source_id: Any) -> dict[str, Any]:
+    """矩形板角點範例：四邊卡尺找矩形，四條找線重建四邊形，寬度公差決定 OK/NG。"""
+    rect_roi = {"shape": "rotated_rect", "cx": 260, "cy": 180, "w": 390, "h": 230, "angle": 0}
+    rois = {
+        "top": {"shape": "rect", "x": 95, "y": 70, "w": 330, "h": 90},
+        "right": {"shape": "rect", "x": 365, "y": 94, "w": 90, "h": 190},
+        "bottom": {"shape": "rect", "x": 95, "y": 205, "w": 330, "h": 95},
+        "left": {"shape": "rect", "x": 65, "y": 94, "w": 95, "h": 190},
+    }
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("rect", "find_rectangle", 2, 0, "Plate rectangle", roi=rect_roi, polarity="any", edge_threshold=25, calipers=16, search=0.35),
+        _node("lt", "find_line", 2, 1, "Top edge", roi=rois["top"], polarity="any", edge_threshold=25),
+        _node("lr", "find_line", 2, 2, "Right edge", roi=rois["right"], polarity="any", edge_threshold=25),
+        _node("lb", "find_line", 2, 3, "Bottom edge", roi=rois["bottom"], polarity="any", edge_threshold=25),
+        _node("ll", "find_line", 2, 4, "Left edge", roi=rois["left"], polarity="any", edge_threshold=25),
+        _node("quad", "find_quadrilateral", 3, 2, "Corners from four edges"),
+        _node("tol", "tolerance_judge", 4, 0, "Plate width tolerance", nominal=300, upper_tol=22, lower_tol=-22, unit="px", name="plate_width"),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: plate skew or size", verdict="ng", label="plate_corners"),
+        _node("out_a", "output", 4, 1, "Output angle", name="plate_angle"),
+        _node("out_s", "output", 4, 2, "Output quadrilateral area", name="plate_area"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "rect", "image", "image"),
+        _edge("gray", "lt", "image", "image"), _edge("gray", "lr", "image", "image"), _edge("gray", "lb", "image", "image"), _edge("gray", "ll", "image", "image"),
+        _edge("lt", "quad", "line", "a"), _edge("lr", "quad", "line", "b"), _edge("lb", "quad", "line", "c"), _edge("ll", "quad", "line", "d"),
+        _edge("rect", "tol", "width", "value"), _edge("tol", "ok", "pass", "_flow"), _edge("tol", "ng", "fail", "_flow"),
+        _edge("rect", "out_a", "angle", "value"), _edge("quad", "out_s", "area", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def parallel_edges_flow(source_id: Any) -> dict[str, Any]:
+    """槽寬與條紋數範例：成對邊緣量槽寬，另一支多線搜尋確認條紋數。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("pair", "find_parallel_lines", 2, 0, "Slot edge pair", roi={"shape": "rect", "x": 82, "y": 112, "w": 395, "h": 120}, pair_polarity="dark", pair_mode="expected", expected_width=70, edge_threshold=25, calipers=24),
+        _node("rng", "in_range", 3, 0, "Slot width in range", low=60, high=84),
+        _node("lines", "find_lines_multi", 2, 1, "Stripe count", roi={"shape": "rect", "x": 92, "y": 45, "w": 400, "h": 100}, max_lines=5, edge_threshold=45, min_points=18, tolerance=2),
+        _node("count", "if_number", 3, 1, "At least five stripes?", operator="ge", threshold=5),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: slot width", verdict="ng", label="slot_width"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "pair", "image", "image"), _edge("pair", "rng", "distance", "value"),
+        _edge("gray", "lines", "image", "image"), _edge("lines", "count", "count", "value"),
+        _edge("rng", "ok", "inside", "_flow"), _edge("rng", "ng", "outside", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def hole_matrix_flow(source_id: Any) -> dict[str, Any]:
+    """3x3 孔矩陣範例：每格找一顆圓，任何缺格都走 NG。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("grid", "find_circles_matrix", 2, 0, "3 x 3 hole grid", roi={"shape": "rect", "x": 70, "y": 60, "w": 360, "h": 240}, rows=3, cols=3, polarity="any", edge_threshold=20, min_radius=12, max_radius=34),
+        _node("miss", "count_list", 3, 1, "Missing cells"),
+        _node("ok", "judge", 3, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 3, 2, "NG: missing hole", verdict="ng", label="hole_matrix"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "grid", "image", "image"),
+        _edge("grid", "ok", "found", "_flow"), _edge("grid", "ng", "not_found", "_flow"),
+        _edge("grid", "miss", "missing", "items"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def edge_trend_peaks_flow(source_id: Any) -> dict[str, Any]:
+    """直邊趨勢與灰階峰值範例：固定 ROI 的邊緣偏移超過上限即 NG，亮峰數作為旁路輸出。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("trend", "edge_trend", 2, 0, "Straight edge trend", roi={"shape": "rect", "x": 82, "y": 172, "w": 405, "h": 46}, calipers=60, search=28, edge_threshold=20, baseline="fit", max_deviation=7),
+        _node("peaks", "peak_search", 2, 1, "Four bright peaks", roi={"shape": "rect", "x": 105, "y": 65, "w": 360, "h": 70}, polarity="bright", min_prominence=0, min_distance=45, max_results=4),
+        _node("pcmp", "if_number", 3, 1, "Four peaks?", operator="eq", threshold=4),
+        _node("miss", "count_list", 3, 2, "Missing edge samples"),
+        _node("mcmp", "if_number", 4, 2, "No missing edge samples?", operator="eq", threshold=0),
+        _node("ok", "judge", 3, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 2, "NG: edge trend", verdict="ng", label="edge_trend"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "trend", "image", "image"), _edge("gray", "peaks", "image", "image"),
+        _edge("peaks", "pcmp", "count", "value"), _edge("trend", "miss", "missing", "items"), _edge("miss", "mcmp", "count", "value"),
+        _edge("trend", "ok", "ok", "_flow"), _edge("trend", "ng", "ng", "_flow"), _edge("mcmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def outline_defect_flow(source_id: Any, locator_ref: dict[str, Any] | None = None, outline_ref: dict[str, Any] | None = None) -> dict[str, Any]:
+    """教導輪廓缺陷範例：範本比對補正位置，再用良品輪廓模型檢出沖壓件缺口。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("lref", "fixed_image", 0, 2, "Locator template", images=[locator_ref] if locator_ref else [], mode="fixed", index=1, role="reference"),
+        _node("oref", "fixed_image", 0, 3, "Taught good outline", images=[outline_ref] if outline_ref else [], mode="fixed", index=1, role="reference"),
+        _node("tm", "template_match", 2, 0, "Find taught pose", threshold=0.58, max_matches=1, angle_range=10, angle_step=2),
+        _node("align", "shape_align", 3, 0, "Pose correction", ref_x=260, ref_y=180, ref_angle=0),
+        _node("edge", "edge_model_defect", 4, 0, "Compare outline", reference=[outline_ref] if outline_ref else [], calipers=140, search=28, threshold=6, min_width=3, fracture_run=3, max_defects=0, teach_simplify=2.5),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: outline defect", verdict="ng", label="outline_defect"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("lref", "tm", "image", "template_image"), _edge("gray", "tm", "image", "image"),
+        _edge("tm", "align", "matches", "matches"), _edge("tm", "ng", "not_found", "_flow"),
+        _edge("gray", "edge", "image", "image"), _edge("align", "edge", "transform", "_transform"),
+        _edge("edge", "ok", "ok", "_flow"), _edge("edge", "ng", "defect", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def path_edge_search_flow(source_id: Any) -> dict[str, Any]:
+    """折線路徑搜尋範例：沿教導折線放成對卡尺，缺邊索引數為 0 才合格。"""
+    path = {"shape": "line", "x1": 70, "y1": 170, "x2": 500, "y2": 170}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("path", "path_extract", 2, 0, "Edge search path", roi=path, mode="edge_search", closed=False, count=24, search=18, edge_mode="pair", pair_polarity="bright", pair_mode="expected", expected_width=24, edge_threshold=25),
+        _node("missing", "count_list", 3, 0, "Missing edge count"),
+        _node("cmp", "if_number", 4, 0, "No missing edges?", operator="eq", threshold=0),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: open path segment", verdict="ng", label="path_edge"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "path", "image", "image"), _edge("path", "missing", "missing", "items"),
+        _edge("missing", "cmp", "count", "value"), _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def focus_gate_flow(source_id: Any) -> dict[str, Any]:
+    """焦距閘門範例：sharpness 同時回報高頻雜訊，分數低於門檻就直接 NG。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("focus", "sharpness", 1, 0, "Focus score", roi={"shape": "rect", "x": 70, "y": 45, "w": 320, "h": 210}, method="laplacian", normalize=False, min_score=1000, noise_estimate=True),
+        _node("ok", "judge", 2, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 2, 1, "NG: out of focus", verdict="ng", label="out_of_focus"),
+        _node("out", "output", 2, 2, "Output noise", name="noise_estimate"),
+    ]
+    edges = [
+        _edge("src", "focus", "image", "image"),
+        _edge("focus", "ok", "ok", "_flow"), _edge("focus", "ng", "ng", "_flow"),
+        _edge("focus", "out", "noise", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def temporal_frames_flow(source_id: Any) -> dict[str, Any]:
+    """跨幀範例：frame_accumulate 每兩張輸出平均；previous_image 第一張會 not_found，這是快取尚未有前一幀的正常狀態。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("avg", "frame_accumulate", 1, 0, "Two-frame mean", count=2, mode="mean", emit="always"),
+        _node("athr", "threshold", 2, 0, "Average mask", method="fixed", threshold=120),
+        _node("ablob", "blob", 3, 0, "Average part count", min_area=800, max_area=6000),
+        _node("acmp", "if_number", 4, 0, "Two parts in mean?", operator="eq", threshold=2),
+        _node("prev", "previous_image", 1, 1, "Previous averaged image", node="avg", port="image", k=1),
+        _node("diff", "arithmetic", 2, 1, "Change from previous", op="absdiff"),
+        _node("dthr", "threshold", 3, 1, "Change mask", method="fixed", threshold=45),
+        _node("dblob", "blob", 4, 1, "Changed blobs", threshold_method="none", min_area=600, max_area=8000, min_count=0),
+        _node("dcmp", "if_number", 5, 1, "No new object?", operator="eq", threshold=0),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: temporal change", verdict="ng", label="temporal_change"),
+        _note("n1", 0, 2, "First frame", "The previous-image branch is expected to report not_found on the first sample run because the run cache has no earlier source image yet. It is a normal NG status, not an error."),
+    ]
+    edges = [
+        _edge("src", "avg", "image", "image"), _edge("avg", "athr", "image", "image"), _edge("athr", "ablob"), _edge("ablob", "acmp", "count", "value"),
+        _edge("src", "diff", "image", "a"), _edge("prev", "diff", "image", "b"), _edge("prev", "diff", "found", "_flow"),
+        _edge("diff", "dthr", "image", "image"), _edge("dthr", "dblob"), _edge("dblob", "dcmp", "count", "value"),
+        _edge("dcmp", "ok", "true", "_flow"), _edge("dcmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def roi_process_paste_flow(source_id: Any) -> dict[str, Any]:
+    """ROI 前處理貼回範例：裁切區域做 LUT 與濾波，再貼回原圖後用整張影像計數。"""
+    roi = {"shape": "rect", "x": 95, "y": 70, "w": 330, "h": 180}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("crop", "crop", 1, 0, "Process ROI", roi=roi),
+        _node("lut", "lut", 2, 0, "Lift contrast", mode="gamma", gamma=0.8),
+        _node("flt", "filter", 3, 0, "Clean region", kind="median", ksize=3),
+        _node("paste", "paste_back", 4, 0, "Paste back", region=roi),
+        _node("gray", "grayscale", 5, 0, "Grayscale"),
+        _node("thr", "threshold", 6, 0, "Dark features", method="fixed", threshold=150, invert=True),
+        _node("blob", "blob", 7, 0, "Dark feature count", roi=roi, threshold_method="fixed", threshold=120, polarity="dark", min_area=450, max_area=4000),
+        _node("cmp", "if_number", 8, 0, "Three features?", operator="eq", threshold=3),
+        _node("ok", "judge", 9, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 9, 1, "NG: ROI defect", verdict="ng", label="roi_process"),
+    ]
+    edges = [
+        _edge("src", "crop", "image", "image"), _edge("crop", "lut", "image", "image"), _edge("lut", "flt", "image", "image"),
+        _edge("src", "paste", "image", "image"), _edge("flt", "paste", "image", "patch"),
+        _edge("paste", "gray", "image", "image"), _edge("gray", "thr"), _edge("src", "blob", "image", "image"), _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+PIXEL_SCALE_CALIB_NAME = "Example: pixel scale (0.05 mm)"
+CAMERA_MAPPING_CALIB_NAME = "Example: camera mapping (A→B)"
+
+
+def manual_undistort_world_flow(source_id: Any, calibration: str = "") -> dict[str, Any]:
+    """手動畸變修正與座標系範例：兩孔定義零件座標，距離經示範像素比例標定轉為 mm 後判定。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("und", "undistort", 1, 0, "Manual lens correction", mode="manual", k1=-0.02, k2=0, cx=260, cy=170, scale=1, alpha=0),
+        _node("c1", "find_circle", 2, 0, "Left datum hole", roi={"shape": "circle", "cx": 160, "cy": 170, "r": 44}, polarity="any", edge_threshold=20, min_radius=12, max_radius=34),
+        _node("c2", "find_circle", 2, 1, "Right datum hole", roi={"shape": "circle", "cx": 360, "cy": 170, "r": 44}, polarity="any", edge_threshold=20, min_radius=12, max_radius=34),
+        _node("coord", "coordinate", 3, 0, "Part coordinate frame", mode="two_points"),
+        _node("dist", "distance", 3, 1, "Hole spacing", mode="centers"),
+        _node("world", "to_world", 4, 1, "Spacing in mm", calibration=calibration, decimals=3),
+        _node("tol", "tolerance_judge", 5, 1, "10.00 mm spacing", nominal=10, upper_tol=0.35, lower_tol=-0.35, unit="mm", name="hole_spacing"),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: spacing", verdict="ng", label="hole_spacing"),
+    ]
+    edges = [
+        _edge("src", "und", "image", "image"), _edge("und", "c1", "image", "image"), _edge("und", "c2", "image", "image"),
+        _edge("c1", "coord", "circle", "point"), _edge("c2", "coord", "circle", "point2"),
+        _edge("c1", "dist", "circle", "a"), _edge("c2", "dist", "circle", "b"),
+        _edge("coord", "world", "frame", "frame"), _edge("dist", "world", "distance", "value"),
+        _edge("world", "tol", "length", "value"), _edge("tol", "ok", "pass", "_flow"), _edge("tol", "ng", "fail", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def camera_mapping_flow(source_id: Any, calibration: str = "") -> dict[str, Any]:
+    """相機間映射範例：在 A 視野找孔心，透過示範仿射標定映射成 B 視野座標並格式化輸出。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("gray", "grayscale", 1, 0, "Grayscale"),
+        _node("circle", "find_circle", 2, 0, "Find datum in camera A", roi={"shape": "circle", "cx": 188, "cy": 148, "r": 58}, polarity="any", edge_threshold=20, min_radius=14, max_radius=36),
+        _node("map", "map_points", 3, 0, "Map A to B", calibration=calibration, direction="forward"),
+        _node("fmt", "format_text", 4, 0, "Mapped coordinate", template="B={a:.1f},{b:.1f}", name="mapped_b"),
+        _node("ok", "judge", 5, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 5, 1, "NG: datum missing", verdict="ng", label="camera_mapping"),
+    ]
+    edges = [
+        _edge("src", "gray"), _edge("gray", "circle", "image", "image"),
+        _edge("circle", "map", "found", "_flow"), _edge("circle", "ng", "not_found", "_flow"),
+        _edge("circle", "map", "cx", "x"), _edge("circle", "map", "cy", "y"),
+        _edge("map", "fmt", "x", "a"), _edge("map", "fmt", "y", "b"), _edge("circle", "fmt", "found", "_flow"), _edge("circle", "ok", "found", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def pick_offset_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
+    """取料補正範例：教導姿態的範本比對後，align_offset 以 grab 模式回推實際取料點。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("ref", "fixed_image", 0, 2, "Taught part template", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
+        _node("tm", "template_match", 1, 0, "Find pick part", threshold=0.55, max_matches=1, angle_range=12, angle_step=2),
+        _node("off", "align_offset", 2, 0, "Grab point offset", mode="grab", ref_x=230, ref_y=155, ref_angle=0, grab_x=250, grab_y=155),
+        _node("fmt", "format_text", 3, 0, "Robot pick text", template="{a:.2f},{b:.2f},{c:.2f}", name="pick_offset"),
+        _node("ok", "judge", 4, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: part missing", verdict="ng", label="pick_offset"),
+    ]
+    edges = [
+        _edge("src", "tm", "image", "image"), _edge("ref", "tm", "image", "template_image"),
+        _edge("tm", "off", "matches", "matches"), _edge("tm", "ng", "not_found", "_flow"),
+        _edge("off", "fmt", "found", "_flow"), _edge("off", "ng", "not_found", "_flow"),
+        _edge("off", "fmt", "abs_x", "a"), _edge("off", "fmt", "abs_y", "b"), _edge("off", "fmt", "abs_angle", "c"),
+        _edge("off", "ok", "found", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def fixture_rerun_flow(source_id: Any, template_ref: dict[str, Any] | None = None) -> dict[str, Any]:
+    """整張影像回正範例：定位後 image_fixture 把畫面拉回教導姿態，再用固定 ROI 重跑量測。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("ref", "fixed_image", 0, 2, "Fixture marker", images=[template_ref] if template_ref else [], mode="fixed", index=1, role="reference"),
+        _node("tm", "template_match", 1, 0, "Find fixture marker", threshold=0.58, max_matches=1, angle_range=12, angle_step=2),
+        _node("align", "shape_align", 2, 0, "Image correction", ref_x=168, ref_y=114, ref_angle=0),
+        _node("fix", "image_fixture", 3, 0, "Back to taught pose", border="replicate"),
+        _node("cal", "caliper", 4, 0, "Fixed-coordinate band", roi={"shape": "rotated_rect", "cx": 260, "cy": 170, "w": 230, "h": 150, "angle": 90}, polarity="any", edge_pair="narrowest"),
+        _node("tol", "tolerance_judge", 5, 0, "Band width tolerance", nominal=49, upper_tol=8, lower_tol=-8, unit="px", name="fixture_band"),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: fixture measurement", verdict="ng", label="fixture_rerun"),
+    ]
+    edges = [
+        _edge("src", "tm", "image", "image"), _edge("ref", "tm", "image", "template_image"),
+        _edge("tm", "align", "matches", "matches"), _edge("tm", "ng", "not_found", "_flow"),
+        _edge("src", "fix", "image", "image"), _edge("align", "fix", "transform", "transform"),
+        _edge("fix", "cal", "image", "image"), _edge("cal", "tol", "width", "value"),
+        _edge("tol", "ok", "pass", "_flow"), _edge("tol", "ng", "fail", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def stitch_two_views_flow(source_id: Any, right_ref: dict[str, Any] | None = None) -> dict[str, Any]:
+    """雙視野拼接範例：左視野接即時影像，右視野用固定影像，拼成 1x2 後計數整張零件。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Left view", source_id=source_id),
+        _node("right", "fixed_image", 0, 1, "Right view reference", images=[right_ref] if right_ref else [], mode="fixed", index=1, role="reference"),
+        _node("stitch", "stitch_images", 1, 0, "Stitch two views", mode="grid", rows=1, cols=2, blend="uncover"),
+        _node("gray", "grayscale", 2, 0, "Grayscale"),
+        _node("thr", "threshold", 3, 0, "Bright parts", method="fixed", threshold=120),
+        _node("blob", "blob", 4, 0, "Part count across views", min_area=800, max_area=5000),
+        _node("cmp", "if_number", 5, 0, "Four parts?", operator="eq", threshold=4),
+        _node("ok", "judge", 6, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 6, 1, "NG: missing stitched part", verdict="ng", label="stitch"),
+    ]
+    edges = [
+        _edge("src", "stitch", "image", "image_1"), _edge("right", "stitch", "image", "image_2"),
+        _edge("stitch", "gray", "image", "image"), _edge("gray", "thr"), _edge("thr", "blob"), _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 SCRIPT_MEASURE_CODE = '''def run(ctx):
     items = ctx.inputs.get("a") or []
     if not isinstance(items, list) or not items:
@@ -1444,6 +1759,11 @@ REF_SPECS: dict[str, tuple[str, dict[str, Any] | None, str]] = {
     "print golden template": ("golden_print", None, ""),
     "stamped part outline": ("stamped_part", None, ""),
     "white reference (uneven lighting)": ("vignette", None, "vignette_flat"),
+    "outline locator template": ("outline_model_parts", {"shape": "rect", "x": 210, "y": 145, "w": 100, "h": 70}, ""),
+    "outline good reference": ("outline_model_parts", None, ""),
+    "pick offset template": ("pick_offset_parts", {"shape": "rect", "x": 145, "y": 88, "w": 175, "h": 140}, ""),
+    "fixture marker template": ("fixture_rerun_parts", {"shape": "rect", "x": 132, "y": 78, "w": 78, "h": 78}, ""),
+    "stitch right view": ("stitch_views", None, "stitch_right_view"),
 }
 _FIXED_CACHE: dict[str, Any] = {}
 
@@ -1587,6 +1907,26 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("label_map_count", "Multi-colour segmentation to counts", "Three HSV colour ranges become a label map, then label-map blobs count the red, green and blue regions", "detect", label_map_count_flow),
     ("color_sample_classify", "Classify by sample colours", "The part colour is compared with fixed red, green and blue sample images and rejected when no sample is close enough", "detect",
      lambda sid: color_sample_classify_flow(sid, _color_sample_refs())),
+    ("plate_corners", "Rectangular plate corners and skew", "Find the rectangular plate edges directly, rebuild the same corners from four separate edge finds, and reject a skewed or oversize plate", "measure", plate_corners_flow),
+    ("parallel_edges", "Slot width and stripe count", "A pair-edge search measures the slot width while a multi-line search counts the reference stripes in the same picture", "measure", parallel_edges_flow),
+    ("hole_matrix", "Hole grid completeness", "A 3 x 3 circle matrix reports every hole centre plus any missing cell index, then rejects the incomplete grid", "count", hole_matrix_flow),
+    ("edge_trend_peaks", "Edge straightness trend and profile peaks", "Calipers along a taught straight edge expose a local bump while a profile search counts the four bright reference peaks", "measure", edge_trend_peaks_flow),
+    ("outline_defect", "Stamped outline against a taught contour", "Template location corrects the part pose, then an edge model taught from a good outline catches missing material on the stamped edge", "quality",
+     lambda sid: outline_defect_flow(sid, _demo_ref("outline locator template"), _demo_ref("outline good reference"))),
+    ("path_edge_search", "Edge search along a polyline path", "Calipers placed along a taught polyline verify that a bright bead is continuous and report any missing edge index", "detect", path_edge_search_flow),
+    ("focus_gate", "Focus check before inspection", "A sharpness gate with a noise estimate blocks blurred images before downstream inspection runs", "quality", focus_gate_flow),
+    ("temporal_frames", "Frame averaging and previous-frame change", "Frame accumulation emits a two-frame mean while a previous-image branch compares the current frame with the last run", "quality", temporal_frames_flow),
+    ("roi_process_paste", "Process a region and paste it back", "Crop a region, enhance and filter it, paste it back into the full picture, then inspect the whole image", "tutorial", roi_process_paste_flow),
+    ("manual_undistort_world", "Manual lens correction and part coordinates", "Manual lens correction feeds two hole finds; the spacing is converted through a seeded 0.05 mm pixel-scale calibration", "measure",
+     lambda sid: manual_undistort_world_flow(sid, _demo_asset(PIXEL_SCALE_CALIB_NAME, "calibration"))),
+    ("camera_mapping", "Map a position into the second camera", "A datum found in camera A is mapped into camera B through a seeded affine camera mapping and formatted for downstream use", "measure",
+     lambda sid: camera_mapping_flow(sid, _demo_asset(CAMERA_MAPPING_CALIB_NAME, "calibration"))),
+    ("pick_offset", "Robot pick offset from a taught pose", "Template matching finds the taught part pose, then grab-point alignment returns the absolute pick coordinates", "automation",
+     lambda sid: pick_offset_flow(sid, _demo_ref("pick offset template"))),
+    ("fixture_rerun", "Fixture the whole image, then measure", "The whole image is warped back to the taught pose so a fixed-coordinate caliper can be reused after the part shifts", "measure",
+     lambda sid: fixture_rerun_flow(sid, _demo_ref("fixture marker template"))),
+    ("stitch_two_views", "Two camera views stitched into one", "A live left view and a fixed right view are stitched into a 1 x 2 image before counting parts across both cameras", "count",
+     lambda sid: stitch_two_views_flow(sid, _demo_ref("stitch right view"))),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
     ("code_message_rules", "Decode, parse and match", "Read a QR payload, split lot and part fields, match the lot with a regular expression and format a reply", "identify", code_message_rules_flow),
     ("guided_code_read", "Locate then read code", "Find the likely code area, move a crop ROI to it, enlarge that crop, then decode. The stock detector size only demonstrates the wiring; train a detector for your own code location before production use.", "identify", guided_code_read_flow),
@@ -1648,6 +1988,20 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "color_verify": "Example: colour blocks",
     "label_map_count": "Example: label map colours",
     "color_sample_classify": "Example: sample colour cards",
+    "plate_corners": "Example: plate corners",
+    "parallel_edges": "Example: parallel edges",
+    "hole_matrix": "Example: hole matrix",
+    "edge_trend_peaks": "Example: edge trend peaks",
+    "outline_defect": "Example: outline model parts",
+    "path_edge_search": "Example: path edge search",
+    "focus_gate": "Example: focus gate",
+    "temporal_frames": "Example: temporal frames",
+    "roi_process_paste": "Example: ROI process paste",
+    "manual_undistort_world": "Example: undistort world parts",
+    "camera_mapping": "Example: camera mapping parts",
+    "pick_offset": "Example: pick offset parts",
+    "fixture_rerun": "Example: fixture rerun parts",
+    "stitch_two_views": "Example: stitch views",
     "barcode_read": "Example: barcode label",
     "code_message_rules": "Example: coded messages",
     "guided_code_read": "Example: small code in clutter",
@@ -1880,6 +2234,51 @@ def seed_demo() -> list[str]:
                   "has_lens": False, "has_world": False, "has_robot": False, "has_mapping": False},
         )
         created.append(f"資產 {STEREO_CALIB_NAME}（新建）")
+    for calib_name in (PIXEL_SCALE_CALIB_NAME, CAMERA_MAPPING_CALIB_NAME):
+        import os
+        import uuid as _uuid
+
+        from django.conf import settings
+
+        from apps.vision import calib
+
+        existing_calib = Asset.objects.filter(name=calib_name, kind="calibration").first()
+        if existing_calib and existing_calib.path and os.path.isfile(existing_calib.path):
+            continue
+        if existing_calib:
+            existing_calib.delete()
+        if calib_name == PIXEL_SCALE_CALIB_NAME:
+            world = calib.solve_world([((100.0, 100.0), (5.0, 5.0)), ((300.0, 100.0), (15.0, 5.0)), ((100.0, 260.0), (5.0, 13.0))], "affine")
+            world["kind"] = "scale"
+            world["mm_per_px"] = 0.05
+            payload = calib.validate({
+                "unit": "mm",
+                "image_size": [520, 340],
+                "note": "Synthetic 0.05 mm per pixel scale used by the manual lens correction template",
+                "world": world,
+            })
+        else:
+            mapping = calib.solve_mapping(
+                [((60.0, 50.0), (92.0, 64.0)), ((360.0, 55.0), (392.0, 69.0)), ((70.0, 245.0), (102.0, 259.0)), ((350.0, 235.0), (382.0, 249.0))],
+                "affine",
+                from_source="camera A",
+                to_source="camera B",
+            )
+            payload = calib.validate({
+                "unit": "px",
+                "image_size": [420, 300],
+                "note": "Synthetic affine camera A to camera B mapping used by the camera mapping template",
+                "mapping": mapping,
+            })
+        calib_id = _uuid.uuid4()
+        calib_path = os.path.join(str(settings.VISION["ASSET_DIR"]), f"{calib_id.hex}.json")
+        calib.save(calib_path, payload)
+        Asset.objects.create(
+            id=calib_id, name=calib_name, kind="calibration", group="Examples", path=calib_path, size=os.path.getsize(calib_path),
+            meta={"summary": calib.summary(payload), "quality": calib.quality(payload), "unit": payload["unit"], "image_size": payload["image_size"],
+                  "has_lens": False, "has_world": bool(payload.get("world")), "has_robot": False, "has_mapping": bool(payload.get("mapping"))},
+        )
+        created.append(f"資產 {calib_name}（新建）")
     if not Asset.objects.filter(name="Example: shape model (bracket)", kind="file").exists():
         import os
         import uuid as _uuid
