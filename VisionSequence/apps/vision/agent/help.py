@@ -31,6 +31,20 @@ PAGE_TITLES = {
 #: 使用者手冊與 AI 助手／批次頁最貼近操作，檢索時略加權；合約／設計手冊偏工程。
 #: 頁面加權：手冊與功能頁優先；合約／架構／效能／部署與名詞表是參考資料，「怎麼做」的問題不該被它們搶走第一名
 PAGE_BOOST = {"user-guide.html": 1.4, "batch.html": 1.2, "agent.html": 1.1, "capture-client.html": 1.1, "golden.html": 1.1, "dl.html": 1.1, "automation.html": 1.1, "contract.html": 0.8, "architecture.html": 0.8, "performance.html": 0.7, "deployment.html": 0.9, "glossary.html": 0.9}
+#: 使用者指南的 Markdown 正本：docs/guide/<lang>/<page>.md（en 是正本，zh-Hant／zh-Hans 是譯本）；有 md 的頁面不再索引同名 HTML。
+
+
+def _guide_dir() -> Path:
+    """呼叫時才算：測試會把 DOCS_DIR 換成暫存資料夾，指南也要跟著換。"""
+    return DOCS_DIR / "guide"
+
+
+GUIDE_LANGS = ("en", "zh-Hant", "zh-Hans")
+GUIDE_PAGES = ("user-guide", "samples", "vision-capabilities", "calibration", "batch", "dl", "agent", "golden", "glossary")
+PAGE_TITLES.update({f"guide/{p}": PAGE_TITLES.get(f"{p}.html", p) for p in GUIDE_PAGES})
+PAGE_BOOST.update({f"guide/{p}": PAGE_BOOST.get(f"{p}.html", 1.0) for p in GUIDE_PAGES})
+#: 提問語言與章節語言不同時的降權：譯本存在時同語系的章節優先，但英文正本仍然找得到
+OTHER_LANG_WEIGHT = 0.8
 MAX_SECTION_CHARS = 1400
 TOP_K = 5
 #: 問「在哪裡／哪個頁面」時介面地圖段加權，其餘降權：地圖段很短，BM25 的長度正規化會讓它們搶走「怎麼做」類問題的第一名。
@@ -196,11 +210,15 @@ class Section:
     kind: str = "doc"  # doc | glossary | tool | ui
     tokens: dict[str, int] = field(default_factory=dict)
     length: int = 0
+    lang: str = "en"  # doc 章節的語言：HTML 工程文件一律 en，指南 md 依資料夾
 
     @property
     def url(self) -> str:
         if self.kind == "ui":
             return self.anchor  # 介面地圖：anchor 就是前端路由
+        if self.page.startswith("guide/"):
+            page = self.page[len("guide/"):]
+            return f"/help/{page}#{self.anchor}" if self.anchor else f"/help/{page}"
         return f"/docs/{self.page}#{self.anchor}" if self.anchor else f"/docs/{self.page}"
 
     @property
@@ -267,6 +285,71 @@ def _parse_page(page: str, raw: str) -> list[Section]:
             chunk = text[start:start + MAX_SECTION_CHARS * 2]
             sections.append(Section(page, page_title, heading if chunk_no == 0 else f"{heading}（續）", anchor, chunk))
     return sections
+
+
+_MD_HEADING = re.compile(r"^(#{2,3})\s+(.+?)\s*$", re.MULTILINE)
+_MD_ANCHOR = re.compile(r"\s*\{#([\w\-]+)\}\s*$")
+
+
+def _md_strip(fragment: str) -> str:
+    """Markdown → 純文字：先拆掉內嵌 HTML（截圖說明區塊），再去掉強調、程式碼、連結與錨點語法。"""
+    text = _strip(fragment)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"```[a-z]*", " ", text)
+    text = re.sub(r"[*_`]{1,3}", "", text)
+    text = re.sub(r"\{#[\w\-]+\}", "", text)
+    text = re.sub(r"^\|?-{3,}\|.*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n", text)
+    return text.strip()
+
+
+def _parse_markdown(page: str, raw: str, lang: str) -> list[Section]:
+    """指南 md → 章節：`## Title {#id}` 與 `### Title {#id}` 各一段，標題前的內文是一段簡介；anchor 沒寫就用 slug。"""
+    m = re.match(r"^#\s+(.+?)\s*$", raw, flags=re.MULTILINE)
+    page_title = _md_strip(m.group(1)) if m else PAGE_TITLES.get(page, page)
+    body = raw[m.end():] if m else raw
+    sections: list[Section] = []
+    pos = 0
+    heading, anchor = "", ""
+    for hm in list(_MD_HEADING.finditer(body)) + [None]:
+        content = body[pos:hm.start()] if hm else body[pos:]
+        text = _md_strip(content)
+        if heading or len(text) > 40:
+            # 長章節（名詞表那種大表格）切成「（續）」片段，與 HTML 解析同一套；只截斷會把表格後半段丟掉
+            for chunk_no, start in enumerate(range(0, max(1, len(text)), MAX_SECTION_CHARS * 2)):
+                chunk = text[start:start + MAX_SECTION_CHARS * 2]
+                sections.append(Section(page, page_title, heading if chunk_no == 0 else f"{heading}（續）", anchor, chunk, lang=lang))
+        if hm is None:
+            break
+        title = hm.group(2)
+        am = _MD_ANCHOR.search(title)
+        anchor = am.group(1) if am else re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        heading = _md_strip(_MD_ANCHOR.sub("", title))
+        pos = hm.end()
+    return sections
+
+
+def _guide_sections() -> list[Section]:
+    out: list[Section] = []
+    for lang in GUIDE_LANGS:
+        folder = _guide_dir() / lang
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("*.md")):
+            if path.name.startswith("_"):
+                continue  # 底線開頭＝翻譯用的暫存片段，不是指南頁
+            try:
+                out.extend(_parse_markdown(f"guide/{path.stem}", path.read_text(encoding="utf-8"), lang))
+            except Exception:  # noqa: BLE001
+                log.warning("說明索引：%s/%s 解析失敗", lang, path.name, exc_info=True)
+    return out
+
+
+def _guide_html_names() -> set[str]:
+    """已有 md 正本的指南頁：同名 HTML（過渡期可能還在）不再索引，免得同一段內容出現兩次。"""
+    return {f"{p}.html" for p in GUIDE_PAGES if (_guide_dir() / "en" / f"{p}.md").exists()}
 
 
 def _tool_sections() -> list[Section]:
@@ -373,7 +456,7 @@ def _finish(sections: list[Section]) -> Index:
 
 
 def _stamp() -> float:
-    paths = list(DOCS_DIR.glob("*.html")) + ([UI_MAP_PATH] if UI_MAP_PATH.exists() else [])
+    paths = list(DOCS_DIR.glob("*.html")) + list(_guide_dir().glob("*/*.md")) + ([UI_MAP_PATH] if UI_MAP_PATH.exists() else [])
     try:
         return max(p.stat().st_mtime for p in paths)
     except ValueError:
@@ -389,11 +472,15 @@ def build_index(force: bool = False) -> Index:
     if _index is not None and not force and _index.stamp == stamp:
         return _index
     sections: list[Section] = []
+    skip = _guide_html_names()
     for path in sorted(DOCS_DIR.glob("*.html")):
+        if path.name in skip:
+            continue
         try:
             sections.extend(_parse_page(path.name, path.read_text(encoding="utf-8")))
         except Exception:  # noqa: BLE001
             log.warning("說明索引：%s 解析失敗", path.name, exc_info=True)
+    sections.extend(_guide_sections())
     sections.extend(_tool_sections())
     sections.extend(_imaging_sections())
     sections.extend(_ui_sections())
@@ -401,8 +488,8 @@ def build_index(force: bool = False) -> Index:
     return _index
 
 
-def search(query: str, k: int = TOP_K, *, extra_terms: str = "") -> list[tuple[Section, float]]:
-    """BM25（k1=1.5、b=0.75），標題命中加權、頁面加權。"""
+def search(query: str, k: int = TOP_K, *, extra_terms: str = "", lang: str | None = None) -> list[tuple[Section, float]]:
+    """BM25（k1=1.5、b=0.75），標題命中加權、頁面加權；給了 lang 時其他語言的文件章節略降權（譯本存在就先給譯本）。"""
     idx = build_index()
     q = tokenize(f"{expand_query(query)} {extra_terms}")
     if not q:
@@ -424,6 +511,8 @@ def search(query: str, k: int = TOP_K, *, extra_terms: str = "") -> list[tuple[S
                 score += idf * 0.8
         if score > 0:
             weight = 0.9 if s.kind == "tool" else ui_weight if s.kind == "ui" else 1.0
+            if lang and s.kind == "doc" and s.lang != lang:
+                weight *= OTHER_LANG_WEIGHT
             scored.append((s, score * PAGE_BOOST.get(s.page, 1.0) * weight))
     scored.sort(key=lambda r: -r[1])
     return scored[:k]
@@ -608,7 +697,7 @@ def answer(question: str, settings: providers.AgentSettings, *, context: dict[st
     長期記憶（notes）：使用者要它記住的事實整段進現況、評過好的相似舊問答當範例；離線時相似度夠高直接用舊回答。"""
     ctx = context or {}
     kind_label = CONTEXT_LABELS.get(str(ctx.get("kind") or ""), "")
-    hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx, question)}")
+    hits = search(question, extra_terms=f"{kind_label} {_error_terms(ctx, question)}", lang=situation.norm_lang((context or {}).get("lang")))
     facts = notes.facts_text(user)
     remembered = notes.recall(user, question)
     sections = _optics_section(question) + _context_sections(ctx) + [s for s, _ in hits]

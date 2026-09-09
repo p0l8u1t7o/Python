@@ -37,11 +37,11 @@ class HelpIndexTests(TestCase):
         self.assertGreaterEqual(stats["tools"], 60)
         hits = help_mod.search("批次測試 影像集 怎麼建立")
         self.assertTrue(hits)
-        self.assertIn(hits[0][0].page, ("batch.html", "user-guide.html"))
-        self.assertTrue(any(s.page == "batch.html" for s, _ in hits))
-        self.assertTrue(hits[0][0].url.startswith("/docs/"))
+        self.assertIn(hits[0][0].page, ("guide/batch", "guide/user-guide"))
+        self.assertTrue(any(s.page == "guide/batch" for s, _ in hits))
+        self.assertTrue(hits[0][0].url.startswith(("/docs/", "/help/")))
         hits = help_mod.search("Golden Set 回歸 基準")
-        self.assertIn(hits[0][0].page, ("golden.html", "user-guide.html"))
+        self.assertIn(hits[0][0].page, ("guide/golden", "guide/user-guide"))
         hits = help_mod.search("blob 粒子 最小面積")
         self.assertTrue(any(s.kind == "tool" and "blob" in s.heading for s, _ in hits))
         self.assertEqual(help_mod.tokenize("Blob 分析 min_area"), ["blob", "min_area", "分析"])
@@ -51,7 +51,7 @@ class HelpIndexTests(TestCase):
         self.assertEqual(out["provider"], "rules")
         self.assertIn("From the platform documentation:", out["answer"])
         self.assertTrue(out["sources"])
-        self.assertTrue(all(src["url"].startswith("/docs/") or src["kind"] == "ui" for src in out["sources"]))
+        self.assertTrue(all(src["url"].startswith(("/docs/", "/help/")) or src["kind"] == "ui" for src in out["sources"]))
         self.assertLessEqual(len(help_mod.snippet(out and help_mod.search("Golden")[0][0], "Golden", 120)), 130)
         out = help_mod.answer("zzqqxx", providers.AgentSettings())
         self.assertIn("no section that directly matches", out["answer"])
@@ -288,3 +288,41 @@ class UiMapIndexTests(TestCase):
             self.assertEqual(help_mod._ui_sections(), [])
             self.assertIsNone(help_mod.ui_page_for("/sources"))
             self.assertIn("# Interface map", help_mod.ui_brief())
+
+
+class GuideMarkdownIndexTests(TestCase):
+    """使用者指南的 Markdown 正本（docs/guide/<lang>/*.md）進索引：錨點來自 `{#id}`、url 指向前端 /help、同語系優先。"""
+
+    def test_parse_markdown_sections_anchors_and_chunks(self):
+        md = "# Guide title\n\nIntro paragraph long enough to become its own section for the index.\n\n## First {#first}\n\nBody **bold** `code` [link](batch.md#x).\n\n### Sub heading\n\n" + ("row | value\n" * 400) + "\n## Second {#second}\n\nTail.\n"
+        sections = help_mod._parse_markdown("guide/demo", md, "zh-Hant")
+        self.assertEqual(sections[0].page_title, "Guide title")
+        self.assertEqual(sections[0].heading, "")
+        first = [s for s in sections if s.heading == "First"][0]
+        self.assertEqual(first.anchor, "first")
+        self.assertEqual(first.lang, "zh-Hant")
+        self.assertIn("bold code link", first.text)
+        self.assertEqual(first.url, "/help/demo#first")
+        sub = [s for s in sections if s.heading.startswith("Sub heading")]
+        self.assertEqual(sub[0].anchor, "sub-heading")
+        self.assertGreater(len(sub), 1, "長章節要切成（續）片段，不能只截斷")
+        self.assertTrue(sub[1].heading.endswith("（續）"))
+        self.assertEqual([s.heading for s in sections][-1], "Second")
+
+    def test_guide_pages_replace_their_html_and_prefer_language(self):
+        idx = help_mod.build_index()
+        pages = {s.page for s in idx.sections if s.kind == "doc"}
+        self.assertIn("guide/user-guide", pages)
+        self.assertNotIn("user-guide.html", pages, "有 md 正本的頁面不再索引同名 HTML")
+        self.assertIn("modbus.html", pages, "工程文件仍是 HTML")
+        hits = help_mod.search("batch test image set", k=3, lang="en")
+        self.assertTrue(any(s.page == "guide/batch" for s, _ in hits))
+        # 同語系優先：造一個只差語言的章節，zh-Hant 提問時 zh-Hant 版要排前面
+        base = [s for s in idx.sections if s.page == "guide/batch" and s.heading][0]
+        twin = help_mod.Section(base.page, base.page_title, base.heading, base.anchor, base.text, lang="zh-Hant")
+        twin.tokens, twin.length = dict(base.tokens), base.length
+        with mock.patch.object(help_mod, "_index", help_mod.Index(idx.sections + [twin], idx.df, idx.avg_len, idx.stamp)):
+            with mock.patch.object(help_mod, "_stamp", return_value=idx.stamp):
+                zh = help_mod.search(base.heading, k=10, lang="zh-Hant")
+                order = [s.lang for s, _ in zh if s.page == base.page and s.heading == base.heading]
+                self.assertEqual(order[:2], ["zh-Hant", "en"])
