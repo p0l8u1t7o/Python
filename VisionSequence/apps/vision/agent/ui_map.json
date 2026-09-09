@@ -804,27 +804,75 @@
    },
    "tabs": [
     {
-     "key": "quickstart",
+     "key": "user-guide",
      "names": {
-      "en": "Quick start",
-      "zh-Hant": "快速上手",
-      "zh-Hans": "快速上手"
+      "en": "User guide",
+      "zh-Hant": "使用者手冊",
+      "zh-Hans": "用户手册"
+     }
+    },
+    {
+     "key": "samples",
+     "names": {
+      "en": "Example templates",
+      "zh-Hant": "範例範本",
+      "zh-Hans": "示例模板"
+     }
+    },
+    {
+     "key": "vision-capabilities",
+     "names": {
+      "en": "Inspection capabilities",
+      "zh-Hant": "檢測功能",
+      "zh-Hans": "检测功能"
+     }
+    },
+    {
+     "key": "calibration",
+     "names": {
+      "en": "Calibration",
+      "zh-Hant": "標定",
+      "zh-Hans": "标定"
+     }
+    },
+    {
+     "key": "batch",
+     "names": {
+      "en": "Batch testing",
+      "zh-Hant": "批次測試",
+      "zh-Hans": "批量测试"
+     }
+    },
+    {
+     "key": "dl",
+     "names": {
+      "en": "Deep learning",
+      "zh-Hant": "深度學習",
+      "zh-Hans": "深度学习"
+     }
+    },
+    {
+     "key": "agent",
+     "names": {
+      "en": "AI assistant",
+      "zh-Hant": "AI 助手",
+      "zh-Hans": "AI 助手"
+     }
+    },
+    {
+     "key": "golden",
+     "names": {
+      "en": "Golden Set",
+      "zh-Hant": "Golden Set",
+      "zh-Hans": "Golden Set"
      }
     },
     {
      "key": "glossary",
      "names": {
       "en": "Glossary",
-      "zh-Hant": "名詞定義",
-      "zh-Hans": "名词定义"
-     }
-    },
-    {
-     "key": "ports",
-     "names": {
-      "en": "Port types & colours",
-      "zh-Hant": "埠型別與顏色",
-      "zh-Hans": "端口类型与颜色"
+      "zh-Hant": "名詞表",
+      "zh-Hans": "术语表"
      }
     },
     {
@@ -834,32 +882,22 @@
       "zh-Hant": "工具目錄",
       "zh-Hans": "工具目录"
      }
-    },
-    {
-     "key": "shortcuts",
-     "names": {
-      "en": "Shortcuts",
-      "zh-Hant": "快捷鍵",
-      "zh-Hans": "快捷键"
-     }
-    },
-    {
-     "key": "automation",
-     "names": {
-      "en": "Automation API",
-      "zh-Hant": "自動化接口",
-      "zh-Hans": "自动化接口"
-     }
-    },
-    {
-     "key": "accounts",
-     "names": {
-      "en": "Accounts & lock",
-      "zh-Hant": "帳號與鎖定",
-      "zh-Hans": "帐号与锁定"
-     }
     }
    ]
+  },
+  {
+   "route": "/help/:page",
+   "id": "help_page",
+   "names": {
+    "en": "Help",
+    "zh-Hant": "說明",
+    "zh-Hans": "说明"
+   },
+   "summary": {
+    "en": "Definitions and how-to",
+    "zh-Hant": "名詞定義與操作說明",
+    "zh-Hans": "名词定义与操作说明"
+   }
   },
   {
    "route": "/sources",

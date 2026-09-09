@@ -11,6 +11,8 @@ export default defineConfig({
     host: process.env.VITE_DEV_HOST ?? '127.0.0.1',
     port: 5173,
     strictPort: true,
+    // 使用者指南的 Markdown 正本在專案根的 docs/guide（發行樹也帶 docs），dev 伺服器要能讀到專案根
+    fs: { allow: [path.resolve(__dirname, '..')] },
     proxy: {
       '/docs': { target: process.env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:8000', changeOrigin: true },
       '/api': {

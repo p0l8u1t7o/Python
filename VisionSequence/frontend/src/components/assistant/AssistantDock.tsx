@@ -489,8 +489,8 @@ export function AssistantDock() {
                     <li className="font-semibold text-muted">{t('assistant.sources')}</li>
                     {m.sources.slice(0, 4).map((s) => (
                       <li key={s.url + s.heading}>
-                        {s.kind === 'ui'
-                          ? <Link to={s.url} className="inline-flex items-center gap-1 text-brand hover:underline" data-testid="assistant-ui-link">{s.title}</Link>
+                        {s.kind === 'ui' || s.url.startsWith('/help/')
+                          ? <Link to={s.url} className="inline-flex items-center gap-1 text-brand hover:underline" data-testid={s.kind === 'ui' ? 'assistant-ui-link' : 'assistant-guide-link'}>{s.title}</Link>
                           : <a href={s.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">{s.title}<ExternalLink size={10} /></a>}
                       </li>
                     ))}

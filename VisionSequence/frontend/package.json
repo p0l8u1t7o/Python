@@ -4,7 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "description": "VisionSequence 機器視覺平台前端",
-  "browserslist": ["chrome >= 111", "edge >= 111", "firefox >= 128", "safari >= 16.4"],
+  "browserslist": [
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 128",
+    "safari >= 16.4"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/compress.mjs",
@@ -17,9 +22,11 @@
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",
     "@xyflow/react": "^12.11.3",
+    "dompurify": "^3.4.15",
     "html-to-image": "^1.11.13",
     "i18next": "^24.2.0",
     "lucide-react": "^0.468.0",
+    "marked": "^18.0.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^15.4.0",

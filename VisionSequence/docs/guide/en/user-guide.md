@@ -1,6 +1,6 @@
 # User guide
 
-This guide follows the sidebar from top to bottom: where each page is, what is on it, and what to press. Every section opens with a screenshot; the numbered markers on the picture match the numbered list under it. The screenshots show the English interface; the Chinese interfaces have the same layout with translated labels. The Help page inside the product carries a condensed version of the same material plus the tool catalogue.
+This guide follows the sidebar from top to bottom: where each page is, what is on it, and what to press. Every section opens with a screenshot; the numbered markers on the picture match the numbered list under it. The screenshots show the English interface; the Chinese interfaces have the same layout with translated labels. This guide is also the Help page inside the product (sidebar › Help), in the interface language, together with the tool catalogue.
 
 ## 1. Getting around {#shell}
 
@@ -482,3 +482,118 @@ The trail records changes, not runs: who changed which flow, parameter, recipe, 
 | The camera is on another PC, or needs a Basler or IDS SDK | Use the capture client ([10](#sources-capture)). |
 | An operator cannot change a parameter | Only on-site parameters are editable by operators, and only when the role has "On-site parameters and changeover"; an administrator grants it on the Users page ([2](#login)). |
 | Where is …? | Ask the assistant in the bottom-right corner: it names the page and tab and offers a "go there" chip. |
+
+## Quick reference {#quick-reference}
+
+### Quick start {#quick-start}
+
+1. **Create a flow** Press "New flow" on the Flows page, or copy one of the demo flows. A flow belongs to the line rather than to a person: any engineer can see and edit it, and the Owner column only records who created it.
+2. **Acquire an image** Insert an "Image source" step from the palette and pick a folder, synthetic or capture client source from the source library — or use "Upload scratch image" in the toolbar to provide one image for previews only (it does not join the library). Cameras are driven by the capture client on the PC they are attached to ("Download capture client" on the Image sources page): connect it to the server and add a "capture client camera" source naming the client and the channel.
+3. **Add tools** Drag a tool from the palette onto the canvas (or click to insert it at the right), then drag from one step's output port to the next step's input port. Only ports of the same colour connect.
+4. **Draw an ROI** For a tool with a region parameter, press "Edit on image" on the tool page or in the inspector and drag out a rectangle, circle, polygon or any other shape directly on the image. Coordinates are pixels in that step's input image.
+5. **Preview** "Preview" in the toolbar runs the current canvas, unsaved changes included, and keeps every intermediate image; "Re-run with last image" pins the same image while you tune. The icon beside a step name opens its tool page, where changing a parameter re-runs to that step and shows the before and after images with a histogram.
+6. **Judge** Use the "Judge" tool to give an OK or NG, and "Named output" to name the values you want returned to the automation system.
+7. **Save** Ctrl+S, or "Save" in the toolbar. "Run once" and "Continuous" use the saved version.
+8. **Trigger it from outside** An external system triggers a flow with HTTP POST /api/vision/flows/{id}/run (optionally with an image) or a TCP command, and collects the result from the response or over SSE. Details on the Automation API tab.
+9. **Template gallery** "Create from template" on the Flows page, or "Load template" in the editor toolbar: 18 built-in templates covering counting, measurement, defects, colour, code reading and deep learning (stock models and taught models). Pick the matching "Example: …" image source and it runs as it is. Your own flow can be saved as a template too.
+10. **AI assistant** The AI assistant page: upload an image, mark the areas to inspect (ROI01, ROI02… each with its own hint) and describe what you want in a sentence. The assistant checks it has enough to go on, generates the flow and runs it on that image. Mark each thumbnail with the verdict it should get and the assistant ranks its candidates against them and auto-tunes. Refine it in words, then "Save as flow". History restores a past session and AI skills takes your own notes; with the working mode set to agentic, the assistant tries, edits and verifies step by step with a timeline. The global assistant in the bottom-right corner opens on any page: it answers questions from the documentation with links, edits the current flow in the editor, and consults or tunes from the data on the batch page.
+11. **Batch testing and the Golden Set** "Batch test" in the sidebar: pick a flow, upload images or grab them from a source to build an image set, and every run keeps its per-image results. Label the images with their expected OK or NG to get a hit rate, insights and suggested thresholds; change parameters, run the same set again and compare; then write it back to the flow or save it as a recipe. You can also ask the AI assistant to consult on or tune from the data. Tick cases and save them to a Golden Set as a regression baseline.
+12. **Deep-learning teaching** "Deep learning" in the sidebar: create a teaching project, collect samples (uploaded or grabbed from a source), label classes or shapes (smart select included), train, and export the model to the asset library for a DL tool to use in a flow.
+13. **Source and asset groups** Both the image source library and the asset library support groups: filter with the chips above the list, and rename or delete under "Manage groups". The example sources and assets are all in the "Examples" group.
+
+### Ports {#ports}
+
+| Type | Colour | Used for |
+|---|---|---|
+| `image` | blue `#3b82f6` | Images |
+| `region` | purple `#a855f7` | ROIs |
+| `number` | green `#22c55e` | Numbers |
+| `bool` | orange `#f97316` | Booleans |
+| `string` | yellow `#eab308` | Strings |
+| `points` | cyan `#06b6d4` | Point sets |
+| `contours` | indigo `#6366f1` | Contours |
+| `matches` | pink `#ec4899` | Match and detection results |
+| `list` | teal `#14b8a6` | General lists, overlays included |
+| `any` | grey-white `#cbd5e1` | Anything |
+| `flow` | grey (diamond) `#94a3b8` | Branching |
+
+### Keyboard shortcuts {#shortcuts}
+
+| Key | Action |
+|---|---|
+| `Ctrl+S` | Save the flow |
+| `Right-click a step` | Step menu: open the tool page, duplicate, disable, delete, copy or paste parameters |
+| `Ctrl+Z` | Undo |
+| `Ctrl+C / Ctrl+V` | Copy and paste the selected steps, internal edges included |
+| `Delete / Backspace` | Delete the selected steps or edges |
+| `Esc` | Clear the selection, or leave ROI editing |
+| `Left-drag (select mode)` | Rubber-band several steps; middle- or right-drag pans the canvas |
+| `Shift+drag (pan mode)` | Rubber-band selection |
+| `Scroll wheel` | Zoom the image viewer and the canvas |
+| `F / 1 / + / − (image viewer)` | Fit, 1:1, zoom in, zoom out |
+| `Double-click the image` | Fit to window |
+
+### Automation entry points {#automation-entry}
+
+**HTTP trigger**
+
+```
+POST /api/vision/flows/{id}/run?wait=1
+Headers: X-API-Key: <key>  (or Authorization: Bearer <token>)
+multipart: image=<file>   or   JSON: {"context": {...}}
+-> 200 RunReport (wait=1) / 202 {"queued": true} (wait=0)
+```
+
+**Preview (what the tool page uses)**
+
+```
+POST /api/vision/flows/{id}/preview
+{"graph": {...}, "reuse_image_ref": "...", "until_node": "blob", "analysis": true}
+```
+
+**Scratch image / reset**
+
+```
+POST /api/vision/flows/{id}/scratch-image  (multipart image) -> {ref,width,height,name}
+DELETE /api/vision/flows/{id}/recent -> clears the in-memory run records and statistics (SSE sends cleared)
+```
+
+**Event stream (SSE)**
+
+```
+GET /api/vision/flows/{id}/stream?since=<seq>
+Events: run_started / run_finished (with run) / stats / continuous / lock / cleared / ping (a 15 second heartbeat)
+```
+
+**Capture client (the camera is on another PC)**
+
+```
+Image sources -> "Download capture client" -> unzip and run VisionSequenceCapture.exe on the camera's PC
+Connection: the server address and port 9100 (VISION_CAPTURE_PORT), a client name, and the key when the server sets VISION_CAPTURE_AUTH or API_KEY
+Channel: choose the camera, open it, start acquiring; draw an ROI to send only that region
+Web: add an image source of kind=capture {client, channel, mode: on_demand|stream, timeout_ms, fresh, encoding}
+Headless: VisionSequenceCapture-console.exe --headless --connect  (for Task Scheduler or a service wrapper)
+```
+
+**TCP**
+
+```
+One command per line (terminated with \n, case-insensitive), one JSON reply per line:
+RUN <flow id or name> [key=value ...] -> {"ok": true, "status": "ok|ng|failed", "judge": "OK", "outputs": {...}, "duration_ms": 12.3, "run_id": "..."}
+TRIGGER <flow>   -> trigger without waiting, {"ok": true, "queued": true}
+STATUS [flow]    -> statistics; without a flow, the capacity and the engine lock
+START <flow> / STOP <flow> -> continuous mode
+LOCK [reason="..." ttl=600] / UNLOCK -> hold the hardware: the interface can edit but not run
+LIST / PING
+Images are pushed into an image source of kind=upload with POST /api/vision/sources/{id}/push.
+```
+
+### Accounts and the engine lock {#accounts-quick}
+
+- The first time you use it there are no accounts at all, and the sign-in page lets you create the first administrator.
+- Administrator: manages accounts, role permissions and system settings. Engineer (the default): creates and edits flows, sources, assets, deep-learning teaching, batch tests and Golden Sets. Operator: runs inspections, starts and stops continuous mode, changes over between recipes, and adjusts on-site parameters on the teach page.
+- Role permissions: that split is the factory setting, not a fixed rule. On the Users page an administrator ticks function by function what an engineer and an operator may use — deep learning, batch testing, the audit trail, the outgoing connections. Administrators always have everything, and the server checks every request, so an untick cannot be worked around by typing the address.
+- A flow belongs to the line, not to a person: every engineer can see and edit every flow, and the Owner column only records who created it.
+- An integrator (an automation system) calls with an API key (X-API-Key) and can always execute a flow.
+- Engine lock: an integrator takes it over HTTP (POST /api/vision/lock) or TCP (LOCK), which stops every continuous run and leaves everyone else able to edit but not preview or run. A banner across the top of the interface says who holds it and why; an administrator or the holder can release it from there, and a lock can carry a timeout after which it releases itself.
+- Change your own display name and password on the Settings page; an administrator can reset someone else's password, change roles and disable an account on the Users page.

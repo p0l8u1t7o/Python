@@ -95,6 +95,7 @@ const router = createBrowserRouter([
             ],
           },
           { path: 'help', element: <HelpPage /> },
+          { path: 'help/:page', element: <HelpPage /> },
           { path: 'sources', element: <SourcesPage /> },
           { path: 'calibration', element: <CalibrationPage /> },
           { path: 'assets', element: <AssetsPage /> },

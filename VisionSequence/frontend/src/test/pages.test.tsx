@@ -50,11 +50,21 @@ describe('pages render (smoke)', () => {
     expect(row.querySelectorAll('input[type="checkbox"]').length).toBe(2)
   })
 
-  it('HelpPage shows quickstart and tabs', async () => {
+  it('HelpPage renders the Markdown guide, its sections and the tool catalogue', async () => {
     const { HelpPage } = await import('@/pages/HelpPage')
     renderPage(<HelpPage />, { route: '/help' })
-    expect(await screen.findByText('Quick start')).toBeInTheDocument()
-    expect(screen.getAllByText(/quick start|glossary/i).length).toBeGreaterThan(0)
+    const article = await screen.findByTestId('help-article')
+    await waitFor(() => expect(article.querySelector('h2')).not.toBeNull(), { timeout: 5000 })
+    expect(article.querySelector('h2#shell')).not.toBeNull()
+    expect(screen.getByTestId('help-toc').textContent).toContain('Getting around')
+    expect(screen.queryByTestId('help-fallback')).toBeNull()
+    expect(screen.getByTestId('help-search')).toBeInTheDocument()
+  })
+
+  it('HelpPage lists the tool catalogue at /help/tools', async () => {
+    const { HelpPage } = await import('@/pages/HelpPage')
+    renderPage(<HelpPage />, { route: '/help/tools' })
+    expect(await screen.findByTestId('help-tools', {}, { timeout: 5000 })).toBeInTheDocument()
   })
 
   it('AgentPage renders the three steps and provider badge', async () => {

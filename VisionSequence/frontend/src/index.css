@@ -329,3 +329,36 @@
 /* 邊上的資料流小點動畫用；overlay 畫布不吃事件 */
 .vs-edge-flowing { stroke-dasharray: 6 4; animation: vs-dash 0.8s linear infinite; }
 @keyframes vs-dash { to { stroke-dashoffset: -20; } }
+
+/* 使用者指南（HelpPage）：docs/guide 的 Markdown 轉譯後的內文；截圖區塊 figure.shot 與編號說明 ol.callouts 與舊手冊同一套長相 */
+.guide-article { max-width: 80ch; line-height: 1.7; font-size: 14.5px; }
+.guide-article h1 { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 1rem; }
+.guide-article h2 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 0.75rem; padding-top: 0.25rem; border-top: 1px solid var(--border); scroll-margin-top: 1rem; }
+.guide-article h3 { font-size: 1.05rem; font-weight: 600; margin: 1.5rem 0 0.5rem; scroll-margin-top: 1rem; }
+.guide-article h4 { font-size: 0.95rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.guide-article p { margin: 0 0 0.85rem; }
+.guide-article ul, .guide-article ol { margin: 0 0 0.85rem; padding-left: 1.5rem; }
+.guide-article ul { list-style: disc; }
+.guide-article ol { list-style: decimal; }
+.guide-article li { margin: 0.25rem 0; }
+.guide-article li > ul, .guide-article li > ol { margin-bottom: 0.25rem; }
+.guide-article a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+.guide-article code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.86em; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.05em 0.35em; }
+.guide-article pre { background: var(--surface-muted); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; overflow-x: auto; margin: 0 0 1rem; font-size: 0.82rem; line-height: 1.55; }
+.guide-article pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+.guide-article .table-wrap { overflow-x: auto; margin: 0 0 1rem; border: 1px solid var(--border); border-radius: 8px; }
+.guide-article table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.guide-article th, .guide-article td { padding: 0.45rem 0.65rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.guide-article th { background: var(--surface-muted); font-weight: 600; color: var(--heading); white-space: nowrap; }
+.guide-article tr:last-child td { border-bottom: 0; }
+.guide-article blockquote { border-left: 3px solid var(--brand); margin: 0 0 1rem; padding: 0.25rem 0 0.25rem 1rem; color: var(--muted); }
+.guide-article hr { border: 0; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+.guide-article img { max-width: 100%; height: auto; }
+.guide-article figure.shot { margin: 1rem 0 1.5rem; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.guide-article figure.shot > img { display: block; width: 100%; border-bottom: 1px solid var(--border); }
+.guide-article figure.shot figcaption { padding: 0.75rem 1rem 0.5rem; font-size: 0.85rem; color: var(--content); }
+.guide-article figure.shot figcaption > b { display: block; margin-bottom: 0.35rem; color: var(--heading); }
+.guide-article ol.callouts { list-style: none; padding: 0; margin: 0.35rem 0 0; counter-reset: none; }
+.guide-article ol.callouts li { position: relative; padding-left: 2rem; margin: 0.3rem 0; }
+.guide-article ol.callouts li::before { content: attr(data-n); position: absolute; left: 0; top: 0.1rem; width: 1.4rem; height: 1.4rem; border-radius: 9999px; background: var(--brand); color: #fff; font: 700 0.72rem/1.4rem ui-monospace, Consolas, monospace; text-align: center; }
+.theme-cyber .guide-article ol.callouts li::before { background: #00ff88; color: #0a0a12; }
