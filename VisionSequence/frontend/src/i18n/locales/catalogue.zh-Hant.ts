@@ -200,5 +200,11 @@ export default {
     shape_locate: { name: '形狀比對定位（任意角度、任意光線）', description: '以邊緣方向比對找出旋轉、變暗、雜物中的工件，接定位補正與 ROI 跟隨，並拒絕不同的零件' },
     anomaly_demo: { name: '異常檢測：只教良品（教導模型）', description: 'seed 由 20 張乾淨鋁板建的異常模型把每個區塊與良品記憶庫比對，沒看過的刮痕就是異常（需要異常檢測 backbone）' },
     dl_segment_demo: { name: '語意分割：刮痕面積（教導模型）', description: '由 seed 訓練的 patch_segment 模型接 dl_segment 刮痕面積門檻與 OK/NG' },
+    ai_classify_demo: { name: '庫存分類器閘門', description: 'ai_classify 先輸出庫存模型標籤，再用 string_match 依標籤分流判定；實務可改用教導模型或 pass_labels' },
+    ai_obb_demo: { name: '傾斜工件的旋轉框', description: 'ai_obb 找旋轉外框，list_sort 依角度排序，再由 format_text 組成角度報表' },
+    ai_pose_demo: { name: '關鍵點與幾何', description: 'ai_pose 輸出姿態與關鍵點，本範例用人數閘門示範，也可把關鍵點接到幾何量測' },
+    dl_detect_instance_demo: { name: '教導式偵測與實例模型', description: 'dl_detect 與 dl_instance 並排，模型資產留空，供深度學習教導頁訓練後選用' },
+    dl_retrieval_demo: { name: '免重訓擴充的檢索庫', description: '三類參考圖建立檢索庫，預期標籤相符走 OK，低相似度走 not_matched' },
+    multi_light_surface: { name: '四向打光融合表面缺陷', description: '每張樣本是同一表面四個打光方向的 2×2 拼圖：裁四格進 multi_light_fuse（陰影模式）找只在強起伏才出現的刮痕；multi_light_grab 示範產線接法' },
   },
 }

@@ -599,6 +599,116 @@ def dl_scratch_labeled(n: int = 10) -> list[tuple[np.ndarray, list[dict]]]:
     return [_scratch_plate(3000 + i, 1 + i % 2) for i in range(n)]
 
 
+def ai_classifier_gate_parts() -> list[np.ndarray]:
+    """Small product-card pictures used to demonstrate stock classification routing."""
+    out = []
+    colours = [(64, 126, 216), (72, 176, 96), (202, 136, 58), (118, 82, 188)]
+    for i, colour in enumerate(colours):
+        img = _canvas(360, 260, 205)
+        cv2.rectangle(img, (46, 42), (314, 218), (236, 238, 240), -1)
+        cv2.rectangle(img, (46, 42), (314, 218), (52, 56, 62), 2)
+        cv2.circle(img, (126, 132), 42, colour, -1)
+        cv2.rectangle(img, (196, 91), (272, 173), tuple(max(0, int(c) - 34) for c in colour), -1)
+        cv2.putText(img, f"G{i + 1}", (92, 224), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (58, 62, 68), 2)
+        out.append(_noise(img, 2, 6200 + i))
+    return out
+
+
+def ai_tilted_parts() -> list[np.ndarray]:
+    """Tilted synthetic parts for the oriented-box stock-model wiring template."""
+    out = []
+    specs = [(0, 0), (12, -16), (-18, 10), (26, 22)]
+    for i, (angle, dx) in enumerate(specs):
+        img = _canvas(480, 320, 44)
+        rect = ((240.0 + dx, 160.0), (210.0, 82.0), float(angle))
+        box = np.round(cv2.boxPoints(rect)).astype(np.int32)
+        cv2.fillPoly(img, [box], (204, 210, 214))
+        cv2.polylines(img, [box], True, (52, 56, 62), 3)
+        cv2.line(img, tuple(box[0]), tuple(box[2]), (78, 82, 88), 2)
+        out.append(_noise(img, 3, 6300 + i))
+    return out
+
+
+def ai_pose_parts() -> list[np.ndarray]:
+    """Stick-figure-like samples; stock pose models may not recognise them."""
+    out = []
+    for i in range(4):
+        img = _canvas(320, 440, 226)
+        cx = 160 + (i - 1) * 8
+        cv2.circle(img, (cx, 88), 28, (82, 86, 92), 3)
+        cv2.line(img, (cx, 118), (cx, 245), (82, 86, 92), 6)
+        cv2.line(img, (cx, 150), (cx - 74, 202), (82, 86, 92), 5)
+        cv2.line(img, (cx, 150), (cx + 74, 202), (82, 86, 92), 5)
+        cv2.line(img, (cx, 245), (cx - 54, 346), (82, 86, 92), 6)
+        cv2.line(img, (cx, 245), (cx + 58, 346), (82, 86, 92), 6)
+        if i == 3:
+            cv2.rectangle(img, (82, 128), (238, 310), (226, 226, 226), -1)
+        out.append(_noise(img, 2, 6400 + i))
+    return out
+
+
+def _retrieval_part(label: str, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    img = _canvas(224, 224, 46)
+    jitter = int(rng.integers(-5, 6))
+    if label == "part_a":
+        cv2.circle(img, (112 + jitter, 112), 58, (54, 116, 222), -1)
+        cv2.circle(img, (112 + jitter, 112), 20, (235, 238, 242), -1)
+    elif label == "part_b":
+        cv2.rectangle(img, (58 + jitter, 58), (166 + jitter, 166), (82, 190, 92), -1)
+        cv2.line(img, (80 + jitter, 80), (144 + jitter, 144), (235, 238, 242), 9)
+    elif label == "part_c":
+        pts = np.array([[112 + jitter, 42], [184 + jitter, 174], [40 + jitter, 174]], dtype=np.int32)
+        cv2.fillPoly(img, [pts], (216, 144, 58))
+        cv2.rectangle(img, (86 + jitter, 128), (138 + jitter, 146), (235, 238, 242), -1)
+    else:
+        for x in range(34, 190, 24):
+            cv2.line(img, (x, 38), (x + 42, 186), (152, 92, 190), 8)
+    return _noise(img, 2, seed)
+
+
+def retrieval_library_labeled() -> list[tuple[np.ndarray, str]]:
+    """Three classes, two references per class, for the demo retrieval library asset."""
+    return [
+        (_retrieval_part(label, seed), label)
+        for label, seeds in (("part_a", (6500, 6501)), ("part_b", (6510, 6511)), ("part_c", (6520, 6521)))
+        for seed in seeds
+    ]
+
+
+def retrieval_query_parts() -> list[np.ndarray]:
+    """Three known part_a queries and one unrelated part for the not_matched branch."""
+    return [_retrieval_part("part_a", seed) for seed in (6500, 6501, 6500)] + [_retrieval_part("unknown", 6530)]
+
+
+def _multi_light_frames(seed: int, scratch: bool) -> list[np.ndarray]:
+    """同一表面四個打光方向（0°／90°／180°／270°）的 300×200 灰階幀；scratch 時 270° 幀多一道刮痕。"""
+    h, w = 200, 300
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    base = np.full((h, w), 142.0, np.float32)
+    base += 5.0 * np.sin(xx / 19.0) + 3.0 * np.sin(yy / 23.0)
+    bump = np.exp(-(((xx - 150.0) / 62.0) ** 2 + ((yy - 100.0) / 36.0) ** 2))
+    dirs = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+    out = []
+    for i, (dx, dy) in enumerate(dirs):
+        shade = base + 28.0 * bump * (0.55 + 0.45 * (dx * (xx - 150.0) / 62.0 + dy * (yy - 100.0) / 36.0))
+        img = np.clip(shade, 0, 255).astype(np.uint8)
+        if scratch and i == 3:
+            cv2.line(img, (84, 138), (226, 62), 238, 4, cv2.LINE_AA)
+            cv2.line(img, (84, 142), (226, 66), 54, 2, cv2.LINE_AA)
+        out.append(_noise(cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), 1.5, seed + i))
+    return out
+
+
+def multi_light_surface() -> list[np.ndarray]:
+    """多光源表面缺陷：每張樣本是同一工件四個打光方向的 2×2 拼圖（左上 0°、右上 90°、左下 180°、右下 270°），
+    範本把四格裁出來再融合；前三張乾淨，第四張的 270° 幀有一道刮痕。"""
+    out = []
+    for i in range(4):
+        f = _multi_light_frames(6600 + i * 10, scratch=(i == 3))
+        out.append(np.vstack([np.hstack([f[0], f[1]]), np.hstack([f[2], f[3]])]))
+    return out
+
 def registered_parts() -> list[np.ndarray]:
     """註冊計數：三張各三個帶孔方塊，第四張缺一個；留背景邊界供裁切註冊。"""
     out = []
@@ -1114,6 +1224,11 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "output_bundle_parts": ("output bundle parts", output_bundle_parts),
     "dl_parts": ("classification teaching", dl_parts),
     "dl_scratch": ("segmentation teaching", dl_scratch),
+    "ai_classifier_gate_parts": ("AI classifier gate parts", ai_classifier_gate_parts),
+    "ai_tilted_parts": ("AI tilted parts", ai_tilted_parts),
+    "ai_pose_parts": ("AI pose stick figures", ai_pose_parts),
+    "retrieval_query_parts": ("retrieval query parts", retrieval_query_parts),
+    "multi_light_surface": ("multi-light surface", multi_light_surface),
 }
 
 

@@ -939,6 +939,139 @@ def yolo_area_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def ai_classify_gate_flow(source_id: Any) -> dict[str, Any]:
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("cls", "ai_classify", 1, 0, "Stock classifier", model_size="n", top_k=3, threshold=0.0),
+        _node("gate", "string_match", 2, 0, "Route accepted labels", list="washer\nbracket\nplate", match="contains"),
+        _node("ok", "judge", 3, 0, "OK: accepted class", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG: class gate", verdict="ng", label="ai_classify_gate"),
+        _node("out_l", "output", 2, 1, "Output label", name="ai_label"),
+        _node("out_s", "output", 2, 2, "Output score", name="ai_score"),
+        _note("n1", 0, 1, "About", "This uses the stock classifier only to show the wiring: label -> text gate -> OK/NG.\nSynthetic industrial parts rarely map to real ImageNet class names. For production, train a classification project on the Deep learning page or set pass_labels on the classifier itself."),
+    ]
+    edges = [
+        _edge("src", "cls"),
+        _edge("cls", "gate", "label", "text"),
+        _edge("gate", "ok", "found", "_flow"), _edge("gate", "ng", "not_found", "_flow"),
+        _edge("cls", "out_l", "label", "value"), _edge("cls", "out_s", "score", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def ai_obb_flow(source_id: Any) -> dict[str, Any]:
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("obb", "ai_obb", 1, 0, "Oriented boxes", model_size="n", conf=0.25, min_count=1),
+        _node("sort", "list_sort", 2, 0, "Sort by angle", by="angle"),
+        _node("fmt", "format_text", 3, 0, "Angle report", each_template="{index},{label},{angle:.1f}", join="\\n", name="obb_report"),
+        _node("ok", "judge", 4, 0, "OK: boxes found", verdict="ok"),
+        _node("ng", "judge", 4, 1, "NG: no oriented box", verdict="ng", label="ai_obb"),
+        _note("n1", 0, 1, "About", "The stock OBB model is trained for aerial categories, so synthetic shop-floor parts may return no boxes.\nThe important pattern is ai_obb -> list_sort(by angle) -> formatted report. Train an oriented-box project for your own tilted parts."),
+    ]
+    edges = [
+        _edge("src", "obb"),
+        _edge("obb", "sort", "matches", "matches"), _edge("sort", "fmt", "matches", "items"),
+        _edge("obb", "ok", "found", "_flow"), _edge("obb", "ng", "not_found", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def ai_pose_flow(source_id: Any) -> dict[str, Any]:
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("pose", "ai_pose", 1, 0, "Pose keypoints", model_size="n", conf=0.25, min_count=1, kpt_conf=0.3),
+        _node("cmp", "if_number", 2, 0, "At least one pose?", operator="ge", threshold=1),
+        _node("ok", "judge", 3, 0, "OK: pose found", verdict="ok"),
+        _node("ng", "judge", 3, 1, "NG: no pose", verdict="ng", label="ai_pose"),
+        _node("out", "output", 2, 1, "Output pose count", name="pose_count"),
+        _note("n1", 0, 1, "About", "Pose models return boxes plus keypoint lists. This template gates by person count; when real people or a taught keypoint model are used, those keypoints can feed geometry and distance checks."),
+    ]
+    edges = [
+        _edge("src", "pose"),
+        _edge("pose", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+        _edge("pose", "out", "count", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def dl_detect_instance_flow(source_id: Any) -> dict[str, Any]:
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("det", "dl_detect", 1, 0, "Taught detector", model="", labels="part", input_size=640, conf=0.25, min_count=1),
+        _node("inst", "dl_instance", 1, 1, "Taught instance model", model="", labels="part", input_size=640, conf=0.25, min_count=1),
+        _node("det_ok", "judge", 2, 0, "OK: detector found", verdict="ok"),
+        _node("det_ng", "judge", 2, 1, "NG: detector empty", verdict="ng", label="dl_detect"),
+        _node("inst_ok", "judge", 2, 2, "OK: instances found", verdict="ok"),
+        _node("inst_ng", "judge", 2, 3, "NG: instance empty", verdict="ng", label="dl_instance"),
+        _note("n1", 0, 2, "About", "dl_detect and dl_instance need ONNX model assets. Train an object-detection or instance-segmentation project on the Deep learning page, then select the exported model on these two nodes.\nThe template keeps the model fields blank on purpose so the gallery can show the wiring before a site-specific model exists."),
+    ]
+    edges = [
+        _edge("src", "det"), _edge("src", "inst"),
+        _edge("det", "det_ok", "found", "_flow"), _edge("det", "det_ng", "not_found", "_flow"),
+        _edge("inst", "inst_ok", "found", "_flow"), _edge("inst", "inst_ng", "not_found", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def dl_retrieval_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})) -> dict[str, Any]:
+    asset_id, tool_params = model
+    params = {**tool_params, "model": asset_id, "expected": "part_a", "topk": 3, "min_similarity": 0.99}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("ret", "dl_retrieval", 1, 0, "Reference library match", **params),
+        _node("ok", "judge", 2, 0, "OK / NG: expected label", verdict="by_input", label="retrieval_label"),
+        _node("sim", "if_number", 2, 1, "Similarity gate", operator="ge", threshold=0.99),
+        _node("unk", "judge", 3, 1, "NG: not matched", verdict="ng", label="retrieval_unknown"),
+        _node("out_l", "output", 2, 3, "Output label", name="retrieval_label"),
+        _node("out_s", "output", 2, 4, "Output similarity", name="retrieval_similarity"),
+        _note("n1", 0, 1, "About", "The seeded library contains three part families with two reference pictures each. The node accepts part_a, rejects other known labels, and sends very low-similarity pictures to not_matched.\nAdding a new family later means adding labelled reference pictures to the library, not retraining a classifier."),
+    ]
+    edges = [
+        _edge("src", "ret", "image", "image"),
+        _edge("ret", "ok", "ok", "value"), _edge("ret", "sim", "similarity", "value"), _edge("sim", "unk", "false", "_flow"),
+        _edge("ret", "out_l", "label", "value"), _edge("ret", "out_s", "similarity", "value"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
+def multi_light_surface_flow(source_id: Any) -> dict[str, Any]:
+    """多光源表面缺陷：樣本是四個打光方向的 2×2 拼圖，裁四格 → multi_light_fuse（shadow）→ 門檻 → blob 找刮痕；
+    另放一顆接了樣本影像的 multi_light_grab 示範產線接法（沒有光源連線時降級）。"""
+    steps = "1,255,,0,30\n2,255,,90,30\n3,255,,180,30\n4,255,,270,30"
+    quads = [(0, 0), (300, 0), (0, 200), (300, 200)]
+    nodes = [
+        _node("src", "image_source", 0, 0, "Sample: 2x2 mosaic of light directions", source_id=source_id),
+        _node("grab", "multi_light_grab", 1, 4, "Multi-light grab (line)", source=source_id, connection="ring-light", steps=steps, required=False, settle_ms=0),
+    ]
+    for i, (x, y) in enumerate(quads, start=1):
+        nodes.append(_node(f"q{i}", "crop", 1, i - 1, f"Light {(i - 1) * 90} deg", roi={"shape": "rect", "x": x, "y": y, "w": 300, "h": 200}))
+    nodes += [
+        _node("fuse", "multi_light_fuse", 2, 0, "Shadow relief", mode="shadow"),
+        _node("gray", "grayscale", 3, 0, "Grayscale"),
+        _node("thr", "threshold", 4, 0, "Strong relief only", method="fixed", threshold=60),
+        _node("blob", "blob", 5, 0, "Surface defects", min_area=80, max_area=8000, min_count=0),
+        _node("cmp", "if_number", 6, 0, "No defect blobs?", operator="eq", threshold=0),
+        _node("ok", "judge", 7, 0, "OK: clean", verdict="ok"),
+        _node("ng", "judge", 7, 1, "NG: surface mark", verdict="ng", label="multi_light_surface"),
+        _note("n1", 0, 2, "About", "Each sample picture is a 2x2 mosaic of the same surface under four light directions (0, 90, 180, 270 degrees), so the four crops stand in for "
+              "four grabs. On a line, delete the crops and wire multi_light_grab's images into multi_light_fuse instead: it drives the light controller step by step "
+              "and grabs a fresh frame each time. The shadow fusion keeps only what changes between directions; a scratch shows as a strong relief line."),
+    ]
+    edges = [
+        _edge("src", "grab", "image", "image"),
+        _edge("src", "q1"), _edge("src", "q2"), _edge("src", "q3"), _edge("src", "q4"),
+        _edge("q1", "fuse", "image", "image"), _edge("q2", "fuse", "image", "image_1"),
+        _edge("q3", "fuse", "image", "image_2"), _edge("q4", "fuse", "image", "image_3"),
+        _edge("grab", "fuse", "azimuths", "azimuths"),
+        _edge("fuse", "gray", "image", "image"), _edge("gray", "thr"), _edge("thr", "blob"),
+        _edge("blob", "cmp", "count", "value"),
+        _edge("cmp", "ok", "true", "_flow"), _edge("cmp", "ng", "false", "_flow"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def conveyor_pick_flow(source_id: Any) -> dict[str, Any]:
     """輸送帶取料：實例分割 → 邊界排除 → 平台追蹤確認 → 每個新確認物件輸出一行位置。"""
     nodes = [
@@ -1941,6 +2074,9 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: cup_measure_flow(sid, _demo_ref("cup locator template"))),
     ("ai_count", "AI object count (stock model)", "ai_detect finds stop signs with the COCO stock model and judges the count. No training needed and the GPU is used automatically (deep-learning dependencies required)", "count", yolo_count_flow),
     ("ai_area", "AI instance segmentation: sign area", "ai_segment's union mask into a pixel count and an area threshold, showing segmentation feeding a measurement (deep-learning dependencies required)", "detect", yolo_area_flow),
+    ("ai_classify_demo", "Stock classifier as a gate", "ai_classify returns a stock ImageNet label, then string_match routes accepted labels to OK/NG; replace it with a taught classifier or pass_labels for production", "quality", ai_classify_gate_flow),
+    ("ai_obb_demo", "Oriented boxes on tilted parts", "ai_obb produces oriented boxes for tilted objects, then list_sort orders them by angle and format_text builds an angle report (deep-learning dependencies required)", "measure", ai_obb_flow),
+    ("ai_pose_demo", "Keypoints and their geometry", "ai_pose returns people/keypoint detections and this template gates by count; the keypoint list can feed geometry checks in a taught pose project", "measure", ai_pose_flow),
     ("conveyor_pick", "Conveyor pick (single camera)", "Instance segmentation into edge filtering, stable platform tracking, first-confirmed item formatting and a degraded robot text output (deep-learning dependencies required)", "automation", conveyor_pick_flow),
     ("conveyor_pick_bytetrack", "Conveyor pick (ByteTrack)", "Instance segmentation with the built-in ByteTrack tracker, edge filtering, confirmation by tracker ID, first-confirmed item formatting and a degraded robot text output (deep-learning dependencies required)", "automation", conveyor_pick_bytetrack_flow),
     ("conveyor_pick_stereo", "Conveyor pick (stereo Z)", "Stereo grab, instance segmentation, edge filtering, tracking, stereo depth on first-confirmed items and robot text output (deep-learning dependencies required)", "automation",
@@ -1955,6 +2091,10 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: anomaly_flow(sid, _demo_model("Example: anomaly (scratch plate)"))),
     ("dl_segment_demo", "Semantic segmentation: scratch area (taught model)", "The patch_segment model trained by seeding, into a dl_segment scratch-area threshold and OK/NG", "quality",
      lambda sid: dl_segment_flow(sid, _demo_model("Example: segmenter (scratch)"))),
+    ("dl_detect_instance_demo", "Taught detector and instance model", "dl_detect and dl_instance side by side with blank model fields, ready for ONNX assets trained on the Deep learning page", "quality", dl_detect_instance_flow),
+    ("dl_retrieval_demo", "Retrieval library that grows without retraining", "A seeded three-class reference library classifies by nearest visual examples; low-similarity images take the not_matched branch instead of failing inference", "quality",
+     lambda sid: dl_retrieval_flow(sid, _demo_model("Example: retrieval library (three part types)"))),
+    ("multi_light_surface", "Four-direction lighting fused for surface defects", "Each sample is a 2x2 mosaic of one surface under four light directions: crop the four views, fuse them (shadow mode) and find the scratch that only shows as strong relief; multi_light_grab is wired in to show the on-line acquisition", "quality", multi_light_surface_flow),
 )
 
 #: builtin 範本 key → 對應的樣本集名稱（`Example: <demo_images.SAMPLE_SETS 的標籤>`）。
@@ -2012,6 +2152,9 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "cup_measure": "Example: cup gauge",
     "ai_count": "Example: stop sign",
     "ai_area": "Example: stop sign",
+    "ai_classify_demo": "Example: AI classifier gate parts",
+    "ai_obb_demo": "Example: AI tilted parts",
+    "ai_pose_demo": "Example: AI pose stick figures",
     "conveyor_pick": "Example: conveyor sequence",
     "conveyor_pick_bytetrack": "Example: conveyor sequence",
     "conveyor_pick_stereo": "Example: conveyor stereo sequence",
@@ -2022,6 +2165,9 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "dl_classify_demo": "Example: classification teaching",
     "dl_segment_demo": "Example: segmentation teaching",
     "anomaly_demo": "Example: segmentation teaching",
+    "dl_detect_instance_demo": "Example: AI tilted parts",
+    "dl_retrieval_demo": "Example: retrieval query parts",
+    "multi_light_surface": "Example: multi-light surface",
 }
 
 def _sample_sets() -> dict[str, str]:
@@ -2034,9 +2180,11 @@ def _sample_sets() -> dict[str, str]:
 
 TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
-TEMPLATES_NEED_DL = ("ai_count", "ai_area", "guided_code_read", "conveyor_pick", "conveyor_pick_bytetrack", "conveyor_pick_stereo")
+TEMPLATES_NEED_DL = ("ai_count", "ai_area", "ai_classify_demo", "ai_obb_demo", "ai_pose_demo", "guided_code_read", "conveyor_pick", "conveyor_pick_bytetrack", "conveyor_pick_stereo")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
-TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count")
+TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count", "dl_retrieval_demo")
+#: Templates that demonstrate model-only tools whose seeded demo asset is intentionally blank.
+TEMPLATES_NEED_MODEL = ("dl_detect_instance_demo",)
 
 
 def _seed_demo_models(created: list[str]) -> None:
@@ -2063,6 +2211,13 @@ def _seed_demo_models(created: list[str]) -> None:
     if _anomaly.backbone_available():
         # 只教良品的異常檢測：需要平台附帶的 backbone（開發機 manage.py anomaly_backbone --export；現場由 DL 加購包附帶）
         specs.append(("Example: anomaly (scratch plate)", "anomaly", demo_images.dl_clean_plates, ["good"], {"input_size": 320, "coreset_ratio": 0.1}))
+        specs.append((
+            "Example: retrieval library (three part types)",
+            "retrieval",
+            demo_images.retrieval_library_labeled,
+            ["part_a", "part_b", "part_c"],
+            {"input_size": 224, "topk": 3, "augment": False, "projection_dims": 0},
+        ))
     for name, kind, maker, classes, params in specs:
         if Asset.objects.filter(name=name, kind="model").exists():
             continue

@@ -149,7 +149,7 @@ class MultiLightGrabTool(Tool):
         Param("required", "Required light", kind="boolean", default=False,
               help_text="Fail the run when the light connection cannot be used. Off means grab without light commands and log a warning."),
     ]
-    inputs: list[Port] = []
+    inputs = [Port("image", "Input image (optional)", "image", required=False)]
     outputs = [
         Port("images", "Images", "list"), Port("image", "Image 1", "image"), Port("image_1", "Image 2", "image", required=False),
         Port("image_2", "Image 3", "image", required=False), Port("image_3", "Image 4", "image", required=False),
@@ -160,6 +160,26 @@ class MultiLightGrabTool(Tool):
 
     def execute(self, ctx: ToolContext) -> Result:
         started = time.perf_counter()
+        wired = ctx.image("image")
+        if isinstance(wired, np.ndarray):
+            steps = _parse_steps(str(ctx.param("steps", "") or "1,255,,0,30\n2,255,,90,30\n3,255,,180,30\n4,255,,270,30"))
+            images = [np.ascontiguousarray(wired.copy()) for _ in steps]
+            outputs: dict[str, Any] = {
+                "images": images,
+                "image": images[0],
+                "azimuths": [s.azimuth for s in steps],
+                "elevations": [s.elevation for s in steps],
+                "count": len(images),
+                "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
+            }
+            for idx, key in enumerate(("image_1", "image_2", "image_3"), start=1):
+                if len(images) > idx:
+                    outputs[key] = images[idx]
+            return Result(
+                outputs=outputs,
+                message=f"{len(images)} frames from wired image {wired.shape[1]}x{wired.shape[0]}",
+                detail={"wired": True, "lit": False, "warnings": ["Wired image input was repeated for the light sequence"]},
+            )
         source_id = ctx.param("source")
         if not source_id:
             raise ToolError("Choose an image source")

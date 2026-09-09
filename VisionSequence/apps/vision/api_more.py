@@ -119,6 +119,8 @@ def instantiate(graph: dict[str, Any], *, source_id: int | None, prefix: str = "
             for key in ("left", "right"):
                 if params.get(key) == SOURCE_PLACEHOLDER:
                     params[key] = source_id if source_id is not None else ""
+        if node.get("type") == "multi_light_grab" and params.get("source") == SOURCE_PLACEHOLDER:
+            params["source"] = source_id if source_id is not None else ""
     for edge in out.get("edges", []):
         if rename:
             edge["source"] = rename.get(edge["source"], edge["source"])

@@ -11,6 +11,7 @@ import numpy as np
 from django.test import TransactionTestCase
 
 from apps.comm import writers
+from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
 from apps.vision import sources
 from apps.vision.capture.hub import hub
 from apps.vision.models import ImageSource
@@ -180,6 +181,39 @@ class MultiLightTests(TransactionTestCase):
         self.assertTrue(any("Non-capture source" in warning for warning in result.detail["warnings"]))
         for image in result.outputs["images"][1:]:
             np.testing.assert_array_equal(image, result.outputs["images"][0])
+
+    def test_wired_image_takes_priority_over_source_and_light(self) -> None:
+        src = self.capture_source("wired-cam")
+        light = self.register_light("wired-light")
+        image = np.full((9, 13), 77, np.uint8)
+
+        result = base.get("multi_light_grab").execute(self.ctx("multi_light_grab", {
+            "source": src.id, "connection": "wired-light", "steps": "1,5,,0,30\n2,6,,90,30\n3,7,,180,30\n4,8,,270,30",
+        }, inputs={"image": image}))
+
+        self.assertEqual(result.outputs["count"], 4)
+        self.assertTrue(result.detail["wired"])
+        self.assertEqual(light.history, [])
+        self.assertEqual(result.outputs["azimuths"], [0.0, 90.0, 180.0, 270.0])
+        for frame in result.outputs["images"]:
+            np.testing.assert_array_equal(frame, image)
+
+    def test_instantiate_replaces_multi_light_source_placeholder(self) -> None:
+        graph = {
+            "nodes": [
+                {"id": "src", "type": "image_source", "params": {"source_id": SOURCE_PLACEHOLDER}},
+                {"id": "grab", "type": "multi_light_grab", "params": {"source": SOURCE_PLACEHOLDER, "connection": "ring-light", "steps": "1,255"}},
+            ],
+            "edges": [{"id": "e", "source": "src", "target": "grab", "source_handle": "image", "target_handle": "image"}],
+        }
+
+        with_source = instantiate(graph, source_id=42)
+        self.assertEqual(with_source["nodes"][1]["params"]["source"], 42)
+
+        sample = {"id": "fixed-id", "name": "sample.png"}
+        with_samples = instantiate(graph, source_id=None, samples=[sample])
+        self.assertEqual(with_samples["nodes"][0]["type"], "fixed_image")
+        self.assertEqual(with_samples["nodes"][1]["params"]["source"], "")
 
     def test_image_source_frames_outputs_batch(self) -> None:
         src = self.capture_source("frames-cam")

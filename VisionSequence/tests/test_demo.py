@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import os
 
 from django.conf import settings
 from django.test import TransactionTestCase, override_settings
 
 from apps.vision.api_more import SOURCE_PLACEHOLDER, instantiate
 from apps.vision import demo, fixed_images
-from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATE_SAMPLE_SOURCES, TEMPLATES_NEED_BACKBONE, TEMPLATES_NEED_DL, seed_demo
+from apps.vision.demo import BUILTIN_TEMPLATES, TEMPLATE_SAMPLE_SOURCES, TEMPLATES_NEED_BACKBONE, TEMPLATES_NEED_DL, TEMPLATES_NEED_MODEL, seed_demo
 from apps.vision.graph import validate_graph
 from apps.vision.models import Asset, Flow, ImageSource, ResourceGroup
 
@@ -27,6 +28,15 @@ def _vision_with_tmp_asset_dir(tmp: str) -> dict:
     # 不啟動背景持久化執行緒：它會在 teardown 時還握著 SQLite 檔（WinError 32）。
     cfg["PERSIST_RUNS"] = False
     return cfg
+
+
+def _stock_yolo_weights_available() -> bool:
+    """Return True only when stock weights are already present; never download in tests."""
+    from apps.vision.tools.builtin.yolo import stock_model
+
+    folder = os.path.join(str(settings.VISION["ASSET_DIR"]), "dl", "weights")
+    tasks = ("detect", "segment", "classify", "obb", "pose")
+    return all(os.path.isfile(os.path.join(folder, stock_model(task, "n"))) for task in tasks)
 
 
 class DemoSeedTests(TransactionTestCase):
@@ -64,15 +74,22 @@ class DemoSeedTests(TransactionTestCase):
             "locate_measure": "ok ok ok ng", "cup_measure": "ok ok ok ng", "dl_classify_demo": "ok ok ok ok ng ng", "anomaly_demo": "ok ok ok ng ng",
             "dl_segment_demo": "ok ok ok ng ng", "variable_switch": "ok ok ok ng", "tile_for_each": "ok ok ok ok", "io_sequence": "ok ok ok ng",
             "outputs_bundle": "ok ok ok ng",
+            "ai_classify_demo": "ng ng ng ng", "ai_obb_demo": "ng ng ng ng", "ai_pose_demo": "ng ng ng ng",
+            "dl_retrieval_demo": "ok ok ok ng", "multi_light_surface": "ok ok ok ng",
         }
         with override_settings(VISION=_vision_with_tmp_asset_dir(self.tmp)):
             seed_demo()
-            run_dl = os.environ.get("VISION_TEST_DL") == "1" and importlib.util.find_spec("ultralytics") is not None
+            run_dl = os.environ.get("VISION_TEST_DL") == "1" and importlib.util.find_spec("ultralytics") is not None and _stock_yolo_weights_available()
             from apps.vision.dl import anomaly as _anomaly
 
             backbone_ok = _anomaly.backbone_available()
             problems: list[str] = []
             for key, name, _desc, _cat, builder in BUILTIN_TEMPLATES:
+                if key in TEMPLATES_NEED_MODEL:
+                    samples = demo.template_samples(key)
+                    self.assertTrue(samples, f"{name} has no samples")
+                    compile_graph(validate_graph(instantiate(builder(SOURCE_PLACEHOLDER), source_id=None, samples=samples)))
+                    continue
                 if (key in TEMPLATES_NEED_DL and not run_dl) or (key in TEMPLATES_NEED_BACKBONE and not backbone_ok):
                     continue
                 samples = demo.template_samples(key)
@@ -107,13 +124,17 @@ class DemoSeedTests(TransactionTestCase):
             self.assertEqual(Asset.objects.filter(group="Examples", kind="file").count(), 2)
             # DL 範本用的兩個示範模型（seed 以內建 CPU trainer 訓練）
             model_names = sorted(Asset.objects.filter(group="Examples", kind="model").values_list("name", flat=True))
-            self.assertEqual([n for n in model_names if "anomaly" not in n], ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)", "Example: taught font (digits)"])
-            self.assertEqual(len(BUILTIN_TEMPLATES), 62)
+            expected_models = ["Example: classifier (good / missing hole)", "Example: segmenter (scratch)", "Example: taught font (digits)"]
+            from apps.vision.dl import anomaly as _anomaly
+
+            if _anomaly.backbone_available():
+                expected_models.append("Example: retrieval library (three part types)")
+            self.assertEqual([n for n in model_names if "anomaly" not in n], sorted(expected_models))
+            self.assertEqual(len(BUILTIN_TEMPLATES), 68)
             import importlib.util
             import os
 
-            run_dl = os.environ.get("VISION_TEST_DL") == "1" and importlib.util.find_spec("ultralytics") is not None
-            from apps.vision.dl import anomaly as _anomaly
+            run_dl = os.environ.get("VISION_TEST_DL") == "1" and importlib.util.find_spec("ultralytics") is not None and _stock_yolo_weights_available()
 
             backbone_ok = _anomaly.backbone_available()
             # 範例樣板不佔流程清單：seed 只建 2 個示範流程
@@ -132,6 +153,9 @@ class DemoSeedTests(TransactionTestCase):
                 self.assertEqual(src["type"], "fixed_image", name)
                 self.assertEqual(len(src["params"]["images"]), len(samples), name)
                 self.assertFalse([n for n in graph["nodes"] if n["type"] == "image_source"], name)
+                if key in TEMPLATES_NEED_MODEL:
+                    validate_graph(graph)
+                    continue
                 if key in TEMPLATES_NEED_DL and not run_dl:
                     validate_graph(graph)  # 沒有 DL 依賴（或未設 VISION_TEST_DL=1）只驗 graph，實跑見 tests/test_dl_live.py
                     continue
