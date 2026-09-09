@@ -404,6 +404,7 @@ table of its own, under <strong>Send the result</strong> in the editor's setting
 sent (<code>lot</code>, <code>sn</code>), plus <code>run_id</code>, <code>station</code>, <code>flow</code>, <code>recipe</code> and
 <code>duration_ms</code>. So <code>{judge},{width:.2f},{lot}\r\n</code> reads exactly as it does in the flow. A name with no value is
 left empty.</p>
+<p>File output steps still write under the configured output folder by default; set <code>VISION_FILE_OUTPUT_ROOTS</code> to a semicolon-separated list of absolute plant-share roots when a station must save directly into approved shared folders.</p>
 <p>This runs <strong>synchronously with the run</strong>, on the thread that just finished it — not through the event bus and not
 through a queue — so it cannot skip a part the way <a href="#report">station event reporting</a> can. Previews are excluded: an
 engineer tuning parameters should not make the host think another part went by. When the host is not listening, the failure is

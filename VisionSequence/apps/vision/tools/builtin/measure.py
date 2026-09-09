@@ -30,6 +30,7 @@ from apps.vision.tools.builtin.locate import (
     fit_circle_points,
     fit_line_ransac,
     radial_edge_points,
+    smooth_profile,
     to_gray,
 )
 from apps.vision.tools.hist import otsu_from_hist as _otsu_from_hist
@@ -117,6 +118,71 @@ def _round_float(value: float, digits: int = 3) -> float | None:
     return round(float(value), digits)
 
 
+def _rect_long_profile(image: np.ndarray, region: dict[str, Any]) -> tuple[np.ndarray, Any, bool]:
+    """矩形 ROI 擺正後沿長邊平均，回傳剖面、Crop 與長邊方向。"""
+    rr = _as_rotated_rect(region)
+    c = crop(image, rr, upright=True)
+    if c.image.size == 0 or min(c.image.shape[:2]) < 2:
+        raise ToolError("The region is too small or falls outside the image")
+    h, w = c.image.shape[:2]
+    horizontal = w >= h
+    # cv2.reduce 以 double 累加再除，與舊版 CaliperTool 完全同一路徑。
+    profile = cv2.reduce(np.ascontiguousarray(c.image), 0 if horizontal else 1, cv2.REDUCE_AVG, dtype=cv2.CV_64F).reshape(-1)
+    return profile, c, horizontal
+
+
+def _profile_peaks(profile: np.ndarray, polarity: str, min_prominence: float, min_distance: int, smoothing: int) -> list[dict[str, float | str]]:
+    """在一維剖面找亮峰／暗峰，prominence 以左右谷值估計。"""
+    raw = np.asarray(profile, dtype=np.float64)
+    smooth = smooth_profile(raw, smoothing).astype(np.float64)
+    if len(smooth) < 3:
+        return []
+    signs = [("bright", 1.0), ("dark", -1.0)] if polarity == "both" else [(polarity, 1.0 if polarity == "bright" else -1.0)]
+    candidates: list[dict[str, float | str]] = []
+    for name, sign in signs:
+        signal = smooth * sign
+        left = np.r_[-np.inf, signal[:-1]]
+        right = np.r_[signal[1:], -np.inf]
+        for i in np.where((signal >= left) & (signal > right))[0]:
+            li = i
+            while li > 0 and signal[li - 1] <= signal[li]:
+                li -= 1
+            ri = i
+            while ri < len(signal) - 1 and signal[ri + 1] <= signal[ri]:
+                ri += 1
+            base = max(float(signal[li]), float(signal[ri]))
+            prominence = float(signal[i] - base)
+            if prominence < min_prominence:
+                continue
+            pos = float(i)
+            if 0 < i < len(signal) - 1:
+                a, b, cval = signal[i - 1], signal[i], signal[i + 1]
+                denom = a - 2 * b + cval
+                if abs(denom) > 1e-9:
+                    pos += float(np.clip(0.5 * (a - cval) / denom, -0.5, 0.5))
+            half = float(signal[i] - prominence / 2.0)
+            wl = float(i)
+            while wl > li and signal[int(math.floor(wl))] > half:
+                wl -= 1.0
+            wr = float(i)
+            while wr < ri and signal[int(math.ceil(wr))] > half:
+                wr += 1.0
+            candidates.append({
+                "position": pos,
+                "value": float(raw[int(np.clip(round(pos), 0, len(raw) - 1))]),
+                "prominence": prominence,
+                "width": max(0.0, wr - wl),
+                "polarity": name,
+            })
+    candidates.sort(key=lambda item: float(item["prominence"]), reverse=True)
+    kept: list[dict[str, float | str]] = []
+    min_dist = max(0, int(min_distance))
+    for item in candidates:
+        if all(abs(float(item["position"]) - float(other["position"])) >= min_dist for other in kept):
+            kept.append(item)
+    return kept
+
+
 class CaliperTool(Tool):
     key = "caliper"
     label = "Caliper"
@@ -172,14 +238,8 @@ class CaliperTool(Tool):
         region = ctx.roi()
         if region is None:
             raise ToolError("No region is set")
-        rr = _as_rotated_rect(region)
-        c = crop(image, rr, upright=True)
-        if c.image.size == 0 or min(c.image.shape[:2]) < 2:
-            raise ToolError("The region is too small or falls outside the image")
+        profile, c, horizontal = _rect_long_profile(image, region)
         h, w = c.image.shape[:2]
-        horizontal = w >= h
-        # cv2.reduce 以 double 累加再除，與 numpy mean 對 uint8 結果相同。
-        profile = cv2.reduce(np.ascontiguousarray(c.image), 0 if horizontal else 1, cv2.REDUCE_AVG, dtype=cv2.CV_64F).reshape(-1)
         edges = find_edges_1d(profile, ctx.param("polarity", "any"), ctx.number("edge_threshold", 20), ctx.integer("smoothing", 3))
         overlays = [region_overlay(region, label="caliper")]
         nan = float("nan")
@@ -279,6 +339,100 @@ class CaliperTool(Tool):
                      **world_outputs(ctx, points={("edge1_x", "edge1_y"): e1, ("edge2_x", "edge2_y"): e2},
                                      lengths={"width": (width, ((e1[0] + e2[0]) / 2, (e1[1] + e2[1]) / 2))})},
             overlays=overlays, message=f"Width {width:.2f}px ({len(edges)} edges)",
+        )
+
+
+class PeakSearchTool(Tool):
+    key = "peak_search"
+    label = "Peak search"
+    description = "Projects a grey profile along the long side of a rectangle and finds bright or dark peaks."
+    category = "measure"
+    icon = "Activity"
+    params = [
+        Param("roi", "Region", kind="roi", required=True, shapes=["rotated_rect", "rect"],
+              help_text="Scans along the long side, averaging across the short side."),
+        Param("polarity", "Peak polarity", kind="select", default="bright", options=[
+            {"value": "bright", "label": "Bright peaks"},
+            {"value": "dark", "label": "Dark peaks"},
+            {"value": "both", "label": "Bright and dark peaks"},
+        ], teach=True),
+        Param("min_prominence", "Minimum prominence", kind="number", default=20, minimum=0, maximum=255, teach=True,
+              help_text="Required peak height above the local baseline in grey levels."),
+        Param("min_distance", "Minimum distance", kind="number", default=5, minimum=0, maximum=1000, unit="px"),
+        Param("smoothing", "Profile smoothing", kind="number", default=3, minimum=1, maximum=31, group="Advanced"),
+        Param("max_results", "Max results", kind="number", default=10, minimum=1, maximum=1000),
+        Param("sort_by", "Sort by", kind="select", default="position", options=[
+            {"value": "position", "label": "Position"},
+            {"value": "prominence", "label": "Prominence"},
+            {"value": "value", "label": "Value"},
+        ]),
+    ]
+    inputs = [Port("image", "Image", "image"), Port("roi", "Region (dynamic)", "region", required=False)]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("peaks", "Peaks", "list"), Port("count", "Count", "number"),
+        Port("first_x", "First X", "number"), Port("first_y", "First Y", "number"),
+        Port("first_position", "First position", "number"),
+        Port("profile", "Profile", "list"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        image = to_gray(ctx.require_image())
+        region = ctx.roi()
+        if region is None:
+            raise ToolError("No region is set")
+        profile, c, horizontal = _rect_long_profile(image, region)
+        h, w = c.image.shape[:2]
+        mid = (h if horizontal else w) / 2.0
+        peaks = _profile_peaks(
+            profile,
+            str(ctx.param("polarity", "bright")),
+            ctx.number("min_prominence", 20),
+            ctx.integer("min_distance", 5),
+            ctx.integer("smoothing", 3),
+        )
+        sort_by = str(ctx.param("sort_by", "position"))
+        if sort_by == "prominence":
+            peaks.sort(key=lambda item: (-float(item["prominence"]), float(item["position"])))
+        elif sort_by == "value":
+            peaks.sort(key=lambda item: (-float(item["value"]), float(item["position"])))
+        else:
+            peaks.sort(key=lambda item: float(item["position"]))
+        max_results = max(1, ctx.integer("max_results", 10))
+        out: list[dict[str, Any]] = []
+        overlays = [region_overlay(region, label="peaks")]
+        for item in peaks[:max_results]:
+            pos = float(item["position"])
+            x, y = c.to_full(pos, mid) if horizontal else c.to_full(mid, pos)
+            peak = {
+                "x": round(float(x), 3),
+                "y": round(float(y), 3),
+                "position": round(pos, 3),
+                "value": round(float(item["value"]), 3),
+                "prominence": round(float(item["prominence"]), 3),
+                "width": round(float(item["width"]), 3),
+            }
+            if ctx.param("polarity", "bright") == "both":
+                peak["polarity"] = item["polarity"]
+            out.append(peak)
+            overlays.append({"kind": "point", "x": x, "y": y, "color": "#22c55e", "label": f"{pos:.1f}"})
+        if not out:
+            nan = float("nan")
+            return Result(
+                outputs={"peaks": [], "count": 0, "first_x": nan, "first_y": nan, "first_position": nan,
+                         "profile": np.round(profile, 1).tolist()},
+                overlays=overlays,
+                status="ng",
+                branch="not_found",
+                message="No peaks found",
+            )
+        first = out[0]
+        return Result(
+            outputs={"peaks": out, "count": len(out), "first_x": first["x"], "first_y": first["y"],
+                     "first_position": first["position"], "profile": np.round(profile, 1).tolist()},
+            overlays=overlays,
+            branch="found",
+            message=f"{len(out)} peaks",
         )
 
 
@@ -2249,7 +2403,7 @@ def _image_centre(ctx: ToolContext) -> tuple[float, float]:
 
 
 TOOLS = [
-    CaliperTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), SharpnessTool(), ToWorldTool(),
+    CaliperTool(), PeakSearchTool(), DistanceTool(), AngleTool(), IntensityTool(), CalibrationTool(), HistogramTool(), SharpnessTool(), ToWorldTool(),
     FitArcTool(), FitEllipseTool(), WallThicknessTool(), ConcentricityTool(), ChamferAngleTool(), ToleranceJudgeTool(),
     EdgeTrendTool(), LineProfileTool(), ColorStatsTool(), GeometryTool(), PointsMergeTool(), CoordinateTool(),
 ]

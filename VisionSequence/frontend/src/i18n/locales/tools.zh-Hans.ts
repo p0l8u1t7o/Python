@@ -566,6 +566,24 @@ export default {
       profile: "剖面",
     },
   },
+  peak_search: {
+    label: "峰值搜索",
+    description: "沿矩形区域长边取灰阶剖面，找亮峰、暗峰或两者的中心位置。",
+    params: {
+      roi: { label: "区域", help: "沿长边方向扫描，短边方向取平均以抗噪。" },
+      polarity: { label: "峰值极性", options: { bright: "亮峰", dark: "暗峰", both: "两者" } },
+      min_prominence: { label: "最小突出量" },
+      min_distance: { label: "最小距离" },
+      smoothing: { label: "剖面平滑", group: "高级" },
+      max_results: { label: "最多结果" },
+      sort_by: { label: "排序依据", options: { position: "位置", prominence: "突出量", value: "灰阶值" } },
+    },
+    ports: {
+      image: "图像", roi: "区域（动态）", found: "找到", not_found: "未找到",
+      peaks: "峰值清单", count: "数量", first_x: "第一峰 X", first_y: "第一峰 Y",
+      first_position: "第一峰位置", profile: "灰阶剖面",
+    },
+  },
   chamfer_angle: {
     label: "倒角",
     description: "在旋转矩形区域内以卡尺找轮廓边缘点，RANSAC 拟合第一條直线後排除其内点再拟合第二條；输出兩线夹角与倒角段长度。",
@@ -840,8 +858,18 @@ export default {
           bgr_r: "R 通道",
           hsv: "整張 HSV（3 通道）",
           merge_rgb: "合成 R/G/B 灰阶",
+          yuv_y: "YUV Y 通道",
+          yuv_u: "YUV U 通道",
+          yuv_v: "YUV V 通道",
+          hsi_h: "HSI H 通道",
+          hsi_s: "HSI S 通道",
+          hsi_i: "HSI I 通道",
+          gray_weighted: "加权灰阶",
         },
       },
+      weight_r: { label: "R 权重" },
+      weight_g: { label: "G 权重" },
+      weight_b: { label: "B 权重" },
     },
     ports: {
       image: "影像",
@@ -1063,6 +1091,51 @@ export default {
       keep: { label: "保留数据来源", options: { highest_score: "最高分", largest: "最大框", first: "第一个" } },
     },
     ports: { matches: "框清单", values: "值清单", image: "图像（显示用）", count: "数量" },
+  },
+  boxes_overlap: {
+    label: "框重叠",
+    description: "比较两组框，返回每个 A 框与 B 框的最大重叠率与对应索引。",
+    params: {
+      metric: { label: "重叠算法", options: { iou: "交并比", overlap_a: "重叠面积 / A 面积" } },
+      min_overlap: { label: "最小重叠率" },
+      mode: { label: "OK 条件", options: { any: "有重叠", none: "无重叠" } },
+    },
+    ports: { matches: "框清单", matches_b: "B 框清单", image: "图像（显示用）", ok: "OK", ng: "NG", count: "数量", pairs: "重叠配对" },
+  },
+  list_filter: {
+    label: "清单筛选",
+    description: "依数值、文字或字段条件筛选值清单或框清单。",
+    params: {
+      field: { label: "字段" },
+      op: {
+        label: "条件",
+        options: { gt: "大于", ge: "大于等于", lt: "小于", le: "小于等于", eq: "等于", ne: "不等于", between: "介于", in: "在清单内", regex: "符合文字规则", nonempty: "非空" },
+      },
+      value: { label: "值" },
+      value2: { label: "第二值" },
+    },
+    ports: { values: "值清单", matches: "框清单", count: "数量", removed: "移除数", indices: "原始索引" },
+  },
+  list_classify: {
+    label: "清单分类",
+    description: "依每行分类范围替值清单或框清单加上类别。",
+    params: {
+      field: { label: "字段" },
+      classes: { label: "分类规则", help: "一行一类：名称:下限,上限；下限包含、上限不包含，空白代表无界。" },
+    },
+    ports: { values: "值清单", matches: "框清单", labels: "类别清单", counts: "类别数量", dominant: "最多类别" },
+  },
+  list_pick: {
+    label: "清单取值",
+    description: "从值清单、框清单或点清单取出第一笔、最后一笔、指定索引或最接近坐标的一笔。",
+    params: {
+      by: { label: "取法", options: { index: "指定索引", first: "第一笔", last: "最后一笔", min: "最小值", max: "最大值", nearest: "最近坐标" } },
+      index: { label: "索引" },
+      field: { label: "字段" },
+      x: { label: "目标 X" },
+      y: { label: "目标 Y" },
+    },
+    ports: { values: "值清单", matches: "框清单", points: "点清单", image: "图像（显示用）", found: "找到", not_found: "未找到", value: "值", index: "索引" },
   },
   boxes_filter: {
     label: "筛选框",
@@ -2956,6 +3029,7 @@ export default {
         label: "怎么比",
         options: {
           point: "一个点加角度",
+          rectify: "单点校正",
           point_set: "好几组对应点",
           grab: "取料点补偿",
           line: "线的中点与方向",

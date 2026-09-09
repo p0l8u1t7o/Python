@@ -108,3 +108,61 @@ class ListPostProcessTests(SimpleTestCase):
             run_tool("boxes_merge", None, {}, {"values": [1, 2, 3]})
         with self.assertRaisesMessage(ToolError, "either matches or values"):
             run_tool("list_sort", None, {}, {"matches": matches, "values": [1, 2, 3]})
+
+    def test_boxes_overlap_compares_a_to_b_and_self(self):
+        a = [_box(10, 10, w=10, h=10), _box(40, 10, w=10, h=10)]
+        b = [_box(13, 10, w=10, h=10), _box(80, 80, w=10, h=10)]
+        r = run_tool("boxes_overlap", None, {"metric": "a_area", "min_overlap": 0.5, "mode": "any"}, {"matches": a, "matches_b": b})
+        self.assertEqual((r.status, r.branch), ("ok", "ok"))
+        self.assertEqual(r.outputs["count"], 1)
+        self.assertEqual(r.outputs["pairs"], [(0, 0, 0.7)])
+        self.assertEqual(r.outputs["matches"][0]["overlap_index"], 0)
+        self.assertAlmostEqual(r.outputs["matches"][0]["overlap"], 0.7)
+
+        self_r = run_tool("boxes_overlap", None, {"metric": "iou", "min_overlap": 0.4}, {"matches": [_box(10, 10), _box(12, 10), _box(80, 80)]})
+        self.assertEqual(self_r.outputs["count"], 2)
+        self.assertEqual({pair[:2] for pair in self_r.outputs["pairs"]}, {(0, 1), (1, 0)})
+
+        none_ok = run_tool("boxes_overlap", None, {"mode": "none", "min_overlap": 0.1}, {"matches": [_box(10, 10), _box(50, 50)]})
+        self.assertEqual((none_ok.status, none_ok.branch), ("ok", "ok"))
+
+    def test_list_filter_values_and_matches(self):
+        values = [1, 5, 8, 13, ""]
+        between = run_tool("list_filter", None, {"op": "between", "value": "5", "value2": "10"}, {"values": values})
+        self.assertEqual(between.outputs["values"], [5, 8])
+        self.assertEqual(between.outputs["indices"], [1, 2])
+        self.assertEqual(between.outputs["removed"], 3)
+
+        regex = run_tool("list_filter", None, {"op": "regex", "value": "^A\\d$", "field": "label"},
+                         {"matches": [_box(10, 10, label="A1"), _box(20, 10, label="B1"), _box(30, 10, label="A2")]})
+        self.assertEqual(regex.outputs["count"], 2)
+        self.assertEqual([m["label"] for m in regex.outputs["matches"]], ["A1", "A2"])
+
+        empty = run_tool("list_filter", None, {"op": "gt", "value": "100"}, {"values": values})
+        self.assertEqual(empty.status, "ng")
+
+    def test_list_classify_boundaries_and_matches(self):
+        r = run_tool("list_classify", None, {"classes": "small:,10\nmedium:10,20\nlarge:20,"}, {"values": [5, 10, 19.9, 20, "bad"]})
+        self.assertEqual(r.outputs["labels"], ["small", "medium", "medium", "large", "other"])
+        self.assertEqual(r.outputs["counts"], {"small": 1, "medium": 2, "large": 1, "other": 1})
+        self.assertEqual(r.outputs["dominant"], "medium")
+
+        matches = [_box(10, 10, score=0.2), _box(20, 10, score=0.8)]
+        mr = run_tool("list_classify", None, {"field": "score", "classes": "ng:,0.5\nok:0.5,"}, {"matches": matches})
+        self.assertEqual([m["class"] for m in mr.outputs["matches"]], ["ng", "ok"])
+
+    def test_list_pick_modes_and_not_found(self):
+        values = [5, 2, 9]
+        self.assertEqual(run_tool("list_pick", None, {"by": "index", "index": 1}, {"values": values}).outputs, {"value": 2, "index": 1})
+        self.assertEqual(run_tool("list_pick", None, {"by": "max"}, {"values": values}).outputs["value"], 9)
+        nf = run_tool("list_pick", None, {"by": "index", "index": 99}, {"values": values})
+        self.assertEqual((nf.status, nf.branch, nf.outputs["value"]), ("ng", "not_found", None))
+
+        points = [[0, 0], [10, 0], [7, 7]]
+        near = run_tool("list_pick", None, {"by": "nearest", "x": 8, "y": 6}, {"points": points})
+        self.assertEqual(near.branch, "found")
+        self.assertEqual(near.outputs["value"], [7.0, 7.0])
+        self.assertEqual(near.outputs["index"], 2)
+
+        matches = [_box(10, 10, score=0.2), _box(20, 10, score=0.8)]
+        self.assertEqual(run_tool("list_pick", None, {"by": "min", "field": "score"}, {"matches": matches}).outputs["index"], 0)

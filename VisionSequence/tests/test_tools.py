@@ -30,13 +30,14 @@ class RegistryTests(SimpleTestCase):
     def test_all_new_tools_registered(self):
         expected = {
             "template_match", "shape_align", "fixture_roi", "find_circle", "find_line", "hough_circles", "hough_lines",
-            "caliper", "distance", "angle", "intensity", "calibration", "histogram",
+            "caliper", "peak_search", "distance", "angle", "intensity", "calibration", "histogram",
             "fit_arc", "fit_ellipse", "wall_thickness", "concentricity", "chamfer_angle", "tolerance_judge",
             "blob", "defect_diff", "barcode", "text_presence", "color_check", "edge_density", "pixel_count",
             "dl_classify", "dl_detect", "dl_segment", "dl_instance",
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
             "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly", "circular_caliper", "profile_defect", "ocr_read", "ocv_verify",
+            "boxes_overlap", "list_filter", "list_classify", "list_pick",
         }
         keys = {t.key for t in base.all_types()}
         self.assertTrue(expected <= keys, expected - keys)
@@ -58,10 +59,12 @@ class RegistryTests(SimpleTestCase):
         # 期望位置與期望寬度是換線會調的產品尺寸，開放給操作員；
         # 三個權重（position／contrast／width）是演算法調校，留給工程師。
         self.assertEqual(teach["caliper"], {"edge_threshold", "polarity", "expected_position", "expected_width"})
+        self.assertEqual(teach["peak_search"], {"polarity", "min_prominence"})
         self.assertEqual(teach["find_circle"], {"edge_threshold"})
         self.assertEqual(teach["find_line"], {"edge_threshold"})
         self.assertEqual(teach["defect_diff"], {"threshold", "min_area"})
         self.assertEqual(teach["color_range"], {"h_low", "h_high", "s_low", "s_high", "v_low", "v_high"})
+        self.assertEqual(teach["color_convert"], {"weight_r", "weight_g", "weight_b"})
         self.assertEqual(teach["color_check"], {"tolerance"})
         self.assertEqual(teach["in_range"], {"low", "high"})
         self.assertEqual(teach["if_number"], {"threshold"})
@@ -92,6 +95,10 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["profile_defect"], {"threshold", "threshold_mode", "min_width", "direction", "max_defects"})
         self.assertEqual(teach["ocr_read"], {"roi", "charset", "custom_charset", "polarity", "min_confidence"})
         self.assertEqual(teach["ocv_verify"], {"expected", "min_char_confidence"})
+        self.assertEqual(teach["boxes_overlap"], {"min_overlap"})
+        self.assertEqual(teach["list_filter"], {"value", "value2"})
+        self.assertEqual(teach["list_classify"], {"classes"})
+        self.assertEqual(teach["list_pick"], {"x", "y"})
         cat = {t["key"]: t for t in base.catalogue()}
         self.assertTrue(any(p["teach"] for p in cat["threshold"]["params"]))
 
@@ -817,6 +824,24 @@ class ImageDepthTests(SimpleTestCase):
         self.assertTrue(np.array_equal(u16, snap))  # 正規化產生新陣列，不動輸入
 
 
+class ColorConvertTests(SimpleTestCase):
+    def test_yuv_hsi_and_weighted_gray_modes(self):
+        image = np.array([[[30, 60, 240], [20, 220, 20], [200, 20, 20], [0, 0, 0]]], dtype=np.uint8)
+        y = run_tool("color_convert", image, {"mode": "yuv_y"}).outputs["image"]
+        np.testing.assert_array_equal(y, cv2.cvtColor(image, cv2.COLOR_BGR2YUV)[:, :, 0])
+
+        h = run_tool("color_convert", image, {"mode": "hsi_h"}).outputs["image"]
+        s = run_tool("color_convert", image, {"mode": "hsi_s"}).outputs["image"]
+        i = run_tool("color_convert", image, {"mode": "hsi_i"}).outputs["image"]
+        self.assertEqual(int(h[0, 0]), 4)
+        self.assertEqual(int(s[0, 0]), 185)
+        self.assertEqual(int(i[0, 0]), 110)
+        self.assertEqual((int(h[0, 3]), int(s[0, 3]), int(i[0, 3])), (0, 0, 0))
+
+        gray = run_tool("color_convert", image, {"mode": "gray_weighted", "weight_r": 1, "weight_g": 0, "weight_b": 0}).outputs["image"]
+        np.testing.assert_array_equal(gray, image[:, :, 2])
+
+
 class RoiShapeTests(SimpleTestCase):
     """ROI 新形狀（NI 工具面板對照）：ellipse／annulus 扇形／point／polyline。"""
 
@@ -1344,6 +1369,29 @@ class AlgorithmAccuracyTests(SimpleTestCase):
         r2 = run_tool("find_circle", img, {"roi": {"shape": "circle", "cx": 330, "cy": 271, "r": 150}, "polarity": "light_to_dark"})
         self.assertLess(math.hypot(r2.outputs["cx"] - 300.37, r2.outputs["cy"] - 250.61), 0.1)
         self.assertAlmostEqual(r2.outputs["r"], 80.25, delta=0.15)
+
+    def test_peak_search_finds_bright_line_centres(self):
+        rng = np.random.default_rng(123)
+        img = np.full((120, 220), 35, np.float32)
+        img[:, 70] = 230
+        img[:, 140] = 210
+        img += rng.normal(0, 3, img.shape).astype(np.float32)
+        img = cv2.GaussianBlur(np.clip(img, 0, 255).astype(np.uint8), (0, 0), 0.8)
+        r = run_tool("peak_search", img, {
+            "roi": {"shape": "rect", "x": 20, "y": 30, "w": 180, "h": 60},
+            "polarity": "bright",
+            "min_prominence": 30,
+            "min_distance": 20,
+            "smoothing": 3,
+            "max_results": 2,
+            "sort_by": "position",
+        })
+        self.assertEqual((r.status, r.branch), ("ok", "found"), r.message)
+        self.assertEqual(r.outputs["count"], 2)
+        positions = [p["position"] for p in r.outputs["peaks"]]
+        xs = [p["x"] for p in r.outputs["peaks"]]
+        np.testing.assert_allclose(positions, [50, 120], atol=0.5, rtol=0)
+        np.testing.assert_allclose(xs, [70, 140], atol=0.5, rtol=0)
 
     def test_fit_arc_polygon_wedge(self):
         cx, cy = 300.37, 250.61

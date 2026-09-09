@@ -566,6 +566,24 @@ export default {
       profile: "剖面",
     },
   },
+  peak_search: {
+    label: "峰值搜尋",
+    description: "沿矩形區域長邊取灰階剖面，找亮峰、暗峰或兩者的中心位置。",
+    params: {
+      roi: { label: "區域", help: "沿長邊方向掃描，短邊方向取平均以抗雜訊。" },
+      polarity: { label: "峰值極性", options: { bright: "亮峰", dark: "暗峰", both: "兩者" } },
+      min_prominence: { label: "最小突出量" },
+      min_distance: { label: "最小距離" },
+      smoothing: { label: "剖面平滑", group: "進階" },
+      max_results: { label: "最多結果" },
+      sort_by: { label: "排序依據", options: { position: "位置", prominence: "突出量", value: "灰階值" } },
+    },
+    ports: {
+      image: "影像", roi: "區域（動態）", found: "找到", not_found: "未找到",
+      peaks: "峰值清單", count: "數量", first_x: "第一峰 X", first_y: "第一峰 Y",
+      first_position: "第一峰位置", profile: "灰階剖面",
+    },
+  },
   chamfer_angle: {
     label: "倒角",
     description: "在旋轉矩形區域內以卡尺找輪廓邊緣點，RANSAC 擬合第一條直線後排除其內點再擬合第二條；輸出兩線夾角與倒角段長度。",
@@ -840,8 +858,18 @@ export default {
           bgr_r: "R 通道",
           hsv: "整張 HSV（3 通道）",
           merge_rgb: "合成 R/G/B 灰階",
+          yuv_y: "YUV Y 通道",
+          yuv_u: "YUV U 通道",
+          yuv_v: "YUV V 通道",
+          hsi_h: "HSI H 通道",
+          hsi_s: "HSI S 通道",
+          hsi_i: "HSI I 通道",
+          gray_weighted: "加權灰階",
         },
       },
+      weight_r: { label: "R 權重" },
+      weight_g: { label: "G 權重" },
+      weight_b: { label: "B 權重" },
     },
     ports: {
       image: "影像",
@@ -1063,6 +1091,51 @@ export default {
       keep: { label: "保留資料來源", options: { highest_score: "最高分", largest: "最大框", first: "第一個" } },
     },
     ports: { matches: "框清單", values: "值清單", image: "影像（顯示用）", count: "數量" },
+  },
+  boxes_overlap: {
+    label: "框重疊",
+    description: "比較兩組框，回傳每個 A 框與 B 框的最大重疊率與對應索引。",
+    params: {
+      metric: { label: "重疊算法", options: { iou: "交併比", overlap_a: "重疊面積 / A 面積" } },
+      min_overlap: { label: "最小重疊率" },
+      mode: { label: "OK 條件", options: { any: "有重疊", none: "無重疊" } },
+    },
+    ports: { matches: "框清單", matches_b: "B 框清單", image: "影像（顯示用）", ok: "OK", ng: "NG", count: "數量", pairs: "重疊配對" },
+  },
+  list_filter: {
+    label: "清單篩選",
+    description: "依數值、文字或欄位條件篩選值清單或框清單。",
+    params: {
+      field: { label: "欄位" },
+      op: {
+        label: "條件",
+        options: { gt: "大於", ge: "大於等於", lt: "小於", le: "小於等於", eq: "等於", ne: "不等於", between: "介於", in: "在清單內", regex: "符合文字規則", nonempty: "非空" },
+      },
+      value: { label: "值" },
+      value2: { label: "第二值" },
+    },
+    ports: { values: "值清單", matches: "框清單", count: "數量", removed: "移除數", indices: "原始索引" },
+  },
+  list_classify: {
+    label: "清單分類",
+    description: "依每行分類範圍替值清單或框清單加上類別。",
+    params: {
+      field: { label: "欄位" },
+      classes: { label: "分類規則", help: "一行一類：名稱:下限,上限；下限包含、上限不包含，空白代表無界。" },
+    },
+    ports: { values: "值清單", matches: "框清單", labels: "類別清單", counts: "類別數量", dominant: "最多類別" },
+  },
+  list_pick: {
+    label: "清單取值",
+    description: "從值清單、框清單或點清單取出第一筆、最後一筆、指定索引或最接近座標的一筆。",
+    params: {
+      by: { label: "取法", options: { index: "指定索引", first: "第一筆", last: "最後一筆", min: "最小值", max: "最大值", nearest: "最近座標" } },
+      index: { label: "索引" },
+      field: { label: "欄位" },
+      x: { label: "目標 X" },
+      y: { label: "目標 Y" },
+    },
+    ports: { values: "值清單", matches: "框清單", points: "點清單", image: "影像（顯示用）", found: "找到", not_found: "未找到", value: "值", index: "索引" },
   },
   boxes_filter: {
     label: "篩選框",
@@ -2956,6 +3029,7 @@ export default {
         label: "怎麼比",
         options: {
           point: "一個點加角度",
+          rectify: "單點校正",
           point_set: "好幾組對應點",
           grab: "取料點補償",
           line: "線的中點與方向",

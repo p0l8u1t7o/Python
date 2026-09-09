@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import csv
 import logging
+import os
 import queue
 import shutil
 import threading
@@ -63,15 +64,43 @@ def root() -> Path:
     return Path(custom) if custom else Path(settings.DATA_DIR) / "file_outputs"
 
 
+def _extra_roots() -> list[Path]:
+    roots = _cfg("FILE_OUTPUT_ROOTS", [])
+    if isinstance(roots, str):
+        roots = [p.strip() for p in roots.split(";") if p.strip()]
+    out: list[Path] = []
+    for item in roots or []:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        win = PureWindowsPath(text)
+        if win.drive or win.root or Path(text).is_absolute():
+            out.append(Path(text).resolve())
+    return out
+
+
+def _under_root(path: Path, base: Path) -> bool:
+    try:
+        candidate = os.path.normcase(os.path.normpath(str(path)))
+        allowed = os.path.normcase(os.path.normpath(str(base)))
+        return os.path.commonpath([candidate, allowed]) == allowed
+    except ValueError:
+        return False
+
+
 def resolve_dir(path: str) -> Path:
     """把使用者路徑限制在檔案輸出根目錄下。"""
-    raw = str(path or "").strip().replace("\\", "/")
-    win = PureWindowsPath(raw)
-    if win.drive or win.root or Path(raw).is_absolute():
-        raise ValueError("Output path must be relative to DATA_DIR/file_outputs")
+    original = str(path or "").strip()
+    raw = original.replace("\\", "/")
     parts = [p for p in raw.split("/") if p not in ("", ".")]
     if any(p == ".." for p in parts):
         raise ValueError("Output path must not contain '..'")
+    win = PureWindowsPath(raw)
+    if win.drive or win.root or Path(raw).is_absolute():
+        resolved = Path(original).resolve()
+        if any(_under_root(resolved, base) for base in _extra_roots()):
+            return resolved
+        raise ValueError("Output path must be relative to DATA_DIR/file_outputs or inside an allowed output root")
     return root().joinpath(*parts).resolve()
 
 

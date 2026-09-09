@@ -52,10 +52,11 @@ class AlignOffsetTool(Tool):
     params = [
         Param("mode", "Mode", kind="select", default="point", options=[
             {"value": "point", "label": "Point and angle"},
+            {"value": "rectify", "label": "Single point rectify"},
             {"value": "point_set", "label": "Corresponding point sets"},
             {"value": "grab", "label": "Grab point compensation"},
             {"value": "line", "label": "Line midpoint and direction"},
-        ], help_text="Point/grab use matches first, then a/b/c. Line uses the directed segment midpoint and angle."),
+        ], help_text="Point/grab/rectify use matches first, then a/b/c. Rectify returns the correction from the current pose back to the reference. Line uses the directed segment midpoint and angle."),
         Param("ref_x", "Reference X", kind="number", default=0, teach=True, unit="px",
               help_text="Taught position, or taught line midpoint. Point sets use their own centroid."),
         Param("ref_y", "Reference Y", kind="number", default=0, teach=True, unit="px"),
@@ -126,7 +127,7 @@ class AlignOffsetTool(Tool):
                 rx, ry = map(float, pivot)
                 x, y = map(float, centre)
                 angle = (ra + dtheta + 180) % 360 - 180
-            elif mode in ("point", "grab", "line"):
+            elif mode in ("point", "rectify", "grab", "line"):
                 if mode == "line":
                     line = ctx.inputs.get("line")
                     if not isinstance(line, dict):
@@ -141,22 +142,28 @@ class AlignOffsetTool(Tool):
                     x, y, angle = _current_pose(ctx)
                 if not np.isfinite([x, y, angle]).all():
                     raise ValueError("No current position: the locate step found nothing")
-                dtheta = angle - ra
+                dtheta = ra - angle if mode == "rectify" else angle - ra
             else:
                 # TODO：有需求時再加入縮放與仿射模式；目前只提供剛體對位。
-                raise ValueError("Mode must be point, point_set, grab or line")
+                raise ValueError("Mode must be point, rectify, point_set, grab or line")
 
             dtheta = (dtheta + 180) % 360 - 180
-            dx, dy = x - rx, y - ry
-            ax, ay = x, y
+            if mode == "rectify":
+                dx, dy = rx - x, ry - y
+                ax, ay, out_angle = rx, ry, ra
+                pivot = [x, y]
+            else:
+                dx, dy = x - rx, y - ry
+                ax, ay, out_angle = x, y, angle
+                pivot = [rx, ry]
             if mode == "grab":
                 grab = np.array([float(ctx.param("grab_x", 0)), float(ctx.param("grab_y", 0))])
                 ax, ay = map(float, _rotation(dtheta) @ (grab - [rx, ry]) + [x, y])
             if not np.isfinite([dx, dy, dtheta, ax, ay]).all():
                 raise ValueError("The alignment result must be finite")
-            transform = {"dx": dx, "dy": dy, "dtheta": dtheta, "pivot": [rx, ry], "current": [x, y, angle]}
+            transform = {"dx": dx, "dy": dy, "dtheta": dtheta, "pivot": pivot, "current": [x, y, angle]}
             outputs = {"dx": dx, "dy": dy, "dtheta": dtheta, "transform": transform,
-                       "abs_x": ax, "abs_y": ay, "abs_angle": angle}
+                       "abs_x": ax, "abs_y": ay, "abs_angle": out_angle}
             if ctx.param("calibration"):
                 # from_asset 經由 calib.load 讀檔；座標與角度共用既有標定換算。
                 payload = calib.from_asset(ctx.param("calibration"), ctx.asset_path)
@@ -167,14 +174,14 @@ class AlignOffsetTool(Tool):
                 else:
                     matrix = mapping["matrix"]
                     wx, wy = map(float, calib.apply(matrix, [[ax, ay]])[0])
-                    wa = calib.angle_to_world(matrix, angle, (ax, ay))
+                    wa = calib.angle_to_world(matrix, out_angle, (ax, ay))
                     if not np.isfinite([wx, wy, wa]).all():
                         raise ValueError("The calibrated position and angle must be finite")
                     outputs.update(world_x=wx, world_y=wy, world_angle=wa)
                 camera_mapping = payload.get("mapping")
                 if camera_mapping:
                     mx, my = map(float, calib.apply(camera_mapping["matrix"], [[ax, ay]])[0])
-                    ma = calib.angle_to_world(camera_mapping["matrix"], angle, (ax, ay))
+                    ma = calib.angle_to_world(camera_mapping["matrix"], out_angle, (ax, ay))
                     if not np.isfinite([mx, my, ma]).all():
                         raise ValueError("The mapped position and angle must be finite")
                     outputs.update(mapped_x=mx, mapped_y=my, mapped_angle=ma)

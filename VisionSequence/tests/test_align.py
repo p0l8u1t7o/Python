@@ -50,6 +50,25 @@ class AlignOffsetTests(SimpleTestCase):
         self.assert_offset(run_tool("align_offset", params={"ref_angle": 170},
                                     inputs={"a": 0, "b": 0, "c": -170}), [0, 0, 20])
 
+    def test_rectify_is_inverse_of_point_mode(self):
+        params = {"ref_x": 30, "ref_y": 40, "ref_angle": 10}
+        inputs = {"a": 37, "b": 35, "c": 35}
+        point = run_tool("align_offset", params=params, inputs=inputs)
+        rectify = run_tool("align_offset", params={**params, "mode": "rectify"}, inputs=inputs)
+        self.assert_offset(rectify, [-7, 5, -25])
+        self.assertEqual(rectify.outputs["transform"]["pivot"], [37.0, 35.0])
+        self.assertEqual([rectify.outputs[k] for k in ("abs_x", "abs_y", "abs_angle")], [30.0, 40.0, 10.0])
+
+        roi = {"shape": "rect", "x": 35, "y": 42, "w": 20, "h": 8}
+        moved = run_tool("fixture_roi", params={"roi": roi}, inputs={"transform": point.outputs["transform"]}).outputs["region"]
+        restored = run_tool("fixture_roi", params={"roi": moved}, inputs={"transform": rectify.outputs["transform"]}).outputs["region"]
+        self.assertEqual(restored["shape"], "rotated_rect")
+        self.assertAlmostEqual(restored["cx"], roi["x"] + roi["w"] / 2, delta=1e-6)
+        self.assertAlmostEqual(restored["cy"], roi["y"] + roi["h"] / 2, delta=1e-6)
+        self.assertAlmostEqual(restored["w"], roi["w"], delta=1e-6)
+        self.assertAlmostEqual(restored["h"], roi["h"], delta=1e-6)
+        self.assertAlmostEqual(restored["angle"], 0.0, delta=1e-6)
+
     def test_connected_missing_pose_is_ng(self):
         cases = [{"matches": []}, {"matches": None}, {"a": None, "b": None}, {"c": math.nan}]
         for key in ("a", "b", "c"):

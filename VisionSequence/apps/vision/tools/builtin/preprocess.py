@@ -559,9 +559,15 @@ class ColorConvertTool(Tool):
         Param("mode", "Output", kind="select", default="hsv_s", options=[
             {"value": "bgr_b", "label": "B channel"}, {"value": "bgr_g", "label": "G channel"}, {"value": "bgr_r", "label": "R channel"},
             {"value": "hsv_h", "label": "HSV: H"}, {"value": "hsv_s", "label": "HSV: S"}, {"value": "hsv_v", "label": "HSV: V"},
+            {"value": "yuv_y", "label": "YUV: Y"}, {"value": "yuv_u", "label": "YUV: U"}, {"value": "yuv_v", "label": "YUV: V"},
+            {"value": "hsi_h", "label": "HSI: H"}, {"value": "hsi_s", "label": "HSI: S"}, {"value": "hsi_i", "label": "HSI: I"},
             {"value": "lab_l", "label": "Lab: L"}, {"value": "lab_a", "label": "Lab: a"}, {"value": "lab_b", "label": "Lab: b"},
+            {"value": "gray_weighted", "label": "Weighted grayscale"},
             {"value": "hsv", "label": "Whole HSV (3 channels)"}, {"value": "merge_rgb", "label": "Merge R/G/B grayscale"},
-        ]),
+        ], help_text="HSI outputs use H in 0-180 and S/I in 0-255 as 8-bit channels."),
+        Param("weight_r", "R weight", kind="number", default=0.299, teach=True, visible_when={"param": "mode", "in": ["gray_weighted"]}),
+        Param("weight_g", "G weight", kind="number", default=0.587, teach=True, visible_when={"param": "mode", "in": ["gray_weighted"]}),
+        Param("weight_b", "B weight", kind="number", default=0.114, teach=True, visible_when={"param": "mode", "in": ["gray_weighted"]}),
     ]
     inputs = [
         Port("image", "Image", "image", required=False),
@@ -596,12 +602,31 @@ class ColorConvertTool(Tool):
             image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         if mode == "hsv":
             return Result(outputs={"image": cv2.cvtColor(image, cv2.COLOR_BGR2HSV)})
+        if mode == "gray_weighted":
+            b, g, r = cv2.split(image.astype(np.float32))
+            out = r * ctx.number("weight_r", 0.299) + g * ctx.number("weight_g", 0.587) + b * ctx.number("weight_b", 0.114)
+            return Result(outputs={"image": np.clip(np.rint(out), 0, 255).astype(np.uint8)})
         space, ch = mode.split("_")
-        idx = {"b": 0, "g": 1, "r": 2, "h": 0, "s": 1, "v": 2, "l": 0, "a": 1}[ch] if space != "lab" or ch != "b" else 2
+        idx = {"b": 0, "g": 1, "r": 2, "h": 0, "s": 1, "v": 2, "l": 0, "a": 1, "y": 0, "u": 1, "i": 2}[ch] if space != "lab" or ch != "b" else 2
         if space == "hsv":
             conv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         elif space == "lab":
             conv = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        elif space == "yuv":
+            conv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+        elif space == "hsi":
+            b, g, r = cv2.split(image.astype(np.float32))
+            total = r + g + b
+            denom = np.sqrt(np.maximum((r - g) * (r - g) + (r - b) * (g - b), 0.0))
+            cos_h = np.divide(0.5 * ((r - g) + (r - b)), denom, out=np.ones_like(total), where=denom > 1e-12)
+            hue = np.degrees(np.arccos(np.clip(cos_h, -1.0, 1.0)))
+            hue = np.where(b > g, 360.0 - hue, hue) * 0.5
+            sat = np.divide(3.0 * np.minimum(np.minimum(r, g), b), total, out=np.ones_like(total), where=total > 1e-12)
+            conv = cv2.merge([
+                np.clip(np.rint(hue), 0, 180).astype(np.uint8),
+                np.clip(np.rint((1.0 - sat) * 255.0), 0, 255).astype(np.uint8),
+                np.clip(np.rint(total / 3.0), 0, 255).astype(np.uint8),
+            ])
         else:
             conv = image
         return Result(outputs={"image": np.ascontiguousarray(conv[:, :, idx])})

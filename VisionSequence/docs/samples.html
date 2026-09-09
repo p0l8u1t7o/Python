@@ -150,7 +150,7 @@
 <p>The example templates live in the <strong>template gallery</strong> — "Create from template" on the flows page, "Load template" in the editor toolbar, 34 built-in templates in all — so they do not clutter the flow list.
 <code>manage.py seed_demo</code> (or <code>dev.ps1 -Setup</code>) creates everything that goes with them: two demonstration flows, one set of synthetic sample pictures for <strong>every</strong> template, stored as <strong>fixed images</strong> that travel with the template, the reference pictures (locator templates, the golden print, the white reference) as fixed images wired into the tools' picture inputs, and the statistical template, shape model and taught-model assets.
 Create a flow from a template and leave the source alone — every template starts with a Fixed image step holding its own sample pictures, so it <strong>runs as it is</strong> — the acquire step becomes a Fixed image step that cycles through the samples (the fourth is usually the deliberate reject).
-82 of the 132 built-in tools appear in at least one template, so opening any of them shows you how that tool is actually wired up and what its parameters look like in practice.</p>
+82 of the 137 built-in tools appear in at least one template, so opening any of them shows you how that tool is actually wired up and what its parameters look like in practice.</p>
 
 <div class="note">Each set has four images (three for the tutorial), and the last one is deliberately a reject. The source loops, so running continuously — or pressing Run repeatedly — gives you OK → OK → OK → NG. Coordinates and tolerances match the nominal values of the synthetic images, so nothing needs tuning before it works.</div>
 

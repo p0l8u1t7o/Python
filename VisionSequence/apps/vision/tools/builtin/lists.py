@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 import numpy as np
@@ -17,6 +18,28 @@ ROI_MODES = [{"value": "inside", "label": "Inside ROI"}, {"value": "outside", "l
 SORT_BY = [
     {"value": "value", "label": "Value"}, {"value": "x", "label": "X"}, {"value": "y", "label": "Y"},
     {"value": "xy", "label": "Reading order"}, {"value": "score", "label": "Score"}, {"value": "label", "label": "Label"},
+]
+OVERLAP_METRICS = [{"value": "iou", "label": "IoU"}, {"value": "a_area", "label": "Overlap / A area"}]
+OVERLAP_MODES = [{"value": "any", "label": "Any overlap is OK"}, {"value": "none", "label": "No overlap is OK"}]
+FILTER_OPS = [
+    {"value": "gt", "label": ">"},
+    {"value": "ge", "label": ">="},
+    {"value": "lt", "label": "<"},
+    {"value": "le", "label": "<="},
+    {"value": "eq", "label": "="},
+    {"value": "ne", "label": "!="},
+    {"value": "between", "label": "Between"},
+    {"value": "in", "label": "In list"},
+    {"value": "regex", "label": "Regex"},
+    {"value": "nonempty", "label": "Non-empty"},
+]
+PICK_BY = [
+    {"value": "index", "label": "Index"},
+    {"value": "first", "label": "First"},
+    {"value": "last", "label": "Last"},
+    {"value": "min", "label": "Minimum"},
+    {"value": "max", "label": "Maximum"},
+    {"value": "nearest", "label": "Nearest to point"},
 ]
 
 
@@ -63,6 +86,168 @@ def _boxes(ctx: ToolContext) -> list[dict[str, Any]]:
         box["bbox"] = [round(x, 3), round(y, 3), round(w, 3), round(h, 3)]
         out.append(box)
     return out
+
+
+def _boxes_from_value(raw: Any, port: str) -> list[dict[str, Any]]:
+    proxy = ToolContext(
+        run_id="", flow_id=0, node={"params": {}}, inputs={"matches": raw},
+        context={}, moment=0.0, log=lambda *a, **k: None, asset_path=lambda aid: None, grab=lambda sid: None,
+    )
+    try:
+        return _boxes(proxy)
+    except ToolError as exc:
+        raise ToolError(f"{port}: {exc}") from None
+
+
+def _data_input(ctx: ToolContext) -> tuple[str, list[Any]]:
+    has_matches = "matches" in ctx.inputs
+    has_values = "values" in ctx.inputs
+    if has_matches and has_values:
+        raise ToolError("Connect either matches or values, not both")
+    if has_matches:
+        return "matches", _boxes(ctx)
+    if has_values:
+        return "values", _value_list(ctx)
+    raise ToolError("Connect a values or matches list")
+
+
+def _pick_input(ctx: ToolContext) -> tuple[str, list[Any]]:
+    present = [key for key in ("values", "matches", "points") if key in ctx.inputs]
+    if len(present) > 1:
+        raise ToolError("Connect only one of values, matches or points")
+    if not present:
+        raise ToolError("Connect values, matches or points")
+    key = present[0]
+    if key == "matches":
+        return key, _boxes(ctx)
+    if key == "values":
+        return key, _value_list(ctx)
+    points = ctx.inputs.get("points")
+    try:
+        arr = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    except (TypeError, ValueError):
+        raise ToolError("Points must be a list of [x, y] pairs") from None
+    return key, [[float(x), float(y)] for x, y in arr]
+
+
+def _field_value(item: Any, field: str) -> Any:
+    if isinstance(item, dict):
+        if field:
+            return item.get(field)
+        return item.get("value", item.get("score", item.get("cx")))
+    return item
+
+
+def _number_or_none(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _truthy_nonempty(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, dict, set)):
+        return bool(value)
+    return True
+
+
+def _split_choices(value: Any) -> set[str]:
+    if isinstance(value, (list, tuple, set)):
+        return {str(v) for v in value}
+    return {p.strip() for line in str(value or "").splitlines() for p in line.split(",") if p.strip()}
+
+
+def _passes_filter(actual: Any, op: str, value: Any, value2: Any) -> bool:
+    if op == "nonempty":
+        return _truthy_nonempty(actual)
+    if op == "regex":
+        try:
+            return re.search(str(value or ""), str(actual or "")) is not None
+        except re.error:
+            return False
+    if op == "in":
+        return str(actual) in _split_choices(value)
+    left = _number_or_none(actual)
+    right = _number_or_none(value)
+    if left is not None and right is not None:
+        if op == "gt":
+            return left > right
+        if op == "ge":
+            return left >= right
+        if op == "lt":
+            return left < right
+        if op == "le":
+            return left <= right
+        if op == "between":
+            high = _number_or_none(value2)
+            if high is None:
+                return False
+            lo, hi = sorted((right, high))
+            return lo <= left <= hi
+        if op == "eq":
+            return left == right
+        if op == "ne":
+            return left != right
+    if op == "eq":
+        return str(actual) == str(value)
+    if op == "ne":
+        return str(actual) != str(value)
+    return False
+
+
+def _parse_classes(text: Any) -> list[tuple[str, float | None, float | None]]:
+    classes: list[tuple[str, float | None, float | None]] = []
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if ":" not in line:
+            raise ToolError("Each class must be name:lower,upper")
+        name, bounds = line.split(":", 1)
+        parts = [p.strip() for p in bounds.split(",")]
+        if len(parts) != 2:
+            raise ToolError("Each class must have lower and upper bounds")
+        lo = None if parts[0] == "" else _number_or_none(parts[0])
+        hi = None if parts[1] == "" else _number_or_none(parts[1])
+        if (parts[0] and lo is None) or (parts[1] and hi is None):
+            raise ToolError("Class bounds must be numeric or blank")
+        classes.append((name.strip() or f"class_{len(classes) + 1}", lo, hi))
+    if not classes:
+        raise ToolError("At least one class is required")
+    return classes
+
+
+def _point_of(item: Any) -> tuple[float, float] | None:
+    if isinstance(item, dict):
+        x = item.get("cx", item.get("x"))
+        y = item.get("cy", item.get("y"))
+    elif isinstance(item, (list, tuple, np.ndarray)) and len(item) >= 2:
+        x, y = item[0], item[1]
+    else:
+        return None
+    try:
+        out = float(x), float(y)
+    except (TypeError, ValueError):
+        return None
+    return out if np.isfinite(out).all() else None
+
+
+def _overlap_ratio(a: dict[str, Any], b: dict[str, Any], metric: str) -> float:
+    ax2, ay2 = float(a["x"]) + float(a["w"]), float(a["y"]) + float(a["h"])
+    bx2, by2 = float(b["x"]) + float(b["w"]), float(b["y"]) + float(b["h"])
+    iw = max(0.0, min(ax2, bx2) - max(float(a["x"]), float(b["x"])))
+    ih = max(0.0, min(ay2, by2) - max(float(a["y"]), float(b["y"])))
+    inter = iw * ih
+    if metric == "a_area":
+        denom = _area(a)
+    else:
+        denom = _area(a) + _area(b) - inter
+    return inter / denom if denom > 0 else 0.0
 
 
 def _area(m: dict[str, Any]) -> float:
@@ -380,4 +565,235 @@ class ListSortTool(Tool):
                       message=f"{len(sorted_values)} sorted by value")
 
 
-TOOLS = [BoxesMergeTool(), BoxesFilterTool(), ArrayCorrectTool(), ListSortTool()]
+class BoxesOverlapTool(Tool):
+    key = "boxes_overlap"
+    label = "Box overlap"
+    description = "Compares match boxes and reports the strongest overlap for each A box."
+    category = "logic"
+    icon = "PanelsTopLeft"
+    params = [
+        Param("metric", "Metric", kind="select", default="iou", options=OVERLAP_METRICS),
+        Param("min_overlap", "Minimum overlap", kind="range", default=0.5, minimum=0, maximum=1, step=0.01, teach=True),
+        Param("mode", "OK mode", kind="select", default="any", options=OVERLAP_MODES),
+    ]
+    inputs = [
+        Port("matches", "A matches", "matches", required=False),
+        Port("matches_b", "B matches", "matches", required=False),
+        Port("image", "Image (for display)", "image", required=False),
+    ]
+    outputs = [
+        flow_out("ok", "OK", "ok"), flow_out("ng", "NG", "critical"),
+        Port("matches", "A matches with overlap", "matches"),
+        Port("count", "Count", "number"),
+        Port("pairs", "Overlap pairs", "list"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        a_matches = _boxes(ctx)
+        b_raw = ctx.inputs.get("matches_b")
+        b_matches = _boxes_from_value(b_raw, "matches_b") if isinstance(b_raw, list) and b_raw else a_matches
+        metric = str(ctx.param("metric", "iou"))
+        threshold = ctx.number("min_overlap", 0.5)
+        out: list[dict[str, Any]] = []
+        pairs: list[tuple[int, int, float]] = []
+        for i, a in enumerate(a_matches):
+            best_j = -1
+            best = 0.0
+            for j, b in enumerate(b_matches):
+                if b_matches is a_matches and i == j:
+                    continue
+                ratio = _overlap_ratio(a, b, metric)
+                if ratio > best:
+                    best, best_j = ratio, j
+            item = dict(a)
+            item["overlap"] = round(best, 6)
+            item["overlap_index"] = best_j if best_j >= 0 else None
+            out.append(item)
+            if best_j >= 0 and best >= threshold:
+                pairs.append((i, best_j, round(best, 6)))
+        count = len(pairs)
+        ok = (count > 0) if str(ctx.param("mode", "any")) == "any" else (count == 0)
+        overlays = _rect_overlays(a_matches, "#38bdf8") + _rect_overlays(b_matches, "#f59e0b")
+        return Result(
+            outputs={"matches": out, "count": count, "pairs": pairs},
+            overlays=overlays,
+            status="ok" if ok else "ng",
+            branch="ok" if ok else "ng",
+            message=f"{count} overlapping boxes",
+        )
+
+
+class ListFilterTool(Tool):
+    key = "list_filter"
+    label = "Filter list"
+    description = "Filters values or matches by one condition and reports kept indices."
+    category = "logic"
+    icon = "ListFilter"
+    params = [
+        Param("field", "Match field", kind="text", default="value", help_text="Used when filtering matches. Blank uses value, score or cx."),
+        Param("op", "Condition", kind="select", default="gt", options=FILTER_OPS),
+        Param("value", "Value", kind="text", default="0", teach=True),
+        Param("value2", "Second value", kind="text", default="", teach=True, visible_when={"param": "op", "in": ["between"]}),
+    ]
+    inputs = [
+        Port("values", "Values", "list", required=False),
+        Port("matches", "Matches", "matches", required=False),
+        Port("image", "Image (for display)", "image", required=False),
+    ]
+    outputs = [
+        Port("values", "Filtered values", "list"),
+        Port("matches", "Filtered matches", "matches"),
+        Port("count", "Count", "number"),
+        Port("removed", "Removed", "number"),
+        Port("indices", "Kept indices", "list"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        kind, items = _data_input(ctx)
+        field = str(ctx.param("field", "value") or "")
+        op = str(ctx.param("op", "gt"))
+        kept: list[Any] = []
+        indices: list[int] = []
+        for i, item in enumerate(items):
+            if _passes_filter(_field_value(item, field) if kind == "matches" else item, op, ctx.param("value", "0"), ctx.param("value2", "")):
+                kept.append(dict(item) if isinstance(item, dict) else item)
+                indices.append(i)
+        removed = len(items) - len(kept)
+        outputs = {
+            "values": kept if kind == "values" else [],
+            "matches": kept if kind == "matches" else [],
+            "count": len(kept),
+            "removed": removed,
+            "indices": indices,
+        }
+        return Result(
+            outputs=outputs,
+            overlays=_rect_overlays(outputs["matches"]) if kind == "matches" else [],
+            status="ok" if kept else "ng",
+            message=f"{len(kept)} kept, {removed} removed",
+        )
+
+
+class ListClassifyTool(Tool):
+    key = "list_classify"
+    label = "Classify list"
+    description = "Classifies values or match fields into named numeric ranges."
+    category = "logic"
+    icon = "Tags"
+    params = [
+        Param("field", "Match field", kind="text", default="value", help_text="Used when classifying matches. Blank uses value, score or cx."),
+        Param("classes", "Classes", kind="multiline", default="low:,10\nmid:10,20\nhigh:20,", teach=True,
+              help_text="One class per line: name:lower,upper. Lower is included, upper is excluded; blank means unbounded."),
+    ]
+    inputs = [
+        Port("values", "Values", "list", required=False),
+        Port("matches", "Matches", "matches", required=False),
+        Port("image", "Image (for display)", "image", required=False),
+    ]
+    outputs = [
+        Port("labels", "Labels", "list"),
+        Port("counts", "Counts", "any"),
+        Port("matches", "Classified matches", "matches"),
+        Port("dominant", "Dominant class", "string"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        kind, items = _data_input(ctx)
+        classes = _parse_classes(ctx.param("classes", ""))
+        field = str(ctx.param("field", "value") or "")
+        labels: list[str] = []
+        counts = {name: 0 for name, _, _ in classes}
+        counts["other"] = 0
+        out_matches: list[dict[str, Any]] = []
+        for item in items:
+            value = _field_value(item, field) if kind == "matches" else item
+            number = _number_or_none(value)
+            label = "other"
+            if number is not None:
+                for name, lo, hi in classes:
+                    if (lo is None or number >= lo) and (hi is None or number < hi):
+                        label = name
+                        break
+            labels.append(label)
+            counts[label] = counts.get(label, 0) + 1
+            if kind == "matches":
+                entry = dict(item)
+                entry["class"] = label
+                out_matches.append(entry)
+        dominant = max(counts.items(), key=lambda kv: (kv[1], kv[0] != "other"))[0] if counts else "other"
+        return Result(
+            outputs={"labels": labels, "counts": counts, "matches": out_matches, "dominant": dominant},
+            overlays=_rect_overlays(out_matches) if kind == "matches" else [],
+            status="ok" if labels else "ng",
+            message=f"{len(labels)} classified",
+        )
+
+
+class ListPickTool(Tool):
+    key = "list_pick"
+    label = "Pick from list"
+    description = "Picks one value, match or point by index, position, value or nearest point."
+    category = "logic"
+    icon = "MousePointerClick"
+    params = [
+        Param("by", "Pick by", kind="select", default="first", options=PICK_BY),
+        Param("index", "Index", kind="number", default=0, minimum=0),
+        Param("field", "Value field", kind="text", default="value", help_text="Used for min and max on matches. Blank uses value, score or cx."),
+        Param("x", "Target X", kind="number", default=0, teach=True, visible_when={"param": "by", "in": ["nearest"]}),
+        Param("y", "Target Y", kind="number", default=0, teach=True, visible_when={"param": "by", "in": ["nearest"]}),
+    ]
+    inputs = [
+        Port("values", "Values", "list", required=False),
+        Port("matches", "Matches", "matches", required=False),
+        Port("points", "Points", "points", required=False),
+        Port("image", "Image (for display)", "image", required=False),
+    ]
+    outputs = [
+        flow_out("found", "Found", "ok"), flow_out("not_found", "Not found", "critical"),
+        Port("value", "Picked value", "any"),
+        Port("index", "Index", "number"),
+    ]
+
+    def _not_found(self, message: str) -> Result:
+        return Result(outputs={"value": None, "index": None}, status="ng", branch="not_found", message=message)
+
+    def execute(self, ctx: ToolContext) -> Result:
+        kind, items = _pick_input(ctx)
+        if not items:
+            return self._not_found("No items to pick")
+        by = str(ctx.param("by", "first"))
+        field = str(ctx.param("field", "value") or "")
+        idx: int | None
+        if by == "first":
+            idx = 0
+        elif by == "last":
+            idx = len(items) - 1
+        elif by == "index":
+            idx = ctx.integer("index", 0)
+            if idx < 0 or idx >= len(items):
+                return self._not_found("Index is outside the list")
+        elif by in ("min", "max"):
+            scored = [(_number_or_none(_field_value(item, field)), i) for i, item in enumerate(items)]
+            scored = [(score, i) for score, i in scored if score is not None]
+            if not scored:
+                return self._not_found("No numeric item to pick")
+            idx = (min if by == "min" else max)(scored, key=lambda pair: pair[0])[1]
+        elif by == "nearest":
+            tx, ty = ctx.number("x", 0), ctx.number("y", 0)
+            pts = [(_point_of(item), i) for i, item in enumerate(items)]
+            pts = [(pt, i) for pt, i in pts if pt is not None]
+            if not pts:
+                return self._not_found("No point-like item to pick")
+            idx = min(pts, key=lambda pair: math.hypot(pair[0][0] - tx, pair[0][1] - ty))[1]
+        else:
+            return self._not_found("Unknown pick mode")
+        value = dict(items[idx]) if isinstance(items[idx], dict) else list(items[idx]) if kind == "points" else items[idx]
+        point = _point_of(value)
+        overlays = [{"kind": "point", "x": point[0], "y": point[1], "color": "#22c55e", "label": "picked"}] if point else []
+        return Result(outputs={"value": value, "index": idx}, overlays=overlays, branch="found", message=f"Picked index {idx}")
+
+
+TOOLS = [
+    BoxesMergeTool(), BoxesFilterTool(), ArrayCorrectTool(), ListSortTool(),
+    BoxesOverlapTool(), ListFilterTool(), ListClassifyTool(), ListPickTool(),
+]

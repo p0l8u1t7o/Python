@@ -50,6 +50,7 @@ gain 調到刮傷看得清楚、表面仍然暗為止，再設門檻。
 `scale` 0.25～0.5 縮小加速守門類流程（曝光、粗略計數）；量測流程不要縮，精度會掉。
 
 ## color_convert
+新增通道：`yuv_y/u/v` 取 YUV 單通道；`hsi_h/s/i` 取 HSI，H 以 0..180 存成 u8，S/I 以 0..255 存成 u8；`gray_weighted` 用 `weight_r/g/b` 做加權灰階，換線會調權重時可放進教導參數。
 取單一色彩面：`hsv_s`（飽和度，抓有色物件最穩）、`hsv_h`、`hsv_v`、`lab_a/b`。輸出是灰階圖，可直接接 threshold。
 
 ## color_range
@@ -149,6 +150,7 @@ PCB 十字 Mark、方形對位塊、圓形基準孔這種規則圖形可改 `mod
 定位補正：吃 template_match.matches，與 `ref_x/ref_y/ref_angle`（教導時的參考位置）算出 `transform`。試跑一次後把參考位置設成目前匹配位置（前端一鍵帶入）。
 
 ## align_offset
+`mode=rectify` 是單點修正：輸出「目前姿態回到示教姿態」的機構修正量，方向和 `point` 相反。角度 `dtheta=ref_angle-current_angle`，pivot 是目前點，先把目前姿態繞目前點轉回示教角度，再平移到示教點；輸出的 transform 是目前→示教，可視為 `point` transform 的反函式。
 對位偏移：把教導姿態與目前姿態的差算成「要修正多少」。`shape_align` 是給 ROI 跟隨用的，
 這一顆是**給機構走的**——多了取料點補償與世界／機構座標輸出。
 `mode`：point（單點＋角度，最常用）／point_set（2～8 組對應點做剛體解，兩個定位孔就夠）／
@@ -216,6 +218,7 @@ ROI 跟隨：`roi` 填教導時的固定 ROI，`transform` 接 shape_align.trans
 斷續的邊（虛線、被遮住一段）打開 `gap_tolerant`：線的兩端取真的找到邊的範圍；`coverage` 回報幾成的卡尺打到邊。
 
 ## caliper
+`peak_search` 量峰值不是量邊：同樣用矩形/旋轉矩形 ROI 的長邊剖面，`polarity=bright/dark/both` 決定找亮峰、暗峰或兩者；`min_prominence` 是峰相對左右基線的最小灰階高度，`min_distance` 抑制太近的重複峰。輸出 peaks 的 x/y 是全圖座標，position 是 ROI 擺正後沿長邊的位置。
 選填 `calibration` 資產；選了標定就多出原始埠名加 `_world` 的物理量與 `unit`，機構 `robot.matrix` 優先於 `world.matrix`；未選時像素輸出不變。長度採量測位置的面積等效比例，非等向縮放與透視下不是沿線積分長度。
 量兩條邊的距離：ROI 長邊沿掃描方向、要橫跨兩條邊。`edge_pair` widest 抓最外側對、first_last 抓頭尾、`polarity` 限制邊緣方向。量亮條／暗條寬度給 `pair_polarity`（bright＝暗→亮再亮→暗、dark 相反）；知道大約寬度就填 `expected_width`（挑最接近的一對，旁邊有高對比雜訊邊也不會挑錯）。輸出 `width`（px）。
 
@@ -362,6 +365,18 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 
 ## count_list
 清單長度（hough_lines.lines、blob.blobs 等）→ `count`。
+
+## boxes_overlap
+框重疊檢查：A 接 `matches`，B 接 `matches_b`；B 不接或空清單時，A 內部兩兩互比。`metric=iou` 是交集/聯集，`metric=a_area` 是交集/A 面積；`min_overlap` 以上才計入 pairs/count。`mode=any` 有重疊走 ok，`mode=none` 沒重疊才走 ok。
+
+## list_filter
+清單篩選：可接 `values` 或 `matches`。接 matches 時用 `field` 指定欄位；`op` 支援大小比較、between、in、regex、nonempty。輸出保留項目、removed 與原始 indices；沒有任何保留項目是 ng，不是錯誤。
+
+## list_classify
+清單分類：`classes` 一行一類 `name:lower,upper`，下限含、上限不含，空白代表無界。輸出逐項 labels、counts（含 other）、matches 的 `class` 欄與 dominant。重疊範圍依列表順序，先符合者優先。
+
+## list_pick
+清單取值：從 `values`、`matches` 或 `points` 取一筆；`by=index/first/last/min/max/nearest`。越界或沒有可取值走 `not_found`，不丟例外；nearest 用 `x/y` 找最近的點或框中心。
 
 ## boxes_merge
 框清單後處理：`matches` 接 template_match／register_detect／偵測類輸出的框。`mode=iou` 用重疊比例合併同一物件的重複框；
