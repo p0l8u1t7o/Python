@@ -183,6 +183,32 @@ def _run_row_out(run: FlowRun) -> dict[str, Any]:
     }
 
 
+def _percentile(values: list[float], pct: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(float(v) for v in values)
+    index = min(len(ordered) - 1, int(round((len(ordered) - 1) * pct)))
+    return round(ordered[index], 3)
+
+
+def _timing_summary(reports: list[Any]) -> dict[str, Any]:
+    keys = ("grab_ms", "frame_age_ms", "since_capture_ms", "record_ms", "total_ms", "loop_gap_ms")
+    out: dict[str, Any] = {"count": len(reports)}
+    for key in keys:
+        values = [float((r.timing or {}).get(key)) for r in reports if isinstance((r.timing or {}).get(key), (int, float))]
+        out[key] = {"p50": _percentile(values, 0.5), "p95": _percentile(values, 0.95)}
+    node_values: dict[str, list[float]] = {}
+    for r in reports:
+        nodes = (r.timing or {}).get("nodes_ms")
+        if not isinstance(nodes, dict):
+            continue
+        for node_id, ms in nodes.items():
+            if isinstance(ms, (int, float)):
+                node_values.setdefault(str(node_id), []).append(float(ms))
+    out["nodes_ms"] = {node: {"p50": _percentile(values, 0.5), "p95": _percentile(values, 0.95)} for node, values in sorted(node_values.items())}
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 目錄 / 容量
 # ---------------------------------------------------------------------------
@@ -788,6 +814,12 @@ def flow_stats(request: HttpRequest, flow_id: int, hours: int = 24):
         b = buckets.setdefault(key, {"ok": 0, "ng": 0, "failed": 0})
         for k in ("ok", "ng", "failed"):
             b[k] += row[k]
+    rt = runner.runtime(flow_id)
+    try:
+        timing_limit = int(request.GET.get("timing_limit") or 32)
+    except (TypeError, ValueError):
+        timing_limit = 32
+    recent = rt.recent[-min(100, max(1, timing_limit)):]
     return {
         "hours": hours,
         "total": total,
@@ -795,7 +827,8 @@ def flow_stats(request: HttpRequest, flow_id: int, hours: int = 24):
         "avg_ms": round((agg["total_ms"] or 0) / total, 2) if total else 0.0,
         "max_ms": round(agg["mx"] or 0, 2),
         "hourly": [{"hour": k, **v} for k, v in sorted(buckets.items())],
-        "live": runner.runtime(flow_id).stats.to_dict(),
+        "live": rt.stats.to_dict(),
+        "timing": _timing_summary(recent),
     }
 
 

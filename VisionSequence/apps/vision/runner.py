@@ -647,10 +647,14 @@ class Runner:
             report.warnings.append("On-site teaching is not finished (not yet confirmed on the teach page)")
         with self._lock:
             rt.pending.pop(run_id, None)  # 結果已在 recent，查詢改走 report()
+        record_t0 = time.perf_counter()
         self._record(rt, report)
+        report.timing["record_ms"] = round((time.perf_counter() - record_t0) * 1000.0, 3)
+        report.timing["total_ms"] = round(float(report.duration_ms) + float(report.timing.get("record_ms") or 0.0), 3)
         return report
 
     def _record(self, rt: FlowRuntime, report: engine.RunReport) -> None:
+        record_t0 = time.perf_counter()
         s = rt.stats
         s.runs += 1
         s.total_ms += report.duration_ms
@@ -677,6 +681,8 @@ class Runner:
             if policy and archive.wanted(policy, report.status, s.runs):
                 report.archive_images = archive.capture(report, store, queue_depth=persister.q.qsize())
             persister.submit(report)
+        report.timing["record_ms"] = round((time.perf_counter() - record_t0) * 1000.0, 3)
+        report.timing["total_ms"] = round(float(report.duration_ms) + float(report.timing.get("record_ms") or 0.0), 3)
         bus.publish({"type": "run_finished", "flow_id": rt.flow_id, "run": report.to_dict(include_node_outputs=True), "stats": s.to_dict()})
         if report.trigger != "preview" and report.flow_id > 0:
             # 逐片回送：跑完就在這條執行緒送出去（不經佇列也不經匯流排，才不會漏掉任何一片）
@@ -754,6 +760,7 @@ class ContinuousLoop(threading.Thread):
 
     def run(self) -> None:
         last_refresh = time.monotonic()
+        last_finish: float | None = None
         while not self._halt.is_set():
             t0 = time.perf_counter()
             try:
@@ -765,7 +772,9 @@ class ContinuousLoop(threading.Thread):
                         break
                     self.flow = fresh
                     self.interval = max(0, int(fresh.continuous_interval_ms)) / 1000.0
-                self.runner.run_sync(self.flow, trigger="continuous")
+                loop_gap = 0.0 if last_finish is None else max(0.0, (t0 - last_finish) * 1000.0)
+                self.runner.run_sync(self.flow, trigger="continuous", context={"_loop_gap_ms": loop_gap})
+                last_finish = time.perf_counter()
             except RateLimited:
                 time.sleep(0.05)
             except Exception:  # noqa: BLE001

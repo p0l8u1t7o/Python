@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
+
 import cv2
 import numpy as np
 
-from apps.vision.capture.hub import CaptureError
+from apps.vision.capture.hub import CaptureError, FrameMeta, hub
 from apps.vision.tools.base import Param, Port, Result, Tool, ToolContext, ToolError, flow_out
 
 
@@ -96,18 +98,26 @@ class ImageSourceTool(Tool):
                     msg = f"Frame batch uses the same non-capture source image {frames} times" if reason == "not_capture" else f"Frame batch could not use capture mode for source {source_id}: {reason}"
                     ctx.log(msg, level="warning")
                     warnings.append(msg)
+                    gt0 = time.perf_counter()
                     image = ctx.grab(str(source_id))
+                    _add_grab_ms(ctx, (time.perf_counter() - gt0) * 1000.0)
                     batch = [image.copy() for _ in range(frames)] if isinstance(image, np.ndarray) else []
                 else:
                     for _ in range(frames):
+                        gt0 = time.perf_counter()
                         frame = grabber.grab_fresh(timeout=timeout_s)
+                        _add_grab_ms(ctx, (time.perf_counter() - gt0) * 1000.0)
                         if frame is None:
                             image = None
                             break
                         batch.append(frame)
+                        _record_capture_timing(ctx, grabber.last_meta)
                     image = batch[0] if batch else None
             else:
+                gt0 = time.perf_counter()
                 image = ctx.grab(str(source_id))
+                _add_grab_ms(ctx, (time.perf_counter() - gt0) * 1000.0)
+                _record_source_timing(ctx, source_id)
                 batch = [image] if isinstance(image, np.ndarray) else []
             used = f"source:{source_id}"
             if image is None:
@@ -148,4 +158,140 @@ def _camera_params(ctx: ToolContext) -> dict[str, float]:
     return out
 
 
-TOOLS = [ImageSourceTool()]
+def _add_grab_ms(ctx: ToolContext, ms: float) -> None:
+    ctx.context["_timing_grab_ms"] = float(ctx.context.get("_timing_grab_ms") or 0.0) + max(0.0, float(ms))
+
+
+def _record_source_timing(ctx: ToolContext, source_id: object) -> None:
+    from apps.vision.capture.grabber import capture_grabber_for_source
+
+    grabber, _reason = capture_grabber_for_source(source_id)
+    if grabber is not None:
+        _record_capture_timing(ctx, grabber.last_meta)
+
+
+def _record_capture_timing(ctx: ToolContext, meta: FrameMeta | None, *, key: str = "image") -> None:
+    if meta is None:
+        return
+    now_perf = time.perf_counter()
+    now_wall = time.time()
+    item = {
+        "key": key,
+        "seq": meta.seq,
+        "frame_age_ms": max(0.0, (now_perf - meta.received_perf) * 1000.0),
+        "captured_at": meta.captured_at,
+        "received_at": meta.received_at,
+    }
+    if meta.captured_at is not None:
+        item["since_capture_ms"] = max(0.0, (now_wall - meta.captured_at) * 1000.0)
+    frames = ctx.context.setdefault("_timing_frames", [])
+    if isinstance(frames, list):
+        frames.append(item)
+
+
+class StereoGrabTool(Tool):
+    key = "stereo_grab"
+    label = "Stereo grab"
+    description = "Grabs a left and right image for a stereo pair, using simultaneous capture requests when both sources are capture-client cameras."
+    category = "source"
+    icon = "PanelTop"
+    allows_unconnected = True
+    params = [
+        Param("left", "Left source", kind="source", required=True),
+        Param("right", "Right source", kind="source", required=True),
+        Param("timeout_ms", "Timeout", kind="number", default=1000, minimum=50, maximum=30000, step=1, unit="ms"),
+        Param("max_dt_ms", "Max pair offset", kind="number", default=10, minimum=0, maximum=1000, step=0.1, unit="ms", teach=True),
+        Param("on_timeout", "On timeout", kind="select", default="error", options=[
+            {"value": "error", "label": "Raise an error"},
+            {"value": "ng", "label": "Mark NG and use the timeout branch"},
+        ]),
+    ]
+    inputs: list[Port] = []
+    outputs = [
+        Port("image", "Left image", "image"),
+        Port("image_right", "Right image", "image"),
+        Port("dt_ms", "Pair offset", "number"),
+        Port("captured_at", "Captured at", "number", required=False),
+        flow_out("timeout", "Timeout", "critical"),
+    ]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        left_id = ctx.param("left")
+        right_id = ctx.param("right")
+        if not left_id or not right_id:
+            raise ToolError("Choose both stereo sources")
+        timeout = max(0.05, ctx.number("timeout_ms", 1000) / 1000.0)
+        from apps.vision.capture.grabber import capture_grabber_for_source
+
+        left_g, left_reason = capture_grabber_for_source(left_id)
+        right_g, right_reason = capture_grabber_for_source(right_id)
+        warnings: list[str] = []
+        started = time.perf_counter()
+        supplied = ctx.context.get("_input_image")
+        if left_g is None and right_g is None and isinstance(supplied, np.ndarray):
+            left = supplied
+            right = supplied.copy()
+            _add_grab_ms(ctx, (time.perf_counter() - started) * 1000.0)
+            return Result(
+                outputs={"image": left, "image_right": right, "dt_ms": None, "captured_at": None},
+                message=f"left {left.shape[1]}x{left.shape[0]}, right {right.shape[1]}x{right.shape[0]}",
+            )
+        if left_g is not None and right_g is not None and left_g.client == right_g.client:
+            try:
+                left_frame, right_frame, dt_ms = hub.request_pair(left_g.client, left_g.channel, right_g.channel, timeout=timeout)
+            except CaptureError as exc:
+                _add_grab_ms(ctx, (time.perf_counter() - started) * 1000.0)
+                if ctx.param("on_timeout", "error") == "ng" and exc.code == "timeout":
+                    return Result(status="ng", branch="timeout", message=f"Stereo grab timed out: {exc}")
+                raise ToolError(str(exc)) from None
+            left = left_g.accept_frame(left_frame)
+            right = right_g.accept_frame(right_frame)
+            _add_grab_ms(ctx, (time.perf_counter() - started) * 1000.0)
+            _record_capture_timing(ctx, left_frame.meta, key="left")
+            _record_capture_timing(ctx, right_frame.meta, key="right")
+            captured_at = left_frame.meta.captured_at
+        else:
+            if left_g is not None or right_g is not None:
+                warnings.append("Capture sources are on different clients; frames were requested independently")
+            left = _grab_one(ctx, left_id, left_g, timeout, "left")
+            right = _grab_one(ctx, right_id, right_g, timeout, "right")
+            dt_ms = None
+            captured_at = None
+            if left is None or right is None:
+                if ctx.param("on_timeout", "error") == "ng" and (_timed_out(left_id) or _timed_out(right_id) or (left_g and left_g.timed_out) or (right_g and right_g.timed_out)):
+                    return Result(status="ng", branch="timeout", message="Stereo grab timed out")
+                reason = left_reason if left is None else right_reason
+                raise ToolError("Stereo source returned no image" + (f": {reason}" if reason else ""))
+        max_dt = ctx.number("max_dt_ms", 10)
+        if dt_ms is not None and max_dt > 0 and dt_ms > max_dt:
+            msg = f"Stereo pair offset {dt_ms:.2f} ms is over {max_dt:.2f} ms"
+            ctx.log(msg, level="warning")
+            warnings.append(msg)
+        h, w = left.shape[:2]
+        rh, rw = right.shape[:2]
+        return Result(
+            outputs={"image": left, "image_right": right, "dt_ms": dt_ms, "captured_at": captured_at},
+            message=f"left {w}x{h}, right {rw}x{rh}" + (f", dt {dt_ms:.2f} ms" if dt_ms is not None else ""),
+            detail={"warnings": warnings} if warnings else {},
+        )
+
+
+def _grab_one(ctx: ToolContext, source_id: object, grabber, timeout: float, key: str) -> np.ndarray | None:
+    gt0 = time.perf_counter()
+    if grabber is not None:
+        image = grabber.grab_fresh(timeout=timeout)
+        _record_capture_timing(ctx, grabber.last_meta, key=key)
+    else:
+        image = ctx.grab(str(source_id))
+        _record_source_timing(ctx, source_id)
+    _add_grab_ms(ctx, (time.perf_counter() - gt0) * 1000.0)
+    return image
+
+
+def _timed_out(source_id: object) -> bool:
+    from apps.vision.sources import last_timeout_of
+
+    return bool(last_timeout_of(source_id))
+
+
+TOOLS = [ImageSourceTool(), StereoGrabTool()]

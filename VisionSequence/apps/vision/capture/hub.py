@@ -78,6 +78,8 @@ class FrameMeta:
     shm: bool
     wire_bytes: int
     received_at: float
+    received_perf: float
+    captured_at: float | None = None
     latency_ms: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -85,6 +87,7 @@ class FrameMeta:
             "seq": self.seq, "ts_ns": self.ts_ns, "width": self.width, "height": self.height, "channels": self.channels, "dtype": self.dtype,
             "encoding": self.encoding, "roi": {"x": self.roi_x, "y": self.roi_y, "w": self.width, "h": self.height}, "full": {"w": self.full_w, "h": self.full_h},
             "fresh": self.fresh, "shm": self.shm, "wire_bytes": self.wire_bytes, "latency_ms": round(self.latency_ms, 2),
+            "captured_at": self.captured_at, "received_at": self.received_at,
         }
 
 
@@ -184,7 +187,7 @@ class ChannelState:
 
     def to_dict(self, in_use_by: list[str] | None = None) -> dict[str, Any]:
         latest = self.latest
-        age = None if latest is None else round((time.perf_counter() - latest.meta.received_at) * 1000, 1)
+        age = None if latest is None else round((time.perf_counter() - latest.meta.received_perf) * 1000, 1)
         out = {
             "id": self.id, "label": self.spec["label"], "driver": self.spec["driver"], "index": self.index,
             "width": self.spec["width"], "height": self.spec["height"], "channels": self.spec["channels"], "dtype": self.spec["dtype"],
@@ -495,6 +498,8 @@ class ClientSession(threading.Thread):
 
     def _on_frame(self, mtype: int, req_id: int, hdr: FrameHeader, plen: int) -> None:
         started = time.perf_counter()
+        received_perf = 0.0
+        received_at = 0.0
         n_channels = len(self.channels)
         try:
             hdr.validate(n_channels, self.hub.max_frame_bytes(), plen, shm_slots=self.shm_slots, slot_bytes=self.shm_slot_bytes)
@@ -521,10 +526,13 @@ class ClientSession(threading.Thread):
         if mtype == MsgType.TEST:
             self.send(MsgType.TEST_RESULT, req_id, P.dumps_json({"bytes": wire, "decode_ms": round((time.perf_counter() - started) * 1000, 2), "shape": list(image.shape)}))
             return
+        received_perf = time.perf_counter()
+        received_at = time.time()
         meta = FrameMeta(
             seq=hdr.seq, ts_ns=hdr.ts_ns, width=hdr.width, height=hdr.height, channels=hdr.channels, dtype=P.DTYPE_NAMES[hdr.dtype],
             encoding=P.ENCODING_NAMES[hdr.encoding] if hdr.slot < 0 else "shm", roi_x=hdr.roi_x, roi_y=hdr.roi_y, full_w=hdr.full_w, full_h=hdr.full_h,
-            fresh=bool(hdr.flags & FrameFlags.FRESH), shm=hdr.slot >= 0, wire_bytes=wire, received_at=time.perf_counter(),
+            fresh=bool(hdr.flags & FrameFlags.FRESH), shm=hdr.slot >= 0, wire_bytes=wire,
+            received_at=received_at, received_perf=received_perf, captured_at=hdr.captured_at,
         )
         frame = Frame(image, meta)
         with self._lock:
@@ -540,6 +548,7 @@ class ClientSession(threading.Thread):
                 pending.frame = frame
                 pending.event.set()
             ch.cond.notify_all()
+        self.hub._notify_frame(self.name_, ch.id)
 
     def _read_pixels(self, hdr: FrameHeader, plen: int, pool: _BufferPool) -> np.ndarray:
         shape, dtype = hdr.shape(), hdr.numpy_dtype
@@ -681,6 +690,49 @@ class ClientSession(threading.Thread):
         assert pending.frame is not None
         return pending.frame
 
+    def request_pair(self, channel_a: str, channel_b: str, *, timeout: float) -> tuple[Frame, Frame, float | None]:
+        """同時對兩個通道送 GRAB，等兩張新影格回來後計算擷取時間差。"""
+        ch_a = self.channel(channel_a)
+        ch_b = self.channel(channel_b)
+        if not self.alive:
+            raise CaptureError("The capture client disconnected", code="disconnected")
+        req_a, req_b = self.next_req_id(), self.next_req_id()
+        pending_a, pending_b = _Pending(), _Pending()
+        with self._lock:
+            self._pending[req_a] = pending_a
+            self._pending[req_b] = pending_b
+            min_a, min_b = ch_a.last_seq, ch_b.last_seq
+        try:
+            header_a = P.pack_grab(ch_a.index, min_a, int(timeout * 1000), Encoding.AUTO, GrabFlags.AFTER_REQUEST)
+            header_b = P.pack_grab(ch_b.index, min_b, int(timeout * 1000), Encoding.AUTO, GrabFlags.AFTER_REQUEST)
+            self.send(MsgType.GRAB, req_a, header_a)
+            self.send(MsgType.GRAB, req_b, header_b)
+        except CaptureError:
+            with self._lock:
+                self._pending.pop(req_a, None)
+                self._pending.pop(req_b, None)
+            raise
+        frames: list[Frame] = []
+        for ch, pending in ((ch_a, pending_a), (ch_b, pending_b)):
+            if not pending.event.wait(timeout + 0.25):
+                with self._lock:
+                    self._pending.pop(req_a, None)
+                    self._pending.pop(req_b, None)
+                    ch.last_error = "The capture client timed out"
+                raise CaptureError(f'Capture client "{self.name_}" timed out without returning a stereo pair', code="timeout")
+            if pending.error is not None:
+                with self._lock:
+                    ch.last_error = str(pending.error)
+                raise pending.error
+            assert pending.frame is not None
+            frames.append(pending.frame)
+        left, right = frames
+        if left.meta.captured_at is not None and right.meta.captured_at is not None:
+            dt_ms = abs(left.meta.captured_at - right.meta.captured_at) * 1000.0
+        else:
+            dt_ms = abs(left.meta.received_at - right.meta.received_at) * 1000.0
+        return left, right, dt_ms
+
     def latest(self, channel: str) -> Frame | None:
         ch = self.channel(channel)
         with self._lock:
@@ -804,6 +856,7 @@ class CaptureHub:
         self._stream_refs: dict[tuple[str, str], int] = {}
         self._stream_wanted: dict[tuple[str, str], bool] = {}
         self._users: dict[tuple[str, str], set[str]] = {}
+        self._frame_events: dict[tuple[str, str], threading.Event] = {}
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self.host = ""
@@ -902,6 +955,9 @@ class CaptureHub:
     def request_frame(self, client: str, channel: str, *, timeout: float, min_seq: int = 0, after_request: bool = True, encoding: int = Encoding.AUTO) -> Frame:
         return self._require(client).request_frame(channel, timeout=timeout, min_seq=min_seq, after_request=after_request, encoding=encoding)
 
+    def request_pair(self, client: str, channel_a: str, channel_b: str, *, timeout: float) -> tuple[Frame, Frame, float | None]:
+        return self._require(client).request_pair(channel_a, channel_b, timeout=timeout)
+
     def latest(self, client: str, channel: str) -> Frame | None:
         return self._require(client).latest(channel)
 
@@ -965,6 +1021,20 @@ class CaptureHub:
     def users_of(self, client: str, channel: str) -> list[str]:
         with self._lock:
             return sorted(self._users.get((client, channel), set()))
+
+    def frame_event(self, client: str, channel: str) -> threading.Event:
+        key = (client, channel)
+        with self._lock:
+            event = self._frame_events.get(key)
+            if event is None:
+                event = self._frame_events[key] = threading.Event()
+            return event
+
+    def _notify_frame(self, client: str, channel: str) -> None:
+        with self._lock:
+            event = self._frame_events.get((client, channel))
+        if event is not None:
+            event.set()
 
     # ---- 設定 ----
     def auth_secret(self) -> str:

@@ -1763,6 +1763,7 @@ const zhHans = {
     history: '运行历史',
     noData: '此期间没有运行纪录',
     live: '内存即时统计',
+    latency: '延迟 p50 {{p50}} ms · p95 {{p95}} ms',
     trend: '最近趋势',
     cols: { time: '时间', status: '状态', trigger: '触发', ms: 'ms', outputs: '输出摘要', error: '错误', recipe: '配方', station: '站台', images: '图像' },
     statusAll: '全部状态',

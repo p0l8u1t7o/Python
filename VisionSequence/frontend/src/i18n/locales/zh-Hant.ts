@@ -1763,6 +1763,7 @@ const zhHant = {
     history: '執行歷史',
     noData: '此期間沒有執行紀錄',
     live: '記憶體即時統計',
+    latency: '延遲 p50 {{p50}} ms · p95 {{p95}} ms',
     trend: '最近趨勢',
     cols: { time: '時間', status: '狀態', trigger: '觸發', ms: 'ms', outputs: '輸出摘要', error: '錯誤', recipe: '配方', station: '站台', images: '影像' },
     statusAll: '全部狀態',

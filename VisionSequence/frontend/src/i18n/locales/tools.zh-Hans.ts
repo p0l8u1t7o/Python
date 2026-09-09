@@ -2493,6 +2493,24 @@ export default {
       applied: "已套用相机设置",
     },
   },
+  stereo_grab: {
+    label: "立体成对取像",
+    description: "从左右两个影像来源取一组立体影像；两者都是同一台采集端的 capture 来源时，会同时送出 GRAB。",
+    params: {
+      left: { label: "左影像来源" },
+      right: { label: "右影像来源" },
+      timeout_ms: { label: "超时" },
+      max_dt_ms: { label: "最大左右时间差" },
+      on_timeout: { label: "超时处理", options: { error: "报错", ng: "标记 NG 并走超时分支" } },
+    },
+    ports: {
+      image: "左影像",
+      image_right: "右影像",
+      dt_ms: "左右时间差",
+      captured_at: "采集时间",
+      timeout: "超时",
+    },
+  },
   in_range: {
     label: "在范围内",
     description: "数值是否落在 [下限, 上限]；常用于量测值公差判定。",

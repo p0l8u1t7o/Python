@@ -172,7 +172,8 @@ class TransportClient:
         encode_ms = (time.perf_counter() - t0) * 1000
         req_id = self._next_req()
         hdr = FrameHeader.for_image(self.engine.channel_index(cid), frame.seq, frame.ts_ns, fields["width"], fields["height"], fields["channels"], fields["dtype"],
-                                    roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"], encoding=fields["encoding"], flags=fields["flags"])
+                                    roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"],
+                                    encoding=fields["encoding"], flags=fields["flags"], captured_at_ms=frame.ts_ns // 1_000_000)
         self._tests[req_id] = (fut, time.perf_counter(), len(payload))
         fut.encode_ms = encode_ms  # type: ignore[attr-defined]
         self.queue.put_reply(P.pack_message(MsgType.TEST, req_id, hdr.pack(), payload))
@@ -382,7 +383,8 @@ class TransportClient:
                 slot = ring.wait_write(frame.seq, arr, min(0.2, remaining))
                 if slot is not None:
                     hdr = FrameHeader.for_image(chan, frame.seq, frame.ts_ns, fields["width"], fields["height"], fields["channels"], fields["dtype"],
-                                                roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"], flags=fields["flags"] | fresh, slot=slot)
+                                                roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"],
+                                                flags=fields["flags"] | fresh, slot=slot, captured_at_ms=frame.ts_ns // 1_000_000)
                     self.queue.put_reply(P.pack_message(MsgType.FRAME, req_id, hdr.pack()))
                     self.frames_sent += 1
                     return
@@ -394,7 +396,8 @@ class TransportClient:
                 if encoding == Encoding.JPEG and arr.dtype.name != "uint8":
                     fields["encoding"] = int(Encoding.RAW)
             hdr = FrameHeader.for_image(chan, frame.seq, frame.ts_ns, fields["width"], fields["height"], fields["channels"], fields["dtype"],
-                                        roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"], encoding=fields["encoding"], flags=fields["flags"] | fresh)
+                                        roi_x=fields["roi_x"], roi_y=fields["roi_y"], full_w=fields["full_w"], full_h=fields["full_h"],
+                                        encoding=fields["encoding"], flags=fields["flags"] | fresh, captured_at_ms=frame.ts_ns // 1_000_000)
             item, nbytes = frame_item(MsgType.FRAME, req_id, hdr, arr, fields["encoding"], ch.cfg.delivery.jpeg_quality)
             self.queue.put_reply(item)
             self.frames_sent += 1

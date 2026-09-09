@@ -96,6 +96,16 @@ class CaptureGrabber(Grabber):
             self.timed_out = False
         return frame.image
 
+    def accept_frame(self, frame) -> np.ndarray:
+        """stereo_grab 已經由 hub 取得 Frame 時，同步更新此 grabber 的狀態。"""
+        with self._lock:
+            self.frames += 1
+            self.last_seq = frame.meta.seq
+            self.last_meta = frame.meta
+            self.last_error = ""
+            self.timed_out = False
+        return frame.image
+
     def _session_id(self) -> int:
         session = hub.get(self.client)
         return int(getattr(session, "session_id", 0)) if session is not None else 0

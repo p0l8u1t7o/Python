@@ -150,6 +150,7 @@ export function StatsPage() {
   const okCount = d?.by_status.ok ?? 0
   const yieldPct = d && d.total ? Math.round((okCount / d.total) * 1000) / 10 : null
   const live: FlowStats | undefined = d?.live
+  const latency = d?.timing?.total_ms
   const latest = series.data?.items[0]
 
   return (
@@ -184,6 +185,7 @@ export function StatsPage() {
           {live ? (
             <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted">
               <span>{t('stats.live')}: {live.runs} · OK {live.ok} · NG {live.ng} · {t('status.failed')} {live.failed} · {Math.round(live.avg_ms)} ms</span>
+              {latency?.p50 != null || latency?.p95 != null ? <span>{t('stats.latency', { p50: fmt(latency.p50, 1), p95: fmt(latency.p95, 1) })}</span> : null}
               {trend.length ? <span className="flex items-center gap-2">{t('stats.trend')} <TrendStrip statuses={trend} className="w-40" /></span> : null}
             </div>
           ) : null}

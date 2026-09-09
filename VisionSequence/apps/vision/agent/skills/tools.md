@@ -12,6 +12,9 @@
 `frames>1` 會在同一次 run 連續要求 fresh frame，輸出 `images` 清單且 `image` 仍是第一張；`frames_timeout_ms=0` 使用來源逾時。批次逾時沿用既有 `timeout` 分支語意。
 流程的起點、只能有一個。AI 生成時 `params` 只填 `{"mode": "auto"}`：試跑吃上傳影像，存成流程後使用者在編輯器選來源。不要綁 `source_id`。
 
+## stereo_grab
+Stereo pair source. Set `left` and `right`; when both point to capture channels on the same client, the tool sends paired GRAB requests and returns `image`, `image_right`, `dt_ms` and `captured_at`. `max_dt_ms` only records a warning; `on_timeout` follows `image_source`.
+
 ## grayscale
 幾乎所有幾何／二值化工具的前置。彩色判斷（color_range／color_check／color_stats）**不要**經過它。
 

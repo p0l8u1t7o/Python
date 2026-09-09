@@ -34,7 +34,7 @@ SLOT_ALIGN = 4096
 
 ENVELOPE = struct.Struct("<HBBIII")  # magic, ver, type, req_id, hlen, plen（16 B）
 GRAB_HDR = struct.Struct("<HIQBB")  # chan, timeout_ms, min_seq, encoding, flags（16 B）
-FRAME_HDR = struct.Struct("<HBBBBQQIIIIIIIIi6x")  # 64 B，欄位見 FrameHeader
+FRAME_HDR = struct.Struct("<HBBBBQQIIIIIIIIi6s")  # 64 B，尾端 6 B 是 captured_at_ms（0＝舊擷取端沒有）
 SLOT_HDR = struct.Struct("<HiQ2x")  # chan, slot, seq（16 B）
 SEG_HDR = struct.Struct("<8sQIIQ")  # magic, canary, slots, slot_bytes, reserved（32 B，補到 64）
 
@@ -207,28 +207,41 @@ class FrameHeader:
     full_h: int
     raw_len: int
     slot: int
+    captured_at_ms: int = 0
 
     def pack(self) -> bytes:
+        captured = int(max(0, min(self.captured_at_ms, (1 << 48) - 1))).to_bytes(6, "little")
         return FRAME_HDR.pack(self.chan, self.encoding, self.dtype, self.channels, self.flags, self.seq, self.ts_ns,
-                              self.width, self.height, self.stride, self.roi_x, self.roi_y, self.full_w, self.full_h, self.raw_len, self.slot)
+                              self.width, self.height, self.stride, self.roi_x, self.roi_y, self.full_w, self.full_h, self.raw_len, self.slot, captured)
 
     @classmethod
     def unpack(cls, buf: bytes | bytearray | memoryview) -> FrameHeader:
         if len(buf) < FRAME_HDR.size:
             raise ProtocolError("FRAME 表頭不足")
-        return cls(*[int(v) for v in FRAME_HDR.unpack_from(buf, 0)])
+        *fields, captured = FRAME_HDR.unpack_from(buf, 0)
+        return cls(*[int(v) for v in fields], captured_at_ms=int.from_bytes(captured, "little"))
 
     @classmethod
     def for_image(cls, chan: int, seq: int, ts_ns: int, width: int, height: int, channels: int, dtype: int, *,
                   roi_x: int = 0, roi_y: int = 0, full_w: int | None = None, full_h: int | None = None,
-                  encoding: int = Encoding.RAW, flags: int = 0, slot: int = -1) -> FrameHeader:
+                  encoding: int = Encoding.RAW, flags: int = 0, slot: int = -1, captured_at: float | None = None,
+                  captured_at_ms: int | None = None) -> FrameHeader:
         itemsize = ITEMSIZE[int(dtype)]
         stride = int(width) * int(channels) * itemsize
         fw, fh = (int(full_w) if full_w else int(width)), (int(full_h) if full_h else int(height))
         if roi_x or roi_y or fw != width or fh != height:
             flags |= FrameFlags.CROPPED
+        if captured_at_ms is None and captured_at:
+            captured_at_ms = int(float(captured_at) * 1000.0)
+        if captured_at_ms is None:
+            captured_at_ms = max(0, int(ts_ns) // 1_000_000)
         return cls(int(chan), int(encoding), int(dtype), int(channels), int(flags), int(seq), int(ts_ns), int(width), int(height),
-                   stride, int(roi_x), int(roi_y), fw, fh, stride * int(height), int(slot))
+                   stride, int(roi_x), int(roi_y), fw, fh, stride * int(height), int(slot), int(captured_at_ms))
+
+    @property
+    def captured_at(self) -> float | None:
+        """擷取端 epoch 秒；舊端未填保留欄位時回 None。"""
+        return None if self.captured_at_ms <= 0 else self.captured_at_ms / 1000.0
 
     @property
     def itemsize(self) -> int:

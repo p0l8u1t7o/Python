@@ -43,7 +43,8 @@ class FakeCaptureClient(threading.Thread):
     """會說協定 v1 的假擷取端：HELLO → 回答 GRAB／STREAM／PING、可推串流、可走共享記憶體。"""
 
     def __init__(self, port, name="fake", channels=None, *, auth="", transport="tcp", encoding="raw", protocol=1, machine_id="m1",
-                 hostname=None, answer_grabs=True, answer_pings=True, slots=2, bad_canary=False, frame_factory=None, version="0.1.0", features=None):
+                 hostname=None, answer_grabs=True, answer_pings=True, slots=2, bad_canary=False, frame_factory=None, version="0.1.0", features=None,
+                 captured_timestamp=True):
         super().__init__(daemon=True)
         self.port, self.client_name, self.auth, self.transport = port, name, auth, transport
         self.encoding, self.protocol, self.machine_id = encoding, protocol, machine_id
@@ -51,6 +52,7 @@ class FakeCaptureClient(threading.Thread):
         self.answer_grabs, self.answer_pings, self.slots, self.bad_canary = answer_grabs, answer_pings, slots, bad_canary
         self.frame_factory = frame_factory
         self.version = version
+        self.captured_timestamp = captured_timestamp
         self.features = {"lz4": HAS_LZ4, "shm": True, "jpeg": True, "channel_set": True} if features is None else dict(features)
         self.updates: list[dict] = []
         self.channel_sets: list[dict] = []
@@ -95,9 +97,10 @@ class FakeCaptureClient(threading.Thread):
         c = self.spec(chan)
         ch = 1 if img.ndim == 2 else img.shape[2]
         roi = c.get("roi") or {}
+        captured_at_ms = None if self.captured_timestamp else 0
         return FrameHeader.for_image(chan, seq, time.time_ns(), img.shape[1], img.shape[0], ch, P.DTYPE_CODES[str(img.dtype).replace("uint8", "u8").replace("uint16", "u16").replace("float32", "f32")],
                                      roi_x=roi.get("x", 0), roi_y=roi.get("y", 0), full_w=(c.get("full") or {}).get("w"), full_h=(c.get("full") or {}).get("h"),
-                                     encoding=encoding, flags=flags, slot=slot)
+                                     encoding=encoding, flags=flags, slot=slot, captured_at_ms=captured_at_ms)
 
     def send_frame(self, chan, seq, img, *, req_id=0, encoding=None, flags=0, mtype=MsgType.FRAME):
         enc = self.encoding if encoding is None else encoding
@@ -273,6 +276,12 @@ class ProtoTests(SimpleTestCase):
         self.assertTrue(h.flags & FrameFlags.CROPPED)
         self.assertEqual(h.shape(), (48, 64, 3))
         self.assertEqual(h.raw_len, 64 * 48 * 3)
+        self.assertIsNone(h.captured_at)
+        h_ts = FrameHeader.for_image(1, 43, 1_700_000_000_123_456_789, 8, 8, 1, 0)
+        self.assertEqual(FrameHeader.unpack(h_ts.pack()).captured_at_ms, 1_700_000_000_123)
+        self.assertAlmostEqual(FrameHeader.unpack(h_ts.pack()).captured_at or 0, 1_700_000_000.123, places=3)
+        h_old = FrameHeader.for_image(1, 44, time.time_ns(), 8, 8, 1, 0, captured_at_ms=0)
+        self.assertIsNone(FrameHeader.unpack(h_old.pack()).captured_at)
         h.validate(2, 1 << 20, h.raw_len)
         with self.assertRaises(ProtocolError):
             h.validate(1, 1 << 20, h.raw_len)  # chan 超出

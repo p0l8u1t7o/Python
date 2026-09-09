@@ -69,6 +69,7 @@ class RunReport:
     station_id: str = ""
     recipe: str = ""
     warnings: list[str] = field(default_factory=list)
+    timing: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self, *, include_node_outputs: bool = True) -> dict[str, Any]:
         return {
@@ -76,6 +77,7 @@ class RunReport:
             "station_id": self.station_id,
             "recipe": self.recipe,
             "warnings": list(self.warnings),
+            "timing": self.timing,
             "flow_id": self.flow_id,
             "flow_version": self.flow_version,
             "trigger": self.trigger,
@@ -175,6 +177,7 @@ def execute(
         context["_input_image"] = input_image
     if deadline is not None:
         context["_deadline"] = deadline
+    report.timing = {"grab_ms": 0.0, "frame_age_ms": None, "since_capture_ms": None, "nodes_ms": {}, "record_ms": 0.0, "total_ms": 0.0}
 
     outputs: dict[tuple[str, str], Any] = {}
     status_of: dict[str, str] = {}
@@ -310,6 +313,7 @@ def execute(
             preview=preview,
             bound=bound,
         )
+        context["_current_node_start_perf"] = nt0
         for note in bad_params:
             _log(f"The value on {note} could not be used for that parameter; the value set on the step is used instead", level="warn")
         try:
@@ -414,6 +418,19 @@ def execute(
         report.status = "ok"
     report.finished_at = time.time()
     report.duration_ms = (time.perf_counter() - t0) * 1000
+    frames = context.get("_timing_frames") if isinstance(context.get("_timing_frames"), list) else []
+    first = next((f for f in frames if isinstance(f, dict)), None)
+    report.timing.update({
+        "grab_ms": round(float(context.get("_timing_grab_ms") or 0.0), 3),
+        "frame_age_ms": None if first is None else round(float(first.get("frame_age_ms") or 0.0), 3),
+        "since_capture_ms": None if first is None or first.get("since_capture_ms") is None else round(float(first.get("since_capture_ms") or 0.0), 3),
+        "nodes_ms": {nid: round(n.duration_ms, 3) for nid, n in report.nodes.items()},
+        "total_ms": round(report.duration_ms, 3),
+    })
+    if "_loop_gap_ms" in context:
+        report.timing["loop_gap_ms"] = round(float(context.get("_loop_gap_ms") or 0.0), 3)
+    if frames:
+        report.timing["frames"] = frames[:8]
     return report
 
 

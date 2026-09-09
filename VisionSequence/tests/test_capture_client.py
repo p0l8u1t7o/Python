@@ -352,6 +352,8 @@ class TransportLoopbackTests(SimpleTestCase):
         f = hub.request_frame("loop-pc", "a", timeout=2.0)
         self.assertEqual(f.image.shape, (480, 640, 3))
         self.assertTrue(f.meta.shm)
+        self.assertIsNotNone(f.meta.captured_at)
+        self.assertLess(abs(f.meta.received_at - (f.meta.captured_at or 0)) * 1000, 100)
         f2 = hub.request_frame("loop-pc", "a", timeout=2.0, min_seq=f.meta.seq)
         self.assertGreater(f2.meta.seq, f.meta.seq)
         self.assertTrue(f2.meta.fresh)

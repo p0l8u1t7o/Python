@@ -372,6 +372,7 @@ def cases(s: Scene) -> list[tuple[str, str, np.ndarray | None, dict[str, Any], d
     return [
         # source / preprocess
         ("image_source", "image_source", None, {"mode": "input"}, {}, {"_input_image": big}),
+        ("stereo_grab (degraded)", "stereo_grab", None, {"left": "0", "right": "0"}, {}, {"_input_image": big}),
         ("grayscale", "grayscale", big, {}, {}, {}),
         ("crop (rect)", "crop", big, {"roi": plate}, {}, {}),
         ("crop (rotated)", "crop", big, {"roi": {"shape": "rotated_rect", "cx": s.cx, "cy": s.cy, "w": 0.5 * s.w, "h": 0.4 * s.h, "angle": s.angle}}, {}, {}),

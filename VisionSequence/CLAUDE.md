@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：144 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1307 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：145 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1307 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -298,6 +298,13 @@
 - **`format_text` 逐項**：接 `items`（清單）＋`each_template`（`{index},{centroid[0]:.2f},{centroid[1]:.2f},{z:.2f}` 這種取法都吃，`z` 沒有時預設 0）＋`join`，輸出 `text` 與 `lines`；沒接 `items` 行為一字不變。
 - **`tcp_client` 的 `queue`**（預設關）：開了之後 `write`／`send_text` 只把資料丟進有界佇列（`queue_size` 預設 64）就回（實測 < 5 ms），背景執行緒 `comm-<name>` 實際送、失敗自己指數退避重連；**滿了丟最舊**（新的位置比舊的重要）；`connection_info` 帶 `queued`／`dropped`／`sent`。這是過去問題 4（TCP 逾時讓下一張塞車）的對應。
 - 範本 `conveyor_pick`（`TEMPLATES_NEED_DL`；樣本 `demo_images.conveyor_sequence()` 6 張物體沿 y 位移，首尾碰邊）：`image_source → ai_segment → edge_filter → track_objects(confirm_frames=2, motion=linear) → format_text(items=new_confirmed) → write_modbus(robot)`。工具數 143 → 144、範本 34 → 35。測試 `tests/test_conveyor.py`（含整條流程走 `validate_graph`＋`engine.execute` 6 幀只送出一行）。
+
+### 輸送帶追蹤取料批 B：取像與低延遲（2026-09-09；Codex 實作、Claude 驗證）
+- **擷取時間戳**：`FRAME_HDR` 仍 64 B，尾端原本 `6x` 的保留位元組改成 `6s`＝little-endian 48 位元 **epoch 毫秒**（擷取端 `FrameSlot.publish` 的 `time.time_ns()`，即取像完成發布的時刻）；0＝舊擷取端沒有，`FrameHeader.captured_at` 回 None。`FrameMeta` 帶 `captured_at`／`received_at`（wall）／`received_perf`（單調，算影像年齡用）。HELLO／WELCOME 不動，舊擷取端照樣連。
+- **`RunReport.timing`**（`grab_ms`／`frame_age_ms`（影像到達伺服端到開始跑）／`since_capture_ms`（有時間戳才有）／`nodes_ms`／`record_ms`／`total_ms`／連續模式 `loop_gap_ms`／`frames[]`），`image_source` 與 `stereo_grab` 在 `ctx.context` 累加 `_timing_grab_ms`／`_timing_frames`；`GET /flows/{id}/stats` 多 `timing`（最近 `timing_limit` 片的 p50／p95，含逐節點），統計頁執行明細多一列延遲，SSE run 事件帶 `timing.total_ms`。**量測只加 perf_counter，不碰資料庫。**
+- **成對取像**：hub `request_pair(client, ch_a, ch_b, timeout)`＝同一 session 對兩個通道背靠背送 `GRAB after_request`，等兩張回來後 `dt_ms`＝兩張擷取時間戳之差（沒時間戳退回到達時間差）。工具 `stereo_grab`（source 類；`left`／`right` 兩個 capture 來源、`max_dt_ms`（teach）超過只 warning、`on_timeout` 同 `image_source`）輸出 `image`／`image_right`／`dt_ms`／`captured_at`；非 capture 來源各自 grab、`dt_ms=None`。`CaptureGrabber.accept_frame()` 讓成對取回的影格同步更新 grabber 狀態。fake 相機 60 fps 實測 `dt` p50 3 ms。
+- **`scripts/bench_pipeline.py`**（真引擎＋`fake:2` 5MP 彩色 ×2 連本機 hub，流程 stream 來源 → 推論（沒 GPU 底模時用 blob 代替並標明）→ `edge_filter` → `track_objects` → `format_text` → `tcp_client(queue)` 對本機假 server，跑 10 秒）——**這是 40 ms 預算的量尺**。實測（本機）：擷取→TCP 收到 p50 22.4／p95 28.9 ms，其中 blob 15 ms（換成 `ai_segment` 5MP 約 8 ms）、擷取端發布→伺服端開跑 p50 5.7 ms（含 15 MB 共享記憶體複製 2.75 ms）、取像等待 p95 2.3 ms、影像年齡 p95 < 1.5 ms、平台 overhead（record／SSE／影像存入）p95 0.3 ms、TCP 送到收 p95 0.6 ms、跳幀 0.75%。**所以推式觸發與低延遲模式都不做**（門檻 3 ms 沒到）；hub 仍留了 `frame_event()`／`_notify_frame()`（收訊執行緒只 `set()`）給以後用。傳輸 bench 共享記憶體仍 116 fps。
+- 工具數 144 → 145。測試 `tests/test_conveyor_latency.py`（真引擎：時間戳合理、timing 鍵齊、`request_pair`、`stereo_grab` 走 `validate_graph`、舊擷取端零時間戳、stream 來源影像年齡）。
 
 ### 多幀累積、影像運算與簡易畸變（C3／J4／J5，`tools/builtin/frames.py`＋`preprocess.py`，Codex 實作）
 - **`frame_accumulate`**（C3）：把每次 run 的影像累積成 mean／max／min，`count` 張才輸出（`emit` 決定）；狀態存流程變數，`reset` 可清空。**preview／`flow_id<=0` 一律走覆蓋層**——實測產線累積 1 張後連按三次試執行，產線狀態一字不變、下一片仍是第 2 張。`previous_image` 讀 `images.store` 最近第 k 次 run 的節點輸出，找不到走 `not_found`。

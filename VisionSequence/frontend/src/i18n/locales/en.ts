@@ -818,6 +818,7 @@ const en = {
     history: 'Run history',
     noData: 'No runs in this period',
     live: 'In-memory live stats',
+    latency: 'Latency p50 {{p50}} ms · p95 {{p95}} ms',
     trend: 'Recent trend',
     cols: { time: 'Time', status: 'Status', trigger: 'Trigger', ms: 'ms', outputs: 'Outputs', error: 'Error', images: 'Images' },
     statusAll: 'All statuses',

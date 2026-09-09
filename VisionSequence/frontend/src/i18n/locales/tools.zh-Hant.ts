@@ -2493,6 +2493,24 @@ export default {
       applied: "已套用相機設定",
     },
   },
+  stereo_grab: {
+    label: "立體成對取像",
+    description: "從左右兩個影像來源取一組立體影像；兩者都是同一台擷取端的 capture 來源時，會同時送出 GRAB。",
+    params: {
+      left: { label: "左影像來源" },
+      right: { label: "右影像來源" },
+      timeout_ms: { label: "逾時" },
+      max_dt_ms: { label: "最大左右時間差" },
+      on_timeout: { label: "逾時處理", options: { error: "報錯", ng: "標記 NG 並走逾時分支" } },
+    },
+    ports: {
+      image: "左影像",
+      image_right: "右影像",
+      dt_ms: "左右時間差",
+      captured_at: "擷取時間",
+      timeout: "逾時",
+    },
+  },
   in_range: {
     label: "在範圍內",
     description: "數值是否落在 [下限, 上限]；常用於量測值公差判定。",

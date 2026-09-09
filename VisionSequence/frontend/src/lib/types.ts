@@ -283,6 +283,7 @@ export interface RunReport {
   error: string
   outputs: Record<string, unknown>
   nodes: Record<string, NodeReport>
+  timing?: RunTiming
   /** SSE 對不要輸出的訂閱者送的瘦身版：節點只有狀態，outputs／overlays／detail 是空的（別拿它蓋掉完整版） */
   nodes_trimmed?: boolean
   persisted?: boolean
@@ -341,6 +342,32 @@ export interface Capacity {
   workers_busy?: number
   flows: { flow_id: number; flow_name: string; running: number; queued: number; continuous: boolean }[]
   images: { images: number; bytes: number; runs: number }
+}
+
+export interface TimingPercentiles {
+  p50: number | null
+  p95: number | null
+}
+
+export interface RunTiming {
+  grab_ms?: number
+  frame_age_ms?: number | null
+  since_capture_ms?: number | null
+  nodes_ms?: Record<string, number>
+  record_ms?: number
+  total_ms?: number
+  loop_gap_ms?: number
+  frames?: Record<string, unknown>[]
+}
+
+export interface TimingSummary {
+  grab_ms?: TimingPercentiles
+  frame_age_ms?: TimingPercentiles
+  since_capture_ms?: TimingPercentiles
+  record_ms?: TimingPercentiles
+  total_ms?: TimingPercentiles
+  loop_gap_ms?: TimingPercentiles
+  nodes_ms?: Record<string, TimingPercentiles>
 }
 
 export type DashboardWidgetType =
@@ -735,6 +762,7 @@ export interface FlowStatsDb {
   max_ms: number
   hourly: { hour: string; ok: number; ng: number; failed: number }[]
   live: FlowStats
+  timing?: TimingSummary
 }
 
 // ---- 整合頁 ----
