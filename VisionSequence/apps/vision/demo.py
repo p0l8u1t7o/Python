@@ -939,6 +939,31 @@ def yolo_area_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def conveyor_pick_flow(source_id: Any) -> dict[str, Any]:
+    """輸送帶取料：實例分割 → 邊界排除 → 平台追蹤確認 → 每個新確認物件輸出一行位置。"""
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("seg", "ai_segment", 1, 0, "Segment parts (AI)", model_size="n", conf=0.25, min_count=0, imgsz=640, tracker="none"),
+        _node("edge", "edge_filter", 2, 0, "Inside frame", margin_top=50, margin_bottom=50, margin_left=0, margin_right=0),
+        _node("trk", "track_objects", 3, 0, "Confirm tracks", state_name="conveyor_pick", confirm_frames=2, motion="linear", max_distance=80, max_missing=1),
+        _node("fmt", "format_text", 4, 0, "Robot line", template="{judge}", name="robot_line",
+              each_template="{index},{centroid[0]:.2f},{centroid[1]:.2f},0.00", join="\\n"),
+        _node("tcp", "write_modbus", 5, 0, "Send to robot", connection="robot", mapping=[{"src": "robot_line", "address": "text", "dtype": "string"}], on_error="warn"),
+        _node("draw", "draw_result", 4, 1, "Result image"),
+        _note("n1", 0, 1, "About", "Objects touching the top or bottom margin are ignored until they are fully inside the camera view.\nOnly the frame where a track first becomes confirmed is formatted for the robot connection; later frames of the same object are not sent again."),
+    ]
+    edges = [
+        _edge("src", "seg"),
+        _edge("seg", "edge", "matches", "matches"), _edge("src", "edge", "image", "image"),
+        _edge("edge", "trk", "matches", "matches"),
+        _edge("trk", "fmt", "new_confirmed", "items"),
+        _edge("fmt", "tcp", "text", "values"),
+        _edge("src", "draw", "image", "image"),
+        _edge("seg", "draw", "_overlays", "overlays"), _edge("edge", "draw", "_overlays", "overlays"), _edge("trk", "draw", "_overlays", "overlays"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def dl_classify_flow(source_id: Any, model: tuple[str, dict[str, Any]] = ("", {})) -> dict[str, Any]:
     """DL 分類（教導模型）：seed 用內建 MLP 分類器訓練「良品／缺孔」示範模型，dl_classify 判 pass／fail。"""
     asset_id, tool_params = model
@@ -1189,6 +1214,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
      lambda sid: cup_measure_flow(sid, _demo_ref("cup locator template"))),
     ("ai_count", "AI object count (stock model)", "ai_detect finds stop signs with the COCO stock model and judges the count. No training needed and the GPU is used automatically (deep-learning dependencies required)", "count", yolo_count_flow),
     ("ai_area", "AI instance segmentation: sign area", "ai_segment's union mask into a pixel count and an area threshold, showing segmentation feeding a measurement (deep-learning dependencies required)", "detect", yolo_area_flow),
+    ("conveyor_pick", "Conveyor pick (single camera)", "Instance segmentation into edge filtering, stable platform tracking, first-confirmed item formatting and a degraded robot text output (deep-learning dependencies required)", "automation", conveyor_pick_flow),
     ("dl_classify_demo", "Classification: good / missing hole (taught model)", "The built-in MLP classifier trained by seeding, into dl_classify pass/fail — how a taught model gets into a flow", "quality",
      lambda sid: dl_classify_flow(sid, _demo_model("Example: classifier (good / missing hole)"))),
     ("anomaly_demo", "Anomaly detection: good parts only (taught model)", "The anomaly model built by seeding from 20 clean plates scores every patch against the good memory bank; scratches it has never seen come out as anomalies (needs the anomaly backbone)", "quality",
@@ -1231,6 +1257,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "cup_measure": "Example: cup gauge",
     "ai_count": "Example: stop sign",
     "ai_area": "Example: stop sign",
+    "conveyor_pick": "Example: conveyor sequence",
     "dl_classify_demo": "Example: classification teaching",
     "dl_segment_demo": "Example: segmentation teaching",
     "anomaly_demo": "Example: segmentation teaching",
@@ -1246,7 +1273,7 @@ def _sample_sets() -> dict[str, str]:
 
 TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
-TEMPLATES_NEED_DL = ("ai_count", "ai_area", "guided_code_read")
+TEMPLATES_NEED_DL = ("ai_count", "ai_area", "guided_code_read", "conveyor_pick")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
 TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count")
 

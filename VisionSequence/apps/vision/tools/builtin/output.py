@@ -684,12 +684,19 @@ class FormatTextTool(Tool):
             {"value": "keep", "label": "Leave the name in place"},
             {"value": "fail", "label": "Fail the step"},
         ], group="Advanced"),
+        Param(
+            "each_template", "Each item layout", kind="multiline", default="{index},{label}",
+            help_text="When items is connected, this layout is applied to each item. It can use fields such as {index}, {label} and {centroid[0]:.2f}.",
+        ),
+        Param("join", "Join with", kind="text", default="\\n", help_text="Text inserted between formatted items. Type \\n for a line feed.", group="Advanced"),
     ]
     inputs = [Port("a", "a", "any", required=False), Port("b", "b", "any", required=False),
-              Port("c", "c", "any", required=False), Port("d", "d", "any", required=False)]
-    outputs = [Port("text", "Text", "string")]
+              Port("c", "c", "any", required=False), Port("d", "d", "any", required=False), Port("items", "Items", "list", required=False)]
+    outputs = [Port("text", "Text", "string"), Port("lines", "Lines", "list")]
 
     def execute(self, ctx: ToolContext) -> Result:
+        if ctx.inputs.get("items") is not None:
+            return self._execute_items(ctx)
         template = str(ctx.param("template", "") or "")
         if not template.strip():
             raise ToolError("Write the layout of the line, for example {judge},{value}")
@@ -706,12 +713,51 @@ class FormatTextTool(Tool):
         name = str(ctx.param("name", "text") or "text")
         outputs = dict(ctx.context.get("_outputs") or {})
         outputs[name] = text
-        return Result(outputs={"text": text}, context={"_outputs": outputs},
+        result_outputs = {"text": text, "lines": [text] if text else []}
+        result_outputs[name] = text
+        return Result(outputs=result_outputs, context={"_outputs": outputs},
                       message=repr(text)[1:-1][:200] if text else "(empty)")
 
     def _values(self, ctx: ToolContext) -> dict[str, Any]:
         """能填進樣板的名字：具名輸出 → 觸發帶進來的引數 → 這一步的輸入 a~d。後者優先。"""
         return format_values(ctx)
+
+    def _execute_items(self, ctx: ToolContext) -> Result:
+        items = ctx.inputs.get("items")
+        if not isinstance(items, list):
+            raise ToolError("Items must be a list")
+        template = _unescape(str(ctx.param("each_template", "") or ""))
+        if not template.strip():
+            raise ToolError("Write the item layout, for example {index},{label}")
+        missing = str(ctx.param("missing", "blank"))
+        base_values = format_values(ctx)
+        lines: list[str] = []
+        seen: list[str] = []
+        for i, item in enumerate(items):
+            values = dict(base_values)
+            if isinstance(item, dict):
+                values.update(_plain_dict(item))
+            else:
+                values["value"] = _plain(item)
+            values.setdefault("item", _plain(item))
+            values.setdefault("index", i)
+            values.setdefault("z", 0.0)
+            try:
+                lines.append(template.format_map(_Fill(values, missing, seen)))
+            except (ValueError, TypeError, IndexError, KeyError) as exc:
+                raise ToolError(f"The item layout could not be filled in: {exc}") from None
+        if missing == "fail" and seen:
+            raise ToolError(f"No value for {', '.join(sorted(set(seen))[:5])}; run the step that produces it first")
+        text = _unescape(str(ctx.param("join", "\\n") or "")).join(lines)
+        text += {"lf": "\n", "crlf": "\r\n", "cr": "\r"}.get(str(ctx.param("ending", "none")), "")
+        name = str(ctx.param("name", "text") or "text")
+        outputs = dict(ctx.context.get("_outputs") or {})
+        result_outputs = {"text": text, "lines": lines}
+        if lines:
+            outputs[name] = text
+            result_outputs[name] = text
+        return Result(outputs=result_outputs, context={"_outputs": outputs},
+                      message=repr(text)[1:-1][:200] if text else "(empty)")
 
 
 def _unescape(text: str) -> str:
@@ -729,6 +775,11 @@ def _plain(value: Any) -> Any:
     if isinstance(value, (np.bool_,)):
         return bool(value)
     return value
+
+
+def _plain_dict(value: dict[str, Any]) -> dict[str, Any]:
+    """把 item 內 numpy 值轉成 Python 純值，讓格式化可序列化且可索引。"""
+    return {str(k): _plain(v) for k, v in value.items()}
 
 
 class _Fill(dict):

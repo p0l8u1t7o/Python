@@ -6,7 +6,7 @@
 
 - **是什麼**：類 VisionMaster 的畫布式工業機器視覺平台。使用者在瀏覽器拉工具節點、畫 ROI、調參看結果；PLC／上位機以 HTTP／TCP／Modbus 觸發並取回 OK/NG 與量測值。
 - **技術棧**：Django 5.1 + django-ninja + OpenCV/numpy（後端）；React 19 + Vite + TS + Tailwind v4 + @xyflow/react + TanStack Query + i18next（前端）；SQLite 預設。
-- **規模**：143 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1307 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
+- **規模**：144 個內建工具（8 類）、242 個 API 端點、33 個資料模型、22 個前端頁面（另 7 個整合子頁）、19 頁 docs、後端約 1307 項＋前端約 156 項測試；Python 約 28k 行（不含 migrations；另 vscapture 擷取端約 7.2k 行）、TS 約 26k 行。
 - **核心概念**：
   - 流程 = `Flow.graph`（JSON：nodes/edges）。工具節點有型別化埠；`_flow` 隱含輸入埠＝控制分支、`_overlays` 隱含輸出埠＝該節點標記、`_image` 隱含直通埠＝每個工具預設可把影像原樣傳出（**隱含埠的規格集中在 `tools/base.py` 的 `IMPLICIT_INPUTS`／`IMPLICIT_OUTPUTS`**，graph 驗證、engine 蒐集、工具目錄都讀它，加新的埠只要補一筆＋`toolLocale.ts` 的兩種中文）。
   - 引擎是**資料流 DAG**：一次 run 在執行緒池的一條執行緒內以拓樸順序跑完，影像以 numpy 在記憶體傳；overlays 只是顯示層 metadata，不畫進影像。
@@ -29,7 +29,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，34 個：含 6 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**34 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，35 個：含 6 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**34 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -288,6 +288,16 @@
   實測（真值 (180,140)）：cross 0.46 px／square_outline 0.49 px／disc 0.31 px，score 都是 1.000；旋轉 30° 後角度誤差 cross 0.53°／square 0.28°。**快取實測 0.47 ms → 0.016 ms（30×）**，換尺寸會另建一筆。
 - **D9 `track_objects`**（logic，純資料工具）：吃 `matches`／`boxes`，狀態存流程變數（**只存純量與清單，不要存 ndarray**——剛修過 1 維佔位陣列害 board 端點 500 的坑）。**用預測位置（上次位置＋速度）配對**，不是純最近鄰：實測兩個目標相向而行交錯後，ID 仍各自跟著自己的物體（第 5～6 幀 ID 1 在右、ID 2 在左），純最近鄰在交錯點會互換。
   等速右移五片 ID 全程不變、`vx` 估到 10.0；遮蔽一片 `missing=1` 且 ID 延續；超過 `max_missing` 才換新 ID。選配計數線用**有號的跨越方向**判斷 `count_in`／`count_out`。**只在連續模式有意義**；preview／`flow_id<=0` 走覆蓋層（實測連按三次產線狀態一字不變）。測試 `tests/test_track_and_mark.py`。
+
+### 輸送帶追蹤取料（VisionStereo 搬遷，批 A：分割與追蹤核心，2026-09-09；Codex 實作、Claude 驗證並修兩個問題）
+- **應用**：輸送帶上物體連續經過相機，每張影像做實例分割，追蹤每個物體，**每個物體只送一次** `類別ID,x,y,z` 給手臂控制器（TCP Server），控制器再用編碼器追。方案與拍板在 `~/.claude/plans/conveyor-tracking.md`（§6 十二題結論、§7 批次 A～E）。來源專案 `D:\Working Space\Python\VisionStereo\Bin`（TCP 送出／只送一次／z 都在 LabVIEW 端，Python 只有推論）。
+- **`ai_segment`**：每個 match 多了 `polygon`（`approxPolyDP` 簡化、`max_polygon_points` 預設 12）、`centroid`（**該實例 mask 裡最大連通塊**的 `cv2.moments` 質心，兩位小數；沒 mask 退回 bbox 中心）、`mask_area`；輸出埠 `centroids`。`precision`＝full／auto／half、`backend`＝eager／torchscript、`tracker`＝none／bytetrack／botsort（ultralytics 的 `model.track(persist=True)`，狀態依 `(模型, flow_id:node_id:tracker)` 分開放在 `yolo_runtime._track_states`，preview／sandbox 不污染；需要 `lap`，在 `requirements-dl.txt`；它給的 `track_id` 會重複，只當參考）。
+  **TorchScript 的坑（探針抓到、已修）**：第一版 wrapper 只記最後一種輸入形狀，且退回時自己補 `visualize=` 等關鍵字呼叫內層 module——同一個模型換一種影像尺寸（不同 imgsz、ROI 裁切、另一條流程）就炸 `BaseModel.predict() got an unexpected keyword argument 'visualize'`（8.4.137 的簽名已沒有那個參數）。現在每個模型一張 `_ts_compiled[key][shape]` 表，沒編譯過的形狀**原樣轉傳**給原本的 `backend.forward`（`_ts_orig`）。實測 5070 Ti：640×480 eager 6.4 ms／torchscript 5.4 ms；5MP 彩色 eager 8 ms／torchscript 10～13 ms（大圖反而沒賺，選項留給現場比較）。
+- **`edge_filter`**（logic）：四個邊距各自可設（預設上下 50、左右 0，`teach`），以 polygon 極值判斷（沒 polygon 用 bbox）。**影像埠必接**——第一版設成選填，沒接時下邊與右邊沒有寬高可比就靜默放行（探針量到碰下邊的物體 kept=1），現在沒影像直接 `ToolError`。
+- **`track_objects` 的輸送帶語意**：`algorithm`＝platform（既有預測配對）／bytetrack（用上游的 `track_id` 配對，**ID 仍由平台配**）、`confirm_frames`（連續追到 n 幀才確認，miss 一次 `hits` 歸零）、`motion`＝free／linear（速度滑動平均 0.7／0.3、方向反轉就不採用）。每個 track 帶 `id`（**流程變數裡的 `next_id` 單調遞增，`reset` 只清 tracks 不清 `next_id`**——過去問題 1 的根治，不再有 ID 池）、`confirmed`／`sent`／`hits`／`centroid`／`match`。新埠 `new_confirmed`（**本幀第一次確認的物體**，只有這些要送；`sent` 在輸出時就標記）與 `confirmed`。探針：30 個物體各 12 點 polygon 的狀態 27 KB（變數上限 64 KB）；等速 20 幀只確認一次；兩物體交錯 ID 不互換。
+- **`format_text` 逐項**：接 `items`（清單）＋`each_template`（`{index},{centroid[0]:.2f},{centroid[1]:.2f},{z:.2f}` 這種取法都吃，`z` 沒有時預設 0）＋`join`，輸出 `text` 與 `lines`；沒接 `items` 行為一字不變。
+- **`tcp_client` 的 `queue`**（預設關）：開了之後 `write`／`send_text` 只把資料丟進有界佇列（`queue_size` 預設 64）就回（實測 < 5 ms），背景執行緒 `comm-<name>` 實際送、失敗自己指數退避重連；**滿了丟最舊**（新的位置比舊的重要）；`connection_info` 帶 `queued`／`dropped`／`sent`。這是過去問題 4（TCP 逾時讓下一張塞車）的對應。
+- 範本 `conveyor_pick`（`TEMPLATES_NEED_DL`；樣本 `demo_images.conveyor_sequence()` 6 張物體沿 y 位移，首尾碰邊）：`image_source → ai_segment → edge_filter → track_objects(confirm_frames=2, motion=linear) → format_text(items=new_confirmed) → write_modbus(robot)`。工具數 143 → 144、範本 34 → 35。測試 `tests/test_conveyor.py`（含整條流程走 `validate_graph`＋`engine.execute` 6 幀只送出一行）。
 
 ### 多幀累積、影像運算與簡易畸變（C3／J4／J5，`tools/builtin/frames.py`＋`preprocess.py`，Codex 實作）
 - **`frame_accumulate`**（C3）：把每次 run 的影像累積成 mean／max／min，`count` 張才輸出（`emit` 決定）；狀態存流程變數，`reset` 可清空。**preview／`flow_id<=0` 一律走覆蓋層**——實測產線累積 1 張後連按三次試執行，產線狀態一字不變、下一片仍是第 2 張。`previous_image` 讀 `images.store` 最近第 k 次 run 的節點輸出，找不到走 `not_found`。

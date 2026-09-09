@@ -185,3 +185,10 @@ class TrackObjectsTests(SimpleTestCase):
         snap = variables.store.snapshot(92)
         self.assertIn("snapshot_state", snap)
         self.assertIsInstance(snap["snapshot_state"]["tracks"], list)
+
+    def test_reset_clears_tracks_but_does_not_reuse_ids(self):
+        params = {"state_name": "reset_state", "max_distance": 20, "max_missing": 2}
+        first = _run_track(params, [_box(10)], flow_id=93, preview=False)
+        reset = _run_track({**params, "reset": True}, [_box(40)], flow_id=93, preview=False)
+        self.assertEqual(first.outputs["tracks"][0]["id"], 1)
+        self.assertEqual(reset.outputs["tracks"][0]["id"], 2)

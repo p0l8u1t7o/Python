@@ -567,6 +567,7 @@ class TcpClientWriter(Writer):
 
     kind = "tcp_client"
     texts = True
+    fields = ["host", "port", "timeout_s", "template", "newline", "wait_reply", "queue", "queue_size"]
 
     def __init__(self, config, **kw) -> None:
         super().__init__(config, **kw)
@@ -578,9 +579,23 @@ class TcpClientWriter(Writer):
         self.newline = str(config.get("newline", "\n") if config.get("newline") is not None else "\n")
         self.encoding = str(config.get("encoding") or "utf-8")
         self.wait_reply = bool(config.get("wait_reply", False))
+        self.queue_enabled = bool(config.get("queue", False))
+        self.queue_size = max(1, int(config.get("queue_size", 64) or 64))
         self.sock: socket.socket | None = None
         self.last_payload = ""
-        self._open()
+        self.queued = 0
+        self.dropped = 0
+        self.sent = 0
+        self._drop_warned = False
+        self._send_queue: queue.Queue[tuple[str, Any, bool, float | None, float]] | None = None
+        self._closed = threading.Event()
+        self._worker_thread: threading.Thread | None = None
+        if self.queue_enabled:
+            self._send_queue = queue.Queue(maxsize=self.queue_size)
+            self._worker_thread = threading.Thread(target=self._queue_loop, name=f"comm-{self.name or self.kind}", daemon=True)
+            self._worker_thread.start()
+        else:
+            self._open()
 
     def _open(self) -> None:
         try:
@@ -635,11 +650,97 @@ class TcpClientWriter(Writer):
         self.last_payload = payload
         return {"sent": len(payload), "payload": payload}
 
+    def write(self, values: dict[str, Any], *, timeout: float | None = None, quiet: bool = False) -> dict[str, Any]:
+        if not self.queue_enabled:
+            return super().write(values, timeout=timeout, quiet=quiet)
+        if not values:
+            return {"written": 0, "queued": True}
+        return self._enqueue("write", dict(values), quiet, timeout, written=len(values))
+
+    def send_text(self, text: str, *, quiet: bool = False) -> dict[str, Any]:
+        if not self.queue_enabled:
+            return super().send_text(text, quiet=quiet)
+        return self._enqueue("send", str(text), quiet, None, sent=len(text))
+
+    def _enqueue(self, kind: str, payload: Any, quiet: bool, timeout: float | None, **extra: Any) -> dict[str, Any]:
+        q = self._send_queue
+        if q is None:
+            raise CommError(f"{self.name or self.kind}: the queue is not available")
+        dropped_now = 0
+        try:
+            q.put_nowait((kind, payload, quiet, timeout, time.perf_counter()))
+        except queue.Full:
+            try:
+                q.get_nowait()
+                q.task_done()
+                dropped_now = 1
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait((kind, payload, quiet, timeout, time.perf_counter()))
+            except queue.Full:
+                dropped_now += 1
+        if dropped_now:
+            self.dropped += dropped_now
+            if not self._drop_warned:
+                self._drop_warned = True
+                log.warning("TCP client queue '%s' is full; dropping older payloads", self.name or self.kind)
+        self.queued = q.qsize()
+        return {**extra, "queued": True, "dropped": self.dropped, "sent": self.sent}
+
+    def _queue_loop(self) -> None:
+        backoff = 0.05
+        while not self._closed.is_set():
+            q = self._send_queue
+            if q is None:
+                return
+            try:
+                kind, payload, quiet, timeout, started = q.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            try:
+                old = self.timeout
+                if timeout:
+                    self.timeout = float(timeout)
+                try:
+                    with self._lock:
+                        out = self._write(payload) if kind == "write" else self._send_text(payload)
+                    self.writes += 1
+                    self.sent += 1
+                    self.last_write_at = time.time()
+                    self.queued = q.qsize()
+                    backoff = 0.05
+                    if not quiet:
+                        self._trace(kind, payload, out, started)
+                except Exception as exc:  # noqa: BLE001 - 背景通訊失敗不能拖住流程
+                    self.errors += 1
+                    self.last_error = _msg(exc)
+                    self.reconnects += 1
+                    try:
+                        self._close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    self._trace(kind, payload, {"error": self.last_error}, started, ok=False)
+                    self._closed.wait(backoff)
+                    backoff = min(5.0, backoff * 2)
+                finally:
+                    self.timeout = old
+            finally:
+                q.task_done()
+
+    def close(self) -> None:
+        if self.queue_enabled:
+            self._closed.set()
+            if self._worker_thread is not None and self._worker_thread.is_alive():
+                self._worker_thread.join(timeout=2.0)
+        super().close()
+
     def _read(self, addresses: list[str]) -> dict[str, Any]:
         raise CommError("tcp_client cannot read back")
 
     def info(self) -> dict[str, Any]:
-        return {**super().info(), "host": self.host, "port": self.port, "connected": self.sock is not None, "template": self.template, "last_payload": self.last_payload}
+        return {**super().info(), "host": self.host, "port": self.port, "connected": self.sock is not None, "template": self.template, "last_payload": self.last_payload,
+                "queued": self._send_queue.qsize() if self._send_queue is not None else 0, "dropped": self.dropped, "sent": self.sent}
 
 
 # ---------------------------------------------------------------------------
@@ -1833,7 +1934,7 @@ def kinds() -> list[dict[str, Any]]:
          "description": "The platform is the client and connects to any Modbus TCP device — a controller, a drive, an I/O module, a host program — reading and writing its coils and registers. It can also poll one address as a trigger source."},
         {"kind": "modbus_server", "section": "modbus-server", "label": "Modbus TCP server (this machine listens)", "fields": [*_MODBUS_SLAVE_FIELDS, *TRIGGER_FIELDS, *MODBUS_EVENT_FIELDS],
          "description": "The platform is the server and listens on a port for any Modbus TCP master to read and write our registers; the flow writes its results there for the master to collect. With a trigger address configured, a flag written by the master runs the flow once. The port opens automatically when the server starts."},
-        {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": ["host", "port", "timeout_s", "template", "newline", "wait_reply", *EVENT_FIELDS]},
+        {"kind": "tcp_client", "section": "tcp", "label": "TCP text or JSON (a host system)", "fields": [*TcpClientWriter.fields, *EVENT_FIELDS]},
         {"kind": "tcp_image", "section": "tcp", "label": TcpImageWriter.label, "fields": list(TcpImageWriter.fields), "description": TcpImageWriter.description},
         {"kind": "serial", "section": "devices", "label": SerialStreamWriter.label, "fields": [*SerialStreamWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": SerialStreamWriter.description},
         {"kind": "udp", "section": "devices", "label": UdpStreamWriter.label, "fields": [*UdpStreamWriter.fields, *TRIGGER_FIELDS, *EVENT_FIELDS], "description": UdpStreamWriter.description},

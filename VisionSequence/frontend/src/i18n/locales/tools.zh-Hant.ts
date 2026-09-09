@@ -801,8 +801,10 @@ export default {
       name: { label: "輸出名稱", help: "回覆以此名稱帶這一行；TCP 指令的 fmt 或 HTTP 的 format 指定它。" },
       ending: { label: "行尾", options: { none: "無", lf: "換行（\\n）", crlf: "回車換行（\\r\\n）", cr: "回車（\\r）" } },
       missing: { label: "名字沒有值時", options: { blank: "留空", keep: "保留名字原樣", fail: "讓步驟失敗" } },
+      each_template: { label: "每筆樣板", help: "接 items 時，每一筆各套一次。可用 {index} 與 {centroid[0]:.2f}。" },
+      join: { label: "串接文字", help: "接 items 時用來串接每一行；\\n 會轉成真正換行。" },
     },
-    ports: { a: "a", b: "b", c: "c", d: "d", text: "文字" },
+    ports: { a: "a", b: "b", c: "c", d: "d", items: "逐筆清單", text: "文字", lines: "文字行" },
   },
   circular_caliper: {
     label: "圓形卡尺",
@@ -1203,6 +1205,17 @@ export default {
       roi_mode: { label: "區域模式", options: { inside: "區域內", outside: "區域外" } },
     },
     ports: { matches: "框清單", values: "值清單", roi: "位置區域（動態）", image: "影像（顯示用）", count: "數量", removed: "移除數" },
+  },
+  edge_filter: {
+    label: "邊界排除",
+    description: "依上、下、左、右邊距排除碰到畫面邊緣的物件；有多邊形時用多邊形極值，否則用框。",
+    params: {
+      margin_top: { label: "上邊距", help: "0 表示不檢查上邊。" },
+      margin_bottom: { label: "下邊距", help: "0 表示不檢查下邊。" },
+      margin_left: { label: "左邊距", help: "0 表示不檢查左邊。" },
+      margin_right: { label: "右邊距", help: "0 表示不檢查右邊。" },
+    },
+    ports: { matches: "保留物件", removed: "排除物件", count: "保留數", image: "影像（顯示用）" },
   },
   array_correct: {
     label: "陣列補齊",
@@ -3238,13 +3251,16 @@ export default {
       max_distance: { label: "最大距離", help: "偵測中心離預測位置超過此距離時，建立新目標。" },
       max_missing: { label: "最大丟失次數", help: "連續丟失超過此值才淘汰目標。" },
       reset: { label: "重設", help: "本次影格處理前清除已保存的追蹤狀態。" },
+      algorithm: { label: "配對方式", options: { platform: "平台配對", bytetrack: "外部追蹤輔助" } },
+      confirm_frames: { label: "確認影格數", help: "同一物件連續追到幾幀後才輸出新確認。" },
+      motion: { label: "運動模型", options: { free: "自由移動", linear: "線性輸送帶" } },
       line_mode: { label: "計數線", options: { none: "無", points: "兩點" }, group: "計數" },
       count_line: { label: "線段點", help: "兩點格式：[[x1,y1],[x2,y2]]。由負側跨到正側算 count_in。", group: "計數" },
     },
     ports: {
       matches: "匹配", boxes: "方框", count_line: "計數線", reset: "重設", image: "影像（顯示用）",
       ok: "追蹤中", not_found: "無目標", tracks: "追蹤目標", count: "數量", new_count: "新增數", lost_count: "淘汰數",
-      count_in: "進入計數", count_out: "離開計數",
+      count_in: "進入計數", count_out: "離開計數", new_confirmed: "新確認", confirmed: "已確認",
     },
   },
   template_match: {
@@ -4050,6 +4066,26 @@ export default {
         help: "小於此面積的實例略過。",
         group: "判定",
       },
+      max_polygon_points: {
+        label: "多邊形點數上限",
+        help: "每個實例輪廓最多保留幾個點。",
+        group: "進階",
+      },
+      precision: {
+        label: "精度",
+        options: { auto: "自動", half: "半精度", full: "全精度" },
+        group: "進階",
+      },
+      backend: {
+        label: "執行後端",
+        options: { eager: "標準", torchscript: "編譯" },
+        group: "進階",
+      },
+      tracker: {
+        label: "追蹤器",
+        options: { none: "無", bytetrack: "追蹤器 A", botsort: "追蹤器 B" },
+        group: "進階",
+      },
     },
     ports: {
       image: "影像",
@@ -4061,6 +4097,7 @@ export default {
       mask: "聯合遮罩",
       contours: "輪廓",
       labels: "類別列表",
+      centroids: "重心點",
     },
   },
 }

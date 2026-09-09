@@ -141,6 +141,8 @@ ROI 處理完要回到全圖座標時使用：`crop.image` 做完濾波/遮罩�
 PCB 十字 Mark、方形對位塊、圓形基準孔這種規則圖形可改 `model_source=builtin`，選 `builtin_shape=cross/square_outline/disc`，再填外徑或邊長與線寬；平台會在記憶體合成乾淨樣板後走同一套 shapemodel 建模，不需要先拍一張 Mark 再教模型。
 
 ## track_objects
+輸送帶追蹤可用 `confirm_frames` 等物件連續出現後才確認，`new_confirmed` 只輸出本幀第一次確認的物件，`confirmed` 輸出本幀全部已確認物件。平台 ID 是流程變數中的單調整數，不因 `reset` 清空目前軌跡而歸零；`sent` 會在輸出 `new_confirmed` 時標記，供下游只送一次。`algorithm=platform` 用平台位置配對；`algorithm=bytetrack` 只借用輸入 match 的 `track_id` 做配對，輸出的 `id` 仍由平台分配。`motion=linear` 適合輸送帶等速移動，會用速度滑動平均做預測。
+
 目標追蹤（logic 類，連續模式才有意義）：吃上游 `matches` 或 `boxes`，用「上次位置＋速度」預測下一格，再和這次偵測做最近鄰配對，輸出穩定 `id/cx/cy/vx/vy/age/missing`。
 接在 `shape_match`、`template_match`、`blob`、`ai_detect` 這類會輸出框的位置之後，用在輸送帶計數、暫時遮蔽仍要保留同一 ID、或兩個物件交錯移動時避免搶 ID。
 `max_distance` 要大於單格可能移動距離但小於兩個物件的安全間距；`max_missing` 是遮蔽容忍格數，超過才淘汰並讓下次偵測拿新 ID。
@@ -389,6 +391,9 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 `labels` 與 `roi` 篩掉不合格框。`roi_mode=inside` 留中心在區域內的框，`outside` 則留區域外。輸出 `matches`、`count`、`removed`。
 這不是輪廓篩選；輪廓請用 `contour_filter`。
 
+## edge_filter
+輸送帶進料前先用 `edge_filter` 排除碰到畫面邊界的物件。它吃 `matches`，有 `polygon` 時用多邊形極值判斷，沒有時用 bbox；`margin_top`、`margin_bottom`、`margin_left`、`margin_right` 為像素邊距，設 0 表示該邊不檢查。輸出 `matches`、`removed`、`count`，接 `image` 時只用來畫保留/排除標記。
+
 ## array_correct
 規則陣列補點：點膠、插件、針腳這類應排成 `rows × cols` 的框清單，接到 `matches` 後用找到的中心分群出每列／每欄位置，
 再回報缺格。`tolerance` 小於 1 時是 pitch 比例，大於等於 1 時是像素距離。輸出 `matches` 會包含補上的框（`filled=true`、
@@ -419,6 +424,8 @@ ccomp／tree。`min_area`（像素數）先擋雜訊。輸出 `contours`（全�
 把結果排成一行文字給讀不了 JSON 的設備：`template` 用 `{名字}` 取值（judge、先前的具名輸出、觸發帶進來的引數如 lot／sn、
 本節點輸入 a~d，另有 run_id／station），`{width:.2f}` 控制小數，`\\r\\n` 會變成真的控制字元；`ending` 補行尾、`name` 決定
 具名輸出的名字。設備端用 `RUN <flow> fmt=<name>`（TCP）或 `format=<name>`（HTTP）就拿到純文字。放在 judge 與其他 output 之後。
+
+接 `items` 時會改成清單逐項格式化：每一筆套 `each_template`，可用 `{index}`、`{label}`、`{centroid[0]:.2f}` 這類欄位與索引取值，最後用 `join` 串接並輸出 `text` 與 `lines`。沒有接 `items` 時維持原本單筆模板行為。
 
 ## write_log
 每片要留下 CSV/TXT 紀錄時使用，例如品保要 `judge,width,lot,run_id`。`fields` 一行一欄，純欄位名依 `format_text` 的取值順序讀值，也可寫 `{width:.2f}`；`filename` 同樣可用 `{station}`、`{date}`、`{lot}`、`{run_id:.8}`。
@@ -591,6 +598,8 @@ read_modbus 從連線讀線圈與暫存器（主站連線讀設備、從站連�
 
 ## ai_segment
 實例分割網路：同 ai_detect 的模型與門檻參數，另有 `min_area` 濾小實例。輸出 `count`、`matches`（含 area）、`mask`（聯合遮罩，可接 blob／pixel_count）、`contours`（可接 geometry／量測）、`labels`。底模 `yolo11n-seg.pt`；自訂類別用「實例分割（YOLO-seg）」訓練。
+
+每個 `matches` 物件也帶 `polygon`、`centroid`、`mask_area`；`centroid` 取該實例遮罩最大連通區的矩心，沒有遮罩時退回 bbox 中心。`max_polygon_points` 控制多邊形簡化上限，`centroids` 會輸出點清單。`precision` 可選自動、半精度或全精度；半精度只在 GPU 使用。需要編譯加速時用 `backend=torchscript`，會先用候選模型驗證輸出完全一致才採用。`tracker` 可要求內建追蹤，但該 `track_id` 只作參考，穩定 ID 仍交給 `track_objects`。
 
 ## ai_classify
 分類網路影像分類：`imgsz` 224；`threshold` 分數門檻、`pass_labels` 合格類別、`top_k`。輸出 `label/score/index/top`，`pass/fail` 分支。底模 `yolo11n-cls.pt` 是 ImageNet 類別，實務上必用「影像分類（YOLO-cls）」訓練自己的類別。

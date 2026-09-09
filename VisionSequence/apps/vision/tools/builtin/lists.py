@@ -41,6 +41,8 @@ PICK_BY = [
     {"value": "max", "label": "Maximum"},
     {"value": "nearest", "label": "Nearest to point"},
 ]
+EDGE_RED = "#ef4444"
+EDGE_GREEN = "#22c55e"
 
 
 def _value_list(ctx: ToolContext) -> list[Any]:
@@ -305,6 +307,41 @@ def _rect_overlays(matches: list[dict[str, Any]], color: str = "#22c55e") -> lis
     ]
 
 
+def _match_extent(match: dict[str, Any]) -> tuple[float, float, float, float]:
+    """優先用 polygon 極值；沒有 polygon 時回 bbox 極值。"""
+    pts = match.get("polygon")
+    if isinstance(pts, list) and pts:
+        try:
+            arr = np.asarray(pts, dtype=np.float64).reshape(-1, 2)
+            if arr.size:
+                return float(arr[:, 0].min()), float(arr[:, 1].min()), float(arr[:, 0].max()), float(arr[:, 1].max())
+        except (TypeError, ValueError):
+            pass
+    x0 = float(match["x"])
+    y0 = float(match["y"])
+    return x0, y0, x0 + float(match["w"]), y0 + float(match["h"])
+
+
+def _match_overlay(match: dict[str, Any], color: str) -> dict[str, Any]:
+    pts = match.get("polygon")
+    if isinstance(pts, list) and len(pts) >= 3:
+        return {"kind": "polygon", "points": pts, "color": color, "width": 2, **({"label": str(match.get("label"))} if match.get("label") else {})}
+    return {"kind": "rect", "x": match["x"], "y": match["y"], "w": match["w"], "h": match["h"], "angle": match.get("angle", 0),
+            "color": color, "width": 2, **({"label": str(match.get("label"))} if match.get("label") else {})}
+
+
+def _edge_hit(match: dict[str, Any], width: int | None, height: int | None, margins: tuple[float, float, float, float]) -> bool:
+    top, bottom, left, right = margins
+    min_x, min_y, max_x, max_y = _match_extent(match)
+    if top > 0 and min_y <= top:
+        return True
+    if left > 0 and min_x <= left:
+        return True
+    if height is not None and bottom > 0 and max_y >= height - 1 - bottom:
+        return True
+    return bool(width is not None and right > 0 and max_x >= width - 1 - right)
+
+
 def _inside(region: dict[str, Any], x: float, y: float) -> bool:
     _, _, ex1, ey1 = extent(region)
     w, h = max(1, int(math.ceil(ex1)) + 2), max(1, int(math.ceil(ey1)) + 2)
@@ -464,6 +501,43 @@ class BoxesFilterTool(Tool):
         removed = len(matches) - len(out)
         overlays = ([region_overlay(region, label=str(ctx.param("roi_mode", "inside")))] if region else []) + _rect_overlays(out)
         return Result(outputs={"matches": out, "count": len(out), "removed": removed}, overlays=overlays, message=f"{len(out)} kept, {removed} removed")
+
+
+class EdgeFilterTool(Tool):
+    key = "edge_filter"
+    label = "Edge filter"
+    description = "Removes matches that touch the image border margins. It uses each instance polygon when present, otherwise the match box."
+    category = "logic"
+    icon = "ScanLine"
+    params = [
+        Param("margin_top", "Top margin", kind="number", default=50, minimum=0, unit="px", teach=True),
+        Param("margin_bottom", "Bottom margin", kind="number", default=50, minimum=0, unit="px", teach=True),
+        Param("margin_left", "Left margin", kind="number", default=0, minimum=0, unit="px", teach=True),
+        Param("margin_right", "Right margin", kind="number", default=0, minimum=0, unit="px", teach=True),
+    ]
+    # 影像埠必接：沒有寬高就判不了下邊與右邊，第一版設成選填時，碰下邊的物體會被靜默放行（探針抓到）
+    inputs = [Port("matches", "Matches", "matches"), Port("image", "Image (for size and display)", "image")]
+    outputs = [Port("matches", "Kept matches", "matches"), Port("removed", "Removed matches", "matches"), Port("count", "Count", "number")]
+
+    def execute(self, ctx: ToolContext) -> Result:
+        matches = _boxes(ctx)
+        image = ctx.image("image")
+        if image is None:
+            raise ToolError("Wire the image into edge_filter; the bottom and right margins need its size")
+        height, width = image.shape[:2]
+        margins = (
+            max(0.0, ctx.number("margin_top", 50)),
+            max(0.0, ctx.number("margin_bottom", 50)),
+            max(0.0, ctx.number("margin_left", 0)),
+            max(0.0, ctx.number("margin_right", 0)),
+        )
+        kept: list[dict[str, Any]] = []
+        removed: list[dict[str, Any]] = []
+        for match in matches:
+            (removed if _edge_hit(match, width, height, margins) else kept).append(match)
+        overlays = [_match_overlay(m, EDGE_GREEN) for m in kept] + [_match_overlay(m, EDGE_RED) for m in removed]
+        return Result(outputs={"matches": kept, "removed": removed, "count": len(kept)}, overlays=overlays, status="ok" if kept else "ng",
+                      message=f"{len(kept)} kept, {len(removed)} removed")
 
 
 class ArrayCorrectTool(Tool):
@@ -794,6 +868,6 @@ class ListPickTool(Tool):
 
 
 TOOLS = [
-    BoxesMergeTool(), BoxesFilterTool(), ArrayCorrectTool(), ListSortTool(),
+    BoxesMergeTool(), BoxesFilterTool(), EdgeFilterTool(), ArrayCorrectTool(), ListSortTool(),
     BoxesOverlapTool(), ListFilterTool(), ListClassifyTool(), ListPickTool(),
 ]

@@ -612,6 +612,26 @@ def registered_parts() -> list[np.ndarray]:
     return out
 
 
+def conveyor_sequence() -> list[np.ndarray]:
+    """輸送帶追蹤取料：同一組物體沿 y 方向前進；第 1 張碰上邊、最後一張碰下邊。"""
+    out = []
+    objects = [(-85, 34, 74, 46, (70, 170, 225)), (-15, 30, 58, 58, (210, 190, 80)), (58, 36, 86, 42, (100, 205, 120))]
+    for i, y in enumerate((-12, 52, 116, 180, 244, 308)):
+        img = np.full((360, 480, 3), (44, 48, 52), np.uint8)
+        for x in range(0, 480, 48):
+            cv2.line(img, (x, 0), (x - 120, 359), (58, 62, 66), 1)
+        cv2.rectangle(img, (0, 42), (479, 318), (62, 68, 72), -1)
+        for j, (dx, dy, w, h, color) in enumerate(objects):
+            cx = 240 + dx + (i % 2) * (j - 1) * 2
+            cy = y + dy + j * 4
+            rect = ((float(cx), float(cy)), (float(w), float(h)), float((-8, 5, 13)[j]))
+            box = np.round(cv2.boxPoints(rect)).astype(np.int32)
+            cv2.fillPoly(img, [box], color)
+            cv2.polylines(img, [box], True, (235, 235, 235), 2)
+        out.append(_noise(img, 3, 1800 + i))
+    return out
+
+
 def small_code_scenes() -> list[np.ndarray]:
     """大背景上的小碼樣本: 前三張有移動的小 QR, 第四張缺碼作為 NG。"""
     try:
@@ -669,6 +689,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "cup": ("cup gauge", cup),
     "marker_plate": ("locate and gauge", marker_plate),
     "stop_signs": ("stop sign", stop_signs),
+    "conveyor_sequence": ("conveyor sequence", conveyor_sequence),
     "dl_parts": ("classification teaching", dl_parts),
     "dl_scratch": ("segmentation teaching", dl_scratch),
 }

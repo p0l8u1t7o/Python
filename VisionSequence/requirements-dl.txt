@@ -22,6 +22,7 @@
 
 # ---- 訓練與推論（torch 由 setup_dl.ps1 先裝好；這裡不鎖 torch 版本，避免拉到 CPU 版） -------------
 ultralytics>=8.3.0             # YOLO 五任務訓練／推論（detect／segment／classify／pose／obb）＋ SAM2
+lap>=0.5.12                    # 追蹤器關聯計算（ai_segment 的 tracker 選項需要）
 onnx>=1.16                     # 匯出 ONNX
 onnxslim>=0.1.34               # ultralytics 匯出時的圖簡化
 onnxruntime-gpu==1.22.0        # dl_* ONNX 工具的 GPU 推論（取代 requirements.txt 的 onnxruntime）；1.23+ 連結 CUDA 13，與 torch cu128 不合

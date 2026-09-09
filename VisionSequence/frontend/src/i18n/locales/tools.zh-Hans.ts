@@ -801,8 +801,10 @@ export default {
       name: { label: "输出名称", help: "回复以此名称带这一行；TCP 指令的 fmt 或 HTTP 的 format 指定它。" },
       ending: { label: "行尾", options: { none: "无", lf: "换行（\\n）", crlf: "回车换行（\\r\\n）", cr: "回车（\\r）" } },
       missing: { label: "名字没有值时", options: { blank: "留空", keep: "保留名字原样", fail: "让步骤失败" } },
+      each_template: { label: "每笔模板", help: "接 items 时，每一笔各套一次。可用 {index} 与 {centroid[0]:.2f}。" },
+      join: { label: "串接文字", help: "接 items 时用来串接每一行；\\n 会转成真正换行。" },
     },
-    ports: { a: "a", b: "b", c: "c", d: "d", text: "文字" },
+    ports: { a: "a", b: "b", c: "c", d: "d", items: "逐笔清单", text: "文字", lines: "文字行" },
   },
   circular_caliper: {
     label: "圆形卡尺",
@@ -1203,6 +1205,17 @@ export default {
       roi_mode: { label: "区域模式", options: { inside: "区域内", outside: "区域外" } },
     },
     ports: { matches: "框清单", values: "值清单", roi: "位置区域（动态）", image: "图像（显示用）", count: "数量", removed: "移除数" },
+  },
+  edge_filter: {
+    label: "边界排除",
+    description: "依上、下、左、右边距排除碰到画面边缘的物件；有多边形时用多边形极值，否则用框。",
+    params: {
+      margin_top: { label: "上边距", help: "0 表示不检查上边。" },
+      margin_bottom: { label: "下边距", help: "0 表示不检查下边。" },
+      margin_left: { label: "左边距", help: "0 表示不检查左边。" },
+      margin_right: { label: "右边距", help: "0 表示不检查右边。" },
+    },
+    ports: { matches: "保留物件", removed: "排除物件", count: "保留数", image: "图像（显示用）" },
   },
   array_correct: {
     label: "阵列补齐",
@@ -3238,13 +3251,16 @@ export default {
       max_distance: { label: "最大距离", help: "检测中心离预测位置超过此距离时，建立新目标。" },
       max_missing: { label: "最大丢失次数", help: "连续丢失超过此值才淘汰目标。" },
       reset: { label: "重设", help: "本次帧处理前清除已保存的追踪状态。" },
+      algorithm: { label: "配对方式", options: { platform: "平台配对", bytetrack: "外部追踪辅助" } },
+      confirm_frames: { label: "确认影格数", help: "同一物件连续追到几帧后才输出新确认。" },
+      motion: { label: "运动模型", options: { free: "自由移动", linear: "线性输送带" } },
       line_mode: { label: "计数线", options: { none: "无", points: "两点" }, group: "计数" },
       count_line: { label: "线段点", help: "两点格式：[[x1,y1],[x2,y2]]。由负侧跨到正侧算 count_in。", group: "计数" },
     },
     ports: {
       matches: "匹配", boxes: "方框", count_line: "计数线", reset: "重设", image: "图像（显示用）",
       ok: "追踪中", not_found: "无目标", tracks: "追踪目标", count: "数量", new_count: "新增数", lost_count: "淘汰数",
-      count_in: "进入计数", count_out: "离开计数",
+      count_in: "进入计数", count_out: "离开计数", new_confirmed: "新确认", confirmed: "已确认",
     },
   },
   template_match: {
@@ -4050,6 +4066,26 @@ export default {
         help: "小于此面积的实例略过。",
         group: "判定",
       },
+      max_polygon_points: {
+        label: "多边形点数上限",
+        help: "每个实例轮廓最多保留几个点。",
+        group: "进阶",
+      },
+      precision: {
+        label: "精度",
+        options: { auto: "自动", half: "半精度", full: "全精度" },
+        group: "进阶",
+      },
+      backend: {
+        label: "执行后端",
+        options: { eager: "标准", torchscript: "编译" },
+        group: "进阶",
+      },
+      tracker: {
+        label: "追踪器",
+        options: { none: "无", bytetrack: "追踪器 A", botsort: "追踪器 B" },
+        group: "进阶",
+      },
     },
     ports: {
       image: "影像",
@@ -4061,6 +4097,7 @@ export default {
       mask: "聯合遮罩",
       contours: "轮廓",
       labels: "类别列表",
+      centroids: "重心点",
     },
   },
 }

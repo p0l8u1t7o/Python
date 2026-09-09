@@ -161,6 +161,7 @@ export default {
     cup_measure: { name: '深冲杯件测量', description: '模板比对、定位补正、三个 ROI 跟随、内外圆与壁厚、同心度、三个公差判定、具名输出、OK/NG' },
     ai_count: { name: 'AI 目标计数（官方底模）', description: 'ai_detect 以 COCO 官方底模找停止标志并判定数量。免训练、自动用 GPU（需要深度学习依赖）' },
     ai_area: { name: 'AI 实例分割：标志面积', description: 'ai_segment 的并集掩膜接像素计数与面积阈值，示范分割接测量（需要深度学习依赖）' },
+    conveyor_pick: { name: '输送带取料（单相机）', description: '实例分割、边界排除、追踪确认与逐笔文字输出，只在物件第一次确认时送出 x、y、z。' },
     dl_classify_demo: { name: '分类：良品／缺孔（教导模型）', description: '由 seed 训练的内置 MLP 分类器接 dl_classify 判定——示范教导出来的模型怎么进流程' },
     gear_teeth: { name: '圆周齿数（极坐标展开）', description: '极坐标展开把齿圈摊平成长条图，二值化与 blob 数齿，极坐标还原把每颗齿标回原图' },
     contour_defect: { name: '崩边检测（轮廓几何）', description: '轮廓提取、筛出工件本体、轮廓几何数超过 12 px 的凸缺陷、OK/NG，另以 Hu 矩与示例外形比对' },

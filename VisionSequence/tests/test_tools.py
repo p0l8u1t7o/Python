@@ -37,7 +37,7 @@ class RegistryTests(SimpleTestCase):
             "convert_depth", "lut", "filter", "fft_filter", "warp_perspective", "line_profile", "color_stats", "geometry",
             "polar_unwrap", "polar_restore", "contour_find", "contour_filter", "contour_geometry", "contour_match",
             "region_from_shape", "region_combine", "shading_correct", "defect_stat", "shape_match", "dl_anomaly", "circular_caliper", "profile_defect", "ocr_read", "ocv_verify",
-            "boxes_overlap", "list_filter", "list_classify", "list_pick",
+            "boxes_overlap", "edge_filter", "list_filter", "list_classify", "list_pick",
             "multi_light_grab", "multi_light_fuse",
         }
         keys = {t.key for t in base.all_types()}
@@ -77,6 +77,7 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["dl_classify"], {"threshold"})
         self.assertEqual(teach["dl_detect"], {"conf"})
         self.assertEqual(teach["ai_detect"], {"conf"})
+        self.assertEqual(teach["ai_segment"], {"conf"})
         self.assertEqual(teach["ai_classify"], {"threshold"})
         self.assertEqual(teach["pixel_count"], {"min_count", "max_count"})
         self.assertEqual(teach["edge_density"], {"max_ratio"})
@@ -102,6 +103,8 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(teach["ocr_read"], {"roi", "charset", "custom_charset", "polarity", "min_confidence"})
         self.assertEqual(teach["ocv_verify"], {"expected", "min_char_confidence"})
         self.assertEqual(teach["boxes_overlap"], {"min_overlap"})
+        self.assertEqual(teach["edge_filter"], {"margin_top", "margin_bottom", "margin_left", "margin_right"})
+        self.assertEqual(teach["track_objects"], {"max_distance", "confirm_frames"})
         self.assertEqual(teach["list_filter"], {"value", "value2"})
         self.assertEqual(teach["list_classify"], {"classes"})
         self.assertEqual(teach["list_pick"], {"x", "y"})
