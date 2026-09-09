@@ -28,7 +28,7 @@
 - `.\scripts\dev.ps1 -Setup` 第一次；`.\scripts\dev.ps1` 之後；`.\scripts\stop.ps1` 停止。從 Bash 工具重啟要包成 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1`（外掛 INFO 日誌走 stderr，PowerShell 工具直跑會誤觸 `$ErrorActionPreference=Stop`）。
 - 深度學習依賴可選：`.\scripts\setup_dl.ps1`（先 torch cu128 index，再 requirements-dl.txt；`-Cpu` 無 GPU）→ `manage.py dl_check --predict` 驗證。順序錯會拉到 CPU 版 torch。
 - 手動：`manage.py migrate` → `manage.py seed_demo` → `manage.py serve`；前端 `npm run dev`。
-- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，33 個：含 5 個 DL 範本——2 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**33 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
+- `seed_demo` 建 2 個示範流程＋每個範例樣板一組合成樣本圖（`apps/vision/demo_images.py` → `data/samples/` 再存成**固定影像** `ASSET_DIR/fixed/`；不再建 folder 來源與影像資產，舊 seed 留下的「Example: …」來源／資產沒人引用就刪）＋統計範本／形狀模型資產，可重複執行；範例樣板本身在範本畫廊（`demo.BUILTIN_TEMPLATES`，34 個：含 6 個 DL 範本——3 個 YOLO 官方底模、2 個 seed 訓練的教導模型，`_seed_demo_models` 用 mlp_classify／patch_segment 幾秒訓好存成 model 資產，`_demo_model` 現查；`TEMPLATES_NEED_DL` 的範本沒有 DL 依賴時 test_demo 只驗 graph）。**34 個範本每個都有一組樣本圖**（`TEMPLATE_SAMPLE_SOURCES` 必須涵蓋所有 key，`test_demo` 鎖住），所以畫廊不選來源時一律以固定影像開頭、載入就能試執行。`tests/test_demo.py` 逐範本用樣本圖實跑並比對 OK/NG 序列。改樣本圖形要刪 `data/samples/<key>/` 重生成。
 
 ### 驗證清單（改完就跑，報告附實際結果）
 - 後端：`.venv/Scripts/python.exe manage.py test --noinput`、`.venv/Scripts/python.exe -m ruff check apps tests config vscapture`。`tests/test_smoke_api.py` 掃所有 GET 端點不 5xx／405——新增 GET 端點記得加進清單。
@@ -250,6 +250,13 @@
 - **暖機絕不碰相機**：`grab` 換成一律回 None 並記 log 的假函式；取像節點是 `source` 模式直接 skipped，`auto`／`input` 模式只在快取裡已有該來源影像時沿用，否則 skipped 並回報原因。
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
+
+### 標定板產生器與讀碼範本（I5／G3，`apps/vision/calibboard.py`，Codex 實作）
+- **I5**：`GET /vision/calibration/board.png`（`require_feature("assets")`）產可列印的標定板——`pattern`＝chessboard／acircles、`rows`／`cols`（**chessboard 的 rows/cols 是內角點數，acircles 是圓心數**）、`spacing`（mm）、`dpi`；產生器是純函式在 `calibboard.py`，端點只做 HTTP。圖上印規格文字與**已知長度的比例尺**，並提醒列印要選 100%／實際大小（列印縮放是最常見的坑）。
+  實測間距：`spacing/25.4*dpi`，20 mm@300dpi 理論 236.22 px、量回 236.00（誤差 0.22 px，來自格線落點取整）；25.4 mm@150dpi **誤差 0.000**。只出 PNG，PDF 是選配沒做。
+- **踩過的坑（平台讀不了自己產的板子）**：`calib.find_board` 對圓點板**一律加 `CALIB_CB_CLUSTERING`**，而那個旗標在乾淨的合成／列印圓點板上**四種行列組合全部失敗**（拿掉就都找得到，與板子方向無關）。使用者的流程是「產板→列印→拍照→標定」，等於產出自己讀不了的板子。`find_board` 已改成 (原圖, 反相) × (CLUSTERING, 一般) 四種都試，**CLUSTERING 仍排第一所以既有行為不變**。
+  **這個 bug 逃過了原本的測試，因為那條測試直接呼叫 `cv2.findCirclesGrid` 且沒帶 CLUSTERING——測的是「OpenCV 抓不抓得到」而不是「平台抓不抓得到」。**現在 `tests/test_board_generator.py` 走 `calib.find_board`，並涵蓋縮到 28%（模擬拍攝）與深底白點。
+- **G3**：範本 `guided_code_read`（`ai_detect` 定位 → `crop` → `resize` 放大 → `barcode`）——碼很小或位置會跑時，直接對整張圖解碼會失敗。**沒有新工具**；在 `TEMPLATES_NEED_DL`；樣本圖 `demo_images.small_code_scenes()`（大背景小 QR，第四張無碼當 NG）。
 
 ### 內建 Mark 圖形與目標追蹤（D8／D9，`tools/builtin/shape.py`＋`track.py`，Codex 實作）
 - **D8**：`shape_match` 的 `model_source`＝`asset`（**預設，行為一字不變**）／`builtin`。內建三種：`cross`／**`square_outline`**／`disc`（**選項值是 `square_outline` 不是 `square`**，寫錯會靜默 fallback 成 cross——我第一次驗證就踩到，位置差 29 px 還以為是 bug）。做法是**在記憶體合成乾淨樣板再餵既有的 `shapemodel.teach()`**，沒有另寫一套邊緣模型產生器；`_BUILTIN_MODEL_CACHE`（OrderedDict＋lock，鍵 `(shape, size, line_width)`，上限 32）。`builtin_size`／`builtin_line_width` 標 `teach=True`（換線換料號，Mark 尺寸會變，與 D5 的 `expected_width` 同理）。

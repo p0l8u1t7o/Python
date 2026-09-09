@@ -6,7 +6,7 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowRightLeft, Camera, Crosshair, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
+import { ArrowRightLeft, Camera, Crosshair, Download, Move, PanelsTopLeft, Ruler, Save, Trash2, Upload, Wand2 } from 'lucide-react'
 import { Page } from '@/components/layout/AppShell'
 import { ImageViewer } from '@/components/viewer/ImageViewer'
 import {
@@ -18,7 +18,7 @@ import type { RobotBlock } from '@/components/calibration/RobotWizard'
 import { MappingResult, MappingWizard, useMappingWizard } from '@/components/calibration/MappingWizard'
 import type { MappingBlock } from '@/components/calibration/MappingWizard'
 import { StitchWizard, useStitchWizard } from '@/components/calibration/StitchWizard'
-import { api, imageUrl } from '@/lib/api'
+import { BASE_URL, api, downloadFile, imageUrl, withKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { useAssets, useSources } from '@/lib/queries'
 import type { Overlay } from '@/lib/types'
@@ -26,6 +26,7 @@ import { useToast } from '@/providers/ToastProvider'
 
 type Mode = 'board' | 'points' | 'distance' | 'robot' | 'mapping' | 'stitch'
 type BoardKind = 'chessboard' | 'circles' | 'acircles'
+type BoardPattern = 'chessboard' | 'acircles'
 type WorldKind = 'affine' | 'perspective' | 'scale'
 
 interface Shot {
@@ -124,12 +125,40 @@ export function CalibrationPage() {
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [saveGroup, setSaveGroup] = useState('')
+  const [boardGenPattern, setBoardGenPattern] = useState<BoardPattern>('chessboard')
+  const [boardGenCols, setBoardGenCols] = useState('9')
+  const [boardGenRows, setBoardGenRows] = useState('6')
+  const [boardGenSpacing, setBoardGenSpacing] = useState('20')
+  const [boardGenDpi, setBoardGenDpi] = useState('300')
 
   const shot: Shot | null = shots[current] ?? null
   const detected = shots.filter((s) => s.corners?.length)
   const robot = useRobotWizard(shot?.ref ?? null)
   const mapping = useMappingWizard()
   const stitch = useStitchWizard()
+
+  const boardGeneratorQuery = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set('pattern', boardGenPattern)
+    params.set('cols', String(Number(boardGenCols) || 0))
+    params.set('rows', String(Number(boardGenRows) || 0))
+    params.set('spacing', String(Number(boardGenSpacing) || 0))
+    params.set('dpi', String(Number(boardGenDpi) || 0))
+    return params.toString()
+  }, [boardGenPattern, boardGenCols, boardGenRows, boardGenSpacing, boardGenDpi])
+  const boardGeneratorUrl = withKey(`${BASE_URL}/vision/calibration/board.png?${boardGeneratorQuery}`)
+  const boardGeneratorName = `calibration-${boardGenPattern}-${boardGenCols}x${boardGenRows}-${boardGenSpacing}mm-${boardGenDpi}dpi.png`
+
+  async function downloadBoard() {
+    setBusy(true)
+    try {
+      await downloadFile(`/vision/calibration/board.png?${boardGeneratorQuery}`, boardGeneratorName)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   function reset() {
     setShots([])
@@ -506,6 +535,34 @@ export function CalibrationPage() {
                     )) : <EmptyRow colSpan={4} message={t('calibration.noShots')} />}
                   </TBody>
                 </Table>
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {mode === 'mapping' || mode === 'stitch' ? null : mode === 'board' ? (
+            <Card>
+              <CardHeader title={t('calibration.boardGenerator.title')} />
+              <CardBody className="space-y-3">
+                <Select
+                  label={t('calibration.boardGenerator.pattern')}
+                  value={boardGenPattern}
+                  onChange={(e) => setBoardGenPattern(e.target.value as BoardPattern)}
+                  options={(['chessboard', 'acircles'] as BoardPattern[]).map((k) => ({ value: k, label: t(`calibration.boardGenerator.patterns.${k}`) }))}
+                  data-testid="calib-boardgen-pattern"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <TextInput label={t('calibration.cols')} value={boardGenCols} inputMode="numeric" onChange={(e) => setBoardGenCols(e.target.value)} data-testid="calib-boardgen-cols" />
+                  <TextInput label={t('calibration.rows')} value={boardGenRows} inputMode="numeric" onChange={(e) => setBoardGenRows(e.target.value)} data-testid="calib-boardgen-rows" />
+                  <TextInput label={t('calibration.spacing')} value={boardGenSpacing} inputMode="decimal" suffix="mm" onChange={(e) => setBoardGenSpacing(e.target.value)} data-testid="calib-boardgen-spacing" />
+                  <TextInput label={t('calibration.boardGenerator.dpi')} value={boardGenDpi} inputMode="numeric" onChange={(e) => setBoardGenDpi(e.target.value)} data-testid="calib-boardgen-dpi" />
+                </div>
+                <div className="overflow-hidden rounded-md border border-line bg-white">
+                  <img src={boardGeneratorUrl} alt={t('calibration.boardGenerator.preview')} className="max-h-64 w-full object-contain" />
+                </div>
+                <p className="text-xs text-subtle">{t('calibration.boardGenerator.printHint')}</p>
+                <Button icon={<Download size={14} />} loading={busy} onClick={() => void downloadBoard()} data-testid="calib-boardgen-download">
+                  {t('calibration.boardGenerator.download')}
+                </Button>
               </CardBody>
             </Card>
           ) : mode === 'robot' ? (

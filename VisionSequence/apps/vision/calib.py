@@ -381,9 +381,17 @@ def find_board(image: np.ndarray, cols: int, rows: int, kind: str = "chessboard"
                 )
     else:
         flags = cv2.CALIB_CB_ASYMMETRIC_GRID if kind == "acircles" else cv2.CALIB_CB_SYMMETRIC_GRID
-        found, corners = cv2.findCirclesGrid(gray, size, flags=flags | cv2.CALIB_CB_CLUSTERING)
-        if not found:  # 深色底白點的板子
-            found, corners = cv2.findCirclesGrid(255 - gray, size, flags=flags | cv2.CALIB_CB_CLUSTERING)
+        # CLUSTERING 對透視變形大的實拍照片比較穩，但**在乾淨的合成／列印板上會失敗**
+        # （平台自己產生的圓點板實測四種行列組合全部找不到，拿掉這個旗標就都找得到）。
+        # 所以兩種都試：先 CLUSTERING 維持既有偏好，再退回一般版；各自再試深底白點。
+        found, corners = False, None
+        for source in (gray, 255 - gray):          # 第二輪是深色底白點的板子
+            for extra in (cv2.CALIB_CB_CLUSTERING, 0):
+                found, corners = cv2.findCirclesGrid(source, size, flags=flags | extra)
+                if found:
+                    break
+            if found:
+                break
     if not found or corners is None:
         return None
     return np.asarray(corners, dtype=np.float64).reshape(-1, 2)

@@ -108,6 +108,7 @@ class GetEndpointsSmokeTests(TransactionTestCase):
             "/api/vision/assets", f"/api/vision/assets/{aid}/file", "/api/vision/ocr/models", "/api/vision/ocr/fonts", "/api/vision/assets?kind=calibration",
             "/api/vision/dashboards", "/api/vision/dashboards/default",
             f"/api/vision/dashboards/{self.dashboard.id}", f"/api/vision/dashboards/{self.dashboard.id}/data",
+            "/api/vision/calibration/board.png?pattern=chessboard&rows=6&cols=9&spacing=20&dpi=300",
             f"/api/vision/calibration/assets/{self.calibration_id}", f"/api/vision/assets/{self.stat_id}/stat-template", f"/api/vision/assets/{self.stat_id}/stat-template/mean",
             f"/api/vision/assets/{self.shape_id}/shape-model", f"/api/vision/assets/{self.shape_id}/shape-model/preview",
             "/api/vision/groups?kind=source", "/api/vision/fs",

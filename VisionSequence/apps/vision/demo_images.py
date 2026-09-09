@@ -612,6 +612,37 @@ def registered_parts() -> list[np.ndarray]:
     return out
 
 
+def small_code_scenes() -> list[np.ndarray]:
+    """大背景上的小碼樣本: 前三張有移動的小 QR, 第四張缺碼作為 NG。"""
+    try:
+        enc = cv2.QRCodeEncoder.create()
+        qr = enc.encode("VS-G3-0001")
+    except Exception:  # noqa: BLE001 - 測試環境缺 QR 編碼器時仍保留可辨識的方格結構
+        qr = ((np.indices((25, 25)).sum(axis=0) % 2) * 255).astype(np.uint8)
+    qr = cv2.resize(qr, (84, 84), interpolation=cv2.INTER_NEAREST)
+    positions = [(920, 260), (760, 560), (1030, 610), (860, 420)]
+    out = []
+    for i, (x0, y0) in enumerate(positions):
+        rng = np.random.default_rng(1200 + i)
+        img = _canvas(1280, 960, 96)
+        texture = rng.normal(0, 18, img.shape).astype(np.int16)
+        img = np.clip(img.astype(np.int16) + texture, 0, 255).astype(np.uint8)
+        for _ in range(34):
+            x, y = int(rng.integers(40, 1180)), int(rng.integers(40, 860))
+            w, h = int(rng.integers(35, 160)), int(rng.integers(20, 95))
+            color = tuple(int(v) for v in rng.integers(45, 185, size=3))
+            cv2.rectangle(img, (x, y), (min(1279, x + w), min(959, y + h)), color, -1)
+        cv2.rectangle(img, (120, 120), (1160, 820), (135, 140, 142), 3)
+        cv2.putText(img, "PACK-24", (165, 760), cv2.FONT_HERSHEY_SIMPLEX, 2.2, (210, 210, 210), 6)
+        if i != 3:
+            pad = 16
+            panel = np.full((qr.shape[0] + pad * 2, qr.shape[1] + pad * 2, 3), 238, np.uint8)
+            panel[pad:pad + qr.shape[0], pad:pad + qr.shape[1]] = cv2.cvtColor(qr, cv2.COLOR_GRAY2BGR)
+            img[y0:y0 + panel.shape[0], x0:x0 + panel.shape[1]] = panel
+        out.append(_noise(img, 4, 1210 + i))
+    return out
+
+
 #: key → (顯示名, 產生器)。key 同時是 data/samples/ 下的資料夾名。
 SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "registered_parts": ("registered parts", registered_parts),
@@ -634,6 +665,7 @@ SAMPLE_SETS: dict[str, tuple[str, callable]] = {
     "date_codes": ("date code label", date_codes),
     "color_blocks": ("colour blocks", color_blocks),
     "label_qr": ("barcode label", label_qr),
+    "small_code_scenes": ("small code in clutter", small_code_scenes),
     "cup": ("cup gauge", cup),
     "marker_plate": ("locate and gauge", marker_plate),
     "stop_signs": ("stop sign", stop_signs),

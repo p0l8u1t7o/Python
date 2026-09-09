@@ -139,6 +139,7 @@ export default {
     color_presence: { name: '顏色存在', description: '顏色範圍遮罩接像素計數，再依門檻判定' },
     color_verify: { name: '顏色驗證', description: '區域平均色與目標色的距離比對，色彩統計回報十六進位色碼' },
     barcode_read: { name: '條碼／QR 讀取', description: '讀碼、檢查有沒有讀到、輸出內容' },
+    guided_code_read: { name: '定位後讀碼', description: '先找出可能的碼區, 讓 ROI 跟著框移動, 裁切並放大後再解碼. 官方底模大小只示範接法, 產線使用前請教自己的碼區偵測模型' },
     label_read: { name: '含透視校正的條碼標籤', description: '四點透視校正把歪斜的標籤拉正再讀，另加序號區的文字存在檢查' },
     locate_measure: { name: '定位與量測', description: '範本比對、定位補正、ROI 跟隨、卡尺寬度、公差判定' },
     cup_measure: { name: '深沖杯件量測', description: '範本比對、定位補正、三個 ROI 跟隨、內外圓與壁厚、同心度、三個公差判定、具名輸出、OK/NG' },

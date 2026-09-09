@@ -232,6 +232,39 @@ def barcode_flow(source_id: Any) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def guided_code_read_flow(source_id: Any) -> dict[str, Any]:
+    """先以偵測框帶動 ROI, 再裁切放大後讀碼。"""
+    code_roi = {"shape": "rect", "x": 900, "y": 240, "w": 160, "h": 160}
+    nodes = [
+        _node("src", "image_source", 0, 0, "Acquire", source_id=source_id),
+        _node("det", "ai_detect", 1, 0, "Find code area", model_size="n", conf=0.25, min_count=1, max_count=5, imgsz=640),
+        _node("align", "shape_align", 2, 0, "Use box position", ref_x=978, ref_y=318, ref_angle=0, use_angle=False),
+        _node("roi", "fixture_roi", 3, 0, "ROI follows box", roi=code_roi),
+        _node("crop", "crop", 4, 0, "Crop code area"),
+        _node("zoom", "resize", 5, 0, "Enlarge crop", scale=3.0),
+        _node("bc", "barcode", 6, 0, "Read code", types="qr"),
+        _node("ok", "judge", 7, 0, "OK", verdict="ok"),
+        _node("ng", "judge", 7, 1, "NG: nothing read", verdict="ng", label="no_code"),
+        _node("out", "output", 7, 2, "Output content", name="code"),
+        _node("draw", "draw_result", 6, 2, "Result image"),
+        _note("n1", 0, 1, "About", "Use this when the code is small, moves around, or sits on a busy background.\nThe stock detector setting is only here to demonstrate the wiring. For production, train a detector for the code location and select that model asset."),
+    ]
+    edges = [
+        _edge("src", "det"),
+        _edge("det", "align", "matches", "matches"),
+        _edge("align", "roi", "transform", "transform"),
+        _edge("src", "crop", "image", "image"),
+        _edge("roi", "crop", "region", "roi"),
+        _edge("crop", "zoom", "image", "image"),
+        _edge("zoom", "bc", "image", "image"),
+        _edge("bc", "ok", "found", "_flow"),
+        _edge("bc", "ng", "not_found", "_flow"),
+        _edge("bc", "out", "first", "value"),
+        _edge("src", "draw", "image", "image"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def circle_gauge_flow(source_id: Any) -> dict[str, Any]:
     """圓孔尺寸量測：找圓 → 直徑 → 像素校正成 mm → 公差判定；扇形 ROI 弧擬合看真圓度。
 
@@ -1144,6 +1177,7 @@ BUILTIN_TEMPLATES: tuple[tuple[str, str, str, str, Any], ...] = (
     ("color_presence", "Colour presence", "A colour range mask into a pixel count, judged against a threshold", "detect", color_presence_flow),
     ("color_verify", "Colour verification", "The region's mean colour against a target by distance, with colour statistics reporting a hex code", "detect", color_verify_flow),
     ("barcode_read", "Barcode / QR read", "Read the code, check whether anything was read, output it", "identify", barcode_flow),
+    ("guided_code_read", "Locate then read code", "Find the likely code area, move a crop ROI to it, enlarge that crop, then decode. The stock detector size only demonstrates the wiring; train a detector for your own code location before production use.", "identify", guided_code_read_flow),
     ("date_code", "Date code read and verify (taught font)", "Text read with a font taught by seeding — segmentation plus per-character classification, fully offline — into Text verify against an eight-digit pattern with per-character confidence; a smudged digit is boxed in red", "identify",
      lambda sid: date_code_flow(sid, _demo_asset("Example: taught font (digits)", "model"))),
     ("label_read", "Barcode label with perspective correction", "Four-point perspective correction straightens the tilted label before reading it, plus a text-presence check on the serial area", "identify", label_flow),
@@ -1189,6 +1223,7 @@ TEMPLATE_SAMPLE_SOURCES: dict[str, str] = {
     "color_presence": "Example: colour blocks",
     "color_verify": "Example: colour blocks",
     "barcode_read": "Example: barcode label",
+    "guided_code_read": "Example: small code in clutter",
     "label_read": "Example: barcode label",
     "date_code": "Example: date code label",
     "locate_measure": "Example: locate and gauge",
@@ -1211,7 +1246,7 @@ def _sample_sets() -> dict[str, str]:
 
 TEMPLATE_SAMPLE_SETS: dict[str, str] = _sample_sets()
 #: 需要 DL 依賴（ultralytics／torch）才能執行的範本 key；測試與文件用。
-TEMPLATES_NEED_DL = ("ai_count", "ai_area")
+TEMPLATES_NEED_DL = ("ai_count", "ai_area", "guided_code_read")
 #: 需要平台附帶的異常檢測 backbone（ASSET_DIR/dl/weights/resnet18_l2l3.onnx）才能執行的範本 key。
 TEMPLATES_NEED_BACKBONE = ("anomaly_demo", "register_count")
 

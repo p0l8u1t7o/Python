@@ -20,13 +20,13 @@ from typing import Any
 import cv2
 import numpy as np
 from django.conf import settings
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from ninja import File, Router, UploadedFile
 
 from apps.accounts.security import require_feature
 from apps.core import audit
 from apps.core.errors import NotFound, ValidationError
-from apps.vision import calib, sources
+from apps.vision import calib, calibboard, sources
 from apps.vision.images import store
 from apps.vision.models import Asset
 
@@ -71,6 +71,21 @@ def _corner_views(raw: Any, name: str) -> list[np.ndarray]:
             raise ValidationError(f"At most {MAX_VIEWS} board views", code="too_many_views")
         return [arr[i] for i in range(len(arr))]
     raise ValidationError(f"{name} must be one view or a list of views of [x, y] points", code="bad_points")
+
+
+@router.get("/calibration/board.png")
+def board_png(request: HttpRequest, pattern: str = "chessboard", rows: int = 6, cols: int = 9, spacing: float = 20.0, dpi: int = 300):
+    """產生可列印標定板 PNG。"""
+    require_feature(request, "assets")
+    try:
+        spec = calibboard.validate_spec(pattern, int(rows), int(cols), float(spacing), int(dpi))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(str(exc), code="bad_board") from None
+    response = HttpResponse(calibboard.png_bytes(spec), content_type="image/png")
+    response["Content-Disposition"] = (
+        f'inline; filename="calibration-{spec.pattern}-{spec.cols}x{spec.rows}-{spec.spacing_mm:g}mm-{spec.dpi}dpi.png"'
+    )
+    return response
 
 
 @router.post("/calibration/capture", response={201: dict})
