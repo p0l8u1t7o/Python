@@ -74,7 +74,8 @@ export function FlowCanvas({ interaction, onInteractionChange, onAutoLayout, chi
       {...rest}
     >
       <Background />
-      <MiniMap pannable zoomable className="!h-24 !w-36" />
+      {/* 手機寬度只留畫布與工具列（CLAUDE.md 的響應式規則）：小地圖會壓到縮放列與右下角的助手鈕 */}
+      <MiniMap pannable zoomable className="!h-24 !w-36 max-md:hidden" />
       <ZoomSlider onAutoLayout={onAutoLayout} />
       <CanvasModePanel interaction={interaction} onChange={onInteractionChange} />
       {children}

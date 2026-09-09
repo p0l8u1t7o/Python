@@ -440,6 +440,7 @@ export function CalibrationPage() {
                   value={sourceId}
                   onChange={(e) => setSourceId(e.target.value)}
                   placeholder={t('calibration.pickSource')}
+                  aria-label={t('calibration.pickSource')}
                   options={(sources.data?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }))}
                   data-testid="calib-source"
                 />

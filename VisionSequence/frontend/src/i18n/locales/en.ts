@@ -2290,7 +2290,7 @@ const enExtra3 = {
       title: 'Execution and operations',
       hint: 'Station runtime limits, logging and automatic solution snapshots',
       maxWorkersHint: 'Maximum inspection jobs the station is configured to run at the same time.',
-      cvThreadsHint: 'OpenCV threads used inside one tool; higher values help one flow but can fight with parallel flows.',
+      cvThreadsHint: 'Image-processing threads used inside one tool; higher values help one flow but can fight with parallel flows.',
       sseHint: 'Maximum live event streams for open dashboards and editors.',
       queueHint: 'How many triggers one flow may hold before the station rejects more work.',
       timeoutHint: 'Safety timeout for a whole run before it is marked failed.',

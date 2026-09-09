@@ -1552,7 +1552,7 @@ const zhHant = {
       title: '執行與維運',
       hint: '站台執行上限、日誌與自動流程快照',
       maxWorkersHint: '站台設定最多同時處理幾個檢測工作。',
-      cvThreadsHint: '單一工具內部使用的 OpenCV 執行緒；單線可加速，多線並跑時可能互搶 CPU。',
+      cvThreadsHint: '單一工具內部使用的影像處理執行緒；單線可加速，多線並跑時可能互搶 CPU。',
       sseHint: '看板與編輯器可同時開啟的即時事件串流上限。',
       queueHint: '同一條流程最多可排隊的觸發數，超過就拒絕新工作。',
       timeoutHint: '整次檢測的保護逾時，超過後標記為失敗。',

@@ -282,7 +282,7 @@ export function ConnectionsSection({ section, kind }: { section: string; kind?: 
                           <code className="block max-w-[200px] truncate font-mono text-[11px] text-muted" title={JSON.stringify(st)}>{JSON.stringify(st)}</code>
                         </span>
                       </Td>
-                      <Td align="center"><Switch checked={c.is_enabled} disabled={!canManage} onChange={(v) => patch.mutate({ id: c.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} /></Td>
+                      <Td align="center"><Switch label={t('common.enabled')} checked={c.is_enabled} disabled={!canManage} onChange={(v) => patch.mutate({ id: c.id, is_enabled: v }, { onError: (error) => toast.error(errorMessage(error)) })} /></Td>
                       <Td align="right">
                         <span className="inline-flex gap-1">
                           <IconButton label={t('connections.state')} onClick={() => void readState({ conn: c, addresses: '', result: null, loading: false })}><Activity size={15} /></IconButton>

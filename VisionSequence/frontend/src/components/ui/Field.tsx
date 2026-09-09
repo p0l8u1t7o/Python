@@ -79,7 +79,7 @@ export function Checkbox({ label, hint, checked, onChange, disabled }: { label: 
   return (
     <div>
       <div className="flex items-start gap-2">
-        <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-4 shrink-0 rounded border-line accent-[var(--brand)]" />
+        <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 size-4 shrink-0 rounded border-line accent-[var(--brand)] [@media(pointer:coarse)]:size-5" />
         <label htmlFor={id} className="select-none text-sm text-content">
           {label}
         </label>

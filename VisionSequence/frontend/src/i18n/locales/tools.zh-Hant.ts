@@ -2180,7 +2180,7 @@ export default {
   },
   hough_circles: {
     label: "Hough 找圓",
-    description: "cv2.HoughCircles（梯度法）在區域內找多個圓。",
+    description: "以梯度法在區域內找多個圓。",
     params: {
       roi: {
         label: "區域",

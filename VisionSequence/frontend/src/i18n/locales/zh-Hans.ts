@@ -1552,7 +1552,7 @@ const zhHans = {
       title: '执行与运维',
       hint: '站台执行上限、日志与自动流程快照',
       maxWorkersHint: '站台设置最多同时处理几个检测工作。',
-      cvThreadsHint: '单一工具内部使用的 OpenCV 线程；单线可加速，多线并跑时可能互抢 CPU。',
+      cvThreadsHint: '单一工具内部使用的图像处理线程；单线可加速，多线并跑时可能互抢 CPU。',
       sseHint: '看板与编辑器可同时开启的实时事件流上限。',
       queueHint: '同一条流程最多可排队的触发数，超过就拒绝新工作。',
       timeoutHint: '整次检测的保护超时，超过后标记为失败。',

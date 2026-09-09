@@ -73,7 +73,8 @@ export function RolePermissionsCard() {
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
         ) : data && draft ? (
-          <div className="overflow-x-auto">
+          // relative：勾選框的 sr-only 標籤是 absolute，捲動容器不定位的話它們會跑出去把整頁撐寬（390px 手機實測）
+          <div className="relative max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr>

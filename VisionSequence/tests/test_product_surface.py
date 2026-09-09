@@ -16,6 +16,20 @@ from django.test import TestCase
 BANNED = ("yolo", "ultralytics")
 #: 介面字典再多擋模型名（docs 的安裝與疑難排解段落仍需要真實套件名，所以只用在字典上）
 UI_BANNED = (r"\bSAM\d*\b",)
+#: 技術來源字樣（CLAUDE.md 紅線）：工具目錄與介面字典都不准出現；docs 是技術文件，不掃。
+TECH_BANNED = ("opencv", r"\bcv2\b", "ni vision")
+#: 例外：使用者要在腳本裡 import 這些模組，help 列出模組名是功能需要（同 plugins.html 的 import 例外）。
+TECH_EXEMPT_TOOLS = ("python_script",)
+
+
+def _strip_exempt_tool_blocks(text: str) -> str:
+    """把 tools.zh-*.ts 裡例外工具的整個區塊（`  key: {` … `  },`）拿掉再掃。"""
+    import re as _re
+
+    for key in TECH_EXEMPT_TOOLS:
+        text = _re.sub(rf"^  {key}: \{{.*?^  \}},?$", "", text, flags=_re.S | _re.M)
+    return text
+
 ROOT = str(settings.BASE_DIR)
 
 
@@ -36,6 +50,20 @@ class ProductSurfaceTests(TestCase):
         from apps.vision.tools import base as tools
 
         self.assertEqual(_hits(json.dumps(tools.catalogue(), ensure_ascii=False)), [])
+
+    def test_tool_catalogue_has_no_technology_source_names(self):
+        """OpenCV／cv2／NI Vision 不得出現在工具的 label／description／help（python_script 除外）。"""
+        from apps.vision.tools import base, register_builtins
+
+        register_builtins()
+        for tool in base.all_types():
+            if tool.key in TECH_EXEMPT_TOOLS:
+                continue
+            blob = json.dumps({"label": tool.label, "description": tool.description,
+                               "params": [(p.key, p.label, getattr(p, "help_text", ""), getattr(p, "options", None)) for p in tool.params],
+                               "ports": [(p.key, p.label) for p in list(tool.inputs) + list(tool.outputs)]}, ensure_ascii=False)
+            with self.subTest(tool=tool.key):
+                self.assertEqual(_hits(blob, TECH_BANNED), [])
 
     def test_trainer_catalogue(self):
         from apps.vision.dl import base
@@ -59,7 +87,10 @@ class ProductSurfaceTests(TestCase):
                 with open(f, encoding="utf-8") as fh:
                     # 介面字典是使用者每天看的字，連模型名（SAM／SAM2）都不該出現：
                     # 曾經有「SAM 全圖提案」這種按鈕名一路留到畫面上。
-                    self.assertEqual(_hits(fh.read(), BANNED + UI_BANNED), [])
+                    text = fh.read()
+                    self.assertEqual(_hits(text, BANNED + UI_BANNED), [])
+                    # 技術來源字樣：先把 python_script 那一塊拿掉（它列出可 import 的模組名是功能需要）
+                    self.assertEqual(_hits(_strip_exempt_tool_blocks(text), TECH_BANNED), [])
 
     def test_docs_prose(self):
         files = glob.glob(os.path.join(ROOT, "docs", "*.html"))
