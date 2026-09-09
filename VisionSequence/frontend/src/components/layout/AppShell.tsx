@@ -6,7 +6,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, GraduationCap, HelpCircle, History, Images, KeyRound, LayoutDashboard, Library, LogOut, Menu, Plug, Ruler, ScanSearch, Settings, ShieldCheck, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
+import { Activity, Brain, Camera, ChevronDown, ChevronRight, FlaskConical, GraduationCap, HelpCircle, History, Images, KeyRound, LayoutDashboard, Library, LogOut, Menu, Plug, Ruler, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, Users, Workflow } from 'lucide-react'
 
 import { AssistantDock } from '@/components/assistant/AssistantDock'
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
@@ -40,6 +40,7 @@ const NAV: NavNode[] = [
   },
   {
     key: 'teach', icon: GraduationCap, children: [
+      { to: '/teach', key: 'stationTeach', icon: SlidersHorizontal, end: false, feature: 'flows.teach' },
       { to: '/calibration', key: 'calibration', icon: Ruler, end: false, feature: 'assets' },
       { to: '/dl', key: 'dl', icon: Brain, end: false, feature: 'dl' },
     ],

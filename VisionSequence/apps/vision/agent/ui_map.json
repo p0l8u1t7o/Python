@@ -142,6 +142,28 @@
    ]
   },
   {
+   "route": "/teach",
+   "id": "station_teach",
+   "names": {
+    "en": "Station teach",
+    "zh-Hant": "站台參數卡",
+    "zh-Hans": "站台参数卡"
+   },
+   "summary": {
+    "en": "All visible flows' on-site parameters, batch saving and custom shortcut groups",
+    "zh-Hant": "所有可見流程的現場參數、批次儲存與自訂捷徑群組",
+    "zh-Hans": "所有可见流程的现场参数、批次保存与自定义快捷项组"
+   },
+   "feature": "flows.teach",
+   "actions": [
+    {
+     "en": "Save changes ({{count}})",
+     "zh-Hant": "儲存變更 ({{count}})",
+     "zh-Hans": "保存变更 ({{count}})"
+    }
+   ]
+  },
+  {
    "route": "/flows/:flowId/golden",
    "id": "golden",
    "names": {

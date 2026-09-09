@@ -116,6 +116,15 @@ describe('pages render (smoke)', () => {
     expect(screen.getByTestId('batch-new-set')).toBeInTheDocument()
   })
 
+  it('StationTeachPage lists station parameters and custom groups', async () => {
+    const { StationTeachPage } = await import('@/pages/StationTeachPage')
+    renderPage(<StationTeachPage />, { route: '/teach' })
+    expect(await screen.findByTestId('station-teach-page')).toBeInTheDocument()
+    expect(screen.getByText('Daily checks')).toBeInTheDocument()
+    expect(screen.getAllByTestId('station-teach-row').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('station-teach-invalid')).toHaveTextContent('Missing shortcut')
+  })
+
   it('FlowsPage lists flows from the API', async () => {
     const { FlowsPage } = await import('@/pages/FlowsPage')
     renderPage(<FlowsPage />, { route: '/flows' })

@@ -70,6 +70,9 @@ import type {
   SourceKind,
   SpcAlertsResult,
   SpcResult,
+  StationTeachGroupList,
+  StationTeachParamList,
+  StationTeachRef,
   TcpResult,
   TemplateInstance,
   ToolCatalogue,
@@ -111,6 +114,8 @@ export const keys = {
   executionSettings: ['settings', 'execution'] as const,
   logLevel: ['settings', 'log-level'] as const,
   autoSaveSettings: ['settings', 'auto-save'] as const,
+  stationTeachParams: ['station-teach', 'params'] as const,
+  stationTeachGroups: ['station-teach', 'groups'] as const,
 }
 
 export interface RecentRuns {
@@ -327,6 +332,7 @@ export function useFlowMutations() {
   const invalidate = () => {
     void client.invalidateQueries({ queryKey: keys.flows })
     void client.invalidateQueries({ queryKey: keys.capacity })
+    void client.invalidateQueries({ queryKey: keys.stationTeachParams })
   }
   const create = useMutation({
     mutationFn: (body: { name: string; description?: string; graph?: FlowGraph; concurrency?: number }) =>
@@ -350,6 +356,45 @@ export function useFlowMutations() {
     onSuccess: invalidate,
   })
   return { create, patch, remove, duplicate }
+}
+
+export function useStationTeachParams() {
+  return useQuery({
+    queryKey: keys.stationTeachParams,
+    queryFn: () => api.get<StationTeachParamList>('/vision/teach/params'),
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useStationTeachGroups() {
+  return useQuery({
+    queryKey: keys.stationTeachGroups,
+    queryFn: () => api.get<StationTeachGroupList>('/vision/teach/groups'),
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useStationTeachGroupMutations() {
+  const client = useQueryClient()
+  const invalidate = () => void client.invalidateQueries({ queryKey: keys.stationTeachGroups })
+  const create = useMutation({
+    mutationFn: (body: { name: string; items?: StationTeachRef[] }) => api.post<StationTeachGroupList['items'][number]>('/vision/teach/groups', body),
+    onSuccess: invalidate,
+  })
+  const patch = useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; items?: StationTeachRef[] }) =>
+      api.patch<StationTeachGroupList['items'][number]>(`/vision/teach/groups/${id}`, body),
+    onSuccess: invalidate,
+  })
+  const reorder = useMutation({
+    mutationFn: (ids: string[]) => api.patch<StationTeachGroupList>('/vision/teach/groups/order', { ids }),
+    onSuccess: (data) => client.setQueryData(keys.stationTeachGroups, data),
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/vision/teach/groups/${id}`),
+    onSuccess: invalidate,
+  })
+  return { create, patch, reorder, remove }
 }
 
 export function useRecentRuns(flowId: number | null, limit = 8) {

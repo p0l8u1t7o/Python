@@ -97,6 +97,50 @@ export interface ToolCatalogue {
   port_types: string[]
 }
 
+export interface StationTeachParamItem {
+  id: string
+  flow_id: number
+  flow_name: string
+  flow_version: number
+  node_id: string
+  node_label: string
+  tool_type: string
+  tool_label: string
+  tool_category: string
+  param: ToolParam
+  value: unknown
+}
+
+export interface StationTeachParamList {
+  items: StationTeachParamItem[]
+  total: number
+  flow_count: number
+}
+
+export interface StationTeachRef {
+  flow_id: number
+  node_id: string
+  param: string
+}
+
+export interface StationTeachGroupItem extends StationTeachRef {
+  valid: boolean
+  reason?: string
+  resolved?: StationTeachParamItem
+}
+
+export interface StationTeachGroup {
+  id: string
+  name: string
+  items: StationTeachGroupItem[]
+  count: number
+}
+
+export interface StationTeachGroupList {
+  items: StationTeachGroup[]
+  limit: number
+}
+
 // ---- ROI（與後端 apps/vision/tools/roi.py 一致） ----
 export type RoiShape = 'rect' | 'rotated_rect' | 'circle' | 'ellipse' | 'annulus' | 'polygon' | 'polyline' | 'line' | 'point'
 

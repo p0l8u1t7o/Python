@@ -9,7 +9,13 @@ export const ME = {
   prefs: {}, lock: { locked: false, holder: '', reason: '', expires_at: null },
 }
 
-export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 } }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+export const FLOW = { id: 1, name: '示範流程', description: '', version: 1, is_enabled: true, continuous_interval_ms: 0, timeout_s: 0, concurrency: 1, stop_on_ng: false, owner_id: 1, owner_name: 'admin', recipe_count: 0, commissioned: false, stats: { last_status: 'ok', total: 3, ok: 3, ng: 0, failed: 0, avg_ms: 5, last_ms: 5, running: false, continuous: false, queued: 0 }, graph: { nodes: [{ id: 'camera', type: 'image_source', label: 'Camera', params: { source_id: 1 } }, { id: 'thr', type: 'threshold', label: 'Threshold', params: { method: 'fixed', threshold: 60 } }, { id: 'judge_out', type: 'output', params: { name: 'judge' } }, { id: 'width_out', type: 'output', params: { name: 'width' } }], edges: [] }, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' }
+export const FLOW_SIDE = { ...FLOW, id: 2, name: '側面流程', graph: { ...FLOW.graph, nodes: FLOW.graph.nodes.map((node) => node.id === 'thr' ? { ...node, params: { method: 'fixed', threshold: 80 } } : node) } }
+export const TEACH_PARAM = { key: 'threshold', label: 'Threshold', kind: 'number', required: false, default: 128, help_text: '', options: [], unit: '', minimum: 0, maximum: 255, step: 1, visible_when: null, shapes: [], accept: '', group: '', teach: true }
+export const STATION_TEACH_ROWS = [
+  { id: '1:thr:threshold', flow_id: 1, flow_name: FLOW.name, flow_version: 1, node_id: 'thr', node_label: 'Threshold', tool_type: 'threshold', tool_label: 'Threshold', tool_category: 'preprocess', param: TEACH_PARAM, value: 60 },
+  { id: '2:thr:threshold', flow_id: 2, flow_name: FLOW_SIDE.name, flow_version: 1, node_id: 'thr', node_label: 'Threshold', tool_type: 'threshold', tool_label: 'Threshold', tool_category: 'preprocess', param: TEACH_PARAM, value: 80 },
+]
 
 export const RUNS = [
   { id: 'run-2', flow_id: 1, flow_version: 1, trigger: 'ui', status: 'ng', started_at: 1788500100, finished_at: 1788500101, duration_ms: 14, error: '', outputs: { judge: 'NG', width: 2.2 }, nodes: { camera: { status: 'ok', duration_ms: 2, message: '', branch: null, outputs: { image: { ref: 'run-2:image', width: 640, height: 480 } }, overlays: [], overlay_on: null, detail: {}, logs: [] } }, persisted: true },
@@ -103,6 +109,11 @@ export function routes(path: string, body?: unknown): unknown {
   if (path.startsWith('/vision/agent/memory')) return { facts: [{ id: 1, kind: 'fact', text: '產線 3 用流程「檢測 A」', answer: '', rating: 0, created_at: null }], qa: [{ id: 2, kind: 'qa', text: '如何建立影像來源？', answer: '到來源庫', rating: 1, created_at: null }], limits: { facts: 50, qa: 200 } }
   if (path.startsWith('/vision/agent/chat')) return { kind: 'help', answer: '依平台文件：到「批次測試」頁按「新增影像集」。', provider: 'rules', sources: [{ title: '使用者手冊 › 批次測試頁', page: 'user-guide.html', heading: '批次測試頁', url: '/docs/user-guide.html#batch', snippet: '選擇流程後按「新增影像集」', kind: 'doc' }], warnings: [] }
   if (path.startsWith('/vision/agent/help/search')) return { items: [], sections: 0, pages: 0, tools: 0 }
+  if (path.startsWith('/vision/teach/params')) return { items: STATION_TEACH_ROWS, total: STATION_TEACH_ROWS.length, flow_count: 2 }
+  if (path.startsWith('/vision/teach/groups')) return {
+    items: [{ id: 'g1', name: 'Daily checks', items: [{ valid: true, flow_id: 1, node_id: 'thr', param: 'threshold', resolved: STATION_TEACH_ROWS[0] }, { valid: false, flow_id: 9, node_id: 'gone', param: 'threshold', reason: 'missing' }], count: 2 }],
+    limit: 32,
+  }
   if (/\/vision\/flows\/\d+\/spc/.test(path)) return { flow_id: 1, output: 'diameter', outputs: ['diameter'], hours: 24, chart: 'imr', subgroup: 5, enabled: true, retention_days: 365, series: [{ ts: '2026-01-01T00:00:00Z', value: 12.01, run_id: 'a' }, { ts: '2026-01-01T00:00:10Z', value: 12.02, run_id: 'b' }, { ts: '2026-01-01T00:00:20Z', value: 11.99, run_id: 'c' }], analysis: { limits: { chart: 'imr', n: 3, cl: 12.0067, ucl: 12.06, lcl: 11.95, sigma: 0.0177, mr_bar: 0.02, mr_ucl: 0.065 }, capability: { usl: 12.05, lsl: 11.95, cp: 0.94, cpk: 0.8, cpu: 0.8, cpl: 1.07, out_of_spec: 0 }, rules: {}, rule_names: {}, flagged: [], summary: { n: 3, mean: 12.0067, std: 0.0153, min: 11.99, max: 12.02 } }, spec: { usl: 12.05, lsl: 11.95, nominal: 12, unit: 'mm' }, alerts: [] }
   if (path.startsWith('/vision/spc/alerts')) return { items: [], cached: false }
   if (path.startsWith('/vision/summary')) return { station_id: 'ST01', version: '1.0.0', hours: 24, locked: false, totals: { total: 0, ok: 0, ng: 0, failed: 0, yield: null }, flows: [] }
@@ -118,9 +129,10 @@ export function routes(path: string, body?: unknown): unknown {
   if (/\/vision\/flows\/\d+\/recent/.test(path)) return { items: [] }
   if (/\/vision\/flows\/\d+\/runs/.test(path)) return { items: RUNS, total: RUNS.length, limit: 20, offset: 0 }
   if (/\/vision\/flows\/\d+\/stats/.test(path)) return { hours: 24, total: 8, by_status: { ok: 7, ng: 1 }, avg_ms: 12, max_ms: 30, hourly: [], live: { runs: 0, ok: 0, ng: 0, failed: 0, avg_ms: 0, max_ms: 0, last_ms: 0, last_status: '', last_run_id: '', last_finished_at: 0 } }
-  if (path.startsWith('/vision/flows')) return { items: [FLOW], total: 1, limit: 100, offset: 0 }
+  if (path.startsWith('/vision/flows')) return { items: [FLOW, FLOW_SIDE], total: 2, limit: 100, offset: 0 }
   if (path.startsWith('/vision/tool-types')) return { items: [
     { key: 'image_source', label: 'Image source', description: 'Acquire image', category: 'source', category_label: 'Source', icon: 'Camera', params: [{ key: 'source_id', label: 'Source', kind: 'source', required: false, default: null, help_text: '', options: [], unit: '', minimum: null, maximum: null, step: null, visible_when: null, shapes: [], accept: '', group: '' }], inputs: [], outputs: [{ key: 'image', label: 'Image', type: 'image' }], heavy: false },
+    { key: 'threshold', label: 'Threshold', description: 'Binary threshold', category: 'preprocess', category_label: 'Pre-processing', icon: 'SlidersHorizontal', params: [TEACH_PARAM], inputs: [{ key: 'image', label: 'Image', type: 'image' }], outputs: [{ key: 'image', label: 'Image', type: 'image' }], heavy: false },
     { key: 'grayscale', label: '灰階', description: '轉灰階', category: 'preprocess', category_label: '影像前處理', icon: 'Box', params: [], inputs: [{ key: 'image', label: '影像', type: 'image' }], outputs: [{ key: 'image', label: '影像', type: 'image' }], heavy: false },
   ], categories: [{ key: 'source', label: 'Source' }, { key: 'preprocess', label: '影像前處理' }] }
   if (path.startsWith('/vision/capture/download/info')) return { available: false, version: '', filename: '', size: 0, sha256: '', built_at: null, url: '/api/vision/capture/download' }

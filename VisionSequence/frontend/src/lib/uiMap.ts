@@ -34,6 +34,7 @@ export const UI_PAGES: UiPage[] = [
   { route: '/flows/:flowId/tools/:nodeId', id: 'tool', title: 'breadcrumb.tools', feature: 'flows.edit', help: '/flows/:id/tools/:nodeId' },
   { route: '/flows/:flowId/stats', id: 'stats', title: 'breadcrumb.stats', help: '/flows/:id/stats' },
   { route: '/flows/:flowId/teach', id: 'teach', title: 'breadcrumb.teach', feature: 'flows.teach', help: '/flows/:id/teach', actions: ['teach.saveGraph', 'teach.saveRecipe'] },
+  { route: '/teach', id: 'station_teach', nav: 'nav.stationTeach', feature: 'flows.teach', help: '/teach', actions: ['stationTeach.saveAll'] },
   { route: '/flows/:flowId/golden', id: 'golden', title: 'breadcrumb.golden', feature: 'golden', help: '/flows/:id/golden', actions: ['golden.upload', 'golden.regress'] },
   { route: '/dashboards', id: 'dashboards', nav: 'nav.dashboards', help: '/dashboards', actions: ['dashboardRun.create', 'dashboardRun.save'] },
   { route: '/dashboards/:id/design', id: 'dashboard_design', title: 'dashboardDesign.title', feature: 'flows.edit', help: '/dashboards/:id/design', actions: ['dashboardRun.save', 'dashboardRun.exportJson', 'dashboardRun.importJson', 'dashboardDesign.applyTemplate'] },

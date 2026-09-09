@@ -251,6 +251,12 @@
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
 
+### 站台級參數卡與自訂群組（L2，`apps/vision/api_teach.py`＋`/teach`，Codex 實作）
+- 一個站台常常同時跑好幾條流程（正面／反面／側面），換線要一條一條開進去調很容易漏。`GET /vision/teach/params` 把**所有看得見的流程**裡 `teach=True` 的參數集中列出來，每筆帶 `flow_id`／`flow_name`／`node_id`／`node_label`／`tool_category`／`param`（完整 spec）。**`visible_when` 的可見性判斷放在後端**（與單流程參數卡同語意），前端不必自己算。
+- **儲存沒有新增批次端點**：前端依流程分組，一條流程送一次既有 `PATCH /flows/{id}`，所以權限完全沿用 `flows.edit`／`flows.teach` 分流與 `teachguard.assert_teach_only()`（實測操作員改 `threshold` 得 200、改 `method` 得 403）。**多條流程一起存時逐條收結果，一條失敗不會把整批丟掉**，畫面與 toast 都列得出哪幾條成功哪幾條失敗。
+- **自訂群組存在 `UserPref.ui["station_teach_groups"]`——沒有新 model、沒有 migration**。群組是**個人捷徑不是另一份資料**：只記 `flow_id + node_id + param`，值仍然只存在各 `Flow.graph`。上限 32 組（第 33 組回 422 `too_many_groups`）。
+- **失效的捷徑不會讓整頁炸掉**：解析不到就回 `valid: false, reason: "missing"`，前端顯示為失效並可移除。實測同一組裡混三筆（有效／節點不存在／流程不存在）建立回 201，讀回來分別是 true/false/false；把那個節點刪掉之後三筆都變 false，端點仍然 200。測試 `tests/test_station_teach.py`＋`lib/stationTeach.test.ts`。
+
 ### 執行策略、日誌等級與自動存（L4／L6／L7，`apps/vision/api_settings.py`，Codex 實作）
 - **設定存資料庫、`.env` 是出廠值、`effective()` 記憶體快取、`save()` 作廢快取**——與 `retention.py` 同一套（migration 0033）。實測 `effective()` 連呼叫 200 次查 **0 次資料庫**。
 - **L4 節拍穩定模式**（`stable_cycle_mode`）：打開＝同時只跑一條流程，用吞吐換節拍穩定。**不是只改報表數字**——`runner._acquire_stable_slot()` 是一道全域閘門，實測 3 個各佔 0.25 s：開啟時總時間 0.75 s 且進出順序 `i0o0i1o1i2o2` 完全不交錯，關閉時 0.25 s 且交錯（真的並行）。`ThreadPoolExecutor` 仍用 `configured_max_workers` 建立（**不能重建執行緒池**），`capacity()` 的 `max_workers` 才回 1；等待迴圈只讀記憶體，實測等 1 秒查 0 次 DB。設定頁另有唯讀的 `cv_threads`／`sse_max_streams`／`max_queue_per_flow`／`run_timeout_s`。**不做 CPU 綁定。**
