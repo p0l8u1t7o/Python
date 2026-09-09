@@ -107,6 +107,8 @@ class NotImplementedSectionTests(SimpleTestCase):
         ("標定", lambda: (ROOT / "apps/vision/calib.py").exists()),
         ("零樣本異常偵測", lambda: "register_detect" in {t.key for t in base.all_types()}),
         ("少樣本訓練", lambda: "register_detect" in {t.key for t in base.all_types()}),
+        ("快速註冊", lambda: (ROOT / "apps/vision/dl/quick.py").exists()),
+        ("影像檢索分類", lambda: "dl_retrieval" in {t.key for t in base.all_types()}),
     )
 
     def test_section_does_not_claim_existing_features_are_missing(self):
@@ -115,10 +117,8 @@ class NotImplementedSectionTests(SimpleTestCase):
         section = section[:section.index("\n## ") if "\n## " in section else len(section)]
         for word, exists in self.CAPABILITIES:
             if exists():
-                self.assertNotIn(
-                    f"{word}子系統", section,
-                    f"README 的「尚未實作」仍列出已經實作的{word}",
-                )
+                for claim in (f"{word}子系統", f"沒有{word}", f"無{word}", f"尚未實作{word}"):
+                    self.assertNotIn(claim, section, f"README 的「尚未實作」仍列出已經實作的{word}（寫法：{claim}）")
                 # 只擋「把它當成整段未實作」的寫法；說明性提及（例如更正註記）不算
                 bad = re.search(rf"^[^>\n]*{re.escape(word)}[^\n]*尚未", section, re.M)
                 self.assertIsNone(bad, f"README 的「尚未實作」把{word}寫成未實作")
