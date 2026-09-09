@@ -329,6 +329,10 @@ def execute(
         node_report.logs = logs
         node_report.detail = _jsonable(result.detail)
         node_report.overlays = result.overlays
+        moved = tools_base.moved_regions(ctx)
+        if moved:
+            # 位置修正有接且找到了：實線是畫的位置、虛線是這一片實際量的位置（D1 延後的那一塊）
+            node_report.overlays = list(result.overlays or []) + moved
         node_report.overlay_on = result.overlay_on or cn.primary_image_port
         if ctx.fixture_missing:
             # 位置修正接上了但這一次沒找到：區域留在原地，量到的數字未必是這個工件的

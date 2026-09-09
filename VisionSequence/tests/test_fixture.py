@@ -119,6 +119,22 @@ class ContextRoiTests(SimpleTestCase):
         self.assertEqual(first["x"], 22.0)
         self.assertIsNone(_context({}, {}).roi())
 
+    def test_the_moved_region_is_drawn_dashed_only_when_a_correction_was_applied(self):
+        """結果畫面要同時看得到「畫的位置」（實線）與「實際量的位置」（虛線）；沒接或沒找到就不多畫。"""
+        roi = {"shape": "rect", "x": 10, "y": 10, "w": 4, "h": 4}
+        moved = _context({"roi": roi}, {base.TRANSFORM_IN: MOVE})
+        moved.roi()
+        marks = base.moved_regions(moved)
+        self.assertEqual(len(marks), 1)
+        self.assertTrue(marks[0]["dash"])
+        self.assertEqual(marks[0]["label"], "fixture")
+        plain = _context({"roi": roi}, {})
+        plain.roi()
+        self.assertEqual(base.moved_regions(plain), [])
+        missing = _context({"roi": roi}, {base.TRANSFORM_IN: None})
+        missing.roi()
+        self.assertEqual(base.moved_regions(missing), [])
+
     def test_the_input_port_still_wins_over_the_drawn_shape(self):
         ctx = _context({"roi": {"shape": "rect", "x": 10, "y": 10, "w": 4, "h": 4}},
                        {"roi": {"shape": "circle", "cx": 50, "cy": 50, "r": 5}, base.TRANSFORM_IN: MOVE})

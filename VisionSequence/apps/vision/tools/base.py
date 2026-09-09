@@ -325,6 +325,26 @@ class ToolContext:
 _NO_ROI: dict[str, Any] = {}
 
 
+def moved_regions(ctx: "ToolContext") -> list[dict[str, Any]]:
+    """位置修正真的套上去之後，把「移過去的區域」畫成虛線標記。
+
+    畫布上的實線 ROI 是教導時畫的位置，這一片實際量的地方在虛線那裡；兩個都看得到，
+    「量到空氣」與「跟錯工件」在結果畫面上一眼就能分辨。沒接位置修正或這次沒找到（區域留在原地）
+    就不畫，既有流程的標記一字不變。
+    """
+    if not isinstance(ctx.inputs.get(TRANSFORM_IN), dict):
+        return []
+    from apps.vision.tools import roi as roi_mod
+
+    out: list[dict[str, Any]] = []
+    for region in ctx._roi_cache.values():
+        if region is _NO_ROI or not isinstance(region, dict) or not region.get("shape"):
+            continue
+        for overlay in roi_mod.region_overlays(region, color="#f59e0b", label="fixture"):
+            out.append({**overlay, "dash": True})
+    return out
+
+
 class ToolError(Exception):
     """工具在「可預期的失敗」時拋出；引擎記為該節點 error，不會讓平台當機。"""
 
