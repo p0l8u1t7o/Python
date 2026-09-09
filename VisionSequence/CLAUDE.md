@@ -251,6 +251,13 @@
 - 設定（.env）：`VISION_WARMUP`＝off（**出廠預設**）／commissioned／all、`VISION_WARMUP_TIMEOUT_S`（每條上限，預設 30）、`VISION_WARMUP_FLOWS`（逗號分隔 id）。`serve.py` 在 `server_ready` 之後開 daemon 執行緒 `vision-warmup`，先等 `/healthz` 通、引擎鎖定時略過；`--no-warmup` 可停用。任何例外都只記 log，不讓啟動失敗。
 - 手動觸發 `manage.py warmup [--flows 1,2] [--all]`（輸出英文表格）。`warm_flows()` 回 `{items, summary, duration_ms}`。
 
+### 執行策略、日誌等級與自動存（L4／L6／L7，`apps/vision/api_settings.py`，Codex 實作）
+- **設定存資料庫、`.env` 是出廠值、`effective()` 記憶體快取、`save()` 作廢快取**——與 `retention.py` 同一套（migration 0033）。實測 `effective()` 連呼叫 200 次查 **0 次資料庫**。
+- **L4 節拍穩定模式**（`stable_cycle_mode`）：打開＝同時只跑一條流程，用吞吐換節拍穩定。**不是只改報表數字**——`runner._acquire_stable_slot()` 是一道全域閘門，實測 3 個各佔 0.25 s：開啟時總時間 0.75 s 且進出順序 `i0o0i1o1i2o2` 完全不交錯，關閉時 0.25 s 且交錯（真的並行）。`ThreadPoolExecutor` 仍用 `configured_max_workers` 建立（**不能重建執行緒池**），`capacity()` 的 `max_workers` 才回 1；等待迴圈只讀記憶體，實測等 1 秒查 0 次 DB。設定頁另有唯讀的 `cv_threads`／`sse_max_streams`／`max_queue_per_flow`／`run_timeout_s`。**不做 CPU 綁定。**
+- **L6 日誌等級**：`GET/PATCH /vision/settings/log-level`（管理員），四級 error／info／debug／**trace**。Python 沒有 TRACE，`addLevelName(5, "TRACE")` 自己加——**比 DEBUG(10) 更細，很吵，只在查問題時開**。實測四級都真的改到 root logger 的 `getEffectiveLevel()`（40／20／10／5）；壞值 422、操作員 403。
+- **`vsctl logs collect`**：服務日誌＋`.env`＋doctor 輸出＋版本打包成 zip 給客服。**`.env` 的密碼與金鑰一定要遮罩**——`Mask-DotEnvLine` 以 `(?i)(password|secret|token|apikey|api[_-]?key|auth)` 比對鍵名換成 `********`；實跑該函式確認 `SECRET_KEY`／`VISION_API_KEY`／`VISION_CAPTURE_AUTH`／`VISION_TCP_AUTH`／`ADMIN_PASSWORD` 全被遮罩，而 `DEBUG`／`VISION_STATION_ID`／埠號原樣保留（客服要看得到）。
+- **L7 Auto Save**：定時把所有流程存一次版本，**預設關閉**；**內容沒變就不存**（實測連存三次版本數維持 1，改了圖才變 2，回報 `{saved, skipped, flows}`）——`KEEP_VERSIONS` 只有 50，沒有這條會把手動存的版本擠掉。Auto Load 的 kiosk 身分與風險寫在 `docs/deployment.html`。
+
 ### 標定板產生器與讀碼範本（I5／G3，`apps/vision/calibboard.py`，Codex 實作）
 - **I5**：`GET /vision/calibration/board.png`（`require_feature("assets")`）產可列印的標定板——`pattern`＝chessboard／acircles、`rows`／`cols`（**chessboard 的 rows/cols 是內角點數，acircles 是圓心數**）、`spacing`（mm）、`dpi`；產生器是純函式在 `calibboard.py`，端點只做 HTTP。圖上印規格文字與**已知長度的比例尺**，並提醒列印要選 100%／實際大小（列印縮放是最常見的坑）。
   實測間距：`spacing/25.4*dpi`，20 mm@300dpi 理論 236.22 px、量回 236.00（誤差 0.22 px，來自格線落點取整）；25.4 mm@150dpi **誤差 0.000**。只出 PNG，PDF 是選配沒做。

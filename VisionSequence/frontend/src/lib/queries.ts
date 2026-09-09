@@ -52,6 +52,7 @@ import type {
   GoldenList,
   ImageSource,
   IntegrationInfo,
+  LogLevel,
   Page,
   PluginInventory,
   PreviewReport,
@@ -73,6 +74,8 @@ import type {
   TemplateInstance,
   ToolCatalogue,
   TriggerRule,
+  VisionRuntimeSettings,
+  VisionSettingsStatus,
 } from './types'
 
 export const keys = {
@@ -105,6 +108,9 @@ export const keys = {
   dashboard: (id: number) => ['dashboard', id] as const,
   dashboardDefault: ['dashboard-default'] as const,
   dashboardData: (id: number) => ['dashboard-data', id] as const,
+  executionSettings: ['settings', 'execution'] as const,
+  logLevel: ['settings', 'log-level'] as const,
+  autoSaveSettings: ['settings', 'auto-save'] as const,
 }
 
 export interface RecentRuns {
@@ -151,6 +157,57 @@ export function useSweepRetention() {
       client.setQueryData(['retention'], data.status)
       void client.invalidateQueries({ queryKey: ['audit'] })
     },
+  })
+}
+
+export function useExecutionSettings(enabled = true) {
+  return useQuery({
+    queryKey: keys.executionSettings,
+    queryFn: () => api.get<{ settings: VisionRuntimeSettings; capacity: Capacity }>('/vision/settings/execution'),
+    enabled,
+  })
+}
+
+export function useSaveExecutionSettings() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { stable_cycle_mode: boolean }) => api.patch<{ settings: VisionRuntimeSettings; capacity: Capacity }>('/vision/settings/execution', body),
+    onSuccess: (data) => {
+      client.setQueryData(keys.executionSettings, data)
+      client.setQueryData(keys.capacity, data.capacity)
+    },
+  })
+}
+
+export function useLogLevel(enabled = true) {
+  return useQuery({
+    queryKey: keys.logLevel,
+    queryFn: () => api.get<{ level: LogLevel; levels: LogLevel[]; effective: number }>('/vision/settings/log-level'),
+    enabled,
+  })
+}
+
+export function useSaveLogLevel() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (level: LogLevel) => api.patch<{ level: LogLevel; effective: number }>('/vision/settings/log-level', { level }),
+    onSuccess: (data) => client.setQueryData(keys.logLevel, { level: data.level, levels: ['error', 'info', 'debug', 'trace'], effective: data.effective }),
+  })
+}
+
+export function useAutoSaveSettings(enabled = true) {
+  return useQuery({
+    queryKey: keys.autoSaveSettings,
+    queryFn: () => api.get<VisionSettingsStatus>('/vision/settings/auto-save'),
+    enabled,
+  })
+}
+
+export function useSaveAutoSaveSettings() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Pick<VisionRuntimeSettings, 'auto_save_enabled' | 'auto_save_interval_min'>) => api.patch<VisionSettingsStatus>('/vision/settings/auto-save', body),
+    onSuccess: (data) => client.setQueryData(keys.autoSaveSettings, data),
   })
 }
 

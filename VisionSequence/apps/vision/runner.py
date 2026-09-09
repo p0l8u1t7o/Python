@@ -143,6 +143,9 @@ class _Persister(threading.Thread):
 
             if retention.background_enabled():
                 retention.maybe_sweep()
+            from apps.vision import api_settings
+
+            api_settings.maybe_auto_save()
         except Exception:  # noqa: BLE001 - 維護不能拖垮持久化
             log.exception("資料保留整理失敗")
 
@@ -330,18 +333,30 @@ class Runner:
         self._active_lock = threading.Lock()
         self._workers_busy = 0
         self._workers_lock = threading.Lock()
+        self._stable_gate = threading.Condition(threading.Lock())
+        self._stable_running = False
         self._asset_paths: dict[str, str] = {}
 
     # -- 池 ---------------------------------------------------------------
     @property
-    def max_workers(self) -> int:
+    def configured_max_workers(self) -> int:
         return max(1, int(_cfg("MAX_WORKERS", 10)))
+
+    @property
+    def stable_cycle_mode(self) -> bool:
+        from apps.vision import api_settings
+
+        return bool(api_settings.effective().get("stable_cycle_mode"))
+
+    @property
+    def max_workers(self) -> int:
+        return 1 if self.stable_cycle_mode else self.configured_max_workers
 
     def pool(self) -> ThreadPoolExecutor:
         if self._pool is None:
             with self._lock:
                 if self._pool is None:
-                    self._pool = ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="vision-run")
+                    self._pool = ThreadPoolExecutor(max_workers=self.configured_max_workers, thread_name_prefix="vision-run")
         return self._pool
 
     def runtime(self, flow_id: int) -> FlowRuntime:
@@ -388,8 +403,19 @@ class Runner:
             active = self._active
         with self._workers_lock:
             workers_busy = self._workers_busy
-        return {"max_workers": self.max_workers, "max_queue_per_flow": self.max_queue_per_flow, "active": active,
-                "workers_busy": workers_busy, "flows": busy, "images": store.stats()}
+        return {
+            "max_workers": self.max_workers,
+            "configured_max_workers": self.configured_max_workers,
+            "cv_threads": int(_cfg("CV_THREADS", 0) or 0),
+            "sse_max_streams": int(_cfg("SSE_MAX_STREAMS", 64) or 64),
+            "max_queue_per_flow": self.max_queue_per_flow,
+            "run_timeout_s": float(_cfg("RUN_TIMEOUT_S", 30.0) or 0),
+            "stable_cycle_mode": self.stable_cycle_mode,
+            "active": active,
+            "workers_busy": workers_busy,
+            "flows": busy,
+            "images": store.stats(),
+        }
 
     def sync_wait_available(self) -> tuple[bool, dict[str, Any]]:
         """同步觸發前的死結檢查。
@@ -522,6 +548,8 @@ class Runner:
 
     def _flow_concurrency(self, rt: FlowRuntime, flow: Flow) -> int:
         """目前的並行度。**只讀記憶體**——submit() 已在呼叫者執行緒把 Flow.concurrency 帶進來。"""
+        if self.stable_cycle_mode:
+            return 1
         current = rt.concurrency or getattr(flow, "concurrency", 1) or 1
         return max(1, int(current))
 
@@ -538,6 +566,22 @@ class Runner:
             rt.running = max(0, rt.running - 1)
             rt.gate.notify_all()
 
+    def _acquire_stable_slot(self) -> bool:
+        if not self.stable_cycle_mode:
+            return False
+        with self._stable_gate:
+            while self._stable_running:
+                self._stable_gate.wait(0.05)
+            self._stable_running = True
+            return True
+
+    def _release_stable_slot(self, acquired: bool) -> None:
+        if not acquired:
+            return
+        with self._stable_gate:
+            self._stable_running = False
+            self._stable_gate.notify_all()
+
     def _execute(
         self,
         flow: Flow,
@@ -551,6 +595,7 @@ class Runner:
         recipe_name: str = "",
         archive_policy: dict[str, Any] | None = None,
     ) -> engine.RunReport:
+        stable_slot = self._acquire_stable_slot()
         with self._workers_lock:
             self._workers_busy += 1
         try:
@@ -594,6 +639,7 @@ class Runner:
         finally:
             with self._workers_lock:
                 self._workers_busy = max(0, self._workers_busy - 1)
+            self._release_stable_slot(stable_slot)
         report.station_id = str(_cfg("STATION_ID", "ST01"))
         report.recipe = recipe_name
         report.archive_policy = archive_policy

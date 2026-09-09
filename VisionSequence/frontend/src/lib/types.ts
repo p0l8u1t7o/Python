@@ -287,6 +287,12 @@ export interface ScratchImage {
 
 export interface Capacity {
   max_workers: number
+  configured_max_workers?: number
+  cv_threads?: number
+  sse_max_streams?: number
+  max_queue_per_flow?: number
+  run_timeout_s?: number
+  stable_cycle_mode?: boolean
   active: number
   workers_busy?: number
   flows: { flow_id: number; flow_name: string; running: number; queued: number; continuous: boolean }[]
@@ -603,6 +609,22 @@ export interface RetentionStatus {
     measurements: number
   }
   busy: boolean
+}
+
+export type LogLevel = 'error' | 'info' | 'debug' | 'trace'
+
+export interface VisionRuntimeSettings {
+  stable_cycle_mode: boolean
+  log_level: LogLevel
+  auto_save_enabled: boolean
+  auto_save_interval_min: number
+}
+
+export interface VisionSettingsStatus {
+  settings: VisionRuntimeSettings
+  defaults: VisionRuntimeSettings
+  last_auto_save_at?: string | null
+  last_auto_save_result?: { saved?: number; skipped?: number; flows?: number }
 }
 
 /** 資料保留設定（單列，管理員可改；天數 0 = 永久保留） */

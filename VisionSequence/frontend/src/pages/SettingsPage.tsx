@@ -7,6 +7,7 @@ import { Check, KeyRound } from 'lucide-react'
 
 import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal'
 import { Page } from '@/components/layout/AppShell'
+import { ExecutionPolicyCard } from '@/components/settings/ExecutionPolicyCard'
 import { RetentionCard } from '@/components/settings/RetentionCard'
 import { Button, Card, CardBody, CardHeader, DetailRow, PageHeader, Panel, SegmentedControl, Switch, TextInput } from '@/components/ui'
 import { setLanguage, storedLanguage, type Language } from '@/i18n'
@@ -14,7 +15,7 @@ import { api, apiKey, setApiKey } from '@/lib/api'
 import { errorMessage } from '@/lib/errors'
 import { readFlowDraftAutoVersion, writeFlowDraftAutoVersion } from '@/lib/localState'
 import { normalizeOverlayLimit, readOverlayLimit, writeOverlayLimit } from '@/lib/overlayLimit'
-import { useCapacity, useUpdateProfile } from '@/lib/queries'
+import { useUpdateProfile } from '@/lib/queries'
 import { useAuth } from '@/providers/AuthProvider'
 import { useTheme, type ThemePreference } from '@/providers/ThemeProvider'
 import { useToast } from '@/providers/ToastProvider'
@@ -24,7 +25,6 @@ export function SettingsPage() {
   const toast = useToast()
   const theme = useTheme()
   const client = useQueryClient()
-  const capacity = useCapacity()
   const auth = useAuth()
   const [key, setKey] = useState(apiKey())
   const [language, setLang] = useState<Language>(storedLanguage())
@@ -160,23 +160,8 @@ export function SettingsPage() {
             <ChangePasswordModal open={changing} onClose={() => setChanging(false)} />
           </CardBody>
         </Card>
+        <ExecutionPolicyCard />
         {auth.isAdmin ? <RetentionCard /> : null}
-        <Panel title={t('settings.capacity')} description={t('settings.capacityHint')} bodyClassName="p-4" testId="panel-capacity">
-          <div>
-            {capacity.data ? (
-              <dl>
-                <DetailRow label="max_workers">{capacity.data.max_workers}</DetailRow>
-                <DetailRow label="active">{capacity.data.active}</DetailRow>
-                <DetailRow label="images">{capacity.data.images.images} / {Math.round(capacity.data.images.bytes / 1048576)} MB / {capacity.data.images.runs} runs</DetailRow>
-                {capacity.data.flows.map((f) => (
-                  <DetailRow key={f.flow_id} label={f.flow_name || `#${f.flow_id}`}>
-                    {f.running > 0 ? `${t('status.running')} ${f.running}` : t('status.idle')} · queued {f.queued}{f.continuous ? ` · ${t('dashboard.continuous')}` : ''}
-                  </DetailRow>
-                ))}
-              </dl>
-            ) : null}
-          </div>
-        </Panel>
       </div>
     </Page>
   )

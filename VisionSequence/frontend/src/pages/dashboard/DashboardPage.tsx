@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Edit3, Expand, Shrink } from 'lucide-react'
 
 import { WidgetRenderer } from '@/components/dashboard/WidgetRenderer'
 import { Button, ErrorState, LoadingState } from '@/components/ui'
-import { ApiError } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
 import { dashboardFlowIds, cellById, nestedWidgetIds } from '@/lib/dashboard'
 import { useFlowStream, type StreamEvent } from '@/lib/flowStream'
 import { MOBILE_QUERY, useMediaQuery } from '@/lib/useMediaQuery'
@@ -49,6 +49,7 @@ function topLevelWidgets(layout: DashboardLayout): DashboardWidget[] {
 export function DashboardPage() {
   const { t } = useTranslation()
   const params = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const auth = useAuth()
   const mobile = useMediaQuery(MOBILE_QUERY)
@@ -60,6 +61,7 @@ export function DashboardPage() {
   const data = useDashboardData(dashboard?.id ?? null, { refetchInterval: 15000 })
   const [live, setLive] = useState<Record<number, RunReport | null>>({})
   const [fullscreen, setFullscreen] = useState(false)
+  const autostarted = useRef(false)
   const flowIds = useMemo(() => dashboard ? dashboardFlowIds(dashboard.layout) : [], [dashboard])
 
   useEffect(() => {
@@ -71,6 +73,14 @@ export function DashboardPage() {
     document.addEventListener('fullscreenchange', onChange)
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
+
+  useEffect(() => {
+    if (autostarted.current || searchParams.get('autostart') !== '1' || !auth.can('flows.run') || flowIds.length === 0) return
+    autostarted.current = true
+    for (const flowId of flowIds) {
+      void api.post(`/vision/flows/${flowId}/continuous`, { running: true }).then(() => data.refetch()).catch(() => {})
+    }
+  }, [auth, data, flowIds, searchParams])
 
   if (dashboardQuery.isPending) return <div className="flex min-h-screen items-center justify-center bg-app"><LoadingState /></div>
   if (dashboardQuery.isError) {

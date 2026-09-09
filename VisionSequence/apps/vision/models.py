@@ -519,6 +519,25 @@ class RetentionSettings(models.Model):
         return "RetentionSettings"
 
 
+class VisionSettings(models.Model):
+    """單列（id=1）：現場執行策略、日誌等級與自動存版本。
+
+    `.env` 只作出廠值；執行中的服務讀取 apps.vision.api_settings 的記憶體快取，避免引擎熱路徑查資料庫。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    stable_cycle_mode = models.BooleanField(default=False)
+    log_level = models.CharField(max_length=10, default="info")
+    auto_save_enabled = models.BooleanField(default=False)
+    auto_save_interval_min = models.PositiveIntegerField(default=15)
+    last_auto_save_at = models.DateTimeField(null=True, blank=True)
+    last_auto_save_result = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return "VisionSettings"
+
+
 class AssistantChat(models.Model):
     """全域 AI 助手的一次對話（每位使用者自己的）：標題由第一句話取，訊息是前端 ChatMessage 陣列。
 

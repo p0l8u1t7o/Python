@@ -5,7 +5,7 @@
 .DESCRIPTION
     Run from the install root as "vsctl <command>" (vsctl.cmd forwards here) or from a checkout as scripts\vsctl.ps1.
 
-    Service        start | stop | restart | status | run (foreground, for debugging) | logs [-Tail N] [-Follow] [-Proxy]
+    Service        start | stop | restart | status | run (foreground, for debugging) | logs [-Tail N] [-Follow] [-Proxy] | logs collect [-Out x.zip]
     Operations     doctor [-Json] | backup [-Out x.zip] [--with-images] | restore <zip> | purge [--dry-run] | manage <manage.py args>
     Versions       update <release.zip> [-Keep N] | rollback [<version>] [-RestoreDb] | versions [prune] [-Keep N] | version
     Plugins        plugins list | install <zip|folder> [-Online] | deps [<name>] [-Online] | rescan
@@ -544,6 +544,63 @@ function Show-Logs {
     if ($Follow) { Get-Content -LiteralPath $file -Tail $Tail -Wait } else { Get-Content -LiteralPath $file -Tail $Tail }
 }
 
+function Mask-DotEnvLine([string]$Line) {
+    if ($Line -notmatch '^\s*([^#=\s]+)\s*=(.*)$') { return $Line }
+    $keyName = $Matches[1]
+    if ($keyName -match '(?i)(password|secret|token|apikey|api[_-]?key|auth)') { return "$keyName=********" }
+    return $Line
+}
+
+function Copy-IfExists([string]$Source, [string]$Destination) {
+    if (Test-Path -LiteralPath $Source) { Copy-Item -LiteralPath $Source -Destination $Destination -Force }
+}
+
+function Collect-Logs {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $outFile = $Out
+    if (-not $outFile) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $layout.DataDir 'logs') | Out-Null
+        $outFile = Join-Path $layout.DataDir ("logs\visionsequence-support-$stamp.zip")
+    }
+    $tmpRoot = Join-Path ([IO.Path]::GetTempPath()) ("vs-logs-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
+    try {
+        Copy-IfExists (Join-Path $layout.DataDir 'logs\service.log') (Join-Path $tmpRoot 'service.log')
+        Copy-IfExists (Join-Path $layout.DataDir 'logs\proxy.log') (Join-Path $tmpRoot 'proxy.log')
+        Copy-IfExists (Join-Path $layout.Home 'updates.log') (Join-Path $tmpRoot 'updates.log')
+        if (Test-Path -LiteralPath $layout.EnvFile) {
+            $masked = @()
+            foreach ($line in [IO.File]::ReadAllLines($layout.EnvFile)) { $masked += Mask-DotEnvLine $line }
+            [IO.File]::WriteAllText((Join-Path $tmpRoot '.env.masked'), (($masked -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false))
+        }
+        $versionText = @(
+            "version=$($layout.Version)",
+            "home=$($layout.Home)",
+            "current=$($layout.Current)",
+            "release=$($layout.Release)",
+            "python=$($layout.Python)",
+            "collected_at=$(Get-Date -Format s)"
+        ) -join "`r`n"
+        [IO.File]::WriteAllText((Join-Path $tmpRoot 'version.txt'), ($versionText + "`r`n"), (New-Object Text.UTF8Encoding $false))
+        if ($layout.Python) {
+            $doctor = Invoke-VsManage $layout @('doctor') -PassThru
+            [IO.File]::WriteAllText((Join-Path $tmpRoot 'doctor.txt'), ($doctor + "`r`n"), (New-Object Text.UTF8Encoding $false))
+        } else {
+            [IO.File]::WriteAllText((Join-Path $tmpRoot 'doctor.txt'), "No Python found; doctor was not run.`r`n", (New-Object Text.UTF8Encoding $false))
+        }
+        if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force }
+        [IO.Compression.ZipFile]::CreateFromDirectory($tmpRoot, $outFile)
+        Write-VsOk "Support package written: $outFile"
+    } finally {
+        $resolvedTmp = [IO.Path]::GetFullPath($tmpRoot)
+        $resolvedBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+        if ($resolvedTmp.StartsWith($resolvedBase, [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item -LiteralPath $tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 switch ($Command.ToLower()) {
     'help' { Show-Help }
     '--help' { Show-Help }
@@ -562,7 +619,7 @@ switch ($Command.ToLower()) {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $pidFile) | Out-Null
         Invoke-VsManage $layout (@('serve', '--host', $bind, '--pid-file', $pidFile) + $Rest); exit $VsLastExit
     }
-    'logs' { Show-Logs }
+    'logs' { if ($Sub.ToLower() -eq 'collect') { Collect-Logs } else { Show-Logs } }
     'doctor' { Require-Python; $a = @('doctor'); if ($Json) { $a += '--json' }; Invoke-VsManage $layout ($a + $Rest); exit $VsLastExit }
     'backup' {
         # PowerShell 會把 --out 當成自己的 -Out 參數（與 -OutVariable 撞名），所以目標路徑走 -Out；其餘 --with-images 等原樣透傳

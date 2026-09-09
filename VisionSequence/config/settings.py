@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -43,6 +44,9 @@ def _env_bool(name: str, default: bool) -> bool:
 SECRET_KEY = _env("SECRET_KEY", "dev-only-secret-change-me")
 DEBUG = _env_bool("DEBUG", True)
 ALLOWED_HOSTS = [h for h in _env("ALLOWED_HOSTS", "*").split(",") if h]
+TRACE_LEVEL = 5
+logging.addLevelName(TRACE_LEVEL, "TRACE")
+LOG_LEVEL = _env("LOG_LEVEL", "INFO").strip().upper() or "INFO"
 
 INSTALLED_APPS = [
     "django.contrib.auth",
@@ -251,6 +255,8 @@ VISION = {
     "KEEP_BATCH_SETS": _env_int("VISION_KEEP_BATCH_SETS", 10),
     "KEEP_BATCH_RUNS": _env_int("VISION_KEEP_BATCH_RUNS", 20),
     "BATCH_MAX_RUNNING": _env_int("VISION_BATCH_MAX_RUNNING", 2),
+    # LOG_LEVEL 是現場出廠值；設定頁寫入資料庫後會覆蓋，且不需要重啟。
+    "LOG_LEVEL": LOG_LEVEL,
 }
 VISION["ASSET_DIR"].mkdir(parents=True, exist_ok=True)
 
@@ -265,6 +271,6 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {"std": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "std"}},
-    "root": {"handlers": ["console"], "level": _env("LOG_LEVEL", "INFO")},
+    "root": {"handlers": ["console"], "level": TRACE_LEVEL if LOG_LEVEL == "TRACE" else LOG_LEVEL},
     "loggers": {"django.request": {"level": "WARNING"}},
 }
