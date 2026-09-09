@@ -50,7 +50,8 @@ class SettingsOpsTests(TestCase):
         self.assertEqual(r.status_code, 422, r.content)
 
     @override_settings(VISION={**settings.VISION, "MAX_WORKERS": 10})
-    def test_execution_strategy_auto_save_and_smoke_contract(self):
+    def test_stable_cycle_mode_is_read_from_memory_not_the_database(self):
+        """節拍穩定模式打開後 capacity 要反映，而且**熱路徑一次 DB 都不能查**。"""
         api_settings.save({"stable_cycle_mode": True})
         rt = FlowRuntime(flow_id=99)
         flow = Flow(id=99, name="memory-only", graph=GRAPH_A, concurrency=8)
@@ -62,6 +63,8 @@ class SettingsOpsTests(TestCase):
         self.assertEqual(data["max_workers"], 1)
         self.assertEqual(concurrency, 1)
 
+    def test_auto_save_skips_flows_whose_graph_did_not_change(self):
+        """內容沒變就不存——KEEP_VERSIONS 只有 50，不然會把手動存的版本擠掉。"""
         flow = Flow.objects.create(name="auto-save", graph=GRAPH_A)
         versions.snapshot(flow, note="created")
         self.assertEqual(FlowVersion.objects.filter(flow=flow).count(), 1)
@@ -71,7 +74,11 @@ class SettingsOpsTests(TestCase):
         self.assertEqual(result["skipped"], 1)
         self.assertEqual(FlowVersion.objects.filter(flow=flow).count(), 1)
 
+    def test_auto_save_snapshots_a_flow_whose_graph_changed(self):
+        flow = Flow.objects.create(name="auto-save-changed", graph=GRAPH_A)
+        versions.snapshot(flow, note="created")
         Flow.objects.filter(pk=flow.pk).update(graph=GRAPH_B)
+
         result = api_settings.auto_save_once()
         self.assertEqual(result["saved"], 1)
         self.assertEqual(FlowVersion.objects.filter(flow=flow).count(), 2)
@@ -79,5 +86,6 @@ class SettingsOpsTests(TestCase):
         self.assertEqual(flow.version, 2)
         self.assertEqual(FlowVersion.objects.get(flow=flow, version=2).graph, GRAPH_B)
 
+    def test_new_get_endpoint_is_in_the_smoke_list(self):
         source = __import__("pathlib").Path("tests/test_smoke_api.py").read_text(encoding="utf-8")
         self.assertIn("/api/vision/settings/log-level", source)
